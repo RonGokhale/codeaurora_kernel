@@ -79,6 +79,10 @@ config GENERIC_HARDIRQS
 	bool
 	default y
 
+config GENERIC_GPIOS
+	bool
+	default y
+
 config STACKTRACE_SUPPORT
 	bool
 	default y
@@ -486,6 +490,7 @@ config ARCH_OMAP
 
 config ARCH_MSM7X00A
 	bool "Qualcomm MSM7X00A"
+	select GENERIC_GPIO
 	select GENERIC_TIME
 	select GENERIC_CLOCKEVENTS
 	help
