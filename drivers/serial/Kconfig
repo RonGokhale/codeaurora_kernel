@@ -1337,6 +1337,20 @@ config SERIAL_QE
 	  This driver supports the QE serial ports on Freescale embedded
 	  PowerPC that contain a QUICC Engine.
 
+config SERIAL_MSM
+	bool "MSM7X00A on-chip serial port support"
+	depends on ARM && ARCH_MSM7X00A
+	select SERIAL_CORE
+	help
+	  Support for the UARTs in the Qualcomm MSM7K.
+
+config SERIAL_MSM_CONSOLE
+	bool "MSM serial console"
+	depends on SERIAL_MSM=y
+	select SERIAL_CORE_CONSOLE
+	help
+	  Support for console on the UARTs in the Qualcomm MSM7K.
+
 config SERIAL_SC26XX
 	tristate "SC2681/SC2692 serial port support"
 	depends on SNI_RM
