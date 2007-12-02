@@ -24,4 +24,12 @@ config MSM_SMD
 	  on MSM7X00A.  Needed for access to many services, including power
 	  and clock control, cellular voice and data network access, etc.
 
+config MSM_HW3D
+	tristate "MSM Hardware 3D Register Driver"
+	depends on ARCH_MSM7X00A
+	default y
+	help
+	  Provides access to registers needed by the userspace OpenGL|ES
+	  library.
+
 endif
