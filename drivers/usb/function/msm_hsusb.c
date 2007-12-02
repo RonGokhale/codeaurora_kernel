@@ -38,6 +38,8 @@
 
 #define EPT_FLAG_IN        0x0001
 
+#define SETUP_BUF_SIZE      4096
+
 struct usb_fi_ept
 {
 	struct usb_endpoint *ept;
@@ -548,6 +550,44 @@ static void handle_setup(struct usb_info *ui)
 		}
 	}
 
+	if ((ctl.bRequestType & USB_TYPE_MASK) != USB_TYPE_STANDARD) {
+		/* let functions handle vendor and class requests */
+
+		struct list_head *entry;
+
+		list_for_each(entry, ui->flist) {
+			struct usb_function_info *fi =
+				list_entry(entry,
+				struct usb_function_info,
+				list);
+
+			if (fi->func->setup) {
+				if (ctl.bRequestType & USB_DIR_IN) {
+					/* IN request */
+					struct usb_request *req = ui->setup_req;
+
+					int ret = fi->func->setup(&ctl,
+						req->buf,
+						SETUP_BUF_SIZE,
+						fi->func->context);
+					if (ret >= 0) {
+						req->length = ret;
+						ep0_setup_send(ui);
+						return;
+					}
+				} else {
+					/* OUT request */
+					/* FIXME - support reading setup
+					 * data from host.
+					 */
+					int ret = fi->func->setup(&ctl, NULL, 0,
+							fi->func->context);
+					if (ret >= 0) goto ack;
+				}
+			}
+		}
+	}
+
 	ep0_setup_stall(ui);
 	return;
 
@@ -691,7 +731,7 @@ static int usb_prepare(struct usb_info *ui)
 	ui->ep0in.max_pkt = 64;
 	ui->ep0out.max_pkt = 64;
 
-	ui->setup_req = usb_ept_alloc_req(&ui->ep0in, 4096);
+	ui->setup_req = usb_ept_alloc_req(&ui->ep0in, SETUP_BUF_SIZE);
 
 	/* select ULPI phy */
 	writel(0x81000000, USB_PORTSC);

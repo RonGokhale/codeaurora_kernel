@@ -20,6 +20,7 @@
 #define _DRIVERS_USB_FUNCTION_USB_FUNCTION_H_
 
 #include <linux/list.h>
+#include <linux/usb/ch9.h>
 
 #define EPT_BULK_IN   1
 #define EPT_BULK_OUT  2
@@ -55,6 +56,22 @@ struct usb_function
 	** currently called from interrupt context.
 	*/
 	void (*configure)(int configured, void *context);
+
+	/* setup() is called to allow functions to handle class and vendor
+	** setup requests.  If the request is unsupported or can not be handled,
+	** setup() should return -1.
+	** For OUT requests, buf will point to a buffer to data received in the
+	** request's data phase, and len will contain the length of the data.
+	** setup() should return 0 after handling an OUT request successfully.
+	** for IN requests, buf will contain a pointer to a buffer for setup()
+	** to write data to, and len will be the maximum size of the data to
+	** be written back to the host.
+	** After successfully handling an IN request, setup() should return
+	** the number of bytes written to buf that should be sent in the
+	** response to the host.
+	*/
+	int (*setup)(struct usb_ctrlrequest *req, void *buf,
+			int len, void *context);
 
 	/* driver name */
 	const char *name;
