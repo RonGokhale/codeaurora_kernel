@@ -34,6 +34,8 @@
 #include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
 
+void halibut_init_keypad(void);
+
 static struct resource smc91x_resources[] = {
 	[0] = {
 		.start	= 0x9C004300,
@@ -91,7 +93,9 @@ static void __init halibut_init_irq(void)
 
 static void __init halibut_init(void)
 {
+	msm_init_gpio();
 	platform_add_devices(devices, ARRAY_SIZE(devices));
+	halibut_init_keypad();
 	msm_add_devices();
 }
 
