@@ -9,3 +9,4 @@ obj-$(CONFIG_MSM_SMD) += smd.o smd_tty.o smd_qmi.o
 obj-$(CONFIG_MSM_SMD) += smd_rpcrouter.o rpc_clkctl.o
 obj-$(CONFIG_MSM_HW3D) += hw3d.o
 obj-$(CONFIG_MSM_PERF) += perf.o
+obj-$(CONFIG_PM) += pm.o
