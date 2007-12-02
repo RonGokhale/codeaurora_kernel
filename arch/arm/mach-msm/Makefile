@@ -5,4 +5,4 @@ obj-y += gpio.o generic_gpio.o
 obj-y += common.o
 
 obj-$(CONFIG_MACH_HALIBUT) += board-halibut.o board-halibut-keypad.o
-
+obj-$(CONFIG_MSM_SMD) += smd.o

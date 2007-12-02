@@ -15,4 +15,13 @@ config MSM7X00A_IDLE
 	default y
 	bool "Idle Support for MSM7X00A"
 
+config MSM_SMD
+	tristate "MSM SMD Drivers"
+	depends on ARCH_MSM7X00A
+	default y
+	help
+	  Support for shared memory interface to the ARM9 "Modem" processor
+	  on MSM7X00A.  Needed for access to many services, including power
+	  and clock control, cellular voice and data network access, etc.
+
 endif
