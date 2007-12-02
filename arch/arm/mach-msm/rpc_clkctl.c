@@ -30,6 +30,8 @@
 #include "smd_rpcrouter.h"
 #include "rpc_clkctl.h"
 
+extern void clock_register_rpc(struct clkctl_rpc_ops *rpc_ops);
+
 static rpcrouterclient_t *rpc_client;
 static rpcrouter_address clkctlsvc_addr;
 
@@ -321,6 +323,10 @@ static int __init rpc_clkctl_init(void)
 		printk(KERN_ERR "rpc_clkctl: Unable to locate clkctl service (%d)\n", rc);
 		return rc;
 	}
+	/*
+	 * Pass our ops structure to the arch clock driver
+	 */
+	clock_register_rpc(&rpc_ops);
 	return 0;
 }
 
