@@ -30,6 +30,10 @@
 #include <asm/arch/board.h>
 #include <asm/delay.h>
 
+#ifdef CONFIG_ANDROID_POWER
+#include <linux/android_power.h>
+#endif
+
 #include "msm_fb.h"
 #include "mddi_hw.h"
 
@@ -86,6 +90,10 @@ struct mddi_info
 	struct reg_read_info *reg_read;
 
 	struct mddi_client_caps caps;
+
+#ifdef CONFIG_ANDROID_POWER
+	android_early_suspend_t early_suspend;
+#endif
 
 	void (*panel_power)(int on);
 
@@ -377,6 +385,22 @@ static void mddi_init_registers(struct mddi_info *mddi)
 	mddi_init_rev_encap(mddi);
 }
 
+#ifdef CONFIG_ANDROID_POWER
+static void mddi_early_suspend(android_early_suspend_t *h)
+{
+	struct mddi_info *mddi = container_of(h, struct mddi_info, early_suspend);
+	if(mddi->panel_power)
+		mddi->panel_power(0);
+}
+
+static void mddi_early_resume(android_early_suspend_t *h)
+{
+	struct mddi_info *mddi = container_of(h, struct mddi_info, early_suspend);
+	if(mddi->panel_power)
+		mddi->panel_power(1);
+}
+#endif
+
 static int __init mddi_init(struct mddi_info *mddi, const char *name,
 			    struct msm_mddi_platform_data *pd,
 			    uint32_t base, int irq)
@@ -417,6 +441,12 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 	ret = request_irq(irq, mddi_isr, IRQF_DISABLED, name, mddi);
 	if (ret)
 		goto fail1;
+
+#ifdef CONFIG_ANDROID_POWER
+	mddi->early_suspend.suspend = mddi_early_suspend;
+	mddi->early_suspend.resume = mddi_early_resume;
+	android_register_early_suspend(&mddi->early_suspend);
+#endif
 
 	if (mddi->panel_power)
 		mddi->panel_power(1);
