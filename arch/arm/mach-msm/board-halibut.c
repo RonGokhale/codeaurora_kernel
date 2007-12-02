@@ -26,6 +26,7 @@
 #include <asm/mach/flash.h>
 
 #include <asm/arch/board.h>
+#include <asm/arch/clock.h>
 #include <asm/arch/msm_iomap.h>
 
 #include <asm/io.h>
@@ -91,12 +92,19 @@ static void __init halibut_init_irq(void)
 	msm_init_irq();
 }
 
+static struct msm_clock_platform_data halibut_clock_data = {
+	.acpu_switch_time_us = 50,
+	.max_speed_delta_khz = 256000,
+	.vdd_switch_time_us = 62,
+};
+
 static void __init halibut_init(void)
 {
 	msm_init_gpio();
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 	halibut_init_keypad();
 	msm_add_devices();
+	msm_clock_init(&halibut_clock_data);
 }
 
 static void __init halibut_map_io(void)
