@@ -17,12 +17,14 @@
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
+#include <linux/delay.h>
 
-#include <asm/delay.h>
 #include <asm/hardware.h>
 #include <asm/io.h>
 #include <asm/hardware/ioc.h>
 #include <asm/system.h>
+
+#include <asm/arch/msm_iomap.h>
 
 enum {
 	I2C_WRITE_DATA          = 0x00,
@@ -357,6 +359,10 @@ msm_i2c_probe(struct platform_device *pdev)
 	int target_clk;
 
 	printk(KERN_INFO "msm_i2c_probe\n");
+
+	/* FIXME: this needs to use the clock api once it is supported */
+	writel((1U << 11) | (1U << 9), MSM_CLK_CTL_BASE + 0x68);
+	mdelay(10);
 
 	/* NOTE: driver uses the static register mapping */
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
