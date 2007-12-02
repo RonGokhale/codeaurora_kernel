@@ -531,6 +531,7 @@ config ARCH_OMAP
 
 config ARCH_MSM
 	bool "Qualcomm MSM"
+	select GENERIC_GPIO
 	select GENERIC_TIME
 	select GENERIC_CLOCKEVENTS
 	help
