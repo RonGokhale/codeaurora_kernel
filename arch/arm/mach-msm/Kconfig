@@ -32,4 +32,11 @@ config MSM_HW3D
 	  Provides access to registers needed by the userspace OpenGL|ES
 	  library.
 
+config MSM_PERF
+	tristate "MSM Performance Counter Driver"
+	depends on ARCH_MSM7X00A
+	default y
+	help
+	  Provides access to ARM11 performance counters.
+
 endif
