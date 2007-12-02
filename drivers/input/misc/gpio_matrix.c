@@ -18,11 +18,17 @@
 #include <linux/input.h>
 #include <linux/gpio_event.h>
 #include <linux/hrtimer.h>
+#ifdef CONFIG_ANDROID_POWER
+#include <linux/android_power.h>
+#endif
 
 struct gpio_kp {
 	struct input_dev *input_dev;
 	struct gpio_event_matrix_info *keypad_info;
 	struct hrtimer timer;
+#ifdef CONFIG_ANDROID_POWER
+	android_suspend_lock_t suspend_lock;
+#endif
 	int current_output;
 	unsigned int use_irq : 1;
 	unsigned int key_state_changed : 1;
@@ -175,6 +181,9 @@ static enum hrtimer_restart gpio_keypad_timer_func(struct hrtimer *timer)
 	for(in = 0; in < kp->keypad_info->ninputs; in++) {
 		enable_irq(gpio_to_irq(kp->keypad_info->input_gpios[in]));
 	}
+#ifdef CONFIG_ANDROID_POWER
+	android_unlock_suspend(&kp->suspend_lock);
+#endif
 	return HRTIMER_NORESTART;
 }
 
@@ -193,6 +202,9 @@ static irqreturn_t gpio_keypad_irq_handler(int irq_in, void *dev_id)
 		else
 			gpio_configure(kp->keypad_info->output_gpios[i], GPIOF_INPUT);
 	}
+#ifdef CONFIG_ANDROID_POWER
+	android_lock_suspend(&kp->suspend_lock);
+#endif
 	hrtimer_start(&kp->timer, ktime_set(0, 0), HRTIMER_MODE_REL);
 	return IRQ_HANDLED;
 }
@@ -327,11 +339,19 @@ int gpio_event_matrix_func(struct input_dev *input_dev, struct gpio_event_info *
 
 		hrtimer_init(&kp->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 		kp->timer.function = gpio_keypad_timer_func;
+#ifdef CONFIG_ANDROID_POWER
+		kp->suspend_lock.name = "gpio_kp";
+		android_init_suspend_lock(&kp->suspend_lock);
+#endif
 		err = gpio_keypad_request_irqs(kp);
 		kp->use_irq = err == 0;
 
 		printk(KERN_INFO "GPIO Keypad Driver: Start keypad matrix for %s in %s mode\n", input_dev->name, kp->use_irq ? "interrupt" : "polling");
 
+#ifdef CONFIG_ANDROID_POWER
+		if (kp->use_irq)
+			android_lock_suspend(&kp->suspend_lock);
+#endif
 		hrtimer_start(&kp->timer, ktime_set(0, 0), HRTIMER_MODE_REL);
 
 		return 0;
@@ -346,6 +366,9 @@ int gpio_event_matrix_func(struct input_dev *input_dev, struct gpio_event_info *
 		}
 	}
 
+#ifdef CONFIG_ANDROID_POWER
+	android_uninit_suspend_lock(&kp->suspend_lock);
+#endif
 	hrtimer_cancel(&kp->timer);
 	for(i = kp->keypad_info->noutputs - 1; i >= 0; i--) {
 err_gpio_direction_input_failed:
