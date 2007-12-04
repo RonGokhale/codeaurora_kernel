@@ -371,14 +371,14 @@ static int acpuclk_switch_clk(clkctl_acpu_speed_t new_clk)
 
 			/* Program clock source */
 			reg_clkctl = readl(A11S_CLK_CNTL_ADDR);
-			reg_clkctl &= ~(0x07 << 4);
-			reg_clkctl |= (acpu_clk_cfg[next_clk].a11s_clk_src_sel << 4);
+			reg_clkctl &= ~(0x07 << 12);
+			reg_clkctl |= (acpu_clk_cfg[next_clk].a11s_clk_src_sel << 12);
 			writel(reg_clkctl, A11S_CLK_CNTL_ADDR);
 
 			/* Program clock divider */
 			reg_clkctl = readl(A11S_CLK_CNTL_ADDR);
-			reg_clkctl &= ~0xf;
-			reg_clkctl |= acpu_clk_cfg[next_clk].a11s_clk_src_div;
+			reg_clkctl &= ~(0xf << 8);
+			reg_clkctl |= (acpu_clk_cfg[next_clk].a11s_clk_src_div << 8);
 			writel(reg_clkctl, A11S_CLK_CNTL_ADDR);
 
 			/* Program clock source selection */
