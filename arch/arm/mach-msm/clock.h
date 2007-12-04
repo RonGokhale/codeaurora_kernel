@@ -40,7 +40,6 @@ struct clk
 	const char              *name;
 	uint32_t                id;
 	uint32_t                flags;
-	int			a9_controlled;
 };
 
 #define A11S_CLK_CNTL_ADDR (MSM_CSR_BASE + 0x100)
@@ -92,111 +91,25 @@ struct clk
 
 
 /*
- * Max supported clock rates
- */
-#define MDH_CLK_MAX_FREQ    192000
-#define VDC_CLK_MAX_FREQ     96000
-#define EBI1_CLK_MAX_FREQ   128000
-#define PBUS_CLK_MAX_FREQ    64000
-
-/*
- * Supported ACPU clock speeds
- */
-typedef enum
-{
-	CLKCTL_ACPU_SPEED_TCXO,
-	CLKCTL_ACPU_SPEED_61P44_MHZ,
-	CLKCTL_ACPU_SPEED_81P92_MHZ,
-	CLKCTL_ACPU_SPEED_96_MHZ,
-	CLKCTL_ACPU_SPEED_122P88_MHZ,
-	CLKCTL_ACPU_SPEED_128_MHZ,
-	CLKCTL_ACPU_SPEED_176_MHZ,
-	CLKCTL_ACPU_SPEED_192_MHZ,
-	CLKCTL_ACPU_SPEED_245P76_MHZ,
-	CLKCTL_ACPU_SPEED_256_MHZ,
-	CLKCTL_ACPU_SPEED_264_MHZ,
-	CLKCTL_ACPU_SPEED_352_MHZ,
-	CLKCTL_ACPU_SPEED_384_MHZ,
-	CLKCTL_ACPU_SPEED_528_MHZ,
-
-	CLKCTL_NUM_ACPU_SPEEDS
-} clkctl_acpu_speed_t;
-
-
-/*
- * Supported ACPU voltage levels
- */
-typedef enum
-{
-	CLKCTL_ACPU_VDD_LEVEL_0,
-	CLKCTL_ACPU_VDD_LEVEL_1,
-	CLKCTL_ACPU_VDD_LEVEL_2,
-	CLKCTL_ACPU_VDD_LEVEL_3,
-	CLKCTL_ACPU_VDD_LEVEL_4,
-	CLKCTL_ACPU_VDD_LEVEL_5,
-	CLKCTL_ACPU_VDD_LEVEL_6,
-	CLKCTL_ACPU_VDD_LEVEL_7,
-
-	CLKCTL_NUM_ACPU_VDD_LEVELS
-} clkctl_acpu_vdd_t;
-
-/*
- * PLLs in the system
- */
-
-typedef enum
-{
-	CLKCTL_TCXO,    /* TCXO @ 19.2 MHz   */
-	CLKCTL_PLL0,    /* PLL @ 245.76 MHz  */
-	CLKCTL_PLL1,    /* PLL @ 768 MHz     */
-	CLKCTL_PLL2,    /* PLL @ 864 MHz     */
-	CLKCTL_PLL3,    /* PLL @ 1056 MHz    */
-	CLKCTL_NUM_SOURCES
-} clkctl_source_t;
-
-/*
  * ARM11 clock configuration for specific ACPU speeds
  */
-typedef struct
-{
-	unsigned int     a11s_clk_khz;     /* A11S_CLK frequency in KHz  */
-	clkctl_source_t  source;           /* Clock source               */
-	unsigned int     a11s_clk_src_sel; /* A11S_CLK_CNTL:CLK_SRCx_SEL */
-	unsigned int     a11s_clk_src_div; /* A11S_CLK_CNTL:CLK_SRCx_DIV */
-	unsigned int     ahb_clk_khz;      /* AHB_CLK frequency in KHz   */
-	unsigned int     ahb_clk_div;      /* A11S_CLK_SEL:AHB_CLK_DIV   */
-} clkctl_acpu_clk_cfg_t;
 
-/*
- * Combined speed/voltage pair
- */
-typedef struct
-{
-	clkctl_acpu_speed_t  speed;
-	clkctl_acpu_vdd_t    vdd;
-} clkctl_acpu_perf_cfg_t;
+#define ACPU_PLL_TCXO	-1
+#define ACPU_PLL_0	1
+#define ACPU_PLL_1	2
+#define ACPU_PLL_2	3
+#define ACPU_PLL_3	4
 
-typedef enum
+struct clkctl_acpu_speed
 {
-	IDLE_STANDBY,    /* Regular standby mode, wakeup on interrupt */
-	IDLE_SLEEP,      /* Sleep mode, wakeup only when ARM9 tells us */
-	IDLE_POWERDOWN   /* Power collapse, wakeup only when ARM9 tells us */
-} clkctl_idle_t;
-
-/*
- * Supported ACPU perf levels.
- */
-typedef enum
-{
-	CLKCTL_ACPU_PERF_LEVEL_0,
-	CLKCTL_ACPU_PERF_LEVEL_1,
-	CLKCTL_ACPU_PERF_LEVEL_2,
-	CLKCTL_ACPU_PERF_LEVEL_3,
-	CLKCTL_ACPU_PERF_LEVEL_4,
-	CLKCTL_ACPU_PERF_LEVEL_5,
-
-	CLKCTL_NUM_ACPU_PERF_LEVELS
-} clkctl_acpu_perf_level_t;
+	unsigned int     a11clk_khz;
+	int              pll;
+	unsigned int     a11clk_src_sel;
+	unsigned int     a11clk_src_div;
+	unsigned int     ahbclk_khz;
+	unsigned int     ahbclk_div;
+	int              vdd;
+};
 
 #endif
 
