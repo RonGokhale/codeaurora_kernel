@@ -156,27 +156,6 @@ struct krpcrouterd_thread
 	struct rpcrouter_xport *xport;
 };
 
-/*
- *  Kernel API for kernel consumers/producers
- */
-
-int rpcrouter_kernapi_openxport(rpcrouter_xport_address *addr);
-int rpcrouter_kernapi_open(uint32_t client_id, rpcrouterclient_t **client);
-int rpcrouter_kernapi_close(rpcrouterclient_t *client);
-int rpcrouter_kernapi_write(rpcrouterclient_t *client,
-			    rpcrouter_address *dest,
-			    void *buffer,
-			    int count);
-int rpcrouter_kernapi_read(rpcrouterclient_t *client,
-			   void **buffer,
-			   long timeout);
-uint32_t rpcrouter_kernapi_getnextxid(void);
-uint8_t rpcrouter_kernapi_getnextpacmarkid(void);
-int rpcrouter_kernapi_getdest(rpcrouterclient_t *client,
-			      uint32_t prog,
-			      uint32_t vers,
-			      long timeout,
-			      rpcrouter_address *dest_addr);
 #define KTHREAD_CMD_NONE 0
 #define KTHREAD_CMD_EXIT 1
 #define KTHREAD_CMD_DATA 2
@@ -280,4 +259,29 @@ typedef struct
 	pacmark_header pacmark_hdr;
 	rpc_reply_hdr rpc_hdr;
 } oncrpc_reply_hdr;
+
+/*
+ *  Kernel API for kernel consumers/producers
+ */
+
+int rpcrouter_kernapi_openxport(rpcrouter_xport_address *addr);
+int rpcrouter_kernapi_open(uint32_t client_id, rpcrouterclient_t **client);
+int rpcrouter_kernapi_close(rpcrouterclient_t *client);
+int rpcrouter_kernapi_write(rpcrouterclient_t *client,
+			    rpcrouter_address *dest,
+			    void *buffer,
+			    int count);
+int rpcrouter_kernapi_read(rpcrouterclient_t *client,
+			   void **buffer,
+			   long timeout);
+int rpcrouter_kernapi_getdest(rpcrouterclient_t *client,
+			      uint32_t prog,
+			      uint32_t vers,
+			      long timeout,
+			      rpcrouter_address *dest_addr);
+void rpcrouter_kernapi_setup_request(oncrpc_request_hdr *hdr,
+				     uint32_t prog,
+				     uint32_t vers,
+				     uint32_t proc,
+				     int arglen);
 #endif

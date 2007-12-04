@@ -1292,6 +1292,21 @@ static int rpcrouter_ioctl(struct inode *inode, struct file *filp,
  *  ====================================
  */
 
+void rpcrouter_kernapi_setup_request(oncrpc_request_hdr *hdr, uint32_t prog,
+                                     uint32_t vers, uint32_t proc, int arglen)
+{
+	memset(hdr, 0, sizeof(oncrpc_request_hdr));
+	hdr->pacmark_hdr.data.cooked.length = sizeof(rpc_request_hdr) + arglen;
+	hdr->pacmark_hdr.data.cooked.message_id = ++next_pacmarkid;
+	hdr->pacmark_hdr.data.cooked.last_pkt = 1;
+	
+	hdr->rpc_hdr.xid = cpu_to_be32(++next_xid);
+	hdr->rpc_hdr.rpc_vers = cpu_to_be32(2);
+	hdr->rpc_hdr.prog = cpu_to_be32(prog);
+	hdr->rpc_hdr.vers = cpu_to_be32(vers);
+	hdr->rpc_hdr.proceedure = cpu_to_be32(proc);
+}
+
 int rpcrouter_kernapi_openxport(rpcrouter_xport_address *addr)
 {
 	if (addr->xp == RPCROUTER_XPORT_NONE)
@@ -1430,16 +1445,6 @@ int rpcrouter_kernapi_read(rpcrouterclient_t *client,
 
 	kfree(read_q_entry);
 	return rc;
-}
-
-uint32_t rpcrouter_kernapi_getnextxid()
-{
-	return ++next_xid;
-}
-
-uint8_t rpcrouter_kernapi_getnextpacmarkid()
-{
-	return ++next_pacmarkid;
 }
 
 int rpcrouter_kernapi_getdest(rpcrouterclient_t *client,

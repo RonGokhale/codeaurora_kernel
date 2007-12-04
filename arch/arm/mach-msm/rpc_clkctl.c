@@ -45,23 +45,12 @@ static int rpc_clkctl_enable(uint32_t clock)
 	clkctl_rpc_enable_msg msg;
 	clkctl_rpc_enable_rets *rets;
 	oncrpc_reply_hdr *rep;
-	uint8_t msg_id;
 	int rc;
 
-	memset(&msg, 0, sizeof(msg));
-
-	msg_id = rpcrouter_kernapi_getnextpacmarkid();
-	msg.hdr.pacmark_hdr.data.cooked.length =
-		sizeof(rpc_request_hdr) + sizeof(clkctl_rpc_enable_req_args);
-
-	msg.hdr.pacmark_hdr.data.cooked.message_id = msg_id;
-	msg.hdr.pacmark_hdr.data.cooked.last_pkt = 1;
-
-	msg.hdr.rpc_hdr.xid = cpu_to_be32(rpcrouter_kernapi_getnextxid());
-	msg.hdr.rpc_hdr.rpc_vers = cpu_to_be32(2);
-	msg.hdr.rpc_hdr.prog = cpu_to_be32(APP_CLKCTL_PROG);
-	msg.hdr.rpc_hdr.vers = cpu_to_be32(APP_CLKCTL_VER);
-	msg.hdr.rpc_hdr.proceedure = cpu_to_be32(CLKCTL_PROCEEDURE_ENABLE);
+	rpcrouter_kernapi_setup_request(&msg.hdr, APP_CLKCTL_PROG,
+					APP_CLKCTL_VER,
+					CLKCTL_PROCEEDURE_ENABLE,
+					sizeof(clkctl_rpc_enable_req_args));
 
 	msg.args.clock = cpu_to_be32(clock);
 
@@ -90,23 +79,12 @@ static void rpc_clkctl_disable(uint32_t clock)
 {
 	clkctl_rpc_disable_msg msg;
 	oncrpc_reply_hdr *rep;
-	uint8_t msg_id;
 	int rc;
 
-	memset(&msg, 0, sizeof(msg));
-
-	msg_id = rpcrouter_kernapi_getnextpacmarkid();
-	msg.hdr.pacmark_hdr.data.cooked.length =
-		sizeof(rpc_request_hdr) + sizeof(clkctl_rpc_disable_req_args);
-
-	msg.hdr.pacmark_hdr.data.cooked.message_id = msg_id;
-	msg.hdr.pacmark_hdr.data.cooked.last_pkt = 1;
-
-	msg.hdr.rpc_hdr.xid = cpu_to_be32(rpcrouter_kernapi_getnextxid());
-	msg.hdr.rpc_hdr.rpc_vers = cpu_to_be32(2);
-	msg.hdr.rpc_hdr.prog = cpu_to_be32(APP_CLKCTL_PROG);
-	msg.hdr.rpc_hdr.vers = cpu_to_be32(APP_CLKCTL_VER);
-	msg.hdr.rpc_hdr.proceedure = cpu_to_be32(CLKCTL_PROCEEDURE_DISABLE);
+	rpcrouter_kernapi_setup_request(&msg.hdr, APP_CLKCTL_PROG,
+					APP_CLKCTL_VER,
+					CLKCTL_PROCEEDURE_DISABLE,
+					sizeof(clkctl_rpc_disable_req_args));
 
 	msg.args.clock = cpu_to_be32(clock);
 
@@ -141,25 +119,15 @@ static int rpc_clkctl_pll_request(uint32_t pll, int enable)
 {
 	clkctl_rpc_pllrequest_msg msg;
 	oncrpc_reply_hdr *rep;
-	uint8_t msg_id;
 	int rc;
 
 	printk(KERN_INFO "rpc_clkctl_pll_request(): PLL %d, Enable = %d\n",
 	       pll, enable);
-	memset(&msg, 0, sizeof(msg));
 
-	msg_id = rpcrouter_kernapi_getnextpacmarkid();
-	msg.hdr.pacmark_hdr.data.cooked.length =
-		sizeof(rpc_request_hdr) + sizeof(clkctl_rpc_pllrequest_req_args);
-
-	msg.hdr.pacmark_hdr.data.cooked.message_id = msg_id;
-	msg.hdr.pacmark_hdr.data.cooked.last_pkt = 1;
-
-	msg.hdr.rpc_hdr.xid = cpu_to_be32(rpcrouter_kernapi_getnextxid());
-	msg.hdr.rpc_hdr.rpc_vers = cpu_to_be32(2);
-	msg.hdr.rpc_hdr.prog = cpu_to_be32(APP_CLKCTL_PROG);
-	msg.hdr.rpc_hdr.vers = cpu_to_be32(APP_CLKCTL_VER);
-	msg.hdr.rpc_hdr.proceedure = cpu_to_be32(CLKCTL_PROCEEDURE_PLLREQUEST);
+	rpcrouter_kernapi_setup_request(&msg.hdr, APP_CLKCTL_PROG,
+					APP_CLKCTL_VER,
+					CLKCTL_PROCEEDURE_PLLREQUEST,
+					sizeof(clkctl_rpc_pllrequest_req_args));
 
 	msg.args.pll = cpu_to_be32(pll);
 	msg.args.enable = cpu_to_be32(enable);
@@ -191,23 +159,12 @@ static int rpc_clkctl_set_rate(uint32_t clock, uint32_t rate)
 	clkctl_rpc_setrate_msg msg;
 	clkctl_rpc_setrate_rets *rets;
 	oncrpc_reply_hdr *rep;
-	uint8_t msg_id;
 	int rc;
 
-	memset(&msg, 0, sizeof(msg));
-
-	msg_id = rpcrouter_kernapi_getnextpacmarkid();
-	msg.hdr.pacmark_hdr.data.cooked.length =
-		sizeof(rpc_request_hdr) + sizeof(clkctl_rpc_setrate_req_args);
-
-	msg.hdr.pacmark_hdr.data.cooked.message_id = msg_id;
-	msg.hdr.pacmark_hdr.data.cooked.last_pkt = 1;
-
-	msg.hdr.rpc_hdr.xid = cpu_to_be32(rpcrouter_kernapi_getnextxid());
-	msg.hdr.rpc_hdr.rpc_vers = cpu_to_be32(2);
-	msg.hdr.rpc_hdr.prog = cpu_to_be32(APP_CLKCTL_PROG);
-	msg.hdr.rpc_hdr.vers = cpu_to_be32(APP_CLKCTL_VER);
-	msg.hdr.rpc_hdr.proceedure = cpu_to_be32(CLKCTL_PROCEEDURE_SETRATE);
+	rpcrouter_kernapi_setup_request(&msg.hdr, APP_CLKCTL_PROG,
+					APP_CLKCTL_VER,
+					CLKCTL_PROCEEDURE_SETRATE,
+					sizeof(clkctl_rpc_setrate_req_args));
 
 	msg.args.clock = cpu_to_be32(clock);
 	msg.args.rate = cpu_to_be32(rate);
@@ -239,23 +196,12 @@ static uint32_t rpc_clkctl_get_rate(uint32_t clock)
 	clkctl_rpc_getrate_msg msg;
 	clkctl_rpc_getrate_rets *rets;
 	oncrpc_reply_hdr *rep;
-	uint8_t msg_id;
 	int rc;
 
-	memset(&msg, 0, sizeof(msg));
-
-	msg_id = rpcrouter_kernapi_getnextpacmarkid();
-	msg.hdr.pacmark_hdr.data.cooked.length =
-		sizeof(rpc_request_hdr) + sizeof(clkctl_rpc_getrate_req_args);
-
-	msg.hdr.pacmark_hdr.data.cooked.message_id = msg_id;
-	msg.hdr.pacmark_hdr.data.cooked.last_pkt = 1;
-
-	msg.hdr.rpc_hdr.xid = cpu_to_be32(rpcrouter_kernapi_getnextxid());
-	msg.hdr.rpc_hdr.rpc_vers = cpu_to_be32(2);
-	msg.hdr.rpc_hdr.prog = cpu_to_be32(APP_CLKCTL_PROG);
-	msg.hdr.rpc_hdr.vers = cpu_to_be32(APP_CLKCTL_VER);
-	msg.hdr.rpc_hdr.proceedure = cpu_to_be32(CLKCTL_PROCEEDURE_GETRATE);
+	rpcrouter_kernapi_setup_request(&msg.hdr, APP_CLKCTL_PROG,
+					APP_CLKCTL_VER,
+					CLKCTL_PROCEEDURE_GETRATE,
+					sizeof(clkctl_rpc_getrate_req_args));
 
 	msg.args.clock = cpu_to_be32(clock);
 	rc = rpcrouter_kernapi_write(rpc_client,
