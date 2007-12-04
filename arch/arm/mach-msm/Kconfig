@@ -10,6 +10,29 @@ config MACH_HALIBUT
 	help
 	  Support for the Qualcomm SURF7200A eval board.
 
+choice
+	prompt "MSM Low-Level Debug UART"
+	depends on ARCH_MSM7X00A
+	default MSM_LL_DEBUG_UART1
+	help
+	  If there is a debug serial port hooked up, this option
+	  will make sure the Uncompressing Linux... messages and
+	  the DEBUG_LL messages get routed to it correctly.
+
+config MSM_LL_DEBUG_UART1
+	bool "UART1"
+
+config MSM_LL_DEBUG_UART2
+	bool "UART2"
+
+config MSM_LL_DEBUG_UART3
+	bool "UART3"
+
+config MSM_LL_DEBUG_NONE
+	bool "NONE"
+
+endchoice
+
 config MSM7X00A_IDLE
 	depends on ARCH_MSM7X00A
 	default y

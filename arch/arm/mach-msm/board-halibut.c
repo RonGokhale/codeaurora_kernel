@@ -86,6 +86,7 @@ static struct platform_device *devices[] __initdata = {
 };
 
 extern struct sys_timer msm_timer;
+int MSM_IO_CONFIGURED;
 
 static void __init halibut_init_irq(void)
 {
@@ -110,6 +111,7 @@ static void __init halibut_init(void)
 static void __init halibut_map_io(void)
 {
 	msm_map_common_io();
+	MSM_IO_CONFIGURED = 1;
 }
 
 MACHINE_START(HALIBUT, "Halibut Board (QCT SURF7200A)")
