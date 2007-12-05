@@ -415,8 +415,10 @@ void __init msm_init_gpio(void)
 		set_irq_flags(i, IRQF_VALID);
 	}
 
-	for (i = 0; i < ARRAY_SIZE(msm_gpio_chips); i++)
+	for (i = 0; i < ARRAY_SIZE(msm_gpio_chips); i++) {
+		writel(0, msm_gpio_chips[i].regs.int_en);
 		register_gpio_chip(&msm_gpio_chips[i].chip);
+	}
 
 	set_irq_chained_handler(INT_GPIO_GROUP1, msm_gpio_irq_handler);
 	set_irq_chained_handler(INT_GPIO_GROUP2, msm_gpio_irq_handler);
