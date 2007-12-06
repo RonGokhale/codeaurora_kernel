@@ -27,7 +27,7 @@
 #include <linux/delay.h>
 #include <linux/msm_rpcrouter.h>
 #include <asm/arch/rpc_clkctl.h>
-#include "smd_rpcrouter.h"
+#include <asm/arch/msm_rpcrouter.h>
 #include "rpc_clkctl.h"
 
 extern void clock_register_rpc(struct clkctl_rpc_ops *rpc_ops);
