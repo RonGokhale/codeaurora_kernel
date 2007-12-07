@@ -144,8 +144,7 @@ msm_i2c_wait_status(struct msm_i2c_dev *dev, uint32_t mask, uint32_t invert)
 {
 	uint32_t status;
 	uint32_t status2;
-	status = msm_i2c_read_status(dev);
-	if (wait_event_timeout(dev->wait, (status ^ invert) & mask, HZ))
+	if (wait_event_timeout(dev->wait, ((status = msm_i2c_read_status(dev)) ^ invert) & mask, HZ))
 		return 0;
 	status2 = msm_i2c_read_status(dev);
 	dev_err(dev->dev, "wait status %x ^%x failed, status - %x %x\n", mask, invert, status, status2);
