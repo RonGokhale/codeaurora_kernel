@@ -62,10 +62,9 @@ static irqreturn_t mdp_isr(int irq, void *data)
 
 void mdp_dma_wait(void)
 {
-	while (mdp_dma2_busy) {
-		int r = wait_event_interruptible(mdp_dma2_waitqueue, !mdp_dma2_busy);
-		if (r < 0) return;
-	}
+	int r = wait_event_timeout(mdp_dma2_waitqueue, !mdp_dma2_busy, HZ);
+	if (r <= 0)
+		printk(KERN_ERR "mdp_dma_wait: timeout waiting for dma to complete\n");
 }
 
 void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width, uint32_t height, uint32_t x, uint32_t y)

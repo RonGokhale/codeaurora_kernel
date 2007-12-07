@@ -19,6 +19,7 @@
 #include <linux/fb.h>
 #include <linux/delay.h>
 
+#include <linux/freezer.h>
 #include <linux/wait.h>
 
 #include <asm/io.h>
@@ -69,9 +70,12 @@ static int updater(void *_pi)
 
 	daemonize("msm_fb");
 	set_user_nice(current, -10);
+	set_freezable();
 
 	for (;;) {
 		wait_event_interruptible(update_wq, msmfb_update_info.need_update);
+		if(try_to_freeze())
+			continue;
 
 		spin_lock_irqsave(&msmfb_update_lock, irq_flags);
 		msmfb_update_info.need_update = 0;
