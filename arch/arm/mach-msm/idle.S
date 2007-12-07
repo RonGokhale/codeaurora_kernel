@@ -19,16 +19,63 @@
 #include <linux/linkage.h>
 #include <asm/assembler.h>
 
+ENTRY(msm_pm_collapse)
+	ldr     r0, =saved_state
+	stmia   r0!, {r4-r14}
+	mrc     p15, 0, r1, c1, c0, 0 /* MMU control */
+	mrc     p15, 0, r2, c2, c0, 0 /* ttb */
+	mrc     p15, 0, r3, c3, c0, 0 /* dacr */
+	stmia   r0!, {r1-r3}
+	/* fall though */
 ENTRY(arch_idle)
 	mrc     p15, 0, r1, c1, c0, 0    /* read current CR    */
 	bic     r0, r1, #(1 << 2)        /* clear dcache bit   */
 	bic     r0, r0, #(1 << 12)       /* clear icache bit   */
 	mcr     p15, 0, r0, c1, c0, 0    /* disable d/i cache  */
 
-	mov     r0, #0                   /* prepare wfi value  */
+	mov     r0, #0                   /* prepare wfi value  */ /* also used as return value from msm_pm_collapse */
 	mcr     p15, 0, r0, c7, c10, 0   /* flush the cache    */
 	mcr     p15, 0, r0, c7, c10, 4   /* memory barrier     */
 	mcr     p15, 0, r0, c7, c0, 4    /* wait for interrupt */
 
 	mcr     p15, 0, r1, c1, c0, 0    /* restore d/i cache  */
 	mov     pc, lr
+
+ENTRY(msm_pm_collapse_exit)
+#if 0 /* serial debug */
+	mov     r0, #0x80000016
+	mcr     p15, 0, r0, c15, c2, 4
+	mov     r0, #0xA9000000
+	add     r0, r0, #0x00A00000 /* UART1 */
+	/*add     r0, r0, #0x00C00000*/ /* UART3 */
+	mov     r1, #'A'
+	str     r1, [r0, #0x00C]
+#endif
+	ldr     r1, =saved_state_end
+	ldr     r2, =msm_pm_collapse_exit
+	adr     r3, msm_pm_collapse_exit
+	add     r1, r1, r3
+	sub     r1, r1, r2
+	ldmdb   r1!, {r2-r4}
+	mcr     p15, 0, r4, c3, c0, 0 /* dacr */
+	mcr     p15, 0, r3, c2, c0, 0 /* ttb */
+	ldmdb   r1!, {r4-r14}
+	mov     r0, #1
+
+	mcr     p15, 0, r2, c1, c0, 0 /* MMU control */
+	mov     pc, lr
+	nop
+	nop
+	nop
+	nop
+	nop
+1:	b       1b
+
+
+	.data
+
+saved_state:
+	.space  4 * 11 /* r4-14 */
+	.space  4 * 3  /* cp15 */
+saved_state_end:
+
