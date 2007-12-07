@@ -56,7 +56,7 @@ static void acpuclk_init(struct clk *clk);
 static int acpuclk_enable(struct clk *clk);
 static void acpuclk_disable(struct clk *clk);
 static unsigned long acpuclk_get_rate(struct clk *clk);
-static int acpuclk_set_rate(struct clk *clk, unsigned long rate);
+int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse);
 
 extern struct clkctl_acpu_speed acpu_freq_tbl[];
 
@@ -142,7 +142,7 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 		return -EINVAL;
 
 	if (clk->id == ACPU_CLK)
-		return acpuclk_set_rate(clk, rate);
+		return acpuclk_set_rate(clk, rate, 0);
 	if (!drv_state.rpc)
 		return -EAGAIN;
 	return drv_state.rpc->set_rate(clk->id, rate);
@@ -204,7 +204,7 @@ static int acpuclk_set_vdd_level(int vdd)
 	return 0;
 }
 
-static int acpuclk_set_rate(struct clk *clk, unsigned long rate)
+int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse)
 {
 	uint32_t reg_clkctl, reg_clksel, clk_div;
 	struct clkctl_acpu_speed *cur_s, *tgt_s, *strt_s;
@@ -229,12 +229,15 @@ static int acpuclk_set_rate(struct clk *clk, unsigned long rate)
 	else
 		ramp_up = 0;
 
-	mutex_lock(&drv_state.lock);
+	if (!for_power_collapse)
+		mutex_lock(&drv_state.lock);
 
 	if (tgt_s->vdd > strt_s->vdd) {
 		rc = acpuclk_set_vdd_level(tgt_s->vdd);
 		if (rc < 0) {
 			printk(KERN_ERR "clock: Unable to switch ACPU vdd\n");
+			if (!for_power_collapse)
+				mutex_unlock(&drv_state.lock);
 			return rc;
 		}
 	}
@@ -250,11 +253,13 @@ static int acpuclk_set_rate(struct clk *clk, unsigned long rate)
 #endif
 	if (strt_s->pll != tgt_s->pll && !drv_state.rpc) {
 		printk(KERN_ERR "No RPC for PLL request, acpu switch failed");
-		mutex_unlock(&drv_state.lock);
+		if (!for_power_collapse)
+			mutex_unlock(&drv_state.lock);
 		return -EAGAIN;
 	}
 
-	if ((strt_s->pll != tgt_s->pll) && (tgt_s->pll != ACPU_PLL_TCXO)) {
+	if (!for_power_collapse &&
+	    (strt_s->pll != tgt_s->pll) && (tgt_s->pll != ACPU_PLL_TCXO)) {
 #if PERF_SWITCH_DEBUG
 		printk("%s: Enabling PLL %d\n", __FUNCTION__, tgt_s->pll);
 #endif
@@ -306,7 +311,8 @@ static int acpuclk_set_rate(struct clk *clk, unsigned long rate)
 
 		if (!hunt_s) {
 			printk(KERN_ERR "clock: Invalid ACPU step\n");
-			mutex_unlock(&drv_state.lock);
+			if(!for_power_collapse)
+				mutex_unlock(&drv_state.lock);
 			return -EINVAL;
 		}
 #if PERF_SWITCH_STEP_DEBUG
@@ -379,7 +385,8 @@ static int acpuclk_set_rate(struct clk *clk, unsigned long rate)
 		udelay(drv_state.acpu_switch_time_us);
 	}
 
-	if ((strt_s->pll != tgt_s->pll) && (strt_s->pll != ACPU_PLL_TCXO)) {
+	if (!for_power_collapse &&
+	    (strt_s->pll != tgt_s->pll) && (strt_s->pll != ACPU_PLL_TCXO)) {
 #if PERF_SWITCH_DEBUG
 		printk(KERN_DEBUG "%s: Disabling PLL %d\n", __FUNCTION__, strt_s->pll);
 #endif
@@ -397,7 +404,8 @@ static int acpuclk_set_rate(struct clk *clk, unsigned long rate)
 #if PERF_SWITCH_DEBUG
 	printk(KERN_DEBUG "%s: ACPU speed change complete\n", __FUNCTION__);
 #endif
-	mutex_unlock(&drv_state.lock);
+	if (!for_power_collapse)
+		mutex_unlock(&drv_state.lock);
 	return 0;
 }
 
