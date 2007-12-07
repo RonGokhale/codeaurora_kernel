@@ -48,37 +48,29 @@
 
 static void serial_init(struct uart_port *port)
 {
-#if !defined(CONFIG_SERIAL_MSM_NOINIT)
 	printk(KERN_INFO "serial_init() configuring UART port @ %p\n", port);
 
 	/* disable all interrupts */
 	uwr(0, UART_IMR);
 
+	uwr(0x0A, UART_CR);  /* disable RX and TX */
+
 	uwr(0x30, UART_CR);  /* reset error status */
 	uwr(0x10, UART_CR);  /* reset receiver */
 	uwr(0x20, UART_CR);  /* reset transmitter */
 
-	/* these should not be different... */
-	if (port->line == 2) {
-		/* configuration for 19.2MHz TCXO */
-		uwr(0x06, UART_MREG);
-		uwr(0xF1, UART_NREG);
-		uwr(0x0F, UART_DREG);
-		uwr(0x1A, UART_MNDREG);
-	} else {
-		/* valid settings for 115.2 on 3080 SURF build... */
-		uwr(0xC0, UART_MREG);
-		uwr(0xAF, UART_NREG);
-		uwr(0x80, UART_DREG);
-		uwr(0x19, UART_MNDREG);
-	}
+	/* valid settings for 115.2 on 3080 SURF build... */
+	uwr(0xC0, UART_MREG);
+	uwr(0xAF, UART_NREG);
+	uwr(0x80, UART_DREG);
+	uwr(0x19, UART_MNDREG);
 
-	uwr(0x15, UART_CR);  /* reset RX */
-	uwr(0x25, UART_CR);  /* reset TX */
-	uwr(0x35, UART_CR);  /* reset error status */
-	uwr(0x45, UART_CR);  /* reset RX break */
-	uwr(0x75, UART_CR);  /* rest? */
-	uwr(0xD5, UART_CR);  /* reset */
+	uwr(0x10, UART_CR);  /* reset RX */
+	uwr(0x20, UART_CR);  /* reset TX */
+	uwr(0x30, UART_CR);  /* reset error status */
+	uwr(0x40, UART_CR);  /* reset RX break */
+	uwr(0x70, UART_CR);  /* rest? */
+	uwr(0xD0, UART_CR);  /* reset */
 
 	uwr(0x7BF, UART_IPR); /* stale timeout = 630 * bitrate */
 	uwr(0, UART_IMR);
@@ -96,26 +88,9 @@ static void serial_init(struct uart_port *port)
 		uwr(16, UART_MR1);
 	uwr(0x34, UART_MR2); /* 8N1 */
 
+	mdelay(10);
 	uwr(0x05, UART_CR); /* enable TX & RX */
-#else
-	printk(KERN_INFO "serial_init() trusting the bootloader\n");
 
-	uwr(0x15, UART_CR);  /* reset RX */
-	uwr(0x25, UART_CR);  /* reset TX */
-	uwr(0x35, UART_CR);  /* reset error status */
-	uwr(0x45, UART_CR);  /* reset RX break */
-	uwr(0x75, UART_CR);  /* rest? */
-	uwr(0xD5, UART_CR);  /* reset */
-
-	uwr(0x7BF, UART_IPR); /* stale timeout = 630 * bitrate */
-	uwr(0, UART_IMR);    /* no RX watermark -- flag us whenever there is data */
-	uwr(10, UART_TFWR);  /* TX watermark */
-
-	uwr(0, UART_RFWR);
-
-       /* don't do a port init */
-	uwr(0x05, UART_CR); /* enable TX & RX */
-#endif
 	IMR = 0;
 }
 
