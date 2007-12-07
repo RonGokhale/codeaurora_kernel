@@ -67,7 +67,11 @@
 #define VIC_VECTADDR(n)     VIC_REG(0x0400+((n) * 4))
 
 static uint32_t msm_irq_wake_enable[2];
-static uint32_t msm_irq_int_enable[2];
+static struct {
+	uint32_t int_en;
+	uint32_t int_type;
+	uint32_t int_polarity;
+} msm_irq_shadow_reg[2];
 
 static void msm_irq_ack(unsigned int irq)
 {
@@ -81,7 +85,7 @@ static void msm_irq_mask(unsigned int irq)
 	unsigned reg = VIC_INT_ENCLEAR0 + ((irq & 32) ? 4 : 0);
 	unsigned index = (irq >> 5) & 1;
 	uint32_t mask = 1UL << (irq & 31);
-	msm_irq_int_enable[index] &= ~mask;
+	msm_irq_shadow_reg[index].int_en &= ~mask;
 	writel(mask, reg);
 }
 
@@ -90,7 +94,7 @@ static void msm_irq_unmask(unsigned int irq)
 	unsigned reg = VIC_INT_ENSET0 + ((irq & 32) ? 4 : 0);
 	unsigned index = (irq >> 5) & 1;
 	uint32_t mask = 1UL << (irq & 31);
-	msm_irq_int_enable[index] |= mask;
+	msm_irq_shadow_reg[index].int_en |= mask;
 	writel(1 << (irq & 31), reg);
 }
 
@@ -109,38 +113,63 @@ static int msm_irq_set_type(unsigned int irq, unsigned int flow_type)
 {
 	unsigned treg = VIC_INT_TYPE0 + ((irq & 32) ? 4 : 0);
 	unsigned preg = VIC_INT_POLARITY0 + ((irq & 32) ? 4 : 0);
+	unsigned index = (irq >> 5) & 1;
 	int b = 1 << (irq & 31);
+	uint32_t polarity;
+	uint32_t type;
 
+	polarity = msm_irq_shadow_reg[index].int_polarity;
 	if (flow_type & (IRQF_TRIGGER_FALLING | IRQF_TRIGGER_LOW))
-		writel(readl(preg) | b, preg);
+		polarity |= b;
 	if (flow_type & (IRQF_TRIGGER_RISING | IRQF_TRIGGER_HIGH))
-		writel(readl(preg) & (~b), preg);
+		polarity &= ~b;
+	writel(polarity, preg);
+	msm_irq_shadow_reg[index].int_polarity = polarity;
 
+	type = msm_irq_shadow_reg[index].int_type;
 	if (flow_type & (IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING)) {
-		writel(readl(treg) | b, treg);
+		type |= b;
 		irq_desc[irq].handle_irq = handle_edge_irq;
 	}
 	if (flow_type & (IRQF_TRIGGER_HIGH | IRQF_TRIGGER_LOW)) {
-		writel(readl(treg) & (~b), treg);
+		type &= ~b;
 		irq_desc[irq].handle_irq = handle_level_irq;
 	}
+	writel(type, treg);
+	msm_irq_shadow_reg[index].int_type = type;
 	return 0;
 }
 
 void msm_irq_enter_sleep(void)
 {
+	int limit = 10;
+	msm_irq_wake_enable[0] = 1U << INT_A9_M2A_6;
+	msm_irq_wake_enable[1] = 0;
+	msm_irq_set_type(INT_A9_M2A_6, IRQF_TRIGGER_RISING);
 	writel(~msm_irq_wake_enable[0], VIC_INT_ENCLEAR0);
 	writel(~msm_irq_wake_enable[1], VIC_INT_ENCLEAR1);
+
+	while(limit-- > 0) {
+		int irq = readl(VIC_IRQ_VEC_RD);
+		if(irq == -1)
+			break;
+		printk("msm_irq_enter_sleep cleared int %d\n", irq);
+	}
+
 	writel(msm_irq_wake_enable[0], VIC_INT_ENSET0);
 	writel(msm_irq_wake_enable[1], VIC_INT_ENSET1);
 }
 
 void msm_irq_exit_sleep(void)
 {
-	writel(~msm_irq_int_enable[0], VIC_INT_ENCLEAR0);
-	writel(~msm_irq_int_enable[1], VIC_INT_ENCLEAR1);
-	writel(msm_irq_int_enable[0], VIC_INT_ENSET0);
-	writel(msm_irq_int_enable[1], VIC_INT_ENSET1);
+	int i;
+	msm_irq_ack(INT_A9_M2A_6);
+	for(i = 0; i < 2; i++) {
+		writel(msm_irq_shadow_reg[i].int_type, VIC_INT_TYPE0 + i * 4);
+		writel(msm_irq_shadow_reg[i].int_polarity, VIC_INT_POLARITY0 + i * 4);
+		writel(msm_irq_shadow_reg[i].int_en, VIC_INT_EN0 + i * 4);
+	}
+	writel(1, VIC_INT_MASTEREN);
 }
 
 static struct irq_chip msm_irq_chip = {
