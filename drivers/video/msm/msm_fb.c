@@ -49,6 +49,7 @@ static volatile struct {
 } msmfb_update_info;
 static DEFINE_SPINLOCK(msmfb_update_lock);
 
+static DECLARE_WAIT_QUEUE_HEAD(update_wq);
 static DECLARE_WAIT_QUEUE_HEAD(frame_wq);
 
 static int updater(void *_pi)
@@ -70,7 +71,7 @@ static int updater(void *_pi)
 	set_user_nice(current, -10);
 
 	for (;;) {
-		wait_event_interruptible(frame_wq, msmfb_update_info.need_update);
+		wait_event_interruptible(update_wq, msmfb_update_info.need_update);
 
 		spin_lock_irqsave(&msmfb_update_lock, irq_flags);
 		msmfb_update_info.need_update = 0;
@@ -149,7 +150,7 @@ static void msmfb_update(struct fb_info *info, uint32_t left, uint32_t top, uint
 		msmfb_update_info.ebottom = ebottom;
 	msmfb_update_info.need_update = 1;
 	spin_unlock_irqrestore(&msmfb_update_lock, irq_flags);
-	wake_up(&frame_wq);
+	wake_up(&update_wq);
 }
 
 static int msmfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
@@ -187,7 +188,9 @@ int msmfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 	} else {
 		msmfb_update(info, 0, 0, info->var.xres, info->var.yres);
 	}
-	wait_event_interruptible(frame_wq, thisframe != frame);
+	if(wait_event_interruptible_timeout(frame_wq, thisframe != frame, HZ) == 0) {
+		printk("msmfb_pan_display timeout waiting for frame change, %d %d\n", thisframe, frame);
+	}
 	return 0;
 }
 
