@@ -80,9 +80,14 @@ static int msm_timer_set_next_event(unsigned long cycles,
 	now = readl(clock->regbase + TIMER_COUNT_VAL);
 	late = now - alarm;
 	if (late >= (-2 << clock->shift) && late < DGT_HZ*5) {
-		printk(KERN_NOTICE "msm_timer_set_next_event(%lu) clock %s, "
-		       "alarm already expired, now %x, alarm %x, late %d\n",
-		       cycles, clock->clockevent.name, now, alarm, late);
+		static int print_limit = 10;
+		if(print_limit > 0) {
+			print_limit--;
+			printk(KERN_NOTICE "msm_timer_set_next_event(%lu) clock %s, "
+			       "alarm already expired, now %x, alarm %x, late %d%s\n",
+			       cycles, clock->clockevent.name, now, alarm, late,
+			       print_limit ? "" : " stop printing");
+		}
 		return -ETIME;
 	}
 	return 0;
@@ -181,8 +186,8 @@ static void __init msm_timer_init(void)
 		/* allow at least 10 seconds to notice that the timer wrapped */
 		ce->max_delta_ns =
 			clockevent_delta2ns(0xf0000000 >> clock->shift, ce);
-		/* 4 gets rounded down to 3 */
-		ce->min_delta_ns = clockevent_delta2ns(4, ce);
+		/* 5 gets rounded down to 4 */
+		ce->min_delta_ns = clockevent_delta2ns(5, ce);
 		ce->cpumask = cpumask_of_cpu(0);
 
 		cs->mult = clocksource_hz2mult(clock->freq, cs->shift);
