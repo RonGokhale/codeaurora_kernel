@@ -140,14 +140,11 @@ static int msm_irq_set_type(unsigned int irq, unsigned int flow_type)
 	return 0;
 }
 
-void msm_irq_enter_sleep(void)
+void msm_irq_enter_sleep(bool arm9_wake)
 {
 	int limit = 10;
-	msm_irq_wake_enable[0] = 1U << INT_A9_M2A_6;
-	msm_irq_wake_enable[1] = 0;
-	msm_irq_set_type(INT_A9_M2A_6, IRQF_TRIGGER_RISING);
-	writel(~msm_irq_wake_enable[0], VIC_INT_ENCLEAR0);
-	writel(~msm_irq_wake_enable[1], VIC_INT_ENCLEAR1);
+	writel(0, VIC_INT_EN0);
+	writel(0, VIC_INT_EN1);
 
 	while(limit-- > 0) {
 		int irq = readl(VIC_IRQ_VEC_RD);
@@ -156,8 +153,14 @@ void msm_irq_enter_sleep(void)
 		printk("msm_irq_enter_sleep cleared int %d\n", irq);
 	}
 
-	writel(msm_irq_wake_enable[0], VIC_INT_ENSET0);
-	writel(msm_irq_wake_enable[1], VIC_INT_ENSET1);
+	if(arm9_wake) {
+		msm_irq_set_type(INT_A9_M2A_6, IRQF_TRIGGER_RISING);
+		writel(1U << INT_A9_M2A_6, VIC_INT_ENSET0);
+	}
+	else {
+		writel(msm_irq_wake_enable[0], VIC_INT_ENSET0);
+		writel(msm_irq_wake_enable[1], VIC_INT_ENSET1);
+	}
 }
 
 void msm_irq_exit_sleep(void)
