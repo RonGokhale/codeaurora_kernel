@@ -34,7 +34,6 @@
 
 #define MODULE_NAME "msm_smd"
 
-void *smem_alloc(unsigned id, unsigned size);
 void *smem_find(unsigned id, unsigned size);
 
 static unsigned last_heap_free = 0xffffffff;
@@ -684,21 +683,24 @@ void *smem_alloc(unsigned id, unsigned size)
 	return smem_find(id, size);
 }
 
-void *smem_find(unsigned id, unsigned size)
+void *smem_find(unsigned id, unsigned size_in)
 {
 	struct smem_shared *shared = (void *) MSM_SHARED_RAM_BASE;
 	struct smem_heap_entry *toc = shared->heap_toc;
 
-	size = (size + 3) & (~3);
+	unsigned size = ALIGN(size_in, 8);
 
 	if (id > 128)
 		return 0;
 
 	if (toc[id].allocated) {
-		if (toc[id].size != size)
+		if (toc[id].size != size) {
+			printk(KERN_ERR "smem_find(%d, %d): wrong size %d, expected %d\n", id, size_in, size, toc[id].size);
 			return 0;
+		}
 		return (void *) (MSM_SHARED_RAM_BASE + toc[id].offset);
 	}
+	printk(KERN_ERR "smem_find(%d, %d): not allocated, size %d, expected size %d\n", id, size_in, size, toc[id].size);
 	return 0;
 }
 
@@ -737,6 +739,163 @@ static irqreturn_t smsm_irq_handler(int irq, void *data)
 	}
 	spin_unlock_irqrestore(&smem_lock, flags);
 	return IRQ_HANDLED;
+}
+
+int smsm_change_state(uint32_t clear_mask, uint32_t set_mask)
+{
+	unsigned long flags;
+	struct smsm_shared *smsm;
+
+	spin_lock_irqsave(&smem_lock, flags);
+
+	smsm = smem_alloc(ID_SHARED_STATE,
+			  2 * sizeof(struct smsm_shared));
+
+	if (smsm) {
+		smsm[0].state = (smsm[0].state & ~clear_mask) | set_mask;
+		printk(KERN_ERR "smsm_change_state %x\n", smsm[0].state);
+		notify_other_smsm();
+	}
+
+	spin_unlock_irqrestore(&smem_lock, flags);
+
+	if (smsm == NULL) {
+		printk(KERN_ERR "smsm_change_state <SM NO STATE>\n");
+		return -EIO;
+	}
+	return 0;
+}
+
+uint32_t smsm_get_state(void)
+{
+	unsigned long flags;
+	struct smsm_shared *smsm;
+	uint32_t rv;
+
+	spin_lock_irqsave(&smem_lock, flags);
+
+	smsm = smem_alloc(ID_SHARED_STATE,
+			  2 * sizeof(struct smsm_shared));
+
+	if (smsm)
+		rv = smsm[1].state;
+	else
+		rv = 0;
+
+	spin_unlock_irqrestore(&smem_lock, flags);
+
+	if (smsm == NULL)
+		printk(KERN_ERR "smsm_get_state <SM NO STATE>\n");
+	return rv;
+}
+
+int smsm_set_sleep_duration(uint32_t delay)
+{
+	uint32_t *ptr;
+
+	ptr = smem_alloc(SMEM_SMSM_SLEEP_DELAY, sizeof(*ptr));
+	if (ptr == NULL) {
+		printk(KERN_ERR "smsm_set_sleep_duration <SM NO SLEEP_DELAY>\n");
+		return -EIO;
+	}
+	printk(KERN_INFO "smsm_set_sleep_duration %d -> %d\n", *ptr, delay);
+	*ptr = delay;
+	return 0;
+}
+
+int smsm_set_interrupt_info(struct smsm_interrupt_info *info)
+{
+	struct smsm_interrupt_info *ptr;
+
+	ptr = smem_alloc(SMEM_SMSM_INT_INFO, sizeof(*ptr));
+	if (ptr == NULL) {
+		printk(KERN_ERR "smsm_set_sleep_duration <SM NO INT_INFO>\n");
+		return -EIO;
+	}
+	printk(KERN_INFO "smsm_set_interrupt_info %x %x -> %x %x\n",
+	       ptr->aArm_en_mask, ptr->aArm_interrupts_pending,
+	       info->aArm_en_mask, info->aArm_interrupts_pending);
+	*ptr = *info;
+	return 0;
+}
+
+#define MAX_NUM_SLEEP_CLIENTS       64
+#define MAX_SLEEP_NAME_LEN          8
+
+#define NUM_GPIO_INT_REGISTERS 6
+struct tramp_gpio_save
+{
+  unsigned int enable;
+  unsigned int detect;
+  unsigned int polarity;
+};
+struct tramp_gpio_smem
+{
+  struct tramp_gpio_save settings[NUM_GPIO_INT_REGISTERS];
+  unsigned int         fired[NUM_GPIO_INT_REGISTERS];
+  unsigned int         group;
+};
+
+
+void smsm_print_sleep_info(void)
+{
+	unsigned long flags;
+	uint32_t *ptr;
+	struct tramp_gpio_smem *gpio;
+	struct smsm_interrupt_info *int_info;
+
+
+	spin_lock_irqsave(&smem_lock, flags);
+
+	ptr = smem_alloc(SMEM_SMSM_SLEEP_DELAY, sizeof(*ptr));
+	if (ptr)
+		printk(KERN_ERR "SMEM_SMSM_SLEEP_DELAY: %x\n", *ptr);
+	else
+		printk(KERN_ERR "SMEM_SMSM_SLEEP_DELAY: missing\n");
+
+	ptr = smem_alloc(SMEM_SMSM_LIMIT_SLEEP, sizeof(*ptr));
+	if (ptr)
+		printk(KERN_ERR "SMEM_SMSM_LIMIT_SLEEP: %x\n", *ptr);
+	else
+		printk(KERN_ERR "SMEM_SMSM_LIMIT_SLEEP: missing\n");
+
+	ptr = smem_alloc(SMEM_SLEEP_POWER_COLLAPSE_DISABLED, sizeof(*ptr));
+	if (ptr)
+		printk(KERN_ERR "SMEM_SLEEP_POWER_COLLAPSE_DISABLED: %x\n", *ptr);
+	else
+		printk(KERN_ERR "SMEM_SLEEP_POWER_COLLAPSE_DISABLED: missing\n");
+
+	int_info = smem_alloc(SMEM_SMSM_INT_INFO, sizeof(*ptr));
+	if (int_info)
+		printk(KERN_INFO "SMEM_SMSM_INT_INFO %x %x\n",
+		       int_info->aArm_en_mask, int_info->aArm_interrupts_pending);
+	else
+		printk(KERN_ERR "SMEM_SMSM_INT_INFO: missing\n");
+
+	gpio = smem_alloc( SMEM_GPIO_INT, sizeof(*gpio)); 
+	if (gpio) {
+		int i;
+		for(i = 0; i < ARRAY_SIZE(gpio->settings); i++) {
+			printk(KERN_ERR "SMEM_GPIO_INT: %d: e %x d %x p %x f %x\n",
+			       i, gpio->settings[i].enable, gpio->settings[i].detect,
+			       gpio->settings[i].polarity, gpio->fired[i]);
+		}
+		printk(KERN_ERR "SMEM_GPIO_INT: group %x\n", gpio->group);
+	}
+	else
+		printk(KERN_ERR "SMEM_GPIO_INT: missing\n");
+	
+#if 0
+	ptr = smem_alloc( SMEM_SLEEP_STATIC, 
+                                           2 * MAX_NUM_SLEEP_CLIENTS * 
+                                           ( MAX_SLEEP_NAME_LEN + 1 ) ); 
+	if (ptr)
+		printk(KERN_ERR "SMEM_SLEEP_STATIC: %x %x %x %x\n", ptr[0], ptr[1], ptr[2], ptr[3]);
+	else
+		printk(KERN_ERR "SMEM_SLEEP_STATIC: missing\n");
+#endif
+
+	spin_unlock_irqrestore(&smem_lock, flags);
 }
 
 int smd_core_init(void)

@@ -85,6 +85,15 @@ struct smsm_shared
 	unsigned state;
 };
 
+struct smsm_interrupt_info
+{
+	uint32_t aArm_en_mask;
+	uint32_t aArm_interrupts_pending;
+#if !defined(CONFIG_MSM7X00A_6046_COMPAT)
+	uint32_t aArm_wakeup_reason;
+#endif
+};
+
 #define SZ_DIAG_ERR_MSG 0xC8
 #define ID_DIAG_ERR_MSG SMEM_DIAG_ERR_MESSAGE
 #define ID_SMD_CHANNELS SMEM_SMD_BASE_ID
@@ -94,8 +103,24 @@ struct smsm_shared
 #define SMSM_SMDINIT       0x000008
 #define SMSM_RPCINIT       0x000020
 #define SMSM_RESET         0x000040
+#define SMSM_RSA               0x0080
 #define SMSM_RUN           0x000100
+#define SMSM_PWRC              0x0200
+#define SMSM_TIMEWAIT          0x0400
+#define SMSM_TIMEINIT          0x0800
+#define SMSM_PWRC_EARLY_EXIT   0x1000
+#define SMSM_WFPI              0x2000
+#define SMSM_SLEEP             0x4000
+#define SMSM_SLEEPEXIT         0x8000
+#define SMSM_OEMSBL_RELEASE    0x10000
+#define SMSM_PWRC_SUSPEND      0x200000
 
+void *smem_alloc(unsigned id, unsigned size);
+int smsm_change_state(uint32_t clear_mask, uint32_t set_mask);
+uint32_t smsm_get_state(void);
+int smsm_set_sleep_duration(uint32_t delay);
+int smsm_set_interrupt_info(struct smsm_interrupt_info *info);
+void smsm_print_sleep_info(void);
 
 #define SMEM_NUM_SMD_CHANNELS        64
 
