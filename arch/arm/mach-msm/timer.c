@@ -42,6 +42,8 @@
 #define GPT_HZ 32768
 #define DGT_HZ 19200000 /* 19.2 MHz or 600 KHz after shift */
 
+static int msm_timer_ready;
+
 struct msm_clock {
 	struct clock_event_device   clockevent;
 	struct clocksource          clocksource;
@@ -109,6 +111,14 @@ static void msm_timer_set_mode(enum clock_event_mode mode,
 		writel(0, clock->regbase + TIMER_ENABLE);
 		break;
 	}
+}
+
+unsigned long long sched_clock(void)
+{
+	if(msm_timer_ready)
+		return ktime_to_ns(ktime_get());
+	else
+		return 0;
 }
 
 static struct msm_clock msm_clocks[] = {
@@ -202,6 +212,7 @@ static void __init msm_timer_init(void)
 			       "failed for %s\n", cs->name);
 
 		clockevents_register_device(ce);
+		msm_timer_ready = 1;
 	}
 }
 
