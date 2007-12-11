@@ -43,7 +43,6 @@ static int rpc_clkctl_set_flags(uint32_t clock, uint32_t flags)
 static int rpc_clkctl_enable(uint32_t clock)
 {
 	clkctl_rpc_enable_msg msg;
-	clkctl_rpc_enable_rets *rets;
 	oncrpc_reply_hdr *rep;
 	int rc;
 
@@ -67,12 +66,8 @@ static int rpc_clkctl_enable(uint32_t clock)
 	if (rc < 0)
 		return rc;
 
-	rets = (clkctl_rpc_enable_rets *)
-		((void *) rep + sizeof(oncrpc_reply_hdr));
-
-	rc = (be32_to_cpu(rets->result) == 0) ? 0 : -EIO;
 	kfree(rep);
-	return rc;
+	return 0;
 }
 
 static void rpc_clkctl_disable(uint32_t clock)

@@ -94,11 +94,6 @@ typedef struct
 
 typedef struct
 {
-	int result;
-} clkctl_rpc_enable_rets;
-
-typedef struct
-{
 	oncrpc_request_hdr hdr;
 	clkctl_rpc_enable_req_args args;
 } clkctl_rpc_enable_msg;
