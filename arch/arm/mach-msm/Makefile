@@ -6,7 +6,7 @@ obj-y += common.o nand_partitions.o
 
 obj-$(CONFIG_MACH_HALIBUT) += board-halibut.o board-halibut-keypad.o
 obj-$(CONFIG_MSM_SMD) += smd.o smd_tty.o smd_qmi.o
-obj-$(CONFIG_MSM_SMD) += smd_rpcrouter.o rpc_clkctl.o
+obj-$(CONFIG_MSM_SMD) += smd_rpcrouter.o rpc_clkctl.o rpc_pm.o
 obj-$(CONFIG_MSM_HW3D) += hw3d.o
 obj-$(CONFIG_MSM_PERF) += perf.o
 obj-$(CONFIG_PM) += pm.o
