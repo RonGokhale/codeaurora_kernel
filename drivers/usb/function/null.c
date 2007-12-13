@@ -41,6 +41,22 @@ static void null_bind(struct usb_endpoint **ept, void *_ctxt)
 	ctxt->req1 = usb_ept_alloc_req(ctxt->out, 4096);
 }
 
+static void null_unbind(void *_ctxt)
+{
+	struct null_context *ctxt = _ctxt;
+	printk(KERN_INFO "null_unbind()\n");
+	if (ctxt->req0) {
+		usb_ept_free_req(ctxt->out, ctxt->req0);
+		ctxt->req0 = 0;
+	}
+	if (ctxt->req1) {
+		usb_ept_free_req(ctxt->out, ctxt->req1);
+		ctxt->req1 = 0;
+	}
+	ctxt->out = 0;
+}
+
+
 static void null_queue_out(struct null_context *ctxt, struct usb_request *req);
 
 static void null_out_complete(struct usb_endpoint *ept, struct usb_request *req)
@@ -76,6 +92,7 @@ static void null_configure(int configured, void *_ctxt)
 
 static struct usb_function usb_func_null = {
 	.bind = null_bind,
+	.unbind = null_unbind,
 	.configure = null_configure,
 
 	.name = "null",
