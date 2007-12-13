@@ -44,6 +44,21 @@ static void zero_bind(struct usb_endpoint **ept, void *_ctxt)
 	memset(ctxt->req1->buf, 0, 4096);
 }
 
+static void zero_unbind(void *_ctxt)
+{
+	struct zero_context *ctxt = _ctxt;
+	printk(KERN_INFO "null_unbind()\n");
+	if (ctxt->req0) {
+		usb_ept_free_req(ctxt->in, ctxt->req0);
+		ctxt->req0 = 0;
+	}
+	if (ctxt->req1) {
+		usb_ept_free_req(ctxt->in, ctxt->req1);
+		ctxt->req1 = 0;
+	}
+	ctxt->in = 0;
+}
+
 static void zero_queue_in(struct zero_context *ctxt, struct usb_request *req);
 
 static void zero_in_complete(struct usb_endpoint *ept, struct usb_request *req)
@@ -79,6 +94,7 @@ static void zero_configure(int configured, void *_ctxt)
 
 static struct usb_function usb_func_zero = {
 	.bind = zero_bind,
+	.unbind = zero_unbind,
 	.configure = zero_configure,
 
 	.name = "zero",
