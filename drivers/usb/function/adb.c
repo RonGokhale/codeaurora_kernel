@@ -330,6 +330,27 @@ static struct miscdevice adb_device = {
 	.fops = &adb_fops,
 };
 
+static void adb_unbind(void *_ctxt)
+{
+	struct adb_context *ctxt = _ctxt;
+	struct usb_request *req;
+
+	printk(KERN_INFO "abd_unbind()\n");
+
+	while ((req = req_get(ctxt, &ctxt->rx_idle))) {
+		usb_ept_free_req(ctxt->out, req);
+	}
+	while ((req = req_get(ctxt, &ctxt->tx_idle))) {
+		usb_ept_free_req(ctxt->in, req);
+	}
+
+	ctxt->online = 0;
+	ctxt->error = 1;
+
+	/* readers may be blocked waiting for us to go online */
+	wake_up(&ctxt->read_wq);
+}
+
 static void adb_bind(struct usb_endpoint **ept, void *_ctxt)
 {
 	struct adb_context *ctxt = _ctxt;
@@ -339,7 +360,7 @@ static void adb_bind(struct usb_endpoint **ept, void *_ctxt)
 	ctxt->out = ept[0];
 	ctxt->in = ept[1];
 
-	DBG("adb_bind() %p, %p\n", ctxt->out, ctxt->in);
+	printk(KERN_INFO "adb_bind() %p, %p\n", ctxt->out, ctxt->in);
 
 	for (n = 0; n < RX_REQ_MAX; n++) {
 		req = usb_ept_alloc_req(ctxt->out, 4096);
@@ -366,8 +387,7 @@ static void adb_bind(struct usb_endpoint **ept, void *_ctxt)
 
 fail:
 	printk(KERN_ERR "adb_bind() could not allocate requests\n");
-
-	/* XXX release any we did allocate */
+	adb_unbind(ctxt);
 }
 
 static void adb_configure(int configured, void *_ctxt)
@@ -403,6 +423,7 @@ static void adb_configure(int configured, void *_ctxt)
 
 static struct usb_function usb_func_adb = {
 	.bind = adb_bind,
+	.unbind = adb_unbind,
 	.configure = adb_configure,
 
 	.name = "adb",
