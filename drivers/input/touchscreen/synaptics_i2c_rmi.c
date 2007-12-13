@@ -230,6 +230,13 @@ static int synaptics_ts_probe(struct i2c_client *client)
 		goto err_detect_failed;
 	}
 	ts->max_y = max_y = (ret >> 8 & 0xff) | ((ret & 0x1f) << 8);
+
+	ret = i2c_smbus_write_byte_data(ts->client, 0x41, 0x04); // Set "No Clip Z"
+	if (ret < 0) {
+		printk("i2c_smbus_write_byte_data failed for No Clip Z\n");
+		goto err_detect_failed;
+	}
+
 	ret = i2c_smbus_write_byte_data(ts->client, 0xff, 0x04); // page select = 0x04
 	if (ret < 0) {
 		printk("i2c_smbus_write_byte_data failed for page select\n");
