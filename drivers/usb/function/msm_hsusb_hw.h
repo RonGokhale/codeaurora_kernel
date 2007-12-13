@@ -38,6 +38,7 @@
 #define USB_ENDPOINTLISTADDR (MSM_USB_BASE + 0x0158)
 #define USB_BURSTSIZE        (MSM_USB_BASE + 0x0160)
 #define USB_TXFILLTUNING     (MSM_USB_BASE + 0x0164)
+#define USB_ULPI_VIEWPORT    (MSM_USB_BASE + 0x0170)
 #define USB_ENDPTNAK         (MSM_USB_BASE + 0x0178)
 #define USB_ENDPTNAKEN       (MSM_USB_BASE + 0x017C)
 #define USB_PORTSC           (MSM_USB_BASE + 0x0184)
@@ -143,5 +144,14 @@ struct ept_queue_item
 #define CTRL_RXT_ISOCH        (1 << 2)
 #define CTRL_RXT_BULK         (2 << 2)
 #define CTRL_RXT_INT          (3 << 2)
+
+#define ULPI_WAKEUP           (1 << 31)
+#define ULPI_RUN              (1 << 30)
+#define ULPI_WRITE            (1 << 29)
+#define ULPI_READ             (0 << 29)
+#define ULPI_STATE_NORMAL     (1 << 27)
+#define ULPI_ADDR(n)          (((n) & 255) << 16)
+#define ULPI_DATA(n)          ((n) & 255)
+#define ULPI_DATA_READ(n)     (((n) >> 8) & 255)
 
 #endif

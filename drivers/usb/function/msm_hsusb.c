@@ -132,6 +132,29 @@ struct usb_info
 #define ep0in  ept[16]
 };
 
+unsigned ulpi_read(struct usb_info *ui, unsigned reg)
+{
+	/* initiate read operation */
+	writel(ULPI_RUN | ULPI_READ | ULPI_ADDR(reg),
+	       USB_ULPI_VIEWPORT);
+	
+	/* wait for completion */
+	while(readl(USB_ULPI_VIEWPORT) & ULPI_RUN) ;
+	
+	return ULPI_DATA_READ(readl(USB_ULPI_VIEWPORT));
+}
+
+void ulpi_write(struct usb_info *ui, unsigned val, unsigned reg)
+{
+	/* initiate write operation */
+	writel(ULPI_RUN | ULPI_WRITE | 
+	       ULPI_ADDR(reg) | ULPI_DATA(val),
+	       USB_ULPI_VIEWPORT);
+	
+	/* wait for completion */
+	while(readl(USB_ULPI_VIEWPORT) & ULPI_RUN) ;
+}
+
 static void init_endpoints(struct usb_info *ui)
 {
 	unsigned n;
