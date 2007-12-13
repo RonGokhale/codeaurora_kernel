@@ -418,6 +418,22 @@ int usb_ept_queue_xfer(struct usb_endpoint *ept, struct usb_request *_req)
 		/* otherwise we missed the window and now queue as if we were
 		** a new request... fall through
 		*/
+		{
+			/* there seems to be a problem where we get here, thinking
+			** we need to move the queue head, but there is already an
+			** INFO_ACTIVE request in the hardware queue that has not
+			** completed.  In this case we just reprime *that* request
+			** instead of skipping it
+			*/
+			struct msm_request *req2;
+			for (req2 = ept->req; req2 != req; req2 = req2->next) {
+				if (req2->item->info & INFO_ACTIVE) {
+					req = req2;
+					printk(KERN_ERR "msm_hsusb: repriming earlier request?!\n");
+					break;
+				}
+			}
+		}
 	}
 
 	/* queue was empty -- start us up */
@@ -536,10 +552,6 @@ static void handle_setup(struct usb_info *ui)
 				unsigned num = ctl.wIndex & 0x0f;
 
 				if (num != 0) {
-					printk(KERN_INFO
-					       "clear endpoint %d %s\n", num,
-					       ctl.wIndex & 0x80 ? "in" : "out");
-
 					if (ctl.wIndex & 0x80)
 						num += 16;
 
