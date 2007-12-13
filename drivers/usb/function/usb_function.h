@@ -49,6 +49,12 @@ struct usb_function
 	*/
 	void (*bind)(struct usb_endpoint **ept, void *context);
 
+	/* unbind() is called when the function is being removed.
+	** it is illegal to call and usb_ept_* hooks at this point
+	** and all endpoints must be released.
+	*/
+	void (*unbind)(void *context);
+
 	/* configure() is called when the usb client has been configured
 	** by the host and again when the device is unconfigured (or
 	** when the client is detached)
