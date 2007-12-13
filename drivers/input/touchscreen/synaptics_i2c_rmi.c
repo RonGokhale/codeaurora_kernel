@@ -85,23 +85,25 @@ static void synaptics_ts_work_func(struct work_struct *work)
 
 				int dx = (int8_t)buf[12];
 				int dy = (int8_t)buf[13];
+				int finger2_pressed;
 
 				/* printk("x %4d, y %4d, z %3d, w %2d, F %d, 2nd: x %4d, y %4d, z %3d, w %2d, F %d, dx %4d, dy %4d\n", */
 				/*	x, y, z, w, finger, */
 				/*	x2, y2, z2, w2, finger2, */
 				/*	dx, dy); */
-				if (x)
+				if (z) {
 					input_report_abs(ts->input_dev, ABS_X, x);
-				if (y)
-					input_report_abs(ts->input_dev, ABS_Y, ts->max_y + 1 - y);
+					input_report_abs(ts->input_dev, ABS_Y, ts->max_y - y);
+				}
 				input_report_abs(ts->input_dev, ABS_PRESSURE, z);
 				input_report_abs(ts->input_dev, ABS_TOOL_WIDTH, w);
 				input_report_key(ts->input_dev, BTN_TOUCH, finger);
-				input_report_key(ts->input_dev, BTN_2, finger == 2);
-				if (x2)
+				finger2_pressed = finger > 1 && finger != 7;
+				input_report_key(ts->input_dev, BTN_2, finger2_pressed);
+				if (finger2_pressed) {
 					input_report_abs(ts->input_dev, ABS_HAT0X, x2);
-				if (y2)
-					input_report_abs(ts->input_dev, ABS_HAT0Y, ts->max_y + 1 - y2);
+					input_report_abs(ts->input_dev, ABS_HAT0Y, ts->max_y - y2);
+				}
 				input_sync(ts->input_dev);
 			}
 		}
