@@ -59,10 +59,10 @@ static void synaptics_ts_work_func(struct work_struct *work)
 	msg[1].buf = buf;
 
 	/* printk("synaptics_ts_work_func\n"); */
-	for(i = 0; i < (ts->use_irq ? 1 : 10); i++) {
+	for (i = 0; i < (ts->use_irq ? 1 : 10); i++) {
 		ret = i2c_transfer(ts->client->adapter, msg, 2);
 		if (ret < 0) {
-			printk("synaptics_ts_work_func: i2c_transfer failed\n");
+			printk(KERN_ERR "synaptics_ts_work_func: i2c_transfer failed\n");
 		} else {
 			/* printk("synaptics_ts_work_func: %x %x %x %x %x %x %x %x %x\n", */
 			/*       buf[0], buf[1], buf[2], buf[3], */
@@ -148,7 +148,7 @@ static int synaptics_ts_probe(struct i2c_client *client)
 	int inactive_area_bottom = ((6946 - 6696) / 2) * 0x10000 / 6696;
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-		printk("synaptics_ts_probe: need I2C_FUNC_I2C\n");
+		printk(KERN_ERR "synaptics_ts_probe: need I2C_FUNC_I2C\n");
 		ret = -ENODEV;
 		goto err_check_functionality_failed;
 	}
@@ -162,9 +162,10 @@ static int synaptics_ts_probe(struct i2c_client *client)
 	ts->client = client;
 	i2c_set_clientdata(client, ts);
 
-	ret = i2c_smbus_write_byte_data(ts->client, 0xf4, 0x01); // device command = reset
+	ret = i2c_smbus_write_byte_data(ts->client, 0xf4, 0x01); /* device command = reset */
 	if (ret < 0) {
-		printk("i2c_smbus_write_byte_data failed\n");
+		printk(KERN_ERR "i2c_smbus_write_byte_data failed\n");
+		/* fail? */
 	}
 	{
 		int retry = 10;
@@ -176,27 +177,27 @@ static int synaptics_ts_probe(struct i2c_client *client)
 		}
 	}
 	if (ret < 0) {
-		printk("i2c_smbus_read_byte_data failed\n");
+		printk(KERN_ERR "i2c_smbus_read_byte_data failed\n");
 		goto err_detect_failed;
 	}
-	printk("synaptics_ts_probe: Product Major Version %x\n", ret);
+	printk(KERN_INFO "synaptics_ts_probe: Product Major Version %x\n", ret);
 	ret = i2c_smbus_read_byte_data(ts->client, 0xe5);
 	if (ret < 0) {
-		printk("i2c_smbus_read_byte_data failed\n");
+		printk(KERN_ERR "i2c_smbus_read_byte_data failed\n");
 		goto err_detect_failed;
 	}
-	printk("synaptics_ts_probe: Product Minor Version %x\n", ret);
+	printk(KERN_INFO "synaptics_ts_probe: Product Minor Version %x\n", ret);
 
 	ret = i2c_smbus_read_byte_data(ts->client, 0xf1);
 	if (ret < 0) {
-		printk("i2c_smbus_read_byte_data failed\n");
+		printk(KERN_ERR "i2c_smbus_read_byte_data failed\n");
 		goto err_detect_failed;
 	}
-	printk("synaptics_ts_probe: interrupt enable %x\n", ret);
+	printk(KERN_INFO "synaptics_ts_probe: interrupt enable %x\n", ret);
 
-	ret = i2c_smbus_write_byte_data(ts->client, 0xf1, 0); // disable interrupt
+	ret = i2c_smbus_write_byte_data(ts->client, 0xf1, 0); /* disable interrupt */
 	if (ret < 0) {
-		printk("i2c_smbus_write_byte_data failed\n");
+		printk(KERN_ERR "i2c_smbus_write_byte_data failed\n");
 		goto err_detect_failed;
 	}
 
@@ -211,40 +212,40 @@ static int synaptics_ts_probe(struct i2c_client *client)
 	msg[1].buf = buf1;
 	ret = i2c_transfer(ts->client->adapter, msg, 2);
 	if (ret < 0) {
-		printk("i2c_transfer failed\n");
+		printk(KERN_ERR "i2c_transfer failed\n");
 		goto err_detect_failed;
 	}
-	printk("synaptics_ts_probe: 0xe0: %x %x %x %x %x %x %x %x\n",
+	printk(KERN_INFO "synaptics_ts_probe: 0xe0: %x %x %x %x %x %x %x %x\n",
 	       buf1[0], buf1[1], buf1[2], buf1[3],
 	       buf1[4], buf1[5], buf1[6], buf1[7]);
 
-	ret = i2c_smbus_write_byte_data(ts->client, 0xff, 0x10); // page select = 0x10
+	ret = i2c_smbus_write_byte_data(ts->client, 0xff, 0x10); /* page select = 0x10 */
 	if (ret < 0) {
-		printk("i2c_smbus_write_byte_data failed for page select\n");
+		printk(KERN_ERR "i2c_smbus_write_byte_data failed for page select\n");
 		goto err_detect_failed;
 	}
 	ret = i2c_smbus_read_word_data(ts->client, 0x04);
 	if (ret < 0) {
-		printk("i2c_smbus_read_word_data failed\n");
+		printk(KERN_ERR "i2c_smbus_read_word_data failed\n");
 		goto err_detect_failed;
 	}
 	max_x = (ret >> 8 & 0xff) | ((ret & 0x1f) << 8);
 	ret = i2c_smbus_read_word_data(ts->client, 0x06);
 	if (ret < 0) {
-		printk("i2c_smbus_read_word_data failed\n");
+		printk(KERN_ERR "i2c_smbus_read_word_data failed\n");
 		goto err_detect_failed;
 	}
 	ts->max_y = max_y = (ret >> 8 & 0xff) | ((ret & 0x1f) << 8);
 
-	ret = i2c_smbus_write_byte_data(ts->client, 0x41, 0x04); // Set "No Clip Z"
+	ret = i2c_smbus_write_byte_data(ts->client, 0x41, 0x04); /* Set "No Clip Z" */
 	if (ret < 0) {
-		printk("i2c_smbus_write_byte_data failed for No Clip Z\n");
+		printk(KERN_ERR "i2c_smbus_write_byte_data failed for No Clip Z\n");
 		goto err_detect_failed;
 	}
 
-	ret = i2c_smbus_write_byte_data(ts->client, 0xff, 0x04); // page select = 0x04
+	ret = i2c_smbus_write_byte_data(ts->client, 0xff, 0x04); /* page select = 0x04 */
 	if (ret < 0) {
-		printk("i2c_smbus_write_byte_data failed for page select\n");
+		printk(KERN_ERR "i2c_smbus_write_byte_data failed for page select\n");
 		goto err_detect_failed;
 	}
 
@@ -264,8 +265,8 @@ static int synaptics_ts_probe(struct i2c_client *client)
 	inactive_area_right = inactive_area_right * max_x / 0x10000;
 	inactive_area_top = inactive_area_top * max_y / 0x10000;
 	inactive_area_bottom = inactive_area_bottom * max_y / 0x10000;
-	printk("synaptics_ts_probe: max_x %d, max_y %d\n", max_x, max_y);
-	printk("synaptics_ts_probe: inactive_x %d %d, inactive_y %d %d\n",
+	printk(KERN_INFO "synaptics_ts_probe: max_x %d, max_y %d\n", max_x, max_y);
+	printk(KERN_INFO "synaptics_ts_probe: inactive_x %d %d, inactive_y %d %d\n",
 	       inactive_area_left, inactive_area_right,
 	       inactive_area_top, inactive_area_bottom);
 	input_set_abs_params(ts->input_dev, ABS_X, -inactive_area_left, max_x + inactive_area_right, 0, 0);
@@ -283,7 +284,7 @@ static int synaptics_ts_probe(struct i2c_client *client)
 	if (client->irq) {
 		ret = request_irq(client->irq, synaptics_ts_irq_handler, 0, client->name, ts);
 		if (ret == 0) {
-			ret = i2c_smbus_write_byte_data(ts->client, 0xf1, 0x01); // enable abs int
+			ret = i2c_smbus_write_byte_data(ts->client, 0xf1, 0x01); /* enable abs int */
 			if (ret)
 				free_irq(client->irq, ts);
 		}
