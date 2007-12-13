@@ -141,6 +141,11 @@ static int synaptics_ts_probe(struct i2c_client *client)
 	struct i2c_msg msg[2];
 	int ret = 0;
 	uint16_t max_x, max_y;
+	/* todo: Move to platform data */
+	int inactive_area_left = ((4674 - 4334) / 2 + 200) * 0x10000 / 4334;
+	int inactive_area_right = ((4674 - 4334) / 2 + 200) * 0x10000 / 4334;
+	int inactive_area_top = ((6946 - 6696) / 2) * 0x10000 / 6696;
+	int inactive_area_bottom = ((6946 - 6696) / 2) * 0x10000 / 6696;
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		printk("synaptics_ts_probe: need I2C_FUNC_I2C\n");
@@ -255,13 +260,20 @@ static int synaptics_ts_probe(struct i2c_client *client)
 	set_bit(BTN_TOUCH, ts->input_dev->keybit);
 	set_bit(BTN_2, ts->input_dev->keybit);
 	set_bit(EV_ABS, ts->input_dev->evbit);
+	inactive_area_left = inactive_area_left * max_x / 0x10000;
+	inactive_area_right = inactive_area_right * max_x / 0x10000;
+	inactive_area_top = inactive_area_top * max_y / 0x10000;
+	inactive_area_bottom = inactive_area_bottom * max_y / 0x10000;
 	printk("synaptics_ts_probe: max_x %d, max_y %d\n", max_x, max_y);
-	input_set_abs_params(ts->input_dev, ABS_X, 1, max_x, 0, 0);
-	input_set_abs_params(ts->input_dev, ABS_Y, 1, max_y, 0, 0);
+	printk("synaptics_ts_probe: inactive_x %d %d, inactive_y %d %d\n",
+	       inactive_area_left, inactive_area_right,
+	       inactive_area_top, inactive_area_bottom);
+	input_set_abs_params(ts->input_dev, ABS_X, -inactive_area_left, max_x + inactive_area_right, 0, 0);
+	input_set_abs_params(ts->input_dev, ABS_Y, -inactive_area_top, max_y + inactive_area_bottom, 0, 0);
 	input_set_abs_params(ts->input_dev, ABS_PRESSURE, 0, 255, 0, 0);
 	input_set_abs_params(ts->input_dev, ABS_TOOL_WIDTH, 0, 15, 0, 0);
-	input_set_abs_params(ts->input_dev, ABS_HAT0X, 1, max_x, 0, 0);
-	input_set_abs_params(ts->input_dev, ABS_HAT0Y, 1, max_y, 0, 0);
+	input_set_abs_params(ts->input_dev, ABS_HAT0X, -inactive_area_left, max_x + inactive_area_right, 0, 0);
+	input_set_abs_params(ts->input_dev, ABS_HAT0Y, -inactive_area_top, max_y + inactive_area_bottom, 0, 0);
 	/* ts->input_dev->name = ts->keypad_info->name; */
 	ret = input_register_device(ts->input_dev);
 	if (ret) {
