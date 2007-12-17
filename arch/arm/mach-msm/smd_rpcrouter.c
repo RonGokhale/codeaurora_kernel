@@ -82,84 +82,89 @@ static struct file_operations rpcrouter_fops = {
 };
 
 #if MSM_RPCROUTER_DEBUG_PKT
-static void dump_rpc_rsp_pkt(oncrpc_reply_hdr *rs)
+static void dump_pacmark(struct pacmark_hdr *pacmark)
 {
-	uint32_t *p;
-	int i, specific_len;
-
-	printk(KERN_INFO "RSP PKT:\n");
 	printk(KERN_INFO "  Pacmark: 0x%x (len %d, id %d, lp %d)\n",
-	       rs->pacmark_hdr.data.raw,
-	       rs->pacmark_hdr.data.cooked.length,
-	       rs->pacmark_hdr.data.cooked.message_id,
-	       rs->pacmark_hdr.data.cooked.last_pkt);
-	printk(KERN_INFO "  Xid  : 0x%x\n", be32_to_cpu(rs->rpc_hdr.xid));
-	printk(KERN_INFO "  Type : %d\n", be32_to_cpu(rs->rpc_hdr.type));
-	printk(KERN_INFO "  RepStat: %d\n", be32_to_cpu(rs->rpc_hdr.reply_stat));
-
-	if (be32_to_cpu(rs->rpc_hdr.reply_stat) == RPCMSG_REPLYSTAT_DENIED)
-		return;
-
-	printk(KERN_INFO "  Verf Fl: 0x%x\n",
-	       be32_to_cpu(rs->rpc_hdr.data.acc_hdr.verf_flavor));
-	printk(KERN_INFO "  Verf Ln: %d\n",
-	       be32_to_cpu(rs->rpc_hdr.data.acc_hdr.verf_length));
-	if (be32_to_cpu(rs->rpc_hdr.data.acc_hdr.verf_flavor != 0)) {
-		printk(KERN_INFO "  (Dump stopped because verf_flavor != 0)\n");
-		return;
-	}
-	printk(KERN_INFO "  AccStat: %d\n",
-	       be32_to_cpu(rs->rpc_hdr.data.acc_hdr.accept_stat));
-
-	p = ((void *) rs) + sizeof(oncrpc_reply_hdr);
-
-	specific_len = rs->pacmark_hdr.data.cooked.length -
-		       sizeof(rpc_reply_hdr);
-	printk(KERN_INFO "Command Specific Data (%d bytes in host order):\n",
-	       specific_len);
-	for (i = 0; i < specific_len / sizeof(uint32_t); i++)
-		printk(KERN_INFO "  %.8x", be32_to_cpu(p[i]));
-	printk(KERN_INFO "\n");
+	       pacmark->data.raw,
+	       pacmark->data.cooked.length,
+	       pacmark->data.cooked.message_id,
+	       pacmark->data.cooked.last_pkt);
 }
 
-static void dump_rpc_req_pkt(oncrpc_request_hdr *rq)
+static void dump_rpc_req_pkt(struct rpc_request_hdr *rq, int arglen)
 {
 	uint32_t *p;
-	int i, specific_len;
+	int i;
 
-	printk(KERN_INFO "REQ PKT:\n");
-	printk(KERN_INFO "  Pacmark: 0x%x (len %d, id %d, lp %d)\n",
-	       rq->pacmark_hdr.data.raw,
-	       rq->pacmark_hdr.data.cooked.length,
-	       rq->pacmark_hdr.data.cooked.message_id,
-	       rq->pacmark_hdr.data.cooked.last_pkt);
-	printk(KERN_INFO "  Xid  : 0x%x\n", be32_to_cpu(rq->rpc_hdr.xid));
-	printk(KERN_INFO "  Type : %d\n", be32_to_cpu(rq->rpc_hdr.type));
-	printk(KERN_INFO "  Rpc ver: %d\n", be32_to_cpu(rq->rpc_hdr.rpc_vers));
-	printk(KERN_INFO "  Prog : 0x%x\n", be32_to_cpu(rq->rpc_hdr.prog));
-	printk(KERN_INFO "  Vers : %d\n", be32_to_cpu(rq->rpc_hdr.vers));
-	printk(KERN_INFO "  Cred Fl: %d\n", be32_to_cpu(rq->rpc_hdr.cred_flavor));
-	printk(KERN_INFO "  Cred Ln: %d\n", be32_to_cpu(rq->rpc_hdr.cred_length));
-	printk(KERN_INFO "  Verf Fl: 0x%x\n", be32_to_cpu(rq->rpc_hdr.verf_flavor));
-	printk(KERN_INFO "  Verf Ln: %d\n", be32_to_cpu(rq->rpc_hdr.verf_length));
+	printk(KERN_INFO "  Xid: %x Type: %d Ver: %d Prg: 0x%x Ver: %d Prc: %d Cred: {%d:%d:%d:%d}\n",
+		be32_to_cpu(rq->xid), be32_to_cpu(rq->type), 
+		be32_to_cpu(rq->rpc_vers), be32_to_cpu(rq->prog),
+		be32_to_cpu(rq->vers), be32_to_cpu(rq->proceedure),
+		be32_to_cpu(rq->cred_flavor),
+		be32_to_cpu(rq->cred_length), be32_to_cpu(rq->verf_flavor),
+		be32_to_cpu(rq->verf_length));
 
-	if (be32_to_cpu(rq->rpc_hdr.cred_flavor != 0)) {
+	if (be32_to_cpu(rq->cred_flavor != 0)) {
 		printk(KERN_INFO "  (Dump stopped because cred_flavor != 0)\n");
 		return;
 	}
-	if (be32_to_cpu(rq->rpc_hdr.verf_flavor != 0)) {
+	if (be32_to_cpu(rq->verf_flavor != 0)) {
 		printk(KERN_INFO "  (Dump stopped because verf_flavor != 0)\n");
 		return;
 	}
-	p = ((void *) rq) + sizeof(oncrpc_request_hdr);
-	specific_len = rq->pacmark_hdr.data.cooked.length -
-		       sizeof(rpc_request_hdr);
-	printk(KERN_INFO "Command Specific Data (%d bytes in host order):\n",
-	       specific_len);
-	for (i = 0; i < specific_len / sizeof(uint32_t); i++)
-		printk(KERN_INFO "  %.8x", be32_to_cpu(p[i]));
-	printk(KERN_INFO "\n");
+
+	p = ((void *) rq) + sizeof(struct rpc_request_hdr);
+
+	printk(KERN_INFO "  Args(%d):", arglen);
+
+	for (i = 0; i < arglen / sizeof(uint32_t); i++)
+		printk("  %.8x", be32_to_cpu(p[i]));
+	printk("\n");
 }
+
+static void dump_rpc_rsp_pkt(struct rpc_reply_hdr *rs, int arglen)
+{
+	uint32_t *p;
+	int i;
+
+	printk(KERN_INFO "  Xid: %x Type: %d ReplyStat: %d",
+		be32_to_cpu(rs->xid), be32_to_cpu(rs->type), 
+		be32_to_cpu(rs->reply_stat));
+
+	if (be32_to_cpu(rs->reply_stat) == RPCMSG_REPLYSTAT_ACCEPTED) {
+		uint32_t acc_stat = be32_to_cpu(rs->data.acc_hdr.accept_stat);
+
+		printk(" (accepted) Cred: {%d:%d} AcceptStat: %d", 
+			be32_to_cpu(rs->data.acc_hdr.verf_flavor),
+			be32_to_cpu(rs->data.acc_hdr.verf_length),
+			be32_to_cpu(rs->data.acc_hdr.accept_stat));
+		if (acc_stat == RPC_ACCEPTSTAT_SUCCESS)
+			printk(" (success)\n");
+		else if (acc_stat == RPC_ACCEPTSTAT_PROG_UNAVAIL)
+			printk(" (prog unavail)\n");
+		else if (acc_stat == RPC_ACCEPTSTAT_PROG_MISMATCH)
+			printk(" (prog mismatch)\n");
+		else if (acc_stat == RPC_ACCEPTSTAT_PROC_UNAVAIL)
+			printk(" (proc unavail)\n");
+		else if (acc_stat == RPC_ACCEPTSTAT_GARBAGE_ARGS)
+			printk(" (garbage args)\n");
+		else if (acc_stat == RPC_ACCEPTSTAT_SYSTEM_ERR)
+			printk(" (system err)\n");
+		else if (acc_stat == RPC_ACCEPTSTAT_PROG_LOCKED)
+			printk(" (prog locked)\n");
+	} else {
+		printk(" (denied)\n");
+		return;
+	}
+
+	p = ((void *) rs) + sizeof(struct rpc_reply_hdr);
+	printk(KERN_INFO "  Args(%d):", arglen);
+
+	for (i = 0; i < arglen / sizeof(uint32_t); i++)
+		printk("  %.8x", be32_to_cpu(p[i]));
+	printk("\n");
+}
+
 #endif
 
 /*
@@ -681,14 +686,10 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 	struct rpcrouter_client *client;
 	struct rpcrouter_complete_header hdr;
 	struct rpcrouter_client_read_q *read_queue;
-	rpcrouter_address *read_q_prepend_addr;
-	void *read_q_data_addr;
-	int len;
-	int rc;
+	struct pacmark_hdr *pacmark;
+	int len, rc, retry = 0, brtr = 0;
 	unsigned long flags;
-	int retry = 0;
 	char *p;
-	int brtr = 0;
 
 	BUG_ON(!xport);
 	for (;;) {
@@ -757,6 +758,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 				}
 			}
 		}
+		pacmark = (struct pacmark_hdr *) xport->rx_buffer;
 
 		if (hdr.rh.version != RPCROUTER_VERSION) {
 			printk(KERN_INFO
@@ -830,28 +832,35 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 			return;
 		}
 
-		read_queue->data = kmalloc(hdr.ph.msg_size +
-					   sizeof(rpcrouter_address),
-					   GFP_KERNEL);
+		read_queue->src_addr.pid = hdr.rh.src_addr.pid;
+		read_queue->src_addr.cid = hdr.rh.src_addr.cid;
+
+		memcpy( &read_queue->pacmark, pacmark,
+			sizeof(struct pacmark_hdr));
+
+		read_queue->data_size = 
+			hdr.ph.msg_size - sizeof(struct pacmark_hdr);
+
+		read_queue->data = kmalloc(read_queue->data_size, GFP_KERNEL);
 		if (!read_queue->data) {
 			kfree(read_queue);
 			printk(KERN_ERR "krpcrouterd: Out of memory\n");
 			return;
 		}
 
-		read_queue->data_size =
-			hdr.ph.msg_size+sizeof(rpcrouter_address);
-
-		read_q_prepend_addr = (rpcrouter_address *) read_queue->data;
-		read_q_data_addr = read_queue->data + sizeof(rpcrouter_address);
-
-		read_q_prepend_addr->pid = hdr.rh.src_addr.pid;
-		read_q_prepend_addr->cid = hdr.rh.src_addr.cid;
-
-		memcpy(read_q_data_addr, xport->rx_buffer, hdr.ph.msg_size);
+		memcpy(	read_queue->data,
+			&xport->rx_buffer[sizeof(struct pacmark_hdr)],
+			read_queue->data_size);
 
 #if MSM_RPCROUTER_DEBUG_PKT
-		dump_rpc_rsp_pkt(read_queue->data);
+		printk(KERN_INFO
+			"oncrpc_response: Src [PID %x CID %x]\n",
+			read_queue->src_addr.pid,
+			read_queue->src_addr.cid);
+
+		dump_pacmark(&read_queue->pacmark);
+		dump_rpc_rsp_pkt((struct rpc_reply_hdr *) read_queue->data,
+			 read_queue->data_size - sizeof(struct rpc_reply_hdr));
 #endif
 		spin_lock_irqsave(&client->read_q_lock, flags);
 		list_add_tail(&read_queue->list, &client->read_q);
@@ -1291,19 +1300,15 @@ static int rpcrouter_ioctl(struct inode *inode, struct file *filp,
  *  ====================================
  */
 
-void rpcrouter_kernapi_setup_request(oncrpc_request_hdr *hdr, uint32_t prog,
-                                     uint32_t vers, uint32_t proc, int arglen)
+void rpcrouter_kernapi_setup_request(struct rpc_request_hdr *hdr, uint32_t prog,
+                                     uint32_t vers, uint32_t proc)
 {
-	memset(hdr, 0, sizeof(oncrpc_request_hdr));
-	hdr->pacmark_hdr.data.cooked.length = sizeof(rpc_request_hdr) + arglen;
-	hdr->pacmark_hdr.data.cooked.message_id = ++next_pacmarkid;
-	hdr->pacmark_hdr.data.cooked.last_pkt = 1;
-	
-	hdr->rpc_hdr.xid = cpu_to_be32(++next_xid);
-	hdr->rpc_hdr.rpc_vers = cpu_to_be32(2);
-	hdr->rpc_hdr.prog = cpu_to_be32(prog);
-	hdr->rpc_hdr.vers = cpu_to_be32(vers);
-	hdr->rpc_hdr.proceedure = cpu_to_be32(proc);
+	memset(hdr, 0, sizeof(struct rpc_request_hdr));
+	hdr->xid = cpu_to_be32(++next_xid);
+	hdr->rpc_vers = cpu_to_be32(2);
+	hdr->prog = cpu_to_be32(prog);
+	hdr->vers = cpu_to_be32(vers);
+	hdr->proceedure = cpu_to_be32(proc);
 }
 
 int rpcrouter_kernapi_openxport(rpcrouter_xport_address *addr)
@@ -1342,7 +1347,8 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 {
 	struct rpcrouter_xport *xport;
 	struct rpcrouter_complete_header hdr;
-	oncrpc_request_hdr *rq = buffer;
+	struct rpc_request_hdr *rq = buffer;
+	struct pacmark_hdr pacmark;
 	int rc = 0;
 	unsigned long flags;
 
@@ -1355,8 +1361,8 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 	 */
 
 	rc = client_validate_permission(client,
-					be32_to_cpu(rq->rpc_hdr.prog),
-					be32_to_cpu(rq->rpc_hdr.vers));
+					be32_to_cpu(rq->prog),
+					be32_to_cpu(rq->vers));
 	if (rc < 0)
 		return rc;
 
@@ -1367,6 +1373,8 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 			"[PID %x CID %x]\n", dest->pid, dest->cid);
 		return -EHOSTUNREACH;
 	}
+
+	/* Create routing header */
 	memset(&hdr, 0, sizeof(struct rpcrouter_complete_header));
 	hdr.rh.msg_type = RPCROUTER_CTRL_CMD_DATA;
 	hdr.rh.version = RPCROUTER_VERSION;
@@ -1375,10 +1383,17 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 
 	hdr.ph.addr.pid = dest->pid;
 	hdr.ph.addr.cid = dest->cid;
-	hdr.ph.msg_size = count;
+	hdr.ph.msg_size = count + sizeof(struct pacmark_hdr);
+
+	/* Create pacmark header */
+	memset(&pacmark, 0, sizeof(pacmark));
+	pacmark.data.cooked.length = count;
+	pacmark.data.cooked.message_id = ++next_pacmarkid;
+	pacmark.data.cooked.last_pkt = 1;
 
 	spin_lock_irqsave(&xport->xport_specific.smd.smd_lock, flags);
-	/* Write header */
+
+	/* Write routing header */
 	rc = smd_write(xport->xport_specific.smd.smd_channel,
 		       &hdr, sizeof(struct rpcrouter_complete_header));
 	if (rc < 0) {
@@ -1389,12 +1404,24 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 
 #if MSM_RPCROUTER_DEBUG_PKT
 	printk(KERN_INFO
-	       "RPC_WRITE: Dest [PID %x CID %x] ", dest->pid, dest->cid);
-	dump_rpc_req_pkt(buffer);
+	       "oncrpc_request: Dest [PID %x CID %x]\n", dest->pid, dest->cid);
+	dump_pacmark(&pacmark);
+	dump_rpc_req_pkt(buffer, count - sizeof(struct rpc_request_hdr));
 #endif
+
+	/* Write pacmark header */
+	rc = smd_write(xport->xport_specific.smd.smd_channel,
+			&pacmark,
+			sizeof(struct pacmark_hdr));
+	if (rc < 0) {
+		spin_unlock_irqrestore(&xport->xport_specific.smd.smd_lock,
+		                       flags);
+		return rc;
+	}
+
 	/* Write data */
 	rc = smd_write(xport->xport_specific.smd.smd_channel,
-			buffer, hdr.ph.msg_size);
+			buffer, hdr.ph.msg_size - sizeof(struct pacmark_hdr));
 	spin_unlock_irqrestore(&xport->xport_specific.smd.smd_lock, flags);
 	if (rc < 0)
 		return rc;

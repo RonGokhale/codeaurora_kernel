@@ -95,41 +95,32 @@
  * TLMM_PROCEEDURE_GPIO_TLMM_GET_CONFIG    
  */
 
-typedef struct
+struct tlmmrpc_gpio_get_config_req
 {
+	struct rpc_request_hdr hdr;
 	uint32_t gpio_number;
-} tlmm_gpio_tlmm_get_config_req_args;
+};
 
-typedef struct
+struct tlmmrpc_gpio_get_config_rsp
 {
+	struct rpc_reply_hdr hdr;
 	uint32_t gpio_config_data;
-} tlmm_gpio_tlmm_get_config_rets;
-
-typedef struct
-{
-        oncrpc_request_hdr hdr;
-	tlmm_gpio_tlmm_get_config_req_args args;
-} tlmm_gpio_tlmm_get_config_msg;
-
+};
 
 /*
  * TLMM_PROCEEDURE_GPIO_TLMM_CONFIG_REMOTE 
  */
 
-typedef struct
+struct tlmm_gpio_set_config_req
 {
+	struct rpc_request_hdr hdr;
 	uint32_t gpio_config_data;
-} tlmm_gpio_tlmm_config_remote_req_args;
+};
 
-typedef struct
+struct tlmm_gpio_set_config_rsp
 {
+	struct rpc_reply_hdr hdr;
 	uint32_t result;
-} tlmm_gpio_tlmm_config_remote_rets;
-
-typedef struct
-{
-        oncrpc_request_hdr hdr;
-	tlmm_gpio_tlmm_config_remote_req_args args;
-} tlmm_gpio_tlmm_config_remote_msg;
+};
 
 #endif

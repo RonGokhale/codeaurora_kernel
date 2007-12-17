@@ -29,6 +29,7 @@
 #include <asm/arch/rpc_clkctl.h>
 #include <asm/arch/msm_rpcrouter.h>
 #include "rpc_clkctl.h"
+#include "clock.h"
 
 extern void clock_register_rpc(struct clkctl_rpc_ops *rpc_ops);
 
@@ -42,62 +43,56 @@ static int rpc_clkctl_set_flags(uint32_t clock, uint32_t flags)
 
 static int rpc_clkctl_enable(uint32_t clock)
 {
-	clkctl_rpc_enable_msg msg;
-	oncrpc_reply_hdr *rep;
+	struct clkctlrpc_enable_req req;
+	void *rsp;
 	int rc;
 
-	rpcrouter_kernapi_setup_request(&msg.hdr, APP_CLKCTL_PROG,
+	rpcrouter_kernapi_setup_request(&req.hdr, APP_CLKCTL_PROG,
 					APP_CLKCTL_VER,
-					CLKCTL_PROCEEDURE_ENABLE,
-					sizeof(clkctl_rpc_enable_req_args));
+					CLKCTL_PROCEEDURE_ENABLE);
 
-	msg.args.clock = cpu_to_be32(clock);
+	req.clock = cpu_to_be32(clock);
 
 	rc = rpcrouter_kernapi_write(rpc_client,
 				     &clkctlsvc_addr,
-				     &msg,
-				     sizeof(msg));
+				     &req,
+				     sizeof(req));
 	if (rc < 0)
 		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client,
-				    (void **) &rep,
-				    (5*HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, &rsp, (5 * HZ));
 	if (rc < 0)
 		return rc;
 
-	kfree(rep);
+	kfree(rsp);
 	return 0;
 }
 
-static void rpc_clkctl_disable(uint32_t clock)
+static int rpc_clkctl_disable(uint32_t clock)
 {
-	clkctl_rpc_disable_msg msg;
-	oncrpc_reply_hdr *rep;
+	struct clkctlrpc_disable_req req;
+	void *rsp;
 	int rc;
 
-	rpcrouter_kernapi_setup_request(&msg.hdr, APP_CLKCTL_PROG,
+	rpcrouter_kernapi_setup_request(&req.hdr, APP_CLKCTL_PROG,
 					APP_CLKCTL_VER,
-					CLKCTL_PROCEEDURE_DISABLE,
-					sizeof(clkctl_rpc_disable_req_args));
+					CLKCTL_PROCEEDURE_DISABLE);
 
-	msg.args.clock = cpu_to_be32(clock);
+	req.clock = cpu_to_be32(clock);
 
 	rc = rpcrouter_kernapi_write(rpc_client,
 				     &clkctlsvc_addr,
-				     &msg,
-				     sizeof(msg));
+				     &req,
+				     sizeof(req));
 	if (rc < 0)
-		return;
+		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client,
-				    (void **) &rep,
-				    (5*HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, &rsp, (5 * HZ));
 	if (rc < 0)
-		return;
+		return rc;
 
-	kfree(rep);
-	return;
+	kfree(rsp);
+	return 0;
 }
 
 static int rpc_clkctl_reset(uint32_t clock)
@@ -112,36 +107,32 @@ static int rpc_clkctl_set_min_rate(uint32_t clock, uint32_t min_rate)
 
 static int rpc_clkctl_pll_request(uint32_t pll, int enable)
 {
-	clkctl_rpc_pllrequest_msg msg;
-	oncrpc_reply_hdr *rep;
+	struct clkctlrpc_pllrequest_req req;
+	void *rsp;
 	int rc;
 
-	printk(KERN_INFO "rpc_clkctl_pll_request(): PLL %d, Enable = %d\n",
-	       pll, enable);
+	printk(KERN_INFO "%s: PLL %d, Ena = %d\n", __FUNCTION__, pll, enable);
 
-	rpcrouter_kernapi_setup_request(&msg.hdr, APP_CLKCTL_PROG,
+	rpcrouter_kernapi_setup_request(&req.hdr, APP_CLKCTL_PROG,
 					APP_CLKCTL_VER,
-					CLKCTL_PROCEEDURE_PLLREQUEST,
-					sizeof(clkctl_rpc_pllrequest_req_args));
+					CLKCTL_PROCEEDURE_PLLREQUEST);
 
-	msg.args.pll = cpu_to_be32(pll);
-	msg.args.enable = cpu_to_be32(enable);
+	req.pll = cpu_to_be32(pll);
+	req.enable = cpu_to_be32(enable);
 
 	rc = rpcrouter_kernapi_write(rpc_client,
 				     &clkctlsvc_addr,
-				     &msg,
-				     sizeof(msg));
+				     &req,
+				     sizeof(req));
 	if (rc < 0)
 		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client,
-				    (void **) &rep,
-				    (5*HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, &rsp, (5 * HZ));
 	if (rc < 0)
 		return rc;
 
-	kfree(rep);
-	return rc;
+	kfree(rsp);
+	return 0;
 }
 
 static int rpc_clkctl_set_max_rate(uint32_t clock, uint32_t max_rate)
@@ -151,72 +142,58 @@ static int rpc_clkctl_set_max_rate(uint32_t clock, uint32_t max_rate)
 
 static int rpc_clkctl_set_rate(uint32_t clock, uint32_t rate)
 {
-	clkctl_rpc_setrate_msg msg;
-	clkctl_rpc_setrate_rets *rets;
-	oncrpc_reply_hdr *rep;
+	struct clkctlrpc_setrate_req req;
+	struct clkctlrpc_setrate_rsp *rsp;
 	int rc;
 
-	rpcrouter_kernapi_setup_request(&msg.hdr, APP_CLKCTL_PROG,
+	rpcrouter_kernapi_setup_request(&req.hdr, APP_CLKCTL_PROG,
 					APP_CLKCTL_VER,
-					CLKCTL_PROCEEDURE_SETRATE,
-					sizeof(clkctl_rpc_setrate_req_args));
+					CLKCTL_PROCEEDURE_SETRATE);
 
-	msg.args.clock = cpu_to_be32(clock);
-	msg.args.rate = cpu_to_be32(rate);
+	req.clock = cpu_to_be32(clock);
+	req.rate = cpu_to_be32(rate);
 
 	rc = rpcrouter_kernapi_write(rpc_client,
 				     &clkctlsvc_addr,
-				     &msg,
-				     sizeof(msg));
+				     &req,
+				     sizeof(req));
 	if (rc < 0)
 		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client,
-				    (void **) &rep,
-				    (5*HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rsp, (5 * HZ));
 	if (rc < 0)
 		return rc;
 
-	rets = (clkctl_rpc_setrate_rets *)
-		((void *) rep + sizeof(oncrpc_reply_hdr));
-
-	rc = (be32_to_cpu(rets->result) == 0) ? 0 : -EIO;
-	kfree(rep);
+	rc = (be32_to_cpu(rsp->result) == 0) ? 0 : -EREMOTEIO;
+	kfree(rsp);
 	return rc;
 }
 
 static uint32_t rpc_clkctl_get_rate(uint32_t clock)
 {
-	uint32_t rate;
-	clkctl_rpc_getrate_msg msg;
-	clkctl_rpc_getrate_rets *rets;
-	oncrpc_reply_hdr *rep;
+	struct clkctlrpc_getrate_req req;
+	struct clkctlrpc_getrate_rsp *rsp;
 	int rc;
+	uint32_t rate;
 
-	rpcrouter_kernapi_setup_request(&msg.hdr, APP_CLKCTL_PROG,
+	rpcrouter_kernapi_setup_request(&req.hdr, APP_CLKCTL_PROG,
 					APP_CLKCTL_VER,
-					CLKCTL_PROCEEDURE_GETRATE,
-					sizeof(clkctl_rpc_getrate_req_args));
+					CLKCTL_PROCEEDURE_GETRATE);
 
-	msg.args.clock = cpu_to_be32(clock);
+	req.clock = cpu_to_be32(clock);
 	rc = rpcrouter_kernapi_write(rpc_client,
 				     &clkctlsvc_addr,
-				     &msg,
-				     sizeof(msg));
+				     &req,
+				     sizeof(req));
 	if (rc < 0)
 		return 0;
 
-	rc = rpcrouter_kernapi_read(rpc_client,
-				    (void **) &rep,
-				    (5*HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rsp, (5 * HZ));
 	if (rc < 0)
 		return 0;
 
-	rets = (clkctl_rpc_getrate_rets *)
-		((void *) rep + sizeof(oncrpc_reply_hdr));
-
-	rate = be32_to_cpu(rets->rate);
-	kfree(rep);
+	rate = be32_to_cpu(rsp->rate);
+	kfree(rsp);
 	return rate;
 }
 
@@ -268,6 +245,7 @@ static int __init rpc_clkctl_init(void)
 	 * Pass our ops structure to the arch clock driver
 	 */
 	clock_register_rpc(&rpc_ops);
+
 	return 0;
 }
 

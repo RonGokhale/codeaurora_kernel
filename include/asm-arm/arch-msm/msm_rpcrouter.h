@@ -26,52 +26,16 @@ struct rpcrouter_client;
 
 typedef struct rpcrouter_client rpcrouterclient_t;
 
-struct rpcrouter_header
-{
-	uint32_t version;
-	uint32_t msg_type;
-	rpcrouter_address src_addr;
-};
-
-struct rpcrouter_packet_header
-{
-	uint32_t msg_size;
-	rpcrouter_address addr;
-};
-
-struct rpcrouter_complete_header
-{
-	struct rpcrouter_header rh;
-	struct rpcrouter_packet_header ph;
-};
-
 /*
  * Structures for sending / receiving direct RPC requests
  * XXX: Any cred/verif lengths > 0 not supported
  */
 
-/*
- * These elements must be in host byte order
- */
-typedef struct
-{
-	union {
-		uint32_t raw;
-		struct {
-			uint32_t length : 16;
-			uint32_t message_id : 8;
-			uint32_t reserved : 7;
-			uint32_t last_pkt : 1;
-		} cooked;
-	} data;
-	uint32_t padding;
-} pacmark_header;
-
 /* =====================
  * Reply data structures
  * =====================
  */
-typedef struct
+struct rpc_request_hdr 
 {
 	uint32_t xid;
 	uint32_t type;	/* 0 */
@@ -83,13 +47,7 @@ typedef struct
 	uint32_t cred_length;
 	uint32_t verf_flavor;
 	uint32_t verf_length;
-} rpc_request_hdr;
-
-typedef struct
-{
-	pacmark_header pacmark_hdr;
-	rpc_request_hdr rpc_hdr;
-} oncrpc_request_hdr;
+};
 
 /* =====================
  * Reply data structures
@@ -125,7 +83,7 @@ typedef struct
 	 */
 } rpc_accepted_reply_hdr;
 
-typedef struct
+struct rpc_reply_hdr
 {
 	uint32_t xid;
 	uint32_t type;
@@ -136,14 +94,7 @@ typedef struct
 		rpc_accepted_reply_hdr acc_hdr;
 		rpc_denied_reply_hdr dny_hdr;
 	} data;
-} rpc_reply_hdr;
-
-typedef struct
-{
-	rpcrouter_address src_addr;
-	pacmark_header pacmark_hdr;
-	rpc_reply_hdr rpc_hdr;
-} oncrpc_reply_hdr;
+};
 
 /*
  *  Kernel API for kernel consumers/producers
@@ -164,9 +115,8 @@ int rpcrouter_kernapi_getdest(rpcrouterclient_t *client,
 			      uint32_t vers,
 			      long timeout,
 			      rpcrouter_address *dest_addr);
-void rpcrouter_kernapi_setup_request(oncrpc_request_hdr *hdr,
+void rpcrouter_kernapi_setup_request(struct rpc_request_hdr *hdr,
 				     uint32_t prog,
 				     uint32_t vers,
-				     uint32_t proc,
-				     int arglen);
+				     uint32_t proc);
 #endif

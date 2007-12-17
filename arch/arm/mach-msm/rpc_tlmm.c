@@ -36,60 +36,51 @@ static rpcrouter_address tlmmsvc_addr;
 
 static int rpc_gpio_tlmm_get_config(uint32_t gpio_number, uint32_t *config)
 {
-	tlmm_gpio_tlmm_get_config_msg msg;
-	tlmm_gpio_tlmm_get_config_rets *rets;
-	oncrpc_reply_hdr *rep;
+	struct tlmmrpc_gpio_get_config_req req;
+	struct tlmmrpc_gpio_get_config_rsp *rsp;
 	int rc;
 
-	rpcrouter_kernapi_setup_request(&msg.hdr, APP_TLMM_PROG, APP_TLMM_VER,
-					TLMM_PROCEEDURE_GPIO_TLMM_GET_CONFIG,
-				    sizeof(tlmm_gpio_tlmm_get_config_req_args));
+	rpcrouter_kernapi_setup_request(&req.hdr, APP_TLMM_PROG, APP_TLMM_VER,
+					TLMM_PROCEEDURE_GPIO_TLMM_GET_CONFIG);
 
-	msg.args.gpio_number = cpu_to_be32(gpio_number);
+	req.gpio_number = cpu_to_be32(gpio_number);
 
-	rc = rpcrouter_kernapi_write(rpc_client, &tlmmsvc_addr, &msg,
-					sizeof(msg));
+	rc = rpcrouter_kernapi_write(rpc_client, &tlmmsvc_addr, &req,
+					sizeof(req));
 	if (rc < 0)
 		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rep, (5*HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rsp, (5*HZ));
 	if (rc < 0)
 		return rc;
 
-	rets = (tlmm_gpio_tlmm_get_config_rets *) ((void *) rep +
-						sizeof(oncrpc_reply_hdr));
-	*config = rets->gpio_config_data;
-	kfree(rep);
+	*config = be32_to_cpu(rsp->gpio_config_data);
+	kfree(rsp);
 	return 0;
 }
 
 static int rpc_gpio_tlmm_config_remote(uint32_t config)
 {
-	tlmm_gpio_tlmm_config_remote_msg msg;
-	tlmm_gpio_tlmm_config_remote_rets *rets;
-	oncrpc_reply_hdr *rep;
+	struct tlmm_gpio_set_config_req req;
+	struct tlmm_gpio_set_config_rsp *rsp;
 	int rc;
 
-	rpcrouter_kernapi_setup_request(&msg.hdr, APP_TLMM_PROG, APP_TLMM_VER,
-					TLMM_PROCEEDURE_GPIO_TLMM_CONFIG_REMOTE,
-				 sizeof(tlmm_gpio_tlmm_config_remote_req_args));
+	rpcrouter_kernapi_setup_request(&req.hdr, APP_TLMM_PROG, APP_TLMM_VER,
+					TLMM_PROCEEDURE_GPIO_TLMM_CONFIG_REMOTE);
 
-	msg.args.gpio_config_data = cpu_to_be32(config);
+	req.gpio_config_data = cpu_to_be32(config);
 
-	rc = rpcrouter_kernapi_write(rpc_client, &tlmmsvc_addr, &msg,
-				sizeof(msg));
+	rc = rpcrouter_kernapi_write(rpc_client, &tlmmsvc_addr, &req,
+				sizeof(req));
 	if (rc < 0)
 		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rep, (5*HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rsp, (5*HZ));
 	if (rc < 0)
 		return rc;
 
-	rets = (tlmm_gpio_tlmm_config_remote_rets *) ((void *) rep +
-						sizeof(oncrpc_reply_hdr));
-
-	rc = (be32_to_cpu(rets->result) == 1) ? 0 : -EREMOTEIO;
-	kfree(rep);
+	rc = (be32_to_cpu(rsp->result) == 1) ? 0 : -EREMOTEIO;
+	kfree(rsp);
 	return rc;
 }
 

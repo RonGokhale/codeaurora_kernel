@@ -40,17 +40,11 @@
  * PM_PROCEEDURE_VREGSWITCH
  */
 
-typedef struct
+struct pmrpc_votevregswitch_req
 {
+	struct rpc_request_hdr hdr;
 	uint32_t	cmd; /* 0 == off, 1 = on */
 	uint32_t	vreg_id;
 	uint32_t	app_mask;
-} pm_rpc_vregswitch_req_args;
-
-typedef struct
-{
-        oncrpc_request_hdr hdr;
-        pm_rpc_vregswitch_req_args args;
-} pm_rpc_vregswitch_msg;
-
+};
 #endif

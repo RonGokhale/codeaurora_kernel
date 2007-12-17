@@ -23,7 +23,7 @@
 struct clkctl_rpc_ops
 {
 	int  (*enable)(uint32_t clk);
-	void (*disable)(uint32_t clk);
+	int (*disable)(uint32_t clk);
 	int  (*reset)(uint32_t clk);
 	int  (*set_flags)(uint32_t clk, uint32_t flags);
 	int  (*set_rate)(uint32_t clk, uint32_t rate);

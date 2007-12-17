@@ -37,29 +37,29 @@ static rpcrouter_address pmsvc_addr;
 static int rpc_pm_vote_vreg_switch(int enable, uint32_t vreg_id,
 	                           uint32_t app_mask)
 {
-	pm_rpc_vregswitch_msg msg;
-	oncrpc_reply_hdr *rep;
+	struct pmrpc_votevregswitch_req req;
+	void *rsp;
 	int rc;
 
-	rpcrouter_kernapi_setup_request(&msg.hdr, APP_PM_PROG, APP_PM_VER,
-					PM_PROCEEDURE_VOTEVREGSWITCH,
-					sizeof(pm_rpc_vregswitch_req_args));
+	rpcrouter_kernapi_setup_request(&req.hdr, APP_PM_PROG, APP_PM_VER,
+					PM_PROCEEDURE_VOTEVREGSWITCH);
+
 	if (enable)
-		msg.args.cmd = cpu_to_be32(1);
+		req.cmd = cpu_to_be32(1);
 	else
-		msg.args.cmd = cpu_to_be32(0);
-	msg.args.vreg_id = cpu_to_be32(vreg_id);
-	msg.args.app_mask = cpu_to_be32(app_mask);
+		req.cmd = cpu_to_be32(0);
+	req.vreg_id = cpu_to_be32(vreg_id);
+	req.app_mask = cpu_to_be32(app_mask);
 
-	rc = rpcrouter_kernapi_write(rpc_client, &pmsvc_addr, &msg, sizeof(msg));
+	rc = rpcrouter_kernapi_write(rpc_client, &pmsvc_addr, &req, sizeof(req));
 	if (rc < 0)
 		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rep, (5*HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, &rsp, (5*HZ));
 	if (rc < 0)
 		return rc;
 
-	kfree(rep);
+	kfree(rsp);
 	return 0;
 }
 

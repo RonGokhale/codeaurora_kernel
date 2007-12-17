@@ -45,90 +45,64 @@
 /*
  * CLKCTL_PROCEEDURE_GETRATE
  */
-typedef struct
+struct clkctlrpc_getrate_req
 {
+	struct rpc_request_hdr hdr;
 	uint32_t clock;
-} clkctl_rpc_getrate_req_args;
+};
 
-typedef struct
+struct clkctlrpc_getrate_rsp
 {
+	struct rpc_reply_hdr hdr;
 	uint32_t rate;
-} clkctl_rpc_getrate_rets;
-
-typedef struct
-{
-	oncrpc_request_hdr hdr;
-	clkctl_rpc_getrate_req_args args;
-} clkctl_rpc_getrate_msg;
-
+};
 
 /*
  * CLKCTL_PROCEEDURE_SETRATE
  */
 
-typedef struct
+struct clkctlrpc_setrate_req
 {
+	struct rpc_request_hdr hdr;
 	uint32_t clock;
 	uint32_t rate;
-} clkctl_rpc_setrate_req_args;
+};
 
-typedef struct
+struct clkctlrpc_setrate_rsp
 {
+	struct rpc_reply_hdr hdr;
 	int result;
-} clkctl_rpc_setrate_rets;
-
-typedef struct
-{
-	oncrpc_request_hdr hdr;
-	clkctl_rpc_setrate_req_args args;
-} clkctl_rpc_setrate_msg;
+};
 
 /*
  * CLKCTL_PROCEEDURE_ENABLE
  */
-typedef struct
-{
-	uint32_t clock;
-} clkctl_rpc_enable_req_args;
 
-typedef struct
+struct clkctlrpc_enable_req
 {
-	oncrpc_request_hdr hdr;
-	clkctl_rpc_enable_req_args args;
-} clkctl_rpc_enable_msg;
+	struct rpc_request_hdr hdr;
+	uint32_t clock;
+};
 
 /*
  * CLKCTL_PROCEEDURE_DISABLE
  */
-typedef struct
+
+struct clkctlrpc_disable_req
 {
+	struct rpc_request_hdr hdr;
 	uint32_t clock;
-} clkctl_rpc_disable_req_args;
-
-typedef struct
-{
-	int result;
-} clkctl_rpc_disable_rets;
-
-typedef struct
-{
-	oncrpc_request_hdr hdr;
-	clkctl_rpc_disable_req_args args;
-} clkctl_rpc_disable_msg;
+};
 
 /*
  * CLKCTL_PROCEEDURE_PLLREQUEST
  */
-typedef struct
+
+struct clkctlrpc_pllrequest_req
 {
+	struct rpc_request_hdr hdr;
 	uint32_t pll;
 	int enable;
+};
 
-} clkctl_rpc_pllrequest_req_args;
-
-typedef struct
-{
-	oncrpc_request_hdr hdr;
-	clkctl_rpc_pllrequest_req_args args;
-} clkctl_rpc_pllrequest_msg;
 #endif

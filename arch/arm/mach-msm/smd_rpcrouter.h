@@ -39,6 +39,42 @@
 #define RPCROUTER_CTRL_CMD_REMOVE_CLIENT	6
 #define RPCROUTER_CTRL_CMD_EXIT			7
 
+/*
+ *  These elements must be in host byte order
+ */
+struct pacmark_hdr
+{
+	union {
+		uint32_t raw;
+		struct {
+			uint32_t length : 16;
+			uint32_t message_id : 8;
+			uint32_t reserved : 7;
+			uint32_t last_pkt : 1;
+		} cooked;
+	} data;
+};
+
+
+struct rpcrouter_header
+{
+	uint32_t version;
+	uint32_t msg_type;
+	rpcrouter_address src_addr;
+};
+
+struct rpcrouter_packet_header
+{
+	uint32_t msg_size;
+	rpcrouter_address addr;
+};
+
+struct rpcrouter_complete_header
+{
+	struct rpcrouter_header rh;
+	struct rpcrouter_packet_header ph;
+};
+
 struct rpcrouter_server
 {
 	struct list_head list;
@@ -64,6 +100,8 @@ struct rpcrouter_address_list
 
 struct rpcrouter_client_read_q
 {
+	rpcrouter_address src_addr;
+	struct pacmark_hdr pacmark;
 	struct list_head list;
 	int data_size;
 	void *data;
