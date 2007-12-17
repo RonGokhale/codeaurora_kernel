@@ -23,7 +23,6 @@
  * Low level RPC clock control
  * ===========================
  */
-#define RPCCLKCTL_CLIENT_ID 0x80000001
 #define APP_CLKCTL_PROG 0x30000075
 #define APP_CLKCTL_VER 0
 

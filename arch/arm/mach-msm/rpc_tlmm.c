@@ -120,7 +120,7 @@ static int __init rpc_tlmm_init(void)
 		return rc;
 	}
 
-	rc = rpcrouter_kernapi_open(RPCTLMM_CLIENT_ID, &rpc_client);
+	rc = rpcrouter_kernapi_open(&rpc_client);
 	if (rc < 0) {
 		printk(KERN_ERR "rpc_tlmm: Error opening SMD client (%d)\n",
 			rc);

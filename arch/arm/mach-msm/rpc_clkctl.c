@@ -249,7 +249,7 @@ static int __init rpc_clkctl_init(void)
 		return rc;
 	}
 
-	rc = rpcrouter_kernapi_open(RPCCLKCTL_CLIENT_ID, &rpc_client);
+	rc = rpcrouter_kernapi_open(&rpc_client);
 	if (rc < 0) {
 		printk(KERN_ERR "rpc_clkctl: Error opening SMD client (%d)\n", rc);
 		return rc;

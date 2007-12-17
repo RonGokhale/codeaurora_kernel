@@ -24,7 +24,6 @@
  * Low level RPC stuff
  * ===================
  */
-#define RPCTLMM_CLIENT_ID 0x80000003
 #define APP_TLMM_PROG 0x30000066
 #define APP_TLMM_VER 0
 

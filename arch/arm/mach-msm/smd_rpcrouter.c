@@ -35,7 +35,7 @@
 #include "smd_rpcrouter.h"
 
 #define MSM_RPCROUTER_DEBUG 0
-#define MSM_RPCROUTER_DEBUG_PKT 0
+#define MSM_RPCROUTER_DEBUG_PKT 1
 #define MSM_RPCROUTER_R2R_DEBUG 1
 
 #if MSM_RPCROUTER_DEBUG
@@ -348,8 +348,7 @@ static int client_validate_permission(struct rpcrouter_client *client,
 	return -EPERM;
 }
 
-static struct rpcrouter_client *rpcrouter_create_local_client(uint32_t cid,
-							      dev_t dev)
+static struct rpcrouter_client *rpcrouter_create_local_client(dev_t dev)
 {
 	struct rpcrouter_client *client;
 	unsigned long flags;
@@ -359,7 +358,7 @@ static struct rpcrouter_client *rpcrouter_create_local_client(uint32_t cid,
 		return NULL;
 	memset(client, 0, sizeof(struct rpcrouter_client));
 
-	client->addr.cid = cid;
+	client->addr.cid = (uint32_t) client;
 	client->addr.pid = RPCROUTER_PID_LOCAL;
 	client->dev = dev;
 
@@ -1057,7 +1056,7 @@ static int rpcrouter_open(struct inode *inode, struct file *filp)
 	if (rc < 0)
 		return rc;
 
-	client = rpcrouter_create_local_client(current->pid, inode->i_rdev);
+	client = rpcrouter_create_local_client(inode->i_rdev);
 	if (!client)
 		return -ENOMEM;
 
@@ -1319,12 +1318,12 @@ int rpcrouter_kernapi_openxport(rpcrouter_xport_address *addr)
 	return rpcrouter_create_smd_xport_channel(addr->port);
 }
 
-int rpcrouter_kernapi_open(uint32_t clientId, rpcrouterclient_t **client)
+int rpcrouter_kernapi_open(rpcrouterclient_t **client)
 {
-	if (!client || !clientId)
+	if (!client)
 		return -EINVAL;
 
-	*client = rpcrouter_create_local_client(clientId, rpcrouter_devno);
+	*client = rpcrouter_create_local_client(rpcrouter_devno);
 	if (!(*client))
 		return -ENOMEM;
 

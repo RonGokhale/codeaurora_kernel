@@ -77,7 +77,7 @@ static int __init rpc_pm_init(void)
 		return rc;
 	}
 
-	rc = rpcrouter_kernapi_open(RPCPM_CLIENT_ID, &rpc_client);
+	rc = rpcrouter_kernapi_open(&rpc_client);
 	if (rc < 0) {
 		printk(KERN_ERR "rpc_pm: Error opening SMD client (%d)\n", rc);
 		return rc;

@@ -24,7 +24,6 @@
  * Low level RPC PM control
  * ===========================
  */
-#define RPCPM_CLIENT_ID 0x80000002
 #define APP_PM_PROG 0x30000060
 #define APP_PM_VER 0
 

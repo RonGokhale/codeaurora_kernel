@@ -150,7 +150,7 @@ typedef struct
  */
 
 int rpcrouter_kernapi_openxport(rpcrouter_xport_address *addr);
-int rpcrouter_kernapi_open(uint32_t client_id, rpcrouterclient_t **client);
+int rpcrouter_kernapi_open(rpcrouterclient_t **client);
 int rpcrouter_kernapi_close(rpcrouterclient_t *client);
 int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 			    rpcrouter_address *dest,
