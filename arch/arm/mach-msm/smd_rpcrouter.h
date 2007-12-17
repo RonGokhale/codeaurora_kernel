@@ -118,6 +118,7 @@ struct rpcrouter_client
 	wait_queue_head_t wait_q;
 
 	dev_t dev; /* device node which was used by the client */
+	rpcrouter_address bound_dest; /* If we're bound to a destination */
 };
 
 struct rpcrouter_xport

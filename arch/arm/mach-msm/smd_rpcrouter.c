@@ -46,7 +46,11 @@
 
 static int rpcrouter_open(struct inode *inode, struct file *filp);
 static int rpcrouter_release(struct inode *inode, struct file *filp);
+static ssize_t rpcrouter_router_read(struct file *filp, char __user *buf,
+				size_t count, loff_t *ppos);
 static ssize_t rpcrouter_read(struct file *filp, char __user *buf,
+				size_t count, loff_t *ppos);
+static ssize_t rpcrouter_router_write(struct file *filp, const char __user *buf,
 				size_t count, loff_t *ppos);
 static ssize_t rpcrouter_write(struct file *filp, const char __user *buf,
 				size_t count, loff_t *ppos);
@@ -72,12 +76,21 @@ static uint32_t next_xid;
 static uint8_t next_pacmarkid;
 static wait_queue_head_t newserver_wait;
 
-static struct file_operations rpcrouter_fops = {
+static struct file_operations rpcrouter_server_fops = {
 	.owner	 = THIS_MODULE,
 	.open	 = rpcrouter_open,
 	.release = rpcrouter_release,
 	.read	 = rpcrouter_read,
 	.write	 = rpcrouter_write,
+	.ioctl	 = rpcrouter_ioctl,
+};
+
+static struct file_operations rpcrouter_router_fops = {
+	.owner	 = THIS_MODULE,
+	.open	 = rpcrouter_open,
+	.release = rpcrouter_release,
+	.read	 = rpcrouter_router_read,
+	.write	 = rpcrouter_router_write,
 	.ioctl	 = rpcrouter_ioctl,
 };
 
@@ -255,7 +268,7 @@ static int create_server_chardev(struct rpcrouter_server *server)
 		return PTR_ERR(server->device);;
 	}
 
-	cdev_init(&server->cdev, &rpcrouter_fops);
+	cdev_init(&server->cdev, &rpcrouter_server_fops);
 	server->cdev.owner = THIS_MODULE;
 
 	rc = cdev_add(&server->cdev, server->device_number, 1);
@@ -330,6 +343,22 @@ static struct rpcrouter_server *rpcrouter_lookup_server(uint32_t prog,
 	return NULL;
 }
 
+static struct rpcrouter_server *rpcrouter_lookup_server_by_dev(dev_t dev)
+{
+	struct rpcrouter_server *server;
+	unsigned long flags;
+
+	spin_lock_irqsave(&server_list_lock, flags);
+	list_for_each_entry(server, &server_list, list) {
+		if (server->device_number == dev) {
+			spin_unlock_irqrestore(&server_list_lock, flags);
+			return server;
+		}
+	}
+	spin_unlock_irqrestore(&server_list_lock, flags);
+	return NULL;
+}
+
 
 /*  ======================================================
  *  Client creation / deletion / lookup / perms validation
@@ -343,6 +372,8 @@ static int client_validate_permission(struct rpcrouter_client *client,
 
 	if (client->dev == rpcrouter_devno)
 		return 0; /* If you open minor 0 you get it all */
+	if (client->dev == MKDEV(0, 0))
+		return 0; /* Kernel API users can do what they want */
 
 	server = rpcrouter_lookup_server(prog, vers);
 	if (!server)
@@ -366,6 +397,21 @@ static struct rpcrouter_client *rpcrouter_create_local_client(dev_t dev)
 	client->addr.cid = (uint32_t) client;
 	client->addr.pid = RPCROUTER_PID_LOCAL;
 	client->dev = dev;
+
+	if ((dev != rpcrouter_devno) && (dev != MKDEV(0, 0))) {
+		struct rpcrouter_server *srv;
+		/*
+ 		 * This is a userspace client which opened
+ 		 * a program/ver devicenode. Bind the client
+ 		 * to that destination
+ 		 */
+		srv = rpcrouter_lookup_server_by_dev(dev);
+		BUG_ON(!srv);
+
+		memcpy(&client->bound_dest,
+			&srv->addr,
+			sizeof(rpcrouter_address));
+	}
 
 	init_waitqueue_head(&client->wait_q);
 	INIT_LIST_HEAD(&client->read_q);
@@ -1081,6 +1127,12 @@ static int rpcrouter_release(struct inode *inode, struct file *filp)
 	return rpcrouter_destroy_local_client(client);
 }
 
+static ssize_t rpcrouter_router_read(struct file *filp, char __user *buf,
+				size_t count, loff_t *ppos)
+{
+	return -ENOSYS;
+}
+
 static ssize_t rpcrouter_read(struct file *filp, char __user *buf,
 				size_t count, loff_t *ppos)
 {
@@ -1113,6 +1165,12 @@ static ssize_t rpcrouter_read(struct file *filp, char __user *buf,
 	return rc;
 }
 
+static ssize_t rpcrouter_router_write(struct file *filp, const char __user *buf,
+				size_t count, loff_t *ppos)
+{
+	return -ENOSYS;
+}
+
 static ssize_t rpcrouter_write(struct file *filp, const char __user *buf,
 				size_t count, loff_t *ppos)
 {
@@ -1138,14 +1196,12 @@ static ssize_t rpcrouter_write(struct file *filp, const char __user *buf,
 		goto write_out_free;
 	}
 
-
-	dest_addr.pid = (uint32_t) ((*(uint64_t *)k_buffer) & 0xffffffff);
-	dest_addr.cid = (uint32_t) ((*(uint64_t *)k_buffer) >> 32);
+	memcpy(&dest_addr, &client->bound_dest, sizeof(rpcrouter_address));
 
 	rc = rpcrouter_kernapi_write(client,
 				     &dest_addr,
-				     (((uint64_t *) k_buffer) + 1),
-				     (count - sizeof(rpcrouter_address)));
+				     k_buffer,
+				     count);
 	if (rc < 0) {
 		D("rpcrouter_write(): Write to client [PID %x CID %x]"
 		  "failed (%d)\n",
@@ -1328,7 +1384,7 @@ int rpcrouter_kernapi_open(rpcrouterclient_t **client)
 	if (!client)
 		return -EINVAL;
 
-	*client = rpcrouter_create_local_client(rpcrouter_devno);
+	*client = rpcrouter_create_local_client(MKDEV(0, 0));
 	if (!(*client))
 		return -ENOMEM;
 
@@ -1535,7 +1591,7 @@ static int __init rpcrouter_init(void)
 		goto fail_unregister_cdev_region;
 	}
 
-	cdev_init(&rpcrouter_cdev, &rpcrouter_fops);
+	cdev_init(&rpcrouter_cdev, &rpcrouter_router_fops);
 	rpcrouter_cdev.owner = THIS_MODULE;
 
 	rc = cdev_add(&rpcrouter_cdev, rpcrouter_devno, 1);
