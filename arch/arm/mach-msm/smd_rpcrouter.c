@@ -46,11 +46,11 @@
 
 static int rpcrouter_open(struct inode *inode, struct file *filp);
 static int rpcrouter_release(struct inode *inode, struct file *filp);
-static ssize_t rpcrouter_router_read(struct file *filp, char __user *buf,
+static ssize_t rpcrouter_callback_read(struct file *filp, char __user *buf,
 				size_t count, loff_t *ppos);
 static ssize_t rpcrouter_read(struct file *filp, char __user *buf,
 				size_t count, loff_t *ppos);
-static ssize_t rpcrouter_router_write(struct file *filp, const char __user *buf,
+static ssize_t rpcrouter_callback_write(struct file *filp, const char __user *buf,
 				size_t count, loff_t *ppos);
 static ssize_t rpcrouter_write(struct file *filp, const char __user *buf,
 				size_t count, loff_t *ppos);
@@ -89,8 +89,8 @@ static struct file_operations rpcrouter_router_fops = {
 	.owner	 = THIS_MODULE,
 	.open	 = rpcrouter_open,
 	.release = rpcrouter_release,
-	.read	 = rpcrouter_router_read,
-	.write	 = rpcrouter_router_write,
+	.read	 = rpcrouter_callback_read,
+	.write	 = rpcrouter_callback_write,
 	.ioctl	 = rpcrouter_ioctl,
 };
 
@@ -1127,17 +1127,68 @@ static int rpcrouter_release(struct inode *inode, struct file *filp)
 	return rpcrouter_destroy_local_client(client);
 }
 
-static ssize_t rpcrouter_router_read(struct file *filp, char __user *buf,
+static ssize_t rpcrouter_callback_read(struct file *filp, char __user *buf,
 				size_t count, loff_t *ppos)
 {
-	return -ENOSYS;
+	struct rpcrouter_client *client;
+	struct rpcrouter_client_read_q *read_q_entry;
+	DEFINE_WAIT(__wait);
+	unsigned long flags;
+	int rc = -1;
+
+	client = (struct rpcrouter_client *) filp->private_data;
+	if (count < RPCROUTER_MSGSIZE_MAX)
+		return -EINVAL;
+
+	for (;;) {
+		prepare_to_wait(&client->wait_q, &__wait, TASK_INTERRUPTIBLE);
+		spin_lock_irqsave(&client->read_q_lock, flags);
+		if (!list_empty(&client->read_q))
+			break;
+		spin_unlock_irqrestore(&client->read_q_lock, flags);
+		if (!signal_pending(current)) {
+			schedule();
+			continue;
+		}
+		break;
+	}
+	finish_wait(&client->wait_q, &__wait);
+
+	if (signal_pending(current))
+		return -ERESTARTSYS;
+
+	read_q_entry = list_first_entry(&client->read_q,
+					struct rpcrouter_client_read_q, list);
+	BUG_ON(!read_q_entry);
+
+	list_del(&read_q_entry->list);
+	spin_unlock_irqrestore(&client->read_q_lock, flags);
+
+	if (read_q_entry->data_size < count)
+		count = read_q_entry->data_size;
+
+	if (copy_to_user(buf, read_q_entry->data, count))
+		rc = -EFAULT;
+	else
+		rc = count;
+
+	/*
+	 * Keep track of the source of this msg
+	 */
+	memcpy(&client->cb_addr,
+		&read_q_entry->src_addr,
+		sizeof(rpcrouter_address));
+
+	kfree(read_q_entry->data);
+	kfree(read_q_entry);
+	return rc;
 }
 
 static ssize_t rpcrouter_read(struct file *filp, char __user *buf,
 				size_t count, loff_t *ppos)
 {
 	struct rpcrouter_client *client;
-	int rc = -1;
+	int rc;
 	void *buffer;
 
 	client = (struct rpcrouter_client *) filp->private_data;
@@ -1156,19 +1207,53 @@ static ssize_t rpcrouter_read(struct file *filp, char __user *buf,
 	if (rc <= count)
 		count = rc;
 
-	if (copy_to_user(buf, buffer, count))
-		rc = -EFAULT;
-	else
-		rc = count;
 
 	kfree(buffer);
 	return rc;
 }
 
-static ssize_t rpcrouter_router_write(struct file *filp, const char __user *buf,
+static ssize_t rpcrouter_callback_write(struct file *filp, const char __user *buf,
 				size_t count, loff_t *ppos)
 {
-	return -ENOSYS;
+	struct rpcrouter_client	*client;
+	rpcrouter_address dest_addr;
+	int rc = 0;
+	void *k_buffer;
+
+	client = (struct rpcrouter_client *) filp->private_data;
+
+	if (count > RPCROUTER_MSGSIZE_MAX)
+		return -EINVAL;
+
+	if (count < sizeof(rpcrouter_address))
+		return -EINVAL;
+
+	k_buffer = kmalloc(count, GFP_KERNEL);
+	if (!k_buffer)
+		return -ENOMEM;
+
+	if (copy_from_user(k_buffer, buf, count)) {
+		rc = -EFAULT;
+		goto write_out_free;
+	}
+
+	memcpy(&dest_addr, &client->cb_addr, sizeof(rpcrouter_address));
+
+	rc = rpcrouter_kernapi_write(client,
+				     &dest_addr,
+				     k_buffer,
+				     count);
+	if (rc < 0) {
+		D("rpcrouter_write(): Write to client [PID %x CID %x]"
+		  "failed (%d)\n",
+		  dest_addr.pid, dest_addr.cid, rc);
+		goto write_out_free;
+	}
+
+	rc = count;
+write_out_free:
+	kfree(k_buffer);
+	return rc;
 }
 
 static ssize_t rpcrouter_write(struct file *filp, const char __user *buf,

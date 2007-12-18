@@ -119,6 +119,8 @@ struct rpcrouter_client
 
 	dev_t dev; /* device node which was used by the client */
 	rpcrouter_address bound_dest; /* If we're bound to a destination */
+
+	rpcrouter_address cb_addr;
 };
 
 struct rpcrouter_xport
