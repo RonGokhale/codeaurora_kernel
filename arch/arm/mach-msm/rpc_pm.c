@@ -55,7 +55,7 @@ static int rpc_pm_vote_vreg_switch(int enable, uint32_t vreg_id,
 	if (rc < 0)
 		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client, &rsp, (5*HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, &rsp, -1, (5*HZ));
 	if (rc < 0)
 		return rc;
 

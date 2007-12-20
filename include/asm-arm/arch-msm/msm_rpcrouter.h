@@ -109,6 +109,7 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 			    int count);
 int rpcrouter_kernapi_read(rpcrouterclient_t *client,
 			   void **buffer,
+			   unsigned user_len,
 			   long timeout);
 int rpcrouter_kernapi_getdest(rpcrouterclient_t *client,
 			      uint32_t prog,

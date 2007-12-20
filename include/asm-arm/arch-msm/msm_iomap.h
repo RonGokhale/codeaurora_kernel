@@ -101,6 +101,10 @@
 #define MSM_SHARED_RAM_PHYS   0x01F00000
 #define MSM_SHARED_RAM_SIZE   SZ_1M
 
+#define MSM_AD5_BASE          0xE0200000
+#define MSM_AD5_PHYS          0xAC000000
+#define MSM_AD5_SIZE          (SZ_1M*13)
+
 /* Used by debug-macro.S, uncompress.h, etc. */
 #if defined(CONFIG_MSM_LL_DEBUG_UART1)
 #define MSM_DEBUG_UART_PHYS MSM_UART1_PHYS

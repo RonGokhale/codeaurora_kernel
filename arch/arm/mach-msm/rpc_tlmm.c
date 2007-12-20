@@ -50,7 +50,7 @@ static int rpc_gpio_tlmm_get_config(uint32_t gpio_number, uint32_t *config)
 	if (rc < 0)
 		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rsp, (5*HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rsp, -1, (5*HZ));
 	if (rc < 0)
 		return rc;
 
@@ -75,7 +75,7 @@ static int rpc_gpio_tlmm_config_remote(uint32_t config)
 	if (rc < 0)
 		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rsp, (5*HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rsp, -1, (5*HZ));
 	if (rc < 0)
 		return rc;
 

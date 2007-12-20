@@ -39,6 +39,9 @@
 #define RPCROUTER_CTRL_CMD_REMOVE_CLIENT	6
 #define RPCROUTER_CTRL_CMD_EXIT			7
 
+#define RPCROUTER_CB_WORKAROUND		1
+#define RPCROUTER_BW_COMP               1
+
 /*
  *  These elements must be in host byte order
  */
@@ -53,6 +56,7 @@ struct pacmark_hdr
 			uint32_t last_pkt : 1;
 		} cooked;
 	} data;
+//	uint32_t padding;
 };
 
 
@@ -75,12 +79,19 @@ struct rpcrouter_complete_header
 	struct rpcrouter_packet_header ph;
 };
 
+#if RPCROUTER_CB_WORKAROUND
+struct rpcrouter_client;
+#endif
 struct rpcrouter_server
 {
 	struct list_head list;
 
 	rpcrouter_address addr;
 	rpcrouter_program_version pv;
+
+#if RPCROUTER_CB_WORKAROUND
+	struct rpcrouter_client *client;
+#endif
 
 	dev_t device_number;
 	struct cdev cdev;
@@ -105,6 +116,10 @@ struct rpcrouter_client_read_q
 	struct list_head list;
 	int data_size;
 	void *data;
+#if RPCROUTER_BW_COMP
+        uint32_t prog;
+        uint32_t vers;
+#endif
 };
 
 struct rpcrouter_client
@@ -116,6 +131,10 @@ struct rpcrouter_client
 	spinlock_t read_q_lock;
 	struct list_head read_q;
 	wait_queue_head_t wait_q;
+
+#if RPCROUTER_CB_WORKAROUND
+	struct rpcrouter_client *override;
+#endif
 
 	dev_t dev; /* device node which was used by the client */
 	rpcrouter_address bound_dest; /* If we're bound to a destination */

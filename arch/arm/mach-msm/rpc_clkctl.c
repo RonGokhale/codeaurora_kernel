@@ -60,7 +60,7 @@ static int rpc_clkctl_enable(uint32_t clock)
 	if (rc < 0)
 		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client, &rsp, (5 * HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, &rsp, -1, (5 * HZ));
 	if (rc < 0)
 		return rc;
 
@@ -87,7 +87,7 @@ static int rpc_clkctl_disable(uint32_t clock)
 	if (rc < 0)
 		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client, &rsp, (5 * HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, &rsp, -1, (5 * HZ));
 	if (rc < 0)
 		return rc;
 
@@ -127,7 +127,7 @@ static int rpc_clkctl_pll_request(uint32_t pll, int enable)
 	if (rc < 0)
 		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client, &rsp, (5 * HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, &rsp, -1, (5 * HZ));
 	if (rc < 0)
 		return rc;
 
@@ -160,7 +160,7 @@ static int rpc_clkctl_set_rate(uint32_t clock, uint32_t rate)
 	if (rc < 0)
 		return rc;
 
-	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rsp, (5 * HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rsp, -1, (5 * HZ));
 	if (rc < 0)
 		return rc;
 
@@ -188,7 +188,7 @@ static uint32_t rpc_clkctl_get_rate(uint32_t clock)
 	if (rc < 0)
 		return 0;
 
-	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rsp, (5 * HZ));
+	rc = rpcrouter_kernapi_read(rpc_client, (void **) &rsp, -1, (5 * HZ));
 	if (rc < 0)
 		return 0;
 

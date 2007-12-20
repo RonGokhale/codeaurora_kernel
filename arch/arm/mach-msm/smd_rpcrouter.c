@@ -28,13 +28,14 @@
 #include <linux/err.h>
 #include <linux/sched.h>
 #include <linux/kthread.h>
+#include <linux/poll.h>
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
 #include <asm/arch/msm_smd.h>
 #include <linux/msm_rpcrouter.h>
 #include "smd_rpcrouter.h"
 
-#define MSM_RPCROUTER_DEBUG 0
+#define MSM_RPCROUTER_DEBUG 1
 #define MSM_RPCROUTER_DEBUG_PKT 1
 #define MSM_RPCROUTER_R2R_DEBUG 1
 
@@ -54,8 +55,8 @@ static ssize_t rpcrouter_callback_write(struct file *filp, const char __user *bu
 				size_t count, loff_t *ppos);
 static ssize_t rpcrouter_write(struct file *filp, const char __user *buf,
 				size_t count, loff_t *ppos);
-static int rpcrouter_ioctl(struct inode *inode, struct file *filp,
-			   unsigned int cmd, unsigned long arg);
+static unsigned int rpcrouter_poll(struct file *filp, struct poll_table_struct *pfd);
+static long rpcrouter_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 
 static dev_t rpcrouter_devno; /* Device number for the router itself */
 static int next_minor = 1; /* Next minor # available for a remote server */
@@ -66,6 +67,10 @@ static struct device *rpcrouter_device;
 static LIST_HEAD(client_list);
 static LIST_HEAD(xport_list);
 static LIST_HEAD(server_list);
+#if RPCROUTER_BW_COMP 
+static LIST_HEAD(unregistered_server_calls_list);
+static DEFINE_SPINLOCK(unregistered_server_calls_list_lock);
+#endif
 
 static DEFINE_SPINLOCK(client_list_lock);
 static DEFINE_SPINLOCK(xport_list_lock);
@@ -82,7 +87,8 @@ static struct file_operations rpcrouter_server_fops = {
 	.release = rpcrouter_release,
 	.read	 = rpcrouter_read,
 	.write	 = rpcrouter_write,
-	.ioctl	 = rpcrouter_ioctl,
+	.poll    = rpcrouter_poll,
+	.unlocked_ioctl	 = rpcrouter_ioctl,
 };
 
 static struct file_operations rpcrouter_router_fops = {
@@ -91,7 +97,8 @@ static struct file_operations rpcrouter_router_fops = {
 	.release = rpcrouter_release,
 	.read	 = rpcrouter_callback_read,
 	.write	 = rpcrouter_callback_write,
-	.ioctl	 = rpcrouter_ioctl,
+	.poll    = rpcrouter_poll,
+	.unlocked_ioctl = rpcrouter_ioctl,
 };
 
 #if MSM_RPCROUTER_DEBUG_PKT
@@ -109,6 +116,7 @@ static void dump_rpc_req_pkt(struct rpc_request_hdr *rq, int arglen)
 	uint32_t *p;
 	int i;
 
+	printk(KERN_INFO "CALL\n");
 	printk(KERN_INFO "  Xid: %x Type: %d Ver: %d Prg: 0x%x Ver: %d Prc: %d Cred: {%d:%d:%d:%d}\n",
 		be32_to_cpu(rq->xid), be32_to_cpu(rq->type), 
 		be32_to_cpu(rq->rpc_vers), be32_to_cpu(rq->prog),
@@ -127,11 +135,13 @@ static void dump_rpc_req_pkt(struct rpc_request_hdr *rq, int arglen)
 	}
 
 	p = ((void *) rq) + sizeof(struct rpc_request_hdr);
+	arglen -= sizeof(struct rpc_request_hdr);
 
 	printk(KERN_INFO "  Args(%d):", arglen);
 
-	for (i = 0; i < arglen / sizeof(uint32_t); i++)
-		printk("  %.8x", be32_to_cpu(p[i]));
+	if (arglen > 0)
+		for (i = 0; i < arglen / sizeof(uint32_t); i++)
+			printk("  %.8x", be32_to_cpu(p[i]));
 	printk("\n");
 }
 
@@ -140,6 +150,7 @@ static void dump_rpc_rsp_pkt(struct rpc_reply_hdr *rs, int arglen)
 	uint32_t *p;
 	int i;
 
+	printk(KERN_INFO "REPLY\n");
 	printk(KERN_INFO "  Xid: %x Type: %d ReplyStat: %d",
 		be32_to_cpu(rs->xid), be32_to_cpu(rs->type), 
 		be32_to_cpu(rs->reply_stat));
@@ -171,11 +182,25 @@ static void dump_rpc_rsp_pkt(struct rpc_reply_hdr *rs, int arglen)
 	}
 
 	p = ((void *) rs) + sizeof(struct rpc_reply_hdr);
+	arglen -= sizeof(struct rpc_reply_hdr);
 	printk(KERN_INFO "  Args(%d):", arglen);
 
-	for (i = 0; i < arglen / sizeof(uint32_t); i++)
-		printk("  %.8x", be32_to_cpu(p[i]));
+	if (arglen > 0)
+		for (i = 0; i < arglen / sizeof(uint32_t); i++)
+			printk("  %.8x", be32_to_cpu(p[i]));
 	printk("\n");
+}
+
+static void dump_rpc_pkt(void *buf, int arglen) {
+	uint32_t *data = (uint32_t *)buf;
+	if (arglen >= 8) {
+		if (0 == data[1])
+			dump_rpc_req_pkt(buf, arglen);
+		else
+			dump_rpc_rsp_pkt(buf, arglen);
+	}
+	else
+		printk(KERN_INFO "  length %d is less than 8 bytes.\n", arglen);
 }
 
 #endif
@@ -303,13 +328,15 @@ static struct rpcrouter_server *rpcrouter_create_server(uint32_t pid,
 	list_add_tail(&server->list, &server_list);
 	spin_unlock_irqrestore(&server_list_lock, flags);
 
-	rc = create_server_chardev(server);
-	if (rc < 0) {
-		spin_lock_irqsave(&server_list_lock, flags);
-		spin_unlock_irqrestore(&server_list_lock, flags);
-		list_del(&server->list);
-		kfree(server);
-		return ERR_PTR(rc);
+	if (pid == RPCROUTER_PID_REMOTE) {
+		rc = create_server_chardev(server);
+		if (rc < 0) {
+			spin_lock_irqsave(&server_list_lock, flags);
+			list_del(&server->list);
+			spin_unlock_irqrestore(&server_list_lock, flags);
+			kfree(server);
+			return ERR_PTR(rc);
+		}
 	}
 	return server;
 }
@@ -368,6 +395,9 @@ static struct rpcrouter_server *rpcrouter_lookup_server_by_dev(dev_t dev)
 static int client_validate_permission(struct rpcrouter_client *client,
 				      uint32_t prog, uint32_t vers)
 {
+#if RPCROUTER_CB_WORKAROUND
+	return 0;
+#else
 	struct rpcrouter_server *server;
 
 	if (client->dev == rpcrouter_devno)
@@ -382,6 +412,7 @@ static int client_validate_permission(struct rpcrouter_client *client,
 	if (client->dev == server->device_number)
 		return 0;
 	return -EPERM;
+#endif
 }
 
 static struct rpcrouter_client *rpcrouter_create_local_client(dev_t dev)
@@ -900,14 +931,51 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 
 #if MSM_RPCROUTER_DEBUG_PKT
 		printk(KERN_INFO
-			"oncrpc_response: Src [PID %x CID %x]\n",
+			"INCOMING: Src [PID %x CID %x]\n",
 			read_queue->src_addr.pid,
 			read_queue->src_addr.cid);
 
 		dump_pacmark(&read_queue->pacmark);
-		dump_rpc_rsp_pkt((struct rpc_reply_hdr *) read_queue->data,
-			 read_queue->data_size - sizeof(struct rpc_reply_hdr));
+		dump_rpc_pkt(read_queue->data, read_queue->data_size);
 #endif
+
+#if RPCROUTER_CB_WORKAROUND
+		/* If this is a CALL packet, then chances are the client we looked up
+		   is wrong, because the A9 RPC router has a bug.  We need to look up
+		   the client by the program number among registered servers.
+		*/
+		{	
+			uint32_t *data = (uint32_t *)read_queue->data;
+		        if (data[1] == 0) { /* RPC call? */
+				uint32_t prog;
+				uint32_t vers;
+				struct rpcrouter_server *server; 
+
+				prog = be32_to_cpu(data[3]); /* prog */
+				vers = be32_to_cpu(data[4]); /* vers */
+				server = rpcrouter_lookup_server(prog, vers);
+				if (server && server->client != client) { 
+					printk(KERN_INFO "rpcrouter: (CALL) client override %p --> %p for %08x:%d\n",
+						client, server->client, prog, vers);
+					server->client->override = client;
+					client = server->client;
+				}
+				else { 
+					printk(KERN_INFO "rpcrouter: can't find server %08x:%d\n", prog, vers);
+#if RPCROUTER_BW_COMP 
+					read_queue->prog = prog;
+					read_queue->vers = vers;
+					spin_lock_irqsave(&unregistered_server_calls_list_lock, flags);
+					list_add_tail(&read_queue->list, &unregistered_server_calls_list);
+					spin_unlock_irqrestore(&unregistered_server_calls_list_lock, flags);
+
+					return; /* do not add this to the wrong client's read queue! */
+#endif
+				}
+			}
+		}
+#endif
+
 		spin_lock_irqsave(&client->read_q_lock, flags);
 		list_add_tail(&read_queue->list, &client->read_q);
 		spin_unlock_irqrestore(&client->read_q_lock, flags);
@@ -1200,13 +1268,31 @@ static ssize_t rpcrouter_read(struct file *filp, char __user *buf,
 	if (count < RPCROUTER_MSGSIZE_MAX)
 		return -EINVAL;
 
-	rc = rpcrouter_kernapi_read(client, &buffer, -1);
+	rc = rpcrouter_kernapi_read(client, &buffer, count, -1);
 	if (rc < 0)
 		return rc;
 
-	if (rc <= count)
-		count = rc;
+	count = rc;
 
+#if RPCROUTER_CB_WORKAROUND
+	{
+		/* If this is a REPLY packet in response to a CALL that was overridden, 
+		   then we will route the reply to the original sender. */
+		uint32_t type = be32_to_cpu(((uint32_t *)buffer)[1]);
+		if (type == 1 && client->override) {	
+			struct rpcrouter_client *override = client->override;
+			client->override = NULL;
+			printk(KERN_INFO "rpcrouter: (REPLY) client override %p --> %p\n",
+				client, override);
+			client = override;
+		}
+	}
+#endif
+
+	if (copy_to_user(buf, buffer, count)) {
+		printk(KERN_ERR "rpcrouter: could not copy all read data to user!\n");
+		rc = -EFAULT;
+	} 
 
 	kfree(buffer);
 	return rc;
@@ -1300,8 +1386,24 @@ write_out_free:
 	return rc;
 }
 
-static int rpcrouter_ioctl(struct inode *inode, struct file *filp,
-			   unsigned int cmd, unsigned long arg)
+static unsigned int rpcrouter_poll(struct file *filp, struct poll_table_struct *wait) {
+	struct rpcrouter_client *client;
+	unsigned mask = 0;
+	client = (struct rpcrouter_client *) filp->private_data;
+
+	/* If there's data already in the read queue, return POLLIN.  Else, wait for the 
+	   requested amount of time, and check again. */ 
+	if (!list_empty(&client->read_q)) mask |= POLLIN; 
+
+	if (!mask) {
+		poll_wait(filp, &client->wait_q, wait);
+		if (!list_empty(&client->read_q)) mask |= POLLIN; 
+	}	
+
+	return mask;
+}
+
+static long rpcrouter_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct rpcrouter_client *client;
 	struct rpcrouter_server *server = NULL;
@@ -1374,6 +1476,38 @@ static int rpcrouter_ioctl(struct inode *inode, struct file *filp,
 			rc = -ENOMEM;
 			break;
 		}
+
+#if RPCROUTER_CB_WORKAROUND
+		server->client = client;
+#endif
+
+#if RPCROUTER_BW_COMP
+		{
+			struct rpcrouter_client_read_q *read_queue;
+			unsigned long flags, unlocked = 0;
+
+			spin_lock_irqsave(&unregistered_server_calls_list_lock, flags);
+			list_for_each_entry(read_queue, &unregistered_server_calls_list, list) {
+				if (read_queue->prog == server_args.progver.prog && 
+				    read_queue->vers == server_args.progver.ver) 
+				{
+					list_del(&read_queue->list);
+					spin_unlock_irqrestore(&unregistered_server_calls_list_lock, flags);
+
+			                spin_lock_irqsave(&client->read_q_lock, flags);
+			                list_add_tail(&read_queue->list, &client->read_q);
+			                spin_unlock_irqrestore(&client->read_q_lock, flags);
+			                wake_up_interruptible(&client->wait_q);
+
+					unlocked = 1;
+					break;
+				}
+			}
+			if (!unlocked)
+				spin_unlock_irqrestore(&unregistered_server_calls_list_lock, flags);
+		}
+#endif
+
 		msg.command = RPCROUTER_CTRL_CMD_NEW_SERVER;
 		msg.args.arg_s.pid = client->addr.pid;
 		msg.args.arg_s.cid = client->addr.cid;
@@ -1394,8 +1528,10 @@ static int rpcrouter_ioctl(struct inode *inode, struct file *filp,
 				    sizeof(server_args));
 		if (rc < 0)
 			break;
-		server = rpcrouter_lookup_server(dest_args.data.input.pv.prog,
-						 dest_args.data.input.pv.ver);
+
+		server = rpcrouter_lookup_server(server_args.progver.prog,
+						 server_args.progver.ver);
+						 
 		if (!server)
 			return -ENOENT;
 		rpcrouter_destroy_server(server);
@@ -1545,9 +1681,9 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 
 #if MSM_RPCROUTER_DEBUG_PKT
 	printk(KERN_INFO
-	       "oncrpc_request: Dest [PID %x CID %x]\n", dest->pid, dest->cid);
+	       "OUTGOING: Dest [PID %x CID %x]\n", dest->pid, dest->cid);
 	dump_pacmark(&pacmark);
-	dump_rpc_req_pkt(buffer, count - sizeof(struct rpc_request_hdr));
+	dump_rpc_pkt(buffer, count);
 #endif
 
 	/* Write pacmark header */
@@ -1574,7 +1710,7 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
  * NOTE: It is the responsibility of the caller to kfree buffer
  */
 int rpcrouter_kernapi_read(rpcrouterclient_t *client,
-			   void **buffer,
+			   void **buffer, unsigned user_len,
 			   long timeout)
 {
 	struct rpcrouter_client_read_q *read_q_entry;
@@ -1596,19 +1732,23 @@ int rpcrouter_kernapi_read(rpcrouterclient_t *client,
 	}
 	finish_wait(&client->wait_q, &__wait);
 
-	if (signal_pending(current))
+	if (signal_pending(current)) 
 		return -ERESTARTSYS;
-
 
 	read_q_entry = list_first_entry(&client->read_q,
 					struct rpcrouter_client_read_q, list);
 	BUG_ON(!read_q_entry);
 
+	rc = read_q_entry->data_size;
+	if (rc > user_len) {
+		spin_unlock_irqrestore(&client->read_q_lock, flags);
+		return -ETOOSMALL;
+	}
+
 	list_del(&read_q_entry->list);
 	spin_unlock_irqrestore(&client->read_q_lock, flags);
 
 	*buffer = read_q_entry->data;
-	rc = read_q_entry->data_size;
 
 	kfree(read_q_entry);
 	return rc;
