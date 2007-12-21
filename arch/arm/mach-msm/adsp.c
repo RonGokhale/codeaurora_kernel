@@ -92,9 +92,9 @@ struct adsp_buf_info {
 };
 
 static struct adsp_buf_info adsp_buf[3] = {
-    { .kern_virt = -1 },
-    { .kern_virt = -1 },
-    { .kern_virt = -1 }
+    { .kern_virt = -1UL },
+    { .kern_virt = -1UL },
+    { .kern_virt = -1UL }
 };
 
 static int alloc_adsp_buf(int index, struct vm_area_struct *vma)
@@ -127,8 +127,14 @@ static int alloc_adsp_buf(int index, struct vm_area_struct *vma)
                            vma->vm_page_prot)) {
         printk(KERN_ERR "adsp: could not remap DMA pages into process address space.\n");
         __free_pages((void *)virt, order);
+	adsp_buf[index].kern_virt = -1UL;
         rc = -EAGAIN;
         goto done;
+    }
+
+    if (adsp_buf[index].kern_virt != -1UL) {
+        printk(KERN_INFO "adsp: freeing old kernel memory for buffer %d.\n", index); 
+        __free_pages((void *)(adsp_buf[index].kern_virt), adsp_buf[index].order);
     }
 
     adsp_buf[index].proc_virt = vma->vm_start;
@@ -217,10 +223,13 @@ static int adsp_release(struct inode *inode, struct file *file)
 {
     int c;
     for (c = 0; c < sizeof(adsp_buf)/sizeof(adsp_buf[0]); c++) {
-        if (adsp_buf[c].kern_virt >= 0) {
+        if (adsp_buf[c].kern_virt != -1UL) {
             printk(KERN_INFO "adsp: releasing buffer %d.\n", c);
             free_pages(adsp_buf[c].kern_virt, adsp_buf[c].order);
+	    adsp_buf[c].kern_virt = -1;
         }
+	else
+            printk(KERN_INFO "adsp: buffer %d is already released.\n", c);
     }
 
 #if REQUEST_IRQ_ON_OPEN
@@ -249,8 +258,8 @@ static struct file_operations adsp_fops = {
 	.read = adsp_read,
 	.open = adsp_open,
 	.mmap = adsp_mmap,
-    .poll = adsp_poll,
-    .unlocked_ioctl = adsp_ioctl,
+	.poll = adsp_poll,
+	.unlocked_ioctl = adsp_ioctl,
 	.release = adsp_release,
 };
 
@@ -264,8 +273,8 @@ static int __init adsp_init(void)
 {
 #if !REQUEST_IRQ_ON_OPEN
 	int rc = request_irq(INT_ADSP_A11, adsp_irq_handler, IRQF_TRIGGER_RISING, "adsp", 0);
-    if (rc < 0) 
-        return rc;
+	if (rc < 0) 
+		return rc;
 #endif
 	return misc_register(&adsp_device);
 }
