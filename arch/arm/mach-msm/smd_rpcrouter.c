@@ -68,8 +68,12 @@ static LIST_HEAD(client_list);
 static LIST_HEAD(xport_list);
 static LIST_HEAD(server_list);
 #if RPCROUTER_BW_COMP 
+#define ONCRPC_BW_COMP_LOCAL_PROG 0x3000FFFE
+#define ONCRPC_BW_COMP_LOCAL_VERS 1
 static LIST_HEAD(unregistered_server_calls_list);
 static DEFINE_SPINLOCK(unregistered_server_calls_list_lock);
+static rpcrouterclient_t *bw_client;
+static struct rpcrouter_server *bw_server;
 #endif
 
 static DEFINE_SPINLOCK(client_list_lock);
@@ -120,7 +124,7 @@ static void dump_rpc_req_pkt(struct rpc_request_hdr *rq, int arglen)
 	printk(KERN_INFO "  Xid: %x Type: %d Ver: %d Prg: 0x%x Ver: %d Prc: %d Cred: {%d:%d:%d:%d}\n",
 		be32_to_cpu(rq->xid), be32_to_cpu(rq->type), 
 		be32_to_cpu(rq->rpc_vers), be32_to_cpu(rq->prog),
-		be32_to_cpu(rq->vers), be32_to_cpu(rq->proceedure),
+		be32_to_cpu(rq->vers), be32_to_cpu(rq->procedure),
 		be32_to_cpu(rq->cred_flavor),
 		be32_to_cpu(rq->cred_length), be32_to_cpu(rq->verf_flavor),
 		be32_to_cpu(rq->verf_length));
@@ -457,6 +461,7 @@ static struct rpcrouter_client *rpcrouter_create_local_client(dev_t dev)
 static int rpcrouter_destroy_local_client(struct rpcrouter_client *client)
 {
 	int rc;
+
 	struct rpcrouter_control_msg msg;
 	struct rpcrouter_xport *xport;
 	unsigned long flags;
@@ -976,6 +981,13 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 		}
 #endif
 
+		/*
+		 * Keep track of the source of this msg
+		 */
+		memcpy(&client->cb_addr,
+			&read_queue->src_addr,
+			sizeof(rpcrouter_address));
+
 		spin_lock_irqsave(&client->read_q_lock, flags);
 		list_add_tail(&read_queue->list, &client->read_q);
 		spin_unlock_irqrestore(&client->read_q_lock, flags);
@@ -1240,13 +1252,6 @@ static ssize_t rpcrouter_callback_read(struct file *filp, char __user *buf,
 	else
 		rc = count;
 
-	/*
-	 * Keep track of the source of this msg
-	 */
-	memcpy(&client->cb_addr,
-		&read_q_entry->src_addr,
-		sizeof(rpcrouter_address));
-
 	kfree(read_q_entry->data);
 	kfree(read_q_entry);
 	return rc;
@@ -1406,15 +1411,11 @@ static unsigned int rpcrouter_poll(struct file *filp, struct poll_table_struct *
 static long rpcrouter_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct rpcrouter_client *client;
-	struct rpcrouter_server *server = NULL;
 	struct rpcrouter_ioctl_xport_args xport_args;
 	struct rpcrouter_ioctl_server_args server_args;
 	struct rpcrouter_ioctl_dest_args dest_args;
-	struct rpcrouter_control_msg msg;
-	struct rpcrouter_xport *xport;
 	int rc;
 	uint32_t mtu = 0;
-	unsigned long flags;
 	long timeout_jiffies;
 
 	client = (struct rpcrouter_client *) filp->private_data;
@@ -1468,59 +1469,7 @@ static long rpcrouter_ioctl(struct file *filp, unsigned int cmd, unsigned long a
 				    sizeof(server_args));
 		if (rc < 0)
 			break;
-		server = rpcrouter_create_server(client->addr.pid,
-						 client->addr.cid,
-						 server_args.progver.prog,
-						 server_args.progver.ver);
-		if (!server) {
-			rc = -ENOMEM;
-			break;
-		}
-
-#if RPCROUTER_CB_WORKAROUND
-		server->client = client;
-#endif
-
-#if RPCROUTER_BW_COMP
-		{
-			struct rpcrouter_client_read_q *read_queue;
-			unsigned long flags, unlocked = 0;
-
-			spin_lock_irqsave(&unregistered_server_calls_list_lock, flags);
-			list_for_each_entry(read_queue, &unregistered_server_calls_list, list) {
-				if (read_queue->prog == server_args.progver.prog && 
-				    read_queue->vers == server_args.progver.ver) 
-				{
-					list_del(&read_queue->list);
-					spin_unlock_irqrestore(&unregistered_server_calls_list_lock, flags);
-
-			                spin_lock_irqsave(&client->read_q_lock, flags);
-			                list_add_tail(&read_queue->list, &client->read_q);
-			                spin_unlock_irqrestore(&client->read_q_lock, flags);
-			                wake_up_interruptible(&client->wait_q);
-
-					unlocked = 1;
-					break;
-				}
-			}
-			if (!unlocked)
-				spin_unlock_irqrestore(&unregistered_server_calls_list_lock, flags);
-		}
-#endif
-
-		msg.command = RPCROUTER_CTRL_CMD_NEW_SERVER;
-		msg.args.arg_s.pid = client->addr.pid;
-		msg.args.arg_s.cid = client->addr.cid;
-		msg.args.arg_s.prog = server_args.progver.prog;
-		msg.args.arg_s.ver = server_args.progver.ver;
-
-		spin_lock_irqsave(&xport_list_lock, flags);
-		list_for_each_entry(xport, &xport_list, xport_list) {
-			rc = rpcrouter_send_control_msg(xport, &msg);
-			if (rc < 0)
-				break;
-		}
-		spin_unlock_irqrestore(&xport_list_lock, flags);
+		rpcrouter_kernapi_register_server(client, &server_args);
 		break;
 
 	case RPC_ROUTER_IOCTL_UNREGISTER_SERVER:
@@ -1529,12 +1478,7 @@ static long rpcrouter_ioctl(struct file *filp, unsigned int cmd, unsigned long a
 		if (rc < 0)
 			break;
 
-		server = rpcrouter_lookup_server(server_args.progver.prog,
-						 server_args.progver.ver);
-						 
-		if (!server)
-			return -ENOENT;
-		rpcrouter_destroy_server(server);
+		rpcrouter_kernapi_unregister_server(client, &server_args);
 		break;
 
 	case RPC_ROUTER_IOCTL_GET_DEST:
@@ -1585,7 +1529,7 @@ void rpcrouter_kernapi_setup_request(struct rpc_request_hdr *hdr, uint32_t prog,
 	hdr->rpc_vers = cpu_to_be32(2);
 	hdr->prog = cpu_to_be32(prog);
 	hdr->vers = cpu_to_be32(vers);
-	hdr->proceedure = cpu_to_be32(proc);
+	hdr->procedure = cpu_to_be32(proc);
 }
 
 int rpcrouter_kernapi_openxport(rpcrouter_xport_address *addr)
@@ -1780,6 +1724,91 @@ int rpcrouter_kernapi_getdest(rpcrouterclient_t *client,
 	return 0;
 }
 
+struct rpcrouter_server *rpcrouter_kernapi_register_server(struct rpcrouter_client *client,
+		struct rpcrouter_ioctl_server_args *server_args) 
+{
+	int rc;
+
+	struct rpcrouter_control_msg msg;
+	struct rpcrouter_xport *xport;
+	unsigned long flags;
+
+	struct rpcrouter_server *server;
+
+	server = rpcrouter_create_server(client->addr.pid,
+					 client->addr.cid,
+					 server_args->progver.prog,
+					 server_args->progver.ver);
+	if (!server)
+		goto done;
+
+#if RPCROUTER_CB_WORKAROUND
+	server->client = client;
+#endif
+
+#if RPCROUTER_BW_COMP
+	{
+		struct rpcrouter_client_read_q *read_queue;
+		unsigned long flags, unlocked = 0;
+
+		spin_lock_irqsave(&unregistered_server_calls_list_lock, flags);
+		list_for_each_entry(read_queue, &unregistered_server_calls_list, list) {
+			if (read_queue->prog == server_args->progver.prog && 
+			    read_queue->vers == server_args->progver.ver) 
+			{
+				list_del(&read_queue->list);
+				spin_unlock_irqrestore(&unregistered_server_calls_list_lock, flags);
+
+				printk(KERN_INFO "rpcrouter: delivering saved RPC call for server %08x:%d\n", 
+					read_queue->prog, read_queue->vers);
+
+				/* Keep track of the source of this msg. */
+				memcpy(&client->cb_addr, &read_queue->src_addr, sizeof(rpcrouter_address));
+
+		                spin_lock_irqsave(&client->read_q_lock, flags);
+		                list_add_tail(&read_queue->list, &client->read_q);
+		                spin_unlock_irqrestore(&client->read_q_lock, flags);
+		                wake_up_interruptible(&client->wait_q);
+
+				unlocked = 1;
+				break;
+			}
+		}
+		if (!unlocked)
+			spin_unlock_irqrestore(&unregistered_server_calls_list_lock, flags);
+	}
+#endif
+
+	msg.command = RPCROUTER_CTRL_CMD_NEW_SERVER;
+	msg.args.arg_s.pid = client->addr.pid;
+	msg.args.arg_s.cid = client->addr.cid;
+	msg.args.arg_s.prog = server_args->progver.prog;
+	msg.args.arg_s.ver = server_args->progver.ver;
+
+	spin_lock_irqsave(&xport_list_lock, flags);
+	list_for_each_entry(xport, &xport_list, xport_list) {
+		rc = rpcrouter_send_control_msg(xport, &msg);
+		if (rc < 0)
+			break;
+	}
+	spin_unlock_irqrestore(&xport_list_lock, flags);
+done:
+	return server;
+}
+
+int rpcrouter_kernapi_unregister_server(struct rpcrouter_client *client,
+		struct rpcrouter_ioctl_server_args *server_args) 
+{
+	struct rpcrouter_server *server;
+	server = rpcrouter_lookup_server(server_args->progver.prog,
+					 server_args->progver.ver);
+						 
+	if (!server)
+		return -ENOENT;
+	rpcrouter_destroy_server(server);
+	return 0;
+}
+
 /*  ================================
  *  Module init / exit
  *  ================================
@@ -1840,9 +1869,46 @@ static int __init rpcrouter_init(void)
 
 	wake_up_process(worker_thread.thread);
 
+#if RPCROUTER_BW_COMP 
+	{
+		rpcrouter_xport_address xport_addr;
+	        struct rpcrouter_ioctl_server_args server_args;
+
+		rc = rpcrouter_kernapi_openxport(&xport_addr);
+		if (rc < 0) {
+			printk(KERN_ERR
+			       "rpcrouter: Err opening xport\n");
+			goto fail_remove_cdev;
+		} 
+		rc = rpcrouter_kernapi_open(&bw_client);
+		if (rc < 0) {
+			printk(KERN_ERR
+			       "rpcrouter: Err creating client\n");
+			goto fail_closexport;
+		}
+	
+		server_args.progver.prog = ONCRPC_BW_COMP_LOCAL_PROG;
+		server_args.progver.ver  = ONCRPC_BW_COMP_LOCAL_VERS;
+		bw_server = rpcrouter_kernapi_register_server(bw_client, &server_args);
+		if (!bw_server) {
+			printk(KERN_ERR 
+				"rpcrouter: Err registering BW server %08x:%d\n",
+				server_args.progver.prog, server_args.progver.ver);
+			rc = -ENOENT;
+			goto fail_close_bw_client;
+		}
+	}
+#endif
+
 	D("rpcrouter_init(): done\n");
 	return 0;
 
+#if RPCROUTER_BW_COMP 
+fail_close_bw_client:
+	rpcrouter_kernapi_close(bw_client);	
+fail_closexport:
+	/* nothing yet */
+#endif
 fail_remove_cdev:
 	cdev_del(&rpcrouter_cdev);
 

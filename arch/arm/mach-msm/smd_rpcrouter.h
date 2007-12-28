@@ -56,7 +56,7 @@ struct pacmark_hdr
 			uint32_t last_pkt : 1;
 		} cooked;
 	} data;
-//	uint32_t padding;
+	uint32_t padding;
 };
 
 

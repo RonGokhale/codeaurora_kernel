@@ -42,7 +42,7 @@ struct rpc_request_hdr
 	uint32_t rpc_vers; /* 2 */
 	uint32_t prog;
 	uint32_t vers;
-	uint32_t proceedure;
+	uint32_t procedure;
 	uint32_t cred_flavor;
 	uint32_t cred_length;
 	uint32_t verf_flavor;
@@ -100,24 +100,28 @@ struct rpc_reply_hdr
  *  Kernel API for kernel consumers/producers
  */
 
-int rpcrouter_kernapi_openxport(rpcrouter_xport_address *addr);
-int rpcrouter_kernapi_open(rpcrouterclient_t **client);
-int rpcrouter_kernapi_close(rpcrouterclient_t *client);
-int rpcrouter_kernapi_write(rpcrouterclient_t *client,
+extern int rpcrouter_kernapi_openxport(rpcrouter_xport_address *addr);
+extern int rpcrouter_kernapi_open(rpcrouterclient_t **client);
+extern int rpcrouter_kernapi_close(rpcrouterclient_t *client);
+extern int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 			    rpcrouter_address *dest,
 			    void *buffer,
 			    int count);
-int rpcrouter_kernapi_read(rpcrouterclient_t *client,
+extern int rpcrouter_kernapi_read(rpcrouterclient_t *client,
 			   void **buffer,
 			   unsigned user_len,
 			   long timeout);
-int rpcrouter_kernapi_getdest(rpcrouterclient_t *client,
+extern int rpcrouter_kernapi_getdest(rpcrouterclient_t *client,
 			      uint32_t prog,
 			      uint32_t vers,
 			      long timeout,
 			      rpcrouter_address *dest_addr);
-void rpcrouter_kernapi_setup_request(struct rpc_request_hdr *hdr,
+extern void rpcrouter_kernapi_setup_request(struct rpc_request_hdr *hdr,
 				     uint32_t prog,
 				     uint32_t vers,
 				     uint32_t proc);
+extern struct rpcrouter_server *rpcrouter_kernapi_register_server(struct rpcrouter_client *client,
+		struct rpcrouter_ioctl_server_args *server_args);
+extern int rpcrouter_kernapi_unregister_server(struct rpcrouter_client *client,
+		struct rpcrouter_ioctl_server_args *server_args);
 #endif
