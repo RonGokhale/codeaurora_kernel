@@ -35,8 +35,8 @@
 #include <linux/msm_rpcrouter.h>
 #include "smd_rpcrouter.h"
 
-#define MSM_RPCROUTER_DEBUG 1
-#define MSM_RPCROUTER_DEBUG_PKT 1
+#define MSM_RPCROUTER_DEBUG 0
+#define MSM_RPCROUTER_DEBUG_PKT 0
 #define MSM_RPCROUTER_R2R_DEBUG 1
 
 #if MSM_RPCROUTER_DEBUG
@@ -228,14 +228,14 @@ static int rpcrouter_send_control_msg(struct rpcrouter_xport *xport,
 #endif
 
 	if (xport->xport_address.xp != RPCROUTER_XPORT_SMD) {
-		printk(KERN_INFO "rpcrouter: Unsupported xport [XP %x P %x\n",
+		printk(KERN_ERR "rpcrouter: Unsupported xport [XP %x P %x\n",
 			xport->xport_address.xp, xport->xport_address.port);
 		return -EINVAL;
 	}
 
 	if (!(msg->command == RPCROUTER_CTRL_CMD_HELLO)
 	 && !xport->initialized) {
-		printk(KERN_INFO "rpcrouter_send_control_msg(): Warning, xport "
+		printk(KERN_ERR "rpcrouter_send_control_msg(): Warning, xport "
 		       "[XP %x P %x] not yet initialized\n",
 			xport->xport_address.xp, xport->xport_address.port);
 		return -EINVAL;
@@ -680,7 +680,7 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr,
 		server = rpcrouter_lookup_server(cntl->args.arg_s.prog,
 						 cntl->args.arg_s.ver);
 		if (!server) {
-			printk(KERN_INFO
+			printk(KERN_WARNING
 			       "rpcrouter: Skipping removal of unknown"
 			       "  svr [PRG %x VER %x]\n",
 			       cntl->args.arg_s.prog,
@@ -701,7 +701,7 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr,
 
 	case RPCROUTER_CTRL_CMD_REMOVE_CLIENT:
 		if (cntl->args.arg_c.pid != RPCROUTER_PID_REMOTE) {
-			printk(KERN_INFO
+			printk(KERN_ERR
 			       "rpcrouter: Denying remote removal of "
 			       "local client\n");
 			break;
@@ -709,7 +709,7 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr,
 		remote_client = rpcrouter_lookup_remote_client(xport,
 						 cntl->args.arg_c.cid);
 		if (!remote_client) {
-			printk(KERN_INFO
+			printk(KERN_WARNING
 			       "rpcrouter: Skipping removal of unknown"
 			       " remote client [PID %x CID %x]\n",
 			       cntl->args.arg_c.pid,
@@ -732,7 +732,7 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr,
 		}
 
 		/* Notify local clients of this event */
-		printk(KERN_INFO "rpcrouter: LOCAL NOTIFICATION NOT IMP\n");
+		printk(KERN_ERR "rpcrouter: LOCAL NOTIFICATION NOT IMP\n");
 		rc = -ENOSYS;
 
 		break;
@@ -780,7 +780,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 		if (!len)
 			break;
 		else if (len < sizeof(struct rpcrouter_complete_header)) {
-			printk(KERN_INFO
+			printk(KERN_ERR
 			       "rpcrouter: data avail (%d) < hdr size (%d)\n",
 			       len, sizeof(struct rpcrouter_complete_header));
 			goto exit_flush_smd;
@@ -797,7 +797,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 				mdelay(10);
 				retry++;
 				if (retry == 5) {
-					printk(KERN_INFO
+					printk(KERN_ERR
 					       "krpcrouterd: Too many short "
 					       "reads on hdr\n");
 					goto exit_flush_smd;
@@ -814,7 +814,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 #endif
 
 		if (hdr.ph.msg_size > RPCROUTER_MSGSIZE_MAX) {
-			printk(KERN_INFO
+			printk(KERN_ERR
 			       "krpcrouterd: msg size %d > max %d\n",
 			       hdr.ph.msg_size, RPCROUTER_MSGSIZE_MAX);
 			goto exit_flush_smd;
@@ -833,7 +833,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 				mdelay(10);
 				retry++;
 				if (retry == 5) {
-					printk(KERN_INFO
+					printk(KERN_ERR
 					       "krpcrouterd: Too many short "
 					       "reads on data\n");
 					goto exit_flush_smd;
@@ -843,7 +843,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 		pacmark = (struct pacmark_hdr *) xport->rx_buffer;
 
 		if (hdr.rh.version != RPCROUTER_VERSION) {
-			printk(KERN_INFO
+			printk(KERN_ERR
 			       "krpcrouterd: Bad ver in msg (%d != %d)\n",
 			       hdr.rh.version, RPCROUTER_VERSION);
 			goto exit_flush_smd;
@@ -863,7 +863,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 		if (hdr.ph.addr.cid == RPCROUTER_ROUTER_ADDRESS) {
 			rc = rpcrouter_process_routermsg(&hdr, xport);
 			if (rc < 0)
-				printk(KERN_INFO
+				printk(KERN_ERR
 				       "krpcrouterd: Failed to process R2R msg"
 				       "(%d)\n", rc);
 			continue;
@@ -874,13 +874,13 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 		 * Assumption here is that we only need to do local delivery
 		 */
 		if (hdr.ph.addr.pid != RPCROUTER_PID_LOCAL) {
-			printk(KERN_INFO
+			printk(KERN_WARNING
 			       "krpcrouterd: Reject non local R2R packet\n");
 			continue;
 		}
 		client = rpcrouter_lookup_local_client(hdr.ph.addr.cid);
 		if (!client) {
-			D("krpcrouterd: No local client match on address "
+			printk(KERN_ERR "krpcrouterd: No local client match on address "
 			  " [PID %x CID %x], dropping pkt\n",
 			  hdr.ph.addr.pid, hdr.ph.addr.cid);
 			continue;
@@ -896,7 +896,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 			rc = rpcrouter_create_remote_client(xport,
 						   hdr.rh.src_addr.cid);
 			if (rc < 0) {
-				printk(KERN_INFO
+				printk(KERN_ERR
 				       "krpcrouterd: Client create err (%d)\n",
 				       rc);
 				continue;
@@ -960,14 +960,15 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 				vers = be32_to_cpu(data[4]); /* vers */
 				server = rpcrouter_lookup_server(prog, vers);
 				if (server && server->client != client) { 
-					printk(KERN_INFO "rpcrouter: (CALL) client override %p --> %p for %08x:%d\n",
+					D("rpcrouter: (CALL) client override %p --> %p for %08x:%d\n",
 						client, server->client, prog, vers);
 					server->client->override = client;
 					client = server->client;
 				}
-				else { 
-					printk(KERN_INFO "rpcrouter: can't find server %08x:%d\n", prog, vers);
+				else if (!server) {
 #if RPCROUTER_BW_COMP 
+					printk(KERN_ERR "rpcrouter: can't find server %08x:%d, "
+						"will deliver when server registers\n", prog, vers);
 					read_queue->prog = prog;
 					read_queue->vers = vers;
 					spin_lock_irqsave(&unregistered_server_calls_list_lock, flags);
@@ -975,6 +976,8 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 					spin_unlock_irqrestore(&unregistered_server_calls_list_lock, flags);
 
 					return; /* do not add this to the wrong client's read queue! */
+#else
+					printk(KERN_ERR "rpcrouter: can't find server %08x:%d, call may be routed incorrectly\n", prog, vers);
 #endif
 				}
 			}
@@ -997,7 +1000,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 	return;
 
 exit_flush_smd:
-	printk(KERN_INFO "krpcrouterd: Flushing transport\n");
+	D(KERN_INFO "krpcrouterd: Flushing transport\n");
 	len = smd_read_avail(xport->xport_specific.smd.smd_channel);
 	rc = smd_read(xport->xport_specific.smd.smd_channel, NULL, len);
 	if (rc < 0)
@@ -1287,7 +1290,7 @@ static ssize_t rpcrouter_read(struct file *filp, char __user *buf,
 		if (type == 1 && client->override) {	
 			struct rpcrouter_client *override = client->override;
 			client->override = NULL;
-			printk(KERN_INFO "rpcrouter: (REPLY) client override %p --> %p\n",
+			D("rpcrouter: (REPLY) client override %p --> %p\n",
 				client, override);
 			client = override;
 		}
@@ -1759,7 +1762,7 @@ struct rpcrouter_server *rpcrouter_kernapi_register_server(struct rpcrouter_clie
 				list_del(&read_queue->list);
 				spin_unlock_irqrestore(&unregistered_server_calls_list_lock, flags);
 
-				printk(KERN_INFO "rpcrouter: delivering saved RPC call for server %08x:%d\n", 
+				D("rpcrouter: delivering saved RPC call for server %08x:%d\n", 
 					read_queue->prog, read_queue->vers);
 
 				/* Keep track of the source of this msg. */
