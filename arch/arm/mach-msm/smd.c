@@ -24,6 +24,7 @@
 #include <linux/irq.h>
 #include <linux/list.h>
 #include <linux/slab.h>
+#include <linux/debugfs.h>
 #include <asm/arch/msm_smd.h>
 #include <asm/arch/msm_iomap.h>
 #include <asm/io.h>
@@ -148,37 +149,9 @@ static char *chstate(unsigned n)
 	case SMD_SS_FLUSHING:      return "FLUSHING";
 	case SMD_SS_CLOSING:       return "CLOSING";
 	case SMD_SS_RESET:         return "RESET";
-	case SMD_SS_RESET_OPENING: return "RESET_OPENING";
+	case SMD_SS_RESET_OPENING: return "ROPENING";
 	default:                   return "UNKNOWN";
 	}
-}
-
-void dumpch(struct smd_channel *ch)
-{
-	volatile struct smd_half_channel *s, *r;
-
-	s = ch->send;
-	r = ch->recv;
-	printk(KERN_INFO "ch%02d: %s(%d/%d) %c%c%c%c%c%c%c <->"
-	       " %s(%d/%d) %c%c%c%c%c%c%c (%p,%p)\n", ch->n,
-	       chstate(s->state), s->tail, s->head,
-	       s->fDSR ? 'D' : 'd',
-	       s->fCTS ? 'C' : 'c',
-	       s->fCD ? 'C' : 'c',
-	       s->fRI ? 'I' : 'i',
-	       s->fHEAD ? 'W' : 'w',
-	       s->fTAIL ? 'R' : 'r',
-	       s->fSTATE ? 'S' : 's',
-	       chstate(r->state), r->tail, r->head,
-	       r->fDSR ? 'D' : 'd',
-	       r->fCTS ? 'R' : 'r',
-	       r->fCD ? 'C' : 'c',
-	       r->fRI ? 'I' : 'i',
-	       r->fHEAD ? 'W' : 'w',
-	       r->fTAIL ? 'R' : 'r',
-	       r->fSTATE ? 'S' : 's',
-	       s, r
-		);
 }
 
 /* how many bytes are available for reading */
@@ -663,24 +636,6 @@ void *smem_find(unsigned id, unsigned size)
 	return 0;
 }
 
-void smd_alloc_dump(void)
-{
-	unsigned n;
-	struct smem_shared *shared = (void *) MSM_SHARED_RAM_BASE;
-	struct smem_heap_entry *toc = shared->heap_toc;
-
-	printk(KERN_INFO "smd: heap init=%d free=%d remain=%d\n",
-	       shared->heap_info.initialized,
-	       shared->heap_info.free_offset,
-	       shared->heap_info.heap_remaining);
-
-	for (n = 0; n < 128; n++) {
-		if (toc[n].allocated)
-			printk(KERN_INFO "%03d: offset %08x size %08x\n",
-			       n, toc[n].offset, toc[n].size);
-	}
-}
-
 static irqreturn_t smsm_irq_handler(int irq, void *data)
 {
 	unsigned long flags;
@@ -745,70 +700,144 @@ int smd_core_init(void)
 	return 0;
 }
 
-ssize_t msm_smd_show_status(struct device *dev, struct device_attribute *attr, char *buf)
+#if defined(CONFIG_DEBUG_FS)
+
+static int dump_ch(char *buf, int max, int n,
+		  struct smd_half_channel *s,
+		  struct smd_half_channel *r)
 {
-	struct smd_half_channel *s, *r;
-	struct smd_shared *shared;
+	return scnprintf(
+		buf, max,
+		"ch%02d:"
+		" %8s(%04d/%04d) %c%c%c%c%c%c%c <->"
+		" %8s(%04d/%04d) %c%c%c%c%c%c%c\n", n,
+		chstate(s->state), s->tail, s->head,
+		s->fDSR ? 'D' : 'd',
+		s->fCTS ? 'C' : 'c',
+		s->fCD ? 'C' : 'c',
+		s->fRI ? 'I' : 'i',
+		s->fHEAD ? 'W' : 'w',
+		s->fTAIL ? 'R' : 'r',
+		s->fSTATE ? 'S' : 's',
+		chstate(r->state), r->tail, r->head,
+		r->fDSR ? 'D' : 'd',
+		r->fCTS ? 'R' : 'r',
+		r->fCD ? 'C' : 'c',
+		r->fRI ? 'I' : 'i',
+		r->fHEAD ? 'W' : 'w',
+		r->fTAIL ? 'R' : 'r',
+		r->fSTATE ? 'S' : 's'
+		);
+}
+
+static int debug_read_stat(char *buf, int max)
+{
 	struct smsm_shared *smsm;
-	unsigned n;
+	char *msg;
 	int i = 0;
 
 	smsm = smem_find(ID_SHARED_STATE,
 			 2 * sizeof(struct smsm_shared));
 
-	if (smsm == 0) {
-		i += scnprintf(buf + i, PAGE_SIZE-i,
-			       "SMSM: BASEBAND NOT INITIALIZED?\n\n");
-	} else if (smsm[1].state & SMSM_RESET) {
-		char *x;
-		x = smem_find(ID_DIAG_ERR_MSG, SZ_DIAG_ERR_MSG);
-		if (x != 0) {
-			x[SZ_DIAG_ERR_MSG - 1] = 0;
-		} else {
-			x = "UNKNOWN";
-		}
-		i += scnprintf(buf + i, PAGE_SIZE-i,
-			       "SMSM: BASEBAND CRASHED: '%s'\n\n", x);
-	} else {
-		i += scnprintf(buf + i, PAGE_SIZE-i,
-			       "SMSM: BASEBAND OKAY\n");
-		i += scnprintf(buf+i, PAGE_SIZE-i,
-			       "SMSM: A11.state=%08x A9.state=%08x\n\n",
+	msg = smem_find(ID_DIAG_ERR_MSG, SZ_DIAG_ERR_MSG);
+
+	if (smsm) {
+		if (smsm[1].state & SMSM_RESET)
+			i += scnprintf(buf + i, max - i, "smsm: ARM9 HAS CRASHED\n");
+		i += scnprintf(buf + i, max - i, "smsm: a9: %08x a11: %08x\n",
 			       smsm[0].state, smsm[1].state);
+	} else {
+		i += scnprintf(buf + i, max - i, "smsm: cannot find\n");
 	}
-
-
-	for (n = 0; n < SMD_CHANNELS; n++) {
-		shared = smem_find(ID_SMD_CHANNELS + n, sizeof(struct smd_shared));
-		if (shared == 0) continue;
-		s = &shared->ch0;
-		r = &shared->ch1;
-		i += scnprintf(buf+i, PAGE_SIZE-i,
-			       "ch%02d: %s(%d/%d) %c%c%c%c%c%c%c <-> %s(%d/%d) %c%c%c%c%c%c%c (%p,%p)\n", n,
-			       chstate(s->state), s->tail, s->head,
-			       s->fDSR ? 'D' : 'd',
-			       s->fCTS ? 'C' : 'c',
-			       s->fCD ? 'C' : 'c',
-			       s->fRI ? 'I' : 'i',
-			       s->fHEAD ? 'W' : 'w',
-			       s->fTAIL ? 'R' : 'r',
-			       s->fSTATE ? 'S' : 's',
-			       chstate(r->state), r->tail, r->head,
-			       r->fDSR ? 'D' : 'd',
-			       r->fCTS ? 'R' : 'r',
-			       r->fCD ? 'C' : 'c',
-			       r->fRI ? 'I' : 'i',
-			       r->fHEAD ? 'W' : 'w',
-			       r->fTAIL ? 'R' : 'r',
-			       r->fSTATE ? 'S' : 's',
-			       s, r
-			);
+	if (msg) {
+		msg[SZ_DIAG_ERR_MSG - 1] = 0;
+		i += scnprintf(buf + i, max - i, "diag: '%s'\n", msg);
 	}
 	return i;
 }
 
+static int debug_read_mem(char *buf, int max)
+{
+	unsigned n;
+	struct smem_shared *shared = (void *) MSM_SHARED_RAM_BASE;
+	struct smem_heap_entry *toc = shared->heap_toc;
+	int i = 0;
 
-DEVICE_ATTR(status, 0600, msm_smd_show_status, 0);
+	i += scnprintf(buf + i, max - i,
+		       "heap: init=%d free=%d remain=%d\n",
+		       shared->heap_info.initialized,
+		       shared->heap_info.free_offset,
+		       shared->heap_info.heap_remaining);
+
+	for (n = 0; n < 128; n++) {
+		if (toc[n].allocated == 0)
+			continue;
+		i += scnprintf(buf + i, max - i,
+			       "%04d: offsed %08x size %08x\n",
+			       n, toc[n].offset, toc[n].size);
+	}
+	return i;
+}
+
+static int debug_read_ch(char *buf, int max)
+{
+	struct smd_shared *shared;
+	int n, i = 0;
+
+	for (n = 0; n < SMD_CHANNELS; n++) {
+		shared = smem_find(ID_SMD_CHANNELS + n, sizeof(struct smd_shared));
+		if (shared == 0)
+			continue;
+		i += dump_ch(buf + i, max - i, n, &shared->ch0, &shared->ch1);
+	}
+
+	return i;
+}
+
+#define DEBUG_BUFMAX 4096
+static char debug_buffer[DEBUG_BUFMAX];
+
+static ssize_t debug_read(struct file *file, char __user *buf,
+			  size_t count, loff_t *ppos)
+{
+	int (*fill)(char *buf, int max) = file->private_data;
+	int bsize = fill(debug_buffer, DEBUG_BUFMAX);
+	return simple_read_from_buffer(buf, count, ppos, debug_buffer, bsize);
+}
+
+static int debug_open(struct inode *inode, struct file *file)
+{
+	file->private_data = inode->i_private;
+	return 0;
+}
+
+static const struct file_operations debug_ops = {
+	.read = debug_read,
+	.open = debug_open,
+};
+
+static void debug_create(const char *name, mode_t mode,
+			 struct dentry *dent,
+			 int (*fill)(char *buf, int max))
+{
+	debugfs_create_file(name, mode, dent, fill, &debug_ops);
+}
+
+static void smd_debugfs_init(void)
+{
+	struct dentry *dent;
+
+	dent = debugfs_create_dir("smd", 0);
+	if (IS_ERR(dent))
+		return;
+
+	debug_create("ch", 0444, dent, debug_read_ch);
+	debug_create("stat", 0444, dent, debug_read_stat);
+	debug_create("mem", 0444, dent, debug_read_mem);
+}
+#else
+static void smd_debugfs_init(void) {}
+#endif
 
 static int __init msm_smd_probe(struct platform_device *pdev)
 {
@@ -819,9 +848,7 @@ static int __init msm_smd_probe(struct platform_device *pdev)
 		return -1;
 	}
 
-	if (device_create_file(&pdev->dev, &dev_attr_status))
-		printk(KERN_ERR "smd_probe: could not create status file\n");
-
+	smd_debugfs_init();
 	smd_initialized = 1;
 	return 0;
 }
