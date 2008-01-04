@@ -74,9 +74,24 @@ static struct platform_device msm_mddi0_device = {
 	},
 };
 
+static struct resource msm_serial0_resources[] = {
+	{
+		.start	= INT_UART1,
+		.end	= INT_UART1,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.start	= MSM_UART1_PHYS,
+		.end	= MSM_UART1_PHYS + MSM_UART1_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
 static struct platform_device msm_serial0_device = {
 	.name	= "msm_serial",
 	.id	= 0,
+	.num_resources	= ARRAY_SIZE(msm_serial0_resources),
+	.resource	= msm_serial0_resources,
 };
 
 static struct platform_device *devices[] __initdata = {
