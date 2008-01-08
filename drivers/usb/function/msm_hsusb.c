@@ -66,6 +66,7 @@ struct msm_request
 	struct msm_request *next;
 
 	unsigned busy:1;
+	unsigned live:1;
 
 	dma_addr_t dma;
 	unsigned dma_size;
@@ -382,6 +383,27 @@ static void usb_ept_enable(struct usb_endpoint *ept, int yes)
 #endif
 }
 
+static void usb_ept_start(struct usb_endpoint *ept)
+{
+	struct usb_info *ui = ept->ui;
+	struct msm_request *req = ept->req;
+
+	BUG_ON(req->live);
+
+	/* link the hw queue head to the request's transaction item */
+	ept->head->next = req->item_dma;
+	ept->head->info = 0;
+
+	/* start the endpoint */
+	writel(1 << ept->bit, USB_ENDPTPRIME);
+
+	/* mark this chain of requests as live */
+	while (req) {
+		req->live = 1;
+		req = req->next;
+	}
+}
+
 int usb_ept_queue_xfer(struct usb_endpoint *ept, struct usb_request *_req)
 {
 	unsigned long flags;
@@ -389,8 +411,6 @@ int usb_ept_queue_xfer(struct usb_endpoint *ept, struct usb_request *_req)
 	struct msm_request *last;
 	struct usb_info *ui = ept->ui;
 	struct ept_queue_item *item = req->item;
-	unsigned bit = 1 << ept->bit;
-	unsigned tmp;
 
 	spin_lock_irqsave(&ui->lock, flags);
 
@@ -410,81 +430,36 @@ int usb_ept_queue_xfer(struct usb_endpoint *ept, struct usb_request *_req)
 	}
 
 	req->busy = 1;
+	req->live = 0;
 	req->next = 0;
 	req->req.status = -EBUSY;
 
-	/* add us to the end of the list and make note of the 'old'
-	** last item on the list if there was one
-	*/
-	last = ept->last;
-	if (last) {
-		last->next = req;
-	} else {
-		ept->req = req;
-	}
-	ept->last = req;
-
+	/* prepare the transaction descriptor item for the hardware */
 	item->next = TERMINATE;
 	item->info = INFO_BYTES(req->req.length) | INFO_IOC | INFO_ACTIVE;
 	item->page0 = req->dma;
 
-	/* NOTE: try logging how we queue'd to see what the history
-	** of the workaround case is (was PRIME or STAT set?)
-	*/
+ 	/* Add the new request to the end of the queue */
+	last = ept->last;
 	if (last) {
-		/* we are appending to the end -- link us in */
-		last->item->next = req->item_dma;
+		/* Already requests in the queue. add us to the
+		 * end, but let the completion interrupt actually
+		 * start things going, to avoid hw issues
+		 */
+		last->next = req;
 
-		/* if we're still primed at this point, we're good to go */
-		if (readl(USB_ENDPTPRIME) & bit) goto done;
-
-		/* Otherwise we need to see if a transaction is in-flight.
-		** In that case we'll reprime at the end and everything
-		** is still fine.
-		**
-		** The status bit can momentarily clear.  The tripwire bit
-		** in the command register is used to detect this condition
-		** and work around it by re-sampling the status bit:
-		*/
-		do {
-			writel(readl(USB_USBCMD) | USBCMD_ATDTW, USB_USBCMD);
-			tmp = readl(USB_ENDPTSTAT);
-		} while ((readl(USB_USBCMD) & USBCMD_ATDTW) == 0);
-		writel(readl(USB_USBCMD) & (~USBCMD_ATDTW), USB_USBCMD);
-
-		/* if the status bit is set (transfer was active) we're good */
-		if (tmp & bit) goto done;
-
-		/* otherwise we missed the window and now queue as if we were
-		** a new request... fall through
-		*/
-		{
-			/* there seems to be a problem where we get here, thinking
-			** we need to move the queue head, but there is already an
-			** INFO_ACTIVE request in the hardware queue that has not
-			** completed.  In this case we just reprime *that* request
-			** instead of skipping it
-			*/
-			struct msm_request *req2;
-			for (req2 = ept->req; req2 != req; req2 = req2->next) {
-				if (req2->item->info & INFO_ACTIVE) {
-					req = req2;
-#if 0
-					printk(KERN_ERR "msm_hsusb: repriming earlier request?!\n");
-#endif
-					break;
-				}
-			}
-		}
+		/* only modify the hw transaction next pointer if
+		 * that request is not live
+		 */
+		if (!last->live)
+			last->item->next = req->item_dma;
+	} else {
+		/* queue was empty -- kick the hardware */
+		ept->req = req;
+		usb_ept_start(ept);
 	}
+	ept->last = req;
 
-	/* queue was empty -- start us up */
-	ept->head->next = req->item_dma;
-	ept->head->info = 0;
-	writel(bit, USB_ENDPTPRIME);
-	/* QCT: write, wait for 0, ... */
-
-done:
 	spin_unlock_irqrestore(&ui->lock, flags);
 	return 0;
 }
@@ -695,6 +670,15 @@ static void handle_endpoint(struct usb_info *ui, unsigned bit)
 	while ((req = ept->req)) {
 		info = req->item->info;
 
+		/* if we've processed all live requests, time to
+		 * restart the hardware on the next non-live request
+		 */
+		if (!req->live) {
+			usb_ept_start(ept);
+			break;
+		}
+
+		/* if the transaction is still in-flight, stop here */
 		if (info & INFO_ACTIVE)
 			break;
 
@@ -716,6 +700,7 @@ static void handle_endpoint(struct usb_info *ui, unsigned bit)
 			req->req.actual = req->req.length - ((info >> 16) & 0x7FFF);
 		}
 		req->busy = 0;
+		req->live = 0;
 
 		if (req->req.complete) {
 			spin_unlock_irqrestore(&ui->lock, flags);
@@ -765,6 +750,7 @@ static void flush_endpoint_sw(struct usb_endpoint *ept)
 		next = req->next;
 
 		req->busy = 0;
+		req->live = 0;
 		req->req.status = -ENODEV;
 		req->req.actual = 0;
 		if (req->req.complete) {
@@ -934,6 +920,9 @@ static void usb_reset(struct usb_info *ui, struct list_head *flist)
 	writel(2, USB_USBCMD);
 	msleep(10);
 
+	/* INCR4 BURST mode */
+	writel(0x01, USB_SBUSCFG);
+
 	/* select DEVICE mode */
 	writel(0x12, USB_USBMODE);
 	msleep(1);
@@ -1060,9 +1049,12 @@ static ssize_t debug_read_status(struct file *file, char __user *ubuf,
 
 		for (req = ept->req; req; req = req->next)
 			i += scnprintf(buf + i, PAGE_SIZE - i,
-				       "  req @%08x next=%08x info=%08x page0=%08x\n",
+				       "  req @%08x next=%08x info=%08x page0=%08x %c %c\n",
 				       req->item_dma, req->item->next,
-				       req->item->info, req->item->page0);
+				       req->item->info, req->item->page0,
+				       req->busy ? 'B' : ' ',
+				       req->live ? 'L' : ' '
+				);
 	}
 
 	i += scnprintf(buf + i, PAGE_SIZE - i,
