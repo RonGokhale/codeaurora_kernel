@@ -56,7 +56,9 @@ struct pacmark_hdr
 			uint32_t last_pkt : 1;
 		} cooked;
 	} data;
+#if defined(CONFIG_MSM7X00A_6046_COMPAT)
 	uint32_t padding;
+#endif
 };
 
 

@@ -40,6 +40,31 @@ struct smem_proc_comm
 	unsigned data2;
 };
 
+#define PC_APPS  0
+#define PC_MODEM 1
+
+#define PC_INVALID_CMD             0
+#define PC_RESET_APPS              1
+#define PC_RESET_CHIP              2
+#define PC_CONFIG_NAND_MPU         3
+#define PC_CONFIG_USB_CLKS         4
+#define PC_GET_POWER_ON_STATUS     5
+#define PC_GET_WAKE_UP_STATUS      6
+#define PC_GET_BATT_LEVEL          7
+#define PC_CHG_IS_CHARGING         8
+#define PC_POWER_DOWN              9
+#define PC_USB_PIN_CONFIG         10
+#define PC_USB_PIN_SEL            11
+#define PC_SET_RTC_ALARM          12
+#define PC_NV_READ                13
+#define PC_NV_WRITE               14
+
+#define PC_INVALID_STATUS          0
+#define PC_READY                   1
+
+#define PC_FLAG_DONE              0x80000000
+#define PC_FLAG_ERROR             0x40000000
+
 struct smem_shared
 {
 	struct smem_proc_comm proc_comm[4];
@@ -86,6 +111,9 @@ typedef enum
 	SMEM_AARM_BAD_BLOCK_TABLE,
 	SMEM_RESERVE_BAD_BLOCKS,
 	SMEM_WM_UUID,
+#if !defined(CONFIG_MSM7X00A_6046_COMPAT)
+	SMEM_CHANNEL_ALLOC_TBL,
+#endif
 	SMEM_SMD_BASE_ID,
 	SMEM_SMEM_LOG_IDX = SMEM_SMD_BASE_ID + SMEM_NUM_SMD_CHANNELS,
 	SMEM_SMEM_LOG_EVENTS,
@@ -111,7 +139,13 @@ typedef enum
 	SMEM_AARM_BOOT_SEGMENT_INFO,
 	SMEM_SLEEP_STATIC,
 	SMEM_SCORPION_FREQUENCY,
+#if !defined(CONFIG_MSM7X00A_6046_COMPAT)
+	SMEM_SMD_PROFILES,
+#endif
 	SMEM_TSSC_BUSY,
+#if !defined(CONFIG_MSM7X00A_6046_COMPAT)
+	SMEM_HS_SUSPEND_FILTER_INFO,
+#endif
 } smem_mem_type;
 
 #endif

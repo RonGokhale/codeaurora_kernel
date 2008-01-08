@@ -38,6 +38,11 @@ config MSM7X00A_IDLE
 	default y
 	bool "Idle Support for MSM7X00A"
 
+config MSM7X00A_6046_COMPAT
+	depends on ARCH_MSM7X00A
+	default n
+	bool "Compatibility with (obsolete) AMSS 6046"
+
 config MSM_SMD
 	tristate "MSM SMD Drivers"
 	depends on ARCH_MSM7X00A
