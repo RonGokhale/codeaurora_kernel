@@ -26,6 +26,7 @@ struct rpcrouter_client;
 
 typedef struct rpcrouter_client rpcrouterclient_t;
 
+#define RPC_DATA_IN	0
 /*
  * Structures for sending / receiving direct RPC requests
  * XXX: Any cred/verif lengths > 0 not supported
@@ -124,4 +125,7 @@ extern struct rpcrouter_server *rpcrouter_kernapi_register_server(struct rpcrout
 		struct rpcrouter_ioctl_server_args *server_args);
 extern int rpcrouter_kernapi_unregister_server(struct rpcrouter_client *client,
 		struct rpcrouter_ioctl_server_args *server_args);
+
+extern int rpcrouter_kernapi_register_notify(struct rpcrouter_client **client, 
+					int (*func)(int));
 #endif

@@ -38,6 +38,7 @@
 #define MSM_RPCROUTER_DEBUG 0
 #define MSM_RPCROUTER_DEBUG_PKT 0
 #define MSM_RPCROUTER_R2R_DEBUG 1
+#define DUMP_ALL_RECEIVED_HEADERS 0
 
 #if MSM_RPCROUTER_DEBUG
 #define D(x...) printk(x)
@@ -67,7 +68,7 @@ static struct device *rpcrouter_device;
 static LIST_HEAD(client_list);
 static LIST_HEAD(xport_list);
 static LIST_HEAD(server_list);
-#if RPCROUTER_BW_COMP 
+#if RPCROUTER_BW_COMP
 #define ONCRPC_BW_COMP_LOCAL_PROG 0x3000FFFE
 #define ONCRPC_BW_COMP_LOCAL_VERS 1
 static LIST_HEAD(unregistered_server_calls_list);
@@ -122,7 +123,7 @@ static void dump_rpc_req_pkt(struct rpc_request_hdr *rq, int arglen)
 
 	printk(KERN_INFO "CALL\n");
 	printk(KERN_INFO "  Xid: %x Type: %d Ver: %d Prg: 0x%x Ver: %d Prc: %d Cred: {%d:%d:%d:%d}\n",
-		be32_to_cpu(rq->xid), be32_to_cpu(rq->type), 
+		be32_to_cpu(rq->xid), be32_to_cpu(rq->type),
 		be32_to_cpu(rq->rpc_vers), be32_to_cpu(rq->prog),
 		be32_to_cpu(rq->vers), be32_to_cpu(rq->procedure),
 		be32_to_cpu(rq->cred_flavor),
@@ -156,13 +157,13 @@ static void dump_rpc_rsp_pkt(struct rpc_reply_hdr *rs, int arglen)
 
 	printk(KERN_INFO "REPLY\n");
 	printk(KERN_INFO "  Xid: %x Type: %d ReplyStat: %d",
-		be32_to_cpu(rs->xid), be32_to_cpu(rs->type), 
+		be32_to_cpu(rs->xid), be32_to_cpu(rs->type),
 		be32_to_cpu(rs->reply_stat));
 
 	if (be32_to_cpu(rs->reply_stat) == RPCMSG_REPLYSTAT_ACCEPTED) {
 		uint32_t acc_stat = be32_to_cpu(rs->data.acc_hdr.accept_stat);
 
-		printk(" (accepted) Cred: {%d:%d} AcceptStat: %d", 
+		printk(" (accepted) Cred: {%d:%d} AcceptStat: %d",
 			be32_to_cpu(rs->data.acc_hdr.verf_flavor),
 			be32_to_cpu(rs->data.acc_hdr.verf_length),
 			be32_to_cpu(rs->data.acc_hdr.accept_stat));
@@ -195,15 +196,15 @@ static void dump_rpc_rsp_pkt(struct rpc_reply_hdr *rs, int arglen)
 	printk("\n");
 }
 
-static void dump_rpc_pkt(void *buf, int arglen) {
+static void dump_rpc_pkt(void *buf, int arglen)
+{
 	uint32_t *data = (uint32_t *)buf;
 	if (arglen >= 8) {
 		if (0 == data[1])
 			dump_rpc_req_pkt(buf, arglen);
 		else
 			dump_rpc_rsp_pkt(buf, arglen);
-	}
-	else
+	} else
 		printk(KERN_INFO "  length %d is less than 8 bytes.\n", arglen);
 }
 
@@ -258,7 +259,7 @@ static int rpcrouter_send_control_msg(struct rpcrouter_xport *xport,
 		       sizeof(struct rpcrouter_complete_header));
 	if (rc < 0) {
 		spin_unlock_irqrestore(&xport->xport_specific.smd.smd_lock,
-		                       flags);
+				       flags);
 		return rc;
 	}
 
@@ -436,10 +437,10 @@ static struct rpcrouter_client *rpcrouter_create_local_client(dev_t dev)
 	if ((dev != rpcrouter_devno) && (dev != MKDEV(0, 0))) {
 		struct rpcrouter_server *srv;
 		/*
- 		 * This is a userspace client which opened
- 		 * a program/ver devicenode. Bind the client
- 		 * to that destination
- 		 */
+		 * This is a userspace client which opened
+		 * a program/ver devicenode. Bind the client
+		 * to that destination
+		 */
 		srv = rpcrouter_lookup_server_by_dev(dev);
 		BUG_ON(!srv);
 
@@ -544,7 +545,7 @@ static struct rpcrouter_address_list *rpcrouter_lookup_remote_client(
 }
 
 static struct rpcrouter_xport *rpcrouter_locate_route_to_client(
-							rpcrouter_address *addr)
+                                                   rpcrouter_address * addr)
 {
 	struct rpcrouter_xport *c_xport;
 	struct rpcrouter_address_list *c_element;
@@ -804,6 +805,20 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 				}
 			}
 		}
+#if DUMP_ALL_RECEIVED_HEADERS
+		{
+			uint32_t *p = (uint32_t *) &hdr;
+			int k;
+
+			printk("RAW HDR:\n");
+			for (k = 0; k <= (sizeof(struct rpcrouter_complete_header)/4); k++) {
+				if ((!k % 4))
+					printk("\n");
+				printk("0x%.8x ", *p++);
+			}
+			printk("\n");
+		}
+#endif
 
 #if 0
 		D("krpcrouterd: [PID %x CID %x] --> "
@@ -859,6 +874,11 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 		D("krpcrouterd: [PID %x CID %x] <- [PID %x CID %x] (size %d)\n",
 		  hdr.ph.addr.pid, hdr.ph.addr.cid,
 		  hdr.rh.src_addr.pid, hdr.rh.src_addr.cid, hdr.ph.msg_size);
+#if defined(CONFIG_MSM7X00A_6059_COMPAT)
+		if (hdr.ph.confirm_rx)
+			printk(KERN_WARNING "krpcrouterd: confirm_rx = %d!\n",
+			       hdr.ph.confirm_rx);
+#endif
 
 		if (hdr.ph.addr.cid == RPCROUTER_ROUTER_ADDRESS) {
 			rc = rpcrouter_process_routermsg(&hdr, xport);
@@ -917,10 +937,10 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 		read_queue->src_addr.pid = hdr.rh.src_addr.pid;
 		read_queue->src_addr.cid = hdr.rh.src_addr.cid;
 
-		memcpy( &read_queue->pacmark, pacmark,
+		memcpy(&read_queue->pacmark, pacmark,
 			sizeof(struct pacmark_hdr));
 
-		read_queue->data_size = 
+		read_queue->data_size =
 			hdr.ph.msg_size - sizeof(struct pacmark_hdr);
 
 		read_queue->data = kmalloc(read_queue->data_size, GFP_KERNEL);
@@ -930,7 +950,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 			return;
 		}
 
-		memcpy(	read_queue->data,
+		memcpy(read_queue->data,
 			&xport->rx_buffer[sizeof(struct pacmark_hdr)],
 			read_queue->data_size);
 
@@ -949,24 +969,23 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 		   is wrong, because the A9 RPC router has a bug.  We need to look up
 		   the client by the program number among registered servers.
 		*/
-		{	
+		{
 			uint32_t *data = (uint32_t *)read_queue->data;
-		        if (data[1] == 0) { /* RPC call? */
+			if (data[1] == 0) { /* RPC call? */
 				uint32_t prog;
 				uint32_t vers;
-				struct rpcrouter_server *server; 
+				struct rpcrouter_server *server;
 
 				prog = be32_to_cpu(data[3]); /* prog */
 				vers = be32_to_cpu(data[4]); /* vers */
 				server = rpcrouter_lookup_server(prog, vers);
-				if (server && server->client != client) { 
+				if (server && server->client != client) {
 					D("rpcrouter: (CALL) client override %p --> %p for %08x:%d\n",
 						client, server->client, prog, vers);
 					server->client->override = client;
 					client = server->client;
-				}
-				else if (!server) {
-#if RPCROUTER_BW_COMP 
+				} else if (!server) {
+#if RPCROUTER_BW_COMP
 					printk(KERN_ERR "rpcrouter: can't find server %08x:%d, "
 						"will deliver when server registers\n", prog, vers);
 					read_queue->prog = prog;
@@ -994,6 +1013,12 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 		spin_lock_irqsave(&client->read_q_lock, flags);
 		list_add_tail(&read_queue->list, &client->read_q);
 		spin_unlock_irqrestore(&client->read_q_lock, flags);
+
+		if (client->notify) {
+			D("rpc router notifying client...\n");
+			client->notify(RPC_DATA_IN);
+		}
+
 		wake_up_interruptible(&client->wait_q);
 	}
 
@@ -1284,10 +1309,10 @@ static ssize_t rpcrouter_read(struct file *filp, char __user *buf,
 
 #if RPCROUTER_CB_WORKAROUND
 	{
-		/* If this is a REPLY packet in response to a CALL that was overridden, 
+		/* If this is a REPLY packet in response to a CALL that was overridden
 		   then we will route the reply to the original sender. */
 		uint32_t type = be32_to_cpu(((uint32_t *)buffer)[1]);
-		if (type == 1 && client->override) {	
+		if (type == 1 && client->override) {
 			struct rpcrouter_client *override = client->override;
 			client->override = NULL;
 			D("rpcrouter: (REPLY) client override %p --> %p\n",
@@ -1300,7 +1325,7 @@ static ssize_t rpcrouter_read(struct file *filp, char __user *buf,
 	if (copy_to_user(buf, buffer, count)) {
 		printk(KERN_ERR "rpcrouter: could not copy all read data to user!\n");
 		rc = -EFAULT;
-	} 
+	}
 
 	kfree(buffer);
 	return rc;
@@ -1394,19 +1419,22 @@ write_out_free:
 	return rc;
 }
 
-static unsigned int rpcrouter_poll(struct file *filp, struct poll_table_struct *wait) {
+static unsigned int rpcrouter_poll(struct file *filp, struct poll_table_struct *wait)
+{
 	struct rpcrouter_client *client;
 	unsigned mask = 0;
 	client = (struct rpcrouter_client *) filp->private_data;
 
-	/* If there's data already in the read queue, return POLLIN.  Else, wait for the 
-	   requested amount of time, and check again. */ 
-	if (!list_empty(&client->read_q)) mask |= POLLIN; 
+	/* If there's data already in the read queue, return POLLIN.  Else, wait for the
+	   requested amount of time, and check again. */
+	if (!list_empty(&client->read_q))
+		mask |= POLLIN;
 
 	if (!mask) {
 		poll_wait(filp, &client->wait_q, wait);
-		if (!list_empty(&client->read_q)) mask |= POLLIN; 
-	}	
+		if (!list_empty(&client->read_q))
+			mask |= POLLIN;
+	}
 
 	return mask;
 }
@@ -1535,7 +1563,7 @@ void rpcrouter_kernapi_setup_request(struct rpc_request_hdr *hdr, uint32_t prog,
 	hdr->procedure = cpu_to_be32(proc);
 }
 
-int rpcrouter_kernapi_openxport(rpcrouter_xport_address *addr)
+int rpcrouter_kernapi_openxport(rpcrouter_xport_address * addr)
 {
 	if (addr->xp == RPCROUTER_XPORT_NONE)
 		return 0;
@@ -1622,7 +1650,7 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 		       &hdr, sizeof(struct rpcrouter_complete_header));
 	if (rc < 0) {
 		spin_unlock_irqrestore(&xport->xport_specific.smd.smd_lock,
-		                       flags);
+				       flags);
 		return rc;
 	}
 
@@ -1639,7 +1667,7 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 			sizeof(struct pacmark_hdr));
 	if (rc < 0) {
 		spin_unlock_irqrestore(&xport->xport_specific.smd.smd_lock,
-		                       flags);
+				       flags);
 		return rc;
 	}
 
@@ -1665,25 +1693,46 @@ int rpcrouter_kernapi_read(rpcrouterclient_t *client,
 	unsigned long flags;
 	int rc = -1;
 
-	for (;;) {
-		prepare_to_wait(&client->wait_q, &__wait, TASK_INTERRUPTIBLE);
-		spin_lock_irqsave(&client->read_q_lock, flags);
-		if (!list_empty(&client->read_q))
+	if (timeout == -1) {
+		for (;;) {
+			prepare_to_wait(&client->wait_q, &__wait, TASK_INTERRUPTIBLE);
+			spin_lock_irqsave(&client->read_q_lock, flags);
+			if (!list_empty(&client->read_q))
+				break;
+			spin_unlock_irqrestore(&client->read_q_lock, flags);
+			if (!signal_pending(current)) {
+				schedule();
+				continue;
+			}
 			break;
-		spin_unlock_irqrestore(&client->read_q_lock, flags);
-		if (!signal_pending(current)) {
-			schedule();
-			continue;
 		}
-		break;
+		finish_wait(&client->wait_q, &__wait);
+	} else {
+		for (;;) {
+			prepare_to_wait(&client->wait_q, &__wait, TASK_INTERRUPTIBLE);
+			spin_lock_irqsave(&client->read_q_lock, flags);
+			if (!list_empty(&client->read_q))
+				break;
+			spin_unlock_irqrestore(&client->read_q_lock, flags);
+			if (!signal_pending(current)) {
+				rc = schedule_timeout(timeout);
+				if (!rc)
+					break;
+				continue;
+			}
+			break;
+		}
+		finish_wait(&client->wait_q, &__wait);
+		if (rc == 0)
+			return -ETIMEDOUT;
 	}
-	finish_wait(&client->wait_q, &__wait);
 
-	if (signal_pending(current)) 
+	if (signal_pending(current))
 		return -ERESTARTSYS;
 
 	read_q_entry = list_first_entry(&client->read_q,
 					struct rpcrouter_client_read_q, list);
+
 	BUG_ON(!read_q_entry);
 
 	rc = read_q_entry->data_size;
@@ -1693,6 +1742,7 @@ int rpcrouter_kernapi_read(rpcrouterclient_t *client,
 	}
 
 	list_del(&read_q_entry->list);
+
 	spin_unlock_irqrestore(&client->read_q_lock, flags);
 
 	*buffer = read_q_entry->data;
@@ -1728,7 +1778,7 @@ int rpcrouter_kernapi_getdest(rpcrouterclient_t *client,
 }
 
 struct rpcrouter_server *rpcrouter_kernapi_register_server(struct rpcrouter_client *client,
-		struct rpcrouter_ioctl_server_args *server_args) 
+		struct rpcrouter_ioctl_server_args *server_args)
 {
 	int rc;
 
@@ -1756,22 +1806,21 @@ struct rpcrouter_server *rpcrouter_kernapi_register_server(struct rpcrouter_clie
 
 		spin_lock_irqsave(&unregistered_server_calls_list_lock, flags);
 		list_for_each_entry(read_queue, &unregistered_server_calls_list, list) {
-			if (read_queue->prog == server_args->progver.prog && 
-			    read_queue->vers == server_args->progver.ver) 
-			{
+			if (read_queue->prog == server_args->progver.prog &&
+			    read_queue->vers == server_args->progver.ver) {
 				list_del(&read_queue->list);
 				spin_unlock_irqrestore(&unregistered_server_calls_list_lock, flags);
 
-				D("rpcrouter: delivering saved RPC call for server %08x:%d\n", 
+				D("rpcrouter: delivering saved RPC call for server %08x:%d\n",
 					read_queue->prog, read_queue->vers);
 
 				/* Keep track of the source of this msg. */
 				memcpy(&client->cb_addr, &read_queue->src_addr, sizeof(rpcrouter_address));
 
-		                spin_lock_irqsave(&client->read_q_lock, flags);
-		                list_add_tail(&read_queue->list, &client->read_q);
-		                spin_unlock_irqrestore(&client->read_q_lock, flags);
-		                wake_up_interruptible(&client->wait_q);
+				spin_lock_irqsave(&client->read_q_lock, flags);
+				list_add_tail(&read_queue->list, &client->read_q);
+				spin_unlock_irqrestore(&client->read_q_lock, flags);
+				wake_up_interruptible(&client->wait_q);
 
 				unlocked = 1;
 				break;
@@ -1800,15 +1849,22 @@ done:
 }
 
 int rpcrouter_kernapi_unregister_server(struct rpcrouter_client *client,
-		struct rpcrouter_ioctl_server_args *server_args) 
+		struct rpcrouter_ioctl_server_args *server_args)
 {
 	struct rpcrouter_server *server;
 	server = rpcrouter_lookup_server(server_args->progver.prog,
 					 server_args->progver.ver);
-						 
+
 	if (!server)
 		return -ENOENT;
 	rpcrouter_destroy_server(server);
+	return 0;
+}
+
+int rpcrouter_kernapi_register_notify(struct rpcrouter_client **client,
+					int (*func)(int))
+{
+	(*client)->notify = func;
 	return 0;
 }
 
@@ -1872,29 +1928,29 @@ static int __init rpcrouter_init(void)
 
 	wake_up_process(worker_thread.thread);
 
-#if RPCROUTER_BW_COMP 
+#if RPCROUTER_BW_COMP
 	{
 		rpcrouter_xport_address xport_addr;
-	        struct rpcrouter_ioctl_server_args server_args;
+		struct rpcrouter_ioctl_server_args server_args;
 
 		rc = rpcrouter_kernapi_openxport(&xport_addr);
 		if (rc < 0) {
 			printk(KERN_ERR
 			       "rpcrouter: Err opening xport\n");
 			goto fail_remove_cdev;
-		} 
+		}
 		rc = rpcrouter_kernapi_open(&bw_client);
 		if (rc < 0) {
 			printk(KERN_ERR
 			       "rpcrouter: Err creating client\n");
 			goto fail_closexport;
 		}
-	
+
 		server_args.progver.prog = ONCRPC_BW_COMP_LOCAL_PROG;
 		server_args.progver.ver  = ONCRPC_BW_COMP_LOCAL_VERS;
 		bw_server = rpcrouter_kernapi_register_server(bw_client, &server_args);
 		if (!bw_server) {
-			printk(KERN_ERR 
+			printk(KERN_ERR
 				"rpcrouter: Err registering BW server %08x:%d\n",
 				server_args.progver.prog, server_args.progver.ver);
 			rc = -ENOENT;
@@ -1906,9 +1962,9 @@ static int __init rpcrouter_init(void)
 	D("rpcrouter_init(): done\n");
 	return 0;
 
-#if RPCROUTER_BW_COMP 
+#if RPCROUTER_BW_COMP
 fail_close_bw_client:
-	rpcrouter_kernapi_close(bw_client);	
+	rpcrouter_kernapi_close(bw_client);
 fail_closexport:
 	/* nothing yet */
 #endif

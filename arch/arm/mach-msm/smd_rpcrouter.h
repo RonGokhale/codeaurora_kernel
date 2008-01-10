@@ -71,6 +71,9 @@ struct rpcrouter_header
 
 struct rpcrouter_packet_header
 {
+#if defined(CONFIG_MSM7X00A_6059_COMPAT)
+	uint32_t confirm_rx;
+#endif
 	uint32_t msg_size;
 	rpcrouter_address addr;
 };
@@ -137,6 +140,7 @@ struct rpcrouter_client
 #if RPCROUTER_CB_WORKAROUND
 	struct rpcrouter_client *override;
 #endif
+	int (*notify)(int);
 
 	dev_t dev; /* device node which was used by the client */
 	rpcrouter_address bound_dest; /* If we're bound to a destination */

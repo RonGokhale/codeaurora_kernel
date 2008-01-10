@@ -43,6 +43,11 @@ config MSM7X00A_6046_COMPAT
 	default n
 	bool "Compatibility with (obsolete) AMSS 6046"
 
+config MSM7X00A_6059_COMPAT
+	depends on ARCH_MSM7X00A
+	default n
+	bool "Compatibility with AMSS 6059"
+
 config MSM_SMD
 	tristate "MSM SMD Drivers"
 	depends on ARCH_MSM7X00A
