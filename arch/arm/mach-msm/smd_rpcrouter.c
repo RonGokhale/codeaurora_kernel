@@ -1933,6 +1933,8 @@ static int __init rpcrouter_init(void)
 		rpcrouter_xport_address xport_addr;
 		struct rpcrouter_ioctl_server_args server_args;
 
+        	xport_addr.xp = RPCROUTER_XPORT_SMD;
+	        xport_addr.port = 2;
 		rc = rpcrouter_kernapi_openxport(&xport_addr);
 		if (rc < 0) {
 			printk(KERN_ERR
