@@ -20,6 +20,8 @@
 
 #include <linux/types.h>
 #include <linux/msm_rpcrouter.h>
+#include <linux/list.h>
+#include <linux/cdev.h>
 #include <asm/arch/msm_smd.h>
 #include <asm/arch/msm_rpcrouter.h>
 
