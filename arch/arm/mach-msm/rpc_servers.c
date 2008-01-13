@@ -58,7 +58,7 @@ static int rpc_send_accepted_void_reply(rpcrouterclient_t *client, uint32_t xid,
 {
 	int rc = 0;
 	rpcrouter_address dest_addr;
-	uint8_t reply_buf[sizeof(struct rpc_reply_hdr) + sizeof(rpc_accepted_reply_hdr)];
+	uint8_t reply_buf[sizeof(struct rpc_reply_hdr)];
 	struct rpc_reply_hdr *reply = (struct rpc_reply_hdr *)reply_buf;
 
 	reply->xid = cpu_to_be32(xid);
@@ -158,6 +158,7 @@ static int rpc_servers_thread(void *data)
 		req = (struct rpc_request_hdr *)buffer;
 
 		req->type = be32_to_cpu(req->type);
+		req->xid = be32_to_cpu(req->xid);
 		req->rpc_vers = be32_to_cpu(req->rpc_vers);
 		req->prog = be32_to_cpu(req->prog);
 		req->vers = be32_to_cpu(req->vers);
