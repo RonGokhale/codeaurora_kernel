@@ -80,34 +80,10 @@ static struct platform_device msm_i2c_device = {
 	.resource	= msm_i2c_resources,
 };
 
-static struct resource usb_resources[] = {
-	{
-		.start	= MSM_HSUSB_PHYS,
-		.end	= MSM_HSUSB_PHYS + MSM_HSUSB_SIZE,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.start	= INT_USB_HS,
-		.end	= INT_USB_HS,
-		.flags	= IORESOURCE_IRQ,
-	},
-};
-
-static struct platform_device msm_hsusb_device = {
-	.name		= "msm_hsusb",
-	.id		= -1,
-	.num_resources	= ARRAY_SIZE(usb_resources),
-	.resource	= usb_resources,
-	.dev		= {
-		.coherent_dma_mask	= 0xffffffff,
-	},
-};
-
 static struct platform_device *devices[] __initdata = {
 	&msm_nand_device,
 	&msm_smd_device,
 	&msm_i2c_device,
-	&msm_hsusb_device,
 };
 
 void __init msm_add_devices(void)

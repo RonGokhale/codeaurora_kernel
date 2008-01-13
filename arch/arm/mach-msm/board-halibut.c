@@ -94,9 +94,33 @@ static struct platform_device msm_serial0_device = {
 	.resource	= msm_serial0_resources,
 };
 
+static struct resource usb_resources[] = {
+	{
+		.start	= MSM_HSUSB_PHYS,
+		.end	= MSM_HSUSB_PHYS + MSM_HSUSB_SIZE,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= INT_USB_HS,
+		.end	= INT_USB_HS,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+static struct platform_device msm_hsusb_device = {
+	.name		= "msm_hsusb",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(usb_resources),
+	.resource	= usb_resources,
+	.dev		= {
+		.coherent_dma_mask	= 0xffffffff,
+	},
+};
+
 static struct platform_device *devices[] __initdata = {
 	&msm_serial0_device,
 	&msm_mddi0_device,
+	&msm_hsusb_device,
 	&smc91x_device,
 };
 
