@@ -32,6 +32,8 @@
 #include <asm/io.h>
 #include <asm/mach-types.h>
 
+#include <asm/arch/board.h>
+
 #define MSM_USB_BASE ((unsigned) ui->addr)
 
 #include "msm_hsusb_hw.h"
@@ -130,6 +132,9 @@ struct usb_info
 	*/
 	struct usb_endpoint ept[32];
 
+	int *phy_init_seq;
+	void (*phy_reset)(void);
+
 #define ep0out ept[0]
 #define ep0in  ept[16]
 };
@@ -171,16 +176,9 @@ static void ulpi_write(struct usb_info *ui, unsigned val, unsigned reg)
 		printk(KERN_ERR "ulpi_write: timeout\n");
 }
 
-static int *ulpi_init_seq;
-
-void msm_hsusb_set_ulpi_init(int *seq)
-{
-	ulpi_init_seq = seq;
-}
-
 static void ulpi_init(struct usb_info *ui)
 {
-	int *seq = ulpi_init_seq;
+	int *seq = ui->phy_init_seq;
 
 	if (!seq)
 		return;
@@ -920,6 +918,9 @@ static void usb_reset(struct usb_info *ui, struct list_head *flist)
 	writel(2, USB_USBCMD);
 	msleep(10);
 
+	if (ui->phy_reset)
+		ui->phy_reset();
+
 	/* INCR4 BURST mode */
 	writel(0x01, USB_SBUSCFG);
 
@@ -1128,6 +1129,12 @@ static int usb_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	ui->pdev = pdev;
+
+	if (pdev->dev.platform_data) {
+		struct msm_hsusb_platform_data *pdata = pdev->dev.platform_data;
+		ui->phy_reset = pdata->phy_reset;
+		ui->phy_init_seq = pdata->phy_init_seq;
+	}
 
 	irq = platform_get_irq(pdev, 0);
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
