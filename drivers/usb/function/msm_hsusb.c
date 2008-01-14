@@ -26,6 +26,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/platform_device.h>
 #include <linux/debugfs.h>
+#include <linux/workqueue.h>
 
 #include <linux/usb/ch9.h>
 
@@ -102,6 +103,8 @@ struct usb_endpoint
 	struct usb_function_info *owner;
 };
 
+static void usb_watchdog(struct work_struct *w);
+
 struct usb_info
 {
 	spinlock_t lock;
@@ -113,6 +116,7 @@ struct usb_info
 	int irq;
 	void *addr;
 	unsigned online;
+	unsigned running;
 
 	/* dma page to back the queue heads and items */
 	unsigned char *buf;
@@ -135,6 +139,10 @@ struct usb_info
 	int *phy_init_seq;
 	void (*phy_reset)(void);
 
+	struct delayed_work watchdog;
+	unsigned phy_status;
+	unsigned phy_fail_count;
+
 #define ep0out ept[0]
 #define ep0in  ept[16]
 };
@@ -144,7 +152,7 @@ static void flush_endpoint(struct usb_endpoint *ept);
 
 static unsigned ulpi_read(struct usb_info *ui, unsigned reg)
 {
-	unsigned timeout = 10000;
+	unsigned timeout = 100000;
 
 	/* initiate read operation */
 	writel(ULPI_RUN | ULPI_READ | ULPI_ADDR(reg),
@@ -154,8 +162,8 @@ static unsigned ulpi_read(struct usb_info *ui, unsigned reg)
 	while ((readl(USB_ULPI_VIEWPORT) & ULPI_RUN) && (--timeout)) ;
 
 	if (timeout == 0) {
-		printk(KERN_ERR "ulpi_read: timeout\n");
-		return 0;
+		printk(KERN_ERR "ulpi_read: timeout %08x\n", readl(USB_ULPI_VIEWPORT));
+		return 0xffffffff;
 	}
 	return ULPI_DATA_READ(readl(USB_ULPI_VIEWPORT));
 }
@@ -787,6 +795,10 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 	n = readl(USB_USBSTS);
 	writel(n, USB_USBSTS);
 
+	/* somehow we got an IRQ while in the reset sequence: ignore it */
+	if (ui->running == 0)
+		return IRQ_HANDLED;
+
 	if (n & STS_PCI)
 		printk(KERN_INFO "usb: portchange\n");
 
@@ -850,6 +862,8 @@ static void usb_prepare(struct usb_info *ui)
 	ui->ep0out.max_pkt = 64;
 
 	ui->setup_req = usb_ept_alloc_req(&ui->ep0in, SETUP_BUF_SIZE);
+
+	INIT_DELAYED_WORK(&ui->watchdog, usb_watchdog);
 }
 
 static void usb_bind_driver(struct usb_info *ui, struct usb_function_info *fi)
@@ -906,8 +920,18 @@ static void usb_bind_driver(struct usb_info *ui, struct usb_function_info *fi)
 
 static void usb_reset(struct usb_info *ui, struct list_head *flist)
 {
+	unsigned long flags;
+	unsigned n;
 	printk(KERN_INFO "hsusb: reset controller\n");
-	
+
+	spin_lock_irqsave(&ui->lock, flags);
+	n = ui->running;
+	ui->running = 0;
+	spin_unlock_irqrestore(&ui->lock, flags);
+
+	/* somebody is already resetting us */
+	if (n == 0)
+		return;
 #if 0
 	/* we should flush and shutdown cleanly if already running */
 	writel(0xffffffff, USB_ENDPTFLUSH);
@@ -951,6 +975,10 @@ static void usb_reset(struct usb_info *ui, struct list_head *flist)
 
 	/* go to RUN mode (D+ pullup enable) */
 	writel(0x00080001, USB_USBCMD);
+
+	spin_lock_irqsave(&ui->lock, flags);
+	ui->running = 1;
+	spin_unlock_irqrestore(&ui->lock, flags);
 }
 
 static void usb_start(struct usb_info *ui, struct list_head *flist)
@@ -974,7 +1002,10 @@ static void usb_start(struct usb_info *ui, struct list_head *flist)
 		return;
 	}
 
+	ui->running = 1;
 	usb_reset(ui, flist);
+
+	schedule_delayed_work(&ui->watchdog, 10 * HZ);
 }
 
 static int usb_free(struct usb_info *ui, int ret)
@@ -992,6 +1023,33 @@ static int usb_free(struct usb_info *ui, int ret)
 static struct usb_info *the_usb_info;
 
 static LIST_HEAD(func_list);
+
+static void usb_watchdog(struct work_struct *w)
+{
+	struct usb_info *ui = container_of(w, struct usb_info, watchdog.work);
+	unsigned long flags;
+	unsigned n;
+
+	spin_lock_irqsave(&ui->lock, flags);
+	if (ui->running) {
+		n = ulpi_read(ui, 0x13);
+	} else {
+		n = 0;
+	}
+	spin_unlock_irqrestore(&ui->lock, flags);
+
+	if (n == 0xffffffff) {
+		printk(KERN_ERR "hsusb: PHY not responding, resetting USB (%d)\n",
+		       ++ui->phy_fail_count);
+		usb_reset(ui, &func_list);
+	} else if (n != ui->phy_status) {
+		printk(KERN_INFO "hsusb: PHY status %02x -> %02x\n",
+		       ui->phy_status, n);
+		ui->phy_status = n;
+	}
+
+	schedule_delayed_work(&ui->watchdog, 5 * HZ);
+}
 
 void usb_function_reenumerate(void)
 {
@@ -1059,8 +1117,7 @@ static ssize_t debug_read_status(struct file *file, char __user *ubuf,
 	}
 
 	i += scnprintf(buf + i, PAGE_SIZE - i,
-		       "phy reg 0x16 = %02x\n",
-		       ulpi_read(ui, 0x16));
+		       "phy failure count: %d\n", ui->phy_fail_count);
 	
 	spin_unlock_irqrestore(&ui->lock, flags);
 
