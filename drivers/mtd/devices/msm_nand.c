@@ -58,7 +58,7 @@ struct msm_nand_chip {
 /**
  * msm_nand_oob_64 - oob info for large (2KB) page
  */
-static struct nand_ecclayout msm_nand_oob_64 = {
+static struct nand_ecclayout msm_nand_oob_64_8bit = {
 	.eccbytes	= 40,
 	.eccpos		= {
 		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09,
@@ -68,6 +68,18 @@ static struct nand_ecclayout msm_nand_oob_64 = {
 		},
 	.oobfree	= {
 		{0xa, 5}, {0x1a, 5}, {0x2a, 5}, {0x3a, 5},
+	}
+};
+static struct nand_ecclayout msm_nand_oob_64_16bit = {
+	.eccbytes	= 40,
+	.eccpos		= {
+		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09,
+		0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19,
+		0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29,
+		0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,
+		},
+	.oobfree	= {
+		{0xa, 4}, {0x1a, 4}, {0x2a, 4}, {0x3a, 4},
 	}
 };
 
@@ -168,6 +180,7 @@ uint32_t flash_read_id(struct msm_nand_chip *chip)
 
 int flash_read_config(struct msm_nand_chip *chip)
 {
+	int spare_bytes;
 	struct {
 		dmov_s cmd[2];
 		unsigned cmdptr;
@@ -199,8 +212,8 @@ int flash_read_config(struct msm_nand_chip *chip)
 	printk("read CFG0 = %x, CFG1 = %x\n", chip->CFG0, chip->CFG1);
 	/* set 4 codeword per page for 2k nand */
 	chip->CFG0 = (chip->CFG0 & ~0x1c0) | (3 << 6);
-	/* 5 spare bytes */
-	chip->CFG0 = (chip->CFG0 & ~(0xf << 23)) | (5 << 23);
+	spare_bytes = (chip->CFG1 & CFG1_WIDE_FLASH) ? 4 : 5;
+	chip->CFG0 = (chip->CFG0 & ~(0xf << 23)) | (spare_bytes << 23);
 	/* set bad block marker location and enable ECC */
 	chip->CFG1 = (chip->CFG1 & ~0x1ffc1) | (465 << 6);
 
@@ -313,6 +326,9 @@ msm_nand_read_oob_only(struct msm_nand_chip *chip, loff_t from, struct mtd_oob_o
 		page_count = 1;
 	}
 
+	if (chip->CFG1 & CFG1_WIDE_FLASH) /* (assuming 2k nand) */
+		sectoroobsize--;
+
 	/* printk("msm_nand_read_oob %x %x %x\n", from, ops->len, ops->ooblen); */
 #if VERBOSE
 	printk("msm_nand_read_oob_only %llx %p %x %p %x\n", from, ops->datbuf, ops->len, ops->oobbuf, ops->ooblen);
@@ -342,8 +358,10 @@ msm_nand_read_oob_only(struct msm_nand_chip *chip, loff_t from, struct mtd_oob_o
 		if (ops->mode == MTD_OOB_AUTO)
 			oob_col += 10;
 
-		if (chip->CFG1 & CFG1_WIDE_FLASH) /* (assuming 2k nand) */
+		if (chip->CFG1 & CFG1_WIDE_FLASH) { /* (assuming 2k nand) */
 			oob_col += 2; /* two bad block markers */
+			oob_col >>= 1;
+		}
 		else
 			oob_col += 1; /* one bad block marker */
 
@@ -447,7 +465,10 @@ msm_nand_read_oob_only(struct msm_nand_chip *chip, loff_t from, struct mtd_oob_o
 			oob_len -= cmd->len;
 			if (cmd->len > 0)
 				cmd++;
-			oob_col += 528;
+			if (chip->CFG1 & CFG1_WIDE_FLASH) /* (assuming 2k nand) */
+				oob_col += 528 / 2;
+			else
+				oob_col += 528;
 		}
 		cmd->cmd = 0;
 		cmd->src = msm_virt_to_dma(chip, &dma_buffer->data.devcmd1_restore);
@@ -582,6 +603,8 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 	if (ops->oobbuf && !ops->datbuf)
 		return msm_nand_read_oob_only(chip, from, ops);
 
+	if (chip->CFG1 & CFG1_WIDE_FLASH) /* (assuming 2k nand) */
+		sectoroobsize--;
 	if (ops->mode != MTD_OOB_AUTO)
 		sectoroobsize = 16;
 	page_count = ops->len / mtd->writesize;
@@ -876,6 +899,11 @@ msm_nand_write_oob(struct mtd_info *mtd, loff_t to, struct mtd_oob_ops *ops)
 	dma_addr_t oob_dma_addr_curr = 0;
 	unsigned page_count;
 	unsigned pages_written = 0;
+
+	if (chip->CFG1 & CFG1_WIDE_FLASH) { /* (assuming 2k nand) */
+		sectoroobsize--;
+		sectoroobwritesize--;
+	}
 
 	if (ops->mode != MTD_OOB_AUTO)
 		sectoroobsize = 16;
@@ -1263,11 +1291,17 @@ int msm_nand_scan(struct mtd_info *mtd, int maxchips)
 
 	if ((flash_id & 0xffff) == 0xaaec) /* 2Gbit Samsung chip */
 		mtd->size = 256 << 20; /* * num_chips */
+	else if (flash_id == 0x5580baad) /* 2Gbit Hynix chip */
+		mtd->size = 256 << 20; /* * num_chips */
+	printk("flash_id: %x size %x\n", flash_id, mtd->size);
 
 	mtd->writesize = 2048;
 	mtd->oobsize = mtd->writesize >> 5; /* TODO: check */
 	mtd->erasesize = mtd->writesize << 6; /* TODO: check */
-	mtd->ecclayout = &msm_nand_oob_64;
+	if (chip->CFG1 & CFG1_WIDE_FLASH) /* (assuming 2k nand) */
+		mtd->ecclayout = &msm_nand_oob_64_16bit;
+	else
+		mtd->ecclayout = &msm_nand_oob_64_8bit;
 
 	/* Fill in remaining MTD driver data */
 	mtd->type = MTD_NANDFLASH;
