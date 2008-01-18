@@ -42,4 +42,7 @@ extern int gpio_configure(unsigned int gpio, unsigned long flags);
 extern int gpio_read_detect_status(unsigned int gpio);
 extern int gpio_clear_detect_status(unsigned int gpio);
 
+/* include stubs for gpio*_cansleep calls */
+#include <asm-generic/gpio.h>
+
 #endif
