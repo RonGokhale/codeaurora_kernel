@@ -45,6 +45,14 @@
 
 #define SETUP_BUF_SIZE      4096
 
+/* IDs for string descriptors */
+#define STRING_LANGUAGE_ID      0
+#define STRING_SERIAL           1
+#define STRING_PRODUCT          2
+#define STRING_MANUFACTURER     3
+
+#define LANGUAGE_ID             0x0409 /* en-US */
+
 struct usb_fi_ept
 {
 	struct usb_endpoint *ept;
@@ -145,6 +153,25 @@ struct usb_info
 
 #define ep0out ept[0]
 #define ep0in  ept[16]
+};
+
+struct usb_device_descriptor desc_device = {
+	.bLength = USB_DT_DEVICE_SIZE,
+	.bDescriptorType = USB_DT_DEVICE,
+
+	.bcdUSB = 0x0102,
+	.bDeviceClass = 0,
+	.bDeviceSubClass = 0,
+	.bDeviceProtocol = 0,
+	.bMaxPacketSize0 = 64,
+	/* the following fields are filled in by usb_probe */
+	.idVendor = 0,
+	.idProduct = 0,
+	.bcdDevice = 0,
+	.iManufacturer = 0,
+	.iProduct = 0,
+	.iSerialNumber = 0,
+	.bNumConfigurations = 1,
 };
 
 static void flush_endpoint(struct usb_endpoint *ept);
@@ -533,7 +560,7 @@ static void ep0_setup_send(struct usb_info *ui)
 }
 
 
-int usb_find_descriptor(struct usb_info *ui, unsigned id, struct usb_request *req);
+static int usb_find_descriptor(struct usb_info *ui, unsigned id, struct usb_request *req);
 
 static void handle_setup(struct usb_info *ui)
 {
@@ -1191,6 +1218,17 @@ static int usb_probe(struct platform_device *pdev)
 		struct msm_hsusb_platform_data *pdata = pdev->dev.platform_data;
 		ui->phy_reset = pdata->phy_reset;
 		ui->phy_init_seq = pdata->phy_init_seq;
+		
+		/* USB device descriptor fields */		
+		desc_device.idVendor = pdata->vendor_id;
+		desc_device.idProduct = pdata->product_id;
+		desc_device.bcdDevice = pdata->version;
+		if (pdata->serial_number)
+			desc_device.iSerialNumber = STRING_SERIAL;
+		if (pdata->product_name)
+			desc_device.iProduct = STRING_PRODUCT;
+		if (pdata->manufacturer_name)
+			desc_device.iManufacturer = STRING_MANUFACTURER;
 	}
 
 	irq = platform_get_irq(pdev, 0);
@@ -1269,27 +1307,22 @@ module_init(usb_init);
 late_initcall(usb_late_init);
 
 
-/* -- -- -- -- -- -- -- -- android driver -- -- -- -- -- -- -- */
+static void copy_string_descriptor(char *string, char *buffer)
+{
+	int length, i;
 
-struct usb_device_descriptor desc_device = {
-	.bLength = USB_DT_DEVICE_SIZE,
-	.bDescriptorType = USB_DT_DEVICE,
+	if (string) {
+		length = strlen(string);
+		buffer[0] = 2 * length + 2;
+		buffer[1] = USB_DT_STRING;
+		for (i = 0; i < length; i++) {
+			buffer[2 * i + 2] = string[i];
+			buffer[2 * i + 3] = 0;
+		}
+	}
+}
 
-	.bcdUSB = 0x0102,
-	.bDeviceClass = 0,
-	.bDeviceSubClass = 0,
-	.bDeviceProtocol = 0,
-	.bMaxPacketSize0 = 64,
-	.idVendor = 0x18d1,
-	.idProduct = 0xd00d,
-	.bcdDevice = 0x0100,
-	.iManufacturer = 0,
-	.iProduct = 0,
-	.iSerialNumber = 0,
-	.bNumConfigurations = 1,
-};
-
-int usb_find_descriptor(struct usb_info *ui, unsigned id, struct usb_request *req)
+static int usb_find_descriptor(struct usb_info *ui, unsigned id, struct usb_request *req)
 {
 	unsigned type = id >> 8;
 	id &= 0xff;
@@ -1340,6 +1373,38 @@ int usb_find_descriptor(struct usb_info *ui, unsigned id, struct usb_request *re
 
 		req->length = ptr - start;
 		return 0;
+	}
+	
+	if (type == USB_DT_STRING) {
+		struct msm_hsusb_platform_data *pdata = ui->pdev->dev.platform_data;
+		char *buffer = req->buf;
+
+		buffer[0] = 0;
+		switch (id) {
+		case STRING_LANGUAGE_ID:
+			/* return language ID */
+			buffer[0] = 4;
+			buffer[1] = USB_DT_STRING;
+			buffer[2] = LANGUAGE_ID;
+			buffer[3] = LANGUAGE_ID >> 8;
+			break;
+		case STRING_SERIAL:
+			copy_string_descriptor(pdata->serial_number, buffer);
+			break;
+		case STRING_PRODUCT:
+			copy_string_descriptor(pdata->product_name, buffer);
+			break;
+		case STRING_MANUFACTURER:
+			copy_string_descriptor(pdata->manufacturer_name, buffer);
+			break;
+		}
+
+		if (buffer[0]) {
+			req->length = buffer[0];
+			return 0;
+		} else {
+			return -1;
+		}
 	}
 
 	return -1;
