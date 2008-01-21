@@ -107,6 +107,20 @@ static struct resource usb_resources[] = {
 	},
 };
 
+/* The HSUSB PHY on Halibut has a hardware bug where VBUS
+ * interrupts can lock up the ULPI bus, causing USB to fail.
+ * Disable these interrupts to avoid this issue.
+ */
+static int halibut_phy_init_seq[] = { 0x1D, 0x0D, 0x1D, 0x10, -1 };
+
+static struct msm_hsusb_platform_data msm_hsusb_pdata = {
+	.phy_init_seq	= halibut_phy_init_seq,
+	.vendor_id	= 0x18d1,
+	.product_id	= 0xd00d,
+	.version	= 0x0100,
+	.product_name	= "Halibut",
+};
+
 static struct platform_device msm_hsusb_device = {
 	.name		= "msm_hsusb",
 	.id		= -1,
@@ -114,6 +128,7 @@ static struct platform_device msm_hsusb_device = {
 	.resource	= usb_resources,
 	.dev		= {
 		.coherent_dma_mask	= 0xffffffff,
+		.platform_data		= &msm_hsusb_pdata,
 	},
 };
 
