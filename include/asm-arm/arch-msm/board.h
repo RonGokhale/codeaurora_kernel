@@ -34,6 +34,14 @@ struct msm_hsusb_platform_data
 
 	/* val, reg pairs terminated by -1 */
 	int *phy_init_seq;
+	
+	/* USB device descriptor fields */
+	__u16 vendor_id;
+	__u16 product_id;
+	__u16 version;
+	char* serial_number;
+	char* product_name;
+	char* manufacturer_name;
 };
 
 /* common init routines for use by arch/arm/mach-msm/board-*.c */
