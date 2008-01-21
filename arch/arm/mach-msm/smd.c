@@ -794,6 +794,14 @@ static int debug_read_ch(char *buf, int max)
 	return i;
 }
 
+static int debug_read_version(char *buf, int max)
+{
+	struct smem_shared *shared = (void*) MSM_SHARED_RAM_BASE;
+	unsigned version = shared->version[VERSION_MODEM];
+	return sprintf(buf, "%d.%d\n", version >> 16, version & 0xffff);
+}
+
+
 #define DEBUG_BUFMAX 4096
 static char debug_buffer[DEBUG_BUFMAX];
 
@@ -834,6 +842,7 @@ static void smd_debugfs_init(void)
 	debug_create("ch", 0444, dent, debug_read_ch);
 	debug_create("stat", 0444, dent, debug_read_stat);
 	debug_create("mem", 0444, dent, debug_read_mem);
+	debug_create("version", 0444, dent, debug_read_version);
 }
 #else
 static void smd_debugfs_init(void) {}

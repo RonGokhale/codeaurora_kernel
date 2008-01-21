@@ -65,6 +65,12 @@ struct smem_proc_comm
 #define PC_FLAG_DONE              0x80000000
 #define PC_FLAG_ERROR             0x40000000
 
+#define VERSION_QDSP6     4
+#define VERSION_APPS_SBL  6
+#define VERSION_MODEM_SBL 7
+#define VERSION_APPS      8
+#define VERSION_MODEM     9
+
 struct smem_shared
 {
 	struct smem_proc_comm proc_comm[4];
