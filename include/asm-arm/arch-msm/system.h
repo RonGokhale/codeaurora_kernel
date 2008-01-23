@@ -17,7 +17,10 @@
 
 void arch_idle(void);
 
+extern void (*msm_reset_hook)(char mode);
+
 static inline void arch_reset(char mode)
 {
-	for (;;) ;  /* depends on IPC w/ other core */
+	if (msm_reset_hook)
+		msm_reset_hook(mode);
 }

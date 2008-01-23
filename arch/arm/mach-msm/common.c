@@ -31,6 +31,9 @@
 #include <asm/arch/msm_iomap.h>
 
 #include <asm/arch/board.h>
+#include <asm/arch/system.h>
+
+void (*msm_reset_hook)(char mode);
 
 struct flash_platform_data msm_nand_data = {
 	.parts		= 0,
