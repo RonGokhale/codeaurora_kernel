@@ -236,6 +236,15 @@ static struct clk clocks[] = {
 	},
 };
 
+struct clk *msm_clock_get_nth(unsigned index)
+{
+	if (index < ARRAY_SIZE(clocks)) {
+		return clocks + index;
+	} else {
+		return 0;
+	}
+}
+
 void __init msm_clock_init(struct msm_clock_platform_data *clkdata)
 {
 	unsigned n;

@@ -28,28 +28,15 @@
 #include <linux/delay.h>
 #include <linux/clk.h>
 #include <linux/mutex.h>
+#include <linux/debugfs.h>
 #include <asm/io.h>
 #include <asm/arch/msm_iomap.h>
 #include <asm/arch/rpc_clkctl.h>
 #include "clock.h"
 
 #define PERF_SWITCH_DEBUG 1
-#define CREATE_DEBUG_CHARDEV 1
 #define ENABLE_ALL_PLLS 0
 #define PERF_SWITCH_STEP_DEBUG 0
-
-#if CREATE_DEBUG_CHARDEV
-
-#include <linux/cdev.h>
-#include <linux/device.h>
-#include <linux/fs.h>
-#include <asm/uaccess.h>
-
-static struct cdev clock_cdev;
-static struct class *clock_class;
-static struct device *clock_device;
-static dev_t clock_devno;
-#endif
 
 struct clock_state
 {
@@ -464,102 +451,44 @@ static unsigned long acpuclk_get_rate(struct clk *clk)
 	return drv_state.current_speed->a11clk_khz * 1000;
 }
 
-/*----------------------------------------------------------------------------
- * Debug character device
- *---------------------------------------------------------------------------*/
+#if defined(CONFIG_DEBUG_FS)
+struct clk *msm_clock_get_nth(unsigned index);
 
-#if CREATE_DEBUG_CHARDEV
-
-static int clock_open(struct inode *inode, struct file *filp)
+static void clock_debug_set(void *data, u64 val)
 {
-	return nonseekable_open(inode, filp);
+	struct clk *clock = data;
+	int ret;
+	
+	ret = clk_set_rate(clock, val);
+	if (ret != 0)
+		printk(KERN_ERR "clk_set_rate failed (%d)\n", ret);
+		
 }
 
-static int clock_release(struct inode *inode, struct file *filp)
+static u64 clock_debug_get(void *data)
 {
-	return 0;
+	struct clk *clock = data;
+	return clk_get_rate(clock);
 }
 
-static ssize_t clock_write(struct file *filp, const char __user *buf,
-			size_t count, loff_t *ppos)
+DEFINE_SIMPLE_ATTRIBUTE(clock_debug_fops, clock_debug_get, clock_debug_set, "%llu\n");
+
+static void __init clock_debug_init(void)
 {
-	uint32_t buffer;
+	struct dentry *dent;
+	struct clk *clock;
+	unsigned n = 0;
 
-	if (count != sizeof(buffer))
-		return -EINVAL;
+	dent = debugfs_create_dir("clk", 0);
+	if (IS_ERR(dent))
+		return;
 
-	if (copy_from_user(&buffer, buf, count))
-		return -EFAULT;
-
-	printk(KERN_DEBUG "clock_debug: Requested change to speed %u Hz\n", buffer);
-	return acpuclk_set_rate(NULL, buffer);
-}
-
-static ssize_t clock_read(struct file *filp, char __user *buf,
-			size_t count, loff_t *ppos)
-{
-	uint32_t buffer;
-
-	if (count != sizeof(buffer))
-		return -EINVAL;
-	buffer = acpuclk_get_rate(NULL);
-	if (copy_to_user(buf, &buffer, count))
-		return -EFAULT;
-	return sizeof(buffer);
-}
-
-static struct file_operations clock_fops = {
-	.owner   = THIS_MODULE,
-	.open    = clock_open,
-	.release = clock_release,
-	.write   = clock_write,
-	.read    = clock_read,
-};
-
-static int clock_create_debug_chardev(void)
-{
-	int major;
-	int rc;
-
-	clock_class = class_create(THIS_MODULE, "clock_debug");
-	if (IS_ERR(clock_class)) {
-		printk(KERN_ERR "Unable to initialize clock class\n");
-		return -ENOMEM;
+	while ((clock = msm_clock_get_nth(n++)) != 0) {
+		debugfs_create_file(clock->name, 0644, dent, clock, &clock_debug_fops);
 	}
-
-	rc = alloc_chrdev_region(&clock_devno, 0, 1, "clock_debug");
-	if (rc < 0) {
-		printk(KERN_ERR "Failed to alloc chardev region (%d)\n", rc);
-		goto fail_destroy_class;
-	}
-
-	major = MAJOR(clock_devno);
-	clock_device = device_create(clock_class, NULL,
-				clock_devno, "clock_debug");
-	if (IS_ERR(clock_device)) {
-		rc = -ENOMEM;
-		goto fail_unregister_cdev_region;
-	}
-
-	cdev_init(&clock_cdev, &clock_fops);
-	clock_cdev.owner = THIS_MODULE;
-
-	rc = cdev_add(&clock_cdev, clock_devno, 1);
-	if (rc < 0)
-		goto fail_destroy_device;
-
-	return 0;
-
-fail_unregister_cdev_region:
-	unregister_chrdev_region(clock_devno, 1);
-
-fail_destroy_device:
-	device_destroy(clock_class, clock_devno);
-fail_destroy_class:
-	class_destroy(clock_class);
-	return rc;
 }
-
+#else
+static void clock_debug_init(void) {}
 #endif
 
 /*----------------------------------------------------------------------------
@@ -575,6 +504,7 @@ void __init clock_init(uint32_t acpu_switch_time_us,
 	drv_state.acpu_switch_time_us = acpu_switch_time_us;
 	drv_state.max_speed_delta_khz = max_speed_delta_khz;
 	drv_state.vdd_switch_time_us = vdd_switch_time_us;
+
 }
 
 /*
@@ -601,5 +531,6 @@ void clock_register_rpc(struct clkctl_rpc_ops *rpc_ops)
 #if CREATE_DEBUG_CHARDEV
 	clock_create_debug_chardev();
 #endif
+	clock_debug_init();
 }
 EXPORT_SYMBOL(clock_register_rpc);
