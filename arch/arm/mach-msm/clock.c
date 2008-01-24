@@ -528,9 +528,6 @@ void clock_register_rpc(struct clkctl_rpc_ops *rpc_ops)
 	}
 #endif
 
-#if CREATE_DEBUG_CHARDEV
-	clock_create_debug_chardev();
-#endif
 	clock_debug_init();
 }
 EXPORT_SYMBOL(clock_register_rpc);
