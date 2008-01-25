@@ -21,12 +21,37 @@
 
 #include <linux/freezer.h>
 #include <linux/wait.h>
+#ifdef CONFIG_ANDROID_POWER
+#include <linux/android_power.h>
+#endif
 
 #include <asm/io.h>
 
 #include "msm_fb.h"
 
 #define PRINT_FPS 0
+
+struct msmfb_info {
+	struct fb_info *fb_info;
+	struct mddi_panel_info *panel_info;
+	unsigned yoffset;
+	volatile unsigned frame;
+	volatile int sleeping;
+	volatile struct {
+		int need_update;
+		int left;
+		int top;
+		int eright; /* exclusive */
+		int ebottom; /* exclusive */
+	} update_info;
+
+#ifdef CONFIG_ANDROID_POWER
+	android_early_suspend_t early_suspend;
+#endif
+	spinlock_t update_lock;
+	wait_queue_head_t update_wq;
+	wait_queue_head_t frame_wq;
+};
 
 static int msmfb_open(struct fb_info *info, int user)
 {
@@ -38,26 +63,13 @@ static int msmfb_release(struct fb_info *info, int user)
 	return 0;
 }
 
-static unsigned yoffset;
-static volatile unsigned frame;
-static volatile int running;
-static volatile struct {
-	int need_update;
-	int left;
-	int top;
-	int eright; /* exclusive */
-	int ebottom; /* exclusive */
-} msmfb_update_info;
-static DEFINE_SPINLOCK(msmfb_update_lock);
-
-static DECLARE_WAIT_QUEUE_HEAD(update_wq);
-static DECLARE_WAIT_QUEUE_HEAD(frame_wq);
-
-static int updater(void *_pi)
+static int updater(void *_par)
 {
-	struct mddi_panel_info *pi = _pi;
+	struct msmfb_info *par = _par;
+	struct mddi_panel_info *pi = par->panel_info;
 	uint32_t x, y, w, h;
 	unsigned addr;
+	int sleeping;
 	unsigned long irq_flags;
 #if PRINT_FPS
 	ktime_t t1 = ktime_get();
@@ -65,32 +77,36 @@ static int updater(void *_pi)
 	int64_t dt;
 	int rel_frame_count = 0;
 #endif
-
-	running = 1;
-
 	daemonize("msm_fb");
 	set_user_nice(current, -10);
 	set_freezable();
 
 	for (;;) {
-		wait_event_interruptible(update_wq, msmfb_update_info.need_update);
-		if(try_to_freeze())
+		wait_event_interruptible(par->update_wq, par->update_info.need_update);
+		if (try_to_freeze())
 			continue;
 
-		spin_lock_irqsave(&msmfb_update_lock, irq_flags);
-		msmfb_update_info.need_update = 0;
-		x = msmfb_update_info.left;
-		y = msmfb_update_info.top;
-		msmfb_update_info.left = pi->width + 1;
-		msmfb_update_info.top = pi->height + 1;
-		w = msmfb_update_info.eright - x;
-		h = msmfb_update_info.ebottom - y;
-		msmfb_update_info.eright = 0;
-		msmfb_update_info.ebottom = 0;
-		spin_unlock_irqrestore(&msmfb_update_lock, irq_flags);
+		spin_lock_irqsave(&par->update_lock, irq_flags);
+		par->update_info.need_update = 0;
+		sleeping = par->sleeping;
+		x = par->update_info.left;
+		y = par->update_info.top;
+		w = par->update_info.eright - x;
+		h = par->update_info.ebottom - y;
+		if (!sleeping) {
+			par->update_info.left = pi->width + 1;
+			par->update_info.top = pi->height + 1;
+			par->update_info.eright = 0;
+			par->update_info.ebottom = 0;
+		}
+		spin_unlock_irqrestore(&par->update_lock, irq_flags);
 #if PRINT_FPS
 		t2 = ktime_get();
 #endif
+		if (sleeping)
+			msleep_interruptible(100);
+		else {
+
 		if (pi->panel_ops->wait_vsync)
 			pi->panel_ops->wait_vsync(pi);
 		else
@@ -106,7 +122,7 @@ static int updater(void *_pi)
 			 * when the link activates
 			 */
 		} else {
-			addr = ((pi->width * (yoffset + y) + x) * 2);
+			addr = ((pi->width * (par->yoffset + y) + x) * 2);
 			mdp_dma_to_mddi(addr, pi->width * 2, w, h, x, y);
 			mdp_dma_wait();
 		}
@@ -133,8 +149,9 @@ static int updater(void *_pi)
 		}
 		t5 = t3;
 #endif
-		frame++;
-		wake_up(&frame_wq);
+		}
+		par->frame++;
+		wake_up(&par->frame_wq);
 	}
 
 	return 0;
@@ -142,20 +159,37 @@ static int updater(void *_pi)
 
 static void msmfb_update(struct fb_info *info, uint32_t left, uint32_t top, uint32_t eright, uint32_t ebottom)
 {
+	struct msmfb_info *par = info->par;
 	unsigned long irq_flags;
-	spin_lock_irqsave(&msmfb_update_lock, irq_flags);
-	if (left < msmfb_update_info.left)
-		msmfb_update_info.left = left;
-	if (top < msmfb_update_info.top)
-		msmfb_update_info.top = top;
-	if (eright > msmfb_update_info.eright)
-		msmfb_update_info.eright = eright;
-	if (ebottom > msmfb_update_info.ebottom)
-		msmfb_update_info.ebottom = ebottom;
-	msmfb_update_info.need_update = 1;
-	spin_unlock_irqrestore(&msmfb_update_lock, irq_flags);
-	wake_up(&update_wq);
+	spin_lock_irqsave(&par->update_lock, irq_flags);
+	if (left < par->update_info.left)
+		par->update_info.left = left;
+	if (top < par->update_info.top)
+		par->update_info.top = top;
+	if (eright > par->update_info.eright)
+		par->update_info.eright = eright;
+	if (ebottom > par->update_info.ebottom)
+		par->update_info.ebottom = ebottom;
+	par->update_info.need_update = 1;
+	spin_unlock_irqrestore(&par->update_lock, irq_flags);
+	wake_up(&par->update_wq);
 }
+
+#ifdef CONFIG_ANDROID_POWER
+static void msmfb_early_suspend(android_early_suspend_t *h)
+{
+	struct msmfb_info *par = container_of(h, struct msmfb_info, early_suspend);
+	par->sleeping = 1;
+}
+
+static void msmfb_early_resume(android_early_suspend_t *h)
+{
+	struct msmfb_info *par = container_of(h, struct msmfb_info, early_suspend);
+	printk(KERN_INFO "msmfb_early_resume\n");
+	par->sleeping = 0;
+	msmfb_update(par->fb_info, 0, 0, par->fb_info->var.xres, par->fb_info->var.yres);
+}
+#endif
 
 static int msmfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 {
@@ -171,16 +205,15 @@ static int msmfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 
 int msmfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 {
+	struct msmfb_info *par = info->par;
 	unsigned thisframe;
-	yoffset = var->yoffset;
-
-	if (!running) return 0;
+	par->yoffset = var->yoffset;
 
 	/* don't return until we start painting this frame */
-	thisframe = frame;
+	thisframe = par->frame;
 	if (var->reserved[0] == 0x54445055) { /* "UPDT" */
 #if 0
-		printk("pan frame %d-%d, rect %d %d %d %d\n",
+		printk(KERN_INFO "pan frame %d-%d, rect %d %d %d %d\n",
 		       thisframe, frame, var->reserved[1] & 0xffff,
 		       var->reserved[1] >> 16, var->reserved[2] & 0xffff,
 		       var->reserved[2] >> 16);
@@ -192,9 +225,8 @@ int msmfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 	} else {
 		msmfb_update(info, 0, 0, info->var.xres, info->var.yres);
 	}
-	if(wait_event_interruptible_timeout(frame_wq, thisframe != frame, HZ) == 0) {
-		printk("msmfb_pan_display timeout waiting for frame change, %d %d\n", thisframe, frame);
-	}
+	if (wait_event_interruptible_timeout(par->frame_wq, thisframe != par->frame, HZ) == 0)
+		printk(KERN_WARNING "msmfb_pan_display timeout waiting for frame change, %d %d\n", thisframe, par->frame);
 	return 0;
 }
 
@@ -233,6 +265,7 @@ static int msmfb_probe(struct platform_device *pdev)
 {
 	unsigned char *fbram;
 	struct fb_info *info;
+	struct msmfb_info *par;
 	struct mddi_panel_info *pi = pdev->dev.platform_data;
 	int r;
 
@@ -246,7 +279,13 @@ static int msmfb_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	info = framebuffer_alloc(0, &pdev->dev);
+	info = framebuffer_alloc(sizeof(struct msmfb_info), &pdev->dev);
+	par = info->par;
+	par->fb_info = info;
+	par->panel_info = pi;
+	spin_lock_init(&par->update_lock);
+	init_waitqueue_head(&par->update_wq);
+	init_waitqueue_head(&par->frame_wq);
 
 	info->screen_base = fbram;
 	info->fix.smem_start = 0;
@@ -289,10 +328,18 @@ static int msmfb_probe(struct platform_device *pdev)
 	for (r = 1; r < 16; r++)
 		PP[r] = 0xffffffff;
 
+	kernel_thread(updater, par, 0);
+
 	r = register_framebuffer(info);
 	if (r) return r;
 
-	kernel_thread(updater, pi, 0);
+#ifdef CONFIG_ANDROID_POWER
+	par->early_suspend.suspend = msmfb_early_suspend;
+	par->early_suspend.resume = msmfb_early_resume;
+	par->early_suspend.level = -1;
+	android_register_early_suspend(&par->early_suspend);
+#endif
+
 	return 0;
 }
 
