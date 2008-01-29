@@ -26,6 +26,8 @@
 #include <linux/fs.h>
 #include <asm/uaccess.h>
 #include <linux/delay.h>
+#include <linux/platform_device.h>
+
 #include <linux/msm_rpcrouter.h>
 #include <asm/arch/msm_rpcrouter.h>
 #include <asm/mach-types.h>
@@ -96,11 +98,10 @@ static int rpc_tlmm_program_gpio_table(uint32_t *table)
 	return 0;
 }
 
-static int __init rpc_tlmm_init(void)
+static int rpc_tlmm_probe(struct platform_device *pdev)
 {
 	rpcrouter_xport_address	xport_addr;
 	int rc;
-
 
 	xport_addr.xp = RPCROUTER_XPORT_SMD;
 	xport_addr.port = 2;
@@ -127,6 +128,19 @@ static int __init rpc_tlmm_init(void)
 	}
 
 	return 0;
+}
+
+static struct platform_driver rpc_tlmm_driver = {
+	.probe	= rpc_tlmm_probe,
+	.driver	= {
+		.name	= "rpcsvr_30000066:0",
+		.owner	= THIS_MODULE,
+	},
+};
+
+static int __init rpc_tlmm_init(void)
+{
+	return platform_driver_register(&rpc_tlmm_driver);
 }
 
 module_init(rpc_tlmm_init);

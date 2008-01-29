@@ -31,13 +31,15 @@
 #include <linux/poll.h>
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
+#include <linux/platform_device.h>
+
 #include <asm/arch/msm_smd.h>
 #include <linux/msm_rpcrouter.h>
 #include "smd_rpcrouter.h"
 
 #define MSM_RPCROUTER_DEBUG 0
 #define MSM_RPCROUTER_DEBUG_PKT 0
-#define MSM_RPCROUTER_R2R_DEBUG 1
+#define MSM_RPCROUTER_R2R_DEBUG 0
 #define DUMP_ALL_RECEIVED_HEADERS 0
 
 #if MSM_RPCROUTER_DEBUG
@@ -58,6 +60,7 @@ static ssize_t rpcrouter_write(struct file *filp, const char __user *buf,
 				size_t count, loff_t *ppos);
 static unsigned int rpcrouter_poll(struct file *filp, struct poll_table_struct *pfd);
 static long rpcrouter_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
+static int create_platform_device(struct rpcrouter_server *server);
 
 static dev_t rpcrouter_devno; /* Device number for the router itself */
 static int next_minor = 1; /* Next minor # available for a remote server */
@@ -85,6 +88,15 @@ static struct krpcrouterd_thread worker_thread;
 static uint32_t next_xid;
 static uint8_t next_pacmarkid;
 static wait_queue_head_t newserver_wait;
+
+static struct platform_device rpcrouter_pdev = {
+	.name		= "oncrpc_router",
+	.id		= -1,
+};
+
+static struct work_struct create_pdev_work;
+
+static struct work_struct create_rpcrouter_pdev_work;
 
 static struct file_operations rpcrouter_server_fops = {
 	.owner	 = THIS_MODULE,
@@ -335,15 +347,34 @@ static struct rpcrouter_server *rpcrouter_create_server(uint32_t pid,
 
 	if (pid == RPCROUTER_PID_REMOTE) {
 		rc = create_server_chardev(server);
-		if (rc < 0) {
-			spin_lock_irqsave(&server_list_lock, flags);
-			list_del(&server->list);
-			spin_unlock_irqrestore(&server_list_lock, flags);
-			kfree(server);
-			return ERR_PTR(rc);
-		}
+		if (rc < 0)
+			goto out_fail;
 	}
 	return server;
+out_fail:
+	spin_lock_irqsave(&server_list_lock, flags);
+	list_del(&server->list);
+	spin_unlock_irqrestore(&server_list_lock, flags);
+	kfree(server);
+	return ERR_PTR(rc);
+}
+
+static int create_platform_device(struct rpcrouter_server *server)
+{
+	char pdev_name[21];
+
+	sprintf(pdev_name, "rpcsvr_%.8x:%d", server->pv.prog, server->pv.ver);
+	memset(&server->p_device, 0, sizeof(struct platform_device));
+	server->p_device.id = -1;
+	server->p_device.name = kmalloc(strlen(pdev_name)+1, GFP_KERNEL);
+	if (!server->p_device.name) {
+		printk(KERN_ERR "Unable to create platform device (OOM)\n");
+		return -ENOMEM;
+	}
+	strcpy(server->p_device.name, pdev_name);
+	D("%s: creating device '%s'\n", __FUNCTION__, pdev_name);
+	platform_device_register(&server->p_device);
+	return 0;
 }
 
 static void rpcrouter_destroy_server(struct rpcrouter_server *server)
@@ -744,6 +775,25 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr,
 	return rc;
 }
 
+static void create_rpcrouter_pdev_worker(struct work_struct *work)
+{
+	platform_device_register(&rpcrouter_pdev);
+}
+
+static void create_pdev_worker(struct work_struct *work)
+{
+	struct rpcrouter_server *server;
+	int rc;
+
+	list_for_each_entry(server, &server_list, list) {
+		if (server->addr.pid == RPCROUTER_PID_REMOTE) {
+			rc = create_platform_device(server);
+			if (rc < 0)
+				printk(KERN_ERR "Err creating pdev\n");
+		}
+	}
+}
+
 static void rpcrouter_smdnotify(void *_dev, unsigned event)
 {
 	struct rpcrouter_xport *xport = (struct rpcrouter_xport *) _dev;
@@ -754,13 +804,14 @@ static void rpcrouter_smdnotify(void *_dev, unsigned event)
 	if (event != SMD_EVENT_DATA)
 		return;
 
-	D("rpcrouter_smdnotify(): [XP %x P %x] Event 0x%x\n",
+	D("%s: [XP %x P %x] Event 0x%x\n", __FUNCTION__,
 	  xport->xport_address.xp, xport->xport_address.port, event);
 
 	spin_lock_irqsave(&worker_thread.lock, flags);
 	worker_thread.command = KTHREAD_CMD_DATA;
 	worker_thread.xport = xport;
 	spin_unlock_irqrestore(&worker_thread.lock, flags);
+	D("%s: Waking up worker\n", __FUNCTION__);
 	wake_up_interruptible(&worker_thread.wait);
 }
 
@@ -868,6 +919,8 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 			xport->peer_router_address.pid = hdr.rh.src_addr.pid;
 			xport->peer_router_address.cid = hdr.rh.src_addr.cid;
 			xport->initialized = 1;
+			INIT_WORK(&create_rpcrouter_pdev_work, create_rpcrouter_pdev_worker);
+			schedule_work(&create_rpcrouter_pdev_work);
 			wake_up_interruptible(&xport->hello_wait);
 		}
 
@@ -1041,6 +1094,9 @@ static int rpcrouter_thread(void *data)
 	int rc = 0;
 	unsigned int flags;
 	struct sched_param param = { .sched_priority = 1 };
+	int created_pdevs = 0;
+
+	INIT_WORK(&create_pdev_work, create_pdev_worker);
 
 	sched_setscheduler(this->thread, SCHED_FIFO, &param);
 
@@ -1050,6 +1106,7 @@ static int rpcrouter_thread(void *data)
 		int command = 0;
 		struct rpcrouter_xport *xport = NULL;
 
+		rc = 0;
 		for (;;) {
 			prepare_to_wait(&this->wait, &__wait,
 					TASK_INTERRUPTIBLE);
@@ -1059,18 +1116,36 @@ static int rpcrouter_thread(void *data)
 				xport = this->xport;
 				this->command = KTHREAD_CMD_NONE;
 				this->xport = NULL;
+				D("%s: Woken up with cmd = %d\n", __FUNCTION__, command);
 				spin_unlock_irqrestore(&this->lock, flags);
 				break;
 			}
 			spin_unlock_irqrestore(&this->lock, flags);
 			if (!signal_pending(current)) {
-				schedule();
+				if (created_pdevs)
+					schedule();
+				else {
+					rc = schedule_timeout(1 * HZ);
+					if (!rc) {
+						rc = -ETIMEDOUT;
+						break;
+					}
+				}
 				continue;
 			}
 			break;
 		}
 
 		finish_wait(&this->wait, &__wait);
+		D("%s: Cmd = %d, rc = %d, sig_pend = %d\n",
+		  __FUNCTION__, command, rc, signal_pending(current));
+		if (rc == -ETIMEDOUT) {
+			if (!created_pdevs) {
+				created_pdevs = 1;
+				schedule_work(&create_pdev_work);
+			}
+			continue;
+		}
 		if (signal_pending(current)) {
 			rc = -ERESTARTSYS;
 			break;
@@ -1873,12 +1948,10 @@ int rpcrouter_kernapi_register_notify(struct rpcrouter_client **client,
  *  ================================
  */
 
-static int __init rpcrouter_init(void)
+static int msm_rpcrouter_probe(struct platform_device *pdev)
 {
 	int rc;
 	int major;
-
-	printk(KERN_INFO "rpcrouter_init(): starting\n");
 
 	rpcrouter_class = class_create(THIS_MODULE, "oncrpc");
 	if (IS_ERR(rpcrouter_class)) {
@@ -1933,8 +2006,8 @@ static int __init rpcrouter_init(void)
 		rpcrouter_xport_address xport_addr;
 		struct rpcrouter_ioctl_server_args server_args;
 
-        	xport_addr.xp = RPCROUTER_XPORT_SMD;
-	        xport_addr.port = 2;
+		xport_addr.xp = RPCROUTER_XPORT_SMD;
+		xport_addr.port = 2;
 		rc = rpcrouter_kernapi_openxport(&xport_addr);
 		if (rc < 0) {
 			printk(KERN_ERR
@@ -1961,7 +2034,6 @@ static int __init rpcrouter_init(void)
 	}
 #endif
 
-	D("rpcrouter_init(): done\n");
 	return 0;
 
 #if RPCROUTER_BW_COMP
@@ -1985,48 +2057,20 @@ fail_nocleanup:
 	return rc;
 }
 
-static void __exit rpcrouter_exit(void)
+static struct platform_driver msm_smd_channel2_driver = {
+	.probe		= msm_rpcrouter_probe,
+	.driver		= {
+			.name	= "smd_channel_02",
+			.owner	= THIS_MODULE,
+	},
+};
+
+static int __init rpcrouter_init(void)
 {
-	struct rpcrouter_xport *xp, *n_xport;
-	struct rpcrouter_client *client, *n_client;
-	struct rpcrouter_server *server, *n_server;
-	struct rpcrouter_client_read_q *c_q, *n_q;
-	unsigned long flags, flags2;
-
-	cdev_del(&rpcrouter_cdev);
-	unregister_chrdev_region(rpcrouter_devno,
-				 RPCROUTER_MAX_REMOTE_SERVERS + 1);
-	device_destroy(rpcrouter_class, rpcrouter_devno);
-	class_destroy(rpcrouter_class);
-
-	spin_lock_irqsave(&client_list_lock, flags2);
-	list_for_each_entry_safe(client, n_client, &client_list, client_list) {
-		spin_lock_irqsave(&client->read_q_lock, flags);
-		list_for_each_entry_safe(c_q, n_q, &client->read_q, list) {
-			kfree(c_q->data);
-			list_del(&c_q->list);
-		}
-		spin_unlock_irqrestore(&client->read_q_lock, flags);
-		list_del(&client->client_list);
-		kfree(client);
-	}
-	spin_unlock_irqrestore(&client_list_lock, flags2);
-
-	list_for_each_entry_safe(xp, n_xport, &xport_list, xport_list) {
-		if (xp->xport_address.xp == RPCROUTER_XPORT_SMD)
-			rpcrouter_destroy_smd_xport_channel(xp->xport_address.xp);
-	}
-
-	spin_lock_irqsave(&server_list_lock, flags2);
-	list_for_each_entry_safe(server, n_server, &server_list, list) {
-		list_del(&server->list);
-		kfree(server);
-	}
-	spin_unlock_irqrestore(&server_list_lock, flags2);
+	return platform_driver_register(&msm_smd_channel2_driver);
 }
 
 module_init(rpcrouter_init);
-module_exit(rpcrouter_exit);
 MODULE_DESCRIPTION("MSM RPC Router");
 MODULE_AUTHOR("San Mehat <san@android.com>");
 MODULE_LICENSE("GPL");

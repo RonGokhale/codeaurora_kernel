@@ -26,6 +26,8 @@
 #include <linux/fs.h>
 #include <asm/uaccess.h>
 #include <linux/delay.h>
+#include <linux/platform_device.h>
+
 #include <linux/msm_rpcrouter.h>
 #include <asm/arch/msm_rpcrouter.h>
 #include <asm/arch/rpc_pm.h>
@@ -63,10 +65,12 @@ static int rpc_pm_vote_vreg_switch(int enable, uint32_t vreg_id,
 	return 0;
 }
 
-static int __init rpc_pm_init(void)
+static int rpc_pm_probe(struct platform_device *pdev)
 {
 	rpcrouter_xport_address	xport_addr;
 	int rc;
+
+	printk("%s:\n", __FUNCTION__);
 
 	xport_addr.xp = RPCROUTER_XPORT_SMD;
 	xport_addr.port = 2;
@@ -91,6 +95,19 @@ static int __init rpc_pm_init(void)
 	}
 
 	return 0;
+}
+
+static struct platform_driver rpc_pm_driver = {
+	.probe	= rpc_pm_probe,
+	.driver	= {
+		.name	= "rpcsvr_30000060:0",
+		.owner	= THIS_MODULE,
+	},
+};
+
+static int __init rpc_pm_init(void)
+{
+	return platform_driver_register(&rpc_pm_driver);
 }
 
 module_init(rpc_pm_init);

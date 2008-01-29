@@ -26,6 +26,8 @@
 #include <linux/kthread.h>
 #include <asm/uaccess.h>
 #include <linux/delay.h>
+#include <linux/platform_device.h>
+
 #include <linux/msm_rpcrouter.h>
 #include <asm/arch/msm_rpcrouter.h>
 #include "smd_rpcrouter.h"
@@ -211,12 +213,13 @@ static int rpc_servers_thread(void *data)
 	do_exit(0);
 }
 
-static int __init rpc_servers_init(void)
+static int rpcservers_probe(struct platform_device *pdev)
 {
 	rpcrouter_xport_address	xport_addr;
 	struct rpcrouter_ioctl_server_args server_args;
 	int rc = 0;
 
+	printk("%s:\n", __FUNCTION__);
 	xport_addr.xp = RPCROUTER_XPORT_SMD;
 	xport_addr.port = 2;
 
@@ -253,6 +256,7 @@ static int __init rpc_servers_init(void)
 	/* start the kernel thread */
 	kthread_run(rpc_servers_thread, NULL, "krpcserversd");
 
+	printk("%s: Done\n", __FUNCTION__);
 	goto done;
 done_close_client:
 	rpcrouter_kernapi_close(rpc_client);
@@ -260,6 +264,19 @@ done_close_xport:
 	/* there's no call to do this yet. */
 done:
 	return rc;
+}
+
+static struct platform_driver rpcservers_driver = {
+	.probe	= rpcservers_probe,
+	.driver	= {
+		.name	= "oncrpc_router",
+		.owner	= THIS_MODULE,
+	},
+};
+
+static int __init rpc_servers_init(void)
+{
+	return platform_driver_register(&rpcservers_driver);
 }
 
 module_init(rpc_servers_init);

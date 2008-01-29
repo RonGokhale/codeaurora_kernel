@@ -57,6 +57,42 @@ config MSM_SMD
 	  on MSM7X00A.  Needed for access to many services, including power
 	  and clock control, cellular voice and data network access, etc.
 
+config MSM_ONCRPCROUTER
+	depends on MSM_SMD
+	default y
+	bool "MSM ONCRPC router support"
+	help
+	  Support for the MSM ONCRPC router for communication between
+	  the ARM9 and ARM11
+
+config MSM_RPCCLKCTL
+	depends on MSM_ONCRPCROUTER
+	default y
+	bool "Clock control RPC support"
+	help
+	  none
+
+config MSM_RPCPM
+	depends on MSM_ONCRPCROUTER
+	default y
+	bool "Power management RPC support"
+	help
+	  none
+
+config MSM_RPCTLMM
+	depends on MSM_ONCRPCROUTER
+	default y
+	bool "TLMM RPC support"
+	help
+	  none
+
+config MSM_RPCSERVERS
+	depends on MSM_ONCRPCROUTER
+	default y
+	bool "Kernel side RPC server bundle"
+	help
+	  none
+
 config MSM_HW3D
 	tristate "MSM Hardware 3D Register Driver"
 	depends on ARCH_MSM7X00A

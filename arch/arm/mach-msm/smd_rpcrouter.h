@@ -19,9 +19,11 @@
 #define _ARCH_ARM_MACH_MSM_SMD_RPCROUTER_H
 
 #include <linux/types.h>
-#include <linux/msm_rpcrouter.h>
 #include <linux/list.h>
 #include <linux/cdev.h>
+#include <linux/platform_device.h>
+
+#include <linux/msm_rpcrouter.h>
 #include <asm/arch/msm_smd.h>
 #include <asm/arch/msm_rpcrouter.h>
 
@@ -103,6 +105,7 @@ struct rpcrouter_server
 	dev_t device_number;
 	struct cdev cdev;
 	struct device *device;
+	struct platform_device p_device;
 };
 
 struct rpcrouter_address_list

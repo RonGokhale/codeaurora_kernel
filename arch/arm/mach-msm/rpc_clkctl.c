@@ -25,6 +25,8 @@
 #include <linux/fs.h>
 #include <asm/uaccess.h>
 #include <linux/delay.h>
+#include <linux/platform_device.h>
+
 #include <linux/msm_rpcrouter.h>
 #include <asm/arch/rpc_clkctl.h>
 #include <asm/arch/msm_rpcrouter.h>
@@ -209,13 +211,12 @@ static struct clkctl_rpc_ops rpc_ops = {
 	.pll_request = &rpc_clkctl_pll_request,
 };
 
-
-static int __init rpc_clkctl_init(void)
+static int rpc_clkctl_probe(struct platform_device *pdev)
 {
 	rpcrouter_xport_address	xport_addr;
 	int rc;
 
-	printk(KERN_INFO "rpc_clkctl: Initializing\n");
+	printk("%s:\n", __FUNCTION__);
 
 	xport_addr.xp = RPCROUTER_XPORT_SMD;
 	xport_addr.port = 2;
@@ -246,7 +247,21 @@ static int __init rpc_clkctl_init(void)
 	 */
 	clock_register_rpc(&rpc_ops);
 
+	printk("%s: Done\n", __FUNCTION__);
 	return 0;
+}
+
+static struct platform_driver rpc_clkctl_driver = {
+	.probe	= rpc_clkctl_probe,
+	.driver	= {
+			.name	= "rpcsvr_30000075:0",
+			.owner = THIS_MODULE,
+	},
+};
+
+static int __init rpc_clkctl_init(void)
+{
+	return platform_driver_register(&rpc_clkctl_driver);
 }
 
 module_init(rpc_clkctl_init);

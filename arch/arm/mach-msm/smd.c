@@ -137,8 +137,62 @@ struct smd_channel
 	unsigned last_state;
 };
 
+struct smem_pdev_entry
+{
+	int start_smem_id;
+	char *name;
+	int start_rel_id;
+	int num_devices;
+};
 
 static LIST_HEAD(smd_ch_list);
+
+static struct platform_device *p_devs[128];
+static struct work_struct probe_work;
+
+static struct smem_pdev_entry pdev_creation_table[] = {
+	{ ID_SMD_CHANNELS,	"smd_channel",	0,	64 },
+	{ -1, NULL, -1 }
+};
+
+static void smd_channel_probe_worker(struct work_struct *work)
+{
+	struct smem_shared *shared = (void *) MSM_SHARED_RAM_BASE;
+	struct smem_heap_entry *toc = shared->heap_toc;
+	struct smem_pdev_entry *v;
+
+	for (v = pdev_creation_table; v->start_smem_id != -1; v++) {
+		int i, j;
+	
+		j = v->start_rel_id;
+		for (i = v->start_smem_id; i < (v->start_smem_id + v->num_devices); i++) {
+			if (toc[i].allocated && !p_devs[i]) {
+				char name[20];
+				int alloc_len;
+
+				if (v->start_rel_id != -1)
+					sprintf(name, "%s_%.2d", v->name, j++);
+				else
+					strcpy(name, v->name);
+
+				alloc_len = sizeof(struct platform_device) + strlen(name) +1;
+				p_devs[i] = kmalloc(alloc_len, GFP_KERNEL);
+				if (!p_devs[i]) {
+					printk(KERN_ERR "Out of resources\n");
+					return;
+				}
+
+				memset(p_devs[i], 0, alloc_len);
+				p_devs[i]->id = -1;
+				p_devs[i]->name = ((void *) p_devs[i]) + sizeof(struct platform_device);
+
+				strcpy(p_devs[i]->name, name);
+				printk("%s: registering pdev '%s'\n", __FUNCTION__, name);
+				platform_device_register(p_devs[i]);
+			}
+		}
+	}
+}
 
 static char *chstate(unsigned n)
 {
@@ -625,7 +679,7 @@ void *smem_find(unsigned id, unsigned size)
 
 	size = (size + 3) & (~3);
 
-	if (id >= 128)
+	if (id > 128)
 		return 0;
 
 	if (toc[id].allocated) {
@@ -636,8 +690,11 @@ void *smem_find(unsigned id, unsigned size)
 	return 0;
 }
 
+static unsigned last_heap_free = 0xffffffff;
+
 static irqreturn_t smsm_irq_handler(int irq, void *data)
 {
+	struct smem_shared *shared = (void *) MSM_SHARED_RAM_BASE;
 	unsigned long flags;
 	struct smsm_shared *smsm;
 
@@ -664,8 +721,16 @@ static irqreturn_t smsm_irq_handler(int irq, void *data)
 
 		if (smsm[0].state != apps) {
 			printk(KERN_INFO "<SM %08x NOTIFY>\n", apps);
+			printk("last = %d, free = %d\n", last_heap_free, shared->heap_info.free_offset);
+#if 1
+			if (shared->heap_info.free_offset != last_heap_free) {
+				last_heap_free = shared->heap_info.free_offset;
+				schedule_work(&probe_work);
+			}
+#endif
 			smsm[0].state = apps;
 			notify_other_smsm();
+
 		}
 	}
 	spin_unlock_irqrestore(&smem_lock, flags);
@@ -852,13 +917,18 @@ static int __init msm_smd_probe(struct platform_device *pdev)
 {
 	printk(KERN_INFO "smd_init()\n");
 
+	INIT_WORK(&probe_work, smd_channel_probe_worker);
+
 	if (smd_core_init()) {
 		printk(KERN_ERR "smd_core_init() failed\n");
 		return -1;
 	}
 
+	memset(&p_devs, 0, sizeof(p_devs));
+
 	smd_debugfs_init();
 	smd_initialized = 1;
+
 	return 0;
 }
 
