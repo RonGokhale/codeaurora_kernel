@@ -1223,6 +1223,10 @@ static int rpcrouter_create_smd_xport_channel(uint32_t channel)
 	int	rc;
 	unsigned long flags;
 
+	xport = kmalloc(sizeof(struct rpcrouter_xport), GFP_KERNEL);
+	if (!xport)
+		return -ENOMEM;
+
 	/*
 	 * Check for duplicate xport
 	 */
@@ -1232,13 +1236,10 @@ static int rpcrouter_create_smd_xport_channel(uint32_t channel)
 			c_xport->xport_address.port == channel) {
 			spin_unlock_irqrestore(&xport_list_lock, flags);
 			/* Qualcomm returns success on duplicate open  */
+			kfree(xport);
 			return 0;
 		}
 	}
-
-	xport = kmalloc(sizeof(struct rpcrouter_xport), GFP_KERNEL);
-	if (!xport)
-		return -ENOMEM;
 
 	memset(xport, 0, sizeof(struct rpcrouter_xport));
 	xport->xport_address.xp = RPCROUTER_XPORT_SMD;
