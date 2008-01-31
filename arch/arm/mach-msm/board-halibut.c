@@ -57,12 +57,7 @@ static struct platform_device smc91x_device = {
 	.resource	= smc91x_resources,
 };
 
-static void mddi0_panel_power(int on)
-{
-}
-
 static struct msm_mddi_platform_data msm_mddi0_pdata = {
-	.panel_power	= mddi0_panel_power,
 	.has_vsync_irq	= 0,
 };
 

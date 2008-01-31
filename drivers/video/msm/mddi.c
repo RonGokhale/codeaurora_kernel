@@ -95,7 +95,8 @@ struct mddi_info
 	android_early_suspend_t early_suspend;
 #endif
 
-	void (*panel_power)(int on);
+	void (*mddi_client_power)(int on);
+	void (*panel_power)(struct mddi_panel_info *panel, int on);
 
 	/* client device published to bind us to the
 	** appropriate mddi_client driver
@@ -389,15 +390,22 @@ static void mddi_init_registers(struct mddi_info *mddi)
 static void mddi_early_suspend(android_early_suspend_t *h)
 {
 	struct mddi_info *mddi = container_of(h, struct mddi_info, early_suspend);
-	if(mddi->panel_power)
-		mddi->panel_power(0);
+	if (mddi->panel_power)
+		mddi->panel_power(&mddi->panel_info, 0);
+	if (mddi->mddi_client_power)
+		mddi->mddi_client_power(0);
 }
 
 static void mddi_early_resume(android_early_suspend_t *h)
 {
 	struct mddi_info *mddi = container_of(h, struct mddi_info, early_suspend);
-	if(mddi->panel_power)
-		mddi->panel_power(1);
+	if (mddi->mddi_client_power)
+		mddi->mddi_client_power(1);
+	if (mddi->panel_power) {
+		mddi_writel(MDDI_CMD_HIBERNATE | 0, CMD);
+		mddi->panel_power(&mddi->panel_info, 1);
+		mddi_writel(MDDI_CMD_HIBERNATE | 1, CMD);
+	}
 }
 #endif
 
@@ -424,6 +432,7 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 	mddi->flags = FLAG_DISABLE_HIBERNATION;
 
 	if (pd) {
+		mddi->mddi_client_power = pd->mddi_client_power;
 		mddi->panel_power = pd->panel_power;
 		if (pd->has_vsync_irq)
 			mddi->flags |= FLAG_HAS_VSYNC_IRQ;
@@ -448,8 +457,8 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 	android_register_early_suspend(&mddi->early_suspend);
 #endif
 
-	if (mddi->panel_power)
-		mddi->panel_power(1);
+	if (mddi->mddi_client_power)
+		mddi->mddi_client_power(1);
 
 	mddi->rev_data = dma;
 	mddi->rev_data_curr = 0;
@@ -536,6 +545,9 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 		mddi->client_pdev.id = 0;
 		mddi->client_pdev.name = mddi->client_name;
 		mddi->client_pdev.dev.platform_data = mddi;
+
+		if (mddi->panel_power)
+			mddi->panel_power(&mddi->panel_info, 1);
 
 		printk(KERN_INFO "%s: publish: %s\n", mddi->name, mddi->client_name);
 		platform_device_register(&mddi->client_pdev);

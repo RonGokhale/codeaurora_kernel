@@ -21,9 +21,11 @@
 
 /* platform device data structures */
 
+struct mddi_panel_info;
 struct msm_mddi_platform_data
 {
-	void (*panel_power)(int on);
+	void (*mddi_client_power)(int on);
+	void (*panel_power)(struct mddi_panel_info *panel, int on);
 	unsigned has_vsync_irq:1;
 };
 
