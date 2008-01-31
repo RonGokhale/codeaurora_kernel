@@ -211,21 +211,13 @@ static struct clkctl_rpc_ops rpc_ops = {
 	.pll_request = &rpc_clkctl_pll_request,
 };
 
-static int rpc_clkctl_probe(struct platform_device *pdev)
+static int rpc_clkctl_probe(struct platform_device *data)
 {
-	rpcrouter_xport_address	xport_addr;
+	struct rpcsvr_platform_device *pdev;
 	int rc;
 
-	printk("%s:\n", __FUNCTION__);
-
-	xport_addr.xp = RPCROUTER_XPORT_SMD;
-	xport_addr.port = 2;
-
-	rc = rpcrouter_kernapi_openxport(&xport_addr);
-	if (rc < 0) {
-		printk(KERN_ERR "rpc_clkctl: Error opening SMD xport (%d)\n", rc);
-		return rc;
-	}
+	printk(KERN_INFO "%s:\n", __FUNCTION__);
+	pdev = (struct rpcsvr_platform_device *) data;
 
 	rc = rpcrouter_kernapi_open(&rpc_client);
 	if (rc < 0) {
@@ -233,29 +225,22 @@ static int rpc_clkctl_probe(struct platform_device *pdev)
 		return rc;
 	}
 
-	rc = rpcrouter_kernapi_getdest(rpc_client,
-				       APP_CLKCTL_PROG,
-				       APP_CLKCTL_VER,
-				       (5 * HZ),
-				       &clkctlsvc_addr);
-	if (rc < 0) {
-		printk(KERN_ERR "rpc_clkctl: Unable to locate clkctl service (%d)\n", rc);
-		return rc;
-	}
+	memcpy(&clkctlsvc_addr, &pdev->addr, sizeof(rpcrouter_address));
+
 	/*
 	 * Pass our ops structure to the arch clock driver
 	 */
 	clock_register_rpc(&rpc_ops);
 
-	printk("%s: Done\n", __FUNCTION__);
+	printk(KERN_INFO "%s: Done\n", __FUNCTION__);
 	return 0;
 }
 
 static struct platform_driver rpc_clkctl_driver = {
 	.probe	= rpc_clkctl_probe,
 	.driver	= {
-			.name	= "rpcsvr_30000075:0",
-			.owner = THIS_MODULE,
+			.name	= APP_CLKCTL_PDEV_NAME,
+			.owner	= THIS_MODULE,
 	},
 };
 

@@ -36,26 +36,6 @@ typedef struct
 	uint32_t	ver; /* version */
 } rpcrouter_program_version;
 
-typedef struct
-{
-	uint32_t	xp;
-	uint32_t	port;
-} rpcrouter_xport_address;
-
-#define RPCROUTER_XPORT_NONE	0
-#define RPCROUTER_XPORT_LOCAL	1
-#define RPCROUTER_XPORT_SMD	2
-#define RPCROUTER_XPORT_SMMS	3
-#define RPCROUTER_XPORT_SOCKETS	4
-#define RPCROUTER_XPORT_ALL	5
-
-/*
- *  Arguments for RPC_ROUTER_IOCTL_OPEN_XPORT and RPC_ROUTER_IOCTL_CLOSE_XPORT
- */
-struct rpcrouter_ioctl_xport_args
-{
-	rpcrouter_xport_address addr;
-};
 
 /*
  * Arguments for RPC_ROUTER_IOCTL_REGISTER_SERVER and
@@ -95,41 +75,5 @@ struct rpcrouter_ioctl_dest_args
 
 #define RPC_ROUTER_IOCTL_GET_DEST \
    _IOWR(RPC_ROUTER_IOCTL_MAGIC, 6, unsigned int)
-
-#define RPC_ROUTER_IOCTL_GET_TX_QUOTA \
-   _IOR(RPC_ROUTER_IOCTL_MAGIC, 2, unsigned int)
-
-#define RPC_ROUTER_IOCTL_OPEN_XPORT \
-   _IOWR(RPC_ROUTER_IOCTL_MAGIC, 7, unsigned int)
-
-#define RPC_ROUTER_IOCTL_GET_RX_BUFFER_SIZE \
-   _IOR(RPC_ROUTER_IOCTL_MAGIC, 3, unsigned int)
-
-#define RPC_ROUTER_IOCTL_CLOSE_XPORT \
-   _IOWR(RPC_ROUTER_IOCTL_MAGIC, 8, unsigned int)
-
-#define RPC_ROUTER_IOCTL_REGISTER_SERVER \
-   _IOWR(RPC_ROUTER_IOCTL_MAGIC, 4, unsigned int)
-
-#define RPC_ROUTER_IOCTL_UNREGISTER_SERVER \
-   _IOWR(RPC_ROUTER_IOCTL_MAGIC, 5, unsigned int)
-
-#define RPC_ROUTER_IOCTL_GET_DEST \
-   _IOWR(RPC_ROUTER_IOCTL_MAGIC, 6, unsigned int)
-
-#define RPC_ROUTER_IOCTL_OPEN_XPORT \
-   _IOWR(RPC_ROUTER_IOCTL_MAGIC, 7, unsigned int)
-
-#define RPC_ROUTER_IOCTL_CLOSE_XPORT \
-   _IOWR(RPC_ROUTER_IOCTL_MAGIC, 8, unsigned int)
-
-#define RPC_ROUTER_IOCTL_GET_ROUTER_STATS \
-   _IOR(RPC_ROUTER_IOCTL_MAGIC, 9, unsigned int)
-
-#define RPC_ROUTER_IOCTL_GET_CLIENT_STATS \
-   _IOR(RPC_ROUTER_IOCTL_MAGIC, 10, unsigned int)
-
-#define RPC_ROUTER_IOCTL_GET_ROUTING_TABLE \
-   _IOWR(RPC_ROUTER_IOCTL_MAGIC, 11, unsigned int)
 
 #endif

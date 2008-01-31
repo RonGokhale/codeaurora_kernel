@@ -19,8 +19,16 @@
 #define __ASM__ARCH_MSM_RPCROUTER_H
 
 #include <linux/types.h>
+#include <linux/platform_device.h>
 #include <linux/msm_rpcrouter.h>
 #include <asm/arch/msm_smd.h>
+
+
+struct rpcsvr_platform_device
+{
+	struct platform_device base;
+	rpcrouter_address addr;
+};
 
 struct rpcrouter_client;
 
@@ -33,10 +41,10 @@ typedef struct rpcrouter_client rpcrouterclient_t;
  */
 
 /* =====================
- * Reply data structures
+ * Request data structures
  * =====================
  */
-struct rpc_request_hdr 
+struct rpc_request_hdr
 {
 	uint32_t xid;
 	uint32_t type;	/* 0 */
@@ -101,7 +109,6 @@ struct rpc_reply_hdr
  *  Kernel API for kernel consumers/producers
  */
 
-extern int rpcrouter_kernapi_openxport(rpcrouter_xport_address *addr);
 extern int rpcrouter_kernapi_open(rpcrouterclient_t **client);
 extern int rpcrouter_kernapi_close(rpcrouterclient_t *client);
 extern int rpcrouter_kernapi_write(rpcrouterclient_t *client,
@@ -126,6 +133,6 @@ extern struct rpcrouter_server *rpcrouter_kernapi_register_server(struct rpcrout
 extern int rpcrouter_kernapi_unregister_server(struct rpcrouter_client *client,
 		struct rpcrouter_ioctl_server_args *server_args);
 
-extern int rpcrouter_kernapi_register_notify(struct rpcrouter_client **client, 
+extern int rpcrouter_kernapi_register_notify(struct rpcrouter_client **client,
 					int (*func)(int));
 #endif

@@ -37,7 +37,7 @@ static rpcrouterclient_t *rpc_client;
 static rpcrouter_address pmsvc_addr;
 
 static int rpc_pm_vote_vreg_switch(int enable, uint32_t vreg_id,
-	                           uint32_t app_mask)
+				   uint32_t app_mask)
 {
 	struct pmrpc_votevregswitch_req req;
 	void *rsp;
@@ -65,21 +65,13 @@ static int rpc_pm_vote_vreg_switch(int enable, uint32_t vreg_id,
 	return 0;
 }
 
-static int rpc_pm_probe(struct platform_device *pdev)
+static int rpc_pm_probe(struct platform_device *data)
 {
-	rpcrouter_xport_address	xport_addr;
 	int rc;
+	struct rpcsvr_platform_device *pdev;
 
-	printk("%s:\n", __FUNCTION__);
-
-	xport_addr.xp = RPCROUTER_XPORT_SMD;
-	xport_addr.port = 2;
-
-	rc = rpcrouter_kernapi_openxport(&xport_addr);
-	if (rc < 0) {
-		printk(KERN_ERR "rpc_pm: Error opening SMD xport (%d)\n", rc);
-		return rc;
-	}
+	printk(KERN_INFO "%s:\n", __FUNCTION__);
+	pdev  = (struct rpcsvr_platform_device *) data;
 
 	rc = rpcrouter_kernapi_open(&rpc_client);
 	if (rc < 0) {
@@ -87,12 +79,7 @@ static int rpc_pm_probe(struct platform_device *pdev)
 		return rc;
 	}
 
-	rc = rpcrouter_kernapi_getdest(rpc_client, APP_PM_PROG, APP_PM_VER,
-				       (5 * HZ), &pmsvc_addr);
-	if (rc < 0) {
-		printk(KERN_ERR "rpc_pm: Unable to find pm service (%d)\n", rc);
-		return rc;
-	}
+	memcpy(&pmsvc_addr, &pdev->addr, sizeof(rpcrouter_address));
 
 	return 0;
 }
@@ -100,7 +87,7 @@ static int rpc_pm_probe(struct platform_device *pdev)
 static struct platform_driver rpc_pm_driver = {
 	.probe	= rpc_pm_probe,
 	.driver	= {
-		.name	= "rpcsvr_30000060:0",
+		.name	= APP_PM_PDEV_NAME,
 		.owner	= THIS_MODULE,
 	},
 };

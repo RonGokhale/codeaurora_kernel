@@ -37,6 +37,8 @@
 void *smem_alloc(unsigned id, unsigned size);
 void *smem_find(unsigned id, unsigned size);
 
+static unsigned last_heap_free = 0xffffffff;
+
 #if 0
 #define D(x...) printk(x)
 #else
@@ -360,11 +362,17 @@ static void hc_set_state(volatile struct smd_half_channel *hc, unsigned n)
 	notify_other_smd();
 }
 
-static unsigned last_heap_free = 0xffffffff;
+static void do_smd_probe(void)
+{
+	struct smem_shared *shared = (void *) MSM_SHARED_RAM_BASE;
+	if (shared->heap_info.free_offset != last_heap_free) {
+		last_heap_free = shared->heap_info.free_offset;
+		schedule_work(&probe_work);
+	}
+}
 
 static irqreturn_t smd_irq_handler(int irq, void *data)
 {
-	struct smem_shared *shared = (void *) MSM_SHARED_RAM_BASE;
 	unsigned long flags;
 	struct smd_channel *ch;
 	int do_notify = 0;
@@ -408,11 +416,7 @@ static irqreturn_t smd_irq_handler(int irq, void *data)
 	}
 	if (do_notify) notify_other_smd();
 	spin_unlock_irqrestore(&smd_lock, flags);
-
-	if (shared->heap_info.free_offset != last_heap_free) {
-		last_heap_free = shared->heap_info.free_offset;
-		schedule_work(&probe_work);
-	}
+	do_smd_probe();
 	return IRQ_HANDLED;
 }
 
@@ -700,7 +704,6 @@ void *smem_find(unsigned id, unsigned size)
 
 static irqreturn_t smsm_irq_handler(int irq, void *data)
 {
-	struct smem_shared *shared = (void *) MSM_SHARED_RAM_BASE;
 	unsigned long flags;
 	struct smsm_shared *smsm;
 
@@ -728,6 +731,7 @@ static irqreturn_t smsm_irq_handler(int irq, void *data)
 		if (smsm[0].state != apps) {
 			printk(KERN_INFO "<SM %08x NOTIFY>\n", apps);
 			smsm[0].state = apps;
+			do_smd_probe();
 			notify_other_smsm();
 		}
 	}
@@ -923,6 +927,7 @@ static int __init msm_smd_probe(struct platform_device *pdev)
 	}
 
 	memset(&p_devs, 0, sizeof(p_devs));
+	do_smd_probe();
 
 	smd_debugfs_init();
 	smd_initialized = 1;

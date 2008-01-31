@@ -24,6 +24,7 @@
  * Low level RPC PM control
  * ===========================
  */
+#define APP_PM_PDEV_NAME "rpcsvr_30000060:0"
 #define APP_PM_PROG 0x30000060
 #define APP_PM_VER 0
 

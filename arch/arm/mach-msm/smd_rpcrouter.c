@@ -68,9 +68,11 @@ static struct cdev rpcrouter_cdev;
 static struct class *rpcrouter_class;
 static struct device *rpcrouter_device;
 
-static LIST_HEAD(client_list);
-static LIST_HEAD(xport_list);
+static LIST_HEAD(local_clients);
+static LIST_HEAD(remote_clients);
+
 static LIST_HEAD(server_list);
+
 #if RPCROUTER_BW_COMP
 #define ONCRPC_BW_COMP_LOCAL_PROG 0x3000FFFE
 #define ONCRPC_BW_COMP_LOCAL_VERS 1
@@ -80,22 +82,27 @@ static rpcrouterclient_t *bw_client;
 static struct rpcrouter_server *bw_server;
 #endif
 
-static DEFINE_SPINLOCK(client_list_lock);
-static DEFINE_SPINLOCK(xport_list_lock);
+static smd_channel_t *smd_channel;
+static int initialized;
+static DECLARE_WAIT_QUEUE_HEAD(hello_wait);
+
+static DEFINE_SPINLOCK(local_clients_lock);
+static DEFINE_SPINLOCK(remote_clients_lock);
 static DEFINE_SPINLOCK(server_list_lock);
+static DEFINE_SPINLOCK(smd_lock);
 
 static struct krpcrouterd_thread worker_thread;
 static uint32_t next_xid;
 static uint8_t next_pacmarkid;
 static wait_queue_head_t newserver_wait;
+static uint8_t rx_buffer[RPCROUTER_MSGSIZE_MAX];
+static rpcrouter_address remote_router_address;
 
 static struct platform_device rpcrouter_pdev = {
 	.name		= "oncrpc_router",
 	.id		= -1,
 };
-
 static struct work_struct create_pdev_work;
-
 static struct work_struct create_rpcrouter_pdev_work;
 
 static struct file_operations rpcrouter_server_fops = {
@@ -224,33 +231,21 @@ static void dump_rpc_pkt(void *buf, int arglen)
 
 /*
  *  Send a control msg to the remote router
- *  NOTE: xport->lock MUST be held
  */
-static int rpcrouter_send_control_msg(struct rpcrouter_xport *xport,
-				      struct rpcrouter_control_msg *msg)
+static int rpcrouter_send_control_msg(struct rpcrouter_control_msg *msg)
 {
 	struct rpcrouter_complete_header hdr;
 	int rc;
 	unsigned long flags;
 
 #if MSM_RPCROUTER_R2R_DEBUG
-	printk(KERN_INFO "rpcrouter_send_control_msg(): [XP %x P %x] Command 0x%x\n",
-			xport->xport_address.xp,
-			xport->xport_address.port,
+	printk(KERN_INFO "rpcrouter_send_control_msg(): Command 0x%x\n",
 			msg->command);
 #endif
 
-	if (xport->xport_address.xp != RPCROUTER_XPORT_SMD) {
-		printk(KERN_ERR "rpcrouter: Unsupported xport [XP %x P %x\n",
-			xport->xport_address.xp, xport->xport_address.port);
-		return -EINVAL;
-	}
-
-	if (!(msg->command == RPCROUTER_CTRL_CMD_HELLO)
-	 && !xport->initialized) {
-		printk(KERN_ERR "rpcrouter_send_control_msg(): Warning, xport "
-		       "[XP %x P %x] not yet initialized\n",
-			xport->xport_address.xp, xport->xport_address.port);
+	if (!(msg->command == RPCROUTER_CTRL_CMD_HELLO) && !initialized) {
+		printk(KERN_ERR "rpcrouter_send_control_msg(): Warning, "
+		       "router not initialized\n");
 		return -EINVAL;
 	}
 
@@ -261,24 +256,21 @@ static int rpcrouter_send_control_msg(struct rpcrouter_xport *xport,
 	hdr.rh.src_addr.pid = RPCROUTER_PID_LOCAL;
 	hdr.rh.src_addr.cid = RPCROUTER_ROUTER_ADDRESS;
 	hdr.ph.msg_size = sizeof(struct rpcrouter_control_msg);
-	hdr.ph.addr.pid = xport->peer_router_address.pid;
-	hdr.ph.addr.cid = xport->peer_router_address.cid;
+	hdr.ph.addr.pid = remote_router_address.pid;
+	hdr.ph.addr.cid = remote_router_address.cid;
 
-	spin_lock_irqsave(&xport->xport_specific.smd.smd_lock, flags);
+	spin_lock_irqsave(&smd_lock, flags);
 	/* Write header */
-	rc = smd_write(xport->xport_specific.smd.smd_channel,
-		       &hdr,
+	rc = smd_write(smd_channel, &hdr,
 		       sizeof(struct rpcrouter_complete_header));
 	if (rc < 0) {
-		spin_unlock_irqrestore(&xport->xport_specific.smd.smd_lock,
-				       flags);
+		spin_unlock_irqrestore(&smd_lock, flags);
 		return rc;
 	}
 
 	/* Write data */
-	rc = smd_write(xport->xport_specific.smd.smd_channel, msg,
-		       hdr.ph.msg_size);
-	spin_unlock_irqrestore(&xport->xport_specific.smd.smd_lock, flags);
+	rc = smd_write(smd_channel, msg, hdr.ph.msg_size);
+	spin_unlock_irqrestore(&smd_lock, flags);
 	return rc;
 }
 
@@ -365,15 +357,18 @@ static int create_platform_device(struct rpcrouter_server *server)
 
 	sprintf(pdev_name, "rpcsvr_%.8x:%d", server->pv.prog, server->pv.ver);
 	memset(&server->p_device, 0, sizeof(struct platform_device));
-	server->p_device.id = -1;
-	server->p_device.name = kmalloc(strlen(pdev_name)+1, GFP_KERNEL);
-	if (!server->p_device.name) {
+
+	server->p_device.base.id = -1;
+	server->p_device.base.name = kmalloc(strlen(pdev_name)+1, GFP_KERNEL);
+	if (!server->p_device.base.name) {
 		printk(KERN_ERR "Unable to create platform device (OOM)\n");
 		return -ENOMEM;
 	}
-	strcpy(server->p_device.name, pdev_name);
+	strcpy(server->p_device.base.name, pdev_name);
+
+	memcpy(&server->p_device.addr, &server->addr, sizeof(rpcrouter_address));
 	D("%s: creating device '%s'\n", __FUNCTION__, pdev_name);
-	platform_device_register(&server->p_device);
+	platform_device_register(&server->p_device.base);
 	return 0;
 }
 
@@ -484,43 +479,31 @@ static struct rpcrouter_client *rpcrouter_create_local_client(dev_t dev)
 	INIT_LIST_HEAD(&client->read_q);
 	spin_lock_init(&client->read_q_lock);
 
-	spin_lock_irqsave(&client_list_lock, flags);
-	list_add_tail(&client->client_list, &client_list);
-	spin_unlock_irqrestore(&client_list_lock, flags);
+	spin_lock_irqsave(&local_clients_lock, flags);
+	list_add_tail(&client->clients, &local_clients);
+	spin_unlock_irqrestore(&local_clients_lock, flags);
 	return client;
 }
 
 static int rpcrouter_destroy_local_client(struct rpcrouter_client *client)
 {
 	int rc;
-
 	struct rpcrouter_control_msg msg;
-	struct rpcrouter_xport *xport;
-	unsigned long flags;
 
 	msg.command = RPCROUTER_CTRL_CMD_REMOVE_CLIENT;
 	msg.args.arg_c.pid = client->addr.pid;
 	msg.args.arg_c.cid = client->addr.cid;
 
-	/*
-	 * This message must be sent over every xport
-	 */
-	spin_lock_irqsave(&xport_list_lock, flags);
-	list_for_each_entry(xport, &xport_list, xport_list) {
-		rc = rpcrouter_send_control_msg(xport, &msg);
-		if (rc < 0) {
-			spin_unlock_irqrestore(&xport_list_lock, flags);
-			return rc;
-		}
-	}
-	list_del(&client->client_list);
-	spin_unlock_irqrestore(&xport_list_lock, flags);
+	rc = rpcrouter_send_control_msg(&msg);
+	if (rc < 0)
+		return rc;
+
+	list_del(&client->clients);
 	kfree(client);
 	return 0;
 }
 
-static int rpcrouter_create_remote_client(struct rpcrouter_xport *xport,
-					  uint32_t cid)
+static int rpcrouter_create_remote_client(uint32_t cid)
 {
 	struct rpcrouter_address_list *new_c;
 	unsigned long flags;
@@ -532,11 +515,10 @@ static int rpcrouter_create_remote_client(struct rpcrouter_xport *xport,
 
 	new_c->addr.cid = cid;
 	new_c->addr.pid = RPCROUTER_PID_REMOTE;
-	new_c->xport = xport;
 
-	spin_lock_irqsave(&xport->rcl_lock, flags);
-	list_add_tail(&new_c->list, &xport->remote_client_list);
-	spin_unlock_irqrestore(&xport->rcl_lock, flags);
+	spin_lock_irqsave(&remote_clients_lock, flags);
+	list_add_tail(&new_c->list, &remote_clients);
+	spin_unlock_irqrestore(&remote_clients_lock, flags);
 
 	return 0;
 }
@@ -546,64 +528,31 @@ static struct rpcrouter_client *rpcrouter_lookup_local_client(uint32_t cid)
 	struct rpcrouter_client *client;
 	unsigned long flags;
 
-	spin_lock_irqsave(&client_list_lock, flags);
-	list_for_each_entry(client, &client_list, client_list) {
+	spin_lock_irqsave(&local_clients_lock, flags);
+	list_for_each_entry(client, &local_clients, clients) {
 		if (client->addr.cid == cid) {
-			spin_unlock_irqrestore(&client_list_lock, flags);
+			spin_unlock_irqrestore(&local_clients_lock, flags);
 			return client;
 		}
 	}
-	spin_unlock_irqrestore(&client_list_lock, flags);
+	spin_unlock_irqrestore(&local_clients_lock, flags);
 	return NULL;
 }
 
 static struct rpcrouter_address_list *rpcrouter_lookup_remote_client(
-						  struct rpcrouter_xport *xport,
 						  uint32_t cid)
 {
 	struct rpcrouter_address_list *element;
 	unsigned long flags;
 
-	spin_lock_irqsave(&xport->rcl_lock, flags);
-	list_for_each_entry(element, &xport->remote_client_list, list) {
+	spin_lock_irqsave(&remote_clients_lock, flags);
+	list_for_each_entry(element, &remote_clients, list) {
 		if (element->addr.cid == cid) {
-			spin_unlock_irqrestore(&xport->rcl_lock, flags);
+			spin_unlock_irqrestore(&remote_clients_lock, flags);
 			return element;
-			}
-	}
-	spin_unlock_irqrestore(&xport->rcl_lock, flags);
-	return NULL;
-}
-
-static struct rpcrouter_xport *rpcrouter_locate_route_to_client(
-                                                   rpcrouter_address * addr)
-{
-	struct rpcrouter_xport *c_xport;
-	struct rpcrouter_address_list *c_element;
-	unsigned long flags, flags2;
-
-
-	if (addr->pid > RPCROUTER_PROCESSORS_MAX)
-		return NULL;
-
-	spin_lock_irqsave(&xport_list_lock, flags);
-	list_for_each_entry(c_xport, &xport_list, xport_list) {
-		spin_lock_irqsave(&c_xport->rcl_lock, flags2);
-		list_for_each_entry(c_element,
-					&c_xport->remote_client_list,
-					list) {
-			if ((c_element->addr.pid == addr->pid) &&
-			    (c_element->addr.cid == addr->cid)) {
-				spin_unlock_irqrestore(&c_xport->rcl_lock,
-						       flags2);
-				spin_unlock_irqrestore(&xport_list_lock, flags);
-				return c_xport;
-			}
 		}
-		spin_unlock_irqrestore(&c_xport->rcl_lock, flags2);
 	}
-
-	spin_unlock_irqrestore(&xport_list_lock, flags);
+	spin_unlock_irqrestore(&remote_clients_lock, flags);
 	return NULL;
 }
 
@@ -615,10 +564,8 @@ static struct rpcrouter_xport *rpcrouter_locate_route_to_client(
 
 /*
  * Process a msg from the router
- * NOTE: xport->lock must be held
  */
-static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr,
-				       struct rpcrouter_xport *xport)
+static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr)
 {
 	struct rpcrouter_server *server;
 	struct rpcrouter_control_msg  *cntl;
@@ -632,7 +579,7 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr,
 		return -EINVAL;
 	}
 
-	cntl = (struct rpcrouter_control_msg *) xport->rx_buffer;
+	cntl = (struct rpcrouter_control_msg *) rx_buffer;
 	switch (hdr->rh.msg_type) {
 	case RPCROUTER_CTRL_CMD_HELLO:
 		/* Send list of servers one at a time */
@@ -645,7 +592,7 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr,
 			cntl->args.arg_s.prog = server->pv.prog;
 			cntl->args.arg_s.ver = server->pv.ver;
 
-			rc = rpcrouter_send_control_msg(xport, cntl);
+			rc = rpcrouter_send_control_msg(cntl);
 			if (rc < 0)
 				printk(KERN_ERR
 					"rpcrouter: Control msg send "
@@ -676,20 +623,17 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr,
 #endif
 			/*
 			 * XXX: Verify that its okay to add the
-			 * client to our xports remote client list
+			 * client to our remote client list
 			 * if we get a NEW_SERVER notification
 			 */
-			if (!rpcrouter_lookup_remote_client(xport,
+			if (!rpcrouter_lookup_remote_client(
 						    cntl->args.arg_s.cid)) {
 				D("rpcrouter: Adding remote client "
-				  "[PID %x CID %x] to xport [XP %x P %x"
-				  "]\n",
+				  "[PID %x CID %x]\n",
 				  cntl->args.arg_s.pid,
-				  cntl->args.arg_s.cid,
-				  xport->xport_address.xp,
-				  xport->xport_address.port);
+				  cntl->args.arg_s.cid);
 
-				rc = rpcrouter_create_remote_client(xport,
+				rc = rpcrouter_create_remote_client(
 							  cntl->args.arg_s.cid);
 				if (rc < 0)
 					printk(KERN_ERR
@@ -738,7 +682,7 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr,
 			       "local client\n");
 			break;
 		}
-		remote_client = rpcrouter_lookup_remote_client(xport,
+		remote_client = rpcrouter_lookup_remote_client(
 						 cntl->args.arg_c.cid);
 		if (!remote_client) {
 			printk(KERN_WARNING
@@ -747,9 +691,9 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr,
 			       cntl->args.arg_c.pid,
 			       cntl->args.arg_c.cid);
 		} else {
-			spin_lock_irqsave(&xport->rcl_lock, flags);
+			spin_lock_irqsave(&remote_clients_lock, flags);
 			list_del(&remote_client->list);
-			spin_unlock_irqrestore(&xport->rcl_lock, flags);
+			spin_unlock_irqrestore(&remote_clients_lock, flags);
 			kfree(remote_client);
 #if MSM_RPCROUTER_R2R_DEBUG
 			printk(KERN_INFO
@@ -796,26 +740,21 @@ static void create_pdev_worker(struct work_struct *work)
 
 static void rpcrouter_smdnotify(void *_dev, unsigned event)
 {
-	struct rpcrouter_xport *xport = (struct rpcrouter_xport *) _dev;
 	unsigned long flags;
-
-	BUG_ON(xport->xport_address.xp != RPCROUTER_XPORT_SMD);
 
 	if (event != SMD_EVENT_DATA)
 		return;
 
-	D("%s: [XP %x P %x] Event 0x%x\n", __FUNCTION__,
-	  xport->xport_address.xp, xport->xport_address.port, event);
+	D("%s: Event 0x%x\n", __FUNCTION__, event);
 
 	spin_lock_irqsave(&worker_thread.lock, flags);
 	worker_thread.command = KTHREAD_CMD_DATA;
-	worker_thread.xport = xport;
 	spin_unlock_irqrestore(&worker_thread.lock, flags);
 	D("%s: Waking up worker\n", __FUNCTION__);
 	wake_up_interruptible(&worker_thread.wait);
 }
 
-static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
+static void krpcrouterd_process_msg(void)
 {
 	struct rpcrouter_client *client;
 	struct rpcrouter_complete_header hdr;
@@ -825,10 +764,9 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 	unsigned long flags;
 	char *p;
 
-	BUG_ON(!xport);
 	for (;;) {
 
-		len = smd_read_avail(xport->xport_specific.smd.smd_channel);
+		len = smd_read_avail(smd_channel);
 		if (!len)
 			break;
 		else if (len < sizeof(struct rpcrouter_complete_header)) {
@@ -841,8 +779,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 		p = (char *) &hdr;
 		retry = 0;
 		while (brtr) {
-			rc = smd_read(xport->xport_specific.smd.smd_channel,
-				      p, brtr);
+			rc = smd_read(smd_channel, p, brtr);
 			p += rc;
 			brtr -= rc;
 			if (brtr) {
@@ -887,11 +824,10 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 		}
 
 		brtr = hdr.ph.msg_size;
-		p = (char *) xport->rx_buffer;
+		p = (char *) rx_buffer;
 		retry = 0;
 		while (brtr) {
-			rc = smd_read(xport->xport_specific.smd.smd_channel,
-				      p, brtr);
+			rc = smd_read(smd_channel, p, brtr);
 			p += rc;
 			brtr -= rc;
 
@@ -906,7 +842,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 				}
 			}
 		}
-		pacmark = (struct pacmark_hdr *) xport->rx_buffer;
+		pacmark = (struct pacmark_hdr *) rx_buffer;
 
 		if (hdr.rh.version != RPCROUTER_VERSION) {
 			printk(KERN_ERR
@@ -916,12 +852,12 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 		}
 
 		if (hdr.rh.msg_type == RPCROUTER_CTRL_CMD_HELLO) {
-			xport->peer_router_address.pid = hdr.rh.src_addr.pid;
-			xport->peer_router_address.cid = hdr.rh.src_addr.cid;
-			xport->initialized = 1;
+			remote_router_address.pid = hdr.rh.src_addr.pid;
+			remote_router_address.cid = hdr.rh.src_addr.cid;
+			initialized = 1;
 			INIT_WORK(&create_rpcrouter_pdev_work, create_rpcrouter_pdev_worker);
 			schedule_work(&create_rpcrouter_pdev_work);
-			wake_up_interruptible(&xport->hello_wait);
+			wake_up_interruptible(&hello_wait);
 		}
 
 		D("krpcrouterd: [PID %x CID %x] <- [PID %x CID %x] (size %d)\n",
@@ -934,7 +870,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 #endif
 
 		if (hdr.ph.addr.cid == RPCROUTER_ROUTER_ADDRESS) {
-			rc = rpcrouter_process_routermsg(&hdr, xport);
+			rc = rpcrouter_process_routermsg(&hdr);
 			if (rc < 0)
 				printk(KERN_ERR
 				       "krpcrouterd: Failed to process R2R msg"
@@ -959,14 +895,12 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 			continue;
 		}
 
-		if (!rpcrouter_lookup_remote_client(xport,
+		if (!rpcrouter_lookup_remote_client(
 						    hdr.rh.src_addr.cid)) {
-			D("krpcrouterd: Adding remote client [PID %x CID %x]"
-			  " to xport [XP %x P %x]\n",
-			  hdr.rh.src_addr.pid, hdr.rh.src_addr.cid,
-			  xport->xport_address.xp, xport->xport_address.port);
+			D("krpcrouterd: Adding remote client [PID %x CID %x]\n"
+			  hdr.rh.src_addr.pid, hdr.rh.src_addr.cid);
 
-			rc = rpcrouter_create_remote_client(xport,
+			rc = rpcrouter_create_remote_client(
 						   hdr.rh.src_addr.cid);
 			if (rc < 0) {
 				printk(KERN_ERR
@@ -1004,7 +938,7 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 		}
 
 		memcpy(read_queue->data,
-			&xport->rx_buffer[sizeof(struct pacmark_hdr)],
+			&rx_buffer[sizeof(struct pacmark_hdr)],
 			read_queue->data_size);
 
 #if MSM_RPCROUTER_DEBUG_PKT
@@ -1079,8 +1013,8 @@ static void krpcrouterd_process_msg(struct rpcrouter_xport *xport)
 
 exit_flush_smd:
 	D(KERN_INFO "krpcrouterd: Flushing transport\n");
-	len = smd_read_avail(xport->xport_specific.smd.smd_channel);
-	rc = smd_read(xport->xport_specific.smd.smd_channel, NULL, len);
+	len = smd_read_avail(smd_channel);
+	rc = smd_read(smd_channel, NULL, len);
 	if (rc < 0)
 		printk(KERN_ERR
 		       "krpcrouterd: Error clearing out channel (%d)\n", rc);
@@ -1104,7 +1038,6 @@ static int rpcrouter_thread(void *data)
 
 	while (1) {
 		int command = 0;
-		struct rpcrouter_xport *xport = NULL;
 
 		rc = 0;
 		for (;;) {
@@ -1113,9 +1046,7 @@ static int rpcrouter_thread(void *data)
 			spin_lock_irqsave(&this->lock, flags);
 			if (this->command != KTHREAD_CMD_NONE) {
 				command = this->command;
-				xport = this->xport;
 				this->command = KTHREAD_CMD_NONE;
-				this->xport = NULL;
 				D("%s: Woken up with cmd = %d\n", __FUNCTION__, command);
 				spin_unlock_irqrestore(&this->lock, flags);
 				break;
@@ -1154,132 +1085,13 @@ static int rpcrouter_thread(void *data)
 			rc = 0;
 			break;
 		} else if (command == KTHREAD_CMD_DATA)
-			krpcrouterd_process_msg(xport);
+			krpcrouterd_process_msg();
 		else
 			printk(KERN_ERR
 			       "krpcrouterd: Unknown cmd (%d)\n", command);
 	}
 	printk(KERN_INFO "krpcrouterd: Shutting down (%d)\n", rc);
 	return rc;
-}
-
-/*  ================================
- *  SMD xport creation / destruction
- *  ================================
- */
-static int rpcrouter_destroy_smd_xport_channel(uint32_t channel)
-{
-	struct rpcrouter_xport *c_xport, *n_xport;
-	struct rpcrouter_address_list *c_addr, *n_addr;
-	struct rpcrouter_control_msg msg;
-	int	rc = 0;
-	unsigned long flags, flags2;
-
-	D("rpcrouter_destroy_smd_xport_channel(): channel %d\n", channel);
-
-	spin_lock_irqsave(&xport_list_lock, flags);
-	list_for_each_entry_safe(c_xport, n_xport, &xport_list, xport_list) {
-		if (c_xport->xport_address.xp == RPCROUTER_XPORT_SMD &&
-		    c_xport->xport_address.port == channel) {
-			memset(&msg, 0, sizeof(struct rpcrouter_control_msg));
-			msg.command = RPCROUTER_CTRL_CMD_BYE;
-
-			rc = rpcrouter_send_control_msg(c_xport, &msg);
-			if (rc < 0)
-				goto out;
-			rc = smd_close(c_xport->xport_specific.smd.smd_channel);
-			if (rc < 0)
-				goto out;
-
-			list_del(&c_xport->xport_list);
-			spin_lock_irqsave(&c_xport->rcl_lock, flags2);
-			list_for_each_entry_safe(c_addr,
-						 n_addr,
-						 &c_xport->remote_client_list,
-						 list) {
-				list_del(&c_addr->list);
-				kfree(c_addr);
-			}
-			spin_unlock_irqrestore(&c_xport->rcl_lock, flags2);
-
-			kfree(c_xport);
-			rc = 0;
-			goto out;
-		}
-	}
-
-	/*
-	 * Transport not found; Qualcomm returns success in this case - wierdos
-	 */
-out:
-	spin_unlock_irqrestore(&xport_list_lock, flags);
-	return rc;
-}
-
-static int rpcrouter_create_smd_xport_channel(uint32_t channel)
-{
-	struct rpcrouter_xport *xport, *c_xport;
-	struct rpcrouter_control_msg msg;
-	int	rc;
-	unsigned long flags;
-
-	xport = kmalloc(sizeof(struct rpcrouter_xport), GFP_KERNEL);
-	if (!xport)
-		return -ENOMEM;
-
-	/*
-	 * Check for duplicate xport
-	 */
-	spin_lock_irqsave(&xport_list_lock, flags);
-	list_for_each_entry(c_xport, &xport_list, xport_list) {
-		if (c_xport->xport_address.xp == RPCROUTER_XPORT_SMD &&
-			c_xport->xport_address.port == channel) {
-			spin_unlock_irqrestore(&xport_list_lock, flags);
-			/* Qualcomm returns success on duplicate open  */
-			kfree(xport);
-			return 0;
-		}
-	}
-
-	memset(xport, 0, sizeof(struct rpcrouter_xport));
-	xport->xport_address.xp = RPCROUTER_XPORT_SMD;
-	xport->xport_address.port = channel;
-	init_waitqueue_head(&xport->hello_wait);
-	spin_lock_init(&xport->rcl_lock);
-
-	INIT_LIST_HEAD(&xport->remote_client_list);
-
-	xport->peer_router_address.cid = RPCROUTER_ROUTER_ADDRESS;
-	xport->peer_router_address.pid = 0;
-	xport->initialized = 0;
-
-	list_add_tail(&xport->xport_list, &xport_list);
-	spin_unlock_irqrestore(&xport_list_lock, flags);
-
-	rc = smd_open(channel,
-			&xport->xport_specific.smd.smd_channel,
-			xport, rpcrouter_smdnotify);
-	if (rc < 0)
-		return rc;
-	spin_lock_init(&xport->xport_specific.smd.smd_lock);
-	/*
-	 * We need to wait for the remote to send us a HELLO msg before we
-	 * can continue.
-	 */
-	wait_event_interruptible(xport->hello_wait, (xport->initialized));
-	if (signal_pending(current))
-		return -ERESTARTSYS;
-
-	memset(&msg, 0, sizeof(struct rpcrouter_control_msg));
-	msg.command = RPCROUTER_CTRL_CMD_HELLO;
-	rc = rpcrouter_send_control_msg(xport, &msg);
-	if (rc < 0) {
-		smd_close(xport->xport_specific.smd.smd_channel);
-		xport->xport_specific.smd.smd_channel = NULL;
-		return rc;
-	}
-
-	return 0;
 }
 
 /*  ================================
@@ -1518,7 +1330,6 @@ static unsigned int rpcrouter_poll(struct file *filp, struct poll_table_struct *
 static long rpcrouter_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct rpcrouter_client *client;
-	struct rpcrouter_ioctl_xport_args xport_args;
 	struct rpcrouter_ioctl_server_args server_args;
 	struct rpcrouter_ioctl_dest_args dest_args;
 	int rc;
@@ -1527,41 +1338,6 @@ static long rpcrouter_ioctl(struct file *filp, unsigned int cmd, unsigned long a
 
 	client = (struct rpcrouter_client *) filp->private_data;
 	switch (cmd) {
-	case RPC_ROUTER_IOCTL_OPEN_XPORT:
-		rc = copy_from_user(&xport_args, (void *) arg,
-				    sizeof(xport_args));
-		if (rc < 0)
-			break;
-		if (xport_args.addr.xp == RPCROUTER_XPORT_NONE) {
-			rc = 0;
-			break;
-		}
-
-		if (xport_args.addr.xp != RPCROUTER_XPORT_ALL &&
-		    xport_args.addr.xp != RPCROUTER_XPORT_SMD) {
-			rc = -ENOSYS;
-			break;
-		}
-
-		rc = rpcrouter_create_smd_xport_channel(xport_args.addr.port);
-		break;
-
-	case RPC_ROUTER_IOCTL_CLOSE_XPORT:
-		rc = copy_from_user(&xport_args, (void *) arg,
-				    sizeof(xport_args));
-		if (rc < 0)
-			break;
-		if (xport_args.addr.xp == RPCROUTER_XPORT_NONE) {
-			rc = 0;
-			break;
-		}
-		if (xport_args.addr.xp != RPCROUTER_XPORT_ALL &&
-		    xport_args.addr.xp != RPCROUTER_XPORT_SMD) {
-			rc = -ENOSYS;
-			break;
-		}
-		rc = rpcrouter_destroy_smd_xport_channel(xport_args.addr.port);
-		break;
 
 	case RPC_ROUTER_IOCTL_GET_MTU:
 		/* Qualcomms code just returns 0 here and copies stack garbage
@@ -1610,11 +1386,6 @@ static long rpcrouter_ioctl(struct file *filp, unsigned int cmd, unsigned long a
 
 		rc = copy_to_user((void *) arg, &dest_args, sizeof(dest_args));
 		break;
-	case RPC_ROUTER_IOCTL_GET_ROUTER_STATS:
-	case RPC_ROUTER_IOCTL_GET_CLIENT_STATS:
-	case RPC_ROUTER_IOCTL_GET_ROUTING_TABLE:
-		rc = -ENOSYS;
-		break;
 	default:
 		rc = -EINVAL;
 		break;
@@ -1629,7 +1400,7 @@ static long rpcrouter_ioctl(struct file *filp, unsigned int cmd, unsigned long a
  */
 
 void rpcrouter_kernapi_setup_request(struct rpc_request_hdr *hdr, uint32_t prog,
-                                     uint32_t vers, uint32_t proc)
+				     uint32_t vers, uint32_t proc)
 {
 	memset(hdr, 0, sizeof(struct rpc_request_hdr));
 	hdr->xid = cpu_to_be32(++next_xid);
@@ -1637,18 +1408,6 @@ void rpcrouter_kernapi_setup_request(struct rpc_request_hdr *hdr, uint32_t prog,
 	hdr->prog = cpu_to_be32(prog);
 	hdr->vers = cpu_to_be32(vers);
 	hdr->procedure = cpu_to_be32(proc);
-}
-
-int rpcrouter_kernapi_openxport(rpcrouter_xport_address * addr)
-{
-	if (addr->xp == RPCROUTER_XPORT_NONE)
-		return 0;
-
-	if (addr->xp != RPCROUTER_XPORT_ALL &&
-	    addr->xp != RPCROUTER_XPORT_SMD)
-		return -ENOSYS;
-
-	return rpcrouter_create_smd_xport_channel(addr->port);
 }
 
 int rpcrouter_kernapi_open(rpcrouterclient_t **client)
@@ -1673,7 +1432,6 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 			    void *buffer,
 			    int count)
 {
-	struct rpcrouter_xport *xport;
 	struct rpcrouter_complete_header hdr;
 	struct rpc_request_hdr *rq = buffer;
 	struct pacmark_hdr pacmark;
@@ -1694,8 +1452,8 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 	if (rc < 0)
 		return rc;
 
-	xport = rpcrouter_locate_route_to_client(dest);
-	if (!xport) {
+	if ((dest->pid != RPCROUTER_PID_REMOTE) ||
+	    (!rpcrouter_lookup_remote_client(dest->cid))) {
 		printk(KERN_ERR
 			"rpcrouter_kernapi_write(): No route to client "
 			"[PID %x CID %x]\n", dest->pid, dest->cid);
@@ -1719,14 +1477,13 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 	pacmark.data.cooked.message_id = ++next_pacmarkid;
 	pacmark.data.cooked.last_pkt = 1;
 
-	spin_lock_irqsave(&xport->xport_specific.smd.smd_lock, flags);
+	spin_lock_irqsave(&smd_lock, flags);
 
 	/* Write routing header */
-	rc = smd_write(xport->xport_specific.smd.smd_channel,
-		       &hdr, sizeof(struct rpcrouter_complete_header));
+	rc = smd_write(smd_channel, &hdr,
+		       sizeof(struct rpcrouter_complete_header));
 	if (rc < 0) {
-		spin_unlock_irqrestore(&xport->xport_specific.smd.smd_lock,
-				       flags);
+		spin_unlock_irqrestore(&smd_lock, flags);
 		return rc;
 	}
 
@@ -1738,19 +1495,17 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 #endif
 
 	/* Write pacmark header */
-	rc = smd_write(xport->xport_specific.smd.smd_channel,
-			&pacmark,
+	rc = smd_write(smd_channel, &pacmark,
 			sizeof(struct pacmark_hdr));
 	if (rc < 0) {
-		spin_unlock_irqrestore(&xport->xport_specific.smd.smd_lock,
-				       flags);
+		spin_unlock_irqrestore(&smd_lock, flags);
 		return rc;
 	}
 
 	/* Write data */
-	rc = smd_write(xport->xport_specific.smd.smd_channel,
+	rc = smd_write(smd_channel,
 			buffer, hdr.ph.msg_size - sizeof(struct pacmark_hdr));
-	spin_unlock_irqrestore(&xport->xport_specific.smd.smd_lock, flags);
+	spin_unlock_irqrestore(&smd_lock, flags);
 	if (rc < 0)
 		return rc;
 
@@ -1857,11 +1612,7 @@ struct rpcrouter_server *rpcrouter_kernapi_register_server(struct rpcrouter_clie
 		struct rpcrouter_ioctl_server_args *server_args)
 {
 	int rc;
-
 	struct rpcrouter_control_msg msg;
-	struct rpcrouter_xport *xport;
-	unsigned long flags;
-
 	struct rpcrouter_server *server;
 
 	server = rpcrouter_create_server(client->addr.pid,
@@ -1913,13 +1664,9 @@ struct rpcrouter_server *rpcrouter_kernapi_register_server(struct rpcrouter_clie
 	msg.args.arg_s.prog = server_args->progver.prog;
 	msg.args.arg_s.ver = server_args->progver.ver;
 
-	spin_lock_irqsave(&xport_list_lock, flags);
-	list_for_each_entry(xport, &xport_list, xport_list) {
-		rc = rpcrouter_send_control_msg(xport, &msg);
-		if (rc < 0)
-			break;
-	}
-	spin_unlock_irqrestore(&xport_list_lock, flags);
+	rc = rpcrouter_send_control_msg(&msg);
+	if (rc < 0)
+		return ERR_PTR(rc);
 done:
 	return server;
 }
@@ -1951,9 +1698,32 @@ int rpcrouter_kernapi_register_notify(struct rpcrouter_client **client,
 
 static int msm_rpcrouter_probe(struct platform_device *pdev)
 {
+	struct rpcrouter_control_msg msg;
 	int rc;
 	int major;
 
+	/* Initialize what we need to start processing */
+	INIT_LIST_HEAD(&local_clients);
+	INIT_LIST_HEAD(&remote_clients);
+
+	remote_router_address.cid = RPCROUTER_ROUTER_ADDRESS;
+	remote_router_address.pid = 0;
+
+	init_waitqueue_head(&newserver_wait);
+	memset(&worker_thread, 0, sizeof(worker_thread));
+	init_waitqueue_head(&worker_thread.wait);
+	spin_lock_init(&worker_thread.lock);
+	worker_thread.thread = kthread_create(rpcrouter_thread, &worker_thread,
+					      "krpcrouterd");
+	if (IS_ERR(worker_thread.thread)) {
+		printk(KERN_ERR
+		       "rpcrouter: Err creating worker thread\n");
+		return PTR_ERR(worker_thread.thread);
+	}
+
+	wake_up_process(worker_thread.thread);
+
+	/* Create the device nodes */
 	rpcrouter_class = class_create(THIS_MODULE, "oncrpc");
 	if (IS_ERR(rpcrouter_class)) {
 		rc = -ENOMEM;
@@ -1985,41 +1755,37 @@ static int msm_rpcrouter_probe(struct platform_device *pdev)
 	if (rc < 0)
 		goto fail_destroy_device;
 
-	INIT_LIST_HEAD(&client_list);
-	INIT_LIST_HEAD(&xport_list);
-
-	init_waitqueue_head(&newserver_wait);
-	memset(&worker_thread, 0, sizeof(worker_thread));
-	init_waitqueue_head(&worker_thread.wait);
-	spin_lock_init(&worker_thread.lock);
-	worker_thread.thread = kthread_create(rpcrouter_thread, &worker_thread,
-					      "krpcrouterd");
-	if (IS_ERR(worker_thread.thread)) {
-		printk(KERN_ERR
-		       "rpcrouter: Err creating worker thread\n");
+	/* Open up SMD channel 2 */
+	initialized = 0;
+	rc = smd_open(2, &smd_channel, NULL, rpcrouter_smdnotify);
+	if (rc < 0)
 		goto fail_remove_cdev;
+
+	/*
+	 * We need to wait for the remote to send us a HELLO msg before we
+	 * can continue. Opening channel 2 will kick this all off
+	 */
+	wait_event_interruptible(hello_wait, (initialized));
+	if (signal_pending(current)) {
+		rc = -ERESTARTSYS;
+		goto fail_close_smd;
 	}
 
-	wake_up_process(worker_thread.thread);
+	memset(&msg, 0, sizeof(struct rpcrouter_control_msg));
+	msg.command = RPCROUTER_CTRL_CMD_HELLO;
+	rc = rpcrouter_send_control_msg(&msg);
+	if (rc < 0)
+		goto fail_close_smd;
 
 #if RPCROUTER_BW_COMP
 	{
-		rpcrouter_xport_address xport_addr;
 		struct rpcrouter_ioctl_server_args server_args;
 
-		xport_addr.xp = RPCROUTER_XPORT_SMD;
-		xport_addr.port = 2;
-		rc = rpcrouter_kernapi_openxport(&xport_addr);
-		if (rc < 0) {
-			printk(KERN_ERR
-			       "rpcrouter: Err opening xport\n");
-			goto fail_remove_cdev;
-		}
 		rc = rpcrouter_kernapi_open(&bw_client);
 		if (rc < 0) {
 			printk(KERN_ERR
 			       "rpcrouter: Err creating client\n");
-			goto fail_closexport;
+			goto fail_close_smd;
 		}
 
 		server_args.progver.prog = ONCRPC_BW_COMP_LOCAL_PROG;
@@ -2040,9 +1806,10 @@ static int msm_rpcrouter_probe(struct platform_device *pdev)
 #if RPCROUTER_BW_COMP
 fail_close_bw_client:
 	rpcrouter_kernapi_close(bw_client);
-fail_closexport:
-	/* nothing yet */
 #endif
+fail_close_smd:
+	smd_close(smd_channel);
+	smd_channel = NULL;
 fail_remove_cdev:
 	cdev_del(&rpcrouter_cdev);
 

@@ -23,7 +23,7 @@
 #include <linux/cdev.h>
 #include <linux/platform_device.h>
 
-#include <linux/msm_rpcrouter.h>
+#include <linux/msm_rpcrouter.h> /* for ioctls */
 #include <asm/arch/msm_smd.h>
 #include <asm/arch/msm_rpcrouter.h>
 
@@ -105,14 +105,13 @@ struct rpcrouter_server
 	dev_t device_number;
 	struct cdev cdev;
 	struct device *device;
-	struct platform_device p_device;
+	struct rpcsvr_platform_device p_device;
 };
 
 struct rpcrouter_address_list
 {
 	struct list_head list;
 	rpcrouter_address addr;
-	struct rpcrouter_xport *xport;
 };
 
 /*
@@ -127,14 +126,14 @@ struct rpcrouter_client_read_q
 	int data_size;
 	void *data;
 #if RPCROUTER_BW_COMP
-        uint32_t prog;
-        uint32_t vers;
+	uint32_t prog;
+	uint32_t vers;
 #endif
 };
 
 struct rpcrouter_client
 {
-	struct list_head client_list;
+	struct list_head clients;
 
 	rpcrouter_address addr; /* this process connections router address */
 
@@ -151,28 +150,6 @@ struct rpcrouter_client
 	rpcrouter_address bound_dest; /* If we're bound to a destination */
 
 	rpcrouter_address cb_addr;
-};
-
-struct rpcrouter_xport
-{
-	struct list_head xport_list;
-	struct list_head remote_client_list;
-	spinlock_t rcl_lock;
-	uint8_t rx_buffer[RPCROUTER_MSGSIZE_MAX];
-
-	int initialized;
-	wait_queue_head_t hello_wait;
-
-	rpcrouter_xport_address	xport_address;
-	rpcrouter_address peer_router_address;
-	union {
-		struct {
-			smd_channel_t *smd_channel;
-			spinlock_t smd_lock;
-		} smd;
-		struct {
-		} local;
-	} xport_specific;
 };
 
 struct rpcrouter_ctrlmsg_server_args
@@ -204,7 +181,6 @@ struct krpcrouterd_thread
 	wait_queue_head_t wait;
 	spinlock_t lock;
 	int command;
-	struct rpcrouter_xport *xport;
 };
 
 #define KTHREAD_CMD_NONE 0

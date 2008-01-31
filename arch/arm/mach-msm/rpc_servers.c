@@ -215,19 +215,10 @@ static int rpc_servers_thread(void *data)
 
 static int rpcservers_probe(struct platform_device *pdev)
 {
-	rpcrouter_xport_address	xport_addr;
 	struct rpcrouter_ioctl_server_args server_args;
 	int rc = 0;
 
 	printk("%s:\n", __FUNCTION__);
-	xport_addr.xp = RPCROUTER_XPORT_SMD;
-	xport_addr.port = 2;
-
-	rc = rpcrouter_kernapi_openxport(&xport_addr);
-	if (rc < 0) {
-		printk(KERN_ERR "rpc_servers: Error opening SMD xport (%d)\n", rc);
-		goto done;
-	}
 
 	rc = rpcrouter_kernapi_open(&rpc_client);
 	if (rc < 0) {

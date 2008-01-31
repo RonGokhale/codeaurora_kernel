@@ -98,19 +98,13 @@ static int rpc_tlmm_program_gpio_table(uint32_t *table)
 	return 0;
 }
 
-static int rpc_tlmm_probe(struct platform_device *pdev)
+static int rpc_tlmm_probe(struct platform_device *data)
 {
-	rpcrouter_xport_address	xport_addr;
+	struct rpcsvr_platform_device *pdev;
 	int rc;
 
-	xport_addr.xp = RPCROUTER_XPORT_SMD;
-	xport_addr.port = 2;
-
-	rc = rpcrouter_kernapi_openxport(&xport_addr);
-	if (rc < 0) {
-		printk(KERN_ERR "rpc_tlmm: Error opening SMD xport (%d)\n", rc);
-		return rc;
-	}
+	printk(KERN_INFO "%s:\n", __FUNCTION__);
+	pdev  = (struct rpcsvr_platform_device *) data;
 
 	rc = rpcrouter_kernapi_open(&rpc_client);
 	if (rc < 0) {
@@ -119,13 +113,7 @@ static int rpc_tlmm_probe(struct platform_device *pdev)
 		return rc;
 	}
 
-	rc = rpcrouter_kernapi_getdest(rpc_client, APP_TLMM_PROG, APP_TLMM_VER,
-					(5 * HZ), &tlmmsvc_addr);
-	if (rc < 0) {
-		printk(KERN_ERR "rpc_tlmm: Can't find tlmm service (%d)\n",
-			 rc);
-		return rc;
-	}
+	memcpy(&tlmmsvc_addr, &pdev->addr, sizeof(rpcrouter_address));
 
 	return 0;
 }
@@ -133,7 +121,7 @@ static int rpc_tlmm_probe(struct platform_device *pdev)
 static struct platform_driver rpc_tlmm_driver = {
 	.probe	= rpc_tlmm_probe,
 	.driver	= {
-		.name	= "rpcsvr_30000066:0",
+		.name	= APP_TLMM_PDEV_NAME,
 		.owner	= THIS_MODULE,
 	},
 };

@@ -23,6 +23,7 @@
  * Low level RPC clock control
  * ===========================
  */
+#define APP_CLKCTL_PDEV_NAME "rpcsvr_30000075:0"
 #define APP_CLKCTL_PROG 0x30000075
 #define APP_CLKCTL_VER 0
 

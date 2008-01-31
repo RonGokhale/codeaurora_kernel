@@ -24,8 +24,9 @@
  * Low level RPC stuff
  * ===================
  */
+#define APP_TLMM_PDEV_NAME "rpcsvr_30000066:0"
 #define APP_TLMM_PROG 0x30000066
-#define APP_TLMM_VER 0
+#define APP_TLMM_VER  0
 
 #define TLMM_PROCEEDURE_NULL                       0
 #define TLMM_PROCEEDURE_GPIO_TLMM_CONFIG_REMOTE    1
@@ -61,38 +62,38 @@
 #define GPIO_14MA 6
 #define GPIO_16MA 7
 
-#define GPIO_CONFIG(number,group,select,direction,pull,drvstr) \
-        ((number)&0xFF)<<8 | ((group)&0xF)<<4 | ((select)&0xF) | \
-        ((direction)&0x1)<<16 | ((pull)&0x3)<<17 | ((drvstr)&0x7)<<19
+#define GPIO_CONFIG(number, group, select, direction, pull, drvstr) \
+	(((number)&0xFF)<<8 | ((group)&0xF)<<4 | ((select)&0xF) | \
+	((direction)&0x1)<<16 | ((pull)&0x3)<<17 | ((drvstr)&0x7)<<19)
 
-#define GPIO_OUT(number,group) (GPIO_CONFIG((number),     \
-                                            (group),      \
-                                            0,            \
-                                            GPIO_OUTPUT,  \
-                                            GPIO_NO_PULL, \
-                                            GPIO_2MA))
+#define GPIO_OUT(number, group) (GPIO_CONFIG((number),     \
+						(group),      \
+						0,            \
+						GPIO_OUTPUT,  \
+						GPIO_NO_PULL, \
+						GPIO_2MA))
 
-#define GPIO_IN(number,group,pull) (GPIO_CONFIG((number),  \
-                                                (group),   \
-                                                0,         \
-                                                GPIO_INPUT,\
-                                                (pull),    \
-                                                GPIO_2MA))
+#define GPIO_IN(number, group, pull) (GPIO_CONFIG((number),  \
+						(group),   \
+						0,         \
+						GPIO_INPUT,\
+						(pull),    \
+						GPIO_2MA))
 
-#define GPIO_ALT(number,group,alternate,direction,pull,drvstr) \
-                                   (GPIO_CONFIG((number),      \
-                                                (group),       \
-                                                (alternate),   \
-                                                (direction),   \
-                                                (pull),        \
-                                                (drvstr)))
+#define GPIO_ALT(number, group, alternate, direction, pull, drvstr) \
+				(GPIO_CONFIG((number),      \
+						(group),       \
+						(alternate),   \
+						(direction),   \
+						(pull),        \
+						(drvstr)))
 /*
  *  The RPC request/response structures aren't combined as one might
  *  stylistically hope because this data is derrived from XDR definitions.
  */
 
 /*
- * TLMM_PROCEEDURE_GPIO_TLMM_GET_CONFIG    
+ * TLMM_PROCEEDURE_GPIO_TLMM_GET_CONFIG
  */
 
 struct tlmmrpc_gpio_get_config_req
@@ -108,7 +109,7 @@ struct tlmmrpc_gpio_get_config_rsp
 };
 
 /*
- * TLMM_PROCEEDURE_GPIO_TLMM_CONFIG_REMOTE 
+ * TLMM_PROCEEDURE_GPIO_TLMM_CONFIG_REMOTE
  */
 
 struct tlmm_gpio_set_config_req
