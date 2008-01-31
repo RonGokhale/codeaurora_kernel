@@ -35,6 +35,7 @@
 
 struct msm_port {
 	struct uart_port	uart;
+	char			name[16];
 	struct clk		*clk;
 	const char		*clk_name;
 	unsigned int		imr;
@@ -321,12 +322,13 @@ static int msm_startup(struct uart_port *port)
 {
 	struct msm_port *msm_port = UART_TO_MSM(port);
 	unsigned int data, rfr_level;
-	char name[16];
 	int ret;
 
-	snprintf(name, sizeof(name), "msm_serial%d", port->line);
+	snprintf(msm_port->name, sizeof(msm_port->name),
+		 "msm_serial%d", port->line);
 
-	ret = request_irq(port->irq, msm_irq, IRQF_TRIGGER_HIGH, name, port);
+	ret = request_irq(port->irq, msm_irq, IRQF_TRIGGER_HIGH,
+			  msm_port->name, port);
 	if (unlikely(ret))
 		return ret;
 
