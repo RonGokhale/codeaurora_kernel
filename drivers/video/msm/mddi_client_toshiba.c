@@ -20,8 +20,7 @@
 #include <linux/platform_device.h>
 #include <linux/interrupt.h>
 #include <asm/gpio.h>
-
-#include "msm_fb.h"
+#include <asm/arch/msm_fb.h>
 
 static DECLARE_WAIT_QUEUE_HEAD(toshiba_vsync_wait);
 static volatile int toshiba_got_int;

@@ -19,7 +19,7 @@
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 
-#include "msm_fb.h"
+#include <asm/arch/msm_fb.h>
 
 static void dummy_function(struct mddi_panel_info *panel)
 {

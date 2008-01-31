@@ -27,7 +27,7 @@
 
 #include <asm/io.h>
 
-#include "msm_fb.h"
+#include <asm/arch/msm_fb.h>
 
 #define PRINT_FPS 0
 

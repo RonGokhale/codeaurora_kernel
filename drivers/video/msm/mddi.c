@@ -34,7 +34,7 @@
 #include <linux/android_power.h>
 #endif
 
-#include "msm_fb.h"
+#include <asm/arch/msm_fb.h>
 #include "mddi_hw.h"
 
 #define FLAG_DISABLE_HIBERNATION 0x0001
