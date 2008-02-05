@@ -35,7 +35,10 @@
 #include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
 
-void halibut_init_keypad(void);
+static int halibut_ffa;
+module_param_named(ffa, halibut_ffa, int, S_IRUGO | S_IWUSR | S_IWGRP);
+
+void halibut_init_keypad(int ffa);
 
 static struct resource smc91x_resources[] = {
 	[0] = {
@@ -152,7 +155,7 @@ static void __init halibut_init(void)
 {
 	msm_init_gpio();
 	platform_add_devices(devices, ARRAY_SIZE(devices));
-	halibut_init_keypad();
+	halibut_init_keypad(halibut_ffa);
 	msm_add_devices();
 	msm_clock_init(&halibut_clock_data);
 }
