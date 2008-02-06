@@ -907,6 +907,9 @@ int smd_core_init(void)
 			IRQF_TRIGGER_RISING, "smd_dev", 0);
 	if (r < 0)
 		return r;
+	r = enable_irq_wake(INT_A9_M2A_0);
+	if (r < 0)
+		printk(KERN_ERR "smd_core_init: enable_irq_wake failed for INT_A9_M2A_0\n");
 
 	r = request_irq(INT_A9_M2A_5, smsm_irq_handler,
 			IRQF_TRIGGER_RISING, "smsm_dev", 0);
@@ -914,6 +917,9 @@ int smd_core_init(void)
 		free_irq(INT_A9_M2A_0, 0);
 		return r;
 	}
+	r = enable_irq_wake(INT_A9_M2A_5);
+	if (r < 0)
+		printk(KERN_ERR "smd_core_init: enable_irq_wake failed for INT_A9_M2A_5\n");
 
 	/* we may have missed a signal while booting -- fake
 	 * an interrupt to make sure we process any existing
