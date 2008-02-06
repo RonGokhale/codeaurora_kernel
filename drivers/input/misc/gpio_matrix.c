@@ -334,7 +334,7 @@ int gpio_event_matrix_func(struct input_dev *input_dev, struct gpio_event_info *
 				goto err_gpio_direction_input_failed;
 			}
 		}
-		kp->current_output = -1;
+		kp->current_output = kp->keypad_info->noutputs;
 		kp->key_state_changed = 1;
 
 		hrtimer_init(&kp->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
