@@ -28,13 +28,13 @@
 #include "clock.h"
 
 enum {
-	MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
 	MSM_PM_SLEEP_MODE_POWER_COLLAPSE_SUSPEND,
+	MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
 	MSM_PM_SLEEP_MODE_APPS_SLEEP,
 	MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT,
 	MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT,
 };
-static int msm_pm_sleep_mode;
+static int msm_pm_sleep_mode = CONFIG_MSM7X00A_SLEEP_MODE;
 module_param_named(sleep_mode, msm_pm_sleep_mode, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 #define A11S_CLK_SLEEP_EN (MSM_CSR_BASE + 0x11c)

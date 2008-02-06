@@ -38,6 +38,41 @@ config MSM7X00A_IDLE
 	default y
 	bool "Idle Support for MSM7X00A"
 
+choice
+	prompt "Sleep mode"
+	default MSM7X00A_SLEEP_MODE_POWER_COLLAPSE_SUSPEND
+	help
+	  Allows overriding the sleep mode used. Leave at power
+	  collapse suspend unless the arm9 image has problems.
+
+	config MSM7X00A_SLEEP_MODE_POWER_COLLAPSE_SUSPEND
+		bool "Power collapse suspend"
+	help
+	  Lowest sleep state. Returns through reset vector.
+
+	config MSM7X00A_SLEEP_MODE_POWER_COLLAPSE
+		bool "Power collapse"
+	help
+	  Sleep state that returns through reset vector.
+
+	config MSM7X00A_SLEEP_MODE_APPS_SLEEP
+		bool "Apps Sleep"
+
+	config MSM7X00A_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT
+		bool "Ramp down cpu clock and wait for interrupt"
+
+	config MSM7X00A_SLEEP_WAIT_FOR_INTERRUPT
+		bool "Wait for interrupt"
+endchoice	  
+
+config MSM7X00A_SLEEP_MODE
+	int
+	default 0 if MSM7X00A_SLEEP_MODE_POWER_COLLAPSE_SUSPEND
+	default 1 if MSM7X00A_SLEEP_MODE_POWER_COLLAPSE
+	default 2 if MSM7X00A_SLEEP_MODE_APPS_SLEEP
+	default 3 if MSM7X00A_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT
+	default 4 if MSM7X00A_SLEEP_WAIT_FOR_INTERRUPT
+
 config MSM7X00A_6046_COMPAT
 	depends on ARCH_MSM7X00A
 	default n
