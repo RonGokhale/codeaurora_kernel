@@ -18,6 +18,9 @@
 #include <linux/gpio_event.h>
 #include <linux/hrtimer.h>
 #include <linux/platform_device.h>
+#ifdef CONFIG_ANDROID_POWER
+#include <linux/android_power.h>
+#endif
 #include <asm/gpio.h>
 #include <asm/io.h>
 
@@ -38,6 +41,9 @@ struct gpio_input_state {
 	struct hrtimer timer;
 	int use_irq;
 	atomic_t debounce_active_count;
+#ifdef CONFIG_ANDROID_POWER
+	android_suspend_lock_t suspend_lock;
+#endif
 	struct gpio_key_state key_state[0];
 };
 
@@ -125,6 +131,10 @@ static enum hrtimer_restart gpio_event_input_timer_func(struct hrtimer *timer)
 	} else if(!ds->use_irq) {
 		hrtimer_start(timer, ds->info->poll_time, HRTIMER_MODE_REL);
 	}
+#ifdef CONFIG_ANDROID_POWER
+	else
+		android_unlock_suspend(&ds->suspend_lock);
+#endif
 
 	return HRTIMER_NORESTART;
 }
@@ -140,8 +150,12 @@ static irqreturn_t gpio_event_input_irq_handler(int irq, void *dev_id)
 	if (ds->info->debounce_time.tv64) {
 		disable_irq(irq);
 		ks->debounce_state = GPIO_KEY_DEBOUNCE_STATE_UNSTABLE;
-		if (atomic_inc_return(&ds->debounce_active_count) == 1)
+		if (atomic_inc_return(&ds->debounce_active_count) == 1) {
+#ifdef CONFIG_ANDROID_POWER
+			android_lock_suspend(&ds->suspend_lock);
+#endif
 			hrtimer_start(&ds->timer, ds->info->debounce_time, HRTIMER_MODE_REL);
+		}
 		if (ds->info->flags & GPIOEDF_PRINT_KEY_DEBOUNCE)
 			printk("gpio_event_input_irq_handler: key %x-%x, %d (%d) start debounce\n", ds->info->type, key_entry->code, keymap_index, key_entry->gpio);
 	} else {
@@ -173,6 +187,7 @@ static int gpio_event_input_request_irqs(struct gpio_input_state *ds)
 			goto err_request_irq_failed;
 		}
 		disable_irq(irq);
+		enable_irq_wake(irq);
 	}
 	local_irq_restore(irq_flags);
 	return 0;
@@ -208,6 +223,10 @@ int gpio_event_input_func(struct input_dev *input_dev, struct gpio_event_info *i
 		atomic_set(&ds->debounce_active_count, di->keymap_size);
 		ds->input_dev = input_dev;
 		ds->info = di;
+#ifdef CONFIG_ANDROID_POWER
+		ds->suspend_lock.name = "gpio_input";
+		android_init_suspend_lock(&ds->suspend_lock);
+#endif
 
 		for(i = 0; i < di->keymap_size; i++) {
 			input_set_capability(input_dev, di->type, di->keymap[i].code);
@@ -256,6 +275,9 @@ err_gpio_configure_failed:
 err_gpio_request_failed:
 		;
 	}
+#ifdef CONFIG_ANDROID_POWER
+	android_uninit_suspend_lock(&ds->suspend_lock);
+#endif
 	kfree(ds);
 err_ds_alloc_failed:
 	return ret;
