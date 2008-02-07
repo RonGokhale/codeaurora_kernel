@@ -73,15 +73,10 @@ config MSM7X00A_SLEEP_MODE
 	default 3 if MSM7X00A_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT
 	default 4 if MSM7X00A_SLEEP_WAIT_FOR_INTERRUPT
 
-config MSM7X00A_6046_COMPAT
+config MSM7X00A_6056_COMPAT
 	depends on ARCH_MSM7X00A
-	default n
-	bool "Compatibility with (obsolete) AMSS 6046"
-
-config MSM7X00A_6059_COMPAT
-	depends on ARCH_MSM7X00A
-	default n
-	bool "Compatibility with AMSS 6059"
+	default y
+	bool "Compatibility with AMSS 6056"
 
 config MSM_SMD
 	tristate "MSM SMD Drivers"

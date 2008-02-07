@@ -863,7 +863,7 @@ static void krpcrouterd_process_msg(void)
 		D("krpcrouterd: [PID %x CID %x] <- [PID %x CID %x] (size %d)\n",
 		  hdr.ph.addr.pid, hdr.ph.addr.cid,
 		  hdr.rh.src_addr.pid, hdr.rh.src_addr.cid, hdr.ph.msg_size);
-#if defined(CONFIG_MSM7X00A_6059_COMPAT)
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
 		if (hdr.ph.confirm_rx)
 			printk(KERN_WARNING "krpcrouterd: confirm_rx = %d!\n",
 			       hdr.ph.confirm_rx);

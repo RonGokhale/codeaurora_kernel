@@ -89,9 +89,7 @@ struct smsm_interrupt_info
 {
 	uint32_t aArm_en_mask;
 	uint32_t aArm_interrupts_pending;
-#if !defined(CONFIG_MSM7X00A_6046_COMPAT)
 	uint32_t aArm_wakeup_reason;
-#endif
 };
 
 #define SZ_DIAG_ERR_MSG 0xC8
@@ -142,9 +140,7 @@ typedef enum
 	SMEM_AARM_BAD_BLOCK_TABLE,
 	SMEM_RESERVE_BAD_BLOCKS,
 	SMEM_WM_UUID,
-#if !defined(CONFIG_MSM7X00A_6046_COMPAT)
 	SMEM_CHANNEL_ALLOC_TBL,
-#endif
 	SMEM_SMD_BASE_ID,
 	SMEM_SMEM_LOG_IDX = SMEM_SMD_BASE_ID + SMEM_NUM_SMD_CHANNELS,
 	SMEM_SMEM_LOG_EVENTS,
@@ -170,13 +166,9 @@ typedef enum
 	SMEM_AARM_BOOT_SEGMENT_INFO,
 	SMEM_SLEEP_STATIC,
 	SMEM_SCORPION_FREQUENCY,
-#if !defined(CONFIG_MSM7X00A_6046_COMPAT)
 	SMEM_SMD_PROFILES,
-#endif
 	SMEM_TSSC_BUSY,
-#if !defined(CONFIG_MSM7X00A_6046_COMPAT)
 	SMEM_HS_SUSPEND_FILTER_INFO,
-#endif
 } smem_mem_type;
 
 #endif

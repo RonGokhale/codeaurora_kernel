@@ -60,9 +60,6 @@ struct pacmark_hdr
 			uint32_t last_pkt : 1;
 		} cooked;
 	} data;
-#if defined(CONFIG_MSM7X00A_6046_COMPAT)
-	uint32_t padding;
-#endif
 };
 
 
@@ -75,7 +72,7 @@ struct rpcrouter_header
 
 struct rpcrouter_packet_header
 {
-#if defined(CONFIG_MSM7X00A_6059_COMPAT)
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
 	uint32_t confirm_rx;
 #endif
 	uint32_t msg_size;
