@@ -123,7 +123,10 @@ static int msm_pm_enter(suspend_state_t state)
 	msm_gpio_enter_sleep();
 
 	if (enter_state) {
-		smsm_set_sleep_duration(192000*5);
+		if (sleep_mode < MSM_PM_SLEEP_MODE_APPS_SLEEP)
+			smsm_set_sleep_duration(0);
+		else
+			smsm_set_sleep_duration(192000*5); /* APPS_SLEEP does not allow infinite timeout */
 		ret = smsm_change_state(SMSM_RUN, enter_state);
 		if (ret) {
 			printk(KERN_INFO "msm_pm_enter(): smsm_change_state %x failed\n", enter_state);
