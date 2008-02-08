@@ -79,12 +79,12 @@ static void synaptics_ts_work_func(struct work_struct *work)
 
 				int x2 = buf[3+6] | (uint16_t)(buf[2+6] & 0x1f) << 8;
 				int y2 = buf[5+6] | (uint16_t)(buf[4+6] & 0x1f) << 8;
-				int z2 = buf[1+6];
-				int w2 = buf[0+6] >> 4;
-				int finger2 = buf[0+6] & 7;
+				/* int z2 = buf[1+6]; */
+				/* int w2 = buf[0+6] >> 4; */
+				/* int finger2 = buf[0+6] & 7; */
 
-				int dx = (int8_t)buf[12];
-				int dy = (int8_t)buf[13];
+				/* int dx = (int8_t)buf[12]; */
+				/* int dy = (int8_t)buf[13]; */
 				int finger2_pressed;
 
 				/* printk("x %4d, y %4d, z %3d, w %2d, F %d, 2nd: x %4d, y %4d, z %3d, w %2d, F %d, dx %4d, dy %4d\n", */
@@ -187,6 +187,20 @@ static int synaptics_ts_probe(struct i2c_client *client)
 		goto err_detect_failed;
 	}
 	printk(KERN_INFO "synaptics_ts_probe: Product Minor Version %x\n", ret);
+
+	ret = i2c_smbus_read_byte_data(ts->client, 0xe3);
+	if (ret < 0) {
+		printk(KERN_ERR "i2c_smbus_read_byte_data failed\n");
+		goto err_detect_failed;
+	}
+	printk(KERN_INFO "synaptics_ts_probe: product property %x\n", ret);
+
+	ret = i2c_smbus_read_byte_data(ts->client, 0xf0);
+	if (ret < 0) {
+		printk(KERN_ERR "i2c_smbus_read_byte_data failed\n");
+		goto err_detect_failed;
+	}
+	printk(KERN_INFO "synaptics_ts_probe: device control %x\n", ret);
 
 	ret = i2c_smbus_read_byte_data(ts->client, 0xf1);
 	if (ret < 0) {
@@ -326,9 +340,29 @@ static int synaptics_ts_remove(struct i2c_client *client)
 	return 0;
 }
 
+static int synaptics_ts_suspend(struct i2c_client *client, pm_message_t mesg)
+{
+	int ret;
+	ret = i2c_smbus_write_byte_data(client, 0xf0, 0x86); /* deep sleep */
+	if (ret < 0)
+		printk(KERN_ERR "synaptics_ts_suspend: i2c_smbus_write_byte_data failed\n");
+	return 0;
+}
+
+static int synaptics_ts_resume(struct i2c_client *client)
+{
+	int ret;
+	ret = i2c_smbus_write_byte_data(client, 0xf0, 0x81); /* normal operation, 80 reports per second */
+	if (ret < 0)
+		printk(KERN_ERR "synaptics_ts_resume: i2c_smbus_write_byte_data failed\n");
+	return 0;
+}
+
 static struct i2c_driver synaptics_ts_driver = {
 	.probe		= synaptics_ts_probe,
 	.remove		= synaptics_ts_remove,
+	.suspend	= synaptics_ts_suspend,
+	.resume		= synaptics_ts_resume,
 	.driver = {
 		.name	= "synaptics-rmi-ts",
 	},
