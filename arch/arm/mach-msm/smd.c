@@ -30,7 +30,7 @@
 #include <asm/io.h>
 
 #include "smd_private.h"
-
+#include "proc_comm.h"
 
 #define MODULE_NAME "msm_smd"
 
@@ -55,6 +55,65 @@ static inline void notify_other_smd(void)
 {
 	writel(1, MSM_A2M_INT(0));
 }
+
+#if defined(CONFIG_MSM7X00A_6056_COMPAT)
+int msm_proc_comm(unsigned cmd, unsigned *data1, unsigned *data2)
+{
+	return -EIO;
+}
+#else
+static inline void notify_other_proc_comm(void)
+{
+	writel(1, MSM_A2M_INT(6));
+}
+
+#define APP_COMMAND 0x00
+#define APP_STATUS  0x04
+#define APP_DATA1   0x08
+#define APP_DATA2   0x0C
+
+#define MDM_COMMAND 0x10
+#define MDM_STATUS  0x14
+#define MDM_DATA1   0x18
+#define MDM_DATA2   0x1C
+
+static DEFINE_SPINLOCK(proc_comm_lock);
+ 
+int msm_proc_comm(unsigned cmd, unsigned *data1, unsigned *data2)
+{
+	unsigned long flags;
+	unsigned base = MSM_SHARED_RAM_BASE;
+	int ret = -EIO;
+
+	spin_lock_irqsave(&proc_comm_lock, flags);
+
+	while (readl(base + MDM_STATUS) != PCOM_READY) {
+		/* XXX check for A9 reset */
+	}
+
+	writel(cmd, base + APP_COMMAND);
+	if (data1)
+		writel(*data1, base + APP_DATA1);
+	if (data2)
+		writel(*data2, base + APP_DATA2);
+
+	notify_other_proc_comm();
+	while (readl(base + APP_COMMAND) != PCOM_CMD_DONE) {
+		/* XXX check for A9 reset */
+	}
+
+	if (readl(base + APP_STATUS) != PCOM_CMD_FAIL) {
+		if (data1)
+			*data1 = readl(base + APP_DATA1);
+		if (data2)
+			*data2 = readl(base + APP_DATA2);
+		ret = 0;
+	}
+
+	spin_unlock_irqrestore(&proc_comm_lock, flags);
+	return ret;
+}
+#endif
 
 void smd_diag(void)
 {
