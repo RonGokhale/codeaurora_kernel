@@ -43,6 +43,7 @@ static void synaptics_ts_work_func(struct work_struct *work)
 {
 	int i;
 	int ret;
+	int bad_data = 0;
 	struct i2c_msg msg[2];
 	uint8_t start_reg;
 	uint8_t buf[15];
@@ -59,14 +60,29 @@ static void synaptics_ts_work_func(struct work_struct *work)
 	msg[1].buf = buf;
 
 	/* printk("synaptics_ts_work_func\n"); */
-	for (i = 0; i < (ts->use_irq ? 1 : 10); i++) {
+	for (i = 0; i < ((ts->use_irq && !bad_data) ? 1 : 10); i++) {
 		ret = i2c_transfer(ts->client->adapter, msg, 2);
 		if (ret < 0) {
 			printk(KERN_ERR "synaptics_ts_work_func: i2c_transfer failed\n");
 		} else {
-			/* printk("synaptics_ts_work_func: %x %x %x %x %x %x %x %x %x\n", */
-			/*       buf[0], buf[1], buf[2], buf[3], */
-			/*       buf[4], buf[5], buf[6], buf[7], buf[8]); */
+			/* printk("synaptics_ts_work_func: %x %x %x %x %x %x" */
+			/*        " %x %x %x %x %x %x %x %x %x, ret %d\n", */
+			/*        buf[0], buf[1], buf[2], buf[3], */
+			/*        buf[4], buf[5], buf[6], buf[7], */
+			/*        buf[8], buf[9], buf[10], buf[11], */
+			/*        buf[12], buf[13], buf[14], ret); */
+			if (buf[14] & 0x80) {
+				printk(KERN_WARNING "synaptics_ts_work_func:"
+				       " bad read %x %x %x %x %x %x %x %x %x"
+				       " %x %x %x %x %x %x, ret %d\n",
+				       buf[0], buf[1], buf[2], buf[3],
+				       buf[4], buf[5], buf[6], buf[7],
+				       buf[8], buf[9], buf[10], buf[11],
+				       buf[12], buf[13], buf[14], ret);
+				bad_data = 1;
+				continue;
+			}
+			bad_data = 0;
 			if ((buf[14] & 1) == 0) {
 				/* printk("read %d coordinates\n", i); */
 				break;
