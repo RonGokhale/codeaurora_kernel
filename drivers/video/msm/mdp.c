@@ -18,6 +18,7 @@
 #include <linux/kernel.h>
 #include <linux/interrupt.h>
 #include <linux/wait.h>
+#include <linux/clk.h>
 
 #include <asm/io.h>
 #include <asm/arch/msm_iomap.h>
@@ -122,8 +123,15 @@ void mdp_set_grp_disp(unsigned disp_id)
 
 int mdp_init(void)
 {
+	struct clk *clk;
 	int ret;
 	int n;
+
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
+	clk = clk_get(0, "mdp_clk");
+	if (clk)
+		clk_enable(clk);
+#endif
 
 	ret = request_irq(INT_MDP, mdp_isr, IRQF_DISABLED, "msm_mdp", 0);
 
