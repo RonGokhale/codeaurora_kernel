@@ -34,6 +34,8 @@
 #include <asm/arch/rpc_clkctl.h>
 #include "clock.h"
 
+#include "proc_comm.h"
+
 #define PERF_SWITCH_DEBUG 1
 #define ENABLE_ALL_PLLS 0
 #define PERF_SWITCH_STEP_DEBUG 0
@@ -59,6 +61,74 @@ static unsigned long acpuclk_get_rate(struct clk *clk);
 int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse);
 
 extern struct clkctl_acpu_speed acpu_freq_tbl[];
+
+#if defined(CONFIG_MSM7X00A_6056_COMPAT)
+static int pc_clk_enable(unsigned id)
+{
+	if (!drv_state.rpc)
+		return -EAGAIN;
+	else
+		return drv_state.rpc->enable(id);
+}
+
+static void pc_clk_disable(unsigned id)
+{
+	if (drv_state.rpc)
+		drv_state.rpc->disable(id);
+}
+
+static int pc_clk_set_rate(unsigned id, unsigned rate)
+{
+	if (drv_state.rpc)
+		return drv_state.rpc->set_rate(id, rate);
+	else
+		return -EIO;
+}
+
+static unsigned pc_clk_get_rate(unsigned id)
+{
+	if (drv_state.rpc)
+		return drv_state.rpc->get_rate(id);
+	else
+		return 0;
+}
+
+static unsigned pc_clk_is_enabled(unsigned id)
+{
+	return 0;
+}
+#else
+static int pc_clk_enable(unsigned id)
+{
+	return msm_proc_comm(PCOM_CLKCTL_RPC_ENABLE, &id, 0);
+}
+
+static void pc_clk_disable(unsigned id)
+{
+	msm_proc_comm(PCOM_CLKCTL_RPC_DISABLE, &id, 0);
+}
+
+static int pc_clk_set_rate(unsigned id, unsigned rate)
+{
+	return msm_proc_comm(PCOM_CLKCTL_RPC_ENABLE, &id, &rate);
+}
+
+static unsigned pc_clk_get_rate(unsigned id)
+{
+	if (msm_proc_comm(PCOM_CLKCTL_RPC_RATE, &id, 0))
+		return 0;
+	else
+		return id;
+}
+
+static unsigned pc_clk_is_enabled(unsigned id)
+{
+	if (msm_proc_comm(PCOM_CLKCTL_RPC_ENABLED, &id, 0))
+		return 0;
+	else
+		return id;
+}
+#endif
 
 /*----------------------------------------------------------------------------
  * Architecture level clock registration
@@ -101,9 +171,7 @@ int clk_enable(struct clk *clk)
 
 	if (clk->id == ACPU_CLK)
 		return acpuclk_enable(clk);
-	if (!drv_state.rpc)
-		return -EAGAIN;
-	return drv_state.rpc->enable(clk->id);
+	return pc_clk_enable(clk->id);
 }
 
 void clk_disable(struct clk *clk)
@@ -113,9 +181,7 @@ void clk_disable(struct clk *clk)
 
 	if (clk->id == ACPU_CLK)
 		return acpuclk_disable(clk);
-	if (!drv_state.rpc)
-		return;
-	drv_state.rpc->disable(clk->id);
+	return pc_clk_disable(clk->id);
 }
 
 unsigned long clk_get_rate(struct clk *clk)
@@ -125,9 +191,7 @@ unsigned long clk_get_rate(struct clk *clk)
 
 	if (clk->id == ACPU_CLK)
 		return acpuclk_get_rate(clk);
-	if (!drv_state.rpc)
-		return 0;
-	return drv_state.rpc->get_rate(clk->id);
+	return pc_clk_get_rate(clk->id);
 }
 
 void clk_put(struct clk *clk)
@@ -143,9 +207,7 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 
 	if (clk->id == ACPU_CLK)
 		return acpuclk_set_rate(clk, rate, 0);
-	if (!drv_state.rpc)
-		return -EAGAIN;
-	return drv_state.rpc->set_rate(clk->id, rate);
+	return pc_clk_set_rate(clk->id, rate);
 }
 
 int clk_set_parent(struct clk *clk, struct clk *parent)
@@ -479,20 +541,43 @@ static u64 clock_debug_get(void *data)
 	return clk_get_rate(clock);
 }
 
-DEFINE_SIMPLE_ATTRIBUTE(clock_debug_fops, clock_debug_get, clock_debug_set, "%llu\n");
+static void clock_enable_set(void *data, u64 val)
+{
+	struct clk *clock = data;
+
+	if (val) {
+		pc_clk_enable(clock->id);
+	} else {
+		pc_clk_disable(clock->id);
+	}
+}
+
+static u64 clock_enable_get(void *data)
+{
+	struct clk *clock = data;
+	return pc_clk_is_enabled(clock->id);
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(clock_rate_fops, clock_debug_get, clock_debug_set, "%llu\n");
+DEFINE_SIMPLE_ATTRIBUTE(clock_enable_fops, clock_enable_get, clock_enable_set, "%llu\n");
 
 static void __init clock_debug_init(void)
 {
-	struct dentry *dent;
+	struct dentry *dent_rate;
+	struct dentry *dent_enable;
 	struct clk *clock;
 	unsigned n = 0;
 
-	dent = debugfs_create_dir("clk", 0);
-	if (IS_ERR(dent))
+	dent_rate = debugfs_create_dir("clk_rate", 0);
+	dent_enable = debugfs_create_dir("clk_enable", 0);
+	if (IS_ERR(dent_rate) || IS_ERR(dent_enable))
 		return;
 
 	while ((clock = msm_clock_get_nth(n++)) != 0) {
-		debugfs_create_file(clock->name, 0644, dent, clock, &clock_debug_fops);
+		debugfs_create_file(clock->name, 0644, dent_rate,
+				    clock, &clock_rate_fops);
+		debugfs_create_file(clock->name, 0644, dent_enable,
+				    clock, &clock_enable_fops);
 	}
 }
 #else
@@ -513,6 +598,9 @@ void __init clock_init(uint32_t acpu_switch_time_us,
 	drv_state.max_speed_delta_khz = max_speed_delta_khz;
 	drv_state.vdd_switch_time_us = vdd_switch_time_us;
 
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
+	clock_debug_init();
+#endif
 }
 
 /*
@@ -536,6 +624,5 @@ void clock_register_rpc(struct clkctl_rpc_ops *rpc_ops)
 	}
 #endif
 
-	clock_debug_init();
 }
 EXPORT_SYMBOL(clock_register_rpc);

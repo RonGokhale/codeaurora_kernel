@@ -14,6 +14,8 @@
  *
  */
 
+#if defined(CONFIG_MSM7X00A_6056_COMPAT)
+
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/string.h>
@@ -254,3 +256,5 @@ module_init(rpc_clkctl_init);
 MODULE_DESCRIPTION("RPC Clock Control");
 MODULE_AUTHOR("San Mehat <san@android.com>");
 MODULE_LICENSE("GPL");
+
+#endif
