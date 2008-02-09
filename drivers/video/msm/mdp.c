@@ -111,6 +111,11 @@ void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width, uint32_t he
 	writel(0, MDP_CMD_DEBUG_ACCESS_BASE + 0x0044);
 }
 
+void mdp_set_grp_disp(unsigned disp_id)
+{
+	disp_id &= 0xf;
+	writel(disp_id, MDP_FULL_BYPASS_WORD43);
+}
 
 #include "mdp_csc_table.h"
 #include "mdp_scale_tables.h"

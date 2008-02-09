@@ -28,6 +28,9 @@
 #include <asm/io.h>
 
 #include <asm/arch/msm_fb.h>
+#include <asm/arch/msm_fb.h>
+
+#include <asm/uaccess.h>
 
 #define PRINT_FPS 0
 
@@ -248,6 +251,28 @@ static void msmfb_imageblit(struct fb_info *p, const struct fb_image *image)
 	msmfb_update(p, image->dx, image->dy, image->dx + image->width, image->dy + image->height);
 }
 
+static int msmfb_ioctl(struct fb_info *p, unsigned int cmd, unsigned long arg)
+{
+	void __user *argp = (void __user *)arg;
+	unsigned grp_disp_id;
+
+	switch (cmd)
+	{
+		case MSMFB_GRP_DISP:
+			if(copy_from_user(&grp_disp_id, argp,
+					  sizeof(grp_disp_id)))
+				return -EFAULT;
+			/* printk("msmfb_ioctl grp_disp %u\n", grp_disp_id); */
+			mdp_set_grp_disp(grp_disp_id);
+			break;
+		default:
+			printk("msmfb unknown ioctl: %d\n", cmd);
+			return -EFAULT;
+	}
+	return 0;
+}
+
+
 static struct fb_ops msmfb_ops = {
 	.owner =       THIS_MODULE,
 	.fb_open =     msmfb_open,
@@ -257,6 +282,7 @@ static struct fb_ops msmfb_ops = {
 	.fb_fillrect	= msmfb_fillrect,
 	.fb_copyarea	= msmfb_copyarea,
 	.fb_imageblit	= msmfb_imageblit,
+	.fb_ioctl = msmfb_ioctl,
 };
 
 static unsigned PP[16];

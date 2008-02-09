@@ -17,6 +17,9 @@
 #ifndef _MSM_FB_H_
 #define _MSM_FB_H_
 
+#define MSMFB_IOCTL_MAGIC 'm'
+#define MSMFB_GRP_DISP		_IOW(MSMFB_IOCTL_MAGIC, 1, unsigned int)
+
 struct mddi_info;
 
 struct mddi_panel_info
@@ -41,5 +44,6 @@ void mddi_activate_link(struct mddi_info *mddi);
 
 void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width, uint32_t height, uint32_t x, uint32_t y);
 void mdp_dma_wait(void);
+void mdp_set_grp_disp(unsigned disp_id);
 
 #endif
