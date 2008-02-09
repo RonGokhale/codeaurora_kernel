@@ -759,7 +759,6 @@ void *smem_find(unsigned id, unsigned size_in)
 		}
 		return (void *) (MSM_SHARED_RAM_BASE + toc[id].offset);
 	}
-	printk(KERN_ERR "smem_find(%d, %d): not allocated, size %d, expected size %d\n", id, size_in, size, toc[id].size);
 	return 0;
 }
 
