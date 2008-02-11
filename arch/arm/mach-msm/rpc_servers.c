@@ -37,7 +37,11 @@
 #define TIME_REMOTE_MTOAPROG 0x3000005d
 #define TIME_REMOTE_MTOAVERS 0
 #define RPC_TIME_REMOTE_MTOA_NULL   0
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
+#define RPC_TIME_TOD_SET_APPS_BASES 6
+#else
 #define RPC_TIME_TOD_SET_APPS_BASES 1
+#endif
 
 struct rpc_time_tod_set_apps_bases_args {
 	uint32_t tick;

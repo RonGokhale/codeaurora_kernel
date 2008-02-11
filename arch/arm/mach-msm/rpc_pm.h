@@ -28,9 +28,13 @@
 #define APP_PM_PROG 0x30000060
 #define APP_PM_VER 0
 
-#define PM_PROCEEDURE_NULL 0
-#define PM_PROCEEDURE_SETPWRKEYDUR 1
-#define PM_PROCEEDURE_VOTEVREGSWITCH 2
+#define PM_PROCEEDURE_NULL		0
+
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
+  #define PM_PROCEEDURE_VOTEVREGSWITCH	4
+#else
+  #define PM_PROCEEDURE_VOTEVREGSWITCH	2
+#endif
 
 /*
  *  The RPC request/response structures aren't combined as one might

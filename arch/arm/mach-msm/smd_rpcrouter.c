@@ -38,7 +38,7 @@
 #include "smd_rpcrouter.h"
 
 #define MSM_RPCROUTER_DEBUG 0
-#define MSM_RPCROUTER_DEBUG_PKT 1
+#define MSM_RPCROUTER_DEBUG_PKT 0
 #define MSM_RPCROUTER_R2R_DEBUG 0
 #define DUMP_ALL_RECEIVED_HEADERS 0
 
