@@ -41,10 +41,20 @@
 #define RPCROUTER_CTRL_CMD_NEW_SERVER		4
 #define RPCROUTER_CTRL_CMD_REMOVE_SERVER	5
 #define RPCROUTER_CTRL_CMD_REMOVE_CLIENT	6
-#define RPCROUTER_CTRL_CMD_EXIT			7
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
+  #define RPCROUTER_CTRL_CMD_RESUME_TX		7
+  #define RPCROUTER_CTRL_CMD_EXIT		8
+#else
+  #define RPCROUTER_CTRL_CMD_EXIT		7
+#endif
+
 
 #define RPCROUTER_CB_WORKAROUND		1
 #define RPCROUTER_BW_COMP               1
+
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
+  #define RPCROUTER_DEFAULT_RX_QUOTA	5
+#endif
 
 /*
  *  These elements must be in host byte order
@@ -105,10 +115,15 @@ struct rpcrouter_server
 	struct rpcsvr_platform_device p_device;
 };
 
-struct rpcrouter_address_list
+struct rpcrouter_r_client
 {
-	struct list_head list;
 	rpcrouter_address addr;
+
+	int tx_quota_cntr; 
+	spinlock_t quota_lock;
+	wait_queue_head_t quota_wait;
+
+	struct list_head list;
 };
 
 /*
@@ -122,6 +137,10 @@ struct rpcrouter_client_read_q
 	struct list_head list;
 	int data_size;
 	void *data;
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
+	int confirm_rx;
+#endif
+
 #if RPCROUTER_BW_COMP
 	uint32_t prog;
 	uint32_t vers;

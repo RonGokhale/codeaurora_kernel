@@ -38,7 +38,7 @@
 #include "smd_rpcrouter.h"
 
 #define MSM_RPCROUTER_DEBUG 0
-#define MSM_RPCROUTER_DEBUG_PKT 0
+#define MSM_RPCROUTER_DEBUG_PKT 1
 #define MSM_RPCROUTER_R2R_DEBUG 0
 #define DUMP_ALL_RECEIVED_HEADERS 0
 
@@ -505,21 +505,22 @@ static int rpcrouter_destroy_local_client(struct rpcrouter_client *client)
 
 static int rpcrouter_create_remote_client(uint32_t cid)
 {
-	struct rpcrouter_address_list *new_c;
+	struct rpcrouter_r_client *new_c;
 	unsigned long flags;
 
-	new_c = kmalloc(sizeof(struct rpcrouter_address_list), GFP_KERNEL);
+	new_c = kmalloc(sizeof(struct rpcrouter_r_client), GFP_KERNEL);
 	if (!new_c)
 		return -ENOMEM;
-	memset(new_c, 0, sizeof(struct rpcrouter_address_list));
+	memset(new_c, 0, sizeof(struct rpcrouter_r_client));
 
 	new_c->addr.cid = cid;
 	new_c->addr.pid = RPCROUTER_PID_REMOTE;
+	init_waitqueue_head(&new_c->quota_wait);
+	spin_lock_init(&new_c->quota_lock);
 
 	spin_lock_irqsave(&remote_clients_lock, flags);
 	list_add_tail(&new_c->list, &remote_clients);
 	spin_unlock_irqrestore(&remote_clients_lock, flags);
-
 	return 0;
 }
 
@@ -539,10 +540,10 @@ static struct rpcrouter_client *rpcrouter_lookup_local_client(uint32_t cid)
 	return NULL;
 }
 
-static struct rpcrouter_address_list *rpcrouter_lookup_remote_client(
+static struct rpcrouter_r_client *rpcrouter_lookup_remote_client(
 						  uint32_t cid)
 {
-	struct rpcrouter_address_list *element;
+	struct rpcrouter_r_client *element;
 	unsigned long flags;
 
 	spin_lock_irqsave(&remote_clients_lock, flags);
@@ -569,7 +570,7 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr)
 {
 	struct rpcrouter_server *server;
 	struct rpcrouter_control_msg  *cntl;
-	struct rpcrouter_address_list *remote_client;
+	struct rpcrouter_r_client *r_client;
 	int rc = 0;
 	unsigned long flags;
 
@@ -600,6 +601,20 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr)
 		}
 		spin_unlock_irqrestore(&server_list_lock, flags);
 		break;
+
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
+	case RPCROUTER_CTRL_CMD_RESUME_TX:
+		r_client = rpcrouter_lookup_remote_client(cntl->args.arg_c.cid);
+		if (!r_client) {
+			printk(KERN_ERR "rpcrouter: Unable to resume client\n");
+			break;
+		}
+		spin_lock_irqsave(&r_client->quota_lock, flags);
+		r_client->tx_quota_cntr = 0;
+		spin_unlock_irqrestore(&r_client->quota_lock, flags);
+		wake_up_interruptible(&r_client->quota_wait);
+		break;
+#endif
 
 	case RPCROUTER_CTRL_CMD_NEW_SERVER:
 		server = rpcrouter_lookup_server(cntl->args.arg_s.prog,
@@ -682,9 +697,9 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr)
 			       "local client\n");
 			break;
 		}
-		remote_client = rpcrouter_lookup_remote_client(
+		r_client = rpcrouter_lookup_remote_client(
 						 cntl->args.arg_c.cid);
-		if (!remote_client) {
+		if (!r_client) {
 			printk(KERN_WARNING
 			       "rpcrouter: Skipping removal of unknown"
 			       " remote client [PID %x CID %x]\n",
@@ -692,9 +707,9 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr)
 			       cntl->args.arg_c.cid);
 		} else {
 			spin_lock_irqsave(&remote_clients_lock, flags);
-			list_del(&remote_client->list);
+			list_del(&r_client->list);
 			spin_unlock_irqrestore(&remote_clients_lock, flags);
-			kfree(remote_client);
+			kfree(r_client);
 #if MSM_RPCROUTER_R2R_DEBUG
 			printk(KERN_INFO
 			       "rpcrouter: Client [PID %x CID %x] "
@@ -863,11 +878,6 @@ static void krpcrouterd_process_msg(void)
 		D("krpcrouterd: [PID %x CID %x] <- [PID %x CID %x] (size %d)\n",
 		  hdr.ph.addr.pid, hdr.ph.addr.cid,
 		  hdr.rh.src_addr.pid, hdr.rh.src_addr.cid, hdr.ph.msg_size);
-#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
-		if (hdr.ph.confirm_rx)
-			printk(KERN_WARNING "krpcrouterd: confirm_rx = %d!\n",
-			       hdr.ph.confirm_rx);
-#endif
 
 		if (hdr.ph.addr.cid == RPCROUTER_ROUTER_ADDRESS) {
 			rc = rpcrouter_process_routermsg(&hdr);
@@ -936,6 +946,9 @@ static void krpcrouterd_process_msg(void)
 			printk(KERN_ERR "krpcrouterd: Out of memory\n");
 			return;
 		}
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
+		read_queue->confirm_rx = hdr.ph.confirm_rx;
+#endif
 
 		memcpy(read_queue->data,
 			&rx_buffer[sizeof(struct pacmark_hdr)],
@@ -1150,8 +1163,10 @@ static ssize_t rpcrouter_callback_read(struct file *filp, char __user *buf,
 	}
 	finish_wait(&client->wait_q, &__wait);
 
-	if (signal_pending(current))
+	if (signal_pending(current)) {
+		spin_unlock_irqrestore(&client->read_q_lock, flags);
 		return -ERESTARTSYS;
+	}
 
 	read_q_entry = list_first_entry(&client->read_q,
 					struct rpcrouter_client_read_q, list);
@@ -1435,8 +1450,12 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 	struct rpcrouter_complete_header hdr;
 	struct rpc_request_hdr *rq = buffer;
 	struct pacmark_hdr pacmark;
+	struct rpcrouter_r_client *r_client;
 	int rc = 0;
 	unsigned long flags;
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
+	DEFINE_WAIT(__wait);
+#endif
 
 	if (count > RPCROUTER_MSGSIZE_MAX || !count)
 		return -EINVAL;
@@ -1452,8 +1471,12 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 	if (rc < 0)
 		return rc;
 
-	if ((dest->pid != RPCROUTER_PID_REMOTE) ||
-	    (!rpcrouter_lookup_remote_client(dest->cid))) {
+	if (dest->pid != RPCROUTER_PID_REMOTE)
+		return -EHOSTUNREACH;
+	
+	r_client = rpcrouter_lookup_remote_client(dest->cid);
+
+	if (!r_client) {
 		printk(KERN_ERR
 			"rpcrouter_kernapi_write(): No route to client "
 			"[PID %x CID %x]\n", dest->pid, dest->cid);
@@ -1476,6 +1499,33 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 	pacmark.data.cooked.length = count;
 	pacmark.data.cooked.message_id = ++next_pacmarkid;
 	pacmark.data.cooked.last_pkt = 1;
+
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
+	for (;;) {
+		prepare_to_wait(&r_client->quota_wait, &__wait, TASK_INTERRUPTIBLE);
+		spin_lock_irqsave(&r_client->quota_lock, flags);
+		if (r_client->tx_quota_cntr < RPCROUTER_DEFAULT_RX_QUOTA)
+			break;
+		spin_unlock_irqrestore(&r_client->quota_lock, flags);
+		if (!signal_pending(current)) {
+			schedule();
+			continue;
+		}
+		break;
+	}
+	finish_wait(&r_client->quota_wait, &__wait);
+
+	if (signal_pending(current)) {
+		spin_unlock_irqrestore(&r_client->quota_lock, flags);
+		return -ERESTARTSYS;
+	}
+
+	r_client->tx_quota_cntr++;
+	if (r_client->tx_quota_cntr == RPCROUTER_DEFAULT_RX_QUOTA) 
+		hdr.ph.confirm_rx = 1;
+
+	spin_unlock_irqrestore(&r_client->quota_lock, flags);
+#endif
 
 	spin_lock_irqsave(&smd_lock, flags);
 
@@ -1577,6 +1627,19 @@ int rpcrouter_kernapi_read(rpcrouterclient_t *client,
 	spin_unlock_irqrestore(&client->read_q_lock, flags);
 
 	*buffer = read_q_entry->data;
+
+#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
+	if (read_q_entry->confirm_rx) {
+		struct rpcrouter_control_msg msg;
+
+		memset(&msg, 0, sizeof(msg));
+		msg.command = RPCROUTER_CTRL_CMD_NEW_SERVER;
+		msg.args.arg_c.pid = client->addr.pid;
+		msg.args.arg_c.cid = client->addr.cid;
+		printk("%s: confirming rx\n", __FUNCTION__);
+		rc = rpcrouter_send_control_msg(&msg);
+	}
+#endif
 
 	kfree(read_q_entry);
 	return rc;
