@@ -5,7 +5,7 @@ obj-y := msm_fb.o
 
 # MDP DMA/PPP engine
 #
-obj-y += mdp.o
+obj-y += mdp.o mdp_ppp.o
 
 # MDDI interface
 #

@@ -16,6 +16,8 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/fb.h>
+#include <linux/msm_mdp.h>
 #include <linux/interrupt.h>
 #include <linux/wait.h>
 #include <linux/clk.h>
@@ -44,8 +46,10 @@ void mdp_set_ccs(uint16_t *ccs)
 }
 
 static volatile int mdp_dma2_busy;
-
 static DECLARE_WAIT_QUEUE_HEAD(mdp_dma2_waitqueue);
+
+static volatile int mdp_ppp_busy;
+static DECLARE_WAIT_QUEUE_HEAD(mdp_ppp_waitqueue);
 
 static irqreturn_t mdp_isr(int irq, void *data)
 {
@@ -57,6 +61,10 @@ static irqreturn_t mdp_isr(int irq, void *data)
 	if (status & DL0_DMA2_TERM_DONE) {
 		mdp_dma2_busy = 0;
 		wake_up(&mdp_dma2_waitqueue);
+	}
+	if (status & DL0_ROI_DONE) {
+		mdp_ppp_busy = 0;
+		wake_up(&mdp_ppp_waitqueue);
 	}
 	return IRQ_HANDLED;
 }
@@ -118,16 +126,33 @@ void mdp_set_grp_disp(unsigned disp_id)
 	writel(disp_id, MDP_FULL_BYPASS_WORD43);
 }
 
+extern int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req);
+
+int mdp_blit(struct fb_info *info,  struct mdp_blit_req *req)
+{
+	if (mdp_ppp_busy)
+		return -1;
+	mdp_ppp_busy = 1;
+	if (mdp_ppp_blit(info, req)) {
+		mdp_ppp_busy = 0;
+		return -1;
+	}
+	if (wait_event_timeout(mdp_ppp_waitqueue, !mdp_ppp_busy, HZ) <= 0)
+		printk(KERN_ERR "mdp_ppp_wait: timeout waiting for blit to "
+				"complete\n");
+	return 0;
+}
+
 #include "mdp_csc_table.h"
 #include "mdp_scale_tables.h"
 
 int mdp_init(void)
 {
-	struct clk *clk;
 	int ret;
 	int n;
-
 #if !defined(CONFIG_MSM7X00A_6056_COMPAT)
+	struct clk *clk;
+
 	clk = clk_get(0, "mdp_clk");
 	if (clk)
 		clk_enable(clk);

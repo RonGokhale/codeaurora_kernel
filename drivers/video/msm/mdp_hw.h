@@ -15,6 +15,8 @@
 #ifndef _MDP_HW_H_
 #define _MDP_HW_H_
 
+#include <asm/arch/msm_iomap.h>
+
 #define MDP_SYNC_CONFIG_0                (MSM_MDP_BASE + 0x00000)
 #define MDP_SYNC_CONFIG_1                (MSM_MDP_BASE + 0x00004)
 #define MDP_SYNC_CONFIG_2                (MSM_MDP_BASE + 0x00008)
@@ -45,7 +47,7 @@
 #define MDP_EXTERNAL_VSYNC_OUT_CTRL      (MSM_MDP_BASE + 0x00088)
 #define MDP_VSYNC_CTRL                   (MSM_MDP_BASE + 0x0008c)
 #define MDP_CGC_EN                       (MSM_MDP_BASE + 0x00100)
-#define MDP_CMD_STATUS                   (MSM_MDP_BASE + 0x10008)
+#define MDP_CMD_STATUS                   (MSM_MDP_BASE + 0x10008)DDR
 #define MDP_PROFILE_EN                   (MSM_MDP_BASE + 0x10010)
 #define MDP_PROFILE_COUNT                (MSM_MDP_BASE + 0x10014)
 #define MDP_DMA_START                    (MSM_MDP_BASE + 0x10044)
@@ -253,25 +255,25 @@
 #define MDP_CMD_DBGBUS_EN (1<<0)
 
 /* MDP_PPP_SOURCE_CONFIG / MDP_FULL_BYPASS_WORD9&53 */
-#define PPP_SRC_C0G_8BITS ((1<<1)|(1<<0))
-#define PPP_SRC_C1B_8BITS ((1<<3)|(1<<2))
-#define PPP_SRC_C2R_8BITS ((1<<5)|(1<<4))
-#define PPP_SRC_C3A_8BITS ((1<<7)|(1<<6))
+#define PPP_SRC_C0G_8BIT ((1<<1)|(1<<0))
+#define PPP_SRC_C1B_8BIT ((1<<3)|(1<<2))
+#define PPP_SRC_C2R_8BIT ((1<<5)|(1<<4))
+#define PPP_SRC_C3A_8BIT ((1<<7)|(1<<6))
 
-#define PPP_SRC_C0G_6BITS (1<<1)
-#define PPP_SRC_C1B_6BITS (1<<3)
-#define PPP_SRC_C2R_6BITS (1<<5)
+#define PPP_SRC_C0G_6BIT (1<<1)
+#define PPP_SRC_C1B_6BIT (1<<3)
+#define PPP_SRC_C2R_6BIT (1<<5)
 
-#define PPP_SRC_C0G_5BITS (1<<0)
-#define PPP_SRC_C1B_5BITS (1<<2)
-#define PPP_SRC_C2R_5BITS (1<<4)
+#define PPP_SRC_C0G_5BIT (1<<0)
+#define PPP_SRC_C1B_5BIT (1<<2)
+#define PPP_SRC_C2R_5BIT (1<<4)
 
-#define PPP_SRC_C3_ALPHA_EN (1<<8)
+#define PPP_SRC_C3ALPHA_EN (1<<8)
 
-#define PPP_SRC_BPP_INTERLVD_1BYTES 0
-#define PPP_SRC_BPP_INTERLVD_2BYTES (1<<9)
-#define PPP_SRC_BPP_INTERLVD_3BYTES (1<<10)
-#define PPP_SRC_BPP_INTERLVD_4BYTES ((1<<10)|(1<<9))
+#define PPP_SRC_BPP_1BYTES 0
+#define PPP_SRC_BPP_2BYTES (1<<9)
+#define PPP_SRC_BPP_3BYTES (1<<10)
+#define PPP_SRC_BPP_4BYTES ((1<<10)|(1<<9))
 
 #define PPP_SRC_BPP_ROI_ODD_X (1<<11)
 #define PPP_SRC_BPP_ROI_ODD_Y (1<<12)
@@ -285,13 +287,13 @@
 ** LOOSE means R6+2 +G6+2+ B6+2 (with MSB)
 **          or 2+R6 +2+G6 +2+B6 (with LSB)
 */
-#define PPP_SRC_UNPACK_TIGHT (1<<17)
-#define PPP_SRC_UNPACK_LOOSE 0
-#define PPP_SRC_UNPACK_ALIGN_LSB 0
-#define PPP_SRC_UNPACK_ALIGN_MSB (1<<18)
+#define PPP_SRC_PACK_TIGHT (1<<17)
+#define PPP_SRC_PACK_LOOSE 0
+#define PPP_SRC_PACK_ALIGN_LSB 0
+#define PPP_SRC_PACK_ALIGN_MSB (1<<18)
 
-#define PPP_SRC_FETCH_PLANES_INTERLVD 0
-#define PPP_SRC_FETCH_PLANES_PSEUDOPLNR (1<<20)
+#define PPP_SRC_PLANE_INTERLVD 0
+#define PPP_SRC_PLANE_PSEUDOPLNR (1<<20)
 
 #define PPP_SRC_WMV9_MODE (1<<21)
 
@@ -346,7 +348,7 @@
 #define PPP_OP_DST_CHROMA_COSITE 0
 #define PPP_OP_DST_CHROMA_OFFSITE (1<<23)
 
-#define PPP_BLEND_CALPHA_TRNASP (1<<24)
+#define PPP_BLEND_ALPHA_TRANSP (1<<24)
 
 #define PPP_OP_BG_CHROMA_RGB 0
 #define PPP_OP_BG_CHROMA_H2V1 (1<<25)
@@ -372,10 +374,10 @@
 #define PPP_DST_C3A_8BIT ((1<<7)|(1<<6))
 #define PPP_DST_C3ALPHA_EN (1<<8)
 
-#define PPP_DST_PACKET_CNT_INTERLVD_2ELEM (1<<9)
-#define PPP_DST_PACKET_CNT_INTERLVD_3ELEM (1<<10)
-#define PPP_DST_PACKET_CNT_INTERLVD_4ELEM ((1<<10)|(1<<9))
-#define PPP_DST_PACKET_CNT_INTERLVD_6ELEM ((1<<11)|(1<<9))
+#define PPP_DST_INTERLVD_2COMPONENTS (1<<9)
+#define PPP_DST_INTERLVD_3COMPONENTS (1<<10)
+#define PPP_DST_INTERLVD_4COMPONENTS ((1<<10)|(1<<9))
+#define PPP_DST_INTERLVD_6COMPONENTS ((1<<11)|(1<<9))
 
 #define PPP_DST_PACK_LOOSE 0
 #define PPP_DST_PACK_TIGHT (1<<13)
@@ -391,13 +393,154 @@
 
 #define PPP_DST_PLANE_INTERLVD 0
 #define PPP_DST_PLANE_PLANAR (1<<18)
-#define PPP_DST_PLANE_PSEUDOPLN (1<<19)
+#define PPP_DST_PLANE_PSEUDOPLNR (1<<19)
 
 #define PPP_DST_TO_TV (1<<20)
 
 #define PPP_DST_MDDI_PRIMARY 0
 #define PPP_DST_MDDI_SECONDARY (1<<21)
 #define PPP_DST_MDDI_EXTERNAL (1<<22)
+
+/* image configurations by image type */
+#define PPP_CFG_MDP_RGB_565(dir)	PPP_##dir##_C2R_5BIT | \
+					PPP_##dir##_C0G_6BIT | \
+					PPP_##dir##_C1B_5BIT | \
+					PPP_##dir##_BPP_2BYTES | \
+					PPP_##dir##_INTERLVD_3COMPONENTS | \
+					PPP_##dir##_PACK_TIGHT | \
+					PPP_##dir##_PACK_ALIGN_LSB | \
+					PPP_##dir##_PLANE_INTERLVD
+
+#define PPP_CFG_MDP_RGB_888(dir)	PPP_##dir##_C2R_8BIT | \
+					PPP_##dir##_C0G_8BIT | \
+					PPP_##dir##_C1B_8BIT | \
+					PPP_##dir##_BPP_3BYTES | \
+					PPP_##dir##_INTERLVD_3COMPONENTS | \
+					PPP_##dir##_PACK_TIGHT | \
+					PPP_##dir##_PACK_ALIGN_LSB | \
+					PPP_##dir##_PLANE_INTERLVD
+
+#define PPP_CFG_MDP_ARGB_8888(dir)	PPP_##dir##_C2R_8BIT | \
+					PPP_##dir##_C0G_8BIT | \
+					PPP_##dir##_C1B_8BIT | \
+					PPP_##dir##_C3A_8BIT | \
+					PPP_##dir##_C3ALPHA_EN | \
+					PPP_##dir##_BPP_4BYTES | \
+					PPP_##dir##_INTERLVD_4COMPONENTS | \
+					PPP_##dir##_PACK_TIGHT | \
+					PPP_##dir##_PACK_ALIGN_LSB | \
+					PPP_##dir##_PLANE_INTERLVD
+
+#define PPP_CFG_MDP_XRGB_8888 PPP_CFG_MDP_ARGB_8888
+
+#define PPP_CFG_MDP_Y_CBCR_H2V2(dir)	PPP_##dir##_C2R_8BIT | \
+					PPP_##dir##_C0G_8BIT | \
+					PPP_##dir##_C1B_8BIT | \
+					PPP_##dir##_C3A_8BIT | \
+					PPP_##dir##_BPP_2BYTES | \
+					PPP_##dir##_INTERLVD_2COMPONENTS | \
+					PPP_##dir##_PACK_TIGHT | \
+					PPP_##dir##_PACK_ALIGN_LSB | \
+					PPP_##dir##_PLANE_PSEUDOPLNR
+
+#define PPP_CFG_MDP_Y_CRCB_H2V2(dir)	PPP_CFG_MDP_Y_CBCR_H2V2(dir)
+
+#define PPP_CFG_MDP_YCRYCB_H2V1(dir)	PPP_##dir##_C2R_8BIT | \
+					PPP_##dir##_C0G_8BIT | \
+					PPP_##dir##_C1B_8BIT | \
+					PPP_##dir##_C3A_8BIT | \
+					PPP_##dir##_BPP_2BYTES | \
+					PPP_##dir##_INTERLVD_4COMPONENTS | \
+					PPP_##dir##_PACK_TIGHT | \
+					PPP_##dir##_PACK_ALIGN_LSB |\
+					PPP_##dir##_PLANE_INTERLVD
+
+#define PPP_CFG_MDP_Y_CBCR_H2V1(dir)	PPP_##dir##_C2R_8BIT | \
+					PPP_##dir##_C0G_8BIT | \
+					PPP_##dir##_C1B_8BIT | \
+					PPP_##dir##_C3A_8BIT | \
+					PPP_##dir##_BPP_2BYTES |   \
+					PPP_##dir##_INTERLVD_2COMPONENTS |  \
+					PPP_##dir##_PACK_TIGHT | \
+					PPP_##dir##_PACK_ALIGN_LSB | \
+					PPP_##dir##_PLANE_PSEUDOPLNR
+
+#define PPP_CFG_MDP_Y_CRCB_H2V1(dir)	PPP_CFG_MDP_Y_CBCR_H2V1(dir)
+
+#define PPP_PACK_PATTERN_MDP_RGB_565 \
+	MDP_GET_PACK_PATTERN(0, CLR_R, CLR_G, CLR_B, 8)
+#define PPP_PACK_PATTERN_MDP_RGB_888 PPP_PACK_PATTERN_MDP_RGB_565
+#define PPP_PACK_PATTERN_MDP_XRGB_8888 \
+	MDP_GET_PACK_PATTERN(CLR_ALPHA, CLR_R, CLR_G, CLR_B, 8)
+#define PPP_PACK_PATTERN_MDP_ARGB_8888 PPP_PACK_PATTERN_MDP_XRGB_8888
+#define PPP_PACK_PATTERN_MDP_Y_CBCR_H2V1 \
+	MDP_GET_PACK_PATTERN(0, 0, CLR_CB, CLR_CR, 8)
+#define PPP_PACK_PATTERN_MDP_Y_CBCR_H2V2 PPP_PACK_PATTERN_MDP_Y_CBCR_H2V1
+#define PPP_PACK_PATTERN_MDP_Y_CRCB_H2V1 \
+	MDP_GET_PACK_PATTERN(0, 0, CLR_CR, CLR_CB, 8)
+#define PPP_PACK_PATTERN_MDP_Y_CRCB_H2V2 PPP_PACK_PATTERN_MDP_Y_CRCB_H2V1
+#define PPP_PACK_PATTERN_MDP_YCRYCB_H2V1 \
+	MDP_GET_PACK_PATTERN(CLR_Y, CLR_R, CLR_Y, CLR_B, 8)
+
+#define PPP_CHROMA_SAMP_MDP_RGB_565(dir) PPP_OP_##dir##_CHROMA_RGB
+#define PPP_CHROMA_SAMP_MDP_RGB_888(dir) PPP_OP_##dir##_CHROMA_RGB
+#define PPP_CHROMA_SAMP_MDP_XRGB_8888(dir) PPP_OP_##dir##_CHROMA_RGB
+#define PPP_CHROMA_SAMP_MDP_ARGB_8888(dir) PPP_OP_##dir##_CHROMA_RGB
+#define PPP_CHROMA_SAMP_MDP_Y_CBCR_H2V1(dir) PPP_OP_##dir##_CHROMA_H2V1
+#define PPP_CHROMA_SAMP_MDP_Y_CBCR_H2V2(dir) PPP_OP_##dir##_CHROMA_420
+#define PPP_CHROMA_SAMP_MDP_Y_CRCB_H2V1(dir) PPP_OP_##dir##_CHROMA_H2V1
+#define PPP_CHROMA_SAMP_MDP_Y_CRCB_H2V2(dir) PPP_OP_##dir##_CHROMA_420
+#define PPP_CHROMA_SAMP_MDP_YCRYCB_H2V1(dir) PPP_OP_##dir##_CHROMA_H2V1
+
+/* Helpful array generation macros */
+#define PPP_ARRAY0(name) \
+	[MDP_RGB_565] = PPP_##name##_MDP_RGB_565,\
+	[MDP_RGB_888] = PPP_##name##_MDP_RGB_888,\
+	[MDP_XRGB_8888] = PPP_##name##_MDP_XRGB_8888,\
+	[MDP_ARGB_8888] = PPP_##name##_MDP_ARGB_8888,\
+	[MDP_Y_CBCR_H2V1] = PPP_##name##_MDP_Y_CBCR_H2V1,\
+	[MDP_Y_CBCR_H2V2] = PPP_##name##_MDP_Y_CBCR_H2V2,\
+	[MDP_Y_CRCB_H2V1] = PPP_##name##_MDP_Y_CRCB_H2V1,\
+	[MDP_Y_CRCB_H2V2] = PPP_##name##_MDP_Y_CRCB_H2V2,\
+	[MDP_YCRYCB_H2V1] = PPP_##name##_MDP_YCRYCB_H2V1
+
+#define PPP_ARRAY1(name, dir) \
+	[MDP_RGB_565] = PPP_##name##_MDP_RGB_565(dir),\
+	[MDP_RGB_888] = PPP_##name##_MDP_RGB_888(dir),\
+	[MDP_XRGB_8888] = PPP_##name##_MDP_XRGB_8888(dir),\
+	[MDP_ARGB_8888] = PPP_##name##_MDP_ARGB_8888(dir),\
+	[MDP_Y_CBCR_H2V1] = PPP_##name##_MDP_Y_CBCR_H2V1(dir),\
+	[MDP_Y_CBCR_H2V2] = PPP_##name##_MDP_Y_CBCR_H2V2(dir),\
+	[MDP_Y_CRCB_H2V1] = PPP_##name##_MDP_Y_CRCB_H2V1(dir),\
+	[MDP_Y_CRCB_H2V2] = PPP_##name##_MDP_Y_CRCB_H2V2(dir),\
+	[MDP_YCRYCB_H2V1] = PPP_##name##_MDP_YCRYCB_H2V1(dir)
+
+#define IS_YCRCB(img) ((img == MDP_Y_CRCB_H2V2) | (img == MDP_Y_CBCR_H2V2) | \
+		       (img == MDP_Y_CRCB_H2V1) | (img == MDP_Y_CBCR_H2V1) | \
+		       (img == MDP_YCRYCB_H2V1))
+#define IS_RGB(img) ((img == MDP_RGB_565) | (img == MDP_RGB_888) | \
+		     (img == MDP_ARGB_8888) | (img == MDP_XRGB_8888))
+
+/* Mappings from addr to purpose */
+#define PPP_ADDR_SRC_ROI		MDP_FULL_BYPASS_WORD2
+#define PPP_ADDR_SRC0			MDP_FULL_BYPASS_WORD3
+#define PPP_ADDR_SRC1			MDP_FULL_BYPASS_WORD4
+#define PPP_ADDR_SRC_YSTRIDE		MDP_FULL_BYPASS_WORD7
+#define PPP_ADDR_SRC_CFG		MDP_FULL_BYPASS_WORD9
+#define PPP_ADDR_SRC_PACK_PATTERN	MDP_FULL_BYPASS_WORD10
+#define PPP_ADDR_OPERATION		MDP_FULL_BYPASS_WORD14
+#define PPP_ADDR_ALPHA_TRANSP		MDP_FULL_BYPASS_WORD19
+#define PPP_ADDR_DST_CFG		MDP_FULL_BYPASS_WORD20
+#define PPP_ADDR_DST_PACK_PATTERN	MDP_FULL_BYPASS_WORD21
+#define PPP_ADDR_DST_ROI		MDP_FULL_BYPASS_WORD25
+#define PPP_ADDR_DST0			MDP_FULL_BYPASS_WORD26
+#define PPP_ADDR_DST1			MDP_FULL_BYPASS_WORD27
+#define PPP_ADDR_DST_YSTRIDE		MDP_FULL_BYPASS_WORD30
+#define PPP_ADDR_BG0			MDP_FULL_BYPASS_WORD48
+#define PPP_ADDR_BG1			MDP_FULL_BYPASS_WORD49
+#define PPP_ADDR_BG_YSTRIDE		MDP_FULL_BYPASS_WORD51
+#define PPP_ADDR_BG_CFG			MDP_FULL_BYPASS_WORD53
+#define PPP_ADDR_BG_PACK_PATTERN	MDP_FULL_BYPASS_WORD54
 
 /* MDP_DMA_CONFIG / MDP_FULL_BYPASS_WORD32 */
 #define DMA_DSTC0G_6BITS (1<<1)

@@ -24,15 +24,13 @@
 #ifdef CONFIG_ANDROID_POWER
 #include <linux/android_power.h>
 #endif
-
+#include <linux/msm_mdp.h>
 #include <asm/io.h>
-
-#include <asm/arch/msm_fb.h>
-#include <asm/arch/msm_fb.h>
-
 #include <asm/uaccess.h>
+#include <asm/arch/msm_fb.h>
 
 #define PRINT_FPS 0
+#define PRINT_BLIT_TIME 0
 
 struct msmfb_info {
 	struct fb_info *fb_info;
@@ -251,27 +249,64 @@ static void msmfb_imageblit(struct fb_info *p, const struct fb_image *image)
 	msmfb_update(p, image->dx, image->dy, image->dx + image->width, image->dy + image->height);
 }
 
-static int msmfb_ioctl(struct fb_info *p, unsigned int cmd, unsigned long arg)
-{
-	void __user *argp = (void __user *)arg;
-	unsigned grp_disp_id;
 
-	switch (cmd)
-	{
-		case MSMFB_GRP_DISP:
-			if(copy_from_user(&grp_disp_id, argp,
-					  sizeof(grp_disp_id)))
-				return -EFAULT;
-			/* printk("msmfb_ioctl grp_disp %u\n", grp_disp_id); */
-			mdp_set_grp_disp(grp_disp_id);
-			break;
-		default:
-			printk("msmfb unknown ioctl: %d\n", cmd);
+static int msmfb_blit(struct fb_info* info, void __user *p)
+{
+	struct mdp_blit_req req;
+	struct mdp_blit_req_list req_list;
+	int i;
+
+	if (copy_from_user(&req_list, p, sizeof(req_list)))
+		return -EFAULT;
+
+	for (i = 0; i < req_list.count; i++) {
+		struct mdp_blit_req_list *list =
+			(struct mdp_blit_req_list*)p;
+		if (copy_from_user(&req, &list->req[i], sizeof(req)))
+			return -EFAULT;
+		if (mdp_blit(info, &req))
 			return -EFAULT;
 	}
 	return 0;
 }
 
+
+DECLARE_MUTEX(mdp_ppp_sem);
+
+static int msmfb_ioctl(struct fb_info *p, unsigned int cmd, unsigned long arg)
+{
+	void __user *argp = (void __user *)arg;
+	int ret;
+#if PRINT_BLIT_TIME
+	ktime_t t1, t2;
+#endif
+
+	switch (cmd)
+	{
+		case MSMFB_GRP_DISP:
+			mdp_set_grp_disp(arg);
+			break;
+		case MSMFB_BLIT:
+#if PRINT_BLIT_TIME
+			t1 = ktime_get();
+#endif
+			down(&mdp_ppp_sem);
+			ret = msmfb_blit(p, argp);
+			up(&mdp_ppp_sem);
+			if (ret)
+				return ret;
+#if PRINT_BLIT_TIME
+			t2 = ktime_get();
+			printk("total %lld\n",
+			       ktime_to_ns(t2) - ktime_to_ns(t1));
+#endif
+			break;
+		default:
+			printk("msmfb unknown ioctl: %d\n", cmd);
+			return -EINVAL;
+	}
+	return 0;
+}
 
 static struct fb_ops msmfb_ops = {
 	.owner =       THIS_MODULE,
@@ -298,6 +333,7 @@ static int msmfb_probe(struct platform_device *pdev)
 	printk(KERN_INFO "msmfb_probe() installing %d x %d panel\n",
 	       pi->width, pi->height);
 
+	//fbram = ioremap_cached(0, 8 * 1024 * 1024);
 	fbram = ioremap(0, 8 * 1024 * 1024);
 
 	if (fbram == 0) {
