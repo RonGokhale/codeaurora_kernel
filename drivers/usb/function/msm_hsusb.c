@@ -528,13 +528,22 @@ static void ep0out_complete(struct usb_endpoint *ept, struct usb_request *req)
 
 static void ep0in_complete(struct usb_endpoint *ept, struct usb_request *req)
 {
-	struct usb_info *ui = ept->ui;
-
-	/* recv ack */
+	/* queue up the receive of the ACK response from the host */
 	if (req->status == 0) {
+		struct usb_info *ui = ept->ui;
 		req->length = 0;
 		req->complete = ep0out_complete;
 		usb_ept_queue_xfer(&ui->ep0out, req);
+	}
+}
+
+static void ep0in_complete_sendzero(struct usb_endpoint *ept, struct usb_request *req)
+{
+	if (req->status == 0) {
+		struct usb_info *ui = ept->ui;
+		req->length = 0;
+		req->complete = ep0in_complete;
+		usb_ept_queue_xfer(&ui->ep0in, req);
 	}
 }
 
@@ -551,11 +560,25 @@ static void ep0_setup_stall(struct usb_info *ui)
 	writel((1<<16) | (1<<0), USB_ENDPTCTRL(0));
 }
 
-static void ep0_setup_send(struct usb_info *ui)
+static void ep0_setup_send(struct usb_info *ui, unsigned wlen)
 {
 	struct usb_request *req = ui->setup_req;
 	struct usb_endpoint *ept = &ui->ep0in;
-	req->complete = ep0in_complete;
+
+	/* never send more data than the host requested */
+	if (req->length > wlen)
+		req->length = wlen;
+
+	/* if we are sending a short response that ends on
+	 * a packet boundary, we'll need to send a zero length
+	 * packet as well.
+	 */
+	if ((req->length != wlen) && ((req->length & 63) == 0)) {
+		req->complete = ep0in_complete_sendzero;
+	} else {
+		req->complete = ep0in_complete;
+	}
+
 	usb_ept_queue_xfer(ept, req);
 }
 
@@ -586,7 +609,7 @@ static void handle_setup(struct usb_info *ui)
 				struct usb_request *req = ui->setup_req;
 				req->length = 2;
 				memset(req->buf, 0, 2);
-				ep0_setup_send(ui);
+				ep0_setup_send(ui, 2);
 				return;
 			}
 		}
@@ -594,9 +617,7 @@ static void handle_setup(struct usb_info *ui)
 			struct usb_request *req = ui->setup_req;
 
 			if (!usb_find_descriptor(ui, ctl.wValue, req)) {
-				if (req->length > ctl.wLength)
-					req->length = ctl.wLength;
-				ep0_setup_send(ui);
+				ep0_setup_send(ui, ctl.wLength);
 				return;
 			}
 		}
@@ -662,7 +683,7 @@ static void handle_setup(struct usb_info *ui)
 						fi->func->context);
 					if (ret >= 0) {
 						req->length = ret;
-						ep0_setup_send(ui);
+						ep0_setup_send(ui, ctl.wLength);
 						return;
 					}
 				} else {
