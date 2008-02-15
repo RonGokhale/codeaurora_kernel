@@ -110,7 +110,7 @@ static void pc_clk_disable(unsigned id)
 
 static int pc_clk_set_rate(unsigned id, unsigned rate)
 {
-	return msm_proc_comm(PCOM_CLKCTL_RPC_ENABLE, &id, &rate);
+	return msm_proc_comm(PCOM_CLKCTL_RPC_SET_RATE, &id, &rate);
 }
 
 static unsigned pc_clk_get_rate(unsigned id)
@@ -313,10 +313,9 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 	printk(KERN_INFO "clock: Switching from ACPU rate %u -> %u\n",
 	       strt_s->a11clk_khz * 1000, tgt_s->a11clk_khz * 1000);
 #endif
-	if (strt_s->pll != tgt_s->pll && !drv_state.rpc) {
+	if (!for_power_collapse && (strt_s->pll != tgt_s->pll) && !drv_state.rpc) {
 		printk(KERN_ERR "No RPC for PLL request, acpu switch failed");
-		if (!for_power_collapse)
-			mutex_unlock(&drv_state.lock);
+		mutex_unlock(&drv_state.lock);
 		return -EAGAIN;
 	}
 
