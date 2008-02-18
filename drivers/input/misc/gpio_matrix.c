@@ -281,7 +281,7 @@ int gpio_event_matrix_func(struct input_dev *input_dev, struct gpio_event_info *
 		}
 		key_count = mi->ninputs * mi->noutputs;
 
-		*data = kp = kzalloc(sizeof(*kp) + sizeof(kp->keys_pressed[0]) * NBITS(key_count), GFP_KERNEL);
+		*data = kp = kzalloc(sizeof(*kp) + sizeof(kp->keys_pressed[0]) * BITS_TO_LONGS(key_count), GFP_KERNEL);
 		if (kp == NULL) {
 			err = -ENOMEM;
 			printk(KERN_ERR "gpio_keypad_probe: Failed to allocate private data\n");
