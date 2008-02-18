@@ -159,8 +159,6 @@ static void __init rmnet_setup(struct net_device *dev)
 	dev->change_mtu = 0; /* ??? */
 
 	random_ether_addr(dev->dev_addr);
-
-	SET_MODULE_OWNER(dev);
 }
 
 
