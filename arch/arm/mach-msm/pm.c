@@ -20,6 +20,7 @@
 #include <linux/clk.h>
 #include <linux/init.h>
 #include <linux/pm.h>
+#include <linux/suspend.h>
 #include <asm/arch/msm_iomap.h>
 #include <asm/arch/system.h>
 #include <asm/io.h>
@@ -191,9 +192,9 @@ static int msm_pm_enter(suspend_state_t state)
 	return 0;
 }
 
-static struct pm_ops msm_pm_ops = {
+static struct platform_suspend_ops msm_pm_ops = {
 	.enter		= msm_pm_enter,
-	.valid		= pm_valid_only_mem,
+	.valid		= suspend_valid_only_mem,
 };
 
 static int __init msm_pm_init(void)
@@ -210,7 +211,7 @@ static int __init msm_pm_init(void)
 		return -ENODEV;
 	}
 
-	pm_set_ops(&msm_pm_ops);
+	suspend_set_ops(&msm_pm_ops);
 	return 0;
 }
 
