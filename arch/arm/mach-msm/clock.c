@@ -37,7 +37,6 @@
 #include "proc_comm.h"
 
 #define PERF_SWITCH_DEBUG 1
-#define ENABLE_ALL_PLLS 0
 #define PERF_SWITCH_STEP_DEBUG 0
 
 struct clock_state
@@ -97,6 +96,14 @@ static unsigned pc_clk_is_enabled(unsigned id)
 {
 	return 0;
 }
+
+static int pc_pll_request(unsigned id, unsigned on)
+{
+	if (drv_state.rpc)
+		return drv_state.rpc->pll_request(id, !!on);
+	else
+		return -ENODEV;
+}
 #else
 static int pc_clk_enable(unsigned id)
 {
@@ -127,6 +134,12 @@ static unsigned pc_clk_is_enabled(unsigned id)
 		return 0;
 	else
 		return id;
+}
+
+static int pc_pll_request(unsigned id, unsigned on)
+{
+	on = !!on;
+	return msm_proc_comm(PCOM_CLKCTL_RPC_PLL_REQUEST, &id, &on);
 }
 #endif
 
@@ -313,18 +326,12 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 	printk(KERN_INFO "clock: Switching from ACPU rate %u -> %u\n",
 	       strt_s->a11clk_khz * 1000, tgt_s->a11clk_khz * 1000);
 #endif
-	if (!for_power_collapse && (strt_s->pll != tgt_s->pll) && !drv_state.rpc) {
-		printk(KERN_ERR "No RPC for PLL request, acpu switch failed");
-		mutex_unlock(&drv_state.lock);
-		return -EAGAIN;
-	}
-
 	if (!for_power_collapse &&
 	    (strt_s->pll != tgt_s->pll) && (tgt_s->pll != ACPU_PLL_TCXO)) {
 #if PERF_SWITCH_DEBUG
 		printk("%s: Enabling PLL %d\n", __FUNCTION__, tgt_s->pll);
 #endif
-		rc = drv_state.rpc->pll_request(tgt_s->pll, 1);
+		rc = pc_pll_request(tgt_s->pll, 1);
 		if (rc < 0) {
 			printk(KERN_ERR "PLL enable failed (%d)\n", rc);
 			mutex_unlock(&drv_state.lock);
@@ -451,7 +458,7 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 #if PERF_SWITCH_DEBUG
 		printk(KERN_DEBUG "%s: Disabling PLL %d\n", __FUNCTION__, strt_s->pll);
 #endif
-		rc = drv_state.rpc->pll_request(strt_s->pll, 0);
+		rc = pc_pll_request(strt_s->pll, 0);
 		if (rc < 0) {
 			printk(KERN_ERR "PLL disable failed (%d)\n", rc);
 			mutex_unlock(&drv_state.lock);
@@ -609,19 +616,5 @@ void __init clock_init(uint32_t acpu_switch_time_us,
 void clock_register_rpc(struct clkctl_rpc_ops *rpc_ops)
 {
 	drv_state.rpc = rpc_ops;
-#if ENABLE_ALL_PLLS
-	{
-	int i;
-	int rc;
-	for (i = 0; i <= 3; i++) {
-		rc = drv_state.rpc->pll_request(i, 1);
-		if (rc < 0)
-			printk(KERN_INFO "clock: Unable to enable PLL index %d (%d)\n", i, rc);
-		else
-			printk(KERN_INFO "clock: PLL index %d enabled OK\n", i);
-	}
-	}
-#endif
-
 }
 EXPORT_SYMBOL(clock_register_rpc);
