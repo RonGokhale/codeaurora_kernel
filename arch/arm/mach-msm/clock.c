@@ -179,9 +179,6 @@ struct clk *clk_get(struct device *dev, const char *id)
 
 int clk_enable(struct clk *clk)
 {
-	if (clk == NULL || IS_ERR(clk))
-		return -EINVAL;
-
 	if (clk->id == ACPU_CLK)
 		return acpuclk_enable(clk);
 	return pc_clk_enable(clk->id);
@@ -189,9 +186,6 @@ int clk_enable(struct clk *clk)
 
 void clk_disable(struct clk *clk)
 {
-	if (clk == NULL || IS_ERR(clk))
-		return;
-
 	if (clk->id == ACPU_CLK)
 		return acpuclk_disable(clk);
 	return pc_clk_disable(clk->id);
@@ -199,9 +193,6 @@ void clk_disable(struct clk *clk)
 
 unsigned long clk_get_rate(struct clk *clk)
 {
-	if (clk == NULL || IS_ERR(clk))
-		return 0;
-
 	if (clk->id == ACPU_CLK)
 		return acpuclk_get_rate(clk);
 	return pc_clk_get_rate(clk->id);
@@ -209,15 +200,11 @@ unsigned long clk_get_rate(struct clk *clk)
 
 void clk_put(struct clk *clk)
 {
-	if (clk && !IS_ERR(clk))
-		module_put(clk->owner);
+	module_put(clk->owner);
 }
 
 int clk_set_rate(struct clk *clk, unsigned long rate)
 {
-	if (clk == NULL || IS_ERR(clk))
-		return -EINVAL;
-
 	if (clk->id == ACPU_CLK)
 		return acpuclk_set_rate(clk, rate, 0);
 	return pc_clk_set_rate(clk->id, rate);
