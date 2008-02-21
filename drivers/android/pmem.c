@@ -7,11 +7,9 @@
  * may be copied, distributed, and modified under those terms.
  *
  * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
- */
-/* TODO: do I need vm ops to cover the fork case?
  *
  */
 
@@ -21,7 +19,9 @@
 #include <linux/mm.h>
 #include <linux/list.h>
 #include <linux/debugfs.h>
+#include <linux/android_pmem.h>
 #include <asm/io.h>
+#include <asm/uaccess.h>
 
 #define PMEM_BASE 0x4c00000
 #define PMEM_SIZE 0x800000
@@ -321,7 +321,24 @@ void put_pmem_file(unsigned long fd)
 
 static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
+	struct pmem_data* data;
+	struct pmem_addr addr;
 	switch(cmd) {
+		case PMEM_GET_PHYS:
+		{
+			if (!valid_pmem_file(file)) {
+				addr.start = NULL;
+				addr.end = NULL;
+			} else { 
+				data = (struct pmem_data*)file->private_data;
+				addr.start = (void*)PMEM_START_ADDR(data->bits);
+				addr.end = (void*)PMEM_END_ADDR(data->bits);
+			}
+			if (copy_to_user((void __user *)arg, &addr,
+					  sizeof(struct pmem_addr)))
+				return -EFAULT;
+ 		}
+		break;
 		default:
 			return -EINVAL;
 	}
