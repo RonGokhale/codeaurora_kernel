@@ -521,7 +521,7 @@ static void clock_debug_set(void *data, u64 val)
 {
 	struct clk *clock = data;
 	int ret;
-	
+
 	ret = clk_set_rate(clock, val);
 	if (ret != 0)
 		printk(KERN_ERR "clk_set_rate failed (%d)\n", ret);
@@ -565,7 +565,6 @@ static void __init clock_debug_init(void)
 	dent_enable = debugfs_create_dir("clk_enable", 0);
 	if (IS_ERR(dent_rate) || IS_ERR(dent_enable))
 		return;
-
 	while ((clock = msm_clock_get_nth(n++)) != 0) {
 		debugfs_create_file(clock->name, 0644, dent_rate,
 				    clock, &clock_rate_fops);
@@ -573,8 +572,8 @@ static void __init clock_debug_init(void)
 				    clock, &clock_enable_fops);
 	}
 }
-#else
-static void clock_debug_init(void) {}
+
+device_initcall(clock_debug_init);
 #endif
 
 /*----------------------------------------------------------------------------
@@ -590,10 +589,6 @@ void __init clock_init(uint32_t acpu_switch_time_us,
 	drv_state.acpu_switch_time_us = acpu_switch_time_us;
 	drv_state.max_speed_delta_khz = max_speed_delta_khz;
 	drv_state.vdd_switch_time_us = vdd_switch_time_us;
-
-#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
-	clock_debug_init();
-#endif
 }
 
 /*
