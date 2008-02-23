@@ -183,12 +183,12 @@ static void __init halibut_init(void)
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 	halibut_init_keypad(halibut_ffa);
 	msm_add_devices();
-	msm_clock_init(&halibut_clock_data);
 }
 
 static void __init halibut_map_io(void)
 {
 	msm_map_common_io();
+	msm_clock_init(&halibut_clock_data);
 }
 
 MACHINE_START(HALIBUT, "Halibut Board (QCT SURF7200A)")
