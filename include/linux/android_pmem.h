@@ -18,6 +18,8 @@
 
 #define PMEM_IOCTL_MAGIC 'p'
 #define PMEM_GET_PHYS	_IOW(PMEM_IOCTL_MAGIC, 1, unsigned int)
+#define PMEM_RESTRICT	_IOW(PMEM_IOCTL_MAGIC, 2, unsigned int)
+#define PMEM_GET_SIZE	_IOW(PMEM_IOCTL_MAGIC, 3, unsigned int)
 
 int get_pmem_file(unsigned long fd, unsigned long *start, unsigned long *end);
 void put_pmem_file(unsigned long fd);
