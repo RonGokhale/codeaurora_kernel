@@ -1633,7 +1633,7 @@ int rpcrouter_kernapi_read(rpcrouterclient_t *client,
 		struct rpcrouter_control_msg msg;
 
 		memset(&msg, 0, sizeof(msg));
-		msg.command = RPCROUTER_CTRL_CMD_NEW_SERVER;
+		msg.command = RPCROUTER_CTRL_CMD_RESUME_TX;
 		msg.args.arg_c.pid = client->addr.pid;
 		msg.args.arg_c.cid = client->addr.cid;
 		printk("%s: confirming rx\n", __FUNCTION__);
