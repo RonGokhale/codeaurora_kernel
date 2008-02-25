@@ -36,8 +36,8 @@
 static rpcrouterclient_t *rpc_client;
 static rpcrouter_address pmsvc_addr;
 
-static int rpc_pm_vote_vreg_switch(int enable, uint32_t vreg_id,
-				   uint32_t app_mask)
+int rpc_pm_vote_vreg_switch(int enable, uint32_t vreg_id,
+			    uint32_t app_mask)
 {
 	struct pmrpc_votevregswitch_req req;
 	void *rsp;

@@ -1,4 +1,5 @@
 obj-y += io.o idle.o irq.o timer.o dma.o clock.o clock-7x00a.o
+obj-y += vreg.o
 obj-y += gpio.o generic_gpio.o
 
 # Common code for board init
