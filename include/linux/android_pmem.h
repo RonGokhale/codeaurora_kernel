@@ -17,16 +17,22 @@
 #define _ANDROID_PMEM_H_
 
 #define PMEM_IOCTL_MAGIC 'p'
-#define PMEM_GET_PHYS	_IOW(PMEM_IOCTL_MAGIC, 1, unsigned int)
-#define PMEM_RESTRICT	_IOW(PMEM_IOCTL_MAGIC, 2, unsigned int)
-#define PMEM_GET_SIZE	_IOW(PMEM_IOCTL_MAGIC, 3, unsigned int)
+#define PMEM_GET_PHYS		_IOW(PMEM_IOCTL_MAGIC, 1, unsigned int)
+#define PMEM_SUBALLOCATE	_IOW(PMEM_IOCTL_MAGIC, 2, unsigned int)
+#define PMEM_GET_SIZE		_IOW(PMEM_IOCTL_MAGIC, 3, unsigned int)
+#define PMEM_REVOKE		_IOW(PMEM_IOCTL_MAGIC, 4, unsigned int)
 
 int get_pmem_file(unsigned long fd, unsigned long *start, unsigned long *end);
 void put_pmem_file(unsigned long fd);
 
 struct pmem_addr {
 	void *start;
-	void *end;
+	unsigned long len;
+};
+
+struct pmem_suballoc {
+	int fd;
+	struct pmem_addr addr;
 };
 
 #endif //_ANDROID_PPP_H_

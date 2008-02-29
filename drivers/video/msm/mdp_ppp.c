@@ -15,6 +15,7 @@
 #include <linux/fb.h>
 #include <linux/delay.h>
 #include <linux/msm_mdp.h>
+#include <linux/android_pmem.h>
 #include <asm/arch/msm_fb.h>
 
 #include "mdp_hw.h"
@@ -180,27 +181,66 @@ static void blit_blend(struct mdp_blit_req *req, struct mdp_regs *regs)
 	}
 }
 
-static int valid_src_dst(struct fb_info *info, struct mdp_blit_req *req,
-			 struct mdp_regs *regs)
+static int valid_src_dst(unsigned long src_start, unsigned long src_len,
+			 unsigned long dst_start, unsigned long dst_len,
+			 struct mdp_blit_req *req, struct mdp_regs *regs)
 {
-	uint32_t min_ok = info->fix.smem_start;
-	uint32_t max_ok = info->fix.smem_start + info->fix.smem_len - 1;
+	unsigned long src_min_ok = src_start;
+	unsigned long src_max_ok = src_start + src_len - 1;
+	unsigned long dst_min_ok = dst_start;
+	unsigned long dst_max_ok = dst_start + dst_len - 1;
+
 	uint32_t src_size = ((req->src.height - 1) * req->src.width +
 			    req->src_rect.w) * regs->src_bpp;
 	uint32_t dst_size = ((req->dst.height - 1) * req->dst.width +
 			    req->dst_rect.w) * regs->dst_bpp;
 
-	if (regs->src0 < min_ok || regs->src0 > max_ok ||
-	    regs->src1 < min_ok || regs->src1 > max_ok ||
-	    regs->dst0 < min_ok || regs->dst0 > max_ok ||
-	    regs->dst1 < min_ok || regs->dst1 > max_ok ||
-	    regs->src0 + src_size > max_ok ||
-	    regs->src1 + src_size > max_ok ||
-	    regs->dst0 + dst_size > max_ok ||
-	    regs->dst1 + dst_size > max_ok){
+	if (regs->src0 < src_min_ok || regs->src0 > src_max_ok ||
+	    regs->src0 + src_size > src_max_ok) {
 		return 0;
 	}
+	if (regs->src_cfg & PPP_SRC_PLANE_PSEUDOPLNR) {
+		if (regs->src1 < src_min_ok || regs->src1 > src_max_ok ||
+		    regs->src1 + src_size > src_max_ok) {
+			return 0;
+		}
+	}
+	if (regs->dst0 < dst_min_ok || regs->dst0 > dst_max_ok ||
+	    regs->dst0 + dst_size > dst_max_ok) {
+		return 0;
+	}
+	if (regs->dst_cfg & PPP_SRC_PLANE_PSEUDOPLNR) {
+		if (regs->dst1 < dst_min_ok || regs->dst1 > dst_max_ok ||
+		    regs->dst1 + dst_size > dst_max_ok) {
+			return 0;
+		}
+	}
 	return 1;
+}
+
+int get_img(struct mdp_img *img, struct fb_info *info, unsigned long *start,
+	    unsigned long *len)
+{
+	switch(img->memory_type) {
+		case FB_IMG:
+			*start = info->fix.smem_start;
+			*len = info->fix.smem_len;
+			break;
+		case PMEM_IMG:
+			get_pmem_file(img->memory_id, start, len);
+			break;
+		default:
+			return -1;
+	}
+	return 0;
+}
+
+void mdp_ppp_put_img(struct mdp_blit_req *req)
+{
+	if (req->src.memory_type == PMEM_IMG)
+		put_pmem_file(req->src.memory_id);
+	if (req->dst.memory_type == PMEM_IMG)
+		put_pmem_file(req->dst.memory_id);
 }
 
 #define WRITEL(v, a) do { writel(v,a); /*printk(#a "[%x]=%x\n", a, v);*/ }\
@@ -208,6 +248,8 @@ static int valid_src_dst(struct fb_info *info, struct mdp_blit_req *req,
 int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 {
 	struct mdp_regs regs;
+	unsigned long src_start, src_len;
+	unsigned long dst_start, dst_len;
 
 #if 0
 	printk("BLIT recieved img %p\n"
@@ -243,10 +285,16 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		req->dst_rect.w, req->dst_rect.h,
 		req->rotation, req->transp_mask, req->alpha);
 #endif
+	/* do this first so that if this fails, the caller can always
+	 * safely call put_img */
+	if (unlikely(get_img(&req->src, info, &src_start, &src_len)) ||
+		    (get_img(&req->dst, info, &dst_start, &dst_len)))
+		return -1;
 
 	if (unlikely(req->src.format >= MDP_IMGTYPE_LIMIT ||
 	    req->dst.format >= MDP_IMGTYPE_LIMIT))
 		return -1;
+
 
 	if (unlikely(req->src_rect.x > req->src.width ||
 		     req->src_rect.y > req->src.height ||
@@ -261,7 +309,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	regs.dst_cfg = dst_img_cfg[req->dst.format] | PPP_DST_OUT_SEL_AXI;
 
 	regs.src_bpp = bytes_per_pixel[req->src.format];
-	regs.src0 = info->fix.smem_start + req->src.offset;
+	regs.src0 = src_start + req->src.offset;
 	regs.src0 += (req->src_rect.x + (req->src_rect.y * req->src.width)) *
 		      regs.src_bpp;
 	regs.src_ystride = req->src.width * regs.src_bpp;
@@ -275,7 +323,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	}
 
 	regs.dst_bpp = info->var.bits_per_pixel / 8;
-	regs.dst0 = info->fix.smem_start + req->dst.offset;
+	regs.dst0 = dst_start + req->dst.offset;
 	regs.dst0 += (req->dst_rect.x + (req->dst_rect.y * req->dst.width)) *
 		     regs.dst_bpp;
 	regs.dst_ystride = req->dst.width * regs.dst_bpp;
@@ -287,7 +335,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		regs.dst1 = 0;
 	}
 
-	if (!valid_src_dst(info, req, &regs))
+	if (!valid_src_dst(src_start, src_len, dst_start, dst_len, req, &regs)) 
 		return -1;
 
 	regs.op = 0;

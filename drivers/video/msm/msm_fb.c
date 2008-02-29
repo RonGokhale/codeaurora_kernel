@@ -350,6 +350,7 @@ static int msmfb_probe(struct platform_device *pdev)
 	init_waitqueue_head(&par->frame_wq);
 
 	info->screen_base = fbram;
+	strncpy(info->fix.id, "msmfb", 16);
 	info->fix.smem_start = 0;
 	info->fix.smem_len = 8 * 1024 * 1024;
 	info->fix.ypanstep = 1;

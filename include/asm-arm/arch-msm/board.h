@@ -46,6 +46,12 @@ struct msm_hsusb_platform_data
 	char* manufacturer_name;
 };
 
+struct android_pmem_platform_data
+{
+	unsigned long start;
+	unsigned long size;
+};
+
 /* common init routines for use by arch/arm/mach-msm/board-*.c */
 
 void __init msm_add_devices(void);

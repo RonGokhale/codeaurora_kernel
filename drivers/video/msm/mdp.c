@@ -127,20 +127,25 @@ void mdp_set_grp_disp(unsigned disp_id)
 }
 
 extern int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req);
+extern void mdp_ppp_put_img(struct mdp_blit_req *req);
 
 int mdp_blit(struct fb_info *info,  struct mdp_blit_req *req)
 {
+	int ret = 0;
 	if (mdp_ppp_busy)
 		return -1;
 	mdp_ppp_busy = 1;
 	if (mdp_ppp_blit(info, req)) {
 		mdp_ppp_busy = 0;
-		return -1;
+		ret = -1;
+		goto end;
 	}
 	if (wait_event_timeout(mdp_ppp_waitqueue, !mdp_ppp_busy, HZ) <= 0)
 		printk(KERN_ERR "mdp_ppp_wait: timeout waiting for blit to "
 				"complete\n");
-	return 0;
+end:
+	mdp_ppp_put_img(req);
+	return ret;
 }
 
 #include "mdp_csc_table.h"
