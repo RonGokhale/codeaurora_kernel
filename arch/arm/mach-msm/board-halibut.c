@@ -37,6 +37,33 @@
 #include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
 
+#define MSM_SMI_BASE            0x00000000
+#define MSM_SMI_SIZE            0x900000
+
+#define MSM_EBI_BASE            0x10000000
+#define MSM_EBI_SIZE            0x6e00000
+
+#define MSM_FB_BASE             MSM_SMI_BASE
+#define MSM_FB_SIZE             0x800000
+
+#define MSM_SMI_GPU_BASE
+#define MSM_SMI_GPU_SIZE
+
+#define MSM_SMI_AMSS_BASE
+#define MSM_SMI_AMSS_SIZE
+
+#define MSM_LINUX_BASE          MSM_EBI_BASE
+#define MSM_LINUX_SIZE          0x4c00000
+
+#define MSM_EBI_GPU_BASE
+#define MSM_EBI_GPU_SIZE
+
+#define MSM_PMEM_BASE           MSM_LINUX_BASE + MSM_LINUX_SIZE
+#define MSM_PMEM_SIZE           0x800000
+
+#define MSM_EBI_AMSS_BASE
+#define MSM_EBI_AMSS_SIZE
+
 static int halibut_ffa;
 module_param_named(ffa, halibut_ffa, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
@@ -157,11 +184,23 @@ static struct platform_device msm_hsusb_device = {
 	},
 };
 
+static struct android_pmem_platform_data android_pmem_pdata = {
+	.start = MSM_PMEM_BASE,
+	.size = MSM_PMEM_SIZE,
+};
+
+static struct platform_device android_pmem_device = {
+	.name = "android_pmem",
+	.id = 0,
+	.dev = { .platform_data = &android_pmem_pdata },
+};
+
 static struct platform_device *devices[] __initdata = {
 	&msm_serial0_device,
 	&msm_mddi0_device,
 	&msm_hsusb_device,
 	&smc91x_device,
+	&android_pmem_device,
 };
 
 extern struct sys_timer msm_timer;
