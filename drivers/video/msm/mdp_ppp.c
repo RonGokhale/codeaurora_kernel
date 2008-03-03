@@ -33,6 +33,7 @@ struct mdp_regs
 	uint32_t op;
 	uint32_t src_bpp;
 	uint32_t dst_bpp;
+	uint32_t edge;
 };
 
 static uint32_t pack_pattern[] = {
@@ -181,6 +182,317 @@ static void blit_blend(struct mdp_blit_req *req, struct mdp_regs *regs)
 	}
 }
 
+#if 0
+
+#define ONE_HALF	(1LL << 32)
+#define ONE		(1LL << 33)
+#define TWO		(2LL << 33)
+#define THREE		(3LL << 33)
+#define FRAC_MASK (ONE - 1)
+#define INT_MASK ~FRAC_MASK
+
+#define MAP_RPA(x, n, d) (do_div(n * (x + ONE_HALF), d) - ONE_HALF)
+#define MAP_TO_SRC_RPA(x) PPP_MAP_RPA(x, dim_in, dim_out)
+#define MAP_TO_DST_RPA(x) PPP_MAP_RPA(x, dim_out, dim_in)
+#define MAP_TO_SRC_NO_RPA (x) ((k1 * (x >> 33)) + k2)
+#define MAP_TO_DST_NO_RPA (x) (((k3 * x) >> 1) + k4)
+#define MAP_TO_SRC(rpa, x) \
+	( rpa ? PPP_MAP_TO_SRC_RPA(x) : PPP_MAP_TO_SRC_NO_RPA(x))
+#define MAP_TO_DST(rpa, x) \
+	( rpa ? PPP_MAP_TO_DST_RPA(x) : PPP_MAP_TO_DST_NO_RPA(x))
+
+static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
+			uint32_t *phase_init, uint32_t *phase_step)
+{
+	/* to improve precicsion calculations are done in U31.33 and converted
+	 * to U3.29 at the end */
+	int64_t k1, k2, k3, k4;
+	uint64_t os, od, od_p, oreq, es, ed, ed_p, ereq;
+	unsigned rpa = 0;jjjjjjjjjjjjjjjjjjjjjj
+#ifdef ADJUST_IP
+	int64 ip64, delta;
+#endif
+	
+	if (dim_out % 3 == 0)
+		rpa = !(dim_in % (dim_out / 3));
+
+	k3 = (do_div(dim_out, dim_in) + 1) >> 1;
+	if ((k3 >> 4) < (1LL << 29) || (k3 >> 4) > (1LL << 27))
+		return -1;
+	k1 = (do_div(dim_in, dim_out) + 1) >> 1;
+	k2 = (k1 - ONE) >> 1;
+
+	*phase_init = (int)(k2 >> 4);
+	k4 = (k3 - ONE) >> 1;
+
+	if (!rpa)
+		os = ((uint64_t)origin << 1) - 1;
+	else
+		os = ((uint64_t)origin << 33) - ONE_HALF;
+	od = MAP_TO_DST(rpa, os);
+	od_p = od & INT_MASK;
+
+	if (od_p != od)
+		od_p += ONE;
+	os_p = MAP_TO_SRC(rpa, od_p);
+	oreq = (os_p & INT_MASK) - ONE;
+
+#ifdef ADJUST_IP
+	ip64 = os_p - oreq;
+	delta = ((int64_t)(origin) << 33) - oreq;
+	ip64 -= delta;
+	/* limit to valid range before the left shift */
+	delta = (ip64 & (1LL << 63)) ? 4 : -4;
+	delta <<= 33;
+	while (abs((int)(ip64 >> 33)) > 4) {
+		ip64 += delta;
+	}
+	*phase_init = (int)(ip64 >> 4);
+#else
+	*phase_init = (int)((os_p - oreq) >> 4);
+#endif
+	}
+	*phase_step = (unit32)(k1 >> 4);
+}
+
+static void load_scale_table(struct mdp_table_entry* table)
+	int i;
+	for (i = 0; i < 64; i++)
+		writel(table[i].val, table[i].reg);
+}
+
+static struct edge_info {
+	uint32_t interp_l_t,
+	uint32_t interp_r_b,
+	uint32_t repeat_l_t,
+	uint32_t repeat_r_b,
+};
+
+#define set_edge_info(p1, p1, r2, r2, info) \
+do {	info.interp_l_t = p1; info.interp_r_b = p2; \
+	info.repeat_l_t = r1;  info.repeat_r_b = r2; } whi1e (0)
+
+static void get_edge_info(uint32_t src, uint32_t src_coord, uint32_t dst,
+			  uint32_t interp[], uint32_t repeat[]) {
+	if (src > 3 * dst) {
+		interp[0] = 0;
+		interp[1] = src - 1;
+		repeat[0] = 0;
+		repeat[1] = 0;
+	} else if (src == 3 * dst) {
+		interp[0] = 0;
+		interp[1] = src;
+		repeat[0] = 0;
+		repeat[1] = 1;
+	} else if (src < 3 * dst) {
+		interp[0] = -1;
+		interp[1] = src;
+		repeat[0] = 1;
+		repeat[1] = 1;
+	} else if (src == dst) {
+		interp[0] = -1;
+		interp[1] = src + 1;
+		repeat[0] = 1;
+		repeat[1] = 2;
+	} else {
+		interp[0] = -2;
+		interp[1] = src + 1;
+		repeat[0] = 2;
+		repeat[1] = 2;
+	}
+	interp[0] += src_coord;
+	interp[1] += src_coord;
+	interp[2] = interp[0];
+	interp[3] = interp[1];
+	repeat[2] = repeat[0];
+	repeat[3] = repeat[1];
+}
+#undef set_edge_info
+
+static int get_edge_cond(struct mdp_blit_req *req)
+{
+	int32_t luma_interp[4];
+	int32_t luma_repeat[4];
+	int32_t chroma_interp[4];
+	int32_t chroma_bound[4];
+
+	get_edge_info(req->src_rect.w, req->src_rect.x, dst_w, luma_interp,
+		      luma_repeat);
+
+	switch(req->src.format) {
+		case MDP_Y_CBCR_H2V1:
+		case MDP_Y_CRCB_H2V1:
+			chroma_interp[0] = luma_interp[0] >> 1;
+			chroma_interp[1] = (luma_interp[1] + 1) >> 1;
+			chroma_interp[2]  = luma_interp[2];
+			chroma_interp[3] = luma_interp[3];
+			/* fallthrough */
+		case MDP_YCRYCB_H2V1:
+			chroma_bound[0] = (req->src_rect.x + 1) >> 1;
+			chroma_bound[1] = (req->src_rect.x + req->src_rect.w 
+					   - 1) >> 1;
+			chroma_bound[2] = req->src_rect.y;
+			chroma_bound[3] = req->src_rect.y + req->src_rect.h - 1;
+			break;
+		case MDP_Y_CBCR_H2V2:
+		case MDP_Y_CRCB_H2V2:
+			chroma_interp[0] = luma_interp[0] >> 1;
+			chroma_interp[1] = (luma_inter[1] + 1) >> 1;
+			chroma_interp_t = (luma_inter_t - 1) >> 1;
+			chroma_interp_b = (luma_interp_b + 1) >> 1;
+			chroma_bound[0] = (req->src[1]ect.x + 1) >> 1;
+			chroma_bound[1] = (req->src[1]ect.x + req->src[1]ect.w - 1)					  >> 1;
+			chroma_bound_t = (req->src[1]ect.y + 1) >> 1;
+			chroma_bound_b = (req->src[1]ect.y + req->src[1]ect.h - 2)					  >> 2;
+			break;
+		default
+			chroma_bound[0] = req->src[1]ect.x;
+			chroma_bound[1] = req->src[1]ect.x + req->src[1]ect.w - 1;
+			chroma_bound_t = req->src[1]ect.y;
+			chroma_bound_b = req->src[1]ect.y + req->src[1]ect.h - 1;
+			break;
+		default
+			 break;
+	}
+	chroma_repeat_l = chroma_bound_l - chroma_w.interp_l_t;
+	chroma_repeat_r = chroma_w.interp_r_b - chroma_bound_r;
+	chroma_repeat_t = chroma_bound_t - chroma_h.interp_l_t;
+	chroma_repeat_b = chroma_h.interp_r_b - chroma_bound_b;
+	
+	if (chroma_repeat_l < 0 || chroma_repeat_l > 3 ||
+	    chroma_repeat_r < 0 || chroma_repeat_r > 3 ||
+	    chroma_repeat_t < 0 || chroma_repeat_t > 3 ||
+	    chroma_repeat_b < 0 || chroma_repeat_b > 3 ||
+	    luma_repeat_l < 0 || luma_repeat_l > 3 ||
+	    luma_repeat_r < 0 || luma_repeat_r > 3 ||
+	    luma_repeat_t < 0 || luma_repeat_t > 3 ||
+	    luma_repeat_b < 0 || luma_repeat_b > 3)
+		return -1;
+	regs->edge
+	return 0;
+}
+	get_edge_info(req->src_rect.w, req->src_rect.x, dst_w, luma_w);
+	get_edge_info(req->src_rect.h, req->src_rect.y, dst_h, luma_h);
+	memcpy(&chroma_w, luma_w, sizeof(edge_info));
+	memcpy(&chroma_h, luma_h, sizeof(edge_info));
+	switch(req->src.format) {
+		case MDP_Y_CBCR_H2V1:
+		case MDP_Y_CRCB_H2V1:
+			chroma_w.interp_l_t = luma_w.p1 >> 1;
+			chroma_w.interp_r_b = (luma_w.p2 + 1) >> 1;
+			chroma_h.interp_l_t  = luma_h.p1;
+			chroma_h.interp_r_b = luma_h.p2;
+			/* fallthrough */
+		case MDP_YCRYCB_H2V1:
+			chroma_bound_l = (req->src_rect.x + 1) >> 1;
+			chroma_bound_r = (req->src_rect.x + req->src_rect.w - 1)					  >> 1;
+			chroma_bound_t = req->src_rect.y;
+			chroma_bound_b = req->src_rect.y + req->src_rect.h - 1;
+			break;
+		case MDP_Y_CBCR_H2V2:
+		case MDP_Y_CRCB_H2V2:
+			chroma_w.interp_l_t = luma_w.p1 >> 1;
+			chroma_w.interp_r_b = (luma_w.p2 + 1) >> 1;
+			chroma_h.interp_l_t = (luma_h.p1 - 1) >> 1;
+			chroma_h.interp_r_b = (luma_h.p2 + 1) >> 1;
+			chroma_bound_l = (req->src_rect.x + 1) >> 1;
+			chroma_bound_r = (req->src_rect.x + req->src_rect.w - 1)					  >> 1;
+			chroma_bound_t = (req->src_rect.y + 1) >> 1;
+			chroma_bound_b = (req->src_rect.y + req->src_rect.h - 2)					  >> 2;
+			break;
+		default
+			chroma_bound_l = req->src_rect.x;
+			chroma_bound_r = req->src_rect.x + req->src_rect.w - 1;
+			chroma_bound_t = req->src_rect.y;
+			chroma_bound_b = req->src_rect.y + req->src_rect.h - 1;
+			break;
+		default
+			 break;
+	}
+	chroma_repeat_l = chroma_bound_l - chroma_w.interp_l_t;
+	chroma_repeat_r = chroma_w.interp_r_b - chroma_bound_r;
+	chroma_repeat_t = chroma_bound_t - chroma_h.interp_l_t;
+	chroma_repeat_b = chroma_h.interp_r_b - chroma_bound_b;
+	
+	if (chroma_repeat_l < 0 || chroma_repeat_l > 3 ||
+	    chroma_repeat_r < 0 || chroma_repeat_r > 3 ||
+	    chroma_repeat_t < 0 || chroma_repeat_t > 3 ||
+	    chroma_repeat_b < 0 || chroma_repeat_b > 3 ||
+	    luma_repeat_l < 0 || luma_repeat_l > 3 ||
+	    luma_repeat_r < 0 || luma_repeat_r > 3 ||
+	    luma_repeat_t < 0 || luma_repeat_t > 3 ||
+	    luma_repeat_b < 0 || luma_repeat_b > 3)
+		return -1;
+	regs->edge
+	return 0;
+}
+
+static void blit_scale(struct mdp_blit_req *req, struct mdp_regs *regs)
+{
+	uint32_t phase_init_x, phase_init_y, phase_step_x, phase_step_y;
+	uint32_t dst_w, dst_h;
+
+	if (req->rotation & MDP_ROT_90) {
+		dst_w = req->dst_rect.h;
+		dst_h = req->dst_rect.w;
+	} else {
+		dst_w = req->dst_rect.w;
+		dst_h = req->dst_rect.h;
+	}
+	scale_params(req->src_rect.w, dst_w, 1, phase_init_x, phase_step_x);
+	scale_params(req->src_rect.h, dst_h, 1, phase_init_y, phase_step_y);
+	scale_factor_x = (dst_w * 10) / req->src_rect.w;
+	scale_factor_y = (dst_h * 10) / req->src_rect.h;
+
+	if (scale_factor_x > 8)
+		downscale = MDP_DOWNSCALE_PT8TO1;
+	else if (scale_factor_x > 6)
+		downscale = MDP_DOWNSCALE_PT6TOPT8;
+	else if (scale_factor_x > 4)
+		downscale = MDP_DOWNSCALE_PT4TOPT6;
+	else
+		downscale = MDP_DOWNSCALE_PT2TOPT4;
+	load_scale_table(mdp_downscale_x_table[downscale])
+
+	if (scale_factor_y > 8)
+		downscale = MDP_DOWNSCALE_PT8TO1;
+	else if (scale_factor_y > 6)
+		downscale = MDP_DOWNSCALE_PT6TOPT8;
+	else if (scale_factor_y > 4)
+		downscale = MDP_DOWNSCALE_PT4TOPT6;
+	else
+		downscale = MDP_DOWNSCALE_PT2TOPT4;
+	load_scale_table(mdp_downscale_y_table[downscale])
+
+	regs->op |= (PPP_OP_SCALE_Y_ON | PPP_OP_SCALE_X_ON);
+
+}
+
+#endif
+
+
+#define img_size(h, w, rect_w, bpp) (((h - 1) * w + rect_w) * bpp)
+static void get_size(struct mdp_img *img, struct mdp_rect *rect, uint32_t bpp,
+		     uint32_t *size0, uint32_t *size1)
+{
+	*size0 = img_size(img->height, img->width, rect->w, bpp);
+	switch (img->format) {
+		case MDP_Y_CBCR_H2V2:
+		case MDP_Y_CRCB_H2V2:
+			*size1 = *size0/4;
+			break;
+		case MDP_Y_CBCR_H2V1:
+		case MDP_Y_CRCB_H2V1:
+			*size1 = *size0/2;
+			break;
+		default:
+			*size1 = 0;
+	}
+}
+#undef img_size
+
+
+
 static int valid_src_dst(unsigned long src_start, unsigned long src_len,
 			 unsigned long dst_start, unsigned long dst_len,
 			 struct mdp_blit_req *req, struct mdp_regs *regs)
@@ -189,29 +501,29 @@ static int valid_src_dst(unsigned long src_start, unsigned long src_len,
 	unsigned long src_max_ok = src_start + src_len - 1;
 	unsigned long dst_min_ok = dst_start;
 	unsigned long dst_max_ok = dst_start + dst_len - 1;
-
-	uint32_t src_size = ((req->src.height - 1) * req->src.width +
-			    req->src_rect.w) * regs->src_bpp;
-	uint32_t dst_size = ((req->dst.height - 1) * req->dst.width +
-			    req->dst_rect.w) * regs->dst_bpp;
+	uint32_t src0_size, src1_size, dst0_size, dst1_size;
+	get_size(&req->src, &req->src_rect, regs->src_bpp, &src0_size,
+		 &src1_size);
+	get_size(&req->dst, &req->dst_rect, regs->dst_bpp, &dst0_size,
+		 &dst1_size);
 
 	if (regs->src0 < src_min_ok || regs->src0 > src_max_ok ||
-	    regs->src0 + src_size > src_max_ok) {
+	    regs->src0 + src0_size > src_max_ok) {
 		return 0;
 	}
 	if (regs->src_cfg & PPP_SRC_PLANE_PSEUDOPLNR) {
 		if (regs->src1 < src_min_ok || regs->src1 > src_max_ok ||
-		    regs->src1 + src_size > src_max_ok) {
+		    regs->src1 + src1_size > src_max_ok) {
 			return 0;
 		}
 	}
 	if (regs->dst0 < dst_min_ok || regs->dst0 > dst_max_ok ||
-	    regs->dst0 + dst_size > dst_max_ok) {
+	    regs->dst0 + dst0_size > dst_max_ok) {
 		return 0;
 	}
 	if (regs->dst_cfg & PPP_SRC_PLANE_PSEUDOPLNR) {
 		if (regs->dst1 < dst_min_ok || regs->dst1 > dst_max_ok ||
-		    regs->dst1 + dst_size > dst_max_ok) {
+		    regs->dst1 + dst1_size > dst_max_ok) {
 			return 0;
 		}
 	}
@@ -239,8 +551,33 @@ void mdp_ppp_put_img(struct mdp_blit_req *req)
 {
 	if (req->src.memory_type == PMEM_IMG)
 		put_pmem_file(req->src.memory_id);
+
 	if (req->dst.memory_type == PMEM_IMG)
 		put_pmem_file(req->dst.memory_id);
+}
+
+static void flush_imgs(struct mdp_blit_req *req, struct mdp_regs *regs)
+{
+	uint32_t src0_size, src1_size, dst0_size, dst1_size;
+
+	if (req->src.memory_type == PMEM_IMG) {
+		get_size(&req->src, &req->src_rect, regs->src_bpp, &src0_size,
+			 &src1_size);
+		flush_pmem_file(req->src.memory_id, req->src.offset, src0_size);
+		if (regs->src_cfg & PPP_SRC_PLANE_PSEUDOPLNR)
+			flush_pmem_file(req->src.memory_id,
+					req->src.offset + src0_size,
+					src1_size);
+	}
+	if (req->dst.memory_type == PMEM_IMG) {
+		get_size(&req->dst, &req->dst_rect, regs->dst_bpp, &dst0_size, 
+			 &dst1_size);
+		flush_pmem_file(req->dst.memory_id, req->src.offset, dst0_size);
+		if (regs->dst_cfg & PPP_SRC_PLANE_PSEUDOPLNR)
+			flush_pmem_file(req->dst.memory_id,
+					req->dst.offset + dst0_size,
+					dst1_size);
+	}
 }
 
 #define WRITEL(v, a) do { writel(v,a); /*printk(#a "[%x]=%x\n", a, v);*/ }\
@@ -367,6 +704,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		req->dst_rect.w = (req->dst_rect.w / 2) * 2;
 	}
 
+
 	WRITEL(1, MSM_MDP_BASE+0x060);
 	WRITEL((req->src_rect.h << 16) | req->src_rect.w,
 		PPP_ADDR_SRC_ROI);
@@ -396,7 +734,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		WRITEL(src_img_cfg[req->dst.format], PPP_ADDR_BG_CFG);
 		WRITEL(pack_pattern[req->dst.format], PPP_ADDR_BG_PACK_PATTERN);
 	}
-
+	flush_imgs(req, &regs);
 	WRITEL(0x1000, MDP_DISPLAY0_START);
 	return 0;
 }

@@ -32,19 +32,8 @@
 #define PMEM_DEBUG 1
 
 #define PMEM_FLAGS_RELOCATABLE 0x1
-#define PMEM_FLAGS_SHARED 0x1 << 1
+#define PMEM_FLAGS_SUBALLOC 0x1 << 1
 #define PMEM_FLAGS_REVOKED 0x1 << 2
-
-#define Up_read(sem) do {up_read(sem);printk("up r %s %d\n", #sem, __LINE__);} while(0) 
-#define Down_read(sem) do {printk("try down r %s %d\n", #sem, __LINE__);down_read(sem); printk("down r %s %d\n", #sem, __LINE__);} while(0)
-
-#define Up_write(sem) do {up_write(sem);printk("up w %s %d\n", #sem, __LINE__);} while(0) 
-#define Down_write(sem) do {printk("try down w %s %d\n", #sem, __LINE__);down_write(sem); printk("down w %s %d\n", #sem, __LINE__);} while(0)
-
-#define Downgrade_write(sem) do { \
-downgrade_write(sem); \
-printk("w->r %s %d\n", #sem, __LINE__);\
-} while(0)
 
 struct pmem_vma {
 	struct list_head list;
@@ -80,32 +69,32 @@ unsigned char __iomem *pmem_vbase;
 unsigned long pmem_size;
 unsigned long pmem_num_entries; 
 struct page *garbage_page;
+unsigned long garbage_pfn;
 struct pmem_bits *pbits;
 
 #define PMEM_IS_FREE(index) !(pbits[index].allocated)
 #define PMEM_ORDER(index) pbits[index].order
 
-#define PMEM_INDEX(bits) (bits - pbits)
-#define PMEM_ENTRIES(index) (1 << PMEM_ORDER(index))
-
 #define PMEM_BUDDY_INDEX(index) (index ^ (1 << PMEM_ORDER(index)))
 #define PMEM_NEXT_INDEX(index) (index + (1 << PMEM_ORDER(index)))
 
 #define PMEM_START_ADDR(index) ((index * PMEM_MIN_ALLOC) + pmem_base)
-#define PMEM_BYTES(index) (PMEM_ENTRIES(index) * PMEM_MIN_ALLOC)
-#define PMEM_END_ADDR(index) (PMEM_START_ADDR(index) + PMEM_BYTES(index))
+#define PMEM_LEN(index) ((1 << PMEM_ORDER(index)) * PMEM_MIN_ALLOC)
+#define PMEM_END_ADDR(index) (PMEM_START_ADDR(index) + PMEM_LEN(index))
 
 #define PMEM_START_VADDR(index) ((index * PMEM_MIN_ALLOC) + pmem_vbase)
-#define PMEM_END_VADDR(index) (PMEM_START_VADDR(index) + PMEM_BYTES(index))
+#define PMEM_END_VADDR(index) (PMEM_START_VADDR(index) + PMEM_LEN(index))
 
 
-#define PMEM_SHARED(data) (data->flags & PMEM_FLAGS_SHARED)
+#define PMEM_SUBALLOC(data) (data->flags & PMEM_FLAGS_SUBALLOC)
 #define PMEM_REVOKED(data) (data->flags & PMEM_FLAGS_REVOKED)
+
+#define PMEM_IS_PAGE_ALIGNED(addr) (!((addr) & (~PAGE_MASK)))
 
 /* pmem_sem protects the pbits array
  * a write lock should be held when modifying entries in pbits
  * a read lock should be held when reading data from bits or dereferencing
- * a pointer into pbits (ie by PMEM_ENTRIES, PMEM_ORDER, PMEM_FREE etc.)
+ * a pointer into pbits
  *
  * pmem_data_sem protects the pmem data fields so they are updated
  * atomically.  There are only 3 functions that modify file->private_data
@@ -122,7 +111,14 @@ struct pmem_bits *pbits;
 DECLARE_RWSEM(pmem_sem);
 DECLARE_RWSEM(pmem_data_sem);
 DECLARE_RWSEM(pmem_vma_sem);
+unsigned have_pmem_data_sem_write = 0;
+#define DOWN_WRITE_PMEM_DATA_SEM \
+do { down_write(&pmem_data_sem); \
+     have_pmem_data_sem_write = 1; } while (0)
 
+#define UP_WRITE_PMEM_DATA_SEM \
+do { up_write(&pmem_data_sem); \
+     have_pmem_data_sem_write = 0; } while (0)
 
 static int pmem_release(struct inode *, struct file *);
 static int pmem_mmap(struct file *, struct vm_area_struct *);
@@ -144,8 +140,8 @@ static struct miscdevice pmem_dev = {
 
 static int is_pmem_file (struct file *file)
 {
-	if (unlikely(file->f_dentry->d_inode->i_rdev !=
-	    MKDEV(MISC_MAJOR, pmem_dev.minor)))
+	if (unlikely(file->f_dentry->d_inode->i_rdev != 
+		     MKDEV(MISC_MAJOR, pmem_dev.minor)))
 		return 0;
 	return 1;
 }
@@ -157,8 +153,7 @@ static int has_allocation (struct file *file)
 	if (unlikely(!file->private_data))
 		return 0;
 	data = (struct pmem_data *)file->private_data;
-	if (unlikely(data->index < 0 ||
-		     data->index > pmem_num_entries))
+	if (unlikely(data->index < 0 || data->index > pmem_num_entries))
 		return 0;
 	return 1;
 }
@@ -168,8 +163,8 @@ static int pmem_free(struct pmem_data* data)
 	/* caller should hold the write lock on pmem_sem! */
 
 	int buddy, curr = data->index;
-	memset(PMEM_START_VADDR(curr), 0, PMEM_BYTES(curr));
-		
+	memset(PMEM_START_VADDR(curr), 0, PMEM_LEN(curr));
+
 	/* clean up the bitmap, merging any buddies */
 	pbits[curr].allocated = 0;
 	/* find a slots buddy Buddy# = Slot# ^ (1 << order)
@@ -179,7 +174,7 @@ static int pmem_free(struct pmem_data* data)
 	do {
 		buddy = PMEM_BUDDY_INDEX(curr);
 		if (PMEM_IS_FREE(buddy) &&
-		    PMEM_ORDER(buddy) == PMEM_ORDER(curr)) {
+				PMEM_ORDER(buddy) == PMEM_ORDER(curr)) {
 			PMEM_ORDER(buddy)++;
 			PMEM_ORDER(curr)++;
 			curr = min(buddy, curr);
@@ -207,7 +202,7 @@ static int pmem_release(struct inode* inode, struct file *file)
 	file->private_data = NULL;
 
 	down_write(&pmem_sem);
-	if (!PMEM_SHARED(data)) {
+	if (!PMEM_SUBALLOC(data)) {
 		ret = pmem_free(data);
 	}
 	up_write(&pmem_sem);
@@ -237,9 +232,9 @@ static int pmem_open(struct inode *inode, struct file *file)
 	data->index = -1;
 	INIT_LIST_HEAD(&data->vma_list);
 
-	down_write(&pmem_data_sem);
+	DOWN_WRITE_PMEM_DATA_SEM;
 	file->private_data = data;
-	up_write(&pmem_data_sem);
+	UP_WRITE_PMEM_DATA_SEM;
 	return 0;
 }
 
@@ -278,7 +273,7 @@ static int pmem_allocate(unsigned long len)
 				break;
 			}
 			if (PMEM_ORDER(curr) > (unsigned char)order &&
-			    (best_fit < 0 ||
+			    (best_fit < 0 || 
 			     PMEM_ORDER(curr) < PMEM_ORDER(best_fit)))
 				best_fit = curr;
 		}
@@ -305,12 +300,11 @@ static int pmem_allocate(unsigned long len)
 	return best_fit;
 }
 
-static pgprot_t phys_mem_access_prot(struct file *file, unsigned long addr,
-				     unsigned long size, pgprot_t vma_prot)
+static pgprot_t phys_mem_access_prot(struct file *file, pgprot_t vma_prot)
 {
 	/* check this i think we want this noncached by default */
 #ifdef pgprot_noncached
-/*        if (file->f_flags & O_SYNC) */
+	if (file->f_flags & O_SYNC)
 		return pgprot_noncached(vma_prot);
 #endif
 	return vma_prot;
@@ -320,56 +314,85 @@ static unsigned long pmem_start_addr(struct pmem_data *data)
 {
 	unsigned long ret;
 
-	down_read(&pmem_data_sem);
-	if (!PMEM_SHARED(data))
+	if (!have_pmem_data_sem_write)
+		down_read(&pmem_data_sem);
+	if (!PMEM_SUBALLOC(data))
 		ret = PMEM_START_ADDR(data->index);
 	else
 		ret = PMEM_START_ADDR(data->index) + data->restrict_start;
-	up_read(&pmem_data_sem);
+	if (!have_pmem_data_sem_write)
+		up_read(&pmem_data_sem);
 	return ret;
 }
 
-static unsigned long pmem_bytes(struct pmem_data *data)
+static unsigned long pmem_len(struct pmem_data *data)
 {
 	unsigned long ret;
 
-	down_read(&pmem_data_sem);
-	if (!PMEM_SHARED(data))
-		ret = PMEM_BYTES(data->index);
+	if (!have_pmem_data_sem_write)
+		down_read(&pmem_data_sem);
+	if (!PMEM_SUBALLOC(data))
+		ret = PMEM_LEN(data->index);
 	else
 		ret = data->restrict_len;
-	up_read(&pmem_data_sem);
+	if (!have_pmem_data_sem_write)
+		up_read(&pmem_data_sem);
 	return ret;
 }
 
-static int pmem_revoke(struct file *file)
+
+static int pmem_remap_pfn_range(struct vm_area_struct *vma,
+				unsigned long start,
+				unsigned long size,
+				unsigned unmap)
+{
+	/* hold the mm semp for the vma you are modifying when you call this */
+	int i;
+	unsigned long vma_size = vma->vm_end - vma->vm_start;
+	unsigned long garbage_pages = 0;
+
+	BUG_ON(!PMEM_IS_PAGE_ALIGNED(vma_size));
+	size = min(vma_size, size);
+	garbage_pages = (vma_size - size) >> PAGE_SHIFT;
+	if (unmap)
+		zap_page_range(vma, vma->vm_start, vma->vm_end - vma->vm_start,
+				NULL);
+	if (size)
+		if (remap_pfn_range(vma, vma->vm_start, start >> PAGE_SHIFT,
+				    size, vma->vm_page_prot))
+			return -EAGAIN;
+	for (i = 0; i < garbage_pages; i++)
+		if (vm_insert_pfn(vma, vma->vm_start + size + (i * PAGE_SIZE),
+					garbage_pfn))
+			return -EAGAIN;
+	return 0;
+}
+
+static int pmem_remap_file(struct file *file, unsigned long start,
+			   unsigned long size)
 {
 	/* walk the list of vmas, zap_page_range in them */
 	struct pmem_data *data = file->private_data;
 	struct pmem_vma *pmem_vma;
 	struct vm_area_struct *vma;
 	struct list_head *elt;
-	unsigned long vma_size;
 
-	down_write(&pmem_data_sem);
+	DOWN_WRITE_PMEM_DATA_SEM;
+	//down_write(&pmem_data_sem);
 	list_for_each(elt, &data->vma_list) {
 		pmem_vma = list_entry(elt, struct pmem_vma, list);
 		vma = pmem_vma->vma;
 		down_write(&vma->vm_mm->mmap_sem);
-		/* take their mm sem */
-		vma_size = (vma->vm_end - vma->vm_start) / PAGE_SIZE;
-		/* unmap the pages and unmark the vm_pfnmap, the pages will
-		 * now fault on next access, pmem_fault below will be called
-		 * by the fault handler */
-		zap_page_range(vma, vma->vm_start, vma->vm_end - vma->vm_start,
-			       NULL);
-		vma->vm_flags &= ~VM_PFNMAP;
+		/* unmap the pages and remap the garbage page */
+		pmem_remap_pfn_range(vma, start, size, 1);
 		up_write(&vma->vm_mm->mmap_sem);
 	}
-	up_write(&pmem_data_sem);
+	UP_WRITE_PMEM_DATA_SEM;
+	//up_write(&pmem_data_sem);
 	return 0;
 }
 
+#if 0
 static int pmem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
 	struct pmem_data *data;
@@ -379,13 +402,13 @@ static int pmem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 		return VM_FAULT_SIGBUS;
 
 	printk("pmem: process %d attempting to access revoked memory!\n",
-		current->pid);
+			current->pid);
 	/* check that the request is inside the mmaped region or it should 
 	 * actually fault */
 	down_read(&pmem_data_sem);
 	data = (struct pmem_data*)vma->vm_file->private_data;
 	if (vmf->pgoff > PMEM_START_ADDR(data->index) << PAGE_SHIFT &&
-	    vmf->pgoff < PMEM_END_ADDR(data->index) << PAGE_SHIFT) {
+			vmf->pgoff < PMEM_END_ADDR(data->index) << PAGE_SHIFT) {
 		ret = VM_FAULT_SIGBUS;
 		goto end;
 	}
@@ -396,6 +419,7 @@ end:
 	up_read(&pmem_data_sem);
 	return ret;
 }
+#endif
 
 static void pmem_vma_open(struct vm_area_struct *vma)
 {
@@ -443,28 +467,36 @@ end:
 static struct vm_operations_struct vm_ops = {
 	.open = pmem_vma_open,
 	.close = pmem_vma_close,
-	.fault = pmem_fault,
 };
-
 
 static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct pmem_data *data;
 	int index;
-	unsigned long size =  vma->vm_end - vma->vm_start;
-	unsigned long offset = vma->vm_pgoff;
-	unsigned long pfn, start, end;
+	unsigned long vma_size =  vma->vm_end - vma->vm_start;
+	unsigned long map_start, map_size;
 	int ret = 0;
 
-	down_write(&pmem_data_sem);
-	data = (struct pmem_data*)file->private_data;
-
-	/* no new mappings on revoked files! */
-	if (data && PMEM_REVOKED(data)) {
-		up_write(&pmem_data_sem);
+	if (vma->vm_pgoff) {
+#if PMEM_DEBUG
+		printk("pmem: mmaps must be at zero offset.\n");
+#endif
 		return -EINVAL;
 	}
-
+	if (!PMEM_IS_PAGE_ALIGNED(vma_size)) {
+#if PMEM_DEBUG
+		printk("pmem: mmaps must be a multiple of pages_size.\n");
+#endif
+		return -EINVAL;
+	}
+	DOWN_WRITE_PMEM_DATA_SEM;
+	//down_write(&pmem_data_sem);
+	data = (struct pmem_data*)file->private_data;
+	/* no new mappings on revoked files! */
+	if (data && PMEM_REVOKED(data)) {
+		ret = -EINVAL;
+		goto error;
+	}
 	/* if file->private_data == unalloced, alloc*/
 	if (data && data->index == -1) {
 		down_write(&pmem_sem);
@@ -473,41 +505,30 @@ static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 		if (index != -1)
 			data->index = index;
 	}
-
+	/* either no space was available or an error occured */
 	if (!has_allocation(file)) {
 		ret = -EINVAL;
 		goto error;
 	}
-
-	start = PMEM_START_ADDR(data->index);
-	end = PMEM_END_ADDR(data->index);
-	if (PMEM_SHARED(data)) {
-		size = data->restrict_len;
-		start += data->restrict_start;
-		end = start + data->restrict_len;
-	}
-
-	/* check that the offset + size is still within the allocated region */
-	if (start + offset + size > end) {
-		ret = -EOVERFLOW;
-		goto error;
-	}
-	pfn = (start + offset) >> PAGE_SHIFT;
-	vma->vm_pgoff = pfn;
-	vma->vm_page_prot = phys_mem_access_prot(file, pfn, size,
-                                                 vma->vm_page_prot);
-	if (remap_pfn_range(vma, vma->vm_start, pfn, size,
-			    vma->vm_page_prot)) {
+	map_start = pmem_start_addr(data);
+	map_size = pmem_len(data);
+	/* request may be to map less than the total allocation */
+	vma->vm_pgoff = map_start >> PAGE_SHIFT;
+	vma->vm_page_prot = phys_mem_access_prot(file, vma->vm_page_prot);
+	if (pmem_remap_pfn_range(vma, map_start, map_size, 0)) {
 		ret = -EAGAIN;
 		goto error;
 	}
 	pmem_vma_open(vma);
 	vma->vm_ops = &vm_ops;
 error:
-	up_write(&pmem_data_sem);
+	UP_WRITE_PMEM_DATA_SEM;
+	//up_write(&pmem_data_sem);
 	return ret;
 }
 
+/* the following are the api for accessing pmem regions by other drivers
+ * from inside the kernel */
 int get_pmem_file(unsigned long fd, unsigned long *start, unsigned long *len)
 {
 	struct file *file;
@@ -522,7 +543,7 @@ int get_pmem_file(unsigned long fd, unsigned long *start, unsigned long *len)
 		return -1;
 
 	*start = pmem_start_addr(data);
-	*len = pmem_bytes(data);
+	*len = pmem_len(data);
 
 	return 0;
 }
@@ -539,19 +560,46 @@ void put_pmem_file(unsigned long fd)
 	fput(file);
 }
 
+void flush_pmem_file(unsigned long fd, unsigned long start, unsigned long len)
+{
+	struct pmem_vma *pvma;
+	struct pmem_data *data;
+	unsigned long flush_start, flush_end;
+	struct list_head *elt;
+	struct file *file = fget(fd);
+
+	if (file == NULL || !is_pmem_file(file) || !has_allocation(file))
+		return;
+
+	data = (struct pmem_data *)file->private_data;
+
+	list_for_each(elt, &data->vma_list) {
+		pvma = list_entry(elt, struct pmem_vma, list);
+		flush_start = start + pvma->vma->vm_start;
+		flush_end = len + flush_start;
+		flush_cache_user_range(pvma->vma, flush_start, flush_end);
+	}
+	fput(file);
+}
+
 static int pmem_suballocate(struct pmem_suballoc* suballoc, struct file *file)
 {
 	struct pmem_data* data = (struct pmem_data*)file->private_data;
 	struct pmem_data* src_data;
 	struct file* src_file;
+	unsigned long src_len;
+	unsigned is_mapped;
 	int ret = 0;
 
-	down_read(&pmem_data_sem);
-	/* this should be a new unmapped file, check it has no allocation */
-	if (unlikely(has_allocation(file))) {
-		ret = -EINVAL;
-		goto end2;
+	if (unlikely(!PMEM_IS_PAGE_ALIGNED(suballoc->addr.start) ||
+		     !PMEM_IS_PAGE_ALIGNED(suballoc->addr.len))) {
+#if PMEM_DEBUG
+		printk("pmem: request for unaligned pmem suballocation\n");
+#endif
+		return -EINVAL;
 	}
+
+	down_read(&pmem_data_sem);
 	/* retrieve the src file and check it is a pmem file with an alloc */
 	src_file = fget(suballoc->fd);
 	if (unlikely(!is_pmem_file(src_file) || !has_allocation(src_file))) {
@@ -559,46 +607,52 @@ static int pmem_suballocate(struct pmem_suballoc* suballoc, struct file *file)
 		goto end;
 	}
 	src_data = (struct pmem_data*)src_file->private_data;
-	/* check that the requested range is within the src allocation */
-	if (unlikely(((unsigned long)suballoc->addr.start >
-		       PMEM_BYTES(src_data->index)) ||
-		     ((unsigned long)suballoc->addr.start +
-		       suballoc->addr.len > PMEM_BYTES(src_data->index)))) {
+	is_mapped = data->index != -1;
+	/* check old allocations map into the specified src file and are marked
+	 * as suballocations */
+	if (is_mapped && (data->index != src_data->index ||
+			  !(data->flags & PMEM_FLAGS_SUBALLOC))) {
 		ret = -EINVAL;
 		goto end;
 	}
-
-	/* round start down, and end up to the nearest whole page */
+	/* check that the requested range is within the src allocation */
+	src_len = PMEM_LEN(src_data->index);
+	if (unlikely((suballoc->addr.start > src_len) ||
+		     (suballoc->addr.start + suballoc->addr.len > src_len))) {
+		ret = -EINVAL;
+		goto end;
+	}
 	data->index = src_data->index;
-	data->restrict_start = (unsigned long)suballoc->addr.start & PAGE_MASK;
-	data->restrict_len = ((suballoc->addr.len + PAGE_SIZE - 1) / PAGE_SIZE)
-			     * PAGE_SIZE;
-	data->flags |= PMEM_FLAGS_SHARED;
+	data->restrict_start = suballoc->addr.start;
+	data->restrict_len = suballoc->addr.len;
+	data->flags |= PMEM_FLAGS_SUBALLOC;
+	/* remap if it's mapped, otherwise let the mmap handle it */
+	if (is_mapped)
+		pmem_remap_file(file, pmem_start_addr(data),
+			        data->restrict_len);
 end:
 	fput(src_file);
-end2:
 	up_read(&pmem_data_sem);
 	return ret;
 }
+
 
 static void pmem_get_size(struct pmem_addr* addr, struct file *file)
 {
 	struct pmem_data* data = (struct pmem_data*)file->private_data;
 
 	if (!has_allocation(file)) {
-		addr->start = NULL;
+		addr->start = 0;
 		addr->len = 0;
 		return;
 	}
-
-	if (PMEM_SHARED(data)) {
-		addr->start = (void*)data->restrict_start;
+	if (PMEM_SUBALLOC(data)) {
+		addr->start = data->restrict_start;
 		addr->len = data->restrict_len;
 	} else {
 		addr->start = 0;
-		addr->len = PMEM_BYTES(data->index);
+		addr->len = PMEM_LEN(data->index);
 	}
-	return;
 }
 
 static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
@@ -609,12 +663,12 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	switch(cmd) {
 		case PMEM_GET_PHYS:
 			if (!has_allocation(file)) {
-				addr.start = NULL;
+				addr.start = 0;
 				addr.len = 0;
 			} else { 
 				data = (struct pmem_data*)file->private_data;
-				addr.start = (void*)pmem_start_addr(data);
-				addr.len = pmem_bytes(data);
+				addr.start = pmem_start_addr(data);
+				addr.len = pmem_len(data);
 			}
 			if (copy_to_user((void __user *)arg, &addr,
 					  sizeof(struct pmem_addr)))
@@ -638,7 +692,7 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		case PMEM_REVOKE:
 			if (!has_allocation(file))
 				return 0;
-			return pmem_revoke(file);
+			return pmem_remap_file(file, 0, 0);
 			break;
 		default:
 			return -EINVAL;
@@ -743,6 +797,7 @@ static int pmem_probe(struct platform_device *pdev)
 	if (!garbage_page) {
 		goto error2;
 	}
+	garbage_pfn = PMEM_START_ADDR(pmem_allocate(PAGE_SIZE)) >> PAGE_SHIFT;
 
 #if PMEM_DEBUG
 	debugfs_create_file("pmem", S_IFREG | S_IRUGO, NULL, NULL, &debug_fops);
@@ -782,4 +837,4 @@ static void __exit pmem_exit(void)
 
 module_init(pmem_init);
 module_exit(pmem_exit);
-
+ 

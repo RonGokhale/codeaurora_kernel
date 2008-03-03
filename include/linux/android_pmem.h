@@ -24,9 +24,10 @@
 
 int get_pmem_file(unsigned long fd, unsigned long *start, unsigned long *end);
 void put_pmem_file(unsigned long fd);
+void flush_pmem_file(unsigned long fd, unsigned long start, unsigned long len);
 
 struct pmem_addr {
-	void *start;
+	unsigned long start;
 	unsigned long len;
 };
 
