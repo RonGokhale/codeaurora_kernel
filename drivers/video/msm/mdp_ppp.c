@@ -20,6 +20,16 @@
 
 #include "mdp_hw.h"
 
+#define PPP_DEBUG_MSGS 0
+#if PPP_DEBUG_MSGS
+#define DLOG(fmt,args...) \
+	do { printk("[%s:%s:%d] "fmt, __FILE__, __func__, __LINE__,##args); } \
+	while(0)
+#else
+#define DLOG(x...) do {} while(0)
+#endif
+
+
 struct mdp_regs
 {
 	uint32_t src0;
@@ -467,63 +477,62 @@ static void blit_scale(struct mdp_blit_req *req, struct mdp_regs *regs)
 	regs->op |= (PPP_OP_SCALE_Y_ON | PPP_OP_SCALE_X_ON);
 
 }
-
 #endif
 
-
-#define img_size(h, w, rect_w, bpp) (((h - 1) * w + rect_w) * bpp)
-static void get_size(struct mdp_img *img, struct mdp_rect *rect, uint32_t bpp,
-		     uint32_t *size0, uint32_t *size1)
+#define IMG_LEN(rect_h, w, rect_w, bpp) (((rect_h) * w) * bpp)
+static void get_len(struct mdp_img *img, struct mdp_rect *rect, uint32_t bpp,
+		    uint32_t *len0, uint32_t *len1)
 {
-	*size0 = img_size(img->height, img->width, rect->w, bpp);
+	*len0 = IMG_LEN(rect->h, img->width, rect->w, bpp);
 	switch (img->format) {
 		case MDP_Y_CBCR_H2V2:
 		case MDP_Y_CRCB_H2V2:
-			*size1 = *size0/4;
+			*len1 = *len0/4;
 			break;
 		case MDP_Y_CBCR_H2V1:
 		case MDP_Y_CRCB_H2V1:
-			*size1 = *size0/2;
+			*len1 = *len0/2;
 			break;
 		default:
-			*size1 = 0;
+			*len1 = 0;
 	}
 }
-#undef img_size
-
-
 
 static int valid_src_dst(unsigned long src_start, unsigned long src_len,
 			 unsigned long dst_start, unsigned long dst_len,
 			 struct mdp_blit_req *req, struct mdp_regs *regs)
 {
 	unsigned long src_min_ok = src_start;
-	unsigned long src_max_ok = src_start + src_len - 1;
+	unsigned long src_max_ok = src_start + src_len;
 	unsigned long dst_min_ok = dst_start;
-	unsigned long dst_max_ok = dst_start + dst_len - 1;
-	uint32_t src0_size, src1_size, dst0_size, dst1_size;
-	get_size(&req->src, &req->src_rect, regs->src_bpp, &src0_size,
-		 &src1_size);
-	get_size(&req->dst, &req->dst_rect, regs->dst_bpp, &dst0_size,
-		 &dst1_size);
+	unsigned long dst_max_ok = dst_start + dst_len;
+	uint32_t src0_len, src1_len, dst0_len, dst1_len;
+	get_len(&req->src, &req->src_rect, regs->src_bpp, &src0_len,
+		 &src1_len);
+	get_len(&req->dst, &req->dst_rect, regs->dst_bpp, &dst0_len,
+		 &dst1_len);
 
 	if (regs->src0 < src_min_ok || regs->src0 > src_max_ok ||
-	    regs->src0 + src0_size > src_max_ok) {
+	    regs->src0 + src0_len > src_max_ok) {
+		DLOG("invalid_src %x %x %lx %lx\n", regs->src0, src0_len, src_min_ok, src_max_ok);
 		return 0;
 	}
 	if (regs->src_cfg & PPP_SRC_PLANE_PSEUDOPLNR) {
 		if (regs->src1 < src_min_ok || regs->src1 > src_max_ok ||
-		    regs->src1 + src1_size > src_max_ok) {
+		    regs->src1 + src1_len > src_max_ok) {
+			DLOG("invalid_src1");
 			return 0;
 		}
 	}
 	if (regs->dst0 < dst_min_ok || regs->dst0 > dst_max_ok ||
-	    regs->dst0 + dst0_size > dst_max_ok) {
+	    regs->dst0 + dst0_len > dst_max_ok) {
+		DLOG("invalid_dst");
 		return 0;
 	}
 	if (regs->dst_cfg & PPP_SRC_PLANE_PSEUDOPLNR) {
 		if (regs->dst1 < dst_min_ok || regs->dst1 > dst_max_ok ||
-		    regs->dst1 + dst1_size > dst_max_ok) {
+		    regs->dst1 + dst1_len > dst_max_ok) {
+			DLOG("invalid_dst1");
 			return 0;
 		}
 	}
@@ -539,7 +548,8 @@ int get_img(struct mdp_img *img, struct fb_info *info, unsigned long *start,
 			*len = info->fix.smem_len;
 			break;
 		case PMEM_IMG:
-			get_pmem_file(img->memory_id, start, len);
+			if (get_pmem_file(img->memory_id, start, len))
+				return -1;
 			break;
 		default:
 			return -1;
@@ -558,25 +568,25 @@ void mdp_ppp_put_img(struct mdp_blit_req *req)
 
 static void flush_imgs(struct mdp_blit_req *req, struct mdp_regs *regs)
 {
-	uint32_t src0_size, src1_size, dst0_size, dst1_size;
+	uint32_t src0_len, src1_len, dst0_len, dst1_len;
 
 	if (req->src.memory_type == PMEM_IMG) {
-		get_size(&req->src, &req->src_rect, regs->src_bpp, &src0_size,
-			 &src1_size);
-		flush_pmem_file(req->src.memory_id, req->src.offset, src0_size);
+		get_len(&req->src, &req->src_rect, regs->src_bpp, &src0_len,
+			 &src1_len);
+		flush_pmem_file(req->src.memory_id, req->src.offset, src0_len);
 		if (regs->src_cfg & PPP_SRC_PLANE_PSEUDOPLNR)
 			flush_pmem_file(req->src.memory_id,
-					req->src.offset + src0_size,
-					src1_size);
+					req->src.offset + src0_len,
+					src1_len);
 	}
 	if (req->dst.memory_type == PMEM_IMG) {
-		get_size(&req->dst, &req->dst_rect, regs->dst_bpp, &dst0_size, 
-			 &dst1_size);
-		flush_pmem_file(req->dst.memory_id, req->src.offset, dst0_size);
+		get_len(&req->dst, &req->dst_rect, regs->dst_bpp, &dst0_len, 
+			 &dst1_len);
+		flush_pmem_file(req->dst.memory_id, req->dst.offset, dst0_len);
 		if (regs->dst_cfg & PPP_SRC_PLANE_PSEUDOPLNR)
 			flush_pmem_file(req->dst.memory_id,
-					req->dst.offset + dst0_size,
-					dst1_size);
+					req->dst.offset + dst0_len,
+					dst1_len);
 	}
 }
 
@@ -587,9 +597,10 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	struct mdp_regs regs;
 	unsigned long src_start, src_len;
 	unsigned long dst_start, dst_len;
+	ktime_t t1, t2;
 
 #if 0
-	printk("BLIT recieved img %p\n"
+	DLOG("BLIT recieved img %p\n"
 		" src:%d\n"
 		" src_type: %d\n"
 		" src_w: %d\n"
@@ -622,22 +633,31 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		req->dst_rect.w, req->dst_rect.h,
 		req->rotation, req->transp_mask, req->alpha);
 #endif
+
 	/* do this first so that if this fails, the caller can always
 	 * safely call put_img */
+	t1 = ktime_get();
 	if (unlikely(get_img(&req->src, info, &src_start, &src_len)) ||
-		    (get_img(&req->dst, info, &dst_start, &dst_len)))
+		    (get_img(&req->dst, info, &dst_start, &dst_len))) {
+		printk("mpd_ppp: could not retrieve image from memory\n");
 		return -1;
+	}
+	t2 = ktime_get();
+	DLOG("get_img time %lld\n", ktime_to_ns(ktime_sub(t2, t1)));
 
 	if (unlikely(req->src.format >= MDP_IMGTYPE_LIMIT ||
-	    req->dst.format >= MDP_IMGTYPE_LIMIT))
-		return -1;
-
+	    req->dst.format >= MDP_IMGTYPE_LIMIT)) {
+		printk("mpd_ppp: img is of wrong format\n");
+		return -EINVAL;
+		}
 
 	if (unlikely(req->src_rect.x > req->src.width ||
 		     req->src_rect.y > req->src.height ||
 		     req->dst_rect.x > req->dst.width ||
-		     req->dst_rect.y > req->dst.height))
+		     req->dst_rect.y > req->dst.height)) {
+		printk("mpd_ppp: img rect is outside of img!\n");
 		return -1;
+	}
 
 	regs.src_cfg = src_img_cfg[req->src.format];
 	regs.src_cfg |= (req->src_rect.x % 2) ? PPP_SRC_BPP_ROI_ODD_X : 0;
@@ -672,8 +692,13 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		regs.dst1 = 0;
 	}
 
-	if (!valid_src_dst(src_start, src_len, dst_start, dst_len, req, &regs)) 
+	if (!valid_src_dst(src_start, src_len, dst_start, dst_len, req, 
+			   &regs)) {
+		printk("mpd_ppp: final src or dst location is invalid, are you "
+			"trying to make an image too large or to place it "
+			"outside the screen?\n");
 		return -1;
+	}
 
 	regs.op = 0;
 	if (req->rotation != MDP_ROT_NOP)
@@ -690,14 +715,24 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	regs.op |= dst_op_chroma[req->dst.format] |
 		   src_op_chroma[req->src.format];
 #if 0
-	if (req->src.w != dst->src.w ||
-	    req->src.h != dst->src.h)
-		mdp_blt_scale(req);
+	if (((req->rotation & MDP_ROT_90) &&
+	    ((req->src_rect.w != req->dst_rect.h) ||
+	     (req->src_rect.h != req->dst_rect.w))) ||
+	    ((req->src_rect.w != req->dst_rect.w) ||
+	     (req->src_rect.h != req->dst_rect.h))) {
+		printk("mdp_ppp: src and destination rects don't match "
+			"and scaling is not implemented %x %x %x %x %x\n",
+			req->rotation & MDP_ROT_90,
+			req->src_rect.w, req->src_rect.h,
+			req->dst_rect.w, req->dst_rect.h);
+		return -1;
+		/* mdp_blt_scale(req);  */
+	}
 #endif
 
 
 	if (unlikely(req->src.format == MDP_YCRYCB_H2V1)) {
-		// the x and w must be even
+		/* the x and w must be even */
 		req->src_rect.x = (req->src_rect.x / 2) * 2;
 		req->src_rect.w = (req->src_rect.w / 2) * 2;
 		req->dst_rect.x = (req->dst_rect.x / 2) * 2;
@@ -734,7 +769,10 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		WRITEL(src_img_cfg[req->dst.format], PPP_ADDR_BG_CFG);
 		WRITEL(pack_pattern[req->dst.format], PPP_ADDR_BG_PACK_PATTERN);
 	}
+	t1 = ktime_get();
 	flush_imgs(req, &regs);
+	t2 = ktime_get();
+	DLOG("flush img time %lld\n", ktime_to_ns(ktime_sub(t2, t1)));
 	WRITEL(0x1000, MDP_DISPLAY0_START);
 	return 0;
 }

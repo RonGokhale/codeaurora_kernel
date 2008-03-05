@@ -18,22 +18,27 @@
 
 #define PMEM_IOCTL_MAGIC 'p'
 #define PMEM_GET_PHYS		_IOW(PMEM_IOCTL_MAGIC, 1, unsigned int)
-#define PMEM_SUBALLOCATE	_IOW(PMEM_IOCTL_MAGIC, 2, unsigned int)
+#define PMEM_MAP		_IOW(PMEM_IOCTL_MAGIC, 2, unsigned int)
 #define PMEM_GET_SIZE		_IOW(PMEM_IOCTL_MAGIC, 3, unsigned int)
-#define PMEM_REVOKE		_IOW(PMEM_IOCTL_MAGIC, 4, unsigned int)
+#define PMEM_UNMAP		_IOW(PMEM_IOCTL_MAGIC, 4, unsigned int)
+/* This ioctl will allocate pmem space, backing the file, it will fail
+ * if the file already has an allocation, pass it the len as the argument
+ * to the ioctl */
+#define PMEM_ALLOCATE		_IOW(PMEM_IOCTL_MAGIC, 5, unsigned int)
+/* This will connect a one pmem file to another, pass the file that is already
+ * backed in memory as the argument to the ioctl
+ */
+#define PMEM_CONNECT		_IOW(PMEM_IOCTL_MAGIC, 6, unsigned int)
 
 int get_pmem_file(unsigned long fd, unsigned long *start, unsigned long *end);
 void put_pmem_file(unsigned long fd);
+EXPORT_SYMBOL(get_pmem_file);
+EXPORT_SYMBOL(put_pmem_file);
 void flush_pmem_file(unsigned long fd, unsigned long start, unsigned long len);
 
-struct pmem_addr {
-	unsigned long start;
+struct pmem_region {
+	unsigned long offset;
 	unsigned long len;
-};
-
-struct pmem_suballoc {
-	int fd;
-	struct pmem_addr addr;
 };
 
 #endif //_ANDROID_PPP_H_

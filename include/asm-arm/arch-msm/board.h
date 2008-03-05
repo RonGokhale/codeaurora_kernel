@@ -48,8 +48,17 @@ struct msm_hsusb_platform_data
 
 struct android_pmem_platform_data
 {
+	const char* name;
+	/* starting physical address of memory region */
 	unsigned long start;
+	/* size of memory region */
 	unsigned long size;
+	/* set to indicate the region should not be managed with an allocator */
+	unsigned no_allocator;
+	/* set to indicate maps of this region should be cached, if a mix of
+	 * cached and uncached is desired, set this and open the device with
+	 * O_SYNC to get an uncached region */
+	unsigned cached;
 };
 
 /* common init routines for use by arch/arm/mach-msm/board-*.c */

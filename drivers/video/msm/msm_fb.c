@@ -215,7 +215,7 @@ int msmfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 	if (var->reserved[0] == 0x54445055) { /* "UPDT" */
 #if 0
 		printk(KERN_INFO "pan frame %d-%d, rect %d %d %d %d\n",
-		       thisframe, frame, var->reserved[1] & 0xffff,
+		       thisframe, par->frame, var->reserved[1] & 0xffff,
 		       var->reserved[1] >> 16, var->reserved[2] & 0xffff,
 		       var->reserved[2] >> 16);
 #endif
@@ -255,6 +255,7 @@ static int msmfb_blit(struct fb_info* info, void __user *p)
 	struct mdp_blit_req req;
 	struct mdp_blit_req_list req_list;
 	int i;
+	int ret;
 
 	if (copy_from_user(&req_list, p, sizeof(req_list)))
 		return -EFAULT;
@@ -264,8 +265,8 @@ static int msmfb_blit(struct fb_info* info, void __user *p)
 			(struct mdp_blit_req_list*)p;
 		if (copy_from_user(&req, &list->req[i], sizeof(req)))
 			return -EFAULT;
-		if (mdp_blit(info, &req))
-			return -EFAULT;
+		if ((ret = mdp_blit(info, &req)))
+			return ret;
 	}
 	return 0;
 }

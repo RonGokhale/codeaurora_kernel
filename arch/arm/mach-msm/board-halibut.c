@@ -185,8 +185,11 @@ static struct platform_device msm_hsusb_device = {
 };
 
 static struct android_pmem_platform_data android_pmem_pdata = {
+	.name = "pmem",
 	.start = MSM_PMEM_BASE,
 	.size = MSM_PMEM_SIZE,
+	.no_allocator = 1,
+	.cached = 1,
 };
 
 static struct platform_device android_pmem_device = {
