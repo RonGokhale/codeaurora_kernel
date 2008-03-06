@@ -181,7 +181,9 @@ msm_i2c_read(struct msm_i2c_dev *dev, uint8_t *buf, int count)
 		/* printk("msm_i2c_read data %x\n", buf[-1]); */
 	}
 	if (write_last_done == 1) {
-		ret = msm_i2c_wait_status(dev, I2C_STATUS_RD_BUFFER_FULL | I2C_STATUS_ERROR_MASK, 0);
+		ret = msm_i2c_wait_status(dev, I2C_STATUS_RD_BUFFER_FULL |
+			I2C_STATUS_ERROR_MASK | I2C_STATUS_BUS_ACTIVE, 
+			I2C_STATUS_BUS_ACTIVE);
 		if (ret)
 			dev_err(dev->dev, "read timeout on dummy byte, rem %d\n", count);
 		readl(dev->base + I2C_READ_DATA); /* clear buffer */
