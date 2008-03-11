@@ -73,11 +73,6 @@ config MSM7X00A_SLEEP_MODE
 	default 3 if MSM7X00A_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT
 	default 4 if MSM7X00A_SLEEP_WAIT_FOR_INTERRUPT
 
-config MSM7X00A_6056_COMPAT
-	depends on ARCH_MSM7X00A
-	default y
-	bool "Compatibility with AMSS 6056"
-
 config MSM_SMD
 	tristate "MSM SMD Drivers"
 	depends on ARCH_MSM7X00A
@@ -94,27 +89,6 @@ config MSM_ONCRPCROUTER
 	help
 	  Support for the MSM ONCRPC router for communication between
 	  the ARM9 and ARM11
-
-config MSM_RPCCLKCTL
-	depends on MSM_ONCRPCROUTER
-	default y
-	bool "Clock control RPC support"
-	help
-	  none
-
-config MSM_RPCPM
-	depends on MSM_ONCRPCROUTER
-	default y
-	bool "Power management RPC support"
-	help
-	  none
-
-config MSM_RPCTLMM
-	depends on MSM_ONCRPCROUTER
-	default y
-	bool "TLMM RPC support"
-	help
-	  none
 
 config MSM_RPCSERVERS
 	depends on MSM_ONCRPCROUTER

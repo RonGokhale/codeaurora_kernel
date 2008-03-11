@@ -56,12 +56,6 @@ static inline void notify_other_smd(void)
 	writel(1, MSM_A2M_INT(0));
 }
 
-#if defined(CONFIG_MSM7X00A_6056_COMPAT)
-int msm_proc_comm(unsigned cmd, unsigned *data1, unsigned *data2)
-{
-	return -EIO;
-}
-#else
 static inline void notify_other_proc_comm(void)
 {
 	writel(1, MSM_A2M_INT(6));
@@ -113,7 +107,6 @@ int msm_proc_comm(unsigned cmd, unsigned *data1, unsigned *data2)
 	spin_unlock_irqrestore(&proc_comm_lock, flags);
 	return ret;
 }
-#endif
 
 void smd_diag(void)
 {

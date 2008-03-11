@@ -61,50 +61,6 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 
 extern struct clkctl_acpu_speed acpu_freq_tbl[];
 
-#if defined(CONFIG_MSM7X00A_6056_COMPAT)
-static int pc_clk_enable(unsigned id)
-{
-	if (!drv_state.rpc)
-		return -EAGAIN;
-	else
-		return drv_state.rpc->enable(id);
-}
-
-static void pc_clk_disable(unsigned id)
-{
-	if (drv_state.rpc)
-		drv_state.rpc->disable(id);
-}
-
-static int pc_clk_set_rate(unsigned id, unsigned rate)
-{
-	if (drv_state.rpc)
-		return drv_state.rpc->set_rate(id, rate);
-	else
-		return -EIO;
-}
-
-static unsigned pc_clk_get_rate(unsigned id)
-{
-	if (drv_state.rpc)
-		return drv_state.rpc->get_rate(id);
-	else
-		return 0;
-}
-
-static unsigned pc_clk_is_enabled(unsigned id)
-{
-	return 0;
-}
-
-static int pc_pll_request(unsigned id, unsigned on)
-{
-	if (drv_state.rpc)
-		return drv_state.rpc->pll_request(id, !!on);
-	else
-		return -ENODEV;
-}
-#else
 static int pc_clk_enable(unsigned id)
 {
 	return msm_proc_comm(PCOM_CLKCTL_RPC_ENABLE, &id, 0);
@@ -141,7 +97,6 @@ static int pc_pll_request(unsigned id, unsigned on)
 	on = !!on;
 	return msm_proc_comm(PCOM_CLKCTL_RPC_PLL_REQUEST, &id, &on);
 }
-#endif
 
 /*----------------------------------------------------------------------------
  * Architecture level clock registration

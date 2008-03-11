@@ -49,47 +49,6 @@ struct clk
 /*
  * Supported clocks
  */
-#if defined(CONFIG_MSM7X00A_6056_COMPAT)
-#define ACPU_CLK           0  /* Applications processor clock */
-#define ADM_CLK            1  /* Applications data mover clock */
-#define ADSP_CLK           2  /* ADSP clock */
-#define EBI1_CLK           3  /* External bus interface 1 clock */
-#define EBI2_CLK           4  /* External bus interface 2 clock */
-#define ECODEC_CLK         5  /* External CODEC clock */
-#define EMDH_CLK           6  /* External MDDI host clock */
-#define GP_CLK             7  /* General purpose clock */
-#define GRP_CLK            8  /* Graphics clock */
-#define I2C_CLK            9  /* I2C clock */
-#define ICODEC_RX_CLK     10  /* Internal CODEX RX clock */
-#define ICODEC_TX_CLK     11  /* Internal CODEX TX clock */
-#define IMEM_CLK          12  /* Internal graphics memory clock */
-#define MDC_CLK           13  /* MDDI client clock */
-#define MDP_CLK           14  /* Mobile display processor clock */
-#define PBUS_CLK          15  /* Peripheral bus clock */
-#define PCM_CLK           16  /* PCM clock */
-#define PMDH_CLK          17  /* Primary MDDI host clock */
-#define SDAC_CLK          18  /* Stereo DAC clock */
-#define SDC1_CLK          19  /* Secure Digital Card clocks */
-#define SDC2_CLK          20
-#define SDC3_CLK          21
-#define SDC4_CLK          22
-#define TSIF_CLK          23  /* Transport Stream Interface clocks */
-#define TSIF_REF_CLK      24
-#define TV_DAC_CLK        25  /* TV clocks */
-#define TV_ENC_CLK        26
-#define UART1_CLK         27  /* UART clocks */
-#define UART2_CLK         28
-#define UART3_CLK         29
-#define UART1DM_CLK       30
-#define UART2DM_CLK       31
-#define USB_HS_CLK        32  /* High speed USB clock */
-#define USB_OTG_CLK       33  /* Full speed USB clock */
-#define VDC_CLK           34  /* Video controller clock */
-#define VFE_CLK           35  /* Camera / Video Front End clock */
-#define VFE_MDC_CLK       36  /* VFE MDDI client clock */
-
-#define NR_CLKS           37
-#else
 #define ACPU_CLK           0  /* Applications processor clock */
 #define ADM_CLK            1  /* Applications data mover clock */
 #define ADSP_CLK           2  /* ADSP clock */
@@ -134,7 +93,6 @@ struct clk
 #define VFE_MDC_CLK       41  /* VFE MDDI client clock */
 
 #define NR_CLKS           42
-#endif
 
 /*
  * ARM11 clock configuration for specific ACPU speeds

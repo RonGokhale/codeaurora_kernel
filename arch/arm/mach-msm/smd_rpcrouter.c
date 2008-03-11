@@ -602,7 +602,6 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr)
 		spin_unlock_irqrestore(&server_list_lock, flags);
 		break;
 
-#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
 	case RPCROUTER_CTRL_CMD_RESUME_TX:
 		r_client = rpcrouter_lookup_remote_client(cntl->args.arg_c.cid);
 		if (!r_client) {
@@ -614,7 +613,6 @@ static int rpcrouter_process_routermsg(struct rpcrouter_complete_header *hdr)
 		spin_unlock_irqrestore(&r_client->quota_lock, flags);
 		wake_up_interruptible(&r_client->quota_wait);
 		break;
-#endif
 
 	case RPCROUTER_CTRL_CMD_NEW_SERVER:
 		server = rpcrouter_lookup_server(cntl->args.arg_s.prog,
@@ -946,9 +944,7 @@ static void krpcrouterd_process_msg(void)
 			printk(KERN_ERR "krpcrouterd: Out of memory\n");
 			return;
 		}
-#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
 		read_queue->confirm_rx = hdr.ph.confirm_rx;
-#endif
 
 		memcpy(read_queue->data,
 			&rx_buffer[sizeof(struct pacmark_hdr)],
@@ -1453,9 +1449,7 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 	struct rpcrouter_r_client *r_client;
 	int rc = 0;
 	unsigned long flags;
-#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
 	DEFINE_WAIT(__wait);
-#endif
 
 	if (count > RPCROUTER_MSGSIZE_MAX || !count)
 		return -EINVAL;
@@ -1500,7 +1494,6 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 	pacmark.data.cooked.message_id = ++next_pacmarkid;
 	pacmark.data.cooked.last_pkt = 1;
 
-#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
 	for (;;) {
 		prepare_to_wait(&r_client->quota_wait, &__wait, TASK_INTERRUPTIBLE);
 		spin_lock_irqsave(&r_client->quota_lock, flags);
@@ -1525,7 +1518,6 @@ int rpcrouter_kernapi_write(rpcrouterclient_t *client,
 		hdr.ph.confirm_rx = 1;
 
 	spin_unlock_irqrestore(&r_client->quota_lock, flags);
-#endif
 
 	spin_lock_irqsave(&smd_lock, flags);
 
@@ -1628,7 +1620,6 @@ int rpcrouter_kernapi_read(rpcrouterclient_t *client,
 
 	*buffer = read_q_entry->data;
 
-#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
 	if (read_q_entry->confirm_rx) {
 		struct rpcrouter_control_msg msg;
 
@@ -1639,7 +1630,6 @@ int rpcrouter_kernapi_read(rpcrouterclient_t *client,
 		printk("%s: confirming rx\n", __FUNCTION__);
 		rc = rpcrouter_send_control_msg(&msg);
 	}
-#endif
 
 	kfree(read_q_entry);
 	return rc;

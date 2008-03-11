@@ -78,8 +78,6 @@ void vreg_put(struct vreg *vreg)
 {
 }
 
-#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
-
 int vreg_enable(struct vreg *vreg)
 {
 	unsigned id = vreg->id;
@@ -99,27 +97,6 @@ int vreg_set_level(struct vreg *vreg, unsigned mv)
 	unsigned id = vreg->id;
 	return msm_proc_comm(PCOM_VREG_SET_LEVEL, &id, &mv);
 }
-
-#else
-
-int rpc_pm_vote_vreg_switch(int enable, uint32_t vreg_id, uint32_t app_mask);
-
-int vreg_enable(struct vreg *vreg)
-{
-	return rpc_pm_vote_vreg_switch(1, vreg->id, 1);
-}
-
-void vreg_disable(struct vreg *vreg)
-{
-	rpc_pm_vote_vreg_switch(0, vreg->id, 1);
-}
-
-int vreg_set_level(struct vreg *vreg, unsigned mv)
-{
-	return -EIO;
-}
-
-#endif
 
 #if defined(CONFIG_DEBUG_FS)
 

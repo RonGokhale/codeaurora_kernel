@@ -41,20 +41,14 @@
 #define RPCROUTER_CTRL_CMD_NEW_SERVER		4
 #define RPCROUTER_CTRL_CMD_REMOVE_SERVER	5
 #define RPCROUTER_CTRL_CMD_REMOVE_CLIENT	6
-#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
-  #define RPCROUTER_CTRL_CMD_RESUME_TX		7
-  #define RPCROUTER_CTRL_CMD_EXIT		8
-#else
-  #define RPCROUTER_CTRL_CMD_EXIT		7
-#endif
+#define RPCROUTER_CTRL_CMD_RESUME_TX		7
+#define RPCROUTER_CTRL_CMD_EXIT			8
 
 
 #define RPCROUTER_CB_WORKAROUND		1
 #define RPCROUTER_BW_COMP               1
 
-#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
-  #define RPCROUTER_DEFAULT_RX_QUOTA	5
-#endif
+#define RPCROUTER_DEFAULT_RX_QUOTA	5
 
 /*
  *  These elements must be in host byte order
@@ -82,9 +76,7 @@ struct rpcrouter_header
 
 struct rpcrouter_packet_header
 {
-#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
 	uint32_t confirm_rx;
-#endif
 	uint32_t msg_size;
 	rpcrouter_address addr;
 };
@@ -137,9 +129,7 @@ struct rpcrouter_client_read_q
 	struct list_head list;
 	int data_size;
 	void *data;
-#if !defined(CONFIG_MSM7X00A_6056_COMPAT)
 	int confirm_rx;
-#endif
 
 #if RPCROUTER_BW_COMP
 	uint32_t prog;
