@@ -1625,8 +1625,17 @@ int rpcrouter_kernapi_read(rpcrouterclient_t *client,
 
 		memset(&msg, 0, sizeof(msg));
 		msg.command = RPCROUTER_CTRL_CMD_RESUME_TX;
-		msg.args.arg_c.pid = client->addr.pid;
-		msg.args.arg_c.cid = client->addr.cid;
+
+		/* if we were redirected, make sure we ACK based on
+		 * the original target, not the redirected target
+		 */
+		if (client->override) {
+			msg.args.arg_c.pid = client->override->addr.pid;
+			msg.args.arg_c.cid = client->override->addr.cid;
+		} else {
+			msg.args.arg_c.pid = client->addr.pid;
+			msg.args.arg_c.cid = client->addr.cid;
+		}
 		printk("%s: confirming rx\n", __FUNCTION__);
 		rc = rpcrouter_send_control_msg(&msg);
 	}
