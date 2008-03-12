@@ -144,6 +144,7 @@ int mdp_blit(struct fb_info *info,  struct mdp_blit_req *req)
 		printk(KERN_ERR "mdp_ppp_wait: timeout waiting for blit to "
 				"complete\n");
 end:
+	mdp_ppp_busy = 0;
 	mdp_ppp_put_img(req);
 	return ret;
 }

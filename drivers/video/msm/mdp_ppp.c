@@ -19,6 +19,7 @@
 #include <asm/arch/msm_fb.h>
 
 #include "mdp_hw.h"
+#include "mdp_scale_tables.h"
 
 #define PPP_DEBUG_MSGS 0
 #if PPP_DEBUG_MSGS
@@ -29,6 +30,8 @@
 #define DLOG(x...) do {} while(0)
 #endif
 
+static int downscale_y_table = MDP_DOWNSCALE_MAX;
+static int downscale_x_table = MDP_DOWNSCALE_MAX;
 
 struct mdp_regs
 {
@@ -44,6 +47,10 @@ struct mdp_regs
 	uint32_t src_bpp;
 	uint32_t dst_bpp;
 	uint32_t edge;
+	uint32_t phasex_init;
+	uint32_t phasey_init;
+	uint32_t phasex_step;
+	uint32_t phasey_step;
 };
 
 static uint32_t pack_pattern[] = {
@@ -192,59 +199,70 @@ static void blit_blend(struct mdp_blit_req *req, struct mdp_regs *regs)
 	}
 }
 
-#if 0
-
 #define ONE_HALF	(1LL << 32)
 #define ONE		(1LL << 33)
 #define TWO		(2LL << 33)
 #define THREE		(3LL << 33)
 #define FRAC_MASK (ONE - 1)
-#define INT_MASK ~FRAC_MASK
+#define INT_MASK (~FRAC_MASK)
 
-#define MAP_RPA(x, n, d) (do_div(n * (x + ONE_HALF), d) - ONE_HALF)
-#define MAP_TO_SRC_RPA(x) PPP_MAP_RPA(x, dim_in, dim_out)
-#define MAP_TO_DST_RPA(x) PPP_MAP_RPA(x, dim_out, dim_in)
-#define MAP_TO_SRC_NO_RPA (x) ((k1 * (x >> 33)) + k2)
-#define MAP_TO_DST_NO_RPA (x) (((k3 * x) >> 1) + k4)
-#define MAP_TO_SRC(rpa, x) \
-	( rpa ? PPP_MAP_TO_SRC_RPA(x) : PPP_MAP_TO_SRC_NO_RPA(x))
-#define MAP_TO_DST(rpa, x) \
-	( rpa ? PPP_MAP_TO_DST_RPA(x) : PPP_MAP_TO_DST_NO_RPA(x))
-
+#define ADJUST_IP
 static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 			uint32_t *phase_init, uint32_t *phase_step)
 {
 	/* to improve precicsion calculations are done in U31.33 and converted
 	 * to U3.29 at the end */
-	int64_t k1, k2, k3, k4;
-	uint64_t os, od, od_p, oreq, es, ed, ed_p, ereq;
-	unsigned rpa = 0;jjjjjjjjjjjjjjjjjjjjjj
+	int64_t k1, k2, k3, k4, tmp;
+	uint64_t n, d, os, os_p, od, od_p, oreq;
+	unsigned rpa = 0;
 #ifdef ADJUST_IP
-	int64 ip64, delta;
+	int64_t ip64, delta;
 #endif
 	
 	if (dim_out % 3 == 0)
 		rpa = !(dim_in % (dim_out / 3));
 
-	k3 = (do_div(dim_out, dim_in) + 1) >> 1;
-	if ((k3 >> 4) < (1LL << 29) || (k3 >> 4) > (1LL << 27))
+	n = ((uint64_t)dim_out) << 34;
+	d = dim_in;
+	do_div(n, d);
+	k3 = (n + 1) >> 1;
+	DLOG("k3 %llx n %llx d %llx\n", k3, n, d);
+	if ((k3 >> 4) < (1LL << 27) || (k3 >> 4) > (1LL << 31)) {
+		DLOG("crap bad scale\n");
 		return -1;
-	k1 = (do_div(dim_in, dim_out) + 1) >> 1;
+	}
+	n = ((uint64_t)dim_in) << 34;
+	d = dim_out;
+	do_div(n, d);
+	k1 = (n + 1) >> 1;
 	k2 = (k1 - ONE) >> 1;
 
 	*phase_init = (int)(k2 >> 4);
 	k4 = (k3 - ONE) >> 1;
+	DLOG("k1 %llx k2 %llx k3 %llx k4 %llx\n", k1, k2, k3, k4);
 
-	if (!rpa)
-		os = ((uint64_t)origin << 1) - 1;
-	else
+	if (rpa) {
 		os = ((uint64_t)origin << 33) - ONE_HALF;
-	od = MAP_TO_DST(rpa, os);
-	od_p = od & INT_MASK;
+		tmp = (dim_out * os) + ONE_HALF;
+		do_div(tmp, dim_in);
+		od = tmp - ONE_HALF;
+	} else {
+		os = ((uint64_t)origin << 1) - 1;
+		od = (((k3 * os) >> 1) + k4);
+	}
 
+	od_p = od & INT_MASK;
 	if (od_p != od)
 		od_p += ONE;
-	os_p = MAP_TO_SRC(rpa, od_p);
+
+	if (rpa) {
+		tmp = (dim_in * od_p) + ONE_HALF;
+		do_div(tmp, dim_in);
+		os_p = tmp - ONE_HALF;
+	} else {
+		os_p = ((k1 * (od_p >> 33)) + k2);
+	}
+
 	oreq = (os_p & INT_MASK) - ONE;
 
 #ifdef ADJUST_IP
@@ -261,185 +279,156 @@ static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 #else
 	*phase_init = (int)((os_p - oreq) >> 4);
 #endif
-	}
-	*phase_step = (unit32)(k1 >> 4);
+	*phase_step = (uint32_t)(k1 >> 4);
+	return 0;
 }
 
 static void load_scale_table(struct mdp_table_entry* table)
+{
 	int i;
 	for (i = 0; i < 64; i++)
 		writel(table[i].val, table[i].reg);
 }
 
-static struct edge_info {
-	uint32_t interp_l_t,
-	uint32_t interp_r_b,
-	uint32_t repeat_l_t,
-	uint32_t repeat_r_b,
+enum {
+IMG_LEFT,
+IMG_RIGHT,
+IMG_TOP,
+IMG_BOTTOM,
 };
 
-#define set_edge_info(p1, p1, r2, r2, info) \
-do {	info.interp_l_t = p1; info.interp_r_b = p2; \
-	info.repeat_l_t = r1;  info.repeat_r_b = r2; } whi1e (0)
-
 static void get_edge_info(uint32_t src, uint32_t src_coord, uint32_t dst,
-			  uint32_t interp[], uint32_t repeat[]) {
+			  uint32_t *interp1, uint32_t *interp2,
+			  uint32_t *repeat1, uint32_t *repeat2) {
 	if (src > 3 * dst) {
-		interp[0] = 0;
-		interp[1] = src - 1;
-		repeat[0] = 0;
-		repeat[1] = 0;
+		*interp1 = 0;
+		*interp2 = src - 1;
+		*repeat1 = 0;
+		*repeat2 = 0;
 	} else if (src == 3 * dst) {
-		interp[0] = 0;
-		interp[1] = src;
-		repeat[0] = 0;
-		repeat[1] = 1;
+		*interp1 = 0;
+		*interp2 = src;
+		*repeat1 = 0;
+		*repeat2 = 1;
 	} else if (src < 3 * dst) {
-		interp[0] = -1;
-		interp[1] = src;
-		repeat[0] = 1;
-		repeat[1] = 1;
+		*interp1 = -1;
+		*interp2 = src;
+		*repeat1 = 1;
+		*repeat2 = 1;
 	} else if (src == dst) {
-		interp[0] = -1;
-		interp[1] = src + 1;
-		repeat[0] = 1;
-		repeat[1] = 2;
+		*interp1 = -1;
+		*interp2 = src + 1;
+		*repeat1 = 1;
+		*repeat2 = 2;
 	} else {
-		interp[0] = -2;
-		interp[1] = src + 1;
-		repeat[0] = 2;
-		repeat[1] = 2;
+		*interp1 = -2;
+		*interp2 = src + 1;
+		*repeat1 = 2;
+		*repeat2 = 2;
 	}
-	interp[0] += src_coord;
-	interp[1] += src_coord;
-	interp[2] = interp[0];
-	interp[3] = interp[1];
-	repeat[2] = repeat[0];
-	repeat[3] = repeat[1];
+	*interp1 += src_coord;
+	*interp2 += src_coord;
 }
-#undef set_edge_info
 
-static int get_edge_cond(struct mdp_blit_req *req)
+static int get_edge_cond(struct mdp_blit_req *req, struct mdp_regs *regs)
 {
 	int32_t luma_interp[4];
 	int32_t luma_repeat[4];
 	int32_t chroma_interp[4];
 	int32_t chroma_bound[4];
+	int32_t chroma_repeat[4];
 
-	get_edge_info(req->src_rect.w, req->src_rect.x, dst_w, luma_interp,
-		      luma_repeat);
+	memset(&luma_interp, 0, sizeof(int32_t) * 4);
+	memset(&luma_repeat, 0, sizeof(int32_t) * 4);
+	memset(&chroma_interp, 0, sizeof(int32_t) * 4);
+	memset(&chroma_bound, 0, sizeof(int32_t) * 4);
+	memset(&chroma_repeat, 0, sizeof(int32_t) * 4);
+	regs->edge = 0;
 
-	switch(req->src.format) {
-		case MDP_Y_CBCR_H2V1:
-		case MDP_Y_CRCB_H2V1:
-			chroma_interp[0] = luma_interp[0] >> 1;
-			chroma_interp[1] = (luma_interp[1] + 1) >> 1;
-			chroma_interp[2]  = luma_interp[2];
-			chroma_interp[3] = luma_interp[3];
-			/* fallthrough */
-		case MDP_YCRYCB_H2V1:
-			chroma_bound[0] = (req->src_rect.x + 1) >> 1;
-			chroma_bound[1] = (req->src_rect.x + req->src_rect.w 
-					   - 1) >> 1;
-			chroma_bound[2] = req->src_rect.y;
-			chroma_bound[3] = req->src_rect.y + req->src_rect.h - 1;
-			break;
-		case MDP_Y_CBCR_H2V2:
-		case MDP_Y_CRCB_H2V2:
-			chroma_interp[0] = luma_interp[0] >> 1;
-			chroma_interp[1] = (luma_inter[1] + 1) >> 1;
-			chroma_interp_t = (luma_inter_t - 1) >> 1;
-			chroma_interp_b = (luma_interp_b + 1) >> 1;
-			chroma_bound[0] = (req->src[1]ect.x + 1) >> 1;
-			chroma_bound[1] = (req->src[1]ect.x + req->src[1]ect.w - 1)					  >> 1;
-			chroma_bound_t = (req->src[1]ect.y + 1) >> 1;
-			chroma_bound_b = (req->src[1]ect.y + req->src[1]ect.h - 2)					  >> 2;
-			break;
-		default
-			chroma_bound[0] = req->src[1]ect.x;
-			chroma_bound[1] = req->src[1]ect.x + req->src[1]ect.w - 1;
-			chroma_bound_t = req->src[1]ect.y;
-			chroma_bound_b = req->src[1]ect.y + req->src[1]ect.h - 1;
-			break;
-		default
-			 break;
+	if (regs->op & (PPP_OP_SCALE_Y_ON | PPP_OP_SCALE_X_ON)) {
+		get_edge_info(req->src_rect.h, req->src_rect.y, req->dst_rect.h,
+			      &luma_interp[IMG_TOP], &luma_interp[IMG_BOTTOM],
+			      &luma_repeat[IMG_TOP], &luma_repeat[IMG_BOTTOM]);
+		get_edge_info(req->src_rect.w, req->src_rect.x, req->dst_rect.w,
+			      &luma_interp[IMG_LEFT], &luma_interp[IMG_RIGHT],
+			      &luma_repeat[IMG_LEFT], &luma_repeat[IMG_RIGHT]);
+	} else {
+		luma_interp[IMG_LEFT] = 0;
+		luma_interp[IMG_RIGHT] = req->src_rect.w - 1;
+		luma_interp[IMG_TOP] = 0;
+		luma_interp[IMG_BOTTOM] = req->src_rect.h - 1;
+		luma_repeat[IMG_LEFT] = 0;
+		luma_repeat[IMG_TOP] = 0;
+		luma_repeat[IMG_RIGHT] = 0;
+		luma_repeat[IMG_BOTTOM] = 0;
 	}
-	chroma_repeat_l = chroma_bound_l - chroma_w.interp_l_t;
-	chroma_repeat_r = chroma_w.interp_r_b - chroma_bound_r;
-	chroma_repeat_t = chroma_bound_t - chroma_h.interp_l_t;
-	chroma_repeat_b = chroma_h.interp_r_b - chroma_bound_b;
-	
-	if (chroma_repeat_l < 0 || chroma_repeat_l > 3 ||
-	    chroma_repeat_r < 0 || chroma_repeat_r > 3 ||
-	    chroma_repeat_t < 0 || chroma_repeat_t > 3 ||
-	    chroma_repeat_b < 0 || chroma_repeat_b > 3 ||
-	    luma_repeat_l < 0 || luma_repeat_l > 3 ||
-	    luma_repeat_r < 0 || luma_repeat_r > 3 ||
-	    luma_repeat_t < 0 || luma_repeat_t > 3 ||
-	    luma_repeat_b < 0 || luma_repeat_b > 3)
-		return -1;
-	regs->edge
-	return 0;
-}
-	get_edge_info(req->src_rect.w, req->src_rect.x, dst_w, luma_w);
-	get_edge_info(req->src_rect.h, req->src_rect.y, dst_h, luma_h);
-	memcpy(&chroma_w, luma_w, sizeof(edge_info));
-	memcpy(&chroma_h, luma_h, sizeof(edge_info));
-	switch(req->src.format) {
-		case MDP_Y_CBCR_H2V1:
-		case MDP_Y_CRCB_H2V1:
-			chroma_w.interp_l_t = luma_w.p1 >> 1;
-			chroma_w.interp_r_b = (luma_w.p2 + 1) >> 1;
-			chroma_h.interp_l_t  = luma_h.p1;
-			chroma_h.interp_r_b = luma_h.p2;
-			/* fallthrough */
-		case MDP_YCRYCB_H2V1:
-			chroma_bound_l = (req->src_rect.x + 1) >> 1;
-			chroma_bound_r = (req->src_rect.x + req->src_rect.w - 1)					  >> 1;
-			chroma_bound_t = req->src_rect.y;
-			chroma_bound_b = req->src_rect.y + req->src_rect.h - 1;
-			break;
-		case MDP_Y_CBCR_H2V2:
-		case MDP_Y_CRCB_H2V2:
-			chroma_w.interp_l_t = luma_w.p1 >> 1;
-			chroma_w.interp_r_b = (luma_w.p2 + 1) >> 1;
-			chroma_h.interp_l_t = (luma_h.p1 - 1) >> 1;
-			chroma_h.interp_r_b = (luma_h.p2 + 1) >> 1;
-			chroma_bound_l = (req->src_rect.x + 1) >> 1;
-			chroma_bound_r = (req->src_rect.x + req->src_rect.w - 1)					  >> 1;
-			chroma_bound_t = (req->src_rect.y + 1) >> 1;
-			chroma_bound_b = (req->src_rect.y + req->src_rect.h - 2)					  >> 2;
-			break;
-		default
-			chroma_bound_l = req->src_rect.x;
-			chroma_bound_r = req->src_rect.x + req->src_rect.w - 1;
-			chroma_bound_t = req->src_rect.y;
-			chroma_bound_b = req->src_rect.y + req->src_rect.h - 1;
-			break;
-		default
-			 break;
+
+	chroma_interp[IMG_LEFT] = luma_interp[IMG_LEFT];
+	chroma_interp[IMG_RIGHT] = luma_interp[IMG_RIGHT];
+	chroma_interp[IMG_TOP] = luma_interp[IMG_TOP];
+	chroma_interp[IMG_BOTTOM] = luma_interp[IMG_BOTTOM];
+
+	chroma_bound[IMG_LEFT] = req->src_rect.x;
+	chroma_bound[IMG_RIGHT] = req->src_rect.x + req->src_rect.w - 1;
+	chroma_bound[IMG_TOP] = req->src_rect.y;
+	chroma_bound[IMG_BOTTOM] = req->src_rect.y + req->src_rect.h - 1;
+
+	if (req->src.format == MDP_Y_CBCR_H2V1 ||
+	    req->src.format == MDP_Y_CRCB_H2V1 ||
+	    req->src.format == MDP_YCRYCB_H2V1 ||
+	    req->src.format == MDP_Y_CBCR_H2V2 ||
+	    req->src.format == MDP_Y_CRCB_H2V2) {
+		chroma_interp[IMG_LEFT] = chroma_interp[IMG_LEFT] >> 1;
+		chroma_interp[IMG_RIGHT] = (chroma_interp[IMG_RIGHT] + 1) >> 1;
+
+		chroma_bound[IMG_LEFT] = (chroma_bound[IMG_LEFT] + 1) >> 1;
+		chroma_bound[IMG_RIGHT] = (chroma_bound[IMG_RIGHT] - 1) >> 1;
 	}
-	chroma_repeat_l = chroma_bound_l - chroma_w.interp_l_t;
-	chroma_repeat_r = chroma_w.interp_r_b - chroma_bound_r;
-	chroma_repeat_t = chroma_bound_t - chroma_h.interp_l_t;
-	chroma_repeat_b = chroma_h.interp_r_b - chroma_bound_b;
+
+	if (req->src.format == MDP_Y_CBCR_H2V2 ||
+	    req->src.format == MDP_Y_CRCB_H2V2) {
+		chroma_interp[IMG_TOP] = (chroma_interp[IMG_TOP] - 1) >> 1;
+		chroma_interp[IMG_BOTTOM] = (chroma_interp[IMG_BOTTOM] + 1)
+					    >> 1;
+		chroma_bound[IMG_TOP] = (chroma_bound[IMG_TOP] + 1) >> 1;
+		chroma_bound[IMG_BOTTOM] = (chroma_bound[IMG_BOTTOM] - 1) >> 1;
+	}
+
+	chroma_repeat[IMG_LEFT] = chroma_bound[IMG_LEFT] -
+				  chroma_interp[IMG_LEFT];
+	chroma_repeat[IMG_RIGHT] = chroma_interp[IMG_RIGHT] -
+				  chroma_bound[IMG_RIGHT];
+	chroma_repeat[IMG_TOP] = chroma_bound[IMG_TOP] -
+				  chroma_interp[IMG_TOP];
+	chroma_repeat[IMG_BOTTOM] = chroma_interp[IMG_BOTTOM] -
+				  chroma_bound[IMG_BOTTOM];
 	
-	if (chroma_repeat_l < 0 || chroma_repeat_l > 3 ||
-	    chroma_repeat_r < 0 || chroma_repeat_r > 3 ||
-	    chroma_repeat_t < 0 || chroma_repeat_t > 3 ||
-	    chroma_repeat_b < 0 || chroma_repeat_b > 3 ||
-	    luma_repeat_l < 0 || luma_repeat_l > 3 ||
-	    luma_repeat_r < 0 || luma_repeat_r > 3 ||
-	    luma_repeat_t < 0 || luma_repeat_t > 3 ||
-	    luma_repeat_b < 0 || luma_repeat_b > 3)
+	if (chroma_repeat[IMG_LEFT] < 0 || chroma_repeat[IMG_LEFT] > 3 ||
+	    chroma_repeat[IMG_RIGHT] < 0 || chroma_repeat[IMG_RIGHT] > 3 ||
+	    chroma_repeat[IMG_TOP] < 0 || chroma_repeat[IMG_TOP] > 3 ||
+	    chroma_repeat[IMG_BOTTOM] < 0 || chroma_repeat[IMG_BOTTOM] > 3 ||
+	    luma_repeat[IMG_LEFT] < 0 || luma_repeat[IMG_LEFT] > 3 ||
+	    luma_repeat[IMG_RIGHT] < 0 || luma_repeat[IMG_RIGHT] > 3 ||
+	    luma_repeat[IMG_TOP] < 0 || luma_repeat[IMG_TOP] > 3 ||
+	    luma_repeat[IMG_BOTTOM] < 0 || luma_repeat[IMG_BOTTOM] > 3)
 		return -1;
-	regs->edge
+
+	regs->edge |= (chroma_repeat[IMG_LEFT] & 3) << MDP_LEFT_CHROMA;
+	regs->edge |= (chroma_repeat[IMG_RIGHT] & 3) << MDP_RIGHT_CHROMA;
+	regs->edge |= (chroma_repeat[IMG_TOP] & 3) << MDP_TOP_CHROMA;
+	regs->edge |= (chroma_repeat[IMG_BOTTOM] & 3) << MDP_BOTTOM_CHROMA;
+	regs->edge |= (luma_repeat[IMG_LEFT] & 3) << MDP_LEFT_LUMA;
+	regs->edge |= (luma_repeat[IMG_RIGHT] & 3) << MDP_RIGHT_LUMA;
+	regs->edge |= (luma_repeat[IMG_TOP] & 3) << MDP_TOP_LUMA;
+	regs->edge |= (luma_repeat[IMG_BOTTOM] & 3) << MDP_BOTTOM_LUMA;
 	return 0;
 }
 
-static void blit_scale(struct mdp_blit_req *req, struct mdp_regs *regs)
+static int blit_scale(struct mdp_blit_req *req, struct mdp_regs *regs)
 {
 	uint32_t phase_init_x, phase_init_y, phase_step_x, phase_step_y;
+	uint32_t scale_factor_x, scale_factor_y;
+	uint32_t downscale;
 	uint32_t dst_w, dst_h;
 
 	if (req->rotation & MDP_ROT_90) {
@@ -449,8 +438,12 @@ static void blit_scale(struct mdp_blit_req *req, struct mdp_regs *regs)
 		dst_w = req->dst_rect.w;
 		dst_h = req->dst_rect.h;
 	}
-	scale_params(req->src_rect.w, dst_w, 1, phase_init_x, phase_step_x);
-	scale_params(req->src_rect.h, dst_h, 1, phase_init_y, phase_step_y);
+	if (scale_params(req->src_rect.w, dst_w, 1, &phase_init_x,
+			 &phase_step_x) ||
+	    scale_params(req->src_rect.h, dst_h, 1, &phase_init_y,
+			 &phase_step_y)) {
+	return -1;
+	}
 	scale_factor_x = (dst_w * 10) / req->src_rect.w;
 	scale_factor_y = (dst_h * 10) / req->src_rect.h;
 
@@ -462,7 +455,10 @@ static void blit_scale(struct mdp_blit_req *req, struct mdp_regs *regs)
 		downscale = MDP_DOWNSCALE_PT4TOPT6;
 	else
 		downscale = MDP_DOWNSCALE_PT2TOPT4;
-	load_scale_table(mdp_downscale_x_table[downscale])
+	if (downscale != downscale_x_table) {
+		load_scale_table(mdp_downscale_x_table[downscale]);
+		downscale_x_table = downscale;
+	}
 
 	if (scale_factor_y > 8)
 		downscale = MDP_DOWNSCALE_PT8TO1;
@@ -472,12 +468,20 @@ static void blit_scale(struct mdp_blit_req *req, struct mdp_regs *regs)
 		downscale = MDP_DOWNSCALE_PT4TOPT6;
 	else
 		downscale = MDP_DOWNSCALE_PT2TOPT4;
-	load_scale_table(mdp_downscale_y_table[downscale])
+	if (downscale != downscale_y_table) {
+		load_scale_table(mdp_downscale_y_table[downscale]);
+		downscale_y_table = downscale;
+	}
 
+	regs->phasex_init = phase_init_x;
+	regs->phasey_init = phase_init_y;
+	regs->phasex_step = phase_step_x;
+	regs->phasey_step = phase_step_y;
+	DLOG("init x:%x step x:%x init y:%x step y:%x\n", phase_init_x, phase_step_x, phase_init_y, phase_step_y);
 	regs->op |= (PPP_OP_SCALE_Y_ON | PPP_OP_SCALE_X_ON);
+	return 0;
 
 }
-#endif
 
 #define IMG_LEN(rect_h, w, rect_w, bpp) (((rect_h) * w) * bpp)
 static void get_len(struct mdp_img *img, struct mdp_rect *rect, uint32_t bpp,
@@ -590,14 +594,14 @@ static void flush_imgs(struct mdp_blit_req *req, struct mdp_regs *regs)
 	}
 }
 
-#define WRITEL(v, a) do { writel(v,a); /*printk(#a "[%x]=%x\n", a, v);*/ }\
+#define WRITEL(v, a) do { writel(v,a); DLOG(#a "[%x]=%x\n", a, v); }\
 		     while (0)
 int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 {
-	struct mdp_regs regs;
+	struct mdp_regs regs = {0};
 	unsigned long src_start, src_len;
 	unsigned long dst_start, dst_len;
-	ktime_t t1, t2;
+	unsigned long dst_w, dst_h;
 
 #if 0
 	DLOG("BLIT recieved img %p\n"
@@ -636,14 +640,11 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 
 	/* do this first so that if this fails, the caller can always
 	 * safely call put_img */
-	t1 = ktime_get();
 	if (unlikely(get_img(&req->src, info, &src_start, &src_len)) ||
 		    (get_img(&req->dst, info, &dst_start, &dst_len))) {
 		printk("mpd_ppp: could not retrieve image from memory\n");
 		return -1;
 	}
-	t2 = ktime_get();
-	DLOG("get_img time %lld\n", ktime_to_ns(ktime_sub(t2, t1)));
 
 	if (unlikely(req->src.format >= MDP_IMGTYPE_LIMIT ||
 	    req->dst.format >= MDP_IMGTYPE_LIMIT)) {
@@ -656,7 +657,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		     req->dst_rect.x > req->dst.width ||
 		     req->dst_rect.y > req->dst.height)) {
 		printk("mpd_ppp: img rect is outside of img!\n");
-		return -1;
+		return -EINVAL;
 	}
 
 	regs.src_cfg = src_img_cfg[req->src.format];
@@ -697,7 +698,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		printk("mpd_ppp: final src or dst location is invalid, are you "
 			"trying to make an image too large or to place it "
 			"outside the screen?\n");
-		return -1;
+		return -EINVAL;
 	}
 
 	regs.op = 0;
@@ -708,28 +709,31 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	if (req->transp_mask != MDP_TRANSP_NOP || req->alpha != MDP_ALPHA_NOP)
 		blit_blend(req, &regs);
 
+	if (req->rotation & MDP_ROT_90) {
+		dst_w = req->dst_rect.h;
+		dst_h = req->dst_rect.w;
+	} else {
+		dst_w = req->dst_rect.w;
+		dst_h = req->dst_rect.h;
+	}
+	if ((req->src_rect.w != dst_w) ||
+	    (req->src_rect.h != dst_h)) {
+		DLOG("scaling\n");
+		if (blit_scale(req, &regs))
+			return -EINVAL;
+	} else {
+		regs.phasex_init = 0;
+		regs.phasey_init = 0;
+		regs.phasex_step = 0;
+		regs.phasey_step = 0;
+	}
+
 	if (unlikely(req->src.format == MDP_ARGB_8888))
 		regs.op |= PPP_OP_ROT_ON | PPP_OP_BLEND_ON |
 			   PPP_OP_BLEND_SRCPIXEL_ALPHA;
 
 	regs.op |= dst_op_chroma[req->dst.format] |
 		   src_op_chroma[req->src.format];
-#if 0
-	if (((req->rotation & MDP_ROT_90) &&
-	    ((req->src_rect.w != req->dst_rect.h) ||
-	     (req->src_rect.h != req->dst_rect.w))) ||
-	    ((req->src_rect.w != req->dst_rect.w) ||
-	     (req->src_rect.h != req->dst_rect.h))) {
-		printk("mdp_ppp: src and destination rects don't match "
-			"and scaling is not implemented %x %x %x %x %x\n",
-			req->rotation & MDP_ROT_90,
-			req->src_rect.w, req->src_rect.h,
-			req->dst_rect.w, req->dst_rect.h);
-		return -1;
-		/* mdp_blt_scale(req);  */
-	}
-#endif
-
 
 	if (unlikely(req->src.format == MDP_YCRYCB_H2V1)) {
 		/* the x and w must be even */
@@ -737,13 +741,12 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		req->src_rect.w = (req->src_rect.w / 2) * 2;
 		req->dst_rect.x = (req->dst_rect.x / 2) * 2;
 		req->dst_rect.w = (req->dst_rect.w / 2) * 2;
-	}
+	} 
 
+	get_edge_cond(req, &regs);
 
 	WRITEL(1, MSM_MDP_BASE+0x060);
-	WRITEL((req->src_rect.h << 16) | req->src_rect.w,
-		PPP_ADDR_SRC_ROI);
-	WRITEL(0, MDP_FULL_BYPASS_WORD46);
+	WRITEL((req->src_rect.h << 16) | req->src_rect.w, PPP_ADDR_SRC_ROI);
 	WRITEL(regs.src0, PPP_ADDR_SRC0);
 	WRITEL(regs.src1, PPP_ADDR_SRC1);
 	WRITEL(regs.src_ystride, PPP_ADDR_SRC_YSTRIDE);
@@ -752,8 +755,14 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 
 	WRITEL(regs.op, PPP_ADDR_OPERATION);
 	// Scale registers here
+	WRITEL(regs.phasex_init, PPP_ADDR_PHASEX_INIT);
+	WRITEL(regs.phasey_init, PPP_ADDR_PHASEY_INIT);
+	WRITEL(regs.phasex_step, PPP_ADDR_PHASEX_STEP);
+	WRITEL(regs.phasey_step, PPP_ADDR_PHASEY_STEP);
+
 	WRITEL((req->alpha << 24) | (req->transp_mask & 0xffffff),
 		PPP_ADDR_ALPHA_TRANSP);
+
 	WRITEL(regs.dst_cfg, PPP_ADDR_DST_CFG);
 	WRITEL(pack_pattern[req->dst.format], PPP_ADDR_DST_PACK_PATTERN);
 	WRITEL((req->dst_rect.h << 16) | req->dst_rect.w,
@@ -762,6 +771,9 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	WRITEL(regs.dst1, PPP_ADDR_DST1);
 	WRITEL(regs.dst_ystride, PPP_ADDR_DST_YSTRIDE);
 
+	DLOG("EDGE %x\n", regs.edge);
+	WRITEL(regs.edge, PPP_ADDR_EDGE);
+
 	if (regs.op & PPP_OP_BLEND_ON) {
 		WRITEL(regs.dst0, PPP_ADDR_BG0);
 		WRITEL(regs.dst1, PPP_ADDR_BG1);
@@ -769,10 +781,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		WRITEL(src_img_cfg[req->dst.format], PPP_ADDR_BG_CFG);
 		WRITEL(pack_pattern[req->dst.format], PPP_ADDR_BG_PACK_PATTERN);
 	}
-	t1 = ktime_get();
 	flush_imgs(req, &regs);
-	t2 = ktime_get();
-	DLOG("flush img time %lld\n", ktime_to_ns(ktime_sub(t2, t1)));
 	WRITEL(0x1000, MDP_DISPLAY0_START);
 	return 0;
 }
