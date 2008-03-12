@@ -49,15 +49,6 @@
 #define PMEM_FLAGS_SUBMAP 0x1 << 3
 #define PMEM_FLAGS_UNSUBMAP 0x1 << 4
 
-struct pmem_submap {
-//	struct list_head list;
-	struct vm_area_struct *vma;
-	struct mm_struct *mm;
-#if PMEM_DEBUG
-	pid_t pid;
-#endif
-};
-
 struct pmem_data {
 	/* in alloc mode: an index into the bitmap
 	 * in no_alloc mode: the size of the allocation */
@@ -70,8 +61,11 @@ struct pmem_data {
 	struct rw_semaphore sem;
 	/* info about the mmaping process */
 	struct vm_area_struct *vma;
-	struct mm_struct *mm;
+	/* task struct of the mapping process */
+	struct task_struct *task;
+	/* process id of teh mapping process */
 	pid_t pid;
+	/* file descriptor of the master */
 	int master_fd;
 	/* a list of currently available regions if this is a suballocation */
 	struct list_head region_list;
@@ -127,6 +121,10 @@ struct pmem_info {
 	 * this flag */
 	unsigned allocated;
 #if PMEM_DEBUG
+	/* for debugging, creates a list of pmem file structs, the
+	 * data_list_sem should be taken before pmem_data->sem if both are
+	 * needed */ 
+	struct rw_semaphore data_list_sem;
 	struct list_head data_list;
 #endif
 	/* pmem_sem protects the bitmap array
@@ -135,8 +133,6 @@ struct pmem_info {
 	 * dereferencing a pointer into bitmap
 	 *
 	 * pmem_data->sem protects the pmem data of a particular file
-	 * Care must be taken if you need to hold several of these at the same
-	 * time.
 	 * Many of the function that require the pmem_data->sem have a non-
 	 * locking version for when the caller is already holding that sem.
 	 *
@@ -245,12 +241,14 @@ static int pmem_release(struct inode* inode, struct file *file)
 	struct list_head *elt, *elt2;
 	int id = get_id(file), ret = 0;
 
-	DLOG("file %p\n", file);
-	down_write(&data->sem);
 
 #if PMEM_DEBUG
+	down_write(&pmem[id].data_list_sem);
 	list_del(&data->list);
+	up_write(&pmem[id].data_list_sem);
 #endif
+	DLOG("file %p\n", file);
+	down_write(&data->sem);
 
 	if (!(PMEM_FLAGS_SUBALLOC & data->flags) && has_allocation(file)) {
 		down_write(&pmem[id].bitmap_sem);
@@ -258,9 +256,9 @@ static int pmem_release(struct inode* inode, struct file *file)
 		up_write(&pmem[id].bitmap_sem);
 	} 
 	if (PMEM_FLAGS_SUBMAP & data->flags) {
-		if (data->mm) {
-			mmput(data->mm);
-			data->mm = NULL;
+		if (data->task) {
+			put_task_struct(data->task);
+			data->task = NULL;
 		}
 	}
 
@@ -281,6 +279,8 @@ static int pmem_release(struct inode* inode, struct file *file)
 static int pmem_open(struct inode *inode, struct file *file)
 {
 	struct pmem_data* data;
+	int id = get_id(file);
+
 	DLOG("file %p\n", file);
 	/* setup file->private_data to indicate its unmapped */
 	/*  you can only open a pmem device one time */
@@ -293,7 +293,7 @@ static int pmem_open(struct inode *inode, struct file *file)
 	}
 	data->flags = 0;
 	data->index = -1;
-	data->mm = NULL;
+	data->task = NULL;
 	data->vma = NULL;
 	data->pid = 0;
 	INIT_LIST_HEAD(&data->region_list);
@@ -302,7 +302,9 @@ static int pmem_open(struct inode *inode, struct file *file)
 	file->private_data = data;
 #if PMEM_DEBUG
 	INIT_LIST_HEAD(&data->list);
-	list_add(&data->list, &pmem[get_id(file)].data_list);
+	down_write(&pmem[id].data_list_sem);
+	list_add(&data->list, &pmem[id].data_list);
+	up_write(&pmem[id].data_list_sem);
 #endif
 	return 0;
 }
@@ -569,7 +571,8 @@ static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 			}
 		}
 		data->flags |= PMEM_FLAGS_SUBMAP;
-		data->mm = get_task_mm(current);
+		get_task_struct(current);
+		data->task = current;
 		data->vma = vma;
 #if PMEM_DEBUG
 		data->pid = current->pid;
@@ -746,6 +749,7 @@ static int pmem_remap(struct pmem_region *region, struct file *file,
 	struct pmem_region_list *region_list;
 	struct list_head *elt, *elt2;
 	struct file *master_file;
+	struct mm_struct *mm = 0;
 	int ret = 0, id = get_id(file), is_submmapped = 0, fput;
 
 	if (unlikely(!PMEM_IS_PAGE_ALIGNED(region->offset) ||
@@ -760,7 +764,8 @@ static int pmem_remap(struct pmem_region *region, struct file *file,
 lock_mm:
 	if (PMEM_IS_SUBMAP(data)) {
 		is_submmapped = 1;
-		down_write(&data->mm->mmap_sem);
+		mm = get_task_mm(data->task);
+		down_write(&mm->mmap_sem);
 	}
 	down_write(&data->sem);
 	master_file = fget_light(data->master_fd, &fput);
@@ -781,11 +786,14 @@ lock_mm:
 	if ((data->flags & PMEM_FLAGS_UNSUBMAP) && is_submmapped) {
 		is_submmapped = 0;
 		/* might as well release this */
-		up_write(&data->mm->mmap_sem);
-		mmput(data->mm);
-		data->mm = NULL;
-		/* lower the submap flag to show the mm is gone */
-		data->flags &= ~(PMEM_FLAGS_SUBMAP);
+		up_write(&mm->mmap_sem);
+		mmput(mm);
+		if (data->flags & PMEM_FLAGS_SUBMAP) {
+			put_task_struct(data->task);
+			data->task = NULL;
+			/* lower the submap flag to show the mm is gone */
+			data->flags &= ~(PMEM_FLAGS_SUBMAP);
+		}
 	}
 	if (region->len == 0)
 		goto end;
@@ -845,8 +853,10 @@ lock_mm:
 	}
 end:
 	up_write(&data->sem);
-	if (is_submmapped)
-		up_write(&data->mm->mmap_sem);
+	if (is_submmapped) {
+		up_write(&mm->mmap_sem);
+		mmput(mm);
+	}
 	return ret;
 }
 
@@ -937,54 +947,49 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 }
 
 #if PMEM_DEBUG
-#define DEBUG_BUFMAX 4096
-static char buffer[DEBUG_BUFMAX];
-static int n;
 static ssize_t debug_open(struct inode *inode, struct file *file)
 {
-	struct list_head *elt, *elt2;
-	struct pmem_data *data;
-	struct pmem_region_list *region_list;
-	int n = 0;
-	int id = get_id(file);
-
-	DLOG("debug open\n");
-	n = scnprintf(buffer, DEBUG_BUFMAX,
-		      "file: pid1, pid2... (offset, len) (offset,len)...");
-	list_for_each(elt, &pmem[id].data_list) {
-		data = list_entry(elt, struct pmem_data, list);
-		n += scnprintf(buffer + n, DEBUG_BUFMAX - n, "%p:", file);
-		down_read(&data->sem);
-/*
-		list_for_each(elt2, &data->vma_list) {
-			vma = list_entry(elt2, struct pmem_vma, list);
-			n += scnprintf(buffer + n, DEBUG_BUFMAX - n,
-			               "%u,", vma->pid);
-		}
-*/
-		list_for_each(elt2, &data->region_list) {
-			region_list = list_entry(elt2, struct pmem_region_list,
-				      list);
-			n += scnprintf(buffer + n, DEBUG_BUFMAX - n,
-					"(%lx,%lx) ",
-					region_list->region.offset,
-					region_list->region.len);
-		}
-		n += scnprintf(buffer + n, DEBUG_BUFMAX - n, "\n");
-		up_read(&data->sem);
-	}
-
-	n++;
-	buffer[n] = 0;
+	file->private_data = inode->i_private;
 	return 0;
 }
 
 static ssize_t debug_read(struct file *file, char __user *buf, size_t count,
 			  loff_t *ppos)
 {
-	DLOG("debug read %d\n", n);
-	simple_read_from_buffer(buf, count, ppos, buffer, n);
-	return count;
+	struct list_head *elt, *elt2;
+	struct pmem_data *data;
+	struct pmem_region_list *region_list;
+	int id = (int)file->private_data;
+	const int debug_bufmax = 4096;
+	static char buffer[4096];
+	int n = 0;
+
+	DLOG("debug open\n");
+	n = scnprintf(buffer, debug_bufmax,
+		      "pid #: mapped regions (offset, len) (offset,len)...\n");
+
+	down_write(&pmem[id].data_list_sem);
+	list_for_each(elt, &pmem[id].data_list) {
+		data = list_entry(elt, struct pmem_data, list);
+		down_read(&data->sem);
+		n += scnprintf(buffer + n, debug_bufmax - n, "pid %u:",
+				data->pid);
+		list_for_each(elt2, &data->region_list) {
+			region_list = list_entry(elt2, struct pmem_region_list,
+				      list);
+			n += scnprintf(buffer + n, debug_bufmax - n,
+					"(%lx,%lx) ",
+					region_list->region.offset,
+					region_list->region.len);
+		}
+		n += scnprintf(buffer + n, debug_bufmax - n, "\n");
+		up_read(&data->sem);
+	}
+	up_write(&pmem[id].data_list_sem);
+
+	n++;
+	buffer[n] = 0;
+	return simple_read_from_buffer(buf, count, ppos, buffer, n);
 }
 
 static struct file_operations debug_fops = {
@@ -1020,6 +1025,7 @@ static int pmem_probe(struct platform_device *pdev)
 	pmem[id].size = pdata->size;
 	init_rwsem(&pmem[id].bitmap_sem);
 #if PMEM_DEBUG
+	init_rwsem(&pmem[id].data_list_sem);
 	INIT_LIST_HEAD(&pmem[id].data_list);
 #endif
 	pmem[id].dev.name = pdata->name;
@@ -1061,12 +1067,12 @@ static int pmem_probe(struct platform_device *pdev)
 		pmem[id].allocated = 0;
 	} else {
 		pmem[id].garbage_index = pmem_allocate(id, PAGE_SIZE);
-		pmem[id].garbage_pfn = PMEM_OFFSET(pmem[id].garbage_index) 
+		pmem[id].garbage_pfn = PMEM_OFFSET(pmem[id].garbage_index)
 					>> PAGE_SHIFT;
 	}
 
 #if PMEM_DEBUG
-	debugfs_create_file(pdata->name, S_IFREG | S_IRUGO, NULL, NULL, 
+	debugfs_create_file(pdata->name, S_IFREG | S_IRUGO, NULL, (void*)id,
 			&debug_fops);
 #endif
 	return 0;
