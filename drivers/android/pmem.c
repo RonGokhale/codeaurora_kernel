@@ -537,7 +537,7 @@ static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 		goto error;
 	}
 
-	if (pmem_len(id, data) != vma_size) {
+	if (pmem_len(id, data) < vma_size) {
 #if PMEM_DEBUG
 		printk("pmem: mmap size [%lu] does not match size of backing "
 			"region [%lu]!\n", vma_size, pmem_len(id, data));
@@ -762,11 +762,18 @@ static int pmem_remap(struct pmem_region *region, struct file *file,
 	}
 
 lock_mm:
+	down_read(&data->sem);
 	if (PMEM_IS_SUBMAP(data)) {
 		is_submmapped = 1;
 		mm = get_task_mm(data->task);
-		down_write(&mm->mmap_sem);
+		if (!mm)
+			is_submmapped = 0;
 	}
+	up_read(&data->sem);
+
+	if (is_submmapped)
+		down_write(&mm->mmap_sem);
+
 	down_write(&data->sem);
 	master_file = fget_light(data->master_fd, &fput);
 	if (unlikely(!master_file)) {
