@@ -39,6 +39,31 @@ struct synaptics_ts_data {
 	int (*power)(int on);
 };
 
+static int synaptics_init_panel(struct synaptics_ts_data *ts)
+{
+	int ret;
+
+	ret = i2c_smbus_write_byte_data(ts->client, 0xff, 0x10); /* page select = 0x10 */
+	if (ret < 0) {
+		printk(KERN_ERR "i2c_smbus_write_byte_data failed for page select\n");
+		goto err_page_select_failed;
+	}
+	ret = i2c_smbus_write_byte_data(ts->client, 0x41, 0x04); /* Set "No Clip Z" */
+	if (ret < 0) {
+		printk(KERN_ERR "i2c_smbus_write_byte_data failed for No Clip Z\n");
+	}
+
+err_page_select_failed:
+	ret = i2c_smbus_write_byte_data(ts->client, 0xff, 0x04); /* page select = 0x04 */
+	if (ret < 0) {
+		printk(KERN_ERR "i2c_smbus_write_byte_data failed for page select\n");
+	}
+	ret = i2c_smbus_write_byte_data(ts->client, 0xf0, 0x81); /* normal operation, 80 reports per second */
+	if (ret < 0)
+		printk(KERN_ERR "synaptics_ts_resume: i2c_smbus_write_byte_data failed\n");
+	return ret;
+}
+
 static void synaptics_ts_work_func(struct work_struct *work)
 {
 	int i;
@@ -71,7 +96,7 @@ static void synaptics_ts_work_func(struct work_struct *work)
 			/*        buf[4], buf[5], buf[6], buf[7], */
 			/*        buf[8], buf[9], buf[10], buf[11], */
 			/*        buf[12], buf[13], buf[14], ret); */
-			if (buf[14] & 0x80) {
+			if ((buf[14] & 0xc0) != 0x40) {
 				printk(KERN_WARNING "synaptics_ts_work_func:"
 				       " bad read %x %x %x %x %x %x %x %x %x"
 				       " %x %x %x %x %x %x, ret %d\n",
@@ -79,6 +104,8 @@ static void synaptics_ts_work_func(struct work_struct *work)
 				       buf[4], buf[5], buf[6], buf[7],
 				       buf[8], buf[9], buf[10], buf[11],
 				       buf[12], buf[13], buf[14], ret);
+				if (bad_data)
+					synaptics_init_panel(ts);
 				bad_data = 1;
 				continue;
 			}
@@ -326,15 +353,9 @@ static int synaptics_ts_probe(struct i2c_client *client)
 	if (ts->flags & SYNAPTICS_SWAP_XY)
 		swap(max_x, max_y);
 
-	ret = i2c_smbus_write_byte_data(ts->client, 0x41, 0x04); /* Set "No Clip Z" */
+	ret = synaptics_init_panel(ts); /* will also switch back to page 0x04 */
 	if (ret < 0) {
-		printk(KERN_ERR "i2c_smbus_write_byte_data failed for No Clip Z\n");
-		goto err_detect_failed;
-	}
-
-	ret = i2c_smbus_write_byte_data(ts->client, 0xff, 0x04); /* page select = 0x04 */
-	if (ret < 0) {
-		printk(KERN_ERR "i2c_smbus_write_byte_data failed for page select\n");
+		printk(KERN_ERR "synaptics_init_panel failed\n");
 		goto err_detect_failed;
 	}
 
@@ -432,6 +453,10 @@ static int synaptics_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 	else
 		hrtimer_cancel(&ts->timer);
 	cancel_work_sync(&ts->work);
+	ret = i2c_smbus_write_byte_data(ts->client, 0xf1, 0); /* disable interrupt */
+	if (ret < 0)
+		printk(KERN_ERR "synaptics_ts_suspend: i2c_smbus_write_byte_data failed\n");
+
 	ret = i2c_smbus_write_byte_data(client, 0xf0, 0x86); /* deep sleep */
 	if (ret < 0)
 		printk(KERN_ERR "synaptics_ts_suspend: i2c_smbus_write_byte_data failed\n");
@@ -455,15 +480,16 @@ static int synaptics_ts_resume(struct i2c_client *client)
 			printk(KERN_ERR "synaptics_ts_resume power on failed\n");
 		}
 	}
+
+	synaptics_init_panel(ts);
+
 	if (ts->use_irq)
 		enable_irq(client->irq);
 
-	ret = i2c_smbus_write_byte_data(client, 0xf0, 0x81); /* normal operation, 80 reports per second */
-	if (ret < 0)
-		printk(KERN_ERR "synaptics_ts_resume: i2c_smbus_write_byte_data failed\n");
-
 	if (!ts->use_irq)
 		hrtimer_start(&ts->timer, ktime_set(1, 0), HRTIMER_MODE_REL);
+	else
+		i2c_smbus_write_byte_data(ts->client, 0xf1, 0x01); /* enable abs int */
 
 	return 0;
 }
