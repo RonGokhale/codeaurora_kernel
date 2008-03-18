@@ -36,7 +36,8 @@ struct msmfb_info {
 	struct fb_info *fb_info;
 	struct mddi_panel_info *panel_info;
 	unsigned yoffset;
-	volatile unsigned frame;
+	volatile unsigned frame_requested;
+	volatile unsigned frame_done;
 	volatile int sleeping;
 	volatile struct {
 		int need_update;
@@ -83,7 +84,8 @@ static int updater(void *_par)
 	set_freezable();
 
 	for (;;) {
-		wait_event_interruptible(par->update_wq, par->update_info.need_update);
+		wait_event_interruptible(par->update_wq,
+					 par->update_info.need_update);
 		if (try_to_freeze())
 			continue;
 
@@ -108,32 +110,35 @@ static int updater(void *_par)
 			msleep_interruptible(100);
 		else {
 
-		if (pi->panel_ops->wait_vsync)
-			pi->panel_ops->wait_vsync(pi);
-		else
-			msleep(16);
+			if (pi->panel_ops->wait_vsync)
+				pi->panel_ops->wait_vsync(pi);
+			else
+				msleep(16);
 #if PRINT_FPS
-		t3 = ktime_get();
+			t3 = ktime_get();
 #endif
-		if (w > pi->width || h > pi->height || w == 0 || h == 0) {
-			printk(KERN_INFO "invalid update: %d %d %d %d\n",
-			       x, y, w, h);
-			mddi_activate_link(pi->mddi);
-			/* some clients clear their vsync interrupt
-			 * when the link activates
-			 */
-		} else {
-			addr = ((pi->width * (par->yoffset + y) + x) * 2);
-			mdp_dma_to_mddi(addr, pi->width * 2, w, h, x, y);
-			mdp_dma_wait();
-		}
+			if (w > pi->width || h > pi->height || w == 0 ||
+			    h == 0) {
+				printk(KERN_INFO "invalid update: %d %d %d "
+						 "%d\n", x, y, w, h);
+				mddi_activate_link(pi->mddi);
+				/* some clients clear their vsync interrupt
+				 * when the link activates
+				 */
+			} else {
+				addr = ((pi->width * (par->yoffset + y) + x)
+					* 2);
+				mdp_dma_to_mddi(addr, pi->width * 2, w, h, x,
+						y);
+				mdp_dma_wait();
+			}
 #if PRINT_FPS
-		rel_frame_count++;
-		t4 = ktime_get();
-		dt = ktime_to_ns(ktime_sub(t4, t1));
-		if (dt > NSEC_PER_SEC) {
-			if (dt < UINT_MAX) {
-				int64_t fps = (int64_t)rel_frame_count * NSEC_PER_SEC * 100;
+			rel_frame_count++;
+			t4 = ktime_get();
+			dt = ktime_to_ns(ktime_sub(t4, t1));
+			if (dt > NSEC_PER_SEC && dt < UINT_MAX) {
+				int64_t fps = (int64_t)rel_frame_count *
+					NSEC_PER_SEC * 100;
 				int64_t vsync = (int64_t)NSEC_PER_SEC * 100;
 				int64_t last = (int64_t)NSEC_PER_SEC * 100;
 				int64_t dma = (int64_t)NSEC_PER_SEC * 100;
@@ -142,27 +147,42 @@ static int updater(void *_par)
 				do_div(last, ktime_to_ns(ktime_sub(t4, t2)));
 				do_div(dma, ktime_to_ns(ktime_sub(t4, t3)));
 				printk(KERN_INFO "msm_fb: fps*100 = %lld, "
-				       "vsync %lld, last %lld, dma %lld\n",
-				       fps, vsync, last, dma);
+						"vsync %lld, last %lld, dma "
+						"%lld\n",
+						fps, vsync, last, dma);
+				t1 = t4;
+				rel_frame_count = 0;
 			}
-			t1 = t4;
-			rel_frame_count = 0;
-		}
-		t5 = t3;
+			t5 = t3;
 #endif
 		}
-		par->frame++;
+		par->frame_done = par->frame_requested;
 		wake_up(&par->frame_wq);
 	}
 
 	return 0;
 }
 
-static void msmfb_update(struct fb_info *info, uint32_t left, uint32_t top, uint32_t eright, uint32_t ebottom)
+static void msmfb_update(struct fb_info *info, uint32_t left, uint32_t top,
+			 uint32_t eright, uint32_t ebottom, int wait_for_last)
 {
 	struct msmfb_info *par = info->par;
 	unsigned long irq_flags;
+restart:
 	spin_lock_irqsave(&par->update_lock, irq_flags);
+	if (wait_for_last && par->frame_requested != par->frame_done) {
+		spin_unlock_irqrestore(&par->update_lock, irq_flags);
+		if (wait_event_interruptible_timeout(par->frame_wq,
+		    par->frame_done == par->frame_requested, HZ) == 0) {
+			printk(KERN_WARNING "msmfb_pan_display timeout waiting "
+					    "for frame start, %d %d\n",
+					    par->frame_requested,
+					    par->frame_done);
+			return;
+		}
+		goto restart;
+	}
+	
 	if (left < par->update_info.left)
 		par->update_info.left = left;
 	if (top < par->update_info.top)
@@ -171,7 +191,10 @@ static void msmfb_update(struct fb_info *info, uint32_t left, uint32_t top, uint
 		par->update_info.eright = eright;
 	if (ebottom > par->update_info.ebottom)
 		par->update_info.ebottom = ebottom;
-	par->update_info.need_update = 1;
+	if (!par->update_info.need_update) {
+		par->update_info.need_update = 1;
+		par->frame_requested++;
+	}
 	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 	wake_up(&par->update_wq);
 }
@@ -179,16 +202,19 @@ static void msmfb_update(struct fb_info *info, uint32_t left, uint32_t top, uint
 #ifdef CONFIG_ANDROID_POWER
 static void msmfb_early_suspend(android_early_suspend_t *h)
 {
-	struct msmfb_info *par = container_of(h, struct msmfb_info, early_suspend);
+	struct msmfb_info *par = container_of(h, struct msmfb_info,
+					      early_suspend);
 	par->sleeping = 1;
 }
 
 static void msmfb_early_resume(android_early_suspend_t *h)
 {
-	struct msmfb_info *par = container_of(h, struct msmfb_info, early_suspend);
+	struct msmfb_info *par = container_of(h, struct msmfb_info,
+				 early_suspend);
 	printk(KERN_INFO "msmfb_early_resume\n");
 	par->sleeping = 0;
-	msmfb_update(par->fb_info, 0, 0, par->fb_info->var.xres, par->fb_info->var.yres);
+	msmfb_update(par->fb_info, 0, 0, par->fb_info->var.xres,
+		     par->fb_info->var.yres, 0);
 }
 #endif
 
@@ -207,46 +233,43 @@ static int msmfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 int msmfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 {
 	struct msmfb_info *par = info->par;
-	unsigned thisframe;
 	par->yoffset = var->yoffset;
 
 	/* don't return until we start painting this frame */
-	thisframe = par->frame;
 	if (var->reserved[0] == 0x54445055) { /* "UPDT" */
 #if 0
 		printk(KERN_INFO "pan frame %d-%d, rect %d %d %d %d\n",
-		       thisframe, par->frame, var->reserved[1] & 0xffff,
+		       par->frame_requested, par->frame_done,
+		       var->reserved[1] & 0xffff,
 		       var->reserved[1] >> 16, var->reserved[2] & 0xffff,
 		       var->reserved[2] >> 16);
 #endif
 		msmfb_update(info, var->reserved[1] & 0xffff,
 			     var->reserved[1] >> 16,
 			     var->reserved[2] & 0xffff,
-			     var->reserved[2] >> 16);
+			     var->reserved[2] >> 16, 1);
 	} else {
-		msmfb_update(info, 0, 0, info->var.xres, info->var.yres);
+		msmfb_update(info, 0, 0, info->var.xres, info->var.yres, 1);
 	}
-	if (wait_event_interruptible_timeout(par->frame_wq, thisframe != par->frame, HZ) == 0)
-		printk(KERN_WARNING "msmfb_pan_display timeout waiting for frame change, %d %d\n", thisframe, par->frame);
 	return 0;
 }
 
 static void msmfb_fillrect(struct fb_info *p, const struct fb_fillrect *rect)
 {
 	cfb_fillrect(p, rect);
-	msmfb_update(p, rect->dx, rect->dy, rect->dx + rect->width, rect->dy + rect->height);
+	msmfb_update(p, rect->dx, rect->dy, rect->dx + rect->width, rect->dy + rect->height, 0);
 }
 
 static void msmfb_copyarea(struct fb_info *p, const struct fb_copyarea *area)
 {
 	cfb_copyarea(p, area);
-	msmfb_update(p, area->dx, area->dy, area->dx + area->width, area->dy + area->height);
+	msmfb_update(p, area->dx, area->dy, area->dx + area->width, area->dy + area->height, 0);
 }
 
 static void msmfb_imageblit(struct fb_info *p, const struct fb_image *image)
 {
 	cfb_imageblit(p, image);
-	msmfb_update(p, image->dx, image->dy, image->dx + image->width, image->dy + image->height);
+	msmfb_update(p, image->dx, image->dy, image->dx + image->width, image->dy + image->height, 0);
 }
 
 
@@ -334,7 +357,6 @@ static int msmfb_probe(struct platform_device *pdev)
 	printk(KERN_INFO "msmfb_probe() installing %d x %d panel\n",
 	       pi->width, pi->height);
 
-	//fbram = ioremap_cached(0, 8 * 1024 * 1024);
 	fbram = ioremap(0, 8 * 1024 * 1024);
 
 	if (fbram == 0) {
