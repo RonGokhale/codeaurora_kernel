@@ -19,20 +19,17 @@
 #define __ASM__ARCH_MSM_RPCROUTER_H
 
 #include <linux/types.h>
+#include <linux/list.h>
 #include <linux/platform_device.h>
-#include <linux/msm_rpcrouter.h>
-#include <asm/arch/msm_smd.h>
 
+struct msm_rpc_endpoint;
 
 struct rpcsvr_platform_device
 {
 	struct platform_device base;
-	rpcrouter_address addr;
+	uint32_t prog;
+	uint32_t vers;
 };
-
-struct rpcrouter_client;
-
-typedef struct rpcrouter_client rpcrouterclient_t;
 
 #define RPC_DATA_IN	0
 /*
@@ -40,10 +37,6 @@ typedef struct rpcrouter_client rpcrouterclient_t;
  * XXX: Any cred/verif lengths > 0 not supported
  */
 
-/* =====================
- * Request data structures
- * =====================
- */
 struct rpc_request_hdr
 {
 	uint32_t xid;
@@ -58,10 +51,6 @@ struct rpc_request_hdr
 	uint32_t verf_length;
 };
 
-/* =====================
- * Reply data structures
- * =====================
- */
 typedef struct
 {
 	uint32_t low;
@@ -88,7 +77,7 @@ typedef struct
 	 * Following data is dependant on accept_stat
 	 * If ACCEPTSTAT == PROG_MISMATCH then there is a
 	 * 'rpc_reply_progmismatch_data' structure following the header.
-	 * Otherwise the data is proceedure specific
+	 * Otherwise the data is procedure specific
 	 */
 } rpc_accepted_reply_hdr;
 
@@ -105,34 +94,34 @@ struct rpc_reply_hdr
 	} data;
 };
 
-/*
- *  Kernel API for kernel consumers/producers
- */
+int msm_rpc_open(struct msm_rpc_endpoint **ept);
+int msm_rpc_close(struct msm_rpc_endpoint *ept);
+int msm_rpc_write(struct msm_rpc_endpoint *ept,
+		  void *data, int len);
+int msm_rpc_read(struct msm_rpc_endpoint *ept,
+		 void **data, unsigned len, long timeout);
+void msm_rpc_setup_req(struct rpc_request_hdr *hdr,
+		       uint32_t prog, uint32_t vers, uint32_t proc);
+int msm_rpc_connect(struct msm_rpc_endpoint *ept,
+		    uint32_t prog, uint32_t vers, long timeout);
 
-extern int rpcrouter_kernapi_open(rpcrouterclient_t **client);
-extern int rpcrouter_kernapi_close(rpcrouterclient_t *client);
-extern int rpcrouter_kernapi_write(rpcrouterclient_t *client,
-			    rpcrouter_address *dest,
-			    void *buffer,
-			    int count);
-extern int rpcrouter_kernapi_read(rpcrouterclient_t *client,
-			   void **buffer,
-			   unsigned user_len,
-			   long timeout);
-extern int rpcrouter_kernapi_getdest(rpcrouterclient_t *client,
-			      uint32_t prog,
-			      uint32_t vers,
-			      long timeout,
-			      rpcrouter_address *dest_addr);
-extern void rpcrouter_kernapi_setup_request(struct rpc_request_hdr *hdr,
-				     uint32_t prog,
-				     uint32_t vers,
-				     uint32_t proc);
-extern struct rpcrouter_server *rpcrouter_kernapi_register_server(struct rpcrouter_client *client,
-		struct rpcrouter_ioctl_server_args *server_args);
-extern int rpcrouter_kernapi_unregister_server(struct rpcrouter_client *client,
-		struct rpcrouter_ioctl_server_args *server_args);
+int msm_rpc_register_server(struct msm_rpc_endpoint *ept,
+			    uint32_t prog, uint32_t vers);
+int msm_rpc_unregister_server(struct msm_rpc_endpoint *ept,
+			      uint32_t prog, uint32_t vers);
 
-extern int rpcrouter_kernapi_register_notify(struct rpcrouter_client **client,
-					int (*func)(int));
+struct msm_rpc_server
+{
+	struct list_head list;
+	uint32_t flags;
+
+	uint32_t prog;
+	uint32_t vers;
+
+	int (*rpc_call)(struct msm_rpc_server *server,
+			struct rpc_request_hdr *req, unsigned len);
+};
+
+int msm_rpc_create_server(struct msm_rpc_server *server);
+
 #endif
