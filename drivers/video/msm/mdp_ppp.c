@@ -224,6 +224,8 @@ static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 
 	n = ((uint64_t)dim_out) << 34;
 	d = dim_in;
+	if (!d)
+		return -1;
 	do_div(n, d);
 	k3 = (n + 1) >> 1;
 	DLOG("k3 %llx n %llx d %llx\n", k3, n, d);
@@ -233,6 +235,8 @@ static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 	}
 	n = ((uint64_t)dim_in) << 34;
 	d = dim_out;
+	if (!d)
+		return -1;
 	do_div(n, d);
 	k1 = (n + 1) >> 1;
 	k2 = (k1 - ONE) >> 1;
@@ -244,6 +248,8 @@ static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 	if (rpa) {
 		os = ((uint64_t)origin << 33) - ONE_HALF;
 		tmp = (dim_out * os) + ONE_HALF;
+		if (!dim_in)
+			return -1;
 		do_div(tmp, dim_in);
 		od = tmp - ONE_HALF;
 	} else {
@@ -257,6 +263,8 @@ static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 
 	if (rpa) {
 		tmp = (dim_in * od_p) + ONE_HALF;
+		if (!dim_in)
+			return -1;
 		do_div(tmp, dim_in);
 		os_p = tmp - ONE_HALF;
 	} else {
@@ -491,11 +499,11 @@ static void get_len(struct mdp_img *img, struct mdp_rect *rect, uint32_t bpp,
 	switch (img->format) {
 		case MDP_Y_CBCR_H2V2:
 		case MDP_Y_CRCB_H2V2:
-			*len1 = *len0/4;
+			*len1 = *len0 / 4;
 			break;
 		case MDP_Y_CBCR_H2V1:
 		case MDP_Y_CRCB_H2V1:
-			*len1 = *len0/2;
+			*len1 = *len0 / 2;
 			break;
 		default:
 			*len1 = 0;
@@ -659,6 +667,12 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		printk("mpd_ppp: img rect is outside of img!\n");
 		return -EINVAL;
 	}
+	if (unlikely(req->src_rect.h == 0 ||
+		     req->src_rect.w == 0))
+		return -EINVAL;
+	if (unlikely(req->dst_rect.h == 0 ||
+		     req->dst_rect.w == 0))
+		return 0;
 
 	regs.src_cfg = src_img_cfg[req->src.format];
 	regs.src_cfg |= (req->src_rect.x % 2) ? PPP_SRC_BPP_ROI_ODD_X : 0;
