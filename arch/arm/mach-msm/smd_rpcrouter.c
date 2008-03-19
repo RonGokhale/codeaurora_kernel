@@ -87,7 +87,7 @@ static DEFINE_SPINLOCK(smd_lock);
 
 static struct workqueue_struct *rpcrouter_workqueue;
 
-static uint32_t next_xid;
+static atomic_t next_xid = ATOMIC_INIT(1);
 static uint8_t next_pacmarkid;
 
 static void do_read_data(struct work_struct *work);
@@ -685,23 +685,22 @@ void msm_rpc_setup_req(struct rpc_request_hdr *hdr, uint32_t prog,
 		       uint32_t vers, uint32_t proc)
 {
 	memset(hdr, 0, sizeof(struct rpc_request_hdr));
-	hdr->xid = cpu_to_be32(++next_xid);
+	hdr->xid = cpu_to_be32(atomic_add_return(1, &next_xid));
 	hdr->rpc_vers = cpu_to_be32(2);
 	hdr->prog = cpu_to_be32(prog);
 	hdr->vers = cpu_to_be32(vers);
 	hdr->procedure = cpu_to_be32(proc);
 }
 
-int msm_rpc_open(struct msm_rpc_endpoint **ept)
+struct msm_rpc_endpoint *msm_rpc_open(void)
 {
-	if (!ept)
-		return -EINVAL;
+	struct msm_rpc_endpoint *ept;
 
-	*ept = msm_rpcrouter_create_local_endpoint(MKDEV(0, 0));
-	if (!(*ept))
-		return -ENOMEM;
+	ept = msm_rpcrouter_create_local_endpoint(MKDEV(0, 0));
+	if (ept == NULL)
+		return ERR_PTR(-ENOMEM);
 
-	return 0;
+	return ept;
 }
 
 int msm_rpc_close(struct msm_rpc_endpoint *ept)
@@ -885,6 +884,86 @@ int msm_rpc_read(struct msm_rpc_endpoint *ept, void **buffer,
 	return rc;
 }
 
+int msm_rpc_call(struct msm_rpc_endpoint *ept, uint32_t proc,
+		 void *_request, int request_size,
+		 long timeout)
+{
+	return msm_rpc_call_reply(ept, proc,
+				  _request, request_size,
+				  NULL, 0, timeout);
+}
+
+int msm_rpc_call_reply(struct msm_rpc_endpoint *ept, uint32_t proc,
+		       void *_request, int request_size,
+		       void *_reply, int reply_size,
+		       long timeout)
+{
+	struct rpc_request_hdr *req = _request;
+	struct rpc_reply_hdr *reply;
+	int rc;
+
+	if (request_size < sizeof(*req))
+		return -ETOOSMALL;
+
+	if (ept->dst_pid == 0xffffffff)
+		return -ENOTCONN;
+
+	memset(req, 0, sizeof(*req));
+	req->xid = cpu_to_be32(atomic_add_return(1, &next_xid));
+	req->rpc_vers = cpu_to_be32(2);
+	req->prog = ept->dst_prog;
+	req->vers = ept->dst_vers;
+	req->procedure = cpu_to_be32(proc);
+
+	rc = msm_rpc_write(ept, req, request_size);
+	if (rc < 0)
+		return rc;
+
+	for (;;) {
+		rc = msm_rpc_read(ept, (void*) &reply, -1, timeout);
+		if (rc < 0)
+			return rc;
+		if (rc < (3 * sizeof(uint32_t))) {
+			rc = -EIO;
+			break;
+		}
+		/* we should not get CALL packets -- ignore them */
+		if (reply->type == 0) {
+			kfree(reply);
+			continue;
+		}
+		/* If an earlier call timed out, we could get the (no
+		 * longer wanted) reply for it.  Ignore replies that
+		 * we don't expect
+		 */
+		if (reply->xid != req->xid) {
+			kfree(reply);
+			continue;
+		}
+		if (reply->reply_stat != 0) {
+			rc = -EPERM;
+			break;
+		}
+		if (reply->data.acc_hdr.accept_stat != 0) {
+			rc = -EINVAL;
+			break;
+		}
+		if (_reply == NULL) {
+			rc = 0;
+			break;
+		}
+		if (rc > reply_size) {
+			rc = -ENOMEM;
+		} else {
+			memcpy(_reply, reply, rc);
+		}
+		break;
+	}
+	kfree(reply);
+	return rc;
+}
+
+
 static inline int ept_packet_available(struct msm_rpc_endpoint *ept)
 {
 	unsigned long flags;
@@ -955,26 +1034,25 @@ int __msm_rpc_read(struct msm_rpc_endpoint *ept,
 	return rc;
 }
 
-int msm_rpc_connect(struct msm_rpc_endpoint *ept,
-		    uint32_t prog, uint32_t vers,
-		    long timeout)
+struct msm_rpc_endpoint *msm_rpc_connect(uint32_t prog, uint32_t vers, long timeout)
 {
+	struct msm_rpc_endpoint *ept;
 	struct rr_server *server;
-
-	/* can only bind once */
-	if (ept->dst_pid != 0xffffffff)
-		return -EISCONN;
 
 	server = rpcrouter_lookup_server(prog, vers);
 	if (!server)
-		return -EHOSTUNREACH;
+		return ERR_PTR(-EHOSTUNREACH);
 
+	ept = msm_rpc_open();
+	if (IS_ERR(ept))
+		return ept;
+	
 	ept->dst_pid = server->pid;
 	ept->dst_cid = server->cid;
 	ept->dst_prog = cpu_to_be32(prog);
 	ept->dst_vers = cpu_to_be32(vers);
 
-	return 0;
+	return ept;
 }
 
 /* TODO: permission check? */

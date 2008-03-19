@@ -180,9 +180,9 @@ static int rpcservers_probe(struct platform_device *pdev)
 {
 	int rc = 0;
 
-	rc = msm_rpc_open(&endpoint);
-	if (rc < 0)
-		return rc;
+	endpoint = msm_rpc_open();
+	if (IS_ERR(endpoint))
+		return PTR_ERR(endpoint);
 
 	/* we're online -- register any servers installed beforehand */
 	rpc_servers_active = 1;

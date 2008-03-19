@@ -94,7 +94,10 @@ struct rpc_reply_hdr
 	} data;
 };
 
-int msm_rpc_open(struct msm_rpc_endpoint **ept);
+/* use IS_ERR() to check for failure */
+struct msm_rpc_endpoint *msm_rpc_open(void);
+struct msm_rpc_endpoint *msm_rpc_connect(uint32_t prog, uint32_t vers, long timeout);
+
 int msm_rpc_close(struct msm_rpc_endpoint *ept);
 int msm_rpc_write(struct msm_rpc_endpoint *ept,
 		  void *data, int len);
@@ -102,13 +105,26 @@ int msm_rpc_read(struct msm_rpc_endpoint *ept,
 		 void **data, unsigned len, long timeout);
 void msm_rpc_setup_req(struct rpc_request_hdr *hdr,
 		       uint32_t prog, uint32_t vers, uint32_t proc);
-int msm_rpc_connect(struct msm_rpc_endpoint *ept,
-		    uint32_t prog, uint32_t vers, long timeout);
 
 int msm_rpc_register_server(struct msm_rpc_endpoint *ept,
 			    uint32_t prog, uint32_t vers);
 int msm_rpc_unregister_server(struct msm_rpc_endpoint *ept,
 			      uint32_t prog, uint32_t vers);
+
+/* simple blocking rpc call
+ *
+ * request is mandatory and must have a rpc_request_hdr
+ * at the start.  The header will be filled out for you.
+ *
+ * reply provides a buffer for replies of reply_max_size
+ */
+int msm_rpc_call_reply(struct msm_rpc_endpoint *ept, uint32_t proc,
+		       void *request, int request_size,
+		       void *reply, int reply_max_size,
+		       long timeout);
+int msm_rpc_call(struct msm_rpc_endpoint *ept, uint32_t proc,
+		 void *request, int request_size,
+		 long timeout);
 
 struct msm_rpc_server
 {
