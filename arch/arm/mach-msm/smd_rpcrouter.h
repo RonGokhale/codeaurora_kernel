@@ -82,16 +82,19 @@ struct rr_header {
 
 #define RPCROUTER_MAX_REMOTE_SERVERS		100
 
+struct rr_fragment {
+	unsigned char data[RPCROUTER_MSGSIZE_MAX];
+	uint32_t length;
+	struct rr_fragment *next;
+};
+
 struct rr_packet {
 	struct list_head list;
+	struct rr_fragment *first;
+	struct rr_fragment *last;
 	struct rr_header hdr;
-	void *data;
-	uint32_t data_len;
-#if 0
-	/* message id and packet chain for reassembly */
 	uint32_t mid;
-	struct list_head chain;
-#endif
+	uint32_t length;
 };
 
 #define PACMARK_LAST(n) ((n) & 0x80000000)
@@ -132,6 +135,15 @@ struct rr_remote_endpoint {
 struct msm_rpc_endpoint {
 	struct list_head list;
 
+	/* incomplete packets waiting for assembly */
+	struct list_head incomplete;
+
+	/* complete packets waiting to be read */
+	struct list_head read_q;
+	spinlock_t read_q_lock;
+	wait_queue_head_t wait_q;
+
+	/* endpoint address */
 	uint32_t pid;
 	uint32_t cid;
 
@@ -153,17 +165,15 @@ struct msm_rpc_endpoint {
 	uint32_t reply_cid;
 	uint32_t reply_xid; /* be32 */
 
-	/* queue of inbound packets */
-	spinlock_t read_q_lock;
-	struct list_head read_q;
-
-	wait_queue_head_t wait_q;
-
 	/* device node if this endpoint is accessed via userspace */
 	dev_t dev;
 };
 
 /* shared between smd_rpcrouter*.c */
+
+int __msm_rpc_read(struct msm_rpc_endpoint *ept,
+		   struct rr_fragment **frag,
+		   unsigned len, long timeout);
 
 struct msm_rpc_endpoint *msm_rpcrouter_create_local_endpoint(dev_t dev);
 int msm_rpcrouter_destroy_local_endpoint(struct msm_rpc_endpoint *ept);

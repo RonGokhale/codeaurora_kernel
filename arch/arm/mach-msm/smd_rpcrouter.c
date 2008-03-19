@@ -15,11 +15,11 @@
  *
  */
 
-/* TODO: reassembly */
+/* TODO: fragmentation for large writes */
 /* TODO: handle cases where smd_write() will tempfail due to full fifo */
-/* TODO: better pacmark handling on read to avoid memmove() yuck yuck yuck! */
 /* TODO: thread priority? schedule a work to bump it? */
 /* TODO: maybe make server_list_lock a mutex */
+/* TODO: pool fragments to avoid kmalloc/kfree churn */
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -50,6 +50,8 @@
 #define MSM_RPCROUTER_R2R_DEBUG 0
 #define DUMP_ALL_RECEIVED_HEADERS 0
 
+#define DIAG(x...) printk("[RR] ERROR " x)
+
 #if MSM_RPCROUTER_DEBUG
 #define D(x...) printk(x)
 #else
@@ -76,6 +78,7 @@ static LIST_HEAD(server_list);
 static smd_channel_t *smd_channel;
 static int initialized;
 static wait_queue_head_t newserver_wait;
+static wait_queue_head_t smd_wait;
 
 static DEFINE_SPINLOCK(local_endpoints_lock);
 static DEFINE_SPINLOCK(remote_endpoints_lock);
@@ -274,6 +277,7 @@ struct msm_rpc_endpoint *msm_rpcrouter_create_local_endpoint(dev_t dev)
 	init_waitqueue_head(&ept->wait_q);
 	INIT_LIST_HEAD(&ept->read_q);
 	spin_lock_init(&ept->read_q_lock);
+	INIT_LIST_HEAD(&ept->incomplete);
 
 	spin_lock_irqsave(&local_endpoints_lock, flags);
 	list_add_tail(&ept->list, &local_endpoints);
@@ -353,18 +357,17 @@ static struct rr_remote_endpoint *rpcrouter_lookup_remote_endpoint(uint32_t cid)
 	return NULL;
 }
 
-static int process_control_msg(struct rr_packet *pkt)
+static int process_control_msg(union rr_control_msg *msg, int len)
 {
-	union rr_control_msg *msg = pkt->data;
 	union rr_control_msg ctl;
 	struct rr_server *server;
 	struct rr_remote_endpoint *r_ept;
 	int rc = 0;
 	unsigned long flags;
 
-	if (pkt->data_len != sizeof(*msg)) {
+	if (len != sizeof(*msg)) {
 		printk(KERN_ERR "rpcrouter: r2r msg size %d != %d\n",
-		       pkt->data_len, sizeof(*msg));
+		       len, sizeof(*msg));
 		return -EINVAL;
 	}
 
@@ -522,7 +525,7 @@ static void rpcrouter_smdnotify(void *_dev, unsigned event)
 	if (event != SMD_EVENT_DATA)
 		return;
 
-	queue_work(rpcrouter_workqueue, &work_read_data);
+	wake_up(&smd_wait);
 }
 
 static void *rr_malloc(unsigned sz)
@@ -539,152 +542,143 @@ static void *rr_malloc(unsigned sz)
 	return ptr;
 }
 
-static void process_packet(struct rr_packet *pkt)
+/* TODO: deal with channel teardown / restore */
+static int rr_read(void *data, int len)
 {
+	int rc;
 	unsigned long flags;
-	struct msm_rpc_endpoint *ept;
-	uint32_t n;
-
-	if (pkt->hdr.type != RPCROUTER_CTRL_CMD_DATA) {
-		process_control_msg(pkt);
-		return;
-	}
-
-	if (pkt->hdr.dst_pid != RPCROUTER_PID_LOCAL) {
-		printk(KERN_WARNING "rpcrouter: rejecting nonlocal packet\n");
-		goto fail;
-	}
-
-	RR("o DATA %d bytes\n", pkt->data_len);
-
-	ept = rpcrouter_lookup_local_endpoint(pkt->hdr.dst_cid);
-	if (!ept) {
-		printk(KERN_ERR "rpcrouter: no local ept for cid=%08x\n",
-		       pkt->hdr.dst_cid);
-		goto fail;
-	}
-
-	if (!rpcrouter_lookup_remote_endpoint(pkt->hdr.src_cid)) {
-		int rc = rpcrouter_create_remote_endpoint(pkt->hdr.src_cid);
-		if (rc < 0) {
-			printk(KERN_ERR
-			       "rpcrouter: cannot create remote ept\n");
-			goto fail;
+//	printk("rr_read() %d\n", len);
+	for(;;) {
+		spin_lock_irqsave(&smd_lock, flags);
+		if (smd_read_avail(smd_channel) >= len) {
+			rc = smd_read(smd_channel, data, len);
+			spin_unlock_irqrestore(&smd_lock, flags);
+			if (rc == len)
+				return 0;
+			else
+				return -EIO;
 		}
-	}
+		spin_unlock_irqrestore(&smd_lock, flags);
 
-	/* validate data packet */
-	if (pkt->data_len < sizeof(n)) {
-		printk(KERN_ERR "rpcrouter: runt packet (%d bytes)\n",
-		       pkt->data_len);
-		goto fail;
-	}
-	memcpy(&n, pkt->data, sizeof(n));
-
-	if (!PACMARK_LAST(n)) {
-		printk(KERN_ERR "rpcrouter: fragments not supported\n");
-		goto fail;
-	}
-	if (PACMARK_LEN(n) != (pkt->data_len - sizeof(n))) {
-		printk(KERN_ERR "rpcrouter: headers mismatched (%d != %d)\n",
-		       PACMARK_LEN(n), pkt->data_len - sizeof(n));
-		goto fail;
-	}
-
-	RR("o DATA %d bytes to ept=%p %d:%08x\n", pkt->data_len,
-	   ept, pkt->hdr.dst_pid, pkt->hdr.dst_cid);
-	/* enqueue packet */
-	spin_lock_irqsave(&ept->read_q_lock, flags);
-	list_add_tail(&pkt->list, &ept->read_q);
-	spin_unlock_irqrestore(&ept->read_q_lock, flags);
-
-	wake_up_interruptible(&ept->wait_q);
-	return;
-fail:
-	kfree(pkt->data);
-	kfree(pkt);
-}
-
-static int is_invalid_header(struct rr_header *hdr)
-{
-#if TRACE_R2R_RAW
-	RR("- ver=%d type=%d src=%d:%08x crx=%d siz=%d dst=%d:%08x\n",
-	   hdr->version, hdr->type, hdr->src_pid, hdr->src_cid,
-	   hdr->confirm_rx, hdr->size, hdr->dst_pid, hdr->dst_cid);
-#endif
-	if (hdr->size > RPCROUTER_MSGSIZE_MAX) {
-		printk(KERN_ERR "rpcrouter: msg size %d > max %d\n",
-		       hdr->size, RPCROUTER_MSGSIZE_MAX);
-		return 1;
-	}
-	if (hdr->version != RPCROUTER_VERSION) {
-		printk(KERN_ERR "rpcrouter: version %d != %d\n",
-		       hdr->version, RPCROUTER_VERSION);
-		return 1;
+//		printk("rr_read: waiting (%d)\n", len);
+		wait_event(smd_wait, smd_read_avail(smd_channel) >= len);
 	}
 	return 0;
 }
 
-/* process data from the SMD channel and assemble packets */
+static uint32_t r2r_buf[RPCROUTER_MSGSIZE_MAX];
+
 static void do_read_data(struct work_struct *work)
 {
-	struct rr_context *ctxt = &the_rr_context;
-	struct rr_packet *pkt = ctxt->pkt;
-	int rc;
+	struct rr_header hdr;
+	struct rr_packet *pkt;
+	struct rr_fragment *frag;
+	struct msm_rpc_endpoint *ept;
+	uint32_t pm, mid;
+	unsigned long flags;
 
-	for (;;) {
-		switch (ctxt->state) {
-		case RR_STATE_IDLE:
-			ctxt->pkt = pkt = rr_malloc(sizeof(struct rr_packet));
-			ctxt->ptr = (void *) &pkt->hdr;
-			ctxt->count = sizeof(pkt->hdr);
-			ctxt->state = RR_STATE_HEADER;
-			/* fall through */
+	if (rr_read(&hdr, sizeof(hdr)))
+		goto fail_io;
 
-		case RR_STATE_HEADER:
-		case RR_STATE_BODY:
-			/* TODO is this safe in non-irq context? */
-			rc = smd_read(smd_channel, ctxt->ptr, ctxt->count);
-			if (rc < 1) {
-				if (rc == 0)
-					return;
+#if TRACE_R2R_RAW
+	RR("- ver=%d type=%d src=%d:%08x crx=%d siz=%d dst=%d:%08x\n",
+	   hdr.version, hdr.type, hdr.src_pid, hdr.src_cid,
+	   hdr.confirm_rx, hdr.size, hdr.dst_pid, hdr.dst_cid);
+#endif
 
-				printk(KERN_ERR
-				       "rpcrouter: smd_read err %d\n", rc);
-				ctxt->state = RR_STATE_ERROR;
-				continue;
+	if (hdr.version != RPCROUTER_VERSION) {
+		DIAG("version %d != %d\n", hdr.version, RPCROUTER_VERSION);
+		goto fail_data;
+	}
+	if (hdr.size > RPCROUTER_MSGSIZE_MAX) {
+		DIAG("msg size %d > max %d\n", hdr.size, RPCROUTER_MSGSIZE_MAX);
+		goto fail_data;
+	}
+
+	if (hdr.dst_cid == RPCROUTER_ROUTER_ADDRESS) {
+		if (rr_read(r2r_buf, hdr.size))
+			goto fail_io;
+		process_control_msg((void*) r2r_buf, hdr.size);
+		goto done;
+	}
+
+	if (hdr.size < sizeof(pm)) {
+		DIAG("runt packet (no pacmark)\n");
+		goto fail_data;
+	}
+	if (rr_read(&pm, sizeof(pm)))
+		goto fail_io;
+
+	hdr.size -= sizeof(pm);
+
+	frag = rr_malloc(hdr.size + sizeof(*frag));
+	frag->next = NULL;
+	frag->length = hdr.size;
+	if (rr_read(frag->data, hdr.size))
+		goto fail_io;
+
+	ept = rpcrouter_lookup_local_endpoint(hdr.dst_cid);
+	if (!ept) {
+		DIAG("no local ept for cid %08x\n", hdr.dst_cid);
+		kfree(frag);
+		goto done;
+	}
+	
+	/* See if there is already a partial packet that matches our mid
+	 * and if so, append this fragment to that packet.
+	 */
+	mid = PACMARK_MID(pm);    
+	list_for_each_entry(pkt, &ept->incomplete, list) {
+		if (pkt->mid == mid) {
+			pkt->last->next = frag;
+			pkt->last = frag;
+			pkt->length += frag->length;
+			if (PACMARK_LAST(pm)) {
+				list_del(&pkt->list);
+				goto packet_complete;
 			}
-			ctxt->ptr += rc;
-			ctxt->count -= rc;
-			if (ctxt->count != 0)
-				continue;
-
-			if (ctxt->state == RR_STATE_HEADER) {
-				if (is_invalid_header(&pkt->hdr)) {
-					ctxt->state = RR_STATE_ERROR;
-					continue;
-				}
-				pkt->data_len = pkt->hdr.size;
-				pkt->data = rr_malloc(pkt->data_len);
-				ctxt->count = pkt->data_len;
-				ctxt->ptr = pkt->data;
-				ctxt->state = RR_STATE_BODY;
-			} else {
-				process_packet(pkt);
-				ctxt->pkt = NULL;
-				ctxt->state = RR_STATE_IDLE;
-			}
-			continue;
-
-		case RR_STATE_ERROR:
-			/* TODO: restart if we can */
-			return;
-
-		default:
-			printk(KERN_ERR "inavlid rr ctxt state\n");
-			BUG();
+			goto done;
 		}
 	}
+
+	/* This mid is new -- create a packet for it, and put it on
+	 * the incomplete list if this fragment is not a last fragment,
+	 * otherwise put it on the read queue.
+	 */
+	pkt = rr_malloc(sizeof(struct rr_packet));
+	pkt->first = frag;
+	pkt->last = frag;
+	memcpy(&pkt->hdr, &hdr, sizeof(hdr));
+	pkt->mid = mid;
+	pkt->length = frag->length;
+	if (!PACMARK_LAST(pm)) {
+		list_add_tail(&pkt->list, &ept->incomplete);
+		goto done;
+	}
+
+packet_complete:
+	spin_lock_irqsave(&ept->read_q_lock, flags);
+	list_add_tail(&pkt->list, &ept->read_q);
+	wake_up_interruptible(&ept->wait_q);
+	spin_unlock_irqrestore(&ept->read_q_lock, flags);
+done:
+	if (hdr.confirm_rx) {
+		union rr_control_msg msg;
+
+		msg.cmd = RPCROUTER_CTRL_CMD_RESUME_TX;
+		msg.cli.pid = hdr.dst_pid;
+		msg.cli.cid = hdr.dst_cid;
+	
+		RR("x RESUME_TX id=%d:%08x\n", msg.cli.pid, msg.cli.cid);
+		rpcrouter_send_control_msg(&msg);
+	}
+
+	queue_work(rpcrouter_workqueue, &work_read_data);
+	return;
+
+fail_io:
+fail_data:
+	printk(KERN_ERR "rpc_router has died\n");
 }
 
 void msm_rpc_setup_req(struct rpc_request_hdr *hdr, uint32_t prog,
@@ -725,7 +719,8 @@ int msm_rpc_write(struct msm_rpc_endpoint *ept, void *buffer, int count)
 	int needed;
 	DEFINE_WAIT(__wait);
 
-	if (count > RPCROUTER_MSGSIZE_MAX || !count)
+	/* TODO: fragmentation for large outbound packets */
+	if (count > (RPCROUTER_MSGSIZE_MAX - sizeof(uint32_t)) || !count)
 		return -EINVAL;
 
 	/* snoop the RPC packet and enforce permissions */
@@ -851,6 +846,45 @@ int msm_rpc_write(struct msm_rpc_endpoint *ept, void *buffer, int count)
 	return count;
 }
 
+/*
+ * NOTE: It is the responsibility of the caller to kfree buffer
+ */
+int msm_rpc_read(struct msm_rpc_endpoint *ept, void **buffer,
+		 unsigned user_len, long timeout)
+{
+	struct rr_fragment *frag, *next;
+	char *buf;
+	int rc;
+
+	rc = __msm_rpc_read(ept, &frag, user_len, timeout);
+	if (rc <= 0)
+		return rc;
+
+	/* single-fragment messages conveniently can be
+	 * returned as-is (the buffer is at the front)
+	 */
+	if (frag->next == 0) {
+		*buffer = (void*) frag;
+		return rc;
+	}
+
+	/* multi-fragment messages, we have to do it the
+	 * hard way, which is rather disgusting right now
+	 */
+	buf = rr_malloc(rc);
+	*buffer = buf;
+
+	while (frag != NULL) {
+		memcpy(buf, frag->data, frag->length);
+		next = frag->next;
+		buf += frag->length;
+		kfree(frag);
+		frag = next;
+	}
+
+	return rc;
+}
+
 static inline int ept_packet_available(struct msm_rpc_endpoint *ept)
 {
 	unsigned long flags;
@@ -861,11 +895,9 @@ static inline int ept_packet_available(struct msm_rpc_endpoint *ept)
 	return ret;
 }
 
-/*
- * NOTE: It is the responsibility of the caller to kfree buffer
- */
-int msm_rpc_read(struct msm_rpc_endpoint *ept, void **buffer,
-		 unsigned user_len, long timeout)
+int __msm_rpc_read(struct msm_rpc_endpoint *ept,
+		   struct rr_fragment **frag_ret,
+		   unsigned len, long timeout)
 {
 	struct rr_packet *pkt;
 	struct rpc_request_hdr *rq;
@@ -894,19 +926,17 @@ int msm_rpc_read(struct msm_rpc_endpoint *ept, void **buffer,
 		return -EAGAIN;
 	}
 	pkt = list_first_entry(&ept->read_q, struct rr_packet, list);
-	if (pkt->data_len > user_len) {
+	if (pkt->length > len) {
 		spin_unlock_irqrestore(&ept->read_q_lock, flags);
 		return -ETOOSMALL;
 	}
 	list_del(&pkt->list);
 	spin_unlock_irqrestore(&ept->read_q_lock, flags);
 
-	/* XXX THIS SUUUUUCKS - FIX DURING READ */
-	rc = pkt->data_len - sizeof(uint32_t);
-	memmove(pkt->data, ((char *) pkt->data) + sizeof(uint32_t), rc);
-	*buffer = pkt->data;
+	rc = pkt->length;
 
-	rq = pkt->data;
+	*frag_ret = pkt->first;
+	rq = (void*) pkt->first->data;
 	if ((rc >= (sizeof(uint32_t) * 3)) && (rq->type == 0)) {
 		/* RPC CALL */
 		if (ept->reply_pid != 0xffffffff) {
@@ -919,18 +949,8 @@ int msm_rpc_read(struct msm_rpc_endpoint *ept, void **buffer,
 		ept->reply_xid = rq->xid;
 	}
 
-	if (pkt->hdr.confirm_rx) {
-		union rr_control_msg msg;
-
-		msg.cmd = RPCROUTER_CTRL_CMD_RESUME_TX;
-		msg.cli.pid = ept->pid;
-		msg.cli.cid = ept->cid;
-
-		RR("x RESUME_TX id=%d:%08x\n", msg.cli.pid, msg.cli.cid);
-		rpcrouter_send_control_msg(&msg);
-	}
-
 	kfree(pkt);
+
 	IO("READ on ept %p (%d bytes)\n", ept, rc);
 	return rc;
 }
@@ -1008,6 +1028,7 @@ static int msm_rpcrouter_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&remote_endpoints);
 
 	init_waitqueue_head(&newserver_wait);
+	init_waitqueue_head(&smd_wait);
 
 	rpcrouter_workqueue = create_singlethread_workqueue("rpcrouter");
 	if (!rpcrouter_workqueue)
@@ -1023,6 +1044,7 @@ static int msm_rpcrouter_probe(struct platform_device *pdev)
 	if (rc < 0)
 		goto fail_remove_devices;
 
+	queue_work(rpcrouter_workqueue, &work_read_data);
 	return 0;
 
 fail_remove_devices:

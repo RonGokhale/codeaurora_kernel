@@ -72,28 +72,29 @@ static ssize_t rpcrouter_read(struct file *filp, char __user *buf,
 			      size_t count, loff_t *ppos)
 {
 	struct msm_rpc_endpoint *ept;
+	struct rr_fragment *frag, *next;
 	int rc;
-	void *buffer;
 
 	ept = (struct msm_rpc_endpoint *) filp->private_data;
 
-	/* TODO: this doesn't make sense for large/small packets */
-	if (count < RPCROUTER_MSGSIZE_MAX)
-		return -EINVAL;
-
-	rc = msm_rpc_read(ept, &buffer, count, -1);
+	rc = __msm_rpc_read(ept, &frag, count, -1);
 	if (rc < 0)
 		return rc;
 
 	count = rc;
 
-	if (copy_to_user(buf, buffer, count)) {
-		printk(KERN_ERR
-		       "rpcrouter: could not copy all read data to user!\n");
-		rc = -EFAULT;
+	while (frag != NULL) {		
+		if (copy_to_user(buf, frag->data, frag->length)) {
+			printk(KERN_ERR
+			       "rpcrouter: could not copy all read data to user!\n");
+			rc = -EFAULT;
+		}
+		buf += frag->length;
+		next = frag->next;
+		kfree(frag);
+		frag = next;
 	}
 
-	kfree(buffer);
 	return rc;
 }
 
