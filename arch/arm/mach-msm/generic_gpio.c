@@ -13,6 +13,8 @@
  *
  */
 
+#include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/errno.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
@@ -142,7 +144,7 @@ int gpio_request(unsigned gpio, const char *label)
 {
 	return request_gpio(gpio, 0);
 }
-
+EXPORT_SYMBOL(gpio_request);
 
 void gpio_free(unsigned gpio)
 {
@@ -158,6 +160,7 @@ void gpio_free(unsigned gpio)
 	}
 	spin_unlock_irqrestore(&gpio_chips_lock, irq_flags);
 }
+EXPORT_SYMBOL(gpio_free);
 
 static int gpio_get_irq_num(unsigned int gpio, unsigned int *irqp, unsigned long *irqnumflagsp)
 {
@@ -181,6 +184,7 @@ int gpio_to_irq(unsigned gpio)
 		return ret;
 	return irq;
 }
+EXPORT_SYMBOL(gpio_to_irq);
 
 int gpio_configure(unsigned int gpio, unsigned long flags)
 {
@@ -195,17 +199,20 @@ int gpio_configure(unsigned int gpio, unsigned long flags)
 	spin_unlock_irqrestore(&gpio_chips_lock, irq_flags);
 	return ret;
 }
+EXPORT_SYMBOL(gpio_configure);
 
 int gpio_direction_input(unsigned gpio)
 {
 	return gpio_configure(gpio, GPIOF_INPUT);
 }
+EXPORT_SYMBOL(gpio_direction_input);
 
 int gpio_direction_output(unsigned gpio, int value)
 {
 	gpio_set_value(gpio, value);
 	return gpio_configure(gpio, GPIOF_DRIVE_OUTPUT);
 }
+EXPORT_SYMBOL(gpio_direction_output);
 
 int gpio_get_value(unsigned gpio)
 {
@@ -220,6 +227,7 @@ int gpio_get_value(unsigned gpio)
 	spin_unlock_irqrestore(&gpio_chips_lock, irq_flags);
 	return ret;
 }
+EXPORT_SYMBOL(gpio_get_value);
 
 void gpio_set_value(unsigned gpio, int on)
 {
@@ -233,6 +241,7 @@ void gpio_set_value(unsigned gpio, int on)
 		ret = chip->write(chip, gpio, on);
 	spin_unlock_irqrestore(&gpio_chips_lock, irq_flags);
 }
+EXPORT_SYMBOL(gpio_set_value);
 
 int gpio_read_detect_status(unsigned int gpio)
 {
@@ -247,6 +256,7 @@ int gpio_read_detect_status(unsigned int gpio)
 	spin_unlock_irqrestore(&gpio_chips_lock, irq_flags);
 	return ret;
 }
+EXPORT_SYMBOL(gpio_read_detect_status);
 
 int gpio_clear_detect_status(unsigned int gpio)
 {
@@ -261,4 +271,4 @@ int gpio_clear_detect_status(unsigned int gpio)
 	spin_unlock_irqrestore(&gpio_chips_lock, irq_flags);
 	return ret;
 }
-
+EXPORT_SYMBOL(gpio_clear_detect_status);
