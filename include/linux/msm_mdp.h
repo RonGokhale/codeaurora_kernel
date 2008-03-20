@@ -46,7 +46,7 @@ enum {
 #define MDP_ROT_270 (MDP_ROT_90|MDP_FLIP_UD|MDP_FLIP_LR)
 
 #define MDP_TRANSP_NOP 0xffffffff
-#define MDP_ALPHA_NOP 0x100
+#define MDP_ALPHA_NOP 0xff
 
 struct mdp_rect {
 	uint32_t x;

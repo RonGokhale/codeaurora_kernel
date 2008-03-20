@@ -221,6 +221,7 @@ static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 	
 	if (dim_out % 3 == 0)
 		rpa = !(dim_in % (dim_out / 3));
+	DLOG("out %u in %u rpa %x\n", dim_out, dim_in, rpa);
 
 	n = ((uint64_t)dim_out) << 34;
 	d = dim_in;
@@ -234,7 +235,7 @@ static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 		return -1;
 	}
 	n = ((uint64_t)dim_in) << 34;
-	d = dim_out;
+	d = (uint64_t)dim_out;
 	if (!d)
 		return -1;
 	do_div(n, d);
@@ -602,7 +603,7 @@ static void flush_imgs(struct mdp_blit_req *req, struct mdp_regs *regs)
 	}
 }
 
-#define WRITEL(v, a) do { writel(v,a); DLOG(#a "[%x]=%x\n", a, v); }\
+#define WRITEL(v, a) do { writel(v,a); /*DLOG(#a "[%x]=%x\n", a, v);*/ }\
 		     while (0)
 int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 {
@@ -716,12 +717,18 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	}
 
 	regs.op = 0;
-	if (req->rotation != MDP_ROT_NOP)
+	if (req->rotation != MDP_ROT_NOP) {
 		blit_rotate(req, &regs);
-	if (req->src.format != req->dst.format)
+		DLOG("rotating\n");
+	}
+	if (req->src.format != req->dst.format) {
 		blit_convert(req, &regs);
-	if (req->transp_mask != MDP_TRANSP_NOP || req->alpha != MDP_ALPHA_NOP)
+		DLOG("converting\n");
+	}
+	if (req->transp_mask != MDP_TRANSP_NOP || req->alpha < MDP_ALPHA_NOP) {
 		blit_blend(req, &regs);
+		DLOG("blending %x %x\n", req->transp_mask, req->alpha);
+	}
 
 	if (req->rotation & MDP_ROT_90) {
 		dst_w = req->dst_rect.h;
@@ -785,7 +792,6 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	WRITEL(regs.dst1, PPP_ADDR_DST1);
 	WRITEL(regs.dst_ystride, PPP_ADDR_DST_YSTRIDE);
 
-	DLOG("EDGE %x\n", regs.edge);
 	WRITEL(regs.edge, PPP_ADDR_EDGE);
 
 	if (regs.op & PPP_OP_BLEND_ON) {
