@@ -23,6 +23,7 @@
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/spinlock.h>
+#include <linux/clk.h>
 
 #include <asm/io.h>
 #include <asm/arch/msm_iomap.h>
@@ -70,6 +71,8 @@ struct mddi_info
 	uint16_t version;
 	uint32_t base;
 	int irq;
+	struct clk *clk;
+	unsigned long clk_rate;
 
 	/* buffer for rev encap packets */
 	void *rev_data;
@@ -394,6 +397,7 @@ static void mddi_early_suspend(android_early_suspend_t *h)
 		mddi->panel_power(&mddi->panel_info, 0);
 	if (mddi->mddi_client_power)
 		mddi->mddi_client_power(0);
+	/* disable the clk? */
 }
 
 static void mddi_early_resume(android_early_suspend_t *h)
@@ -401,6 +405,14 @@ static void mddi_early_resume(android_early_suspend_t *h)
 	struct mddi_info *mddi = container_of(h, struct mddi_info, early_suspend);
 	if (mddi->mddi_client_power)
 		mddi->mddi_client_power(1);
+
+	clk_enable(mddi->clk);
+	if (clk_set_rate(mddi->clk, mddi->clk_rate))
+		printk(KERN_INFO "mddi: clk rate not reset, tried %lu\n",
+		       mddi->clk_rate);
+	/* hack to set clock rate until the clock api is fixed */
+	writel(0xa0c, 0xe000a08c);
+
 	if (mddi->panel_power) {
 		mddi_writel(MDDI_CMD_HIBERNATE | 0, CMD);
 		mddi->panel_power(&mddi->panel_info, 1);
@@ -410,6 +422,7 @@ static void mddi_early_resume(android_early_suspend_t *h)
 #endif
 
 static int __init mddi_init(struct mddi_info *mddi, const char *name,
+			    const char *clk_name, unsigned long clk_rate,
 			    struct msm_mddi_platform_data *pd,
 			    uint32_t base, int irq)
 {
@@ -437,6 +450,26 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 		if (pd->has_vsync_irq)
 			mddi->flags |= FLAG_HAS_VSYNC_IRQ;
 	}
+	mddi->clk = clk_get(&mddi->panel_pdev.dev, clk_name);
+	if (IS_ERR(mddi->clk)) {
+		ret = PTR_ERR(mddi->clk);
+		printk(KERN_INFO "mddi: failed to get clock\n");
+		goto fail;
+	}
+
+	mddi->clk_rate = clk_rate;
+	ret = clk_set_rate(mddi->clk, mddi->clk_rate);
+	if (ret) {
+		printk(KERN_INFO "mddi: clk rate requested %lu got %lu\n",
+		       mddi->clk_rate, clk_get_rate(mddi->clk));
+		goto fail0;
+	}
+	/* hack to set clock rate until the clock api is fixed */
+	writel(0xa0c, 0xe000a08c);
+
+	ret =  clk_enable(mddi->clk);
+	if (ret)
+		goto fail0;
 
 	dma = dma_alloc_coherent(NULL, 0x1000, &dma_addr, GFP_KERNEL);
 	if (dma == 0) {
@@ -566,6 +599,8 @@ fail2:
 fail1:
 	dma_free_coherent(NULL, 0x1000, dma, dma_addr);
 fail0:
+	clk_put(mddi->clk);
+fail:
 	printk(KERN_INFO "%s: mddi_init() failed (%d)\n", name, ret);
 	return ret;
 }
@@ -711,6 +746,8 @@ int mddi_add_panel(struct mddi_info *mddi, struct mddi_panel_ops *ops)
 
 static struct mddi_info mddi_pmdh;
 static struct mddi_info mddi_emdh;
+#define MDDI_PMDH_CLK_RATE 122880000
+#define MDDI_EMDH_CLK_RATE 122880000
 
 static int __init mddi_probe(struct platform_device *pdev)
 {
@@ -718,10 +755,12 @@ static int __init mddi_probe(struct platform_device *pdev)
 
 	switch (pdev->id) {
 	case 0:
-		return mddi_init(&mddi_pmdh, "mddi_pmdh", pd,
+		return mddi_init(&mddi_pmdh, "mddi_pmdh", "pmdh_clk",
+				 MDDI_PMDH_CLK_RATE, pd,
 				 MSM_PMDH_BASE, INT_MDDI_PRI);
 	case 1:
-		return mddi_init(&mddi_emdh, "mddi_emdh", pd,
+		return mddi_init(&mddi_emdh, "mddi_emdh", "emdh_clk",
+				 MDDI_EMDH_CLK_RATE, pd,
 				 MSM_EMDH_BASE, INT_MDDI_EXT);
 	default:
 		return -ENODEV;
