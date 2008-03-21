@@ -32,8 +32,6 @@
 
 int get_pmem_file(unsigned long fd, unsigned long *start, unsigned long *end);
 void put_pmem_file(unsigned long fd);
-EXPORT_SYMBOL(get_pmem_file);
-EXPORT_SYMBOL(put_pmem_file);
 void flush_pmem_file(unsigned long fd, unsigned long start, unsigned long len);
 
 struct pmem_region {
