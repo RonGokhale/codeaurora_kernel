@@ -1,0 +1,9 @@
+menu "Android"
+
+config ANDROID_PMEM
+	bool "Android pmem allocator"
+	default y
+	help
+		none
+
+endmenu
