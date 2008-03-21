@@ -431,7 +431,8 @@
 					PPP_##dir##_PACK_ALIGN_LSB | \
 					PPP_##dir##_PLANE_INTERLVD
 
-#define PPP_CFG_MDP_XRGB_8888 PPP_CFG_MDP_ARGB_8888
+#define PPP_CFG_MDP_XRGB_8888(dir) PPP_CFG_MDP_ARGB_8888(dir)
+#define PPP_CFG_MDP_RGBA_8888(dir) PPP_CFG_MDP_ARGB_8888(dir)
 
 #define PPP_CFG_MDP_Y_CBCR_H2V2(dir)	PPP_##dir##_C2R_8BIT | \
 					PPP_##dir##_C0G_8BIT | \
@@ -473,6 +474,8 @@
 #define PPP_PACK_PATTERN_MDP_XRGB_8888 \
 	MDP_GET_PACK_PATTERN(CLR_ALPHA, CLR_R, CLR_G, CLR_B, 8)
 #define PPP_PACK_PATTERN_MDP_ARGB_8888 PPP_PACK_PATTERN_MDP_XRGB_8888
+#define PPP_PACK_PATTERN_MDP_RGBA_8888 \
+	MDP_GET_PACK_PATTERN(CLR_R, CLR_G, CLR_B, CLR_ALPHA, 8)
 #define PPP_PACK_PATTERN_MDP_Y_CBCR_H2V1 \
 	MDP_GET_PACK_PATTERN(0, 0, CLR_CB, CLR_CR, 8)
 #define PPP_PACK_PATTERN_MDP_Y_CBCR_H2V2 PPP_PACK_PATTERN_MDP_Y_CBCR_H2V1
@@ -486,6 +489,7 @@
 #define PPP_CHROMA_SAMP_MDP_RGB_888(dir) PPP_OP_##dir##_CHROMA_RGB
 #define PPP_CHROMA_SAMP_MDP_XRGB_8888(dir) PPP_OP_##dir##_CHROMA_RGB
 #define PPP_CHROMA_SAMP_MDP_ARGB_8888(dir) PPP_OP_##dir##_CHROMA_RGB
+#define PPP_CHROMA_SAMP_MDP_RGBA_8888(dir) PPP_OP_##dir##_CHROMA_RGB
 #define PPP_CHROMA_SAMP_MDP_Y_CBCR_H2V1(dir) PPP_OP_##dir##_CHROMA_H2V1
 #define PPP_CHROMA_SAMP_MDP_Y_CBCR_H2V2(dir) PPP_OP_##dir##_CHROMA_420
 #define PPP_CHROMA_SAMP_MDP_Y_CRCB_H2V1(dir) PPP_OP_##dir##_CHROMA_H2V1
@@ -498,6 +502,7 @@
 	[MDP_RGB_888] = PPP_##name##_MDP_RGB_888,\
 	[MDP_XRGB_8888] = PPP_##name##_MDP_XRGB_8888,\
 	[MDP_ARGB_8888] = PPP_##name##_MDP_ARGB_8888,\
+	[MDP_RGBA_8888] = PPP_##name##_MDP_RGBA_8888,\
 	[MDP_Y_CBCR_H2V1] = PPP_##name##_MDP_Y_CBCR_H2V1,\
 	[MDP_Y_CBCR_H2V2] = PPP_##name##_MDP_Y_CBCR_H2V2,\
 	[MDP_Y_CRCB_H2V1] = PPP_##name##_MDP_Y_CRCB_H2V1,\
@@ -509,6 +514,7 @@
 	[MDP_RGB_888] = PPP_##name##_MDP_RGB_888(dir),\
 	[MDP_XRGB_8888] = PPP_##name##_MDP_XRGB_8888(dir),\
 	[MDP_ARGB_8888] = PPP_##name##_MDP_ARGB_8888(dir),\
+	[MDP_RGBA_8888] = PPP_##name##_MDP_RGBA_8888(dir),\
 	[MDP_Y_CBCR_H2V1] = PPP_##name##_MDP_Y_CBCR_H2V1(dir),\
 	[MDP_Y_CBCR_H2V2] = PPP_##name##_MDP_Y_CBCR_H2V2(dir),\
 	[MDP_Y_CRCB_H2V1] = PPP_##name##_MDP_Y_CRCB_H2V1(dir),\
@@ -519,7 +525,8 @@
 		       (img == MDP_Y_CRCB_H2V1) | (img == MDP_Y_CBCR_H2V1) | \
 		       (img == MDP_YCRYCB_H2V1))
 #define IS_RGB(img) ((img == MDP_RGB_565) | (img == MDP_RGB_888) | \
-		     (img == MDP_ARGB_8888) | (img == MDP_XRGB_8888))
+		     (img == MDP_ARGB_8888) | (img == MDP_RGBA_8888) | \
+		     (img == MDP_XRGB_8888))
 
 /* Mappings from addr to purpose */
 #define PPP_ADDR_SRC_ROI		MDP_FULL_BYPASS_WORD2

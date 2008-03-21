@@ -70,6 +70,7 @@ static uint32_t bytes_per_pixel[] = {
 	[MDP_RGB_888] = 3,
 	[MDP_XRGB_8888] = 4,
 	[MDP_ARGB_8888] = 4,
+	[MDP_RGBA_8888] = 4,
 	[MDP_Y_CBCR_H2V1] = 1,
 	[MDP_Y_CBCR_H2V2] = 1,
 	[MDP_Y_CRCB_H2V1] = 1,
@@ -603,7 +604,7 @@ static void flush_imgs(struct mdp_blit_req *req, struct mdp_regs *regs)
 	}
 }
 
-#define WRITEL(v, a) do { writel(v,a); /*DLOG(#a "[%x]=%x\n", a, v);*/ }\
+#define WRITEL(v, a) do { writel(v,a); DLOG(#a "[%x]=%x\n", a, v); }\
 		     while (0)
 int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 {
@@ -749,7 +750,8 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		regs.phasey_step = 0;
 	}
 
-	if (unlikely(req->src.format == MDP_ARGB_8888))
+	if (unlikely(req->src.format == MDP_ARGB_8888 ||
+                     req->src.format == MDP_RGBA_8888))
 		regs.op |= PPP_OP_ROT_ON | PPP_OP_BLEND_ON |
 			   PPP_OP_BLEND_SRCPIXEL_ALPHA;
 
