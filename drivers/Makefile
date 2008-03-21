@@ -6,6 +6,7 @@
 #
 
 obj-$(CONFIG_HAVE_GPIO_LIB)	+= gpio/
+obj-y				+= android/
 obj-$(CONFIG_PCI)		+= pci/
 obj-$(CONFIG_PARISC)		+= parisc/
 obj-$(CONFIG_RAPIDIO)		+= rapidio/
