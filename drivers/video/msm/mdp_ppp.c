@@ -112,17 +112,17 @@ static void blit_rotate(struct mdp_blit_req *req,
 			struct mdp_regs *regs)
 {
 	regs->op |= PPP_OP_ROT_ON;
-	if ((req->rotation & MDP_ROT_90 || req->rotation & MDP_FLIP_LR) &&
-	    !(req->rotation & MDP_ROT_90 && req->rotation & MDP_FLIP_LR))
+	if ((req->flags & MDP_ROT_90 || req->flags & MDP_FLIP_LR) &&
+	    !(req->flags & MDP_ROT_90 && req->flags & MDP_FLIP_LR))
 		rotate_dst_addr_x(req, regs);
-	if (req->rotation & MDP_ROT_90) {
+	if (req->flags & MDP_ROT_90) {
 		regs->op |= PPP_OP_ROT_90;
 	}
-	if (req->rotation & MDP_FLIP_UD) {
+	if (req->flags & MDP_FLIP_UD) {
 		regs->op |= PPP_OP_FLIP_UD;
 		rotate_dst_addr_y(req, regs);
 	}
-	if (req->rotation & MDP_FLIP_LR) {
+	if (req->flags & MDP_FLIP_LR) {
 		regs->op |= PPP_OP_FLIP_LR;
 	}
 }
@@ -441,7 +441,7 @@ static int blit_scale(struct mdp_blit_req *req, struct mdp_regs *regs)
 	uint32_t downscale;
 	uint32_t dst_w, dst_h;
 
-	if (req->rotation & MDP_ROT_90) {
+	if (req->flags & MDP_ROT_90) {
 		dst_w = req->dst_rect.h;
 		dst_h = req->dst_rect.w;
 	} else {
@@ -645,7 +645,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		req->dst.width, req->dst.height,
 		req->dst_rect.x, req->dst_rect.y,
 		req->dst_rect.w, req->dst_rect.h,
-		req->rotation, req->transp_mask, req->alpha);
+		req->flags, req->transp_mask, req->alpha);
 #endif
 
 	/* do this first so that if this fails, the caller can always
@@ -718,7 +718,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	}
 
 	regs.op = 0;
-	if (req->rotation != MDP_ROT_NOP) {
+	if (req->flags != MDP_ROT_NOP) {
 		blit_rotate(req, &regs);
 		DLOG("rotating\n");
 	}
@@ -726,12 +726,17 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		blit_convert(req, &regs);
 		DLOG("converting\n");
 	}
+
+	if (req->flags & MDP_DITHER)
+		regs.op |= PPP_OP_DITHER_EN;
+
+	req->alpha &= 0xff;
 	if (req->transp_mask != MDP_TRANSP_NOP || req->alpha < MDP_ALPHA_NOP) {
 		blit_blend(req, &regs);
 		DLOG("blending %x %x\n", req->transp_mask, req->alpha);
 	}
 
-	if (req->rotation & MDP_ROT_90) {
+	if (req->flags & MDP_ROT_90) {
 		dst_w = req->dst_rect.h;
 		dst_h = req->dst_rect.w;
 	} else {
@@ -750,8 +755,9 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		regs.phasey_step = 0;
 	}
 
-	if (unlikely(req->src.format == MDP_ARGB_8888 ||
-                     req->src.format == MDP_RGBA_8888))
+
+	if (req->src.format == MDP_ARGB_8888 ||
+	    req->src.format == MDP_RGBA_8888)
 		regs.op |= PPP_OP_ROT_ON | PPP_OP_BLEND_ON |
 			   PPP_OP_BLEND_SRCPIXEL_ALPHA;
 
