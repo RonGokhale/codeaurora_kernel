@@ -138,6 +138,7 @@ static struct clk clocks[] = {
 		.name		= "pmdh_clk",
 		.owner		= THIS_MODULE,
 		.id		= PMDH_CLK,
+		.flags = CLKFLAG_USE_MIN_MAX_TO_SET,
 	},
 	{
 		.name		= "sdac_clk",

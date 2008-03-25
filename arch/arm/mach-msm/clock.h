@@ -30,7 +30,8 @@ struct module;
 #define CLKFLAG_NONEST   0x00000004 /* disable nesting of enable/disable */
 #define CLKFLAG_NORESET  0x00000008 /* Prohibit resetting clock */
 
-#define CLK_FIRST_AVAILABLE_FLAG 0x00000100
+#define CLK_FIRST_AVAILABLE_FLAG   0x00000100
+#define CLKFLAG_USE_MIN_MAX_TO_SET 0x00000200
 
 struct clk
 {

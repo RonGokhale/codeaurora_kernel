@@ -76,6 +76,16 @@ static int pc_clk_set_rate(unsigned id, unsigned rate)
 	return msm_proc_comm(PCOM_CLKCTL_RPC_SET_RATE, &id, &rate);
 }
 
+static int pc_clk_set_min_rate(unsigned id, unsigned rate)
+{
+	return msm_proc_comm(PCOM_CLKCTL_RPC_MIN_RATE, &id, &rate);
+}
+
+static int pc_clk_set_max_rate(unsigned id, unsigned rate)
+{
+	return msm_proc_comm(PCOM_CLKCTL_RPC_MAX_RATE, &id, &rate);
+}
+
 static unsigned pc_clk_get_rate(unsigned id)
 {
 	if (msm_proc_comm(PCOM_CLKCTL_RPC_RATE, &id, 0))
@@ -160,8 +170,14 @@ void clk_put(struct clk *clk)
 
 int clk_set_rate(struct clk *clk, unsigned long rate)
 {
+	int ret;
 	if (clk->id == ACPU_CLK)
 		return acpuclk_set_rate(clk, rate, 0);
+	if (clk->flags & CLKFLAG_USE_MIN_MAX_TO_SET) {
+		if ((ret = pc_clk_set_max_rate(clk->id, rate)))
+			return ret;
+		return pc_clk_set_min_rate(clk->id, rate);
+	}
 	return pc_clk_set_rate(clk->id, rate);
 }
 
