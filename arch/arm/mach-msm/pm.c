@@ -21,12 +21,14 @@
 #include <linux/init.h>
 #include <linux/pm.h>
 #include <linux/suspend.h>
+#include <linux/reboot.h>
 #include <asm/arch/msm_iomap.h>
 #include <asm/arch/system.h>
 #include <asm/io.h>
 
 #include "smd_private.h"
 #include "clock.h"
+#include "proc_comm.h"
 
 enum {
 	MSM_PM_SLEEP_MODE_POWER_COLLAPSE_SUSPEND,
@@ -197,8 +199,49 @@ static struct platform_suspend_ops msm_pm_ops = {
 	.valid		= suspend_valid_only_mem,
 };
 
+static uint32_t restart_reason = 0x776655AA;
+
+static void msm_pm_power_off(void)
+{
+	msm_proc_comm(PCOM_POWER_DOWN, 0, 0);
+	for (;;) ;
+}
+
+static void msm_pm_restart(char str)
+{
+	msm_proc_comm(PCOM_RESET_CHIP, &restart_reason, 0);
+	for (;;) ;
+}
+
+static int msm_reboot_call(struct notifier_block *this, unsigned long code, void *_cmd)
+{
+	if((code == SYS_RESTART) && _cmd) {
+		char *cmd = _cmd;
+		if (!strcmp(cmd, "bootloader")) {
+			restart_reason = 0x77665500;
+		} else if (!strcmp(cmd, "recovery")) {
+			restart_reason = 0x77665502;
+		} else if (!strcmp(cmd, "eraseflash")) {
+			restart_reason = 0x776655EF;
+		} else {
+			restart_reason = 0x77665501;
+		}
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block msm_reboot_notifier =
+{
+	.notifier_call = msm_reboot_call,
+};
+
 static int __init msm_pm_init(void)
 {
+	pm_power_off = msm_pm_power_off;
+	arm_pm_restart = msm_pm_restart;
+
+	register_reboot_notifier(&msm_reboot_notifier);
+
 	acpu_clk = clk_get(NULL, "acpu_clk");
 	if (acpu_clk == NULL) {
 		printk(KERN_ERR "msm_pm_init: failed get acpu_clk\n");
