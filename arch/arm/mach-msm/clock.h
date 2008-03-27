@@ -30,7 +30,7 @@ struct module;
 #define CLKFLAG_NONEST   0x00000004 /* disable nesting of enable/disable */
 #define CLKFLAG_NORESET  0x00000008 /* Prohibit resetting clock */
 
-#define CLK_FIRST_AVAILABLE_FLAG   0x00000100
+#define CLK_FIRST_AVAILABLE_FLAG 0x00000100
 #define CLKFLAG_USE_MIN_MAX_TO_SET 0x00000200
 
 struct clk
@@ -100,10 +100,10 @@ struct clk
  */
 
 #define ACPU_PLL_TCXO	-1
-#define ACPU_PLL_0	1
-#define ACPU_PLL_1	2
-#define ACPU_PLL_2	3
-#define ACPU_PLL_3	4
+#define ACPU_PLL_0	0
+#define ACPU_PLL_1	1
+#define ACPU_PLL_2	2
+#define ACPU_PLL_3	3
 
 struct clkctl_acpu_speed
 {
