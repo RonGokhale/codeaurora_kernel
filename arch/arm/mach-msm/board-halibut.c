@@ -225,6 +225,12 @@ static void __init halibut_init(void)
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 	halibut_init_keypad(halibut_ffa);
 	msm_add_devices();
+
+	/* TODO: detect vbus and correctly notify USB about its presence 
+	 * For now we just declare that VBUS is present at boot and USB
+	 * copes, but this is not ideal.
+	 */
+	msm_hsusb_set_vbus_state(1);
 }
 
 static void __init halibut_map_io(void)
