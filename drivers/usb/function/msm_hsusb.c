@@ -53,6 +53,9 @@
 
 #define LANGUAGE_ID             0x0409 /* en-US */
 
+/* current state of VBUS */
+static int vbus;
+
 struct usb_fi_ept
 {
 	struct usb_endpoint *ept;
@@ -111,7 +114,7 @@ struct usb_endpoint
 	struct usb_function_info *owner;
 };
 
-static void usb_watchdog(struct work_struct *w);
+static void usb_vbus_online(struct work_struct *w);
 
 struct usb_info
 {
@@ -147,7 +150,7 @@ struct usb_info
 	int *phy_init_seq;
 	void (*phy_reset)(void);
 
-	struct delayed_work watchdog;
+	struct work_struct vbus_online;
 	unsigned phy_status;
 	unsigned phy_fail_count;
 
@@ -857,7 +860,7 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 		writel(readl(USB_ENDPTCOMPLETE), USB_ENDPTCOMPLETE);
 		writel(0xffffffff, USB_ENDPTFLUSH);
 		writel(0, USB_ENDPTCTRL(1));
-			
+
 		if(ui->online != 0) {
 			/* marking us offline will cause ept queue attempts to fail */
 			ui->online = 0;
@@ -911,7 +914,19 @@ static void usb_prepare(struct usb_info *ui)
 
 	ui->setup_req = usb_ept_alloc_req(&ui->ep0in, SETUP_BUF_SIZE);
 
-	INIT_DELAYED_WORK(&ui->watchdog, usb_watchdog);
+	INIT_WORK(&ui->vbus_online, usb_vbus_online);
+}
+
+static void usb_suspend_phy(struct usb_info *ui)
+{
+	/* clear VBusValid and SessionEnd rising interrupts */
+	ulpi_write(ui, (1 << 1) | (1 << 3), 0x0f);
+	/* clear VBusValid and SessionEnd falling interrupts */
+	ulpi_write(ui, (1 << 1) | (1 << 3), 0x12);
+	/* disable interface protect circuit to drop current consumption */
+	ulpi_write(ui, (1 << 7), 0x08);
+	/* clear the SuspendM bit -> suspend the PHY */
+	ulpi_write(ui, 1 << 6, 0x06);
 }
 
 static void usb_bind_driver(struct usb_info *ui, struct usb_function_info *fi)
@@ -1031,6 +1046,7 @@ static void usb_reset(struct usb_info *ui, struct list_head *flist)
 
 static void usb_start(struct usb_info *ui, struct list_head *flist)
 {
+	unsigned long flags;
 	unsigned count = 0;
 
 	struct list_head *entry;
@@ -1050,10 +1066,14 @@ static void usb_start(struct usb_info *ui, struct list_head *flist)
 		return;
 	}
 
+	/* ready to go -- get us started if VBUS is already present,
+	 * otherwise, prepare us for the next VBUS change event
+	 */
+	spin_lock_irqsave(&ui->lock, flags);
 	ui->running = 1;
-	usb_reset(ui, flist);
-
-	schedule_delayed_work(&ui->watchdog, 10 * HZ);
+	if (vbus)
+		schedule_work(&ui->vbus_online);
+	spin_unlock_irqrestore(&ui->lock, flags);
 }
 
 static int usb_free(struct usb_info *ui, int ret)
@@ -1072,31 +1092,40 @@ static struct usb_info *the_usb_info;
 
 static LIST_HEAD(func_list);
 
-static void usb_watchdog(struct work_struct *w)
+static void usb_vbus_online(struct work_struct *w)
 {
-	struct usb_info *ui = container_of(w, struct usb_info, watchdog.work);
-	unsigned long flags;
-	unsigned n;
+	struct usb_info *ui = container_of(w, struct usb_info, vbus_online);
+	usb_reset(ui, ui->flist);
+}
 
-	spin_lock_irqsave(&ui->lock, flags);
-	if (ui->running) {
-		n = ulpi_read(ui, 0x13);
+void msm_hsusb_set_vbus_state(int online)
+{
+	struct usb_info *ui = the_usb_info;
+
+	if (vbus == online)
+		return;
+
+	vbus = online;
+
+	/* if we aren't actually ready yet, just make a note of
+	 * the VBUS state and return
+	 */
+	if (!ui || !ui->running)
+		return;
+
+	if (online) {
+		schedule_work(&ui->vbus_online);
 	} else {
-		n = 0;
+		unsigned long flags;
+		spin_lock_irqsave(&ui->lock, flags);
+		if(ui->online != 0) {
+			ui->online = 0;			
+			flush_all_endpoints(ui);
+			set_configuration(ui, 0);
+		}
+		usb_suspend_phy(ui);
+		spin_unlock_irqrestore(&ui->lock, flags);
 	}
-	spin_unlock_irqrestore(&ui->lock, flags);
-
-	if (n == 0xffffffff) {
-		printk(KERN_ERR "hsusb: PHY not responding, resetting USB (%d)\n",
-		       ++ui->phy_fail_count);
-		usb_reset(ui, &func_list);
-	} else if (n != ui->phy_status) {
-		printk(KERN_INFO "hsusb: PHY status %02x -> %02x\n",
-		       ui->phy_status, n);
-		ui->phy_status = n;
-	}
-
-	schedule_delayed_work(&ui->watchdog, 5 * HZ);
 }
 
 void usb_function_reenumerate(void)
@@ -1278,7 +1307,7 @@ static int usb_probe(struct platform_device *pdev)
 	usb_debugfs_init(ui);
 
 	usb_prepare(ui);
-	
+
 	return 0;
 }
 
