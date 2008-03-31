@@ -561,10 +561,12 @@ int get_img(struct mdp_img *img, struct fb_info *info, unsigned long *start,
 			*start = info->fix.smem_start;
 			*len = info->fix.smem_len;
 			break;
+#ifdef CONFIG_ANDROID_PMEM
 		case PMEM_IMG:
 			if (get_pmem_file(img->memory_id, start, len))
 				return -1;
 			break;
+#endif
 		default:
 			return -1;
 	}
@@ -573,15 +575,18 @@ int get_img(struct mdp_img *img, struct fb_info *info, unsigned long *start,
 
 void mdp_ppp_put_img(struct mdp_blit_req *req)
 {
+#ifdef CONFIG_ANDROID_PMEM
 	if (req->src.memory_type == PMEM_IMG)
 		put_pmem_file(req->src.memory_id);
 
 	if (req->dst.memory_type == PMEM_IMG)
 		put_pmem_file(req->dst.memory_id);
+#endif
 }
 
 static void flush_imgs(struct mdp_blit_req *req, struct mdp_regs *regs)
 {
+#ifdef CONFIG_ANDROID_PMEM
 	uint32_t src0_len, src1_len, dst0_len, dst1_len;
 
 	if (req->src.memory_type == PMEM_IMG) {
@@ -602,6 +607,7 @@ static void flush_imgs(struct mdp_blit_req *req, struct mdp_regs *regs)
 					req->dst.offset + dst0_len,
 					dst1_len);
 	}
+#endif
 }
 
 #define WRITEL(v, a) do { writel(v,a); DLOG(#a "[%x]=%x\n", a, v); }\
