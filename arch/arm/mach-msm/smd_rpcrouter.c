@@ -797,21 +797,16 @@ int msm_rpc_write(struct msm_rpc_endpoint *ept, void *buffer, int count)
 	hdr.confirm_rx = 0;
 	hdr.size = count + sizeof(uint32_t);
 
-	/* Create pacmark header */
-	pacmark = PACMARK(count, ++next_pacmarkid, 1);
-
 	for (;;) {
 		prepare_to_wait(&r_ept->quota_wait, &__wait,
 				TASK_INTERRUPTIBLE);
 		spin_lock_irqsave(&r_ept->quota_lock, flags);
 		if (r_ept->tx_quota_cntr < RPCROUTER_DEFAULT_RX_QUOTA)
 			break;
+		if (signal_pending(current))
+			break;
 		spin_unlock_irqrestore(&r_ept->quota_lock, flags);
-		if (!signal_pending(current)) {
-			schedule();
-			continue;
-		}
-		break;
+		schedule();
 	}
 	finish_wait(&r_ept->quota_wait, &__wait);
 
@@ -823,6 +818,11 @@ int msm_rpc_write(struct msm_rpc_endpoint *ept, void *buffer, int count)
 	r_ept->tx_quota_cntr++;
 	if (r_ept->tx_quota_cntr == RPCROUTER_DEFAULT_RX_QUOTA)
 		hdr.confirm_rx = 1;
+
+	/* bump pacmark while interrupts disabled to avoid race
+	 * probably should be atomic op instead
+	 */
+	pacmark = PACMARK(count, ++next_pacmarkid, 1);
 
 	spin_unlock_irqrestore(&r_ept->quota_lock, flags);
 
