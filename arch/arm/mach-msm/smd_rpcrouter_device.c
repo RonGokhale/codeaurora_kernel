@@ -239,7 +239,7 @@ int msm_rpcrouter_create_server_cdev(struct rr_server *server)
 
 	server->device =
 		device_create(msm_rpcrouter_class, rpcrouter_device,
-			      server->device_number, "%.8x:%d",
+			      server->device_number, "%.8x:%.8x",
 			      server->prog, server->vers);
 	if (IS_ERR(server->device)) {
 		printk(KERN_ERR
@@ -263,7 +263,7 @@ int msm_rpcrouter_create_server_cdev(struct rr_server *server)
 
 int msm_rpcrouter_create_server_pdev(struct rr_server *server)
 {
-	sprintf(server->pdev_name, "rpcsvr_%.8x:%d",
+	sprintf(server->pdev_name, "rs%.8x:%.8x",
 		server->prog, server->vers);
 
 	server->p_device.base.id = -1;
