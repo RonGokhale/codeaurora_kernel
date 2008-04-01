@@ -30,9 +30,11 @@
  */
 #define PMEM_CONNECT		_IOW(PMEM_IOCTL_MAGIC, 6, unsigned int)
 
-int get_pmem_file(unsigned long fd, unsigned long *start, unsigned long *end);
-void put_pmem_file(unsigned long fd);
-void flush_pmem_file(unsigned long fd, unsigned long start, unsigned long len);
+int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *end, struct file **filp);
+int get_pmem_fd(unsigned int fd, unsigned long *start, unsigned long *end);
+void put_pmem_file(struct file* file);
+void put_pmem_fd(unsigned int fd);
+void flush_pmem_fd(unsigned int fd, unsigned long start, unsigned long len);
 
 struct pmem_region {
 	unsigned long offset;

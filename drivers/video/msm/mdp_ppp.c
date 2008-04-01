@@ -563,7 +563,7 @@ int get_img(struct mdp_img *img, struct fb_info *info, unsigned long *start,
 			break;
 #ifdef CONFIG_ANDROID_PMEM
 		case PMEM_IMG:
-			if (get_pmem_file(img->memory_id, start, len))
+			if (get_pmem_fd(img->memory_id, start, len))
 				return -1;
 			break;
 #endif
@@ -577,10 +577,10 @@ void mdp_ppp_put_img(struct mdp_blit_req *req)
 {
 #ifdef CONFIG_ANDROID_PMEM
 	if (req->src.memory_type == PMEM_IMG)
-		put_pmem_file(req->src.memory_id);
+		put_pmem_fd(req->src.memory_id);
 
 	if (req->dst.memory_type == PMEM_IMG)
-		put_pmem_file(req->dst.memory_id);
+		put_pmem_fd(req->dst.memory_id);
 #endif
 }
 
@@ -592,18 +592,18 @@ static void flush_imgs(struct mdp_blit_req *req, struct mdp_regs *regs)
 	if (req->src.memory_type == PMEM_IMG) {
 		get_len(&req->src, &req->src_rect, regs->src_bpp, &src0_len,
 			 &src1_len);
-		flush_pmem_file(req->src.memory_id, req->src.offset, src0_len);
+		flush_pmem_fd(req->src.memory_id, req->src.offset, src0_len);
 		if (regs->src_cfg & PPP_SRC_PLANE_PSEUDOPLNR)
-			flush_pmem_file(req->src.memory_id,
+			flush_pmem_fd(req->src.memory_id,
 					req->src.offset + src0_len,
 					src1_len);
 	}
 	if (req->dst.memory_type == PMEM_IMG) {
 		get_len(&req->dst, &req->dst_rect, regs->dst_bpp, &dst0_len, 
 			 &dst1_len);
-		flush_pmem_file(req->dst.memory_id, req->dst.offset, dst0_len);
+		flush_pmem_fd(req->dst.memory_id, req->dst.offset, dst0_len);
 		if (regs->dst_cfg & PPP_SRC_PLANE_PSEUDOPLNR)
-			flush_pmem_file(req->dst.memory_id,
+			flush_pmem_fd(req->dst.memory_id,
 					req->dst.offset + dst0_len,
 					dst1_len);
 	}

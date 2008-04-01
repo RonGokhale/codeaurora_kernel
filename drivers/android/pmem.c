@@ -598,15 +598,20 @@ error:
 
 /* the following are the api for accessing pmem regions by other drivers
  * from inside the kernel */
-int get_pmem_file(unsigned long fd, unsigned long *start, unsigned long *len)
+int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *len,
+		  struct file **filp)
 {
 	struct file *file;
 	struct pmem_data *data;
 	int id;
 
 	file = fget(fd);
-	if (unlikely(file == NULL))
+	if (unlikely(file == NULL)) {
+#if PMEM_DEBUG
+		printk("pmem: lookup fd=%d failed, file not found in fd table.\n", fd);
+#endif
 		return -1;
+	}
 
 	if(!is_pmem_file(file) || !has_allocation(file)) {
 #if PMEM_DEBUG
@@ -616,8 +621,12 @@ int get_pmem_file(unsigned long fd, unsigned long *start, unsigned long *len)
 	}
 
 	data = (struct pmem_data*)file->private_data;
-	if (data->index == -1)
+	if (data->index == -1) {
+#if PMEM_DEBUG
+		printk("pmem: requested pmem data from file with no allocation.\n");
 		goto end;
+#endif
+	}
 	id = get_id(file);
 
 	down_write(&data->sem);
@@ -625,6 +634,12 @@ int get_pmem_file(unsigned long fd, unsigned long *start, unsigned long *len)
 	*start = pmem_start_addr(id, data);
 	*len = pmem_len(id, data);
 	up_write(&data->sem);
+	
+	if (filp)
+		*filp = file;
+
+	if (filp != NULL)
+		*filp = file;
 
 	return 0;
 end:
@@ -632,18 +647,18 @@ end:
 	return -1;
 }
 
-void put_pmem_file(unsigned long fd)
+int get_pmem_fd(unsigned int fd, unsigned long *start, unsigned long *len)
 {
-	struct file *file;
-	struct pmem_data *data;
-	int id;
+	return get_pmem_file(fd, start, len, NULL);
+}
 
-	file = fget(fd);
-	if (file == NULL)
-		return;
+void put_pmem_file(struct file* file)
+{
+        struct pmem_data *data;
+        int id;
 
 	if (!is_pmem_file(file))
-		goto end;
+		return;
 	id = get_id(file);
 	data = (struct pmem_data *)file->private_data;
 	down_write(&data->sem);
@@ -652,11 +667,23 @@ void put_pmem_file(unsigned long fd)
 		fput(file);
 	}
 	up_write(&data->sem);
-end:
-	fput(file);
 }
 
-void flush_pmem_file(unsigned long fd, unsigned long offset, unsigned long len)
+void put_pmem_fd(unsigned int fd)
+{
+	struct file *file;
+
+	file = fget(fd);
+	if (file == NULL)
+		goto end;
+	put_pmem_file(file);
+
+end:
+	fput(file);
+
+}
+
+void flush_pmem_fd(unsigned int fd, unsigned long offset, unsigned long len)
 {
 	struct pmem_data *data;
 	struct file *file;
