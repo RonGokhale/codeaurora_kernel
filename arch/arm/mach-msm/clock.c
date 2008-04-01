@@ -36,7 +36,7 @@
 
 #include "proc_comm.h"
 
-#define PERF_SWITCH_DEBUG 1
+#define PERF_SWITCH_DEBUG 0
 #define PERF_SWITCH_STEP_DEBUG 0
 
 struct clock_state
