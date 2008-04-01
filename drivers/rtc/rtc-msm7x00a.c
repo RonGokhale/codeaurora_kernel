@@ -26,9 +26,10 @@
 
 #include <asm/arch/msm_rpcrouter.h>
 
-#define APP_PMLIB_PDEV_NAME		"rpcsvr_30000061:0"
-#define APP_PMLIB_PROG			0x30000061
-#define APP_PMLIB_VER			0
+#define APP_PMLIB_PDEV_NAME_V1 "rs30000061:00000000" /* AMSS6066 */
+#define APP_PMLIB_PDEV_NAME_V2 "rs30000061:a3887453" /* AMSS6074 */
+
+/* these procedure numbers happen to be identical between versions */
 #define PMLIB_PROCEEDURE_RTC_START	6
 #define PMLIB_PROCEEDURE_RTC_GET_TIME	8
 
@@ -114,7 +115,10 @@ static struct rtc_class_ops msm_rtc_ops = {
 static int
 msmrtc_probe(struct platform_device *pdev)
 {
-	ep = msm_rpc_connect(APP_PMLIB_PROG, APP_PMLIB_VER, 0);
+	struct rpcsvr_platform_device *rdev =
+		container_of(pdev, struct rpcsvr_platform_device, base);
+
+	ep = msm_rpc_connect(rdev->prog, rdev->vers, 0);
 	if (IS_ERR(ep)) {
 		printk(KERN_ERR "%s: init rpc failed! rc = %ld\n",
 		       __func__, PTR_ERR(ep));
@@ -134,17 +138,29 @@ msmrtc_probe(struct platform_device *pdev)
 }
 
 
-static struct platform_driver msmrtc_driver = {
+static struct platform_driver msmrtc_driver_v1 = {
 	.probe	= msmrtc_probe,
 	.driver	= {
-		.name	= APP_PMLIB_PDEV_NAME,
+		.name	= APP_PMLIB_PDEV_NAME_V1,
+		.owner	= THIS_MODULE,
+	},
+};
+
+static struct platform_driver msmrtc_driver_v2 = {
+	.probe	= msmrtc_probe,
+	.driver	= {
+		.name	= APP_PMLIB_PDEV_NAME_V2,
 		.owner	= THIS_MODULE,
 	},
 };
 
 static int __init msmrtc_init(void)
 {
-	return platform_driver_register(&msmrtc_driver);
+	int ret;
+	ret = platform_driver_register(&msmrtc_driver_v1);
+	if (ret < 0)
+		return ret;
+	return platform_driver_register(&msmrtc_driver_v2);
 }
 
 module_init(msmrtc_init);
