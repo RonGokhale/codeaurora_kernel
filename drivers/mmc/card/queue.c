@@ -48,6 +48,7 @@ static int mmc_queue_thread(void *d)
 
 	current->flags |= PF_MEMALLOC;
 
+	set_freezable();
 	down(&mq->thread_sem);
 	do {
 		struct request *req = NULL;
@@ -65,7 +66,10 @@ static int mmc_queue_thread(void *d)
 				break;
 			}
 			up(&mq->thread_sem);
-			schedule();
+			if (!try_to_freeze())
+				schedule();
+			else
+				printk("%s: Just left the fridge!\n", __func__);
 			down(&mq->thread_sem);
 			continue;
 		}
