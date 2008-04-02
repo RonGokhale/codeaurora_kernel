@@ -25,8 +25,10 @@
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/debugfs.h>
+#include <linux/delay.h>
 #include <asm/arch/msm_smd.h>
 #include <asm/arch/msm_iomap.h>
+#include <asm/arch/system.h>
 #include <asm/io.h>
 
 #include "smd_private.h"
@@ -35,6 +37,7 @@
 #define MODULE_NAME "msm_smd"
 
 void *smem_find(unsigned id, unsigned size);
+void smd_diag(void);
 
 static unsigned last_heap_free = 0xffffffff;
 
@@ -73,28 +76,58 @@ static inline void notify_other_proc_comm(void)
 
 static DEFINE_SPINLOCK(proc_comm_lock);
  
+static void proc_comm_wait_for(unsigned addr, unsigned value)
+{
+	unsigned timeout = (2000000 / 10);
+	struct smsm_shared *smsm;
+
+again:
+	do {
+		if (readl(addr) == value)
+			return;
+		udelay(5);
+	} while (--timeout != 0);
+
+	smsm = smem_find(ID_SHARED_STATE, 2 * sizeof(struct smsm_shared));
+
+	if (smsm == 0) {
+		/* while booting we really have no options here */
+		printk(KERN_ERR "proc_comm: TIMEOUT, no state\n");
+		goto again;
+	}
+
+	printk(KERN_ERR "proc_comm: TIMEOUT smsm a=%08x m=%08x\n",
+	       smsm[0].state, smsm[1].state);
+	
+	if (smsm[1].state & SMSM_RESET) {
+		printk(KERN_ERR "proc_comm: ARM9 has crashed\n");
+		smd_diag();
+	}
+
+	/* hard reboot if possible */
+	if (msm_reset_hook)
+		msm_reset_hook(0);
+
+	for (;;);
+}
+
 int msm_proc_comm(unsigned cmd, unsigned *data1, unsigned *data2)
 {
-	unsigned long flags;
 	unsigned base = MSM_SHARED_RAM_BASE;
-	int ret = -EIO;
+	unsigned long flags;
+	int ret;
 
 	spin_lock_irqsave(&proc_comm_lock, flags);
 
-	while (readl(base + MDM_STATUS) != PCOM_READY) {
-		/* XXX check for A9 reset */
-	}
-
+	proc_comm_wait_for(base + MDM_STATUS, PCOM_READY);
+	
 	writel(cmd, base + APP_COMMAND);
-	if (data1)
-		writel(*data1, base + APP_DATA1);
-	if (data2)
-		writel(*data2, base + APP_DATA2);
+	writel(data1 ? *data1 : 0, base + APP_DATA1);
+	writel(data2 ? *data2 : 0, base + APP_DATA2);
 
 	notify_other_proc_comm();
-	while (readl(base + APP_COMMAND) != PCOM_CMD_DONE) {
-		/* XXX check for A9 reset */
-	}
+
+	proc_comm_wait_for(base + APP_COMMAND, PCOM_CMD_DONE);
 
 	if (readl(base + APP_STATUS) != PCOM_CMD_FAIL) {
 		if (data1)
@@ -102,6 +135,8 @@ int msm_proc_comm(unsigned cmd, unsigned *data1, unsigned *data2)
 		if (data2)
 			*data2 = readl(base + APP_DATA2);
 		ret = 0;
+	} else {
+		ret = -EIO;
 	}
 
 	spin_unlock_irqrestore(&proc_comm_lock, flags);
