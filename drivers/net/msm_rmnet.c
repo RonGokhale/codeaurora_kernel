@@ -36,6 +36,7 @@ struct rmnet_private
 {
 	smd_channel_t *ch;
 	struct net_device_stats stats;
+	unsigned chnum;
 };
 
 static void smd_net_notify(void *_dev, unsigned event)
@@ -91,7 +92,7 @@ static int rmnet_open(struct net_device *dev)
 	struct rmnet_private *p = netdev_priv(dev);
 
 	printk(KERN_INFO "rmnet_open()\n");
-	r = smd_open(SMD_PORT_ETHER0, &p->ch, dev, smd_net_notify);
+	r = smd_open(p->chnum, &p->ch, dev, smd_net_notify);
 
 	if (r < 0)
 		return -ENODEV;
@@ -167,21 +168,25 @@ static int __init rmnet_init(void)
 	int ret;
 	struct net_device *dev;
 	struct rmnet_private *p;
+	unsigned n;
 
-	dev = alloc_netdev(sizeof(struct rmnet_private),
-			   "rmnet%d", rmnet_setup);
+	for (n = 0; n < 3; n++) {
+		dev = alloc_netdev(sizeof(struct rmnet_private),
+				   "rmnet%d", rmnet_setup);
 
-	printk(KERN_INFO "rmnet_init() %p\n", dev);
+		if (!dev)
+			return -ENOMEM;
 
-	if (!dev)
-		return -ENOMEM;
+		p = netdev_priv(dev);
+		p->chnum = SMD_PORT_ETHER0 + n;
 
-	p = netdev_priv(dev);
-
-	ret = register_netdev(dev);
-	if (ret)
-		free_netdev(dev);
-	return ret;
+		ret = register_netdev(dev);
+		if (ret) {
+			free_netdev(dev);
+			return ret;
+		}
+	}
+	return 0;
 }
 
 
