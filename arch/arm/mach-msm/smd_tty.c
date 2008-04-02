@@ -155,7 +155,7 @@ static struct tty_driver *smd_tty_driver;
 
 static int __init smd_tty_init(void)
 {
-	int ret, n;
+	int ret;
 
 	printk("smd_tty_init()\n");
 
@@ -182,8 +182,8 @@ static int __init smd_tty_init(void)
 	ret = tty_register_driver(smd_tty_driver);
 	if (ret) return ret;
 
-	for (n = 0; n < MAX_SMD_TTYS; n++)
-		tty_register_device(smd_tty_driver, n, 0);
+	/* this should be dynamic */
+	tty_register_device(smd_tty_driver, 0, 0);
 
 	return 0;
 }
