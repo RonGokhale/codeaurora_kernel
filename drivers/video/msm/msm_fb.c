@@ -173,7 +173,7 @@ restart:
 	if (wait_for_last && par->frame_requested != par->frame_done) {
 		spin_unlock_irqrestore(&par->update_lock, irq_flags);
 		if (wait_event_interruptible_timeout(par->frame_wq,
-		    par->frame_done == par->frame_requested, HZ) == 0) {
+		    par->frame_done == par->frame_requested, HZ) <= 0) {
 			printk(KERN_WARNING "msmfb_pan_display timeout waiting "
 					    "for frame start, %d %d\n",
 					    par->frame_requested,
