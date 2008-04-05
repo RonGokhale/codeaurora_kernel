@@ -213,6 +213,8 @@ int flash_read_config(struct msm_nand_chip *chip)
 	/* set 4 codeword per page for 2k nand */
 	chip->CFG0 = (chip->CFG0 & ~0x1c0) | (3 << 6);
 	spare_bytes = (chip->CFG1 & CFG1_WIDE_FLASH) ? 4 : 5;
+	/* set 5 address cycles */
+	chip->CFG0 = (chip->CFG0 & ~(0x7 << 27)) | (5 << 27);
 	chip->CFG0 = (chip->CFG0 & ~(0xf << 23)) | (spare_bytes << 23);
 	/* set bad block marker location and enable ECC */
 	chip->CFG1 = (chip->CFG1 & ~0x1ffc1) | (465 << 6);
@@ -1274,8 +1276,10 @@ int msm_nand_scan(struct mtd_info *mtd, int maxchips)
 		return -ENODEV;
 	}
 	printk("CFG0 = %x, CFG1 = %x\n", chip->CFG0, chip->CFG1);
-	printk("CFG0: cw/page=%d ud_sz=%d ecc_sz=%d spare_sz=%d\n",
-	       (chip->CFG0 >> 6) & 7, (chip->CFG0 >> 9) & 0x3ff, (chip->CFG0 >> 19) & 15, (chip->CFG0 >> 23) & 15);
+	printk(KERN_INFO "CFG0: cw/page=%d ud_sz=%d ecc_sz=%d spare_sz=%d "
+	       "num_addr_cycles=%d\n", (chip->CFG0 >> 6) & 7,
+	       (chip->CFG0 >> 9) & 0x3ff, (chip->CFG0 >> 19) & 15,
+	       (chip->CFG0 >> 23) & 15, (chip->CFG0 >> 27) & 7);
 
 	printk("NAND_READ_ID = %x\n", flash_rd_reg(chip, NAND_READ_ID));
 	flash_wr_reg(chip, NAND_READ_ID, 0x12345678);
