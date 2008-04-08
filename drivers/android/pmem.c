@@ -281,7 +281,7 @@ static int pmem_open(struct inode *inode, struct file *file)
 	struct pmem_data* data;
 	int id = get_id(file);
 
-	DLOG("file %p\n", file);
+	DLOG("current %u file %p(%d)\n", current->pid, file, file_count(file));
 	/* setup file->private_data to indicate its unmapped */
 	/*  you can only open a pmem device one time */
 	if (file->private_data != NULL)
@@ -475,7 +475,8 @@ static void pmem_vma_close(struct vm_area_struct *vma)
 	struct file* file = vma->vm_file;
 	struct pmem_data *data = file->private_data;
 
-	DLOG("file %p\n", file);
+	DLOG("current %u ppid %u file %p count %d\n", current->pid,
+	     current->parent->pid, file, file_count(file));
 	if (unlikely(!is_pmem_file(file) || !has_allocation(file))) {
 		printk("pmem: something is very wrong, you are closing a"
 			"vm backing an allocation that doesn't exist!\n");
@@ -504,21 +505,22 @@ static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 
 	if (vma->vm_pgoff || !PMEM_IS_PAGE_ALIGNED(vma_size)) {
 #if PMEM_DEBUG
-		printk("pmem: mmaps must be at offset zero, aligned and a multiple of pages_size.\n");
+		printk(KERN_ERR "pmem: mmaps must be at offset zero, aligned"
+				" and a multiple of pages_size.\n");
 #endif
 		return -EINVAL;
 	}
 
 	data = (struct pmem_data*)file->private_data;
 	down_write(&data->sem);
-	/* check this file isn't already mmaped, for submaps check this file 
+	/* check this file isn't already mmaped, for submaps check this file
 	 * has never been mmaped */
 	if ((data->flags & PMEM_FLAGS_MASTERMAP) ||
 	    (data->flags & PMEM_FLAGS_SUBMAP) ||
 	    (data->flags & PMEM_FLAGS_UNSUBMAP)) {
 #if PMEM_DEBUG
-		printk("pmem: you can only mmap a pmem file once, this file "
-		       "is already mmaped. %x\n", data->flags);
+		printk(KERN_ERR "pmem: you can only mmap a pmem file once, "
+		       "this file is already mmaped. %x\n", data->flags);
 #endif
 		ret = -EINVAL;
 		goto error;
@@ -561,7 +563,7 @@ static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 			region_list = list_entry(elt, struct pmem_region_list,
 						 list);
 			DLOG("remapping file: %p %lx %lx\n", file,
-				region_list->region.offset, 
+				region_list->region.offset,
 				region_list->region.len);
 			if (pmem_map_pfn_range(id, vma, data,
 					       region_list->region.offset,
@@ -587,7 +589,7 @@ static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 		data->flags |= PMEM_FLAGS_MASTERMAP;
 		data->pid = current->pid;
 #if PMEM_DEBUG
-		DLOG("mmapped file %p vma %p pid %u\n", file, vma, current->pid);
+		DLOG("mmapped file %p(%d) vma %p pid %u\n", file, file_count(file), vma, current->pid);
 #endif
 	}
 	vma->vm_ops = &vm_ops;
@@ -664,23 +666,21 @@ void put_pmem_file(struct file* file)
 	down_write(&data->sem);
 	if (data->flags & PMEM_FLAGS_BUSY) {
 		data->flags &=  ~(PMEM_FLAGS_BUSY);
-		fput(file);
 	}
 	up_write(&data->sem);
+	fput(file);
 }
 
 void put_pmem_fd(unsigned int fd)
 {
 	struct file *file;
+	int put_needed;
 
-	file = fget(fd);
+	file = fget_light(fd, &put_needed);
 	if (file == NULL)
-		goto end;
+		return;
 	put_pmem_file(file);
-
-end:
-	fput(file);
-
+	fput_light(file, put_needed);
 }
 
 void flush_pmem_fd(unsigned int fd, unsigned long offset, unsigned long len)
@@ -735,11 +735,11 @@ static int pmem_connect(unsigned long connect, struct file *file)
 	struct pmem_data *data = (struct pmem_data*)file->private_data;
 	struct pmem_data* src_data;
 	struct file* src_file;
-	int ret = 0;
+	int ret = 0, put_needed;
 
 	down_write(&data->sem);
 	/* retrieve the src file and check it is a pmem file with an alloc */
-	src_file = fget(connect);
+	src_file = fget_light(connect, &put_needed);
 	DLOG("connect %p to %p\n", file, src_file);
 	if (!src_file) {
 		printk("pmem: src file not found!\n");
@@ -763,7 +763,7 @@ static int pmem_connect(unsigned long connect, struct file *file)
 	data->flags |= PMEM_FLAGS_SUBALLOC;
 	data->master_fd = connect;
 end:
-	fput(src_file);
+	fput_light(src_file, put_needed);
 end2:
 	up_write(&data->sem);
 	return ret;
