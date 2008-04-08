@@ -5,6 +5,7 @@ obj-y += gpio.o generic_gpio.o
 # Common code for board init
 obj-y += common.o nand_partitions.o
 
+obj-$(CONFIG_MSM_FIQ_SUPPORT) += fiq_glue.o
 obj-$(CONFIG_MACH_HALIBUT) += board-halibut.o board-halibut-keypad.o
 obj-$(CONFIG_MSM_SMD) += smd.o smd_tty.o smd_qmi.o
 obj-$(CONFIG_MSM_ONCRPCROUTER) += smd_rpcrouter.o

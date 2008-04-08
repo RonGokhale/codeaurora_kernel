@@ -28,7 +28,10 @@ ENTRY(msm_pm_collapse)
 	stmia   r0!, {r1-r3}
 	/* fall though */
 ENTRY(arch_idle)
-	mrc     p15, 0, r1, c1, c0, 0    /* read current CR    */
+#if defined(CONFIG_MSM_FIQ_SUPPORT)
+	cpsid	f
+#endif
+	mrc     p15, 0, r1, c1, c0, 0    /* read current CR    */ 
 	bic     r0, r1, #(1 << 2)        /* clear dcache bit   */
 	bic     r0, r0, #(1 << 12)       /* clear icache bit   */
 	mcr     p15, 0, r0, c1, c0, 0    /* disable d/i cache  */
@@ -39,6 +42,9 @@ ENTRY(arch_idle)
 	mcr     p15, 0, r0, c7, c0, 4    /* wait for interrupt */
 
 	mcr     p15, 0, r1, c1, c0, 0    /* restore d/i cache  */
+#if defined(CONFIG_MSM_FIQ_SUPPORT)
+	cpsie	f
+#endif
 	mov     pc, lr
 
 ENTRY(msm_pm_collapse_exit)

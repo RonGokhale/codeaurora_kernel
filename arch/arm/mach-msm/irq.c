@@ -23,10 +23,11 @@
 #include <linux/irq.h>
 #include <asm/hardware.h>
 #include <asm/irq.h>
-
+#include <asm/cacheflush.h>
 #include <asm/io.h>
 
 #include <asm/arch/msm_iomap.h>
+#include <asm/arch/fiq.h>
 
 #define VIC_REG(off) (MSM_VIC_BASE + (off))
 
@@ -71,6 +72,7 @@ static struct {
 	uint32_t int_en;
 	uint32_t int_type;
 	uint32_t int_polarity;
+	uint32_t int_select;
 } msm_irq_shadow_reg[2];
 
 static void msm_irq_ack(unsigned int irq)
@@ -171,8 +173,9 @@ void msm_irq_exit_sleep(void)
 		writel(msm_irq_shadow_reg[i].int_type, VIC_INT_TYPE0 + i * 4);
 		writel(msm_irq_shadow_reg[i].int_polarity, VIC_INT_POLARITY0 + i * 4);
 		writel(msm_irq_shadow_reg[i].int_en, VIC_INT_EN0 + i * 4);
+		writel(msm_irq_shadow_reg[i].int_select, VIC_INT_SELECT0 + i * 4);
 	}
-	writel(1, VIC_INT_MASTEREN);
+	writel(3, VIC_INT_MASTEREN);
 }
 
 static struct irq_chip msm_irq_chip = {
@@ -208,7 +211,7 @@ void __init msm_init_irq(void)
 	writel(0, VIC_CONFIG);
 
 	/* enable interrupt controller */
-	writel(1, VIC_INT_MASTEREN);
+	writel(3, VIC_INT_MASTEREN);
 
 	for (n = 0; n < NR_MSM_IRQS; n++) {
 		set_irq_chip(n, &msm_irq_chip);
@@ -216,3 +219,74 @@ void __init msm_init_irq(void)
 		set_irq_flags(n, IRQF_VALID);
 	}
 }
+
+#if defined(CONFIG_MSM_FIQ_SUPPORT)
+void msm_trigger_irq(int irq)
+{
+	unsigned reg = VIC_SOFTINT0 + ((irq & 32) ? 4 : 0);
+	uint32_t mask = 1UL << (irq & 31);
+	unsigned long flags;
+	writel(mask, reg);
+}
+
+void msm_fiq_enable(int irq)
+{
+	unsigned long flags;
+	local_irq_save(flags);
+	msm_irq_unmask(irq);
+	local_irq_restore(flags);
+}
+
+void msm_fiq_disable(int irq)
+{
+	unsigned long flags;
+	local_irq_save(flags);
+	msm_irq_mask(irq);
+	local_irq_restore(flags);
+}
+
+void msm_fiq_select(int irq)
+{
+	unsigned reg = VIC_INT_SELECT0 + ((irq & 32) ? 4 : 0);
+	unsigned index = (irq >> 5) & 1;
+	uint32_t mask = 1UL << (irq & 31);
+	unsigned long flags;
+
+	local_irq_save(flags);
+	msm_irq_shadow_reg[index].int_select |= mask;
+	writel(msm_irq_shadow_reg[index].int_select, reg);
+	local_irq_restore(flags);
+}
+
+/* set_fiq_handler originally from arch/arm/kernel/fiq.c */
+static void set_fiq_handler(void *start, unsigned int length)
+{
+	memcpy((void *)0xffff001c, start, length);
+	flush_icache_range(0xffff001c, 0xffff001c + length);
+	if (!vectors_high())
+		flush_icache_range(0x1c, 0x1c + length);
+}
+
+extern unsigned char fiq_glue, fiq_glue_end;
+
+static void (*fiq_func)(void *data, void *regs);
+static unsigned long long fiq_stack[256];
+
+void fiq_glue_setup(void *func, void *data, void *sp);
+
+int msm_fiq_set_handler(void (*func)(void *data, void *regs), void *data)
+{
+	unsigned long flags;
+	int ret = -ENOMEM;
+
+	local_irq_save(flags);
+	if (fiq_func == 0) {
+		fiq_func = func;
+		fiq_glue_setup(func, data, fiq_stack + 255);
+		set_fiq_handler(&fiq_glue, (&fiq_glue_end - &fiq_glue));
+		ret = 0;
+	}
+	local_irq_restore(flags);
+	return ret;
+}
+#endif
