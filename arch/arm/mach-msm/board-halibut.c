@@ -199,7 +199,9 @@ static struct platform_device android_pmem_device = {
 };
 
 static struct platform_device *devices[] __initdata = {
+#if !defined(CONFIG_MSM_SERIAL_DEBUGGER)
 	&msm_serial0_device,
+#endif
 	&msm_mddi0_device,
 	&msm_hsusb_device,
 	&smc91x_device,
@@ -219,8 +221,15 @@ static struct msm_clock_platform_data halibut_clock_data = {
 	.vdd_switch_time_us = 62,
 };
 
+void msm_serial_debug_init(unsigned int base, int irq, 
+			   const char *clkname, int signal_irq);
+
 static void __init halibut_init(void)
 {
+#if defined(CONFIG_MSM_SERIAL_DEBUGGER)
+	msm_serial_debug_init(MSM_UART1_PHYS, INT_UART1,
+			      "uart1_clk", 1);
+#endif
 	msm_init_gpio();
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 	halibut_init_keypad(halibut_ffa);
