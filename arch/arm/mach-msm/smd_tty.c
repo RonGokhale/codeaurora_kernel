@@ -184,6 +184,7 @@ static int __init smd_tty_init(void)
 
 	/* this should be dynamic */
 	tty_register_device(smd_tty_driver, 0, 0);
+	tty_register_device(smd_tty_driver, 27, 0);
 
 	return 0;
 }
