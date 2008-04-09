@@ -631,11 +631,10 @@ int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *len,
 	}
 	id = get_id(file);
 
-	down_write(&data->sem);
-	data->flags |= PMEM_FLAGS_BUSY;
+	down_read(&data->sem);
 	*start = pmem_start_addr(id, data);
 	*len = pmem_len(id, data);
-	up_write(&data->sem);
+	up_read(&data->sem);
 	
 	if (filp)
 		*filp = file;
@@ -663,11 +662,6 @@ void put_pmem_file(struct file* file)
 		return;
 	id = get_id(file);
 	data = (struct pmem_data *)file->private_data;
-	down_write(&data->sem);
-	if (data->flags & PMEM_FLAGS_BUSY) {
-		data->flags &=  ~(PMEM_FLAGS_BUSY);
-	}
-	up_write(&data->sem);
 	fput(file);
 }
 
@@ -814,7 +808,7 @@ lock_mm:
 	if (PMEM_IS_SUBMAP(data) && !is_submmapped) {
 		up_write(&data->sem);
 		goto lock_mm;
-	} 
+	}
 	/* now check that vma.mm is still there, it could have been
 	 * deleted by vma_close before we could get the data->sem */
 	if ((data->flags & PMEM_FLAGS_UNSUBMAP) && is_submmapped) {
@@ -924,7 +918,7 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			if (!has_allocation(file)) {
 				region.offset = 0;
 				region.len = 0;
-			} else { 
+			} else {
 				data = (struct pmem_data*)file->private_data;
 				region.offset = pmem_start_addr(id, data);
 				region.len = pmem_len(id, data);
