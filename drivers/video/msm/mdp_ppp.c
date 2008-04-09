@@ -363,10 +363,10 @@ static int get_edge_cond(struct mdp_blit_req *req, struct mdp_regs *regs)
 			      &luma_interp[IMG_LEFT], &luma_interp[IMG_RIGHT],
 			      &luma_repeat[IMG_LEFT], &luma_repeat[IMG_RIGHT]);
 	} else {
-		luma_interp[IMG_LEFT] = 0;
-		luma_interp[IMG_RIGHT] = req->src_rect.w - 1;
-		luma_interp[IMG_TOP] = 0;
-		luma_interp[IMG_BOTTOM] = req->src_rect.h - 1;
+		luma_interp[IMG_LEFT] = req->src_rect.x;
+		luma_interp[IMG_RIGHT] = req->src_rect.x + req->src_rect.w - 1;
+		luma_interp[IMG_TOP] = req->src_rect.y;
+		luma_interp[IMG_BOTTOM] = req->src_rect.y + req->src_rect.h - 1;
 		luma_repeat[IMG_LEFT] = 0;
 		luma_repeat[IMG_TOP] = 0;
 		luma_repeat[IMG_RIGHT] = 0;
@@ -383,16 +383,12 @@ static int get_edge_cond(struct mdp_blit_req *req, struct mdp_regs *regs)
 	chroma_bound[IMG_TOP] = req->src_rect.y;
 	chroma_bound[IMG_BOTTOM] = req->src_rect.y + req->src_rect.h - 1;
 
-	if (req->src.format == MDP_Y_CBCR_H2V1 ||
-	    req->src.format == MDP_Y_CRCB_H2V1 ||
-	    req->src.format == MDP_YCRYCB_H2V1 ||
-	    req->src.format == MDP_Y_CBCR_H2V2 ||
-	    req->src.format == MDP_Y_CRCB_H2V2) {
+	if (IS_YCRCB(req->src.format)) {
 		chroma_interp[IMG_LEFT] = chroma_interp[IMG_LEFT] >> 1;
 		chroma_interp[IMG_RIGHT] = (chroma_interp[IMG_RIGHT] + 1) >> 1;
 
 		chroma_bound[IMG_LEFT] = (chroma_bound[IMG_LEFT] + 1) >> 1;
-		chroma_bound[IMG_RIGHT] = (chroma_bound[IMG_RIGHT] - 1) >> 1;
+		chroma_bound[IMG_RIGHT] = chroma_bound[IMG_RIGHT] >> 1;
 	}
 
 	if (req->src.format == MDP_Y_CBCR_H2V2 ||
@@ -494,22 +490,20 @@ static int blit_scale(struct mdp_blit_req *req, struct mdp_regs *regs)
 }
 
 #define IMG_LEN(rect_h, w, rect_w, bpp) (((rect_h) * w) * bpp)
+
+#define Y_TO_CRCB_RATIO(format) \
+	((format == MDP_Y_CBCR_H2V2 || format == MDP_Y_CRCB_H2V2) ?  2 :\
+	 (format == MDP_Y_CBCR_H2V1 || format == MDP_Y_CRCB_H2V1) ?  1 : 1)
+
 static void get_len(struct mdp_img *img, struct mdp_rect *rect, uint32_t bpp,
 		    uint32_t *len0, uint32_t *len1)
 {
 	*len0 = IMG_LEN(rect->h, img->width, rect->w, bpp);
-	switch (img->format) {
-		case MDP_Y_CBCR_H2V2:
-		case MDP_Y_CRCB_H2V2:
-			*len1 = *len0 / 4;
-			break;
-		case MDP_Y_CBCR_H2V1:
-		case MDP_Y_CRCB_H2V1:
-			*len1 = *len0 / 2;
-			break;
-		default:
-			*len1 = 0;
-	}
+	if (IS_PSEUDOPLNR(img->format))
+		*len1 = *len0/Y_TO_CRCB_RATIO(img->format);
+	else
+		*len1 = 0;
+	
 }
 
 static int valid_src_dst(unsigned long src_start, unsigned long src_len,
@@ -599,7 +593,7 @@ static void flush_imgs(struct mdp_blit_req *req, struct mdp_regs *regs)
 					src1_len);
 	}
 	if (req->dst.memory_type == PMEM_IMG) {
-		get_len(&req->dst, &req->dst_rect, regs->dst_bpp, &dst0_len, 
+		get_len(&req->dst, &req->dst_rect, regs->dst_bpp, &dst0_len,
 			 &dst1_len);
 		flush_pmem_fd(req->dst.memory_id, req->dst.offset, dst0_len);
 		if (regs->dst_cfg & PPP_SRC_PLANE_PSEUDOPLNR)
@@ -610,8 +604,28 @@ static void flush_imgs(struct mdp_blit_req *req, struct mdp_regs *regs)
 #endif
 }
 
-#define WRITEL(v, a) do { writel(v,a); DLOG(#a "[%x]=%x\n", a, v); }\
+#define WRITEL(v, a) do { writel(v,a); DLOG("[%x]=%x\n", a, v); }\
 		     while (0)
+static void get_chroma_addr(struct mdp_img *img, struct mdp_rect *rect,
+			    uint32_t base, uint32_t bpp, uint32_t cfg,
+			    uint32_t *addr, uint32_t *ystride)
+{
+	uint32_t compress_v = Y_TO_CRCB_RATIO(img->format);
+	uint32_t compress_h = 2;
+	uint32_t  offset;
+
+	if (cfg & PPP_SRC_PLANE_PSEUDOPLNR) {
+		offset = (rect->x / compress_h) * compress_h;
+		offset += rect->y == 0 ? 0 :
+			((rect->y + 1) / compress_v) * img->width;
+		*addr = base + (img->width * img->height * bpp);
+		*addr += offset * bpp;
+		*ystride |= *ystride << 16;
+	} else {
+		*addr = 0;
+	}
+}
+
 int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 {
 	struct mdp_regs regs = {0};
@@ -658,13 +672,14 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	 * safely call put_img */
 	if (unlikely(get_img(&req->src, info, &src_start, &src_len)) ||
 		    (get_img(&req->dst, info, &dst_start, &dst_len))) {
-		printk("mpd_ppp: could not retrieve image from memory\n");
+		printk(KERN_ERR "mpd_ppp: could not retrieve image from "
+		       "memory\n");
 		return -1;
 	}
 
 	if (unlikely(req->src.format >= MDP_IMGTYPE_LIMIT ||
 	    req->dst.format >= MDP_IMGTYPE_LIMIT)) {
-		printk("mpd_ppp: img is of wrong format\n");
+		printk(KERN_ERR "mpd_ppp: img is of wrong format\n");
 		return -EINVAL;
 		}
 
@@ -672,7 +687,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		     req->src_rect.y > req->src.height ||
 		     req->dst_rect.x > req->dst.width ||
 		     req->dst_rect.y > req->dst.height)) {
-		printk("mpd_ppp: img rect is outside of img!\n");
+		printk(KERN_ERR "mpd_ppp: img rect is outside of img!\n");
 		return -EINVAL;
 	}
 	if (unlikely(req->src_rect.h == 0 ||
@@ -683,43 +698,35 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		return 0;
 
 	regs.src_cfg = src_img_cfg[req->src.format];
-	regs.src_cfg |= (req->src_rect.x % 2) ? PPP_SRC_BPP_ROI_ODD_X : 0;
-	regs.src_cfg |= (req->src_rect.y % 2) ? PPP_SRC_BPP_ROI_ODD_Y : 0;
+	regs.src_cfg |= (req->src_rect.x & 0x1) ? PPP_SRC_BPP_ROI_ODD_X : 0;
+	regs.src_cfg |= (req->src_rect.y & 0x1) ? PPP_SRC_BPP_ROI_ODD_Y : 0;
 
 	regs.dst_cfg = dst_img_cfg[req->dst.format] | PPP_DST_OUT_SEL_AXI;
 
+		
+		
 	regs.src_bpp = bytes_per_pixel[req->src.format];
 	regs.src0 = src_start + req->src.offset;
-	regs.src0 += (req->src_rect.x + (req->src_rect.y * req->src.width)) *
-		      regs.src_bpp;
 	regs.src_ystride = req->src.width * regs.src_bpp;
 
-	if (regs.src_cfg & PPP_SRC_PLANE_PSEUDOPLNR) {
-		regs.src1 = regs.src0 + (req->src.width * req->src.height *
-					 regs.src_bpp);
-		regs.src_ystride |= regs.src_ystride << 16;
-	} else {
-		regs.src1 = 0;
-	}
+	get_chroma_addr(&req->src, &req->src_rect, regs.src0, regs.src_bpp,
+			regs.src_cfg, &regs.src1, &regs.src_ystride);
+	regs.src0 += (req->src_rect.x + (req->src_rect.y * req->src.width)) *
+		      regs.src_bpp;
 
 	regs.dst_bpp = info->var.bits_per_pixel / 8;
 	regs.dst0 = dst_start + req->dst.offset;
+	regs.dst_ystride = req->dst.width * regs.dst_bpp;
+	get_chroma_addr(&req->dst, &req->dst_rect, regs.dst0, regs.dst_bpp,
+			regs.dst_cfg, &regs.dst1, &regs.dst_ystride);
 	regs.dst0 += (req->dst_rect.x + (req->dst_rect.y * req->dst.width)) *
 		     regs.dst_bpp;
-	regs.dst_ystride = req->dst.width * regs.dst_bpp;
-	if (regs.dst_cfg & PPP_DST_PLANE_PSEUDOPLNR) {
-		regs.dst1 = regs.dst0 + (req->dst.width * req->dst.height *
-					 regs.dst_bpp);
-		regs.dst_ystride |= regs.dst_ystride << 16;
-	} else {
-		regs.dst1 = 0;
-	}
 
-	if (!valid_src_dst(src_start, src_len, dst_start, dst_len, req, 
+	if (!valid_src_dst(src_start, src_len, dst_start, dst_len, req,
 			   &regs)) {
-		printk("mpd_ppp: final src or dst location is invalid, are you "
-			"trying to make an image too large or to place it "
-			"outside the screen?\n");
+		printk(KERN_ERR "mpd_ppp: final src or dst location is "
+			"invalid, are you trying to make an image too large "
+			"or to place it outside the screen?\n");
 		return -EINVAL;
 	}
 
@@ -776,7 +783,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		req->src_rect.w = (req->src_rect.w / 2) * 2;
 		req->dst_rect.x = (req->dst_rect.x / 2) * 2;
 		req->dst_rect.w = (req->dst_rect.w / 2) * 2;
-	} 
+	}
 
 	get_edge_cond(req, &regs);
 
@@ -801,13 +808,12 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	WRITEL(regs.dst_cfg, PPP_ADDR_DST_CFG);
 	WRITEL(pack_pattern[req->dst.format], PPP_ADDR_DST_PACK_PATTERN);
 	WRITEL((req->dst_rect.h << 16) | req->dst_rect.w,
-		 PPP_ADDR_DST_ROI);
+		PPP_ADDR_DST_ROI);
 	WRITEL(regs.dst0, PPP_ADDR_DST0);
 	WRITEL(regs.dst1, PPP_ADDR_DST1);
 	WRITEL(regs.dst_ystride, PPP_ADDR_DST_YSTRIDE);
 
 	WRITEL(regs.edge, PPP_ADDR_EDGE);
-
 	if (regs.op & PPP_OP_BLEND_ON) {
 		WRITEL(regs.dst0, PPP_ADDR_BG0);
 		WRITEL(regs.dst1, PPP_ADDR_BG1);

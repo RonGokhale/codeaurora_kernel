@@ -528,6 +528,11 @@
 		     (img == MDP_ARGB_8888) | (img == MDP_RGBA_8888) | \
 		     (img == MDP_XRGB_8888))
 
+#define IS_PSEUDOPLNR(img) ((img == MDP_Y_CRCB_H2V2) | \
+			    (img == MDP_Y_CBCR_H2V2) | \
+			    (img == MDP_Y_CRCB_H2V1) | \
+			    (img == MDP_Y_CBCR_H2V1))
+
 /* Mappings from addr to purpose */
 #define PPP_ADDR_SRC_ROI		MDP_FULL_BYPASS_WORD2
 #define PPP_ADDR_SRC0			MDP_FULL_BYPASS_WORD3
