@@ -31,6 +31,10 @@
 
 #define PRINT_FPS 0
 #define PRINT_BLIT_TIME 0
+#define AWAKE 0x0
+#define SLEEP_REQUESTED 0x1
+#define WAKE_REQUESTED 0x2
+#define SLEEPING 0x3
 
 struct msmfb_info {
 	struct fb_info *fb_info;
@@ -91,7 +95,12 @@ static int updater(void *_par)
 
 		spin_lock_irqsave(&par->update_lock, irq_flags);
 		par->update_info.need_update = 0;
-		sleeping = par->sleeping;
+		if (par->sleeping & SLEEP_REQUESTED) {
+			sleeping = 1;
+			par->sleeping = SLEEPING;
+		} else {
+			sleeping = 0;
+		}
 		x = par->update_info.left;
 		y = par->update_info.top;
 		w = par->update_info.eright - x;
@@ -202,17 +211,25 @@ restart:
 #ifdef CONFIG_ANDROID_POWER
 static void msmfb_early_suspend(android_early_suspend_t *h)
 {
+	unsigned long irq_flags;
 	struct msmfb_info *par = container_of(h, struct msmfb_info,
 					      early_suspend);
-	par->sleeping = 1;
+	spin_lock_irqsave(&par->update_lock, irq_flags);
+	par->sleeping = SLEEP_REQUESTED;
+	spin_unlock_irqrestore(&par->update_lock, irq_flags);
+	wake_up(&par->update_wq);
+	wait_event_interruptible(par->frame_wq, par->sleeping == SLEEPING);
 }
 
 static void msmfb_early_resume(android_early_suspend_t *h)
 {
+	unsigned long irq_flags;
 	struct msmfb_info *par = container_of(h, struct msmfb_info,
 				 early_suspend);
 	printk(KERN_INFO "msmfb_early_resume\n");
-	par->sleeping = 0;
+	spin_lock_irqsave(&par->update_lock, irq_flags);
+	par->sleeping = AWAKE;
+	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 	msmfb_update(par->fb_info, 0, 0, par->fb_info->var.xres,
 		     par->fb_info->var.yres, 0);
 }
@@ -333,14 +350,14 @@ static int msmfb_ioctl(struct fb_info *p, unsigned int cmd, unsigned long arg)
 }
 
 static struct fb_ops msmfb_ops = {
-	.owner =       THIS_MODULE,
-	.fb_open =     msmfb_open,
-	.fb_release =  msmfb_release,
+	.owner = THIS_MODULE,
+	.fb_open = msmfb_open,
+	.fb_release = msmfb_release,
 	.fb_check_var = msmfb_check_var,
 	.fb_pan_display = msmfb_pan_display,
-	.fb_fillrect	= msmfb_fillrect,
-	.fb_copyarea	= msmfb_copyarea,
-	.fb_imageblit	= msmfb_imageblit,
+	.fb_fillrect = msmfb_fillrect,
+	.fb_copyarea = msmfb_copyarea,
+	.fb_imageblit = msmfb_imageblit,
 	.fb_ioctl = msmfb_ioctl,
 };
 
