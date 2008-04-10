@@ -44,6 +44,12 @@
 
 static int msm_timer_ready;
 
+enum {
+	MSM_CLOCK_FLAGS_UNSTABLE_COUNT = 1U << 0,
+	MSM_CLOCK_FLAGS_ODD_MATCH_WRITE = 1U << 1,
+	MSM_CLOCK_FLAGS_DELAYED_WRITE_POST = 1U << 2,
+};
+
 struct msm_clock {
 	struct clock_event_device   clockevent;
 	struct clocksource          clocksource;
@@ -51,7 +57,15 @@ struct msm_clock {
 	uint32_t                    regbase;
 	uint32_t                    freq;
 	uint32_t                    shift;
+	uint32_t                    flags;
+	uint32_t                    write_delay;
+	uint32_t                    last_set;
 };
+enum {
+	MSM_CLOCK_GPT,
+	MSM_CLOCK_DGT,
+};
+static struct msm_clock msm_clocks[];
 
 static irqreturn_t msm_timer_interrupt(int irq, void *dev_id)
 {
@@ -60,28 +74,62 @@ static irqreturn_t msm_timer_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static uint32_t msm_read_timer_count(struct msm_clock *clock)
+{
+	uint32_t t1, t2;
+	int loop_count = 0;
+
+	t1 = readl(clock->regbase + TIMER_COUNT_VAL);
+	if (!(clock->flags & MSM_CLOCK_FLAGS_UNSTABLE_COUNT))
+		return t1;
+	while (1) {
+		t2 = readl(clock->regbase + TIMER_COUNT_VAL);
+		if (t1 == t2)
+			return t1;
+		if (loop_count++ > 10) {
+			printk(KERN_ERR "msm_read_timer_count timer %s did not"
+			       "stabilize %u != %u\n", clock->clockevent.name,
+			       t2, t1);
+			return t2;
+		}
+		t1 = t2;
+	}
+}
+
 static cycle_t msm_gpt_read(void)
 {
-	return readl(MSM_GPT_BASE + TIMER_COUNT_VAL);
+	return msm_read_timer_count(&msm_clocks[MSM_CLOCK_GPT]);
 }
 
 static cycle_t msm_dgt_read(void)
 {
-	return readl(MSM_DGT_BASE + TIMER_COUNT_VAL) >> MSM_DGT_SHIFT;
+	struct msm_clock *clock = &msm_clocks[MSM_CLOCK_DGT];
+	return msm_read_timer_count(clock) >> MSM_DGT_SHIFT;
 }
 
 static int msm_timer_set_next_event(unsigned long cycles,
 				    struct clock_event_device *evt)
 {
+	int i;
 	struct msm_clock *clock = container_of(evt, struct msm_clock, clockevent);
-	uint32_t now = readl(clock->regbase + TIMER_COUNT_VAL);
+	uint32_t now = msm_read_timer_count(clock);
 	uint32_t alarm = now + (cycles << clock->shift);
 	int late;
 
+	if (clock->flags & MSM_CLOCK_FLAGS_ODD_MATCH_WRITE)
+		while (now == clock->last_set)
+			now = msm_read_timer_count(clock);
 	writel(alarm, clock->regbase + TIMER_MATCH_VAL);
-	now = readl(clock->regbase + TIMER_COUNT_VAL);
+	if (clock->flags & MSM_CLOCK_FLAGS_DELAYED_WRITE_POST) {
+		/* read the counter four extra times to make sure write posts
+		   before reading the time */
+		for (i = 0; i < 4; i++)
+			readl(clock->regbase + TIMER_COUNT_VAL);
+	}
+	now = msm_read_timer_count(clock);
+	clock->last_set = now;
 	late = now - alarm;
-	if (late >= (-2 << clock->shift) && late < DGT_HZ*5) {
+	if (late >= (-clock->write_delay << clock->shift) && late < DGT_HZ*5) {
 		static int print_limit = 10;
 		if(print_limit > 0) {
 			print_limit--;
@@ -122,7 +170,7 @@ unsigned long long sched_clock(void)
 }
 
 static struct msm_clock msm_clocks[] = {
-	{
+	[MSM_CLOCK_GPT] = {
 		.clockevent = {
 			.name           = "gp_timer",
 			.features       = CLOCK_EVT_FEAT_ONESHOT,
@@ -136,7 +184,7 @@ static struct msm_clock msm_clocks[] = {
 			.rating         = 200,
 			.read           = msm_gpt_read,
 			.mask           = CLOCKSOURCE_MASK(32),
-			.shift          = 24,
+			.shift          = 17,
 			.flags          = CLOCK_SOURCE_IS_CONTINUOUS,
 		},
 		.irq = {
@@ -147,9 +195,14 @@ static struct msm_clock msm_clocks[] = {
 			.irq     = INT_GP_TIMER_EXP
 		},
 		.regbase = MSM_GPT_BASE,
-		.freq = GPT_HZ
+		.freq = GPT_HZ,
+		.flags   =
+			MSM_CLOCK_FLAGS_UNSTABLE_COUNT |
+			MSM_CLOCK_FLAGS_ODD_MATCH_WRITE |
+			MSM_CLOCK_FLAGS_DELAYED_WRITE_POST,
+		.write_delay = 9,
 	},
-	{
+	[MSM_CLOCK_DGT] = {
 		.clockevent = {
 			.name           = "dg_timer",
 			.features       = CLOCK_EVT_FEAT_ONESHOT,
@@ -175,7 +228,8 @@ static struct msm_clock msm_clocks[] = {
 		},
 		.regbase = MSM_DGT_BASE,
 		.freq = DGT_HZ >> MSM_DGT_SHIFT,
-		.shift = MSM_DGT_SHIFT
+		.shift = MSM_DGT_SHIFT,
+		.write_delay = 2,
 	}
 };
 
@@ -196,8 +250,9 @@ static void __init msm_timer_init(void)
 		/* allow at least 10 seconds to notice that the timer wrapped */
 		ce->max_delta_ns =
 			clockevent_delta2ns(0xf0000000 >> clock->shift, ce);
-		/* 5 gets rounded down to 4 */
-		ce->min_delta_ns = clockevent_delta2ns(5, ce);
+		/* ticks gets rounded down by one */
+		ce->min_delta_ns =
+			clockevent_delta2ns(clock->write_delay + 4, ce);
 		ce->cpumask = cpumask_of_cpu(0);
 
 		cs->mult = clocksource_hz2mult(clock->freq, cs->shift);
