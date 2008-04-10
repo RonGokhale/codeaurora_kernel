@@ -584,6 +584,8 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 		mddi->panel_info.mddi = mddi;
 		mddi->panel_info.width = mddi->caps.Bitmap_Width;
 		mddi->panel_info.height = mddi->caps.Bitmap_Height;
+		mddi->panel_info.fb_base = pd->fb_base;
+		mddi->panel_info.fb_size = pd->fb_size;
 
 		/* setup panel_pdev which will be used by the fb core */
 		mddi->panel_pdev.id = 0;

@@ -25,6 +25,8 @@ struct mddi_panel_info
 	struct mddi_panel_ops *panel_ops;
 	uint16_t width;
 	uint16_t height;
+	unsigned long fb_base;
+	unsigned long fb_size;
 };
 
 struct mddi_panel_ops

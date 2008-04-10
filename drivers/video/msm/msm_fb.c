@@ -137,7 +137,8 @@ static int updater(void *_par)
 			} else {
 				addr = ((pi->width * (par->yoffset + y) + x)
 					* 2);
-				mdp_dma_to_mddi(addr, pi->width * 2, w, h, x,
+				mdp_dma_to_mddi(addr + par->fb_info->fix.smem_start,
+						pi->width * 2, w, h, x,
 						y);
 				mdp_dma_wait();
 			}
@@ -374,7 +375,7 @@ static int msmfb_probe(struct platform_device *pdev)
 	printk(KERN_INFO "msmfb_probe() installing %d x %d panel\n",
 	       pi->width, pi->height);
 
-	fbram = ioremap(0, 8 * 1024 * 1024);
+	fbram = ioremap(pi->fb_base, pi->fb_size);
 
 	if (fbram == 0) {
 		printk(KERN_ERR "cannot allocate fbram!\n");
@@ -391,8 +392,8 @@ static int msmfb_probe(struct platform_device *pdev)
 
 	info->screen_base = fbram;
 	strncpy(info->fix.id, "msmfb", 16);
-	info->fix.smem_start = 0;
-	info->fix.smem_len = 8 * 1024 * 1024;
+	info->fix.smem_start = pi->fb_base;
+	info->fix.smem_len = pi->fb_size;
 	info->fix.ypanstep = 1;
 
 	info->fbops = &msmfb_ops;

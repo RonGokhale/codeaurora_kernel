@@ -27,6 +27,8 @@ struct msm_mddi_platform_data
 	void (*mddi_client_power)(int on);
 	void (*panel_power)(struct mddi_panel_info *panel, int on);
 	unsigned has_vsync_irq:1;
+	unsigned long fb_base;
+	unsigned long fb_size;
 };
 
 struct msm_hsusb_platform_data

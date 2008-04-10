@@ -27,7 +27,7 @@
 #include <asm/cacheflush.h>
 #include <asm/arch/board.h>
 
-#define PMEM_MAX_DEVICES 2
+#define PMEM_MAX_DEVICES 10
 #define PMEM_MAX_ORDER 128
 #define PMEM_MIN_ALLOC PAGE_SIZE
 
