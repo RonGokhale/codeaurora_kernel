@@ -37,32 +37,29 @@
 #include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
 
-#define MSM_SMI_BASE            0x00000000
-#define MSM_SMI_SIZE            0x900000
+#define MSM_SMI_BASE		0x00000000
+#define MSM_SMI_SIZE		0x900000
 
-#define MSM_EBI_BASE            0x10000000
-#define MSM_EBI_SIZE            0x6e00000
+#define MSM_EBI_BASE		0x10000000
+#define MSM_EBI_SIZE		0x6e00000
 
-#define MSM_FB_BASE             MSM_SMI_BASE
-#define MSM_FB_SIZE             0x800000
+#define MSM_PMEM_GPU0_BASE	0x0
+#define MSM_PMEM_GPU0_SIZE	0x800000
 
-#define MSM_SMI_GPU_BASE
-#define MSM_SMI_GPU_SIZE
+#define MSM_LINUX_BASE		MSM_EBI_BASE
+#define MSM_LINUX_SIZE		0x4c00000
 
-#define MSM_SMI_AMSS_BASE
-#define MSM_SMI_AMSS_SIZE
+#define MSM_PMEM_MDP_BASE	MSM_LINUX_BASE + MSM_LINUX_SIZE
+#define MSM_PMEM_MDP_SIZE	0x800000
 
-#define MSM_LINUX_BASE          MSM_EBI_BASE
-#define MSM_LINUX_SIZE          0x4c00000
+#define MSM_PMEM_ADSP_BASE	MSM_PMEM_MDP_BASE + MSM_PMEM_MDP_SIZE
+#define MSM_PMEM_ADSP_SIZE	0x800000
 
-#define MSM_EBI_GPU_BASE
-#define MSM_EBI_GPU_SIZE
+#define MSM_PMEM_GPU1_BASE	MSM_PMEM_ADSP_BASE + MSM_PMEM_ADSP_SIZE
+#define MSM_PMEM_GPU1_SIZE	0x800000
 
-#define MSM_PMEM_BASE           MSM_LINUX_BASE + MSM_LINUX_SIZE
-#define MSM_PMEM_SIZE           0x800000
-
-#define MSM_EBI_AMSS_BASE
-#define MSM_EBI_AMSS_SIZE
+#define MSM_FB_BASE		MSM_PMEM_GPU1_BASE + MSM_PMEM_GPU1_SIZE
+#define MSM_FB_SIZE		0x9b000
 
 static int halibut_ffa;
 module_param_named(ffa, halibut_ffa, int, S_IRUGO | S_IWUSR | S_IWGRP);
@@ -116,6 +113,8 @@ static void mddi0_panel_power(struct mddi_panel_info *panel, int on)
 static struct msm_mddi_platform_data msm_mddi0_pdata = {
 	.panel_power	= mddi0_panel_power,
 	.has_vsync_irq	= 0,
+	.fb_base = MSM_FB_BASE,
+	.fb_size = MSM_FB_SIZE,
 };
 
 static struct platform_device msm_mddi0_device = {
@@ -186,16 +185,58 @@ static struct platform_device msm_hsusb_device = {
 
 static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
-	.start = MSM_PMEM_BASE,
-	.size = MSM_PMEM_SIZE,
+	.start = MSM_PMEM_MDP_BASE,
+	.size = MSM_PMEM_MDP_SIZE,
 	.no_allocator = 1,
 	.cached = 1,
+};
+
+static struct android_pmem_platform_data android_pmem_adsp_pdata = {
+	.name = "pmem_adsp",
+	.start = MSM_PMEM_ADSP_BASE,
+	.size = MSM_PMEM_ADSP_SIZE,
+	.no_allocator = 0,
+	.cached = 0,
+};
+
+static struct android_pmem_platform_data android_pmem_gpu0_pdata = {
+        .name = "pmem_gpu0",
+        .start = MSM_PMEM_GPU0_BASE,
+        .size = MSM_PMEM_GPU0_SIZE,
+        .no_allocator = 1,
+        .cached = 0,
+};
+
+static struct android_pmem_platform_data android_pmem_gpu1_pdata = {
+        .name = "pmem_gpu1",
+        .start = MSM_PMEM_GPU1_BASE,
+        .size = MSM_PMEM_GPU1_SIZE,
+        .no_allocator = 1,
+        .cached = 0,
 };
 
 static struct platform_device android_pmem_device = {
 	.name = "android_pmem",
 	.id = 0,
 	.dev = { .platform_data = &android_pmem_pdata },
+};
+
+static struct platform_device android_pmem_adsp_device = {
+	.name = "android_pmem",
+	.id = 1,
+	.dev = { .platform_data = &android_pmem_adsp_pdata },
+};
+
+static struct platform_device android_pmem_gpu0_device = {
+	.name = "android_pmem",
+	.id = 2,
+	.dev = { .platform_data = &android_pmem_gpu0_pdata },
+};
+
+static struct platform_device android_pmem_gpu1_device = {
+	.name = "android_pmem",
+	.id = 3,
+	.dev = { .platform_data = &android_pmem_gpu1_pdata },
 };
 
 static struct platform_device *devices[] __initdata = {
@@ -206,6 +247,9 @@ static struct platform_device *devices[] __initdata = {
 	&msm_hsusb_device,
 	&smc91x_device,
 	&android_pmem_device,
+	&android_pmem_adsp_device,
+	&android_pmem_gpu0_device,
+	&android_pmem_gpu1_device,
 };
 
 extern struct sys_timer msm_timer;
