@@ -111,11 +111,14 @@ static int msm_timer_set_next_event(unsigned long cycles,
 				    struct clock_event_device *evt)
 {
 	int i;
-	struct msm_clock *clock = container_of(evt, struct msm_clock, clockevent);
-	uint32_t now = msm_read_timer_count(clock);
-	uint32_t alarm = now + (cycles << clock->shift);
+	struct msm_clock *clock;
+	uint32_t now;
+	uint32_t alarm;
 	int late;
 
+	clock = container_of(evt, struct msm_clock, clockevent);
+	now = msm_read_timer_count(clock);
+	alarm = now + (cycles << clock->shift);
 	if (clock->flags & MSM_CLOCK_FLAGS_ODD_MATCH_WRITE)
 		while (now == clock->last_set)
 			now = msm_read_timer_count(clock);
@@ -131,10 +134,11 @@ static int msm_timer_set_next_event(unsigned long cycles,
 	late = now - alarm;
 	if (late >= (-clock->write_delay << clock->shift) && late < DGT_HZ*5) {
 		static int print_limit = 10;
-		if(print_limit > 0) {
+		if (print_limit > 0) {
 			print_limit--;
-			printk(KERN_NOTICE "msm_timer_set_next_event(%lu) clock %s, "
-			       "alarm already expired, now %x, alarm %x, late %d%s\n",
+			printk(KERN_NOTICE "msm_timer_set_next_event(%lu) "
+			       "clock %s, alarm already expired, now %x, "
+			       "alarm %x, late %d%s\n",
 			       cycles, clock->clockevent.name, now, alarm, late,
 			       print_limit ? "" : " stop printing");
 		}
@@ -146,7 +150,8 @@ static int msm_timer_set_next_event(unsigned long cycles,
 static void msm_timer_set_mode(enum clock_event_mode mode,
 			      struct clock_event_device *evt)
 {
-	struct msm_clock *clock = container_of(evt, struct msm_clock, clockevent);
+	struct msm_clock *clock;
+	clock = container_of(evt, struct msm_clock, clockevent);
 	switch (mode) {
 	case CLOCK_EVT_MODE_RESUME:
 	case CLOCK_EVT_MODE_PERIODIC:
@@ -163,7 +168,7 @@ static void msm_timer_set_mode(enum clock_event_mode mode,
 
 unsigned long long sched_clock(void)
 {
-	if(msm_timer_ready)
+	if (msm_timer_ready)
 		return ktime_to_ns(ktime_get());
 	else
 		return 0;
@@ -189,7 +194,8 @@ static struct msm_clock msm_clocks[] = {
 		},
 		.irq = {
 			.name    = "gp_timer",
-			.flags   = IRQF_DISABLED | IRQF_TIMER | IRQF_TRIGGER_RISING,
+			.flags   = IRQF_DISABLED | IRQF_TIMER |
+				   IRQF_TRIGGER_RISING,
 			.handler = msm_timer_interrupt,
 			.dev_id  = &msm_clocks[0].clockevent,
 			.irq     = INT_GP_TIMER_EXP
@@ -215,13 +221,14 @@ static struct msm_clock msm_clocks[] = {
 			.name           = "dg_timer",
 			.rating         = 300,
 			.read           = msm_dgt_read,
-			.mask           = CLOCKSOURCE_MASK((32 - MSM_DGT_SHIFT)),
+			.mask           = CLOCKSOURCE_MASK((32-MSM_DGT_SHIFT)),
 			.shift          = 24 - MSM_DGT_SHIFT,
 			.flags          = CLOCK_SOURCE_IS_CONTINUOUS,
 		},
 		.irq = {
 			.name    = "dg_timer",
-			.flags   = IRQF_DISABLED | IRQF_TIMER | IRQF_TRIGGER_RISING,
+			.flags   = IRQF_DISABLED | IRQF_TIMER |
+				   IRQF_TRIGGER_RISING,
 			.handler = msm_timer_interrupt,
 			.dev_id  = &msm_clocks[1].clockevent,
 			.irq     = INT_DEBUG_TIMER_EXP
