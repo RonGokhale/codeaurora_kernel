@@ -139,6 +139,8 @@ int msm_proc_comm(unsigned cmd, unsigned *data1, unsigned *data2)
 		ret = -EIO;
 	}
 
+	writel(PCOM_CMD_IDLE, base + APP_COMMAND);
+
 	spin_unlock_irqrestore(&proc_comm_lock, flags);
 	return ret;
 }
