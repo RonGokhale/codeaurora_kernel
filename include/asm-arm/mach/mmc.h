@@ -20,6 +20,7 @@ struct mmc_platform_data {
 	u32 (*translate_vdd)(struct device *, unsigned int);
 	unsigned int (*status)(struct device *);
 	struct embedded_sdio_data *embedded_sdio;
+	unsigned int status_irq;
 };
 
 #endif
