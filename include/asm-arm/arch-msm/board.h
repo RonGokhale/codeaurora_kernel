@@ -70,6 +70,9 @@ void __init msm_map_common_io(void);
 void __init msm_init_irq(void);
 void __init msm_init_gpio(void);
 
+struct mmc_platform_data;
+int __init msm_add_sdcc(unsigned int controller, struct mmc_platform_data *plat);
+
 #if defined(CONFIG_USB_FUNCTION_MSM_HSUSB)
 void msm_hsusb_set_vbus_state(int online);
 #else
