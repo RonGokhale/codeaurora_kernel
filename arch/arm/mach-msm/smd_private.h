@@ -43,28 +43,6 @@ struct smem_proc_comm
 #define PC_APPS  0
 #define PC_MODEM 1
 
-#define PC_INVALID_CMD             0
-#define PC_RESET_APPS              1
-#define PC_RESET_CHIP              2
-#define PC_CONFIG_NAND_MPU         3
-#define PC_CONFIG_USB_CLKS         4
-#define PC_GET_POWER_ON_STATUS     5
-#define PC_GET_WAKE_UP_STATUS      6
-#define PC_GET_BATT_LEVEL          7
-#define PC_CHG_IS_CHARGING         8
-#define PC_POWER_DOWN              9
-#define PC_USB_PIN_CONFIG         10
-#define PC_USB_PIN_SEL            11
-#define PC_SET_RTC_ALARM          12
-#define PC_NV_READ                13
-#define PC_NV_WRITE               14
-
-#define PC_INVALID_STATUS          0
-#define PC_READY                   1
-
-#define PC_FLAG_DONE              0x80000000
-#define PC_FLAG_ERROR             0x40000000
-
 #define VERSION_QDSP6     4
 #define VERSION_APPS_SBL  6
 #define VERSION_MODEM_SBL 7
