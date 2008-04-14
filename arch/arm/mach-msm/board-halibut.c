@@ -24,11 +24,13 @@
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 #include <asm/mach/flash.h>
+#include <asm/mach/mmc.h>
 
 #include <asm/arch/board.h>
 #include <asm/arch/clock.h>
 #include <asm/arch/msm_iomap.h>
 #include <asm/arch/msm_fb.h>
+#include <asm/arch/vreg.h>
 
 #include <asm/io.h>
 #include <asm/delay.h>
@@ -252,6 +254,24 @@ static struct platform_device *devices[] __initdata = {
 	&android_pmem_gpu1_device,
 };
 
+/*
+ * All halibut slots are the same(ish)
+ */
+
+static unsigned int halibut_sdcc_slot_status(struct device *dev)
+{
+	/*
+	 * TODO: Hook this up to the FPGA for reading slot status
+	 * For now return 0. 
+	 */
+	return 0;
+}
+
+static struct mmc_platform_data halibut_sdcc_data = {
+	.ocr_mask	= MMC_VDD_28_29,
+	.status		= halibut_sdcc_slot_status,
+};
+
 extern struct sys_timer msm_timer;
 
 static void __init halibut_init_irq(void)
@@ -268,6 +288,25 @@ static struct msm_clock_platform_data halibut_clock_data = {
 void msm_serial_debug_init(unsigned int base, int irq, 
 			   const char *clkname, int signal_irq);
 
+static void __init halibut_init_mmc(void)
+{
+	struct vreg *vreg_mmc;
+	int rc;
+
+	vreg_mmc = vreg_get(0, "mmc");
+	rc = vreg_enable(vreg_mmc);
+	if (rc)
+		printk(KERN_ERR "%s: vreg enable failed (%d)\n", __func__, rc);
+
+	msm_add_sdcc(1, &halibut_sdcc_data);
+/* TODO: Enable these once we have support for the SDC mux
+ *	msm_add_sdcc(2, &halibut_sdcc_data);
+ *	msm_add_sdcc(3, &halibut_sdcc_data);
+ *	msm_add_sdcc(4, &halibut_sdcc_data);
+ */
+
+}
+
 static void __init halibut_init(void)
 {
 #if defined(CONFIG_MSM_SERIAL_DEBUGGER)
@@ -278,6 +317,7 @@ static void __init halibut_init(void)
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 	halibut_init_keypad(halibut_ffa);
 	msm_add_devices();
+	halibut_init_mmc();
 
 	/* TODO: detect vbus and correctly notify USB about its presence 
 	 * For now we just declare that VBUS is present at boot and USB
