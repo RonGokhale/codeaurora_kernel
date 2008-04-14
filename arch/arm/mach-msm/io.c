@@ -56,6 +56,10 @@ static struct map_desc msm_io_desc[] __initdata = {
 		.length =   MSM_SHARED_RAM_SIZE,
 		.type =     MT_DEVICE,
 	},
+	MSM_DEVICE(SDC1),
+	MSM_DEVICE(SDC2),
+	MSM_DEVICE(SDC3),
+	MSM_DEVICE(SDC4),
 };
 
 void __init msm_map_common_io(void)

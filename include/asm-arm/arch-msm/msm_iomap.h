@@ -105,6 +105,22 @@
 #define MSM_AD5_PHYS          0xAC000000
 #define MSM_AD5_SIZE          (SZ_1M*13)
 
+#define MSM_SDC1_BASE         0xE1000000
+#define MSM_SDC1_PHYS         0xA0400000
+#define MSM_SDC1_SIZE         SZ_4K
+
+#define MSM_SDC2_BASE         0xE1001000
+#define MSM_SDC2_PHYS         0xA0500000
+#define MSM_SDC2_SIZE         SZ_4K
+
+#define MSM_SDC3_BASE         0xE1002000
+#define MSM_SDC3_PHYS         0xA0600000
+#define MSM_SDC3_SIZE         SZ_4K
+
+#define MSM_SDC4_BASE         0xE1003000
+#define MSM_SDC4_PHYS         0xA0700000
+#define MSM_SDC4_SIZE         SZ_4K
+
 /* Used by debug-macro.S, uncompress.h, etc. */
 #if defined(CONFIG_MSM_LL_DEBUG_UART1)
 #define MSM_DEBUG_UART_PHYS MSM_UART1_PHYS
