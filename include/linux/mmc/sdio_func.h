@@ -129,6 +129,8 @@ extern int sdio_release_irq(struct sdio_func *func);
 
 extern unsigned char sdio_readb(struct sdio_func *func,
 	unsigned int addr, int *err_ret);
+extern unsigned char sdio_readb_ext(struct sdio_func *func,
+	unsigned int addr, int *err_ret, unsigned in);
 extern unsigned short sdio_readw(struct sdio_func *func,
 	unsigned int addr, int *err_ret);
 extern unsigned long sdio_readl(struct sdio_func *func,
