@@ -26,11 +26,15 @@
 #include <linux/interrupt.h>
 #include <linux/wait.h>
 #include <linux/mm.h>
+#include <linux/clk.h>
 
 static DEFINE_SPINLOCK(hw3d_lock);
 static DECLARE_WAIT_QUEUE_HEAD(hw3d_queue);
 static int hw3d_pending;
 static int hw3d_disabled;
+
+static struct clk *grp_clk;
+static struct clk *imem_clk;
 
 static irqreturn_t hw3d_irq_handler(int irq, void *data)
 {
@@ -96,6 +100,8 @@ static int hw3d_mmap(struct file *file, struct vm_area_struct *vma)
 
 static int hw3d_open(struct inode *inode, struct file *file)
 {
+	clk_enable(imem_clk);
+	clk_enable(grp_clk);
 	return 0;
 }
 
@@ -122,10 +128,22 @@ static int __init hw3d_init(void)
 {
 	int ret;
 
+	grp_clk = clk_get(NULL, "grp_clk");
+	if (IS_ERR(grp_clk))
+		return PTR_ERR(grp_clk);
+	
+	imem_clk = clk_get(NULL, "imem_clk");
+	if (IS_ERR(imem_clk)) {
+		clk_put(grp_clk);
+		return PTR_ERR(imem_clk);
+	}
 	ret = request_irq(INT_GRAPHICS, hw3d_irq_handler,
 			  IRQF_TRIGGER_HIGH, "hw3d", 0);
-	if (ret)
+	if (ret) {
+		clk_put(grp_clk);
+		clk_put(imem_clk);
 		return ret;
+	}
 
 	return misc_register(&hw3d_device);
 }
