@@ -129,11 +129,14 @@ static int
 msm_i2c_poll_status(struct msm_i2c_dev *dev, uint32_t mask, uint32_t value)
 {
 	uint32_t status;
+	int loop_count = 0;
 	int timeout = jiffies + HZ;
 	do {
 		status = msm_i2c_read_status(dev);
 		if ((status & mask) == value)
 			return 0;
+		if(loop_count++ > 1000)
+			msleep(1);
 	} while ((int)(timeout - jiffies) >= 0);
 	dev_err(dev->dev, "poll status %x = %x failed, status - %x\n", mask, value, status);
 	return -ETIMEDOUT;
