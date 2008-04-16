@@ -205,7 +205,7 @@ static void msm_set_mctrl(struct uart_port *port, unsigned int mctrl)
 
 	mr = msm_read(port, UART_MR1);
 
-	if (mctrl & TIOCM_RTS) {
+	if (!(mctrl & TIOCM_RTS)) {
 		mr &= ~UART_MR1_RX_RDY_CTL;
 		msm_write(port, mr, UART_MR1);
 		msm_write(port, UART_CR_CMD_RESET_RFR, UART_CR);
