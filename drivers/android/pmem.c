@@ -254,7 +254,7 @@ static int pmem_release(struct inode* inode, struct file *file)
 		down_write(&pmem[id].bitmap_sem);
 		ret = pmem_free(id, data->index);
 		up_write(&pmem[id].bitmap_sem);
-	} 
+	}
 	if (PMEM_FLAGS_SUBMAP & data->flags) {
 		if (data->task) {
 			put_task_struct(data->task);
@@ -787,8 +787,11 @@ lock_mm:
 	if (PMEM_IS_SUBMAP(data)) {
 		is_submmapped = 1;
 		mm = get_task_mm(data->task);
-		if (!mm)
+		if (!mm) {
 			is_submmapped = 0;
+			ret = -EINVAL;
+			goto end2;
+		}
 	}
 	up_read(&data->sem);
 
@@ -798,7 +801,7 @@ lock_mm:
 	down_write(&data->sem);
 	master_file = fget_light(data->master_fd, &fput);
 	if (unlikely(!master_file)) {
-		return -EINVAL;
+		ret = -EINVAL;
 		goto end;
 	}
 	fput_light(master_file, fput);
@@ -881,6 +884,7 @@ lock_mm:
 	}
 end:
 	up_write(&data->sem);
+end2:
 	if (is_submmapped) {
 		up_write(&mm->mmap_sem);
 		mmput(mm);
