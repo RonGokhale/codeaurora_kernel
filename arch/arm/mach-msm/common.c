@@ -105,6 +105,11 @@ static struct resource msm_sdc1_resources[] = {
 		.end	= INT_SDC1_1,
 		.flags	= IORESOURCE_IRQ,
 	},
+	{
+		.start	= 8,
+		.end	= 8,
+		.flags	= IORESOURCE_DMA,
+	},
 };
 
 static struct platform_device msm_sdc1_device = {
@@ -127,6 +132,11 @@ static struct resource msm_sdc2_resources[] = {
 		.start	= INT_SDC2_0,
 		.end	= INT_SDC2_1,
 		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.start	= 8,
+		.end	= 8,
+		.flags	= IORESOURCE_DMA,
 	},
 };
 
@@ -151,6 +161,11 @@ static struct resource msm_sdc3_resources[] = {
 		.end	= INT_SDC3_1,
 		.flags	= IORESOURCE_IRQ,
 	},
+	{
+		.start	= 8,
+		.end	= 8,
+		.flags	= IORESOURCE_DMA,
+	},
 };
 
 static struct platform_device msm_sdc3_device = {
@@ -173,6 +188,11 @@ static struct resource msm_sdc4_resources[] = {
 		.start	= INT_SDC4_0,
 		.end	= INT_SDC4_1,
 		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.start	= 8,
+		.end	= 8,
+		.flags	= IORESOURCE_DMA,
 	},
 };
 
