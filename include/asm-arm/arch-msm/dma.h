@@ -126,6 +126,16 @@ typedef struct {
 	unsigned _reserved;
 } dmov_sg;
 
+/* Box mode */
+typedef struct {
+	uint32_t cmd;
+	uint32_t src_row_addr;
+	uint32_t dst_row_addr;
+	uint32_t src_dst_len;
+	uint32_t num_rows;
+	uint32_t row_offset;
+} dmov_box;
+
 /* bits for the cmd field of the above structures */
 
 #define CMD_LC      (1 << 31)  /* last command */
