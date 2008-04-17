@@ -88,6 +88,8 @@ static struct platform_device smc91x_device = {
 	.resource	= smc91x_resources,
 };
 
+#ifdef CONFIG_FB_MSM
+
 #define MDDI_CLIENT_CORE_BASE  0x108000
 #define LCD_CONTROL_BLOCK_BASE 0x110000
 #define PWM_BLOCK_BASE         0x140000
@@ -127,6 +129,7 @@ static struct platform_device msm_mddi0_device = {
 	},
 };
 
+#endif
 static struct resource msm_serial0_resources[] = {
 	{
 		.start	= INT_UART1,
@@ -245,7 +248,9 @@ static struct platform_device *devices[] __initdata = {
 #if !defined(CONFIG_MSM_SERIAL_DEBUGGER)
 	&msm_serial0_device,
 #endif
+#ifdef CONFIG_FB_MSM
 	&msm_mddi0_device,
+#endif
 	&msm_hsusb_device,
 	&smc91x_device,
 	&android_pmem_device,
