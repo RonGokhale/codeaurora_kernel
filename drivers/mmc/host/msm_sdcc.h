@@ -18,6 +18,11 @@
 #define SDC3_NS_REG_OFF		0xB4
 #define SDC4_NS_REG_OFF		0xB8
 
+#define MSMSDCC_CRCI_SDC1	6
+#define MSMSDCC_CRCI_SDC2	7
+#define MSMSDCC_CRCI_SDC3	12
+#define MSMSDCC_CRCI_SDC4	13
+
 #define SDCXNSREG_SRCSEL	(1 << 0)
 #define SDCXNSREG_PREDIVSEL	(1 << 3)
 #define SDCXNSREG_MNCNTRMODE	(1 << 5)
@@ -184,8 +189,30 @@ struct msmsdcc_tracedata {
 	uint32_t		overflow_count;
 };
 
+struct msmsdcc_nc_dmadata {
+	dmov_box	cmd __attribute__((__aligned__(8)));
+	uint32_t	cmdptr;
+};
+
+struct msmsdcc_dma_data {
+	struct msmsdcc_nc_dmadata	*nc;
+	dma_addr_t			nc_busaddr;
+	dma_addr_t			cmd_busaddr;
+	dma_addr_t			cmdptr_busaddr;
+
+	struct msm_dmov_cmd		hdr;
+	enum dma_data_direction		dir;
+
+	struct scatterlist		*sg;
+	int				num_ents;
+
+	int				channel;
+	struct msmsdcc_host		*host;
+};
+
 struct msmsdcc_host {
 	void __iomem		*base;
+	int			pdev_id;
 
 	struct mmc_request	*mrq;
 	struct mmc_command	*cmd;
@@ -212,12 +239,15 @@ struct msmsdcc_host {
 	unsigned int		sg_off;
 	unsigned int		size;
 
+	struct msmsdcc_dma_data	dma;
+
 #ifdef CONFIG_MSMSDCC_TRACE
 	struct msmsdcc_tracedata	tracedata;
 #endif
 };
 
-static inline void msmsdcc_init_sg(struct msmsdcc_host *host, struct mmc_data *data)
+static inline
+void msmsdcc_init_sg(struct msmsdcc_host *host, struct mmc_data *data)
 {
 	/*
 	 * Ideally, we want the higher levels to pass us a scatter list.
@@ -234,7 +264,8 @@ static inline int msmsdcc_next_sg(struct msmsdcc_host *host)
 	return --host->sg_len;
 }
 
-static inline char *msmsdcc_kmap_atomic(struct msmsdcc_host *host, unsigned long *flags)
+static inline char *
+msmsdcc_kmap_atomic(struct msmsdcc_host *host, unsigned long *flags)
 {
 	struct scatterlist *sg = host->sg_ptr;
 
@@ -242,7 +273,9 @@ static inline char *msmsdcc_kmap_atomic(struct msmsdcc_host *host, unsigned long
 	return kmap_atomic(sg_page(sg), KM_BIO_SRC_IRQ) + sg->offset;
 }
 
-static inline void msmsdcc_kunmap_atomic(struct msmsdcc_host *host, void *buffer, unsigned long *flags)
+static inline void
+msmsdcc_kunmap_atomic(struct msmsdcc_host *host,
+		      void *buffer, unsigned long *flags)
 {
 	kunmap_atomic(buffer, KM_BIO_SRC_IRQ);
 	local_irq_restore(*flags);

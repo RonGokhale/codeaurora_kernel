@@ -34,8 +34,12 @@
 #include <asm/div64.h>
 #include <asm/io.h>
 #include <asm/sizes.h>
+#include <asm/memory.h>
 #include <asm/mach/mmc.h>
 #include <asm/arch/msm_iomap.h>
+#include <asm/arch/dma.h>
+#include <linux/dma-mapping.h>
+#include <asm/dma-mapping.h>
 
 #include "msm_sdcc.h"
 
@@ -50,11 +54,16 @@ static unsigned int msmsdcc_4bit = 0;
 
 static struct resource *irqres;
 static struct resource *memres;
+static struct resource *dmares;
 
 #define PIO_DUMP_DATA			0
 #define VERBOSE_COMMAND_TIMEOUTS	0
+#define MSMSDCC_DEBUG_DMA		0
 
 static irqreturn_t msmsdcc_pio_irq(int irq, void *dev_id);
+
+static void msmsdcc_start_command(struct msmsdcc_host *host,
+				  struct mmc_command *cmd, u32 c);
 
 /*
  * Tracing support
@@ -142,12 +151,167 @@ msmsdcc_stop_data(struct msmsdcc_host *host)
 	host->data = NULL;
 }
 
+uint32_t msmsdcc_fifo_addr(struct msmsdcc_host *host)
+{
+	if (host->pdev_id == 1)
+		return MSM_SDC1_PHYS + MMCIFIFO;
+	else if (host->pdev_id == 2)
+		return MSM_SDC2_PHYS + MMCIFIFO;
+	else if (host->pdev_id == 3)
+		return MSM_SDC3_PHYS + MMCIFIFO;
+	else if (host->pdev_id == 4)
+		return MSM_SDC4_PHYS + MMCIFIFO;
+	else
+		BUG();
+}
+
+static unsigned int msmsdcc_get_dma_buffer(struct msmsdcc_host *host)
+{
+	unsigned int n;
+
+	n = dma_map_sg(mmc_dev(host->mmc), host->dma.sg,
+			host->dma.num_ents, host->dma.dir);
+
+	if (n != host->dma.num_ents)
+		printk(KERN_ERR "%s: Unable to map in all sg elements\n",
+		       __func__);
+
+	return sg_dma_address(host->dma.sg);
+}
+
+static void msmsdcc_put_dma_buffer(struct msmsdcc_host *host)
+{
+	dma_unmap_sg(mmc_dev(host->mmc), host->dma.sg, host->dma.num_ents,
+		     host->dma.dir);
+}
+
+static void
+msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
+			  unsigned int result,
+			  struct msm_dmov_errdata *err)
+{
+	struct msmsdcc_dma_data	*dma_data =
+		container_of(cmd, struct msmsdcc_dma_data, hdr);
+	struct msmsdcc_host	*host = dma_data->host;
+	struct mmc_data		*data = host->data;
+	int			i;
+
+	msmsdcc_put_dma_buffer(host);
+
+	if (result != 0x80000002) {
+		printk(KERN_ERR "%s: DMA failed (0x%.8x)\n",
+		       mmc_hostname(host->mmc), result);
+		if (err) {
+			for (i = 0; i < ARRAY_SIZE(err->flush); i++)
+				printk(KERN_ERR "%s: FLUSH%d = 0x%.8x\n",
+				       mmc_hostname(host->mmc), i,
+				       err->flush[i]);
+		}
+		data->error = -EIO;
+		msmsdcc_stop_data(host);
+		if (!data->stop)
+			msmsdcc_request_end(host, data->mrq);
+		else
+			msmsdcc_start_command(host, data->stop, 0);
+		return;
+	}
+}
+
+static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
+{
+	struct msmsdcc_nc_dmadata *nc;
+	dmov_box *box;
+	uint32_t rows;
+	unsigned int dma_addr;
+	uint32_t crci;
+	uint32_t xfer_size;
+
+	if (data->blksz < 32)
+		return -EINVAL;
+	if (host->dma.channel == -1)
+		return -ENOENT;
+
+	host->dma.sg = data->sg;
+	host->dma.num_ents = data->sg_len;
+	xfer_size = data->blksz;
+
+	nc = host->dma.nc;
+	box = &nc->cmd;
+
+	if (host->pdev_id == 1)
+		crci = MSMSDCC_CRCI_SDC1;
+	else if (host->pdev_id == 2)
+		crci = MSMSDCC_CRCI_SDC2;
+	else if (host->pdev_id == 3)
+		crci = MSMSDCC_CRCI_SDC3;
+	else if (host->pdev_id == 4)
+		crci = MSMSDCC_CRCI_SDC4;
+	else
+		return -ENOENT;
+
+	if (data->flags & MMC_DATA_READ)
+		host->dma.dir = DMA_FROM_DEVICE;
+	else
+		host->dma.dir = DMA_TO_DEVICE;
+
+	dma_addr = msmsdcc_get_dma_buffer(host);
+
+	if (dma_addr == 0)
+		return -ENOMEM;
+
+	box->cmd = CMD_LC | CMD_MODE_BOX;
+
+	rows = (xfer_size % MCI_FIFOSIZE) ?
+		(xfer_size / MCI_FIFOSIZE) + 1:
+		(xfer_size / MCI_FIFOSIZE) ;
+
+	if (data->flags & MMC_DATA_READ) {
+		box->src_row_addr = msmsdcc_fifo_addr(host);
+		box->dst_row_addr = dma_addr;
+
+		box->src_dst_len = (MCI_FIFOSIZE << 16) | (MCI_FIFOSIZE);
+		box->row_offset = MCI_FIFOSIZE;
+
+		box->num_rows = rows * ((1 << 16) + 1);
+		box->cmd |= CMD_SRC_CRCI(crci);
+	} else {
+		box->src_row_addr = dma_addr;
+		box->dst_row_addr = msmsdcc_fifo_addr(host);
+
+		box->src_dst_len = (MCI_FIFOSIZE << 16) | (MCI_FIFOSIZE);
+		box->row_offset = (MCI_FIFOSIZE << 16);
+
+		box->num_rows = rows * ((1 << 16) + 1);
+		box->cmd |= CMD_DST_CRCI(crci);
+	}
+
+
+	/* location of command block must be 64 bit aligned */
+	BUG_ON(host->dma.cmd_busaddr & 0x07);
+
+	nc->cmdptr = (host->dma.cmd_busaddr >> 3) | CMD_PTR_LP;
+	host->dma.hdr.cmdptr = DMOV_CMD_PTR_LIST |
+			       DMOV_CMD_ADDR(host->dma.cmdptr_busaddr);
+	host->dma.hdr.complete_func = msmsdcc_dma_complete_func;
+
+#if MSMSDCC_DEBUG_DMA
+	printk(KERN_INFO "%s: DMA size %d, cp = 0x%.8x (addr: 0x%.8x):\n",
+	       mmc_hostname(host->mmc), xfer_size, host->dma.hdr.cmdptr,
+	       ((host->dma.hdr.cmdptr & 0x1fffffff) << 3));
+	printk(KERN_INFO "  s: 0x%.8x d: 0x%.8x l: 0x%x n: 0x%x o: 0x%x\n",
+	       box->src_row_addr, box->dst_row_addr, box->src_dst_len,
+	       box->num_rows, box->row_offset);
+#endif
+	return 0;
+}
+
 static void
 msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data)
 {
 	unsigned int datactrl, timeout, irqmask;
 	unsigned long long clks;
 	void __iomem *base;
+	int rc;
 
 	host->data = data;
 	host->size = data->blksz;
@@ -165,6 +329,10 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data)
 	writel(host->size, base + MMCIDATALENGTH);
 
 	datactrl = MCI_DPSM_ENABLE | (data->blksz << 4);
+
+	rc = msmsdcc_config_dma(host, data);
+	if (!rc)
+		datactrl |= MCI_DPSM_DMAENABLE;
 
 	if (data->flags & MMC_DATA_READ) {
 		datactrl |= MCI_DPSM_DIRECTION;
@@ -184,9 +352,14 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data)
 		irqmask = MCI_TXFIFOHALFEMPTYMASK;
 	}
 
+	if (datactrl & MCI_DPSM_DMAENABLE)
+		irqmask = 0;
 	writel(irqmask, base + MMCIMASK1);
 	writel(datactrl, base + MMCIDATACTRL);
 	msmsdcc_trace_setflag(host, MMC_TRACE_DATASTARTED);
+
+	if (datactrl & MCI_DPSM_DMAENABLE)
+		msm_dmov_enqueue_cmd(host->dma.channel, &host->dma.hdr);
 }
 
 static void
@@ -270,7 +443,7 @@ msmsdcc_data_irq(struct msmsdcc_host *host, struct mmc_data *data,
 		 */
 		uint32_t status2 = readl(host->base + MMCISTATUS);
 
-		if (status2 & MCI_RXDATAAVLBL)
+		if (!host->dma.sg && (status2 & MCI_RXDATAAVLBL))
 			msmsdcc_pio_irq(1, host);
 
 		msmsdcc_trace_setflag(host, MMC_TRACE_DATAEND);
@@ -360,7 +533,8 @@ msmsdcc_pio_read(struct msmsdcc_host *host, char *buffer, unsigned int remain)
 }
 
 static int
-msmsdcc_pio_write(struct msmsdcc_host *host, char *buffer, unsigned int remain, u32 status)
+msmsdcc_pio_write(struct msmsdcc_host *host, char *buffer,
+		  unsigned int remain, u32 status)
 {
 	void __iomem *base = host->base;
 	char *ptr = buffer;
@@ -649,6 +823,7 @@ msmsdcc_transaction_expired(unsigned long data)
 #endif
 
 	host->mrq->cmd->error = -ETIME;
+	host->data = NULL;
 	msmsdcc_request_end(host, host->mrq);
 }
 
@@ -657,6 +832,9 @@ msmsdcc_check_status(unsigned long data)
 {
 	struct msmsdcc_host *host = (struct msmsdcc_host *)data;
 	unsigned int status;
+
+	if (!host->plat->status)
+		return;
 
 	status = host->plat->status(mmc_dev(host->mmc));
 	if (status ^ host->oldstat) {
@@ -668,6 +846,31 @@ msmsdcc_check_status(unsigned long data)
 
 	host->oldstat = status;
 	mod_timer(&host->timer, jiffies + HZ);
+}
+
+static int
+msmsdcc_init_dma(struct msmsdcc_host *host)
+{
+	host->dma.nc = dma_alloc_coherent(NULL,
+					  sizeof(struct msmsdcc_nc_dmadata),
+					  &host->dma.nc_busaddr,
+					  GFP_KERNEL);
+	if (host->dma.nc == NULL) {
+		printk(KERN_ERR "Unable to allocate DMA buffer\n");
+		return -ENOMEM;
+	}
+	printk(KERN_INFO
+	       "%s: DM non-cached buffer at %p, dma_addr 0x%.8x\n",
+	       __func__, host->dma.nc, host->dma.nc_busaddr);
+	memset(host->dma.nc, 0x00, sizeof(struct msmsdcc_nc_dmadata));
+	host->dma.cmd_busaddr = host->dma.nc_busaddr;
+	host->dma.cmdptr_busaddr = host->dma.nc_busaddr +
+				offsetof(struct msmsdcc_nc_dmadata, cmdptr);
+	printk(KERN_INFO
+	       "%s: DM cmd busaddr %u, cmdptr busaddr %u\n",
+	       __func__, host->dma.cmd_busaddr,
+	       host->dma.cmdptr_busaddr);
+	return 0;
 }
 
 static int
@@ -690,9 +893,9 @@ msmsdcc_probe(struct platform_device *pdev)
 		goto out;
 	}
 
-	irqres = memres = NULL;
+	irqres = memres = dmares = NULL;
 
-	if (pdev->resource == NULL || pdev->num_resources != 2) {
+	if (pdev->resource == NULL || pdev->num_resources < 2) {
 		printk(KERN_ERR "%s: Invalid resource\n", __FUNCTION__);
 		return -ENXIO;
 	}
@@ -702,6 +905,8 @@ msmsdcc_probe(struct platform_device *pdev)
 			memres = &pdev->resource[i];
 		if (pdev->resource[i].flags & IORESOURCE_IRQ)
 			irqres = &pdev->resource[i];
+		if (pdev->resource[i].flags & IORESOURCE_DMA)
+			dmares = &pdev->resource[i];
 	}
 	if (!irqres || !memres) {
 		printk(KERN_ERR "%s: Invalid resource\n", __FUNCTION__);
@@ -746,6 +951,15 @@ msmsdcc_probe(struct platform_device *pdev)
 	writel(glbl_clk_ena_reg, MSM_CLK_CTL_BASE);
 
 	host = mmc_priv(mmc);
+
+	host->pdev_id = pdev->id;
+
+	memset(&host->dma, 0, sizeof(struct msmsdcc_dma_data));
+	host->dma.host = host;
+	host->dma.channel = -1;
+
+	if (dmares && !msmsdcc_init_dma(host))
+		host->dma.channel = dmares->start;
 
 	if (pdev->id == 1)
 		host->clk = clk_get(&pdev->dev, "sdc1_clk");
@@ -849,10 +1063,10 @@ msmsdcc_probe(struct platform_device *pdev)
 
 	mmc_add_host(mmc);
 
-	printk(KERN_INFO "%s: Qualcomm MSM SDCC at 0x%016llx irq %d,%d,%d\n",
+	printk(KERN_INFO "%s: Qualcomm MSM SDCC at 0x%016llx irq %d,%d,%d dma %d\n",
 	       mmc_hostname(mmc), (unsigned long long)memres->start,
 	       (unsigned int) irqres->start, (unsigned int)irqres->end,
-	       (unsigned int) plat->status_irq);
+	       (unsigned int) plat->status_irq, host->dma.channel);
 	printk(KERN_INFO "%s: 4 bit data mode %s\n", mmc_hostname(mmc),
 	       (mmc->caps & MMC_CAP_4_BIT_DATA ? "enabled" : "disabled"));
 	printk(KERN_INFO "%s: Min clock %u Hz, Max %u\n", mmc_hostname(mmc),
