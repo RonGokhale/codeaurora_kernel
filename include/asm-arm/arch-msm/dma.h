@@ -18,10 +18,14 @@
 #include <linux/list.h>
 #include <asm/arch/msm_iomap.h>
 
+struct msm_dmov_errdata {
+	uint32_t flush[6];
+};
+
 struct msm_dmov_cmd {
 	struct list_head list;
 	unsigned int cmdptr;
-	void (*complete_func)(struct msm_dmov_cmd *cmd, unsigned int result);
+	void (*complete_func)(struct msm_dmov_cmd *cmd, unsigned int result, struct msm_dmov_errdata *err);
 /*	void (*user_result_func)(struct msm_dmov_cmd *cmd); */
 };
 
