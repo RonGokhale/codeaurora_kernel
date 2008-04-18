@@ -32,6 +32,7 @@ static DEFINE_MUTEX(smd_tty_lock);
 
 struct smd_tty_info {
 	smd_channel_t *ch;
+	struct tty_struct *tty;
 	int open_count;
 };
 
@@ -42,8 +43,11 @@ static void smd_tty_notify(void *priv, unsigned event)
 {
 	unsigned char *ptr;
 	int avail;
-	struct tty_struct *tty = priv;
-	struct smd_tty_info *info = tty->driver_data;
+	struct smd_tty_info *info = priv;
+	struct tty_struct *tty = info->tty;
+
+	if (!tty)
+		return;
 
 	if (event != SMD_EVENT_DATA)
 		return;
@@ -83,8 +87,15 @@ static int smd_tty_open(struct tty_struct *tty, struct file *f)
 
 	mutex_lock(&smd_tty_lock);
 	tty->driver_data = info;
-	if (info->open_count++ == 0)
-		res = smd_open(n, &info->ch, tty, smd_tty_notify);
+
+	if (info->open_count++ == 0) {
+		info->tty = tty;
+		if (info->ch) {
+			smd_kick(info->ch);
+		} else {
+			res = smd_open(n, &info->ch, info, smd_tty_notify);
+		}
+	}
 	mutex_unlock(&smd_tty_lock);
 
 	return res;
@@ -99,13 +110,14 @@ static void smd_tty_close(struct tty_struct *tty, struct file *f)
 
 	mutex_lock(&smd_tty_lock);
 	if (--info->open_count == 0) {
-		if (info->ch)
-			smd_close(info->ch);
-		info->ch = 0;
+		info->tty = 0;
 		tty->driver_data = 0;
+		if (info->ch) {
+			smd_close(info->ch);
+			info->ch = 0;
+		}
 	}
 	mutex_unlock(&smd_tty_lock);
-
 }
 
 static int smd_tty_write(struct tty_struct *tty, const unsigned char *buf, int len)
@@ -156,8 +168,6 @@ static struct tty_driver *smd_tty_driver;
 static int __init smd_tty_init(void)
 {
 	int ret;
-
-	printk("smd_tty_init()\n");
 
 	smd_tty_driver = alloc_tty_driver(MAX_SMD_TTYS);
 	if (smd_tty_driver == 0)
