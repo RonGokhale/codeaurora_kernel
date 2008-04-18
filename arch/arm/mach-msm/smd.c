@@ -459,6 +459,31 @@ static void do_smd_probe(void)
 	}
 }
 
+static void smd_state_change(struct smd_channel *ch,
+			     unsigned last, unsigned next)
+{
+	ch->last_state = next;
+
+	printk("SMD: ch %d %s -> %s\n", ch->n,
+	       chstate(last), chstate(next));
+
+	switch(next) {
+	case SMD_SS_OPENING:
+		ch->recv->tail = 0;
+	case SMD_SS_OPENED:
+		if (ch->send->state != SMD_SS_OPENED) {
+			hc_set_state(ch->send, SMD_SS_OPENED);
+		}
+		ch->notify(ch->priv, SMD_EVENT_OPEN);
+		break;
+	case SMD_SS_FLUSHING:
+	case SMD_SS_RESET:
+		/* we should force them to close? */
+	default:
+		ch->notify(ch->priv, SMD_EVENT_CLOSE);
+	}
+}
+
 static irqreturn_t smd_irq_handler(int irq, void *data)
 {
 	unsigned long flags;
@@ -470,8 +495,8 @@ static irqreturn_t smd_irq_handler(int irq, void *data)
 
 	spin_lock_irqsave(&smd_lock, flags);
 	list_for_each_entry(ch, &smd_ch_list, ch_list) {
+		ch_flags = 0;
 		if (ch_is_open(ch)) {
-			ch_flags = 0;
 			if (ch->recv->fHEAD) {
 				ch->recv->fHEAD = 0;
 				ch_flags |= 1;
@@ -487,19 +512,13 @@ static irqreturn_t smd_irq_handler(int irq, void *data)
 				ch_flags |= 4;
 				do_notify |= 1;
 			}
-			tmp = ch->recv->state;
-			if (tmp != ch->last_state) {
-				ch->last_state = tmp;
-				if (tmp == SMD_SS_OPENED) {
-					ch->notify(ch->priv, SMD_EVENT_OPEN);
-				} else {
-					ch->notify(ch->priv, SMD_EVENT_CLOSE);
-				}
-			}
-			if (ch_flags) {
-				ch->update_state(ch);
-				ch->notify(ch->priv, SMD_EVENT_DATA);
-			}
+		}
+		tmp = ch->recv->state;
+		if (tmp != ch->last_state)
+			smd_state_change(ch, ch->last_state, tmp);
+		if (ch_flags) {
+			ch->update_state(ch);
+			ch->notify(ch->priv, SMD_EVENT_DATA);
 		}
 	}
 	if (do_notify) notify_other_smd();
@@ -696,7 +715,21 @@ int smd_open(int n, smd_channel_t **_ch, void *priv, void (*notify)(void *, unsi
 	spin_lock_irqsave(&smd_lock, flags);
 	list_add(&ch->ch_list, &smd_ch_list);
 	D("smd_open: opening ch %d\n", ch->n);
-	hc_set_state(ch->send, SMD_SS_OPENED);
+
+	/* If the remote side is CLOSING, we need to get it to
+	 * move to OPENING (which we'll do by moving from CLOSED to
+	 * OPENING) and then get it to move from OPENING to
+	 * OPENED (by doing the same state change ourselves).
+	 *
+	 * Otherwise, it should be OPENING and we can move directly
+	 * to OPENED so that it will follow.
+	 */
+	if (ch->recv->state == SMD_SS_CLOSING) {
+		ch->send->head = 0;
+		hc_set_state(ch->send, SMD_SS_OPENING);
+	} else {
+		hc_set_state(ch->send, SMD_SS_OPENED);
+	}
 	spin_unlock_irqrestore(&smd_lock, flags);
 	smd_kick(ch);
 
