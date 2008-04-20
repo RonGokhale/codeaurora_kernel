@@ -98,7 +98,12 @@ struct usb_function
 
 int usb_function_register(struct usb_function *driver);
 
-/* should not be called from interrupt context */
+/* Allocate a USB request.
+** Must be called from a context that can sleep.
+** If bufsize is nonzero, req->buf will be allocated for
+** you and free'd when the request is free'd.  Otherwise
+** it is your responsibility to provide.
+*/
 struct usb_request *usb_ept_alloc_req(struct usb_endpoint *ept, unsigned bufsize);
 void usb_ept_free_req(struct usb_endpoint *ept, struct usb_request *req);
 

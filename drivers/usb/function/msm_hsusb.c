@@ -24,6 +24,7 @@
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/dma-mapping.h>
+#include <linux/dmapool.h>
 #include <linux/platform_device.h>
 #include <linux/debugfs.h>
 #include <linux/workqueue.h>
@@ -81,9 +82,9 @@ struct msm_request
 
 	unsigned busy:1;
 	unsigned live:1;
+	unsigned alloced:1;
 
 	dma_addr_t dma;
-	unsigned dma_size;
 
 	struct ept_queue_item *item;
 	dma_addr_t item_dma;
@@ -129,12 +130,13 @@ struct usb_info
 	unsigned online;
 	unsigned running;
 
+	struct dma_pool *pool;
+
 	/* dma page to back the queue heads and items */
 	unsigned char *buf;
 	dma_addr_t dma;
 
 	struct ept_queue_head *head;
-	struct ept_queue_item *item;
 
 	struct list_head *flist;
 
@@ -319,33 +321,6 @@ static void free_endpoints(struct usb_info *ui, struct usb_function_info *owner)
 	}
 }
 
-static struct ept_queue_item *alloc_queue_item(struct usb_info *ui, dma_addr_t *dma)
-{
-	unsigned long flags;
-	struct ept_queue_item *item;
-
-	/* XXX implement better */
-
-	spin_lock_irqsave(&ui->lock, flags);
-
-	if (ui->next_item < 64) {
-		*dma = ui->dma + 2048 + (ui->next_item * 32);
-		item = ui->item + ui->next_item;
-		ui->next_item++;
-	} else {
-		item = 0;
-	}
-
-	spin_unlock_irqrestore(&ui->lock, flags);
-
-	return item;
-}
-
-static void free_queue_item(struct usb_info *ui, struct ept_queue_item *item)
-{
-	/* XXX implement */
-}
-
 struct usb_request *usb_ept_alloc_req(struct usb_endpoint *ept, unsigned bufsize)
 {
 	struct usb_info *ui = ept->ui;
@@ -355,19 +330,21 @@ struct usb_request *usb_ept_alloc_req(struct usb_endpoint *ept, unsigned bufsize
 	if (!req)
 		goto fail1;
 
-	req->item = alloc_queue_item(ui, &req->item_dma);
+	req->item = dma_pool_alloc(ui->pool, GFP_KERNEL, &req->item_dma);
 	if (!req->item)
 		goto fail2;
 
-	req->req.buf = dma_alloc_coherent(&ui->pdev->dev, bufsize, &req->dma, GFP_KERNEL);
-	if (!req->req.buf)
-		goto fail3;
+	if (bufsize) {
+		req->req.buf = kmalloc(bufsize, GFP_KERNEL);
+		if (!req->req.buf)
+			goto fail3;
+		req->alloced = 1;
+	}
 
-	req->dma_size = bufsize;
 	return &req->req;
 
 fail3:
-	free_queue_item(ui, req->item);
+	dma_pool_free(ui->pool, req->item, req->item_dma);
 fail2:
 	kfree(req);
 fail1:
@@ -379,12 +356,12 @@ void usb_ept_free_req(struct usb_endpoint *ept, struct usb_request *_req)
 	struct msm_request *req = to_msm_request(_req);
 	struct usb_info *ui = ept->ui;
 
-	if (req->busy) {
-		/* XXX must dequeue */
-	}
+	BUG_ON(req->busy);
 
-	free_queue_item(ui, req->item);
-	dma_free_coherent(&ui->pdev->dev, req->dma_size, req->req.buf, req->dma);
+	if (req->alloced)
+		kfree(req->req.buf);
+
+	dma_pool_free(ui->pool, req->item, req->item_dma);
 	kfree(req);
 }
 
@@ -469,6 +446,10 @@ int usb_ept_queue_xfer(struct usb_endpoint *ept, struct usb_request *_req)
 	req->live = 0;
 	req->next = 0;
 	req->req.status = -EBUSY;
+
+	req->dma = dma_map_single(NULL, req->req.buf, req->req.length,
+				  (ept->flags & EPT_FLAG_IN) ?
+				  DMA_TO_DEVICE : DMA_FROM_DEVICE);
 
 	/* prepare the transaction descriptor item for the hardware */
 	item->next = TERMINATE;
@@ -744,6 +725,10 @@ static void handle_endpoint(struct usb_info *ui, unsigned bit)
 		if (ept->req == 0)
 			ept->last = 0;
 
+		dma_unmap_single(NULL, req->dma, req->req.length,
+				 (ept->flags & EPT_FLAG_IN) ? 
+				 DMA_TO_DEVICE : DMA_FROM_DEVICE);
+
 		if (info & (INFO_HALTED | INFO_BUFFER_ERROR | INFO_TXN_ERROR)) {
 			/* XXX pass on more specific error code */
 			req->req.status = -EIO;
@@ -899,7 +884,6 @@ static void usb_prepare(struct usb_info *ui)
 
 	memset(ui->buf, 0, 4096);
 	ui->head = (void *) (ui->buf + 0);
-	ui->item = (void *) (ui->buf + 2048);
 
 	/* only important for reset/reinit */
 	memset(ui->ept, 0, sizeof(ui->ept));
@@ -1080,6 +1064,8 @@ static int usb_free(struct usb_info *ui, int ret)
 {
 	if (ui->irq)
 		free_irq(ui->irq, 0);
+	if (ui->pool)
+		dma_pool_destroy(ui->pool);
 	if (ui->dma)
 		dma_free_coherent(&ui->pdev->dev, 4096, ui->buf, ui->dma);
 	if (ui->addr)
@@ -1292,6 +1278,10 @@ static int usb_probe(struct platform_device *pdev)
 
 	ui->buf = dma_alloc_coherent(&pdev->dev, 4096, &ui->dma, GFP_KERNEL);
 	if (!ui->buf)
+		return usb_free(ui, -ENOMEM);
+
+	ui->pool = dma_pool_create("hsusb", NULL, 32, 32, 0);
+	if (!ui->pool)
 		return usb_free(ui, -ENOMEM);
 
 	printk(KERN_INFO "usb_probe() io=%p, irq=%d, dma=%p(%x)\n",
