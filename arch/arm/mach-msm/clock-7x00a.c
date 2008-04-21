@@ -48,193 +48,60 @@ struct clkctl_acpu_speed  acpu_freq_tbl[] = {
  * Various clocks in the system
  */
 
+#define MSM_CLOCK(clk_name, clk_id) { \
+	.name = clk_name, \
+	.owner = THIS_MODULE, \
+	.id = clk_id, \
+	}
+
 static struct clk clocks[] = {
-	{
-		.name		= "acpu_clk",
-		.owner		= THIS_MODULE,
-		.id		= ACPU_CLK,
-	},
-	{
-		.name		= "adm_clk",
-		.owner		= THIS_MODULE,
-		.id		= ADM_CLK,
-	},
-	{
-		.name		= "adsp_clk",
-		.owner		= THIS_MODULE,
-		.id		= ADSP_CLK,
-	},
-	{
-		.name		= "ebi1_clk",
-		.owner		= THIS_MODULE,
-		.id		= EBI1_CLK,
-	},
-	{
-		.name		= "ebi2_clk",
-		.owner		= THIS_MODULE,
-		.id		= EBI2_CLK,
-	},
-	{
-		.name		= "ecodec_clk",
-		.owner		= THIS_MODULE,
-		.id		= ECODEC_CLK,
-	},
-	{
-		.name		= "emdh_clk",
-		.owner		= THIS_MODULE,
-		.id		= EMDH_CLK,
-	},
-	{
-		.name		= "gp_clk",
-		.owner		= THIS_MODULE,
-		.id		= GP_CLK,
-	},
-	{
-		.name		= "grp_clk",
-		.owner		= THIS_MODULE,
-		.id		= GRP_CLK,
-	},
-	{
-		.name		= "i2c_clk",
-		.owner		= THIS_MODULE,
-		.id		= I2C_CLK,
-	},
-	{
-		.name		= "icodec_rx_clk",
-		.owner		= THIS_MODULE,
-		.id		= ICODEC_RX_CLK,
-	},
-	{
-		.name		= "icodec_tx_clk",
-		.owner		= THIS_MODULE,
-		.id		= ICODEC_TX_CLK,
-	},
-	{
-		.name		= "imem_clk",
-		.owner		= THIS_MODULE,
-		.id		= IMEM_CLK,
-	},
-	{
-		.name		= "mdc_clk",
-		.owner		= THIS_MODULE,
-		.id		= MDC_CLK,
-	},
-	{
-		.name		= "mdp_clk",
-		.owner		= THIS_MODULE,
-		.id		= MDP_CLK,
-	},
-	{
-		.name		= "pbus_clk",
-		.owner		= THIS_MODULE,
-		.id		= PBUS_CLK,
-	},
-	{
-		.name		= "pcm_clk",
-		.owner		= THIS_MODULE,
-		.id		= PCM_CLK,
-	},
+	MSM_CLOCK("acpu_clk", ACPU_CLK),
+	MSM_CLOCK("adm_clk", ADM_CLK),
+	MSM_CLOCK("adsp_clk", ADSP_CLK),
+	MSM_CLOCK("ebi1_clk", EBI1_CLK),
+	MSM_CLOCK("ebi2_clk", EBI2_CLK),
+	MSM_CLOCK("ecodec_clk", ECODEC_CLK),
+	MSM_CLOCK("emdh_clk", EMDH_CLK),
+	MSM_CLOCK("gp_clk", GP_CLK),
+	MSM_CLOCK("grp_clk", GRP_CLK),
+	MSM_CLOCK("i2c_clk", I2C_CLK),
+	MSM_CLOCK("icodec_rx_clk", ICODEC_RX_CLK),
+	MSM_CLOCK("icodec_tx_clk", ICODEC_TX_CLK),
+	MSM_CLOCK("imem_clk", IMEM_CLK),
+	MSM_CLOCK("mdc_clk", MDC_CLK),
+	MSM_CLOCK("mdp_clk", MDP_CLK),
+	MSM_CLOCK("pbus_clk", PBUS_CLK),
+	MSM_CLOCK("pcm_clk", PCM_CLK),
 	{
 		.name		= "pmdh_clk",
 		.owner		= THIS_MODULE,
 		.id		= PMDH_CLK,
 		.flags = CLKFLAG_USE_MIN_MAX_TO_SET,
 	},
-	{
-		.name		= "sdac_clk",
-		.owner		= THIS_MODULE,
-		.id		= SDAC_CLK,
-	},
-	{
-		.name		= "sdc1_clk",
-		.owner		= THIS_MODULE,
-		.id		= SDC1_CLK,
-	},
-	{
-		.name		= "sdc2_clk",
-		.owner		= THIS_MODULE,
-		.id		= SDC2_CLK,
-	},
-	{
-		.name		= "sdc3_clk",
-		.owner		= THIS_MODULE,
-		.id		= SDC3_CLK,
-	},
-	{
-		.name		= "sdc4_clk",
-		.owner		= THIS_MODULE,
-		.id		= SDC4_CLK,
-	},
-	{
-		.name		= "tsif_clk",
-		.owner		= THIS_MODULE,
-		.id		= TSIF_CLK,
-	},
-	{
-		.name		= "tsif_ref_clk",
-		.owner		= THIS_MODULE,
-		.id		= TSIF_REF_CLK,
-	},
-	{
-		.name		= "tv_dac_clk",
-		.owner		= THIS_MODULE,
-		.id		= TV_DAC_CLK,
-	},
-	{
-		.name		= "tv_enc_clk",
-		.owner		= THIS_MODULE,
-		.id		= TV_ENC_CLK,
-	},
-	{
-		.name		= "uart1_clk",
-		.owner		= THIS_MODULE,
-		.id		= UART1_CLK,
-	},
-	{
-		.name		= "uart2_clk",
-		.owner		= THIS_MODULE,
-		.id		= UART2_CLK,
-	},
-	{
-		.name		= "uart3_clk",
-		.owner		= THIS_MODULE,
-		.id		= UART3_CLK,
-	},
-	{
-		.name		= "uart1dm_clk",
-		.owner		= THIS_MODULE,
-		.id		= UART1DM_CLK,
-	},
-	{
-		.name		= "uart2dm_clk",
-		.owner		= THIS_MODULE,
-		.id		= UART2DM_CLK,
-	},
-	{
-		.name		= "usb_hs_clk",
-		.owner		= THIS_MODULE,
-		.id		= USB_HS_CLK,
-	},
-	{
-		.name		= "usb_otg_clk",
-		.owner		= THIS_MODULE,
-		.id		= USB_OTG_CLK,
-	},
-	{
-		.name		= "vdc_clk",
-		.owner		= THIS_MODULE,
-		.id		= VDC_CLK,
-	},
-	{
-		.name		= "vfe_clk",
-		.owner		= THIS_MODULE,
-		.id		= VFE_CLK,
-	},
-	{
-		.name		= "vfe_mdc_clk",
-		.owner		= THIS_MODULE,
-		.id		= VFE_MDC_CLK,
-	},
+	MSM_CLOCK("sdac_clk", SDAC_CLK),
+	MSM_CLOCK("sdc1_clk", SDC1_CLK),
+	MSM_CLOCK("sdc1_pclk", SDC1_PCLK),
+	MSM_CLOCK("sdc2_clk", SDC2_CLK),
+	MSM_CLOCK("sdc2_pclk", SDC2_PCLK),
+	MSM_CLOCK("sdc3_clk", SDC3_CLK),
+	MSM_CLOCK("sdc3_pclk", SDC3_PCLK),
+	MSM_CLOCK("sdc4_clk", SDC4_CLK),
+	MSM_CLOCK("sdc4_pclk", SDC4_PCLK),
+	MSM_CLOCK("tsif_clk", TSIF_CLK),
+	MSM_CLOCK("tsif_ref_clk", TSIF_REF_CLK),
+	MSM_CLOCK("tv_dac_clk", TV_DAC_CLK),
+	MSM_CLOCK("tv_enc_clk", TV_ENC_CLK),
+	MSM_CLOCK("uart1_clk", UART1_CLK),
+	MSM_CLOCK("uart2_clk", UART2_CLK),
+	MSM_CLOCK("uart3_clk", UART3_CLK),
+	MSM_CLOCK("uart1dm_clk", UART1DM_CLK),
+	MSM_CLOCK("uart2dm_clk", UART2DM_CLK),
+	MSM_CLOCK("usb_hs_clk", USB_HS_CLK),
+	MSM_CLOCK("usb_hs_pclk", USB_HS_PCLK),
+	MSM_CLOCK("usb_otg_clk", USB_OTG_CLK),
+	MSM_CLOCK("vdc_clk", VDC_CLK),
+	MSM_CLOCK("vfe_clk", VFE_CLK),
+	MSM_CLOCK("vfe_mdc_clk", VFE_MDC_CLK),
 };
 
 struct clk *msm_clock_get_nth(unsigned index)
