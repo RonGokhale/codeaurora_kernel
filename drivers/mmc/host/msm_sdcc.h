@@ -13,25 +13,10 @@
 #ifndef _MSM_SDCC_H
 #define _MSM_SDCC_H
 
-#define SDC1_NS_REG_OFF		0xA4
-#define SDC2_NS_REG_OFF		0xAC
-#define SDC3_NS_REG_OFF		0xB4
-#define SDC4_NS_REG_OFF		0xB8
-
 #define MSMSDCC_CRCI_SDC1	6
 #define MSMSDCC_CRCI_SDC2	7
 #define MSMSDCC_CRCI_SDC3	12
 #define MSMSDCC_CRCI_SDC4	13
-
-#define SDCXNSREG_SRCSEL	(1 << 0)
-#define SDCXNSREG_PREDIVSEL	(1 << 3)
-#define SDCXNSREG_MNCNTRMODE	(1 << 5)
-#define SDCXNSREG_MNCNTRRST	(1 << 7)
-#define SDCXNSREG_MNCNTREN	(1 << 8)
-#define SDCXNSREG_SDCXCLKBREN	(1 << 9)
-#define SDCXNSREG_SDCXCLKINV	(1 << 10)
-#define SDCXNSREG_SDCXROOTEN	(1 << 11)
-#define SDCXNSREG_SDCXNVAL	(1 << 16)
 
 #define MMC_TRACE_CMDSTARTED	(1 << 0)
 #define MMC_TRACE_DATASTARTED	(1 << 8)
@@ -218,7 +203,8 @@ struct msmsdcc_host {
 	struct mmc_command	*cmd;
 	struct mmc_data		*data;
 	struct mmc_host		*mmc;
-	struct clk		*clk;
+	struct clk		*clk;		/* main MMC bus clock */
+	struct clk		*pclk;		/* SDCC peripheral bus clock */
 	struct timer_list	transaction_timer;
 
 	unsigned int		data_xfered;
@@ -226,6 +212,8 @@ struct msmsdcc_host {
 	spinlock_t		lock;
 
 	unsigned int		clk_rate;	/* Current clock rate */
+	unsigned int		pclk_rate;
+
 	u32			pwr;
 	struct mmc_platform_data *plat;
 

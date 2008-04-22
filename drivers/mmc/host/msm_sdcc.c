@@ -56,7 +56,12 @@ static struct resource *irqres;
 static struct resource *memres;
 static struct resource *dmares;
 
-#define PIO_DUMP_DATA			0
+static char *msmsdcc_clks[] = { NULL, "sdc1_clk", "sdc2_clk", "sdc3_clk",
+				"sdc4_clk" };
+static char *msmsdcc_pclks[] = { NULL, "sdc1_pclk", "sdc2_pclk", "sdc3_pclk",
+				 "sdc4_pclk" };
+
+
 #define VERBOSE_COMMAND_TIMEOUTS	0
 #define MSMSDCC_DEBUG_DMA		0
 
@@ -413,13 +418,15 @@ msmsdcc_data_irq(struct msmsdcc_host *host, struct mmc_data *data,
 		msmsdcc_trace_setflag(host, MMC_TRACE_DATABLKEND);
 	}
 
-	if (status & (MCI_DATACRCFAIL|MCI_DATATIMEOUT|MCI_TXUNDERRUN|MCI_RXOVERRUN)) {
+	if (status & (MCI_DATACRCFAIL|MCI_DATATIMEOUT|MCI_TXUNDERRUN|
+		      MCI_RXOVERRUN)) {
 		if (status & MCI_DATACRCFAIL) {
 			printk(KERN_ERR "%s: Data CRC error\n",
 			       mmc_hostname(host->mmc));
 			data->error = -EILSEQ;
 		} else if (status & MCI_DATATIMEOUT) {
-			printk(KERN_ERR "%s: Data timeout\n", mmc_hostname(host->mmc));
+			printk(KERN_ERR "%s: Data timeout\n",
+			       mmc_hostname(host->mmc));
 			data->error = -ETIMEDOUT;
 		} else if (status & (MCI_TXUNDERRUN|MCI_RXOVERRUN))
 			data->error = -EIO;
@@ -508,16 +515,6 @@ msmsdcc_pio_read(struct msmsdcc_host *host, char *buffer, unsigned int remain)
 			break;
 
 		readsl(base + MMCIFIFO, ptr, count >> 2);
-#if PIO_DUMP_DATA
-		{
-		int i;
-
-		printk("%s: Read %d bytes: \n", __func__, count);
-		for (i = 0; i < count; i++)
-			printk("%.2x ", ptr[i]);
-		printk("\n");
-		}
-#endif
 
 		ptr += count;
 		remain -= count;
@@ -546,17 +543,6 @@ msmsdcc_pio_write(struct msmsdcc_host *host, char *buffer,
 		count = min(remain, maxcnt);
 
 		writesl(base + MMCIFIFO, ptr, count >> 2);
-#if PIO_DUMP_DATA
-		{
-		int i;
-
-		printk("%s: Wrote %d bytes: \n", __func__, count);
-		for (i = 0; i < count; i++)
-			printk("%.2x ", ptr[i]);
-		printk("\n");
-		}
-#endif
-
 		ptr += count;
 		remain -= count;
 
@@ -655,7 +641,8 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 	 */
 	if (host->size == 0) {
 		writel(0, base + MMCIMASK1);
-		writel(readl(base + MMCIMASK0) | MCI_DATAENDMASK, base + MMCIMASK0);
+		writel(readl(base + MMCIMASK0) | MCI_DATAENDMASK,
+		       base + MMCIMASK0);
 	}
 
 	return IRQ_HANDLED;
@@ -690,7 +677,8 @@ msmsdcc_irq(int irq, void *dev_id)
 
 		data = host->data;
 		if (status & (MCI_DATACRCFAIL|MCI_DATATIMEOUT|MCI_TXUNDERRUN|
-			      MCI_RXOVERRUN|MCI_DATAEND|MCI_DATABLOCKEND) && data) {
+			      MCI_RXOVERRUN|MCI_DATAEND|MCI_DATABLOCKEND) &&
+			      data) {
 			msmsdcc_data_irq(host, data, status);
 		}
 
@@ -738,7 +726,8 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		if (ios->clock != host->clk_rate) {
 			rc = clk_set_rate(host->clk, ios->clock);
 			if (rc < 0)
-				printk(KERN_ERR "Error setting clock rate (%d)\n", rc);
+				printk(KERN_ERR
+				       "Error setting clock rate (%d)\n", rc);
 			else
 				host->clk_rate = ios->clock;
 		}
@@ -851,6 +840,12 @@ msmsdcc_check_status(unsigned long data)
 static int
 msmsdcc_init_dma(struct msmsdcc_host *host)
 {
+	BUG_ON(!dmares);
+
+	memset(&host->dma, 0, sizeof(struct msmsdcc_dma_data));
+	host->dma.host = host;
+	host->dma.channel = -1;
+
 	host->dma.nc = dma_alloc_coherent(NULL,
 					  sizeof(struct msmsdcc_nc_dmadata),
 					  &host->dma.nc_busaddr,
@@ -870,6 +865,8 @@ msmsdcc_init_dma(struct msmsdcc_host *host)
 	       "%s: DM cmd busaddr %u, cmdptr busaddr %u\n",
 	       __func__, host->dma.cmd_busaddr,
 	       host->dma.cmdptr_busaddr);
+	host->dma.channel = dmares->start;
+
 	return 0;
 }
 
@@ -879,24 +876,23 @@ msmsdcc_probe(struct platform_device *pdev)
 	struct mmc_platform_data *plat = pdev->dev.platform_data;
 	struct msmsdcc_host *host;
 	struct mmc_host *mmc;
-	uint32_t sdcx_ns_reg;
-	uint32_t glbl_clk_ena_reg;
-	int ns_offsets[] = {0, SDC1_NS_REG_OFF, SDC2_NS_REG_OFF,
-			       SDC3_NS_REG_OFF, SDC4_NS_REG_OFF };
 	int ret;
 	int i;
 
 	/* must have platform data */
 	if (!plat) {
-		printk(KERN_ERR "%s: Platform data not available\n", __FUNCTION__);
+		printk(KERN_ERR "%s: Platform data not available\n", __func__);
 		ret = -EINVAL;
 		goto out;
 	}
 
+	if (pdev->id < 1 || pdev->id > 4)
+		return -EINVAL;
+
 	irqres = memres = dmares = NULL;
 
 	if (pdev->resource == NULL || pdev->num_resources < 2) {
-		printk(KERN_ERR "%s: Invalid resource\n", __FUNCTION__);
+		printk(KERN_ERR "%s: Invalid resource\n", __func__);
 		return -ENXIO;
 	}
 
@@ -909,16 +905,27 @@ msmsdcc_probe(struct platform_device *pdev)
 			dmares = &pdev->resource[i];
 	}
 	if (!irqres || !memres) {
-		printk(KERN_ERR "%s: Invalid resource\n", __FUNCTION__);
+		printk(KERN_ERR "%s: Invalid resource\n", __func__);
 		return -ENXIO;
 	}
 
+	/*
+	 * Setup our host structure
+	 */
 
 	mmc = mmc_alloc_host(sizeof(struct msmsdcc_host), &pdev->dev);
 	if (!mmc) {
 		ret = -ENOMEM;
 		goto out;
 	}
+
+	host = mmc_priv(mmc);
+	host->pdev_id = pdev->id;
+	host->plat = plat;
+	host->mmc = mmc;
+	host->base = memres->start;
+	spin_lock_init(&host->lock);
+
 
 #ifdef CONFIG_MMC_EMBEDDED_SDIO
 	if (plat->embedded_sdio)
@@ -930,67 +937,55 @@ msmsdcc_probe(struct platform_device *pdev)
 #endif
 
 	/*
-	 * Configure the master clock for the controller
+	 * Setup DMA
 	 */
-	sdcx_ns_reg = readl(MSM_CLK_CTL_BASE + ns_offsets[pdev->id]);
-	sdcx_ns_reg |= SDCXNSREG_SDCXROOTEN | SDCXNSREG_SDCXCLKBREN |
-		       SDCXNSREG_MNCNTREN;
-	writel(sdcx_ns_reg, MSM_CLK_CTL_BASE + ns_offsets[pdev->id]);
+	if (dmares) {
+		ret = msmsdcc_init_dma(host);
+		if (ret)
+			printk(KERN_ERR "%s: DMA setup failed (%d)\n",
+			       __func__, ret);
+	}
 
-	glbl_clk_ena_reg = readl(MSM_CLK_CTL_BASE); /* GLBL_CLK_ENA */
-	if (pdev->id == 1)
-		glbl_clk_ena_reg |= (1 << 7);
-	else if (pdev->id == 2)
-		glbl_clk_ena_reg |= (1 << 8);
-	else if (pdev->id == 3)
-		glbl_clk_ena_reg |= (1 << 27);
-	else if (pdev->id == 4)
-		glbl_clk_ena_reg |= (1 << 28);
-	else
-		return -ENOENT;
-	writel(glbl_clk_ena_reg, MSM_CLK_CTL_BASE);
+	/*
+	 * Setup main peripheral bus clock
+	 */
+	host->pclk = clk_get(&pdev->dev, msmsdcc_pclks[pdev->id]);
+	if (IS_ERR(host->pclk)) {
+		ret = PTR_ERR(host->pclk);
+		goto host_free;
+	}
 
-	host = mmc_priv(mmc);
+	ret = clk_enable(host->pclk);
+	if (ret)
+		goto pclk_put;
 
-	host->pdev_id = pdev->id;
+	host->pclk_rate = clk_get_rate(host->pclk);
 
-	memset(&host->dma, 0, sizeof(struct msmsdcc_dma_data));
-	host->dma.host = host;
-	host->dma.channel = -1;
-
-	if (dmares && !msmsdcc_init_dma(host))
-		host->dma.channel = dmares->start;
-
-	if (pdev->id == 1)
-		host->clk = clk_get(&pdev->dev, "sdc1_clk");
-	else if (pdev->id == 2)
-		host->clk = clk_get(&pdev->dev, "sdc2_clk");
-	else if (pdev->id == 3)
-		host->clk = clk_get(&pdev->dev, "sdc3_clk");
-	else if (pdev->id == 4)
-		host->clk = clk_get(&pdev->dev, "sdc4_clk");
-	else
-		return -ENOENT;
-
+	/*
+	 * Setup SDC MMC clock
+	 */
+	host->clk = clk_get(&pdev->dev, msmsdcc_clks[pdev->id]);
 	if (IS_ERR(host->clk)) {
 		ret = PTR_ERR(host->clk);
-		host->clk = NULL;
-		goto host_free;
+		goto pclk_disable;
 	}
 
 	ret = clk_enable(host->clk);
 	if (ret)
-		goto clk_free;
-
-	host->plat = plat;
+		goto clk_put;
 
 	ret = clk_set_rate(host->clk, msmsdcc_fmin);
+	if (ret) {
+		printk(KERN_ERR "%s: Clock rate set failed (%d)\n",
+		       __func__, ret);
+		goto clk_disable;
+	}
 
-	host->clk_rate = msmsdcc_fmin;
-	host->mmc = mmc;
-	host->base = memres->start;
+	host->clk_rate = clk_get_rate(host->clk);
 
-
+	/*
+	 * Setup MMC host structure
+	 */
 	mmc->ops = &msmsdcc_ops;
 	mmc->f_min = msmsdcc_fmin;
 	mmc->f_max = msmsdcc_fmax;
@@ -1004,27 +999,20 @@ msmsdcc_probe(struct platform_device *pdev)
 	mmc->max_req_size = 16777216;
 
 	/*
-	 * Set the maximum segment size.  Since we aren't doing DMA
-	 * (yet) we are only limited by the data length register.
+	 * XXX: Adjust these
 	 */
 	mmc->max_seg_size = mmc->max_req_size;
-
-	/*
-	 * Block size can be up to 2048 bytes, but must be a power of two.
-	 */
 	mmc->max_blk_size = 2048;
-
-	/*
-	 * No limit on the number of blocks transferred.
-	 */
 	mmc->max_blk_count = mmc->max_req_size;
 
-	spin_lock_init(&host->lock);
 
 	writel(0, host->base + MMCIMASK0);
 	writel(0, host->base + MMCIMASK1);
 	writel(0x5c007ff, host->base + MMCICLEAR);
 
+	/*
+	 * Setup card detect change
+	 */
 	if (plat->status_irq) {
 		ret = request_irq(plat->status_irq,
 				  msmsdcc_platform_status_irq,
@@ -1047,15 +1035,21 @@ msmsdcc_probe(struct platform_device *pdev)
 		add_timer(&host->timer);
 	}
 
+	/*
+	 * Setup a transaction timer. We currently need this due to
+	 * some 'strange' timeout / error handling situations.
+	 */
 	init_timer(&host->transaction_timer);
 	host->transaction_timer.data = (unsigned long) host;
 	host->transaction_timer.function = msmsdcc_transaction_expired;
 
-	ret = request_irq(irqres->start, msmsdcc_irq, IRQF_SHARED, DRIVER_NAME " (cmd)", host);
+	ret = request_irq(irqres->start, msmsdcc_irq, IRQF_SHARED,
+			  DRIVER_NAME " (cmd)", host);
 	if (ret)
 		goto platform_irq_free;
 
-	ret = request_irq(irqres->end, msmsdcc_pio_irq, IRQF_SHARED, DRIVER_NAME " (pio)", host);
+	ret = request_irq(irqres->end, msmsdcc_pio_irq, IRQF_SHARED,
+			  DRIVER_NAME " (pio)", host);
 	if (ret)
 		goto irq0_free;
 
@@ -1063,26 +1057,31 @@ msmsdcc_probe(struct platform_device *pdev)
 
 	mmc_add_host(mmc);
 
-	printk(KERN_INFO "%s: Qualcomm MSM SDCC at 0x%016llx irq %d,%d,%d dma %d\n",
+	printk(KERN_INFO
+	       "%s: Qualcomm MSM SDCC at 0x%016llx irq %d,%d,%d dma %d\n",
 	       mmc_hostname(mmc), (unsigned long long)memres->start,
 	       (unsigned int) irqres->start, (unsigned int)irqres->end,
 	       (unsigned int) plat->status_irq, host->dma.channel);
 	printk(KERN_INFO "%s: 4 bit data mode %s\n", mmc_hostname(mmc),
 	       (mmc->caps & MMC_CAP_4_BIT_DATA ? "enabled" : "disabled"));
-	printk(KERN_INFO "%s: Min clock %u Hz, Max %u\n", mmc_hostname(mmc),
-	       msmsdcc_fmin, msmsdcc_fmax);
+	printk(KERN_INFO "%s: MMC clock %u -> %u Hz, PCLK %u Hz\n",
+	       mmc_hostname(mmc), msmsdcc_fmin, msmsdcc_fmax, host->pclk_rate);
 
 	return 0;
 
+ irq0_free:
+	free_irq(irqres->start, host);
  platform_irq_free:
 	if (plat->status_irq)
 		free_irq(plat->status_irq, host);
- irq0_free:
-	free_irq(irqres->start, host);
  clk_disable:
 	clk_disable(host->clk);
- clk_free:
+ clk_put:
 	clk_put(host->clk);
+ pclk_disable:
+	clk_disable(host->pclk);
+ pclk_put:
+	clk_put(host->pclk);
  host_free:
 	mmc_free_host(mmc);
  out:
