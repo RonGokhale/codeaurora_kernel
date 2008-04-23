@@ -61,7 +61,7 @@
 #define MSM_PMEM_GPU1_SIZE	0x800000
 
 #define MSM_FB_BASE		MSM_PMEM_GPU1_BASE + MSM_PMEM_GPU1_SIZE
-#define MSM_FB_SIZE		0x9b000
+#define MSM_FB_SIZE		0x200000
 
 static int halibut_ffa;
 module_param_named(ffa, halibut_ffa, int, S_IRUGO | S_IWUSR | S_IWGRP);
