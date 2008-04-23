@@ -169,12 +169,19 @@ static struct resource usb_resources[] = {
  */
 static int halibut_phy_init_seq[] = { 0x1D, 0x0D, 0x1D, 0x10, -1 };
 
+static char *halibut_usb_functions[] = {
+	"diag",
+	"adb",
+};
+
 static struct msm_hsusb_platform_data msm_hsusb_pdata = {
 	.phy_init_seq	= halibut_phy_init_seq,
 	.vendor_id	= 0x18d1,
 	.product_id	= 0xd00d,
 	.version	= 0x0100,
 	.product_name	= "Halibut",
+	.function	= halibut_usb_functions,
+	.num_functions	= ARRAY_SIZE(halibut_usb_functions),
 };
 
 static struct platform_device msm_hsusb_device = {
