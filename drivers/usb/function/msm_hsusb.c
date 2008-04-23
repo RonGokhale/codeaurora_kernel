@@ -119,6 +119,7 @@ static void usb_vbus_online(struct work_struct *w);
 
 struct usb_info
 {
+	/* lock for register/queue/device state changes */
 	spinlock_t lock;
 
 	/* single request used for handling setup transactions */
@@ -129,6 +130,7 @@ struct usb_info
 	void *addr;
 	unsigned online;
 	unsigned running;
+	unsigned bound;
 
 	struct dma_pool *pool;
 
@@ -137,8 +139,6 @@ struct usb_info
 	dma_addr_t dma;
 
 	struct ept_queue_head *head;
-
-	struct list_head *flist;
 
 	/* used for allocation */
 	unsigned next_item;
@@ -156,6 +156,8 @@ struct usb_info
 	unsigned phy_status;
 	unsigned phy_fail_count;
 
+	struct usb_function_info **func;
+	unsigned num_funcs;
 #define ep0out ept[0]
 #define ep0in  ept[16]
 };
@@ -486,14 +488,12 @@ int usb_ept_queue_xfer(struct usb_endpoint *ept, struct usb_request *_req)
 
 static void set_configuration(struct usb_info *ui, int yes)
 {
-	struct list_head *entry;
-	unsigned n;
+	unsigned i, n;
 
 	ui->online = !!yes;
 
-	list_for_each(entry, ui->flist) {
-		struct usb_function_info *fi =
-			list_entry(entry, struct usb_function_info, list);
+	for (i = 0; i < ui->num_funcs; i++) {
+		struct usb_function_info *fi = ui->func[i];
 
 		if (fi->endpoints == 0)
 			continue;
@@ -648,13 +648,9 @@ static void handle_setup(struct usb_info *ui)
 	if ((ctl.bRequestType & USB_TYPE_MASK) != USB_TYPE_STANDARD) {
 		/* let functions handle vendor and class requests */
 
-		struct list_head *entry;
-
-		list_for_each(entry, ui->flist) {
-			struct usb_function_info *fi =
-				list_entry(entry,
-				struct usb_function_info,
-				list);
+		int i;
+		for (i = 0; i < ui->num_funcs; i++) {
+			struct usb_function_info *fi = ui->func[i];
 
 			if (fi->func->setup) {
 				if (ctl.bRequestType & USB_DIR_IN) {
@@ -887,7 +883,6 @@ static void usb_prepare(struct usb_info *ui)
 
 	/* only important for reset/reinit */
 	memset(ui->ept, 0, sizeof(ui->ept));
-	ui->flist = 0;
 	ui->next_item = 0;
 	ui->next_ifc_num = 0;
 
@@ -965,7 +960,7 @@ static void usb_bind_driver(struct usb_info *ui, struct usb_function_info *fi)
 	func->bind(elist, func->context);
 }
 
-static void usb_reset(struct usb_info *ui, struct list_head *flist)
+static void usb_reset(struct usb_info *ui)
 {
 	unsigned long flags;
 	unsigned n;
@@ -1028,21 +1023,18 @@ static void usb_reset(struct usb_info *ui, struct list_head *flist)
 	spin_unlock_irqrestore(&ui->lock, flags);
 }
 
-static void usb_start(struct usb_info *ui, struct list_head *flist)
+static void usb_start(struct usb_info *ui)
 {
 	unsigned long flags;
 	unsigned count = 0;
+	int i;
 
-	struct list_head *entry;
-	list_for_each(entry, flist) {
-		struct usb_function_info *fi =
-			list_entry(entry, struct usb_function_info, list);
+	for (i = 0; i < ui->num_funcs; i++) {
+		struct usb_function_info *fi = ui->func[i];
 		usb_bind_driver(ui, fi);
 		if (fi->endpoints)
 			count++;
 	}
-
-	ui->flist = flist;
 
 	if (count == 0) {
 		printk(KERN_INFO
@@ -1060,6 +1052,79 @@ static void usb_start(struct usb_info *ui, struct list_head *flist)
 	spin_unlock_irqrestore(&ui->lock, flags);
 }
 
+static LIST_HEAD(usb_function_list);
+static DEFINE_MUTEX(usb_function_list_lock);
+
+static struct usb_info *the_usb_info;
+
+static struct usb_function_info *usb_find_function(const char *name)
+{
+	struct list_head *entry;
+	list_for_each(entry, &usb_function_list) {
+		struct usb_function_info *fi =
+			list_entry(entry, struct usb_function_info, list);
+
+		if (!strcmp(name, fi->func->name))
+			return fi;
+	}
+
+	return NULL;
+}
+
+static void usb_try_to_bind(void)
+{
+	struct usb_info *ui = the_usb_info;
+	struct msm_hsusb_platform_data *pdata;
+	struct usb_function_info *fi;
+	int i;
+
+	if (!ui || ui->bound || !ui->pdev)
+		return;
+
+	pdata = ui->pdev->dev.platform_data;
+
+	for (i = 0; i < pdata->num_functions; i++) {
+		if (ui->func[i])
+			continue;
+		fi = usb_find_function(pdata->function[i]);
+		if (!fi)
+			return;
+		ui->func[i] = fi;
+		ui->num_funcs++;
+	}
+
+	/* we have found all the needed functions */
+	ui->bound = 1;
+	printk(KERN_INFO "msm_hsusb: functions bound. starting.\n");
+	usb_start(ui);
+}
+
+int usb_function_register(struct usb_function *driver)
+{
+	struct usb_function_info *fi;
+	unsigned n;
+	int ret = 0;
+
+	printk(KERN_INFO "usb_function_register() '%s'\n", driver->name);
+
+	mutex_lock(&usb_function_list_lock);
+
+	n = driver->ifc_ept_count;
+	fi = kzalloc(sizeof(*fi) + n * sizeof(struct usb_fi_ept), GFP_KERNEL);
+	if (!fi) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+	fi->func = driver;
+	list_add(&fi->list, &usb_function_list);
+
+	usb_try_to_bind();
+
+fail:
+	mutex_unlock(&usb_function_list_lock);
+	return 0;
+}
+
 static int usb_free(struct usb_info *ui, int ret)
 {
 	if (ui->irq)
@@ -1074,14 +1139,10 @@ static int usb_free(struct usb_info *ui, int ret)
 	return ret;
 }
 
-static struct usb_info *the_usb_info;
-
-static LIST_HEAD(func_list);
-
 static void usb_vbus_online(struct work_struct *w)
 {
 	struct usb_info *ui = container_of(w, struct usb_info, vbus_online);
-	usb_reset(ui, ui->flist);
+	usb_reset(ui);
 }
 
 void msm_hsusb_set_vbus_state(int online)
@@ -1190,7 +1251,7 @@ static ssize_t debug_read_status(struct file *file, char __user *ubuf,
 static ssize_t debug_write_reset(struct file *file, const char __user *buf,
 				 size_t count, loff_t *ppos)
 {
-	usb_reset(file->private_data, &func_list);
+	usb_reset(file->private_data);
 	return count;
 }
 
@@ -1265,6 +1326,13 @@ static int usb_probe(struct platform_device *pdev)
 			desc_device.iProduct = STRING_PRODUCT;
 		if (pdata->manufacturer_name)
 			desc_device.iManufacturer = STRING_MANUFACTURER;
+
+		ui->func = kzalloc(sizeof(struct usb_function *) * 
+				   pdata->num_functions, GFP_KERNEL);
+		if (!ui->func) {
+			kfree(ui);
+			return -ENOMEM;
+		}
 	}
 
 	irq = platform_get_irq(pdev, 0);
@@ -1301,27 +1369,6 @@ static int usb_probe(struct platform_device *pdev)
 	return 0;
 }
 
-int usb_function_register(struct usb_function *driver)
-{
-	struct usb_function_info *fi;
-	unsigned n;
-
-	n = driver->ifc_ept_count;
-
-	printk(KERN_INFO "usb_function_register() '%s'\n", driver->name);
-
-	fi = kzalloc(sizeof(*fi) + n * sizeof(struct usb_fi_ept), GFP_KERNEL);
-	if (!fi)
-		return -ENOMEM;
-
-	INIT_LIST_HEAD(&fi->list);
-	fi->func = driver;
-
-	list_add(&fi->list, &func_list);
-
-	return 0;
-}
-
 static struct platform_driver usb_driver = {
 	.probe = usb_probe,
 	.driver = { .name = "msm_hsusb", },
@@ -1332,20 +1379,7 @@ static int __init usb_init(void)
 	return platform_driver_register(&usb_driver);
 }
 
-static int __init usb_late_init(void)
-{
-	printk(KERN_INFO "usb_late_init()\n");
-
-	if (the_usb_info)
-		usb_start(the_usb_info, &func_list);
-
-	return 0;
-}
-
 module_init(usb_init);
-
-late_initcall(usb_late_init);
-
 
 static void copy_string_descriptor(char *string, char *buffer)
 {
@@ -1364,6 +1398,7 @@ static void copy_string_descriptor(char *string, char *buffer)
 
 static int usb_find_descriptor(struct usb_info *ui, unsigned id, struct usb_request *req)
 {
+	int i;
 	unsigned type = id >> 8;
 	id &= 0xff;
 
@@ -1374,7 +1409,6 @@ static int usb_find_descriptor(struct usb_info *ui, unsigned id, struct usb_requ
 	}
 
 	if ((type == USB_DT_CONFIG) && (id == 0)) {
-		struct list_head *entry;
 		struct usb_config_descriptor cfg;
 		unsigned ifc_count = 0;
 		unsigned n;
@@ -1383,11 +1417,8 @@ static int usb_find_descriptor(struct usb_info *ui, unsigned id, struct usb_requ
 		start = req->buf;
 		ptr = start + USB_DT_CONFIG_SIZE;
 
-		list_for_each(entry, ui->flist) {
-			struct usb_function_info *fi =
-				list_entry(entry, struct usb_function_info, list);
-			if (fi->endpoints == 0)
-				continue; /* 0 endpoints -> unbound, ignore */
+		for (i = 0; i < ui->num_funcs; i++) {
+			struct usb_function_info *fi = ui->func[i];
 
 			ifc_count++;
 

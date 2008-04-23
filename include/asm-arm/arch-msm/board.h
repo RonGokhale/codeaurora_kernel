@@ -46,6 +46,10 @@ struct msm_hsusb_platform_data
 	char* serial_number;
 	char* product_name;
 	char* manufacturer_name;
+
+	/* list of function drivers to bind to this configuration */
+	int num_functions;
+	char **function;
 };
 
 struct android_pmem_platform_data
