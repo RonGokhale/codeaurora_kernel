@@ -52,10 +52,6 @@ static unsigned int msmsdcc_fmin = 144000;
 static unsigned int msmsdcc_fmax = 20000000;
 static unsigned int msmsdcc_4bit = 0;
 
-static struct resource *irqres;
-static struct resource *memres;
-static struct resource *dmares;
-
 static char *msmsdcc_clks[] = { NULL, "sdc1_clk", "sdc2_clk", "sdc3_clk",
 				"sdc4_clk" };
 static char *msmsdcc_pclks[] = { NULL, "sdc1_pclk", "sdc2_pclk", "sdc3_pclk",
@@ -840,11 +836,12 @@ msmsdcc_check_status(unsigned long data)
 static int
 msmsdcc_init_dma(struct msmsdcc_host *host)
 {
-	BUG_ON(!dmares);
-
 	memset(&host->dma, 0, sizeof(struct msmsdcc_dma_data));
 	host->dma.host = host;
 	host->dma.channel = -1;
+
+	if (!host->dmares)
+		return -ENODEV;
 
 	host->dma.nc = dma_alloc_coherent(NULL,
 					  sizeof(struct msmsdcc_nc_dmadata),
@@ -865,7 +862,7 @@ msmsdcc_init_dma(struct msmsdcc_host *host)
 	       "%s: DM cmd busaddr %u, cmdptr busaddr %u\n",
 	       __func__, host->dma.cmd_busaddr,
 	       host->dma.cmdptr_busaddr);
-	host->dma.channel = dmares->start;
+	host->dma.channel = host->dmares->start;
 
 	return 0;
 }
@@ -876,6 +873,9 @@ msmsdcc_probe(struct platform_device *pdev)
 	struct mmc_platform_data *plat = pdev->dev.platform_data;
 	struct msmsdcc_host *host;
 	struct mmc_host *mmc;
+	struct resource *irqres = NULL;
+	struct resource *memres = NULL;
+	struct resource *dmares = NULL;
 	int ret;
 	int i;
 
@@ -888,8 +888,6 @@ msmsdcc_probe(struct platform_device *pdev)
 
 	if (pdev->id < 1 || pdev->id > 4)
 		return -EINVAL;
-
-	irqres = memres = dmares = NULL;
 
 	if (pdev->resource == NULL || pdev->num_resources < 2) {
 		printk(KERN_ERR "%s: Invalid resource\n", __func__);
@@ -924,8 +922,10 @@ msmsdcc_probe(struct platform_device *pdev)
 	host->plat = plat;
 	host->mmc = mmc;
 	host->base = memres->start;
+	host->irqres = irqres;
+	host->memres = memres;
+	host->dmares = dmares;
 	spin_lock_init(&host->lock);
-
 
 #ifdef CONFIG_MMC_EMBEDDED_SDIO
 	if (plat->embedded_sdio)
@@ -939,12 +939,10 @@ msmsdcc_probe(struct platform_device *pdev)
 	/*
 	 * Setup DMA
 	 */
-	if (dmares) {
-		ret = msmsdcc_init_dma(host);
-		if (ret)
-			printk(KERN_ERR "%s: DMA setup failed (%d)\n",
-			       __func__, ret);
-	}
+	ret = msmsdcc_init_dma(host);
+	if (ret)
+		printk(KERN_ERR "%s: DMA setup failed (%d)\n",
+		       __func__, ret);
 
 	/*
 	 * Setup main peripheral bus clock

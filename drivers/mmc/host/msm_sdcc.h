@@ -196,6 +196,9 @@ struct msmsdcc_dma_data {
 };
 
 struct msmsdcc_host {
+	struct resource		*irqres;
+	struct resource		*memres;
+	struct resource		*dmares;
 	void __iomem		*base;
 	int			pdev_id;
 
