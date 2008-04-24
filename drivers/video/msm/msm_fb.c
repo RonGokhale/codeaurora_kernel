@@ -28,13 +28,17 @@
 #include <asm/io.h>
 #include <asm/uaccess.h>
 #include <asm/arch/msm_fb.h>
+#include <linux/workqueue.h>
 
 #define PRINT_FPS 0
 #define PRINT_BLIT_TIME 0
 #define AWAKE 0x0
-#define SLEEP_REQUESTED 0x1
-#define WAKE_REQUESTED 0x2
-#define SLEEPING 0x3
+#define VSYNC_NOT_READY 0x2
+#define SLEEPING 0x1
+
+#define NEED_UPDATE 0x3
+#define UPDATING 0x1
+#define FREE 0x0
 
 struct msmfb_info {
 	struct fb_info *fb_info;
@@ -44,7 +48,6 @@ struct msmfb_info {
 	volatile unsigned frame_done;
 	volatile int sleeping;
 	volatile struct {
-		int need_update;
 		int left;
 		int top;
 		int eright; /* exclusive */
@@ -57,6 +60,9 @@ struct msmfb_info {
 	spinlock_t update_lock;
 	wait_queue_head_t update_wq;
 	wait_queue_head_t frame_wq;
+	struct work_struct update_work;
+	struct workqueue_struct *update_workq;
+	char* black;
 };
 
 static int msmfb_open(struct fb_info *info, int user)
@@ -69,13 +75,13 @@ static int msmfb_release(struct fb_info *info, int user)
 	return 0;
 }
 
-static int updater(void *_par)
+static void do_update(struct work_struct *work)
 {
-	struct msmfb_info *par = _par;
+	struct msmfb_info *par = container_of(work, struct msmfb_info,
+					      update_work);
 	struct mddi_panel_info *pi = par->panel_info;
 	uint32_t x, y, w, h;
 	unsigned addr;
-	int sleeping;
 	unsigned long irq_flags;
 #if PRINT_FPS
 	ktime_t t1 = ktime_get();
@@ -83,94 +89,68 @@ static int updater(void *_par)
 	int64_t dt;
 	int rel_frame_count = 0;
 #endif
-	daemonize("msm_fb");
-	set_user_nice(current, -10);
-	set_freezable();
 
-	for (;;) {
-		wait_event_interruptible(par->update_wq,
-					 par->update_info.need_update);
-		if (try_to_freeze())
-			continue;
-
-		spin_lock_irqsave(&par->update_lock, irq_flags);
-		par->update_info.need_update = 0;
-		if (par->sleeping & SLEEP_REQUESTED) {
-			sleeping = 1;
-			par->sleeping = SLEEPING;
-		} else {
-			sleeping = 0;
-		}
-		x = par->update_info.left;
-		y = par->update_info.top;
-		w = par->update_info.eright - x;
-		h = par->update_info.ebottom - y;
-		if (!sleeping) {
-			par->update_info.left = pi->width + 1;
-			par->update_info.top = pi->height + 1;
-			par->update_info.eright = 0;
-			par->update_info.ebottom = 0;
-		}
-		spin_unlock_irqrestore(&par->update_lock, irq_flags);
+	spin_lock_irqsave(&par->update_lock, irq_flags);
+	x = par->update_info.left;
+	y = par->update_info.top;
+	w = par->update_info.eright - x;
+	h = par->update_info.ebottom - y;
+	par->update_info.left = pi->width + 1;
+	par->update_info.top = pi->height + 1;
+	par->update_info.eright = 0;
+	par->update_info.ebottom = 0;
+	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 #if PRINT_FPS
-		t2 = ktime_get();
+	t2 = ktime_get();
 #endif
-		if (sleeping)
-			msleep_interruptible(100);
-		else {
-
-			if (pi->panel_ops->wait_vsync)
-				pi->panel_ops->wait_vsync(pi);
-			else
-				msleep(16);
+	if (pi->panel_ops->wait_vsync && (par->sleeping != VSYNC_NOT_READY))
+		pi->panel_ops->wait_vsync(pi);
+	else
+		msleep(16);
 #if PRINT_FPS
-			t3 = ktime_get();
+	t3 = ktime_get();
 #endif
-			if (w > pi->width || h > pi->height || w == 0 ||
-			    h == 0) {
-				printk(KERN_INFO "invalid update: %d %d %d "
-						 "%d\n", x, y, w, h);
-				mddi_activate_link(pi->mddi);
-				/* some clients clear their vsync interrupt
-				 * when the link activates
-				 */
-			} else {
-				addr = ((pi->width * (par->yoffset + y) + x)
-					* 2);
-				mdp_dma_to_mddi(addr + par->fb_info->fix.smem_start,
-						pi->width * 2, w, h, x,
-						y);
-				mdp_dma_wait();
-			}
-#if PRINT_FPS
-			rel_frame_count++;
-			t4 = ktime_get();
-			dt = ktime_to_ns(ktime_sub(t4, t1));
-			if (dt > NSEC_PER_SEC && dt < UINT_MAX) {
-				int64_t fps = (int64_t)rel_frame_count *
-					NSEC_PER_SEC * 100;
-				int64_t vsync = (int64_t)NSEC_PER_SEC * 100;
-				int64_t last = (int64_t)NSEC_PER_SEC * 100;
-				int64_t dma = (int64_t)NSEC_PER_SEC * 100;
-				do_div(fps, dt);
-				do_div(vsync, ktime_to_ns(ktime_sub(t3, t5)));
-				do_div(last, ktime_to_ns(ktime_sub(t4, t2)));
-				do_div(dma, ktime_to_ns(ktime_sub(t4, t3)));
-				printk(KERN_INFO "msm_fb: fps*100 = %lld, "
-						"vsync %lld, last %lld, dma "
-						"%lld\n",
-						fps, vsync, last, dma);
-				t1 = t4;
-				rel_frame_count = 0;
-			}
-			t5 = t3;
-#endif
-		}
-		par->frame_done = par->frame_requested;
-		wake_up(&par->frame_wq);
+	if (w > pi->width || h > pi->height || w == 0 ||
+			h == 0) {
+		printk(KERN_INFO "invalid update: %d %d %d "
+				"%d\n", x, y, w, h);
+		mddi_activate_link(pi->mddi);
+		/* some clients clear their vsync interrupt
+		 * when the link activates
+		 */
+	} else {
+		addr = ((pi->width * (par->yoffset + y) + x)
+				* 2);
+		mdp_dma_to_mddi(addr + par->fb_info->fix.smem_start,
+				pi->width * 2, w, h, x,
+				y);
+		mdp_dma_wait();
 	}
-
-	return 0;
+#if PRINT_FPS
+	rel_frame_count++;
+	t4 = ktime_get();
+	dt = ktime_to_ns(ktime_sub(t4, t1));
+	if (dt > NSEC_PER_SEC && dt < UINT_MAX) {
+		int64_t fps = (int64_t)rel_frame_count *
+			NSEC_PER_SEC * 100;
+		int64_t vsync = (int64_t)NSEC_PER_SEC * 100;
+		int64_t last = (int64_t)NSEC_PER_SEC * 100;
+		int64_t dma = (int64_t)NSEC_PER_SEC * 100;
+		do_div(fps, dt);
+		do_div(vsync, ktime_to_ns(ktime_sub(t3, t5)));
+		do_div(last, ktime_to_ns(ktime_sub(t4, t2)));
+		do_div(dma, ktime_to_ns(ktime_sub(t4, t3)));
+		printk(KERN_INFO "msm_fb: fps*100 = %lld, "
+				"vsync %lld, last %lld, dma "
+				"%lld\n",
+				fps, vsync, last, dma);
+		t1 = t4;
+		rel_frame_count = 0;
+	}
+	t5 = t3;
+#endif
+	par->frame_done = par->frame_requested;
+	wake_up(&par->frame_wq);
 }
 
 static void msmfb_update(struct fb_info *info, uint32_t left, uint32_t top,
@@ -178,8 +158,17 @@ static void msmfb_update(struct fb_info *info, uint32_t left, uint32_t top,
 {
 	struct msmfb_info *par = info->par;
 	unsigned long irq_flags;
+
 restart:
 	spin_lock_irqsave(&par->update_lock, irq_flags);
+	if (par->sleeping == SLEEPING) {
+		spin_unlock_irqrestore(&par->update_lock, irq_flags);
+		if (wait_for_last)
+			wait_event_interruptible_timeout(par->frame_wq,
+				par->sleeping == AWAKE, HZ/10);
+		return;
+	}
+
 	if (wait_for_last && par->frame_requested != par->frame_done) {
 		spin_unlock_irqrestore(&par->update_lock, irq_flags);
 		if (wait_event_interruptible_timeout(par->frame_wq,
@@ -201,25 +190,29 @@ restart:
 		par->update_info.eright = eright;
 	if (ebottom > par->update_info.ebottom)
 		par->update_info.ebottom = ebottom;
-	if (!par->update_info.need_update) {
-		par->update_info.need_update = 1;
-		par->frame_requested++;
-	}
+	par->frame_requested++;
 	spin_unlock_irqrestore(&par->update_lock, irq_flags);
-	wake_up(&par->update_wq);
+	queue_work(par->update_workq, &par->update_work);
 }
 
 #ifdef CONFIG_ANDROID_POWER
+#define MSM_MDP_BASE          0xE0010000
+#define MDP_CMD_DEBUG_ACCESS_BASE (MSM_MDP_BASE + 0x10000)
+
 static void msmfb_early_suspend(android_early_suspend_t *h)
 {
 	unsigned long irq_flags;
 	struct msmfb_info *par = container_of(h, struct msmfb_info,
 					      early_suspend);
+
 	spin_lock_irqsave(&par->update_lock, irq_flags);
-	par->sleeping = SLEEP_REQUESTED;
+	par->sleeping = SLEEPING;
 	spin_unlock_irqrestore(&par->update_lock, irq_flags);
-	wake_up(&par->update_wq);
-	wait_event_interruptible(par->frame_wq, par->sleeping == SLEEPING);
+
+	flush_workqueue(par->update_workq);
+	mdp_dma_to_mddi(virt_to_phys(par->black), 0,
+		par->fb_info->var.xres, par->fb_info->var.yres, 0, 0);
+	mdp_dma_wait();
 }
 
 static void msmfb_early_resume(android_early_suspend_t *h)
@@ -227,12 +220,19 @@ static void msmfb_early_resume(android_early_suspend_t *h)
 	unsigned long irq_flags;
 	struct msmfb_info *par = container_of(h, struct msmfb_info,
 				 early_suspend);
-	printk(KERN_INFO "msmfb_early_resume\n");
+	struct mddi_panel_info *pi = par->panel_info;
+
+	spin_lock_irqsave(&par->update_lock, irq_flags);
+	par->sleeping = VSYNC_NOT_READY;
+	spin_unlock_irqrestore(&par->update_lock, irq_flags);
+
+	msmfb_update(par->fb_info, 0, 0, par->fb_info->var.xres,
+		     par->fb_info->var.yres, 0);
+	flush_workqueue(par->update_workq);
+	pi->panel_ops->power_on(pi);
 	spin_lock_irqsave(&par->update_lock, irq_flags);
 	par->sleeping = AWAKE;
 	spin_unlock_irqrestore(&par->update_lock, irq_flags);
-	msmfb_update(par->fb_info, 0, 0, par->fb_info->var.xres,
-		     par->fb_info->var.yres, 0);
 }
 #endif
 
@@ -275,19 +275,22 @@ int msmfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 static void msmfb_fillrect(struct fb_info *p, const struct fb_fillrect *rect)
 {
 	cfb_fillrect(p, rect);
-	msmfb_update(p, rect->dx, rect->dy, rect->dx + rect->width, rect->dy + rect->height, 0);
+	msmfb_update(p, rect->dx, rect->dy, rect->dx + rect->width, 
+		     rect->dy + rect->height, 0);
 }
 
 static void msmfb_copyarea(struct fb_info *p, const struct fb_copyarea *area)
 {
 	cfb_copyarea(p, area);
-	msmfb_update(p, area->dx, area->dy, area->dx + area->width, area->dy + area->height, 0);
+	msmfb_update(p, area->dx, area->dy, area->dx + area->width, 
+		     area->dy + area->height, 0);
 }
 
 static void msmfb_imageblit(struct fb_info *p, const struct fb_image *image)
 {
 	cfb_imageblit(p, image);
-	msmfb_update(p, image->dx, image->dy, image->dx + image->width, image->dy + image->height, 0);
+	msmfb_update(p, image->dx, image->dy, image->dx + image->width,
+		     image->dy + image->height, 0);
 }
 
 
@@ -432,7 +435,15 @@ static int msmfb_probe(struct platform_device *pdev)
 	for (r = 1; r < 16; r++)
 		PP[r] = 0xffffffff;
 
+	par->update_workq = create_workqueue("msmfb_update");
+	//struct work_struct update_work;
+	//struct workqueue_struct *update_workq;
+	INIT_WORK(&par->update_work, do_update);
+	par->black = kmalloc(2*par->fb_info->var.xres, GFP_KERNEL);
+	memset(par->black, 0, 2*par->fb_info->var.xres);
+#if 0
 	kernel_thread(updater, par, 0);
+#endif
 
 	r = register_framebuffer(info);
 	if (r) return r;
@@ -443,6 +454,7 @@ static int msmfb_probe(struct platform_device *pdev)
 	par->early_suspend.level = -1;
 	android_register_early_suspend(&par->early_suspend);
 #endif
+
 
 	return 0;
 }

@@ -99,20 +99,23 @@ struct mddi_info
 #endif
 
 	void (*mddi_client_power)(int on);
+	void (*mddi_enable)(struct mddi_panel_info *panel, int on);
 	void (*panel_power)(struct mddi_panel_info *panel, int on);
 
 	/* client device published to bind us to the
-	** appropriate mddi_client driver
-	*/
+	 * appropriate mddi_client driver
+	 */
 	char client_name[20];
-	struct platform_device client_pdev;
+        struct platform_device client_pdev;
 
 	/* panel device we will publish when a mddi_client
-	** driver registers a panel with us
-	*/
+	 * driver registers a panel with us
+	 */
 	struct platform_device panel_pdev;
 	struct mddi_panel_info panel_info;
 };
+
+
 
 
 static void mddi_init_rev_encap(struct mddi_info *mddi);
@@ -414,12 +417,31 @@ static void mddi_init_registers(struct mddi_info *mddi)
 	mddi_init_rev_encap(mddi);
 }
 
+void mddi_hibernate_disable(struct mddi_info *mddi, int on)
+{
+# if 0
+	if (on && !(mddi->flags & FLAG_DISABLE_HIBERNATION))
+		mddi_writel(MDDI_CMD_HIBERNATE | 1, CMD);
+	else
+		mddi_writel(MDDI_CMD_HIBERNATE | 0, CMD);
+#endif 
+}
+
+void mddi_power_panel_on(struct mddi_panel_info *panel)
+{
+	struct mddi_info *mddi = panel->mddi;
+	if (mddi->panel_power)
+		mddi->panel_power(&mddi->panel_info, 1);
+}
+
 #ifdef CONFIG_ANDROID_POWER
 static void mddi_early_suspend(android_early_suspend_t *h)
 {
 	struct mddi_info *mddi = container_of(h, struct mddi_info, early_suspend);
 	if (mddi->panel_power)
 		mddi->panel_power(&mddi->panel_info, 0);
+	if (mddi->mddi_enable)
+		mddi->mddi_enable(&mddi->panel_info, 0);
 	if (mddi->mddi_client_power)
 		mddi->mddi_client_power(0);
 	clk_disable(mddi->clk);
@@ -429,18 +451,14 @@ static void mddi_early_resume(android_early_suspend_t *h)
 {
 	struct mddi_info *mddi = container_of(h, struct mddi_info,
 					      early_suspend);
+
 	if (mddi->mddi_client_power)
 		mddi->mddi_client_power(1);
 
 	clk_enable(mddi->clk);
-	if (clk_set_rate(mddi->clk, mddi->clk_rate))
-		printk(KERN_INFO "mddi: clk rate not set, tried %lu\n", mddi->clk_rate);
 
-	if (mddi->panel_power) {
-		mddi_writel(MDDI_CMD_HIBERNATE | 0, CMD);
-		mddi->panel_power(&mddi->panel_info, 1);
-		mddi_writel(MDDI_CMD_HIBERNATE | 1, CMD);
-	}
+	if (mddi->mddi_enable)
+		mddi->mddi_enable(&mddi->panel_info, 1);
 }
 #endif
 
@@ -469,6 +487,7 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 
 	if (pd) {
 		mddi->mddi_client_power = pd->mddi_client_power;
+		mddi->mddi_enable = pd->mddi_enable;
 		mddi->panel_power = pd->panel_power;
 		if (pd->has_vsync_irq)
 			mddi->flags |= FLAG_HAS_VSYNC_IRQ;
@@ -599,8 +618,10 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 		mddi->client_pdev.name = mddi->client_name;
 		mddi->client_pdev.dev.platform_data = mddi;
 
+		if (mddi->mddi_enable)
+			mddi->mddi_enable(&mddi->panel_info, 1);
 		if (mddi->panel_power)
-			mddi->panel_power(&mddi->panel_info, 1);
+		        mddi->panel_power(&mddi->panel_info, 1);
 
 		printk(KERN_INFO "%s: publish: %s\n", mddi->name,
 		       mddi->client_name);
@@ -770,6 +791,8 @@ int mddi_add_panel(struct mddi_info *mddi, struct mddi_panel_ops *ops)
 		*/
 		if (!(mddi->flags & FLAG_HAS_VSYNC_IRQ))
 			ops->wait_vsync = 0;
+		if (!(ops->power_on))
+			ops->power_on = mddi_power_panel_on;
 
 		printk(KERN_INFO "%s: publish: %s\n", mddi->name,
 		       mddi->panel_pdev.name);
