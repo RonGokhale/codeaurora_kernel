@@ -43,6 +43,11 @@ unsigned int msm_dmov_print_mask = MSM_DMOV_PRINT_ERRORS;
 #define PRINT_FLOW(format, args...) \
 	MSM_DMOV_DPRINTF(MSM_DMOV_PRINT_FLOW, format, args);
 
+void msm_dmov_stop_cmd(unsigned id, struct msm_dmov_cmd *cmd)
+{
+	writel((1 << 31), DMOV_FLUSH0(id));
+}
+
 void msm_dmov_enqueue_cmd(unsigned id, struct msm_dmov_cmd *cmd)
 {
 	unsigned long irq_flags;
