@@ -208,7 +208,8 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 				       mmc_hostname(host->mmc), i,
 				       err->flush[i]);
 		}
-		data->error = -EIO;
+		if (!data->error)
+			data->error = -EIO;
 		msmsdcc_stop_data(host);
 		if (!data->stop)
 			msmsdcc_request_end(host, data->mrq);
@@ -434,6 +435,17 @@ msmsdcc_data_irq(struct msmsdcc_host *host, struct mmc_data *data,
 		 */
 		if (host->sg_len && data->flags & MMC_DATA_READ)
 			flush_dcache_page(sg_page(host->sg_ptr));
+
+		/*
+		 * If a DMA was scheduled, then abort the transfer
+		 * Once aborted, we return immediately; cleanup and
+		 * stop command dispatch will happen from the
+		 * completion handler
+		 */
+		if (host->dma.sg) {
+			msm_dmov_stop_cmd(host->dma.channel, &host->dma.hdr);
+			return;
+		}
 	}
 	if (status & MCI_DATAEND) {
 
