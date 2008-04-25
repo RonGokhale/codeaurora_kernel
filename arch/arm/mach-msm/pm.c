@@ -165,8 +165,10 @@ static int msm_pm_enter(suspend_state_t state)
 		collapsed = msm_pm_collapse();
 		msm_pm_reset_vector[0] = saved_vector[0];
 		msm_pm_reset_vector[1] = saved_vector[1];
-		if (collapsed)
+		if (collapsed) {
 			cpu_init();
+			local_fiq_enable();
+		}
 		printk(KERN_INFO "msm_pm_collapse(): returned %d\n", collapsed);
 	} else
 		arch_idle();
