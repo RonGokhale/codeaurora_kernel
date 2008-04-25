@@ -231,6 +231,9 @@ static int msm_reboot_call(struct notifier_block *this, unsigned long code, void
 			restart_reason = 0x77665502;
 		} else if (!strcmp(cmd, "eraseflash")) {
 			restart_reason = 0x776655EF;
+		} else if (!strncmp(cmd, "oem-", 4)) {
+			unsigned code = simple_strtoul(cmd + 4, 0, 16) & 0xff;
+			restart_reason = 0x6f656d00 | code;
 		} else {
 			restart_reason = 0x77665501;
 		}
