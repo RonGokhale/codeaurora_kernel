@@ -26,7 +26,7 @@ enum {
 };
 
 static DEFINE_SPINLOCK(msm_dmov_lock);
-static struct msm_dmov_cmd active_command;
+static unsigned int channel_active;
 static struct list_head ready_commands[MSM_DMOV_CHANNEL_COUNT];
 static struct list_head active_commands[MSM_DMOV_CHANNEL_COUNT];
 unsigned int msm_dmov_print_mask = MSM_DMOV_PRINT_ERRORS;
@@ -65,6 +65,9 @@ void msm_dmov_enqueue_cmd(unsigned id, struct msm_dmov_cmd *cmd)
 #endif
 		PRINT_IO("msm_dmov_enqueue_cmd(%d), start command, status %x\n", id, status);
 		list_add_tail(&cmd->list, &active_commands[id]);
+		if (!channel_active)
+			enable_irq(INT_ADM_AARM);
+		channel_active |= 1U << id;
 		writel(cmd->cmdptr, DMOV_CMD_PTR(id));
 	} else {
 		if (list_empty(&active_commands[id]))
@@ -211,8 +214,14 @@ static irqreturn_t msm_datamover_irq_handler(int irq, void *dev_id)
 				writel(cmd->cmdptr, DMOV_CMD_PTR(id));
 			}
 		} while (ch_status & DMOV_STATUS_RSLT_VALID);
+		if (list_empty(&active_commands[id]) && list_empty(&ready_commands[id]))
+			channel_active &= ~(1U << id);
 		PRINT_FLOW("msm_datamover_irq_handler id %d, status %x\n", id, ch_status);
 	}
+
+	if (!channel_active)
+		disable_irq(INT_ADM_AARM);
+
 	spin_unlock_irqrestore(&msm_dmov_lock, irq_flags);
 	return IRQ_HANDLED;
 }
@@ -220,12 +229,16 @@ static irqreturn_t msm_datamover_irq_handler(int irq, void *dev_id)
 static int __init msm_init_datamover(void)
 {
 	int i;
+	int ret;
 	for (i = 0; i < MSM_DMOV_CHANNEL_COUNT; i++) {
 		INIT_LIST_HEAD(&ready_commands[i]);
 		INIT_LIST_HEAD(&active_commands[i]);
 		writel(DMOV_CONFIG_IRQ_EN | DMOV_CONFIG_FORCE_TOP_PTR_RSLT | DMOV_CONFIG_FORCE_FLUSH_RSLT, DMOV_CONFIG(i));
 	}
-	return request_irq(INT_ADM_AARM, msm_datamover_irq_handler, 0, "msmdatamover", NULL);
+	ret = request_irq(INT_ADM_AARM, msm_datamover_irq_handler, 0, "msmdatamover", NULL);
+	if (ret)
+		return ret;
+	disable_irq(INT_ADM_AARM);
 }
 
 arch_initcall(msm_init_datamover);
