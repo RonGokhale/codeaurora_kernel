@@ -181,6 +181,7 @@ static int msm_pm_enter(suspend_state_t state)
 	printk(KERN_INFO "msm_pm_enter(): exit A11S_CLK_SLEEP_EN %x, A11S_PWRDOWN %x, smsm_get_state %x\n",
 	       readl(A11S_CLK_SLEEP_EN), readl(A11S_PWRDOWN), smsm_get_state());
 	if (enter_state) {
+		writel(0x00, A11S_CLK_SLEEP_EN);
 		writel(0, A11S_PWRDOWN);
 		smsm_change_state(enter_state, exit_state);
 		msm_pm_wait_state(exit_wait_set, exit_wait_clear, 0, 0);
