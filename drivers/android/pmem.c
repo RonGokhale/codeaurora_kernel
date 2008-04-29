@@ -1106,14 +1106,7 @@ static int pmem_probe(struct platform_device *pdev)
 		goto error1;
 	}
 
-	if (pmem[id].no_allocator) {
-		pmem[id].garbage_pfn = pmem[id].size - 1;
-		pmem[id].allocated = 0;
-	} else {
-		pmem[id].garbage_index = pmem_allocate(id, PAGE_SIZE);
-		pmem[id].garbage_pfn = PMEM_OFFSET(pmem[id].garbage_index)
-					>> PAGE_SHIFT;
-	}
+	pmem[id].garbage_pfn = page_to_pfn(alloc_page(GFP_KERNEL));
 
 #if PMEM_DEBUG
 	debugfs_create_file(pdata->name, S_IFREG | S_IRUGO, NULL, (void*)id,
@@ -1130,11 +1123,7 @@ error:
 static int pmem_remove(struct platform_device *pdev)
 {
 	int id = pdev->id;
-	if (pmem[id].no_allocator) {
-		pmem[id].allocated = 0;
-	} else {
-	pmem_free(id, pmem[id].garbage_index);
-	}
+	__free_page(pfn_to_page(pmem[id].garbage_pfn));
 	misc_deregister(&pmem[id].dev);
 	return 0;
 }
