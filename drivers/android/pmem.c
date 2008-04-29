@@ -960,6 +960,18 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				return -EFAULT;
 			break;
 			}
+		case PMEM_GET_TOTAL_SIZE:
+			{
+			struct pmem_region region;
+			DLOG("get total size\n");
+			region.offset = 0;
+			get_id(file);
+			region.len = pmem[id].size;
+			if (copy_to_user((void __user *)arg, &region,
+					  sizeof(struct pmem_region)))
+				return -EFAULT;
+			break;
+			}
 		case PMEM_ALLOCATE:
 			{
 			if (has_allocation(file))

@@ -29,6 +29,7 @@
  * backed in memory as the argument to the ioctl
  */
 #define PMEM_CONNECT		_IOW(PMEM_IOCTL_MAGIC, 6, unsigned int)
+#define PMEM_GET_TOTAL_SIZE	_IOW(PMEM_IOCTL_MAGIC, 7, unsigned int)
 
 int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *end, struct file **filp);
 int get_pmem_fd(unsigned int fd, unsigned long *start, unsigned long *end);
