@@ -640,6 +640,12 @@ int mmc_attach_sd(struct mmc_host *host, u32 ocr)
 			goto err;
 	}
 
+	if (ocr & (1 << 31)) {
+		printk(KERN_WARNING "%s: card has not finished power-up!"
+		       "  (OCR = 0x%.8x)\n", mmc_hostname(host), ocr);
+		mdelay(5);
+	}
+
 	/*
 	 * Sanity check the voltages that the card claims to
 	 * support.
