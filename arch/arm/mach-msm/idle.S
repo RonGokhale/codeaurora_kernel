@@ -27,7 +27,7 @@ ENTRY(msm_pm_collapse)
 	mrc     p15, 0, r3, c3, c0, 0 /* dacr */
 	stmia   r0!, {r1-r3}
 	/* fall though */
-ENTRY(arch_idle)
+ENTRY(msm_arch_idle)
 #if defined(CONFIG_MSM_FIQ_SUPPORT)
 	cpsid	f
 #endif

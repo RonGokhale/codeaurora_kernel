@@ -37,6 +37,7 @@ enum {
 	MSM_PM_DEBUG_CLOCK = 1U << 3,
 	MSM_PM_DEBUG_RESET_VECTOR = 1U << 4,
 	MSM_PM_DEBUG_SMSM_STATE = 1U << 5,
+	MSM_PM_DEBUG_IDLE = 1U << 6,
 };
 static int msm_pm_debug_mask = MSM_PM_DEBUG_SUSPEND | MSM_PM_DEBUG_POWER_COLLAPSE;
 module_param_named(debug_mask, msm_pm_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
@@ -50,6 +51,10 @@ enum {
 };
 static int msm_pm_sleep_mode = CONFIG_MSM7X00A_SLEEP_MODE;
 module_param_named(sleep_mode, msm_pm_sleep_mode, int, S_IRUGO | S_IWUSR | S_IWGRP);
+static int msm_pm_idle_sleep_mode = CONFIG_MSM7X00A_IDLE_SLEEP_MODE;
+module_param_named(idle_sleep_mode, msm_pm_idle_sleep_mode, int, S_IRUGO | S_IWUSR | S_IWGRP);
+static int msm_pm_idle_sleep_min_time = CONFIG_MSM7X00A_IDLE_SLEEP_MIN_TIME;
+module_param_named(idle_sleep_min_time, msm_pm_idle_sleep_min_time, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 #define A11S_CLK_SLEEP_EN (MSM_CSR_BASE + 0x11c)
 #define A11S_PWRDOWN (MSM_CSR_BASE + 0x440)
@@ -62,7 +67,12 @@ unsigned long pm_saved_acpu_clk_rate;
 int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse);
 
 int msm_pm_collapse(void);
+int msm_arch_idle(void);
 void msm_pm_collapse_exit(void);
+
+int64_t msm_timer_enter_idle(void);
+void msm_timer_exit_idle(int low_power);
+int msm_irq_idle_sleep_allowed(void);
 
 static uint32_t *msm_pm_reset_vector;
 
@@ -201,7 +211,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_SMSM_STATE)
 			smsm_print_sleep_info();
 	} else
-		arch_idle();
+		msm_arch_idle();
 
 	if (sleep_mode <= MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT) {
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_CLOCK)
@@ -244,6 +254,31 @@ enter_failed:
 	msm_irq_exit_sleep3();
 	msm_gpio_exit_sleep();
 	return 0;
+}
+
+void arch_idle(void)
+{
+	int64_t sleep_time;
+	int low_power = 0;
+	int allow_sleep =
+		msm_pm_idle_sleep_mode < MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT &&
+		msm_irq_idle_sleep_allowed();
+	sleep_time = msm_timer_enter_idle();
+	if (msm_pm_debug_mask & MSM_PM_DEBUG_IDLE)
+		printk(KERN_INFO "arch_idle: sleep time %llu, allow_sleep %d\n",
+		       sleep_time, allow_sleep);
+	if (sleep_time < msm_pm_idle_sleep_min_time || !allow_sleep)
+		msm_arch_idle();
+	else {
+		low_power = 1;
+		do_div(sleep_time, NSEC_PER_SEC / 32768);
+		if (sleep_time > 0x6DDD000) {
+			printk("sleep_time too big %lld\n", sleep_time);
+			sleep_time = 0x6DDD000;
+		}
+		msm_sleep(msm_pm_idle_sleep_mode, sleep_time, 1);
+	}
+	msm_timer_exit_idle(low_power);
 }
 
 static int msm_pm_enter(suspend_state_t state)
