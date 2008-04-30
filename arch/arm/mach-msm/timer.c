@@ -26,6 +26,14 @@
 
 #include <asm/io.h>
 
+#include "smd_private.h"
+
+enum {
+	MSM_TIMER_DEBUG_SYNC = 1U << 0,
+};
+static int msm_timer_debug_mask;
+module_param_named(debug_mask, msm_timer_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
+
 #define MSM_DGT_BASE (MSM_GPT_BASE + 0x10)
 #define MSM_DGT_SHIFT (5)
 
@@ -60,12 +68,17 @@ struct msm_clock {
 	uint32_t                    flags;
 	uint32_t                    write_delay;
 	uint32_t                    last_set;
+	uint32_t                    offset;
+	uint32_t                    alarm_vtime;
+	uint32_t                    smem_offset;
+	uint32_t                    smem_in_sync;
 };
 enum {
 	MSM_CLOCK_GPT,
 	MSM_CLOCK_DGT,
 };
 static struct msm_clock msm_clocks[];
+static struct msm_clock *msm_active_clock;
 
 static irqreturn_t msm_timer_interrupt(int irq, void *dev_id)
 {
@@ -98,13 +111,14 @@ static uint32_t msm_read_timer_count(struct msm_clock *clock)
 
 static cycle_t msm_gpt_read(void)
 {
-	return msm_read_timer_count(&msm_clocks[MSM_CLOCK_GPT]);
+	struct msm_clock *clock = &msm_clocks[MSM_CLOCK_GPT];
+	return msm_read_timer_count(clock) + clock->offset;
 }
 
 static cycle_t msm_dgt_read(void)
 {
 	struct msm_clock *clock = &msm_clocks[MSM_CLOCK_DGT];
-	return msm_read_timer_count(clock) >> MSM_DGT_SHIFT;
+	return (msm_read_timer_count(clock) + clock->offset) >> MSM_DGT_SHIFT;
 }
 
 static int msm_timer_set_next_event(unsigned long cycles,
@@ -131,8 +145,9 @@ static int msm_timer_set_next_event(unsigned long cycles,
 	}
 	now = msm_read_timer_count(clock);
 	clock->last_set = now;
+	clock->alarm_vtime = alarm + clock->offset;
 	late = now - alarm;
-	if (late >= (-clock->write_delay << clock->shift) && late < DGT_HZ*5) {
+	if (late >= (int)(-clock->write_delay << clock->shift) && late < DGT_HZ*5) {
 		static int print_limit = 10;
 		if (print_limit > 0) {
 			print_limit--;
@@ -157,13 +172,140 @@ static void msm_timer_set_mode(enum clock_event_mode mode,
 	case CLOCK_EVT_MODE_PERIODIC:
 		break;
 	case CLOCK_EVT_MODE_ONESHOT:
+		msm_active_clock = clock;
 		writel(TIMER_ENABLE_EN, clock->regbase + TIMER_ENABLE);
 		break;
 	case CLOCK_EVT_MODE_UNUSED:
 	case CLOCK_EVT_MODE_SHUTDOWN:
+		msm_active_clock = NULL;
+		clock->smem_in_sync = 0;
 		writel(0, clock->regbase + TIMER_ENABLE);
 		break;
 	}
+}
+
+static uint32_t msm_timer_sync_smem_clock(int exit_sleep)
+{
+	struct msm_clock *clock = &msm_clocks[MSM_CLOCK_GPT];
+	uint32_t *smem_clock;
+	uint32_t smem_clock_val;
+	s64 timeout;
+	s64 entry_time;
+	uint32_t last_state;
+	uint32_t state;
+	uint32_t new_offset;
+
+	smem_clock = smem_alloc(SMEM_SMEM_SLOW_CLOCK_VALUE,
+				sizeof(uint32_t));
+
+	if (smem_clock == NULL) {
+		printk(KERN_ERR "no smem clock\n");
+		return 0;
+	}
+
+	if (!exit_sleep && clock->smem_in_sync)
+		return 0;
+
+	last_state = state = smsm_get_state();
+	if (*smem_clock) {
+		printk(KERN_INFO "get_smem_clock: invalid start state %x "
+		       "clock %u\n", state, *smem_clock);
+		smsm_change_state(SMSM_TIMEWAIT, SMSM_TIMEINIT);
+		entry_time = ktime_to_ns(ktime_get());
+		timeout = ktime_to_ns(ktime_get()) + NSEC_PER_MSEC * 10;
+		while (*smem_clock != 0 && ktime_to_ns(ktime_get()) < timeout)
+			;
+		if (*smem_clock) {
+			printk(KERN_INFO "get_smem_clock: timeout still "
+			       "invalid state %x clock %u in %lld ns\n",
+			       state, *smem_clock,
+			       ktime_to_ns(ktime_get()) - entry_time);
+			return 0;
+		}
+	}
+	entry_time = ktime_to_ns(ktime_get());
+	timeout = ktime_to_ns(ktime_get()) + NSEC_PER_MSEC * 10;
+	smsm_change_state(SMSM_TIMEINIT, SMSM_TIMEWAIT);
+	do {
+		smem_clock_val = *smem_clock;
+		state = smsm_get_state();
+		if (state != last_state) {
+			last_state = state;
+			printk(KERN_INFO "get_smem_clock: state %x clock %u\n",
+			       state, smem_clock_val);
+		}
+	} while (smem_clock_val == 0 && ktime_to_ns(ktime_get()) < timeout);
+	if (smem_clock_val) {
+		new_offset = smem_clock_val - msm_read_timer_count(clock);
+		writel(TIMER_ENABLE_EN, MSM_GPT_BASE + TIMER_ENABLE);
+		if (clock->offset + clock->smem_offset != new_offset) {
+			if (exit_sleep)
+				clock->offset = new_offset - clock->smem_offset;
+			else
+				clock->smem_offset = new_offset - clock->offset;
+			clock->smem_in_sync = 1;
+			if (msm_timer_debug_mask & MSM_TIMER_DEBUG_SYNC)
+				printk(KERN_INFO "get_smem_clock: state %x "
+				       "clock %u new offset %u+%u\n",
+				       state, smem_clock_val,
+				       clock->offset, clock->smem_offset);
+		}
+	} else {
+		printk(KERN_INFO "get_smem_clock: timeout state %x clock %u "
+		       "in %lld ns\n", state, *smem_clock,
+		       ktime_to_ns(ktime_get()) - entry_time);
+	}
+	smsm_change_state(SMSM_TIMEWAIT, SMSM_TIMEINIT);
+	entry_time = ktime_to_ns(ktime_get());
+	timeout = ktime_to_ns(ktime_get()) + NSEC_PER_MSEC * 10;
+	while (*smem_clock != 0 && ktime_to_ns(ktime_get()) < timeout)
+		;
+	if (*smem_clock)
+		printk(KERN_INFO "get_smem_clock: exit timeout state %x "
+		       "clock %u in %lld ns\n", state, *smem_clock,
+		       ktime_to_ns(ktime_get()) - entry_time);
+	return smem_clock_val;
+}
+
+int64_t msm_timer_enter_idle(void)
+{
+	struct msm_clock *clock = msm_active_clock;
+	uint32_t alarm;
+	uint32_t count;
+
+	if (clock != &msm_clocks[MSM_CLOCK_GPT])
+		return 0;
+
+	msm_timer_sync_smem_clock(0);
+
+	count = msm_read_timer_count(clock);
+	alarm = readl(clock->regbase + TIMER_MATCH_VAL);
+	if (alarm <= count)
+		return 0;
+	return cyc2ns(&clock->clocksource, (alarm - count) >> clock->shift);
+}
+
+void msm_timer_reactivate_alarm(struct msm_clock *clock)
+{
+	long alarm_delta = clock->alarm_vtime - clock->offset -
+		msm_read_timer_count(clock);
+	if (alarm_delta < (long)clock->write_delay + 4)
+		alarm_delta = clock->write_delay + 4;
+	while (msm_timer_set_next_event(alarm_delta, &clock->clockevent))
+		;
+}
+
+void msm_timer_exit_idle(int low_power)
+{
+	struct msm_clock *clock = msm_active_clock;
+	uint32_t smem_clock;
+
+	if (!low_power || clock != &msm_clocks[MSM_CLOCK_GPT])
+		return;
+
+	if (!(readl(clock->regbase + TIMER_ENABLE) & TIMER_ENABLE_EN))
+		smem_clock = msm_timer_sync_smem_clock(1);
+	msm_timer_reactivate_alarm(clock);
 }
 
 unsigned long long sched_clock(void)
