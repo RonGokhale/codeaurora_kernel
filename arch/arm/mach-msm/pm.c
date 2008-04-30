@@ -158,6 +158,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 	void msm_irq_exit_sleep3(void);
 	void msm_gpio_enter_sleep(int from_idle);
 	void msm_gpio_exit_sleep(void);
+	void smd_sleep_exit(void);
 	uint32_t enter_state;
 	uint32_t enter_wait_set = 0;
 	uint32_t enter_wait_clear = 0;
@@ -306,6 +307,7 @@ enter_failed:
 	}
 	msm_irq_exit_sleep3();
 	msm_gpio_exit_sleep();
+	smd_sleep_exit();
 	return rv;
 }
 

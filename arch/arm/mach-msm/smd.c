@@ -534,6 +534,69 @@ static irqreturn_t smd_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static void smd_fake_irq_handler(unsigned long arg)
+{
+	smd_irq_handler(0, NULL);
+}
+
+static DECLARE_TASKLET(smd_fake_irq_tasklet, smd_fake_irq_handler, 0);
+
+void smd_sleep_exit(void)
+{
+	unsigned long flags;
+	struct smd_channel *ch;
+	unsigned tmp;
+	int need_int = 0;
+
+	spin_lock_irqsave(&smd_lock, flags);
+	list_for_each_entry(ch, &smd_ch_list, ch_list) {
+		if (ch_is_open(ch)) {
+			if (ch->recv->fHEAD) {
+				if (msm_smd_debug_mask & MSM_SMD_DEBUG)
+					printk("smd_sleep_exit ch %d fHEAD "
+						"%x %x %x\n",
+						ch->n, ch->recv->fHEAD,
+						ch->recv->head, ch->recv->tail);
+				need_int = 1;
+				break;
+			}
+			if (ch->recv->fTAIL) {
+				if (msm_smd_debug_mask & MSM_SMD_DEBUG)
+					printk("smd_sleep_exit ch %d fTAIL "
+						"%x %x %x\n",
+						ch->n, ch->recv->fTAIL,
+						ch->send->head, ch->send->tail);
+				need_int = 1;
+				break;
+			}
+			if (ch->recv->fSTATE) {
+				if (msm_smd_debug_mask & MSM_SMD_DEBUG)
+					printk("smd_sleep_exit ch %d fSTATE %x"
+						"\n", ch->n, ch->recv->fSTATE);
+				need_int = 1;
+				break;
+			}
+			tmp = ch->recv->state;
+			if (tmp != ch->last_state) {
+				if (msm_smd_debug_mask & MSM_SMD_DEBUG)
+					printk("smd_sleep_exit ch %d "
+						"state %x != %x\n",
+						ch->n, tmp, ch->last_state);
+				need_int = 1;
+				break;
+			}
+		}
+	}
+	spin_unlock_irqrestore(&smd_lock, flags);
+	do_smd_probe();
+	if (need_int) {
+		if (msm_smd_debug_mask & MSM_SMD_DEBUG)
+			printk("smd_sleep_exit need interrupt\n");
+		tasklet_schedule(&smd_fake_irq_tasklet);
+	}
+}
+
+
 void smd_kick(smd_channel_t *ch)
 {
 	unsigned long flags;
