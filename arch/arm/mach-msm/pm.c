@@ -31,6 +31,17 @@
 #include "proc_comm.h"
 
 enum {
+	MSM_PM_DEBUG_SUSPEND = 1U << 0,
+	MSM_PM_DEBUG_POWER_COLLAPSE = 1U << 1,
+	MSM_PM_DEBUG_STATE = 1U << 2,
+	MSM_PM_DEBUG_CLOCK = 1U << 3,
+	MSM_PM_DEBUG_RESET_VECTOR = 1U << 4,
+	MSM_PM_DEBUG_SMSM_STATE = 1U << 5,
+};
+static int msm_pm_debug_mask = MSM_PM_DEBUG_SUSPEND | MSM_PM_DEBUG_POWER_COLLAPSE;
+module_param_named(debug_mask, msm_pm_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
+
+enum {
 	MSM_PM_SLEEP_MODE_POWER_COLLAPSE_SUSPEND,
 	MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
 	MSM_PM_SLEEP_MODE_APPS_SLEEP,
@@ -93,7 +104,9 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 	uint32_t exit_wait_set = 0;
 	int ret;
 
-	printk(KERN_INFO "msm_pm_enter(): mode %d\n", sleep_mode);
+	if (msm_pm_debug_mask & MSM_PM_DEBUG_SUSPEND)
+		printk(KERN_INFO "msm_pm_enter(): mode %d delay %u idle %d\n",
+		       sleep_mode, sleep_delay, from_idle);
 
 	switch (sleep_mode) {
 	case MSM_PM_SLEEP_MODE_POWER_COLLAPSE:
@@ -130,7 +143,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 		smsm_set_sleep_duration(sleep_delay);
 		ret = smsm_change_state(SMSM_RUN, enter_state);
 		if (ret) {
-			printk(KERN_INFO "msm_pm_enter(): smsm_change_state %x failed\n", enter_state);
+			printk(KERN_ERR "msm_pm_enter(): smsm_change_state %x failed\n", enter_state);
 			enter_state = 0;
 			exit_state = 0;
 		}
@@ -144,22 +157,31 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 		writel(0, A11S_STANDBY_CTL);
 		writel(0, A11RAMBACKBIAS);
 
-		printk(KERN_INFO "msm_pm_enter(): enter A11S_CLK_SLEEP_EN %x, A11S_PWRDOWN %x, smsm_get_state %x\n",
-		       readl(A11S_CLK_SLEEP_EN), readl(A11S_PWRDOWN), smsm_get_state());
+		if (msm_pm_debug_mask & MSM_PM_DEBUG_STATE)
+			printk(KERN_INFO "msm_pm_enter(): enter "
+			       "A11S_CLK_SLEEP_EN %x, A11S_PWRDOWN %x, "
+			       "smsm_get_state %x\n", readl(A11S_CLK_SLEEP_EN),
+			       readl(A11S_PWRDOWN), smsm_get_state());
 	}
 
 	if (sleep_mode <= MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT) {
 		pm_saved_acpu_clk_rate = clk_get_rate(acpu_clk);
-		printk(KERN_INFO "msm_pm_enter(): change clk %ld -> %d\n", pm_saved_acpu_clk_rate, TARGET_CLOCK_RATE);
+		if (msm_pm_debug_mask & MSM_PM_DEBUG_CLOCK)
+			printk(KERN_INFO "msm_pm_enter(): change clk %ld -> %d"
+			       "\n", pm_saved_acpu_clk_rate, TARGET_CLOCK_RATE);
 		acpuclk_set_rate(acpu_clk, TARGET_CLOCK_RATE, 1);
 	}
 	if (sleep_mode < MSM_PM_SLEEP_MODE_APPS_SLEEP) {
+		if (msm_pm_debug_mask & MSM_PM_DEBUG_SMSM_STATE)
+			smsm_print_sleep_info();
 		saved_vector[0] = msm_pm_reset_vector[0];
 		saved_vector[1] = msm_pm_reset_vector[1];
 		msm_pm_reset_vector[0] = 0xE51FF004; /* ldr pc, 4 */
 		msm_pm_reset_vector[1] = virt_to_phys(msm_pm_collapse_exit);
-		printk(KERN_INFO "msm_pm_enter: vector %x %x -> %x %x\n",
-		       saved_vector[0], saved_vector[1], msm_pm_reset_vector[0], msm_pm_reset_vector[1]);
+		if (msm_pm_debug_mask & MSM_PM_DEBUG_RESET_VECTOR)
+			printk(KERN_INFO "msm_pm_enter: vector %x %x -> "
+			       "%x %x\n", saved_vector[0], saved_vector[1],
+			       msm_pm_reset_vector[0], msm_pm_reset_vector[1]);
 		collapsed = msm_pm_collapse();
 		msm_pm_reset_vector[0] = saved_vector[0];
 		msm_pm_reset_vector[1] = saved_vector[1];
@@ -167,28 +189,46 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 			cpu_init();
 			local_fiq_enable();
 		}
-		printk(KERN_INFO "msm_pm_collapse(): returned %d\n", collapsed);
+		if (msm_pm_debug_mask & MSM_PM_DEBUG_POWER_COLLAPSE)
+			printk(KERN_INFO "msm_pm_collapse(): returned %d\n",
+			       collapsed);
+		if (msm_pm_debug_mask & MSM_PM_DEBUG_SMSM_STATE)
+			smsm_print_sleep_info();
 	} else
 		arch_idle();
 
 	if (sleep_mode <= MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT) {
-		printk(KERN_INFO "msm_pm_enter(): change clk %d -> %ld\n", TARGET_CLOCK_RATE, pm_saved_acpu_clk_rate);
+		if (msm_pm_debug_mask & MSM_PM_DEBUG_CLOCK)
+			printk(KERN_INFO "msm_pm_enter(): change clk %d -> %ld"
+			       "\n", TARGET_CLOCK_RATE, pm_saved_acpu_clk_rate);
 		if (acpuclk_set_rate(acpu_clk, pm_saved_acpu_clk_rate, 1) < 0)
-			printk(KERN_INFO "msm_pm_enter(): clk_set_rate %ld failed\n", pm_saved_acpu_clk_rate);
+			printk(KERN_ERR "msm_pm_enter(): clk_set_rate %ld "
+			       "failed\n", pm_saved_acpu_clk_rate);
 	}
-	printk(KERN_INFO "msm_pm_enter(): exit A11S_CLK_SLEEP_EN %x, A11S_PWRDOWN %x, smsm_get_state %x\n",
-	       readl(A11S_CLK_SLEEP_EN), readl(A11S_PWRDOWN), smsm_get_state());
+	if (msm_pm_debug_mask & MSM_PM_DEBUG_STATE)
+		printk(KERN_INFO "msm_pm_enter(): exit A11S_CLK_SLEEP_EN %x, "
+		       "A11S_PWRDOWN %x, smsm_get_state %x\n",
+		       readl(A11S_CLK_SLEEP_EN), readl(A11S_PWRDOWN),
+		       smsm_get_state());
 	if (enter_state) {
 		writel(0x00, A11S_CLK_SLEEP_EN);
 		writel(0, A11S_PWRDOWN);
 		smsm_change_state(enter_state, exit_state);
 		msm_pm_wait_state(exit_wait_set, exit_wait_clear, 0, 0);
-		printk(KERN_INFO "msm_pm_enter(): sleep exit A11S_CLK_SLEEP_EN %x, A11S_PWRDOWN %x, smsm_get_state %x\n",
-		       readl(A11S_CLK_SLEEP_EN), readl(A11S_PWRDOWN), smsm_get_state());
+		if (msm_pm_debug_mask & MSM_PM_DEBUG_STATE)
+			printk(KERN_INFO "msm_pm_enter(): sleep exit "
+			       "A11S_CLK_SLEEP_EN %x, A11S_PWRDOWN %x, "
+			       "smsm_get_state %x\n", readl(A11S_CLK_SLEEP_EN),
+			       readl(A11S_PWRDOWN), smsm_get_state());
+		if (msm_pm_debug_mask & MSM_PM_DEBUG_SMSM_STATE)
+			smsm_print_sleep_info();
 		smsm_change_state(exit_state, SMSM_RUN);
 		msm_pm_wait_state(SMSM_RUN, 0, 0, 0);
-		printk(KERN_INFO "msm_pm_enter(): sleep exit A11S_CLK_SLEEP_EN %x, A11S_PWRDOWN %x, smsm_get_state %x\n",
-		       readl(A11S_CLK_SLEEP_EN), readl(A11S_PWRDOWN), smsm_get_state());
+		if (msm_pm_debug_mask & MSM_PM_DEBUG_STATE)
+			printk(KERN_INFO "msm_pm_enter(): sleep exit "
+			       "A11S_CLK_SLEEP_EN %x, A11S_PWRDOWN %x, "
+			       "smsm_get_state %x\n", readl(A11S_CLK_SLEEP_EN),
+			       readl(A11S_PWRDOWN), smsm_get_state());
 	}
 	msm_irq_exit_sleep();
 	msm_gpio_exit_sleep();
