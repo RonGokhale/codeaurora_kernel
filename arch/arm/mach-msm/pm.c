@@ -101,6 +101,8 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 	void msm_gpio_enter_sleep(int from_idle);
 	void msm_gpio_exit_sleep(void);
 	uint32_t enter_state;
+	uint32_t enter_wait_set = 0;
+	uint32_t enter_wait_clear = 0;
 	uint32_t exit_state;
 	uint32_t exit_wait_clear = 0;
 	uint32_t exit_wait_set = 0;
@@ -113,11 +115,13 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 	switch (sleep_mode) {
 	case MSM_PM_SLEEP_MODE_POWER_COLLAPSE:
 		enter_state = SMSM_PWRC;
+		enter_wait_set = SMSM_RSA;
 		exit_state = SMSM_WFPI;
 		exit_wait_clear = SMSM_RSA;
 		break;
 	case MSM_PM_SLEEP_MODE_POWER_COLLAPSE_SUSPEND:
 		enter_state = SMSM_PWRC_SUSPEND;
+		enter_wait_set = SMSM_RSA;
 		exit_state = SMSM_WFPI;
 		exit_wait_clear = SMSM_RSA;
 		break;
@@ -143,6 +147,11 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 			printk(KERN_ERR "msm_pm_enter(): smsm_change_state %x failed\n", enter_state);
 			enter_state = 0;
 			exit_state = 0;
+		}
+		ret = msm_pm_wait_state(enter_wait_set, enter_wait_clear, 0, 0);
+		if (ret) {
+			printk(KERN_INFO "msm_pm_enter(): msm_pm_wait_state failed, %x\n", smsm_get_state());
+			goto enter_failed;
 		}
 	}
 	msm_irq_enter_sleep2(!!enter_state, from_idle);
@@ -207,6 +216,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 		       "A11S_PWRDOWN %x, smsm_get_state %x\n",
 		       readl(A11S_CLK_SLEEP_EN), readl(A11S_PWRDOWN),
 		       smsm_get_state());
+enter_failed:
 	msm_irq_exit_sleep1();
 	if (enter_state) {
 		writel(0x00, A11S_CLK_SLEEP_EN);
