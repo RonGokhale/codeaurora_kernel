@@ -29,6 +29,14 @@
 #include <asm/arch/msm_iomap.h>
 #include <asm/arch/fiq.h>
 
+#include "smd_private.h"
+
+enum {
+	IRQ_DEBUG_SLEEP = 1U << 0,
+};
+static int msm_irq_debug_mask = 0;
+module_param_named(debug_mask, msm_irq_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
+
 #define VIC_REG(off) (MSM_VIC_BASE + (off))
 
 #define VIC_INT_SELECT0     VIC_REG(0x0000)  /* 1: FIQ, 0: IRQ */
@@ -68,12 +76,67 @@
 #define VIC_VECTADDR(n)     VIC_REG(0x0400+((n) * 4))
 
 static uint32_t msm_irq_wake_enable[2];
+static uint32_t msm_irq_smsm_wake_enable;
 static struct {
 	uint32_t int_en;
 	uint32_t int_type;
 	uint32_t int_polarity;
 	uint32_t int_select;
 } msm_irq_shadow_reg[2];
+static uint32_t msm_irq_idle_disable[2];
+static uint32_t msm_irq_smsm_enable;
+
+#define SMSM_FAKE_IRQ (0xff)
+static uint8_t msm_irq_to_smsm[NR_MSM_IRQS] = {
+	[INT_MDDI_EXT] = 1,
+	[INT_MDDI_PRI] = 2,
+	[INT_MDDI_CLIENT] = 3,
+	[INT_USB_OTG] = 4,
+
+	[INT_PWB_I2C] = 5,
+	[INT_SDC1_0] = 6,
+	[INT_SDC1_1] = 7,
+	[INT_SDC2_0] = 8,
+
+	[INT_SDC2_1] = 9,
+	[INT_ADSP_A9_A11] = 10,
+	[INT_UART1] = 11,
+	[INT_UART2] = 12,
+
+	[INT_UART3] = 13,
+	[INT_UART1_RX] = 14,
+	[INT_UART2_RX] = 15,
+	[INT_UART3_RX] = 16,
+
+	[INT_UART1DM_IRQ] = 17,
+	[INT_UART1DM_RX] = 18,
+	[INT_KEYSENSE] = 19,
+	[INT_AD_HSSD] = 20,
+
+	[INT_NAND_WR_ER_DONE] = 21,
+	[INT_NAND_OP_DONE] = 22,
+	[INT_TCHSCRN1] = 23,
+	[INT_TCHSCRN2] = 24,
+
+	[INT_TCHSCRN_SSBI] = 25,
+	[INT_USB_HS] = 26,
+	[INT_UART2DM_RX] = 27,
+	[INT_UART2DM_IRQ] = 28,
+
+	[INT_SDC4_1] = 29,
+	[INT_SDC4_0] = 30,
+	[INT_SDC3_1] = 31,
+	[INT_SDC3_0] = 32,
+
+	/* fake wakeup interrupts */
+	[INT_GPIO_GROUP1] = SMSM_FAKE_IRQ,
+	[INT_GPIO_GROUP2] = SMSM_FAKE_IRQ,
+	[INT_A9_M2A_0] = SMSM_FAKE_IRQ,
+	[INT_A9_M2A_1] = SMSM_FAKE_IRQ,
+	[INT_A9_M2A_5] = SMSM_FAKE_IRQ,
+	[INT_GP_TIMER_EXP] = SMSM_FAKE_IRQ,
+	[INT_DEBUG_TIMER_EXP] = SMSM_FAKE_IRQ,
+};
 
 static void msm_irq_ack(unsigned int irq)
 {
@@ -87,8 +150,16 @@ static void msm_irq_mask(unsigned int irq)
 	unsigned reg = VIC_INT_ENCLEAR0 + ((irq & 32) ? 4 : 0);
 	unsigned index = (irq >> 5) & 1;
 	uint32_t mask = 1UL << (irq & 31);
+	int smsm_irq = msm_irq_to_smsm[irq];
+
 	msm_irq_shadow_reg[index].int_en &= ~mask;
 	writel(mask, reg);
+	if (smsm_irq == 0)
+		msm_irq_idle_disable[index] &= ~mask;
+	else {
+		mask = 1UL << (smsm_irq - 1);
+		msm_irq_smsm_enable &= ~mask;
+	}
 }
 
 static void msm_irq_unmask(unsigned int irq)
@@ -96,18 +167,42 @@ static void msm_irq_unmask(unsigned int irq)
 	unsigned reg = VIC_INT_ENSET0 + ((irq & 32) ? 4 : 0);
 	unsigned index = (irq >> 5) & 1;
 	uint32_t mask = 1UL << (irq & 31);
+	int smsm_irq = msm_irq_to_smsm[irq];
+
 	msm_irq_shadow_reg[index].int_en |= mask;
 	writel(1 << (irq & 31), reg);
+
+	if (smsm_irq == 0)
+		msm_irq_idle_disable[index] |= mask;
+	else {
+		mask = 1UL << (smsm_irq - 1);
+		msm_irq_smsm_enable |= mask;
+	}
 }
 
 static int msm_irq_set_wake(unsigned int irq, unsigned int on)
 {
 	unsigned index = (irq >> 5) & 1;
 	uint32_t mask = 1UL << (irq & 31);
+	int smsm_irq = msm_irq_to_smsm[irq];
+
+	if (smsm_irq == 0) {
+		printk(KERN_ERR "msm_irq_set_wake: bad wakeup irq %d\n", irq);
+		return -EINVAL;
+	}
 	if (on)
 		msm_irq_wake_enable[index] |= mask;
 	else
 		msm_irq_wake_enable[index] &= ~mask;
+
+	if (smsm_irq == SMSM_FAKE_IRQ)
+		return 0;
+
+	mask = 1UL << (smsm_irq - 1);
+	if (on)
+		msm_irq_smsm_wake_enable |= mask;
+	else
+		msm_irq_smsm_wake_enable &= ~mask;
 	return 0;
 }
 
@@ -142,40 +237,114 @@ static int msm_irq_set_type(unsigned int irq, unsigned int flow_type)
 	return 0;
 }
 
-void msm_irq_enter_sleep(bool arm9_wake)
+int msm_irq_idle_sleep_allowed(void)
+{
+	return !(msm_irq_idle_disable[0] || msm_irq_idle_disable[1]);
+}
+
+/* If arm9_wake is set: pass control to the other core.
+ * If from_idle is not set: disable non-wakeup interrupts.
+ */
+void msm_irq_enter_sleep1(bool arm9_wake, int from_idle)
+{
+	struct smsm_interrupt_info int_info;
+	if (arm9_wake) {
+		int_info.aArm_en_mask = from_idle ?
+			msm_irq_smsm_enable : msm_irq_smsm_wake_enable;
+		int_info.aArm_interrupts_pending = 0;
+		smsm_set_interrupt_info(&int_info);
+	}
+}
+
+/* TODO: Check if any (edge-triggered) wakeup interrupts are pending */
+void msm_irq_enter_sleep2(bool arm9_wake, int from_idle)
 {
 	int limit = 10;
+
+	if (from_idle && !arm9_wake)
+		return;
+
+	if (msm_irq_debug_mask & IRQ_DEBUG_SLEEP)
+		printk(KERN_INFO "msm_irq_enter_sleep change irq, pend %x %x\n",
+		       readl(VIC_IRQ_STATUS0), readl(VIC_IRQ_STATUS1));
 	writel(0, VIC_INT_EN0);
 	writel(0, VIC_INT_EN1);
 
-	while(limit-- > 0) {
+	while (limit-- > 0) {
+		int pend_irq;
 		int irq = readl(VIC_IRQ_VEC_RD);
-		if(irq == -1)
+		if (irq == -1)
 			break;
-		printk("msm_irq_enter_sleep cleared int %d\n", irq);
+		pend_irq = readl(VIC_IRQ_VEC_PEND_RD);
+		printk(KERN_WARNING "msm_irq_enter_sleep cleared int %d (%d)\n",
+		       irq, pend_irq);
 	}
 
-	if(arm9_wake) {
+	if (arm9_wake) {
 		msm_irq_set_type(INT_A9_M2A_6, IRQF_TRIGGER_RISING);
 		writel(1U << INT_A9_M2A_6, VIC_INT_ENSET0);
-	}
-	else {
+	} else {
 		writel(msm_irq_wake_enable[0], VIC_INT_ENSET0);
 		writel(msm_irq_wake_enable[1], VIC_INT_ENSET1);
 	}
 }
 
-void msm_irq_exit_sleep(void)
+void msm_irq_exit_sleep1(void)
 {
+	struct smsm_interrupt_info *int_info;
 	int i;
+
 	msm_irq_ack(INT_A9_M2A_6);
-	for(i = 0; i < 2; i++) {
+	for (i = 0; i < 2; i++) {
 		writel(msm_irq_shadow_reg[i].int_type, VIC_INT_TYPE0 + i * 4);
 		writel(msm_irq_shadow_reg[i].int_polarity, VIC_INT_POLARITY0 + i * 4);
 		writel(msm_irq_shadow_reg[i].int_en, VIC_INT_EN0 + i * 4);
 		writel(msm_irq_shadow_reg[i].int_select, VIC_INT_SELECT0 + i * 4);
 	}
 	writel(3, VIC_INT_MASTEREN);
+	int_info = smem_alloc(SMEM_SMSM_INT_INFO, sizeof(*int_info));
+	if (int_info == NULL) {
+		printk(KERN_ERR "msm_irq_exit_sleep <SM NO INT_INFO>\n");
+		return;
+	}
+	if (msm_irq_debug_mask & IRQ_DEBUG_SLEEP)
+		printk(KERN_INFO "msm_irq_exit_sleep1 %x %x %x now %x %x\n",
+		       int_info->aArm_en_mask,
+		       int_info->aArm_interrupts_pending,
+		       int_info->aArm_wakeup_reason,
+		       readl(VIC_IRQ_STATUS0), readl(VIC_IRQ_STATUS1));
+}
+
+void msm_irq_exit_sleep2(void)
+{
+	struct smsm_interrupt_info *int_info;
+	int_info = smem_alloc(SMEM_SMSM_INT_INFO, sizeof(*int_info));
+	if (int_info == NULL) {
+		printk(KERN_ERR "msm_irq_exit_sleep <SM NO INT_INFO>\n");
+		return;
+	}
+	if (msm_irq_debug_mask & IRQ_DEBUG_SLEEP)
+		printk(KERN_INFO "msm_irq_exit_sleep2 %x %x %x now %x %x\n",
+		       int_info->aArm_en_mask,
+		       int_info->aArm_interrupts_pending,
+		       int_info->aArm_wakeup_reason,
+		       readl(VIC_IRQ_STATUS0), readl(VIC_IRQ_STATUS1));
+}
+
+void msm_irq_exit_sleep3(void)
+{
+	struct smsm_interrupt_info *int_info;
+	int_info = smem_alloc(SMEM_SMSM_INT_INFO, sizeof(*int_info));
+	if (int_info == NULL) {
+		printk(KERN_ERR "msm_irq_exit_sleep <SM NO INT_INFO>\n");
+		return;
+	}
+	if (msm_irq_debug_mask & IRQ_DEBUG_SLEEP)
+		printk(KERN_INFO "msm_irq_exit_sleep3 %x %x %x now %x %x "
+		       "state %x\n", int_info->aArm_en_mask,
+		       int_info->aArm_interrupts_pending,
+		       int_info->aArm_wakeup_reason, readl(VIC_IRQ_STATUS0),
+		       readl(VIC_IRQ_STATUS1), smsm_get_state());
 }
 
 static struct irq_chip msm_irq_chip = {

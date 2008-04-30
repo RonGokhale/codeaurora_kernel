@@ -93,9 +93,11 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 {
 	uint32_t saved_vector[2];
 	int collapsed;
-	struct smsm_interrupt_info int_info;
-	void msm_irq_enter_sleep(bool arm9_wake);
-	void msm_irq_exit_sleep(void);
+	void msm_irq_enter_sleep1(bool arm9_wake, int from_idle);
+	void msm_irq_enter_sleep2(bool arm9_wake, int from_idle);
+	void msm_irq_exit_sleep1(void);
+	void msm_irq_exit_sleep2(void);
+	void msm_irq_exit_sleep3(void);
 	void msm_gpio_enter_sleep(void);
 	void msm_gpio_exit_sleep(void);
 	uint32_t enter_state;
@@ -129,12 +131,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 		exit_state = 0;
 	}
 
-	if (enter_state) {
-		int_info.aArm_en_mask = 0;
-		int_info.aArm_interrupts_pending = 0;
-		smsm_set_interrupt_info(&int_info);
-	}
-
+	msm_irq_enter_sleep1(!!enter_state, from_idle);
 	msm_gpio_enter_sleep();
 
 	if (enter_state) {
@@ -148,7 +145,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 			exit_state = 0;
 		}
 	}
-	msm_irq_enter_sleep(!!enter_state);
+	msm_irq_enter_sleep2(!!enter_state, from_idle);
 
 	if (enter_state) {
 		writel(0x1f, A11S_CLK_SLEEP_EN);
@@ -210,6 +207,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 		       "A11S_PWRDOWN %x, smsm_get_state %x\n",
 		       readl(A11S_CLK_SLEEP_EN), readl(A11S_PWRDOWN),
 		       smsm_get_state());
+	msm_irq_exit_sleep1();
 	if (enter_state) {
 		writel(0x00, A11S_CLK_SLEEP_EN);
 		writel(0, A11S_PWRDOWN);
@@ -222,6 +220,9 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 			       readl(A11S_PWRDOWN), smsm_get_state());
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_SMSM_STATE)
 			smsm_print_sleep_info();
+	}
+	msm_irq_exit_sleep2();
+	if (enter_state) {
 		smsm_change_state(exit_state, SMSM_RUN);
 		msm_pm_wait_state(SMSM_RUN, 0, 0, 0);
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_STATE)
@@ -230,7 +231,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 			       "smsm_get_state %x\n", readl(A11S_CLK_SLEEP_EN),
 			       readl(A11S_PWRDOWN), smsm_get_state());
 	}
-	msm_irq_exit_sleep();
+	msm_irq_exit_sleep3();
 	msm_gpio_exit_sleep();
 	return 0;
 }
