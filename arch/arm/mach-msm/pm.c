@@ -78,7 +78,7 @@ msm_pm_wait_state(uint32_t wait_state_all_set, uint32_t wait_state_all_clear,
 	return -ETIMEDOUT;
 }
 
-static int msm_pm_enter(suspend_state_t state)
+static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 {
 	uint32_t saved_vector[2];
 	int collapsed;
@@ -87,7 +87,6 @@ static int msm_pm_enter(suspend_state_t state)
 	void msm_irq_exit_sleep(void);
 	void msm_gpio_enter_sleep(void);
 	void msm_gpio_exit_sleep(void);
-	int sleep_mode = msm_pm_sleep_mode;
 	uint32_t enter_state;
 	uint32_t exit_state;
 	uint32_t exit_wait_clear = 0;
@@ -126,10 +125,9 @@ static int msm_pm_enter(suspend_state_t state)
 	msm_gpio_enter_sleep();
 
 	if (enter_state) {
-		if (sleep_mode < MSM_PM_SLEEP_MODE_APPS_SLEEP)
-			smsm_set_sleep_duration(0);
-		else
-			smsm_set_sleep_duration(192000*5); /* APPS_SLEEP does not allow infinite timeout */
+		if (sleep_delay == 0 && sleep_mode >= MSM_PM_SLEEP_MODE_APPS_SLEEP)
+			sleep_delay = 192000*5; /* APPS_SLEEP does not allow infinite timeout */
+		smsm_set_sleep_duration(sleep_delay);
 		ret = smsm_change_state(SMSM_RUN, enter_state);
 		if (ret) {
 			printk(KERN_INFO "msm_pm_enter(): smsm_change_state %x failed\n", enter_state);
@@ -194,6 +192,12 @@ static int msm_pm_enter(suspend_state_t state)
 	}
 	msm_irq_exit_sleep();
 	msm_gpio_exit_sleep();
+	return 0;
+}
+
+static int msm_pm_enter(suspend_state_t state)
+{
+	msm_sleep(msm_pm_sleep_mode, 0, 0);
 	return 0;
 }
 
