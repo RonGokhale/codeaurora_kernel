@@ -16,10 +16,17 @@
 #include <asm/io.h>
 #include <asm/gpio.h>
 #include <linux/irq.h>
+#include <linux/module.h>
 #include "gpio_chip.h"
 #include "gpio_hw.h"
 
 #include "smd_private.h"
+
+enum {
+	GPIO_DEBUG_SLEEP = 1U << 0,
+};
+static int msm_gpio_debug_mask = 0;
+module_param_named(debug_mask, msm_gpio_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 #define MSM_GPIO_BROKEN_INT_CLEAR 1
 
@@ -55,8 +62,7 @@ struct msm_gpio_chip {
 	unsigned                int_status_copy;
 #endif
 	unsigned int            both_edge_detect;
-	unsigned int            int_enable;
-	unsigned int            wake_enable;
+	unsigned int            int_enable[2]; /* 0: awake, 1: sleep */
 };
 
 struct msm_gpio_chip msm_gpio_chips[] = {
@@ -312,18 +318,18 @@ int msm_gpio_configure(struct gpio_chip *chip, unsigned int gpio, unsigned long 
 		if (!(v & b))
 			msm_gpio_clear_detect_status(chip, gpio);
 		if (flags & MSM_GPIOF_ENABLE_INTERRUPT) {
-			msm_chip->int_enable |= b;
+			msm_chip->int_enable[0] |= b;
 		} else {
-			msm_chip->int_enable &= ~b;
+			msm_chip->int_enable[0] &= ~b;
 		}
-		writel(msm_chip->int_enable, msm_chip->regs.int_en);
+		writel(msm_chip->int_enable[0], msm_chip->regs.int_en);
 	}
 
 	if (flags & (MSM_GPIOF_ENABLE_WAKE | MSM_GPIOF_DISABLE_WAKE)) {
 		if (flags & MSM_GPIOF_ENABLE_WAKE)
-			msm_chip->wake_enable |= b;
+			msm_chip->int_enable[1] |= b;
 		else
-			msm_chip->wake_enable &= ~b;
+			msm_chip->int_enable[1] &= ~b;
 	}
 
 	return 0;
@@ -372,7 +378,7 @@ static void msm_gpio_irq_handler(unsigned int irq, struct irq_desc *desc)
 	for (i = 0; i < ARRAY_SIZE(msm_gpio_chips); i++) {
 		struct msm_gpio_chip *msm_chip = &msm_gpio_chips[i];
 		v = readl(msm_chip->regs.int_status);
-		v &= msm_chip->int_enable;
+		v &= msm_chip->int_enable[0];
 		while (v) {
 			m = v & -v;
 			j = fls(m) - 1;
@@ -427,7 +433,7 @@ static void msm_gpio_sleep_int(unsigned long arg)
 
 static DECLARE_TASKLET(msm_gpio_sleep_int_tasklet, msm_gpio_sleep_int, 0);
 
-void msm_gpio_enter_sleep(void)
+void msm_gpio_enter_sleep(int from_idle)
 {
 	int i;
 	struct tramp_gpio_smem *smem_gpio;
@@ -445,7 +451,7 @@ void msm_gpio_enter_sleep(void)
 	}
 
 	for (i = 0; i < ARRAY_SIZE(msm_gpio_chips); i++) {
-		writel(msm_gpio_chips[i].wake_enable, msm_gpio_chips[i].regs.int_en);
+		writel(msm_gpio_chips[i].int_enable[!from_idle], msm_gpio_chips[i].regs.int_en);
 		if (smem_gpio) {
 			uint32_t tmp;
 			int start, index, shiftl, shiftr;
@@ -453,9 +459,9 @@ void msm_gpio_enter_sleep(void)
 			index = start / 32;
 			shiftl = start % 32;
 			shiftr = 32 - shiftl;
-			tmp = msm_gpio_chips[i].wake_enable;
-			smem_gpio->enabled[index] |= msm_gpio_chips[i].wake_enable << shiftl;
-			smem_gpio->enabled[index+1] |= msm_gpio_chips[i].wake_enable >> shiftr;
+			tmp = msm_gpio_chips[i].int_enable[!from_idle];
+			smem_gpio->enabled[index] |= tmp << shiftl;
+			smem_gpio->enabled[index+1] |= tmp >> shiftr;
 			smem_gpio->detection[index] = readl(msm_gpio_chips[i].regs.int_edge) << shiftl;
 			smem_gpio->detection[index+1] = readl(msm_gpio_chips[i].regs.int_edge) >> shiftr;
 			smem_gpio->polarity[index] = readl(msm_gpio_chips[i].regs.int_pos) << shiftl;
@@ -464,11 +470,15 @@ void msm_gpio_enter_sleep(void)
 	}
 
 	if (smem_gpio) {
-		for (i = 0; i < ARRAY_SIZE(smem_gpio->enabled); i++) {
-			printk("msm_gpio_enter_sleep gpio %d-%d: enable %08x, edge %08x, polarity %08x\n",
-			       i * 32, i * 32 + 31, smem_gpio->enabled[i],
-			       smem_gpio->detection[i], smem_gpio->polarity[i]);
-		}
+		if (msm_gpio_debug_mask & GPIO_DEBUG_SLEEP)
+			for (i = 0; i < ARRAY_SIZE(smem_gpio->enabled); i++) {
+				printk("msm_gpio_enter_sleep gpio %d-%d: enable"
+				       " %08x, edge %08x, polarity %08x\n",
+				       i * 32, i * 32 + 31,
+				       smem_gpio->enabled[i],
+				       smem_gpio->detection[i],
+				       smem_gpio->polarity[i]);
+			}
 		for(i = 0; i < GPIO_SMEM_NUM_GROUPS; i++)
 			smem_gpio->num_fired[i] = 0;
 	}
@@ -484,7 +494,7 @@ void msm_gpio_exit_sleep(void)
 	smem_gpio = smem_alloc(SMEM_GPIO_INT, sizeof(*smem_gpio)); 
 
 	for (i = 0; i < ARRAY_SIZE(msm_gpio_chips); i++) {
-		writel(msm_gpio_chips[i].int_enable, msm_gpio_chips[i].regs.int_en);
+		writel(msm_gpio_chips[i].int_enable[0], msm_gpio_chips[i].regs.int_en);
 	}
 
 	if (smem_gpio && (smem_gpio->num_fired[0] || smem_gpio->num_fired[1])) {

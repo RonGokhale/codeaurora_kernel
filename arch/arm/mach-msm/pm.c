@@ -98,7 +98,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 	void msm_irq_exit_sleep1(void);
 	void msm_irq_exit_sleep2(void);
 	void msm_irq_exit_sleep3(void);
-	void msm_gpio_enter_sleep(void);
+	void msm_gpio_enter_sleep(int from_idle);
 	void msm_gpio_exit_sleep(void);
 	uint32_t enter_state;
 	uint32_t exit_state;
@@ -132,7 +132,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 	}
 
 	msm_irq_enter_sleep1(!!enter_state, from_idle);
-	msm_gpio_enter_sleep();
+	msm_gpio_enter_sleep(from_idle);
 
 	if (enter_state) {
 		if (sleep_delay == 0 && sleep_mode >= MSM_PM_SLEEP_MODE_APPS_SLEEP)
