@@ -194,12 +194,15 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 	struct msmsdcc_dma_data	*dma_data =
 		container_of(cmd, struct msmsdcc_dma_data, hdr);
 	struct msmsdcc_host	*host = dma_data->host;
-	struct mmc_data		*data = host->data;
 	int			i;
 
 	msmsdcc_put_dma_buffer(host);
 
 	if (result != 0x80000002) {
+		struct mmc_request *mrq = host->mrq;
+
+		WARN_ON (!mrq);
+
 		printk(KERN_ERR "%s: DMA failed (0x%.8x)\n",
 		       mmc_hostname(host->mmc), result);
 		if (err) {
@@ -208,15 +211,24 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 				       mmc_hostname(host->mmc), i,
 				       err->flush[i]);
 		}
-		if (!data->error)
-			data->error = -EIO;
+		if (!mrq->cmd->error && !mrq->data->error)
+			mrq->data->error = -EIO;
 		msmsdcc_stop_data(host);
-		if (!data->stop)
-			msmsdcc_request_end(host, data->mrq);
+		/*
+		 * In the case where we get a command timeout
+		 * on a request which has already configured DMA
+		 * (ie: a read), we won't want to send the
+		 * STOP command since transmission hasn't
+		 * started yet.
+		 */
+		if (!mrq->data->stop || mrq->cmd->error) {
+			msmsdcc_request_end(host, mrq);
+		}
 		else
-			msmsdcc_start_command(host, data->stop, 0);
-		return;
+			msmsdcc_start_command(host, mrq->data->stop, 0);
 	}
+	host->dma.sg = NULL;
+	return;
 }
 
 static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
@@ -440,6 +452,9 @@ msmsdcc_data_irq(struct msmsdcc_host *host, struct mmc_data *data,
 		 * completion handler
 		 */
 		if (host->dma.sg) {
+			printk("%s: Aborting DMA operation for "
+			       "MMC cmd 0x%p (data error)\n",
+			       mmc_hostname(host->mmc), data->mrq->cmd);
 			msm_dmov_stop_cmd(host->dma.channel, &host->dma.hdr);
 			return;
 		}
@@ -495,8 +510,23 @@ msmsdcc_cmd_irq(struct msmsdcc_host *host, struct mmc_command *cmd,
 	}
 
 	if (!cmd->data || cmd->error) {
-		if (host->data)
-			msmsdcc_stop_data(host);
+		if (host->data) {
+			/*
+			 * If the host has enqueued a DMA request
+			 * then cancel it and return. request cleanup
+			 * is handled in the dmov command completion
+			 * handler.
+			 */
+			if (host->dma.sg) {
+				printk("%s: Aborting DMA operation for "
+				       "MMC cmd 0x%p (command err)\n",
+				       mmc_hostname(host->mmc), cmd);
+				msm_dmov_stop_cmd(host->dma.channel,
+						  &host->dma.hdr);
+				return;
+			} else
+				msmsdcc_stop_data(host);
+		}
 		msmsdcc_request_end(host, cmd->mrq);
 	} else if (!(cmd->data->flags & MMC_DATA_READ))
 		msmsdcc_start_data(host, cmd->data);
@@ -699,6 +729,13 @@ msmsdcc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	spin_lock_irq(&host->lock);
 
+	if (host->eject) {
+		mrq->cmd->error = -ENOMEDIUM;
+		spin_unlock_irq(&host->lock);
+		mmc_request_done(mmc, mrq);
+		return;
+	}
+
 	msmsdcc_trace_clear(host);
 
 	host->mrq = mrq;
@@ -767,14 +804,42 @@ static const struct mmc_host_ops msmsdcc_ops = {
 	.set_ios	= msmsdcc_set_ios,
 };
 
+static void
+msmsdcc_check_status(unsigned long data)
+{
+	struct msmsdcc_host *host = (struct msmsdcc_host *)data;
+	unsigned int status;
+
+	if (!host->plat->status) {
+		mmc_detect_change(host->mmc, 0);
+		goto out;
+	}
+
+	status = host->plat->status(mmc_dev(host->mmc));
+	if (status ^ host->oldstat) {
+		printk(KERN_INFO
+		       "%s: Slot status change detected (%d -> %d)\n",
+		       mmc_hostname(host->mmc), host->oldstat, status);
+		mmc_detect_change(host->mmc, 0);
+	}
+
+	host->oldstat = status;
+
+	/*
+	 * XXX: Refactor this along with mmc platform 'status' to 
+	 *      more clearly represent 'card detect status'
+	 */
+	host->eject = !status;
+out:
+	if (!host->plat->status_irq)
+		mod_timer(&host->timer, jiffies + HZ);
+}
+
 static irqreturn_t
 msmsdcc_platform_status_irq(int irq, void *dev_id)
 {
 	struct msmsdcc_host *host = dev_id;
-
-	printk(KERN_INFO
-	       "%s: Slot status change IRQ!\n", mmc_hostname(host->mmc));
-	mmc_detect_change(host->mmc, (HZ / 10));
+	msmsdcc_check_status((unsigned long) host);
 	return IRQ_HANDLED;
 }
 
@@ -807,30 +872,18 @@ msmsdcc_transaction_expired(unsigned long data)
 		       host->tracedata.irqs[i].status);
 #endif
 
-	host->mrq->cmd->error = -ETIME;
-	host->data = NULL;
-	msmsdcc_request_end(host, host->mrq);
-}
-
-static void
-msmsdcc_check_status(unsigned long data)
-{
-	struct msmsdcc_host *host = (struct msmsdcc_host *)data;
-	unsigned int status;
-
-	if (!host->plat->status)
+	if (host->dma.sg) {
+		printk("%s: Aborting DMA operation for "
+		       "MMC cmd 0x%p (transaction timeout)\n",
+		       mmc_hostname(host->mmc), host->mrq->cmd);
+		host->mrq->data->error = -ETIME;
+		msm_dmov_stop_cmd(host->dma.channel, &host->dma.hdr);
 		return;
-
-	status = host->plat->status(mmc_dev(host->mmc));
-	if (status ^ host->oldstat) {
-		printk(KERN_INFO
-		       "%s: Slot status change detected (%d -> %d)\n",
-		       mmc_hostname(host->mmc), host->oldstat, status);
-		mmc_detect_change(host->mmc, 0);
 	}
 
-	host->oldstat = status;
-	mod_timer(&host->timer, jiffies + HZ);
+	host->mrq->cmd->error = -ETIME;
+	msmsdcc_stop_data(host);
+	msmsdcc_request_end(host, host->mrq);
 }
 
 static int
@@ -1031,6 +1084,11 @@ msmsdcc_probe(struct platform_device *pdev)
 		host->timer.function = msmsdcc_check_status;
 		host->timer.expires = jiffies + HZ;
 		add_timer(&host->timer);
+	}
+
+	if (plat->status) {
+		host->oldstat = host->plat->status(mmc_dev(host->mmc));
+		host->eject = !host->oldstat;
 	}
 
 	/*
