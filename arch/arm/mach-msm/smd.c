@@ -944,6 +944,8 @@ int smsm_set_interrupt_info(struct smsm_interrupt_info *info)
 #define MAX_SLEEP_NAME_LEN          8
 
 #define NUM_GPIO_INT_REGISTERS 6
+#define GPIO_SMEM_NUM_GROUPS 2
+#define GPIO_SMEM_MAX_PC_INTERRUPTS 8
 struct tramp_gpio_save
 {
   unsigned int enable;
@@ -952,9 +954,11 @@ struct tramp_gpio_save
 };
 struct tramp_gpio_smem
 {
-  struct tramp_gpio_save settings[NUM_GPIO_INT_REGISTERS];
-  unsigned int         fired[NUM_GPIO_INT_REGISTERS];
-  unsigned int         group;
+	uint16_t num_fired[GPIO_SMEM_NUM_GROUPS];
+	uint16_t fired[GPIO_SMEM_NUM_GROUPS][GPIO_SMEM_MAX_PC_INTERRUPTS];
+	uint32_t enabled[NUM_GPIO_INT_REGISTERS];
+	uint32_t detection[NUM_GPIO_INT_REGISTERS];
+	uint32_t polarity[NUM_GPIO_INT_REGISTERS];
 };
 
 
@@ -986,22 +990,25 @@ void smsm_print_sleep_info(void)
 	else
 		printk(KERN_ERR "SMEM_SLEEP_POWER_COLLAPSE_DISABLED: missing\n");
 
-	int_info = smem_alloc(SMEM_SMSM_INT_INFO, sizeof(*ptr));
+	int_info = smem_alloc(SMEM_SMSM_INT_INFO, sizeof(*int_info));
 	if (int_info)
-		printk(KERN_INFO "SMEM_SMSM_INT_INFO %x %x\n",
-		       int_info->aArm_en_mask, int_info->aArm_interrupts_pending);
+		printk(KERN_INFO "SMEM_SMSM_INT_INFO %x %x %x\n",
+		       int_info->aArm_en_mask, int_info->aArm_interrupts_pending, int_info->aArm_wakeup_reason);
 	else
 		printk(KERN_ERR "SMEM_SMSM_INT_INFO: missing\n");
 
 	gpio = smem_alloc( SMEM_GPIO_INT, sizeof(*gpio)); 
 	if (gpio) {
 		int i;
-		for(i = 0; i < ARRAY_SIZE(gpio->settings); i++) {
-			printk(KERN_ERR "SMEM_GPIO_INT: %d: e %x d %x p %x f %x\n",
-			       i, gpio->settings[i].enable, gpio->settings[i].detect,
-			       gpio->settings[i].polarity, gpio->fired[i]);
+		for(i = 0; i < NUM_GPIO_INT_REGISTERS; i++) {
+			printk(KERN_ERR "SMEM_GPIO_INT: %d: e %x d %x p %x\n",
+			       i, gpio->enabled[i], gpio->detection[i],
+			       gpio->polarity[i]);
 		}
-		printk(KERN_ERR "SMEM_GPIO_INT: group %x\n", gpio->group);
+		for(i = 0; i < GPIO_SMEM_NUM_GROUPS; i++) {
+			printk(KERN_ERR "SMEM_GPIO_INT: %d: f %d: %d %d...\n",
+			       i, gpio->num_fired[i], gpio->fired[i][0], gpio->fired[i][1]);
+		}
 	}
 	else
 		printk(KERN_ERR "SMEM_GPIO_INT: missing\n");
