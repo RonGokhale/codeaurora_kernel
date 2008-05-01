@@ -36,6 +36,13 @@
 
 #define MODULE_NAME "msm_smd"
 
+enum {
+	MSM_SMD_DEBUG = 1U << 0,
+	MSM_SMSM_DEBUG = 1U << 0,
+};
+static int msm_smd_debug_mask;
+module_param_named(debug_mask, msm_smd_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
+
 void *smem_find(unsigned id, unsigned size);
 void smd_diag(void);
 
@@ -840,7 +847,8 @@ static irqreturn_t smsm_irq_handler(int irq, void *data)
 		unsigned apps = smsm[0].state;
 		unsigned modm = smsm[1].state;
 
-		printk(KERN_INFO "<SM %08x %08x>\n", apps, modm);
+		if (msm_smd_debug_mask & MSM_SMSM_DEBUG)
+			printk(KERN_INFO "<SM %08x %08x>\n", apps, modm);
 		if (modm & SMSM_RESET) {
 			smd_diag();
 		} else {
@@ -852,7 +860,8 @@ static irqreturn_t smsm_irq_handler(int irq, void *data)
 		}
 
 		if (smsm[0].state != apps) {
-			printk(KERN_INFO "<SM %08x NOTIFY>\n", apps);
+			if (msm_smd_debug_mask & MSM_SMSM_DEBUG)
+				printk(KERN_INFO "<SM %08x NOTIFY>\n", apps);
 			smsm[0].state = apps;
 			do_smd_probe();
 			notify_other_smsm();
@@ -874,7 +883,9 @@ int smsm_change_state(uint32_t clear_mask, uint32_t set_mask)
 
 	if (smsm) {
 		smsm[0].state = (smsm[0].state & ~clear_mask) | set_mask;
-		printk(KERN_ERR "smsm_change_state %x\n", smsm[0].state);
+		if (msm_smd_debug_mask & MSM_SMSM_DEBUG)
+			printk(KERN_INFO "smsm_change_state %x\n",
+			       smsm[0].state);
 		notify_other_smsm();
 	}
 
@@ -919,7 +930,9 @@ int smsm_set_sleep_duration(uint32_t delay)
 		printk(KERN_ERR "smsm_set_sleep_duration <SM NO SLEEP_DELAY>\n");
 		return -EIO;
 	}
-	printk(KERN_INFO "smsm_set_sleep_duration %d -> %d\n", *ptr, delay);
+	if (msm_smd_debug_mask & MSM_SMSM_DEBUG)
+		printk(KERN_INFO "smsm_set_sleep_duration %d -> %d\n",
+		       *ptr, delay);
 	*ptr = delay;
 	return 0;
 }
@@ -933,9 +946,10 @@ int smsm_set_interrupt_info(struct smsm_interrupt_info *info)
 		printk(KERN_ERR "smsm_set_sleep_duration <SM NO INT_INFO>\n");
 		return -EIO;
 	}
-	printk(KERN_INFO "smsm_set_interrupt_info %x %x -> %x %x\n",
-	       ptr->aArm_en_mask, ptr->aArm_interrupts_pending,
-	       info->aArm_en_mask, info->aArm_interrupts_pending);
+	if (msm_smd_debug_mask & MSM_SMSM_DEBUG)
+		printk(KERN_INFO "smsm_set_interrupt_info %x %x -> %x %x\n",
+		       ptr->aArm_en_mask, ptr->aArm_interrupts_pending,
+		       info->aArm_en_mask, info->aArm_interrupts_pending);
 	*ptr = *info;
 	return 0;
 }
