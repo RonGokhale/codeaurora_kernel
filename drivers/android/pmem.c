@@ -790,6 +790,7 @@ lock_mm:
 		if (!mm) {
 			is_submmapped = 0;
 			ret = -EINVAL;
+			up_read(&data->sem);
 			goto end2;
 		}
 	}
