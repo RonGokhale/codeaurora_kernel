@@ -316,6 +316,12 @@ unsigned long long sched_clock(void)
 		return 0;
 }
 
+#ifdef CONFIG_MSM7X00A_USE_GP_TIMER
+	#define DG_TIMER_RATING 100
+#else
+	#define DG_TIMER_RATING 300
+#endif
+
 static struct msm_clock msm_clocks[] = {
 	[MSM_CLOCK_GPT] = {
 		.clockevent = {
@@ -355,13 +361,13 @@ static struct msm_clock msm_clocks[] = {
 			.name           = "dg_timer",
 			.features       = CLOCK_EVT_FEAT_ONESHOT,
 			.shift          = 32 + MSM_DGT_SHIFT,
-			.rating         = 300,
+			.rating         = DG_TIMER_RATING,
 			.set_next_event = msm_timer_set_next_event,
 			.set_mode       = msm_timer_set_mode,
 		},
 		.clocksource = {
 			.name           = "dg_timer",
-			.rating         = 300,
+			.rating         = DG_TIMER_RATING,
 			.read           = msm_dgt_read,
 			.mask           = CLOCKSOURCE_MASK((32-MSM_DGT_SHIFT)),
 			.shift          = 24 - MSM_DGT_SHIFT,

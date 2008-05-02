@@ -39,6 +39,21 @@ config MSM7X00A_IDLE
 	bool "Idle Support for MSM7X00A"
 
 choice
+	prompt "Default Timer"
+	default MSM7X00A_USE_DG_TIMER
+
+	config MSM7X00A_USE_GP_TIMER
+		bool "GP Timer"
+	help
+	  Low resolution timer that allows power collapse from idle.
+
+	config MSM7X00A_USE_DG_TIMER
+		bool "DG Timer"
+	help
+	  High resolution timer.
+endchoice	  
+
+choice
 	prompt "Sleep mode"
 	default MSM7X00A_SLEEP_MODE_POWER_COLLAPSE_SUSPEND
 	help
