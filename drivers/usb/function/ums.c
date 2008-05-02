@@ -245,7 +245,7 @@ static ssize_t ums_write(struct file *fp, const char __user *buf,
 	if(_lock(&ctxt->write_excl))
 		return -EBUSY;
 
-	while(count > 0){
+	while(count >= 0) {
 		if(ctxt->error) {
 			r = -EIO;
 			break;
@@ -282,6 +282,9 @@ static ssize_t ums_write(struct file *fp, const char __user *buf,
 
 			/* zero this so we don't try to free it on error exit */
 			req = 0;
+			if (count == 0) {
+			    break;
+			}
 		}
 	}
 
