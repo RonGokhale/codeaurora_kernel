@@ -331,7 +331,7 @@ static int pmem_allocate(int id, unsigned long len)
 
 	if (pmem[id].no_allocator) {
 		DLOG("no allocator");
-		if ((len > pmem[id].size - PAGE_SIZE) || pmem[id].allocated)
+		if ((len > pmem[id].size) || pmem[id].allocated)
 			return -1;
 		pmem[id].allocated = 1;
 		return len;
@@ -1107,6 +1107,9 @@ static int pmem_probe(struct platform_device *pdev)
 	}
 
 	pmem[id].garbage_pfn = page_to_pfn(alloc_page(GFP_KERNEL));
+	if (pmem[id].no_allocator)
+		pmem[id].allocated = 0;
+
 
 #if PMEM_DEBUG
 	debugfs_create_file(pdata->name, S_IFREG | S_IRUGO, NULL, (void*)id,
