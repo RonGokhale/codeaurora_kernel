@@ -28,6 +28,7 @@
 #include <linux/platform_device.h>
 #include <linux/debugfs.h>
 #include <linux/workqueue.h>
+#include <linux/clk.h>
 
 #include <linux/usb/ch9.h>
 
@@ -160,6 +161,9 @@ struct usb_info
 	unsigned num_funcs;
 #define ep0out ept[0]
 #define ep0in  ept[16]
+
+	struct clk *clk;
+	struct clk *pclk;
 };
 
 struct usb_device_descriptor desc_device = {
@@ -1135,6 +1139,10 @@ static int usb_free(struct usb_info *ui, int ret)
 		dma_free_coherent(&ui->pdev->dev, 4096, ui->buf, ui->dma);
 	if (ui->addr)
 		iounmap(ui->addr);
+	if (ui->clk)
+		clk_put(ui->clk);
+	if (ui->pclk)
+		clk_put(ui->pclk);
 	kfree(ui);
 	return ret;
 }
@@ -1142,6 +1150,9 @@ static int usb_free(struct usb_info *ui, int ret)
 static void usb_vbus_online(struct work_struct *w)
 {
 	struct usb_info *ui = container_of(w, struct usb_info, vbus_online);
+	printk("hsusb: clock enable\n");
+	clk_enable(ui->clk);
+	clk_enable(ui->pclk);
 	usb_reset(ui);
 }
 
@@ -1171,6 +1182,9 @@ void msm_hsusb_set_vbus_state(int online)
 			set_configuration(ui, 0);
 		}
 		usb_suspend_phy(ui);
+		clk_disable(ui->pclk);
+		clk_disable(ui->clk);
+		printk("hsusb: clock disable\n");
 		spin_unlock_irqrestore(&ui->lock, flags);
 	}
 }
@@ -1354,6 +1368,14 @@ static int usb_probe(struct platform_device *pdev)
 
 	printk(KERN_INFO "usb_probe() io=%p, irq=%d, dma=%p(%x)\n",
 	       ui->addr, irq, ui->buf, ui->dma);
+
+	ui->clk = clk_get(NULL, "usb_hs_clk");
+	if (IS_ERR(ui->clk))
+		return usb_free(ui, PTR_ERR(ui->clk));
+
+	ui->pclk = clk_get(NULL, "usb_hs_pclk");
+	if (IS_ERR(ui->pclk))
+		return usb_free(ui, PTR_ERR(ui->pclk));
 
 	ret = request_irq(irq, usb_interrupt, 0, pdev->name, ui);
 	if (ret)
