@@ -153,8 +153,10 @@ static void do_update(struct work_struct *work)
 	wake_up(&par->frame_wq);
 }
 
-static void msmfb_update(struct fb_info *info, uint32_t left, uint32_t top,
-			 uint32_t eright, uint32_t ebottom, int wait_for_last)
+
+static void msmfb_pan_update(struct fb_info *info, uint32_t left, uint32_t top,
+			 uint32_t eright, uint32_t ebottom, uint32_t yoffset,
+			 int wait_for_last)
 {
 	struct msmfb_info *par = info->par;
 	unsigned long irq_flags;
@@ -182,6 +184,9 @@ restart:
 		goto restart;
 	}
 	
+	if (wait_for_last)
+		par->yoffset = yoffset;
+
 	if (left < par->update_info.left)
 		par->update_info.left = left;
 	if (top < par->update_info.top)
@@ -193,6 +198,12 @@ restart:
 	par->frame_requested++;
 	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 	queue_work(par->update_workq, &par->update_work);
+}
+
+static void msmfb_update(struct fb_info *info, uint32_t left, uint32_t top,
+			 uint32_t eright, uint32_t ebottom)
+{
+	msmfb_pan_update(info, left, top, eright, ebottom, 0, 0);
 }
 
 #ifdef CONFIG_ANDROID_POWER
@@ -227,7 +238,7 @@ static void msmfb_early_resume(android_early_suspend_t *h)
 	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 
 	msmfb_update(par->fb_info, 0, 0, par->fb_info->var.xres,
-		     par->fb_info->var.yres, 0);
+		     par->fb_info->var.yres);
 	flush_workqueue(par->update_workq);
 	pi->panel_ops->power_on(pi);
 	spin_lock_irqsave(&par->update_lock, irq_flags);
@@ -251,7 +262,6 @@ static int msmfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 int msmfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 {
 	struct msmfb_info *par = info->par;
-	par->yoffset = var->yoffset;
 
 	/* don't return until we start painting this frame */
 	if (var->reserved[0] == 0x54445055) { /* "UPDT" */
@@ -262,12 +272,13 @@ int msmfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 		       var->reserved[1] >> 16, var->reserved[2] & 0xffff,
 		       var->reserved[2] >> 16);
 #endif
-		msmfb_update(info, var->reserved[1] & 0xffff,
-			     var->reserved[1] >> 16,
-			     var->reserved[2] & 0xffff,
-			     var->reserved[2] >> 16, 1);
+		msmfb_pan_update(info, var->reserved[1] & 0xffff,
+				 var->reserved[1] >> 16,
+				 var->reserved[2] & 0xffff,
+				 var->reserved[2] >> 16, var->yoffset, 1);
 	} else {
-		msmfb_update(info, 0, 0, info->var.xres, info->var.yres, 1);
+		msmfb_pan_update(info, 0, 0, info->var.xres, info->var.yres,
+		var->yoffset, 1);
 	}
 	return 0;
 }
@@ -275,22 +286,22 @@ int msmfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 static void msmfb_fillrect(struct fb_info *p, const struct fb_fillrect *rect)
 {
 	cfb_fillrect(p, rect);
-	msmfb_update(p, rect->dx, rect->dy, rect->dx + rect->width, 
-		     rect->dy + rect->height, 0);
+	msmfb_update(p, rect->dx, rect->dy, rect->dx + rect->width,
+		     rect->dy + rect->height);
 }
 
 static void msmfb_copyarea(struct fb_info *p, const struct fb_copyarea *area)
 {
 	cfb_copyarea(p, area);
 	msmfb_update(p, area->dx, area->dy, area->dx + area->width, 
-		     area->dy + area->height, 0);
+		     area->dy + area->height);
 }
 
 static void msmfb_imageblit(struct fb_info *p, const struct fb_image *image)
 {
 	cfb_imageblit(p, image);
 	msmfb_update(p, image->dx, image->dy, image->dx + image->width,
-		     image->dy + image->height, 0);
+		     image->dy + image->height);
 }
 
 
