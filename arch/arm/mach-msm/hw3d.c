@@ -41,14 +41,27 @@ static irqreturn_t hw3d_irq_handler(int irq, void *data)
 	unsigned long flags;
 
 	spin_lock_irqsave(&hw3d_lock, flags);
-	disable_irq(INT_GRAPHICS);
+	if (!hw3d_disabled) {
+		disable_irq(INT_GRAPHICS);
+		hw3d_disabled = 1;
+	}
 	hw3d_pending = 1;
-	hw3d_disabled = 1;
 	spin_unlock_irqrestore(&hw3d_lock, flags);
 
 	wake_up(&hw3d_queue);
 
 	return IRQ_HANDLED;
+}
+
+static void hw3d_disable_interrupt(void)
+{
+	unsigned long flags;
+	spin_lock_irqsave(&hw3d_lock, flags);
+	if (!hw3d_disabled) {
+		disable_irq(INT_GRAPHICS);
+		hw3d_disabled = 1;
+	}
+	spin_unlock_irqrestore(&hw3d_lock, flags);
 }
 
 static ssize_t hw3d_read(struct file *file, char __user *buf,
@@ -71,8 +84,10 @@ static ssize_t hw3d_read(struct file *file, char __user *buf,
 		spin_unlock_irqrestore(&hw3d_lock, flags);
 
 		ret = wait_event_interruptible(hw3d_queue, hw3d_pending);
-		if (ret < 0)
+		if (ret < 0) {
+			hw3d_disable_interrupt();
 			return ret;
+		}
 	}
 
 	return 0;
@@ -144,6 +159,7 @@ static int __init hw3d_init(void)
 		clk_put(imem_clk);
 		return ret;
 	}
+	hw3d_disable_interrupt();
 
 	return misc_register(&hw3d_device);
 }
