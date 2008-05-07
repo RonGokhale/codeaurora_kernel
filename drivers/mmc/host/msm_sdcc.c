@@ -730,7 +730,12 @@ msmsdcc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	spin_lock_irq(&host->lock);
 
 	if (host->eject) {
-		mrq->cmd->error = -ENOMEDIUM;
+		if (mrq->data && !(mrq->data->flags & MMC_DATA_READ)) {
+			mrq->cmd->error = 0; 
+			mrq->data->bytes_xfered = mrq->data->blksz * mrq->data->blocks;
+		} else
+			mrq->cmd->error = -ENOMEDIUM;
+		
 		spin_unlock_irq(&host->lock);
 		mmc_request_done(mmc, mrq);
 		return;
