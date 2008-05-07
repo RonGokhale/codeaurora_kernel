@@ -690,6 +690,9 @@ int mmc_attach_sd(struct mmc_host *host, u32 ocr)
 		break;
 	}
 
+	if (!retries)
+		goto err;
+
 	mmc_release_host(host);
 
 	err = mmc_add_card(host->card);
