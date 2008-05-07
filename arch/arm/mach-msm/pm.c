@@ -104,7 +104,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 	uint32_t saved_vector[2];
 	int collapsed;
 	void msm_irq_enter_sleep1(bool arm9_wake, int from_idle);
-	void msm_irq_enter_sleep2(bool arm9_wake, int from_idle);
+	int msm_irq_enter_sleep2(bool arm9_wake, int from_idle);
 	void msm_irq_exit_sleep1(void);
 	void msm_irq_exit_sleep2(void);
 	void msm_irq_exit_sleep3(void);
@@ -164,7 +164,8 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 			goto enter_failed;
 		}
 	}
-	msm_irq_enter_sleep2(!!enter_state, from_idle);
+	if (msm_irq_enter_sleep2(!!enter_state, from_idle))
+		goto enter_failed;
 
 	if (enter_state) {
 		writel(0x1f, A11S_CLK_SLEEP_EN);
@@ -226,8 +227,8 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 		       "A11S_PWRDOWN %x, smsm_get_state %x\n",
 		       readl(A11S_CLK_SLEEP_EN), readl(A11S_PWRDOWN),
 		       smsm_get_state());
-enter_failed:
 	msm_irq_exit_sleep1();
+enter_failed:
 	if (enter_state) {
 		writel(0x00, A11S_CLK_SLEEP_EN);
 		writel(0, A11S_PWRDOWN);
