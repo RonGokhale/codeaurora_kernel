@@ -31,7 +31,7 @@ struct mddi_panel_info
 
 struct mddi_panel_ops
 {
-	void (*power_on)(struct mddi_panel_info *panel);
+	void (*power)(struct mddi_panel_info *panel, int on);
 	void (*enable)(struct mddi_panel_info *panel);
 	void (*disable)(struct mddi_panel_info *panel);
 	void (*wait_vsync)(struct mddi_panel_info *panel);

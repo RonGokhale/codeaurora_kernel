@@ -427,19 +427,22 @@ void mddi_hibernate_disable(struct mddi_info *mddi, int on)
 #endif 
 }
 
-void mddi_power_panel_on(struct mddi_panel_info *panel)
+void mddi_power_panel(struct mddi_panel_info *panel, int on)
 {
 	struct mddi_info *mddi = panel->mddi;
 	if (mddi->panel_power)
-		mddi->panel_power(&mddi->panel_info, 1);
+		mddi->panel_power(&mddi->panel_info, on);
 }
+
 
 #ifdef CONFIG_ANDROID_POWER
 static void mddi_early_suspend(android_early_suspend_t *h)
 {
 	struct mddi_info *mddi = container_of(h, struct mddi_info, early_suspend);
+#if 0
 	if (mddi->panel_power)
 		mddi->panel_power(&mddi->panel_info, 0);
+#endif
 	if (mddi->mddi_enable)
 		mddi->mddi_enable(&mddi->panel_info, 0);
 	if (mddi->mddi_client_power)
@@ -792,8 +795,8 @@ int mddi_add_panel(struct mddi_info *mddi, struct mddi_panel_ops *ops)
 		*/
 		if (!(mddi->flags & FLAG_HAS_VSYNC_IRQ))
 			ops->wait_vsync = 0;
-		if (!(ops->power_on))
-			ops->power_on = mddi_power_panel_on;
+		if (!(ops->power))
+			ops->power = mddi_power_panel;
 
 		printk(KERN_INFO "%s: publish: %s\n", mddi->name,
 		       mddi->panel_pdev.name);

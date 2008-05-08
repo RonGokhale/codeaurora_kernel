@@ -32,13 +32,10 @@
 
 #define PRINT_FPS 0
 #define PRINT_BLIT_TIME 0
+#define SLEEPING 0x3
+#define WAKING 0x1
+#define UPDATING 0x2
 #define AWAKE 0x0
-#define VSYNC_NOT_READY 0x2
-#define SLEEPING 0x1
-
-#define NEED_UPDATE 0x3
-#define UPDATING 0x1
-#define FREE 0x0
 
 struct msmfb_info {
 	struct fb_info *fb_info;
@@ -56,6 +53,7 @@ struct msmfb_info {
 
 #ifdef CONFIG_ANDROID_POWER
 	android_early_suspend_t early_suspend;
+	android_early_suspend_t slightly_earlier_suspend;
 #endif
 	spinlock_t update_lock;
 	wait_queue_head_t update_wq;
@@ -83,6 +81,8 @@ static void do_update(struct work_struct *work)
 	uint32_t x, y, w, h;
 	unsigned addr;
 	unsigned long irq_flags;
+	int sleeping;
+	uint32_t yoffset;
 #if PRINT_FPS
 	ktime_t t1 = ktime_get();
 	ktime_t t2, t3, t4, t5;
@@ -95,15 +95,19 @@ static void do_update(struct work_struct *work)
 	y = par->update_info.top;
 	w = par->update_info.eright - x;
 	h = par->update_info.ebottom - y;
+	yoffset = par->yoffset;
 	par->update_info.left = pi->width + 1;
 	par->update_info.top = pi->height + 1;
 	par->update_info.eright = 0;
 	par->update_info.ebottom = 0;
+	sleeping = par->sleeping;
+	if (par->sleeping == UPDATING)
+		par->sleeping = AWAKE;
 	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 #if PRINT_FPS
 	t2 = ktime_get();
 #endif
-	if (pi->panel_ops->wait_vsync && (par->sleeping != VSYNC_NOT_READY))
+	if (pi->panel_ops->wait_vsync && (sleeping == AWAKE))
 		pi->panel_ops->wait_vsync(pi);
 	else
 		msleep(16);
@@ -119,13 +123,17 @@ static void do_update(struct work_struct *work)
 		 * when the link activates
 		 */
 	} else {
-		addr = ((pi->width * (par->yoffset + y) + x)
+		addr = ((pi->width * (yoffset + y) + x)
 				* 2);
 		mdp_dma_to_mddi(addr + par->fb_info->fix.smem_start,
 				pi->width * 2, w, h, x,
 				y);
 		mdp_dma_wait();
 	}
+
+	if (sleeping == UPDATING)
+		pi->panel_ops->power(pi, 1);
+
 #if PRINT_FPS
 	rel_frame_count++;
 	t4 = ktime_get();
@@ -184,8 +192,13 @@ restart:
 		goto restart;
 	}
 	
-	if (wait_for_last)
+	if (wait_for_last) {
 		par->yoffset = yoffset;
+		if (par->sleeping == WAKING)
+			if (left == 0 && top == 0 &&
+			    eright == info->var.xres && ebottom == info->var.yres)
+				par->sleeping = UPDATING;
+	}
 
 	if (left < par->update_info.left)
 		par->update_info.left = left;
@@ -210,40 +223,46 @@ static void msmfb_update(struct fb_info *info, uint32_t left, uint32_t top,
 #define MSM_MDP_BASE          0xE0010000
 #define MDP_CMD_DEBUG_ACCESS_BASE (MSM_MDP_BASE + 0x10000)
 
-static void msmfb_early_suspend(android_early_suspend_t *h)
+static void msmfb_slightly_earlier_suspend(android_early_suspend_t *h)
 {
-	unsigned long irq_flags;
+	
 	struct msmfb_info *par = container_of(h, struct msmfb_info,
-					      early_suspend);
+					      slightly_earlier_suspend);
+	struct mddi_panel_info *pi = par->panel_info;
 
-	spin_lock_irqsave(&par->update_lock, irq_flags);
 	par->sleeping = SLEEPING;
-	spin_unlock_irqrestore(&par->update_lock, irq_flags);
-
+	// blank the screen
+	msmfb_update(par->fb_info, 0, 0, par->fb_info->var.xres,
+		     par->fb_info->var.yres);
 	flush_workqueue(par->update_workq);
 	mdp_dma_to_mddi(virt_to_phys(par->black), 0,
 		par->fb_info->var.xres, par->fb_info->var.yres, 0, 0);
 	mdp_dma_wait();
+	// turn off the backlight and the panel
+	pi->panel_ops->power(pi, 0);
+}
+
+static void msmfb_early_suspend(android_early_suspend_t *h)
+{
 }
 
 static void msmfb_early_resume(android_early_suspend_t *h)
 {
-	unsigned long irq_flags;
 	struct msmfb_info *par = container_of(h, struct msmfb_info,
 				 early_suspend);
+	par->sleeping = WAKING;
+#if 0
 	struct mddi_panel_info *pi = par->panel_info;
-
-	spin_lock_irqsave(&par->update_lock, irq_flags);
-	par->sleeping = VSYNC_NOT_READY;
-	spin_unlock_irqrestore(&par->update_lock, irq_flags);
-
 	msmfb_update(par->fb_info, 0, 0, par->fb_info->var.xres,
 		     par->fb_info->var.yres);
 	flush_workqueue(par->update_workq);
 	pi->panel_ops->power_on(pi);
-	spin_lock_irqsave(&par->update_lock, irq_flags);
-	par->sleeping = AWAKE;
-	spin_unlock_irqrestore(&par->update_lock, irq_flags);
+#endif
+}
+
+static void msmfb_slightly_later_resume(android_early_suspend_t *h)
+{
+	// set some flag or with UPDATING before turing on screen
 }
 #endif
 
@@ -261,8 +280,6 @@ static int msmfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 
 int msmfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 {
-	struct msmfb_info *par = info->par;
-
 	/* don't return until we start painting this frame */
 	if (var->reserved[0] == 0x54445055) { /* "UPDT" */
 #if 0
@@ -293,7 +310,7 @@ static void msmfb_fillrect(struct fb_info *p, const struct fb_fillrect *rect)
 static void msmfb_copyarea(struct fb_info *p, const struct fb_copyarea *area)
 {
 	cfb_copyarea(p, area);
-	msmfb_update(p, area->dx, area->dy, area->dx + area->width, 
+	msmfb_update(p, area->dx, area->dy, area->dx + area->width,
 		     area->dy + area->height);
 }
 
@@ -460,6 +477,11 @@ static int msmfb_probe(struct platform_device *pdev)
 	if (r) return r;
 
 #ifdef CONFIG_ANDROID_POWER
+	par->slightly_earlier_suspend.suspend = msmfb_slightly_earlier_suspend;
+	par->slightly_earlier_suspend.resume = msmfb_slightly_later_resume;
+	par->slightly_earlier_suspend.level =
+		ANDROID_EARLY_SUSPEND_LEVEL_BLANK_SCREEN;
+	android_register_early_suspend(&par->slightly_earlier_suspend);
 	par->early_suspend.suspend = msmfb_early_suspend;
 	par->early_suspend.resume = msmfb_early_resume;
 	par->early_suspend.level = ANDROID_EARLY_SUSPEND_LEVEL_DISABLE_FB - 1;
