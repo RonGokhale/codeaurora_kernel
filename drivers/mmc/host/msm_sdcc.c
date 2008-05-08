@@ -761,6 +761,16 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	int rc;
 
 	if (ios->clock) {
+		rc = clk_enable(host->pclk);
+		if (rc < 0)
+			printk(KERN_ERR
+			       "PClock enable failed (%d)\n", rc);
+			       
+		rc = clk_enable(host->clk);
+		if (rc < 0) 
+			printk(KERN_ERR
+			       "Clock enable failed (%d)\n", rc);
+
 		if (ios->clock != host->clk_rate) {
 			rc = clk_set_rate(host->clk, ios->clock);
 			if (rc < 0)
@@ -770,6 +780,9 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 				host->clk_rate = ios->clock;
 		}
 		clk |= MCI_CLK_ENABLE;
+	} else {
+		clk_disable(host->clk);
+		clk_disable(host->pclk);
 	}
 
 	if (ios->bus_width == MMC_BUS_WIDTH_4)
