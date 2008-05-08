@@ -1380,6 +1380,7 @@ static int usb_probe(struct platform_device *pdev)
 	ret = request_irq(irq, usb_interrupt, 0, pdev->name, ui);
 	if (ret)
 		return usb_free(ui, ret);
+	enable_irq_wake(irq);
 	ui->irq = irq;
 
 	the_usb_info = ui;
