@@ -49,6 +49,7 @@
 #define PMEM_FLAGS_SUBMAP 0x1 << 3
 #define PMEM_FLAGS_UNSUBMAP 0x1 << 4
 
+
 struct pmem_data {
 	/* in alloc mode: an index into the bitmap
 	 * in no_alloc mode: the size of the allocation */
@@ -71,7 +72,7 @@ struct pmem_data {
 	struct list_head region_list;
 #if PMEM_DEBUG
 	/* a linked list of data so we can access them for debugging */
-	struct list_head list;  
+	struct list_head list;
 #endif
 };
 
@@ -140,9 +141,12 @@ struct pmem_info {
 	 * down(pmem_data->sem) => down(bitmap_sem)
 	 */
 	struct rw_semaphore bitmap_sem;
+
+        long (*ioctl)(struct file *, unsigned int, unsigned long);
 };
 
 static struct pmem_info pmem[PMEM_MAX_DEVICES];
+static int id_count;
 
 #define PMEM_IS_FREE(id, index) !(pmem[id].bitmap[index].allocated)
 #define PMEM_ORDER(id, index) pmem[id].bitmap[index].order
@@ -273,6 +277,7 @@ static int pmem_release(struct inode* inode, struct file *file)
 
 	up_write(&data->sem);
 	kfree(data);
+
 	return ret;
 }
 
@@ -280,6 +285,7 @@ static int pmem_open(struct inode *inode, struct file *file)
 {
 	struct pmem_data* data;
 	int id = get_id(file);
+	int ret = 0;
 
 	DLOG("current %u file %p(%d)\n", current->pid, file, file_count(file));
 	/* setup file->private_data to indicate its unmapped */
@@ -306,7 +312,7 @@ static int pmem_open(struct inode *inode, struct file *file)
 	list_add(&data->list, &pmem[id].data_list);
 	up_write(&pmem[id].data_list_sem);
 #endif
-	return 0;
+	return ret;
 }
 
 static unsigned long pmem_order(unsigned long len) {
@@ -600,33 +606,44 @@ error:
 
 /* the following are the api for accessing pmem regions by other drivers
  * from inside the kernel */
-int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *len,
-		  struct file **filp)
+int get_pmem_user_addr(struct file *file, unsigned long *start,
+		   unsigned long *len)
 {
-	struct file *file;
 	struct pmem_data *data;
-	int id;
-
-	file = fget(fd);
-	if (unlikely(file == NULL)) {
+	if(!is_pmem_file(file) || !has_allocation(file)) {
 #if PMEM_DEBUG
-		printk("pmem: lookup fd=%d failed, file not found in fd table.\n", fd);
+		printk("pmem: requested pmem data from invalid file.\n");
 #endif
 		return -1;
 	}
+	data = (struct pmem_data*)file->private_data;
+	if (data->vma) {
+		*start = data->vma->vm_start;
+		*len = data->vma->vm_end - data->vma->vm_start;
+	} else {
+		*start = 0;
+		*len = 0;
+	}
+	return 0;
+}
+
+int get_pmem_addr(struct file *file, unsigned long *start, unsigned long *len)
+{
+	struct pmem_data *data;
+	int id;
 
 	if(!is_pmem_file(file) || !has_allocation(file)) {
 #if PMEM_DEBUG
 		printk("pmem: requested pmem data from invalid file.\n");
 #endif
-		goto end;
+		return -1;
 	}
 
 	data = (struct pmem_data*)file->private_data;
 	if (data->index == -1) {
 #if PMEM_DEBUG
 		printk("pmem: requested pmem data from file with no allocation.\n");
-		goto end;
+		return -1;
 #endif
 	}
 	id = get_id(file);
@@ -635,13 +652,23 @@ int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *len,
 	*start = pmem_start_addr(id, data);
 	*len = pmem_len(id, data);
 	up_read(&data->sem);
+	return 0;
+}
+
+int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *len,
+		  struct file **filp)
+{
+	struct file *file;
+
+	file = fget(fd);
+	if (unlikely(file == NULL))
+		return -1;
+
+	if (get_pmem_addr(file, start, len))
+		goto end;
 	
 	if (filp)
 		*filp = file;
-
-	if (filp != NULL)
-		*filp = file;
-
 	return 0;
 end:
 	fput(file);
@@ -763,8 +790,8 @@ end2:
 	return ret;
 }
 
-static int pmem_remap(struct pmem_region *region, struct file *file,
-		      unsigned operation)
+int pmem_remap(struct pmem_region *region, struct file *file,
+	       unsigned operation)
 {
 	struct pmem_data* data = (struct pmem_data*)file->private_data;
 	struct pmem_region_list *region_list;
@@ -921,7 +948,7 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct pmem_data* data;
 	int id = get_id(file);
 
-	switch(cmd) {
+	switch (cmd) {
 		case PMEM_GET_PHYS:
 			{
 			struct pmem_region region;
@@ -992,6 +1019,8 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return pmem_connect(arg, file);
 			break;
 		default:
+			if (pmem[id].ioctl)
+				return pmem[id].ioctl(file, cmd, arg);
 			return -EINVAL;
 	}
 	return 0;
@@ -1056,24 +1085,19 @@ static struct miscdevice pmem_dev = {
 };
 #endif
 
-static int pmem_probe(struct platform_device *pdev)
+int pmem_setup(struct android_pmem_platform_data *pdata,
+	       long (*ioctl)(struct file *, unsigned int, unsigned long))
 {
 	int err = 0;
 	int i, index = 0;
-	struct android_pmem_platform_data *pdata;
-	int id;
+	int id = id_count;
+	id_count++;
 
-	if (!pdev || !pdev->dev.platform_data) {
-		printk(KERN_ALERT "Unable to probe pmem!\n");
-		return -1;
-	}
-
-	id = pdev->id;
-	pdata = pdev->dev.platform_data;
 	pmem[id].no_allocator = pdata->no_allocator;
 	pmem[id].cached = pdata->cached;
 	pmem[id].base = pdata->start;
 	pmem[id].size = pdata->size;
+	pmem[id].ioctl = ioctl;
 	init_rwsem(&pmem[id].bitmap_sem);
 #if PMEM_DEBUG
 	init_rwsem(&pmem[id].data_list_sem);
@@ -1087,14 +1111,13 @@ static int pmem_probe(struct platform_device *pdev)
 	err = misc_register(&pmem[id].dev);
 	if (err) {
 		printk(KERN_ALERT "Unable to register pmem driver!\n");
-		return err;
+		goto error2;
 	}
 	pmem[id].num_entries = pmem[id].size / PMEM_MIN_ALLOC;
 
 	pmem[id].bitmap = kmalloc(pmem[id].num_entries *
 				  sizeof(struct pmem_bits), GFP_KERNEL);
 	if (!pmem[id].bitmap) {
-		err = -1;
 		goto error;
 	}
 	memset(pmem[id].bitmap, 0, sizeof(struct pmem_bits) *
@@ -1109,14 +1132,12 @@ static int pmem_probe(struct platform_device *pdev)
 
 	pmem[id].vbase = ioremap_cached(pmem[id].base, pmem[id].size);
 	if (pmem[id].vbase == 0) {
-		err = -1;
 		goto error1;
 	}
 
 	pmem[id].garbage_pfn = page_to_pfn(alloc_page(GFP_KERNEL));
 	if (pmem[id].no_allocator)
 		pmem[id].allocated = 0;
-
 
 #if PMEM_DEBUG
 	debugfs_create_file(pdata->name, S_IFREG | S_IRUGO, NULL, (void*)id,
@@ -1127,8 +1148,22 @@ error1:
 	kfree(pmem[id].bitmap);
 error:
 	misc_deregister(&pmem[id].dev);
-	return err;
+error2:
+	return -1;
 }
+
+static int pmem_probe(struct platform_device *pdev)
+{
+	struct android_pmem_platform_data *pdata;
+
+	if (!pdev || !pdev->dev.platform_data) {
+		printk(KERN_ALERT "Unable to probe pmem!\n");
+		return -1;
+	}
+	pdata = pdev->dev.platform_data;
+	return pmem_setup(pdata, NULL);
+}
+
 
 static int pmem_remove(struct platform_device *pdev)
 {

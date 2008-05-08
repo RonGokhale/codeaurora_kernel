@@ -27,6 +27,8 @@
 #include <linux/wait.h>
 #include <linux/mm.h>
 #include <linux/clk.h>
+#include <linux/android_pmem.h>
+#include <asm/arch/board.h>
 
 static DEFINE_SPINLOCK(hw3d_lock);
 static DECLARE_WAIT_QUEUE_HEAD(hw3d_queue);
@@ -64,8 +66,7 @@ static void hw3d_disable_interrupt(void)
 	spin_unlock_irqrestore(&hw3d_lock, flags);
 }
 
-static ssize_t hw3d_read(struct file *file, char __user *buf,
-			 size_t count, loff_t *pos)
+static long hw3d_wait_for_interrupt(void)
 {
 	unsigned long flags;
 	int ret;
@@ -93,50 +94,68 @@ static ssize_t hw3d_read(struct file *file, char __user *buf,
 	return 0;
 }
 
-static int hw3d_mmap(struct file *file, struct vm_area_struct *vma)
+#define MAGIC_REVOKE_NUMBER 0xdeadbeef
+#define MAGIC_REVOKE_ADDR 0x10000
+#define HW3D_REGS_LEN 0x100000
+
+static long hw3d_revoke_gpu(struct file *file)
 {
-	/* don't bother allowing any fancy mapping */
+	int ret;
+	unsigned long user_start, user_len;
+	struct pmem_region region = {.offset = 0x0, .len = HW3D_REGS_LEN};
 
-	if (vma->vm_pgoff != 0)
-		return -EINVAL;
-
-	if ((vma->vm_end - vma->vm_start) > (1024*1024))
-		return -EINVAL;
-
-	vma->vm_flags |= VM_IO | VM_RESERVED;
-
-	/* vma->vm_pgoff,*/
-	if (io_remap_pfn_range(vma, vma->vm_start, 0xA0000000 >> PAGE_SHIFT,
-			      vma->vm_end - vma->vm_start, vma->vm_page_prot))
-		return -EAGAIN;
-
+	/* revoke the pmem region completely */
+	if ((ret = pmem_remap(&region, file, PMEM_UNMAP)))
+		return ret;
+	get_pmem_user_addr(file, &user_start, &user_len);
+	/* write the magic revoke code into the regs */
+	if (MAGIC_REVOKE_ADDR > user_len)
+		return -1;
+	put_user(MAGIC_REVOKE_NUMBER,
+		 (unsigned long __user *)(user_start + MAGIC_REVOKE_ADDR));
+	/* reset the gpu */
+	clk_disable(grp_clk);
+	clk_disable(imem_clk);
 	return 0;
 }
 
-static int hw3d_open(struct inode *inode, struct file *file)
+static long hw3d_grant_gpu(struct file *file)
 {
-	clk_enable(imem_clk);
+	int ret;
+	struct pmem_region region = {.offset = 0x0, .len = HW3D_REGS_LEN};
+
+	/* map the registers */
+	if ((ret = pmem_remap(&region, file, PMEM_MAP)))
+		return ret;
 	clk_enable(grp_clk);
+	clk_enable(imem_clk);
 	return 0;
 }
 
-static int hw3d_release(struct inode *inode, struct file *file)
+static long hw3d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
+	switch (cmd) {
+		case HW3D_REVOKE_GPU:
+			return hw3d_revoke_gpu(file);
+			break;
+		case HW3D_GRANT_GPU:
+			return hw3d_grant_gpu(file);
+			break;
+		case HW3D_WAIT_FOR_INTERRUPT:
+			return hw3d_wait_for_interrupt();
+			break;
+		default:
+			return -EINVAL;
+	}
 	return 0;
 }
 
-static struct file_operations hw3d_fops = {
-	.owner = THIS_MODULE,
-	.read = hw3d_read,
-	.open = hw3d_open,
-	.mmap = hw3d_mmap,
-	.release = hw3d_release,
-};
-
-static struct miscdevice hw3d_device = {
-	.minor = MISC_DYNAMIC_MINOR,
+static struct android_pmem_platform_data pmem_data = {
 	.name = "hw3d",
-	.fops = &hw3d_fops,
+	.start = 0xA0000000,
+	.size = 0x100000,
+	.no_allocator = 1,
+	.cached = 0,
 };
 
 static int __init hw3d_init(void)
@@ -161,7 +180,7 @@ static int __init hw3d_init(void)
 	}
 	hw3d_disable_interrupt();
 
-	return misc_register(&hw3d_device);
+	return pmem_setup(&pmem_data, hw3d_ioctl);
 }
 
 device_initcall(hw3d_init);
