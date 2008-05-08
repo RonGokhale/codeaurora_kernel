@@ -462,7 +462,7 @@ static int msmfb_probe(struct platform_device *pdev)
 #ifdef CONFIG_ANDROID_POWER
 	par->early_suspend.suspend = msmfb_early_suspend;
 	par->early_suspend.resume = msmfb_early_resume;
-	par->early_suspend.level = -1;
+	par->early_suspend.level = ANDROID_EARLY_SUSPEND_LEVEL_DISABLE_FB - 1;
 	android_register_early_suspend(&par->early_suspend);
 #endif
 

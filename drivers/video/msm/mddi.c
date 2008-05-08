@@ -521,6 +521,7 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 		goto fail1;
 
 #ifdef CONFIG_ANDROID_POWER
+	mddi->early_suspend.level = ANDROID_EARLY_SUSPEND_LEVEL_DISABLE_FB;
 	mddi->early_suspend.suspend = mddi_early_suspend;
 	mddi->early_suspend.resume = mddi_early_resume;
 	android_register_early_suspend(&mddi->early_suspend);
