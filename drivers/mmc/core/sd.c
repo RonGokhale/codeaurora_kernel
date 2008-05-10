@@ -584,12 +584,26 @@ static void mmc_sd_suspend(struct mmc_host *host)
 static void mmc_sd_resume(struct mmc_host *host)
 {
 	int err;
+	int retries;
 
 	BUG_ON(!host);
 	BUG_ON(!host->card);
 
 	mmc_claim_host(host);
-	err = mmc_sd_init_card(host, host->ocr, host->card);
+	retries = 5;
+	while (retries) {
+		err = mmc_sd_init_card(host, host->ocr, host->card);
+
+		if (err) {
+			printk(KERN_ERR "%s: Re-init card rc = %d (retries = %d)\n",
+			       mmc_hostname(host), err, retries);
+			mdelay(5);
+			retries--;
+			continue;
+		}
+		break;
+	}
+
 	mmc_release_host(host);
 
 	if (err) {
