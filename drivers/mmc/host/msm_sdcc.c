@@ -1129,6 +1129,7 @@ msmsdcc_probe(struct platform_device *pdev)
 
 	writel(MCI_IRQENABLE, host->base + MMCIMASK0);
 
+	mmc_set_drvdata(pdev, mmc);
 	mmc_add_host(mmc);
 
 	printk(KERN_INFO
@@ -1172,8 +1173,11 @@ msmsdcc_suspend(struct platform_device *dev, pm_message_t state)
 		struct msmsdcc_host *host = mmc_priv(mmc);
 
 		rc = mmc_suspend_host(mmc, state);
-		if (!rc)
+		if (!rc) {
 			writel(0, host->base + MMCIMASK0);
+			clk_disable(host->clk);
+			clk_disable(host->pclk);
+		}
 	}
 	return rc;
 }
@@ -1186,6 +1190,9 @@ msmsdcc_resume(struct platform_device *dev)
 
 	if (mmc) {
 		struct msmsdcc_host *host = mmc_priv(mmc);
+
+		clk_enable(host->pclk);
+		clk_enable(host->clk);
 
 		writel(MCI_IRQENABLE, host->base + MMCIMASK0);
 		rc = mmc_resume_host(mmc);
