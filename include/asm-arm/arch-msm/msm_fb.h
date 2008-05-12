@@ -43,8 +43,12 @@ unsigned mddi_remote_read(struct mddi_info *mddi, unsigned reg);
 void mddi_activate_link(struct mddi_info *mddi);
 void mddi_hibernate_disable(struct mddi_info *mddi, int on);
 
-void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width, uint32_t height, uint32_t x, uint32_t y);
+void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width, uint32_t height,
+		     uint32_t x, uint32_t y);
 void mdp_dma_wait(void);
+int mdp_ppp_wait(void);
+int enable_mdp_irq(uint32_t mask);
+int disable_mdp_irq(uint32_t mask);
 void mdp_set_grp_disp(unsigned disp_id);
 
 struct fb_info;

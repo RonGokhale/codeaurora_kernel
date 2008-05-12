@@ -25,17 +25,17 @@
 #define PPP_DEBUG_MSGS 0
 #if PPP_DEBUG_MSGS
 #define DLOG(fmt,args...) \
-	do { printk("[%s:%s:%d] "fmt, __FILE__, __func__, __LINE__,##args); } \
-	while(0)
+	do { printk("KERN_INFO [%s:%s:%d] "fmt, __FILE__, __func__, \
+		    __LINE__, ##args); } \
+	while (0)
 #else
-#define DLOG(x...) do {} while(0)
+#define DLOG(x...) do {} while (0)
 #endif
 
 static int downscale_y_table = MDP_DOWNSCALE_MAX;
 static int downscale_x_table = MDP_DOWNSCALE_MAX;
 
-struct mdp_regs
-{
+struct mdp_regs {
 	uint32_t src0;
 	uint32_t src1;
 	uint32_t dst0;
@@ -112,24 +112,27 @@ static void rotate_dst_addr_y(struct mdp_blit_req *req, struct mdp_regs *regs)
 static void blit_rotate(struct mdp_blit_req *req,
 			struct mdp_regs *regs)
 {
+	if (req->flags == MDP_ROT_NOP)
+		return;
+
 	regs->op |= PPP_OP_ROT_ON;
 	if ((req->flags & MDP_ROT_90 || req->flags & MDP_FLIP_LR) &&
 	    !(req->flags & MDP_ROT_90 && req->flags & MDP_FLIP_LR))
 		rotate_dst_addr_x(req, regs);
-	if (req->flags & MDP_ROT_90) {
+	if (req->flags & MDP_ROT_90)
 		regs->op |= PPP_OP_ROT_90;
-	}
 	if (req->flags & MDP_FLIP_UD) {
 		regs->op |= PPP_OP_FLIP_UD;
 		rotate_dst_addr_y(req, regs);
 	}
-	if (req->flags & MDP_FLIP_LR) {
+	if (req->flags & MDP_FLIP_LR)
 		regs->op |= PPP_OP_FLIP_LR;
-	}
 }
 
 static void blit_convert(struct mdp_blit_req *req, struct mdp_regs *regs)
 {
+	if (req->src.format == req->dst.format)
+		return;
 	if (IS_RGB(req->src.format) && IS_YCRCB(req->dst.format)) {
 		regs->op |= PPP_OP_CONVERT_RGB2YCBCR | PPP_OP_CONVERT_ON;
 	} else if (IS_YCRCB(req->src.format) && IS_RGB(req->dst.format)) {
@@ -140,7 +143,7 @@ static void blit_convert(struct mdp_blit_req *req, struct mdp_regs *regs)
 }
 
 #define GET_BIT_RANGE(value, start, end) \
-	((1 << (start - end+ 1)) - 1) & (value >> start)
+	((1 << (start - end + 1)) - 1) & (value >> start)
 static uint32_t transp_convert(struct mdp_blit_req *req)
 {
 	uint32_t transp = 0;
@@ -148,14 +151,13 @@ static uint32_t transp_convert(struct mdp_blit_req *req)
 		/* pad each value to 8 bits by copying the high bits into the
 		 * low end, convert RGB to RBG by switching low 2 components */
 		transp |= ((GET_BIT_RANGE(req->transp_mask, 15, 11) << 3) |
-			  (GET_BIT_RANGE(req->transp_mask, 15, 13))) << 16;
+			   (GET_BIT_RANGE(req->transp_mask, 15, 13))) << 16;
 
 		transp |= ((GET_BIT_RANGE(req->transp_mask, 4, 0) << 3) |
 			   (GET_BIT_RANGE(req->transp_mask, 4, 2))) << 8;
 
 		transp |= (GET_BIT_RANGE(req->transp_mask, 10, 5) << 2) |
-			   (GET_BIT_RANGE(req->transp_mask, 10, 9));
-
+			  (GET_BIT_RANGE(req->transp_mask, 10, 9));
 	} else {
 		/* convert RGB to RBG */
 		transp |= (GET_BIT_RANGE(req->transp_mask, 15, 8)) |
@@ -168,14 +170,7 @@ static uint32_t transp_convert(struct mdp_blit_req *req)
 
 static void blit_blend(struct mdp_blit_req *req, struct mdp_regs *regs)
 {
-	if (req->alpha > 0xff)
-		return;
-
-	if (unlikely(req->src.format == MDP_ARGB_8888))
-		return;
-
-	regs->op |= bg_op_chroma[req->dst.format];
-
+	/* TRANSP BLEND */
 	if (req->transp_mask != MDP_TRANSP_NOP) {
 		req->transp_mask = transp_convert(req);
 		if (req->alpha != MDP_ALPHA_NOP) {
@@ -193,12 +188,22 @@ static void blit_blend(struct mdp_blit_req *req, struct mdp_regs *regs)
 			regs->op |= PPP_OP_ROT_ON | PPP_OP_BLEND_ON |
 				PPP_OP_BLEND_SRCPIXEL_TRANSP;
 		}
-	} else {
+	}
+
+	req->alpha &= 0xff;
+	/* ALPHA BLEND */
+	if (req->src.format == MDP_ARGB_8888 ||
+	    req->src.format == MDP_RGBA_8888) {
+		regs->op |= PPP_OP_ROT_ON | PPP_OP_BLEND_ON |
+			PPP_OP_BLEND_SRCPIXEL_ALPHA;
+	} else if (req->alpha < MDP_ALPHA_NOP) {
 		/* just blend by alpha */
 		regs->op |= PPP_OP_ROT_ON | PPP_OP_BLEND_ON |
 			PPP_OP_BLEND_ALPHA_BLEND_NORMAL |
 			PPP_OP_BLEND_CONSTANT_ALPHA;
 	}
+
+	regs->op |= bg_op_chroma[req->dst.format];
 }
 
 #define ONE_HALF	(1LL << 32)
@@ -220,7 +225,6 @@ static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 #ifdef ADJUST_IP
 	int64_t ip64, delta;
 #endif
-	
 	if (dim_out % 3 == 0)
 		rpa = !(dim_in % (dim_out / 3));
 	DLOG("out %u in %u rpa %x\n", dim_out, dim_in, rpa);
@@ -283,9 +287,8 @@ static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 	/* limit to valid range before the left shift */
 	delta = (ip64 & (1LL << 63)) ? 4 : -4;
 	delta <<= 33;
-	while (abs((int)(ip64 >> 33)) > 4) {
+	while (abs((int)(ip64 >> 33)) > 4)
 		ip64 += delta;
-	}
 	*phase_init = (int)(ip64 >> 4);
 #else
 	*phase_init = (int)((os_p - oreq) >> 4);
@@ -294,7 +297,7 @@ static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 	return 0;
 }
 
-static void load_scale_table(struct mdp_table_entry* table)
+static void load_scale_table(struct mdp_table_entry *table)
 {
 	int i;
 	for (i = 0; i < 64; i++)
@@ -409,7 +412,7 @@ static int get_edge_cond(struct mdp_blit_req *req, struct mdp_regs *regs)
 				  chroma_interp[IMG_TOP];
 	chroma_repeat[IMG_BOTTOM] = chroma_interp[IMG_BOTTOM] -
 				  chroma_bound[IMG_BOTTOM];
-	
+
 	if (chroma_repeat[IMG_LEFT] < 0 || chroma_repeat[IMG_LEFT] > 3 ||
 	    chroma_repeat[IMG_RIGHT] < 0 || chroma_repeat[IMG_RIGHT] > 3 ||
 	    chroma_repeat[IMG_TOP] < 0 || chroma_repeat[IMG_TOP] > 3 ||
@@ -445,12 +448,20 @@ static int blit_scale(struct mdp_blit_req *req, struct mdp_regs *regs)
 		dst_w = req->dst_rect.w;
 		dst_h = req->dst_rect.h;
 	}
+	if ((req->src_rect.w == dst_w)  && (req->src_rect.h == dst_h)) {
+		regs->phasex_init = 0;
+		regs->phasey_init = 0;
+		regs->phasex_step = 0;
+		regs->phasey_step = 0;
+		return 0;
+	}
+
 	if (scale_params(req->src_rect.w, dst_w, 1, &phase_init_x,
 			 &phase_step_x) ||
 	    scale_params(req->src_rect.h, dst_h, 1, &phase_init_y,
-			 &phase_step_y)) {
-	return -1;
-	}
+			 &phase_step_y))
+		return -1;
+
 	scale_factor_x = (dst_w * 10) / req->src_rect.w;
 	scale_factor_y = (dst_h * 10) / req->src_rect.h;
 
@@ -484,7 +495,8 @@ static int blit_scale(struct mdp_blit_req *req, struct mdp_regs *regs)
 	regs->phasey_init = phase_init_y;
 	regs->phasex_step = phase_step_x;
 	regs->phasey_step = phase_step_y;
-	DLOG("init x:%x step x:%x init y:%x step y:%x\n", phase_init_x, phase_step_x, phase_init_y, phase_step_y);
+	DLOG("init x:%x step x:%x init y:%x step y:%x\n",
+	     phase_init_x, phase_step_x, phase_init_y, phase_step_y);
 	regs->op |= (PPP_OP_SCALE_Y_ON | PPP_OP_SCALE_X_ON);
 	return 0;
 
@@ -504,7 +516,6 @@ static void get_len(struct mdp_img *img, struct mdp_rect *rect, uint32_t bpp,
 		*len1 = *len0/Y_TO_CRCB_RATIO(img->format);
 	else
 		*len1 = 0;
-	
 }
 
 static int valid_src_dst(unsigned long src_start, unsigned long src_len,
@@ -523,7 +534,8 @@ static int valid_src_dst(unsigned long src_start, unsigned long src_len,
 
 	if (regs->src0 < src_min_ok || regs->src0 > src_max_ok ||
 	    regs->src0 + src0_len > src_max_ok) {
-		DLOG("invalid_src %x %x %lx %lx\n", regs->src0, src0_len, src_min_ok, src_max_ok);
+		DLOG("invalid_src %x %x %lx %lx\n", regs->src0,
+		      src0_len, src_min_ok, src_max_ok);
 		return 0;
 	}
 	if (regs->src_cfg & PPP_SRC_PLANE_PSEUDOPLNR) {
@@ -563,9 +575,8 @@ int get_img(struct mdp_img *img, struct fb_info *info, unsigned long *start,
 			goto end;
 	}
 #ifdef CONFIG_ANDROID_PMEM
-	if (!get_pmem_fd(img->memory_id, start, len)) {
+	if (!get_pmem_fd(img->memory_id, start, len))
 		ret = 0;
-	}
 #endif
 end:
 	fput_light(file, put_needed);
@@ -585,25 +596,24 @@ static void flush_imgs(struct mdp_blit_req *req, struct mdp_regs *regs)
 #ifdef CONFIG_ANDROID_PMEM
 	uint32_t src0_len, src1_len, dst0_len, dst1_len;
 
+	/* flush src images to memory before dma to mdp */
 	get_len(&req->src, &req->src_rect, regs->src_bpp, &src0_len,
-			&src1_len);
+		&src1_len);
 	flush_pmem_fd(req->src.memory_id, req->src.offset, src0_len);
 	if (regs->src_cfg & PPP_SRC_PLANE_PSEUDOPLNR)
-		flush_pmem_fd(req->src.memory_id,
-					req->src.offset + src0_len,
-					src1_len);
+		flush_pmem_fd(req->src.memory_id, req->src.offset + src0_len,
+			      src1_len);
+
+	/* flush dst images */
 	get_len(&req->dst, &req->dst_rect, regs->dst_bpp, &dst0_len,
-			&dst1_len);
+		&dst1_len);
 	flush_pmem_fd(req->dst.memory_id, req->dst.offset, dst0_len);
 	if (regs->dst_cfg & PPP_SRC_PLANE_PSEUDOPLNR)
-		flush_pmem_fd(req->dst.memory_id,
-				req->dst.offset + dst0_len,
-				dst1_len);
+		flush_pmem_fd(req->dst.memory_id, req->dst.offset + dst0_len,
+			      dst1_len);
 #endif
 }
 
-#define WRITEL(v, a) do { writel(v,a); DLOG("[%x]=%x\n", a, v); }\
-		     while (0)
 static void get_chroma_addr(struct mdp_img *img, struct mdp_rect *rect,
 			    uint32_t base, uint32_t bpp, uint32_t cfg,
 			    uint32_t *addr, uint32_t *ystride)
@@ -615,7 +625,7 @@ static void get_chroma_addr(struct mdp_img *img, struct mdp_rect *rect,
 	if (cfg & PPP_SRC_PLANE_PSEUDOPLNR) {
 		offset = (rect->x / compress_h) * compress_h;
 		offset += rect->y == 0 ? 0 :
-			((rect->y + 1) / compress_v) * img->width;
+			  ((rect->y + 1) / compress_v) * img->width;
 		*addr = base + (img->width * img->height * bpp);
 		*addr += offset * bpp;
 		*ystride |= *ystride << 16;
@@ -624,62 +634,65 @@ static void get_chroma_addr(struct mdp_img *img, struct mdp_rect *rect,
 	}
 }
 
-int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
+static int send_blit(struct mdp_blit_req *req, struct mdp_regs *regs)
 {
-	struct mdp_regs regs = {0};
+	writel(1, MSM_MDP_BASE+0x060);
+	writel((req->src_rect.h << 16) | req->src_rect.w, PPP_ADDR_SRC_ROI);
+	writel(regs->src0, PPP_ADDR_SRC0);
+	writel(regs->src1, PPP_ADDR_SRC1);
+	writel(regs->src_ystride, PPP_ADDR_SRC_YSTRIDE);
+	writel(regs->src_cfg, PPP_ADDR_SRC_CFG);
+	writel(pack_pattern[req->src.format], PPP_ADDR_SRC_PACK_PATTERN);
+
+	writel(regs->op, PPP_ADDR_OPERATION);
+	writel(regs->phasex_init, PPP_ADDR_PHASEX_INIT);
+	writel(regs->phasey_init, PPP_ADDR_PHASEY_INIT);
+	writel(regs->phasex_step, PPP_ADDR_PHASEX_STEP);
+	writel(regs->phasey_step, PPP_ADDR_PHASEY_STEP);
+
+	writel((req->alpha << 24) | (req->transp_mask & 0xffffff),
+	       PPP_ADDR_ALPHA_TRANSP);
+
+	writel(regs->dst_cfg, PPP_ADDR_DST_CFG);
+	writel(pack_pattern[req->dst.format], PPP_ADDR_DST_PACK_PATTERN);
+	writel((req->dst_rect.h << 16) | req->dst_rect.w, PPP_ADDR_DST_ROI);
+	writel(regs->dst0, PPP_ADDR_DST0);
+	writel(regs->dst1, PPP_ADDR_DST1);
+	writel(regs->dst_ystride, PPP_ADDR_DST_YSTRIDE);
+
+	writel(regs->edge, PPP_ADDR_EDGE);
+	if (regs->op & PPP_OP_BLEND_ON) {
+		writel(regs->dst0, PPP_ADDR_BG0);
+		writel(regs->dst1, PPP_ADDR_BG1);
+		writel(regs->dst_ystride, PPP_ADDR_BG_YSTRIDE);
+		writel(src_img_cfg[req->dst.format], PPP_ADDR_BG_CFG);
+		writel(pack_pattern[req->dst.format], PPP_ADDR_BG_PACK_PATTERN);
+	}
+	flush_imgs(req, regs);
+	writel(0x1000, MDP_DISPLAY0_START);
+	return 0;
+}
+
+int blit(struct fb_info *info, struct mdp_blit_req *req)
+{
 	unsigned long src_start, src_len;
 	unsigned long dst_start, dst_len;
-	unsigned long dst_w, dst_h;
-
-#if 0
-	DLOG("BLIT recieved img %p\n"
-		" src:%d\n"
-		" src_type: %d\n"
-		" src_w: %d\n"
-		" src_h: %d\n"
-		" src_roi_x: %u\n"
-		" src_roi_y: %u\n"
-		" src_roi_w: %u\n"
-		" src_roi_h: %u\n"
-
-		" dst:%d\n"
-		" dst_type: %d\n"
-		" dst_w: %d\n"
-		" dst_h: %d\n"
-		" dst_roi_x: %u\n"
-		" dst_roi_y: %u\n"
-		" dst_roi_w: %u\n"
-		" dst_roi_h: %u\n"
-
-		" rotate: %u\n"
-		" transp: %u\n"
-		" alpha: %u\n",
-		req, 
-		req->src.offset, req->src.format,
-		req->src.width, req->src.height,
-		req->src_rect.x, req->src_rect.y,
-		req->src_rect.w, req->src_rect.h,
-		req->dst.offset, req->dst.format,
-		req->dst.width, req->dst.height,
-		req->dst_rect.x, req->dst_rect.y,
-		req->dst_rect.w, req->dst_rect.h,
-		req->flags, req->transp_mask, req->alpha);
-#endif
+	struct mdp_regs regs = {0};
 
 	/* do this first so that if this fails, the caller can always
 	 * safely call put_img */
 	if (unlikely(get_img(&req->src, info, &src_start, &src_len)) ||
 		    (get_img(&req->dst, info, &dst_start, &dst_len))) {
 		printk(KERN_ERR "mpd_ppp: could not retrieve image from "
-		       "memory\n");
-		return -1;
+				"memory\n");
+		return -EINVAL;
 	}
 
 	if (unlikely(req->src.format >= MDP_IMGTYPE_LIMIT ||
-	    req->dst.format >= MDP_IMGTYPE_LIMIT)) {
+		     req->dst.format >= MDP_IMGTYPE_LIMIT)) {
 		printk(KERN_ERR "mpd_ppp: img is of wrong format\n");
 		return -EINVAL;
-		}
+	}
 
 	if (unlikely(req->src_rect.x > req->src.width ||
 		     req->src_rect.y > req->src.height ||
@@ -689,36 +702,40 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		return -EINVAL;
 	}
 	if (unlikely(req->src_rect.h == 0 ||
-		     req->src_rect.w == 0))
+		     req->src_rect.w == 0)) {
+		printk(KERN_ERR "mpd_ppp: src img of zero size!\n");
 		return -EINVAL;
+	}
 	if (unlikely(req->dst_rect.h == 0 ||
 		     req->dst_rect.w == 0))
 		return 0;
 
+
+	/* set the src image configuration */
 	regs.src_cfg = src_img_cfg[req->src.format];
 	regs.src_cfg |= (req->src_rect.x & 0x1) ? PPP_SRC_BPP_ROI_ODD_X : 0;
 	regs.src_cfg |= (req->src_rect.y & 0x1) ? PPP_SRC_BPP_ROI_ODD_Y : 0;
 
+	/* set teh dest image configuration */
 	regs.dst_cfg = dst_img_cfg[req->dst.format] | PPP_DST_OUT_SEL_AXI;
 
-		
-		
+	/* set src, bpp, start pixel and ystride */
 	regs.src_bpp = bytes_per_pixel[req->src.format];
 	regs.src0 = src_start + req->src.offset;
 	regs.src_ystride = req->src.width * regs.src_bpp;
-
 	get_chroma_addr(&req->src, &req->src_rect, regs.src0, regs.src_bpp,
 			regs.src_cfg, &regs.src1, &regs.src_ystride);
 	regs.src0 += (req->src_rect.x + (req->src_rect.y * req->src.width)) *
 		      regs.src_bpp;
 
-	regs.dst_bpp = info->var.bits_per_pixel / 8;
+	/* set dst, bpp, start pixel and ystride */
+	regs.dst_bpp = bytes_per_pixel[req->dst.format];
 	regs.dst0 = dst_start + req->dst.offset;
 	regs.dst_ystride = req->dst.width * regs.dst_bpp;
 	get_chroma_addr(&req->dst, &req->dst_rect, regs.dst0, regs.dst_bpp,
 			regs.dst_cfg, &regs.dst1, &regs.dst_ystride);
 	regs.dst0 += (req->dst_rect.x + (req->dst_rect.y * req->dst.width)) *
-		     regs.dst_bpp;
+		      regs.dst_bpp;
 
 	if (!valid_src_dst(src_start, src_len, dst_start, dst_len, req,
 			   &regs)) {
@@ -728,98 +745,79 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		return -EINVAL;
 	}
 
+	/* set up operation register */
 	regs.op = 0;
-	if (req->flags != MDP_ROT_NOP) {
-		blit_rotate(req, &regs);
-		DLOG("rotating\n");
-	}
-	if (req->src.format != req->dst.format) {
-		blit_convert(req, &regs);
-		DLOG("converting\n");
-	}
-
+	blit_rotate(req, &regs);
+	blit_convert(req, &regs);
 	if (req->flags & MDP_DITHER)
 		regs.op |= PPP_OP_DITHER_EN;
-
-	req->alpha &= 0xff;
-	if (req->transp_mask != MDP_TRANSP_NOP || req->alpha < MDP_ALPHA_NOP) {
-		blit_blend(req, &regs);
-		DLOG("blending %x %x\n", req->transp_mask, req->alpha);
+	blit_blend(req, &regs);
+	if (blit_scale(req, &regs)) {
+		printk(KERN_ERR "mpd_ppp: error computing scale for img.\n");
+		return -EINVAL;
 	}
-
-	if (req->flags & MDP_ROT_90) {
-		dst_w = req->dst_rect.h;
-		dst_h = req->dst_rect.w;
-	} else {
-		dst_w = req->dst_rect.w;
-		dst_h = req->dst_rect.h;
-	}
-	if ((req->src_rect.w != dst_w) ||
-	    (req->src_rect.h != dst_h)) {
-		DLOG("scaling\n");
-		if (blit_scale(req, &regs))
-			return -EINVAL;
-	} else {
-		regs.phasex_init = 0;
-		regs.phasey_init = 0;
-		regs.phasex_step = 0;
-		regs.phasey_step = 0;
-	}
-
-
-	if (req->src.format == MDP_ARGB_8888 ||
-	    req->src.format == MDP_RGBA_8888)
-		regs.op |= PPP_OP_ROT_ON | PPP_OP_BLEND_ON |
-			   PPP_OP_BLEND_SRCPIXEL_ALPHA;
-
 	regs.op |= dst_op_chroma[req->dst.format] |
 		   src_op_chroma[req->src.format];
 
+	/* if the image is YCRYCB, the x and w must be even */
 	if (unlikely(req->src.format == MDP_YCRYCB_H2V1)) {
-		/* the x and w must be even */
 		req->src_rect.x = (req->src_rect.x / 2) * 2;
 		req->src_rect.w = (req->src_rect.w / 2) * 2;
 		req->dst_rect.x = (req->dst_rect.x / 2) * 2;
 		req->dst_rect.w = (req->dst_rect.w / 2) * 2;
 	}
-
 	get_edge_cond(req, &regs);
 
-	WRITEL(1, MSM_MDP_BASE+0x060);
-	WRITEL((req->src_rect.h << 16) | req->src_rect.w, PPP_ADDR_SRC_ROI);
-	WRITEL(regs.src0, PPP_ADDR_SRC0);
-	WRITEL(regs.src1, PPP_ADDR_SRC1);
-	WRITEL(regs.src_ystride, PPP_ADDR_SRC_YSTRIDE);
-	WRITEL(regs.src_cfg, PPP_ADDR_SRC_CFG);
-	WRITEL(pack_pattern[req->src.format], PPP_ADDR_SRC_PACK_PATTERN);
-
-	WRITEL(regs.op, PPP_ADDR_OPERATION);
-	// Scale registers here
-	WRITEL(regs.phasex_init, PPP_ADDR_PHASEX_INIT);
-	WRITEL(regs.phasey_init, PPP_ADDR_PHASEY_INIT);
-	WRITEL(regs.phasex_step, PPP_ADDR_PHASEX_STEP);
-	WRITEL(regs.phasey_step, PPP_ADDR_PHASEY_STEP);
-
-	WRITEL((req->alpha << 24) | (req->transp_mask & 0xffffff),
-		PPP_ADDR_ALPHA_TRANSP);
-
-	WRITEL(regs.dst_cfg, PPP_ADDR_DST_CFG);
-	WRITEL(pack_pattern[req->dst.format], PPP_ADDR_DST_PACK_PATTERN);
-	WRITEL((req->dst_rect.h << 16) | req->dst_rect.w,
-		PPP_ADDR_DST_ROI);
-	WRITEL(regs.dst0, PPP_ADDR_DST0);
-	WRITEL(regs.dst1, PPP_ADDR_DST1);
-	WRITEL(regs.dst_ystride, PPP_ADDR_DST_YSTRIDE);
-
-	WRITEL(regs.edge, PPP_ADDR_EDGE);
-	if (regs.op & PPP_OP_BLEND_ON) {
-		WRITEL(regs.dst0, PPP_ADDR_BG0);
-		WRITEL(regs.dst1, PPP_ADDR_BG1);
-		WRITEL(regs.dst_ystride, PPP_ADDR_BG_YSTRIDE);
-		WRITEL(src_img_cfg[req->dst.format], PPP_ADDR_BG_CFG);
-		WRITEL(pack_pattern[req->dst.format], PPP_ADDR_BG_PACK_PATTERN);
-	}
-	flush_imgs(req, &regs);
-	WRITEL(0x1000, MDP_DISPLAY0_START);
+	send_blit(req, &regs);
 	return 0;
 }
+
+int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
+{
+	int ret;
+
+	/* WORKAROUND FOR HARDWARE BUG IN BG TILE FETCH */
+	if ((req->transp_mask != MDP_TRANSP_NOP ||
+	     req->alpha != MDP_ALPHA_NOP ||
+	     req->src.format == MDP_ARGB_8888 ||
+	     req->src.format == MDP_RGBA_8888) &&
+	     req->flags & MDP_ROT_90 &&
+	     req->dst_rect.w <= 16) {
+		int i;
+		unsigned int tiles = req->dst_rect.h / 16;
+		unsigned int remainder = req->dst_rect.h % 16;
+		req->src_rect.w = 16*req->src_rect.w/req->dst_rect.h;
+		req->dst_rect.h = 16;
+		for (i = 0; i < tiles; i++) {
+			enable_mdp_irq(DL0_ROI_DONE);
+			ret = blit(info, req);
+			if (ret)
+				goto err;
+			ret = mdp_ppp_wait();
+			if (ret)
+				goto err;
+			req->dst_rect.y += 16;
+			req->src_rect.x += req->src_rect.w;
+		}
+		if (!remainder)
+			goto end;
+		req->src_rect.w = remainder*req->src_rect.w/req->dst_rect.h;
+		req->dst_rect.h = remainder;
+	}
+
+	enable_mdp_irq(DL0_ROI_DONE);
+	ret = blit(info, req);
+	if (ret)
+		goto err;
+	ret = mdp_ppp_wait();
+	if (ret)
+		goto err;
+end:
+	mdp_ppp_put_img(req);
+	return 0;
+err:
+	mdp_ppp_put_img(req);
+	disable_mdp_irq(DL0_ROI_DONE);
+	return ret;
+}
+

@@ -45,37 +45,86 @@ void mdp_set_ccs(uint16_t *ccs)
 	writel(ccs[11], MSM_MDP_BASE + 0x40500 + 4 * 0);
 }
 
+static DECLARE_WAIT_QUEUE_HEAD(mdp_dma2_waitqueue);
+static DECLARE_WAIT_QUEUE_HEAD(mdp_ppp_waitqueue);
+
+static unsigned int mdp_irq_mask;
 static DEFINE_SPINLOCK(mdp_lock);
 
-static volatile int mdp_dma2_busy;
-static DECLARE_WAIT_QUEUE_HEAD(mdp_dma2_waitqueue);
+int enable_mdp_irq(uint32_t mask)
+{
+	unsigned long irq_flags;
+	int ret = 0;
 
-static volatile int mdp_ppp_busy;
-static DECLARE_WAIT_QUEUE_HEAD(mdp_ppp_waitqueue);
+	BUG_ON(!mask);
+
+	spin_lock_irqsave(&mdp_lock, irq_flags);
+	/* if the mask bits are already set return an error, this interrupt
+	 * is already enabled */
+	if (mdp_irq_mask & mask) {
+		printk(KERN_ERR "mdp irq already on already on %x %x\n",
+		       mdp_irq_mask, mask);
+		ret = -1;
+	}
+	/* if the mdp irq is not already enabled enable it */
+	if (!mdp_irq_mask)
+		enable_irq(INT_MDP);
+
+	/* update the irq mask to reflect the fact that the interrupt is
+	 * enabled */
+	mdp_irq_mask |= mask;
+	spin_unlock_irqrestore(&mdp_lock, irq_flags);
+	return ret;
+}
+
+static int locked_disable_mdp_irq(uint32_t mask)
+{
+	int ret = 0;
+	/* this interrupt is already disabled! */
+	if (!(mdp_irq_mask & mask)) {
+		printk(KERN_ERR "mdp irq already off %x %x\n",
+		       mdp_irq_mask, mask);
+		ret = -1;
+	}
+	/* update the irq mask to reflect the fact that the interrupt is
+	 * disabled */
+	mdp_irq_mask &= ~(mask);
+	/* if no one is waiting on the interrupt, disable it */
+	if (!mdp_irq_mask)
+		disable_irq(INT_MDP);
+	return ret;
+}
+
+int disable_mdp_irq(uint32_t mask)
+{
+	unsigned long irq_flags;
+	int ret;
+
+	spin_lock_irqsave(&mdp_lock, irq_flags);
+	ret = locked_disable_mdp_irq(mask);
+	spin_unlock_irqrestore(&mdp_lock, irq_flags);
+	return ret;
+}
 
 static irqreturn_t mdp_isr(int irq, void *data)
 {
 	uint32_t status;
 	unsigned long irq_flags;
-	int cleared_busy = 0;
 
 	spin_lock_irqsave(&mdp_lock, irq_flags);
 
 	status = readl(MDP_INTR_STATUS);
 	writel(status, MDP_INTR_CLEAR);
 
-	if ((status & DL0_DMA2_TERM_DONE) && mdp_dma2_busy) {
-		mdp_dma2_busy = 0;
-		cleared_busy = 1;
+	status &= mdp_irq_mask;
+	if (status & DL0_DMA2_TERM_DONE)
 		wake_up(&mdp_dma2_waitqueue);
-	}
-	if ((status & DL0_ROI_DONE) && mdp_ppp_busy) {
-		mdp_ppp_busy = 0;
-		cleared_busy = 1;
+
+	if (status & DL0_ROI_DONE)
 		wake_up(&mdp_ppp_waitqueue);
-	}
-	if (cleared_busy && !mdp_dma2_busy && !mdp_ppp_busy)
-		disable_irq(INT_MDP);
+
+	if (status)
+		locked_disable_mdp_irq(status);
 
 	spin_unlock_irqrestore(&mdp_lock, irq_flags);
 	return IRQ_HANDLED;
@@ -83,27 +132,24 @@ static irqreturn_t mdp_isr(int irq, void *data)
 
 void mdp_dma_wait(void)
 {
-	int r = wait_event_timeout(mdp_dma2_waitqueue, !mdp_dma2_busy, HZ);
+	int r = wait_event_timeout(mdp_dma2_waitqueue,
+		!(mdp_irq_mask & DL0_DMA2_TERM_DONE), HZ);
 	if (r <= 0)
-		printk(KERN_ERR "mdp_dma_wait: timeout waiting for dma to complete\n");
+		printk(KERN_ERR "mdp_dma_wait: timeout waiting for "
+		       "dma to complete\n");
 }
 
-void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width, uint32_t height, uint32_t x, uint32_t y)
+void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width,
+		     uint32_t height, uint32_t x, uint32_t y)
 {
 
 	uint32_t dma2_cfg;
 	uint16_t ld_param = 0; /* 0=PRIM, 1=SECD, 2=EXT */
-	unsigned long irq_flags;
 
-	spin_lock_irqsave(&mdp_lock, irq_flags);
-
-	if (mdp_dma2_busy) {
+	if (enable_mdp_irq(DL0_DMA2_TERM_DONE)) {
 		printk(KERN_ERR "mdp_dma_to_mddi: busy\n");
-		goto err;
+		return;
 	}
-	if (!mdp_ppp_busy)
-		enable_irq(INT_MDP);
-	mdp_dma2_busy = 1;
 
 	dma2_cfg = DMA_PACK_TIGHT |
 		DMA_PACK_ALIGN_LSB |
@@ -137,8 +183,6 @@ void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width, uint32_t he
 
 	/* start DMA2 */
 	writel(0, MDP_CMD_DEBUG_ACCESS_BASE + 0x0044);
-err:
-	spin_unlock_irqrestore(&mdp_lock, irq_flags);
 }
 
 void mdp_set_grp_disp(unsigned disp_id)
@@ -147,39 +191,15 @@ void mdp_set_grp_disp(unsigned disp_id)
 	writel(disp_id, MDP_FULL_BYPASS_WORD43);
 }
 
-extern int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req);
-extern void mdp_ppp_put_img(struct mdp_blit_req *req);
-
-int mdp_blit(struct fb_info *info,  struct mdp_blit_req *req)
+int mdp_ppp_wait(void)
 {
-	int ret = 0;
-	unsigned long irq_flags;
-
-	spin_lock_irqsave(&mdp_lock, irq_flags);
-	if (mdp_ppp_busy) {
-		ret = -1;
-		goto err;
-	}
-	if (!mdp_dma2_busy)
-		enable_irq(INT_MDP);
-	mdp_ppp_busy = 1;
-	spin_unlock_irqrestore(&mdp_lock, irq_flags);
-	if (mdp_ppp_blit(info, req)) {
-		ret = -1;
-		goto end;
-	}
-	if (wait_event_timeout(mdp_ppp_waitqueue, !mdp_ppp_busy, HZ) <= 0)
+	if (wait_event_timeout(mdp_ppp_waitqueue,
+			       !(mdp_irq_mask & DL0_ROI_DONE), HZ) <= 0) {
 		printk(KERN_ERR "mdp_ppp_wait: timeout waiting for blit to "
 				"complete\n");
-end:
-	spin_lock_irqsave(&mdp_lock, irq_flags);
-	if (mdp_ppp_busy && !mdp_dma2_busy)
-		disable_irq(INT_MDP);
-	mdp_ppp_busy = 0;
-	mdp_ppp_put_img(req);
-err:
-	spin_unlock_irqrestore(&mdp_lock, irq_flags);
-	return ret;
+		return -1;
+	}
+	return 0;
 }
 
 #include "mdp_csc_table.h"
@@ -199,6 +219,7 @@ int mdp_init(void)
 
 	ret = request_irq(INT_MDP, mdp_isr, IRQF_DISABLED, "msm_mdp", 0);
 	disable_irq(INT_MDP);
+	mdp_irq_mask = 0;
 
 	/* debug interface write access */
 	writel(1, MSM_MDP_BASE + 0x60);
