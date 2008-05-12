@@ -94,9 +94,12 @@ struct rpc_reply_hdr
 	} data;
 };
 
+/* flags for msm_rpc_connect() */
+#define MSM_RPC_UNINTERRUPTIBLE 0x0001
+
 /* use IS_ERR() to check for failure */
 struct msm_rpc_endpoint *msm_rpc_open(void);
-struct msm_rpc_endpoint *msm_rpc_connect(uint32_t prog, uint32_t vers, long timeout);
+struct msm_rpc_endpoint *msm_rpc_connect(uint32_t prog, uint32_t vers, unsigned flags);
 
 int msm_rpc_close(struct msm_rpc_endpoint *ept);
 int msm_rpc_write(struct msm_rpc_endpoint *ept,
@@ -105,7 +108,6 @@ int msm_rpc_read(struct msm_rpc_endpoint *ept,
 		 void **data, unsigned len, long timeout);
 void msm_rpc_setup_req(struct rpc_request_hdr *hdr,
 		       uint32_t prog, uint32_t vers, uint32_t proc);
-
 int msm_rpc_register_server(struct msm_rpc_endpoint *ept,
 			    uint32_t prog, uint32_t vers);
 int msm_rpc_unregister_server(struct msm_rpc_endpoint *ept,

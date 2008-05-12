@@ -142,6 +142,7 @@ struct msm_rpc_endpoint {
 	struct list_head read_q;
 	spinlock_t read_q_lock;
 	wait_queue_head_t wait_q;
+	unsigned flags;
 
 	/* endpoint address */
 	uint32_t pid;

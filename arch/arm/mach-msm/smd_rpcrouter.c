@@ -416,7 +416,7 @@ static int process_control_msg(union rr_control_msg *msg, int len)
 		spin_lock_irqsave(&r_ept->quota_lock, flags);
 		r_ept->tx_quota_cntr = 0;
 		spin_unlock_irqrestore(&r_ept->quota_lock, flags);
-		wake_up_interruptible(&r_ept->quota_wait);
+		wake_up(&r_ept->quota_wait);
 		break;
 
 	case RPCROUTER_CTRL_CMD_NEW_SERVER:
@@ -445,7 +445,7 @@ static int process_control_msg(union rr_control_msg *msg, int len)
 						"error (%d)\n", rc);
 			}
 			schedule_work(&work_create_pdevs);
-			wake_up_interruptible(&newserver_wait);
+			wake_up(&newserver_wait);
 		} else {
 			if ((server->pid == msg->srv.pid) &&
 			    (server->cid == msg->srv.cid)) {
@@ -659,7 +659,7 @@ static void do_read_data(struct work_struct *work)
 packet_complete:
 	spin_lock_irqsave(&ept->read_q_lock, flags);
 	list_add_tail(&pkt->list, &ept->read_q);
-	wake_up_interruptible(&ept->wait_q);
+	wake_up(&ept->wait_q);
 	spin_unlock_irqrestore(&ept->read_q_lock, flags);
 done:
 	if (hdr.confirm_rx) {
@@ -803,18 +803,19 @@ int msm_rpc_write(struct msm_rpc_endpoint *ept, void *buffer, int count)
 		spin_lock_irqsave(&r_ept->quota_lock, flags);
 		if (r_ept->tx_quota_cntr < RPCROUTER_DEFAULT_RX_QUOTA)
 			break;
-		if (signal_pending(current))
+		if (signal_pending(current) && 
+		    (!(ept->flags & MSM_RPC_UNINTERRUPTIBLE)))
 			break;
 		spin_unlock_irqrestore(&r_ept->quota_lock, flags);
 		schedule();
 	}
 	finish_wait(&r_ept->quota_wait, &__wait);
 
-	if (signal_pending(current)) {
+	if (signal_pending(current) &&
+	    (!(ept->flags & MSM_RPC_UNINTERRUPTIBLE))) {
 		spin_unlock_irqrestore(&r_ept->quota_lock, flags);
 		return -ERESTARTSYS;
 	}
-
 	r_ept->tx_quota_cntr++;
 	if (r_ept->tx_quota_cntr == RPCROUTER_DEFAULT_RX_QUOTA)
 		hdr.confirm_rx = 1;
@@ -985,19 +986,31 @@ int __msm_rpc_read(struct msm_rpc_endpoint *ept,
 	int rc;
 
 	IO("READ on ept %p\n", ept);
-	if (timeout < 0) {
-		rc = wait_event_interruptible(
-			ept->wait_q, ept_packet_available(ept));
-	} else {
-		rc = wait_event_interruptible_timeout(
-			ept->wait_q, ept_packet_available(ept),
-			timeout);
-		if ((rc == 0) && !ept_packet_available(ept))
-			return -ETIMEDOUT;
-	}
 
-	if (rc < 0)
-		return rc;
+	if (ept->flags & MSM_RPC_UNINTERRUPTIBLE) {
+		if (timeout < 0) {
+			wait_event(ept->wait_q, ept_packet_available(ept));
+		} else {
+			rc = wait_event_timeout(
+				ept->wait_q, ept_packet_available(ept),
+				timeout);
+			if (rc == 0)
+				return -ETIMEDOUT;
+		}
+	} else {
+		if (timeout < 0) {
+			rc = wait_event_interruptible(
+				ept->wait_q, ept_packet_available(ept));
+			if (rc < 0)
+				return rc;
+		} else {
+			rc = wait_event_interruptible_timeout(
+				ept->wait_q, ept_packet_available(ept),
+				timeout);
+			if (rc == 0)
+				return -ETIMEDOUT;
+		}
+	}
 
 	spin_lock_irqsave(&ept->read_q_lock, flags);
 	if (list_empty(&ept->read_q)) {
@@ -1034,7 +1047,7 @@ int __msm_rpc_read(struct msm_rpc_endpoint *ept,
 	return rc;
 }
 
-struct msm_rpc_endpoint *msm_rpc_connect(uint32_t prog, uint32_t vers, long timeout)
+struct msm_rpc_endpoint *msm_rpc_connect(uint32_t prog, uint32_t vers, unsigned flags)
 {
 	struct msm_rpc_endpoint *ept;
 	struct rr_server *server;
@@ -1047,6 +1060,7 @@ struct msm_rpc_endpoint *msm_rpc_connect(uint32_t prog, uint32_t vers, long time
 	if (IS_ERR(ept))
 		return ept;
 	
+	ept->flags = flags;
 	ept->dst_pid = server->pid;
 	ept->dst_cid = server->cid;
 	ept->dst_prog = cpu_to_be32(prog);
