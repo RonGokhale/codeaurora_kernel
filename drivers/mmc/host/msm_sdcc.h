@@ -175,7 +175,7 @@ struct msmsdcc_tracedata {
 };
 
 struct msmsdcc_nc_dmadata {
-	dmov_box	cmd __attribute__((__aligned__(8)));
+	dmov_box	cmd[NR_SG];
 	uint32_t	cmdptr;
 };
 
@@ -204,12 +204,10 @@ struct msmsdcc_host {
 
 	struct mmc_request	*mrq;
 	struct mmc_command	*cmd;
-	struct mmc_data		*data;
 	struct mmc_host		*mmc;
 	struct clk		*clk;		/* main MMC bus clock */
 	struct clk		*pclk;		/* SDCC peripheral bus clock */
 	struct timer_list	transaction_timer;
-	unsigned int		data_xfered;
 
 	unsigned int		eject;		/* eject state */
 
@@ -224,12 +222,14 @@ struct msmsdcc_host {
 	struct timer_list	timer;
 	unsigned int		oldstat;
 
-	unsigned int		sg_len;
-
-	/* pio stuff */
+	struct mmc_data		*data;
 	struct scatterlist	*sg_ptr;
+	unsigned int		sg_len;
 	unsigned int		sg_off;
-	unsigned int		size;
+
+	unsigned int		xfer_size;	/* Total data size */
+	unsigned int		xfer_remain;	/* Bytes remaining to send */
+	unsigned int		data_xfered;	/* Bytes acked by BLKEND irq */
 
 	struct msmsdcc_dma_data	dma;
 

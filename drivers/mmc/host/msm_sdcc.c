@@ -59,7 +59,6 @@ static char *msmsdcc_pclks[] = { NULL, "sdc1_pclk", "sdc2_pclk", "sdc3_pclk",
 
 
 #define VERBOSE_COMMAND_TIMEOUTS	0
-#define MSMSDCC_DEBUG_DMA		0
 
 static irqreturn_t msmsdcc_pio_irq(int irq, void *dev_id);
 
@@ -166,26 +165,6 @@ uint32_t msmsdcc_fifo_addr(struct msmsdcc_host *host)
 		BUG();
 }
 
-static unsigned int msmsdcc_get_dma_buffer(struct msmsdcc_host *host)
-{
-	unsigned int n;
-
-	n = dma_map_sg(mmc_dev(host->mmc), host->dma.sg,
-			host->dma.num_ents, host->dma.dir);
-
-	if (n != host->dma.num_ents)
-		printk(KERN_ERR "%s: Unable to map in all sg elements\n",
-		       __func__);
-
-	return sg_dma_address(host->dma.sg);
-}
-
-static void msmsdcc_put_dma_buffer(struct msmsdcc_host *host)
-{
-	dma_unmap_sg(mmc_dev(host->mmc), host->dma.sg, host->dma.num_ents,
-		     host->dma.dir);
-}
-
 static void
 msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 			  unsigned int result,
@@ -196,12 +175,13 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 	struct msmsdcc_host	*host = dma_data->host;
 	int			i;
 
-	msmsdcc_put_dma_buffer(host);
+	dma_unmap_sg(mmc_dev(host->mmc), host->dma.sg, host->dma.num_ents,
+		     host->dma.dir);
 
 	if (result != 0x80000002) {
 		struct mmc_request *mrq = host->mrq;
 
-		WARN_ON (!mrq);
+		WARN_ON(!mrq);
 
 		printk(KERN_ERR "%s: DMA failed (0x%.8x)\n",
 		       mmc_hostname(host->mmc), result);
@@ -221,9 +201,8 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 		 * STOP command since transmission hasn't
 		 * started yet.
 		 */
-		if (!mrq->data->stop || mrq->cmd->error) {
+		if (!mrq->data->stop || mrq->cmd->error)
 			msmsdcc_request_end(host, mrq);
-		}
 		else
 			msmsdcc_start_command(host, mrq->data->stop, 0);
 	}
@@ -236,9 +215,10 @@ static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
 	struct msmsdcc_nc_dmadata *nc;
 	dmov_box *box;
 	uint32_t rows;
-	unsigned int dma_addr;
 	uint32_t crci;
-	uint32_t xfer_size;
+	unsigned int n;
+	int i;
+	struct scatterlist *sg = data->sg;
 
 	if (data->blksz < 32)
 		return -EINVAL;
@@ -247,10 +227,8 @@ static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
 
 	host->dma.sg = data->sg;
 	host->dma.num_ents = data->sg_len;
-	xfer_size = data->blksz;
 
 	nc = host->dma.nc;
-	box = &nc->cmd;
 
 	if (host->pdev_id == 1)
 		crci = MSMSDCC_CRCI_SDC1;
@@ -260,45 +238,60 @@ static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
 		crci = MSMSDCC_CRCI_SDC3;
 	else if (host->pdev_id == 4)
 		crci = MSMSDCC_CRCI_SDC4;
-	else
+	else {
+		host->dma.sg = NULL;
+		host->dma.num_ents = 0;
 		return -ENOENT;
+	}
 
 	if (data->flags & MMC_DATA_READ)
 		host->dma.dir = DMA_FROM_DEVICE;
 	else
 		host->dma.dir = DMA_TO_DEVICE;
 
-	dma_addr = msmsdcc_get_dma_buffer(host);
+	n = dma_map_sg(mmc_dev(host->mmc), host->dma.sg,
+			host->dma.num_ents, host->dma.dir);
 
-	if (dma_addr == 0)
+	if (n != host->dma.num_ents) {
+		printk(KERN_ERR "%s: Unable to map in all sg elements\n",
+		       mmc_hostname(host->mmc));
+		host->dma.sg = NULL;
+		host->dma.num_ents = 0;
 		return -ENOMEM;
-
-	box->cmd = CMD_LC | CMD_MODE_BOX;
-
-	rows = (xfer_size % MCI_FIFOSIZE) ?
-		(xfer_size / MCI_FIFOSIZE) + 1:
-		(xfer_size / MCI_FIFOSIZE) ;
-
-	if (data->flags & MMC_DATA_READ) {
-		box->src_row_addr = msmsdcc_fifo_addr(host);
-		box->dst_row_addr = dma_addr;
-
-		box->src_dst_len = (MCI_FIFOSIZE << 16) | (MCI_FIFOSIZE);
-		box->row_offset = MCI_FIFOSIZE;
-
-		box->num_rows = rows * ((1 << 16) + 1);
-		box->cmd |= CMD_SRC_CRCI(crci);
-	} else {
-		box->src_row_addr = dma_addr;
-		box->dst_row_addr = msmsdcc_fifo_addr(host);
-
-		box->src_dst_len = (MCI_FIFOSIZE << 16) | (MCI_FIFOSIZE);
-		box->row_offset = (MCI_FIFOSIZE << 16);
-
-		box->num_rows = rows * ((1 << 16) + 1);
-		box->cmd |= CMD_DST_CRCI(crci);
 	}
 
+	box = &nc->cmd[0];
+	for (i = 0; i < host->dma.num_ents; i++) {
+		box->cmd = CMD_MODE_BOX;
+
+		if (i == (host->dma.num_ents - 1))
+			box->cmd |= CMD_LC;
+		rows = (sg_dma_len(sg) % MCI_FIFOSIZE) ?
+			(sg_dma_len(sg) / MCI_FIFOSIZE) + 1:
+			(sg_dma_len(sg) / MCI_FIFOSIZE) ;
+
+		if (data->flags & MMC_DATA_READ) {
+			box->src_row_addr = msmsdcc_fifo_addr(host);
+			box->dst_row_addr = sg_dma_address(sg);
+
+			box->src_dst_len = (MCI_FIFOSIZE << 16) | (MCI_FIFOSIZE);
+			box->row_offset = MCI_FIFOSIZE;
+
+			box->num_rows = rows * ((1 << 16) + 1);
+			box->cmd |= CMD_SRC_CRCI(crci);
+		} else {
+			box->src_row_addr = sg_dma_address(sg);
+			box->dst_row_addr = msmsdcc_fifo_addr(host);
+
+			box->src_dst_len = (MCI_FIFOSIZE << 16) | (MCI_FIFOSIZE);
+			box->row_offset = (MCI_FIFOSIZE << 16);
+
+			box->num_rows = rows * ((1 << 16) + 1);
+			box->cmd |= CMD_DST_CRCI(crci);
+		}
+		box++;
+		sg++;
+	}
 
 	/* location of command block must be 64 bit aligned */
 	BUG_ON(host->dma.cmd_busaddr & 0x07);
@@ -308,14 +301,6 @@ static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
 			       DMOV_CMD_ADDR(host->dma.cmdptr_busaddr);
 	host->dma.hdr.complete_func = msmsdcc_dma_complete_func;
 
-#if MSMSDCC_DEBUG_DMA
-	printk(KERN_INFO "%s: DMA size %d, cp = 0x%.8x (addr: 0x%.8x):\n",
-	       mmc_hostname(host->mmc), xfer_size, host->dma.hdr.cmdptr,
-	       ((host->dma.hdr.cmdptr & 0x1fffffff) << 3));
-	printk(KERN_INFO "  s: 0x%.8x d: 0x%.8x l: 0x%x n: 0x%x o: 0x%x\n",
-	       box->src_row_addr, box->dst_row_addr, box->src_dst_len,
-	       box->num_rows, box->row_offset);
-#endif
 	return 0;
 }
 
@@ -324,23 +309,22 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data)
 {
 	unsigned int datactrl, timeout, irqmask;
 	unsigned long long clks;
-	void __iomem *base;
+	void __iomem *base = host->base;
 	int rc;
 
 	host->data = data;
-	host->size = data->blksz;
+	host->xfer_size = data->blksz * data->blocks;
+	host->xfer_remain = host->xfer_size;
 	host->data_xfered = 0;
 
 	msmsdcc_init_sg(host, data);
 
 	clks = (unsigned long long)data->timeout_ns * host->clk_rate;
 	do_div(clks, 1000000000UL);
-
 	timeout = data->timeout_clks + (unsigned int)clks;
-
-	base = host->base;
 	writel(timeout, base + MMCIDATATIMER);
-	writel(host->size, base + MMCIDATALENGTH);
+
+	writel(host->xfer_size, base + MMCIDATALENGTH);
 
 	datactrl = MCI_DPSM_ENABLE | (data->blksz << 4);
 
@@ -356,7 +340,7 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data)
 		 * If we have less than a FIFOSIZE of bytes to transfer,
 		 * trigger a PIO interrupt as soon as any data is available.
 		 */
-		if (host->size < MCI_FIFOSIZE)
+		if (host->xfer_size < MCI_FIFOSIZE)
 			irqmask |= MCI_RXDATAAVLBLMASK;
 	} else {
 		/*
@@ -452,7 +436,7 @@ msmsdcc_data_irq(struct msmsdcc_host *host, struct mmc_data *data,
 		 * completion handler
 		 */
 		if (host->dma.sg) {
-			printk("%s: Aborting DMA operation for "
+			printk(KERN_ERR "%s: Aborting DMA operation for "
 			       "MMC cmd 0x%p (data error)\n",
 			       mmc_hostname(host->mmc), data->mrq->cmd);
 			msm_dmov_stop_cmd(host->dma.channel, &host->dma.hdr);
@@ -518,7 +502,8 @@ msmsdcc_cmd_irq(struct msmsdcc_host *host, struct mmc_command *cmd,
 			 * handler.
 			 */
 			if (host->dma.sg) {
-				printk("%s: Aborting DMA operation for "
+				printk(KERN_ERR
+				       "%s: Aborting DMA operation for "
 				       "MMC cmd 0x%p (command err)\n",
 				       mmc_hostname(host->mmc), cmd);
 				msm_dmov_stop_cmd(host->dma.channel,
@@ -633,7 +618,7 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 		msmsdcc_kunmap_atomic(host, buffer, &flags);
 
 		host->sg_off += len;
-		host->size -= len;
+		host->xfer_remain -= len;
 		remain -= len;
 
 		if (remain)
@@ -656,7 +641,7 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 	 * If we're nearing the end of the read, switch to
 	 * "any data available" mode.
 	 */
-	if (status & MCI_RXACTIVE && host->size < MCI_FIFOSIZE)
+	if (status & MCI_RXACTIVE && host->xfer_remain < MCI_FIFOSIZE)
 		writel(MCI_RXDATAAVLBLMASK, base + MMCIMASK1);
 
 	/*
@@ -665,7 +650,7 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 	 * the chip itself has disabled the data path, and
 	 * stops us racing with our data end IRQ.
 	 */
-	if (host->size == 0) {
+	if (host->xfer_remain == 0) {
 		writel(0, base + MMCIMASK1);
 		writel(readl(base + MMCIMASK0) | MCI_DATAENDMASK,
 		       base + MMCIMASK0);
@@ -731,11 +716,11 @@ msmsdcc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	if (host->eject) {
 		if (mrq->data && !(mrq->data->flags & MMC_DATA_READ)) {
-			mrq->cmd->error = 0; 
+			mrq->cmd->error = 0;
 			mrq->data->bytes_xfered = mrq->data->blksz * mrq->data->blocks;
 		} else
 			mrq->cmd->error = -ENOMEDIUM;
-		
+
 		spin_unlock_irq(&host->lock);
 		mmc_request_done(mmc, mrq);
 		return;
@@ -765,9 +750,9 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		if (rc < 0)
 			printk(KERN_ERR
 			       "PClock enable failed (%d)\n", rc);
-			       
+
 		rc = clk_enable(host->clk);
-		if (rc < 0) 
+		if (rc < 0)
 			printk(KERN_ERR
 			       "Clock enable failed (%d)\n", rc);
 
@@ -844,7 +829,7 @@ msmsdcc_check_status(unsigned long data)
 	host->oldstat = status;
 
 	/*
-	 * XXX: Refactor this along with mmc platform 'status' to 
+	 * XXX: Refactor this along with mmc platform 'status' to
 	 *      more clearly represent 'card detect status'
 	 */
 	host->eject = !status;
@@ -1071,7 +1056,7 @@ msmsdcc_probe(struct platform_device *pdev)
 	 * XXX: Adjust these
 	 */
 	mmc->max_seg_size = mmc->max_req_size;
-	mmc->max_blk_size = 2048;
+	mmc->max_blk_size = 4096;
 	mmc->max_blk_count = mmc->max_req_size;
 
 
