@@ -819,6 +819,7 @@ msmsdcc_check_status(unsigned long data)
 	}
 
 	status = host->plat->status(mmc_dev(host->mmc));
+	host->eject = !status;
 	if (status ^ host->oldstat) {
 		printk(KERN_INFO
 		       "%s: Slot status change detected (%d -> %d)\n",
@@ -828,13 +829,8 @@ msmsdcc_check_status(unsigned long data)
 
 	host->oldstat = status;
 
-	/*
-	 * XXX: Refactor this along with mmc platform 'status' to
-	 *      more clearly represent 'card detect status'
-	 */
-	host->eject = !status;
 out:
-	if (!host->plat->status_irq)
+	if (host->timer.function)
 		mod_timer(&host->timer, jiffies + HZ);
 }
 
@@ -844,6 +840,15 @@ msmsdcc_platform_status_irq(int irq, void *dev_id)
 	struct msmsdcc_host *host = dev_id;
 	msmsdcc_check_status((unsigned long) host);
 	return IRQ_HANDLED;
+}
+
+static void
+msmsdcc_status_notify_cb(int card_present, void *dev_id)
+{
+	struct msmsdcc_host *host = dev_id;
+
+	printk("%s:\n", __func__);
+	msmsdcc_check_status((unsigned long) host);
 }
 
 /*
@@ -1064,9 +1069,14 @@ msmsdcc_probe(struct platform_device *pdev)
 	writel(0, host->base + MMCIMASK1);
 	writel(0x5c007ff, host->base + MMCICLEAR);
 
+	writel(MCI_IRQENABLE, host->base + MMCIMASK0);
+
 	/*
 	 * Setup card detect change
 	 */
+
+	memset(&host->timer, 0, sizeof(host->timer));
+
 	if (plat->status_irq) {
 		ret = request_irq(plat->status_irq,
 				  msmsdcc_platform_status_irq,
@@ -1078,6 +1088,8 @@ msmsdcc_probe(struct platform_device *pdev)
 			       plat->status_irq, ret);
 			goto clk_disable;
 		}
+	} else if (plat->register_status_notify) {
+		plat->register_status_notify(msmsdcc_status_notify_cb, host);
 	} else if (!plat->status)
 		printk(KERN_ERR "%s: No card detect facilities available\n",
 		       mmc_hostname(mmc));
@@ -1112,8 +1124,6 @@ msmsdcc_probe(struct platform_device *pdev)
 	if (ret)
 		goto irq0_free;
 
-	writel(MCI_IRQENABLE, host->base + MMCIMASK0);
-
 	mmc_set_drvdata(pdev, mmc);
 	mmc_add_host(mmc);
 
@@ -1126,6 +1136,9 @@ msmsdcc_probe(struct platform_device *pdev)
 	       (mmc->caps & MMC_CAP_4_BIT_DATA ? "enabled" : "disabled"));
 	printk(KERN_INFO "%s: MMC clock %u -> %u Hz, PCLK %u Hz\n",
 	       mmc_hostname(mmc), msmsdcc_fmin, msmsdcc_fmax, host->pclk_rate);
+	if (host->timer.function)
+		printk(KERN_INFO "%s: Polling status mode enabled\n",
+		       mmc_hostname(mmc));
 
 	return 0;
 
