@@ -53,6 +53,7 @@
 #define NAND_DEV_CMD2             NAND_REG(0x00A8)
 #define NAND_DEV_CMD_VLD          NAND_REG(0x00AC)
 #define NAND_EBI2_MISR_SIG_REG    NAND_REG(0x00B0)
+#define NAND_EBI2_ECC_BUF_CFG     NAND_REG(0x00F0)
 #define NAND_FLASH_BUFFER         NAND_REG(0x0100)
 
 /* device commands */
