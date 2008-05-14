@@ -789,7 +789,10 @@ lock_mm:
 		mm = get_task_mm(data->task);
 		if (!mm) {
 			is_submmapped = 0;
-			ret = -EINVAL;
+#if PMEM_DEBUG
+			printk("pmem: can't remap task is gone!");
+#endif
+			ret = 0;
 			up_read(&data->sem);
 			goto end2;
 		}
@@ -802,6 +805,9 @@ lock_mm:
 	down_write(&data->sem);
 	master_file = fget_light(data->master_fd, &fput);
 	if (unlikely(!master_file)) {
+#if PMEM_DEBUG
+		printk("pmem: remap requested from non-master file\n");
+#endif
 		ret = -EINVAL;
 		goto end;
 	}
