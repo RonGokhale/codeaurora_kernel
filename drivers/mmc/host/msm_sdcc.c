@@ -746,16 +746,12 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	int rc;
 
 	if (ios->clock) {
-		rc = clk_enable(host->pclk);
-		if (rc < 0)
-			printk(KERN_ERR
-			       "PClock enable failed (%d)\n", rc);
 
-		rc = clk_enable(host->clk);
-		if (rc < 0)
-			printk(KERN_ERR
-			       "Clock enable failed (%d)\n", rc);
-
+		if (!host->clks_on) {
+			clk_enable(host->pclk);
+			clk_enable(host->clk);
+			host->clks_on = 1;
+		}
 		if (ios->clock != host->clk_rate) {
 			rc = clk_set_rate(host->clk, ios->clock);
 			if (rc < 0)
@@ -765,10 +761,7 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 				host->clk_rate = ios->clock;
 		}
 		clk |= MCI_CLK_ENABLE;
-	} else {
-		clk_disable(host->clk);
-		clk_disable(host->pclk);
-	}
+	} 
 
 	if (ios->bus_width == MMC_BUS_WIDTH_4)
 		clk |= (2 << 10); /* Set WIDEBUS */
@@ -799,6 +792,12 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	if (host->pwr != pwr) {
 		host->pwr = pwr;
 		writel(pwr, host->base + MMCIPOWER);
+	}
+
+	if (!(clk & MCI_CLK_ENABLE) && host->clks_on) {
+		clk_disable(host->clk);
+		clk_disable(host->pclk);
+		host->clks_on = 0;
 	}
 }
 
@@ -1042,6 +1041,8 @@ msmsdcc_probe(struct platform_device *pdev)
 
 	host->clk_rate = clk_get_rate(host->clk);
 
+	host->clks_on = 1;
+
 	/*
 	 * Setup MMC host structure
 	 */
@@ -1173,8 +1174,12 @@ msmsdcc_suspend(struct platform_device *dev, pm_message_t state)
 		rc = mmc_suspend_host(mmc, state);
 		if (!rc) {
 			writel(0, host->base + MMCIMASK0);
-			clk_disable(host->clk);
-			clk_disable(host->pclk);
+
+			if (host->clks_on) {
+				clk_disable(host->clk);
+				clk_disable(host->pclk);
+				host->clks_on = 0;
+			}
 		}
 	}
 	return rc;
@@ -1189,8 +1194,11 @@ msmsdcc_resume(struct platform_device *dev)
 	if (mmc) {
 		struct msmsdcc_host *host = mmc_priv(mmc);
 
-		clk_enable(host->pclk);
-		clk_enable(host->clk);
+		if (!host->clks_on) {
+			clk_enable(host->pclk);
+			clk_enable(host->clk);
+			host->clks_on = 1;
+		}
 
 		writel(MCI_IRQENABLE, host->base + MMCIMASK0);
 		rc = mmc_resume_host(mmc);
