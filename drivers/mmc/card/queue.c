@@ -68,8 +68,6 @@ static int mmc_queue_thread(void *d)
 			up(&mq->thread_sem);
 			if (!try_to_freeze())
 				schedule();
-			else
-				printk("%s: Just left the fridge!\n", __func__);
 			down(&mq->thread_sem);
 			continue;
 		}
