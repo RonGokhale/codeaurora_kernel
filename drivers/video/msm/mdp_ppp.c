@@ -622,7 +622,7 @@ static void get_chroma_addr(struct mdp_img *img, struct mdp_rect *rect,
 	uint32_t compress_h = 2;
 	uint32_t  offset;
 
-	if (cfg & PPP_SRC_PLANE_PSEUDOPLNR) {
+	if (IS_PSEUDOPLNR(img->format)) {
 		offset = (rect->x / compress_h) * compress_h;
 		offset += rect->y == 0 ? 0 :
 			  ((rect->y + 1) / compress_v) * img->width;
