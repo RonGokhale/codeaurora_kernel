@@ -63,9 +63,7 @@ struct mdp_img {
 	uint32_t height;
 	uint32_t format;
 	uint32_t offset;
-	uint32_t memory_type;	/* FB or PMEM */
-	int memory_id;		/* for PMEM, the file descriptor,
-				 * for FB, ignored */
+	int memory_id;		/* the file descriptor */
 };
 
 struct mdp_blit_req {
