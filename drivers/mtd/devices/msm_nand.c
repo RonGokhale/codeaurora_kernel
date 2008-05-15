@@ -32,6 +32,8 @@
 #define MSM_NAND_DMA_BUFFER_SLOTS \
 	(MSM_NAND_DMA_BUFFER_SIZE / (sizeof(((atomic_t *)0)->counter) * 8))
 
+#define SUPPORT_WRONG_ECC_CONFIG 1
+
 #define VERBOSE 0
 
 struct msm_nand_chip {
@@ -42,6 +44,10 @@ struct msm_nand_chip {
 	uint8_t *dma_buffer;
 	dma_addr_t dma_addr;
 	unsigned CFG0, CFG1;
+#if SUPPORT_WRONG_ECC_CONFIG
+	uint32_t ecc_buf_cfg;
+	uint32_t saved_ecc_buf_cfg;
+#endif
 };
 
 #define CFG1_WIDE_FLASH (1U << 1)
@@ -279,7 +285,7 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 	struct msm_nand_chip *chip = mtd->priv;
 
 	struct {
-		dmov_s cmd[4 * 5 + 1];
+		dmov_s cmd[4 * 5 + 3];
 		unsigned cmdptr;
 		struct {
 			uint32_t cmd;
@@ -289,6 +295,10 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 			uint32_t cfg0;
 			uint32_t cfg1;
 			uint32_t exec;
+#if SUPPORT_WRONG_ECC_CONFIG
+			uint32_t ecccfg;
+			uint32_t ecccfg_restore;
+#endif
 			struct {
 				uint32_t flash_status;
 				uint32_t buffer_status;
@@ -420,6 +430,16 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 				cmd->dst = NAND_DEV0_CFG0;
 				cmd->len = 8;
 				cmd++;
+#if SUPPORT_WRONG_ECC_CONFIG
+				if (chip->saved_ecc_buf_cfg != chip->ecc_buf_cfg) {
+					dma_buffer->data.ecccfg = chip->ecc_buf_cfg;
+					cmd->cmd = 0;
+					cmd->src = msm_virt_to_dma(chip, &dma_buffer->data.ecccfg);
+					cmd->dst = NAND_EBI2_ECC_BUF_CFG;
+					cmd->len = 4;
+					cmd++;
+				}
+#endif
 			}
 
 				/* kick the execute register */
@@ -477,8 +497,18 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 					cmd++;
 			}
 		}
+#if SUPPORT_WRONG_ECC_CONFIG
+		if (chip->saved_ecc_buf_cfg != chip->ecc_buf_cfg) {
+			dma_buffer->data.ecccfg_restore = chip->saved_ecc_buf_cfg;
+			cmd->cmd = 0;
+			cmd->src = msm_virt_to_dma(chip, &dma_buffer->data.ecccfg_restore);
+			cmd->dst = NAND_EBI2_ECC_BUF_CFG;
+			cmd->len = 4;
+			cmd++;
+		}
+#endif
 
-		BUILD_BUG_ON(4 * 5 + 1 != ARRAY_SIZE(dma_buffer->cmd));
+		BUILD_BUG_ON(4 * 5 + 3 != ARRAY_SIZE(dma_buffer->cmd));
 		BUG_ON(cmd - dma_buffer->cmd > ARRAY_SIZE(dma_buffer->cmd));
 		dma_buffer->cmd[0].cmd |= CMD_OCB;
 		cmd[-1].cmd |= CMD_OCU | CMD_LC;
@@ -609,7 +639,7 @@ msm_nand_write_oob(struct mtd_info *mtd, loff_t to, struct mtd_oob_ops *ops)
 {
 	struct msm_nand_chip *chip = mtd->priv;
 	struct {
-		dmov_s cmd[4 * 5 + 1];
+		dmov_s cmd[4 * 5 + 3];
 		unsigned cmdptr;
 		struct {
 			uint32_t cmd;
@@ -619,6 +649,10 @@ msm_nand_write_oob(struct mtd_info *mtd, loff_t to, struct mtd_oob_ops *ops)
 			uint32_t cfg0;
 			uint32_t cfg1;
 			uint32_t exec;
+#if SUPPORT_WRONG_ECC_CONFIG
+			uint32_t ecccfg;
+			uint32_t ecccfg_restore;
+#endif
 			uint32_t flash_status[4];
 		} data;
 	} *dma_buffer;
@@ -721,6 +755,16 @@ msm_nand_write_oob(struct mtd_info *mtd, loff_t to, struct mtd_oob_ops *ops)
 				cmd->dst = NAND_DEV0_CFG0;
 				cmd->len = 8;
 				cmd++;
+#if SUPPORT_WRONG_ECC_CONFIG
+				if (chip->saved_ecc_buf_cfg != chip->ecc_buf_cfg) {
+					dma_buffer->data.ecccfg = chip->ecc_buf_cfg;
+					cmd->cmd = 0;
+					cmd->src = msm_virt_to_dma(chip, &dma_buffer->data.ecccfg);
+					cmd->dst = NAND_EBI2_ECC_BUF_CFG;
+					cmd->len = 4;
+					cmd++;
+				}
+#endif
 			}
 
 				/* write data block */
@@ -774,9 +818,19 @@ msm_nand_write_oob(struct mtd_info *mtd, loff_t to, struct mtd_oob_ops *ops)
 			cmd->len = 4;
 			cmd++;
 		}
+#if SUPPORT_WRONG_ECC_CONFIG
+		if (chip->saved_ecc_buf_cfg != chip->ecc_buf_cfg) {
+			dma_buffer->data.ecccfg_restore = chip->saved_ecc_buf_cfg;
+			cmd->cmd = 0;
+			cmd->src = msm_virt_to_dma(chip, &dma_buffer->data.ecccfg_restore);
+			cmd->dst = NAND_EBI2_ECC_BUF_CFG;
+			cmd->len = 4;
+			cmd++;
+		}
+#endif
 		dma_buffer->cmd[0].cmd |= CMD_OCB;
 		cmd[-1].cmd |= CMD_OCU | CMD_LC;
-		BUILD_BUG_ON(4 * 5 + 1 != ARRAY_SIZE(dma_buffer->cmd));
+		BUILD_BUG_ON(4 * 5 + 3 != ARRAY_SIZE(dma_buffer->cmd));
 		BUG_ON(cmd - dma_buffer->cmd > ARRAY_SIZE(dma_buffer->cmd));
 		dma_buffer->cmdptr = (msm_virt_to_dma(chip, dma_buffer->cmd) >> 3) | CMD_PTR_LP;
 
@@ -1029,6 +1083,10 @@ int msm_nand_scan(struct mtd_info *mtd, int maxchips)
 
 	n = flash_rd_reg(chip, NAND_EBI2_ECC_BUF_CFG);
 	printk(KERN_INFO "NAND_EBI2_ECC_BUF_CFG: %x\n", n);
+#if SUPPORT_WRONG_ECC_CONFIG
+	chip->ecc_buf_cfg = 0x203;
+	chip->saved_ecc_buf_cfg = n;
+#endif
 
 	if ((flash_id & 0xffff) == 0xaaec) /* 2Gbit Samsung chip */
 		mtd->size = 256 << 20; /* * num_chips */
