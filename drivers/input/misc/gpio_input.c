@@ -202,15 +202,34 @@ err_gpio_get_irq_num_failed:
 	return err;
 }
 
-int gpio_event_input_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int init)
+int gpio_event_input_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int func)
 {
 	int ret;
 	int i;
 	unsigned long irq_flags;
 	struct gpio_event_input_info *di = container_of(info, struct gpio_event_input_info, info);
-	struct gpio_input_state *ds;
+	struct gpio_input_state *ds = *data;
 
-	if (init) {
+	if (func == GPIO_EVENT_FUNC_SUSPEND) {
+		local_irq_save(irq_flags);
+		hrtimer_cancel(&ds->timer);
+		if (ds->use_irq)
+			for(i = 0; i < di->keymap_size; i++)
+				disable_irq(gpio_to_irq(di->keymap[i].gpio));
+		local_irq_restore(irq_flags);
+		return 0;
+	}
+	if (func == GPIO_EVENT_FUNC_RESUME) {
+		local_irq_save(irq_flags);
+		if (ds->use_irq)
+			for(i = 0; i < di->keymap_size; i++)
+				enable_irq(gpio_to_irq(di->keymap[i].gpio));
+		hrtimer_start(&ds->timer, ktime_set(0, 0), HRTIMER_MODE_REL);
+		local_irq_restore(irq_flags);
+		return 0;
+	}
+
+	if (func == GPIO_EVENT_FUNC_INIT) {
 		if (ktime_to_ns(di->poll_time) <= 0)
 			di->poll_time = ktime_set(0, 20 * NSEC_PER_MSEC);
 
@@ -259,7 +278,6 @@ int gpio_event_input_func(struct input_dev *input_dev, struct gpio_event_info *i
 	}
 
 	ret = 0;
-	ds = *data;
 	local_irq_save(irq_flags);
 	hrtimer_cancel(&ds->timer);
 	if (ds->use_irq) {

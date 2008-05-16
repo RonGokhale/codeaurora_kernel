@@ -16,10 +16,16 @@
 #ifndef _LINUX_GPIO_EVENT_H
 #define _LINUX_GPIO_EVENT_H
 
+enum {
+	GPIO_EVENT_FUNC_UNINIT  = 0x0,
+	GPIO_EVENT_FUNC_INIT    = 0x1,
+	GPIO_EVENT_FUNC_SUSPEND = 0x2,
+	GPIO_EVENT_FUNC_RESUME  = 0x3,
+};
 struct gpio_event_info {
 	int (*func)(struct input_dev *input_dev,
 		    struct gpio_event_info *info,
-		    void **data, int init);
+		    void **data, int func);
 	int (*event)(struct input_dev *input_dev,
 		     struct gpio_event_info *info,
 		     void **data, unsigned int type,
@@ -30,6 +36,7 @@ struct gpio_event_platform_data {
 	const char *name;
 	struct gpio_event_info **info;
 	size_t info_count;
+	int (*power)(const struct gpio_event_platform_data *pdata, bool on);
 };
 
 #define GPIO_EVENT_DEV_NAME "gpio-event"
@@ -49,7 +56,7 @@ enum gpio_event_matrix_flags {
 	GPIOKPF_PRINT_PHANTOM_KEYS       = 1U << 18,
 };
 
-extern int gpio_event_matrix_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int init);
+extern int gpio_event_matrix_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int func);
 struct gpio_event_matrix_info {
 	/* initialize to gpio_event_matrix_func */
 	struct gpio_event_info info;
@@ -83,7 +90,7 @@ struct gpio_event_direct_entry {
 };
 
 /* inputs */
-extern int gpio_event_input_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int init);
+extern int gpio_event_input_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int func);
 struct gpio_event_input_info {
 	/* initialize to gpio_event_input_func */
 	struct gpio_event_info info;
@@ -96,7 +103,7 @@ struct gpio_event_input_info {
 };
 
 /* outputs */
-extern int gpio_event_output_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int init);
+extern int gpio_event_output_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int func);
 extern int gpio_event_output_event(struct input_dev *input_dev, struct gpio_event_info *info, void **data, unsigned int type, unsigned int code, int value);
 struct gpio_event_output_info {
 	/* initialize to gpio_event_output_func and gpio_event_output_event */
@@ -116,7 +123,7 @@ enum gpio_event_axis_flags {
 	GPIOEAF_PRINT_EVENT              = 1U << 18,
 };
 
-extern int gpio_event_axis_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int init);
+extern int gpio_event_axis_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int func);
 struct gpio_event_axis_info {
 	/* initialize to gpio_event_axis_func */
 	struct gpio_event_info info;

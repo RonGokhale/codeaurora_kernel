@@ -262,7 +262,7 @@ err_gpio_get_irq_num_failed:
 	return err;
 }
 
-int gpio_event_matrix_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int init)
+int gpio_event_matrix_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int func)
 {
 	int i;
 	int err;
@@ -271,7 +271,12 @@ int gpio_event_matrix_func(struct input_dev *input_dev, struct gpio_event_info *
 	struct gpio_kp *kp;
 	struct gpio_event_matrix_info *mi = container_of(info, struct gpio_event_matrix_info, info);
 
-	if (init) {
+	if (func == GPIO_EVENT_FUNC_SUSPEND || func == GPIO_EVENT_FUNC_RESUME) {
+		/* TODO: disable scanning */
+		return 0;
+	}
+
+	if (func == GPIO_EVENT_FUNC_INIT) {
 		if (mi->keymap == NULL ||
 		   mi->input_gpios == NULL ||
 		   mi->output_gpios == NULL) {

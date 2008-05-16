@@ -18,12 +18,18 @@
 #include <linux/gpio_event.h>
 #include <linux/hrtimer.h>
 #include <linux/platform_device.h>
+#ifdef CONFIG_ANDROID_POWER
+#include <linux/android_power.h>
+#endif
 #include <asm/gpio.h>
 #include <asm/io.h>
 
 struct gpio_event {
 	struct input_dev *input_dev;
 	const struct gpio_event_platform_data *info;
+#ifdef CONFIG_ANDROID_POWER
+	struct android_early_suspend early_suspend;
+#endif
 	void *state[0];
 };
 
@@ -45,20 +51,20 @@ static int gpio_input_event(struct input_dev *dev, unsigned int type, unsigned i
 	return ret;
 }
 
-static int gpio_event_call_all_func(struct gpio_event *ip, int init)
+static int gpio_event_call_all_func(struct gpio_event *ip, int func)
 {
 	int i;
 	int ret;
 	struct gpio_event_info **ii;
 
-	if (init) {
+	if (func == GPIO_EVENT_FUNC_INIT || func == GPIO_EVENT_FUNC_RESUME) {
 		for(i = 0, ii = ip->info->info; i < ip->info->info_count; i++, ii++) {
 			if ((*ii)->func == NULL) {
 				ret = -ENODEV;
 				printk(KERN_ERR "gpio_event_probe: Incomplete pdata, no function\n");
 				goto err_no_func;
 			}
-			ret = (*ii)->func(ip->input_dev, *ii, &ip->state[i], 1);
+			ret = (*ii)->func(ip->input_dev, *ii, &ip->state[i], func);
 			if (ret) {
 				printk(KERN_ERR "gpio_event_probe: Incomplete pdata, no function\n");
 				goto err_func_failed;
@@ -73,13 +79,31 @@ static int gpio_event_call_all_func(struct gpio_event *ip, int init)
 	while (i > 0) {
 		i--;
 		ii--;
-		(*ii)->func(ip->input_dev, *ii, &ip->state[i], 0);
+		(*ii)->func(ip->input_dev, *ii, &ip->state[i], func & ~1);
 err_func_failed:
 err_no_func:
 		;
 	}
 	return ret;
 }
+
+#ifdef CONFIG_ANDROID_POWER
+void gpio_event_suspend(android_early_suspend_t *h)
+{
+	struct gpio_event *ip;
+	ip = container_of(h, struct gpio_event, early_suspend);
+	gpio_event_call_all_func(ip, GPIO_EVENT_FUNC_SUSPEND);
+	ip->info->power(ip->info, 0);
+}
+
+void gpio_event_resume(android_early_suspend_t *h)
+{
+	struct gpio_event *ip;
+	ip = container_of(h, struct gpio_event, early_suspend);
+	ip->info->power(ip->info, 1);
+	gpio_event_call_all_func(ip, GPIO_EVENT_FUNC_RESUME);
+}
+#endif
 
 static int __init gpio_event_probe(struct platform_device *pdev)
 {
@@ -116,11 +140,20 @@ static int __init gpio_event_probe(struct platform_device *pdev)
 	input_set_drvdata(input_dev, ip);
 	ip->input_dev = input_dev;
 	ip->info = event_info;
+#ifdef CONFIG_ANDROID_POWER
+	if (event_info->power) {
+		ip->early_suspend.level = ANDROID_EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+		ip->early_suspend.suspend = gpio_event_suspend;
+		ip->early_suspend.resume = gpio_event_resume;
+		android_register_early_suspend(&ip->early_suspend);
+		ip->info->power(ip->info, 1);
+	}
+#endif
 
 	input_dev->name = ip->info->name;
 	input_dev->event = gpio_input_event;
 
-	err = gpio_event_call_all_func(ip, 1);
+	err = gpio_event_call_all_func(ip, GPIO_EVENT_FUNC_INIT);
 	if (err)
 		goto err_call_all_func_failed;
 
@@ -133,8 +166,14 @@ static int __init gpio_event_probe(struct platform_device *pdev)
 	return 0;
 
 err_input_register_device_failed:
-	gpio_event_call_all_func(ip, 0);
+	gpio_event_call_all_func(ip, GPIO_EVENT_FUNC_UNINIT);
 err_call_all_func_failed:
+#ifdef CONFIG_ANDROID_POWER
+	if (event_info->power) {
+		android_unregister_early_suspend(&ip->early_suspend);
+		ip->info->power(ip->info, 0);
+	}
+#endif
 	input_free_device(input_dev);
 err_input_dev_alloc_failed:
 	kfree(ip);
@@ -146,7 +185,13 @@ static int gpio_event_remove(struct platform_device *pdev)
 {
 	struct gpio_event *ip = platform_get_drvdata(pdev);
 
-	gpio_event_call_all_func(ip, 0);
+	gpio_event_call_all_func(ip, GPIO_EVENT_FUNC_UNINIT);
+#ifdef CONFIG_ANDROID_POWER
+	if (ip->info->power) {
+		android_unregister_early_suspend(&ip->early_suspend);
+		ip->info->power(ip->info, 0);
+	}
+#endif
 	input_unregister_device(ip->input_dev);
 	kfree(ip);
 	return 0;
@@ -155,8 +200,6 @@ static int gpio_event_remove(struct platform_device *pdev)
 static struct platform_driver gpio_event_driver = {
 	.probe		= gpio_event_probe,
 	.remove		= gpio_event_remove,
-/*	.suspend	= gpio_event_suspend, */
-/*	.resume		= gpio_event_resume, */
 	.driver		= {
 		.name	= GPIO_EVENT_DEV_NAME,
 	},

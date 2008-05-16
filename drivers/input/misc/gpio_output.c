@@ -35,13 +35,16 @@ int gpio_event_output_event(struct input_dev *input_dev, struct gpio_event_info 
 	return 0;
 }
 
-int gpio_event_output_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int init)
+int gpio_event_output_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int func)
 {
 	int ret;
 	int i;
 	struct gpio_event_output_info *oi = container_of(info, struct gpio_event_output_info, info);
 
-	if (init) {
+	if (func == GPIO_EVENT_FUNC_SUSPEND || func == GPIO_EVENT_FUNC_RESUME)
+		return 0;
+
+	if (func == GPIO_EVENT_FUNC_INIT) {
 		int output_level = !(oi->flags & GPIOEDF_ACTIVE_HIGH);
 		for(i = 0; i < oi->keymap_size; i++)
 			input_set_capability(input_dev, oi->type, oi->keymap[i].code);

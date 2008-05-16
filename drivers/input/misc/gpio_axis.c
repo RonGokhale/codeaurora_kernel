@@ -68,7 +68,7 @@ static void gpio_event_update_axis(struct gpio_axis_state *as, int report)
 	pos = ai->map(ai, state);
 	if (ai->flags & GPIOEAF_PRINT_RAW)
 		printk("axis %d-%d raw %x, pos %d -> %d\n", ai->type, ai->code, state, old_pos, pos);
-	if (report) {
+	if (report && pos != old_pos) {
 		if (ai->type == EV_REL) {
 #if 0
 			int inc, dec;
@@ -118,7 +118,7 @@ static irqreturn_t gpio_axis_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-int gpio_event_axis_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int init)
+int gpio_event_axis_func(struct input_dev *input_dev, struct gpio_event_info *info, void **data, int func)
 {
 	int ret;
 	int i;
@@ -126,7 +126,20 @@ int gpio_event_axis_func(struct input_dev *input_dev, struct gpio_event_info *in
 	struct gpio_event_axis_info *ai = container_of(info, struct gpio_event_axis_info, info);
 	struct gpio_axis_state *as;
 
-	if (init) {
+	if (func == GPIO_EVENT_FUNC_SUSPEND) {
+		for(i = 0; i < ai->count; i++) {
+			disable_irq(gpio_to_irq(ai->gpio[i]));
+		}
+		return 0;
+	}
+	if (func == GPIO_EVENT_FUNC_RESUME) {
+		for(i = 0; i < ai->count; i++) {
+			enable_irq(gpio_to_irq(ai->gpio[i]));
+		}
+		return 0;
+	}
+
+	if (func == GPIO_EVENT_FUNC_INIT) {
 		*data = as = kmalloc(sizeof(*as), GFP_KERNEL);
 		if (as == NULL) {
 			ret = -ENOMEM;
