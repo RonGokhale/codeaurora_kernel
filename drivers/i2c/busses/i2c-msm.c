@@ -13,6 +13,8 @@
  *
  */
 
+#include <linux/clk.h>
+#include <linux/err.h>
 #include <linux/init.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
@@ -60,6 +62,7 @@ struct msm_i2c_dev {
 	struct device      *dev;
 	void __iomem       *base;		/* virtual */
 	int                 irq;
+	struct clk         *clk;
 	uint32_t            last_status;
 	uint32_t            error;
 	struct i2c_adapter  adapter;
@@ -361,12 +364,9 @@ msm_i2c_probe(struct platform_device *pdev)
 	int i2c_clk;
 	int clk_ctl;
 	int target_clk;
+	struct clk *clk;
 
 	printk(KERN_INFO "msm_i2c_probe\n");
-
-	/* FIXME: this needs to use the clock api once it is supported */
-	writel((1U << 11) | (1U << 9), MSM_CLK_CTL_BASE + 0x68);
-	mdelay(10);
 
 	/* NOTE: driver uses the static register mapping */
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -386,6 +386,12 @@ msm_i2c_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "I2C region already claimed\n");
 		return -EBUSY;
 	}
+	clk = clk_get(&pdev->dev, "i2c_clk");
+	if (IS_ERR(clk)) {
+		dev_err(&pdev->dev, "Could not get clock\n");
+		ret = PTR_ERR(clk);
+		goto err_clk_get_failed;
+	}
 
 	dev = kzalloc(sizeof(struct msm_i2c_dev), GFP_KERNEL);
 	if (!dev) {
@@ -395,10 +401,13 @@ msm_i2c_probe(struct platform_device *pdev)
 
 	dev->dev = &pdev->dev;
 	dev->irq = irq->start;
+	dev->clk = clk;
 	dev->base = (void __iomem *)(size_t)mem->start;
 	init_waitqueue_head(&dev->wait);
 	spin_lock_init(&dev->lock);
 	platform_set_drvdata(pdev, dev);
+
+	clk_enable(clk);
 
 	/* I2C_HS_CLK = I2C_CLK/(3*(HS_DIVIDER_VALUE+1) */
 	/* I2C_FS_CLK = I2C_CLK/(2*(FS_DIVIDER_VALUE+3) */
@@ -436,8 +445,11 @@ msm_i2c_probe(struct platform_device *pdev)
 err_request_irq_failed:
 	i2c_del_adapter(&dev->adapter);
 err_i2c_add_adapter_failed:
+	clk_disable(clk);
 	kfree(dev);
 err_alloc_dev_failed:
+	clk_put(clk);
+err_clk_get_failed:
 	release_mem_region(mem->start, (mem->end - mem->start) + 1);
 	return ret;
 }
@@ -451,15 +463,35 @@ msm_i2c_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 	free_irq(dev->irq, dev);
 	i2c_del_adapter(&dev->adapter);
+	clk_disable(dev->clk);
+	clk_put(dev->clk);
 	kfree(dev);
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	release_mem_region(mem->start, (mem->end - mem->start) + 1);
 	return 0;
 }
 
+static int msm_i2c_suspend(struct platform_device *pdev, pm_message_t state)
+{
+	struct msm_i2c_dev *dev = platform_get_drvdata(pdev);
+	if (dev)
+		clk_disable(dev->clk);
+	return 0;
+}
+
+static int msm_i2c_resume(struct platform_device *pdev)
+{
+	struct msm_i2c_dev *dev = platform_get_drvdata(pdev);
+	if (dev)
+		clk_enable(dev->clk);
+	return 0;
+}
+
 static struct platform_driver msm_i2c_driver = {
 	.probe		= msm_i2c_probe,
 	.remove		= msm_i2c_remove,
+	.suspend	= msm_i2c_suspend,
+	.resume		= msm_i2c_resume,
 	.driver		= {
 		.name	= "msm_i2c",
 		.owner	= THIS_MODULE,
