@@ -792,10 +792,10 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 			enable_mdp_irq(DL0_ROI_DONE);
 			ret = blit(info, req);
 			if (ret)
-				goto err;
+				goto err_bad_blit;
 			ret = mdp_ppp_wait();
 			if (ret)
-				goto err;
+				goto err_wait_failed;
 			req->dst_rect.y += 16;
 			req->src_rect.x += req->src_rect.w;
 		}
@@ -808,16 +808,17 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	enable_mdp_irq(DL0_ROI_DONE);
 	ret = blit(info, req);
 	if (ret)
-		goto err;
+		goto err_bad_blit;
 	ret = mdp_ppp_wait();
 	if (ret)
-		goto err;
+		goto err_wait_failed;
 end:
 	mdp_ppp_put_img(req);
 	return 0;
-err:
-	mdp_ppp_put_img(req);
+err_bad_blit:
 	disable_mdp_irq(DL0_ROI_DONE);
+err_wait_failed:
+	mdp_ppp_put_img(req);
 	return ret;
 }
 

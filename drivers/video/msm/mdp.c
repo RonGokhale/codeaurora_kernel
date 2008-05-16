@@ -79,12 +79,11 @@ int enable_mdp_irq(uint32_t mask)
 
 static int locked_disable_mdp_irq(uint32_t mask)
 {
-	int ret = 0;
 	/* this interrupt is already disabled! */
 	if (!(mdp_irq_mask & mask)) {
 		printk(KERN_ERR "mdp irq already off %x %x\n",
 		       mdp_irq_mask, mask);
-		ret = -1;
+		return -1;
 	}
 	/* update the irq mask to reflect the fact that the interrupt is
 	 * disabled */
@@ -92,7 +91,7 @@ static int locked_disable_mdp_irq(uint32_t mask)
 	/* if no one is waiting on the interrupt, disable it */
 	if (!mdp_irq_mask)
 		disable_irq(INT_MDP);
-	return ret;
+	return 0;
 }
 
 int disable_mdp_irq(uint32_t mask)
@@ -130,14 +129,45 @@ static irqreturn_t mdp_isr(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-void mdp_dma_wait(void)
+uint32_t mdp_check_mask(uint32_t mask)
 {
-	int r = wait_event_timeout(mdp_dma2_waitqueue,
-		!(mdp_irq_mask & DL0_DMA2_TERM_DONE), HZ);
-	if (r <= 0)
-		printk(KERN_ERR "mdp_dma_wait: timeout waiting for "
-		       "dma to complete\n");
+	uint32_t ret;
+	unsigned long irq_flags;
+
+	spin_lock_irqsave(&mdp_lock, irq_flags);
+	ret = mdp_irq_mask & mask;
+	spin_unlock_irqrestore(&mdp_lock, irq_flags);
+	return ret;
 }
+
+static int mdp_wait(uint32_t mask, wait_queue_head_t *wq)
+{
+	int ret = 0;
+	unsigned int irq_flags;
+
+	wait_event_timeout(*wq, !mdp_check_mask(mask), HZ);
+
+	spin_lock_irqsave(&mdp_lock, irq_flags);
+	if (mdp_irq_mask & mask) {
+		locked_disable_mdp_irq(mask);
+		printk(KERN_WARNING "timeout waiting for mdp to complete %x\n",
+		       mask);
+		ret = -ETIMEDOUT;
+	}
+	spin_unlock_irqrestore(&mdp_lock, irq_flags);
+
+	return ret;
+}
+
+void mdp_dma_wait(void) {
+	mdp_wait(DL0_DMA2_TERM_DONE, &mdp_dma2_waitqueue);
+}
+
+int mdp_ppp_wait(void)
+{
+	return mdp_wait(DL0_ROI_DONE, &mdp_ppp_waitqueue);
+}
+
 
 void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width,
 		     uint32_t height, uint32_t x, uint32_t y)
@@ -189,17 +219,6 @@ void mdp_set_grp_disp(unsigned disp_id)
 {
 	disp_id &= 0xf;
 	writel(disp_id, MDP_FULL_BYPASS_WORD43);
-}
-
-int mdp_ppp_wait(void)
-{
-	if (wait_event_timeout(mdp_ppp_waitqueue,
-			       !(mdp_irq_mask & DL0_ROI_DONE), HZ) <= 0) {
-		printk(KERN_ERR "mdp_ppp_wait: timeout waiting for blit to "
-				"complete\n");
-		return -1;
-	}
-	return 0;
 }
 
 #include "mdp_csc_table.h"
