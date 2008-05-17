@@ -701,15 +701,6 @@ int blit(struct fb_info *info, struct mdp_blit_req *req)
 		printk(KERN_ERR "mpd_ppp: img rect is outside of img!\n");
 		return -EINVAL;
 	}
-	if (unlikely(req->src_rect.h == 0 ||
-		     req->src_rect.w == 0)) {
-		printk(KERN_ERR "mpd_ppp: src img of zero size!\n");
-		return -EINVAL;
-	}
-	if (unlikely(req->dst_rect.h == 0 ||
-		     req->dst_rect.w == 0))
-		return 0;
-
 
 	/* set the src image configuration */
 	regs.src_cfg = src_img_cfg[req->src.format];
@@ -777,6 +768,16 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	int ret;
 
 	/* WORKAROUND FOR HARDWARE BUG IN BG TILE FETCH */
+	if (unlikely(req->src_rect.h == 0 ||
+		     req->src_rect.w == 0)) {
+		printk(KERN_ERR "mpd_ppp: src img of zero size!\n");
+		return -EINVAL;
+	}
+	if (unlikely(req->dst_rect.h == 0 ||
+		     req->dst_rect.w == 0))
+		return 0;
+
+
 	if ((req->transp_mask != MDP_TRANSP_NOP ||
 	     req->alpha != MDP_ALPHA_NOP ||
 	     req->src.format == MDP_ARGB_8888 ||
@@ -786,7 +787,7 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		int i;
 		unsigned int tiles = req->dst_rect.h / 16;
 		unsigned int remainder = req->dst_rect.h % 16;
-		req->src_rect.w = 16*req->src_rect.w/req->dst_rect.h;
+		req->src_rect.w = 16*req->src_rect.w / req->dst_rect.h;
 		req->dst_rect.h = 16;
 		for (i = 0; i < tiles; i++) {
 			enable_mdp_irq(DL0_ROI_DONE);
@@ -801,7 +802,7 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		}
 		if (!remainder)
 			goto end;
-		req->src_rect.w = remainder*req->src_rect.w/req->dst_rect.h;
+		req->src_rect.w = remainder*req->src_rect.w / req->dst_rect.h;
 		req->dst_rect.h = remainder;
 	}
 
