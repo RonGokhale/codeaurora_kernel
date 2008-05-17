@@ -856,15 +856,27 @@ msmsdcc_status_notify_cb(int card_present, void *dev_id)
  * out the transaction.
  */
 static void
-msmsdcc_transaction_expired(unsigned long data)
+msmsdcc_transaction_expired(unsigned long _data)
 {
-	struct msmsdcc_host *host = (struct msmsdcc_host *)data;
+	struct msmsdcc_host *host = (struct msmsdcc_host *) _data;
+	struct mmc_request *mrq = NULL;
+	struct mmc_command *cmd = NULL;
+	struct mmc_data *data = NULL;
 	int i;
 
-	BUG_ON(!host->mrq);
+	WARN_ON(!host->mrq);
 
-	printk(KERN_ERR "%s: Transaction 0x%p timed out\n",
-	       mmc_hostname(host->mmc), host->mrq);
+	mrq = host->mrq;
+	if (mrq) {
+		cmd = mrq->cmd;
+		data = mrq->data;
+	}
+
+
+	printk(KERN_ERR "%s: Transaction timed out\n",
+	       mmc_hostname(host->mmc));
+	printk(KERN_ERR "%s: MRQ %p, CMD %p, DATA %p\n",
+	       mmc_hostname(host->mmc), mrq, cmd, data);
 
 #ifdef CONFIG_MSMSDCC_TRACE
 	printk(KERN_ERR "%s: Trace dump:\n", mmc_hostname(host->mmc));
@@ -880,15 +892,16 @@ msmsdcc_transaction_expired(unsigned long data)
 #endif
 
 	if (host->dma.sg) {
-		printk("%s: Aborting DMA operation for "
-		       "MMC cmd 0x%p (transaction timeout)\n",
-		       mmc_hostname(host->mmc), host->mrq->cmd);
-		host->mrq->data->error = -ETIME;
+		printk("%s: Aborting DMA operation (sg %p)\n",
+		       mmc_hostname(host->mmc), host->dma.sg);
+		if (data)
+			data->error = -ETIME;
 		msm_dmov_stop_cmd(host->dma.channel, &host->dma.hdr);
 		return;
 	}
 
-	host->mrq->cmd->error = -ETIME;
+	if (cmd)
+		cmd->error = -ETIME;
 	msmsdcc_stop_data(host);
 	msmsdcc_request_end(host, host->mrq);
 }
