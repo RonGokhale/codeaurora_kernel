@@ -112,7 +112,6 @@ msmsdcc_request_end(struct msmsdcc_host *host, struct mmc_request *mrq)
 {
 
 	writel(0, host->base + MMCICOMMAND);
-	del_timer(&host->transaction_timer);
 
 	BUG_ON(host->data);
 
@@ -408,7 +407,7 @@ msmsdcc_start_command(struct msmsdcc_host *host, struct mmc_command *cmd, u32 c)
 	writel(c, base + MMCICOMMAND);
 
 	msmsdcc_trace_setflag(host, MMC_TRACE_CMDSTARTED);
-	mod_timer(&host->transaction_timer, jiffies + (5 * HZ));
+	mod_timer(&host->transaction_timer, jiffies + (HZ / 2));
 }
 
 static void
@@ -487,6 +486,7 @@ msmsdcc_cmd_irq(struct msmsdcc_host *host, struct mmc_command *cmd,
 	void __iomem *base = host->base;
 
 	host->cmd = NULL;
+	del_timer(&host->transaction_timer);
 
 	cmd->resp[0] = readl(base + MMCIRESPONSE0);
 	cmd->resp[1] = readl(base + MMCIRESPONSE1);
