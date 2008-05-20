@@ -133,6 +133,18 @@ msmsdcc_request_end(struct msmsdcc_host *host, struct mmc_request *mrq)
 	if (mrq->cmd->error == -ETIMEDOUT)
 		mdelay(5);
 
+	if (mrq->cmd->error == -ETIME) {
+		host->num_fail++;
+		if (host->num_fail > 5) {
+			printk(KERN_ERR
+			       "%s: MMC bus dead - Simulating eject\n",
+			       mmc_hostname(host->mmc));
+			host->eject = 1;
+		} else 
+			mdelay(250);
+	} else
+		host->num_fail = 0;
+
 	/*
 	 * Need to drop the host lock here; mmc_request_done may call
 	 * back into the driver...
@@ -871,7 +883,6 @@ msmsdcc_transaction_expired(unsigned long _data)
 		cmd = mrq->cmd;
 		data = mrq->data;
 	}
-
 
 	printk(KERN_ERR "%s: Transaction timed out\n",
 	       mmc_hostname(host->mmc));
