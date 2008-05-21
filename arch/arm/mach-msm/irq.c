@@ -296,8 +296,9 @@ int msm_irq_enter_sleep2(bool arm9_wake, int from_idle)
 		if (irq == -1)
 			break;
 		pend_irq = readl(VIC_IRQ_VEC_PEND_RD);
-		printk(KERN_WARNING "msm_irq_enter_sleep cleared int %d (%d)\n",
-		       irq, pend_irq);
+		if (msm_irq_debug_mask & IRQ_DEBUG_SLEEP_INT)
+			printk(KERN_INFO "msm_irq_enter_sleep cleared "
+			       "int %d (%d)\n", irq, pend_irq);
 	}
 
 	if (arm9_wake) {
