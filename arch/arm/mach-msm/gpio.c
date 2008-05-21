@@ -498,7 +498,9 @@ void msm_gpio_exit_sleep(void)
 	}
 
 	if (smem_gpio && (smem_gpio->num_fired[0] || smem_gpio->num_fired[1])) {
-		printk("gpio: fired %x %x\n", smem_gpio->num_fired[0], smem_gpio->num_fired[1]);
+		if (msm_gpio_debug_mask & GPIO_DEBUG_SLEEP)
+			printk(KERN_INFO "gpio: fired %x %x\n",
+			      smem_gpio->num_fired[0], smem_gpio->num_fired[1]);
 		tasklet_schedule(&msm_gpio_sleep_int_tasklet);
 	}
 }
