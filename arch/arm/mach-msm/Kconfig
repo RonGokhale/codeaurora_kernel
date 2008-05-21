@@ -129,6 +129,30 @@ config MSM7X00A_IDLE_SLEEP_MIN_TIME
 	help
 	  Minimum idle time in nanoseconds before entering low poer mode.
 
+menuconfig MSM_IDLE_STATS
+	bool "Collect idle statistics"
+	default y
+	help
+	  Collect idle statistics and export them in proc/msm_pm_stats.
+
+if MSM_IDLE_STATS
+
+config MSM_IDLE_STATS_FIRST_BUCKET
+	int "First bucket time"
+	default 62500
+	help
+	  Upper time limit in nanosconds of first bucket.
+
+config MSM_IDLE_STATS_BUCKET_SHIFT
+	int "Bucket shift"
+	default 2
+
+config MSM_IDLE_STATS_BUCKET_COUNT
+	int "Bucket count"
+	default 10
+
+endif # MSM7X00A_IDLE_STATS
+
 config MSM_FIQ_SUPPORT
 	default n
 	bool "Enable installation of an FIQ handler."

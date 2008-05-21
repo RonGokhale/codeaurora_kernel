@@ -20,6 +20,7 @@
 #include <linux/clk.h>
 #include <linux/init.h>
 #include <linux/pm.h>
+#include <linux/proc_fs.h>
 #include <linux/suspend.h>
 #include <linux/reboot.h>
 #include <asm/arch/msm_iomap.h>
@@ -76,6 +77,53 @@ int msm_irq_idle_sleep_allowed(void);
 
 static uint32_t *msm_pm_reset_vector;
 
+#ifdef CONFIG_MSM_IDLE_STATS
+enum msm_pm_time_stats_id {
+	MSM_PM_STAT_REQUESTED_IDLE,
+	MSM_PM_STAT_IDLE_WFI,
+	MSM_PM_STAT_IDLE_SLEEP,
+	MSM_PM_STAT_IDLE_FAILED_SLEEP,
+	MSM_PM_STAT_NOT_IDLE,
+	MSM_PM_STAT_COUNT
+};
+
+static struct msm_pm_time_stats {
+	const char *name;
+	int bucket[CONFIG_MSM_IDLE_STATS_BUCKET_COUNT];
+	int64_t min_time[CONFIG_MSM_IDLE_STATS_BUCKET_COUNT];
+	int64_t max_time[CONFIG_MSM_IDLE_STATS_BUCKET_COUNT];
+	int count;
+	int64_t total_time;
+} msm_pm_stats[MSM_PM_STAT_COUNT] = {
+	[MSM_PM_STAT_REQUESTED_IDLE].name = "idle-request",
+	[MSM_PM_STAT_IDLE_WFI].name = "idle-wfi",
+	[MSM_PM_STAT_IDLE_SLEEP].name = "idle-sleep",
+	[MSM_PM_STAT_IDLE_FAILED_SLEEP].name = "idle-failed-sleep",
+	[MSM_PM_STAT_NOT_IDLE].name = "not-idle",
+};
+
+static void msm_pm_add_stat(enum msm_pm_time_stats_id id, int64_t t)
+{
+	int i;
+	int64_t bt;
+	msm_pm_stats[id].total_time += t;
+	msm_pm_stats[id].count++;
+	bt = t;
+	do_div(bt, CONFIG_MSM_IDLE_STATS_FIRST_BUCKET);
+	if (bt < 1ULL << (CONFIG_MSM_IDLE_STATS_BUCKET_SHIFT *
+				(CONFIG_MSM_IDLE_STATS_BUCKET_COUNT - 1)))
+		i = DIV_ROUND_UP(fls((uint32_t)bt),
+					CONFIG_MSM_IDLE_STATS_BUCKET_SHIFT);
+	else
+		i = CONFIG_MSM_IDLE_STATS_BUCKET_COUNT - 1;
+	msm_pm_stats[id].bucket[i]++;
+	if (t < msm_pm_stats[id].min_time[i] || !msm_pm_stats[id].max_time[i])
+		msm_pm_stats[id].min_time[i] = t;
+	if (t > msm_pm_stats[id].max_time[i])
+		msm_pm_stats[id].max_time[i] = t;
+}
+#endif
+
 #define TARGET_CLOCK_RATE 19200000
 
 static int
@@ -117,6 +165,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 	uint32_t exit_wait_clear = 0;
 	uint32_t exit_wait_set = 0;
 	int ret;
+	int rv = -EINTR;
 
 	if (msm_pm_debug_mask & MSM_PM_DEBUG_SUSPEND)
 		printk(KERN_INFO "msm_pm_enter(): mode %d delay %u idle %d\n",
@@ -205,14 +254,17 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 		if (collapsed) {
 			cpu_init();
 			local_fiq_enable();
+			rv = 0;
 		}
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_POWER_COLLAPSE)
 			printk(KERN_INFO "msm_pm_collapse(): returned %d\n",
 			       collapsed);
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_SMSM_STATE)
 			smsm_print_sleep_info();
-	} else
+	} else {
 		msm_arch_idle();
+		rv = 0;
+	}
 
 	if (sleep_mode <= MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT) {
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_CLOCK)
@@ -254,32 +306,56 @@ enter_failed:
 	}
 	msm_irq_exit_sleep3();
 	msm_gpio_exit_sleep();
-	return 0;
+	return rv;
 }
 
 void arch_idle(void)
 {
+	int ret;
 	int64_t sleep_time;
 	int low_power = 0;
+#ifdef CONFIG_MSM_IDLE_STATS
+	int64_t t1;
+	static int64_t t2;
+	int exit_stat;
+#endif
 	int allow_sleep =
 		msm_pm_idle_sleep_mode < MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT &&
 		msm_irq_idle_sleep_allowed();
 	sleep_time = msm_timer_enter_idle();
+#ifdef CONFIG_MSM_IDLE_STATS
+	t1 = ktime_to_ns(ktime_get());
+	msm_pm_add_stat(MSM_PM_STAT_NOT_IDLE, t1 - t2);
+	msm_pm_add_stat(MSM_PM_STAT_REQUESTED_IDLE, sleep_time);
+#endif
 	if (msm_pm_debug_mask & MSM_PM_DEBUG_IDLE)
 		printk(KERN_INFO "arch_idle: sleep time %llu, allow_sleep %d\n",
 		       sleep_time, allow_sleep);
-	if (sleep_time < msm_pm_idle_sleep_min_time || !allow_sleep)
+	if (sleep_time < msm_pm_idle_sleep_min_time || !allow_sleep) {
 		msm_arch_idle();
-	else {
+#ifdef CONFIG_MSM_IDLE_STATS
+		exit_stat = MSM_PM_STAT_IDLE_WFI;
+#endif
+  	} else {
 		low_power = 1;
 		do_div(sleep_time, NSEC_PER_SEC / 32768);
 		if (sleep_time > 0x6DDD000) {
 			printk("sleep_time too big %lld\n", sleep_time);
 			sleep_time = 0x6DDD000;
 		}
-		msm_sleep(msm_pm_idle_sleep_mode, sleep_time, 1);
+		ret = msm_sleep(msm_pm_idle_sleep_mode, sleep_time, 1);
+#ifdef CONFIG_MSM_IDLE_STATS
+		if (ret)
+			exit_stat = MSM_PM_STAT_IDLE_FAILED_SLEEP;
+		else
+			exit_stat = MSM_PM_STAT_IDLE_SLEEP;
+#endif
 	}
 	msm_timer_exit_idle(low_power);
+#ifdef CONFIG_MSM_IDLE_STATS
+	t2 = ktime_to_ns(ktime_get());
+	msm_pm_add_stat(exit_stat, t2 - t1);
+#endif
 }
 
 static int msm_pm_enter(suspend_state_t state)
@@ -340,6 +416,54 @@ static struct notifier_block msm_reboot_notifier =
 	.notifier_call = msm_reboot_call,
 };
 
+#ifdef CONFIG_MSM_IDLE_STATS
+static int msm_pm_read_proc(char *page, char **start, off_t off,
+                               int count, int *eof, void *data)
+{
+	int len = 0;
+	int i, j;
+	char *p = page;
+
+	for (i = 0; i < ARRAY_SIZE(msm_pm_stats); i++) {
+		int64_t bucket_time;
+		int64_t s;
+		uint32_t ns;
+		s = msm_pm_stats[i].total_time;
+		ns = do_div(s, NSEC_PER_SEC);
+		p += sprintf(p,
+			"%s:\n"
+			"  count: %7d\n"
+			"  total_time: %lld.%09u\n",
+			msm_pm_stats[i].name,
+			msm_pm_stats[i].count,
+			s, ns);
+		bucket_time = CONFIG_MSM_IDLE_STATS_FIRST_BUCKET;
+		for (j = 0; j < CONFIG_MSM_IDLE_STATS_BUCKET_COUNT - 1; j++) {
+			s = bucket_time;
+			ns = do_div(s, NSEC_PER_SEC);
+			p += sprintf(p, "   <%2lld.%09u: %7d (%lld-%lld)\n",
+				s, ns, msm_pm_stats[i].bucket[j],
+				msm_pm_stats[i].min_time[j],
+				msm_pm_stats[i].max_time[j]);
+			bucket_time <<= CONFIG_MSM_IDLE_STATS_BUCKET_SHIFT;
+		}
+		p += sprintf(p, "  >=%2lld.%09u: %7d (%lld-%lld)\n",
+			s, ns, msm_pm_stats[i].bucket[j],
+			msm_pm_stats[i].min_time[j],
+			msm_pm_stats[i].max_time[j]);
+	}
+	*start = page + off;
+
+	len = p - page;
+	if (len > off)
+		len -= off;
+	else
+		len = 0;
+
+	return len < count ? len  : count;
+}
+#endif
+
 static int __init msm_pm_init(void)
 {
 	pm_power_off = msm_pm_power_off;
@@ -360,6 +484,11 @@ static int __init msm_pm_init(void)
 	}
 
 	suspend_set_ops(&msm_pm_ops);
+
+#ifdef CONFIG_MSM_IDLE_STATS
+	create_proc_read_entry("msm_pm_stats", S_IRUGO,
+				NULL, msm_pm_read_proc, NULL);
+#endif
 	return 0;
 }
 
