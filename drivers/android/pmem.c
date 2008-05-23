@@ -122,13 +122,11 @@ struct pmem_info {
 	/* in no_allocator mode the first mapper gets the whole space and sets
 	 * this flag */
 	unsigned allocated;
-#if PMEM_DEBUG
 	/* for debugging, creates a list of pmem file structs, the
 	 * data_list_sem should be taken before pmem_data->sem if both are
 	 * needed */
-	struct rw_semaphore data_list_sem;
+	struct semaphore data_list_sem;
 	struct list_head data_list;
-#endif
 	/* pmem_sem protects the bitmap array
 	 * a write lock should be held when modifying entries in bitmap
 	 * a read lock should be held when reading data from bits or
@@ -270,20 +268,22 @@ static int pmem_release(struct inode *inode, struct file *file)
 	int id = get_id(file), ret = 0;
 
 
-	down_write(&pmem[id].data_list_sem);
+	down(&pmem[id].data_list_sem);
 	/* if this file is a master, revoke all the memory in the connected
 	 *  files */
 	if (PMEM_FLAGS_MASTERMAP & data->flags) {
 		struct pmem_data *sub_data;
-		list_for_each(elt, &data->list) {
+		list_for_each(elt, &pmem[id].data_list) {
 			sub_data = list_entry(elt, struct pmem_data, list);
+			down_write(&sub_data->sem);
 			if (PMEM_FLAGS_SUBMAP & sub_data->flags &&
 			    file == sub_data->master_file)
 				pmem_revoke(file, sub_data);
+			up_write(&sub_data->sem);
 		}
 	}
 	list_del(&data->list);
-	up_write(&pmem[id].data_list_sem);
+	up(&pmem[id].data_list_sem);
 
 
 	down_write(&data->sem);
@@ -346,9 +346,9 @@ static int pmem_open(struct inode *inode, struct file *file)
 	file->private_data = data;
 	INIT_LIST_HEAD(&data->list);
 
-	down_write(&pmem[id].data_list_sem);
+	down(&pmem[id].data_list_sem);
 	list_add(&data->list, &pmem[id].data_list);
-	up_write(&pmem[id].data_list_sem);
+	up(&pmem[id].data_list_sem);
 	return ret;
 }
 
@@ -1106,7 +1106,7 @@ static ssize_t debug_read(struct file *file, char __user *buf, size_t count,
 	n = scnprintf(buffer, debug_bufmax,
 		      "pid #: mapped regions (offset, len) (offset,len)...\n");
 
-	down_write(&pmem[id].data_list_sem);
+	down(&pmem[id].data_list_sem);
 	list_for_each(elt, &pmem[id].data_list) {
 		data = list_entry(elt, struct pmem_data, list);
 		down_read(&data->sem);
@@ -1123,7 +1123,7 @@ static ssize_t debug_read(struct file *file, char __user *buf, size_t count,
 		n += scnprintf(buffer + n, debug_bufmax - n, "\n");
 		up_read(&data->sem);
 	}
-	up_write(&pmem[id].data_list_sem);
+	up(&pmem[id].data_list_sem);
 
 	n++;
 	buffer[n] = 0;
@@ -1157,10 +1157,8 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 	pmem[id].size = pdata->size;
 	pmem[id].ioctl = ioctl;
 	init_rwsem(&pmem[id].bitmap_sem);
-#if PMEM_DEBUG
-	init_rwsem(&pmem[id].data_list_sem);
+	init_MUTEX(&pmem[id].data_list_sem);
 	INIT_LIST_HEAD(&pmem[id].data_list);
-#endif
 	pmem[id].dev.name = pdata->name;
 	pmem[id].dev.minor = id;
 	pmem[id].dev.fops = &pmem_fops;
