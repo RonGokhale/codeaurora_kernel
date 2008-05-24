@@ -23,6 +23,8 @@
 #include <linux/clk.h>
 #include <linux/platform_device.h>
 #include <linux/kernel_debugger.h>
+#include <linux/kernel_stat.h>
+#include <linux/irq.h>
 #include <linux/delay.h>
 
 #include <asm/arch/system.h>
@@ -184,6 +186,23 @@ static int debug_printf_nfiq(void *cookie, const char *fmt, ...)
 
 #define dprintf(fmt...) debug_printf(0, fmt)
 
+unsigned int last_irqs[NR_IRQS];
+
+static void dump_irqs(void)
+{
+	int n;
+	dprintf("irqnr  total      since last\n");
+	for (n = 1; n < NR_IRQS; n++) {
+		struct irqaction *act = irq_desc[n].action;
+		if (!act)
+			continue;
+		dprintf("%5d: %10u %10u %s\n", n, 
+			kstat_cpu(0).irqs[n], kstat_cpu(0).irqs[n] - last_irqs[n],
+			act->name ? act->name : "???");
+		last_irqs[n] = kstat_cpu(0).irqs[n];
+	}
+}
+
 static void debug_exec(const char *cmd, unsigned *regs)
 {
 	if (!strcmp(cmd, "pc")) {
@@ -202,6 +221,8 @@ static void debug_exec(const char *cmd, unsigned *regs)
 	} else if (!strcmp(cmd, "reboot")) {
 		if (msm_reset_hook)
 			msm_reset_hook(0);
+	} else if (!strcmp(cmd, "irqs")) {
+		dump_irqs();
 	} else if (!strcmp(cmd, "kmsg")) {
 		dump_kernel_log();
 	} else if (!strcmp(cmd, "version")) {
