@@ -1,7 +1,21 @@
 if ARCH_MSM7X00A
 
-comment "MSM7X00A Board Type"
-	depends on ARCH_MSM7X00A
+config MSM_AMSS_VERSION
+	int
+	default 6210 if MSM_AMSS_VERSION_6210
+	default 6220 if MSM_AMSS_VERSION_6220
+
+choice
+	prompt "AMSS modem firmware version"
+
+	default MSM_AMSS_VERSION_6210
+
+	config MSM_AMSS_VERSION_6210
+		bool "6.2.10"
+
+	config MSM_AMSS_VERSION_6220
+		bool "6.2.20"
+endchoice
 
 config MACH_HALIBUT
 	depends on ARCH_MSM7X00A
@@ -208,11 +222,11 @@ config MSM_HW3D
 	  library.
 
 config MSM_ADSP
-	tristate "MSM aDSP driver"
+	tristate "MSM ADSP support"
 	depends on ARCH_MSM7X00A
 	default y
 	help
-	  Provides access to registers needed by the userspace aDSP library.
+	  Provides access to ADSP modules from kernel and userspace.
 
 config MSM_PERF
 	tristate "MSM Performance Counter Driver"

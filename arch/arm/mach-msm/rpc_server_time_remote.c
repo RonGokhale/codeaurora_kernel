@@ -21,10 +21,16 @@
 /* time_remote_mtoa server definitions. */
 
 #define TIME_REMOTE_MTOA_PROG 0x3000005d
-#define TIME_REMOTE_MTOA_VERS 0
-
 #define RPC_TIME_REMOTE_MTOA_NULL   0
 #define RPC_TIME_TOD_SET_APPS_BASES 2
+
+#if CONFIG_MSM_AMSS_VERSION==6210
+#define TIME_REMOTE_MTOA_VERS 0
+#elif CONFIG_MSM_AMSS_VERSION==6220
+#define TIME_REMOTE_MTOA_VERS 0x9202a8e4
+#else
+#error "Unknown AMSS version"
+#endif
 
 struct rpc_time_tod_set_apps_bases_args {
 	uint32_t tick;
