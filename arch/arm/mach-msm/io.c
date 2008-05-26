@@ -50,6 +50,7 @@ static struct map_desc msm_io_desc[] __initdata = {
 	MSM_DEVICE(PMDH),
 	MSM_DEVICE(EMDH),
 	MSM_DEVICE(MDP),
+	MSM_DEVICE(AD5),
 	{
 		.virtual =  MSM_SHARED_RAM_BASE,
 		.pfn =      __phys_to_pfn(MSM_SHARED_RAM_PHYS),
