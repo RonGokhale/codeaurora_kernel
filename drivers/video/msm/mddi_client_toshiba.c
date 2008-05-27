@@ -24,6 +24,7 @@
 
 static DECLARE_WAIT_QUEUE_HEAD(toshiba_vsync_wait);
 static volatile int toshiba_got_int;
+static struct msmfb_callback *toshiba_callback;
 
 static void dummy_function(struct mddi_panel_info *panel)
 {
@@ -56,6 +57,17 @@ static void dummy_function(struct mddi_panel_info *panel)
 #define GPIOSEL     (BASE7 + 0x00)
 #define GPIOSEL_VWAKEINT (1U << 0)
 
+static void toshiba_request_vsync(struct mddi_panel_info *pi,
+				  struct msmfb_callback *callback)
+{
+	toshiba_callback = callback;
+
+	if (toshiba_got_int) {
+		toshiba_got_int = 0;
+		mddi_activate_link(pi->mddi); /* clears interrupt */
+	}
+}
+
 static void toshiba_wait_vsync(struct mddi_panel_info *pi)
 {
 	if (toshiba_got_int) {
@@ -72,13 +84,17 @@ static void toshiba_wait_vsync(struct mddi_panel_info *pi)
 static struct mddi_panel_ops toshiba_panel_ops = {
 	.enable = dummy_function,
 	.disable = dummy_function,
-	.wait_vsync = toshiba_wait_vsync
+	.wait_vsync = toshiba_wait_vsync,
+	.request_vsync = toshiba_request_vsync
 };
 
-irqreturn_t toshiba_vsync_interrupt(int irq, void *_mddi)
+irqreturn_t toshiba_vsync_interrupt(int irq, void *data)
 {
-	/* struct mddi_info *mddi = _mddi; */
 	toshiba_got_int = 1;
+	if (toshiba_callback) {
+		toshiba_callback->func(toshiba_callback);
+		toshiba_callback = 0;
+	}
 	wake_up(&toshiba_vsync_wait);
 	return IRQ_HANDLED;
 }
@@ -106,7 +122,8 @@ static int mddi_toshiba_setup_vsync(struct mddi_info *mddi, int init)
 	if (ret < 0)
 		goto err_get_irq_num_failed;
 
-	ret = request_irq(irq, toshiba_vsync_interrupt, IRQF_TRIGGER_RISING, "vsync", mddi);
+	ret = request_irq(irq, toshiba_vsync_interrupt, IRQF_TRIGGER_RISING,
+			  "vsync", NULL);
 	if (ret)
 		goto err_request_irq_failed;
 	printk(KERN_INFO "vsync on gpio %d now %d\n",

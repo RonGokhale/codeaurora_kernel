@@ -24,6 +24,7 @@
 
 #include <asm/io.h>
 #include <asm/arch/msm_iomap.h>
+#include <asm/arch/msm_fb.h>
 
 #include "mdp_hw.h"
 
@@ -47,6 +48,7 @@ void mdp_set_ccs(uint16_t *ccs)
 
 static DECLARE_WAIT_QUEUE_HEAD(mdp_dma2_waitqueue);
 static DECLARE_WAIT_QUEUE_HEAD(mdp_ppp_waitqueue);
+static struct msmfb_callback *dma_callback;
 
 static unsigned int mdp_irq_mask;
 static DEFINE_SPINLOCK(mdp_lock);
@@ -105,6 +107,7 @@ int disable_mdp_irq(uint32_t mask)
 	return ret;
 }
 
+
 static irqreturn_t mdp_isr(int irq, void *data)
 {
 	uint32_t status;
@@ -116,8 +119,13 @@ static irqreturn_t mdp_isr(int irq, void *data)
 	writel(status, MDP_INTR_CLEAR);
 
 	status &= mdp_irq_mask;
-	if (status & DL0_DMA2_TERM_DONE)
+	if (status & DL0_DMA2_TERM_DONE) {
+		if (dma_callback) {
+			dma_callback->func(dma_callback);
+			dma_callback = NULL;
+		}
 		wake_up(&mdp_dma2_waitqueue);
+	}
 
 	if (status & DL0_ROI_DONE)
 		wake_up(&mdp_ppp_waitqueue);
@@ -159,7 +167,8 @@ static int mdp_wait(uint32_t mask, wait_queue_head_t *wq)
 	return ret;
 }
 
-void mdp_dma_wait(void) {
+void mdp_dma_wait(void)
+{
 	mdp_wait(DL0_DMA2_TERM_DONE, &mdp_dma2_waitqueue);
 }
 
@@ -170,7 +179,9 @@ int mdp_ppp_wait(void)
 
 
 void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width,
-		     uint32_t height, uint32_t x, uint32_t y)
+		     uint32_t height, uint32_t x, uint32_t y,
+		     struct msmfb_callback *callback)
+
 {
 
 	uint32_t dma2_cfg;
@@ -180,6 +191,8 @@ void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width,
 		printk(KERN_ERR "mdp_dma_to_mddi: busy\n");
 		return;
 	}
+
+	dma_callback = callback;
 
 	dma2_cfg = DMA_PACK_TIGHT |
 		DMA_PACK_ALIGN_LSB |
@@ -224,7 +237,7 @@ void mdp_set_grp_disp(unsigned disp_id)
 #include "mdp_csc_table.h"
 #include "mdp_scale_tables.h"
 
-int mdp_init(void)
+int mdp_init(struct fb_info *info)
 {
 	int ret;
 	int n;
@@ -236,7 +249,7 @@ int mdp_init(void)
 		clk_enable(clk);
 #endif
 
-	ret = request_irq(INT_MDP, mdp_isr, IRQF_DISABLED, "msm_mdp", 0);
+	ret = request_irq(INT_MDP, mdp_isr, IRQF_DISABLED, "msm_mdp", NULL);
 	disable_irq(INT_MDP);
 	mdp_irq_mask = 0;
 

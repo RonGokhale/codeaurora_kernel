@@ -29,12 +29,18 @@ struct mddi_panel_info
 	unsigned long fb_size;
 };
 
+struct msmfb_callback {
+	void (*func)(struct msmfb_callback *);
+};
+
 struct mddi_panel_ops
 {
 	void (*power)(struct mddi_panel_info *panel, int on);
 	void (*enable)(struct mddi_panel_info *panel);
 	void (*disable)(struct mddi_panel_info *panel);
 	void (*wait_vsync)(struct mddi_panel_info *panel);
+	void (*request_vsync)(struct mddi_panel_info *panel,
+			      struct msmfb_callback *callback);
 };
 
 int mddi_add_panel(struct mddi_info *mddi, struct mddi_panel_ops *ops);
@@ -43,8 +49,9 @@ unsigned mddi_remote_read(struct mddi_info *mddi, unsigned reg);
 void mddi_activate_link(struct mddi_info *mddi);
 void mddi_hibernate_disable(struct mddi_info *mddi, int on);
 
-void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width, uint32_t height,
-		     uint32_t x, uint32_t y);
+void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width,
+		     uint32_t height, uint32_t x, uint32_t y,
+		     struct msmfb_callback* callback);
 void mdp_dma_wait(void);
 int mdp_ppp_wait(void);
 int enable_mdp_irq(uint32_t mask);
