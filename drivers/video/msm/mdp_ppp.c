@@ -565,6 +565,7 @@ int get_img(struct mdp_img *img, struct fb_info *info, unsigned long *start,
 {
 	int put_needed, ret = -1;
 	struct file *file = fget_light(img->memory_id, &put_needed);
+
 	if (file == NULL)
 		return -1;
 
@@ -600,7 +601,7 @@ static void flush_imgs(struct mdp_blit_req *req, struct mdp_regs *regs)
 	get_len(&req->src, &req->src_rect, regs->src_bpp, &src0_len,
 		&src1_len);
 	flush_pmem_fd(req->src.memory_id, req->src.offset, src0_len);
-	if (regs->src_cfg & PPP_SRC_PLANE_PSEUDOPLNR)
+	if (IS_PSEUDOPLNR(req->src.format))
 		flush_pmem_fd(req->src.memory_id, req->src.offset + src0_len,
 			      src1_len);
 
@@ -608,7 +609,7 @@ static void flush_imgs(struct mdp_blit_req *req, struct mdp_regs *regs)
 	get_len(&req->dst, &req->dst_rect, regs->dst_bpp, &dst0_len,
 		&dst1_len);
 	flush_pmem_fd(req->dst.memory_id, req->dst.offset, dst0_len);
-	if (regs->dst_cfg & PPP_SRC_PLANE_PSEUDOPLNR)
+	if (IS_PSEUDOPLNR(req->dst.format))
 		flush_pmem_fd(req->dst.memory_id, req->dst.offset + dst0_len,
 			      dst1_len);
 #endif
@@ -778,12 +779,12 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		return 0;
 
 
-	if ((req->transp_mask != MDP_TRANSP_NOP ||
+	if (unlikely((req->transp_mask != MDP_TRANSP_NOP ||
 	     req->alpha != MDP_ALPHA_NOP ||
 	     req->src.format == MDP_ARGB_8888 ||
 	     req->src.format == MDP_RGBA_8888) &&
 	     req->flags & MDP_ROT_90 &&
-	     req->dst_rect.w <= 16) {
+	     req->dst_rect.w <= 16)) {
 		int i;
 		unsigned int tiles = req->dst_rect.h / 16;
 		unsigned int remainder = req->dst_rect.h % 16;
@@ -822,4 +823,3 @@ err_wait_failed:
 	mdp_ppp_put_img(req);
 	return ret;
 }
-
