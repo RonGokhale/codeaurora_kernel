@@ -768,6 +768,8 @@ void flush_pmem_fd(unsigned int fd, unsigned long offset, unsigned long len)
 	id = get_id(file);
 	data = (struct pmem_data *)file->private_data;
 	fput_light(file, fput_needed);
+	if (!pmem[id].cached)
+		return;
 
 	down_read(&data->sem);
 	vaddr = pmem_start_vaddr(id, data);
@@ -1186,7 +1188,10 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 		}
 	}
 
-	pmem[id].vbase = ioremap_cached(pmem[id].base, pmem[id].size);
+	if (pmem[id].cached)
+		pmem[id].vbase = ioremap_cached(pmem[id].base, pmem[id].size);
+	else
+		pmem[id].vbase = ioremap(pmem[id].base, pmem[id].size);
 	if (pmem[id].vbase == 0)
 		goto error_cant_remap;
 
