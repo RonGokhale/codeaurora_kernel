@@ -91,6 +91,13 @@ struct smsm_interrupt_info
 #define SMSM_OEMSBL_RELEASE    0x10000
 #define SMSM_PWRC_SUSPEND      0x200000
 
+#define SMSM_WKUP_REASON_RPC	0x00000001
+#define SMSM_WKUP_REASON_INT	0x00000002
+#define SMSM_WKUP_REASON_GPIO	0x00000004
+#define SMSM_WKUP_REASON_TIMER	0x00000008
+#define SMSM_WKUP_REASON_ALARM	0x00000010
+#define SMSM_WKUP_REASON_RESET	0x00000020
+
 void *smem_alloc(unsigned id, unsigned size);
 int smsm_change_state(uint32_t clear_mask, uint32_t set_mask);
 uint32_t smsm_get_state(void);
