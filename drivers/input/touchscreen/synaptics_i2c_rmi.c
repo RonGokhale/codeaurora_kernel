@@ -22,6 +22,9 @@
 #include <linux/delay.h>
 #include <linux/synaptics_i2c_rmi.h>
 #include <asm/io.h>
+#ifdef CONFIG_ANDROID_POWER
+#include <linux/android_power.h>
+#endif
 
 #define swap(x, y) do { typeof(x) z = x; x = y; y = z; } while (0)
 
@@ -37,7 +40,15 @@ struct synaptics_ts_data {
 	int snap_up[2];
 	uint32_t flags;
 	int (*power)(int on);
+#ifdef CONFIG_ANDROID_POWER
+	struct android_early_suspend early_suspend;
+#endif
 };
+
+#ifdef CONFIG_ANDROID_POWER
+static void synaptics_ts_early_suspend(struct android_early_suspend *h);
+static void synaptics_ts_late_resume(struct android_early_suspend *h);
+#endif
 
 static int synaptics_init_panel(struct synaptics_ts_data *ts)
 {
@@ -416,6 +427,14 @@ static int synaptics_ts_probe(struct i2c_client *client)
 		ts->timer.function = synaptics_ts_timer_func;
 		hrtimer_start(&ts->timer, ktime_set(1, 0), HRTIMER_MODE_REL);
 	}
+#ifdef CONFIG_ANDROID_POWER
+	ts->early_suspend.level = ANDROID_EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+	ts->early_suspend.suspend = synaptics_ts_early_suspend;
+	ts->early_suspend.resume = synaptics_ts_late_resume;
+	android_register_early_suspend(&ts->early_suspend);
+	if (android_power_is_driver_suspended())
+		synaptics_ts_early_suspend(&ts->early_suspend);
+#endif
 
 	printk(KERN_INFO "synaptics_ts_probe: Start touchscreen %s in %s mode\n", ts->input_dev->name, ts->use_irq ? "interrupt" : "polling");
 
@@ -436,6 +455,9 @@ err_check_functionality_failed:
 static int synaptics_ts_remove(struct i2c_client *client)
 {
 	struct synaptics_ts_data *ts = i2c_get_clientdata(client);
+#ifdef CONFIG_ANDROID_POWER
+	android_unregister_early_suspend(&ts->early_suspend);
+#endif
 	if (ts->use_irq)
 		free_irq(client->irq, ts);
 	else
@@ -496,11 +518,29 @@ static int synaptics_ts_resume(struct i2c_client *client)
 	return 0;
 }
 
+#ifdef CONFIG_ANDROID_POWER
+static void synaptics_ts_early_suspend(struct android_early_suspend *h)
+{
+	struct synaptics_ts_data *ts;
+	ts = container_of(h, struct synaptics_ts_data, early_suspend);
+	synaptics_ts_suspend(ts->client, PMSG_SUSPEND);
+}
+
+static void synaptics_ts_late_resume(struct android_early_suspend *h)
+{
+	struct synaptics_ts_data *ts;
+	ts = container_of(h, struct synaptics_ts_data, early_suspend);
+	synaptics_ts_resume(ts->client);
+}
+#endif
+
 static struct i2c_driver synaptics_ts_driver = {
 	.probe		= synaptics_ts_probe,
 	.remove		= synaptics_ts_remove,
+#ifndef CONFIG_ANDROID_POWER
 	.suspend	= synaptics_ts_suspend,
 	.resume		= synaptics_ts_resume,
+#endif
 	.driver = {
 		.name	= SYNAPTICS_I2C_RMI_NAME,
 	},
