@@ -48,11 +48,15 @@ struct clkctl_acpu_speed  acpu_freq_tbl[] = {
  * Various clocks in the system
  */
 
-#define MSM_CLOCK(clk_name, clk_id) { \
+#define MSM_CLOCK_FLAGS(clk_name, clk_id, clk_flags) {	\
 	.name = clk_name, \
 	.owner = THIS_MODULE, \
 	.id = clk_id, \
+	.flags = clk_flags, \
 	}
+
+#define MSM_CLOCK(name, id) MSM_CLOCK_FLAGS(name, id, 0)
+#define MSM_CLOCK_MM(name, id) MSM_CLOCK_FLAGS(name, id, CLKFLAG_USE_MIN_MAX_TO_SET)
 
 static struct clk clocks[] = {
 	MSM_CLOCK("acpu_clk", ACPU_CLK),
@@ -72,12 +76,7 @@ static struct clk clocks[] = {
 	MSM_CLOCK("mdp_clk", MDP_CLK),
 	MSM_CLOCK("pbus_clk", PBUS_CLK),
 	MSM_CLOCK("pcm_clk", PCM_CLK),
-	{
-		.name		= "pmdh_clk",
-		.owner		= THIS_MODULE,
-		.id		= PMDH_CLK,
-		.flags = CLKFLAG_USE_MIN_MAX_TO_SET,
-	},
+	MSM_CLOCK_MM("pmdh_clk", PMDH_CLK),
 	MSM_CLOCK("sdac_clk", SDAC_CLK),
 	MSM_CLOCK("sdc1_clk", SDC1_CLK),
 	MSM_CLOCK("sdc1_pclk", SDC1_PCLK),
@@ -99,7 +98,7 @@ static struct clk clocks[] = {
 	MSM_CLOCK("usb_hs_clk", USB_HS_CLK),
 	MSM_CLOCK("usb_hs_pclk", USB_HS_PCLK),
 	MSM_CLOCK("usb_otg_clk", USB_OTG_CLK),
-	MSM_CLOCK("vdc_clk", VDC_CLK),
+	MSM_CLOCK_MM("vdc_clk", VDC_CLK),
 	MSM_CLOCK("vfe_clk", VFE_CLK),
 	MSM_CLOCK("vfe_mdc_clk", VFE_MDC_CLK),
 };
