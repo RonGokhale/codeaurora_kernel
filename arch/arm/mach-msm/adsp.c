@@ -268,6 +268,11 @@ int msm_adsp_write(struct msm_adsp_module *module, unsigned dsp_queue_addr,
 
 	spin_lock_irqsave(&adsp_cmd_lock, flags);
 
+	if (module->state != ADSP_STATE_ENABLED) {
+		spin_unlock_irqrestore(&adsp_cmd_lock, flags);
+		pr_err("adsp: module %s not enabled before write\n", module->name);
+		return -ENODEV;
+	}
 	dsp_q_addr = adsp_get_queue_offset(info, dsp_queue_addr);
 	dsp_q_addr &= ADSP_RTOS_WRITE_CTRL_WORD_DSP_ADDR_M;
 
