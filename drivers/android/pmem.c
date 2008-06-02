@@ -836,10 +836,9 @@ err_no_file:
 	return ret;
 }
 
-int pmem_remap(struct pmem_region *region, struct file *file,
-	       unsigned operation)
+static int pmem_remap_data(struct pmem_region *region, struct file *file,
+		    struct pmem_data *data, unsigned operation)
 {
-	struct pmem_data *data = (struct pmem_data *)file->private_data;
 	struct pmem_region_node *region_node;
 	struct list_head *elt, *elt2;
 	struct mm_struct *mm = 0;
@@ -969,17 +968,21 @@ end2:
 	return ret;
 }
 
+int pmem_remap(struct pmem_region *region, struct file *file,
+	       unsigned operation)
+{
+	struct pmem_data *data = (struct pmem_data *)file->private_data;
+	return pmem_remap_data(region, file, data, operation);
+}
+
 static void pmem_revoke(struct file *file, struct pmem_data *data)
 {
 	struct pmem_region_node *region_node;
 	struct list_head *elt, *elt2;
-	int id = get_id(file);
 
 	list_for_each_safe(elt, elt2, &data->region_list) {
 		region_node = list_entry(elt, struct pmem_region_node, list);
-		pmem_unmap_pfn_range(id, data->vma, data,
-				     region_node->region.offset,
-				     region_node->region.len);
+		pmem_remap_data(&region_node->region, file, data, PMEM_UNMAP);
 		list_del(elt);
 		kfree(region_node);
 	}
@@ -1032,6 +1035,7 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			if (copy_from_user(&region, (void __user *)arg,
 						sizeof(struct pmem_region)))
 				return -EFAULT;
+			data = (struct pmem_data *)file->private_data;
 			return pmem_remap(&region, file, PMEM_MAP);
 		}
 		break;
@@ -1041,6 +1045,7 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			if (copy_from_user(&region, (void __user *)arg,
 						sizeof(struct pmem_region)))
 				return -EFAULT;
+			data = (struct pmem_data *)file->private_data;
 			return pmem_remap(&region, file, PMEM_UNMAP);
 			break;
 		}
