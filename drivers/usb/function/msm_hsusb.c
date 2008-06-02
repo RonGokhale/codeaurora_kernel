@@ -117,6 +117,7 @@ struct usb_endpoint
 };
 
 static void usb_vbus_online(struct work_struct *w);
+static void usb_vbus_offline(struct work_struct *w);
 
 struct usb_info
 {
@@ -154,6 +155,7 @@ struct usb_info
 	void (*phy_reset)(void);
 
 	struct work_struct vbus_online;
+	struct work_struct vbus_offline;
 	unsigned phy_status;
 	unsigned phy_fail_count;
 
@@ -898,6 +900,7 @@ static void usb_prepare(struct usb_info *ui)
 	ui->setup_req = usb_ept_alloc_req(&ui->ep0in, SETUP_BUF_SIZE);
 
 	INIT_WORK(&ui->vbus_online, usb_vbus_online);
+	INIT_WORK(&ui->vbus_offline, usb_vbus_offline);
 }
 
 static void usb_suspend_phy(struct usb_info *ui)
@@ -1046,13 +1049,15 @@ static void usb_start(struct usb_info *ui)
 		return;
 	}
 
-	/* ready to go -- get us started if VBUS is already present,
-	 * otherwise, prepare us for the next VBUS change event
+	/* Bring us online to initialize everything, but if VBUS
+	 * is not actually present, take us back offline immediately
+	 * after, to park us in low power mode
 	 */
 	spin_lock_irqsave(&ui->lock, flags);
 	ui->running = 1;
-	if (vbus)
-		schedule_work(&ui->vbus_online);
+	schedule_work(&ui->vbus_online);
+	if (!vbus)
+		schedule_work(&ui->vbus_offline);
 	spin_unlock_irqrestore(&ui->lock, flags);
 }
 
@@ -1150,18 +1155,39 @@ static int usb_free(struct usb_info *ui, int ret)
 static void usb_vbus_online(struct work_struct *w)
 {
 	struct usb_info *ui = container_of(w, struct usb_info, vbus_online);
-	printk("hsusb: clock enable\n");
+	pr_info("hsusb: vbus online, clock enable\n");
 	clk_enable(ui->clk);
 	clk_enable(ui->pclk);
 	usb_reset(ui);
 }
 
+static void usb_vbus_offline(struct work_struct *w)
+{
+	struct usb_info *ui = container_of(w, struct usb_info, vbus_offline);
+	unsigned long flags;
+
+	pr_info("hsusb: vbus offline, clock disable\n");
+
+	spin_lock_irqsave(&ui->lock, flags);
+	if(ui->online != 0) {
+		ui->online = 0;			
+		flush_all_endpoints(ui);
+		set_configuration(ui, 0);
+	}
+	usb_suspend_phy(ui);
+	clk_disable(ui->pclk);
+	clk_disable(ui->clk);
+	spin_unlock_irqrestore(&ui->lock, flags);
+}
+
 void msm_hsusb_set_vbus_state(int online)
 {
+	unsigned long flags;
 	struct usb_info *ui = the_usb_info;
 
+	spin_lock_irqsave(&ui->lock, flags);
 	if (vbus == online)
-		return;
+		goto done;
 
 	vbus = online;
 
@@ -1169,24 +1195,15 @@ void msm_hsusb_set_vbus_state(int online)
 	 * the VBUS state and return
 	 */
 	if (!ui || !ui->running)
-		return;
+		goto done;
 
 	if (online) {
 		schedule_work(&ui->vbus_online);
 	} else {
-		unsigned long flags;
-		spin_lock_irqsave(&ui->lock, flags);
-		if(ui->online != 0) {
-			ui->online = 0;			
-			flush_all_endpoints(ui);
-			set_configuration(ui, 0);
-		}
-		usb_suspend_phy(ui);
-		clk_disable(ui->pclk);
-		clk_disable(ui->clk);
-		printk("hsusb: clock disable\n");
-		spin_unlock_irqrestore(&ui->lock, flags);
+		schedule_work(&ui->vbus_offline);
 	}
+done:
+	spin_unlock_irqrestore(&ui->lock, flags);
 }
 
 void usb_function_reenumerate(void)
