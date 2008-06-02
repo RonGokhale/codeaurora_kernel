@@ -1078,18 +1078,15 @@ msmsdcc_probe(struct platform_device *pdev)
 
 	if (msmsdcc_4bit)
 		mmc->caps |= MMC_CAP_4_BIT_DATA;
-	mmc->max_hw_segs = 16;
+
 	mmc->max_phys_segs = NR_SG;
-	mmc->max_req_size = 16777216;
+	mmc->max_hw_segs = NR_SG;
+	mmc->max_blk_size = 4096;	/* MCI_DATA_CTL BLOCKSIZE up to 4096 */
+	mmc->max_blk_count = 65536;
 
-	/*
-	 * XXX: Adjust these
-	 */
+	mmc->max_req_size = 33554432;	/* MCI_DATA_LENGTH is 25 bits */
 	mmc->max_seg_size = mmc->max_req_size;
-	mmc->max_blk_size = 4096;
-	mmc->max_blk_count = mmc->max_req_size;
-
-
+		
 	writel(0, host->base + MMCIMASK0);
 	writel(0, host->base + MMCIMASK1);
 	writel(0x5c007ff, host->base + MMCICLEAR);
