@@ -415,7 +415,13 @@ msmsdcc_data_irq(struct msmsdcc_host *host, struct mmc_data *data,
 	      unsigned int status)
 {
 	if (status & MCI_DATABLOCKEND) {
-		host->data_xfered += data->blksz;
+		/*
+		 * Don't use DATABLOCKEND as an indicator
+		 * for progress during DMA since blocks
+		 * come faster than we can respond to them.
+		 */
+		if (!host->dma.sg)
+			host->data_xfered += data->blksz;
 		msmsdcc_trace_setflag(host, MMC_TRACE_DATABLKEND);
 	}
 
@@ -456,17 +462,20 @@ msmsdcc_data_irq(struct msmsdcc_host *host, struct mmc_data *data,
 	}
 	if (status & MCI_DATAEND) {
 
-		/*
-		 * There appears to be an issue in the SDCC where
-		 * if you request a short block transfer, you may
-		 * get your DATAEND/DATABLKEND irq before the PIO
-		 * data. Check to see if there is still data to be
-		 * read, and then simulate a PIO IRQ.
-		 */
-		uint32_t status2 = readl(host->base + MMCISTATUS);
+		if (!host->dma.sg) {
+			/*
+			 * There appears to be an issue in the SDCC where
+			 * if you request a short block transfer, you may
+			 * get your DATAEND/DATABLKEND irq before the PIO
+			 * data. Check to see if there is still data to be
+			 * read, and then simulate a PIO IRQ.
+			 */
+			uint32_t status2 = readl(host->base + MMCISTATUS);
 
-		if (!host->dma.sg && (status2 & MCI_RXDATAAVLBL))
-			msmsdcc_pio_irq(1, host);
+			if (status2 & MCI_RXDATAAVLBL)
+				msmsdcc_pio_irq(1, host);
+		} else
+			host->data_xfered = data->blksz * data->blocks;
 
 		msmsdcc_trace_setflag(host, MMC_TRACE_DATAEND);
 		msmsdcc_stop_data(host);
