@@ -149,7 +149,6 @@ static u32 mmc_sd_num_wr_blocks(struct mmc_card *card)
 	struct mmc_request mrq;
 	struct mmc_command cmd;
 	struct mmc_data data;
-	unsigned int timeout_us;
 
 	struct scatterlist sg;
 
@@ -173,18 +172,6 @@ static u32 mmc_sd_num_wr_blocks(struct mmc_card *card)
 
 	memset(&data, 0, sizeof(struct mmc_data));
 
-	data.timeout_ns = card->csd.tacc_ns * 100;
-	data.timeout_clks = card->csd.tacc_clks * 100;
-
-	timeout_us = data.timeout_ns / 1000;
-	timeout_us += data.timeout_clks * 1000 /
-		(card->host->ios.clock / 1000);
-
-	if (timeout_us > 100000) {
-		data.timeout_ns = 100000000;
-		data.timeout_clks = 0;
-	}
-
 	data.blksz = 4;
 	data.blocks = 1;
 	data.flags = MMC_DATA_READ;
@@ -195,6 +182,8 @@ static u32 mmc_sd_num_wr_blocks(struct mmc_card *card)
 
 	mrq.cmd = &cmd;
 	mrq.data = &data;
+
+	mmc_set_data_timeout(&data, card);
 
 	sg_init_one(&sg, &blocks, 4);
 
