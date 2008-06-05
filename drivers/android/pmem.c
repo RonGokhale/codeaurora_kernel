@@ -48,6 +48,7 @@
  */
 #define PMEM_FLAGS_SUBMAP 0x1 << 3
 #define PMEM_FLAGS_UNSUBMAP 0x1 << 4
+#define PMEM_FLAGS_REVOKED 0x1 << 5
 
 
 struct pmem_data {
@@ -258,7 +259,9 @@ static int pmem_free(int id, int index)
 	return 0;
 }
 
+#if 0
 static void pmem_revoke(struct file *file, struct pmem_data *data);
+#endif
 
 static int pmem_release(struct inode *inode, struct file *file)
 {
@@ -271,17 +274,17 @@ static int pmem_release(struct inode *inode, struct file *file)
 	down(&pmem[id].data_list_sem);
 	/* if this file is a master, revoke all the memory in the connected
 	 *  files */
+#if 0
 	if (PMEM_FLAGS_MASTERMAP & data->flags) {
 		struct pmem_data *sub_data;
 		list_for_each(elt, &pmem[id].data_list) {
 			sub_data = list_entry(elt, struct pmem_data, list);
-			down_write(&sub_data->sem);
 			if (PMEM_FLAGS_SUBMAP & sub_data->flags &&
-			    file == sub_data->master_file)
+			    file == sub_data->master_file) {
 				pmem_revoke(file, sub_data);
-			up_write(&sub_data->sem);
 		}
 	}
+#endif
 	list_del(&data->list);
 	up(&pmem[id].data_list_sem);
 
@@ -881,6 +884,7 @@ lock_mm:
 		ret = -EINVAL;
 		goto end;
 	}
+
 	/* check that the file didn't get mmaped before we could take the
 	 * data sem, this should be safe b/c you can only submap each file
 	 * once */
@@ -973,8 +977,10 @@ int pmem_remap(struct pmem_region *region, struct file *file,
 {
 	struct pmem_data *data = (struct pmem_data *)file->private_data;
 	return pmem_remap_data(region, file, data, operation);
+	return -EINVAL;
 }
 
+#if 0
 static void pmem_revoke(struct file *file, struct pmem_data *data)
 {
 	struct pmem_region_node *region_node;
@@ -983,11 +989,10 @@ static void pmem_revoke(struct file *file, struct pmem_data *data)
 	list_for_each_safe(elt, elt2, &data->region_list) {
 		region_node = list_entry(elt, struct pmem_region_node, list);
 		pmem_remap_data(&region_node->region, file, data, PMEM_UNMAP);
-		list_del(elt);
-		kfree(region_node);
 	}
 	data->master_file = NULL;
 }
+#endif
 
 static void pmem_get_size(struct pmem_region *region, struct file *file)
 {
