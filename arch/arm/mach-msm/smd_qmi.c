@@ -95,7 +95,7 @@ void qmi_ctxt_init(struct qmi_ctxt *ctxt, unsigned n)
 
 static struct workqueue_struct *qmi_wq;
 
-static int verbose;
+static int verbose = 0;
 
 /* anyone waiting for a state change waits here */
 static DECLARE_WAIT_QUEUE_HEAD(qmi_wait_queue);
@@ -566,10 +566,25 @@ static int qmi_network_get_profile(struct qmi_ctxt *ctxt)
 	return qmi_send(ctxt, &msg);
 }
 
-static int qmi_network_up(struct qmi_ctxt *ctxt, const char *apn)
+static int qmi_network_up(struct qmi_ctxt *ctxt, char *apn)
 {
 	unsigned char data[96 + QMUX_OVERHEAD];
 	struct qmi_msg msg;
+	char *user;
+	char *pass;
+
+	for (user = apn; *user; user++) {
+		if (*user == ' ') {
+			*user++ = 0;
+			break;
+		}
+	}
+	for (pass = user; *pass; pass++) {
+		if (*pass == ' ') {
+			*pass++ = 0;
+			break;
+		}
+	}
 
 	msg.service = QMI_WDS;
 	msg.client_id = ctxt->wds_client_id;
@@ -581,7 +596,14 @@ static int qmi_network_up(struct qmi_ctxt *ctxt, const char *apn)
 	ctxt->wds_txn_id += 2;
 
 	qmi_add_tlv(&msg, 0x14, strlen(apn), apn);
-
+	if (*user) {
+		unsigned char x;
+		x = 3;
+		qmi_add_tlv(&msg, 0x16, 1, &x);
+		qmi_add_tlv(&msg, 0x17, strlen(user), user);
+		if (*pass)
+			qmi_add_tlv(&msg, 0x18, strlen(pass), pass);
+	}
 	return qmi_send(ctxt, &msg);
 }
 
