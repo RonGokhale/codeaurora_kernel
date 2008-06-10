@@ -169,7 +169,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 	int rv = -EINTR;
 
 	if (msm_pm_debug_mask & MSM_PM_DEBUG_SUSPEND)
-		printk(KERN_INFO "msm_pm_enter(): mode %d delay %u idle %d\n",
+		printk(KERN_INFO "msm_sleep(): mode %d delay %u idle %d\n",
 		       sleep_mode, sleep_delay, from_idle);
 
 	switch (sleep_mode) {
@@ -204,13 +204,13 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 		smsm_set_sleep_duration(sleep_delay);
 		ret = smsm_change_state(SMSM_RUN, enter_state);
 		if (ret) {
-			printk(KERN_ERR "msm_pm_enter(): smsm_change_state %x failed\n", enter_state);
+			printk(KERN_ERR "msm_sleep(): smsm_change_state %x failed\n", enter_state);
 			enter_state = 0;
 			exit_state = 0;
 		}
 		ret = msm_pm_wait_state(enter_wait_set, enter_wait_clear, 0, 0);
 		if (ret) {
-			printk(KERN_INFO "msm_pm_enter(): msm_pm_wait_state failed, %x\n", smsm_get_state());
+			printk(KERN_INFO "msm_sleep(): msm_pm_wait_state failed, %x\n", smsm_get_state());
 			goto enter_failed;
 		}
 	}
@@ -225,7 +225,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 		writel(0, A11RAMBACKBIAS);
 
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_STATE)
-			printk(KERN_INFO "msm_pm_enter(): enter "
+			printk(KERN_INFO "msm_sleep(): enter "
 			       "A11S_CLK_SLEEP_EN %x, A11S_PWRDOWN %x, "
 			       "smsm_get_state %x\n", readl(A11S_CLK_SLEEP_EN),
 			       readl(A11S_PWRDOWN), smsm_get_state());
@@ -234,7 +234,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 	if (sleep_mode <= MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT) {
 		pm_saved_acpu_clk_rate = clk_get_rate(acpu_clk);
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_CLOCK)
-			printk(KERN_INFO "msm_pm_enter(): change clk %ld -> %d"
+			printk(KERN_INFO "msm_sleep(): change clk %ld -> %d"
 			       "\n", pm_saved_acpu_clk_rate, TARGET_CLOCK_RATE);
 		acpuclk_set_rate(acpu_clk, TARGET_CLOCK_RATE, 1);
 	}
@@ -246,7 +246,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 		msm_pm_reset_vector[0] = 0xE51FF004; /* ldr pc, 4 */
 		msm_pm_reset_vector[1] = virt_to_phys(msm_pm_collapse_exit);
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_RESET_VECTOR)
-			printk(KERN_INFO "msm_pm_enter: vector %x %x -> "
+			printk(KERN_INFO "msm_sleep(): vector %x %x -> "
 			       "%x %x\n", saved_vector[0], saved_vector[1],
 			       msm_pm_reset_vector[0], msm_pm_reset_vector[1]);
 		collapsed = msm_pm_collapse();
@@ -269,14 +269,14 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 
 	if (sleep_mode <= MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT) {
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_CLOCK)
-			printk(KERN_INFO "msm_pm_enter(): change clk %d -> %ld"
+			printk(KERN_INFO "msm_sleep(): change clk %d -> %ld"
 			       "\n", TARGET_CLOCK_RATE, pm_saved_acpu_clk_rate);
 		if (acpuclk_set_rate(acpu_clk, pm_saved_acpu_clk_rate, 1) < 0)
-			printk(KERN_ERR "msm_pm_enter(): clk_set_rate %ld "
+			printk(KERN_ERR "msm_sleep(): clk_set_rate %ld "
 			       "failed\n", pm_saved_acpu_clk_rate);
 	}
 	if (msm_pm_debug_mask & MSM_PM_DEBUG_STATE)
-		printk(KERN_INFO "msm_pm_enter(): exit A11S_CLK_SLEEP_EN %x, "
+		printk(KERN_INFO "msm_sleep(): exit A11S_CLK_SLEEP_EN %x, "
 		       "A11S_PWRDOWN %x, smsm_get_state %x\n",
 		       readl(A11S_CLK_SLEEP_EN), readl(A11S_PWRDOWN),
 		       smsm_get_state());
@@ -288,7 +288,7 @@ enter_failed:
 		smsm_change_state(enter_state, exit_state);
 		msm_pm_wait_state(exit_wait_set, exit_wait_clear, 0, 0);
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_STATE)
-			printk(KERN_INFO "msm_pm_enter(): sleep exit "
+			printk(KERN_INFO "msm_sleep(): sleep exit "
 			       "A11S_CLK_SLEEP_EN %x, A11S_PWRDOWN %x, "
 			       "smsm_get_state %x\n", readl(A11S_CLK_SLEEP_EN),
 			       readl(A11S_PWRDOWN), smsm_get_state());
@@ -300,7 +300,7 @@ enter_failed:
 		smsm_change_state(exit_state, SMSM_RUN);
 		msm_pm_wait_state(SMSM_RUN, 0, 0, 0);
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_STATE)
-			printk(KERN_INFO "msm_pm_enter(): sleep exit "
+			printk(KERN_INFO "msm_sleep(): sleep exit "
 			       "A11S_CLK_SLEEP_EN %x, A11S_PWRDOWN %x, "
 			       "smsm_get_state %x\n", readl(A11S_CLK_SLEEP_EN),
 			       readl(A11S_PWRDOWN), smsm_get_state());
