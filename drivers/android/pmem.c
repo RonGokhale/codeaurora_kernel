@@ -48,7 +48,6 @@
  */
 #define PMEM_FLAGS_SUBMAP 0x1 << 3
 #define PMEM_FLAGS_UNSUBMAP 0x1 << 4
-#define PMEM_FLAGS_REVOKED 0x1 << 5
 
 
 struct pmem_data {
@@ -259,9 +258,7 @@ static int pmem_free(int id, int index)
 	return 0;
 }
 
-#if 0
 static void pmem_revoke(struct file *file, struct pmem_data *data);
-#endif
 
 static int pmem_release(struct inode *inode, struct file *file)
 {
@@ -274,17 +271,19 @@ static int pmem_release(struct inode *inode, struct file *file)
 	down(&pmem[id].data_list_sem);
 	/* if this file is a master, revoke all the memory in the connected
 	 *  files */
-#if 0
 	if (PMEM_FLAGS_MASTERMAP & data->flags) {
 		struct pmem_data *sub_data;
 		list_for_each(elt, &pmem[id].data_list) {
 			sub_data = list_entry(elt, struct pmem_data, list);
+			down_write(&sub_data->sem);
 			if (PMEM_FLAGS_SUBMAP & sub_data->flags &&
 			    file == sub_data->master_file) {
+				up_write(&sub_data->sem);
 				pmem_revoke(file, sub_data);
+			}  else
+				up_write(&sub_data->sem);
 		}
 	}
-#endif
 	list_del(&data->list);
 	up(&pmem[id].data_list_sem);
 
@@ -839,14 +838,76 @@ err_no_file:
 	return ret;
 }
 
-static int pmem_remap_data(struct pmem_region *region, struct file *file,
-		    struct pmem_data *data, unsigned operation)
+static void pmem_unlock_data_and_mm(struct pmem_data *data,
+				    struct mm_struct *mm)
 {
-	struct pmem_region_node *region_node;
-	struct list_head *elt, *elt2;
-	struct mm_struct *mm = 0;
-	int ret = 0, id = get_id(file), is_submmapped = 0;
+	up_write(&data->sem);
+	if (mm != NULL) {
+		up_write(&mm->mmap_sem);
+		mmput(mm);
+	}
+}
 
+static int pmem_lock_data_and_mm(struct file *file, struct pmem_data *data,
+				 struct mm_struct **locked_mm)
+{
+	int ret = 0;
+	struct mm_struct *mm = NULL;
+	*locked_mm = NULL;
+lock_mm:
+	down_read(&data->sem);
+	if (PMEM_IS_SUBMAP(data)) {
+		mm = get_task_mm(data->task);
+		if (!mm) {
+#if PMEM_DEBUG
+			printk("pmem: can't remap task is gone!");
+#endif
+			up_read(&data->sem);
+			return -1;
+		}
+	}
+	up_read(&data->sem);
+
+	if (mm)
+		down_write(&mm->mmap_sem);
+
+	down_write(&data->sem);
+	/* check that the file didn't get mmaped before we could take the
+	 * data sem, this should be safe b/c you can only submap each file
+	 * once */
+	if (PMEM_IS_SUBMAP(data) && !mm) {
+		pmem_unlock_data_and_mm(data, mm);
+		up_write(&data->sem);
+		goto lock_mm;
+	}
+	/* now check that vma.mm is still there, it could have been
+	 * deleted by vma_close before we could get the data->sem */
+	if ((data->flags & PMEM_FLAGS_UNSUBMAP) && (mm != NULL)) {
+		/* might as well release this */
+		if (data->flags & PMEM_FLAGS_SUBMAP) {
+			put_task_struct(data->task);
+			data->task = NULL;
+			/* lower the submap flag to show the mm is gone */
+			data->flags &= ~(PMEM_FLAGS_SUBMAP);
+		}
+		pmem_unlock_data_and_mm(data, mm);
+		return -1;
+	}
+	*locked_mm = mm;
+	return ret;
+}
+
+int pmem_remap(struct pmem_region *region, struct file *file,
+		      unsigned operation)
+{
+	int ret;
+	struct pmem_region_node *region_node;
+	struct mm_struct *mm = NULL;
+	struct list_head *elt, *elt2;
+	int id = get_id(file);
+	struct pmem_data *data = (struct pmem_data *)file->private_data;
+
+	/* pmem region must be aligned on a page boundry */
 	if (unlikely(!PMEM_IS_PAGE_ALIGNED(region->offset) ||
 		     !PMEM_IS_PAGE_ALIGNED(region->len))) {
 #if PMEM_DEBUG
@@ -856,58 +917,24 @@ static int pmem_remap_data(struct pmem_region *region, struct file *file,
 		return -EINVAL;
 	}
 
-lock_mm:
-	down_read(&data->sem);
-	if (PMEM_IS_SUBMAP(data)) {
-		is_submmapped = 1;
-		mm = get_task_mm(data->task);
-		if (!mm) {
-			is_submmapped = 0;
-#if PMEM_DEBUG
-			printk("pmem: can't remap task is gone!");
-#endif
-			ret = 0;
-			up_read(&data->sem);
-			goto end2;
-		}
-	}
-	up_read(&data->sem);
+	/* if userspace requests a region of len 0, there's nothing to do */
+	if (region->len == 0)
+		return 0;
 
-	if (is_submmapped)
-		down_write(&mm->mmap_sem);
+	/* lock the mm and data */
+	ret = pmem_lock_data_and_mm(file, data, &mm);
+	if (ret)
+		return 0;
 
-	down_write(&data->sem);
+	/* only the owner of the master file can remap the client fds
+	 * that back in it */
 	if (!is_master_owner(file)) {
 #if PMEM_DEBUG
 		printk("pmem: remap requested from non-master process\n");
 #endif
 		ret = -EINVAL;
-		goto end;
+		goto err;
 	}
-
-	/* check that the file didn't get mmaped before we could take the
-	 * data sem, this should be safe b/c you can only submap each file
-	 * once */
-	if (PMEM_IS_SUBMAP(data) && !is_submmapped) {
-		up_write(&data->sem);
-		goto lock_mm;
-	}
-	/* now check that vma.mm is still there, it could have been
-	 * deleted by vma_close before we could get the data->sem */
-	if ((data->flags & PMEM_FLAGS_UNSUBMAP) && is_submmapped) {
-		is_submmapped = 0;
-		/* might as well release this */
-		up_write(&mm->mmap_sem);
-		mmput(mm);
-		if (data->flags & PMEM_FLAGS_SUBMAP) {
-			put_task_struct(data->task);
-			data->task = NULL;
-			/* lower the submap flag to show the mm is gone */
-			data->flags &= ~(PMEM_FLAGS_SUBMAP);
-		}
-	}
-	if (region->len == 0)
-		goto end;
 
 	/* check that the requested range is within the src allocation */
 	if (unlikely((region->offset > pmem_len(id, data)) ||
@@ -916,10 +943,10 @@ lock_mm:
 		printk(KERN_INFO "pmem: suballoc doesn't fit in src_file!\n");
 #endif
 		ret = -EINVAL;
-		goto end;
+		goto err;
 	}
 
-	if (is_submmapped) {
+	if (PMEM_IS_SUBMAP(data)) {
 		if (operation == PMEM_MAP)
 			ret = pmem_map_pfn_range(id, data->vma, data,
 			      region->offset, region->len);
@@ -936,7 +963,7 @@ lock_mm:
 #if PMEM_DEBUG
 			printk(KERN_INFO "No space to allocate metadata!");
 #endif
-			goto end;
+			goto err;
 		}
 		region_node->region = *region;
 		list_add(&region_node->list, &data->region_list);
@@ -959,40 +986,40 @@ lock_mm:
 				"region!");
 #endif
 			ret = -EINVAL;
-			goto end;
+			goto err;
 		}
 	}
-end:
-	up_write(&data->sem);
-end2:
-	if (is_submmapped) {
-		up_write(&mm->mmap_sem);
-		mmput(mm);
-	}
+err:
+	pmem_unlock_data_and_mm(data, mm);
 	return ret;
 }
 
-int pmem_remap(struct pmem_region *region, struct file *file,
-	       unsigned operation)
-{
-	struct pmem_data *data = (struct pmem_data *)file->private_data;
-	return pmem_remap_data(region, file, data, operation);
-	return -EINVAL;
-}
-
-#if 0
 static void pmem_revoke(struct file *file, struct pmem_data *data)
 {
 	struct pmem_region_node *region_node;
 	struct list_head *elt, *elt2;
+	struct mm_struct *mm = NULL;
+	int id = get_id(file);
+	int ret = 0;
 
+	ret = pmem_lock_data_and_mm(file, data, &mm);
+	/* if lock_data_and_mm fails either the task that mapped the fd, or
+	 * the vma that mapped it have already gone away, nothing more
+	 * needs to be done */
+	if (ret)
+		return;
+	/* unmap everything */
+	pmem_unmap_pfn_range(id, data->vma, data, 0, pmem_len(id, data));
+	/* delete the region list nothing is mapped any more */
 	list_for_each_safe(elt, elt2, &data->region_list) {
 		region_node = list_entry(elt, struct pmem_region_node, list);
-		pmem_remap_data(&region_node->region, file, data, PMEM_UNMAP);
+		list_del(elt);
+		kfree(region_node);
 	}
+	/* delete the master file */
 	data->master_file = NULL;
+	pmem_unlock_data_and_mm(data, mm);
 }
-#endif
 
 static void pmem_get_size(struct pmem_region *region, struct file *file)
 {
