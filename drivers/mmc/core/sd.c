@@ -595,9 +595,6 @@ static void mmc_sd_resume(struct mmc_host *host)
 		err = mmc_sd_init_card(host, host->ocr, host->card);
 
 		if (err) {
-			printk(KERN_ERR "%s: Re-init card rc = %d (retries = %d)\n",
-			       mmc_hostname(host), err, retries);
-			mdelay(5);
 			retries--;
 			continue;
 		}
@@ -607,6 +604,8 @@ static void mmc_sd_resume(struct mmc_host *host)
 	mmc_release_host(host);
 
 	if (err) {
+		printk(KERN_ERR "%s: Re-init card failure (err = %d)\n",
+		       mmc_hostname(host),  err);
 		mmc_sd_remove(host);
 
 		mmc_claim_host(host);
