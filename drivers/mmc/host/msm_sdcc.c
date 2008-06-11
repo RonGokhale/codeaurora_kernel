@@ -1203,10 +1203,6 @@ msmsdcc_suspend(struct platform_device *dev, pm_message_t state)
 
 		if (mmc->card && mmc->card->type != MMC_TYPE_SDIO)
 			rc = mmc_suspend_host(mmc, state);
-		else
-			printk(KERN_DEBUG "%s: Skipping SDIO suspend\n",
-			       mmc_hostname(mmc));
-
 		if (!rc) {
 			writel(0, host->base + MMCIMASK0);
 
@@ -1238,9 +1234,6 @@ msmsdcc_resume(struct platform_device *dev)
 		writel(MCI_IRQENABLE, host->base + MMCIMASK0);
 		if (mmc->card && mmc->card->type != MMC_TYPE_SDIO)
 			rc = mmc_resume_host(mmc);
-		else
-			printk(KERN_DEBUG "%s: Skipping SDIO resume\n",
-			       mmc_hostname(mmc));
 	}
 	return rc;
 }
