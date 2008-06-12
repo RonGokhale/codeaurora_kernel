@@ -29,17 +29,20 @@
 #include <linux/clk.h>
 #include <linux/scatterlist.h>
 #include <linux/platform_device.h>
+#include <linux/dma-mapping.h>
+#include <linux/debugfs.h>
 
 #include <asm/cacheflush.h>
 #include <asm/div64.h>
 #include <asm/io.h>
 #include <asm/sizes.h>
 #include <asm/memory.h>
+#include <asm/dma-mapping.h>
+
 #include <asm/mach/mmc.h>
 #include <asm/arch/msm_iomap.h>
 #include <asm/arch/dma.h>
-#include <linux/dma-mapping.h>
-#include <asm/dma-mapping.h>
+
 
 #include "msm_sdcc.h"
 
@@ -47,6 +50,12 @@
 
 #define DBG(host, fmt, args...)	\
 	pr_debug("%s: %s: " fmt, mmc_hostname(host->mmc), __func__ , args)
+
+#if defined(CONFIG_DEBUG_FS)
+static void msmsdcc_dbg_createhost(struct msmsdcc_host *);
+
+static struct dentry *debugfs_dir;
+#endif
 
 static unsigned int msmsdcc_fmin = 144000;
 static unsigned int msmsdcc_fmax = 20000000;
@@ -1171,6 +1180,9 @@ msmsdcc_probe(struct platform_device *pdev)
 		printk(KERN_INFO "%s: Polling status mode enabled\n",
 		       mmc_hostname(mmc));
 
+#if defined(CONFIG_DEBUG_FS)
+	msmsdcc_dbg_createhost(host);
+#endif
 	return 0;
 
  irq0_free:
@@ -1302,3 +1314,75 @@ module_param(msmsdcc_4bit, uint, 0444);
 
 MODULE_DESCRIPTION("Qualcomm MSM 7X00A Multimedia Card Interface driver");
 MODULE_LICENSE("GPL");
+
+#if defined(CONFIG_DEBUG_FS)
+
+static int 
+msmsdcc_dbg_state_open(struct inode *inode, struct file *file)
+{
+	file->private_data = inode->i_private;
+	return 0;
+}
+
+static ssize_t
+msmsdcc_dbg_state_read(struct file *file, char __user *ubuf,
+		       size_t count, loff_t *ppos)
+{
+	struct msmsdcc_host *host = (struct msmsdcc_host *) file->private_data;
+	char buf[1024];
+	int max, i;
+
+	i = 0;
+	max = sizeof(buf) -1;
+
+	i += scnprintf(buf + i, max - i, "STAT: %p %p %p\n", host->mrq, host->cmd,
+		       host->data);
+	if (host->cmd) {
+		struct mmc_command *cmd = host->cmd;
+
+		i+= scnprintf(buf + i, max - i, "CMD : %.8x %.8x %.8x\n",
+			      cmd->opcode, cmd->arg, cmd->flags);
+	}
+	if (host->data) {
+		struct mmc_data *data = host->data;
+		i+= scnprintf(buf + i, max - i, "DAT0: %.8x %.8x %.8x %.8x %.8x %.8x\n",
+			      data->timeout_ns, data->timeout_clks,
+			      data->blksz, data->blocks, data->error,
+			      data->flags);
+		i+= scnprintf(buf + i, max - i, "DAT1: %.8x %.8x %.8x %p\n",
+			      host->xfer_size, host->xfer_remain,
+			      host->data_xfered, host->dma.sg);
+	}
+
+	return simple_read_from_buffer(ubuf, count, ppos, buf, i);
+}
+
+static const struct file_operations msmsdcc_dbg_state_ops = {
+	.read	= msmsdcc_dbg_state_read,
+	.open	= msmsdcc_dbg_state_open,
+};
+
+static void msmsdcc_dbg_createhost(struct msmsdcc_host *host)
+{
+	if (debugfs_dir) {
+		debugfs_create_file(mmc_hostname(host->mmc), 0644, debugfs_dir,
+				    host, &msmsdcc_dbg_state_ops);
+	}
+}
+
+static int __init msmsdcc_dbg_init(void)
+{
+	int err;
+
+	debugfs_dir = debugfs_create_dir("msmsdcc", 0);
+	if (IS_ERR(debugfs_dir)) {
+		err = PTR_ERR(debugfs_dir);
+		debugfs_dir = NULL;
+		return err;
+	}
+
+	return 0;
+}
+
+device_initcall(msmsdcc_dbg_init);
+#endif
