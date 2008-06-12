@@ -77,6 +77,8 @@ int msm_irq_idle_sleep_allowed(void);
 
 static uint32_t *msm_pm_reset_vector;
 
+static uint32_t msm_pm_max_sleep_time;
+
 #ifdef CONFIG_MSM_IDLE_STATS
 enum msm_pm_time_stats_id {
 	MSM_PM_STAT_REQUESTED_IDLE,
@@ -362,7 +364,7 @@ void arch_idle(void)
 
 static int msm_pm_enter(suspend_state_t state)
 {
-	msm_sleep(msm_pm_sleep_mode, 0, 0);
+	msm_sleep(msm_pm_sleep_mode, msm_pm_max_sleep_time, 0);
 	return 0;
 }
 
@@ -466,10 +468,31 @@ static int msm_pm_read_proc(char *page, char **start, off_t off,
 }
 #endif
 
+void msm_pm_set_max_sleep_time(int64_t max_sleep_time_ns)
+{
+	int64_t max_sleep_time_bs = max_sleep_time_ns;
+
+	/* Convert from ns -> BS units */
+	do_div(max_sleep_time_bs, NSEC_PER_SEC / 32768);
+
+	if (max_sleep_time_bs > 0x6DDD000)
+		msm_pm_max_sleep_time = (uint32_t) 0x6DDD000;
+	else
+		msm_pm_max_sleep_time = (uint32_t) max_sleep_time_bs;
+
+	if (msm_pm_debug_mask & MSM_PM_DEBUG_SUSPEND)
+		printk("%s: Requested %lldns (%lldbs), Giving %ubs\n",
+		       __func__, max_sleep_time_ns, 
+		       max_sleep_time_bs, 
+		       msm_pm_max_sleep_time);
+}
+EXPORT_SYMBOL(msm_pm_set_max_sleep_time);
+
 static int __init msm_pm_init(void)
 {
 	pm_power_off = msm_pm_power_off;
 	arm_pm_restart = msm_pm_restart;
+	msm_pm_max_sleep_time = 0;
 
 	register_reboot_notifier(&msm_reboot_notifier);
 
