@@ -26,6 +26,8 @@
 
 #include <asm/arch/msm_rpcrouter.h>
 
+extern void msm_pm_set_max_sleep_time(int64_t sleep_time_ns);
+
 #define APP_PMLIB_PDEV_NAME_V1 "rs30000061:00000000" /* AMSS6066 */
 #define APP_PMLIB_PDEV_NAME_V2 "rs30000061:a3887453" /* AMSS6074 */
 
@@ -35,6 +37,7 @@
 
 static struct msm_rpc_endpoint *ep;
 static struct rtc_device *rtc;
+static unsigned long rtcalarm_time;
 
 static int
 msmrtc_pmlib_set_time(struct device *dev, struct rtc_time *tm)
@@ -104,13 +107,44 @@ msmrtc_pmlib_read_time(struct device *dev, struct rtc_time *tm)
 		return -ENODATA;
 
 	rtc_time_to_tm(be32_to_cpu(rep.seconds), tm);
+
+	return 0;
+}
+
+static int
+msmrtc_virtual_alarm_set(struct device *dev, struct rtc_wkalrm *a)
+{
+	unsigned long now = get_seconds();
+
+	if (!a->enabled) {
+		rtcalarm_time = 0;
+		return 0;
+	}
+	else
+		rtc_tm_to_time(&a->time, &rtcalarm_time);
+
+	if (now > rtcalarm_time) {
+		printk("%s: Attempt to set alarm in the past\n", __func__);
+		rtcalarm_time = 0;
+		return -EINVAL;
+	}
+
 	return 0;
 }
 
 static struct rtc_class_ops msm_rtc_ops = {
 	.read_time	= msmrtc_pmlib_read_time,
 	.set_time	= msmrtc_pmlib_set_time,
+	.set_alarm	= msmrtc_virtual_alarm_set,
 };
+
+static void
+msmrtc_alarmtimer_expired(unsigned long _data)
+{
+	printk("RTC_ALARM: GENERATING ALARM EVENT (source = %lu)\n", _data);
+	rtc_update_irq(rtc, 1, RTC_IRQF | RTC_AF);
+	rtcalarm_time = 0;
+}
 
 static int
 msmrtc_probe(struct platform_device *pdev)
@@ -137,9 +171,51 @@ msmrtc_probe(struct platform_device *pdev)
 	return 0;
 }
 
+static int
+msmrtc_suspend(struct platform_device *dev, pm_message_t state)
+{
+	if (rtcalarm_time) {
+		unsigned long now = get_seconds();
+		int diff = rtcalarm_time - now;
+
+		if (diff <=0) {
+			msmrtc_alarmtimer_expired(1);
+			msm_pm_set_max_sleep_time(0);
+			return 0;
+		}
+		msm_pm_set_max_sleep_time((int64_t) ((int64_t) diff * NSEC_PER_SEC));
+	}
+	else
+		msm_pm_set_max_sleep_time(0);
+	return 0;
+}
+
+static int
+msmrtc_resume(struct platform_device *dev)
+{
+	if (rtcalarm_time) {
+		struct rtc_time tm;
+		unsigned long now;
+		int diff;
+
+		msmrtc_pmlib_read_time(NULL, &tm);
+		rtc_tm_to_time(&tm, &now);
+		diff = rtcalarm_time - now;
+
+		printk(KERN_INFO
+		       "%s: Alarm in %d secs (we slept for %lu whole secs)\n",
+		       __func__, diff, (now - get_seconds()));
+
+		if (diff <=0)
+			msmrtc_alarmtimer_expired(2);
+	}
+	return 0;
+}
 
 static struct platform_driver msmrtc_driver_v1 = {
-	.probe	= msmrtc_probe,
+	.probe		= msmrtc_probe,
+	.suspend	= msmrtc_suspend,
+	.resume		= msmrtc_resume,
 	.driver	= {
 		.name	= APP_PMLIB_PDEV_NAME_V1,
 		.owner	= THIS_MODULE,
@@ -147,7 +223,9 @@ static struct platform_driver msmrtc_driver_v1 = {
 };
 
 static struct platform_driver msmrtc_driver_v2 = {
-	.probe	= msmrtc_probe,
+	.probe		= msmrtc_probe,
+	.suspend	= msmrtc_suspend,
+	.resume		= msmrtc_resume,
 	.driver	= {
 		.name	= APP_PMLIB_PDEV_NAME_V2,
 		.owner	= THIS_MODULE,
@@ -157,6 +235,9 @@ static struct platform_driver msmrtc_driver_v2 = {
 static int __init msmrtc_init(void)
 {
 	int ret;
+
+	rtcalarm_time = 0;
+
 	ret = platform_driver_register(&msmrtc_driver_v1);
 	if (ret < 0)
 		return ret;
