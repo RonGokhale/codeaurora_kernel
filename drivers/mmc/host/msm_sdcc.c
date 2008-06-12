@@ -74,48 +74,6 @@ static irqreturn_t msmsdcc_pio_irq(int irq, void *dev_id);
 static void msmsdcc_start_command(struct msmsdcc_host *host,
 				  struct mmc_command *cmd, u32 c);
 
-/*
- * Tracing support
- */
-
-static inline void
-msmsdcc_trace_clear(struct msmsdcc_host *host)
-{
-#ifdef CONFIG_MSMSDCC_TRACE
-	memset(&host->tracedata, 0, sizeof(struct msmsdcc_tracedata));
-#endif
-}
-
-static inline void
-msmsdcc_trace_setflag(struct msmsdcc_host *host, uint32_t mask)
-{
-#ifdef CONFIG_MSMSDCC_TRACE
-	host->tracedata.flags |= mask;
-#endif
-}
-
-static inline void
-msmsdcc_trace_irq(struct msmsdcc_host *host, int vector, uint32_t status)
-{
-#ifdef CONFIG_MSMSDCC_TRACE
-	if (host->tracedata.irq_idx < SDCC_TRACE_IRQ_MAX) {
-		host->tracedata.irqs[host->tracedata.irq_idx].vector = vector;
-		host->tracedata.irqs[host->tracedata.irq_idx].status = status;
-		host->tracedata.irq_idx++;
-	} else
-		host->tracedata.overflow_count++;
-#endif
-}
-
-static inline void
-msmsdcc_trace_adddata(struct msmsdcc_host *host, uint32_t len)
-{
-#ifdef CONFIG_MSMSDCC_TRACE
-	if (host->tracedata.irq_idx < SDCC_TRACE_IRQ_MAX)
-		host->tracedata.irqs[host->tracedata.irq_idx].xfer_bytes += len;
-#endif
-}
-
 static void
 msmsdcc_request_end(struct msmsdcc_host *host, struct mmc_request *mrq)
 {
@@ -157,7 +115,6 @@ msmsdcc_request_end(struct msmsdcc_host *host, struct mmc_request *mrq)
 	 * Need to drop the host lock here; mmc_request_done may call
 	 * back into the driver...
 	 */
-	msmsdcc_trace_setflag(host, MMC_TRACE_COMPLETED);
 	spin_unlock(&host->lock);
 	mmc_request_done(host->mmc, mrq);
 	spin_lock(&host->lock);
@@ -374,7 +331,6 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data)
 		irqmask = 0;
 	writel(irqmask, base + MMCIMASK1);
 	writel(datactrl, base + MMCIDATACTRL);
-	msmsdcc_trace_setflag(host, MMC_TRACE_DATASTARTED);
 
 	if (datactrl & MCI_DPSM_DMAENABLE)
 		msm_dmov_enqueue_cmd(host->dma.channel, &host->dma.hdr);
@@ -415,7 +371,6 @@ msmsdcc_start_command(struct msmsdcc_host *host, struct mmc_command *cmd, u32 c)
 	writel(cmd->arg, base + MMCIARGUMENT);
 	writel(c, base + MMCICOMMAND);
 
-	msmsdcc_trace_setflag(host, MMC_TRACE_CMDSTARTED);
 	mod_timer(&host->transaction_timer, jiffies + (HZ / 2));
 }
 
@@ -431,7 +386,6 @@ msmsdcc_data_irq(struct msmsdcc_host *host, struct mmc_data *data,
 		 */
 		if (!host->dma.sg)
 			host->data_xfered += data->blksz;
-		msmsdcc_trace_setflag(host, MMC_TRACE_DATABLKEND);
 	}
 
 	if (status & (MCI_DATACRCFAIL|MCI_DATATIMEOUT|MCI_TXUNDERRUN|
@@ -486,14 +440,11 @@ msmsdcc_data_irq(struct msmsdcc_host *host, struct mmc_data *data,
 		} else
 			host->data_xfered = data->blksz * data->blocks;
 
-		msmsdcc_trace_setflag(host, MMC_TRACE_DATAEND);
 		msmsdcc_stop_data(host);
 		if (!data->stop) {
 			msmsdcc_request_end(host, data->mrq);
-		} else {
-			msmsdcc_trace_setflag(host, MMC_TRACE_DATASTOP);
+		} else 
 			msmsdcc_start_command(host, data->stop, 0);
-		}
 	}
 }
 
@@ -610,8 +561,6 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 
 	DBG(host, "irq1 %08x\n", status);
 
-	msmsdcc_trace_irq(host, irq, status);
-
 	do {
 		unsigned long flags;
 		unsigned int remain, len;
@@ -639,8 +588,6 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 			len = msmsdcc_pio_read(host, buffer, remain);
 		if (status & MCI_TXACTIVE)
 			len = msmsdcc_pio_write(host, buffer, remain, status);
-
-		msmsdcc_trace_adddata(host, len);
 
 		/*
 		 * Unmap the buffer.
@@ -698,7 +645,6 @@ msmsdcc_irq(int irq, void *dev_id)
 	struct msmsdcc_host *host = dev_id;
 	u32 status;
 	int ret = 0;
-	int first = 1;
 
 	spin_lock(&host->lock);
 
@@ -709,9 +655,6 @@ msmsdcc_irq(int irq, void *dev_id)
 		struct mmc_data *data;
 		status = readl(host->base + MMCISTATUS);
 		DBG(host, "irq0 %08x\n", status);
-
-		if (first++)
-			msmsdcc_trace_irq(host, irq, status);
 
 		status &= readl(host->base + MMCIMASK0);
 		writel(status, host->base + MMCICLEAR);
@@ -755,8 +698,6 @@ msmsdcc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		mmc_request_done(mmc, mrq);
 		return;
 	}
-
-	msmsdcc_trace_clear(host);
 
 	host->mrq = mrq;
 
@@ -892,7 +833,6 @@ msmsdcc_transaction_expired(unsigned long _data)
 	struct mmc_request *mrq = NULL;
 	struct mmc_command *cmd = NULL;
 	struct mmc_data *data = NULL;
-	int i;
 
 	WARN_ON(!host->mrq);
 
@@ -906,19 +846,6 @@ msmsdcc_transaction_expired(unsigned long _data)
 	       mmc_hostname(host->mmc));
 	printk(KERN_ERR "%s: MRQ %p, CMD %p, DATA %p\n",
 	       mmc_hostname(host->mmc), mrq, cmd, data);
-
-#ifdef CONFIG_MSMSDCC_TRACE
-	printk(KERN_ERR "%s: Trace dump:\n", mmc_hostname(host->mmc));
-	printk(KERN_ERR "Flags  : 0x%.8x\n", host->tracedata.flags);
-	printk(KERN_ERR "IrqCnt : %d (%d)\n", host->tracedata.irq_idx,
-	       host->tracedata.overflow_count);
-
-	printk(KERN_ERR "IRQ log:\n");
-	for (i = 0; i < host->tracedata.irq_idx; i++)
-		printk(KERN_ERR "%d - IRQ %d (0x%.8x)\n",
-		       i, host->tracedata.irqs[i].vector,
-		       host->tracedata.irqs[i].status);
-#endif
 
 	if (host->dma.sg) {
 		printk("%s: Aborting DMA operation (sg %p)\n",

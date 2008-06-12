@@ -135,10 +135,3 @@ config MMC_MSM7X00A
 	depends on MMC 
 	help
 	  This selects Qualcomm MSM 7X00A SDCC controller support.
-
-config MSMSDCC_TRACE
-	boolean "Enable request / IRQ logging"
-	depends on MMC_MSM7X00A
-	default y
-	help
-	  none.

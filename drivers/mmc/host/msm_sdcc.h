@@ -18,13 +18,6 @@
 #define MSMSDCC_CRCI_SDC3	12
 #define MSMSDCC_CRCI_SDC4	13
 
-#define MMC_TRACE_CMDSTARTED	(1 << 0)
-#define MMC_TRACE_DATASTARTED	(1 << 8)
-#define MMC_TRACE_DATABLKEND	(1 << 16)
-#define MMC_TRACE_DATAEND	(1 << 24)
-#define MMC_TRACE_DATASTOP	(1 << 26)
-#define MMC_TRACE_COMPLETED	(1 << 31)
-
 #define MMCIPOWER		0x000
 #define MCI_PWR_OFF		0x00
 #define MCI_PWR_UP		0x02
@@ -159,21 +152,6 @@
 
 struct clk;
 
-#define SDCC_TRACE_IRQ_MAX 32
-
-struct msmsdcc_traceirq {
-	int		vector;
-	uint32_t	status;
-	uint32_t	xfer_bytes;
-};
-
-struct msmsdcc_tracedata {
-	uint32_t		flags;
-	struct msmsdcc_traceirq	irqs[SDCC_TRACE_IRQ_MAX];
-	int			irq_idx;
-	uint32_t		overflow_count;
-};
-
 struct msmsdcc_nc_dmadata {
 	dmov_box	cmd[NR_SG];
 	uint32_t	cmdptr;
@@ -234,10 +212,6 @@ struct msmsdcc_host {
 	unsigned int		data_xfered;	/* Bytes acked by BLKEND irq */
 
 	struct msmsdcc_dma_data	dma;
-
-#ifdef CONFIG_MSMSDCC_TRACE
-	struct msmsdcc_tracedata	tracedata;
-#endif
 };
 
 static inline
