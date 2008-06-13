@@ -1185,24 +1185,29 @@ void msm_hsusb_set_vbus_state(int online)
 	unsigned long flags;
 	struct usb_info *ui = the_usb_info;
 
-	spin_lock_irqsave(&ui->lock, flags);
 	if (vbus == online)
-		goto done;
+		return;
 
 	vbus = online;
 
 	/* if we aren't actually ready yet, just make a note of
 	 * the VBUS state and return
 	 */
-	if (!ui || !ui->running)
-		goto done;
+	if (!ui)
+		return;
 
-	if (online) {
-		schedule_work(&ui->vbus_online);
-	} else {
-		schedule_work(&ui->vbus_offline);
+	spin_lock_irqsave(&ui->lock, flags);
+
+	if (!ui->running) {
+		spin_unlock_irqrestore(&ui->lock, flags);
+		return;
 	}
-done:
+
+	if (online) 
+		schedule_work(&ui->vbus_online);
+	else
+		schedule_work(&ui->vbus_offline);
+
 	spin_unlock_irqrestore(&ui->lock, flags);
 }
 
