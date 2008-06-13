@@ -694,17 +694,17 @@ int mmc_attach_sd(struct mmc_host *host, u32 ocr)
 	while (retries) {
 		err = mmc_sd_init_card(host, host->ocr, NULL);
 		if (err) {
-			printk(KERN_ERR "%s: mmc_sd_init_card() rc = %d\n",
-			       mmc_hostname(host), err);
-			mdelay(100);
 			retries--;
 			continue;
 		}
 		break;
 	}
 
-	if (!retries)
+	if (!retries) {
+		printk(KERN_ERR "%s: Init card failure (err = %d)\n",
+		       mmc_hostname(host),  err);
 		goto err;
+	}
 
 	mmc_release_host(host);
 
