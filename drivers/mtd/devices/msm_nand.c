@@ -529,14 +529,15 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 		}
 		if (rawerr) {
 			if (ops->datbuf) {
+				uint8_t *datbuf = ops->datbuf + pages_read * 2048;
 				for(n = 0; n < 2048; n++) {
 					/* empty blocks read 0x54 at
 					 * these offsets
 					 */
-					if (n % 516 == 3 && ops->datbuf[n] == 0x54)
-						ops->datbuf[n] = 0xff;
-					if (ops->datbuf[n] != 0xff) {
-						/* printk("msm_nand_read_oob %llx %x %x byte at %d not 0xff, 0x%x\n", (loff_t)page * mtd->writesize, ops->len, ops->ooblen, n, ops->datbuf[n]); */
+					if (n % 516 == 3 && datbuf[n] == 0x54)
+						datbuf[n] = 0xff;
+					if (datbuf[n] != 0xff) {
+						/* printk("msm_nand_read_oob %llx %x %x byte at %d not 0xff, 0x%x\n", (loff_t)page * mtd->writesize, ops->len, ops->ooblen, n, datbuf[n]); */
 						err = rawerr;
 						break;
 					}
