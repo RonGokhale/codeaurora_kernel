@@ -272,6 +272,13 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		brq.data.sg = mq->sg;
 		brq.data.sg_len = mmc_queue_map_sg(mq);
 
+		/*
+		 * We need to flag the request as having user pages so the
+		 * low-level driver can properly flush the userspace mappings
+		 * (in case our cache is virtually tagged)
+		 */
+		brq.data.flags |= MMC_DATA_USERPAGE;
+
 		mmc_queue_bounce_pre(mq);
 
 		if (brq.data.blocks !=
