@@ -450,6 +450,8 @@ static int __init ums_init(void)
 	struct ums_context *ctxt = &_context;
 	DBG("ums_init()\n");
 
+	spin_lock_init(&ctxt->lock);
+
 	init_waitqueue_head(&ctxt->read_wq);
 	init_waitqueue_head(&ctxt->write_wq);
 
