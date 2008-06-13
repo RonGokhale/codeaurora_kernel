@@ -41,6 +41,7 @@ static struct adsp_info adsp_info;
 static struct msm_rpc_endpoint *rpc_cb_server_client;
 static struct msm_adsp_module *adsp_modules;
 static int adsp_open_count;
+static DEFINE_MUTEX(adsp_open_lock);
 
 /* protect interactions with the ADSP command/message queue */
 static spinlock_t adsp_cmd_lock;
@@ -159,10 +160,11 @@ int msm_adsp_get(const char *name, struct msm_adsp_module **out,
 
 	mutex_lock(&module->lock);
 	pr_info("adsp: opening module %s\n", module->name);
-	if (adsp_open_count++ == 0) {
+
+	mutex_lock(&adsp_open_lock);
+	if (adsp_open_count++ == 0)
 		enable_irq(INT_ADSP_A11);
-		pr_info("adsp: enable interrupt\n");
-	}
+	mutex_unlock(&adsp_open_lock);
 
 	if (module->ops) {
 		rc = -EBUSY;
@@ -189,10 +191,10 @@ int msm_adsp_get(const char *name, struct msm_adsp_module **out,
 	pr_info("adsp: module %s has been registered\n", module->name);
 
 done:
-	if (rc && --adsp_open_count == 0) {
+	mutex_lock(&adsp_open_lock);
+	if (rc && --adsp_open_count == 0)
 		disable_irq(INT_ADSP_A11);
-		pr_info("adsp: disable interrupt\n");
-	}
+	mutex_unlock(&adsp_open_lock);
 	mutex_unlock(&module->lock);
 	return rc;
 }
