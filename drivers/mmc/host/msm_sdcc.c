@@ -188,6 +188,13 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 			msmsdcc_start_command(host, mrq->data->stop, 0);
 	}
 
+	if (host->dma.user_pages) {
+		struct scatterlist *sg = host->dma.sg;
+		int i;
+
+		for (i = 0; i < host->dma.num_ents; i++, sg++)
+			flush_dcache_page(sg_page(sg));
+	}
 
 	host->dma.sg = NULL;
 
@@ -233,6 +240,8 @@ static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
 		host->dma.dir = DMA_FROM_DEVICE;
 	else
 		host->dma.dir = DMA_TO_DEVICE;
+
+	host->dma.user_pages = (data->flags & MMC_DATA_USERPAGE);
 
 	n = dma_map_sg(mmc_dev(host->mmc), host->dma.sg,
 			host->dma.num_ents, host->dma.dir);
@@ -414,7 +423,8 @@ msmsdcc_data_irq(struct msmsdcc_host *host, struct mmc_data *data,
 		 * We hit an error condition.  Ensure that any data
 		 * partially written to a page is properly coherent.
 		 */
-		if (host->sg_len && data->flags & MMC_DATA_READ)
+		if (host->sg_len && (data->flags & MMC_DATA_READ)
+				 && (data->flags & MMC_DATA_USERPAGE))
 			flush_dcache_page(sg_page(host->sg_ptr));
 
 		/*
@@ -616,7 +626,7 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 		 * If we were reading, and we have completed this
 		 * page, ensure that the data cache is coherent.
 		 */
-		if (status & MCI_RXACTIVE)
+		if (status & MCI_RXACTIVE && data->flags & MMC_DATA_USERPAGE)
 			flush_dcache_page(sg_page(host->sg_ptr));
 
 		if (!msmsdcc_next_sg(host))

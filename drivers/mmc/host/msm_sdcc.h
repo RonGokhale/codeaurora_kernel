@@ -168,6 +168,7 @@ struct msmsdcc_dma_data {
 
 	struct scatterlist		*sg;
 	int				num_ents;
+	int				user_pages;
 
 	int				channel;
 	struct msmsdcc_host		*host;
