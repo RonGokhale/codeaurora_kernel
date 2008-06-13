@@ -150,7 +150,9 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 	struct msmsdcc_dma_data	*dma_data =
 		container_of(cmd, struct msmsdcc_dma_data, hdr);
 	struct msmsdcc_host	*host = dma_data->host;
-	int			i;
+	unsigned long		flags;
+
+	spin_lock_irqsave(&host->lock, flags);
 
 	dma_unmap_sg(mmc_dev(host->mmc), host->dma.sg, host->dma.num_ents,
 		     host->dma.dir);
@@ -160,16 +162,18 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 
 		WARN_ON(!mrq);
 
-		printk(KERN_ERR "%s: DMA failed (0x%.8x)\n",
+		printk(KERN_ERR "%s: DMA failure (Result 0x%x)\n",
 		       mmc_hostname(host->mmc), result);
-		if (err) {
-			for (i = 0; i < ARRAY_SIZE(err->flush); i++)
-				printk(KERN_ERR "%s: FLUSH%d = 0x%.8x\n",
-				       mmc_hostname(host->mmc), i,
-				       err->flush[i]);
-		}
+		
+		if (err)
+			printk(KERN_ERR
+			       "DMA Flush: %.8x %.8x %.8x %.8x %.8x %.8x\n",
+			       err->flush[0], err->flush[1], err->flush[2],
+			       err->flush[3], err->flush[4], err->flush[5]);
+
 		if (!mrq->cmd->error && !mrq->data->error)
 			mrq->data->error = -EIO;
+
 		msmsdcc_stop_data(host);
 		/*
 		 * In the case where we get a command timeout
@@ -183,7 +187,11 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 		else
 			msmsdcc_start_command(host, mrq->data->stop, 0);
 	}
+
+
 	host->dma.sg = NULL;
+
+	spin_unlock_irqrestore(&host->lock, flags);
 	return;
 }
 
@@ -555,11 +563,14 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 {
 	struct msmsdcc_host *host = dev_id;
 	void __iomem *base = host->base;
+	struct mmc_data *data = host->data;
 	u32 status;
 
 	status = readl(base + MMCISTATUS);
 
 	DBG(host, "irq1 %08x\n", status);
+
+	WARN_ON(!data);
 
 	do {
 		unsigned long flags;
@@ -833,26 +844,29 @@ msmsdcc_transaction_expired(unsigned long _data)
 	struct mmc_request *mrq = NULL;
 	struct mmc_command *cmd = NULL;
 	struct mmc_data *data = NULL;
+	unsigned long flags;
 
-	WARN_ON(!host->mrq);
+	spin_lock_irqsave(&host->lock, flags);
 
-	mrq = host->mrq;
-	if (mrq) {
-		cmd = mrq->cmd;
-		data = mrq->data;
+	if (!host->mrq) {
+		printk(KERN_INFO "%s: Transaction expiry misfire\n",
+		       mmc_hostname(host->mmc));
+		spin_unlock_irqrestore(&host->lock, flags);
+		return;
 	}
 
-	printk(KERN_ERR "%s: Transaction timed out\n",
-	       mmc_hostname(host->mmc));
-	printk(KERN_ERR "%s: MRQ %p, CMD %p, DATA %p\n",
-	       mmc_hostname(host->mmc), mrq, cmd, data);
+	mrq = host->mrq;
+	cmd = mrq->cmd;
+	data = mrq->data;
+
+	printk(KERN_ERR "%s: Transaction timeout (%p %p %p %p)\n",
+	       mmc_hostname(host->mmc), mrq, cmd, data, host->dma.sg);
 
 	if (host->dma.sg) {
-		printk("%s: Aborting DMA operation (sg %p)\n",
-		       mmc_hostname(host->mmc), host->dma.sg);
 		if (data)
 			data->error = -ETIME;
 		msm_dmov_stop_cmd(host->dma.channel, &host->dma.hdr);
+		spin_unlock_irqrestore(&host->lock, flags);
 		return;
 	}
 
@@ -860,6 +874,8 @@ msmsdcc_transaction_expired(unsigned long _data)
 		cmd->error = -ETIME;
 	msmsdcc_stop_data(host);
 	msmsdcc_request_end(host, host->mrq);
+
+	spin_unlock_irqrestore(&host->lock, flags);
 }
 
 static int
