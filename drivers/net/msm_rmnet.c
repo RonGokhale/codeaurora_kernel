@@ -39,16 +39,14 @@ struct rmnet_private
 	unsigned chnum;
 };
 
-static void smd_net_notify(void *_dev, unsigned event)
+/* Called in soft-irq context */
+static void smd_net_data_handler(unsigned long arg)
 {
-	struct net_device *dev = _dev;
+	struct net_device *dev = (struct net_device *) arg;
 	struct rmnet_private *p = netdev_priv(dev);
 	struct sk_buff *skb;
 	void *ptr = 0;
 	int sz;
-
-	if (event != SMD_EVENT_DATA)
-		return;
 
 	for (;;) {
 		sz = smd_cur_packet_size(p->ch);
@@ -84,6 +82,18 @@ static void smd_net_notify(void *_dev, unsigned event)
 		if (smd_read(p->ch, ptr, sz) != sz)
 			printk(KERN_ERR "rmnet_recv() smd lied about avail?!");
 	}
+}
+
+static DECLARE_TASKLET(smd_net_data_tasklet, smd_net_data_handler, 0);
+
+static void smd_net_notify(void *_dev, unsigned event)
+{
+	if (event != SMD_EVENT_DATA)
+		return;
+
+	smd_net_data_tasklet.data = (unsigned long) _dev;
+
+	tasklet_schedule(&smd_net_data_tasklet);
 }
 
 static int rmnet_open(struct net_device *dev)
