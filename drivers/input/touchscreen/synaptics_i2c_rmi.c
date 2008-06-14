@@ -476,7 +476,9 @@ static int synaptics_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 		disable_irq(client->irq);
 	else
 		hrtimer_cancel(&ts->timer);
-	cancel_work_sync(&ts->work);
+	ret = cancel_work_sync(&ts->work);
+	if (ret && ts->use_irq) /* if work was pending disable-count is now 2 */
+		enable_irq(client->irq); 
 	ret = i2c_smbus_write_byte_data(ts->client, 0xf1, 0); /* disable interrupt */
 	if (ret < 0)
 		printk(KERN_ERR "synaptics_ts_suspend: i2c_smbus_write_byte_data failed\n");
