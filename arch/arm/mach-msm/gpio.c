@@ -462,10 +462,10 @@ void msm_gpio_enter_sleep(int from_idle)
 			tmp = msm_gpio_chips[i].int_enable[!from_idle];
 			smem_gpio->enabled[index] |= tmp << shiftl;
 			smem_gpio->enabled[index+1] |= tmp >> shiftr;
-			smem_gpio->detection[index] = readl(msm_gpio_chips[i].regs.int_edge) << shiftl;
-			smem_gpio->detection[index+1] = readl(msm_gpio_chips[i].regs.int_edge) >> shiftr;
-			smem_gpio->polarity[index] = readl(msm_gpio_chips[i].regs.int_pos) << shiftl;
-			smem_gpio->polarity[index+1] = readl(msm_gpio_chips[i].regs.int_pos) >> shiftr;
+			smem_gpio->detection[index] |= readl(msm_gpio_chips[i].regs.int_edge) << shiftl;
+			smem_gpio->detection[index+1] |= readl(msm_gpio_chips[i].regs.int_edge) >> shiftr;
+			smem_gpio->polarity[index] |= readl(msm_gpio_chips[i].regs.int_pos) << shiftl;
+			smem_gpio->polarity[index+1] |= readl(msm_gpio_chips[i].regs.int_pos) >> shiftr;
 		}
 	}
 
