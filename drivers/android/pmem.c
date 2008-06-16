@@ -275,13 +275,13 @@ static int pmem_release(struct inode *inode, struct file *file)
 		struct pmem_data *sub_data;
 		list_for_each(elt, &pmem[id].data_list) {
 			sub_data = list_entry(elt, struct pmem_data, list);
-			down_write(&sub_data->sem);
-			if (PMEM_FLAGS_SUBMAP & sub_data->flags &&
+			down_read(&sub_data->sem);
+			if (PMEM_IS_SUBMAP(sub_data) &&
 			    file == sub_data->master_file) {
-				up_write(&sub_data->sem);
+				up_read(&sub_data->sem);
 				pmem_revoke(file, sub_data);
 			}  else
-				up_write(&sub_data->sem);
+				up_read(&sub_data->sem);
 		}
 	}
 	list_del(&data->list);
@@ -459,20 +459,14 @@ static unsigned long pmem_len(int id, struct pmem_data *data)
 		return PMEM_LEN(id, data->index);
 }
 
-static int pmem_unmap_pfn_range(int id, struct vm_area_struct *vma,
-				struct pmem_data *data, unsigned long offset,
-				unsigned long len)
+static int pmem_map_garbage(int id, struct vm_area_struct *vma,
+			    struct pmem_data *data, unsigned long offset,
+			    unsigned long len)
 {
-	int i, garbage_pages;
-	DLOG("unmap offset %lx len %lx\n", offset, len);
+	int i, garbage_pages = len >> PAGE_SHIFT;
 
-	BUG_ON(!PMEM_IS_PAGE_ALIGNED(len));
-
-	garbage_pages = len >> PAGE_SHIFT;
-	zap_page_range(vma, vma->vm_start + offset, len, NULL);
+	vma->vm_flags |= VM_IO | VM_RESERVED | VM_PFNMAP | VM_SHARED | VM_WRITE;
 	for (i = 0; i < garbage_pages; i++) {
-		vma->vm_flags |= VM_IO | VM_RESERVED | VM_PFNMAP | VM_SHARED |
-				 VM_WRITE;
 		if (vm_insert_pfn(vma, vma->vm_start + offset + (i * PAGE_SIZE),
 		    pmem[id].garbage_pfn))
 			return -EAGAIN;
@@ -480,26 +474,46 @@ static int pmem_unmap_pfn_range(int id, struct vm_area_struct *vma,
 	return 0;
 }
 
+static int pmem_unmap_pfn_range(int id, struct vm_area_struct *vma,
+				struct pmem_data *data, unsigned long offset,
+				unsigned long len)
+{
+	int garbage_pages;
+	DLOG("unmap offset %lx len %lx\n", offset, len);
+
+	BUG_ON(!PMEM_IS_PAGE_ALIGNED(len));
+
+	garbage_pages = len >> PAGE_SHIFT;
+	zap_page_range(vma, vma->vm_start + offset, len, NULL);
+	pmem_map_garbage(id, vma, data, offset, len);
+	return 0;
+}
+
 static int pmem_map_pfn_range(int id, struct vm_area_struct *vma,
 			      struct pmem_data *data, unsigned long offset,
 			      unsigned long len)
 {
-	/* hold the mm semp for the vma you are modifying when you call this */
-
 	DLOG("map offset %lx len %lx\n", offset, len);
 	BUG_ON(!PMEM_IS_PAGE_ALIGNED(vma->vm_start));
 	BUG_ON(!PMEM_IS_PAGE_ALIGNED(vma->vm_end));
 	BUG_ON(!PMEM_IS_PAGE_ALIGNED(len));
 	BUG_ON(!PMEM_IS_PAGE_ALIGNED(offset));
 
-	zap_page_range(vma, vma->vm_start + offset, len, NULL);
 	if (remap_pfn_range(vma, vma->vm_start + offset,
 			    (pmem_start_addr(id, data) + offset) >> PAGE_SHIFT,
 			    len, vma->vm_page_prot)) {
-		DLOG("not ok!");
 		return -EAGAIN;
 	}
 	return 0;
+}
+
+static int pmem_remap_pfn_range(int id, struct vm_area_struct *vma,
+			      struct pmem_data *data, unsigned long offset,
+			      unsigned long len)
+{
+	/* hold the mm semp for the vma you are modifying when you call this */
+	zap_page_range(vma, vma->vm_start + offset, len, NULL);
+	return pmem_map_pfn_range(id, vma, data, offset, len);
 }
 
 static void pmem_vma_open(struct vm_area_struct *vma)
@@ -513,7 +527,7 @@ static void pmem_vma_open(struct vm_area_struct *vma)
 	BUG_ON(!has_allocation(file));
 	down_write(&data->sem);
 	/* remap the garbage pages, forkers don't get access to the data */
-	pmem_unmap_pfn_range(id, vma, data, 0, vma->vm_end - vma->vm_end);
+	pmem_unmap_pfn_range(id, vma, data, 0, vma->vm_start - vma->vm_end);
 	up_write(&data->sem);
 }
 
@@ -535,7 +549,8 @@ static void pmem_vma_close(struct vm_area_struct *vma)
 	    (data->flags & PMEM_FLAGS_SUBMAP) &&
 	     data->vma == vma)
 		data->flags |= PMEM_FLAGS_UNSUBMAP;
-
+	/* the kernel is going to free this vma now anyway */
+	data->vma = NULL;
 	up_write(&data->sem);
 }
 
@@ -603,7 +618,7 @@ static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 	if (data->flags & PMEM_FLAGS_CONNECTED) {
 		struct pmem_region_node *region_node;
 		struct list_head *elt;
-		if (pmem_unmap_pfn_range(id, vma, data, 0, vma_size)) {
+		if (pmem_map_garbage(id, vma, data, 0, vma_size)) {
 			printk("pmem: mmap failed in kernel!\n");
 			ret = -EAGAIN;
 			goto error;
@@ -614,9 +629,9 @@ static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 			DLOG("remapping file: %p %lx %lx\n", file,
 				region_node->region.offset,
 				region_node->region.len);
-			if (pmem_map_pfn_range(id, vma, data,
-					       region_node->region.offset,
-					       region_node->region.len)) {
+			if (pmem_remap_pfn_range(id, vma, data,
+						 region_node->region.offset,
+						 region_node->region.len)) {
 				ret = -EAGAIN;
 				goto error;
 			}
@@ -909,7 +924,7 @@ int pmem_remap(struct pmem_region *region, struct file *file,
 
 	/* pmem region must be aligned on a page boundry */
 	if (unlikely(!PMEM_IS_PAGE_ALIGNED(region->offset) ||
-		     !PMEM_IS_PAGE_ALIGNED(region->len))) {
+		 !PMEM_IS_PAGE_ALIGNED(region->len))) {
 #if PMEM_DEBUG
 		printk("pmem: request for unaligned pmem suballocation "
 		       "%lx %lx\n", region->offset, region->len);
@@ -948,8 +963,8 @@ int pmem_remap(struct pmem_region *region, struct file *file,
 
 	if (PMEM_IS_SUBMAP(data)) {
 		if (operation == PMEM_MAP)
-			ret = pmem_map_pfn_range(id, data->vma, data,
-			      region->offset, region->len);
+			ret = pmem_remap_pfn_range(id, data->vma, data,
+						   region->offset, region->len);
 		else if (operation == PMEM_UNMAP)
 			ret = pmem_unmap_pfn_range(id, data->vma, data,
 						   region->offset, region->len);
@@ -999,6 +1014,7 @@ static void pmem_revoke(struct file *file, struct pmem_data *data)
 	struct pmem_region_node *region_node;
 	struct list_head *elt, *elt2;
 	struct mm_struct *mm = NULL;
+	struct vm_area_struct *vma;
 	int id = get_id(file);
 	int ret = 0;
 
@@ -1009,10 +1025,13 @@ static void pmem_revoke(struct file *file, struct pmem_data *data)
 	if (ret)
 		return;
 	/* unmap everything */
-	pmem_unmap_pfn_range(id, data->vma, data, 0, pmem_len(id, data));
-	/* delete the region list nothing is mapped any more */
+	vma = data->vma;
+	DLOG("revoking file: %p vma: %p\n", file, vma);
+	/* delete the regions and region list nothing is mapped any more */
 	list_for_each_safe(elt, elt2, &data->region_list) {
 		region_node = list_entry(elt, struct pmem_region_node, list);
+		pmem_unmap_pfn_range(id, vma, data, region_node->region.offset,
+				     region_node->region.len);
 		list_del(elt);
 		kfree(region_node);
 	}
