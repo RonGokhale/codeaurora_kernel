@@ -51,8 +51,8 @@ static unsigned long dev_use[MMC_NUM_MINORS/(8*sizeof(unsigned long))];
 
 #if defined(CONFIG_DEBUG_FS)
 static int mmcblk_dbg_logenable;
-static void mmcblk_log_request_start(uint32_t arg, uint32_t blks, uint32_t flags);
-static void mmcblk_log_request_end(int cmd_err, int data_err, int stop_err);
+static void mmcblk_log_request_start(uint32_t arg, uint32_t blks, uint32_t flags, struct request *req);
+static void mmcblk_log_request_end(int cmd_err, int data_err, int stop_err, unsigned int bytes_xfered);
 #endif
 
 /*
@@ -291,7 +291,7 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 #if defined(CONFIG_DEBUG_FS)
 		if (mmcblk_dbg_logenable)
 			mmcblk_log_request_start(brq.cmd.arg, brq.data.blocks,
-						 brq.data.flags);
+						 brq.data.flags, req);
 #endif
 		mmc_wait_for_req(card->host, &brq.mrq);
 
@@ -300,7 +300,8 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 #if defined(CONFIG_DEBUG_FS)
 		if (mmcblk_dbg_logenable)
 			mmcblk_log_request_end(brq.cmd.error, brq.data.error,
-					       brq.stop.error);
+					       brq.stop.error,
+					       brq.data.bytes_xfered);
 #endif
 
 		if (brq.cmd.error) {
@@ -621,7 +622,7 @@ static int __init mmc_blk_init(void)
 {
 	int res = -ENOMEM;
 
-	mmcblk_dbg_logenable = 0;
+	mmcblk_dbg_logenable = 1;
 
 	res = register_blkdev(MMC_BLOCK_MAJOR, "mmc");
 	if (res)
@@ -648,62 +649,48 @@ MODULE_DESCRIPTION("Multimedia Card (MMC) block device driver");
 #if defined(CONFIG_DEBUG_FS)
 
 struct mmcblk_log {
-	unsigned long	start;
-	uint32_t	arg;
-	uint32_t	blocks;
-	uint32_t	flags;
-	int		cmd_err;
-	int		data_err;
-	int		stop_err;
-	unsigned long	finish;
+	unsigned long long	start_ns;
+	unsigned long long	finish_ns;
+	uint32_t		arg;
+	uint32_t		blocks;
+	uint32_t		flags;
+	int			cmd_err;
+	int			data_err;
+	int			stop_err;
+	unsigned int		bytes_xfered;
 };
 
-#define NUM_LOG_SLOTS 128
+#define NUM_LOG_SLOTS 256
 
 static unsigned int		log_start, log_end;
 static struct mmcblk_log	log_buf[NUM_LOG_SLOTS];
 static int 			log_buf_len = NUM_LOG_SLOTS;
-static unsigned int		logged_entries;
 
 #define LOG_BUF_MASK (log_buf_len-1)
 #define LOG_BUF(idx) (log_buf[(idx) & LOG_BUF_MASK])
 
-static void mmcblk_log_request_start(uint32_t arg, uint32_t blks, uint32_t flags)
+static void mmcblk_log_request_start(uint32_t arg, uint32_t blks,
+				     uint32_t flags, struct request *req)
 {
-	LOG_BUF(log_end).start = jiffies;
+	LOG_BUF(log_end).start_ns = sched_clock();
 	LOG_BUF(log_end).blocks = blks;
 	LOG_BUF(log_end).arg = arg;
 	LOG_BUF(log_end).flags = flags;
 }
 
-static void mmcblk_log_request_end(int cmd_err, int data_err, int stop_err)
+static void
+mmcblk_log_request_end(int cmd_err, int data_err, int stop_err,
+		       unsigned int bytes_xfered)
 {
-	LOG_BUF(log_end).finish = jiffies;
+	LOG_BUF(log_end).finish_ns = sched_clock();
 	LOG_BUF(log_end).cmd_err = cmd_err;
 	LOG_BUF(log_end).data_err = data_err;
 	LOG_BUF(log_end).stop_err = stop_err;
+	LOG_BUF(log_end).bytes_xfered = bytes_xfered;
 	log_end++;
 
 	if (log_end - log_start > log_buf_len)
 		log_start = log_end - log_buf_len;
-	if (logged_entries < log_buf_len)
-		logged_entries++;
-}
-
-
-static void mmcblk_dbg_logenable_set(void *data, u64 val)
-{
-	mmcblk_dbg_logenable = (int) val;
-
-	if (val) {
-		memset(&log_buf, 0, sizeof(log_buf));
-		log_start = log_end = logged_entries = 0;
-	}
-}
-
-static u64 mmcblk_dbg_logenable_get(void *data)
-{
-	return mmcblk_dbg_logenable;
 }
 
 static int log_open(struct inode *inode, struct file *file)
@@ -712,52 +699,118 @@ static int log_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-#define STR_BUFFER_SIZE 8192
+#define STR_BUFFER_SIZE 4096
 static char str_buffer[STR_BUFFER_SIZE];
 
 static ssize_t log_read(struct file *file, char __user *ubuf,
 			size_t count, loff_t *ppos)
 {
 	char *buf = str_buffer;
+	char *last_line_end = NULL;
+	int  last_length = 0;
 	int max = STR_BUFFER_SIZE;
 	int i = 0;
+	char tbuf[50];
+	unsigned long long t;
+	unsigned long nanosec_rem;
+	unsigned long long diff_ns;
+	unsigned long diff_ms;
 
 	while(log_start != log_end) {
-		i += scnprintf(buf + i, max - i,
-			       "%.4lu %.8u %.4u 0x%.4x %d %d %d\n",
-			       (LOG_BUF(log_start).finish - LOG_BUF(log_start).start),
-			       LOG_BUF(log_start).arg,
+		int total_len;
+		int j;
+
+		t = LOG_BUF(log_start).start_ns;
+		nanosec_rem = do_div(t, 1000000000);
+		sprintf(tbuf, "%lu.%06lu",
+				(unsigned long) t,
+				nanosec_rem / 1000);
+
+		diff_ns = LOG_BUF(log_start).finish_ns - LOG_BUF(log_start).start_ns;
+		diff_ms = diff_ns;
+		do_div(diff_ms, 1000000);
+
+		total_len = snprintf(NULL, 0, 
+				     "%s %.5lu %.4u %.6u %.8u 0x%.4x %d %d %d\n",
+				     tbuf,
+				     (unsigned long) diff_ms,
+				     LOG_BUF(log_start).blocks,
+				     LOG_BUF(log_start).bytes_xfered,
+				     LOG_BUF(log_start).arg,
+				     LOG_BUF(log_start).flags,
+				     LOG_BUF(log_start).cmd_err,
+				     LOG_BUF(log_start).data_err,
+				     LOG_BUF(log_start).stop_err);
+
+		j = scnprintf(buf + i, max - i,
+			       "%s %.5lu %.4u %.6u %.8u 0x%.4x %d %d %d\n",
+			       tbuf,
+			       (unsigned long) diff_ms,
 			       LOG_BUF(log_start).blocks,
+			       LOG_BUF(log_start).bytes_xfered,
+			       LOG_BUF(log_start).arg,
 			       LOG_BUF(log_start).flags,
 			       LOG_BUF(log_start).cmd_err,
 			       LOG_BUF(log_start).data_err,
 			       LOG_BUF(log_start).stop_err);
+
+		if (j != total_len) {
+			if (last_line_end) {
+				*last_line_end = '\0';
+				i = last_length;
+			}
+				
+			break;
+		}
+
+
+		i+= j;
+
+		last_line_end = buf + i;
+		last_length = i;
+
 		log_start++;
 	}
 
 	return simple_read_from_buffer(ubuf, count, ppos, buf, i);
 }
 
-DEFINE_SIMPLE_ATTRIBUTE(mmcblk_dbg_logenable_fops,
-			mmcblk_dbg_logenable_get,
-			mmcblk_dbg_logenable_set, "%llu\n");
+static ssize_t log_write(struct file *file, const char __user *buf,
+			 size_t count, loff_t *ppos)
+{
+	uint8_t val;
 
+	if (copy_from_user(&val, buf, 1))
+		return -EFAULT;
+
+	if (val == 0 || val == 0x30) {
+		mmcblk_dbg_logenable = 0;
+	} else if (val == 1 || val == 0x31) {
+		mmcblk_dbg_logenable = 1;
+		memset(&log_buf, 0, sizeof(log_buf));
+		log_start = log_end = 0;
+	} else
+		return -EINVAL;
+	return count;
+}
 
 static const struct file_operations log_ops = {
-	.read = log_read,
-	.open = log_open,
+	.read	= log_read,
+	.open	= log_open,
+	.write	= log_write,
 };
 
 static int __init mmcblk_dbg_init(void)
 {
 	struct dentry *dent;
 
+	memset(&log_buf, 0, sizeof(log_buf));
+	log_start = log_end = 0;
+
 	dent = debugfs_create_dir("mmcblk", 0);
 	if (IS_ERR(dent))
 		return PTR_ERR(dent);
 
-	debugfs_create_file("log_enable", 0644, dent, NULL,
-			    &mmcblk_dbg_logenable_fops);
 	debugfs_create_file("log", 0644, dent, NULL, &log_ops);
 	return 0;
 }
