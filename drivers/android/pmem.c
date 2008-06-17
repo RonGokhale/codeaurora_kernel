@@ -512,6 +512,7 @@ static int pmem_remap_pfn_range(int id, struct vm_area_struct *vma,
 			      unsigned long len)
 {
 	/* hold the mm semp for the vma you are modifying when you call this */
+	BUG_ON(!vma);
 	zap_page_range(vma, vma->vm_start + offset, len, NULL);
 	return pmem_map_pfn_range(id, vma, data, offset, len);
 }
@@ -547,10 +548,11 @@ static void pmem_vma_close(struct vm_area_struct *vma)
 	down_write(&data->sem);
 	if ((data->flags & PMEM_FLAGS_CONNECTED) &&
 	    (data->flags & PMEM_FLAGS_SUBMAP) &&
-	     data->vma == vma)
+	     data->vma == vma) {
 		data->flags |= PMEM_FLAGS_UNSUBMAP;
+		data->vma = NULL;
+	}
 	/* the kernel is going to free this vma now anyway */
-	data->vma = NULL;
 	up_write(&data->sem);
 }
 
@@ -961,15 +963,6 @@ int pmem_remap(struct pmem_region *region, struct file *file,
 		goto err;
 	}
 
-	if (PMEM_IS_SUBMAP(data)) {
-		if (operation == PMEM_MAP)
-			ret = pmem_remap_pfn_range(id, data->vma, data,
-						   region->offset, region->len);
-		else if (operation == PMEM_UNMAP)
-			ret = pmem_unmap_pfn_range(id, data->vma, data,
-						   region->offset, region->len);
-	}
-
 	if (operation == PMEM_MAP) {
 		region_node = kmalloc(sizeof(struct pmem_region_node),
 			      GFP_KERNEL);
@@ -1004,6 +997,16 @@ int pmem_remap(struct pmem_region *region, struct file *file,
 			goto err;
 		}
 	}
+
+	if (PMEM_IS_SUBMAP(data)) {
+		if (operation == PMEM_MAP)
+			ret = pmem_remap_pfn_range(id, data->vma, data,
+						   region->offset, region->len);
+		else if (operation == PMEM_UNMAP)
+			ret = pmem_unmap_pfn_range(id, data->vma, data,
+						   region->offset, region->len);
+	}
+
 err:
 	pmem_unlock_data_and_mm(data, mm);
 	return ret;
