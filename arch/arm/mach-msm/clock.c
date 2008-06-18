@@ -488,7 +488,7 @@ static unsigned long acpuclk_get_rate(struct clk *clk)
 #if defined(CONFIG_DEBUG_FS)
 struct clk *msm_clock_get_nth(unsigned index);
 
-static void clock_debug_set(void *data, u64 val)
+static int clock_debug_set(void *data, u64 val)
 {
 	struct clk *clock = data;
 	int ret;
@@ -496,36 +496,40 @@ static void clock_debug_set(void *data, u64 val)
 	ret = clk_set_rate(clock, val);
 	if (ret != 0)
 		printk(KERN_ERR "clk_set_rate failed (%d)\n", ret);
-		
+	return ret;
 }
 
-static u64 clock_debug_get(void *data)
+static int clock_debug_get(void *data, u64 *val)
 {
 	struct clk *clock = data;
-	return clk_get_rate(clock);
+	*val = clk_get_rate(clock);
+	return 0;
 }
 
-static void clock_enable_set(void *data, u64 val)
+static int clock_enable_set(void *data, u64 val)
 {
 	struct clk *clock = data;
+	int rc = 0;
 
 	if (val) {
-		pc_clk_enable(clock->id);
+		rc = pc_clk_enable(clock->id);
 	} else {
 		pc_clk_disable(clock->id);
 	}
+	return rc;
 }
 
-static u64 clock_enable_get(void *data)
+static int clock_enable_get(void *data, u64 *val)
 {
 	struct clk *clock = data;
-	return pc_clk_is_enabled(clock->id);
+	*val = pc_clk_is_enabled(clock->id);
+	return 0;
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(clock_rate_fops, clock_debug_get, clock_debug_set, "%llu\n");
 DEFINE_SIMPLE_ATTRIBUTE(clock_enable_fops, clock_enable_get, clock_enable_set, "%llu\n");
 
-static void __init clock_debug_init(void)
+static int __init clock_debug_init(void)
 {
 	struct dentry *dent_rate;
 	struct dentry *dent_enable;
@@ -533,15 +537,20 @@ static void __init clock_debug_init(void)
 	unsigned n = 0;
 
 	dent_rate = debugfs_create_dir("clk_rate", 0);
+	if (IS_ERR(dent_rate))
+		return PTR_ERR(dent_rate);
+
 	dent_enable = debugfs_create_dir("clk_enable", 0);
-	if (IS_ERR(dent_rate) || IS_ERR(dent_enable))
-		return;
+	if (IS_ERR(dent_enable))
+		return PTR_ERR(dent_enable);
+
 	while ((clock = msm_clock_get_nth(n++)) != 0) {
 		debugfs_create_file(clock->name, 0644, dent_rate,
 				    clock, &clock_rate_fops);
 		debugfs_create_file(clock->name, 0644, dent_enable,
 				    clock, &clock_enable_fops);
 	}
+	return 0;
 }
 
 device_initcall(clock_debug_init);
