@@ -1291,12 +1291,13 @@ static int __init msm_smd_probe(struct platform_device *pdev)
 
 	INIT_WORK(&probe_work, smd_channel_probe_worker);
 
+	memset(&p_devs, 0, sizeof(p_devs));
+
 	if (smd_core_init()) {
 		printk(KERN_ERR "smd_core_init() failed\n");
 		return -1;
 	}
 
-	memset(&p_devs, 0, sizeof(p_devs));
 	do_smd_probe();
 
 	smd_debugfs_init();
