@@ -100,7 +100,7 @@ int vreg_set_level(struct vreg *vreg, unsigned mv)
 
 #if defined(CONFIG_DEBUG_FS)
 
-static void vreg_debug_set(void *data, u64 val)
+static int vreg_debug_set(void *data, u64 val)
 {
 	struct vreg *vreg = data;
 	switch (val) {
@@ -114,11 +114,12 @@ static void vreg_debug_set(void *data, u64 val)
 		vreg_set_level(vreg, val);
 		break;
 	}
+	return 0;
 }
 
-static u64 vreg_debug_get(void *data)
+static int vreg_debug_get(void *data, u64 *val)
 {
-	return 0;
+	return -ENOSYS;
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(vreg_fops, vreg_debug_get, vreg_debug_set, "%llu\n");
