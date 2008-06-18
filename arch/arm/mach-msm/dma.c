@@ -239,6 +239,7 @@ static int __init msm_init_datamover(void)
 	if (ret)
 		return ret;
 	disable_irq(INT_ADM_AARM);
+	return 0;
 }
 
 arch_initcall(msm_init_datamover);
