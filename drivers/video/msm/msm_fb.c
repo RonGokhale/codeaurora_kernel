@@ -29,6 +29,7 @@
 #include <asm/uaccess.h>
 #include <asm/arch/msm_fb.h>
 #include <linux/workqueue.h>
+#include <linux/clk.h>
 
 #define PRINT_FPS 0
 #define PRINT_BLIT_TIME 0
@@ -294,12 +295,19 @@ static void msmfb_slightly_earlier_suspend(android_early_suspend_t *h)
 
 static void msmfb_early_suspend(android_early_suspend_t *h)
 {
+	struct clk *clk = clk_get(0, "mdp_clk");
+	if (clk)
+		clk_disable(clk);
 }
 
 static void msmfb_early_resume(android_early_suspend_t *h)
 {
+	struct clk *clk;
 	struct msmfb_info *par = container_of(h, struct msmfb_info,
 				 early_suspend);
+	clk = clk_get(0, "mdp_clk");
+	if (clk)
+		clk_enable(clk);
 	par->sleeping = WAKING;
 }
 
