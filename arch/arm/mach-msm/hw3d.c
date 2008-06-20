@@ -37,6 +37,8 @@ static int hw3d_disabled;
 
 static struct clk *grp_clk;
 static struct clk *imem_clk;
+DECLARE_MUTEX(hw3d_sem);
+static unsigned int hw3d_granted;
 
 static irqreturn_t hw3d_irq_handler(int irq, void *data)
 {
@@ -100,36 +102,54 @@ static long hw3d_wait_for_interrupt(void)
 
 static long hw3d_revoke_gpu(struct file *file)
 {
-	int ret;
+	int ret = 0;
 	unsigned long user_start, user_len;
 	struct pmem_region region = {.offset = 0x0, .len = HW3D_REGS_LEN};
 
+	down(&hw3d_sem);
+	if (!hw3d_granted) {
+		ret = -1;
+		goto end;
+	}
 	/* revoke the pmem region completely */
 	if ((ret = pmem_remap(&region, file, PMEM_UNMAP)))
-		return ret;
+		goto end;
 	get_pmem_user_addr(file, &user_start, &user_len);
 	/* write the magic revoke code into the regs */
-	if (MAGIC_REVOKE_ADDR > user_len)
-		return -1;
+	if (MAGIC_REVOKE_ADDR > user_len) {
+		ret = -1;
+		goto end;
+	}
 	put_user(MAGIC_REVOKE_NUMBER,
 		 (unsigned long __user *)(user_start + MAGIC_REVOKE_ADDR));
 	/* reset the gpu */
 	clk_disable(grp_clk);
 	clk_disable(imem_clk);
-	return 0;
+	hw3d_granted = 0;
+end:
+	up(&hw3d_sem);
+	return ret;
 }
 
 static long hw3d_grant_gpu(struct file *file)
 {
-	int ret;
+	int ret = 0;
 	struct pmem_region region = {.offset = 0x0, .len = HW3D_REGS_LEN};
 
+	down(&hw3d_sem);
+	if (hw3d_granted) {
+		ret = -1;
+		goto end;
+	}
 	/* map the registers */
 	if ((ret = pmem_remap(&region, file, PMEM_MAP)))
-		return ret;
+		goto end;
 	clk_enable(grp_clk);
 	clk_enable(imem_clk);
-	return 0;
+	hw3d_granted = 1;
+end:
+	up(&hw3d_sem);
+	return ret;
 }
 
 static long hw3d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
@@ -179,6 +199,7 @@ static int __init hw3d_init(void)
 		return ret;
 	}
 	hw3d_disable_interrupt();
+	hw3d_granted = 0;
 
 	return pmem_setup(&pmem_data, hw3d_ioctl);
 }
