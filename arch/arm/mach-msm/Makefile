@@ -15,6 +15,7 @@ obj-$(CONFIG_MSM_RPCSERVERS) += rpc_server_dog_keepalive.o
 obj-$(CONFIG_MSM_RPCSERVERS) += rpc_server_time_remote.o
 obj-adsp-$(CONFIG_MSM_AMSS_VERSION_6210) += adsp_6210.o
 obj-adsp-$(CONFIG_MSM_AMSS_VERSION_6220) += adsp_6220.o
+obj-adsp-$(CONFIG_MSM_AMSS_VERSION_6225) += adsp_6225.o
 obj-$(CONFIG_MSM_ADSP) += adsp.o adsp_driver.o $(obj-adsp-y)
 obj-$(CONFIG_MSM_HW3D) += hw3d.o
 obj-$(CONFIG_MSM_PERF) += perf.o

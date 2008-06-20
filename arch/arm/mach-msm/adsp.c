@@ -853,7 +853,7 @@ static struct platform_driver msm_adsp_driver = {
 	.driver = {
 #if CONFIG_MSM_AMSS_VERSION == 6210
 		.name = "rs3000000a:20f17fd3",
-#elif CONFIG_MSM_AMSS_VERSION == 6220
+#elif (CONFIG_MSM_AMSS_VERSION == 6220) || (CONFIG_MSM_AMSS_VERSION == 6225)
 		.name = "rs3000000a:71d1094b",
 #else
 #error "Unknown AMSS version"
