@@ -113,5 +113,6 @@ void usb_ept_free_req(struct usb_endpoint *ept, struct usb_request *req);
 ** (0 for success, -EIO, -ENODEV, etc for error)
 */
 int usb_ept_queue_xfer(struct usb_endpoint *ept, struct usb_request *req);
-int usb_ept_cancel_xfer(struct usb_request *req);
+int usb_ept_flush(struct usb_endpoint *ept);
+int usb_ept_get_max_packet(struct usb_endpoint *ept);
 #endif

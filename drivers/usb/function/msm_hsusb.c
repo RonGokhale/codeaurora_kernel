@@ -489,6 +489,17 @@ int usb_ept_queue_xfer(struct usb_endpoint *ept, struct usb_request *_req)
 	return 0;
 }
 
+int usb_ept_flush(struct usb_endpoint *ept)
+{
+	printk("usb_ept_flush \n");
+	flush_endpoint(ept);
+	return 0;
+}
+
+int usb_ept_get_max_packet(struct usb_endpoint *ept)
+{
+	return ept->max_pkt;
+}
 
 /* --- endpoint 0 handling --- */
 
