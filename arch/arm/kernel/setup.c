@@ -379,6 +379,8 @@ static void __init setup_processor(void)
 	cpu_proc_init();
 }
 
+static unsigned info_dumped[NR_CPUS];
+
 /*
  * cpu_init - initialise one CPU.
  *
@@ -395,8 +397,12 @@ void cpu_init(void)
 		BUG();
 	}
 
-	if (system_state == SYSTEM_BOOTING)
-		dump_cpu_info(cpu);
+	if (system_state == SYSTEM_BOOTING) {
+		if (!info_dumped[cpu]) {
+			info_dumped[cpu] = 1;
+			dump_cpu_info(cpu);
+		}
+	}
 
 	/*
 	 * setup stacks for re-entrant exception handlers
