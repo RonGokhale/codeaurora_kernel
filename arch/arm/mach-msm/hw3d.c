@@ -152,6 +152,19 @@ end:
 	return ret;
 }
 
+static int hw3d_release(struct inode *inode, struct file *file)
+{
+	down(&hw3d_sem);
+	/* if the gpu is in use, and its inuse by the file that was released */
+	if (hw3d_granted) {
+		clk_disable(grp_clk);
+		clk_disable(imem_clk);
+		hw3d_granted = 0;
+	}
+	up(&hw3d_sem);
+	return 0;
+}
+
 static long hw3d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	switch (cmd) {
@@ -201,7 +214,7 @@ static int __init hw3d_init(void)
 	hw3d_disable_interrupt();
 	hw3d_granted = 0;
 
-	return pmem_setup(&pmem_data, hw3d_ioctl);
+	return pmem_setup(&pmem_data, hw3d_ioctl, hw3d_release);
 }
 
 device_initcall(hw3d_init);
