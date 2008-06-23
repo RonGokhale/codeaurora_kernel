@@ -1093,6 +1093,8 @@ int msm_nand_scan(struct mtd_info *mtd, int maxchips)
 		mtd->size = 256 << 20; /* * num_chips */
 	else if (flash_id == 0x5580baad) /* 2Gbit Hynix chip */
 		mtd->size = 256 << 20; /* * num_chips */
+	else if (flash_id == 0x5510baad) /* 2Gbit Hynix chip */
+		mtd->size = 256 << 20; /* * num_chips */
 	printk("flash_id: %x size %x\n", flash_id, mtd->size);
 
 	mtd->writesize = 2048;
