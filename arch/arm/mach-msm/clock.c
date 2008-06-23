@@ -29,6 +29,7 @@
 #include <linux/clk.h>
 #include <linux/mutex.h>
 #include <linux/debugfs.h>
+#include <linux/spinlock.h>
 #include <asm/io.h>
 #include <asm/arch/msm_iomap.h>
 #include <asm/arch/rpc_clkctl.h>
@@ -117,6 +118,7 @@ int clk_register(struct clk *clk)
 	if (!clk || IS_ERR(clk))
 		return -EINVAL;
 	mutex_lock(&clocks_mutex);
+	spin_lock_init(&clk->lock);
 	list_add_tail(&clk->list, &clocks);
 	if (clk->id == ACPU_CLK)
 		acpuclk_init(clk);
@@ -144,16 +146,28 @@ struct clk *clk_get(struct device *dev, const char *id)
 
 int clk_enable(struct clk *clk)
 {
+	unsigned long flags;
 	if (clk->id == ACPU_CLK)
 		return acpuclk_enable(clk);
-	return pc_clk_enable(clk->id);
+	spin_lock_irqsave(&clk->lock, flags);
+	clk->count++;
+	if (clk->count == 1)
+		pc_clk_enable(clk->id);
+	spin_unlock_irqrestore(&clk->lock, flags);
+	return 0;
 }
 
 void clk_disable(struct clk *clk)
 {
+	unsigned long flags;
 	if (clk->id == ACPU_CLK)
 		return acpuclk_disable(clk);
-	return pc_clk_disable(clk->id);
+	spin_lock_irqsave(&clk->lock, flags);
+	BUG_ON(clk->count == 0);
+	clk->count--;
+	if (clk->count == 0)
+		pc_clk_disable(clk->id);
+	spin_unlock_irqrestore(&clk->lock, flags);
 }
 
 unsigned long clk_get_rate(struct clk *clk)
@@ -563,13 +577,41 @@ void __init clock_init(uint32_t acpu_switch_time_us,
 		       uint32_t max_speed_delta_khz,
 		       uint32_t vdd_switch_time_us)
 {
-	printk(KERN_INFO "clock_init():\n");
+	pr_info("clock_init()\n");
 
 	mutex_init(&drv_state.lock);
 	drv_state.acpu_switch_time_us = acpu_switch_time_us;
 	drv_state.max_speed_delta_khz = max_speed_delta_khz;
 	drv_state.vdd_switch_time_us = vdd_switch_time_us;
 }
+
+/* The bootloader and/or AMSS may have left various clocks enabled.
+ * Disable any clocks that belong to us (CLKFLAG_AUTO_OFF) but have
+ * not been explicitly enabled by a clk_enable() call.
+ */
+static int __init clock_late_init(void)
+{
+	unsigned long flags;
+	struct clk *clk;
+	unsigned count = 0;
+
+	mutex_lock(&clocks_mutex);
+	list_for_each_entry(clk, &clocks, list) {
+		if (clk->flags & CLKFLAG_AUTO_OFF) {
+			spin_lock_irqsave(&clk->lock, flags);
+			if (!clk->count) {
+				count++;
+				pc_clk_disable(clk->id);
+			}
+			spin_unlock_irqrestore(&clk->lock, flags);
+		}
+	}
+	mutex_unlock(&clocks_mutex);
+	pr_info("clock_late_init() disabled %d unused clocks\n", count);
+	return 0;
+}
+
+late_initcall(clock_late_init);
 
 /*
  * This should go away when we can do remote clock control via some other

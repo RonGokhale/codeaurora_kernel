@@ -48,59 +48,59 @@ struct clkctl_acpu_speed  acpu_freq_tbl[] = {
  * Various clocks in the system
  */
 
-#define MSM_CLOCK_FLAGS(clk_name, clk_id, clk_flags) {	\
+#define CLOCK(clk_name, clk_id, clk_flags) {	\
 	.name = clk_name, \
 	.owner = THIS_MODULE, \
 	.id = clk_id, \
 	.flags = clk_flags, \
 	}
 
-#define MSM_CLOCK(name, id) MSM_CLOCK_FLAGS(name, id, 0)
-#define MSM_CLOCK_MM(name, id) MSM_CLOCK_FLAGS(name, id, CLKFLAG_USE_MIN_MAX_TO_SET)
+#define OFF CLKFLAG_AUTO_OFF
+#define MINMAX CLKFLAG_USE_MIN_MAX_TO_SET
 
 static struct clk clocks[] = {
-	MSM_CLOCK("acpu_clk", ACPU_CLK),
-	MSM_CLOCK("adm_clk", ADM_CLK),
-	MSM_CLOCK("adsp_clk", ADSP_CLK),
-	MSM_CLOCK("ebi1_clk", EBI1_CLK),
-	MSM_CLOCK("ebi2_clk", EBI2_CLK),
-	MSM_CLOCK("ecodec_clk", ECODEC_CLK),
-	MSM_CLOCK("emdh_clk", EMDH_CLK),
-	MSM_CLOCK("gp_clk", GP_CLK),
-	MSM_CLOCK("grp_clk", GRP_CLK),
-	MSM_CLOCK("i2c_clk", I2C_CLK),
-	MSM_CLOCK("icodec_rx_clk", ICODEC_RX_CLK),
-	MSM_CLOCK("icodec_tx_clk", ICODEC_TX_CLK),
-	MSM_CLOCK("imem_clk", IMEM_CLK),
-	MSM_CLOCK("mdc_clk", MDC_CLK),
-	MSM_CLOCK("mdp_clk", MDP_CLK),
-	MSM_CLOCK("pbus_clk", PBUS_CLK),
-	MSM_CLOCK("pcm_clk", PCM_CLK),
-	MSM_CLOCK_MM("pmdh_clk", PMDH_CLK),
-	MSM_CLOCK("sdac_clk", SDAC_CLK),
-	MSM_CLOCK("sdc1_clk", SDC1_CLK),
-	MSM_CLOCK("sdc1_pclk", SDC1_PCLK),
-	MSM_CLOCK("sdc2_clk", SDC2_CLK),
-	MSM_CLOCK("sdc2_pclk", SDC2_PCLK),
-	MSM_CLOCK("sdc3_clk", SDC3_CLK),
-	MSM_CLOCK("sdc3_pclk", SDC3_PCLK),
-	MSM_CLOCK("sdc4_clk", SDC4_CLK),
-	MSM_CLOCK("sdc4_pclk", SDC4_PCLK),
-	MSM_CLOCK("tsif_clk", TSIF_CLK),
-	MSM_CLOCK("tsif_ref_clk", TSIF_REF_CLK),
-	MSM_CLOCK("tv_dac_clk", TV_DAC_CLK),
-	MSM_CLOCK("tv_enc_clk", TV_ENC_CLK),
-	MSM_CLOCK("uart1_clk", UART1_CLK),
-	MSM_CLOCK("uart2_clk", UART2_CLK),
-	MSM_CLOCK("uart3_clk", UART3_CLK),
-	MSM_CLOCK("uart1dm_clk", UART1DM_CLK),
-	MSM_CLOCK("uart2dm_clk", UART2DM_CLK),
-	MSM_CLOCK("usb_hs_clk", USB_HS_CLK),
-	MSM_CLOCK("usb_hs_pclk", USB_HS_PCLK),
-	MSM_CLOCK("usb_otg_clk", USB_OTG_CLK),
-	MSM_CLOCK_MM("vdc_clk", VDC_CLK),
-	MSM_CLOCK("vfe_clk", VFE_CLK),
-	MSM_CLOCK("vfe_mdc_clk", VFE_MDC_CLK),
+	CLOCK("acpu_clk",	ACPU_CLK,	0),
+	CLOCK("adm_clk",	ADM_CLK,	0),
+	CLOCK("adsp_clk",	ADSP_CLK,	0),
+	CLOCK("ebi1_clk",	EBI1_CLK,	0),
+	CLOCK("ebi2_clk",	EBI2_CLK,	0),
+	CLOCK("ecodec_clk",	ECODEC_CLK,	0),
+	CLOCK("emdh_clk",	EMDH_CLK,	OFF),
+	CLOCK("gp_clk",		GP_CLK,		0),
+	CLOCK("grp_clk",	GRP_CLK,	OFF),
+	CLOCK("i2c_clk",	I2C_CLK,	0),
+	CLOCK("icodec_rx_clk",	ICODEC_RX_CLK,	0),
+	CLOCK("icodec_tx_clk",	ICODEC_TX_CLK,	0),
+	CLOCK("imem_clk",	IMEM_CLK,	OFF),
+	CLOCK("mdc_clk",	MDC_CLK,	0),
+	CLOCK("mdp_clk",	MDP_CLK,	OFF),
+	CLOCK("pbus_clk",	PBUS_CLK,	0),
+	CLOCK("pcm_clk",	PCM_CLK,	0),
+	CLOCK("pmdh_clk",	PMDH_CLK,	OFF | MINMAX),
+	CLOCK("sdac_clk",	SDAC_CLK,	OFF),
+	CLOCK("sdc1_clk",	SDC1_CLK,	OFF),
+	CLOCK("sdc1_pclk",	SDC1_PCLK,	OFF),
+	CLOCK("sdc2_clk",	SDC2_CLK,	OFF),
+	CLOCK("sdc2_pclk",	SDC2_PCLK,	OFF),
+	CLOCK("sdc3_clk",	SDC3_CLK,	OFF),
+	CLOCK("sdc3_pclk",	SDC3_PCLK,	OFF),
+	CLOCK("sdc4_clk",	SDC4_CLK,	OFF),
+	CLOCK("sdc4_pclk",	SDC4_PCLK,	OFF),
+	CLOCK("tsif_clk",	TSIF_CLK,	0),
+	CLOCK("tsif_ref_clk",	TSIF_REF_CLK,	0),
+	CLOCK("tv_dac_clk",	TV_DAC_CLK,	0),
+	CLOCK("tv_enc_clk",	TV_ENC_CLK,	0),
+	CLOCK("uart1_clk",	UART1_CLK,	OFF),
+	CLOCK("uart2_clk",	UART2_CLK,	0),
+	CLOCK("uart3_clk",	UART3_CLK,	OFF),
+	CLOCK("uart1dm_clk",	UART1DM_CLK,	OFF),
+	CLOCK("uart2dm_clk",	UART2DM_CLK,	0),
+	CLOCK("usb_hs_clk",	USB_HS_CLK,	OFF),
+	CLOCK("usb_hs_pclk",	USB_HS_PCLK,	OFF),
+	CLOCK("usb_otg_clk",	USB_OTG_CLK,	0),
+	CLOCK("vdc_clk",	VDC_CLK,	OFF | MINMAX),
+	CLOCK("vfe_clk",	VFE_CLK,	OFF),
+	CLOCK("vfe_mdc_clk",	VFE_MDC_CLK,	OFF),
 };
 
 struct clk *msm_clock_get_nth(unsigned index)

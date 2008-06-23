@@ -32,15 +32,18 @@ struct module;
 
 #define CLK_FIRST_AVAILABLE_FLAG 0x00000100
 #define CLKFLAG_USE_MIN_MAX_TO_SET 0x00000200
+#define CLKFLAG_AUTO_OFF           0x00000400
 
 struct clk
 {
+	spinlock_t              lock;
+	uint32_t                id;
+	uint32_t                count;
+	const char              *name;
+	uint32_t                flags;
 	struct list_head        list;
 	struct clk		*parent;
 	struct module           *owner;
-	const char              *name;
-	uint32_t                id;
-	uint32_t                flags;
 };
 
 #define A11S_CLK_CNTL_ADDR (MSM_CSR_BASE + 0x100)
