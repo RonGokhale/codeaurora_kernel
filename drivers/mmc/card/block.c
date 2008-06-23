@@ -738,7 +738,7 @@ static ssize_t log_read(struct file *file, char __user *ubuf,
 		do_div(diff_ms, 1000000);
 
 		total_len = snprintf(NULL, 0, 
-				     "%s %.5lu %.4u %.6u %.8u 0x%.4x %d %d %d\n",
+				     "%s %.5lu %.4u %.6u %.9u 0x%.4x %d %d %d\n",
 				     tbuf,
 				     (unsigned long) diff_ms,
 				     LOG_BUF(log_start).blocks,
