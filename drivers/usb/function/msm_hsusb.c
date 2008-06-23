@@ -432,6 +432,10 @@ int usb_ept_queue_xfer(struct usb_endpoint *ept, struct usb_request *_req)
 	struct msm_request *last;
 	struct usb_info *ui = ept->ui;
 	struct ept_queue_item *item = req->item;
+	unsigned length = req->req.length;
+
+	if (length > 0x4000)
+		return -EMSGSIZE;
 
 	spin_lock_irqsave(&ui->lock, flags);
 
@@ -455,14 +459,17 @@ int usb_ept_queue_xfer(struct usb_endpoint *ept, struct usb_request *_req)
 	req->next = 0;
 	req->req.status = -EBUSY;
 
-	req->dma = dma_map_single(NULL, req->req.buf, req->req.length,
+	req->dma = dma_map_single(NULL, req->req.buf, length,
 				  (ept->flags & EPT_FLAG_IN) ?
 				  DMA_TO_DEVICE : DMA_FROM_DEVICE);
 
 	/* prepare the transaction descriptor item for the hardware */
 	item->next = TERMINATE;
-	item->info = INFO_BYTES(req->req.length) | INFO_IOC | INFO_ACTIVE;
+	item->info = INFO_BYTES(length) | INFO_IOC | INFO_ACTIVE;
 	item->page0 = req->dma;
+	item->page1 = req->dma + 0x1000;
+	item->page2 = req->dma + 0x2000;
+	item->page3 = req->dma + 0x3000;
 
  	/* Add the new request to the end of the queue */
 	last = ept->last;
