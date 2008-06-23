@@ -467,9 +467,9 @@ int usb_ept_queue_xfer(struct usb_endpoint *ept, struct usb_request *_req)
 	item->next = TERMINATE;
 	item->info = INFO_BYTES(length) | INFO_IOC | INFO_ACTIVE;
 	item->page0 = req->dma;
-	item->page1 = req->dma + 0x1000;
-	item->page2 = req->dma + 0x2000;
-	item->page3 = req->dma + 0x3000;
+	item->page1 = (req->dma + 0x1000) & 0xfffff000;
+	item->page2 = (req->dma + 0x2000) & 0xfffff000;
+	item->page3 = (req->dma + 0x3000) & 0xfffff000;
 
  	/* Add the new request to the end of the queue */
 	last = ept->last;
