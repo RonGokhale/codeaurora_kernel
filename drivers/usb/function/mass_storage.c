@@ -2363,10 +2363,13 @@ static ssize_t store_file(struct device *dev, struct device_attribute *attr,
 	int		rc = 0;
 
 	DBG(fsg, "store_file: \"%s\"\n", buf);
+#if 0
+	/* disabled because we need to allow closing the backing file if the media was removed */
 	if (curlun->prevent_medium_removal && backing_file_is_open(curlun)) {
 		LDBG(curlun, "eject attempt prevented\n");
 		return -EBUSY;				/* "Door is locked" */
 	}
+#endif
 
 	/* Remove a trailing newline */
 	if (count > 0 && buf[count-1] == '\n')
@@ -2516,7 +2519,7 @@ static void fsg_bind(struct usb_endpoint **ept, void *_ctxt)
 	fsg->buffhds[NUM_BUFFERS - 1].next = &fsg->buffhds[0];
 
 	fsg->thread_task = kthread_create(fsg_main_thread, fsg,
-			"file-storage-gadget");
+			"USB mass_storage");
 	if (IS_ERR(fsg->thread_task)) {
 		rc = PTR_ERR(fsg->thread_task);
 		ERROR(fsg, "kthread_create failed: %d\n", rc);
