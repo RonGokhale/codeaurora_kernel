@@ -142,6 +142,7 @@ struct pmem_info {
 	struct rw_semaphore bitmap_sem;
 
 	long (*ioctl)(struct file *, unsigned int, unsigned long);
+	int (*release)(struct inode *, struct file *);
 };
 
 static struct pmem_info pmem[PMEM_MAX_DEVICES];
@@ -316,6 +317,8 @@ static int pmem_release(struct inode *inode, struct file *file)
 
 	up_write(&data->sem);
 	kfree(data);
+	if (pmem[id].release)
+		ret = pmem[id].release(inode, file);
 
 	return ret;
 }
@@ -1205,7 +1208,8 @@ static struct miscdevice pmem_dev = {
 #endif
 
 int pmem_setup(struct android_pmem_platform_data *pdata,
-	       long (*ioctl)(struct file *, unsigned int, unsigned long))
+	       long (*ioctl)(struct file *, unsigned int, unsigned long),
+	       int (*release)(struct inode *, struct file *))
 {
 	int err = 0;
 	int i, index = 0;
@@ -1217,6 +1221,7 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 	pmem[id].base = pdata->start;
 	pmem[id].size = pdata->size;
 	pmem[id].ioctl = ioctl;
+	pmem[id].release = release;
 	init_rwsem(&pmem[id].bitmap_sem);
 	init_MUTEX(&pmem[id].data_list_sem);
 	INIT_LIST_HEAD(&pmem[id].data_list);
@@ -1260,7 +1265,7 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 
 #if PMEM_DEBUG
 	debugfs_create_file(pdata->name, S_IFREG | S_IRUGO, NULL, (void *)id,
-			&debug_fops);
+			    &debug_fops);
 #endif
 	return 0;
 error_cant_remap:
@@ -1280,7 +1285,7 @@ static int pmem_probe(struct platform_device *pdev)
 		return -1;
 	}
 	pdata = pdev->dev.platform_data;
-	return pmem_setup(pdata, NULL);
+	return pmem_setup(pdata, NULL, NULL);
 }
 
 

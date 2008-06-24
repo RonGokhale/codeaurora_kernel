@@ -55,7 +55,8 @@ struct pmem_region {
 };
 
 int pmem_setup(struct android_pmem_platform_data *pdata,
-	       long (*ioctl)(struct file *, unsigned int, unsigned long));
+	       long (*ioctl)(struct file *, unsigned int, unsigned long),
+	       int (*release)(struct inode *, struct file *));
 
 int pmem_remap(struct pmem_region *region, struct file *file,
 	       unsigned operation);
