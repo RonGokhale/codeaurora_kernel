@@ -51,9 +51,10 @@
 #define DBG(host, fmt, args...)	\
 	pr_debug("%s: %s: " fmt, mmc_hostname(host->mmc), __func__ , args)
 
+#define MSMSDCC_POLLING_DEBUG	0
+
 #if defined(CONFIG_DEBUG_FS)
 static void msmsdcc_dbg_createhost(struct msmsdcc_host *);
-
 static struct dentry *debugfs_dir;
 #endif
 
@@ -66,18 +67,27 @@ static char *msmsdcc_clks[] = { NULL, "sdc1_clk", "sdc2_clk", "sdc3_clk",
 static char *msmsdcc_pclks[] = { NULL, "sdc1_pclk", "sdc2_pclk", "sdc3_pclk",
 				 "sdc4_pclk" };
 
-
 #define VERBOSE_COMMAND_TIMEOUTS	0
-
-static irqreturn_t msmsdcc_pio_irq(int irq, void *dev_id);
+#define MAX_DATACNT_WAIT_ITER		200
+#define MSMSDCC_POLLING_RETRIES		10000000
 
 static void msmsdcc_start_command(struct msmsdcc_host *host,
 				  struct mmc_command *cmd, u32 c);
 
 static void
+msmsdcc_dump_fifodata(struct msmsdcc_host *host)
+{
+	uint32_t reg_datacnt = readl(host->base + MMCIDATACNT);
+	uint32_t reg_fifocnt = readl(host->base + MMCIFIFOCNT);
+	uint32_t reg_status = readl(host->base + MMCISTATUS);
+
+	printk(KERN_DEBUG "%s: DATACNT = %d, FIFOCNT = %d, STATUS = 0x%.8x\n",
+	       mmc_hostname(host->mmc), reg_datacnt, reg_fifocnt, reg_status);
+}
+
+static void
 msmsdcc_request_end(struct msmsdcc_host *host, struct mmc_request *mrq)
 {
-
 	writel(0, host->base + MMCICOMMAND);
 
 	BUG_ON(host->data);
@@ -85,31 +95,14 @@ msmsdcc_request_end(struct msmsdcc_host *host, struct mmc_request *mrq)
 	host->mrq = NULL;
 	host->cmd = NULL;
 
-	if (mrq->data && mrq->data->error) {
-		/*
-		 * The higher level MMC stack only handles
-		 * cmd->error.
-		 */
+	if (mrq->data && mrq->data->error)
 		mrq->cmd->error = mrq->data->error;
-	}
 
 	if (mrq->data)
 		mrq->data->bytes_xfered = host->data_xfered;
-
-	if (mrq->cmd->error == -ETIMEDOUT)
+	if (mrq->cmd->error == -ETIMEDOUT) {
 		mdelay(5);
-
-	if (mrq->cmd->error == -ETIME) {
-		host->num_fail++;
-		if (host->num_fail > 5) {
-			printk(KERN_ERR
-			       "%s: MMC bus dead - Simulating eject\n",
-			       mmc_hostname(host->mmc));
-			host->eject = 1;
-		} else 
-			mdelay(250);
-	} else
-		host->num_fail = 0;
+	}
 
 	/*
 	 * Need to drop the host lock here; mmc_request_done may call
@@ -124,7 +117,6 @@ static void
 msmsdcc_stop_data(struct msmsdcc_host *host)
 {
 	writel(0, host->base + MMCIDATACTRL);
-	writel(0, host->base + MMCIMASK1);
 	host->data = NULL;
 }
 
@@ -142,6 +134,23 @@ uint32_t msmsdcc_fifo_addr(struct msmsdcc_host *host)
 		BUG();
 }
 
+static int
+msmsdcc_wait_for_datacnt(struct msmsdcc_host *host, unsigned int retries)
+{
+	uint32_t reg_datacnt;
+
+	while(retries) {
+		reg_datacnt = readl(host->base + MMCIDATACNT);
+		if (reg_datacnt == 0)
+			break;
+		mdelay(1);
+		retries--;
+	}
+	if (!retries)
+		return -ETIMEDOUT;
+	return 0;
+}
+
 static void
 msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 			  unsigned int result,
@@ -151,42 +160,65 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 		container_of(cmd, struct msmsdcc_dma_data, hdr);
 	struct msmsdcc_host	*host = dma_data->host;
 	unsigned long		flags;
+	uint32_t		reg_datacnt, reg_status;
+	struct mmc_request	*mrq;
+	int			rc;
 
 	spin_lock_irqsave(&host->lock, flags);
 
-	dma_unmap_sg(mmc_dev(host->mmc), host->dma.sg, host->dma.num_ents,
-		     host->dma.dir);
+	mrq = host->mrq;
+	BUG_ON(!mrq);
 
-	if (result != 0x80000002) {
-		struct mmc_request *mrq = host->mrq;
-
-		WARN_ON(!mrq);
-
-		printk(KERN_ERR "%s: DMA failure (Result 0x%x)\n",
-		       mmc_hostname(host->mmc), result);
-		
+	if (!(result & DMOV_RSLT_VALID))
+		printk(KERN_ERR "%s: DM result not valid\n",
+		       mmc_hostname(host->mmc));
+	else if (!(result & DMOV_RSLT_DONE)) {
+		/*
+		 * Either an error or a flush occurred
+		 */
+		if (result & DMOV_RSLT_ERROR)
+			printk(KERN_ERR "%s: DMA error (0x%.8x)\n",
+			       mmc_hostname(host->mmc), result);
+		if (result & DMOV_RSLT_FLUSH)
+			printk(KERN_ERR "%s: DMA channel flushed (0x%.8x)\n",
+			       mmc_hostname(host->mmc), result);
+		msmsdcc_dump_fifodata(host);
 		if (err)
 			printk(KERN_ERR
-			       "DMA Flush: %.8x %.8x %.8x %.8x %.8x %.8x\n",
+			       "Flush data: %.8x %.8x %.8x %.8x %.8x %.8x\n",
 			       err->flush[0], err->flush[1], err->flush[2],
 			       err->flush[3], err->flush[4], err->flush[5]);
-
-		if (!mrq->cmd->error && !mrq->data->error)
-			mrq->data->error = -EIO;
-
-		msmsdcc_stop_data(host);
-		/*
-		 * In the case where we get a command timeout
-		 * on a request which has already configured DMA
-		 * (ie: a read), we won't want to send the
-		 * STOP command since transmission hasn't
-		 * started yet.
-		 */
-		if (!mrq->data->stop || mrq->cmd->error)
-			msmsdcc_request_end(host, mrq);
-		else
-			msmsdcc_start_command(host, mrq->data->stop, 0);
+		WARN_ON((!mrq->cmd->error && !mrq->data->error));
 	}
+
+	reg_datacnt = readl(host->base + MMCIDATACNT);
+	reg_status = readl(host->base + MMCISTATUS);
+
+	if ((reg_datacnt != 0) && (result & DMOV_RSLT_DONE)) {
+		printk(KERN_WARNING
+		       "%s: DMA result 0x%.8x but %d bytes left (0x%.8x)\n",
+		       mmc_hostname(host->mmc), result, reg_datacnt, reg_status);
+
+		if (result & DMOV_RSLT_VALID) {
+			rc = msmsdcc_wait_for_datacnt(host,
+						      MAX_DATACNT_WAIT_ITER);
+			if (rc)
+				printk(KERN_ERR
+				       "%s: Timed out waiting for DMA\n", 
+				       mmc_hostname(host->mmc));
+			reg_datacnt = readl(host->base + MMCIDATACNT);
+		}
+	}
+
+	msmsdcc_stop_data(host);
+
+	if (!(result & DMOV_RSLT_DONE)) {
+		printk("%s: After flush stop data\n", __func__);
+		msmsdcc_dump_fifodata(host);
+	}
+
+	dma_unmap_sg(mmc_dev(host->mmc), host->dma.sg, host->dma.num_ents,
+		     host->dma.dir);
 
 	if (host->dma.user_pages) {
 		struct scatterlist *sg = host->dma.sg;
@@ -196,10 +228,45 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 			flush_dcache_page(sg_page(sg));
 	}
 
+	host->data_xfered = host->xfer_size - reg_datacnt;
+
+	if (host->data_xfered != host->xfer_size) {
+		printk(KERN_WARNING "%s: Short transfer (%d != %d)\n",
+		       mmc_hostname(host->mmc), host->data_xfered,
+		       host->xfer_size);
+	}
 	host->dma.sg = NULL;
+
+	/* Don't send STOP if we're a read but got a command error */
+	if (!mrq->data->stop || mrq->cmd->error) {
+		writel(0, host->base + MMCICOMMAND);
+
+		host->mrq = NULL;
+		host->cmd = NULL;
+		if (mrq->data && mrq->data->error)
+			mrq->cmd->error = mrq->data->error;
+		mrq->data->bytes_xfered = host->data_xfered;
+
+		if (mrq->cmd->error == -ETIMEDOUT)
+			mdelay(5);
+
+		spin_unlock_irqrestore(&host->lock, flags);
+		mmc_request_done(host->mmc, mrq);
+		return;
+	} else 
+		msmsdcc_start_command(host, mrq->data->stop, 0);
 
 	spin_unlock_irqrestore(&host->lock, flags);
 	return;
+}
+
+static int validate_dma(struct msmsdcc_host *host, struct mmc_data *data)
+{
+	if (host->dma.channel == -1)
+		return -ENOENT;
+	if (data->blksz < 32)
+		return -EINVAL;
+	return 0;
 }
 
 static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
@@ -209,13 +276,12 @@ static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
 	uint32_t rows;
 	uint32_t crci;
 	unsigned int n;
-	int i;
+	int i, rc;
 	struct scatterlist *sg = data->sg;
-
-	if (data->blksz < 32)
-		return -EINVAL;
-	if (host->dma.channel == -1)
-		return -ENOENT;
+	
+	rc = validate_dma(host, data);
+	if (rc)
+		return rc;
 
 	host->dma.sg = data->sg;
 	host->dma.num_ents = data->sg_len;
@@ -301,17 +367,14 @@ static int msmsdcc_config_dma(struct msmsdcc_host *host, struct mmc_data *data)
 static void
 msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data)
 {
-	unsigned int datactrl, timeout, irqmask;
+	unsigned int datactrl, timeout;
 	unsigned long long clks;
 	void __iomem *base = host->base;
-	int rc;
 
 	host->data = data;
 	host->xfer_size = data->blksz * data->blocks;
 	host->xfer_remain = host->xfer_size;
 	host->data_xfered = 0;
-
-	msmsdcc_init_sg(host, data);
 
 	clks = (unsigned long long)data->timeout_ns * host->clk_rate;
 	do_div(clks, 1000000000UL);
@@ -322,31 +385,12 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data)
 
 	datactrl = MCI_DPSM_ENABLE | (data->blksz << 4);
 
-	rc = msmsdcc_config_dma(host, data);
-	if (!rc)
+	if (!msmsdcc_config_dma(host, data))
 		datactrl |= MCI_DPSM_DMAENABLE;
 
-	if (data->flags & MMC_DATA_READ) {
+	if (data->flags & MMC_DATA_READ)
 		datactrl |= MCI_DPSM_DIRECTION;
-		irqmask = MCI_RXFIFOHALFFULLMASK;
 
-		/*
-		 * If we have less than a FIFOSIZE of bytes to transfer,
-		 * trigger a PIO interrupt as soon as any data is available.
-		 */
-		if (host->xfer_size < MCI_FIFOSIZE)
-			irqmask |= MCI_RXDATAAVLBLMASK;
-	} else {
-		/*
-		 * We don't actually need to include "FIFO empty" here
-		 * since its implicit in "FIFO half empty".
-		 */
-		irqmask = MCI_TXFIFOHALFEMPTYMASK;
-	}
-
-	if (datactrl & MCI_DPSM_DMAENABLE)
-		irqmask = 0;
-	writel(irqmask, base + MMCIMASK1);
 	writel(datactrl, base + MMCIDATACTRL);
 
 	if (datactrl & MCI_DPSM_DMAENABLE)
@@ -367,17 +411,19 @@ msmsdcc_start_command(struct msmsdcc_host *host, struct mmc_command *cmd, u32 c)
 	}
 
 	c |= cmd->opcode | MCI_CPSM_ENABLE;
+
 	if (cmd->flags & MMC_RSP_PRESENT) {
 		if (cmd->flags & MMC_RSP_136)
 			c |= MCI_CPSM_LONGRSP;
 		c |= MCI_CPSM_RESPONSE;
 	}
+
 	if (/*interrupt*/0)
 		c |= MCI_CPSM_INTERRUPT;
 
 	if ((((cmd->opcode == 17) || (cmd->opcode == 18))  ||
 	     ((cmd->opcode == 24) || (cmd->opcode == 25))) ||
-		(cmd->opcode == 53))
+	      (cmd->opcode == 53))
 		c |= MCI_CSPM_DATCMD;
 
 	if (cmd == cmd->mrq->stop)
@@ -387,309 +433,103 @@ msmsdcc_start_command(struct msmsdcc_host *host, struct mmc_command *cmd, u32 c)
 
 	writel(cmd->arg, base + MMCIARGUMENT);
 	writel(c, base + MMCICOMMAND);
-
-	mod_timer(&host->transaction_timer, jiffies + (HZ / 2));
 }
 
 static void
-msmsdcc_data_irq(struct msmsdcc_host *host, struct mmc_data *data,
-	      unsigned int status)
+msmsdcc_data_err(struct msmsdcc_host *host, struct mmc_data *data,
+		 unsigned int status)
 {
-	if (status & MCI_DATABLOCKEND) {
-		/*
-		 * Don't use DATABLOCKEND as an indicator
-		 * for progress during DMA since blocks
-		 * come faster than we can respond to them.
-		 */
-		if (!host->dma.sg)
-			host->data_xfered += data->blksz;
+	if (status & MCI_DATACRCFAIL) {
+		printk(KERN_ERR "%s: Data CRC error\n", mmc_hostname(host->mmc));
+		data->error = -EILSEQ;
+	} else if (status & MCI_DATATIMEOUT) {
+		printk(KERN_ERR "%s: Data timeout\n", mmc_hostname(host->mmc));
+		data->error = -ETIMEDOUT;
+	} else if (status & MCI_RXOVERRUN) {
+		printk(KERN_ERR "%s: RX overrun\n", mmc_hostname(host->mmc));
+		data->error = -EIO;
+	} else if (status & MCI_TXUNDERRUN) {
+		printk(KERN_ERR "%s: TX underrun\n", mmc_hostname(host->mmc));
+		data->error = -EIO;
+	} else {
+		printk(KERN_ERR "%s: Unknown error (0x%.8x)\n",
+		      mmc_hostname(host->mmc), status);
+		data->error = -EIO;
 	}
-
-	if (status & (MCI_DATACRCFAIL|MCI_DATATIMEOUT|MCI_TXUNDERRUN|
-		      MCI_RXOVERRUN)) {
-		if (status & MCI_DATACRCFAIL) {
-			printk(KERN_ERR "%s: Data CRC error\n",
-			       mmc_hostname(host->mmc));
-			data->error = -EILSEQ;
-		} else if (status & MCI_DATATIMEOUT) {
-			printk(KERN_ERR "%s: Data timeout\n",
-			       mmc_hostname(host->mmc));
-			data->error = -ETIMEDOUT;
-		} else if (status & (MCI_TXUNDERRUN|MCI_RXOVERRUN))
-			data->error = -EIO;
-		status |= MCI_DATAEND;
-
-		/*
-		 * We hit an error condition.  Ensure that any data
-		 * partially written to a page is properly coherent.
-		 */
-		if (host->sg_len && (data->flags & MMC_DATA_READ)
-				 && (data->flags & MMC_DATA_USERPAGE))
-			flush_dcache_page(sg_page(host->sg_ptr));
-
-		/*
-		 * If a DMA was scheduled, then abort the transfer
-		 * Once aborted, we return immediately; cleanup and
-		 * stop command dispatch will happen from the
-		 * completion handler
-		 */
-		if (host->dma.sg) {
-			printk(KERN_ERR "%s: Aborting DMA operation for "
-			       "MMC cmd 0x%p (data error)\n",
-			       mmc_hostname(host->mmc), data->mrq->cmd);
-			msm_dmov_stop_cmd(host->dma.channel, &host->dma.hdr);
-			return;
-		}
-	}
-	if (status & MCI_DATAEND) {
-
-		if (!host->dma.sg) {
-			/*
-			 * There appears to be an issue in the SDCC where
-			 * if you request a short block transfer, you may
-			 * get your DATAEND/DATABLKEND irq before the PIO
-			 * data. Check to see if there is still data to be
-			 * read, and then simulate a PIO IRQ.
-			 */
-			uint32_t status2 = readl(host->base + MMCISTATUS);
-
-			if (status2 & MCI_RXDATAAVLBL)
-				msmsdcc_pio_irq(1, host);
-		} else
-			host->data_xfered = data->blksz * data->blocks;
-
-		msmsdcc_stop_data(host);
-		if (!data->stop) {
-			msmsdcc_request_end(host, data->mrq);
-		} else 
-			msmsdcc_start_command(host, data->stop, 0);
-	}
-}
-
-static void
-msmsdcc_cmd_irq(struct msmsdcc_host *host, struct mmc_command *cmd,
-	     unsigned int status)
-{
-	void __iomem *base = host->base;
-
-	host->cmd = NULL;
-	del_timer(&host->transaction_timer);
-
-	cmd->resp[0] = readl(base + MMCIRESPONSE0);
-	cmd->resp[1] = readl(base + MMCIRESPONSE1);
-	cmd->resp[2] = readl(base + MMCIRESPONSE2);
-	cmd->resp[3] = readl(base + MMCIRESPONSE3);
-
-	if (status & MCI_CMDTIMEOUT) {
-#if VERBOSE_COMMAND_TIMEOUTS
-		printk(KERN_ERR "%s: Command timeout\n",
-		       mmc_hostname(host->mmc));
-#endif
-		cmd->error = -ETIMEDOUT;
-	} else if (status & MCI_CMDCRCFAIL && cmd->flags & MMC_RSP_CRC) {
-		printk(KERN_ERR "%s: Command CRC error\n",
-		       mmc_hostname(host->mmc));
-		cmd->error = -EILSEQ;
-	}
-
-	if (!cmd->data || cmd->error) {
-		if (host->data) {
-			/*
-			 * If the host has enqueued a DMA request
-			 * then cancel it and return. request cleanup
-			 * is handled in the dmov command completion
-			 * handler.
-			 */
-			if (host->dma.sg) {
-				printk(KERN_ERR
-				       "%s: Aborting DMA operation for "
-				       "MMC cmd 0x%p (command err)\n",
-				       mmc_hostname(host->mmc), cmd);
-				msm_dmov_stop_cmd(host->dma.channel,
-						  &host->dma.hdr);
-				return;
-			} else
-				msmsdcc_stop_data(host);
-		}
-		msmsdcc_request_end(host, cmd->mrq);
-	} else if (!(cmd->data->flags & MMC_DATA_READ))
-		msmsdcc_start_data(host, cmd->data);
-}
-
-static int
-msmsdcc_pio_read(struct msmsdcc_host *host, char *buffer, unsigned int remain)
-{
-	void __iomem	*base = host->base;
-	uint32_t	*ptr = (uint32_t *) buffer;
-	int		count = 0;
-
-	while (readl(base + MMCISTATUS) & MCI_RXDATAAVLBL) {
-
-		*ptr = readl(base + MMCIFIFO + (count % MCI_FIFOSIZE));
-		ptr++;
-		count += sizeof(uint32_t);
-
-		writel(0x018007ff, base + MMCISTATUS);
-
-		remain -=  sizeof(uint32_t);
-		if (remain == 0)
-			break;
-	}
-
-	return count;
-}
-
-static int
-msmsdcc_pio_write(struct msmsdcc_host *host, char *buffer,
-		  unsigned int remain, u32 status)
-{
-	void __iomem *base = host->base;
-	char *ptr = buffer;
-
-	do {
-		unsigned int count, maxcnt;
-
-		maxcnt = status & MCI_TXFIFOEMPTY ? MCI_FIFOSIZE : MCI_FIFOHALFSIZE;
-		count = min(remain, maxcnt);
-
-		writesl(base + MMCIFIFO, ptr, count >> 2);
-		ptr += count;
-		remain -= count;
-
-		if (remain == 0)
-			break;
-
-		status = readl(base + MMCISTATUS);
-	} while (status & MCI_TXFIFOHALFEMPTY);
-
-	return ptr - buffer;
 }
 
 /*
- * PIO data transfer IRQ handler.
- */
-static irqreturn_t
-msmsdcc_pio_irq(int irq, void *dev_id)
-{
-	struct msmsdcc_host *host = dev_id;
-	void __iomem *base = host->base;
-	struct mmc_data *data = host->data;
-	u32 status;
-
-	status = readl(base + MMCISTATUS);
-
-	DBG(host, "irq1 %08x\n", status);
-
-	WARN_ON(!data);
-
-	do {
-		unsigned long flags;
-		unsigned int remain, len;
-		char *buffer;
-
-		/*
-		 * For write, we only need to test the half-empty flag
-		 * here - if the FIFO is completely empty, then by
-		 * definition it is more than half empty.
-		 *
-		 * For read, check for data available.
-		 */
-
-		if (!(status & (MCI_TXFIFOHALFEMPTY|MCI_RXDATAAVLBL)))
-			break;
-
-		/*
-		 * Map the current scatter buffer.
-		 */
-		buffer = msmsdcc_kmap_atomic(host, &flags) + host->sg_off;
-		remain = host->sg_ptr->length - host->sg_off;
-
-		len = 0;
-		if (status & MCI_RXDATAAVLBL)
-			len = msmsdcc_pio_read(host, buffer, remain);
-		if (status & MCI_TXACTIVE)
-			len = msmsdcc_pio_write(host, buffer, remain, status);
-
-		/*
-		 * Unmap the buffer.
-		 */
-		msmsdcc_kunmap_atomic(host, buffer, &flags);
-
-		host->sg_off += len;
-		host->xfer_remain -= len;
-		remain -= len;
-
-		if (remain)
-			break;
-
-		/*
-		 * If we were reading, and we have completed this
-		 * page, ensure that the data cache is coherent.
-		 */
-		if (status & MCI_RXACTIVE && data->flags & MMC_DATA_USERPAGE)
-			flush_dcache_page(sg_page(host->sg_ptr));
-
-		if (!msmsdcc_next_sg(host))
-			break;
-
-		status = readl(base + MMCISTATUS);
-	} while (1);
-
-	/*
-	 * If we're nearing the end of the read, switch to
-	 * "any data available" mode.
-	 */
-	if (status & MCI_RXACTIVE && host->xfer_remain < MCI_FIFOSIZE)
-		writel(MCI_RXDATAAVLBLMASK, base + MMCIMASK1);
-
-	/*
-	 * If we run out of data, disable the data IRQs; this
-	 * prevents a race where the FIFO becomes empty before
-	 * the chip itself has disabled the data path, and
-	 * stops us racing with our data end IRQ.
-	 */
-	if (host->xfer_remain == 0) {
-		writel(0, base + MMCIMASK1);
-		writel(readl(base + MMCIMASK0) | MCI_DATAENDMASK,
-		       base + MMCIMASK0);
-	}
-
-	return IRQ_HANDLED;
-}
-
-/*
- * Handle completion of command and data transfers.
+ * IRQ Handler for processing DMA request related errors and
+ * command completion.
  */
 static irqreturn_t
 msmsdcc_irq(int irq, void *dev_id)
 {
-	struct msmsdcc_host *host = dev_id;
-	u32 status;
-	int ret = 0;
+	struct msmsdcc_host	*host = dev_id;
+	void __iomem		*base = host->base;
+	u32			status;
+	int			ret = 0;
 
 	spin_lock(&host->lock);
-
-	WARN_ON(host->mrq == NULL);
 
 	do {
 		struct mmc_command *cmd;
 		struct mmc_data *data;
 		status = readl(host->base + MMCISTATUS);
+
 		DBG(host, "irq0 %08x\n", status);
 
 		status &= readl(host->base + MMCIMASK0);
 		writel(status, host->base + MMCICLEAR);
 
+		/*
+		 * Check for data errors
+		 */
 		data = host->data;
 		if (status & (MCI_DATACRCFAIL|MCI_DATATIMEOUT|MCI_TXUNDERRUN|
-			      MCI_RXOVERRUN|MCI_DATAEND|MCI_DATABLOCKEND) &&
-			      data) {
-			msmsdcc_data_irq(host, data, status);
+			      MCI_RXOVERRUN) && data) {
+			msmsdcc_data_err(host, data, status);
+			msm_dmov_stop_cmd(host->dma.channel, &host->dma.hdr, 0);
 		}
 
+
+		/*
+		 * Check for proper command response
+		 */
 		cmd = host->cmd;
-		if (status & (MCI_CMDCRCFAIL|MCI_CMDTIMEOUT|MCI_CMDSENT|MCI_CMDRESPEND) && cmd)
-			msmsdcc_cmd_irq(host, cmd, status);
+		if (status & (MCI_CMDSENT | MCI_CMDRESPEND | MCI_CMDCRCFAIL |
+			      MCI_CMDTIMEOUT) && cmd) {
+			host->cmd = NULL;
+			cmd->resp[0] = readl(base + MMCIRESPONSE0);
+			cmd->resp[1] = readl(base + MMCIRESPONSE1);
+			cmd->resp[2] = readl(base + MMCIRESPONSE2);
+			cmd->resp[3] = readl(base + MMCIRESPONSE3);
+
+			del_timer(&host->command_timer);
+			if (status & MCI_CMDTIMEOUT) {
+#if VERBOSE_COMMAND_TIMEOUTS
+				printk(KERN_ERR "%s: Command timeout\n",
+				       mmc_hostname(host->mmc));
+#endif
+				cmd->error = -ETIMEDOUT;
+			} else if (status & MCI_CMDCRCFAIL && cmd->flags & MMC_RSP_CRC) {
+				printk(KERN_ERR "%s: Command CRC error\n",
+				       mmc_hostname(host->mmc));
+				cmd->error = -EILSEQ;
+			}
+
+			if (!cmd->data || cmd->error) {
+				if (host->data && host->dma.sg)
+					msm_dmov_stop_cmd(host->dma.channel,
+							  &host->dma.hdr, 0);
+				else if (host->data) { /* Non DMA transfer */
+					msmsdcc_stop_data(host);
+					msmsdcc_request_end(host, cmd->mrq);
+				} else /* host->data == NULL */
+					msmsdcc_request_end(host, cmd->mrq);
+			} else if (!(cmd->data->flags & MMC_DATA_READ))
+				msmsdcc_start_data(host, cmd->data);
+		}
 
 		ret = 1;
 	} while (status);
@@ -699,10 +539,314 @@ msmsdcc_irq(int irq, void *dev_id)
 	return IRQ_RETVAL(ret);
 }
 
+
+static int
+msmsdcc_waitfor_cmd(struct msmsdcc_host *host, struct mmc_command *cmd,
+		    uint32_t *status)
+{
+	unsigned int retries = MSMSDCC_POLLING_RETRIES;
+
+	while(retries) {
+		*status = readl(host->base + MMCISTATUS);
+
+		if (*status & MCI_CMDCRCFAIL && cmd->flags & MMC_RSP_CRC)
+			return -EILSEQ;
+		if (*status & MCI_CMDTIMEOUT)
+			return -ETIMEDOUT;
+		if (*status & (MCI_CMDSENT | MCI_CMDRESPEND))
+			return 0;
+		retries--;
+	}
+
+#if MSMSDCC_POLLING_DEBUG
+	printk("%s: Timed out waiting for command status\n", __func__);
+#endif
+	return -ETIMEDOUT;
+}
+
+static int
+msmsdcc_polling_rx(struct msmsdcc_host *host, struct mmc_data *data)
+{
+	void __iomem		*base = host->base;
+	uint32_t		timeout = 0;
+	uint32_t		brtr = data->blksz * data->blocks;
+	struct scatterlist	*sg = data->sg;
+	unsigned int		sg_len = data->sg_len;
+	unsigned int		sg_off = 0;
+	unsigned int		count = 0;
+	uint32_t		status;
+
+
+	writel(0x18007ff, host->base + MMCICLEAR);
+	while(brtr) {
+		unsigned int	sg_remain;
+		unsigned long	flags;
+		char		*buffer;
+		uint32_t	*ptr;
+
+		local_irq_save(flags);
+		buffer = kmap_atomic(sg_page(sg), KM_BIO_SRC_IRQ) + sg->offset;
+		ptr = (uint32_t *) buffer;
+
+		sg_remain = sg->length - sg_off;
+
+		while(sg_remain) {
+
+			/* Wait for FIFO data */
+			status = readl(base + MMCISTATUS);
+
+			if (status & (MCI_DATACRCFAIL | MCI_DATATIMEOUT |
+				      MCI_TXUNDERRUN)) {
+				if (status & MCI_DATACRCFAIL)
+					data->error = -EILSEQ;
+				else if (status & MCI_DATATIMEOUT)
+					data->error = -ETIMEDOUT;
+				else
+					data->error = -EIO;
+				printk(KERN_ERR "%s: Data error (%d)\n",
+				       mmc_hostname(host->mmc), data->error);
+
+				kunmap_atomic(buffer, KM_BIO_SRC_IRQ);
+				local_irq_restore(flags);
+				goto out;
+			}
+		
+			if (status & MCI_RXDATAAVLBL) {
+				*ptr = readl(base + MMCIFIFO + (count % MCI_FIFOSIZE));
+				ptr++;
+				count += sizeof(uint32_t);
+				sg_off += sizeof(uint32_t);
+				sg_remain -= sizeof(uint32_t);
+				brtr -= sizeof(uint32_t);
+				data->bytes_xfered += sizeof(uint32_t);
+				timeout =  0;
+
+				writel(0x18007ff, host->base + MMCICLEAR);
+			}
+			if (timeout++ > MSMSDCC_POLLING_RETRIES) {
+				uint32_t datacnt, fifocnt;
+
+				datacnt = readl(base + MMCIDATACNT);
+				fifocnt = readl(base + MMCIFIFOCNT);
+				status = readl(base + MMCISTATUS);
+				
+				printk(KERN_ERR "%s: Timed out waiting for RXDATAAVLBL (st = 0x%.8x)\n", 
+				       mmc_hostname(host->mmc), status);
+				printk(KERN_ERR "%s: 0x%.8x 0x%.8x 0x%.8x\n",
+				       mmc_hostname(host->mmc), datacnt, 
+				       fifocnt, status);
+
+				data->error = -ETIMEDOUT;
+				kunmap_atomic(buffer, KM_BIO_SRC_IRQ);
+				local_irq_restore(flags);
+				goto out;
+			}
+		}
+
+		/* Done with this SG element */
+		kunmap_atomic(buffer, KM_BIO_SRC_IRQ);
+		local_irq_restore(flags);
+
+		if (--sg_len) {
+			/* Advance to next SG element */
+			sg++;
+			sg_off = 0;
+		}
+	}
+
+#if MSMSDCC_POLLING_DEBUG
+	printk(KERN_DEBUG "%s: Rx complete (%d bytes xfered)\n",
+	       mmc_hostname(host->mmc), data->bytes_xfered);
+#endif
+
+out:
+	writel(0x18007ff, host->base + MMCICLEAR);
+	return data->error;
+}
+
+static int
+msmsdcc_polling_tx(struct msmsdcc_host *host, struct mmc_data *data)
+{
+	void __iomem		*base = host->base;
+	uint32_t		timeout = 0;
+	uint32_t		brtw = data->blksz * data->blocks;
+	struct scatterlist	*sg = data->sg;
+	unsigned int		sg_len = data->sg_len;
+	unsigned int		sg_off = 0;
+	uint32_t		status;
+
+#if MSMSDCC_POLLING_DEBUG
+	printk(KERN_DEBUG "%s: TX blksz %d, blocks %d\n",
+	       mmc_hostname(host->mmc), data->blksz, data->blocks);
+#endif
+
+	writel(0x18007ff, host->base + MMCICLEAR);
+	
+	while(brtw) {
+		unsigned int	sg_remain, count;
+		unsigned long	flags;
+		char		*buffer, *ptr;
+
+		local_irq_save(flags);
+		buffer = kmap_atomic(sg_page(sg), KM_BIO_SRC_IRQ) + sg->offset;
+		ptr = buffer;
+
+		sg_remain = sg->length - sg_off;
+
+#if MSMSDCC_POLLING_DEBUG
+		printk(KERN_DEBUG "%s: SG buffer @ %p (remain = %d)\n",
+		       mmc_hostname(host->mmc), buffer, sg_remain);
+#endif
+		while(sg_remain) {
+			unsigned int	maxcnt;
+
+			/* Wait for the FIFO to be ready */
+			status = readl(base + MMCISTATUS);
+
+			if (status & (MCI_DATACRCFAIL | MCI_DATATIMEOUT |
+				      MCI_TXUNDERRUN)) {
+				if (status & MCI_DATACRCFAIL)
+					data->error = -EILSEQ;
+				else if (status & MCI_DATATIMEOUT)
+					data->error = -ETIMEDOUT;
+				else
+					data->error = -EIO;
+				printk(KERN_ERR "%s: Data error (%d)\n",
+				       mmc_hostname(host->mmc), data->error);
+				writel(0x18007ff, host->base + MMCICLEAR);
+
+				kunmap_atomic(buffer, KM_BIO_SRC_IRQ);
+				local_irq_restore(flags);
+				goto out;
+			}
+		
+
+			/* Write (up to) a full fifo length */
+			if (status & MCI_TXFIFOEMPTY) {
+				maxcnt = (status & MCI_TXFIFOEMPTY ?
+					  MCI_FIFOSIZE : MCI_FIFOHALFSIZE);
+				count = min(sg_remain, maxcnt);
+#if MSMSDCC_POLLING_DEBUG
+				printk(KERN_DEBUG "%s: Wr %d bytes to FIFO \n",
+				       mmc_hostname(host->mmc), count);
+#endif
+				writesl(base + MMCIFIFO, ptr, count >> 2);
+
+				ptr += count;
+				sg_off += count;
+				sg_remain -= count;
+				brtw -= count;
+
+				timeout =  0;
+			}
+
+			if (timeout++ > MSMSDCC_POLLING_RETRIES) {
+				printk(KERN_ERR
+				       "%s: Timed out waiting for TXFIFOEMPTY (0x%.8x)\n", 
+				       mmc_hostname(host->mmc), status);
+				data->error = -ETIMEDOUT;
+				kunmap_atomic(buffer, KM_BIO_SRC_IRQ);
+				local_irq_restore(flags);
+				goto out;
+			}
+		}
+
+		/* Done with this SG element */
+		kunmap_atomic(buffer, KM_BIO_SRC_IRQ);
+		local_irq_restore(flags);
+
+		if (--sg_len) {
+			/* Advance to next SG element */
+			sg++;
+			sg_off = 0;
+		}
+	}
+
+	/*
+	 * Wait for data xmit to complete
+	 */
+	timeout = MSMSDCC_POLLING_RETRIES;
+	while(timeout) {
+		status = readl(base + MMCISTATUS);
+		if (status & MCI_DATAEND)
+			break;
+		timeout--;
+	}
+	if (!timeout) {
+		uint32_t reg_datacnt, reg_fifocnt;
+		reg_datacnt = readl(host->base + MMCIDATACNT);
+		reg_fifocnt = readl(host->base + MMCIFIFOCNT);
+
+		printk(KERN_ERR "%s: Timed out waiting for DATAEND on Tx (0x%.8x, %d, %d)\n",
+		       mmc_hostname(host->mmc), status, reg_datacnt, reg_fifocnt);
+
+		data->error = -ETIMEDOUT;
+		goto out;
+	}
+	data->bytes_xfered = data->blksz * data->blocks;
+#if MSMSDCC_POLLING_DEBUG
+	printk(KERN_DEBUG "%s: Tx complete (%d bytes xfered)\n",
+	       mmc_hostname(host->mmc), data->bytes_xfered);
+#endif
+
+out:
+	writel(0x18007ff, host->base + MMCICLEAR);
+	return data->error;
+}
+
+static void
+msmsdcc_do_polling_request(struct msmsdcc_host *host, struct mmc_request *mrq)
+{
+	struct mmc_command	*cmd = mrq->cmd;
+	struct mmc_data		*data = mrq->data;
+	uint32_t		status;
+	int			rc;
+
+	writel(0x018007FF, host->base + MMCICLEAR);
+
+	msmsdcc_start_command(host, cmd, 0);
+	rc = msmsdcc_waitfor_cmd(host, cmd, &status);
+#if MSMSDCC_POLLING_DEBUG
+	printk(KERN_DEBUG
+	       "%s: Polling waitforcmd rc = %d (status 0x%.8x)\n",
+	       mmc_hostname(host->mmc), rc, status);
+#endif
+	if (rc) {
+		printk(KERN_ERR "%s: Command error (%d)\n",
+		       mmc_hostname(host->mmc), rc);
+		cmd->error = rc;
+		goto done;
+	}
+
+	if (data) {
+		if (!(mrq->data->flags & MMC_DATA_READ)) {
+			msmsdcc_start_data(host, data);
+			msmsdcc_polling_tx(host, data);
+		} else 
+			msmsdcc_polling_rx(host, data);
+		msmsdcc_stop_data(host);
+	}
+
+done:
+#if MSMSDCC_POLLING_DEBUG
+	printk(KERN_DEBUG
+	       "%s: Done request (cmd_err = %d, dat_err = %d, stop_err = %d)\n",
+	       mmc_hostname(host->mmc), cmd->error, 
+	       (mrq->data != NULL ? mrq->data->error : -1),
+	       (mrq->stop != NULL ? mrq->stop->error : -1));
+#endif
+	   
+	writel(0x18007ff, host->base + MMCICLEAR);
+	spin_unlock_irq(&host->lock);
+	mmc_request_done(host->mmc, host->mrq);
+	return;
+}
+
 static void
 msmsdcc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 {
 	struct msmsdcc_host *host = mmc_priv(mmc);
+	int poll = 0;
 
 	WARN_ON(host->mrq != NULL);
 
@@ -722,12 +866,31 @@ msmsdcc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	host->mrq = mrq;
 
+	/*
+	 * According to QCT PIO interrupts may be broken,
+	 * so if we're not going to use DMA, fall back to
+	 * polling
+	 */
+	if (mrq->data && validate_dma(host, mrq->data)) {
+
+		writel(0, host->base + MMCIMASK0);
+		poll = 1;
+		
+	} else 
+		writel(MCI_IRQENABLE, host->base + MMCIMASK0);
+
 	if (mrq->data && mrq->data->flags & MMC_DATA_READ)
 		msmsdcc_start_data(host, mrq->data);
 
-	msmsdcc_start_command(host, mrq->cmd, 0);
+	if (poll) {
+		msmsdcc_do_polling_request(host, mrq);
+		host->mrq = NULL;
+	} else {
+		msmsdcc_start_command(host, mrq->cmd, 0);
+		mod_timer(&host->command_timer, jiffies + (HZ / 2));
+		spin_unlock_irq(&host->lock);
+	}
 
-	spin_unlock_irq(&host->lock);
 }
 
 static void
@@ -843,49 +1006,41 @@ msmsdcc_status_notify_cb(int card_present, void *dev_id)
 }
 
 /*
- * called when a transaction expires.
+ * called when a command expires.
  * Dump some debugging, and then error
  * out the transaction.
  */
 static void
-msmsdcc_transaction_expired(unsigned long _data)
+msmsdcc_command_expired(unsigned long _data)
 {
-	struct msmsdcc_host *host = (struct msmsdcc_host *) _data;
-	struct mmc_request *mrq = NULL;
-	struct mmc_command *cmd = NULL;
-	struct mmc_data *data = NULL;
-	unsigned long flags;
+	struct msmsdcc_host	*host = (struct msmsdcc_host *) _data;
+	struct mmc_request	*mrq;
+	unsigned long		flags;
 
 	spin_lock_irqsave(&host->lock, flags);
+	mrq = host->mrq;
 
-	if (!host->mrq) {
-		printk(KERN_INFO "%s: Transaction expiry misfire\n",
+	if (!mrq) {
+		printk(KERN_INFO "%s: Command expiry misfire\n",
 		       mmc_hostname(host->mmc));
 		spin_unlock_irqrestore(&host->lock, flags);
 		return;
 	}
 
-	mrq = host->mrq;
-	cmd = mrq->cmd;
-	data = mrq->data;
+	printk(KERN_ERR "%s: Command timeout (%p %p %p %p)\n",
+	       mmc_hostname(host->mmc), mrq, mrq->cmd,
+	       mrq->data, host->dma.sg);
 
-	printk(KERN_ERR "%s: Transaction timeout (%p %p %p %p)\n",
-	       mmc_hostname(host->mmc), mrq, cmd, data, host->dma.sg);
-
-	if (host->dma.sg) {
-		if (data)
-			data->error = -ETIME;
-		msm_dmov_stop_cmd(host->dma.channel, &host->dma.hdr);
-		spin_unlock_irqrestore(&host->lock, flags);
-		return;
-	}
-
-	if (cmd)
-		cmd->error = -ETIME;
+	mrq->cmd->error = -ETIMEDOUT;
 	msmsdcc_stop_data(host);
-	msmsdcc_request_end(host, host->mrq);
+
+	writel(0, host->base + MMCICOMMAND);
+
+	host->mrq = NULL;
+	host->cmd = NULL;
 
 	spin_unlock_irqrestore(&host->lock, flags);
+	mmc_request_done(host->mmc, mrq);
 }
 
 static int
@@ -906,17 +1061,10 @@ msmsdcc_init_dma(struct msmsdcc_host *host)
 		printk(KERN_ERR "Unable to allocate DMA buffer\n");
 		return -ENOMEM;
 	}
-	printk(KERN_INFO
-	       "%s: DM non-cached buffer at %p, dma_addr 0x%.8x\n",
-	       __func__, host->dma.nc, host->dma.nc_busaddr);
 	memset(host->dma.nc, 0x00, sizeof(struct msmsdcc_nc_dmadata));
 	host->dma.cmd_busaddr = host->dma.nc_busaddr;
 	host->dma.cmdptr_busaddr = host->dma.nc_busaddr +
 				offsetof(struct msmsdcc_nc_dmadata, cmdptr);
-	printk(KERN_INFO
-	       "%s: DM cmd busaddr %u, cmdptr busaddr %u\n",
-	       __func__, host->dma.cmd_busaddr,
-	       host->dma.cmdptr_busaddr);
 	host->dma.channel = host->dmares->start;
 
 	return 0;
@@ -994,10 +1142,7 @@ msmsdcc_probe(struct platform_device *pdev)
 	/*
 	 * Setup DMA
 	 */
-	ret = msmsdcc_init_dma(host);
-	if (ret)
-		printk(KERN_ERR "%s: DMA setup failed (%d)\n",
-		       __func__, ret);
+	msmsdcc_init_dma(host);
 
 	/*
 	 * Setup main peripheral bus clock
@@ -1059,7 +1204,6 @@ msmsdcc_probe(struct platform_device *pdev)
 	mmc->max_seg_size = mmc->max_req_size;
 		
 	writel(0, host->base + MMCIMASK0);
-	writel(0, host->base + MMCIMASK1);
 	writel(0x5c007ff, host->base + MMCICLEAR);
 
 	writel(MCI_IRQENABLE, host->base + MMCIMASK0);
@@ -1100,35 +1244,40 @@ msmsdcc_probe(struct platform_device *pdev)
 	}
 
 	/*
-	 * Setup a transaction timer. We currently need this due to
+	 * Setup a command timer. We currently need this due to
 	 * some 'strange' timeout / error handling situations.
 	 */
-	init_timer(&host->transaction_timer);
-	host->transaction_timer.data = (unsigned long) host;
-	host->transaction_timer.function = msmsdcc_transaction_expired;
+	init_timer(&host->command_timer);
+	host->command_timer.data = (unsigned long) host;
+	host->command_timer.function = msmsdcc_command_expired;
 
 	ret = request_irq(irqres->start, msmsdcc_irq, IRQF_SHARED,
 			  DRIVER_NAME " (cmd)", host);
 	if (ret)
 		goto platform_irq_free;
 
-	ret = request_irq(irqres->end, msmsdcc_pio_irq, IRQF_SHARED,
-			  DRIVER_NAME " (pio)", host);
-	if (ret)
-		goto irq0_free;
-
 	mmc_set_drvdata(pdev, mmc);
 	mmc_add_host(mmc);
 
 	printk(KERN_INFO
-	       "%s: Qualcomm MSM SDCC at 0x%016llx irq %d,%d,%d dma %d\n",
+	       "%s: Qualcomm MSM SDCC at 0x%016llx irq %d,%d dma %d\n",
 	       mmc_hostname(mmc), (unsigned long long)memres->start,
-	       (unsigned int) irqres->start, (unsigned int)irqres->end,
+	       (unsigned int) irqres->start,
 	       (unsigned int) plat->status_irq, host->dma.channel);
 	printk(KERN_INFO "%s: 4 bit data mode %s\n", mmc_hostname(mmc),
 	       (mmc->caps & MMC_CAP_4_BIT_DATA ? "enabled" : "disabled"));
 	printk(KERN_INFO "%s: MMC clock %u -> %u Hz, PCLK %u Hz\n",
 	       mmc_hostname(mmc), msmsdcc_fmin, msmsdcc_fmax, host->pclk_rate);
+
+	if (host->dma.channel != -1) {
+		printk(KERN_INFO
+		       "%s: DM non-cached buffer at %p, dma_addr 0x%.8x\n",
+		       mmc_hostname(mmc), host->dma.nc, host->dma.nc_busaddr);
+		printk(KERN_INFO
+		       "%s: DM cmd busaddr %u, cmdptr busaddr %u\n",
+		       mmc_hostname(mmc), host->dma.cmd_busaddr,
+		       host->dma.cmdptr_busaddr);
+	}
 	if (host->timer.function)
 		printk(KERN_INFO "%s: Polling status mode enabled\n",
 		       mmc_hostname(mmc));
@@ -1138,8 +1287,6 @@ msmsdcc_probe(struct platform_device *pdev)
 #endif
 	return 0;
 
- irq0_free:
-	free_irq(irqres->start, host);
  platform_irq_free:
 	if (plat->status_irq)
 		free_irq(plat->status_irq, host);

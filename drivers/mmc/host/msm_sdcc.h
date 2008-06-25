@@ -138,8 +138,7 @@
 #define MCI_IRQENABLE	\
 	(MCI_CMDCRCFAILMASK|MCI_DATACRCFAILMASK|MCI_CMDTIMEOUTMASK|	\
 	MCI_DATATIMEOUTMASK|MCI_TXUNDERRUNMASK|MCI_RXOVERRUNMASK|	\
-	MCI_DATAENDMASK | \
-	MCI_CMDRESPENDMASK|MCI_CMDSENTMASK|MCI_DATABLOCKENDMASK)
+	MCI_CMDRESPENDMASK|MCI_CMDSENTMASK)
 
 /*
  * The size of the FIFO in bytes.
@@ -187,8 +186,7 @@ struct msmsdcc_host {
 	struct clk		*clk;		/* main MMC bus clock */
 	struct clk		*pclk;		/* SDCC peripheral bus clock */
 	unsigned int		clks_on;	/* set if clocks are enabled */
-	struct timer_list	transaction_timer;
-	unsigned int		num_fail;
+	struct timer_list	command_timer;
 
 	unsigned int		eject;		/* eject state */
 
@@ -204,9 +202,6 @@ struct msmsdcc_host {
 	unsigned int		oldstat;
 
 	struct mmc_data		*data;
-	struct scatterlist	*sg_ptr;
-	unsigned int		sg_len;
-	unsigned int		sg_off;
 
 	unsigned int		xfer_size;	/* Total data size */
 	unsigned int		xfer_remain;	/* Bytes remaining to send */
@@ -214,40 +209,5 @@ struct msmsdcc_host {
 
 	struct msmsdcc_dma_data	dma;
 };
-
-static inline
-void msmsdcc_init_sg(struct msmsdcc_host *host, struct mmc_data *data)
-{
-	/*
-	 * Ideally, we want the higher levels to pass us a scatter list.
-	 */
-	host->sg_len = data->sg_len;
-	host->sg_ptr = data->sg;
-	host->sg_off = 0;
-}
-
-static inline int msmsdcc_next_sg(struct msmsdcc_host *host)
-{
-	host->sg_ptr++;
-	host->sg_off = 0;
-	return --host->sg_len;
-}
-
-static inline char *
-msmsdcc_kmap_atomic(struct msmsdcc_host *host, unsigned long *flags)
-{
-	struct scatterlist *sg = host->sg_ptr;
-
-	local_irq_save(*flags);
-	return kmap_atomic(sg_page(sg), KM_BIO_SRC_IRQ) + sg->offset;
-}
-
-static inline void
-msmsdcc_kunmap_atomic(struct msmsdcc_host *host,
-		      void *buffer, unsigned long *flags)
-{
-	kunmap_atomic(buffer, KM_BIO_SRC_IRQ);
-	local_irq_restore(*flags);
-}
 
 #endif
