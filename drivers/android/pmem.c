@@ -119,6 +119,7 @@ struct pmem_info {
 	 * cached and uncached is desired, set this and open the device with
 	 * O_SYNC to get an uncached region */
 	unsigned cached;
+	unsigned buffered;
 	/* in no_allocator mode the first mapper gets the whole space and sets
 	 * this flag */
 	unsigned allocated;
@@ -433,9 +434,14 @@ static int pmem_allocate(int id, unsigned long len)
 
 static pgprot_t phys_mem_access_prot(struct file *file, pgprot_t vma_prot)
 {
+	int id = get_id(file);
 #ifdef pgprot_noncached
-	if (!pmem[get_id(file)].cached || file->f_flags & O_SYNC)
+	if (pmem[id].cached == 0 || file->f_flags & O_SYNC)
 		return pgprot_noncached(vma_prot);
+#endif
+#ifdef pgprot_ext_buffered
+	else if (pmem[id].buffered)
+		return pgprot_ext_buffered(vma_prot);
 #endif
 	return vma_prot;
 }
@@ -502,9 +508,9 @@ static int pmem_map_pfn_range(int id, struct vm_area_struct *vma,
 	BUG_ON(!PMEM_IS_PAGE_ALIGNED(len));
 	BUG_ON(!PMEM_IS_PAGE_ALIGNED(offset));
 
-	if (remap_pfn_range(vma, vma->vm_start + offset,
-			    (pmem_start_addr(id, data) + offset) >> PAGE_SHIFT,
-			    len, vma->vm_page_prot)) {
+	if (io_remap_pfn_range(vma, vma->vm_start + offset,
+		(pmem_start_addr(id, data) + offset) >> PAGE_SHIFT,
+		len, vma->vm_page_prot)) {
 		return -EAGAIN;
 	}
 	return 0;
@@ -1218,6 +1224,7 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 
 	pmem[id].no_allocator = pdata->no_allocator;
 	pmem[id].cached = pdata->cached;
+	pmem[id].buffered = pdata->buffered;
 	pmem[id].base = pdata->start;
 	pmem[id].size = pdata->size;
 	pmem[id].ioctl = ioctl;
@@ -1228,7 +1235,7 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 	pmem[id].dev.name = pdata->name;
 	pmem[id].dev.minor = id;
 	pmem[id].dev.fops = &pmem_fops;
-	printk(KERN_INFO "%s: init\n", pdata->name);
+	printk(KERN_INFO "%s: %d init\n", pdata->name, pdata->cached);
 
 	err = misc_register(&pmem[id].dev);
 	if (err) {
@@ -1253,9 +1260,16 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 	}
 
 	if (pmem[id].cached)
-		pmem[id].vbase = ioremap_cached(pmem[id].base, pmem[id].size);
+		pmem[id].vbase = ioremap_cached(pmem[id].base,
+						pmem[id].size);
+#ifdef ioremap_ext_buffered
+	else if (pmem[id].buffered)
+		pmem[id].vbase = ioremap_ext_buffered(pmem[id].base,
+						      pmem[id].size);
+#endif
 	else
 		pmem[id].vbase = ioremap(pmem[id].base, pmem[id].size);
+
 	if (pmem[id].vbase == 0)
 		goto error_cant_remap;
 
