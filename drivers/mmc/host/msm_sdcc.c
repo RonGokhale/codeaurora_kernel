@@ -212,11 +212,6 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 
 	msmsdcc_stop_data(host);
 
-	if (!(result & DMOV_RSLT_DONE)) {
-		printk("%s: After flush stop data\n", __func__);
-		msmsdcc_dump_fifodata(host);
-	}
-
 	dma_unmap_sg(mmc_dev(host->mmc), host->dma.sg, host->dma.num_ents,
 		     host->dma.dir);
 
@@ -441,6 +436,8 @@ msmsdcc_data_err(struct msmsdcc_host *host, struct mmc_data *data,
 {
 	if (status & MCI_DATACRCFAIL) {
 		printk(KERN_ERR "%s: Data CRC error\n", mmc_hostname(host->mmc));
+		printk(KERN_ERR "%s: opcode 0x%.8x\n", __func__, data->mrq->cmd->opcode);
+		printk(KERN_ERR "%s: blksz %d, blocks %d\n", __func__, data->blksz, data->blocks);
 		data->error = -EILSEQ;
 	} else if (status & MCI_DATATIMEOUT) {
 		printk(KERN_ERR "%s: Data timeout\n", mmc_hostname(host->mmc));
@@ -625,6 +622,7 @@ msmsdcc_polling_rx(struct msmsdcc_host *host, struct mmc_data *data)
 			}
 			if (timeout++ > MSMSDCC_POLLING_RETRIES) {
 				uint32_t datacnt, fifocnt;
+				uint32_t dbg[2];
 
 				datacnt = readl(base + MMCIDATACNT);
 				fifocnt = readl(base + MMCIFIFOCNT);
@@ -635,6 +633,11 @@ msmsdcc_polling_rx(struct msmsdcc_host *host, struct mmc_data *data)
 				printk(KERN_ERR "%s: 0x%.8x 0x%.8x 0x%.8x\n",
 				       mmc_hostname(host->mmc), datacnt, 
 				       fifocnt, status);
+				dbg[0] = readl(base + MMCIFIFO);
+				dbg[1] = readl(base + MMCIFIFO + 4);
+				printk(KERN_ERR "%s: Data = 0x%.8x 0x%.8x\n",
+				       mmc_hostname(host->mmc), dbg[0], dbg[1]);
+				printk(KERN_ERR "%s: opcode 0x%.8x\n", __func__, data->mrq->cmd->opcode);
 
 				data->error = -ETIMEDOUT;
 				kunmap_atomic(buffer, KM_BIO_SRC_IRQ);
