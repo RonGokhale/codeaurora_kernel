@@ -132,7 +132,6 @@ ENTRY(cpu_v6_switch_mm)
 ENTRY(cpu_v6_set_pte_ext)
 #ifdef CONFIG_MMU
 	str	r1, [r0], #-2048		@ linux version
-
 	bic	r3, r1, #0x000003f0
 	bic	r3, r3, #0x00000003
 	orr	r3, r3, r2
@@ -153,39 +152,20 @@ ENTRY(cpu_v6_set_pte_ext)
 	tst	r1, #L_PTE_EXEC
 	orreq	r3, r3, #PTE_EXT_XN
 
+	tst	r1, #L_PTE_DEVICE
+	orrne	r3, r3, #PTE_EXT_TEX(2)
+
+	tst	r1, #L_PTE_EXT_BUFFERED
+	orrne	r3, r3, #PTE_EXT_TEX(7)
+
 	tst	r1, #L_PTE_PRESENT
 	moveq	r3, #0
-
-#if CONFIG_ARCH_MSM7X00A
-/* FIXME: 
-** The address range from EBI2CS0 -> RESERVED must have 
-** PTE_EXT_TEX(2) set and the B and C bits cleared, so 
-** that this area is accessed as DEVICE NON-SHARED.  
-** Ideally this would be passed down from above somehow 
-** rather than be applied based on address range here:
-*/
-#define EBI2CS0_BASE     0x88000000
-#define RESERVED_BASE    0xD0000000
-
-	mov	r1, #EBI2CS0_BASE
-	cmp	r3, r1
-	bpl pte_hack
-pte_write_out:
-#endif
 
 	str	r3, [r0]
 	mcr	p15, 0, r0, c7, c10, 1 @ flush_pte
 #endif
 	mov	pc, lr
 
-#if CONFIG_ARCH_MSM7X00A
-pte_hack:
-	movpl	r1, #RESERVED_BASE
-	cmppl	r1, r3
-	orrpl	r3, r3, #PTE_EXT_TEX(2)
-	andpl	r3, r3, #(~(PTE_BUFFERABLE|PTE_CACHEABLE))
-	b	pte_write_out
-#endif
 
 cpu_v6_name:
 	.asciz	"ARMv6-compatible processor"
