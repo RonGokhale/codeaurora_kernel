@@ -39,6 +39,7 @@ static struct clk *grp_clk;
 static struct clk *imem_clk;
 DECLARE_MUTEX(hw3d_sem);
 static unsigned int hw3d_granted;
+static struct file *hw3d_granted_file;
 
 static irqreturn_t hw3d_irq_handler(int irq, void *data)
 {
@@ -108,7 +109,6 @@ static long hw3d_revoke_gpu(struct file *file)
 
 	down(&hw3d_sem);
 	if (!hw3d_granted) {
-		ret = -1;
 		goto end;
 	}
 	/* revoke the pmem region completely */
@@ -147,6 +147,7 @@ static long hw3d_grant_gpu(struct file *file)
 	clk_enable(grp_clk);
 	clk_enable(imem_clk);
 	hw3d_granted = 1;
+	hw3d_granted_file = file;
 end:
 	up(&hw3d_sem);
 	return ret;
@@ -156,10 +157,11 @@ static int hw3d_release(struct inode *inode, struct file *file)
 {
 	down(&hw3d_sem);
 	/* if the gpu is in use, and its inuse by the file that was released */
-	if (hw3d_granted) {
+	if (hw3d_granted && (file == hw3d_granted_file)) {
 		clk_disable(grp_clk);
 		clk_disable(imem_clk);
 		hw3d_granted = 0;
+		hw3d_granted_file = NULL;
 	}
 	up(&hw3d_sem);
 	return 0;
