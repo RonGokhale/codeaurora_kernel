@@ -70,6 +70,10 @@
 #include <linux/usb_usual.h>
 #include <linux/platform_device.h>
 
+#ifdef CONFIG_ANDROID_POWER
+#include <linux/android_power.h>
+#endif
+
 #include "usb_function.h"
 
 /*-------------------------------------------------------------------------*/
@@ -341,6 +345,10 @@ struct fsg_dev {
 
 	struct platform_device *pdev;
 	struct switch_dev sdev;
+
+#ifdef CONFIG_ANDROID_POWER
+	android_suspend_lock_t suspend_lock;
+#endif
 };
 
 static int exception_in_progress(struct fsg_dev *fsg)
@@ -363,7 +371,7 @@ static void set_bulk_out_req_length(struct fsg_dev *fsg,
 
 static struct fsg_dev			*the_fsg;
 
-static void	close_backing_file(struct lun *curlun);
+static void	close_backing_file(struct fsg_dev *fsg, struct lun *curlun);
 static void	close_all_backing_files(struct fsg_dev *fsg);
 
 
@@ -1288,7 +1296,7 @@ static int do_start_stop(struct fsg_dev *fsg)
 	if (loej) {
 		/* eject request from the host */
 		if (backing_file_is_open(curlun)) {
-			close_backing_file(curlun);
+			close_backing_file(fsg, curlun);
 			curlun->unit_attention_data = SS_MEDIUM_NOT_PRESENT;
 		}
 	}
@@ -2033,6 +2041,29 @@ reset:
 	return rc;
 }
 
+#ifdef CONFIG_ANDROID_POWER
+static void adjust_wake_lock(struct fsg_dev *fsg)
+{
+	int ums_active = 0;
+	int i;
+	
+	spin_lock_irq(&fsg->lock);
+
+	if (fsg->config) {
+		for (i = 0; i < fsg->nluns; ++i) {
+			if (backing_file_is_open(&fsg->luns[i]))
+				ums_active = 1;
+		}
+	}
+
+	if (ums_active)
+		android_lock_suspend(&fsg->suspend_lock);
+	else
+		android_unlock_suspend(&fsg->suspend_lock);
+
+	spin_unlock_irq(&fsg->lock);
+}
+#endif
 
 /*
  * Change our operational configuration.  This code must agree with the code
@@ -2064,6 +2095,9 @@ static int do_set_config(struct fsg_dev *fsg, u8 new_config)
 	}
 
 	switch_set_state(&fsg->sdev, new_config);
+#ifdef CONFIG_ANDROID_POWER
+	adjust_wake_lock(fsg);
+#endif
 	return rc;
 }
 
@@ -2238,7 +2272,7 @@ static int fsg_main_thread(void *fsg_)
 /* If the next two routines are called while the gadget is registered,
  * the caller must own fsg->filesem for writing. */
 
-static int open_backing_file(struct lun *curlun, const char *filename)
+static int open_backing_file(struct fsg_dev *fsg, struct lun *curlun, const char *filename)
 {
 	int				ro;
 	struct file			*filp = NULL;
@@ -2304,6 +2338,9 @@ static int open_backing_file(struct lun *curlun, const char *filename)
 	LDBG(curlun, "open backing file: %s size: %lld num_sectors: %lld\n",
 			filename, size, num_sectors);
 	rc = 0;
+#ifdef CONFIG_ANDROID_POWER
+	adjust_wake_lock(fsg);
+#endif
 
 out:
 	filp_close(filp, current->files);
@@ -2311,12 +2348,15 @@ out:
 }
 
 
-static void close_backing_file(struct lun *curlun)
+static void close_backing_file(struct fsg_dev *fsg, struct lun *curlun)
 {
 	if (curlun->filp) {
 		LDBG(curlun, "close backing file\n");
 		fput(curlun->filp);
 		curlun->filp = NULL;
+#ifdef CONFIG_ANDROID_POWER
+		adjust_wake_lock(fsg);
+#endif
 	}
 }
 
@@ -2325,7 +2365,7 @@ static void close_all_backing_files(struct fsg_dev *fsg)
 	int	i;
 
 	for (i = 0; i < fsg->nluns; ++i)
-		close_backing_file(&fsg->luns[i]);
+		close_backing_file(fsg, &fsg->luns[i]);
 }
 
 static ssize_t show_file(struct device *dev, struct device_attribute *attr,
@@ -2378,13 +2418,13 @@ static ssize_t store_file(struct device *dev, struct device_attribute *attr,
 	/* Eject current medium */
 	down_write(&fsg->filesem);
 	if (backing_file_is_open(curlun)) {
-		close_backing_file(curlun);
+		close_backing_file(fsg, curlun);
 		curlun->unit_attention_data = SS_MEDIUM_NOT_PRESENT;
 	}
 
 	/* Load new medium */
 	if (count > 0 && buf[0]) {
-		rc = open_backing_file(curlun, buf);
+		rc = open_backing_file(fsg, curlun, buf);
 		if (rc == 0)
 			curlun->unit_attention_data =
 					SS_NOT_READY_TO_READY_TRANSITION;
@@ -2557,7 +2597,6 @@ out:
 	close_all_backing_files(fsg);
 }
 
-
 static void fsg_configure(int configured, void *_ctxt)
 {
 	struct fsg_dev *fsg = _ctxt;
@@ -2635,6 +2674,10 @@ static int fsg_probe(struct platform_device *pdev)
 	if (rc < 0)
 		goto err_switch_dev_register;
 
+#ifdef CONFIG_ANDROID_POWER
+	the_fsg->suspend_lock.name = "usb_mass_storage";
+	android_init_suspend_lock(&the_fsg->suspend_lock);
+#endif
 	fsg_function.context = the_fsg;
 	rc = usb_function_register(&fsg_function);
 	if (rc != 0)
