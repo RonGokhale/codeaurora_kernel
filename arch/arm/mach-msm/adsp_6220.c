@@ -250,7 +250,9 @@ static uint32_t *qdsp_queue_offset_table[] = {
 	{ .name = #n, .pdev_name = "adsp_" #n, .id = QDSP_MODULE_##n }
 
 static struct adsp_module_info module_info[] = {
+	QDSP_MODULE(AUDPLAY0TASK),
 	QDSP_MODULE(AUDPPTASK),
+	QDSP_MODULE(AUDPREPROCTASK),
 	QDSP_MODULE(AUDRECTASK),
 	QDSP_MODULE(VFETASK),
 	QDSP_MODULE(QCAMTASK),
