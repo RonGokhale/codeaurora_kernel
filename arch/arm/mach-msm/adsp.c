@@ -160,6 +160,8 @@ int msm_adsp_get(const char *name, struct msm_adsp_module **out,
 
 	mutex_lock(&module->lock);
 	pr_info("adsp: opening module %s\n", module->name);
+	if (module->open_count++ == 0 && module->clk)
+		clk_enable(module->clk);
 
 	mutex_lock(&adsp_open_lock);
 	if (adsp_open_count++ == 0)
@@ -194,6 +196,8 @@ done:
 	mutex_lock(&adsp_open_lock);
 	if (rc && --adsp_open_count == 0)
 		disable_irq(INT_ADSP_A11);
+	if (rc && --module->open_count == 0 && module->clk)
+		clk_disable(module->clk);
 	mutex_unlock(&adsp_open_lock);
 	mutex_unlock(&module->lock);
 	return rc;
@@ -206,6 +210,8 @@ void msm_adsp_put(struct msm_adsp_module *module)
 	unsigned long flags;
 
 	mutex_lock(&module->lock);
+	if (--module->open_count == 0 && module->clk)
+		clk_disable(module->clk);
 	if (module->ops) {
 		pr_info("adsp: closing module %s\n", module->name);
 
@@ -816,12 +822,6 @@ static int msm_adsp_probe(struct platform_device *pdev)
 	/* start the kernel thread to process the callbacks */
 	kthread_run(adsp_rpc_thread, NULL, "kadspd");
 
-	{
-		struct clk *clk = clk_get(NULL, "vdc_clk");
-		clk_enable(clk);
-		clk_set_rate(clk, 96000000);
-	}
-
 	for (i = 0; i < count; i++) {
 		struct msm_adsp_module *mod = adsp_modules + i;
 		mutex_init(&mod->lock);
@@ -829,6 +829,12 @@ static int msm_adsp_probe(struct platform_device *pdev)
 		mod->info = &adsp_info;
 		mod->name = adsp_info.module[i].name;
 		mod->id = adsp_info.module[i].id;
+		if (adsp_info.module[i].clk_name)
+			mod->clk = clk_get(NULL, adsp_info.module[i].clk_name);
+		else
+			mod->clk = NULL;
+		if (mod->clk && adsp_info.module[i].clk_rate)
+			clk_set_rate(mod->clk, adsp_info.module[i].clk_rate);
 		mod->pdev.name = adsp_info.module[i].pdev_name;
 		mod->pdev.id = -1;
 		adsp_info.id_to_module[mod->id] = mod;

@@ -27,6 +27,8 @@ struct adsp_module_info {
 	const char *name;
 	const char *pdev_name;
 	uint32_t id;
+	const char *clk_name;
+	unsigned long clk_rate;
 };
 
 struct adsp_info {
@@ -142,6 +144,8 @@ struct msm_adsp_module {
 	unsigned state;
 
 	struct platform_device pdev;
+	struct clk *clk;
+	int open_count;
 };
 
 extern void msm_adsp_publish_cdevs(struct msm_adsp_module *, unsigned);

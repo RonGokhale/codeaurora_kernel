@@ -282,20 +282,21 @@ static uint32_t *qdsp_queue_offset_table[] = {
 	qdsp_qtv_lp_queue_offset_table,
 };
 
-#define QDSP_MODULE(n) \
-	{ .name = #n, .pdev_name = "adsp_" #n, .id = QDSP_MODULE_##n }
+#define QDSP_MODULE(n, clkname, clkrate) \
+	{ .name = #n, .pdev_name = "adsp_" #n, .id = QDSP_MODULE_##n,\
+	  .clk_name=clkname, .clk_rate=clkrate }
 
 static struct adsp_module_info module_info[] = {
-	QDSP_MODULE(AUDPLAY0TASK),
-	QDSP_MODULE(AUDPPTASK),
-	QDSP_MODULE(AUDRECTASK),
-	QDSP_MODULE(AUDPREPROCTASK),
-	QDSP_MODULE(VFETASK),
-	QDSP_MODULE(QCAMTASK),
-	QDSP_MODULE(LPMTASK),
-	QDSP_MODULE(JPEGTASK),
-	QDSP_MODULE(VIDEOTASK),
-	QDSP_MODULE(VDEC_LP_MODE),
+	QDSP_MODULE(AUDPLAY0TASK, NULL, 0),
+	QDSP_MODULE(AUDPPTASK, NULL, 0),
+	QDSP_MODULE(AUDRECTASK, NULL, 0),
+	QDSP_MODULE(AUDPREPROCTASK, NULL, 0),
+	QDSP_MODULE(VFETASK, NULL, 0),
+	QDSP_MODULE(QCAMTASK, NULL, 0),
+	QDSP_MODULE(LPMTASK, NULL, 0),
+	QDSP_MODULE(JPEGTASK, NULL, 0),
+	QDSP_MODULE(VIDEOTASK, "vdc_clk", 96000000),
+	QDSP_MODULE(VDEC_LP_MODE, NULL, 0),
 };
 
 int adsp_init_info(struct adsp_info *info)
