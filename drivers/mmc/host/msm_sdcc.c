@@ -68,11 +68,12 @@ static char *msmsdcc_pclks[] = { NULL, "sdc1_pclk", "sdc2_pclk", "sdc3_pclk",
 				 "sdc4_pclk" };
 
 #define VERBOSE_COMMAND_TIMEOUTS	0
-#define MAX_DATACNT_WAIT_ITER		200
+#define MAX_DATAEND_WAIT_ITER		10000000
 #define MSMSDCC_POLLING_RETRIES		10000000
 
-static void msmsdcc_start_command(struct msmsdcc_host *host,
-				  struct mmc_command *cmd, u32 c);
+static void
+msmsdcc_start_command(struct msmsdcc_host *host,
+		      struct mmc_command *cmd, u32 c);
 
 static void
 msmsdcc_dump_fifodata(struct msmsdcc_host *host)
@@ -135,15 +136,14 @@ uint32_t msmsdcc_fifo_addr(struct msmsdcc_host *host)
 }
 
 static int
-msmsdcc_wait_for_datacnt(struct msmsdcc_host *host, unsigned int retries)
+msmsdcc_wait_for_dataend(struct msmsdcc_host *host, unsigned int retries)
 {
-	uint32_t reg_datacnt;
+	uint32_t reg_status;
 
 	while(retries) {
-		reg_datacnt = readl(host->base + MMCIDATACNT);
-		if (reg_datacnt == 0)
+		reg_status = readl(host->base + MMCISTATUS);
+		if (reg_status & MCI_DATAEND)
 			break;
-		mdelay(1);
 		retries--;
 	}
 	if (!retries)
@@ -162,7 +162,7 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 	unsigned long		flags;
 	uint32_t		reg_datacnt, reg_status;
 	struct mmc_request	*mrq;
-	int			rc;
+	int			rc = 0;
 
 	spin_lock_irqsave(&host->lock, flags);
 
@@ -191,26 +191,44 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 		WARN_ON((!mrq->cmd->error && !mrq->data->error));
 	}
 
-	reg_datacnt = readl(host->base + MMCIDATACNT);
 	reg_status = readl(host->base + MMCISTATUS);
 
-	if ((reg_datacnt != 0) && (result & DMOV_RSLT_DONE)) {
+	if ((result & DMOV_RSLT_DONE) && !(reg_status & MCI_DATAEND)) {
 		printk(KERN_WARNING
-		       "%s: DMA result 0x%.8x but %d bytes left (0x%.8x)\n",
-		       mmc_hostname(host->mmc), result, reg_datacnt, reg_status);
+		       "%s: DMA result 0x%.8x but still waiting for DATAEND (0x%.8x)\n",
+		       mmc_hostname(host->mmc), result, reg_status);
 
 		if (result & DMOV_RSLT_VALID) {
-			rc = msmsdcc_wait_for_datacnt(host,
-						      MAX_DATACNT_WAIT_ITER);
-			if (rc)
+			rc = msmsdcc_wait_for_dataend(host,
+						      MAX_DATAEND_WAIT_ITER);
+			if (rc) {
 				printk(KERN_ERR
-				       "%s: Timed out waiting for DMA\n", 
+				       "%s: Timed out waiting for DATAEND\n", 
 				       mmc_hostname(host->mmc));
-			reg_datacnt = readl(host->base + MMCIDATACNT);
+		
+			} else
+				printk(KERN_DEBUG
+				       "%s: Recovered..\n",
+				       mmc_hostname(host->mmc));
 		}
 	}
 
 	msmsdcc_stop_data(host);
+
+	/*
+	 * According to QCT it is only ok to read datacnt
+	 * after the transfer is complete (or otherwise stopped)
+	 */
+	reg_datacnt = readl(host->base + MMCIDATACNT);
+
+	/*
+	 * If we timed out on DMA then output some debugging
+	 */
+	if (rc) {
+		printk(KERN_DEBUG "%s: DC %d, BS %d, B %d, OP %d\n",
+		       mmc_hostname(host->mmc), reg_datacnt, mrq->data->blksz,
+		       mrq->data->blocks, mrq->cmd->opcode);
+	}
 
 	dma_unmap_sg(mmc_dev(host->mmc), host->dma.sg, host->dma.num_ents,
 		     host->dma.dir);
@@ -259,7 +277,9 @@ static int validate_dma(struct msmsdcc_host *host, struct mmc_data *data)
 {
 	if (host->dma.channel == -1)
 		return -ENOENT;
-	if (data->blksz < 32)
+	if ((data->blksz * data->blocks) < 32)
+		return -EINVAL;
+	if ((data->blksz * data->blocks) % 32)
 		return -EINVAL;
 	return 0;
 }
@@ -619,7 +639,9 @@ msmsdcc_polling_rx(struct msmsdcc_host *host, struct mmc_data *data)
 				timeout =  0;
 
 				writel(0x18007ff, host->base + MMCICLEAR);
+				continue;
 			}
+
 			if (timeout++ > MSMSDCC_POLLING_RETRIES) {
 				uint32_t datacnt, fifocnt;
 				uint32_t dbg[2];
@@ -741,6 +763,7 @@ msmsdcc_polling_tx(struct msmsdcc_host *host, struct mmc_data *data)
 				brtw -= count;
 
 				timeout =  0;
+				continue;
 			}
 
 			if (timeout++ > MSMSDCC_POLLING_RETRIES) {
@@ -814,6 +837,12 @@ msmsdcc_do_polling_request(struct msmsdcc_host *host, struct mmc_request *mrq)
 	       "%s: Polling waitforcmd rc = %d (status 0x%.8x)\n",
 	       mmc_hostname(host->mmc), rc, status);
 #endif
+	host->cmd = NULL;
+	cmd->resp[0] = readl(host->base + MMCIRESPONSE0);
+	cmd->resp[1] = readl(host->base + MMCIRESPONSE1);
+	cmd->resp[2] = readl(host->base + MMCIRESPONSE2);
+	cmd->resp[3] = readl(host->base + MMCIRESPONSE3);
+
 	if (rc) {
 		printk(KERN_ERR "%s: Command error (%d)\n",
 		       mmc_hostname(host->mmc), rc);
