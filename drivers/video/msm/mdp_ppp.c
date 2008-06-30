@@ -25,7 +25,7 @@
 #define PPP_DEBUG_MSGS 0
 #if PPP_DEBUG_MSGS
 #define DLOG(fmt,args...) \
-	do { printk("KERN_INFO [%s:%s:%d] "fmt, __FILE__, __func__, \
+	do { printk(KERN_INFO "[%s:%s:%d] "fmt, __FILE__, __func__, \
 		    __LINE__, ##args); } \
 	while (0)
 #else
@@ -324,7 +324,7 @@ static void get_edge_info(uint32_t src, uint32_t src_coord, uint32_t dst,
 		*interp2 = src;
 		*repeat1 = 0;
 		*repeat2 = 1;
-	} else if (src < 3 * dst) {
+	} else if (src > dst && src < 3 * dst) {
 		*interp1 = -1;
 		*interp2 = src;
 		*repeat1 = 1;
@@ -351,6 +351,7 @@ static int get_edge_cond(struct mdp_blit_req *req, struct mdp_regs *regs)
 	int32_t chroma_interp[4];
 	int32_t chroma_bound[4];
 	int32_t chroma_repeat[4];
+	uint32_t dst_w, dst_h;
 
 	memset(&luma_interp, 0, sizeof(int32_t) * 4);
 	memset(&luma_repeat, 0, sizeof(int32_t) * 4);
@@ -359,11 +360,19 @@ static int get_edge_cond(struct mdp_blit_req *req, struct mdp_regs *regs)
 	memset(&chroma_repeat, 0, sizeof(int32_t) * 4);
 	regs->edge = 0;
 
+	if (req->flags & MDP_ROT_90) {
+		dst_w = req->dst_rect.h;
+		dst_h = req->dst_rect.w;
+	} else {
+		dst_w = req->dst_rect.w;
+		dst_h = req->dst_rect.h;
+	}
+
 	if (regs->op & (PPP_OP_SCALE_Y_ON | PPP_OP_SCALE_X_ON)) {
-		get_edge_info(req->src_rect.h, req->src_rect.y, req->dst_rect.h,
+		get_edge_info(req->src_rect.h, req->src_rect.y, dst_h,
 			      &luma_interp[IMG_TOP], &luma_interp[IMG_BOTTOM],
-			      &luma_repeat[IMG_TOP], &luma_repeat[IMG_BOTTOM]);
-		get_edge_info(req->src_rect.w, req->src_rect.x, req->dst_rect.w,
+		      &luma_repeat[IMG_TOP], &luma_repeat[IMG_BOTTOM]);
+		get_edge_info(req->src_rect.w, req->src_rect.x, dst_w,
 			      &luma_interp[IMG_LEFT], &luma_interp[IMG_RIGHT],
 			      &luma_repeat[IMG_LEFT], &luma_repeat[IMG_RIGHT]);
 	} else {
@@ -753,10 +762,10 @@ int blit(struct fb_info *info, struct mdp_blit_req *req)
 
 	/* if the image is YCRYCB, the x and w must be even */
 	if (unlikely(req->src.format == MDP_YCRYCB_H2V1)) {
-		req->src_rect.x = (req->src_rect.x / 2) * 2;
-		req->src_rect.w = (req->src_rect.w / 2) * 2;
-		req->dst_rect.x = (req->dst_rect.x / 2) * 2;
-		req->dst_rect.w = (req->dst_rect.w / 2) * 2;
+		req->src_rect.x = req->src_rect.x & (~0x1);
+		req->src_rect.w = req->src_rect.w & (~0x1);
+		req->dst_rect.x = req->dst_rect.x & (~0x1);
+		req->dst_rect.w = req->dst_rect.w & (~0x1);
 	}
 	get_edge_cond(req, &regs);
 
