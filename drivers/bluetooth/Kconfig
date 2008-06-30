@@ -90,6 +90,16 @@ config BT_HCIUART_LL
 
 	  Say Y here to compile support for HCILL protocol.
 
+config BT_HCIUART_LL_USE_MSM_SERIAL_CLOCK_CONTROL
+	bool "Make msm serial clock requests when the BT chip sleeps."
+	depends on SERIAL_MSM_CLOCK_CONTROL
+	default n
+	help
+	  Sends requests to msm_serial to turn the uart clock on and off as the
+	  Bluetooth chip enters/exists deep sleep, providing power savings.
+	  This requires that the tty layer for bluetooth uses the msm_serial
+	  driver.
+
 config BT_HCIBCM203X
 	tristate "HCI BCM203x USB driver"
 	depends on USB
