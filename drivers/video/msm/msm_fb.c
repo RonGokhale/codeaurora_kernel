@@ -135,20 +135,23 @@ static int msmfb_start_dma(struct msmfb_info *par)
 	par->update_info.top = pi->height + 1;
 	par->update_info.eright = 0;
 	par->update_info.ebottom = 0;
-	spin_unlock_irqrestore(&par->update_lock, irq_flags);
-
 	if (unlikely(w > pi->width || h > pi->height || w == 0 || h == 0)) {
 		printk(KERN_INFO "invalid update: %d %d %d "
 				"%d\n", x, y, w, h);
-		mddi_activate_link(pi->mddi);
-		return 0;
-		/* some clients clear their vsync interrupt
-		 * when the link activates
-		 */
+		par->frame_done = par->frame_requested;
+		goto error;
 	}
+	spin_unlock_irqrestore(&par->update_lock, irq_flags);
+
 	addr = ((pi->width * (yoffset + y) + x) * 2);
 	mdp_dma_to_mddi(addr + par->fb_info->fix.smem_start,
 			pi->width * 2, w, h, x, y, &par->dma_callback);
+	return 0;
+error:
+	spin_unlock_irqrestore(&par->update_lock, irq_flags);
+	/* some clients clear their vsync interrupt
+	 * when the link activates */
+	mddi_activate_link(pi->mddi);
 	return 0;
 }
 
