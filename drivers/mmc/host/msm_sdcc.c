@@ -194,9 +194,11 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 	reg_status = readl(host->base + MMCISTATUS);
 
 	if ((result & DMOV_RSLT_DONE) && !(reg_status & MCI_DATAEND)) {
+#if 0
 		printk(KERN_WARNING
 		       "%s: DMA result 0x%.8x but still waiting for DATAEND (0x%.8x)\n",
 		       mmc_hostname(host->mmc), result, reg_status);
+#endif
 
 		if (result & DMOV_RSLT_VALID) {
 			rc = msmsdcc_wait_for_dataend(host,
@@ -205,11 +207,7 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 				printk(KERN_ERR
 				       "%s: Timed out waiting for DATAEND\n", 
 				       mmc_hostname(host->mmc));
-		
-			} else
-				printk(KERN_DEBUG
-				       "%s: Recovered..\n",
-				       mmc_hostname(host->mmc));
+			} 
 		}
 	}
 
