@@ -450,6 +450,15 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 			goto free_card;
 
 		/*
+		 * SAN_XXX:
+		 * Trout specific hack to delay before issuing
+		 * our first block request to the card by
+		 * 250 ms.
+		 */
+		printk("%s: Delay 250 ms\n", __func__);
+		mdelay(250);
+
+		/*
 		 * Fetch switch information from card.
 		 */
 		err = mmc_read_switch(card);

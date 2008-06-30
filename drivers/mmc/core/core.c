@@ -692,7 +692,12 @@ void mmc_rescan(struct work_struct *work)
 void mmc_start_host(struct mmc_host *host)
 {
 	mmc_power_off(host);
-	mmc_detect_change(host, 0);
+	/*
+	 * SAN_XXX:
+	 * Trout specific hack to delay the initial scanning
+	 * for SD devices for 1 second.
+	 */
+	mmc_detect_change(host, HZ);
 }
 
 void mmc_stop_host(struct mmc_host *host)
