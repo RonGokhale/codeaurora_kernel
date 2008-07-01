@@ -31,6 +31,11 @@
 #include <linux/workqueue.h>
 #include <linux/clk.h>
 
+#ifdef CONFIG_FB_MSM_LOGO
+#define INIT_IMAGE_FILE "/logo.rle"
+extern int load_565rle_image( char *filename );
+#endif
+
 #define PRINT_FPS 0
 #define PRINT_BLIT_TIME 0
 
@@ -528,6 +533,11 @@ static int msmfb_probe(struct platform_device *pdev)
 	r = register_framebuffer(info);
 	if (r)
 		return r;
+
+#ifdef CONFIG_FB_MSM_LOGO
+	if (!load_565rle_image( INIT_IMAGE_FILE ))
+		; /* Flip buffer */
+#endif
 
 #ifdef CONFIG_ANDROID_POWER
 	par->slightly_earlier_suspend.suspend = msmfb_slightly_earlier_suspend;
