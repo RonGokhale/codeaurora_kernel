@@ -533,7 +533,6 @@ static void pmem_vma_open(struct vm_area_struct *vma)
 	int id = get_id(file);
 	/* this should never be called as we don't support copying pmem
 	 * ranges via fork */
-	DLOG("file %p\n", file);
 	BUG_ON(!has_allocation(file));
 	down_write(&data->sem);
 	/* remap the garbage pages, forkers don't get access to the data */
@@ -555,11 +554,11 @@ static void pmem_vma_close(struct vm_area_struct *vma)
 		return;
 	}
 	down_write(&data->sem);
-	if ((data->flags & PMEM_FLAGS_CONNECTED) &&
-	    (data->flags & PMEM_FLAGS_SUBMAP) &&
-	     data->vma == vma) {
-		data->flags |= PMEM_FLAGS_UNSUBMAP;
+	if (data->vma == vma) {
 		data->vma = NULL;
+		if ((data->flags & PMEM_FLAGS_CONNECTED) &&
+		    (data->flags & PMEM_FLAGS_SUBMAP))
+			data->flags |= PMEM_FLAGS_UNSUBMAP;
 	}
 	/* the kernel is going to free this vma now anyway */
 	up_write(&data->sem);
@@ -685,6 +684,7 @@ int get_pmem_user_addr(struct file *file, unsigned long *start,
 		return -1;
 	}
 	data = (struct pmem_data *)file->private_data;
+	down_read(&data->sem);
 	if (data->vma) {
 		*start = data->vma->vm_start;
 		*len = data->vma->vm_end - data->vma->vm_start;
@@ -692,6 +692,7 @@ int get_pmem_user_addr(struct file *file, unsigned long *start,
 		*start = 0;
 		*len = 0;
 	}
+	up_read(&data->sem);
 	return 0;
 }
 
@@ -1007,7 +1008,7 @@ int pmem_remap(struct pmem_region *region, struct file *file,
 		}
 	}
 
-	if (PMEM_IS_SUBMAP(data)) {
+	if (data->vma && PMEM_IS_SUBMAP(data)) {
 		if (operation == PMEM_MAP)
 			ret = pmem_remap_pfn_range(id, data->vma, data,
 						   region->offset, region->len);
@@ -1030,6 +1031,7 @@ static void pmem_revoke(struct file *file, struct pmem_data *data)
 	int id = get_id(file);
 	int ret = 0;
 
+	data->master_file = NULL;
 	ret = pmem_lock_data_and_mm(file, data, &mm);
 	/* if lock_data_and_mm fails either the task that mapped the fd, or
 	 * the vma that mapped it have already gone away, nothing more
@@ -1037,18 +1039,18 @@ static void pmem_revoke(struct file *file, struct pmem_data *data)
 	if (ret)
 		return;
 	/* unmap everything */
-	vma = data->vma;
-	DLOG("revoking file: %p vma: %p\n", file, vma);
 	/* delete the regions and region list nothing is mapped any more */
-	list_for_each_safe(elt, elt2, &data->region_list) {
-		region_node = list_entry(elt, struct pmem_region_node, list);
-		pmem_unmap_pfn_range(id, vma, data, region_node->region.offset,
-				     region_node->region.len);
-		list_del(elt);
-		kfree(region_node);
+	if (data->vma)
+		list_for_each_safe(elt, elt2, &data->region_list) {
+			region_node = list_entry(elt, struct pmem_region_node,
+						 list);
+			pmem_unmap_pfn_range(id, data->vma, data,
+					     region_node->region.offset,
+					     region_node->region.len);
+			list_del(elt);
+			kfree(region_node);
 	}
 	/* delete the master file */
-	data->master_file = NULL;
 	pmem_unlock_data_and_mm(data, mm);
 }
 
