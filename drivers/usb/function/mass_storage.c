@@ -490,8 +490,6 @@ static void bulk_in_complete(struct usb_endpoint *ep, struct usb_request *req)
 	if (req->status || req->actual != req->length)
 		DBG(fsg, "%s --> %d, %u/%u\n", __func__,
 				req->status, req->actual, req->length);
-	if (req->status == -ECONNRESET)		/* Request was cancelled */
-		usb_ept_flush(ep);
 
 	/* Hold the lock while we update the request and buffer states */
 	smp_wmb();
@@ -512,8 +510,6 @@ static void bulk_out_complete(struct usb_endpoint *ep, struct usb_request *req)
 		DBG(fsg, "%s --> %d, %u/%u\n", __func__,
 				req->status, req->actual,
 				bh->bulk_out_intended_length);
-	if (req->status == -ECONNRESET)		/* Request was cancelled */
-		usb_ept_flush(ep);
 
 	/* Hold the lock while we update the request and buffer states */
 	smp_wmb();
@@ -2077,6 +2073,9 @@ static int do_set_config(struct fsg_dev *fsg, u8 new_config)
 {
 	int	rc = 0;
 
+	if (new_config == fsg->config)
+		return rc;
+
 	/* Disable the single interface */
 	if (fsg->config != 0) {
 		DBG(fsg, "reset config\n");
@@ -2128,9 +2127,6 @@ static void handle_exception(struct fsg_dev *fsg)
 			raise_exception(fsg, FSG_STATE_EXIT);
 		}
 	}
-
-	usb_ept_flush(fsg->bulk_in);
-	usb_ept_flush(fsg->bulk_out);
 
 	/* Reset the I/O buffer states and pointers, the SCSI
 	 * state, and the exception.  Then invoke the handler. */
