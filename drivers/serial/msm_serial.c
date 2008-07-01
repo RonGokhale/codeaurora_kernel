@@ -187,6 +187,15 @@ void msm_serial_clock_on(struct uart_port *port, int force) {
 }
 #endif
 
+#ifdef CONFIG_SERIAL_MSM_RX_WAKEUP
+static irqreturn_t msm_rx_irq(int irq, void *dev_id)
+{
+	struct uart_port *port = dev_id;
+	msm_serial_clock_on(port, 0);
+	return IRQ_HANDLED;
+}
+#endif
+
 static void handle_rx(struct uart_port *port)
 {
 	struct tty_struct *tty = port->info->tty;
@@ -499,6 +508,17 @@ static int msm_startup(struct uart_port *port)
 			UART_IMR_CURRENT_CTS;
 	msm_write(port, msm_port->imr, UART_IMR);
 
+#ifdef CONFIG_SERIAL_MSM_RX_WAKEUP
+	/* Apply the RX GPIO wake irq workaround to the bluetooth uart */
+	if (port->line == 0) {  /* BT is serial device 0 */
+		ret = request_irq(MSM_GPIO_TO_INT(45), msm_rx_irq,
+				  IRQF_TRIGGER_FALLING, "msm_serial0_rx",
+				  port);
+		if (unlikely(ret))
+			return ret;
+	}
+#endif
+
 	return 0;
 }
 
@@ -514,6 +534,11 @@ static void msm_shutdown(struct uart_port *port)
 	clk_disable(msm_port->clk);
 
 	free_irq(port->irq, port);
+
+#ifdef CONFIG_SERIAL_MSM_RX_WAKEUP
+	if (port->line == 0)
+		free_irq(MSM_GPIO_TO_INT(45), port);
+#endif
 
 #ifdef CONFIG_SERIAL_MSM_CLOCK_CONTROL
 	if (msm_port->clk_state != MSM_CLK_OFF)
@@ -857,6 +882,12 @@ static int __init msm_serial_probe(struct platform_device *pdev)
 
 	if (unlikely(set_irq_wake(port->irq, 1)))
 		return -ENXIO;
+
+#ifdef CONFIG_SERIAL_MSM_RX_WAKEUP
+	if (port->line == 0)  /* BT is serial device 0 */
+		if (unlikely(set_irq_wake(MSM_GPIO_TO_INT(45), 1)))
+			return -ENXIO;
+#endif
 
 #ifdef CONFIG_SERIAL_MSM_CLOCK_CONTROL
 	msm_port->clk_state = MSM_CLK_PORT_OFF;
