@@ -24,23 +24,24 @@
 #include "clock.h"
 
 /*
- * ACPU speed table
+ * ACPU speed table. Complete table is shown but certain speeds are commented
+ * out to optimized speed switching.
  */
 struct clkctl_acpu_speed  acpu_freq_tbl[] = {
-	{ 19200, ACPU_PLL_TCXO, 0, 0, 19200, 0, 0},
-	{ 61440, ACPU_PLL_0, 4, 3, 61440, 0, 0}, /* VDD assumed */
-	{ 81920, ACPU_PLL_0, 4, 2, 40960, 1, 0}, /* VDD assumed */
-	{ 96000, ACPU_PLL_1, 1, 7, 48000, 1, 0}, /* VDD assumed */
-	{ 122880, ACPU_PLL_0, 4, 1, 61440, 1, 3},
-	{ 128000, ACPU_PLL_1, 1, 5, 64000, 1, 3}, /* VDD assumed */
-	{ 176000, ACPU_PLL_2, 2, 5, 88000, 1, 3}, /* VDD assumed */
-	{ 192000, ACPU_PLL_1, 1, 3, 64000, 2, 3}, /* VDD assumed */
-	{ 245760, ACPU_PLL_0, 4, 0, 81920, 2, 4},
-	{ 256000, ACPU_PLL_1, 1, 2, 85333, 2, 5},
-	{ 264000, ACPU_PLL_2, 2, 3, 88000, 2, 5}, /* VDD assumed */
-	{ 352000, ACPU_PLL_2, 2, 2, 88000, 3, 5}, /* VDD assumed */
-	{ 384000, ACPU_PLL_1, 1, 1, 128000, 2, 6},
-	{ 528000, ACPU_PLL_2, 2, 1, 132000, 3, 6},
+	{ 19200, ACPU_PLL_TCXO, 0, 0, 19200, 0, 0 },
+	{ 61440, ACPU_PLL_0, 4, 3, 61440, 0, 0 }, /* VDD assumed */
+	{ 81920, ACPU_PLL_0, 4, 2, 40960, 1, 0 }, /* VDD assumed */
+//	{ 96000, ACPU_PLL_1, 1, 7, 48000, 1, 0 }, /* VDD assumed */
+	{ 122880, ACPU_PLL_0, 4, 1, 61440, 1, 3 },
+	{ 128000, ACPU_PLL_1, 1, 5, 64000, 1, 3 }, /* VDD assumed */
+	{ 176000, ACPU_PLL_2, 2, 5, 88000, 1, 3 }, /* VDD assumed */
+//	{ 192000, ACPU_PLL_1, 1, 3, 64000, 2, 3 }, /* VDD assumed */
+	{ 245760, ACPU_PLL_0, 4, 0, 81920, 2, 4 },
+//	{ 256000, ACPU_PLL_1, 1, 2, 85333, 2, 5 },
+	{ 264000, ACPU_PLL_2, 2, 3, 88000, 2, 5 }, /* VDD assumed */
+	{ 352000, ACPU_PLL_2, 2, 2, 88000, 3, 5 }, /* VDD assumed */
+	{ 384000, ACPU_PLL_1, 1, 1, 128000, 2, 6 },
+	{ 528000, ACPU_PLL_2, 2, 1, 132000, 3, 6 },
 	{ 0, 0, 0, 0, 0, 0, 0},
 };
 

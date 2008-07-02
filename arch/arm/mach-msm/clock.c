@@ -33,6 +33,7 @@
 #include <asm/io.h>
 #include <asm/arch/msm_iomap.h>
 #include "clock.h"
+#include <linux/cpufreq.h>
 
 #include "proc_comm.h"
 
@@ -59,6 +60,10 @@ static unsigned long acpuclk_get_rate(struct clk *clk);
 int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse);
 
 extern struct clkctl_acpu_speed acpu_freq_tbl[];
+
+/* Baseline clock speed and lpj we are initalized at. */
+static unsigned long BASE_LPJ = -1;
+static struct clkctl_acpu_speed *BASE_ACPU_CLK;
 
 static int pc_clk_enable(unsigned id)
 {
@@ -277,6 +282,10 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 	if (!for_power_collapse)
 		mutex_lock(&drv_state.lock);
 
+	/* Save baseline lpj on the first clock change. */
+	if (BASE_LPJ == -1 && BASE_ACPU_CLK == cur_s)
+		BASE_LPJ = loops_per_jiffy;
+
 	if (tgt_s->vdd > strt_s->vdd) {
 		rc = acpuclk_set_vdd_level(tgt_s->vdd);
 		if (rc < 0) {
@@ -420,6 +429,14 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 		}
 		cur_s = hunt_s;
 		drv_state.current_speed = cur_s;
+		/* Re-adjust lpj for the new clock speed. */
+		if (BASE_ACPU_CLK == cur_s) {
+			loops_per_jiffy = BASE_LPJ;
+		} else {
+			loops_per_jiffy = cpufreq_scale(BASE_LPJ,
+							BASE_ACPU_CLK->a11clk_khz,
+							cur_s->a11clk_khz);
+		}
 		udelay(drv_state.acpu_switch_time_us);
 	}
 
@@ -478,8 +495,7 @@ static void acpuclk_init(struct clk *clk)
 		return;
 	}
 
-	drv_state.current_speed = speed;
-
+	drv_state.current_speed = BASE_ACPU_CLK = speed;
 
 	printk(KERN_INFO "ACPU running at %d KHz\n", speed->a11clk_khz);
 	/*
