@@ -17,8 +17,16 @@
 
 #include "hardware.h"
 
+#include <asm/arch/msm_iomap.h>
+#include <asm/io.h>
+
 static void putc(int c)
 {
+#if defined(MSM_DEBUG_UART_PHYS)
+	unsigned base = MSM_DEBUG_UART_PHYS;
+	while (!(readl(base + 0x08) & 0x04)) ;
+	writel(c, base + 0x0c);
+#endif
 }
 
 static inline void flush(void)

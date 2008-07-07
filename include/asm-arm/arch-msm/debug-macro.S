@@ -18,22 +18,28 @@
 #include <asm/arch/msm_iomap.h>
 
 	.macro	addruart,rx
+#if defined(MSM_DEBUG_UART_PHYS)
 	@ see if the MMU is enabled and select appropriate base address
 	mrc	p15, 0, \rx, c1, c0
 	tst	\rx, #1
-	ldreq	\rx, =MSM_UART1_PHYS
-	ldrne	\rx, =MSM_UART1_BASE
+	ldreq	\rx, =MSM_DEBUG_UART_PHYS
+	ldrne	\rx, =MSM_DEBUG_UART_BASE
+#endif
 	.endm
 
 	.macro	senduart,rd,rx
+#if defined(MSM_DEBUG_UART_PHYS)
 	str	\rd, [\rx, #0x0C]
+#endif
 	.endm
 
 	.macro	waituart,rd,rx
+#if defined(MSM_DEBUG_UART_PHYS)
 	@ wait for TX_READY
 1:	ldr	\rd, [\rx, #0x08]
 	tst	\rd, #0x04
 	beq	1b
+#endif
 	.endm
 
 	.macro	busyuart,rd,rx

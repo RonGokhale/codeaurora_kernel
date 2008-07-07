@@ -145,4 +145,6 @@ source "drivers/usb/atm/Kconfig"
 
 source "drivers/usb/gadget/Kconfig"
 
+source "drivers/usb/function/Kconfig
+
 endif # USB_SUPPORT

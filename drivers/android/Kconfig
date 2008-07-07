@@ -4,6 +4,10 @@ config ANDROID_BINDER_IPC
 	tristate "Binder IPC Driver"
 	default y
 
+config ANDROID_PMEM
+	bool "Android pmem allocator"
+	default y
+
 config ANDROID_POWER
 	bool "Android power driver"
 	depends on PM && RTC_CLASS

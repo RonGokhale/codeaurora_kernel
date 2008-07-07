@@ -584,15 +584,28 @@ static void mmc_sd_suspend(struct mmc_host *host)
 static void mmc_sd_resume(struct mmc_host *host)
 {
 	int err;
+	int retries;
 
 	BUG_ON(!host);
 	BUG_ON(!host->card);
 
 	mmc_claim_host(host);
-	err = mmc_sd_init_card(host, host->ocr, host->card);
+	retries = 5;
+	while (retries) {
+		err = mmc_sd_init_card(host, host->ocr, host->card);
+
+		if (err) {
+			retries--;
+			continue;
+		}
+		break;
+	}
+
 	mmc_release_host(host);
 
 	if (err) {
+		printk(KERN_ERR "%s: Re-init card failure (err = %d)\n",
+		       mmc_hostname(host),  err);
 		mmc_sd_remove(host);
 
 		mmc_claim_host(host);
@@ -622,6 +635,7 @@ static const struct mmc_bus_ops mmc_sd_ops = {
 int mmc_attach_sd(struct mmc_host *host, u32 ocr)
 {
 	int err;
+	int retries;
 
 	BUG_ON(!host);
 	WARN_ON(!host->claimed);
@@ -637,6 +651,12 @@ int mmc_attach_sd(struct mmc_host *host, u32 ocr)
 		err = mmc_spi_read_ocr(host, 0, &ocr);
 		if (err)
 			goto err;
+	}
+
+	if (ocr & (1 << 31)) {
+		printk(KERN_WARNING "%s: card has not finished power-up!"
+		       "  (OCR = 0x%.8x)\n", mmc_hostname(host), ocr);
+		mdelay(5);
 	}
 
 	/*
@@ -670,9 +690,21 @@ int mmc_attach_sd(struct mmc_host *host, u32 ocr)
 	/*
 	 * Detect and init the card.
 	 */
-	err = mmc_sd_init_card(host, host->ocr, NULL);
-	if (err)
+	retries = 5;
+	while (retries) {
+		err = mmc_sd_init_card(host, host->ocr, NULL);
+		if (err) {
+			retries--;
+			continue;
+		}
+		break;
+	}
+
+	if (!retries) {
+		printk(KERN_ERR "%s: Init card failure (err = %d)\n",
+		       mmc_hostname(host),  err);
 		goto err;
+	}
 
 	mmc_release_host(host);
 

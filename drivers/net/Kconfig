@@ -3110,6 +3110,12 @@ config NETCONSOLE
 	If you want to log kernel messages over the network, enable this.
 	See <file:Documentation/networking/netconsole.txt> for details.
 
+config MSM_RMNET
+	tristate "MSM RMNET Virtual Network Device"
+	depends on ARCH_MSM7X00A
+	help
+	  Virtual ethernet interface for MSM RMNET transport.
+
 config NETCONSOLE_DYNAMIC
 	bool "Dynamic reconfiguration of logging targets (EXPERIMENTAL)"
 	depends on NETCONSOLE && SYSFS && EXPERIMENTAL

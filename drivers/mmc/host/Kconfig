@@ -138,3 +138,8 @@ config MMC_SPI
 
 	  If unsure, or if your system has no SPI master driver, say N.
 
+config MMC_MSM7X00A
+	tristate "Qualcomm MSM 7X00A SDCC Controller Support (EXPERIMENTAL)"
+	depends on MMC 
+	help
+	  This selects Qualcomm MSM 7X00A SDCC controller support.

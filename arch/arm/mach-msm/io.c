@@ -50,12 +50,17 @@ static struct map_desc msm_io_desc[] __initdata = {
 	MSM_DEVICE(PMDH),
 	MSM_DEVICE(EMDH),
 	MSM_DEVICE(MDP),
+	MSM_DEVICE(AD5),
 	{
 		.virtual =  MSM_SHARED_RAM_BASE,
 		.pfn =      __phys_to_pfn(MSM_SHARED_RAM_PHYS),
 		.length =   MSM_SHARED_RAM_SIZE,
 		.type =     MT_DEVICE,
 	},
+	MSM_DEVICE(SDC1),
+	MSM_DEVICE(SDC2),
+	MSM_DEVICE(SDC3),
+	MSM_DEVICE(SDC4),
 };
 
 void __init msm_map_common_io(void)

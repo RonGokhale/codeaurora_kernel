@@ -101,4 +101,40 @@
 #define MSM_SHARED_RAM_PHYS   0x01F00000
 #define MSM_SHARED_RAM_SIZE   SZ_1M
 
+#define MSM_AD5_BASE          0xE0200000
+#define MSM_AD5_PHYS          0xAC000000
+#define MSM_AD5_SIZE          (SZ_1M*13)
+
+#define MSM_SDC1_BASE         0xE1000000
+#define MSM_SDC1_PHYS         0xA0400000
+#define MSM_SDC1_SIZE         SZ_4K
+
+#define MSM_SDC2_BASE         0xE1001000
+#define MSM_SDC2_PHYS         0xA0500000
+#define MSM_SDC2_SIZE         SZ_4K
+
+#define MSM_SDC3_BASE         0xE1002000
+#define MSM_SDC3_PHYS         0xA0600000
+#define MSM_SDC3_SIZE         SZ_4K
+
+#define MSM_SDC4_BASE         0xE1003000
+#define MSM_SDC4_PHYS         0xA0700000
+#define MSM_SDC4_SIZE         SZ_4K
+
+/* Used by debug-macro.S, uncompress.h, etc. */
+#if defined(CONFIG_MSM_LL_DEBUG_UART1)
+#define MSM_DEBUG_UART_PHYS MSM_UART1_PHYS
+#define MSM_DEBUG_UART_BASE MSM_UART1_BASE
+#endif
+
+#if defined(CONFIG_MSM_LL_DEBUG_UART2)
+#define MSM_DEBUG_UART_PHYS MSM_UART2_PHYS
+#define MSM_DEBUG_UART_BASE MSM_UART2_BASE
+#endif
+
+#if defined(CONFIG_MSM_LL_DEBUG_UART3)
+#define MSM_DEBUG_UART_PHYS MSM_UART3_PHYS
+#define MSM_DEBUG_UART_BASE MSM_UART3_BASE
+#endif
+
 #endif

@@ -1066,6 +1066,10 @@ config GOLDFISH_TTY
 	help
 	  TTY driver for Goldfish Virtual Platform.
 
+config DCC_TTY
+	tristate "DCC tty driver"
+	depends on ARM
+
 source "drivers/s390/char/Kconfig"
 
 endmenu

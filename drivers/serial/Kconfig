@@ -1337,6 +1337,36 @@ config SERIAL_QE
 	  This driver supports the QE serial ports on Freescale embedded
 	  PowerPC that contain a QUICC Engine.
 
+config SERIAL_MSM
+	bool "MSM7X00A on-chip serial port support"
+	depends on ARM && ARCH_MSM7X00A
+	select SERIAL_CORE
+	help
+	  Support for the UARTs in the Qualcomm MSM7K.
+
+config SERIAL_MSM_CONSOLE
+	bool "MSM serial console"
+	depends on SERIAL_MSM=y
+	select SERIAL_CORE_CONSOLE
+	help
+	  Support for console on the UARTs in the Qualcomm MSM7K.
+
+config SERIAL_MSM_CLOCK_CONTROL
+	bool "Allow tty clients to make clock requests to msm uarts."
+	depends on SERIAL_MSM=y
+	default y
+	help
+	 Provides an interface for tty clients to request the msm uart clock
+	 to be turned on or off for power savings.
+
+config SERIAL_MSM_RX_WAKEUP
+	bool "Wakeup the msm uart clock on GPIO activity."
+	depends on SERIAL_MSM_CLOCK_CONTROL
+	default n
+	help
+	 Requires SERIAL_MSM_CLOCK_CONTROL. Wake up the uart while the uart
+	 clock is off, using a wakeup GPIO.
+
 config SERIAL_SC26XX
 	tristate "SC2681/SC2692 serial port support"
 	depends on SNI_RM
