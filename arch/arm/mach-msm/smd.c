@@ -66,92 +66,6 @@ static inline void notify_other_smd(void)
 	writel(1, MSM_A2M_INT(0));
 }
 
-static inline void notify_other_proc_comm(void)
-{
-	writel(1, MSM_A2M_INT(6));
-}
-
-#define APP_COMMAND 0x00
-#define APP_STATUS  0x04
-#define APP_DATA1   0x08
-#define APP_DATA2   0x0C
-
-#define MDM_COMMAND 0x10
-#define MDM_STATUS  0x14
-#define MDM_DATA1   0x18
-#define MDM_DATA2   0x1C
-
-static DEFINE_SPINLOCK(proc_comm_lock);
- 
-static void proc_comm_wait_for(unsigned addr, unsigned value)
-{
-	unsigned timeout = (2000000 / 10);
-	struct smsm_shared *smsm;
-
-again:
-	do {
-		if (readl(addr) == value)
-			return;
-		udelay(5);
-	} while (--timeout != 0);
-
-	smsm = smem_find(ID_SHARED_STATE, 2 * sizeof(struct smsm_shared));
-
-	if (smsm == 0) {
-		/* while booting we really have no options here */
-		printk(KERN_ERR "proc_comm: TIMEOUT, no state\n");
-		goto again;
-	}
-
-	printk(KERN_ERR "proc_comm: TIMEOUT smsm a=%08x m=%08x\n",
-	       smsm[0].state, smsm[1].state);
-	
-	if (smsm[1].state & SMSM_RESET) {
-		printk(KERN_ERR "proc_comm: ARM9 has crashed\n");
-		smd_diag();
-	}
-
-	/* hard reboot if possible */
-	if (msm_reset_hook)
-		msm_reset_hook(0);
-
-	for (;;);
-}
-
-int msm_proc_comm(unsigned cmd, unsigned *data1, unsigned *data2)
-{
-	unsigned base = MSM_SHARED_RAM_BASE;
-	unsigned long flags;
-	int ret;
-
-	spin_lock_irqsave(&proc_comm_lock, flags);
-
-	proc_comm_wait_for(base + MDM_STATUS, PCOM_READY);
-	
-	writel(cmd, base + APP_COMMAND);
-	writel(data1 ? *data1 : 0, base + APP_DATA1);
-	writel(data2 ? *data2 : 0, base + APP_DATA2);
-
-	notify_other_proc_comm();
-
-	proc_comm_wait_for(base + APP_COMMAND, PCOM_CMD_DONE);
-
-	if (readl(base + APP_STATUS) != PCOM_CMD_FAIL) {
-		if (data1)
-			*data1 = readl(base + APP_DATA1);
-		if (data2)
-			*data2 = readl(base + APP_DATA2);
-		ret = 0;
-	} else {
-		ret = -EIO;
-	}
-
-	writel(PCOM_CMD_IDLE, base + APP_COMMAND);
-
-	spin_unlock_irqrestore(&proc_comm_lock, flags);
-	return ret;
-}
-
 void smd_diag(void)
 {
 	char *x;
@@ -161,6 +75,32 @@ void smd_diag(void)
 		x[SZ_DIAG_ERR_MSG - 1] = 0;
 		printk("smem: DIAG '%s'\n", x);
 	}
+}
+
+extern int (*msm_check_for_modem_crash)(void);
+
+static int check_for_modem_crash(void)
+{
+	struct smsm_shared *smsm;
+
+	smsm = smem_find(ID_SHARED_STATE, 2 * sizeof(struct smsm_shared));
+
+	/* if the modem's not ready yet, we have to hope for the best */
+	if (!smsm)
+		return 0;
+
+	if (smsm[1].state & SMSM_RESET) {
+		pr_err("proc_comm: ARM9 has crashed\n");
+		smd_diag();
+	} else {
+		return 0;
+	}
+
+	/* hard reboot if possible */
+	if (msm_reset_hook)
+		msm_reset_hook(0);
+
+	for (;;) ;
 }
 
 #define SMD_SS_CLOSED            0x00000000
@@ -1299,6 +1239,8 @@ static int __init msm_smd_probe(struct platform_device *pdev)
 	}
 
 	do_smd_probe();
+
+	msm_check_for_modem_crash = check_for_modem_crash;
 
 	smd_debugfs_init();
 	smd_initialized = 1;

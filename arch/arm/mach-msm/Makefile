@@ -1,6 +1,7 @@
 obj-y += io.o idle.o irq.o timer.o dma.o clock.o clock-7x00a.o memory.o
 obj-y += vreg.o
 obj-y += gpio.o generic_gpio.o
+obj-y += proc_comm.o
 
 # Common code for board init
 obj-y += common.o nand_partitions.o

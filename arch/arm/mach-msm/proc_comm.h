@@ -16,8 +16,7 @@
 #ifndef _ARCH_ARM_MACH_MSM_MSM_PROC_COMM_H_
 #define _ARCH_ARM_MACH_MSM_MSM_PROC_COMM_H_
 
-enum
-{
+enum {
 	PCOM_CMD_IDLE = 0x0,
 	PCOM_CMD_DONE,
 	PCOM_RESET_APPS,
@@ -62,8 +61,7 @@ enum
 	PCOM_NUM_CMDS,
 };
 
-enum
-{
+enum {
 	 PCOM_INVALID_STATUS = 0x0,
 	 PCOM_READY,
 	 PCOM_CMD_RUNNING,
