@@ -99,8 +99,6 @@ static void mmc_request(struct request_queue *q)
 				ret = __blk_end_request(req, -EIO,
 							blk_rq_cur_bytes(req));
 			} while (ret);
-			blkdev_dequeue_request(req);
-			end_that_request_last(req, 0);
 		}
 		return;
 	}
