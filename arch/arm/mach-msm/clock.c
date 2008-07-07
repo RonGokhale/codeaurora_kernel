@@ -32,7 +32,6 @@
 #include <linux/spinlock.h>
 #include <asm/io.h>
 #include <asm/arch/msm_iomap.h>
-#include <asm/arch/rpc_clkctl.h>
 #include "clock.h"
 
 #include "proc_comm.h"
@@ -43,7 +42,6 @@
 struct clock_state
 {
 	struct clkctl_acpu_speed	*current_speed;
-	struct clkctl_rpc_ops		*rpc;
 	struct mutex			lock;
 	uint32_t			acpu_switch_time_us;
 	uint32_t			max_speed_delta_khz;
@@ -613,12 +611,3 @@ static int __init clock_late_init(void)
 
 late_initcall(clock_late_init);
 
-/*
- * This should go away when we can do remote clock control via some other
- * method than ONCRPC (yuck)
- */
-void clock_register_rpc(struct clkctl_rpc_ops *rpc_ops)
-{
-	drv_state.rpc = rpc_ops;
-}
-EXPORT_SYMBOL(clock_register_rpc);
