@@ -184,6 +184,7 @@ msmrtc_suspend(struct platform_device *dev, pm_message_t state)
 			return 0;
 		}
 		msm_pm_set_max_sleep_time((int64_t) ((int64_t) diff * NSEC_PER_SEC));
+		printk(KERN_DEBUG "%s: NOW = %lu\n", __func__, now);
 	}
 	else
 		msm_pm_set_max_sleep_time(0);
@@ -196,7 +197,10 @@ msmrtc_resume(struct platform_device *dev)
 	if (rtcalarm_time) {
 		struct rtc_time tm;
 		unsigned long now;
+		unsigned long k_now;
 		int diff;
+
+		k_now = get_seconds();
 
 		msmrtc_pmlib_read_time(NULL, &tm);
 		rtc_tm_to_time(&tm, &now);
@@ -204,7 +208,9 @@ msmrtc_resume(struct platform_device *dev)
 
 		printk(KERN_INFO
 		       "%s: Alarm in %d secs (we slept for %lu whole secs)\n",
-		       __func__, diff, (now - get_seconds()));
+		       __func__, diff, (now - k_now));
+
+		printk(KERN_DEBUG "%s: NOW = %lu, K_NOW = %lu\n", __func__, now, k_now);
 
 		if (diff <=0)
 			msmrtc_alarmtimer_expired(2);
