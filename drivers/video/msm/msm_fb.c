@@ -265,7 +265,6 @@ static void msmfb_update(struct fb_info *info, uint32_t left, uint32_t top,
 	msmfb_pan_update(info, left, top, eright, ebottom, 0, 0);
 }
 
-#ifdef CONFIG_ANDROID_POWER
 static void power_on_panel(struct work_struct *work)
 {
 	struct msmfb_info *par = container_of(work, struct msmfb_info,
@@ -274,6 +273,7 @@ static void power_on_panel(struct work_struct *work)
 	pi->panel_ops->power(pi, 1);
 }
 
+#ifdef CONFIG_ANDROID_POWER
 static void msmfb_slightly_earlier_suspend(android_early_suspend_t *h)
 {
 	struct msmfb_info *par = container_of(h, struct msmfb_info,
