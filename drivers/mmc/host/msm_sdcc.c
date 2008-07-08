@@ -1022,6 +1022,8 @@ static irqreturn_t
 msmsdcc_platform_status_irq(int irq, void *dev_id)
 {
 	struct msmsdcc_host *host = dev_id;
+
+	printk(KERN_DEBUG "%s: %d\n", __func__, irq);
 	msmsdcc_check_status((unsigned long) host);
 	return IRQ_HANDLED;
 }
@@ -1031,7 +1033,8 @@ msmsdcc_status_notify_cb(int card_present, void *dev_id)
 {
 	struct msmsdcc_host *host = dev_id;
 
-	printk("%s:\n", __func__);
+	printk(KERN_DEBUG "%s: card_present %d\n", mmc_hostname(host->mmc),
+	       card_present);
 	msmsdcc_check_status((unsigned long) host);
 }
 
@@ -1343,6 +1346,8 @@ msmsdcc_suspend(struct platform_device *dev, pm_message_t state)
 	if (mmc) {
 		struct msmsdcc_host *host = mmc_priv(mmc);
 
+		if (host->plat->status_irq)
+			disable_irq(host->plat->status_irq);
 		if (mmc->card && mmc->card->type != MMC_TYPE_SDIO)
 			rc = mmc_suspend_host(mmc, state);
 		if (!rc) {
@@ -1376,6 +1381,9 @@ msmsdcc_resume(struct platform_device *dev)
 		writel(MCI_IRQENABLE, host->base + MMCIMASK0);
 		if (mmc->card && mmc->card->type != MMC_TYPE_SDIO)
 			rc = mmc_resume_host(mmc);
+
+		if (host->plat->status_irq)
+			enable_irq(host->plat->status_irq);
 	}
 	return rc;
 }
