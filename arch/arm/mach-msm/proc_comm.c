@@ -47,6 +47,9 @@ static DEFINE_SPINLOCK(proc_comm_lock);
  */
 int (*msm_check_for_modem_crash)(void);
 
+
+#define TIMEOUT (10000000) /* 10s in microseconds */
+
 /* Poll for a state change, checking for possible
  * modem crashes along the way (so we don't wait
  * forever while the ARM9 is blowing up.
@@ -57,7 +60,7 @@ int (*msm_check_for_modem_crash)(void);
  */
 static int proc_comm_wait_for(unsigned addr, unsigned value)
 {
-	unsigned timeout = (2000000 / 10);
+	unsigned timeout = TIMEOUT;
 
 	do {
 		if (readl(addr) == value)
@@ -67,11 +70,11 @@ static int proc_comm_wait_for(unsigned addr, unsigned value)
 			if (msm_check_for_modem_crash())
 				return -EAGAIN;
 
-		udelay(5);
+		udelay(1);
 	} while (--timeout != 0);
 
 	pr_err("proc_comm: TIMEOUT. modem has probably crashed\n");	
-
+	
 	/* hard reboot if possible */
 	if (msm_reset_hook)
 		msm_reset_hook(0);
