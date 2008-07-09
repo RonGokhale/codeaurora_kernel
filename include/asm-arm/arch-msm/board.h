@@ -32,27 +32,6 @@ struct msm_mddi_platform_data
 	unsigned long fb_size;
 };
 
-struct msm_hsusb_platform_data
-{
-	/* hard reset the ULPI PHY */
-	void (*phy_reset)(void);
-
-	/* val, reg pairs terminated by -1 */
-	int *phy_init_seq;
-	
-	/* USB device descriptor fields */
-	__u16 vendor_id;
-	__u16 product_id;
-	__u16 version;
-	char* serial_number;
-	char* product_name;
-	char* manufacturer_name;
-
-	/* list of function drivers to bind to this configuration */
-	int num_functions;
-	char **function;
-};
-
 struct android_pmem_platform_data
 {
 	const char* name;

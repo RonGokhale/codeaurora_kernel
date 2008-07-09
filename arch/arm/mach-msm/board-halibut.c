@@ -30,6 +30,7 @@
 #include <asm/arch/clock.h>
 #include <asm/arch/msm_iomap.h>
 #include <asm/arch/msm_fb.h>
+#include <asm/arch/msm_hsusb.h>
 #include <asm/arch/vreg.h>
 
 #include <asm/io.h>
@@ -180,7 +181,7 @@ static struct msm_hsusb_platform_data msm_hsusb_pdata = {
 	.product_id	= 0xd00d,
 	.version	= 0x0100,
 	.product_name	= "Halibut",
-	.function	= halibut_usb_functions,
+	.functions	= halibut_usb_functions,
 	.num_functions	= ARRAY_SIZE(halibut_usb_functions),
 };
 
