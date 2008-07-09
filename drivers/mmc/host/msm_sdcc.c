@@ -951,8 +951,10 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	if (ios->bus_width == MMC_BUS_WIDTH_4)
 		clk |= (2 << 10); /* Set WIDEBUS */
 
+	if (ios->clock > 400000)
+		clk |= (1 << 9); /* PWRSAVE */
+
 	clk |= (1 << 12); /* FLOW_ENA */
-	clk |= (1 << 9); /* PWRSAVE */
 	clk |= (1 << 15); /* feedback clock */
 
 	if (host->plat->translate_vdd)
@@ -1301,6 +1303,8 @@ msmsdcc_probe(struct platform_device *pdev)
 	       (mmc->caps & MMC_CAP_4_BIT_DATA ? "enabled" : "disabled"));
 	printk(KERN_INFO "%s: MMC clock %u -> %u Hz, PCLK %u Hz\n",
 	       mmc_hostname(mmc), msmsdcc_fmin, msmsdcc_fmax, host->pclk_rate);
+	printk(KERN_INFO "%s: Slot eject status = %d\n", mmc_hostname(mmc),
+	       host->eject);
 
 	if (host->dma.channel != -1) {
 		printk(KERN_INFO
@@ -1310,7 +1314,9 @@ msmsdcc_probe(struct platform_device *pdev)
 		       "%s: DM cmd busaddr %u, cmdptr busaddr %u\n",
 		       mmc_hostname(mmc), host->dma.cmd_busaddr,
 		       host->dma.cmdptr_busaddr);
-	}
+	} else
+		printk(KERN_INFO
+		       "%s: PIO transfer enabled\n", mmc_hostname(mmc));
 	if (host->timer.function)
 		printk(KERN_INFO "%s: Polling status mode enabled\n",
 		       mmc_hostname(mmc));
