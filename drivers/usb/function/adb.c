@@ -42,6 +42,8 @@
 #define RX_REQ_MAX 4
 #define TX_REQ_MAX 4
 
+#define ADB_FUNCTION_NAME "adb"
+
 struct adb_context
 {
 	int online;
@@ -302,6 +304,7 @@ static int adb_open(struct inode *ip, struct file *fp)
 	if (_lock(&ctxt->open_excl))
 		return -EBUSY;
 
+	usb_function_enable(ADB_FUNCTION_NAME, 1);
 	/* clear the error latch */
 	ctxt->error = 0;
 
@@ -312,6 +315,7 @@ static int adb_release(struct inode *ip, struct file *fp)
 {
 	struct adb_context *ctxt = &_context;
 
+	usb_function_enable(ADB_FUNCTION_NAME, 0);
 	_unlock(&ctxt->open_excl);
 	return 0;
 }
@@ -426,7 +430,7 @@ static struct usb_function usb_func_adb = {
 	.unbind = adb_unbind,
 	.configure = adb_configure,
 
-	.name = "adb",
+	.name = ADB_FUNCTION_NAME,
 	.context = &_context,
 
 	.ifc_class = 0xff,
@@ -437,6 +441,9 @@ static struct usb_function usb_func_adb = {
 
 	.ifc_ept_count = 2,
 	.ifc_ept_type = { EPT_BULK_OUT, EPT_BULK_IN },
+
+	/* the adb function is only enabled when its driver file is open */
+	.disabled = 1,
 };
 
 static int __init adb_init(void)
