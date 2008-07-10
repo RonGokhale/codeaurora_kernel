@@ -303,19 +303,13 @@ static void msmfb_slightly_earlier_suspend(android_early_suspend_t *h)
 
 static void msmfb_early_suspend(android_early_suspend_t *h)
 {
-	struct clk *clk = clk_get(0, "mdp_clk");
-	if (clk)
-		clk_disable(clk);
 }
+
 
 static void msmfb_early_resume(android_early_suspend_t *h)
 {
-	struct clk *clk;
 	struct msmfb_info *par = container_of(h, struct msmfb_info,
 				 early_suspend);
-	clk = clk_get(0, "mdp_clk");
-	if (clk)
-		clk_enable(clk);
 	par->sleeping = WAKING;
 }
 
