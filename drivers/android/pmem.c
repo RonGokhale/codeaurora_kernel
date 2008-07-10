@@ -965,6 +965,7 @@ int pmem_remap(struct pmem_region *region, struct file *file,
 
 	/* check that the requested range is within the src allocation */
 	if (unlikely((region->offset > pmem_len(id, data)) ||
+		     (region->len > pmem_len(id, data)) ||
 		     (region->offset + region->len > pmem_len(id, data)))) {
 #if PMEM_DEBUG
 		printk(KERN_INFO "pmem: suballoc doesn't fit in src_file!\n");
