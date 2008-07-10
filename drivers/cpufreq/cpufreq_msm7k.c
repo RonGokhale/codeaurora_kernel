@@ -39,7 +39,7 @@
 #define DEF_FREQUENCY_UP_THRESHOLD		(80)
 #define DEF_FREQUENCY_DOWN_THRESHOLD		(20)
 
-#define SWEET_SPOT_THRESHOLD 6
+#define SWEET_SPOT_THRESHOLD 8
 /*
  * Index in the cpufreq_frequency_table for the sweet spot. This is ALWAYS the
  * speed step 1 below policy max speed.
@@ -339,6 +339,47 @@ static struct attribute_group dbs_attr_group = {
 
 /************************** sysfs end ************************/
 
+/* Adjusts the requested frequency factoring in sweet spot optimzations. */
+static void freq_adjust(struct cpu_dbs_info_s *this_dbs_info) {
+	struct cpufreq_frequency_table *freq_tbl;
+	const struct cpufreq_policy *policy = this_dbs_info->cur_policy;
+	int index = sweet_spot_index;
+
+	if (policy->max == policy->cur)
+		return;
+
+	/*
+	 * Readjust sweet spot if the policy has been updated. This is
+	 * somewhat racy with the power driver. At worst it takes an extra
+	 * sampling cycle to correct itself.
+	 */
+	freq_tbl = cpufreq_frequency_get_table(policy->cpu);
+	while (freq_tbl[sweet_spot_index + 1].frequency > policy->max &&
+		sweet_spot_index > 0)
+		sweet_spot_index--;
+
+	/*
+	 * We should not have to worry about index overflow unless the value
+	 * from policy->max does not exist in freq_tbl.
+	 */
+	while (freq_tbl[sweet_spot_index + 1].frequency < policy->max && 
+		freq_tbl[sweet_spot_index + 1].frequency != CPUFREQ_TABLE_END)
+		sweet_spot_index++;
+
+	if (policy->cur != freq_tbl[sweet_spot_index].frequency)
+		return;
+
+	/*
+	 * Sweet spot as a weight of SWEET_SPOT_THRESHOLD which is how many times
+	 * longer to say in this frequency before going to the next.
+	 */
+	if (++this_dbs_info->sweet_spot_skip > SWEET_SPOT_THRESHOLD) {
+		this_dbs_info->sweet_spot_skip = 0;
+		index++;
+	}
+	this_dbs_info->requested_freq = freq_tbl[index].frequency;
+}
+
 static void dbs_check_cpu(int cpu)
 {
 	unsigned int idle_ticks, up_idle_ticks, down_idle_ticks;
@@ -403,17 +444,7 @@ static void dbs_check_cpu(int cpu)
 		if (this_dbs_info->requested_freq > policy->max)
 			this_dbs_info->requested_freq = policy->max;
 
-		/* Stay in the sweet spots a bit longer. */
-		if (policy->cur == 245760) {
-			if (++this_dbs_info->sweet_spot_skip < 
-						SWEET_SPOT_THRESHOLD) {
-				this_dbs_info->requested_freq = 245760;
-			}
-			else {
-				this_dbs_info->requested_freq = 384000;
-				this_dbs_info->sweet_spot_skip = 0;
-			}
-		}
+		freq_adjust(this_dbs_info);
 		__cpufreq_driver_target(policy, this_dbs_info->requested_freq,
 			CPUFREQ_RELATION_H);
 		return;
@@ -501,6 +532,7 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 	struct cpu_dbs_info_s *this_dbs_info;
 	unsigned int j;
 	int rc;
+	struct cpufreq_frequency_table *freq_tbl;
 
 	this_dbs_info = &per_cpu(cpu_dbs_info, cpu);
 
@@ -513,6 +545,13 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 			break;
 
 		mutex_lock(&dbs_mutex);
+
+		/* Find the index of the sweet spot (freq just before max). */
+		freq_tbl = cpufreq_frequency_get_table(cpu);
+		for (j = 0; freq_tbl[j].frequency != CPUFREQ_TABLE_END; j++) {
+			if (policy->max == freq_tbl[j].frequency)
+				sweet_spot_index = j > 0 ? j - 1 : 0;
+		}
 
 		rc = sysfs_create_group(&policy->kobj, &dbs_attr_group);
 		if (rc) {
