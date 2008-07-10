@@ -27,6 +27,7 @@
 #include <linux/string.h>
 #include <linux/delay.h>
 #include <linux/clk.h>
+#include <linux/cpufreq.h>
 #include <linux/mutex.h>
 #include <linux/debugfs.h>
 #include <linux/spinlock.h>
@@ -52,6 +53,7 @@ struct clock_state
 static struct clock_state drv_state = { 0 };
 static DEFINE_MUTEX(clocks_mutex);
 static LIST_HEAD(clocks);
+static spinlock_t clk_set_lock;
 
 static void acpuclk_init(struct clk *clk);
 static int acpuclk_enable(struct clk *clk);
@@ -61,9 +63,15 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 
 extern struct clkctl_acpu_speed acpu_freq_tbl[];
 
-/* Baseline clock speed and lpj we are initalized at. */
-static unsigned long BASE_LPJ = -1;
-static struct clkctl_acpu_speed *BASE_ACPU_CLK;
+/* Initalize the lpj field in the acpu_freq_tbl. Caller _must_ hold clk_set_lock. */
+static void init_lpj(const struct clkctl_acpu_speed *base_clk) {
+	int i;
+	for (i = 0; acpu_freq_tbl[i].a11clk_khz; i++) {
+		acpu_freq_tbl[i].lpj = cpufreq_scale(loops_per_jiffy,
+						base_clk->a11clk_khz,
+						acpu_freq_tbl[i].a11clk_khz);
+	}
+}
 
 static int pc_clk_enable(unsigned id)
 {
@@ -260,6 +268,8 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 	struct clkctl_acpu_speed *cur_s, *tgt_s, *strt_s;
 	int ramp_up = 0; /* 1 == up, 0 == down */
 	int rc;
+	struct cpufreq_freqs freqs;
+	unsigned long flags;
 
 	strt_s = cur_s = drv_state.current_speed;
 
@@ -283,8 +293,19 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 		mutex_lock(&drv_state.lock);
 
 	/* Save baseline lpj on the first clock change. */
-	if (BASE_LPJ == -1 && BASE_ACPU_CLK == cur_s)
-		BASE_LPJ = loops_per_jiffy;
+	spin_lock_irqsave(&clk_set_lock, flags);
+	if (acpu_freq_tbl[0].lpj == 0)
+		init_lpj(cur_s);
+	spin_unlock_irqrestore(&clk_set_lock, flags);
+
+	freqs.old = cur_s->a11clk_khz;
+	freqs.new = tgt_s->a11clk_khz;
+	freqs.cpu = 0;
+
+#if defined(CONFIG_CPU_FREQ)
+	if (!for_power_collapse)
+		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+#endif
 
 	if (tgt_s->vdd > strt_s->vdd) {
 		rc = acpuclk_set_vdd_level(tgt_s->vdd);
@@ -363,7 +384,8 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 			return -EINVAL;
 		}
 #if PERF_SWITCH_STEP_DEBUG
-		printk(KERN_DEBUG "%s: STEP khz = %u, pll = %d\n", __FUNCTION__, hunt_s->a11clk_khz, hunt_s->pll);
+		printk(KERN_DEBUG "%s: STEP khz = %u, pll = %d\n",
+			__FUNCTION__, hunt_s->a11clk_khz, hunt_s->pll);
 #endif
 
 		/* AHB_CLK_DIV */
@@ -430,13 +452,7 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 		cur_s = hunt_s;
 		drv_state.current_speed = cur_s;
 		/* Re-adjust lpj for the new clock speed. */
-		if (BASE_ACPU_CLK == cur_s) {
-			loops_per_jiffy = BASE_LPJ;
-		} else {
-			loops_per_jiffy = cpufreq_scale(BASE_LPJ,
-							BASE_ACPU_CLK->a11clk_khz,
-							cur_s->a11clk_khz);
-		}
+		loops_per_jiffy = cur_s->lpj;
 		udelay(drv_state.acpu_switch_time_us);
 	}
 
@@ -459,8 +475,12 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 #if PERF_SWITCH_DEBUG
 	printk(KERN_DEBUG "%s: ACPU speed change complete\n", __FUNCTION__);
 #endif
-	if (!for_power_collapse)
+	if (!for_power_collapse) {
+#if defined(CONFIG_CPU_FREQ)
+		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+#endif
 		mutex_unlock(&drv_state.lock);
+	}
 	return 0;
 }
 
@@ -495,7 +515,7 @@ static void acpuclk_init(struct clk *clk)
 		return;
 	}
 
-	drv_state.current_speed = BASE_ACPU_CLK = speed;
+	drv_state.current_speed = speed;
 
 	printk(KERN_INFO "ACPU running at %d KHz\n", speed->a11clk_khz);
 	/*
@@ -584,6 +604,121 @@ static int __init clock_debug_init(void)
 device_initcall(clock_debug_init);
 #endif
 
+#if defined(CONFIG_CPU_FREQ)
+
+/*
+ * Clock stable speeds for cpufreq driver. The min/max values of the policy are
+ * controlled by the android power driver.
+ */
+#define CPUFREQ_TABLE_MAX 4
+static struct cpufreq_frequency_table cpufreq_table[] =  {
+	{ 0, 81920 },
+	{ 1, 122880 },
+	{ 2, 245760 },
+	{ 3, 384000 },
+	{ CPUFREQ_TABLE_MAX, CPUFREQ_TABLE_END },
+};
+
+static int msm_cpufreq_verify(struct cpufreq_policy *policy)
+{
+	struct clkctl_acpu_speed *tgt_s;
+
+	cpufreq_verify_within_limits(policy, policy->cpuinfo.min_freq,
+				     policy->cpuinfo.max_freq);
+
+	for (tgt_s = acpu_freq_tbl; tgt_s->a11clk_khz != 0; tgt_s++) {
+		if (tgt_s->a11clk_khz >= policy->min)
+			break;
+		if (tgt_s->a11clk_khz > policy->max)
+			break;
+		if (tgt_s[1].a11clk_khz == 0)
+			break;
+	}
+	if (tgt_s->a11clk_khz < policy->min)
+		policy->min = tgt_s->a11clk_khz;
+	if (tgt_s->a11clk_khz > policy->max)
+		policy->max = tgt_s->a11clk_khz;
+
+	cpufreq_verify_within_limits(policy, policy->cpuinfo.min_freq,
+				     policy->cpuinfo.max_freq);
+	return 0;
+}
+
+static int msm_cpufreq_target(struct cpufreq_policy *policy,
+				 unsigned int target_freq,
+				 unsigned int relation)
+{
+	int i;
+	for (i = 0; cpufreq_table[i].frequency != CPUFREQ_TABLE_END; i++) {
+		if (target_freq <= cpufreq_table[i].frequency)
+			break;
+	}
+
+	switch(relation) {
+		/* Lowest value at or above target frequency. */
+		case CPUFREQ_RELATION_L:
+			break;
+		/* Highest value at or below target frequency. */
+		case CPUFREQ_RELATION_H:
+			if (i > 0 && cpufreq_table[i].frequency > target_freq)
+				i--;
+			break;
+		default:
+			return -EINVAL;
+	}
+#if defined(CONFIG_CPU_FREQ_DEBUG)
+	printk("msm_cpufreq_target %d r %d (%d-%d) selected %d\n", target_freq,
+		relation, policy->min, policy->max, cpufreq_table[i].frequency);
+#endif
+	acpuclk_set_rate(NULL, cpufreq_table[i].frequency * 1000, 0);
+	return 0;
+}
+
+static unsigned int msm_cpufreq_get(unsigned int cpu)
+{
+	return drv_state.current_speed->a11clk_khz;
+}
+
+static int msm_cpufreq_init(struct cpufreq_policy *policy)
+{
+	struct clkctl_acpu_speed *tgt_s, *max_s = NULL;
+	if (policy->cpu != 0)
+		return -EINVAL;
+	for (tgt_s = acpu_freq_tbl; tgt_s->a11clk_khz != 0; tgt_s++)
+		max_s = tgt_s;
+	if (max_s == NULL)
+		return -EINVAL;
+	policy->cur = policy->min = policy->max = msm_cpufreq_get(0);
+
+	/* Set min to 245mhz and max to 384mhz */
+	policy->cpuinfo.min_freq = cpufreq_table[2].frequency;
+	policy->cpuinfo.max_freq = cpufreq_table[CPUFREQ_TABLE_MAX - 1].frequency;
+	policy->cpuinfo.transition_latency =
+		drv_state.acpu_switch_time_us * NSEC_PER_USEC;
+
+	/* Register the cpufreq table. With this cpu. */
+	cpufreq_frequency_table_get_attr(cpufreq_table, smp_processor_id());
+	return 0;
+}
+
+static struct cpufreq_driver msm_cpufreq_driver = {
+	/* lps calculstaions are handled here. */
+	.flags		= CPUFREQ_STICKY | CPUFREQ_CONST_LOOPS,
+	.init		= msm_cpufreq_init,
+	.verify		= msm_cpufreq_verify,
+	.target		= msm_cpufreq_target,
+	.name		= "msm",
+};
+
+static int __init msm_cpufreq_register(void)
+{
+	return cpufreq_register_driver(&msm_cpufreq_driver);
+}
+
+device_initcall(msm_cpufreq_register);
+
+#endif
+
 /*----------------------------------------------------------------------------
  * Clock driver initialization
  *---------------------------------------------------------------------------*/
@@ -593,6 +728,7 @@ void __init clock_init(uint32_t acpu_switch_time_us,
 {
 	pr_info("clock_init()\n");
 
+	spin_lock_init(&clk_set_lock);
 	mutex_init(&drv_state.lock);
 	drv_state.acpu_switch_time_us = acpu_switch_time_us;
 	drv_state.max_speed_delta_khz = max_speed_delta_khz;
@@ -626,4 +762,3 @@ static int __init clock_late_init(void)
 }
 
 late_initcall(clock_late_init);
-

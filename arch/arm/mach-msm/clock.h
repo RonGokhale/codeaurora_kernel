@@ -117,6 +117,7 @@ struct clkctl_acpu_speed
 	unsigned int     ahbclk_khz;
 	unsigned int     ahbclk_div;
 	int              vdd;
+	unsigned long    lpj; /* loops_per_jiffy */
 };
 
 #endif
