@@ -193,7 +193,7 @@ static uint32_t enabled_functions = 0;
 
 static void flush_endpoint(struct usb_endpoint *ept);
 
-
+#if 0
 static unsigned ulpi_read(struct usb_info *ui, unsigned reg)
 {
 	unsigned timeout = 100000;
@@ -211,6 +211,7 @@ static unsigned ulpi_read(struct usb_info *ui, unsigned reg)
 	}
 	return ULPI_DATA_READ(readl(USB_ULPI_VIEWPORT));
 }
+#endif
 
 static void ulpi_write(struct usb_info *ui, unsigned val, unsigned reg)
 {
@@ -514,12 +515,11 @@ int usb_ept_get_max_packet(struct usb_endpoint *ept)
 
 /* --- endpoint 0 handling --- */
 
-static void set_configuration(struct usb_info *ui, int yes)
+static void set_configuration(struct usb_info *ui)
 {
-	unsigned i, n;
+	unsigned int i, n, online;
 
-	ui->online = !!yes;
-
+	online = ui->online;
 	for (i = 0; i < ui->num_funcs; i++) {
 		struct usb_function_info *fi = ui->func[i];
 
@@ -527,9 +527,9 @@ static void set_configuration(struct usb_info *ui, int yes)
 			continue;
 
 		for (n = 0; n < fi->endpoints; n++)
-			usb_ept_enable(fi->ept[n].ept, yes);
+			usb_ept_enable(fi->ept[n].ept, online);
 
-		fi->func->configure(yes, fi->func->context);
+		fi->func->configure(online, fi->func->context);
 	}
 }
 
@@ -661,7 +661,8 @@ static void handle_setup(struct usb_info *ui)
 	}
 	if (ctl.bRequestType == (USB_DIR_OUT | USB_TYPE_STANDARD)) {
 		if (ctl.bRequest == USB_REQ_SET_CONFIGURATION) {
-			set_configuration(ui, ctl.wValue);
+			ui->online = !!ctl.wValue;
+			set_configuration(ui);
 			goto ack;
 		}
 		if (ctl.bRequest == USB_REQ_SET_ADDRESS) {
@@ -879,7 +880,7 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 			/* XXX: we can't seem to detect going offline, so deconfigure
 			 * XXX: on reset for the time being
 			 */
-			set_configuration(ui, 0);
+			set_configuration(ui);
 		}
 	}
 
@@ -1039,7 +1040,7 @@ static void usb_reset(struct usb_info *ui)
 	flush_all_endpoints(ui);
 
 	printk(KERN_INFO "usb: notify offline\n");
-	set_configuration(ui, 0);
+	set_configuration(ui);
 
 	/* enable interrupts */
 	writel(STS_URI | STS_SLI | STS_UI | STS_PCI, USB_USBINTR);
@@ -1198,15 +1199,21 @@ static void usb_vbus_offline(struct work_struct *w)
 {
 	struct usb_info *ui = container_of(w, struct usb_info, vbus_offline);
 	unsigned long flags;
+	unsigned int online;
 
 	pr_info("hsusb: vbus offline, clock disable\n");
 
 	spin_lock_irqsave(&ui->lock, flags);
-	if(ui->online != 0) {
-		ui->online = 0;			
+	online = ui->online;
+	ui->online = 0;
+	spin_unlock_irqrestore(&ui->lock, flags);
+
+	if (online) {
 		flush_all_endpoints(ui);
-		set_configuration(ui, 0);
+		set_configuration(ui);
 	}
+
+	spin_lock_irqsave(&ui->lock, flags);
 	usb_suspend_phy(ui);
 	clk_disable(ui->pclk);
 	clk_disable(ui->clk);
