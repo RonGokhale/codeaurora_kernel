@@ -79,9 +79,15 @@ static int smd_tty_open(struct tty_struct *tty, struct file *f)
 	int res = 0;
 	int n = tty->index;
 	struct smd_tty_info *info;
+	const char *name;
 
-	if ((n < 0) || (n >= MAX_SMD_TTYS))
+	if (n == 0) {
+		name = "SMD_DS";
+	} else if (n == 27) {
+		name = "SMD_GPSNMEA";
+	} else {
 		return -ENODEV;
+	}
 
 	info = smd_tty + n;
 
@@ -93,7 +99,7 @@ static int smd_tty_open(struct tty_struct *tty, struct file *f)
 		if (info->ch) {
 			smd_kick(info->ch);
 		} else {
-			res = smd_open(n, &info->ch, info, smd_tty_notify);
+			res = smd_open(name, &info->ch, info, smd_tty_notify);
 		}
 	}
 	mutex_unlock(&smd_tty_lock);
