@@ -132,6 +132,13 @@ static DEFINE_MUTEX(smd_creation_mutex);
 
 static int smd_initialized = 0;
 
+struct smd_alloc_elm {
+	char name[20];
+	uint32_t cid;
+	uint32_t ctype;
+	uint32_t ref_count;
+};
+	
 struct smd_half_channel
 {
 	unsigned state;
@@ -172,62 +179,37 @@ struct smd_channel
 
 	void (*update_state)(smd_channel_t *ch);
 	unsigned last_state;
+
+	char name[32];
+	struct platform_device pdev;
 };
 
-struct smem_pdev_entry
-{
-	int start_smem_id;
-	char *name;
-	int start_rel_id;
-	int num_devices;
-};
-
+static LIST_HEAD(smd_ch_closed_list);
 static LIST_HEAD(smd_ch_list);
 
-static struct platform_device *p_devs[128];
+static unsigned char smd_ch_allocated[64];
 static struct work_struct probe_work;
 
-static struct smem_pdev_entry pdev_creation_table[] = {
-	{ ID_SMD_CHANNELS,	"smd_channel",	0,	64 },
-	{ -1, NULL, -1 }
-};
+static void smd_alloc_channel(const char *name, uint32_t cid, uint32_t type);
 
 static void smd_channel_probe_worker(struct work_struct *work)
 {
-	struct smem_shared *shared = (void *) MSM_SHARED_RAM_BASE;
-	struct smem_heap_entry *toc = shared->heap_toc;
-	struct smem_pdev_entry *v;
+	struct smd_alloc_elm *shared;
+	unsigned n;
 
-	for (v = pdev_creation_table; v->start_smem_id != -1; v++) {
-		int i;
+	shared = smem_find(ID_CH_ALLOC_TBL, sizeof(*shared) * 64);
 
-		for (i = v->start_smem_id; i < (v->start_smem_id + v->num_devices); i++) {
-			if (toc[i].allocated && !p_devs[i]) {
-				char name[20];
-				int alloc_len;
-
-				if (v->start_rel_id != -1)
-					sprintf(name, "%s_%.2d", v->name,
-						i - v->start_smem_id + v->start_rel_id);
-				else
-					strcpy(name, v->name);
-
-				alloc_len = sizeof(struct platform_device) + strlen(name) + 1;
-				p_devs[i] = kmalloc(alloc_len, GFP_KERNEL);
-				if (!p_devs[i]) {
-					printk(KERN_ERR "Out of resources\n");
-					return;
-				}
-
-				memset(p_devs[i], 0, alloc_len);
-				p_devs[i]->id = -1;
-				p_devs[i]->name = ((void *) p_devs[i]) + sizeof(struct platform_device);
-
-				strcpy(p_devs[i]->name, name);
-				printk(KERN_INFO "%s: registering pdev '%s'\n", __FUNCTION__, name);
-				platform_device_register(p_devs[i]);
-			}
-		}
+	for (n = 0; n < 64; n++) {
+		if (smd_ch_allocated[n])
+			continue;
+		if (!shared[n].ref_count)
+			continue;
+		if (!shared[n].name[0])
+			continue;
+		smd_alloc_channel(shared[n].name, 
+				  shared[n].cid,
+				  shared[n].ctype);
+		smd_ch_allocated[n] = 1;
 	}
 }
 
@@ -649,64 +631,28 @@ static int smd_packet_read(smd_channel_t *ch, void *data, int len)
 	return r;
 }
 
-static void do_nothing_notify(void *priv, unsigned flags)
-{
-}
-
-int smd_open(int n, smd_channel_t **_ch, void *priv, void (*notify)(void *, unsigned))
+static void smd_alloc_channel(const char *name, uint32_t cid, uint32_t type)
 {
 	struct smd_channel *ch;
 	struct smd_shared *shared;
-	unsigned long flags;
-	int res = 0;
 
-	if (smd_initialized == 0) {
-		printk(KERN_INFO "smd_open() before smd_init()\n");
-		return -ENODEV;
-	}
-
-	if ((n < 0) || (n >= SMD_CHANNELS))
-		return -ENODEV;
-
-	D("smd_open(%d, %p, %p)\n", n, priv, notify);
-
-	if (notify == 0)
-		notify = do_nothing_notify;
-
-	mutex_lock(&smd_creation_mutex);
-
-	spin_lock_irqsave(&smd_lock, flags);
-	list_for_each_entry(ch, &smd_ch_list, ch_list) {
-		if (ch->n == n) {
-			res = -ENODEV;
-			break;
-		}
-	}
-	spin_unlock_irqrestore(&smd_lock, flags);
-	if (res) goto out;
-
-	shared = smem_alloc(ID_SMD_CHANNELS + n, sizeof(struct smd_shared));
-	if (shared == 0) {
-		printk(KERN_ERR "smd_open() channel %d does not exist\n", n);
-		res = -ENODEV;
-		goto out;
+	shared = smem_alloc(ID_SMD_CHANNELS + cid, sizeof(*shared));
+	if (!shared) {
+		pr_err("smd_alloc_channel() cid %d does not exist\n", cid);
+		return;
 	}
 
 	ch = kzalloc(sizeof(struct smd_channel), GFP_KERNEL);
 	if (ch == 0) {
-		res = -ENOMEM;
-		goto out;
+		pr_err("smd_alloc_channel() out of memory\n");
+		return;
 	}
 
 	ch->send = &shared->ch0;
 	ch->recv = &shared->ch1;
-	ch->priv = priv;
-	ch->notify = notify;
-	ch->n = n;
-	ch->current_packet = 0;
-	ch->last_state = SMD_SS_CLOSED;
+	ch->n = cid;
 
-	if (smd_is_packet(n)) {
+	if (smd_is_packet(cid)) {
 		ch->read = smd_packet_read;
 		ch->write = smd_packet_write;
 		ch->read_avail = smd_packet_read_avail;
@@ -720,11 +666,74 @@ int smd_open(int n, smd_channel_t **_ch, void *priv, void (*notify)(void *, unsi
 		ch->update_state = update_stream_state;
 	}
 
+	memcpy(ch->name, "SMD_", 4);
+	memcpy(ch->name + 4, name, 20);
+	ch->name[23] = 0;
+	ch->pdev.name = ch->name;
+	ch->pdev.id = -1;
+
+	pr_info("smd_alloc_channel() '%s' cid=%d, shared=%p\n",
+		ch->name, ch->n, shared);
+
+	mutex_lock(&smd_creation_mutex);
+	list_add(&ch->ch_list, &smd_ch_closed_list);
+	mutex_unlock(&smd_creation_mutex);
+
+	platform_device_register(&ch->pdev);
+}
+
+static void do_nothing_notify(void *priv, unsigned flags)
+{
+}
+
+struct smd_channel *smd_get_channel(const char *name)
+{
+	struct smd_channel *ch;
+
+	mutex_lock(&smd_creation_mutex);
+	list_for_each_entry(ch, &smd_ch_closed_list, ch_list) {
+		if (!strcmp(name, ch->name)) {
+			list_del(&ch->ch_list);
+			mutex_unlock(&smd_creation_mutex);
+			return ch;
+		}
+	}
+	mutex_unlock(&smd_creation_mutex);
+
+	return NULL;
+}
+
+int smd_open(const char *name, smd_channel_t **_ch,
+	     void *priv, void (*notify)(void *, unsigned))
+{
+	struct smd_channel *ch;
+	unsigned long flags;
+
+	if (smd_initialized == 0) {
+		printk(KERN_INFO "smd_open() before smd_init()\n");
+		return -ENODEV;
+	}
+
+	D("smd_open('%s', %p, %p)\n", name, priv, notify);
+
+	ch = smd_get_channel(name);
+	if (!ch)
+		return -ENODEV;
+
+	if (notify == 0)
+		notify = do_nothing_notify;
+
+	ch->notify = notify;
+	ch->current_packet = 0;
+	ch->last_state = SMD_SS_CLOSED;
+	ch->priv = priv;
+
 	*_ch = ch;
+
+	D("smd_open: opening '%s'\n", ch->name);
 
 	spin_lock_irqsave(&smd_lock, flags);
 	list_add(&ch->ch_list, &smd_ch_list);
-	D("smd_open: opening ch %d\n", ch->n);
 
 	/* If the remote side is CLOSING, we need to get it to
 	 * move to OPENING (which we'll do by moving from CLOSED to
@@ -743,11 +752,9 @@ int smd_open(int n, smd_channel_t **_ch, void *priv, void (*notify)(void *, unsi
 	spin_unlock_irqrestore(&smd_lock, flags);
 	smd_kick(ch);
 
-	D("smd_open(%d, %p, %p) ch=%p\n", n, priv, notify, ch);
+	D("smd_open('%s', %p, %p) ch=%p\n", ch->name, priv, notify, ch);
 
-out:
-	mutex_unlock(&smd_creation_mutex);
-	return res;
+	return 0;
 }
 
 int smd_close(smd_channel_t *ch)
@@ -756,17 +763,17 @@ int smd_close(smd_channel_t *ch)
 
 	printk(KERN_INFO "smd_close(%p)\n", ch);
 
-	if (ch == 0) return -1;
+	if (ch == 0)
+		return -1;
+
+	spin_lock_irqsave(&smd_lock, flags);
+	ch->notify = do_nothing_notify;
+	list_del(&ch->ch_list);
+	hc_set_state(ch->send, SMD_SS_CLOSED);
+	spin_unlock_irqrestore(&smd_lock, flags);
 
 	mutex_lock(&smd_creation_mutex);
-	spin_lock_irqsave(&smd_lock, flags);
-
-	/* XXX removing a packet channel may cause desync here */
-	list_del(&ch->ch_list);
-	D("smd_close: closing ch %d\n", ch->n);
-	hc_set_state(ch->send, SMD_SS_CLOSED);
-
-	spin_unlock_irqrestore(&smd_lock, flags);
+	list_add(&ch->ch_list, &smd_ch_closed_list);
 	mutex_unlock(&smd_creation_mutex);
 
 	return 0;
@@ -1178,6 +1185,24 @@ static int debug_read_version(char *buf, int max)
 	return sprintf(buf, "%d.%d\n", version >> 16, version & 0xffff);
 }
 
+static int debug_read_alloc_tbl(char *buf, int max)
+{
+	struct smd_alloc_elm *shared;
+	int n, i = 0;
+
+	shared = smem_find(ID_CH_ALLOC_TBL, sizeof(*shared) * 64);
+
+	for (n = 0; n < 64; n++) {
+		if (shared[n].ref_count == 0)
+			continue;
+		i += scnprintf(buf + i, max - i,
+			       "%03d: %20s cid=%02d ctype=%d ref_count=%d\n",
+			       n, shared[n].name, shared[n].cid,
+			       shared[n].ctype, shared[n].ref_count);
+	}
+
+	return i;
+}
 
 #define DEBUG_BUFMAX 4096
 static char debug_buffer[DEBUG_BUFMAX];
@@ -1220,6 +1245,7 @@ static void smd_debugfs_init(void)
 	debug_create("stat", 0444, dent, debug_read_stat);
 	debug_create("mem", 0444, dent, debug_read_mem);
 	debug_create("version", 0444, dent, debug_read_version);
+	debug_create("tbl", 0444, dent, debug_read_alloc_tbl);
 }
 #else
 static void smd_debugfs_init(void) {}
@@ -1230,8 +1256,6 @@ static int __init msm_smd_probe(struct platform_device *pdev)
 	printk(KERN_INFO "smd_init()\n");
 
 	INIT_WORK(&probe_work, smd_channel_probe_worker);
-
-	memset(&p_devs, 0, sizeof(p_devs));
 
 	if (smd_core_init()) {
 		printk(KERN_ERR "smd_core_init() failed\n");
