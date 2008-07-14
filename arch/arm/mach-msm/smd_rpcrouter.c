@@ -1132,7 +1132,7 @@ static int msm_rpcrouter_probe(struct platform_device *pdev)
 
 	/* Open up SMD channel 2 */
 	initialized = 0;
-	rc = smd_open(2, &smd_channel, NULL, rpcrouter_smdnotify);
+	rc = smd_open("SMD_RPCCALL", &smd_channel, NULL, rpcrouter_smdnotify);
 	if (rc < 0)
 		goto fail_remove_devices;
 
@@ -1149,8 +1149,8 @@ fail_destroy_workqueue:
 static struct platform_driver msm_smd_channel2_driver = {
 	.probe		= msm_rpcrouter_probe,
 	.driver		= {
-			.name	= "smd_channel_02",
-			.owner	= THIS_MODULE,
+		.name	= "SMD_RPCCALL",
+		.owner	= THIS_MODULE,
 	},
 };
 
