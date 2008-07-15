@@ -345,27 +345,26 @@ static void freq_adjust(struct cpu_dbs_info_s *this_dbs_info) {
 	const struct cpufreq_policy *policy = this_dbs_info->cur_policy;
 	int index = sweet_spot_index;
 
-	if (policy->max == policy->cur)
-		return;
-
 	/*
-	 * Readjust sweet spot if the policy has been updated. This is
-	 * somewhat racy with the power driver. At worst it takes an extra
-	 * sampling cycle to correct itself.
+	 * Re-adjust sweet spot if the policy has been updated.
+	 * Currently this can be updated from the android/power.c driver when
+	 * the framework calls "standby" and "wake".
 	 */
 	freq_tbl = cpufreq_frequency_get_table(policy->cpu);
+	lock_policy_rwsem_read(policy->cpu);
 	while (freq_tbl[sweet_spot_index + 1].frequency > policy->max &&
 		sweet_spot_index > 0)
 		sweet_spot_index--;
 
 	/*
 	 * We should not have to worry about index overflow unless the value
-	 * from policy->max does not exist in freq_tbl.
+	 * from policy->max does not exist in freq_tbl, be safe just incase.
 	 */
-	while (freq_tbl[sweet_spot_index + 1].frequency < policy->max && 
+	while (freq_tbl[sweet_spot_index + 1].frequency < policy->max &&
 		freq_tbl[sweet_spot_index + 1].frequency != CPUFREQ_TABLE_END)
 		sweet_spot_index++;
 
+	unlock_policy_rwsem_read(policy->cpu);
 	if (policy->cur != freq_tbl[sweet_spot_index].frequency)
 		return;
 

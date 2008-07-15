@@ -36,6 +36,10 @@
 #include "clock.h"
 #include <linux/cpufreq.h>
 
+#ifdef CONFIG_ANDROID_POWER
+#include <linux/android_power.h>
+#endif
+
 #include "proc_comm.h"
 
 #define PERF_SWITCH_DEBUG 0
@@ -679,6 +683,54 @@ static unsigned int msm_cpufreq_get(unsigned int cpu)
 	return drv_state.current_speed->a11clk_khz;
 }
 
+
+#ifdef CONFIG_ANDROID_POWER
+/*
+ * Early suspend and late resume hooks for android power driver.
+ * We use early_suspend late_resume instead of the default
+ * cpufreq_driver.suspend/resume to change the max/min policy when
+ * screen is on/off while if userspace has a wakelock.
+ */
+static int update_cpufreq_policy(int screen_on) {
+	struct cpufreq_policy *policy;
+	if (lock_policy_rwsem_write(smp_processor_id()))
+		return -EINVAL;
+
+	if ((policy = cpufreq_cpu_get(smp_processor_id())) == NULL)
+		goto out;
+
+	if (screen_on) {
+		policy->user_policy.max = cpufreq_table[2].frequency; // 245mhz
+		policy->user_policy.max = cpufreq_table[3].frequency; // 384mhz
+	} else {
+		policy->user_policy.max = cpufreq_table[0].frequency; // 82mhz
+		policy->user_policy.max = cpufreq_table[2].frequency; // 245mhz
+	}
+out:
+	unlock_policy_rwsem_write(smp_processor_id());
+	if (unlikely(policy == NULL))
+		return 0;
+
+	cpufreq_cpu_put(policy);
+	/* Give up policy lock before calling update or else deadlock. */
+	if (cpufreq_update_policy(policy->cpu))
+		printk(KERN_ERR "cpufreq_update_policy(): FAILED\n");
+	return 0;
+}
+static void msm_early_suspend(android_early_suspend_t *handler) {
+	update_cpufreq_policy(0);
+}
+
+static void msm_late_resume(android_early_suspend_t *handler) {
+	update_cpufreq_policy(1);
+}
+
+static struct android_early_suspend msm_power_suspend = {
+	.suspend = msm_early_suspend,
+	.resume = msm_late_resume,
+};
+#endif
+
 static int msm_cpufreq_init(struct cpufreq_policy *policy)
 {
 	struct clkctl_acpu_speed *tgt_s, *max_s = NULL;
@@ -688,16 +740,24 @@ static int msm_cpufreq_init(struct cpufreq_policy *policy)
 		max_s = tgt_s;
 	if (max_s == NULL)
 		return -EINVAL;
-	policy->cur = policy->min = policy->max = msm_cpufreq_get(0);
+	policy->cur = msm_cpufreq_get(smp_processor_id());
 
-	/* Set min to 245mhz and max to 384mhz */
-	policy->cpuinfo.min_freq = cpufreq_table[2].frequency;
+	/* Set default policy min to 245mhz and max to 384mhz */
+	policy->min = cpufreq_table[2].frequency;
+	policy->max = cpufreq_table[CPUFREQ_TABLE_MAX - 1].frequency;
+
+	/* Full speed ranges available are 81mhz - 384mhz. */
+	policy->cpuinfo.min_freq = cpufreq_table[0].frequency;
 	policy->cpuinfo.max_freq = cpufreq_table[CPUFREQ_TABLE_MAX - 1].frequency;
 	policy->cpuinfo.transition_latency =
 		drv_state.acpu_switch_time_us * NSEC_PER_USEC;
 
-	/* Register the cpufreq table. With this cpu. */
-	cpufreq_frequency_table_get_attr(cpufreq_table, smp_processor_id());
+	/* Register the cpufreq table with the policy's cpu. */
+	cpufreq_frequency_table_get_attr(cpufreq_table, policy->cpu);
+
+#ifdef CONFIG_ANDROID_POWER
+	android_register_early_suspend(&msm_power_suspend);
+#endif
 	return 0;
 }
 
