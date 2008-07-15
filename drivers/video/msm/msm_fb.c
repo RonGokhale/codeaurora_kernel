@@ -53,6 +53,7 @@ struct msmfb_info {
 	unsigned frame_requested;
 	unsigned frame_done;
 	int sleeping;
+	unsigned update_frame;
 	struct {
 		int left;
 		int top;
@@ -67,7 +68,6 @@ struct msmfb_info {
 	spinlock_t update_lock;
 	wait_queue_head_t frame_wq;
 	char* black;
-	struct work_struct resume_work;
 	struct msmfb_callback dma_callback;
 	struct msmfb_callback vsync_callback;
 	struct hrtimer fake_vsync;
@@ -98,10 +98,6 @@ static void msmfb_handle_dma_interrupt(struct msmfb_callback *callback)
 
 	spin_lock_irqsave(&par->update_lock, irq_flags);
 	par->frame_done = par->frame_requested;
-	if (unlikely(par->sleeping == UPDATING)) {
-		par->sleeping = AWAKE;
-		schedule_work(&par->resume_work);
-	}
 #if PRINT_FPS
 	now = ktime_get();
 	dt = ktime_to_ns(ktime_sub(now, last_sec));
@@ -177,6 +173,8 @@ static enum hrtimer_restart msmfb_fake_vsync(struct hrtimer *timer)
 	return HRTIMER_NORESTART;
 }
 
+static void power_on_panel(struct msmfb_info *par);
+
 static void msmfb_pan_update(struct fb_info *info, uint32_t left, uint32_t top,
 			 uint32_t eright, uint32_t ebottom, uint32_t yoffset,
 			 int pan_display)
@@ -184,6 +182,8 @@ static void msmfb_pan_update(struct fb_info *info, uint32_t left, uint32_t top,
 	struct msmfb_info *par = info->par;
 	struct mddi_panel_info *pi = par->panel_info;
 	unsigned long irq_flags;
+	int sleeping;
+	int full_update_done = 0;
 #if PRINT_FPS
 	ktime_t t1, t2;
 	static uint64_t pans;
@@ -193,9 +193,10 @@ static void msmfb_pan_update(struct fb_info *info, uint32_t left, uint32_t top,
 
 restart:
 	spin_lock_irqsave(&par->update_lock, irq_flags);
+	sleeping = par->sleeping;
 	/* if we are sleeping, on a pan_display wait 10ms (to throttle back
 	 * drawing otherwise return */
-	if (par->sleeping == SLEEPING) {
+	if (sleeping == SLEEPING) {
 		spin_unlock_irqrestore(&par->update_lock, irq_flags);
 		if (pan_display)
 			wait_event_interruptible_timeout(par->frame_wq,
@@ -233,14 +234,25 @@ restart:
 	}
 #endif
 
+	/* if we have just completed the first full update after resume,
+	 * turn the panel on */
+	if (unlikely(sleeping == UPDATING) &&
+	    par->frame_done == par->update_frame) {
+		par->sleeping = AWAKE;
+		full_update_done = 1;
+	}
+
+	par->frame_requested++;
 	/* if necessary, update the y offset, if this is the
 	 * first full update on resume, set the sleeping state */
 	if (pan_display) {
 		par->yoffset = yoffset;
-		if (par->sleeping == WAKING &&
+		if (sleeping == WAKING &&
 		    left == 0 && top == 0 && eright == info->var.xres &&
-		    ebottom == info->var.yres)
+		    ebottom == info->var.yres) {
+			par->update_frame = par->frame_requested;
 			par->sleeping = UPDATING;
+		}
 	}
 
 	/* set the update request */
@@ -252,12 +264,14 @@ restart:
 		par->update_info.eright = eright;
 	if (ebottom > par->update_info.ebottom)
 		par->update_info.ebottom = ebottom;
-	par->frame_requested++;
 	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 
 	/* if the panel is all the way on wait for vsync, otherwise sleep
 	 * for 16 ms (long enough for the dma to panel) and then begin dma */
-	if (pi->panel_ops->request_vsync && (par->sleeping == AWAKE))
+	if (sleeping == UPDATING && full_update_done)
+		power_on_panel(par);
+
+	if (pi->panel_ops->request_vsync && (sleeping == AWAKE))
 		pi->panel_ops->request_vsync(pi, &par->vsync_callback);
 	else {
 		if (!hrtimer_active(&par->fake_vsync)) {
@@ -274,10 +288,8 @@ static void msmfb_update(struct fb_info *info, uint32_t left, uint32_t top,
 	msmfb_pan_update(info, left, top, eright, ebottom, 0, 0);
 }
 
-static void power_on_panel(struct work_struct *work)
+static void power_on_panel(struct msmfb_info *par)
 {
-	struct msmfb_info *par = container_of(work, struct msmfb_info,
-					      resume_work);
 	struct mddi_panel_info *pi = par->panel_info;
 	pi->panel_ops->power(pi, 1);
 }
@@ -288,8 +300,12 @@ static void msmfb_slightly_earlier_suspend(android_early_suspend_t *h)
 	struct msmfb_info *par = container_of(h, struct msmfb_info,
 					      slightly_earlier_suspend);
 	struct mddi_panel_info *pi = par->panel_info;
+	unsigned int irq_flags;
 
+	spin_lock_irqsave(&par->update_lock, irq_flags);
 	par->sleeping = SLEEPING;
+	spin_unlock_irqrestore(&par->update_lock, irq_flags);
+
 	/* blank the screen */
 	msmfb_update(par->fb_info, 0, 0, par->fb_info->var.xres,
 		     par->fb_info->var.yres);
@@ -305,12 +321,15 @@ static void msmfb_early_suspend(android_early_suspend_t *h)
 {
 }
 
-
 static void msmfb_early_resume(android_early_suspend_t *h)
 {
 	struct msmfb_info *par = container_of(h, struct msmfb_info,
 				 early_suspend);
+	unsigned int irq_flags;
+
+	spin_lock_irqsave(&par->update_lock, irq_flags);
 	par->sleeping = WAKING;
+	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 }
 
 static void msmfb_slightly_later_resume(android_early_suspend_t *h)
@@ -520,7 +539,6 @@ static int msmfb_probe(struct platform_device *pdev)
 	for (r = 1; r < 16; r++)
 		PP[r] = 0xffffffff;
 
-	INIT_WORK(&par->resume_work, power_on_panel);
 	par->black = kmalloc(2*par->fb_info->var.xres, GFP_KERNEL);
 	memset(par->black, 0, 2*par->fb_info->var.xres);
 
