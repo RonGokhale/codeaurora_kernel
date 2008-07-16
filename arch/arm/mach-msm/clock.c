@@ -102,6 +102,11 @@ static int pc_clk_set_max_rate(unsigned id, unsigned rate)
 	return msm_proc_comm(PCOM_CLKCTL_RPC_MAX_RATE, &id, &rate);
 }
 
+static int pc_clk_set_flags(unsigned id, unsigned flags)
+{
+	return msm_proc_comm(PCOM_CLKCTL_RPC_SET_FLAGS, &id, &flags);
+}
+
 static unsigned pc_clk_get_rate(unsigned id)
 {
 	if (msm_proc_comm(PCOM_CLKCTL_RPC_RATE, &id, 0))
@@ -226,6 +231,15 @@ struct clk *clk_get_parent(struct clk *clk)
 	return ERR_PTR(-ENOSYS);
 }
 
+int clk_set_flags(struct clk *clk, unsigned long flags)
+{
+	if (clk == NULL || IS_ERR(clk))
+		return -EINVAL;
+	if (clk->id == ACPU_CLK)
+		return -EINVAL;
+	return pc_clk_set_flags(clk->id, flags);
+}
+EXPORT_SYMBOL(clk_set_flags);
 
 /*----------------------------------------------------------------------------
  * ARM11 'owned' clock control
