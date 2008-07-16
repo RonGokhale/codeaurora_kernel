@@ -81,15 +81,15 @@ void vreg_put(struct vreg *vreg)
 int vreg_enable(struct vreg *vreg)
 {
 	unsigned id = vreg->id;
-	unsigned disable = 0;
-	return msm_proc_comm(PCOM_VREG_SWITCH, &id, &disable);
+	unsigned enable = 1;
+	return msm_proc_comm(PCOM_VREG_SWITCH, &id, &enable);
 }
 
 void vreg_disable(struct vreg *vreg)
 {
 	unsigned id = vreg->id;
-	unsigned disable = 1;
-	msm_proc_comm(PCOM_VREG_SWITCH, &id, &disable);
+	unsigned enable = 0;
+	msm_proc_comm(PCOM_VREG_SWITCH, &id, &enable);
 }
 
 int vreg_set_level(struct vreg *vreg, unsigned mv)
