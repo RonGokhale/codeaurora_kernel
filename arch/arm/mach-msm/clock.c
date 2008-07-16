@@ -490,6 +490,12 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 #endif
 	}
 
+	/* Drop VDD level if needed. */
+	if (tgt_s->vdd < strt_s->vdd) {
+		if (acpuclk_set_vdd_level(tgt_s->vdd) < 0)
+			printk(KERN_ERR "clock: Unable to drop ACPU vdd\n");
+	}
+
 #if PERF_SWITCH_DEBUG
 	printk(KERN_DEBUG "%s: ACPU speed change complete\n", __FUNCTION__);
 #endif
