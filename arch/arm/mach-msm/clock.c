@@ -700,10 +700,10 @@ static int update_cpufreq_policy(int screen_on) {
 		goto out;
 
 	if (screen_on) {
-		policy->user_policy.max = cpufreq_table[2].frequency; // 245mhz
+		policy->user_policy.min = cpufreq_table[2].frequency; // 245mhz
 		policy->user_policy.max = cpufreq_table[3].frequency; // 384mhz
 	} else {
-		policy->user_policy.max = cpufreq_table[0].frequency; // 82mhz
+		policy->user_policy.min = cpufreq_table[0].frequency; // 82mhz
 		policy->user_policy.max = cpufreq_table[2].frequency; // 245mhz
 	}
 out:
