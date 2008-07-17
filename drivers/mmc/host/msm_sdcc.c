@@ -60,7 +60,8 @@ static struct dentry *debugfs_dir;
 
 static unsigned int msmsdcc_fmin = 144000;
 static unsigned int msmsdcc_fmax = 20000000;
-static unsigned int msmsdcc_4bit = 0;
+static unsigned int msmsdcc_4bit = 1;
+static unsigned int msmsdcc_pwrsave = 0;
 
 static char *msmsdcc_clks[] = { NULL, "sdc1_clk", "sdc2_clk", "sdc3_clk",
 				"sdc4_clk" };
@@ -242,9 +243,9 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 	host->data_xfered = host->xfer_size - reg_datacnt;
 
 	if (host->data_xfered != host->xfer_size) {
-		printk(KERN_WARNING "%s: Short transfer (%d != %d)\n",
+		printk(KERN_WARNING "%s: Short xfer (%d != %d), dc %d\n",
 		       mmc_hostname(host->mmc), host->data_xfered,
-		       host->xfer_size);
+		       host->xfer_size, reg_datacnt);
 	}
 	host->dma.sg = NULL;
 
@@ -951,7 +952,7 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	if (ios->bus_width == MMC_BUS_WIDTH_4)
 		clk |= (2 << 10); /* Set WIDEBUS */
 
-	if (ios->clock > 400000)
+	if (ios->clock > 400000 && msmsdcc_pwrsave)
 		clk |= (1 << 9); /* PWRSAVE */
 
 	clk |= (1 << 12); /* FLOW_ENA */
@@ -1305,6 +1306,8 @@ msmsdcc_probe(struct platform_device *pdev)
 	       mmc_hostname(mmc), msmsdcc_fmin, msmsdcc_fmax, host->pclk_rate);
 	printk(KERN_INFO "%s: Slot eject status = %d\n", mmc_hostname(mmc),
 	       host->eject);
+	printk(KERN_INFO "%s: Power save feature enable = %d\n",
+	       mmc_hostname(mmc), msmsdcc_pwrsave);
 
 	if (host->dma.channel != -1) {
 		printk(KERN_INFO
@@ -1413,6 +1416,18 @@ static void __exit msmsdcc_exit(void)
 	platform_driver_unregister(&msmsdcc_driver);
 }
 
+static int __init msmsdcc_pwrsave_setup(char *__unused)
+{
+	msmsdcc_pwrsave = 1;
+	return 1;
+}
+
+static int __init msmsdcc_nopwrsave_setup(char *__unused)
+{
+	msmsdcc_pwrsave = 0;
+	return 1;
+}
+
 static int __init msmsdcc_4bit_setup(char *__unused)
 {
 	msmsdcc_4bit = 1;
@@ -1447,6 +1462,8 @@ static int __init msmsdcc_fmax_setup(char *str)
 
 __setup("msmsdcc_4bit", msmsdcc_4bit_setup);
 __setup("msmsdcc_1bit", msmsdcc_1bit_setup);
+__setup("msmsdcc_pwrsave", msmsdcc_pwrsave_setup);
+__setup("msmsdcc_nopwrsave", msmsdcc_nopwrsave_setup);
 __setup("msmsdcc_fmin=", msmsdcc_fmin_setup);
 __setup("msmsdcc_fmax=", msmsdcc_fmax_setup);
 
