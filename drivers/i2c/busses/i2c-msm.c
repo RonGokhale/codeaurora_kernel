@@ -20,13 +20,15 @@
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
 #include <linux/delay.h>
+#include <linux/io.h>
 
 #include <asm/hardware.h>
-#include <asm/io.h>
 #include <asm/hardware/ioc.h>
 #include <asm/system.h>
 
 #include <asm/arch/msm_iomap.h>
+
+#define DEBUG 0
 
 enum {
 	I2C_WRITE_DATA          = 0x00,
@@ -63,282 +65,257 @@ struct msm_i2c_dev {
 	void __iomem       *base;		/* virtual */
 	int                 irq;
 	struct clk         *clk;
-	uint32_t            last_status;
-	uint32_t            error;
 	struct i2c_adapter  adapter;
-	wait_queue_head_t   wait;
+
 	spinlock_t          lock;
+
+	struct i2c_msg      *msg;
+	int                 pos;
+	int                 cnt;
+	int                 err;
+	int                 flush_cnt;
+	void                *complete;
 };
 
-static void msm_i2c_print_error(const char *prefix, uint32_t error, uint32_t status)
+#if DEBUG
+static void
+dump_status(uint32_t status)
 {
-	printk(KERN_ERR "%s %x%s%s%s%s, status %x\n", prefix, error,
-		(error & I2C_STATUS_BUS_ERROR) ? ",bus error" : "",
-		(error & I2C_STATUS_PACKET_NACKED) ? ",nak" : "",
-		(error & I2C_STATUS_ARB_LOST) ? ",arb lost" : "",
-		(error & I2C_STATUS_INVALID_WRITE) ? ",invalid write" : "",
-		status);
+	printk("STATUS (0x%.8x): ", status);
+	if (status & I2C_STATUS_BUS_MASTER)
+		printk("MST ");
+	if (status & I2C_STATUS_BUS_ACTIVE)
+		printk("ACT ");
+	if (status & I2C_STATUS_INVALID_WRITE)
+		printk("INV_WR ");
+	if (status & I2C_STATUS_ARB_LOST)
+		printk("ARB_LST ");
+	if (status & I2C_STATUS_PACKET_NACKED)
+		printk("NAK ");
+	if (status & I2C_STATUS_BUS_ERROR)
+		printk("BUS_ERR ");
+	if (status & I2C_STATUS_RD_BUFFER_FULL)
+		printk("RD_FULL ");
+	if (status & I2C_STATUS_WR_BUFFER_FULL)
+		printk("WR_FULL ");
+	if (status & I2C_STATUS_FAILED)
+		printk("FAIL 0x%x", (status & I2C_STATUS_FAILED));
+	printk("\n");
 }
-
-static uint32_t msm_i2c_read_status(struct msm_i2c_dev *dev)
-{
-	unsigned long irq_flags;
-	uint32_t status;
-
-	spin_lock_irqsave(&dev->lock, irq_flags);
-	status = readl(dev->base + I2C_STATUS);
-	if (status != dev->last_status) {
-		uint32_t new_error = status & I2C_STATUS_ERROR_MASK;
-		if (new_error) {
-			msm_i2c_print_error("got error", new_error, status);
-			dev->error |= new_error;
-		}
-		/* printk("status changed %x -> %x\n", dev->last_status, status); */
-		dev->last_status = status;
-	}
-	spin_unlock_irqrestore(&dev->lock, irq_flags);
-	return status | dev->error;
-}
-
-static uint32_t msm_i2c_get_error(struct msm_i2c_dev *dev)
-{
-	unsigned long irq_flags;
-	uint32_t error;
-	uint32_t status;
-
-	status = msm_i2c_read_status(dev);
-
-	spin_lock_irqsave(&dev->lock, irq_flags);
-	error = dev->error;
-	dev->error = 0;
-	if (error)
-		msm_i2c_print_error("report error", error, status);
-	spin_unlock_irqrestore(&dev->lock, irq_flags);
-	return error;
-}
+#endif
 
 static irqreturn_t
 msm_i2c_interrupt(int irq, void *devid)
 {
 	struct msm_i2c_dev *dev = devid;
-	uint32_t status;
-	status = msm_i2c_read_status(dev);
-	/* printk("msm_i2c_interrupt status %x\n", status); */
-	wake_up(&dev->wait);
+	uint32_t status = readl(dev->base + I2C_STATUS);
+	int err = 0;
+
+#if DEBUG
+	dump_status(status);
+#endif
+
+	spin_lock(&dev->lock);
+	if (!dev->msg) {
+		printk(KERN_ERR "%s: IRQ but nothing to do!\n", __func__);
+		spin_unlock(&dev->lock);
+		return IRQ_HANDLED;
+	}
+
+	if (status & I2C_STATUS_ERROR_MASK) {
+		err = -EIO;
+		goto out_err;
+	}
+
+	if (dev->msg->flags & I2C_M_RD) {
+		if (status & I2C_STATUS_RD_BUFFER_FULL) {
+
+			/*
+			 * Theres something in the FIFO.
+			 * Are we expecting data or flush crap?
+			 */
+			if (dev->cnt) { /* DATA */
+				uint8_t *data = &dev->msg->buf[dev->pos];
+
+				if (dev->cnt == 1)
+					writel(I2C_WRITE_DATA_LAST_BYTE,
+					       dev->base + I2C_WRITE_DATA);
+
+				*data = readl(dev->base + I2C_READ_DATA);
+				dev->cnt--;
+				dev->pos++;
+
+			} else { /* FLUSH */
+				uint8_t flush_data;
+
+				flush_data  = readl(dev->base + I2C_READ_DATA);
+
+				dev->flush_cnt++;
+
+				status = readl(dev->base + I2C_STATUS);
+
+				if (!(status & I2C_STATUS_RD_BUFFER_FULL))
+					goto out_complete;
+
+				dev_err(dev->dev,
+					"read did not stop, status - %x\n",
+					status);
+				err = -EIO;
+				goto out_err;
+			}
+		}
+	} else {
+		uint16_t data;
+
+		if (status & I2C_STATUS_WR_BUFFER_FULL) {
+			dev_err(dev->dev,
+				"Write buffer full in ISR on write?\n");
+			err = -EIO;
+			goto out_err;
+		}
+
+		if (dev->cnt) {
+			/* Ready to take a byte */
+			data = dev->msg->buf[dev->pos];
+			if (dev->cnt == 1)
+				data |= I2C_WRITE_DATA_LAST_BYTE;
+
+			writel(data, dev->base + I2C_WRITE_DATA);
+			dev->pos++;
+			dev->cnt--;
+		} else
+			goto out_complete;
+	}
+
+	spin_unlock(&dev->lock);
+	return IRQ_HANDLED;
+
+ out_err:
+	dev->err = err;
+ out_complete:
+	complete(dev->complete);
+	spin_unlock(&dev->lock);
 	return IRQ_HANDLED;
 }
 
 static int
-msm_i2c_poll_status(struct msm_i2c_dev *dev, uint32_t mask, uint32_t value)
+msm_i2c_poll_writeready(struct msm_i2c_dev *dev)
 {
-	uint32_t status;
-	int loop_count = 0;
-	int timeout = jiffies + HZ;
-	do {
-		status = msm_i2c_read_status(dev);
-		if ((status & mask) == value)
+	uint32_t retries = 0;
+
+	while (retries != 2000) {
+		uint32_t status = readl(dev->base + I2C_STATUS);
+
+		if (!(status & I2C_STATUS_WR_BUFFER_FULL))
 			return 0;
-		if(loop_count++ > 1000)
+		if (retries++ > 1000)
 			msleep(1);
-	} while ((int)(timeout - jiffies) >= 0);
-	dev_err(dev->dev, "poll status %x = %x failed, status - %x\n", mask, value, status);
+	}
 	return -ETIMEDOUT;
 }
 
 static int
-msm_i2c_wait_status(struct msm_i2c_dev *dev, uint32_t mask, uint32_t invert)
+msm_i2c_poll_notbusy(struct msm_i2c_dev *dev)
 {
-	uint32_t status;
-	uint32_t status2;
-	if (wait_event_timeout(dev->wait, ((status = msm_i2c_read_status(dev)) ^ invert) & mask, HZ))
-		return 0;
-	status2 = msm_i2c_read_status(dev);
-	dev_err(dev->dev, "wait status %x ^%x failed, status - %x %x\n", mask, invert, status, status2);
+	uint32_t retries = 0;
+
+	while (retries != 2000) {
+		uint32_t status = readl(dev->base + I2C_STATUS);
+
+		if (!(status & I2C_STATUS_BUS_ACTIVE))
+			return 0;
+		if (retries++ > 1000)
+			msleep(1);
+	}
 	return -ETIMEDOUT;
-}
-
-static int
-msm_i2c_read(struct msm_i2c_dev *dev, uint8_t *buf, int count)
-{
-	int ret = -EINVAL;
-	uint32_t status;
-	int write_last_done = 0;
-	while (count--) {
-		ret = msm_i2c_wait_status(dev, I2C_STATUS_RD_BUFFER_FULL | I2C_STATUS_ERROR_MASK, 0);
-		if (ret) {
-			dev_err(dev->dev, "read timeout, rem %d\n", count);
-			break;
-		}
-		if (write_last_done)
-			write_last_done = 2;
-		status = msm_i2c_get_error(dev);
-		if (status) {
-			write_last_done = 1;
-			dev_err(dev->dev, "read failed, status - %x, rem %d\n", status, count);
-			ret = -EIO;
-			break;
-		}
-		if (count <= 1 && !write_last_done) {
-			/* printk("msm_i2c_read write data %x\n", I2C_WRITE_DATA_LAST_BYTE); */
-			writel(I2C_WRITE_DATA_LAST_BYTE, dev->base + I2C_WRITE_DATA);
-			write_last_done = 1;
-		}
-		*buf++ = readl(dev->base + I2C_READ_DATA);
-		/* printk("msm_i2c_read data %x\n", buf[-1]); */
-	}
-	if (write_last_done == 1) {
-		ret = msm_i2c_wait_status(dev, I2C_STATUS_RD_BUFFER_FULL |
-			I2C_STATUS_ERROR_MASK | I2C_STATUS_BUS_ACTIVE, 
-			I2C_STATUS_BUS_ACTIVE);
-		if (ret)
-			dev_err(dev->dev, "read timeout on dummy byte, rem %d\n", count);
-		readl(dev->base + I2C_READ_DATA); /* clear buffer */
-	}
-	count = 3;
-	while (count--) {
-		status = msm_i2c_read_status(dev);
-		if (!(status & I2C_STATUS_RD_BUFFER_FULL))
-			break;
-
-		dev_err(dev->dev, "read did not stop, status - %x\n", status);
-		writel(I2C_WRITE_DATA_LAST_BYTE, dev->base + I2C_WRITE_DATA);
-		readl(dev->base + I2C_READ_DATA); /* clear buffer */
-	}
-	readl(dev->base + I2C_READ_DATA); /* clear buffer */
-	return ret;
-}
-
-static int
-msm_i2c_write(struct msm_i2c_dev *dev, const uint8_t *buf, int count, int last)
-{
-	int ret = 0;
-	uint32_t status;
-	while (count--) {
-		uint16_t data = *buf++;
-		if (count == 0 && last)
-			data |= I2C_WRITE_DATA_LAST_BYTE;
-		ret = msm_i2c_wait_status(dev, I2C_STATUS_WR_BUFFER_FULL, I2C_STATUS_WR_BUFFER_FULL);
-		if (ret)
-			return ret;
-		status = msm_i2c_get_error(dev);
-		if (status) {
-			dev_err(dev->dev, "write failed, status - %x\n", status);
-			ret = -EIO;
-			break;
-		}
-		/* printk("msm_i2c_write data %x\n", data); */
-		writel(data, dev->base + I2C_WRITE_DATA);
-		ret = msm_i2c_wait_status(dev, I2C_STATUS_WR_BUFFER_FULL, I2C_STATUS_WR_BUFFER_FULL);
-		if (ret)
-			return ret;
-	}
-	return ret;
-}
-
-static int
-msm_i2c_get_bus(struct msm_i2c_dev *dev)
-{
-	int ret;
-	int count;
-	uint32_t status;
-
-	ret = msm_i2c_poll_status(dev, I2C_STATUS_BUS_ACTIVE, 0);
-	if (ret == 0)
-		return 0;
-	status = msm_i2c_read_status(dev);
-	dev_err(dev->dev, "wait for bus not active failed, status=%x, try to clear\n", status);
-	count = 3;
-	while (count--) {
-		status = msm_i2c_read_status(dev);
-		if (!(status & I2C_STATUS_RD_BUFFER_FULL))
-			break;
-
-		dev_err(dev->dev, "read did not stop, status - %x\n", status);
-		writel(I2C_WRITE_DATA_LAST_BYTE, dev->base + I2C_WRITE_DATA);
-		readl(dev->base + I2C_READ_DATA); /* clear buffer */
-	}
-	ret = msm_i2c_poll_status(dev, I2C_STATUS_BUS_ACTIVE, 0);
-	if (ret == 0)
-		return 0;
-	dev_err(dev->dev, "wait for bus not active failed\n");
-	return ret;
 }
 
 static int
 msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 {
+	DECLARE_COMPLETION_ONSTACK(complete);
 	struct msm_i2c_dev *dev = i2c_get_adapdata(adap);
 	int ret;
 	int rem = num;
 	uint16_t addr;
-	uint32_t status;
-	/* status = msm_i2c_read_status(dev); */
-	/* printk("msm_i2c_xfer %p %p %d\n", adap, msgs, num); */
-	/* printk("msm_i2c_xfer status %x\n", status); */
+	long timeout;
+	unsigned long flags;
 
 	while (rem) {
 		addr = msgs->addr << 1;
 		if (msgs->flags & I2C_M_RD)
 			addr |= 1;
-		if (rem == num) {
-			ret = msm_i2c_get_bus(dev);
-			if (ret) {
-				dev_err(dev->dev, "msm_i2c_get_bus failed\n");
-				return ret;
-			}
-			ret = msm_i2c_get_error(dev); /* clear old error */
-			if (ret)
-				dev_err(dev->dev, "cleared old error\n");
+
+		spin_lock_irqsave(&dev->lock, flags);
+		dev->msg = msgs;
+		dev->pos = 0;
+		dev->err = 0;
+		dev->flush_cnt = 0;
+		dev->cnt = msgs->len;
+		dev->complete = &complete;
+		spin_unlock_irqrestore(&dev->lock, flags);
+
+		ret = msm_i2c_poll_notbusy(dev);
+		if (ret) {
+			dev_err(dev->dev, "Error waiting for notbusy\n");
+			goto out_err;
 		}
+
 		if (rem == 1 && msgs->len == 0)
 			addr |= I2C_WRITE_DATA_LAST_BYTE;
-		ret = msm_i2c_wait_status(dev, I2C_STATUS_WR_BUFFER_FULL, I2C_STATUS_WR_BUFFER_FULL);
-		if (ret)
-			return ret;
-		/* printk("msm_i2c_xfer addr %x\n", I2C_WRITE_DATA_ADDR_BYTE | addr); */
-		writel(I2C_WRITE_DATA_ADDR_BYTE | addr, dev->base + I2C_WRITE_DATA);
 
-		ret = msm_i2c_wait_status(dev, I2C_STATUS_WR_BUFFER_FULL, I2C_STATUS_WR_BUFFER_FULL);
+		/* Wait for WR buffer not full */
+		ret = msm_i2c_poll_writeready(dev);
 		if (ret) {
-			dev_err(dev->dev, "wait for writebuffer not full failed\n");
-			return ret;
-		}
-		status = msm_i2c_get_error(dev);
-		/* printk("msm_i2c_xfer addr %x sent, error %x\n", addr, status); */
-		if (status) {
-			dev_err(dev->dev, "addr failed, status - %x\n", status);
-			return -EIO;
+			dev_err(dev->dev,
+				"Error waiting for write ready before addr\n");
+			goto out_err;
 		}
 
-		if (msgs->flags & I2C_M_RD)
-			ret = msm_i2c_read(dev, msgs->buf, msgs->len);
-		else
-			ret = msm_i2c_write(dev, msgs->buf, msgs->len, rem == 1);
-		if (ret)
-			return ret;
-		if (rem == 1) {
-			ret = msm_i2c_get_bus(dev);
-			if (ret) {
-				dev_err(dev->dev, "wait for bus not active failed after cmd\n");
-				return ret;
-			}
+		writel(I2C_WRITE_DATA_ADDR_BYTE | addr,
+		       dev->base + I2C_WRITE_DATA);
+
+		ret = msm_i2c_poll_writeready(dev);
+		if (ret) {
+			dev_err(dev->dev,
+				"Error waiting for write ready after addr\n");
+			goto out_err;
 		}
-		status = msm_i2c_get_error(dev);
-		if (status) {
-			dev_err(dev->dev, "cmd failed, status - %x\n", status);
-			return -EIO;
+
+		/*
+		 * Now that we've setup the xfer, the ISR will transfer the data
+		 * and wake us up with dev->err set if there was an error
+		 */
+
+		timeout = wait_for_completion_timeout(&complete, HZ);
+		if (!timeout) {
+			dev_err(dev->dev, "Transaction timed out\n");
+			ret = -ETIMEDOUT;
+			goto out_err;
+		}
+		if (dev->err) {
+			dev_err(dev->dev,
+				"Error during data xfer (%d)\n",
+				dev->err);
+			ret = dev->err;
+			goto out_err;
 		}
 
 		msgs++;
 		rem--;
 	}
-#if 0
-	status = msm_i2c_read_status(dev);
-	if (status)
-		printk(KERN_INFO "msm_i2c_xfer done status1 %x\n", status);
-#endif
 
 	return num;
+ out_err:
+	spin_lock_irqsave(&dev->lock, flags);
+	dev->complete = NULL;
+	dev->msg = NULL;
+	dev->pos = 0;
+	dev->err = 0;
+	dev->flush_cnt = 0;
+	dev->cnt = 0;
+	spin_unlock_irqrestore(&dev->lock, flags);
+	return ret;
 }
 
 static u32
@@ -346,7 +323,6 @@ msm_i2c_func(struct i2c_adapter *adap)
 {
 	return I2C_FUNC_I2C | (I2C_FUNC_SMBUS_EMUL & ~I2C_FUNC_SMBUS_QUICK);
 }
-
 
 static const struct i2c_algorithm msm_i2c_algo = {
 	.master_xfer	= msm_i2c_xfer,
@@ -403,7 +379,6 @@ msm_i2c_probe(struct platform_device *pdev)
 	dev->irq = irq->start;
 	dev->clk = clk;
 	dev->base = (void __iomem *)(size_t)mem->start;
-	init_waitqueue_head(&dev->wait);
 	spin_lock_init(&dev->lock);
 	platform_set_drvdata(pdev, dev);
 
@@ -424,7 +399,9 @@ msm_i2c_probe(struct platform_device *pdev)
 
 	i2c_set_adapdata(&dev->adapter, dev);
 	dev->adapter.algo = &msm_i2c_algo;
-	strncpy(dev->adapter.name, "MSM I2C adapter", sizeof(dev->adapter.name));
+	strncpy(dev->adapter.name,
+		"MSM I2C adapter",
+		sizeof(dev->adapter.name));
 
 	dev->adapter.nr = pdev->id;
 	ret = i2c_add_numbered_adapter(&dev->adapter);
