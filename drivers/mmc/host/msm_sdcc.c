@@ -143,7 +143,8 @@ msmsdcc_wait_for_dataend(struct msmsdcc_host *host, unsigned int retries)
 
 	while(retries) {
 		reg_status = readl(host->base + MMCISTATUS);
-		if (reg_status & MCI_DATAEND)
+		if ((reg_status & (MCI_DATAEND | MCI_DATABLOCKEND)) ==
+				  (MCI_DATAEND | MCI_DATABLOCKEND))
 			break;
 		retries--;
 	}
@@ -194,12 +195,12 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 
 	reg_status = readl(host->base + MMCISTATUS);
 
-	if ((result & DMOV_RSLT_DONE) && !(reg_status & MCI_DATAEND)) {
-#if 0
+	if ((result & DMOV_RSLT_DONE)
+	  && (reg_status & (MCI_DATAEND | MCI_DATABLOCKEND))
+	  !=(MCI_DATAEND | MCI_DATABLOCKEND)) {
 		printk(KERN_WARNING
 		       "%s: DMA result 0x%.8x but still waiting for DATAEND (0x%.8x)\n",
 		       mmc_hostname(host->mmc), result, reg_status);
-#endif
 
 		if (result & DMOV_RSLT_VALID) {
 			rc = msmsdcc_wait_for_dataend(host,
@@ -243,9 +244,10 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 	host->data_xfered = host->xfer_size - reg_datacnt;
 
 	if (host->data_xfered != host->xfer_size) {
-		printk(KERN_WARNING "%s: Short xfer (%d != %d), dc %d\n",
+		printk(KERN_WARNING
+		       "%s: Short xfer (%d != %d), dc %d, flags 0x%x\n",
 		       mmc_hostname(host->mmc), host->data_xfered,
-		       host->xfer_size, reg_datacnt);
+		       host->xfer_size, reg_datacnt, mrq->data->flags);
 	}
 	host->dma.sg = NULL;
 
