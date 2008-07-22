@@ -33,6 +33,22 @@
 #include <linux/uaccess.h>
 #include <linux/wait.h>
 
+#ifdef CONFIG_ANDROID_POWER
+#include <linux/android_power.h>
+static android_suspend_lock_t adsp_suspend_lock;
+static inline void prevent_suspend(void)
+{
+	android_lock_suspend(&adsp_suspend_lock);
+}
+static inline void allow_suspend(void)
+{
+	android_unlock_suspend(&adsp_suspend_lock);
+}
+#else
+static inline void prevent_suspend(void) {}
+static inline void allow_suspend(void) {}
+#endif
+
 #include <asm/io.h>
 #include <asm/arch/msm_iomap.h>
 #include "adsp.h"
@@ -166,8 +182,10 @@ int msm_adsp_get(const char *name, struct msm_adsp_module **out,
 		clk_enable(module->clk);
 
 	mutex_lock(&adsp_open_lock);
-	if (adsp_open_count++ == 0)
+	if (adsp_open_count++ == 0) {
 		enable_irq(INT_ADSP);
+		prevent_suspend();
+	}
 	mutex_unlock(&adsp_open_lock);
 
 	if (module->ops) {
@@ -196,8 +214,10 @@ int msm_adsp_get(const char *name, struct msm_adsp_module **out,
 
 done:
 	mutex_lock(&adsp_open_lock);
-	if (rc && --adsp_open_count == 0)
+	if (rc && --adsp_open_count == 0) {
 		disable_irq(INT_ADSP);
+		allow_suspend();
+	}
 	if (rc && --module->open_count == 0 && module->clk)
 		clk_disable(module->clk);
 	mutex_unlock(&adsp_open_lock);
@@ -234,6 +254,7 @@ void msm_adsp_put(struct msm_adsp_module *module)
 		module->rpc_client = 0;
 		if (--adsp_open_count == 0) {
 			disable_irq(INT_ADSP);
+			allow_suspend();
 			pr_info("adsp: disable interrupt\n");
 		}
 	} else {
@@ -780,6 +801,11 @@ static int msm_adsp_probe(struct platform_device *pdev)
 {
 	unsigned count;
 	int rc, i;
+
+#ifdef CONFIG_ANDROID_POWER
+        adsp_suspend_lock.name = "adsp";
+        android_init_suspend_lock(&adsp_suspend_lock);
+#endif
 
 	rc = adsp_init_info(&adsp_info);
 	if (rc)
