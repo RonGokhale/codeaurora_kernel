@@ -99,8 +99,10 @@ static void msmfb_handle_dma_interrupt(struct msmfb_callback *callback)
 
 	spin_lock_irqsave(&par->update_lock, irq_flags);
 	par->frame_done = par->frame_requested;
-	if (par->sleeping == UPDATING && par->frame_done == par->update_frame)
+	if (par->sleeping == UPDATING && par->frame_done == par->update_frame) {
+		printk(KERN_INFO "msmfb: full update completed\n");
 		schedule_work(&par->resume_work);
+	}
 #if PRINT_FPS
 	now = ktime_get();
 	dt = ktime_to_ns(ktime_sub(now, last_sec));
@@ -239,11 +241,14 @@ restart:
 	 * first full update on resume, set the sleeping state */
 	if (pan_display) {
 		par->yoffset = yoffset;
-		if (sleeping == WAKING &&
-		    left == 0 && top == 0 && eright == info->var.xres &&
+		if (left == 0 && top == 0 && eright == info->var.xres &&
 		    ebottom == info->var.yres) {
-			par->update_frame = par->frame_requested;
-			par->sleeping = UPDATING;
+			if (sleeping == WAKING) {
+				par->update_frame = par->frame_requested;
+				printk(KERN_INFO
+					"msmfb: full update starting\n");
+				par->sleeping = UPDATING;
+			}
 		}
 	}
 
@@ -282,6 +287,7 @@ static void power_on_panel(struct work_struct *work)
 	struct msmfb_info *par = container_of(work, struct msmfb_info,
 					      resume_work);
 	struct mddi_panel_info *pi = par->panel_info;
+	printk(KERN_INFO "msmfb: turuning on panel\n");
 	pi->panel_ops->power(pi, 1);
 }
 
@@ -323,6 +329,7 @@ static void msmfb_early_resume(android_early_suspend_t *h)
 
 	spin_lock_irqsave(&par->update_lock, irq_flags);
 	par->sleeping = WAKING;
+	printk(KERN_INFO "msmfb: ready, waiting for full update\n");
 	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 }
 
