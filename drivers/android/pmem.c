@@ -1028,7 +1028,6 @@ static void pmem_revoke(struct file *file, struct pmem_data *data)
 	struct pmem_region_node *region_node;
 	struct list_head *elt, *elt2;
 	struct mm_struct *mm = NULL;
-	struct vm_area_struct *vma;
 	int id = get_id(file);
 	int ret = 0;
 
