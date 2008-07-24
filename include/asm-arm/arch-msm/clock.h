@@ -24,12 +24,15 @@ struct msm_clock_platform_data
 	uint32_t acpu_switch_time_us;
 	uint32_t max_speed_delta_khz;
 	uint32_t vdd_switch_time_us;
+	unsigned long power_collapse_khz;
+	unsigned long wait_for_irq_khz;
 };
 
 struct clk;
 
 void __init msm_clock_init(struct msm_clock_platform_data *);
-void __init clock_init(uint32_t, uint32_t, uint32_t);
+void __init clock_init(uint32_t, uint32_t, uint32_t, unsigned long,
+			unsigned long);
 int clk_register(struct clk *);
 
 #endif

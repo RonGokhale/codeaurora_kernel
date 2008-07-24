@@ -45,7 +45,7 @@ enum {
  */
 #if (0)
 struct clkctl_acpu_speed  acpu_freq_tbl[] = {
-	{ 19200, ACPU_PLL_TCXO, 0, 0, 19200, VDD_0, 0, 0, 0, 8 },
+	{ 19200, ACPU_PLL_TCXO, 0, 0, 19200, 0, VDD_0, 0, 0, 8 },
 	{ 61440, ACPU_PLL_0, 4, 3, 61440, 0, VDD_0, 0, 0, 8 },
 	{ 81920, ACPU_PLL_0, 4, 2, 40960, 1, VDD_0, 0, 0, 8 },
 	{ 96000, ACPU_PLL_1, 1, 7, 48000, 1, VDD_0, 0, 0, 9 },
@@ -63,7 +63,7 @@ struct clkctl_acpu_speed  acpu_freq_tbl[] = {
 };
 #else /* Table of freq we currently use. */
 struct clkctl_acpu_speed  acpu_freq_tbl[] = {
-	{ 19200, ACPU_PLL_TCXO, 0, 0, 19200, VDD_0, 0, 0, 0, 3 },
+	{ 19200, ACPU_PLL_TCXO, 0, 0, 19200, 0, VDD_0, 0, 0, 3 },
 	{ 122880, ACPU_PLL_0, 4, 1, 61440, 1, VDD_3, 0, 0, 3 },
 	{ 128000, ACPU_PLL_1, 1, 5, 64000, 1, VDD_3, 0, 0, 4 },
 	{ 245760, ACPU_PLL_0, 4, 0, 81920, 2, VDD_4, 0, 0, 4 },
@@ -149,7 +149,9 @@ void __init msm_clock_init(struct msm_clock_platform_data *clkdata)
 	/* Start MSM clock driver */
 	clock_init(clkdata->acpu_switch_time_us,
 		   clkdata->max_speed_delta_khz,
-		   clkdata->vdd_switch_time_us);
+		   clkdata->vdd_switch_time_us,
+		   clkdata->power_collapse_khz,
+		   clkdata->wait_for_irq_khz);
 
 	/* Register all the clocks for the MSM7k */
 	for (n = 0; n < ARRAY_SIZE(clocks); n++)
