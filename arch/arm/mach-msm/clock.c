@@ -125,8 +125,27 @@ static unsigned pc_clk_is_enabled(unsigned id)
 
 static int pc_pll_request(unsigned id, unsigned on)
 {
+	int res;
 	on = !!on;
-	return msm_proc_comm(PCOM_CLKCTL_RPC_PLL_REQUEST, &id, &on);
+
+#if PERF_SWITCH_DEBUG
+	if (on)
+		printk(KERN_DEBUG "Enabling PLL %d\n", id);
+	else
+		printk(KERN_DEBUG "Disabling PLL %d\n", id);
+#endif
+
+	res = msm_proc_comm(PCOM_CLKCTL_RPC_PLL_REQUEST, &id, &on);
+	if (res < 0)
+		return res;
+
+#if PERF_SWITCH_DEBUG
+	if (on)
+		printk(KERN_DEBUG "PLL %d enabled\n", id);
+	else
+		printk(KERN_DEBUG "PLL %d disabled\n", id);
+#endif
+	return res;
 }
 
 /*----------------------------------------------------------------------------
@@ -262,7 +281,7 @@ static int acpuclk_set_vdd_level(int vdd)
 	current_vdd = readl(A11S_VDD_SVS_PLEVEL_ADDR) & 0x07;
 
 #if PERF_SWITCH_DEBUG
-	printk(KERN_INFO "clock: Switching VDD from %u -> %d\n",
+	printk(KERN_DEBUG "clock: Switching VDD from %u -> %d\n",
 	       current_vdd, vdd);
 #endif
 	writel((1 << 7) | (vdd << 3), A11S_VDD_SVS_PLEVEL_ADDR);
@@ -275,17 +294,82 @@ static int acpuclk_set_vdd_level(int vdd)
 	}
 
 #if PERF_SWITCH_DEBUG
-	printk(KERN_INFO "clock: VDD switched\n");
+	printk(KERN_DEBUG "clock: VDD switched\n");
 #endif
 	return 0;
 }
 
+/* Set proper dividers for the given clock speed. */
+static void acpuclk_set_div(const struct clkctl_acpu_speed *hunt_s) {
+	uint32_t reg_clkctl, reg_clksel, clk_div;
+
+	/* AHB_CLK_DIV */
+	clk_div = (readl(A11S_CLK_SEL_ADDR) >> 1) & 0x03;
+	/*
+	 * If the new clock divider is higher than the previous, then
+	 * program the divider before switching the clock
+	 */
+	if (hunt_s->ahbclk_div > clk_div) {
+		reg_clksel = readl(A11S_CLK_SEL_ADDR);
+		reg_clksel |= (hunt_s->ahbclk_div << 1);
+		writel(reg_clksel, A11S_CLK_SEL_ADDR);
+	}
+	if ((readl(A11S_CLK_SEL_ADDR) & 0x01) == 0) {
+		/* SRC0 */
+
+		/* Program clock source */
+		reg_clkctl = readl(A11S_CLK_CNTL_ADDR);
+		reg_clkctl &= ~(0x07 << 4);
+		reg_clkctl |= (hunt_s->a11clk_src_sel << 4);
+		writel(reg_clkctl, A11S_CLK_CNTL_ADDR);
+
+		/* Program clock divider */
+		reg_clkctl = readl(A11S_CLK_CNTL_ADDR);
+		reg_clkctl &= ~0xf;
+		reg_clkctl |= hunt_s->a11clk_src_div;
+		writel(reg_clkctl, A11S_CLK_CNTL_ADDR);
+
+		/* Program clock source selection */
+		reg_clksel = readl(A11S_CLK_SEL_ADDR);
+		reg_clksel |= 1; /* CLK_SEL_SRC1NO  == SRC1 */
+		writel(reg_clksel, A11S_CLK_SEL_ADDR);
+	} else {
+		/* SRC1 */
+
+		/* Program clock source */
+		reg_clkctl = readl(A11S_CLK_CNTL_ADDR);
+		reg_clkctl &= ~(0x07 << 12);
+		reg_clkctl |= (hunt_s->a11clk_src_sel << 12);
+		writel(reg_clkctl, A11S_CLK_CNTL_ADDR);
+
+		/* Program clock divider */
+		reg_clkctl = readl(A11S_CLK_CNTL_ADDR);
+		reg_clkctl &= ~(0xf << 8);
+		reg_clkctl |= (hunt_s->a11clk_src_div << 8);
+		writel(reg_clkctl, A11S_CLK_CNTL_ADDR);
+
+		/* Program clock source selection */
+		reg_clksel = readl(A11S_CLK_SEL_ADDR);
+		reg_clksel &= ~1; /* CLK_SEL_SRC1NO  == SRC0 */
+		writel(reg_clksel, A11S_CLK_SEL_ADDR);
+	}
+
+	/*
+	 * If the new clock divider is lower than the previous, then
+	 * program the divider after switching the clock
+	 */
+	if (hunt_s->ahbclk_div < clk_div) {
+		reg_clksel = readl(A11S_CLK_SEL_ADDR);
+		reg_clksel |= (hunt_s->ahbclk_div << 1);
+		writel(reg_clksel, A11S_CLK_SEL_ADDR);
+	}
+}
+
 int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse)
 {
-	uint32_t reg_clkctl, reg_clksel, clk_div;
+	uint32_t reg_clkctl;
 	struct clkctl_acpu_speed *cur_s, *tgt_s, *strt_s;
-	int ramp_up = 0; /* 1 == up, 0 == down */
-	int rc;
+	int rc = 0;
 	struct cpufreq_freqs freqs;
 	unsigned long flags;
 
@@ -302,36 +386,32 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 	if (tgt_s->a11clk_khz == 0)
 		return -EINVAL;
 
-	if (tgt_s->a11clk_khz > strt_s->a11clk_khz)
-		ramp_up = 1;
-	else
-		ramp_up = 0;
-
-	if (!for_power_collapse)
-		mutex_lock(&drv_state.lock);
-
 	/* Save baseline lpj on the first clock change. */
 	spin_lock_irqsave(&clk_set_lock, flags);
 	if (acpu_freq_tbl[0].lpj == 0)
 		init_lpj(cur_s);
 	spin_unlock_irqrestore(&clk_set_lock, flags);
 
-	freqs.old = cur_s->a11clk_khz;
-	freqs.new = tgt_s->a11clk_khz;
-	freqs.cpu = 0;
-
+	if (!for_power_collapse) {
+		mutex_lock(&drv_state.lock);
 #if defined(CONFIG_CPU_FREQ)
-	if (!for_power_collapse)
+		freqs.old = cur_s->a11clk_khz;
+		freqs.new = tgt_s->a11clk_khz;
+		freqs.cpu = smp_processor_id();
 		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 #endif
-
-	if (tgt_s->vdd > strt_s->vdd) {
-		rc = acpuclk_set_vdd_level(tgt_s->vdd);
-		if (rc < 0) {
-			printk(KERN_ERR "clock: Unable to switch ACPU vdd\n");
-			if (!for_power_collapse)
-				mutex_unlock(&drv_state.lock);
-			return rc;
+		if (strt_s->pll != tgt_s->pll && tgt_s->pll != ACPU_PLL_TCXO) {
+			if ((rc = pc_pll_request(tgt_s->pll, 1)) < 0) {
+				printk(KERN_ERR "PLL enable failed (%d)\n", rc);
+				goto out;
+			}
+		}
+		/* Increase VDD if needed. */
+		if (tgt_s->vdd > cur_s->vdd) {
+			if ((rc = acpuclk_set_vdd_level(tgt_s->vdd)) < 0) {
+				printk(KERN_ERR "Unable to switch ACPU vdd\n");
+				goto out;
+			}
 		}
 	}
 
@@ -344,153 +424,53 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 	printk(KERN_INFO "clock: Switching from ACPU rate %u -> %u\n",
 	       strt_s->a11clk_khz * 1000, tgt_s->a11clk_khz * 1000);
 #endif
-	if (!for_power_collapse &&
-	    (strt_s->pll != tgt_s->pll) && (tgt_s->pll != ACPU_PLL_TCXO)) {
-#if PERF_SWITCH_DEBUG
-		printk("%s: Enabling PLL %d\n", __FUNCTION__, tgt_s->pll);
-#endif
-		rc = pc_pll_request(tgt_s->pll, 1);
-		if (rc < 0) {
-			printk(KERN_ERR "PLL enable failed (%d)\n", rc);
-			mutex_unlock(&drv_state.lock);
-			return rc;
-		}
-#if PERF_SWITCH_DEBUG
-		printk(KERN_DEBUG "%s: PLL %d enabled\n", __FUNCTION__, tgt_s->pll);
-#endif
-	}
 
 	while (cur_s != tgt_s) {
-		struct clkctl_acpu_speed *hunt_s = cur_s;
-		while (1) {
-			int d;
-
-			if (!ramp_up && hunt_s->a11clk_khz == 19200) {
-				hunt_s = NULL;
-				break;
+		/*
+		 * Always jump to target freq if within 256mhz, regulardless of
+		 * PLL. If differnece is greater, use the predefinied
+		 * steppings in the table.
+		 */
+		int d = abs((int)(cur_s->a11clk_khz - tgt_s->a11clk_khz));
+		if (d > drv_state.max_speed_delta_khz) {
+			/* Step up or down depending on target vs current. */
+			int clk_index = tgt_s->a11clk_khz > cur_s->a11clk_khz ?
+				cur_s->up : cur_s->down;
+			if (clk_index < 0) { /* This should not happen. */
+				printk(KERN_ERR "cur:%u target: %u\n",
+					cur_s->a11clk_khz, tgt_s->a11clk_khz);
+				rc = -EINVAL;
+				goto out;
 			}
-			if (ramp_up && hunt_s->a11clk_khz == 528000) {
-				hunt_s = NULL;
-				break;
-			}
-
-			if (ramp_up)
-				hunt_s++; /* next clk in table */
-			else
-				hunt_s--; /* prev clk in table */
-
-			/* Only allow clocks which match the target PLL */
-			if ((hunt_s->pll != cur_s->pll)
-			 && (hunt_s->pll != tgt_s->pll)) {
-				continue; /* Skip speed; not at tgt PLL */
-			}
-
-			d = abs((int)(cur_s->a11clk_khz - hunt_s->a11clk_khz));
-			if (d > drv_state.max_speed_delta_khz) {
-				hunt_s = NULL;
-				break; /* Unable to find a step */
-			}
-
-			/* Valid speed found */
-			break;
-		}
-
-		if (!hunt_s) {
-			printk(KERN_ERR "clock: Invalid ACPU step\n");
-			if(!for_power_collapse)
-				mutex_unlock(&drv_state.lock);
-			return -EINVAL;
+			cur_s = &acpu_freq_tbl[clk_index];
+		} else {
+			cur_s = tgt_s;
 		}
 #if PERF_SWITCH_STEP_DEBUG
 		printk(KERN_DEBUG "%s: STEP khz = %u, pll = %d\n",
-			__FUNCTION__, hunt_s->a11clk_khz, hunt_s->pll);
+			__FUNCTION__, cur_s->a11clk_khz, cur_s->pll);
 #endif
-
-		/* AHB_CLK_DIV */
-		clk_div = (readl(A11S_CLK_SEL_ADDR) >> 1) & 0x03;
-
-		/*
-		 * If the new clock divider is higher than the previous, then
-		 * program the divider before switching the clock
-		 */
-		if (hunt_s->ahbclk_div > clk_div) {
-			reg_clksel = readl(A11S_CLK_SEL_ADDR);
-			reg_clksel |= (hunt_s->ahbclk_div << 1);
-			writel(reg_clksel, A11S_CLK_SEL_ADDR);
-		}
-		if ((readl(A11S_CLK_SEL_ADDR) & 0x01) == 0) {
-			/* SRC0 */
-
-			/* Program clock source */
-			reg_clkctl = readl(A11S_CLK_CNTL_ADDR);
-			reg_clkctl &= ~(0x07 << 4);
-			reg_clkctl |= (hunt_s->a11clk_src_sel << 4);
-			writel(reg_clkctl, A11S_CLK_CNTL_ADDR);
-
-			/* Program clock divider */
-			reg_clkctl = readl(A11S_CLK_CNTL_ADDR);
-			reg_clkctl &= ~0xf;
-			reg_clkctl |= hunt_s->a11clk_src_div;
-			writel(reg_clkctl, A11S_CLK_CNTL_ADDR);
-
-			/* Program clock source selection */
-			reg_clksel = readl(A11S_CLK_SEL_ADDR);
-			reg_clksel |= 1; /* CLK_SEL_SRC1NO  == SRC1 */
-			writel(reg_clksel, A11S_CLK_SEL_ADDR);
-		} else {
-			/* SRC1 */
-
-			/* Program clock source */
-			reg_clkctl = readl(A11S_CLK_CNTL_ADDR);
-			reg_clkctl &= ~(0x07 << 12);
-			reg_clkctl |= (hunt_s->a11clk_src_sel << 12);
-			writel(reg_clkctl, A11S_CLK_CNTL_ADDR);
-
-			/* Program clock divider */
-			reg_clkctl = readl(A11S_CLK_CNTL_ADDR);
-			reg_clkctl &= ~(0xf << 8);
-			reg_clkctl |= (hunt_s->a11clk_src_div << 8);
-			writel(reg_clkctl, A11S_CLK_CNTL_ADDR);
-
-			/* Program clock source selection */
-			reg_clksel = readl(A11S_CLK_SEL_ADDR);
-			reg_clksel &= ~1; /* CLK_SEL_SRC1NO  == SRC0 */
-			writel(reg_clksel, A11S_CLK_SEL_ADDR);
-		}
-
-		/*
-		 * If the new clock divider is lower than the previous, then
-		 * program the divider after switching the clock
-		 */
-		if (hunt_s->ahbclk_div < clk_div) {
-			reg_clksel = readl(A11S_CLK_SEL_ADDR);
-			reg_clksel |= (hunt_s->ahbclk_div << 1);
-			writel(reg_clksel, A11S_CLK_SEL_ADDR);
-		}
-		cur_s = hunt_s;
+		acpuclk_set_div(cur_s);
 		drv_state.current_speed = cur_s;
 		/* Re-adjust lpj for the new clock speed. */
 		loops_per_jiffy = cur_s->lpj;
 		udelay(drv_state.acpu_switch_time_us);
 	}
 
-	if (!for_power_collapse &&
-	    (strt_s->pll != tgt_s->pll) && (strt_s->pll != ACPU_PLL_TCXO)) {
-#if PERF_SWITCH_DEBUG
-		printk(KERN_DEBUG "%s: Disabling PLL %d\n", __FUNCTION__, strt_s->pll);
-#endif
-		rc = pc_pll_request(strt_s->pll, 0);
-		if (rc < 0) {
+
+	/* Nothing else to do for power collapse. */
+	if (for_power_collapse)
+		return 0;
+
+	/* Disable PLL we are not using anymore. */
+	if (strt_s->pll != tgt_s->pll && tgt_s->pll != ACPU_PLL_TCXO) {
+		if ((rc = pc_pll_request(strt_s->pll, 0)) < 0) {
 			printk(KERN_ERR "PLL disable failed (%d)\n", rc);
-			mutex_unlock(&drv_state.lock);
-			return rc;
+			goto out;
 		}
-#if PERF_SWITCH_DEBUG
-		printk(KERN_DEBUG "%s: PLL %d disabled\n", __FUNCTION__, strt_s->pll);
-#endif
 	}
 
-	/* Drop VDD level if needed. */
+	/* Drop VDD level if we can. */
 	if (tgt_s->vdd < strt_s->vdd) {
 		if (acpuclk_set_vdd_level(tgt_s->vdd) < 0)
 			printk(KERN_ERR "clock: Unable to drop ACPU vdd\n");
@@ -499,13 +479,13 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 #if PERF_SWITCH_DEBUG
 	printk(KERN_DEBUG "%s: ACPU speed change complete\n", __FUNCTION__);
 #endif
-	if (!for_power_collapse) {
 #if defined(CONFIG_CPU_FREQ)
-		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
 #endif
+out:
+	if (!for_power_collapse)
 		mutex_unlock(&drv_state.lock);
-	}
-	return 0;
+	return rc;
 }
 
 static void acpuclk_init(struct clk *clk)
