@@ -323,9 +323,9 @@ static void msmfb_slightly_earlier_suspend(android_early_suspend_t *h)
 
 	spin_lock_irqsave(&par->update_lock, irq_flags);
 	par->sleeping = SLEEPING;
+	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 	wait_event_timeout(par->frame_wq,
 			   par->frame_requested == par->frame_done, HZ/10);
-	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 
 	/* blank the screen */
 	msmfb_update(par->fb_info, 0, 0, par->fb_info->var.xres,
