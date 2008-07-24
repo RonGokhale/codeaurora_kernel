@@ -553,8 +553,15 @@ static int msmfb_probe(struct platform_device *pdev)
 		return r;
 
 #ifdef CONFIG_FB_MSM_LOGO
-	if (!load_565rle_image( INIT_IMAGE_FILE ))
-		; /* Flip buffer */
+        if (!load_565rle_image( INIT_IMAGE_FILE )) {
+                /* Flip buffer */
+                par->update_info.left = 0;
+                par->update_info.top = 0;
+                par->update_info.eright = info->var.xres;
+                par->update_info.ebottom = info->var.yres;
+                msmfb_pan_update( info, 0, 0, info->var.xres, info->var.yres,
+                                    0, 1 );
+        }
 #endif
 
 #ifdef CONFIG_ANDROID_POWER
