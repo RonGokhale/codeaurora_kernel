@@ -143,6 +143,7 @@ struct mmc_host {
 		int				num_funcs;
 	} embedded_sdio_data;
 #endif
+	struct dentry		*debugfs_root;
 
 	unsigned long		private[0] ____cacheline_aligned;
 };
