@@ -142,8 +142,8 @@ static void blit_convert(struct mdp_blit_req *req, struct mdp_regs *regs)
 	}
 }
 
-#define GET_BIT_RANGE(value, start, end) \
-	((1 << (start - end + 1)) - 1) & (value >> start)
+#define GET_BIT_RANGE(value, high, low) \
+	((1 << (high - low + 1)) - 1) & (value >> low)
 static uint32_t transp_convert(struct mdp_blit_req *req)
 {
 	uint32_t transp = 0;
@@ -793,7 +793,7 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	     req->src.format == MDP_ARGB_8888 ||
 	     req->src.format == MDP_RGBA_8888) &&
 	     req->flags & MDP_ROT_90 &&
-	     req->dst_rect.w <= 16)) {
+	     req->dst_rect.w <= 16 && req->dst_rect.h >= 16)) {
 		int i;
 		unsigned int tiles = req->dst_rect.h / 16;
 		unsigned int remainder = req->dst_rect.h % 16;
