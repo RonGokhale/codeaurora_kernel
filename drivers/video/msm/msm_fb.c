@@ -30,7 +30,9 @@
 #include <asm/arch/msm_fb.h>
 #include <linux/workqueue.h>
 #include <linux/clk.h>
+#include <linux/debugfs.h>
 
+#define MSMFB_DEBUG 1
 #ifdef CONFIG_FB_MSM_LOGO
 #define INIT_IMAGE_FILE "/logo.rle"
 extern int load_565rle_image( char *filename );
@@ -45,11 +47,25 @@ extern int load_565rle_image( char *filename );
 #define WAKING 0x1
 #define AWAKE 0x0
 
+#define NONE 0
+#define SUSPEND_RESUME 0x1
+#define FPS 0x2
+#define BLIT_TIME 0x4
+
+#define DLOG(mask,fmt,args...) \
+do { \
+if (msmfb_debug_mask & mask) \
+	printk(KERN_INFO "msmfb: "fmt, ##args); \
+} while (0)
+
+static int msmfb_debug_mask;
+module_param_named(msmfb_debug_mask, msmfb_debug_mask, int,
+		   S_IRUGO | S_IWUSR | S_IWGRP);
+
 struct msmfb_info {
 	struct fb_info *fb_info;
 	struct mddi_panel_info *panel_info;
 	unsigned yoffset;
-	unsigned need_update;
 	unsigned frame_requested;
 	unsigned frame_done;
 	int sleeping;
@@ -100,7 +116,7 @@ static void msmfb_handle_dma_interrupt(struct msmfb_callback *callback)
 	spin_lock_irqsave(&par->update_lock, irq_flags);
 	par->frame_done = par->frame_requested;
 	if (par->sleeping == UPDATING && par->frame_done == par->update_frame) {
-		printk(KERN_INFO "msmfb: full update completed\n");
+		DLOG(SUSPEND_RESUME, "full update completed\n");
 		schedule_work(&par->resume_work);
 	}
 #if PRINT_FPS
@@ -112,7 +128,7 @@ static void msmfb_handle_dma_interrupt(struct msmfb_callback *callback)
 		frame_count = 0;
 		last_sec = ktime_get();
 		do_div(fps, dt);
-		printk(KERN_INFO "fps * 100: %llu\n", fps);
+		DLOG(FPS, "fps * 100: %llu\n", fps);
 	}
 #endif
 	spin_unlock_irqrestore(&par->update_lock, irq_flags);
@@ -173,8 +189,7 @@ static enum hrtimer_restart msmfb_fake_vsync(struct hrtimer *timer)
 {
 	struct msmfb_info *par  = container_of(timer, struct msmfb_info,
 					       fake_vsync);
-	if (msmfb_start_dma(par))
-		return HRTIMER_RESTART;
+	msmfb_start_dma(par);
 	return HRTIMER_NORESTART;
 }
 
@@ -195,10 +210,11 @@ static void msmfb_pan_update(struct fb_info *info, uint32_t left, uint32_t top,
 
 restart:
 	spin_lock_irqsave(&par->update_lock, irq_flags);
-	sleeping = par->sleeping;
+
 	/* if we are sleeping, on a pan_display wait 10ms (to throttle back
 	 * drawing otherwise return */
-	if (sleeping == SLEEPING) {
+	if (par->sleeping == SLEEPING) {
+		DLOG(SUSPEND_RESUME, "drawing while asleep\n");
 		spin_unlock_irqrestore(&par->update_lock, irq_flags);
 		if (pan_display)
 			wait_event_interruptible_timeout(par->frame_wq,
@@ -206,6 +222,7 @@ restart:
 		return;
 	}
 
+	sleeping = par->sleeping;
 	/* on a full update, if the last frame has not completed, wait for it */
 	if (pan_display && par->frame_requested != par->frame_done) {
 		spin_unlock_irqrestore(&par->update_lock, irq_flags);
@@ -229,7 +246,7 @@ restart:
 		pans++;
 		if (pans > 1000) {
 			do_div(dt, pans);
-			printk("ave_wait_time: %lld\n", dt);
+			DLOG(FPS, "ave_wait_time: %lld\n", dt);
 			dt = 0;
 			pans = 0;
 		}
@@ -245,8 +262,7 @@ restart:
 		    ebottom == info->var.yres) {
 			if (sleeping == WAKING) {
 				par->update_frame = par->frame_requested;
-				printk(KERN_INFO
-					"msmfb: full update starting\n");
+				DLOG(SUSPEND_RESUME, "full update starting\n");
 				par->sleeping = UPDATING;
 			}
 		}
@@ -286,9 +302,14 @@ static void power_on_panel(struct work_struct *work)
 {
 	struct msmfb_info *par = container_of(work, struct msmfb_info,
 					      resume_work);
+	unsigned long irq_flags;
+
 	struct mddi_panel_info *pi = par->panel_info;
-	printk(KERN_INFO "msmfb: turuning on panel\n");
+	DLOG(SUSPEND_RESUME, "turning on panel\n");
 	pi->panel_ops->power(pi, 1);
+	spin_lock_irqsave(&par->update_lock, irq_flags);
+	par->sleeping = AWAKE;
+	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 }
 
 #ifdef CONFIG_ANDROID_POWER
@@ -330,9 +351,9 @@ static void msmfb_early_resume(android_early_suspend_t *h)
 	unsigned int irq_flags;
 
 	spin_lock_irqsave(&par->update_lock, irq_flags);
-	par->frame_requested = par->frame_done = 0;
+	par->frame_requested = par->frame_done = par->update_frame = 0;
 	par->sleeping = WAKING;
-	printk(KERN_INFO "msmfb: ready, waiting for full update\n");
+	DLOG(SUSPEND_RESUME, "ready, waiting for full update\n");
 	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 }
 
@@ -447,7 +468,7 @@ static int msmfb_ioctl(struct fb_info *p, unsigned int cmd, unsigned long arg)
 				return ret;
 #if PRINT_BLIT_TIME
 			t2 = ktime_get();
-			printk(KERN_INFO "total %lld\n",
+			DLOG(BLIT_TIME, "total %lld\n",
 			       ktime_to_ns(t2) - ktime_to_ns(t1));
 #endif
 			break;
@@ -471,6 +492,44 @@ static struct fb_ops msmfb_ops = {
 };
 
 static unsigned PP[16];
+
+
+#if MSMFB_DEBUG
+static ssize_t debug_open(struct inode *inode, struct file *file)
+{
+	file->private_data = inode->i_private;
+	return 0;
+}
+
+
+static ssize_t debug_read(struct file *file, char __user *buf, size_t count,
+                          loff_t *ppos)
+{
+	const int debug_bufmax = 4096;
+	static char buffer[4096];
+	int n = 0;
+	struct msmfb_info *par = (struct msmfb_info *)file->private_data;
+	unsigned long irq_flags;
+
+	spin_lock_irqsave(&par->update_lock, irq_flags);
+	n = scnprintf(buffer, debug_bufmax, "yoffset %d\n", par->yoffset);
+	n += scnprintf(buffer + n, debug_bufmax, "frame_requested %d\n", par->frame_requested);
+	n += scnprintf(buffer + n, debug_bufmax, "frame_done %d\n", par->frame_done);
+	n += scnprintf(buffer + n, debug_bufmax, "sleeping %d\n", par->sleeping);
+	n += scnprintf(buffer + n, debug_bufmax, "update_frame %d\n", par->update_frame);
+	spin_unlock_irqrestore(&par->update_lock, irq_flags);
+	n++;
+	buffer[n] = 0;
+	return simple_read_from_buffer(buf, count, ppos, buffer, n);
+}
+
+static struct file_operations debug_fops = {
+        .read = debug_read,
+        .open = debug_open,
+};
+#endif
+
+
 
 static int msmfb_probe(struct platform_device *pdev)
 {
@@ -574,6 +633,11 @@ static int msmfb_probe(struct platform_device *pdev)
 	par->early_suspend.resume = msmfb_early_resume;
 	par->early_suspend.level = ANDROID_EARLY_SUSPEND_LEVEL_DISABLE_FB - 1;
 	android_register_early_suspend(&par->early_suspend);
+#endif
+
+#if MSMFB_DEBUG
+	debugfs_create_file("msm_fb", S_IFREG | S_IRUGO, NULL,
+			    (void *)info->par, &debug_fops);
 #endif
 
 	return 0;
