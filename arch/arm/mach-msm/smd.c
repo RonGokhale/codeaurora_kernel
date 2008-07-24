@@ -822,24 +822,39 @@ void *smem_alloc(unsigned id, unsigned size)
 	return smem_find(id, size);
 }
 
-void *smem_find(unsigned id, unsigned size_in)
+static void *_smem_find(unsigned id, unsigned *size)
 {
 	struct smem_shared *shared = (void *) MSM_SHARED_RAM_BASE;
 	struct smem_heap_entry *toc = shared->heap_toc;
 
-	unsigned size = ALIGN(size_in, 8);
-
-	if (id > 128)
+	if (id >= SMEM_NUM_ITEMS)
 		return 0;
 
 	if (toc[id].allocated) {
-		if (toc[id].size != size) {
-			printk(KERN_ERR "smem_find(%d, %d): wrong size %d, expected %d\n", id, size_in, size, toc[id].size);
-			return 0;
-		}
+		*size = toc[id].size;
 		return (void *) (MSM_SHARED_RAM_BASE + toc[id].offset);
 	}
+
 	return 0;
+}
+
+void *smem_find(unsigned id, unsigned size_in)
+{
+	unsigned size;
+	void *ptr;
+
+	ptr = _smem_find(id, &size);
+	if (!ptr)
+		return 0;
+
+	size_in = ALIGN(size_in, 8);
+	if (size_in != size) {
+		pr_err("smem_find(%d, %d): wrong size %d\n",
+		       id, size_in, size);
+		return 0;
+	}
+
+	return ptr;
 }
 
 static irqreturn_t smsm_irq_handler(int irq, void *data)
@@ -1153,7 +1168,7 @@ static int debug_read_mem(char *buf, int max)
 		       shared->heap_info.free_offset,
 		       shared->heap_info.heap_remaining);
 
-	for (n = 0; n < 128; n++) {
+	for (n = 0; n < SMEM_NUM_ITEMS; n++) {
 		if (toc[n].allocated == 0)
 			continue;
 		i += scnprintf(buf + i, max - i,
@@ -1183,6 +1198,22 @@ static int debug_read_version(char *buf, int max)
 	struct smem_shared *shared = (void *) MSM_SHARED_RAM_BASE;
 	unsigned version = shared->version[VERSION_MODEM];
 	return sprintf(buf, "%d.%d\n", version >> 16, version & 0xffff);
+}
+
+static int debug_read_build_id(char *buf, int max)
+{
+	unsigned size;
+	void *data;
+
+	data = _smem_find(SMEM_HW_SW_BUILD_ID, &size);
+	if (!data)
+		return 0;
+
+	if (size >= max)
+		size = max;
+	memcpy(buf, data, size);
+
+	return size;
 }
 
 static int debug_read_alloc_tbl(char *buf, int max)
@@ -1246,6 +1277,7 @@ static void smd_debugfs_init(void)
 	debug_create("mem", 0444, dent, debug_read_mem);
 	debug_create("version", 0444, dent, debug_read_version);
 	debug_create("tbl", 0444, dent, debug_read_alloc_tbl);
+	debug_create("build", 0444, dent, debug_read_build_id);
 }
 #else
 static void smd_debugfs_init(void) {}
