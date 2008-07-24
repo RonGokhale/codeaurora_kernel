@@ -311,6 +311,7 @@ static void acpuclk_set_div(const struct clkctl_acpu_speed *hunt_s) {
 	 */
 	if (hunt_s->ahbclk_div > clk_div) {
 		reg_clksel = readl(A11S_CLK_SEL_ADDR);
+		reg_clksel &= ~(0x3 << 1);
 		reg_clksel |= (hunt_s->ahbclk_div << 1);
 		writel(reg_clksel, A11S_CLK_SEL_ADDR);
 	}
@@ -360,6 +361,7 @@ static void acpuclk_set_div(const struct clkctl_acpu_speed *hunt_s) {
 	 */
 	if (hunt_s->ahbclk_div < clk_div) {
 		reg_clksel = readl(A11S_CLK_SEL_ADDR);
+		reg_clksel &= ~(0x3 << 1);
 		reg_clksel |= (hunt_s->ahbclk_div << 1);
 		writel(reg_clksel, A11S_CLK_SEL_ADDR);
 	}
