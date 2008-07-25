@@ -80,6 +80,7 @@ struct msmfb_info {
 #ifdef CONFIG_ANDROID_POWER
 	android_early_suspend_t early_suspend;
 	android_early_suspend_t slightly_earlier_suspend;
+	android_suspend_lock_t idle_lock;
 #endif
 	spinlock_t update_lock;
 	wait_queue_head_t frame_wq;
@@ -182,6 +183,7 @@ static void msmfb_handle_vsync_interrupt(struct msmfb_callback *callback)
 {
 	struct msmfb_info *par  = container_of(callback, struct msmfb_info,
 					       vsync_callback);
+	android_unlock_suspend(&par->idle_lock);
 	msmfb_start_dma(par);
 }
 
@@ -281,9 +283,10 @@ restart:
 
 	/* if the panel is all the way on wait for vsync, otherwise sleep
 	 * for 16 ms (long enough for the dma to panel) and then begin dma */
-	if (pi->panel_ops->request_vsync && (sleeping == AWAKE))
+	if (pi->panel_ops->request_vsync && (sleeping == AWAKE)) {
+		android_lock_idle_auto_expire(&par->idle_lock, HZ/20);
 		pi->panel_ops->request_vsync(pi, &par->vsync_callback);
-	else {
+	} else {
 		if (!hrtimer_active(&par->fake_vsync)) {
 			hrtimer_start(&par->fake_vsync,
 				      ktime_set(0, NSEC_PER_SEC/60),
@@ -556,6 +559,8 @@ static int msmfb_probe(struct platform_device *pdev)
 	par->dma_callback.func = msmfb_handle_dma_interrupt;
 	par->vsync_callback.func = msmfb_handle_vsync_interrupt;
 	hrtimer_init(&par->fake_vsync, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	par->idle_lock.name = "msmfb_idle_lock";
+	android_init_suspend_lock(&par->idle_lock);
 	par->fake_vsync.function = msmfb_fake_vsync;
 	spin_lock_init(&par->update_lock);
 	init_waitqueue_head(&par->frame_wq);
