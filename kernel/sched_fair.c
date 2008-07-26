@@ -73,13 +73,13 @@ unsigned int sysctl_sched_batch_wakeup_granularity = 10000000UL;
 
 /*
  * SCHED_OTHER wake-up granularity.
- * (default: 5 msec * (1 + ilog(ncpus)), units: nanoseconds)
+ * (default: 10 msec * (1 + ilog(ncpus)), units: nanoseconds)
  *
  * This option delays the preemption effects of decoupled workloads
  * and reduces their over-scheduling. Synchronous workloads will still
  * have immediate wakeup/sleep latencies.
  */
-unsigned int sysctl_sched_wakeup_granularity = 5000000UL;
+unsigned int sysctl_sched_wakeup_granularity = 10000000UL;
 
 const_debug unsigned int sysctl_sched_migration_cost = 500000UL;
 
@@ -510,8 +510,16 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 
 	if (!initial) {
 		/* sleeps upto a single latency don't count. */
-		if (sched_feat(NEW_FAIR_SLEEPERS))
-			vruntime -= sysctl_sched_latency;
+		if (sched_feat(NEW_FAIR_SLEEPERS)) {
+			unsigned long thresh = sysctl_sched_latency;
+
+			/*
+			 * convert the sleeper threshold into virtual time
+			 */
+			if (sched_feat(NORMALIZED_SLEEPER))
+				thresh = calc_delta_fair(thresh, &cfs_rq->load);
+			vruntime -= thresh;
+		}
 
 		/* ensure we never gain time by being placed backwards. */
 		vruntime = max_vruntime(se->vruntime, vruntime);
@@ -527,6 +535,7 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int wakeup)
 	 * Update run-time statistics of the 'current'.
 	 */
 	update_curr(cfs_rq);
+	account_entity_enqueue(cfs_rq, se);
 
 	if (wakeup) {
 		place_entity(cfs_rq, se, 0);
@@ -537,7 +546,6 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int wakeup)
 	check_spread(cfs_rq, se);
 	if (se != cfs_rq->curr)
 		__enqueue_entity(cfs_rq, se);
-	account_entity_enqueue(cfs_rq, se);
 }
 
 static void update_avg(u64 *avg, u64 sample)
@@ -627,20 +635,16 @@ set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	se->prev_sum_exec_runtime = se->sum_exec_runtime;
 }
 
+static int
+wakeup_preempt_entity(struct sched_entity *curr, struct sched_entity *se);
+
 static struct sched_entity *
 pick_next(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
-	s64 diff, gran;
-
 	if (!cfs_rq->next)
 		return se;
 
-	diff = cfs_rq->next->vruntime - se->vruntime;
-	if (diff < 0)
-		return se;
-
-	gran = calc_delta_fair(sysctl_sched_wakeup_granularity, &cfs_rq->load);
-	if (diff > gran)
+	if (wakeup_preempt_entity(cfs_rq->next, se) != 0)
 		return se;
 
 	return cfs_rq->next;
@@ -951,7 +955,7 @@ static int wake_idle(int cpu, struct task_struct *p)
 	 * sibling runqueue info. This will avoid the checks and cache miss
 	 * penalities associated with that.
 	 */
-	if (idle_cpu(cpu) || cpu_rq(cpu)->nr_running > 1)
+	if (idle_cpu(cpu) || cpu_rq(cpu)->cfs.nr_running > 1)
 		return cpu;
 
 	for_each_domain(cpu, sd) {
@@ -1099,6 +1103,48 @@ out:
 }
 #endif /* CONFIG_SMP */
 
+static unsigned long wakeup_gran(struct sched_entity *se)
+{
+	unsigned long gran = sysctl_sched_wakeup_granularity;
+
+	/*
+	 * More easily preempt - nice tasks, while not making
+	 * it harder for + nice tasks.
+	 */
+	if (unlikely(se->load.weight > NICE_0_LOAD))
+		gran = calc_delta_fair(gran, &se->load);
+
+	return gran;
+}
+
+/*
+ * Should 'se' preempt 'curr'.
+ *
+ *             |s1
+ *        |s2
+ *   |s3
+ *         g
+ *      |<--->|c
+ *
+ *  w(c, s1) = -1
+ *  w(c, s2) =  0
+ *  w(c, s3) =  1
+ *
+ */
+static int
+wakeup_preempt_entity(struct sched_entity *curr, struct sched_entity *se)
+{
+	s64 gran, vdiff = curr->vruntime - se->vruntime;
+
+	if (vdiff < 0)
+		return -1;
+
+	gran = wakeup_gran(curr);
+	if (vdiff > gran)
+		return 1;
+
+	return 0;
+}
 
 /*
  * Preempt the current task with a newly woken task if needed:
@@ -1108,7 +1154,6 @@ static void check_preempt_wakeup(struct rq *rq, struct task_struct *p)
 	struct task_struct *curr = rq->curr;
 	struct cfs_rq *cfs_rq = task_cfs_rq(curr);
 	struct sched_entity *se = &curr->se, *pse = &p->se;
-	unsigned long gran;
 
 	if (unlikely(rt_prio(p->prio))) {
 		update_rq_clock(rq);
@@ -1138,15 +1183,7 @@ static void check_preempt_wakeup(struct rq *rq, struct task_struct *p)
 		pse = parent_entity(pse);
 	}
 
-	gran = sysctl_sched_wakeup_granularity;
-	/*
-	 * More easily preempt - nice tasks, while not making
-	 * it harder for + nice tasks.
-	 */
-	if (unlikely(se->load.weight > NICE_0_LOAD))
-		gran = calc_delta_fair(gran, &se->load);
-
-	if (pse->vruntime + gran < se->vruntime)
+	if (wakeup_preempt_entity(se, pse) == 1)
 		resched_task(curr);
 }
 
