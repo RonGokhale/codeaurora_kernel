@@ -60,7 +60,8 @@ static struct dentry *debugfs_dir;
 
 static unsigned int msmsdcc_fmin = 144000;
 static unsigned int msmsdcc_fmax = 20000000;
-static unsigned int msmsdcc_4bit = 0;
+static unsigned int msmsdcc_4bit = 1;
+static unsigned int msmsdcc_pwrsave = 0;
 
 static char *msmsdcc_clks[] = { NULL, "sdc1_clk", "sdc2_clk", "sdc3_clk",
 				"sdc4_clk" };
@@ -142,7 +143,8 @@ msmsdcc_wait_for_dataend(struct msmsdcc_host *host, unsigned int retries)
 
 	while(retries) {
 		reg_status = readl(host->base + MMCISTATUS);
-		if (reg_status & MCI_DATAEND)
+		if ((reg_status & (MCI_DATAEND | MCI_DATABLOCKEND)) ==
+				  (MCI_DATAEND | MCI_DATABLOCKEND))
 			break;
 		retries--;
 	}
@@ -193,12 +195,12 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 
 	reg_status = readl(host->base + MMCISTATUS);
 
-	if ((result & DMOV_RSLT_DONE) && !(reg_status & MCI_DATAEND)) {
-#if 0
+	if ((result & DMOV_RSLT_DONE)
+	  && (reg_status & (MCI_DATAEND | MCI_DATABLOCKEND))
+	  !=(MCI_DATAEND | MCI_DATABLOCKEND)) {
 		printk(KERN_WARNING
 		       "%s: DMA result 0x%.8x but still waiting for DATAEND (0x%.8x)\n",
 		       mmc_hostname(host->mmc), result, reg_status);
-#endif
 
 		if (result & DMOV_RSLT_VALID) {
 			rc = msmsdcc_wait_for_dataend(host,
@@ -242,9 +244,10 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 	host->data_xfered = host->xfer_size - reg_datacnt;
 
 	if (host->data_xfered != host->xfer_size) {
-		printk(KERN_WARNING "%s: Short transfer (%d != %d)\n",
+		printk(KERN_WARNING
+		       "%s: Short xfer (%d != %d), dc %d, flags 0x%x\n",
 		       mmc_hostname(host->mmc), host->data_xfered,
-		       host->xfer_size);
+		       host->xfer_size, reg_datacnt, mrq->data->flags);
 	}
 	host->dma.sg = NULL;
 
@@ -951,8 +954,10 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	if (ios->bus_width == MMC_BUS_WIDTH_4)
 		clk |= (2 << 10); /* Set WIDEBUS */
 
+	if (ios->clock > 400000 && msmsdcc_pwrsave)
+		clk |= (1 << 9); /* PWRSAVE */
+
 	clk |= (1 << 12); /* FLOW_ENA */
-	clk |= (1 << 9); /* PWRSAVE */
 	clk |= (1 << 15); /* feedback clock */
 
 	if (host->plat->translate_vdd)
@@ -1022,6 +1027,8 @@ static irqreturn_t
 msmsdcc_platform_status_irq(int irq, void *dev_id)
 {
 	struct msmsdcc_host *host = dev_id;
+
+	printk(KERN_DEBUG "%s: %d\n", __func__, irq);
 	msmsdcc_check_status((unsigned long) host);
 	return IRQ_HANDLED;
 }
@@ -1031,7 +1038,8 @@ msmsdcc_status_notify_cb(int card_present, void *dev_id)
 {
 	struct msmsdcc_host *host = dev_id;
 
-	printk("%s:\n", __func__);
+	printk(KERN_DEBUG "%s: card_present %d\n", mmc_hostname(host->mmc),
+	       card_present);
 	msmsdcc_check_status((unsigned long) host);
 }
 
@@ -1298,6 +1306,10 @@ msmsdcc_probe(struct platform_device *pdev)
 	       (mmc->caps & MMC_CAP_4_BIT_DATA ? "enabled" : "disabled"));
 	printk(KERN_INFO "%s: MMC clock %u -> %u Hz, PCLK %u Hz\n",
 	       mmc_hostname(mmc), msmsdcc_fmin, msmsdcc_fmax, host->pclk_rate);
+	printk(KERN_INFO "%s: Slot eject status = %d\n", mmc_hostname(mmc),
+	       host->eject);
+	printk(KERN_INFO "%s: Power save feature enable = %d\n",
+	       mmc_hostname(mmc), msmsdcc_pwrsave);
 
 	if (host->dma.channel != -1) {
 		printk(KERN_INFO
@@ -1307,7 +1319,9 @@ msmsdcc_probe(struct platform_device *pdev)
 		       "%s: DM cmd busaddr %u, cmdptr busaddr %u\n",
 		       mmc_hostname(mmc), host->dma.cmd_busaddr,
 		       host->dma.cmdptr_busaddr);
-	}
+	} else
+		printk(KERN_INFO
+		       "%s: PIO transfer enabled\n", mmc_hostname(mmc));
 	if (host->timer.function)
 		printk(KERN_INFO "%s: Polling status mode enabled\n",
 		       mmc_hostname(mmc));
@@ -1343,6 +1357,8 @@ msmsdcc_suspend(struct platform_device *dev, pm_message_t state)
 	if (mmc) {
 		struct msmsdcc_host *host = mmc_priv(mmc);
 
+		if (host->plat->status_irq)
+			disable_irq(host->plat->status_irq);
 		if (mmc->card && mmc->card->type != MMC_TYPE_SDIO)
 			rc = mmc_suspend_host(mmc, state);
 		if (!rc) {
@@ -1376,6 +1392,9 @@ msmsdcc_resume(struct platform_device *dev)
 		writel(MCI_IRQENABLE, host->base + MMCIMASK0);
 		if (mmc->card && mmc->card->type != MMC_TYPE_SDIO)
 			rc = mmc_resume_host(mmc);
+
+		if (host->plat->status_irq)
+			enable_irq(host->plat->status_irq);
 	}
 	return rc;
 }
@@ -1397,6 +1416,18 @@ static int __init msmsdcc_init(void)
 static void __exit msmsdcc_exit(void)
 {
 	platform_driver_unregister(&msmsdcc_driver);
+}
+
+static int __init msmsdcc_pwrsave_setup(char *__unused)
+{
+	msmsdcc_pwrsave = 1;
+	return 1;
+}
+
+static int __init msmsdcc_nopwrsave_setup(char *__unused)
+{
+	msmsdcc_pwrsave = 0;
+	return 1;
 }
 
 static int __init msmsdcc_4bit_setup(char *__unused)
@@ -1433,6 +1464,8 @@ static int __init msmsdcc_fmax_setup(char *str)
 
 __setup("msmsdcc_4bit", msmsdcc_4bit_setup);
 __setup("msmsdcc_1bit", msmsdcc_1bit_setup);
+__setup("msmsdcc_pwrsave", msmsdcc_pwrsave_setup);
+__setup("msmsdcc_nopwrsave", msmsdcc_nopwrsave_setup);
 __setup("msmsdcc_fmin=", msmsdcc_fmin_setup);
 __setup("msmsdcc_fmax=", msmsdcc_fmax_setup);
 

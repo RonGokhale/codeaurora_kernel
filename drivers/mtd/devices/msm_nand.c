@@ -311,7 +311,7 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 	uint32_t oob_len = ops->ooblen;
 	uint32_t sectordatasize;
 	uint32_t sectoroobsize;
-	int err, rawerr;
+	int err, pageerr, rawerr;
 	dma_addr_t data_dma_addr = 0;
 	dma_addr_t oob_dma_addr = 0;
 	dma_addr_t data_dma_addr_curr = 0;
@@ -384,6 +384,7 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 	if (chip->CFG1 & CFG1_WIDE_FLASH)
 		oob_col >>= 1;
 
+	err = 0;
 	while (page_count-- > 0) {
 		cmd = dma_buffer->cmd;
 
@@ -520,7 +521,7 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 			/* if any of the writes failed (0x10), or there was a
 			** protection violation (0x100), we lose
 			*/
-		err = rawerr = 0;
+		pageerr = rawerr = 0;
 		for (n = start_sector; n < 4; n++) {
 			if (dma_buffer->data.result[n].flash_status & 0x110) {
 				rawerr = -EIO;
@@ -538,7 +539,7 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 						datbuf[n] = 0xff;
 					if (datbuf[n] != 0xff) {
 						/* printk("msm_nand_read_oob %llx %x %x byte at %d not 0xff, 0x%x\n", (loff_t)page * mtd->writesize, ops->len, ops->ooblen, n, datbuf[n]); */
-						err = rawerr;
+						pageerr = rawerr;
 						break;
 					}
 				}
@@ -546,7 +547,7 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 			if (ops->oobbuf) {
 				for(n = 0; n < ops->ooblen; n++) {
 					if (ops->oobbuf[n] != 0xff) {
-						err = rawerr;
+						pageerr = rawerr;
 						break;
 					}
 				}
@@ -559,9 +560,29 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 #endif
 			}
 		}
+		if (pageerr) {
+			for (n = start_sector; n < 4; n++) {
+				if (dma_buffer->data.result[n].buffer_status & 0x8) {
+					mtd->ecc_stats.failed++; /* not thread safe */
+					pageerr = -EBADMSG;
+					break;
+				}
+			}
+		}
+		if (!rawerr) { /* check for corretable errors */
+			for (n = start_sector; n < 4; n++) {
+				if (dma_buffer->data.result[n].buffer_status & 0x7) {
+					mtd->ecc_stats.corrected++; /* not thread safe */
+					pageerr = -EUCLEAN;
+					break;
+				}
+			}
+		}
+		if (pageerr && (pageerr != -EUCLEAN || err == 0))
+			err = pageerr;
 
 #if VERBOSE
-		if (rawerr && !err) {
+		if (rawerr && !pageerr) {
 			printk("msm_nand_read_oob %llx %x %x empty page\n", (loff_t)page * mtd->writesize, ops->len, ops->ooblen);
 		} else {
 			printk("status: %x %x %x %x %x %x %x %x\n",
@@ -575,7 +596,7 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 			       dma_buffer->data.result[3].buffer_status);
 		}
 #endif
-		if (err)
+		if (err && err != -EUCLEAN && err != -EBADMSG)
 			break;
 		pages_read++;
 		page++;
@@ -604,13 +625,11 @@ err_dma_map_oobbuf_failed:
 	}
 #endif
 
-	if (err) {
-		printk("msm_nand_read_oob %llx %x %x failed\n", from, ops->datbuf ? ops->len : 0, ops->ooblen);
-	} else {
-		ops->retlen = mtd->writesize * pages_read;
-		ops->oobretlen = ops->ooblen - oob_len;
-	}
-
+	ops->retlen = mtd->writesize * pages_read;
+	ops->oobretlen = ops->ooblen - oob_len;
+	if (err)
+		printk("msm_nand_read_oob %llx %x %x failed %d\n",
+			from, ops->datbuf ? ops->len : 0, ops->ooblen, err);
 	return err;
 }
 

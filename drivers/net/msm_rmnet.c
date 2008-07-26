@@ -36,7 +36,7 @@ struct rmnet_private
 {
 	smd_channel_t *ch;
 	struct net_device_stats stats;
-	unsigned chnum;
+	const char *chname;
 };
 
 /* Called in soft-irq context */
@@ -102,7 +102,7 @@ static int rmnet_open(struct net_device *dev)
 	struct rmnet_private *p = netdev_priv(dev);
 
 	printk(KERN_INFO "rmnet_open()\n");
-	r = smd_open(p->chnum, &p->ch, dev, smd_net_notify);
+	r = smd_open(p->chname, &p->ch, dev, smd_net_notify);
 
 	if (r < 0)
 		return -ENODEV;
@@ -173,6 +173,12 @@ static void __init rmnet_setup(struct net_device *dev)
 }
 
 
+static const char *ch_name[3] = {
+	"SMD_DATA5",
+	"SMD_DATA6",
+	"SMD_DATA7",
+};
+
 static int __init rmnet_init(void)
 {
 	int ret;
@@ -188,7 +194,7 @@ static int __init rmnet_init(void)
 			return -ENOMEM;
 
 		p = netdev_priv(dev);
-		p->chnum = SMD_PORT_ETHER0 + n;
+		p->chname = ch_name[n];
 
 		ret = register_netdev(dev);
 		if (ret) {

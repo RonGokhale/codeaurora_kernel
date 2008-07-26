@@ -94,9 +94,16 @@ struct usb_function
 	/* number of needed endpoints and their types */
 	unsigned char ifc_ept_count;
 	unsigned char ifc_ept_type[8];
+
+	/* if the endpoint is disabled, its interface will not be
+	** included in the configuration descriptor
+	*/
+	unsigned char   disabled;
 };
 
 int usb_function_register(struct usb_function *driver);
+
+void usb_function_enable(const char *function, int enable);
 
 /* Allocate a USB request.
 ** Must be called from a context that can sleep.

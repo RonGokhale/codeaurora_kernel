@@ -36,6 +36,7 @@
 #include <asm/mach-types.h>
 
 #include <asm/arch/board.h>
+#include <asm/arch/msm_hsusb.h>
 
 #define MSM_USB_BASE ((unsigned) ui->addr)
 
@@ -68,6 +69,7 @@ struct usb_function_info
 {
 	struct list_head list;
 	unsigned endpoints; /* nonzero if bound */
+	unsigned enabled;
 
 	struct usb_function *func;
 	struct usb_interface_descriptor ifc;
@@ -187,9 +189,11 @@ struct usb_device_descriptor desc_device = {
 	.bNumConfigurations = 1,
 };
 
+static uint32_t enabled_functions = 0;
+
 static void flush_endpoint(struct usb_endpoint *ept);
 
-
+#if 0
 static unsigned ulpi_read(struct usb_info *ui, unsigned reg)
 {
 	unsigned timeout = 100000;
@@ -207,6 +211,7 @@ static unsigned ulpi_read(struct usb_info *ui, unsigned reg)
 	}
 	return ULPI_DATA_READ(readl(USB_ULPI_VIEWPORT));
 }
+#endif
 
 static void ulpi_write(struct usb_info *ui, unsigned val, unsigned reg)
 {
@@ -510,12 +515,11 @@ int usb_ept_get_max_packet(struct usb_endpoint *ept)
 
 /* --- endpoint 0 handling --- */
 
-static void set_configuration(struct usb_info *ui, int yes)
+static void set_configuration(struct usb_info *ui)
 {
-	unsigned i, n;
+	unsigned int i, n, online;
 
-	ui->online = !!yes;
-
+	online = ui->online;
 	for (i = 0; i < ui->num_funcs; i++) {
 		struct usb_function_info *fi = ui->func[i];
 
@@ -523,9 +527,9 @@ static void set_configuration(struct usb_info *ui, int yes)
 			continue;
 
 		for (n = 0; n < fi->endpoints; n++)
-			usb_ept_enable(fi->ept[n].ept, yes);
+			usb_ept_enable(fi->ept[n].ept, online);
 
-		fi->func->configure(yes, fi->func->context);
+		fi->func->configure(online, fi->func->context);
 	}
 }
 
@@ -657,7 +661,8 @@ static void handle_setup(struct usb_info *ui)
 	}
 	if (ctl.bRequestType == (USB_DIR_OUT | USB_TYPE_STANDARD)) {
 		if (ctl.bRequest == USB_REQ_SET_CONFIGURATION) {
-			set_configuration(ui, ctl.wValue);
+			ui->online = !!ctl.wValue;
+			set_configuration(ui);
 			goto ack;
 		}
 		if (ctl.bRequest == USB_REQ_SET_ADDRESS) {
@@ -875,7 +880,7 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 			/* XXX: we can't seem to detect going offline, so deconfigure
 			 * XXX: on reset for the time being
 			 */
-			set_configuration(ui, 0);
+			set_configuration(ui);
 		}
 	}
 
@@ -1035,7 +1040,7 @@ static void usb_reset(struct usb_info *ui)
 	flush_all_endpoints(ui);
 
 	printk(KERN_INFO "usb: notify offline\n");
-	set_configuration(ui, 0);
+	set_configuration(ui);
 
 	/* enable interrupts */
 	writel(STS_URI | STS_SLI | STS_UI | STS_PCI, USB_USBINTR);
@@ -1113,7 +1118,7 @@ static void usb_try_to_bind(void)
 	for (i = 0; i < pdata->num_functions; i++) {
 		if (ui->func[i])
 			continue;
-		fi = usb_find_function(pdata->function[i]);
+		fi = usb_find_function(pdata->functions[i]);
 		if (!fi)
 			return;
 		ui->func[i] = fi;
@@ -1143,6 +1148,7 @@ int usb_function_register(struct usb_function *driver)
 		goto fail;
 	}
 	fi->func = driver;
+	fi->enabled = !driver->disabled;
 	list_add(&fi->list, &usb_function_list);
 
 	usb_try_to_bind();
@@ -1150,6 +1156,16 @@ int usb_function_register(struct usb_function *driver)
 fail:
 	mutex_unlock(&usb_function_list_lock);
 	return 0;
+}
+
+void usb_function_enable(const char *function, int enable)
+{
+	struct usb_function_info *fi = usb_find_function(function);
+	if (fi && fi->enabled != enable) {
+		fi->enabled = enable;
+		if (vbus)
+			usb_reset(the_usb_info);
+	}
 }
 
 static int usb_free(struct usb_info *ui, int ret)
@@ -1183,15 +1199,21 @@ static void usb_vbus_offline(struct work_struct *w)
 {
 	struct usb_info *ui = container_of(w, struct usb_info, vbus_offline);
 	unsigned long flags;
+	unsigned int online;
 
 	pr_info("hsusb: vbus offline, clock disable\n");
 
 	spin_lock_irqsave(&ui->lock, flags);
-	if(ui->online != 0) {
-		ui->online = 0;			
+	online = ui->online;
+	ui->online = 0;
+	spin_unlock_irqrestore(&ui->lock, flags);
+
+	if (online) {
 		flush_all_endpoints(ui);
-		set_configuration(ui, 0);
+		set_configuration(ui);
 	}
+
+	spin_lock_irqsave(&ui->lock, flags);
 	usb_suspend_phy(ui);
 	clk_disable(ui->pclk);
 	clk_disable(ui->clk);
@@ -1461,11 +1483,41 @@ static void copy_string_descriptor(char *string, char *buffer)
 
 static int usb_find_descriptor(struct usb_info *ui, unsigned id, struct usb_request *req)
 {
+	struct msm_hsusb_platform_data *pdata = ui->pdev->dev.platform_data;
 	int i;
 	unsigned type = id >> 8;
 	id &= 0xff;
 
 	if ((type == USB_DT_DEVICE) && (id == 0)) {
+		/* Compute our product ID based on which of our functions
+		** are enabled. Also compute and save our list of enabled
+		** functions to avoid a race condition between the
+		** USB_DT_DEVICE and USB_DT_CONFIG requests.
+		** (that is, make sure the product ID we return for
+		** USB_DT_DEVICE matches the list of interfaces we
+		** return for USB_DT_CONFIG.
+		*/
+		enabled_functions = 0;
+		for (i = 0; i < ui->num_funcs; i++) {
+			struct usb_function_info *fi = ui->func[i];
+			if (fi->enabled)
+				enabled_functions |= (1 << i);
+		}
+
+		/* default product ID */
+		desc_device.idProduct = pdata->product_id;
+		/* set idProduct based on which functions are enabled */
+		for (i = 0; i < pdata->num_products; i++) {
+			
+			if (pdata->products[i].functions == enabled_functions) {
+				struct msm_hsusb_product *product =
+					&pdata->products[i];
+				if (product->functions == enabled_functions)
+					desc_device.idProduct = 
+						product->product_id;
+			}
+		}
+
 		req->length = sizeof(desc_device);
 		memcpy(req->buf, &desc_device, req->length);
 		return 0;
@@ -1483,14 +1535,21 @@ static int usb_find_descriptor(struct usb_info *ui, unsigned id, struct usb_requ
 		for (i = 0; i < ui->num_funcs; i++) {
 			struct usb_function_info *fi = ui->func[i];
 
-			ifc_count++;
+			/* check to see if the function was enabled when we
+			** received the USB_DT_DEVICE request to make ensure
+			** that the interfaces we return here match the
+			** product ID we returned in the USB_DT_DEVICE.
+			*/
+			if (enabled_functions & (1 << i)) {
+				ifc_count++;
 
-			memcpy(ptr, &fi->ifc, fi->ifc.bLength);
-			ptr += fi->ifc.bLength;
+				memcpy(ptr, &fi->ifc, fi->ifc.bLength);
+				ptr += fi->ifc.bLength;
 
-			for (n = 0; n < fi->endpoints; n++) {
-				memcpy(ptr, &(fi->ept[n].desc), fi->ept[n].desc.bLength);
-				ptr += fi->ept[n].desc.bLength;
+				for (n = 0; n < fi->endpoints; n++) {
+					memcpy(ptr, &(fi->ept[n].desc), fi->ept[n].desc.bLength);
+					ptr += fi->ept[n].desc.bLength;
+				}
 			}
 		}
 
@@ -1508,9 +1567,8 @@ static int usb_find_descriptor(struct usb_info *ui, unsigned id, struct usb_requ
 		req->length = ptr - start;
 		return 0;
 	}
-	
+
 	if (type == USB_DT_STRING) {
-		struct msm_hsusb_platform_data *pdata = ui->pdev->dev.platform_data;
 		char *buffer = req->buf;
 
 		buffer[0] = 0;

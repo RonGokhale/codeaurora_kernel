@@ -30,6 +30,9 @@
 #include "smd_private.h"
 #include "clock.h"
 #include "proc_comm.h"
+#if CONFIG_ANDROID_POWER
+#include <linux/android_power.h>
+#endif
 
 enum {
 	MSM_PM_DEBUG_SUSPEND = 1U << 0,
@@ -325,6 +328,9 @@ void arch_idle(void)
 #endif
 	int allow_sleep =
 		msm_pm_idle_sleep_mode < MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT &&
+#if CONFIG_ANDROID_POWER
+		android_power_is_low_power_idle_ok() &&
+#endif
 		msm_irq_idle_sleep_allowed();
 	sleep_time = msm_timer_enter_idle();
 #ifdef CONFIG_MSM_IDLE_STATS

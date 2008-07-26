@@ -28,6 +28,8 @@
 
 #define swap(x, y) do { typeof(x) z = x; x = y; y = z; } while (0)
 
+static struct workqueue_struct *synaptics_wq;
+
 struct synaptics_ts_data {
 	uint16_t addr;
 	struct i2c_client *client;
@@ -199,7 +201,7 @@ static enum hrtimer_restart synaptics_ts_timer_func(struct hrtimer *timer)
 	struct synaptics_ts_data *ts = container_of(timer, struct synaptics_ts_data, timer);
 	/* printk("synaptics_ts_timer_func\n"); */
 
-	schedule_work(&ts->work);
+	queue_work(synaptics_wq, &ts->work);
 
 	hrtimer_start(&ts->timer, ktime_set(0, 12500000), HRTIMER_MODE_REL);
 	return HRTIMER_NORESTART;
@@ -211,7 +213,7 @@ static irqreturn_t synaptics_ts_irq_handler(int irq, void *dev_id)
 
 	/* printk("synaptics_ts_irq_handler\n"); */
 	disable_irq(ts->client->irq);
-	schedule_work(&ts->work);
+	queue_work(synaptics_wq, &ts->work);
 	return IRQ_HANDLED;
 }
 
@@ -550,12 +552,17 @@ static struct i2c_driver synaptics_ts_driver = {
 
 static int __devinit synaptics_ts_init(void)
 {
+	synaptics_wq = create_singlethread_workqueue("synaptics_wq");
+	if (!synaptics_wq)
+		return -ENOMEM;
 	return i2c_add_driver(&synaptics_ts_driver);
 }
 
 static void __exit synaptics_ts_exit(void)
 {
 	i2c_del_driver(&synaptics_ts_driver);
+	if (synaptics_wq)
+		destroy_workqueue(synaptics_wq);
 }
 
 module_init(synaptics_ts_init);

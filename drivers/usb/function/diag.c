@@ -237,14 +237,14 @@ static int msm_diag_probe(struct platform_device *pdev)
 {
 	struct diag_context *ctxt = &_context;
 	int r;
-	r = smd_open(1, &ctxt->ch, ctxt, smd_diag_notify);
+	r = smd_open("SMD_DIAG", &ctxt->ch, ctxt, smd_diag_notify);
 	return 0;
 }
 
 static struct platform_driver msm_smd_ch1_driver = {
 	.probe = msm_diag_probe,
 	.driver = {
-		.name = "smd_channel_01",
+		.name = "SMD_DIAG",
 		.owner = THIS_MODULE,
 	},
 };

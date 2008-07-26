@@ -49,7 +49,7 @@ void mdp_set_ccs(uint16_t *ccs)
 static DECLARE_WAIT_QUEUE_HEAD(mdp_dma2_waitqueue);
 static DECLARE_WAIT_QUEUE_HEAD(mdp_ppp_waitqueue);
 static struct msmfb_callback *dma_callback;
-
+static struct clk *clk;
 static unsigned int mdp_irq_mask;
 static DEFINE_SPINLOCK(mdp_lock);
 
@@ -69,8 +69,11 @@ int enable_mdp_irq(uint32_t mask)
 		ret = -1;
 	}
 	/* if the mdp irq is not already enabled enable it */
-	if (!mdp_irq_mask)
+	if (!mdp_irq_mask) {
+		if (clk)
+			clk_enable(clk);
 		enable_irq(INT_MDP);
+	}
 
 	/* update the irq mask to reflect the fact that the interrupt is
 	 * enabled */
@@ -91,8 +94,11 @@ static int locked_disable_mdp_irq(uint32_t mask)
 	 * disabled */
 	mdp_irq_mask &= ~(mask);
 	/* if no one is waiting on the interrupt, disable it */
-	if (!mdp_irq_mask)
+	if (!mdp_irq_mask) {
 		disable_irq(INT_MDP);
+		if (clk)
+			clk_disable(clk);
+	}
 	return 0;
 }
 
@@ -242,11 +248,12 @@ int mdp_init(struct fb_info *info)
 	int ret;
 	int n;
 #if !defined(CONFIG_MSM7X00A_6056_COMPAT)
-	struct clk *clk;
 
 	clk = clk_get(0, "mdp_clk");
+#if 0
 	if (clk)
 		clk_enable(clk);
+#endif
 #endif
 
 	ret = request_irq(INT_MDP, mdp_isr, IRQF_DISABLED, "msm_mdp", NULL);

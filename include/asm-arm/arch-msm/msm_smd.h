@@ -20,7 +20,7 @@
 typedef struct smd_channel smd_channel_t;
 
 /* warning: notify() may be called before open returns */
-int smd_open(int n, smd_channel_t **ch, void *priv,
+int smd_open(const char *name, smd_channel_t **ch, void *priv,
 	     void (*notify)(void *priv, unsigned event));
 
 #define SMD_EVENT_DATA 1
