@@ -134,8 +134,10 @@ static enum hrtimer_restart msm_serial_clock_off(struct hrtimer *timer) {
 			struct msm_port *msm_port = UART_TO_MSM(port);
 			clk_disable(msm_port->clk);
 			msm_port->clk_state = MSM_CLK_OFF;
-		} else
+		} else {
+			hrtimer_forward_now(timer, msm_port->clk_off_delay);
 			ret = HRTIMER_RESTART;
+		}
 	}
 
 	spin_unlock_irqrestore(&port->lock, flags);
