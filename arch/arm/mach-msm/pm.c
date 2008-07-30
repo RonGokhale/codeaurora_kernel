@@ -18,6 +18,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/pm.h>
 #include <linux/proc_fs.h>
@@ -59,6 +60,8 @@ static int msm_pm_idle_sleep_mode = CONFIG_MSM7X00A_IDLE_SLEEP_MODE;
 module_param_named(idle_sleep_mode, msm_pm_idle_sleep_mode, int, S_IRUGO | S_IWUSR | S_IWGRP);
 static int msm_pm_idle_sleep_min_time = CONFIG_MSM7X00A_IDLE_SLEEP_MIN_TIME;
 module_param_named(idle_sleep_min_time, msm_pm_idle_sleep_min_time, int, S_IRUGO | S_IWUSR | S_IWGRP);
+static int msm_pm_idle_spin_time = CONFIG_MSM7X00A_IDLE_SPIN_TIME;
+module_param_named(idle_spin_time, msm_pm_idle_spin_time, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 #define A11S_CLK_SLEEP_EN (MSM_CSR_BASE + 0x11c)
 #define A11S_PWRDOWN (MSM_CSR_BASE + 0x440)
@@ -79,6 +82,7 @@ void msm_pm_collapse_exit(void);
 int64_t msm_timer_enter_idle(void);
 void msm_timer_exit_idle(int low_power);
 int msm_irq_idle_sleep_allowed(void);
+int msm_irq_pending(void);
 
 static uint32_t *msm_pm_reset_vector;
 
@@ -87,6 +91,7 @@ static uint32_t msm_pm_max_sleep_time;
 #ifdef CONFIG_MSM_IDLE_STATS
 enum msm_pm_time_stats_id {
 	MSM_PM_STAT_REQUESTED_IDLE,
+	MSM_PM_STAT_IDLE_SPIN,
 	MSM_PM_STAT_IDLE_WFI,
 	MSM_PM_STAT_IDLE_SLEEP,
 	MSM_PM_STAT_IDLE_FAILED_SLEEP,
@@ -103,6 +108,7 @@ static struct msm_pm_time_stats {
 	int64_t total_time;
 } msm_pm_stats[MSM_PM_STAT_COUNT] = {
 	[MSM_PM_STAT_REQUESTED_IDLE].name = "idle-request",
+	[MSM_PM_STAT_IDLE_SPIN].name = "idle-spin",
 	[MSM_PM_STAT_IDLE_WFI].name = "idle-wfi",
 	[MSM_PM_STAT_IDLE_SLEEP].name = "idle-sleep",
 	[MSM_PM_STAT_IDLE_FAILED_SLEEP].name = "idle-failed-sleep",
@@ -319,6 +325,7 @@ enter_failed:
 void arch_idle(void)
 {
 	int ret;
+	int spin;
 	int64_t sleep_time;
 	int low_power = 0;
 #ifdef CONFIG_MSM_IDLE_STATS
@@ -344,6 +351,16 @@ void arch_idle(void)
 	if (msm_pm_debug_mask & MSM_PM_DEBUG_IDLE)
 		printk(KERN_INFO "arch_idle: sleep time %llu, allow_sleep %d\n",
 		       sleep_time, allow_sleep);
+	spin = msm_pm_idle_spin_time >> 10;
+	while (spin-- > 0) {
+		if (msm_irq_pending()) {
+#ifdef CONFIG_MSM_IDLE_STATS
+			exit_stat = MSM_PM_STAT_IDLE_SPIN;
+#endif
+			goto abort_idle;
+		}
+		udelay(1);
+	}
 	if (sleep_time < msm_pm_idle_sleep_min_time || !allow_sleep) {
 		unsigned long saved_rate;
 		saved_rate = clk_get_rate(acpu_clk);
@@ -376,6 +393,7 @@ void arch_idle(void)
 			exit_stat = MSM_PM_STAT_IDLE_SLEEP;
 #endif
 	}
+abort_idle:
 	msm_timer_exit_idle(low_power);
 #ifdef CONFIG_MSM_IDLE_STATS
 	t2 = ktime_to_ns(ktime_get());
