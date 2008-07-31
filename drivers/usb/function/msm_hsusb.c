@@ -86,6 +86,7 @@ struct msm_request
 	unsigned busy:1;
 	unsigned live:1;
 	unsigned alloced:1;
+	unsigned dead:1;
 
 	dma_addr_t dma;
 
@@ -364,18 +365,31 @@ fail1:
 	return 0;
 }
 
-void usb_ept_free_req(struct usb_endpoint *ept, struct usb_request *_req)
+static void do_free_req(struct usb_info *ui, struct msm_request *req)
 {
-	struct msm_request *req = to_msm_request(_req);
-	struct usb_info *ui = ept->ui;
-
-	BUG_ON(req->busy);
-
 	if (req->alloced)
 		kfree(req->req.buf);
 
 	dma_pool_free(ui->pool, req->item, req->item_dma);
 	kfree(req);
+}
+
+void usb_ept_free_req(struct usb_endpoint *ept, struct usb_request *_req)
+{
+	struct msm_request *req = to_msm_request(_req);
+	struct usb_info *ui = ept->ui;
+	unsigned long flags;
+	int dead = 0;
+
+	spin_lock_irqsave(&ui->lock, flags);
+	/* defer freeing resources if request is still busy */
+	if (req->busy)
+		dead = req->dead = 1;
+	spin_unlock_irqrestore(&ui->lock, flags);
+
+	/* if req->dead, then we will clean up when the request finishes */
+	if (!dead)
+		do_free_req(ui, req);
 }
 
 static void usb_ept_enable(struct usb_endpoint *ept, int yes)
@@ -768,6 +782,8 @@ static void handle_endpoint(struct usb_info *ui, unsigned bit)
 		}
 		req->busy = 0;
 		req->live = 0;
+		if (req->dead)
+			do_free_req(ui, req);
 
 		if (req->req.complete) {
 			spin_unlock_irqrestore(&ui->lock, flags);
@@ -825,6 +841,8 @@ static void flush_endpoint_sw(struct usb_endpoint *ept)
 			req->req.complete(ept, &req->req);
 			spin_lock_irqsave(&ui->lock, flags);
 		}
+		if (req->dead)
+			do_free_req(ui, req);
 		req = req->next;
 	}
 	spin_unlock_irqrestore(&ui->lock, flags);
