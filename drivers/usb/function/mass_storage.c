@@ -1266,6 +1266,8 @@ static int do_mode_sense(struct fsg_dev *fsg, struct fsg_buffhd *bh)
 		}
 		buf += 12;
 	}
+#else
+	valid_page = 1;
 #endif
 
 	/* Check that a valid page was requested and the mode data length
@@ -1350,7 +1352,7 @@ static int do_mode_select(struct fsg_dev *fsg, struct fsg_buffhd *bh)
 
 
 /*-------------------------------------------------------------------------*/
-
+#if 0
 static int write_zero(struct fsg_dev *fsg)
 {
 	struct fsg_buffhd	*bh;
@@ -1372,6 +1374,7 @@ static int write_zero(struct fsg_dev *fsg)
 	fsg->next_buffhd_to_fill = bh->next;
 	return 0;
 }
+#endif
 
 static int throw_away_data(struct fsg_dev *fsg)
 {
@@ -1451,8 +1454,11 @@ static int finish_reply(struct fsg_dev *fsg)
 			start_transfer(fsg, fsg->bulk_in, bh->inreq,
 					&bh->inreq_busy, &bh->state);
 			fsg->next_buffhd_to_fill = bh->next;
+#if 0
+            /* this is unnecessary, and was causing problems with MacOS */
 			if (length > 0)
 				write_zero(fsg);
+#endif
 		}
 		break;
 
