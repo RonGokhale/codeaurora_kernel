@@ -267,11 +267,22 @@ static uint32_t msm_timer_sync_smem_clock(int exit_sleep)
 	return smem_clock_val;
 }
 
+static void msm_timer_reactivate_alarm(struct msm_clock *clock)
+{
+	long alarm_delta = clock->alarm_vtime - clock->offset -
+		msm_read_timer_count(clock);
+	if (alarm_delta < (long)clock->write_delay + 4)
+		alarm_delta = clock->write_delay + 4;
+	while (msm_timer_set_next_event(alarm_delta, &clock->clockevent))
+		;
+}
+
 int64_t msm_timer_enter_idle(void)
 {
 	struct msm_clock *clock = msm_active_clock;
 	uint32_t alarm;
 	uint32_t count;
+	int32_t delta;
 
 	if (clock != &msm_clocks[MSM_CLOCK_GPT])
 		return 0;
@@ -280,19 +291,16 @@ int64_t msm_timer_enter_idle(void)
 
 	count = msm_read_timer_count(clock);
 	alarm = readl(clock->regbase + TIMER_MATCH_VAL);
-	if (alarm <= count)
+	delta = alarm - count;
+	if (delta <= -(int32_t)((clock->freq << clock->shift) >> 10)) {
+		/* timer should have triggered 1ms ago */
+		printk(KERN_ERR "msm_timer_enter_idle: timer late %d, "
+			"reprogram it\n", delta);
+		msm_timer_reactivate_alarm(clock);
+	}
+	if (delta <= 0)
 		return 0;
 	return cyc2ns(&clock->clocksource, (alarm - count) >> clock->shift);
-}
-
-void msm_timer_reactivate_alarm(struct msm_clock *clock)
-{
-	long alarm_delta = clock->alarm_vtime - clock->offset -
-		msm_read_timer_count(clock);
-	if (alarm_delta < (long)clock->write_delay + 4)
-		alarm_delta = clock->write_delay + 4;
-	while (msm_timer_set_next_event(alarm_delta, &clock->clockevent))
-		;
 }
 
 void msm_timer_exit_idle(int low_power)
