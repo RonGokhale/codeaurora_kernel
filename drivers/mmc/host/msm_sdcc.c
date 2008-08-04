@@ -69,8 +69,8 @@ static char *msmsdcc_pclks[] = { NULL, "sdc1_pclk", "sdc2_pclk", "sdc3_pclk",
 				 "sdc4_pclk" };
 
 #define VERBOSE_COMMAND_TIMEOUTS	0
-#define MAX_DATAEND_WAIT_ITER		10000000
-#define MSMSDCC_POLLING_RETRIES		10000000
+#define MAX_DATAEND_WAIT_ITER		10000
+#define MSMSDCC_POLLING_RETRIES		10000
 
 static void
 msmsdcc_start_command(struct msmsdcc_host *host,
@@ -96,9 +96,10 @@ msmsdcc_request_end(struct msmsdcc_host *host, struct mmc_request *mrq)
 
 	host->mrq = NULL;
 	host->cmd = NULL;
-
+#if 0
 	if (mrq->data && mrq->data->error)
 		mrq->cmd->error = mrq->data->error;
+#endif
 
 	if (mrq->data)
 		mrq->data->bytes_xfered = host->data_xfered;
@@ -190,7 +191,8 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 			       "Flush data: %.8x %.8x %.8x %.8x %.8x %.8x\n",
 			       err->flush[0], err->flush[1], err->flush[2],
 			       err->flush[3], err->flush[4], err->flush[5]);
-		WARN_ON((!mrq->cmd->error && !mrq->data->error));
+		if (!mrq->data->error)
+			mrq->data->error = -EIO;
 	}
 
 	reg_status = readl(host->base + MMCISTATUS);
@@ -198,9 +200,11 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 	if ((result & DMOV_RSLT_DONE)
 	  && (reg_status & (MCI_DATAEND | MCI_DATABLOCKEND))
 	  !=(MCI_DATAEND | MCI_DATABLOCKEND)) {
+#if 0
 		printk(KERN_WARNING
 		       "%s: DMA result 0x%.8x but still waiting for DATAEND (0x%.8x)\n",
 		       mmc_hostname(host->mmc), result, reg_status);
+#endif
 
 		if (result & DMOV_RSLT_VALID) {
 			rc = msmsdcc_wait_for_dataend(host,
@@ -209,9 +213,12 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 				printk(KERN_ERR
 				       "%s: Timed out waiting for DATAEND\n", 
 				       mmc_hostname(host->mmc));
+				mrq->data->error = -ETIMEDOUT;
 			} 
 		}
 	}
+
+	writel(MCI_DATAEND | MCI_DATABLOCKEND, host->base + MMCICLEAR);
 
 	msmsdcc_stop_data(host);
 
@@ -241,13 +248,15 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 			flush_dcache_page(sg_page(sg));
 	}
 
-	host->data_xfered = host->xfer_size - reg_datacnt;
+	if (!mrq->data->error) {
+		host->data_xfered = host->xfer_size - reg_datacnt;
 
-	if (host->data_xfered != host->xfer_size) {
-		printk(KERN_WARNING
-		       "%s: Short xfer (%d != %d), dc %d, flags 0x%x\n",
-		       mmc_hostname(host->mmc), host->data_xfered,
-		       host->xfer_size, reg_datacnt, mrq->data->flags);
+		if (host->data_xfered != host->xfer_size) {
+			printk(KERN_WARNING
+			       "%s: Short xfer (%d != %d), dc %d, flags 0x%x\n",
+			       mmc_hostname(host->mmc), host->data_xfered,
+			       host->xfer_size, reg_datacnt, mrq->data->flags);
+		}
 	}
 	host->dma.sg = NULL;
 
@@ -257,12 +266,15 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 
 		host->mrq = NULL;
 		host->cmd = NULL;
+#if 0
 		if (mrq->data && mrq->data->error)
 			mrq->cmd->error = mrq->data->error;
+#endif
 		mrq->data->bytes_xfered = host->data_xfered;
-
+#if 0
 		if (mrq->cmd->error == -ETIMEDOUT)
 			mdelay(5);
+#endif
 
 		spin_unlock_irqrestore(&host->lock, flags);
 		mmc_request_done(host->mmc, mrq);
