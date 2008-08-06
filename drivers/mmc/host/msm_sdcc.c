@@ -59,7 +59,7 @@ static struct dentry *debugfs_dir;
 #endif
 
 static unsigned int msmsdcc_fmin = 144000;
-static unsigned int msmsdcc_fmax = 20000000;
+static unsigned int msmsdcc_fmax = 25000000;
 static unsigned int msmsdcc_4bit = 1;
 static unsigned int msmsdcc_pwrsave = 0;
 
