@@ -731,8 +731,11 @@ int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *len,
 	struct file *file;
 
 	file = fget(fd);
-	if (unlikely(file == NULL))
+	if (unlikely(file == NULL)) {
+		printk(KERN_INFO "pmem: requested data from file descriptor "
+		       "that doesn't exist.");
 		return -1;
+	}
 
 	if (get_pmem_addr(file, start, len))
 		goto end;
