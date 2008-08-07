@@ -77,6 +77,20 @@ void smd_diag(void)
 	}
 }
 
+/* call when SMSM_RESET flag is set in the A9's smsm_state */
+static void handle_modem_crash(void)
+{
+	pr_err("ARM9 has CRASHED\n");
+	smd_diag();
+
+	/* hard reboot if possible */
+	if (msm_reset_hook)
+		msm_reset_hook(0);
+
+	/* in this case the modem or watchdog should reboot us */
+	for (;;) ;
+}
+
 extern int (*msm_check_for_modem_crash)(void);
 
 static int check_for_modem_crash(void)
@@ -90,17 +104,11 @@ static int check_for_modem_crash(void)
 		return 0;
 
 	if (smsm[1].state & SMSM_RESET) {
-		pr_err("proc_comm: ARM9 has crashed\n");
-		smd_diag();
+		handle_modem_crash();
+		return -1;
 	} else {
 		return 0;
 	}
-
-	/* hard reboot if possible */
-	if (msm_reset_hook)
-		msm_reset_hook(0);
-
-	for (;;) ;
 }
 
 #define SMD_SS_CLOSED            0x00000000
@@ -875,7 +883,7 @@ static irqreturn_t smsm_irq_handler(int irq, void *data)
 		if (msm_smd_debug_mask & MSM_SMSM_DEBUG)
 			printk(KERN_INFO "<SM %08x %08x>\n", apps, modm);
 		if (modm & SMSM_RESET) {
-			smd_diag();
+			handle_modem_crash();
 		} else {
 			apps |= SMSM_INIT;
 			if (modm & SMSM_SMDINIT)
@@ -907,6 +915,8 @@ int smsm_change_state(uint32_t clear_mask, uint32_t set_mask)
 			  2 * sizeof(struct smsm_shared));
 
 	if (smsm) {
+		if (smsm[1].state & SMSM_RESET)
+			handle_modem_crash();
 		smsm[0].state = (smsm[0].state & ~clear_mask) | set_mask;
 		if (msm_smd_debug_mask & MSM_SMSM_DEBUG)
 			printk(KERN_INFO "smsm_change_state %x\n",
@@ -938,6 +948,9 @@ uint32_t smsm_get_state(void)
 		rv = smsm[1].state;
 	else
 		rv = 0;
+
+	if (rv & SMSM_RESET)
+		handle_modem_crash();
 
 	spin_unlock_irqrestore(&smem_lock, flags);
 
@@ -1235,6 +1248,13 @@ static int debug_read_alloc_tbl(char *buf, int max)
 	return i;
 }
 
+static int debug_boom(char *buf, int max)
+{
+	unsigned ms = 5000;
+	msm_proc_comm(PCOM_RESET_MODEM, &ms, 0);
+	return 0;
+}
+
 #define DEBUG_BUFMAX 4096
 static char debug_buffer[DEBUG_BUFMAX];
 
@@ -1278,6 +1298,7 @@ static void smd_debugfs_init(void)
 	debug_create("version", 0444, dent, debug_read_version);
 	debug_create("tbl", 0444, dent, debug_read_alloc_tbl);
 	debug_create("build", 0444, dent, debug_read_build_id);
+	debug_create("boom", 0444, dent, debug_boom);
 }
 #else
 static void smd_debugfs_init(void) {}
