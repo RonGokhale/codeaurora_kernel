@@ -239,6 +239,11 @@ static int msm_irq_set_type(unsigned int irq, unsigned int flow_type)
 	return 0;
 }
 
+int msm_irq_pending(void)
+{
+	return readl(VIC_IRQ_STATUS0) || readl(VIC_IRQ_STATUS1);
+}
+
 int msm_irq_idle_sleep_allowed(void)
 {
 	if (msm_irq_debug_mask & IRQ_DEBUG_SLEEP_REQUEST)

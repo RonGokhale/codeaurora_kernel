@@ -142,8 +142,8 @@ static void blit_convert(struct mdp_blit_req *req, struct mdp_regs *regs)
 	}
 }
 
-#define GET_BIT_RANGE(value, start, end) \
-	((1 << (start - end + 1)) - 1) & (value >> start)
+#define GET_BIT_RANGE(value, high, low) \
+	((1 << (high - low + 1)) - 1) & (value >> low)
 static uint32_t transp_convert(struct mdp_blit_req *req)
 {
 	uint32_t transp = 0;
@@ -579,10 +579,10 @@ int get_img(struct mdp_img *img, struct fb_info *info, unsigned long *start,
 		return -1;
 
 	if (MAJOR(file->f_dentry->d_inode->i_rdev) == FB_MAJOR) {
-			*start = info->fix.smem_start;
-			*len = info->fix.smem_len;
-			ret = 0;
-			goto end;
+		*start = info->fix.smem_start;
+		*len = info->fix.smem_len;
+		ret = 0;
+		goto end;
 	}
 #ifdef CONFIG_ANDROID_PMEM
 	if (!get_pmem_fd(img->memory_id, start, len))
@@ -683,20 +683,11 @@ static int send_blit(struct mdp_blit_req *req, struct mdp_regs *regs)
 	return 0;
 }
 
-int blit(struct fb_info *info, struct mdp_blit_req *req)
+int blit(struct fb_info *info, struct mdp_blit_req *req,
+	 unsigned long src_start, unsigned long src_len,
+	 unsigned long dst_start, unsigned long dst_len)
 {
-	unsigned long src_start, src_len;
-	unsigned long dst_start, dst_len;
 	struct mdp_regs regs = {0};
-
-	/* do this first so that if this fails, the caller can always
-	 * safely call put_img */
-	if (unlikely(get_img(&req->src, info, &src_start, &src_len)) ||
-		    (get_img(&req->dst, info, &dst_start, &dst_len))) {
-		printk(KERN_ERR "mpd_ppp: could not retrieve image from "
-				"memory\n");
-		return -EINVAL;
-	}
 
 	if (unlikely(req->src.format >= MDP_IMGTYPE_LIMIT ||
 		     req->dst.format >= MDP_IMGTYPE_LIMIT)) {
@@ -776,6 +767,7 @@ int blit(struct fb_info *info, struct mdp_blit_req *req)
 int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 {
 	int ret;
+	unsigned long src_start = 0, src_len = 0, dst_start = 0, dst_len = 0;
 
 	/* WORKAROUND FOR HARDWARE BUG IN BG TILE FETCH */
 	if (unlikely(req->src_rect.h == 0 ||
@@ -785,15 +777,29 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	}
 	if (unlikely(req->dst_rect.h == 0 ||
 		     req->dst_rect.w == 0))
-		return 0;
+		return -EINVAL;
 
+	/* do this first so that if this fails, the caller can always
+	 * safely call put_img */
+	if (unlikely(get_img(&req->src, info, &src_start, &src_len))) {
+		printk(KERN_ERR "mpd_ppp: could not retrieve src image from "
+				"memory\n");
+		return -EINVAL;
+	}
+
+	if (unlikely(get_img(&req->dst, info, &dst_start, &dst_len))) {
+		printk(KERN_ERR "mpd_ppp: could not retrieve dst image from "
+				"memory\n");
+		put_pmem_fd(req->src.memory_id);
+		return -EINVAL;
+	}
 
 	if (unlikely((req->transp_mask != MDP_TRANSP_NOP ||
 	     req->alpha != MDP_ALPHA_NOP ||
 	     req->src.format == MDP_ARGB_8888 ||
 	     req->src.format == MDP_RGBA_8888) &&
 	     req->flags & MDP_ROT_90 &&
-	     req->dst_rect.w <= 16)) {
+	     req->dst_rect.w <= 16 && req->dst_rect.h >= 16)) {
 		int i;
 		unsigned int tiles = req->dst_rect.h / 16;
 		unsigned int remainder = req->dst_rect.h % 16;
@@ -801,7 +807,8 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		req->dst_rect.h = 16;
 		for (i = 0; i < tiles; i++) {
 			enable_mdp_irq(DL0_ROI_DONE);
-			ret = blit(info, req);
+			ret = blit(info, req, src_start, src_len, dst_start,
+				   dst_len);
 			if (ret)
 				goto err_bad_blit;
 			ret = mdp_ppp_wait();
@@ -817,7 +824,7 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	}
 
 	enable_mdp_irq(DL0_ROI_DONE);
-	ret = blit(info, req);
+	ret = blit(info, req, src_start, src_len, dst_start, dst_len);
 	if (ret)
 		goto err_bad_blit;
 	ret = mdp_ppp_wait();

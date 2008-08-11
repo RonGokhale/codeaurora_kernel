@@ -134,8 +134,10 @@ static enum hrtimer_restart msm_serial_clock_off(struct hrtimer *timer) {
 			struct msm_port *msm_port = UART_TO_MSM(port);
 			clk_disable(msm_port->clk);
 			msm_port->clk_state = MSM_CLK_OFF;
-		} else
+		} else {
+			hrtimer_forward_now(timer, msm_port->clk_off_delay);
 			ret = HRTIMER_RESTART;
+		}
 	}
 
 	spin_unlock_irqrestore(&port->lock, flags);
@@ -153,7 +155,7 @@ void msm_serial_clock_request_off(struct uart_port *port) {
 		msm_port->clk_state = MSM_CLK_REQUEST_OFF;
 		/* turn off TX later. unfortunately not all msm uart's have a
 		 * TXDONE available, and TXLEV does not wait until completely
-		 * flushed, so a timer this is our only option
+		 * flushed, so a timer is our only option
 		 */
 		hrtimer_start(&msm_port->clk_off_timer,
 			      msm_port->clk_off_delay, HRTIMER_MODE_REL);
@@ -176,6 +178,7 @@ void msm_serial_clock_on(struct uart_port *port, int force) {
 		force = 1;
 	case MSM_CLK_REQUEST_OFF:
 		if (force) {
+			hrtimer_try_to_cancel(&msm_port->clk_off_timer);
 			msm_port->clk_state = MSM_CLK_ON;
 		}
 		break;
@@ -188,10 +191,29 @@ void msm_serial_clock_on(struct uart_port *port, int force) {
 #endif
 
 #ifdef CONFIG_SERIAL_MSM_RX_WAKEUP
+#define WAKE_UP_IND	0x32
 static irqreturn_t msm_rx_irq(int irq, void *dev_id)
 {
 	struct uart_port *port = dev_id;
+	struct msm_port *msm_port = UART_TO_MSM(port);
+	int inject_wakeup = 0;
+
+	spin_lock(&port->lock);
+
+	if (msm_port->clk_state == MSM_CLK_OFF)
+		inject_wakeup = 1;
+
 	msm_serial_clock_on(port, 0);
+
+	/* we missed an rx while asleep - it must be a wakeup indicator
+	 */
+	if (inject_wakeup) {
+		struct tty_struct *tty = port->info->tty;
+		tty_insert_flip_char(tty, WAKE_UP_IND, TTY_NORMAL);
+		tty_flip_buffer_push(tty);
+	}
+
+	spin_unlock(&port->lock);
 	return IRQ_HANDLED;
 }
 #endif
@@ -265,12 +287,12 @@ static void handle_tx(struct uart_port *port)
 		sent_tx = 1;
 	}
 
-#ifdef MSM_SERIAL_CONTROL_CLOCK
+#ifdef CONFIG_SERIAL_MSM_CLOCK_CONTROL
 	if (sent_tx && msm_port->clk_state == MSM_CLK_REQUEST_OFF)
 		/* new TX - restart the timer */
-		if (hrtimer_try_to_cancel(msm_port->clk_off_timer) == 1)
-			hrtimer_start(msm_port->clk_timer,
-				      msm_port->clk_off_delay);
+		if (hrtimer_try_to_cancel(&msm_port->clk_off_timer) == 1)
+			hrtimer_start(&msm_port->clk_off_timer,
+				msm_port->clk_off_delay, HRTIMER_MODE_REL);
 #endif
 
 	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)

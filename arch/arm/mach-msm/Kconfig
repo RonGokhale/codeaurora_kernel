@@ -145,7 +145,14 @@ config MSM7X00A_IDLE_SLEEP_MIN_TIME
 	int "Minimum idle time before sleep"
 	default 20000000
 	help
-	  Minimum idle time in nanoseconds before entering low poer mode.
+	  Minimum idle time in nanoseconds before entering low power mode.
+
+config MSM7X00A_IDLE_SPIN_TIME
+	int "Idle spin time before cpu ramp down"
+	default 80000
+	help
+	  Spin time in nanoseconds before ramping down cpu clock and entering
+	  any low power state.
 
 menuconfig MSM_IDLE_STATS
 	bool "Collect idle statistics"

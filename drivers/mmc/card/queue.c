@@ -56,6 +56,9 @@ static int mmc_queue_thread(void *d)
 
 	set_freezable();
 	down(&mq->thread_sem);
+
+	complete(&mq->thread_wait);
+
 	do {
 		struct request *req = NULL;
 
@@ -82,6 +85,8 @@ static int mmc_queue_thread(void *d)
 		mq->issue_fn(mq, req);
 	} while (1);
 	up(&mq->thread_sem);
+
+	complete(&mq->thread_wait);
 
 	return 0;
 }
@@ -198,12 +203,14 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card, spinlock_t *lock
 	}
 
 	init_MUTEX(&mq->thread_sem);
+	init_completion(&mq->thread_wait);
 
 	mq->thread = kthread_run(mmc_queue_thread, mq, "mmcqd");
 	if (IS_ERR(mq->thread)) {
 		ret = PTR_ERR(mq->thread);
 		goto free_bounce_sg;
 	}
+	wait_for_completion(&mq->thread_wait);
 
 	return 0;
  free_bounce_sg:
@@ -261,8 +268,10 @@ static void mq_cleanup_work(struct work_struct *work)
 	/* Make sure the queue isn't suspended, as that will deadlock */
 	mmc_queue_resume(mq);
 
+	init_completion(&mq->thread_wait);
 	/* Then terminate our worker thread */
 	kthread_stop(mq->thread);
+	wait_for_completion(&mq->thread_wait);
 
  	if (mq->bounce_sg)
  		kfree(mq->bounce_sg);

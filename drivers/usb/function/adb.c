@@ -52,6 +52,7 @@ struct adb_context
 	atomic_t read_excl;
 	atomic_t write_excl;
 	atomic_t open_excl;
+	atomic_t enable_excl;
 	spinlock_t lock;
 
 	struct usb_endpoint *out;
@@ -304,7 +305,6 @@ static int adb_open(struct inode *ip, struct file *fp)
 	if (_lock(&ctxt->open_excl))
 		return -EBUSY;
 
-	usb_function_enable(ADB_FUNCTION_NAME, 1);
 	/* clear the error latch */
 	ctxt->error = 0;
 
@@ -315,7 +315,6 @@ static int adb_release(struct inode *ip, struct file *fp)
 {
 	struct adb_context *ctxt = &_context;
 
-	usb_function_enable(ADB_FUNCTION_NAME, 0);
 	_unlock(&ctxt->open_excl);
 	return 0;
 }
@@ -332,6 +331,43 @@ static struct miscdevice adb_device = {
 	.minor = MISC_DYNAMIC_MINOR,
 	.name = "android_adb",
 	.fops = &adb_fops,
+};
+
+static int adb_enable_open(struct inode *ip, struct file *fp)
+{
+	struct adb_context *ctxt = &_context;
+
+	if (_lock(&ctxt->enable_excl))
+		return -EBUSY;
+
+	printk(KERN_INFO "enabling adb function\n");
+	usb_function_enable(ADB_FUNCTION_NAME, 1);
+	/* clear the error latch */
+	ctxt->error = 0;
+
+	return 0;
+}
+
+static int adb_enable_release(struct inode *ip, struct file *fp)
+{
+	struct adb_context *ctxt = &_context;
+
+	printk(KERN_INFO "disabling adb function\n");
+	usb_function_enable(ADB_FUNCTION_NAME, 0);
+	_unlock(&ctxt->enable_excl);
+	return 0;
+}
+
+static struct file_operations adb_enable_fops = {
+	.owner =   THIS_MODULE,
+	.open =    adb_enable_open,
+	.release = adb_enable_release,
+};
+
+static struct miscdevice adb_enable_device = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = "android_adb_enable",
+	.fops = &adb_enable_fops,
 };
 
 static void adb_unbind(void *_ctxt)
@@ -387,6 +423,7 @@ static void adb_bind(struct usb_endpoint **ept, void *_ctxt)
 	       RX_REQ_MAX, TX_REQ_MAX);
 
 	misc_register(&adb_device);
+	misc_register(&adb_enable_device);
 	return;
 
 fail:
@@ -457,6 +494,7 @@ static int __init adb_init(void)
 	atomic_set(&ctxt->open_excl, 0);
 	atomic_set(&ctxt->read_excl, 0);
 	atomic_set(&ctxt->write_excl, 0);
+	atomic_set(&ctxt->enable_excl, 0);
 
 	spin_lock_init(&ctxt->lock);
 

@@ -227,10 +227,6 @@ msmrtc_suspend(struct platform_device *dev, pm_message_t state)
 	if (rtcalarm_time) {
 		unsigned long now = msmrtc_get_seconds();
 		int diff = rtcalarm_time - now;
-
-		printk(KERN_DEBUG "%s: Suspending with alarm in %d secs\n",
-		       rtc->name, diff);
-
 		if (diff <= 0) {
 			msmrtc_alarmtimer_expired(1);
 			msm_pm_set_max_sleep_time(0);
@@ -248,9 +244,6 @@ msmrtc_resume(struct platform_device *dev)
 	if (rtcalarm_time) {
 		unsigned long now = msmrtc_get_seconds();
 		int diff = rtcalarm_time - now;
-
-		printk(KERN_DEBUG "%s: Resuming with alarm in %d secs\n",
-		       rtc->name, diff);
 		if (diff <= 0)
 			msmrtc_alarmtimer_expired(2);
 	}

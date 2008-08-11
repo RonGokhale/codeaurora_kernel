@@ -52,6 +52,8 @@ struct clock_state
 	uint32_t			acpu_switch_time_us;
 	uint32_t			max_speed_delta_khz;
 	uint32_t			vdd_switch_time_us;
+	unsigned long			power_collapse_khz;
+	unsigned long			wait_for_irq_khz;
 };
 
 static struct clock_state drv_state = { 0 };
@@ -264,6 +266,14 @@ EXPORT_SYMBOL(clk_set_flags);
  * ARM11 'owned' clock control
  *---------------------------------------------------------------------------*/
 
+int acpuclk_power_collapse(void) {
+	return acpuclk_set_rate(NULL, drv_state.power_collapse_khz, 1);
+}
+
+int acpuclk_wait_for_irq(void) {
+	return acpuclk_set_rate(NULL, drv_state.wait_for_irq_khz, 1);
+}
+
 static int acpuclk_enable(struct clk *clk)
 {
 	return 0; /* acpuclk is always enabled */
@@ -311,6 +321,7 @@ static void acpuclk_set_div(const struct clkctl_acpu_speed *hunt_s) {
 	 */
 	if (hunt_s->ahbclk_div > clk_div) {
 		reg_clksel = readl(A11S_CLK_SEL_ADDR);
+		reg_clksel &= ~(0x3 << 1);
 		reg_clksel |= (hunt_s->ahbclk_div << 1);
 		writel(reg_clksel, A11S_CLK_SEL_ADDR);
 	}
@@ -360,6 +371,7 @@ static void acpuclk_set_div(const struct clkctl_acpu_speed *hunt_s) {
 	 */
 	if (hunt_s->ahbclk_div < clk_div) {
 		reg_clksel = readl(A11S_CLK_SEL_ADDR);
+		reg_clksel &= ~(0x3 << 1);
 		reg_clksel |= (hunt_s->ahbclk_div << 1);
 		writel(reg_clksel, A11S_CLK_SEL_ADDR);
 	}
@@ -370,8 +382,10 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 	uint32_t reg_clkctl;
 	struct clkctl_acpu_speed *cur_s, *tgt_s, *strt_s;
 	int rc = 0;
-	struct cpufreq_freqs freqs;
 	unsigned long flags;
+#if defined(CONFIG_CPU_FREQ)
+	struct cpufreq_freqs freqs;
+#endif
 
 	strt_s = cur_s = drv_state.current_speed;
 
@@ -385,6 +399,12 @@ int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse
 
 	if (tgt_s->a11clk_khz == 0)
 		return -EINVAL;
+
+	/* Choose the highest speed speed at or below 'rate' with same PLL. */
+	if (for_power_collapse && tgt_s->a11clk_khz < cur_s->a11clk_khz) {
+		while (tgt_s->pll != ACPU_PLL_TCXO && tgt_s->pll != cur_s->pll)
+			tgt_s--;
+	}
 
 	/* Save baseline lpj on the first clock change. */
 	spin_lock_irqsave(&clk_set_lock, flags);
@@ -783,8 +803,10 @@ device_initcall(msm_cpufreq_register);
  * Clock driver initialization
  *---------------------------------------------------------------------------*/
 void __init clock_init(uint32_t acpu_switch_time_us,
-		       uint32_t max_speed_delta_khz,
-		       uint32_t vdd_switch_time_us)
+			uint32_t max_speed_delta_khz,
+			uint32_t vdd_switch_time_us,
+			unsigned long power_collapse_khz,
+			unsigned long wait_for_irq_khz)
 {
 	pr_info("clock_init()\n");
 
@@ -793,6 +815,8 @@ void __init clock_init(uint32_t acpu_switch_time_us,
 	drv_state.acpu_switch_time_us = acpu_switch_time_us;
 	drv_state.max_speed_delta_khz = max_speed_delta_khz;
 	drv_state.vdd_switch_time_us = vdd_switch_time_us;
+	drv_state.power_collapse_khz = power_collapse_khz;
+	drv_state.wait_for_irq_khz = wait_for_irq_khz;
 }
 
 /* The bootloader and/or AMSS may have left various clocks enabled.

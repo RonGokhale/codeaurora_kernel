@@ -18,6 +18,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/pm.h>
 #include <linux/proc_fs.h>
@@ -59,6 +60,8 @@ static int msm_pm_idle_sleep_mode = CONFIG_MSM7X00A_IDLE_SLEEP_MODE;
 module_param_named(idle_sleep_mode, msm_pm_idle_sleep_mode, int, S_IRUGO | S_IWUSR | S_IWGRP);
 static int msm_pm_idle_sleep_min_time = CONFIG_MSM7X00A_IDLE_SLEEP_MIN_TIME;
 module_param_named(idle_sleep_min_time, msm_pm_idle_sleep_min_time, int, S_IRUGO | S_IWUSR | S_IWGRP);
+static int msm_pm_idle_spin_time = CONFIG_MSM7X00A_IDLE_SPIN_TIME;
+module_param_named(idle_spin_time, msm_pm_idle_spin_time, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 #define A11S_CLK_SLEEP_EN (MSM_CSR_BASE + 0x11c)
 #define A11S_PWRDOWN (MSM_CSR_BASE + 0x440)
@@ -69,6 +72,8 @@ static struct clk *acpu_clk;
 unsigned long pm_saved_acpu_clk_rate;
 
 int acpuclk_set_rate(struct clk *clk, unsigned long rate, int for_power_collapse);
+int acpuclk_wait_for_irq(void);
+int acpuclk_power_collapse(void);
 
 int msm_pm_collapse(void);
 int msm_arch_idle(void);
@@ -77,6 +82,7 @@ void msm_pm_collapse_exit(void);
 int64_t msm_timer_enter_idle(void);
 void msm_timer_exit_idle(int low_power);
 int msm_irq_idle_sleep_allowed(void);
+int msm_irq_pending(void);
 
 static uint32_t *msm_pm_reset_vector;
 
@@ -85,6 +91,7 @@ static uint32_t msm_pm_max_sleep_time;
 #ifdef CONFIG_MSM_IDLE_STATS
 enum msm_pm_time_stats_id {
 	MSM_PM_STAT_REQUESTED_IDLE,
+	MSM_PM_STAT_IDLE_SPIN,
 	MSM_PM_STAT_IDLE_WFI,
 	MSM_PM_STAT_IDLE_SLEEP,
 	MSM_PM_STAT_IDLE_FAILED_SLEEP,
@@ -101,6 +108,7 @@ static struct msm_pm_time_stats {
 	int64_t total_time;
 } msm_pm_stats[MSM_PM_STAT_COUNT] = {
 	[MSM_PM_STAT_REQUESTED_IDLE].name = "idle-request",
+	[MSM_PM_STAT_IDLE_SPIN].name = "idle-spin",
 	[MSM_PM_STAT_IDLE_WFI].name = "idle-wfi",
 	[MSM_PM_STAT_IDLE_SLEEP].name = "idle-sleep",
 	[MSM_PM_STAT_IDLE_FAILED_SLEEP].name = "idle-failed-sleep",
@@ -128,8 +136,6 @@ static void msm_pm_add_stat(enum msm_pm_time_stats_id id, int64_t t)
 		msm_pm_stats[id].max_time[i] = t;
 }
 #endif
-
-#define TARGET_CLOCK_RATE 19200000
 
 static int
 msm_pm_wait_state(uint32_t wait_state_all_set, uint32_t wait_state_all_clear,
@@ -239,9 +245,9 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 	if (sleep_mode <= MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT) {
 		pm_saved_acpu_clk_rate = clk_get_rate(acpu_clk);
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_CLOCK)
-			printk(KERN_INFO "msm_sleep(): change clk %ld -> %d"
-			       "\n", pm_saved_acpu_clk_rate, TARGET_CLOCK_RATE);
-		acpuclk_set_rate(acpu_clk, TARGET_CLOCK_RATE, 1);
+			printk(KERN_INFO "msm_sleep(): %ld enter power collapse"
+			       "\n", pm_saved_acpu_clk_rate);
+		acpuclk_power_collapse();
 	}
 	if (sleep_mode < MSM_PM_SLEEP_MODE_APPS_SLEEP) {
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_SMSM_STATE)
@@ -274,8 +280,8 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 
 	if (sleep_mode <= MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT) {
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_CLOCK)
-			printk(KERN_INFO "msm_sleep(): change clk %d -> %ld"
-			       "\n", TARGET_CLOCK_RATE, pm_saved_acpu_clk_rate);
+			printk(KERN_INFO "msm_sleep(): exit power collapse %ld"
+			       "\n", pm_saved_acpu_clk_rate);
 		if (acpuclk_set_rate(acpu_clk, pm_saved_acpu_clk_rate, 1) < 0)
 			printk(KERN_ERR "msm_sleep(): clk_set_rate %ld "
 			       "failed\n", pm_saved_acpu_clk_rate);
@@ -319,6 +325,7 @@ enter_failed:
 void arch_idle(void)
 {
 	int ret;
+	int spin;
 	int64_t sleep_time;
 	int low_power = 0;
 #ifdef CONFIG_MSM_IDLE_STATS
@@ -332,6 +339,9 @@ void arch_idle(void)
 		android_power_is_low_power_idle_ok() &&
 #endif
 		msm_irq_idle_sleep_allowed();
+	if (acpu_clk == NULL)
+		return;
+
 	sleep_time = msm_timer_enter_idle();
 #ifdef CONFIG_MSM_IDLE_STATS
 	t1 = ktime_to_ns(ktime_get());
@@ -341,8 +351,30 @@ void arch_idle(void)
 	if (msm_pm_debug_mask & MSM_PM_DEBUG_IDLE)
 		printk(KERN_INFO "arch_idle: sleep time %llu, allow_sleep %d\n",
 		       sleep_time, allow_sleep);
+	spin = msm_pm_idle_spin_time >> 10;
+	while (spin-- > 0) {
+		if (msm_irq_pending()) {
+#ifdef CONFIG_MSM_IDLE_STATS
+			exit_stat = MSM_PM_STAT_IDLE_SPIN;
+#endif
+			goto abort_idle;
+		}
+		udelay(1);
+	}
 	if (sleep_time < msm_pm_idle_sleep_min_time || !allow_sleep) {
+		unsigned long saved_rate;
+		saved_rate = clk_get_rate(acpu_clk);
+		if (msm_pm_debug_mask & MSM_PM_DEBUG_CLOCK)
+			printk(KERN_DEBUG "arch_idle: clk %ld -> swfi\n",
+				saved_rate);
+		acpuclk_wait_for_irq();
 		msm_arch_idle();
+		if (msm_pm_debug_mask & MSM_PM_DEBUG_CLOCK)
+			printk(KERN_DEBUG "msm_sleep: clk swfi -> %ld\n",
+				saved_rate);
+		if (acpuclk_set_rate(acpu_clk, saved_rate, 1) < 0)
+			printk(KERN_ERR "msm_sleep(): clk_set_rate %ld "
+			       "failed\n", saved_rate);
 #ifdef CONFIG_MSM_IDLE_STATS
 		exit_stat = MSM_PM_STAT_IDLE_WFI;
 #endif
@@ -361,6 +393,7 @@ void arch_idle(void)
 			exit_stat = MSM_PM_STAT_IDLE_SLEEP;
 #endif
 	}
+abort_idle:
 	msm_timer_exit_idle(low_power);
 #ifdef CONFIG_MSM_IDLE_STATS
 	t2 = ktime_to_ns(ktime_get());
