@@ -61,7 +61,7 @@ static void mmcblk_log_request_end(int cmd_err, int data_err, int stop_err, unsi
 struct mmc_blk_data {
 	spinlock_t	lock;
 	struct gendisk	*disk;
-	struct mmc_queue queue;
+	struct mmc_queue *queue;
 
 	unsigned int	usage;
 	unsigned int	block_bits;
@@ -206,10 +206,25 @@ static u32 mmc_sd_num_wr_blocks(struct mmc_card *card)
 
 static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 {
-	struct mmc_blk_data *md = mq->data;
-	struct mmc_card *card = md->queue.card;
+	struct mmc_blk_data *md;
+	struct mmc_card *card;
 	struct mmc_blk_request brq;
 	int ret = 1, sg_pos, data_size;
+	unsigned long flags;
+
+	spin_lock_irqsave(&mq->lock, flags);
+	md = mq->data;
+	card = mq->card;
+	spin_unlock_irqrestore(&mq->lock, flags);
+
+	if (!card) {
+		printk(KERN_ERR "%s: Lost race! (Draining requests)\n",
+		       __func__);
+		while (ret)
+			ret = __blk_end_request(req, -EIO,
+						blk_rq_cur_bytes(req));
+		return 0;
+	}
 
 	mmc_claim_host(card->host);
 
@@ -469,14 +484,14 @@ static struct mmc_blk_data *mmc_blk_alloc(struct mmc_card *card)
 	if (ret)
 		goto err_putdisk;
 
-	md->queue.issue_fn = mmc_blk_issue_rq;
-	md->queue.data = md;
+	md->queue->issue_fn = mmc_blk_issue_rq;
+	md->queue->data = md;
 
 	md->disk->major	= MMC_BLOCK_MAJOR;
 	md->disk->first_minor = devidx << MMC_SHIFT;
 	md->disk->fops = &mmc_bdops;
 	md->disk->private_data = md;
-	md->disk->queue = md->queue.queue;
+	md->disk->queue = md->queue->queue;
 	md->disk->driverfs_dev = &card->dev;
 
 	/*
@@ -493,7 +508,7 @@ static struct mmc_blk_data *mmc_blk_alloc(struct mmc_card *card)
 
 	sprintf(md->disk->disk_name, "mmcblk%d", devidx);
 
-	blk_queue_hardsect_size(md->queue.queue, 1 << md->block_bits);
+	blk_queue_hardsect_size(md->queue->queue, 1 << md->block_bits);
 
 	if (!mmc_card_sd(card) && mmc_card_blockaddr(card)) {
 		/*
@@ -588,7 +603,7 @@ static void mmc_blk_remove(struct mmc_card *card)
 		del_gendisk(md->disk);
 
 		/* Then flush out any already in there */
-		mmc_cleanup_queue(&md->queue);
+		mmc_cleanup_queue(md->queue);
 
 		mmc_blk_put(md);
 	}
@@ -601,7 +616,7 @@ static int mmc_blk_suspend(struct mmc_card *card, pm_message_t state)
 	struct mmc_blk_data *md = mmc_get_drvdata(card);
 
 	if (md) {
-		mmc_queue_suspend(&md->queue);
+		mmc_queue_suspend(md->queue);
 	}
 	return 0;
 }
@@ -612,7 +627,7 @@ static int mmc_blk_resume(struct mmc_card *card)
 
 	if (md) {
 		mmc_blk_set_blksize(md, card);
-		mmc_queue_resume(&md->queue);
+		mmc_queue_resume(md->queue);
 	}
 	return 0;
 }
