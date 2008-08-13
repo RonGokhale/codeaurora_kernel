@@ -41,6 +41,7 @@
 #define FLAG_DISABLE_HIBERNATION 0x0001
 #define FLAG_HAVE_CAPS		 0x0002
 #define FLAG_HAS_VSYNC_IRQ	 0x0004
+#define FLAG_HAVE_STATUS	 0x0008
 
 #define CMD_GET_CLIENT_CAP     0x0601
 #define CMD_GET_CLIENT_STATUS  0x0602
@@ -93,6 +94,7 @@ struct mddi_info
 	struct reg_read_info *reg_read;
 
 	struct mddi_client_caps caps;
+	struct mddi_client_status status;
 
 #ifdef CONFIG_ANDROID_POWER
 	android_early_suspend_t early_suspend;
@@ -132,21 +134,36 @@ static void mddi_handle_link_list_done(struct mddi_info *mddi)
 {
 }
 
+static void mddi_reset_rev_encap_ptr(struct mddi_info *mddi)
+{
+	printk(KERN_INFO "mddi: resetting rev ptr\n");
+	mddi->rev_data_curr = 0;
+	mddi_writel(mddi->rev_addr, REV_PTR);
+	mddi_writel(mddi->rev_addr, REV_PTR);
+	mddi_writel(MDDI_CMD_FORCE_NEW_REV_PTR, CMD);
+}
+
 static void mddi_handle_rev_data(struct mddi_info *mddi, union mddi_rev *rev)
 {
 	int i;
 	struct reg_read_info *ri;
 
-	if ((rev->hdr.length < MDDI_REV_BUFFER_SIZE) &&
-	   (rev->hdr.length >= sizeof(struct mddi_rev_packet))) {
+	if ((rev->hdr.length <= MDDI_REV_BUFFER_SIZE - 2) &&
+	   (rev->hdr.length >= sizeof(struct mddi_rev_packet) - 2)) {
 		/* printk(KERN_INFO "rev: len=%04x type=%04x\n",
 		 * rev->hdr.length, rev->hdr.type); */
 
 		switch (rev->hdr.type) {
-		case 66: /* client caps */
+		case TYPE_CLIENT_CAPS:
 			memcpy(&mddi->caps, &rev->caps,
 			       sizeof(struct mddi_client_caps));
 			mddi->flags |= FLAG_HAVE_CAPS;
+			wake_up(&mddi->int_wait);
+			break;
+		case TYPE_CLIENT_STATUS:
+			memcpy(&mddi->status, &rev->status,
+			       sizeof(struct mddi_client_status));
+			mddi->flags |= FLAG_HAVE_STATUS;
 			wake_up(&mddi->int_wait);
 			break;
 		case TYPE_REGISTER_ACCESS:
@@ -185,12 +202,16 @@ static void mddi_handle_rev_data(struct mddi_info *mddi, union mddi_rev *rev)
 				printk(KERN_INFO " %02x", rev->raw[i]);
 			}
 			printk(KERN_INFO "\n");
+			mddi_reset_rev_encap_ptr(mddi);
 		}
 	} else {
 		printk(KERN_INFO "bad rev length, %d, CURR_REV_PTR %x\n",
 		       rev->hdr.length, mddi_readl(CURR_REV_PTR));
+		mddi_reset_rev_encap_ptr(mddi);
 	}
 }
+
+static void mddi_wait_interrupt(struct mddi_info *mddi, uint32_t intmask);
 
 static void mddi_handle_rev_data_avail(struct mddi_info *mddi)
 {
@@ -210,8 +231,8 @@ static void mddi_handle_rev_data_avail(struct mddi_info *mddi)
 	rev_crc_err_count = mddi_readl(REV_CRC_ERR);
 	if (rev_data_count > 1)
 		printk(KERN_INFO "rev_data_count %d\n", rev_data_count);
-	/* printk(KERN_INFO "rev_data_count %d, INT %x\n", rev_data_count,
-	 * mddi_readl(INT)); */
+       /* printk(KERN_INFO "rev_data_count %d, INT %x\n", rev_data_count,
+        * mddi_readl(INT)); */
 
 	if (rev_crc_err_count) {
 		printk(KERN_INFO "rev_crc_err_count %d, INT %x\n",
@@ -257,8 +278,13 @@ static void mddi_handle_rev_data_avail(struct mddi_info *mddi)
 		mddi->rev_data_curr =
 			mddi->rev_data_curr % MDDI_REV_BUFFER_SIZE;
 
-	/* printk(KERN_INFO "rev_data_curr %d + 2 + %d = %d\n",
-	 *  prev_offset, length, mddi->rev_data_curr); */
+	if (length > MDDI_REV_BUFFER_SIZE - 2) {
+		printk(KERN_INFO "mddi: rev data length greater than buffer"
+			"size\n");
+		mddi_reset_rev_encap_ptr(mddi);
+		return;
+	}
+
 	if (prev_offset + 2 + length >= MDDI_REV_BUFFER_SIZE) {
 		union mddi_rev tmprev;
 		size_t rem = MDDI_REV_BUFFER_SIZE - prev_offset;
@@ -298,8 +324,8 @@ static irqreturn_t mddi_isr(int irq, void *data)
 
 	mddi_writel(active, INT);
 
-	/* printk(KERN_INFO "%s: isr a=%08x e=%08x s=%08x\n", */
-	/*		mddi->name, active, mddi->int_enable, status); */
+	/* printk(KERN_INFO "%s: isr a=%08x e=%08x s=%08x\n",
+		mddi->name, active, mddi->int_enable, status); */
 
 	/* ignore any interrupts we have disabled */
 	active &= mddi->int_enable;
@@ -323,6 +349,7 @@ static irqreturn_t mddi_isr(int irq, void *data)
 	}
 	if (active & MDDI_INT_REV_DATA_AVAIL)
 		mddi_handle_rev_data_avail(mddi);
+
 	if (active & ~MDDI_INT_NEED_CLEAR)
 		mddi->int_enable &= ~(active & ~MDDI_INT_NEED_CLEAR);
 
@@ -348,9 +375,10 @@ static long mddi_wait_interrupt_timeout(struct mddi_info *mddi, uint32_t intmask
 static void mddi_wait_interrupt(struct mddi_info *mddi, uint32_t intmask)
 {
 	if (mddi_wait_interrupt_timeout(mddi, intmask, HZ/10) == 0)
-		printk(KERN_INFO KERN_ERR "mddi_wait_interrupt, timeout "
-		       "waiting for %x, INT = %x, STAT = %x\n",
-		       intmask, mddi_readl(INT), mddi_readl(STAT));
+		printk(KERN_INFO KERN_ERR "mddi_wait_interrupt %d, timeout "
+		       "waiting for %x, INT = %x, STAT = %x gotint = %x\n",
+		       current->pid, intmask, mddi_readl(INT), mddi_readl(STAT),
+		       mddi->got_int);
 }
 
 static void mddi_init_rev_encap(struct mddi_info *mddi)
@@ -438,15 +466,14 @@ void mddi_power_panel(struct mddi_panel_info *panel, int on)
 #ifdef CONFIG_ANDROID_POWER
 static void mddi_early_suspend(android_early_suspend_t *h)
 {
-	struct mddi_info *mddi = container_of(h, struct mddi_info, early_suspend);
-#if 0
-	if (mddi->panel_power)
-		mddi->panel_power(&mddi->panel_info, 0);
-#endif
+	struct mddi_info *mddi = container_of(h, struct mddi_info,
+				 early_suspend);
 	if (mddi->mddi_enable)
 		mddi->mddi_enable(&mddi->panel_info, 0);
 	if (mddi->mddi_client_power)
 		mddi->mddi_client_power(0);
+	mddi_writel(MDDI_CMD_RESET, CMD);
+	mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
 	clk_disable(mddi->clk);
 }
 
@@ -459,6 +486,13 @@ static void mddi_early_resume(android_early_suspend_t *h)
 		mddi->mddi_client_power(1);
 
 	clk_enable(mddi->clk);
+	mddi->rev_data_curr = 0;
+	mddi_init_registers(mddi);
+	mddi_writel(mddi->int_enable, INTEN);
+	mddi_writel(MDDI_CMD_LINK_ACTIVE, CMD);
+	mddi_writel(MDDI_CMD_SEND_RTD, CMD);
+	mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
+	mddi_writel(MDDI_CMD_HIBERNATE | 1, CMD);
 
 	if (mddi->mddi_enable)
 		mddi->mddi_enable(&mddi->panel_info, 1);
@@ -539,8 +573,12 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 	mddi->reg_write_data = dma + MDDI_REV_BUFFER_SIZE;
 	mddi->reg_write_addr = dma_addr + MDDI_REV_BUFFER_SIZE;
 	mddi->reg_read_data = mddi->reg_write_data + 1;
-	mddi->reg_read_addr = mddi->reg_write_addr + sizeof(*mddi->reg_write_data);
+	mddi->reg_read_addr = mddi->reg_write_addr +
+			      sizeof(*mddi->reg_write_data);
 
+	/* put the link in hibernate -- in case the bootloader didn't */
+	mddi_writel(MDDI_CMD_HIBERNATE | 1, CMD);
+	msleep(16);
 	mddi_init_registers(mddi);
 
 	if (mddi->version < 0x20) {
@@ -580,7 +618,7 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 			/* mddi_writel(mddi_readl(INTEN) | MDDI_INT_NO_CMD_PKTS_PEND, INTEN); */
 			/* printk(KERN_INFO "MDDI_CMD_SEND_RTD: stat %x, rtd val %x\n", mddi_readl(STAT), mddi_readl(RTD_VAL)); */
 			stat = mddi_readl(STAT);
-			printk(KERN_INFO "MDDI_CMD_SEND_RTD: int %x, stat %x, rtd val %x\n", mddi_readl(INT), stat, mddi_readl(RTD_VAL));
+			printk(KERN_INFO "mddi cmd send rtd: int %x, stat %x, rtd val %x\n", mddi_readl(INT), stat, mddi_readl(RTD_VAL));
 			/* msleep(10); */
 			/* printk(KERN_INFO "MDDI_CMD_SEND_RTD: stat %x, rtd val %x\n", mddi_readl(STAT), mddi_readl(RTD_VAL)); */
 			/* if((stat & MDDI_STAT_RTD_MEAS_FAIL) == 0) */
@@ -592,10 +630,13 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 
 		mddi_writel(CMD_GET_CLIENT_CAP, CMD);
 		mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
-		wait_event_timeout(mddi->int_wait, mddi->flags & FLAG_HAVE_CAPS, HZ / 100);
+		wait_event_timeout(mddi->int_wait, mddi->flags & FLAG_HAVE_CAPS,
+				   HZ / 100);
+
 		if (mddi->flags & FLAG_HAVE_CAPS)
 			break;
-		printk(KERN_INFO KERN_ERR "mddi_init, timeout waiting for caps\n");
+		printk(KERN_INFO KERN_ERR "mddi_init, timeout waiting for "
+			"caps\n");
 	}
 
 	if (mddi->flags & FLAG_HAVE_CAPS) {
@@ -650,6 +691,41 @@ fail:
 	printk(KERN_INFO "%s: mddi_init() failed (%d)\n", name, ret);
 	return ret;
 }
+
+/* link must be active when this is called */
+int mddi_check_status(struct mddi_info *mddi)
+{
+	int ret = 0, retry = 3;
+	mutex_lock(&mddi->reg_read_lock);
+
+	do {
+		mddi->flags &= ~FLAG_HAVE_STATUS;
+		mddi_writel(CMD_GET_CLIENT_STATUS, CMD);
+		mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
+		wait_event_timeout(mddi->int_wait,
+				   mddi->flags & FLAG_HAVE_STATUS,
+				   HZ / 100);
+
+		if (mddi->flags & FLAG_HAVE_STATUS) {
+			if (mddi->status.crc_error_count) {
+				printk("mddi status: crc_error count: %d\n",
+						mddi->status.crc_error_count);
+				ret = -1;
+			}
+		} else {
+			printk("mddi status: failed to get client status\n");
+			ret = -1;
+		}
+		if (!ret)
+			break;
+		mddi_writel(MDDI_CMD_SEND_RTD, CMD);
+		mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
+	} while (--retry);
+
+	mutex_unlock(&mddi->reg_read_lock);
+	return ret;
+}
+
 
 void mddi_remote_write(struct mddi_info *mddi, unsigned val, unsigned reg)
 {
@@ -771,7 +847,10 @@ unsigned mddi_remote_read(struct mddi_info *mddi, unsigned reg)
 		 * MDDI_CMD_SEND_RTD: int %x, stat %x, rtd val %x\n",
 		 * mddi_readl(INT), mddi_readl(STAT), mddi_readl(RTD_VAL)); */
 		mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
-		printk(KERN_INFO "mddi_remote_read: failed, sent MDDI_CMD_SEND_RTD: int %x, stat %x, rtd val %x\n", mddi_readl(INT), mddi_readl(STAT), mddi_readl(RTD_VAL));
+		printk(KERN_INFO "mddi_remote_read: failed, sent "
+		       "MDDI_CMD_SEND_RTD: int %x, stat %x, rtd val %x "
+		       "curr_rev_ptr %x\n", mddi_readl(INT), mddi_readl(STAT),
+		       mddi_readl(RTD_VAL), mddi_readl(CURR_REV_PTR));
 	} while (retry_count-- > 0);
 	/* Disable Periodic Reverse Encapsulation. */
 	mddi_writel(MDDI_CMD_PERIODIC_REV_ENCAP | 0, CMD);

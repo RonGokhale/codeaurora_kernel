@@ -48,6 +48,7 @@ void mddi_remote_write(struct mddi_info *mddi, unsigned val, unsigned reg);
 unsigned mddi_remote_read(struct mddi_info *mddi, unsigned reg);
 void mddi_activate_link(struct mddi_info *mddi);
 void mddi_hibernate_disable(struct mddi_info *mddi, int on);
+int mddi_check_status(struct mddi_info *mddi);
 
 void mdp_dma_to_mddi(uint32_t addr, uint32_t stride, uint32_t width,
 		     uint32_t height, uint32_t x, uint32_t y,
