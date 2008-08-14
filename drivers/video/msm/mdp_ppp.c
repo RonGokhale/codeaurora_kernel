@@ -25,7 +25,7 @@
 #define PPP_DEBUG_MSGS 0
 #if PPP_DEBUG_MSGS
 #define DLOG(fmt,args...) \
-	do { printk(KERN_INFO "[%s:%s:%d] "fmt, __FILE__, __func__, \
+	do { pdrintk(KERN_INFO "[%s:%s:%d] "fmt, __FILE__, __func__, \
 		    __LINE__, ##args); } \
 	while (0)
 #else
@@ -227,7 +227,6 @@ static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 #endif
 	if (dim_out % 3 == 0)
 		rpa = !(dim_in % (dim_out / 3));
-	DLOG("out %u in %u rpa %x\n", dim_out, dim_in, rpa);
 
 	n = ((uint64_t)dim_out) << 34;
 	d = dim_in;
@@ -235,7 +234,6 @@ static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 		return -1;
 	do_div(n, d);
 	k3 = (n + 1) >> 1;
-	DLOG("k3 %llx n %llx d %llx\n", k3, n, d);
 	if ((k3 >> 4) < (1LL << 27) || (k3 >> 4) > (1LL << 31)) {
 		DLOG("crap bad scale\n");
 		return -1;
@@ -250,7 +248,6 @@ static int scale_params(uint32_t dim_in, uint32_t dim_out, uint32_t origin,
 
 	*phase_init = (int)(k2 >> 4);
 	k4 = (k3 - ONE) >> 1;
-	DLOG("k1 %llx k2 %llx k3 %llx k4 %llx\n", k1, k2, k3, k4);
 
 	if (rpa) {
 		os = ((uint64_t)origin << 33) - ONE_HALF;
@@ -371,7 +368,7 @@ static int get_edge_cond(struct mdp_blit_req *req, struct mdp_regs *regs)
 	if (regs->op & (PPP_OP_SCALE_Y_ON | PPP_OP_SCALE_X_ON)) {
 		get_edge_info(req->src_rect.h, req->src_rect.y, dst_h,
 			      &luma_interp[IMG_TOP], &luma_interp[IMG_BOTTOM],
-		      &luma_repeat[IMG_TOP], &luma_repeat[IMG_BOTTOM]);
+			      &luma_repeat[IMG_TOP], &luma_repeat[IMG_BOTTOM]);
 		get_edge_info(req->src_rect.w, req->src_rect.x, dst_w,
 			      &luma_interp[IMG_LEFT], &luma_interp[IMG_RIGHT],
 			      &luma_repeat[IMG_LEFT], &luma_repeat[IMG_RIGHT]);
@@ -400,7 +397,7 @@ static int get_edge_cond(struct mdp_blit_req *req, struct mdp_regs *regs)
 		chroma_interp[IMG_LEFT] = chroma_interp[IMG_LEFT] >> 1;
 		chroma_interp[IMG_RIGHT] = (chroma_interp[IMG_RIGHT] + 1) >> 1;
 
-		chroma_bound[IMG_LEFT] = (chroma_bound[IMG_LEFT] + 1) >> 1;
+		chroma_bound[IMG_LEFT] = chroma_bound[IMG_LEFT] >> 1;
 		chroma_bound[IMG_RIGHT] = chroma_bound[IMG_RIGHT] >> 1;
 	}
 
@@ -410,7 +407,7 @@ static int get_edge_cond(struct mdp_blit_req *req, struct mdp_regs *regs)
 		chroma_interp[IMG_BOTTOM] = (chroma_interp[IMG_BOTTOM] + 1)
 					    >> 1;
 		chroma_bound[IMG_TOP] = (chroma_bound[IMG_TOP] + 1) >> 1;
-		chroma_bound[IMG_BOTTOM] = (chroma_bound[IMG_BOTTOM] - 1) >> 1;
+		chroma_bound[IMG_BOTTOM] = chroma_bound[IMG_BOTTOM] >> 1;
 	}
 
 	chroma_repeat[IMG_LEFT] = chroma_bound[IMG_LEFT] -
@@ -504,8 +501,6 @@ static int blit_scale(struct mdp_blit_req *req, struct mdp_regs *regs)
 	regs->phasey_init = phase_init_y;
 	regs->phasex_step = phase_step_x;
 	regs->phasey_step = phase_step_y;
-	DLOG("init x:%x step x:%x init y:%x step y:%x\n",
-	     phase_init_x, phase_step_x, phase_init_y, phase_step_y);
 	regs->op |= (PPP_OP_SCALE_Y_ON | PPP_OP_SCALE_X_ON);
 	return 0;
 
@@ -758,7 +753,8 @@ int blit(struct fb_info *info, struct mdp_blit_req *req,
 		req->dst_rect.x = req->dst_rect.x & (~0x1);
 		req->dst_rect.w = req->dst_rect.w & (~0x1);
 	}
-	get_edge_cond(req, &regs);
+	if (get_edge_cond(req, &regs))
+		return -EINVAL;
 
 	send_blit(req, &regs);
 	return 0;
@@ -793,6 +789,9 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		put_pmem_fd(req->src.memory_id);
 		return -EINVAL;
 	}
+
+	/* transp_masking unimplemented */
+	req->transp_mask = MDP_TRANSP_NOP;
 
 	if (unlikely((req->transp_mask != MDP_TRANSP_NOP ||
 	     req->alpha != MDP_ALPHA_NOP ||
