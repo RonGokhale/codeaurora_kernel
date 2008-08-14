@@ -51,6 +51,7 @@ extern int load_565rle_image( char *filename );
 #define SUSPEND_RESUME 0x1
 #define FPS 0x2
 #define BLIT_TIME 0x4
+#define SHOW_UPDATES 0x8
 
 #define DLOG(mask,fmt,args...) \
 do { \
@@ -83,8 +84,10 @@ struct msmfb_info {
 	android_suspend_lock_t idle_lock;
 #endif
 	spinlock_t update_lock;
+	struct mutex panel_init_lock;
 	wait_queue_head_t frame_wq;
 	char* black;
+	struct workqueue_struct *resume_workqueue;
 	struct work_struct resume_work;
 	struct msmfb_callback dma_callback;
 	struct msmfb_callback vsync_callback;
@@ -118,7 +121,7 @@ static void msmfb_handle_dma_interrupt(struct msmfb_callback *callback)
 	par->frame_done = par->frame_requested;
 	if (par->sleeping == UPDATING && par->frame_done == par->update_frame) {
 		DLOG(SUSPEND_RESUME, "full update completed\n");
-		schedule_work(&par->resume_work);
+		queue_work(par->resume_workqueue, &par->resume_work);
 	}
 #if PRINT_FPS
 	now = ktime_get();
@@ -210,6 +213,8 @@ static void msmfb_pan_update(struct fb_info *info, uint32_t left, uint32_t top,
 	t1 = ktime_get();
 #endif
 
+	DLOG(SHOW_UPDATES, "update %d %d %d %d %d %d\n",
+		left, top, eright, ebottom, yoffset, pan_display);
 restart:
 	spin_lock_irqsave(&par->update_lock, irq_flags);
 
@@ -220,16 +225,19 @@ restart:
 		spin_unlock_irqrestore(&par->update_lock, irq_flags);
 		if (pan_display)
 			wait_event_interruptible_timeout(par->frame_wq,
-				par->sleeping == AWAKE, HZ/10);
+				par->sleeping != SLEEPING, HZ/10);
 		return;
 	}
 
 	sleeping = par->sleeping;
 	/* on a full update, if the last frame has not completed, wait for it */
-	if (pan_display && par->frame_requested != par->frame_done) {
+	if (pan_display && (par->frame_requested != par->frame_done || sleeping == UPDATING)) {
+		int ret;
 		spin_unlock_irqrestore(&par->update_lock, irq_flags);
-		if (wait_event_interruptible_timeout(par->frame_wq,
-		    par->frame_done == par->frame_requested, HZ) <= 0) {
+		ret = wait_event_interruptible_timeout(par->frame_wq,
+			par->frame_done == par->frame_requested &&
+			par->sleeping != UPDATING, 5 * HZ);
+		if (ret <= 0 && (par->frame_requested != par->frame_done || par->sleeping == UPDATING)) {
 			printk(KERN_WARNING "msmfb_pan_display timeout waiting "
 					    "for frame start, %d %d\n",
 					    par->frame_requested,
@@ -279,6 +287,10 @@ restart:
 		par->update_info.eright = eright;
 	if (ebottom > par->update_info.ebottom)
 		par->update_info.ebottom = ebottom;
+	DLOG(SHOW_UPDATES, "update queued %d %d %d %d %d\n",
+		par->update_info.left, par->update_info.top,
+		par->update_info.eright, par->update_info.ebottom,
+		par->yoffset);
 	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 
 	/* if the panel is all the way on wait for vsync, otherwise sleep
@@ -308,11 +320,16 @@ static void power_on_panel(struct work_struct *work)
 	unsigned long irq_flags;
 
 	struct mddi_panel_info *pi = par->panel_info;
+	mutex_lock(&par->panel_init_lock);
 	DLOG(SUSPEND_RESUME, "turning on panel\n");
-	pi->panel_ops->power(pi, 1);
-	spin_lock_irqsave(&par->update_lock, irq_flags);
-	par->sleeping = AWAKE;
-	spin_unlock_irqrestore(&par->update_lock, irq_flags);
+	if (par->sleeping == UPDATING) {
+		pi->panel_ops->power(pi, 1);
+		spin_lock_irqsave(&par->update_lock, irq_flags);
+		par->sleeping = AWAKE;
+		wake_up(&par->frame_wq);
+		spin_unlock_irqrestore(&par->update_lock, irq_flags);
+	}
+	mutex_unlock(&par->panel_init_lock);
 }
 
 #ifdef CONFIG_ANDROID_POWER
@@ -324,8 +341,10 @@ static void msmfb_slightly_earlier_suspend(android_early_suspend_t *h)
 	struct mddi_panel_info *pi = par->panel_info;
 	unsigned int irq_flags;
 
+	mutex_lock(&par->panel_init_lock);
 	spin_lock_irqsave(&par->update_lock, irq_flags);
 	par->sleeping = SLEEPING;
+	wake_up(&par->frame_wq);
 	spin_unlock_irqrestore(&par->update_lock, irq_flags);
 	wait_event_timeout(par->frame_wq,
 			   par->frame_requested == par->frame_done, HZ/10);
@@ -339,6 +358,7 @@ static void msmfb_slightly_earlier_suspend(android_early_suspend_t *h)
 	mdp_dma_wait();
 	/* turn off the backlight and the panel */
 	pi->panel_ops->power(pi, 0);
+	mutex_unlock(&par->panel_init_lock);
 }
 
 /* userspace has stopped drawing */
@@ -563,6 +583,7 @@ static int msmfb_probe(struct platform_device *pdev)
 	android_init_suspend_lock(&par->idle_lock);
 	par->fake_vsync.function = msmfb_fake_vsync;
 	spin_lock_init(&par->update_lock);
+	mutex_init(&par->panel_init_lock);
 	init_waitqueue_head(&par->frame_wq);
 
 	info->screen_base = fbram;
@@ -609,6 +630,11 @@ static int msmfb_probe(struct platform_device *pdev)
 		PP[r] = 0xffffffff;
 
 	par->black = kmalloc(2*par->fb_info->var.xres, GFP_KERNEL);
+	par->resume_workqueue = create_workqueue("panel_on");
+	if (par->resume_workqueue == NULL) {
+		printk(KERN_ERR "failed to create panel_on workqueue\n");
+		return -ENOMEM;
+	}
 	INIT_WORK(&par->resume_work, power_on_panel);
 	memset(par->black, 0, 2*par->fb_info->var.xres);
 

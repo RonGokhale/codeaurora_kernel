@@ -447,12 +447,10 @@ static void mddi_init_registers(struct mddi_info *mddi)
 
 void mddi_hibernate_disable(struct mddi_info *mddi, int on)
 {
-# if 0
-	if (on && !(mddi->flags & FLAG_DISABLE_HIBERNATION))
+	if (on)
 		mddi_writel(MDDI_CMD_HIBERNATE | 1, CMD);
 	else
 		mddi_writel(MDDI_CMD_HIBERNATE | 0, CMD);
-#endif 
 }
 
 void mddi_power_panel(struct mddi_panel_info *panel, int on)
