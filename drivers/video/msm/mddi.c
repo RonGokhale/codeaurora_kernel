@@ -333,16 +333,6 @@ static irqreturn_t mddi_isr(int irq, void *data)
 	mddi->got_int |= active;
 	wake_up(&mddi->int_wait);
 
-	if (active & MDDI_INT_LINK_ACTIVE) {
-		mddi->int_enable &= (~MDDI_INT_LINK_ACTIVE);
-		mddi->int_enable |= MDDI_INT_IN_HIBERNATION;
-		/* printk(KERN_INFO "%s: active\n", mddi->name); */
-	}
-	if (active & MDDI_INT_IN_HIBERNATION) {
-		mddi->int_enable &= (~MDDI_INT_IN_HIBERNATION);
-		mddi->int_enable |= MDDI_INT_LINK_ACTIVE;
-		/* printk(KERN_INFO "%s: hibernate\n", mddi->name); */
-	}
 	if (active & MDDI_INT_PRI_LINK_LIST_DONE) {
 		mddi->int_enable &= (~MDDI_INT_PRI_LINK_LIST_DONE);
 		mddi_handle_link_list_done(mddi);
@@ -391,9 +381,6 @@ static void mddi_init_rev_encap(struct mddi_info *mddi)
 
 static void mddi_init_registers(struct mddi_info *mddi)
 {
-	mddi_writel(MDDI_CMD_RESET, CMD);
-	mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
-
 	mddi_writel(0x0001, VERSION);
 	mddi_writel(MDDI_HOST_BYTES_PER_SUBFRAME, BPS);
 	mddi_writel(0x0003, SPM); /* subframes per media */
@@ -427,13 +414,7 @@ static void mddi_init_registers(struct mddi_info *mddi)
 	/* Need an even number for counts */
 	mddi_writel(0x60006, DRIVER_START_CNT);
 
-	if (mddi->flags & FLAG_DISABLE_HIBERNATION) {
-		mddi_writel(MDDI_CMD_HIBERNATE | 0, CMD);
-	} else {
-		/* hibernate after 1 empty subframe */
-		mddi_writel(MDDI_CMD_HIBERNATE | 1, CMD);
-	}
-	mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
+	mddi_set_auto_hibernate(mddi, 0);
 
 #if 1 /* ignore listen */
 	mddi_writel(MDDI_CMD_DISP_IGNORE, CMD);
@@ -445,12 +426,12 @@ static void mddi_init_registers(struct mddi_info *mddi)
 	mddi_init_rev_encap(mddi);
 }
 
-void mddi_hibernate_disable(struct mddi_info *mddi, int on)
+void mddi_set_auto_hibernate(struct mddi_info *mddi, int on)
 {
-	if (on)
-		mddi_writel(MDDI_CMD_HIBERNATE | 1, CMD);
-	else
-		mddi_writel(MDDI_CMD_HIBERNATE | 0, CMD);
+	mddi_writel(MDDI_CMD_POWERDOWN, CMD);
+	mddi_wait_interrupt(mddi, MDDI_INT_IN_HIBERNATION);
+	mddi_writel(MDDI_CMD_HIBERNATE | !!on, CMD);
+	mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
 }
 
 void mddi_power_panel(struct mddi_panel_info *panel, int on)
@@ -480,6 +461,7 @@ static void mddi_early_resume(android_early_suspend_t *h)
 	struct mddi_info *mddi = container_of(h, struct mddi_info,
 					      early_suspend);
 
+	mddi_set_auto_hibernate(mddi, 0);
 	if (mddi->mddi_client_power)
 		mddi->mddi_client_power(1);
 
@@ -490,7 +472,7 @@ static void mddi_early_resume(android_early_suspend_t *h)
 	mddi_writel(MDDI_CMD_LINK_ACTIVE, CMD);
 	mddi_writel(MDDI_CMD_SEND_RTD, CMD);
 	mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
-	mddi_writel(MDDI_CMD_HIBERNATE | 1, CMD);
+	mddi_set_auto_hibernate(mddi, 1);
 
 	if (mddi->mddi_enable)
 		mddi->mddi_enable(&mddi->panel_info, 1);
@@ -575,8 +557,9 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 			      sizeof(*mddi->reg_write_data);
 
 	/* put the link in hibernate -- in case the bootloader didn't */
-	mddi_writel(MDDI_CMD_HIBERNATE | 1, CMD);
-	msleep(16);
+	mddi_set_auto_hibernate(mddi, 0);
+	mddi_writel(MDDI_CMD_RESET, CMD);
+	mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
 	mddi_init_registers(mddi);
 
 	if (mddi->version < 0x20) {
@@ -589,13 +572,11 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 	/* clear any stale interrupts */
 	mddi_writel(0xffffffff, INT);
 
-	mddi->int_enable = MDDI_INT_LINK_ACTIVE |
-		       MDDI_INT_IN_HIBERNATION |
-		       MDDI_INT_PRI_LINK_LIST_DONE |
-		       MDDI_INT_REV_DATA_AVAIL |
-		       MDDI_INT_REV_OVERFLOW |
-		       MDDI_INT_REV_OVERWRITE |
-		       MDDI_INT_RTD_FAILURE;
+	mddi->int_enable = MDDI_INT_PRI_LINK_LIST_DONE |
+			   MDDI_INT_REV_DATA_AVAIL |
+			   MDDI_INT_REV_OVERFLOW |
+			   MDDI_INT_REV_OVERWRITE |
+			   MDDI_INT_RTD_FAILURE;
 	mddi_writel(mddi->int_enable, INTEN);
 
 	mddi_writel(MDDI_CMD_LINK_ACTIVE, CMD);
@@ -639,8 +620,7 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 
 	if (mddi->flags & FLAG_HAVE_CAPS) {
 		/* hibernate after 1 empty subframe */
-		mddi_writel(MDDI_CMD_HIBERNATE | 1, CMD);
-		mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
+		mddi_set_auto_hibernate(mddi, 1);
 
 		/* setup panel_info which will be used by the fb core */
 		mddi->panel_info.mddi = mddi;
