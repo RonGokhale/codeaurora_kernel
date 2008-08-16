@@ -305,7 +305,7 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		rem--;
 	}
 
-	return num;
+	ret = num;
  out_err:
 	spin_lock_irqsave(&dev->lock, flags);
 	dev->complete = NULL;
