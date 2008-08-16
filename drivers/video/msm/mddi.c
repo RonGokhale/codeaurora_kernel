@@ -673,8 +673,10 @@ fail:
 /* link must be active when this is called */
 int mddi_check_status(struct mddi_info *mddi)
 {
-	int ret = 0, retry = 3;
+	int ret = -1, retry = 3;
 	mutex_lock(&mddi->reg_read_lock);
+	mddi_writel(MDDI_CMD_PERIODIC_REV_ENCAP | 1, CMD);
+	mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
 
 	do {
 		mddi->flags &= ~FLAG_HAVE_STATUS;
@@ -685,21 +687,20 @@ int mddi_check_status(struct mddi_info *mddi)
 				   HZ / 100);
 
 		if (mddi->flags & FLAG_HAVE_STATUS) {
-			if (mddi->status.crc_error_count) {
+			if (mddi->status.crc_error_count)
 				printk("mddi status: crc_error count: %d\n",
 						mddi->status.crc_error_count);
-				ret = -1;
-			}
-		} else {
-			printk("mddi status: failed to get client status\n");
-			ret = -1;
-		}
-		if (!ret)
+			else
+				ret = 0;
 			break;
+		} else
+			printk("mddi status: failed to get client status\n");
 		mddi_writel(MDDI_CMD_SEND_RTD, CMD);
 		mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
 	} while (--retry);
 
+	mddi_writel(MDDI_CMD_PERIODIC_REV_ENCAP | 0, CMD);
+	mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
 	mutex_unlock(&mddi->reg_read_lock);
 	return ret;
 }
