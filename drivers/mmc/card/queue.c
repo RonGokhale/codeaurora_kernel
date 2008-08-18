@@ -126,11 +126,19 @@ static void mmc_request(struct request_queue *q)
  *
  * Initialise a MMC card request queue.
  */
-int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card, spinlock_t *lock)
+int mmc_init_queue(struct mmc_queue **mqp, struct mmc_card *card, spinlock_t *lock)
 {
+	struct mmc_queue *mq;
 	struct mmc_host *host = card->host;
 	u64 limit = BLK_BOUNCE_HIGH;
 	int ret;
+
+	*mqp = kzalloc(sizeof(struct mmc_queue), GFP_KERNEL);
+	if (!*mqp)
+		return -ENOMEM;
+	mq = *mqp;
+
+	spin_lock_init(&mq->lock);
 
 	if (mmc_dev(host)->dma_mask && *mmc_dev(host)->dma_mask)
 		limit = *mmc_dev(host)->dma_mask;
@@ -230,9 +238,26 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card, spinlock_t *lock
 
 void mmc_cleanup_queue(struct mmc_queue *mq)
 {
+	struct request_queue *q;
 	unsigned long flags;
 
 	BUG_ON(!mq);
+
+	q = mq->queue;
+
+	/* Mark that we should start throwing out stragglers */
+	spin_lock_irqsave(q->queue_lock, flags);
+	q->queuedata = NULL;
+	spin_unlock_irqrestore(q->queue_lock, flags);
+
+	/*
+	 * Mark that our worker thread shouldn't trust card anymore
+	 * This protects us from the race where
+	 */
+	spin_lock_irqsave(&mq->lock, flags);
+	mq->card = NULL;
+	mq->data = NULL;
+	spin_unlock_irqrestore(&mq->lock, flags);
 
 	/*
 	 * The actual cleanup is done from a work_queue because if you
@@ -249,7 +274,6 @@ static void mq_cleanup_work(struct work_struct *work)
 {
 	struct mmc_queue *mq;
 	unsigned long flags;
-	struct request_queue *q;
 
 	spin_lock_irqsave(&mq_cleanup_lock, flags);
 	mq = cleanup_mq;
@@ -257,13 +281,6 @@ static void mq_cleanup_work(struct work_struct *work)
 	spin_unlock_irqrestore(&mq_cleanup_lock, flags);
 
 	BUG_ON(!mq);
-
-	q = mq->queue;
-
-	/* Mark that we should start throwing out stragglers */
-	spin_lock_irqsave(q->queue_lock, flags);
-	q->queuedata = NULL;
-	spin_unlock_irqrestore(q->queue_lock, flags);
 
 	/* Make sure the queue isn't suspended, as that will deadlock */
 	mmc_queue_resume(mq);
@@ -286,7 +303,7 @@ static void mq_cleanup_work(struct work_struct *work)
 
 	blk_cleanup_queue(mq->queue);
 
-	mq->card = NULL;
+	kfree(mq);
 }
 
 /**
