@@ -803,7 +803,7 @@ unsigned mddi_remote_read(struct mddi_info *mddi, unsigned reg)
 		/* Enable Periodic Reverse Encapsulation. */
 		mddi_writel(MDDI_CMD_PERIODIC_REV_ENCAP | 1, CMD);
 		mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
-		if (wait_for_completion_timeout(&ri.done, HZ/60) == 0 &&
+		if (wait_for_completion_timeout(&ri.done, HZ/10) == 0 &&
 		    !ri.done.done) {
 			printk(KERN_INFO "mddi_remote_read(%x) timeout "
 					 "(%d %d %d)\n",
