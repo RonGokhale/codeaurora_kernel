@@ -74,6 +74,9 @@ struct pmem_data {
 	struct list_head region_list;
 	/* a linked list of data so we can access them for debugging */
 	struct list_head list;
+#if PMEM_DEBUG
+	int ref;
+#endif
 };
 
 struct pmem_bits {
@@ -346,6 +349,9 @@ static int pmem_open(struct inode *inode, struct file *file)
 	data->vma = NULL;
 	data->pid = 0;
 	data->master_file = NULL;
+#if PMEM_DEBUG
+	data->ref = 0;
+#endif
 	INIT_LIST_HEAD(&data->region_list);
 	init_rwsem(&data->sem);
 
@@ -722,6 +728,11 @@ int get_pmem_addr(struct file *file, unsigned long *start, unsigned long *len)
 	*start = pmem_start_addr(id, data);
 	*len = pmem_len(id, data);
 	up_read(&data->sem);
+#if PMEM_DEBUG
+	down_write(&data->sem);
+	data->ref++;
+	up_write(&data->sem);
+#endif
 	return 0;
 }
 
@@ -762,6 +773,16 @@ void put_pmem_file(struct file *file)
 		return;
 	id = get_id(file);
 	data = (struct pmem_data *)file->private_data;
+#if PMEM_DEBUG
+	down_write(&data->sem);
+	if (data->ref == 0) {
+		printk("pmem: pmem_put > pmem_get %s (pid %d)\n",
+		       pmem[id].dev.name, data->pid);
+		BUG();
+	}
+	data->ref--;
+	up_write(&data->sem);
+#endif
 	fput(file);
 }
 
@@ -890,7 +911,7 @@ lock_mm:
 		mm = get_task_mm(data->task);
 		if (!mm) {
 #if PMEM_DEBUG
-			printk("pmem: can't remap task is gone!");
+			printk("pmem: can't remap task is gone!\n");
 #endif
 			up_read(&data->sem);
 			return -1;
