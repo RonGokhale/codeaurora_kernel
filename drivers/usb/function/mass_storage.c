@@ -946,6 +946,7 @@ static int do_write(struct fsg_dev *fsg)
 /*-------------------------------------------------------------------------*/
 
 /* Sync the file data, don't bother with the metadata.
+ * The caller must own fsg->filesem.
  * This code was copied from fs/buffer.c:sys_fdatasync(). */
 static int fsync_sub(struct lun *curlun)
 {
@@ -2186,8 +2187,11 @@ static void handle_exception(struct fsg_dev *fsg)
 
 	case FSG_STATE_CONFIG_CHANGE:
 		rc = do_set_config(fsg, new_config);
-		if (new_config == 0)
+		if (new_config == 0) {
+			down_read(&fsg->filesem);	/* We're using the backing file */
 			fsync_all(fsg);
+			up_read(&fsg->filesem);
+		}
 		break;
 
 	case FSG_STATE_EXIT:
