@@ -352,6 +352,10 @@ static void msmfb_slightly_earlier_suspend(android_early_suspend_t *h)
 			   par->frame_requested == par->frame_done, HZ/10);
 
 	/* blank the screen */
+	if (!pi->ok) {
+		printk("msmfb: mddi link not ok, not blanking screen\n");
+		goto err_panel_failed;
+	}
 	msmfb_update(par->fb_info, 0, 0, par->fb_info->var.xres,
 		     par->fb_info->var.yres);
 	mdp_dma_to_mddi(virt_to_phys(par->black), 0,
@@ -359,6 +363,7 @@ static void msmfb_slightly_earlier_suspend(android_early_suspend_t *h)
 			NULL);
 	mdp_dma_wait();
 	/* turn off the backlight and the panel */
+err_panel_failed:
 	pi->panel_ops->power(pi, 0);
 	mutex_unlock(&par->panel_init_lock);
 }
@@ -373,8 +378,13 @@ static void msmfb_early_resume(android_early_suspend_t *h)
 {
 	struct msmfb_info *par = container_of(h, struct msmfb_info,
 				 early_suspend);
+	struct mddi_panel_info *pi = par->panel_info;
 	unsigned int irq_flags;
 
+	if (!pi->ok) {
+		printk("msmfb: mddi link not ok, not starting drawing\n");
+		return;
+	}
 	spin_lock_irqsave(&par->update_lock, irq_flags);
 	par->frame_requested = par->frame_done = par->update_frame = 0;
 	par->sleeping = WAKING;

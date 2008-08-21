@@ -27,6 +27,7 @@ struct mddi_panel_info
 	uint16_t height;
 	unsigned long fb_base;
 	unsigned long fb_size;
+	unsigned int ok;
 };
 
 struct msmfb_callback {
