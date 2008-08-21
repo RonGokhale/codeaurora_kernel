@@ -175,7 +175,19 @@ static int mdp_wait(uint32_t mask, wait_queue_head_t *wq)
 
 void mdp_dma_wait(void)
 {
-	mdp_wait(DL0_DMA2_TERM_DONE, &mdp_dma2_waitqueue);
+#define MDP_MAX_TIMEOUTS 20
+	static int timeout_count = 0;
+
+	if (mdp_wait(DL0_DMA2_TERM_DONE, &mdp_dma2_waitqueue) == -ETIMEDOUT)
+		timeout_count++;
+	else
+		timeout_count = 0;
+
+	if (timeout_count > MDP_MAX_TIMEOUTS) {
+		printk("mdp: dma failed %d times, somethings wrong!\n",
+		       MDP_MAX_TIMEOUTS);
+		BUG();
+	}
 }
 
 int mdp_ppp_wait(void)
