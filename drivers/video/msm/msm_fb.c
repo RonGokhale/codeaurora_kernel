@@ -320,18 +320,18 @@ static void power_on_panel(struct work_struct *work)
 	unsigned long irq_flags;
 
 	struct mddi_panel_info *pi = par->panel_info;
-	android_lock_idle_auto_expire(&par->idle_lock, HZ);
 	mutex_lock(&par->panel_init_lock);
 	DLOG(SUSPEND_RESUME, "turning on panel\n");
 	if (par->sleeping == UPDATING) {
+		android_lock_idle_auto_expire(&par->idle_lock, HZ);
 		pi->panel_ops->power(pi, 1);
+		android_unlock_suspend(&par->idle_lock);
 		spin_lock_irqsave(&par->update_lock, irq_flags);
 		par->sleeping = AWAKE;
 		wake_up(&par->frame_wq);
 		spin_unlock_irqrestore(&par->update_lock, irq_flags);
 	}
 	mutex_unlock(&par->panel_init_lock);
-	android_unlock_suspend(&par->idle_lock);
 }
 
 #ifdef CONFIG_ANDROID_POWER
