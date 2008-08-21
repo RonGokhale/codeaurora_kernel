@@ -102,10 +102,12 @@ static int rmnet_open(struct net_device *dev)
 	struct rmnet_private *p = netdev_priv(dev);
 
 	printk(KERN_INFO "rmnet_open()\n");
-	r = smd_open(p->chname, &p->ch, dev, smd_net_notify);
+	if (!p->ch) {
+		r = smd_open(p->chname, &p->ch, dev, smd_net_notify);
 
-	if (r < 0)
-		return -ENODEV;
+		if (r < 0)
+			return -ENODEV;
+	}
 
 	netif_start_queue(dev);
 	return 0;
@@ -116,9 +118,6 @@ static int rmnet_stop(struct net_device *dev)
 	struct rmnet_private *p = netdev_priv(dev);
 
 	printk(KERN_INFO "rmnet_stop()\n");
-	smd_close(p->ch);
-	p->ch = 0;
-
 	netif_stop_queue(dev);
 	return 0;
 }
