@@ -649,6 +649,7 @@ static int msmfb_probe(struct platform_device *pdev)
 	}
 	INIT_WORK(&par->resume_work, power_on_panel);
 	memset(par->black, 0, 2*par->fb_info->var.xres);
+	par->sleeping = WAKING;
 
 	r = register_framebuffer(info);
 	if (r)

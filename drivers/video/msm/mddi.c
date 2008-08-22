@@ -650,8 +650,6 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 
 		if (mddi->mddi_enable)
 			mddi->mddi_enable(&mddi->panel_info, 1);
-		if (mddi->panel_power)
-		        mddi->panel_power(&mddi->panel_info, 1);
 
 		printk(KERN_INFO "%s: publish: %s\n", mddi->name,
 		       mddi->client_name);
