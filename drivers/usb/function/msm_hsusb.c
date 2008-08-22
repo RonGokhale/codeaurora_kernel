@@ -1222,6 +1222,14 @@ static void usb_vbus_offline(struct work_struct *w)
 	pr_info("hsusb: vbus offline, clock disable\n");
 
 	spin_lock_irqsave(&ui->lock, flags);
+	if (vbus) {
+		/* if vbus came on, don't power down, and make
+		 * sure we actually power up 
+		 */
+		schedule_work(&ui->vbus_online);
+		spin_unlock_irqrestore(&ui->lock, flags);
+		return;
+	}
 	online = ui->online;
 	ui->online = 0;
 	spin_unlock_irqrestore(&ui->lock, flags);
@@ -1243,8 +1251,10 @@ void msm_hsusb_set_vbus_state(int online)
 	unsigned long flags;
 	struct usb_info *ui = the_usb_info;
 
+	spin_lock_irqsave(&ui->lock, flags);
+
 	if (vbus == online)
-		return;
+		goto done;
 
 	vbus = online;
 
@@ -1252,20 +1262,17 @@ void msm_hsusb_set_vbus_state(int online)
 	 * the VBUS state and return
 	 */
 	if (!ui)
-		return;
+		goto done;
 
-	spin_lock_irqsave(&ui->lock, flags);
-
-	if (!ui->running) {
-		spin_unlock_irqrestore(&ui->lock, flags);
-		return;
-	}
+	if (!ui->running)
+		goto done;
 
 	if (online) 
 		schedule_work(&ui->vbus_online);
 	else
 		schedule_work(&ui->vbus_offline);
 
+done:
 	spin_unlock_irqrestore(&ui->lock, flags);
 }
 
