@@ -152,6 +152,11 @@ static int msmfb_start_dma(struct msmfb_info *par)
 		spin_unlock_irqrestore(&par->update_lock, irq_flags);
 		return -1;
 	}
+	if (par->sleeping == SLEEPING) {
+		DLOG(SUSPEND_RESUME, "tried to start dma while asleep\n");
+		spin_unlock_irqrestore(&par->update_lock, irq_flags);
+		return -1;
+	}
 	x = par->update_info.left;
 	y = par->update_info.top;
 	w = par->update_info.eright - x;
