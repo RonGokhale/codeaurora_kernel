@@ -211,6 +211,7 @@ static void msmfb_pan_update(struct fb_info *info, uint32_t left, uint32_t top,
 	struct mddi_panel_info *pi = par->panel_info;
 	unsigned long irq_flags;
 	int sleeping;
+	int retry = 1;
 #if PRINT_FPS
 	ktime_t t1, t2;
 	static uint64_t pans;
@@ -243,11 +244,19 @@ restart:
 			par->frame_done == par->frame_requested &&
 			par->sleeping != UPDATING, 5 * HZ);
 		if (ret <= 0 && (par->frame_requested != par->frame_done || par->sleeping == UPDATING)) {
-			printk(KERN_WARNING "msmfb_pan_display timeout waiting "
-					    "for frame start, %d %d\n",
-					    par->frame_requested,
-					    par->frame_done);
-			return;
+			if (retry && pi->panel_ops->request_vsync && (sleeping == AWAKE)) {
+				android_lock_idle_auto_expire(&par->idle_lock, HZ/20);
+				pi->panel_ops->request_vsync(pi, &par->vsync_callback);
+				retry = 0;
+				printk(KERN_WARNING "msmfb_pan_display timeout "
+					"rerequest vsync\n");
+			}
+			else {
+				printk(KERN_WARNING "msmfb_pan_display timeout "
+					"waiting for frame start, %d %d\n",
+					par->frame_requested, par->frame_done);
+				return;
+			}
 		}
 		goto restart;
 	}
