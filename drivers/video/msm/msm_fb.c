@@ -92,6 +92,7 @@ struct msmfb_info {
 	struct msmfb_callback dma_callback;
 	struct msmfb_callback vsync_callback;
 	struct hrtimer fake_vsync;
+	ktime_t vsync_request_time;
 };
 
 static int msmfb_open(struct fb_info *info, int user)
@@ -145,9 +146,17 @@ static int msmfb_start_dma(struct msmfb_info *par)
 	unsigned addr;
 	unsigned long irq_flags;
 	uint32_t yoffset;
+	s64 time_since_request;
 	struct mddi_panel_info *pi = par->panel_info;
 
 	spin_lock_irqsave(&par->update_lock, irq_flags);
+	time_since_request = ktime_to_ns(ktime_sub(ktime_get(), par->vsync_request_time));
+	if (time_since_request > 20 * NSEC_PER_MSEC) {
+		uint32_t us;
+		us = do_div(time_since_request, NSEC_PER_MSEC) / NSEC_PER_USEC;
+		printk(KERN_WARNING "msmfb_start_dma %lld.%03u ms after vsync "
+			"request\n", time_since_request, us);
+	}
 	if (par->frame_done == par->frame_requested) {
 		spin_unlock_irqrestore(&par->update_lock, irq_flags);
 		return -1;
@@ -309,6 +318,7 @@ restart:
 
 	/* if the panel is all the way on wait for vsync, otherwise sleep
 	 * for 16 ms (long enough for the dma to panel) and then begin dma */
+	par->vsync_request_time = ktime_get();
 	if (pi->panel_ops->request_vsync && (sleeping == AWAKE)) {
 		android_lock_idle_auto_expire(&par->idle_lock, HZ/4);
 		pi->panel_ops->request_vsync(pi, &par->vsync_callback);
