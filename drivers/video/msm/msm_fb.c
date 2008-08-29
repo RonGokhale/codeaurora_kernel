@@ -245,7 +245,7 @@ restart:
 			par->sleeping != UPDATING, 5 * HZ);
 		if (ret <= 0 && (par->frame_requested != par->frame_done || par->sleeping == UPDATING)) {
 			if (retry && pi->panel_ops->request_vsync && (sleeping == AWAKE)) {
-				android_lock_idle_auto_expire(&par->idle_lock, HZ/20);
+				android_lock_idle_auto_expire(&par->idle_lock, HZ/4);
 				pi->panel_ops->request_vsync(pi, &par->vsync_callback);
 				retry = 0;
 				printk(KERN_WARNING "msmfb_pan_display timeout "
@@ -310,7 +310,7 @@ restart:
 	/* if the panel is all the way on wait for vsync, otherwise sleep
 	 * for 16 ms (long enough for the dma to panel) and then begin dma */
 	if (pi->panel_ops->request_vsync && (sleeping == AWAKE)) {
-		android_lock_idle_auto_expire(&par->idle_lock, HZ/20);
+		android_lock_idle_auto_expire(&par->idle_lock, HZ/4);
 		pi->panel_ops->request_vsync(pi, &par->vsync_callback);
 	} else {
 		if (!hrtimer_active(&par->fake_vsync)) {
