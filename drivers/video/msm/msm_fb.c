@@ -200,7 +200,9 @@ static void msmfb_handle_vsync_interrupt(struct msmfb_callback *callback)
 {
 	struct msmfb_info *par  = container_of(callback, struct msmfb_info,
 					       vsync_callback);
+#ifdef CONFIG_ANDROID_POWER
 	android_unlock_suspend(&par->idle_lock);
+#endif
 	msmfb_start_dma(par);
 }
 
@@ -254,7 +256,9 @@ restart:
 			par->sleeping != UPDATING, 5 * HZ);
 		if (ret <= 0 && (par->frame_requested != par->frame_done || par->sleeping == UPDATING)) {
 			if (retry && pi->panel_ops->request_vsync && (sleeping == AWAKE)) {
+#ifdef CONFIG_ANDROID_POWER
 				android_lock_idle_auto_expire(&par->idle_lock, HZ/4);
+#endif
 				pi->panel_ops->request_vsync(pi, &par->vsync_callback);
 				retry = 0;
 				printk(KERN_WARNING "msmfb_pan_display timeout "
@@ -320,7 +324,9 @@ restart:
 	 * for 16 ms (long enough for the dma to panel) and then begin dma */
 	par->vsync_request_time = ktime_get();
 	if (pi->panel_ops->request_vsync && (sleeping == AWAKE)) {
+#ifdef CONFIG_ANDROID_POWER
 		android_lock_idle_auto_expire(&par->idle_lock, HZ/4);
+#endif
 		pi->panel_ops->request_vsync(pi, &par->vsync_callback);
 	} else {
 		if (!hrtimer_active(&par->fake_vsync)) {
@@ -347,9 +353,13 @@ static void power_on_panel(struct work_struct *work)
 	mutex_lock(&par->panel_init_lock);
 	DLOG(SUSPEND_RESUME, "turning on panel\n");
 	if (par->sleeping == UPDATING) {
+#ifdef CONFIG_ANDROID_POWER
 		android_lock_idle_auto_expire(&par->idle_lock, HZ);
+#endif
 		pi->panel_ops->power(pi, 1);
+#ifdef CONFIG_ANDROID_POWER
 		android_unlock_suspend(&par->idle_lock);
+#endif
 		spin_lock_irqsave(&par->update_lock, irq_flags);
 		par->sleeping = AWAKE;
 		wake_up(&par->frame_wq);
@@ -615,8 +625,10 @@ static int msmfb_probe(struct platform_device *pdev)
 	par->dma_callback.func = msmfb_handle_dma_interrupt;
 	par->vsync_callback.func = msmfb_handle_vsync_interrupt;
 	hrtimer_init(&par->fake_vsync, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+#ifdef CONFIG_ANDROID_POWER
 	par->idle_lock.name = "msmfb_idle_lock";
 	android_init_suspend_lock(&par->idle_lock);
+#endif
 	par->fake_vsync.function = msmfb_fake_vsync;
 	spin_lock_init(&par->update_lock);
 	mutex_init(&par->panel_init_lock);

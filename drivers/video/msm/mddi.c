@@ -504,8 +504,10 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 	mutex_init(&mddi->reg_read_lock);
 	spin_lock_init(&mddi->int_lock);
 	init_waitqueue_head(&mddi->int_wait);
+#ifdef CONFIG_ANDROID_POWER
 	mddi->idle_lock.name = "mddi_idle_lock";
 	android_init_suspend_lock(&mddi->idle_lock);
+#endif
 
 	mddi->flags = FLAG_DISABLE_HIBERNATION;
 
