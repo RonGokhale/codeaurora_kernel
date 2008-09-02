@@ -54,20 +54,18 @@ static void smd_net_data_handler(unsigned long arg)
 		if (smd_read_avail(p->ch) < sz) break;
 
 		if (sz > 1514) {
-			printk(KERN_ERR
-			       "rmnet_recv() discarding %d len\n", sz);
+			pr_err("rmnet_recv() discarding %d len\n", sz);
+			ptr = 0;
 		} else {
 			skb = dev_alloc_skb(sz + NET_IP_ALIGN);
 			if (skb == NULL) {
-				printk(KERN_ERR
-				       "rmnet_recv() cannot allocate skb\n");
+				pr_err("rmnet_recv() cannot allocate skb\n");
 			} else {
 				skb->dev = dev;
 				skb_reserve(skb, NET_IP_ALIGN);
 				ptr = skb_put(skb, sz);
 				if (smd_read(p->ch, ptr, sz) != sz) {
-					printk(KERN_ERR
-					       "rmnet_recv() smd lied about avail?!");
+					pr_err("rmnet_recv() smd lied about avail?!");
 					ptr = 0;
 					dev_kfree_skb_irq(skb);
 				} else {
@@ -80,7 +78,7 @@ static void smd_net_data_handler(unsigned long arg)
 			}
 		}
 		if (smd_read(p->ch, ptr, sz) != sz)
-			printk(KERN_ERR "rmnet_recv() smd lied about avail?!");
+			pr_err("rmnet_recv() smd lied about avail?!");
 	}
 }
 
@@ -101,11 +99,13 @@ static int rmnet_open(struct net_device *dev)
 	int r;
 	struct rmnet_private *p = netdev_priv(dev);
 
-	printk(KERN_INFO "rmnet_open()\n");
-	r = smd_open(p->chname, &p->ch, dev, smd_net_notify);
+	pr_info("rmnet_open()\n");
+	if (!p->ch) {
+		r = smd_open(p->chname, &p->ch, dev, smd_net_notify);
 
-	if (r < 0)
-		return -ENODEV;
+		if (r < 0)
+			return -ENODEV;
+	}
 
 	netif_start_queue(dev);
 	return 0;
@@ -115,10 +115,7 @@ static int rmnet_stop(struct net_device *dev)
 {
 	struct rmnet_private *p = netdev_priv(dev);
 
-	printk(KERN_INFO "rmnet_stop()\n");
-	smd_close(p->ch);
-	p->ch = 0;
-
+	pr_info("rmnet_stop()\n");
 	netif_stop_queue(dev);
 	return 0;
 }
@@ -129,7 +126,7 @@ static int rmnet_xmit(struct sk_buff *skb, struct net_device *dev)
 	smd_channel_t *ch = p->ch;
 
 	if (smd_write(ch, skb->data, skb->len) != skb->len) {
-		printk(KERN_ERR "rmnet fifo full, dropping packet\n");
+		pr_err("rmnet fifo full, dropping packet\n");
 	} else {
 		p->stats.tx_packets++;
 		p->stats.tx_bytes += skb->len;
@@ -151,7 +148,7 @@ static void rmnet_set_multicast_list(struct net_device *dev)
 
 static void rmnet_tx_timeout(struct net_device *dev)
 {
-	printk(KERN_INFO "rmnet_tx_timeout()\n");
+	pr_info("rmnet_tx_timeout()\n");
 }
 
 static void __init rmnet_setup(struct net_device *dev)

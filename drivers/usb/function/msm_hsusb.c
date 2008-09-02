@@ -119,8 +119,17 @@ struct usb_endpoint
 	struct usb_function_info *owner;
 };
 
-static void usb_vbus_online(struct work_struct *w);
-static void usb_vbus_offline(struct work_struct *w);
+static void usb_do_work(struct work_struct *w);
+
+
+#define USB_STATE_IDLE    0
+#define USB_STATE_ONLINE  1
+#define USB_STATE_OFFLINE 2
+
+#define USB_FLAG_START          0x0001
+#define USB_FLAG_VBUS_ONLINE    0x0002
+#define USB_FLAG_VBUS_OFFLINE   0x0004
+#define USB_FLAG_RESET          0x0008
 
 struct usb_info
 {
@@ -133,6 +142,10 @@ struct usb_info
 	struct platform_device *pdev;
 	int irq;
 	void *addr;
+
+	unsigned state;
+	unsigned flags;
+
 	unsigned online;
 	unsigned running;
 	unsigned bound;
@@ -157,8 +170,7 @@ struct usb_info
 	int *phy_init_seq;
 	void (*phy_reset)(void);
 
-	struct work_struct vbus_online;
-	struct work_struct vbus_offline;
+	struct work_struct work;
 	unsigned phy_status;
 	unsigned phy_fail_count;
 
@@ -940,8 +952,7 @@ static void usb_prepare(struct usb_info *ui)
 
 	ui->setup_req = usb_ept_alloc_req(&ui->ep0in, SETUP_BUF_SIZE);
 
-	INIT_WORK(&ui->vbus_online, usb_vbus_online);
-	INIT_WORK(&ui->vbus_offline, usb_vbus_offline);
+	INIT_WORK(&ui->work, usb_do_work);
 }
 
 static void usb_suspend_phy(struct usb_info *ui)
@@ -1011,17 +1022,12 @@ static void usb_bind_driver(struct usb_info *ui, struct usb_function_info *fi)
 static void usb_reset(struct usb_info *ui)
 {
 	unsigned long flags;
-	unsigned n;
 	printk(KERN_INFO "hsusb: reset controller\n");
 
 	spin_lock_irqsave(&ui->lock, flags);
-	n = ui->running;
 	ui->running = 0;
 	spin_unlock_irqrestore(&ui->lock, flags);
 
-	/* somebody is already resetting us */
-	if (n == 0)
-		return;
 #if 0
 	/* we should flush and shutdown cleanly if already running */
 	writel(0xffffffff, USB_ENDPTFLUSH);
@@ -1090,15 +1096,9 @@ static void usb_start(struct usb_info *ui)
 		return;
 	}
 
-	/* Bring us online to initialize everything, but if VBUS
-	 * is not actually present, take us back offline immediately
-	 * after, to park us in low power mode
-	 */
 	spin_lock_irqsave(&ui->lock, flags);
-	ui->running = 1;
-	schedule_work(&ui->vbus_online);
-	if (!vbus)
-		schedule_work(&ui->vbus_offline);
+	ui->flags |= USB_FLAG_START;
+	schedule_work(&ui->work);
 	spin_unlock_irqrestore(&ui->lock, flags);
 }
 
@@ -1179,10 +1179,18 @@ fail:
 void usb_function_enable(const char *function, int enable)
 {
 	struct usb_function_info *fi = usb_find_function(function);
+	struct usb_info *ui = the_usb_info;
+	unsigned long flags;
+
 	if (fi && fi->enabled != enable) {
 		fi->enabled = enable;
-		if (vbus)
-			usb_reset(the_usb_info);
+
+		if (ui) {
+			spin_lock_irqsave(&ui->lock, flags);
+			ui->flags |= USB_FLAG_RESET;
+			schedule_work(&ui->work);
+			spin_unlock_irqrestore(&ui->lock, flags);
+		}
 	}
 }
 
@@ -1204,68 +1212,119 @@ static int usb_free(struct usb_info *ui, int ret)
 	return ret;
 }
 
-static void usb_vbus_online(struct work_struct *w)
+static void usb_do_work_check_vbus(struct usb_info *ui)
 {
-	struct usb_info *ui = container_of(w, struct usb_info, vbus_online);
-	pr_info("hsusb: vbus online, clock enable\n");
-	clk_enable(ui->clk);
-	clk_enable(ui->pclk);
-	usb_reset(ui);
-}
+	unsigned long iflags;
 
-static void usb_vbus_offline(struct work_struct *w)
-{
-	struct usb_info *ui = container_of(w, struct usb_info, vbus_offline);
-	unsigned long flags;
-	unsigned int online;
-
-	pr_info("hsusb: vbus offline, clock disable\n");
-
-	spin_lock_irqsave(&ui->lock, flags);
-	online = ui->online;
-	ui->online = 0;
-	spin_unlock_irqrestore(&ui->lock, flags);
-
-	if (online) {
-		flush_all_endpoints(ui);
-		set_configuration(ui);
+	spin_lock_irqsave(&ui->lock, iflags);
+	if (vbus) {
+		ui->flags |= USB_FLAG_VBUS_ONLINE;
+	} else {
+		ui->flags |= USB_FLAG_VBUS_OFFLINE;
 	}
-
-	spin_lock_irqsave(&ui->lock, flags);
-	usb_suspend_phy(ui);
-	clk_disable(ui->pclk);
-	clk_disable(ui->clk);
-	spin_unlock_irqrestore(&ui->lock, flags);
+	spin_unlock_irqrestore(&ui->lock, iflags);
 }
+
+static void usb_do_work(struct work_struct *w)
+{
+	struct usb_info *ui = container_of(w, struct usb_info, work);
+	unsigned long iflags;
+	unsigned flags, _vbus;
+
+	for (;;) {
+		spin_lock_irqsave(&ui->lock, iflags);
+		flags = ui->flags;
+		ui->flags = 0;
+		_vbus = vbus;
+		spin_unlock_irqrestore(&ui->lock, iflags);
+
+		/* give up if we have nothing to do */
+		if (flags == 0)
+			break;
+
+		switch (ui->state) {
+		case USB_STATE_IDLE:
+			if (flags & USB_FLAG_START) {
+				pr_info("hsusb: IDLE -> ONLINE\n");
+				clk_enable(ui->clk);
+				clk_enable(ui->pclk);
+				usb_reset(ui);
+
+				ui->state = USB_STATE_ONLINE;
+				usb_do_work_check_vbus(ui);
+			}
+			break;
+		case USB_STATE_ONLINE:
+			/* If at any point when we were online, we received
+			 * the signal to go offline, we must honor it
+			 */
+			if (flags & USB_FLAG_VBUS_OFFLINE) {
+				pr_info("hsusb: ONLINE -> OFFLINE\n");
+
+				/* prevent irq context stuff from doing anything */
+				spin_lock_irqsave(&ui->lock, iflags);
+				ui->running = 0;
+				ui->online = 0;
+				spin_unlock_irqrestore(&ui->lock, iflags);
+				
+				/* terminate any transactions, etc */
+				flush_all_endpoints(ui);
+				set_configuration(ui);
+
+				/* power down phy, clock down usb */
+				spin_lock_irqsave(&ui->lock, iflags);
+				usb_suspend_phy(ui);
+				clk_disable(ui->pclk);
+				clk_disable(ui->clk);
+				spin_unlock_irqrestore(&ui->lock, iflags);
+
+				ui->state = USB_STATE_OFFLINE;
+				usb_do_work_check_vbus(ui);
+				break;
+			}
+			if (flags & USB_FLAG_RESET) {
+				pr_info("hsusb: ONLINE -> RESET\n");
+				usb_reset(ui);
+				pr_info("hsusb: RESET -> ONLINE\n");
+				break;
+			}
+			break;
+		case USB_STATE_OFFLINE:
+			/* If we were signaled to go online and vbus is still
+			 * present when we received the signal, go online.
+			 */
+			if ((flags & USB_FLAG_VBUS_ONLINE) && _vbus) {
+				pr_info("hsusb: OFFLINE -> ONLINE\n");
+				clk_enable(ui->clk);
+				clk_enable(ui->pclk);
+				usb_reset(ui);
+
+				ui->state = USB_STATE_ONLINE;
+				usb_do_work_check_vbus(ui);
+			}
+			break;
+		}
+	}
+}
+
 
 void msm_hsusb_set_vbus_state(int online)
 {
 	unsigned long flags;
 	struct usb_info *ui = the_usb_info;
 
-	if (vbus == online)
-		return;
-
-	vbus = online;
-
-	/* if we aren't actually ready yet, just make a note of
-	 * the VBUS state and return
-	 */
-	if (!ui)
-		return;
-
 	spin_lock_irqsave(&ui->lock, flags);
-
-	if (!ui->running) {
-		spin_unlock_irqrestore(&ui->lock, flags);
-		return;
+	if (vbus != online) {
+		vbus = online;
+		if (ui) {
+			if (online) {
+				ui->flags |= USB_FLAG_VBUS_ONLINE;
+			} else {
+				ui->flags |= USB_FLAG_VBUS_OFFLINE;
+			}
+			schedule_work(&ui->work);
+		}
 	}
-
-	if (online) 
-		schedule_work(&ui->vbus_online);
-	else
-		schedule_work(&ui->vbus_offline);
-
 	spin_unlock_irqrestore(&ui->lock, flags);
 }
 
@@ -1345,7 +1404,14 @@ static ssize_t debug_read_status(struct file *file, char __user *ubuf,
 static ssize_t debug_write_reset(struct file *file, const char __user *buf,
 				 size_t count, loff_t *ppos)
 {
-	usb_reset(file->private_data);
+	struct usb_info *ui = file->private_data;
+	unsigned long flags;
+
+	spin_lock_irqsave(&ui->lock, flags);
+	ui->flags |= USB_FLAG_RESET;
+	schedule_work(&ui->work);
+	spin_unlock_irqrestore(&ui->lock, flags);
+
 	return count;
 }
 

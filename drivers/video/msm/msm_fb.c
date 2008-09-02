@@ -92,6 +92,7 @@ struct msmfb_info {
 	struct msmfb_callback dma_callback;
 	struct msmfb_callback vsync_callback;
 	struct hrtimer fake_vsync;
+	ktime_t vsync_request_time;
 };
 
 static int msmfb_open(struct fb_info *info, int user)
@@ -145,10 +146,23 @@ static int msmfb_start_dma(struct msmfb_info *par)
 	unsigned addr;
 	unsigned long irq_flags;
 	uint32_t yoffset;
+	s64 time_since_request;
 	struct mddi_panel_info *pi = par->panel_info;
 
 	spin_lock_irqsave(&par->update_lock, irq_flags);
+	time_since_request = ktime_to_ns(ktime_sub(ktime_get(), par->vsync_request_time));
+	if (time_since_request > 20 * NSEC_PER_MSEC) {
+		uint32_t us;
+		us = do_div(time_since_request, NSEC_PER_MSEC) / NSEC_PER_USEC;
+		printk(KERN_WARNING "msmfb_start_dma %lld.%03u ms after vsync "
+			"request\n", time_since_request, us);
+	}
 	if (par->frame_done == par->frame_requested) {
+		spin_unlock_irqrestore(&par->update_lock, irq_flags);
+		return -1;
+	}
+	if (par->sleeping == SLEEPING) {
+		DLOG(SUSPEND_RESUME, "tried to start dma while asleep\n");
 		spin_unlock_irqrestore(&par->update_lock, irq_flags);
 		return -1;
 	}
@@ -186,7 +200,9 @@ static void msmfb_handle_vsync_interrupt(struct msmfb_callback *callback)
 {
 	struct msmfb_info *par  = container_of(callback, struct msmfb_info,
 					       vsync_callback);
+#ifdef CONFIG_ANDROID_POWER
 	android_unlock_suspend(&par->idle_lock);
+#endif
 	msmfb_start_dma(par);
 }
 
@@ -206,6 +222,7 @@ static void msmfb_pan_update(struct fb_info *info, uint32_t left, uint32_t top,
 	struct mddi_panel_info *pi = par->panel_info;
 	unsigned long irq_flags;
 	int sleeping;
+	int retry = 1;
 #if PRINT_FPS
 	ktime_t t1, t2;
 	static uint64_t pans;
@@ -238,11 +255,21 @@ restart:
 			par->frame_done == par->frame_requested &&
 			par->sleeping != UPDATING, 5 * HZ);
 		if (ret <= 0 && (par->frame_requested != par->frame_done || par->sleeping == UPDATING)) {
-			printk(KERN_WARNING "msmfb_pan_display timeout waiting "
-					    "for frame start, %d %d\n",
-					    par->frame_requested,
-					    par->frame_done);
-			return;
+			if (retry && pi->panel_ops->request_vsync && (sleeping == AWAKE)) {
+#ifdef CONFIG_ANDROID_POWER
+				android_lock_idle_auto_expire(&par->idle_lock, HZ/4);
+#endif
+				pi->panel_ops->request_vsync(pi, &par->vsync_callback);
+				retry = 0;
+				printk(KERN_WARNING "msmfb_pan_display timeout "
+					"rerequest vsync\n");
+			}
+			else {
+				printk(KERN_WARNING "msmfb_pan_display timeout "
+					"waiting for frame start, %d %d\n",
+					par->frame_requested, par->frame_done);
+				return;
+			}
 		}
 		goto restart;
 	}
@@ -295,8 +322,11 @@ restart:
 
 	/* if the panel is all the way on wait for vsync, otherwise sleep
 	 * for 16 ms (long enough for the dma to panel) and then begin dma */
+	par->vsync_request_time = ktime_get();
 	if (pi->panel_ops->request_vsync && (sleeping == AWAKE)) {
-		android_lock_idle_auto_expire(&par->idle_lock, HZ/20);
+#ifdef CONFIG_ANDROID_POWER
+		android_lock_idle_auto_expire(&par->idle_lock, HZ/4);
+#endif
 		pi->panel_ops->request_vsync(pi, &par->vsync_callback);
 	} else {
 		if (!hrtimer_active(&par->fake_vsync)) {
@@ -323,7 +353,13 @@ static void power_on_panel(struct work_struct *work)
 	mutex_lock(&par->panel_init_lock);
 	DLOG(SUSPEND_RESUME, "turning on panel\n");
 	if (par->sleeping == UPDATING) {
+#ifdef CONFIG_ANDROID_POWER
+		android_lock_idle_auto_expire(&par->idle_lock, HZ);
+#endif
 		pi->panel_ops->power(pi, 1);
+#ifdef CONFIG_ANDROID_POWER
+		android_unlock_suspend(&par->idle_lock);
+#endif
 		spin_lock_irqsave(&par->update_lock, irq_flags);
 		par->sleeping = AWAKE;
 		wake_up(&par->frame_wq);
@@ -350,6 +386,10 @@ static void msmfb_slightly_earlier_suspend(android_early_suspend_t *h)
 			   par->frame_requested == par->frame_done, HZ/10);
 
 	/* blank the screen */
+	if (!pi->ok) {
+		printk("msmfb: mddi link not ok, not blanking screen\n");
+		goto err_panel_failed;
+	}
 	msmfb_update(par->fb_info, 0, 0, par->fb_info->var.xres,
 		     par->fb_info->var.yres);
 	mdp_dma_to_mddi(virt_to_phys(par->black), 0,
@@ -357,6 +397,7 @@ static void msmfb_slightly_earlier_suspend(android_early_suspend_t *h)
 			NULL);
 	mdp_dma_wait();
 	/* turn off the backlight and the panel */
+err_panel_failed:
 	pi->panel_ops->power(pi, 0);
 	mutex_unlock(&par->panel_init_lock);
 }
@@ -371,8 +412,13 @@ static void msmfb_early_resume(android_early_suspend_t *h)
 {
 	struct msmfb_info *par = container_of(h, struct msmfb_info,
 				 early_suspend);
+	struct mddi_panel_info *pi = par->panel_info;
 	unsigned int irq_flags;
 
+	if (!pi->ok) {
+		printk("msmfb: mddi link not ok, not starting drawing\n");
+		return;
+	}
 	spin_lock_irqsave(&par->update_lock, irq_flags);
 	par->frame_requested = par->frame_done = par->update_frame = 0;
 	par->sleeping = WAKING;
@@ -579,8 +625,10 @@ static int msmfb_probe(struct platform_device *pdev)
 	par->dma_callback.func = msmfb_handle_dma_interrupt;
 	par->vsync_callback.func = msmfb_handle_vsync_interrupt;
 	hrtimer_init(&par->fake_vsync, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+#ifdef CONFIG_ANDROID_POWER
 	par->idle_lock.name = "msmfb_idle_lock";
 	android_init_suspend_lock(&par->idle_lock);
+#endif
 	par->fake_vsync.function = msmfb_fake_vsync;
 	spin_lock_init(&par->update_lock);
 	mutex_init(&par->panel_init_lock);
@@ -637,6 +685,7 @@ static int msmfb_probe(struct platform_device *pdev)
 	}
 	INIT_WORK(&par->resume_work, power_on_panel);
 	memset(par->black, 0, 2*par->fb_info->var.xres);
+	par->sleeping = WAKING;
 
 	r = register_framebuffer(info);
 	if (r)

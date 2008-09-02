@@ -98,6 +98,7 @@ struct mddi_info
 
 #ifdef CONFIG_ANDROID_POWER
 	android_early_suspend_t early_suspend;
+	android_suspend_lock_t idle_lock;
 #endif
 
 	void (*mddi_client_power)(int on);
@@ -447,6 +448,7 @@ static void mddi_early_suspend(android_early_suspend_t *h)
 {
 	struct mddi_info *mddi = container_of(h, struct mddi_info,
 				 early_suspend);
+	android_lock_idle(&mddi->idle_lock);
 	if (mddi->mddi_enable)
 		mddi->mddi_enable(&mddi->panel_info, 0);
 	if (mddi->mddi_client_power)
@@ -454,6 +456,7 @@ static void mddi_early_suspend(android_early_suspend_t *h)
 	mddi_writel(MDDI_CMD_RESET, CMD);
 	mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
 	clk_disable(mddi->clk);
+	android_unlock_suspend(&mddi->idle_lock);
 }
 
 static void mddi_early_resume(android_early_suspend_t *h)
@@ -461,6 +464,7 @@ static void mddi_early_resume(android_early_suspend_t *h)
 	struct mddi_info *mddi = container_of(h, struct mddi_info,
 					      early_suspend);
 
+	android_lock_idle(&mddi->idle_lock);
 	mddi_set_auto_hibernate(mddi, 0);
 	if (mddi->mddi_client_power)
 		mddi->mddi_client_power(1);
@@ -476,6 +480,7 @@ static void mddi_early_resume(android_early_suspend_t *h)
 
 	if (mddi->mddi_enable)
 		mddi->mddi_enable(&mddi->panel_info, 1);
+	android_unlock_suspend(&mddi->idle_lock);
 }
 #endif
 
@@ -499,6 +504,10 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 	mutex_init(&mddi->reg_read_lock);
 	spin_lock_init(&mddi->int_lock);
 	init_waitqueue_head(&mddi->int_wait);
+#ifdef CONFIG_ANDROID_POWER
+	mddi->idle_lock.name = "mddi_idle_lock";
+	android_init_suspend_lock(&mddi->idle_lock);
+#endif
 
 	mddi->flags = FLAG_DISABLE_HIBERNATION;
 
@@ -643,8 +652,6 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 
 		if (mddi->mddi_enable)
 			mddi->mddi_enable(&mddi->panel_info, 1);
-		if (mddi->panel_power)
-		        mddi->panel_power(&mddi->panel_info, 1);
 
 		printk(KERN_INFO "%s: publish: %s\n", mddi->name,
 		       mddi->client_name);
@@ -803,7 +810,7 @@ unsigned mddi_remote_read(struct mddi_info *mddi, unsigned reg)
 		/* Enable Periodic Reverse Encapsulation. */
 		mddi_writel(MDDI_CMD_PERIODIC_REV_ENCAP | 1, CMD);
 		mddi_wait_interrupt(mddi, MDDI_INT_NO_CMD_PKTS_PEND);
-		if (wait_for_completion_timeout(&ri.done, HZ/60) == 0 &&
+		if (wait_for_completion_timeout(&ri.done, HZ/10) == 0 &&
 		    !ri.done.done) {
 			printk(KERN_INFO "mddi_remote_read(%x) timeout "
 					 "(%d %d %d)\n",

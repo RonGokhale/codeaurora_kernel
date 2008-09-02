@@ -74,6 +74,9 @@ struct pmem_data {
 	struct list_head region_list;
 	/* a linked list of data so we can access them for debugging */
 	struct list_head list;
+#if PMEM_DEBUG
+	int ref;
+#endif
 };
 
 struct pmem_bits {
@@ -346,6 +349,9 @@ static int pmem_open(struct inode *inode, struct file *file)
 	data->vma = NULL;
 	data->pid = 0;
 	data->master_file = NULL;
+#if PMEM_DEBUG
+	data->ref = 0;
+#endif
 	INIT_LIST_HEAD(&data->region_list);
 	init_rwsem(&data->sem);
 
@@ -696,7 +702,8 @@ int get_pmem_user_addr(struct file *file, unsigned long *start,
 	return 0;
 }
 
-int get_pmem_addr(struct file *file, unsigned long *start, unsigned long *len)
+int get_pmem_addr(struct file *file, unsigned long *start, unsigned long *vstart,
+		  unsigned long *len)
 {
 	struct pmem_data *data;
 	int id;
@@ -721,12 +728,18 @@ int get_pmem_addr(struct file *file, unsigned long *start, unsigned long *len)
 	down_read(&data->sem);
 	*start = pmem_start_addr(id, data);
 	*len = pmem_len(id, data);
+	*vstart = (unsigned long)pmem_start_vaddr(id, data);
 	up_read(&data->sem);
+#if PMEM_DEBUG
+	down_write(&data->sem);
+	data->ref++;
+	up_write(&data->sem);
+#endif
 	return 0;
 }
 
-int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *len,
-		  struct file **filp)
+int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *vstart,
+		  unsigned long *len, struct file **filp)
 {
 	struct file *file;
 
@@ -737,7 +750,7 @@ int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *len,
 		return -1;
 	}
 
-	if (get_pmem_addr(file, start, len))
+	if (get_pmem_addr(file, start, vstart, len))
 		goto end;
 
 	if (filp)
@@ -750,7 +763,8 @@ end:
 
 int get_pmem_fd(unsigned int fd, unsigned long *start, unsigned long *len)
 {
-	return get_pmem_file(fd, start, len, NULL);
+	unsigned long vstart;
+	return get_pmem_file(fd, start, &vstart, len, NULL);
 }
 
 void put_pmem_file(struct file *file)
@@ -762,6 +776,16 @@ void put_pmem_file(struct file *file)
 		return;
 	id = get_id(file);
 	data = (struct pmem_data *)file->private_data;
+#if PMEM_DEBUG
+	down_write(&data->sem);
+	if (data->ref == 0) {
+		printk("pmem: pmem_put > pmem_get %s (pid %d)\n",
+		       pmem[id].dev.name, data->pid);
+		BUG();
+	}
+	data->ref--;
+	up_write(&data->sem);
+#endif
 	fput(file);
 }
 
@@ -890,7 +914,7 @@ lock_mm:
 		mm = get_task_mm(data->task);
 		if (!mm) {
 #if PMEM_DEBUG
-			printk("pmem: can't remap task is gone!");
+			printk("pmem: can't remap task is gone!\n");
 #endif
 			up_read(&data->sem);
 			return -1;
@@ -1092,6 +1116,8 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				region.offset = pmem_start_addr(id, data);
 				region.len = pmem_len(id, data);
 			}
+			printk(KERN_INFO "pmem: request for physical address of pmem region "
+					"from process %d.\n", current->pid);
 			if (copy_to_user((void __user *)arg, &region,
 						sizeof(struct pmem_region)))
 				return -EFAULT;

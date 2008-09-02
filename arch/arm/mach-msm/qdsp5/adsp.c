@@ -1,4 +1,4 @@
-/* arch/arm/mach-msm/adsp.c
+/* arch/arm/mach-msm/qdsp5/adsp.c
  *
  * Register/Interrupt access for userspace aDSP library.
  *
@@ -49,7 +49,7 @@ static inline void prevent_suspend(void) {}
 static inline void allow_suspend(void) {}
 #endif
 
-#include <asm/io.h>
+#include <linux/io.h>
 #include <asm/arch/msm_iomap.h>
 #include "adsp.h"
 
@@ -129,14 +129,13 @@ static int rpc_adsp_rtos_app_to_modem(uint32_t cmd, uint32_t module,
 	return 0;
 }
 
-static struct msm_adsp_module *find_adsp_module_by_id(
+struct msm_adsp_module *find_adsp_module_by_id(
 	struct adsp_info *info, uint32_t id)
 {
-	if (id > info->max_module_id) {
+	if (id > info->max_module_id)
 		return NULL;
-	} else {
+	else
 		return info->id_to_module[id];
-	}
 }
 
 static struct msm_adsp_module *find_adsp_module_by_name(
@@ -301,7 +300,8 @@ int msm_adsp_write(struct msm_adsp_module *module, unsigned dsp_queue_addr,
 
 	if (module->state != ADSP_STATE_ENABLED) {
 		spin_unlock_irqrestore(&adsp_cmd_lock, flags);
-		pr_err("adsp: module %s not enabled before write\n", module->name);
+		pr_err("adsp: module %s not enabled before write\n",
+		       module->name);
 		return -ENODEV;
 	}
 	dsp_q_addr = adsp_get_queue_offset(info, dsp_queue_addr);
@@ -803,8 +803,8 @@ static int msm_adsp_probe(struct platform_device *pdev)
 	int rc, i;
 
 #ifdef CONFIG_ANDROID_POWER
-        adsp_suspend_lock.name = "adsp";
-        android_init_suspend_lock(&adsp_suspend_lock);
+	adsp_suspend_lock.name = "adsp";
+	android_init_suspend_lock(&adsp_suspend_lock);
 #endif
 
 	rc = adsp_init_info(&adsp_info);
@@ -863,6 +863,9 @@ static int msm_adsp_probe(struct platform_device *pdev)
 			mod->clk = NULL;
 		if (mod->clk && adsp_info.module[i].clk_rate)
 			clk_set_rate(mod->clk, adsp_info.module[i].clk_rate);
+		mod->verify_cmd = adsp_info.module[i].verify_cmd;
+		mod->patch_event = adsp_info.module[i].patch_event;
+		INIT_HLIST_HEAD(&mod->pmem_regions);
 		mod->pdev.name = adsp_info.module[i].pdev_name;
 		mod->pdev.id = -1;
 		adsp_info.id_to_module[mod->id] = mod;
