@@ -702,7 +702,8 @@ int get_pmem_user_addr(struct file *file, unsigned long *start,
 	return 0;
 }
 
-int get_pmem_addr(struct file *file, unsigned long *start, unsigned long *len)
+int get_pmem_addr(struct file *file, unsigned long *start, unsigned long *vstart,
+		  unsigned long *len)
 {
 	struct pmem_data *data;
 	int id;
@@ -727,6 +728,7 @@ int get_pmem_addr(struct file *file, unsigned long *start, unsigned long *len)
 	down_read(&data->sem);
 	*start = pmem_start_addr(id, data);
 	*len = pmem_len(id, data);
+	*vstart = (unsigned long)pmem_start_vaddr(id, data);
 	up_read(&data->sem);
 #if PMEM_DEBUG
 	down_write(&data->sem);
@@ -736,8 +738,8 @@ int get_pmem_addr(struct file *file, unsigned long *start, unsigned long *len)
 	return 0;
 }
 
-int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *len,
-		  struct file **filp)
+int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *vstart,
+		  unsigned long *len, struct file **filp)
 {
 	struct file *file;
 
@@ -748,7 +750,7 @@ int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *len,
 		return -1;
 	}
 
-	if (get_pmem_addr(file, start, len))
+	if (get_pmem_addr(file, start, vstart, len))
 		goto end;
 
 	if (filp)
@@ -761,7 +763,8 @@ end:
 
 int get_pmem_fd(unsigned int fd, unsigned long *start, unsigned long *len)
 {
-	return get_pmem_file(fd, start, len, NULL);
+	unsigned long vstart;
+	return get_pmem_file(fd, start, &vstart, len, NULL);
 }
 
 void put_pmem_file(struct file *file)
@@ -1113,6 +1116,8 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				region.offset = pmem_start_addr(id, data);
 				region.len = pmem_len(id, data);
 			}
+			printk(KERN_INFO "pmem: request for physical address of pmem region "
+					"from process %d.\n", current->pid);
 			if (copy_to_user((void __user *)arg, &region,
 						sizeof(struct pmem_region)))
 				return -EFAULT;
