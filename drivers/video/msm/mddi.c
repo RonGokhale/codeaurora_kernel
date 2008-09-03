@@ -99,6 +99,7 @@ struct mddi_info
 #ifdef CONFIG_ANDROID_POWER
 	android_early_suspend_t early_suspend;
 	android_suspend_lock_t idle_lock;
+	android_suspend_lock_t link_active_idle_lock;
 #endif
 
 	void (*mddi_client_power)(int on);
@@ -128,6 +129,9 @@ static void mddi_init_rev_encap(struct mddi_info *mddi);
 
 void mddi_activate_link(struct mddi_info *mddi)
 {
+#ifdef CONFIG_ANDROID_POWER
+	android_lock_idle(&mddi->link_active_idle_lock);
+#endif
 	mddi_writel(MDDI_CMD_LINK_ACTIVE, CMD);
 }
 
@@ -344,6 +348,22 @@ static irqreturn_t mddi_isr(int irq, void *data)
 	if (active & ~MDDI_INT_NEED_CLEAR)
 		mddi->int_enable &= ~(active & ~MDDI_INT_NEED_CLEAR);
 
+	if (active & MDDI_INT_LINK_ACTIVE) {
+		mddi->int_enable &= (~MDDI_INT_LINK_ACTIVE);
+		mddi->int_enable |= MDDI_INT_IN_HIBERNATION;
+#ifdef CONFIG_ANDROID_POWER
+		android_lock_idle(&mddi->link_active_idle_lock);
+#endif
+	}
+
+	if (active & MDDI_INT_IN_HIBERNATION) {
+		mddi->int_enable &= (~MDDI_INT_IN_HIBERNATION);
+		mddi->int_enable |= MDDI_INT_LINK_ACTIVE;
+#ifdef CONFIG_ANDROID_POWER
+		android_unlock_suspend(&mddi->link_active_idle_lock);
+#endif
+	}
+
 	mddi_writel(mddi->int_enable, INTEN);
 	spin_unlock(&mddi->int_lock);
 
@@ -507,6 +527,9 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 #ifdef CONFIG_ANDROID_POWER
 	mddi->idle_lock.name = "mddi_idle_lock";
 	android_init_suspend_lock(&mddi->idle_lock);
+
+	mddi->link_active_idle_lock.name = "mddi_link_active_idle_lock";
+	android_init_suspend_lock(&mddi->link_active_idle_lock);
 #endif
 
 	mddi->flags = FLAG_DISABLE_HIBERNATION;
@@ -581,7 +604,9 @@ static int __init mddi_init(struct mddi_info *mddi, const char *name,
 	/* clear any stale interrupts */
 	mddi_writel(0xffffffff, INT);
 
-	mddi->int_enable = MDDI_INT_PRI_LINK_LIST_DONE |
+	mddi->int_enable = MDDI_INT_LINK_ACTIVE |
+			   MDDI_INT_IN_HIBERNATION |
+			   MDDI_INT_PRI_LINK_LIST_DONE |
 			   MDDI_INT_REV_DATA_AVAIL |
 			   MDDI_INT_REV_OVERFLOW |
 			   MDDI_INT_REV_OVERWRITE |
