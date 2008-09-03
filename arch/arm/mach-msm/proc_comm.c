@@ -62,6 +62,7 @@ static int proc_comm_wait_for(unsigned addr, unsigned value)
 {
 	unsigned timeout = TIMEOUT;
 
+again:
 	do {
 		if (readl(addr) == value)
 			return 0;
@@ -73,13 +74,15 @@ static int proc_comm_wait_for(unsigned addr, unsigned value)
 		udelay(1);
 	} while (--timeout != 0);
 
-	pr_err("proc_comm: TIMEOUT. modem has probably crashed\n");	
-	
 	/* hard reboot if possible */
-	if (msm_reset_hook)
+	if (msm_reset_hook) {
+		pr_err("proc_comm: TIMEOUT. modem has probably crashed.\n");
 		msm_reset_hook(0);
-
-	for (;;) ;
+	} else {
+		pr_err("proc_comm: TIMEOUT. modem has probably crashed. retrying.\n");	
+		timeout = TIMEOUT;
+		goto again;
+	}
 }
 
 int msm_proc_comm(unsigned cmd, unsigned *data1, unsigned *data2)
