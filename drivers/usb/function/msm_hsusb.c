@@ -863,7 +863,7 @@ static void flush_endpoint_sw(struct usb_endpoint *ept)
 
 static void flush_endpoint(struct usb_endpoint *ept)
 {
-	flush_endpoint_hw(ept->ui, ept->bit);
+	flush_endpoint_hw(ept->ui, (1 << ept->bit));
 	flush_endpoint_sw(ept);
 }
 
