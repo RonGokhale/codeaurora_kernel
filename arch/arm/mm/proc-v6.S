@@ -149,6 +149,9 @@ ENTRY(cpu_v6_set_pte_ext)
 	tst	r1, #L_PTE_EXEC
 	orreq	r3, r3, #PTE_EXT_XN
 
+	tst	r1, #L_PTE_DEVICE
+	orrne	r3, r3, #PTE_EXT_TEX(2)
+
 	tst	r1, #L_PTE_PRESENT
 	moveq	r3, #0
 
