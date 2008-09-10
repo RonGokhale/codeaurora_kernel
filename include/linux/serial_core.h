@@ -154,6 +154,7 @@
 #define PORT_MN10300_CTS	81
 
 #define PORT_SC26XX	82
+#define PORT_MSM	83
 
 #ifdef __KERNEL__
 
