@@ -578,7 +578,8 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 				if (ecc_errors) {
 					total_ecc_errors += ecc_errors;
 					mtd->ecc_stats.corrected += ecc_errors; /* not thread safe */
-					pageerr = -EUCLEAN;
+					if (ecc_errors > 1)
+						pageerr = -EUCLEAN;
 				}
 			}
 		}
