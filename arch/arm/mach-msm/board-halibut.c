@@ -33,6 +33,7 @@
 
 #include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
+#include <linux/i2c.h>
 
 #include "devices.h"
 
@@ -54,6 +55,13 @@ static struct platform_device smc91x_device = {
 	.id		= 0,
 	.num_resources	= ARRAY_SIZE(smc91x_resources),
 	.resource	= smc91x_resources,
+};
+
+static struct i2c_board_info i2c_devices[] = {
+	{		
+		I2C_BOARD_INFO("mt9t013", 0x78>>1),
+		/* .irq = TROUT_GPIO_TO_INT(TROUT_GPIO_CAM_BTN_STEP1_N), */
+	},	
 };
 
 static struct platform_device *devices[] __initdata = {
@@ -93,6 +101,7 @@ static void __init halibut_init(void)
 #endif
 	msm_acpu_clock_init(&halibut_clock_data);
 	platform_add_devices(devices, ARRAY_SIZE(devices));
+	i2c_register_board_info(0, i2c_devices, ARRAY_SIZE(i2c_devices));
 }
 
 static void __init halibut_fixup(struct machine_desc *desc, struct tag *tags,
