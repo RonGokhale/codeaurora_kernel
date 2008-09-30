@@ -8,7 +8,7 @@ obj-y += common.o nand_partitions.o
 
 obj-$(CONFIG_MSM_FIQ_SUPPORT) += fiq_glue.o
 obj-$(CONFIG_MACH_HALIBUT) += board-halibut.o board-halibut-keypad.o
-obj-$(CONFIG_MACH_TROUT) += board-trout-keypad.o
+obj-$(CONFIG_MACH_TROUT) += board-trout.o board-trout-keypad.o
 obj-$(CONFIG_MACH_TROUT) += board-trout-gpio.o board-trout-panel.o
 obj-$(CONFIG_MACH_TROUT) += board-trout-mmc.o
 obj-$(CONFIG_MACH_TROUT) += htc_akm_cal.o htc_wifi_nvs.o htc_acoustic.o
