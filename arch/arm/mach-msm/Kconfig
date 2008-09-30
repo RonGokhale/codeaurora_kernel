@@ -28,6 +28,11 @@ config MACH_HALIBUT
 	help
 	  Support for the Qualcomm SURF7200A eval board.
 
+config MACH_TROUT
+	depends on ARCH_MSM7X00A
+	default y
+	bool "Trout"
+
 choice
 	prompt "MSM Low-Level Debug UART"
 	depends on ARCH_MSM7X00A
