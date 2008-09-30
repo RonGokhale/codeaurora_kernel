@@ -229,6 +229,9 @@ static struct i2c_board_info i2c_devices[] = {
 		.platform_data = trout_ts_data,
 		.irq = TROUT_GPIO_TO_INT(TROUT_GPIO_TP_ATT_N)
 	},
+	{
+		I2C_BOARD_INFO("pca963x", 0x62),
+	},
 };
 
 static struct android_pmem_platform_data android_pmem_pdata = {
