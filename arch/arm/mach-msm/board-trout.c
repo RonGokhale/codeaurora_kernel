@@ -24,6 +24,7 @@
 #include <linux/switch.h>
 #include <linux/android_timed_gpio.h>
 #include <linux/synaptics_i2c_rmi.h>
+#include <linux/akm8976.h>
 #include <linux/sysdev.h>
 #include <linux/usb/mass_storage_function.h>
 
@@ -223,11 +224,22 @@ static struct synaptics_i2c_rmi_platform_data trout_ts_data[] = {
 	}
 };
 
+static struct akm8976_platform_data compass_platform_data = {
+	.reset = TROUT_GPIO_COMPASS_RST_N,
+	.clk_on = TROUT_GPIO_COMPASS_32K_EN,
+	.intr = TROUT_GPIO_COMPASS_IRQ,
+};
+
 static struct i2c_board_info i2c_devices[] = {
 	{
 		I2C_BOARD_INFO(SYNAPTICS_I2C_RMI_NAME, 0x20),
 		.platform_data = trout_ts_data,
 		.irq = TROUT_GPIO_TO_INT(TROUT_GPIO_TP_ATT_N)
+	},
+	{
+		I2C_BOARD_INFO("akm8976", 0x1C),
+		.platform_data = &compass_platform_data,
+		.irq = TROUT_GPIO_TO_INT(TROUT_GPIO_COMPASS_IRQ),
 	},
 	{
 		I2C_BOARD_INFO("pca963x", 0x62),
