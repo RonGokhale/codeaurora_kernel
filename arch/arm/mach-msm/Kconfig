@@ -256,4 +256,14 @@ config MSM_PERF
 	help
 	  Provides access to ARM11 performance counters.
 
+config TROUT_H2W
+	tristate "HTC 2 Wire detection driver"
+	default n
+	help
+	 Provides support for detecting HTC 2 wire devices, such as wired
+	 headset, on the trout platform. Can be used with the msm serial
+	 debugger, but not with serial console.
+
+
+
 endif
