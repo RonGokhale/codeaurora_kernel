@@ -39,6 +39,7 @@
 
 #include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
+#include <linux/i2c.h>
 
 #define MSM_SMI_BASE		0x00000000
 #define MSM_SMI_SIZE		0x900000
@@ -196,6 +197,13 @@ static struct platform_device msm_hsusb_device = {
 	},
 };
 
+static struct i2c_board_info i2c_devices[] = {
+	{		
+		I2C_BOARD_INFO("mt9t013", 0x78>>1),
+		/* .irq = TROUT_GPIO_TO_INT(TROUT_GPIO_CAM_BTN_STEP1_N), */
+	},	
+};
+
 static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
 	.start = MSM_PMEM_MDP_BASE,
@@ -332,6 +340,7 @@ static void __init halibut_init(void)
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 	halibut_init_keypad(halibut_ffa);
 	msm_add_devices();
+	i2c_register_board_info(0, i2c_devices, ARRAY_SIZE(i2c_devices));
 	halibut_init_mmc();
 
 	/* TODO: detect vbus and correctly notify USB about its presence 

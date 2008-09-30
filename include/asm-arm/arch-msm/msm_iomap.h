@@ -101,7 +101,11 @@
 #define MSM_SHARED_RAM_PHYS   0x01F00000
 #define MSM_SHARED_RAM_SIZE   SZ_1M
 
-#define MSM_AD5_BASE          0xE0200000
+#define MSM_MDC_BASE	      0xE0200000
+#define MSM_MDC_PHYS	      0xAA500000	
+#define MSM_MDC_SIZE	      SZ_1M
+
+#define MSM_AD5_BASE          0xE0300000
 #define MSM_AD5_PHYS          0xAC000000
 #define MSM_AD5_SIZE          (SZ_1M*13)
 
