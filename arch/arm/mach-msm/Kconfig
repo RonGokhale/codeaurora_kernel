@@ -33,6 +33,11 @@ config MACH_TROUT
 	default y
 	bool "Trout"
 
+config TROUT_BATTCHG
+	depends on MACH_TROUT
+	default y
+	bool "Trout battery / charger driver"
+
 choice
 	prompt "MSM Low-Level Debug UART"
 	depends on ARCH_MSM7X00A

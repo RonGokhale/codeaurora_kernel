@@ -19,3 +19,4 @@ obj-$(CONFIG_MSM_ADSP) += qdsp5/
 obj-$(CONFIG_MSM_HW3D) += hw3d.o
 obj-$(CONFIG_MSM_PERF) += perf.o
 obj-$(CONFIG_PM) += pm.o
+obj-$(CONFIG_TROUT_BATTCHG) += htc_battery.o
