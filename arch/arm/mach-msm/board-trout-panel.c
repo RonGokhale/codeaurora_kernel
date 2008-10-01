@@ -26,6 +26,7 @@
 
 #include <asm/arch/msm_fb.h>
 #include <asm/arch/vreg.h>
+#include <asm/arch/trout_pwrsink.h>
 
 #include "board-trout.h"
 #include "proc_comm.h"
@@ -41,6 +42,8 @@ static DEFINE_MUTEX(trout_backlight_lock);
 
 static void trout_set_backlight_level(uint8_t level)
 {
+	unsigned percent = ((int)level * 100) / 255;
+
 	if (trout_new_backlight) {
 		unsigned long flags;
 		int i = 0;
@@ -85,6 +88,7 @@ static void trout_set_backlight_level(uint8_t level)
 			clk_disable(gp_clk);
 		}
 	}
+	trout_pwrsink_set(PWRSINK_BACKLIGHT, percent);
 }
 
 #define MDDI_CLIENT_CORE_BASE  0x108000

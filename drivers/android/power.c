@@ -35,6 +35,7 @@
 #ifdef CONFIG_ANDROID_POWER_STAT
 #include <linux/proc_fs.h>
 #endif
+#include <asm/arch/trout_pwrsink.h>
 
 enum {
 	ANDROID_POWER_DEBUG_USER_STATE = 1U << 0,
@@ -724,6 +725,7 @@ static void android_power_suspend(struct work_struct *work)
 				pos->suspend(pos);
 		}
 		//printk("android_power_suspend: call early suspend handlers\n");
+		trout_pwrsink_set(PWRSINK_SYSTEM_LOAD, 70);		
 
 		//printk("android_power_suspend: enter\n");
 
@@ -755,7 +757,9 @@ static void android_power_suspend(struct work_struct *work)
 			sys_sync();
 			if (android_power_debug_mask & ANDROID_POWER_DEBUG_SUSPEND)
 				printk(KERN_INFO "android_power_suspend: enter suspend\n");
+			trout_pwrsink_set(PWRSINK_SYSTEM_LOAD, 13);
 			ret = pm_suspend(PM_SUSPEND_MEM);
+			trout_pwrsink_set(PWRSINK_SYSTEM_LOAD, 70);			
 			if (android_power_debug_mask & ANDROID_POWER_DEBUG_EXIT_SUSPEND) {
 				struct timespec ts;
 				struct rtc_time tm;
@@ -791,6 +795,7 @@ static void android_power_suspend(struct work_struct *work)
 			if(pos->resume != NULL)
 				pos->resume(pos);
 		}
+		trout_pwrsink_set(PWRSINK_SYSTEM_LOAD, 100);
 		//printk("android_power_suspend: call late resume handlers\n");
 		mutex_unlock(&g_early_suspend_lock);
 	}

@@ -29,6 +29,8 @@
 
 #include <asm/mach/mmc.h>
 
+#include <asm/arch/trout_pwrsink.h>
+
 #include "board-trout.h"
 
 #include "proc_comm.h"
@@ -265,9 +267,11 @@ int trout_wifi_power(int on)
 		rc = vreg_enable(vreg_wifi_osc);
 		if (rc)
 			return rc;
+		trout_pwrsink_set(PWRSINK_WIFI, 70);
 	} else {
 		config_gpio_table(wifi_off_gpio_table,
 				  ARRAY_SIZE(wifi_off_gpio_table));
+		trout_pwrsink_set(PWRSINK_WIFI, 0);
 	}
 	trout_gpio_write(NULL, TROUT_GPIO_MAC_32K_EN, on);
 	mdelay(100);

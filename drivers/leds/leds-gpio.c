@@ -16,6 +16,7 @@
 #include <linux/workqueue.h>
 
 #include <asm/gpio.h>
+#include <asm/arch/trout_pwrsink.h>
 
 struct gpio_led_data {
 	struct led_classdev cdev;
@@ -58,6 +59,11 @@ static void gpio_led_set(struct led_classdev *led_cdev,
 		schedule_work(&led_dat->work);
 	} else
 		gpio_set_value(led_dat->gpio, level);
+
+	if (strcmp(led_dat->cdev.name, "button-backlight") == 0)
+		trout_pwrsink_set(PWRSINK_LED_BUTTON, (value == LED_OFF) ? 0 : 100);
+	else if (strcmp(led_dat->cdev.name, "keyboard-backlight") == 0)
+		trout_pwrsink_set(PWRSINK_LED_KEYBOARD, (value == LED_OFF) ? 0 : 100);		
 }
 
 static int gpio_led_probe(struct platform_device *pdev)

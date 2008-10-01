@@ -42,6 +42,7 @@
 #include <asm/mach/mmc.h>
 #include <asm/arch/msm_iomap.h>
 #include <asm/arch/dma.h>
+#include <asm/arch/trout_pwrsink.h>
 
 
 #include "msm_sdcc.h"
@@ -59,7 +60,7 @@ static struct dentry *debugfs_dir;
 #endif
 
 static unsigned int msmsdcc_fmin = 144000;
-static unsigned int msmsdcc_fmax = 25000000;
+static unsigned int msmsdcc_fmax = 20000000;
 static unsigned int msmsdcc_4bit = 1;
 static unsigned int msmsdcc_pwrsave = 0;
 
@@ -977,11 +978,13 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 	switch (ios->power_mode) {
 	case MMC_POWER_OFF:
+		trout_pwrsink_set(PWRSINK_SDCARD, 0);
 		break;
 	case MMC_POWER_UP:
 		pwr |= MCI_PWR_UP;
 		break;
 	case MMC_POWER_ON:
+		trout_pwrsink_set(PWRSINK_SDCARD, 100);
 		pwr |= MCI_PWR_ON;
 		break;
 	}
