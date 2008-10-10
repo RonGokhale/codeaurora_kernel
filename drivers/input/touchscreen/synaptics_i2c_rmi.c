@@ -61,8 +61,6 @@ static int synaptics_init_panel(struct synaptics_ts_data *ts)
 {
 	int ret;
 
-	msleep(50);
-
 	ret = i2c_smbus_write_byte_data(ts->client, 0xff, 0x10); /* page select = 0x10 */
 	if (ret < 0) {
 		printk(KERN_ERR "i2c_smbus_write_byte_data failed for page select\n");

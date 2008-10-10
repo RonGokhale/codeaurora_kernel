@@ -320,6 +320,8 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 	unsigned page_count;
 	unsigned pages_read = 0;
 	unsigned start_sector = 0;
+	uint32_t ecc_errors;
+	uint32_t total_ecc_errors = 0;
 
 	if (from & (mtd->writesize - 1)) {
 		printk("%s: unsupported from, 0x%llx\n",
@@ -571,10 +573,13 @@ msm_nand_read_oob(struct mtd_info *mtd, loff_t from, struct mtd_oob_ops *ops)
 		}
 		if (!rawerr) { /* check for corretable errors */
 			for (n = start_sector; n < 4; n++) {
-				if (dma_buffer->data.result[n].buffer_status & 0x7) {
-					mtd->ecc_stats.corrected++; /* not thread safe */
-					pageerr = -EUCLEAN;
-					break;
+				ecc_errors = dma_buffer->data.
+					result[n].buffer_status & 0x7;
+				if (ecc_errors) {
+					total_ecc_errors += ecc_errors;
+					mtd->ecc_stats.corrected += ecc_errors; /* not thread safe */
+					if (ecc_errors > 1)
+						pageerr = -EUCLEAN;
 				}
 			}
 		}
@@ -628,8 +633,9 @@ err_dma_map_oobbuf_failed:
 	ops->retlen = mtd->writesize * pages_read;
 	ops->oobretlen = ops->ooblen - oob_len;
 	if (err)
-		printk("msm_nand_read_oob %llx %x %x failed %d\n",
-			from, ops->datbuf ? ops->len : 0, ops->ooblen, err);
+		printk("msm_nand_read_oob %llx %x %x failed %d, corrected %d\n",
+			from, ops->datbuf ? ops->len : 0, ops->ooblen, err,
+			total_ecc_errors);
 	return err;
 }
 
@@ -894,7 +900,9 @@ err_dma_map_oobbuf_failed:
 	if (ops->datbuf) {
 		dma_unmap_single(chip->dev, data_dma_addr, 2048, DMA_TO_DEVICE);
 	}
-
+	if (err)
+		printk("msm_nand_write_oob %llx %x %x failed %d\n",
+			to, ops->len, ops->ooblen, err);
 	return err;
 }
 

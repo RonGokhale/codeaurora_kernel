@@ -305,6 +305,17 @@ static void qmi_process_unicast_wds_msg(struct qmi_ctxt *ctxt,
 {
 	unsigned err;
 	switch (msg->type) {
+	case 0x0021:
+		if (qmi_get_status(msg, &err)) {
+			printk(KERN_ERR
+			       "qmi: wds: network stop failed (%04x)\n", err);
+		} else {
+			printk(KERN_INFO
+			       "qmi: wds: network stopped\n");
+			ctxt->state = STATE_OFFLINE;
+			ctxt->state_dirty = 1;
+		}
+		break;
 	case 0x0020:
 		if (qmi_get_status(msg, &err)) {
 			printk(KERN_ERR
@@ -343,22 +354,28 @@ static void qmi_process_broadcast_wds_msg(struct qmi_ctxt *ctxt,
 		case 1:
 			printk(KERN_INFO "qmi: wds: DISCONNECTED\n");
 			ctxt->state = STATE_OFFLINE;
+			ctxt->state_dirty = 1;
 			break;
 		case 2:
 			printk(KERN_INFO "qmi: wds: CONNECTED\n");
 			ctxt->state = STATE_QUERYING;
+			ctxt->state_dirty = 1;
 			qmi_network_get_profile(ctxt);
 			break;
 		case 3:
 			printk(KERN_INFO "qmi: wds: SUSPENDED\n");
 			ctxt->state = STATE_OFFLINE;
+			ctxt->state_dirty = 1;
 		}
+	} else {
+		printk(KERN_ERR "qmi: unknown bcast msg type 0x%04x\n", msg->type);
 	}
 }
 
 static void qmi_process_wds_msg(struct qmi_ctxt *ctxt,
 				struct qmi_msg *msg)
 {
+	printk("wds: %04x @ %02x\n", msg->type, msg->client_id);
 	if (msg->client_id == ctxt->wds_client_id) {
 		qmi_process_unicast_wds_msg(ctxt, msg);
 	} else if (msg->client_id == 0xff) {
@@ -602,11 +619,22 @@ static int qmi_network_down(struct qmi_ctxt *ctxt)
 static int qmi_print_state(struct qmi_ctxt *ctxt, char *buf, int max)
 {
 	int i;
+	char *statename;
 
-	if (ctxt->state != STATE_ONLINE)
-		return scnprintf(buf, max, "STATE=down\n");
+	if (ctxt->state == STATE_ONLINE) {
+		statename = "up";
+	} else if (ctxt->state == STATE_OFFLINE) {
+		statename = "down";
+	} else {
+		statename = "busy";
+	}
 
-	i = scnprintf(buf, max, "STATE=up\n");
+	i = scnprintf(buf, max, "STATE=%s\n", statename);
+	i += scnprintf(buf + i, max - i, "CID=%d\n",ctxt->wds_client_id);
+
+	if (ctxt->state != STATE_ONLINE){
+		return i;
+	}
 
 	i += scnprintf(buf + i, max - i, "ADDR=%d.%d.%d.%d\n",
 		ctxt->addr[0], ctxt->addr[1], ctxt->addr[2], ctxt->addr[3]);
