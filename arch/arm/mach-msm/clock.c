@@ -745,18 +745,6 @@ out:
 		printk(KERN_ERR "cpufreq_update_policy(): FAILED\n");
 	return 0;
 }
-static void msm_early_suspend(android_early_suspend_t *handler) {
-	update_cpufreq_policy(0);
-}
-
-static void msm_late_resume(android_early_suspend_t *handler) {
-	update_cpufreq_policy(1);
-}
-
-static struct android_early_suspend msm_power_suspend = {
-	.suspend = msm_early_suspend,
-	.resume = msm_late_resume,
-};
 #endif
 
 static int msm_cpufreq_init(struct cpufreq_policy *policy)
@@ -783,9 +771,6 @@ static int msm_cpufreq_init(struct cpufreq_policy *policy)
 	/* Register the cpufreq table with the policy's cpu. */
 	cpufreq_frequency_table_get_attr(cpufreq_table, policy->cpu);
 
-#ifdef CONFIG_ANDROID_POWER
-	android_register_early_suspend(&msm_power_suspend);
-#endif
 	return 0;
 }
 
@@ -805,6 +790,21 @@ static int __init msm_cpufreq_register(void)
 
 device_initcall(msm_cpufreq_register);
 
+#endif
+
+#ifdef CONFIG_ANDROID_POWER
+static void msm_early_suspend(android_early_suspend_t *handler) {
+	acpuclk_set_rate(NULL, 245760 * 1000, 0);
+}
+
+static void msm_late_resume(android_early_suspend_t *handler) {
+	acpuclk_set_rate(NULL, 384000 * 1000, 0);
+}
+
+static struct android_early_suspend msm_power_suspend = {
+	.suspend = msm_early_suspend,
+	.resume = msm_late_resume,
+};
 #endif
 
 /*----------------------------------------------------------------------------
@@ -850,6 +850,9 @@ static int __init clock_late_init(void)
 	}
 	mutex_unlock(&clocks_mutex);
 	pr_info("clock_late_init() disabled %d unused clocks\n", count);
+#ifdef CONFIG_ANDROID_POWER
+	android_register_early_suspend(&msm_power_suspend);
+#endif
 	return 0;
 }
 
