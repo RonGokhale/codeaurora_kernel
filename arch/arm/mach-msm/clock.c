@@ -184,6 +184,7 @@ struct clk *clk_get(struct device *dev, const char *id)
 	mutex_unlock(&clocks_mutex);
 	return ERR_PTR(-ENOENT);
 }
+EXPORT_SYMBOL(clk_get);
 
 int clk_enable(struct clk *clk)
 {
@@ -197,6 +198,7 @@ int clk_enable(struct clk *clk)
 	spin_unlock_irqrestore(&clk->lock, flags);
 	return 0;
 }
+EXPORT_SYMBOL(clk_enable);
 
 void clk_disable(struct clk *clk)
 {
@@ -210,6 +212,7 @@ void clk_disable(struct clk *clk)
 		pc_clk_disable(clk->id);
 	spin_unlock_irqrestore(&clk->lock, flags);
 }
+EXPORT_SYMBOL(clk_isable);
 
 unsigned long clk_get_rate(struct clk *clk)
 {
@@ -217,11 +220,13 @@ unsigned long clk_get_rate(struct clk *clk)
 		return acpuclk_get_rate(clk);
 	return pc_clk_get_rate(clk->id);
 }
+EXPORT_SYMBOL(clk_get_rate);
 
 void clk_put(struct clk *clk)
 {
 	module_put(clk->owner);
 }
+EXPORT_SYMBOL(clk_put);
 
 int clk_set_rate(struct clk *clk, unsigned long rate)
 {
@@ -235,6 +240,7 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 	}
 	return pc_clk_set_rate(clk->id, rate);
 }
+EXPORT_SYMBOL(clk_set_rate);
 
 int clk_set_parent(struct clk *clk, struct clk *parent)
 {
@@ -243,6 +249,7 @@ int clk_set_parent(struct clk *clk, struct clk *parent)
 	 */
 	return -ENOSYS;
 }
+EXPORT_SYMBOL(clk_set_parent);
 
 struct clk *clk_get_parent(struct clk *clk)
 {
@@ -251,6 +258,7 @@ struct clk *clk_get_parent(struct clk *clk)
 	 */
 	return ERR_PTR(-ENOSYS);
 }
+EXPORT_SYMBOL(clk_get_parent);
 
 int clk_set_flags(struct clk *clk, unsigned long flags)
 {
