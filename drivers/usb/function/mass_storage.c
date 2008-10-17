@@ -2361,6 +2361,19 @@ out:
 static void close_backing_file(struct fsg_dev *fsg, struct lun *curlun)
 {
 	if (curlun->filp) {
+		int rc;
+
+		/*
+		 * XXX: San: Ugly hack here added to ensure that
+		 * our pages get synced to disk.
+		 * Also drop caches here just to be extra-safe
+		 */
+		rc = do_fsync(curlun->filp, 1);
+		if (rc < 0)
+			printk(KERN_ERR "ums: Error syncing data (%d)\n", rc);
+		drop_pagecache();
+		drop_slab();
+
 		LDBG(curlun, "close backing file\n");
 		fput(curlun->filp);
 		curlun->filp = NULL;

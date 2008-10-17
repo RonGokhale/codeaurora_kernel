@@ -186,6 +186,7 @@ struct audio {
 
 #ifdef CONFIG_ANDROID_POWER
 	android_suspend_lock_t wakelock;
+	android_suspend_lock_t idlelock;
 #endif
 
 	int adrc_enable;
@@ -202,6 +203,7 @@ static void audio_prevent_sleep(struct audio *audio)
 {
 #ifdef CONFIG_ANDROID_POWER
 	android_lock_suspend(&audio->wakelock);
+	android_lock_idle(&audio->idlelock);
 #endif
 }
 
@@ -209,6 +211,7 @@ static void audio_allow_sleep(struct audio *audio)
 {
 #ifdef CONFIG_ANDROID_POWER
 	android_unlock_suspend(&audio->wakelock);
+	android_unlock_suspend(&audio->idlelock);
 #endif
 }
 
@@ -751,7 +754,7 @@ done:
 static long audpp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct audio *audio = file->private_data;
-	int rc = 0, enable, i;
+	int rc = 0, enable;
 	uint16_t enable_mask;
 
 	mutex_lock(&audio->lock);
@@ -839,7 +842,9 @@ static int __init audio_init(void)
 	init_waitqueue_head(&the_audio.wait);
 #ifdef CONFIG_ANDROID_POWER
 	the_audio.wakelock.name = "audio_pcm";
+	the_audio.idlelock.name = "audio_pcm_idle";
 	android_init_suspend_lock(&the_audio.wakelock);
+	android_init_suspend_lock(&the_audio.idlelock);
 #endif
 	return (misc_register(&audio_misc) || misc_register(&audpp_misc));
 }
