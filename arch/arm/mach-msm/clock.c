@@ -212,7 +212,7 @@ void clk_disable(struct clk *clk)
 		pc_clk_disable(clk->id);
 	spin_unlock_irqrestore(&clk->lock, flags);
 }
-EXPORT_SYMBOL(clk_isable);
+EXPORT_SYMBOL(clk_disable);
 
 unsigned long clk_get_rate(struct clk *clk)
 {
