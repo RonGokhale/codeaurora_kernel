@@ -260,6 +260,29 @@ static struct platform_device android_pmem_gpu1_device = {
 	.dev = { .platform_data = &android_pmem_gpu1_pdata },
 };
 
+#define SND(desc,num) { .name = #desc, .id = num }
+static struct snd_endpoint snd_endpoints_list[] = {
+	SND(HANDSET, 0),
+	SND(HEADSET, 2),
+	SND(SPEAKER, 6),
+	SND(BT, 12),
+	SND(CURRENT, 25),
+};
+#undef SND
+
+static struct msm_snd_endpoints halibut_snd_endpoints = {
+        .endpoints = snd_endpoints_list,
+        .num = sizeof(snd_endpoints_list) / sizeof(struct snd_endpoint)
+};
+
+static struct platform_device halibut_snd = {
+        .name = "msm_snd",
+        .id = -1,
+        .dev    = {
+                .platform_data = &halibut_snd_endpoints
+        },
+};
+
 static struct platform_device *devices[] __initdata = {
 #if !defined(CONFIG_MSM_SERIAL_DEBUGGER)
 	&msm_serial0_device,
@@ -273,6 +296,7 @@ static struct platform_device *devices[] __initdata = {
 	&android_pmem_adsp_device,
 	&android_pmem_gpu0_device,
 	&android_pmem_gpu1_device,
+	&halibut_snd,
 };
 
 /*
