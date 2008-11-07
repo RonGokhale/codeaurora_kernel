@@ -1005,7 +1005,7 @@ config ATAGS_PROC
 
 endmenu
 
-if (ARCH_SA1100 || ARCH_INTEGRATOR || ARCH_OMAP || ARCH_IMX || ARCH_PXA)
+if (ARCH_SA1100 || ARCH_INTEGRATOR || ARCH_OMAP || ARCH_IMX || ARCH_PXA || ARCH_MSM)
 
 menu "CPU Frequency scaling"
 
