@@ -669,6 +669,11 @@ static struct platform_device trout_snd = {
 	},
 };
 
+static struct platform_device trout_rfkill = {
+	.name = "trout_rfkill",
+	.id = -1,
+};
+
 static struct platform_device *devices[] __initdata = {
 	&msm_serial0_device,
 #if !defined(CONFIG_MSM_SERIAL_DEBUGGER) && !defined(CONFIG_TROUT_H2W)
@@ -687,6 +692,7 @@ static struct platform_device *devices[] __initdata = {
 	&android_pmem_camera_device,
 	&trout_ram_console_device,
 	&trout_camera,
+	&trout_rfkill,
 #if defined(CONFIG_TROUT_PWRSINK)
 	&trout_pwr_sink,
 #endif
@@ -712,34 +718,6 @@ module_param_named(charger_en, cpld_charger_en, uint, 0);
 module_param_named(usb_h2w_sw, cpld_usb_h2w_sw, uint, 0);
 module_param_named(disable_uart3, opt_disable_uart3, uint, 0);
 module_param_named(keycaps, keycaps, charp, 0);
-
-static int trout_bluetooth_power_on;
-
-static void bluetooth_set_power(int on)
-{
-	if (on) {
-		trout_gpio_write(NULL, TROUT_GPIO_BT_32K_EN, 1);
-		udelay(10);
-		gpio_configure(101, GPIOF_DRIVE_OUTPUT | GPIOF_OUTPUT_HIGH);
-		trout_pwrsink_set(PWRSINK_BLUETOOTH, 100);
-	} else {
-		gpio_configure(101, GPIOF_DRIVE_OUTPUT | GPIOF_OUTPUT_LOW);
-		trout_gpio_write(NULL, TROUT_GPIO_BT_32K_EN, 0);
-		trout_pwrsink_set(PWRSINK_BLUETOOTH, 0);
-	}
-}
-
-static int bluetooth_set_power_on(const char *val, struct kernel_param *kp)
-{
-	int ret;
-	ret = param_set_bool(val, kp);
-	if (!ret)
-		bluetooth_set_power(trout_bluetooth_power_on);
-	return ret;
-}
-
-module_param_call(bluetooth_power_on, bluetooth_set_power_on, param_get_bool,
-		  &trout_bluetooth_power_on, S_IWUSR | S_IRUGO);
 
 static int __init trout_serialno_setup(char *str)
 {
@@ -873,9 +851,6 @@ static void __init trout_init(void)
 	gpio_set_value(TROUT_GPIO_H2W_SEL0, 0);
 	gpio_set_value(TROUT_GPIO_H2W_SEL1, 1);
 #endif
-
-	/* Init bluetooth clock and shutdown pin */
-	bluetooth_set_power(trout_bluetooth_power_on);
 
 	/* put the AF VCM in powerdown mode to avoid noise */
 	trout_gpio_write(NULL, TROUT_GPIO_VCM_PWDN, 1);

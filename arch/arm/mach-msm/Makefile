@@ -11,6 +11,7 @@ obj-$(CONFIG_MACH_HALIBUT) += board-halibut.o board-halibut-keypad.o
 obj-$(CONFIG_MACH_TROUT) += board-trout.o board-trout-keypad.o
 obj-$(CONFIG_MACH_TROUT) += board-trout-gpio.o board-trout-panel.o
 obj-$(CONFIG_MACH_TROUT) += board-trout-mmc.o
+obj-$(CONFIG_MACH_TROUT) += board-trout-rfkill.o
 obj-$(CONFIG_MACH_TROUT) += htc_akm_cal.o htc_wifi_nvs.o htc_acoustic.o
 obj-$(CONFIG_MSM_SMD) += smd.o smd_tty.o smd_qmi.o
 obj-$(CONFIG_MSM_ONCRPCROUTER) += smd_rpcrouter.o
