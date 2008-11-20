@@ -177,6 +177,14 @@ config FB_METRONOME
 	depends on FB
 	depends on FB_DEFERRED_IO
 
+config FB_MSM
+	tristate
+	depends on FB && ARCH_MSM
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	default y
+
 config FB_HECUBA
 	tristate
 	depends on FB
