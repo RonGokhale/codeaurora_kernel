@@ -23,7 +23,7 @@
 #include <linux/keyreset.h>
 #include <linux/leds.h>
 #include <linux/switch.h>
-#include <linux/android_timed_gpio.h>
+#include <linux/timed_gpio.h>
 #include <linux/synaptics_i2c_rmi.h>
 #include <linux/akm8976.h>
 #include <linux/sysdev.h>
@@ -384,7 +384,7 @@ static struct timed_gpio_platform_data timed_gpio_data = {
 };
 
 static struct platform_device android_timed_gpios = {
-	.name		= "android-timed-gpio",
+	.name		= "timed-gpio",
 	.id		= -1,
 	.dev		= {
 		.platform_data	= &timed_gpio_data,
