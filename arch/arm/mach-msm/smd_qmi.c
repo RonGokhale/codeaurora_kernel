@@ -20,6 +20,7 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
+#include <linux/sched.h>
 #include <linux/wait.h>
 #include <linux/miscdevice.h>
 #include <linux/workqueue.h>
