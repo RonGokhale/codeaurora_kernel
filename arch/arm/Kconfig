@@ -573,16 +573,16 @@ config ARCH_OMAP
 	  Support for TI's OMAP platform (OMAP1 and OMAP2).
 
 config ARCH_MSM
-	bool "Qualcomm MSM"
-	select CPU_V6
+	bool "Qualcomm MSM/QSD"
 	select GENERIC_GPIO
 	select GENERIC_TIME
 	select GENERIC_CLOCKEVENTS
 	help
-	  Support for Qualcomm MSM7K based systems.  This runs on the ARM11
-	  apps processor of the MSM7K and depends on a shared memory
-	  interface to the ARM9 modem processor which runs the baseband stack
-	  and controls some vital subsystems (clock and power control, etc).
+	  Support for Qualcomm MSM/QSD based systems.  This runs on the
+	  ARM11/Scorpion apps processor of the MSM/QSD and depends on a
+	  shared memory interface to the ARM9 modem processor which
+	  runs the baseband stack and controls some vital subsystems
+	  (clock and power control, etc).
 
 config ARCH_W90X900
 	bool "Nuvoton W90X900 CPU"
