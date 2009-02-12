@@ -50,6 +50,8 @@ enum {
 	I2C_STATUS_ERROR_MASK               = 0xfc,
 
 	I2C_INTERFACE_SELECT_INTF_SELECT    = 1U << 0,
+	I2C_INTERFACE_SELECT_TEST_CLK		= 1U << 4,
+	I2C_INTERFACE_SELECT_TEST_DATA		= 1U << 5,
 	I2C_INTERFACE_SELECT_SCL            = 1U << 8,
 	I2C_INTERFACE_SELECT_SDA            = 1U << 9,
 };
@@ -215,9 +217,22 @@ msm_i2c_poll_notbusy(struct msm_i2c_dev *dev)
 
 	while (retries != 2000) {
 		uint32_t status = readl(dev->base + I2C_STATUS);
+		uint32_t ifsel;
 
 		if (!(status & I2C_STATUS_BUS_ACTIVE))
 			return 0;
+		else if (!(status & I2C_STATUS_BUS_MASTER)) {
+			ifsel = readl(dev->base + I2C_INTERFACE_SELECT);
+			ifsel |= I2C_INTERFACE_SELECT_TEST_DATA;
+			writel(ifsel, dev->base + I2C_INTERFACE_SELECT);
+
+			dev_err(dev->dev, "reset not master state\n");
+			udelay(10);
+
+			ifsel = readl(dev->base + I2C_INTERFACE_SELECT);
+			ifsel &= ~I2C_INTERFACE_SELECT_TEST_DATA;
+			writel(ifsel, dev->base + I2C_INTERFACE_SELECT);
+		}
 		if (retries++ > 1000)
 			msleep(1);
 	}
@@ -281,7 +296,7 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		 * and wake us up with dev->err set if there was an error
 		 */
 
-		timeout = wait_for_completion_timeout(&complete, HZ);
+		timeout = wait_for_completion_timeout(&complete, 3 * HZ);
 		if (!timeout) {
 			dev_err(dev->dev, "Transaction timed out\n");
 			ret = -ETIMEDOUT;
