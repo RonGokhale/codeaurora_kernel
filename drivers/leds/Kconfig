@@ -124,6 +124,14 @@ config LEDS_CM_X270
 	depends on LEDS_CLASS && MACH_ARMCORE
 	help
 	  This option enables support for the CM-X270 LEDs.
+	  
+config LEDS_CPLD
+	tristate "LED Support for CPLD connected LEDs"
+	default y
+	depends on LEDS_CLASS
+	help
+	  This option enables support for the LEDs connected to CPLD
+	 
 
 config LEDS_CLEVO_MAIL
 	tristate "Mail LED on Clevo notebook (EXPERIMENTAL)"
