@@ -396,7 +396,7 @@ static void msmfb_earlier_suspend(struct early_suspend *h)
 	mdp->dma(mdp, virt_to_phys(msmfb->black), 0,
 		 msmfb->fb->var.xres, msmfb->fb->var.yres, 0, 0,
 		 NULL, panel->interface_type);
-	mdp->dma_wait(mdp);
+	mdp->dma_wait(mdp, panel->interface_type);
 
 	/* turn off the panel */
 	panel->blank(panel);
@@ -694,6 +694,7 @@ static int setup_fbmem(struct msmfb_info *msmfb, struct platform_device *pdev)
 		printk(KERN_ERR "msmfb: cannot allocate fbram!\n");
 		return -ENOMEM;
 	}
+
 	fb->screen_base = fbram;
 	return 0;
 }
