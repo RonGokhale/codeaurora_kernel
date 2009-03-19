@@ -149,4 +149,6 @@ source "drivers/usb/gadget/Kconfig"
 
 source "drivers/usb/function/Kconfig"
 
+source "drivers/usb/otg/Kconfig"
+
 endif # USB_SUPPORT
