@@ -1001,8 +1001,10 @@ static void msm_hs_request_clock_on_locked(struct uart_port *uport) {
 			msm_uport->rx.flush = FLUSH_IGNORE;
 		msm_uport->clk_state = MSM_HS_CLK_ON;
 		break;
-	case MSM_HS_CLK_ON: break;
-	case MSM_HS_CLK_PORT_OFF: break;
+	case MSM_HS_CLK_ON:
+		break;
+	case MSM_HS_CLK_PORT_OFF:
+		break;
 	}
 }
 
