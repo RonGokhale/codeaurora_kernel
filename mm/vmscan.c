@@ -963,7 +963,7 @@ static inline void note_zone_scanning_priority(struct zone *zone, int priority)
 
 static inline int zone_is_near_oom(struct zone *zone)
 {
-	return zone->pages_scanned >= (zone_page_state(zone, NR_ACTIVE)
+	return zone->pages_scanned > (zone_page_state(zone, NR_ACTIVE)
 				+ zone_page_state(zone, NR_INACTIVE))*3;
 }
 
@@ -1227,18 +1227,29 @@ static unsigned long shrink_zone(int priority, struct zone *zone,
 	unsigned long nr_inactive;
 	unsigned long nr_to_scan;
 	unsigned long nr_reclaimed = 0;
+	unsigned long tmp;
+	unsigned long zone_active;
+	unsigned long zone_inactive;
 
 	if (scan_global_lru(sc)) {
 		/*
 		 * Add one to nr_to_scan just to make sure that the kernel
 		 * will slowly sift through the active list.
 		 */
-		zone->nr_scan_active +=
-			(zone_page_state(zone, NR_ACTIVE) >> priority) + 1;
+		zone_active = zone_page_state(zone, NR_ACTIVE);
+		tmp = (zone_active >> priority) + 1;
+		if (unlikely(tmp > zone_active))
+			tmp = zone_active;
+		zone->nr_scan_active += tmp;
 		nr_active = zone->nr_scan_active;
-		zone->nr_scan_inactive +=
-			(zone_page_state(zone, NR_INACTIVE) >> priority) + 1;
+
+		zone_inactive = zone_page_state(zone, NR_INACTIVE);
+		tmp = (zone_inactive >> priority) + 1;
+		if (unlikely(tmp > zone_inactive))
+			tmp = zone_inactive;
+		zone->nr_scan_inactive += tmp;
 		nr_inactive = zone->nr_scan_inactive;
+
 		if (nr_inactive >= sc->swap_cluster_max)
 			zone->nr_scan_inactive = 0;
 		else
