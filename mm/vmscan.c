@@ -39,6 +39,7 @@
 #include <linux/freezer.h>
 #include <linux/memcontrol.h>
 #include <linux/delayacct.h>
+#include <linux/mem_notify.h>
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -1104,9 +1105,13 @@ static void shrink_active_list(unsigned long nr_pages, struct zone *zone,
 	struct page *page;
 	struct pagevec pvec;
 	int reclaim_mapped = 0;
+	bool inactivated_anon = 0;
 
 	if (sc->may_swap)
 		reclaim_mapped = calc_reclaim_mapped(sc, zone, priority);
+
+	if (!reclaim_mapped)
+		memory_pressure_notify(zone, 0);
 
 	lru_add_drain();
 	spin_lock_irq(&zone->lru_lock);
@@ -1131,12 +1136,23 @@ static void shrink_active_list(unsigned long nr_pages, struct zone *zone,
 			if (!reclaim_mapped ||
 			    (total_swap_pages == 0 && PageAnon(page)) ||
 			    page_referenced(page, 0, sc->mem_cgroup)) {
+				/* deal with the case where there is no
+				 * swap but an anonymous page would be
+				 * moved to the inactive list.
+				 */
+				if (!total_swap_pages && reclaim_mapped &&
+				    PageAnon(page))
+					inactivated_anon = 1;
 				list_add(&page->lru, &l_active);
 				continue;
 			}
 		}
+		if (PageAnon(page))
+			inactivated_anon = 1;
 		list_add(&page->lru, &l_inactive);
 	}
+	if (inactivated_anon)
+		memory_pressure_notify(zone, 1);
 
 	pagevec_init(&pvec, 1);
 	pgmoved = 0;
@@ -1170,6 +1186,8 @@ static void shrink_active_list(unsigned long nr_pages, struct zone *zone,
 		pagevec_strip(&pvec);
 		spin_lock_irq(&zone->lru_lock);
 	}
+	if (!reclaim_mapped)
+		memory_pressure_notify(zone, 0);
 
 	pgmoved = 0;
 	while (!list_empty(&l_active)) {
@@ -1660,6 +1678,14 @@ out:
 		try_to_freeze();
 
 		goto loop_again;
+	}
+
+	for (i = pgdat->nr_zones - 1; i >= 0; i--) {
+		struct zone *zone = pgdat->node_zones + i;
+
+		if (!populated_zone(zone))
+			continue;
+		memory_pressure_notify(zone, 0);
 	}
 
 	return nr_reclaimed;
