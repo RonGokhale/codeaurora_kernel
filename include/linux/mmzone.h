@@ -276,6 +276,7 @@ struct zone {
 	 */
 	int prev_priority;
 
+	int mem_notify_status;
 
 	ZONE_PADDING(_pad2_)
 	/* Rarely used or read-mostly fields */
