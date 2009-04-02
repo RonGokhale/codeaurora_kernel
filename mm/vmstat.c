@@ -733,10 +733,12 @@ static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 	seq_printf(m,
 		   "\n  all_unreclaimable: %u"
 		   "\n  prev_priority:     %i"
-		   "\n  start_pfn:         %lu",
-			   zone_is_all_unreclaimable(zone),
+		   "\n  start_pfn:         %lu"
+		   "\n  mem_notify_status: %i",
+		   zone_is_all_unreclaimable(zone),
 		   zone->prev_priority,
-		   zone->zone_start_pfn);
+		   zone->zone_start_pfn,
+		   zone->mem_notify_status);
 	seq_putc(m, '\n');
 }
 
