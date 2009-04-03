@@ -18,6 +18,7 @@
 #include <linux/delay.h>
 #include <linux/mutex.h>
 #include <linux/errno.h>
+#include <linux/cpufreq.h>
 
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
@@ -38,16 +39,16 @@
 #define SCPLL_FSM_CTL_EXT_ADDR (MSM_SCPLL_BASE + 0x10)
 
 struct clkctl_acpu_speed {
-	unsigned int     use_for_scaling;
-	unsigned int     a11clk_khz;
-	int              pll;
-	unsigned int     a11clk_src_sel;
-	unsigned int     a11clk_src_div;
-	unsigned int     ahbclk_khz;
-	unsigned int     ahbclk_div;
-	unsigned int     sc_core_src_sel_mask;
-	unsigned int     sc_l_value;
-	int              vdd;
+	unsigned int	a11clk_khz;
+	int		pll;
+	unsigned int	a11clk_src_sel;
+	unsigned int	a11clk_src_div;
+	unsigned int	ahbclk_khz;
+	unsigned int	ahbclk_div;
+	unsigned int	sc_core_src_sel_mask;
+	unsigned int	sc_l_value;
+	int		vdd;
+	unsigned long	lpj; /* loops_per_jiffy */
 };
 
 #define ACPU_PLL_TCXO   -1
@@ -57,34 +58,43 @@ struct clkctl_acpu_speed {
 #define ACPU_PLL_3      3
 
 struct clkctl_acpu_speed acpu_freq_tbl[] = {
-	{ 0, 19200, ACPU_PLL_TCXO, 0, 0, 0, 0, 0, 0, 0},
-	{ 0, 48000, ACPU_PLL_1, 1, 0xF, 0, 0, 0, 0, 0},
-	{ 0, 64000, ACPU_PLL_1, 1, 0xB, 0, 0, 0, 0, 0},
-	{ 0, 96000, ACPU_PLL_1, 1, 7, 0, 0, 0, 0, 0},
-	{ 0, 128000, ACPU_PLL_1, 1, 5, 0, 0, 2, 0, 0},
-	{ 0, 192000, ACPU_PLL_1, 1, 3, 0, 0, 0, 0, 0},
-	{ 1, 245000, ACPU_PLL_0, 4, 0, 0, 0, 0, 0, 0}, /* 235.93 on CDMA */
-	{ 0, 256000, ACPU_PLL_1, 1, 2, 0, 0, 0, 0, 0},
-	{ 1, 384000, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xA, 0},
-	{ 0, 422400, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xB, 0},
-	{ 0, 460800, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xC, 0},
-	{ 0, 499200, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xD, 0},
-	{ 0, 537600, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xE, 0},
-	{ 1, 576000, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xF, 0},
-	{ 0, 614400, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x10, 0},
-	{ 0, 652800, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x11, 0},
-	{ 0, 691200, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x12, 0},
-	{ 0, 729600, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x13, 0},
-	{ 1, 768000, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x14, 0},
-	{ 0, 806400, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x15, 0},
-	{ 0, 844800, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x16, 0},
-	{ 0, 883200, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x17, 0},
-	{ 0, 921600, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x18, 0},
-	{ 0, 960000, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x19, 0},
-	{ 1, 998400, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x1A, 0},
+	{ 19200, ACPU_PLL_TCXO, 0, 0, 0, 0, 0, 0, 0, 0},
+	{ 48000, ACPU_PLL_1, 1, 0xF, 0, 0, 0, 0, 0, 0},
+	{ 64000, ACPU_PLL_1, 1, 0xB, 0, 0, 0, 0, 0, 0},
+	{ 96000, ACPU_PLL_1, 1, 7, 0, 0, 0, 0, 0, 0},
+	{ 128000, ACPU_PLL_1, 1, 5, 0, 0, 2, 0, 0, 0},
+	{ 192000, ACPU_PLL_1, 1, 3, 0, 0, 0, 0, 0, 0},
+	{ 245000, ACPU_PLL_0, 4, 0, 0, 0, 0, 0, 0, 0}, /* 235.93 on CDMA */
+	{ 256000, ACPU_PLL_1, 1, 2, 0, 0, 0, 0, 0, 0},
+	{ 384000, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xA, 0, 0},
+	{ 422400, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xB, 0, 0},
+	{ 460800, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xC, 0, 0},
+	{ 499200, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xD, 0, 0},
+	{ 537600, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xE, 0, 0},
+	{ 576000, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xF, 0, 0},
+	{ 614400, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x10, 0, 0},
+	{ 652800, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x11, 0, 0},
+	{ 691200, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x12, 0, 0},
+	{ 729600, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x13, 0, 0},
+	{ 768000, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x14, 0, 0},
+	{ 806400, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x15, 0, 0},
+	{ 844800, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x16, 0, 0},
+	{ 883200, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x17, 0, 0},
+	{ 921600, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x18, 0, 0},
+	{ 960000, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x19, 0, 0},
+	{ 998400, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x1A, 0, 0},
 	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 };
 struct clkctl_acpu_speed *switching_pll_speed = &acpu_freq_tbl[4];
+
+#ifdef CONFIG_MSM_CPU_FREQ_ONDEMAND
+static struct cpufreq_frequency_table freq_table[] = {
+	{ 0, 19200 },
+	{ 1, 384000 },
+	{ 2, 998400 },
+	{ 3, CPUFREQ_TABLE_END },
+};
+#endif
 
 struct clock_state {
 	struct clkctl_acpu_speed	*current_speed;
@@ -343,12 +353,17 @@ static void __init acpuclk_init(void)
 
 	printk(KERN_INFO "ACPU running at %d KHz\n", speed->a11clk_khz);
 
-	acpuclk_set_rate(998400000, 0);
+//	acpuclk_set_rate(998400000, 0);
 }
 
 unsigned long acpuclk_get_rate(void)
 {
 	return drv_state.current_speed->a11clk_khz;
+}
+
+uint32_t acpuclk_get_switch_time(void)
+{
+	return drv_state.acpu_switch_time_us;
 }
 
 unsigned long acpuclk_power_collapse(void)
@@ -365,8 +380,23 @@ unsigned long acpuclk_wait_for_irq(void)
 	return ret * 1000;
 }
 
+/* Initalize the lpj field in the acpu_freq_tbl. */
+static void __init lpj_init(void)
+{
+	const struct clkctl_acpu_speed *base_clk = drv_state.current_speed;
+	int i;
+
+	for (i = 0; acpu_freq_tbl[i].a11clk_khz != 0; ++i) {
+		acpu_freq_tbl[i].lpj = cpufreq_scale(loops_per_jiffy,
+						base_clk->a11clk_khz,
+						acpu_freq_tbl[i].a11clk_khz);
+	}
+}
+
 void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 {
+	pr_info("%s: scorpion\n", __func__);
+
 	mutex_init(&drv_state.lock);
 
 	drv_state.acpu_switch_time_us = clkdata->acpu_switch_time_us;
@@ -376,4 +406,9 @@ void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 	drv_state.wait_for_irq_khz = clkdata->wait_for_irq_khz;
 
 	acpuclk_init();
+	lpj_init();
+
+#ifdef CONFIG_MSM_CPU_FREQ_ONDEMAND
+	cpufreq_frequency_table_get_attr(freq_table, smp_processor_id());
+#endif
 }
