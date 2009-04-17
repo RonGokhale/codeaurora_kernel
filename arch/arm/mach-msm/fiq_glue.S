@@ -41,6 +41,15 @@ ENTRY(fiq_glue)
 		/* call func(data,regs) */
 		mov		r0, r10
 		mov		r1, sp
+		and		r12, r12, #MODE_MASK
+		cmp		r12, #USR_MODE
+		beq		fiq_from_usr_mode
+		orr		r12, r12, #(PSR_I_BIT | PSR_F_BIT)
+		msr		cpsr_c, r12
+		str		r13, [r1, #(4 * 13)]
+		str		r14, [r1, #(4 * 14)]
+		msr		cpsr_c, #(FIQ_MODE | PSR_I_BIT | PSR_F_BIT)
+fiq_from_usr_mode:
 		blx		r9
 
 		/* restore/discard saved state */

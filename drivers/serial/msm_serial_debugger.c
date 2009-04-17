@@ -262,7 +262,7 @@ static void debug_exec(const char *cmd, unsigned *regs)
 			regs[8], regs[9], regs[10], regs[11],
 			mode_name(regs[16]));
 		dprintf(" ip %08x  sp %08x  lr %08x  pc %08x  cpsr %08x\n",
-			regs[10], regs[13], regs[14], regs[15], regs[16]);
+			regs[12], regs[13], regs[14], regs[15], regs[16]);
 	} else if (!strcmp(cmd, "reboot")) {
 		if (msm_hw_reset_hook)
 			msm_hw_reset_hook();
