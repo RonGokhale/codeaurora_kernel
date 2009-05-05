@@ -68,7 +68,11 @@
 #include <media/msm_camera.h>
 
 #undef CDBG
+#ifdef CAMERA_DBG_MSG
 #define CDBG(fmt, args...) printk(KERN_INFO "msm_camera: " fmt, ##args)
+#else
+#define CDBG(fmt, args...)
+#endif
 
 #define MSM_CAMERA_MSG 0
 #define MSM_CAMERA_EVT 1
