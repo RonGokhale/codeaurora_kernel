@@ -20,6 +20,7 @@
 #include <linux/platform_device.h>
 #include <linux/jiffies.h>
 #include <linux/io.h>
+#include <asm/mach-types.h>
 
 #include <mach/msm_touch.h>
 
@@ -142,6 +143,37 @@ static irqreturn_t ts_interrupt(int irq, void *dev_id)
 #ifdef CONFIG_ANDROID_TOUCHSCREEN_MSM_HACKS
 		lx = ts->x_max + 25 - x;
 		ly = ts->y_max + 25 - y;
+		if (machine_is_msm7201a_surf()) {
+			if (lx > 435) {
+			/* Max out x for points lying outside hvga display */
+				lx = X_MAX;
+			} else {
+			/* Scale x for hvga display */
+				if (lx < 250)
+					lx = lx * 2 - 55;
+				else if (lx > 250 && lx < 260)
+					lx = lx * 2;
+				else
+					lx = lx * 2 + 70;
+			}
+		} else {
+			/* manipulate x,y co-ordinates for ffa */
+			if (lx > 700 || ly > 820) {
+			/* Max out x for points lying outside hvga display */
+				lx = X_MAX;
+				ly = Y_MAX;
+			} else {
+				if (ly < 700 && ly > 280) {
+					lx = lx * 2 - 250 ;
+					ly = ly  + 160;
+				} else if (lx > 530)
+					lx = lx * 2 + 30;
+				else if (ly < 280)
+					ly = ly - 50;
+				else
+					ly = ly + 250;
+			}
+		}
 #else
 		lx = x;
 		ly = y;
