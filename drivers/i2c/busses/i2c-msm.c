@@ -222,7 +222,7 @@ msm_i2c_interrupt(int irq, void *devid)
 }
 
 static int
-msm_i2c_poll_notbusy(struct msm_i2c_dev *dev)
+msm_i2c_poll_notbusy(struct msm_i2c_dev *dev, int warn)
 {
 	uint32_t retries = 0;
 
@@ -230,7 +230,7 @@ msm_i2c_poll_notbusy(struct msm_i2c_dev *dev)
 		uint32_t status = readl(dev->base + I2C_STATUS);
 
 		if (!(status & I2C_STATUS_BUS_ACTIVE)) {
-			if (retries)
+			if (retries && warn)
 				dev_warn(dev->dev,
 					"Warning bus was busy (%d)\n", retries);
 			return 0;
@@ -311,7 +311,7 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	long timeout;
 	unsigned long flags;
 
-	ret = msm_i2c_poll_notbusy(dev);
+	ret = msm_i2c_poll_notbusy(dev, 1);
 	if (ret) {
 		ret = msm_i2c_recover_bus_busy(dev);
 		if (ret)
@@ -341,7 +341,7 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	 */
 
 	timeout = wait_for_completion_timeout(&complete, HZ);
-	msm_i2c_poll_notbusy(dev); /* Read may not have stopped in time */
+	msm_i2c_poll_notbusy(dev, 0); /* Read may not have stopped in time */
 
 	spin_lock_irqsave(&dev->lock, flags);
 	if (dev->flush_cnt) {
