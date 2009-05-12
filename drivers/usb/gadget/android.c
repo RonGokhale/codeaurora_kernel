@@ -101,6 +101,8 @@ static struct usb_device_descriptor device_desc = {
 	.bNumConfigurations   = 1,
 };
 
+static void enable_adb(struct android_dev *dev, int enable);
+
 static int __init android_bind_config(struct usb_configuration *c)
 {
 	struct android_dev *dev = _android_dev;
@@ -117,7 +119,8 @@ static struct usb_configuration android_config __initdata = {
 	.label		= "android",
 	.bind		= android_bind_config,
 	.bConfigurationValue = 1,
-	.bmAttributes	= USB_CONFIG_ATT_ONE | USB_CONFIG_ATT_SELFPOWER,
+	.bmAttributes	= (USB_CONFIG_ATT_ONE | USB_CONFIG_ATT_SELFPOWER |
+				USB_CONFIG_ATT_WAKEUP),
 	.bMaxPower	= 0x80, /* 250ma */
 };
 
@@ -181,6 +184,8 @@ static int __init android_bind(struct usb_composite_dev *cdev)
 	usb_gadget_set_selfpowered(gadget);
 	dev->cdev = cdev;
 
+	/* enable the ADB by default */
+	enable_adb(_android_dev, 1);
 	return 0;
 }
 

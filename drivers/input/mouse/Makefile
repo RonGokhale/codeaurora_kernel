@@ -16,6 +16,7 @@ obj-$(CONFIG_MOUSE_PS2)		+= psmouse.o
 obj-$(CONFIG_MOUSE_SERIAL)	+= sermouse.o
 obj-$(CONFIG_MOUSE_HIL)		+= hil_ptr.o
 obj-$(CONFIG_MOUSE_VSXXXAA)	+= vsxxxaa.o
+obj-$(CONFIG_MOUSE_MSM_TOUCHPAD)+= msm_touchpad.o
 obj-$(CONFIG_MOUSE_GPIO)	+= gpio_mouse.o
 
 psmouse-objs := psmouse-base.o synaptics.o

@@ -532,6 +532,7 @@ config ARCH_OMAP
 config ARCH_MSM
 	bool "Qualcomm MSM"
 	select GENERIC_GPIO
+	select HAVE_CLK
 	select GENERIC_TIME
 	select GENERIC_CLOCKEVENTS
 	help
@@ -539,6 +540,19 @@ config ARCH_MSM
 	  apps processor of the MSM7K and depends on a shared memory
 	  interface to the ARM9 modem processor which runs the baseband stack
 	  and controls some vital subsystems (clock and power control, etc).
+
+config ARCH_QSD
+	bool "Qualcomm QSD"
+	select GENERIC_GPIO
+	select HAVE_CLK
+	select GENERIC_TIME
+	select GENERIC_CLOCKEVENTS
+	help
+	  Support for Qualcomm QSD based systems.  This runs on
+	  the Scorpion apps processor of the QSD and depends on a shared
+	  memory interface to the ARM9 modem processor which runs the baseband
+	  stack and controls some vital subsystems (clock and power control,
+	  etc).
 
 endchoice
 
@@ -1005,7 +1019,7 @@ config ATAGS_PROC
 
 endmenu
 
-if (ARCH_SA1100 || ARCH_INTEGRATOR || ARCH_OMAP || ARCH_IMX || ARCH_PXA || ARCH_MSM)
+if (ARCH_SA1100 || ARCH_INTEGRATOR || ARCH_OMAP || ARCH_IMX || ARCH_PXA || ARCH_MSM || ARCH_QSD)
 
 menu "CPU Frequency scaling"
 
@@ -1048,6 +1062,14 @@ config CPU_FREQ_PXA
 	select CPU_FREQ_DEFAULT_GOV_USERSPACE
 
 endmenu
+
+config CPU_FREQ_MSM
+	bool
+	depends on CPU_FREQ && (ARCH_MSM || ARCH_QSD)
+	default y
+	help
+	  This enables the CPUFreq driver for Qualcomm CPUs.
+	  If in doubt, say Y.
 
 endif
 

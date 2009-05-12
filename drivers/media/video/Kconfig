@@ -966,6 +966,15 @@ config VIDEO_PXA27x
 	---help---
 	  This is a v4l2 driver for the PXA27x Quick Capture Interface
 
+comment "MSM Camera And Video"
+
+menuconfig MSM_CAMERA
+	bool "MSM camera and video capture support"
+	depends on VIDEO_V4L2
+	---help---
+	  Say Y here to enable selecting the video adapters for
+	  MSM camera and video encoding
+
 config VIDEO_SH_MOBILE_CEU
 	tristate "SuperH Mobile CEU Interface driver"
 	depends on VIDEO_DEV && HAS_DMA

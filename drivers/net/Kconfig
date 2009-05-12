@@ -901,6 +901,11 @@ config SMC91X
 	  The module will be called smc91x.  If you want to compile it as a
 	  module, say M here and read <file:Documentation/kbuild/modules.txt>.
 
+config SMC91X_POLL
+	bool "poll SMC91x"
+	default n
+	depends on SMC91X
+
 config NET_NETX
 	tristate "NetX Ethernet support"
 	select MII
@@ -960,7 +965,7 @@ config SMC911X
 	tristate "SMSC LAN911[5678] support"
 	select CRC32
 	select MII
-	depends on ARCH_PXA || SUPERH
+	depends on ARCH_QSD || ARCH_PXA || SUPERH
 	help
 	  This is a driver for SMSC's LAN911x series of Ethernet chipsets
 	  including the new LAN9115, LAN9116, LAN9117, and LAN9118.
@@ -2937,7 +2942,7 @@ config NETCONSOLE
 
 config MSM_RMNET
 	tristate "MSM RMNET Virtual Network Device"
-	depends on ARCH_MSM
+	depends on ARCH_MSM || ARCH_QSD
 	default y
 	help
 	  Virtual ethernet interface for MSM RMNET transport.

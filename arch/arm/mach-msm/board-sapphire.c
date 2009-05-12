@@ -55,6 +55,7 @@
 
 #include "gpio_chip.h"
 #include "board-sapphire.h"
+#include "pm.h"
 
 #include <mach/board.h>
 #include <mach/board_htc.h>
@@ -168,6 +169,7 @@ static struct sapphire_axis_info sapphire_y_axis = {
 
 static struct gpio_event_direct_entry sapphire_nav_buttons[] = {
 	{ SAPPHIRE_GPIO_NAVI_ACT_N, BTN_MOUSE },
+	{ SAPPHIRE_GPIO_SEARCH_ACT_N, KEY_COMPOSE }, /* CPLD Key Search */
 };
 
 static struct gpio_event_input_info sapphire_nav_button_info = {
@@ -197,43 +199,6 @@ static struct platform_device sapphire_nav_device = {
 	.id = 2,
 	.dev		= {
 		.platform_data	= &sapphire_nav_data,
-	},
-};
-
-/* a new search button to be a wake-up source */
-static struct gpio_event_direct_entry sapphire_search_button_v1[] = {
-	{ SAPPHIRE_GPIO_SEARCH_ACT_N,      	KEY_COMPOSE },	/* CPLD Key Search*/
-};
-
-static struct gpio_event_direct_entry sapphire_search_button_v2[] = {
-	{ SAPPHIRE_GPIO_SEARCH_ACT_N,      	KEY_HOME },	// CPLD Key Home
-};
-
-static struct gpio_event_input_info sapphire_search_button_info = {
-	.info.func = gpio_event_input_func,
-	//.flags = GPIOEDF_PRINT_KEYS | GPIOEDF_PRINT_KEY_DEBOUNCE,
-	.flags = 0,
-	.poll_time.tv.nsec = 40 * NSEC_PER_MSEC,
-	.type = EV_KEY,
-	.keymap = sapphire_search_button_v2,
-	.keymap_size = ARRAY_SIZE(sapphire_search_button_v2)
-};
-
-static struct gpio_event_info *sapphire_search_info[] = {
-	&sapphire_search_button_info.info
-};
-
-static struct gpio_event_platform_data sapphire_search_button_data = {
-	.name = "sapphire-nav-button",
-	.info = sapphire_search_info,
-	.info_count = ARRAY_SIZE(sapphire_search_info),
-};
-
-static struct platform_device sapphire_search_button_device = {
-	.name = GPIO_EVENT_DEV_NAME,
-	.id = 1,
-	.dev		= {
-		.platform_data	= &sapphire_search_button_data,
 	},
 };
 
@@ -618,7 +583,6 @@ static struct h2w_platform_data sapphire_h2w_data = {
 	.cable_in2		= SAPPHIRE_GPIO_CABLE_IN2,
 	.h2w_clk		= SAPPHIRE_GPIO_H2W_CLK,
 	.h2w_data		= SAPPHIRE_GPIO_H2W_DATA,
-	.headset_mic_35mm	= SAPPHIRE_GPIO_AUD_HSMIC_DET_N,
 	.debug_uart 		= H2W_UART3,
 	.config_cpld 		= h2w_config_cpld,
 	.init_cpld 		= h2w_init_cpld,
@@ -695,35 +659,13 @@ static struct pwr_sink sapphire_pwrsink_table[] = {
 	},
 };
 
-static int sapphire_pwrsink_resume_early(struct platform_device *pdev)
-{
-	htc_pwrsink_set(PWRSINK_SYSTEM_LOAD, 7);
-        return 0;
-}
-								
-static void sapphire_pwrsink_resume_late(struct early_suspend *h)
-{
-        htc_pwrsink_set(PWRSINK_SYSTEM_LOAD, 38);
-}
-
-static void sapphire_pwrsink_suspend_early(struct early_suspend *h)
-{
-        htc_pwrsink_set(PWRSINK_SYSTEM_LOAD, 7);
-}
-	
-static int sapphire_pwrsink_suspend_late(struct platform_device *pdev, pm_message_t state)
-{
-        htc_pwrsink_set(PWRSINK_SYSTEM_LOAD, 1);
-        return 0;
-}
-																		
 static struct pwr_sink_platform_data sapphire_pwrsink_data = {
 	.num_sinks	= ARRAY_SIZE(sapphire_pwrsink_table),
 	.sinks		= sapphire_pwrsink_table,
-	.suspend_late	= sapphire_pwrsink_suspend_late,
-	.resume_early	= sapphire_pwrsink_resume_early,
-	.suspend_early	= sapphire_pwrsink_suspend_early,
-	.resume_late	= sapphire_pwrsink_resume_late,
+	.suspend_late	= NULL,
+	.resume_early	= NULL,
+	.suspend_early	= NULL,
+	.resume_late	= NULL,
 };
 
 static struct platform_device sapphire_pwr_sink = {
@@ -853,7 +795,6 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_uart_dm1,
 #endif
 	&sapphire_nav_device,
-	&sapphire_search_button_device,
 	&sapphire_reset_keys_device,
 	&android_leds,
 #ifdef CONFIG_LEDS_CPLD
@@ -1050,10 +991,17 @@ static struct msm_serial_hs_platform_data msm_uart_dm1_pdata = {
 };
 #endif
 
+static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR] = {
+	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].latency = 16000,
+	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].latency = 12000,
+	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].latency = 2000,
+};
+
 static void __init sapphire_init(void)
 {
 	int rc;
-	printk("sapphire_init() revision = 0x%X\n", system_rev);
+	int i;
+	printk("sapphire_init() revision=%d\n", system_rev);
 
 	/*
 	 * Setup common MSM GPIOS
@@ -1086,9 +1034,6 @@ static void __init sapphire_init(void)
 		sapphire_gpio_write(NULL, SAPPHIRE_GPIO_VCM_PWDN, 1);
 	mdelay(100);
 
-	printk(KERN_DEBUG "sapphire_is_5M_camera=%d\n",
-	       sapphire_is_5M_camera());
-	printk(KERN_DEBUG "is_12pin_camera=%d\n", is_12pin_camera());
 #ifdef CONFIG_SERIAL_MSM_HS
 	msm_device_uart_dm1.dev.platform_data = &msm_uart_dm1_pdata;
 #endif
@@ -1112,11 +1057,9 @@ static void __init sapphire_init(void)
 #endif
 	msm_init_pmic_vibrator();
 
-	if(system_rev != 0x80)
-		sapphire_search_button_info.keymap = sapphire_search_button_v1;
-
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 	i2c_register_board_info(0, i2c_devices, ARRAY_SIZE(i2c_devices));
+	msm_pm_set_platform_data(msm_pm_data);
 }
 
 static struct map_desc sapphire_io_desc[] __initdata = {
@@ -1131,16 +1074,22 @@ static struct map_desc sapphire_io_desc[] __initdata = {
 
 unsigned int sapphire_get_hwid(void)
 {
+	printk(KERN_DEBUG "sapphire_get_hwid=0x%x\r\n", hwid);
+
 	return hwid;
 }
 
 unsigned int sapphire_get_skuid(void)
 {
+	printk(KERN_DEBUG "sapphire_get_skuid=0x%x\r\n", skuid);
+
 	return skuid;
 }
 
 unsigned sapphire_engineerid(void)
 {
+	printk(KERN_DEBUG "sapphire_engineerid=0x%x\r\n", engineerid);
+
 	return engineerid;
 }
 
@@ -1151,6 +1100,7 @@ int sapphire_is_5M_camera(void)
 		ret = 1;
 	else if (sapphire_get_skuid() == 0x20100 && !(sapphire_engineerid() & 0x02))
 		ret = 1;
+	printk(KERN_DEBUG "sapphire_is_5M_camera=%d\n", ret);
 	return ret;
 }
 
@@ -1163,12 +1113,13 @@ unsigned int is_12pin_camera(void)
 		ret = 1;
 	else
 		ret = 0;
+	printk(KERN_DEBUG "is_12pin_camera=%d\r\n", ret);
 	return ret;
 }
 
 int sapphire_get_smi_size(void)
 {
-	printk(KERN_DEBUG "get_smi_size=%d\n", smi_sz);
+	printk(KERN_DEBUG "get_smi_size=%d\r\n", smi_sz);
 	return smi_sz;
 }
 

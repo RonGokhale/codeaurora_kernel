@@ -434,8 +434,7 @@ static int __init board_serialno_setup(char *serialno)
 {
 	char *str;
 
-	/* use default serial number when mode is factory2 */
-	if (mfg_mode == 1 || !strlen(serialno))
+	if (board_mfg_mode() || !strlen(serialno))
 		str = df_serialno;
 	else
 		str = serialno;

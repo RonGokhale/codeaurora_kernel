@@ -508,6 +508,11 @@ config LOGGER
 	bool "High-speed in-kernel logging driver"
 	default y
 
+config KERNEL_LOGGER_TEST
+	tristate "Simple module to test kernel API for logger"
+	depends on LOGGER
+	default m
+
 config UID_STAT
 	bool "UID based statistics tracking exported to /proc/uid_stat"
 	default n

@@ -110,6 +110,7 @@ config CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
 	  Be aware that not all cpufreq drivers support the conservative
 	  governor. If unsure have a look at the help section of the
 	  driver. Fallback governor will be the performance governor.
+
 endchoice
 
 config CPU_FREQ_GOV_PERFORMANCE

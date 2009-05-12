@@ -4,6 +4,7 @@
  *  Copyright (C)  2001 Russell King
  *            (C)  2003 Venkatesh Pallipadi <venkatesh.pallipadi@intel.com>.
  *                      Jun Nakajima <jun.nakajima@intel.com>
+ *  Copyright (c) 2009, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -27,6 +28,8 @@
 #define DEF_FREQUENCY_UP_THRESHOLD		(80)
 #define MIN_FREQUENCY_UP_THRESHOLD		(11)
 #define MAX_FREQUENCY_UP_THRESHOLD		(100)
+#define MIN_FREQUENCY_DOWN_THRESHOLD		(1)
+#define MAX_FREQUENCY_DOWN_THRESHOLD		(90)
 
 /*
  * The polling frequency of this governor depends on the capability of
@@ -85,10 +88,12 @@ static struct workqueue_struct	*kondemand_wq;
 static struct dbs_tuners {
 	unsigned int sampling_rate;
 	unsigned int up_threshold;
+	unsigned int down_threshold;
 	unsigned int ignore_nice;
 	unsigned int powersave_bias;
 } dbs_tuners_ins = {
 	.up_threshold = DEF_FREQUENCY_UP_THRESHOLD,
+	.down_threshold = DEF_FREQUENCY_UP_THRESHOLD - 10,
 	.ignore_nice = 0,
 	.powersave_bias = 0,
 };
@@ -207,6 +212,7 @@ static ssize_t show_##file_name						\
 }
 show_one(sampling_rate, sampling_rate);
 show_one(up_threshold, up_threshold);
+show_one(down_threshold, down_threshold);
 show_one(ignore_nice_load, ignore_nice);
 show_one(powersave_bias, powersave_bias);
 
@@ -245,6 +251,32 @@ static ssize_t store_up_threshold(struct cpufreq_policy *unused,
 	}
 
 	dbs_tuners_ins.up_threshold = input;
+
+	/* Rebase down threshold to be lesser than up threshold */
+	if (dbs_tuners_ins.down_threshold > input - 10)
+		dbs_tuners_ins.down_threshold = input - 10;
+
+	mutex_unlock(&dbs_mutex);
+
+	return count;
+}
+
+static ssize_t store_down_threshold(struct cpufreq_policy *unused,
+		const char *buf, size_t count)
+{
+	unsigned int input;
+	int ret;
+	ret = sscanf(buf, "%u", &input);
+
+	mutex_lock(&dbs_mutex);
+	if (ret != 1 || input > MAX_FREQUENCY_DOWN_THRESHOLD ||
+			input < MIN_FREQUENCY_DOWN_THRESHOLD ||
+			input > dbs_tuners_ins.up_threshold - 10) {
+		mutex_unlock(&dbs_mutex);
+		return -EINVAL;
+	}
+
+	dbs_tuners_ins.down_threshold = input;
 	mutex_unlock(&dbs_mutex);
 
 	return count;
@@ -311,6 +343,7 @@ __ATTR(_name, 0644, show_##_name, store_##_name)
 
 define_one_rw(sampling_rate);
 define_one_rw(up_threshold);
+define_one_rw(down_threshold);
 define_one_rw(ignore_nice_load);
 define_one_rw(powersave_bias);
 
@@ -319,6 +352,7 @@ static struct attribute * dbs_attributes[] = {
 	&sampling_rate_min.attr,
 	&sampling_rate.attr,
 	&up_threshold.attr,
+	&down_threshold.attr,
 	&ignore_nice_load.attr,
 	&powersave_bias.attr,
 	NULL
@@ -411,7 +445,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	 * can support the current CPU usage without triggering the up
 	 * policy. To be safe, we focus 10 points under the threshold.
 	 */
-	if (load < (dbs_tuners_ins.up_threshold - 10)) {
+	if (load < (dbs_tuners_ins.down_threshold)) {
 		unsigned int freq_next, freq_cur;
 
 		freq_cur = __cpufreq_driver_getavg(policy);
@@ -419,7 +453,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 			freq_cur = policy->cur;
 
 		freq_next = (freq_cur * load) /
-			(dbs_tuners_ins.up_threshold - 10);
+			(dbs_tuners_ins.down_threshold);
 
 		if (!dbs_tuners_ins.powersave_bias) {
 			__cpufreq_driver_target(policy, freq_next,

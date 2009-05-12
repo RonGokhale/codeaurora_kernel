@@ -1,6 +1,7 @@
 /* drivers/android/pmem.c
  *
  * Copyright (C) 2007 Google, Inc.
+ * Copyright (c) 2009, Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -734,7 +735,7 @@ int get_pmem_addr(struct file *file, unsigned long *start,
 	return 0;
 }
 
-int get_pmem_file(int fd, unsigned long *start, unsigned long *vstart,
+int get_pmem_file(unsigned int fd, unsigned long *start, unsigned long *vstart,
 		  unsigned long *len, struct file **filp)
 {
 	struct file *file;
@@ -756,6 +757,14 @@ end:
 	fput(file);
 	return -1;
 }
+EXPORT_SYMBOL(get_pmem_file);
+
+int get_pmem_fd(int fd, unsigned long *start, unsigned long *len)
+{
+	unsigned long vstart;
+	return get_pmem_file(fd, start, &vstart, len, NULL);
+}
+EXPORT_SYMBOL(get_pmem_fd);
 
 void put_pmem_file(struct file *file)
 {
@@ -777,6 +786,33 @@ void put_pmem_file(struct file *file)
 	up_write(&data->sem);
 #endif
 	fput(file);
+}
+EXPORT_SYMBOL(put_pmem_file);
+
+void put_pmem_fd(int fd)
+{
+	struct file *file;
+	int put_needed;
+
+	file = fget_light(fd, &put_needed);
+	if (file == NULL)
+		return;
+	put_pmem_file(file);
+	fput_light(file, put_needed);
+}
+
+
+
+void flush_pmem_fd(int fd, unsigned long offset, unsigned long len)
+{
+	struct file *file;
+	int fput_needed;
+
+	file = fget_light(fd, &fput_needed);
+	if (file == NULL)
+		return;
+	flush_pmem_file(file, offset, len);
+	fput_light(file, fput_needed);
 }
 
 void flush_pmem_file(struct file *file, unsigned long offset, unsigned long len)
@@ -802,6 +838,9 @@ void flush_pmem_file(struct file *file, unsigned long offset, unsigned long len)
 	/* if this isn't a submmapped file, flush the whole thing */
 	if (unlikely(!(data->flags & PMEM_FLAGS_CONNECTED))) {
 		dmac_flush_range(vaddr, vaddr + pmem_len(id, data));
+#ifdef CONFIG_CACHE_L2X0
+		outer_flush_range(__pa(vaddr),__pa(vaddr + pmem_len(id, data)));
+#endif
 		goto end;
 	}
 	/* otherwise, flush the region of the file we are drawing */
@@ -813,6 +852,9 @@ void flush_pmem_file(struct file *file, unsigned long offset, unsigned long len)
 			flush_start = vaddr + region_node->region.offset;
 			flush_end = flush_start + region_node->region.len;
 			dmac_flush_range(flush_start, flush_end);
+#ifdef CONFIG_CACHE_L2X0
+			outer_flush_range(__pa(flush_start),__pa(flush_end));
+#endif
 			break;
 		}
 	}

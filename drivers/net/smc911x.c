@@ -5,6 +5,7 @@
  * Copyright (C) 2005 Sensoria Corp
  *	   Derived from the unified SMC91x driver by Nicolas Pitre
  *	   and the smsc911x.c reference driver by SMSC
+ * Copyright (c) 2009, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -80,6 +81,9 @@ static const char version[] =
 
 #include "smc911x.h"
 
+/* Global chip id variable */
+static unsigned int current_chip_id;
+
 /*
  * Transmit timeout, default 5 seconds.
  */
@@ -87,6 +91,7 @@ static int watchdog = 5000;
 module_param(watchdog, int, 0400);
 MODULE_PARM_DESC(watchdog, "transmit timeout in milliseconds");
 
+#define TX_FIFO_KB_9221		4
 static int tx_fifo_kb=8;
 module_param(tx_fifo_kb, int, 0400);
 MODULE_PARM_DESC(tx_fifo_kb,"transmit FIFO size in KB (1<x<15)(default=8)");
@@ -244,6 +249,8 @@ static void smc911x_reset(struct net_device *dev)
 	SMC_SET_FLOW(lp, FLOW_FCPT_ | FLOW_FCEN_);
 	SMC_SET_AFC_CFG(lp, lp->afc_cfg);
 
+	if (current_chip_id == CHIP_9221)
+		SMC_SET_COECR(lp, COE_CR_TXCOE_EN_ | COE_CR_RXCOE_EN_);
 
 	/* Set to LED outputs */
 	SMC_SET_GPIO_CFG(lp, 0x70070000);
@@ -252,7 +259,12 @@ static void smc911x_reset(struct net_device *dev)
 	 * Deassert IRQ for 1*10us for edge type interrupts
 	 * and drive IRQ pin push-pull
 	 */
-	SMC_SET_IRQ_CFG(lp, (1 << 24) | INT_CFG_IRQ_EN_ | INT_CFG_IRQ_TYPE_);
+	if (current_chip_id == CHIP_9221)
+		SMC_SET_IRQ_CFG(lp, (10 << 24) | INT_CFG_IRQ_EN_
+					| INT_CFG_IRQ_TYPE_);
+	else
+		SMC_SET_IRQ_CFG(lp, (1 << 24) | INT_CFG_IRQ_EN_
+					| INT_CFG_IRQ_TYPE_);
 
 	/* clear anything saved */
 	if (lp->pending_tx_skb != NULL) {
@@ -281,7 +293,12 @@ static void smc911x_enable(struct net_device *dev)
 	cfg &= HW_CFG_TX_FIF_SZ_ | 0xFFF;
 	cfg |= HW_CFG_SF_;
 	SMC_SET_HW_CFG(lp, cfg);
-	SMC_SET_FIFO_TDA(lp, 0xFF);
+
+	if (current_chip_id == CHIP_9221)
+		SMC_SET_FIFO_TDA(lp, 0x30);
+	else
+		SMC_SET_FIFO_TDA(lp, 0xFF);
+
 	/* Update TX stats on every 64 packets received or every 1 sec */
 	SMC_SET_FIFO_TSL(lp, 64);
 	SMC_SET_GPT_CFG(lp, GPT_CFG_TIMER_EN_ | 10000);
@@ -436,7 +453,10 @@ static inline void	 smc911x_rcv(struct net_device *dev)
 		}
 #else
 		SMC_SET_RX_CFG(lp, RX_CFG_RX_END_ALGN4_ | ((2<<8) & RX_CFG_RXDOFF_));
-		SMC_PULL_DATA(lp, data, pkt_len+2+3);
+		if (current_chip_id == CHIP_9221)
+			SMC_PULL_DIRECT_DATA(lp, data, pkt_len+2+3);
+		else
+			SMC_PULL_DATA(lp, data, pkt_len+2+3);
 
 		DBG(SMC_DEBUG_PKTS, "%s: Received packet\n", dev->name);
 		PRINT_PKT(data, ((pkt_len - 4) <= 64) ? pkt_len - 4 : 64);
@@ -499,7 +519,11 @@ static void smc911x_hardware_send_pkt(struct net_device *dev)
 	SMC_PUSH_DATA(lp, buf, len);
 	/* DMA complete IRQ will free buffer and set jiffies */
 #else
-	SMC_PUSH_DATA(lp, buf, len);
+	if (current_chip_id == CHIP_9221)
+		SMC_PUSH_DIRECT_DATA(lp, buf, len);
+	else
+		SMC_PUSH_DATA(lp, buf, len);
+
 	dev->trans_start = jiffies;
 	dev_kfree_skb(skb);
 #endif
@@ -537,7 +561,11 @@ static int smc911x_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 			dev->name, free);
 		spin_lock_irqsave(&lp->lock, flags);
 		/* Reenable when at least 1 packet of size MTU present */
+	if (current_chip_id == CHIP_9221)
+		SMC_SET_FIFO_TDA(lp, 0x30);
+	else
 		SMC_SET_FIFO_TDA(lp, (SMC911X_TX_FIFO_LOW_THRESHOLD)/64);
+
 		lp->tx_throttle = 1;
 		netif_stop_queue(dev);
 		spin_unlock_irqrestore(&lp->lock, flags);
@@ -914,6 +942,13 @@ static void smc911x_phy_configure(struct work_struct *work)
 		 PHY_INT_MASK_ANEG_COMP_ | PHY_INT_MASK_REMOTE_FAULT_ |
 		 PHY_INT_MASK_LINK_DOWN_);
 
+	if (current_chip_id == CHIP_9221) {
+		/* Enable AutoMDIX in the special ctrl/status indications reg */
+		SMC_SET_PHY_SPL_CTRL_STS(lp, phyaddr,
+			PHY_SPL_CTRL_STS_AMDIX_STP_ |
+			PHY_SPL_CTRL_STS_AMDIX_EN_);
+	}
+
 	/* If the user requested no auto neg, then go set his request */
 	if (lp->mii.force_media) {
 		smc911x_phy_fixed(dev);
@@ -1115,6 +1150,9 @@ static irqreturn_t smc911x_interrupt(int irq, void *dev_id)
 		/* Handle transmit FIFO available */
 		if (status & INT_STS_TDFA_) {
 			DBG(SMC_DEBUG_TX, "%s: TX data FIFO space available irq\n", dev->name);
+		if (current_chip_id == CHIP_9221)
+			SMC_SET_FIFO_TDA(lp, 0x30);
+		else
 			SMC_SET_FIFO_TDA(lp, 0xFF);
 			lp->tx_throttle = 0;
 #ifdef SMC_USE_DMA
@@ -1833,6 +1871,8 @@ static int __init smc911x_probe(struct net_device *dev)
 		printk(KERN_ERR "Unknown chip ID %04x\n", chip_id);
 		retval = -ENODEV;
 		goto err_out;
+	} else {
+		current_chip_id = chip_id;
 	}
 	version_string = chip_ids[i].name;
 
@@ -1841,6 +1881,10 @@ static int __init smc911x_probe(struct net_device *dev)
 
 	/* At this point I'll assume that the chip is an SMC911x. */
 	DBG(SMC_DEBUG_MISC, "%s: Found a %s\n", CARDNAME, chip_ids[i].name);
+
+	/* Set a different TX FIFO size for 9221 chip */
+	if (current_chip_id == CHIP_9221)
+		tx_fifo_kb = TX_FIFO_KB_9221;
 
 	/* Validate the TX FIFO size requested */
 	if ((tx_fifo_kb < 2) || (tx_fifo_kb > 14)) {

@@ -35,6 +35,9 @@ static int irqs[] = {
 #else defined(CONFIG_ARCH_MSM)
 	INT_ARM11_PMU,
 #endif
+#ifdef CONFIG_ARCH_MSM
+        42,
+#endif
 };
 
 static void armv6_pmu_stop(void)
