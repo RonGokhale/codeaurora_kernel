@@ -432,7 +432,7 @@ struct msm_rpc_endpoint *msm_rpcrouter_create_local_endpoint(dev_t dev)
 	spin_lock_init(&ept->restart_lock);
 	init_waitqueue_head(&ept->restart_wait);
 	ept->restart_state = RESTART_NORMAL;
-	wake_lock_init(&ept->read_q_wake_lock, WAKE_LOCK_SUSPEND, "rpc_read");
+	//wake_lock_init(&ept->read_q_wake_lock, WAKE_LOCK_SUSPEND, "rpc_read");
 	INIT_LIST_HEAD(&ept->incomplete);
 	spin_lock_init(&ept->incomplete_lock);
 
@@ -470,7 +470,7 @@ int msm_rpcrouter_destroy_local_endpoint(struct msm_rpc_endpoint *ept)
 	}
 	spin_unlock_irqrestore(&ept->reply_q_lock, flags);
 
-	wake_lock_destroy(&ept->read_q_wake_lock);
+	//wake_lock_destroy(&ept->read_q_wake_lock);
 	list_del(&ept->list);
 	kfree(ept);
 	return 0;
@@ -955,7 +955,7 @@ static void do_read_data(struct work_struct *work)
 
 packet_complete:
 	spin_lock_irqsave(&ept->read_q_lock, flags);
-	wake_lock(&ept->read_q_wake_lock);
+	//wake_lock(&ept->read_q_wake_lock);
 	list_add_tail(&pkt->list, &ept->read_q);
 	wake_up(&ept->wait_q);
 	spin_unlock_irqrestore(&ept->read_q_lock, flags);
@@ -1570,8 +1570,8 @@ int __msm_rpc_read(struct msm_rpc_endpoint *ept,
 		return -ETOOSMALL;
 	}
 	list_del(&pkt->list);
-	if (list_empty(&ept->read_q))
-		wake_unlock(&ept->read_q_wake_lock);
+	//if (list_empty(&ept->read_q))
+	//	wake_unlock(&ept->read_q_wake_lock);
 	spin_unlock_irqrestore(&ept->read_q_lock, flags);
 
 	rc = pkt->length;
