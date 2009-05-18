@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2009 Google, Inc.
  * Copyright (c) 2008 QUALCOMM Incorporated.
  *
  * This software is licensed under the terms of the GNU General Public
@@ -25,80 +26,86 @@
 
 #include "acpuclock.h"
 
-#define SHOT_SWITCH 4
-#define HOP_SWITCH 5
-#define SIMPLE_SLEW 6
-#define COMPLEX_SLEW 7
+#if 0
+#define DEBUG(x...) pr_info(x)
+#else
+#define DEBUG(x...) do {} while (0)
+#endif
 
-#define SPSS_CLK_CNTL_ADDR (MSM_CSR_BASE + 0x100)
-#define SPSS_CLK_SEL_ADDR (MSM_CSR_BASE + 0x104)
+#define SHOT_SWITCH	4
+#define HOP_SWITCH	5
+#define SIMPLE_SLEW	6
+#define COMPLEX_SLEW	7
+
+#define SPSS_CLK_CNTL_ADDR	(MSM_CSR_BASE + 0x100)
+#define SPSS_CLK_SEL_ADDR	(MSM_CSR_BASE + 0x104)
 
 /* Scorpion PLL registers */
-#define SCPLL_CTL_ADDR         (MSM_SCPLL_BASE + 0x4)
-#define SCPLL_STATUS_ADDR      (MSM_SCPLL_BASE + 0x18)
-#define SCPLL_FSM_CTL_EXT_ADDR (MSM_SCPLL_BASE + 0x10)
+#define SCPLL_CTL_ADDR		(MSM_SCPLL_BASE + 0x4)
+#define SCPLL_STATUS_ADDR	(MSM_SCPLL_BASE + 0x18)
+#define SCPLL_FSM_CTL_EXT_ADDR	(MSM_SCPLL_BASE + 0x10)
 
 struct clkctl_acpu_speed {
-	unsigned int	a11clk_khz;
-	int		pll;
-	unsigned int	a11clk_src_sel;
-	unsigned int	a11clk_src_div;
-	unsigned int	ahbclk_khz;
-	unsigned int	ahbclk_div;
-	unsigned int	sc_core_src_sel_mask;
-	unsigned int	sc_l_value;
-	int		vdd;
-	unsigned long	lpj; /* loops_per_jiffy */
+	unsigned acpu_khz;
+	unsigned clk_cfg;
+	unsigned clk_sel;
+	unsigned sc_l_value;
+	unsigned lpj;
 };
 
-#define ACPU_PLL_TCXO   -1
-#define ACPU_PLL_0      0
-#define ACPU_PLL_1      1
-#define ACPU_PLL_2      2
-#define ACPU_PLL_3      3
+/* clock sources */
+#define CLK_TCXO	0 /* 19.2 MHz */
+#define CLK_GLOBAL_PLL	1 /* 768 MHz */
+#define CLK_MODEM_PLL	4 /* 245 MHz (UMTS) or 235.93 MHz (CDMA) */
+
+#define CCTL(src, div) (((src) << 4) | (div - 1))
+
+/* core sources */
+#define SRC_RAW		0 /* clock from SPSS_CLK_CNTL */
+#define SRC_SCPLL	1 /* output of scpll 128-998 MHZ */
+#define SRC_AXI		2 /* 128 MHz */
+#define SRC_PLL1	3 /* 768 MHz */
 
 struct clkctl_acpu_speed acpu_freq_tbl[] = {
-	{ 19200, ACPU_PLL_TCXO, 0, 0, 0, 0, 0, 0, 0, 0},
-	{ 48000, ACPU_PLL_1, 1, 0xF, 0, 0, 0, 0, 0, 0},
-	{ 64000, ACPU_PLL_1, 1, 0xB, 0, 0, 0, 0, 0, 0},
-	{ 96000, ACPU_PLL_1, 1, 7, 0, 0, 0, 0, 0, 0},
-	{ 128000, ACPU_PLL_1, 1, 5, 0, 0, 2, 0, 0, 0},
-	{ 192000, ACPU_PLL_1, 1, 3, 0, 0, 0, 0, 0, 0},
-	{ 245000, ACPU_PLL_0, 4, 0, 0, 0, 0, 0, 0, 0}, /* 235.93 on CDMA */
-	{ 256000, ACPU_PLL_1, 1, 2, 0, 0, 0, 0, 0, 0},
-	{ 384000, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xA, 0, 0},
-	{ 422400, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xB, 0, 0},
-	{ 460800, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xC, 0, 0},
-	{ 499200, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xD, 0, 0},
-	{ 537600, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xE, 0, 0},
-	{ 576000, ACPU_PLL_3, 0, 0, 0, 0, 1, 0xF, 0, 0},
-	{ 614400, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x10, 0, 0},
-	{ 652800, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x11, 0, 0},
-	{ 691200, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x12, 0, 0},
-	{ 729600, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x13, 0, 0},
-	{ 768000, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x14, 0, 0},
-	{ 806400, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x15, 0, 0},
-	{ 844800, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x16, 0, 0},
-	{ 883200, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x17, 0, 0},
-	{ 921600, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x18, 0, 0},
-	{ 960000, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x19, 0, 0},
-	{ 998400, ACPU_PLL_3, 0, 0, 0, 0, 1, 0x1A, 0, 0},
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{  19200, CCTL(CLK_TCXO, 1),		SRC_RAW, 0, 0 },
+	{ 128000, CCTL(CLK_TCXO, 1),		SRC_AXI, 0, 0 },
+	{ 245000, CCTL(CLK_MODEM_PLL, 1),	SRC_RAW, 0, 0 },
+	{ 256000, CCTL(CLK_GLOBAL_PLL, 3),	SRC_RAW, 0, 0 },
+	{ 384000, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0A, 0 },
+	{ 422400, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0B, 0 },
+	{ 460800, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0C, 0 },
+	{ 499200, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0D, 0 },
+	{ 537600, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0E, 0 },
+	{ 576000, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0F, 0 },
+	{ 614400, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x10, 0 },
+	{ 652800, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x11, 0 },
+	{ 691200, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x12, 0 },
+	{ 729600, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x13, 0 },
+	{ 768000, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x14, 0 },
+	{ 806400, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x15, 0 },
+	{ 844800, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x16, 0 },
+	{ 883200, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x17, 0 },
+	{ 921600, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x18, 0 },
+	{ 960000, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x19, 0 },
+	{ 998400, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x1A, 0 },
+	{ 0 },
 };
-struct clkctl_acpu_speed *switching_pll_speed = &acpu_freq_tbl[4];
 
-#ifdef CONFIG_MSM_CPU_FREQ_ONDEMAND
+#ifdef CONFIG_CPU_FREQ_TABLE
 static struct cpufreq_frequency_table freq_table[] = {
 	{ 0, 19200 },
-	{ 1, 384000 },
-	{ 2, 998400 },
-	{ 3, CPUFREQ_TABLE_END },
+	{ 1, 245000 },
+	{ 2, 256000 },
+	{ 3, 384000 },
+	{ 4, 576000 },
+	{ 5, 768000 },
+	{ 6, 998400 },
+	{ 7, CPUFREQ_TABLE_END },
 };
 #endif
 
 struct clock_state {
 	struct clkctl_acpu_speed	*current_speed;
-	struct mutex			lock;
 	uint32_t			acpu_switch_time_us;
 	uint32_t			max_speed_delta_khz;
 	uint32_t			vdd_switch_time_us;
@@ -108,7 +115,9 @@ struct clock_state {
 
 static struct clock_state drv_state = { 0 };
 
-static void scpll_set_freq(uint32_t lval, unsigned freq_switch)
+static DEFINE_SPINLOCK(acpu_lock);
+
+static void scpll_set_freq(uint32_t lval)
 {
 	uint32_t regval;
 
@@ -125,11 +134,9 @@ static void scpll_set_freq(uint32_t lval, unsigned freq_switch)
 	regval = readl(SCPLL_FSM_CTL_EXT_ADDR);
 	regval &= ~(0x3f << 3);
 	regval |= (lval << 3);
-	if (freq_switch == SIMPLE_SLEW)
-		regval |= (0x1 << 9);
 
 	regval &= ~(0x3 << 0);
-	regval |= (freq_switch << 0);
+	regval |= (HOP_SWITCH << 0);
 	writel(regval, SCPLL_FSM_CTL_EXT_ADDR);
 
 	dmb();
@@ -205,160 +212,152 @@ static void scpll_init(uint32_t lval)
 	writel(0x0, SCPLL_CTL_ADDR);
 
 	/* switch scpll to desired freq */
-	scpll_set_freq(lval, SHOT_SWITCH);
+	scpll_set_freq(lval);
 }
 
-static void config_pll(struct clkctl_acpu_speed *s)
+/* this is still a bit weird... */
+static void select_clock(unsigned src, unsigned config)
 {
-	uint32_t regval;
+	uint32_t val;
 
-	if (s->pll == ACPU_PLL_3)
-		scpll_set_freq(s->sc_l_value, SHOT_SWITCH);
-	else {
-		/* get the current clock source selection */
-		regval = readl(SPSS_CLK_SEL_ADDR) & 0x1;
+	if (src == SRC_RAW) {
+		uint32_t sel = readl(SPSS_CLK_SEL_ADDR);
+		unsigned shift = (sel & 1) ? 8 : 0;
 
-		/* configure the other clock source, then switch to it,
-		 * using the glitch free mux */
-		switch (regval) {
-		case 0x0:
-			regval = readl(SPSS_CLK_CNTL_ADDR);
-			regval &= ~(0x7 << 4 | 0xf);
-			regval |= (s->a11clk_src_sel << 4);
-			regval |= (s->a11clk_src_div << 0);
-			writel(regval, SPSS_CLK_CNTL_ADDR);
+		/* set other clock source to the new configuration */
+		val = readl(SPSS_CLK_CNTL_ADDR);
+		val = (val & (~(0x7F << shift))) | (config << shift);
+		writel(val, SPSS_CLK_CNTL_ADDR);
 
-			regval = readl(SPSS_CLK_SEL_ADDR);
-			regval |= 0x1;
-			writel(regval, SPSS_CLK_SEL_ADDR);
-			break;
+		/* switch to other clock source */
+		writel(sel ^ 1, SPSS_CLK_SEL_ADDR);
 
-		case 0x1:
-			regval = readl(SPSS_CLK_CNTL_ADDR);
-			regval &= ~(0x7 << 12 | 0xf << 8);
-			regval |= (s->a11clk_src_sel << 12);
-			regval |= (s->a11clk_src_div << 8);
-			writel(regval, SPSS_CLK_CNTL_ADDR);
-
-			regval = readl(SPSS_CLK_SEL_ADDR);
-			regval &= ~0x1;
-			writel(regval, SPSS_CLK_SEL_ADDR);
-			break;
-		}
-		dmb();
+		dmb(); /* necessary? */
 	}
 
-	regval = readl(SPSS_CLK_SEL_ADDR);
-	regval &= ~(0x3 << 1);
-	regval |= (s->sc_core_src_sel_mask << 1);
-	writel(regval, SPSS_CLK_SEL_ADDR);
+	/* switch to new source */
+	val = readl(SPSS_CLK_SEL_ADDR) & (~6);
+	writel(val | ((src & 3) << 1), SPSS_CLK_SEL_ADDR);
 }
 
 int acpuclk_set_rate(unsigned long rate, int for_power_collapse)
 {
-	struct clkctl_acpu_speed *tgt_s, *strt_s;
+	struct clkctl_acpu_speed *cur, *next;
+	unsigned long flags;
 
-	strt_s = drv_state.current_speed;
+	cur = drv_state.current_speed;
 
-	if (rate == (strt_s->a11clk_khz * 1000))
+	/* convert to KHz */
+	rate /= 1000;
+
+	DEBUG("acpuclk_set_rate(%d,%d)\n", (int) rate, for_power_collapse);
+
+	if (rate == cur->acpu_khz)
 		return 0;
 
-	for (tgt_s = acpu_freq_tbl; tgt_s->a11clk_khz != 0; tgt_s++) {
-		if (tgt_s->a11clk_khz == (rate / 1000))
+	next = acpu_freq_tbl;
+	for (;;) {
+		if (next->acpu_khz == rate)
 			break;
+		if (next->acpu_khz == 0)
+			return -EINVAL;
+		next++;
 	}
 
-	if (tgt_s->a11clk_khz == 0)
-		return -EINVAL;
+	spin_lock_irqsave(&acpu_lock, flags);
 
-	if (!for_power_collapse)
-		mutex_lock(&drv_state.lock);
+	DEBUG("sel=%d cfg=%02x lv=%02x -> sel=%d, cfg=%02x lv=%02x\n",
+	      cur->clk_sel, cur->clk_cfg, cur->sc_l_value,
+	      next->clk_sel, next->clk_cfg, next->sc_l_value);
 
-	if (strt_s->pll != ACPU_PLL_3 && tgt_s->pll != ACPU_PLL_3) {
-		config_pll(tgt_s);
-	} else if (strt_s->pll != ACPU_PLL_3 && tgt_s->pll == ACPU_PLL_3) {
-		scpll_apps_enable(1);
-		if (strt_s != switching_pll_speed)
-			config_pll(switching_pll_speed);
-		config_pll(tgt_s);
-	} else if (strt_s->pll == ACPU_PLL_3 && tgt_s->pll != ACPU_PLL_3) {
-		config_pll(tgt_s);
-		scpll_apps_enable(0);
+	if (next->clk_sel == SRC_SCPLL) {
+		if (cur->clk_sel != SRC_SCPLL)
+			scpll_apps_enable(1);
+		if (cur->clk_sel != SRC_AXI)
+			select_clock(SRC_AXI, 0);
+		scpll_set_freq(next->sc_l_value);
+		select_clock(SRC_SCPLL, 0);
 	} else {
-		config_pll(switching_pll_speed);
-		config_pll(tgt_s);
+		if (cur->clk_sel == SRC_SCPLL) {
+			select_clock(SRC_AXI, 0);
+			select_clock(next->clk_sel, next->clk_cfg);
+			scpll_apps_enable(0);
+		} else {
+			select_clock(next->clk_sel, next->clk_cfg);
+		}
 	}
 
-	/* Update the driver state with the new clock freq */
-	drv_state.current_speed = tgt_s;
+	drv_state.current_speed = next;
+	loops_per_jiffy = next->lpj;
 
-	if (!for_power_collapse)
-		mutex_unlock(&drv_state.lock);
+	spin_unlock_irqrestore(&acpu_lock, flags);
 
 	return 0;
+}
+
+static unsigned __init acpuclk_find_speed(void)
+{
+	uint32_t sel, val;
+
+	sel = readl(SPSS_CLK_SEL_ADDR);
+	switch ((sel & 6) >> 1) {
+	case 1:
+		val = readl(SCPLL_FSM_CTL_EXT_ADDR);
+		val = (val >> 3) & 0x3f;
+		return val * 38400;
+	case 2:
+		return 128000;
+	default:
+		pr_err("acpu_find_speed: failed\n");
+		BUG();
+		return 0;
+	}
 }
 
 static void __init acpuclk_init(void)
 {
 	struct clkctl_acpu_speed *speed;
-	uint32_t div, sel, regval;
+	unsigned init_khz;
 
-	/* initialize scpll at 998Mhz */
-	scpll_init(0x1A);
+	init_khz = acpuclk_find_speed();
 
-	/* Determine the source of the Scorpion clock. */
-	regval = readl(SPSS_CLK_SEL_ADDR);
-	switch ((regval & 0x6) >> 1) {
-	case 0: /* raw source clock */
-	case 3: /* low jitter PLL1 (768Mhz) */
-		if (regval & 0x1) {
-			sel = ((readl(SPSS_CLK_CNTL_ADDR) >> 4) & 0x7);
-			div = ((readl(SPSS_CLK_CNTL_ADDR) >> 0) & 0xf);
-		} else {
-			sel = ((readl(SPSS_CLK_CNTL_ADDR) >> 12) & 0x7);
-			div = ((readl(SPSS_CLK_CNTL_ADDR) >> 8) & 0xf);
+	/* Force over to AXI clock so we can init the SCPLL
+	 * even if it was already running when we started.
+	 */
+	select_clock(SRC_AXI, 0);
+
+	scpll_init(0x14);
+
+	/* Move to 768MHz for boot, which is a safe frequency
+	 * for all versions of Scorpion at the moment.
+	 */
+	speed = acpu_freq_tbl;
+	for (;;) {
+		if (speed->acpu_khz == 768000)
+			break;
+		if (speed->acpu_khz == 0) {
+			pr_err("acpuclk_init: cannot find 768MHz\n");
+			BUG();
 		}
-
-		/* Find the matching clock rate. */
-		for (speed = acpu_freq_tbl; speed->a11clk_khz != 0; speed++) {
-			if (speed->a11clk_src_sel == sel &&
-			    speed->a11clk_src_div == div)
-				break;
-		}
-		break;
-
-	case 1: /* unbuffered scorpion pll (384Mhz to 998.4Mhz) */
-		sel = ((readl(SCPLL_FSM_CTL_EXT_ADDR) >> 3) & 0x3f);
-
-		/* Find the matching clock rate. */
-		for (speed = acpu_freq_tbl; speed->a11clk_khz != 0; speed++) {
-			if (speed->sc_l_value == sel &&
-			    speed->sc_core_src_sel_mask == 1)
-				break;
-		}
-		break;
-
-	case 2: /* AXI bus clock (128Mhz) */
-	default:
-		speed = &acpu_freq_tbl[4];
+		speed++;
 	}
 
-	if (speed->a11clk_khz == 0) {
-		printk(KERN_WARNING "Warning - ACPU clock reports invalid "
-			"speed\n");
-		return;
-	}
+	scpll_apps_enable(1);
+	scpll_set_freq(speed->sc_l_value);
+	select_clock(SRC_SCPLL, 0);
 
 	drv_state.current_speed = speed;
 
-	printk(KERN_INFO "ACPU running at %d KHz\n", speed->a11clk_khz);
+	for (speed = acpu_freq_tbl; speed->acpu_khz; speed++)
+		speed->lpj = cpufreq_scale(loops_per_jiffy,
+					   init_khz, speed->acpu_khz);
 
-//	acpuclk_set_rate(998400000, 0);
+	loops_per_jiffy = speed->lpj;
 }
 
 unsigned long acpuclk_get_rate(void)
 {
-	return drv_state.current_speed->a11clk_khz;
+	return drv_state.current_speed->acpu_khz;
 }
 
 uint32_t acpuclk_get_switch_time(void)
@@ -380,24 +379,9 @@ unsigned long acpuclk_wait_for_irq(void)
 	return ret * 1000;
 }
 
-/* Initalize the lpj field in the acpu_freq_tbl. */
-static void __init lpj_init(void)
-{
-	const struct clkctl_acpu_speed *base_clk = drv_state.current_speed;
-	int i;
-
-	for (i = 0; acpu_freq_tbl[i].a11clk_khz != 0; ++i) {
-		acpu_freq_tbl[i].lpj = cpufreq_scale(loops_per_jiffy,
-						base_clk->a11clk_khz,
-						acpu_freq_tbl[i].a11clk_khz);
-	}
-}
-
 void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 {
-	pr_info("%s: scorpion\n", __func__);
-
-	mutex_init(&drv_state.lock);
+	spin_lock_init(&acpu_lock);
 
 	drv_state.acpu_switch_time_us = clkdata->acpu_switch_time_us;
 	drv_state.max_speed_delta_khz = clkdata->max_speed_delta_khz;
@@ -406,9 +390,8 @@ void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 	drv_state.wait_for_irq_khz = clkdata->wait_for_irq_khz;
 
 	acpuclk_init();
-	lpj_init();
 
-#ifdef CONFIG_MSM_CPU_FREQ_ONDEMAND
+#ifdef CONFIG_CPU_FREQ_TABLE
 	cpufreq_frequency_table_get_attr(freq_table, smp_processor_id());
 #endif
 }
