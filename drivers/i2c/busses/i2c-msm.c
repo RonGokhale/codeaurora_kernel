@@ -268,6 +268,9 @@ msm_i2c_recover_bus_busy(struct msm_i2c_dev *dev)
 		       dev->base + I2C_WRITE_DATA);
 	}
 
+	dev_warn(dev->dev, "i2c_scl: %d, i2c_sda: %d\n",
+		 gpio_get_value(gpio_clk), gpio_get_value(gpio_dat));
+
 	for (i = 0; i < 9; i++) {
 		if (gpio_get_value(gpio_dat) && gpio_clk_status)
 			break;
