@@ -439,6 +439,8 @@ msm_i2c_probe(struct platform_device *pdev)
 	spin_lock_init(&dev->lock);
 	platform_set_drvdata(pdev, dev);
 
+	msm_set_i2c_mux(false, NULL, NULL);
+
 	clk_enable(clk);
 
 	/* I2C_HS_CLK = I2C_CLK/(3*(HS_DIVIDER_VALUE+1) */
