@@ -982,6 +982,9 @@ static void usb_prepare(struct usb_info *ui)
 
 static void usb_suspend_phy(struct usb_info *ui)
 {
+#if defined(CONFIG_ARCH_QSD8X50)
+	/* 8x50 has an internal PHY which needs a different sequence */
+#else
 	/* clear VBusValid and SessionEnd rising interrupts */
 	ulpi_write(ui, (1 << 1) | (1 << 3), 0x0f);
 	/* clear VBusValid and SessionEnd falling interrupts */
@@ -990,6 +993,7 @@ static void usb_suspend_phy(struct usb_info *ui)
 	ulpi_write(ui, (1 << 7), 0x08);
 	/* clear the SuspendM bit -> suspend the PHY */
 	ulpi_write(ui, 1 << 6, 0x06);
+#endif
 }
 
 static void usb_bind_driver(struct usb_info *ui, struct usb_function_info *fi)
