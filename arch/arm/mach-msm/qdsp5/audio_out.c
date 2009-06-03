@@ -624,7 +624,8 @@ static ssize_t audio_write(struct file *file, const char __user *buf,
 	/* just for this write, set us real-time */
 	if (!task_has_rt_policy(current)) {
 		cap_raise(current->cap_effective, CAP_SYS_NICE);
-		sched_setscheduler(current, SCHED_RR, &s);
+		if ((sched_setscheduler(current, SCHED_RR, &s)) < 0)
+                     pr_err("audio: sched_setscheduler failed\n");
 	}
 
 	mutex_lock(&audio->write_lock);
@@ -668,7 +669,8 @@ static ssize_t audio_write(struct file *file, const char __user *buf,
 	/* restore scheduling policy and priority */
 	if (!rt_policy(old_policy)) {
 		struct sched_param v = { .sched_priority = old_prio };
-		sched_setscheduler(current, old_policy, &v);
+		if ((sched_setscheduler(current, old_policy, &v)) < 0)
+                       pr_err("audio: sched_setscheduler failed\n");
 		if (likely(!cap_nice))
 			cap_lower(current->cap_effective, CAP_SYS_NICE);
 	}
