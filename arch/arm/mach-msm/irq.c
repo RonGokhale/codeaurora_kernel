@@ -570,24 +570,38 @@ static void set_fiq_handler(void *start, unsigned int length)
 
 extern unsigned char fiq_glue, fiq_glue_end;
 
-static void (*fiq_func)(void *data, void *regs);
-static unsigned long long fiq_stack[256];
+static void (*fiq_func)(void *data, void *regs, void *svc_sp);
+static void *fiq_data;
+static void *fiq_stack;
 
 void fiq_glue_setup(void *func, void *data, void *sp);
 
-int msm_fiq_set_handler(void (*func)(void *data, void *regs), void *data)
+int msm_fiq_set_handler(void (*func)(void *data, void *regs, void *svc_sp),
+			void *data)
 {
 	unsigned long flags;
 	int ret = -ENOMEM;
 
+	if (!fiq_stack)
+		fiq_stack = kzalloc(THREAD_SIZE, GFP_KERNEL);
+	if (!fiq_stack)
+		return -ENOMEM;
+
 	local_irq_save(flags);
 	if (fiq_func == 0) {
 		fiq_func = func;
-		fiq_glue_setup(func, data, fiq_stack + 255);
+		fiq_data = data;
+		fiq_glue_setup(func, data, fiq_stack + THREAD_START_SP);
 		set_fiq_handler(&fiq_glue, (&fiq_glue_end - &fiq_glue));
 		ret = 0;
 	}
 	local_irq_restore(flags);
 	return ret;
+}
+
+void msm_fiq_exit_sleep(void)
+{
+	if (fiq_stack)
+		fiq_glue_setup(fiq_func, fiq_data, fiq_stack + THREAD_START_SP);
 }
 #endif

@@ -201,6 +201,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 	void msm_irq_exit_sleep1(void);
 	void msm_irq_exit_sleep2(void);
 	void msm_irq_exit_sleep3(void);
+	void msm_fiq_exit_sleep(void);
 	void msm_gpio_enter_sleep(int from_idle);
 	void msm_gpio_exit_sleep(void);
 	void smd_sleep_exit(void);
@@ -337,6 +338,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 		if (collapsed) {
 			cpu_init();
 			__asm__("cpsie   a");
+			msm_fiq_exit_sleep();
 			local_fiq_enable();
 			rv = 0;
 		}
