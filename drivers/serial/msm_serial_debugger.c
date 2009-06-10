@@ -35,6 +35,9 @@
 
 #include "msm_serial.h"
 
+#include <linux/uaccess.h>
+#include "../kernel/stacktrace.h"
+
 static void sleep_timer_expired(unsigned long);
 
 static unsigned int debug_port_base;
@@ -202,7 +205,7 @@ static int debug_printf(void *cookie, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	vsnprintf(buf, 128, fmt, ap);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
 	debug_puts(buf);
@@ -231,6 +234,96 @@ static int debug_printf_nfiq(void *cookie, const char *fmt, ...)
 
 unsigned int last_irqs[NR_IRQS];
 
+static void dump_regs(unsigned *regs)
+{
+	dprintf(" r0 %08x  r1 %08x  r2 %08x  r3 %08x\n",
+		regs[0], regs[1], regs[2], regs[3]);
+	dprintf(" r4 %08x  r5 %08x  r6 %08x  r7 %08x\n",
+		regs[4], regs[5], regs[6], regs[7]);
+	dprintf(" r8 %08x  r9 %08x r10 %08x r11 %08x  mode %s\n",
+		regs[8], regs[9], regs[10], regs[11],
+		mode_name(regs[16]));
+	if ((regs[16] & MODE_MASK) == USR_MODE)
+		dprintf(" ip %08x  sp %08x  lr %08x  pc %08x  cpsr %08x\n",
+			regs[12], regs[13], regs[14], regs[15], regs[16]);
+	else
+		dprintf(" ip %08x  sp %08x  lr %08x  pc %08x  cpsr %08x  "
+			"spsr %08x\n", regs[12], regs[13], regs[14], regs[15],
+			regs[16], regs[17]);
+}
+
+struct mode_regs {
+	unsigned long sp_svc;
+	unsigned long lr_svc;
+	unsigned long spsr_svc;
+
+	unsigned long sp_abt;
+	unsigned long lr_abt;
+	unsigned long spsr_abt;
+
+	unsigned long sp_und;
+	unsigned long lr_und;
+	unsigned long spsr_und;
+
+	unsigned long sp_irq;
+	unsigned long lr_irq;
+	unsigned long spsr_irq;
+
+	unsigned long r8_fiq;
+	unsigned long r9_fiq;
+	unsigned long r10_fiq;
+	unsigned long r11_fiq;
+	unsigned long r12_fiq;
+	unsigned long sp_fiq;
+	unsigned long lr_fiq;
+	unsigned long spsr_fiq;
+};
+
+void __naked get_mode_regs(struct mode_regs *regs)
+{
+	asm volatile (
+	"mrs	r1, cpsr\n"
+	"msr	cpsr_c, #0xd3 @(SVC_MODE | PSR_I_BIT | PSR_F_BIT)\n"
+	"stmia	r0!, {r13 - r14}\n"
+	"mrs	r2, spsr\n"
+	"msr	cpsr_c, #0xd7 @(ABT_MODE | PSR_I_BIT | PSR_F_BIT)\n"
+	"stmia	r0!, {r2, r13 - r14}\n"
+	"mrs	r2, spsr\n"
+	"msr	cpsr_c, #0xdb @(UND_MODE | PSR_I_BIT | PSR_F_BIT)\n"
+	"stmia	r0!, {r2, r13 - r14}\n"
+	"mrs	r2, spsr\n"
+	"msr	cpsr_c, #0xd2 @(IRQ_MODE | PSR_I_BIT | PSR_F_BIT)\n"
+	"stmia	r0!, {r2, r13 - r14}\n"
+	"mrs	r2, spsr\n"
+	"msr	cpsr_c, #0xd1 @(FIQ_MODE | PSR_I_BIT | PSR_F_BIT)\n"
+	"stmia	r0!, {r2, r8 - r14}\n"
+	"mrs	r2, spsr\n"
+	"stmia	r0!, {r2}\n"
+	"msr	cpsr_c, r1\n"
+	"bx	lr\n");
+}
+
+
+static void dump_allregs(unsigned *regs)
+{
+	struct mode_regs mode_regs;
+	dump_regs(regs);
+	get_mode_regs(&mode_regs);
+	dprintf(" svc: sp %08x  lr %08x  spsr %08x\n",
+		mode_regs.sp_svc, mode_regs.lr_svc, mode_regs.spsr_svc);
+	dprintf(" abt: sp %08x  lr %08x  spsr %08x\n",
+		mode_regs.sp_abt, mode_regs.lr_abt, mode_regs.spsr_abt);
+	dprintf(" und: sp %08x  lr %08x  spsr %08x\n",
+		mode_regs.sp_und, mode_regs.lr_und, mode_regs.spsr_und);
+	dprintf(" irq: sp %08x  lr %08x  spsr %08x\n",
+		mode_regs.sp_irq, mode_regs.lr_irq, mode_regs.spsr_irq);
+	dprintf(" fiq: r8 %08x  r9 %08x  r10 %08x  r11 %08x  r12 %08x\n",
+		mode_regs.r8_fiq, mode_regs.r9_fiq, mode_regs.r10_fiq,
+		mode_regs.r11_fiq, mode_regs.r12_fiq);
+	dprintf(" fiq: sp %08x  lr %08x  spsr %08x\n",
+		mode_regs.sp_fiq, mode_regs.lr_fiq, mode_regs.spsr_fiq);
+}
+
 static void dump_irqs(void)
 {
 	int n;
@@ -248,21 +341,92 @@ static void dump_irqs(void)
 	}
 }
 
-static void debug_exec(const char *cmd, unsigned *regs)
+static int report_trace(struct stackframe *frame, void *d)
+{
+	unsigned int *depth = d;
+
+	if (*depth) {
+		dprintf("  pc: %p (%pF), lr %p (%pF), sp %p, fp %p\n",
+			frame->pc, frame->pc, frame->lr, frame->lr,
+			frame->sp, frame->fp);
+		(*depth)--;
+		return 0;
+	}
+	dprintf("  ...\n");
+
+	return *depth == 0;
+}
+
+struct frame_tail {
+	struct frame_tail *fp;
+	unsigned long sp;
+	unsigned long lr;
+} __attribute__((packed));
+
+static struct frame_tail *user_backtrace(struct frame_tail *tail)
+{
+	struct frame_tail buftail[2];
+
+	/* Also check accessibility of one struct frame_tail beyond */
+	if (!access_ok(VERIFY_READ, tail, sizeof(buftail))) {
+		dprintf("  invalid frame pointer %p\n", tail);
+		return NULL;
+	}
+	if (__copy_from_user_inatomic(buftail, tail, sizeof(buftail))) {
+		dprintf("  failed to copy frame pointer %p\n", tail);
+		return NULL;
+	}
+
+	dprintf("  %p\n", buftail[0].lr);
+
+	/* frame pointers should strictly progress back up the stack
+	 * (towards higher addresses) */
+	if (tail >= buftail[0].fp)
+		return NULL;
+
+	return buftail[0].fp-1;
+}
+
+void dump_stacktrace(struct pt_regs * const regs, unsigned int depth, void *ssp)
+{
+	struct frame_tail *tail;
+	struct thread_info *real_thread_info = (struct thread_info *)
+				((unsigned long)ssp & ~(THREAD_SIZE - 1));
+
+	*current_thread_info() = *real_thread_info;
+
+	if (!current)
+		dprintf("current NULL\n");
+	else
+		dprintf("pid: %d  comm: %s\n", current->pid, current->comm);
+	dump_regs((unsigned *)regs);
+
+	if (!user_mode(regs)) {
+		unsigned long base = regs->ARM_sp & ~(THREAD_SIZE - 1);
+		dprintf("  pc: %p (%pF), lr %p (%pF), sp %p, fp %p\n",
+			regs->ARM_pc, regs->ARM_pc, regs->ARM_lr, regs->ARM_lr,
+			regs->ARM_sp, regs->ARM_fp);
+		walk_stackframe(regs->ARM_fp, base, base + THREAD_SIZE,
+				report_trace, &depth);
+		return;
+	}
+
+	tail = ((struct frame_tail *) regs->ARM_fp) - 1;
+	while (depth-- && tail && !((unsigned long) tail & 3))
+		tail = user_backtrace(tail);
+}
+
+static void debug_exec(const char *cmd, unsigned *regs, void *svc_sp)
 {
 	if (!strcmp(cmd, "pc")) {
 		dprintf(" pc %08x cpsr %08x mode %s\n",
 			regs[15], regs[16], mode_name(regs[16]));
 	} else if (!strcmp(cmd, "regs")) {
-		dprintf(" r0 %08x  r1 %08x  r2 %08x  r3 %08x\n",
-			regs[0], regs[1], regs[2], regs[3]);
-		dprintf(" r4 %08x  r5 %08x  r6 %08x  r7 %08x\n",
-			regs[4], regs[5], regs[6], regs[7]);
-		dprintf(" r8 %08x  r9 %08x r10 %08x r11 %08x  mode %s\n",
-			regs[8], regs[9], regs[10], regs[11],
-			mode_name(regs[16]));
-		dprintf(" ip %08x  sp %08x  lr %08x  pc %08x  cpsr %08x\n",
-			regs[12], regs[13], regs[14], regs[15], regs[16]);
+		dump_regs(regs);
+	} else if (!strcmp(cmd, "allregs")) {
+		dump_allregs(regs);
+	} else if (!strcmp(cmd, "bt")) {
+		dump_stacktrace((struct pt_regs *)regs, 100, svc_sp);
 	} else if (!strcmp(cmd, "reboot")) {
 		if (msm_hw_reset_hook)
 			msm_hw_reset_hook();
@@ -343,7 +507,7 @@ static irqreturn_t debug_irq(int irq, void *dev)
 static char debug_buf[DEBUG_MAX];
 static int debug_count;
 
-static void debug_fiq(void *data, void *regs)
+static void debug_fiq(void *data, void *regs, void *svc_sp)
 {
 	int c;
 	static int last_c;
@@ -375,7 +539,7 @@ static void debug_fiq(void *data, void *regs)
 			if (debug_count) {
 				debug_buf[debug_count] = 0;
 				debug_count = 0;
-				debug_exec(debug_buf, regs);
+				debug_exec(debug_buf, regs, svc_sp);
 			} else {
 				debug_prompt();
 			}
