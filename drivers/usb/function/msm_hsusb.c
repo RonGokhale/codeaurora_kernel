@@ -1575,6 +1575,18 @@ static int usb_probe(struct platform_device *pdev)
 	if (IS_ERR(ui->otgclk))
 		ui->otgclk = NULL;
 
+	/* clear interrupts before requesting irq */
+	clk_enable(ui->clk);
+	clk_enable(ui->pclk);
+	if (ui->otgclk)
+		clk_enable(ui->otgclk);
+	writel(0, USB_USBINTR);
+	writel(0, USB_OTGSC);
+	if (ui->otgclk)
+		clk_disable(ui->otgclk);
+	clk_disable(ui->pclk);
+	clk_disable(ui->clk);
+
 	ret = request_irq(irq, usb_interrupt, 0, pdev->name, ui);
 	if (ret)
 		return usb_free(ui, ret);
