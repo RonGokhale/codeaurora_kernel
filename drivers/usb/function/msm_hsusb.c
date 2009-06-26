@@ -186,6 +186,7 @@ struct usb_info
 
 	struct clk *clk;
 	struct clk *pclk;
+	struct clk *otgclk;
 };
 
 struct usb_device_descriptor desc_device = {
@@ -1236,6 +1237,8 @@ static int usb_free(struct usb_info *ui, int ret)
 		clk_put(ui->clk);
 	if (ui->pclk)
 		clk_put(ui->pclk);
+	if (ui->otgclk)
+		clk_put(ui->otgclk);
 	kfree(ui);
 	return ret;
 }
@@ -1276,6 +1279,8 @@ static void usb_do_work(struct work_struct *w)
 				pr_info("hsusb: IDLE -> ONLINE\n");
 				clk_enable(ui->clk);
 				clk_enable(ui->pclk);
+				if (ui->otgclk)
+					clk_enable(ui->otgclk);
 				usb_reset(ui);
 
 				ui->state = USB_STATE_ONLINE;
@@ -1308,6 +1313,8 @@ static void usb_do_work(struct work_struct *w)
 				usb_suspend_phy(ui);
 				clk_disable(ui->pclk);
 				clk_disable(ui->clk);
+				if (ui->otgclk)
+					clk_disable(ui->otgclk);
 				spin_unlock_irqrestore(&ui->lock, iflags);
 
 				ui->state = USB_STATE_OFFLINE;
@@ -1329,6 +1336,8 @@ static void usb_do_work(struct work_struct *w)
 				pr_info("hsusb: OFFLINE -> ONLINE\n");
 				clk_enable(ui->clk);
 				clk_enable(ui->pclk);
+				if (ui->otgclk)
+					clk_enable(ui->otgclk);
 				usb_reset(ui);
 
 				if (ui->usb_connected)
@@ -1561,6 +1570,10 @@ static int usb_probe(struct platform_device *pdev)
 	ui->pclk = clk_get(&pdev->dev, "usb_hs_pclk");
 	if (IS_ERR(ui->pclk))
 		return usb_free(ui, PTR_ERR(ui->pclk));
+
+	ui->otgclk = clk_get(&pdev->dev, "usb_otg_clk");
+	if (IS_ERR(ui->otgclk))
+		ui->otgclk = NULL;
 
 	ret = request_irq(irq, usb_interrupt, 0, pdev->name, ui);
 	if (ret)
