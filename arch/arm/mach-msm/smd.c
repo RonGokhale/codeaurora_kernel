@@ -81,7 +81,11 @@ static unsigned last_heap_free = 0xffffffff;
 #define D(x...) do {} while (0)
 #endif
 
-#define MSM_A2M_INT(n) (MSM_CSR_BASE + 0x400 + (n) * 4)
+#if defined(CONFIG_ARCH_MSM7X30)
+#define MSM_TRIG_A2M_INT(n) (writel(1 << n, MSM_GCC_BASE + 0x8))
+#else
+#define MSM_TRIG_A2M_INT(n) (writel(1, MSM_CSR_BASE + 0x400 + (n) * 4))
+#endif
 
 static void notify_other_smsm(uint32_t smsm_entry,
 			      uint32_t old_val, uint32_t new_val)
@@ -98,7 +102,7 @@ static void notify_other_smsm(uint32_t smsm_entry,
 	if (!smsm_intr_mask ||
 	    (smsm_intr_mask[smsm_entry * SMSM_NUM_HOSTS + SMSM_MODEM] &
 	    (old_val ^ new_val)))
-		writel(1, MSM_A2M_INT(5));
+		MSM_TRIG_A2M_INT(5);
 
 	if (smsm_intr_mask &&
 	    (smsm_intr_mask[smsm_entry * SMSM_NUM_HOSTS + SMSM_Q6_I] &
@@ -109,16 +113,16 @@ static void notify_other_smsm(uint32_t smsm_entry,
 		if (smsm_intr_mux)
 			smsm_intr_mux[SMEM_APPS_Q6_SMSM]++;
 
-		writel(1, MSM_A2M_INT(8));
+		MSM_TRIG_A2M_INT(8);
 	}
 }
 
 static inline void notify_other_smd(uint32_t ch_type)
 {
 	if (ch_type == SMD_APPS_MODEM)
-		writel(1, MSM_A2M_INT(0));
+		MSM_TRIG_A2M_INT(0);
 	else if (ch_type == SMD_APPS_QDSP_I)
-		writel(1, MSM_A2M_INT(8));
+		MSM_TRIG_A2M_INT(8);
 }
 
 void smd_diag(void)
@@ -268,6 +272,8 @@ static void smd_channel_probe_worker(struct work_struct *work)
 	unsigned n;
 
 	shared = smem_find(ID_CH_ALLOC_TBL, sizeof(*shared) * 64);
+
+	BUG_ON(!shared);
 
 	for (n = 0; n < 64; n++) {
 		if (smd_ch_allocated[n])
@@ -1695,6 +1701,8 @@ static int debug_read_alloc_tbl(char *buf, int max)
 	int n, i = 0;
 
 	shared = smem_find(ID_CH_ALLOC_TBL, sizeof(struct smd_alloc_elm[64]));
+
+	BUG_ON(!shared);
 
 	for (n = 0; n < 64; n++) {
 		i += scnprintf(buf + i, max - i,

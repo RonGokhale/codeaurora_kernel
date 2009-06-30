@@ -58,7 +58,6 @@
 #include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/semaphore.h>
-#include <linux/time.h>
 #include <linux/uaccess.h>
 
 #include <mach/qdsp6/msm8k_cad_q6enc_session.h>
@@ -189,7 +188,7 @@ static s32 send_buffers(struct q6_enc_session_data *self)
 			res = CAD_RES_FAILURE;
 			break;
 		}
-		D("Send Buffer (0x%x) to Q6\n", cad_buf.phys_addr);
+		D("Send Buffer (0x%x) to Q6\n", cad_buf.buffer.buffer_addr);
 	}
 	return res;
 }
@@ -200,7 +199,6 @@ static void cad_q6enc_session_handle_async_evt(
 	struct q6_enc_session_buf_node	*node = NULL;
 	struct q6_enc_session_buf_node	*prev_node = NULL;
 	struct q6_enc_session_data	*self = clientData;
-	struct timeval			tv1;
 
 	if (return_event->event_id != ADSP_AUDIO_EVT_STATUS_BUF_DONE) {
 
@@ -232,12 +230,9 @@ static void cad_q6enc_session_handle_async_evt(
 		node->buf_len = return_event->
 			event_data.buf_data.actual_size;
 
-		do_gettimeofday(&tv1);
-		/* timestamp test */
 		/* put this node into full list */
-		D("Get full read buffer(0x%x)!, sec: %d, usec: %d\n",
-			return_event->event_data.buf_data.phys_addr,
-			(int)tv1.tv_sec, (int)tv1.tv_usec);
+		D("Get full read buffer(0x%x)!\n",
+			return_event->event_data.buf_data.buffer_addr);
 
 		if (self->full_nodes_head == NULL) {
 			self->full_nodes_head = node;
@@ -294,6 +289,8 @@ s32 cad_q6enc_session_open(struct q6_enc_session_data *self, s32 session_id,
 		return CAD_RES_FAILURE;
 
 	self->session_id = session_id;
+	self->cb_data.client_data = NULL;
+	self->cb_data.callback = NULL;
 	D("Session open successful\n");
 	return CAD_RES_SUCCESS;
 }

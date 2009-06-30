@@ -183,8 +183,8 @@ static s32 cad_q6dec_session_send_buf(struct q6dec_session_data *self,
 	self->used_buf_list = node;
 	mutex_unlock(&self->session_mutex);
 	D("----> Send %d byte of data with buffer 0x%x\n",
-			send_buf.max_size,
-			send_buf.phys_addr);
+			send_buf.buffer.max_size,
+			send_buf.buffer.buffer_addr);
 	/* rpc write*/
 	return cad_rpc_write(self->session_id, 0, &send_buf, NULL);
 }
@@ -353,6 +353,8 @@ s32 cad_q6dec_session_open(struct q6dec_session_data *self,
 	self->session_id = session_id;
 	self->use_counter = 1;
 	self->ret_counter = 1;
+	self->cb_data.client_data = NULL;
+	self->cb_data.callback = NULL;
 	D("Session open successful\n");
 	return CAD_RES_SUCCESS;
 }
