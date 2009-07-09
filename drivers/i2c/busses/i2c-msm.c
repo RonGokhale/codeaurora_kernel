@@ -314,11 +314,13 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	long timeout;
 	unsigned long flags;
 
+	clk_enable(dev->clk);
+
 	ret = msm_i2c_poll_notbusy(dev, 1);
 	if (ret) {
 		ret = msm_i2c_recover_bus_busy(dev);
 		if (ret)
-			return ret;
+			goto err;
 	}
 
 	spin_lock_irqsave(&dev->lock, flags);
@@ -370,6 +372,8 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		dev_err(dev->dev, "Error during data xfer (%d)\n", ret);
 		msm_i2c_recover_bus_busy(dev);
 	}
+err:
+	clk_disable(dev->clk);
 	return ret;
 }
 
@@ -458,6 +462,7 @@ msm_i2c_probe(struct platform_device *pdev)
 	writel(clk_ctl, dev->base + I2C_CLK_CTL);
 	printk(KERN_INFO "msm_i2c_probe: clk_ctl %x, %d Hz\n",
 	       clk_ctl, i2c_clk / (2 * ((clk_ctl & 0xff) + 3)));
+	clk_disable(clk);
 
 	i2c_set_adapdata(&dev->adapter, dev);
 	dev->adapter.algo = &msm_i2c_algo;
@@ -484,7 +489,6 @@ msm_i2c_probe(struct platform_device *pdev)
 err_request_irq_failed:
 	i2c_del_adapter(&dev->adapter);
 err_i2c_add_adapter_failed:
-	clk_disable(clk);
 	iounmap(dev->base);
 err_ioremap_failed:
 	kfree(dev);
@@ -504,7 +508,6 @@ msm_i2c_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 	free_irq(dev->irq, dev);
 	i2c_del_adapter(&dev->adapter);
-	clk_disable(dev->clk);
 	clk_put(dev->clk);
 	iounmap(dev->base);
 	kfree(dev);
@@ -513,27 +516,9 @@ msm_i2c_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static int msm_i2c_suspend(struct platform_device *pdev, pm_message_t state)
-{
-	struct msm_i2c_dev *dev = platform_get_drvdata(pdev);
-	if (dev)
-		clk_disable(dev->clk);
-	return 0;
-}
-
-static int msm_i2c_resume(struct platform_device *pdev)
-{
-	struct msm_i2c_dev *dev = platform_get_drvdata(pdev);
-	if (dev)
-		clk_enable(dev->clk);
-	return 0;
-}
-
 static struct platform_driver msm_i2c_driver = {
 	.probe		= msm_i2c_probe,
 	.remove		= msm_i2c_remove,
-	.suspend	= msm_i2c_suspend,
-	.resume		= msm_i2c_resume,
 	.driver		= {
 		.name	= "msm_i2c",
 		.owner	= THIS_MODULE,
