@@ -62,11 +62,4 @@ config BATTERY_PALMTX
 	help
 	  Say Y to enable support for the battery in Palm T|X.
 
-config BATTERY_MSM
-	tristate "MSM battery"
-	depends on ARCH_MSM
-	default m
-	help
-	   Say Y to enable support for the battery in Qualcomm MSM.
-
 endif # POWER_SUPPLY
