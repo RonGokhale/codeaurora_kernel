@@ -95,12 +95,11 @@ struct clkctl_acpu_speed acpu_freq_tbl[] = {
 static struct cpufreq_frequency_table freq_table[] = {
 	{ 0, 19200 },
 	{ 1, 245000 },
-	{ 2, 256000 },
-	{ 3, 384000 },
-	{ 4, 576000 },
-	{ 5, 768000 },
-	{ 6, 998400 },
-	{ 7, CPUFREQ_TABLE_END },
+	{ 2, 384000 },
+	{ 3, 576000 },
+	{ 4, 768000 },
+	{ 5, 998400 },
+	{ 6, CPUFREQ_TABLE_END },
 };
 #endif
 
