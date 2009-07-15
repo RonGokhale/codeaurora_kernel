@@ -33,6 +33,9 @@
 #ifdef CONFIG_CACHE_L2X0
 #include <asm/hardware/cache-l2x0.h>
 #endif
+#ifdef CONFIG_VFP
+#include <asm/vfp.h>
+#endif
 
 #include "smd_private.h"
 #include "acpuclock.h"
@@ -968,6 +971,11 @@ static int msm_pm_power_collapse
 		saved_vector[0], saved_vector[1],
 		msm_pm_reset_vector[0], msm_pm_reset_vector[1]);
 
+#ifdef CONFIG_VFP
+	if (from_idle)
+		vfp_flush_context();
+#endif
+
 #ifdef CONFIG_CACHE_L2X0
 	l2x0_suspend();
 #endif
@@ -982,6 +990,10 @@ static int msm_pm_power_collapse
 	msm_pm_reset_vector[1] = saved_vector[1];
 
 	if (collapsed) {
+#ifdef CONFIG_VFP
+		if (from_idle)
+			vfp_reinit();
+#endif
 		cpu_init();
 		local_fiq_enable();
 	}
@@ -1508,16 +1520,8 @@ static void msm_pm_power_off(void)
 
 static void msm_pm_restart(char str)
 {
-	/* If there's a hard reset hook and the restart_reason
-	 * is the default, prefer that to the (slower) proc_comm
-	 * reset command.
-	 */
-#if 0
-	if ((restart_reason == 0x776655AA) && msm_reset_hook)
-		msm_reset_hook(str);
-	else
-		msm_proc_comm(PCOM_RESET_CHIP, &restart_reason, 0);
-#endif
+	msm_proc_comm(PCOM_RESET_CHIP, &restart_reason, 0);
+
 	for (;;)
 		;
 }

@@ -103,8 +103,9 @@ struct clk {
 #define USB_HS3_PCLK	50  /* High speed USB 3 pbus clock */
 
 #define GRP_PCLK	51  /* Graphics pbus clock */
+#define USB_PHY_CLK	52  /* USB PHY clock */
 
-#define NR_CLKS		52
+#define NR_CLKS		53
 
 #ifdef CONFIG_DEBUG_FS
 #define CLOCK_DBG_NAME(x) .dbg_name = x,
@@ -125,9 +126,15 @@ struct clk {
 #define CLK_MAX CLKFLAG_MAX
 #define CLK_MINMAX (CLK_MIN | CLK_MAX)
 
+enum clkvote_client {
+	CLKVOTE_ACPUCLK = 0,
+	CLKVOTE_PMQOS,
+	CLKVOTE_MAX,
+};
+
 int msm_clock_require_tcxo(unsigned long *reason, int nbits);
 int msm_clock_get_name(uint32_t id, char *name, uint32_t size);
-int pc_clk_set_min_rate(unsigned id, unsigned rate);
+int ebi1_clk_set_min_rate(enum clkvote_client client, unsigned long rate);
 
 #endif
 

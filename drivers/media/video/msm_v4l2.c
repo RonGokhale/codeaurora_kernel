@@ -87,6 +87,7 @@
 /* HVGA-P (portrait) and HVGA-L (landscape) */
 #define MSM_V4L2_WIDTH              480
 #define MSM_V4L2_HEIGHT             320
+#define MSM_V4L2_DIMENSION_SIZE     28
 
 #if 1
 #define D(fmt, args...) printk(KERN_INFO "msm_v4l2: " fmt, ##args)
@@ -160,23 +161,23 @@ static int msm_v4l2_release(struct file *f)
 
 	g_pmsm_v4l2_dev->opencnt--;
 	if (!g_pmsm_v4l2_dev->opencnt) {
+
+		ctrlcmd = kmalloc(sizeof(struct msm_ctrl_cmd_t), GFP_ATOMIC);
+		if (!ctrlcmd) {
+			CDBG("msm_v4l2_ioctl: cannot allocate buffer\n");
+			return -ENOMEM;
+		}
+		ctrlcmd->length     = 0;
+		ctrlcmd->value      = NULL;
+		ctrlcmd->timeout_ms = 10000;
+
+		ctrlcmd->type = (unsigned short)CAMERA_EXIT;
+		g_pmsm_v4l2_dev->drv->ctrl(ctrlcmd, g_pmsm_v4l2_dev->drv->vmsm);
+		g_pmsm_v4l2_dev->drv->release(f, g_pmsm_v4l2_dev->drv->vmsm);
+
 		msm_unregister(g_pmsm_v4l2_dev->drv, MSM_V4L2_DRIVER_NAME);
 		cnt = 0;
-		return 0;
-	}
-
-	ctrlcmd = kmalloc(sizeof(struct msm_ctrl_cmd_t), GFP_ATOMIC);
-	if (!ctrlcmd) {
-		CDBG("msm_v4l2_ioctl: cannot allocate buffer\n");
-		return -ENOMEM;
-	}
-	ctrlcmd->length     = 0;
-	ctrlcmd->value      = NULL;
-	ctrlcmd->timeout_ms = 10000;
-
-	ctrlcmd->type = (unsigned short)CAMERA_EXIT;
-	g_pmsm_v4l2_dev->drv->ctrl(ctrlcmd, g_pmsm_v4l2_dev->drv->vmsm);
-	g_pmsm_v4l2_dev->drv->release(f, g_pmsm_v4l2_dev->drv->vmsm);
+    }
 
 	return 0;
 }
@@ -543,6 +544,8 @@ static int msm_v4l2_streamoff(struct file *f, void *pctx, enum v4l2_buf_type i)
 	g_pmsm_v4l2_dev->drv->ctrl(ctrlcmd,
 		g_pmsm_v4l2_dev->drv->vmsm);
 
+	cnt = 0;
+
 	return 0;
 }
 
@@ -603,8 +606,8 @@ static int msm_v4l2_s_fmt_cap(struct file *f,
 	}
 
   ctrlcmd->type       = MSM_V4L2_VID_CAP_TYPE;
-  ctrlcmd->length     = sizeof(struct v4l2_format);
-  ctrlcmd->value      = pfmt;
+  ctrlcmd->length     = MSM_V4L2_DIMENSION_SIZE;
+  ctrlcmd->value      = (void *)pfmt->fmt.pix.priv;
   ctrlcmd->timeout_ms = 10000;
 
 	if (pfmt->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)

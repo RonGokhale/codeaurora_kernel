@@ -436,6 +436,7 @@ static int msm_fb_detect_panel(const char *name)
 
 static struct msm_fb_platform_data msm_fb_pdata = {
 	.detect_client = msm_fb_detect_panel,
+	.mddi_prescan = 1,
 };
 
 static struct platform_device msm_fb_device = {
@@ -587,6 +588,11 @@ static struct platform_device msm_device_kgsl = {
 	.id = -1,
 	.num_resources = ARRAY_SIZE(kgsl_resources),
 	.resource = kgsl_resources,
+};
+
+static struct platform_device msm_device_pmic_leds = {
+	.name   = "pmic-leds",
+	.id = -1,
 };
 
 static struct resource bluesleep_resources[] = {
@@ -801,6 +807,7 @@ static struct platform_device *devices[] __initdata = {
 #ifdef CONFIG_BT
 	&msm_bt_power_device,
 #endif
+	&msm_device_pmic_leds,
 	&msm_device_snd,
 	&msm_bluesleep_device,
 	&msm_device_kgsl,

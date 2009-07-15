@@ -42,7 +42,7 @@ static int vfp_notifier(struct notifier_block *self, unsigned long cmd, void *v)
 {
 	struct thread_info *thread = v;
 	union vfp_state *vfp;
-	__u32 cpu = thread->cpu;
+	u32 cpu = thread->cpu;
 
 	if (likely(cmd == THREAD_NOTIFY_SWITCH)) {
 		u32 fpexc = fmrx(FPEXC);
@@ -322,22 +322,52 @@ static void vfp_enable(void *unused)
 	set_copro_access(access | CPACC_FULL(10) | CPACC_FULL(11));
 }
 
+int vfp_flush_context(void)
+{
+	struct thread_info *ti = current_thread_info();
+	u32 fpexc = fmrx(FPEXC);
+	u32 cpu = ti->cpu;
+	int saved = 0;
+
+#ifdef CONFIG_SMP
+	/* On SMP, if VFP is enabled, save the old state */
+	if ((fpexc & FPEXC_EN) && last_VFP_context[cpu]) {
+#else
+	/* If there is a VFP context we must save it. */
+	if (last_VFP_context[cpu]) {
+		/* Enable VFP so we can save the old state. */
+		fmxr(FPEXC, fpexc | FPEXC_EN);
+		isb();
+#endif
+		vfp_save_state(last_VFP_context[cpu], fpexc);
+
+		/* disable, just in case */
+		fmxr(FPEXC, fmrx(FPEXC) & ~FPEXC_EN);
+
+		last_VFP_context[cpu] = NULL;
+		saved = 1;
+	}
+	return saved;
+}
+
+void vfp_reinit(void)
+{
+	/* ensure we have access to the vfp */
+	vfp_enable(NULL);
+
+	/* and disable it to ensure the next usage restores the state */
+	fmxr(FPEXC, fmrx(FPEXC) & ~FPEXC_EN);
+}
+
 #ifdef CONFIG_PM
 #include <linux/sysdev.h>
 
 static int vfp_pm_suspend(struct sys_device *dev, pm_message_t state)
 {
-	struct thread_info *ti = current_thread_info();
-	u32 fpexc = fmrx(FPEXC);
+	int saved = vfp_flush_context();
 
-	/* if vfp is on, then save state for resumption */
-	if (fpexc & FPEXC_EN) {
-		printk(KERN_DEBUG "%s: saving vfp state\n", __func__);
-		vfp_save_state(&ti->vfpstate, fpexc);
-
-		/* disable, just in case */
-		fmxr(FPEXC, fmrx(FPEXC) & ~FPEXC_EN);
-	}
+	if (saved)
+		printk(KERN_DEBUG "%s: saved vfp state\n", __func__);
 
 	/* clear any information we had about last context state */
 	memset(last_VFP_context, 0, sizeof(last_VFP_context));
@@ -347,11 +377,7 @@ static int vfp_pm_suspend(struct sys_device *dev, pm_message_t state)
 
 static int vfp_pm_resume(struct sys_device *dev)
 {
-	/* ensure we have access to the vfp */
-	vfp_enable(NULL);
-
-	/* and disable it to ensure the next usage restores the state */
-	fmxr(FPEXC, fmrx(FPEXC) & ~FPEXC_EN);
+	vfp_reinit();
 
 	return 0;
 }

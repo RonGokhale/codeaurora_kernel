@@ -309,6 +309,13 @@ config MSM_SUSPEND_STATS_FIRST_BUCKET
 
 endif # MSM_IDLE_STATS
 
+config MSM_JTAG_V7
+	depends on CPU_V7
+	default y if DEBUG_KERNEL
+        bool "JTAG debug support"
+	help
+          Add additional support for JTAG kernel debugging.
+
 config HTC_HEADSET
 	tristate "HTC 2 Wire detection driver"
 	default n
@@ -592,12 +599,5 @@ config MSM_SLEEP_TIME_OVERRIDE
 	  in units of seconds, it overwrites the normal sleep time of
 	  suspend. The feature is required for automated power management
 	  testing.
-
-config QSD_BASE_24000000
-	bool "Base memory at 0x24000000"
-	depends on ARCH_MSM_SCORPION
-	default n
-	help
-	  Select if physical DRAM at 0x24000000
 
 endif

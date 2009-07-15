@@ -531,17 +531,19 @@ int acpuclk_set_rate(unsigned long rate, enum setrate_reason reason)
 
 	/* Change the AXI bus frequency if we can. */
 	if (strt_s->axiclk_khz != tgt_s->axiclk_khz) {
-		rc = pc_clk_set_min_rate(EBI1_CLK, tgt_s->axiclk_khz * 1000);
+		rc = ebi1_clk_set_min_rate(CLKVOTE_ACPUCLK,
+						tgt_s->axiclk_khz * 1000);
 		if (rc < 0)
 			pr_err("Setting AXI min rate failed!\n");
 	}
 
-	/* Nothing else to do for power collapse. */
-	if (reason == SETRATE_PC)
+	/* Nothing else to do for power collapse if not 7x27. */
+	if (reason == SETRATE_PC && !cpu_is_msm7x27())
 		return 0;
 
 	/* Disable PLLs we are not using anymore. */
-	plls_enabled &= ~(1 << tgt_s->pll);
+	if (tgt_s->pll != ACPU_PLL_TCXO)
+		plls_enabled &= ~(1 << tgt_s->pll);
 	for (pll = ACPU_PLL_0; pll <= ACPU_PLL_2; pll++)
 		if (plls_enabled & (1 << pll)) {
 			rc = pc_pll_request(pll, 0);
@@ -550,6 +552,10 @@ int acpuclk_set_rate(unsigned long rate, enum setrate_reason reason)
 				goto out;
 			}
 		}
+
+	/* Nothing else to do for power collapse. */
+	if (reason == SETRATE_PC)
+		return 0;
 
 	/* Drop VDD level if we can. */
 	if (tgt_s->vdd < strt_s->vdd) {
@@ -600,7 +606,7 @@ static void __init acpuclk_init(void)
 
 	drv_state.current_speed = speed;
 
-	rc = pc_clk_set_min_rate(EBI1_CLK, speed->axiclk_khz * 1000);
+	rc = ebi1_clk_set_min_rate(CLKVOTE_ACPUCLK, speed->axiclk_khz * 1000);
 	if (rc < 0)
 		pr_err("Setting AXI min rate failed!\n");
 

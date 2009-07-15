@@ -67,71 +67,70 @@
 #include <mach/qdsp6/msm8k_cad.h>
 #include <mach/qdsp6/msm8k_cad_ioctl.h>
 #include <mach/qdsp6/msm8k_ard.h>
-#include <mach/qdsp6/msm8k_cad_write_pcm_format.h>
+#include <mach/qdsp6/msm8k_cad_write_aac_format.h>
 #include <mach/qdsp6/msm8k_cad_devices.h>
 
 #if 0
-#define D(fmt, args...) printk(KERN_INFO "msm8k_pcm_in: " fmt, ##args)
+#define D(fmt, args...) printk(KERN_INFO "msm8k_aac_in: " fmt, ##args)
 #else
 #define D(fmt, args...) do {} while (0)
 #endif
 
-#define MSM8K_PCM_IN_PROC_NAME "msm8k_pcm_in"
+#define MSM8K_AAC_IN_PROC_NAME "msm8k_aac_in"
 
 #define AUDIO_MAGIC 'a'
 
-struct pcm {
+struct aac {
 	u32 cad_w_handle;
 	struct msm_audio_config cfg;
 };
 
-
-static int msm8k_pcm_in_open(struct inode *inode, struct file *f)
+static int msm8k_aac_in_open(struct inode *inode, struct file *f)
 {
-	struct pcm *pcm;
+	struct aac *aac;
 	struct cad_open_struct_type  cos;
 	D("%s\n", __func__);
 
-	pcm = kmalloc(sizeof(struct pcm), GFP_KERNEL);
-	if (pcm == NULL) {
-		pr_err("Could not allocate memory for pcm_in driver\n");
+	aac = kmalloc(sizeof(struct aac), GFP_KERNEL);
+
+	if (aac == NULL) {
+		pr_err("Could not allocate memory for aac recording driver\n");
 		return CAD_RES_FAILURE;
 	}
 
-	f->private_data = pcm;
+	f->private_data = aac;
+	memset(aac, 0, sizeof(struct aac));
 
-	memset(pcm, 0, sizeof(struct pcm));
-	pcm->cfg.buffer_size = 4096;
-	pcm->cfg.buffer_count = 2;
-	pcm->cfg.channel_count = 1;
-	pcm->cfg.sample_rate = 8000;
+	aac->cfg.buffer_size = 4096;
+	aac->cfg.buffer_count = 2;
+	aac->cfg.channel_count = 1;
+	aac->cfg.sample_rate = 48000;
 
-	cos.format = CAD_FORMAT_PCM;
+	cos.format = CAD_FORMAT_AAC;
 	cos.op_code = CAD_OPEN_OP_READ;
-	pcm->cad_w_handle = cad_open(&cos);
+	aac->cad_w_handle = cad_open(&cos);
 
-	if (pcm->cad_w_handle == 0)
+	if (aac->cad_w_handle == 0)
 		return CAD_RES_FAILURE;
 	else
 		return CAD_RES_SUCCESS;
 }
 
-static int msm8k_pcm_in_release(struct inode *inode, struct file *f)
+static int msm8k_aac_in_release(struct inode *inode, struct file *f)
 {
 	int rc = CAD_RES_SUCCESS;
-	struct pcm *pcm = f->private_data;
+	struct aac *aac = f->private_data;
 	D("%s\n", __func__);
 
-	cad_close(pcm->cad_w_handle);
-	kfree(pcm);
-
+	cad_close(aac->cad_w_handle);
+	kfree(aac);
 	return rc;
 }
 
-static ssize_t msm8k_pcm_in_read(struct file *f, char __user *buf, size_t cnt,
+static ssize_t msm8k_aac_in_read(struct file *f, char __user *buf, size_t cnt,
 		loff_t *pos)
 {
-	struct pcm			*pcm = f->private_data;
+	struct aac			*aac = f->private_data;
 	struct cad_buf_struct_type	cbs;
 
 	D("%s\n", __func__);
@@ -142,11 +141,11 @@ static ssize_t msm8k_pcm_in_read(struct file *f, char __user *buf, size_t cnt,
 	cbs.actual_size = cnt;
 
 
-	cnt = cad_read(pcm->cad_w_handle, &cbs);
+	cnt = cad_read(aac->cad_w_handle, &cbs);
 	return cnt;
 }
 
-static ssize_t msm8k_pcm_in_write(struct file *f, const char __user *buf,
+static ssize_t msm8k_aac_in_write(struct file *f, const char __user *buf,
 		size_t cnt, loff_t *pos)
 {
 	D("%s\n", __func__);
@@ -154,24 +153,24 @@ static ssize_t msm8k_pcm_in_write(struct file *f, const char __user *buf,
 	return cnt;
 }
 
-static int msm8k_pcm_in_ioctl(struct inode *inode, struct file *f,
+static int msm8k_aac_in_ioctl(struct inode *inode, struct file *f,
 		unsigned int cmd, unsigned long arg)
 {
 	int rc = CAD_RES_SUCCESS;
-	struct pcm *p = f->private_data;
+	struct aac *p = f->private_data;
 	u32 stream_device[1];
 	struct cad_device_struct_type cad_dev;
 	struct cad_stream_device_struct_type cad_stream_dev;
 	struct cad_stream_info_struct_type cad_stream_info;
-	struct cad_write_pcm_format_struct_type cad_write_pcm_fmt;
+	struct cad_write_aac_format_struct_type cad_write_aac_fmt;
 	D("%s\n", __func__);
 
 	memset(&cad_dev, 0, sizeof(struct cad_device_struct_type));
 	memset(&cad_stream_dev, 0,
 			sizeof(struct cad_stream_device_struct_type));
 	memset(&cad_stream_info, 0, sizeof(struct cad_stream_info_struct_type));
-	memset(&cad_write_pcm_fmt, 0,
-			sizeof(struct cad_write_pcm_format_struct_type));
+	memset(&cad_write_aac_fmt, 0,
+			sizeof(struct cad_write_aac_format_struct_type));
 
 	switch (cmd) {
 	case AUDIO_START:
@@ -198,54 +197,20 @@ static int msm8k_pcm_in_ioctl(struct inode *inode, struct file *f,
 			pr_err("cad_ioctl() SET_STREAM_DEVICE failed\n");
 			break;
 		}
+		cad_write_aac_fmt.ver_id = CAD_WRITE_AAC_VERSION_10;
 
-		cad_write_pcm_fmt.us_ver_id = CAD_WRITE_PCM_VERSION_10;
-		cad_write_pcm_fmt.pcm.us_channel_config = p->cfg.channel_count;
-		cad_write_pcm_fmt.pcm.us_width = 1;
-		cad_write_pcm_fmt.pcm.us_sign = 0;
+		if (p->cfg.sample_rate != 48000)
+			D("Switching to 48KHz, only 48KHz supported!\n");
 
-		switch (p->cfg.sample_rate) {
-		case 96000:
-			cad_write_pcm_fmt.pcm.us_sample_rate = 0;
-			break;
-		case 88200:
-			cad_write_pcm_fmt.pcm.us_sample_rate = 1;
-			break;
-		case 64000:
-			cad_write_pcm_fmt.pcm.us_sample_rate = 2;
-			break;
-		case 48000:
-			cad_write_pcm_fmt.pcm.us_sample_rate = 3;
-			break;
-		case 44100:
-			cad_write_pcm_fmt.pcm.us_sample_rate = 4;
-			break;
-		case 32000:
-			cad_write_pcm_fmt.pcm.us_sample_rate = 5;
-			break;
-		case 24000:
-			cad_write_pcm_fmt.pcm.us_sample_rate = 6;
-			break;
-		case 22050:
-			cad_write_pcm_fmt.pcm.us_sample_rate = 7;
-			break;
-		case 16000:
-			cad_write_pcm_fmt.pcm.us_sample_rate = 8;
-			break;
-		case 12000:
-			cad_write_pcm_fmt.pcm.us_sample_rate = 9;
-			break;
-		case 11025:
-			cad_write_pcm_fmt.pcm.us_sample_rate = 10;
-			break;
-		case 8000:
-			cad_write_pcm_fmt.pcm.us_sample_rate = 11;
-			break;
-		}
+		cad_write_aac_fmt.aac.sample_rate = CAD_SAMPLE_RATE_48000;
+		cad_write_aac_fmt.aac.channel_config = 1;
+		cad_write_aac_fmt.aac.block_formats = 0xffff;
+		cad_write_aac_fmt.aac.audio_object_type = 2;
+		cad_write_aac_fmt.aac.bit_rate = 48000;
 
 		rc = cad_ioctl(p->cad_w_handle, CAD_IOCTL_CMD_SET_STREAM_CONFIG,
-			&cad_write_pcm_fmt,
-			sizeof(struct cad_write_pcm_format_struct_type));
+			&cad_write_aac_fmt,
+			sizeof(struct cad_write_aac_format_struct_type));
 		if (rc) {
 			pr_err("cad_ioctl() SET_STREAM_CONFIG failed\n");
 			break;
@@ -282,61 +247,60 @@ static int msm8k_pcm_in_ioctl(struct inode *inode, struct file *f,
 }
 
 #ifdef CONFIG_PROC_FS
-int msm8k_pcm_in_read_proc(char *pbuf, char **start, off_t offset,
+int msm8k_aac_in_read_proc(char *pbuf, char **start, off_t offset,
 			int count, int *eof, void *data)
 {
 	int len = 0;
-	len += snprintf(pbuf, 16, "pcm_in\n");
+	len += snprintf(pbuf, 16, "aac_in\n");
 
 	*eof = 1;
 	return len;
 }
 #endif
 
-static const struct file_operations msm8k_pcm_in_fops = {
+static const struct file_operations msm8k_aac_in_fops = {
 	.owner = THIS_MODULE,
-	.open = msm8k_pcm_in_open,
-	.release = msm8k_pcm_in_release,
-	.read = msm8k_pcm_in_read,
-	.write = msm8k_pcm_in_write,
-	.ioctl = msm8k_pcm_in_ioctl,
+	.open = msm8k_aac_in_open,
+	.release = msm8k_aac_in_release,
+	.read = msm8k_aac_in_read,
+	.write = msm8k_aac_in_write,
+	.ioctl = msm8k_aac_in_ioctl,
 	.llseek = no_llseek,
 };
 
 
-struct miscdevice msm8k_pcm_in_misc = {
+struct miscdevice msm8k_aac_in_misc = {
 	.minor	= MISC_DYNAMIC_MINOR,
-	.name	= "msm_pcm_in",
-	.fops	= &msm8k_pcm_in_fops,
+	.name	= "msm_aac_in",
+	.fops	= &msm8k_aac_in_fops,
 };
 
-static int __init msm8k_pcm_in_init(void)
+static int __init msm8k_aac_in_init(void)
 {
 	int rc;
 	D("%s\n", __func__);
 
-	rc = misc_register(&msm8k_pcm_in_misc);
+	rc = misc_register(&msm8k_aac_in_misc);
 
 #ifdef CONFIG_PROC_FS
-	create_proc_read_entry(MSM8K_PCM_IN_PROC_NAME,
-			0, NULL, msm8k_pcm_in_read_proc, NULL);
+	create_proc_read_entry(MSM8K_AAC_IN_PROC_NAME,
+			0, NULL, msm8k_aac_in_read_proc, NULL);
 #endif
 
 	return rc;
 }
 
-static void __exit msm8k_pcm_in_exit(void)
+static void __exit msm8k_aac_in_exit(void)
 {
 	D("%s\n", __func__);
 #ifdef CONFIG_PROC_FS
-	remove_proc_entry(MSM8K_PCM_IN_PROC_NAME, NULL);
+	remove_proc_entry(MSM8K_AAC_IN_PROC_NAME, NULL);
 #endif
 }
 
 
-module_init(msm8k_pcm_in_init);
-module_exit(msm8k_pcm_in_exit);
+module_init(msm8k_aac_in_init);
+module_exit(msm8k_aac_in_exit);
 
-MODULE_DESCRIPTION("MSM PCM IN driver");
-MODULE_LICENSE("GPL v2");
-
+MODULE_DESCRIPTION("MSM AAC recording driver");
+MODULE_LICENSE("Dual BSD/GPL");

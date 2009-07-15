@@ -208,12 +208,11 @@ struct platform_device msm_device_i2c = {
 #define MSM_HSUSB_PHYS        0xA3600000
 #else
 #define MSM_HSUSB_PHYS        0xA0800000
-#define MSM_HS2USB_PHYS        0xA0800400
 #endif
 static struct resource resources_hsusb_otg[] = {
 	{
 		.start	= MSM_HSUSB_PHYS,
-		.end	= MSM_HSUSB_PHYS + SZ_4K,
+		.end	= MSM_HSUSB_PHYS + SZ_1K - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
@@ -238,7 +237,7 @@ struct platform_device msm_device_hsusb_otg = {
 static struct resource resources_hsusb_peripheral[] = {
 	{
 		.start	= MSM_HSUSB_PHYS,
-		.end	= MSM_HSUSB_PHYS + SZ_4K,
+		.end	= MSM_HSUSB_PHYS + SZ_1K - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
@@ -263,10 +262,12 @@ struct platform_device msm_device_hsusb_peripheral = {
 	},
 };
 
+#ifdef CONFIG_USB_FS_HOST
+#define MSM_HS2USB_PHYS        0xA0800400
 static struct resource resources_hsusb_host2[] = {
 	{
 		.start	= MSM_HS2USB_PHYS,
-		.end	= MSM_HSUSB_PHYS + SZ_4K,
+		.end	= MSM_HS2USB_PHYS + SZ_1K - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
@@ -286,11 +287,12 @@ struct platform_device msm_device_hsusb_host2 = {
 		.coherent_dma_mask	= 0xffffffffULL,
 	},
 };
+#endif
 
 static struct resource resources_hsusb_host[] = {
 	{
 		.start	= MSM_HSUSB_PHYS,
-		.end	= MSM_HSUSB_PHYS + SZ_4K,
+		.end	= MSM_HSUSB_PHYS + SZ_1K - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
@@ -313,13 +315,18 @@ struct platform_device msm_device_hsusb_host = {
 
 static struct platform_device *msm_host_devices[] = {
 	&msm_device_hsusb_host,
+#ifdef CONFIG_USB_FS_HOST
 	&msm_device_hsusb_host2,
+#endif
 };
 
 int msm_add_host(unsigned int host, struct msm_hsusb_platform_data *plat)
 {
 	struct platform_device	*pdev;
+
 	pdev = msm_host_devices[host];
+	if (!pdev)
+		return -ENODEV;
 	pdev->dev.platform_data = plat;
 	return platform_device_register(pdev);
 }
@@ -801,6 +808,7 @@ struct clk msm_clocks_7x27[] = {
 	CLOCK("vfe_clk",	VFE_CLK,	NULL, OFF),
 	CLOCK("vfe_mdc_clk",	VFE_MDC_CLK,	NULL, OFF),
 	CLOCK("grp_pclk",	GRP_PCLK,	NULL, 0),
+	CLOCK("usb_phy_clk",	USB_PHY_CLK,	NULL, 0),
 };
 
 unsigned msm_num_clocks_7x27 = ARRAY_SIZE(msm_clocks_7x27);
@@ -855,6 +863,7 @@ struct clk msm_clocks_8x50[] = {
 	CLOCK("usb_hs2_pclk",	USB_HS2_PCLK,	NULL, OFF),
 	CLOCK("usb_hs3_clk",	USB_HS3_CLK,	NULL, OFF),
 	CLOCK("usb_hs3_pclk",	USB_HS3_PCLK,	NULL, OFF),
+	CLOCK("usb_phy_clk",	USB_PHY_CLK,	NULL, 0),
 };
 
 unsigned msm_num_clocks_8x50 = ARRAY_SIZE(msm_clocks_8x50);

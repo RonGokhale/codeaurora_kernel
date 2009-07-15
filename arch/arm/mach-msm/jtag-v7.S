@@ -1,4 +1,7 @@
-/* Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
+/*
+ * JTAG support functions for ARMv7-based Qualcomm SoCs.
+ *
+ * Copyright (c) 2009, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -55,54 +58,89 @@
  *
  */
 
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/mempool.h>
-#include <linux/mutex.h>
-#include <asm/atomic.h>
-#include "diagchar.h"
+#include <linux/linkage.h>
+#include <asm/assembler.h>
 
-void *diagmem_alloc(struct diagchar_dev *driver, int size)
-{
-	void *buf;
+ENTRY(msm_save_jtag_debug)
+	/* lock debug and preserve registers through power collapse */
+	ldr     r3, =dbg_state        /* store state at dbg_state */
 
-	mutex_lock(&driver->diagmem_mutex);
-	if (driver->count < driver->poolsize) {
-		atomic_add(1, (atomic_t *)&driver->count);
-		buf = mempool_alloc(driver->diagpool, GFP_ATOMIC);
-	} else {
-		buf = NULL;
-	}
-	mutex_unlock(&driver->diagmem_mutex);
-	return buf;
-}
+	ldr     r1, =0xc5ACCE55       /* set DBGOSLAR lock */
+	mcr     p14,0,r1,c1,c0,4
+	isb
 
-void diagmem_free(struct diagchar_dev *driver, void *buf)
-{
-	if (driver->diagpool != NULL && driver->count > 0) {
-		mempool_free(buf, driver->diagpool);
-		atomic_add(-1, (atomic_t *)&driver->count);
-	} else
-		printk(KERN_ALERT "\n Attempt to free up DIAG driver mempool"
-				  " memory which is already free");
+	mrc     p14,0,r1,c1,c2,4      /* DBGOSSRR state register count */
 
-	if (driver->count == 0 && driver->ref_count == 0)
-		mempool_destroy(driver->diagpool);
-}
+	cmp     r1, #(0x20-1)         /* check for state overflow */
+	movge   r1, #0                /* if not enough space, don't save */
 
-void diagmem_init(struct diagchar_dev *driver)
-{
-	mutex_init(&driver->diagmem_mutex);
-	driver->count = 0;
-	driver->diagpool = mempool_create_kmalloc_pool(driver->poolsize,
-						       driver->itemsize);
-	if (!driver->diagpool)
-		printk(KERN_INFO "Cannot allocate diag mempool\n");
+	str     r1,[r3],#4            /* save count for restore */
 
-}
+1:	cmp     r1,#0
+	mrcne   p14,0,r2,c1,c2,4      /* DBGOSSRR state value */
+	strne   r2,[r3],#4            /* push value */
+	subne   r1,r1,#1
+	bne     1b
 
-void diagmem_exit(struct diagchar_dev *driver)
-{
-	if (driver->count == 0)
-		mempool_destroy(driver->diagpool);
-}
+	/* unlock JTAG.  Works better than leaving locked. */
+	stmfd   sp!, {lr}
+	bl      msm_unlock_jtag_debug
+	ldmfd   sp!, {lr}
+	bx      lr
+
+ENTRY(msm_unlock_jtag_debug)
+	mov     r0, #0                /* unlock value */
+	mcr     p14,0,r0,c1,c0,4      /* unlock DBGOSLAR */
+	isb
+	bx      lr
+
+ENTRY(msm_restore_jtag_debug)
+	/* restore debug registers after power collapse  */
+	ldr     r3, =dbg_state        /* load state from dbg_state */
+
+	ldr     r1, =0xc5ACCE55       /* set DBGOSLAR lock */
+	mcr     p14,0,r1,c1,c0,4
+	isb
+
+	mrc     p14,0,r1,c1,c2,4      /* DBGOSSRR dummy read (required)*/
+	ldr     r1,[r3],#4            /* load saved count */
+	cmp     r1,#0                 /* skip if none stored
+	beq     msm_pm_dbg_restore_end
+
+	/* restores debug state except DBGDSCR */
+1:	ldr     r2,[r3],#4
+	cmp     r1,#0x10              /* DBGDSCR special case */
+	biceq   r2,r2,#0xc000         /* DBGDSCR = DBGDSCR & ~0xc000 */
+	mcr     p14,0,r2,c1,c2,4      /* DBGOSSRR write state value */
+	subs    r1,r1,#1
+	bne     1b
+	isb
+
+	/* second loop to restore DBGDSCR after other state restored */
+	ldr     r3, =dbg_state        /* load state from dbg_state */
+
+	ldr     r1, =0xc5ACCE55       /* set DBGOSLAR lock */
+	mcr     p14,0,r1,c1,c0,4
+	isb
+
+	mrc     p14,0,r1,c1,c5,4      /* clear sticky power down bit */
+	isb
+
+	mrc     p14,0,r1,c1,c2,4      /* DBGOSSRR dummy read (required)*/
+	ldr     r1,[r3],#4            /* load saved count */
+
+1:	ldr     r2,[r3],#4
+	mcr     p14,0,r2,c1,c2,4      /* DBGOSSRR write state value */
+	subs    r1,r1,#1
+	bne     1b
+msm_pm_dbg_restore_end:
+	mcr     p14,0,r1,c1,c0,4      /* unlock DBGOSLAR */
+	isb
+	bx      lr
+
+
+	.data
+
+dbg_state:
+	.space  4 * 0x20
+

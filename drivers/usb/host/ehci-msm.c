@@ -33,6 +33,7 @@
 #include <mach/msm_hsusb.h>
 #include <mach/msm_hsusb_hw.h>
 #include <mach/msm_otg.h>
+#include <mach/vreg.h>
 
 #define MSM_USB_BASE (hcd->regs)
 #define SOC_ROC_2_0            0x10002 /* ROC 2.0 */
@@ -44,6 +45,7 @@
 #define HSUSB			0
 #define FSUSB			1
 
+static struct vreg *vreg_boost;
 struct msm_hc_device {
 	struct ehci_hcd ehci;
 	struct clk *clk;
@@ -183,11 +185,8 @@ static int usb_suspend_phy(struct usb_hcd *hcd)
 	struct msm_hc_device *msm_hc = hcd_to_msm_hc_device(hcd);
 
 	if (msm_hc->id == FSUSB) {
-		if (readl(USB_PORTSC) & PORTSC_CCS) {
-			msm_fsusb_set_remote_wakeup();
-			msm_fsusb_suspend_phy();
-		} else
-			msm_fsusb_remote_dev_disconnected();
+		msm_fsusb_set_remote_wakeup();
+		msm_fsusb_suspend_phy();
 	}
 	if (msm_hc->id == HSUSB) {
 		switch (PHY_TYPE(msm_hc->phy_info)) {
@@ -604,8 +603,7 @@ static void ehci_msm_enable(int enable)
 		msm_hc->active = 1;
 	} else {
 		msm_hc->active = 0;
-		if (!(msm_hc_dev[1]->active))
-			msm_hsusb_vbus_shutdown();
+		msm_hsusb_vbus_shutdown();
 		if (hcd->state != HC_STATE_SUSPENDED)
 			wait_for_completion(&msm_hc->suspend_done);
 		msm_xusb_disable_clks(id);
@@ -688,13 +686,24 @@ static int msm_xusb_set_host_mode(struct usb_hcd *hcd,
 	return retval;
 }
 
-static void fsusb_start_host(void)
+static void fsusb_start_host(int on)
 {
 	struct usb_hcd *hcd = msm_hc_device_to_hcd(msm_hc_dev[1]);
+	int ret;
 
-	if (!hcd->self.root_hub)
+	if (on) {
+		ret = vreg_enable(vreg_boost);
+		if (ret)
+			pr_err("%s: boost vreg enable failed\n", __func__);
+		msm_xusb_enable_clks(1);
 		usb_add_hcd(hcd, hcd->irq, IRQF_SHARED);
-
+	} else {
+		usb_remove_hcd(hcd);
+		usb_lpm_enter(hcd);
+		ret = vreg_disable(vreg_boost);
+		if (ret)
+			pr_err("%s: boost vreg disable failed\n", __func__);
+	}
 }
 
 static void fsusb_lpm_exit(void)
@@ -779,9 +788,7 @@ static int __init ehci_msm_probe(struct platform_device *pdev)
 	}
 
 	hcd->rsrc_start = res->start;
-	hcd->rsrc_len = res->end - res->start + 1;
-
-
+	hcd->rsrc_len = resource_size(res);
 	hcd->regs = ioremap(hcd->rsrc_start, hcd->rsrc_len);
 
 	if (hcd->regs == NULL) {
@@ -803,7 +810,8 @@ static int __init ehci_msm_probe(struct platform_device *pdev)
 	}
 
 	/* enable usb clocks */
-	msm_xusb_enable_clks(id);
+	if (id == HSUSB)
+		msm_xusb_enable_clks(id);
 
 	retval = msm_xusb_phy_data(pdev);
 	if (retval < 0)
@@ -842,6 +850,15 @@ static int __init ehci_msm_probe(struct platform_device *pdev)
 			msm_hsusb_vbus_powerup();
 	}
 
+	else if (id == FSUSB) {
+		vreg_boost = vreg_get(NULL, "boost");
+		if (IS_ERR(vreg_boost)) {
+			printk(KERN_ERR "%s: vreg get failed (%ld)\n",
+			       __func__, PTR_ERR(vreg_boost));
+			retval = PTR_ERR(vreg_boost);
+			goto err_hcd_add;
+		}
+	}
 	return retval;
 
 err_hcd_add:
