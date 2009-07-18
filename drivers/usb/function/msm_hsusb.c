@@ -819,20 +819,43 @@ static void handle_endpoint(struct usb_info *ui, unsigned bit)
 	spin_unlock_irqrestore(&ui->lock, flags);
 }
 
+#define FLUSH_WAIT_US	5
+#define FLUSH_TIMEOUT	(2 * (USEC_PER_SEC / FLUSH_WAIT_US))
 static void flush_endpoint_hw(struct usb_info *ui, unsigned bits)
-{	
+{
+	uint32_t unflushed = 0;
+	uint32_t stat = 0;
+	int cnt = 0;
+
 	/* flush endpoint, canceling transactions
 	** - this can take a "large amount of time" (per databook)
 	** - the flush can fail in some cases, thus we check STAT 
 	**   and repeat if we're still operating
 	**   (does the fact that this doesn't use the tripwire matter?!)
 	*/
-	do {
+	while (cnt < FLUSH_TIMEOUT) {
 		writel(bits, USB_ENDPTFLUSH);
-		while(readl(USB_ENDPTFLUSH) & bits) {
-			udelay(100);
+		while (((unflushed = readl(USB_ENDPTFLUSH)) & bits) &&
+		       cnt < FLUSH_TIMEOUT) {
+			cnt++;
+			udelay(FLUSH_WAIT_US);
 		}
-	} while (readl(USB_ENDPTSTAT) & bits);
+
+		stat = readl(USB_ENDPTSTAT);
+		if (cnt >= FLUSH_TIMEOUT)
+			goto err;
+		if (!(stat & bits))
+			goto done;
+		cnt++;
+		udelay(FLUSH_WAIT_US);
+	}
+
+err:
+	pr_warning("%s: Could not complete flush! NOT GOOD! "
+		   "stat: %x unflushed: %x bits: %x\n", __func__,
+		   stat, unflushed, bits);
+done:
+	return;
 }
 
 static void flush_endpoint_sw(struct usb_endpoint *ept)
