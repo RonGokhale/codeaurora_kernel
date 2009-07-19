@@ -77,6 +77,12 @@ void *diagmem_alloc(struct diagchar_dev *driver, int size)
 	return buf;
 }
 
+void diagmem_exit(struct diagchar_dev *driver)
+{
+	if (driver->count == 0 && driver->ref_count == 0)
+		mempool_destroy(driver->diagpool);
+}
+
 void diagmem_free(struct diagchar_dev *driver, void *buf)
 {
 	if (driver->diagpool != NULL) {
@@ -86,12 +92,12 @@ void diagmem_free(struct diagchar_dev *driver, void *buf)
 		printk(KERN_ALERT "\n Attempt to free up DIAG driver mempool"
 				  " memory which is already free");
 
+	diagmem_exit(driver);
 }
 
 void diagmem_init(struct diagchar_dev *driver)
 {
 	mutex_init(&driver->diagmem_mutex);
-	driver->count = 0;
 	driver->diagpool = mempool_create_kmalloc_pool(driver->poolsize,
 						       driver->itemsize);
 	if (!driver->diagpool)
@@ -99,7 +105,3 @@ void diagmem_init(struct diagchar_dev *driver)
 
 }
 
-void diagmem_exit(struct diagchar_dev *driver)
-{
-	mempool_destroy(driver->diagpool);
-}
