@@ -114,6 +114,9 @@
 #define RPC_TYPE_REQ     0
 #define RPC_TYPE_REPLY   1
 #define RPC_REQ_REPLY_COMMON_HEADER_SIZE   (3 * sizeof(uint32_t))
+#define RPC_TYPE_REQ 0
+#define RPC_TYPE_REPLY 1
+#define RPC_REQ_REPLY_COMMON_HEADER_SIZE (3 * sizeof(uint32_t))
 
 #define DEBUG  1
 
@@ -260,17 +263,17 @@ static int msm_power_get_property(struct power_supply *psy,
 		if (psy->type == POWER_SUPPLY_TYPE_MAINS) {
 
 			val->intval = msm_batt_info.current_chg_source & AC_CHG
-			    ? 1 : 0;
-			printk(KERN_INFO "power supply=%s  online = %d \n",
-			       psy->name, val->intval);
+				? 1 : 0;
+			printk(KERN_INFO "power supply=%s online = %d \n",
+					psy->name, val->intval);
 		}
 
 		if (psy->type == POWER_SUPPLY_TYPE_USB) {
 
 			val->intval = msm_batt_info.current_chg_source & USB_CHG
-			    ? 1 : 0;
-			printk(KERN_INFO "power supply=%s  online = %d \n",
-			       psy->name, val->intval);
+				? 1 : 0;
+			printk(KERN_INFO "power supply=%s online = %d \n",
+					psy->name, val->intval);
 		}
 
 		break;
@@ -980,13 +983,38 @@ static int __devinit msm_batt_probe(struct platform_device *pdev)
 	msm_batt_info.msm_psy_batt = &msm_psy_batt;
 
 	rc = msm_batt_register(BATTERY_LOW, BATTERY_ALL_ACTIVITY,
-			       BATTERY_CB_ID_ALL_ACTIV, BATTERY_ALL_ACTIVITY);
+			BATTERY_CB_ID_ALL_ACTIV, BATTERY_ALL_ACTIVITY);
 	if (rc < 0) {
 		dev_err(&pdev->dev,
 			"%s: msm_batt_register failed rc=%d\n", __func__, rc);
 		msm_batt_cleanup();
 		return rc;
 	}
+	msm_batt_info.batt_handle = rc;
+
+	if (msm_batt_info.batt_handle != INVALID_BATT_HANDLE) {
+
+		rc = msm_batt_deregister(msm_batt_info.batt_handle);
+		if (rc < 0) {
+			printk(KERN_ERR
+				"%s(): msm_batt_deregister failed rc=%d\n",
+				__func__, rc);
+
+			return rc;
+		}
+	}
+
+	printk(KERN_INFO " %s: msm_batt_register 2nd time", __func__);
+
+	rc = msm_batt_register(BATTERY_LOW, BATTERY_ALL_ACTIVITY,
+			BATTERY_CB_ID_ALL_ACTIV, BATTERY_ALL_ACTIVITY);
+	if (rc < 0) {
+		dev_err(&pdev->dev,
+			"%s: msm_batt_register failed rc=%d\n", __func__, rc);
+		msm_batt_cleanup();
+		return rc;
+	}
+
 	msm_batt_info.batt_handle = rc;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -1001,6 +1029,7 @@ static int __devinit msm_batt_probe(struct platform_device *pdev)
 }
 
 static struct platform_driver msm_batt_driver;
+
 static int __devinit msm_batt_init_rpc(void)
 {
 	int rc;
@@ -1085,8 +1114,8 @@ static int __init msm_batt_init(void)
 	rc = msm_batt_init_rpc();
 
 	if (rc < 0) {
-		printk(KERN_ERR "%s: msm_batt_init_rpc Failed  rc=%d\n",
-		       __func__, rc);
+		printk(KERN_ERR "%s: msm_batt_init_rpc Failed rc=%d\n",
+				__func__, rc);
 		msm_batt_cleanup();
 		return rc;
 	}
