@@ -459,13 +459,14 @@ static void msm_batt_update_psy_status(void)
 
 	msm_batt_get_batt_chg_status(&batt_charging, &charger_valid,
 			&chg_batt_event);
-
-	printk(KERN_INFO "batt_charging =%d charger_valid =%d"
-			" chg_batt_event = %d\n", batt_charging,
+    printk(KERN_INFO "batt_charging = %u batt_valid = %u batt_volt = %u\n"
+			"charger_valid = %u chg_batt_event = %u\n",
+			batt_charging, msm_batt_info.batt_valid,
+			msm_batt_info.voltage_now,
 			charger_valid, chg_batt_event);
 
-	printk(KERN_INFO "Previos charger status =%d "
-			" current charger status = %d\n",
+	printk(KERN_INFO "Previos charger status =%u "
+			" current charger status = %u\n",
 			msm_batt_info.charger_valid, charger_valid);
 
 	if (msm_batt_info.charger_valid != charger_valid) {
@@ -524,6 +525,8 @@ static int msm_batt_register(u32 desired_batt_voltage,
 	req.voltage_direction = cpu_to_be32(voltage_direction);
 	req.batt_cb_id = cpu_to_be32(batt_cb_id);
 	req.cb_data = cpu_to_be32(cb_data);
+	req.more_data = cpu_to_be32(1);
+	req.batt_error = cpu_to_be32(0);
 
 	rc = msm_rpc_call_reply(msm_batt_info.batt_ep,
 			BATTERY_REGISTER_PROC, &req,
@@ -554,8 +557,8 @@ static int msm_batt_deregister(u32 handle)
 		u32 batt_error;
 	} batt_deregister_rpc_reply;
 
-	batt_deregister_rpc_req.handle = handle;
-	batt_deregister_rpc_reply.batt_error = BATTERY_LAST_ERROR;
+	batt_deregister_rpc_req.handle = cpu_to_be32(handle);
+	batt_deregister_rpc_reply.batt_error = cpu_to_be32(BATTERY_LAST_ERROR);
 
 	rc = msm_rpc_call_reply(msm_batt_info.batt_ep,
 			BATTERY_DEREGISTER_CLIENT_PROC,
@@ -571,7 +574,7 @@ static int msm_batt_deregister(u32 handle)
 		return rc;
 	}
 
-	if (batt_deregister_rpc_reply.batt_error !=
+	if (be32_to_cpu(batt_deregister_rpc_reply.batt_error) !=
 			BATTERY_DEREGISTRATION_SUCCESSFUL) {
 
 		printk(KERN_ERR "%s: vBatt deregistration Failed "
@@ -976,30 +979,6 @@ static int __devinit msm_batt_probe(struct platform_device *pdev)
 	}
 	msm_batt_info.batt_handle = rc;
 
-	if (msm_batt_info.batt_handle != INVALID_BATT_HANDLE) {
-
-		rc = msm_batt_deregister(msm_batt_info.batt_handle);
-		if (rc < 0) {
-			printk(KERN_ERR
-				"%s(): msm_batt_deregister failed rc=%d\n",
-				__func__, rc);
-
-			return rc;
-		}
-	}
-
-	printk(KERN_INFO " %s: msm_batt_register 2nd time", __func__);
-
-	rc = msm_batt_register(BATTERY_LOW, BATTERY_ALL_ACTIVITY,
-			BATTERY_CB_ID_ALL_ACTIV, BATTERY_ALL_ACTIVITY);
-	if (rc < 0) {
-		dev_err(&pdev->dev,
-			"%s: msm_batt_register failed rc=%d\n", __func__, rc);
-		msm_batt_cleanup();
-		return rc;
-	}
-
-	msm_batt_info.batt_handle = rc;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	msm_batt_info.early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN;
