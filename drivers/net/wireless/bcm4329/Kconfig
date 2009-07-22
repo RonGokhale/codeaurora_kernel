@@ -1,0 +1,11 @@
+config BCM4329
+	tristate "Broadcom 4329 wireless cards support"
+	depends on WIRELESS_EXT && MMC
+	---help---
+	  This module adds support for wireless adapters based on
+	  Broadcom 4329 chipset.
+
+	  This driver uses the kernel's wireless extensions subsystem.
+
+	  If you choose to build a module, it'll be called dhd. Say M if
+	  unsure.
