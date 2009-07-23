@@ -570,6 +570,7 @@ endif # CPU_FREQ_MSM
 
 config MSM_HW3D
 	tristate "MSM Hardware 3D Register Driver"
+	depends on ANDROID_PMEM
 	default y
 	help
 	  Provides access to registers needed by the userspace OpenGL|ES
@@ -577,6 +578,7 @@ config MSM_HW3D
 
 config MSM_ADSP
 	tristate "MSM ADSP driver"
+	depends on ANDROID_PMEM
 	default y
 	help
 	  Provides access to registers needed by the userspace aDSP library.
@@ -623,7 +625,7 @@ config WIFI_MEM_PREALLOC
 
 config QSD_AUDIO
 	bool "QSD audio"
-	depends on (ARCH_MSM_SCORPION && MSM_DALRPC)
+	depends on ARCH_MSM_SCORPION && MSM_DALRPC && ANDROID_PMEM
 	default y
 	help
 	  Provides PCM, MP3, and AAC audio playback.
