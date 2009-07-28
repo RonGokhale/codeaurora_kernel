@@ -51,10 +51,6 @@
 #define STEREO_DATA_SIZE	(MONO_DATA_SIZE * 2)
 #define DMASZ 			(FRAME_SIZE * FRAME_NUM)
 
-#define AGC_ENABLE		0x0001
-#define NS_ENABLE		0x0002
-#define TX_IIR_ENABLE		0x0004
-
 struct buffer {
 	void *data;
 	uint32_t size;
@@ -661,8 +657,8 @@ static ssize_t audio_in_read(struct file *file,
 		if (rc < 0)
 			break;
 
-		if (audio->stopped) {
-			rc = -EBUSY;
+		if (audio->stopped && !audio->in_count) {
+			rc = 0;/* End of File */
 			break;
 		}
 

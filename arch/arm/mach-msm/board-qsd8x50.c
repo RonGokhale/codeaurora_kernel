@@ -66,6 +66,7 @@
 #include <linux/spi/spi.h>
 #include <linux/delay.h>
 #include <linux/mfd/tps65023.h>
+#include <linux/bma150.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -77,6 +78,7 @@
 #include <mach/gpio.h>
 #include <mach/board.h>
 #include <mach/sirc.h>
+#include <mach/rpc_hsusb.h>
 #include <mach/msm_hsusb.h>
 #include <mach/msm_hsusb_hw.h>
 #include <mach/msm_serial_hs.h>
@@ -86,6 +88,7 @@
 #include <mach/camera.h>
 #include <mach/memory.h>
 #include <mach/msm_spi.h>
+#include <mach/s1r72v05.h>
 
 #include "devices.h"
 #include "timer.h"
@@ -111,6 +114,8 @@
 #define MSM_GPU_PHYS_BASE 	(MSM_FB_BASE + MSM_FB_SIZE)
 #define MSM_PMEM_GPU0_BASE	(MSM_GPU_PHYS_BASE + MSM_GPU_PHYS_SIZE)
 #define MSM_PMEM_GPU0_SIZE	(MSM_SMI_SIZE - MSM_FB_SIZE - MSM_GPU_PHYS_SIZE)
+
+#define PMEM_KERNEL_EBI1_SIZE	0x200000
 
 static struct resource smc91x_resources[] = {
 	[0] = {
@@ -143,6 +148,87 @@ static struct platform_device smc91x_device = {
 	.num_resources  = ARRAY_SIZE(smc91x_resources),
 	.resource       = smc91x_resources,
 };
+
+#define S1R72V05_CS_GPIO 152
+#define S1R72V05_IRQ_GPIO 148
+
+static int qsd8x50_init_s1r72v05(void)
+{
+	int rc;
+	u8 cs_gpio = S1R72V05_CS_GPIO;
+	u8 irq_gpio = S1R72V05_IRQ_GPIO;
+
+	rc = gpio_request(cs_gpio, "ide_s1r72v05_cs");
+	if (rc) {
+		pr_err("Failed to request GPIO pin %d (rc=%d)\n",
+		       cs_gpio, rc);
+		goto err;
+	}
+
+	rc = gpio_request(irq_gpio, "ide_s1r72v05_irq");
+	if (rc) {
+		pr_err("Failed to request GPIO pin %d (rc=%d)\n",
+		       irq_gpio, rc);
+		goto err;
+	}
+	if (gpio_tlmm_config(GPIO_CFG(cs_gpio,
+				      2, GPIO_OUTPUT, GPIO_NO_PULL,
+				      GPIO_2MA),
+			     GPIO_ENABLE)) {
+		printk(KERN_ALERT
+		       "s1r72v05: Could not configure CS gpio\n");
+		goto err;
+	}
+
+	if (gpio_tlmm_config(GPIO_CFG(irq_gpio,
+				      0, GPIO_INPUT, GPIO_NO_PULL,
+				      GPIO_2MA),
+			     GPIO_ENABLE)) {
+		printk(KERN_ALERT
+		       "s1r72v05: Could not configure IRQ gpio\n");
+		goto err;
+	}
+
+	if (gpio_configure(irq_gpio, IRQF_TRIGGER_FALLING)) {
+		printk(KERN_ALERT
+		       "s1r72v05: Could not set IRQ polarity\n");
+		goto err;
+	}
+	return 0;
+
+err:
+	gpio_free(cs_gpio);
+	gpio_free(irq_gpio);
+	return -ENODEV;
+}
+
+static struct resource s1r72v05_resources[] = {
+	[0] = {
+		.start = 0x88000000,
+		.end = 0x88000000 + 0xFF,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = MSM_GPIO_TO_INT(S1R72V05_IRQ_GPIO),
+		.end = S1R72V05_IRQ_GPIO,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct s1r72v05_platform_data s1r72v05_data = {
+	.gpio_setup = qsd8x50_init_s1r72v05,
+};
+
+static struct platform_device s1r72v05_device = {
+	.name           = "s1r72v05",
+	.id             = 0,
+	.num_resources  = ARRAY_SIZE(s1r72v05_resources),
+	.resource       = s1r72v05_resources,
+	.dev            = {
+		.platform_data          = &s1r72v05_data,
+	},
+};
+
 static struct usb_function_map usb_functions_map[] = {
 	{"diag", 0},
 	{"adb", 1},
@@ -202,6 +288,14 @@ static struct usb_composition usb_func_composition[] = {
 	{
 		.product_id         = 0x901A,
 		.functions	    = 0x0F, /* 01111 */
+	},
+};
+
+static struct platform_device hs_device = {
+	.name   = "msm-handset",
+	.id     = -1,
+	.dev    = {
+		.platform_data = "8k_handset",
 	},
 };
 
@@ -404,10 +498,13 @@ static int msm_hsusb_phy_caliberate(void __iomem *addr)
 }
 
 #define USB_LINK_RESET_TIMEOUT      (msecs_to_jiffies(10))
-static int msm_hsusb_phy_reset(void __iomem *addr)
+static int msm_hsusb_native_phy_reset(void __iomem *addr)
 {
 	u32 temp;
 	unsigned long timeout;
+
+	if (machine_is_qsd8x50_ffa())
+		return msm_hsusb_phy_reset();
 
 	msm_hsusb_apps_reset_link(1);
 	msm_hsusb_apps_reset_phy();
@@ -447,23 +544,34 @@ static struct msm_hsusb_platform_data msm_hsusb_pdata = {
 	.num_functions	= ARRAY_SIZE(usb_functions_map),
 	.config_gpio    = NULL,
 
-	.phy_reset = msm_hsusb_phy_reset,
+	.phy_reset = msm_hsusb_native_phy_reset,
 #ifdef CONFIG_USB_FS_HOST
 	.config_fs_gpio = msm_fsusb_setup_gpio,
 #endif
 };
 
+static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
+	.name = PMEM_KERNEL_EBI1_DATA_NAME,
+	/* if no allocator_type, defaults to PMEM_ALLOCATORTYPE_BITMAP,
+	 * the only valid choice at this time. The board structure is
+	 * set to all zeros by the C runtime initialization and that is now
+	 * the enum value of PMEM_ALLOCATORTYPE_BITMAP, now forced to 0 in
+	 * include/linux/android_pmem.h.
+	 */
+	.cached = 0,
+};
+
 static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
 	.size = MSM_PMEM_MDP_SIZE,
-	.no_allocator = 0,
+	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
 	.cached = 1,
 };
 
 static struct android_pmem_platform_data android_pmem_adsp_pdata = {
 	.name = "pmem_adsp",
 	.size = MSM_PMEM_ADSP_SIZE,
-	.no_allocator = 0,
+	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
 	.cached = 0,
 };
 
@@ -471,20 +579,20 @@ static struct android_pmem_platform_data android_pmem_gpu0_pdata = {
 	.name = "pmem_gpu0",
 	.start = MSM_PMEM_GPU0_BASE,
 	.size = MSM_PMEM_GPU0_SIZE,
-	.no_allocator = 0,
+	.allocator_type = PMEM_ALLOCATORTYPE_BUDDYBESTFIT,
 	.cached = 0,
 };
 
 static struct android_pmem_platform_data android_pmem_gpu1_pdata = {
 	.name = "pmem_gpu1",
-	.no_allocator = 0,
+	.allocator_type = PMEM_ALLOCATORTYPE_BUDDYBESTFIT,
 	.cached = 0,
 };
 
 static struct android_pmem_platform_data android_pmem_camera_pdata = {
 	.name = "pmem_camera",
 	.size = MSM_PMEM_CAMERA_SIZE,
-	.no_allocator = 1,
+	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
 	.cached = 1,
 };
 
@@ -515,7 +623,13 @@ static struct platform_device android_pmem_camera_device = {
 	.name = "android_pmem",
 	.id = 4,
 	.dev = { .platform_data = &android_pmem_camera_pdata },
-	};
+};
+
+static struct platform_device android_pmem_kernel_ebi1_device = {
+	.name = "android_pmem",
+	.id = 5,
+	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
+};
 
 static struct resource msm_fb_resources[] = {
 	{
@@ -532,7 +646,8 @@ static int msm_fb_detect_panel(const char *name)
 			ret = 0;
 		else
 			ret = -ENODEV;
-	}
+	} else if (machine_is_qsd8x50_surf() && !strcmp(name, "lcdc_external"))
+		ret = 0;
 
 	return ret;
 }
@@ -549,6 +664,30 @@ static struct platform_device msm_fb_device = {
 	.dev    = {
 		.platform_data = &msm_fb_pdata,
 	}
+};
+static struct msm_gpio bma_spi_gpio_config_data[] = {
+	{ GPIO_CFG(22, 0, GPIO_INPUT,  GPIO_NO_PULL, GPIO_2MA), "bma_irq" },
+};
+
+static int msm_bma_gpio_setup(struct device *dev)
+{
+	int rc;
+
+	rc = msm_gpios_request_enable(bma_spi_gpio_config_data,
+		ARRAY_SIZE(bma_spi_gpio_config_data));
+
+	return rc;
+}
+
+static void msm_bma_gpio_teardown(struct device *dev)
+{
+	msm_gpios_disable_free(bma_spi_gpio_config_data,
+		ARRAY_SIZE(bma_spi_gpio_config_data));
+}
+
+static struct bma150_platform_data bma_pdata = {
+	.setup    = msm_bma_gpio_setup,
+	.teardown = msm_bma_gpio_teardown,
 };
 
 static struct resource qsd_spi_resources[] = {
@@ -593,6 +732,7 @@ static struct spi_board_info msm_spi_board_info[] __initdata = {
 		.bus_num	= 0,
 		.chip_select	= 0,
 		.max_speed_hz	= 10000000,
+		.platform_data	= &bma_pdata,
 	}
 };
 
@@ -602,7 +742,6 @@ static unsigned qsd_spi_gpio_config_data[] = {
 	GPIO_CFG(19, 1, GPIO_INPUT,  GPIO_NO_PULL, GPIO_2MA),  /* SPI_MISO */
 	GPIO_CFG(20, 1, GPIO_INPUT,  GPIO_NO_PULL, GPIO_2MA),  /* SPI_CS0 */
 	GPIO_CFG(21, 0, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_16MA), /* SPI_PWR */
-	GPIO_CFG(22, 0, GPIO_INPUT,  GPIO_NO_PULL, GPIO_2MA),  /* IRQ_CS0 */
 };
 
 static int msm_qsd_spi_gpio_config(void)
@@ -619,8 +758,6 @@ static int msm_qsd_spi_gpio_config(void)
 		pr_err("failed to request gpio spi_cs0\n");
 	if (gpio_request(21, "spi_pwr"))
 		pr_err("failed to request gpio spi_pwr\n");
-	if (gpio_request(22, "spi_irq_cs0"))
-		pr_err("failed to request gpio spi_irq_cs0\n");
 
 	for (i = 0; i < ARRAY_SIZE(qsd_spi_gpio_config_data); i++) {
 		rc = gpio_tlmm_config(qsd_spi_gpio_config_data[i], GPIO_ENABLE);
@@ -644,7 +781,6 @@ static void msm_qsd_spi_gpio_release(void)
 	gpio_free(19);
 	gpio_free(20);
 	gpio_free(21);
-	gpio_free(22);
 }
 
 static struct msm_spi_platform_data qsd_spi_pdata = {
@@ -1032,7 +1168,9 @@ static struct platform_device *devices[] __initdata = {
 	&msm_fb_device,
 	&mddi_toshiba_device,
 	&smc91x_device,
+	&s1r72v05_device,
 	&msm_device_smd,
+	&android_pmem_kernel_ebi1_device,
 	&android_pmem_device,
 	&android_pmem_adsp_device,
 	&android_pmem_gpu0_device,
@@ -1056,6 +1194,7 @@ static struct platform_device *devices[] __initdata = {
 #endif
 	&msm_device_pmic_leds,
 	&msm_device_kgsl,
+	&hs_device,
 };
 
 #ifdef CONFIG_QSD_SVS
@@ -1172,25 +1311,25 @@ static int kbd_gpio_setup(void)
 	rc = gpio_request(irqpin, "gpio_keybd_irq");
 	if (rc) {
 		pr_err("gpio_request failed on pin %d (rc=%d)\n",
-		       irqpin, rc);
+			irqpin, rc);
 		goto err_gpioconfig;
 	}
 	rc = gpio_request(respin, "gpio_keybd_reset");
 	if (rc) {
 		pr_err("gpio_request failed on pin %d (rc=%d)\n",
-		       respin, rc);
+			respin, rc);
 		goto err_gpioconfig;
 	}
 	rc = gpio_tlmm_config(rescfg, GPIO_ENABLE);
 	if (rc) {
 		pr_err("gpio_tlmm_config failed on pin %d (rc=%d)\n",
-		       respin, rc);
+			respin, rc);
 		goto err_gpioconfig;
 	}
 	rc = gpio_tlmm_config(irqcfg, GPIO_ENABLE);
 	if (rc) {
 		pr_err("gpio_tlmm_config failed on pin %d (rc=%d)\n",
-		       irqpin, rc);
+			irqpin, rc);
 		goto err_gpioconfig;
 	}
 	return rc;
@@ -1200,6 +1339,13 @@ err_gpioconfig:
 	return rc;
 }
 
+/* use gpio output pin to toggle keyboard external reset pin */
+static void kbd_hwreset(int kbd_mclrpin)
+{
+	gpio_direction_output(kbd_mclrpin, 0);
+	gpio_direction_output(kbd_mclrpin, 1);
+}
+
 static struct msm_i2ckbd_platform_data msm_kybd_data = {
 	.hwrepeat = 0,
 	.scanset1 = 1,
@@ -1207,6 +1353,7 @@ static struct msm_i2ckbd_platform_data msm_kybd_data = {
 	.gpioirq = KBD_IRQ,
 	.gpio_setup = kbd_gpio_setup,
 	.gpio_shutdown = kbd_gpio_release,
+	.hw_reset = kbd_hwreset,
 };
 
 static struct i2c_board_info msm_i2c_board_info[] __initdata = {
@@ -1682,26 +1829,26 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR] = {
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].supported = 1,
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].suspend_enabled = 1,
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].idle_enabled = 1,
-	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].latency = 16000,
-	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].residency = 20000,
+	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].latency = 8594,
+	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].residency = 23740,
 
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].supported = 1,
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].suspend_enabled = 1,
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].idle_enabled = 1,
-	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].latency = 12000,
-	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].residency = 20000,
+	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].latency = 4594,
+	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].residency = 23740,
 
 	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].supported = 1,
 	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].suspend_enabled
 		= 1,
 	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].idle_enabled = 0,
-	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].latency = 2000,
-	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].residency = 10000,
+	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].latency = 443,
+	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].residency = 1098,
 
 	[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT].supported = 1,
 	[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT].suspend_enabled = 1,
 	[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT].idle_enabled = 1,
-	[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT].latency = 500,
+	[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT].latency = 2,
 	[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT].residency = 0,
 };
 
@@ -1761,6 +1908,13 @@ static void __init qsd8x50_allocate_memory_regions(void)
 {
 	void *addr;
 	unsigned long size;
+
+	size = PMEM_KERNEL_EBI1_SIZE;
+	addr = alloc_bootmem_aligned(size, 0x100000);
+	android_pmem_kernel_ebi1_pdata.start = __pa(addr);
+	android_pmem_kernel_ebi1_pdata.size = size;
+	printk(KERN_INFO "allocating %lu bytes at %p (%lx physical)"
+	       "for pmem kernel ebi1 arena\n", size, addr, __pa(addr));
 
 	size = MSM_PMEM_CAMERA_SIZE;
 	addr = alloc_bootmem(size);

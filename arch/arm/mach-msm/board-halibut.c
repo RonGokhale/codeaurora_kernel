@@ -77,6 +77,8 @@
 #define MSM_PMEM_GPU1_SIZE	0x800000
 #define MSM_FB_SIZE		0x200000
 
+#define PMEM_KERNEL_EBI1_SIZE	0x200000
+
 static struct resource smc91x_resources[] = {
 	[0] = {
 		.start	= 0x9C004300,
@@ -127,6 +129,11 @@ static struct platform_device android_usb_device = {
 	},
 };
 #endif
+
+static struct platform_device hs_device = {
+	.name   = "msm-handset",
+	.id     = -1,
+};
 
 #ifdef CONFIG_USB_FUNCTION
 static void hsusb_gpio_init(void)
@@ -342,21 +349,32 @@ static struct platform_device halibut_snd = {
 	},
 };
 
+static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
+	.name = PMEM_KERNEL_EBI1_DATA_NAME,
+	/* if no allocator_type, defaults to PMEM_ALLOCATORTYPE_BITMAP,
+	 * the only valid choice at this time. The board structure is
+	 * set to all zeros by the C runtime initialization and that is now
+	 * the enum value of PMEM_ALLOCATORTYPE_BITMAP, now forced to 0 in
+	 * include/linux/android_pmem.h.
+	 */
+	.cached = 0,
+};
+
 static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
-	.no_allocator = 0,
+	.allocator_type = PMEM_ALLOCATORTYPE_BUDDYBESTFIT,
 	.cached = 1,
 };
 
 static struct android_pmem_platform_data android_pmem_camera_pdata = {
 	.name = "pmem_camera",
-	.no_allocator = 1,
+	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
 	.cached = 1,
 };
 
 static struct android_pmem_platform_data android_pmem_adsp_pdata = {
 	.name = "pmem_adsp",
-	.no_allocator = 0,
+	.allocator_type = PMEM_ALLOCATORTYPE_BUDDYBESTFIT,
 	.cached = 0,
 };
 
@@ -365,14 +383,14 @@ static struct android_pmem_platform_data android_pmem_gpu0_pdata = {
 	.name = "pmem_gpu0",
 	.start = MSM_PMEM_GPU0_BASE,
 	.size = MSM_PMEM_GPU0_SIZE,
-	.no_allocator = 1,
+	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
 	.cached = 0,
 };
 #endif
 
 static struct android_pmem_platform_data android_pmem_gpu1_pdata = {
 	.name = "pmem_gpu1",
-	.no_allocator = 1,
+	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
 	.cached = 0,
 };
 
@@ -406,6 +424,12 @@ static struct platform_device android_pmem_gpu1_device = {
 	.name = "android_pmem",
 	.id = 3,
 	.dev = { .platform_data = &android_pmem_gpu1_pdata },
+};
+
+static struct platform_device android_pmem_kernel_ebi1_device = {
+	.name = "android_pmem",
+	.id = 5,
+	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
 };
 
 static char *msm_fb_vreg[] = {
@@ -723,6 +747,7 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_i2c,
 	&smc91x_device,
 	&msm_device_tssc,
+	&android_pmem_kernel_ebi1_device,
 	&android_pmem_camera_device,
 	&android_pmem_device,
 	&android_pmem_adsp_device,
@@ -751,6 +776,7 @@ static struct platform_device *devices[] __initdata = {
 	&mddi_toshiba_device,
 	&mddi_sharp_device,
 	&msm_batt_device,
+	&hs_device,
 };
 
 extern struct sys_timer msm_timer;
@@ -1270,6 +1296,13 @@ static void __init msm_halibut_allocate_memory_regions(void)
 {
 	void *addr;
 	unsigned long size;
+
+	size = PMEM_KERNEL_EBI1_SIZE;
+	addr = alloc_bootmem_aligned(size, 0x100000);
+	android_pmem_kernel_ebi1_pdata.start = __pa(addr);
+	android_pmem_kernel_ebi1_pdata.size = size;
+	printk(KERN_INFO "allocating %lu bytes at %p (%lx physical)"
+	       "for pmem kernel ebi1 arena\n", size, addr, __pa(addr));
 
 	size = MSM_PMEM_MDP_SIZE;
 	addr = alloc_bootmem(size);

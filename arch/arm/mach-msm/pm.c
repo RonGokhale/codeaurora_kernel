@@ -201,7 +201,7 @@ msm_pm_wait_state(uint32_t wait_state_all_set, uint32_t wait_state_all_clear,
 	int i;
 	uint32_t state;
 
-	for (i = 0; i < 100000; i++) {
+	for (i = 0; i < 2000000; i++) {
 		state = smsm_get_state(SMSM_MODEM_STATE);
 		if (((state & wait_state_all_set) == wait_state_all_set) &&
 		    ((~state & wait_state_all_clear) == wait_state_all_clear) &&
@@ -285,10 +285,12 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay,
 		}
 		ret = msm_pm_wait_state(enter_wait_set, enter_wait_clear, 0, 0);
 		if (ret) {
-			printk(KERN_INFO "msm_sleep(): "
-			       "msm_pm_wait_state failed, %x\n",
-			       smsm_get_state(SMSM_MODEM_STATE));
-			goto enter_failed;
+			printk(KERN_EMERG "msm_sleep(): power collapse entry "
+				"timed out waiting for Modem's response "
+				"-- resetting chip\n");
+			msm_proc_comm(PCOM_RESET_CHIP_IMM, NULL, NULL);
+			for (;;)
+				;
 		}
 	}
 	if (msm_irq_enter_sleep2(!!enter_state, from_idle))
@@ -319,7 +321,11 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay,
 	}
 	if (sleep_mode < MSM_PM_SLEEP_MODE_APPS_SLEEP) {
 #ifdef CONFIG_MSM_ADM_OFF_AT_POWER_COLLAPSE
-		unsigned id = ADM_CLK;
+		/* XXX: Temp workaround that needs to be removed soon. The
+		 * right fix will probably involve the DMA driver taking
+		 * ownership of the ADM clock. */
+		/* id is set to denote ADM clock. */
+		unsigned id = 1;
 		msm_proc_comm(PCOM_CLKCTL_RPC_DISABLE, &id, NULL);
 #endif
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_SMSM_STATE)
@@ -354,7 +360,8 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay,
 				msm_pm_sma.int_info->aArm_wakeup_reason,
 				msm_pm_sma.int_info->aArm_interrupts_pending);
 #ifdef CONFIG_MSM_ADM_OFF_AT_POWER_COLLAPSE
-		id = ADM_CLK;
+		/* id is set to denote ADM clock. */
+		id = 1;
 		if (msm_proc_comm(PCOM_CLKCTL_RPC_ENABLE, &id, NULL) < 0 ||
 			id < 0)
 			printk(KERN_ERR
@@ -387,7 +394,14 @@ enter_failed:
 		writel(0x00, A11S_CLK_SLEEP_EN);
 		writel(0, A11S_PWRDOWN);
 		smsm_change_state(SMSM_APPS_STATE, enter_state, exit_state);
-		msm_pm_wait_state(exit_wait_set, exit_wait_clear, 0, 0);
+		if (msm_pm_wait_state(exit_wait_set, exit_wait_clear, 0, 0)) {
+			printk(KERN_EMERG "msm_sleep(): power collapse exit "
+				"timed out waiting for Modem's response "
+				"-- resetting chip\n");
+			msm_proc_comm(PCOM_RESET_CHIP_IMM, NULL, NULL);
+			for (;;)
+				;
+		}
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_STATE)
 			printk(KERN_INFO "msm_sleep(): sleep exit "
 			       "A11S_CLK_SLEEP_EN %x, A11S_PWRDOWN %x, "
@@ -406,7 +420,6 @@ enter_failed:
 		msm_pm_sma.int_info->aArm_interrupts_pending);
 	if (enter_state) {
 		smsm_change_state(SMSM_APPS_STATE, exit_state, SMSM_RUN);
-		msm_pm_wait_state(SMSM_RUN, 0, 0, 0);
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_STATE)
 			printk(KERN_INFO "msm_sleep(): sleep exit "
 			       "A11S_CLK_SLEEP_EN %x, A11S_PWRDOWN %x, "

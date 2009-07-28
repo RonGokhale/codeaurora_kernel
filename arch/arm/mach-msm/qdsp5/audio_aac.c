@@ -42,13 +42,6 @@
 /* for queue ids - should be relative to module number*/
 #include "adsp.h"
 
-#ifdef DEBUG
-#define dprintk(format, arg...) \
-printk(KERN_DEBUG format, ## arg)
-#else
-#define dprintk(format, arg...) do {} while (0)
-#endif
-
 #define BUFSZ 32768
 #define DMASZ (BUFSZ * 2)
 #define BUFSZ_MIN 4096
@@ -73,6 +66,8 @@ printk(KERN_DEBUG format, ## arg)
 #define AUDAAC_EOS_FLG_MASK 0x01
 #define AUDAAC_EOS_NONE 0x0 /* No EOS detected */
 #define AUDAAC_EOS_SET 0x1 /* EOS set in meta field */
+
+#define AUDAAC_EVENT_NUM 10 /* Default number of pre-allocated event packets */
 
 struct buffer {
 	void *data;
@@ -153,6 +148,7 @@ struct audio {
 	struct audaac_suspend_ctl suspend_ctl;
 #endif
 
+	struct list_head free_event_queue;
 	struct list_head event_queue;
 	wait_queue_head_t event_wait;
 	spinlock_t event_queue_lock;
@@ -183,7 +179,7 @@ static int audio_enable(struct audio *audio)
 	struct audmgr_config cfg;
 	int rc;
 
-	dprintk("audio_enable()\n");
+	pr_debug("audio_enable()\n");
 
 	if (audio->enabled)
 		return 0;
@@ -220,7 +216,7 @@ static int audio_enable(struct audio *audio)
 /* must be called with audio->lock held */
 static int audio_disable(struct audio *audio)
 {
-	dprintk("audio_disable()\n");
+	pr_debug("audio_disable()\n");
 	if (audio->enabled) {
 		audio->enabled = 0;
 		auddec_dsp_config(audio, 0);
@@ -247,7 +243,7 @@ static void audio_update_pcm_buf_entry(struct audio *audio, uint32_t *payload)
 	for (index = 0; index < payload[1]; index++) {
 		if (audio->in[audio->fill_next].addr ==
 		    payload[2 + index * 2]) {
-			dprintk("audio_update_pcm_buf_entry: in[%d] ready\n",
+			pr_debug("audio_update_pcm_buf_entry: in[%d] ready\n",
 				audio->fill_next);
 			audio->in[audio->fill_next].used =
 				payload[3 + index * 2];
@@ -265,7 +261,7 @@ static void audio_update_pcm_buf_entry(struct audio *audio, uint32_t *payload)
 	if (audio->in[audio->fill_next].used == 0) {
 		audplay_buffer_refresh(audio);
 	} else {
-		dprintk("audio_update_pcm_buf_entry: read cannot keep up\n");
+		pr_debug("audio_update_pcm_buf_entry: read cannot keep up\n");
 		audio->buf_refresh = 1;
 	}
 	wake_up(&audio->read_wait);
@@ -287,7 +283,7 @@ static void audaac_update_stream_info(struct audio *audio, uint32_t *payload)
 	audio->stream_info.bit_rate = payload[4];
 
 	spin_unlock_irqrestore(&audio->dsp_lock, flags);
-	pr_info("audio_update_stream_info: chan_info=%d, sample_rate=%d,\
+	pr_debug("audio_update_stream_info: chan_info=%d, sample_rate=%d,\
 					bit_stream_info=%d\n",\
 					audio->stream_info.chan_info,\
 					audio->stream_info.sample_rate, \
@@ -304,7 +300,7 @@ static void audplay_dsp_event(void *data, unsigned id, size_t len,
 	uint32_t msg[28];
 	getevent(msg, sizeof(msg));
 
-	dprintk("audplay_dsp_event: msg_id=%x\n", id);
+	pr_debug("audplay_dsp_event: msg_id=%x\n", id);
 
 	switch (id) {
 	case AUDPLAY_MSG_DEC_NEEDS_DATA:
@@ -320,7 +316,7 @@ static void audplay_dsp_event(void *data, unsigned id, size_t len,
 		break;
 
 	default:
-		pr_err("unexpected message from decoder \n");
+		pr_debug("unexpected message from decoder \n");
 	}
 }
 
@@ -334,32 +330,32 @@ static void audio_dsp_event(void *private, unsigned id, uint16_t *msg)
 
 			switch (status) {
 			case AUDPP_DEC_STATUS_SLEEP:
-				dprintk("decoder status: sleep \n");
+				pr_debug("decoder status: sleep \n");
 				break;
 
 			case AUDPP_DEC_STATUS_INIT:
-				dprintk("decoder status: init \n");
+				pr_debug("decoder status: init \n");
 				audpp_cmd_cfg_routing_mode(audio);
 				break;
 
 			case AUDPP_DEC_STATUS_CFG:
-				dprintk("decoder status: cfg \n");
+				pr_debug("decoder status: cfg \n");
 				break;
 			case AUDPP_DEC_STATUS_PLAY:
-				dprintk("decoder status: play \n");
+				pr_debug("decoder status: play \n");
 				if (audio->pcm_feedback) {
 					audplay_config_hostpcm(audio);
 					audplay_buffer_refresh(audio);
 				}
 				break;
 			default:
-				pr_err("unknown decoder status \n");
+				pr_debug("unknown decoder status \n");
 			}
 			break;
 		}
 	case AUDPP_MSG_CFG_MSG:
 		if (msg[0] == AUDPP_MSG_ENA_ENA) {
-			dprintk("audio_dsp_event: CFG_MSG ENABLE\n");
+			pr_debug("audio_dsp_event: CFG_MSG ENABLE\n");
 			auddec_dsp_config(audio, 1);
 			audio->out_needed = 0;
 			audio->running = 1;
@@ -368,20 +364,20 @@ static void audio_dsp_event(void *private, unsigned id, uint16_t *msg)
 								&audio->eq);
 			audpp_avsync(audio->dec_id, 22050);
 		} else if (msg[0] == AUDPP_MSG_ENA_DIS) {
-			dprintk("audio_dsp_event: CFG_MSG DISABLE\n");
+			pr_debug("audio_dsp_event: CFG_MSG DISABLE\n");
 			audpp_avsync(audio->dec_id, 0);
 			audio->running = 0;
 		} else {
-			pr_err("audio_dsp_event: CFG_MSG %d?\n", msg[0]);
+			pr_debug("audio_dsp_event: CFG_MSG %d?\n", msg[0]);
 		}
 		break;
 	case AUDPP_MSG_ROUTING_ACK:
-		dprintk("audio_dsp_event: ROUTING_ACK mode=%d\n", msg[1]);
+		pr_debug("audio_dsp_event: ROUTING_ACK mode=%d\n", msg[1]);
 		audpp_cmd_cfg_adec_params(audio);
 		break;
 
 	case AUDPP_MSG_FLUSH_ACK:
-		dprintk("%s: FLUSH_ACK\n", __func__);
+		pr_debug("%s: FLUSH_ACK\n", __func__);
 		audio->wflush = 0;
 		audio->rflush = 0;
 		wake_up(&audio->write_wait);
@@ -390,13 +386,13 @@ static void audio_dsp_event(void *private, unsigned id, uint16_t *msg)
 		break;
 
 	case AUDPP_MSG_PCMDMAMISSED:
-		dprintk("%s: PCMDMAMISSED\n", __func__);
+		pr_debug("%s: PCMDMAMISSED\n", __func__);
 		audio->teos = 1;
 		wake_up(&audio->write_wait);
 		break;
 
 	default:
-		pr_err("audio_dsp_event: UNKNOWN (%d)\n", id);
+		pr_debug("audio_dsp_event: UNKNOWN (%d)\n", id);
 	}
 
 }
@@ -452,7 +448,7 @@ static void audpp_cmd_cfg_adec_params(struct audio *audio)
 static void audpp_cmd_cfg_routing_mode(struct audio *audio)
 {
 	struct audpp_cmd_routing_mode cmd;
-	dprintk("audpp_cmd_cfg_routing_mode()\n");
+	pr_debug("audpp_cmd_cfg_routing_mode()\n");
 	memset(&cmd, 0, sizeof(cmd));
 	cmd.cmd_id = AUDPP_CMD_ROUTING_MODE;
 	cmd.object_number = audio->dec_id;
@@ -493,7 +489,7 @@ static void audplay_buffer_refresh(struct audio *audio)
 		(audio->in[audio->fill_next].size % 1024)
 		+ (audio->mfield ? 24 : 0);
 	refresh_cmd.buf_read_count = 0;
-	dprintk("audplay_buffer_fresh: buf0_addr=%x buf0_len=%d\n",
+	pr_debug("audplay_buffer_fresh: buf0_addr=%x buf0_len=%d\n",
 		refresh_cmd.buf0_address, refresh_cmd.buf0_length);
 	(void)audplay_send_queue0(audio, &refresh_cmd, sizeof(refresh_cmd));
 }
@@ -502,7 +498,7 @@ static void audplay_config_hostpcm(struct audio *audio)
 {
 	struct audplay_cmd_hpcm_buf_cfg cfg_cmd;
 
-	dprintk("audplay_config_hostpcm()\n");
+	pr_debug("audplay_config_hostpcm()\n");
 	cfg_cmd.cmd_id = AUDPLAY_CMD_HPCM_BUF_CFG;
 	cfg_cmd.max_buffers = audio->pcm_buf_count;
 	cfg_cmd.byte_swap = 0;
@@ -532,7 +528,7 @@ static void audplay_send_data(struct audio *audio, unsigned needed)
 		audio->out_needed = 1;
 		frame = audio->out + audio->out_tail;
 		if (frame->used == 0xffffffff) {
-			dprintk("frame %d free\n", audio->out_tail);
+			pr_debug("frame %d free\n", audio->out_tail);
 			frame->used = 0;
 			audio->out_tail ^= 1;
 			wake_up(&audio->write_wait);
@@ -696,6 +692,12 @@ static void audaac_reset_event_queue(struct audio *audio)
 		list_del(&drv_evt->list);
 		kfree(drv_evt);
 	}
+	list_for_each_safe(ptr, next, &audio->free_event_queue) {
+		drv_evt = list_first_entry(&audio->free_event_queue,
+				struct audaac_event, list);
+		list_del(&drv_evt->list);
+		kfree(drv_evt);
+	}
 	spin_unlock_irqrestore(&audio->event_queue_lock, flags);
 
 	return;
@@ -741,18 +743,17 @@ static long audaac_process_event_req(struct audio *audio, void __user *arg)
 				struct audaac_event, list);
 		list_del(&drv_evt->list);
 	}
-	spin_unlock_irqrestore(&audio->event_queue_lock, flags);
-
 	if (drv_evt) {
 		usr_evt.event_type = drv_evt->event_type;
 		usr_evt.event_payload = drv_evt->payload;
-
-		if (copy_to_user(arg, &usr_evt, sizeof(usr_evt)))
-			rc = -EFAULT;
-
-		kfree(drv_evt);
+		list_add_tail(&drv_evt->list, &audio->free_event_queue);
 	} else
 		rc = -1;
+	spin_unlock_irqrestore(&audio->event_queue_lock, flags);
+
+	if (!rc && copy_to_user(arg, &usr_evt, sizeof(usr_evt)))
+		rc = -EFAULT;
+
 	return rc;
 }
 
@@ -779,7 +780,7 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	int enable;
 	int prev_state;
 
-	dprintk("audio_ioctl() cmd = %d\n", cmd);
+	pr_debug("audio_ioctl() cmd = %d\n", cmd);
 
 	if (cmd == AUDIO_GET_STATS) {
 		struct msm_audio_stats stats;
@@ -841,7 +842,7 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return rc;
 
 	if (cmd == AUDIO_GET_EVENT) {
-		dprintk("%s: AUDIO_GET_EVENT\n", __func__);
+		pr_debug("%s: AUDIO_GET_EVENT\n", __func__);
 		if (mutex_trylock(&audio->get_event_lock)) {
 			rc = audaac_process_event_req(audio,
 					(void __user *) arg);
@@ -869,7 +870,7 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		audio->stopped = 0;
 		break;
 	case AUDIO_FLUSH:
-		dprintk("%s: AUDIO_FLUSH running=%d\n",
+		pr_debug("%s: AUDIO_FLUSH running=%d\n",
 					__func__, audio->running);
 		audio->rflush = 1;
 		audio->wflush = 1;
@@ -1001,7 +1002,7 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			break;
 		}
 	case AUDIO_PAUSE:
-		dprintk("%s: AUDIO_PAUSE %ld\n", __func__, arg);
+		pr_debug("%s: AUDIO_PAUSE %ld\n", __func__, arg);
 		rc = audpp_pause(audio->dec_id, (int) arg);
 		break;
 	case AUDIO_GET_STREAM_INFO:{
@@ -1031,7 +1032,7 @@ static int audaac_fsync(struct file *file, struct dentry *dentry, int datasync)
 	struct buffer *frame;
 	int rc = 0;
 
-	dprintk("%s()\n", __func__);
+	pr_debug("%s()\n", __func__);
 
 	if (!audio->running || audio->pcm_feedback) {
 		rc = -EINVAL;
@@ -1053,7 +1054,7 @@ static int audaac_fsync(struct file *file, struct dentry *dentry, int datasync)
 	}
 
 	if (audio->reserved) {
-		dprintk("%s: send reserved byte\n", __func__);
+		pr_debug("%s: send reserved byte\n", __func__);
 		frame = audio->out + audio->out_tail;
 		((char *) frame->data)[0] = audio->rsv_byte;
 		((char *) frame->data)[1] = 0;
@@ -1102,7 +1103,7 @@ static ssize_t audio_read(struct file *file, char __user *buf, size_t count,
 		return 0; /* PCM feedback is not enabled. Nothing to read */
 
 	mutex_lock(&audio->read_lock);
-	dprintk("audio_read():to read %d \n", count);
+	pr_debug("audio_read():to read %d \n", count);
 	while (count > 0) {
 		rc = wait_event_interruptible(audio->read_wait,
 					      (audio->in[audio->read_next].
@@ -1121,10 +1122,10 @@ static ssize_t audio_read(struct file *file, char __user *buf, size_t count,
 			/* Read must happen in frame boundary. Since driver
 			   does not know frame size, read count must be greater
 			   or equal to size of PCM samples */
-			dprintk("audio_read: no partial frame done reading\n");
+			pr_debug("audio_read: no partial frame done reading\n");
 			break;
 		} else {
-			dprintk("audio_read: read from in[%d]\n",
+			pr_debug("audio_read: read from in[%d]\n",
 				audio->read_next);
 			if (copy_to_user
 			    (buf, audio->in[audio->read_next].data,
@@ -1155,7 +1156,7 @@ static ssize_t audio_read(struct file *file, char __user *buf, size_t count,
 	 */
 	if (audio->buf_refresh && !audio->rflush) {
 		audio->buf_refresh = 0;
-		dprintk("audio_read: kick start pcm feedback again\n");
+		pr_debug("audio_read: kick start pcm feedback again\n");
 		audplay_buffer_refresh(audio);
 	}
 
@@ -1164,7 +1165,7 @@ static ssize_t audio_read(struct file *file, char __user *buf, size_t count,
 	if (buf > start)
 		rc = buf - start;
 
-	dprintk("audio_read: read %d bytes\n", rc);
+	pr_debug("audio_read: read %d bytes\n", rc);
 	return rc;
 }
 
@@ -1175,10 +1176,10 @@ static int audaac_process_eos(struct audio *audio,
 	char *buf_ptr;
 	int rc = 0;
 
-	pr_info("%s: signal input EOS reserved=%d\n", __func__,
+	pr_debug("%s: signal input EOS reserved=%d\n", __func__,
 						audio->reserved);
 	if (audio->reserved) {
-		dprintk("%s, Pass reserve byte\n", __func__);
+		pr_debug("%s, Pass reserve byte\n", __func__);
 		frame = audio->out + audio->out_head;
 		buf_ptr = frame->data;
 		rc = wait_event_interruptible(audio->write_wait,
@@ -1199,7 +1200,7 @@ static int audaac_process_eos(struct audio *audio,
 	frame->used = 2;
 	audplay_send_data(audio, 0);
 	}
-	pr_info("Now signal input EOS after reserved bytes %d %d %d\n",
+	pr_debug("Now signal input EOS after reserved bytes %d %d %d\n",
 		audio->out[0].used, audio->out[1].used, audio->out_needed);
 	frame = audio->out + audio->out_head;
 
@@ -1241,7 +1242,7 @@ static ssize_t audio_write(struct file *file, const char __user *buf,
 	unsigned dsize;
 
 	unsigned short mfield_size = 0;
-	dprintk("%s: cnt=%d\n", __func__, count);
+	pr_debug("%s: cnt=%d\n", __func__, count);
 	mutex_lock(&audio->write_lock);
 	while (count > 0) {
 		frame = audio->out + audio->out_head;
@@ -1268,7 +1269,7 @@ static ssize_t audio_write(struct file *file, const char __user *buf,
 					rc = -EINVAL;
 					break;
 				}
-				dprintk("audio_write: mf offset_val %x\n",
+				pr_debug("audio_write: mf offset_val %x\n",
 								 mfield_size);
 				if (copy_from_user(cpy_ptr, buf, mfield_size)) {
 					rc = -EFAULT;
@@ -1279,7 +1280,7 @@ static ssize_t audio_write(struct file *file, const char __user *buf,
 				*/
 				if (cpy_ptr[AUDAAC_EOS_FLG_OFFSET] &
 						AUDAAC_EOS_FLG_MASK) {
-					pr_info("\naudio_write: eos set\n");
+					pr_debug("\naudio_write: eos set\n");
 					eos_condition = AUDAAC_EOS_SET;
 					if (mfield_size == count) {
 						buf += mfield_size;
@@ -1295,13 +1296,13 @@ static ssize_t audio_write(struct file *file, const char __user *buf,
 				buf += mfield_size;
 			} else {
 				mfield_size = 0;
-				pr_info("audio_write: continuous buffer\n");
+				pr_debug("audio_write: continuous buffer\n");
 			}
 			frame->mfield_sz = mfield_size;
 		}
 
 		if (audio->reserved) {
-			dprintk("%s: append reserved byte %x\n",
+			pr_debug("%s: append reserved byte %x\n",
 				__func__, audio->rsv_byte);
 			*cpy_ptr = audio->rsv_byte;
 			xfer = (count > (frame->size - 1)) ?
@@ -1320,7 +1321,7 @@ static ssize_t audio_write(struct file *file, const char __user *buf,
 		dsize += xfer;
 		if (dsize & 1) {
 			audio->rsv_byte = ((char *) frame->data)[dsize - 1];
-			dprintk("%s: odd length buf reserve last byte %x\n",
+			pr_debug("%s: odd length buf reserve last byte %x\n",
 				__func__, audio->rsv_byte);
 			audio->reserved = 1;
 			dsize--;
@@ -1334,8 +1335,8 @@ static ssize_t audio_write(struct file *file, const char __user *buf,
 			audplay_send_data(audio, 0);
 		}
 	}
-	dprintk("audio_write: eos_condition %x buf[0x%x] start[0x%x]\n",
-						eos_condition, buf, start);
+	pr_debug("audio_write: eos_condition %x buf[0x%x] start[0x%x]\n",
+			eos_condition, (unsigned int)buf, (unsigned int)start);
 	if (eos_condition == AUDAAC_EOS_SET)
 		rc = audaac_process_eos(audio, start, mfield_size);
 	mutex_unlock(&audio->write_lock);
@@ -1350,7 +1351,7 @@ static int audio_release(struct inode *inode, struct file *file)
 {
 	struct audio *audio = file->private_data;
 
-	dprintk("audio_release()\n");
+	pr_debug("audio_release()\n");
 
 	mutex_lock(&audio->lock);
 	audio_disable(audio);
@@ -1379,17 +1380,23 @@ static void audaac_post_event(struct audio *audio, int type,
 	struct audaac_event *e_node = NULL;
 	unsigned long flags;
 
-	e_node = kmalloc(sizeof(struct audaac_event), GFP_KERNEL);
+	spin_lock_irqsave(&audio->event_queue_lock, flags);
 
-	if (!e_node) {
-		pr_err("%s: No mem to post event %d\n", __func__, type);
-		return;
+	if (!list_empty(&audio->free_event_queue)) {
+		e_node = list_first_entry(&audio->free_event_queue,
+				struct audaac_event, list);
+		list_del(&e_node->list);
+	} else {
+		e_node = kmalloc(sizeof(struct audaac_event), GFP_ATOMIC);
+		if (!e_node) {
+			pr_err("%s: No mem to post event %d\n", __func__, type);
+			return;
+		}
 	}
 
 	e_node->event_type = type;
 	e_node->payload = payload;
 
-	spin_lock_irqsave(&audio->event_queue_lock, flags);
 	list_add_tail(&e_node->list, &audio->event_queue);
 	spin_unlock_irqrestore(&audio->event_queue_lock, flags);
 	wake_up(&audio->event_wait);
@@ -1404,7 +1411,7 @@ static void audaac_suspend(struct early_suspend *h)
 		container_of(h, struct audaac_suspend_ctl, node);
 	union msm_audio_event_payload payload;
 
-	dprintk("%s()\n", __func__);
+	pr_debug("%s()\n", __func__);
 	audaac_post_event(ctl->audio, AUDIO_EVENT_SUSPEND, payload);
 }
 
@@ -1414,7 +1421,7 @@ static void audaac_resume(struct early_suspend *h)
 		container_of(h, struct audaac_suspend_ctl, node);
 	union msm_audio_event_payload payload;
 
-	dprintk("%s()\n", __func__);
+	pr_debug("%s()\n", __func__);
 	audaac_post_event(ctl->audio, AUDIO_EVENT_RESUME, payload);
 }
 #endif
@@ -1422,7 +1429,8 @@ static void audaac_resume(struct early_suspend *h)
 static int audio_open(struct inode *inode, struct file *file)
 {
 	struct audio *audio = &the_aac_audio;
-	int rc;
+	int rc, i;
+	struct audaac_event *e_node = NULL;
 
 	mutex_lock(&audio->lock);
 
@@ -1484,6 +1492,15 @@ static int audio_open(struct inode *inode, struct file *file)
 	audio->suspend_ctl.audio = audio;
 	register_early_suspend(&audio->suspend_ctl.node);
 #endif
+	for (i = 0; i < AUDAAC_EVENT_NUM; i++) {
+		e_node = kmalloc(sizeof(struct audaac_event), GFP_KERNEL);
+		if (e_node)
+			list_add_tail(&e_node->list, &audio->free_event_queue);
+		else {
+			pr_info("%s: event pkt alloc failed\n", __func__);
+			break;
+		}
+	}
 	memset(&audio->stream_info, 0, sizeof(struct msm_audio_bitstream_info));
 	rc = 0;
 done:
@@ -1645,6 +1662,7 @@ static int __init audio_init(void)
 	mutex_init(&the_aac_audio.get_event_lock);
 	spin_lock_init(&the_aac_audio.dsp_lock);
 	spin_lock_init(&the_aac_audio.event_queue_lock);
+	INIT_LIST_HEAD(&the_aac_audio.free_event_queue);
 	INIT_LIST_HEAD(&the_aac_audio.event_queue);
 	init_waitqueue_head(&the_aac_audio.write_wait);
 	init_waitqueue_head(&the_aac_audio.read_wait);
@@ -1654,7 +1672,7 @@ static int __init audio_init(void)
 	dentry = debugfs_create_file("msm_aac", S_IFREG | S_IRUGO, NULL,
 		(void *) &the_aac_audio, &audaac_debug_fops);
 	if (IS_ERR(dentry))
-		dprintk("aac:%s:debugfs_create_file failed\n", __func__);
+		pr_err("aac:%s:debugfs_create_file failed\n", __func__);
 #endif
 	return misc_register(&audio_aac_misc);
 

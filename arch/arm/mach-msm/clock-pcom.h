@@ -55,114 +55,77 @@
  *
  */
 
-#include <linux/module.h>
-#include <linux/kthread.h>
-#include <linux/delay.h>
+#ifndef __ARCH_ARM_MACH_MSM_CLOCK_PCOM_H
+#define __ARCH_ARM_MACH_MSM_CLOCK_PCOM_H
 
-#include "logger.h"
+/* clock IDs used by the modem processor */
 
-#define MODULE_NAME "logger_test"
+#define P_ACPU_CLK	0   /* Applications processor clock */
+#define P_ADM_CLK	1   /* Applications data mover clock */
+#define P_ADSP_CLK	2   /* ADSP clock */
+#define P_EBI1_CLK	3   /* External bus interface 1 clock */
+#define P_EBI2_CLK	4   /* External bus interface 2 clock */
+#define P_ECODEC_CLK	5   /* External CODEC clock */
+#define P_EMDH_CLK	6   /* External MDDI host clock */
+#define P_GP_CLK	7   /* General purpose clock */
+#define P_GRP_CLK	8   /* Graphics clock */
+#define P_I2C_CLK	9   /* I2C clock */
+#define P_ICODEC_RX_CLK	10  /* Internal CODEX RX clock */
+#define P_ICODEC_TX_CLK	11  /* Internal CODEX TX clock */
+#define P_IMEM_CLK	12  /* Internal graphics memory clock */
+#define P_MDC_CLK	13  /* MDDI client clock */
+#define P_MDP_CLK	14  /* Mobile display processor clock */
+#define P_PBUS_CLK	15  /* Peripheral bus clock */
+#define P_PCM_CLK	16  /* PCM clock */
+#define P_PMDH_CLK	17  /* Primary MDDI host clock */
+#define P_SDAC_CLK	18  /* Stereo DAC clock */
+#define P_SDC1_CLK	19  /* Secure Digital Card clocks */
+#define P_SDC1_PCLK	20
+#define P_SDC2_CLK	21
+#define P_SDC2_PCLK	22
+#define P_SDC3_CLK	23
+#define P_SDC3_PCLK	24
+#define P_SDC4_CLK	25
+#define P_SDC4_PCLK	26
+#define P_TSIF_CLK	27  /* Transport Stream Interface clocks */
+#define P_TSIF_REF_CLK	28
+#define P_TV_DAC_CLK	29  /* TV clocks */
+#define P_TV_ENC_CLK	30
+#define P_UART1_CLK	31  /* UART clocks */
+#define P_UART2_CLK	32
+#define P_UART3_CLK	33
+#define P_UART1DM_CLK	34
+#define P_UART2DM_CLK	35
+#define P_USB_HS_CLK	36  /* High speed USB core clock */
+#define P_USB_HS_PCLK	37  /* High speed USB pbus clock */
+#define P_USB_OTG_CLK	38  /* Full speed USB clock */
+#define P_VDC_CLK	39  /* Video controller clock */
+#define P_VFE_MDC_CLK	40  /* Camera / Video Front End clock */
+#define P_VFE_CLK	41  /* VFE MDDI client clock */
+#define P_MDP_LCDC_PCLK_CLK	42
+#define P_MDP_LCDC_PAD_PCLK_CLK 43
+#define P_MDP_VSYNC_CLK	44
+#define P_SPI_CLK	45
+#define P_VFE_AXI_CLK	46
+#define P_USB_HS2_CLK	47  /* High speed USB 2 core clock */
+#define P_USB_HS2_PCLK	48  /* High speed USB 2 pbus clock */
+#define P_USB_HS3_CLK	49  /* High speed USB 3 core clock */
+#define P_USB_HS3_PCLK	50  /* High speed USB 3 pbus clock */
+#define P_GRP_PCLK	51  /* Graphics pbus clock */
+#define P_USB_PHY_CLK	52  /* USB PHY clock */
 
-/* 1/2 second for timer delay */
-#define TIMER_DELAY_JIFFIES (msecs_to_jiffies(500))
-/* 1/2 second for timer delay */
-#define THREAD_SLEEP_TIME_JIFFIES (msecs_to_jiffies(500))
-#define LOGGER_TEST_PRIORITY (LOG_PRIORITY_SILENT)
+#define P_NR_CLKS		53
 
-static struct task_struct *kthread;
-static struct timer_list my_timer;
+struct clk_ops;
+extern struct clk_ops clk_ops_pcom;
 
-static void timer_func(unsigned long ptr)
-{
-	static int counter;
-	int ret = logger_write(LOG_RADIO_IDX,
-		LOGGER_TEST_PRIORITY,
-		"MYTAG-INTERRUPT",
-		"From timer interrupt: %d\n",
-		counter);
-	if (ret)
-		printk(KERN_ERR "interrupt %d logger write ret: %d\n",
-			counter, ret);
-
-	counter++;
-	my_timer.expires = jiffies + TIMER_DELAY_JIFFIES;
-	add_timer(&my_timer);
-}
-
-static int thread(void *n)
-{
-	int counter = 0;
-	do {
-		int ret;
-
-		schedule_timeout_interruptible(THREAD_SLEEP_TIME_JIFFIES);
-		ret = logger_write(LOG_RADIO_IDX,
-			LOGGER_TEST_PRIORITY,
-			"MYTAG-THREAD",
-			"From Thread: %d\n",
-			counter);
-		if (ret)
-			printk(KERN_ERR "thread %d logger write ret: %d\n",
-				counter, ret);
-		counter++;
-	} while (!kthread_should_stop());
-	return 0;
-}
-
-static int __init logger_test_init(void)
-{
-	int junk = 25;
-	int ret;
-
-	/* start kernel thread */
-	kthread = kthread_run((void *)thread, NULL, MODULE_NAME"_thread");
-	if (IS_ERR(kthread)) {
-		printk(KERN_INFO MODULE_NAME
-			": unable to start kernel thread\n");
-		return -ENOMEM;
+#define CLK_PCOM(clk_name, clk_id, clk_dev, clk_flags) {	\
+	.name = clk_name, \
+	.id = P_##clk_id, \
+	.ops = &clk_ops_pcom, \
+	.flags = clk_flags, \
+	.dev = clk_dev, \
+	.dbg_name = #clk_id, \
 	}
 
-	init_timer(&my_timer);
-	my_timer.function = timer_func;
-	my_timer.data = 0;
-	my_timer.expires = jiffies + TIMER_DELAY_JIFFIES;
-	add_timer(&my_timer);
-
-	ret = logger_write(LOG_RADIO_IDX,
-		LOG_PRIORITY_DEBUG,
-		"MYTAG",
-		"This should not be present in the log, %d\n",
-		junk++);
-	if (ret)
-		printk(KERN_ERR "logger write 1 returned %d\n", ret);
-
-
-	ret = logger_write(LOG_RADIO_IDX,
-		LOGGER_TEST_PRIORITY,
-		"MYTAG",
-		"This >should< be present in the log, %d\n",
-		junk++);
-	if (ret)
-		printk(KERN_ERR "logger write 2 returned %d\n", ret);
-
-	ret = logger_write(LOG_RADIO_IDX,
-		LOGGER_TEST_PRIORITY,
-		"MYTAG1",
-		"This >should< be present in the log with a new tag, %d\n",
-		junk++);
-	if (ret)
-		printk(KERN_ERR "logger write 3 returned %d\n", ret);
-
-	return 0;
-}
-
-static void __exit logger_test_exit(void)
-{
-	del_timer_sync(&my_timer);
-	kthread_stop(kthread);
-}
-
-MODULE_LICENSE("Dual BSD/GPL");
-
-device_initcall(logger_test_init);
-module_exit(logger_test_exit);
+#endif

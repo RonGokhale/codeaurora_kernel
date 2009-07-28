@@ -56,6 +56,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/delay.h>
 #include <linux/irq.h>
 #include <linux/gpio.h>
 #include <linux/platform_device.h>
@@ -79,6 +80,7 @@
 #include <mach/msm_serial_hs.h>
 #include <mach/msm_spi.h>
 #include <linux/spi/spi.h>
+#include <mach/s1r72v05.h>
 
 #include "devices.h"
 #include "timer.h"
@@ -88,6 +90,7 @@
 #define TOUCHPAD_IRQ            42
 
 #define MSM_PMEM_MDP_SIZE	0x800000
+#define MSM_PMEM_ADSP_SIZE	0x2900000
 #define MSM_PMEM_GPU1_SIZE	0x800000
 #define MSM_FB_SIZE             0x500000
 #define MSM_AUDIO_SIZE		0x200000
@@ -98,6 +101,8 @@
 #define MSM_FB_BASE		MSM_SMI_BASE
 #define MSM_PMEM_GPU0_BASE	(MSM_FB_BASE + MSM_FB_SIZE)
 #define MSM_PMEM_GPU0_SIZE	(MSM_SMI_SIZE - MSM_FB_SIZE)
+
+#define PMEM_KERNEL_EBI1_SIZE	0x200000
 
 #define COMET_CPLD_START                 0x70004000
 #define COMET_CPLD_PER_ENABLE            0x00000010
@@ -111,10 +116,15 @@
 #define COMET_CPLD_SIZE                  0x00000060
 #define COMET_CPLD_STATUS_WVGA           0x0004
 #define COMET_CPLD_VERSION_MAJOR         0xFF00
+#define COMET_CPLD_PER_ENABLE_HDD        0x1000
 #define COMET_CPLD_PER_ENABLE_WVGA       0x0400
 #define COMET_CPLD_PER_ENABLE_LVDS       0x0200
+#define COMET_CPLD_PER_ENABLE_IDE        0x0080
 #define COMET_CPLD_PER_ENABLE_WXGA       0x0040
+#define COMET_CPLD_PER_ENABLE_I2C1       0x0010
 #define COMET_CPLD_EXT_PER_ENABLE_WXGA   0x0080
+#define COMET_CPLD_PER_RESET_IDE         0x0004
+#define COMET_CPLD_EXT_PER_ENABLE_I2C1   0x0008
 
 static int                  cpld_version;
 static bool                 wvga_present;
@@ -139,11 +149,11 @@ static struct comet_cpld_t {
 	[1] = {
 		.per_reset_all_reset     = 0x00BF,
 		.ext_per_reset_all_reset = 0x0007,
-		.i2c_enable              = 0x07FF,
+		.i2c_enable              = 0x07F7,
 		/* enable all peripherals except microphones and */
 		/* displays                                      */
 		.per_enable_all          = 0xF9B8,
-		.ext_per_enable_all      = 0x007F,
+		.ext_per_enable_all      = 0x007D,
 		.bt_reset_reg            = 0x0048,
 		.bt_reset_mask           = 0x0004,
 	},
@@ -238,6 +248,15 @@ static struct usb_composition usb_func_composition[] = {
 	},
 
 };
+
+static struct platform_device hs_device = {
+	.name   = "msm-handset",
+	.id     = -1,
+	.dev    = {
+		.platform_data = "8k_handset",
+	},
+};
+
 #ifdef CONFIG_USB_FS_HOST
 static int fsusb_gpio_init(void)
 {
@@ -300,24 +319,42 @@ static struct msm_hsusb_platform_data msm_hsusb_pdata = {
 #endif
 };
 
+static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
+	.name = PMEM_KERNEL_EBI1_DATA_NAME,
+	/* if no allocator_type, defaults to PMEM_ALLOCATORTYPE_BITMAP,
+	 * the only valid choice at this time. The board structure is
+	 * set to all zeros by the C runtime initialization and that is now
+	 * the enum value of PMEM_ALLOCATORTYPE_BITMAP, now forced to 0 in
+	 * include/linux/android_pmem.h.
+	 */
+	.cached = 0,
+};
+
 static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
 	.size = MSM_PMEM_MDP_SIZE,
-	.no_allocator = 0,
+	.allocator_type = PMEM_ALLOCATORTYPE_BUDDYBESTFIT,
 	.cached = 1,
+};
+
+static struct android_pmem_platform_data android_pmem_adsp_pdata = {
+	.name = "pmem_adsp",
+	.size = MSM_PMEM_ADSP_SIZE,
+	.allocator_type = PMEM_ALLOCATORTYPE_BUDDYBESTFIT,
+	.cached = 0,
 };
 
 static struct android_pmem_platform_data android_pmem_gpu0_pdata = {
 	.name = "pmem_gpu0",
 	.start = MSM_PMEM_GPU0_BASE,
 	.size = MSM_PMEM_GPU0_SIZE,
-	.no_allocator = 1,
+	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
 	.cached = 0,
 };
 
 static struct android_pmem_platform_data android_pmem_gpu1_pdata = {
 	.name = "pmem_gpu1",
-	.no_allocator = 0,
+	.allocator_type = PMEM_ALLOCATORTYPE_BUDDYBESTFIT,
 	.cached = 0,
 };
 
@@ -325,6 +362,12 @@ static struct platform_device android_pmem_device = {
 	.name = "android_pmem",
 	.id = 0,
 	.dev = { .platform_data = &android_pmem_pdata },
+};
+
+static struct platform_device android_pmem_adsp_device = {
+	.name = "android_pmem",
+	.id = 1,
+	.dev = { .platform_data = &android_pmem_adsp_pdata },
 };
 
 static struct platform_device android_pmem_gpu0_device = {
@@ -337,6 +380,12 @@ static struct platform_device android_pmem_gpu1_device = {
 	.name = "android_pmem",
 	.id = 3,
 	.dev = { .platform_data = &android_pmem_gpu1_pdata },
+};
+
+static struct platform_device android_pmem_kernel_ebi1_device = {
+	.name = "android_pmem",
+	.id = 4,
+	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
 };
 
 static struct resource qsd_spi_resources[] = {
@@ -553,6 +602,81 @@ cpld_base_exit:
 	return comet_cpld_base_addr;
 }
 
+#define S1R72V05_IRQ_GPIO 99
+
+static int comet_init_s1r72v05(void)
+{
+	int rc;
+	char __iomem *cpld_base;
+	u16 per_enable;
+	u8 irq_gpio = S1R72V05_IRQ_GPIO;
+
+	cpld_base = comet_cpld_base();
+	if (!cpld_base)
+		return -ENOMEM;
+	per_enable = readw(cpld_base + COMET_CPLD_PER_ENABLE);
+	per_enable |= COMET_CPLD_PER_ENABLE_HDD | COMET_CPLD_PER_ENABLE_IDE;
+	writew(per_enable,
+	       cpld_base + COMET_CPLD_PER_ENABLE);
+	cpld_info->per_reset_all_reset &= ~COMET_CPLD_PER_RESET_IDE;
+	writew(cpld_info->per_reset_all_reset,
+	       cpld_base + COMET_CPLD_PER_RESET);
+
+	rc = gpio_request(irq_gpio, "ide_s1r72v05_irq");
+	if (rc) {
+		pr_err("Failed to request GPIO pin %d (rc=%d)\n",
+		       irq_gpio, rc);
+		goto err;
+	}
+
+	if (gpio_tlmm_config(GPIO_CFG(irq_gpio,
+				      0, GPIO_INPUT, GPIO_NO_PULL,
+				      GPIO_2MA),
+			     GPIO_ENABLE)) {
+		printk(KERN_ALERT
+		       "s1r72v05: Could not configure IRQ gpio\n");
+		goto err;
+	}
+
+	if (gpio_configure(irq_gpio, IRQF_TRIGGER_FALLING)) {
+		printk(KERN_ALERT
+		       "s1r72v05: Could not set IRQ polarity\n");
+		goto err;
+	}
+	return 0;
+
+err:
+	gpio_free(irq_gpio);
+	return -ENODEV;
+}
+
+static struct resource s1r72v05_resources[] = {
+	[0] = {
+		.start = 0x70000000,
+		.end = 0x70000000 + 0xFF,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = MSM_GPIO_TO_INT(S1R72V05_IRQ_GPIO),
+		.end = S1R72V05_IRQ_GPIO,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct s1r72v05_platform_data s1r72v05_data = {
+	.gpio_setup = comet_init_s1r72v05,
+};
+
+static struct platform_device s1r72v05_device = {
+	.name           = "s1r72v05",
+	.id             = 0,
+	.num_resources  = ARRAY_SIZE(s1r72v05_resources),
+	.resource       = s1r72v05_resources,
+	.dev            = {
+		.platform_data          = &s1r72v05_data,
+	},
+};
+
 static struct msm_serial_hs_platform_data msm_uart_dm1_pdata = {
 	.wakeup_irq = MSM_GPIO_TO_INT(45),
 	.inject_rx_on_wakeup = 1,
@@ -694,7 +818,10 @@ static struct platform_device *devices[] __initdata = {
 	&msm_fb_device,
 	&msm_device_smd,
 	&smc911x_device,
+	&s1r72v05_device,
+	&android_pmem_kernel_ebi1_device,
 	&android_pmem_device,
+	&android_pmem_adsp_device,
 	&android_pmem_gpu0_device,
 	&android_pmem_gpu1_device,
 	&msm_device_nand,
@@ -710,6 +837,7 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_i2c,
 	&qsd_device_spi,
 	&msm_device_tssc,
+	&hs_device,
 };
 
 #ifdef CONFIG_QSD_SVS
@@ -804,47 +932,31 @@ static struct msm_touchpad_platform_data msm_touchpad_data = {
 };
 
 
-#define KBD_RST 35
 #define KBD_IRQ 144
 
 static void kbd_gpio_release(void)
 {
 	gpio_free(KBD_IRQ);
-	gpio_free(KBD_RST);
 }
 
 static int kbd_gpio_setup(void)
 {
 	int rc;
-	int respin = KBD_RST;
 	int irqpin = KBD_IRQ;
-	unsigned rescfg =
-		GPIO_CFG(respin, 0, GPIO_OUTPUT, GPIO_PULL_UP, GPIO_8MA);
+
 	unsigned irqcfg =
 		GPIO_CFG(irqpin, 0, GPIO_INPUT, GPIO_NO_PULL, GPIO_2MA);
 
 	rc = gpio_request(irqpin, "gpio_keybd_irq");
 	if (rc) {
 		pr_err("gpio_request failed on pin %d (rc=%d)\n",
-		       irqpin, rc);
-		goto err_gpioconfig;
-	}
-	rc = gpio_request(respin, "gpio_keybd_reset");
-	if (rc) {
-		pr_err("gpio_request failed on pin %d (rc=%d)\n",
-		       respin, rc);
-		goto err_gpioconfig;
-	}
-	rc = gpio_tlmm_config(rescfg, GPIO_ENABLE);
-	if (rc) {
-		pr_err("gpio_tlmm_config failed on pin %d (rc=%d)\n",
-		       respin, rc);
+			irqpin, rc);
 		goto err_gpioconfig;
 	}
 	rc = gpio_tlmm_config(irqcfg, GPIO_ENABLE);
 	if (rc) {
 		pr_err("gpio_tlmm_config failed on pin %d (rc=%d)\n",
-		       irqpin, rc);
+			irqpin, rc);
 		goto err_gpioconfig;
 	}
 	return rc;
@@ -854,13 +966,55 @@ err_gpioconfig:
 	return rc;
 }
 
+/* use CPLD register to toggle keyboard external reset pin */
+static void kbd_hwreset(int kbd_mclrpin)
+{
+	char __iomem *cpld_base;
+	int per_en;
+	int ext_per_en;
+
+	cpld_base = comet_cpld_base();
+
+	if (!cpld_base)
+		return;
+
+	cpld_version = (readw(cpld_base + COMET_CPLD_VERSION)
+			& COMET_CPLD_VERSION_MAJOR) >> 8;
+
+	if (cpld_version >= 2) {
+		/* COMET2 */
+		/* Reset the pin */
+		ext_per_en = readw(cpld_base + COMET_CPLD_EXT_PER_ENABLE);
+		ext_per_en = ext_per_en & (~COMET_CPLD_EXT_PER_ENABLE_I2C1);
+		writew(ext_per_en, cpld_base + COMET_CPLD_EXT_PER_ENABLE);
+
+		msleep(2);
+
+		/* Set the pin */
+		ext_per_en = ext_per_en | COMET_CPLD_EXT_PER_ENABLE_I2C1;
+		writew(ext_per_en, cpld_base + COMET_CPLD_EXT_PER_ENABLE);
+	} else {
+		/* COMET1 */
+		/* Reset the pin */
+		per_en = readw(cpld_base + COMET_CPLD_PER_ENABLE);
+		per_en = per_en & (~COMET_CPLD_PER_ENABLE_I2C1);
+		writew(per_en, cpld_base + COMET_CPLD_PER_ENABLE);
+
+		msleep(1);
+
+		/* Set the pin */
+		per_en = per_en | COMET_CPLD_PER_ENABLE_I2C1;
+		writew(per_en, cpld_base + COMET_CPLD_PER_ENABLE);
+	}
+}
+
 static struct msm_i2ckbd_platform_data msm_kybd_data = {
 	.hwrepeat = 0,
 	.scanset1 = 1,
-	.gpioreset = KBD_RST,
 	.gpioirq = KBD_IRQ,
 	.gpio_setup = kbd_gpio_setup,
 	.gpio_shutdown = kbd_gpio_release,
+	.hw_reset = kbd_hwreset,
 };
 
 static struct i2c_board_info msm_i2c_board_info[] __initdata = {
@@ -1096,26 +1250,26 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR] = {
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].supported = 1,
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].suspend_enabled = 1,
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].idle_enabled = 1,
-	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].latency = 16000,
-	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].residency = 20000,
+	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].latency = 8594,
+	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].residency = 23740,
 
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].supported = 1,
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].suspend_enabled = 1,
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].idle_enabled = 1,
-	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].latency = 12000,
-	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].residency = 20000,
+	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].latency = 4594,
+	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN].residency = 23740,
 
 	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].supported = 1,
 	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].suspend_enabled
 		= 1,
 	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].idle_enabled = 0,
-	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].latency = 2000,
-	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].residency = 10000,
+	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].latency = 443,
+	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].residency = 1098,
 
 	[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT].supported = 1,
 	[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT].suspend_enabled = 1,
 	[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT].idle_enabled = 1,
-	[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT].latency = 500,
+	[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT].latency = 2,
 	[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT].residency = 0,
 };
 
@@ -1209,8 +1363,22 @@ static void __init comet_allocate_memory_regions(void)
 	void *addr;
 	unsigned long size;
 
+	size = PMEM_KERNEL_EBI1_SIZE;
+	addr = alloc_bootmem_aligned(size, 0x100000);
+	android_pmem_kernel_ebi1_pdata.start = __pa(addr);
+	android_pmem_kernel_ebi1_pdata.size = size;
+	printk(KERN_INFO "allocating %lu bytes at %p (%lx physical)"
+	       "for pmem kernel ebi1 arena\n", size, addr, __pa(addr));
+
 	addr = alloc_bootmem(android_pmem_pdata.size);
 	android_pmem_pdata.start = __pa(addr);
+
+	size = MSM_PMEM_ADSP_SIZE;
+	addr = alloc_bootmem(size);
+	android_pmem_adsp_pdata.start = __pa(addr);
+	android_pmem_adsp_pdata.size = size;
+	printk(KERN_INFO "allocating %lu bytes at %p (%lx physical)"
+	       "for adsp pmem\n", size, addr, __pa(addr));
 
 	size = MSM_PMEM_GPU1_SIZE;
 	addr = alloc_bootmem_aligned(size, 0x100000);

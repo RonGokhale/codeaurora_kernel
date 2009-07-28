@@ -58,11 +58,13 @@
 #endif
 #include "pm.h"
 
-#define MSM_PMEM_MDP_SIZE	0x1000000
-#define MSM_PMEM_ADSP_SIZE	0x800000
+#define MSM_PMEM_MDP_SIZE	0x1800000
+#define MSM_PMEM_ADSP_SIZE	0x900000
 #define MSM_PMEM_GPU1_SIZE	0x1C00000
 #define MSM_FB_SIZE		0x200000
 #define MSM_GPU_PHYS_SIZE	SZ_2M
+
+#define PMEM_KERNEL_EBI1_SIZE	0x200000
 
 static struct resource smc91x_resources[] = {
 	[0] = {
@@ -269,21 +271,125 @@ static struct platform_device msm_device_snd = {
 		.platform_data = &msm_device_snd_endpoints
 	},
 };
+
+#define DEC0_FORMAT ((1<<MSM_ADSP_CODEC_MP3)| \
+	(1<<MSM_ADSP_CODEC_AAC)|(1<<MSM_ADSP_CODEC_WMA)| \
+	(1<<MSM_ADSP_CODEC_WMAPRO)|(1<<MSM_ADSP_CODEC_AMRWB)| \
+	(1<<MSM_ADSP_CODEC_AMRNB)|(1<<MSM_ADSP_CODEC_WAV)| \
+	(1<<MSM_ADSP_CODEC_ADPCM)|(1<<MSM_ADSP_CODEC_YADPCM)| \
+	(1<<MSM_ADSP_CODEC_EVRC)|(1<<MSM_ADSP_CODEC_QCELP))
+#define DEC1_FORMAT ((1<<MSM_ADSP_CODEC_WAV)|(1<<MSM_ADSP_CODEC_ADPCM)| \
+	(1<<MSM_ADSP_CODEC_YADPCM)|(1<<MSM_ADSP_CODEC_QCELP)| \
+	(1<<MSM_ADSP_CODEC_MP3))
+#define DEC2_FORMAT ((1<<MSM_ADSP_CODEC_WAV)|(1<<MSM_ADSP_CODEC_ADPCM)| \
+	(1<<MSM_ADSP_CODEC_YADPCM)|(1<<MSM_ADSP_CODEC_QCELP)| \
+	(1<<MSM_ADSP_CODEC_MP3))
+#define DEC3_FORMAT ((1<<MSM_ADSP_CODEC_WAV)|(1<<MSM_ADSP_CODEC_ADPCM)| \
+	(1<<MSM_ADSP_CODEC_YADPCM)|(1<<MSM_ADSP_CODEC_QCELP))
+#define DEC4_FORMAT (1<<MSM_ADSP_CODEC_MIDI)
+
+static unsigned int dec_concurrency_table[] = {
+	/* Audio LP */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DMA)), 0,
+	0, 0, 0,
+
+	/* Concurrency 1 */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC1_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC2_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC3_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC4_FORMAT),
+
+	 /* Concurrency 2 */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC1_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC2_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC3_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC4_FORMAT),
+
+	/* Concurrency 3 */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC1_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC2_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC3_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC4_FORMAT),
+
+	/* Concurrency 4 */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC1_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC2_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC3_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC4_FORMAT),
+
+	/* Concurrency 5 */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_TUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC1_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC2_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC3_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC4_FORMAT),
+
+	/* Concurrency 6 */
+	(DEC0_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC1_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC2_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC3_FORMAT|(1<<MSM_ADSP_MODE_NONTUNNEL)|(1<<MSM_ADSP_OP_DM)),
+	(DEC4_FORMAT),
+};
+
+#define DEC_INFO(name, queueid, decid, nr_codec) { .module_name = name, \
+	.module_queueid = queueid, .module_decid = decid, \
+	.nr_codec_support = nr_codec}
+
+static struct msm_adspdec_info dec_info_list[] = {
+	DEC_INFO("AUDPLAY0TASK", 13, 0, 11), /* AudPlay0BitStreamCtrlQueue */
+	DEC_INFO("AUDPLAY1TASK", 14, 1, 5),  /* AudPlay1BitStreamCtrlQueue */
+	DEC_INFO("AUDPLAY2TASK", 15, 2, 5),  /* AudPlay2BitStreamCtrlQueue */
+	DEC_INFO("AUDPLAY3TASK", 16, 3, 4),  /* AudPlay3BitStreamCtrlQueue */
+	DEC_INFO("AUDPLAY4TASK", 17, 4, 1),  /* AudPlay4BitStreamCtrlQueue */
+};
+
+static struct msm_adspdec_database msm_device_adspdec_database = {
+	.num_dec = ARRAY_SIZE(dec_info_list),
+	.num_concurrency_support = (ARRAY_SIZE(dec_concurrency_table) / \
+					ARRAY_SIZE(dec_info_list)),
+	.dec_concurrency_table = dec_concurrency_table,
+	.dec_info_list = dec_info_list,
+};
+
+static struct platform_device msm_device_adspdec = {
+	.name = "msm_adspdec",
+	.id = -1,
+	.dev    = {
+		.platform_data = &msm_device_adspdec_database
+	},
+};
+
+static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
+	.name = PMEM_KERNEL_EBI1_DATA_NAME,
+	/* if no allocator_type, defaults to PMEM_ALLOCATORTYPE_BITMAP,
+	 * the only valid choice at this time. The board structure is
+	 * set to all zeros by the C runtime initialization and that is now
+	 * the enum value of PMEM_ALLOCATORTYPE_BITMAP, now forced to 0 in
+	 * include/linux/android_pmem.h.
+	 */
+	.cached = 0,
+};
+
 static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
-	.no_allocator = 0,
+	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
 	.cached = 1,
 };
 
 static struct android_pmem_platform_data android_pmem_adsp_pdata = {
 	.name = "pmem_adsp",
-	.no_allocator = 0,
+	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
 	.cached = 0,
 };
 
 static struct android_pmem_platform_data android_pmem_gpu1_pdata = {
 	.name = "pmem_gpu1",
-	.no_allocator = 0,
+	.allocator_type = PMEM_ALLOCATORTYPE_BUDDYBESTFIT,
 	.cached = 0,
 };
 
@@ -303,6 +409,20 @@ static struct platform_device android_pmem_gpu1_device = {
 	.name = "android_pmem",
 	.id = 3,
 	.dev = { .platform_data = &android_pmem_gpu1_pdata },
+};
+
+static struct platform_device hs_device = {
+	.name   = "msm-handset",
+	.id     = -1,
+	.dev    = {
+		.platform_data = "7k_handset",
+	},
+};
+
+static struct platform_device android_pmem_kernel_ebi1_device = {
+	.name = "android_pmem",
+	.id = 4,
+	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
 };
 
 #define LCDC_CONFIG_PROC          21
@@ -397,8 +517,41 @@ static void lcdc_gordon_config_gpios(int enable)
 		ARRAY_SIZE(lcdc_gpio_table), enable);
 }
 
+static char *msm_fb_lcdc_vreg[] = {
+	"gp5"
+};
+
+#define MSM_FB_LCDC_VREG_OP(name, op) \
+do { \
+	vreg = vreg_get(0, name); \
+	if (vreg_##op(vreg)) \
+		printk(KERN_ERR "%s: %s vreg operation failed \n", \
+			(vreg_##op == vreg_enable) ? "vreg_enable" \
+				: "vreg_disable", name); \
+} while (0)
+
+static void msm_fb_lcdc_power_save(int on)
+{
+	struct vreg *vreg;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(msm_fb_lcdc_vreg); i++) {
+		if (on)
+			MSM_FB_LCDC_VREG_OP(msm_fb_lcdc_vreg[i], enable);
+		else{
+			MSM_FB_LCDC_VREG_OP(msm_fb_lcdc_vreg[i], disable);
+			gpio_tlmm_config(GPIO_CFG(GPIO_OUT_88, 0,
+			GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), GPIO_ENABLE);
+			gpio_set_value(88, 0);
+			mdelay(15);
+			gpio_set_value(88, 1);
+			mdelay(15);
+			}
+		}
+}
 static struct lcdc_platform_data lcdc_pdata = {
-	.lcdc_gpio_config = msm_fb_lcdc_config
+	.lcdc_gpio_config = msm_fb_lcdc_config,
+	.lcdc_power_save   = msm_fb_lcdc_power_save,
 };
 
 static struct msm_panel_common_pdata lcdc_gordon_panel_data = {
@@ -798,6 +951,7 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_i2c,
 	&smc91x_device,
 	&msm_device_tssc,
+	&android_pmem_kernel_ebi1_device,
 	&android_pmem_device,
 	&android_pmem_adsp_device,
 	&android_pmem_gpu1_device,
@@ -809,8 +963,10 @@ static struct platform_device *devices[] __initdata = {
 #endif
 	&msm_device_pmic_leds,
 	&msm_device_snd,
+	&msm_device_adspdec,
 	&msm_bluesleep_device,
 	&msm_device_kgsl,
+	&hs_device,
 };
 
 static struct msm_panel_common_pdata mdp_pdata = {
@@ -1208,6 +1364,13 @@ static void __init msm_msm7x27_allocate_memory_regions(void)
 {
 	void *addr;
 	unsigned long size;
+
+	size = PMEM_KERNEL_EBI1_SIZE;
+	addr = alloc_bootmem_aligned(size, 0x100000);
+	android_pmem_kernel_ebi1_pdata.start = __pa(addr);
+	android_pmem_kernel_ebi1_pdata.size = size;
+	printk(KERN_INFO "allocating %lu bytes at %p (%lx physical)"
+	       "for pmem kernel ebi1 arena\n", size, addr, __pa(addr));
 
 	size = MSM_PMEM_MDP_SIZE;
 	addr = alloc_bootmem(size);

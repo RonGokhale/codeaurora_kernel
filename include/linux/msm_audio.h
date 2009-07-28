@@ -88,6 +88,12 @@
 #define DEFAULT_RX			0x0F
 
 #define BT_A2DP_TX			0x10
+
+#define HEADSET_MONO_PLUS_SPKR_MONO_RX         0x11
+#define HEADSET_MONO_PLUS_SPKR_STEREO_RX       0x12
+#define HEADSET_STEREO_PLUS_SPKR_MONO_RX       0x13
+#define HEADSET_STEREO_PLUS_SPKR_STEREO_RX     0x14
+
 #define I2S_RX				0x20
 #define I2S_TX				0x21
 
@@ -96,6 +102,10 @@
 #define IIR_ENABLE		0x0004
 #define QCONCERT_PLUS_ENABLE	0x0008
 #define MBADRC_ENABLE		0x0010
+
+#define AGC_ENABLE		0x0001
+#define NS_ENABLE		0x0002
+#define TX_IIR_ENABLE		0x0004
 
 struct msm_audio_config {
 	uint32_t buffer_size;
