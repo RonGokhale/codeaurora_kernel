@@ -29,22 +29,130 @@
 #include <osl.h>
 #include <bcmutils.h>
 
-
 #include <wlioctl.h>
 #include <wl_iw.h>
 
-#define WL_ERROR(x) printf x
+#include <linux/platform_device.h>
+#include <linux/wifi_tiwlan.h>
+
+static struct wifi_platform_data *wifi_control_data = NULL;
+static struct resource *wifi_irqres = NULL;
+#ifdef MODULE
+static struct completion sdio_wait;
+#endif
+
+static int wifi_set_carddetect( int on )
+{
+	printk("%s = %d\n", __FUNCTION__, on);
+	if (wifi_control_data && wifi_control_data->set_carddetect) {
+		wifi_control_data->set_carddetect(on);
+	}
+	return 0;
+}
+
+static int wifi_set_power( int on, unsigned long msec )
+{
+	printk("%s = %d\n", __FUNCTION__, on);
+	if (wifi_control_data && wifi_control_data->set_power) {
+		wifi_control_data->set_power(on);
+	}
+	if (msec)
+		mdelay(msec);
+	return 0;
+}
+
+static int wifi_set_reset( int on, unsigned long msec )
+{
+	printk("%s = %d\n", __FUNCTION__, on);
+	if (wifi_control_data && wifi_control_data->set_reset) {
+		wifi_control_data->set_reset(on);
+	}
+	if (msec)
+		mdelay(msec);
+	return 0;
+}
+
+static int wifi_probe( struct platform_device *pdev )
+{
+	struct wifi_platform_data *wifi_ctrl = (struct wifi_platform_data *)(pdev->dev.platform_data);
+
+	printk("%s\n", __FUNCTION__);
+	wifi_irqres = platform_get_resource_byname(pdev, IORESOURCE_IRQ, "device_wifi_irq");
+	if (wifi_irqres) {
+		printk("wifi_irqres->start = %lu\n", (unsigned long)(wifi_irqres->start));
+		printk("wifi_irqres->flags = %lx\n", wifi_irqres->flags);
+	}
+	wifi_control_data = wifi_ctrl;
+	wifi_set_power(1, 0);
+	wifi_set_reset(0, 0);
+	wifi_set_carddetect(1);
+	return 0;
+}
+
+static int wifi_remove( struct platform_device *pdev )
+{
+	struct wifi_platform_data *wifi_ctrl = (struct wifi_platform_data *)(pdev->dev.platform_data);
+
+	printk("%s\n", __FUNCTION__);
+	wifi_control_data = wifi_ctrl;
+	wifi_set_carddetect(0);
+	wifi_set_reset(1, 0);
+	wifi_set_power(0, 0);
+	return 0;
+}
+
+static struct platform_driver bcm4329_wlan_device = {
+	.probe          = wifi_probe,
+	.remove         = wifi_remove,
+	.suspend        = NULL,
+	.resume         = NULL,
+	.driver         = {
+		.name   = "bcm4329_wlan",
+	},
+};
+
+void dhd_customer_wifi_complete( void )
+{
+#ifdef MODULE
+	complete(&sdio_wait);
+#endif
+}
+
+int dhd_customer_wifi_add_dev( void )
+{
+	printk("%s\n", __FUNCTION__);
+#ifdef MODULE
+	init_completion(&sdio_wait);
+#endif
+	if (platform_driver_register( &bcm4329_wlan_device ))
+		return -ENODEV;
+
+#ifdef MODULE
+	if (!wait_for_completion_timeout(&sdio_wait, msecs_to_jiffies(10000))) {
+		printk(KERN_ERR "%s: Timed out waiting for device detect\n", __FUNCTION__);
+		return -ENODEV;
+	}
+#endif
+	return 0;
+}
+
+void dhd_customer_wifi_del_dev( void )
+{
+	printk("%s\n", __FUNCTION__);
+	platform_driver_unregister( &bcm4329_wlan_device );
+}
 
 /* Customer specific function to insert/remove wlan reset gpio pin */
-void
-dhd_customer_gpio_wlan_reset(bool onoff)
+void dhd_customer_gpio_wlan_reset( bool onoff )
 {
 	if (onoff == G_WLAN_SET_OFF) {
-		WL_ERROR(("%s: call customer specific GPIO to insert WLAN RESET\n", __FUNCTION__));
-		WL_ERROR(("=========== WLAN placed in RESET ========\n"));
+		printk("%s: assert WLAN RESET\n", __FUNCTION__);
+		wifi_set_reset(1, 0);
+		wifi_set_power(0, 0);
 	}
 	else {
-		WL_ERROR(("%s: callc customer specific GPIO to remove WLAN RESET\n", __FUNCTION__));
-		WL_ERROR(("=========== WLAN goin back to live  ========\n"));
+		printk("%s: remove WLAN RESET\n", __FUNCTION__);
+		wifi_set_power(1, 0);
+		wifi_set_reset(0, 0);
 	}
 }

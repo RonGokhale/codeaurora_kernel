@@ -1768,6 +1768,9 @@ dhd_detach(dhd_pub_t *dhdp)
 	}
 }
 
+int dhd_customer_wifi_add_dev(void);
+void dhd_customer_wifi_del_dev(void);
+
 static int __init
 dhd_module_init(void)
 {
@@ -1790,10 +1793,16 @@ dhd_module_init(void)
 	} while (0);
 
 	error = dhd_bus_register();
+	if (error)
+		return error;
 
-	if (!error)
+	error = dhd_customer_wifi_add_dev();
+	if (error) {
+		printk(KERN_ERR "%s: Fail to add wifi device\n", __func__);
+		dhd_bus_unregister();
+        }
+	else
 		printf("\n%s\n", dhd_version);
-
 	return error;
 }
 
@@ -1801,10 +1810,9 @@ static void __exit
 dhd_module_cleanup(void)
 {
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
-
+	dhd_customer_wifi_del_dev();
 	dhd_bus_unregister();
 }
-
 
 module_init(dhd_module_init);
 module_exit(dhd_module_cleanup);

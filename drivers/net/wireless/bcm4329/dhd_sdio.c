@@ -4319,6 +4319,8 @@ dhdsdio_chipmatch(uint16 chipid)
 	return FALSE;
 }
 
+void dhd_customer_wifi_complete( void );
+
 static void *
 dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 	uint16 func, uint bustype, void *regsva, osl_t * osh, void *sdh)
@@ -4471,6 +4473,7 @@ dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 		DHD_ERROR(("%s: Net attach failed!!\n", __FUNCTION__));
 		goto fail;
 	}
+	dhd_customer_wifi_complete();
 
 	return bus;
 

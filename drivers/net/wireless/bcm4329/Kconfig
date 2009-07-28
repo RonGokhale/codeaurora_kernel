@@ -9,3 +9,17 @@ config BCM4329
 
 	  If you choose to build a module, it'll be called dhd. Say M if
 	  unsure.
+
+config BCM43XX_FW_PATH
+	depends on BCM4329
+	string "Firmware path"
+	default "/system/etc/firmware/fw_bcm4329.bin"
+	---help---
+	  Path to the firmware file.
+
+config BCM43XX_NVRAM_PATH
+	depends on BCM4329
+	string "NVRAM path"
+	default "/proc/calibration"
+	---help---
+	  Path to the calibration file.
