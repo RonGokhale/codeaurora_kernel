@@ -26,22 +26,33 @@
 #include <linux/kernel_stat.h>
 #include <linux/irq.h>
 #include <linux/delay.h>
+#include <linux/timer.h>
+#include <linux/wakelock.h>
 
+#include <mach/msm_serial_debugger.h>
 #include <mach/system.h>
 #include <mach/fiq.h>
 
 #include "msm_serial.h"
 
+static void sleep_timer_expired(unsigned long);
+
 static unsigned int debug_port_base;
 static int debug_signal_irq;
 static struct clk *debug_clk;
+static bool debug_clk_enabled;
+static bool ignore_next_wakeup_irq;
+static bool no_sleep;
+static DEFINE_TIMER(sleep_timer, sleep_timer_expired, 0, 0);
 static int debug_enable;
 static int debugger_enable;
+static struct wake_lock debugger_wake_lock;
 static struct {
 	unsigned int	base;
 	int		irq;
 	struct device	*clk_device;
 	int		signal_irq;
+	int		wakeup_irq;
 } init_data;
 
 static inline void msm_write(unsigned int val, unsigned int off)
@@ -246,6 +257,10 @@ static void debug_exec(const char *cmd, unsigned *regs)
 		dump_kernel_log();
 	} else if (!strcmp(cmd, "version")) {
 		dprintf("%s\n", linux_banner);
+	} else if (!strcmp(cmd, "sleep")) {
+		no_sleep = false;
+	} else if (!strcmp(cmd, "nosleep")) {
+		no_sleep = true;
 	} else {
 		if (debug_busy) {
 			dprintf("command processor busy. trying to abort.\n");
@@ -260,8 +275,44 @@ static void debug_exec(const char *cmd, unsigned *regs)
 	debug_prompt();
 }
 
+static void sleep_timer_expired(unsigned long data)
+{
+	if (debug_clk_enabled && !no_sleep) {
+		if (debug_enable) {
+			debug_enable = 0;
+			debug_printf_nfiq(NULL,
+					"suspending fiq debugger\n");
+		}
+		ignore_next_wakeup_irq = true;
+		clk_disable(debug_clk);
+		debug_clk_enabled = false;
+		enable_irq(init_data.wakeup_irq);
+		set_irq_wake(init_data.wakeup_irq, 1);
+	}
+	wake_unlock(&debugger_wake_lock);
+}
+
+static irqreturn_t wakeup_irq_handler(int irq, void *dev)
+{
+	if (ignore_next_wakeup_irq)
+		ignore_next_wakeup_irq = false;
+	else if (!debug_clk_enabled) {
+		wake_lock(&debugger_wake_lock);
+		clk_enable(debug_clk);
+		debug_clk_enabled = true;
+		set_irq_wake(irq, 0);
+		disable_irq(irq);
+		mod_timer(&sleep_timer, jiffies + HZ / 2);
+	}
+	return IRQ_HANDLED;
+}
+
 static irqreturn_t debug_irq(int irq, void *dev)
 {
+	if (!no_sleep) {
+		wake_lock(&debugger_wake_lock);
+		mod_timer(&sleep_timer, jiffies + HZ * 5);
+	}
 	if (debug_busy) {
 		struct kdbg_ctxt ctxt;
 
@@ -317,6 +368,8 @@ static void debug_fiq(void *data, void *regs)
 		last_c = c;
 	}
 	debug_flush();
+	if (debug_enable && !no_sleep)
+		msm_trigger_irq(debug_signal_irq); /* poke sleep timer */
 }
 
 #if defined(CONFIG_MSM_SERIAL_DEBUGGER_CONSOLE)
@@ -348,28 +401,34 @@ void msm_serial_debug_enable(int enable) {
 }
 
 void msm_serial_debug_init(unsigned int base, int irq,
-			   struct device *clk_device, int signal_irq)
+			   struct device *clk_device, int signal_irq, int wakeup_irq)
 {
 	int ret;
 	void *port;
 
 	debug_clk = clk_get(clk_device, "uart_clk");
-	if (debug_clk)
-		clk_enable(debug_clk);
+	if (!debug_clk)
+		return;
 
 	port = ioremap(base, 4096);
 	if (!port)
 		return;
 
+	wake_lock_init(&debugger_wake_lock, WAKE_LOCK_SUSPEND, "serial-debug");
+
 	init_data.base = base;
 	init_data.irq = irq;
 	init_data.clk_device = clk_device;
 	init_data.signal_irq = signal_irq;
+	init_data.wakeup_irq = wakeup_irq;
 	debug_port_base = (unsigned int) port;
 	debug_signal_irq = signal_irq;
+	clk_enable(debug_clk);
 	debug_port_init();
 
-	debug_prompt();
+	debug_printf_nfiq(NULL, "<hit enter twice to activate fiq debugger>\n");
+	ignore_next_wakeup_irq = true;
+	clk_disable(debug_clk);
 
 	msm_fiq_select(irq);
 	msm_fiq_set_handler(debug_fiq, 0);
@@ -380,6 +439,15 @@ void msm_serial_debug_init(unsigned int base, int irq,
 	if (ret)
 		printk(KERN_ERR
 		       "serial_debugger: could not install signal_irq");
+
+	ret = set_irq_wake(wakeup_irq, 1);
+	if (ret)
+		pr_err("serial_debugger: could not enable wakeup\n");
+	ret = request_irq(wakeup_irq, wakeup_irq_handler,
+			  IRQF_TRIGGER_FALLING | IRQF_DISABLED,
+			  "debug-wakeup", 0);
+	if (ret)
+		pr_err("serial_debugger: could not install wakeup irq\n");
 
 #if defined(CONFIG_MSM_SERIAL_DEBUGGER_CONSOLE)
 	register_console(&msm_serial_debug_console);
@@ -401,7 +469,8 @@ static int msm_serial_debug_remove(const char *val, struct kernel_param *kp)
 
 	if (*(int *)kp->arg) {
 		msm_serial_debug_init(init_data.base, init_data.irq,
-				init_data.clk_device, init_data.signal_irq);
+				init_data.clk_device, init_data.signal_irq,
+				init_data.wakeup_irq);
 		printk(KERN_INFO "enable FIQ serial debugger\n");
 		return 0;
 	}
@@ -409,11 +478,14 @@ static int msm_serial_debug_remove(const char *val, struct kernel_param *kp)
 #if defined(CONFIG_MSM_SERIAL_DEBUGGER_CONSOLE)
 	unregister_console(&msm_serial_debug_console);
 #endif
+	free_irq(init_data.wakeup_irq, 0);
 	free_irq(init_data.signal_irq, 0);
 	msm_fiq_set_handler(NULL, 0);
 	msm_fiq_disable(init_data.irq);
 	msm_fiq_unselect(init_data.irq);
-	clk_disable(debug_clk);
+	if (debug_clk_enabled)
+		clk_disable(debug_clk);
+	wake_lock_destroy(&debugger_wake_lock);
 	printk(KERN_INFO "disable FIQ serial debugger\n");
 	return 0;
 }
