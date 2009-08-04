@@ -144,7 +144,7 @@ uint dhd_sysioc = TRUE;
 module_param(dhd_sysioc, uint, 0);
 
 /* Watchdog interval */
-uint dhd_watchdog_ms = 10;
+uint dhd_watchdog_ms = 1000;
 module_param(dhd_watchdog_ms, uint, 0);
 
 
@@ -1810,8 +1810,8 @@ static void __exit
 dhd_module_cleanup(void)
 {
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
-	dhd_customer_wifi_del_dev();
 	dhd_bus_unregister();
+	dhd_customer_wifi_del_dev();
 }
 
 module_init(dhd_module_init);

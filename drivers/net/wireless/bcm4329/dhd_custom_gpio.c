@@ -38,7 +38,7 @@
 static struct wifi_platform_data *wifi_control_data = NULL;
 static struct resource *wifi_irqres = NULL;
 #ifdef MODULE
-static struct completion sdio_wait;
+DECLARE_COMPLETION(sdio_wait);
 #endif
 
 static int wifi_set_carddetect( int on )
@@ -121,9 +121,7 @@ void dhd_customer_wifi_complete( void )
 int dhd_customer_wifi_add_dev( void )
 {
 	printk("%s\n", __FUNCTION__);
-#ifdef MODULE
-	init_completion(&sdio_wait);
-#endif
+
 	if (platform_driver_register( &bcm4329_wlan_device ))
 		return -ENODEV;
 
