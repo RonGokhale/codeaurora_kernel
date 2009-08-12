@@ -26,6 +26,7 @@
 #include <linux/mutex.h>
 #include <linux/remote_spinlock.h>
 #include <linux/pm_qos_params.h>
+#include <mach/gpio.h>
 
 #define DEBUG 0
 
@@ -271,6 +272,74 @@ msm_i2c_rmutex_unlock(struct msm_i2c_dev *dev)
 	*(dev->pdata->rmutex) = 0;
 	remote_spin_unlock_irqrestore(&dev->rspin_lock, flags);
 }
+
+static int
+msm_i2c_recover_bus_busy(struct msm_i2c_dev *dev, struct i2c_adapter *adap)
+{
+	int i;
+	int gpio_clk;
+	int gpio_dat;
+	uint32_t status = readl(dev->base + I2C_STATUS);
+	bool gpio_clk_status = false;
+
+	if (!(status & (I2C_STATUS_BUS_ACTIVE | I2C_STATUS_WR_BUFFER_FULL)))
+		return 0;
+
+	dev->pdata->msm_i2c_config_gpio(adap->nr, 0);
+	/* Even adapter is primary and Odd adapter is AUX */
+	if (adap->nr % 2) {
+		gpio_clk = dev->pdata->aux_clk;
+		gpio_dat = dev->pdata->aux_dat;
+	} else {
+		gpio_clk = dev->pdata->pri_clk;
+		gpio_dat = dev->pdata->pri_dat;
+	}
+
+	if (status & I2C_STATUS_RD_BUFFER_FULL) {
+		dev_warn(dev->dev, "Read buffer full, status %x, intf %x\n",
+			 status, readl(dev->base + I2C_INTERFACE_SELECT));
+		writel(I2C_WRITE_DATA_LAST_BYTE, dev->base + I2C_WRITE_DATA);
+		readl(dev->base + I2C_READ_DATA);
+	} else if (status & I2C_STATUS_BUS_MASTER) {
+		dev_warn(dev->dev, "Still the bus master, status %x, intf %x\n",
+			 status, readl(dev->base + I2C_INTERFACE_SELECT));
+		writel(I2C_WRITE_DATA_LAST_BYTE | 0xff,
+		       dev->base + I2C_WRITE_DATA);
+	}
+
+	for (i = 0; i < 9; i++) {
+		if (gpio_get_value(gpio_dat) && gpio_clk_status)
+			break;
+		gpio_direction_output(gpio_clk, 0);
+		udelay(5);
+		gpio_direction_output(gpio_dat, 0);
+		udelay(5);
+		gpio_direction_input(gpio_clk);
+		udelay(5);
+		if (!gpio_get_value(gpio_clk))
+			udelay(20);
+		if (!gpio_get_value(gpio_clk))
+			msleep(10);
+		gpio_clk_status = gpio_get_value(gpio_clk);
+		gpio_direction_input(gpio_dat);
+		udelay(5);
+	}
+	dev->pdata->msm_i2c_config_gpio(adap->nr, 1);
+	udelay(10);
+
+	status = readl(dev->base + I2C_STATUS);
+	if (!(status & I2C_STATUS_BUS_ACTIVE)) {
+		dev_info(dev->dev, "Bus busy cleared after %d clock cycles, "
+			 "status %x, intf %x\n",
+			 i, status, readl(dev->base + I2C_INTERFACE_SELECT));
+		return 0;
+	}
+
+	dev_err(dev->dev, "Bus still busy, status %x, intf %x\n",
+		 status, readl(dev->base + I2C_INTERFACE_SELECT));
+	return -EBUSY;
+}
+
 static int
 msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 {
@@ -311,11 +380,13 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 
 		if (check_busy) {
 			ret = msm_i2c_poll_notbusy(dev);
-			if (ret) {
-				dev_err(dev->dev,
-					"Error waiting for notbusy\n");
-				goto out_err;
-			}
+			if (ret)
+				ret = msm_i2c_recover_bus_busy(dev, adap);
+				if (ret) {
+					dev_err(dev->dev,
+						"Error waiting for notbusy\n");
+					goto out_err;
+				}
 			check_busy = 0;
 		}
 
@@ -402,6 +473,7 @@ wait_for_int:
 				"Error during data xfer (%d)\n",
 				dev->err);
 			ret = dev->err;
+			msm_i2c_recover_bus_busy(dev, adap);
 			goto out_err;
 		}
 
