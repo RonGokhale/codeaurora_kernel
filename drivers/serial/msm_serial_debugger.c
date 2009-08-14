@@ -428,11 +428,11 @@ void msm_serial_debug_init(unsigned int base, int irq,
 
 	debug_printf_nfiq(NULL, "<hit enter twice to activate fiq debugger>\n");
 	ignore_next_wakeup_irq = true;
-	clk_disable(debug_clk);
 
 	msm_fiq_select(irq);
 	msm_fiq_set_handler(debug_fiq, 0);
 	msm_fiq_enable(irq);
+	clk_disable(debug_clk);
 
 	ret = request_irq(signal_irq, debug_irq,
 			  IRQF_TRIGGER_RISING, "debug", 0);
