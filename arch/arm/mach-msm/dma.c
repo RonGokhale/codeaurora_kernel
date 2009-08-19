@@ -1,6 +1,7 @@
 /* linux/arch/arm/mach-msm/dma.c
  *
  * Copyright (C) 2007 Google, Inc.
+ * Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -15,6 +16,7 @@
 
 #include <linux/io.h>
 #include <linux/interrupt.h>
+#include <linux/module.h>
 #include <mach/dma.h>
 
 #define MSM_DMOV_CHANNEL_COUNT 16
@@ -47,6 +49,7 @@ void msm_dmov_stop_cmd(unsigned id, struct msm_dmov_cmd *cmd, int graceful)
 {
 	writel((graceful << 31), DMOV_FLUSH0(id));
 }
+EXPORT_SYMBOL(msm_dmov_stop_cmd);
 
 void msm_dmov_enqueue_cmd(unsigned id, struct msm_dmov_cmd *cmd)
 {
@@ -78,6 +81,20 @@ void msm_dmov_enqueue_cmd(unsigned id, struct msm_dmov_cmd *cmd)
 	}
 	spin_unlock_irqrestore(&msm_dmov_lock, irq_flags);
 }
+EXPORT_SYMBOL(msm_dmov_enqueue_cmd);
+
+void msm_dmov_flush(unsigned int id)
+{
+	unsigned long irq_flags;
+	spin_lock_irqsave(&msm_dmov_lock, irq_flags);
+	/* XXX not checking if flush cmd sent already */
+	if (!list_empty(&active_commands[id])) {
+		PRINT_IO("msm_dmov_flush(%d), send flush cmd\n", id);
+		writel(DMOV_FLUSH_TYPE, DMOV_FLUSH0(id));
+	}
+	spin_unlock_irqrestore(&msm_dmov_lock, irq_flags);
+}
+EXPORT_SYMBOL(msm_dmov_flush);
 
 struct msm_dmov_exec_cmdptr_cmd {
 	struct msm_dmov_cmd dmov_cmd;
@@ -123,6 +140,7 @@ int msm_dmov_exec_cmd(unsigned id, unsigned int cmdptr)
 	PRINT_FLOW("dmov_exec_cmdptr(%d, %x) done\n", id, cmdptr);
 	return 0;
 }
+EXPORT_SYMBOL(msm_dmov_exec_cmd);
 
 
 static irqreturn_t msm_datamover_irq_handler(int irq, void *dev_id)
@@ -243,4 +261,3 @@ static int __init msm_init_datamover(void)
 }
 
 arch_initcall(msm_init_datamover);
-

@@ -1,8 +1,21 @@
-obj-y += io.o idle.o irq.o timer.o dma.o
+obj-y += io.o irq.o timer.o dma.o
 obj-y += devices.o
 obj-y += proc_comm.o
 obj-y += vreg.o
-obj-y += clock.o clock-7x01a.o
+obj-y += clock.o clock-pcom.o
 
 obj-$(CONFIG_MACH_HALIBUT) += board-halibut.o
+obj-$(CONFIG_MACH_QSD8X50_SURF) += board-qsd8x50.o
+obj-$(CONFIG_MACH_QSD8X50_FFA) += board-qsd8x50.o
+obj-$(CONFIG_MACH_QSD8X50_COMET) += board-qsd8x50.o
+obj-$(CONFIG_ARCH_QSD8X50) += sirc.o
+obj-$(CONFIG_CPU_V6) += idle-v6.o
+obj-$(CONFIG_CPU_V7) += idle-v7.o
+obj-$(CONFIG_MSM_JTAG_V7) += jtag-v7.o
+ifdef CONFIG_MSM_N_WAY_SMSM
+	obj-$(CONFIG_PM) += pm2.o
+else
+	obj-$(CONFIG_PM) += pm.o
+endif
 
+obj-y += pcom_stub.o
