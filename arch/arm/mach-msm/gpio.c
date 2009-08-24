@@ -497,7 +497,11 @@ static void msm_gpio_sleep_int(unsigned long arg)
 
 	BUILD_BUG_ON(NR_GPIO_IRQS > NUM_GPIO_SMEM_BANKS * 32);
 
+#ifdef CONFIG_MACH_SMD
 	smem_gpio = smem_alloc(SMEM_GPIO_INT, sizeof(*smem_gpio)); 
+#else
+	smem_gpio = NULL;
+#endif
 	if (smem_gpio == NULL)
 		return;
 
@@ -519,7 +523,11 @@ void msm_gpio_enter_sleep(int from_idle)
 	int i;
 	struct tramp_gpio_smem *smem_gpio;
 
+#ifdef CONFIG_MACH_SMD
 	smem_gpio = smem_alloc(SMEM_GPIO_INT, sizeof(*smem_gpio)); 
+#else
+	smem_gpio = NULL;
+#endif
 
 	if (smem_gpio) {
 		for (i = 0; i < ARRAY_SIZE(smem_gpio->enabled); i++) {
@@ -568,7 +576,11 @@ void msm_gpio_exit_sleep(void)
 	int i;
 	struct tramp_gpio_smem *smem_gpio;
 
+#ifdef CONFIG_MACH_SMD
 	smem_gpio = smem_alloc(SMEM_GPIO_INT, sizeof(*smem_gpio)); 
+#else
+	smem_gpio = NULL;
+#endif
 
 	for (i = 0; i < ARRAY_SIZE(msm_gpio_chips); i++) {
 		writel(msm_gpio_chips[i].int_enable[0], msm_gpio_chips[i].regs.int_en);
