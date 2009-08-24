@@ -3,6 +3,7 @@ obj-y += devices.o
 obj-y += proc_comm.o
 obj-y += vreg.o
 obj-y += clock.o clock-pcom.o
+obj-y += gpio.o generic_gpio.o
 
 obj-$(CONFIG_MACH_HALIBUT) += board-halibut.o
 obj-$(CONFIG_MACH_QSD8X50_SURF) += board-qsd8x50.o
