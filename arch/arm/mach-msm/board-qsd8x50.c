@@ -72,8 +72,8 @@
 #include <asm/mach/arch.h>
 #include <asm/io.h>
 
-//#include <asm/mach/mmc.h>
-//#include <mach/vreg.h>
+#include <asm/mach/mmc.h>
+#include <mach/vreg.h>
 //#include <mach/mpp.h>
 //#include <mach/gpio.h>
 #include <mach/board.h>
@@ -1652,6 +1652,8 @@ static void __init qsd8x50_init_host(void)
 	msm_add_host(1, &msm_hsusb_pdata);
 #endif
 }
+#endif /* 0 */
+
 static void sdcc_gpio_init(void)
 {
 	/* SDC1 GPIOs */
@@ -1857,6 +1859,7 @@ static void __init qsd8x50_init_mmc(void)
 
 }
 
+#if 0
 static void __init qsd8x50_cfg_smc91x(void)
 {
 	int rc = 0;
@@ -2003,7 +2006,9 @@ static void __init qsd8x50_init(void)
 	config_camera_off_gpios(); /* might not be necessary */
 #endif
 	qsd8x50_init_host();
+#endif /* 0 */
 	qsd8x50_init_mmc();
+#if 0
 	bt_power_init();
 	audio_gpio_init();
 	msm_device_i2c_init();
