@@ -583,6 +583,7 @@ static void msm_serial_hs_rx_work(struct work_struct *w)
 	struct uart_port *uport;
 	struct msm_hs_port *msm_uport;
 	unsigned int flush;
+	unsigned long flags;
 
 	msm_uport = container_of(w, struct msm_hs_port, rx.work);
 
@@ -593,7 +594,9 @@ static void msm_serial_hs_rx_work(struct work_struct *w)
 		return;
 	}
 	uport = &msm_uport->uport;
+	spin_lock_irqsave(&uport->lock, flags);
 	msm_hs_start_rx_locked(uport);
+	spin_unlock_irqrestore(&uport->lock, flags);
 }
 
 /* Enable the transmitter Interrupt */
