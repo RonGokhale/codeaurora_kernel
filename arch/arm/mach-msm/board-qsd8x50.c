@@ -151,7 +151,6 @@ static struct platform_device mass_storage_device = {
 };
 #endif
 
-#if 0
 static struct platform_device smc91x_device = {
 	.name           = "smc91x",
 	.id             = 0,
@@ -159,6 +158,7 @@ static struct platform_device smc91x_device = {
 	.resource       = smc91x_resources,
 };
 
+#if 0
 #define S1R72V05_CS_GPIO 152
 #define S1R72V05_IRQ_GPIO 148
 
@@ -1574,7 +1574,9 @@ static struct platform_device *devices[] __initdata = {
 #if 0
 	&msm_fb_device,
 	&mddi_toshiba_device,
+#endif /* 0 */
 	&smc91x_device,
+#if 0
 	&s1r72v05_device,
 	&msm_device_smd,
 	&android_pmem_kernel_ebi1_device,
@@ -1859,7 +1861,6 @@ static void __init qsd8x50_init_mmc(void)
 
 }
 
-#if 0
 static void __init qsd8x50_cfg_smc91x(void)
 {
 	int rc = 0;
@@ -1886,6 +1887,7 @@ static void __init qsd8x50_cfg_smc91x(void)
 		printk(KERN_ERR "%s: invalid machine type\n", __func__);
 }
 
+#if 0
 static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR] = {
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].supported = 1,
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].suspend_enabled = 1,
@@ -1984,12 +1986,13 @@ static struct msm_serial_platform_data msm_serial_pdata = {
 
 static void __init qsd8x50_init(void)
 {
-	printk(KERN_ERR "%s: started\n", __func__);
 #if 0
 	if (socinfo_init() < 0)
 		printk(KERN_ERR "%s: socinfo_init() failed!\n",
 		       __func__);
+#endif
 	qsd8x50_cfg_smc91x();
+#if 0
 	msm_acpu_clock_init(&qsd8x50_clock_data);
 	msm_device_hsusb_peripheral.dev.platform_data = &msm_hsusb_pdata;
 #endif /* 0 */
