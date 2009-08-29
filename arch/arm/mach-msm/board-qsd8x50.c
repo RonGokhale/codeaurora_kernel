@@ -635,6 +635,7 @@ static struct platform_device android_pmem_kernel_ebi1_device = {
 	.id = 5,
 	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
 };
+#endif
 
 static struct resource msm_fb_resources[] = {
 	{
@@ -671,6 +672,7 @@ static struct platform_device msm_fb_device = {
 	}
 };
 
+#if 0
 static struct msm_gpio bma_spi_gpio_config_data[] = {
 	{ GPIO_CFG(22, 0, GPIO_INPUT,  GPIO_NO_PULL, GPIO_2MA), "bma_irq" },
 };
@@ -780,17 +782,22 @@ static void __init msm_qsd_spi_init(void)
 {
 	qsd_device_spi.dev.platform_data = &qsd_spi_pdata;
 }
+#endif
 
 static int mddi_toshiba_pmic_bl(int level)
 {
 	int ret = -EPERM;
 
 	if (machine_is_qsd8x50_ffa()) {
+#ifdef TODO
 		ret = pmic_set_led_intensity(LED_LCD, level);
 
 		if (ret)
 			printk(KERN_WARNING "%s: can't set lcd backlight!\n",
 						__func__);
+#else
+		ret = 0;
+#endif
 	}
 
 	return ret;
@@ -873,6 +880,7 @@ static void __init msm_fb_add_devices(void)
 	msm_fb_register_device("lcdc", 0);
 }
 
+#if 0
 static struct resource msm_audio_resources[] = {
 	{
 		.flags  = IORESOURCE_DMA,
@@ -1571,10 +1579,8 @@ static struct platform_device msm_camera_sensor_mt9t013 = {
 #endif
 
 static struct platform_device *devices[] __initdata = {
-#if 0
 	&msm_fb_device,
 	&mddi_toshiba_device,
-#endif /* 0 */
 	&smc91x_device,
 #if 0
 	&s1r72v05_device,
@@ -2003,8 +2009,8 @@ static void __init qsd8x50_init(void)
 #endif
 #endif /* 0 */
 	platform_add_devices(devices, ARRAY_SIZE(devices));
-#if 0
 	msm_fb_add_devices();
+#if 0
 #ifdef CONFIG_MSM_CAMERA
 	config_camera_off_gpios(); /* might not be necessary */
 #endif
@@ -2032,12 +2038,12 @@ static void __init qsd8x50_init(void)
 #endif
 }
 
-#if 0
 static void __init qsd8x50_allocate_memory_regions(void)
 {
 	void *addr;
 	unsigned long size;
 
+#if 0
 	size = PMEM_KERNEL_EBI1_SIZE;
 	addr = alloc_bootmem_aligned(size, 0x100000);
 	android_pmem_kernel_ebi1_pdata.start = __pa(addr);
@@ -2065,6 +2071,7 @@ static void __init qsd8x50_allocate_memory_regions(void)
 	android_pmem_gpu1_pdata.size = size;
 	printk(KERN_INFO "allocating %lu bytes at %p (%lx physical)"
 	       "for gpu1 pmem\n", size, addr, __pa(addr));
+#endif
 
 	size = MSM_FB_SIZE;
 	addr = (void *)MSM_FB_BASE;
@@ -2073,19 +2080,20 @@ static void __init qsd8x50_allocate_memory_regions(void)
 	printk(KERN_INFO "using %lu bytes of SMI at %lx physical for fb\n",
 	       size, (unsigned long)addr);
 
+#if 0
 	size = MSM_AUDIO_SIZE;
 	addr = alloc_bootmem(size);
 	msm_audio_resources[0].start = __pa(addr);
 	msm_audio_resources[0].end = __pa(addr) + MSM_AUDIO_SIZE;
 	printk(KERN_INFO "allocating %lu bytes at %p (%lx physical)"
 	       "for audio\n", size, addr, __pa(addr));
-}
 #endif
+}
 
 static void __init qsd8x50_map_io(void)
 {
 	msm_map_qsd8x50_io();
-	// qsd8x50_allocate_memory_regions();
+	qsd8x50_allocate_memory_regions();
 	msm_clock_init(msm_clocks_8x50, msm_num_clocks_8x50);
 }
 
