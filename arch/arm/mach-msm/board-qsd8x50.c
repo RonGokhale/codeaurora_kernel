@@ -78,9 +78,9 @@
 //#include <mach/gpio.h>
 #include <mach/board.h>
 //#include <mach/sirc.h>
-//#include <mach/rpc_hsusb.h>
-//#include <mach/msm_hsusb.h>
-//#include <mach/msm_hsusb_hw.h>
+#include <mach/rpc_hsusb.h>
+#include <mach/msm_hsusb.h>
+#include <mach/msm_hsusb_hw.h>
 //#include <mach/msm_serial_hs.h>
 //#include <mach/msm_touchpad.h>
 //#include <mach/msm_i2ckbd.h>
@@ -242,7 +242,6 @@ static struct platform_device s1r72v05_device = {
 };
 #endif
 
-#if 0
 static struct usb_function_map usb_functions_map[] = {
 	{"diag", 0},
 	{"adb", 1},
@@ -305,6 +304,7 @@ static struct usb_composition usb_func_composition[] = {
 	},
 };
 
+#if 0
 static struct platform_device hs_device = {
 	.name   = "msm-handset",
 	.id     = -1,
@@ -312,6 +312,7 @@ static struct platform_device hs_device = {
 		.platform_data = "8k_handset",
 	},
 };
+#endif
 
 #ifdef CONFIG_USB_FS_HOST
 static int fsusb_gpio_init(void)
@@ -564,7 +565,6 @@ static struct msm_hsusb_platform_data msm_hsusb_pdata = {
 #endif
 	.max_axi_khz = 128000,
 };
-#endif
 
 #if 0
 static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
@@ -1649,6 +1649,7 @@ static void kgsl_phys_memory_init(void)
 	request_mem_region(kgsl_resources[1].start,
 		resource_size(&kgsl_resources[1]), "kgsl");
 }
+#endif /* 0 */
 
 static void __init qsd8x50_init_host(void)
 {
@@ -1662,7 +1663,6 @@ static void __init qsd8x50_init_host(void)
 	msm_add_host(1, &msm_hsusb_pdata);
 #endif
 }
-#endif /* 0 */
 
 static void sdcc_gpio_init(void)
 {
@@ -2002,8 +2002,8 @@ static void __init qsd8x50_init(void)
 	qsd8x50_cfg_smc91x();
 #if 0
 	msm_acpu_clock_init(&qsd8x50_clock_data);
-	msm_device_hsusb_peripheral.dev.platform_data = &msm_hsusb_pdata;
 #endif /* 0 */
+	msm_device_hsusb_peripheral.dev.platform_data = &msm_hsusb_pdata;
 	msm_device_uart3.dev.platform_data = &msm_serial_pdata;
 #if 0
 #if defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE)
@@ -2016,8 +2016,8 @@ static void __init qsd8x50_init(void)
 #ifdef CONFIG_MSM_CAMERA
 	config_camera_off_gpios(); /* might not be necessary */
 #endif
-	qsd8x50_init_host();
 #endif /* 0 */
+	qsd8x50_init_host();
 	qsd8x50_init_mmc();
 #if 0
 	bt_power_init();
