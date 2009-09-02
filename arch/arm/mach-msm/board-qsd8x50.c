@@ -1584,7 +1584,9 @@ static struct platform_device *devices[] __initdata = {
 	&smc91x_device,
 #if 0
 	&s1r72v05_device,
+#endif /* 0 */
 	&msm_device_smd,
+#if 0
 	&android_pmem_kernel_ebi1_device,
 	&android_pmem_device,
 	&android_pmem_adsp_device,

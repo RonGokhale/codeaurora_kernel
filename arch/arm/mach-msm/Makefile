@@ -19,4 +19,6 @@ else
 	obj-$(CONFIG_PM) += pm.o
 endif
 
+obj-$(CONFIG_MSM_SMD) += smd.o
+
 obj-y += pcom_stub.o
