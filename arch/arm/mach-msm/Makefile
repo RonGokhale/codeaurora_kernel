@@ -4,6 +4,7 @@ obj-y += proc_comm.o
 obj-y += vreg.o
 obj-y += clock.o clock-pcom.o
 obj-y += gpio.o generic_gpio.o
+obj-y += remote_spinlock.o
 
 obj-$(CONFIG_USB_FS_HOST) += rpc_fsusb.o
 obj-$(CONFIG_USB_EHCI_MSM) += rpc_hsusb.o
@@ -23,6 +24,7 @@ else
 endif
 
 obj-$(CONFIG_MSM_SMD) += smd.o
+obj-$(CONFIG_MSM_SMEM_LOG) += smem_log.o
 obj-$(CONFIG_MSM_ONCRPCROUTER) += smd_rpcrouter.o
 obj-$(CONFIG_MSM_ONCRPCROUTER) += smd_rpcrouter_device.o
 obj-$(CONFIG_MSM_ONCRPCROUTER) += smd_rpcrouter_servers.o

@@ -418,6 +418,15 @@ config MSM_N_WAY_SMSM
 	  Supports APPS-QDSP SMSM communication along with
 	  normal APPS-MODEM SMSM communication.
 
+config MSM_SMEM_LOG
+       depends on MSM_SMD
+       default n
+       bool "MSM SMEM Logging"
+       help
+         The SMEM log contains time-stamped entries written
+         by each processor in an MSM SoC. It can be logged 
+	 to and read from at anytime.  
+
 config MSM_RESET_MODEM
 	tristate "Reset Modem Driver"
 	depends on MSM_SMD
