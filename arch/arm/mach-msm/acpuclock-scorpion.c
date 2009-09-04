@@ -51,6 +51,7 @@ struct clkctl_acpu_speed {
 	unsigned clk_sel;
 	unsigned sc_l_value;
 	unsigned lpj;
+	int      vdd;
 };
 
 /* clock sources */
@@ -67,27 +68,27 @@ struct clkctl_acpu_speed {
 #define SRC_PLL1	3 /* 768 MHz */
 
 struct clkctl_acpu_speed acpu_freq_tbl[] = {
-	{  19200, CCTL(CLK_TCXO, 1),		SRC_RAW, 0, 0 },
-	{ 128000, CCTL(CLK_TCXO, 1),		SRC_AXI, 0, 0 },
-	{ 245000, CCTL(CLK_MODEM_PLL, 1),	SRC_RAW, 0, 0 },
-	{ 256000, CCTL(CLK_GLOBAL_PLL, 3),	SRC_RAW, 0, 0 },
-	{ 384000, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0A, 0 },
-	{ 422400, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0B, 0 },
-	{ 460800, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0C, 0 },
-	{ 499200, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0D, 0 },
-	{ 537600, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0E, 0 },
-	{ 576000, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0F, 0 },
-	{ 614400, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x10, 0 },
-	{ 652800, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x11, 0 },
-	{ 691200, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x12, 0 },
-	{ 729600, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x13, 0 },
-	{ 768000, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x14, 0 },
-	{ 806400, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x15, 0 },
-	{ 844800, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x16, 0 },
-	{ 883200, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x17, 0 },
-	{ 921600, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x18, 0 },
-	{ 960000, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x19, 0 },
-	{ 998400, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x1A, 0 },
+	{  19200, CCTL(CLK_TCXO, 1),		SRC_RAW, 0, 0, 1000 },
+	{ 128000, CCTL(CLK_TCXO, 1),		SRC_AXI, 0, 0, 1000 },
+	{ 245000, CCTL(CLK_MODEM_PLL, 1),	SRC_RAW, 0, 0, 1000 },
+	{ 256000, CCTL(CLK_GLOBAL_PLL, 3),	SRC_RAW, 0, 0, 1000 },
+	{ 384000, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0A, 0, 1000 },
+	{ 422400, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0B, 0, 1000 },
+	{ 460800, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0C, 0, 1000 },
+	{ 499200, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0D, 0, 1025 },
+	{ 537600, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0E, 0, 1050 },
+	{ 576000, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x0F, 0, 1050 },
+	{ 614400, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x10, 0, 1075 },
+	{ 652800, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x11, 0, 1100 },
+	{ 691200, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x12, 0, 1125 },
+	{ 729600, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x13, 0, 1150 },
+	{ 768000, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x14, 0, 1150 },
+	{ 806400, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x15, 0, 1175 },
+	{ 844800, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x16, 0, 1200 },
+	{ 883200, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x17, 0, 1225 },
+	{ 921600, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x18, 0, 1250 },
+	{ 960000, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x19, 0, 1250 },
+	{ 998400, CCTL(CLK_TCXO, 1),		SRC_SCPLL, 0x1A, 0, 1250 },
 	{ 0 },
 };
 
@@ -105,6 +106,7 @@ static struct cpufreq_frequency_table freq_table[] = {
 
 struct clock_state {
 	struct clkctl_acpu_speed	*current_speed;
+	struct mutex			lock;
 	uint32_t			acpu_switch_time_us;
 	uint32_t			max_speed_delta_khz;
 	uint32_t			vdd_switch_time_us;
@@ -240,6 +242,14 @@ static void select_clock(unsigned src, unsigned config)
 	writel(val | ((src & 3) << 1), SPSS_CLK_SEL_ADDR);
 }
 
+static int acpuclk_set_vdd_level(int vdd)
+{
+	/* Assume that the PMIC supports scaling the processor
+	 * to its maximum frequency at its default voltage.
+	 */
+	return 0;
+}
+
 int acpuclk_set_rate(unsigned long rate, int for_power_collapse)
 {
 	struct clkctl_acpu_speed *cur, *next;
@@ -262,6 +272,18 @@ int acpuclk_set_rate(unsigned long rate, int for_power_collapse)
 		if (next->acpu_khz == 0)
 			return -EINVAL;
 		next++;
+	}
+
+	if (!for_power_collapse) {
+		mutex_lock(&drv_state.lock);
+		/* Increase VDD if needed. */
+		if (next->vdd > cur->vdd) {
+			if (acpuclk_set_vdd_level(next->vdd)) {
+				pr_err("acpuclock: Unable to increase ACPU VDD.\n");
+				mutex_unlock(&drv_state.lock);
+				return -EINVAL;
+			}
+		}
 	}
 
 	spin_lock_irqsave(&acpu_lock, flags);
@@ -291,6 +313,14 @@ int acpuclk_set_rate(unsigned long rate, int for_power_collapse)
 	loops_per_jiffy = next->lpj;
 
 	spin_unlock_irqrestore(&acpu_lock, flags);
+	if (!for_power_collapse) {
+		/* Drop VDD level if we can. */
+		if (next->vdd < cur->vdd) {
+			if (acpuclk_set_vdd_level(next->vdd))
+				pr_err("acpuclock: Unable to drop ACPU VDD.\n");
+		}
+		mutex_unlock(&drv_state.lock);
+	}
 
 	return 0;
 }
@@ -382,6 +412,7 @@ unsigned long acpuclk_wait_for_irq(void)
 void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 {
 	spin_lock_init(&acpu_lock);
+	mutex_init(&drv_state.lock);
 
 	drv_state.acpu_switch_time_us = clkdata->acpu_switch_time_us;
 	drv_state.max_speed_delta_khz = clkdata->max_speed_delta_khz;
