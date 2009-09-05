@@ -1010,7 +1010,17 @@ static void usb_prepare(struct usb_info *ui)
 static void usb_suspend_phy(struct usb_info *ui)
 {
 #if defined(CONFIG_ARCH_QSD8X50)
-	/* 8x50 has an internal PHY which needs a different sequence */
+	/* clear VBusValid and SessionEnd rising interrupts */
+	ulpi_write(ui, (1 << 1) | (1 << 3), 0x0f);
+	/* clear VBusValid and SessionEnd falling interrupts */
+	ulpi_write(ui, (1 << 1) | (1 << 3), 0x12);
+
+	/* Disable 60MHz CLKOUT in serial or carkit mode */
+	ulpi_write(ui, 0x08, 0x09);
+
+	/* Enable PHY Low Power Suspend - Clock Disable (PLPSCD) */
+	writel(readl(USB_PORTSC) | PORTSC_PHCD, USB_PORTSC);
+	mdelay(1);
 #else
 	/* clear VBusValid and SessionEnd rising interrupts */
 	ulpi_write(ui, (1 << 1) | (1 << 3), 0x0f);

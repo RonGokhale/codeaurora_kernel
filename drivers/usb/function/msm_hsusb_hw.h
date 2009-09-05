@@ -177,4 +177,10 @@ struct ept_queue_item
 #define PORTSC_PTS_ULPI       (2 << 30)
 #define PORTSC_PTS_SERIAL     (3 << 30)
 
+#define PORTSC_CCS             (1 << 0)  /* current connect status */
+#define PORTSC_FPR             (1 << 6)  /* R/W - State normal => suspend */
+#define PORTSC_SUSP            (1 << 7)  /* Read - Port in suspend state */
+#define PORTSC_PORT_RESET      (1 << 8)
+#define PORTSC_LS              (3 << 10) /* Read - Port's Line status */
+#define PORTSC_PHCD            (1 << 23) /* phy suspend mode */
 #endif
