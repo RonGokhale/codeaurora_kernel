@@ -23,7 +23,13 @@
 #define USB_HWDEVICE         (MSM_USB_BASE + 0x000C)
 #define USB_HWTXBUF          (MSM_USB_BASE + 0x0010)
 #define USB_HWRXBUF          (MSM_USB_BASE + 0x0014)
+
+#ifdef CONFIG_ARCH_MSM7X00A
 #define USB_SBUSCFG          (MSM_USB_BASE + 0x0090)
+#else
+#define USB_AHBBURST         (MSM_USB_BASE + 0x0090)
+#define USB_AHBMODE          (MSM_USB_BASE + 0x0098)
+#endif
 
 #define USB_CAPLENGTH        (MSM_USB_BASE + 0x0100) /* 8 bit */
 #define USB_HCIVERSION       (MSM_USB_BASE + 0x0102) /* 16 bit */

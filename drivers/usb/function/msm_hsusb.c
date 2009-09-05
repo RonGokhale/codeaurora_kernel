@@ -1093,8 +1093,15 @@ static void usb_reset(struct usb_info *ui)
 	if (ui->phy_reset)
 		ui->phy_reset();
 
+#ifdef CONFIG_ARCH_MSM7X00A
 	/* INCR4 BURST mode */
 	writel(0x01, USB_SBUSCFG);
+#else
+	/* bursts of unspecified length. */
+	writel(0, USB_AHBBURST);
+	/* Use the AHB transactor */
+	writel(0, USB_AHBMODE);
+#endif
 
 	/* select DEVICE mode */
 	writel(0x12, USB_USBMODE);
