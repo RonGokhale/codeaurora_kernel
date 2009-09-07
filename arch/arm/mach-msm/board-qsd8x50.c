@@ -95,8 +95,8 @@
 #include "timer.h"
 //#include "socinfo.h"
 //#include "msm-keypad-devices.h"
-//#include "pm.h"
-//#include "smd_private.h"
+#include "pm.h"
+#include "smd_private.h"
 
 #define TOUCHPAD_SUSPEND 	34
 #define TOUCHPAD_IRQ 		38
@@ -1593,7 +1593,9 @@ static struct platform_device *devices[] __initdata = {
 	&android_pmem_gpu0_device,
 	&android_pmem_gpu1_device,
 	&msm_device_nand,
+#endif
 	&msm_device_i2c,
+#if 0
 	&qsd_device_spi,
 	&msm_device_hsusb_peripheral,
 	&mass_storage_device,
@@ -1895,7 +1897,6 @@ static void __init qsd8x50_cfg_smc91x(void)
 		printk(KERN_ERR "%s: invalid machine type\n", __func__);
 }
 
-#if 0
 static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR] = {
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].supported = 1,
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].suspend_enabled = 1,
@@ -1970,9 +1971,9 @@ static void __init msm_device_i2c_init(void)
 		msm_pm_data[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN]
 		.latency;
 	msm_device_i2c.dev.platform_data = &msm_i2c_pdata;
+	printk("zpfeffer %s %i \n", __func__, __LINE__);
 }
 
-#endif
 static unsigned msm_uart_csr_code[] = {
 	0x22,		/* 	300 bits per second	*/
 	0x33,		/* 	600 bits per second	*/
@@ -2022,7 +2023,9 @@ static void __init qsd8x50_init(void)
 #if 0
 	bt_power_init();
 	audio_gpio_init();
+#endif
 	msm_device_i2c_init();
+#if 0
 	msm_qsd_spi_init();
 	i2c_register_board_info(0, msm_i2c_board_info,
 				ARRAY_SIZE(msm_i2c_board_info));
