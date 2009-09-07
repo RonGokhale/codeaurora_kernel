@@ -46,6 +46,10 @@ config USB_FUNCTION_DIAG
 	boolean "USB MSM7K Diag Function"
 	depends on USB_FUNCTION
 
+config USB_FUNCTION_SERIAL
+	boolean "USB MSM7K Serial Function"
+	depends on USB_FUNCTION
+
 config USB_FUNCTION_ETHER
 	boolean "USB Ethernet Function"
 	depends on USB_FUNCTION

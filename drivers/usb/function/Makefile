@@ -7,4 +7,5 @@ obj-$(CONFIG_USB_FUNCTION_ADB)		+= adb.o
 obj-$(CONFIG_USB_FUNCTION_UMS)		+= ums.o
 obj-$(CONFIG_USB_FUNCTION_MASS_STORAGE)		+= mass_storage.o
 obj-$(CONFIG_USB_FUNCTION_DIAG)		+= diag.o
+obj-$(CONFIG_USB_FUNCTION_SERIAL)	+= fserial.o
 obj-$(CONFIG_USB_FUNCTION_ETHER)	+= ether.o
