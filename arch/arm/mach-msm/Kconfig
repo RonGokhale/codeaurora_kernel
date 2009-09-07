@@ -480,6 +480,14 @@ config MSM_RPCSERVER_HANDSET
 	  Support for receiving handset events like headset detect,
 	  headset switch and clamshell state.
 
+config MSM_RPCSERVER_TIME_REMOTE
+	depends on MSM_ONCRPCROUTER
+	select RTC_HCTOSYS
+	default y
+	bool "Time remote events RPC server"
+	help
+	  Support for receiving time events from the modem.
+
 config MSM_DALRPC
 	bool "DAL RPC support"
 	depends on ARCH_MSM_SCORPION
