@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: linux_osl.h,v 13.131.30.1 2008/12/16 00:25:42 Exp $
+ * $Id: linux_osl.h,v 13.131.30.3 2009/06/30 10:31:28 Exp $
  */
 
 
@@ -108,7 +108,7 @@ extern uint osl_malloc_failed(osl_t *osh);
 
 
 #define	DMA_CONSISTENT_ALIGN	PAGE_SIZE
-#define	DMA_ALLOC_CONSISTENT(osh, size, pap, dmah) \
+#define	DMA_ALLOC_CONSISTENT(osh, size, pap, dmah, alignbits) \
 	osl_dma_alloc_consistent((osh), (size), (pap))
 #define	DMA_FREE_CONSISTENT(osh, va, size, pa, dmah) \
 	osl_dma_free_consistent((osh), (void*)(va), (size), (pa))

@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_sdio.c,v 1.157.2.27.2.33.2.77 2009/06/27 00:46:37 Exp $
+ * $Id: dhd_sdio.c,v 1.157.2.27.2.33.2.81.2.1 2009/08/31 18:38:21 Exp $
  */
 
 #include <typedefs.h>
@@ -763,17 +763,20 @@ int dhdsdio_bussleep(dhd_bus_t *bus, bool sleep)
 		                 SBSDIO_FORCE_HW_CLKREQ_OFF, NULL);
 
 		/* Isolate the bus */
-#if 0
-		bcmsdh_cfg_write(sdh, SDIO_FUNC_1, SBSDIO_DEVICE_CTL,
-		                 SBSDIO_DEVCTL_PADS_ISO, NULL);
-#endif
+		if (bus->sih->chip != BCM4329_CHIP_ID && bus->sih->chip != BCM4319_CHIP_ID) {
+				bcmsdh_cfg_write(sdh, SDIO_FUNC_1, SBSDIO_DEVICE_CTL,
+					SBSDIO_DEVCTL_PADS_ISO, NULL);
+		}
+
 		/* Change state */
 		bus->sleeping = TRUE;
 
 	} else {
 		/* Waking up: bus power up is ok, set local state */
+
 		bcmsdh_cfg_write(sdh, SDIO_FUNC_1, SBSDIO_FUNC1_CHIPCLKCSR,
 		                 0, NULL);
+
 		/* Force pad isolation off if possible (in case power never toggled) */
 		if ((bus->sih->buscoretype == PCMCIA_CORE_ID) && (bus->sih->buscorerev >= 10))
 			bcmsdh_cfg_write(sdh, SDIO_FUNC_1, SBSDIO_DEVICE_CTL, 0, NULL);
@@ -1466,7 +1469,7 @@ dhd_bus_clearcounts(dhd_pub_t *dhdp)
 	dhd_bus_t *bus = (dhd_bus_t *)dhdp->bus;
 
 	bus->intrcount = bus->lastintrs = bus->spurious = bus->regfails = 0;
-	bus->rxrtx = bus->rx_toolong = bus->rx_toolong = bus->rxc_errors = 0;
+	bus->rxrtx = bus->rx_toolong = bus->rxc_errors = 0;
 	bus->rx_hdrfail = bus->rx_badhdr = bus->rx_badseq = 0;
 	bus->tx_sderrs = bus->fc_rcvd = bus->fc_xoff = bus->fc_xon = 0;
 	bus->rxglomfail = bus->rxglomframes = bus->rxglompkts = 0;
@@ -5066,7 +5069,7 @@ process_nvram_vars(char *varbuf, uint len)
 	return buf_len;
 }
 
-/* 
+/*
 	EXAMPLE: nvram_array
 	nvram_arry format:
 	name=value
@@ -5123,6 +5126,8 @@ dhdsdio_download_nvram(struct dhd_bus *bus)
 	else {
 		len = strlen(bus->nvram_params);
 		ASSERT(len <= MEMBLOCK);
+		if (len > MEMBLOCK)
+			len = MEMBLOCK;
 		memcpy(memblock, bus->nvram_params, len);
 	}
 

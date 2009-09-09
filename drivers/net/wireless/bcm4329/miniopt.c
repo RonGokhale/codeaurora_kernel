@@ -20,7 +20,7 @@
  *      Notwithstanding the above, under no circumstances may you combine this
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
- * $Id: miniopt.c,v 1.1.6.3 2009/01/14 23:52:06 Exp $
+ * $Id: miniopt.c,v 1.1.6.3.62.1 2009/08/21 20:58:42 Exp $
  */
 
 /* ---- Include Files ---------------------------------------------------- */
@@ -62,7 +62,7 @@ int
 miniopt(miniopt_t *t, char **argv)
 {
 	int keylen;
-	char *p, *eq, *valstr, *endptr;
+	char *p, *eq, *valstr, *endptr = NULL;
 	int err = 0;
 
 	t->consumed = 0;

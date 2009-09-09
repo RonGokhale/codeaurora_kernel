@@ -24,7 +24,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wlioctl.h,v 1.601.4.15.2.14.2.37 2009/06/22 11:24:10 Exp $
+ * $Id: wlioctl.h,v 1.601.4.15.2.14.2.41 2009/08/04 06:47:40 Exp $
  */
 
 
@@ -762,6 +762,7 @@ typedef struct wl_ioctl {
 #define	WLC_PHY_TYPE_G		2
 #define	WLC_PHY_TYPE_N		4
 #define	WLC_PHY_TYPE_LP		5
+#define	WLC_PHY_TYPE_SSN	6
 #define	WLC_PHY_TYPE_NULL	0xf
 
 

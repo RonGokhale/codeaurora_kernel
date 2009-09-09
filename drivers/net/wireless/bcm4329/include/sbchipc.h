@@ -5,7 +5,7 @@
  * jtag, 0/1/2 uarts, clock frequency control, a watchdog interrupt timer,
  * gpio interface, extbus, and support for serial and parallel flashes.
  *
- * $Id: sbchipc.h,v 13.103.2.5.4.5.2.8 2009/01/21 23:56:32 Exp $
+ * $Id: sbchipc.h,v 13.103.2.5.4.5.2.9 2009/07/03 14:23:21 Exp $
  *
  * Copyright (C) 1999-2009, Broadcom Corporation
  * 
@@ -828,6 +828,9 @@ typedef volatile struct {
 #define PMU1_PLL0_PC0_P1DIV_SHIFT	20
 #define PMU1_PLL0_PC0_P2DIV_MASK	0x0f000000
 #define PMU1_PLL0_PC0_P2DIV_SHIFT	24
+#define PMU1_PLL0_PC0_BYPASS_SDMOD_MASK	0x10000000
+#define	PMU1_PLL0_PC0_BYPASS_SDMOD_SHIFT 28
+
 
 
 #define PMU1_PLL0_PLLCTL1		1
@@ -852,8 +855,13 @@ typedef volatile struct {
 #define PMU1_PLL0_PC2_M6DIV_SHIFT	8
 #define PMU1_PLL0_PC2_NDIV_MODE_MASK	0x000e0000
 #define PMU1_PLL0_PC2_NDIV_MODE_SHIFT	17
+#define PMU1_PLL0_PC2_NDIV_MODE_INT	0
+
 #define PMU1_PLL0_PC2_NDIV_MODE_MASH	1
 #define PMU1_PLL0_PC2_NDIV_MODE_MFB	2	
+#define PMU1_PLL0_PC2_NDIV_MODE_MASH_1BY8	3
+#define PMU1_PLL0_PC2_NDIV_MODE_MFB_1BY8	4
+
 #define PMU1_PLL0_PC2_NDIV_INT_MASK	0x1ff00000
 #define PMU1_PLL0_PC2_NDIV_INT_SHIFT	20
 
@@ -864,11 +872,19 @@ typedef volatile struct {
 
 
 #define PMU1_PLL0_PLLCTL4		4
+#define PMU1_PLL0_PC4_KVCO_XS_MASK		0x38000000
+#define PMU1_PLL0_PC4_KVCO_XS_SHIFT	27
+
 
 
 #define PMU1_PLL0_PLLCTL5		5
 #define PMU1_PLL0_PC5_CLK_DRV_MASK 0xffffff00
 #define PMU1_PLL0_PC5_CLK_DRV_SHIFT 8
+#define PMU1_PLL0_PC5_PLL_CTRL_37_32_MASK	0x0000003f
+#define PMU1_PLL0_PC5_PLL_CTRL_37_32_SHIFT	0
+#define PMU1_PLL0_PC5_VCO_RNG_MASK		0x000000C0
+#define PMU1_PLL0_PC5_VCO_RNG_SHIFT	6
+
 
 
 #define PMU2_PHY_PLL_PLLCTL		4

@@ -22,7 +22,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: aiutils.c,v 1.6.4.7.4.1 2008/11/03 15:16:48 Exp $
+ * $Id: aiutils.c,v 1.6.4.7.4.1.86.1 2009/08/31 18:38:23 Exp $
  */
 
 #include <typedefs.h>
@@ -481,6 +481,9 @@ ai_corereg(si_t *sih, uint coreidx, uint regoff, uint mask, uint val)
 	ASSERT(GOODIDX(coreidx));
 	ASSERT(regoff < SI_CORE_SIZE);
 	ASSERT((val & ~mask) == 0);
+
+	if (coreidx >= SI_MAXCORES)
+		return 0;
 
 	if (BUSTYPE(sih->bustype) == SI_BUS) {
 		/* If internal bus, we can always get at everything */

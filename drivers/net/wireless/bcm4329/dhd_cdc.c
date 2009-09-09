@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_cdc.c,v 1.22.4.2.4.7.2.18 2009/06/26 07:03:26 Exp $
+ * $Id: dhd_cdc.c,v 1.22.4.2.4.7.2.22.2.1 2009/08/19 05:38:56 Exp $
  *
  * BDC is like CDC, except it includes a header for data packets to convey
  * packet priority over the bus, and flags (e.g. to indicate checksum status
@@ -129,7 +129,7 @@ dhdcdc_query_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len)
 
 
 	/* Respond "bcmerror" and "bcmerrorstr" with local cache */
-	if (cmd == WLC_GET_VAR)
+	if (cmd == WLC_GET_VAR && buf)
 	{
 		if (!strcmp((char *)buf, "bcmerrorstr"))
 		{
@@ -152,7 +152,7 @@ dhdcdc_query_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len)
 	CDC_SET_IF_IDX(msg, ifidx);
 
 	if (buf)
-		memcpy((void *)(&msg[1]), buf, len);
+		memcpy(prot->buf, buf, len);
 
 	if ((ret = dhdcdc_msg(dhd)) < 0) {
 		DHD_ERROR(("dhdcdc_query_ioctl: dhdcdc_msg failed w/status %d\n", ret));
@@ -219,7 +219,7 @@ dhdcdc_set_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len)
 	CDC_SET_IF_IDX(msg, ifidx);
 
 	if (buf)
-		memcpy((void *)(&msg[1]), buf, len);
+		memcpy(prot->buf, buf, len);
 
 	if ((ret = dhdcdc_msg(dhd)) < 0)
 		goto done;
@@ -517,6 +517,7 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	uint roamvar = 1;
 	uint power_mode = PM_FAST;
 	uint32 dongle_align = DHD_SDALIGN;
+	uint bcn_timeout = 2;
 	int ret;
 
 	/* Get the device MAC address */
@@ -542,19 +543,24 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	bcm_mkiovar("bus:txglomalign", (char *)&dongle_align, 4, iovbuf, sizeof(iovbuf));
 	dhdcdc_set_ioctl(dhd, 0, WLC_SET_VAR, iovbuf, sizeof(iovbuf));
 
-	/* Force STA UP */
-	dhdcdc_set_ioctl(dhd, 0, WLC_UP, (char *)&up, sizeof(up));
+	/* Setup timeout if Beacons are lost and roam is off to report link down */
+	if (roamvar) {
+		bcm_mkiovar("bcn_timeout", (char *)&bcn_timeout, 4, iovbuf, sizeof(iovbuf));
+		dhdcdc_set_ioctl(dhd, 0, WLC_SET_VAR, iovbuf, sizeof(iovbuf));
+	}
 
 	/* Disable build-in roaming to allowed ext supplicant to take of romaing */
 	bcm_mkiovar("roam_off", (char *)&roamvar, 4, iovbuf, sizeof(iovbuf));
 	dhdcdc_set_ioctl(dhd, 0, WLC_SET_VAR, iovbuf, sizeof(iovbuf));
+
+	/* Force STA UP */
+	dhdcdc_set_ioctl(dhd, 0, WLC_UP, (char *)&up, sizeof(up));
 
 	/* Setup event_msgs */
 	bcm_mkiovar("event_msgs", eventmask, WL_EVENTING_MASK_LEN, iovbuf, sizeof(iovbuf));
 	dhdcdc_query_ioctl(dhd, 0, WLC_GET_VAR, iovbuf, sizeof(iovbuf));
 	bcopy(iovbuf, eventmask, WL_EVENTING_MASK_LEN);
 
-	/* Setup event_msgs */
 	setbit(eventmask, WLC_E_SET_SSID);
 	setbit(eventmask, WLC_E_PRUNE);
 	setbit(eventmask, WLC_E_AUTH);
@@ -588,7 +594,9 @@ dhd_prot_init(dhd_pub_t *dhd)
 
 	/* Get the device MAC address */
 	strcpy(buf, "cur_etheraddr");
-	dhdcdc_query_ioctl(dhd, 0, WLC_GET_VAR, buf, sizeof(buf));
+	ret = dhdcdc_query_ioctl(dhd, 0, WLC_GET_VAR, buf, sizeof(buf));
+	if (ret < 0)
+		goto done;
 	memcpy(dhd->mac.octet, buf, ETHER_ADDR_LEN);
 
 	ret = dhd_preinit_ioctls(dhd);
@@ -596,6 +604,7 @@ dhd_prot_init(dhd_pub_t *dhd)
 	/* Always assumes wl for now */
 	dhd->iswl = TRUE;
 
+done:
 	return ret;
 }
 

@@ -22,7 +22,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_linux.c,v 1.65.4.9.2.12.2.32 2009/06/26 07:03:26 Exp $
+ * $Id: dhd_linux.c,v 1.65.4.9.2.12.2.36.2.1 2009/09/02 00:06:16 Exp $
  */
 
 #include <typedefs.h>
@@ -139,6 +139,7 @@ typedef struct dhd_info {
 	bool set_macaddress;
 	struct ether_addr macvalue;
 	wait_queue_head_t ctrl_wait;
+	atomic_t pend_8021x_cnt;
 } dhd_info_t;
 
 /* Definitions to provide path to the firmware and nvram
@@ -647,6 +648,7 @@ int
 dhd_sendpkt(dhd_pub_t *dhdp, int ifidx, void *pktbuf)
 {
 	int ret;
+	dhd_info_t *dhd = (dhd_info_t *)(dhdp->info);
 
 	/* Reject if down */
 	if (!dhdp->up || (dhdp->busstate == DHD_BUS_DOWN)) {
@@ -660,6 +662,8 @@ dhd_sendpkt(dhd_pub_t *dhdp, int ifidx, void *pktbuf)
 
 		if (ETHER_ISMULTI(eh->ether_dhost))
 			dhdp->tx_multicast++;
+		if (ntoh16(eh->ether_type) == ETHER_TYPE_802_1X)
+			atomic_inc(&dhd->pend_8021x_cnt);
 	}
 
 	/* Look into the packet and update the packet priority */
@@ -854,7 +858,8 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt)
 void
 dhd_txcomplete(dhd_pub_t *dhdp, void *txp, bool success)
 {
-	int ifidx;
+	uint ifidx;
+	dhd_info_t *dhd = (dhd_info_t *)(dhdp->info);
 	struct ether_header *eh;
 	uint16 type;
 
@@ -862,6 +867,9 @@ dhd_txcomplete(dhd_pub_t *dhdp, void *txp, bool success)
 
 	eh = (struct ether_header *)PKTDATA(dhdp->osh, txp);
 	type  = ntoh16(eh->ether_type);
+
+	if (type == ETHER_TYPE_802_1X)
+		atomic_dec(&dhd->pend_8021x_cnt);
 
 }
 
@@ -1151,6 +1159,7 @@ dhd_ethtool(dhd_info_t *dhd, void *uaddr)
 		if (copy_from_user(&info, uaddr, sizeof(info)))
 			return -EFAULT;
 		strncpy(drvname, info.driver, sizeof(info.driver));
+		drvname[sizeof(info.driver)-1] = '\0';
 
 		/* clear struct for return */
 		memset(&info, 0, sizeof(info));
@@ -1330,7 +1339,7 @@ dhd_ioctl_entry(struct net_device *net, struct ifreq *ifr, int cmd)
 	bcmerror = dhd_prot_ioctl(&dhd->pub, ifidx, (wl_ioctl_t *)&ioc, buf, buflen);
 
 done:
-	if (!bcmerror && ioc.buf) {
+	if (!bcmerror && buf && ioc.buf) {
 		if (copy_to_user(ioc.buf, buf, buflen))
 			bcmerror = -EFAULT;
 	}
@@ -1347,6 +1356,10 @@ dhd_stop(struct net_device *net)
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(net);
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
+
+	if (dhd->pub.up == 0) {
+		return 0;
+	}
 
 	/* Set state and stop OS transmissions */
 	dhd->pub.up = 0;
@@ -1376,6 +1389,7 @@ dhd_open(struct net_device *net)
 		DHD_ERROR(("%s: failed with code %d\n", __FUNCTION__, ret));
 		return -1;
 	}
+	atomic_set(&dhd->pend_8021x_cnt, 0);
 
 	memcpy(net->dev_addr, dhd->pub.mac.octet, ETHER_ADDR_LEN);
 
@@ -1634,7 +1648,8 @@ dhd_bus_start(dhd_pub_t *dhdp)
 	}
 
 	/* Bus is ready, do any protocol initialization */
-	dhd_prot_init(&dhd->pub);
+	if ((ret = dhd_prot_init(&dhd->pub)) < 0)
+		return ret;
 
 	return 0;
 }
@@ -2146,6 +2161,34 @@ dhd_dev_init_ioctl(struct net_device *dev)
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
 
 	dhd_preinit_ioctls(&dhd->pub);
+}
+
+static int
+dhd_get_pend_8021x_cnt(dhd_info_t *dhd)
+{
+	return (atomic_read(&dhd->pend_8021x_cnt));
+}
+
+#define MAX_WAIT_FOR_8021X_TX	10
+
+int
+dhd_wait_pend8021x(struct net_device *dev)
+{
+	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
+	int timeout = 10 * HZ / 1000;
+	int ntimes = MAX_WAIT_FOR_8021X_TX;
+	int pend = dhd_get_pend_8021x_cnt(dhd);
+
+	while (ntimes && pend) {
+		if (pend) {
+			set_current_state(TASK_INTERRUPTIBLE);
+			schedule_timeout(timeout);
+			set_current_state(TASK_RUNNING);
+			ntimes--;
+		}
+		pend = dhd_get_pend_8021x_cnt(dhd);
+	}
+	return pend;
 }
 
 int dhd_os_wake_lock_timeout(dhd_pub_t *pub)

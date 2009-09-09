@@ -32,7 +32,7 @@ else
 	#    <NAME>_REL_<MAJ>_<MINOR>_RC<RCNUM>_<INCREMENTAL>
 	#    
  
-	CVSTAG="$Name: ROMTERM_REL_4_218_97 $"
+	CVSTAG="$Name: ROMTERM_REL_4_218_116_10 $"
 
 	# Remove leading cvs "Name: " and trailing " $"
 	CVSTAG=${CVSTAG/#*: /}

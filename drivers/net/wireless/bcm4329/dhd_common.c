@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_common.c,v 1.5.6.8.2.6.6.32 2009/06/04 23:07:41 Exp $
+ * $Id: dhd_common.c,v 1.5.6.8.2.6.6.33.2.1 2009/08/19 05:38:56 Exp $
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -89,6 +89,7 @@ const bcm_iovar_t dhd_iovars[] = {
 	{"ioctl_timeout",	IOV_IOCTLTIMEOUT,	0,	IOVT_UINT32,	0 },
 	{NULL, 0, 0, 0, 0 }
 };
+
 
 void
 dhd_common_init(void)
@@ -312,14 +313,21 @@ dhd_prec_enq(dhd_pub_t *dhdp, struct pktq *q, void *pkt, int prec)
 			return FALSE;		/* refuse newer (incoming) packet */
 		/* Evict packet according to discard policy */
 		p = discard_oldest ? pktq_pdeq(q, eprec) : pktq_pdeq_tail(q, eprec);
-		ASSERT(p);
+		if (p == NULL) {
+			DHD_ERROR(("%s: pktq_penq() failed, oldest %d.",
+				__FUNCTION__, discard_oldest));
+			ASSERT(p);
+		}
 
 		PKTFREE(dhdp->osh, p, TRUE);
 	}
 
 	/* Enqueue */
 	p = pktq_penq(q, prec, pkt);
-	ASSERT(p);
+	if (p == NULL) {
+		DHD_ERROR(("%s: pktq_penq() failed.", __FUNCTION__));
+		ASSERT(p);
+	}
 
 	return TRUE;
 }
@@ -381,6 +389,8 @@ dhd_ioctl(dhd_pub_t *dhd_pub, dhd_ioctl_t *ioc, void *buf, uint buflen)
 	int bcmerror = 0;
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
+
+	if (!buf) return BCME_BADARG;
 
 	switch (ioc->cmd) {
 	case DHD_GET_MAGIC:
@@ -801,7 +811,8 @@ wl_host_event(struct dhd_info *dhd, int *ifidx, void *pktdata,
 				{
 					if (ifevent->action == WLC_E_IF_ADD)
 						dhd_add_if(dhd, ifevent->ifidx,
-							   NULL, event->ifname, pvt_data->eth.ether_dhost);
+							NULL, event->ifname,
+							pvt_data->eth.ether_dhost);
 					else
 						dhd_del_if(dhd, ifevent->ifidx);
 				} else {
@@ -816,7 +827,8 @@ wl_host_event(struct dhd_info *dhd, int *ifidx, void *pktdata,
 		case WLC_E_DISASSOC:
 		case WLC_E_DISASSOC_IND:
 			DHD_EVENT(("%s: Link event %d, flags %x, status %x\n",
-			           __FUNCTION__, type, flags, status));
+				__FUNCTION__, type, flags, status));
+			/* Fall thru and continue */
 		default:
 			*ifidx = dhd_ifname2idx(dhd, event->ifname);
 			DHD_EVENT(("%s: event %d, idx %d\n", __FUNCTION__, type, *ifidx));

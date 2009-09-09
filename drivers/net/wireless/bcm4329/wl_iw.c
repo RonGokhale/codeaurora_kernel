@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_iw.c,v 1.51.4.9.2.6.4.38 2009/06/29 18:54:46 Exp $
+ * $Id: wl_iw.c,v 1.51.4.9.2.6.4.46.2.1 2009/09/02 00:06:15 Exp $
  */
 
 
@@ -915,8 +915,18 @@ wl_iw_get_range(
 	int channels[MAXCHANNEL+1];
 	wl_uint32_list_t *list = (wl_uint32_list_t *) channels;
 	wl_rateset_t rateset;
-	int error, i;
+	int error, i, k;
 	uint sf, ch;
+
+	int phytype;
+	uint8 bw_cap = 0, sgi_tx = 0, nmode = 0;
+	channel_info_t ci;
+	char iovar_buf[16];
+	uint8 nrate_list2copy = 0;
+	uint16 nrate_list[4][8] = { {13, 26, 39, 52, 78, 104, 117, 130},
+		{14, 29, 43, 58, 87, 116, 130, 144},
+		{27, 54, 81, 108, 162, 216, 243, 270},
+		{30, 60, 90, 120, 180, 240, 270, 300}};
 
 	WL_TRACE(("%s: SIOCGIWRANGE\n", dev->name));
 
@@ -971,7 +981,37 @@ wl_iw_get_range(
 	rateset.count = dtoh32(rateset.count);
 	range->num_bitrates = rateset.count;
 	for (i = 0; i < rateset.count && i < IW_MAX_BITRATES; i++)
-		range->bitrate[i] = (rateset.rates[i] & 0x7f) * 500000; 
+		range->bitrate[i] = (rateset.rates[i]& 0x7f) * 500000;
+	dev_iw_iovar_getbuf(dev, "nmode", "", 0, iovar_buf, sizeof(iovar_buf));
+	nmode = iovar_buf[0];
+
+	if (nmode == 1) {
+		dev_iw_iovar_getbuf(dev, "mimo_bw_cap", "", 0, iovar_buf, sizeof(iovar_buf));
+		bw_cap = iovar_buf[0];
+		dev_iw_iovar_getbuf(dev, "sgi_tx", "", 0, iovar_buf, sizeof(iovar_buf));
+		sgi_tx = iovar_buf[0];
+		dev_wlc_ioctl(dev, WLC_GET_CHANNEL, &ci, sizeof(channel_info_t));
+		ci.hw_channel = dtoh32(ci.hw_channel);
+		dev_wlc_ioctl(dev, WLC_GET_PHYTYPE, &phytype, sizeof(phytype));
+		if (phytype == WLC_PHY_TYPE_SSN && (bw_cap == 0 ||
+			(bw_cap == 2 && ci.hw_channel <= 14))) {
+			if (sgi_tx == 0)
+				nrate_list2copy = 0;
+			else
+				nrate_list2copy = 1;
+		}
+		if (phytype == WLC_PHY_TYPE_SSN && (bw_cap == 1 ||
+			(bw_cap == 2 && ci.hw_channel > 14))) {
+			if (sgi_tx == 0)
+				nrate_list2copy = 2;
+			else
+				nrate_list2copy = 3;
+		}
+		range->num_bitrates += 8;
+		for (k = 0; i < range->num_bitrates; k++, i++) {
+			range->bitrate[i] = (nrate_list[nrate_list2copy][k]) * 500000;
+		}
+	}
 
 	
 	if ((error = dev_wlc_ioctl(dev, WLC_GET_PHYTYPE, &i, sizeof(i))))
@@ -1035,6 +1075,17 @@ wl_iw_get_range(
 	range->enc_capa |= IW_ENC_CAPA_CIPHER_CCMP;
 #ifdef BCMWPA2
 	range->enc_capa |= IW_ENC_CAPA_WPA2;
+#endif
+
+
+	IW_EVENT_CAPA_SET_KERNEL(range->event_capa);
+
+	IW_EVENT_CAPA_SET(range->event_capa, SIOCGIWAP);
+	IW_EVENT_CAPA_SET(range->event_capa, SIOCGIWSCAN);
+	IW_EVENT_CAPA_SET(range->event_capa, IWEVTXDROP);
+	IW_EVENT_CAPA_SET(range->event_capa, IWEVMICHAELMICFAILURE);
+#ifdef BCMWPA2
+	IW_EVENT_CAPA_SET(range->event_capa, IWEVPMKIDCAND);
 #endif
 #endif 
 
@@ -1135,7 +1186,8 @@ wl_iw_set_wap(
 		scb_val_t scbval;
 		
 		bzero(&scbval, sizeof(scb_val_t));
-		dev_wlc_ioctl(dev, WLC_DISASSOC, &scbval, sizeof(scb_val_t));
+
+		(void) dev_wlc_ioctl(dev, WLC_DISASSOC, &scbval, sizeof(scb_val_t));
 		return 0;
 	}
 
@@ -1899,7 +1951,7 @@ wl_iw_iscan_set_scan(
 			memcpy(ssid.SSID, req->essid, ssid.SSID_len);
 			ssid.SSID_len = htod32(ssid.SSID_len);
 			g_scan_specified_ssid = 1;
-			dev_wlc_ioctl(dev, WLC_SET_PASSIVE_SCAN, &as, sizeof(as));
+			(void) dev_wlc_ioctl(dev, WLC_SET_PASSIVE_SCAN, &as, sizeof(as));
 			return wl_iw_set_scan(dev, info, wrqu, extra);
 		}
 	}
@@ -1907,9 +1959,11 @@ wl_iw_iscan_set_scan(
 
 	iscan->list_cur = iscan->list_hdr;
 	iscan->iscan_state = ISCAN_STATE_SCANING;
-	dev_wlc_ioctl(dev, WLC_SET_PASSIVE_SCAN, &iscan->scan_flag, sizeof(iscan->scan_flag));
+	(void) dev_wlc_ioctl(dev, WLC_SET_PASSIVE_SCAN,
+		&iscan->scan_flag, sizeof(iscan->scan_flag));
 	wl_iw_set_event_mask(dev);
 	wl_iw_iscan(iscan, &ssid, WL_SCAN_ACTION_START);
+	del_timer(&iscan->timer);
 	iscan->timer.expires = jiffies + iscan->timer_ms*HZ/1000;
 	add_timer(&iscan->timer);
 	iscan->timer_on = 1;
@@ -1975,7 +2029,7 @@ wl_iw_get_scan_prep(
 	struct iw_event  iwe;
 	wl_bss_info_t *bi = NULL;
 	char *event = extra, *end = extra + max_size - WE_ADD_EVENT_FIX, *value;
-	uint	ret = 0;
+	int	ret = 0;
 
 	ASSERT(list);
 
@@ -2091,8 +2145,7 @@ done:
 		ret = 0;
 	}
 	WL_TRACE(("%s: size=%d bytes prepared \n", __FUNCTION__, (unsigned int)(event - extra)));
-	return ret;
-
+	return (uint)ret;
 }
 
 static int
@@ -2610,7 +2663,7 @@ static int wl_iw_get_rate(
 	if ((error = dev_wlc_ioctl(dev, WLC_GET_RATE, &rate, sizeof(rate))))
 		return error;
 	rate = dtoh32(rate);
-	vwrq->value = (rate & 0x7f) * 500000;
+	vwrq->value = rate * 500000;
 
 	return 0;
 }
@@ -2795,20 +2848,31 @@ wl_iw_set_retry(
 
 	
 	if (vwrq->flags & IW_RETRY_LIMIT) {
+
 		
-		if ((vwrq->flags & IW_RETRY_MAX) || !(vwrq->flags & IW_RETRY_MIN)) {
+#if WIRELESS_EXT > 20
+	if ((vwrq->flags & IW_RETRY_LONG) ||(vwrq->flags & IW_RETRY_MAX) ||
+		!((vwrq->flags & IW_RETRY_SHORT) || (vwrq->flags & IW_RETRY_MIN))) {
+#else
+	if ((vwrq->flags & IW_RETRY_MAX) || !(vwrq->flags & IW_RETRY_MIN)) {
+#endif
 			lrl = htod32(vwrq->value);
 			if ((error = dev_wlc_ioctl(dev, WLC_SET_LRL, &lrl, sizeof(lrl))))
 				return error;
 		}
+
 		
+#if WIRELESS_EXT > 20
+	if ((vwrq->flags & IW_RETRY_SHORT) ||(vwrq->flags & IW_RETRY_MIN) ||
+		!((vwrq->flags & IW_RETRY_LONG) || (vwrq->flags & IW_RETRY_MAX))) {
+#else
 		if ((vwrq->flags & IW_RETRY_MIN) || !(vwrq->flags & IW_RETRY_MAX)) {
+#endif
 			srl = htod32(vwrq->value);
 			if ((error = dev_wlc_ioctl(dev, WLC_SET_SRL, &srl, sizeof(srl))))
 				return error;
 		}
 	}
-
 	return 0;
 }
 
@@ -2991,7 +3055,7 @@ wl_iw_get_encode(
 	wsec = dtoh32(wsec);
 	auth = dtoh32(auth);
 	
-	dwrq->length = MIN(IW_ENCODING_TOKEN_MAX, key.len);
+	dwrq->length = MIN(DOT11_MAX_KEY_SIZE, key.len);
 
 	
 	dwrq->flags = key.index + 1;
@@ -3181,6 +3245,9 @@ wl_iw_set_encodeext(
 				break;
 		}
 		swap_key_from_BE(&key);
+
+		dhd_wait_pend8021x(dev);
+
 		error = dev_wlc_ioctl(dev, WLC_SET_KEY, &key, sizeof(key));
 		if (error)
 			return error;
@@ -3999,7 +4066,8 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 
 			cmd = IWEVPMKIDCAND;
 			pmkcandlist = data;
-			count = pmkcandlist->npmkid_cand;
+			count = ntoh32_ua((uint8 *)&pmkcandlist->npmkid_cand);
+			ASSERT(count >= 0);
 			wrqu.data.length = sizeof(struct iw_pmkid_cand);
 			pmkidcand = pmkcandlist->pmkid_cand;
 			while (count) {

@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: bcmsdh_sdmmc.c,v 1.1.2.5.6.19 2009/06/09 00:57:07 Exp $
+ * $Id: bcmsdh_sdmmc.c,v 1.1.2.5.6.21 2009/07/28 00:43:03 Exp $
  */
 #include <typedefs.h>
 
@@ -35,6 +35,7 @@
 #include <sdiovar.h>	/* ioctl/iovars */
 
 #include <linux/mmc/core.h>
+#include <linux/mmc/host.h>
 #include <linux/mmc/card.h>
 #include <linux/mmc/sdio_func.h>
 #include <linux/mmc/sdio_ids.h>
@@ -733,7 +734,7 @@ extern SDIOH_API_RC
 sdioh_request_word(sdioh_info_t *sd, uint cmd_type, uint rw, uint func, uint addr,
                                    uint32 *word, uint nbytes)
 {
-	int err_ret;
+	int err_ret = SDIOH_API_RC_FAIL;
 
 	if (func == 0) {
 		sd_err(("%s: Only CMD52 allowed to F0.\n", __FUNCTION__));
@@ -960,6 +961,10 @@ int sdioh_sdio_reset(sdioh_info_t *si)
 void
 sdioh_sdmmc_devintr_off(sdioh_info_t *sd)
 {
+	struct mmc_card *card = gInstance->func[0]->card;
+	struct mmc_host *host = card->host;
+
+	host->ops->enable_sdio_irq(host, 0);
 	sd_trace(("%s: %d\n", __FUNCTION__, sd->use_client_ints));
 	sd->intmask &= ~CLIENT_INTR;
 }
@@ -968,8 +973,12 @@ sdioh_sdmmc_devintr_off(sdioh_info_t *sd)
 void
 sdioh_sdmmc_devintr_on(sdioh_info_t *sd)
 {
+	struct mmc_card *card = gInstance->func[0]->card;
+	struct mmc_host *host = card->host;
+
 	sd_trace(("%s: %d\n", __FUNCTION__, sd->use_client_ints));
 	sd->intmask |= CLIENT_INTR;
+	host->ops->enable_sdio_irq(host, 1);
 }
 
 /* Read client card reg */
