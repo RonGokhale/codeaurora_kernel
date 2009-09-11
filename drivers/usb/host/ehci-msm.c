@@ -34,6 +34,7 @@
 #include <mach/msm_hsusb_hw.h>
 #include <mach/msm_otg.h>
 #include <mach/vreg.h>
+#include <mach/gpio.h>
 
 #define MSM_USB_BASE (hcd->regs)
 #define SOC_ROC_2_0            0x10002 /* ROC 2.0 */
@@ -593,6 +594,9 @@ static void ehci_msm_enable(int enable)
 	int id = msm_hc_dev[0]->id;
 
 	if (enable) {
+		printk("zpfeffer %s %i\n", __func__,
+		       __LINE__);
+
 		msm_xusb_enable_clks(id);
 		msm_hsusb_vbus_powerup();
 		prev_state = hcd->state;
@@ -844,10 +848,16 @@ static int __init ehci_msm_probe(struct platform_device *pdev)
 
 	if (id == HSUSB) {
 		msm_hc->xceiv = msm_otg_get_transceiver();
-		if (msm_hc->xceiv)
+		if (msm_hc->xceiv) {
 			msm_hc->active = 0;
-		else
+		} else {
 			msm_hsusb_vbus_powerup();
+			printk("zpfeffer %s %i\n", __func__, __LINE__);
+			gpio_direction_output( 41, 0 );
+			gpio_direction_output( 42, 0 );
+			gpio_direction_output( 109, 1 );
+			printk("zpfeffer %s %i\n", __func__, __LINE__);
+		}
 	}
 
 	else if (id == FSUSB) {

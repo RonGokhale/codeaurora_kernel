@@ -1162,6 +1162,8 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 	int				status;
 	const char			*name;
 
+	printk("zpfeffer %s %i\n", __func__, __LINE__);
+
 	name = udev->dev.driver->name;
 	info = (struct driver_info *) prod->driver_info;
 	if (!info) {

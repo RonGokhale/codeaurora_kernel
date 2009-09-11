@@ -1947,6 +1947,14 @@ msm_i2c_gpio_config(int iface, int config_type)
 		gpio_tlmm_config(GPIO_CFG(gpio_sda, 0, GPIO_OUTPUT,
 					GPIO_NO_PULL, GPIO_16MA), GPIO_ENABLE);
 	}
+
+	/* Hack */
+	gpio_tlmm_config(GPIO_CFG(41, 0, GPIO_OUTPUT,
+				  GPIO_PULL_DOWN, GPIO_4MA), GPIO_ENABLE);
+	gpio_tlmm_config(GPIO_CFG(42, 0, GPIO_OUTPUT,
+				  GPIO_PULL_DOWN, GPIO_4MA), GPIO_ENABLE);
+	gpio_tlmm_config(GPIO_CFG(109, 0, GPIO_OUTPUT,
+				  GPIO_PULL_UP, GPIO_4MA), GPIO_ENABLE);
 }
 
 static struct msm_i2c_platform_data msm_i2c_pdata = {
@@ -1965,6 +1973,15 @@ static void __init msm_device_i2c_init(void)
 		pr_err("failed to request gpio i2c_sec_clk\n");
 	if (gpio_request(61, "i2c_sec_dat"))
 		pr_err("failed to request gpio i2c_sec_dat\n");
+
+	/* Hack */
+	if (gpio_request(41, "41"))
+		pr_err("failed to request gpio 41\n");
+	if (gpio_request(42, "42"))
+		pr_err("failed to request gpio 42\n");
+	if (gpio_request(109, "109"))
+		pr_err("failed to request gpio 109\n");
+	
 
 	msm_i2c_pdata.rmutex = (uint32_t *)smem_alloc(SMEM_SPINLOCK_I2C, 8);
 	msm_i2c_pdata.pm_lat =
