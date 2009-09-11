@@ -1844,7 +1844,7 @@ static void __init qsd8x50_init_mmc(void)
 	if (machine_is_qsd8x50_ffa())
 		vreg_mmc = vreg_get(NULL, "gp6");
 	else
-		vreg_mmc = vreg_get(NULL, "gp5");
+		vreg_mmc = vreg_get(NULL, "gp6");
 
 	if (IS_ERR(vreg_mmc)) {
 		printk(KERN_ERR "%s: vreg get failed (%ld)\n",
