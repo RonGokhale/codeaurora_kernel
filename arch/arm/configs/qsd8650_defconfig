@@ -339,7 +339,7 @@ CONFIG_ALIGNMENT_TRAP=y
 #
 CONFIG_ZBOOT_ROM_TEXT=0x0
 CONFIG_ZBOOT_ROM_BSS=0x0
-CONFIG_CMDLINE="init=/sbin/init root=/dev/ram rw initrd=0x11000000,16M console=ttyDCC0 mem=88M"
+CONFIG_CMDLINE="init=/sbin/init root=/dev/mmcblk0p1 rootdelay=1 console=tty0 mem=88M"
 # CONFIG_XIP_KERNEL is not set
 # CONFIG_KEXEC is not set
 
@@ -782,9 +782,7 @@ CONFIG_DEVKMEM=y
 # Non-8250 serial port support
 #
 # CONFIG_SERIAL_MAX3100 is not set
-CONFIG_SERIAL_CORE=y
-CONFIG_SERIAL_MSM=y
-# CONFIG_SERIAL_MSM_CONSOLE is not set
+# CONFIG_SERIAL_MSM is not set
 CONFIG_UNIX98_PTYS=y
 # CONFIG_DEVPTS_MULTIPLE_INSTANCES is not set
 # CONFIG_LEGACY_PTYS is not set
