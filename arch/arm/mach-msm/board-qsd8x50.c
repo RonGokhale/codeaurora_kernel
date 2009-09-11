@@ -98,6 +98,8 @@
 #include "pm.h"
 #include "smd_private.h"
 
+#define REALLY_A_SURF 1
+
 #define TOUCHPAD_SUSPEND 	34
 #define TOUCHPAD_IRQ 		38
 
@@ -655,6 +657,12 @@ static int msm_fb_detect_panel(const char *name)
 	} else if (machine_is_qsd8x50_surf() && !strcmp(name, "lcdc_external"))
 		ret = 0;
 
+#ifndef REALLY_A_SURF
+	if (!strcmp(name, "lcdc_grapefruit_vga"))
+		ret = 0;
+	else
+		ret = -ENODEV;
+#endif
 	return ret;
 }
 
@@ -867,6 +875,33 @@ static struct mddi_platform_data mddi_pdata = {
 	.mddi_sel_clk = msm_fb_mddi_sel_clk,
 };
 
+static int msm_fb_lcdc_gpio_config(int on)
+{
+
+	if (on) {
+		gpio_set_value(32, 1);
+		mdelay(100);
+		gpio_set_value(20, 1);
+		mdelay(100);
+		gpio_set_value(61, 1);
+		gpio_set_value(29, 1);
+		gpio_set_value(82, 1);
+	} else {
+		gpio_set_value(29, 0);
+		gpio_set_value(82, 0);
+		gpio_set_value(61, 0);
+		mdelay(200);
+		gpio_set_value(20, 0);
+		mdelay(100);
+		gpio_set_value(32, 0);
+	}
+	return 0;
+}
+
+static struct lcdc_platform_data lcdc_pdata = {
+	.lcdc_gpio_config = msm_fb_lcdc_gpio_config,
+};
+
 static struct msm_panel_common_pdata mdp_pdata = {
 	.gpio = 98,
 };
@@ -877,7 +912,11 @@ static void __init msm_fb_add_devices(void)
 	msm_fb_register_device("pmdh", &mddi_pdata);
 	msm_fb_register_device("emdh", &mddi_pdata);
 	msm_fb_register_device("tvenc", 0);
+#ifdef REALLY_A_SURF
 	msm_fb_register_device("lcdc", 0);
+#else
+	msm_fb_register_device("lcdc", &lcdc_pdata);
+#endif
 }
 
 #if 0

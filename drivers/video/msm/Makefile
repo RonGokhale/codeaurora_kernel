@@ -73,6 +73,7 @@ obj-$(CONFIG_FB_MSM_LCDC_PRISM_WVGA) += lcdc_prism.o
 obj-$(CONFIG_FB_MSM_LCDC_EXTERNAL_WXGA) += lcdc_external.o
 obj-$(CONFIG_FB_MSM_LCDC_GORDON_VGA) += lcdc_gordon.o
 obj-$(CONFIG_FB_MSM_LCDC_WXGA) += lcdc_wxga.o
+obj-$(CONFIG_FB_MSM_LCDC_GRAPEFRUIT_VGA) += lcdc_grapefruit.o
 
 obj-$(CONFIG_FB_MSM_TVOUT_NTSC) += tv_ntsc.o
 obj-$(CONFIG_FB_MSM_TVOUT_PAL) += tv_pal.o
