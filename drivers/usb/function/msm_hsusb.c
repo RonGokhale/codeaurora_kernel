@@ -1071,6 +1071,20 @@ static void usb_bind_driver(struct usb_info *ui, struct usb_function_info *fi)
 	func->bind(elist, func->context);
 }
 
+static void usb_pullup(struct usb_info *ui, bool enable)
+{
+	u32 cmd = (8 << 16);
+
+	/* disable/enable D+ pullup */
+	if (enable) {
+		pr_info("msm_hsusb: enable pullup\n");
+		writel(cmd | 1, USB_USBCMD);
+	} else {
+		pr_info("msm_hsusb: disable pullup\n");
+		writel(cmd, USB_USBCMD);
+	}
+}
+
 static void usb_reset(struct usb_info *ui)
 {
 	unsigned long flags;
@@ -1129,7 +1143,7 @@ static void usb_reset(struct usb_info *ui)
 	writel(STS_URI | STS_SLI | STS_UI | STS_PCI, USB_USBINTR);
 
 	/* go to RUN mode (D+ pullup enable) */
-	writel(0x00080001, USB_USBCMD);
+	usb_pullup(ui, true);
 
 	spin_lock_irqsave(&ui->lock, flags);
 	ui->running = 1;
@@ -1338,6 +1352,8 @@ static void usb_do_work(struct work_struct *w)
 				flush_all_endpoints(ui);
 				set_configuration(ui);
 
+				usb_pullup(ui, false);
+
 				/* power down phy, clock down usb */
 				spin_lock_irqsave(&ui->lock, iflags);
 				usb_suspend_phy(ui);
@@ -1409,13 +1425,9 @@ void usb_function_reenumerate(void)
 	struct usb_info *ui = the_usb_info;
 
 	/* disable and re-enable the D+ pullup */
-	printk("hsusb: disable pullup\n");
-	writel(0x00080000, USB_USBCMD);
-
+	usb_pullup(ui, false);
 	msleep(10);
-
-	printk("hsusb: enable pullup\n");
-	writel(0x00080001, USB_USBCMD);
+	usb_pullup(ui, true);
 }
 
 #if defined(CONFIG_DEBUG_FS)
