@@ -160,10 +160,21 @@ struct ept_queue_item
 #define ULPI_DATA(n)          ((n) & 255)
 #define ULPI_DATA_READ(n)     (((n) >> 8) & 255)
 
+#define ULPI_DEBUG_REG        (0x15)
+#define ULPI_SCRATCH_REG      (0x16)
+
+#define ULPI_FUNC_CTRL_CLR    (0x06)
+#define   ULPI_FUNC_SUSPENDM  (1 << 6)
+
+
 /* USB_PORTSC bits for determining port speed */
 #define PORTSC_PSPD_FS        (0 << 26)
 #define PORTSC_PSPD_LS        (1 << 26)
 #define PORTSC_PSPD_HS        (2 << 26)
 #define PORTSC_PSPD_MASK      (3 << 26)
+
+#define PORTSC_PTS_MASK       (3 << 30)
+#define PORTSC_PTS_ULPI       (2 << 30)
+#define PORTSC_PTS_SERIAL     (3 << 30)
 
 #endif

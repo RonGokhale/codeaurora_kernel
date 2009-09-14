@@ -171,6 +171,7 @@ struct usb_info
 
 	int *phy_init_seq;
 	void (*phy_reset)(void);
+	void (*hw_reset)(bool en);
 
 	/* for notification when USB is connected or disconnected */
 	void (*usb_connected)(int);
@@ -212,7 +213,6 @@ static uint32_t enabled_functions = 0;
 
 static void flush_endpoint(struct usb_endpoint *ept);
 
-#if 0
 static unsigned ulpi_read(struct usb_info *ui, unsigned reg)
 {
 	unsigned timeout = 100000;
@@ -225,14 +225,13 @@ static unsigned ulpi_read(struct usb_info *ui, unsigned reg)
 	while ((readl(USB_ULPI_VIEWPORT) & ULPI_RUN) && (--timeout)) ;
 
 	if (timeout == 0) {
-		printk(KERN_ERR "ulpi_read: timeout %08x\n", readl(USB_ULPI_VIEWPORT));
+		pr_err("ulpi_read: timeout %08x\n", readl(USB_ULPI_VIEWPORT));
 		return 0xffffffff;
 	}
 	return ULPI_DATA_READ(readl(USB_ULPI_VIEWPORT));
 }
-#endif
 
-static void ulpi_write(struct usb_info *ui, unsigned val, unsigned reg)
+static int ulpi_write(struct usb_info *ui, unsigned val, unsigned reg)
 {
 	unsigned timeout = 10000;
 
@@ -244,8 +243,12 @@ static void ulpi_write(struct usb_info *ui, unsigned val, unsigned reg)
 	/* wait for completion */
 	while((readl(USB_ULPI_VIEWPORT) & ULPI_RUN) && (--timeout)) ;
 
-	if (timeout == 0)
+	if (timeout == 0) {
 		printk(KERN_ERR "ulpi_write: timeout\n");
+		return -1;
+	}
+
+	return 0;
 }
 
 static void ulpi_init(struct usb_info *ui)
@@ -1089,6 +1092,57 @@ static void usb_pullup(struct usb_info *ui, bool enable)
 	}
 }
 
+/* If this function returns < 0, the phy reset failed and we cannot
+ * continue at this point. The only solution is to wait until the next
+ * cable disconnect/reconnect to bring the phy back */
+static int usb_phy_reset(struct usb_info *ui)
+{
+	u32 val;
+	int ret;
+	int retries;
+
+	if (!ui->phy_reset)
+		return 0;
+
+	if (ui->hw_reset)
+		ui->hw_reset(1);
+	ui->phy_reset();
+	if (ui->hw_reset)
+		ui->hw_reset(0);
+
+#if defined(CONFIG_ARCH_QSD8X50)
+	val = readl(USB_PORTSC) & ~PORTSC_PTS_MASK;
+	writel(val | PORTSC_PTS_ULPI, USB_PORTSC);
+
+	/* XXX: only necessary for pre-45nm internal PHYs. */
+	for (retries = 3; retries > 0; retries--) {
+		ret = ulpi_write(ui, ULPI_FUNC_SUSPENDM, ULPI_FUNC_CTRL_CLR);
+		if (!ret)
+			break;
+		ui->phy_reset();
+	}
+	if (!retries)
+		return -1;
+
+	/* this reset calibrates the phy, if the above write succeeded */
+	ui->phy_reset();
+
+	/* XXX: pre-45nm internal phys have a known issue which can cause them
+	 * to lockup on reset. If ULPI accesses fail, try resetting the phy
+	 * again */
+	for (retries = 3; retries > 0; retries--) {
+		ret = ulpi_read(ui, ULPI_DEBUG_REG);
+		if (ret != 0xffffffff)
+			break;
+		ui->phy_reset();
+	}
+	if (!retries)
+		return -1;
+#endif
+	pr_info("msm_hsusb_phy_reset: success\n");
+	return 0;
+}
+
 static void usb_reset(struct usb_info *ui)
 {
 	unsigned long flags;
@@ -1104,12 +1158,14 @@ static void usb_reset(struct usb_info *ui)
 	msleep(2);
 #endif
 
+	if (usb_phy_reset(ui) < 0)
+		pr_err("%s: Phy reset failed!\n", __func__);
+
+	msleep(100);
+
 	/* RESET */
 	writel(2, USB_USBCMD);
 	msleep(10);
-
-	if (ui->phy_reset)
-		ui->phy_reset();
 
 #ifdef CONFIG_ARCH_MSM7X00A
 	/* INCR4 BURST mode */
@@ -1358,6 +1414,10 @@ static void usb_do_work(struct work_struct *w)
 
 				usb_pullup(ui, false);
 
+				/* reset the phy so we know that we can
+				 * suspend it */
+				usb_phy_reset(ui);
+
 				/* power down phy, clock down usb */
 				spin_lock_irqsave(&ui->lock, iflags);
 				usb_suspend_phy(ui);
@@ -1567,6 +1627,7 @@ static int usb_probe(struct platform_device *pdev)
 	if (pdev->dev.platform_data) {
 		struct msm_hsusb_platform_data *pdata = pdev->dev.platform_data;
 		ui->phy_reset = pdata->phy_reset;
+		ui->hw_reset = pdata->hw_reset;
 		ui->phy_init_seq = pdata->phy_init_seq;
 		ui->usb_connected = pdata->usb_connected;
 		

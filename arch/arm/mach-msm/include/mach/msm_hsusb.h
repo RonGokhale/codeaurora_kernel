@@ -38,6 +38,9 @@ struct msm_hsusb_platform_data {
 	/* hard reset the ULPI PHY */
 	void (*phy_reset)(void);
 
+	/* (de)assert the reset to the usb core */
+	void (*hw_reset)(bool enable);
+
 	/* for notification when USB is connected or disconnected */
 	void (*usb_connected)(int);
 
