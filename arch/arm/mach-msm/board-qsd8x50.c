@@ -62,7 +62,7 @@
 //#include <linux/android_pmem.h>
 #include <linux/bootmem.h>
 //#include <linux/usb/mass_storage_function.h>
-//#include <linux/i2c.h>
+#include <linux/i2c.h>
 //#include <linux/spi/spi.h>
 #include <linux/delay.h>
 //#include <linux/mfd/tps65023.h>
@@ -1444,7 +1444,18 @@ static struct i2c_board_info msm_i2c_board_info[] __initdata = {
 		I2C_BOARD_INFO("tps65023", 0x48),
 	},
 };
+#endif
 
+static struct i2c_board_info msm_i2c_grapefruit_info[] __initdata = {
+	{
+		I2C_BOARD_INFO("qci-i2ckbd", 0x18),
+	},
+	{
+		I2C_BOARD_INFO("qci-i2cpad", 0x19),
+	},
+};
+
+#if 0
 #ifdef CONFIG_MSM_CAMERA
 static uint32_t camera_off_gpio_table[] = {
 	/* parallel CAMERA interfaces */
@@ -2083,6 +2094,11 @@ static void __init qsd8x50_init(void)
 	msm_qsd_spi_init();
 	i2c_register_board_info(0, msm_i2c_board_info,
 				ARRAY_SIZE(msm_i2c_board_info));
+#endif
+	if (machine_is_qsd8x50_grapefruit())
+		i2c_register_board_info(0, msm_i2c_grapefruit_info,
+					ARRAY_SIZE(msm_i2c_grapefruit_info));
+#if 0
 	spi_register_board_info(msm_spi_board_info,
 				ARRAY_SIZE(msm_spi_board_info));
 	msm_pm_set_platform_data(msm_pm_data);
