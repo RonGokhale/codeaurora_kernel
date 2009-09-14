@@ -1082,6 +1082,10 @@ static void usb_pullup(struct usb_info *ui, bool enable)
 	} else {
 		pr_info("msm_hsusb: disable pullup\n");
 		writel(cmd, USB_USBCMD);
+
+#if defined(CONFIG_ARCH_QSD8X50)
+		ulpi_write(ui, 0x48, 0x04);
+#endif
 	}
 }
 
