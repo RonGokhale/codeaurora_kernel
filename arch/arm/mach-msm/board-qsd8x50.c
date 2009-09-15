@@ -59,7 +59,7 @@
 #include <linux/irq.h>
 #include <linux/gpio.h>
 #include <linux/platform_device.h>
-//#include <linux/android_pmem.h>
+#include <linux/android_pmem.h>
 #include <linux/bootmem.h>
 //#include <linux/usb/mass_storage_function.h>
 #include <linux/i2c.h>
@@ -566,7 +566,6 @@ static struct msm_hsusb_platform_data msm_hsusb_pdata = {
 	.max_axi_khz = 128000,
 };
 
-#if 0
 static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
 	.name = PMEM_KERNEL_EBI1_DATA_NAME,
 	/* if no allocator_type, defaults to PMEM_ALLOCATORTYPE_BITMAP,
@@ -635,7 +634,6 @@ static struct platform_device android_pmem_kernel_ebi1_device = {
 	.id = 5,
 	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
 };
-#endif
 
 static struct resource msm_fb_resources[] = {
 	{
@@ -1190,6 +1188,7 @@ static void __init bt_power_init(void)
 #define bt_power_init(x) do {} while (0)
 #endif
 
+#endif
 static struct resource kgsl_resources[] = {
        {
 		.name  = "kgsl_reg_memory",
@@ -1217,6 +1216,7 @@ static struct platform_device msm_device_kgsl = {
        .resource = kgsl_resources,
 };
 
+#if 0
 static struct platform_device msm_device_pmic_leds = {
 	.name	= "pmic-leds",
 	.id	= -1,
@@ -1634,12 +1634,12 @@ static struct platform_device *devices[] __initdata = {
 	&s1r72v05_device,
 #endif /* 0 */
 	&msm_device_smd,
-#if 0
 	&android_pmem_kernel_ebi1_device,
 	&android_pmem_device,
 	&android_pmem_adsp_device,
 	&android_pmem_gpu0_device,
 	&android_pmem_gpu1_device,
+#if 0
 	&msm_device_nand,
 #endif
 	&msm_device_i2c,
@@ -1658,9 +1658,9 @@ static struct platform_device *devices[] __initdata = {
 #if !defined(CONFIG_MSM_SERIAL_DEBUGGER)
 	&msm_device_uart3,
 #endif
+        &msm_device_kgsl,
 #if 0
 	&msm_device_pmic_leds,
-	&msm_device_kgsl,
 	&hs_device,
 #if defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE)
 	&msm_device_tsif,
@@ -2154,7 +2154,6 @@ static void __init qsd8x50_allocate_memory_regions(void)
 	void *addr;
 	unsigned long size;
 
-#if 0
 	size = PMEM_KERNEL_EBI1_SIZE;
 	addr = alloc_bootmem_aligned(size, 0x100000);
 	android_pmem_kernel_ebi1_pdata.start = __pa(addr);
@@ -2182,7 +2181,6 @@ static void __init qsd8x50_allocate_memory_regions(void)
 	android_pmem_gpu1_pdata.size = size;
 	printk(KERN_INFO "allocating %lu bytes at %p (%lx physical)"
 	       "for gpu1 pmem\n", size, addr, __pa(addr));
-#endif
 
 	size = MSM_FB_SIZE;
 	addr = (void *)MSM_FB_BASE;
