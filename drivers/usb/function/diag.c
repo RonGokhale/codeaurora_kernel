@@ -25,6 +25,8 @@
 
 #include "usb_function.h"
 
+#define NO_HDLC 1
+
 #if 1
 #define TRACE(tag,data,len,decode) do {} while(0)
 #else
@@ -73,6 +75,7 @@ struct diag_context
 	struct usb_request *req_in;
 	smd_channel_t *ch;
 	int in_busy;
+	int online;
 
 	/* assembly buffer for USB->A9 HDLC frames */
 	unsigned char hdlc_buf[HDLC_MAX];
@@ -147,7 +150,13 @@ static void diag_out_complete(struct usb_endpoint *ept, struct usb_request *req)
 	struct diag_context *ctxt = req->context;
 
 	if (req->status == 0) {
-		diag_process_hdlc(ctxt, req->buf, req->actual);		
+#if NO_HDLC
+		TRACE("PC>", req->buf, req->actual, 0);
+		if (ctxt->ch)
+			smd_write(ctxt->ch, req->buf, req->actual);
+#else
+		diag_process_hdlc(ctxt, req->buf, req->actual);
+#endif
 	}
 	diag_queue_out(ctxt);
 }
@@ -177,6 +186,7 @@ static void diag_queue_in(struct diag_context *ctxt, void *data, unsigned len)
 
 static void smd_try_to_send(struct diag_context *ctxt)
 {
+again:
 	if (ctxt->ch && (!ctxt->in_busy)) {
 		int r = smd_read_avail(ctxt->ch);
 
@@ -186,6 +196,11 @@ static void smd_try_to_send(struct diag_context *ctxt)
 		if (r > 0) {
 			struct usb_request *req = ctxt->req_in;
 			smd_read(ctxt->ch, req->buf, r);
+
+			if (!ctxt->online) {
+//				printk("$$$ discard %d\n", r);
+				goto again;
+			}
 			req->complete = diag_in_complete;
 			req->context = ctxt;
 			req->length = r;
@@ -209,11 +224,15 @@ static void diag_configure(int configured, void *_ctxt)
 	struct diag_context *ctxt = _ctxt;
 	printk(KERN_INFO "diag_configure() %d\n", configured);
 
+	ctxt->online = configured;
+
 	if (configured) {
 		diag_queue_out(ctxt);
 	} else {
 		/* all pending requests will be canceled */
+		ctxt->in_busy = 0;
 	}
+	smd_try_to_send(ctxt);
 }
 
 static struct usb_function usb_func_diag = {
@@ -231,6 +250,8 @@ static struct usb_function usb_func_diag = {
 
 	.ifc_ept_count = 2,
 	.ifc_ept_type = { EPT_BULK_OUT, EPT_BULK_IN },
+
+	.disabled = 1,
 };
 
 static int msm_diag_probe(struct platform_device *pdev)
@@ -261,3 +282,19 @@ static int __init diag_init(void)
 }
 
 module_init(diag_init);
+
+static int diag_set_enabled(const char *val, struct kernel_param *kp)
+{
+	int enabled = simple_strtol(val, NULL, 0);
+	usb_func_diag.disabled = !enabled;
+	usb_function_enable("diag", enabled);
+	return 0;
+}
+
+static int diag_get_enabled(char *buffer, struct kernel_param *kp)
+{
+	buffer[0] = '0' + !usb_func_diag.disabled;
+	return 1;
+}
+
+module_param_call(enabled, diag_set_enabled, diag_get_enabled, 0, 0664);
