@@ -18,6 +18,9 @@ obj-$(CONFIG_ARCH_QSD8X50) += sirc.o
 obj-$(CONFIG_CPU_V6) += idle-v6.o
 obj-$(CONFIG_CPU_V7) += idle-v7.o
 obj-$(CONFIG_MSM_JTAG_V7) += jtag-v7.o
+obj-$(CONFIG_MSM_DALRPC) += dal.o
+obj-$(CONFIG_MSM_DALRPC_TEST) += dal_remotetest.o
+
 ifdef CONFIG_MSM_N_WAY_SMSM
 	obj-$(CONFIG_PM) += pm2.o
 else
