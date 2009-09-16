@@ -119,7 +119,11 @@
 #define MSM_PMEM_GPU0_BASE	(MSM_GPU_PHYS_BASE + MSM_GPU_PHYS_SIZE)
 #define MSM_PMEM_GPU0_SIZE	(MSM_SMI_SIZE - MSM_FB_SIZE - MSM_GPU_PHYS_SIZE)
 
-#define PMEM_KERNEL_EBI1_SIZE	0x200000
+#if (CONFIG_PMEM_KERNEL_SIZE < 2)
+#  define PMEM_KERNEL_EBI1_SIZE	0x200000
+#else
+#  define PMEM_KERNEL_EBI1_SIZE	CONFIG_PMEM_KERNEL_SIZE
+#endif
 
 #define PMIC_VREG_WLAN_LEVEL	2600
 #define PMIC_VREG_GP6_LEVEL	2900
@@ -295,7 +299,7 @@ static struct usb_composition usb_func_composition[] = {
 
 	{
 		.product_id         = 0x9018,
-		.functions	    = 0x1F, /* 011111 */
+		.functions	    = 0x3F, /* 111111 */
 	},
 
 	{
@@ -2154,7 +2158,7 @@ static void __init qsd8x50_allocate_memory_regions(void)
 	void *addr;
 	unsigned long size;
 
-	size = PMEM_KERNEL_EBI1_SIZE;
+	size = PMEM_KERNEL_EBI1_SIZE * 1024 * 1024;
 	addr = alloc_bootmem_aligned(size, 0x100000);
 	android_pmem_kernel_ebi1_pdata.start = __pa(addr);
 	android_pmem_kernel_ebi1_pdata.size = size;
