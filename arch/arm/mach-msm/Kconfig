@@ -125,6 +125,14 @@ config MACH_QSD8X50_COMET
 	help
 	  Support for the Qualcomm Comet eval board.
 
+config MACH_QSD8X50_GRAPEFRUIT
+	depends on ARCH_QSD8X50
+	depends on MSM_STACKED_MEMORY
+	default n
+	bool "QSD8x50 Grapefruit"
+	help
+	  Support for the Qualcomm Grapefruit eval board.
+
 endmenu
 
 config MSM_STACKED_MEMORY
