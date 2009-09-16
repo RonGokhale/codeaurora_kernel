@@ -17,6 +17,7 @@
  *
  */
 
+#include <mach/debug_audio_mm.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/wait.h>
@@ -237,8 +238,7 @@ static void audpp_dsp_event(void *data, unsigned id, size_t len,
 	switch (id) {
 	case AUDPP_MSG_STATUS_MSG:{
 			unsigned cid = msg[0];
-			pr_info("audpp: status %d %d %d\n", cid, msg[1],
-				msg[2]);
+			MM_DBG("status %d %d %d\n", cid, msg[1], msg[2]);
 			if ((cid < 5) && audpp->func[cid])
 				audpp->func[cid] (audpp->private[cid], id, msg);
 			break;
@@ -252,15 +252,15 @@ static void audpp_dsp_event(void *data, unsigned id, size_t len,
 		break;
 	case AUDPP_MSG_CFG_MSG:
 		if (msg[0] == AUDPP_MSG_ENA_ENA) {
-			pr_info("audpp: ENABLE\n");
+			MM_INFO("ENABLE\n");
 			audpp->enabled = 1;
 			audpp_broadcast(audpp, id, msg);
 		} else if (msg[0] == AUDPP_MSG_ENA_DIS) {
-			pr_info("audpp: DISABLE\n");
+			MM_INFO("DISABLE\n");
 			audpp->enabled = 0;
 			audpp_broadcast(audpp, id, msg);
 		} else {
-			pr_err("audpp: invalid config msg %d\n", msg[0]);
+			MM_ERR("invalid config msg %d\n", msg[0]);
 		}
 		break;
 	case AUDPP_MSG_ROUTING_ACK:
@@ -269,9 +269,11 @@ static void audpp_dsp_event(void *data, unsigned id, size_t len,
 	case AUDPP_MSG_FLUSH_ACK:
 		audpp_notify_clnt(audpp, msg[0], id, msg);
 		break;
-
+	case ADSP_MESSAGE_ID:
+		MM_DBG("Received ADSP event: module enable/disable(audpptask)");
+		break;
 	default:
-	  pr_info("audpp: unhandled msg id %x\n", id);
+		MM_ERR("unhandled msg id %x\n", id);
 	}
 }
 
@@ -309,10 +311,10 @@ int audpp_enable(int id, audpp_event_func func, void *private)
 
 	LOG(EV_ENABLE, 1);
 	if (audpp->open_count++ == 0) {
-		pr_info("audpp: enable\n");
+		MM_DBG("enable\n");
 		res = msm_adsp_get("AUDPPTASK", &audpp->mod, &adsp_ops, audpp);
 		if (res < 0) {
-			pr_err("audpp: cannot open AUDPPTASK\n");
+			MM_ERR("cannot open AUDPPTASK\n");
 			audpp->open_count = 0;
 			audpp->func[id] = NULL;
 			audpp->private[id] = NULL;
@@ -362,7 +364,7 @@ void audpp_disable(int id, void *private)
 	local_irq_restore(flags);
 
 	if (--audpp->open_count == 0) {
-		pr_info("audpp: disable\n");
+		MM_DBG("disable\n");
 		LOG(EV_DISABLE, 2);
 		audpp_dsp_config(0);
 		msm_adsp_disable(audpp->mod);
