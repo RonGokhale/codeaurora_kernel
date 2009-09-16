@@ -5,6 +5,7 @@ obj-y += vreg.o
 obj-y += clock.o clock-pcom.o
 obj-y += gpio.o generic_gpio.o
 obj-y += remote_spinlock.o
+obj-y += pmic.o
 
 obj-$(CONFIG_USB_FS_HOST) += rpc_fsusb.o
 obj-$(CONFIG_USB_EHCI_MSM) += rpc_hsusb.o
@@ -29,6 +30,8 @@ obj-$(CONFIG_MSM_ONCRPCROUTER) += smd_rpcrouter.o
 obj-$(CONFIG_MSM_ONCRPCROUTER) += smd_rpcrouter_device.o
 obj-$(CONFIG_MSM_ONCRPCROUTER) += smd_rpcrouter_servers.o
 obj-$(CONFIG_MSM_ONCRPCROUTER) += smd_rpcrouter_clients.o
+
+obj-$(CONFIG_DEBUG_FS) += pmic_debugfs.o
 
 obj-$(CONFIG_MSM_RPCSERVER_TIME_REMOTE) += rpc_server_time_remote.o
 
