@@ -98,8 +98,6 @@
 #include "pm.h"
 #include "smd_private.h"
 
-#define REALLY_A_SURF 1
-
 #define TOUCHPAD_SUSPEND 	34
 #define TOUCHPAD_IRQ 		38
 
@@ -656,13 +654,13 @@ static int msm_fb_detect_panel(const char *name)
 			ret = -ENODEV;
 	} else if (machine_is_qsd8x50_surf() && !strcmp(name, "lcdc_external"))
 		ret = 0;
+	else if (machine_is_qsd8x50_grapefruit()) {
+		if (!strcmp(name, "lcdc_grapefruit_vga"))
+			ret = 0;
+		else
+			ret = -ENODEV;
+	}
 
-#ifndef REALLY_A_SURF
-	if (!strcmp(name, "lcdc_grapefruit_vga"))
-		ret = 0;
-	else
-		ret = -ENODEV;
-#endif
 	return ret;
 }
 
@@ -912,11 +910,11 @@ static void __init msm_fb_add_devices(void)
 	msm_fb_register_device("pmdh", &mddi_pdata);
 	msm_fb_register_device("emdh", &mddi_pdata);
 	msm_fb_register_device("tvenc", 0);
-#ifdef REALLY_A_SURF
-	msm_fb_register_device("lcdc", 0);
-#else
-	msm_fb_register_device("lcdc", &lcdc_pdata);
-#endif
+
+	if (machine_is_qsd8x50_grapefruit())
+		msm_fb_register_device("lcdc", &lcdc_pdata);
+	else
+		msm_fb_register_device("lcdc", 0);
 }
 
 #if 0

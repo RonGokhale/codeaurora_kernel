@@ -67,11 +67,7 @@ static int __init lcdc_grapefruit_init(void)
 	struct msm_panel_info pinfo;
 
 #ifdef CONFIG_FB_MSM_TRY_MDDI_CATCH_LCDC_PRISM
-	ret = msm_fb_detect_client("lcdc_grapefruit_vga");
-	if (ret == -ENODEV)
-		return 0;
-
-	if (ret && (mddi_get_client_id() != 0))
+	if (msm_fb_detect_client("lcdc_grapefruit_vga"))
 		return 0;
 #endif
 
