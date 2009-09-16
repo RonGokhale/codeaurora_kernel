@@ -135,7 +135,7 @@ int
 kgsl_gem_init_object(struct drm_gem_object *obj)
 {
 	struct drm_kgsl_gem_object *priv;
-	priv = drm_calloc(1, sizeof(*priv), DRM_MEM_DRIVER);
+	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
 	if (priv == NULL)
 		return -ENOMEM;
 
@@ -154,7 +154,7 @@ kgsl_gem_free_object(struct drm_gem_object *obj)
 		pmem_kfree(priv->pmem_phys);
 
 	kgsl_gem_free_mmap_offset(obj);
-	drm_free(obj->driver_private, 1, DRM_MEM_DRIVER);
+	kfree(obj->driver_private);
 }
 
 static int
@@ -331,7 +331,6 @@ static struct drm_driver driver = {
 	.reclaim_buffers = drm_core_reclaim_buffers,
 	.get_map_ofs = drm_core_get_map_ofs,
 	.get_reg_ofs = drm_core_get_reg_ofs,
-	.dri_library_name = kgsl_library_name,
 	.gem_init_object = kgsl_gem_init_object,
 	.gem_free_object = kgsl_gem_free_object,
 	.gem_vm_ops = &kgsl_gem_vm_ops,

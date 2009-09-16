@@ -138,8 +138,7 @@ static int drm_set_busid(struct drm_device *dev, struct drm_file *file_priv)
 
 	if (drm_core_check_feature(dev, DRIVER_USE_PLATFORM_DEVICE)) {
 		master->unique_len = 10 + strlen(dev->platformdev->name);
-		master->unique = drm_alloc(master->unique_len + 1,
-			DRM_MEM_DRIVER);
+		master->unique = kmalloc(master->unique_len + 1, GFP_KERNEL);
 
 		if (master->unique == NULL)
 			return -ENOMEM;
@@ -151,8 +150,8 @@ static int drm_set_busid(struct drm_device *dev, struct drm_file *file_priv)
 			DRM_ERROR("Unique buffer overflowed\n");
 
 		dev->devname =
-			drm_alloc(strlen(dev->platformdev->name) +
-				master->unique_len + 2, DRM_MEM_DRIVER);
+			kmalloc(strlen(dev->platformdev->name) +
+				master->unique_len + 2, GFP_KERNEL);
 
 		if (dev->devname == NULL)
 			return -ENOMEM;
@@ -163,7 +162,7 @@ static int drm_set_busid(struct drm_device *dev, struct drm_file *file_priv)
 	} else {
 		master->unique_len = 40;
 		master->unique_size = master->unique_len;
-		master->unique = drm_alloc(master->unique_size, DRM_MEM_DRIVER);
+		master->unique = kmalloc(master->unique_size, GFP_KERNEL);
 		if (master->unique == NULL)
 			return -ENOMEM;
 
@@ -179,8 +178,8 @@ static int drm_set_busid(struct drm_device *dev, struct drm_file *file_priv)
 			master->unique_len = len;
 
 		dev->devname =
-			drm_alloc(strlen(dev->driver->pci_driver.name) +
-				master->unique_len + 2, DRM_MEM_DRIVER);
+			kmalloc(strlen(dev->driver->pci_driver.name) +
+				master->unique_len + 2, GFP_KERNEL);
 
 		if (dev->devname == NULL)
 			return -ENOMEM;

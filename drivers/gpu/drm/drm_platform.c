@@ -58,14 +58,14 @@ int drm_platform_init(struct drm_driver *driver)
 
 	DRM_DEBUG("\n");
 
-	dev = drm_calloc(1, sizeof(*dev), DRM_MEM_STUB);
+	dev = kmalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev)
 		return -ENOMEM;
 
 	ret = drm_fill_in_platform_dev(dev, driver->platform_device,
 					driver);
 	if (ret) {
-		printk(KERN_ERR "DRM: Fill_in_platform_dev failed.\n");
+		DRM_INFO("DRM: Fill_in_platform_dev failed.\n");
 		goto err_g1;
 	}
 
@@ -83,6 +83,6 @@ int drm_platform_init(struct drm_driver *driver)
 	return 0;
 
 err_g1:
-	drm_free(dev, sizeof(*dev), DRM_MEM_STUB);
+	kfree(dev);
 	return ret;
 }
