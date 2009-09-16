@@ -11,6 +11,7 @@
  *
  * Copyright 1999, 2000 Precision Insight, Inc., Cedar Park, Texas.
  * Copyright 2000 VA Linux Systems, Inc., Sunnyvale, California.
+ * Copyright (c) 2009, Code Aurora Forum.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -40,13 +41,37 @@
 
 resource_size_t drm_get_resource_start(struct drm_device *dev, unsigned int resource)
 {
+	if (drm_core_check_feature(dev, DRIVER_USE_PLATFORM_DEVICE)) {
+		struct resource *r;
+		r = platform_get_resource(dev->platformdev, IORESOURCE_MEM,
+					     resource);
+
+		return r ? r->start : 0;
+	}
+
+#ifdef CONFIG_PCI
 	return pci_resource_start(dev->pdev, resource);
+#endif
+
+	return 0;
 }
 EXPORT_SYMBOL(drm_get_resource_start);
 
 resource_size_t drm_get_resource_len(struct drm_device *dev, unsigned int resource)
 {
+	if (drm_core_check_feature(dev, DRIVER_USE_PLATFORM_DEVICE)) {
+		struct resource *r;
+		r = platform_get_resource(dev->platformdev, IORESOURCE_MEM,
+			resource);
+
+		return r ? (r->end - r->start) : 0;
+	}
+
+#ifdef CONFIG_PCI
 	return pci_resource_len(dev->pdev, resource);
+#endif
+
+	return 0;
 }
 
 EXPORT_SYMBOL(drm_get_resource_len);
@@ -188,7 +213,7 @@ static int drm_addmap_core(struct drm_device * dev, resource_size_t offset,
 	switch (map->type) {
 	case _DRM_REGISTERS:
 	case _DRM_FRAME_BUFFER:
-#if !defined(__sparc__) && !defined(__alpha__) && !defined(__ia64__) && !defined(__powerpc64__) && !defined(__x86_64__)
+#if !defined(__sparc__) && !defined(__alpha__) && !defined(__ia64__) && !defined(__powerpc64__) && !defined(__x86_64__) && !defined(__arm__)
 		if (map->offset + (map->size-1) < map->offset ||
 		    map->offset < virt_to_phys(high_memory)) {
 			kfree(map);
@@ -326,7 +351,7 @@ static int drm_addmap_core(struct drm_device * dev, resource_size_t offset,
 		 * As we're limiting the address to 2^32-1 (or less),
 		 * casting it down to 32 bits is no problem, but we
 		 * need to point to a 64bit variable first. */
-		dmah = drm_pci_alloc(dev, map->size, map->size, 0xffffffffUL);
+		dmah = drm_dma_alloc(dev, map->size, map->size, 0xffffffffUL);
 		if (!dmah) {
 			kfree(map);
 			return -ENOMEM;
@@ -485,7 +510,7 @@ int drm_rmmap_locked(struct drm_device *dev, struct drm_local_map *map)
 		dmah.vaddr = map->handle;
 		dmah.busaddr = map->offset;
 		dmah.size = map->size;
-		__drm_pci_free(dev, &dmah);
+		__drm_dma_free(dev, &dmah);
 		break;
 	case _DRM_GEM:
 		DRM_ERROR("tried to rmmap GEM object\n");
@@ -579,7 +604,7 @@ static void drm_cleanup_buf_error(struct drm_device * dev,
 	if (entry->seg_count) {
 		for (i = 0; i < entry->seg_count; i++) {
 			if (entry->seglist[i]) {
-				drm_pci_free(dev, entry->seglist[i]);
+				drm_dma_free(dev, entry->seglist[i]);
 			}
 		}
 		kfree(entry->seglist);
@@ -777,7 +802,8 @@ int drm_addbufs_agp(struct drm_device * dev, struct drm_buf_desc * request)
 EXPORT_SYMBOL(drm_addbufs_agp);
 #endif				/* __OS_HAS_AGP */
 
-int drm_addbufs_pci(struct drm_device * dev, struct drm_buf_desc * request)
+int drm_addbufs_consistant(struct drm_device *dev,
+			   struct drm_buf_desc *request)
 {
 	struct drm_device_dma *dma = dev->dma;
 	int count;
@@ -885,7 +911,7 @@ int drm_addbufs_pci(struct drm_device * dev, struct drm_buf_desc * request)
 
 	while (entry->buf_count < count) {
 
-		dmah = drm_pci_alloc(dev, PAGE_SIZE << page_order, 0x1000, 0xfffffffful);
+		dmah = drm_dma_alloc(dev, PAGE_SIZE << page_order, 0x1000, 0xfffffffful);
 
 		if (!dmah) {
 			/* Set count correctly so we free the proper amount. */
@@ -985,7 +1011,7 @@ int drm_addbufs_pci(struct drm_device * dev, struct drm_buf_desc * request)
 	return 0;
 
 }
-EXPORT_SYMBOL(drm_addbufs_pci);
+EXPORT_SYMBOL(drm_addbufs_consistant);
 
 static int drm_addbufs_sg(struct drm_device * dev, struct drm_buf_desc * request)
 {
@@ -1319,7 +1345,7 @@ static int drm_addbufs_fb(struct drm_device * dev, struct drm_buf_desc * request
  *
  * According with the memory type specified in drm_buf_desc::flags and the
  * build options, it dispatches the call either to addbufs_agp(),
- * addbufs_sg() or addbufs_pci() for AGP, scatter-gather or consistent
+ * addbufs_sg() or addbufs_consistant() for AGP, scatter-gather or consistent
  * PCI memory respectively.
  */
 int drm_addbufs(struct drm_device *dev, void *data,
@@ -1341,7 +1367,7 @@ int drm_addbufs(struct drm_device *dev, void *data,
 	else if (request->flags & _DRM_FB_BUFFER)
 		ret = drm_addbufs_fb(dev, request);
 	else
-		ret = drm_addbufs_pci(dev, request);
+		ret = drm_addbufs_consistant(dev, request);
 
 	return ret;
 }
