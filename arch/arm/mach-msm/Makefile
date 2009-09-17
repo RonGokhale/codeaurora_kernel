@@ -38,4 +38,7 @@ obj-$(CONFIG_DEBUG_FS) += pmic_debugfs.o
 
 obj-$(CONFIG_MSM_RPCSERVER_TIME_REMOTE) += rpc_server_time_remote.o
 
+obj-$(CONFIG_DEBUG_FS) += pmic_debugfs.o
+obj-$(CONFIG_QSD_AUDIO) += qdsp6/
+
 obj-y += pcom_stub.o

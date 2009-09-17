@@ -927,7 +927,7 @@ int smd_named_open_on_edge(const char *name, uint32_t edge,
 	unsigned long flags;
 
 	if (smd_initialized == 0) {
-		SMD_INFO("smd_open() before smd_init()\n");
+		printk(KERN_ERR "smd_open() before smd_init()\n");
 		return -ENODEV;
 	}
 

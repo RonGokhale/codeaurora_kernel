@@ -128,6 +128,7 @@
 #define PMIC_VREG_WLAN_LEVEL	2600
 #define PMIC_VREG_GP6_LEVEL	2900
 
+
 static struct resource smc91x_resources[] = {
 	[0] = {
 		.flags  = IORESOURCE_MEM,
@@ -919,7 +920,6 @@ static void __init msm_fb_add_devices(void)
 		msm_fb_register_device("lcdc", 0);
 }
 
-#if 0
 static struct resource msm_audio_resources[] = {
 	{
 		.flags  = IORESOURCE_DMA,
@@ -1016,6 +1016,7 @@ static struct platform_device msm_audio_device = {
 	.resource       = msm_audio_resources,
 };
 
+#if 0
 static struct resource bluesleep_resources[] = {
 	{
 		.name	= "gpio_host_wake",
@@ -1652,7 +1653,9 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_hsusb_peripheral,
 	&mass_storage_device,
 	&msm_device_tssc,
+#endif
 	&msm_audio_device,
+#if 0
 	&msm_device_uart_dm1,
 	&msm_bluesleep_device,
 #ifdef CONFIG_BT
@@ -2127,8 +2130,8 @@ static void __init qsd8x50_init(void)
 	qsd8x50_init_mmc();
 #if 0
 	bt_power_init();
-	audio_gpio_init();
 #endif
+	audio_gpio_init();
 	msm_device_i2c_init();
 #if 0
 	msm_qsd_spi_init();
@@ -2193,14 +2196,12 @@ static void __init qsd8x50_allocate_memory_regions(void)
 	printk(KERN_INFO "using %lu bytes of SMI at %lx physical for fb\n",
 	       size, (unsigned long)addr);
 
-#if 0
 	size = MSM_AUDIO_SIZE;
 	addr = alloc_bootmem(size);
 	msm_audio_resources[0].start = __pa(addr);
 	msm_audio_resources[0].end = __pa(addr) + MSM_AUDIO_SIZE;
 	printk(KERN_INFO "allocating %lu bytes at %p (%lx physical)"
 	       "for audio\n", size, addr, __pa(addr));
-#endif
 }
 
 static void __init qsd8x50_map_io(void)
