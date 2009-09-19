@@ -183,6 +183,7 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 #define MDP_PPP_BG_IMAGE_SIZE            ( 0x1020c)
 #define MDP_PPP_SCALE_CONFIG             ( 0x10230)
 #define MDP_PPP_CSC_CONFIG               ( 0x10240)
+#define MDP_PPP_BLEND_BG_ALPHA_SEL       ( 0x70010)
 #endif
 
 #define MDP_TFETCH_TEST_MODE             ( 0x20004)
@@ -420,6 +421,13 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 #define PPP_OP_BG_CHROMA_420 (1<<25)|(1<<26)
 #define PPP_OP_BG_CHROMA_SITE_COSITE 0
 #define PPP_OP_BG_CHROMA_SITE_OFFSITE (1<<27)
+
+#define PPP_BLEND_BG_USE_ALPHA_SEL      (1 << 0)
+#define PPP_BLEND_BG_ALPHA_REVERSE      (1 << 3)
+#define PPP_BLEND_BG_SRCPIXEL_ALPHA     (0 << 1)
+#define PPP_BLEND_BG_DSTPIXEL_ALPHA     (1 << 1)
+#define PPP_BLEND_BG_CONSTANT_ALPHA     (2 << 1)
+#define PPP_BLEND_BG_CONST_ALPHA_VAL(x) ((x) << 24)
 
 /* MDP_PPP_DESTINATION_CONFIG / MDP_FULL_BYPASS_WORD20 */
 #define PPP_DST_C0G_8BIT ((1<<0)|(1<<1))

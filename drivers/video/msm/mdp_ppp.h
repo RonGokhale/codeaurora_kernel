@@ -52,6 +52,7 @@ struct ppp_regs {
 	uint32_t dst_xy;
 	uint32_t bg_xy;
 	uint32_t bg_img_sz;
+	uint32_t bg_alpha_sel;
 
 	uint32_t scale_cfg;
 	uint32_t csc_cfg;
