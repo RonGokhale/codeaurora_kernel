@@ -153,8 +153,9 @@ static void scpll_set_freq(uint32_t lval)
 		;
 
 	/* status bit seems to clear early, requires at least
-	 * ~8 microseconds to settle, using 20 to be safe  */
-	udelay(20);
+	 * ~8 microseconds to settle, using 100uS based on stability
+	 * tests across tempeperature/process  */
+	udelay(100);
 }
 
 static void scpll_apps_enable(bool state)
