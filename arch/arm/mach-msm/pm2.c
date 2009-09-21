@@ -47,6 +47,35 @@
 #include "timer.h"
 #include "pm.h"
 
+/* Hack: acpuclk stubs */
+static unsigned long cur_rate;
+
+int acpuclk_set_rate(unsigned long rate, enum setrate_reason reason)
+{
+	printk("**** %s(%lu, %i) cur_rate = %lu\n", __func__, rate, reason,
+		cur_rate);
+	cur_rate = rate;
+	return cur_rate;
+}
+
+unsigned long acpuclk_get_rate(void)
+{
+	printk("**** %s() cur_rate = %lu\n", __func__, cur_rate);
+        return cur_rate;
+}
+
+unsigned long acpuclk_power_collapse(void)
+{
+	printk("**** %s() cur_rate = %lu\n", __func__, cur_rate);
+	return cur_rate;
+}
+
+unsigned long acpuclk_wait_for_irq(void)
+{
+	printk("**** %s() cur_rate = %lu\n", __func__, cur_rate);
+	return cur_rate;
+}
+
 /******************************************************************************
  * Debug Definitions
  *****************************************************************************/
@@ -1550,7 +1579,7 @@ static void msm_pm_power_off(void)
 		;
 }
 
-static void msm_pm_restart(char str)
+static void msm_pm_restart(char str, const char *cmd)
 {
 	msm_proc_comm(PCOM_RESET_CHIP, &restart_reason, 0);
 

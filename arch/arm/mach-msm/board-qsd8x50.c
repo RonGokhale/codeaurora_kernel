@@ -2144,7 +2144,9 @@ static void __init qsd8x50_init(void)
 #if 0
 	spi_register_board_info(msm_spi_board_info,
 				ARRAY_SIZE(msm_spi_board_info));
+#endif
 	msm_pm_set_platform_data(msm_pm_data);
+#if 0
 	kgsl_phys_memory_init();
 
 #ifdef CONFIG_SURF_FFA_GPIO_KEYPAD
