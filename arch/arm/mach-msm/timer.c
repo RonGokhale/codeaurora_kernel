@@ -243,7 +243,7 @@ static uint32_t msm_timer_sync_sclk(
 	void (*update)(struct msm_timer_sync_data_t *data, uint32_t clk_val),
 	struct msm_timer_sync_data_t *data)
 {
-	printk(KERN_ERR "%s: faking slow clock read!!!\n", __FUNCTION__);
+	/* printk(KERN_ERR "%s: faking slow clock read!!!\n", __FUNCTION__); */
 	return 1;
 #if 0
 	/* Time Master State Bits */
