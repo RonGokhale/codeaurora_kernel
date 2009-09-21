@@ -22,6 +22,7 @@
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/io.h>
+#include <linux/wakelock.h>
 #include <mach/system.h>
 
 #define DEBUG 0
@@ -73,6 +74,7 @@ struct msm_i2c_dev {
 	bool                need_flush;
 	int                 flush_cnt;
 	void                *complete;
+	struct wake_lock    wakelock;
 };
 
 #if DEBUG
@@ -314,7 +316,9 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	long timeout;
 	unsigned long flags;
 
+	wake_lock(&dev->wakelock);
 	clk_enable(dev->clk);
+	enable_irq(dev->irq);
 
 	ret = msm_i2c_poll_notbusy(dev, 1);
 	if (ret) {
@@ -373,7 +377,9 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		msm_i2c_recover_bus_busy(dev);
 	}
 err:
+	disable_irq(dev->irq);
 	clk_disable(dev->clk);
+	wake_unlock(&dev->wakelock);
 	return ret;
 }
 
@@ -444,6 +450,7 @@ msm_i2c_probe(struct platform_device *pdev)
 	}
 
 	spin_lock_init(&dev->lock);
+	wake_lock_init(&dev->wakelock, WAKE_LOCK_SUSPEND, "i2c");
 	platform_set_drvdata(pdev, dev);
 
 	msm_set_i2c_mux(false, NULL, NULL);
@@ -483,6 +490,7 @@ msm_i2c_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "request_irq failed\n");
 		goto err_request_irq_failed;
 	}
+	disable_irq(dev->irq);
 	return 0;
 
 /*	free_irq(dev->irq, dev); */
@@ -506,8 +514,10 @@ msm_i2c_remove(struct platform_device *pdev)
 	struct resource		*mem;
 
 	platform_set_drvdata(pdev, NULL);
+	enable_irq(dev->irq);
 	free_irq(dev->irq, dev);
 	i2c_del_adapter(&dev->adapter);
+	wake_lock_destroy(&dev->wakelock);
 	clk_put(dev->clk);
 	iounmap(dev->base);
 	kfree(dev);
