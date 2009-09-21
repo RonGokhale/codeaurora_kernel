@@ -65,7 +65,7 @@
 #include <linux/i2c.h>
 //#include <linux/spi/spi.h>
 #include <linux/delay.h>
-//#include <linux/mfd/tps65023.h>
+#include <linux/mfd/tps65023.h>
 //#include <linux/bma150.h>
 
 #include <asm/mach-types.h>
@@ -1253,7 +1253,7 @@ static struct msm_tsif_platform_data tsif_platform_data = {
 
 #endif /* defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE) */
 /* TSIF end   */
-
+#endif
 #ifdef CONFIG_QSD_SVS
 #define TPS65023_MAX_DCDC1	1600
 #else
@@ -1291,7 +1291,7 @@ static struct msm_acpu_clock_platform_data qsd8x50_clock_data = {
 	.acpu_set_vdd = qsd8x50_tps65023_set_dcdc1,
 };
 
-
+#if 0
 static void touchpad_gpio_release(void)
 {
 	gpio_free(TOUCHPAD_IRQ);
@@ -2109,9 +2109,7 @@ static void __init qsd8x50_init(void)
 		       __func__);
 #endif
 	qsd8x50_cfg_smc91x();
-#if 0
 	msm_acpu_clock_init(&qsd8x50_clock_data);
-#endif /* 0 */
 	msm_device_hsusb_peripheral.dev.platform_data = &msm_hsusb_pdata;
 	msm_device_uart3.dev.platform_data = &msm_serial_pdata;
 #if 0

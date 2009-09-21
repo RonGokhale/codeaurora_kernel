@@ -10,11 +10,14 @@ obj-y += pmic.o
 obj-$(CONFIG_USB_FS_HOST) += rpc_fsusb.o
 obj-$(CONFIG_USB_EHCI_MSM) += rpc_hsusb.o
 
+obj-y += cpufreq.o
+
 obj-$(CONFIG_MACH_HALIBUT) += board-halibut.o
 obj-$(CONFIG_MACH_QSD8X50_SURF) += board-qsd8x50.o
 obj-$(CONFIG_MACH_QSD8X50_FFA) += board-qsd8x50.o
 obj-$(CONFIG_MACH_QSD8X50_COMET) += board-qsd8x50.o
 obj-$(CONFIG_ARCH_QSD8X50) += sirc.o
+obj-$(CONFIG_ARCH_MSM_SCORPION) += acpuclock-8x50.o
 obj-$(CONFIG_CPU_V6) += idle-v6.o
 obj-$(CONFIG_CPU_V7) += idle-v7.o
 obj-$(CONFIG_MSM_JTAG_V7) += jtag-v7.o

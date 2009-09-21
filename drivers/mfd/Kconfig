@@ -242,6 +242,14 @@ config PCF50633_GPIO
 	 Say yes here if you want to include support GPIO for pins on
 	 the PCF50633 chip.
 
+config TPS65023
+        tristate "TPS65023 Power Management chip"
+        depends on I2C && ARCH_MSM_SCORPION
+        default y if I2C && ARCH_MSM_SCORPION
+        help
+          Say yes here for Qualcomm QSD chips. The TI PMIC is used by the
+          QSD8x50 series of chips for power management.
+
 config AB3100_CORE
 	tristate "ST-Ericsson AB3100 Mixed Signal Circuit core functions"
 	depends on I2C
