@@ -899,6 +899,14 @@ static int msm_fb_lcdc_gpio_config(int on)
 	return 0;
 }
 
+static struct msm_gpio msm_fb_grapefruit_gpio_config_data[] = {
+	{ GPIO_CFG(20, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl0" },
+	{ GPIO_CFG(29, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl1" },
+	{ GPIO_CFG(32, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl2" },
+	{ GPIO_CFG(61, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl3" },
+	{ GPIO_CFG(82, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl4" },
+};
+
 static struct lcdc_platform_data lcdc_pdata = {
 	.lcdc_gpio_config = msm_fb_lcdc_gpio_config,
 };
@@ -909,14 +917,24 @@ static struct msm_panel_common_pdata mdp_pdata = {
 
 static void __init msm_fb_add_devices(void)
 {
+	int rc;
+
 	msm_fb_register_device("mdp", &mdp_pdata);
 	msm_fb_register_device("pmdh", &mddi_pdata);
 	msm_fb_register_device("emdh", &mddi_pdata);
 	msm_fb_register_device("tvenc", 0);
 
-	if (machine_is_qsd8x50_grapefruit())
+	if (machine_is_qsd8x50_grapefruit()) {
+		rc = msm_gpios_request_enable(
+			msm_fb_grapefruit_gpio_config_data,
+			ARRAY_SIZE(msm_fb_grapefruit_gpio_config_data));
+		if (rc) {
+			printk(KERN_ERR "%s: unable to init lcdc gpios\n",
+			       __func__);
+			return;
+		}
 		msm_fb_register_device("lcdc", &lcdc_pdata);
-	else
+	} else
 		msm_fb_register_device("lcdc", 0);
 }
 
@@ -2020,7 +2038,10 @@ msm_i2c_gpio_config(int iface, int config_type)
 {
 	int gpio_scl;
 	int gpio_sda;
+
 	if (iface) {
+		if (machine_is_qsd8x50_grapefruit())
+			return;
 		gpio_scl = 60;
 		gpio_sda = 61;
 	} else {
@@ -2060,10 +2081,12 @@ static void __init msm_device_i2c_init(void)
 		pr_err("failed to request gpio i2c_pri_clk\n");
 	if (gpio_request(96, "i2c_pri_dat"))
 		pr_err("failed to request gpio i2c_pri_dat\n");
-	if (gpio_request(60, "i2c_sec_clk"))
-		pr_err("failed to request gpio i2c_sec_clk\n");
-	if (gpio_request(61, "i2c_sec_dat"))
-		pr_err("failed to request gpio i2c_sec_dat\n");
+	if (!machine_is_qsd8x50_grapefruit()) {
+		if (gpio_request(60, "i2c_sec_clk"))
+			pr_err("failed to request gpio i2c_sec_clk\n");
+		if (gpio_request(61, "i2c_sec_dat"))
+			pr_err("failed to request gpio i2c_sec_dat\n");
+	}
 
 	/* Hack */
 	if (gpio_request(41, "41"))
