@@ -243,9 +243,6 @@ static uint32_t msm_timer_sync_sclk(
 	void (*update)(struct msm_timer_sync_data_t *data, uint32_t clk_val),
 	struct msm_timer_sync_data_t *data)
 {
-	/* printk(KERN_ERR "%s: faking slow clock read!!!\n", __FUNCTION__); */
-	return 1;
-#if 0
 	/* Time Master State Bits */
 	#define MASTER_BITS_PER_CPU        1
 	#define MASTER_TIME_PENDING \
@@ -322,7 +319,6 @@ sync_sclk_exit:
 	smsm_change_state(SMSM_APPS_DEM, SLAVE_TIME_REQUEST | SLAVE_TIME_POLL,
 		SLAVE_TIME_INIT);
 	return smem_clock_val;
-#endif
 }
 #else /* CONFIG_MSM_N_WAY_SMSM */
 static uint32_t msm_timer_sync_sclk(
