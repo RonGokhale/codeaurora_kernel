@@ -573,6 +573,9 @@ static void set_configuration(struct usb_info *ui)
 
 		fi->func->configure(online, fi->func->context);
 	}
+
+	if (online && ui->usb_connected)
+		ui->usb_connected(1);
 }
 
 static void ep0out_complete(struct usb_endpoint *ept, struct usb_request *req)
@@ -1460,8 +1463,11 @@ static void usb_do_work(struct work_struct *w)
 					clk_enable(ui->otgclk);
 				usb_reset(ui);
 
-				if (ui->usb_connected)
-					ui->usb_connected(1);
+				/* detect shorted D+/D-, indicating AC power */
+				msleep(10);
+				if ((readl(USB_PORTSC) & PORTSC_LS) == PORTSC_LS)
+					if (ui->usb_connected)
+						ui->usb_connected(2);
 
 				ui->state = USB_STATE_ONLINE;
 				usb_do_work_check_vbus(ui);
