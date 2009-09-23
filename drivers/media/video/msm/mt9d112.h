@@ -47,4 +47,6 @@ struct mt9d112_reg {
 	uint16_t rftbl_size;
 };
 
+extern struct mt9d112_reg mt9d112_regs;
+
 #endif /* MT9D112_H */

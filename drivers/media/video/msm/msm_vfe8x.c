@@ -25,7 +25,7 @@
 #define OFF 0
 
 struct mutex vfe_lock;
-static void     *vfe_syncdata;
+static void *vfe_syncdata;
 
 static int vfe_enable(struct camera_enable_cmd *enable)
 {
@@ -34,7 +34,7 @@ static int vfe_enable(struct camera_enable_cmd *enable)
 }
 
 static int vfe_disable(struct camera_enable_cmd *enable,
-	struct platform_device *dev)
+		       struct platform_device *dev)
 {
 	int rc = 0;
 
@@ -55,7 +55,8 @@ static void vfe_release(struct platform_device *dev)
 }
 
 static void vfe_config_axi(int mode,
-	struct axidata *ad, struct vfe_cmd_axi_output_config *ao)
+			   struct axidata *ad,
+			   struct vfe_cmd_axi_output_config *ao)
 {
 	struct msm_pmem_region *regptr;
 	int i, j;
@@ -63,14 +64,12 @@ static void vfe_config_axi(int mode,
 
 	if (mode == OUTPUT_1 || mode == OUTPUT_1_AND_2) {
 		regptr = ad->region;
-		for (i = 0;
-			i < ad->bufnum1; i++) {
+		for (i = 0; i < ad->bufnum1; i++) {
 
 			p1 = &(ao->output1.outputY.outFragments[i][0]);
 			p2 = &(ao->output1.outputCbcr.outFragments[i][0]);
 
-			for (j = 0;
-				j < ao->output1.fragmentCount; j++) {
+			for (j = 0; j < ao->output1.fragmentCount; j++) {
 
 				*p1 = regptr->paddr + regptr->info.y_off;
 				p1++;
@@ -80,24 +79,23 @@ static void vfe_config_axi(int mode,
 			}
 			regptr++;
 		}
-	} /* if OUTPUT1 or Both */
-
+	}
+	/* if OUTPUT1 or Both */
 	if (mode == OUTPUT_2 || mode == OUTPUT_1_AND_2) {
 
 		regptr = &(ad->region[ad->bufnum1]);
 		CDBG("bufnum2 = %d\n", ad->bufnum2);
 
-		for (i = 0;
-			i < ad->bufnum2; i++) {
+		for (i = 0; i < ad->bufnum2; i++) {
 
 			p1 = &(ao->output2.outputY.outFragments[i][0]);
 			p2 = &(ao->output2.outputCbcr.outFragments[i][0]);
 
-		CDBG("config_axi: O2, phy = 0x%lx, y_off = %d, cbcr_off = %d\n",
-			regptr->paddr, regptr->info.y_off, regptr->info.cbcr_off);
+			CDBG("config_axi: O2, phy = 0x%lx, y_off = %d, "\
+			     "cbcr_off = %d\n", regptr->paddr,
+			     regptr->info.y_off, regptr->info.cbcr_off);
 
-			for (j = 0;
-				j < ao->output2.fragmentCount; j++) {
+			for (j = 0; j < ao->output2.fragmentCount; j++) {
 
 				*p1 = regptr->paddr + regptr->info.y_off;
 				CDBG("vfe_config_axi: p1 = 0x%x\n", *p1);
@@ -141,281 +139,282 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 		vfe_reset();
 		break;
 
-	case VFE_CMD_ID_START: {
-		struct vfe_cmd_start start;
-		CHECKED_COPY_FROM_USER(&start);
+	case VFE_CMD_ID_START:{
+			struct vfe_cmd_start start;
+			CHECKED_COPY_FROM_USER(&start);
 
-		/* msm_camio_camif_pad_reg_reset_2(); */
-		msm_camio_camif_pad_reg_reset();
-		vfe_start(&start);
-	}
-		break;
-
-	case VFE_CMD_ID_CAMIF_CONFIG: {
-		struct vfe_cmd_camif_config camif;
-		CHECKED_COPY_FROM_USER(&camif);
-
-		vfe_camif_config(&camif);
-	}
-		break;
-
-	case VFE_CMD_ID_BLACK_LEVEL_CONFIG: {
-		struct vfe_cmd_black_level_config bl;
-		CHECKED_COPY_FROM_USER(&bl);
-
-		vfe_black_level_config(&bl);
-	}
-		break;
-
-	case VFE_CMD_ID_ROLL_OFF_CONFIG: {
-		/* rolloff is too big to be on the stack */
-		struct vfe_cmd_roll_off_config *rolloff =
-				kmalloc(sizeof(struct vfe_cmd_roll_off_config),
-					GFP_KERNEL);
-		if (!rolloff) {
-			pr_err("%s: out of memory\n", __func__);
-			rc = -ENOMEM;
-			break;
+			/* msm_camio_camif_pad_reg_reset_2(); */
+			msm_camio_camif_pad_reg_reset();
+			vfe_start(&start);
 		}
-		/* Wrap CHECKED_COPY_FROM_USER() in a do-while(0) loop to make
-		 * sure we free rolloff when copy_from_user() fails.
-		 */
-		do {
-			CHECKED_COPY_FROM_USER(rolloff);
-			vfe_roll_off_config(rolloff);
-		} while(0);
-		kfree(rolloff);
-	}
 		break;
 
-	case VFE_CMD_ID_DEMUX_CHANNEL_GAIN_CONFIG: {
-		struct vfe_cmd_demux_channel_gain_config demuxc;
-		CHECKED_COPY_FROM_USER(&demuxc);
+	case VFE_CMD_ID_CAMIF_CONFIG:{
+			struct vfe_cmd_camif_config camif;
+			CHECKED_COPY_FROM_USER(&camif);
 
-		/* demux is always enabled.  */
-		vfe_demux_channel_gain_config(&demuxc);
-	}
+			vfe_camif_config(&camif);
+		}
 		break;
 
-	case VFE_CMD_ID_DEMOSAIC_CONFIG: {
-		struct vfe_cmd_demosaic_config demosaic;
-		CHECKED_COPY_FROM_USER(&demosaic);
+	case VFE_CMD_ID_BLACK_LEVEL_CONFIG:{
+			struct vfe_cmd_black_level_config bl;
+			CHECKED_COPY_FROM_USER(&bl);
 
-		vfe_demosaic_config(&demosaic);
-	}
+			vfe_black_level_config(&bl);
+		}
+		break;
+
+	case VFE_CMD_ID_ROLL_OFF_CONFIG:{
+			/* rolloff is too big to be on the stack */
+			struct vfe_cmd_roll_off_config *rolloff =
+			    kmalloc(sizeof(struct vfe_cmd_roll_off_config),
+				    GFP_KERNEL);
+			if (!rolloff) {
+				pr_err("%s: out of memory\n", __func__);
+				rc = -ENOMEM;
+				break;
+			}
+			/* Wrap CHECKED_COPY_FROM_USER() in a do-while(0) loop
+			 * to make sure we free rolloff when copy_from_user()
+			 * fails.
+			 */
+			do {
+				CHECKED_COPY_FROM_USER(rolloff);
+				vfe_roll_off_config(rolloff);
+			} while (0);
+			kfree(rolloff);
+		}
+		break;
+
+	case VFE_CMD_ID_DEMUX_CHANNEL_GAIN_CONFIG:{
+			struct vfe_cmd_demux_channel_gain_config demuxc;
+			CHECKED_COPY_FROM_USER(&demuxc);
+
+			/* demux is always enabled.  */
+			vfe_demux_channel_gain_config(&demuxc);
+		}
+		break;
+
+	case VFE_CMD_ID_DEMOSAIC_CONFIG:{
+			struct vfe_cmd_demosaic_config demosaic;
+			CHECKED_COPY_FROM_USER(&demosaic);
+
+			vfe_demosaic_config(&demosaic);
+		}
 		break;
 
 	case VFE_CMD_ID_FOV_CROP_CONFIG:
-	case VFE_CMD_ID_FOV_CROP_UPDATE: {
-		struct vfe_cmd_fov_crop_config fov;
-		CHECKED_COPY_FROM_USER(&fov);
+	case VFE_CMD_ID_FOV_CROP_UPDATE:{
+			struct vfe_cmd_fov_crop_config fov;
+			CHECKED_COPY_FROM_USER(&fov);
 
-		vfe_fov_crop_config(&fov);
-	}
+			vfe_fov_crop_config(&fov);
+		}
 		break;
 
 	case VFE_CMD_ID_MAIN_SCALER_CONFIG:
-	case VFE_CMD_ID_MAIN_SCALER_UPDATE: {
-		struct vfe_cmd_main_scaler_config mainds;
-		CHECKED_COPY_FROM_USER(&mainds);
+	case VFE_CMD_ID_MAIN_SCALER_UPDATE:{
+			struct vfe_cmd_main_scaler_config mainds;
+			CHECKED_COPY_FROM_USER(&mainds);
 
-		vfe_main_scaler_config(&mainds);
-	}
+			vfe_main_scaler_config(&mainds);
+		}
 		break;
 
 	case VFE_CMD_ID_WHITE_BALANCE_CONFIG:
-	case VFE_CMD_ID_WHITE_BALANCE_UPDATE: {
-		struct vfe_cmd_white_balance_config wb;
-		CHECKED_COPY_FROM_USER(&wb);
+	case VFE_CMD_ID_WHITE_BALANCE_UPDATE:{
+			struct vfe_cmd_white_balance_config wb;
+			CHECKED_COPY_FROM_USER(&wb);
 
-		vfe_white_balance_config(&wb);
-	}
+			vfe_white_balance_config(&wb);
+		}
 		break;
 
 	case VFE_CMD_ID_COLOR_CORRECTION_CONFIG:
-	case VFE_CMD_ID_COLOR_CORRECTION_UPDATE: {
-		struct vfe_cmd_color_correction_config cc;
-		CHECKED_COPY_FROM_USER(&cc);
+	case VFE_CMD_ID_COLOR_CORRECTION_UPDATE:{
+			struct vfe_cmd_color_correction_config cc;
+			CHECKED_COPY_FROM_USER(&cc);
 
-		vfe_color_correction_config(&cc);
-	}
+			vfe_color_correction_config(&cc);
+		}
 		break;
 
-	case VFE_CMD_ID_LA_CONFIG: {
-		struct vfe_cmd_la_config la;
-		CHECKED_COPY_FROM_USER(&la);
+	case VFE_CMD_ID_LA_CONFIG:{
+			struct vfe_cmd_la_config la;
+			CHECKED_COPY_FROM_USER(&la);
 
-		vfe_la_config(&la);
-	}
+			vfe_la_config(&la);
+		}
 		break;
 
-	case VFE_CMD_ID_RGB_GAMMA_CONFIG: {
-		struct vfe_cmd_rgb_gamma_config rgb;
-		CHECKED_COPY_FROM_USER(&rgb);
+	case VFE_CMD_ID_RGB_GAMMA_CONFIG:{
+			struct vfe_cmd_rgb_gamma_config rgb;
+			CHECKED_COPY_FROM_USER(&rgb);
 
-		rc = vfe_rgb_gamma_config(&rgb);
-	}
+			rc = vfe_rgb_gamma_config(&rgb);
+		}
 		break;
 
 	case VFE_CMD_ID_CHROMA_ENHAN_CONFIG:
-	case VFE_CMD_ID_CHROMA_ENHAN_UPDATE: {
-		struct vfe_cmd_chroma_enhan_config chrom;
-		CHECKED_COPY_FROM_USER(&chrom);
+	case VFE_CMD_ID_CHROMA_ENHAN_UPDATE:{
+			struct vfe_cmd_chroma_enhan_config chrom;
+			CHECKED_COPY_FROM_USER(&chrom);
 
-		vfe_chroma_enhan_config(&chrom);
-	}
+			vfe_chroma_enhan_config(&chrom);
+		}
 		break;
 
 	case VFE_CMD_ID_CHROMA_SUPPRESSION_CONFIG:
-	case VFE_CMD_ID_CHROMA_SUPPRESSION_UPDATE: {
-		struct vfe_cmd_chroma_suppression_config chromsup;
-		CHECKED_COPY_FROM_USER(&chromsup);
+	case VFE_CMD_ID_CHROMA_SUPPRESSION_UPDATE:{
+			struct vfe_cmd_chroma_suppression_config chromsup;
+			CHECKED_COPY_FROM_USER(&chromsup);
 
-		vfe_chroma_sup_config(&chromsup);
-	}
+			vfe_chroma_sup_config(&chromsup);
+		}
 		break;
 
-	case VFE_CMD_ID_ASF_CONFIG: {
-		struct vfe_cmd_asf_config asf;
-		CHECKED_COPY_FROM_USER(&asf);
+	case VFE_CMD_ID_ASF_CONFIG:{
+			struct vfe_cmd_asf_config asf;
+			CHECKED_COPY_FROM_USER(&asf);
 
-		vfe_asf_config(&asf);
-	}
+			vfe_asf_config(&asf);
+		}
 		break;
 
 	case VFE_CMD_ID_SCALER2Y_CONFIG:
-	case VFE_CMD_ID_SCALER2Y_UPDATE: {
-		struct vfe_cmd_scaler2_config ds2y;
-		CHECKED_COPY_FROM_USER(&ds2y);
+	case VFE_CMD_ID_SCALER2Y_UPDATE:{
+			struct vfe_cmd_scaler2_config ds2y;
+			CHECKED_COPY_FROM_USER(&ds2y);
 
-		vfe_scaler2y_config(&ds2y);
-	}
+			vfe_scaler2y_config(&ds2y);
+		}
 		break;
 
 	case VFE_CMD_ID_SCALER2CbCr_CONFIG:
-	case VFE_CMD_ID_SCALER2CbCr_UPDATE: {
-		struct vfe_cmd_scaler2_config ds2cbcr;
-		CHECKED_COPY_FROM_USER(&ds2cbcr);
+	case VFE_CMD_ID_SCALER2CbCr_UPDATE:{
+			struct vfe_cmd_scaler2_config ds2cbcr;
+			CHECKED_COPY_FROM_USER(&ds2cbcr);
 
-		vfe_scaler2cbcr_config(&ds2cbcr);
-	}
+			vfe_scaler2cbcr_config(&ds2cbcr);
+		}
 		break;
 
-	case VFE_CMD_ID_CHROMA_SUBSAMPLE_CONFIG: {
-		struct vfe_cmd_chroma_subsample_config sub;
-		CHECKED_COPY_FROM_USER(&sub);
+	case VFE_CMD_ID_CHROMA_SUBSAMPLE_CONFIG:{
+			struct vfe_cmd_chroma_subsample_config sub;
+			CHECKED_COPY_FROM_USER(&sub);
 
-		vfe_chroma_subsample_config(&sub);
-	}
+			vfe_chroma_subsample_config(&sub);
+		}
 		break;
 
-	case VFE_CMD_ID_FRAME_SKIP_CONFIG: {
-		struct vfe_cmd_frame_skip_config fskip;
-		CHECKED_COPY_FROM_USER(&fskip);
+	case VFE_CMD_ID_FRAME_SKIP_CONFIG:{
+			struct vfe_cmd_frame_skip_config fskip;
+			CHECKED_COPY_FROM_USER(&fskip);
 
-		vfe_frame_skip_config(&fskip);
-	}
+			vfe_frame_skip_config(&fskip);
+		}
 		break;
 
-	case VFE_CMD_ID_OUTPUT_CLAMP_CONFIG: {
-		struct vfe_cmd_output_clamp_config clamp;
-		CHECKED_COPY_FROM_USER(&clamp);
+	case VFE_CMD_ID_OUTPUT_CLAMP_CONFIG:{
+			struct vfe_cmd_output_clamp_config clamp;
+			CHECKED_COPY_FROM_USER(&clamp);
 
-		vfe_output_clamp_config(&clamp);
-	}
+			vfe_output_clamp_config(&clamp);
+		}
 		break;
 
-	/* module update commands */
-	case VFE_CMD_ID_BLACK_LEVEL_UPDATE: {
-		struct vfe_cmd_black_level_config blk;
-		CHECKED_COPY_FROM_USER(&blk);
+		/* module update commands */
+	case VFE_CMD_ID_BLACK_LEVEL_UPDATE:{
+			struct vfe_cmd_black_level_config blk;
+			CHECKED_COPY_FROM_USER(&blk);
 
-		vfe_black_level_update(&blk);
-	}
+			vfe_black_level_update(&blk);
+		}
 		break;
 
-	case VFE_CMD_ID_DEMUX_CHANNEL_GAIN_UPDATE: {
-		struct vfe_cmd_demux_channel_gain_config dmu;
-		CHECKED_COPY_FROM_USER(&dmu);
+	case VFE_CMD_ID_DEMUX_CHANNEL_GAIN_UPDATE:{
+			struct vfe_cmd_demux_channel_gain_config dmu;
+			CHECKED_COPY_FROM_USER(&dmu);
 
-		vfe_demux_channel_gain_update(&dmu);
-	}
+			vfe_demux_channel_gain_update(&dmu);
+		}
 		break;
 
-	case VFE_CMD_ID_DEMOSAIC_BPC_UPDATE: {
-		struct vfe_cmd_demosaic_bpc_update demo_bpc;
-		CHECKED_COPY_FROM_USER(&demo_bpc);
+	case VFE_CMD_ID_DEMOSAIC_BPC_UPDATE:{
+			struct vfe_cmd_demosaic_bpc_update demo_bpc;
+			CHECKED_COPY_FROM_USER(&demo_bpc);
 
-		vfe_demosaic_bpc_update(&demo_bpc);
-	}
+			vfe_demosaic_bpc_update(&demo_bpc);
+		}
 		break;
 
-	case VFE_CMD_ID_DEMOSAIC_ABF_UPDATE: {
-		struct vfe_cmd_demosaic_abf_update demo_abf;
-		CHECKED_COPY_FROM_USER(&demo_abf);
+	case VFE_CMD_ID_DEMOSAIC_ABF_UPDATE:{
+			struct vfe_cmd_demosaic_abf_update demo_abf;
+			CHECKED_COPY_FROM_USER(&demo_abf);
 
-		vfe_demosaic_abf_update(&demo_abf);
-	}
+			vfe_demosaic_abf_update(&demo_abf);
+		}
 		break;
 
-	case VFE_CMD_ID_LA_UPDATE: {
-		struct vfe_cmd_la_config la;
-		CHECKED_COPY_FROM_USER(&la);
+	case VFE_CMD_ID_LA_UPDATE:{
+			struct vfe_cmd_la_config la;
+			CHECKED_COPY_FROM_USER(&la);
 
-		vfe_la_update(&la);
-	}
+			vfe_la_update(&la);
+		}
 		break;
 
-	case VFE_CMD_ID_RGB_GAMMA_UPDATE: {
-		struct vfe_cmd_rgb_gamma_config rgb;
-		CHECKED_COPY_FROM_USER(&rgb);
+	case VFE_CMD_ID_RGB_GAMMA_UPDATE:{
+			struct vfe_cmd_rgb_gamma_config rgb;
+			CHECKED_COPY_FROM_USER(&rgb);
 
-		rc = vfe_rgb_gamma_update(&rgb);
-	}
+			rc = vfe_rgb_gamma_update(&rgb);
+		}
 		break;
 
-	case VFE_CMD_ID_ASF_UPDATE: {
-		struct vfe_cmd_asf_update asf;
-		CHECKED_COPY_FROM_USER(&asf);
+	case VFE_CMD_ID_ASF_UPDATE:{
+			struct vfe_cmd_asf_update asf;
+			CHECKED_COPY_FROM_USER(&asf);
 
-		vfe_asf_update(&asf);
-	}
+			vfe_asf_update(&asf);
+		}
 		break;
 
-	case VFE_CMD_ID_FRAME_SKIP_UPDATE: {
-		struct vfe_cmd_frame_skip_update fskip;
-		CHECKED_COPY_FROM_USER(&fskip);
+	case VFE_CMD_ID_FRAME_SKIP_UPDATE:{
+			struct vfe_cmd_frame_skip_update fskip;
+			CHECKED_COPY_FROM_USER(&fskip);
 
-		vfe_frame_skip_update(&fskip);
-	}
+			vfe_frame_skip_update(&fskip);
+		}
 		break;
 
-	case VFE_CMD_ID_CAMIF_FRAME_UPDATE: {
-		struct vfe_cmds_camif_frame fup;
-		CHECKED_COPY_FROM_USER(&fup);
+	case VFE_CMD_ID_CAMIF_FRAME_UPDATE:{
+			struct vfe_cmds_camif_frame fup;
+			CHECKED_COPY_FROM_USER(&fup);
 
-		vfe_camif_frame_update(&fup);
-	}
+			vfe_camif_frame_update(&fup);
+		}
 		break;
 
-	/* stats update commands */
-	case VFE_CMD_ID_STATS_AUTOFOCUS_UPDATE: {
-		struct vfe_cmd_stats_af_update afup;
-		CHECKED_COPY_FROM_USER(&afup);
+		/* stats update commands */
+	case VFE_CMD_ID_STATS_AUTOFOCUS_UPDATE:{
+			struct vfe_cmd_stats_af_update afup;
+			CHECKED_COPY_FROM_USER(&afup);
 
-		vfe_stats_update_af(&afup);
-	}
+			vfe_stats_update_af(&afup);
+		}
 		break;
 
-	case VFE_CMD_ID_STATS_WB_EXP_UPDATE: {
-		struct vfe_cmd_stats_wb_exp_update wbexp;
-		CHECKED_COPY_FROM_USER(&wbexp);
+	case VFE_CMD_ID_STATS_WB_EXP_UPDATE:{
+			struct vfe_cmd_stats_wb_exp_update wbexp;
+			CHECKED_COPY_FROM_USER(&wbexp);
 
-		vfe_stats_update_wb_exp(&wbexp);
-	}
+			vfe_stats_update_wb_exp(&wbexp);
+		}
 		break;
 
-	/* control of start, stop, update, etc... */
+		/* control of start, stop, update, etc... */
 	case VFE_CMD_ID_STOP:
 		vfe_stop();
 		break;
@@ -423,33 +422,33 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 	case VFE_CMD_ID_GET_HW_VERSION:
 		break;
 
-	/* stats */
-	case VFE_CMD_ID_STATS_SETTING: {
-		struct vfe_cmd_stats_setting stats;
-		CHECKED_COPY_FROM_USER(&stats);
+		/* stats */
+	case VFE_CMD_ID_STATS_SETTING:{
+			struct vfe_cmd_stats_setting stats;
+			CHECKED_COPY_FROM_USER(&stats);
 
-		vfe_stats_setting(&stats);
-	}
+			vfe_stats_setting(&stats);
+		}
 		break;
 
-	case VFE_CMD_ID_STATS_AUTOFOCUS_START: {
-		struct vfe_cmd_stats_af_start af;
-		CHECKED_COPY_FROM_USER(&af);
+	case VFE_CMD_ID_STATS_AUTOFOCUS_START:{
+			struct vfe_cmd_stats_af_start af;
+			CHECKED_COPY_FROM_USER(&af);
 
-		vfe_stats_start_af(&af);
-	}
+			vfe_stats_start_af(&af);
+		}
 		break;
 
 	case VFE_CMD_ID_STATS_AUTOFOCUS_STOP:
 		vfe_stats_af_stop();
 		break;
 
-	case VFE_CMD_ID_STATS_WB_EXP_START: {
-		struct vfe_cmd_stats_wb_exp_start awexp;
-		CHECKED_COPY_FROM_USER(&awexp);
+	case VFE_CMD_ID_STATS_WB_EXP_START:{
+			struct vfe_cmd_stats_wb_exp_start awexp;
+			CHECKED_COPY_FROM_USER(&awexp);
 
-		vfe_stats_start_wb_exp(&awexp);
-	}
+			vfe_stats_start_wb_exp(&awexp);
+		}
 		break;
 
 	case VFE_CMD_ID_STATS_WB_EXP_STOP:
@@ -463,7 +462,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 		vfe_update();
 		break;
 
-	/* test gen */
+		/* test gen */
 	case VFE_CMD_ID_TEST_GEN_START:
 		break;
 
@@ -487,7 +486,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	default:
 		break;
-	} /* switch */
+	}			/* switch */
 
 	return rc;
 }
@@ -510,8 +509,7 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 	    cmd->cmd_type != CMD_STATS_AF_BUF_RELEASE) {
 
 		if (copy_from_user(&vfecmd,
-				(void __user *)(cmd->value),
-				sizeof(vfecmd)))
+				   (void __user *)(cmd->value), sizeof(vfecmd)))
 			return -EFAULT;
 	}
 
@@ -523,192 +521,193 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 		break;
 
 	case CMD_STATS_ENABLE:
-	case CMD_STATS_AXI_CFG: {
-		struct axidata *axid;
+	case CMD_STATS_AXI_CFG:{
+			struct axidata *axid;
 
-		axid = data;
-		if (!axid)
-			return -EFAULT;
+			axid = data;
+			if (!axid)
+				return -EFAULT;
 
-		scfg =
-			kmalloc(sizeof(struct vfe_cmd_stats_setting),
-				GFP_ATOMIC);
-		if (!scfg)
-			return -ENOMEM;
+			scfg =
+			    kmalloc(sizeof(struct vfe_cmd_stats_setting),
+				    GFP_ATOMIC);
+			if (!scfg)
+				return -ENOMEM;
 
-		if (vfecmd.length != sizeof(*scfg)) {
-			pr_err("msm_camera: %s: cmd %d: user-space data size %d"
-					" != kernel data size %d\n",
-					__func__, cmd->cmd_type,
-					vfecmd.length,
-					sizeof(typeof(*scfg)));
-			return -EIO;
-		}
-
-		if (copy_from_user(scfg,
-					(void __user *)(vfecmd.value),
-					vfecmd.length)) {
-
-			kfree(scfg);
-			return -EFAULT;
-		}
-
-		regptr = axid->region;
-		if (axid->bufnum1 > 0) {
-			for (i = 0; i < axid->bufnum1; i++) {
-				scfg->awbBuffer[i] =
-					(uint32_t)(regptr->paddr);
-				regptr++;
+			if (vfecmd.length != sizeof(*scfg)) {
+				pr_err
+				    ("msm_camera: %s: cmd %d: user-space "\
+				     "data size %d != kernel data size %d\n",
+				     __func__,
+				     cmd->cmd_type, vfecmd.length,
+				     sizeof(typeof(*scfg)));
+				return -EIO;
 			}
-		}
 
-		if (axid->bufnum2 > 0) {
-			for (i = 0; i < axid->bufnum2; i++) {
-				scfg->afBuffer[i] =
-					(uint32_t)(regptr->paddr);
-				regptr++;
+			if (copy_from_user(scfg,
+					   (void __user *)(vfecmd.value),
+					   vfecmd.length)) {
+
+				kfree(scfg);
+				return -EFAULT;
 			}
+
+			regptr = axid->region;
+			if (axid->bufnum1 > 0) {
+				for (i = 0; i < axid->bufnum1; i++) {
+					scfg->awbBuffer[i] =
+					    (uint32_t) (regptr->paddr);
+					regptr++;
+				}
+			}
+
+			if (axid->bufnum2 > 0) {
+				for (i = 0; i < axid->bufnum2; i++) {
+					scfg->afBuffer[i] =
+					    (uint32_t) (regptr->paddr);
+					regptr++;
+				}
+			}
+
+			vfe_stats_setting(scfg);
 		}
-
-		vfe_stats_setting(scfg);
-	}
 		break;
 
-	case CMD_STATS_AF_AXI_CFG: {
-	}
-		break;
-
-	case CMD_FRAME_BUF_RELEASE: {
-		/* preview buffer release */
-		struct msm_frame *b;
-		unsigned long p;
-		struct vfe_cmd_output_ack fack;
-
-		if (!data)
-			return -EFAULT;
-
-		b = (struct msm_frame *)(cmd->value);
-		p = *(unsigned long *)data;
-
-		b->path = MSM_FRAME_ENC;
-
-		fack.ybufaddr[0] =
-			(uint32_t)(p + b->y_off);
-
-		fack.chromabufaddr[0] =
-			(uint32_t)(p + b->cbcr_off);
-
-		if (b->path == MSM_FRAME_PREV_1)
-			vfe_output1_ack(&fack);
-
-		if (b->path == MSM_FRAME_ENC ||
-		    b->path == MSM_FRAME_PREV_2)
-			vfe_output2_ack(&fack);
-	}
-		break;
-
-	case CMD_SNAP_BUF_RELEASE: {
-	}
-		break;
-
-	case CMD_STATS_BUF_RELEASE: {
-		struct vfe_cmd_stats_wb_exp_ack sack;
-
-		if (!data)
-			return -EFAULT;
-
-		sack.nextWbExpOutputBufferAddr = *(uint32_t *)data;
-		vfe_stats_wb_exp_ack(&sack);
-	}
-		break;
-
-	case CMD_STATS_AF_BUF_RELEASE: {
-		struct vfe_cmd_stats_af_ack ack;
-		if (!data)
-			return -EFAULT;
-		ack.nextAFOutputBufferAddr = *(uint32_t *)data;
-		vfe_stats_af_ack(&ack);
-	}
-		break;
-	case CMD_AXI_CFG_OUT1: {
-		struct axidata *axid;
-
-		axid = data;
-		if (!axid)
-			return -EFAULT;
-
-		axio =
-			kmalloc(sizeof(struct vfe_cmd_axi_output_config),
-				GFP_ATOMIC);
-		if (!axio)
-			return -ENOMEM;
-
-		if (copy_from_user(axio, (void __user *)(vfecmd.value),
-			sizeof(struct vfe_cmd_axi_output_config))) {
-			kfree(axio);
-			return -EFAULT;
+	case CMD_STATS_AF_AXI_CFG:{
 		}
+		break;
 
-		vfe_config_axi(OUTPUT_1, axid, axio);
-		vfe_axi_output_config(axio);
-	}
+	case CMD_FRAME_BUF_RELEASE:{
+			/* preview buffer release */
+			struct msm_frame *b;
+			unsigned long p;
+			struct vfe_cmd_output_ack fack;
+
+			if (!data)
+				return -EFAULT;
+
+			b = (struct msm_frame *)(cmd->value);
+			p = *(unsigned long *)data;
+
+			b->path = MSM_FRAME_ENC;
+
+			fack.ybufaddr[0] = (uint32_t) (p + b->y_off);
+
+			fack.chromabufaddr[0] = (uint32_t) (p + b->cbcr_off);
+
+			if (b->path == MSM_FRAME_PREV_1)
+				vfe_output1_ack(&fack);
+
+			if (b->path == MSM_FRAME_ENC ||
+			    b->path == MSM_FRAME_PREV_2)
+				vfe_output2_ack(&fack);
+		}
+		break;
+
+	case CMD_SNAP_BUF_RELEASE:{
+		}
+		break;
+
+	case CMD_STATS_BUF_RELEASE:{
+			struct vfe_cmd_stats_wb_exp_ack sack;
+
+			if (!data)
+				return -EFAULT;
+
+			sack.nextWbExpOutputBufferAddr = *(uint32_t *) data;
+			vfe_stats_wb_exp_ack(&sack);
+		}
+		break;
+
+	case CMD_STATS_AF_BUF_RELEASE:{
+			struct vfe_cmd_stats_af_ack ack;
+			if (!data)
+				return -EFAULT;
+			ack.nextAFOutputBufferAddr = *(uint32_t *) data;
+			vfe_stats_af_ack(&ack);
+		}
+		break;
+	case CMD_AXI_CFG_OUT1:{
+			struct axidata *axid;
+
+			axid = data;
+			if (!axid)
+				return -EFAULT;
+
+			axio =
+			    kmalloc(sizeof(struct vfe_cmd_axi_output_config),
+				    GFP_ATOMIC);
+			if (!axio)
+				return -ENOMEM;
+
+			if (copy_from_user(axio, (void __user *)(vfecmd.value),
+					   sizeof(struct
+						  vfe_cmd_axi_output_config))) {
+				kfree(axio);
+				return -EFAULT;
+			}
+
+			vfe_config_axi(OUTPUT_1, axid, axio);
+			vfe_axi_output_config(axio);
+		}
 		break;
 
 	case CMD_AXI_CFG_OUT2:
-	case CMD_RAW_PICT_AXI_CFG: {
-		struct axidata *axid;
+	case CMD_RAW_PICT_AXI_CFG:{
+			struct axidata *axid;
 
-		axid = data;
-		if (!axid)
-			return -EFAULT;
+			axid = data;
+			if (!axid)
+				return -EFAULT;
 
-		axio =
-			kmalloc(sizeof(struct vfe_cmd_axi_output_config),
-				GFP_ATOMIC);
-		if (!axio)
-			return -ENOMEM;
+			axio =
+			    kmalloc(sizeof(struct vfe_cmd_axi_output_config),
+				    GFP_ATOMIC);
+			if (!axio)
+				return -ENOMEM;
 
-		if (copy_from_user(axio, (void __user *)(vfecmd.value),
-				sizeof(struct vfe_cmd_axi_output_config))) {
-			kfree(axio);
-			return -EFAULT;
+			if (copy_from_user(axio, (void __user *)(vfecmd.value),
+					   sizeof(struct
+						  vfe_cmd_axi_output_config))) {
+				kfree(axio);
+				return -EFAULT;
+			}
+
+			vfe_config_axi(OUTPUT_2, axid, axio);
+
+			axio->outputDataSize = 0;
+			vfe_axi_output_config(axio);
 		}
-
-		vfe_config_axi(OUTPUT_2, axid, axio);
-
-		axio->outputDataSize = 0;
-		vfe_axi_output_config(axio);
-	}
 		break;
 
-	case CMD_AXI_CFG_SNAP_O1_AND_O2: {
-		struct axidata *axid;
-		axid = data;
-		if (!axid)
-			return -EFAULT;
+	case CMD_AXI_CFG_SNAP_O1_AND_O2:{
+			struct axidata *axid;
+			axid = data;
+			if (!axid)
+				return -EFAULT;
 
-		axio =
-			kmalloc(sizeof(struct vfe_cmd_axi_output_config),
-				GFP_ATOMIC);
-		if (!axio)
-			return -ENOMEM;
+			axio =
+			    kmalloc(sizeof(struct vfe_cmd_axi_output_config),
+				    GFP_ATOMIC);
+			if (!axio)
+				return -ENOMEM;
 
-		if (copy_from_user(axio, (void __user *)(vfecmd.value),
-			sizeof(struct vfe_cmd_axi_output_config))) {
-			kfree(axio);
-			return -EFAULT;
+			if (copy_from_user(axio, (void __user *)(vfecmd.value),
+					   sizeof(struct
+						  vfe_cmd_axi_output_config))) {
+				kfree(axio);
+				return -EFAULT;
+			}
+
+			vfe_config_axi(OUTPUT_1_AND_2, axid, axio);
+			vfe_axi_output_config(axio);
+			cmd_data = axio;
 		}
-
-		vfe_config_axi(OUTPUT_1_AND_2,
-			axid, axio);
-		vfe_axi_output_config(axio);
-		cmd_data = axio;
-	}
 		break;
 
 	default:
 		break;
-	} /* switch */
+	}			/* switch */
 
 	kfree(scfg);
 
@@ -725,8 +724,7 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 	return rc;
 }
 
-static int vfe_init(struct msm_vfe_callback *presp,
-	struct platform_device *dev)
+static int vfe_init(struct msm_vfe_callback *presp, struct platform_device *dev)
 {
 	int rc = 0;
 
@@ -741,9 +739,9 @@ static int vfe_init(struct msm_vfe_callback *presp,
 void msm_camvfe_fn_init(struct msm_camvfe_fn *fptr, void *data)
 {
 	mutex_init(&vfe_lock);
-	fptr->vfe_init    = vfe_init;
-	fptr->vfe_enable  = vfe_enable;
-	fptr->vfe_config  = vfe_config;
+	fptr->vfe_init = vfe_init;
+	fptr->vfe_enable = vfe_enable;
+	fptr->vfe_config = vfe_config;
 	fptr->vfe_disable = vfe_disable;
 	fptr->vfe_release = vfe_release;
 	vfe_syncdata = data;
