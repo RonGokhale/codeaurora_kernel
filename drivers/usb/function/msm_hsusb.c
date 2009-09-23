@@ -1468,8 +1468,10 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 	writel(n, USB_USBSTS);
 
 	/* somehow we got an IRQ while in the reset sequence: ignore it */
-	if (ui->running == 0)
+	if (ui->running == 0) {
+		pr_err("%s: ui->running is zero\n", __func__);
 		return IRQ_HANDLED;
+	}
 
 	if (n & STS_PCI) {
 		if (!(readl(USB_PORTSC) & PORTSC_PORT_RESET)) {
@@ -1538,11 +1540,12 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 		}
 	}
 
-	if (readl(USB_OTGSC) & OTGSC_BSVIS) {
-		writel((OTGSC_BSVIS | readl(USB_OTGSC)), USB_OTGSC);
+	n = readl(USB_OTGSC);
+	writel(n, USB_OTGSC);
 
+	if (n & OTGSC_BSVIS) {
 		/*Verify B Session Valid Bit to verify vbus status*/
-		if (B_SESSION_VALID & readl(USB_OTGSC))	{
+		if (B_SESSION_VALID & n)	{
 			pr_info("usb cable connected\n");
 			ui->usb_state = USB_STATE_POWERED;
 			ui->flags = USB_FLAG_VBUS_ONLINE;
@@ -2291,6 +2294,9 @@ static void usb_do_work(struct work_struct *w)
 			}
 			if ((flags & USB_FLAG_START) ||
 					(flags & USB_FLAG_RESET)) {
+				disable_irq(ui->irq);
+				if (ui->vbus_sn_notif)
+					msm_pm_app_enable_usb_ldo(1);
 				usb_clk_enable(ui);
 				usb_vreg_enable(ui);
 				usb_vbus_online(ui);
@@ -2323,26 +2329,12 @@ static void usb_do_work(struct work_struct *w)
 					if (ui->vbus_sn_notif)
 						msm_pm_app_enable_usb_ldo(0);
 				}
-			}
-			break;
-		case USB_STATE_ONLINE:
-			if (flags & USB_FLAG_VBUS_ONLINE) {
-				pr_info("hsusb: OFFLINE -> ONLINE\n");
-				disable_irq(ui->irq);
-				ui->state = USB_STATE_ONLINE;
-				if (ui->in_lpm)
-					usb_lpm_exit(ui);
-				usb_vbus_online(ui);
-				usb_enable_pullup(ui);
 				enable_irq(ui->irq);
-				usb_chg_set_type(ui);
-				if (ui->chg_type == CHG_WALL) {
-					usb_disable_pullup(ui);
-					msleep(500);
-					usb_lpm_enter(ui);
-				}
 				break;
 			}
+			goto reset;
+
+		case USB_STATE_ONLINE:
 			/* If at any point when we were online, we received
 			 * the signal to go offline, we must honor it
 			 */
@@ -2357,11 +2349,12 @@ static void usb_do_work(struct work_struct *w)
 					usb_lpm_exit(ui);
 				usb_vbus_offline(ui);
 				usb_lpm_enter(ui);
+				if ((ui->vbus_sn_notif) &&
+				(ui->usb_state == USB_STATE_NOTATTACHED))
+					msm_pm_app_enable_usb_ldo(0);
 				ui->state = USB_STATE_OFFLINE;
 				enable_irq(ui->irq);
 				pr_info("hsusb: ONLINE -> OFFLINE\n");
-				if (ui->vbus_sn_notif)
-					msm_pm_app_enable_usb_ldo(0);
 				break;
 			}
 			if (flags & USB_FLAG_SUSPEND) {
@@ -2385,14 +2378,7 @@ static void usb_do_work(struct work_struct *w)
 				}
 				break;
 			}
-
-			if (flags & USB_FLAG_RESET) {
-				ui->flags |= USB_FLAG_RESET;
-				ui->state = USB_STATE_IDLE;
-				pr_info("hsusb: ONLINE -> IDLE\n");
-				break;
-			}
-			break;
+			goto reset;
 
 		case USB_STATE_OFFLINE:
 			/* If we were signaled to go online and vbus is still
@@ -2404,6 +2390,13 @@ static void usb_do_work(struct work_struct *w)
 				if (ui->in_lpm)
 					usb_lpm_exit(ui);
 				usb_vbus_online(ui);
+				if (!(B_SESSION_VALID & readl(USB_OTGSC))) {
+					writel(((readl(USB_OTGSC) &
+						~OTGSC_INTR_STS_MASK) |
+						OTGSC_BSVIS), USB_OTGSC);
+					enable_irq(ui->irq);
+					goto reset;
+				}
 				usb_enable_pullup(ui);
 				enable_irq(ui->irq);
 				usb_chg_set_type(ui);
@@ -2415,21 +2408,18 @@ static void usb_do_work(struct work_struct *w)
 				pr_info("hsusb: OFFLINE -> ONLINE\n");
 				break;
 			}
-			if (flags & USB_FLAG_RESET) {
-				ui->flags |= USB_FLAG_RESET;
-				ui->state = USB_STATE_IDLE;
-				pr_info("hsusb: OFFLINE -> IDLE\n");
-				break;
-			}
 			if (flags & USB_FLAG_SUSPEND) {
 				usb_lpm_enter(ui);
 				wake_unlock(&ui->wlock);
 				break;
 			}
-			break;
-
 		default:
-			pr_err("UNDEFINED State\n");
+reset:
+			/* For RESET or any unknown flag in a particular state
+			 * go to IDLE state and reset HW to bring to known state
+			 */
+			ui->flags = USB_FLAG_RESET;
+			ui->state = USB_STATE_IDLE;
 		}
 	}
 }
@@ -2494,8 +2484,6 @@ static void usb_lpm_exit(struct usb_info *ui)
 
 	writel(readl(USB_USBCMD) & ~ASYNC_INTR_CTRL, USB_USBCMD);
 	writel(readl(USB_USBCMD) & ~ULPI_STP_CTRL, USB_USBCMD);
-	/* enable OTGSC interrupts */
-	writel(readl(USB_OTGSC) | OTGSC_BSVIE, USB_OTGSC);
 
 	if (readl(USB_PORTSC) & PORTSC_PHCD) {
 		disable_irq(ui->irq);
@@ -2546,9 +2534,22 @@ static int usb_lpm_enter(struct usb_info *ui)
 
 	if (usb_suspend_phy(ui)) {
 		ui->in_lpm = 0;
+		ui->flags = USB_FLAG_RESET;
 		enable_irq(ui->irq);
 		pr_err("%s: phy suspend failed, lpm procedure aborted\n",
 				__func__);
+		return -1;
+	}
+
+	if ((B_SESSION_VALID & readl(USB_OTGSC)) &&
+				(ui->usb_state == USB_STATE_NOTATTACHED)) {
+		ui->in_lpm = 0;
+		writel(((readl(USB_OTGSC) & ~OTGSC_INTR_STS_MASK) |
+						OTGSC_BSVIS), USB_OTGSC);
+		ui->flags = USB_FLAG_VBUS_ONLINE;
+		ui->usb_state = USB_STATE_POWERED;
+		usb_wakeup_phy(ui);
+		enable_irq(ui->irq);
 		return -1;
 	}
 
