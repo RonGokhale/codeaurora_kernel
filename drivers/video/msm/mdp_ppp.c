@@ -33,6 +33,7 @@
 #include <asm/system.h>
 #include <asm/mach-types.h>
 #include <linux/semaphore.h>
+#include <linux/msm_kgsl.h>
 
 #include "mdp.h"
 #include "msm_fb.h"
@@ -1197,6 +1198,18 @@ static int mdp_ppp_verify_req(struct mdp_blit_req *req)
 	return 0;
 }
 
+/**
+ * get_gem_img() - retrieve drm obj's start address and size
+ * @img:	contains drm file descriptor and gem handle
+ * @start:	repository of starting address of drm obj allocated memory
+ * @len:	repository of size of drm obj alloacted memory
+ *
+ **/
+int get_gem_img(struct mdp_img *img, unsigned long *start, unsigned long *len)
+{
+	return kgsl_gem_obj_addr(img->memory_id, (int)img->priv, start, len);
+}
+
 int get_img(struct mdp_img *img, struct fb_info *info, unsigned long *start,
 	    unsigned long *len, struct file **pp_file)
 {
@@ -1237,13 +1250,25 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req,
 		req->dst.format =  mfd->fb_imgType;
 	if (req->src.format == MDP_FB_FORMAT)
 		req->src.format = mfd->fb_imgType;
-	get_img(&req->src, info, &src_start, &src_len, &p_src_file);
+
+	if (req->flags & MDP_BLIT_SRC_GEM) {
+		if (get_gem_img(&req->src, &src_start, &src_len) < 0)
+			return -1;
+	} else {
+		get_img(&req->src, info, &src_start, &src_len, &p_src_file);
+	}
 	if (src_len == 0) {
 		printk(KERN_ERR "mdp_ppp: could not retrieve image from "
 		       "memory\n");
 		return -1;
 	}
-	get_img(&req->dst, info, &dst_start, &dst_len, &p_dst_file);
+
+	if (req->flags & MDP_BLIT_DST_GEM) {
+		if (get_gem_img(&req->dst, &dst_start, &dst_len) < 0)
+			return -1;
+	} else {
+		get_img(&req->dst, info, &dst_start, &dst_len, &p_dst_file);
+	}
 	if (dst_len == 0) {
 		printk(KERN_ERR "mdp_ppp: could not retrieve image from "
 		       "memory\n");

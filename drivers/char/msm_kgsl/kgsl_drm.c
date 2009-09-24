@@ -207,6 +207,50 @@ kgsl_gem_create_mmap_offset(struct drm_gem_object *obj)
 }
 
 int
+kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
+			unsigned long *len)
+{
+	struct file *filp;
+	struct drm_device *dev;
+	struct drm_file *file_priv;
+	struct drm_gem_object *obj;
+	struct drm_kgsl_gem_object *priv;
+
+	filp = fget(drm_fd);
+	if (unlikely(filp == NULL)) {
+		printk(KERN_ERR "%s:%u\n", __func__, __LINE__);
+		return -EINVAL;
+	}
+	file_priv = filp->private_data;
+	if (unlikely(file_priv == NULL)) {
+		printk(KERN_ERR "%s:%u\n", __func__, __LINE__);
+		return -EINVAL;
+	}
+	dev = file_priv->minor->dev;
+	if (unlikely(dev == NULL)) {
+		printk(KERN_ERR "%s:%u\n", __func__, __LINE__);
+		return -EINVAL;
+	}
+
+	obj = drm_gem_object_lookup(dev, file_priv, handle);
+	if (unlikely(obj == NULL)) {
+		printk(KERN_ERR "%s:%u\n", __func__, __LINE__);
+		return -EINVAL;
+	}
+
+	mutex_lock(&dev->struct_mutex);
+	priv = obj->driver_private;
+
+	*start = priv->pmem_phys;
+	/* priv->mmap_offset is used for virt addr */
+	*len = obj->size;
+	drm_gem_object_unreference(obj);
+	mutex_unlock(&dev->struct_mutex);
+
+	return 0;
+}
+
+int
 kgsl_gem_create_ioctl(struct drm_device *dev, void *data,
 		      struct drm_file *file_priv)
 {

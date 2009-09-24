@@ -233,4 +233,18 @@ struct kgsl_sharedmem_free {
 #define IOCTL_KGSL_SHAREDMEM_FREE \
 	_IOW(KGSL_IOC_TYPE, 0x21, struct kgsl_sharedmem_free)
 
+
+#ifdef CONFIG_MSM_KGSL_DRM
+int kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
+			unsigned long *len);
+#else
+int kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
+			unsigned long *len)
+{
+	printk(KERN_ERR "%s: MSM_KGSL_DRM not configured \n", __func__);
+	return -1;
+}
+
+#endif
+
 #endif /* _MSM_KGSL_H */

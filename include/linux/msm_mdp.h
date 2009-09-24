@@ -60,8 +60,11 @@ enum {
 #define MDP_ROT_270 (MDP_ROT_90|MDP_FLIP_UD|MDP_FLIP_LR)
 #define MDP_DITHER 0x8
 
-#define MDP_DEINTERLACE 0x80000000
-#define MDP_SHARPENING  0x40000000
+#define MDP_DEINTERLACE 	0x80000000
+#define MDP_SHARPENING  	0x40000000
+
+#define MDP_BLIT_SRC_GEM	0x08000000 /* set for GEM, clear for PMEM */
+#define MDP_BLIT_DST_GEM	0x04000000 /* set for GEM, clear for PMEM */
 
 #define MDP_TRANSP_NOP 0xffffffff
 #define MDP_ALPHA_NOP 0xff
@@ -79,6 +82,7 @@ struct mdp_img {
 	uint32_t format;
 	uint32_t offset;
 	int memory_id;		/* the file descriptor */
+	uint32_t priv;
 };
 
 struct mdp_blit_req {
