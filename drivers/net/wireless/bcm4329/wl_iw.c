@@ -58,6 +58,7 @@ typedef const struct si_pub  si_t;
 
 
 #include <linux/rtnetlink.h>
+#include <linux/mutex.h>
 
 #define WL_IW_USE_ISCAN  1
 #define ENABLE_ACTIVE_PASSIVE_SCAN_SUPPRESS  1
@@ -69,6 +70,7 @@ typedef const struct si_pub  si_t;
 	} while (0)
 
 static int		g_onoff = G_WLAN_SET_ON;
+static struct mutex	wl_start_lock;
 
 extern bool wl_iw_conn_status_str(uint32 event_type, uint32 status,
 	uint32 reason, char* stringBuf, uint buflen);
@@ -797,6 +799,37 @@ _wl_control_sysioc_thread_wl_off(void *data)
 	KILL_PROC(wl_ctl->sysioc_pid, SIGTERM);
 }
 
+int
+wl_control_wl_start(struct net_device *dev)
+{
+	int ret = 0;
+
+	WL_TRACE(("Enter %s \n", __FUNCTION__));
+
+	mutex_lock(&wl_start_lock);
+	if (g_onoff == G_WLAN_SET_OFF) {
+		dhd_customer_gpio_wlan_ctrl(WLAN_RESET_ON);
+
+#if defined(BCMLXSDMMC)
+		sdioh_start(NULL, 0);
+#endif
+
+		dhd_dev_reset(dev, 0);
+
+#if defined(BCMLXSDMMC)
+		sdioh_start(NULL, 1);
+#endif
+
+		dhd_dev_init_ioctl(dev);
+
+		g_onoff = G_WLAN_SET_ON;
+	}
+	WL_TRACE(("Exited %s \n", __FUNCTION__));
+
+	mutex_unlock(&wl_start_lock);
+	return ret;
+}
+
 static void
 wl_iw_stop_timerfunc(ulong data)
 {
@@ -850,23 +883,7 @@ wl_iw_control_wl_on(
 
 	WL_TRACE(("Enter %s \n", __FUNCTION__));
 
-	if (g_onoff == G_WLAN_SET_OFF) {
-		dhd_customer_gpio_wlan_ctrl(WLAN_RESET_ON);
-
-#if defined(BCMLXSDMMC)
-		 sdioh_start(NULL, 0);
-#endif
-
-		dhd_dev_reset(dev, 0);
-
-#if defined(BCMLXSDMMC)
-		 sdioh_start(NULL, 1);
-#endif
-
-		 dhd_dev_init_ioctl(dev);
-
-		g_onoff = G_WLAN_SET_ON;
-	}
+	ret = wl_control_wl_start(dev);
 
 	wl_iw_send_priv_event(dev, "START");
 
@@ -4621,6 +4638,7 @@ int wl_iw_attach(struct net_device *dev, void * dhdp)
 	if (iscan->sysioc_pid < 0)
 		return -ENOMEM;
 #endif 
+	mutex_init(&wl_start_lock);
 
 	iw = *(wl_iw_t **)netdev_priv(dev);
 	iw->pub = (dhd_pub_t *)dhdp;
@@ -4634,12 +4652,9 @@ int wl_iw_attach(struct net_device *dev, void * dhdp)
 	memset(g_scan, 0, G_SCAN_RESULTS);
 	g_scan_specified_ssid = 0;
 
-	
 	wl_iw_init_ss_cache_ctrl();
 	
 	wl_iw_bt_init(dev);
-
-
 
 	return 0;
 }

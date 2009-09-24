@@ -118,6 +118,7 @@ extern void wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data);
 extern int wl_iw_get_wireless_stats(struct net_device *dev, struct iw_statistics *wstats);
 int wl_iw_attach(struct net_device *dev, void * dhdp);
 void wl_iw_detach(void);
+int wl_control_wl_start(struct net_device *dev);
 
 extern int net_os_wake_lock(struct net_device *dev);
 extern int net_os_wake_unlock(struct net_device *dev);
