@@ -660,7 +660,6 @@ static struct platform_driver msm_i2c_driver = {
 static int __init
 msm_i2c_init_driver(void)
 {
-	printk("zpfeffer %s %i\n", __func__, __LINE__);
 	return platform_driver_register(&msm_i2c_driver);
 }
 subsys_initcall(msm_i2c_init_driver);

@@ -594,9 +594,6 @@ static void ehci_msm_enable(int enable)
 	int id = msm_hc_dev[0]->id;
 
 	if (enable) {
-		printk("zpfeffer %s %i\n", __func__,
-		       __LINE__);
-
 		msm_xusb_enable_clks(id);
 		msm_hsusb_vbus_powerup();
 		prev_state = hcd->state;
@@ -852,11 +849,10 @@ static int __init ehci_msm_probe(struct platform_device *pdev)
 			msm_hc->active = 0;
 		} else {
 			msm_hsusb_vbus_powerup();
-			printk("zpfeffer %s %i\n", __func__, __LINE__);
+			/* Hack */
 			gpio_direction_output( 41, 0 );
 			gpio_direction_output( 42, 0 );
 			gpio_direction_output( 109, 1 );
-			printk("zpfeffer %s %i\n", __func__, __LINE__);
 		}
 	}
 

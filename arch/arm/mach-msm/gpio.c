@@ -620,31 +620,7 @@ postcore_initcall(msm_init_gpio);
 
 int gpio_tlmm_config(unsigned config, unsigned disable)
 {
-	int ret;
-	int gpio_num;
-	/*
-	  #define GPIO_CFG(gpio, func, dir, pull, drvstr)	\
-	  ((((gpio) & 0x3FF) << 4)        |			\
-	  ((func) & 0xf)                  |			\
-	  (((dir) & 0x1) << 14)           |			\
-	  (((pull) & 0x3) << 15)          |			\
-	  (((drvstr) & 0xF) << 17))
-	*/
-	printk("gpio: %i func: %i dir: %i pull: %i drvstr: %i\n",
-	       (gpio_num = (config >> 4) & 0x3FF),
-	       (config) & 0xF,
-	       (config >> 14) & 0x1,
-	       (config >> 15) & 0x3,
-	       (config >> 17) & 17
-		);
-
-
-	if(gpio_num == 41 || gpio_num == 42 || gpio_num == 109)
-		dump_stack();
-
-	ret = msm_proc_comm(PCOM_RPC_GPIO_TLMM_CONFIG_EX, &config, &disable);
-	printk("ret = %i\n", ret);
-	return ret;
+	return msm_proc_comm(PCOM_RPC_GPIO_TLMM_CONFIG_EX, &config, &disable);
 }
 EXPORT_SYMBOL(gpio_tlmm_config);
 

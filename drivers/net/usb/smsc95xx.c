@@ -1261,8 +1261,6 @@ static struct usb_driver smsc95xx_driver = {
 
 static int __init smsc95xx_init(void)
 {
-	printk("zpfeffer %s %i\n", __func__, __LINE__);
-
 	return usb_register(&smsc95xx_driver);
 }
 module_init(smsc95xx_init);

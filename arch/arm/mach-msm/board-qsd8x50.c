@@ -2095,14 +2095,12 @@ static void __init msm_device_i2c_init(void)
 		pr_err("failed to request gpio 42\n");
 	if (gpio_request(109, "109"))
 		pr_err("failed to request gpio 109\n");
-	
 
 	msm_i2c_pdata.rmutex = (uint32_t *)smem_alloc(SMEM_SPINLOCK_I2C, 8);
 	msm_i2c_pdata.pm_lat =
 		msm_pm_data[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN]
 		.latency;
 	msm_device_i2c.dev.platform_data = &msm_i2c_pdata;
-	printk("zpfeffer %s %i \n", __func__, __LINE__);
 }
 
 static unsigned msm_uart_csr_code[] = {
