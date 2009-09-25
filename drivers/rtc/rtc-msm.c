@@ -35,7 +35,7 @@ extern void msm_pm_set_max_sleep_time(int64_t sleep_time_ns);
 
 #define TIMEREMOTE_PROCEEDURE_SET_JULIAN	6
 #define TIMEREMOTE_PROCEEDURE_GET_JULIAN	7
-#if CONFIG_RTC_SECURE_TIME_SUPPORT
+#ifdef CONFIG_RTC_SECURE_TIME_SUPPORT
 #define TIMEREMOTE_PROCEEDURE_GET_SECURE_JULIAN	11
 #endif
 #define TIMEREMOTE_PROG_NUMBER 0x30000048
@@ -53,7 +53,7 @@ struct rpc_time_julian {
 
 static struct msm_rpc_endpoint *ep;
 static struct rtc_device *rtc;
-#if CONFIG_RTC_SECURE_TIME_SUPPORT
+#ifdef CONFIG_RTC_SECURE_TIME_SUPPORT
 static struct rtc_device *rtcsecure;
 #endif
 static unsigned long rtcalarm_time;
@@ -186,7 +186,7 @@ static struct rtc_class_ops msm_rtc_ops = {
 	.set_alarm	= msmrtc_virtual_alarm_set,
 };
 
-#if CONFIG_RTC_SECURE_TIME_SUPPORT
+#ifdef CONFIG_RTC_SECURE_TIME_SUPPORT
 static int
 msmrtc_timeremote_read_time_secure(struct device *dev, struct rtc_time *tm)
 {
@@ -274,7 +274,7 @@ msmrtc_probe(struct platform_device *pdev)
 		       pdev->name, PTR_ERR(rtc));
 		return PTR_ERR(rtc);
 	}
-#if CONFIG_RTC_SECURE_TIME_SUPPORT
+#ifdef CONFIG_RTC_SECURE_TIME_SUPPORT
 	rtcsecure = rtc_device_register("msm_rtc_secure",
 				  &pdev->dev,
 				  &msm_rtc_ops_secure,
