@@ -17,9 +17,11 @@
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/delay.h>
+#include <linux/err.h>
 #include <linux/mutex.h>
 #include <linux/errno.h>
 #include <linux/cpufreq.h>
+#include <linux/regulator/consumer.h>
 
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
@@ -112,6 +114,7 @@ struct clock_state {
 	uint32_t			vdd_switch_time_us;
 	unsigned long			power_collapse_khz;
 	unsigned long			wait_for_irq_khz;
+	struct regulator                *regulator;
 };
 
 static struct clock_state drv_state = { 0 };
@@ -244,10 +247,19 @@ static void select_clock(unsigned src, unsigned config)
 
 static int acpuclk_set_vdd_level(int vdd)
 {
-	/* Assume that the PMIC supports scaling the processor
-	 * to its maximum frequency at its default voltage.
-	 */
-	return 0;
+	if (!drv_state.regulator || IS_ERR(drv_state.regulator)) {
+		drv_state.regulator = regulator_get(NULL, "acpu_vcore");
+		if (IS_ERR(drv_state.regulator)) {
+			pr_info("acpuclk_set_vdd_level %d no regulator\n", vdd);
+			/* Assume that the PMIC supports scaling the processor
+			 * to its maximum frequency at its default voltage.
+			 */
+			return 0;
+		}
+		pr_info("acpuclk_set_vdd_level got regulator\n");
+	}
+	vdd *= 1000; /* mV -> uV */
+	return regulator_set_voltage(drv_state.regulator, vdd, vdd);
 }
 
 int acpuclk_set_rate(unsigned long rate, int for_power_collapse)
