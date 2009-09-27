@@ -29,11 +29,12 @@ static uint16_t g_usModuleVersion;	/*0: rev.4, 1: rev.5 */
 #define S5K3E2FX_FULL_SIZE_WIDTH	2608
 #define S5K3E2FX_FULL_SIZE_HEIGHT	1960
 
-/* PLL Registers */
 /* AEC_FLASHING */
 #define REG_GROUPED_PARAMETER_HOLD    0x0104
 #define GROUPED_PARAMETER_HOLD        0x01
 #define GROUPED_PARAMETER_UPDATE      0x00
+
+/* PLL Registers */
 #define REG_PRE_PLL_CLK_DIV           0x0305
 #define REG_PLL_MULTIPLIER_MSB        0x0306
 #define REG_PLL_MULTIPLIER_LSB        0x0307
@@ -1673,50 +1674,61 @@ static struct s5k3e2fx_ctrl *s5k3e2fx_ctrl;
 static DECLARE_WAIT_QUEUE_HEAD(s5k3e2fx_wait_queue);
 DEFINE_MUTEX(s5k3e2fx_mutex);
 
-static int s5k3e2fx_i2c_rxdata(unsigned short saddr, unsigned char *rxdata,
+#define MAX_I2C_RETRIES 20
+static int i2c_transfer_retry(struct i2c_adapter *adap,
+			struct i2c_msg *msgs,
+			int len)
+{
+	int i2c_retry = 0;
+	int ns; /* number sent */
+
+	while (i2c_retry++ < MAX_I2C_RETRIES) {
+		ns = i2c_transfer(adap, msgs, len);
+		if (ns == len)
+			break;
+		pr_err("%s: try %d/%d: i2c_transfer sent: %d, len %d\n",
+			__func__,
+			i2c_retry, MAX_I2C_RETRIES, ns, len);
+		msleep(10);
+	}
+
+	return ns == len ? 0 : -EIO;
+}
+
+static inline int s5k3e2fx_i2c_rxdata(unsigned short saddr, unsigned char *rxdata,
 			       int length)
 {
 	struct i2c_msg msgs[] = {
 		{
-		 .addr = saddr,
-		 .flags = 0,
-		 .len = 2,
-		 .buf = rxdata,
-		 },
+			.addr = saddr,
+			.flags = 0,
+			.len = 2,
+			.buf = rxdata,
+		},
 		{
-		 .addr = saddr,
-		 .flags = I2C_M_RD,
-		 .len = length,
-		 .buf = rxdata,
-		 },
+			.addr = saddr,
+			.flags = I2C_M_RD,
+			.len = length,
+			.buf = rxdata,
+		},
 	};
 
-	if (i2c_transfer(s5k3e2fx_client->adapter, msgs, 2) < 0) {
-		pr_err("s5k3e2fx_i2c_rxdata failed!\n");
-		return -EIO;
-	}
-
-	return 0;
+	return i2c_transfer_retry(s5k3e2fx_client->adapter, msgs, 2);
 }
 
-static int s5k3e2fx_i2c_txdata(unsigned short saddr,
+static inline int s5k3e2fx_i2c_txdata(unsigned short saddr,
 				   unsigned char *txdata, int length)
 {
 	struct i2c_msg msg[] = {
 		{
-		 .addr = saddr,
-		 .flags = 0,
-		 .len = length,
-		 .buf = txdata,
-		 },
+			.addr = saddr,
+			.flags = 0,
+			.len = length,
+			.buf = txdata,
+		},
 	};
 
-	if (i2c_transfer(s5k3e2fx_client->adapter, msg, 1) < 0) {
-		pr_err("s5k3e2fx_i2c_txdata failed\n");
-		return -EIO;
-	}
-
-	return 0;
+	return i2c_transfer_retry(s5k3e2fx_client->adapter, msg, 1);
 }
 
 static int s5k3e2fx_i2c_write_b(unsigned short saddr, unsigned short waddr,
