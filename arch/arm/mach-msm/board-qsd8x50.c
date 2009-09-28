@@ -1476,6 +1476,9 @@ static struct i2c_board_info msm_i2c_grapefruit_info[] __initdata = {
 	{
 		I2C_BOARD_INFO("qci-i2cpad", 0x19),
 	},
+	{
+		I2C_BOARD_INFO("qci-i2cbat", 0x1A),
+	},
 };
 
 #if 0
