@@ -85,6 +85,13 @@ struct mdp_img {
 	uint32_t priv;
 };
 
+/* The version of the mdp_blit_req structure so that
+ * user applications can selectively decide which functionality
+ * to include
+ */
+
+#define MDP_BLIT_REQ_VERSION 2
+
 struct mdp_blit_req {
 	struct mdp_img src;
 	struct mdp_img dst;
