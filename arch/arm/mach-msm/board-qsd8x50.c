@@ -67,6 +67,7 @@
 #include <linux/delay.h>
 #include <linux/mfd/tps65023.h>
 //#include <linux/bma150.h>
+#include <linux/switch.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -309,15 +310,69 @@ static struct usb_composition usb_func_composition[] = {
 	},
 };
 
-#if 0
-static struct platform_device hs_device = {
+static struct platform_device surf_hs_device = {
 	.name   = "msm-handset",
 	.id     = -1,
 	.dev    = {
 		.platform_data = "8k_handset",
 	},
 };
-#endif
+
+static struct gpio_switch_platform_data grapefruit_speaker_en_pdata = {
+	.name		= "qci_speaker_switch",
+	.gpio		= 107,
+	.name_on	= "speaker enabled",
+	.name_off	= "speaker disabled",
+};
+
+static struct platform_device grapefruit_speaker_enable = {
+	.name           = "qci_speaker_switch",
+	.id		= 0,
+	.dev            = {
+		.platform_data = &grapefruit_speaker_en_pdata,
+	},
+};
+
+static struct gpio_switch_platform_data grapefruit_headset_en_pdata = {
+	.name		= "qci_headset_switch",
+	.gpio		= 108,
+	.name_on	= "headset enabled",
+	.name_off	= "headset disabled",
+};
+
+static struct platform_device grapefruit_headset_enable = {
+	.name           = "qci_headset_switch",
+	.id		= 0,
+	.dev            = {
+		.platform_data = &grapefruit_headset_en_pdata,
+	},
+};
+
+static struct gpio_switch_platform_data grapefruit_headset_detect_pdata = {
+	.name		= "qci_headset_detect",
+	.gpio		= 33,
+	.name_on	= "headset plug-in",
+	.name_off	= "headset pull-out",
+};
+
+static struct platform_device grapefruit_headset_detect = {
+	.name           = "qci_headset_detect",
+	.id		= 0,
+	.dev            = {
+		.platform_data = &grapefruit_headset_detect_pdata,
+	},
+};
+
+static void __init audio_switch_init(void)
+{
+	if (machine_is_qsd8x50_grapefruit()) {
+		platform_device_register(&grapefruit_speaker_enable);
+		platform_device_register(&grapefruit_headset_enable);
+		platform_device_register(&grapefruit_headset_detect);
+	} else {
+		platform_device_register(&surf_hs_device);
+	}
+}
 
 #ifdef CONFIG_USB_FS_HOST
 static int fsusb_gpio_init(void)
@@ -2158,6 +2213,7 @@ static void __init qsd8x50_init(void)
 	bt_power_init();
 #endif
 	audio_gpio_init();
+	audio_switch_init();
 	msm_device_i2c_init();
 #if 0
 	msm_qsd_spi_init();
