@@ -98,6 +98,7 @@
 //#include "msm-keypad-devices.h"
 #include "pm.h"
 #include "smd_private.h"
+#include <linux/msm_kgsl.h>
 
 #define TOUCHPAD_SUSPEND 	34
 #define TOUCHPAD_IRQ 		38
@@ -1286,12 +1287,18 @@ static struct resource kgsl_resources[] = {
 		.flags = IORESOURCE_IRQ,
        },
 };
+static struct kgsl_platform_data kgsl_pdata = {
+	.max_axi_freq = 128000, /*Max for 8K*/
+};
 
 static struct platform_device msm_device_kgsl = {
        .name = "kgsl",
        .id = -1,
        .num_resources = ARRAY_SIZE(kgsl_resources),
        .resource = kgsl_resources,
+	.dev = {
+		.platform_data = &kgsl_pdata,
+	},
 };
 
 #if 0
