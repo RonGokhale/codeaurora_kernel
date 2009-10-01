@@ -234,6 +234,7 @@ struct kgsl_sharedmem_free {
 	_IOW(KGSL_IOC_TYPE, 0x21, struct kgsl_sharedmem_free)
 
 
+#ifdef __KERNEL__
 #ifdef CONFIG_MSM_KGSL_DRM
 int kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
 			unsigned long *len);
@@ -245,6 +246,7 @@ int kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
 	return -1;
 }
 
+#endif
 #endif
 
 #endif /* _MSM_KGSL_H */
