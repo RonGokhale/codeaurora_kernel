@@ -23,6 +23,7 @@ obj-$(CONFIG_CPU_V7) += idle-v7.o
 obj-$(CONFIG_MSM_JTAG_V7) += jtag-v7.o
 obj-$(CONFIG_MSM_DALRPC) += dal.o
 obj-$(CONFIG_MSM_DALRPC_TEST) += dal_remotetest.o
+obj-$(CONFIG_MSM_RPCSERVER_HANDSET) += rpc_server_handset.o
 
 ifdef CONFIG_MSM_N_WAY_SMSM
 	obj-$(CONFIG_PM) += pm2.o
