@@ -271,6 +271,15 @@ config MSM_SERIAL_DEBUGGER
 	  kernel is unresponsive due to being stuck with interrupts
 	  disabled.  Depends on the kernel debugger core in drivers/misc.
 
+config MSM_SERIAL_DEBUGGER_NO_SLEEP
+	depends on MSM_SERIAL_DEBUGGER
+	default n
+	bool "Keep serial debugger active"
+	help
+	  Enables the serial debugger at boot. Passing
+	  msm_serial_debugger.no_sleep on the kernel commandline will
+	  override this config option.
+
 config MSM_SERIAL_DEBUGGER_CONSOLE
 	depends on MSM_SERIAL_DEBUGGER
 	default n

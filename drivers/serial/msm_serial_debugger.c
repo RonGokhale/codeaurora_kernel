@@ -42,7 +42,11 @@ static int debug_signal_irq;
 static struct clk *debug_clk;
 static bool debug_clk_enabled;
 static bool ignore_next_wakeup_irq;
-static bool no_sleep;
+#ifdef CONFIG_MSM_SERIAL_DEBUGGER_NO_SLEEP
+static int no_sleep = true;
+#else
+static int no_sleep;
+#endif
 static DEFINE_TIMER(sleep_timer, sleep_timer_expired, 0, 0);
 static int debug_enable;
 static int debugger_enable;
@@ -54,6 +58,8 @@ static struct {
 	int		signal_irq;
 	int		wakeup_irq;
 } init_data;
+
+module_param(no_sleep, bool, 0644);
 
 static inline void msm_write(unsigned int val, unsigned int off)
 {
@@ -426,7 +432,8 @@ void msm_serial_debug_init(unsigned int base, int irq,
 	clk_enable(debug_clk);
 	debug_port_init();
 
-	debug_printf_nfiq(NULL, "<hit enter twice to activate fiq debugger>\n");
+	debug_printf_nfiq(NULL, "<hit enter %sto activate fiq debugger>\n",
+				no_sleep ? "" : "twice ");
 	ignore_next_wakeup_irq = true;
 
 	msm_fiq_select(irq);
@@ -448,6 +455,8 @@ void msm_serial_debug_init(unsigned int base, int irq,
 			  "debug-wakeup", 0);
 	if (ret)
 		pr_err("serial_debugger: could not install wakeup irq\n");
+	if (no_sleep)
+		wakeup_irq_handler(wakeup_irq, 0);
 
 #if defined(CONFIG_MSM_SERIAL_DEBUGGER_CONSOLE)
 	register_console(&msm_serial_debug_console);
