@@ -247,6 +247,7 @@ void msm_camio_camif_pad_reg_reset(void)
 
 void msm_camio_vfe_blk_reset(void)
 {
+#if 0
 	uint32_t val;
 
 	val = readl(appbase + 0x00000210);
@@ -258,6 +259,7 @@ void msm_camio_vfe_blk_reset(void)
 	val &= ~0x1;
 	writel(val, appbase + 0x00000210);
 	mdelay(10);
+#endif
 }
 
 void msm_camio_camif_pad_reg_reset_2(void)
