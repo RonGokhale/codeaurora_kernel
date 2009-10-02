@@ -29,19 +29,15 @@ static void *vfe_syncdata;
 
 static int vfe_enable(struct camera_enable_cmd *enable)
 {
-	int rc = 0;
-	return rc;
+	return 0;
 }
 
 static int vfe_disable(struct camera_enable_cmd *enable,
 		       struct platform_device *dev)
 {
-	int rc = 0;
-
 	vfe_stop();
-
 	msm_camio_disable(dev);
-	return rc;
+	return 0;
 }
 
 static void vfe_release(struct platform_device *dev)
@@ -485,6 +481,8 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 */
 
 	default:
+		pr_err("%s: invalid cmd id %d\n", __func__, cmd->id);
+		rc = -EINVAL;
 		break;
 	}			/* switch */
 
@@ -495,22 +493,19 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 {
 	struct msm_pmem_region *regptr;
 	struct msm_vfe_command_8k vfecmd;
+	struct vfe_cmd_axi_output_config axio;
+	struct axidata *axid = data;
 
-	uint32_t i;
-
-	void *cmd_data = NULL;
-	long rc = 0;
-
-	struct vfe_cmd_axi_output_config *axio = NULL;
-	struct vfe_cmd_stats_setting *scfg = NULL;
+	int rc = 0;
 
 	if (cmd->cmd_type != CMD_FRAME_BUF_RELEASE &&
 	    cmd->cmd_type != CMD_STATS_BUF_RELEASE &&
 	    cmd->cmd_type != CMD_STATS_AF_BUF_RELEASE) {
-
 		if (copy_from_user(&vfecmd,
-				   (void __user *)(cmd->value), sizeof(vfecmd)))
+				   (void __user *)(cmd->value), sizeof(vfecmd))) {
+			pr_err("%s %d: copy_from_user failed\n", __func__, __LINE__);
 			return -EFAULT;
+		}
 	}
 
 	CDBG("%s: cmdType = %d\n", __func__, cmd->cmd_type);
@@ -521,41 +516,33 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 		break;
 
 	case CMD_STATS_ENABLE:
-	case CMD_STATS_AXI_CFG:{
-			struct axidata *axid;
+	case CMD_STATS_AXI_CFG: {
+			int i;
+			struct vfe_cmd_stats_setting scfg;
 
-			axid = data;
-			if (!axid)
-				return -EFAULT;
+			BUG_ON(!axid);
 
-			scfg =
-			    kmalloc(sizeof(struct vfe_cmd_stats_setting),
-				    GFP_ATOMIC);
-			if (!scfg)
-				return -ENOMEM;
-
-			if (vfecmd.length != sizeof(*scfg)) {
+			if (vfecmd.length != sizeof(scfg)) {
 				pr_err
 				    ("msm_camera: %s: cmd %d: user-space "\
 				     "data size %d != kernel data size %d\n",
 				     __func__,
 				     cmd->cmd_type, vfecmd.length,
-				     sizeof(typeof(*scfg)));
+				     sizeof(scfg));
 				return -EIO;
 			}
 
-			if (copy_from_user(scfg,
+			if (copy_from_user(&scfg,
 					   (void __user *)(vfecmd.value),
-					   vfecmd.length)) {
-
-				kfree(scfg);
+					   sizeof(scfg))) {
+				pr_err("%s %d: copy_from_user failed\n", __func__, __LINE__);
 				return -EFAULT;
 			}
 
 			regptr = axid->region;
 			if (axid->bufnum1 > 0) {
 				for (i = 0; i < axid->bufnum1; i++) {
-					scfg->awbBuffer[i] =
+					scfg.awbBuffer[i] =
 					    (uint32_t) (regptr->paddr);
 					regptr++;
 				}
@@ -563,28 +550,26 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 
 			if (axid->bufnum2 > 0) {
 				for (i = 0; i < axid->bufnum2; i++) {
-					scfg->afBuffer[i] =
+					scfg.afBuffer[i] =
 					    (uint32_t) (regptr->paddr);
 					regptr++;
 				}
 			}
 
-			vfe_stats_setting(scfg);
+			vfe_stats_setting(&scfg);
 		}
 		break;
 
-	case CMD_STATS_AF_AXI_CFG:{
-		}
+	case CMD_STATS_AF_AXI_CFG:
 		break;
 
-	case CMD_FRAME_BUF_RELEASE:{
+	case CMD_FRAME_BUF_RELEASE: {
 			/* preview buffer release */
 			struct msm_frame *b;
 			unsigned long p;
 			struct vfe_cmd_output_ack fack;
 
-			if (!data)
-				return -EFAULT;
+			BUG_ON(!data);
 
 			b = (struct msm_frame *)(cmd->value);
 			p = *(unsigned long *)data;
@@ -604,104 +589,74 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 		}
 		break;
 
-	case CMD_SNAP_BUF_RELEASE:{
-		}
+	case CMD_SNAP_BUF_RELEASE:
 		break;
 
-	case CMD_STATS_BUF_RELEASE:{
+	case CMD_STATS_BUF_RELEASE: {
 			struct vfe_cmd_stats_wb_exp_ack sack;
 
-			if (!data)
-				return -EFAULT;
+			BUG_ON(!data);
 
 			sack.nextWbExpOutputBufferAddr = *(uint32_t *) data;
 			vfe_stats_wb_exp_ack(&sack);
 		}
 		break;
 
-	case CMD_STATS_AF_BUF_RELEASE:{
+	case CMD_STATS_AF_BUF_RELEASE: {
 			struct vfe_cmd_stats_af_ack ack;
-			if (!data)
-				return -EFAULT;
+
+			BUG_ON(!data);
+
 			ack.nextAFOutputBufferAddr = *(uint32_t *) data;
 			vfe_stats_af_ack(&ack);
 		}
 		break;
-	case CMD_AXI_CFG_OUT1:{
-			struct axidata *axid;
 
-			axid = data;
-			if (!axid)
-				return -EFAULT;
+	case CMD_AXI_CFG_OUT1: {
 
-			axio =
-			    kmalloc(sizeof(struct vfe_cmd_axi_output_config),
-				    GFP_ATOMIC);
-			if (!axio)
-				return -ENOMEM;
+			BUG_ON(!axid);
 
-			if (copy_from_user(axio, (void __user *)(vfecmd.value),
-					   sizeof(struct
-						  vfe_cmd_axi_output_config))) {
-				kfree(axio);
+			if (copy_from_user(&axio, (void __user *)(vfecmd.value),
+					   sizeof(axio))) {
+				pr_err("%s %d: copy_from_user failed\n", __func__, __LINE__);
 				return -EFAULT;
 			}
 
-			vfe_config_axi(OUTPUT_1, axid, axio);
-			vfe_axi_output_config(axio);
+			vfe_config_axi(OUTPUT_1, axid, &axio);
+			vfe_axi_output_config(&axio);
 		}
 		break;
 
 	case CMD_AXI_CFG_OUT2:
-	case CMD_RAW_PICT_AXI_CFG:{
-			struct axidata *axid;
+	case CMD_RAW_PICT_AXI_CFG: {
 
-			axid = data;
-			if (!axid)
-				return -EFAULT;
+			BUG_ON(!axid);
 
-			axio =
-			    kmalloc(sizeof(struct vfe_cmd_axi_output_config),
-				    GFP_ATOMIC);
-			if (!axio)
-				return -ENOMEM;
-
-			if (copy_from_user(axio, (void __user *)(vfecmd.value),
-					   sizeof(struct
-						  vfe_cmd_axi_output_config))) {
-				kfree(axio);
+			if (copy_from_user(&axio, (void __user *)(vfecmd.value),
+					   sizeof(axio))) {
+				pr_err("%s %d: copy_from_user failed\n", __func__, __LINE__);
 				return -EFAULT;
 			}
 
-			vfe_config_axi(OUTPUT_2, axid, axio);
+			vfe_config_axi(OUTPUT_2, axid, &axio);
 
-			axio->outputDataSize = 0;
-			vfe_axi_output_config(axio);
+			axio.outputDataSize = 0;
+			vfe_axi_output_config(&axio);
 		}
 		break;
 
 	case CMD_AXI_CFG_SNAP_O1_AND_O2:{
-			struct axidata *axid;
-			axid = data;
-			if (!axid)
-				return -EFAULT;
 
-			axio =
-			    kmalloc(sizeof(struct vfe_cmd_axi_output_config),
-				    GFP_ATOMIC);
-			if (!axio)
-				return -ENOMEM;
+			BUG_ON(!axid);
 
-			if (copy_from_user(axio, (void __user *)(vfecmd.value),
-					   sizeof(struct
-						  vfe_cmd_axi_output_config))) {
-				kfree(axio);
+			if (copy_from_user(&axio, (void __user *)(vfecmd.value),
+					   sizeof(axio))) {
+				pr_err("%s %d: copy_from_user failed\n", __func__, __LINE__);
 				return -EFAULT;
 			}
 
-			vfe_config_axi(OUTPUT_1_AND_2, axid, axio);
-			vfe_axi_output_config(axio);
-			cmd_data = axio;
+			vfe_config_axi(OUTPUT_1_AND_2, axid, &axio);
+			vfe_axi_output_config(&axio);
 		}
 		break;
 
@@ -709,18 +664,6 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 		break;
 	}			/* switch */
 
-	kfree(scfg);
-
-	kfree(axio);
-
-/*
-	if (cmd->length > 256 &&
-			cmd_data &&
-			(cmd->cmd_type == CMD_GENERAL ||
-			 cmd->cmd_type == CMD_STATS_DISABLE)) {
-		kfree(cmd_data);
-	}
-*/
 	return rc;
 }
 
