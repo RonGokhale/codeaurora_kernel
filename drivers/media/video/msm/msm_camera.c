@@ -997,15 +997,20 @@ static int msm_config_vfe(struct msm_sync *sync, void __user *arg)
 	struct msm_vfe_cfg_cmd cfgcmd;
 	struct msm_pmem_region region[8];
 	struct axidata axi_data;
-	void *data = NULL;
-	int rc = -EIO;
 
-	memset(&axi_data, 0, sizeof(axi_data));
+	if (!sync->vfefn.vfe_config) {
+		pr_err("%s: no vfe_config!\n", __func__);
+		return -EIO;
+	}
 
 	if (copy_from_user(&cfgcmd, arg, sizeof(cfgcmd))) {
 		ERR_COPY_FROM_USER();
 		return -EFAULT;
 	}
+
+	memset(&axi_data, 0, sizeof(axi_data));
+
+	CDBG("%s: cmd_type %d\n", __func__, cfgcmd.cmd_type);
 
 	switch (cfgcmd.cmd_type) {
 	case CMD_STATS_ENABLE:
@@ -1022,8 +1027,7 @@ static int msm_config_vfe(struct msm_sync *sync, void __user *arg)
 			return -EINVAL;
 		}
 		axi_data.region = &region[0];
-		data = &axi_data;
-		break;
+		return sync->vfefn.vfe_config(&cfgcmd, &axi_data);
 	case CMD_STATS_AF_ENABLE:
 		axi_data.bufnum1 =
 			msm_pmem_region_lookup(&sync->stats,
@@ -1035,30 +1039,28 @@ static int msm_config_vfe(struct msm_sync *sync, void __user *arg)
 			return -EINVAL;
 		}
 		axi_data.region = &region[0];
-		data = &axi_data;
-		break;
+		return sync->vfefn.vfe_config(&cfgcmd, &axi_data);
 	case CMD_STATS_AEC_AWB_ENABLE:
 		axi_data.bufnum1 =
 			msm_pmem_region_lookup(&sync->stats,
-			MSM_PMEM_AEC_AWB, &region[0],
-			NUM_WB_EXP_STAT_OUTPUT_BUFFERS);
+					MSM_PMEM_AEC_AWB, &region[0],
+					NUM_WB_EXP_STAT_OUTPUT_BUFFERS);
+		if (!axi_data.bufnum1) {
+			pr_err("%s %d: pmem region lookup error\n",
+				__func__, __LINE__);
+			return -EINVAL;
+		}
 		axi_data.region = &region[0];
-		data = &axi_data;
-		break;
+		return sync->vfefn.vfe_config(&cfgcmd, &axi_data);
 	case CMD_GENERAL:
 	case CMD_STATS_DISABLE:
-		break;
+		return sync->vfefn.vfe_config(&cfgcmd, NULL);
 	default:
 		pr_err("%s: unknown command type %d\n",
 			__func__, cfgcmd.cmd_type);
-		return -EINVAL;
 	}
 
-
-	if (sync->vfefn.vfe_config)
-		rc = sync->vfefn.vfe_config(&cfgcmd, data);
-
-	return rc;
+	return -EINVAL;
 }
 
 static int msm_frame_axi_cfg(struct msm_sync *sync,
