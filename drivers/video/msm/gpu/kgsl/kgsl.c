@@ -810,9 +810,50 @@ static int kgsl_platform_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int kgsl_platform_suspend(struct platform_device *pdev,
+				 pm_message_t state)
+{
+	int ret = 0;
+
+	mutex_lock(&kgsl_driver.mutex);
+	if (atomic_read(&kgsl_driver.open_count) > 0) {
+#if 0
+		kgsl_yamato_runpending(&kgsl_driver.yamato_device);
+#endif
+		ret = kgsl_yamato_idle(&kgsl_driver.yamato_device, 0);
+		if (ret) {
+			pr_err("%s: can't idle the gpu\n", __func__);
+			goto done;
+		}
+		disable_irq(kgsl_driver.interrupt_num);
+		clk_disable(kgsl_driver.grp_clk);
+		clk_disable(kgsl_driver.imem_clk);
+		pr_info("kgsl: suspend()\n");
+	}
+
+done:
+	mutex_unlock(&kgsl_driver.mutex);
+	return ret;
+}
+
+static int kgsl_platform_resume(struct platform_device *pdev)
+{
+	mutex_lock(&kgsl_driver.mutex);
+	if (atomic_read(&kgsl_driver.open_count) > 0) {
+		pr_info("kgsl: resume()\n");
+		clk_enable(kgsl_driver.grp_clk);
+		clk_enable(kgsl_driver.imem_clk);
+		enable_irq(kgsl_driver.interrupt_num);
+	}
+	mutex_unlock(&kgsl_driver.mutex);
+	return 0;
+}
+
 static struct platform_driver kgsl_platform_driver = {
 	.probe = kgsl_platform_probe,
 	.remove = __devexit_p(kgsl_platform_remove),
+	.suspend = kgsl_platform_suspend,
+	.resume = kgsl_platform_resume,
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = DRIVER_NAME
