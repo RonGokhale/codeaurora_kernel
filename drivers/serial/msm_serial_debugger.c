@@ -61,6 +61,15 @@ static struct {
 
 module_param(no_sleep, bool, 0644);
 
+#ifdef CONFIG_MSM_SERIAL_DEBUGGER_WAKEUP_IRQ_ALWAYS_ON
+static inline void enable_wakeup_irq(unsigned int irq) {}
+static inline void disable_wakeup_irq(unsigned int irq) {}
+#else
+static inline void enable_wakeup_irq(unsigned int irq) {enable_irq(irq);}
+static inline void disable_wakeup_irq(unsigned int irq) {disable_irq(irq);}
+#endif
+
+
 static inline void msm_write(unsigned int val, unsigned int off)
 {
 	__raw_writel(val, debug_port_base + off);
@@ -292,7 +301,7 @@ static void sleep_timer_expired(unsigned long data)
 		ignore_next_wakeup_irq = true;
 		clk_disable(debug_clk);
 		debug_clk_enabled = false;
-		enable_irq(init_data.wakeup_irq);
+		enable_wakeup_irq(init_data.wakeup_irq);
 		set_irq_wake(init_data.wakeup_irq, 1);
 	}
 	wake_unlock(&debugger_wake_lock);
@@ -307,7 +316,7 @@ static irqreturn_t wakeup_irq_handler(int irq, void *dev)
 		clk_enable(debug_clk);
 		debug_clk_enabled = true;
 		set_irq_wake(irq, 0);
-		disable_irq(irq);
+		disable_wakeup_irq(irq);
 		mod_timer(&sleep_timer, jiffies + HZ / 2);
 	}
 	return IRQ_HANDLED;

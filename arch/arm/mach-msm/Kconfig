@@ -280,6 +280,15 @@ config MSM_SERIAL_DEBUGGER_NO_SLEEP
 	  msm_serial_debugger.no_sleep on the kernel commandline will
 	  override this config option.
 
+config MSM_SERIAL_DEBUGGER_WAKEUP_IRQ_ALWAYS_ON
+	depends on MSM_SERIAL_DEBUGGER
+	default n
+	bool "Don't disable wakeup IRQ when debugger is active"
+	help
+	  Don't disable the wakeup irq when enabling the uart clock. This will
+	  cause extra interrupts, but it makes the serial debugger usable with
+	  radio builds that ignore the uart clock request in power collapse.
+
 config MSM_SERIAL_DEBUGGER_CONSOLE
 	depends on MSM_SERIAL_DEBUGGER
 	default n
