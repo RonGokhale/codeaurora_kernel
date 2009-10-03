@@ -21,3 +21,11 @@ config GPU_MSM_KGSL
 	  3D graphics driver for QSD8x50 and MSM7x27. Required to
 	  use hardware accelerated OpenGL ES 2.0 and 1.1 on these
 	  chips.
+
+config MSM_KGSL_MMU
+	bool "Turn on MMU for graphics driver "
+	depends on GPU_MSM_KGSL && MMU
+	default n
+	help
+	  If enabled, the GPU driver will allocate memory from vmalloc
+	  and enable the use of GPU MMU, instead of using pmem.

@@ -20,6 +20,9 @@
 #include <linux/spinlock.h>
 #include <linux/genalloc.h>
 
+#include <asm/pgalloc.h>
+#include <asm/pgtable.h>
+
 #include "kgsl_mmu.h"
 #include "kgsl.h"
 #include "kgsl_log.h"
@@ -221,7 +224,6 @@ struct kgsl_pagetable *kgsl_mmu_createpagetableobject(struct kgsl_mmu *mmu)
 		/* reset page table entries
 		 * -- all pte's are marked as not dirty initially
 		 */
-		pagetable->base.gpuaddr = pagetable->base.physaddr;
 		kgsl_sharedmem_set(&pagetable->base, 0, 0,
 				   pagetable->base.size);
 	}
@@ -289,7 +291,6 @@ int kgsl_mmu_init(struct kgsl_device *device)
 	 */
 	int status;
 	uint32_t flags;
-	struct kgsl_pagetable *pagetable = NULL;
 	struct kgsl_mmu *mmu = &device->mmu;
 #ifdef _DEBUG
 	struct kgsl_mmu_debug regs;
@@ -304,8 +305,9 @@ int kgsl_mmu_init(struct kgsl_device *device)
 
 	mmu->device = device;
 
-	if (!kgsl_mmu_enable)
-		mmu->config = 0x00000000;
+#ifndef CONFIG_MSM_KGSL_MMU
+	mmu->config = 0x00000000;
+#endif
 
 	/* setup MMU and sub-client behavior */
 	kgsl_yamato_regwrite(device, REG_MH_MMU_CONFIG, mmu->config);
@@ -349,28 +351,10 @@ int kgsl_mmu_init(struct kgsl_device *device)
 		/*make sure virtual address range is a multiple of 64Kb */
 		BUG_ON(mmu->va_range & ((1 << 16) - 1));
 
-		/* setup pagetable object */
-		pagetable = kgsl_mmu_createpagetableobject(mmu);
-		if (!pagetable) {
-			kgsl_mmu_close(device);
-			KGSL_MEM_VDBG("return %d\n", -EINVAL);
-			return -EINVAL;
-		}
-
-		mmu->hwpagetable = pagetable;
-		mmu->defaultpagetable = pagetable;
-		/* set page table base */
-		kgsl_yamato_regwrite(device, REG_MH_MMU_PT_BASE,
-				     mmu->hwpagetable->base.gpuaddr);
-
-		/* define virtual address range */
-		kgsl_yamato_regwrite(device, REG_MH_MMU_VA_RANGE,
-				     (mmu->va_base | (mmu->va_range >> 16)));
-
 		/* allocate memory used for completing r/w operations that
 		 * cannot be mapped by the MMU
 		 */
-		flags = (KGSL_MEMFLAGS_ALIGN32 | KGSL_MEMFLAGS_CONPHYS
+		flags = (KGSL_MEMFLAGS_ALIGN4K | KGSL_MEMFLAGS_CONPHYS
 			 | KGSL_MEMFLAGS_STRICTREQUEST);
 		status = kgsl_sharedmem_alloc(flags, 32, &mmu->dummyspace);
 		if (status != 0) {
@@ -385,6 +369,19 @@ int kgsl_mmu_init(struct kgsl_device *device)
 				     REG_MH_MMU_TRAN_ERROR,
 				     mmu->dummyspace.gpuaddr);
 
+#ifndef PER_PROCESS_PAGE_TABLE
+		mmu->hwpagetable = kgsl_mmu_createpagetableobject(mmu);
+		if (!mmu->hwpagetable) {
+			KGSL_MEM_ERR("Failed to create global page table\n");
+			kgsl_mmu_close(device);
+			return -ENOMEM;
+		}
+		status = kgsl_yamato_setpagetable(device);
+		if (status) {
+			kgsl_mmu_close(device);
+			return status;
+		}
+#endif
 		kgsl_yamato_tlbinvalidate(device);
 
 		mmu->flags |= KGSL_FLAGS_STARTED;
@@ -395,26 +392,53 @@ int kgsl_mmu_init(struct kgsl_device *device)
 	return 0;
 }
 
-int
-kgsl_mmu_map(struct kgsl_pagetable *pagetable,
-				unsigned int physaddr,
+#ifdef CONFIG_MSM_KGSL_MMU
+pte_t *kgsl_get_pte_from_vaddr(unsigned int vaddr)
+{
+	pgd_t *pgd_ptr = NULL;
+	pmd_t *pmd_ptr = NULL;
+	pte_t *pte_ptr = NULL;
+
+	pgd_ptr = pgd_offset(current->mm, vaddr);
+	if (pgd_none(*pgd) || pgd_bad(*pgd)) {
+		KGSL_MEM_ERR
+		    ("Invalid pgd entry found while trying to convert virtual "
+		     "address to physical\n");
+		return 0;
+	}
+
+	pmd_ptr = pmd_offset(pgd_ptr, vaddr);
+	if (pmd_none(*pmd_ptr) || pmd_bad(*pmd_ptr)) {
+		KGSL_MEM_ERR
+		    ("Invalid pmd entry found while trying to convert virtual "
+		     "address to physical\n");
+		return 0;
+	}
+
+	pte_ptr = pte_offset_map(pmd_ptr, vaddr);
+	if (!pte_ptr) {
+		KGSL_MEM_ERR
+		    ("Unable to map pte entry while trying to convert virtual "
+		     "address to physical\n");
+		return 0;
+	}
+	return pte_ptr;
+}
+
+int kgsl_mmu_map(struct kgsl_pagetable *pagetable,
+				unsigned int address,
 				int range,
 				unsigned int protflags,
 				unsigned int *gpuaddr)
 {
 	int numpages;
-	unsigned int pte, superpte, ptefirst, ptelast;
+	unsigned int pte, superpte, ptefirst, ptelast, physaddr;
 	int flushtlb;
 	struct kgsl_mmu *mmu = NULL;
 
 	KGSL_MEM_VDBG("enter (pt=%p, physaddr=%08x, range=%08d, gpuaddr=%p)\n",
-		      pagetable, physaddr, range, gpuaddr);
+		      pagetable, address, range, gpuaddr);
 
-	if (!kgsl_mmu_enable) {
-		KGSL_MEM_VDBG("mmu disabled\n");
-		*gpuaddr = physaddr;
-		return 0;
-	}
 	mmu = pagetable->mmu;
 
 	BUG_ON(mmu == NULL);
@@ -460,8 +484,19 @@ kgsl_mmu_map(struct kgsl_pagetable *pagetable,
 		if (kgsl_pt_map_isdirty(pagetable, pte))
 			flushtlb = 1;
 		/* mark pte as in use */
-		kgsl_pt_map_set(pagetable, pte, physaddr | protflags);
-		physaddr += KGSL_PAGESIZE;
+		physaddr = vmalloc_to_pfn((void *)address);
+		physaddr <<= PAGE_SHIFT;
+
+		if (physaddr)
+			kgsl_pt_map_set(pagetable, pte, physaddr | protflags);
+		else {
+			KGSL_MEM_ERR
+			("Unable to find physaddr for vmallloc address: %x\n",
+			     address);
+			kgsl_mmu_unmap(pagetable, *gpuaddr, range);
+			return -EFAULT;
+		}
+		address += KGSL_PAGESIZE;
 	}
 
 	/* set superpte to end of next superpte */
@@ -476,10 +511,13 @@ kgsl_mmu_map(struct kgsl_pagetable *pagetable,
 		}
 	}
 	KGSL_MEM_INFO("pt %p p %08x g %08x pte f %d l %d n %d f %d\n",
-		      pagetable, physaddr, *gpuaddr, ptefirst, ptelast,
+		      pagetable, address, *gpuaddr, ptefirst, ptelast,
 		      numpages, flushtlb);
 
-	kgsl_yamato_tlbinvalidate(mmu->device);
+	/* Invalidate tlb only if current page table used by GPU is the
+	* pagetable that we used to allocate */
+	if (pagetable == mmu->hwpagetable)
+		kgsl_yamato_tlbinvalidate(mmu->device);
 
 
 	KGSL_MEM_VDBG("return %d\n", 0);
@@ -496,11 +534,6 @@ kgsl_mmu_unmap(struct kgsl_pagetable *pagetable, unsigned int gpuaddr,
 
 	KGSL_MEM_VDBG("enter (pt=%p, gpuaddr=0x%08x, range=%d)\n",
 			pagetable, gpuaddr, range);
-
-	if (!kgsl_mmu_enable) {
-		KGSL_MEM_VDBG("mmu disabled\n");
-		return 0;
-	}
 
 	BUG_ON(range <= 0);
 
@@ -528,6 +561,7 @@ kgsl_mmu_unmap(struct kgsl_pagetable *pagetable, unsigned int gpuaddr,
 
 	return 0;
 }
+#endif
 
 int kgsl_mmu_close(struct kgsl_device *device)
 {
@@ -557,11 +591,10 @@ int kgsl_mmu_close(struct kgsl_device *device)
 		mmu->flags &= ~KGSL_FLAGS_STARTED;
 		mmu->flags &= ~KGSL_FLAGS_INITIALIZED;
 		mmu->flags &= ~KGSL_FLAGS_INITIALIZED0;
-
-		if (mmu->defaultpagetable != NULL) {
-			kgsl_mmu_destroypagetableobject(mmu->defaultpagetable);
-			mmu->defaultpagetable = NULL;
-		}
+#ifndef PER_PROCESS_PAGE_TABLE
+		kgsl_mmu_destroypagetableobject(mmu->hwpagetable);
+#endif
+		mmu->hwpagetable = NULL;
 	}
 
 	KGSL_MEM_VDBG("return %d\n", 0);

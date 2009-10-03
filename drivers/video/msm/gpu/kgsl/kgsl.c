@@ -27,20 +27,78 @@
 #include <linux/io.h>
 #include <linux/mm.h>
 #include <linux/android_pmem.h>
+#include <linux/highmem.h>
+#include <linux/vmalloc.h>
+#include <asm/cacheflush.h>
 
 #include <asm/atomic.h>
 
 #include "kgsl.h"
 #include "kgsl_drawctxt.h"
 #include "kgsl_ringbuffer.h"
+#include "kgsl_cmdstream.h"
 #include "kgsl_log.h"
 
 struct kgsl_file_private {
-	struct list_head list;
-	struct list_head pmem_list;
-	uint32_t ctxt_id_mask;
-	struct kgsl_pagetable *pagetable;
+	struct list_head	list;
+	struct list_head	mem_list;
+	uint32_t		ctxt_id_mask;
+	struct kgsl_pagetable	*pagetable;
+	unsigned long		vmalloc_size;
 };
+
+#ifdef CONFIG_MSM_KGSL_MMU
+static long flush_l1_cache_range(unsigned long addr, int size)
+{
+	struct page *page;
+	pte_t *pte_ptr;
+	unsigned long end;
+
+	for (end = addr; end < (addr + size); end += KGSL_PAGESIZE) {
+		pte_ptr = kgsl_get_pte_from_vaddr(end);
+		if (!pte_ptr)
+			return -EINVAL;
+
+		page = pte_page(pte_val(*pte_ptr));
+		if (!page) {
+			KGSL_DRV_ERR("could not find page for pte\n");
+			pte_unmap(pte_ptr);
+			return -EINVAL;
+		}
+
+		pte_unmap(pte_ptr);
+		flush_dcache_page(page);
+	}
+
+	return 0;
+}
+
+static long flush_l1_cache_all(struct kgsl_file_private *private)
+{
+	int result = 0;
+	struct kgsl_mem_entry *entry = NULL;
+
+	kgsl_yamato_runpending(&kgsl_driver.yamato_device);
+	list_for_each_entry(entry, &private->mem_list, list) {
+		if (KGSL_MEMFLAGS_MEM_REQUIRES_FLUSH & entry->memdesc.priv) {
+			result =
+			    flush_l1_cache_range((unsigned long)entry->
+						 memdesc.hostptr,
+						 entry->memdesc.size);
+			if (result)
+				goto done;
+		}
+	}
+done:
+	return result;
+}
+#else
+static inline long flush_l1_cache_range(unsigned long addr, int size)
+{ return 0; }
+
+static inline long flush_l1_cache_all(struct kgsl_file_private *private)
+{ return 0; }
+#endif
 
 /*this is used for logging, so that we can call the dev_printk
  functions without export struct kgsl_driver everywhere*/
@@ -109,7 +167,7 @@ static int kgsl_release(struct inode *inodep, struct file *filep)
 {
 	int result = 0;
 	unsigned int i;
-	struct kgsl_pmem_entry *entry, *entry_tmp;
+	struct kgsl_mem_entry *entry, *entry_tmp;
 	struct kgsl_file_private *private = NULL;
 
 	mutex_lock(&kgsl_driver.mutex);
@@ -123,13 +181,13 @@ static int kgsl_release(struct inode *inodep, struct file *filep)
 		if (private->ctxt_id_mask & (1 << i))
 			kgsl_drawctxt_destroy(&kgsl_driver.yamato_device, i);
 
-	list_for_each_entry_safe(entry, entry_tmp, &private->pmem_list, list)
-		kgsl_remove_pmem_entry(entry);
+	list_for_each_entry_safe(entry, entry_tmp, &private->mem_list, list)
+		kgsl_remove_mem_entry(entry);
 
 	if (private->pagetable != NULL) {
-		kgsl_yamato_cleanup_pt(&kgsl_driver.yamato_device,
-					private->pagetable);
+#ifdef PER_PROCESS_PAGE_TABLE
 		kgsl_mmu_destroypagetableobject(private->pagetable);
+#endif
 		private->pagetable = NULL;
 	}
 
@@ -167,7 +225,7 @@ static int kgsl_open(struct inode *inodep, struct file *filep)
 	mutex_lock(&kgsl_driver.mutex);
 
 	private->ctxt_id_mask = 0;
-	INIT_LIST_HEAD(&private->pmem_list);
+	INIT_LIST_HEAD(&private->mem_list);
 
 	filep->private_data = private;
 
@@ -179,20 +237,17 @@ static int kgsl_open(struct inode *inodep, struct file *filep)
 			goto done;
 	}
 	/*NOTE: this must happen after first_open */
-	if (kgsl_mmu_enable) {
-		private->pagetable =
-			kgsl_mmu_createpagetableobject(
-				&kgsl_driver.yamato_device.mmu);
-		if (private->pagetable == NULL) {
-			result = -ENOMEM;
-			goto done;
-		}
-		result = kgsl_yamato_setup_pt(&kgsl_driver.yamato_device,
-						private->pagetable);
-		if (result)
-			goto done;
+#ifdef PER_PROCESS_PAGE_TABLE
+	private->pagetable =
+		kgsl_mmu_createpagetableobject(&kgsl_driver.yamato_device.mmu);
+	if (private->pagetable == NULL) {
+		result = -ENOMEM;
+		goto done;
 	}
-
+#else
+	private->pagetable = kgsl_driver.yamato_device.mmu.hwpagetable;
+#endif
+	private->vmalloc_size = 0;
 done:
 	mutex_unlock(&kgsl_driver.mutex);
 	if (result != 0)
@@ -202,14 +257,14 @@ done:
 
 
 /*call with driver locked */
-static struct kgsl_pmem_entry *
+static struct kgsl_mem_entry *
 kgsl_sharedmem_find(struct kgsl_file_private *private, unsigned int gpuaddr)
 {
-	struct kgsl_pmem_entry *entry = NULL, *result = NULL;
+	struct kgsl_mem_entry *entry = NULL, *result = NULL;
 
 	BUG_ON(private == NULL);
 
-	list_for_each_entry(entry, &private->pmem_list, list) {
+	list_for_each_entry(entry, &private->mem_list, list) {
 		if (entry->memdesc.gpuaddr == gpuaddr) {
 			result = entry;
 			break;
@@ -219,16 +274,16 @@ kgsl_sharedmem_find(struct kgsl_file_private *private, unsigned int gpuaddr)
 }
 
 /*call with driver locked */
-struct kgsl_pmem_entry *
+struct kgsl_mem_entry *
 kgsl_sharedmem_find_region(struct kgsl_file_private *private,
 				unsigned int gpuaddr,
 				size_t size)
 {
-	struct kgsl_pmem_entry *entry = NULL, *result = NULL;
+	struct kgsl_mem_entry *entry = NULL, *result = NULL;
 
 	BUG_ON(private == NULL);
 
-	list_for_each_entry(entry, &private->pmem_list, list) {
+	list_for_each_entry(entry, &private->mem_list, list) {
 		if (gpuaddr >= entry->memdesc.gpuaddr &&
 		    ((gpuaddr + size) <=
 			(entry->memdesc.gpuaddr + entry->memdesc.size))) {
@@ -351,11 +406,11 @@ done:
 	return result;
 }
 
-static long kgsl_ioctl_rb_readtimestamp(struct kgsl_file_private *private,
-				       void __user *arg)
+static long kgsl_ioctl_cmdstream_readtimestamp(struct kgsl_file_private
+						*private, void __user *arg)
 {
 	int result = 0;
-	struct kgsl_ringbuffer_readtimestamp param;
+	struct kgsl_cmdstream_readtimestamp param;
 
 	if (copy_from_user(&param, arg, sizeof(param))) {
 		result = -EFAULT;
@@ -363,7 +418,7 @@ static long kgsl_ioctl_rb_readtimestamp(struct kgsl_file_private *private,
 	}
 
 	param.timestamp =
-		kgsl_ringbuffer_readtimestamp(&kgsl_driver.yamato_device,
+		kgsl_cmdstream_readtimestamp(&kgsl_driver.yamato_device,
 							param.type);
 	if (result != 0)
 		goto done;
@@ -376,12 +431,12 @@ done:
 	return result;
 }
 
-static long kgsl_ioctl_rb_freememontimestamp(struct kgsl_file_private *private,
-					    void __user *arg)
+static long kgsl_ioctl_cmdstream_freememontimestamp(struct kgsl_file_private
+						*private, void __user *arg)
 {
 	int result = 0;
-	struct kgsl_ringbuffer_freememontimestamp param;
-	struct kgsl_pmem_entry *entry = NULL;
+	struct kgsl_cmdstream_freememontimestamp param;
+	struct kgsl_mem_entry *entry = NULL;
 
 	if (copy_from_user(&param, arg, sizeof(param))) {
 		result = -EFAULT;
@@ -395,7 +450,10 @@ static long kgsl_ioctl_rb_freememontimestamp(struct kgsl_file_private *private,
 		goto done;
 	}
 
-	result = kgsl_ringbuffer_freememontimestamp(&kgsl_driver.yamato_device,
+	if (entry->memdesc.priv & KGSL_MEMFLAGS_VMALLOC_MEM)
+		entry->memdesc.priv &= ~KGSL_MEMFLAGS_MEM_REQUIRES_FLUSH;
+
+	result = kgsl_cmdstream_freememontimestamp(&kgsl_driver.yamato_device,
 							entry,
 							param.timestamp,
 							param.type);
@@ -461,18 +519,21 @@ done:
 	return result;
 }
 
-void kgsl_remove_pmem_entry(struct kgsl_pmem_entry *entry)
+void kgsl_remove_mem_entry(struct kgsl_mem_entry *entry)
 {
-	KGSL_DRV_DBG("unlocked pmem fd %p\n", entry->pmem_file);
-	put_pmem_file(entry->pmem_file);
+	if (KGSL_MEMFLAGS_VMALLOC_MEM & entry->memdesc.priv) {
+		vfree((void *)entry->memdesc.physaddr);
+		entry->priv->vmalloc_size -= entry->memdesc.size;
+		kgsl_mmu_unmap(entry->memdesc.pagetable,
+			       entry->memdesc.gpuaddr, entry->memdesc.size);
+	} else {
+		KGSL_DRV_DBG("unlocked pmem fd %p\n", entry->pmem_file);
+		put_pmem_file(entry->pmem_file);
+	}
 	list_del(&entry->list);
 
 	if (entry->free_list.prev)
 		list_del(&entry->free_list);
-
-	kgsl_mmu_unmap(entry->memdesc.pagetable,
-			entry->memdesc.gpuaddr,
-			entry->memdesc.size);
 
 	kfree(entry);
 
@@ -483,7 +544,7 @@ static long kgsl_ioctl_sharedmem_free(struct kgsl_file_private *private,
 {
 	int result = 0;
 	struct kgsl_sharedmem_free param;
-	struct kgsl_pmem_entry *entry = NULL;
+	struct kgsl_mem_entry *entry = NULL;
 
 	if (copy_from_user(&param, arg, sizeof(param))) {
 		result = -EFAULT;
@@ -497,17 +558,142 @@ static long kgsl_ioctl_sharedmem_free(struct kgsl_file_private *private,
 		goto done;
 	}
 
-	kgsl_remove_pmem_entry(entry);
+	kgsl_remove_mem_entry(entry);
 done:
 	return result;
 }
 
-static long kgsl_ioctl_sharedmem_from_pmem(struct kgsl_file_private *private,
+#ifdef CONFIG_MSM_KGSL_MMU
+static int kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_file_private *private,
+					     void __user *arg)
+{
+	int result = 0, len;
+	struct kgsl_sharedmem_from_vmalloc param;
+	struct kgsl_mem_entry *entry = NULL;
+	void *vmalloc_area;
+	struct vm_area_struct *vma;
+
+	if (copy_from_user(&param, arg, sizeof(param))) {
+		result = -EFAULT;
+		goto error;
+	}
+
+	if (!param.hostptr) {
+		KGSL_DRV_ERR
+		    ("Invalid host pointer of malloc passed: param.hostptr "
+		     "%08x\n", param.hostptr);
+		result = -EINVAL;
+		goto error;
+	}
+
+	vma = find_vma(current->mm, param.hostptr);
+	if (!vma) {
+		KGSL_MEM_ERR("Could not find vma for address %x\n",
+			     param.hostptr);
+		result = -EINVAL;
+		goto error;
+	}
+	len = vma->vm_end - vma->vm_start;
+	if (vma->vm_pgoff || !IS_ALIGNED(len, PAGE_SIZE)
+	    || !IS_ALIGNED(vma->vm_start, PAGE_SIZE)) {
+		KGSL_MEM_ERR
+		("kgsl vmalloc mapping must be at offset 0 and page aligned\n");
+		result = -EINVAL;
+		goto error;
+	}
+	if (vma->vm_start != param.hostptr) {
+		KGSL_MEM_ERR
+		    ("vma start address is not equal to mmap address\n");
+		result = -EINVAL;
+		goto error;
+	}
+
+	if ((private->vmalloc_size + len) > KGSL_GRAPHICS_MEMORY_LOW_WATERMARK
+	    && !param.force_no_low_watermark) {
+		result = -ENOMEM;
+		goto error;
+	}
+
+	entry = kzalloc(sizeof(struct kgsl_mem_entry), GFP_KERNEL);
+	if (entry == NULL) {
+		result = -ENOMEM;
+		goto error;
+	}
+
+	/* allocate memory and map it to user space */
+	vmalloc_area = vmalloc_user(len);
+	if (!vmalloc_area) {
+		KGSL_MEM_ERR("vmalloc failed\n");
+		result = -ENOMEM;
+		goto error_free_entry;
+	}
+	if (!kgsl_cache_enable) {
+		KGSL_MEM_INFO("Caching for memory allocation turned off\n");
+		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+	} else {
+		KGSL_MEM_INFO("Caching for memory allocation turned on\n");
+	}
+
+	result = remap_vmalloc_range(vma, vmalloc_area, 0);
+	if (result) {
+		KGSL_MEM_ERR("remap_vmalloc_range returned %d\n", result);
+		goto error_free_vmalloc;
+	}
+
+	result =
+	    kgsl_mmu_map(private->pagetable, (unsigned long)vmalloc_area, len,
+			 GSL_PT_PAGE_RV | GSL_PT_PAGE_WV,
+			 &entry->memdesc.gpuaddr);
+
+	if (result != 0)
+		goto error_free_vmalloc;
+
+	entry->memdesc.pagetable = private->pagetable;
+	entry->memdesc.size = len;
+	entry->memdesc.hostptr = (void *)param.hostptr;
+	entry->memdesc.priv = KGSL_MEMFLAGS_VMALLOC_MEM |
+	    KGSL_MEMFLAGS_MEM_REQUIRES_FLUSH;
+	entry->memdesc.physaddr = (unsigned long)vmalloc_area;
+	entry->priv = private;
+
+	param.gpuaddr = entry->memdesc.gpuaddr;
+
+	if (copy_to_user(arg, &param, sizeof(param))) {
+		result = -EFAULT;
+		goto error_unmap_entry;
+	}
+	private->vmalloc_size += len;
+	list_add(&entry->list, &private->mem_list);
+
+	return 0;
+
+error_unmap_entry:
+	kgsl_mmu_unmap(private->pagetable, entry->memdesc.gpuaddr,
+		       entry->memdesc.size);
+
+error_free_vmalloc:
+	vfree(vmalloc_area);
+
+error_free_entry:
+	kfree(entry);
+
+error:
+	return result;
+}
+#else
+static inline int kgsl_ioctl_sharedmem_from_vmalloc(
+			struct kgsl_file_private *private, void __user *arg)
+{
+	return -ENOSYS;
+}
+#endif
+
+static int kgsl_ioctl_sharedmem_from_pmem(struct kgsl_file_private *private,
 						void __user *arg)
 {
 	int result = 0;
 	struct kgsl_sharedmem_from_pmem param;
-	struct kgsl_pmem_entry *entry = NULL;
+	struct kgsl_mem_entry *entry = NULL;
 	unsigned long start = 0, vstart = 0, len = 0;
 	struct file *pmem_file = NULL;
 
@@ -531,7 +717,6 @@ static long kgsl_ioctl_sharedmem_from_pmem(struct kgsl_file_private *private,
 	}
 
 	entry->pmem_file = pmem_file;
-	list_add(&entry->list, &private->pmem_list);
 
 	entry->memdesc.pagetable = private->pagetable;
 	entry->memdesc.size = len;
@@ -539,28 +724,16 @@ static long kgsl_ioctl_sharedmem_from_pmem(struct kgsl_file_private *private,
 	entry->memdesc.hostptr = NULL;
 
 	entry->memdesc.physaddr = start;
-	if (kgsl_mmu_enable)  {
-		result = kgsl_mmu_map(private->pagetable, start, len,
-					GSL_PT_PAGE_RV | GSL_PT_PAGE_WV,
-					&entry->memdesc.gpuaddr);
-		if (result != 0)
-			goto error_free_entry;
-	} else {
-		entry->memdesc.gpuaddr = start;
-	}
+	entry->memdesc.gpuaddr = start;
 
 	param.gpuaddr = entry->memdesc.gpuaddr;
 
 	if (copy_to_user(arg, &param, sizeof(param))) {
 		result = -EFAULT;
-		goto error_copy_to_user;
+		goto error_free_entry;
 	}
+	list_add(&entry->list, &private->mem_list);
 	return 0;
-error_copy_to_user:
-	kgsl_mmu_unmap(entry->memdesc.pagetable,
-			entry->memdesc.gpuaddr,
-			entry->memdesc.size);
-
 error_free_entry:
 	kfree(entry);
 
@@ -571,6 +744,42 @@ error_put_pmem:
 error:
 	return result;
 }
+
+#ifdef CONFIG_MSM_KGSL_MMU
+/*This function flushes a graphics memory allocation from CPU cache
+ *when caching is enabled with MMU*/
+static int kgsl_ioctl_sharedmem_flush_cache(struct kgsl_file_private *private,
+				       void __user *arg)
+{
+	int result = 0;
+	struct kgsl_mem_entry *entry;
+	struct kgsl_sharedmem_free param;
+
+	if (copy_from_user(&param, arg, sizeof(param))) {
+		result = -EFAULT;
+		goto done;
+	}
+
+	entry = kgsl_sharedmem_find(private, param.gpuaddr);
+	if (!entry) {
+		KGSL_DRV_ERR("invalid gpuaddr %08x\n", param.gpuaddr);
+		result = -EINVAL;
+		goto done;
+	}
+	result = flush_l1_cache_range((unsigned long)entry->memdesc.hostptr,
+				      entry->memdesc.size);
+	/* Mark memory as being flushed so we don't flush it again */
+	entry->memdesc.priv &= ~KGSL_MEMFLAGS_MEM_REQUIRES_FLUSH;
+done:
+	return result;
+}
+#else
+static int kgsl_ioctl_sharedmem_flush_cache(struct kgsl_file_private *private,
+					    void __user *arg)
+{
+	return -ENOSYS;
+}
+#endif
 
 
 static long kgsl_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
@@ -599,17 +808,20 @@ static long kgsl_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		break;
 
 	case IOCTL_KGSL_RINGBUFFER_ISSUEIBCMDS:
+		if (kgsl_cache_enable)
+			flush_l1_cache_all(private);
 		result = kgsl_ioctl_rb_issueibcmds(private, (void __user *)arg);
 		break;
 
-	case IOCTL_KGSL_RINGBUFFER_READTIMESTAMP:
+	case IOCTL_KGSL_CMDSTREAM_READTIMESTAMP:
 		result =
-		    kgsl_ioctl_rb_readtimestamp(private, (void __user *)arg);
+		    kgsl_ioctl_cmdstream_readtimestamp(private,
+							(void __user *)arg);
 		break;
 
-	case IOCTL_KGSL_RINGBUFFER_FREEMEMONTIMESTAMP:
+	case IOCTL_KGSL_CMDSTREAM_FREEMEMONTIMESTAMP:
 		result =
-		    kgsl_ioctl_rb_freememontimestamp(private,
+		    kgsl_ioctl_cmdstream_freememontimestamp(private,
 						    (void __user *)arg);
 		break;
 
@@ -627,6 +839,16 @@ static long kgsl_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		result = kgsl_ioctl_sharedmem_free(private, (void __user *)arg);
 		break;
 
+	case IOCTL_KGSL_SHAREDMEM_FROM_VMALLOC:
+		result = kgsl_ioctl_sharedmem_from_vmalloc(private,
+							   (void __user *)arg);
+		break;
+
+	case IOCTL_KGSL_SHAREDMEM_FLUSH_CACHE:
+		if (kgsl_cache_enable)
+			result = kgsl_ioctl_sharedmem_flush_cache(private,
+						       (void __user *)arg);
+		break;
 	case IOCTL_KGSL_SHAREDMEM_FROM_PMEM:
 		result = kgsl_ioctl_sharedmem_from_pmem(private,
 							(void __user *)arg);

@@ -1,5 +1,6 @@
 msm_kgsl-objs = \
 	kgsl_drawctxt.o \
+	kgsl_cmdstream.o \
 	kgsl.o \
 	kgsl_log.o \
 	kgsl_mmu.o \
