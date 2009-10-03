@@ -1983,6 +1983,15 @@ static void *msm_vfe_sync_alloc(int size,
 	return qcmd ? qcmd + 1 : NULL;
 }
 
+static void msm_vfe_sync_free(void *ptr)
+{
+	if (ptr) {
+		struct msm_queue_cmd *qcmd =
+			(struct msm_queue_cmd *)ptr;
+		kfree(qcmd - 1);
+	}
+}
+
 /*
  * This function executes in interrupt context.
  */
@@ -2087,6 +2096,7 @@ mem_fail:
 static struct msm_vfe_callback msm_vfe_s = {
 	.vfe_resp = msm_vfe_sync,
 	.vfe_alloc = msm_vfe_sync_alloc,
+	.vfe_free = msm_vfe_sync_free,
 };
 
 static int __msm_open(struct msm_sync *sync, const char *const apps_id)
