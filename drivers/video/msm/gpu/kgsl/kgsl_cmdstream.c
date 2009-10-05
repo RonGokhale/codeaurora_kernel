@@ -51,18 +51,20 @@ kgsl_cmdstream_readtimestamp(struct kgsl_device *device,
 	return timestamp;
 }
 
+static bool timestamp_cmp(unsigned int new, unsigned int old)
+{
+	int ts_diff = new - old;
+	return (ts_diff >= 0) || (ts_diff < -20000);
+}
+
 int kgsl_cmdstream_check_timestamp(struct kgsl_device *device,
 				   unsigned int timestamp)
 {
 	unsigned int ts_processed;
-	int ts_diff;
-	ts_processed =
-	    kgsl_cmdstream_readtimestamp(device, KGSL_TIMESTAMP_RETIRED);
 
-	ts_diff = ts_processed - timestamp;
-
-	return (ts_diff >= 0) || (ts_diff < -20000);
-
+	ts_processed = kgsl_cmdstream_readtimestamp(device,
+						    KGSL_TIMESTAMP_RETIRED);
+	return timestamp_cmp(ts_processed, timestamp);
 }
 
 void kgsl_cmdstream_memqueue_drain(struct kgsl_device *device)
@@ -80,11 +82,11 @@ void kgsl_cmdstream_memqueue_drain(struct kgsl_device *device)
 		 * timestamp, but I'm not yet sure that it is a valid
 		 * assumption
 		 */
-		if (!kgsl_cmdstream_check_timestamp
-		    (device, entry->free_timestamp))
+		if (!timestamp_cmp(ts_processed, entry->free_timestamp))
 			break;
-		KGSL_MEM_DBG("ts_processed %d gpuaddr %x)\n",
-			     ts_processed, entry->memdesc.gpuaddr);
+		KGSL_MEM_DBG("ts_processed %d ts_free %d gpuaddr %x)\n",
+			     ts_processed, entry->free_timestamp,
+			     entry->memdesc.gpuaddr);
 		kgsl_remove_mem_entry(entry);
 	}
 }
