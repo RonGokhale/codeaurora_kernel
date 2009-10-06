@@ -21,7 +21,6 @@
 /* FIXME: msm_pmem_region_lookup return values */
 /* FIXME: way too many copy to/from user */
 /* FIXME: does region->active mean free */
-/* FIXME: check limits on command lenghts passed from userspace */
 /* FIXME: __msm_release: which queues should we flush when opencnt != 0 */
 
 #include <linux/kernel.h>
@@ -527,18 +526,6 @@ static struct msm_queue_cmd *__msm_control(struct msm_sync *sync,
 			rc = -ETIMEDOUT;
 		if (rc < 0) {
 			pr_err("%s: wait_event error %d\n", __func__, rc);
-#if 0
-			/* This is a bit scary.  If we time out too early, we
-			 * will free qcmd at the end of this function, and the
-			 * dsp may do the same when it does respond, so we
-			 * remove the message from the source queue.
-			 */
-			pr_err("%s: error waiting for ctrl_status_q: %d\n",
-				__func__, rc);
-			spin_lock_irqsave(&sync->msg_event_q_lock, flags);
-			list_del_init(&qcmd->list);
-			spin_unlock_irqrestore(&sync->msg_event_q_lock, flags);
-#endif
 			return ERR_PTR(rc);
 		}
 	}
@@ -604,8 +591,17 @@ static int msm_control(struct msm_control_device *ctrl_pmsm,
 				  &ctrl_pmsm->ctrl_q,
 				  qcmd, MAX_SCHEDULE_TIMEOUT);
 
-	if (IS_ERR(qcmd_temp)) {
+	if (!qcmd_temp || IS_ERR(qcmd_temp)) {
 		rc = PTR_ERR(qcmd_temp);
+		/* Do not free qcmd here.  If the config thread consumed it,
+		 * then it has already been freed, and we timed out because
+		 * we did not receive a MSM_CAM_IOCTL_CTRL_CMD_DONE.  If the
+		 * config thread itself is blocked and not dequeueing commands,
+		 * then it will either eventually unblock and process them,
+		 * or when it is killed, qcmd will be freed in
+		 * msm_release_config.
+		 */
+		qcmd = NULL;
 		goto end;
 	}
 	qcmd = qcmd_temp;
@@ -633,13 +629,7 @@ static int msm_control(struct msm_control_device *ctrl_pmsm,
 	}
 
 end:
-	/* Note: if we get here as a result of an error, we will free the
-	 * qcmd that we kmalloc() in this function.  When we come here as
-	 * a result of a successful completion, we are freeing the qcmd that
-	 * we dequeued from queue->ctrl_status_q.
-	 */
 	kfree(qcmd);
-
 	CDBG("%s: rc %d\n", __func__, rc);
 	return rc;
 }
@@ -681,6 +671,8 @@ static int msm_get_stats(struct msm_sync *sync, void __user *arg)
 		}
 	}
 	CDBG("%s: returned from wait: %d\n", __func__, rc);
+
+	rc = 0;
 
 	spin_lock_irqsave(&sync->msg_event_q_lock, flags);
 	BUG_ON(list_empty(&sync->msg_event_q));
@@ -904,7 +896,7 @@ static int msm_get_stats(struct msm_sync *sync, void __user *arg)
 		/* control command from v4l2 client */
 		ctrl = (struct msm_ctrl_cmd *)(qcmd->command);
 
-		CDBG("%s: qcmd->type %d\n", __func__, qcmd->type, ctrl->length);
+		CDBG("%s: qcmd->type %d len %d\n", __func__, qcmd->type, ctrl->length);
 
 		if (ctrl->length > 0) {
 			if (copy_to_user((void *)(se.ctrl_cmd.value),
@@ -1418,6 +1410,8 @@ static int __msm_get_pic(struct msm_sync *sync, struct msm_ctrl_cmd *ctrl)
 		}
 	}
 
+	rc = 0;
+
 	spin_lock_irqsave(&sync->pict_frame_q_lock, flags);
 	BUG_ON(list_empty(&sync->pict_frame_q));
 	qcmd = list_first_entry(&sync->pict_frame_q,
@@ -1898,7 +1892,8 @@ static int msm_release_config(struct inode *node, struct file *filep)
 	struct msm_device *pmsm = filep->private_data;
 	CDBG("%s: %s\n", __func__, filep->f_path.dentry->d_name.name);
 	rc = __msm_release(pmsm->sync);
-	atomic_set(&pmsm->opened, 0);
+	if (!rc)
+		atomic_set(&pmsm->opened, 0);
 	return rc;
 }
 
@@ -1911,9 +1906,8 @@ static int msm_release_control(struct inode *node, struct file *filep)
 	rc = __msm_release(pmsm->sync);
 	if (!rc) {
 		MSM_DRAIN_QUEUE(&ctrl_pmsm->ctrl_q, ctrl_status_q);
-		MSM_DRAIN_QUEUE(pmsm->sync, pict_frame_q);
+		kfree(ctrl_pmsm);
 	}
-	kfree(ctrl_pmsm);
 	return rc;
 }
 
@@ -1923,10 +1917,8 @@ static int msm_release_frame(struct inode *node, struct file *filep)
 	struct msm_device *pmsm = filep->private_data;
 	CDBG("%s: %s\n", __func__, filep->f_path.dentry->d_name.name);
 	rc = __msm_release(pmsm->sync);
-	if (!rc) {
-		MSM_DRAIN_QUEUE(pmsm->sync, prev_frame_q);
+	if (!rc)
 		atomic_set(&pmsm->opened, 0);
-	}
 	return rc;
 }
 
@@ -2010,6 +2002,11 @@ static void msm_vfe_sync(struct msm_vfe_resp *vdata,
 		return;
 	}
 
+	if (!sync->opencnt) {
+		pr_err("%s: SPURIOUS INTERRUPT\n", __func__);
+		return;
+	}
+
 	qcmd = ((struct msm_queue_cmd *)vdata) - 1;
 	qcmd->type = qtype;
 
@@ -2039,7 +2036,7 @@ static void msm_vfe_sync(struct msm_vfe_resp *vdata,
 			qcmd_frame->type = MSM_CAM_Q_VFE_MSG;
 			qcmd_frame->command = fphy;
 
-			CDBG("%s: qcmd_frame %x phy_y %x, phy_cbcr %x\n",
+			CDBG("%s: qcmd_frame %p phy_y %x, phy_cbcr %x\n",
 				__func__,
 				qcmd_frame, fphy->y_phy, fphy->cbcr_phy);
 
