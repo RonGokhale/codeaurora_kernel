@@ -161,6 +161,7 @@ struct msm_queue_cmd {
 	struct list_head list;
 	enum msm_queue type;
 	void *command;
+	int on_heap;
 };
 
 struct register_address_value_pair {
