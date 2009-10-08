@@ -64,10 +64,10 @@
 #define MSM_CAM_IOCTL_SET_CROP \
 	_IOW(MSM_CAM_IOCTL_MAGIC, 18, struct crop_info *)
 
-#define MSM_CAM_IOCTL_PICT_PP \
+#define MSM_CAM_IOCTL_PP \
 	_IOW(MSM_CAM_IOCTL_MAGIC, 19, uint8_t *)
 
-#define MSM_CAM_IOCTL_PICT_PP_DONE \
+#define MSM_CAM_IOCTL_PP_DONE \
 	_IOW(MSM_CAM_IOCTL_MAGIC, 20, struct msm_snapshot_pp_status *)
 
 #define MSM_CAM_IOCTL_SENSOR_IO_CFG \
