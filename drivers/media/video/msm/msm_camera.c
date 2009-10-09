@@ -546,6 +546,40 @@ static struct msm_queue_cmd *__msm_control(struct msm_sync *sync,
 	return qcmd;
 }
 
+static struct msm_queue_cmd *__msm_control_nb(struct msm_sync *sync,
+					struct msm_queue_cmd *qcmd_to_copy)
+{
+	/* Since this is a non-blocking command, we cannot use qcmd_to_copy and
+	 * its data, since they are on the stack.  We replicate them on the heap
+	 * and mark them on_heap so that they get freed when the config thread
+	 * dequeues them.
+	 */
+
+	struct msm_ctrl_cmd *udata;
+	struct msm_ctrl_cmd *udata_to_copy = qcmd_to_copy->command;
+
+	struct msm_queue_cmd *qcmd =
+			kmalloc(sizeof(*qcmd_to_copy) +
+				sizeof(*udata_to_copy) +
+				udata_to_copy->length,
+				GFP_KERNEL);
+	if (!qcmd) {
+		pr_err("%s: out of memory\n", __func__);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	*qcmd = *qcmd_to_copy;
+	udata = qcmd->command = qcmd + 1;
+	memcpy(udata, udata_to_copy, sizeof(*udata));
+	udata->value = udata + 1;
+	memcpy(udata->value, udata_to_copy->value, udata_to_copy->length);
+
+	qcmd->on_heap = 1;
+
+	/* qcmd_resp will be set to NULL */
+	return __msm_control(sync, NULL, qcmd, 0);
+}
+
 static int msm_control(struct msm_control_device *ctrl_pmsm,
 			int block,
 			void __user *arg)
@@ -553,8 +587,11 @@ static int msm_control(struct msm_control_device *ctrl_pmsm,
 	int rc = 0;
 
 	struct msm_sync *sync = ctrl_pmsm->pmsm->sync;
-	struct msm_ctrl_cmd udata, *ctrlcmd;
-	struct msm_queue_cmd *qcmd = NULL, *qcmd_temp;
+	void __user *uptr;
+	struct msm_ctrl_cmd udata;
+	struct msm_queue_cmd qcmd;
+	struct msm_queue_cmd *qcmd_resp = NULL;
+	uint8_t data[50];
 
 	if (copy_from_user(&udata, arg, sizeof(struct msm_ctrl_cmd))) {
 		ERR_COPY_FROM_USER();
@@ -562,44 +599,40 @@ static int msm_control(struct msm_control_device *ctrl_pmsm,
 		goto end;
 	}
 
-	qcmd = kmalloc(sizeof(struct msm_queue_cmd) +
-				sizeof(struct msm_ctrl_cmd) + udata.length,
-				GFP_KERNEL);
-	if (!qcmd) {
-		pr_err("%s: cannot allocate buffer udata len %d\n",
-			__func__, udata.length);
-		rc = -ENOMEM;
-		goto end;
-	}
+	uptr = udata.value;
+	udata.value = data;
 
-	qcmd->on_heap = 1;
-	qcmd->type = MSM_CAM_Q_CTRL;
-	qcmd->command = ctrlcmd = (struct msm_ctrl_cmd *)(qcmd + 1);
-	*ctrlcmd = udata;
-	ctrlcmd->value = ctrlcmd + 1;
+	qcmd.on_heap = 0;
+	qcmd.type = MSM_CAM_Q_CTRL;
+	qcmd.command = &udata;
 
 	if (udata.length) {
-		if (copy_from_user(ctrlcmd->value,
-				udata.value, udata.length)) {
+		if (udata.length > sizeof(data)) {
+			pr_err("%s: user data too large (%d, max is %d)\n",
+					__func__,
+					udata.length,
+					sizeof(data));
+			rc = -EIO;
+			goto end;
+		}
+		if (copy_from_user(udata.value, uptr, udata.length)) {
 			ERR_COPY_FROM_USER();
 			rc = -EFAULT;
 			goto end;
 		}
 	}
 
-	if (!block) {
-		/* qcmd will be set to NULL */
-		qcmd = __msm_control(sync, NULL, qcmd, 0);
+	if (unlikely(!block)) {
+		qcmd_resp = __msm_control_nb(sync, &qcmd);
 		goto end;
 	}
 
-	qcmd_temp = __msm_control(sync,
+	qcmd_resp = __msm_control(sync,
 				  &ctrl_pmsm->ctrl_q,
-				  qcmd, MAX_SCHEDULE_TIMEOUT);
+				  &qcmd, MAX_SCHEDULE_TIMEOUT);
 
-	if (!qcmd_temp || IS_ERR(qcmd_temp)) {
-		rc = PTR_ERR(qcmd_temp);
-		/* Do not free qcmd here.  If the config thread consumed it,
+	if (!qcmd_resp || IS_ERR(qcmd_resp)) {
+		/* Do not free qcmd_resp here.  If the config thread read it,
 		 * then it has already been freed, and we timed out because
 		 * we did not receive a MSM_CAM_IOCTL_CTRL_CMD_DONE.  If the
 		 * config thread itself is blocked and not dequeueing commands,
@@ -607,16 +640,15 @@ static int msm_control(struct msm_control_device *ctrl_pmsm,
 		 * or when it is killed, qcmd will be freed in
 		 * msm_release_config.
 		 */
-		qcmd = NULL;
+		rc = PTR_ERR(qcmd_resp);
+		qcmd_resp = NULL;
 		goto end;
 	}
-	qcmd = qcmd_temp;
 
-	if (qcmd->command) {
-		void __user *to = udata.value;
-		udata = *(struct msm_ctrl_cmd *)qcmd->command;
+	if (qcmd_resp->command) {
+		udata = *(struct msm_ctrl_cmd *)qcmd_resp->command;
 		if (udata.length > 0) {
-			if (copy_to_user(to,
+			if (copy_to_user(uptr,
 					 udata.value,
 					 udata.length)) {
 				ERR_COPY_TO_USER();
@@ -624,7 +656,7 @@ static int msm_control(struct msm_control_device *ctrl_pmsm,
 				goto end;
 			}
 		}
-		udata.value = to;
+		udata.value = uptr;
 
 		if (copy_to_user((void *)arg, &udata,
 				sizeof(struct msm_ctrl_cmd))) {
@@ -635,8 +667,8 @@ static int msm_control(struct msm_control_device *ctrl_pmsm,
 	}
 
 end:
-	if (qcmd && qcmd->on_heap)
-		kfree(qcmd);
+	if (qcmd_resp && qcmd_resp->on_heap)
+		kfree(qcmd_resp);
 	CDBG("%s: rc %d\n", __func__, rc);
 	return rc;
 }
@@ -913,56 +945,46 @@ static int msm_ctrl_cmd_done(struct msm_control_device *ctrl_pmsm,
 		void __user *arg)
 {
 	unsigned long flags;
-	int rc = 0;
 
-	struct msm_ctrl_cmd udata, *ctrlcmd;
-	struct msm_queue_cmd *qcmd = NULL;
+	void __user *uptr;
+	struct msm_queue_cmd *qcmd = &ctrl_pmsm->qcmd;
+	struct msm_ctrl_cmd *command = &ctrl_pmsm->ctrl;
 
-	if (copy_from_user(&udata, arg, sizeof(struct msm_ctrl_cmd))) {
+	if (copy_from_user(command, arg, sizeof(*command))) {
 		ERR_COPY_FROM_USER();
-		rc = -EFAULT;
-		goto end;
+		return -EFAULT;
 	}
 
-	qcmd = kmalloc(sizeof(struct msm_queue_cmd) +
-			sizeof(struct msm_ctrl_cmd) + udata.length,
-			GFP_KERNEL);
-	if (!qcmd) {
-		pr_err("%s: failed to allocate %d bytes\n", __func__,
-			udata.length);
-		rc = -ENOMEM;
-		goto end;
-	}
+	qcmd->on_heap = 0;
+	qcmd->command = command;
+	uptr = command->value;
 
-	qcmd->command = ctrlcmd = (struct msm_ctrl_cmd *)(qcmd + 1);
-	qcmd->on_heap = 1;
-	*ctrlcmd = udata;
-	if (udata.length > 0) {
-		ctrlcmd->value = ctrlcmd + 1;
-		if (copy_from_user(ctrlcmd->value,
-					(void *)udata.value,
-					udata.length)) {
+	if (command->length > 0) {
+		command->value = ctrl_pmsm->ctrl_data;
+		if (command->length > sizeof(ctrl_pmsm->ctrl_data)) {
+			pr_err("%s: user data %d is too big (max %d)\n",
+				__func__, command->length,
+				sizeof(ctrl_pmsm->ctrl_data));
+			return -EINVAL;
+		}
+		if (copy_from_user(command->value,
+					uptr,
+					command->length)) {
 			ERR_COPY_FROM_USER();
-			rc = -EFAULT;
-			if (qcmd && qcmd->on_heap)
-				kfree(qcmd);
-			goto end;
+			return -EFAULT;
 		}
 	} else
-		ctrlcmd->value = NULL;
+		command->value = NULL;
 
-end:
 	CDBG("%s: end rc %d\n", __func__, rc);
-	if (!rc) {
-		/* wake up control thread */
-		spin_lock_irqsave(&ctrl_pmsm->ctrl_q.ctrl_status_q_lock, flags);
-		list_add_tail(&qcmd->list, &ctrl_pmsm->ctrl_q.ctrl_status_q);
-		wake_up(&ctrl_pmsm->ctrl_q.ctrl_status_wait);
-		spin_unlock_irqrestore(&ctrl_pmsm->ctrl_q.ctrl_status_q_lock,
-					flags);
-	}
 
-	return rc;
+	/* wake up control thread */
+	spin_lock_irqsave(&ctrl_pmsm->ctrl_q.ctrl_status_q_lock, flags);
+	list_add_tail(&qcmd->list, &ctrl_pmsm->ctrl_q.ctrl_status_q);
+	wake_up(&ctrl_pmsm->ctrl_q.ctrl_status_wait);
+	spin_unlock_irqrestore(&ctrl_pmsm->ctrl_q.ctrl_status_q_lock, flags);
+
+	return 0;
 }
 
 static int msm_config_vfe(struct msm_sync *sync, void __user *arg)

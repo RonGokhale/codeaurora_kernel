@@ -153,21 +153,26 @@ struct msm_control_device_queue {
 	wait_queue_head_t ctrl_status_wait;
 };
 
-struct msm_control_device {
-	struct msm_device *pmsm;
-
-	/* This queue used by the config thread to send responses back to the
-	 * control thread.  It is accessed only from a process context.
-	 */
-	struct msm_control_device_queue ctrl_q;
-};
-
 /* this structure is used in kernel */
 struct msm_queue_cmd {
 	struct list_head list;
 	enum msm_queue type;
 	void *command;
 	int on_heap;
+};
+
+struct msm_control_device {
+	struct msm_device *pmsm;
+
+	/* Used for MSM_CAM_IOCTL_CTRL_CMD_DONE responses */
+	uint8_t ctrl_data[50];
+	struct msm_ctrl_cmd ctrl;
+	struct msm_queue_cmd qcmd;
+
+	/* This queue used by the config thread to send responses back to the
+	 * control thread.  It is accessed only from a process context.
+	 */
+	struct msm_control_device_queue ctrl_q;
 };
 
 struct register_address_value_pair {
