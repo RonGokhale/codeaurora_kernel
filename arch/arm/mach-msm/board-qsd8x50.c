@@ -1987,18 +1987,18 @@ static void __init qsd8x50_init_mmc(void)
 
 	sdcc_gpio_init();
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
-	msm_add_sdcc(1, &qsd8x50_sdcc_data);
+	msm_add_sdcc(1, &qsd8x50_sdcc_data, 0, 0);
 #endif
 
 	if (machine_is_qsd8x50_surf()) {
 #ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
-		msm_add_sdcc(2, &qsd8x50_sdcc_data);
+		msm_add_sdcc(2, &qsd8x50_sdcc_data, 0, 0);
 #endif
 #ifdef CONFIG_MMC_MSM_SDC3_SUPPORT
-		msm_add_sdcc(3, &qsd8x50_sdcc_data);
+		msm_add_sdcc(3, &qsd8x50_sdcc_data, 0, 0);
 #endif
 #ifdef CONFIG_MMC_MSM_SDC4_SUPPORT
-		msm_add_sdcc(4, &qsd8x50_sdcc_data);
+		msm_add_sdcc(4, &qsd8x50_sdcc_data, 0, 0);
 #endif
 	}
 

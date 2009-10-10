@@ -42,6 +42,7 @@ module_param_named(debug_mask, msm_timer_debug_mask, int, S_IRUGO | S_IWUSR | S_
 #define TIMER_MATCH_VAL         0x0004
 #define TIMER_COUNT_VAL         0x0008
 #define TIMER_ENABLE            0x000C
+#define TIMER_CLEAR             0x0010
 #define TIMER_ENABLE_EN		1
 
 #else
@@ -52,6 +53,7 @@ module_param_named(debug_mask, msm_timer_debug_mask, int, S_IRUGO | S_IWUSR | S_
 #define TIMER_MATCH_VAL         0x0000
 #define TIMER_COUNT_VAL         0x0004
 #define TIMER_ENABLE            0x0008
+#define TIMER_CLEAR             0x000C
 #define TIMER_ENABLE_EN		1
 
 #endif
@@ -624,6 +626,13 @@ int64_t msm_timer_get_smem_clock_time(int64_t *period)
 	return tmp;
 }
 
+static inline s64 cyc2ns_orig(struct clocksource *cs, cycle_t cycles)
+{
+	u64 ret = (u64)cycles;
+	ret = (ret * cs->mult_orig) >> cs->shift;
+	return ret;
+}
+
 unsigned long long sched_clock(void)
 {
 	static cycle_t saved_ticks;
@@ -647,13 +656,13 @@ unsigned long long sched_clock(void)
 		if (!saved_ticks_valid) {
 			saved_ticks_valid = 1;
 			last_ticks = ticks;
-			base -= cyc2ns(cs, ticks);
+			base -= cyc2ns_orig(cs, ticks);
 		}
 		if (ticks < last_ticks) {
-			base += cyc2ns(cs, cs->mask);
-			base += cyc2ns(cs, 1);
+			base += cyc2ns_orig(cs, cs->mask);
+			base += cyc2ns_orig(cs, 1);
 		}
-		last_result = result = cyc2ns(cs, ticks) + base;
+		last_result = result = cyc2ns_orig(cs, ticks) + base;
 	} else {
 		base = result = last_result;
 		saved_ticks_valid = 0;
@@ -744,6 +753,7 @@ static void __init msm_timer_init(void)
 		struct clock_event_device *ce = &clock->clockevent;
 		struct clocksource *cs = &clock->clocksource;
 		writel(0, clock->regbase + TIMER_ENABLE);
+		writel(0, clock->regbase + TIMER_CLEAR);
 		writel(~0, clock->regbase + TIMER_MATCH_VAL);
 
 		ce->mult = div_sc(clock->freq, NSEC_PER_SEC, ce->shift);

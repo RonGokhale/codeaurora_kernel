@@ -23,13 +23,8 @@
 /* time_remote_mtoa server definitions. */
 
 #define TIME_REMOTE_MTOA_PROG 0x3000005d
-#if CONFIG_MSM_AMSS_VERSION==6210
-#define TIME_REMOTE_MTOA_VERS 0
-#elif (CONFIG_MSM_AMSS_VERSION==6220) || (CONFIG_MSM_AMSS_VERSION==6225)
+#define TIME_REMOTE_MTOA_VERS_OLD 0
 #define TIME_REMOTE_MTOA_VERS 0x9202a8e4
-#else
-#error "Unknown AMSS version"
-#endif
 #define TIME_REMOTE_MTOA_VERS_COMP 0x00010001
 #define RPC_TIME_REMOTE_MTOA_NULL   0
 #define RPC_TIME_TOD_SET_APPS_BASES 2
@@ -66,6 +61,11 @@ static int handle_rpc_call(struct msm_rpc_server *server,
 static struct msm_rpc_server rpc_server[] = {
 	{
 		.prog = TIME_REMOTE_MTOA_PROG,
+		.vers = TIME_REMOTE_MTOA_VERS_OLD,
+		.rpc_call = handle_rpc_call,
+	},
+	{
+		.prog = TIME_REMOTE_MTOA_PROG,
 		.vers = TIME_REMOTE_MTOA_VERS,
 		.rpc_call = handle_rpc_call,
 	},
@@ -80,9 +80,13 @@ static int __init rpc_server_init(void)
 {
 	/* Dual server registration to support backwards compatibility vers */
 	int ret;
+	ret = msm_rpc_create_server(&rpc_server[2]);
+	if (ret < 0)
+		return ret;
 	ret = msm_rpc_create_server(&rpc_server[1]);
 	if (ret < 0)
 		return ret;
+	printk(KERN_ERR "Using very old AMSS modem firmware.\n");
 	return msm_rpc_create_server(&rpc_server[0]);
 }
 

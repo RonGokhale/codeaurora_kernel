@@ -29,3 +29,4 @@ msm_tsif-objs := tsif.o
 
 obj-$(CONFIG_TSIF_CHRDEV) += tsif_chrdev.o
 
+obj-$(CONFIG_WL127X_RFKILL)	+= wl127x-rfkill.o

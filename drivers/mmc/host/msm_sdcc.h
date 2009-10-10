@@ -88,7 +88,7 @@
 #define MCI_SDIOINTR		(1 << 22)
 #define MCI_PROGDONE		(1 << 23)
 #define MCI_ATACMDCOMPL		(1 << 24)
-#define MCI_SDIOINTROPE		(1 << 25)
+#define MCI_SDIOINTOPER		(1 << 25)
 #define MCI_CCSTIMEOUT		(1 << 26)
 
 #define MMCICLEAR		0x038
@@ -206,12 +206,21 @@ struct msmsdcc_curr_req {
 	int			user_pages;
 };
 
+struct msmsdcc_stats {
+	unsigned int reqs;
+	unsigned int cmds;
+	unsigned int cmdpoll_hits;
+	unsigned int cmdpoll_misses;
+};
+
 struct msmsdcc_host {
-	struct resource		*irqres;
+	struct resource		*cmd_irqres;
+	struct resource		*pio_irqres;
 	struct resource		*memres;
 	struct resource		*dmares;
 	void __iomem		*base;
 	int			pdev_id;
+	unsigned int		stat_irq;
 
 	struct msmsdcc_curr_req	curr;
 
@@ -229,12 +238,15 @@ struct msmsdcc_host {
 	unsigned int		pclk_rate;
 
 	u32			pwr;
+	u32			saved_irq0mask;	/* MMCIMASK0 reg value */
 	struct mmc_platform_data *plat;
 
 	unsigned int		oldstat;
 
 	struct msmsdcc_dma_data	dma;
 	struct msmsdcc_pio_data	pio;
+	int			cmdpoll;
+	struct msmsdcc_stats	stats;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend early_suspend;

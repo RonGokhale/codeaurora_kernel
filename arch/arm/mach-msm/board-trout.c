@@ -490,7 +490,7 @@ static struct pwr_sink trout_pwrsink_table[] = {
 	{
 		.id	= PWRSINK_BLUETOOTH,
 		.ua_max	= 15000,
-	},	
+	},
 	{
 		.id	= PWRSINK_CAMERA,
 		.ua_max	= 0,
@@ -498,7 +498,7 @@ static struct pwr_sink trout_pwrsink_table[] = {
 	{
 		.id	= PWRSINK_SDCARD,
 		.ua_max	= 0,
-	},	
+	},
 	{
 		.id	= PWRSINK_VIDEO,
 		.ua_max	= 0,
@@ -509,8 +509,8 @@ static struct pwr_sink trout_pwrsink_table[] = {
 	},
 	{
 		.id	= PWRSINK_SYSTEM_LOAD,
-		.ua_max	= 63000,
-		.percent_util = 100,
+		.ua_max	= 100000,
+		.percent_util = 38,
 	},
 };
 

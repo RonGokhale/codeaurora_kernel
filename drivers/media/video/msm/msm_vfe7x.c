@@ -268,10 +268,8 @@ static int vfe_7x_init(struct msm_vfe_callback *presp,
 
 	msm_camio_camif_pad_reg_reset();
 
-	extlen = sizeof(struct vfe_frame_extra);
-
 	extdata =
-		kmalloc(extlen, GFP_ATOMIC);
+		kmalloc(sizeof(struct vfe_frame_extra), GFP_ATOMIC);
 	if (!extdata) {
 		rc = -ENOMEM;
 		goto init_fail;
@@ -296,7 +294,6 @@ get_vfe_fail:
 get_qcam_fail:
 	kfree(extdata);
 init_fail:
-	extlen = 0;
 	return rc;
 }
 
@@ -480,7 +477,7 @@ static int vfe_7x_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 			axid->bufnum1, sfcfg->af_enable);
 
 		if (axid->bufnum1 > 0) {
-			regptr = &axid->region[0];
+			regptr = axid->region;
 
 			for (i = 0; i < axid->bufnum1; i++) {
 
@@ -565,7 +562,7 @@ static int vfe_7x_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 
 	case CMD_GENERAL:
 	case CMD_STATS_DISABLE: {
-		if (vfecmd->length > 256) {
+		if (vfecmd->length > sizeof(buf)) {
 			cmd_data_alloc =
 			cmd_data = kmalloc(vfecmd->length, GFP_ATOMIC);
 			if (!cmd_data) {

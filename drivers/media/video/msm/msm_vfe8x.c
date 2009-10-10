@@ -112,6 +112,20 @@ static void vfe_config_axi(int mode,
 	}
 }
 
+#define CHECKED_COPY_FROM_USER(in) {					\
+	if (cmd->length != sizeof(*(in))) {				\
+		pr_err("msm_camera: %s cmd %d: user data size %d "	\
+			"!= kernel data size %d\n",			\
+			__func__, cmd->id, cmd->length, sizeof(*(in)));	\
+		rc = -EIO;						\
+		break;							\
+	}								\
+	if (copy_from_user((in), (void __user *)cmd->value,		\
+			sizeof(*(in)))) {				\
+		rc = -EFAULT;						\
+		break;							\
+	}								\
+}
 static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 {
 	int rc = 0;
@@ -127,9 +141,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_START: {
 		struct vfe_cmd_start start;
-		if (copy_from_user(&start,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&start);
 
 		/* msm_camio_camif_pad_reg_reset_2(); */
 		msm_camio_camif_pad_reg_reset();
@@ -139,9 +151,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_CAMIF_CONFIG: {
 		struct vfe_cmd_camif_config camif;
-		if (copy_from_user(&camif,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&camif);
 
 		vfe_camif_config(&camif);
 	}
@@ -149,9 +159,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_BLACK_LEVEL_CONFIG: {
 		struct vfe_cmd_black_level_config bl;
-		if (copy_from_user(&bl,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&bl);
 
 		vfe_black_level_config(&bl);
 	}
@@ -159,9 +167,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_ROLL_OFF_CONFIG: {
 		struct vfe_cmd_roll_off_config rolloff;
-		if (copy_from_user(&rolloff,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&rolloff);
 
 		vfe_roll_off_config(&rolloff);
 	}
@@ -169,9 +175,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_DEMUX_CHANNEL_GAIN_CONFIG: {
 		struct vfe_cmd_demux_channel_gain_config demuxc;
-		if (copy_from_user(&demuxc,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&demuxc);
 
 		/* demux is always enabled.  */
 		vfe_demux_channel_gain_config(&demuxc);
@@ -180,9 +184,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_DEMOSAIC_CONFIG: {
 		struct vfe_cmd_demosaic_config demosaic;
-		if (copy_from_user(&demosaic,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&demosaic);
 
 		vfe_demosaic_config(&demosaic);
 	}
@@ -191,9 +193,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 	case VFE_CMD_ID_FOV_CROP_CONFIG:
 	case VFE_CMD_ID_FOV_CROP_UPDATE: {
 		struct vfe_cmd_fov_crop_config fov;
-		if (copy_from_user(&fov,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&fov);
 
 		vfe_fov_crop_config(&fov);
 	}
@@ -202,9 +202,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 	case VFE_CMD_ID_MAIN_SCALER_CONFIG:
 	case VFE_CMD_ID_MAIN_SCALER_UPDATE: {
 		struct vfe_cmd_main_scaler_config mainds;
-		if (copy_from_user(&mainds,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&mainds);
 
 		vfe_main_scaler_config(&mainds);
 	}
@@ -213,9 +211,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 	case VFE_CMD_ID_WHITE_BALANCE_CONFIG:
 	case VFE_CMD_ID_WHITE_BALANCE_UPDATE: {
 		struct vfe_cmd_white_balance_config wb;
-		if (copy_from_user(&wb,
-			(void __user *)	cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&wb);
 
 		vfe_white_balance_config(&wb);
 	}
@@ -224,9 +220,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 	case VFE_CMD_ID_COLOR_CORRECTION_CONFIG:
 	case VFE_CMD_ID_COLOR_CORRECTION_UPDATE: {
 		struct vfe_cmd_color_correction_config cc;
-		if (copy_from_user(&cc,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&cc);
 
 		vfe_color_correction_config(&cc);
 	}
@@ -234,9 +228,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_LA_CONFIG: {
 		struct vfe_cmd_la_config la;
-		if (copy_from_user(&la,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&la);
 
 		vfe_la_config(&la);
 	}
@@ -244,9 +236,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_RGB_GAMMA_CONFIG: {
 		struct vfe_cmd_rgb_gamma_config rgb;
-		if (copy_from_user(&rgb,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&rgb);
 
 		rc = vfe_rgb_gamma_config(&rgb);
 	}
@@ -255,9 +245,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 	case VFE_CMD_ID_CHROMA_ENHAN_CONFIG:
 	case VFE_CMD_ID_CHROMA_ENHAN_UPDATE: {
 		struct vfe_cmd_chroma_enhan_config chrom;
-		if (copy_from_user(&chrom,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&chrom);
 
 		vfe_chroma_enhan_config(&chrom);
 	}
@@ -266,9 +254,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 	case VFE_CMD_ID_CHROMA_SUPPRESSION_CONFIG:
 	case VFE_CMD_ID_CHROMA_SUPPRESSION_UPDATE: {
 		struct vfe_cmd_chroma_suppression_config chromsup;
-		if (copy_from_user(&chromsup,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&chromsup);
 
 		vfe_chroma_sup_config(&chromsup);
 	}
@@ -276,9 +262,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_ASF_CONFIG: {
 		struct vfe_cmd_asf_config asf;
-		if (copy_from_user(&asf,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&asf);
 
 		vfe_asf_config(&asf);
 	}
@@ -287,9 +271,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 	case VFE_CMD_ID_SCALER2Y_CONFIG:
 	case VFE_CMD_ID_SCALER2Y_UPDATE: {
 		struct vfe_cmd_scaler2_config ds2y;
-		if (copy_from_user(&ds2y,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&ds2y);
 
 		vfe_scaler2y_config(&ds2y);
 	}
@@ -298,9 +280,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 	case VFE_CMD_ID_SCALER2CbCr_CONFIG:
 	case VFE_CMD_ID_SCALER2CbCr_UPDATE: {
 		struct vfe_cmd_scaler2_config ds2cbcr;
-		if (copy_from_user(&ds2cbcr,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&ds2cbcr);
 
 		vfe_scaler2cbcr_config(&ds2cbcr);
 	}
@@ -308,9 +288,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_CHROMA_SUBSAMPLE_CONFIG: {
 		struct vfe_cmd_chroma_subsample_config sub;
-		if (copy_from_user(&sub,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&sub);
 
 		vfe_chroma_subsample_config(&sub);
 	}
@@ -318,9 +296,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_FRAME_SKIP_CONFIG: {
 		struct vfe_cmd_frame_skip_config fskip;
-		if (copy_from_user(&fskip,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&fskip);
 
 		vfe_frame_skip_config(&fskip);
 	}
@@ -328,9 +304,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_OUTPUT_CLAMP_CONFIG: {
 		struct vfe_cmd_output_clamp_config clamp;
-		if (copy_from_user(&clamp,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&clamp);
 
 		vfe_output_clamp_config(&clamp);
 	}
@@ -339,9 +313,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 	/* module update commands */
 	case VFE_CMD_ID_BLACK_LEVEL_UPDATE: {
 		struct vfe_cmd_black_level_config blk;
-		if (copy_from_user(&blk,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&blk);
 
 		vfe_black_level_update(&blk);
 	}
@@ -349,9 +321,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_DEMUX_CHANNEL_GAIN_UPDATE: {
 		struct vfe_cmd_demux_channel_gain_config dmu;
-		if (copy_from_user(&dmu,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&dmu);
 
 		vfe_demux_channel_gain_update(&dmu);
 	}
@@ -359,9 +329,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_DEMOSAIC_BPC_UPDATE: {
 		struct vfe_cmd_demosaic_bpc_update demo_bpc;
-		if (copy_from_user(&demo_bpc,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&demo_bpc);
 
 		vfe_demosaic_bpc_update(&demo_bpc);
 	}
@@ -369,9 +337,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_DEMOSAIC_ABF_UPDATE: {
 		struct vfe_cmd_demosaic_abf_update demo_abf;
-		if (copy_from_user(&demo_abf,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&demo_abf);
 
 		vfe_demosaic_abf_update(&demo_abf);
 	}
@@ -379,9 +345,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_LA_UPDATE: {
 		struct vfe_cmd_la_config la;
-		if (copy_from_user(&la,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&la);
 
 		vfe_la_update(&la);
 	}
@@ -389,9 +353,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_RGB_GAMMA_UPDATE: {
 		struct vfe_cmd_rgb_gamma_config rgb;
-		if (copy_from_user(&rgb,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&rgb);
 
 		rc = vfe_rgb_gamma_update(&rgb);
 	}
@@ -399,9 +361,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_ASF_UPDATE: {
 		struct vfe_cmd_asf_update asf;
-		if (copy_from_user(&asf,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&asf);
 
 		vfe_asf_update(&asf);
 	}
@@ -409,9 +369,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_FRAME_SKIP_UPDATE: {
 		struct vfe_cmd_frame_skip_update fskip;
-		if (copy_from_user(&fskip,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&fskip);
 
 		vfe_frame_skip_update(&fskip);
 	}
@@ -419,9 +377,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_CAMIF_FRAME_UPDATE: {
 		struct vfe_cmds_camif_frame fup;
-		if (copy_from_user(&fup,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&fup);
 
 		vfe_camif_frame_update(&fup);
 	}
@@ -430,9 +386,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 	/* stats update commands */
 	case VFE_CMD_ID_STATS_AUTOFOCUS_UPDATE: {
 		struct vfe_cmd_stats_af_update afup;
-		if (copy_from_user(&afup,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&afup);
 
 		vfe_stats_update_af(&afup);
 	}
@@ -440,9 +394,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_STATS_WB_EXP_UPDATE: {
 		struct vfe_cmd_stats_wb_exp_update wbexp;
-		if (copy_from_user(&wbexp,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&wbexp);
 
 		vfe_stats_update_wb_exp(&wbexp);
 	}
@@ -459,9 +411,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 	/* stats */
 	case VFE_CMD_ID_STATS_SETTING: {
 		struct vfe_cmd_stats_setting stats;
-		if (copy_from_user(&stats,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&stats);
 
 		vfe_stats_setting(&stats);
 	}
@@ -469,9 +419,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_STATS_AUTOFOCUS_START: {
 		struct vfe_cmd_stats_af_start af;
-		if (copy_from_user(&af,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&af);
 
 		vfe_stats_start_af(&af);
 	}
@@ -483,9 +431,7 @@ static int vfe_proc_general(struct msm_vfe_command_8k *cmd)
 
 	case VFE_CMD_ID_STATS_WB_EXP_START: {
 		struct vfe_cmd_stats_wb_exp_start awexp;
-		if (copy_from_user(&awexp,
-			(void __user *) cmd->value, cmd->length))
-			rc = -EFAULT;
+		CHECKED_COPY_FROM_USER(&awexp);
 
 		vfe_stats_start_wb_exp(&awexp);
 	}

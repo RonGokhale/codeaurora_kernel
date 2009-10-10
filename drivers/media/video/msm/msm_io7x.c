@@ -237,7 +237,6 @@ void msm_camio_vfe_blk_reset(void)
 {
 	uint32_t val;
 
-	/* do apps reset */
 	val = readl(appbase + 0x00000210);
 	val |= 0x1;
 	writel(val, appbase + 0x00000210);

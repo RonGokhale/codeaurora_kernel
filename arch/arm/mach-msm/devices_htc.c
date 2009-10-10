@@ -55,7 +55,8 @@ void __init msm_add_devices(void)
 
 #define HSUSB_API_INIT_PHY_PROC	2
 #define HSUSB_API_PROG		0x30000064
-#define HSUSB_API_VERS		0x10001
+#define HSUSB_API_VERS MSM_RPC_VERS(1,1)
+
 static void internal_phy_reset(void)
 {
 	struct msm_rpc_endpoint *usb_ep;
@@ -97,11 +98,11 @@ static char *usb_functions[] = {
 static struct msm_hsusb_product usb_products[] = {
 	{
 		.product_id	= 0x0c01,
-		.functions	= 0x00000041, /* usb_mass_storage */
+		.functions	= 0x00000001, /* usb_mass_storage */
 	},
 	{
 		.product_id	= 0x0c02,
-		.functions	= 0x00000043, /* usb_mass_storage + adb */
+		.functions	= 0x00000003, /* usb_mass_storage + adb */
 	},
 };
 #endif
@@ -109,6 +110,7 @@ static struct msm_hsusb_product usb_products[] = {
 struct msm_hsusb_platform_data msm_hsusb_pdata = {
 	.phy_reset = internal_phy_reset,
 	.phy_init_seq = hsusb_phy_init_seq,
+	.usb_connected = notify_usb_connected,
 #ifdef CONFIG_USB_FUNCTION
 	.vendor_id = 0x0bb4,
 	.product_id = 0x0c02,
@@ -434,7 +436,8 @@ static int __init board_serialno_setup(char *serialno)
 {
 	char *str;
 
-	if (board_mfg_mode() || !strlen(serialno))
+	/* use default serial number when mode is factory2 */
+	if (mfg_mode == 1 || !strlen(serialno))
 		str = df_serialno;
 	else
 		str = serialno;

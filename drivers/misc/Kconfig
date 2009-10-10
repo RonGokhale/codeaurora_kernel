@@ -274,6 +274,14 @@ config TSIF_CHRDEV
 	  To compile this driver as module, choose M here: the
 	  module will be called tsif_chrdev.
 
+config WL127X_RFKILL
+	tristate "Bluetooth power control driver for TI wl127x"
+	depends on RFKILL
+	default n
+	---help---
+	 Creates an rfkill entry in sysfs for power control of Bluetooth
+	 TI wl127x chips.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 

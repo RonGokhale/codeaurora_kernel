@@ -22,15 +22,10 @@
 /* dog_keepalive server definitions */
 
 #define DOG_KEEPALIVE_PROG 0x30000015
-#if CONFIG_MSM_AMSS_VERSION==6210
-#define DOG_KEEPALIVE_VERS 0
-#define RPC_DOG_KEEPALIVE_BEACON 1
-#elif (CONFIG_MSM_AMSS_VERSION==6220) || (CONFIG_MSM_AMSS_VERSION==6225)
+#define DOG_KEEPALIVE_VERS_OLD 0
+#define RPC_DOG_KEEPALIVE_BEACON_OLD 1
 #define DOG_KEEPALIVE_VERS 0x731fa727
 #define RPC_DOG_KEEPALIVE_BEACON 2
-#else
-#error "Unsupported AMSS version"
-#endif
 #define DOG_KEEPALIVE_VERS_COMP 0x00010001
 #define RPC_DOG_KEEPALIVE_NULL 0
 
@@ -45,12 +40,19 @@ static int handle_rpc_call(struct msm_rpc_server *server,
 		return 0;
 	case RPC_DOG_KEEPALIVE_BEACON:
 		return 0;
+	case RPC_DOG_KEEPALIVE_BEACON_OLD:
+		return 0;
 	default:
 		return -ENODEV;
 	}
 }
 
 static struct msm_rpc_server rpc_server[] = {
+	{
+		.prog = DOG_KEEPALIVE_PROG,
+		.vers = DOG_KEEPALIVE_VERS_OLD,
+		.rpc_call = handle_rpc_call,
+	},
 	{
 		.prog = DOG_KEEPALIVE_PROG,
 		.vers = DOG_KEEPALIVE_VERS,
@@ -67,9 +69,13 @@ static int __init rpc_server_init(void)
 {
 	/* Dual server registration to support backwards compatibility vers */
 	int ret;
+	ret = msm_rpc_create_server(&rpc_server[2]);
+	if (ret < 0)
+		return ret;
 	ret = msm_rpc_create_server(&rpc_server[1]);
 	if (ret < 0)
 		return ret;
+	printk(KERN_ERR "Using very old AMSS modem firmware.\n");
 	return msm_rpc_create_server(&rpc_server[0]);
 }
 

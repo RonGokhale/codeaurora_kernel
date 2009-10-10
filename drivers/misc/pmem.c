@@ -24,6 +24,7 @@
 #include <linux/android_pmem.h>
 #include <linux/mempolicy.h>
 #include <linux/kobject.h>
+#include <linux/sched.h>
 #include <asm/io.h>
 #include <asm/uaccess.h>
 #include <asm/cacheflush.h>

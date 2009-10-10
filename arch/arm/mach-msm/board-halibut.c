@@ -1201,15 +1201,19 @@ static void __init halibut_init_mmc(void)
 
 	sdcc_gpio_init();
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
-	msm_add_sdcc(1, &halibut_sdcc_data);
+	msm_add_sdcc(1, &halibut_sdcc_data, 0, 0);
+#endif
+#ifdef CONFIG_MMC_MSM_CARD_HW_DETECTION
+	msm_add_sdcc(1, &halibut_sdcc_data, MSM_GPIO_TO_INT(49),
+			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING);
 #endif
 
 	if (machine_is_msm7201a_surf()) {
 #ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
-		msm_add_sdcc(2, &halibut_sdcc_data);
+		msm_add_sdcc(2, &halibut_sdcc_data, 0, 0);
 #endif
 #ifdef CONFIG_MMC_MSM_SDC4_SUPPORT
-		msm_add_sdcc(4, &halibut_sdcc_data);
+		msm_add_sdcc(4, &halibut_sdcc_data, 0, 0);
 #endif
 	}
 }
@@ -1309,6 +1313,7 @@ static void __init halibut_init(void)
 	msm_serial_debug_init(MSM_UART3_PHYS, INT_UART3,
 			      &msm_device_uart3.dev, 1);
 #endif
+	msm_hsusb_pdata.max_axi_khz = clk_get_max_axi_khz();
 	msm_hsusb_pdata.soc_version = socinfo_get_version();
 #ifdef CONFIG_MSM_CAMERA
 	config_camera_off_gpios(); /* might not be necessary */

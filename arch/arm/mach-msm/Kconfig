@@ -64,7 +64,15 @@ config MACH_TROUT
 	depends on ARCH_MSM7X01A
 	depends on MSM_STACKED_MEMORY
 	default y
-	bool "Trout"
+	bool "Trout (HTC Dream, T-Mobile G1, Google ADP1)"
+	help
+	 Select this to support HTC Dream, T-Mobile G1, Google ADP1.
+
+config MACH_SAPPHIRE
+	depends on ARCH_MSM7X01A
+	depends on MSM_STACKED_MEMORY
+	default y
+	bool "Sapphire"
 
 config MACH_MSM7X27_SURF
 	depends on ARCH_MSM7X27
@@ -137,27 +145,6 @@ config MSM_STACKED_MEMORY
 	  memory.  When present this memory bank is used for a high speed
 	  shared memory interface.  When not present regular RAM is used.
 
-config MSM_AMSS_VERSION
-	int
-	default 6210 if MSM_AMSS_VERSION_6210
-	default 6220 if MSM_AMSS_VERSION_6220
-	default 6225 if MSM_AMSS_VERSION_6225
-
-choice
-	prompt "AMSS modem firmware version"
-
-	default MSM_AMSS_VERSION_6225
-
-	config MSM_AMSS_VERSION_6210
-		bool "6.2.10"
-
-	config MSM_AMSS_VERSION_6220
-		bool "6.2.20"
-
-	config MSM_AMSS_VERSION_6225
-		bool "6.2.20 + New ADSP"
-endchoice
-
 config MSM_DEBUG_UART
 	int
 	default 1 if MSM_DEBUG_UART1
@@ -181,6 +168,14 @@ choice
 	config MSM_DEBUG_UART3
 		bool "UART3"
 endchoice
+
+config CACHE_FLUSH_RANGE_LIMIT
+	hex "Cache flush range limit"
+	default 0x40000
+	help
+	  When flushing a cache range larger then this (hex) limit, flush the
+	  entire cache instead. Flushing a large range can be slower than
+	  flushing, then refilling, the entire cache.
 
 choice
 	prompt "Default Timer"
@@ -572,16 +567,6 @@ config MSM_CPU_FREQ_MIN
 	default 245760
 
 endif # CPU_FREQ_MSM
-
-config MSM_CPU_AVS
-	bool "Enable Adaptive Voltage Scaling (AVS)"
-	depends on (ARCH_MSM_SCORPION && QSD_SVS)
-	depends on ARCH_QSD8X50
-	default y
-	help
-	  This enables the Adaptive Voltage Scaling feature of
-	  Qualcomm ARMv7 CPUs. It adjusts the voltage for each frequency
-	  based on feedback from three ring oscillators in the CPU.
 
 config MSM_HW3D
 	tristate "MSM Hardware 3D Register Driver"

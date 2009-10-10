@@ -29,7 +29,6 @@
 #include <linux/platform_device.h>
 #include <linux/debugfs.h>
 #include <linux/workqueue.h>
-#include <linux/pm_qos_params.h>
 
 #include <mach/msm72k_otg.h>
 #include <linux/io.h>
@@ -50,7 +49,6 @@ static const char driver_name[] = "msm72k_udc";
 #define MSM_USB_BASE ((unsigned) ui->addr)
 
 #define	DRIVER_DESC		"MSM 72K USB Peripheral Controller"
-#define	DRIVER_NAME		"MSM72K_UDC"
 
 #define EPT_FLAG_IN        0x0001
 
@@ -175,6 +173,8 @@ struct usb_info {
 	int  (*chg_init)(int);
 	void (*chg_connected)(enum chg_type);
 	void (*chg_vbus_draw)(unsigned);
+	/* for notification when USB is connected or disconnected */
+	void (*usb_connected)(int);
 
 	struct work_struct work;
 	unsigned phy_status;
@@ -300,30 +300,29 @@ static void init_endpoints(struct usb_info *ui)
 	}
 }
 
+static void config_ept(struct msm_endpoint *ept)
+{
+	unsigned cfg = CONFIG_MAX_PKT(ept->ep.maxpacket) | CONFIG_ZLT;
+
+	if (ept->bit == 0)
+		/* ep0 out needs interrupt-on-setup */
+		cfg |= CONFIG_IOS;
+
+	ept->head->config = cfg;
+	ept->head->next = TERMINATE;
+
+	if (ept->ep.maxpacket)
+		INFO("ept #%d %s max:%d head:%p bit:%d\n",
+		    ept->num, (ept->flags & EPT_FLAG_IN) ? "in" : "out",
+		    ept->ep.maxpacket, ept->head, ept->bit);
+}
+
 static void configure_endpoints(struct usb_info *ui)
 {
 	unsigned n;
-	unsigned cfg;
 
-	for (n = 0; n < 32; n++) {
-		struct msm_endpoint *ept = ui->ept + n;
-
-		cfg = CONFIG_MAX_PKT(ept->ep.maxpacket) | CONFIG_ZLT;
-
-		if (ept->bit == 0)
-			/* ep0 out needs interrupt-on-setup */
-			cfg |= CONFIG_IOS;
-
-		ept->head->config = cfg;
-		ept->head->next = TERMINATE;
-
-		if (ept->ep.maxpacket)
-			dev_dbg(&ui->pdev->dev,
-				"ept #%d %s max:%d head:%p bit:%d\n",
-			       ept->num,
-			       (ept->flags & EPT_FLAG_IN) ? "in" : "out",
-			       ept->ep.maxpacket, ept->head, ept->bit);
-	}
+	for (n = 0; n < 32; n++)
+		config_ept(ui->ept + n);
 }
 
 struct usb_request *usb_ept_alloc_req(struct msm_endpoint *ept,
@@ -1183,6 +1182,8 @@ static void usb_do_work(struct work_struct *w)
 					free_irq(ui->irq, ui);
 					ui->irq = 0;
 				}
+				if (ui->usb_connected)
+					ui->usb_connected(0);
 
 				/* terminate any transactions, etc */
 				flush_all_endpoints(ui);
@@ -1232,6 +1233,9 @@ static void usb_do_work(struct work_struct *w)
 				msm72k_pm_qos_update(1);
 				otg_set_suspend(ui->xceiv, 0);
 				usb_reset(ui);
+				if (ui->usb_connected)
+					ui->usb_connected(1);
+
 				ui->state = USB_STATE_ONLINE;
 				usb_do_work_check_vbus(ui);
 				ret = request_irq(otg->irq, usb_interrupt,
@@ -1426,6 +1430,7 @@ msm72k_enable(struct usb_ep *_ep, const struct usb_endpoint_descriptor *desc)
 			desc->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 
 	_ep->maxpacket = le16_to_cpu(desc->wMaxPacketSize);
+	config_ept(ept);
 	usb_ept_enable(ept, 1, ep_type);
 	return 0;
 }
@@ -1806,6 +1811,7 @@ static int msm72k_probe(struct platform_device *pdev)
 		ui->chg_init = pdata->chg_init;
 		ui->chg_connected = pdata->chg_connected;
 		ui->chg_vbus_draw = pdata->chg_vbus_draw;
+		ui->usb_connected = pdata->usb_connected;
 	}
 
 	if (ui->chg_init)

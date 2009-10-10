@@ -2,14 +2,12 @@ comment "Camera Sensor Selection"
 config MT9T013
 	bool "Sensor mt9t013 (BAYER 3M)"
 	depends on MSM_CAMERA
-	default y
 	---help---
 	  MICRON 3M Bayer Sensor with AutoFocus
 
 config MT9D112
 	bool "Sensor mt9d112 (YUV 2M)"
 	depends on MSM_CAMERA
-	default y
 	---help---
 	  MICRON 2M YUV Sensor
 
@@ -35,17 +33,12 @@ config MSM_CAMERA_AF_BAM
 	help
 	  This driver supports BAM AF module for 5M Bayer sensor
 
-config MSM_CAMERA_AF_KM
-	bool "KM Module"
-	help
-	  This driver supports KM AF module for 5M Bayer sensor
 
 endchoice
 
 config S5K3E2FX
 	bool "Sensor s5k3e2fx (Samsung 5M)"
 	depends on MSM_CAMERA
-	default y
 	---help---
 	  Samsung 5M with Autofocus
 

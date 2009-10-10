@@ -74,7 +74,6 @@ static u8 hostaddr[ETH_ALEN];
 #define ADB_PRODUCT_ID	0x0002
 
 struct android_dev {
-	struct usb_gadget *gadget;
 	struct usb_composite_dev *cdev;
 
 	int product_id;
@@ -131,7 +130,17 @@ static struct usb_device_descriptor device_desc = {
 
 static void enable_adb(struct android_dev *dev, int enable);
 
-static int  android_bind_config(struct usb_configuration *c)
+void android_usb_set_connected(int connected)
+{
+	if (_android_dev && _android_dev->cdev && _android_dev->cdev->gadget) {
+		if (connected)
+			usb_gadget_connect(_android_dev->cdev->gadget);
+		else
+			usb_gadget_disconnect(_android_dev->cdev->gadget);
+	}
+}
+
+static int android_bind_config(struct usb_configuration *c)
 {
 	struct android_dev *dev = _android_dev;
 	int ret = -EINVAL;
@@ -461,7 +470,7 @@ static int adb_enable_release(struct inode *ip, struct file *fp)
 	return 0;
 }
 
-static struct file_operations adb_enable_fops = {
+static const struct file_operations adb_enable_fops = {
 	.owner =   THIS_MODULE,
 	.open =    adb_enable_open,
 	.release = adb_enable_release,

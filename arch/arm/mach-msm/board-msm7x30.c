@@ -1747,22 +1747,22 @@ static void __init msm7x30_init_mmc(void)
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
 	sdcc_vreg_data[0].vreg_data = vreg_s3;
 	sdcc_vreg_data[0].level = 1800;
-	msm_add_sdcc(1, &msm7x30_sdc1_data);
+	msm_add_sdcc(1, &msm7x30_sdc1_data, 0, 0);
 #endif
 #ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
 	sdcc_vreg_data[1].vreg_data = vreg_s3;
 	sdcc_vreg_data[1].level = 1800;
-	msm_add_sdcc(2, &msm7x30_sdc2_data);
+	msm_add_sdcc(2, &msm7x30_sdc2_data, 0, 0);
 #endif
 #ifdef CONFIG_MMC_MSM_SDC3_SUPPORT
 	sdcc_vreg_data[2].vreg_data = vreg_s3;
 	sdcc_vreg_data[2].level = 1800;
-	msm_add_sdcc(3, &msm7x30_sdc3_data);
+	msm_add_sdcc(3, &msm7x30_sdc3_data, 0, 0);
 #endif
 #ifdef CONFIG_MMC_MSM_SDC4_SUPPORT
 	sdcc_vreg_data[3].vreg_data = vreg_mmc;
 	sdcc_vreg_data[3].level = 2850;
-	msm_add_sdcc(4, &msm7x30_sdc4_data);
+	msm_add_sdcc(4, &msm7x30_sdc4_data, 0, 0);
 #endif
 
 }

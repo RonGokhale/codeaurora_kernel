@@ -47,25 +47,22 @@ $Header: //source/qcom/qct/multimedia2/Audio/drivers/QDSP5Driver/QDSP5Interface/
 /* Type specification of dec_data_avail message sent to AUDPLAYTASK
 */
 typedef struct {
-  /*command ID*/
-  unsigned int cmd_id;        
+	/*command ID*/
+	unsigned int cmd_id;
 
-  /* Decoder ID for which message is being sent */
-  unsigned int decoder_id;        
+	/* Decoder ID for which message is being sent */
+	unsigned int decoder_id;
 
-  /* Start address of data in ARM global memory */
-  unsigned int buf_ptr;    
+	/* Start address of data in ARM global memory */
+	unsigned int buf_ptr;
 
-  /* Number of 16-bit words of bit-stream data contiguously available at the
-   * above-mentioned address 
-   */
-  unsigned int buf_size;
-          
-  /* Partition number used by audPlayTask to communicate with DSP's RTOS
-   * kernel 
-  */
-  unsigned int partition_number;    
+	/* Number of 16-bit words of bit-stream data contiguously available at the
+	 * above-mentioned address. */
+	unsigned int buf_size;
 
+	/* Partition number used by audPlayTask to communicate with DSP's RTOS
+	 * kernel */
+	unsigned int partition_number;
 } __attribute__((packed)) audplay_cmd_bitstream_data_avail;
 
 #define AUDPLAY_CMD_HPCM_BUF_CFG 0x0003

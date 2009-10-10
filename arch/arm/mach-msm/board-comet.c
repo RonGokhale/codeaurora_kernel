@@ -1349,8 +1349,8 @@ static void __init comet_init_mmc(void)
 		return;
 	}
 	sdcc_gpio_init();
-	msm_add_sdcc(1, &comet_sdcc_data);
-	msm_add_sdcc(3, &comet_sdcc_data);
+	msm_add_sdcc(1, &comet_sdcc_data, 0, 0);
+	msm_add_sdcc(3, &comet_sdcc_data, 0, 0);
 }
 
 static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR] = {

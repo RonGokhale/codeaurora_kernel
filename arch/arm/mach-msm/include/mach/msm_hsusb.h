@@ -64,6 +64,9 @@ enum chg_type {
 };
 
 struct msm_hsusb_gadget_platform_data {
+	/* for notification when USB is connected or disconnected */
+	void (*usb_connected)(int);
+
 	int *phy_init_seq;
 	void (*phy_reset)(void);
 
@@ -94,6 +97,7 @@ struct msm_hsusb_platform_data {
 
 	int (*phy_reset)(void __iomem *addr);
 
+	unsigned int max_axi_khz;
 	unsigned int core_clk;
 
 	int vreg5v_required;

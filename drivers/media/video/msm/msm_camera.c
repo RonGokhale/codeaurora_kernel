@@ -129,14 +129,15 @@ static int msm_pmem_table_add(struct hlist_head *ptype,
 {
 	struct file *file;
 	unsigned long paddr;
-	unsigned long vstart;
+	unsigned long kvstart;
 	unsigned long len;
 	int rc;
 	struct msm_pmem_region *region;
 
-	rc = get_pmem_file(info->fd, &paddr, &vstart, &len, &file);
+	rc = get_pmem_file(info->fd, &paddr, &kvstart, &len, &file);
 	if (rc < 0) {
-		pr_err("msm_pmem_table_add: get_pmem_file fd %d error %d\n",
+		pr_err("%s: get_pmem_file fd %d error %d\n",
+			__func__,
 			info->fd, rc);
 		return rc;
 	}
@@ -292,7 +293,7 @@ static int __msm_pmem_table_del(struct msm_sync *sync,
 	switch (pinfo->type) {
 	case MSM_PMEM_OUTPUT1:
 	case MSM_PMEM_OUTPUT2:
-	case MSM_PMEM_THUMBAIL:
+	case MSM_PMEM_THUMBNAIL:
 	case MSM_PMEM_MAINIMG:
 	case MSM_PMEM_RAW_MAINIMG:
 		hlist_for_each_entry_safe(region, node, n,
@@ -606,6 +607,7 @@ end:
 	 * a result of a successful completion, we are freeing the qcmd that
 	 * we dequeued from queue->ctrl_status_q.
 	 */
+	if (qcmd)
 	kfree(qcmd);
 
 	CDBG("msm_control: end rc = %d\n", rc);
@@ -685,7 +687,7 @@ static int msm_get_stats(struct msm_sync *sync, void __user *arg)
 					&(stats.fd));
 			if (!stats.buffer) {
 				pr_err("%s: msm_pmem_stats_ptov_lookup error\n",
-					__func__);
+					__FUNCTION__);
 				rc = -EINVAL;
 				goto failure;
 			}
@@ -900,6 +902,7 @@ static int msm_get_stats(struct msm_sync *sync, void __user *arg)
 	}
 
 failure:
+	if (qcmd)
 	kfree(qcmd);
 
 	CDBG("msm_get_stats: %d\n", rc);
@@ -997,6 +1000,8 @@ static int msm_config_vfe(struct msm_sync *sync, void __user *arg)
 					NUM_AF_STAT_OUTPUT_BUFFERS);
 		if (!axi_data.bufnum1) {
 			pr_err("%s: pmem region lookup error\n", __func__);
+			pr_err("%s %d: pmem region lookup error\n",
+				__FUNCTION__, __LINE__);
 			return -EINVAL;
 		}
 		axi_data.region = &region[0];
@@ -1015,7 +1020,7 @@ static int msm_config_vfe(struct msm_sync *sync, void __user *arg)
 		break;
 	default:
 		pr_err("%s: unknown command type %d\n",
-			__func__, cfgcmd.cmd_type);
+			__FUNCTION__, cfgcmd.cmd_type);
 		return -EINVAL;
 	}
 
@@ -1044,7 +1049,8 @@ static int msm_frame_axi_cfg(struct msm_sync *sync,
 			msm_pmem_region_lookup(&sync->frame, pmem_type,
 				&region[0], 8);
 		if (!axi_data.bufnum1) {
-			pr_err("%s: pmem region lookup error\n", __func__);
+			pr_err("%s %d: pmem region lookup error\n",
+				__FUNCTION__, __LINE__);
 			return -EINVAL;
 		}
 		break;
@@ -1055,18 +1061,21 @@ static int msm_frame_axi_cfg(struct msm_sync *sync,
 			msm_pmem_region_lookup(&sync->frame, pmem_type,
 				&region[0], 8);
 		if (!axi_data.bufnum2) {
-			pr_err("%s: pmem region lookup error\n", __func__);
+			pr_err("%s %d: pmem region lookup error (empty %d)\n",
+				__FUNCTION__, __LINE__,
+				hlist_empty(&sync->frame));
 			return -EINVAL;
 		}
 		break;
 
 	case CMD_AXI_CFG_SNAP_O1_AND_O2:
-		pmem_type = MSM_PMEM_THUMBAIL;
+		pmem_type = MSM_PMEM_THUMBNAIL;
 		axi_data.bufnum1 =
 			msm_pmem_region_lookup(&sync->frame, pmem_type,
 				&region[0], 8);
 		if (!axi_data.bufnum1) {
-			pr_err("%s: pmem region lookup error\n", __func__);
+			pr_err("%s %d: pmem region lookup error\n",
+				__FUNCTION__, __LINE__);
 			return -EINVAL;
 		}
 
@@ -1075,7 +1084,8 @@ static int msm_frame_axi_cfg(struct msm_sync *sync,
 			msm_pmem_region_lookup(&sync->frame, pmem_type,
 				&region[axi_data.bufnum1], 8);
 		if (!axi_data.bufnum2) {
-			pr_err("%s: pmem region lookup error\n", __func__);
+			pr_err("%s %d: pmem region lookup error\n",
+				__FUNCTION__, __LINE__);
 			return -EINVAL;
 		}
 		break;
@@ -1086,7 +1096,8 @@ static int msm_frame_axi_cfg(struct msm_sync *sync,
 			msm_pmem_region_lookup(&sync->frame, pmem_type,
 				&region[0], 8);
 		if (!axi_data.bufnum2) {
-			pr_err("%s: pmem region lookup error\n", __func__);
+			pr_err("%s %d: pmem region lookup error\n",
+				__FUNCTION__, __LINE__);
 			return -EINVAL;
 		}
 		break;
@@ -1097,7 +1108,7 @@ static int msm_frame_axi_cfg(struct msm_sync *sync,
 
 	default:
 		pr_err("%s: unknown command type %d\n",
-			__func__, cfgcmd->cmd_type);
+			__FUNCTION__, cfgcmd->cmd_type);
 		return -EINVAL;
 	}
 
@@ -1163,7 +1174,7 @@ static int __msm_put_frame_buf(struct msm_sync *sync,
 			rc = sync->vfefn.vfe_config(&cfgcmd, &pphy);
 	} else {
 		pr_err("%s: msm_pmem_frame_vtop_lookup failed\n",
-			__func__);
+			__FUNCTION__);
 		rc = -EINVAL;
 	}
 
@@ -1192,7 +1203,7 @@ static int __msm_register_pmem(struct msm_sync *sync,
 	switch (pinfo->type) {
 	case MSM_PMEM_OUTPUT1:
 	case MSM_PMEM_OUTPUT2:
-	case MSM_PMEM_THUMBAIL:
+	case MSM_PMEM_THUMBNAIL:
 	case MSM_PMEM_MAINIMG:
 	case MSM_PMEM_RAW_MAINIMG:
 		rc = msm_pmem_table_add(&sync->frame, pinfo);
@@ -1247,7 +1258,7 @@ static int msm_stats_axi_cfg(struct msm_sync *sync,
 		break;
 	default:
 		pr_err("%s: unknown command type %d\n",
-			__func__, cfgcmd->cmd_type);
+			__FUNCTION__, cfgcmd->cmd_type);
 		return -EINVAL;
 	}
 
@@ -1256,7 +1267,8 @@ static int msm_stats_axi_cfg(struct msm_sync *sync,
 			msm_pmem_region_lookup(&sync->stats, pmem_type,
 				&region[0], NUM_WB_EXP_STAT_OUTPUT_BUFFERS);
 		if (!axi_data.bufnum1) {
-			pr_err("%s: pmem region lookup error\n", __func__);
+			pr_err("%s %d: pmem region lookup error\n",
+				__FUNCTION__, __LINE__);
 			return -EINVAL;
 		}
 	axi_data.region = &region[0];
@@ -1293,7 +1305,7 @@ static int msm_put_stats_buffer(struct msm_sync *sync, void __user *arg)
 			cfgcmd.cmd_type = CMD_STATS_AF_BUF_RELEASE;
 		else {
 			pr_err("%s: invalid buf type %d\n",
-				__func__,
+				__FUNCTION__,
 				buf.type);
 			rc = -EINVAL;
 			goto put_done;
@@ -1339,7 +1351,7 @@ static int msm_axi_config(struct msm_sync *sync, void __user *arg)
 
 	default:
 		pr_err("%s: unknown command type %d\n",
-			__func__,
+			__FUNCTION__,
 			cfgcmd.cmd_type);
 		return -EINVAL;
 	}
@@ -1770,9 +1782,11 @@ static int __msm_release(struct msm_sync *sync)
 		if (sync->vfefn.vfe_release)
 			sync->vfefn.vfe_release(sync->pdev);
 
+		if (sync->cropinfo) {
 		kfree(sync->cropinfo);
 		sync->cropinfo = NULL;
 		sync->croplen = 0;
+		}
 
 		hlist_for_each_entry_safe(region, hnode, n,
 				&sync->frame, list) {
@@ -2155,7 +2169,8 @@ static int __msm_v4l2_control(struct msm_sync *sync,
 	memcpy(out->value, ctrl->value, ctrl->length);
 
 end:
-	kfree(rcmd);
+
+	if (rcmd) kfree(rcmd);
 	CDBG("__msm_v4l2_control: end rc = %d\n", rc);
 	return rc;
 }

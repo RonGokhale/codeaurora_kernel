@@ -56,4 +56,6 @@ struct usb_composition {
 	unsigned long functions;
 };
 
+extern void android_usb_set_connected(int on);
+
 #endif	/* __LINUX_USB_ANDROID_H */

@@ -564,8 +564,19 @@ static struct resource resources_sdc1[] = {
 	},
 	{
 		.start	= INT_SDC1_0,
+		.end	= INT_SDC1_0,
+		.flags	= IORESOURCE_IRQ,
+		.name	= "cmd_irq",
+	},
+	{
+		.start	= INT_SDC1_1,
 		.end	= INT_SDC1_1,
 		.flags	= IORESOURCE_IRQ,
+		.name	= "pio_irq",
+	},
+	{
+		.flags	= IORESOURCE_IRQ | IORESOURCE_DISABLED,
+		.name	= "status_irq"
 	},
 	{
 		.start	= 8,
@@ -582,8 +593,19 @@ static struct resource resources_sdc2[] = {
 	},
 	{
 		.start	= INT_SDC2_0,
+		.end	= INT_SDC2_0,
+		.flags	= IORESOURCE_IRQ,
+		.name	= "cmd_irq",
+	},
+		{
+		.start	= INT_SDC2_1,
 		.end	= INT_SDC2_1,
 		.flags	= IORESOURCE_IRQ,
+		.name	= "pio_irq",
+	},
+	{
+		.flags	= IORESOURCE_IRQ | IORESOURCE_DISABLED,
+		.name	= "status_irq"
 	},
 	{
 		.start	= 8,
@@ -600,8 +622,19 @@ static struct resource resources_sdc3[] = {
 	},
 	{
 		.start	= INT_SDC3_0,
+		.end	= INT_SDC3_0,
+		.flags	= IORESOURCE_IRQ,
+		.name	= "cmd_irq",
+	},
+		{
+		.start	= INT_SDC3_1,
 		.end	= INT_SDC3_1,
 		.flags	= IORESOURCE_IRQ,
+		.name	= "pio_irq",
+	},
+	{
+		.flags	= IORESOURCE_IRQ | IORESOURCE_DISABLED,
+		.name	= "status_irq"
 	},
 	{
 		.start	= 8,
@@ -618,8 +651,19 @@ static struct resource resources_sdc4[] = {
 	},
 	{
 		.start	= INT_SDC4_0,
+		.end	= INT_SDC4_0,
+		.flags	= IORESOURCE_IRQ,
+		.name	= "cmd_irq",
+	},
+		{
+		.start	= INT_SDC4_1,
 		.end	= INT_SDC4_1,
 		.flags	= IORESOURCE_IRQ,
+		.name	= "pio_irq",
+	},
+	{
+		.flags	= IORESOURCE_IRQ | IORESOURCE_DISABLED,
+		.name	= "status_irq"
 	},
 	{
 		.start	= 8,
@@ -675,15 +719,27 @@ static struct platform_device *msm_sdcc_devices[] __initdata = {
 	&msm_device_sdc4,
 };
 
-int __init msm_add_sdcc(unsigned int controller, struct mmc_platform_data *plat)
+int __init msm_add_sdcc(unsigned int controller, struct mmc_platform_data *plat,
+			unsigned int stat_irq, unsigned long stat_irq_flags)
 {
 	struct platform_device	*pdev;
+	struct resource *res;
 
 	if (controller < 1 || controller > 4)
 		return -EINVAL;
 
 	pdev = msm_sdcc_devices[controller-1];
 	pdev->dev.platform_data = plat;
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_IRQ, "status_irq");
+	if (!res)
+		return -EINVAL;
+	else if (stat_irq) {
+		res->start = res->end = stat_irq;
+		res->flags &= ~IORESOURCE_DISABLED;
+		res->flags |= stat_irq_flags;
+	}
+
 	return platform_device_register(pdev);
 }
 
@@ -1068,7 +1124,6 @@ struct clk msm_clocks_7x30[] = {
 	CLK_PCOM("grp_clk",	GRP_CLK,	NULL, 0),
 	CLK_PCOM("i2c_clk",	I2C_CLK,	&msm_device_i2c.dev, 0),
 	CLK_PCOM("i2c_clk",	I2C_2_CLK,	&msm_device_i2c_2.dev, 0),
-	CLK_PCOM("qup_clk",	QUP_I2C_CLK,	&qup_device_i2c.dev, 0),
 	CLK_PCOM("imem_clk",	IMEM_CLK,	NULL, OFF),
 	CLK_PCOM("mdc_clk",	MDC_CLK,	NULL, 0),
 	CLK_PCOM("mdp_clk",	MDP_CLK,	NULL, OFF),
@@ -1080,8 +1135,6 @@ struct clk msm_clocks_7x30[] = {
 	CLK_PCOM("pcm_clk",	PCM_CLK,	NULL, 0),
 	CLK_PCOM("mddi_clk",	PMDH_CLK,	NULL, OFF | CLK_MINMAX),
 	CLK_PCOM("mddi_pclk",	PMDH_PCLK,	NULL, 0),
-	CLK_PCOM("rotator_imem_clk",	ROTATOR_IMEM_CLK,	NULL, 0),
-	CLK_PCOM("rotator_pclk",	ROTATOR_PCLK,		NULL, 0),
 	CLK_PCOM("sdac_clk",	SDAC_CLK,	NULL, OFF),
 	CLK_PCOM("sdc_clk",	SDC1_CLK,	&msm_device_sdc1.dev, OFF),
 	CLK_PCOM("sdc_pclk",	SDC1_PCLK,	&msm_device_sdc1.dev, OFF),
