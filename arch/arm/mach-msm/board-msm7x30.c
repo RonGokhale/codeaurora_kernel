@@ -1815,7 +1815,12 @@ static void __init msm7x30_init(void)
 	if (socinfo_init() < 0)
 		printk(KERN_ERR "%s: socinfo_init() failed!\n",
 		       __func__);
+#ifdef CONFIG_USB_FUNCTION
+	msm_hsusb_pdata.swfi_latency =
+		msm_pm_data
+		[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].latency;
 	msm_device_hsusb_peripheral.dev.platform_data = &msm_hsusb_pdata;
+#endif
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 	msm7x30_init_mmc();
 	msm_qsd_spi_init();
