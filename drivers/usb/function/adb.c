@@ -39,8 +39,7 @@
 
 #define TXN_MAX 4096
 
-/* number of rx and tx requests to allocate */
-#define RX_REQ_MAX 4
+/* number of tx requests to allocate */
 #define TX_REQ_MAX 4
 
 #define ADB_FUNCTION_NAME "adb"
@@ -60,16 +59,11 @@ struct adb_context
 	struct usb_endpoint *in;
 
 	struct list_head tx_idle;
-	struct list_head rx_idle;
-	struct list_head rx_done;
 
 	wait_queue_head_t read_wq;
 	wait_queue_head_t write_wq;
-
-	/* the request we're currently reading from */
-	struct usb_request *read_req;
-	unsigned char *read_buf;
-	unsigned read_count;
+	struct usb_request *rx_req;
+	int rx_done;
 };
 
 static struct adb_context _context;
@@ -132,13 +126,8 @@ static void adb_complete_out(struct usb_endpoint *ept, struct usb_request *req)
 {
 	struct adb_context *ctxt = req->context;
 
-	if (req->status != 0) {
-		ctxt->error = 1;
-		req_put(ctxt, &ctxt->rx_idle, req);
-	} else {
-		req_put(ctxt, &ctxt->rx_done, req);
-	}
-
+	DBG("out: status: %d actual: %d\n", req->status, req->actual);
+	ctxt->rx_done = 1;
 	wake_up(&ctxt->read_wq);
 }
 
@@ -152,6 +141,9 @@ static ssize_t adb_read(struct file *fp, char __user *buf,
 
 	DBG("adb_read(%d)\n", count);
 
+	if (count > TXN_MAX)
+		return -EINVAL;
+
 	if (_lock(&ctxt->read_excl))
 		return -EBUSY;
 
@@ -160,80 +152,46 @@ static ssize_t adb_read(struct file *fp, char __user *buf,
 		DBG("adb_read: waiting for online state\n");
 		ret = wait_event_interruptible(ctxt->read_wq, (ctxt->online || ctxt->error));
 		if (ret < 0) {
-			_unlock(&ctxt->read_excl);
-			return ret;
-		}
-	}
-
-	while (count > 0) {
-		if (ctxt->error) {
-			r = -EIO;
-			break;
-		}
-
-		/* if we have idle read requests, get them queued */
-		while ((req = req_get(ctxt, &ctxt->rx_idle))) {
-requeue_req:
-			req->length = TXN_MAX;
-			ret = usb_ept_queue_xfer(ctxt->out, req);
-			if (ret < 0) {
-				DBG("adb_read: failed to queue req %p (%d)\n", req, ret);
-				r = -EIO;
-				ctxt->error = 1;
-				req_put(ctxt, &ctxt->rx_idle, req);
-				goto fail;
-			} else {
-				DBG("rx %p queue\n", req);
-			}
-		}
-
-		/* if we have data pending, give it to userspace */
-		if (ctxt->read_count > 0) {
-			xfer = (ctxt->read_count < count) ? ctxt->read_count : count;
-
-			if (copy_to_user(buf, ctxt->read_buf, xfer)) {
-				r = -EFAULT;
-				break;
-			}
-			ctxt->read_buf += xfer;
-			ctxt->read_count -= xfer;
-			buf += xfer;
-			count -= xfer;
-
-			/* if we've emptied the buffer, release the request */
-			if (ctxt->read_count == 0) {
-				req_put(ctxt, &ctxt->rx_idle, ctxt->read_req);
-				ctxt->read_req = 0;
-			}
-			continue;
-		}
-
-		/* wait for a request to complete */
-		req = 0;
-		ret = wait_event_interruptible(ctxt->read_wq,
-					       ((req = req_get(ctxt, &ctxt->rx_done)) || ctxt->error));
-
-		if (req != 0) {
-			/* if we got a 0-len one we need to put it back into
-			** service.  if we made it the current read req we'd
-			** be stuck forever
-			*/
-			if (req->actual == 0)
-				goto requeue_req;
-
-			ctxt->read_req = req;
-			ctxt->read_count = req->actual;
-			ctxt->read_buf = req->buf;
-			DBG("rx %p %d\n", req, req->actual);
-		}
-
-		if (ret < 0) {
 			r = ret;
-			break;
+			goto done;
 		}
 	}
+	if (ctxt->error) {
+		r = -EIO;
+		goto done;
+	}
 
-fail:
+requeue_req:
+	/* queue a request */
+	req = ctxt->rx_req;
+	req->length = count;
+	ctxt->rx_done = 0;
+	ret = usb_ept_queue_xfer(ctxt->out, req);
+	if (ret < 0) {
+		DBG("adb_read: failed to queue req %p (%d)\n", req, ret);
+		r = -EIO;
+		ctxt->error = 1;
+		goto done;
+	} else {
+		DBG("rx %p queue\n", req);
+	}
+
+	/* wait for a request to complete */
+	wait_event(ctxt->read_wq, ctxt->rx_done);
+
+	if (!ctxt->error) {
+		/* If we got a 0-len packet, throw it back and try again. */
+		if (req->actual == 0)
+			goto requeue_req;
+
+		DBG("rx %p %d\n", req, req->actual);
+		xfer = (req->actual < count) ? req->actual : count;
+		if (copy_to_user(buf, req->buf, xfer))
+			r = -EFAULT;
+	} else
+		r = -EIO;
+
+done:
 	_unlock(&ctxt->read_excl);
 	return r;
 }
@@ -378,9 +336,7 @@ static void adb_unbind(void *_ctxt)
 
 	printk(KERN_INFO "abd_unbind()\n");
 
-	while ((req = req_get(ctxt, &ctxt->rx_idle))) {
-		usb_ept_free_req(ctxt->out, req);
-	}
+	usb_ept_free_req(ctxt->out, ctxt->rx_req);
 	while ((req = req_get(ctxt, &ctxt->tx_idle))) {
 		usb_ept_free_req(ctxt->in, req);
 	}
@@ -403,13 +359,11 @@ static void adb_bind(struct usb_endpoint **ept, void *_ctxt)
 
 	printk(KERN_INFO "adb_bind() %p, %p\n", ctxt->out, ctxt->in);
 
-	for (n = 0; n < RX_REQ_MAX; n++) {
-		req = usb_ept_alloc_req(ctxt->out, 4096);
-		if (req == 0) goto fail;
-		req->context = ctxt;
-		req->complete = adb_complete_out;
-		req_put(ctxt, &ctxt->rx_idle, req);
-	}
+	req = usb_ept_alloc_req(ctxt->out, 4096);
+	if (req == 0) goto fail;
+	req->context = ctxt;
+	req->complete = adb_complete_out;
+	ctxt->rx_req = req;
 
 	for (n = 0; n < TX_REQ_MAX; n++) {
 		req = usb_ept_alloc_req(ctxt->in, 4096);
@@ -420,8 +374,7 @@ static void adb_bind(struct usb_endpoint **ept, void *_ctxt)
 	}
 
 	printk(KERN_INFO
-	       "adb_bind() allocated %d rx and %d tx requests\n",
-	       RX_REQ_MAX, TX_REQ_MAX);
+	       "adb_bind() allocated %d tx requests\n", TX_REQ_MAX);
 
 	misc_register(&adb_device);
 	misc_register(&adb_enable_device);
@@ -435,25 +388,11 @@ fail:
 static void adb_configure(int configured, void *_ctxt)
 {
 	struct adb_context *ctxt = _ctxt;
-	struct usb_request *req;
 
 	DBG("adb_configure() %d\n", configured);
 
 	if (configured) {
 		ctxt->online = 1;
-
-		/* if we have a stale request being read, recycle it */
-		ctxt->read_buf = 0;
-		ctxt->read_count = 0;
-		if (ctxt->read_req) {
-			req_put(ctxt, &ctxt->rx_idle, ctxt->read_req);
-			ctxt->read_req = 0;
-		}
-
-		/* retire any completed rx requests from previous session */
-		while ((req = req_get(ctxt, &ctxt->rx_done)))
-			req_put(ctxt, &ctxt->rx_idle, req);
-
 	} else {
 		ctxt->online = 0;
 		ctxt->error = 1;
@@ -499,8 +438,6 @@ static int __init adb_init(void)
 
 	spin_lock_init(&ctxt->lock);
 
-	INIT_LIST_HEAD(&ctxt->rx_idle);
-	INIT_LIST_HEAD(&ctxt->rx_done);
 	INIT_LIST_HEAD(&ctxt->tx_idle);
 
 	return usb_function_register(&usb_func_adb);
