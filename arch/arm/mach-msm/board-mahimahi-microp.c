@@ -38,6 +38,7 @@
 #include <linux/lightsensor.h>
 #include <asm/mach/mmc.h>
 #include <mach/htc_35mm_jack.h>
+#include <asm/setup.h>
 
 #include "board-mahimahi.h"
 
@@ -99,6 +100,11 @@
 #define READ_GPI_STATE_HPIN	(1<<2)
 #define READ_GPI_STATE_SDCARD	(1<<0)
 
+#define ALS_CALIBRATE_MODE  147
+
+/* Check pattern, to check if ALS has been calibrated */
+#define ALS_CALIBRATED	0x6DA5
+
 static int microp_headset_has_mic(void);
 static int microp_enable_headset_plug_event(void);
 static int microp_enable_key_event(void);
@@ -134,6 +140,9 @@ static uint16_t lsensor_adc_table[10] = {
 static uint16_t remote_key_adc_table[6] = {
 	0, 31, 43, 98, 129, 192
 };
+
+static uint32_t golden_adc = 0xC0;
+static uint32_t als_kadc;
 
 static struct wake_lock microp_i2c_wakelock;
 
@@ -177,6 +186,9 @@ struct microp_i2c_client_data {
 	uint8_t light_sensor_enabled;
 	int headset_is_in;
 	struct input_dev *ls_input_dev;
+	uint32_t als_kadc;
+	uint32_t als_gadc;
+	uint8_t als_calibrating;
 };
 
 static char *hex2string(uint8_t *data, int len)
@@ -945,10 +957,12 @@ static int microp_lightsensor_read(uint16_t *adc_value,
 					  uint8_t *adc_level)
 {
 	struct i2c_client *client;
+	struct microp_i2c_client_data *cdata;
 	uint8_t i, level = 0;
 	int ret;
 
 	client = private_microp_client;
+	cdata = i2c_get_clientdata(client);
 
 	ret = microp_read_adc(MICROP_LSENSOR_ADC_CHAN, adc_value);
 	if (ret != 0)
@@ -959,10 +973,17 @@ static int microp_lightsensor_read(uint16_t *adc_value,
 			__func__, *adc_value);
 		return -1;
 	} else {
+		if (!cdata->als_calibrating) {
+			*adc_value = *adc_value
+				* cdata->als_gadc / cdata->als_kadc;
+			if (*adc_value > 0x3FF)
+				*adc_value = 0x3FF;
+		}
 		for (i = 0; i < 10; i++) {
 			if (*adc_value <= lsensor_adc_table[i]) {
 				level = i;
-				break;
+				if (lsensor_adc_table[i])
+					break;
 			}
 		}
 		*adc_level = level;
@@ -1017,7 +1038,7 @@ static ssize_t microp_i2c_ls_auto_store(struct device *dev,
 	ls_auto = -1;
 	sscanf(buf, "%d", &ls_auto);
 
-	if (ls_auto < 0 || ls_auto > 1)
+	if (ls_auto != 0 && ls_auto != 1 && ls_auto != ALS_CALIBRATE_MODE)
 		return -EINVAL;
 
 	client = to_i2c_client(dev);
@@ -1025,9 +1046,11 @@ static ssize_t microp_i2c_ls_auto_store(struct device *dev,
 
 	if (ls_auto) {
 		enable = 1;
+		cdata->als_calibrating = (ls_auto == ALS_CALIBRATE_MODE) ? 1 : 0;
 		cdata->auto_backlight_enabled = 1;
 	} else {
 		enable = 0;
+		cdata->als_calibrating = 0;
 		cdata->auto_backlight_enabled = 0;
 	}
 
@@ -1502,9 +1525,32 @@ static int microp_function_initialize(struct i2c_client *client)
 	cdata = i2c_get_clientdata(client);
 
 	/* Light Sensor */
+	if (als_kadc >> 16 == ALS_CALIBRATED)
+		cdata->als_kadc = als_kadc & 0xFFFF;
+	else {
+		cdata->als_kadc = 0;
+		printk(KERN_INFO "%s: no ALS calibrated\n", __func__);
+	}
+
+	if (cdata->als_kadc && golden_adc) {
+		cdata->als_kadc =
+			(cdata->als_kadc > 0 && cdata->als_kadc < 0x400)
+			? cdata->als_kadc : golden_adc;
+		cdata->als_gadc =
+			(golden_adc > 0)
+			? golden_adc : cdata->als_kadc;
+	} else {
+		cdata->als_kadc = 1;
+		cdata->als_gadc = 1;
+	}
+	printk(KERN_INFO "%s: als_kadc=0x%x, als_gadc=0x%x\n",
+		__func__, cdata->als_kadc, cdata->als_gadc);
+
 	for (i = 0; i < 10; i++) {
-		data[i] = (uint8_t)(lsensor_adc_table[i] >> 8);
-		data[i + 10] = (uint8_t)(lsensor_adc_table[i]);
+		data[i] = (uint8_t)(lsensor_adc_table[i]
+			* cdata->als_kadc / cdata->als_gadc >> 8);
+		data[i + 10] = (uint8_t)(lsensor_adc_table[i]
+			* cdata->als_kadc / cdata->als_gadc);
 	}
 	ret = i2c_write_block(client, MICROP_I2C_WCMD_ADC_TABLE, data, 20);
 	if (ret)
@@ -1883,6 +1929,26 @@ static int __devexit microp_i2c_remove(struct i2c_client *client)
 
 	return 0;
 }
+
+#define ATAG_ALS	0x5441001b
+static int __init parse_tag_als_kadc(const struct tag *tags)
+{
+	int found = 0;
+	struct tag *t = (struct tag *)tags;
+
+	for (; t->hdr.size; t = tag_next(t)) {
+		if (t->hdr.tag == ATAG_ALS) {
+			found = 1;
+			break;
+		}
+	}
+
+	if (found)
+		als_kadc = t->u.revision.rev;
+	printk(KERN_DEBUG "%s: als_kadc = 0x%x\n", __func__, als_kadc);
+	return 0;
+}
+__tagtable(ATAG_ALS, parse_tag_als_kadc);
 
 static const struct i2c_device_id microp_i2c_id[] = {
 	{ MICROP_I2C_NAME, 0 },
