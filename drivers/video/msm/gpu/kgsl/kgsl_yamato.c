@@ -56,6 +56,66 @@
 		| (1 << MH_ARBITER_CONFIG__RB_CLNT_ENABLE__SHIFT) \
 		| (1 << MH_ARBITER_CONFIG__PA_CLNT_ENABLE__SHIFT))
 
+void kgsl_register_dump(struct kgsl_device *device)
+{
+	unsigned int regValue;
+
+	kgsl_yamato_regread(device, REG_RBBM_STATUS, &regValue);
+	KGSL_CMD_ERR("RBBM_STATUS = %8.8X\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_RB_BASE, &regValue);
+	KGSL_CMD_ERR("CP_RB_BASE = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_RB_CNTL, &regValue);
+	KGSL_CMD_ERR("CP_RB_CNTL = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_RB_RPTR_ADDR, &regValue);
+	KGSL_CMD_ERR("CP_RB_RPTR_ADDR = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_RB_RPTR, &regValue);
+	KGSL_CMD_ERR("CP_RB_RPTR = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_RB_WPTR, &regValue);
+	KGSL_CMD_ERR("CP_RB_WPTR = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_RB_RPTR_WR, &regValue);
+	KGSL_CMD_ERR("CP_RB_RPTR_WR = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_INT_CNTL, &regValue);
+	KGSL_CMD_ERR("CP_INT_CNTL = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_INT_STATUS, &regValue);
+	KGSL_CMD_ERR("CP_INT_STATUS = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_ME_CNTL, &regValue);
+	KGSL_CMD_ERR("CP_ME_CNTL = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_ME_STATUS, &regValue);
+	KGSL_CMD_ERR("CP_ME_STATUS = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_RBBM_PM_OVERRIDE1, &regValue);
+	KGSL_CMD_ERR("RBBM_PM_OVERRIDE1 = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_RBBM_PM_OVERRIDE2, &regValue);
+	KGSL_CMD_ERR("RBBM_PM_OVERRIDE2 = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_RBBM_INT_CNTL, &regValue);
+	KGSL_CMD_ERR("RBBM_INT_CNTL = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_RBBM_INT_STATUS, &regValue);
+	KGSL_CMD_ERR("RBBM_INT_STATUS = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_MASTER_INT_SIGNAL, &regValue);
+	KGSL_CMD_ERR("MASTER_INT_SIGNAL = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_IB1_BASE, &regValue);
+	KGSL_CMD_ERR("CP_IB1_BASE = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_IB1_BUFSZ, &regValue);
+	KGSL_CMD_ERR("CP_IB1_BUFSZ = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_IB2_BASE, &regValue);
+	KGSL_CMD_ERR("CP_IB2_BASE = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_IB2_BUFSZ, &regValue);
+	KGSL_CMD_ERR("CP_IB2_BUFSZ = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_CP_STAT, &regValue);
+	KGSL_CMD_ERR("CP_STAT = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_SCRATCH_REG0, &regValue);
+	KGSL_CMD_ERR("SCRATCH_REG0 = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_COHER_SIZE_PM4, &regValue);
+	KGSL_CMD_ERR("COHER_SIZE_PM4 = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_COHER_BASE_PM4, &regValue);
+	KGSL_CMD_ERR("COHER_BASE_PM4 = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_COHER_STATUS_PM4, &regValue);
+	KGSL_CMD_ERR("COHER_STATUS_PM4 = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_RBBM_READ_ERROR, &regValue);
+	KGSL_CMD_ERR("RBBM_READ_ERROR = %08x\n", regValue);
+	kgsl_yamato_regread(device, REG_MH_AXI_ERROR, &regValue);
+	KGSL_CMD_ERR("MH_AXI_ERROR = %08x\n", regValue);
+}
+
 static int kgsl_yamato_gmeminit(struct kgsl_device *device)
 {
 	union reg_rb_edram_info rb_edram_info;
@@ -713,25 +773,26 @@ int kgsl_yamato_waittimestamp(struct kgsl_device *device,
 				unsigned int timestamp,
 				unsigned int msecs)
 {
-	int status = -EINVAL;
-	long timeout = 0;
+	long status;
 
 	KGSL_DRV_INFO("enter (device=%p,timestamp=%d,timeout=0x%08x)\n",
 			device, timestamp, msecs);
 
-	timeout = wait_event_interruptible_timeout(device->ib1_wq,
+	status = wait_event_interruptible_timeout(device->ib1_wq,
 			kgsl_cmdstream_check_timestamp(device, timestamp),
 			msecs_to_jiffies(msecs));
 
-	if (timeout > 0)
+	if (status > 0)
 		status = 0;
-	else if (timeout == 0)
-		status = -ETIMEDOUT;
-	else
-		status = timeout;
+	else if (status == 0) {
+		if (!kgsl_cmdstream_check_timestamp(device, timestamp)) {
+			status = -ETIMEDOUT;
+			kgsl_register_dump(device);
+		}
+	}
 
-	KGSL_DRV_INFO("return %d\n", status);
-	return status;
+	KGSL_DRV_INFO("return %ld\n", status);
+	return (int)status;
 }
 
 int kgsl_yamato_runpending(struct kgsl_device *device)
