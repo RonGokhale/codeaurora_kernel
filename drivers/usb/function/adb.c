@@ -177,8 +177,13 @@ requeue_req:
 	}
 
 	/* wait for a request to complete */
-	wait_event(ctxt->read_wq, ctxt->rx_done);
-
+	ret = wait_event_interruptible(ctxt->read_wq, ctxt->rx_done);
+	if (ret < 0) {
+		ctxt->error = 1;
+		usb_ept_flush(ctxt->out);
+		r = ret;
+		goto done;
+	}
 	if (!ctxt->error) {
 		/* If we got a 0-len packet, throw it back and try again. */
 		if (req->actual == 0)
@@ -219,7 +224,6 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 		req = 0;
 		ret = wait_event_interruptible(ctxt->write_wq,
 					       ((req = req_get(ctxt, &ctxt->tx_idle)) || ctxt->error));
-
 		if (ret < 0) {
 			r = ret;
 			break;
