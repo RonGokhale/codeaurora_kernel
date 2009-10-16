@@ -787,10 +787,9 @@ static boolean vfe_send_bus_overflow_msg(struct msm_vfe_resp *rp,
 			struct vfe_message *msg,
 			void *data)
 {
-#if 0
+	struct isr_queue_cmd *qcmd = data;
 	memcpy(&(msg->_u.msgBusOverflow),
-	       &ctrl->vfePmData, sizeof(ctrl->vfePmData));
-#endif
+	       &qcmd->vfePmData, sizeof(qcmd->vfePmData));
 	return TRUE;
 }
 
@@ -798,34 +797,35 @@ static boolean vfe_send_camif_error_msg(struct msm_vfe_resp *rp,
 			struct vfe_message *msg,
 			void *data)
 {
-#if 0
+	struct isr_queue_cmd *qcmd = data;
 	memcpy(&(msg->_u.msgCamifError),
-	       &ctrl->vfeCamifStatusLocal, sizeof(ctrl->vfeCamifStatusLocal));
-#endif
+	       &qcmd->vfeCamifStatusLocal, sizeof(qcmd->vfeCamifStatusLocal));
 	return TRUE;
 }
 
-static void vfe_process_error_irq(struct vfe_interrupt_status *irqstatus)
+static void vfe_process_error_irq(struct isr_queue_cmd *qcmd)
 {
+	struct vfe_interrupt_status *irqstatus = &qcmd->vfeInterruptStatus;
+
 	/* all possible error irq.  Note error irqs are not enabled, it is
 	 * checked only when other interrupts are present. */
 	if (irqstatus->afOverflowIrq)
-		vfe_proc_ops(VFE_MSG_ID_AF_OVERFLOW, NULL);
+		vfe_proc_ops(VFE_MSG_ID_AF_OVERFLOW, qcmd);
 
 	if (irqstatus->awbOverflowIrq)
-		vfe_proc_ops(VFE_MSG_ID_AWB_OVERFLOW, NULL);
+		vfe_proc_ops(VFE_MSG_ID_AWB_OVERFLOW, qcmd);
 
 	if (irqstatus->axiErrorIrq)
-		vfe_proc_ops(VFE_MSG_ID_AXI_ERROR, NULL);
+		vfe_proc_ops(VFE_MSG_ID_AXI_ERROR, qcmd);
 
 	if (irqstatus->busOverflowIrq)
-		vfe_proc_ops(VFE_MSG_ID_BUS_OVERFLOW, NULL);
+		vfe_proc_ops(VFE_MSG_ID_BUS_OVERFLOW, qcmd);
 
 	if (irqstatus->camifErrorIrq)
-		vfe_proc_ops(VFE_MSG_ID_CAMIF_ERROR, NULL);
+		vfe_proc_ops(VFE_MSG_ID_CAMIF_ERROR, qcmd);
 
 	if (irqstatus->camifOverflowIrq)
-		vfe_proc_ops(VFE_MSG_ID_CAMIF_OVERFLOW, NULL);
+		vfe_proc_ops(VFE_MSG_ID_CAMIF_OVERFLOW, qcmd);
 
 	if (irqstatus->violationIrq)
 		pr_err("%s: violation irq\n", __func__);
@@ -1617,7 +1617,7 @@ static void __vfe_do_work(struct isr_queue_cmd *qcmd)
 
 	/* any error irqs */
 	if (qcmd->vfeInterruptStatus.anyErrorIrqs)
-		vfe_process_error_irq(&qcmd->vfeInterruptStatus);
+		vfe_process_error_irq(qcmd);
 
 #if 0
 	if (qcmd->vfeInterruptStatus.anySyncTimerIrqs)
