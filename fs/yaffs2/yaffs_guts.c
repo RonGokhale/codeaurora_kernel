@@ -1494,14 +1494,14 @@ static int yaffs_FindChunkInGroup(yaffs_Device *dev, int theChunk,
 
 	for (j = 0; theChunk && j < dev->chunkGroupSize; j++) {
 		if (yaffs_CheckChunkBit(dev, theChunk / dev->nChunksPerBlock,
-				theChunk % dev->nChunksPerBlock)) {
-			
-			if(dev->chunkGroupSize == 1)
+		   theChunk % dev->nChunksPerBlock)) {
+			if (dev->chunkGroupSize == 1)
 				return theChunk;
 			else {
-				yaffs_ReadChunkWithTagsFromNAND(dev, theChunk, NULL,
-								tags);
-				if (yaffs_TagsMatch(tags, objectId, chunkInInode)) {
+				yaffs_ReadChunkWithTagsFromNAND(dev, theChunk,
+				   NULL, tags);
+				if (yaffs_TagsMatch(tags, objectId,
+				   chunkInInode)) {
 					/* found it; */
 					return theChunk;
 				}
