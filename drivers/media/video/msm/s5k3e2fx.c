@@ -1843,7 +1843,7 @@ static int s5k3e2fx_probe_init_sensor(const struct msm_camera_sensor_info *data)
 		__LINE__);
 	gpio_free(data->sensor_reset);
 
-	mdelay(20);
+	msleep(20);
 
 	CDBG("s5k3e2fx_sensor_init(): reseting sensor.\n");
 
@@ -1920,7 +1920,7 @@ static int s5k3e2fx_i2c_probe(struct i2c_client *client,
 	s5k3e2fx_init_client(client);
 	s5k3e2fx_client = client;
 
-	mdelay(50);
+	msleep(50);
 
 	CDBG("s5k3e2fx_probe successed! rc = %d\n", rc);
 	return 0;
@@ -2134,6 +2134,10 @@ static int s5k3e2fx_setting(enum msm_s_reg_update rupdate,
 							return rc;
 					}
 
+					/* Fixes CAMIF errors */
+					if (rt == S_RES_CAPTURE)
+						msleep(25);
+
 					rc = s5k3e2fx_i2c_write_b
 					    (s5k3e2fx_client->addr,
 					     S5K3E2FX_REG_MODE_SELECT,
@@ -2300,10 +2304,10 @@ static int s5k3e2fx_sensor_open_init(const struct msm_camera_sensor_info *data)
 	/* enable mclk first */
 	msm_camio_clk_rate_set(S5K3E2FX_DEF_MCLK);
 
-	mdelay(20);
+	msleep(20);
 
 	msm_camio_camif_pad_reg_reset();
-	mdelay(20);
+	msleep(20);
 
 	rc = s5k3e2fx_probe_init_sensor(data);
 	if (rc < 0)
@@ -2350,7 +2354,7 @@ static void s5k3e2fx_suspend_sensor(void)
 	s5k3e2fx_i2c_write_b(s5k3e2fx_client->addr,
 			     S5K3E2FX_REG_MODE_SELECT,
 			     S5K3E2FX_MODE_SELECT_SW_STANDBY);
-	mdelay(210);		/*for 5FPS */
+	msleep(210);		/*for 5FPS */
 	/* hi z */
 	s5k3e2fx_i2c_read_b(s5k3e2fx_client->addr, REG_3150_RESERVED, &rData);
 	s5k3e2fx_i2c_write_b(s5k3e2fx_client->addr,
@@ -2378,7 +2382,7 @@ static int s5k3e2fx_sensor_release(void)
 	gpio_direction_output(s5k3e2fx_ctrl->sensordata->sensor_reset, 0);
 #endif
 	s5k3e2fx_suspend_sensor();
-	mdelay(10);
+	msleep(10);
 	/*gpio_free(s5k3e2fx_ctrl->sensordata->sensor_reset); */
 
 	kfree(s5k3e2fx_ctrl);
@@ -2421,7 +2425,7 @@ static int s5k3e2fx_probe_init_lens_correction(
 	s5k3e2fx_i2c_write_b(s5k3e2fx_client->addr,
 			     S5K3E2FX_REG_MODE_SELECT,
 			     S5K3E2FX_MODE_SELECT_STREAM);
-	mdelay(10);
+	msleep(10);
 	s5k3e2fx_suspend_sensor();
 
 	return rc;
@@ -2949,7 +2953,7 @@ static int s5k3e2fx_sensor_probe(const struct msm_camera_sensor_info *info,
 	}
 
 	msm_camio_clk_rate_set(S5K3E2FX_DEF_MCLK);
-	mdelay(20);
+	msleep(20);
 
 	pr_info("%s:%d\n", __func__, __LINE__);
 	rc = s5k3e2fx_probe_init_sensor(info);
@@ -3090,7 +3094,7 @@ static int s5k3e2fx_resume(struct platform_device *pdev)
 	/*read sensor ID and pull down reset */
 	msm_camio_clk_rate_set(S5K3E2FX_DEF_MCLK);
 	pr_info("msm_camio_clk_rate_set\n");
-	mdelay(20);
+	msleep(20);
 	s5k3e2fx_probe_init_sensor(sinfo);
 	pr_info("s5k3e2fx_probe_init_sensor\n");
 	/*init sensor,streaming on, SW init streaming off */
@@ -3102,7 +3106,7 @@ static int s5k3e2fx_resume(struct platform_device *pdev)
 			     S5K3E2FX_REG_MODE_SELECT,
 			     S5K3E2FX_MODE_SELECT_STREAM);
 	/*software standby */
-	mdelay(25);
+	msleep(25);
 	s5k3e2fx_i2c_write_b(s5k3e2fx_client->addr, 0x3130, 0x00);
 	mdelay(1);
 	/*stream off */
@@ -3111,7 +3115,7 @@ static int s5k3e2fx_resume(struct platform_device *pdev)
 			     S5K3E2FX_MODE_SELECT_SW_STANDBY);
 	mdelay(1);
 	s5k3e2fx_i2c_write_b(s5k3e2fx_client->addr, 0x3150, 0x51);
-	mdelay(240);
+	msleep(240);
 	/*set RST to low */
 	msm_camio_probe_off(pdev);
 	msm_camio_clk_disable(CAMIO_MDC_CLK);
