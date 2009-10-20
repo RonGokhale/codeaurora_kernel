@@ -853,6 +853,11 @@ static int lightsensor_enable(void)
 		printk(KERN_ERR "%s: set auto light sensor fail\n", __func__);
 	else {
 		cdata->auto_backlight_enabled = 1;
+		/* report an invalid value first to ensure we trigger an event
+		 * when adc_level is zero.
+		 */
+		input_report_abs(cdata->ls_input_dev, ABS_MISC, -1);
+		input_sync(cdata->ls_input_dev);
 		/* send current light sensor value when we enable */
 		disable_irq(client->irq);
 		schedule_work(&cdata->work.work);
