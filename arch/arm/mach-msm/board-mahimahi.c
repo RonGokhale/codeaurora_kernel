@@ -776,7 +776,7 @@ static void __init mahimahi_fixup(struct machine_desc *desc, struct tag *tags,
 	mi->nr_banks = 1;
 	mi->bank[0].start = PHYS_OFFSET;
 	mi->bank[0].node = PHYS_TO_NID(PHYS_OFFSET);
-	mi->bank[0].size = (160*1024*1024);
+	mi->bank[0].size = (219*1024*1024);
 }
 
 static void __init mahimahi_map_io(void)
