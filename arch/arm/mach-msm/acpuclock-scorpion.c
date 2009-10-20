@@ -95,15 +95,28 @@ struct clkctl_acpu_speed acpu_freq_tbl[] = {
 };
 
 #ifdef CONFIG_CPU_FREQ_TABLE
-static struct cpufreq_frequency_table freq_table[] = {
-	{ 0, 19200 },
-	{ 1, 245000 },
-	{ 2, 384000 },
-	{ 3, 576000 },
-	{ 4, 768000 },
-	{ 5, 998400 },
-	{ 6, CPUFREQ_TABLE_END },
-};
+static struct cpufreq_frequency_table freq_table[ARRAY_SIZE(acpu_freq_tbl)];
+
+static void __init acpuclk_init_cpufreq_table() {
+	int i;
+	for (i = 0; acpu_freq_tbl[i].acpu_khz; i++) {
+		freq_table[i].index = i;
+		/* Skip speeds using the global pll */
+		if (acpu_freq_tbl[i].acpu_khz == 256000 ||
+				acpu_freq_tbl[i].acpu_khz == 19200) {
+			freq_table[i].frequency = CPUFREQ_ENTRY_INVALID;
+			continue;
+		}
+		freq_table[i].frequency = acpu_freq_tbl[i].acpu_khz;
+	}
+
+	freq_table[i].index = i;
+	freq_table[i].frequency = CPUFREQ_TABLE_END;
+
+	cpufreq_frequency_table_get_attr(freq_table, smp_processor_id());
+}
+#else
+#define acpuclk_init_cpufreq_table() do {} while (0);
 #endif
 
 struct clock_state {
@@ -433,8 +446,5 @@ void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 	drv_state.wait_for_irq_khz = clkdata->wait_for_irq_khz;
 
 	acpuclk_init();
-
-#ifdef CONFIG_CPU_FREQ_TABLE
-	cpufreq_frequency_table_get_attr(freq_table, smp_processor_id());
-#endif
+	acpuclk_init_cpufreq_table();
 }
