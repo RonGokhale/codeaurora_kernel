@@ -644,6 +644,30 @@ static uint32_t misc_gpio_table[] = {
 		      GPIO_NO_PULL, GPIO_2MA),
 };
 
+#define ATAG_BDADDR 0x43294329  /* mahimahi bluetooth address tag */
+#define ATAG_BDADDR_SIZE 4
+#define BDADDR_STR_SIZE 18
+
+static char bdaddr[BDADDR_STR_SIZE];
+
+module_param_string(bdaddr, bdaddr, sizeof(bdaddr), 0400);
+MODULE_PARM_DESC(bdaddr, "bluetooth address");
+
+static int __init parse_tag_bdaddr(const struct tag *tag)
+{
+	unsigned char *b = (unsigned char *)&tag->u;
+
+	if (tag->hdr.size != ATAG_BDADDR_SIZE)
+		return -EINVAL;
+
+	snprintf(bdaddr, BDADDR_STR_SIZE, "%02X:%02X:%02X:%02X:%02X:%02X",
+			b[0], b[1], b[2], b[3], b[4], b[5]);
+
+        return 0;
+}
+
+__tagtable(ATAG_BDADDR, parse_tag_bdaddr);
+
 static int __init board_serialno_setup(char *serialno)
 {
 	msm_hsusb_pdata.serial_number = serialno;
