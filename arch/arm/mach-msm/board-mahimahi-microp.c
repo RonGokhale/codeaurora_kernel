@@ -851,8 +851,12 @@ static int lightsensor_enable(void)
 	ret = microp_i2c_auto_backlight_mode(client, 1);
 	if (ret < 0)
 		printk(KERN_ERR "%s: set auto light sensor fail\n", __func__);
-	else
+	else {
 		cdata->auto_backlight_enabled = 1;
+		/* send current light sensor value when we enable */
+		disable_irq(client->irq);
+		schedule_work(&cdata->work.work);
+	}
 	return 0;
 }
 
