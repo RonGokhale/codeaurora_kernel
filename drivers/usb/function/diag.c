@@ -94,8 +94,8 @@ static void diag_bind(struct usb_endpoint **ept, void *_ctxt)
 	ctxt->out = ept[0];
 	ctxt->in = ept[1];
 
-	ctxt->req_out = usb_ept_alloc_req(ctxt->out, 4096);
-	ctxt->req_in = usb_ept_alloc_req(ctxt->in, 4096);
+	ctxt->req_out = usb_ept_alloc_req(ctxt->out, 8192);
+	ctxt->req_in = usb_ept_alloc_req(ctxt->in, 8192);
 }
 
 static void diag_queue_in(struct diag_context *ctxt, void *data, unsigned len);
@@ -167,7 +167,7 @@ static void diag_queue_out(struct diag_context *ctxt)
 
 	req->complete = diag_out_complete;
 	req->context = ctxt;
-	req->length = 4096;
+	req->length = 8192;
 
 	usb_ept_queue_xfer(ctxt->out, req);
 }
@@ -190,7 +190,7 @@ again:
 	if (ctxt->ch && (!ctxt->in_busy)) {
 		int r = smd_read_avail(ctxt->ch);
 
-		if (r > 4096) {
+		if (r > 8192) {
 			return;
 		}
 		if (r > 0) {
