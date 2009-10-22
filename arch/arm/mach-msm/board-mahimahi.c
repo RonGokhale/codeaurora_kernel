@@ -379,9 +379,16 @@ static struct regulator_init_data tps65023_data[5] = {
 	},
 };
 
+
+static void ds2482_set_slp_n(unsigned n)
+{
+	gpio_direction_output(MAHIMAHI_GPIO_DS2482_SLP_N, n);
+}
+
 static struct i2c_board_info base_i2c_devices[] = {
 	{
 		I2C_BOARD_INFO("ds2482", 0x30 >> 1),
+		.platform_data = ds2482_set_slp_n,
 	},
 	{
 		I2C_BOARD_INFO("cy8c-tmg-ts", 0x34),
