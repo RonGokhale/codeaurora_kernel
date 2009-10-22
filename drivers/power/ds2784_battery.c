@@ -112,6 +112,8 @@ struct ds2784_device_info {
 	struct work_struct monitor_work;
 	struct alarm alarm;
 	struct wake_lock work_wake_lock;
+
+	int dummy;
 };
 
 #define psy_to_dev_info(x) container_of((x), struct ds2784_device_info, bat)
@@ -229,20 +231,18 @@ static int ds2784_battery_read_status(struct ds2784_device_info *di)
 	}
 	di->update_time = jiffies;
 
-	/*
-	 * Check if dummy battery in.
-	 * Workaround for dummy battery
-	 * Write ACR MSB to 0x05, ensure there must be 500mAH .
-	 * ONLY check when battery driver init.
-	 */
 	if (battery_initial == 0) {
-		if (di->raw[DS2784_REG_USER_EEPROM_20] == 0x01) {
+		if (!memcmp(di->raw + 0x20, "DUMMY!", 6)) {
 			unsigned char acr[2];
+
+			di->dummy = 1;
+			pr_info("batt: dummy battery detected\n");
+
+			/* reset ACC register to ~500mAh, since it may have zeroed out */
 			acr[0] = 0x05;
 			acr[1] = 0x06;
 			w1_ds2784_write(di->w1_dev, acr,DS2784_REG_ACCUMULATE_CURR_MSB, 2);
 		}
-		dev_warn(di->dev, "battery dummy battery = %d\n", di->raw[DS2784_REG_USER_EEPROM_20]);
 		battery_initial = 1;
 	}
 
@@ -296,10 +296,18 @@ static int battery_get_property(struct power_supply *psy,
 		val->intval = 1;
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
-		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+		if (di->dummy) {
+			val->intval = POWER_SUPPLY_TECHNOLOGY_UNKNOWN;
+		} else {
+			val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+		}
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-		val->intval = di->status.percentage;
+		if (di->dummy) {
+			val->intval = 75;
+		} else {
+			val->intval = di->status.percentage;
+		}
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		val->intval = di->status.voltage_uV;
