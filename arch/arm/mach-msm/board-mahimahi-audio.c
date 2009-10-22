@@ -15,6 +15,7 @@
  */
 
 #include <linux/gpio.h>
+#include <linux/delay.h>
 #include <mach/msm_qdsp6_audio.h>
 #include <mach/htc_acoustic_qsd.h>
 
@@ -35,6 +36,7 @@ void mahimahi_headset_enable(int en)
 {
 	D("%s %d\n", __func__, en);
 	/* enable audio amp */
+	if (en) mdelay(15);
 	gpio_set_value(MAHIMAHI_AUD_JACKHP_EN, !!en);
 }
 
