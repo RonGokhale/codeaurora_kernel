@@ -769,7 +769,6 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt)
 	int i;
 	dhd_if_t *ifp;
 	wl_event_msg_t event;
-	unsigned long flags;
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
@@ -852,9 +851,7 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt)
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 0) */
 		}
 	}
-	spin_lock_irqsave(&dhd->wl_lock, flags);
-	dhd->wl_packet = 1;
-	spin_unlock_irqrestore(&dhd->wl_lock, flags);
+	dhd_os_wake_lock_timeout_enable(dhdp);
 }
 
 void
@@ -2201,17 +2198,51 @@ int dhd_os_wake_lock_timeout(dhd_pub_t *pub)
 	unsigned long flags;
 	int ret = 0;
 
-	spin_lock_irqsave(&dhd->wl_lock, flags);
 	if (dhd) {
+		spin_lock_irqsave(&dhd->wl_lock, flags);
+		ret = dhd->wl_packet;
 #ifdef CONFIG_HAS_WAKELOCK
 		if (dhd->wl_packet)
 			wake_lock_timeout(&dhd->wl_rxwake, (HZ >> 1));
 #endif
 		dhd->wl_packet = 0;
+		spin_unlock_irqrestore(&dhd->wl_lock, flags);
 	}
-	ret = dhd->wl_packet;
-	spin_unlock_irqrestore(&dhd->wl_lock, flags);
 	/* printk("%s: %d\n", __FUNCTION__, ret); */
+	return ret;
+}
+
+int net_os_wake_lock_timeout(struct net_device *dev)
+{
+	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
+	int ret = 0;
+
+	if (dhd)
+		ret = dhd_os_wake_lock_timeout(&dhd->pub);
+	return ret;
+}
+
+int dhd_os_wake_lock_timeout_enable(dhd_pub_t *pub)
+{
+	dhd_info_t *dhd = (dhd_info_t *)(pub->info);
+	unsigned long flags;
+
+	if (dhd) {
+		spin_lock_irqsave(&dhd->wl_lock, flags);
+		dhd->wl_packet = 1;
+		spin_unlock_irqrestore(&dhd->wl_lock, flags);
+	}
+	/* printk("%s\n",__func__); */
+	return 0;
+}
+
+int net_os_wake_lock_timeout_enable(struct net_device *dev)
+{
+	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
+	int ret = 0;
+
+	if (dhd)
+		ret = dhd_os_wake_lock_timeout_enable(&dhd->pub);
 	return ret;
 }
 
@@ -2221,18 +2252,28 @@ int dhd_os_wake_lock(dhd_pub_t *pub)
 	unsigned long flags;
 	int ret = 0;
 
-	spin_lock_irqsave(&dhd->wl_lock, flags);
 	if (dhd) {
+		spin_lock_irqsave(&dhd->wl_lock, flags);
 #ifdef CONFIG_HAS_WAKELOCK
 		if (!dhd->wl_count)
 			wake_lock(&dhd->wl_wifi);
 #endif
 		dhd->wl_count++;
 		ret = dhd->wl_count;
+		spin_unlock_irqrestore(&dhd->wl_lock, flags);
 	}
-	spin_unlock_irqrestore(&dhd->wl_lock, flags);
-	if (ret > 2)
-		printk("%s: Warning: %d\n", __FUNCTION__, ret);
+	/* if (ret > 2)
+		printk("%s: Warning: %d\n", __FUNCTION__, ret); */
+	return ret;
+}
+
+int net_os_wake_lock(struct net_device *dev)
+{
+	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
+	int ret = 0;
+
+	if (dhd)
+		ret = dhd_os_wake_lock(&dhd->pub);
 	return ret;
 }
 
@@ -2242,17 +2283,30 @@ int dhd_os_wake_unlock(dhd_pub_t *pub)
 	unsigned long flags;
 	int ret = 0;
 
-	spin_lock_irqsave(&dhd->wl_lock, flags);
-	if (dhd && dhd->wl_count) {
-		dhd->wl_count--;
+	dhd_os_wake_lock_timeout(pub);
+	if (dhd) {
+		spin_lock_irqsave(&dhd->wl_lock, flags);
+		if (dhd->wl_count) {
+			dhd->wl_count--;
 #ifdef CONFIG_HAS_WAKELOCK
-		if (!dhd->wl_count)
-			wake_unlock(&dhd->wl_wifi);
+			if (!dhd->wl_count)
+				wake_unlock(&dhd->wl_wifi);
 #endif
-		ret = dhd->wl_count;
+			ret = dhd->wl_count;
+		}
+		spin_unlock_irqrestore(&dhd->wl_lock, flags);
 	}
-	spin_unlock_irqrestore(&dhd->wl_lock, flags);
 	/* printk("%s: %d\n", __FUNCTION__, ret); */
+	return ret;
+}
+
+int net_os_wake_unlock(struct net_device *dev)
+{
+	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
+	int ret = 0;
+
+	if (dhd)
+		ret = dhd_os_wake_unlock(&dhd->pub);
 	return ret;
 }
 

@@ -210,6 +210,7 @@ extern void dhd_os_disable_irq(dhd_pub_t *pub);
 extern int dhd_os_wake_lock(dhd_pub_t *pub);
 extern int dhd_os_wake_unlock(dhd_pub_t *pub);
 extern int dhd_os_wake_lock_timeout(dhd_pub_t *pub);
+extern int dhd_os_wake_lock_timeout_enable(dhd_pub_t *pub);
 
 int setScheduler(struct task_struct *p, int policy, struct sched_param *param);
 

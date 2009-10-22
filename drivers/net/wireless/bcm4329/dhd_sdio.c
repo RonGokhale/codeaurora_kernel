@@ -3904,7 +3904,6 @@ clkwait:
 		bus->activity = FALSE;
 		dhdsdio_clkctl(bus, CLK_NONE, FALSE);
 	}
-	dhd_os_wake_lock_timeout(bus->dhd); /* Keep wake lock for rx */
 	return resched;
 }
 

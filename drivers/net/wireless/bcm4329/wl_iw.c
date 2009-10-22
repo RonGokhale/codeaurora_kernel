@@ -612,6 +612,7 @@ _wl_control_sysioc_thread_wl_off(void *data)
 
 	WL_TRACE(("%s Entered\n", __FUNCTION__));
 
+	net_os_wake_lock(wl_ctl->dev);
 	while (down_interruptible(&wl_ctl->timer_sem) == 0) {
 
 		WL_TRACE(("%s Turning off wifi dev\n", __FUNCTION__));
@@ -632,10 +633,13 @@ _wl_control_sysioc_thread_wl_off(void *data)
 
 		wl_iw_send_priv_event(wl_ctl->dev, "STOP");
 
+		net_os_wake_lock_timeout_enable(wl_ctl->dev);
 		break;
 	}
 
 	WL_TRACE(("%s Exited\n", __FUNCTION__));
+
+	net_os_wake_unlock(wl_ctl->dev);
 
 	complete_and_exit(&wl_ctl->sysioc_exited, 0);
 	KILL_PROC(wl_ctl->sysioc_pid, SIGTERM);
@@ -653,16 +657,15 @@ wl_control_wl_start(struct net_device *dev)
 		dhd_customer_gpio_wlan_reset(G_WLAN_SET_ON);
 
 #if defined(BCMLXSDMMC)
-		 sdioh_start(NULL, 0);
+		sdioh_start(NULL, 0);
 #endif
 
 		dhd_dev_reset(dev, 0);
 
 #if defined(BCMLXSDMMC)
-		 sdioh_start(NULL, 1);
+		sdioh_start(NULL, 1);
 #endif
-
-		 dhd_dev_init_ioctl(dev);
+		dhd_dev_init_ioctl(dev);
 
 		g_onoff = G_WLAN_SET_ON;
 	}
@@ -695,14 +698,11 @@ wl_iw_control_wl_off(
 	static struct timer_list timer;
 
 	WL_TRACE(("Enter %s\n", __FUNCTION__));
-
-	
 	
 	ctl.timer = &timer;
 	ctl.dev = dev;
 	sema_init(&ctl.timer_sem, 0);
 	init_completion(&ctl.sysioc_exited);
-
 	
 	ctl.sysioc_pid = kernel_thread(_wl_control_sysioc_thread_wl_off, &ctl, 0);
 
@@ -713,7 +713,6 @@ wl_iw_control_wl_off(
 	add_timer(&timer);
 
 	WL_TRACE(("Exited %s\n", __FUNCTION__));
-
 	return ret;
 }
 
@@ -730,6 +729,8 @@ wl_iw_control_wl_on(
 	ret = wl_control_wl_start(dev);
 
 	wl_iw_send_priv_event(dev, "START");
+
+	net_os_wake_lock_timeout_enable(dev);
 
 	WL_TRACE(("Exited %s \n", __FUNCTION__));
 
@@ -3558,7 +3559,8 @@ wl_iw_set_priv(
 	WL_TRACE(("%s: SIOCSIWPRIV requst = %s\n",
 		dev->name, extra));
 
-	
+	net_os_wake_lock(dev);
+
 	if (dwrq->length && extra) {
 
 		if (g_onoff == G_WLAN_SET_OFF) {
@@ -3569,36 +3571,38 @@ wl_iw_set_priv(
 				WL_TRACE(("%s, Received regular START command\n", __FUNCTION__));
 		}
 
-	    if (strnicmp(extra, "SCAN-ACTIVE", strlen("SCAN-ACTIVE")) == 0) {
+		if (strnicmp(extra, "SCAN-ACTIVE", strlen("SCAN-ACTIVE")) == 0) {
 #ifdef ENABLE_ACTIVE_PASSIVE_SCAN_SUPPRESS
 			WL_TRACE(("%s: active scan setting supppressed\n", dev->name));
 #else
 			ret = wl_iw_set_active_scan(dev, info, (union iwreq_data *)dwrq, extra);
 #endif 
-	    }
-	    else if (strnicmp(extra, "SCAN-PASSIVE", strlen("SCAN-PASSIVE")) == 0)
+		}
+		else if (strnicmp(extra, "SCAN-PASSIVE", strlen("SCAN-PASSIVE")) == 0)
 #ifdef ENABLE_ACTIVE_PASSIVE_SCAN_SUPPRESS
 			WL_TRACE(("%s: passive scan setting supppressed\n", dev->name));
 #else
 			ret = wl_iw_set_passive_scan(dev, info, (union iwreq_data *)dwrq, extra);
-#endif 
-	    else if (strnicmp(extra, "RSSI", strlen("RSSI")) == 0)
+#endif
+		else if (strnicmp(extra, "RSSI", strlen("RSSI")) == 0)
 			ret = wl_iw_get_rssi(dev, info, (union iwreq_data *)dwrq, extra);
-	    else if (strnicmp(extra, "LINKSPEED", strlen("LINKSPEED")) == 0)
+		else if (strnicmp(extra, "LINKSPEED", strlen("LINKSPEED")) == 0)
 			ret = wl_iw_get_link_speed(dev, info, (union iwreq_data *)dwrq, extra);
-	    else if (strnicmp(extra, "MACADDR", strlen("MACADDR")) == 0)
+		else if (strnicmp(extra, "MACADDR", strlen("MACADDR")) == 0)
 			ret = wl_iw_get_macaddr(dev, info, (union iwreq_data *)dwrq, extra);
-	    else if (strnicmp(extra, "COUNTRY", strlen("COUNTRY")) == 0)
+		else if (strnicmp(extra, "COUNTRY", strlen("COUNTRY")) == 0)
 			ret = wl_iw_set_country(dev, info, (union iwreq_data *)dwrq, extra);
-	    else if (strnicmp(extra, "STOP", strlen("STOP")) == 0)
+		else if (strnicmp(extra, "STOP", strlen("STOP")) == 0)
 			ret = wl_iw_control_wl_off(dev, info);
-	    else {
+		else {
 			snprintf(extra, MAX_WX_STRING, "OK");
 			dwrq->length = strlen("OK") + 1;
 			WL_TRACE(("Unkown PRIVATE command , ignored\n"));
 		}
 
 	}
+
+	net_os_wake_unlock(dev);
 
 	if (extra) {
 	    if (copy_to_user(dwrq->pointer, extra, dwrq->length)) {
