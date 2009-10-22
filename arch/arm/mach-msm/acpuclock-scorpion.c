@@ -97,7 +97,8 @@ struct clkctl_acpu_speed acpu_freq_tbl[] = {
 #ifdef CONFIG_CPU_FREQ_TABLE
 static struct cpufreq_frequency_table freq_table[ARRAY_SIZE(acpu_freq_tbl)];
 
-static void __init acpuclk_init_cpufreq_table() {
+static void __init acpuclk_init_cpufreq_table(void)
+{
 	int i;
 	for (i = 0; acpu_freq_tbl[i].acpu_khz; i++) {
 		freq_table[i].index = i;
