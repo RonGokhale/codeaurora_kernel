@@ -190,8 +190,6 @@ __v7_setup:
 	mcr	p15, 0, r10, c2, c0, 2		@ TTB control register
 	orr	r4, r4, #TTB_FLAGS
 	mcr	p15, 0, r4, c2, c0, 1		@ load TTB1
-	mov	r10, #0x1f			@ domains 0, 1 = manager
-	mcr	p15, 0, r10, c3, c0, 0		@ load domain access register
 #endif
 	ldr	r5, =0xff0aa1a8
 	ldr	r6, =0x40e040e0
