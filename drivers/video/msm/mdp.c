@@ -639,7 +639,8 @@ int mdp_probe(struct platform_device *pdev)
 	mdp->clk = clk_get(&pdev->dev, "mdp_clk");
 	if (IS_ERR(mdp->clk)) {
 		printk(KERN_INFO "mdp: failed to get mdp clk");
-		return PTR_ERR(mdp->clk);
+		ret = PTR_ERR(mdp->clk);
+		goto error_get_mdp_clk;
 	}
 
 	ret = request_irq(mdp->irq, mdp_isr, IRQF_DISABLED, "msm_mdp", mdp);
@@ -669,6 +670,8 @@ int mdp_probe(struct platform_device *pdev)
 error_device_register:
 	free_irq(mdp->irq, mdp);
 error_request_irq:
+	clk_put(mdp->clk);
+error_get_mdp_clk:
 error_mddi_pmdh_register:
 	iounmap(mdp->base);
 error_ioremap:
