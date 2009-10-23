@@ -46,13 +46,32 @@ struct battery_status {
 	int current_avg_uA;
 	int charge_uAh;
 
-	int temp_C;		/* units of 0.1 C */
+	u16 temp_C;		/* units of 0.1 C */
 
 	u8 percentage;		/* battery percentage */
-	u8 charging_source;
+	u8 charge_source;
 	u8 status_reg;
 	u8 battery_full;	/* battery full (don't charge) */
-};
+
+	u8 cooldown;		/* was overtemp */
+	u8 charge_mode;
+} __attribute__((packed));
+
+
+#define SOURCE_NONE	0
+#define SOURCE_USB	1
+#define SOURCE_AC	2
+
+#define CHARGE_OFF	0
+#define CHARGE_SLOW	1
+#define CHARGE_FAST	2
+
+#define TEMP_CRITICAL	600 /* no charging at all */
+#define TEMP_HOT	500 /* no fast charge, no charge > 4.1v */
+#define TEMP_WARM	450 /* no fast charge above this */
+
+#define TEMP_HOT_MAX_MV	4100 /* stop charging here when hot */
+#define TEMP_HOT_MIN_MV	3800 /* resume charging here when hot */
 
 #define BATTERY_LOG_MAX 4096
 #define BATTERY_LOG_MASK (BATTERY_LOG_MAX - 1)
@@ -76,20 +95,22 @@ void battery_log_status(struct battery_status *s)
 }
 
 static const char *battery_source[3] = { "none", " usb", "  ac" };
+static const char *battery_mode[3] = { " off", "slow", "fast" };
 
 static int battery_log_print(struct seq_file *sf, void *private)
 {
 	unsigned n;
 	mutex_lock(&battery_log_lock);
-	seq_printf(sf, "timestamp    mV     mA avg mA      uAh   dC   %%   src   reg full\n");
+	seq_printf(sf, "timestamp    mV     mA avg mA      uAh   dC   %%   src  mode   reg full\n");
 	for (n = battery_log_tail; n != battery_log_head; n = (n + 1) & BATTERY_LOG_MASK) {
 		struct battery_status *s = battery_log + n;
-		seq_printf(sf, "%9d %5d %6d %6d %8d %4d %3d  %s  0x%02x %d\n",
+		seq_printf(sf, "%9d %5d %6d %6d %8d %4d %3d  %s  %s  0x%02x %d\n",
 			   s->timestamp, s->voltage_uV / 1000,
 			   s->current_uA / 1000, s->current_avg_uA / 1000,
 			   s->charge_uAh, s->temp_C,
 			   s->percentage,
-			   battery_source[s->charging_source],
+			   battery_source[s->charge_source],
+			   battery_mode[s->charge_mode],
 			   s->status_reg, s->battery_full);
 	}
 	mutex_unlock(&battery_log_lock);
@@ -113,20 +134,13 @@ struct ds2784_device_info {
 	struct alarm alarm;
 	struct wake_lock work_wake_lock;
 
-	int dummy;
+	u8 dummy; /* dummy battery flag */
+	u8 last_charge_mode; /* previous charger state */
 };
 
 #define psy_to_dev_info(x) container_of((x), struct ds2784_device_info, bat)
 
 static struct wake_lock vbus_wake_lock;
-
-#define BATT_NO_SOURCE        (0)  /* 0: No source battery */
-#define BATT_FIRST_SOURCE     (1)  /* 1: Main source battery */
-#define BATT_SECOND_SOURCE    (2)  /* 2: Second source battery */
-#define BATT_THIRD_SOURCE     (3)  /* 3: Third source battery */
-#define BATT_FOURTH_SOURCE    (4)  /* 4: Fourth source battery */
-#define BATT_FIFTH_SOURCE     (5)  /* 5: Fifth source battery */
-#define BATT_UNKNOWN        (255)  /* Other: Unknown battery */
 
 #define BATT_RSNSP			(67)	/*Passion battery source 1*/
 
@@ -148,18 +162,6 @@ static enum power_supply_property battery_properties[] = {
 };
 
 static int battery_initial;
-
-typedef enum {
-	DISABLE = 0,
-	ENABLE_SLOW_CHG,
-	ENABLE_FAST_CHG
-} batt_ctl_t;
-
-typedef enum {
-	CHARGER_BATTERY = 0,
-	CHARGER_USB,
-	CHARGER_AC
-} charger_type_t;
 
 static int battery_get_property(struct power_supply *psy,
 				    enum power_supply_property psp,
@@ -272,12 +274,12 @@ static int battery_get_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
-		switch (di->status.charging_source) {
-		case CHARGER_BATTERY:
+		switch (di->status.charge_source) {
+		case CHARGE_OFF:
 			val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
 			break;
-		case CHARGER_USB:
-		case CHARGER_AC:
+		case CHARGE_FAST:
+		case CHARGE_SLOW:
 			if (di->status.battery_full)
 				val->intval = POWER_SUPPLY_STATUS_FULL;
 			else
@@ -289,25 +291,26 @@ static int battery_get_property(struct power_supply *psy,
 		}
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
-		val->intval = POWER_SUPPLY_HEALTH_GOOD;
+		if (di->status.temp_C >= TEMP_HOT)
+			val->intval = POWER_SUPPLY_HEALTH_OVERHEAT;
+		else
+			val->intval = POWER_SUPPLY_HEALTH_GOOD;
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 		/* XXX todo */
 		val->intval = 1;
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
-		if (di->dummy) {
+		if (di->dummy)
 			val->intval = POWER_SUPPLY_TECHNOLOGY_UNKNOWN;
-		} else {
+		else
 			val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
-		}
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-		if (di->dummy) {
+		if (di->dummy)
 			val->intval = 75;
-		} else {
+		else
 			val->intval = di->status.percentage;
-		}
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		val->intval = di->status.voltage_uV;
@@ -338,70 +341,93 @@ static void ds2784_battery_update_status(struct ds2784_device_info *di)
 
 	ds2784_battery_read_status(di);
 
-#if 0
-	if (htc_batt_info.rep.batt_id == BATT_UNKNOWN) {
-		htc_batt_info.rep.level = 0;
-		printk("Not support battery %d, power down system\n",htc_batt_info.rep.batt_id);
-		power_supply_changed(&di->bat);
-	}
-#endif
-
 	if (last_level != di->status.percentage)
 		power_supply_changed(&di->bat);
 }
 
-static unsigned last_source = 0xffffffff;
-static unsigned last_status = 0xffffffff;
 static spinlock_t charge_state_lock;
 
 static int battery_adjust_charge_state(struct ds2784_device_info *di)
 {
-	unsigned source;
-	unsigned status;
 	unsigned long flags;
-	int charging_full;
+	unsigned source;
 	int rc = 0;
+	int temp, volt;
+	u8 charge_mode;
 
 	spin_lock_irqsave(&charge_state_lock, flags);
 
-	source = di->status.charging_source;
-	status = di->status.status_reg;
+	temp = di->status.temp_C;
+	volt = di->status.voltage_uV / 1000;
 
-	if ((status & 0x80) && (source > 0) &&
-		(di->status.current_uA <= 80000) &&
-		(di->status.percentage == 100))
-		charging_full = 1;
-	else
-		charging_full = 0;
+	source = di->status.charge_source;
 
-	if ((source == last_source) && (charging_full == di->status.battery_full))
+	/* initially our charge mode matches our source:
+	 * NONE:OFF, USB:SLOW, AC:FAST
+	 */
+	charge_mode = source;
+
+	/* shut off charger when full:
+	 * - CHGTF flag is set
+	 * - battery drawing less than 80mA
+	 * - battery at 100% capacity
+	 */
+	if ((di->status.status_reg & 0x80) &&
+	    (di->status.current_uA <= 80000) &&
+	    (di->status.percentage == 100)) {
+		di->status.battery_full = 1;
+		charge_mode = CHARGE_OFF;
+	} else {
+		di->status.battery_full = 0;
+	}
+
+	if (temp >= TEMP_HOT) {
+		if (temp >= TEMP_CRITICAL)
+			charge_mode = CHARGE_OFF;
+
+		/* once we charge to max voltage when hot, disable
+		 * charging until the temp drops or the voltage drops
+		 */
+		if (volt >= TEMP_HOT_MAX_MV) 
+			di->status.cooldown = 1;
+	}
+
+	/* when the battery is warm, only charge in slow charge mode */
+	if ((temp >= TEMP_WARM) && (charge_mode == CHARGE_FAST))
+		charge_mode = CHARGE_SLOW;
+
+	if (di->status.cooldown) {
+		if ((temp < TEMP_WARM) || (volt <= TEMP_HOT_MIN_MV))
+			di->status.cooldown = 0;
+		else
+			charge_mode = CHARGE_OFF;
+	}
+
+	if (di->last_charge_mode == charge_mode)
 		goto done;
 
-	last_source = source;
-	last_status = status;
-	di->status.battery_full = charging_full;
+	di->last_charge_mode = charge_mode;
+	di->status.charge_mode = charge_mode;
 
-	if (charging_full)
-		/* ignore actual source if we're in full-dont-charge mode */
-		source = CHARGER_BATTERY;
-	else
-		source = di->status.charging_source;
-
-	switch (source) {
-	case CHARGER_BATTERY:
+	switch (charge_mode) {
+	case CHARGE_OFF:
 		/* CHARGER_EN is active low.  Set to 1 to disable. */
 		gpio_direction_output(GPIO_BATTERY_CHARGER_EN, 1);
-		pr_info("batt: charging OFF%s\n",
-			charging_full ? " [FULL]" : "");
+		if (temp >= TEMP_CRITICAL)
+			pr_info("batt: charging OFF [OVERTEMP]\n");
+		else if (di->status.cooldown) 
+			pr_info("batt: charging OFF [COOLDOWN]\n");
+		else if (di->status.battery_full)
+			pr_info("batt: charging OFF [FULL]\n");
+		else
+			pr_info("batt: charging OFF\n");
 		break;
-	case CHARGER_USB:
-		/* slow charge mode */
+	case CHARGE_SLOW:
 		gpio_direction_output(GPIO_BATTERY_CHARGER_CURRENT, 0);
 		gpio_direction_output(GPIO_BATTERY_CHARGER_EN, 0);
 		pr_info("batt: charging SLOW\n");
 		break;
-	case CHARGER_AC:
-		/* fast charge mode */
+	case CHARGE_FAST:
 		gpio_direction_output(GPIO_BATTERY_CHARGER_CURRENT, 1);
 		gpio_direction_output(GPIO_BATTERY_CHARGER_EN, 0);
 		pr_info("batt: charging FAST\n");
@@ -464,12 +490,12 @@ static void battery_ext_power_changed(struct power_supply *psy)
 
 	if (got_power) {
 		if (is_ac_power_supplied())
-			di->status.charging_source = CHARGER_AC;
+			di->status.charge_source = SOURCE_AC;
 		else
-			di->status.charging_source = CHARGER_USB;
+			di->status.charge_source = SOURCE_USB;
 		wake_lock(&vbus_wake_lock);
 	} else {
-		di->status.charging_source = CHARGER_BATTERY;
+		di->status.charge_source = SOURCE_NONE;
 		/* give userspace some time to see the uevent and update
 		 * LED state or whatnot...
 		 */
@@ -502,6 +528,7 @@ static int ds2784_battery_probe(struct platform_device *pdev)
 	di->bat.num_properties = ARRAY_SIZE(battery_properties);
 	di->bat.external_power_changed = battery_ext_power_changed;
 	di->bat.get_property = battery_get_property;
+	di->last_charge_mode = 0xff;
 
 	rc = power_supply_register(&pdev->dev, &di->bat);
 	if (rc)
