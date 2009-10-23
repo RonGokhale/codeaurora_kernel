@@ -241,6 +241,14 @@ static struct android_pmem_platform_data android_pmem_adsp_pdata = {
 	.cached		= 1,
 };
 
+static struct android_pmem_platform_data android_pmem_camera_pdata = {
+	.name		= "pmem_camera",
+	.start		= MSM_PMEM_CAMERA_BASE,
+	.size		= MSM_PMEM_CAMERA_SIZE,
+	.no_allocator	= 1,
+	.cached		= 1,
+};
+
 static struct platform_device android_pmem_mdp_device = {
 	.name		= "android_pmem",
 	.id		= 0,
@@ -254,6 +262,14 @@ static struct platform_device android_pmem_adsp_device = {
 	.id		= 1,
 	.dev		= {
 		.platform_data = &android_pmem_adsp_pdata,
+	},
+};
+
+static struct platform_device android_pmem_camera_device = {
+	.name		= "android_pmem",
+	.id		= 2,
+	.dev		= {
+		.platform_data = &android_pmem_camera_pdata,
 	},
 };
 
@@ -621,6 +637,7 @@ static struct platform_device *devices[] __initdata = {
 	&usb_mass_storage_device,
 	&android_pmem_mdp_device,
 	&android_pmem_adsp_device,
+	&android_pmem_camera_device,
 	&msm_kgsl_device,
 	&msm_device_i2c,
 	&capella_cm3602,
