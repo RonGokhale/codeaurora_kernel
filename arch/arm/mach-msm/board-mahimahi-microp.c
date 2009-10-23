@@ -59,6 +59,7 @@
 #define MICROP_I2C_RCMD_AMBER_LED_REMAIN_TIME	0x55
 #define MICROP_I2C_WCMD_JOGBALL_LED_MODE	0x5A
 #define MICROP_I2C_RCMD_JOGBALL_LED_REMAIN_TIME	0x5B
+#define MICROP_I2C_WCMD_JOGBALL_LED_PWM_SET	0x5C
 #define MICROP_I2C_WCMD_READ_ADC_VALUE_REQ	0x60
 #define MICROP_I2C_RCMD_ADC_VALUE		0x62
 #define MICROP_I2C_WCMD_REMOTEKEY_TABLE		0x63
@@ -713,6 +714,52 @@ static ssize_t microp_i2c_led_off_timer_store(struct device *dev,
 static DEVICE_ATTR(off_timer, 0644, microp_i2c_led_off_timer_show,
 			microp_i2c_led_off_timer_store);
 
+static ssize_t microp_i2c_jogball_color_store(struct device *dev,
+				   struct device_attribute *attr,
+				   const char *buf, size_t count)
+{
+	struct led_classdev *led_cdev;
+	struct microp_led_data *ldata;
+	struct i2c_client *client;
+	int rpwm, gpwm, bpwm, ret;
+	uint8_t data[4];
+
+	rpwm = -1;
+	gpwm = -1;
+	bpwm = -1;
+	sscanf(buf, "%d %d %d", &rpwm, &gpwm, &bpwm);
+
+	if (rpwm < 0 || rpwm > 255)
+		return -EINVAL;
+	if (gpwm < 0 || gpwm > 255)
+		return -EINVAL;
+	if (bpwm < 0 || bpwm > 255)
+		return -EINVAL;
+
+	led_cdev = (struct led_classdev *)dev_get_drvdata(dev);
+	ldata = container_of(led_cdev, struct microp_led_data, ldev);
+	client = to_i2c_client(dev->parent);
+
+	dev_info(&client->dev, "Setting %s color to R=%d, G=%d, B=%d\n",
+			led_cdev->name, rpwm, gpwm, bpwm);
+
+	data[0] = rpwm;
+	data[1] = gpwm;
+	data[2] = bpwm;
+	data[3] = 0x00;
+
+	ret = i2c_write_block(client, MICROP_I2C_WCMD_JOGBALL_LED_PWM_SET,
+			      data, 4);
+	if (ret) {
+		dev_err(&client->dev,
+			"%s set color R=%d G=%d B=%d failed\n",
+			led_cdev->name, rpwm, gpwm, bpwm);
+	}
+	return count;
+}
+
+static DEVICE_ATTR(color, 0644, NULL, microp_i2c_jogball_color_store);
+
 static void microp_led_brightness_set(struct led_classdev *led_cdev,
 			       enum led_brightness brightness)
 {
@@ -744,6 +791,10 @@ static void microp_led_brightness_set(struct led_classdev *led_cdev,
 struct device_attribute *green_amber_attrs[] = {
 	&dev_attr_blink,
 	&dev_attr_off_timer,
+};
+
+struct device_attribute *jogball_attrs[] = {
+	&dev_attr_color,
 };
 
 static void microp_led_buttons_brightness_set(struct led_classdev *led_cdev,
@@ -1591,6 +1642,8 @@ static struct {
 	[JOGBALL_LED] = {
 		.name		= "jogball-backlight",
 		.led_set	= microp_led_jogball_brightness_set,
+		.attrs		= jogball_attrs,
+		.attr_cnt	= ARRAY_SIZE(jogball_attrs)
 	},
 	[BUTTONS_LED] = {
 		.name		= "button-backlight",
