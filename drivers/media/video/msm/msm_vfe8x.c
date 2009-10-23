@@ -19,12 +19,15 @@
 #include <linux/uaccess.h>
 #include <linux/interrupt.h>
 #include <mach/irqs.h>
+#include <linux/clk.h>
 #include "msm_vfe8x_proc.h"
 
 #define ON  1
 #define OFF 0
 
 static void *vfe_syncdata;
+static struct clk *ebi1_clk;
+static const char *const clk_name = "ebi1_clk";
 
 static int vfe_enable(struct camera_enable_cmd *enable)
 {
@@ -39,8 +42,38 @@ static int vfe_disable(struct camera_enable_cmd *enable,
 	return 0;
 }
 
+static int vfe_init(struct msm_vfe_callback *presp, struct platform_device *dev)
+{
+	int rc = 0;
+
+	ebi1_clk = clk_get(NULL, clk_name);
+	if (!ebi1_clk) {
+		pr_err("%s: could not get %s\n", __func__, clk_name);
+		return -EIO;
+	}
+
+	rc = clk_set_rate(ebi1_clk, 128000000);
+	if (rc < 0) {
+		pr_err("%s: clk_set_rate(%s) failed: %d\n", __func__,
+			clk_name, rc);
+		return rc;
+	}
+
+	rc = vfe_cmd_init(presp, dev, vfe_syncdata);
+	if (rc < 0)
+		return rc;
+
+	/* Bring up all the required GPIOs and Clocks */
+	return msm_camio_enable(dev);
+}
+
 static void vfe_release(struct platform_device *dev)
 {
+	if (ebi1_clk) {
+		clk_set_rate(ebi1_clk, 0);
+		clk_put(ebi1_clk);
+		ebi1_clk = 0;
+	}
 	msm_camio_disable(dev);
 	vfe_cmd_release(dev);
 	vfe_syncdata = NULL;
@@ -661,18 +694,6 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 	}			/* switch */
 
 	return rc;
-}
-
-static int vfe_init(struct msm_vfe_callback *presp, struct platform_device *dev)
-{
-	int rc = 0;
-
-	rc = vfe_cmd_init(presp, dev, vfe_syncdata);
-	if (rc < 0)
-		return rc;
-
-	/* Bring up all the required GPIOs and Clocks */
-	return msm_camio_enable(dev);
 }
 
 void msm_camvfe_fn_init(struct msm_camvfe_fn *fptr, void *data)
