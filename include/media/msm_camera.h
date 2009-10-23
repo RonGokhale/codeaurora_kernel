@@ -86,6 +86,9 @@
 #define MSM_CAM_IOCTL_CTRL_COMMAND_2 \
 	_IOW(MSM_CAM_IOCTL_MAGIC, 24, struct msm_ctrl_cmd *)
 
+#define MSM_CAM_IOCTL_ENABLE_OUTPUT_IND \
+	_IOW(MSM_CAM_IOCTL_MAGIC, 25, uint32_t *)
+
 #define MAX_SENSOR_NUM  3
 #define MAX_SENSOR_NAME 32
 
