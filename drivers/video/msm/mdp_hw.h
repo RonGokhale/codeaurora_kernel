@@ -47,6 +47,7 @@ struct mdp_info {
 	char* __iomem base;
 	int irq;
 	struct clk *clk;
+	struct clk *ebi1_clk;
 	struct mdp_out_interface out_if[MSM_MDP_NUM_INTERFACES];
 };
 
