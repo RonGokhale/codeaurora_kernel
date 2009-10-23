@@ -32,7 +32,6 @@
 
 struct mdp_lcdc_info {
 	struct mdp_info			*mdp;
-	struct clk			*ebi1_clk;
 	struct clk			*mdp_clk;
 	struct clk			*pclk;
 	struct clk			*pad_pclk;
@@ -93,7 +92,6 @@ static int lcdc_suspend(struct msm_panel_data *fb_panel)
 	mdp_writel(lcdc->mdp, 0, MDP_LCDC_EN);
 	clk_disable(lcdc->pad_pclk);
 	clk_disable(lcdc->pclk);
-	clk_set_rate(lcdc->ebi1_clk, 0);
 	clk_disable(lcdc->mdp_clk);
 
 	return 0;
@@ -106,7 +104,6 @@ static int lcdc_resume(struct msm_panel_data *fb_panel)
 	pr_info("%s: resuming\n", __func__);
 
 	clk_enable(lcdc->mdp_clk);
-	clk_set_rate(lcdc->ebi1_clk, 128000000);
 	clk_enable(lcdc->pclk);
 	clk_enable(lcdc->pad_pclk);
 	mdp_writel(lcdc->mdp, 1, MDP_LCDC_EN);
@@ -123,8 +120,6 @@ static int lcdc_hw_init(struct mdp_lcdc_info *lcdc)
 	clk_enable(lcdc->pclk);
 	clk_enable(lcdc->pad_pclk);
 
-	/* XXX: this should set the MDP clock frequency, not ebi1 */
-	clk_set_rate(lcdc->ebi1_clk, 128000000);
 	clk_set_rate(lcdc->pclk, lcdc->parms.clk_rate);
 	clk_set_rate(lcdc->pad_pclk, lcdc->parms.clk_rate);
 
@@ -283,13 +278,6 @@ static int mdp_lcdc_probe(struct platform_device *pdev)
 	if (!lcdc)
 		return -ENOMEM;
 
-	lcdc->ebi1_clk = clk_get(NULL, "ebi1_clk");
-	if (IS_ERR(lcdc->ebi1_clk)) {
-		pr_err("%s: failed to get ebi1_clk\n", __func__);
-		ret = PTR_ERR(lcdc->ebi1_clk);
-		goto err_get_ebi1_clk;
-	}
-
 	/* We don't actually own the clocks, the mdp does. */
 	lcdc->mdp_clk = clk_get(mdp_dev->dev.parent, "mdp_clk");
 	if (IS_ERR(lcdc->mdp_clk)) {
@@ -370,8 +358,6 @@ err_get_pad_pclk:
 err_get_pclk:
 	clk_put(lcdc->mdp_clk);
 err_get_mdp_clk:
-	clk_put(lcdc->ebi1_clk);
-err_get_ebi1_clk:
 	kfree(lcdc);
 	return ret;
 }
