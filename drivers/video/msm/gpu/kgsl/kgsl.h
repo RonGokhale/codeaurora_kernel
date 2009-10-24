@@ -43,6 +43,7 @@ struct kgsl_driver {
 
 	struct clk *grp_clk;
 	struct clk *imem_clk;
+	struct clk *ebi1_clk;
 
 	struct kgsl_devconfig yamato_config;
 
