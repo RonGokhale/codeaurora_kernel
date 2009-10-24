@@ -80,6 +80,8 @@ int flashlight_control(int mode)
 
 	spin_lock_irqsave(&the_fl.spin_lock, flags);
 
+	the_fl.brightness = mode;
+
 	switch (mode) {
 	case FLASHLIGHT_TORCH:
 		pr_info("%s: half\n", __func__);
@@ -119,8 +121,6 @@ int flashlight_control(int mode)
 		ret = -EINVAL;
 		goto done;
 	}
-
-	the_fl.brightness = mode;
 
 done:
 	spin_unlock_irqrestore(&the_fl.spin_lock, flags);
