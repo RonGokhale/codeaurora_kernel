@@ -116,10 +116,13 @@ static int kgsl_first_open_locked(void)
 
 	BUG_ON(kgsl_driver.grp_clk == NULL);
 	BUG_ON(kgsl_driver.imem_clk == NULL);
+	BUG_ON(kgsl_driver.ebi1_clk == NULL);
 
 	clk_enable(kgsl_driver.grp_clk);
 
 	clk_enable(kgsl_driver.imem_clk);
+
+	clk_set_rate(kgsl_driver.ebi1_clk, 128000000);
 
 	/* init memory apertures */
 	result = kgsl_sharedmem_init(&kgsl_driver.shmem);
@@ -145,6 +148,7 @@ static int kgsl_last_release_locked(void)
 {
 	BUG_ON(kgsl_driver.grp_clk == NULL);
 	BUG_ON(kgsl_driver.imem_clk == NULL);
+	BUG_ON(kgsl_driver.ebi1_clk == NULL);
 
 	disable_irq(kgsl_driver.interrupt_num);
 
@@ -160,6 +164,7 @@ static int kgsl_last_release_locked(void)
 
 	clk_disable(kgsl_driver.imem_clk);
 
+	clk_set_rate(kgsl_driver.ebi1_clk, 0);
 	return 0;
 }
 
@@ -946,6 +951,11 @@ static void kgsl_driver_cleanup(void)
 		kgsl_driver.imem_clk = NULL;
 	}
 
+	if (kgsl_driver.ebi1_clk != NULL) {
+		clk_put(kgsl_driver.ebi1_clk);
+		kgsl_driver.ebi1_clk = NULL;
+	}
+
 	kgsl_driver.pdev = NULL;
 
 }
@@ -963,6 +973,7 @@ static int __devinit kgsl_platform_probe(struct platform_device *pdev)
 	/*acquire clocks */
 	BUG_ON(kgsl_driver.grp_clk != NULL);
 	BUG_ON(kgsl_driver.imem_clk != NULL);
+	BUG_ON(kgsl_driver.ebi1_clk != NULL);
 
 	kgsl_driver.pdev = pdev;
 
@@ -981,6 +992,14 @@ static int __devinit kgsl_platform_probe(struct platform_device *pdev)
 		goto done;
 	}
 	kgsl_driver.imem_clk = clk;
+
+	clk = clk_get(&pdev->dev, "ebi1_clk");
+	if (IS_ERR(clk)) {
+		result = PTR_ERR(clk);
+		KGSL_DRV_ERR("clk_get(ebi1_clk) returned %d\n", result);
+		goto done;
+	}
+	kgsl_driver.ebi1_clk = clk;
 
 	/*acquire interrupt */
 	kgsl_driver.interrupt_num = platform_get_irq(pdev, 0);
@@ -1050,6 +1069,7 @@ static int kgsl_platform_suspend(struct platform_device *pdev,
 		disable_irq(kgsl_driver.interrupt_num);
 		clk_disable(kgsl_driver.grp_clk);
 		clk_disable(kgsl_driver.imem_clk);
+		clk_set_rate(kgsl_driver.ebi1_clk, 0);
 		pr_info("kgsl: suspend()\n");
 	}
 
@@ -1063,6 +1083,7 @@ static int kgsl_platform_resume(struct platform_device *pdev)
 	mutex_lock(&kgsl_driver.mutex);
 	if (atomic_read(&kgsl_driver.open_count) > 0) {
 		pr_info("kgsl: resume()\n");
+		clk_set_rate(kgsl_driver.ebi1_clk, 128000000);
 		clk_enable(kgsl_driver.grp_clk);
 		clk_enable(kgsl_driver.imem_clk);
 		enable_irq(kgsl_driver.interrupt_num);
