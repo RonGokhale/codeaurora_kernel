@@ -405,7 +405,7 @@ do_imprecise_ext(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 #ifdef CONFIG_ARCH_MSM_SCORPION
 	unsigned int adfsr;
 
-	asm("mcr p15, 0, %0, c5, c1, 0\n" /* read adfsr for fault status */
+	asm("mrc p15, 0, %0, c5, c1, 0\n" /* read adfsr for fault status */
             : "=r" (adfsr));
 
 	printk("%s: ADFSR = 0x%.8x\n", __func__, adfsr);
