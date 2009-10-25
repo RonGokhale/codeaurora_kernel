@@ -408,7 +408,7 @@ static void __init acpuclk_init(void)
 		speed->lpj = cpufreq_scale(loops_per_jiffy,
 					   init_khz, speed->acpu_khz);
 
-	loops_per_jiffy = speed->lpj;
+	loops_per_jiffy = drv_state.current_speed->lpj;
 }
 
 unsigned long acpuclk_get_rate(void)
