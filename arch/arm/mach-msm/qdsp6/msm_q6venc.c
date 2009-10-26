@@ -47,6 +47,8 @@
 #include <linux/android_pmem.h>
 #include <linux/msm_q6venc.h>
 
+#include <asm/cacheflush.h>
+
 #include "dal.h"
 
 #define DALDEVICEID_VENC_DEVICE		0x0200002D
@@ -72,6 +74,7 @@ struct callback_event_data {
 
 struct buf_info {
 	unsigned long			paddr;
+	unsigned long			vaddr;
 	struct file			*file;
 	struct venc_buf			venc_buf;
 };
@@ -86,6 +89,8 @@ struct q6venc_dev {
 	struct callback_event_data	cb_ev_data;
 	bool				stop_encode;
 	struct buf_info			rlc_bufs[RLC_MAX_BUF_NUM];
+	unsigned int			rlc_buf_idx;
+	unsigned int			rlc_buf_len;
 	struct buf_info			enc_bufs[VENC_MAX_BUF_NUM];
 	unsigned int			num_enc_bufs;
 	wait_queue_head_t		encode_wq;
@@ -124,6 +129,7 @@ static int get_buf_info(struct buf_info *buf_info, struct venc_buf *venc_buf)
 
 	buf_info->file = file;
 	buf_info->paddr = paddr + venc_buf->offset;
+	buf_info->vaddr = vaddr;
 	memcpy(&buf_info->venc_buf, venc_buf, sizeof(struct venc_buf));
 	return 0;
 }
@@ -166,6 +172,10 @@ frame_found:
 	memcpy(&q6venc->done_frame.q6_frame_type, q6frame,
 	       sizeof(struct q6_frame_type));
 	wake_up_interruptible(&q6venc->encode_wq);
+
+	dmac_inv_range((const void *)q6venc->rlc_bufs[i].vaddr,
+		       (const void *)(q6venc->rlc_bufs[i].vaddr +
+				      q6venc->rlc_buf_len - 1));
 
 done:
 	spin_unlock_irqrestore(&q6venc->done_lock, flags);
@@ -288,6 +298,7 @@ static int q6_config_encode(struct q6venc_dev *q6venc, uint32_t type,
 		pr_err("%s: can't get rlc_buf2\n", __func__);
 		goto err_get_rlc_buf2;
 	}
+	q6venc->rlc_buf_len = 2 * q6_init_config->rlc_buf_length;
 	q6venc->num_enc_bufs = 2;
 
 	q6_init_config->ref_frame_buf1_phy = q6venc->enc_bufs[0].paddr;
@@ -375,6 +386,9 @@ static int q6_encode(struct q6venc_dev *q6venc, struct encode_param *enc_param)
 	q6_param->chroma_addr = q6_param->luma_addr + enc_param->uv_offset;
 	pr_debug("luma_addr=0x%08x chroma_addr=0x%08x\n", q6_param->luma_addr,
 		 q6_param->chroma_addr);
+
+	dmac_clean_range((const void*)buf->vaddr,
+			 (const void*)(buf->vaddr + buf->venc_buf.size));
 
 	ret = dal_call_f5(q6venc->venc, VENC_DALRPC_ENCODE, q6_param,
 			  sizeof(struct q6_encode_param));
