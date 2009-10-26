@@ -238,7 +238,7 @@ static struct android_pmem_platform_data android_pmem_adsp_pdata = {
 	.start		= MSM_PMEM_ADSP_BASE,
 	.size		= MSM_PMEM_ADSP_SIZE,
 	.no_allocator	= 0,
-	.cached		= 0,
+	.cached		= 1,
 };
 
 static struct platform_device android_pmem_mdp_device = {
