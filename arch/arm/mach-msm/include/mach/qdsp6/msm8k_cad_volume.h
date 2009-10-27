@@ -104,6 +104,7 @@ struct cad_device_volume_cache {
 	and the array index is device ID.
 */
 
+s32 qdsp6_stream_volume_mapping(s32 percentage);
 s32 qdsp6_volume_mapping(u32 deviceId, s32 percentage);
 
 
@@ -121,5 +122,6 @@ void set_audio_ctrl_handle(u32 handle);
 int cad_volume_dinit(void);
 int cad_volume_init(struct cad_func_tbl_type **func_tbl);
 
+int cad_apply_cached_vol_on_dev(u32 device_id);
 int volume_set_max_vol_all(void);
 

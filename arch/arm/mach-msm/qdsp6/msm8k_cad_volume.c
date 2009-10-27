@@ -190,6 +190,18 @@ enum cad_int_device_id qdsp6_volume_device_id_mapping(u32 device_id)
 	}
 }
 
+/* This computes linear mapping stream volume. */
+s32 qdsp6_stream_volume_mapping(s32 percentage)
+{
+	if (percentage < 0 || percentage > 100) {
+		pr_err("%s: invalid percentage\n", __func__);
+		return 0xFFFFFFFF;
+	}
+
+	return CAD_STREAM_MIN_GAIN + (((CAD_STREAM_MAX_GAIN -
+			CAD_STREAM_MIN_GAIN) * percentage) / 100);
+}
+
 /* This computes linear mapping device volume. */
 s32 qdsp6_volume_mapping(u32 device_id, s32 percentage)
 {
@@ -233,6 +245,91 @@ s32 qdsp6_volume_read(s32 session_id,
 	struct cad_buf_struct_type *buf_ptr)
 {
 	return CAD_RES_SUCCESS;
+}
+
+s32 send_voice_mute(s32 sess_id, u32 device_id, u32 path, u32 mute)
+{
+	struct adsp_audio_set_dev_mute_command	set_dev_mute;
+	union adsp_audio_event event_payload;
+	s32 rc;
+
+	memset(&set_dev_mute, 0,
+		sizeof(struct adsp_audio_set_dev_mute_command));
+	memset(&event_payload, 0, sizeof(union adsp_audio_event));
+
+	D("%s: device id = %d, path = %d, mute = %d\n", __func__, device_id,
+		path, mute);
+
+	set_dev_mute.cmd.op_code = ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_MUTE;
+	set_dev_mute.cmd.response_type = ADSP_AUDIO_RESPONSE_COMMAND;
+	set_dev_mute.device_id = ADSP_AUDIO_DEVICE_ID_VOICE;
+	set_dev_mute.path = path;
+	set_dev_mute.mute = mute;
+
+	rc = cad_rpc_control(sess_id,
+		ardsession[sess_id]->group_id,
+		(void *)&set_dev_mute,
+		sizeof(struct adsp_audio_set_dev_mute_command),
+		&event_payload);
+
+	if (rc != CAD_RES_SUCCESS)
+		pr_err("%s: cad_rpc_control() failure\n", __func__);
+
+	return rc;
+}
+
+s32 handle_voice_mute(s32 session_id,
+		struct cad_flt_cfg_strm_mute *stream_mute_buf)
+{
+	u32 path = 1;
+	s32 rc;
+	rc = send_voice_mute(audio_ctrl_handle, CAD_HW_DEVICE_ID_VOICE, path,
+		stream_mute_buf->mute);
+
+	return rc;
+}
+
+s32 send_voice_vol(s32 sess_id, u32 device_id, u32 path, u32 volume)
+{
+	struct adsp_audio_set_dev_stereo_volume_command	set_dev_stereo_volume;
+	union adsp_audio_event event_payload;
+	s32 rc;
+
+	memset(&set_dev_stereo_volume, 0,
+		sizeof(struct adsp_audio_set_dev_stereo_volume_command));
+	memset(&event_payload, 0, sizeof(union adsp_audio_event));
+
+	D("%s: device id = %d\n", __func__, device_id);
+
+	set_dev_stereo_volume.cmd.op_code = ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_VOL;
+	set_dev_stereo_volume.cmd.response_type = ADSP_AUDIO_RESPONSE_COMMAND;
+	set_dev_stereo_volume.device_id = ADSP_AUDIO_DEVICE_ID_VOICE;
+	set_dev_stereo_volume.path = path;
+	set_dev_stereo_volume.l_chan_gain_mb = volume;
+	set_dev_stereo_volume.r_chan_gain_mb = volume;
+
+	rc = cad_rpc_control(sess_id,
+		ardsession[sess_id]->group_id,
+		(void *)&set_dev_stereo_volume,
+		sizeof(struct adsp_audio_set_dev_stereo_volume_command),
+		&event_payload);
+
+	if (rc != CAD_RES_SUCCESS)
+		pr_err("%s: cad_rpc_control() failure\n", __func__);
+
+	return rc;
+}
+
+s32 handle_voice_vol(s32 session_id,
+		struct cad_flt_cfg_strm_vol *stream_vol_buf)
+{
+	u32 path = 0;
+	s32 rc;
+
+	rc = send_voice_vol(audio_ctrl_handle, CAD_HW_DEVICE_ID_VOICE, path,
+		stream_vol_buf->volume);
+
+	return rc;
 }
 
 s32 qdsp6_volume_ioctl(s32 session_id, u32 cmd_code,
@@ -738,6 +835,12 @@ s32 qdsp6_volume_ioctl(s32 session_id, u32 cmd_code,
 			goto done;
 		}
 
+		if (ardsession[session_id]->sess_open_info->cad_stream.app_type
+				== CAD_STREAM_APP_VOICE) {
+			rc = handle_voice_vol(session_id, stream_vol_buf);
+			goto done;
+		}
+
 		/* For volume != min: send unmute command. */
 		if (stream_vol_buf->volume != CAD_STREAM_MIN_GAIN) {
 			/* Construct QDSP6 stream mute command. */
@@ -823,6 +926,11 @@ s32 qdsp6_volume_ioctl(s32 session_id, u32 cmd_code,
 
 		if (!q6_set_strm_mute)
 			return CAD_RES_FAILURE;
+		if (ardsession[session_id]->sess_open_info->cad_stream.app_type
+				== CAD_STREAM_APP_VOICE) {
+			rc = handle_voice_mute(session_id, stream_mute_buf);
+			goto done;
+		}
 
 		/* 2. Assign values to command buffer. */
 		q6_set_strm_mute->mute = stream_mute_buf->mute;
@@ -947,11 +1055,112 @@ int cad_volume_init(struct cad_func_tbl_type **func_tbl)
 	qdsp6_volume_cache_tbl[
 		INT_CAD_HW_DEVICE_ID_HEADSET_MONO_PLUS_SPKR_MONO_RX]
 			.min_gain = CAD_DEVICE_HEADSET_MIN_GAIN;
+	qdsp6_volume_cache_tbl[
+		INT_CAD_HW_DEVICE_ID_HEADSET_MONO_PLUS_SPKR_STEREO_RX]
+		.max_gain = CAD_DEVICE_HEADSET_MAX_GAIN;
+	qdsp6_volume_cache_tbl[
+		INT_CAD_HW_DEVICE_ID_HEADSET_MONO_PLUS_SPKR_STEREO_RX]
+		.min_gain = CAD_DEVICE_HEADSET_MIN_GAIN;
 
 	stream_volume_cache = 0;
 
 	return CAD_RES_SUCCESS;
 }
+
+int cad_apply_cached_vol_on_dev(u32 device_id)
+{
+	struct adsp_audio_set_dev_volume_command *q6_set_dev_vol;
+	struct adsp_audio_set_dev_mute_command	*q6_set_dev_mute;
+	union adsp_audio_event event_payload;
+	u32 path = CAD_RX_DEVICE;
+	u8 *rpc_cmd_buf = NULL;
+	u32 rpc_cmd_buf_len = 0;
+	int int_dev_id = qdsp6_volume_device_id_mapping(device_id);
+	s32 rc = CAD_RES_SUCCESS;
+
+	D("%s: device_id = %d\n", __func__, device_id);
+
+	if (int_dev_id == INT_CAD_HW_DEVICE_ID_INVALID) {
+		pr_err("%s: bad device_id (%d)\n", __func__, device_id);
+		return CAD_RES_FAILURE;
+	}
+
+	if (qdsp6_volume_cache_tbl[int_dev_id].valid_current_volume == 1) {
+		q6_set_dev_vol = kmalloc(sizeof(*q6_set_dev_vol), GFP_KERNEL);
+		if (!q6_set_dev_vol)
+			return CAD_RES_FAILURE;
+
+		memset(q6_set_dev_vol, 0, sizeof(*q6_set_dev_vol));
+
+		q6_set_dev_mute = kmalloc(
+			sizeof(*q6_set_dev_mute), GFP_KERNEL);
+		if (!q6_set_dev_mute) {
+			kfree(q6_set_dev_vol);
+			return CAD_RES_FAILURE;
+		}
+
+		memset(q6_set_dev_mute, 0, sizeof(*q6_set_dev_mute));
+
+		if (ardsession[audio_ctrl_handle]->sess_open_info->
+					cad_open.op_code == CAD_OPEN_OP_READ)
+			path = CAD_TX_DEVICE;
+		else if (ardsession[audio_ctrl_handle]->sess_open_info->
+				cad_open.op_code == CAD_OPEN_OP_WRITE)
+			path = CAD_RX_DEVICE;
+
+		q6_set_dev_vol->volume =
+			qdsp6_volume_cache_tbl[int_dev_id].current_volume;
+		q6_set_dev_vol->device_id = q6_device_id_mapping(device_id);
+		q6_set_dev_vol->path = path;
+
+		q6_set_dev_vol->cmd.op_code =
+			ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_VOL;
+		q6_set_dev_vol->cmd.response_type =
+			ADSP_AUDIO_RESPONSE_COMMAND;
+		rpc_cmd_buf = (u8 *)q6_set_dev_vol;
+		rpc_cmd_buf_len = sizeof(*q6_set_dev_vol);
+
+		rc = cad_rpc_control(audio_ctrl_handle,
+			ardsession[audio_ctrl_handle]->group_id,
+			(void *)rpc_cmd_buf,
+			rpc_cmd_buf_len,
+			&event_payload);
+
+		if (rc != CAD_RES_SUCCESS)
+			pr_err("%s: cad_rpc_control() failure\n", __func__);
+
+
+		if ((qdsp6_volume_cache_tbl[int_dev_id].mute == 1) ||
+			(qdsp6_volume_cache_tbl[int_dev_id].current_volume ==
+				qdsp6_volume_cache_tbl[int_dev_id].min_gain))
+			q6_set_dev_mute->mute = 1;
+		else
+			q6_set_dev_mute->mute = 0;
+
+		q6_set_dev_mute->device_id = q6_device_id_mapping(device_id);
+		q6_set_dev_mute->path = path;
+
+		rpc_cmd_buf = (u8 *)q6_set_dev_mute;
+		rpc_cmd_buf_len = sizeof(*q6_set_dev_mute);
+
+		q6_set_dev_mute->cmd.op_code =
+			ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_MUTE;
+		q6_set_dev_mute->cmd.response_type =
+			ADSP_AUDIO_RESPONSE_COMMAND;
+
+		rc = cad_rpc_control(audio_ctrl_handle,
+				ardsession[audio_ctrl_handle]->group_id,
+				(void *)rpc_cmd_buf,
+				rpc_cmd_buf_len,
+				&event_payload);
+
+		kfree(q6_set_dev_vol);
+		kfree(q6_set_dev_mute);
+	}
+
+	return rc;
+}
+EXPORT_SYMBOL(cad_apply_cached_vol_on_dev);
 
 int volume_set_max_vol_all(void)
 {
