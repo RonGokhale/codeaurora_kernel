@@ -22,6 +22,7 @@
 #include <linux/kernel.h>
 #include <linux/leds.h>
 #include <linux/platform_device.h>
+#include <linux/workqueue.h>
 
 #include <asm/io.h>
 #include <asm/mach-types.h>
@@ -365,6 +366,9 @@ static struct lcm_tbl samsung_oled_gamma_table[][OLED_GAMMA_TABLE_SIZE] = {
 #define SAMSUNG_OLED_NUM_LEVELS		ARRAY_SIZE(samsung_oled_gamma_table)
 
 static DEFINE_MUTEX(panel_lock);
+static struct work_struct brightness_delayed_work;
+static DEFINE_SPINLOCK(brightness_lock);
+static uint8_t new_level = SAMSUNG_OLED_NUM_LEVELS / 2;
 static uint8_t last_level = SAMSUNG_OLED_NUM_LEVELS / 2;
 static uint8_t table_sel_vals[] = { 0x43, 0x34 };
 static int table_sel_idx = 0;
@@ -540,10 +544,27 @@ err_clk_get:
 static void mahimahi_brightness_set(struct led_classdev *led_cdev,
 				    enum led_brightness val)
 {
-	uint8_t new_level = (val * (SAMSUNG_OLED_NUM_LEVELS - 1)) / LED_FULL;
+	unsigned long flags;
+	led_cdev->brightness = val;
+
+	spin_lock_irqsave(&brightness_lock, flags);
+	new_level = (val * (SAMSUNG_OLED_NUM_LEVELS - 1)) / LED_FULL;
+	spin_unlock_irqrestore(&brightness_lock, flags);
+
+	schedule_work(&brightness_delayed_work);
+}
+
+static void mahimahi_brightness_set_work(struct work_struct *work_ptr)
+{
+	unsigned long flags;
+	uint8_t level;
+
+	spin_lock_irqsave(&brightness_lock, flags);
+	level = new_level;
+	spin_unlock_irqrestore(&brightness_lock, flags);
 
 	mutex_lock(&panel_lock);
-	samsung_oled_set_gamma_level(new_level);
+	samsung_oled_set_gamma_level(level);
 	mutex_unlock(&panel_lock);
 }
 
@@ -567,6 +588,8 @@ int __init mahimahi_init_panel(void)
 	ret = mahimahi_init_spi_hack();
 	if (ret != 0)
 		return ret;
+
+	INIT_WORK(&brightness_delayed_work, mahimahi_brightness_set_work);
 
 	ret = platform_device_register(&mahimahi_lcdc_device);
 	if (ret != 0)

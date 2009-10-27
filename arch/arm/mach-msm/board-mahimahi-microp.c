@@ -161,6 +161,9 @@ struct microp_led_data {
 	int type;
 	struct led_classdev ldev;
 	struct mutex led_data_mutex;
+	struct work_struct brightness_work;
+	spinlock_t brightness_lock;
+	enum led_brightness brightness;
 	uint8_t mode;
 	uint8_t blink;
 };
@@ -773,14 +776,13 @@ static ssize_t microp_i2c_jogball_color_store(struct device *dev,
 
 static DEVICE_ATTR(color, 0644, NULL, microp_i2c_jogball_color_store);
 
-static void microp_led_brightness_set(struct led_classdev *led_cdev,
+static void microp_brightness_set(struct led_classdev *led_cdev,
 			       enum led_brightness brightness)
 {
-	struct i2c_client *client;
-	int ret;
-	uint8_t mode;
-
-	client = to_i2c_client(led_cdev->dev->parent);
+	unsigned long flags;
+	struct i2c_client *client = to_i2c_client(led_cdev->dev->parent);
+	struct microp_led_data *ldata =
+		container_of(led_cdev, struct microp_led_data, ldev);
 
 	dev_dbg(&client->dev, "Setting %s brightness current %d new %d\n",
 			led_cdev->name, led_cdev->brightness, brightness);
@@ -788,6 +790,30 @@ static void microp_led_brightness_set(struct led_classdev *led_cdev,
 	if (brightness > 255)
 		brightness = 255;
 	led_cdev->brightness = brightness;
+
+	spin_lock_irqsave(&ldata->brightness_lock, flags);
+	ldata->brightness = brightness;
+	spin_unlock_irqrestore(&ldata->brightness_lock, flags);
+
+	schedule_work(&ldata->brightness_work);
+}
+
+static void microp_led_brightness_set_work(struct work_struct *work)
+{
+	unsigned long flags;
+	struct microp_led_data *ldata =
+		container_of(work, struct microp_led_data, brightness_work);
+	struct led_classdev *led_cdev = &ldata->ldev;
+
+	struct i2c_client *client = to_i2c_client(led_cdev->dev->parent);
+
+	enum led_brightness brightness;
+	int ret;
+	uint8_t mode;
+
+	spin_lock_irqsave(&ldata->brightness_lock, flags);
+	brightness = ldata->brightness;
+	spin_unlock_irqrestore(&ldata->brightness_lock, flags);
 
 	if (brightness)
 		mode = 1;
@@ -810,20 +836,29 @@ struct device_attribute *jogball_attrs[] = {
 	&dev_attr_color,
 };
 
-static void microp_led_buttons_brightness_set(struct led_classdev *led_cdev,
-				enum led_brightness brightness)
+static void microp_led_buttons_brightness_set_work(struct work_struct *work)
 {
-	struct i2c_client *client;
-	struct microp_i2c_client_data *cdata;
+
+	unsigned long flags;
+	struct microp_led_data *ldata =
+		container_of(work, struct microp_led_data, brightness_work);
+	struct led_classdev *led_cdev = &ldata->ldev;
+
+	struct i2c_client *client = to_i2c_client(led_cdev->dev->parent);
+	struct microp_i2c_client_data *cdata = i2c_get_clientdata(client);
+
+
 	uint8_t data[4] = {0, 0, 0};
-	uint8_t value = brightness >= 255 ? 0x20 : 0;
 	int ret = 0;
+	enum led_brightness brightness;
+	uint8_t value;
 
-	client = to_i2c_client(led_cdev->dev->parent);
-	cdata = i2c_get_clientdata(client);
 
-	dev_dbg(&client->dev, "Setting buttons brightness current %d new %d\n",
-		 led_cdev->brightness, brightness);
+	spin_lock_irqsave(&ldata->brightness_lock, flags);
+	brightness = ldata->brightness;
+	spin_unlock_irqrestore(&ldata->brightness_lock, flags);
+
+	uint8_t value = brightness >= 255 ? 0x20 : 0;
 
 	/* avoid a flicker that can occur when writing the same value */
 	if (cdata->button_led_value == value)
@@ -843,17 +878,21 @@ static void microp_led_buttons_brightness_set(struct led_classdev *led_cdev,
 		dev_err(&client->dev, "%s failed on set buttons\n", __func__);
 }
 
-static void microp_led_jogball_brightness_set(struct led_classdev *led_cdev,
-			       enum led_brightness brightness)
+static void microp_led_jogball_brightness_set_work(struct work_struct *work)
 {
-	struct i2c_client *client;
+	unsigned long flags;
+	struct microp_led_data *ldata =
+		container_of(work, struct microp_led_data, brightness_work);
+	struct led_classdev *led_cdev = &ldata->ldev;
+
+	struct i2c_client *client = to_i2c_client(led_cdev->dev->parent);
 	uint8_t data[3] = {0, 0, 0};
 	int ret = 0;
+	enum led_brightness brightness;
 
-	client = to_i2c_client(led_cdev->dev->parent);
-
-	dev_dbg(&client->dev, "Setting Jog brightness current %d new %d\n",
-			led_cdev->brightness, brightness);
+	spin_lock_irqsave(&ldata->brightness_lock, flags);
+	brightness = ldata->brightness;
+	spin_unlock_irqrestore(&ldata->brightness_lock, flags);
 
 	switch (brightness) {
 	case 0:
@@ -875,12 +914,9 @@ static void microp_led_jogball_brightness_set(struct led_classdev *led_cdev,
 	}
 	ret = i2c_write_block(client, MICROP_I2C_WCMD_JOGBALL_LED_MODE,
 			      data, 3);
-	if (ret < 0) {
+	if (ret < 0)
 		dev_err(&client->dev, "%s failed on set jogball mode:0x%2.2X\n",
 				__func__, data[0]);
-	} else {
-		led_cdev->brightness = brightness;
-	}
 }
 
 /*
@@ -1678,31 +1714,31 @@ static int microp_i2c_resume(struct i2c_client *client)
 
 static struct {
 	const char *name;
-	void (*led_set)(struct led_classdev *, enum led_brightness);
+	void (*led_set_work)(struct work_struct *);
 	struct device_attribute **attrs;
 	int attr_cnt;
 } microp_leds[] = {
 	[GREEN_LED] = {
 		.name		= "green",
-		.led_set	= microp_led_brightness_set,
+		.led_set_work   = microp_led_brightness_set_work,
 		.attrs		= green_amber_attrs,
 		.attr_cnt	= ARRAY_SIZE(green_amber_attrs)
 	},
 	[AMBER_LED] = {
 		.name		= "amber",
-		.led_set	= microp_led_brightness_set,
+		.led_set_work   = microp_led_brightness_set_work,
 		.attrs		= green_amber_attrs,
 		.attr_cnt	= ARRAY_SIZE(green_amber_attrs)
 	},
 	[JOGBALL_LED] = {
 		.name		= "jogball-backlight",
-		.led_set	= microp_led_jogball_brightness_set,
+		.led_set_work	= microp_led_jogball_brightness_set_work,
 		.attrs		= jogball_attrs,
 		.attr_cnt	= ARRAY_SIZE(jogball_attrs)
 	},
 	[BUTTONS_LED] = {
 		.name		= "button-backlight",
-		.led_set	= microp_led_buttons_brightness_set,
+		.led_set_work	= microp_led_buttons_brightness_set_work
 	},
 };
 
@@ -1787,8 +1823,10 @@ static int microp_i2c_probe(struct i2c_client *client,
 
 		ldata->type = i;
 		ldata->ldev.name = microp_leds[i].name;
-		ldata->ldev.brightness_set = microp_leds[i].led_set;
+		ldata->ldev.brightness_set = microp_brightness_set;
 		mutex_init(&ldata->led_data_mutex);
+		INIT_WORK(&ldata->brightness_work, microp_leds[i].led_set_work);
+		spin_lock_init(&ldata->brightness_lock);
 		ret = led_classdev_register(&client->dev, &ldata->ldev);
 		if (ret) {
 			ldata->ldev.name = NULL;
@@ -1902,6 +1940,11 @@ static int __devexit microp_i2c_remove(struct i2c_client *client)
 	int j;
 
 	cdata = i2c_get_clientdata(client);
+
+	for (i = 0; i < ARRAY_SIZE(microp_leds); ++i) {
+		struct microp_led_data *ldata = &cdata->leds[i];
+		cancel_work_sync(&ldata->brightness_work);
+	}
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	if (cdata->enable_early_suspend) {
