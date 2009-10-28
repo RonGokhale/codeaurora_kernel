@@ -42,6 +42,9 @@
 
 #include "bcmsdh_sdmmc.h"
 
+/* Linux sdio stack is handling sdio irq enable / disable by itself */
+#undef BCM_FORCE_USE_CLIENT_INT
+
 #ifndef BCMSDH_MODULE
 extern int sdio_function_init(void);
 extern void sdio_function_cleanup(void);
@@ -961,10 +964,12 @@ int sdioh_sdio_reset(sdioh_info_t *si)
 void
 sdioh_sdmmc_devintr_off(sdioh_info_t *sd)
 {
+#ifdef BCM_FORCE_USE_CLIENT_INT
 	struct mmc_card *card = gInstance->func[0]->card;
 	struct mmc_host *host = card->host;
 
 	host->ops->enable_sdio_irq(host, 0);
+#endif
 	sd_trace(("%s: %d\n", __FUNCTION__, sd->use_client_ints));
 	sd->intmask &= ~CLIENT_INTR;
 }
@@ -973,12 +978,15 @@ sdioh_sdmmc_devintr_off(sdioh_info_t *sd)
 void
 sdioh_sdmmc_devintr_on(sdioh_info_t *sd)
 {
+#ifdef BCM_FORCE_USE_CLIENT_INT
 	struct mmc_card *card = gInstance->func[0]->card;
 	struct mmc_host *host = card->host;
-
+#endif
 	sd_trace(("%s: %d\n", __FUNCTION__, sd->use_client_ints));
 	sd->intmask |= CLIENT_INTR;
+#ifdef BCM_FORCE_USE_CLIENT_INT
 	host->ops->enable_sdio_irq(host, 1);
+#endif
 }
 
 /* Read client card reg */

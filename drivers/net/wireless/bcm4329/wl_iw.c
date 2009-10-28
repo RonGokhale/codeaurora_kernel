@@ -712,6 +712,7 @@ wl_iw_control_wl_off(
 	timer.expires = jiffies + 2000 * HZ / 1000;
 	add_timer(&timer);
 
+	wait_for_completion(&ctl.sysioc_exited);
 	WL_TRACE(("Exited %s\n", __FUNCTION__));
 	return ret;
 }
