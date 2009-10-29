@@ -41,6 +41,26 @@ static struct platform_device mahimahi_wifi_device = {
         },
 };
 
+extern unsigned char *get_wifi_nvs_ram(void);
+
+static unsigned mahimahi_wifi_update_nvs(char *str)
+{
+#define NVS_LEN_OFFSET		0x0C
+#define NVS_DATA_OFFSET		0x40
+	unsigned char *ptr;
+	unsigned len;
+
+	if (!str)
+		return -EINVAL;
+	ptr = get_wifi_nvs_ram();
+	/* Size in format LE assumed */
+	memcpy(&len, ptr + NVS_LEN_OFFSET, sizeof(len));
+	strcpy(ptr + NVS_DATA_OFFSET + len, str);
+	len += strlen(str);
+	memcpy(ptr + NVS_LEN_OFFSET, &len, sizeof(len));
+	return 0;
+}
+
 static int __init mahimahi_wifi_init(void)
 {
 	int ret;
@@ -49,6 +69,7 @@ static int __init mahimahi_wifi_init(void)
 		return 0;
 
 	printk("%s: start\n", __func__);
+	mahimahi_wifi_update_nvs("sd_oobonly=1\n");
 	ret = platform_device_register(&mahimahi_wifi_device);
         return ret;
 }
