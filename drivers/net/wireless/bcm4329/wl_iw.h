@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_iw.h,v 1.5.34.1.6.8 2009/06/29 18:54:46 Exp $
+ * $Id: wl_iw.h,v 1.5.34.1.6.9 2009/10/14 04:27:31 Exp $
  */
 
 
@@ -71,6 +71,7 @@ typedef struct wl_iw {
 	struct ether_addr spy_addr[IW_MAX_SPY];
 	struct iw_quality spy_qual[IW_MAX_SPY];
 	void  *wlinfo;
+	dhd_pub_t * pub;
 } wl_iw_t;
 
 struct wl_ctrl {
@@ -115,14 +116,8 @@ extern const struct iw_handler_def wl_iw_handler_def;
 extern int wl_iw_ioctl(struct net_device *dev, struct ifreq *rq, int cmd);
 extern void wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data);
 extern int wl_iw_get_wireless_stats(struct net_device *dev, struct iw_statistics *wstats);
-int wl_iw_attach(struct net_device *dev);
+int wl_iw_attach(struct net_device *dev, void * dhdp);
 void wl_iw_detach(void);
-int wl_control_wl_start(struct net_device *dev);
-
-extern int net_os_wake_lock(struct net_device *dev);
-extern int net_os_wake_unlock(struct net_device *dev);
-extern int net_os_wake_lock_timeout(struct net_device *dev);
-extern int net_os_wake_lock_timeout_enable(struct net_device *dev);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)
 #define IWE_STREAM_ADD_EVENT(info, stream, ends, iwe, extra) \

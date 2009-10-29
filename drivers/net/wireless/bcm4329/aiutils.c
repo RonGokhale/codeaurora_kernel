@@ -22,7 +22,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: aiutils.c,v 1.6.4.7.4.1.86.1 2009/08/31 18:38:23 Exp $
+ * $Id: aiutils.c,v 1.6.4.7.4.5 2009/09/25 00:32:01 Exp $
  */
 
 #include <typedefs.h>
@@ -35,6 +35,11 @@
 #include <pcicfg.h>
 
 #include "siutils_priv.h"
+
+STATIC uint32
+get_asd(si_t *sih, uint32 *eromptr, uint sp, uint ad, uint st,
+	uint32 *addrl, uint32 *addrh, uint32 *sizel, uint32 *sizeh);
+
 
 /* EROM parsing */
 
@@ -71,7 +76,7 @@ get_erom_ent(si_t *sih, uint32 *eromptr, uint32 mask, uint32 match)
 	return ent;
 }
 
-static uint32
+STATIC uint32
 get_asd(si_t *sih, uint32 *eromptr, uint sp, uint ad, uint st,
 	uint32 *addrl, uint32 *addrh, uint32 *sizel, uint32 *sizeh)
 {
@@ -420,6 +425,15 @@ ai_flag(si_t *sih)
 void
 ai_setint(si_t *sih, int siflag)
 {
+}
+
+void
+ai_write_wrap_reg(si_t *sih, uint32 offset, uint32 val)
+{
+	si_info_t *sii = SI_INFO(sih);
+	aidmp_t *ai = sii->curwrap;
+	W_REG(sii->osh, (uint32 *)((uint8 *)ai+offset), val);
+	return;
 }
 
 uint

@@ -189,7 +189,7 @@ typedef volatile struct {
 } dma64dd_t;
 
 
-#define D64RINGALIGN_BITS 13
+#define D64RINGALIGN_BITS 13	
 #define	D64MAXRINGSZ	(1 << D64RINGALIGN_BITS)
 #define	D64RINGALIGN	(1 << D64RINGALIGN_BITS)
 #define	D64MAXDD	(D64MAXRINGSZ / sizeof (dma64dd_t))

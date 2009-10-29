@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: bcmsdstd.c,v 1.64.4.1.4.4.2.13 2009/07/07 19:44:01 Exp $
+ * $Id: bcmsdstd.c,v 1.64.4.1.4.4.2.14 2009/10/08 20:05:30 Exp $
  */
 
 #include <typedefs.h>
@@ -852,9 +852,10 @@ sdioh_request_buffer(sdioh_info_t *sd, uint pio_dma, uint fix_inc, uint rw, uint
 				len++;
 				tmpbuf = buffer;
 				if ((localbuf = (uint8 *)MALLOC(sd->osh, len)) == NULL) {
-						sd_err(("out of memory, malloced %d bytes\n",
-						       MALLOCED(sd->osh)));
-						return SDIOH_API_RC_FAIL;
+					sd_err(("out of memory, malloced %d bytes\n",
+					        MALLOCED(sd->osh)));
+					sdstd_unlock(sd);
+					return SDIOH_API_RC_FAIL;
 				}
 				bcopy(buffer, localbuf, len);
 				buffer = localbuf;

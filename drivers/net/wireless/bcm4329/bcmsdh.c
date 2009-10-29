@@ -22,7 +22,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: bcmsdh.c,v 1.35.2.1.4.8.6.9.2.1 2009/08/26 23:16:54 Exp $
+ * $Id: bcmsdh.c,v 1.35.2.1.4.8.6.11 2009/10/20 09:48:20 Exp $
  */
 /* ****************** BCMSDH Interface Functions *************************** */
 
@@ -54,6 +54,19 @@ struct bcmsdh_info
 };
 /* local copy of bcm sd handler */
 bcmsdh_info_t * l_bcmsdh = NULL;
+
+#if defined(OOB_INTR_ONLY) && defined(HW_OOB)
+
+extern int
+sdioh_enable_hw_oob_intr(void *sdioh, bool enable);
+
+void
+bcmsdh_enable_hw_oob_intr(bcmsdh_info_t *sdh, bool enable)
+{
+	sdioh_enable_hw_oob_intr(sdh->sdioh, enable);
+}
+
+#endif
 
 bcmsdh_info_t *
 bcmsdh_attach(osl_t *osh, void *cfghdl, void **regsva, uint irq)

@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_common.c,v 1.5.6.8.2.6.6.33.2.1 2009/08/19 05:38:56 Exp $
+ * $Id: dhd_common.c,v 1.5.6.8.2.6.6.37 2009/10/22 14:47:18 Exp $
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -461,7 +461,7 @@ dhd_ioctl(dhd_pub_t *dhd_pub, dhd_ioctl_t *ioc, void *buf, uint buflen)
 }
 
 #ifdef APSTA_PINGTEST
-struct ether_addr guest_eas[MAX_GUEST] = {};
+struct ether_addr guest_eas[MAX_GUEST];
 #endif
 
 #ifdef SHOW_EVENTS
@@ -784,13 +784,18 @@ wl_host_event(struct dhd_info *dhd, int *ifidx, void *pktdata,
 	char *event_data;
 	uint32 type, status;
 	uint16 flags;
+	int evlen;
 
-	if (bcmp(BRCM_OUI, &pvt_data->bcm_hdr.oui[0], DOT11_OUI_LEN))
+	if (bcmp(BRCM_OUI, &pvt_data->bcm_hdr.oui[0], DOT11_OUI_LEN)) {
+		DHD_ERROR(("%s: mismatched OUI, bailing\n", __FUNCTION__));
 		return (BCME_ERROR);
+	}
 
 	/* BRCM event pkt may be unaligned - use xxx_ua to load user_subtype. */
-	if (ntoh16_ua((void *)&pvt_data->bcm_hdr.usr_subtype) != BCMILCP_BCM_SUBTYPE_EVENT)
+	if (ntoh16_ua((void *)&pvt_data->bcm_hdr.usr_subtype) != BCMILCP_BCM_SUBTYPE_EVENT) {
+		DHD_ERROR(("%s: mismatched subtype, bailing\n", __FUNCTION__));
 		return (BCME_ERROR);
+	}
 
 	*data_ptr = &pvt_data[1];
 	event_data = *data_ptr;
@@ -801,18 +806,21 @@ wl_host_event(struct dhd_info *dhd, int *ifidx, void *pktdata,
 	type = ntoh32_ua((void *)&event->event_type);
 	flags = ntoh16_ua((void *)&event->flags);
 	status = ntoh32_ua((void *)&event->status);
+	evlen = ntoh32_ua((void *)&event->datalen) + sizeof(bcm_event_t);
 
 	switch (type) {
 		case WLC_E_IF:
 			{
 				dhd_if_event_t *ifevent = (dhd_if_event_t *)event_data;
+				DHD_TRACE(("%s: if event\n", __FUNCTION__));
 
 				if (ifevent->ifidx > 0 && ifevent->ifidx < DHD_MAX_IFS)
 				{
 					if (ifevent->action == WLC_E_IF_ADD)
 						dhd_add_if(dhd, ifevent->ifidx,
 							NULL, event->ifname,
-							pvt_data->eth.ether_dhost);
+							pvt_data->eth.ether_dhost,
+							ifevent->flags, ifevent->bssidx);
 					else
 						dhd_del_if(dhd, ifevent->ifidx);
 				} else {
@@ -820,18 +828,44 @@ wl_host_event(struct dhd_info *dhd, int *ifidx, void *pktdata,
 						__FUNCTION__, ifevent->ifidx, event->ifname));
 				}
 			}
-			break;
-		case WLC_E_LINK:
-		case WLC_E_DEAUTH:
-		case WLC_E_DEAUTH_IND:
-		case WLC_E_DISASSOC:
-		case WLC_E_DISASSOC_IND:
-			DHD_EVENT(("%s: Link event %d, flags %x, status %x\n",
-				__FUNCTION__, type, flags, status));
-			/* Fall thru and continue */
-		default:
+			/* send up the if event: btamp user needs it */
 			*ifidx = dhd_ifname2idx(dhd, event->ifname);
-			DHD_EVENT(("%s: event %d, idx %d\n", __FUNCTION__, type, *ifidx));
+			/* push up to external supp/auth */
+			dhd_event(dhd, (char *)pvt_data, evlen, *ifidx);
+			break;
+
+
+#ifdef P2P
+		case WLC_E_NDIS_LINK:
+			break;
+#endif
+		/* fall through */
+		/* These are what external supplicant/authenticator wants */
+		case WLC_E_LINK:
+		case WLC_E_ASSOC_IND:
+		case WLC_E_REASSOC_IND:
+		case WLC_E_DISASSOC_IND:
+		case WLC_E_MIC_ERROR:
+		default:
+		/* Fall through: this should get _everything_  */
+
+			*ifidx = dhd_ifname2idx(dhd, event->ifname);
+			/* push up to external supp/auth */
+			dhd_event(dhd, (char *)pvt_data, evlen, *ifidx);
+			DHD_TRACE(("%s: MAC event %d, flags %x, status %x\n",
+			           __FUNCTION__, type, flags, status));
+
+			/* put it back to WLC_E_NDIS_LINK */
+			if (type == WLC_E_NDIS_LINK) {
+				uint32 temp;
+
+				temp = ntoh32_ua((void *)&event->event_type);
+				DHD_TRACE(("Converted to WLC_E_LINK type %d\n", temp));
+
+				temp = ntoh32(WLC_E_NDIS_LINK);
+				memcpy((void *)(&pvt_data->event.event_type), &temp,
+					sizeof(pvt_data->event.event_type));
+			}
 			break;
 	}
 
