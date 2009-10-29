@@ -174,7 +174,7 @@ static ssize_t a1026_bootup_init(struct file *file, struct a1026img *img)
 
 		mdelay(1);
 		gpio_set_value(pdata->gpio_a1026_reset, 1);
-		mdelay(20); /* Delay before send I2C command */
+		mdelay(50); /* Delay before send I2C command */
 
 		/* Boot Cmd to A1026 */
 		buf[0] = A1026_msg_BOOT>>8;
@@ -291,11 +291,10 @@ retry_polling:
 	}
 	A1026_Suspended = 1;
 
+	mdelay(120);
 	/* Disable A1026 clock */
-	if (control_a1026_clk) {
-		mdelay(120);
+	if (control_a1026_clk)
 		gpio_set_value(pdata->gpio_a1026_clk, 0);
-	}
 
 set_suspend_err:
 	if (pass == 1 && !rc)
@@ -495,7 +494,7 @@ static ssize_t chk_wakeup_a1026(void)
 		gpio_set_value(pdata->gpio_a1026_wakeup, 0);
 		mdelay(10);
 		gpio_set_value(pdata->gpio_a1026_wakeup, 1);
-		mdelay(10); /* Check it with Audience */
+		mdelay(120);
 
 		do {
 			rc = execute_cmdmsg(0x80000000); /* issue a Sync CMD */
@@ -507,7 +506,6 @@ static ssize_t chk_wakeup_a1026(void)
 		}
 
 		A1026_Suspended = 0;
-		mdelay(20); /* 20ms before next i2c cmd to A1026 */
 	}
 wakeup_sync_err:
 	return rc;
@@ -607,10 +605,9 @@ int a1026_set_config(char newid)
 		if (*(new_list.p) == A100_msg_Sleep) {
 			A1026_Suspended = 1;
 			/* Disable A1026 clock */
-			if (control_a1026_clk) {
-				mdelay(120);
+			mdelay(120);
+			if (control_a1026_clk)
 				gpio_set_value(pdata->gpio_a1026_clk, 0);
-			}
 		}
 		new_list.p++;
 	}
