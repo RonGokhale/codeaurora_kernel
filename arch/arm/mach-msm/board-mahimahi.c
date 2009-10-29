@@ -44,6 +44,8 @@
 #include <mach/msm_iomap.h>
 #include <mach/msm_serial_debugger.h>
 #include <mach/system.h>
+#include <mach/msm_serial_hs.h>
+#include <mach/bcm_bt_lpm.h>
 
 #include "board-mahimahi.h"
 #include "devices.h"
@@ -621,14 +623,33 @@ static struct platform_device mahimahi_timed_gpios = {
 	},
 };
 
+static struct msm_serial_hs_platform_data msm_uart_dm1_pdata = {
+	.rx_wakeup_irq = -1,
+	.inject_rx_on_wakeup = 0,
+	.exit_lpm_cb = bcm_bt_lpm_exit_lpm_locked,
+};
+
+static struct bcm_bt_lpm_platform_data bcm_bt_lpm_pdata = {
+	.gpio_wake = MAHIMAHI_GPIO_BT_WAKE,
+	.gpio_host_wake = MAHIMAHI_GPIO_BT_HOST_WAKE,
+	.request_clock_off_locked = msm_hs_request_clock_off_locked,
+	.request_clock_on_locked = msm_hs_request_clock_on_locked,
+};
+
+struct platform_device bcm_bt_lpm_device = {
+	.name = "bcm_bt_lpm",
+	.id = 0,
+	.dev = {
+		.platform_data = &bcm_bt_lpm_pdata,
+	},
+};
 
 static struct platform_device *devices[] __initdata = {
 #if !defined(CONFIG_MSM_SERIAL_DEBUGGER)
 	&msm_device_uart1,
 #endif
-#ifdef CONFIG_SERIAL_MSM_HS
+	&bcm_bt_lpm_device,
 	&msm_device_uart_dm1,
-#endif
 	&ram_console_device,
 	&mahimahi_rfkill,
 	&msm_device_smd,
@@ -658,6 +679,10 @@ static uint32_t bt_gpio_table[] = {
 	PCOM_GPIO_CFG(MAHIMAHI_GPIO_BT_RESET_N, 0, GPIO_OUTPUT,
 		      GPIO_PULL_DOWN, GPIO_4MA),
 	PCOM_GPIO_CFG(MAHIMAHI_GPIO_BT_SHUTDOWN_N, 0, GPIO_OUTPUT,
+		      GPIO_PULL_DOWN, GPIO_4MA),
+	PCOM_GPIO_CFG(MAHIMAHI_GPIO_BT_WAKE, 0, GPIO_OUTPUT,
+		      GPIO_PULL_DOWN, GPIO_4MA),
+	PCOM_GPIO_CFG(MAHIMAHI_GPIO_BT_HOST_WAKE, 0, GPIO_INPUT,
 		      GPIO_PULL_DOWN, GPIO_4MA),
 };
 
@@ -792,6 +817,8 @@ static void __init mahimahi_init(void)
 	mahimahi_kgsl_power(true);
 
 	msm_device_hsusb.dev.platform_data = &msm_hsusb_pdata;
+	msm_device_uart_dm1.dev.platform_data = &msm_uart_dm1_pdata;
+
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 
 	i2c_register_board_info(0, base_i2c_devices,
