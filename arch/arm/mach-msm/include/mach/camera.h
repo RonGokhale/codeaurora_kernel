@@ -187,6 +187,7 @@ struct register_address_value_pair {
 struct msm_pmem_region {
 	struct hlist_node list;
 	unsigned long paddr;
+	unsigned long kvaddr;
 	unsigned long len;
 	struct file *file;
 	struct msm_pmem_info info;

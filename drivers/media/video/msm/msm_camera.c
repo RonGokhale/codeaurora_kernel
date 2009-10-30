@@ -31,6 +31,8 @@
 #include <media/msm_camera.h>
 #include <mach/camera.h>
 
+#include <asm/cacheflush.h>
+
 #define MSM_MAX_CAMERA_SENSORS 5
 
 #define ERR_USER_COPY(to) pr_err("%s(%d): copy %s user\n", \
@@ -167,12 +169,18 @@ static int check_overlap(struct hlist_head *ptype,
 
 static int check_pmem_info(struct msm_pmem_info *info, int len)
 {
+	if (info->offset & (PAGE_SIZE - 1)) {
+		pr_err("%s: pmem offset is not page-aligned\n", __func__);
+		goto error;
+	}
+
 	if (info->offset < len &&
 	    info->offset + info->len <= len &&
 	    info->y_off < len &&
 	    info->cbcr_off < len)
 		return 0;
 
+error:
 	pr_err("%s: check failed: off %d len %d y %d cbcr %d (total len %d)\n",
 		__func__,
 		info->offset,
@@ -209,6 +217,7 @@ static int msm_pmem_table_add(struct hlist_head *ptype,
 		return rc;
 
 	paddr += info->offset;
+	kvstart += info->offset;
 	len = info->len;
 
 	if (check_overlap(ptype, paddr, len) < 0)
@@ -225,6 +234,7 @@ static int msm_pmem_table_add(struct hlist_head *ptype,
 	INIT_HLIST_NODE(&region->list);
 
 	region->paddr = paddr;
+	region->kvaddr = kvstart;
 	region->len = len;
 	region->file = file;
 	memcpy(&region->info, info, sizeof(region->info));
@@ -260,23 +270,19 @@ static uint8_t msm_pmem_region_lookup(struct hlist_head *ptype,
 }
 
 static int msm_pmem_frame_ptov_lookup(struct msm_sync *sync,
-		unsigned long pyaddr,
-		unsigned long pcbcraddr,
-		struct msm_pmem_info *pmem_info,
+		unsigned long pyaddr, unsigned long pcbcraddr,
+		struct msm_pmem_region **pmem_region,
 		int clear_active)
 {
-	struct msm_pmem_region *region;
 	struct hlist_node *node, *n;
+	struct msm_pmem_region *region;
 
 	hlist_for_each_entry_safe(region, node, n, &sync->pmem_frames, list) {
 		if (pyaddr == (region->paddr + region->info.y_off) &&
 				pcbcraddr == (region->paddr +
 						region->info.cbcr_off) &&
 				region->info.active) {
-			/* offset since we could pass vaddr inside
-			 * a registerd pmem buffer
-			 */
-			memcpy(pmem_info, &region->info, sizeof(*pmem_info));
+			*pmem_region = region;
 			if (clear_active)
 				region->info.active = 0;
 			return 0;
@@ -413,7 +419,7 @@ static int __msm_get_frame(struct msm_sync *sync,
 {
 	int rc = 0;
 
-	struct msm_pmem_info pmem_info;
+	struct msm_pmem_region *region;
 	struct msm_queue_cmd *qcmd = NULL;
 	struct msm_vfe_resp *vdata;
 	struct msm_vfe_phy_info *pphy;
@@ -428,11 +434,10 @@ static int __msm_get_frame(struct msm_sync *sync,
 	vdata = (struct msm_vfe_resp *)(qcmd->command);
 	pphy = &vdata->phy;
 
-
 	rc = msm_pmem_frame_ptov_lookup(sync,
 			pphy->y_phy,
 			pphy->cbcr_phy,
-			&pmem_info,
+			&region,
 			1); /* mark frame in use */
 
 	if (rc < 0) {
@@ -444,10 +449,10 @@ static int __msm_get_frame(struct msm_sync *sync,
 		goto err;
 	}
 
-	frame->buffer = (unsigned long)pmem_info.vaddr;
-	frame->y_off = pmem_info.y_off;
-	frame->cbcr_off = pmem_info.cbcr_off;
-	frame->fd = pmem_info.fd;
+	frame->buffer = (unsigned long)region->info.vaddr;
+	frame->y_off = region->info.y_off;
+	frame->cbcr_off = region->info.cbcr_off;
+	frame->fd = region->info.fd;
 
 	CDBG("%s: y %x, cbcr %x, qcmd %x, virt_addr %x\n",
 		__func__,
@@ -712,7 +717,7 @@ static int msm_divert_frame(struct msm_sync *sync,
 		struct msm_vfe_resp *data,
 		struct msm_stats_event_ctrl *se)
 {
-	struct msm_pmem_info pinfo;
+	struct msm_pmem_region *region;
 	struct msm_postproc buf;
 	int rc;
 
@@ -727,17 +732,17 @@ static int msm_divert_frame(struct msm_sync *sync,
 	rc = msm_pmem_frame_ptov_lookup(sync,
 			data->phy.y_phy,
 			data->phy.cbcr_phy,
-			&pinfo,
+			&region,
 			0);  /* do clear the active flag */
 	if (rc < 0) {
 		CDBG("%s: msm_pmem_frame_ptov_lookup failed\n", __func__);
 		return rc;
 	}
 
-	buf.fmain.buffer = (unsigned long)pinfo.vaddr;
-	buf.fmain.y_off = pinfo.y_off;
-	buf.fmain.cbcr_off = pinfo.cbcr_off;
-	buf.fmain.fd = pinfo.fd;
+	buf.fmain.buffer = (unsigned long)region->info.vaddr;
+	buf.fmain.y_off = region->info.y_off;
+	buf.fmain.cbcr_off = region->info.cbcr_off;
+	buf.fmain.fd = region->info.fd;
 
 	CDBG("%s: buf %ld fd %d\n",
 		__func__, buf.fmain.buffer,
@@ -1457,7 +1462,10 @@ static int __msm_get_pic(struct msm_sync *sync, struct msm_ctrl_cmd *ctrl)
 static int msm_get_pic(struct msm_sync *sync, void __user *arg)
 {
 	struct msm_ctrl_cmd ctrlcmd;
+	struct msm_pmem_region pic_pmem_region;
 	int rc;
+	unsigned long end;
+	int cline_mask;
 
 	if (copy_from_user(&ctrlcmd,
 				arg,
@@ -1485,6 +1493,25 @@ static int msm_get_pic(struct msm_sync *sync, void __user *arg)
 			return -EFAULT;
 		}
 	}
+
+	if (msm_pmem_region_lookup(&sync->pmem_frames,
+				MSM_PMEM_MAINIMG,
+				&pic_pmem_region, 1) == 0) {
+		pr_err("%s pmem region lookup error\n", __func__);
+		return -EIO;
+	}
+
+	cline_mask = cache_line_size() - 1;
+	end = pic_pmem_region.kvaddr + pic_pmem_region.len;
+	end = (end + cline_mask) & ~cline_mask;
+
+	pr_info("%s: flushing cache for [%08lx, %08lx)\n",
+		__func__,
+		pic_pmem_region.kvaddr, end);
+
+	dmac_inv_range((const void *)pic_pmem_region.kvaddr,
+			(const void *)end);
+
 	CDBG("%s: copy snapshot frame to user\n", __func__);
 	if (copy_to_user((void *)arg,
 		&ctrlcmd,
