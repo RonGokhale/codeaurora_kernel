@@ -184,6 +184,7 @@ struct microp_i2c_client_data {
 	int microp_is_suspend;
 	int auto_backlight_enabled;
 	uint8_t light_sensor_enabled;
+	uint8_t button_led_value;
 	int headset_is_in;
 	struct input_dev *ls_input_dev;
 	uint32_t als_kadc;
@@ -813,18 +814,26 @@ static void microp_led_buttons_brightness_set(struct led_classdev *led_cdev,
 				enum led_brightness brightness)
 {
 	struct i2c_client *client;
+	struct microp_i2c_client_data *cdata;
 	uint8_t data[4] = {0, 0, 0};
+	uint8_t value = brightness >= 255 ? 0x20 : 0;
 	int ret = 0;
 
 	client = to_i2c_client(led_cdev->dev->parent);
+	cdata = i2c_get_clientdata(client);
 
 	dev_info(&client->dev, "Setting buttons brightness current %d new %d\n",
 		 led_cdev->brightness, brightness);
 
+	/* avoid a flicker that can occur when writing the same value */
+	if (cdata->button_led_value == value)
+		return;
+	cdata->button_led_value = value;
+
 	/* in 40ms */
 	data[0] = 0x05;
 	/* duty cycle 0-255 */
-	data[1] = brightness >= 255 ? 0x20 : 0;
+	data[1] = value;
 	/* bit2 == change brightness */
 	data[3] = 0x04;
 
