@@ -2541,7 +2541,7 @@ int dhd_os_wake_lock_timeout(dhd_pub_t *pub)
 		dhd->wl_packet = 0;
 		spin_unlock_irqrestore(&dhd->wl_lock, flags);
 	}
-	printk("%s: %d\n", __FUNCTION__, ret);
+	/* printk("%s: %d\n", __FUNCTION__, ret); */
 	return ret;
 }
 
@@ -2565,7 +2565,7 @@ int dhd_os_wake_lock_timeout_enable(dhd_pub_t *pub)
 		dhd->wl_packet = 1;
 		spin_unlock_irqrestore(&dhd->wl_lock, flags);
 	}
-	printk("%s\n",__func__);
+	/* printk("%s\n",__func__); */
 	return 0;
 }
 
@@ -2595,7 +2595,7 @@ int dhd_os_wake_lock(dhd_pub_t *pub)
 		ret = dhd->wl_count;
 		spin_unlock_irqrestore(&dhd->wl_lock, flags);
 	}
-	printk("%s: %d\n", __FUNCTION__, ret);
+	/* printk("%s: %d\n", __FUNCTION__, ret); */
 	return ret;
 }
 
@@ -2628,7 +2628,7 @@ int dhd_os_wake_unlock(dhd_pub_t *pub)
 		}
 		spin_unlock_irqrestore(&dhd->wl_lock, flags);
 	}
-	printk("%s: %d\n", __FUNCTION__, ret);
+	/* printk("%s: %d\n", __FUNCTION__, ret); */
 	return ret;
 }
 
