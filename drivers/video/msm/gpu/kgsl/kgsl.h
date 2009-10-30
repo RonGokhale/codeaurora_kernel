@@ -24,6 +24,9 @@
 #include <linux/platform_device.h>
 #include <linux/clk.h>
 #include <linux/mutex.h>
+#include <linux/wait.h>
+#include <linux/timer.h>
+#include <linux/wakelock.h>
 
 #include <asm/atomic.h>
 
@@ -53,6 +56,12 @@ struct kgsl_driver {
 	struct kgsl_device yamato_device;
 
 	struct list_head client_list;
+
+	bool active;
+	int active_cnt;
+	struct timer_list standby_timer;
+
+	struct wake_lock wake_lock;
 };
 
 extern struct kgsl_driver kgsl_driver;

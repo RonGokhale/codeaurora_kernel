@@ -108,21 +108,81 @@ struct device *kgsl_driver_getdevnode(void)
 	return &kgsl_driver.pdev->dev;
 }
 
+/* the hw and clk enable/disable funcs must be either called from softirq or
+ * with mutex held */
+static void kgsl_clk_enable(void)
+{
+	clk_set_rate(kgsl_driver.ebi1_clk, 128000000);
+	clk_enable(kgsl_driver.imem_clk);
+	clk_enable(kgsl_driver.grp_clk);
+}
+
+static void kgsl_clk_disable(void)
+{
+	clk_disable(kgsl_driver.grp_clk);
+	clk_disable(kgsl_driver.imem_clk);
+	clk_set_rate(kgsl_driver.ebi1_clk, 0);
+}
+
+static void kgsl_hw_disable(void)
+{
+	kgsl_driver.active = false;
+	disable_irq(kgsl_driver.interrupt_num);
+	kgsl_clk_disable();
+	pr_debug("kgsl: hw disabled\n");
+	wake_unlock(&kgsl_driver.wake_lock);
+}
+
+static void kgsl_hw_enable(void)
+{
+	wake_lock(&kgsl_driver.wake_lock);
+	kgsl_clk_enable();
+	enable_irq(kgsl_driver.interrupt_num);
+	kgsl_driver.active = true;
+	pr_debug("kgsl: hw enabled\n");
+}
+
+static void kgsl_hw_get_locked(void)
+{
+	/* active_cnt is protected by driver mutex */
+	if (kgsl_driver.active_cnt++ == 0) {
+		if (kgsl_driver.active) {
+			del_timer_sync(&kgsl_driver.standby_timer);
+			barrier();
+		}
+		if (!kgsl_driver.active)
+			kgsl_hw_enable();
+	}
+}
+
+static void kgsl_hw_put_locked(bool start_timer)
+{
+	if ((--kgsl_driver.active_cnt == 0) && start_timer) {
+		mod_timer(&kgsl_driver.standby_timer,
+			  jiffies + msecs_to_jiffies(20));
+	}
+}
+
+static void kgsl_do_standby_timer(unsigned long data)
+{
+	if (kgsl_yamato_is_idle(&kgsl_driver.yamato_device)) {
+		kgsl_hw_disable();
+	} else {
+		pr_warning("%s: not idle, rescheduling\n", __func__);
+		mod_timer(&kgsl_driver.standby_timer,
+			  jiffies + msecs_to_jiffies(10));
+	}
+}
 
 /* file operations */
 static int kgsl_first_open_locked(void)
 {
 	int result = 0;
 
-	BUG_ON(kgsl_driver.grp_clk == NULL);
-	BUG_ON(kgsl_driver.imem_clk == NULL);
-	BUG_ON(kgsl_driver.ebi1_clk == NULL);
+	BUG_ON(kgsl_driver.active);
+	BUG_ON(kgsl_driver.active_cnt);
 
-	clk_enable(kgsl_driver.grp_clk);
-
-	clk_enable(kgsl_driver.imem_clk);
-
-	clk_set_rate(kgsl_driver.ebi1_clk, 128000000);
+	kgsl_clk_enable();
 
 	/* init memory apertures */
 	result = kgsl_sharedmem_init(&kgsl_driver.shmem);
@@ -139,16 +199,14 @@ static int kgsl_first_open_locked(void)
 	if (result != 0)
 		goto done;
 
-	enable_irq(kgsl_driver.interrupt_num);
 done:
+	kgsl_clk_disable();
 	return result;
 }
 
 static int kgsl_last_release_locked(void)
 {
-	BUG_ON(kgsl_driver.grp_clk == NULL);
-	BUG_ON(kgsl_driver.imem_clk == NULL);
-	BUG_ON(kgsl_driver.ebi1_clk == NULL);
+	BUG_ON(kgsl_driver.active_cnt);
 
 	disable_irq(kgsl_driver.interrupt_num);
 
@@ -160,11 +218,10 @@ static int kgsl_last_release_locked(void)
 	/* shutdown memory apertures */
 	kgsl_sharedmem_close(&kgsl_driver.shmem);
 
-	clk_disable(kgsl_driver.grp_clk);
+	kgsl_clk_disable();
+	kgsl_driver.active = false;
+	wake_unlock(&kgsl_driver.wake_lock);
 
-	clk_disable(kgsl_driver.imem_clk);
-
-	clk_set_rate(kgsl_driver.ebi1_clk, 0);
 	return 0;
 }
 
@@ -181,6 +238,8 @@ static int kgsl_release(struct inode *inodep, struct file *filep)
 	BUG_ON(private == NULL);
 	filep->private_data = NULL;
 	list_del(&private->list);
+
+	kgsl_hw_get_locked();
 
 	for (i = 0; i < KGSL_CONTEXT_MAX; i++)
 		if (private->ctxt_id_mask & (1 << i))
@@ -200,8 +259,10 @@ static int kgsl_release(struct inode *inodep, struct file *filep)
 
 	if (atomic_dec_return(&kgsl_driver.open_count) == 0) {
 		KGSL_DRV_VDBG("last_release\n");
+		kgsl_hw_put_locked(false);
 		result = kgsl_last_release_locked();
-	}
+	} else
+		kgsl_hw_put_locked(true);
 
 	mutex_unlock(&kgsl_driver.mutex);
 
@@ -241,6 +302,9 @@ static int kgsl_open(struct inode *inodep, struct file *filep)
 		if (result != 0)
 			goto done;
 	}
+
+	kgsl_hw_get_locked();
+
 	/*NOTE: this must happen after first_open */
 #ifdef PER_PROCESS_PAGE_TABLE
 	private->pagetable =
@@ -254,6 +318,7 @@ static int kgsl_open(struct inode *inodep, struct file *filep)
 #endif
 	private->vmalloc_size = 0;
 done:
+	kgsl_hw_put_locked(true);
 	mutex_unlock(&kgsl_driver.mutex);
 	if (result != 0)
 		kgsl_release(inodep, filep);
@@ -795,7 +860,11 @@ static long kgsl_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 	BUG_ON(private == NULL);
 
 	KGSL_DRV_VDBG("filep %p cmd 0x%08x arg 0x%08lx\n", filep, cmd, arg);
+
 	mutex_lock(&kgsl_driver.mutex);
+
+	kgsl_hw_get_locked();
+
 	switch (cmd) {
 
 	case IOCTL_KGSL_DEVICE_GETPROPERTY:
@@ -864,6 +933,8 @@ static long kgsl_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		result = -EINVAL;
 		break;
 	}
+
+	kgsl_hw_put_locked(true);
 	mutex_unlock(&kgsl_driver.mutex);
 	KGSL_DRV_VDBG("result %d\n", result);
 	return result;
@@ -929,9 +1000,10 @@ struct kgsl_driver kgsl_driver = {
 	.mutex = __MUTEX_INITIALIZER(kgsl_driver.mutex),
 };
 
-
 static void kgsl_driver_cleanup(void)
 {
+
+	wake_lock_destroy(&kgsl_driver.wake_lock);
 
 	if (kgsl_driver.interrupt_num > 0) {
 		if (kgsl_driver.have_irq) {
@@ -970,12 +1042,16 @@ static int __devinit kgsl_platform_probe(struct platform_device *pdev)
 	kgsl_debug_init();
 
 	INIT_LIST_HEAD(&kgsl_driver.client_list);
+
 	/*acquire clocks */
 	BUG_ON(kgsl_driver.grp_clk != NULL);
 	BUG_ON(kgsl_driver.imem_clk != NULL);
 	BUG_ON(kgsl_driver.ebi1_clk != NULL);
 
 	kgsl_driver.pdev = pdev;
+
+	setup_timer(&kgsl_driver.standby_timer, kgsl_do_standby_timer, 0);
+	wake_lock_init(&kgsl_driver.wake_lock, WAKE_LOCK_SUSPEND, "kgsl");
 
 	clk = clk_get(&pdev->dev, "grp_clk");
 	if (IS_ERR(clk)) {
@@ -1009,6 +1085,7 @@ static int __devinit kgsl_platform_probe(struct platform_device *pdev)
 		result = -EINVAL;
 		goto done;
 	}
+
 	result = request_irq(kgsl_driver.interrupt_num, kgsl_yamato_isr,
 				IRQF_TRIGGER_HIGH, DRIVER_NAME, NULL);
 	if (result) {
@@ -1054,39 +1131,10 @@ static int kgsl_platform_remove(struct platform_device *pdev)
 static int kgsl_platform_suspend(struct platform_device *pdev,
 				 pm_message_t state)
 {
-	int ret = 0;
-
 	mutex_lock(&kgsl_driver.mutex);
 	if (atomic_read(&kgsl_driver.open_count) > 0) {
-#if 0
-		kgsl_yamato_runpending(&kgsl_driver.yamato_device);
-#endif
-		ret = kgsl_yamato_idle(&kgsl_driver.yamato_device, 0);
-		if (ret) {
-			pr_err("%s: can't idle the gpu\n", __func__);
-			goto done;
-		}
-		disable_irq(kgsl_driver.interrupt_num);
-		clk_disable(kgsl_driver.grp_clk);
-		clk_disable(kgsl_driver.imem_clk);
-		clk_set_rate(kgsl_driver.ebi1_clk, 0);
-		pr_info("kgsl: suspend()\n");
-	}
-
-done:
-	mutex_unlock(&kgsl_driver.mutex);
-	return ret;
-}
-
-static int kgsl_platform_resume(struct platform_device *pdev)
-{
-	mutex_lock(&kgsl_driver.mutex);
-	if (atomic_read(&kgsl_driver.open_count) > 0) {
-		pr_info("kgsl: resume()\n");
-		clk_set_rate(kgsl_driver.ebi1_clk, 128000000);
-		clk_enable(kgsl_driver.grp_clk);
-		clk_enable(kgsl_driver.imem_clk);
-		enable_irq(kgsl_driver.interrupt_num);
+		if (kgsl_driver.active)
+			pr_err("%s: Suspending while active???\n", __func__);
 	}
 	mutex_unlock(&kgsl_driver.mutex);
 	return 0;
@@ -1096,7 +1144,6 @@ static struct platform_driver kgsl_platform_driver = {
 	.probe = kgsl_platform_probe,
 	.remove = __devexit_p(kgsl_platform_remove),
 	.suspend = kgsl_platform_suspend,
-	.resume = kgsl_platform_resume,
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = DRIVER_NAME
