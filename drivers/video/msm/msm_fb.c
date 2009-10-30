@@ -438,15 +438,19 @@ static void msmfb_resume(struct early_suspend *h)
 
 static int msmfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 {
-	/* TODO: if format is different, check size of fb can accomodate */
+	u32 size;
+
 	if ((var->xres != info->var.xres) ||
 	    (var->yres != info->var.yres) ||
-	    (var->xres_virtual != info->var.xres_virtual) ||
-	    (var->yres_virtual != info->var.yres_virtual) ||
 	    (var->xoffset != info->var.xoffset) ||
 	    (mdp->check_format(mdp, var->bits_per_pixel)) ||
 	    (var->grayscale != info->var.grayscale))
 		 return -EINVAL;
+
+	size = var->xres_virtual * var->yres_virtual *
+		(var->bits_per_pixel >> 3);
+	if (size > info->fix.smem_len)
+		return -EINVAL;
 	return 0;
 }
 
