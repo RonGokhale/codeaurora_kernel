@@ -132,6 +132,8 @@ struct vdec_data {
 static struct class *driver_class;
 static dev_t vdec_device_no;
 static struct cdev vdec_cdev;
+static int ref_cnt;
+static DEFINE_MUTEX(vdec_ref_lock);
 
 static inline int vdec_check_version(u32 client, u32 server)
 {
@@ -475,15 +477,15 @@ static int vdec_close(struct vdec_data *vd, void *argp)
 	pr_info("q6vdec_close()\n");
 	vd->close_decode = 1;
 	wake_up(&vd->vdec_msg_evt);
+	ret = dal_call_f0(vd->vdec_handle, DAL_OP_CLOSE, 0);
+	if (ret)
+		pr_err("%s: failed to close daldevice (%d)\n", __func__, ret);
 
 	if (vd->mem_initialized) {
 		list_for_each_entry(l, &vd->vdec_mem_list_head, list)
 		    put_pmem_file(l->mem.file);
 	}
 
-	ret = dal_call_f0(vd->vdec_handle, DAL_OP_CLOSE, 0);
-	if (ret)
-		pr_err("%s: failed to close daldevice (%d)\n", __func__, ret);
 	return ret;
 }
 static int vdec_getdecattributes(struct vdec_data *vd, void *argp)
@@ -741,6 +743,14 @@ static int vdec_open(struct inode *inode, struct file *file)
 	struct vdec_data *vd;
 
 	pr_info("q6vdec_open()\n");
+	mutex_lock(&vdec_ref_lock);
+	if (ref_cnt > 0) {
+		pr_err("%s: Instance alredy running\n", __func__);
+		mutex_unlock(&vdec_ref_lock);
+		return -ENOMEM;
+	}
+	ref_cnt++;
+	mutex_unlock(&vdec_ref_lock);
 	vd = kmalloc(sizeof(struct vdec_data), GFP_KERNEL);
 	if (!vd) {
 		pr_err("%s: kmalloc failed\n", __func__);
@@ -798,10 +808,14 @@ static int vdec_release(struct inode *inode, struct file *file)
 {
 	int ret;
 	struct vdec_msg_list *l, *n;
+	struct vdec_mem_list *m, *k;
 	struct vdec_data *vd = file->private_data;
 
 	vd->running = 0;
 	wake_up_all(&vd->vdec_msg_evt);
+
+	if (!vd->close_decode)
+		vdec_close(vd, NULL);
 
 	ret = dal_detach(vd->vdec_handle);
 	if (ret)
@@ -817,11 +831,14 @@ static int vdec_release(struct inode *inode, struct file *file)
 		kfree(l);
 	}
 
-	list_for_each_entry_safe(l, n, &vd->vdec_mem_list_head, list) {
-		list_del(&l->list);
-		kfree(l);
+	list_for_each_entry_safe(m, k, &vd->vdec_mem_list_head, list) {
+		list_del(&m->list);
+		kfree(m);
 	}
-
+	mutex_lock(&vdec_ref_lock);
+	BUG_ON(ref_cnt <= 0);
+	ref_cnt--;
+	mutex_unlock(&vdec_ref_lock);
 	kfree(vd);
 	return 0;
 }
