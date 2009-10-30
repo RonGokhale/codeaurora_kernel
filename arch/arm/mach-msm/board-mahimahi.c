@@ -748,12 +748,12 @@ static ssize_t mahimahi_virtual_keys_show(struct kobject *kobj,
 			       struct kobj_attribute *attr, char *buf)
 {
 	if (system_rev > 2) {
-		/* center: x: back: 55, menu: 185, home: 305, search 425, y: 835 */
+		/* center: x: back: 55, menu: 172, home: 298, search 412, y: 835 */
 		return sprintf(buf,
-			__stringify(EV_KEY) ":" __stringify(KEY_BACK)  ":55:835:70:55"
-		   ":" __stringify(EV_KEY) ":" __stringify(KEY_MENU)   ":185:835:100:55"
-		   ":" __stringify(EV_KEY) ":" __stringify(KEY_HOME)   ":305:835:70:55"
-		   ":" __stringify(EV_KEY) ":" __stringify(KEY_SEARCH) ":425:835:70:55"
+			__stringify(EV_KEY) ":" __stringify(KEY_BACK)  ":55:835:90:55"
+		   ":" __stringify(EV_KEY) ":" __stringify(KEY_MENU)   ":172:835:125:55"
+		   ":" __stringify(EV_KEY) ":" __stringify(KEY_HOME)   ":298:835:115:55"
+		   ":" __stringify(EV_KEY) ":" __stringify(KEY_SEARCH) ":412:835:95:55"
 		   "\n");
 	} else {
 		/* center: x: home: 55, menu: 185, back: 305, search 425, y: 835 */
