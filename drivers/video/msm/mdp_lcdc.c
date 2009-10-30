@@ -146,8 +146,9 @@ static int lcdc_hw_init(struct mdp_lcdc_info *lcdc)
 	mdp_writel(lcdc->mdp, (((fb_panel->fb_data->yres & 0x7ff) << 16) |
 			       (fb_panel->fb_data->xres & 0x7ff)),
 		   MDP_DMA_P_SIZE);
-	/* TODO: pull in the bpp info from somewhere else? */
-	mdp_writel(lcdc->mdp, fb_panel->fb_data->xres * 2,
+
+	mdp_writel(lcdc->mdp, fb_panel->fb_data->xres *
+		   mdp_dev->get_format_bytes(mdp_dev),
 		   MDP_DMA_P_IBUF_Y_STRIDE);
 	mdp_writel(lcdc->mdp, 0, MDP_DMA_P_OUT_XY);
 
@@ -155,7 +156,8 @@ static int lcdc_hw_init(struct mdp_lcdc_info *lcdc)
 		   DMA_PACK_PATTERN_RGB |
 		   DMA_DITHER_EN);
 	dma_cfg |= DMA_OUT_SEL_LCDC;
-	dma_cfg |= DMA_IBUF_FORMAT_RGB565;
+	printk("mdp format is: %d\n", mdp_dev->get_format(mdp_dev));
+	dma_cfg |= mdp_dev->get_format(mdp_dev);
 	dma_cfg |= DMA_DSTC0G_8BITS | DMA_DSTC1B_8BITS | DMA_DSTC2R_8BITS;
 	mdp_writel(lcdc->mdp, dma_cfg, MDP_DMA_P_CONFIG);
 
@@ -213,7 +215,15 @@ static void lcdc_dma_start(void *priv, uint32_t addr, uint32_t stride,
 			   uint32_t y)
 {
 	struct mdp_lcdc_info *lcdc = priv;
+	uint32_t dma_cfg;
+
 	mdp_writel(lcdc->mdp, stride, MDP_DMA_P_IBUF_Y_STRIDE);
+
+	dma_cfg = mdp_readl(lcdc->mdp, MDP_DMA_P_CONFIG);
+	dma_cfg &= ~DMA_IBUF_FORMAT_MASK;
+	dma_cfg |= mdp_dev->get_format(mdp_dev);
+	mdp_writel(lcdc->mdp, dma_cfg, MDP_DMA_P_CONFIG);
+
 	mdp_writel(lcdc->mdp, addr, MDP_DMA_P_IBUF_ADDR);
 }
 

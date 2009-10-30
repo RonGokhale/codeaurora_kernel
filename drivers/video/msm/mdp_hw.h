@@ -49,6 +49,8 @@ struct mdp_info {
 	struct clk *clk;
 	struct clk *ebi1_clk;
 	struct mdp_out_interface out_if[MSM_MDP_NUM_INTERFACES];
+	int format;
+	int format_bytes;
 };
 
 extern int mdp_out_if_register(struct mdp_device *mdp_dev, int interface,
@@ -719,6 +721,7 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 #define DMA_MDDI_DMAOUT_LCD_SEL_EXTERNAL (1<<19)
 #define DMA_IBUF_FORMAT_RGB565 (1<<20)
 #define DMA_IBUF_FORMAT_RGB888_OR_ARGB8888 0
+#define DMA_IBUF_FORMAT_MASK (1 << 20)
 #define DMA_IBUF_NONCONTIGUOUS (1<<21)
 
 #else /* CONFIG_MSM_MDP31 */
@@ -731,6 +734,7 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 #define DMA_IBUF_FORMAT_RGB888			(0 << 25)
 #define DMA_IBUF_FORMAT_RGB565			(1 << 25)
 #define DMA_IBUF_FORMAT_XRGB8888		(2 << 25)
+#define DMA_IBUF_FORMAT_MASK			(3 << 25)
 #define DMA_IBUF_NONCONTIGUOUS			(0)
 
 #define DMA_MDDI_DMAOUT_LCD_SEL_PRIMARY		(0)

@@ -155,6 +155,10 @@ struct mdp_device {
 	int (*blit)(struct mdp_device *mdp, struct fb_info *fb,
 		    struct mdp_blit_req *req);
 	void (*set_grp_disp)(struct mdp_device *mdp, uint32_t disp_id);
+	int (*get_format)(struct mdp_device *mdp);
+	int (*check_format)(struct mdp_device *mdp, int bpp);
+	int (*set_format)(struct mdp_device *mdp, int bpp);
+	int (*get_format_bytes)(struct mdp_device *mdp);
 };
 
 struct class_interface;

@@ -238,7 +238,7 @@ static void mdp_dma_to_mddi(void *priv, uint32_t addr, uint32_t stride,
 		DMA_OUT_SEL_AHB |
 		DMA_IBUF_NONCONTIGUOUS;
 
-	dma2_cfg |= DMA_IBUF_FORMAT_RGB565;
+	dma2_cfg |= mdp->format;
 
 	dma2_cfg |= DMA_OUT_SEL_MDDI;
 
@@ -347,6 +347,63 @@ static void put_img(struct file *file)
 		else if (is_msm_hw3d_file(file))
 			put_msm_hw3d_file(file);
 	}
+}
+
+int mdp_get_format_bytes(struct mdp_device *mdp_dev)
+{
+	struct mdp_info *mdp = container_of(mdp_dev, struct mdp_info, mdp_dev);
+	return mdp->format_bytes;
+}
+
+int mdp_get_format(struct mdp_device *mdp_dev)
+{
+	struct mdp_info *mdp = container_of(mdp_dev, struct mdp_info, mdp_dev);
+
+	return mdp->format;
+}
+
+int mdp_check_format(struct mdp_device *mdp_dev, int bpp)
+{
+	struct mdp_info *mdp = container_of(mdp_dev, struct mdp_info, mdp_dev);
+
+	switch (bpp) {
+	case 16:
+	case 24:
+	case 32:
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+
+int mdp_set_format(struct mdp_device *mdp_dev, int bpp)
+{
+	struct mdp_info *mdp = container_of(mdp_dev, struct mdp_info, mdp_dev);
+
+	switch (bpp) {
+	case 16:
+		mdp->format = DMA_IBUF_FORMAT_RGB565;
+		break;
+#ifdef CONFIG_MSM_MDP22
+	case 24:
+	case 32:
+		mdp->format = DMA_IBUF_FORMAT_RGB888_OR_ARGB8888;
+		break;
+#else
+	case 24:
+		mdp->format = DMA_IBUF_FORMAT_RGB888;
+		break;
+	case 32:
+		mdp->format = DMA_IBUF_FORMAT_XRGB8888;
+		break;
+#endif
+	default:
+		return -EINVAL;
+	}
+
+	mdp->format_bytes = bpp >> 3;
+	return 0;
 }
 
 int mdp_blit(struct mdp_device *mdp_dev, struct fb_info *fb,
@@ -632,6 +689,10 @@ int mdp_probe(struct platform_device *pdev)
 	mdp->mdp_dev.dma_wait = mdp_dma_wait;
 	mdp->mdp_dev.blit = mdp_blit;
 	mdp->mdp_dev.set_grp_disp = mdp_set_grp_disp;
+	mdp->mdp_dev.set_format = mdp_set_format;
+	mdp->mdp_dev.get_format = mdp_get_format;
+	mdp->mdp_dev.get_format_bytes = mdp_get_format_bytes;
+	mdp->mdp_dev.check_format = mdp_check_format;
 
 	ret = mdp_out_if_register(&mdp->mdp_dev, MSM_MDDI_PMDH_INTERFACE, mdp,
 				  MDP_DMA_P_DONE, mdp_dma_to_mddi);

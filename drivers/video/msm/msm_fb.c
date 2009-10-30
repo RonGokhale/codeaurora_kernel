@@ -60,6 +60,9 @@ do { \
 		printk(KERN_INFO "msmfb: "fmt, ##args); \
 } while (0)
 
+#define BITS_PER_PIXEL(info) (info->fb->var.bits_per_pixel)
+#define BYTES_PER_PIXEL(info) (info->fb->var.bits_per_pixel >> 3)
+
 static int msmfb_debug_mask;
 module_param_named(msmfb_debug_mask, msmfb_debug_mask, int,
 		   S_IRUGO | S_IWUSR | S_IWGRP);
@@ -190,9 +193,10 @@ static int msmfb_start_dma(struct msmfb_info *msmfb)
 	}
 	spin_unlock_irqrestore(&msmfb->update_lock, irq_flags);
 
-	addr = ((msmfb->xres * (yoffset + y) + x) * 2);
+	addr = ((msmfb->xres * (yoffset + y) + x) * BYTES_PER_PIXEL(msmfb));
 	mdp->dma(mdp, addr + msmfb->fb->fix.smem_start,
-		 msmfb->xres * 2, w, h, x, y, &msmfb->dma_callback,
+		 msmfb->xres * BYTES_PER_PIXEL(msmfb), w, h, x, y,
+		 &msmfb->dma_callback,
 		 panel->interface_type);
 	return 0;
 error:
@@ -434,14 +438,43 @@ static void msmfb_resume(struct early_suspend *h)
 
 static int msmfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 {
+	/* TODO: if format is different, check size of fb can accomodate */
 	if ((var->xres != info->var.xres) ||
 	    (var->yres != info->var.yres) ||
 	    (var->xres_virtual != info->var.xres_virtual) ||
 	    (var->yres_virtual != info->var.yres_virtual) ||
 	    (var->xoffset != info->var.xoffset) ||
-	    (var->bits_per_pixel != info->var.bits_per_pixel) ||
+	    (mdp->check_format(mdp, var->bits_per_pixel)) ||
 	    (var->grayscale != info->var.grayscale))
 		 return -EINVAL;
+	return 0;
+}
+
+static int msmfb_set_par(struct fb_info *info)
+{
+	struct fb_var_screeninfo *var = &info->var;
+	struct fb_fix_screeninfo *fix = &info->fix;
+
+	/* we only support RGB ordering for now */
+	if (var->bits_per_pixel == 32 || var->bits_per_pixel == 24) {
+		var->red.offset = 16;
+		var->red.length = 8;
+		var->green.offset = 8;
+		var->green.length = 8;
+		var->blue.offset = 0;
+		var->blue.length = 8;
+	} else if (var->bits_per_pixel == 16) {
+		var->red.offset = 11;
+		var->red.length = 5;
+		var->green.offset = 5;
+		var->green.length = 6;
+		var->blue.offset = 0;
+		var->blue.length = 5;
+	} else
+		return -1;
+	mdp->set_format(mdp, var->bits_per_pixel);
+	fix->line_length = var->xres * var->bits_per_pixel / 8;
+
 	return 0;
 }
 
@@ -556,6 +589,7 @@ static struct fb_ops msmfb_ops = {
 	.fb_open = msmfb_open,
 	.fb_release = msmfb_release,
 	.fb_check_var = msmfb_check_var,
+	.fb_set_par = msmfb_set_par,
 	.fb_pan_display = msmfb_pan_display,
 	.fb_fillrect = msmfb_fillrect,
 	.fb_copyarea = msmfb_copyarea,
@@ -605,8 +639,6 @@ static struct file_operations debug_fops = {
 };
 #endif
 
-#define BITS_PER_PIXEL 16
-
 static void setup_fb_info(struct msmfb_info *msmfb)
 {
 	struct fb_info *fb_info = msmfb->fb;
@@ -622,14 +654,13 @@ static void setup_fb_info(struct msmfb_info *msmfb)
 	fb_info->fix.type = FB_TYPE_PACKED_PIXELS;
 	fb_info->fix.visual = FB_VISUAL_TRUECOLOR;
 	fb_info->fix.line_length = msmfb->xres * 2;
-
 	fb_info->var.xres = msmfb->xres;
 	fb_info->var.yres = msmfb->yres;
 	fb_info->var.width = msmfb->panel->fb_data->width;
 	fb_info->var.height = msmfb->panel->fb_data->height;
 	fb_info->var.xres_virtual = msmfb->xres;
 	fb_info->var.yres_virtual = msmfb->yres * 2;
-	fb_info->var.bits_per_pixel = BITS_PER_PIXEL;
+	fb_info->var.bits_per_pixel = 16;
 	fb_info->var.accel_flags = 0;
 
 	fb_info->var.yoffset = 0;
@@ -659,6 +690,8 @@ static void setup_fb_info(struct msmfb_info *msmfb)
 	fb_info->var.blue.length = 5;
 	fb_info->var.blue.msb_right = 0;
 
+	mdp->set_format(mdp, fb_info->var.bits_per_pixel);
+
 	r = fb_alloc_cmap(&fb_info->cmap, 16, 0);
 	fb_info->pseudo_palette = PP;
 
@@ -672,7 +705,7 @@ static int setup_fbmem(struct msmfb_info *msmfb, struct platform_device *pdev)
 	struct fb_info *fb = msmfb->fb;
 	struct resource *resource;
 	unsigned long size = msmfb->xres * msmfb->yres *
-			     (BITS_PER_PIXEL >> 3) * 2;
+		BYTES_PER_PIXEL(msmfb) * 2;
 	unsigned char *fbram;
 
 	/* board file might have attached a resource describing an fb */
