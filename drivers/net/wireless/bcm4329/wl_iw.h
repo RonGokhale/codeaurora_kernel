@@ -119,6 +119,11 @@ extern int wl_iw_get_wireless_stats(struct net_device *dev, struct iw_statistics
 int wl_iw_attach(struct net_device *dev, void * dhdp);
 void wl_iw_detach(void);
 
+extern int net_os_wake_lock(struct net_device *dev);
+extern int net_os_wake_unlock(struct net_device *dev);
+extern int net_os_wake_lock_timeout(struct net_device *dev);
+extern int net_os_wake_lock_timeout_enable(struct net_device *dev);
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)
 #define IWE_STREAM_ADD_EVENT(info, stream, ends, iwe, extra) \
 	iwe_stream_add_event(info, stream, ends, iwe, extra)

@@ -761,13 +761,11 @@ _wl_control_sysioc_thread_wl_off(void *data)
 {
 	struct wl_ctrl *wl_ctl = (struct wl_ctrl *)data;
 
-	wl_iw_t *iw = *(wl_iw_t **)netdev_priv(wl_ctl->dev);
 	DAEMONIZE("wlcontrol_sysioc");
 
 	WL_TRACE(("%s Entered\n", __FUNCTION__));
+	net_os_wake_lock(wl_ctl->dev);
 
-	WAKE_LOCK_INIT(iw->pub, WAKE_LOCK_OFF, "sysioc_thread_wl_off");
-	WAKE_LOCK(iw->pub, WAKE_LOCK_OFF);
 	while (down_interruptible(&wl_ctl->timer_sem) == 0) {
 
 		WL_TRACE(("%s Turning off wifi dev\n", __FUNCTION__));
@@ -788,12 +786,12 @@ _wl_control_sysioc_thread_wl_off(void *data)
 
 		wl_iw_send_priv_event(wl_ctl->dev, "STOP");
 
+		net_os_wake_lock_timeout_enable(wl_ctl->dev);
 		break;
 	}
 
 	WL_TRACE(("%s Exited\n", __FUNCTION__));
-	WAKE_UNLOCK(iw->pub, WAKE_LOCK_OFF);
-	WAKE_LOCK_DESTROY(iw->pub, WAKE_LOCK_OFF);
+	net_os_wake_unlock(wl_ctl->dev);
 
 	complete_and_exit(&wl_ctl->sysioc_exited, 0);
 	KILL_PROC(wl_ctl->sysioc_pid, SIGTERM);
@@ -822,8 +820,6 @@ wl_iw_control_wl_off(
 	static struct timer_list timer;
 
 	WL_TRACE(("Enter %s\n", __FUNCTION__));
-
-	
 	
 	ctl.timer = &timer;
 	ctl.dev = dev;
@@ -873,6 +869,8 @@ wl_iw_control_wl_on(
 	}
 
 	wl_iw_send_priv_event(dev, "START");
+
+	net_os_wake_lock_timeout_enable(dev);
 
 	WL_TRACE(("Exited %s \n", __FUNCTION__));
 
@@ -3768,7 +3766,6 @@ wl_iw_set_priv(
 	int ret = 0;
 	char * extra;
 
-	wl_iw_t *iw = *(wl_iw_t **)netdev_priv(dev);
 	if (!(extra = kmalloc(dwrq->length, GFP_KERNEL)))
 	    return -ENOMEM;
 
@@ -3780,11 +3777,9 @@ wl_iw_set_priv(
 	WL_TRACE(("%s: SIOCSIWPRIV requst = %s\n",
 		dev->name, extra));
 
+	net_os_wake_lock(dev);
 	
 	if (dwrq->length && extra) {
-		WAKE_LOCK_INIT(iw->pub, WAKE_LOCK_PRIV, "wl_iw_set_priv");
-		WAKE_LOCK(iw->pub, WAKE_LOCK_PRIV);
-
 		if (g_onoff == G_WLAN_SET_OFF) {
 			wl_iw_control_wl_on(dev, info);
 			if (strnicmp(extra, "START", strlen("START")) != 0)
@@ -3823,9 +3818,9 @@ wl_iw_set_priv(
 			dwrq->length = strlen("OK") + 1;
 			WL_TRACE(("Unkown PRIVATE command , ignored\n"));
 		}
-		WAKE_UNLOCK(iw->pub, WAKE_LOCK_PRIV);
-		WAKE_LOCK_DESTROY(iw->pub, WAKE_LOCK_PRIV);
 	}
+
+	net_os_wake_unlock(dev);
 
 	if (extra) {
 	    if (copy_to_user(dwrq->pointer, extra, dwrq->length)) {
