@@ -192,9 +192,9 @@ osl_attach(void *pdev, uint bustype, bool pkttag)
 			STATIC_BUF_TOTAL_LEN))) {
 			printk("can not alloc static buf!\n");
 		}
-		else
-			printk("alloc static buf at %x!\n", (unsigned int)bcm_static_buf);
-
+		else {
+			/* printk("alloc static buf at %x!\n", (unsigned int)bcm_static_buf); */
+		}
 		
 		init_MUTEX(&bcm_static_buf->static_sem);
 
