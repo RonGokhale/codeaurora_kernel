@@ -147,17 +147,13 @@ static int lcdc_hw_init(struct mdp_lcdc_info *lcdc)
 			       (fb_panel->fb_data->xres & 0x7ff)),
 		   MDP_DMA_P_SIZE);
 
-	mdp_writel(lcdc->mdp, fb_panel->fb_data->xres *
-		   mdp_dev->get_format_bytes(mdp_dev),
-		   MDP_DMA_P_IBUF_Y_STRIDE);
 	mdp_writel(lcdc->mdp, 0, MDP_DMA_P_OUT_XY);
 
-	dma_cfg = (DMA_PACK_ALIGN_LSB |
+	dma_cfg = mdp_readl(lcdc->mdp, MDP_DMA_P_CONFIG);
+	dma_cfg |= (DMA_PACK_ALIGN_LSB |
 		   DMA_PACK_PATTERN_RGB |
 		   DMA_DITHER_EN);
 	dma_cfg |= DMA_OUT_SEL_LCDC;
-	printk("mdp format is: %d\n", mdp_dev->get_format(mdp_dev));
-	dma_cfg |= mdp_dev->get_format(mdp_dev);
 	dma_cfg |= DMA_DSTC0G_8BITS | DMA_DSTC1B_8BITS | DMA_DSTC2R_8BITS;
 	mdp_writel(lcdc->mdp, dma_cfg, MDP_DMA_P_CONFIG);
 
