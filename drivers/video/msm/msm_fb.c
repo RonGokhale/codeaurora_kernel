@@ -710,23 +710,24 @@ static int setup_fbmem(struct msmfb_info *msmfb, struct platform_device *pdev)
 	struct resource *resource;
 	unsigned long size = msmfb->xres * msmfb->yres *
 		BYTES_PER_PIXEL(msmfb) * 2;
+	unsigned long resource_size;
 	unsigned char *fbram;
 
 	/* board file might have attached a resource describing an fb */
 	resource = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!resource)
 		return -EINVAL;
+	resource_size = resource->end - resource->start + 1;
 
 	/* check the resource is large enough to fit the fb */
-	if (resource->end - resource->start < size) {
-		printk(KERN_ERR "allocated resource is too small for "
+	if (resource_size < size) {
+		printk(KERN_ERR "msmfb: allocated resource is too small for "
 				"fb\n");
 		return -ENOMEM;
 	}
 	fb->fix.smem_start = resource->start;
-	fb->fix.smem_len = resource->end - resource->start;
-	fbram = ioremap(resource->start,
-			resource->end - resource->start);
+	fb->fix.smem_len = resource_size;
+	fbram = ioremap(resource->start, resource_size);
 	if (fbram == 0) {
 		printk(KERN_ERR "msmfb: cannot allocate fbram!\n");
 		return -ENOMEM;
