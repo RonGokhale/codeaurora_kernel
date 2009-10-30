@@ -1236,16 +1236,16 @@ static int __msm_put_frame_buf(struct msm_sync *sync,
 
 static int msm_put_frame_buffer(struct msm_sync *sync, void __user *arg)
 {
-	struct msm_frame buf_t;
+	struct msm_frame buf;
 
-	if (copy_from_user(&buf_t,
+	if (copy_from_user(&buf,
 				arg,
 				sizeof(struct msm_frame))) {
 		ERR_COPY_FROM_USER();
 		return -EFAULT;
 	}
 
-	return __msm_put_frame_buf(sync, &buf_t);
+	return __msm_put_frame_buf(sync, &buf);
 }
 
 static int __msm_register_pmem(struct msm_sync *sync,
@@ -1456,29 +1456,29 @@ static int __msm_get_pic(struct msm_sync *sync, struct msm_ctrl_cmd *ctrl)
 
 static int msm_get_pic(struct msm_sync *sync, void __user *arg)
 {
-	struct msm_ctrl_cmd ctrlcmd_t;
+	struct msm_ctrl_cmd ctrlcmd;
 	int rc;
 
-	if (copy_from_user(&ctrlcmd_t,
+	if (copy_from_user(&ctrlcmd,
 				arg,
 				sizeof(struct msm_ctrl_cmd))) {
 		ERR_COPY_FROM_USER();
 		return -EFAULT;
 	}
 
-	rc = __msm_get_pic(sync, &ctrlcmd_t);
+	rc = __msm_get_pic(sync, &ctrlcmd);
 	if (rc < 0)
 		return rc;
 
 	if (sync->croplen) {
-		if (ctrlcmd_t.length != sync->croplen) {
+		if (ctrlcmd.length != sync->croplen) {
 			pr_err("%s: invalid len %d < %d\n",
 				__func__,
-				ctrlcmd_t.length,
+				ctrlcmd.length,
 				sync->croplen);
 			return -EINVAL;
 		}
-		if (copy_to_user(ctrlcmd_t.value,
+		if (copy_to_user(ctrlcmd.value,
 				sync->cropinfo,
 				sync->croplen)) {
 			ERR_COPY_TO_USER();
@@ -1487,7 +1487,7 @@ static int msm_get_pic(struct msm_sync *sync, void __user *arg)
 	}
 	CDBG("%s: copy snapshot frame to user\n", __func__);
 	if (copy_to_user((void *)arg,
-		&ctrlcmd_t,
+		&ctrlcmd,
 		sizeof(struct msm_ctrl_cmd))) {
 		ERR_COPY_TO_USER();
 		return -EFAULT;
