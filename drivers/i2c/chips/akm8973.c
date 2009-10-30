@@ -498,8 +498,6 @@ akmd_ioctl(struct inode *inode, struct file *file, unsigned int cmd,
 		for (i = 0; i < 4; i++)
 			for (j = 0; j < 3; j++)
 				for (k = 0; k < 3; k++) {
-					printk(KERN_ERR "%s: pdata->layouts[%d][%d][%d] = %d\n",
-				__func__, i, j, k, pdata->layouts[i][j][k]);
 				layouts[i][j][k] = pdata->layouts[i][j][k];
 				}
 		break;

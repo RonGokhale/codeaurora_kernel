@@ -447,7 +447,7 @@ static int microp_headset_has_mic(void)
 	else
 		ret = 0;
 
-	printk(KERN_DEBUG "%s: microp_mic_status =0x%d\n", __func__, ret);
+	pr_debug("%s: microp_mic_status =0x%d\n", __func__, ret);
 
 	return ret;
 }
@@ -660,7 +660,7 @@ static ssize_t microp_i2c_led_off_timer_show(struct device *dev,
 	client = to_i2c_client(dev->parent);
 	cdata = i2c_get_clientdata(client);
 
-	dev_info(&client->dev, "Getting %s remaining time\n", led_cdev->name);
+	dev_dbg(&client->dev, "Getting %s remaining time\n", led_cdev->name);
 
 	if (ldata->type == GREEN_LED) {
 		ret = i2c_read_block(client,
@@ -706,7 +706,7 @@ static ssize_t microp_i2c_led_off_timer_store(struct device *dev,
 	ldata = container_of(led_cdev, struct microp_led_data, ldev);
 	client = to_i2c_client(dev->parent);
 
-	dev_info(&client->dev, "Setting %s off_timer to %d min %d sec\n",
+	dev_dbg(&client->dev, "Setting %s off_timer to %d min %d sec\n",
 			led_cdev->name, min, sec);
 
 	if (!min && !sec)
@@ -753,7 +753,7 @@ static ssize_t microp_i2c_jogball_color_store(struct device *dev,
 	ldata = container_of(led_cdev, struct microp_led_data, ldev);
 	client = to_i2c_client(dev->parent);
 
-	dev_info(&client->dev, "Setting %s color to R=%d, G=%d, B=%d\n",
+	dev_dbg(&client->dev, "Setting %s color to R=%d, G=%d, B=%d\n",
 			led_cdev->name, rpwm, gpwm, bpwm);
 
 	data[0] = rpwm;
@@ -782,7 +782,7 @@ static void microp_led_brightness_set(struct led_classdev *led_cdev,
 
 	client = to_i2c_client(led_cdev->dev->parent);
 
-	dev_info(&client->dev, "Setting %s brightness current %d new %d\n",
+	dev_dbg(&client->dev, "Setting %s brightness current %d new %d\n",
 			led_cdev->name, led_cdev->brightness, brightness);
 
 	if (brightness > 255)
@@ -822,7 +822,7 @@ static void microp_led_buttons_brightness_set(struct led_classdev *led_cdev,
 	client = to_i2c_client(led_cdev->dev->parent);
 	cdata = i2c_get_clientdata(client);
 
-	dev_info(&client->dev, "Setting buttons brightness current %d new %d\n",
+	dev_dbg(&client->dev, "Setting buttons brightness current %d new %d\n",
 		 led_cdev->brightness, brightness);
 
 	/* avoid a flicker that can occur when writing the same value */
@@ -852,7 +852,7 @@ static void microp_led_jogball_brightness_set(struct led_classdev *led_cdev,
 
 	client = to_i2c_client(led_cdev->dev->parent);
 
-	dev_info(&client->dev, "Setting Jog brightness current %d new %d\n",
+	dev_dbg(&client->dev, "Setting Jog brightness current %d new %d\n",
 			led_cdev->brightness, brightness);
 
 	switch (brightness) {
@@ -900,7 +900,7 @@ static int microp_i2c_auto_backlight_mode(struct i2c_client *client,
 
 	ret = i2c_write_block(client, MICROP_I2C_WCMD_AUTO_BL_CTL, data, 2);
 	if (ret != 0)
-		printk(KERN_ERR "%s: set auto light sensor fail\n", __func__);
+		pr_err("%s: set auto light sensor fail\n", __func__);
 
 	return ret;
 }
@@ -915,14 +915,14 @@ static int lightsensor_enable(void)
 	cdata = i2c_get_clientdata(client);
 
 	if (cdata->microp_is_suspend) {
-		printk(KERN_ERR "%s: abort, uP is going to suspend after #\n",
+		pr_err("%s: abort, uP is going to suspend after #\n",
 		       __func__);
 		return -EIO;
 	}
 
 	ret = microp_i2c_auto_backlight_mode(client, 1);
 	if (ret < 0)
-		printk(KERN_ERR "%s: set auto light sensor fail\n", __func__);
+		pr_err("%s: set auto light sensor fail\n", __func__);
 	else {
 		cdata->auto_backlight_enabled = 1;
 		/* report an invalid value first to ensure we trigger an event
@@ -948,14 +948,14 @@ static int lightsensor_disable(void)
 	cdata = i2c_get_clientdata(client);
 
 	if (cdata->microp_is_suspend) {
-		printk(KERN_ERR "%s: abort, uP is going to suspend after #\n",
+		pr_err("%s: abort, uP is going to suspend after #\n",
 		       __func__);
 		return -EIO;
 	}
 
 	ret = microp_i2c_auto_backlight_mode(client, 0);
 	if (ret < 0)
-		printk(KERN_ERR "%s: disable auto light sensor fail\n",
+		pr_err("%s: disable auto light sensor fail\n",
 		       __func__);
 	else
 		cdata->auto_backlight_enabled = 0;
@@ -978,7 +978,7 @@ static int microp_lightsensor_read(uint16_t *adc_value,
 		return -1;
 
 	if (*adc_value > 0x3FF) {
-		printk(KERN_WARNING "%s: get wrong value: 0x%X\n",
+		pr_warning("%s: get wrong value: 0x%X\n",
 			__func__, *adc_value);
 		return -1;
 	} else {
@@ -996,7 +996,7 @@ static int microp_lightsensor_read(uint16_t *adc_value,
 			}
 		}
 		*adc_level = level;
-		printk(KERN_DEBUG "%s: ADC value: 0x%X, level: %d #\n",
+		pr_debug("%s: ADC value: 0x%X, level: %d #\n",
 				__func__, *adc_value, *adc_level);
 	}
 
@@ -1077,7 +1077,7 @@ static int lightsensor_opened;
 static int lightsensor_open(struct inode *inode, struct file *file)
 {
 	int rc = 0;
-	pr_info("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	mutex_lock(&api_lock);
 	if (lightsensor_opened) {
 		pr_err("%s: already opened\n", __func__);
@@ -1090,7 +1090,7 @@ static int lightsensor_open(struct inode *inode, struct file *file)
 
 static int lightsensor_release(struct inode *inode, struct file *file)
 {
-	pr_info("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	mutex_lock(&api_lock);
 	lightsensor_opened = 0;
 	mutex_unlock(&api_lock);
@@ -1109,7 +1109,7 @@ static long lightsensor_ioctl(struct file *file, unsigned int cmd,
 	client = private_microp_client;
 	cdata = i2c_get_clientdata(client);
 
-	pr_info("%s cmd %d\n", __func__, _IOC_NR(cmd));
+	pr_debug("%s cmd %d\n", __func__, _IOC_NR(cmd));
 
 	switch (cmd) {
 	case LIGHTSENSOR_IOCTL_ENABLE:
@@ -1121,7 +1121,7 @@ static long lightsensor_ioctl(struct file *file, unsigned int cmd,
 		break;
 	case LIGHTSENSOR_IOCTL_GET_ENABLED:
 		val = cdata->auto_backlight_enabled;
-		pr_info("%s enabled %d\n", __func__, val);
+		pr_debug("%s enabled %d\n", __func__, val);
 		rc = put_user(val, (unsigned long __user *)arg);
 		break;
 	default:
@@ -1492,7 +1492,7 @@ static void microp_i2c_intr_work_func(struct work_struct *work)
 		dev_err(&client->dev, "%s: clear interrupt status fail\n",
 			 __func__);
 	}
-	printk(KERN_DEBUG "intr_status=0x%02x\n", intr_status);
+	pr_debug("intr_status=0x%02x\n", intr_status);
 	msleep(1);
 	if (intr_status & IRQ_LSENSOR) {
 		ret = microp_lightsensor_read(&adc_value, &adc_level);
@@ -1538,7 +1538,7 @@ static int microp_function_initialize(struct i2c_client *client)
 		cdata->als_kadc = als_kadc & 0xFFFF;
 	else {
 		cdata->als_kadc = 0;
-		printk(KERN_INFO "%s: no ALS calibrated\n", __func__);
+		pr_info("%s: no ALS calibrated\n", __func__);
 	}
 
 	if (cdata->als_kadc && golden_adc) {
@@ -1552,7 +1552,7 @@ static int microp_function_initialize(struct i2c_client *client)
 		cdata->als_kadc = 1;
 		cdata->als_gadc = 1;
 	}
-	printk(KERN_INFO "%s: als_kadc=0x%x, als_gadc=0x%x\n",
+	pr_info("%s: als_kadc=0x%x, als_gadc=0x%x\n",
 		__func__, cdata->als_kadc, cdata->als_gadc);
 
 	for (i = 0; i < 10; i++) {
@@ -1622,7 +1622,7 @@ void microp_early_suspend(struct early_suspend *h)
 	int ret;
 
 	if (!client) {
-		printk(KERN_ERR "%s: dataset: client is empty\n", __func__);
+		pr_err("%s: dataset: client is empty\n", __func__);
 		return;
 	}
 	cdata = i2c_get_clientdata(client);
@@ -1649,7 +1649,7 @@ void microp_early_resume(struct early_suspend *h)
 	struct microp_i2c_client_data *cdata;
 
 	if (!client) {
-		printk(KERN_ERR "%s: dataset: client is empty\n", __func__);
+		pr_err("%s: dataset: client is empty\n", __func__);
 		return;
 	}
 	cdata = i2c_get_clientdata(client);
@@ -1813,7 +1813,7 @@ static int microp_i2c_probe(struct i2c_client *client,
 	/* G-sensor */
 	ret = misc_register(&spi_bma_device);
 	if (ret < 0) {
-		printk(KERN_ERR "%s: init bma150 misc_register fail\n",
+		pr_err("%s: init bma150 misc_register fail\n",
 				__func__);
 		goto err_register_bma150;
 	}
@@ -1954,7 +1954,7 @@ static int __init parse_tag_als_kadc(const struct tag *tags)
 
 	if (found)
 		als_kadc = t->u.revision.rev;
-	printk(KERN_DEBUG "%s: als_kadc = 0x%x\n", __func__, als_kadc);
+	pr_debug("%s: als_kadc = 0x%x\n", __func__, als_kadc);
 	return 0;
 }
 __tagtable(ATAG_ALS, parse_tag_als_kadc);
