@@ -36,6 +36,9 @@ static struct mutex a1026_lock;
 static int a1026_opened;
 static int A1026_Suspended;
 static int control_a1026_clk = 0;
+static unsigned int a1026_NS_state = A1026_NS_STATE_AUTO;
+static int a1026_current_config = A1026_PATH_SUSPEND;
+static int a1026_param_ID;
 
 struct vp_ctxt {
 	unsigned char *data;
@@ -290,6 +293,7 @@ retry_polling:
 		goto set_suspend_err;
 	}
 	A1026_Suspended = 1;
+	a1026_current_config = A1026_PATH_SUSPEND;
 
 	mdelay(120);
 	/* Disable A1026 clock */
@@ -370,6 +374,8 @@ unsigned int phonecall_speaker[] = {
 
 unsigned int phonecall_bt[] = {
 	0x80260006, // Select audio routing 6
+	0x80170002,
+	0x80180003, // Select one Mic configuration
 	0x801B0000, // Set Digital input gain to 0dB
 	0x80150000, // Set Digital output gain to 0dB
 	0x80150100, // Set Downlink digital gain to 0dB
@@ -380,7 +386,7 @@ unsigned int phonecall_bt[] = {
 	0x800D0000, // set PCM1 TristateEnable disable
 };
 
-unsigned int INT_MIC_recording[] = {
+unsigned int INT_MIC_recording_receiver[] = {
 	0x80260007, // Select audio routing 7
 	0x80170002,
 	0x80180002, // Select FT Mic configuration
@@ -426,8 +432,31 @@ unsigned int EXT_MIC_recording[] = {
 	0x800D0001, // Tri-state PCM1
 };
 
-unsigned int CAM_coder_recording[] = {
+unsigned int INT_MIC_recording_speaker[] = {
 	0x80260007, // Select audio routing 7
+	0x80170002,
+	0x80180002, // Select FT Mic configuration
+	0x800C0300,
+	0x800D0002, // Set ADC0 gain to +12dB
+	0x801B000B, // Set Pri Digital input gain to 11dB
+	0x80150001, // Set Digital output gain to 1dB
+	0x8017001A,
+	0x80180000, // Set ComfortNoise off
+	0x80170000,
+	0x80180004, // set AIS4
+	0x801C0001, // Set Voice Processing on
+	0x80170004,
+	0x80180000, // Use AGC:no
+	0x80170020,
+	0x80180000, // Tx PostEq Mode 0x0000:Off
+	0x800C0107,
+	0x800D0001, // Tri-state PCM0
+	0x800C0207,
+	0x800D0001, // Tri-state PCM1
+};
+
+unsigned int BACK_MIC_recording[] = {
+	0x80260015, // Select audio routing 21
 	0x80170002,
 	0x80180002, // Select FT Mic configuration
 	0x800C0300,
@@ -511,10 +540,54 @@ wakeup_sync_err:
 	return rc;
 }
 
-int a1026_set_config(char newid)
+/* Filter commands according to noise suppression state forced by
+ * A1026_SET_NS_STATE ioctl.
+ * For this function to operate properly, all configurations must include
+ * both A100_msg_Bypass and Mic_Config commands even if default values
+ * are selected or if Mic_Config is useless because VP is off */
+int a1026_filter_vp_cmd(int cmd, int mode)
+{
+	int msg = (cmd >> 16) & 0xFFFF;
+	int filtered_cmd = cmd;
+
+	if (a1026_NS_state == A1026_NS_STATE_AUTO)
+		return cmd;
+
+	switch(msg) {
+	case A100_msg_Bypass:
+		if (a1026_NS_state == A1026_NS_STATE_OFF)
+			filtered_cmd = A1026_msg_VP_OFF;
+		else
+			filtered_cmd = A1026_msg_VP_ON;
+		break;
+	case A100_msg_SetAlgorithmParmID:
+		a1026_param_ID = cmd & 0xFFFF;
+		break;
+	case A100_msg_SetAlgorithmParm:
+		if (a1026_param_ID == Mic_Config) {
+			if (a1026_NS_state == A1026_NS_STATE_CT)
+				filtered_cmd = (msg << 16);
+			else if (a1026_NS_state == A1026_NS_STATE_FT)
+				filtered_cmd = (msg << 16) + 0x0002;
+		}
+		break;
+	default:
+		if (mode == A1026_CONFIG_VP)
+			filtered_cmd = -1;
+		break;
+	}
+
+	pr_info("A1026 filter cmd: %x filtered = %x, a1026_NS_state %d, mode %d\n",
+			cmd, filtered_cmd, a1026_NS_state, mode);
+
+	return filtered_cmd;
+}
+
+int a1026_set_config(char newid, int mode)
 {
 	int i = 0, rc = 0;
 	struct cmd_list new_list;
+	int cmd;
 
 	if ((A1026_Suspended) && (newid == A1026_PATH_SUSPEND))
 		return rc;
@@ -566,8 +639,8 @@ int a1026_set_config(char newid)
 		break;
 	case A1026_PATH_RECORD_RECEIVER:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = INT_MIC_recording;
-		new_list.cnt = sizeof(INT_MIC_recording)/sizeof(unsigned int);
+		new_list.p = INT_MIC_recording_receiver;
+		new_list.cnt = sizeof(INT_MIC_recording_receiver)/sizeof(unsigned int);
 		break;
 	case A1026_PATH_RECORD_HEADSET:
 		gpio_set_value(pdata->gpio_a1026_micsel, 1);
@@ -576,8 +649,8 @@ int a1026_set_config(char newid)
 		break;
 	case A1026_PATH_RECORD_SPEAKER:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = CAM_coder_recording;
-		new_list.cnt = sizeof(CAM_coder_recording)/sizeof(unsigned int);
+		new_list.p = INT_MIC_recording_speaker;
+		new_list.cnt = sizeof(INT_MIC_recording_speaker)/sizeof(unsigned int);
 		break;
 	case A1026_PATH_RECORD_BT:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
@@ -589,6 +662,11 @@ int a1026_set_config(char newid)
 		new_list.p = suspend_mode;
 		new_list.cnt = sizeof(suspend_mode)/sizeof(unsigned int);
 		break;
+	case A1026_PATH_CAMCORDER:
+		gpio_set_value(pdata->gpio_a1026_micsel, 0);
+		new_list.p = BACK_MIC_recording;
+		new_list.cnt = sizeof(BACK_MIC_recording)/sizeof(unsigned int);
+		break;
 	default:
 		pr_err("A1026 set config: Invalid input\n");
 		rc = -1;
@@ -596,24 +674,29 @@ int a1026_set_config(char newid)
 		break;
 	}
 
+	a1026_current_config = newid;
 	pr_info("A1026 change mode command count = %d\n", new_list.cnt);
 	for (i = 0; i < new_list.cnt; i++) {
 		pr_info("A1026 cmds: i = %d, *p = 0x%x\n", i, *(new_list.p));
-		rc = execute_cmdmsg(*(new_list.p));
-		if (rc < 0)
-			break;
-		if (*(new_list.p) == A100_msg_Sleep) {
-			A1026_Suspended = 1;
-			/* Disable A1026 clock */
-			mdelay(120);
-			if (control_a1026_clk)
-				gpio_set_value(pdata->gpio_a1026_clk, 0);
+		cmd = a1026_filter_vp_cmd(*(new_list.p), mode);
+		if (cmd != -1) {
+			rc = execute_cmdmsg(cmd);
+			if (rc < 0)
+				break;
+			if (cmd == A100_msg_Sleep) {
+				A1026_Suspended = 1;
+				/* Disable A1026 clock */
+				mdelay(120);
+				if (control_a1026_clk)
+					gpio_set_value(pdata->gpio_a1026_clk, 0);
+			}
 		}
 		new_list.p++;
 	}
 
 	if (rc < 0)
 		pr_err("Exe cmd-%d error...(0x%x)\n", i, *(new_list.p));
+
 input_err:
 	return rc;
 }
@@ -747,6 +830,7 @@ a1026_ioctl(struct inode *inode, struct file *file, unsigned int cmd,
 	char mic_cases = 0;
 	char mic_sel = 0;
 	char pathid = 0;
+	unsigned int ns_state;
 
 	switch (cmd) {
 	case A1026_BOOTUP_INIT:
@@ -759,7 +843,7 @@ a1026_ioctl(struct inode *inode, struct file *file, unsigned int cmd,
 	case A1026_SET_CONFIG:
 		if (copy_from_user(&pathid, argp, sizeof(pathid)))
 			return -EFAULT;
-		ret = a1026_set_config(pathid);
+		ret = a1026_set_config(pathid, A1026_CONFIG_FULL);
 		if (ret < 0)
 			pr_err("A1026_SET_CONFIG (%d) NG!\n", pathid);
 		break;
@@ -812,6 +896,17 @@ a1026_ioctl(struct inode *inode, struct file *file, unsigned int cmd,
 		if (copy_from_user(msg, argp, sizeof(msg)))
 			return -EFAULT;
 		ret = exe_cmd_in_file(msg);
+		break;
+	case A1026_SET_NS_STATE:
+		if (copy_from_user(&ns_state, argp, sizeof(ns_state)))
+			return -EFAULT;
+		pr_info("A1026 set noise suppression %d\n", ns_state);
+		if (ns_state < 0 || ns_state >= A1026_NS_NUM_STATES)
+			return -EINVAL;
+		a1026_NS_state = ns_state;
+		if (!A1026_Suspended) {
+			a1026_set_config(a1026_current_config, A1026_CONFIG_VP);
+		}
 		break;
 	default:
 		pr_err("ioctl command not supported!\n");

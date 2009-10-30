@@ -160,12 +160,12 @@
 #define A1026_ACTIVE                    1
 #define ERROR                           0xffffffff
 
-
 /* IOCTLs for Audience A1026 */
 #define A1026_IOCTL_MAGIC 'u'
 
 #define A1026_BOOTUP_INIT               _IOW(A1026_IOCTL_MAGIC, 0x01, unsigned)
 #define A1026_SET_CONFIG                _IOW(A1026_IOCTL_MAGIC, 0x02, unsigned)
+#define A1026_SET_NS_STATE              _IOW(A1026_IOCTL_MAGIC, 0x03, unsigned)
 
 /* For Diag */
 #define A1026_SET_MIC_ONOFF             _IOW(A1026_IOCTL_MAGIC, 0x50, unsigned)
@@ -188,7 +188,24 @@ enum A1026_PathID {
         A1026_PATH_RECORD_RECEIVER,
         A1026_PATH_RECORD_HEADSET,
         A1026_PATH_RECORD_SPEAKER,
-        A1026_PATH_RECORD_BT
+        A1026_PATH_RECORD_BT,
+        A1026_PATH_CAMCORDER
+};
+
+/* noise suppression states */
+enum A1026_NS_states {
+	A1026_NS_STATE_AUTO,	/* leave mode as selected by driver  */
+	A1026_NS_STATE_OFF,	/* disable noise suppression */
+	A1026_NS_STATE_CT,	/* force close talk mode */
+	A1026_NS_STATE_FT,	/* force far talk mode */
+	A1026_NS_NUM_STATES
+};
+
+/* indicates if a1026_set_config() performs a full configuration or only
+ * a voice processing algorithm configuration */
+enum A1026_config_mode {
+        A1026_CONFIG_FULL,
+        A1026_CONFIG_VP
 };
 
 struct a1026_platform_data {
