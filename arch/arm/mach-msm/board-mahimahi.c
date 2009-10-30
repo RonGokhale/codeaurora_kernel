@@ -100,6 +100,7 @@ static struct msm_hsusb_product mahimahi_usb_products[] = {
 
 static int mahimahi_phy_init_seq[] = {
 	0x0C, 0x31,
+	0x31, 0x32,
 	0x1D, 0x0D,
 	0x1D, 0x10,
 	-1 };
