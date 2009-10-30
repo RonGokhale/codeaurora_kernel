@@ -595,6 +595,33 @@ int kgsl_yamato_getproperty(struct kgsl_device *device,
 	return status;
 }
 
+/* Note: This is either called from the standby timer, or while holding the
+ * driver mutex.
+ *
+ * The reader may obseve that this function may be called without holding the
+ * driver mutex (in the timer), which can cause the ringbuffer write pointer
+ * to change, when a user submits a command. However, the user must be holding
+ * the driver mutex when doing so, and then must
+ * have canceled the timer. If the timer was executing at the time of
+ * cancellation, the active flag would have been cleared, which the user
+ * ioctl checks for after cancelling the timer.
+ */
+bool kgsl_yamato_is_idle(struct kgsl_device *device)
+{
+	struct kgsl_ringbuffer *rb = &device->ringbuffer;
+	unsigned int rbbm_status;
+
+	BUG_ON(!(rb->flags & KGSL_FLAGS_STARTED));
+
+	GSL_RB_GET_READPTR(rb, &rb->rptr);
+	if (rb->rptr == rb->wptr) {
+		kgsl_yamato_regread(device, REG_RBBM_STATUS, &rbbm_status);
+		if (!(rbbm_status & RBBM_STATUS__BUSY_MASK))
+			return true;
+	}
+	return false;
+}
+
 int kgsl_yamato_idle(struct kgsl_device *device, unsigned int timeout)
 {
 	int status = -EINVAL;
