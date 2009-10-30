@@ -54,8 +54,6 @@
 #define DALDEVICEID_VENC_DEVICE		0x0200002D
 #define DALDEVICEID_VENC_PORTNAME	"DSP_DAL_AQ_VID"
 
-#define CACHE_LINE_SIZE			128
-
 enum {
 	VENC_DALRPC_INITIALIZE = DAL_OP_FIRST_DEVICE_API,
 	VENC_DALRPC_SET_CB_CHANNEL,
@@ -81,6 +79,8 @@ struct buf_info {
 
 #define VENC_MAX_BUF_NUM		15
 #define RLC_MAX_BUF_NUM			2
+#define BITS_PER_PIXEL			12
+#define PIXELS_PER_MACROBLOCK		16
 
 #define VENC_CB_EVENT_ID		0xd0e4c0de
 
@@ -89,8 +89,9 @@ struct q6venc_dev {
 	struct callback_event_data	cb_ev_data;
 	bool				stop_encode;
 	struct buf_info			rlc_bufs[RLC_MAX_BUF_NUM];
-	unsigned int			rlc_buf_idx;
+	unsigned int			rlc_buf_index;
 	unsigned int			rlc_buf_len;
+	unsigned int                    enc_buf_size;
 	struct buf_info			enc_bufs[VENC_MAX_BUF_NUM];
 	unsigned int			num_enc_bufs;
 	wait_queue_head_t		encode_wq;
@@ -171,11 +172,12 @@ frame_found:
 	       sizeof(struct venc_buf));
 	memcpy(&q6venc->done_frame.q6_frame_type, q6frame,
 	       sizeof(struct q6_frame_type));
-	wake_up_interruptible(&q6venc->encode_wq);
 
 	dmac_inv_range((const void *)q6venc->rlc_bufs[i].vaddr,
 		       (const void *)(q6venc->rlc_bufs[i].vaddr +
-				      q6venc->rlc_buf_len - 1));
+				      q6venc->rlc_buf_len));
+
+	wake_up_interruptible(&q6venc->encode_wq);
 
 done:
 	spin_unlock_irqrestore(&q6venc->done_lock, flags);
@@ -301,6 +303,11 @@ static int q6_config_encode(struct q6venc_dev *q6venc, uint32_t type,
 	q6venc->rlc_buf_len = 2 * q6_init_config->rlc_buf_length;
 	q6venc->num_enc_bufs = 2;
 
+	q6venc->enc_buf_size =
+		(q6_init_config->enc_frame_width_inmb * PIXELS_PER_MACROBLOCK) *
+		(q6_init_config->enc_frame_height_inmb * PIXELS_PER_MACROBLOCK) *
+		BITS_PER_PIXEL / 8;
+
 	q6_init_config->ref_frame_buf1_phy = q6venc->enc_bufs[0].paddr;
 	q6_init_config->ref_frame_buf2_phy = q6venc->enc_bufs[1].paddr;
 	q6_init_config->rlc_buf1_phy = q6venc->rlc_bufs[0].paddr;
@@ -337,6 +344,7 @@ static int q6_encode(struct q6venc_dev *q6venc, struct encode_param *enc_param)
 	struct buf_info *buf;
 	int i;
 	int ret;
+	int rlc_buf_index;
 
 	pr_debug("y_addr fd=%d offset=0x%08lx uv_offset=0x%08lx\n",
 		 enc_param->y_addr.fd, enc_param->y_addr.offset,
@@ -382,13 +390,29 @@ static int q6_encode(struct q6venc_dev *q6venc, struct encode_param *enc_param)
 		q6venc->num_enc_bufs++;
 	}
 
+	// We must invalidate the buffer that the DSP will write to
+	// to ensure that a dirty cache line doesn't get flushed on
+	// top of the data that the DSP is writing.
+	// Unfortunately, we have to predict which rlc_buf index the
+	// DSP is going to write to.  We assume it will write to buf
+	// 0 the first time we call q6_encode, and alternate afterwards
+	rlc_buf_index = q6venc->rlc_buf_index;
+	dmac_inv_range((const void *)q6venc->rlc_bufs[rlc_buf_index].vaddr,
+		       (const void *)(q6venc->rlc_bufs[rlc_buf_index].vaddr +
+				      q6venc->rlc_buf_len));
+	q6venc->rlc_buf_index = (q6venc->rlc_buf_index + 1) % RLC_MAX_BUF_NUM;
+
 	q6_param->luma_addr = buf->paddr;
 	q6_param->chroma_addr = q6_param->luma_addr + enc_param->uv_offset;
 	pr_debug("luma_addr=0x%08x chroma_addr=0x%08x\n", q6_param->luma_addr,
 		 q6_param->chroma_addr);
 
+	// Ideally, each ioctl that passed in a data buffer would include the size
+	// of the input buffer, so we can properly flush the cache on it.  Since
+	// userspace does not fill in the size fields, we have to assume the size
+	// based on the encoder configuration for now.
 	dmac_clean_range((const void*)buf->vaddr,
-			 (const void*)(buf->vaddr + buf->venc_buf.size));
+			(const void*)(buf->vaddr + q6venc->enc_buf_size));
 
 	ret = dal_call_f5(q6venc->venc, VENC_DALRPC_ENCODE, q6_param,
 			  sizeof(struct q6_encode_param));
