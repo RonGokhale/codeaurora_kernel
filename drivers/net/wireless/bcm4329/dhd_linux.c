@@ -65,6 +65,49 @@ struct semaphore wifi_control_sem;
 struct dhd_bus *g_bus;
 
 static struct wifi_platform_data *wifi_control_data = NULL;
+static struct resource *wifi_irqres = NULL;
+
+int wifi_get_irq_number(void)
+{
+	if (wifi_irqres)
+		return (int)wifi_irqres->start;
+#ifdef CUSTOM_OOB_GPIO_NUM
+	return CUSTOM_OOB_GPIO_NUM;
+#else
+	return -1;
+#endif
+}
+
+int wifi_set_carddetect(int on)
+{
+	printk("%s = %d\n", __FUNCTION__, on);
+	if (wifi_control_data && wifi_control_data->set_carddetect) {
+		wifi_control_data->set_carddetect(on);
+	}
+	return 0;
+}
+
+int wifi_set_power(int on, unsigned long msec)
+{
+	printk("%s = %d\n", __FUNCTION__, on);
+	if (wifi_control_data && wifi_control_data->set_power) {
+		wifi_control_data->set_power(on);
+	}
+	if (msec)
+		mdelay(msec);
+	return 0;
+}
+
+int wifi_set_reset(int on, unsigned long msec)
+{
+	printk("%s = %d\n", __FUNCTION__, on);
+	if (wifi_control_data && wifi_control_data->set_reset) {
+		wifi_control_data->set_reset(on);
+	}
+	if (msec)
+		mdelay(msec);
+	return 0;
+}
 
 static int wifi_probe(struct platform_device *pdev)
 {
@@ -72,13 +115,11 @@ static int wifi_probe(struct platform_device *pdev)
 		(struct wifi_platform_data *)(pdev->dev.platform_data);
 
 	DHD_TRACE(("## %s\n", __FUNCTION__));
-	if (wifi_ctrl) {
-		wifi_control_data = wifi_ctrl;
-	if (wifi_ctrl->set_power)
-		wifi_ctrl->set_power(1);	/* Power On */
-	if (wifi_ctrl->set_carddetect)
-		wifi_ctrl->set_carddetect(1);	/* CardDetect (0->1) */
-	}
+	wifi_irqres = platform_get_resource_byname(pdev, IORESOURCE_IRQ, "bcm4329_wlan_irq");
+	wifi_control_data = wifi_ctrl;
+
+	wifi_set_power(1, 0);	/* Power On */
+	wifi_set_carddetect(1);	/* CardDetect (0->1) */
 
 	up(&wifi_control_sem);
 	return 0;
@@ -90,12 +131,11 @@ static int wifi_remove(struct platform_device *pdev)
 		(struct wifi_platform_data *)(pdev->dev.platform_data);
 
 	DHD_TRACE(("## %s\n", __FUNCTION__));
-	if (wifi_ctrl) {
-		if (wifi_ctrl->set_carddetect)
-			wifi_ctrl->set_carddetect(0);	/* CardDetect (1->0) */
-		if (wifi_ctrl->set_power)
-			wifi_ctrl->set_power(0);		/* Power Off */
-	}
+	wifi_control_data = wifi_ctrl;
+
+	wifi_set_carddetect(0);	/* CardDetect (1->0) */
+	wifi_set_power(0, 0);	/* Power Off */
+
 	up(&wifi_control_sem);
 	return 0;
 }
@@ -107,7 +147,7 @@ static int wifi_suspend(struct platform_device *pdev, pm_message_t state)
 static int wifi_resume(struct platform_device *pdev)
 {
 	DHD_TRACE(("##> %s\n", __FUNCTION__));
-	 return 0;
+	return 0;
 }
 
 static struct platform_driver wifi_device = {
