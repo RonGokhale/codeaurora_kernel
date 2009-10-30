@@ -96,6 +96,8 @@ int kgsl_yamato_start(struct kgsl_device *device, uint32_t flags);
 
 int kgsl_yamato_stop(struct kgsl_device *device);
 
+bool kgsl_yamato_is_idle(struct kgsl_device *device);
+
 int kgsl_yamato_idle(struct kgsl_device *device, unsigned int timeout);
 
 int kgsl_yamato_getproperty(struct kgsl_device *device,
