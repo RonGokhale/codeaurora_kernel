@@ -340,6 +340,7 @@ static struct a1026_platform_data a1026_data = {
 	.gpio_a1026_micsel = MAHIMAHI_AUD_MICPATH_SEL,
 	.gpio_a1026_wakeup = MAHIMAHI_AUD_A1026_WAKEUP,
 	.gpio_a1026_reset = MAHIMAHI_AUD_A1026_RESET,
+	.gpio_a1026_clk = MAHIMAHI_AUD_A1026_CLK,
 	/*.gpio_a1026_int = MAHIMAHI_AUD_A1026_INT,*/
 };
 
