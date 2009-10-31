@@ -35,6 +35,7 @@ static int execute_cmdmsg(unsigned int);
 static struct mutex a1026_lock;
 static int a1026_opened;
 static int A1026_Suspended;
+static int control_a1026_clk = 0;
 
 struct vp_ctxt {
 	unsigned char *data;
@@ -125,6 +126,23 @@ static int a1026_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static void A1026_sw_reset(unsigned int reset_cmd)
+{
+	int rc = 0;
+	unsigned char msgbuf[4];
+
+	msgbuf[0] = (reset_cmd >> 24) & 0xFF;
+	msgbuf[1] = (reset_cmd >> 16) & 0xFF;
+	msgbuf[2] = (reset_cmd >> 8) & 0xFF;
+	msgbuf[3] = reset_cmd & 0xFF;
+
+	pr_info("Do A1026 Software Reset +++++ (0x%x)\n", reset_cmd);
+	rc = A1026I2C_TxData(msgbuf, 4);
+	pr_info("Do A1026 Software Reset -----\n");
+	if (!rc)
+		mdelay(20);
+}
+
 static ssize_t a1026_bootup_init(struct file *file, struct a1026img *img)
 {
 	struct vp_ctxt *vp = file->private_data;
@@ -149,6 +167,11 @@ static ssize_t a1026_bootup_init(struct file *file, struct a1026img *img)
 
 		/* Reset A1026 chip */
 		gpio_set_value(pdata->gpio_a1026_reset, 0);
+
+		/* Enable A1026 clock */
+		if (control_a1026_clk)
+			gpio_set_value(pdata->gpio_a1026_clk, 1);
+
 		mdelay(1);
 		gpio_set_value(pdata->gpio_a1026_reset, 1);
 		mdelay(20); /* Delay before send I2C command */
@@ -159,27 +182,28 @@ static ssize_t a1026_bootup_init(struct file *file, struct a1026img *img)
 
 		rc = A1026I2C_TxData(buf, 2);
 		if (rc < 0) {
-			pr_err("Set boot mode error (retry = %d)\n", retry);
+			pr_err("Set boot mode error (%d retry cnt left)\n",
+				retry);
 			continue;
 		}
 
 		mdelay(20); /* use polling */
 		rc = Read_A1026_Data_Bytes(buf, 1);
 		if (rc < 0) {
-			pr_err("Read boot mode Ack error (retry = %d)\n",
+			pr_err("Read boot mode Ack error (%d retry cnt left)\n",
 				retry);
 			continue;
 		}
 
 		if (buf[0] != A1026_msg_BOOT_ACK) {
-			pr_err("A1026 failed to set boot mode (retry = %d)\n",
+			pr_err("A1026 failed to set boot mode (%d retry cnt left)\n",
 				retry);
 			continue;
 		} else {
 			vp->data = kmalloc(img->img_size, GFP_KERNEL);
 			if (copy_from_user(vp->data, img->buf, img->img_size)) {
 				rc = -EFAULT;
-				pr_err("copy error (rc = %d, retry = %d)\n",
+				pr_err("copy error (rc = %d, %d retry cnt left)\n",
 					rc, retry);
 				kfree(vp->data);
 				continue;
@@ -211,7 +235,7 @@ static ssize_t a1026_bootup_init(struct file *file, struct a1026img *img)
 					break;
 			}
 			if (rc < 0) {
-				pr_err("Tx A1026 img error (retry = %d)\n",
+				pr_err("Tx A1026 img error (%d retry cnt left)\n",
 					retry);
 				continue;
 			}
@@ -227,7 +251,7 @@ static ssize_t a1026_bootup_init(struct file *file, struct a1026img *img)
 		sync_msg[3] = 0x00;
 		rc = A1026I2C_TxData(sync_msg, 4);
 		if (rc < 0) {
-			pr_err("A1026 Tx Sync Cmd error (retry = %d)\n",
+			pr_err("A1026 Tx Sync Cmd error (%d retry cnt left)\n",
 				retry);
 			continue;
 		}
@@ -237,7 +261,7 @@ retry_polling:
 		memset(sync_msg, 0, sizeof(sync_msg));
 		rc = Read_A1026_Data_Bytes(sync_msg, 4);
 		if (rc < 0) {
-			pr_err("A1026 Read Sync cmd Ack error (retry = %d)\n",
+			pr_err("A1026 Read Sync cmd Ack error (%d retry cnt left)\n",
 				retry);
 			continue;
 		}
@@ -248,10 +272,11 @@ retry_polling:
 			break;
 		} else if (polling_retry_cnt) {
 			polling_retry_cnt--;
-			pr_info("A1026 polling_retry_cnt = %d\n", polling_retry_cnt);
+			pr_info("A1026 polling_retry_cnt left = %d\n",
+				polling_retry_cnt);
 			goto retry_polling;
 		} else {
-			pr_err("A1026 Sync Cmd ACK NG (retry = %d)\n",
+			pr_err("A1026 Sync Cmd ACK NG (%d retry cnt left)\n",
 				retry);
 			rc = -1;
 			continue;
@@ -266,13 +291,19 @@ retry_polling:
 	}
 	A1026_Suspended = 1;
 
+	/* Disable A1026 clock */
+	if (control_a1026_clk) {
+		mdelay(120);
+		gpio_set_value(pdata->gpio_a1026_clk, 0);
+	}
+
 set_suspend_err:
-	if (pass == 1 && !rc) {
+	if (pass == 1 && !rc)
 		pr_info("A1026 Boot Up Init Completed!\n");
-		kfree(vp->data);
-	} else
+	else
 		pr_err("A1026 Fatal Error!!! Cannot load firmware image\n");
 
+	kfree(vp->data);
 	return rc;
 }
 
@@ -280,26 +311,39 @@ unsigned int phonecall_receiver[] = {
 	0x80260001, // Select audio routing 1
 	0x80170002,
 	0x80180000, // Select CT Mic configuration
+	0x8017001A,
+	0x80180000, // Set ComfortNoise off
+	0x801C0001, // Set Voice Processing on
 	0x800C0300,
-	0x800D0001, // Set ADC0 gain to +6dB
+	0x800D0002, // Set ADC0 gain to +12dB
 	0x800C0400,
-	0x800D0001, // Set ADC1 gain to +6dB
-	0x801B0000, // Set Digital input gain to 0dB
-	0x80150000, // Set Digital output gain to 0dB
-	0x80230000, // Set Downlink digital gain to 0dB
-	0x801C0000, // Set Voice Processing off (bypass mode)
+	0x800D0002, // Set ADC1 gain to +12dB
+	0x801B0005, // Set Pri Digital input gain to 5dB
+	0x801B0105, // Set Sec Digital input gain to 5dB
+	0x80150003, // Set Digital output gain to 3dB
+	0x80170000,
+	0x80180004, // set AIS4
+	0x80170004,
+	0x80180000, // Use AGC:no
+	0x80170020,
+	0x80180000, // Tx PostEq Mode 0x0000:Off
+	0x800C0107,
+	0x800D0001, // Tri-state PCM0
+	0x800C0207,
+	0x800D0001, // Tri-state PCM1
 };
 
 unsigned int phonecall_headset[] = {
 	0x80260015, // Select audio routing 21
 	0x80170002,
-	0x80180000, // Select CT Mic configuration
+	0x80180003, // Select one Mic configuration
 	0x800C0400,
-	0x800D0001, // Set ADC1 gain to +6dB
-	0x801B0000, // Set Digital input gain to 0dB
-	0x80150000, // Set Digital output gain to 0dB
-	0x80230000, // Set Downlink digital gain to 0dB
-	0x801C0000, // Set Voice Processing off (bypass mode)
+	0x800D0004, // Set ADC1 gain to +24dB
+	0x801C0000, // Set Voice Processing off
+	0x800C0107,
+	0x800D0001, // Tri-state PCM0
+	0x800C0207,
+	0x800D0001, // Tri-state PCM1
 };
 
 unsigned int phonecall_speaker[] = {
@@ -308,40 +352,79 @@ unsigned int phonecall_speaker[] = {
 	0x80180002, // Select FT Mic configuration
 	0x800C0300,
 	0x800D0002, // Set ADC0 gain to +12dB
-	0x801B0000, // Set Digital input gain to 0dB
-	0x80150000, // Set Digital output gain to 0dB
-	0x80230000, // Set Downlink digital gain to 0dB
-	0x801C0000, // Set Voice Processing off (bypass mode)
+	0x801B000B, // Set Pri Digital input gain to 11dB
+	0x80150001, // Set Digital output gain to 1dB
+	0x8017001A,
+	0x80180000, // Set ComfortNoise off
+	0x80170000,
+	0x80180004, // set AIS4
+	0x801C0001, // Set Voice Processing on
+	0x80170004,
+	0x80180000, // Use AGC:no
+	0x80170020,
+	0x80180000, // Tx PostEq Mode 0x0000:Off
+	0x800C0107,
+	0x800D0001, // Tri-state PCM0
+	0x800C0207,
+	0x800D0001, // Tri-state PCM1
 };
 
 unsigned int phonecall_bt[] = {
 	0x80260006, // Select audio routing 6
 	0x801B0000, // Set Digital input gain to 0dB
 	0x80150000, // Set Digital output gain to 0dB
-	0x80230000, // Set Downlink digital gain to 0dB
+	0x80150100, // Set Downlink digital gain to 0dB
 	0x801C0000, // Set Voice Processing off (bypass mode)
+	0x800C0107,
+	0x800D0000, // set PCM0 TristateEnable disable
+	0x800C0207,
+	0x800D0000, // set PCM1 TristateEnable disable
 };
 
 unsigned int INT_MIC_recording[] = {
 	0x80260007, // Select audio routing 7
+	0x80170002,
+	0x80180002, // Select FT Mic configuration
 	0x800C0300,
 	0x800D0002, // Set ADC0 gain to +12dB
-	0x801B0000, // Set Digital input gain to 0dB
-	0x80150000, // Set Digital output gain to 0dB
-	0x80230000, // Set Downlink digital gain to 0dB
-	0x801C0000, // Set Voice Processing off (bypass mode)
+	0x801B000B, // Set Pri Digital input gain to 11dB
+	0x80150001, // Set Digital output gain to 1dB
+	0x8017001A,
+	0x80180000, // Set ComfortNoise off
+	0x80170000,
+	0x80180004, // set AIS4
+	0x801C0001, // Set Voice Processing on
+	0x80170004,
+	0x80180000, // Use AGC:no
+	0x80170020,
+	0x80180000, // Tx PostEq Mode 0x0000:Off
+	0x800C0107,
+	0x800D0001, // Tri-state PCM0
+	0x800C0207,
+	0x800D0001, // Tri-state PCM1
 };
 
 unsigned int EXT_MIC_recording[] = {
 	0x80260015, // Select audio routing 21
 	0x80170002,
-	0x80180000, // Select CT Mic configuration
+	0x80180003, // Select one Mic configuration
 	0x800C0400,
-	0x800D0001, // Set ADC1 gain to +6dB
-	0x801B0000, // Set Digital input gain to 0dB
-	0x80150000, // Set Digital output gain to 0dB
-	0x80230000, // Set Downlink digital gain to 0dB
-	0x801C0000, // Set Voice Processing off (bypass mode)
+	0x800D0002, // Set ADC1 gain to +12dB
+	0x801B0009, // Set Pri Digital input gain to 9dB
+	0x80150003, // Set Digital output gain to 3dB
+	0x8017001A,
+	0x80180000, // Set ComfortNoise off
+	0x80170000,
+	0x80180004, // set AIS4
+	0x801C0001, // Set Voice Processing on
+	0x80170004,
+	0x80180000, // Use AGC:no
+	0x80170020,
+	0x80180000, // Tx PostEq Mode 0x0000:Off
+	0x800C0107,
+	0x800D0001, // Tri-state PCM0
+	0x800C0207,
+	0x800D0001, // Tri-state PCM1
 };
 
 unsigned int CAM_coder_recording[] = {
@@ -350,11 +433,50 @@ unsigned int CAM_coder_recording[] = {
 	0x80180002, // Select FT Mic configuration
 	0x800C0300,
 	0x800D0002, // Set ADC0 gain to +12dB
-	0x801B0000, // Set Digital input gain to 0dB
-	0x80150000, // Set Digital output gain to 0dB
-	0x80230000, // Set Downlink digital gain to 0dB
-	0x801C0000, // Set Voice Processing off (bypass mode)
+	0x801B000B, // Set Pri Digital input gain to 11dB
+	0x80150001, // Set Digital output gain to 1dB
+	0x8017001A,
+	0x80180000, // Set ComfortNoise off
+	0x80170000,
+	0x80180004, // set AIS4
+	0x801C0001, // Set Voice Processing on
+	0x80170004,
+	0x80180000, // Use AGC:no
+	0x80170020,
+	0x80180000, // Tx PostEq Mode 0x0000:Off
+	0x800C0107,
+	0x800D0001, // Tri-state PCM0
+	0x800C0207,
+	0x800D0001, // Tri-state PCM1
 };
+
+/*
+unsigned int Normal_VR_mode[] = {
+	0x80260016, // Select audio routing 22
+	0x80170002,
+	0x80180002, // Select FT Mic configuration
+	0x800C0300,
+	0x800D0002, // Set ADC0 gain to +12dB
+	0x801B0009, // Set Digital input gain to 9dB
+	0x80150003, // Set Digital output gain to 3dB
+	0x801C0000, // Set Voice Processing off (bypass mode)
+	0x800C0207, // Tri-state PCM1
+	0x800D0001,
+};
+
+unsigned int Headset_VR_mode[] = {
+	0x80260017, // Select audio routing 23
+	0x80170002,
+	0x80180002, // Select FT Mic configuration
+	0x800C0400,
+	0x800D0002, // Set ADC1 gain to +12dB
+	0x801B0009, // Set Digital input gain to 9dB
+	0x80150003, // Set Digital output gain to 3dB
+	0x801C0000, // Set Voice Processing off (bypass mode)
+	0x800C0207, // Tri-state PCM1
+	0x800D0001,
+};
+*/
 
 unsigned int suspend_mode[] = {
 	A100_msg_Sleep,
@@ -362,20 +484,32 @@ unsigned int suspend_mode[] = {
 
 static ssize_t chk_wakeup_a1026(void)
 {
-	int rc = 0;
+	int rc = 0, retry = 3;
 
 	if (A1026_Suspended == 1) {
+		/* Enable A1026 clock */
+		if (control_a1026_clk) {
+			gpio_set_value(pdata->gpio_a1026_clk, 1);
+			mdelay(1);
+		}
 		gpio_set_value(pdata->gpio_a1026_wakeup, 0);
 		mdelay(10);
 		gpio_set_value(pdata->gpio_a1026_wakeup, 1);
-		mdelay(1); /* Check it with Audience */
-		rc = execute_cmdmsg(0x80000000); /* issue a Sync CMD */
+		mdelay(10); /* Check it with Audience */
+
+		do {
+			rc = execute_cmdmsg(0x80000000); /* issue a Sync CMD */
+		} while ((rc < 0) && --retry);
+
 		if (rc < 0) {
-			pr_err("Wakeup A1026 Failed!\n");
-			return rc;
+			pr_err("A1026 wakeup failed!\n");
+			goto wakeup_sync_err;
 		}
+
 		A1026_Suspended = 0;
+		mdelay(20); /* 20ms before next i2c cmd to A1026 */
 	}
+wakeup_sync_err:
 	return rc;
 }
 
@@ -470,8 +604,14 @@ int a1026_set_config(char newid)
 		rc = execute_cmdmsg(*(new_list.p));
 		if (rc < 0)
 			break;
-		if (*(new_list.p) == A100_msg_Sleep)
+		if (*(new_list.p) == A100_msg_Sleep) {
 			A1026_Suspended = 1;
+			/* Disable A1026 clock */
+			if (control_a1026_clk) {
+				mdelay(120);
+				gpio_set_value(pdata->gpio_a1026_clk, 0);
+			}
+		}
 		new_list.p++;
 	}
 
@@ -487,9 +627,11 @@ int execute_cmdmsg(unsigned int msg)
 	int exe_retry, exe_pass = 0;
 	unsigned char msgbuf[4];
 	unsigned char chkbuf[4];
+	unsigned int sw_reset = 0;
 
 	memset(msgbuf, 0, sizeof(msgbuf));
 	memset(chkbuf, 0, sizeof(chkbuf));
+	sw_reset = ((A100_msg_Reset << 16) | RESET_IMMEDIATE);
 
 	msgbuf[0] = (msg >> 24) & 0xFF;
 	msgbuf[1] = (msg >> 16) & 0xFF;
@@ -501,10 +643,15 @@ int execute_cmdmsg(unsigned int msg)
 	rc = A1026I2C_TxData(msgbuf, 4);
 	if (rc < 0) {
 		pr_err("Tx A1026 Exe Cmd error\n");
+		A1026_sw_reset(sw_reset);
 		return rc;
 	}
-	exe_retry = POLLING_RETRY_CNT;
+	/* We don't need to get Ack after sending out a suspend command */
+	if (msgbuf[0] == 0x80 && msgbuf[1] == 0x10
+		&& msgbuf[2] == 0x00 && msgbuf[3] == 0x01)
+		return rc;
 
+	exe_retry = POLLING_RETRY_CNT;
 	while (exe_retry--) {
 		rc = 0;
 
@@ -512,7 +659,8 @@ int execute_cmdmsg(unsigned int msg)
 		memset(msgbuf, 0, sizeof(msgbuf));
 		rc = Read_A1026_Data_Bytes(msgbuf, 4);
 		if (rc < 0) {
-			pr_err("A1026 Read Exe cmd Ack error (%d)\n", exe_retry);
+			pr_err("A1026 Get Ack Error (%d retry cnt left)\n",
+				exe_retry);
 			continue;
 		}
 
@@ -520,14 +668,26 @@ int execute_cmdmsg(unsigned int msg)
 		&& msgbuf[2] == chkbuf[2] && msgbuf[3] == chkbuf[3]) {
 			exe_pass = 1;
 			break;
+		} else if (msgbuf[0] == 0xff && msgbuf[1] == 0xff) {
+			pr_err("A1026 Get Illegal cmd \n");
+			rc = -ENOEXEC;
+			break;
 		} else {
-			pr_info("A1026 exe_retry cnt = %d\n", exe_retry);
+			pr_info("A1026 Get Ack not match (%d retry cnt left)\n",
+				exe_retry);
+#if DEBUG
+			pr_info("msgbuf[0] = 0x%x\n", msgbuf[0]);
+			pr_info("msgbuf[1] = 0x%x\n", msgbuf[1]);
+			pr_info("msgbuf[2] = 0x%x\n", msgbuf[2]);
+			pr_info("msgbuf[3] = 0x%x\n", msgbuf[3]);
+#endif
+			rc = -EBUSY;
 		}
 	}
 
 	if (!exe_pass) {
-		pr_err("A1026 Exe Cmd ACK NG\n");
-		rc = -1;
+		pr_err("A1026 Get Cmd ACK NG (%d)\n", rc);
+		A1026_sw_reset(sw_reset);
 	}
 	return rc;
 }
@@ -696,6 +856,20 @@ static int a1026_probe(
 
 	this_client = client;
 
+	ret = gpio_request(pdata->gpio_a1026_clk, "a1026");
+	if (ret < 0) {
+		control_a1026_clk = 0;
+		goto chk_gpio_micsel;
+	}
+	control_a1026_clk = 1;
+
+	ret = gpio_direction_output(pdata->gpio_a1026_clk, 1);
+	if (ret < 0) {
+		pr_err("A1026: request clk gpio direction failed\n");
+		goto err_free_gpio_clk;
+	}
+
+chk_gpio_micsel:
 	ret = gpio_request(pdata->gpio_a1026_micsel, "a1026");
 	if (ret < 0) {
 		pr_err("A1026: gpio request mic_sel pin failed\n");
@@ -738,6 +912,8 @@ static int a1026_probe(
 		goto err_free_gpio_all;
 	}
 
+	if (control_a1026_clk)
+		gpio_set_value(pdata->gpio_a1026_clk, 1);
 	gpio_set_value(pdata->gpio_a1026_micsel, 0);
 	gpio_set_value(pdata->gpio_a1026_wakeup, 1);
 	gpio_set_value(pdata->gpio_a1026_reset, 1);
@@ -756,6 +932,9 @@ err_free_gpio:
 	gpio_free(pdata->gpio_a1026_wakeup);
 err_free_gpio_micsel:
 	gpio_free(pdata->gpio_a1026_micsel);
+err_free_gpio_clk:
+	if (control_a1026_clk)
+		gpio_free(pdata->gpio_a1026_clk);
 err_alloc_data_failed:
 	return ret;
 }

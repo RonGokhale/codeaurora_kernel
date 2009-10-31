@@ -154,7 +154,7 @@
 /* general definitions */
 #define TIMEOUT                         20	// 20ms
 #define RETRY_CNT                       5
-#define POLLING_RETRY_CNT               5
+#define POLLING_RETRY_CNT               3
 #define A1026_ERROR_CODE                0xffff
 #define A1026_SLEEP                     0
 #define A1026_ACTIVE                    1
@@ -196,6 +196,7 @@ struct a1026_platform_data {
         uint32_t gpio_a1026_wakeup;
         uint32_t gpio_a1026_reset;
         uint32_t gpio_a1026_int;
+        uint32_t gpio_a1026_clk;
 };
 
 struct a1026img {
