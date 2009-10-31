@@ -234,21 +234,22 @@ static void precompute_timing_parms(struct mdp_lcdc_info *lcdc)
 	unsigned int display_vstart;
 	unsigned int display_vend;
 
-	hsync_period = (timing->hsync_pulse_width + timing->hsync_back_porch +
+	hsync_period = (timing->hsync_back_porch +
 			fb_data->xres + timing->hsync_front_porch);
-	hsync_start_x = (timing->hsync_pulse_width + timing->hsync_back_porch);
-	hsync_end_x = hsync_period - timing->hsync_front_porch - 1;
+	hsync_start_x = timing->hsync_back_porch;
+	hsync_end_x = hsync_start_x + fb_data->xres - 1;
 
-	vsync_period = (timing->vsync_pulse_width + timing->vsync_back_porch +
+	vsync_period = (timing->vsync_back_porch +
 			fb_data->yres + timing->vsync_front_porch);
 	vsync_period *= hsync_period;
 
-	display_vstart = timing->vsync_pulse_width + timing->vsync_back_porch;
+	display_vstart = timing->vsync_back_porch;
 	display_vstart *= hsync_period;
 	display_vstart += timing->hsync_skew;
 
-	display_vend = timing->vsync_front_porch * hsync_period;
-	display_vend = vsync_period - display_vend + timing->hsync_skew - 1;
+	display_vend = (timing->vsync_back_porch + fb_data->yres) *
+		hsync_period;
+	display_vend += timing->hsync_skew - 1;
 
 	/* register values we pre-compute at init time from the timing
 	 * information in the panel info */
