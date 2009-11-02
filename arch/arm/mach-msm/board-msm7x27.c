@@ -65,13 +65,14 @@
 #include "pm.h"
 #include <linux/msm_kgsl.h>
 
-#define MSM_PMEM_MDP_SIZE	0x1600000
+#ifdef CONFIG_ARCH_MSM7X27
+#define MSM_PMEM_MDP_SIZE	0x1591000
 #define MSM_PMEM_ADSP_SIZE	0xC1B000
 #define MSM_PMEM_GPU1_SIZE	0x1600000
 #define MSM_FB_SIZE		0x200000
 #define MSM_GPU_PHYS_SIZE	SZ_2M
-
 #define PMEM_KERNEL_EBI1_SIZE	0x200000
+#endif
 
 static struct resource smc91x_resources[] = {
 	[0] = {
