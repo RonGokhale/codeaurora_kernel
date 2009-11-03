@@ -88,7 +88,7 @@ static void prevent_sleep(void)
 static void allow_sleep(void)
 {
 	mutex_lock(&idlecount_lock);
-	if (--idlecount == 1) {
+	if (--idlecount == 0) {
 		wake_unlock(&idlelock);
 		wake_unlock(&wakelock);
 	}
