@@ -297,7 +297,7 @@ uint dhd_sysioc = TRUE;
 module_param(dhd_sysioc, uint, 0);
 
 /* Watchdog interval */
-uint dhd_watchdog_ms = 1000;
+uint dhd_watchdog_ms = 100;
 module_param(dhd_watchdog_ms, uint, 0);
 
 
