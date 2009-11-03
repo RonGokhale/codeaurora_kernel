@@ -340,10 +340,8 @@ static int msm_v4l2_qbuf(struct file *f, void *pctx, struct v4l2_buffer *pb)
 		meminfo.y_off = 0;
 		/* meminfo.cbcr_off = (y_size + y_pad); */
 		meminfo.cbcr_off = (pb->bytesused + y_pad);
-		if (cnt == PREVIEW_FRAMES_NUM - 1)
-			meminfo.active = 0;
-		else
-			meminfo.active = 1;
+		meminfo.vfe_can_write =
+			cnt != PREVIEW_FRAMES_NUM - 1;
 		cnt++;
 		g_pmsm_v4l2_dev->drv->reg_pmem(g_pmsm_v4l2_dev->drv->sync,
 					       &meminfo);
@@ -371,7 +369,7 @@ static int msm_v4l2_qbuf(struct file *f, void *pctx, struct v4l2_buffer *pb)
 		meminfo.y_off = 0;
 		/* meminfo.cbcr_off = (y_size + y_pad); */
 		meminfo.cbcr_off = (y_size + y_pad);
-		meminfo.active = 1;
+		meminfo.vfe_can_write = 1;
 		g_pmsm_v4l2_dev->drv->reg_pmem(g_pmsm_v4l2_dev->drv->sync,
 					       &meminfo);
 	}

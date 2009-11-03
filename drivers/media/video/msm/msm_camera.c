@@ -257,12 +257,13 @@ static uint8_t msm_pmem_region_lookup(struct hlist_head *ptype,
 	regptr = reg;
 
 	hlist_for_each_entry_safe(region, node, n, ptype, list) {
-		if (region->info.type == pmem_type && region->info.active) {
-			*regptr = *region;
-			rc += 1;
-			if (rc >= maxcount)
-				break;
-			regptr++;
+		if (region->info.type == pmem_type &&
+			region->info.vfe_can_write) {
+				*regptr = *region;
+				rc += 1;
+				if (rc >= maxcount)
+					break;
+				regptr++;
 		}
 	}
 
@@ -272,7 +273,7 @@ static uint8_t msm_pmem_region_lookup(struct hlist_head *ptype,
 static int msm_pmem_frame_ptov_lookup(struct msm_sync *sync,
 		unsigned long pyaddr, unsigned long pcbcraddr,
 		struct msm_pmem_region **pmem_region,
-		int clear_active)
+		int take_from_vfe)
 {
 	struct hlist_node *node, *n;
 	struct msm_pmem_region *region;
@@ -281,10 +282,9 @@ static int msm_pmem_frame_ptov_lookup(struct msm_sync *sync,
 		if (pyaddr == (region->paddr + region->info.y_off) &&
 				pcbcraddr == (region->paddr +
 						region->info.cbcr_off) &&
-				region->info.active) {
+				region->info.vfe_can_write) {
 			*pmem_region = region;
-			if (clear_active)
-				region->info.active = 0;
+			region->info.vfe_can_write = !take_from_vfe;
 			return 0;
 		}
 	}
@@ -299,11 +299,11 @@ static unsigned long msm_pmem_stats_ptov_lookup(struct msm_sync *sync,
 	struct hlist_node *node, *n;
 
 	hlist_for_each_entry_safe(region, node, n, &sync->pmem_stats, list) {
-		if (addr == region->paddr && region->info.active) {
+		if (addr == region->paddr && region->info.vfe_can_write) {
 			/* offset since we could pass vaddr inside a
 			 * registered pmem buffer */
 			*fd = region->info.fd;
-			region->info.active = 0;
+			region->info.vfe_can_write = 0;
 			return (unsigned long)(region->info.vaddr);
 		}
 	}
@@ -324,8 +324,8 @@ static unsigned long msm_pmem_frame_vtop_lookup(struct msm_sync *sync,
 				(region->info.y_off == yoff) &&
 				(region->info.cbcr_off == cbcroff) &&
 				(region->info.fd == fd) &&
-				(region->info.active == 0)) {
-			region->info.active = 1;
+				(region->info.vfe_can_write == 0)) {
+			region->info.vfe_can_write = 1;
 			return region->paddr;
 		}
 	}
@@ -344,8 +344,8 @@ static unsigned long msm_pmem_stats_vtop_lookup(
 	hlist_for_each_entry_safe(region, node, n, &sync->pmem_stats, list) {
 		if (((unsigned long)(region->info.vaddr) == buffer) &&
 				(region->info.fd == fd) &&
-				region->info.active == 0) {
-			region->info.active = 1;
+				region->info.vfe_can_write == 0) {
+			region->info.vfe_can_write = 1;
 			return region->paddr;
 		}
 	}
@@ -438,7 +438,7 @@ static int __msm_get_frame(struct msm_sync *sync,
 			pphy->y_phy,
 			pphy->cbcr_phy,
 			&region,
-			1); /* mark frame in use */
+			1); /* give frame to user space */
 
 	if (rc < 0) {
 		pr_err("%s: cannot get frame, invalid lookup address "
@@ -733,7 +733,7 @@ static int msm_divert_frame(struct msm_sync *sync,
 			data->phy.y_phy,
 			data->phy.cbcr_phy,
 			&region,
-			0);  /* do clear the active flag */
+			0);  /* vfe can still write to frame */
 	if (rc < 0) {
 		CDBG("%s: msm_pmem_frame_ptov_lookup failed\n", __func__);
 		return rc;
@@ -1009,7 +1009,7 @@ static int msm_ctrl_cmd_done(struct msm_control_device *ctrl_pmsm,
 	} else
 		command->value = NULL;
 
-	CDBG("%s: end rc %d\n", __func__, rc);
+	CDBG("%s: end\n", __func__);
 
 	/* wake up control thread */
 	msm_enqueue(&ctrl_pmsm->ctrl_q, &qcmd->list_control);

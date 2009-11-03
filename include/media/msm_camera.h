@@ -216,7 +216,7 @@ struct msm_pmem_info {
 	uint32_t len;
 	uint32_t y_off; /* relative to offset */
 	uint32_t cbcr_off; /* relative to offset */
-	uint8_t active;
+	uint8_t vfe_can_write;
 };
 
 struct outputCfg {
