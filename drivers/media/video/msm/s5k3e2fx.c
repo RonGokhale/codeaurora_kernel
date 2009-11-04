@@ -11,10 +11,18 @@
 #include <mach/board.h>
 #include <mach/gpio.h>
 #include <mach/camera.h>
+#include <linux/clk.h>
 #include <linux/wakelock.h>
 
-static bool g_usPowerDownFlag;
 static uint16_t g_usModuleVersion;	/*0: rev.4, 1: rev.5 */
+
+/* prepare for modify PCLK*/
+#define REG_PLL_MULTIPLIER_LSB_VALUE	  0x90
+/* 0xA0 for PCLK=80MHz */
+/* 0x90 for PCLK=72MHz */
+
+/* prepare for modify initial gain*/
+#define REG_ANALOGUE_GAIN_CODE_GLOBAL_LSB_VALUE	0x80
 
 #define S5K3E2FX_REG_MODEL_ID   0x0000
 #define S5K3E2FX_MODEL_ID       0x3E2F
@@ -170,10 +178,10 @@ struct s5k3e2fx_i2c_reg_conf Init_setting[2][NUM_INIT_REG] = {
 	{
 	 {REG_PRE_PLL_CLK_DIV, 0x06},	/* PLL setting */
 	 {REG_PLL_MULTIPLIER_MSB, 0x00},
-	 {REG_PLL_MULTIPLIER_LSB, 0xA0}, /* from 0x88 to 0xA0 for PCLK=80MHz */
-	 {REG_VT_PIX_CLK_DIV, 0x08},	/* from 0x0A to 0x08 for PCLK=80MHz */
+	 {REG_PLL_MULTIPLIER_LSB, REG_PLL_MULTIPLIER_LSB_VALUE},
+	 {REG_VT_PIX_CLK_DIV, 0x08},
 	 {REG_VT_SYS_CLK_DIV, 0x01},
-	 {REG_OP_PIX_CLK_DIV, 0x08},	/* from 0x0A to 0x08 for PCLK=80MHz */
+	 {REG_OP_PIX_CLK_DIV, 0x08},
 	 {REG_OP_SYS_CLK_DIV, 0x01},
 /* Data Format */
 	 {REG_CCP_DATA_FORMAT_MSB, 0x0a},
@@ -260,7 +268,7 @@ struct s5k3e2fx_i2c_reg_conf Init_setting[2][NUM_INIT_REG] = {
  */
 /* AEC Setting */
 	 {REG_ANALOGUE_GAIN_CODE_GLOBAL_MSB, 0x00},
-	 {REG_ANALOGUE_GAIN_CODE_GLOBAL_LSB, 0x80},
+	 {REG_ANALOGUE_GAIN_CODE_GLOBAL_LSB, REG_ANALOGUE_GAIN_CODE_GLOBAL_LSB_VALUE},
 	 {REG_FINE_INTEGRATION_TIME, 0x02},
 	 {REG_COARSE_INTEGRATION_TIME, 0x03},
 /* Preview LC config Setting */
@@ -284,10 +292,10 @@ struct s5k3e2fx_i2c_reg_conf Init_setting[2][NUM_INIT_REG] = {
 	{
 	 {REG_PRE_PLL_CLK_DIV, 0x06}, /* PLL setting */
 	 {REG_PLL_MULTIPLIER_MSB, 0x00},
-	 {REG_PLL_MULTIPLIER_LSB, 0xA0}, /* from 0x88 to 0xA0 for PCLK=80MHz */
-	 {REG_VT_PIX_CLK_DIV, 0x08}, /* from 0x0A to 0x08 for PCLK=80MHz */
+	 {REG_PLL_MULTIPLIER_LSB, REG_PLL_MULTIPLIER_LSB_VALUE},
+	 {REG_VT_PIX_CLK_DIV, 0x08},
 	 {REG_VT_SYS_CLK_DIV, 0x01},
-	 {REG_OP_PIX_CLK_DIV, 0x08}, /* from 0x0A to 0x08 for PCLK=80MHz */
+	 {REG_OP_PIX_CLK_DIV, 0x08},
 	 {REG_OP_SYS_CLK_DIV, 0x01},
 /* Data Format */
 	 {REG_CCP_DATA_FORMAT_MSB, 0x0a},
@@ -374,7 +382,7 @@ struct s5k3e2fx_i2c_reg_conf Init_setting[2][NUM_INIT_REG] = {
  */
 /* AEC Setting */
 	 {REG_ANALOGUE_GAIN_CODE_GLOBAL_MSB, 0x00},
-	 {REG_ANALOGUE_GAIN_CODE_GLOBAL_LSB, 0x80},
+	 {REG_ANALOGUE_GAIN_CODE_GLOBAL_LSB, REG_ANALOGUE_GAIN_CODE_GLOBAL_LSB_VALUE},
 	 {REG_FINE_INTEGRATION_TIME, 0x02},
 	 {REG_COARSE_INTEGRATION_TIME, 0x03},
 /* Preview LC config Setting */
@@ -1415,7 +1423,8 @@ struct reg_struct s5k3e2fx_reg_pat[2] = {
 /* PLL setting */
 	 0x06,			/* pre_pll_clk_div               REG=0x0305 */
 	 0x00,			/* pll_multiplier_msb            REG=0x0306 */
-	 0xA0,			/* pll_multiplier_lsb            REG=0x0307 */
+	 REG_PLL_MULTIPLIER_LSB_VALUE,
+				/* pll_multiplier_lsb            REG=0x0307 */
 	 0x08,			/* vt_pix_clk_div                REG=0x0301 */
 	 0x01,			/* vt_sys_clk_div                REG=0x0303 */
 	 0x08,			/* op_pix_clk_div                REG=0x0309 */
@@ -1503,7 +1512,8 @@ struct reg_struct s5k3e2fx_reg_pat[2] = {
  */
 /* AEC Setting */
 	 0x00,			/* analogue_gain_code_global_msb REG=0x0204 */
-	 0x80,			/* analogue_gain_code_global_lsb REG=0x0205 */
+	 REG_ANALOGUE_GAIN_CODE_GLOBAL_LSB_VALUE,
+				/* analogue_gain_code_global_lsb REG=0x0205 */
 	 0x02,			/* fine_integration_time         REG=0x0200 */
 	 0x03,			/* coarse_integration_time       REG=0x0202 */
 /* LC Preview/Snapshot difference register. */
@@ -1531,7 +1541,8 @@ struct reg_struct s5k3e2fx_reg_pat[2] = {
 /* PLL setting */
 	 0x06,			/* pre_pll_clk_div               REG=0x0305 */
 	 0x00,			/* pll_multiplier_msb            REG=0x0306 */
-	 0xA0,			/* pll_multiplier_lsb            REG=0x0307 */
+	 REG_PLL_MULTIPLIER_LSB_VALUE,
+				/* pll_multiplier_lsb            REG=0x0307 */
 	 0x08,			/* vt_pix_clk_div                REG=0x0301 */
 	 0x01,			/* vt_sys_clk_div                REG=0x0303 */
 	 0x08,			/* op_pix_clk_div                REG=0x0309 */
@@ -1620,7 +1631,8 @@ struct reg_struct s5k3e2fx_reg_pat[2] = {
  */
 /* AEC Setting */
 	 0x00,			/* analogue_gain_code_global_msb REG=0x0204 */
-	 0x80,			/* analogue_gain_code_global_lsb REG=0x0205 */
+	 REG_ANALOGUE_GAIN_CODE_GLOBAL_LSB_VALUE,
+				/* analogue_gain_code_global_lsb REG=0x0205 */
 	 0x02,			/* fine_integration_time         REG=0x0200 */
 	 0x03,			/* coarse_integration_time       REG=0x0202 */
 /* Add LC Preview/Snapshot diff register. */
@@ -1672,7 +1684,6 @@ struct s5k3e2fx_ctrl {
 
 static struct s5k3e2fx_ctrl *s5k3e2fx_ctrl;
 static DECLARE_WAIT_QUEUE_HEAD(s5k3e2fx_wait_queue);
-DEFINE_MUTEX(s5k3e2fx_mutex);
 
 #define MAX_I2C_RETRIES 20
 static int i2c_transfer_retry(struct i2c_adapter *adap,
@@ -1830,29 +1841,27 @@ static int s5k3e2fx_probe_init_sensor(const struct msm_camera_sensor_info *data)
 	uint16_t chipid = 0;
 	uint16_t modulever = 0;
 
-	pr_info("s5k3e2fx: gpio_request:%d\n", data->sensor_reset);
+	CDBG("s5k3e2fx: gpio_request: %d\n", data->sensor_reset);
 	rc = gpio_request(data->sensor_reset, "s5k3e2fx");
 	if (!rc)
 		gpio_direction_output(data->sensor_reset, 1);
 	else {
-		pr_info("s5k3e2fx: request GPIO(sensor_reset) :%d faile\n",
+		pr_err("s5k3e2fx: request GPIO(sensor_reset): %d failed\n",
 			data->sensor_reset);
 		goto init_probe_fail;
 	}
-	pr_info("s5k3e2fx: gpio_free:%d line:%d\n", data->sensor_reset,
-		__LINE__);
+	CDBG("s5k3e2fx: gpio_free: %d\n", data->sensor_reset);
+
 	gpio_free(data->sensor_reset);
 
 	msleep(20);
 
 	CDBG("s5k3e2fx_sensor_init(): reseting sensor.\n");
 
-	CDBG("%s %s:%d %d\n", __FILE__, __func__, __LINE__,
-	     s5k3e2fx_client->addr);
 	rc = s5k3e2fx_i2c_read_w(s5k3e2fx_client->addr, S5K3E2FX_REG_MODEL_ID,
 				 &chipid);
 	if (rc < 0) {
-		pr_err("S5K3E2FX read model_id failed, line=%d\n", __LINE__);
+		pr_err("s5k3e2fx: read model_id failed: %d\n", rc);
 		goto init_probe_fail;
 	}
 	CDBG("s5k3e2fx_sensor_init(): model_id=0x%X\n", chipid);
@@ -1881,7 +1890,7 @@ static int s5k3e2fx_probe_init_sensor(const struct msm_camera_sensor_info *data)
 	goto init_probe_done;
 
 init_probe_fail:
-	pr_info("s5k3e2fx: prob init sensor faile\n");
+	pr_err("s5k3e2fx: prob init sensor failed\n");
 init_probe_done:
 	return rc;
 }
@@ -1911,7 +1920,7 @@ static int s5k3e2fx_i2c_probe(struct i2c_client *client,
 
 	s5k3e2fx_sensorw = kzalloc(sizeof(struct s5k3e2fx_work), GFP_KERNEL);
 	if (!s5k3e2fx_sensorw) {
-		pr_err("kzalloc failed.\n");
+		pr_err("kzalloc failed\n");
 		rc = -ENOMEM;
 		goto probe_failure;
 	}
@@ -2090,69 +2099,69 @@ static int s5k3e2fx_setting(enum msm_s_reg_update rupdate,
 				     "[s5k3e2fx.c s5k3e2fx_setting]\r\n",
 				     s5k3e2fx_reg_pat[rt].binning_enable);
 
-				if (g_usPowerDownFlag == true) {
-					g_usPowerDownFlag = false;
-				} else {
-					rc = s5k3e2fx_i2c_write_table(&tbl_1[0],
-								ARRAY_SIZE
-								(tbl_1));
-					if (rc < 0)
-						return rc;
+				rc = s5k3e2fx_i2c_write_table(&tbl_1[0],
+							ARRAY_SIZE
+							(tbl_1));
+				if (rc < 0) {
+					pr_err("UPDATE_PERIODIC, tb1_1 failed");
+					return rc;
+				}
 
-					num_lperf =
-					    (uint16_t) ((s5k3e2fx_reg_pat[rt].
-							 frame_length_lines_msb
-							 << 8) & 0xFF00) +
-					    s5k3e2fx_reg_pat[rt].
-					    frame_length_lines_lsb;
+				num_lperf =
+				    (uint16_t) ((s5k3e2fx_reg_pat[rt].
+						 frame_length_lines_msb
+						 << 8) & 0xFF00) +
+				    s5k3e2fx_reg_pat[rt].
+				    frame_length_lines_lsb;
 
-					num_lperf =
-					    num_lperf *
-					    s5k3e2fx_ctrl->fps_divider / 0x0400;
+				num_lperf =
+				    num_lperf *
+				    s5k3e2fx_ctrl->fps_divider / 0x0400;
 
-					tbl_2[0] =
-					    (struct s5k3e2fx_i2c_reg_conf) {
+				tbl_2[0] =
+				    (struct s5k3e2fx_i2c_reg_conf) {
 					REG_FRAME_LENGTH_LINES_MSB,
-						    (num_lperf & 0xFF00) >> 8};
-					tbl_2[1] =
-					    (struct s5k3e2fx_i2c_reg_conf) {
+					    (num_lperf & 0xFF00) >> 8};
+				tbl_2[1] =
+				    (struct s5k3e2fx_i2c_reg_conf) {
 					REG_FRAME_LENGTH_LINES_LSB,
-						    (num_lperf & 0x00FF)};
+					    (num_lperf & 0x00FF)};
 
-					rc = s5k3e2fx_i2c_write_table(&tbl_2[0],
-								ARRAY_SIZE
-								(tbl_2));
-					if (rc < 0)
-						return rc;
+				rc = s5k3e2fx_i2c_write_table(&tbl_2[0],
+							ARRAY_SIZE
+							(tbl_2));
+				if (rc < 0) {
+					pr_err("UPDATE_PERIODIC, tb1_2 failed");
+					return rc;
+				}
 
-					/* only for evt5 */
-					if (g_usModuleVersion == 1) {
-						rc = s5k3e2fx_i2c_write_table
-						    (&tbl_only_for_EVT5[rt][0],
-						     2);
-						if (rc < 0)
-							return rc;
-					}
-
-					/* Fixes CAMIF errors */
-					if (rt == S_RES_CAPTURE)
-						msleep(25);
-
-					rc = s5k3e2fx_i2c_write_b
-					    (s5k3e2fx_client->addr,
-					     S5K3E2FX_REG_MODE_SELECT,
-					     S5K3E2FX_MODE_SELECT_STREAM);
-					if (rc < 0)
-						return rc;
-
-					mdelay(5);
-
-					rc = s5k3e2fx_test(s5k3e2fx_ctrl->
-							   set_test);
+				/* only for evt5 */
+				if (g_usModuleVersion == 1) {
+					rc = s5k3e2fx_i2c_write_table
+					    (&tbl_only_for_EVT5[rt][0],
+					     2);
 					if (rc < 0)
 						return rc;
 				}
-			}
+
+				/* Fixes CAMIF errors */
+				if (rt == S_RES_CAPTURE)
+					msleep(25);
+
+				rc = s5k3e2fx_i2c_write_b
+				    (s5k3e2fx_client->addr,
+				     S5K3E2FX_REG_MODE_SELECT,
+				     S5K3E2FX_MODE_SELECT_STREAM);
+				if (rc < 0)
+					return rc;
+
+				mdelay(5);
+
+				rc = s5k3e2fx_test(s5k3e2fx_ctrl->
+						   set_test);
+				if (rc < 0)
+					return rc;
+				}
 		}
 		break; /* UPDATE_PERIODIC */
 
@@ -2217,7 +2226,6 @@ static int s5k3e2fx_setting(enum msm_s_reg_update rupdate,
 					 s5k3e2fx_reg_pat[rt].
 					 line_length_pck_lsb},
 					/* MSR setting */
-
 					{REG_ANALOGUE_GAIN_CODE_GLOBAL_MSB,
 					 s5k3e2fx_reg_pat[rt].
 					 analogue_gain_code_global_msb},
@@ -2233,41 +2241,36 @@ static int s5k3e2fx_setting(enum msm_s_reg_update rupdate,
 					{S5K3E2FX_REG_MODE_SELECT,
 					 S5K3E2FX_MODE_SELECT_STREAM},
 				};
-				{
-					unsigned short rData = 0;
-					mdelay(1);
-					s5k3e2fx_i2c_read_b(s5k3e2fx_client->
-							    addr,
-							    REG_3150_RESERVED,
-							    &rData);
-					s5k3e2fx_i2c_write_b(s5k3e2fx_client->
-							     addr,
-							     REG_3150_RESERVED,
-							     (rData & 0xFFFE));
-					mdelay(1);
-					s5k3e2fx_i2c_read_b(s5k3e2fx_client->
-							    addr,
-							    REG_TYPE1_AF_ENABLE,
-							    &rData);
-					s5k3e2fx_i2c_write_b(s5k3e2fx_client->
-							addr,
-							REG_TYPE1_AF_ENABLE,
-							(rData | 0x0001));
-					mdelay(1);
-				}
-				if (g_usPowerDownFlag == true) {
-					s5k3e2fx_i2c_write_b(s5k3e2fx_client->
+				unsigned short rData = 0;
+				mdelay(1);
+				s5k3e2fx_i2c_read_b(s5k3e2fx_client->
+						    addr,
+						    REG_3150_RESERVED,
+						    &rData);
+				s5k3e2fx_i2c_write_b(s5k3e2fx_client->
+						     addr,
+						     REG_3150_RESERVED,
+						     (rData & 0xFFFE));
+				mdelay(1);
+				s5k3e2fx_i2c_read_b(s5k3e2fx_client->
+						    addr,
+						    REG_TYPE1_AF_ENABLE,
+						    &rData);
+				s5k3e2fx_i2c_write_b(s5k3e2fx_client->
 						addr,
-						S5K3E2FX_REG_MODE_SELECT,
-						S5K3E2FX_MODE_SELECT_STREAM);
-				} else {
-					/* reset fps_divider */
-					s5k3e2fx_ctrl->fps_divider = 1 * 0x0400;
-					rc = s5k3e2fx_i2c_write_table(&tbl_3[0],
-								ARRAY_SIZE
-								(tbl_3));
-					if (rc < 0)
-						return rc;
+						REG_TYPE1_AF_ENABLE,
+						(rData | 0x0001));
+				mdelay(1);
+
+				/* reset fps_divider */
+				s5k3e2fx_ctrl->fps_divider = 1 * 0x0400;
+				/* write REG_INIT registers */
+				rc = s5k3e2fx_i2c_write_table(&tbl_3[0],
+							ARRAY_SIZE
+							(tbl_3));
+				if (rc < 0) {
+					pr_err("REG_INIT failed, rc=%d\n", rc);
+					return rc;
 				}
 			}
 		}
@@ -2319,15 +2322,9 @@ static int s5k3e2fx_sensor_open_init(const struct msm_camera_sensor_info *data)
 		rc = s5k3e2fx_setting(S_REG_INIT, S_RES_CAPTURE);
 
 	if (rc < 0) {
-		CDBG("s5k3e2fx_setting failed. rc = %d\n", rc);
+		pr_err("s5k3e2fx_setting failed. rc = %d\n", rc);
 		goto init_fail1;
 	}
-
-	/* initialize AF */
-	rc = s5k3e2fx_i2c_write_b(s5k3e2fx_client->addr,
-				0x3146, 0x3A);
-	if (rc < 0)
-		goto init_fail1;
 
 	rc = s5k3e2fx_i2c_write_b(s5k3e2fx_client->addr,
 				0x3130, 0x03);
@@ -2346,28 +2343,27 @@ static void s5k3e2fx_suspend_sensor(void)
 {
 	unsigned short rData = 0;
 	 /*AF*/
-	    s5k3e2fx_i2c_read_b(s5k3e2fx_client->addr,
-				REG_TYPE1_AF_ENABLE, &rData);
+	s5k3e2fx_i2c_read_b(s5k3e2fx_client->addr,
+			REG_TYPE1_AF_ENABLE, &rData);
 	s5k3e2fx_i2c_write_b(s5k3e2fx_client->addr,
-			     REG_TYPE1_AF_ENABLE, (rData & 0xFFFE));
+			REG_TYPE1_AF_ENABLE, (rData & 0xFFFE));
 	mdelay(1);
 	s5k3e2fx_i2c_write_b(s5k3e2fx_client->addr,
-			     S5K3E2FX_REG_MODE_SELECT,
-			     S5K3E2FX_MODE_SELECT_SW_STANDBY);
+			S5K3E2FX_REG_MODE_SELECT,
+			S5K3E2FX_MODE_SELECT_SW_STANDBY);
 	msleep(210);		/*for 5FPS */
 	/* hi z */
 	s5k3e2fx_i2c_read_b(s5k3e2fx_client->addr, REG_3150_RESERVED, &rData);
 	s5k3e2fx_i2c_write_b(s5k3e2fx_client->addr,
-			     REG_3150_RESERVED, (rData | 0x0001));
-	mdelay(1);		/* for 5FPS */
+			REG_3150_RESERVED, (rData | 0x0001));
+	mdelay(1);
+
 }
 
 static int s5k3e2fx_power_down(void)
 {
-	int rc = 0;
+	int rc = -EBADF;
 	s5k3e2fx_suspend_sensor();
-	g_usPowerDownFlag = true;
-
 	return rc;
 }
 
@@ -2375,22 +2371,15 @@ static int s5k3e2fx_sensor_release(void)
 {
 	int rc = -EBADF;
 
-	mutex_lock(&s5k3e2fx_mutex);
-
-#if 0 /* disable HW standby. */
-	s5k3e2fx_power_down();
-	gpio_direction_output(s5k3e2fx_ctrl->sensordata->sensor_reset, 0);
-#endif
 	s5k3e2fx_suspend_sensor();
-	msleep(10);
-	/*gpio_free(s5k3e2fx_ctrl->sensordata->sensor_reset); */
 
 	kfree(s5k3e2fx_ctrl);
 	s5k3e2fx_ctrl = NULL;
 
-	CDBG("s5k3e2fx_release completed\n");
 	allow_suspend();
-	mutex_unlock(&s5k3e2fx_mutex);
+
+	CDBG("s5k3e2fx_release completed\n");
+
 	return rc;
 }
 
@@ -2495,7 +2484,7 @@ static int s5k3e2fx_set_fps(struct fps_cfg *fps)
 
 	s5k3e2fx_ctrl->fps_divider = fps->fps_div;
 
-	pr_info("s5k3e2fx_ctrl->fps_divider = %d\n",
+	CDBG("s5k3e2fx_ctrl->fps_divider = %d\n",
 		s5k3e2fx_ctrl->fps_divider);
 
 	rc = s5k3e2fx_i2c_write_b(s5k3e2fx_client->addr,
@@ -2570,7 +2559,7 @@ static int s5k3e2fx_write_exp_gain(uint16_t gain, uint32_t line)
 				  REG_GROUPED_PARAMETER_HOLD,
 				  GROUPED_PARAMETER_HOLD);
 	if (rc < 0) {
-		CDBG("s5k3e2fx_i2c_write_b failed... Line:%d \n", __LINE__);
+		pr_err("s5k3e2fx_i2c_write_b failed on line %d\n", __LINE__);
 		return rc;
 	}
 
@@ -2635,7 +2624,7 @@ static int s5k3e2fx_write_exp_gain(uint16_t gain, uint32_t line)
 				  REG_GROUPED_PARAMETER_HOLD,
 				  GROUPED_PARAMETER_UPDATE);
 	if (rc < 0) {
-		CDBG("s5k3e2fx_i2c_write_b failed... Line:%d \n", __LINE__);
+		pr_err("s5k3e2fx_i2c_write_b failed on line %d\n", __LINE__);
 		return rc;
 	}
 write_gain_done:
@@ -2662,15 +2651,12 @@ static int s5k3e2fx_video_config(int mode, int res)
 		rc = s5k3e2fx_setting(S_UPDATE_PERIODIC, S_RES_PREVIEW);
 		if (rc < 0)
 			return rc;
-
-		CDBG("s5k3e2fx sensor configuration done!\n");
 		break;
 
 	case S_FULL_SIZE:
 		rc = s5k3e2fx_setting(S_UPDATE_PERIODIC, S_RES_CAPTURE);
 		if (rc < 0)
 			return rc;
-
 		break;
 
 	default:
@@ -2683,59 +2669,6 @@ static int s5k3e2fx_video_config(int mode, int res)
 
 	rc = s5k3e2fx_write_exp_gain(s5k3e2fx_ctrl->my_reg_gain,
 				     s5k3e2fx_ctrl->my_reg_line_count);
-
-	return rc;
-}
-
-static int s5k3e2fx_snapshot_config(int mode)
-{
-	int rc = 0;
-
-	rc = s5k3e2fx_setting(S_UPDATE_PERIODIC, S_RES_CAPTURE);
-	if (rc < 0)
-		return rc;
-
-	s5k3e2fx_ctrl->curr_res = s5k3e2fx_ctrl->pict_res;
-	s5k3e2fx_ctrl->sensormode = mode;
-
-	return rc;
-}
-
-static int s5k3e2fx_raw_snapshot_config(int mode)
-{
-	int rc = 0;
-
-	rc = s5k3e2fx_setting(S_UPDATE_PERIODIC, S_RES_CAPTURE);
-	if (rc < 0)
-		return rc;
-
-	s5k3e2fx_ctrl->curr_res = s5k3e2fx_ctrl->pict_res;
-	s5k3e2fx_ctrl->sensormode = mode;
-
-	return rc;
-}
-
-static int s5k3e2fx_set_sensor_mode(int mode, int res)
-{
-	int rc = 0;
-
-	switch (mode) {
-	case SENSOR_PREVIEW_MODE:
-		rc = s5k3e2fx_video_config(mode, res);
-		break;
-
-	case SENSOR_SNAPSHOT_MODE:
-		rc = s5k3e2fx_snapshot_config(mode);
-		break;
-
-	case SENSOR_RAW_SNAPSHOT_MODE:
-		rc = s5k3e2fx_raw_snapshot_config(mode);
-		break;
-
-	default:
-		rc = -EINVAL;
-		break;
-	}
 
 	return rc;
 }
@@ -2764,7 +2697,7 @@ static int s5k3e2fx_move_focus(int direction, int num_steps)
 	int16_t step_direction;
 	int16_t actual_step;
 	int16_t next_pos, pos_offset;
-	int16_t init_code = 50;
+	int16_t init_code = 0;
 	uint8_t next_pos_msb, next_pos_lsb;
 	int16_t s_move[5];
 	uint32_t gain;		/* Q10 format */
@@ -2822,8 +2755,10 @@ static int s5k3e2fx_move_focus(int direction, int num_steps)
 
 		pos_offset = next_pos;
 		s5k3e2fx_ctrl->curr_lens_pos = pos_offset - init_code;
-		if (i < 4)
-			mdelay(3);
+		if (num_steps > 1)
+			mdelay(6);
+		else
+			mdelay(4);
 	}
 
 	return rc;
@@ -2837,8 +2772,6 @@ static int s5k3e2fx_sensor_config(void __user *argp)
 	if (copy_from_user(&cdata,
 			   (void *)argp, sizeof(struct sensor_cfg_data)))
 		return -EFAULT;
-
-	mutex_lock(&s5k3e2fx_mutex);
 
 	CDBG("%s: cfgtype = %d\n", __func__, cdata.cfgtype);
 	switch (cdata.cfgtype) {
@@ -2902,13 +2835,12 @@ static int s5k3e2fx_sensor_config(void __user *argp)
 		break;
 
 	case CFG_SET_PICT_EXP_GAIN:
-		CDBG("Line:%d CFG_SET_PICT_EXP_GAIN \n", __LINE__);
 		rc = s5k3e2fx_set_pict_exp_gain(cdata.cfg.exp_gain.gain,
 						cdata.cfg.exp_gain.line);
 		break;
 
 	case CFG_SET_MODE:
-		rc = s5k3e2fx_set_sensor_mode(cdata.mode, cdata.rs);
+		rc = s5k3e2fx_video_config(cdata.mode, cdata.rs);
 		break;
 
 	case CFG_PWR_DOWN:
@@ -2936,7 +2868,6 @@ static int s5k3e2fx_sensor_config(void __user *argp)
 	}
 
 	prevent_suspend();
-	mutex_unlock(&s5k3e2fx_mutex);
 	return rc;
 }
 
@@ -2944,9 +2875,9 @@ static int s5k3e2fx_sensor_probe(const struct msm_camera_sensor_info *info,
 				 struct msm_sensor_ctrl *s)
 {
 	int rc = 0;
+	pr_info("%s\n", __func__);
 
 	rc = i2c_add_driver(&s5k3e2fx_i2c_driver);
-	pr_info("%s:%d\n", __func__, __LINE__);
 	if (rc < 0 || s5k3e2fx_client == NULL) {
 		rc = -ENOTSUPP;
 		goto probe_fail;
@@ -2955,7 +2886,6 @@ static int s5k3e2fx_sensor_probe(const struct msm_camera_sensor_info *info,
 	msm_camio_clk_rate_set(S5K3E2FX_DEF_MCLK);
 	msleep(20);
 
-	pr_info("%s:%d\n", __func__, __LINE__);
 	rc = s5k3e2fx_probe_init_sensor(info);
 	if (rc < 0)
 		goto probe_fail;
@@ -2964,12 +2894,10 @@ static int s5k3e2fx_sensor_probe(const struct msm_camera_sensor_info *info,
 	s5k3e2fx_probe_init_lens_correction(info);
 	init_suspend();
 
-	pr_info("%s:%d\n", __func__, __LINE__);
 	s->s_init = s5k3e2fx_sensor_open_init;
 	s->s_release = s5k3e2fx_sensor_release;
 	s->s_config = s5k3e2fx_sensor_config;
 
-	pr_info("%s:%d\n", __func__, __LINE__);
 	return rc;
 
 probe_fail:
@@ -2985,16 +2913,16 @@ static int s5k3e2fx_suspend(struct platform_device *pdev, pm_message_t state)
 	if (!sinfo->need_suspend)
 		return 0;
 
-	pr_info("s5k3e2fx: camera suspend\n");
+	CDBG("s5k3e2fx: camera suspend\n");
 	rc = gpio_request(sinfo->sensor_reset, "s5k3e2fx");
 	if (!rc)
 		gpio_direction_output(sinfo->sensor_reset, 0);
 	else {
-		pr_info("s5k3e2fx: request GPIO(sensor_reset) :%d faile\n",
+		pr_err("s5k3e2fx: request GPIO(sensor_reset) :%d faile\n",
 			sinfo->sensor_reset);
 		goto suspend_fail;
 	}
-	pr_info("s5k3e2fx: gpio_free:%d line:%d\n", sinfo->sensor_reset,
+	CDBG("s5k3e2fx: gpio_free:%d line:%d\n", sinfo->sensor_reset,
 		__LINE__);
 	gpio_free(sinfo->sensor_reset);
 
@@ -3085,18 +3013,18 @@ static int s5k3e2fx_resume(struct platform_device *pdev)
 	if (!sinfo->need_suspend)
 		return 0;
 
-	pr_info("s5k3e2fx_resume\n");
+	CDBG("s5k3e2fx_resume\n");
 	/*init msm,clk ,GPIO,enable */
 	msm_camio_probe_on(pdev);
 	msm_camio_clk_enable(CAMIO_MDC_CLK);
 
-	pr_info("msm_camio_probe_on\n");
+	CDBG("msm_camio_probe_on\n");
 	/*read sensor ID and pull down reset */
 	msm_camio_clk_rate_set(S5K3E2FX_DEF_MCLK);
-	pr_info("msm_camio_clk_rate_set\n");
+	CDBG("msm_camio_clk_rate_set\n");
 	msleep(20);
 	s5k3e2fx_probe_init_sensor(sinfo);
-	pr_info("s5k3e2fx_probe_init_sensor\n");
+	CDBG("s5k3e2fx_probe_init_sensor\n");
 	/*init sensor,streaming on, SW init streaming off */
 	s5k3e2fx_sensor_resume_setting();
 	/*lens sharding */
@@ -3119,7 +3047,7 @@ static int s5k3e2fx_resume(struct platform_device *pdev)
 	/*set RST to low */
 	msm_camio_probe_off(pdev);
 	msm_camio_clk_disable(CAMIO_MDC_CLK);
-	pr_info("s5k3e2fx:resume done\n");
+	CDBG("s5k3e2fx:resume done\n");
 	return rc;
 }
 
