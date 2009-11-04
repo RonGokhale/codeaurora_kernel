@@ -23,7 +23,6 @@
 #include <linux/list.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
-#include <linux/workqueue.h>
 #include "msm_vfe8x_proc.h"
 #include <media/msm_camera.h>
 #include <mach/board.h>
@@ -90,7 +89,7 @@ struct msm_vfe8x_ctrl {
 	struct msm_vfe_callback *resp;
 	struct vfe_frame_extra extdata;
 
-	struct isr_queue_cmd irqs[10];
+	struct isr_queue_cmd irqs[5];
 	spinlock_t irqs_lock;
 	int irq_get;
 	int irq_put;
@@ -750,7 +749,7 @@ static void vfe_proc_ops(enum VFE_MESSAGE_ID id, void *data)
 	rp = ctrl->resp->vfe_alloc(sizeof(*rp) +
 					(vfe_funcs[id].fn ? sizeof(*msg) : 0),
 					ctrl->syncdata,
-					GFP_KERNEL);
+					GFP_ATOMIC);
 	if (!rp) {
 		pr_err("%s: out of memory\n", __func__);
 		return;
@@ -780,7 +779,7 @@ static void vfe_proc_ops(enum VFE_MESSAGE_ID id, void *data)
 		}
 	}
 
-	ctrl->resp->vfe_resp(rp, MSM_CAM_Q_VFE_MSG, ctrl->syncdata, GFP_KERNEL);
+	ctrl->resp->vfe_resp(rp, MSM_CAM_Q_VFE_MSG, ctrl->syncdata, GFP_ATOMIC);
 }
 
 static boolean vfe_send_bus_overflow_msg(struct msm_vfe_resp *rp,
@@ -1580,7 +1579,7 @@ static void vfe_process_output_path_irq(struct vfe_interrupt_status *irqstatus)
 	}
 }
 
-static void __vfe_do_work(struct isr_queue_cmd *qcmd)
+static void __vfe_do_tasklet(struct isr_queue_cmd *qcmd)
 {
 	if (qcmd->vfeInterruptStatus.regUpdateIrq) {
 		CDBG("irq regUpdateIrq\n");
@@ -1673,7 +1672,7 @@ static void put_irq_cmd(void)
 	spin_unlock_irqrestore(ctrl->irqs_lock, flags);
 }
 
-static void vfe_do_work(struct work_struct *work)
+static void vfe_do_tasklet(unsigned long data)
 {
 	int cnt = 0;
 	struct isr_queue_cmd *qcmd = NULL;
@@ -1681,16 +1680,16 @@ static void vfe_do_work(struct work_struct *work)
 	CDBG("%s\n", __func__);
 
 	while ((qcmd = next_irq_cmd())) {
-		__vfe_do_work(qcmd);
+		__vfe_do_tasklet(qcmd);
 		put_irq_cmd();
 		cnt++;
 	}
 
-	if (cnt > ARRAY_SIZE(ctrl->irqs)/2)
+	if (cnt > 1)
 		pr_info("%s: serviced %d vfe interrupts\n", __func__, cnt);
 }
 
-DECLARE_WORK(vfe_work, vfe_do_work);
+DECLARE_TASKLET(vfe_tasklet, vfe_do_tasklet, 0);
 
 static irqreturn_t vfe_parse_irq(int irq_num, void *data)
 {
@@ -1728,7 +1727,7 @@ static irqreturn_t vfe_parse_irq(int irq_num, void *data)
 	vfe_get_camif_status(&qcmd->vfeCamifStatusLocal, &irq);
 	vfe_get_performance_monitor_data(&qcmd->vfePmData, &irq);
 	spin_unlock_irqrestore(&ctrl->irqs_lock, flags);
-	schedule_work(&vfe_work);
+	tasklet_schedule(&vfe_tasklet);
 
 done:
 	/* clear the pending interrupt of the same kind. */
