@@ -405,6 +405,9 @@ static int msm_get_frame(struct msm_sync *sync, void __user *arg)
 	if (rc < 0)
 		return rc;
 
+	/* read the frame after the status has been read */
+	rmb();
+
 	if (sync->croplen) {
 		if (frame.croplen > sync->croplen) {
 			pr_err("msm_get_frame: invalid frame croplen %d\n",
@@ -658,6 +661,9 @@ static int msm_get_stats(struct msm_sync *sync, void __user *arg)
 	spin_unlock_irqrestore(&sync->msg_event_q_lock, flags);
 
 	CDBG("=== received from DSP === %d\n", qcmd->type);
+
+	/* order the reads of stat/snapshot buffers */
+	rmb();
 
 	switch (qcmd->type) {
 	case MSM_CAM_Q_VFE_EVT:
