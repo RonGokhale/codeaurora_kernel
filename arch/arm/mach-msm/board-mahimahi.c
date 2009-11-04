@@ -31,8 +31,6 @@
 #include <linux/capella_cm3602.h>
 #include <linux/akm8973.h>
 #include <linux/regulator/machine.h>
-#include <linux/earlysuspend.h>
-#include <linux/clk.h>
 #include <../../../drivers/staging/android/timed_gpio.h>
 
 #include <asm/mach-types.h>
@@ -65,7 +63,6 @@ extern void __init mahimahi_audio_init(void);
 extern int microp_headset_has_mic(void);
 
 static void config_gpio_table(uint32_t *table, int len);
-static struct clk *axi_clk;
 
 static char *mahimahi_usb_functions[] = {
 	"usb_mass_storage",
@@ -793,39 +790,12 @@ static void mahimahi_reset(void)
 
 int mahimahi_init_mmc(int sysrev, unsigned debug_uart);
 
-/* axi 128 screen on, 61mhz screen off */
-static void axi_early_suspend(struct early_suspend *handler) {
-	clk_set_rate(axi_clk, 0);
-}
-
-static void axi_late_resume(struct early_suspend *handler) {
-	clk_set_rate(axi_clk, 128000000);
-}
-
-static struct early_suspend axi_screen_suspend = {
-	.suspend = axi_early_suspend,
-	.resume = axi_late_resume,
-};
-
-static void __init mahimahi_axi_init(void)
-{
-	axi_clk = clk_get(NULL, "ebi1_clk");
-	if (IS_ERR(axi_clk)) {
-		int result = PTR_ERR(axi_clk);
-		pr_err("clk_get(ebi1_clk) returned %d\n", result);
-		return;
-	}
-	clk_set_rate(axi_clk, 128000000);
-	register_early_suspend(&axi_screen_suspend);
-}
-
 static void __init mahimahi_init(void)
 {
 	int ret;
 	struct kobject *properties_kobj;
 
 	printk("mahimahi_init() revision=%d\n", system_rev);
-	mahimahi_axi_init();
 
 	msm_hw_reset_hook = mahimahi_reset;
 
