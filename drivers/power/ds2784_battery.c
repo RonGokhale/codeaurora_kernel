@@ -309,6 +309,8 @@ static int battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CAPACITY:
 		if (di->dummy)
 			val->intval = 75;
+		else if (di->status.battery_full)
+			val->intval = 100;
 		else
 			val->intval = di->status.percentage;
 		break;
@@ -378,7 +380,14 @@ static int battery_adjust_charge_state(struct ds2784_device_info *di)
 		di->status.battery_full = 1;
 		charge_mode = CHARGE_OFF;
 	} else {
-		di->status.battery_full = 0;
+		/* We don't move from full to not-full until 
+		 * we drop below 99%, to avoid confusing the
+		 * user while we're maintaining a full charge
+		 * (slowly draining to 99 and charging back
+		 * to 100)
+		 */
+		if (di->status.percentage < 99)
+			di->status.battery_full = 0;
 	}
 
 	if (temp >= TEMP_HOT) {
