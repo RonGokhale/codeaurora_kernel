@@ -207,7 +207,6 @@ union reg_cp_rb_cntl {
 #define RBBM_STATUS__SQ_CNTX0_BUSY_MASK                    0x10000000L
 #define RBBM_STATUS__RB_CNTX_BUSY_MASK                     0x40000000L
 #define RBBM_STATUS__GUI_ACTIVE_MASK                       0x80000000L
-#define RBBM_STATUS__BUSY_MASK                             0xFFFFFEE0L
 
 #define CP_INT_CNTL__SW_INT_MASK                           0x00080000L
 #define CP_INT_CNTL__T0_PACKET_IN_IB_MASK                  0x00800000L
