@@ -171,7 +171,7 @@ struct mt9p012_ctrl_t {
 	enum mt9p012_test_mode_t  set_test;
 };
 
-
+static uint16_t update_type = UPDATE_PERIODIC;
 static uint16_t bam_macro, bam_infinite;
 static uint16_t bam_step_lookup_table[MT9P012_TOTAL_STEPS_NEAR_TO_FAR + 1];
 static struct mt9p012_ctrl_t *mt9p012_ctrl;
@@ -632,6 +632,10 @@ static int32_t mt9p012_setting(enum mt9p012_reg_update_t rupdate,
 		  mt9p012_regs.reg_pat[rt].fine_int_time},
 		{REG_GROUPED_PARAMETER_HOLD, GROUPED_PARAMETER_UPDATE},
 		};
+		if (update_type == REG_INIT) {
+			update_type = rupdate;
+			return rc;
+		}
 
 		rc = mt9p012_i2c_write_w_table(&ppc_tbl[0],
 			ARRAY_SIZE(ppc_tbl));
@@ -780,6 +784,7 @@ static int32_t mt9p012_setting(enum mt9p012_reg_update_t rupdate,
 			return rc;
 		}
 	}
+		update_type = rupdate;
 		break; /* case REG_INIT: */
 
 	default:
@@ -1003,11 +1008,6 @@ static int mt9p012_probe_init_sensor(struct msm_camera_sensor_info *data)
 
 	mdelay(20);
 
-
-	/* enable mclk first */
-	msm_camio_clk_rate_set(MT9P012_DEFAULT_CLOCK_RATE);
-
-	mdelay(20);
 	/* RESET the sensor image part via I2C command */
 	rc = mt9p012_i2c_write_w(mt9p012_client->addr,
 		MT9P012_REG_RESET_REGISTER, 0x10CC|0x0001);
@@ -1052,7 +1052,6 @@ static int mt9p012_probe_init_sensor(struct msm_camera_sensor_info *data)
 		goto init_probe_fail;
 	}
 
-	mdelay(MT9P012_RESET_DELAY_MSECS);
 	goto init_probe_done;
 
 init_probe_fail:
