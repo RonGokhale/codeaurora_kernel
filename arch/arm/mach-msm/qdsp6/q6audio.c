@@ -109,6 +109,7 @@ static struct q6audio_analog_ops default_analog_ops;
 static struct q6audio_analog_ops *analog_ops = &default_analog_ops;
 static uint32_t tx_clk_freq = 8000;
 static int tx_mute_status = 0;
+static int rx_vol_level = 100;
 static char acdb_file[64] = "default.acdb";
 
 void q6audio_register_analog_ops(struct q6audio_analog_ops *ops)
@@ -924,10 +925,6 @@ static void _audio_rx_path_enable(int reconf)
 	adie_proceed_to_stage(adie, ADIE_PATH_RX, ADIE_STAGE_DIGITAL_ANALOG_READY);
 
 	audio_rx_analog_enable(1);
-
-	audio_rx_mute(ac_control, adev, 0);
-
-	audio_rx_volume(ac_control, adev, q6_device_volume(adev, 100));
 }
 
 static void _audio_tx_path_enable(int reconf)
@@ -956,11 +953,7 @@ static void _audio_tx_path_enable(int reconf)
 	adie_proceed_to_stage(adie, ADIE_PATH_TX, ADIE_STAGE_DIGITAL_ANALOG_READY);
 
 	audio_tx_analog_enable(1);
-
 	audio_tx_mute(ac_control, adev, tx_mute_status);
-
-	if (!tx_mute_status)
-		audio_tx_volume(ac_control, adev, q6_device_volume(adev, 100));
 }
 
 static void _audio_rx_path_disable(void)
@@ -1304,10 +1297,11 @@ int q6audio_set_rx_volume(int level)
 		return -EINVAL;
 
 	mutex_lock(&audio_path_lock);
-	adev = audio_rx_device_id;
+	adev = ADSP_AUDIO_DEVICE_ID_VOICE;
 	vol = q6_device_volume(adev, level);
 	audio_rx_mute(ac_control, adev, 0);
 	audio_rx_volume(ac_control, adev, vol);
+	rx_vol_level = level;
 	mutex_unlock(&audio_path_lock);
 	return 0;
 }
@@ -1463,6 +1457,12 @@ struct audio_client *q6audio_open_pcm(uint32_t bufsz, uint32_t rate,
 		ac->buf[1].used = 1;
 		q6audio_read(ac, &ac->buf[0]);
 		q6audio_read(ac, &ac->buf[1]);
+	} else {
+		mutex_lock(&audio_path_lock);
+		audio_rx_mute(ac_control, audio_rx_device_id, 0);
+		audio_rx_volume(ac_control, audio_rx_device_id,
+			q6_device_volume(audio_rx_device_id, rx_vol_level));
+		mutex_unlock(&audio_path_lock);
 	}
 
 	audio_prevent_sleep();
@@ -1535,6 +1535,11 @@ struct audio_client *q6audio_open_mp3(uint32_t bufsz, uint32_t rate,
 	audio_mp3_open(ac, bufsz, rate, channels);
 	audio_command(ac, ADSP_AUDIO_IOCTL_CMD_SESSION_START);
 
+	mutex_lock(&audio_path_lock);
+	audio_rx_mute(ac_control, audio_rx_device_id, 0);
+	audio_rx_volume(ac_control, audio_rx_device_id,
+			q6_device_volume(audio_rx_device_id, rx_vol_level));
+	mutex_unlock(&audio_path_lock);
 	return ac;
 }
 
