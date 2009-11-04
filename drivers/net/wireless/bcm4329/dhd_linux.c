@@ -2128,8 +2128,8 @@ dhd_module_init(void)
 	wifi_add_dev();
 
 	/* Waiting callback after platform_driver_register is done or exit with error */
-	if (down_timeout(&wifi_control_sem,  msecs_to_jiffies(1000)) != 0) {
-		error = 1;
+	if (down_timeout(&wifi_control_sem,  msecs_to_jiffies(5000)) != 0) {
+		error = -EINVAL;
 		DHD_ERROR(("%s: platform_driver_register callback timeout\n", __FUNCTION__));
 		goto fail;
 	}
@@ -2153,8 +2153,8 @@ dhd_module_init(void)
 	 * It's needed to make sync up exit from dhd insmod  and
 	 * Kernel MMC sdio device callback registration
 	 */
-	if (down_timeout(&dhd_registration_sem,  msecs_to_jiffies(3000)) != 0) {
-		error = 1;
+	if (down_timeout(&dhd_registration_sem,  msecs_to_jiffies(5000)) != 0) {
+		error = -EINVAL;
 		DHD_ERROR(("%s: sdio_register_driver failed \n", __FUNCTION__));
 	}
 #endif 
