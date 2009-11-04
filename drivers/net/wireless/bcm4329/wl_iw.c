@@ -56,7 +56,6 @@ typedef const struct si_pub  si_t;
 
 #include <wl_iw.h>
 
-
 #include <linux/rtnetlink.h>
 #include <linux/mutex.h>
 
@@ -758,6 +757,7 @@ wl_iw_send_priv_event(
 	return 0;
 }
 
+#ifdef WL_IW_USE_THREAD_WL_OFF
 static int
 _wl_control_sysioc_thread_wl_off(void *data)
 {
@@ -768,6 +768,7 @@ _wl_control_sysioc_thread_wl_off(void *data)
 	WL_TRACE(("%s Entered\n", __FUNCTION__));
 	net_os_wake_lock(wl_ctl->dev);
 
+	mutex_lock(&wl_start_lock);
 	while (down_interruptible(&wl_ctl->timer_sem) == 0) {
 
 		WL_TRACE(("%s Turning off wifi dev\n", __FUNCTION__));
@@ -791,13 +792,14 @@ _wl_control_sysioc_thread_wl_off(void *data)
 		net_os_wake_lock_timeout_enable(wl_ctl->dev);
 		break;
 	}
-
+	mutex_unlock(&wl_start_lock);
 	WL_TRACE(("%s Exited\n", __FUNCTION__));
 	net_os_wake_unlock(wl_ctl->dev);
 
 	complete_and_exit(&wl_ctl->sysioc_exited, 0);
 	KILL_PROC(wl_ctl->sysioc_pid, SIGTERM);
 }
+#endif
 
 int
 wl_control_wl_start(struct net_device *dev)
@@ -830,6 +832,7 @@ wl_control_wl_start(struct net_device *dev)
 	return ret;
 }
 
+#ifdef WL_IW_USE_THREAD_WL_OFF
 static void
 wl_iw_stop_timerfunc(ulong data)
 {
@@ -841,6 +844,7 @@ wl_iw_stop_timerfunc(ulong data)
 
 	up(&wl_ctl->timer_sem);
 }
+#endif
 
 static int
 wl_iw_control_wl_off(
@@ -849,17 +853,18 @@ wl_iw_control_wl_off(
 )
 {
 	int ret = 0;
+#ifdef WL_IW_USE_THREAD_WL_OFF
 	static struct wl_ctrl ctl;
 	static struct timer_list timer;
-
+#endif
 	WL_TRACE(("Enter %s\n", __FUNCTION__));
-	
+
+#ifdef WL_IW_USE_THREAD_WL_OFF
 	ctl.timer = &timer;
 	ctl.dev = dev;
 	sema_init(&ctl.timer_sem, 0);
 	init_completion(&ctl.sysioc_exited);
 
-	
 	ctl.sysioc_pid = kernel_thread(_wl_control_sysioc_thread_wl_off, &ctl, 0);
 
 	timer.data = (ulong)&ctl;
@@ -867,7 +872,28 @@ wl_iw_control_wl_off(
 	init_timer(&timer);
 	timer.expires = jiffies + 2000 * HZ / 1000;
 	add_timer(&timer);
+#else
+	mutex_lock(&wl_start_lock);
+	if (g_onoff == G_WLAN_SET_ON) {
+		g_onoff = G_WLAN_SET_OFF;
+#if defined(WL_IW_USE_ISCAN)
+		g_iscan->iscan_state = ISCAN_STATE_IDLE;
+#endif
 
+		dhd_dev_reset(dev, 1);
+
+#if defined(BCMLXSDMMC)
+		sdioh_stop(NULL);
+#endif
+
+		dhd_customer_gpio_wlan_ctrl(WLAN_RESET_OFF);
+
+		wl_iw_send_priv_event(dev, "STOP");
+
+		net_os_wake_lock_timeout_enable(dev);
+	}
+	mutex_unlock(&wl_start_lock);
+#endif
 	WL_TRACE(("Exited %s\n", __FUNCTION__));
 
 	return ret;
