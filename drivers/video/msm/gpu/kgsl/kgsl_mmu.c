@@ -111,6 +111,7 @@ void kgsl_mh_intrcallback(struct kgsl_device *device)
 {
 	unsigned int status = 0;
 	unsigned int reg;
+	unsigned int axi_error;
 	struct kgsl_mmu_debug dbg;
 
 	KGSL_MEM_VDBG("enter (device=%p)\n", device);
@@ -118,10 +119,12 @@ void kgsl_mh_intrcallback(struct kgsl_device *device)
 	kgsl_yamato_regread(device, REG_MH_INTERRUPT_STATUS, &status);
 
 	if (status & MH_INTERRUPT_MASK__AXI_READ_ERROR) {
-		KGSL_MEM_FATAL("axi read error interrupt\n");
+		kgsl_yamato_regread(device, REG_MH_AXI_ERROR, &axi_error);
+		KGSL_MEM_FATAL("axi read error interrupt (%08x)\n", axi_error);
 		kgsl_mmu_debug(&device->mmu, &dbg);
 	} else if (status & MH_INTERRUPT_MASK__AXI_WRITE_ERROR) {
-		KGSL_MEM_FATAL("axi write error interrupt\n");
+		kgsl_yamato_regread(device, REG_MH_AXI_ERROR, &axi_error);
+		KGSL_MEM_FATAL("axi write error interrupt (%08x)\n", axi_error);
 		kgsl_mmu_debug(&device->mmu, &dbg);
 	} else if (status & MH_INTERRUPT_MASK__MMU_PAGE_FAULT) {
 		kgsl_yamato_regread(device, REG_MH_MMU_PAGE_FAULT, &reg);
