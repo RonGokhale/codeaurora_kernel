@@ -104,6 +104,18 @@ dump_status(uint32_t status)
 }
 #endif
 
+static void msm_i2c_write_delay(struct msm_i2c_dev *dev)
+{
+	/* If scl is still high we have >4us (for 100kbps) to write the data
+	 * register before we risk hitting a bug where the controller releases
+	 * scl to soon after driving sda low. Writing the data after the
+	 * scheduled release time for scl also avoids the bug.
+	 */
+	if (readl(dev->base + I2C_INTERFACE_SELECT) & I2C_INTERFACE_SELECT_SCL)
+		return;
+	udelay(6);
+}
+
 static bool msm_i2c_fill_write_buffer(struct msm_i2c_dev *dev)
 {
 	uint16_t val;
@@ -113,6 +125,7 @@ static bool msm_i2c_fill_write_buffer(struct msm_i2c_dev *dev)
 			val |= 1;
 		if (dev->rem == 1 && dev->msg->len == 0)
 			val |= I2C_WRITE_DATA_LAST_BYTE;
+		msm_i2c_write_delay(dev);
 		writel(val, dev->base + I2C_WRITE_DATA);
 		dev->pos++;
 		return true;
@@ -129,6 +142,7 @@ static bool msm_i2c_fill_write_buffer(struct msm_i2c_dev *dev)
 	if (dev->cnt == 1 && dev->rem == 1)
 		val |= I2C_WRITE_DATA_LAST_BYTE;
 
+	msm_i2c_write_delay(dev);
 	writel(val, dev->base + I2C_WRITE_DATA);
 	dev->pos++;
 	dev->cnt--;
@@ -485,7 +499,7 @@ msm_i2c_probe(struct platform_device *pdev)
 	}
 
 	ret = request_irq(dev->irq, msm_i2c_interrupt,
-			IRQF_TRIGGER_RISING, pdev->name, dev);
+			IRQF_DISABLED | IRQF_TRIGGER_RISING, pdev->name, dev);
 	if (ret) {
 		dev_err(&pdev->dev, "request_irq failed\n");
 		goto err_request_irq_failed;
