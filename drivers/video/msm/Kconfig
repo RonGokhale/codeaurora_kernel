@@ -115,6 +115,11 @@ config FB_MSM_LCDC_GRAPEFRUIT_VGA
 	select FB_MSM_LCDC_PANEL
 	default n
 
+config FB_MSM_LCDC_ST1_WXGA
+	bool
+	select FB_MSM_LCDC_PANEL
+	default n
+
 config FB_MSM_LCDC_WXGA
 	bool
 	select FB_MSM_LCDC_PANEL
@@ -145,6 +150,13 @@ config FB_MSM_LCDC_GRAPEFRUIT_PANEL
 	---help---
 	  Support for Grapefruit VGA (1024x600) panel
 
+config FB_MSM_LCDC_ST1_PANEL
+	depends on FB_MSM_LCDC_HW
+	bool "LCDC ST1 WXGA Panel"
+	select FB_MSM_LCDC_ST1_WXGA
+	---help---
+	  Support for ST1 WXGA (1280x720) panel
+
 config FB_MSM_TRY_MDDI_CATCH_LCDC_PRISM
 	depends on FB_MSM_LCDC_HW
 	bool "MDDI Panel Auto Detect + LCDC Prism WVGA"
@@ -153,6 +165,7 @@ config FB_MSM_TRY_MDDI_CATCH_LCDC_PRISM
 	select FB_MSM_LCDC_GORDON_VGA
 	select FB_MSM_LCDC_WXGA
 	select FB_MSM_LCDC_GRAPEFRUIT_VGA
+	select FB_MSM_LCDC_ST1_WXGA
 	---help---
 	  Support for MDDI panel auto detect.
 	  If it can't find any MDDI panel, it will load LCDC Prism WVGA panel.
