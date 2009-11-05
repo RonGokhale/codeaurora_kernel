@@ -675,6 +675,17 @@ static int msm_fb_detect_panel(const char *name)
 			ret = -ENODEV;
 	} else if (machine_is_qsd8x50_surf() && !strcmp(name, "lcdc_external"))
 		ret = 0;
+	else if (machine_is_qsd8x50_grapefruit()) {
+		if (!strcmp(name, "lcdc_grapefruit_vga"))
+			ret = 0;
+		else
+			ret = -ENODEV;
+	} else if (machine_is_qsd8x50_st1()) {
+		if (!strcmp(name, "lcdc_st1_wxga"))
+			ret = 0;
+		else
+			ret = -ENODEV;
+	}
 
 	return ret;
 }
@@ -896,17 +907,98 @@ static struct mddi_platform_data mddi_pdata = {
 	.mddi_sel_clk = msm_fb_mddi_sel_clk,
 };
 
+static int msm_fb_lcdc_gpio_config(int on)
+{
+
+	if (machine_is_qsd8x50_grapefruit()) {
+		if (on) {
+			gpio_set_value(32, 1);
+			mdelay(100);
+			gpio_set_value(20, 1);
+			mdelay(100);
+			gpio_set_value(61, 1);
+			gpio_set_value(29, 1);
+			gpio_set_value(82, 1);
+		} else {
+			gpio_set_value(29, 0);
+			gpio_set_value(82, 0);
+			gpio_set_value(61, 0);
+			mdelay(200);
+			gpio_set_value(20, 0);
+			mdelay(100);
+			gpio_set_value(32, 0);
+		}
+	} else if (machine_is_qsd8x50_st1()) {
+		if (on) {
+			gpio_set_value(32, 1);
+			mdelay(100);
+			gpio_set_value(20, 1);
+			gpio_set_value(17, 1);
+			gpio_set_value(19, 1);
+		} else {
+			gpio_set_value(17, 0);
+			gpio_set_value(19, 0);
+			gpio_set_value(20, 0);
+			mdelay(100);
+			gpio_set_value(32, 0);
+		}
+	}
+	return 0;
+}
+
+static struct msm_gpio msm_fb_grapefruit_gpio_config_data[] = {
+	{ GPIO_CFG(20, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl0" },
+	{ GPIO_CFG(29, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl1" },
+	{ GPIO_CFG(32, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl2" },
+	{ GPIO_CFG(61, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl3" },
+	{ GPIO_CFG(82, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl4" },
+};
+
+static struct msm_gpio msm_fb_st1_gpio_config_data[] = {
+	{ GPIO_CFG(17, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl0" },
+	{ GPIO_CFG(19, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl1" },
+	{ GPIO_CFG(20, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl2" },
+	{ GPIO_CFG(32, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl3" },
+};
+
+static struct lcdc_platform_data lcdc_pdata = {
+	.lcdc_gpio_config = msm_fb_lcdc_gpio_config,
+};
+
 static struct msm_panel_common_pdata mdp_pdata = {
 	.gpio = 98,
 };
 
 static void __init msm_fb_add_devices(void)
 {
+	int rc;
 	msm_fb_register_device("mdp", &mdp_pdata);
 	msm_fb_register_device("pmdh", &mddi_pdata);
 	msm_fb_register_device("emdh", &mddi_pdata);
 	msm_fb_register_device("tvenc", 0);
-	msm_fb_register_device("lcdc", 0);
+
+	if (machine_is_qsd8x50_grapefruit()) {
+		rc = msm_gpios_request_enable(
+			msm_fb_grapefruit_gpio_config_data,
+			ARRAY_SIZE(msm_fb_grapefruit_gpio_config_data));
+		if (rc) {
+			printk(KERN_ERR "%s: unable to init lcdc gpios\n",
+			       __func__);
+			return;
+		}
+		msm_fb_register_device("lcdc", &lcdc_pdata);
+	} else if (machine_is_qsd8x50_st1()) {
+		rc = msm_gpios_request_enable(
+			msm_fb_st1_gpio_config_data,
+			ARRAY_SIZE(msm_fb_st1_gpio_config_data));
+		if (rc) {
+			printk(KERN_ERR "%s: unable to init lcdc gpios\n",
+			       __func__);
+			return;
+		}
+		msm_fb_register_device("lcdc", &lcdc_pdata);
+	} else
+		msm_fb_register_device("lcdc", 0);
 }
 
 static struct resource msm_audio_resources[] = {
