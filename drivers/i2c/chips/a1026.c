@@ -311,29 +311,36 @@ set_suspend_err:
 }
 
 unsigned int phonecall_receiver[] = {
-	0x80260001, // Select audio routing 1
-	0x80170002,
-	0x80180000, // Select CT Mic configuration
-	0x8017001A,
-	0x80180000, // Set ComfortNoise off
-	0x801C0001, // Set Voice Processing on
-	0x800C0300,
-	0x800D0002, // Set ADC0 gain to +12dB
-	0x800C0400,
-	0x800D0002, // Set ADC1 gain to +12dB
-	0x801B0005, // Set Pri Digital input gain to 5dB
-	0x801B0105, // Set Sec Digital input gain to 5dB
-	0x80150003, // Set Digital output gain to 3dB
-	0x80170000,
-	0x80180004, // set AIS4
-	0x80170004,
-	0x80180000, // Use AGC:no
-	0x80170020,
-	0x80180000, // Tx PostEq Mode 0x0000:Off
-	0x800C0107,
-	0x800D0001, // Tri-state PCM0
-	0x800C0207,
-	0x800D0001, // Tri-state PCM1
+	0x80000000, //0x8000:Sync, 0x0000:None
+	0x80260001, //0x8026:SelectRouting, 0x0001:Pri,Sec,FEi,Lp1 -- CSp,FEo,Lp1
+	0x80170002, //0x8017:SetAlgorithmParmID, 0x0002:Microphone Configuration
+	0x80180000, //0x8018:SetAlgorithmParm, 0x0000:Close Talk (CT)
+	0x8017001A, //0x8017:SetAlgorithmParmID, 0x001A:Use ComfortNoise
+	0x80180000, //0x8018:SetAlgorithmParm, 0x0000:No
+	0x801C0001, //0x801C:VoiceProcessingOn, 0x0001:Yes
+	0x800C0300, //0x800C:SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain
+	0x800D0001, //0x800D:SetDeviceParm, 0x0001:+ 6dB
+	0x800C0400, //0x800C:SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain
+	0x800D0001, //0x800D:SetDeviceParm, 0x0001:+ 6dB
+	0x801B000C, //0x801B:SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x0C:(12 dB)
+	0x801B010C, //0x801B:SetDigitalInputGain, 0x01:Secondary Mic (Tx), 0x0C:(12 dB)
+	0x80150000, //Set Digital Output Gain 0dB
+	0x80170000, //0x8017:SetAlgorithmParmID, 0x0000:Suppression Strength
+	0x80180004, //0x8018:SetAlgorithmParm, 0x0004:20dB Max Suppression
+	0x80170003, //0x8017:SetAlgorithmParmID, 0x0003:AEC Mode
+	0x80180000, //0x8018:SetAlgorithmParm, 0x0000:AEC Off
+	0x80170004, //0x8017:SetAlgorithmParmID, 0x0004:Use AGC
+	0x80180001, //0x8018:SetAlgorithmParm, 0x0001:Yes
+	0x80170005, //0x8017:SetAlgorithmParmID, 0x0005:   AGC Target Level (dB)
+	0x8018FFF1, //0x8018:SetAlgorithmParm, 0xFFF1:(-15 dB)
+	0x80170006, //0x8017:SetAlgorithmParmID, 0x0006:   AGC Noise Floor (dB)
+	0x8018FFBF, //0x8018:SetAlgorithmParm, 0xFFBF:(-65 dB)
+	0x80170007, //0x8017:SetAlgorithmParmID, 0x0007:   AGC SNR Improve (dB)
+	0x80180004, //0x8018:SetAlgorithmParm, 0x0004:(4 dB)
+	0x80170026, //0x8017:SetAlgorithmParmID, 0x0026:   AGC Up Rate (dBS)
+	0x80180004, //0x8018:SetAlgorithmParm, 0x0004:(4 dBS)
+	0x80170027, //0x8017:SetAlgorithmParmID, 0x0027:   AGC Down Rate (dBS)
+	0x80180001, //0x8018:SetAlgorithmParm, 0x0001:(1 dBS)
 };
 
 unsigned int phonecall_headset[] = {
@@ -387,26 +394,26 @@ unsigned int phonecall_bt[] = {
 };
 
 unsigned int INT_MIC_recording_receiver[] = {
-	0x80260007, // Select audio routing 7
+	0x80260007, //Select audio routing 7
 	0x80170002,
-	0x80180002, // Select FT Mic configuration
+	0x80180002, //Select FT Mic configuration
 	0x800C0300,
-	0x800D0002, // Set ADC0 gain to +12dB
-	0x801B000B, // Set Pri Digital input gain to 11dB
-	0x80150001, // Set Digital output gain to 1dB
+	0x800D0001, //Set ADC0 gain to +6dB
+	0x801B0009, //Set Pri Digital input gain to 9dB
+	0x80150000, //Set Digital output gain to 0dB
 	0x8017001A,
-	0x80180000, // Set ComfortNoise off
+	0x80180000, //Set ComfortNoise off
 	0x80170000,
-	0x80180004, // set AIS4
-	0x801C0001, // Set Voice Processing on
+	0x80180000, //set AIS4
+	0x801C0000, //Set Voice Processing off
 	0x80170004,
-	0x80180000, // Use AGC:no
+	0x80180000, //Use AGC:no
 	0x80170020,
-	0x80180000, // Tx PostEq Mode 0x0000:Off
+	0x80180000, //Tx PostEq Mode 0x0000:Off
 	0x800C0107,
-	0x800D0001, // Tri-state PCM0
+	0x800D0001, //Tri-state PCM0
 	0x800C0207,
-	0x800D0001, // Tri-state PCM1
+	0x800D0001, //Tri-state PCM1
 };
 
 unsigned int EXT_MIC_recording[] = {
