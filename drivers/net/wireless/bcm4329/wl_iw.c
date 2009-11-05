@@ -134,9 +134,9 @@ wl_iw_ss_cache_ctrl_t g_ss_cache_ctrl;
 
 #if defined(WL_IW_USE_ISCAN)
 
+static wlc_ssid_t g_specific_ssid;     /* chache specific ssid request */
 #define ISCAN_STATE_IDLE   0
 #define ISCAN_STATE_SCANING 1
-
 
 #define WLC_IW_ISCAN_MAXLEN   2048
 typedef struct iscan_buf {
@@ -1750,6 +1750,18 @@ wl_iw_iscan_get(iscan_info_t *iscan)
 	return status;
 }
 
+static void wl_iw_force_specific_scan(iscan_info_t *iscan)
+{
+	WL_TRACE(("### Force Specific SCAN for %s\n", g_specific_ssid.SSID));
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+	rtnl_lock();
+#endif
+	(void) dev_wlc_ioctl(iscan->dev, WLC_SCAN, &g_specific_ssid, sizeof(g_specific_ssid));
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+	rtnl_unlock();
+#endif
+}
+
 static void wl_iw_send_scan_complete(iscan_info_t *iscan)
 {
 #ifndef SANDGATE2G
@@ -1767,7 +1779,7 @@ _iscan_sysioc_thread(void *data)
 {
 	uint32 status;
 	iscan_info_t *iscan = (iscan_info_t *)data;
-
+	static bool iscan_pass_abort = FALSE;
 	DAEMONIZE("iscan_sysioc");
 
 	status = WL_SCAN_RESULTS_PARTIAL;
@@ -1785,18 +1797,25 @@ _iscan_sysioc_thread(void *data)
 		rtnl_unlock();
 #endif
 
+		if (g_scan_specified_ssid && (iscan_pass_abort == TRUE)) {
+			WL_TRACE(("%s Get results from specific scan sttaus=%d\n", __FUNCTION__, status));
+			wl_iw_send_scan_complete(iscan);
+			iscan_pass_abort = FALSE;
+			status  = -1;
+		}
+
 		switch (status) {
 			case WL_SCAN_RESULTS_PARTIAL:
 				WL_TRACE(("iscanresults incomplete\n"));
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
 				rtnl_lock();
 #endif
-				
+
 				wl_iw_iscan(iscan, NULL, WL_SCAN_ACTION_CONTINUE);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
 				rtnl_unlock();
 #endif
-				
+
 				mod_timer(&iscan->timer, jiffies + iscan->timer_ms*HZ/1000);
 				iscan->timer_on = 1;
 				break;
@@ -1807,19 +1826,24 @@ _iscan_sysioc_thread(void *data)
 				break;
 			case WL_SCAN_RESULTS_PENDING:
 				WL_TRACE(("iscanresults pending\n"));
-				
+
 				mod_timer(&iscan->timer, jiffies + iscan->timer_ms*HZ/1000);
 				iscan->timer_on = 1;
 				break;
 			case WL_SCAN_RESULTS_ABORTED:
 				WL_TRACE(("iscanresults aborted\n"));
 				iscan->iscan_state = ISCAN_STATE_IDLE;
-				wl_iw_send_scan_complete(iscan);
+				if (g_scan_specified_ssid == 0)
+					wl_iw_send_scan_complete(iscan);
+				else {
+					iscan_pass_abort = TRUE;
+					wl_iw_force_specific_scan(iscan);
+				}
 				break;
 			default:
 				WL_TRACE(("iscanresults returned unknown status %d\n", status));
 				break;
-		 }
+		}
 	}
 
 	if (iscan->timer_on) {
@@ -2084,8 +2108,6 @@ wl_iw_set_scan(
 	char *extra
 )
 {
-	wlc_ssid_t ssid;
-
 	WL_TRACE(("%s: SIOCSIWSCAN\n", dev->name));
 
 	
@@ -2093,7 +2115,7 @@ wl_iw_set_scan(
 		return 0;
 
 	
-	memset(&ssid, 0, sizeof(ssid));
+	memset(&g_specific_ssid, 0, sizeof(g_specific_ssid));
 	g_scan_specified_ssid	= 0;
 
 #if WIRELESS_EXT > 17
@@ -2101,16 +2123,16 @@ wl_iw_set_scan(
 	if (wrqu->data.length == sizeof(struct iw_scan_req)) {
 		if (wrqu->data.flags & IW_SCAN_THIS_ESSID) {
 			struct iw_scan_req *req = (struct iw_scan_req *)extra;
-			ssid.SSID_len = MIN(sizeof(ssid.SSID), req->essid_len);
-			memcpy(ssid.SSID, req->essid, ssid.SSID_len);
-			ssid.SSID_len = htod32(ssid.SSID_len);
+			g_specific_ssid.SSID_len = MIN(sizeof(g_specific_ssid.SSID), req->essid_len);
+			memcpy(g_specific_ssid.SSID, req->essid, g_specific_ssid.SSID_len);
+			g_specific_ssid.SSID_len = htod32(g_specific_ssid.SSID_len);
 			g_scan_specified_ssid = 1;
-			WL_TRACE(("Specific scan ssid=%s len=%d\n", ssid.SSID, ssid.SSID_len));
+			WL_TRACE(("Specific scan ssid=%s len=%d\n", g_specific_ssid.SSID, g_specific_ssid.SSID_len));
 		}
 	}
 #endif
 	
-	(void) dev_wlc_ioctl(dev, WLC_SCAN, &ssid, sizeof(ssid));
+	(void) dev_wlc_ioctl(dev, WLC_SCAN, &g_specific_ssid, sizeof(g_specific_ssid));
 
 	return 0;
 }
@@ -4374,14 +4396,19 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 #if defined(WL_IW_USE_ISCAN)
 		if ((g_iscan) && (g_iscan->sysioc_pid >= 0) &&
 			(g_iscan->iscan_state != ISCAN_STATE_IDLE))
+		{
 			up(&g_iscan->sysioc_sem);
-#else
-		cmd = SIOCGIWSCAN;
+		} else {
 			cmd = SIOCGIWSCAN;
 			wrqu.data.length = strlen(extra);
-			WL_TRACE(("Event WLC_E_SCAN_COMPLETE\n"));
+			WL_TRACE(("Event WLC_E_SCAN_COMPLETE from specific scan\n"));
+		}
+#else
+		cmd = SIOCGIWSCAN;
+		wrqu.data.length = strlen(extra);
+		WL_TRACE(("Event WLC_E_SCAN_COMPLETE\n"));
 #endif 
-	break;
+		break;
 
 	default:
 		
@@ -4389,8 +4416,8 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 		break;
 	}
 #ifndef SANDGATE2G
-		if (cmd)
-			wireless_send_event(dev, cmd, &wrqu, extra);
+	if (cmd)
+		wireless_send_event(dev, cmd, &wrqu, extra);
 #endif
 
 #if WIRELESS_EXT > 14
