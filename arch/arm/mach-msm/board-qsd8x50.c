@@ -1642,6 +1642,18 @@ static struct i2c_board_info msm_i2c_board_info[] __initdata = {
 	},
 };
 
+static struct i2c_board_info msm_i2c_st1_info[] __initdata = {
+	{
+		I2C_BOARD_INFO("qci-i2ckbd", 0x18),
+	},
+	{
+		I2C_BOARD_INFO("qci-i2cpad", 0x19),
+	},
+	{
+		I2C_BOARD_INFO("qci-i2cbrg", 0x1A),
+	},
+};
+
 #ifdef CONFIG_MSM_CAMERA
 static uint32_t camera_off_gpio_table[] = {
 	/* parallel CAMERA interfaces */
@@ -2136,7 +2148,8 @@ static struct mmc_platform_data qsd8x50_sdcc_data = {
 
 static void __init qsd8x50_init_mmc(void)
 {
-	if (machine_is_qsd8x50_ffa())
+	if (machine_is_qsd8x50_ffa() || machine_is_qsd8x50_grapefruit() ||
+	    machine_is_qsd8x50_st1())
 		vreg_mmc = vreg_get(NULL, "gp6");
 	else
 		vreg_mmc = vreg_get(NULL, "gp5");
@@ -2259,10 +2272,21 @@ static void __init msm_device_i2c_init(void)
 		pr_err("failed to request gpio i2c_pri_clk\n");
 	if (gpio_request(96, "i2c_pri_dat"))
 		pr_err("failed to request gpio i2c_pri_dat\n");
-	if (gpio_request(60, "i2c_sec_clk"))
-		pr_err("failed to request gpio i2c_sec_clk\n");
-	if (gpio_request(61, "i2c_sec_dat"))
-		pr_err("failed to request gpio i2c_sec_dat\n");
+	if (!machine_is_qsd8x50_grapefruit() && !machine_is_qsd8x50_st1()) {
+		if (gpio_request(60, "i2c_sec_clk"))
+			pr_err("failed to request gpio i2c_sec_clk\n");
+		if (gpio_request(61, "i2c_sec_dat"))
+			pr_err("failed to request gpio i2c_sec_dat\n");
+	}
+
+	if (machine_is_qsd8x50_grapefruit() || machine_is_qsd8x50_st1()) {
+		if (gpio_request(41, "41"))
+			pr_err("failed to request gpio 41\n");
+		if (gpio_request(42, "42"))
+			pr_err("failed to request gpio 42\n");
+		if (gpio_request(109, "109"))
+			pr_err("failed to request gpio 109\n");
+	}
 
 	msm_i2c_pdata.rmutex = (uint32_t *)smem_alloc(SMEM_I2C_MUTEX, 8);
 	msm_i2c_pdata.pm_lat =
@@ -2327,16 +2351,27 @@ static void __init qsd8x50_init(void)
 #ifdef CONFIG_MSM_CAMERA
 	config_camera_off_gpios(); /* might not be necessary */
 #endif
+
 	qsd8x50_init_host();
 	qsd8x50_init_mmc();
+#ifndef CONFIG_ST1_EXPERIMENTAL
 	bt_power_init();
+#endif
 	audio_gpio_init();
 	msm_device_i2c_init();
+#ifndef CONFIG_ST1_EXPERIMENTAL
 	msm_qsd_spi_init();
-	i2c_register_board_info(0, msm_i2c_board_info,
+#endif
+	if (machine_is_qsd8x50_st1())
+		i2c_register_board_info(0, msm_i2c_st1_info,
+				ARRAY_SIZE(msm_i2c_st1_info));
+	else
+		i2c_register_board_info(0, msm_i2c_board_info,
 				ARRAY_SIZE(msm_i2c_board_info));
+#ifndef CONFIG_ST1_EXPERIMENTAL
 	spi_register_board_info(msm_spi_board_info,
 				ARRAY_SIZE(msm_spi_board_info));
+#endif
 	msm_pm_set_platform_data(msm_pm_data);
 	kgsl_phys_memory_init();
 

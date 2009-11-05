@@ -178,12 +178,20 @@ config MACH_MSM7X25_FFA
 config MACH_QSD8X50_ST1
 	depends on ARCH_QSD8X50
 	depends on MSM_STACKED_MEMORY
+	select ST1_EXPERIMENTAL
 	default n
 	bool "QSD8x50 ST1"
 	help
 	  Support for the Qualcomm ST1.
 
 endmenu
+
+config ST1_EXPERIMENTAL
+	depends on MACH_QSD8X50_ST1
+	default n
+	bool "Enable experimental features for ST1"
+	help
+	  Say 'Y' to exclude broken or untested features.
 
 config MSM_STACKED_MEMORY
 	bool "Stacked Memory"
