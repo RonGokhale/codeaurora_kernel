@@ -390,12 +390,15 @@ static int vdec_queue(struct vdec_data *vd, void *argp)
 
 	buf_info.offset += l->mem.phys_addr;
 
+	/* complete the writes to the buffer */
+	wmb();
 	ret = dalrpc_fcn_8(VDEC_DALRPC_QUEUE, vd->vdec_handle,
 			   (void *)&buf_info, sizeof(buf_info),
 			   (void *)&status, sizeof(status));
 	if (ret)
 		printk(KERN_ERR
 		       "%s: remote function failed (%d)\n", __func__, ret);
+
 	return ret;
 }
 
@@ -566,6 +569,9 @@ static long vdec_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		if (vd->close_decode)
 			ret = -EINTR;
+		else
+			/* order the reads from the buffer */
+			rmb();
 		break;
 
 	case VDEC_IOCTL_CLOSE:
