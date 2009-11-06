@@ -486,62 +486,57 @@ unsigned int BACK_MIC_recording[] = {
 };
 
 unsigned int vr_no_ns_receiver[] = {
-        0x80000000, // 0x8000:Sync, 0x0000:None
         0x80260001, // 0x8026:SelectRouting, 0x0001:Pri,Sec,FEi,Lp1 -- CSp,FEo,Lp1
-        0x80170002,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x0002:Microphone Configuration, 0x8018:SetAlgorithmParm, 0x0000:Close Talk (CT)
-        0x8017001A,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x001A:Use ComfortNoise, 0x8018:SetAlgorithmParm, 0x0000:No
+        0x80170002, // 0x8017:SetAlgorithmParmID, 0x0002:Microphone Configuration
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000:Close Talk (CT)
+        0x8017001A, // 0x8017:SetAlgorithmParmID, 0x001A:Use ComfortNoise
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000:No
         0x801C0001, // 0x801C:VoiceProcessingOn, 0x0001:Yes
-        0x80170000,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x0000:Suppression Strength, 0x8018:SetAlgorithmParm, 0x0000:No suppression
-        0x80170003,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x0003:AEC Mode, 0x8018:SetAlgorithmParm, 0x0000:AEC Off
-        0x80170004,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x0004:Use AGC, 0x8018:SetAlgorithmParm, 0x0000: No
-        0x800C0300,
-        0x800D0001, // 0x800C:SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain, 0x800D:SetDeviceParm, 0x0001:+ 6dB
-        0x800C0400,
-        0x800D0001, // 0x800C:SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain, 0x800D:SetDeviceParm, 0x0000:+ 6dB
+        0x80170000, // 0x8017:SetAlgorithmParmID, 0x0000:Suppression Strength,
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000:No suppression
+        0x80170004, // 0x8017:SetAlgorithmParmID, 0x0004:Use AGC,
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000: No
+        0x800C0300, // 0x800C:SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain,
+        0x800D0001, // 0x800D:SetDeviceParm, 0x0001:+ 6dB
+        0x800C0400, // 0x800C:SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain
+        0x800D0001, // 0x800D:SetDeviceParm, 0x0001:+ 6dB
         0x80150000, // 0x8015:SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB)
         0x801B0009, // 0x801B:SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x09:(9 dB)
         0x801B0109, // 0x801B:SetDigitalInputGain, 0x01:Secondary Mic (Tx), 0x09:(9 dB)
 };
 
 unsigned int vr_no_ns_headset[] = {
-        0x80170002,
-        0x80180003, // 0x8017:SetAlgorithmParmID, 0x0002:Microphone Configuration, 0x8018:SetAlgorithmParm, 0x0003:1M-DG (1-mic digital input)
+        0x80170002, // 0x8017:SetAlgorithmParmID, 0x0002:Microphone Configuration
+        0x80180003, // 0x8018:SetAlgorithmParm, 0x0003:1M-DG (1-mic digital input)
         0x80260015, // 0x8026:SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none)
-        0x800C0400,
-        0x800D0001, // 0x800C:SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain, 0x800D:SetDeviceParm, 0x0001:+6 dB
-        0x8017001A,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x001A:Use ComfortNoise, 0x8018:SetAlgorithmParm, 0x0000:No
+        0x800C0400, // 0x800C:SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain,
+        0x800D0001, // 0x800D:SetDeviceParm, 0x0001:+6 dB
+        0x8017001A, // 0x8017:SetAlgorithmParmID, 0x001A:Use ComfortNoise,
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000:No
         0x801C0001, // 0x801C:VoiceProcessingOn, 0x0001:Yes
-        0x801B0118, // Set Digital Input Gain 24dB
+        0x801B0012, // Set Digital Input Gain 18dB
         0x80150000, // Set Digital Output Gain 0dB
-        0x80170000,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x0000:Suppression Strength, 0x8018:SetAlgorithmParm, 0x0000:No Suppression
-        0x80170003,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x0003:AEC Mode, 0x8018:SetAlgorithmParm, 0x0000:AEC Off
-        0x80170004,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x0004:Use AGC, 0x8018:SetAlgorithmParm, 0x0000:No
+        0x80170000, // 0x8017:SetAlgorithmParmID, 0x0000:Suppression Strength,
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000:No Suppression
+        0x80170004, // 0x8017:SetAlgorithmParmID, 0x0004:Use AGC,
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000:No
 };
 
 unsigned int vr_no_ns_speaker[] = {
         0x80260007, // 0x8026:SelectRouting, 0x0007:Pri,Snk,Snk,Snk -- CSp,Zro,Zro
-        0x80170002,
-        0x80180002, // 0x8017:SetAlgorithmParmID, 0x0002:Microphone Configuration, 0x8018:SetAlgorithmParm, 0x0002:Far Talk (FT)
-        0x800C0300,
-        0x800D0001, // 0x800C:SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain, 0x800D:SetDeviceParm, 0x0001:+6dB
-        0x800C0400,
-        0x800D0001, // 0x800C:SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain, 0x800D:SetDeviceParm, 0x0001:+6dB
-        0x801B0011, // 0x801B:SetDigitalInputGain, 0x0011:(17 dB)
-        0x80170000,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x0000:Suppression Strength, 0x8018:SetAlgorithmParm, 0x0000:No suppression
-        0x8017001A,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x001A:Use ComfortNoise, 0x8018:SetAlgorithmParm, 0x0000:No
+        0x80170002, // 0x8017:SetAlgorithmParmID, 0x0002:Microphone Configuration
+        0x80180002, // 0x8018:SetAlgorithmParm, 0x0002:Far Talk (FT)
+        0x800C0300, // 0x800C:SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain
+        0x800D0001, // 0x800D:SetDeviceParm, 0x0001:+6dB
+        0x800C0400, // 0x800C:SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain
+        0x800D0001, // 0x800D:SetDeviceParm, 0x0001:+6dB
+        0x801B000E, // 0x801B:SetDigitalInputGain, 0x0011:(14 dB)
+        0x80170000, // 0x8017:SetAlgorithmParmID, 0x0000:Suppression Strength
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000:No suppression
+        0x8017001A, // 0x8017:SetAlgorithmParmID, 0x001A:Use ComfortNoise
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000:No
         0x801C0001, // 0x801C:VoiceProcessingOn, 0x0001:Yes
-        0x80150009, // 0x8015:SetDigitalOutputGain, 0x0009:(9 dB)
+        0x80150006, // 0x8015:SetDigitalOutputGain, 0x0006:(6 dB)
 };
 
 unsigned int vr_no_ns_bt[] = {
@@ -557,62 +552,57 @@ unsigned int vr_no_ns_bt[] = {
 };
 
 unsigned int vr_ns_receiver[] = {
-        0x80000000, // 0x8000:Sync, 0x0000:None
         0x80260001, // 0x8026:SelectRouting, 0x0001:Pri,Sec,FEi,Lp1 -- CSp,FEo,Lp1
-        0x80170002,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x0002:Microphone Configuration, 0x8018:SetAlgorithmParm, 0x0000:Close Talk (CT)
-        0x8017001A,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x001A:Use ComfortNoise, 0x8018:SetAlgorithmParm, 0x0000:No
+        0x80170002, // 0x8017:SetAlgorithmParmID, 0x0002:Microphone Configuration
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000:Close Talk (CT)
+        0x8017001A, // 0x8017:SetAlgorithmParmID, 0x001A:Use ComfortNoise
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000:No
         0x801C0001, // 0x801C:VoiceProcessingOn, 0x0001:Yes
         0x80170000,
         0x80180004, // Noise Suppression AIS 4
-        0x80170003,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x0003:AEC Mode, 0x8018:SetAlgorithmParm, 0x0000:AEC Off
-        0x80170004,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x0004:Use AGC, 0x8018:SetAlgorithmParm, 0x0000: No
-        0x800C0300,
-        0x800D0001, // 0x800C:SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain, 0x800D:SetDeviceParm, 0x0001:+ 6dB
-        0x800C0400,
-        0x800D0001, // 0x800C:SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain, 0x800D:SetDeviceParm, 0x0000:+ 6dB
+        0x80170004, // 0x8017:SetAlgorithmParmID, 0x0004:Use AGC
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000: No
+        0x800C0300, // 0x800C:SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain,
+        0x800D0001, // 0x800D:SetDeviceParm, 0x0001:+ 6dB
+        0x800C0400, // 0x800C:SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain
+        0x800D0001, // 0x800D:SetDeviceParm, 0x0000:+ 6dB
         0x80150000, // 0x8015:SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB)
         0x801B0009, // 0x801B:SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x09:(9 dB)
         0x801B0109, // 0x801B:SetDigitalInputGain, 0x01:Secondary Mic (Tx), 0x09:(9 dB)
 };
 
 unsigned int vr_ns_headset[] = {
-        0x80170002,
-        0x80180003, // 0x8017:SetAlgorithmParmID, 0x0002:Microphone Configuration, 0x8018:SetAlgorithmParm, 0x0003:1M-DG (1-mic digital input)
+        0x80170002, // 0x8017:SetAlgorithmParmID, 0x0002:Microphone Configuration
+        0x80180003, // 0x8018:SetAlgorithmParm, 0x0003:1M-DG (1-mic digital input)
         0x80260015, // 0x8026:SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none)
-        0x800C0400,
-        0x800D0001, // 0x800C:SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain, 0x800D:SetDeviceParm, 0x0001:+6 dB
-        0x8017001A,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x001A:Use ComfortNoise, 0x8018:SetAlgorithmParm, 0x0000:No
+        0x800C0400, // 0x800C:SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain
+        0x800D0001, // 0x800D:SetDeviceParm, 0x0001:+6 dB
+        0x8017001A, // 0x8017:SetAlgorithmParmID, 0x001A:Use ComfortNoise,
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000:No
         0x801C0001, // 0x801C:VoiceProcessingOn, 0x0001:Yes
-        0x801B0118, // Set Digital Input Gain 24dB
+        0x801B0012, // Set Digital Input Gain 18dB
         0x80150000, // Set Digital Output Gain 0dB
         0x80170000,
         0x80180002, // Noise Suppression AIS2
-        0x80170003,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x0003:AEC Mode, 0x8018:SetAlgorithmParm, 0x0000:AEC Off
-        0x80170004,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x0004:Use AGC, 0x8018:SetAlgorithmParm, 0x0000:No
+        0x80170004, // 0x8017:SetAlgorithmParmID, 0x0004:Use AGC
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000:No
 };
 
 unsigned int vr_ns_speaker[] = {
         0x80260007, // 0x8026:SelectRouting, 0x0007:Pri,Snk,Snk,Snk -- CSp,Zro,Zro
-        0x80170002,
-        0x80180002, // 0x8017:SetAlgorithmParmID, 0x0002:Microphone Configuration, 0x8018:SetAlgorithmParm, 0x0002:Far Talk (FT)
-        0x800C0300,
-        0x800D0001, // 0x800C:SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain, 0x800D:SetDeviceParm, 0x0001:+6dB
-        0x800C0400,
-        0x800D0001, // 0x800C:SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain, 0x800D:SetDeviceParm, 0x0001:+6dB
-        0x801B0011, // 0x801B:SetDigitalInputGain, 0x0011:(17 dB)
+        0x80170002, // 0x8017:SetAlgorithmParmID, 0x0002:Microphone Configuration
+        0x80180002, // 0x8018:SetAlgorithmParm, 0x0002:Far Talk (FT)
+        0x800C0300, // 0x800C:SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain,
+        0x800D0001, // 0x800D:SetDeviceParm, 0x0001:+6dB
+        0x800C0400, // 0x800C:SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain
+        0x800D0001, // 0x800D:SetDeviceParm, 0x0001:+6dB
+        0x801B000E, // 0x801B:SetDigitalInputGain, 0x0011:(14 dB)
         0x80170000,
         0x80180004, // Noise Suppression AIS4
-        0x8017001A,
-        0x80180000, // 0x8017:SetAlgorithmParmID, 0x001A:Use ComfortNoise, 0x8018:SetAlgorithmParm, 0x0000:No
+        0x8017001A, // 0x8017:SetAlgorithmParmID, 0x001A:Use ComfortNoise,
+        0x80180000, // 0x8018:SetAlgorithmParm, 0x0000:No
         0x801C0001, // 0x801C:VoiceProcessingOn, 0x0001:Yes
-        0x80150009, // 0x8015:SetDigitalOutputGain, 0x0009:(9 dB)
+        0x80150006, // 0x8015:SetDigitalOutputGain, 0x0009:(6 dB)
 };
 
 unsigned int vr_ns_bt[] = {
