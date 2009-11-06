@@ -2084,6 +2084,7 @@ static struct sdcc_gpio sdcc_cfg_data[] = {
 
 static unsigned long vreg_sts, gpio_sts;
 static struct vreg *vreg_mmc;
+static struct vreg *vreg_movi;
 
 static void msm_sdcc_setup_gpio(int dev_id, unsigned int enable)
 {
@@ -2125,6 +2126,14 @@ static uint32_t msm_sdcc_setup_power(struct device *dv, unsigned int vdd)
 			if (rc)
 				printk(KERN_ERR "%s: return val: %d \n",
 					__func__, rc);
+			if (machine_is_qsd8x50_grapefruit() ||
+					machine_is_qsd8x50_st1()) {
+				rc = vreg_disable(vreg_movi);
+				if (rc)
+					printk(KERN_ERR
+					       "%s: vreg_movi failed rc=%d\n",
+					       __func__, rc);
+			}
 		}
 		return 0;
 	}
@@ -2136,6 +2145,15 @@ static uint32_t msm_sdcc_setup_power(struct device *dv, unsigned int vdd)
 		if (rc)
 			printk(KERN_ERR "%s: return val: %d \n",
 					__func__, rc);
+		if (machine_is_qsd8x50_grapefruit() ||
+				machine_is_qsd8x50_st1()) {
+			rc = vreg_set_level(vreg_movi, 2850);
+			if (!rc)
+				rc = vreg_enable(vreg_movi);
+			if (rc)
+				printk(KERN_ERR "%s: vreg_movi failed rc=%d\n",
+				       __func__, rc);
+		}
 	}
 	set_bit(pdev->id, &vreg_sts);
 	return 0;
@@ -2160,11 +2178,35 @@ static void __init qsd8x50_init_mmc(void)
 		return;
 	}
 
+	if (machine_is_qsd8x50_grapefruit() || machine_is_qsd8x50_st1()) {
+		int rc;
+		rc = vreg_disable(vreg_mmc);
+		if (rc)
+			printk(KERN_ERR "%s: vreg_disable(vreg_mmc) returned %d\n",
+			       __func__, rc);
+		if (machine_is_qsd8x50_grapefruit())
+			vreg_movi = vreg_get(NULL, "mmc");
+		else
+			/* TODO: Conflicts with BT. */
+			vreg_movi = vreg_get(NULL, "wlan");
+		if (IS_ERR(vreg_movi)) {
+			printk(KERN_ERR "%s: vreg_get(mmc) failed (%ld)\n",
+			       __func__, PTR_ERR(vreg_movi));
+			return;
+		}
+		rc = vreg_disable(vreg_movi);
+		if (rc)
+			printk(KERN_ERR "%s: vreg_disable(vreg_movi) returned %d\n",
+			       __func__, rc);
+		mdelay(100);
+	}
+
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
 	msm_add_sdcc(1, &qsd8x50_sdcc_data);
 #endif
 
-	if (machine_is_qsd8x50_surf()) {
+	if (machine_is_qsd8x50_surf() || machine_is_qsd8x50_grapefruit() ||
+			machine_is_qsd8x50_st1()) {
 #ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
 		msm_add_sdcc(2, &qsd8x50_sdcc_data);
 #endif
@@ -2237,6 +2279,8 @@ msm_i2c_gpio_config(int iface, int config_type)
 	int gpio_scl;
 	int gpio_sda;
 	if (iface) {
+		if (machine_is_qsd8x50_grapefruit() || machine_is_qsd8x50_st1())
+			return;
 		gpio_scl = 60;
 		gpio_sda = 61;
 	} else {
