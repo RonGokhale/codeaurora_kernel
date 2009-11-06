@@ -1261,6 +1261,8 @@ static void vfe_process_reset_irq(void)
 
 	if (ctrl->vfeStopAckPending == TRUE) {
 		ctrl->vfeStopAckPending = FALSE;
+		/* disable all irqs when got stop ack from VFE */
+		vfe_program_irq_mask(VFE_DISABLE_ALL_IRQS);
 		vfe_proc_ops(VFE_MSG_ID_STOP_ACK, NULL);
 	} else {
 		vfe_set_default_reg_values();

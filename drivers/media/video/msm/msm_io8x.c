@@ -79,8 +79,15 @@ int msm_camio_clk_enable(enum msm_camio_clk_type clktype)
 		break;
 	}
 
-	if (!IS_ERR(clk))
+	if (!IS_ERR(clk)) {
+		/* Set rate here *before* enabling the block to prevent
+		 * unstable clock from source.
+		 */
+		if (clktype == CAMIO_VFE_CLK && camio_vfe_clk) {
+			clk_set_rate(camio_vfe_clk, 96000000);
+		}
 		clk_enable(clk);
+	}
 	else
 		rc = -1;
 
@@ -171,9 +178,6 @@ int msm_camio_enable(struct platform_device *pdev)
 	msm_camio_clk_enable(CAMIO_VFE_MDC_CLK);
 	msm_camio_clk_enable(CAMIO_VFE_AXI_CLK);
 
-	/* todo: check return */
-	if (camio_vfe_clk)
-		clk_set_rate(camio_vfe_clk, 96000000);
 	return 0;
 
 mdc_no_mem:
