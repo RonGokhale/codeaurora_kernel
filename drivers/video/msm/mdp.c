@@ -355,6 +355,9 @@ void mdp_disable_irq(uint32 term)
 
 void mdp_pipe_kickoff(uint32 term, struct msm_fb_data_type *mfd)
 {
+	/* complete all the writes before starting */
+	wmb();
+
 	/* kick off PPP engine */
 	if (term == MDP_PPP_TERM) {
 		if (mdp_debug[MDP_PPP_BLOCK])
