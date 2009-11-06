@@ -365,11 +365,24 @@ static struct lcm_tbl samsung_oled_gamma_table[][OLED_GAMMA_TABLE_SIZE] = {
 };
 #define SAMSUNG_OLED_NUM_LEVELS		ARRAY_SIZE(samsung_oled_gamma_table)
 
+static samsung_oled_value_table[] = {10, 20, 40, 70, 100, 130,
+				     160, 190, 220, 250};
+
+#define SAMSUNG_OLED_MIN_VAL		10
+#define SAMSUNG_OLED_MAX_VAL		250
+#define SAMSUNG_OLED_DEFAULT_VAL	(SAMSUNG_OLED_MIN_VAL +		\
+					 (SAMSUNG_OLED_MAX_VAL -	\
+					  SAMSUNG_OLED_MIN_VAL) / 2)
+
+#define SAMSUNG_OLED_LEVEL_STEP		((SAMSUNG_OLED_MAX_VAL -	\
+					  SAMSUNG_OLED_MIN_VAL) /	\
+					 (SAMSUNG_OLED_NUM_LEVELS - 1))
+
 static DEFINE_MUTEX(panel_lock);
 static struct work_struct brightness_delayed_work;
 static DEFINE_SPINLOCK(brightness_lock);
-static uint8_t new_level = SAMSUNG_OLED_NUM_LEVELS / 2;
-static uint8_t last_level = SAMSUNG_OLED_NUM_LEVELS / 2;
+static uint8_t new_val = SAMSUNG_OLED_DEFAULT_VAL;
+static uint8_t last_val = SAMSUNG_OLED_DEFAULT_VAL;
 static uint8_t table_sel_vals[] = { 0x43, 0x34 };
 static int table_sel_idx = 0;
 static void gamma_table_bank_select(void)
@@ -378,18 +391,45 @@ static void gamma_table_bank_select(void)
 	table_sel_idx ^= 1;
 }
 
-static void samsung_oled_set_gamma_level(int level)
+static void samsung_oled_set_gamma_val(int val)
 {
 	int i;
+	int level;
+	int frac;
+
+	val = clamp(val, SAMSUNG_OLED_MIN_VAL, SAMSUNG_OLED_MAX_VAL);
+
+	for (i = 0; i < ARRAY_SIZE(samsung_oled_value_table) - 1; i++) {
+		if (val >= samsung_oled_value_table[i] &&
+		    val < samsung_oled_value_table[i + 1])
+			break;
+	}
+	val = samsung_oled_value_table[i];
+
+	level = (val - SAMSUNG_OLED_MIN_VAL) / SAMSUNG_OLED_LEVEL_STEP;
+	frac = (val - SAMSUNG_OLED_MIN_VAL) % SAMSUNG_OLED_LEVEL_STEP;
 
 	clk_enable(spi_clk);
 
-	for (i = 0; i < OLED_GAMMA_TABLE_SIZE; ++i)
-		lcm_writeb(samsung_oled_gamma_table[level][i].reg,
-			   samsung_oled_gamma_table[level][i].val);
+	for (i = 0; i < OLED_GAMMA_TABLE_SIZE; ++i) {
+		unsigned int v1;
+		unsigned int v2 = 0;
+		u8 v;
+		if (frac == 0) {
+			v = samsung_oled_gamma_table[level][i].val;
+		} else {
+
+			v1 = samsung_oled_gamma_table[level][i].val;
+			v2 = samsung_oled_gamma_table[level+1][i].val;
+			v = (v1 * (SAMSUNG_OLED_LEVEL_STEP - frac) +
+			     v2 * frac) / SAMSUNG_OLED_LEVEL_STEP;
+		}
+		lcm_writeb(samsung_oled_gamma_table[level][i].reg, v);
+	}
+
 	gamma_table_bank_select();
 	clk_disable(spi_clk);
-	last_level = level;
+	last_val = val;
 }
 
 static int samsung_oled_panel_init(struct msm_lcdc_panel_ops *ops)
@@ -434,7 +474,7 @@ static int samsung_oled_panel_unblank(struct msm_lcdc_panel_ops *ops)
 			   samsung_oled_init_table[i].val);
 	table_sel_idx = 0;
 	gamma_table_bank_select();
-	samsung_oled_set_gamma_level(last_level);
+	samsung_oled_set_gamma_val(last_val);
 	msleep(200);
 	lcm_writew(0xef, 0xd0e8);
 	lcm_writeb(0x14, 0x03);
@@ -548,7 +588,7 @@ static void mahimahi_brightness_set(struct led_classdev *led_cdev,
 	led_cdev->brightness = val;
 
 	spin_lock_irqsave(&brightness_lock, flags);
-	new_level = (val * (SAMSUNG_OLED_NUM_LEVELS - 1)) / LED_FULL;
+	new_val = val;
 	spin_unlock_irqrestore(&brightness_lock, flags);
 
 	schedule_work(&brightness_delayed_work);
@@ -557,14 +597,14 @@ static void mahimahi_brightness_set(struct led_classdev *led_cdev,
 static void mahimahi_brightness_set_work(struct work_struct *work_ptr)
 {
 	unsigned long flags;
-	uint8_t level;
+	uint8_t val;
 
 	spin_lock_irqsave(&brightness_lock, flags);
-	level = new_level;
+	val = new_val;
 	spin_unlock_irqrestore(&brightness_lock, flags);
 
 	mutex_lock(&panel_lock);
-	samsung_oled_set_gamma_level(level);
+	samsung_oled_set_gamma_val(val);
 	mutex_unlock(&panel_lock);
 }
 
