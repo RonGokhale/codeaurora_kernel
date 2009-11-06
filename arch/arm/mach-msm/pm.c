@@ -122,6 +122,7 @@ int msm_irq_idle_sleep_allowed(void);
 int msm_irq_pending(void);
 
 static int axi_rate;
+static int sleep_axi_rate;
 static struct clk *axi_clk;
 static uint32_t *msm_pm_reset_vector;
 
@@ -331,7 +332,7 @@ static int msm_sleep(int sleep_mode, uint32_t sleep_delay, int from_idle)
 
 		/* Drop AXI request when the screen is on */
 		if (axi_rate)
-			clk_set_rate(axi_clk, 0);
+			clk_set_rate(axi_clk, sleep_axi_rate);
 	}
 	if (sleep_mode < MSM_PM_SLEEP_MODE_APPS_SLEEP) {
 		if (msm_pm_debug_mask & MSM_PM_DEBUG_SMSM_STATE)
@@ -630,6 +631,7 @@ static void axi_early_suspend(struct early_suspend *handler) {
 
 static void axi_late_resume(struct early_suspend *handler) {
 	axi_rate = 128000000;
+	sleep_axi_rate = 120000000;
 	clk_set_rate(axi_clk, axi_rate);
 }
 
@@ -649,6 +651,7 @@ static void __init msm_pm_axi_init(void)
 		return;
 	}
 	axi_rate = 128000000;
+	sleep_axi_rate = 120000000;
 	clk_set_rate(axi_clk, axi_rate);
 	register_early_suspend(&axi_screen_suspend);
 #else
