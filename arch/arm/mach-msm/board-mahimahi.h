@@ -115,4 +115,7 @@
 #define MAHIMAHI_GPIO_LED_3V3_EN	85
 #define MAHIMAHI_GPIO_LCD_RST_N		29
 
+/* 3.5mm remote control key interrupt shutdown signal */
+#define MAHIMAHI_GPIO_35MM_KEY_INT_SHUTDOWN	19
+
 #endif /* __ARCH_ARM_MACH_MSM_BOARD_MAHIMAHI_H */

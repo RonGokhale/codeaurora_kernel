@@ -695,6 +695,18 @@ static uint32_t misc_gpio_table[] = {
 		      GPIO_NO_PULL, GPIO_2MA),
 };
 
+static uint32_t key_int_shutdown_gpio_table[] = {
+	PCOM_GPIO_CFG(MAHIMAHI_GPIO_35MM_KEY_INT_SHUTDOWN, 0, GPIO_OUTPUT,
+		      GPIO_NO_PULL, GPIO_2MA),
+};
+
+static void mahimahi_headset_init(void)
+{
+	config_gpio_table(key_int_shutdown_gpio_table,
+			ARRAY_SIZE(key_int_shutdown_gpio_table));
+	gpio_set_value(MAHIMAHI_GPIO_35MM_KEY_INT_SHUTDOWN, 0);
+}
+
 #define ATAG_BDADDR 0x43294329  /* mahimahi bluetooth address tag */
 #define ATAG_BDADDR_SIZE 4
 #define BDADDR_STR_SIZE 18
@@ -850,6 +862,7 @@ static void __init mahimahi_init(void)
 		pr_err("failed to create board_properties\n");
 
 	mahimahi_audio_init();
+	mahimahi_headset_init();
 
 	if (system_rev > 0)
 		platform_device_register(&mahimahi_timed_gpios);

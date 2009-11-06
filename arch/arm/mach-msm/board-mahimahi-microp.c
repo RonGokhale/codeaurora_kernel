@@ -189,6 +189,7 @@ struct microp_i2c_client_data {
 	uint8_t light_sensor_enabled;
 	uint8_t button_led_value;
 	int headset_is_in;
+	int is_hpin_pin_stable;
 	struct input_dev *ls_input_dev;
 	uint32_t als_kadc;
 	uint32_t als_gadc;
@@ -408,6 +409,7 @@ static void hpin_debounce_do_work(struct work_struct *work)
 		cdata->headset_is_in = insert;
 		pr_debug("headset %s\n", insert ? "inserted" : "removed");
 		htc_35mm_jack_plug_event(cdata->headset_is_in);
+		cdata->is_hpin_pin_stable = 1;
 	}
 }
 
@@ -432,6 +434,7 @@ static int microp_enable_headset_plug_event(void)
 	microp_read_gpi_status(client, &stat);
 	stat = !(stat & READ_GPI_STATE_HPIN);
 	if(cdata->headset_is_in != stat) {
+		cdata->headset_is_in = stat;
 		pr_debug("Headset state changed\n");
 		htc_35mm_jack_plug_event(stat);
 	}
@@ -462,6 +465,9 @@ static int microp_enable_key_event(void)
 
 	client = private_microp_client;
 
+	/* turn on  key interrupt */
+	gpio_set_value(MAHIMAHI_GPIO_35MM_KEY_INT_SHUTDOWN, 1);
+
 	/* enable microp interrupt to detect changes */
 	ret = microp_interrupt_enable(client, IRQ_REMOTEKEY);
 	if (ret < 0) {
@@ -478,6 +484,9 @@ static int microp_disable_key_event(void)
 	struct i2c_client *client;
 
 	client = private_microp_client;
+
+	/* shutdown key interrupt */
+	gpio_set_value(MAHIMAHI_GPIO_35MM_KEY_INT_SHUTDOWN, 0);
 
 	/* disable microp interrupt to detect changes */
 	ret = microp_interrupt_disable(client, IRQ_REMOTEKEY);
@@ -1542,6 +1551,7 @@ static void microp_i2c_intr_work_func(struct work_struct *work)
 	}
 
 	if (intr_status & IRQ_HEADSETIN) {
+		cdata->is_hpin_pin_stable = 0;
 		wake_lock_timeout(&microp_i2c_wakelock, 3*HZ);
 		if (!cdata->headset_is_in)
 			schedule_delayed_work(&cdata->hpin_debounce_work,
@@ -1551,7 +1561,8 @@ static void microp_i2c_intr_work_func(struct work_struct *work)
 					msecs_to_jiffies(300));
 	}
 	if (intr_status & IRQ_REMOTEKEY) {
-		if (get_remote_keycode(&keycode) == 0) {
+		if ((get_remote_keycode(&keycode) == 0) &&
+			(cdata->is_hpin_pin_stable)) {
 			htc_35mm_key_event(keycode);
 		}
 	}
@@ -1844,6 +1855,7 @@ static int microp_i2c_probe(struct i2c_client *client,
 
 	/* Headset */
 	cdata->headset_is_in = 0;
+	cdata->is_hpin_pin_stable = 1;
 	platform_device_register(&mahimahi_h35mm);
 
 	ret = device_create_file(&client->dev, &dev_attr_key_adc);
