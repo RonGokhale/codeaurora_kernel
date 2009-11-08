@@ -211,15 +211,9 @@ static void lcdc_dma_start(void *priv, uint32_t addr, uint32_t stride,
 			   uint32_t y)
 {
 	struct mdp_lcdc_info *lcdc = priv;
-	uint32_t dma_cfg;
 
+	mdp_dev->configure_dma(mdp_dev);
 	mdp_writel(lcdc->mdp, stride, MDP_DMA_P_IBUF_Y_STRIDE);
-
-	dma_cfg = mdp_readl(lcdc->mdp, MDP_DMA_P_CONFIG);
-	dma_cfg &= ~DMA_IBUF_FORMAT_MASK;
-	dma_cfg |= mdp_dev->get_format(mdp_dev);
-	mdp_writel(lcdc->mdp, dma_cfg, MDP_DMA_P_CONFIG);
-
 	mdp_writel(lcdc->mdp, addr, MDP_DMA_P_IBUF_ADDR);
 }
 

@@ -349,23 +349,25 @@ static void put_img(struct file *file)
 	}
 }
 
-int mdp_get_format_bytes(struct mdp_device *mdp_dev)
+void mdp_configure_dma(struct mdp_device *mdp_dev)
 {
 	struct mdp_info *mdp = container_of(mdp_dev, struct mdp_info, mdp_dev);
-	return mdp->format_bytes;
+	uint32_t dma_cfg;
+
+	if (!mdp->dma_config_dirty)
+		return;
+	dma_cfg = mdp_readl(mdp, MDP_DMA_P_CONFIG);
+	dma_cfg &= ~DMA_IBUF_FORMAT_MASK;
+	dma_cfg &= ~DMA_PACK_PATTERN_MASK;
+	dma_cfg |= (mdp->format | mdp->pack_pattern);
+	mdp_writel(mdp, dma_cfg, MDP_DMA_P_CONFIG);
+	mdp->dma_config_dirty = false;
+
+	return;
 }
 
-int mdp_get_format(struct mdp_device *mdp_dev)
+int mdp_check_output_format(struct mdp_device *mdp_dev, int bpp)
 {
-	struct mdp_info *mdp = container_of(mdp_dev, struct mdp_info, mdp_dev);
-
-	return mdp->format;
-}
-
-int mdp_check_format(struct mdp_device *mdp_dev, int bpp)
-{
-	struct mdp_info *mdp = container_of(mdp_dev, struct mdp_info, mdp_dev);
-
 	switch (bpp) {
 	case 16:
 	case 24:
@@ -377,32 +379,40 @@ int mdp_check_format(struct mdp_device *mdp_dev, int bpp)
 	return 0;
 }
 
-int mdp_set_format(struct mdp_device *mdp_dev, int bpp)
+int mdp_set_output_format(struct mdp_device *mdp_dev, int bpp)
 {
 	struct mdp_info *mdp = container_of(mdp_dev, struct mdp_info, mdp_dev);
+	uint32_t format, pack_pattern;
 
 	switch (bpp) {
 	case 16:
-		mdp->format = DMA_IBUF_FORMAT_RGB565;
+		format = DMA_IBUF_FORMAT_RGB565;
+		pack_pattern = DMA_PACK_PATTERN_RGB;
 		break;
 #ifdef CONFIG_MSM_MDP22
 	case 24:
 	case 32:
-		mdp->format = DMA_IBUF_FORMAT_RGB888_OR_ARGB8888;
+		format = DMA_IBUF_FORMAT_RGB888_OR_ARGB8888;
 		break;
 #else
 	case 24:
-		mdp->format = DMA_IBUF_FORMAT_RGB888;
+		format = DMA_IBUF_FORMAT_RGB888;
+		pack_pattern = DMA_PACK_PATTERN_BGR;
 		break;
 	case 32:
-		mdp->format = DMA_IBUF_FORMAT_XRGB8888;
+		format = DMA_IBUF_FORMAT_XRGB8888;
+		pack_pattern = DMA_PACK_PATTERN_BGR;
 		break;
 #endif
 	default:
 		return -EINVAL;
 	}
+	if (format != mdp->format || pack_pattern != mdp->pack_pattern) {
+		mdp->format = format;
+		mdp->pack_pattern = pack_pattern;
+		mdp->dma_config_dirty = true;
+	}
 
-	mdp->format_bytes = bpp >> 3;
 	return 0;
 }
 
@@ -689,10 +699,9 @@ int mdp_probe(struct platform_device *pdev)
 	mdp->mdp_dev.dma_wait = mdp_dma_wait;
 	mdp->mdp_dev.blit = mdp_blit;
 	mdp->mdp_dev.set_grp_disp = mdp_set_grp_disp;
-	mdp->mdp_dev.set_format = mdp_set_format;
-	mdp->mdp_dev.get_format = mdp_get_format;
-	mdp->mdp_dev.get_format_bytes = mdp_get_format_bytes;
-	mdp->mdp_dev.check_format = mdp_check_format;
+	mdp->mdp_dev.set_output_format = mdp_set_output_format;
+	mdp->mdp_dev.check_output_format = mdp_check_output_format;
+	mdp->mdp_dev.configure_dma = mdp_configure_dma;
 
 	ret = mdp_out_if_register(&mdp->mdp_dev, MSM_MDDI_PMDH_INTERFACE, mdp,
 				  MDP_DMA_P_DONE, mdp_dma_to_mddi);

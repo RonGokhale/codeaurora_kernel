@@ -50,7 +50,8 @@ struct mdp_info {
 	struct clk *ebi1_clk;
 	struct mdp_out_interface out_if[MSM_MDP_NUM_INTERFACES];
 	int format;
-	int format_bytes;
+	int pack_pattern;
+	bool dma_config_dirty;
 };
 
 extern int mdp_out_if_register(struct mdp_device *mdp_dev, int interface,
@@ -704,8 +705,11 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 #define DMA_PACK_LOOSE 0
 #define DMA_PACK_ALIGN_LSB 0
 #define DMA_PACK_ALIGN_MSB (1<<7)
+#define DMA_PACK_PATTERN_MASK (0x3f<<8)
 #define DMA_PACK_PATTERN_RGB \
 	(MDP_GET_PACK_PATTERN(0, CLR_R, CLR_G, CLR_B, 2)<<8)
+#define DMA_PACK_PATTERN_BGR \
+	(MDP_GET_PACK_PATTERN(0, CLR_B, CLR_G, CLR_R, 2)<<8)
 
 
 #ifdef CONFIG_MSM_MDP22

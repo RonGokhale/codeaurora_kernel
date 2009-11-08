@@ -443,7 +443,7 @@ static int msmfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 	if ((var->xres != info->var.xres) ||
 	    (var->yres != info->var.yres) ||
 	    (var->xoffset != info->var.xoffset) ||
-	    (mdp->check_format(mdp, var->bits_per_pixel)) ||
+	    (mdp->check_output_format(mdp, var->bits_per_pixel)) ||
 	    (var->grayscale != info->var.grayscale))
 		 return -EINVAL;
 
@@ -461,11 +461,11 @@ static int msmfb_set_par(struct fb_info *info)
 
 	/* we only support RGB ordering for now */
 	if (var->bits_per_pixel == 32 || var->bits_per_pixel == 24) {
-		var->red.offset = 16;
+		var->red.offset = 0;
 		var->red.length = 8;
 		var->green.offset = 8;
 		var->green.length = 8;
-		var->blue.offset = 0;
+		var->blue.offset = 16;
 		var->blue.length = 8;
 	} else if (var->bits_per_pixel == 16) {
 		var->red.offset = 11;
@@ -476,7 +476,7 @@ static int msmfb_set_par(struct fb_info *info)
 		var->blue.length = 5;
 	} else
 		return -1;
-	mdp->set_format(mdp, var->bits_per_pixel);
+	mdp->set_output_format(mdp, var->bits_per_pixel);
 	fix->line_length = var->xres * var->bits_per_pixel / 8;
 
 	return 0;
@@ -694,7 +694,7 @@ static void setup_fb_info(struct msmfb_info *msmfb)
 	fb_info->var.blue.length = 5;
 	fb_info->var.blue.msb_right = 0;
 
-	mdp->set_format(mdp, fb_info->var.bits_per_pixel);
+	mdp->set_output_format(mdp, fb_info->var.bits_per_pixel);
 
 	r = fb_alloc_cmap(&fb_info->cmap, 16, 0);
 	fb_info->pseudo_palette = PP;
