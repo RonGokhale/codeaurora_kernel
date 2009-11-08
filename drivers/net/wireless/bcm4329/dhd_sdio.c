@@ -4873,13 +4873,14 @@ dhdsdio_release(dhd_bus_t *bus, osl_t *osh)
 
 
 		if (bus->dhd) {
+
+			dhdsdio_release_dongle(bus, osh);
+
 			dhd_detach(bus->dhd);
 			bus->dhd = NULL;
 		}
 
 		dhdsdio_release_malloc(bus, osh);
-
-		dhdsdio_release_dongle(bus, osh);
 
 		/* De-register interrupt handler */
 		bcmsdh_intr_dereg(bus->sdh);
