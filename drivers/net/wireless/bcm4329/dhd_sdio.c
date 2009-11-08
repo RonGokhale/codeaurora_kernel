@@ -293,6 +293,11 @@ static int tx_packets[NUMPRIO];
 /* Deferred transmit */
 const uint dhd_deferred_tx = 1;
 
+#if !defined(CONTINUOUS_WATCHDOG)
+extern uint dhd_watchdog_ms;
+extern void dhd_os_wd_timer(void *bus, uint wdtick);
+#endif /* !defined(CONTINUOUS_WATCHDOG) */
+
 /* Tx/Rx bounds */
 uint dhd_txbound;
 uint dhd_rxbound;
@@ -687,8 +692,12 @@ dhdsdio_clkctl(dhd_bus_t *bus, uint target, bool pendok)
 
 	/* Early exit if we're already there */
 	if (bus->clkstate == target) {
-		if (target == CLK_AVAIL)
+		if (target == CLK_AVAIL) {
+#if !defined(CONTINUOUS_WATCHDOG)
+			dhd_os_wd_timer(bus->dhd, dhd_watchdog_ms);
+#endif /* !defined(CONTINUOUS_WATCHDOG) */
 			bus->activity = TRUE;
+		}
 		return BCME_OK;
 	}
 
@@ -699,6 +708,9 @@ dhdsdio_clkctl(dhd_bus_t *bus, uint target, bool pendok)
 			dhdsdio_sdclk(bus, TRUE);
 		/* Now request HT Avail on the backplane */
 		dhdsdio_htclk(bus, TRUE, pendok);
+#if !defined(CONTINUOUS_WATCHDOG)
+		dhd_os_wd_timer(bus->dhd, dhd_watchdog_ms);
+#endif /* !defined(CONTINUOUS_WATCHDOG) */
 		bus->activity = TRUE;
 		break;
 
@@ -711,6 +723,9 @@ dhdsdio_clkctl(dhd_bus_t *bus, uint target, bool pendok)
 		else
 			DHD_ERROR(("dhdsdio_clkctl: request for %d -> %d\n",
 			           bus->clkstate, target));
+#if !defined(CONTINUOUS_WATCHDOG)
+		dhd_os_wd_timer(bus->dhd, dhd_watchdog_ms);
+#endif /* !defined(CONTINUOUS_WATCHDOG) */
 		break;
 
 	case CLK_NONE:
@@ -719,6 +734,9 @@ dhdsdio_clkctl(dhd_bus_t *bus, uint target, bool pendok)
 			dhdsdio_htclk(bus, FALSE, FALSE);
 		/* Now remove the SD clock */
 		dhdsdio_sdclk(bus, FALSE);
+#if !defined(CONTINUOUS_WATCHDOG)
+		dhd_os_wd_timer(bus->dhd, 0);
+#endif /* !defined(CONTINUOUS_WATCHDOG) */
 		break;
 	}
 #ifdef DHD_DEBUG
@@ -4910,11 +4928,11 @@ dhdsdio_release_dongle(dhd_bus_t *bus, osl_t *osh)
 		return;
 
 	if (bus->sih) {
-		dhdsdio_clkctl(bus, CLK_AVAIL, FALSE);
 #if !defined(BCMLXSDMMC)
+		dhdsdio_clkctl(bus, CLK_AVAIL, FALSE);
 		si_watchdog(bus->sih, 4);
-#endif /* !defined(BCMLXSDMMC) */
 		dhdsdio_clkctl(bus, CLK_NONE, FALSE);
+#endif /* !defined(BCMLXSDMMC) */
 		si_detach(bus->sih);
 		if (bus->vars && bus->varsz)
 			MFREE(osh, bus->vars, bus->varsz);
