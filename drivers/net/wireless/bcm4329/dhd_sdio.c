@@ -4929,11 +4929,11 @@ dhdsdio_release_dongle(dhd_bus_t *bus, osl_t *osh)
 		return;
 
 	if (bus->sih) {
-#if !defined(BCMLXSDMMC)
 		dhdsdio_clkctl(bus, CLK_AVAIL, FALSE);
+#if !defined(BCMLXSDMMC)
 		si_watchdog(bus->sih, 4);
-		dhdsdio_clkctl(bus, CLK_NONE, FALSE);
 #endif /* !defined(BCMLXSDMMC) */
+		dhdsdio_clkctl(bus, CLK_NONE, FALSE);
 		si_detach(bus->sih);
 		if (bus->vars && bus->varsz)
 			MFREE(osh, bus->vars, bus->varsz);
