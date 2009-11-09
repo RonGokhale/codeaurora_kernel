@@ -693,6 +693,8 @@ static uint32_t misc_gpio_table[] = {
 		      GPIO_NO_PULL, GPIO_2MA),
 	PCOM_GPIO_CFG(MAHIMAHI_GPIO_LED_3V3_EN, 0, GPIO_OUTPUT,
 		      GPIO_NO_PULL, GPIO_2MA),
+	PCOM_GPIO_CFG(MAHIMAHI_GPIO_DOCK, 0, GPIO_OUTPUT,
+		      GPIO_NO_PULL, GPIO_4MA),
 };
 
 static uint32_t key_int_shutdown_gpio_table[] = {
