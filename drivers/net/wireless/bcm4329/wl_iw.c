@@ -3846,11 +3846,16 @@ wl_iw_set_priv(
 	
 	if (dwrq->length && extra) {
 		if (g_onoff == G_WLAN_SET_OFF) {
-			wl_iw_control_wl_on(dev, info);
-			if (strnicmp(extra, "START", strlen("START")) != 0)
-				WL_TRACE(("%s, missing START, simulate START\n", __FUNCTION__));
-			else
+			if (strnicmp(extra, "START", strlen("START")) != 0) {
+				WL_TRACE(("%s, missing START, Fail\n", __FUNCTION__));
+				kfree(extra);
+				net_os_wake_unlock(dev);
+				return -EFAULT;
+			}
+			else {
+				wl_iw_control_wl_on(dev, info);
 				WL_TRACE(("%s, Received regular START command\n", __FUNCTION__));
+			}
 		}
 
 	    if (strnicmp(extra, "SCAN-ACTIVE", strlen("SCAN-ACTIVE")) == 0) {
@@ -4278,7 +4283,6 @@ wl_iw_event(struct net_device *dev, wl_event_msg_t *e, void* data)
 	memset(&wrqu, 0, sizeof(wrqu));
 	memset(extra, 0, sizeof(extra));
 
-	
 	switch (event_type) {
 	case WLC_E_TXFAIL:
 		cmd = IWEVTXDROP;
