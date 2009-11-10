@@ -752,6 +752,8 @@ void usb_ept_enable(struct usb_endpoint *ept, int yes)
 		else
 			n &= ~(CTRL_RXE);
 	}
+	/* complete all the updates to ept->head before enabling endpoint*/
+	dma_coherent_pre_ops();
 	writel(n, USB_ENDPTCTRL(ept->num));
 }
 EXPORT_SYMBOL(usb_ept_enable);
@@ -768,7 +770,7 @@ static void usb_ept_start(struct usb_endpoint *ept)
 	ept->head->info = 0;
 
 	/* memory barrier to flush the data before priming endpoint*/
-	dmb();
+	dma_coherent_pre_ops();
 	/* start the endpoint */
 	writel(1 << ept->bit, USB_ENDPTPRIME);
 
@@ -1324,6 +1326,8 @@ static void handle_endpoint(struct usb_info *ui, unsigned bit)
 	/* expire all requests that are no longer active */
 	spin_lock_irqsave(&ui->lock, flags);
 	while ((req = ept->req)) {
+		/* clean speculative fetches on req->item->info */
+		dma_coherent_post_ops();
 		info = req->item->info;
 
 		/* if we've processed all live requests, time to
@@ -1814,6 +1818,10 @@ static int usb_hw_reset(struct usb_info *ui)
 	ulpi_write(ui, val, ULPI_INT_RISE_CLR);
 	ulpi_write(ui, val, ULPI_INT_FALL_CLR);
 
+	/* we are just setting the pointer in the hwblock. Since the
+	 * endpoint isnt enabled the hw block doenst read the contents
+	 * of ui->dma - so we dont need a barrier here
+	 * */
 	writel(ui->dma, USB_ENDPOINTLISTADDR);
 
 	clk_disable(ui->clk);
