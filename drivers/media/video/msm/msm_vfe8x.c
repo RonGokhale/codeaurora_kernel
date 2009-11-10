@@ -135,6 +135,9 @@ static void vfe_config_axi(int mode,
 	}
 }
 
+#define ERR_COPY_FROM_USER() \
+	pr_err("%s(%d): copy from user\n", __func__, __LINE__)
+
 #define CHECKED_COPY_FROM_USER(in) {					\
 	if (cmd->length != sizeof(*(in))) {				\
 		pr_err("msm_camera: %s:%d cmd %d: user data size %d "	\
@@ -146,6 +149,7 @@ static void vfe_config_axi(int mode,
 	}								\
 	if (copy_from_user((in), (void __user *)cmd->value,		\
 			sizeof(*(in)))) {				\
+		ERR_COPY_FROM_USER();					\
 		rc = -EFAULT;						\
 		break;							\
 	}								\
@@ -532,7 +536,7 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 	    cmd->cmd_type != CMD_STATS_AF_BUF_RELEASE) {
 		if (copy_from_user(&vfecmd,
 				   (void __user *)(cmd->value), sizeof(vfecmd))) {
-			pr_err("%s %d: copy_from_user failed\n", __func__, __LINE__);
+			ERR_COPY_FROM_USER();
 			return -EFAULT;
 		}
 	}
@@ -564,7 +568,7 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 			if (copy_from_user(&scfg,
 					   (void __user *)(vfecmd.value),
 					   sizeof(scfg))) {
-				pr_err("%s %d: copy_from_user failed\n", __func__, __LINE__);
+				ERR_COPY_FROM_USER();
 				return -EFAULT;
 			}
 
@@ -647,7 +651,7 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 
 			if (copy_from_user(&axio, (void __user *)(vfecmd.value),
 					   sizeof(axio))) {
-				pr_err("%s %d: copy_from_user failed\n", __func__, __LINE__);
+				ERR_COPY_FROM_USER();
 				return -EFAULT;
 			}
 
@@ -663,7 +667,7 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 
 			if (copy_from_user(&axio, (void __user *)(vfecmd.value),
 					   sizeof(axio))) {
-				pr_err("%s %d: copy_from_user failed\n", __func__, __LINE__);
+				ERR_COPY_FROM_USER();
 				return -EFAULT;
 			}
 
@@ -680,7 +684,7 @@ static int vfe_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 
 			if (copy_from_user(&axio, (void __user *)(vfecmd.value),
 					   sizeof(axio))) {
-				pr_err("%s %d: copy_from_user failed\n", __func__, __LINE__);
+				ERR_COPY_FROM_USER();
 				return -EFAULT;
 			}
 
