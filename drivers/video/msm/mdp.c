@@ -417,6 +417,45 @@ int mdp_set_output_format(struct mdp_device *mdp_dev, int bpp)
 	return 0;
 }
 
+int mdp_blit_and_wait(struct mdp_info *mdp, struct mdp_blit_req *req,
+		struct file *src_file, unsigned long src_start, unsigned long src_len,
+		struct file *dst_file, unsigned long dst_start, unsigned long dst_len)
+{
+	int ret;
+	enable_mdp_irq(mdp, DL0_ROI_DONE);
+	ret = mdp_ppp_blit(mdp, req,
+			src_file, src_start, src_len,
+			dst_file, dst_start, dst_len);
+	if (ret) {
+		disable_mdp_irq(mdp, DL0_ROI_DONE);
+		return ret;
+	}
+	ret = mdp_ppp_wait(mdp);
+	if (ret) {
+		printk(KERN_ERR "%s: failed!\n", __func__);
+
+		printk(KERN_ERR "flags: 0x%x\n", req->flags);
+		printk(KERN_ERR "src.format: 0x%x\n", req->src.format);
+		printk(KERN_ERR "src.width: %d\n", req->src.width);
+		printk(KERN_ERR "src.height: %d\n", req->src.height);
+		printk(KERN_ERR "src_rect.x: %d\n", req->src_rect.x);
+		printk(KERN_ERR "src_rect.y: %d\n", req->src_rect.y);
+		printk(KERN_ERR "src_rect.w: %d\n", req->src_rect.w);
+		printk(KERN_ERR "src_rect.h: %d\n", req->src_rect.h);
+
+		printk(KERN_ERR "dst.format: 0x%x\n", req->dst.format);
+		printk(KERN_ERR "dst.width: %d\n", req->dst.width);
+		printk(KERN_ERR "dst.height: %d\n", req->dst.height);
+		printk(KERN_ERR "dst_rect.x: %d\n", req->dst_rect.x);
+		printk(KERN_ERR "dst_rect.y: %d\n", req->dst_rect.y);
+		printk(KERN_ERR "dst_rect.w: %d\n", req->dst_rect.w);
+		printk(KERN_ERR "dst_rect.h: %d\n", req->dst_rect.h);
+		BUG();
+		return ret;
+	}
+	return 0;
+}
+
 int mdp_blit(struct mdp_device *mdp_dev, struct fb_info *fb,
 	     struct mdp_blit_req *req)
 {
@@ -428,7 +467,7 @@ int mdp_blit(struct mdp_device *mdp_dev, struct fb_info *fb,
 	/* WORKAROUND FOR HARDWARE BUG IN BG TILE FETCH */
 	if (unlikely(req->src_rect.h == 0 ||
 		     req->src_rect.w == 0)) {
-		printk(KERN_ERR "mpd_ppp: src img of zero size!\n");
+		printk(KERN_ERR "mdp_ppp: src img of zero size!\n");
 		return -EINVAL;
 	}
 	if (unlikely(req->dst_rect.h == 0 ||
@@ -438,13 +477,13 @@ int mdp_blit(struct mdp_device *mdp_dev, struct fb_info *fb,
 	/* do this first so that if this fails, the caller can always
 	 * safely call put_img */
 	if (unlikely(get_img(&req->src, fb, &src_start, &src_len, &src_file))) {
-		printk(KERN_ERR "mpd_ppp: could not retrieve src image from "
+		printk(KERN_ERR "mdp_ppp: could not retrieve src image from "
 				"memory\n");
 		return -EINVAL;
 	}
 
 	if (unlikely(get_img(&req->dst, fb, &dst_start, &dst_len, &dst_file))) {
-		printk(KERN_ERR "mpd_ppp: could not retrieve dst image from "
+		printk(KERN_ERR "mdp_ppp: could not retrieve dst image from "
 				"memory\n");
 		put_img(src_file);
 		return -EINVAL;
@@ -465,15 +504,11 @@ int mdp_blit(struct mdp_device *mdp_dev, struct fb_info *fb,
 		req->src_rect.w = 16*req->src_rect.w / req->dst_rect.h;
 		req->dst_rect.h = 16;
 		for (i = 0; i < tiles; i++) {
-			enable_mdp_irq(mdp, DL0_ROI_DONE);
-			ret = mdp_ppp_blit(mdp, req, src_file, src_start,
-					   src_len, dst_file, dst_start,
-					   dst_len);
+			ret = mdp_blit_and_wait(mdp, req,
+						src_file, src_start, src_len,
+						dst_file, dst_start, dst_len);
 			if (ret)
-				goto err_bad_blit;
-			ret = mdp_ppp_wait(mdp);
-			if (ret)
-				goto err_wait_failed;
+				goto end;
 			req->dst_rect.y += 16;
 			req->src_rect.x += req->src_rect.w;
 		}
@@ -483,23 +518,10 @@ int mdp_blit(struct mdp_device *mdp_dev, struct fb_info *fb,
 		req->dst_rect.h = remainder;
 	}
 #endif
-	enable_mdp_irq(mdp, DL0_ROI_DONE);
-	ret = mdp_ppp_blit(mdp, req, src_file, src_start, src_len, dst_file,
-			   dst_start,
-			   dst_len);
-	if (ret)
-		goto err_bad_blit;
-	ret = mdp_ppp_wait(mdp);
-	if (ret)
-		goto err_wait_failed;
+	ret = mdp_blit_and_wait(mdp, req,
+				src_file, src_start, src_len,
+				dst_file, dst_start, dst_len);
 end:
-	put_img(src_file);
-	put_img(dst_file);
-	mutex_unlock(&mdp_mutex);
-	return 0;
-err_bad_blit:
-	disable_mdp_irq(mdp, DL0_ROI_DONE);
-err_wait_failed:
 	put_img(src_file);
 	put_img(dst_file);
 	mutex_unlock(&mdp_mutex);
