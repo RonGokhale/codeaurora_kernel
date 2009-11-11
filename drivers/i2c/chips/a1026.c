@@ -472,7 +472,7 @@ unsigned int vr_no_ns_receiver[] = {
 	0x800D0001, /* SetDeviceParm, 0x0001:+ 6dB */
 	0x800C0400, /* SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain */
 	0x800D0001, /* SetDeviceParm, 0x0001:+ 6dB */
-	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
+	0x801500FD, /* SetDigitalOutputGain, 0x00:Tx, 0xFD:(-3 dB) */
 	0x801B0009, /* SetDigitalInputGain, 0x00:Pri Mic (Tx), 0x09:(9 dB) */
 	0x801B0109, /* SetDigitalInputGain, 0x01:Sec Mic (Tx), 0x09:(9 dB) */
 };
@@ -538,7 +538,7 @@ unsigned int vr_ns_receiver[] = {
 	0x800D0001, /* SetDeviceParm, +6dB */
 	0x800C0400, /* SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain */
 	0x800D0001, /* SetDeviceParm, 0x0001:+6dB */
-	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0dB) */
+	0x801500FD, /* SetDigitalOutputGain, 0x00:Tx, 0xFD:(-3dB) */
 	0x801B0009, /* SetDigitalInputGain, 0x00:Pri Mic (Tx), 0x09:(9dB) */
 	0x801B0109, /* SetDigitalInputGain, 0x01:Sec Mic (Tx), 0x09:(9dB) */
 };
