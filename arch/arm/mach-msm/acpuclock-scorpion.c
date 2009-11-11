@@ -378,13 +378,6 @@ static void __init acpuclk_init(void)
 
 	init_khz = acpuclk_find_speed();
 
-	/* Force over to AXI clock so we can init the SCPLL
-	 * even if it was already running when we started.
-	 */
-	select_clock(SRC_AXI, 0);
-
-	scpll_init(0x14);
-
 	/* Move to 768MHz for boot, which is a safe frequency
 	 * for all versions of Scorpion at the moment.
 	 */
@@ -399,10 +392,18 @@ static void __init acpuclk_init(void)
 		speed++;
 	}
 
-	scpll_apps_enable(1);
-	scpll_set_freq(speed->sc_l_value);
-	select_clock(SRC_SCPLL, 0);
+	if (init_khz != speed->acpu_khz) {
+		/* Force over to AXI clock so we can init the SCPLL
+		 * even if it was already running when we started.
+		 */
+		select_clock(SRC_AXI, 0);
 
+		scpll_init(0x14);
+
+		scpll_apps_enable(1);
+		scpll_set_freq(speed->sc_l_value);
+		select_clock(SRC_SCPLL, 0);
+	}
 	drv_state.current_speed = speed;
 
 	for (speed = acpu_freq_tbl; speed->acpu_khz; speed++)
