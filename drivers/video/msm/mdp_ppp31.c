@@ -288,6 +288,9 @@ int mdp_ppp_cfg_scale(const struct mdp_info *mdp, struct ppp_regs *regs,
 	int x_idx;
 	int y_idx;
 
+	if (unlikely(src_rect->w > 2048 || src_rect->h > 2048))
+		return -ENOTSUPP;
+
 	x_fac = (dst_rect->w * 100) / src_rect->w;
 	y_fac = (dst_rect->h * 100) / src_rect->h;
 

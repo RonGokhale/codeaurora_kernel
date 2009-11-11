@@ -320,7 +320,7 @@ static int blit_scale(const struct mdp_info *mdp, struct mdp_blit_req *req,
 
 	if (mdp_ppp_cfg_scale(mdp, regs, &req->src_rect, &dst_rect,
 			      req->src.format, req->dst.format)) {
-		DLOG("crap, bad scale");
+		DLOG("crap, bad scale\n");
 		return -1;
 	}
 
@@ -537,7 +537,7 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 
 	if (unlikely(req->src.format >= MDP_IMGTYPE_LIMIT ||
 		     req->dst.format >= MDP_IMGTYPE_LIMIT)) {
-		printk(KERN_ERR "mpd_ppp: img is of wrong format\n");
+		printk(KERN_ERR "mdp_ppp: img is of wrong format\n");
 		return -EINVAL;
 	}
 
@@ -545,7 +545,15 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 		     req->src_rect.y > req->src.height ||
 		     req->dst_rect.x > req->dst.width ||
 		     req->dst_rect.y > req->dst.height)) {
-		printk(KERN_ERR "mpd_ppp: img rect is outside of img!\n");
+		printk(KERN_ERR "mdp_ppp: img rect is outside of img!\n");
+		return -EINVAL;
+	}
+
+	if (unlikely(req->src_rect.x + req->src_rect.w > req->src.width ||
+		     req->src_rect.y + req->src_rect.h > req->src.height ||
+		     req->dst_rect.x + req->dst_rect.w > req->dst.width ||
+		     req->dst_rect.y + req->dst_rect.h > req->dst.height)) {
+		printk(KERN_ERR "mdp_ppp: img rect extends outside of img!\n");
 		return -EINVAL;
 	}
 
@@ -587,7 +595,7 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 
 	if (!valid_src_dst(src_start, src_len, dst_start, dst_len, req,
 			   &regs)) {
-		printk(KERN_ERR "mpd_ppp: final src or dst location is "
+		printk(KERN_ERR "mdp_ppp: final src or dst location is "
 			"invalid, are you trying to make an image too large "
 			"or to place it outside the screen?\n");
 		return -EINVAL;
@@ -601,7 +609,7 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 		regs.op |= PPP_OP_DITHER_EN;
 	blit_blend(req, &regs);
 	if (blit_scale(mdp, req, &regs)) {
-		printk(KERN_ERR "mpd_ppp: error computing scale for img.\n");
+		printk(KERN_ERR "mdp_ppp: error computing scale for img.\n");
 		return -EINVAL;
 	}
 	blit_blur(mdp, req, &regs);
