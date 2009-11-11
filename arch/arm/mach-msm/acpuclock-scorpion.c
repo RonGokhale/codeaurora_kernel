@@ -94,6 +94,15 @@ struct clkctl_acpu_speed acpu_freq_tbl[] = {
 	{ 0 },
 };
 
+/* select the standby clock that is used when switching scpll
+ * frequencies
+ *
+ * Currently: TCXO
+ */
+struct clkctl_acpu_speed *acpu_stby = &acpu_freq_tbl[0];
+#define IS_ACPU_STANDBY(x)	(((x)->clk_cfg == acpu_stby->clk_cfg) && \
+				 ((x)->clk_sel == acpu_stby->clk_sel))
+
 #ifdef CONFIG_CPU_FREQ_TABLE
 static struct cpufreq_frequency_table freq_table[ARRAY_SIZE(acpu_freq_tbl)];
 
@@ -321,15 +330,15 @@ int acpuclk_set_rate(unsigned long rate, int for_power_collapse)
 	if (next->clk_sel == SRC_SCPLL) {
 		if (cur->clk_sel != SRC_SCPLL)
 			scpll_apps_enable(1);
-		if (cur->clk_sel != SRC_AXI)
-			select_clock(SRC_AXI, 0);
+		if (!IS_ACPU_STANDBY(cur))
+			select_clock(acpu_stby->clk_sel, acpu_stby->clk_cfg);
 		loops_per_jiffy = next->lpj;
 		scpll_set_freq(next->sc_l_value);
 		select_clock(SRC_SCPLL, 0);
 	} else {
 		loops_per_jiffy = next->lpj;
 		if (cur->clk_sel == SRC_SCPLL) {
-			select_clock(SRC_AXI, 0);
+			select_clock(acpu_stby->clk_sel, acpu_stby->clk_cfg);
 			select_clock(next->clk_sel, next->clk_cfg);
 			scpll_apps_enable(0);
 		} else {
@@ -393,10 +402,10 @@ static void __init acpuclk_init(void)
 	}
 
 	if (init_khz != speed->acpu_khz) {
-		/* Force over to AXI clock so we can init the SCPLL
+		/* Force over to standby clock so we can init the SCPLL
 		 * even if it was already running when we started.
 		 */
-		select_clock(SRC_AXI, 0);
+		select_clock(acpu_stby->clk_sel, acpu_stby->clk_cfg);
 
 		scpll_init(0x14);
 
