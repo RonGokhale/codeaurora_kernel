@@ -284,7 +284,8 @@ int mdp_ppp_cfg_scale(const struct mdp_info *mdp, struct ppp_regs *regs,
 	uint32_t y_fac;
 	uint32_t scaler_x = MDP_PPP_SCALER_FIR;
 	uint32_t scaler_y = MDP_PPP_SCALER_FIR;
-	int use_pr = IS_RGB(src_format) && IS_RGB(dst_format);
+	// Don't use pixel repeat mode, it looks bad
+	int use_pr = 0;
 	int x_idx;
 	int y_idx;
 
