@@ -138,9 +138,10 @@ void mahimahi_mic_enable(int en)
 	else
 		new_state--;
 
-	if (new_state == 1 && old_state == 0)
+	if (new_state == 1 && old_state == 0) {
 		gpio_set_value(MAHIMAHI_AUD_2V5_EN, 1);
-	else if (new_state == 0 && old_state == 1)
+		mdelay(60);
+	} else if (new_state == 0 && old_state == 1)
 		gpio_set_value(MAHIMAHI_AUD_2V5_EN, 0);
 	else
 		D("%s: do nothing %d %d\n", __func__, old_state, new_state);
