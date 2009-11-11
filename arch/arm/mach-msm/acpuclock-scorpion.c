@@ -323,9 +323,11 @@ int acpuclk_set_rate(unsigned long rate, int for_power_collapse)
 			scpll_apps_enable(1);
 		if (cur->clk_sel != SRC_AXI)
 			select_clock(SRC_AXI, 0);
+		loops_per_jiffy = next->lpj;
 		scpll_set_freq(next->sc_l_value);
 		select_clock(SRC_SCPLL, 0);
 	} else {
+		loops_per_jiffy = next->lpj;
 		if (cur->clk_sel == SRC_SCPLL) {
 			select_clock(SRC_AXI, 0);
 			select_clock(next->clk_sel, next->clk_cfg);
@@ -336,7 +338,6 @@ int acpuclk_set_rate(unsigned long rate, int for_power_collapse)
 	}
 
 	drv_state.current_speed = next;
-	loops_per_jiffy = next->lpj;
 
 	spin_unlock_irqrestore(&acpu_lock, flags);
 	if (!for_power_collapse) {
