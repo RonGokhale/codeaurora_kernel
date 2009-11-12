@@ -212,6 +212,7 @@ enum A1026_NS_states {
 #define A1026_ERROR_CODE	0xffff
 #define A1026_SLEEP		0
 #define A1026_ACTIVE		1
+#define A1026_CMD_FIFO_DEPTH	64
 #define ERROR			0xffffffff
 
 enum A1026_config_mode {
@@ -227,10 +228,6 @@ struct a1026_platform_data {
 	uint32_t gpio_a1026_clk;
 };
 
-struct cmd_list {
-	unsigned int *p;
-	unsigned int cnt;
-};
 
 #endif /* __KERNEL__ */
 #endif /* __LINUX_A1026_H */

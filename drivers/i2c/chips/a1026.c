@@ -206,7 +206,7 @@ static ssize_t a1026_bootup_init(struct file *file, struct a1026img *img)
 			continue;
 		}
 
-		msleep(20); /* use polling */
+		mdelay(1); /* use polling */
 		rc = a1026_i2c_read(buf, 1);
 		if (rc < 0) {
 			pr_err("%s: boot mode ack error (%d retries left)\n",
@@ -282,180 +282,180 @@ set_suspend_err:
 	return rc;
 }
 
-unsigned int phonecall_receiver[] = {
-	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
-	0x80180000, /* SetAlgorithmParm, 0x0000:2-mic Close Talk (CT) */
-	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
-	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
-	0x80180005, /* SetAlgorithmParm, 0x0005:25dB Max Suppression */
-	0x801B000C, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x0C:(12 dB) */
-	0x801B010C, /* SetDigitalInputGain, 0x01:Secondary Mic (Tx), 0x0C:(12 dB) */
-	0x80150002, /* SetDigitalOutputGain, 0x00:Tx, 0x02:(2 dB) */
+unsigned char phonecall_receiver[] = {
+	0x80,0x17,0x00,0x02, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:2-mic Close Talk (CT) */
+	0x80,0x1C,0x00,0x01, /* VoiceProcessingOn, 0x0001:Yes */
+	0x80,0x17,0x00,0x1A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x17,0x00,0x04, /* SetAlgorithmParmID, 0x0004:Use AGC */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x17,0x00,0x00, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80,0x18,0x00,0x05, /* SetAlgorithmParm, 0x0005:25dB Max Suppression */
+	0x80,0x1B,0x00,0x0C, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x0C:(12 dB) */
+	0x80,0x1B,0x01,0x0C, /* SetDigitalInputGain, 0x01:Secondary Mic (Tx), 0x0C:(12 dB) */
+	0x80,0x15,0x00,0x02, /* SetDigitalOutputGain, 0x00:Tx, 0x02:(2 dB) */
 };
 
-unsigned int phonecall_headset[] = {
-	0x80260015, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
-	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
-	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
-	0x801500F8, /* SetDigitalOutputGain, 0x00:Tx, 0xF8:(-8 dB) */
+unsigned char phonecall_headset[] = {
+	0x80,0x26,0x00,0x15, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
+	0x80,0x1C,0x00,0x00, /* VoiceProcessingOn, 0x0000:No */
+	0x80,0x1B,0x00,0x12, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80,0x15,0x00,0xF8, /* SetDigitalOutputGain, 0x00:Tx, 0xF8:(-8 dB) */
 };
 
-unsigned int phonecall_speaker[] = {
-	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
-	0x80180002, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
-	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
-	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
-	0x80180004, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
-	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
-	0x801500FD, /* SetDigitalOutputGain, 0x00:Tx, 0xFD:(-3 dB) */
+unsigned char phonecall_speaker[] = {
+	0x80,0x17,0x00,0x02, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80,0x18,0x00,0x02, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
+	0x80,0x1C,0x00,0x01, /* VoiceProcessingOn, 0x0001:Yes */
+	0x80,0x17,0x00,0x00, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80,0x18,0x00,0x04, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
+	0x80,0x17,0x00,0x04, /* SetAlgorithmParmID, 0x0004:Use AGC */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x17,0x00,0x1A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x1B,0x00,0x12, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80,0x15,0x00,0xFD, /* SetDigitalOutputGain, 0x00:Tx, 0xFD:(-3 dB) */
 };
 
-unsigned int phonecall_bt[] = {
-	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
-	0x80180003, /* SetAlgorithmParm, 0x0003:1-mic External (MD) */
-	0x80260006, /* SelectRouting, 0x0006:Snk,Snk,Fei,Pri - Zro,Csp,Feo (PCM0->PCM1+ADCs) */
-	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
-	0x801B0000, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x00:(0 dB) */
-	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
+unsigned char phonecall_bt[] = {
+	0x80,0x17,0x00,0x02, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80,0x18,0x00,0x03, /* SetAlgorithmParm, 0x0003:1-mic External (MD) */
+	0x80,0x26,0x00,0x06, /* SelectRouting, 0x0006:Snk,Snk,Fei,Pri - Zro,Csp,Feo (PCM0->PCM1+ADCs) */
+	0x80,0x1C,0x00,0x00, /* VoiceProcessingOn, 0x0000:No */
+	0x80,0x1B,0x00,0x00, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x00:(0 dB) */
+	0x80,0x15,0x00,0x00, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
-unsigned int INT_MIC_recording_receiver[] = {
-	0x80260007, /* SelectRouting, 0x0007:Pri,Snk,Snk,Snk - Csp,Zro,Zro (none) */
-	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
-	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
-	0x80150006, /* SetDigitalOutputGain, 0x00:Tx, 0x06:(6 dB) */
+unsigned char INT_MIC_recording_receiver[] = {
+	0x80,0x26,0x00,0x07, /* SelectRouting, 0x0007:Pri,Snk,Snk,Snk - Csp,Zro,Zro (none) */
+	0x80,0x1C,0x00,0x00, /* VoiceProcessingOn, 0x0000:No */
+	0x80,0x1B,0x00,0x12, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80,0x15,0x00,0x06, /* SetDigitalOutputGain, 0x00:Tx, 0x06:(6 dB) */
 };
 
-unsigned int EXT_MIC_recording[] = {
-	0x80260015, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
-	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
-	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
-	0x80150006, /* SetDigitalOutputGain, 0x00:Tx, 0x06:(6 dB) */
+unsigned char EXT_MIC_recording[] = {
+	0x80,0x26,0x00,0x15, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
+	0x80,0x1C,0x00,0x00, /* VoiceProcessingOn, 0x0000:No */
+	0x80,0x1B,0x00,0x12, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80,0x15,0x00,0x06, /* SetDigitalOutputGain, 0x00:Tx, 0x06:(6 dB) */
 };
 
-unsigned int INT_MIC_recording_speaker[] = {
-	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
-	0x80180002, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
-	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
-	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
-	0x80150006, /* SetDigitalOutputGain, 0x00:Tx, 0x06:(6 dB) */
+unsigned char INT_MIC_recording_speaker[] = {
+	0x80,0x17,0x00,0x02, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80,0x18,0x00,0x02, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
+	0x80,0x1C,0x00,0x00, /* VoiceProcessingOn, 0x0000:No */
+	0x80,0x1B,0x00,0x12, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80,0x15,0x00,0x06, /* SetDigitalOutputGain, 0x00:Tx, 0x06:(6 dB) */
 };
 
-unsigned int BACK_MIC_recording[] = {
-	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
-	0x80180002, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
-	0x80260015, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
-	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
-	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
-	0x80180004, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
-	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
-	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
+unsigned char BACK_MIC_recording[] = {
+	0x80,0x17,0x00,0x02, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80,0x18,0x00,0x02, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
+	0x80,0x26,0x00,0x15, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
+	0x80,0x1C,0x00,0x01, /* VoiceProcessingOn, 0x0001:Yes */
+	0x80,0x17,0x00,0x04, /* SetAlgorithmParmID, 0x0004:Use AGC */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x17,0x00,0x1A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x17,0x00,0x00, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80,0x18,0x00,0x04, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
+	0x80,0x1B,0x00,0x12, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80,0x15,0x00,0x00, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
-unsigned int vr_no_ns_receiver[] = {
-	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
-	0x80180000, /* SetAlgorithmParm, 0x0000:2-mic Close Talk (CT) */
-	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
-	0x801B0009, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x09:(9 dB) */
-	0x801B0109, /* SetDigitalInputGain, 0x01:Secondary Mic (Tx), 0x09:(9 dB) */
-	0x801500FA, /* SetDigitalOutputGain, 0x00:Tx, 0xFA:(-6 dB) */
+unsigned char vr_no_ns_receiver[] = {
+	0x80,0x17,0x00,0x02, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:2-mic Close Talk (CT) */
+	0x80,0x1C,0x00,0x00, /* VoiceProcessingOn, 0x0000:No */
+	0x80,0x1B,0x00,0x09, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x09:(9 dB) */
+	0x80,0x1B,0x01,0x09, /* SetDigitalInputGain, 0x01:Secondary Mic (Tx), 0x09:(9 dB) */
+	0x80,0x15,0x00,0xFA, /* SetDigitalOutputGain, 0x00:Tx, 0xFA:(-6 dB) */
 };
 
-unsigned int vr_no_ns_headset[] = {
-	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
-	0x80180003, /* SetAlgorithmParm, 0x0003:1M-DG (1-mic digital input) */
-	0x80260015, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
-	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
-	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
-	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
+unsigned char vr_no_ns_headset[] = {
+	0x80,0x17,0x00,0x02, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80,0x18,0x00,0x03, /* SetAlgorithmParm, 0x0003:1M-DG (1-mic digital input) */
+	0x80,0x26,0x00,0x15, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
+	0x80,0x1C,0x00,0x00, /* VoiceProcessingOn, 0x0000:No */
+	0x80,0x1B,0x00,0x12, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80,0x15,0x00,0x00, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
-unsigned int vr_no_ns_speaker[] = {
-	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
-	0x80180002, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
-	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
-	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
-	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
+unsigned char vr_no_ns_speaker[] = {
+	0x80,0x17,0x00,0x02, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80,0x18,0x00,0x02, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
+	0x80,0x1C,0x00,0x00, /* VoiceProcessingOn, 0x0000:No */
+	0x80,0x1B,0x00,0x12, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80,0x15,0x00,0x00, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
-unsigned int vr_no_ns_bt[] = {
-	0x80260006, /* SelectRouting, 0x0006:Snk,Snk,Fei,Pri - Zro,Csp,Feo (PCM0->PCM1+ADCs) */
-	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
-	0x801B0000, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x00:(0 dB) */
-	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
+unsigned char vr_no_ns_bt[] = {
+	0x80,0x26,0x00,0x06, /* SelectRouting, 0x0006:Snk,Snk,Fei,Pri - Zro,Csp,Feo (PCM0->PCM1+ADCs) */
+	0x80,0x1C,0x00,0x00, /* VoiceProcessingOn, 0x0000:No */
+	0x80,0x1B,0x00,0x00, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x00:(0 dB) */
+	0x80,0x15,0x00,0x00, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
-unsigned int vr_ns_receiver[] = {
-	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
-	0x80180000, /* SetAlgorithmParm, 0x0000:2-mic Close Talk (CT) */
-	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
-	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
-	0x80180004, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
-	0x801B0009, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x09:(9 dB) */
-	0x801B0109, /* SetDigitalInputGain, 0x01:Secondary Mic (Tx), 0x09:(9 dB) */
-	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
+unsigned char vr_ns_receiver[] = {
+	0x80,0x17,0x00,0x02, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:2-mic Close Talk (CT) */
+	0x80,0x1C,0x00,0x01, /* VoiceProcessingOn, 0x0001:Yes */
+	0x80,0x17,0x00,0x1A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x17,0x00,0x04, /* SetAlgorithmParmID, 0x0004:Use AGC */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x17,0x00,0x00, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80,0x18,0x00,0x04, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
+	0x80,0x1B,0x00,0x09, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x09:(9 dB) */
+	0x80,0x1B,0x01,0x09, /* SetDigitalInputGain, 0x01:Secondary Mic (Tx), 0x09:(9 dB) */
+	0x80,0x15,0x00,0x00, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
-unsigned int vr_ns_headset[] = {
-	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
-	0x80180003, /* SetAlgorithmParm, 0x0003:1-mic External (MD) */
-	0x80260015, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
-	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
-	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
-	0x80180002, /* SetAlgorithmParm, 0x0002:20dB Max Suppression */
-	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
-	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
+unsigned char vr_ns_headset[] = {
+	0x80,0x17,0x00,0x02, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80,0x18,0x00,0x03, /* SetAlgorithmParm, 0x0003:1-mic External (MD) */
+	0x80,0x26,0x00,0x15, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
+	0x80,0x1C,0x00,0x01, /* VoiceProcessingOn, 0x0001:Yes */
+	0x80,0x17,0x00,0x00, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80,0x18,0x00,0x02, /* SetAlgorithmParm, 0x0002:20dB Max Suppression */
+	0x80,0x17,0x00,0x1A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x17,0x00,0x04, /* SetAlgorithmParmID, 0x0004:Use AGC */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x1B,0x00,0x12, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80,0x15,0x00,0x00, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
-unsigned int vr_ns_speaker[] = {
-	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
-	0x80180002, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
-	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
-	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
-	0x80180004, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
-	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
-	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
+unsigned char vr_ns_speaker[] = {
+	0x80,0x17,0x00,0x02, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80,0x18,0x00,0x02, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
+	0x80,0x1C,0x00,0x01, /* VoiceProcessingOn, 0x0001:Yes */
+	0x80,0x17,0x00,0x00, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80,0x18,0x00,0x04, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
+	0x80,0x17,0x00,0x04, /* SetAlgorithmParmID, 0x0004:Use AGC */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x17,0x00,0x1A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x1B,0x00,0x12, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80,0x15,0x00,0x00, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
-unsigned int vr_ns_bt[] = {
-	0x80260006, /* SelectRouting, 0x0006:Snk,Snk,Fei,Pri - Zro,Csp,Feo (PCM0->PCM1+ADCs) */
-	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
-	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
-	0x80180002, /* SetAlgorithmParm, 0x0002:20dB Max Suppression */
-	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x801B0000, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x00:(0 dB) */
-	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
+unsigned char vr_ns_bt[] = {
+	0x80,0x26,0x00,0x06, /* SelectRouting, 0x0006:Snk,Snk,Fei,Pri - Zro,Csp,Feo (PCM0->PCM1+ADCs) */
+	0x80,0x1C,0x00,0x01, /* VoiceProcessingOn, 0x0001:Yes */
+	0x80,0x17,0x00,0x00, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80,0x18,0x00,0x02, /* SetAlgorithmParm, 0x0002:20dB Max Suppression */
+	0x80,0x17,0x00,0x04, /* SetAlgorithmParmID, 0x0004:Use AGC */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x17,0x00,0x1A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
+	0x80,0x18,0x00,0x00, /* SetAlgorithmParm, 0x0000:No */
+	0x80,0x1B,0x00,0x00, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x00:(0 dB) */
+	0x80,0x15,0x00,0x00, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
-unsigned int suspend_mode[] = {
-	A100_msg_Sleep,
+unsigned char suspend_mode[] = {
+	0x80,0x10,0x00,0x01
 };
 
 static ssize_t chk_wakeup_a1026(void)
@@ -470,14 +470,13 @@ static ssize_t chk_wakeup_a1026(void)
 		}
 
 		gpio_set_value(pdata->gpio_a1026_wakeup, 0);
-		msleep(10);
-		gpio_set_value(pdata->gpio_a1026_wakeup, 1);
 		msleep(120);
 
 		do {
 			rc = execute_cmdmsg(A100_msg_Sync);
 		} while ((rc < 0) && --retry);
 
+		gpio_set_value(pdata->gpio_a1026_wakeup, 1);
 		if (rc < 0) {
 			pr_err("%s: failed (%d)\n", __func__, rc);
 			goto wakeup_sync_err;
@@ -536,9 +535,13 @@ int a1026_filter_vp_cmd(int cmd, int mode)
 
 int a1026_set_config(char newid, int mode)
 {
-	int i = 0, rc = 0;
-	struct cmd_list new_list;
-	int cmd;
+	int i = 0, rc = 0, size = 0;
+	int number_of_cmd_sets, rd_retry_cnt;
+	unsigned int sw_reset = 0;
+	unsigned char *i2c_cmds;
+	unsigned char *index = 0;
+	unsigned char ack_buf[A1026_CMD_FIFO_DEPTH * 4];
+	unsigned char rdbuf[4];
 
 	if ((a1026_suspended) && (newid == A1026_PATH_SUSPEND))
 		return rc;
@@ -547,98 +550,98 @@ int a1026_set_config(char newid, int mode)
 	if (rc < 0)
 		return rc;
 
+	sw_reset = ((A100_msg_Reset << 16) | RESET_IMMEDIATE);
+
 	switch (newid) {
 	case A1026_PATH_INCALL_RECEIVER:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = phonecall_receiver;
-		new_list.cnt = sizeof(phonecall_receiver)/sizeof(unsigned int);
+		i2c_cmds = phonecall_receiver;
+		size = sizeof(phonecall_receiver);
 		break;
 	case A1026_PATH_INCALL_HEADSET:
 		gpio_set_value(pdata->gpio_a1026_micsel, 1);
-		new_list.p = phonecall_headset;
-		new_list.cnt = sizeof(phonecall_headset)/sizeof(unsigned int);
+		i2c_cmds = phonecall_headset;
+		size = sizeof(phonecall_headset);
 		break;
 	case A1026_PATH_INCALL_SPEAKER:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = phonecall_speaker;
-		new_list.cnt = sizeof(phonecall_speaker)/sizeof(unsigned int);
+		i2c_cmds = phonecall_speaker;
+		size = sizeof(phonecall_speaker);
 		break;
 	case A1026_PATH_INCALL_BT:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = phonecall_bt;
-		new_list.cnt = sizeof(phonecall_bt)/sizeof(unsigned int);
+		i2c_cmds = phonecall_bt;
+		size = sizeof(phonecall_bt);
 		break;
 	case A1026_PATH_VR_NO_NS_RECEIVER:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = vr_no_ns_receiver;
-		new_list.cnt = sizeof(vr_no_ns_receiver)/sizeof(unsigned int);
+		i2c_cmds = vr_no_ns_receiver;
+		size = sizeof(vr_no_ns_receiver);
 		break;
 	case A1026_PATH_VR_NO_NS_HEADSET:
 		gpio_set_value(pdata->gpio_a1026_micsel, 1);
-		new_list.p = vr_no_ns_headset;
-		new_list.cnt = sizeof(vr_no_ns_headset)/sizeof(unsigned int);
+		i2c_cmds = vr_no_ns_headset;
+		size = sizeof(vr_no_ns_headset);
 		break;
 	case A1026_PATH_VR_NO_NS_SPEAKER:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = vr_no_ns_speaker;
-		new_list.cnt = sizeof(vr_no_ns_speaker)/sizeof(unsigned int);
+		i2c_cmds = vr_no_ns_speaker;
+		size = sizeof(vr_no_ns_speaker);
 		break;
 	case A1026_PATH_VR_NO_NS_BT:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = vr_no_ns_bt;
-		new_list.cnt = sizeof(vr_no_ns_bt)/sizeof(unsigned int);
+		i2c_cmds = vr_no_ns_bt;
+		size = sizeof(vr_no_ns_bt);
 		break;
 	case A1026_PATH_VR_NS_RECEIVER:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = vr_ns_receiver;
-		new_list.cnt = sizeof(vr_ns_receiver)/sizeof(unsigned int);
+		i2c_cmds = vr_ns_receiver;
+		size = sizeof(vr_ns_receiver);
 		break;
 	case A1026_PATH_VR_NS_HEADSET:
 		gpio_set_value(pdata->gpio_a1026_micsel, 1);
-		new_list.p = vr_ns_headset;
-		new_list.cnt = sizeof(vr_ns_headset)/sizeof(unsigned int);
+		i2c_cmds = vr_ns_headset;
+		size = sizeof(vr_ns_headset);
 		break;
 	case A1026_PATH_VR_NS_SPEAKER:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = vr_ns_speaker;
-		new_list.cnt = sizeof(vr_ns_speaker)/sizeof(unsigned int);
+		i2c_cmds = vr_ns_speaker;
+		size = sizeof(vr_ns_speaker);
 		break;
 	case A1026_PATH_VR_NS_BT:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = vr_ns_bt;
-		new_list.cnt = sizeof(vr_ns_bt)/sizeof(unsigned int);
+		i2c_cmds = vr_ns_bt;
+		size = sizeof(vr_ns_bt);
 		break;
 	case A1026_PATH_RECORD_RECEIVER:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = INT_MIC_recording_receiver;
-		new_list.cnt =
-			sizeof(INT_MIC_recording_receiver)/sizeof(unsigned int);
+		i2c_cmds = INT_MIC_recording_receiver;
+		size = sizeof(INT_MIC_recording_receiver);
 		break;
 	case A1026_PATH_RECORD_HEADSET:
 		gpio_set_value(pdata->gpio_a1026_micsel, 1);
-		new_list.p = EXT_MIC_recording;
-		new_list.cnt = sizeof(EXT_MIC_recording)/sizeof(unsigned int);
+		i2c_cmds = EXT_MIC_recording;
+		size = sizeof(EXT_MIC_recording);
 		break;
 	case A1026_PATH_RECORD_SPEAKER:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = INT_MIC_recording_speaker;
-		new_list.cnt =
-			sizeof(INT_MIC_recording_speaker)/sizeof(unsigned int);
+		i2c_cmds = INT_MIC_recording_speaker;
+		size = sizeof(INT_MIC_recording_speaker);
 		break;
 	case A1026_PATH_RECORD_BT:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = phonecall_bt; /*TBD*/
-		new_list.cnt = sizeof(phonecall_bt)/sizeof(unsigned int);
+		i2c_cmds = phonecall_bt;
+		size = sizeof(phonecall_bt);
 		break;
 	case A1026_PATH_SUSPEND:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = suspend_mode;
-		new_list.cnt = sizeof(suspend_mode)/sizeof(unsigned int);
+		i2c_cmds = (unsigned char *)suspend_mode;
+		size = sizeof(suspend_mode);
 		break;
 	case A1026_PATH_CAMCORDER:
 		gpio_set_value(pdata->gpio_a1026_micsel, 0);
-		new_list.p = BACK_MIC_recording;
-		new_list.cnt = sizeof(BACK_MIC_recording)/sizeof(unsigned int);
+		i2c_cmds = BACK_MIC_recording;
+		size = sizeof(BACK_MIC_recording);
 		break;
 	default:
 		pr_err("%s: invalid cmd %d\n", __func__, newid);
@@ -648,31 +651,86 @@ int a1026_set_config(char newid, int mode)
 	}
 
 	a1026_current_config = newid;
-	pr_info("%s: change mode command count = %d\n", __func__, new_list.cnt);
-	for (i = 0; i < new_list.cnt; i++) {
-		pr_info("%s: cmd[%2d] = %x\n", __func__,
-				i, *(new_list.p));
-		cmd = a1026_filter_vp_cmd(*(new_list.p), mode);
-		if (cmd != -1) {
-			rc = execute_cmdmsg(cmd);
-			if (rc < 0)
-				break;
-			if (cmd == A100_msg_Sleep) {
-				a1026_suspended = 1;
-				/* Disable A1026 clock */
-				msleep(120);
-				if (control_a1026_clk)
-					gpio_set_value(pdata->gpio_a1026_clk,
-							0);
-			}
-		}
-		new_list.p++;
+	pr_info("%s: change to mode %d\n", __func__, newid);
+
+	pr_info("%s: block write start (size = %d)\n", __func__, size);
+#if DEBUG
+        for (i = 1; i <= size; i++) {
+                pr_info("%x ", *(i2c_cmds + i - 1));
+                if ( !(i % 4))
+                        pr_info("\n");
+        }
+#endif
+
+	rc = a1026_i2c_write(i2c_cmds, size);
+	if (rc < 0) {
+		pr_err("A1026 CMD block write error!\n");
+		a1026_i2c_sw_reset(sw_reset);
+		return rc;
+	}
+	pr_info("%s: block write end\n", __func__);
+
+	/* Don't need to get Ack after sending out a suspend command */
+	if (*i2c_cmds == 0x80 && *(i2c_cmds + 1) == 0x10
+		&& *(i2c_cmds + 2) == 0x00 && *(i2c_cmds + 3) == 0x01) {
+		a1026_suspended = 1;
+		/* Disable A1026 clock */
+		msleep(120);
+		if (control_a1026_clk)
+			gpio_set_value(pdata->gpio_a1026_clk, 0);
+		return rc;
 	}
 
-	if (rc < 0)
-		pr_err("%s: exe cmd[%d] = %x error %d\n", __func__,
-				i, *(new_list.p), rc);
-
+	memset(ack_buf, 0, sizeof(ack_buf));
+	msleep(20);
+	pr_info("%s: CMD ACK block read start\n", __func__);
+	rc = a1026_i2c_read(ack_buf, size);
+	if (rc < 0) {
+		pr_err("%s: CMD ACK block read error\n", __func__);
+		a1026_i2c_sw_reset(sw_reset);
+		return rc;
+	} else {
+		pr_info("%s: CMD ACK block read end\n", __func__);
+#if DEBUG
+		for (i = 1; i <= size; i++) {
+			pr_info("%x ", ack_buf[i-1]);
+			if ( !(i % 4))
+				pr_info("\n");
+		}
+#endif
+		index = ack_buf;
+		number_of_cmd_sets = size / 4;
+		do {
+			if (*index == 0x00) {
+				rd_retry_cnt = POLLING_RETRY_CNT;
+rd_retry:
+				if (rd_retry_cnt--) {
+					memset(rdbuf, 0, sizeof(rdbuf));
+					rc = a1026_i2c_read(rdbuf, 4);
+					if (rc < 0)
+						return rc;
+#if DEBUG
+					for (i = 0; i < sizeof(rdbuf); i++) {
+						pr_info("0x%x\n", rdbuf[i]);
+					}
+					pr_info("-----------------\n");
+#endif
+					if (rdbuf[0] == 0x00) {
+						msleep(20);
+						goto rd_retry;
+					}
+				} else {
+					pr_err("%s: CMD ACK Not Ready\n",
+						__func__);
+					return -EBUSY;
+				}
+			} else if (*index == 0xff) { /* illegal cmd */
+				return -ENOEXEC;
+			} else if (*index == 0x80) {
+				index += 4;
+			}
+		} while (--number_of_cmd_sets);
+	}
 input_err:
 	return rc;
 }
@@ -718,13 +776,17 @@ int execute_cmdmsg(unsigned int msg)
 			continue;
 		}
 
-		if (!memcmp(msgbuf, chkbuf, 4)) {
+		if (msgbuf[0] == 0x80  && msgbuf[1] == chkbuf[1]) {
 			pass = 1;
 			break;
 		} else if (msgbuf[0] == 0xff && msgbuf[1] == 0xff) {
 			pr_err("%s: illegal cmd %08x\n", __func__, msg);
 			rc = -EINVAL;
 			break;
+		} else if ( msgbuf[0] == 0x00 && msgbuf[1] == 0x00 ) {
+			pr_info("%s: not ready (%d retries)\n", __func__,
+				retries);
+			rc = -EBUSY;
 		} else {
 			pr_info("%s: cmd/ack mismatch: (%d retries left)\n",
 				__func__,
