@@ -14,6 +14,13 @@ videodev-objs	:=	v4l2-dev.o v4l2-ioctl.o v4l2-device.o
 
 # V4L2 core modules
 
+ifeq ($(CONFIG_ARM),y)
+# Remove the -Werror until i2c deprecated functions are fixed
+ifeq ($(CONFIG_VIDEO_V4L2_COMMON),y)
+CFLAGS_REMOVE_v4l2-common.o = -Werror
+endif
+endif
+
 obj-$(CONFIG_VIDEO_DEV) += videodev.o v4l2-int-device.o
 ifeq ($(CONFIG_COMPAT),y)
   obj-$(CONFIG_VIDEO_DEV) += v4l2-compat-ioctl32.o
@@ -159,6 +166,7 @@ obj-$(CONFIG_VIDEO_AU0828) += au0828/
 obj-$(CONFIG_USB_VIDEO_CLASS)	+= uvc/
 
 obj-$(CONFIG_VIDEO_IR_I2C)  += ir-kbd-i2c.o
+obj-$(CONFIG_MSM_CAMERA) += msm/
 
 EXTRA_CFLAGS += -Idrivers/media/dvb/dvb-core
 EXTRA_CFLAGS += -Idrivers/media/dvb/frontends

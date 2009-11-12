@@ -28,6 +28,9 @@
 #include <linux/reboot.h>
 #include <linux/uaccess.h>
 #include <linux/io.h>
+#ifdef CONFIG_HAS_WAKELOCK
+#include <linux/wakelock.h>
+#endif
 #include <mach/msm_iomap.h>
 #include <mach/system.h>
 #ifdef CONFIG_CACHE_L2X0
@@ -372,6 +375,7 @@ static void msm_pm_config_hw_before_power_down(void)
 static void msm_pm_config_hw_after_power_up(void)
 {
 	writel(0, APPS_PWRDOWN);
+	writel(0, APPS_CLK_SLEEP_EN);
 }
 
 /*
@@ -379,7 +383,11 @@ static void msm_pm_config_hw_after_power_up(void)
  */
 static void msm_pm_config_hw_before_swfi(void)
 {
+#ifdef CONFIG_ARCH_MSM_SCORPION
 	writel(0x1f, APPS_CLK_SLEEP_EN);
+#else
+	writel(0x0f, APPS_CLK_SLEEP_EN);
+#endif
 }
 
 /*
@@ -805,7 +813,7 @@ write_proc_failed:
  * Shared Memory Bits
  *****************************************************************************/
 
-#define DEM_MASTER_BITS_PER_CPU             5
+#define DEM_MASTER_BITS_PER_CPU             6
 
 /* Power Master State Bits - Per CPU */
 #define DEM_MASTER_SMSM_RUN \
@@ -818,6 +826,8 @@ write_proc_failed:
 	(0x08UL << (DEM_MASTER_BITS_PER_CPU * SMSM_APPS_STATE))
 #define DEM_MASTER_SMSM_READY \
 	(0x10UL << (DEM_MASTER_BITS_PER_CPU * SMSM_APPS_STATE))
+#define DEM_MASTER_SMSM_SLEEP \
+	(0x20UL << (DEM_MASTER_BITS_PER_CPU * SMSM_APPS_STATE))
 
 /* Power Slave State Bits */
 #define DEM_SLAVE_SMSM_RUN                  (0x0001)
@@ -830,11 +840,6 @@ write_proc_failed:
 #define DEM_SLAVE_SMSM_MSGS_REDUCED         (0x0080)
 #define DEM_SLAVE_SMSM_RESET                (0x0100)
 #define DEM_SLAVE_SMSM_PWRC_SUSPEND         (0x0200)
-
-/* Time Slave State Bits */
-#define DEM_TIME_SLAVE_TIME_REQUEST         (0x0400)
-#define DEM_TIME_SLAVE_TIME_POLL            (0x0800)
-#define DEM_TIME_SLAVE_TIME_INIT            (0x1000)
 
 
 /******************************************************************************
@@ -906,10 +911,6 @@ static int msm_pm_power_collapse
 
 	msm_pm_smem_data->sleep_time = sleep_delay;
 	msm_pm_smem_data->resources_used = sleep_limit;
-
-	smsm_change_state(SMSM_APPS_DEM,
-		DEM_TIME_SLAVE_TIME_REQUEST | DEM_TIME_SLAVE_TIME_POLL,
-		DEM_TIME_SLAVE_TIME_INIT);
 
 	/* Enter PWRC/PWRC_SUSPEND */
 
@@ -1301,6 +1302,9 @@ void arch_idle(void)
 	}
 
 	if ((timer_expiration < msm_pm_idle_sleep_min_time) ||
+#ifdef CONFIG_HAS_WAKELOCK
+		has_wake_lock(WAKE_LOCK_IDLE) ||
+#endif
 		!msm_irq_idle_sleep_allowed()) {
 		allow[MSM_PM_SLEEP_MODE_POWER_COLLAPSE] = false;
 		allow[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN] = false;
@@ -1311,7 +1315,7 @@ void arch_idle(void)
 		struct msm_pm_platform_data *mode = &msm_pm_modes[i];
 		if (!mode->supported || !mode->idle_enabled ||
 			mode->latency >= latency_qos ||
-			mode->residency >= timer_expiration)
+			mode->residency * 1000ULL >= timer_expiration)
 			allow[i] = false;
 	}
 
@@ -1327,8 +1331,8 @@ void arch_idle(void)
 #endif
 
 	MSM_PM_DPRINTK(MSM_PM_DEBUG_IDLE, KERN_INFO,
-		"%s(): next timer %lld, sleep limit %u\n",
-		__func__, timer_expiration, sleep_limit);
+		"%s(): latency qos %d, next timer %lld, sleep limit %u\n",
+		__func__, latency_qos, timer_expiration, sleep_limit);
 
 	for (i = 0; i < ARRAY_SIZE(allow); i++)
 		MSM_PM_DPRINTK(MSM_PM_DEBUG_IDLE, KERN_INFO,
@@ -1433,7 +1437,7 @@ static int msm_pm_enter(suspend_state_t state)
 	int64_t period = 0;
 	int64_t time = 0;
 
-	time = msm_timer_get_smem_clock_time(&period);
+	time = msm_timer_get_sclk_time(&period);
 	ret = msm_clock_require_tcxo(clk_ids, NR_CLKS);
 #elif defined(CONFIG_CLOCK_BASED_SLEEP_LIMIT)
 	ret = msm_clock_require_tcxo(NULL, 0);
@@ -1443,6 +1447,9 @@ static int msm_pm_enter(suspend_state_t state)
 	if (ret)
 		sleep_limit = SLEEP_LIMIT_NO_TCXO_SHUTDOWN;
 #endif
+
+	MSM_PM_DPRINTK(MSM_PM_DEBUG_SUSPEND, KERN_INFO,
+		"%s(): sleep limit %u\n", __func__, sleep_limit);
 
 	for (i = 0; i < ARRAY_SIZE(allow); i++)
 		allow[i] = true;
@@ -1508,7 +1515,7 @@ static int msm_pm_enter(suspend_state_t state)
 		}
 
 		if (time != 0) {
-			end_time = msm_timer_get_smem_clock_time(NULL);
+			end_time = msm_timer_get_sclk_time(NULL);
 			if (end_time != 0) {
 				time = end_time - time;
 				if (time < 0)
@@ -1527,6 +1534,9 @@ static int msm_pm_enter(suspend_state_t state)
 	} else if (allow[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT]) {
 		msm_pm_swfi(false);
 	}
+
+	MSM_PM_DPRINTK(MSM_PM_DEBUG_SUSPEND, KERN_INFO,
+		"%s(): return %d\n", __func__, ret);
 
 	return ret;
 }
@@ -1600,6 +1610,7 @@ static int __init msm_pm_init(void)
 #ifdef CONFIG_MSM_IDLE_STATS
 	struct proc_dir_entry *d_entry;
 #endif
+	int ret;
 
 	pm_power_off = msm_pm_power_off;
 	arm_pm_restart = msm_pm_restart;
@@ -1627,6 +1638,17 @@ static int __init msm_pm_init(void)
 		return -ENODEV;
 	}
 #endif /* CONFIG_ARCH_MSM_SCORPION */
+
+	ret = msm_timer_init_time_sync();
+	if (ret)
+		return ret;
+
+	ret = smsm_change_intr_mask(SMSM_POWER_MASTER_DEM, 0xFFFFFFFF, 0);
+	if (ret) {
+		printk(KERN_ERR "%s: failed to clear interrupt mask, %d\n",
+			__func__, ret);
+		return ret;
+	}
 
 	BUG_ON(msm_pm_modes == NULL);
 

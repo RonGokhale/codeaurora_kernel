@@ -26,6 +26,9 @@
 #define MSMFB_CURSOR _IOW(MSMFB_IOCTL_MAGIC, 130, struct fb_cursor)
 #define MSMFB_SET_LUT _IOW(MSMFB_IOCTL_MAGIC, 131, struct fb_cmap)
 #define MSMFB_HISTOGRAM _IOWR(MSMFB_IOCTL_MAGIC, 132, struct mdp_histogram)
+/* new ioctls's for set/get ccs matrix */
+#define MSMFB_GET_CCS_MATRIX  _IOWR(MSMFB_IOCTL_MAGIC, 133, struct mdp_ccs)
+#define MSMFB_SET_CCS_MATRIX  _IOW(MSMFB_IOCTL_MAGIC, 134, struct mdp_ccs)
 
 #define MDP_IMGTYPE2_START 0x10000
 enum {
@@ -59,6 +62,7 @@ enum {
 #define MDP_ROT_180 (MDP_FLIP_UD|MDP_FLIP_LR)
 #define MDP_ROT_270 (MDP_ROT_90|MDP_FLIP_UD|MDP_FLIP_LR)
 #define MDP_DITHER 0x8
+#define MDP_BLUR 0x10
 
 #define MDP_DEINTERLACE 	0x80000000
 #define MDP_SHARPENING  	0x40000000
@@ -83,6 +87,22 @@ struct mdp_img {
 	uint32_t offset;
 	int memory_id;		/* the file descriptor */
 	uint32_t priv;
+};
+
+/*
+ * {3x3} + {3} ccs matrix
+ */
+
+#define MDP_CCS_RGB2YUV 	0
+#define MDP_CCS_YUV2RGB 	1
+
+#define MDP_CCS_SIZE	9
+#define MDP_BV_SIZE	3
+
+struct mdp_ccs {
+	int direction;			/* MDP_CCS_RGB2YUV or YUV2RGB */
+	uint16_t ccs[MDP_CCS_SIZE];	/* 3x3 color coefficients */
+	uint16_t bv[MDP_BV_SIZE];	/* 1x3 bias vector */
 };
 
 /* The version of the mdp_blit_req structure so that

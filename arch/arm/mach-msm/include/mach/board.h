@@ -20,6 +20,7 @@
 
 #include <linux/types.h>
 #include <linux/input.h>
+#include <linux/usb.h>
 
 /* platform device data structures */
 struct msm_acpu_clock_platform_data {
@@ -38,6 +39,8 @@ struct msm_camera_io_ext {
 	uint32_t mdcsz;
 	uint32_t appphy;
 	uint32_t appsz;
+	uint32_t camifpadphy;
+	uint32_t camifpadsz;
 };
 
 struct msm_camera_device_platform_data {
@@ -144,7 +147,7 @@ struct tvenc_platform_data {
 struct mddi_platform_data {
 	void (*mddi_power_save)(int on);
 	int (*mddi_sel_clk)(u32 *clk_rate);
-	int (*mddi_power_on)(void);
+	int (*mddi_power_on)(int);
 };
 
 struct msm_fb_platform_data {
@@ -155,17 +158,13 @@ struct msm_fb_platform_data {
 struct msm_i2c_platform_data {
 	int clk_freq;
 	uint32_t *rmutex;
-	int rsl_id;
+	const char *rsl_id;
 	uint32_t pm_lat;
-        int pri_clk;
-        int pri_dat;
-        int aux_clk;
-        int aux_dat;
+	int pri_clk;
+	int pri_dat;
+	int aux_clk;
+	int aux_dat;
 	void (*msm_i2c_config_gpio)(int iface, int config_type);
-};
-
-struct msm_serial_platform_data {
-	unsigned int *uart_csr_code;
 };
 
 /* common init routines for use by arch/arm/mach-msm/board-*.c */
@@ -183,14 +182,16 @@ struct mmc_platform_data;
 int __init msm_add_sdcc(unsigned int controller,
 		struct mmc_platform_data *plat);
 
-struct msm_hsusb_platform_data;
+struct msm_usb_host_platform_data;
 int __init msm_add_host(unsigned int host,
-		struct msm_hsusb_platform_data *plat);
+		struct msm_usb_host_platform_data *plat);
 #if defined(CONFIG_USB_FUNCTION_MSM_HSUSB) || defined(CONFIG_USB_MSM_72K)
 void msm_hsusb_set_vbus_state(int online);
 #else
 static inline void msm_hsusb_set_vbus_state(int online) {}
 #endif
+
+void __init msm_snddev_init(void);
 
 extern int msm_shared_ram_phys; /* defined in arch/arm/mach-msm/io.c */
 

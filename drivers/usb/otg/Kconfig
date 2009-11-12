@@ -59,4 +59,13 @@ config NOP_USB_XCEIV
 	 built-in with usb ip or which are autonomous and doesn't require any
 	 phy programming such as ISP1x04 etc.
 
+config USB_MSM_OTG_72K
+	bool "OTG support for Qualcomm on-chip USB controller"
+	depends on ARCH_MSM
+	select USB_OTG_UTILS
+	default USB_MSM_72K
+	help
+	  Minimal tranceiver driver which would start/stop the host/gadget
+	  depending on ID and VBUS interrupts.
+
 endif # USB || OTG

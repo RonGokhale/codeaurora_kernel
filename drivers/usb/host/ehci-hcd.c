@@ -405,24 +405,6 @@ static void ehci_shutdown(struct usb_hcd *hcd)
 	spin_unlock_irq(&ehci->lock);
 }
 
-static void ehci_port_power (struct ehci_hcd *ehci, int is_on)
-{
-	unsigned port;
-
-	if (!HCS_PPC (ehci->hcs_params))
-		return;
-
-	ehci_dbg (ehci, "...power%s ports...\n", is_on ? "up" : "down");
-	for (port = HCS_N_PORTS (ehci->hcs_params); port > 0; )
-		(void) ehci_hub_control(ehci_to_hcd(ehci),
-				is_on ? SetPortFeature : ClearPortFeature,
-				USB_PORT_FEAT_POWER,
-				port--, NULL, 0);
-	/* Flush those writes */
-	ehci_readl(ehci, &ehci->regs->command);
-	msleep(20);
-}
-
 /*-------------------------------------------------------------------------*/
 
 /*
@@ -587,7 +569,7 @@ static int ehci_init(struct usb_hcd *hcd)
 }
 
 /* start HC running; it's halted, ehci_init() has been run (once) */
-static int ehci_run (struct usb_hcd *hcd)
+static __attribute__((unused)) int ehci_run (struct usb_hcd *hcd)
 {
 	struct ehci_hcd		*ehci = hcd_to_ehci (hcd);
 	int			retval;
@@ -1027,7 +1009,7 @@ done:
 	return;
 }
 
-static void
+static __attribute__((unused)) void
 ehci_endpoint_reset(struct usb_hcd *hcd, struct usb_host_endpoint *ep)
 {
 	struct ehci_hcd		*ehci = hcd_to_ehci(hcd);

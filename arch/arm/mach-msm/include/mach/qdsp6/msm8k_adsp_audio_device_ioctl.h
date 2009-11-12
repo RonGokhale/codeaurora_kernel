@@ -62,6 +62,18 @@
 #define ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_MUTE		0x0107605f
 
 
+/* Set device RVE state. */
+/* This command has data payload struct adsp_audio_set_dev_rve_command. */
+
+#define ADSP_AUDIO_IOCTL_SET_DEVICE_RVE			0x01090832
+
+
+/* Set device WNR state. */
+/* This command has data payload struct adsp_audio_set_dev_wnr_command. */
+
+#define ADSP_AUDIO_IOCTL_SET_DEVICE_WNR			0x01090831
+
+
 /* Configure Equalizer for a device. */
 /* This command has payload struct adsp_audio_set_dev_equalizer_command. */
 

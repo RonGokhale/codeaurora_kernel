@@ -88,6 +88,19 @@ config VT_HW_CONSOLE_BINDING
 	 information. For framebuffer console users, please refer to
 	 <file:Documentation/fb/fbcon.txt>.
 
+config DEVMEM
+	bool "Memory device driver"
+	default y
+	help
+	  The memory driver provides two character devices, mem and kmem, which
+	  provide access to the system's memory. The mem device is a view of
+	  physical memory, and each byte in the device corresponds to the
+	  matching physical address. The kmem device is the same as mem, but
+	  the addresses correspond to the kernel's virtual address space rather
+	  than physical memory. These devices are standard parts of a Linux
+	  system and most users should say Y here. You might say N if very
+	  security conscience or memory is tight.
+
 config DEVKMEM
 	bool "/dev/kmem virtual device support"
 	default y
@@ -432,6 +445,8 @@ config SGI_MBCS
          say Y or M here, otherwise say N.
 
 source "drivers/serial/Kconfig"
+
+source "drivers/char/diag/Kconfig"
 
 config UNIX98_PTYS
 	bool "Unix98 PTY support" if EMBEDDED
@@ -1108,6 +1123,10 @@ config DEVPORT
 	depends on ISA || PCI
 	default y
 
+config DCC_TTY
+	tristate "DCC tty driver"
+	depends on ARM
+
 config MSM_KGSL
 	tristate "MSM 3D Graphics driver"
 	default n
@@ -1137,6 +1156,13 @@ config MSM_Q6VDEC
 	  This driver provides access to MSM QDSP6 for video frame decoding.
 
 source "drivers/s390/char/Kconfig"
+
+config MSM_Q6VDEC
+	tristate "MSM QDSP6 Video Decoder Driver"
+	depends on ARCH_MSM_SCORPION && MSM_DALRPC
+	default m
+	---help---
+	  This driver provides access to MSM QDSP6 for video frame decoding.
 
 endmenu
 

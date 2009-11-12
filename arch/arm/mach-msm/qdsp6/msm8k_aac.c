@@ -63,6 +63,7 @@
 #include <linux/uaccess.h>
 #include <linux/msm_audio.h>
 #include <linux/sched.h>
+#include <linux/msm_audio_aac.h>
 
 #include <asm/ioctls.h>
 #include <mach/qdsp6/msm8k_cad.h>
@@ -71,7 +72,7 @@
 #include <mach/qdsp6/msm8k_cad_write_aac_format.h>
 #include <mach/qdsp6/msm8k_cad_devices.h>
 #include <mach/qdsp6/msm8k_cad_volume.h>
-#include <linux/msm_audio_aac.h>
+#include <mach/qdsp6/msm8k_cad_q6eq_drvi.h>
 
 #if 0
 #define D(fmt, args...) printk(KERN_INFO "msm8k_aac: " fmt, ##args)
@@ -216,9 +217,10 @@ static int msm8k_aac_ioctl(struct inode *inode, struct file *f,
 	struct cad_write_aac_format_struct_type cad_write_aac_fmt;
 	struct cad_flt_cfg_strm_vol cad_strm_volume;
 	struct cad_filter_struct flt;
-	struct cad_filter_struct cfs;
+	struct cad_audio_eq_cfg eq;
 	struct msm_audio_aac_config ncfg;
 	struct cad_event_struct_type eos_event;
+	u32 percentage;
 
 	D("%s\n", __func__);
 	memset(&cad_dev, 0, sizeof(struct cad_device_struct_type));
@@ -235,23 +237,12 @@ static int msm8k_aac_ioctl(struct inode *inode, struct file *f,
 		cad_stream_info.app_type = CAD_STREAM_APP_PLAYBACK;
 		cad_stream_info.priority = 0;
 		cad_stream_info.buf_mem_type = CAD_STREAM_BUF_MEM_HEAP;
-		cad_stream_info.ses_buf_max_size = 1024 * 10;
+		cad_stream_info.ses_buf_max_size = 1024 * 11;
 		rc = cad_ioctl(p->cad_w_handle, CAD_IOCTL_CMD_SET_STREAM_INFO,
 			&cad_stream_info,
 			sizeof(struct cad_stream_info_struct_type));
 		if (rc) {
 			D("cad_ioctl() SET_STREAM_INFO failed\n");
-			break;
-		}
-
-		stream_device[0] = CAD_HW_DEVICE_ID_DEFAULT_RX;
-		cad_stream_dev.device = (u32 *)&stream_device[0];
-		cad_stream_dev.device_len = 1;
-		rc = cad_ioctl(p->cad_w_handle, CAD_IOCTL_CMD_SET_STREAM_DEVICE,
-			&cad_stream_dev,
-			sizeof(struct cad_stream_device_struct_type));
-		if (rc) {
-			D("cad_ioctl() SET_STREAM_DEVICE failed\n");
 			break;
 		}
 
@@ -366,6 +357,17 @@ static int msm8k_aac_ioctl(struct inode *inode, struct file *f,
 			break;
 		}
 
+		stream_device[0] = CAD_HW_DEVICE_ID_DEFAULT_RX;
+		cad_stream_dev.device = (u32 *)&stream_device[0];
+		cad_stream_dev.device_len = 1;
+		rc = cad_ioctl(p->cad_w_handle, CAD_IOCTL_CMD_SET_STREAM_DEVICE,
+			&cad_stream_dev,
+			sizeof(struct cad_stream_device_struct_type));
+		if (rc) {
+			D("cad_ioctl() SET_STREAM_DEVICE failed\n");
+			break;
+		}
+
 		rc = cad_ioctl(p->cad_w_handle, CAD_IOCTL_CMD_STREAM_START,
 			NULL, 0);
 		if (rc) {
@@ -383,14 +385,6 @@ static int msm8k_aac_ioctl(struct inode *inode, struct file *f,
 				NULL, 0);
 		wake_up(&p->eos_wait);
 		p->flush_rcvd = 0;
-		break;
-	case AUDIO_GET_PCM_CONFIG:
-		D("AUDIO_GET_PCM_CONFIG\n");
-		rc = CAD_RES_SUCCESS;
-		break;
-	case AUDIO_SET_PCM_CONFIG:
-		D("AUDIO_SET_PCM_CONFIG\n");
-		rc = CAD_RES_SUCCESS;
 		break;
 	case AUDIO_GET_CONFIG:
 		if (copy_to_user((void *)arg, &p->cfg,
@@ -452,7 +446,8 @@ static int msm8k_aac_ioctl(struct inode *inode, struct file *f,
 		rc = CAD_RES_SUCCESS;
 		break;
 	case AUDIO_SET_VOLUME:
-		rc = copy_from_user(&p->volume, (void *)arg, sizeof(u32));
+		rc = copy_from_user(&percentage, (void *)arg, sizeof(u32));
+		p->volume = qdsp6_stream_volume_mapping(percentage);
 
 		memset(&cad_strm_volume, 0,
 				sizeof(struct cad_flt_cfg_strm_vol));
@@ -473,11 +468,17 @@ static int msm8k_aac_ioctl(struct inode *inode, struct file *f,
 		}
 		break;
 	case AUDIO_SET_EQ:
-		rc = copy_from_user(&cfs, (void *)arg,
-				sizeof(struct cad_filter_struct));
+		rc = copy_from_user(&eq, (void *)arg,
+				sizeof(struct cad_audio_eq_cfg));
+
+		flt.filter_type = CAD_DEVICE_FILTER_TYPE_EQ;
+		flt.cmd = CAD_FILTER_EQ_STREAM_CONFIG;
+		flt.format_block_len = sizeof(struct cad_audio_eq_cfg);
+		flt.format_block = &eq;
+
 		rc = cad_ioctl(p->cad_w_handle,
 			CAD_IOCTL_CMD_SET_STREAM_FILTER_CONFIG,
-			&cfs,
+			&flt,
 			sizeof(struct cad_filter_struct));
 		if (rc)
 			pr_err("cad_ioctl() set equalizer failed\n");

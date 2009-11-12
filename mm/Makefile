@@ -14,6 +14,14 @@ obj-y			:= bootmem.o filemap.o mempool.o oom_kill.o fadvise.o \
 			   page_isolation.o mm_init.o $(mmu-y)
 obj-y += init-mm.o
 
+ifeq ($(CONFIG_ARM),y)
+# Warnings are produced by the current arm cross compiler (v4.2.1) causing
+# build abort. Version 4.3.1 of the compiler does not create this warning.
+# So, remove the -Werror until the compiler can be updated for all build
+# platforms to v4.3.1
+CFLAGS_REMOVE_slab.o = -Werror
+endif
+
 obj-$(CONFIG_PROC_PAGE_MONITOR) += pagewalk.o
 obj-$(CONFIG_BOUNCE)	+= bounce.o
 obj-$(CONFIG_SWAP)	+= page_io.o swap_state.o swapfile.o thrash.o
@@ -22,6 +30,7 @@ obj-$(CONFIG_HUGETLBFS)	+= hugetlb.o
 obj-$(CONFIG_NUMA) 	+= mempolicy.o
 obj-$(CONFIG_SPARSEMEM)	+= sparse.o
 obj-$(CONFIG_SPARSEMEM_VMEMMAP) += sparse-vmemmap.o
+obj-$(CONFIG_ASHMEM) += ashmem.o
 obj-$(CONFIG_TMPFS_POSIX_ACL) += shmem_acl.o
 obj-$(CONFIG_SLOB) += slob.o
 obj-$(CONFIG_MMU_NOTIFIER) += mmu_notifier.o

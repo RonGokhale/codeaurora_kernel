@@ -18,6 +18,10 @@
 #define __ARCH_ARM_MACH_MSM_CLOCK_H
 
 #include <linux/list.h>
+#include <mach/clk.h>
+
+#include "clock-pcom.h"
+#include "clock-7x30.h"
 
 #include "clock-pcom.h"
 
@@ -34,6 +38,7 @@
 struct clk_ops {
 	int (*enable)(unsigned id);
 	void (*disable)(unsigned id);
+	int (*reset)(unsigned id, enum clk_reset_action action);
 	int (*set_rate)(unsigned id, unsigned rate);
 	int (*set_min_rate)(unsigned id, unsigned rate);
 	int (*set_max_rate)(unsigned id, unsigned rate);
@@ -78,6 +83,17 @@ struct clk {
 #define CLK_MINMAX (CLK_MIN | CLK_MAX)
 #define NR_CLKS	P_NR_CLKS
 
+enum {
+	PLL_0 = 0,
+	PLL_1,
+	PLL_2,
+	PLL_3,
+	PLL_4,
+	PLL_5,
+	PLL_6,
+	NUM_PLL
+};
+
 enum clkvote_client {
 	CLKVOTE_ACPUCLK = 0,
 	CLKVOTE_PMQOS,
@@ -87,6 +103,6 @@ enum clkvote_client {
 int msm_clock_require_tcxo(unsigned long *reason, int nbits);
 int msm_clock_get_name(uint32_t id, char *name, uint32_t size);
 int ebi1_clk_set_min_rate(enum clkvote_client client, unsigned long rate);
+unsigned long clk_get_max_axi_khz(void);
 
 #endif
-

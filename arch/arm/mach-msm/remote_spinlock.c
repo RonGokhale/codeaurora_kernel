@@ -57,35 +57,20 @@
 
 #include <linux/err.h>
 #include <linux/kernel.h>
+#include <linux/string.h>
 
 #include <asm/system.h>
 
-/* This is ugly but it has to be done. If linux/spinlock_types is included,
- * then for a UP kernel, the spinlock will get stubbed out. Since this is a
- * remote spin lock, stubbing out is not the right thing to do.
- */
-#define __LINUX_SPINLOCK_TYPES_H
-#include <asm/spinlock_types.h>
-#undef __LINUX_SPINLOCK_TYPES_H
-
-#include <asm/spinlock.h>
-
 #include <mach/remote_spinlock.h>
+#include <mach/dal.h>
 #include "smd_private.h"
 
 #define SMEM_SPINLOCK_COUNT 8
 #define SMEM_SPINLOCK_ARRAY_SIZE (SMEM_SPINLOCK_COUNT * sizeof(uint32_t))
 
-int _remote_spin_lock_init(remote_spin_lock_id_t id, _remote_spinlock_t *lock)
+static int remote_spinlock_smem_init(int id, _remote_spinlock_t *lock)
 {
 	_remote_spinlock_t spinlock_start;
-
-	/* The raw_spinlock_t structure should be the same as
-	 * raw_remote_spinlock_t to be able to reuse the __raw_spin_lock()
-	 * and __raw_spin_unlock() functions. If this condition is not met,
-	 * then please write new code to replace calls to __raw_spin_lock()
-	 * and __raw_spin_unlock(). */
-	BUILD_BUG_ON(sizeof(raw_remote_spinlock_t) != sizeof(raw_spinlock_t));
 
 	if (id >= SMEM_SPINLOCK_COUNT)
 		return -EINVAL;
@@ -100,12 +85,53 @@ int _remote_spin_lock_init(remote_spin_lock_id_t id, _remote_spinlock_t *lock)
 	return 0;
 }
 
-void _remote_spin_lock(_remote_spinlock_t *lock)
+static int
+remote_spinlock_dal_init(const char *chunk_name, _remote_spinlock_t *lock)
 {
-	__raw_spin_lock((raw_spinlock_t *) (*lock));
+	void *dal_smem_start, *dal_smem_end;
+	uint32_t dal_smem_size;
+	struct dal_chunk_header *cur_header;
+
+	if (!chunk_name)
+		return -EINVAL;
+
+	dal_smem_start = smem_get_entry(SMEM_DAL_AREA, &dal_smem_size);
+	if (!dal_smem_start)
+		return -ENXIO;
+
+	dal_smem_end = dal_smem_start + dal_smem_size;
+
+	/* Find first chunk header */
+	cur_header = (struct dal_chunk_header *)
+			(((uint32_t)dal_smem_start + (4095)) & ~4095);
+
+	while (cur_header->size != 0
+		&& ((uint32_t)(cur_header + 1) < (uint32_t)dal_smem_end)) {
+
+		/* Check if chunk name matches */
+		if (!strncmp(cur_header->name, chunk_name,
+						DAL_CHUNK_NAME_LENGTH)) {
+			*lock = (_remote_spinlock_t)&cur_header->lock;
+			break;
+		}
+		cur_header = (void *)cur_header + cur_header->size;
+	}
+
+	return 0;
 }
 
-void _remote_spin_unlock(_remote_spinlock_t *lock)
+int _remote_spin_lock_init(remote_spinlock_id_t id, _remote_spinlock_t *lock)
 {
-	__raw_spin_unlock((raw_spinlock_t *) (*lock));
+	BUG_ON(id == NULL);
+
+	if (id[0] == 'D' && id[1] == ':') {
+		/* DAL chunk name starts after "D:" */
+		return remote_spinlock_dal_init(&id[2], lock);
+	} else if (id[0] == 'S' && id[1] == ':') {
+		/* Single-digit SMEM lock ID follows "S:" */
+		BUG_ON(id[3] != '\0');
+		return remote_spinlock_smem_init((((uint8_t)id[2])-'0'), lock);
+	} else
+		return -EINVAL;
 }
+

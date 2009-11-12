@@ -403,7 +403,9 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 	 * when decoder is starved so no race
 	 * condition concern
 	 */
-	rc = wait_event_interruptible(the_locks.eos_wait, prtd->eos_ack);
+	if (prtd->enabled)
+		rc = wait_event_interruptible(the_locks.eos_wait,
+					prtd->eos_ack);
 
 	alsa_audio_disable(prtd);
 	audmgr_close(&prtd->audmgr);
@@ -487,7 +489,7 @@ static int msm_pcm_remove(struct platform_device *devptr)
 {
 	struct snd_soc_device *socdev = platform_get_drvdata(devptr);
 	snd_soc_free_pcms(socdev);
-	kfree(socdev->codec);
+	kfree(socdev->card->codec);
 	platform_set_drvdata(devptr, NULL);
 	return 0;
 }
@@ -542,7 +544,7 @@ static int msm_pcm_new(struct snd_card *card,
 {
 	int ret;
 	if (!card->dev->coherent_dma_mask)
-		card->dev->coherent_dma_mask = DMA_32BIT_MASK;
+		card->dev->coherent_dma_mask = DMA_BIT_MASK(32);
 
 	if (codec_dai->playback.channels_min) {
 		ret = pcm_preallocate_dma_buffer(pcm,

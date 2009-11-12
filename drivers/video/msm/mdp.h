@@ -63,24 +63,15 @@
 #define MDPOP_TRANSP            BIT(9)	/* enable transparency */
 #define MDPOP_DITHER            BIT(10)	/* enable dither */
 #define MDPOP_SHARPENING	BIT(11) /* enable sharpening */
+#define MDPOP_BLUR		BIT(12) /* enable blur */
 
-/*
- * {3x3} + {3} ccs matrix
- */
-typedef struct mdp_ccs_type_ {
-	uint16 ccs1;
-	uint16 ccs2;
-	uint16 ccs3;
-	uint16 ccs4;
-	uint16 ccs5;
-	uint16 ccs6;
-	uint16 ccs7;
-	uint16 ccs8;
-	uint16 ccs9;
-	uint16 ccs10;
-	uint16 ccs11;
-	uint16 ccs12;
-} MDP_CCS_TYPE;
+struct mdp_table_entry {
+	uint32_t reg;
+	uint32_t val;
+};
+
+extern struct mdp_ccs mdp_ccs_yuv2rgb ;
+extern struct mdp_ccs mdp_ccs_rgb2yuv ;
 
 /*
  * MDP Image Structure
@@ -112,6 +103,7 @@ typedef enum {
 	MDP_PR_SCALE_POINT6_POINT8,
 	MDP_PR_SCALE_POINT8_1,
 	MDP_PR_SCALE_UP,
+	MDP_SCALE_BLUR,
 	MDP_INIT_SCALE
 } MDP_SCALE_MODE;
 
@@ -219,12 +211,12 @@ struct mdp_dma_data {
 
 #define MDP_DMA2_TERM 0x1
 #define MDP_DMA3_TERM 0x2
-#define MDP_PPP_TERM 0x3
-#define MDP_DMA_S_TERM 0x4
+#define MDP_PPP_TERM 0x4
+#define MDP_DMA_S_TERM 0x8
 #ifdef CONFIG_FB_MSM_MDP40
-#define MDP_DMA_E_TERM 0x5
-#define MDP_OVERLAY0_TERM 0x6
-#define MDP_OVERLAY1_TERM 0x7
+#define MDP_DMA_E_TERM 0x10
+#define MDP_OVERLAY0_TERM 0x20
+#define MDP_OVERLAY1_TERM 0x40
 #endif
 
 #define ACTIVE_START_X_EN BIT(31)
@@ -292,6 +284,7 @@ struct mdp_dma_data {
 #define MDP_SYNCFG_HGT_LOC 21
 #define MDP_SYNCFG_VSYNC_EXT_EN BIT(20)
 #define MDP_SYNCFG_VSYNC_INT_EN BIT(19)
+#define MDP_HW_VSYNC
 #endif
 
 /*
@@ -655,6 +648,8 @@ int mdp_lcdc_on(struct platform_device *pdev);
 int mdp_lcdc_off(struct platform_device *pdev);
 void mdp_lcdc_update(struct msm_fb_data_type *mfd);
 int mdp_hw_cursor_update(struct fb_info *info, struct fb_cursor *cursor);
+void mdp_enable_irq(uint32 term);
+void mdp_disable_irq(uint32 term);
 
 #ifdef MDP_HW_VSYNC
 void mdp_hw_vsync_clk_enable(struct msm_fb_data_type *mfd);

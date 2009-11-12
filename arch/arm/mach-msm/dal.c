@@ -67,7 +67,6 @@
 #include <linux/wait.h>
 #include <linux/sched.h>
 #include <linux/semaphore.h>
-#include <linux/delay.h>
 
 #include <mach/dal.h>
 #include <mach/msm_smd.h>
@@ -439,7 +438,6 @@ static void dalrpc_smd_cb(void *priv, unsigned smd_flags)
 
 static struct dalrpc_port *dalrpc_port_open(char *port, int cpu)
 {
-	int rc;
 	struct dalrpc_port *p;
 	char wq_name[32];
 
@@ -474,9 +472,9 @@ static struct dalrpc_port *dalrpc_port_open(char *port, int cpu)
 	p->msg_owner = NULL;
 	p->msg_bytes_read = 0;
 
-	if ((rc = smd_named_open_on_edge(port, cpu, &p->ch, p,
-					 dalrpc_smd_cb))) {
-		printk(KERN_ERR "dalrpc_port_init() failed to open port: rc=%d\n", rc);
+	if (smd_named_open_on_edge(port, cpu, &p->ch, p,
+				   dalrpc_smd_cb)) {
+		printk(KERN_ERR "dalrpc_port_init() failed to open port\n");
 		goto no_smd;
 	}
 
@@ -515,7 +513,7 @@ int daldevice_attach(uint32_t device_id, char *port, int cpu,
 {
 	struct daldevice_handle *h;
 	char dyn_port[DALRPC_MAX_PORTNAME_LEN + 1] = "DAL00";
-	int ret = 0;
+	int ret;
 	int tries = 0;
 
 	if (!port)
@@ -540,26 +538,21 @@ int daldevice_attach(uint32_t device_id, char *port, int cpu,
 	/* 3 attempts, enough for one each on the user specified port, the
 	 * dynamic discovery port, and the port recommended by the dynamic
 	 * discovery port */
-	while (tries < 10) {
+	while (tries < 3) {
 		tries++;
 
+		mutex_lock(&pc_lists_lock);
 		h->port = dalrpc_port_open(port, cpu);
-		if (!h->port && tries < 10) {
-			printk(KERN_ERR "daldevice_attach: could not "
-			       "open port %s, retry %d\n", port, tries);
-			mdelay(10);
-			continue;
-		}
 		if (!h->port) {
-			mutex_lock(&pc_lists_lock);
 			list_del(&h->list);
 			mutex_unlock(&pc_lists_lock);
 			printk(KERN_ERR "daldevice_attach: could not "
-			       "open port, abort\n");
+			       "open port\n");
 			kfree(h);
 			*handle_ptr = NULL;
 			return -EIO;
 		}
+		mutex_unlock(&pc_lists_lock);
 
 		h->msg.hdr.len = sizeof(struct dalrpc_msg_hdr) + 4 +
 			DALRPC_MAX_ATTACH_PARAM_LEN +
@@ -583,8 +576,6 @@ int daldevice_attach(uint32_t device_id, char *port, int cpu,
 		if (ret == DALRPC_SUCCESS) {
 			h->remote_handle = h->msg.hdr.from;
 			*handle_ptr = h;
-			printk(KERN_ERR "daldevice_attach: "
-			       "open port %s, SUCCESS\n", port);
 			break;
 		} else if (strnlen((char *)&h->msg.param[1],
 				   DALRPC_MAX_PORTNAME_LEN)) {

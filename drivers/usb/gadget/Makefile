@@ -27,10 +27,21 @@ obj-$(CONFIG_USB_FSL_QE)	+= fsl_qe_udc.o
 obj-$(CONFIG_USB_CI13XXX)	+= ci13xxx_udc.o
 obj-$(CONFIG_USB_S3C_HSOTG)	+= s3c-hsotg.o
 obj-$(CONFIG_USB_LANGWELL)	+= langwell_udc.o
+obj-$(CONFIG_USB_MSM_72K)	+= msm72k_udc.o
 
 #
 # USB gadget drivers
 #
+ifeq ($(CONFIG_USB_ANDROID_DIAG),y)
+F_DIAG = f_diag.o
+endif
+
+ifeq ($(CONFIG_USB_ANDROID_CDC_ECM),y)
+F_ECM = f_ecm.o u_ether.o
+endif
+ifeq ($(CONFIG_USB_F_SERIAL),y)
+F_SERIAL = f_serial.o
+endif
 g_zero-objs			:= zero.o
 g_audio-objs			:= audio.o
 g_ether-objs			:= ether.o
@@ -40,6 +51,8 @@ gadgetfs-objs			:= inode.o
 g_file_storage-objs		:= file_storage.o
 g_printer-objs			:= printer.o
 g_cdc-objs			:= cdc2.o
+g_android-objs			:= android.o f_adb.o f_mass_storage.o \
+					u_serial.o f_acm.o $(F_ECM) $(F_SERIAL) $(F_DIAG)
 
 obj-$(CONFIG_USB_ZERO)		+= g_zero.o
 obj-$(CONFIG_USB_AUDIO)		+= g_audio.o
@@ -50,4 +63,5 @@ obj-$(CONFIG_USB_G_SERIAL)	+= g_serial.o
 obj-$(CONFIG_USB_G_PRINTER)	+= g_printer.o
 obj-$(CONFIG_USB_MIDI_GADGET)	+= g_midi.o
 obj-$(CONFIG_USB_CDC_COMPOSITE) += g_cdc.o
+obj-$(CONFIG_USB_ANDROID)	+= g_android.o
 

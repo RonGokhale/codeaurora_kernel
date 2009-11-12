@@ -29,7 +29,11 @@
 #include <sound/pcm.h>
 #include <sound/initval.h>
 #include <sound/soc.h>
+#ifdef CONFIG_ARCH_MSM_ARM11
 #include "msm-pcm.h"
+#else
+#include "qsd-pcm.h"
+#endif
 
 struct snd_soc_dai msm_dais[] = {
 {
@@ -102,7 +106,6 @@ int msm_pcm_probe(struct platform_device *devptr)
 		goto __nopcm;
 	}
 
-//	card = socdev->codec->card;
 	card = socdev->card->codec->card;
 
 	ret = snd_soc_init_card(socdev);

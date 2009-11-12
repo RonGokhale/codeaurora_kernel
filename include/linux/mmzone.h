@@ -316,6 +316,7 @@ struct zone {
 	unsigned long		*pageblock_flags;
 #endif /* CONFIG_SPARSEMEM */
 
+	int mem_notify_status;
 
 	ZONE_PADDING(_pad1_)
 

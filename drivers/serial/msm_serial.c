@@ -35,8 +35,6 @@
 #include <linux/clk.h>
 #include <linux/platform_device.h>
 
-#include <mach/board.h>
-
 #include "msm_serial.h"
 
 #ifdef CONFIG_SERIAL_MSM_CLOCK_CONTROL
@@ -53,7 +51,6 @@ struct msm_port {
 	char			name[16];
 	struct clk		*clk;
 	unsigned int		imr;
-	unsigned int		*uart_csr_code;
 #ifdef CONFIG_SERIAL_MSM_CLOCK_CONTROL
 	enum msm_clk_states_e	clk_state;
 	struct hrtimer		clk_off_timer;
@@ -399,56 +396,55 @@ static void msm_break_ctl(struct uart_port *port, int break_ctl)
 static void msm_set_baud_rate(struct uart_port *port, unsigned int baud)
 {
 	unsigned int baud_code, rxstale, watermark;
-	struct msm_port *msm_port = UART_TO_MSM(port);
 
 	switch (baud) {
 	case 300:
-		baud_code = msm_port->uart_csr_code[UART_BAUD_300];
+		baud_code = UART_CSR_300;
 		rxstale = 1;
 		break;
 	case 600:
-		baud_code = msm_port->uart_csr_code[UART_BAUD_600];
+		baud_code = UART_CSR_600;
 		rxstale = 1;
 		break;
 	case 1200:
-		baud_code = msm_port->uart_csr_code[UART_BAUD_1200];
+		baud_code = UART_CSR_1200;
 		rxstale = 1;
 		break;
 	case 2400:
-		baud_code = msm_port->uart_csr_code[UART_BAUD_2400];
+		baud_code = UART_CSR_2400;
 		rxstale = 1;
 		break;
 	case 4800:
-		baud_code = msm_port->uart_csr_code[UART_BAUD_4800];
+		baud_code = UART_CSR_4800;
 		rxstale = 1;
 		break;
 	case 9600:
-		baud_code = msm_port->uart_csr_code[UART_BAUD_9600];
+		baud_code = UART_CSR_9600;
 		rxstale = 2;
 		break;
 	case 14400:
-		baud_code = msm_port->uart_csr_code[UART_BAUD_14400];
+		baud_code = UART_CSR_14400;
 		rxstale = 3;
 		break;
 	case 19200:
-		baud_code = msm_port->uart_csr_code[UART_BAUD_19200];
+		baud_code = UART_CSR_19200;
 		rxstale = 4;
 		break;
 	case 28800:
-		baud_code = msm_port->uart_csr_code[UART_BAUD_28800];
+		baud_code = UART_CSR_28800;
 		rxstale = 6;
 		break;
 	case 38400:
-		baud_code = msm_port->uart_csr_code[UART_BAUD_38400];
+		baud_code = UART_CSR_38400;
 		rxstale = 8;
 		break;
 	case 57600:
-		baud_code = msm_port->uart_csr_code[UART_BAUD_57600];
+		baud_code = UART_CSR_57600;
 		rxstale = 16;
 		break;
 	case 115200:
 	default:
-		baud_code = msm_port->uart_csr_code[UART_BAUD_115200];
+		baud_code = UART_CSR_115200;
 		rxstale = 31;
 		break;
 	}
@@ -490,10 +486,19 @@ static void msm_init_clock(struct uart_port *port)
 	msm_port->clk_state = MSM_CLK_ON;
 #endif
 
-	msm_write(port, 0xC0, UART_MREG);
-	msm_write(port, 0xB2, UART_NREG);
-	msm_write(port, 0x7D, UART_DREG);
-	msm_write(port, 0x1C, UART_MNDREG);
+	if (port->uartclk == 19200000) {
+		/* clock is TCXO (19.2MHz) */
+		msm_write(port, 0x06, UART_MREG);
+		msm_write(port, 0xF1, UART_NREG);
+		msm_write(port, 0x0F, UART_DREG);
+		msm_write(port, 0x1A, UART_MNDREG);
+	} else {
+		/* clock must be TCXO/4 */
+		msm_write(port, 0x18, UART_MREG);
+		msm_write(port, 0xF6, UART_NREG);
+		msm_write(port, 0x0F, UART_DREG);
+		msm_write(port, 0x0A, UART_MNDREG);
+	}
 }
 
 static void msm_deinit_clock(struct uart_port *port)
@@ -941,16 +946,13 @@ static struct uart_driver msm_uart_driver = {
 	.cons = MSM_CONSOLE,
 };
 
-extern void stall(void);
 static int __init msm_serial_probe(struct platform_device *pdev)
 {
 	struct msm_port *msm_port;
 	struct resource *resource;
 	struct uart_port *port;
-	struct msm_serial_platform_data *pdata = pdev->dev.platform_data;
-	printk(KERN_ERR "%s\n", __FUNCTION__);
 
-	if (unlikely(pdev->id < 0 || pdev->id >= UART_NR || !pdata))
+	if (unlikely(pdev->id < 0 || pdev->id >= UART_NR))
 		return -ENXIO;
 
 	printk(KERN_INFO "msm_serial: detected port #%d\n", pdev->id);
@@ -959,7 +961,6 @@ static int __init msm_serial_probe(struct platform_device *pdev)
 	port->dev = &pdev->dev;
 	msm_port = UART_TO_MSM(port);
 
-	msm_port->uart_csr_code = pdata->uart_csr_code;
 	msm_port->clk = clk_get(&pdev->dev, "uart_clk");
 	if (unlikely(IS_ERR(msm_port->clk)))
 		return PTR_ERR(msm_port->clk);

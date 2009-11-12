@@ -55,7 +55,10 @@ static int handle_rpc_call(struct msm_rpc_server *server,
 		       "\ttick = %d\n"
 		       "\tstamp = %lld\n",
 		       args->tick, args->stamp);
-		//rtc_hctosys();
+
+		if (!machine_is_grapefruit())
+			rtc_hctosys();
+
 		return 0;
 	}
 	default:

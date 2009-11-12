@@ -146,13 +146,13 @@ static int qsd_pcm_playback_prepare(struct snd_pcm_substream *substream)
 	struct cad_write_pcm_format_struct_type cad_write_pcm_fmt;
 	u32 stream_device[1];
 
-	if (prtd->enabled)
-		return 0;
-
 	prtd->pcm_size = snd_pcm_lib_buffer_bytes(substream);
 	prtd->pcm_count = snd_pcm_lib_period_bytes(substream);
 	prtd->pcm_irq_pos = 0;
 	prtd->pcm_buf_pos = 0;
+
+	if (prtd->enabled)
+		return 0;
 
 	cad_stream_info.app_type = CAD_STREAM_APP_PLAYBACK;
 	cad_stream_info.priority = 0;
@@ -166,18 +166,6 @@ static int qsd_pcm_playback_prepare(struct snd_pcm_substream *substream)
 	mutex_unlock(&the_locks.lock);
 	if (rc)
 		printk(KERN_ERR "cad ioctl failed\n");
-
-	stream_device[0] = CAD_HW_DEVICE_ID_DEFAULT_RX ;
-	cad_stream_dev.device = (u32 *) &stream_device[0];
-	cad_stream_dev.device_len = 1;
-	mutex_lock(&the_locks.lock);
-
-	rc = cad_ioctl(prtd->cad_w_handle, CAD_IOCTL_CMD_SET_STREAM_DEVICE,
-		       &cad_stream_dev,
-		       sizeof(struct cad_stream_device_struct_type));
-	mutex_unlock(&the_locks.lock);
-	if (rc)
-		printk(KERN_ERR "cad ioctl  failed\n");
 
 	cad_write_pcm_fmt.us_ver_id = CAD_WRITE_PCM_VERSION_10;
 	cad_write_pcm_fmt.pcm.us_sample_rate =
@@ -194,18 +182,26 @@ static int qsd_pcm_playback_prepare(struct snd_pcm_substream *substream)
 	if (rc)
 		printk(KERN_ERR "cad ioctl failed\n");
 
+	stream_device[0] = CAD_HW_DEVICE_ID_DEFAULT_RX ;
+	cad_stream_dev.device = (u32 *) &stream_device[0];
+	cad_stream_dev.device_len = 1;
+	mutex_lock(&the_locks.lock);
+
+	rc = cad_ioctl(prtd->cad_w_handle, CAD_IOCTL_CMD_SET_STREAM_DEVICE,
+		       &cad_stream_dev,
+		       sizeof(struct cad_stream_device_struct_type));
+	mutex_unlock(&the_locks.lock);
+	if (rc)
+		printk(KERN_ERR "cad ioctl  failed\n");
+
 	mutex_lock(&the_locks.lock);
 	rc = cad_ioctl(prtd->cad_w_handle, CAD_IOCTL_CMD_STREAM_START,
 		NULL, 0);
 	mutex_unlock(&the_locks.lock);
 	if (rc)
 		printk(KERN_ERR "cad ioctl failed\n");
-	else {
+	else
 		prtd->enabled = 1;
-		mutex_lock(&the_locks.mixer_lock);
-		qsd_glb_ctl.update = 1; /* Update Volume, with Cached value */
-		mutex_unlock(&the_locks.mixer_lock);
-	}
 	return rc;
 }
 
@@ -368,16 +364,20 @@ static int qsd_pcm_playback_close(struct snd_pcm_substream *substream)
 	struct qsd_audio *prtd = runtime->private_data;
 	int ret = 0;
 
-	mutex_lock(&the_locks.lock);
-	cad_ioctl(prtd->cad_w_handle,
+	if (prtd->enabled) {
+		mutex_lock(&the_locks.lock);
+		cad_ioctl(prtd->cad_w_handle,
 			CAD_IOCTL_CMD_STREAM_END_OF_STREAM,
 			NULL, 0);
-	mutex_unlock(&the_locks.lock);
+		mutex_unlock(&the_locks.lock);
 
-	ret = wait_event_interruptible(the_locks.eos_wait, prtd->eos_ack);
+		ret = wait_event_interruptible(the_locks.eos_wait,
+					prtd->eos_ack);
 
-	if (!prtd->eos_ack)
-		pr_err("EOS Failed\n");
+		if (!prtd->eos_ack)
+			pr_err("EOS Failed\n");
+
+	}
 
 	prtd->eos_ack = 0;
 	mutex_lock(&the_locks.lock);
@@ -484,18 +484,6 @@ static int qsd_pcm_capture_prepare(struct snd_pcm_substream *substream)
 		return rc;
 	}
 
-	stream_device[0] = CAD_HW_DEVICE_ID_DEFAULT_TX ;
-	cad_stream_dev.device = (u32 *) &stream_device[0];
-	cad_stream_dev.device_len = 1;
-
-	rc = cad_ioctl(prtd->cad_w_handle, CAD_IOCTL_CMD_SET_STREAM_DEVICE,
-	       &cad_stream_dev,
-	       sizeof(struct cad_stream_device_struct_type));
-	if (rc) {
-		mutex_unlock(&the_locks.lock);
-		return rc;
-	}
-
 	cad_write_pcm_fmt.us_ver_id = CAD_WRITE_PCM_VERSION_10;
 	cad_write_pcm_fmt.pcm.us_sample_rate =
 	    convert_dsp_samp_index(runtime->rate);
@@ -510,6 +498,19 @@ static int qsd_pcm_capture_prepare(struct snd_pcm_substream *substream)
 		mutex_unlock(&the_locks.lock);
 		return rc;
 	}
+
+	stream_device[0] = CAD_HW_DEVICE_ID_DEFAULT_TX ;
+	cad_stream_dev.device = (u32 *) &stream_device[0];
+	cad_stream_dev.device_len = 1;
+
+	rc = cad_ioctl(prtd->cad_w_handle, CAD_IOCTL_CMD_SET_STREAM_DEVICE,
+	       &cad_stream_dev,
+	       sizeof(struct cad_stream_device_struct_type));
+	if (rc) {
+		mutex_unlock(&the_locks.lock);
+		return rc;
+	}
+
 	rc = cad_ioctl(prtd->cad_w_handle, CAD_IOCTL_CMD_STREAM_START,
 			NULL, 0);
 	mutex_unlock(&the_locks.lock);
@@ -601,7 +602,7 @@ static int qsd_pcm_new(struct snd_card *card,
 			struct snd_pcm *pcm)
 {
 	if (!card->dev->coherent_dma_mask)
-		card->dev->coherent_dma_mask = DMA_32BIT_MASK;
+		card->dev->coherent_dma_mask = DMA_BIT_MASK(32);
 
 	return 0;
 }

@@ -639,6 +639,19 @@ config ARCH_OMAP
 	help
 	  Support for TI's OMAP platform (OMAP1 and OMAP2).
 
+config ARCH_MSM
+	bool "Qualcomm MSM"
+	select GENERIC_GPIO
+	select HAVE_CLK
+	select GENERIC_TIME
+	select GENERIC_CLOCKEVENTS
+	help
+	  Support for Qualcomm MSM/QSD based systems.  This runs on the
+	  apps processor of the MSM/QSD and depends on a shared memory
+	  interface to the modem processor which runs the baseband
+	  stack and controls some vital subsystems
+	  (clock and power control, etc).
+
 endchoice
 
 source "arch/arm/mach-clps711x/Kconfig"
@@ -1002,7 +1015,7 @@ config AEABI
 
 config OABI_COMPAT
 	bool "Allow old ABI binaries to run with this kernel (EXPERIMENTAL)"
-	depends on AEABI && EXPERIMENTAL
+	depends on AEABI && EXPERIMENTAL  && (!MMU || BROKEN)
 	default y
 	help
 	  This option preserves the old syscall interface along with the

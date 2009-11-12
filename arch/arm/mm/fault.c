@@ -22,6 +22,10 @@
 #include <asm/pgtable.h>
 #include <asm/tlbflush.h>
 
+#ifdef CONFIG_EMULATE_DOMAIN_MANAGER_V7
+#include <asm/domain.h>
+#endif /* CONFIG_EMULATE_DOMAIN_MANAGER_V7 */
+
 #include "fault.h"
 
 
@@ -403,7 +407,7 @@ do_bad(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 static int
 do_imprecise_ext(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 {
-#ifdef CONFIG_ARCH_QSD
+#ifdef CONFIG_ARCH_MSM_SCORPION
 	unsigned int regval;
 	static unsigned char flush_toggle;
 
@@ -502,6 +506,11 @@ do_DataAbort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	const struct fsr_info *inf = fsr_info + (fsr & 15) + ((fsr & (1 << 10)) >> 6);
 	struct siginfo info;
 
+#ifdef CONFIG_EMULATE_DOMAIN_MANAGER_V7
+	if (emulate_domain_manager_data_abort(fsr, addr))
+		return;
+#endif
+
 	if (!inf->fn(addr, fsr, regs))
 		return;
 
@@ -512,12 +521,35 @@ do_DataAbort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	info.si_errno = 0;
 	info.si_code  = inf->code;
 	info.si_addr  = (void __user *)addr;
-	arm_notify_die("", regs, &info, fsr, 0);
+	arm_notify_die("Oops - unhandled data abort", regs, &info, fsr, 0);
 }
 
 asmlinkage void __exception
-do_PrefetchAbort(unsigned long addr, struct pt_regs *regs)
+do_PrefetchAbort(unsigned long addr, unsigned int ifsr, struct pt_regs *regs)
 {
+	struct vm_area_struct *vma;
+	struct siginfo info;
+
+#ifdef CONFIG_EMULATE_DOMAIN_MANAGER_V7
+	if (emulate_domain_manager_prefetch_abort(ifsr, addr))
+		return;
+#endif
+
 	do_translation_fault(addr, 0, regs);
+
+	/*
+	 * Handle execution permission fault
+	 */
+	if ((ifsr & 0x40D) == 0x00D) {
+		vma = find_vma(current->mm, addr);
+		if (vma && !(vma->vm_flags & VM_EXEC)) {
+			info.si_signo = SIGSEGV;
+			info.si_errno = 0;
+			info.si_code  = SEGV_ACCERR;
+			info.si_addr  = (void __user *)addr;
+			arm_notify_die("Oops - execution permission fault",
+				       regs, &info, ifsr, 0);
+		}
+	}
 }
 

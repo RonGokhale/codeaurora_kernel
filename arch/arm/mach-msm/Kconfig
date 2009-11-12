@@ -8,21 +8,33 @@ config ARCH_MSM7X01A
 	bool "MSM7x00A / MSM7x01A"
 	select ARCH_MSM_ARM11
 	select CPU_V6
+	select REMOTE_SPINLOCK_SWP
 
 config ARCH_MSM7X27
 	bool "MSM7x27"
 	select ARCH_MSM_ARM11
 	select CPU_V6
+	select REMOTE_SPINLOCK_SWP
 
 config ARCH_MSM7X30
 	bool "MSM7x30"
 	select ARCH_MSM_SCORPION
 	select CPU_V7
+	select REMOTE_SPINLOCK_DEKKERS
 
 config ARCH_QSD8X50
 	bool "QSD8X50"
 	select ARCH_MSM_SCORPION
 	select CPU_V7
+	select EMULATE_DOMAIN_MANAGER_V7
+	select VERIFY_PERMISSION_FAULT
+	select REMOTE_SPINLOCK_LDREX
+
+config ARCH_MSM7X25
+	bool "MSM7x25"
+	select ARCH_MSM_ARM11
+	select CPU_V6
+	select REMOTE_SPINLOCK_SWP
 
 endchoice
 
@@ -31,6 +43,12 @@ config  ARCH_MSM_ARM11
 config  ARCH_MSM_SCORPION
 	bool
 
+config REMOTE_SPINLOCK_DEKKERS
+	bool
+config REMOTE_SPINLOCK_SWP
+	bool
+config REMOTE_SPINLOCK_LDREX
+	bool
 
 menu "MSM Board Selection"
 
@@ -96,6 +114,14 @@ config MACH_MSM7X30_FFA
        help
          Support for the Qualcomm MSM7x30 FFA eval board.
 
+config MACH_MSM7X30_FLUID
+       depends on ARCH_MSM7X30
+       depends on !MSM_STACKED_MEMORY
+       default y
+       bool "MSM7x30 FLUID"
+       help
+         Support for the Qualcomm MSM7x30 FLUID eval board.
+
 config MACH_SAPPHIRE
 	depends on ARCH_MSM7X01A
 	default n
@@ -132,6 +158,22 @@ config MACH_QSD8X50_GRAPEFRUIT
 	bool "QSD8x50 Grapefruit"
 	help
 	  Support for the Qualcomm Grapefruit eval board.
+
+config MACH_MSM7X25_SURF
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	default y
+	bool "MSM7x25 SURF"
+	help
+	  Support for the Qualcomm MSM7x25 SURF eval board.
+
+config MACH_MSM7X25_FFA
+	depends on ARCH_MSM7X25
+	depends on !MSM_STACKED_MEMORY
+	default y
+	bool "MSM7x25 FFA"
+	help
+	  Support for the Qualcomm MSM7x25 FFA eval board.
 
 endmenu
 
@@ -209,7 +251,7 @@ choice
 		bool "DG Timer"
 	help
 	  High resolution timer.
-endchoice
+endchoice	  
 
 choice
 	prompt "Suspend sleep mode"
@@ -236,7 +278,7 @@ choice
 
 	config MSM7X00A_SLEEP_WAIT_FOR_INTERRUPT
 		bool "Wait for interrupt"
-endchoice
+endchoice	  
 
 config MSM7X00A_SLEEP_MODE
 	int
@@ -271,7 +313,7 @@ choice
 
 	config MSM7X00A_IDLE_SLEEP_WAIT_FOR_INTERRUPT
 		bool "Wait for interrupt"
-endchoice
+endchoice	  
 
 config MSM7X00A_IDLE_SLEEP_MODE
 	int
@@ -434,21 +476,58 @@ config MSM_N_WAY_SMSM
 	  Supports APPS-QDSP SMSM communication along with
 	  normal APPS-MODEM SMSM communication.
 
-config MSM_SMEM_LOG
-       depends on MSM_SMD
-       default n
-       bool "MSM SMEM Logging"
-       help
-         The SMEM log contains time-stamped entries written
-         by each processor in an MSM SoC. It can be logged 
-	 to and read from at anytime.  
-
 config MSM_RESET_MODEM
 	tristate "Reset Modem Driver"
 	depends on MSM_SMD
 	default m
 	help
 	  Allows the user to reset the modem through a device node.
+
+config MSM_SMD_LOGGING
+	depends on MSM_SMD
+	default y
+	bool "MSM Shared Memory Logger"
+	help
+	  This option exposes the shared memory logger at /dev/smem_log
+	  and a debugfs node named smem_log.
+
+	  If in doubt, say yes.
+
+config MSM_SMD_NMEA
+	bool "NMEA GPS Driver"
+	depends on MSM_SMD
+	default y
+	help
+	  Enable this to support the NMEA GPS device.
+
+	  If in doubt, say yes.
+
+config MSM_SMD_TTY
+	bool "SMD TTY Driver"
+	depends on MSM_SMD
+	default y
+	help
+	  Provides TTY interfaces to interact with the modem.
+
+	  If in doubt, say yes.
+
+config MSM_SMD_QMI
+	bool "SMD QMI Driver"
+	depends on MSM_SMD
+	default y
+	help
+	  Manages network data connections.
+
+	  If in doubt, say yes.
+
+config MSM_SMD_CTL
+	bool "SMD Control Driver"
+	depends on MSM_SMD
+	default y
+	help
+	  Provides a binary SMD non-muxed control port interface.
+
+	  If in doubt, say yes.
 
 config MSM_ONCRPCROUTER
 	depends on MSM_SMD
@@ -481,6 +560,13 @@ config MSM_RPC_PING
 	help
 	  Implements MSM rpc ping test module.
 
+config MSM_RPC_PROC_COMM_TEST
+	depends on DEBUG_FS
+	default m
+	bool "MSM rpc proc comm test"
+	help
+	  Implements MSM rpc proc comm test module.
+
 config MSM_RPC_OEM_RAPI
 	depends on MSM_ONCRPCROUTER
 	default m
@@ -496,13 +582,13 @@ config MSM_RPCSERVER_HANDSET
 	  Support for receiving handset events like headset detect,
 	  headset switch and clamshell state.
 
-config MSM_RPCSERVER_TIME_REMOTE
-	depends on MSM_ONCRPCROUTER
-	select RTC_HCTOSYS
+config MSM_RMT_STORAGE_SERVER
+	depends on (ARCH_MSM7X30 && MSM_ONCRPCROUTER)
 	default y
-	bool "Time remote events RPC server"
+	bool "Remote Storage RPC server"
 	help
-	  Support for receiving time events from the modem.
+	  Provide RPC mechanism for remote processors to access storage
+	  device on apps processor.
 
 config MSM_DALRPC
 	bool "DAL RPC support"
@@ -558,8 +644,19 @@ config MSM_CPU_FREQ_MIN
 
 endif # CPU_FREQ_MSM
 
+config MSM_CPU_AVS
+	bool "Enable Adaptive Voltage Scaling (AVS)"
+	depends on (ARCH_MSM_SCORPION && QSD_SVS)
+	depends on ARCH_QSD8X50
+	default y
+	help
+	  This enables the Adaptive Voltage Scaling feature of
+	  Qualcomm ARMv7 CPUs. It adjusts the voltage for each frequency
+	  based on feedback from three ring oscillators in the CPU.
+
 config MSM_HW3D
 	tristate "MSM Hardware 3D Register Driver"
+	depends on ANDROID_PMEM
 	default y
 	help
 	  Provides access to registers needed by the userspace OpenGL|ES
@@ -567,6 +664,7 @@ config MSM_HW3D
 
 config MSM_ADSP
 	tristate "MSM ADSP driver"
+	depends on ANDROID_PMEM
 	default y
 	help
 	  Provides access to registers needed by the userspace aDSP library.
@@ -578,6 +676,14 @@ config MSM_ADSP_REPORT_EVENTS
 	help
 	  Normally, only messages from the aDSP are reported to userspace.
 	  With this option, we report events from the aDSP as well.
+
+config MSM7KV2_AUDIO
+	bool "MSM7K v2 audio"
+	depends on (ARCH_MSM7X30 && MSM_ADSP)
+	default y
+	help
+	  Enables QDSP5V2-based audio drivers for audio playbacks and
+	  voice call.
 
 config MSM_VREG_SWITCH_INVERTED
 	bool "Reverse vreg switch polarity"
@@ -596,7 +702,7 @@ config WIFI_CONTROL_FUNC
 	bool "Enable WiFi control function abstraction"
 	help
 	  Enables Power/Reset/Carddetect function abstraction
-
+	
 config WIFI_MEM_PREALLOC
 	depends on WIFI_CONTROL_FUNC
 	bool "Preallocate memory for WiFi buffers"
@@ -605,7 +711,7 @@ config WIFI_MEM_PREALLOC
 
 config QSD_AUDIO
 	bool "QSD audio"
-	depends on (ARCH_MSM_SCORPION && MSM_DALRPC)
+	depends on ARCH_MSM_SCORPION && MSM_DALRPC && ANDROID_PMEM
 	default y
 	help
 	  Provides PCM, MP3, and AAC audio playback.

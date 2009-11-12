@@ -6,8 +6,6 @@ config ANDROID
 	---help---
 	  Enable support for various drivers needed on the Android platform
 
-if ANDROID
-
 config ANDROID_BINDER_IPC
 	bool "Android Binder IPC Driver"
 	default n
@@ -15,6 +13,11 @@ config ANDROID_BINDER_IPC
 config ANDROID_LOGGER
 	tristate "Android log driver"
 	default n
+
+config ANDROID_LOGGER_TEST
+	tristate "Simple module to test Android log driver"
+	depends on ANDROID_LOGGER
+	default m
 
 config ANDROID_RAM_CONSOLE
 	bool "Android RAM buffer console"
@@ -89,7 +92,5 @@ config ANDROID_LOW_MEMORY_KILLER
 	default N
 	---help---
 	  Register processes to be killed when memory is low
-
-endif # if ANDROID
 
 endmenu

@@ -336,6 +336,8 @@ static void __init build_mem_type_table(void)
 			mem_types[MT_DEVICE_NONSHARED].prot_sect |= PMD_SECT_XN;
 			mem_types[MT_DEVICE_CACHED].prot_sect |= PMD_SECT_XN;
 			mem_types[MT_DEVICE_WC].prot_sect |= PMD_SECT_XN;
+			mem_types[MT_DEVICE_STRONGLY_ORDERED].prot_sect |=
+								PMD_SECT_XN;
 		}
 		if (cpu_arch >= CPU_ARCH_ARMv7 && (cr & CR_TRE)) {
 			/*
@@ -693,7 +695,10 @@ __early_param("vmalloc=", early_vmalloc);
 
 static void __init sanity_check_meminfo(void)
 {
-	int i, j, highmem = 0;
+	int i, j; 
+#ifdef CONFIG_HIGHMEM
+	int highmem = 0;
+#endif
 
 	for (i = 0, j = 0; i < meminfo.nr_banks; i++) {
 		struct membank *bank = &meminfo.bank[j];

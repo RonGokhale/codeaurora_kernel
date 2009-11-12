@@ -96,6 +96,7 @@ static void mddi_early_resume(struct early_suspend *h);
 static struct platform_device *pdev_list[MSM_FB_MAX_DEV_LIST];
 static int pdev_list_cnt;
 static struct clk *mddi_clk;
+static struct clk *mddi_pclk;
 static struct mddi_platform_data *mddi_pdata;
 
 static struct platform_driver mddi_driver = {
@@ -123,8 +124,8 @@ static int mddi_off(struct platform_device *pdev)
 
 	ret = panel_next_off(pdev);
 
-	if (machine_is_msm7201a_ffa())
-		gpio_direction_output(88, 0);
+	if (mddi_pdata && mddi_pdata->mddi_power_save)
+		mddi_pdata->mddi_power_save(0);
 
 	return ret;
 }
@@ -137,8 +138,8 @@ static int mddi_on(struct platform_device *pdev)
 
 	mfd = platform_get_drvdata(pdev);
 
-	if (machine_is_msm7201a_ffa())
-		gpio_direction_output(88, 1);
+	if (mddi_pdata && mddi_pdata->mddi_power_save)
+		mddi_pdata->mddi_power_save(1);
 
 	clk_rate = mfd->fbi->var.pixclock;
 	clk_rate = min(clk_rate, mfd->panel_info.clk_max);
@@ -183,7 +184,7 @@ static int mddi_probe(struct platform_device *pdev)
 			return -ENOMEM;
 
 		if (mddi_pdata && mddi_pdata->mddi_power_on) {
-			rc = mddi_pdata->mddi_power_on();
+			rc = mddi_pdata->mddi_power_on(1);
 			if (rc) {
 				pr_err("%s: can't power on mddi\n", __func__);
 				return rc;
@@ -296,6 +297,9 @@ void mddi_disable(int lock)
 	if (lock)
 		mddi_power_locked = 1;
 
+	if (mddi_host_timer.function)
+		del_timer_sync(&mddi_host_timer);
+
 	mddi_pad_ctrl = mddi_host_reg_in(PAD_CTL);
 	mddi_host_reg_out(PAD_CTL, 0x0);
 
@@ -303,6 +307,8 @@ void mddi_disable(int lock)
 		printk(KERN_ERR "%s: clk_set_min_rate failed\n", __func__);
 
 	clk_disable(mddi_clk);
+	if (mddi_pclk)
+		clk_disable(mddi_pclk);
 	disable_irq(INT_MDDI_PRI);
 
 	if (mddi_pdata && mddi_pdata->mddi_power_save)
@@ -331,12 +337,14 @@ static int mddi_resume(struct platform_device *pdev)
 	if (mddi_power_locked)
 		return 0;
 
-	if (mddi_pdata && mddi_pdata->mddi_power_save)
-		mddi_pdata->mddi_power_save(1);
-
 	enable_irq(INT_MDDI_PRI);
 	clk_enable(mddi_clk);
+	if (mddi_pclk)
+		clk_enable(mddi_pclk);
 	mddi_host_reg_out(PAD_CTL, mddi_pad_ctrl);
+
+	if (mddi_host_timer.function)
+		mddi_host_timer_service(0);
 
 	return 0;
 }
@@ -359,8 +367,6 @@ static void mddi_early_resume(struct early_suspend *h)
 	mddi_resume(mfd->pdev);
 }
 #endif
-
-extern struct timer_list mddi_host_timer;
 
 static int mddi_remove(struct platform_device *pdev)
 {
@@ -388,10 +394,20 @@ static int __init mddi_driver_init(void)
 	}
 	clk_enable(mddi_clk);
 
+	mddi_pclk = clk_get(NULL, "mddi_pclk");
+	if (IS_ERR(mddi_pclk))
+		mddi_pclk = NULL;
+	else
+		clk_enable(mddi_pclk);
+
 	ret = mddi_register_driver();
 	if (ret) {
 		clk_disable(mddi_clk);
 		clk_put(mddi_clk);
+		if (mddi_pclk) {
+			clk_disable(mddi_pclk);
+			clk_put(mddi_pclk);
+		}
 		printk(KERN_ERR "mddi_register_driver() failed!\n");
 		return ret;
 	}

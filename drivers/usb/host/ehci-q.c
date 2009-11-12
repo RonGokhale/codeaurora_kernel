@@ -141,7 +141,7 @@ qh_refresh (struct ehci_hcd *ehci, struct ehci_qh *qh)
 
 static void qh_link_async(struct ehci_hcd *ehci, struct ehci_qh *qh);
 
-static void ehci_clear_tt_buffer_complete(struct usb_hcd *hcd,
+static __attribute__((unused)) void ehci_clear_tt_buffer_complete(struct usb_hcd *hcd,
 		struct usb_host_endpoint *ep)
 {
 	struct ehci_hcd		*ehci = hcd_to_ehci(hcd);

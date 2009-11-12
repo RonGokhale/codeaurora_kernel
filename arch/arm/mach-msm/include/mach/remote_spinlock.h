@@ -26,21 +26,131 @@
  *
  */
 
+/*
+ * Part of this this code is based on the standard ARM spinlock
+ * implementation (asm/spinlock.h) found in the 2.6.29 kernel.
+ */
+
 #ifndef __ASM__ARCH_QC_REMOTE_SPINLOCK_H
 #define __ASM__ARCH_QC_REMOTE_SPINLOCK_H
 
 #include <linux/types.h>
 
-typedef struct {
+struct dek_spinlock {
+	volatile uint8_t self_lock;
+	volatile uint8_t other_lock;
+	volatile uint8_t turn;
+	uint8_t pad;
+};
+
+typedef union {
 	volatile uint32_t lock;
+	struct dek_spinlock dek;
 } raw_remote_spinlock_t;
 
 typedef raw_remote_spinlock_t *_remote_spinlock_t;
 
-#define remote_spin_lock_id_t uint32_t
+#define remote_spinlock_id_t const char *
 
-int _remote_spin_lock_init(remote_spin_lock_id_t id, _remote_spinlock_t *lock);
-void _remote_spin_lock(_remote_spinlock_t *lock);
-void _remote_spin_unlock(_remote_spinlock_t *lock);
+static inline void __raw_remote_ex_spin_lock(raw_remote_spinlock_t *lock)
+{
+	unsigned long tmp;
 
+	__asm__ __volatile__(
+"1:	ldrex	%0, [%1]\n"
+"	teq	%0, #0\n"
+"	strexeq	%0, %2, [%1]\n"
+"	teqeq	%0, #0\n"
+"	bne	1b"
+	: "=&r" (tmp)
+	: "r" (&lock->lock), "r" (1)
+	: "cc");
+
+	smp_mb();
+}
+
+static inline void __raw_remote_ex_spin_unlock(raw_remote_spinlock_t *lock)
+{
+	smp_mb();
+
+	__asm__ __volatile__(
+"	str	%1, [%0]\n"
+	:
+	: "r" (&lock->lock), "r" (0)
+	: "cc");
+}
+
+static inline void __raw_remote_swp_spin_lock(raw_remote_spinlock_t *lock)
+{
+	unsigned long tmp;
+
+	__asm__ __volatile__(
+"1:	swp	%0, %2, [%1]\n"
+"	teq	%0, #0\n"
+"	bne	1b"
+	: "=&r" (tmp)
+	: "r" (&lock->lock), "r" (1)
+	: "cc");
+
+	smp_mb();
+}
+
+static inline void __raw_remote_swp_spin_unlock(raw_remote_spinlock_t *lock)
+{
+	smp_mb();
+
+	__asm__ __volatile__(
+"	str	%1, [%0]"
+	:
+	: "r" (&lock->lock), "r" (0)
+	: "cc");
+}
+
+#define DEK_LOCK_REQUEST	1
+#define DEK_LOCK_YIELD		0
+#define DEK_TURN_SELF		0
+#define DEK_TURN_OTHER		1
+static inline void __raw_remote_dek_spin_lock(raw_remote_spinlock_t *lock)
+{
+	lock->dek.self_lock = DEK_LOCK_REQUEST;
+
+	while (lock->dek.other_lock) {
+
+		if (lock->dek.turn != DEK_TURN_SELF)
+			lock->dek.self_lock = DEK_LOCK_YIELD;
+
+		while (lock->dek.other_lock)
+			;
+
+		lock->dek.self_lock = DEK_LOCK_YIELD;
+	}
+	lock->dek.turn = DEK_TURN_OTHER;
+
+	smp_mb();
+}
+
+static inline void __raw_remote_dek_spin_unlock(raw_remote_spinlock_t *lock)
+{
+	smp_mb();
+
+	lock->dek.self_lock = DEK_LOCK_YIELD;
+}
+
+int _remote_spin_lock_init(remote_spinlock_id_t, _remote_spinlock_t *lock);
+
+#if defined(CONFIG_REMOTE_SPINLOCK_DEKKERS)
+/* Use Dekker's algorithm when LDREX/STREX and SWP are unavailable for
+ * shared memory */
+#define _remote_spin_lock(lock)		__raw_remote_dek_spin_lock(*lock)
+#define _remote_spin_unlock(lock)	__raw_remote_dek_spin_unlock(*lock)
+#elif defined(CONFIG_REMOTE_SPINLOCK_SWP)
+/* Use SWP-based locks when LDREX/STREX are unavailable for shared memory. */
+#define _remote_spin_lock(lock)		__raw_remote_swp_spin_lock(*lock)
+#define _remote_spin_unlock(lock)	__raw_remote_swp_spin_unlock(*lock)
+#else
+/* Use LDREX/STREX for shared memory locking, when available */
+#define _remote_spin_lock(lock)		__raw_remote_ex_spin_lock(*lock)
+#define _remote_spin_unlock(lock)	__raw_remote_ex_spin_unlock(*lock)
 #endif
+
+#endif /* __ASM__ARCH_QC_REMOTE_SPINLOCK_H */

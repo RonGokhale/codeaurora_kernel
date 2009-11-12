@@ -237,6 +237,57 @@ struct platform_device msm_device_i2c = {
 	.resource	= resources_i2c,
 };
 
+#if defined(CONFIG_ARCH_MSM7X30)
+#define MSM_QUP_PHYS           0xA8301000
+#define MSM_GSBI_QUP_I2C_PHYS  0xA8300000
+#else
+#define MSM_QUP_PHYS           0xA9900000
+#define MSM_GSBI_QUP_I2C_PHYS  0xA9900000
+#define INT_PWB_QUP_IN         INT_PWB_I2C
+#define INT_PWB_QUP_OUT        INT_PWB_I2C
+#define INT_PWB_QUP_ERR        INT_PWB_I2C
+#endif
+#define MSM_QUP_SIZE           SZ_4K
+static struct resource resources_qup[] = {
+	{
+		.name   = "qup_phys_addr",
+		.start	= MSM_QUP_PHYS,
+		.end	= MSM_QUP_PHYS + MSM_QUP_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name   = "gsbi_qup_i2c_addr",
+		.start	= MSM_GSBI_QUP_I2C_PHYS,
+		.end	= MSM_GSBI_QUP_I2C_PHYS + 4 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name   = "qup_in_intr",
+		.start	= INT_PWB_QUP_IN,
+		.end	= INT_PWB_QUP_IN,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name   = "qup_out_intr",
+		.start	= INT_PWB_QUP_OUT,
+		.end	= INT_PWB_QUP_OUT,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name   = "qup_err_intr",
+		.start	= INT_PWB_QUP_ERR,
+		.end	= INT_PWB_QUP_ERR,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device qup_device_i2c = {
+	.name		= "qup_i2c",
+	.id		= 4,
+	.num_resources	= ARRAY_SIZE(resources_qup),
+	.resource	= resources_qup,
+};
+
 #ifdef CONFIG_I2C_SSBI
 #define MSM_SSBI6_PHYS	0xAD900000
 static struct resource msm_ssbi6_resources[] = {
@@ -253,6 +304,23 @@ struct platform_device msm_device_ssbi6 = {
 	.id		= 6,
 	.num_resources	= ARRAY_SIZE(msm_ssbi6_resources),
 	.resource	= msm_ssbi6_resources,
+};
+
+#define MSM_SSBI7_PHYS  0xAC800000
+static struct resource msm_ssbi7_resources[] = {
+	{
+		.name   = "ssbi_base",
+		.start  = MSM_SSBI7_PHYS,
+		.end    = MSM_SSBI7_PHYS + SZ_4K - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+};
+
+struct platform_device msm_device_ssbi7 = {
+	.name		= "i2c_ssbi",
+	.id		= 7,
+	.num_resources	= ARRAY_SIZE(msm_ssbi7_resources),
+	.resource	= msm_ssbi7_resources,
 };
 #endif /* CONFIG_I2C_SSBI */
 
@@ -299,6 +367,19 @@ static struct resource resources_hsusb_peripheral[] = {
 	},
 };
 
+static struct resource resources_gadget_peripheral[] = {
+	{
+		.start	= MSM_HSUSB_PHYS,
+		.end	= MSM_HSUSB_PHYS + SZ_1K - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= INT_USB_HS,
+		.end	= INT_USB_HS,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
 struct platform_device msm_device_hsusb_peripheral = {
 	.name		= "msm_hsusb_peripheral",
 	.id		= -1,
@@ -313,8 +394,8 @@ struct platform_device msm_device_hsusb_peripheral = {
 struct platform_device msm_device_gadget_peripheral = {
 	.name		= "msm_hsusb",
 	.id		= -1,
-	.num_resources	= ARRAY_SIZE(resources_hsusb_peripheral),
-	.resource	= resources_hsusb_peripheral,
+	.num_resources	= ARRAY_SIZE(resources_gadget_peripheral),
+	.resource	= resources_gadget_peripheral,
 	.dev		= {
 		.dma_mask 		= &dma_mask,
 		.coherent_dma_mask	= 0xffffffffULL,
@@ -379,7 +460,7 @@ static struct platform_device *msm_host_devices[] = {
 #endif
 };
 
-int msm_add_host(unsigned int host, struct msm_hsusb_platform_data *plat)
+int msm_add_host(unsigned int host, struct msm_usb_host_platform_data *plat)
 {
 	struct platform_device	*pdev;
 
@@ -412,8 +493,8 @@ static struct resource resources_nand[] = {
 
 static struct resource resources_otg[] = {
 	{
-		.start	= 0xA0800000,
-		.end	= 0xA0800000 + SZ_1K,
+		.start	= MSM_HSUSB_PHYS,
+		.end	= MSM_HSUSB_PHYS + SZ_1K - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
@@ -450,6 +531,11 @@ struct platform_device msm_device_nand = {
 
 struct platform_device msm_device_smd = {
 	.name	= "msm_smd",
+	.id	= -1,
+};
+
+struct platform_device msm_device_dmov = {
+	.name	= "msm_dmov",
 	.id	= -1,
 };
 
@@ -601,27 +687,28 @@ int __init msm_add_sdcc(unsigned int controller, struct mmc_platform_data *plat)
 	return platform_device_register(pdev);
 }
 
-static struct resource msm_tssc_resources[] = {
+#if defined(CONFIG_ARCH_MSM7X30)
+static struct resource msm_ss_mfc_720p_resources[] = {
 	{
-		.start	= 0xAA300000,
-		.end	= 0xAA300000 + SZ_4K - 1,
+		.start	= 0xA3B00000,
+		.end	= 0xA3B00000 + SZ_4K - 1,
 		.flags	= IORESOURCE_MEM,
-		.name	= "tssc_phys",
 	},
 	{
-		.start	= INT_TCHSCRN1,
-		.end	= INT_TCHSCRN2,
+		.start	= INT_MFC720,
+		.end	= INT_MFC720,
 		.flags	= IORESOURCE_IRQ,
-		.name	= "tssc_irq",
 	},
 };
 
-struct platform_device msm_device_tssc = {
-	.name		= "msm_touch",
-	.id		= 0,
-	.num_resources	= ARRAY_SIZE(msm_tssc_resources),
-	.resource	= msm_tssc_resources,
+struct platform_device msm_device_ss_mfc_720p = {
+	.name = "msm_ss_mfc_720p",
+	.id = 0,
+	.num_resources = ARRAY_SIZE(msm_ss_mfc_720p_resources),
+	.resource = msm_ss_mfc_720p_resources,
 };
+
+#endif
 
 #if defined(CONFIG_FB_MSM_MDP40)
 #define MDP_BASE          0xA3F00000
@@ -773,6 +860,40 @@ struct platform_device msm_device_tsif = {
 #endif /* defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE) */
 /* TSIF end   */
 
+#if defined(CONFIG_ARCH_MSM7X30)
+#define MSM_TSSC_PHYS         0xAD300000
+#else
+#define MSM_TSSC_PHYS         0xAA300000
+#endif
+
+static struct resource resources_tssc[] = {
+	{
+		.start	= MSM_TSSC_PHYS,
+		.end	= MSM_TSSC_PHYS + SZ_4K - 1,
+		.name	= "tssc",
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= INT_TCHSCRN1,
+		.end	= INT_TCHSCRN1,
+		.name	= "tssc1",
+		.flags	= IORESOURCE_IRQ | IRQF_TRIGGER_RISING,
+	},
+	{
+		.start	= INT_TCHSCRN2,
+		.end	= INT_TCHSCRN2,
+		.name	= "tssc2",
+		.flags	= IORESOURCE_IRQ | IRQF_TRIGGER_RISING,
+	},
+};
+
+struct platform_device msm_device_tssc = {
+	.name = "msm_touchscreen",
+	.id = 0,
+	.num_resources = ARRAY_SIZE(resources_tssc),
+	.resource = resources_tssc,
+};
+
 static void __init msm_register_device(struct platform_device *pdev, void *data)
 {
 	int ret;
@@ -832,10 +953,10 @@ struct clk msm_clocks_7x01a[] = {
 	CLK_PCOM("icodec_tx_clk",	ICODEC_TX_CLK,	NULL, 0),
 	CLK_PCOM("imem_clk",	IMEM_CLK,	NULL, OFF),
 	CLK_PCOM("mdc_clk",	MDC_CLK,	NULL, 0),
+	CLK_PCOM("mddi_clk",	PMDH_CLK,	NULL, OFF | CLK_MINMAX),
 	CLK_PCOM("mdp_clk",	MDP_CLK,	NULL, OFF),
 	CLK_PCOM("pbus_clk",	PBUS_CLK,	NULL, CLK_MIN),
 	CLK_PCOM("pcm_clk",	PCM_CLK,	NULL, 0),
-	CLK_PCOM("mddi_clk",	PMDH_CLK,	NULL, OFF | CLK_MINMAX),
 	CLK_PCOM("sdac_clk",	SDAC_CLK,	NULL, OFF),
 	CLK_PCOM("sdc_clk",	SDC1_CLK,	&msm_device_sdc1.dev, OFF),
 	CLK_PCOM("sdc_pclk",	SDC1_PCLK,	&msm_device_sdc1.dev, OFF),
@@ -881,13 +1002,13 @@ struct clk msm_clocks_7x25[] = {
 	CLK_PCOM("icodec_tx_clk",	ICODEC_TX_CLK,	NULL, 0),
 	CLK_PCOM("imem_clk",	IMEM_CLK,	NULL, OFF),
 	CLK_PCOM("mdc_clk",	MDC_CLK,	NULL, 0),
+	CLK_PCOM("mddi_clk",	PMDH_CLK,	NULL, OFF | CLK_MINMAX),
 	CLK_PCOM("mdp_clk",	MDP_CLK,	NULL, OFF),
 	CLK_PCOM("mdp_lcdc_pclk_clk", MDP_LCDC_PCLK_CLK, NULL, 0),
 	CLK_PCOM("mdp_lcdc_pad_pclk_clk", MDP_LCDC_PAD_PCLK_CLK, NULL, 0),
 	CLK_PCOM("mdp_vsync_clk",	MDP_VSYNC_CLK,  NULL, 0),
 	CLK_PCOM("pbus_clk",	PBUS_CLK,	NULL, CLK_MIN),
 	CLK_PCOM("pcm_clk",	PCM_CLK,	NULL, 0),
-	CLK_PCOM("mddi_clk",	PMDH_CLK,	NULL, OFF | CLK_MINMAX),
 	CLK_PCOM("sdac_clk",	SDAC_CLK,	NULL, OFF),
 	CLK_PCOM("sdc_clk",	SDC1_CLK,	&msm_device_sdc1.dev, OFF),
 	CLK_PCOM("sdc_pclk",	SDC1_PCLK,	&msm_device_sdc1.dev, OFF),
@@ -920,18 +1041,19 @@ struct clk msm_clocks_7x27[] = {
 	CLK_PCOM("ecodec_clk",	ECODEC_CLK,	NULL, 0),
 	CLK_PCOM("gp_clk",	GP_CLK,		NULL, 0),
 	CLK_PCOM("grp_clk",	GRP_CLK,	NULL, 0),
+	CLK_PCOM("grp_pclk",	GRP_PCLK,	NULL, 0),
 	CLK_PCOM("i2c_clk",	I2C_CLK,	&msm_device_i2c.dev, 0),
 	CLK_PCOM("icodec_rx_clk",	ICODEC_RX_CLK,	NULL, 0),
 	CLK_PCOM("icodec_tx_clk",	ICODEC_TX_CLK,	NULL, 0),
 	CLK_PCOM("imem_clk",	IMEM_CLK,	NULL, OFF),
 	CLK_PCOM("mdc_clk",	MDC_CLK,	NULL, 0),
+	CLK_PCOM("mddi_clk",	PMDH_CLK,	NULL, OFF | CLK_MINMAX),
 	CLK_PCOM("mdp_clk",	MDP_CLK,	NULL, OFF),
 	CLK_PCOM("mdp_lcdc_pclk_clk", MDP_LCDC_PCLK_CLK, NULL, 0),
 	CLK_PCOM("mdp_lcdc_pad_pclk_clk", MDP_LCDC_PAD_PCLK_CLK, NULL, 0),
 	CLK_PCOM("mdp_vsync_clk",	MDP_VSYNC_CLK,  NULL, 0),
 	CLK_PCOM("pbus_clk",	PBUS_CLK,	NULL, CLK_MIN),
 	CLK_PCOM("pcm_clk",	PCM_CLK,	NULL, 0),
-	CLK_PCOM("mddi_clk",	PMDH_CLK,	NULL, OFF | CLK_MINMAX),
 	CLK_PCOM("sdac_clk",	SDAC_CLK,	NULL, OFF),
 	CLK_PCOM("sdc_clk",	SDC1_CLK,	&msm_device_sdc1.dev, OFF),
 	CLK_PCOM("sdc_pclk",	SDC1_PCLK,	&msm_device_sdc1.dev, OFF),
@@ -949,11 +1071,10 @@ struct clk msm_clocks_7x27[] = {
 	CLK_PCOM("usb_hs_clk",	USB_HS_CLK,	NULL, OFF),
 	CLK_PCOM("usb_hs_pclk",	USB_HS_PCLK,	NULL, OFF),
 	CLK_PCOM("usb_otg_clk",	USB_OTG_CLK,	NULL, 0),
+	CLK_PCOM("usb_phy_clk",	USB_PHY_CLK,	NULL, 0),
 	CLK_PCOM("vdc_clk",	VDC_CLK,	NULL, OFF | CLK_MIN),
 	CLK_PCOM("vfe_clk",	VFE_CLK,	NULL, OFF),
 	CLK_PCOM("vfe_mdc_clk",	VFE_MDC_CLK,	NULL, OFF),
-	CLK_PCOM("grp_pclk",	GRP_PCLK,	NULL, 0),
-	CLK_PCOM("usb_phy_clk",	USB_PHY_CLK,	NULL, 0),
 };
 
 unsigned msm_num_clocks_7x27 = ARRAY_SIZE(msm_clocks_7x27);
@@ -961,24 +1082,44 @@ unsigned msm_num_clocks_7x27 = ARRAY_SIZE(msm_clocks_7x27);
 struct clk msm_clocks_7x30[] = {
 	CLK_PCOM("adm_clk",	ADM_CLK,	NULL, 0),
 	CLK_PCOM("adsp_clk",	ADSP_CLK,	NULL, 0),
+	CLK_PCOM("cam_m_clk",	CAM_MCLK_CLK,	NULL, 0),
+	CLK_PCOM("camif_pad_pclk",	CAMIF_PAD_PCLK,	NULL, OFF),
 	CLK_PCOM("ebi1_clk",	EBI1_CLK,	NULL, CLK_MIN),
 	CLK_PCOM("ebi2_clk",	EBI2_CLK,	NULL, 0),
 	CLK_PCOM("ecodec_clk",	ECODEC_CLK,	NULL, 0),
 	CLK_PCOM("gp_clk",	GP_CLK,		NULL, 0),
+	CLK_PCOM("grp_2d_clk",	GRP_2D_CLK,	NULL, 0),
+	CLK_PCOM("grp_2d_pclk",	GRP_2D_PCLK,	NULL, 0),
 	CLK_PCOM("grp_clk",	GRP_CLK,	NULL, 0),
+	CLK_PCOM("grp_pclk",	GRP_PCLK,	NULL, 0),
+	CLK_PCOM("hdmi_clk",	HDMI_CLK,	NULL, 0),
 	CLK_PCOM("i2c_clk",	I2C_CLK,	&msm_device_i2c.dev, 0),
 	CLK_PCOM("i2c_clk",	I2C_2_CLK,	&msm_device_i2c_2.dev, 0),
 	CLK_PCOM("imem_clk",	IMEM_CLK,	NULL, OFF),
+	CLK_PCOM("lpa_codec_clk",	LPA_CODEC_CLK,		NULL, 0),
+	CLK_PCOM("lpa_core_clk",	LPA_CORE_CLK,		NULL, 0),
+	CLK_PCOM("lpa_pclk",		LPA_PCLK,		NULL, 0),
 	CLK_PCOM("mdc_clk",	MDC_CLK,	NULL, 0),
+	CLK_PCOM("mddi_clk",	PMDH_CLK,	NULL, OFF | CLK_MINMAX),
+	CLK_PCOM("mddi_pclk",	PMDH_PCLK,	NULL, 0),
 	CLK_PCOM("mdp_clk",	MDP_CLK,	NULL, OFF),
 	CLK_PCOM("mdp_pclk",	MDP_PCLK,	NULL, 0),
 	CLK_PCOM("mdp_lcdc_pclk_clk", MDP_LCDC_PCLK_CLK, NULL, 0),
 	CLK_PCOM("mdp_lcdc_pad_pclk_clk", MDP_LCDC_PAD_PCLK_CLK, NULL, 0),
 	CLK_PCOM("mdp_vsync_clk",	MDP_VSYNC_CLK,  NULL, 0),
+	CLK_PCOM("mfc_clk",		MFC_CLK,		NULL, 0),
+	CLK_PCOM("mfc_div2_clk",	MFC_DIV2_CLK,		NULL, 0),
+	CLK_PCOM("mfc_pclk",		MFC_PCLK,		NULL, 0),
+	CLK_PCOM("mi2s_codec_rx_m_clk",	MI2S_CODEC_RX_MCLK,  NULL, 0),
+	CLK_PCOM("mi2s_codec_rx_s_clk",	MI2S_CODEC_RX_SCLK,  NULL, 0),
+	CLK_PCOM("mi2s_codec_tx_m_clk",	MI2S_CODEC_TX_MCLK,  NULL, 0),
+	CLK_PCOM("mi2s_codec_tx_s_clk",	MI2S_CODEC_TX_SCLK,  NULL, 0),
 	CLK_PCOM("pbus_clk",	PBUS_CLK,	NULL, CLK_MIN),
 	CLK_PCOM("pcm_clk",	PCM_CLK,	NULL, 0),
-	CLK_PCOM("mddi_clk",	PMDH_CLK,	NULL, OFF | CLK_MINMAX),
-	CLK_PCOM("mddi_pclk",	PMDH_PCLK,	NULL, 0),
+	CLK_PCOM("qup_clk",	QUP_I2C_CLK,	&qup_device_i2c.dev, 0),
+	CLK_PCOM("rotator_clk",	AXI_ROTATOR_CLK,		NULL, 0),
+	CLK_PCOM("rotator_imem_clk",	ROTATOR_IMEM_CLK,	NULL, OFF),
+	CLK_PCOM("rotator_pclk",	ROTATOR_PCLK,		NULL, OFF),
 	CLK_PCOM("sdac_clk",	SDAC_CLK,	NULL, OFF),
 	CLK_PCOM("sdc_clk",	SDC1_CLK,	&msm_device_sdc1.dev, OFF),
 	CLK_PCOM("sdc_pclk",	SDC1_PCLK,	&msm_device_sdc1.dev, OFF),
@@ -989,6 +1130,7 @@ struct clk msm_clocks_7x30[] = {
 	CLK_PCOM("sdc_clk",	SDC4_CLK,	&msm_device_sdc4.dev, OFF),
 	CLK_PCOM("sdc_pclk",	SDC4_PCLK,	&msm_device_sdc4.dev, OFF),
 	CLK_PCOM("spi_clk",	SPI_CLK,	NULL, 0),
+	CLK_PCOM("spi_pclk",	SPI_PCLK,	NULL, 0),
 	CLK_PCOM("uart_clk",	UART1_CLK,	&msm_device_uart1.dev, OFF),
 	CLK_PCOM("uart_clk",	UART2_CLK,	&msm_device_uart2.dev, 0),
 	CLK_PCOM("uart_clk",	UART3_CLK,	&msm_device_uart3.dev, OFF),
@@ -1005,9 +1147,10 @@ struct clk msm_clocks_7x30[] = {
 	CLK_PCOM("usb_hs3_core_clk",	USB_HS3_CORE_CLK,	NULL, OFF),
 	CLK_PCOM("usb_otg_clk",	USB_OTG_CLK,	NULL, 0),
 	CLK_PCOM("vdc_clk",	VDC_CLK,	NULL, OFF | CLK_MIN),
-	CLK_PCOM("vfe_clk",	VFE_CLK,	NULL, OFF),
-	CLK_PCOM("vfe_mdc_clk",	VFE_MDC_CLK,	NULL, OFF),
-	CLK_PCOM("grp_pclk",	GRP_PCLK,	NULL, 0),
+	CLK_PCOM("vfe_camif_clk",	VFE_CAMIF_CLK, 	NULL, 0),
+	CLK_PCOM("vfe_clk",	VFE_CLK,	NULL, 0),
+	CLK_PCOM("vfe_mdc_clk",	VFE_MDC_CLK,	NULL, 0),
+	CLK_PCOM("vfe_pclk",	VFE_PCLK,	NULL, OFF),
 };
 
 unsigned msm_num_clocks_7x30 = ARRAY_SIZE(msm_clocks_7x30);

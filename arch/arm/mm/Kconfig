@@ -577,6 +577,12 @@ config CPU_TLB_V6
 config CPU_TLB_V7
 	bool
 
+config EMULATE_DOMAIN_MANAGER_V7
+	bool
+
+config VERIFY_PERMISSION_FAULT
+	bool
+
 endif
 
 config CPU_HAS_ASID
@@ -691,6 +697,14 @@ config CPU_DCACHE_SIZE
 	  before compile time.
 	  If your SoC is configured to have a different size, define the value
 	  here with proper conditions.
+
+config CPU_CACHE_ERR_REPORT
+	bool "Report errors in the L1 and L2 caches"
+	depends on ARCH_MSM_SCORPION
+	default y
+	help
+	  Say Y here to have errors in the L1 and L2 caches reported as
+	  imprecise data aborts.
 
 config CPU_DCACHE_WRITETHROUGH
 	bool "Force write through D-cache"

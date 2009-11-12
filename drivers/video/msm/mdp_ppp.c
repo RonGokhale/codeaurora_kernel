@@ -53,8 +53,6 @@ static uint32_t bytes_per_pixel[] = {
 	[MDP_BGR_565] = 2
 };
 
-extern MDP_CCS_TYPE mdp_ccs_yuv2rgb;
-extern MDP_CCS_TYPE mdp_ccs_rgb2yuv;
 extern uint32 mdp_plv[];
 extern struct semaphore mdp_ppp_mutex;
 
@@ -1350,6 +1348,19 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req,
 
 	if ((iBuf.roi.width != dst_width) || (iBuf.roi.height != dst_height))
 		iBuf.mdpImg.mdpOp |= MDPOP_ASCALE;
+
+	if (req->flags & MDP_BLUR) {
+#ifdef CONFIG_FB_MSM_MDP31
+		if (req->flags & MDP_SHARPENING)
+			printk(KERN_WARNING
+				"mdp: MDP_SHARPENING is set with MDP_BLUR!\n");
+		req->flags |= MDP_SHARPENING;
+		req->sharpening_strength = -127;
+#else
+		iBuf.mdpImg.mdpOp |= MDPOP_ASCALE | MDPOP_BLUR;
+
+#endif
+	}
 
 	if (req->flags & MDP_SHARPENING) {
 #ifdef CONFIG_FB_MSM_MDP31

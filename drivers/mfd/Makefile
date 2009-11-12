@@ -24,6 +24,9 @@ obj-$(CONFIG_MENELAUS)		+= menelaus.o
 
 obj-$(CONFIG_TWL4030_CORE)	+= twl4030-core.o twl4030-irq.o
 
+obj-$(CONFIG_MARIMBA_CORE)	+= marimba-core.o
+obj-$(CONFIG_MARIMBA_TSADC)	+= marimba-tsadc.o
+
 obj-$(CONFIG_MFD_CORE)		+= mfd-core.o
 
 obj-$(CONFIG_EZX_PCAP)		+= ezx-pcap.o
@@ -32,7 +35,8 @@ obj-$(CONFIG_MCP)		+= mcp-core.o
 obj-$(CONFIG_MCP_SA11X0)	+= mcp-sa11x0.o
 obj-$(CONFIG_MCP_UCB1200)	+= ucb1x00-core.o
 obj-$(CONFIG_MCP_UCB1200_TS)	+= ucb1x00-ts.o
-obj-$(CONFIG_TPS65023)          += tps65023.o
+obj-$(CONFIG_TPS65023)		+= tps65023.o
+obj-$(CONFIG_MARIMBA_CODEC)     += marimba-codec.o
 ifeq ($(CONFIG_SA1100_ASSABET),y)
 obj-$(CONFIG_MCP_UCB1200)	+= ucb1x00-assabet.o
 endif
@@ -44,3 +48,4 @@ obj-$(CONFIG_MFD_PCF50633)	+= pcf50633-core.o
 obj-$(CONFIG_PCF50633_ADC)	+= pcf50633-adc.o
 obj-$(CONFIG_PCF50633_GPIO)	+= pcf50633-gpio.o
 obj-$(CONFIG_AB3100_CORE)	+= ab3100-core.o
+obj-$(CONFIG_PMIC8058)		+= pmic8058.o

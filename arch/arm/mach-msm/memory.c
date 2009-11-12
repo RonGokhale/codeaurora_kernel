@@ -22,7 +22,6 @@
 #include <asm/mach/map.h>
 #include <asm/cacheflush.h>
 
-#if 0
 int arch_io_remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 			    unsigned long pfn, unsigned long size, pgprot_t prot)
 {
@@ -33,7 +32,6 @@ int arch_io_remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 	}
 	return remap_pfn_range(vma, addr, pfn, size, prot);
 }
-#endif
 
 void *zero_page_strongly_ordered;
 

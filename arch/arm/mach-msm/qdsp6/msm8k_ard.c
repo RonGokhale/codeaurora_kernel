@@ -72,6 +72,7 @@
 #include <mach/qdsp6/msm8k_cad_q6enc_drvi.h>
 #include <mach/qdsp6/msm8k_cad_write_pcm_format.h>
 #include <mach/qdsp6/msm8k_cad_write_aac_format.h>
+#include <mach/qdsp6/msm8k_adsp_audio_types.h>
 
 static struct ard_session_info_struct_type	ard_session
 							[ARD_AUDIO_MAX_CLIENT];
@@ -159,7 +160,7 @@ s32 cad_ard_init(struct cad_func_tbl_type **func_ptr_tbl)
 		goto done;
 	}
 
-	dal_rc = cad_rpc_init(CAD_RPC_ARM11);
+	dal_rc = cad_rpc_init(ADSP_AUDIO_ADDRESS_DOMAIN_APP);
 	if (dal_rc != CAD_RES_SUCCESS) {
 		pr_err("ARD RPC Interface Attach Init failed\n");
 		rc = CAD_RES_FAILURE;
@@ -350,11 +351,8 @@ s32 ard_close(s32 session_id)
 		ardsession[session_id]->sess_open_info->cad_open.format ==
 		CAD_FORMAT_PCM ||
 		ardsession[session_id]->sess_open_info->cad_open.format ==
-		CAD_FORMAT_AAC)) {
-
+		CAD_FORMAT_AAC))
 		g_clk_info.open_rec_sessions -= 1;
-		g_clk_info.tx_clk_freq = 8000;
-	}
 
 	local_ard_state = &ard_state;
 	cadr = ardsession[session_id]->sess_open_info;
@@ -365,14 +363,14 @@ s32 ard_close(s32 session_id)
 
 	print_data(session_id);
 
-	/* Disable the session */
-	ardsession[session_id]->enabled = ARD_FALSE;
-
 
 	if (ardsession[session_id]->session_type != DEVICE_CTRL_TYPE
 		&& ardsession[session_id]->active == ARD_TRUE) {
 
 		mutex_lock(&local_ard_state->ard_state_machine_mutex);
+
+		/* Disable the session */
+		ardsession[session_id]->enabled = ARD_FALSE;
 
 		for (i = 0; i < strm_dev->device_len; i++) {
 			if (strm_dev->device[i] == CAD_HW_DEVICE_ID_DEFAULT_TX)
@@ -911,7 +909,9 @@ s32 ard_ioctl(s32 session_id, u32 cmd_code, void *cmd_buf, u32 cmd_len)
 		else
 			dev_id = strm_dev->device[0];
 
+		mutex_lock(&local_ard_state->ard_state_machine_mutex);
 		ard_acdb_send_cal(session_id, dev_id, 0);
+		mutex_unlock(&local_ard_state->ard_state_machine_mutex);
 		print_data(session_id);
 		break;
 
@@ -934,15 +934,8 @@ s32 ard_ioctl(s32 session_id, u32 cmd_code, void *cmd_buf, u32 cmd_len)
 			ardsession[session_id]->sess_open_info->cad_open.op_code
 			== CAD_OPEN_OP_READ) {
 
-			if (g_clk_info.tx_clk_freq != 8000)
-				for (i = 0; i < ARD_AUDIO_MAX_CLIENT; i++)
-					if (ardsession[i] &&
-						ardsession[i]->sess_open_info
-						->cad_open.op_code
-						== CAD_OPEN_OP_READ
-						&& i != session_id)
-						ard_close(i);
-
+			if (!g_clk_info.open_rec_sessions)
+				g_clk_info.tx_clk_freq = 8000;
 			g_clk_info.open_rec_sessions += 1;
 
 		}
@@ -1038,13 +1031,7 @@ s32 ard_ioctl(s32 session_id, u32 cmd_code, void *cmd_buf, u32 cmd_len)
 				break;
 			}
 
-			if (g_clk_info.open_rec_sessions > 0 &&
-					g_clk_info.tx_clk_freq != clk_freq) {
-
-				rc = CAD_RES_FAILURE;
-				pr_err("clk mismatch with current recording\n");
-				break;
-			} else
+			if (!g_clk_info.open_rec_sessions)
 				g_clk_info.tx_clk_freq = clk_freq;
 
 			g_clk_info.open_rec_sessions += 1;
@@ -1235,6 +1222,8 @@ enum ard_state_ret_enum_type ard_state_afe_active(s32 session_id, u32 dev_id)
 
 	codec_type = get_codec_type(local_ard_state->
 		ard_device[dev_id].device_inuse);
+
+	audio_resync_afe_clk();
 
 	res = codec_enable(codec_type,
 		(u32)local_ard_state->ard_device[dev_id].device_type,

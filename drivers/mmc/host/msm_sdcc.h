@@ -153,7 +153,7 @@
 #define MCI_IRQENABLE	\
 	(MCI_CMDCRCFAILMASK|MCI_DATACRCFAILMASK|MCI_CMDTIMEOUTMASK|	\
 	MCI_DATATIMEOUTMASK|MCI_TXUNDERRUNMASK|MCI_RXOVERRUNMASK|	\
-	MCI_CMDRESPENDMASK|MCI_CMDSENTMASK|MCI_DATAENDMASK)
+	MCI_CMDRESPENDMASK|MCI_CMDSENTMASK|MCI_DATAENDMASK|MCI_PROGDONEMASK)
 
 /*
  * The size of the FIFO in bytes.
@@ -238,11 +238,14 @@ struct msmsdcc_host {
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend early_suspend;
+	int polling_enabled;
 #endif
 
 #ifdef CONFIG_MMC_MSM7X00A_RESUME_IN_WQ
 	struct work_struct	resume_task;
 #endif
+	unsigned int prog_scan;
+	unsigned int prog_enable;
 };
 
 #endif

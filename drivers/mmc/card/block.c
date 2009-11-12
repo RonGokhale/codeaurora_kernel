@@ -44,9 +44,9 @@
 MODULE_ALIAS("mmc:block");
 
 /*
- * max 8 partitions per card
+ * max 16 partitions per card
  */
-#define MMC_SHIFT	3
+#define MMC_SHIFT	4
 #define MMC_NUM_MINORS	(256 >> MMC_SHIFT)
 
 static DECLARE_BITMAP(dev_use, MMC_NUM_MINORS);
@@ -651,6 +651,9 @@ static int mmc_blk_resume(struct mmc_card *card)
 
 	if (md) {
 		mmc_blk_set_blksize(md, card);
+#ifdef CONFIG_MMC_BLOCK_PARANOID_RESUME
+		md->queue.check_status = 1;
+#endif
 		mmc_queue_resume(&md->queue);
 	}
 	return 0;

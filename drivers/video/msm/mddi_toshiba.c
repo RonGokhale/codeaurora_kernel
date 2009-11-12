@@ -416,7 +416,7 @@ static void toshiba_common_initial_setup(struct msm_fb_data_type *mfd)
 		write_client_reg(DPSET1    , 0x00000113, TRUE);
 		write_client_reg(DPSUS     , 0x00000000, TRUE);
 		write_client_reg(DPRUN     , 0x00000001, TRUE);
-		mddi_wait(500);
+		mddi_wait(5);
 		write_client_reg(SYSCKENA  , 0x00000001, TRUE);
 		write_client_reg(CLKENB    , 0x0000a0e9, TRUE);
 
@@ -1440,8 +1440,11 @@ static void mddi_toshiba_lcd_set_backlight(struct msm_fb_data_type *mfd)
 	int max = mfd->panel_info.bl_max;
 	int min = mfd->panel_info.bl_min;
 
-	if (mddi_toshiba_pdata && mddi_toshiba_pdata->pmic_backlight)
+	if (mddi_toshiba_pdata && mddi_toshiba_pdata->pmic_backlight) {
 		ret = mddi_toshiba_pdata->pmic_backlight(mfd->bl_level);
+		if (!ret)
+			return;
+	}
 
 	if (ret && mddi_toshiba_pdata && mddi_toshiba_pdata->backlight_level) {
 		level = mddi_toshiba_pdata->backlight_level(mfd->bl_level,

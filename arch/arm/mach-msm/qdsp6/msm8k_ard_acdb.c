@@ -65,6 +65,7 @@
 #include <mach/qdsp6/msm8k_adsp_audio_cfg_ioctl.h>
 #include <mach/qdsp6/msm8k_adsp_audio_error.h>
 #include <mach/qdsp6/msm8k_q6_api_flip_utils.h>
+#include <mach/qdsp6/msm8k_ard_clk.h>
 
 
 /* this is the ACDB device ID */
@@ -79,14 +80,15 @@ enum {
 
 
 /* this is the default acdb data buffer size */
+/* Offset at last 4K of mem assigned to audio */
 #define ARD_ACDB_DEFAULT_BUF_SIZE	4096
-#define ARD_ACDB_BUF_OFFSET		0x190000
+#define ARD_ACDB_BUF_OFFSET		0x7F000
 
 /* this defines the sampel rate */
 enum ard_acdb_sample_rate {
 	ARD_ACDB_SR_INVALID	= 0,
 	ARD_ACDB_SR_8K_HZ	= 8000,
-	ARD_ACDB_SR_16k_HZ	= 16000,
+	ARD_ACDB_SR_16K_HZ	= 16000,
 	ARD_ACDB_SR_24K_HZ	= 24000,
 	ARD_ACDB_SR_48K_HZ	= 48000,
 	ARD_ACDB_SR_96K_HZ	= 96000
@@ -109,43 +111,14 @@ static void		*ard_acdb_buffer;
 enum ard_acdb_sample_rate	ard_acdb_calculate_sample_rate(u32 session_id)
 {
 	enum ard_acdb_sample_rate	sample_rate = ARD_ACDB_SR_INVALID;
-	u32				voice_exist = 0;
-	u32				i;
 
+	if (g_clk_info.tx_clk_freq > ARD_ACDB_SR_16K_HZ)
+		sample_rate = ARD_ACDB_SR_48K_HZ;
+	else if (g_clk_info.tx_clk_freq > ARD_ACDB_SR_8K_HZ)
+		sample_rate = ARD_ACDB_SR_16K_HZ;
+	else
+		sample_rate = ARD_ACDB_SR_8K_HZ;
 
-	for (i = 0; i < ARD_AUDIO_MAX_CLIENT; ++i) {
-		if (ardsession[i] == NULL  ||
-			ardsession[i]->enabled != ARD_TRUE)
-
-			continue;
-
-		if ((ardsession[i]->sess_open_info)->cad_open.op_code !=
-			CAD_OPEN_OP_DEVICE_CTRL) {
-
-			if (ardsession[i]->sess_open_info->cad_stream.app_type
-				 == CAD_STREAM_APP_VOICE) {
-
-				voice_exist = 1;
-				sample_rate = ARD_ACDB_SR_8K_HZ;
-				break;
-			}
-		}
-	}
-
-	if (voice_exist != 1) {
-		if (ardsession[session_id]->sess_open_info->cad_open.format ==
-			CAD_FORMAT_PCM)
-
-			sample_rate = ARD_ACDB_SR_16k_HZ;
-
-		else if (ardsession[session_id]->sess_open_info->
-			cad_open.format == CAD_FORMAT_AAC)
-
-			sample_rate = ARD_ACDB_SR_48K_HZ;
-
-		else
-			sample_rate = ARD_ACDB_SR_8K_HZ;
-	}
 	return sample_rate;
 }
 
@@ -172,7 +145,7 @@ u32 ard_acdb_get_sample_rate(u32 session_id, u32 route_id)
 		break;
 	/* I2S TX */
 	case 7:
-		sample_rate = ARD_ACDB_SR_16k_HZ;
+		sample_rate = ARD_ACDB_SR_16K_HZ;
 		break;
 	default:
 		pr_err("CAD:ACDB==> Unsupported route_id %d\n", route_id);
@@ -310,6 +283,11 @@ s32   ard_acdb_send_cal(u32 session_id, u32 new_device, u32 old_device)
 
 	/* push the device cal to Q6 */
 	memset(&q6_cmd, 0, sizeof(q6_cmd));
+
+	if (ard_state.ard_device[route_id].device_type ==
+		CAD_TX_DEVICE)
+		q6_cmd.client_data.data = g_clk_info.tx_clk_freq;
+
 	q6_cmd.cmd.op_code = ADSP_AUDIO_IOCTL_SET_DEVICE_CONFIG_TABLE;
 	q6_cmd.cmd.response_type = ADSP_AUDIO_RESPONSE_COMMAND;
 

@@ -31,3 +31,6 @@ obj-$(CONFIG_KEYBOARD_STOWAWAY)		+= stowaway.o
 obj-$(CONFIG_KEYBOARD_SUNKBD)		+= sunkbd.o
 obj-$(CONFIG_KEYBOARD_TOSA)		+= tosakbd.o
 obj-$(CONFIG_KEYBOARD_XTKBD)		+= xtkbd.o
+obj-$(CONFIG_KEYBOARD_I2C_MSM)		+= msm-i2ckbd.o
+obj-$(CONFIG_KEYBOARD_PMIC8058)		+= pmic8058-keypad.o
+

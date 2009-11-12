@@ -631,7 +631,6 @@ static int pmem_free_bitmap(int id, int bitnum)
 {
 	/* caller should hold the lock on arena_mutex! */
 	int i;
-
 	char currtask_name[FIELD_SIZEOF(struct task_struct, comm) + 1];
 
 	DLOG("bitnum %d\n", bitnum);

@@ -67,7 +67,7 @@
 #include <mach/qdsp6/msm8k_cad.h>
 #include <mach/qdsp6/msm8k_cad_ioctl.h>
 #include <mach/qdsp6/msm8k_ard.h>
-#include <mach/qdsp6/msm8k_cad_write_amr_format.h>
+#include <mach/qdsp6/msm8k_cad_amr_format.h>
 #include <mach/qdsp6/msm8k_cad_devices.h>
 #include <mach/qdsp6/msm8k_cad_volume.h>
 
@@ -161,9 +161,10 @@ static int msm8k_amr_ioctl(struct inode *inode, struct file *f,
 	struct cad_device_struct_type cad_dev;
 	struct cad_stream_device_struct_type cad_stream_dev;
 	struct cad_stream_info_struct_type cad_stream_info;
-	struct cad_write_amr_format_struct_type cad_write_amr_fmt;
+	struct cad_amr_format cad_amr_fmt;
 	struct cad_flt_cfg_strm_vol cad_strm_volume;
 	struct cad_filter_struct flt;
+	u32 percentage;
 
 	D("%s\n", __func__);
 
@@ -171,8 +172,8 @@ static int msm8k_amr_ioctl(struct inode *inode, struct file *f,
 	memset(&cad_stream_dev, 0,
 			sizeof(struct cad_stream_device_struct_type));
 	memset(&cad_stream_info, 0, sizeof(struct cad_stream_info_struct_type));
-	memset(&cad_write_amr_fmt, 0,
-			sizeof(struct cad_write_amr_format_struct_type));
+	memset(&cad_amr_fmt, 0,
+			sizeof(struct cad_amr_format));
 	memset(&flt, 0, sizeof(struct cad_filter_struct));
 
 	switch (cmd) {
@@ -181,12 +182,20 @@ static int msm8k_amr_ioctl(struct inode *inode, struct file *f,
 		cad_stream_info.app_type = CAD_STREAM_APP_PLAYBACK;
 		cad_stream_info.priority = 0;
 		cad_stream_info.buf_mem_type = CAD_STREAM_BUF_MEM_HEAP;
-		cad_stream_info.ses_buf_max_size = 1024 * 10;
+		cad_stream_info.ses_buf_max_size = 1024 * 11;
 		rc = cad_ioctl(p->cad_w_handle, CAD_IOCTL_CMD_SET_STREAM_INFO,
 			&cad_stream_info,
 			sizeof(struct cad_stream_info_struct_type));
 		if (rc) {
 			pr_err("cad_ioctl() SET_STREAM_INFO failed\n");
+			break;
+		}
+
+		rc = cad_ioctl(p->cad_w_handle, CAD_IOCTL_CMD_SET_STREAM_CONFIG,
+			&cad_amr_fmt,
+			sizeof(struct cad_amr_format));
+		if (rc) {
+			pr_err("cad_ioctl() SET_STREAM_CONFIG failed\n");
 			break;
 		}
 
@@ -198,18 +207,6 @@ static int msm8k_amr_ioctl(struct inode *inode, struct file *f,
 			sizeof(struct cad_stream_device_struct_type));
 		if (rc) {
 			pr_err("cad_ioctl() SET_STREAM_DEVICE failed\n");
-			break;
-		}
-
-		cad_write_amr_fmt.ver_id = CAD_WRITE_AMR_VERSION_10;
-		cad_write_amr_fmt.amr.sample_rate = 48000;
-		cad_write_amr_fmt.amr.stereo_config = 1;
-
-		rc = cad_ioctl(p->cad_w_handle, CAD_IOCTL_CMD_SET_STREAM_CONFIG,
-			&cad_write_amr_fmt,
-			sizeof(struct cad_write_amr_format_struct_type));
-		if (rc) {
-			pr_err("cad_ioctl() SET_STREAM_CONFIG failed\n");
 			break;
 		}
 
@@ -238,7 +235,8 @@ static int msm8k_amr_ioctl(struct inode *inode, struct file *f,
 				sizeof(struct msm_audio_config));
 		break;
 	case AUDIO_SET_VOLUME:
-		rc = copy_from_user(&p->volume, (void *)arg, sizeof(u32));
+		rc = copy_from_user(&percentage, (void *)arg, sizeof(u32));
+		p->volume = qdsp6_stream_volume_mapping(percentage);
 
 		memset(&cad_strm_volume, 0,
 				sizeof(struct cad_flt_cfg_strm_vol));

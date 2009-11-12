@@ -430,17 +430,18 @@ static void update_packet_state(struct smd_channel *ch)
 	int r;
 
 	/* can't do anything if we're in the middle of a packet */
-	if (ch->current_packet != 0)
-		return;
+	while (ch->current_packet == 0) {
+		/* discard 0 length packets if any */
 
-	/* don't bother unless we can get the full header */
-	if (smd_stream_read_avail(ch) < SMD_HEADER_SIZE)
-		return;
+		/* don't bother unless we can get the full header */
+		if (smd_stream_read_avail(ch) < SMD_HEADER_SIZE)
+			return;
 
-	r = ch_read(ch, hdr, SMD_HEADER_SIZE);
-	BUG_ON(r != SMD_HEADER_SIZE);
+		r = ch_read(ch, hdr, SMD_HEADER_SIZE);
+		BUG_ON(r != SMD_HEADER_SIZE);
 
-	ch->current_packet = hdr[0];
+		ch->current_packet = hdr[0];
+	}
 }
 
 /* provide a pointer and length to next free space in the fifo */
@@ -604,36 +605,36 @@ void smd_sleep_exit(void)
 	list_for_each_entry(ch, &smd_ch_list, ch_list) {
 		if (ch_is_open(ch)) {
 			if (ch->recv->fHEAD) {
-				SMD_INFO("smd_sleep_exit ch %d fHEAD "
-					 "%x %x %x\n",
-					 ch->n,
-					 ch->recv->fHEAD,
-					 ch->recv->head, ch->recv->tail);
+				SMD_DBG("smd_sleep_exit ch %d fHEAD "
+					"%x %x %x\n",
+					ch->n,
+					ch->recv->fHEAD,
+					ch->recv->head, ch->recv->tail);
 				need_int = 1;
 				break;
 			}
 			if (ch->recv->fTAIL) {
-				SMD_INFO("smd_sleep_exit ch %d fTAIL "
-					 "%x %x %x\n",
-					 ch->n,
-					 ch->recv->fTAIL,
-					 ch->send->head, ch->send->tail);
+				SMD_DBG("smd_sleep_exit ch %d fTAIL "
+					"%x %x %x\n",
+					ch->n,
+					ch->recv->fTAIL,
+					ch->send->head, ch->send->tail);
 				need_int = 1;
 				break;
 			}
 			if (ch->recv->fSTATE) {
-				SMD_INFO("smd_sleep_exit ch %d fSTATE %x"
-					 "\n", ch->n,
-					 ch->recv->fSTATE);
+				SMD_DBG("smd_sleep_exit ch %d fSTATE %x"
+					"\n", ch->n,
+					ch->recv->fSTATE);
 				need_int = 1;
 				break;
 			}
 			tmp = ch->recv->state;
 			if (tmp != ch->last_state) {
-				SMD_INFO("smd_sleep_exit ch %d "
-					 "state %x != %x\n",
-					 ch->n, tmp,
-					 ch->last_state);
+				SMD_DBG("smd_sleep_exit ch %d "
+					"state %x != %x\n",
+					ch->n, tmp,
+					ch->last_state);
 				need_int = 1;
 				break;
 			}
@@ -642,7 +643,7 @@ void smd_sleep_exit(void)
 	spin_unlock_irqrestore(&smd_lock, flags);
 	do_smd_probe();
 	if (need_int) {
-		SMD_INFO("smd_sleep_exit need interrupt\n");
+		SMD_DBG("smd_sleep_exit need interrupt\n");
 		tasklet_schedule(&smd_fake_irq_tasklet);
 	}
 }
@@ -674,6 +675,8 @@ static int smd_stream_write(smd_channel_t *ch, const void *_data, int len)
 	SMD_DBG("smd_stream_write() %d -> ch%d\n", len, ch->n);
 	if (len < 0)
 		return -EINVAL;
+	else if (len == 0)
+		return 0;
 
 	while ((xfer = ch_write_buffer(ch, &ptr)) != 0) {
 		if (!ch_is_open(ch))
@@ -702,6 +705,8 @@ static int smd_packet_write(smd_channel_t *ch, const void *_data, int len)
 	SMD_DBG("smd_packet_write() %d -> ch%d\n", len, ch->n);
 	if (len < 0)
 		return -EINVAL;
+	else if (len == 0)
+		return 0;
 
 	if (smd_stream_write_avail(ch) < (len + SMD_HEADER_SIZE))
 		return -ENOMEM;
@@ -927,7 +932,7 @@ int smd_named_open_on_edge(const char *name, uint32_t edge,
 	unsigned long flags;
 
 	if (smd_initialized == 0) {
-		printk(KERN_ERR "smd_open() before smd_init()\n");
+		SMD_INFO("smd_open() before smd_init()\n");
 		return -ENODEV;
 	}
 
@@ -1124,7 +1129,7 @@ void *smem_find(unsigned id, unsigned size_in)
 static int smem_init(void)
 {
 	struct smem_shared *shared = (void *) MSM_SHARED_RAM_BASE;
-	uint32_t *smsm;
+	uint32_t *smsm, i;
 
 	smsm = smem_alloc(ID_SHARED_STATE,
 			  SMSM_NUM_ENTRIES * sizeof(uint32_t));
@@ -1138,14 +1143,9 @@ static int smem_init(void)
 	smsm = smem_alloc(SMEM_SMSM_CPU_INTR_MASK,
 			  SMSM_NUM_ENTRIES * SMSM_NUM_HOSTS * sizeof(uint32_t));
 
-	if (smsm) {
-		smsm[SMSM_APPS_STATE * SMSM_NUM_HOSTS + SMSM_MODEM] =
-								0xffffffff;
-		smsm[SMSM_APPS_DEM_I * SMSM_NUM_HOSTS + SMSM_MODEM] =
-								0xffffffff;
-		smsm[SMSM_APPS_STATE * SMSM_NUM_HOSTS + SMSM_Q6_I] = 0xffffffff;
-		smsm[SMSM_APPS_DEM_I * SMSM_NUM_HOSTS + SMSM_Q6_I] = 0xffffffff;
-	}
+	if (smsm)
+		for (i = 0; i < SMSM_NUM_ENTRIES; i++)
+			smsm[i * SMSM_NUM_HOSTS + SMSM_APPS] = 0xffffffff;
 
 	return 0;
 }
@@ -1205,7 +1205,7 @@ static irqreturn_t smsm_irq_handler(int irq, void *data)
 
 		old_apps = apps = smsm[SMSM_APPS_STATE];
 
-		SMSM_INFO("<SM %08x %08x>\n", apps, modm);
+		SMSM_DBG("<SM %08x %08x>\n", apps, modm);
 		if (apps & SMSM_RESET) {
 			/* If we get an interrupt and the apps SMSM_RESET
 			   bit is already set, the modem is acking the
@@ -1236,7 +1236,7 @@ static irqreturn_t smsm_irq_handler(int irq, void *data)
 		}
 
 		if (smsm[SMSM_APPS_STATE] != apps) {
-			SMSM_INFO("<SM %08x NOTIFY>\n", apps);
+			SMSM_DBG("<SM %08x NOTIFY>\n", apps);
 			smsm[SMSM_APPS_STATE] = apps;
 			do_smd_probe();
 			notify_other_smsm(SMSM_APPS_STATE, old_apps, apps);
@@ -1267,7 +1267,7 @@ int smsm_change_state(uint32_t smsm_entry,
 	if (smsm) {
 		old_state = smsm[smsm_entry];
 		smsm[smsm_entry] = (smsm[smsm_entry] & ~clear_mask) | set_mask;
-		SMSM_INFO("smsm_change_state %x\n", smsm[smsm_entry]);
+		SMSM_DBG("smsm_change_state %x\n", smsm[smsm_entry]);
 		notify_other_smsm(SMSM_APPS_STATE, old_state, smsm[smsm_entry]);
 	}
 
@@ -1277,6 +1277,58 @@ int smsm_change_state(uint32_t smsm_entry,
 		printk(KERN_ERR "smsm_change_state <SM NO STATE>\n");
 		return -EIO;
 	}
+	return 0;
+}
+
+int smsm_change_intr_mask(uint32_t smsm_entry,
+			  uint32_t clear_mask, uint32_t set_mask)
+{
+	uint32_t  *smsm;
+
+	if (smsm_entry >= SMSM_NUM_ENTRIES) {
+		printk(KERN_ERR "smsm_change_state: Invalid entry %d\n",
+		       smsm_entry);
+		return -EINVAL;
+	}
+
+	smsm = smem_alloc(SMEM_SMSM_CPU_INTR_MASK,
+			  SMSM_NUM_ENTRIES * SMSM_NUM_HOSTS * sizeof(uint32_t));
+
+	if (smsm) {
+		smsm[smsm_entry * SMSM_NUM_HOSTS + SMSM_APPS] =
+			(smsm[smsm_entry * SMSM_NUM_HOSTS + SMSM_APPS] &
+			 ~clear_mask) | set_mask;
+		SMSM_INFO("smsm_entry %d, new intr_mask %x\n", smsm_entry,
+			  smsm[smsm_entry * SMSM_NUM_HOSTS + SMSM_APPS]);
+	} else {
+		printk(KERN_ERR "smsm_change_intr_mask <SM NO INTR_MASK>\n");
+		return -EIO;
+	}
+
+	return 0;
+}
+
+int smsm_get_intr_mask(uint32_t smsm_entry, uint32_t *intr_mask)
+{
+	uint32_t  *smsm;
+
+	if ((smsm_entry >= SMSM_NUM_ENTRIES) || (!intr_mask)) {
+		printk(KERN_ERR "smsm_change_state: Invalid input "
+		       "entry %d, mask 0x%x\n",
+		       smsm_entry, (unsigned int)intr_mask);
+		return -EINVAL;
+	}
+
+	smsm = smem_alloc(SMEM_SMSM_CPU_INTR_MASK,
+			  SMSM_NUM_ENTRIES * SMSM_NUM_HOSTS * sizeof(uint32_t));
+
+	if (smsm) {
+		*intr_mask = smsm[smsm_entry * SMSM_NUM_HOSTS + SMSM_APPS];
+	} else {
+		printk(KERN_ERR "smsm_change_intr_mask <SM NO INTR_MASK>\n");
+		return -EIO;
+	}
+
 	return 0;
 }
 

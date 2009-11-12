@@ -77,11 +77,6 @@
 /* TODO:
  * Add vsync wait */
 
-static int kgsl_library_name(struct drm_device *dev, char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "yamato");
-}
-
 static int kgsl_drm_load(struct drm_device *dev, unsigned long flags)
 {
 	return 0;
@@ -206,6 +201,7 @@ kgsl_gem_create_mmap_offset(struct drm_gem_object *obj)
 	return 0;
 }
 
+#ifdef CONFIG_MSM_KGSL_DRM
 int
 kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
 			unsigned long *len)
@@ -224,20 +220,17 @@ kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
 	file_priv = filp->private_data;
 	if (unlikely(file_priv == NULL)) {
 		printk(KERN_ERR "%s:%u\n", __func__, __LINE__);
-		fput(filp);
 		return -EINVAL;
 	}
 	dev = file_priv->minor->dev;
 	if (unlikely(dev == NULL)) {
 		printk(KERN_ERR "%s:%u\n", __func__, __LINE__);
-		fput(filp);
 		return -EINVAL;
 	}
 
 	obj = drm_gem_object_lookup(dev, file_priv, handle);
 	if (unlikely(obj == NULL)) {
 		printk(KERN_ERR "%s:%u\n", __func__, __LINE__);
-		fput(filp);
 		return -EINVAL;
 	}
 
@@ -250,9 +243,16 @@ kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
 	drm_gem_object_unreference(obj);
 	mutex_unlock(&dev->struct_mutex);
 
-	fput(filp);
 	return 0;
 }
+#else
+int kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
+                        unsigned long *len)
+{
+        printk(KERN_ERR "%s: MSM_KGSL_DRM not configured \n", __func__);
+        return -1;
+}
+#endif
 
 int
 kgsl_gem_create_ioctl(struct drm_device *dev, void *data,
@@ -267,14 +267,17 @@ kgsl_gem_create_ioctl(struct drm_device *dev, void *data,
 	phys = pmem_kalloc(create->size,
 		      PMEM_MEMTYPE_EBI1 |
 		      PMEM_ALIGNMENT_4K);
-	if ((int) phys < 0) {
+	if (IS_ERR_VALUE(phys)) {
 		DRM_ERROR("Unable to allocate memory\n");
 		return -ENOMEM;
 	}
 
 	obj = drm_gem_object_alloc(dev, create->size);
-	if (obj == NULL)
+
+	if (obj == NULL) {
+		pmem_kfree(phys);
 		return -ENOMEM;
+	}
 
 	mutex_lock(&dev->struct_mutex);
 	priv = obj->driver_private;
@@ -284,8 +287,11 @@ kgsl_gem_create_ioctl(struct drm_device *dev, void *data,
 	drm_gem_object_handle_unreference(obj);
 	mutex_unlock(&dev->struct_mutex);
 
-	if (ret)
+	if (ret) {
+		pmem_kfree(phys);
+		priv->pmem_phys = 0;
 		return ret;
+	}
 
 	create->handle = handle;
 	return 0;

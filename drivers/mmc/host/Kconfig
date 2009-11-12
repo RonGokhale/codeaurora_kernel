@@ -307,7 +307,7 @@ config MMC_MSM
 	depends on MMC && ARCH_MSM
 	help
 	  This provides support for the SD/MMC cell found in the
-          MSM and QSD SOCs from Qualcomm.
+	  MSM and QSD SOCs from Qualcomm.
 
 config MMC_MSM7X00A_RESUME_IN_WQ
 	bool "Perform MMC resume in work-queue (EXPERIMENTAL)"

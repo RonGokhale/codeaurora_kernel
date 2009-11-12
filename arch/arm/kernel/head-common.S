@@ -12,6 +12,8 @@
  */
 
 #define ATAG_CORE 0x54410001
+#define ATAG_CORE_SIZE ((2*4 + 3*4) >> 2)
+#define ATAG_CORE_SIZE_EMPTY ((2*4) >> 2)
 
 	.type	__switch_data, %object
 __switch_data:
@@ -244,7 +246,11 @@ __vet_atags:
 	tst	r2, #0x3			@ aligned?
 	bne	1f
 
-	ldr	r5, [r2, #4]			@ is first tag ATAG_CORE?
+	ldr	r5, [r2, #0]			@ is first tag ATAG_CORE?
+	cmp	r5, #ATAG_CORE_SIZE
+	cmpne	r5, #ATAG_CORE_SIZE_EMPTY
+	bne	1f
+	ldr	r5, [r2, #4]
 	ldr	r6, =ATAG_CORE
 	cmp	r5, r6
 	bne	1f

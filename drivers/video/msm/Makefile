@@ -1,12 +1,7 @@
 obj-y := msm_fb.o
 
-ifeq ($(CONFIG_FB_MSM_LOGO),y)
-obj-y += logo.o
-endif
-
-ifeq ($(CONFIG_FB_BACKLIGHT),y)
-obj-y += msm_fb_bl.o
-endif
+obj-$(CONFIG_FB_MSM_LOGO) += logo.o
+obj-$(CONFIG_FB_BACKLIGHT) += msm_fb_bl.o
 
 # MDP
 obj-y += mdp.o
@@ -23,10 +18,18 @@ else
 obj-y += mdp_ppp_v20.o
 endif
 endif
+
+ifeq ($(CONFIG_FB_MSM_OVERLAY),y)
+obj-y += mdp4_overlay.o
+obj-y += mdp4_overlay_lcdc.o
+obj-y += mdp4_overlay_mddi.o
+else
+obj-y += mdp_dma_lcdc.o
+endif
+
 obj-y += mdp_dma.o
 obj-y += mdp_dma_s.o
 obj-y += mdp_vsync.o
-obj-y += mdp_dma_lcdc.o
 obj-y += mdp_cursor.o
 obj-y += mdp_dma_tv.o
 
@@ -73,6 +76,7 @@ obj-$(CONFIG_FB_MSM_LCDC_PRISM_WVGA) += lcdc_prism.o
 obj-$(CONFIG_FB_MSM_LCDC_EXTERNAL_WXGA) += lcdc_external.o
 obj-$(CONFIG_FB_MSM_LCDC_GORDON_VGA) += lcdc_gordon.o
 obj-$(CONFIG_FB_MSM_LCDC_WXGA) += lcdc_wxga.o
+obj-$(CONFIG_FB_MSM_LCDC_TOSHIBA_WVGA_PT) += lcdc_toshiba_wvga_pt.o
 obj-$(CONFIG_FB_MSM_LCDC_GRAPEFRUIT_VGA) += lcdc_grapefruit.o
 
 obj-$(CONFIG_FB_MSM_TVOUT_NTSC) += tv_ntsc.o

@@ -141,7 +141,7 @@ extern unsigned long nr_iowait(void);
 extern void calc_global_load(void);
 extern u64 cpu_nr_migrations(int cpu);
 
-extern unsigned long get_parent_ip(unsigned long addr);
+
 
 struct seq_file;
 struct cfs_rq;
@@ -1481,6 +1481,17 @@ struct task_struct {
 	unsigned long trace_recursion;
 #endif /* CONFIG_TRACING */
 };
+
+#include <linux/ftrace.h>
+static inline notrace unsigned long get_parent_ip(unsigned long addr)
+{
+	if (in_lock_functions(addr)) {
+		addr = CALLER_ADDR2;
+		if (in_lock_functions(addr))
+			addr = CALLER_ADDR3;
+	}
+	return addr;
+}
 
 /* Future-safe accessor for struct task_struct's cpus_allowed. */
 #define tsk_cpumask(tsk) (&(tsk)->cpus_allowed)

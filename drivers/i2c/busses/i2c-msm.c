@@ -277,71 +277,71 @@ msm_i2c_rmutex_unlock(struct msm_i2c_dev *dev)
 static int
 msm_i2c_recover_bus_busy(struct msm_i2c_dev *dev, struct i2c_adapter *adap)
 {
-       int i;
-       int gpio_clk;
-       int gpio_dat;
-       uint32_t status = readl(dev->base + I2C_STATUS);
-       bool gpio_clk_status = false;
+	int i;
+	int gpio_clk;
+	int gpio_dat;
+	uint32_t status = readl(dev->base + I2C_STATUS);
+	bool gpio_clk_status = false;
 
-       if (!(status & (I2C_STATUS_BUS_ACTIVE | I2C_STATUS_WR_BUFFER_FULL)))
-               return 0;
+	if (!(status & (I2C_STATUS_BUS_ACTIVE | I2C_STATUS_WR_BUFFER_FULL)))
+		return 0;
 
-       dev->pdata->msm_i2c_config_gpio(adap->nr, 0);
-       /* Even adapter is primary and Odd adapter is AUX */
-       if (adap->nr % 2) {
-               gpio_clk = dev->pdata->aux_clk;
-               gpio_dat = dev->pdata->aux_dat;
-       } else {
-               gpio_clk = dev->pdata->pri_clk;
-               gpio_dat = dev->pdata->pri_dat;
-       }
+	dev->pdata->msm_i2c_config_gpio(adap->nr, 0);
+	/* Even adapter is primary and Odd adapter is AUX */
+	if (adap->nr % 2) {
+		gpio_clk = dev->pdata->aux_clk;
+		gpio_dat = dev->pdata->aux_dat;
+	} else {
+		gpio_clk = dev->pdata->pri_clk;
+		gpio_dat = dev->pdata->pri_dat;
+	}
 
-       disable_irq(dev->irq);
-       if (status & I2C_STATUS_RD_BUFFER_FULL) {
-               dev_warn(dev->dev, "Read buffer full, status %x, intf %x\n",
-                        status, readl(dev->base + I2C_INTERFACE_SELECT));
-               writel(I2C_WRITE_DATA_LAST_BYTE, dev->base + I2C_WRITE_DATA);
-               readl(dev->base + I2C_READ_DATA);
-       } else if (status & I2C_STATUS_BUS_MASTER) {
-               dev_warn(dev->dev, "Still the bus master, status %x, intf %x\n",
-                        status, readl(dev->base + I2C_INTERFACE_SELECT));
-               writel(I2C_WRITE_DATA_LAST_BYTE | 0xff,
-                      dev->base + I2C_WRITE_DATA);
-       }
+	disable_irq(dev->irq);
+	if (status & I2C_STATUS_RD_BUFFER_FULL) {
+		dev_warn(dev->dev, "Read buffer full, status %x, intf %x\n",
+			 status, readl(dev->base + I2C_INTERFACE_SELECT));
+		writel(I2C_WRITE_DATA_LAST_BYTE, dev->base + I2C_WRITE_DATA);
+		readl(dev->base + I2C_READ_DATA);
+	} else if (status & I2C_STATUS_BUS_MASTER) {
+		dev_warn(dev->dev, "Still the bus master, status %x, intf %x\n",
+			 status, readl(dev->base + I2C_INTERFACE_SELECT));
+		writel(I2C_WRITE_DATA_LAST_BYTE | 0xff,
+		       dev->base + I2C_WRITE_DATA);
+	}
 
-       for (i = 0; i < 9; i++) {
-               if (gpio_get_value(gpio_dat) && gpio_clk_status)
-                       break;
-               gpio_direction_output(gpio_clk, 0);
-               udelay(5);
-               gpio_direction_output(gpio_dat, 0);
-               udelay(5);
-               gpio_direction_input(gpio_clk);
-               udelay(5);
-               if (!gpio_get_value(gpio_clk))
-                       udelay(20);
-               if (!gpio_get_value(gpio_clk))
-                       msleep(10);
-               gpio_clk_status = gpio_get_value(gpio_clk);
-               gpio_direction_input(gpio_dat);
-               udelay(5);
-       }
-       dev->pdata->msm_i2c_config_gpio(adap->nr, 1);
-       udelay(10);
+	for (i = 0; i < 9; i++) {
+		if (gpio_get_value(gpio_dat) && gpio_clk_status)
+			break;
+		gpio_direction_output(gpio_clk, 0);
+		udelay(5);
+		gpio_direction_output(gpio_dat, 0);
+		udelay(5);
+		gpio_direction_input(gpio_clk);
+		udelay(5);
+		if (!gpio_get_value(gpio_clk))
+			udelay(20);
+		if (!gpio_get_value(gpio_clk))
+			msleep(10);
+		gpio_clk_status = gpio_get_value(gpio_clk);
+		gpio_direction_input(gpio_dat);
+		udelay(5);
+	}
+	dev->pdata->msm_i2c_config_gpio(adap->nr, 1);
+	udelay(10);
 
-       status = readl(dev->base + I2C_STATUS);
-       if (!(status & I2C_STATUS_BUS_ACTIVE)) {
-               dev_info(dev->dev, "Bus busy cleared after %d clock cycles, "
-                        "status %x, intf %x\n",
-                        i, status, readl(dev->base + I2C_INTERFACE_SELECT));
-               enable_irq(dev->irq);
-               return 0;
-       }
+	status = readl(dev->base + I2C_STATUS);
+	if (!(status & I2C_STATUS_BUS_ACTIVE)) {
+		dev_info(dev->dev, "Bus busy cleared after %d clock cycles, "
+			 "status %x, intf %x\n",
+			 i, status, readl(dev->base + I2C_INTERFACE_SELECT));
+		enable_irq(dev->irq);
+		return 0;
+	}
 
-       dev_err(dev->dev, "Bus still busy, status %x, intf %x\n",
-                status, readl(dev->base + I2C_INTERFACE_SELECT));
-       enable_irq(dev->irq);
-       return -EBUSY;
+	dev_err(dev->dev, "Bus still busy, status %x, intf %x\n",
+		 status, readl(dev->base + I2C_INTERFACE_SELECT));
+	enable_irq(dev->irq);
+	return -EBUSY;
 }
 
 static int
@@ -389,14 +389,13 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 
 		if (check_busy) {
 			ret = msm_i2c_poll_notbusy(dev);
-			if (ret) {
+			if (ret)
 				ret = msm_i2c_recover_bus_busy(dev, adap);
 				if (ret) {
 					dev_err(dev->dev,
 						"Error waiting for notbusy\n");
 					goto out_err;
 				}
-			}
 			check_busy = 0;
 		}
 
@@ -407,10 +406,9 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		ret = msm_i2c_poll_writeready(dev);
 		if (ret) {
 			ret = msm_i2c_recover_bus_busy(dev, adap);
-
 			if (ret) {
 				dev_err(dev->dev,
-					"Error waiting for write ready before addr\n");
+				"Error waiting for write ready before addr\n");
 				goto out_err;
 			}
 		}
@@ -540,7 +538,7 @@ msm_i2c_probe(struct platform_device *pdev)
 	struct clk *clk;
 	struct msm_i2c_platform_data *pdata;
 
-	printk(KERN_ERR "msm_i2c_probe\n");
+	printk(KERN_INFO "msm_i2c_probe\n");
 
 	/* NOTE: driver uses the static register mapping */
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -616,12 +614,12 @@ msm_i2c_probe(struct platform_device *pdev)
 	hs_div = 3;
 	clk_ctl = ((hs_div & 0x7) << 8) | (fs_div & 0xff);
 	writel(clk_ctl, dev->base + I2C_CLK_CTL);
-	printk(KERN_ERR "msm_i2c_probe: clk_ctl %x, %d Hz\n",
+	printk(KERN_INFO "msm_i2c_probe: clk_ctl %x, %d Hz\n",
 	       clk_ctl, i2c_clk / (2 * ((clk_ctl & 0xff) + 3)));
 
 	i2c_set_adapdata(&dev->adap_pri, dev);
 	dev->adap_pri.algo = &msm_i2c_algo;
-	strncpy(dev->adap_pri.name,
+	strlcpy(dev->adap_pri.name,
 		"MSM I2C adapter-PRI",
 		sizeof(dev->adap_pri.name));
 
@@ -634,7 +632,7 @@ msm_i2c_probe(struct platform_device *pdev)
 
 	i2c_set_adapdata(&dev->adap_aux, dev);
 	dev->adap_aux.algo = &msm_i2c_algo;
-	strncpy(dev->adap_aux.name,
+	strlcpy(dev->adap_aux.name,
 		"MSM I2C adapter-AUX",
 		sizeof(dev->adap_aux.name));
 
