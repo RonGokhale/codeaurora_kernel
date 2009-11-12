@@ -308,7 +308,10 @@ int mdp_ppp_cfg_scale(const struct mdp_info *mdp, struct ppp_regs *regs,
 	load_table(mdp, x_idx, use_pr);
 	load_table(mdp, y_idx, use_pr);
 
-	regs->scale_cfg = (1 << 6);
+	regs->scale_cfg = 0;
+	// Enable SVI when source or destination is YUV
+	if (!IS_RGB(src_format) && !IS_RGB(dst_format))
+		regs->scale_cfg |= (1 << 6);
 	regs->scale_cfg |= (mdp_scale_tbl[x_idx].set << 2) |
 		(mdp_scale_tbl[x_idx].set << 4);
 	regs->scale_cfg |= (scaler_x << 0) | (scaler_y << 1);
