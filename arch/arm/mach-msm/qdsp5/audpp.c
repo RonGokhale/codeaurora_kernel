@@ -23,6 +23,7 @@
 #include <linux/delay.h>
 #include <linux/sched.h>
 #include <linux/platform_device.h>
+#include <linux/dma-mapping.h>
 
 #include <asm/atomic.h>
 #include <asm/ioctls.h>
@@ -507,6 +508,8 @@ int audpp_dsp_set_mbadrc(unsigned id, unsigned enable,
 	} else
 		cmd.enable = AUDPP_CMD_ADRC_FLAG_DIS;
 
+	/*order the writes to mbadrc */
+	dma_coherent_pre_ops();
 	return audpp_send_queue3(&cmd, sizeof(cmd));
 }
 EXPORT_SYMBOL(audpp_dsp_set_mbadrc);
