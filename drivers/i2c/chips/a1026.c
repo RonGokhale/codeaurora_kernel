@@ -283,308 +283,175 @@ set_suspend_err:
 }
 
 unsigned int phonecall_receiver[] = {
-	0x80000000, /* Sync, none */
-	0x80260001, /* SelectRouting, Pri,Sec,FEi,Lp1 -- CSp,FEo,Lp1 */
-	0x80170002, /* SetAlgorithmParmID, Microphone Configuration */
-	0x80180000, /* SetAlgorithmParm, 0x0000:Close Talk (CT) */
-	0x8017001A, /* SetAlgorithmParmID, Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80180000, /* SetAlgorithmParm, 0x0000:2-mic Close Talk (CT) */
 	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
-	0x800C0300, /* SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain */
-	0x800D0001, /* SetDeviceParm, 0x0001: +6dB */
-	0x800C0400, /* SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain */
-	0x800D0001, /* SetDeviceParm, 0x0001: +6dB */
-	0x801B000C, /* SetDigitalInputGain, 0x00:PriMic (Tx), 0x0C:(12 dB) */
-	0x801B010C, /* SetDigitalInputGain, 0x01:SecMic (Tx), 0x0C:(12 dB) */
-	0x80150000, /* Set Digital Output Gain 0dB */
-	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
-	0x80180004, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
-	0x80170003, /* SetAlgorithmParmID, 0x0003:AEC Mode */
-	0x80180000, /* SetAlgorithmParm, 0x0000:AEC Off */
+	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
+	0x80180000, /* SetAlgorithmParm, 0x0000:No */
 	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
-	0x80180001, /* SetAlgorithmParm, 0x0001:Yes */
-	0x80170005, /* SetAlgorithmParmID, 0x0005:AGC Target Level (dB) */
-	0x8018FFF1, /* SetAlgorithmParm, 0xFFF1:(-15 dB) */
-	0x80170006, /* SetAlgorithmParmID, 0x0006:AGC Noise Floor (dB) */
-	0x8018FFBF, /* SetAlgorithmParm, 0xFFBF:(-65 dB) */
-	0x80170007, /* SetAlgorithmParmID, 0x0007:AGC SNR Improve (dB) */
-	0x80180004, /* SetAlgorithmParm, 0x0004:(4 dB) */
-	0x80170026, /* SetAlgorithmParmID, 0x0026:AGC Up Rate (dBS) */
-	0x80180004, /* SetAlgorithmParm, 0x0004:(4 dBS) */
-	0x80170027, /* SetAlgorithmParmID, 0x0027:AGC Down Rate (dBS) */
-	0x80180001, /* SetAlgorithmParm, 0x0001:(1 dBS) */
+	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80180005, /* SetAlgorithmParm, 0x0005:25dB Max Suppression */
+	0x801B000C, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x0C:(12 dB) */
+	0x801B010C, /* SetDigitalInputGain, 0x01:Secondary Mic (Tx), 0x0C:(12 dB) */
+	0x80150002, /* SetDigitalOutputGain, 0x00:Tx, 0x02:(2 dB) */
 };
 
 unsigned int phonecall_headset[] = {
-	0x80260015, /* Select audio routing 21 */
-	0x80170002,
-	0x80180003, /* Select one Mic configuration */
-	0x800C0400,
-	0x800D0004, /* Set ADC1 gain to +24dB */
-	0x801C0000, /* Set Voice Processing off */
-	0x800C0107,
-	0x800D0001, /* Tri-state PCM0 */
-	0x800C0207,
-	0x800D0001, /* Tri-state PCM1 */
+	0x80260015, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
+	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
+	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x801500F8, /* SetDigitalOutputGain, 0x00:Tx, 0xF8:(-8 dB) */
 };
 
 unsigned int phonecall_speaker[] = {
-	0x80260007, /* Select audio routing 7 */
-	0x80170002,
-	0x80180002, /* Select FT Mic configuration */
-	0x800C0300,
-	0x800D0002, /* Set ADC0 gain to +12dB */
-	0x801B000B, /* Set Pri Digital input gain to 11dB */
-	0x80150001, /* Set Digital output gain to 1dB */
-	0x8017001A,
-	0x80180000, /* Set ComfortNoise off */
-	0x80170000,
-	0x80180004, /* Set AIS4 */
-	0x801C0001, /* Set Voice Processing on */
-	0x80170004,
-	0x80180000, /* Use AGC:no */
-	0x80170020,
-	0x80180000, /* Tx PostEq Mode 0x0000:Off */
-	0x800C0107,
-	0x800D0001, /* Tri-state PCM0 */
-	0x800C0207,
-	0x800D0001, /* Tri-state PCM1 */
+	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80180002, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
+	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
+	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80180004, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
+	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
+	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
+	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x801500FD, /* SetDigitalOutputGain, 0x00:Tx, 0xFD:(-3 dB) */
 };
 
 unsigned int phonecall_bt[] = {
-	0x80260006, /* Select audio routing 6 */
-	0x80170002,
-	0x80180003, /* Select one Mic configuration */
-	0x801B0000, /* Set Digital input gain to 0dB */
-	0x80150000, /* Set Digital output gain to 0dB */
-	0x80150100, /* Set Downlink digital gain to 0dB */
-	0x801C0000, /* Set Voice Processing off (bypass mode) */
-	0x800C0107,
-	0x800D0000, /* Set PCM0 TristateEnable disable */
-	0x800C0207,
-	0x800D0000, /* Set PCM1 TristateEnable disable */
+	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80180003, /* SetAlgorithmParm, 0x0003:1-mic External (MD) */
+	0x80260006, /* SelectRouting, 0x0006:Snk,Snk,Fei,Pri - Zro,Csp,Feo (PCM0->PCM1+ADCs) */
+	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
+	0x801B0000, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x00:(0 dB) */
+	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
 unsigned int INT_MIC_recording_receiver[] = {
-	0x80260007, /* Select audio routing 7 */
-	0x80170002,
-	0x80180002, /* Select FT Mic configuration */
-	0x800C0300,
-	0x800D0001, /* Set ADC0 gain to +6dB */
-	0x801B0009, /* Set Pri Digital input gain to 9dB */
-	0x80150000, /* Set Digital output gain to 0dB */
-	0x8017001A,
-	0x80180000, /* Set ComfortNoise off */
-	0x80170000,
-	0x80180000, /* Set AIS4 */
-	0x801C0000, /* Set Voice Processing off */
-	0x80170004,
-	0x80180000, /* Use AGC:no */
-	0x80170020,
-	0x80180000, /* Tx PostEq Mode 0x0000:Off */
-	0x800C0107,
-	0x800D0001, /* Tri-state PCM0 */
-	0x800C0207,
-	0x800D0001, /* Tri-state PCM1 */
+	0x80260007, /* SelectRouting, 0x0007:Pri,Snk,Snk,Snk - Csp,Zro,Zro (none) */
+	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
+	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80150006, /* SetDigitalOutputGain, 0x00:Tx, 0x06:(6 dB) */
 };
 
 unsigned int EXT_MIC_recording[] = {
-	0x80260015, /* Select audio routing 21 */
-	0x80170002,
-	0x80180003, /* Select one Mic configuration */
-	0x800C0400,
-	0x800D0002, /* Set ADC1 gain to +12dB */
-	0x801B0009, /* Set Pri Digital input gain to 9dB */
-	0x80150003, /* Set Digital output gain to 3dB */
-	0x8017001A,
-	0x80180000, /* Set ComfortNoise off */
-	0x80170000,
-	0x80180004, /* Set AIS4 */
-	0x801C0001, /* Set Voice Processing on */
-	0x80170004,
-	0x80180000, /* Use AGC:no */
-	0x80170020,
-	0x80180000, /* Tx PostEq Mode 0x0000:Off */
-	0x800C0107,
-	0x800D0001, /* Tri-state PCM0 */
-	0x800C0207,
-	0x800D0001, /* Tri-state PCM1 */
+	0x80260015, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
+	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
+	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80150006, /* SetDigitalOutputGain, 0x00:Tx, 0x06:(6 dB) */
 };
 
 unsigned int INT_MIC_recording_speaker[] = {
-	0x80260007, /* Select audio routing 7 */
-	0x80170002,
-	0x80180002, /* Select FT Mic configuration */
-	0x800C0300,
-	0x800D0002, /* Set ADC0 gain to +12dB */
-	0x801B000B, /* Set Pri Digital input gain to 11dB */
-	0x80150001, /* Set Digital output gain to 1dB */
-	0x8017001A,
-	0x80180000, /* Set ComfortNoise off */
-	0x80170000,
-	0x80180004, /* Set AIS4 */
-	0x801C0001, /* Set Voice Processing on */
-	0x80170004,
-	0x80180000, /* Use AGC:no */
-	0x80170020,
-	0x80180000, /* Tx PostEq Mode 0x0000:Off */
-	0x800C0107,
-	0x800D0001, /* Tri-state PCM0 */
-	0x800C0207,
-	0x800D0001, /* Tri-state PCM1 */
+	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80180002, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
+	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
+	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80150006, /* SetDigitalOutputGain, 0x00:Tx, 0x06:(6 dB) */
 };
 
 unsigned int BACK_MIC_recording[] = {
 	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
 	0x80180002, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
 	0x80260015, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
-	0x800C0400, /* SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain */
-	0x800D0001, /* SetDeviceParm, 0x0001:+ 6dB */
-	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
-	0x80150001, /* SetDigitalOutputGain, 0x00:Tx, 0x01:(1 dB) */
-	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
-	0x80180004, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
 	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
 	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
 	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x800C0107, /* SetDeviceParmID, 0x01:PCM0, 0x07:PCM TristateEnable */
-	0x800D0001, /* SetDeviceParm, 0x0001:Enable */
-	0x800C0207, /* SetDeviceParmID, 0x02:PCM1, 0x07:PCM TristateEnable */
-	0x800D0001, /* SetDeviceParm, 0x0001:Enable */
 	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
 	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80180004, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
+	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
 unsigned int vr_no_ns_receiver[] = {
-	0x80260001, /* SelectRouting, 0x0001:Pri,Sec,FEi,Lp1 -- CSp,FEo,Lp1 */
 	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
-	0x80180000, /* SetAlgorithmParm, 0x0000:Close Talk (CT) */
-	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
-	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No suppression */
-	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
-	0x80180000, /* SetAlgorithmParm, 0x0000: No */
-	0x800C0300, /* SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain */
-	0x800D0001, /* SetDeviceParm, 0x0001:+ 6dB */
-	0x800C0400, /* SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain */
-	0x800D0001, /* SetDeviceParm, 0x0001:+ 6dB */
-	0x801500FD, /* SetDigitalOutputGain, 0x00:Tx, 0xFD:(-3 dB) */
-	0x801B0009, /* SetDigitalInputGain, 0x00:Pri Mic (Tx), 0x09:(9 dB) */
-	0x801B0109, /* SetDigitalInputGain, 0x01:Sec Mic (Tx), 0x09:(9 dB) */
+	0x80180000, /* SetAlgorithmParm, 0x0000:2-mic Close Talk (CT) */
+	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
+	0x801B0009, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x09:(9 dB) */
+	0x801B0109, /* SetDigitalInputGain, 0x01:Secondary Mic (Tx), 0x09:(9 dB) */
+	0x801500FA, /* SetDigitalOutputGain, 0x00:Tx, 0xFA:(-6 dB) */
 };
 
 unsigned int vr_no_ns_headset[] = {
 	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
 	0x80180003, /* SetAlgorithmParm, 0x0003:1M-DG (1-mic digital input) */
-	0x80260015, /* SelectRouting, Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
-	0x800C0400, /* SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain */
-	0x800D0001, /* SetDeviceParm, 0x0001:+6 dB */
-	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
-	0x801B0012, /* Set Digital Input Gain 18dB */
-	0x80150000, /* Set Digital Output Gain 0dB */
-	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No Suppression */
-	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x80260015, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
+	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
+	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
 unsigned int vr_no_ns_speaker[] = {
-	0x80260007, /* SelectRouting, 0x0007:Pri,Snk,Snk,Snk -- CSp,Zro,Zro */
 	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
-	0x80180002, /* SetAlgorithmParm, 0x0002:Far Talk (FT) */
-	0x800C0300, /* SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain */
-	0x800D0001, /* SetDeviceParm, 0x0001:+6dB */
-	0x800C0400, /* SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain */
-	0x800D0001, /* SetDeviceParm, 0x0001:+6dB */
-	0x801B000E, /* SetDigitalInputGain, 0x000E:(14 dB) */
-	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No suppression */
-	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, 0x0000:No */
-	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
-	0x80150006, /* SetDigitalOutputGain, 0x0006:(6 dB) */
+	0x80180002, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
+	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
+	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
 unsigned int vr_no_ns_bt[] = {
-	0x80260006, /* Select audio routing 6 */
-	0x801B0000, /* Set Digital input gain to 0dB */
-	0x80150000, /* Set Digital output gain to 0dB */
-	0x80150100, /* Set Downlink digital gain to 0dB */
-	0x801C0000, /* Set Voice Processing off (bypass mode) */
-	0x800C0107,
-	0x800D0000, /* Set PCM0 TristateEnable disable */
-	0x800C0207,
-	0x800D0000, /* Set PCM1 TristateEnable disable */
+	0x80260006, /* SelectRouting, 0x0006:Snk,Snk,Fei,Pri - Zro,Csp,Feo (PCM0->PCM1+ADCs) */
+	0x801C0000, /* VoiceProcessingOn, 0x0000:No */
+	0x801B0000, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x00:(0 dB) */
+	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
 unsigned int vr_ns_receiver[] = {
-	0x80260001, /* SelectRouting, Pri,Sec,FEi,Lp1 -- CSp,FEo,Lp1 */
-	0x80170002, /* SetAlgorithmParmID, Microphone Configuration */
-	0x80180000, /* SetAlgorithmParm, Close Talk (CT) */
-	0x8017001A, /* SetAlgorithmParmID, Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, No */
-	0x801C0001, /* VoiceProcessingOn, Yes */
-	0x80170000,
-	0x80180004, /* Noise Suppression AIS 4 */
-	0x80170004, /* SetAlgorithmParmID, Use AGC */
-	0x80180000, /* SetAlgorithmParm, No */
-	0x800C0300, /* SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain */
-	0x800D0001, /* SetDeviceParm, +6dB */
-	0x800C0400, /* SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain */
-	0x800D0001, /* SetDeviceParm, 0x0001:+6dB */
-	0x801500FD, /* SetDigitalOutputGain, 0x00:Tx, 0xFD:(-3dB) */
-	0x801B0009, /* SetDigitalInputGain, 0x00:Pri Mic (Tx), 0x09:(9dB) */
-	0x801B0109, /* SetDigitalInputGain, 0x01:Sec Mic (Tx), 0x09:(9dB) */
+	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80180000, /* SetAlgorithmParm, 0x0000:2-mic Close Talk (CT) */
+	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
+	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
+	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
+	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80180004, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
+	0x801B0009, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x09:(9 dB) */
+	0x801B0109, /* SetDigitalInputGain, 0x01:Secondary Mic (Tx), 0x09:(9 dB) */
+	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
 unsigned int vr_ns_headset[] = {
-	0x80170002, /* SetAlgorithmParmID, Microphone Configuration */
-	0x80180003, /* SetAlgorithmParm, 1M-DG (1-mic digital input) */
-	0x80260015, /* SelectRouting, Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
-	0x800C0400, /* SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain */
-	0x800D0001, /* SetDeviceParm, +6 dB */
-	0x8017001A, /* SetAlgorithmParmID, Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, No */
-	0x801C0001, /* VoiceProcessingOn, Yes */
-	0x801B0012, /* Set Digital Input Gain 18dB */
-	0x80150000, /* Set Digital Output Gain 0dB */
-	0x80170000,
-	0x80180002, /* Noise Suppression AIS2 */
-	0x80170004, /* SetAlgorithmParmID, Use AGC */
-	0x80180000, /* SetAlgorithmParm, No */
+	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80180003, /* SetAlgorithmParm, 0x0003:1-mic External (MD) */
+	0x80260015, /* SelectRouting, 0x0015:Snk,Pri,Snk,Snk - Csp,Zro,Zro (none) */
+	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
+	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80180002, /* SetAlgorithmParm, 0x0002:20dB Max Suppression */
+	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
+	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
+	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
 unsigned int vr_ns_speaker[] = {
-	0x80260007, /* SelectRouting, Pri,Snk,Snk,Snk -- CSp,Zro,Zro */
-	0x80170002, /* SetAlgorithmParmID, Microphone Configuration */
-	0x80180002, /* SetAlgorithmParm, Far Talk (FT) */
-	0x800C0300, /* SetDeviceParmID, 0x03:ADC0, 0x00:ADC Gain */
-	0x800D0001, /* SetDeviceParm, +6dB */
-	0x800C0400, /* SetDeviceParmID, 0x04:ADC1, 0x00:ADC Gain */
-	0x800D0001, /* SetDeviceParm, +6dB */
-	0x801B000E, /* SetDigitalInputGain, 0x000E:(14 dB) */
-	0x80170000,
-	0x80180004, /* Noise Suppression AIS4 */
-	0x8017001A, /* SetAlgorithmParmID, Use ComfortNoise */
-	0x80180000, /* SetAlgorithmParm, No */
-	0x801C0001, /* VoiceProcessingOn, Yes */
-	0x80150006, /* SetDigitalOutputGain, 0x0006:(6 dB) */
+	0x80170002, /* SetAlgorithmParmID, 0x0002:Microphone Configuration */
+	0x80180002, /* SetAlgorithmParm, 0x0002:1-mic Desktop/Vehicle (DV) */
+	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
+	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80180004, /* SetAlgorithmParm, 0x0004:20dB Max Suppression */
+	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
+	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
+	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x801B0012, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x12:(18 dB) */
+	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
 unsigned int vr_ns_bt[] = {
-	0x80260006, /* Select audio routing 6 */
-	0x801B0000, /* Set Digital input gain to 0dB */
-	0x80150000, /* Set Digital output gain to 0dB */
-	0x80150100, /* Set Downlink digital gain to 0dB */
-	0x801C0000, /* Set Voice Processing off (bypass mode) */
-	0x800C0107,
-	0x800D0000, /* Set PCM0 TristateEnable disable */
-	0x800C0207,
-	0x800D0000, /* Set PCM1 TristateEnable disable */
+	0x80260006, /* SelectRouting, 0x0006:Snk,Snk,Fei,Pri - Zro,Csp,Feo (PCM0->PCM1+ADCs) */
+	0x801C0001, /* VoiceProcessingOn, 0x0001:Yes */
+	0x80170000, /* SetAlgorithmParmID, 0x0000:Suppression Strength */
+	0x80180002, /* SetAlgorithmParm, 0x0002:20dB Max Suppression */
+	0x80170004, /* SetAlgorithmParmID, 0x0004:Use AGC */
+	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x8017001A, /* SetAlgorithmParmID, 0x001A:Use ComfortNoise */
+	0x80180000, /* SetAlgorithmParm, 0x0000:No */
+	0x801B0000, /* SetDigitalInputGain, 0x00:Primay Mic (Tx), 0x00:(0 dB) */
+	0x80150000, /* SetDigitalOutputGain, 0x00:Tx, 0x00:(0 dB) */
 };
 
 unsigned int suspend_mode[] = {
