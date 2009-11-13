@@ -72,6 +72,7 @@
 #define MSM_PMEM_MDP_SIZE	0xb21000
 #define MSM_PMEM_ADSP_SIZE	0x97b000
 #define MSM_FB_SIZE		0x200000
+#define PMEM_KERNEL_EBI1_SIZE	0x80000
 #endif
 
 #ifdef CONFIG_ARCH_MSM7X27
@@ -82,6 +83,7 @@
 #define MSM_GPU_PHYS_SIZE	SZ_2M
 #define PMEM_KERNEL_EBI1_SIZE	0x200000
 #endif
+
 
 static struct resource smc91x_resources[] = {
 	[0] = {
@@ -443,7 +445,6 @@ static struct platform_device msm_device_adspdec = {
 	},
 };
 
-#ifdef CONFIG_ARCH_MSM7X27
 static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
 	.name = PMEM_KERNEL_EBI1_DATA_NAME,
 	/* if no allocator_type, defaults to PMEM_ALLOCATORTYPE_BITMAP,
@@ -454,7 +455,6 @@ static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
 	 */
 	.cached = 0,
 };
-#endif
 
 static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
@@ -488,6 +488,12 @@ static struct platform_device android_pmem_adsp_device = {
 	.dev = { .platform_data = &android_pmem_adsp_pdata },
 };
 
+static struct platform_device android_pmem_kernel_ebi1_device = {
+	.name = "android_pmem",
+	.id = 4,
+	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
+};
+
 #ifdef CONFIG_ARCH_MSM7X27
 static struct platform_device android_pmem_gpu1_device = {
 	.name = "android_pmem",
@@ -495,11 +501,6 @@ static struct platform_device android_pmem_gpu1_device = {
 	.dev = { .platform_data = &android_pmem_gpu1_pdata },
 };
 
-static struct platform_device android_pmem_kernel_ebi1_device = {
-	.name = "android_pmem",
-	.id = 4,
-	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
-};
 
 #endif
 
@@ -1114,9 +1115,7 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_i2c,
 	&smc91x_device,
 	&msm_device_tssc,
-#ifdef CONFIG_ARCH_MSM7X27
 	&android_pmem_kernel_ebi1_device,
-#endif
 	&android_pmem_device,
 	&android_pmem_adsp_device,
 #ifdef CONFIG_ARCH_MSM7X27
@@ -1571,14 +1570,12 @@ static void __init msm7x2x_init(void)
 		msm_pm_set_platform_data(msm7x25_pm_data);
 }
 
-#ifdef CONFIG_ARCH_MSM7X27
 static unsigned pmem_kernel_ebi1_size = PMEM_KERNEL_EBI1_SIZE;
 static void __init pmem_kernel_ebi1_size_setup(char **p)
 {
 	pmem_kernel_ebi1_size = memparse(*p, p);
 }
 __early_param("pmem_kernel_ebi1_size=", pmem_kernel_ebi1_size_setup);
-#endif
 
 static unsigned pmem_mdp_size = MSM_PMEM_MDP_SIZE;
 static void __init pmem_mdp_size_setup(char **p)
@@ -1648,14 +1645,6 @@ static void __init msm_msm7x2x_allocate_memory_regions(void)
 	pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
 		size, addr, __pa(addr));
 
-#ifdef CONFIG_ARCH_MSM7X27
-	size = gpu_phys_size ? : MSM_GPU_PHYS_SIZE;
-	addr = alloc_bootmem(size);
-	kgsl_resources[1].start = __pa(addr);
-	kgsl_resources[1].end = kgsl_resources[1].start + size - 1;
-	pr_info("allocating %lu bytes at %p (%lx physical) for KGSL\n",
-		size, addr, __pa(addr));
-
 	size = pmem_kernel_ebi1_size;
 	if (size) {
 		addr = alloc_bootmem_aligned(size, 0x100000);
@@ -1664,6 +1653,14 @@ static void __init msm_msm7x2x_allocate_memory_regions(void)
 		pr_info("allocating %lu bytes at %p (%lx physical) for kernel"
 			" ebi1 pmem arena\n", size, addr, __pa(addr));
 	}
+#ifdef CONFIG_ARCH_MSM7X27
+	size = gpu_phys_size ? : MSM_GPU_PHYS_SIZE;
+	addr = alloc_bootmem(size);
+	kgsl_resources[1].start = __pa(addr);
+	kgsl_resources[1].end = kgsl_resources[1].start + size - 1;
+	pr_info("allocating %lu bytes at %p (%lx physical) for KGSL\n",
+		size, addr, __pa(addr));
+
 	size = pmem_gpu1_size;
 	if (size) {
 		addr = alloc_bootmem(size);
