@@ -268,6 +268,7 @@ static int q6_config_encode(struct q6venc_dev *q6venc, uint32_t type,
 {
 	struct q6_init_config *q6_init_config = &init_config->q6_init_config;
 	int ret;
+	int i;
 
 	mutex_lock(&q6venc->lock);
 
@@ -312,6 +313,14 @@ static int q6_config_encode(struct q6venc_dev *q6venc, uint32_t type,
 	q6_init_config->ref_frame_buf2_phy = q6venc->enc_bufs[1].paddr;
 	q6_init_config->rlc_buf1_phy = q6venc->rlc_bufs[0].paddr;
 	q6_init_config->rlc_buf2_phy = q6venc->rlc_bufs[1].paddr;
+
+	// The DSP may use the rlc_bufs during initialization,
+	for (i=0; i<RLC_MAX_BUF_NUM; i++)
+	{
+		dmac_inv_range((const void *)q6venc->rlc_bufs[i].vaddr,
+			(const void *)(q6venc->rlc_bufs[i].vaddr +
+				q6venc->rlc_buf_len));
+	}
 
 	ret = dal_call_f5(q6venc->venc, type, q6_init_config,
 			  sizeof(struct q6_init_config));
