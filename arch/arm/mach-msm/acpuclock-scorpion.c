@@ -27,6 +27,7 @@
 #include <mach/msm_iomap.h>
 
 #include "acpuclock.h"
+#include "proc_comm.h"
 
 #if 0
 #define DEBUG(x...) pr_info(x)
@@ -380,12 +381,34 @@ static unsigned __init acpuclk_find_speed(void)
 	}
 }
 
+#define PCOM_MODEM_PLL	0
+static int pll_request(unsigned id, unsigned on)
+{
+	on = !!on;
+	return msm_proc_comm(PCOM_CLKCTL_RPC_PLL_REQUEST, &id, &on);
+}
+
 static void __init acpuclk_init(void)
 {
 	struct clkctl_acpu_speed *speed;
 	unsigned init_khz;
 
 	init_khz = acpuclk_find_speed();
+
+	/* request the modem pll, and then drop it. We don't want to keep a
+	 * ref to it, but we do want to make sure that it is initialized at
+	 * this point. The ARM9 will ensure that the MPLL is always on
+	 * once it is fully booted, but it may not be up by the time we get
+	 * to here. So, our pll_request for it will block until the mpll is
+	 * actually up. We want it up because we will want to use it as a
+	 * temporary step during frequency scaling. */
+	pll_request(PCOM_MODEM_PLL, 1);
+	pll_request(PCOM_MODEM_PLL, 0);
+
+	if (!(readl(MSM_CLK_CTL_BASE + 0x300) & 1)) {
+		pr_err("%s: MPLL IS NOT ON!!! RUN AWAY!!\n", __func__);
+		BUG();
+	}
 
 	/* Move to 768MHz for boot, which is a safe frequency
 	 * for all versions of Scorpion at the moment.
