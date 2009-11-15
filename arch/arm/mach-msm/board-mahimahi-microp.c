@@ -48,48 +48,50 @@
 #define MICROP_LSENSOR_ADC_CHAN		6
 #define MICROP_REMOTE_KEY_ADC_CHAN	7
 
-#define MICROP_I2C_WCMD_MISC			0x20
-#define MICROP_I2C_WCMD_SPI_EN			0x21
-#define MICROP_I2C_WCMD_AUTO_BL_CTL		0x23
-#define MICROP_I2C_RCMD_SPI_BL_STATUS		0x24
-#define MICROP_I2C_WCMD_BUTTONS_LED_CTRL	0x25
-#define MICROP_I2C_RCMD_VERSION			0x30
-#define MICROP_I2C_WCMD_ADC_TABLE		0x42
-#define MICROP_I2C_WCMD_LED_MODE		0x53
-#define MICROP_I2C_RCMD_GREEN_LED_REMAIN_TIME	0x54
-#define MICROP_I2C_RCMD_AMBER_LED_REMAIN_TIME	0x55
-#define MICROP_I2C_WCMD_JOGBALL_LED_MODE	0x5A
-#define MICROP_I2C_RCMD_JOGBALL_LED_REMAIN_TIME	0x5B
-#define MICROP_I2C_WCMD_JOGBALL_LED_PWM_SET	0x5C
-#define MICROP_I2C_WCMD_READ_ADC_VALUE_REQ	0x60
-#define MICROP_I2C_RCMD_ADC_VALUE		0x62
-#define MICROP_I2C_WCMD_REMOTEKEY_TABLE		0x63
-#define MICROP_I2C_WCMD_LCM_REGISTER		0x70
-#define MICROP_I2C_WCMD_GSENSOR_REG		0x73
-#define MICROP_I2C_WCMD_GSENSOR_REG_DATA_REQ	0x74
-#define MICROP_I2C_RCMD_GSENSOR_REG_DATA	0x75
-#define MICROP_I2C_WCMD_GSENSOR_DATA_REQ	0x76
-#define MICROP_I2C_RCMD_GSENSOR_X_DATA		0x77
-#define MICROP_I2C_RCMD_GSENSOR_Y_DATA		0x78
-#define MICROP_I2C_RCMD_GSENSOR_Z_DATA		0x79
-#define MICROP_I2C_RCMD_GSENSOR_DATA		0x7A
-#define MICROP_I2C_WCMD_OJ_REG			0x7B
-#define MICROP_I2C_WCMD_OJ_REG_DATA_REQ		0x7C
-#define MICROP_I2C_RCMD_OJ_REG_DATA		0x7D
-#define MICROP_I2C_WCMD_OJ_POS_DATA_REQ		0x7E
-#define MICROP_I2C_RCMD_OJ_POS_DATA		0x7F
-#define MICROP_I2C_WCMD_GPI_INT_CTL_EN		0x80
-#define MICROP_I2C_WCMD_GPI_INT_CTL_DIS		0x81
-#define MICROP_I2C_RCMD_GPI_INT_STATUS		0x82
-#define MICROP_I2C_RCMD_GPI_STATUS		0x83
-#define MICROP_I2C_WCMD_GPI_INT_STATUS_CLR	0x84
-#define MICROP_I2C_RCMD_GPI_INT_SETTING		0x85
-#define MICROP_I2C_RCMD_REMOTE_KEYCODE		0x87
-#define MICROP_I2C_WCMD_REMOTE_KEY_DEBN_TIME	0x88
-#define MICROP_I2C_WCMD_REMOTE_PLUG_DEBN_TIME	0x89
-#define MICROP_I2C_WCMD_SIMCARD_DEBN_TIME	0x8A
-#define MICROP_I2C_WCMD_GPO_LED_STATUS_EN	0x90
-#define MICROP_I2C_WCMD_GPO_LED_STATUS_DIS	0x91
+#define MICROP_I2C_WCMD_MISC				0x20
+#define MICROP_I2C_WCMD_SPI_EN				0x21
+#define MICROP_I2C_WCMD_AUTO_BL_CTL			0x23
+#define MICROP_I2C_RCMD_SPI_BL_STATUS			0x24
+#define MICROP_I2C_WCMD_BUTTONS_LED_CTRL		0x25
+#define MICROP_I2C_RCMD_VERSION				0x30
+#define MICROP_I2C_WCMD_ADC_TABLE			0x42
+#define MICROP_I2C_WCMD_LED_MODE			0x53
+#define MICROP_I2C_RCMD_GREEN_LED_REMAIN_TIME		0x54
+#define MICROP_I2C_RCMD_AMBER_RED_LED_REMAIN_TIME	0x55
+#define MICROP_I2C_RCMD_BLUE_LED_REMAIN_TIME		0x57
+#define MICROP_I2C_WCMD_JOGBALL_LED_MODE		0x5A
+#define MICROP_I2C_RCMD_JOGBALL_LED_REMAIN_TIME		0x5B
+#define MICROP_I2C_WCMD_JOGBALL_LED_PWM_SET		0x5C
+#define MICROP_I2C_WCMD_JOGBALL_LED_PERIOD_SET		0x5D
+#define MICROP_I2C_WCMD_READ_ADC_VALUE_REQ		0x60
+#define MICROP_I2C_RCMD_ADC_VALUE			0x62
+#define MICROP_I2C_WCMD_REMOTEKEY_TABLE			0x63
+#define MICROP_I2C_WCMD_LCM_REGISTER			0x70
+#define MICROP_I2C_WCMD_GSENSOR_REG			0x73
+#define MICROP_I2C_WCMD_GSENSOR_REG_DATA_REQ		0x74
+#define MICROP_I2C_RCMD_GSENSOR_REG_DATA		0x75
+#define MICROP_I2C_WCMD_GSENSOR_DATA_REQ		0x76
+#define MICROP_I2C_RCMD_GSENSOR_X_DATA			0x77
+#define MICROP_I2C_RCMD_GSENSOR_Y_DATA			0x78
+#define MICROP_I2C_RCMD_GSENSOR_Z_DATA			0x79
+#define MICROP_I2C_RCMD_GSENSOR_DATA			0x7A
+#define MICROP_I2C_WCMD_OJ_REG				0x7B
+#define MICROP_I2C_WCMD_OJ_REG_DATA_REQ			0x7C
+#define MICROP_I2C_RCMD_OJ_REG_DATA			0x7D
+#define MICROP_I2C_WCMD_OJ_POS_DATA_REQ			0x7E
+#define MICROP_I2C_RCMD_OJ_POS_DATA			0x7F
+#define MICROP_I2C_WCMD_GPI_INT_CTL_EN			0x80
+#define MICROP_I2C_WCMD_GPI_INT_CTL_DIS			0x81
+#define MICROP_I2C_RCMD_GPI_INT_STATUS			0x82
+#define MICROP_I2C_RCMD_GPI_STATUS			0x83
+#define MICROP_I2C_WCMD_GPI_INT_STATUS_CLR		0x84
+#define MICROP_I2C_RCMD_GPI_INT_SETTING			0x85
+#define MICROP_I2C_RCMD_REMOTE_KEYCODE			0x87
+#define MICROP_I2C_WCMD_REMOTE_KEY_DEBN_TIME		0x88
+#define MICROP_I2C_WCMD_REMOTE_PLUG_DEBN_TIME		0x89
+#define MICROP_I2C_WCMD_SIMCARD_DEBN_TIME		0x8A
+#define MICROP_I2C_WCMD_GPO_LED_STATUS_EN		0x90
+#define MICROP_I2C_WCMD_GPO_LED_STATUS_DIS		0x91
 
 #define IRQ_GSENSOR	(1<<10)
 #define IRQ_LSENSOR  	(1<<9)
@@ -128,6 +130,8 @@ static struct platform_device mahimahi_h35mm = {
 enum led_type {
 	GREEN_LED,
 	AMBER_LED,
+	RED_LED,
+	BLUE_LED,
 	JOGBALL_LED,
 	BUTTONS_LED,
 	NUM_LEDS,
@@ -579,6 +583,22 @@ static int microp_i2c_write_led_mode(struct i2c_client *client,
 		data[4] = mode;
 		data[5] = off_timer >> 8;
 		data[6] = off_timer & 0xFF;
+	} else if (ldata->type == RED_LED) {
+		data[0] = 0x02;
+		data[1] = 0x00;
+		data[2] = 0x00;
+		data[3] = 0x00;
+		data[4] = mode? 5: 0;
+		data[5] = off_timer >> 8;
+		data[6] = off_timer & 0xFF;
+	} else if (ldata->type == BLUE_LED) {
+		data[0] = 0x04;
+		data[1] = mode;
+		data[2] = off_timer >> 8;
+		data[3] = off_timer & 0xFF;
+		data[4] = 0x00;
+		data[5] = 0x00;
+		data[6] = 0x00;
 	}
 
 	ret = i2c_write_block(client, MICROP_I2C_WCMD_LED_MODE, data, 7);
@@ -678,7 +698,15 @@ static ssize_t microp_i2c_led_off_timer_show(struct device *dev,
 				MICROP_I2C_RCMD_GREEN_LED_REMAIN_TIME, data, 2);
 	} else if (ldata->type == AMBER_LED) {
 		ret = i2c_read_block(client,
-				MICROP_I2C_RCMD_AMBER_LED_REMAIN_TIME, data, 2);
+				MICROP_I2C_RCMD_AMBER_RED_LED_REMAIN_TIME,
+				data, 2);
+	} else if (ldata->type == RED_LED) {
+		ret = i2c_read_block(client,
+				MICROP_I2C_RCMD_AMBER_RED_LED_REMAIN_TIME,
+				data, 2);
+	} else if (ldata->type == BLUE_LED) {
+		ret = i2c_read_block(client,
+				MICROP_I2C_RCMD_BLUE_LED_REMAIN_TIME, data, 2);
 	} else {
 		dev_err(&client->dev, "Unknown led %s\n", ldata->ldev.name);
 		return -EINVAL;
@@ -784,6 +812,42 @@ static ssize_t microp_i2c_jogball_color_store(struct device *dev,
 
 static DEVICE_ATTR(color, 0644, NULL, microp_i2c_jogball_color_store);
 
+static ssize_t microp_i2c_jogball_period_store(struct device *dev,
+				   struct device_attribute *attr,
+				   const char *buf, size_t count)
+{
+	struct led_classdev *led_cdev;
+	struct microp_led_data *ldata;
+	struct i2c_client *client;
+	int period = -1;
+	int ret;
+	uint8_t data[4];
+
+	sscanf(buf, "%d", &period);
+
+	if (period < 2 || period > 12)
+		return -EINVAL;
+
+	led_cdev = (struct led_classdev *)dev_get_drvdata(dev);
+	ldata = container_of(led_cdev, struct microp_led_data, ldev);
+	client = to_i2c_client(dev->parent);
+
+	dev_info(&client->dev, "Setting Jogball flash period to %d\n", period);
+
+	data[0] = 0x00;
+	data[1] = period;
+
+	ret = i2c_write_block(client, MICROP_I2C_WCMD_JOGBALL_LED_PERIOD_SET,
+			      data, 2);
+	if (ret) {
+		dev_err(&client->dev, "%s set period=%d failed\n",
+			led_cdev->name, period);
+	}
+	return count;
+}
+
+static DEVICE_ATTR(period, 0644, NULL, microp_i2c_jogball_period_store);
+
 static void microp_brightness_set(struct led_classdev *led_cdev,
 			       enum led_brightness brightness)
 {
@@ -842,6 +906,7 @@ struct device_attribute *green_amber_attrs[] = {
 
 struct device_attribute *jogball_attrs[] = {
 	&dev_attr_color,
+	&dev_attr_period,
 };
 
 static void microp_led_buttons_brightness_set_work(struct work_struct *work)
@@ -1736,6 +1801,18 @@ static struct {
 	},
 	[AMBER_LED] = {
 		.name		= "amber",
+		.led_set_work   = microp_led_brightness_set_work,
+		.attrs		= green_amber_attrs,
+		.attr_cnt	= ARRAY_SIZE(green_amber_attrs)
+	},
+	[RED_LED] = {
+		.name		= "red",
+		.led_set_work   = microp_led_brightness_set_work,
+		.attrs		= green_amber_attrs,
+		.attr_cnt	= ARRAY_SIZE(green_amber_attrs)
+	},
+	[BLUE_LED] = {
+		.name		= "blue",
 		.led_set_work   = microp_led_brightness_set_work,
 		.attrs		= green_amber_attrs,
 		.attr_cnt	= ARRAY_SIZE(green_amber_attrs)
