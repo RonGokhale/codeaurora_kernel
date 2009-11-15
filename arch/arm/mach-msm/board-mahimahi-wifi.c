@@ -112,6 +112,9 @@ static unsigned mahimahi_wifi_update_nvs(char *str)
 	ptr = get_wifi_nvs_ram();
 	/* Size in format LE assumed */
 	memcpy(&len, ptr + NVS_LEN_OFFSET, sizeof(len));
+	/* if the last byte in NVRAM is 0, trim it */
+	if (ptr[NVS_DATA_OFFSET + len - 1] == 0)
+		len -= 1;
 	strcpy(ptr + NVS_DATA_OFFSET + len, str);
 	len += strlen(str);
 	memcpy(ptr + NVS_LEN_OFFSET, &len, sizeof(len));
@@ -126,7 +129,7 @@ static int __init mahimahi_wifi_init(void)
 		return 0;
 
 	printk("%s: start\n", __func__);
-	mahimahi_wifi_update_nvs("sd_oobonly=1\n");
+	mahimahi_wifi_update_nvs("sd_oobonly=1\r\n");
 	mahimahi_init_wifi_mem();
 	ret = platform_device_register(&mahimahi_wifi_device);
         return ret;
