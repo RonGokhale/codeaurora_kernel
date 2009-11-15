@@ -207,6 +207,7 @@ static void scpll_apps_enable(bool state)
 		regval = readl(SCPLL_CTL_ADDR);
 		regval |= (0x7);
 		writel(regval, SCPLL_CTL_ADDR);
+		udelay(200);
 	} else {
 		/* put the pll in power down mode */
 		regval = readl(SCPLL_CTL_ADDR);
