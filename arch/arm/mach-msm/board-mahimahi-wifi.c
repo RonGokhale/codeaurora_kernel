@@ -99,6 +99,7 @@ static struct platform_device mahimahi_wifi_device = {
 };
 
 extern unsigned char *get_wifi_nvs_ram(void);
+extern int wifi_calibration_size_set(void);
 
 static unsigned mahimahi_wifi_update_nvs(char *str)
 {
@@ -118,6 +119,7 @@ static unsigned mahimahi_wifi_update_nvs(char *str)
 	strcpy(ptr + NVS_DATA_OFFSET + len, str);
 	len += strlen(str);
 	memcpy(ptr + NVS_LEN_OFFSET, &len, sizeof(len));
+	wifi_calibration_size_set();
 	return 0;
 }
 
