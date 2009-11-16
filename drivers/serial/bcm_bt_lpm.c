@@ -113,7 +113,7 @@ static irqreturn_t host_wake_isr(int irq, void *dev)
 		return IRQ_HANDLED;
 	}
 
-	spin_lock_irqsave(bt_lpm.uport->lock, flags);
+	spin_lock_irqsave(&bt_lpm.uport->lock, flags);
 
 	update_host_wake_locked(host_wake);
 
