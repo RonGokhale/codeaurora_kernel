@@ -1651,27 +1651,27 @@ static struct isr_queue_cmd *next_irq_cmd(void)
 {
 	unsigned long flags;
 	struct isr_queue_cmd *cmd;
-	spin_lock_irqsave(ctrl->irqs_lock, flags);
+	spin_lock_irqsave(&ctrl->irqs_lock, flags);
 	if (ctrl->irq_get == ctrl->irq_put) {
-		spin_unlock_irqrestore(ctrl->irqs_lock, flags);
+		spin_unlock_irqrestore(&ctrl->irqs_lock, flags);
 		return NULL; /* already empty */
 	}
 	cmd = ctrl->irqs + ctrl->irq_put;
-	spin_unlock_irqrestore(ctrl->irqs_lock, flags);
+	spin_unlock_irqrestore(&ctrl->irqs_lock, flags);
 	return cmd;
 }
 
 static void put_irq_cmd(void)
 {
 	unsigned long flags;
-	spin_lock_irqsave(ctrl->irqs_lock, flags);
+	spin_lock_irqsave(&ctrl->irqs_lock, flags);
 	if (ctrl->irq_get == ctrl->irq_put) {
-		spin_unlock_irqrestore(ctrl->irqs_lock, flags);
+		spin_unlock_irqrestore(&ctrl->irqs_lock, flags);
 		return; /* already empty */
 	}
 	ctrl->irq_put++;
 	ctrl->irq_put %= ARRAY_SIZE(ctrl->irqs);
-	spin_unlock_irqrestore(ctrl->irqs_lock, flags);
+	spin_unlock_irqrestore(&ctrl->irqs_lock, flags);
 }
 
 static void vfe_do_tasklet(unsigned long data)
