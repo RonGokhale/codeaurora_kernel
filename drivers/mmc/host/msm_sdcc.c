@@ -1316,6 +1316,8 @@ msmsdcc_probe(struct platform_device *pdev)
 #if defined(CONFIG_DEBUG_FS)
 	msmsdcc_dbg_createhost(host);
 #endif
+	if (host->use_bustimer)
+		mod_timer(&host->busclk_timer, jiffies + HZ);
 	return 0;
  cmd_irq_free:
 	free_irq(cmd_irqres->start, host);
