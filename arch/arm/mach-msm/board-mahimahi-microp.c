@@ -1077,7 +1077,7 @@ static int microp_lightsensor_read(uint16_t *adc_value,
 {
 	struct i2c_client *client;
 	struct microp_i2c_client_data *cdata;
-	uint8_t i, level = 0;
+	uint8_t i;
 	int ret;
 
 	client = private_microp_client;
@@ -1098,15 +1098,15 @@ static int microp_lightsensor_read(uint16_t *adc_value,
 			if (*adc_value > 0x3FF)
 				*adc_value = 0x3FF;
 		}
-		for (i = 0; i < 10; i++) {
+
+		*adc_level = ARRAY_SIZE(lsensor_adc_table) - 1;
+		for (i = 0; i < ARRAY_SIZE(lsensor_adc_table); i++) {
 			if (*adc_value <= lsensor_adc_table[i]) {
-				level = i;
-				if (lsensor_adc_table[i])
-					break;
+				*adc_level = i;
+				break;
 			}
 		}
-		*adc_level = level;
-		pr_debug("%s: ADC value: 0x%X, level: %d #\n",
+		pr_info("%s: ADC value: 0x%X, level: %d #\n",
 				__func__, *adc_value, *adc_level);
 	}
 
