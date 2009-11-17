@@ -365,9 +365,6 @@ static struct lcm_tbl samsung_oled_gamma_table[][OLED_GAMMA_TABLE_SIZE] = {
 };
 #define SAMSUNG_OLED_NUM_LEVELS		ARRAY_SIZE(samsung_oled_gamma_table)
 
-static samsung_oled_value_table[] = {10, 20, 40, 70, 100, 130,
-				     160, 190, 220, 250};
-
 #define SAMSUNG_OLED_MIN_VAL		10
 #define SAMSUNG_OLED_MAX_VAL		250
 #define SAMSUNG_OLED_DEFAULT_VAL	(SAMSUNG_OLED_MIN_VAL +		\
@@ -398,13 +395,7 @@ static void samsung_oled_set_gamma_val(int val)
 	int frac;
 
 	val = clamp(val, SAMSUNG_OLED_MIN_VAL, SAMSUNG_OLED_MAX_VAL);
-
-	for (i = 0; i < ARRAY_SIZE(samsung_oled_value_table) - 1; i++) {
-		if (val >= samsung_oled_value_table[i] &&
-		    val < samsung_oled_value_table[i + 1])
-			break;
-	}
-	val = samsung_oled_value_table[i];
+	val = (val / 2) * 2;
 
 	level = (val - SAMSUNG_OLED_MIN_VAL) / SAMSUNG_OLED_LEVEL_STEP;
 	frac = (val - SAMSUNG_OLED_MIN_VAL) % SAMSUNG_OLED_LEVEL_STEP;
