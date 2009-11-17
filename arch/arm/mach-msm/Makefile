@@ -24,7 +24,7 @@ obj-$(CONFIG_MSM_ADSP) += qdsp5/
 obj-$(CONFIG_MSM_QDSP6) += qdsp6/
 obj-$(CONFIG_MSM_HW3D) += hw3d.o
 obj-$(CONFIG_PM) += pm.o
-obj-$(CONFIG_MSM_CPU_FREQ) += cpufreq.o
+obj-$(CONFIG_CPU_FREQ) += cpufreq.o
 
 obj-$(CONFIG_MACH_HALIBUT) += board-halibut.o board-halibut-panel.o
 obj-$(CONFIG_MACH_HALIBUT) += board-halibut-keypad.o fish_battery.o

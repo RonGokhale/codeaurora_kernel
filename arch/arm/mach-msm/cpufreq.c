@@ -17,13 +17,10 @@
  *
  */
 
+#include <linux/cpufreq.h>
 #include <linux/earlysuspend.h>
 #include <linux/init.h>
 #include "acpuclock.h"
-
-#ifdef CONFIG_MSM_CPU_FREQ_ONDEMAND
-#include <linux/cpufreq.h>
-#endif
 
 #ifdef CONFIG_MSM_CPU_FREQ_SCREEN
 static void msm_early_suspend(struct early_suspend *handler) {
@@ -46,7 +43,7 @@ static int __init clock_late_init(void)
 }
 
 late_initcall(clock_late_init);
-#elif defined(CONFIG_MSM_CPU_FREQ_ONDEMAND)
+#else
 
 static int msm_cpufreq_target(struct cpufreq_policy *policy,
 				unsigned int target_freq,
@@ -62,6 +59,9 @@ static int msm_cpufreq_target(struct cpufreq_policy *policy,
 		pr_err("cpufreq: invalid target_freq: %d\n", target_freq);
 		return -EINVAL;
 	}
+
+	if (policy->cur == table[index].frequency)
+		return 0;
 
 #ifdef CONFIG_CPU_FREQ_DEBUG
 	printk("msm_cpufreq_target %d r %d (%d-%d) selected %d\n", target_freq,
@@ -88,14 +88,8 @@ static int __init msm_cpufreq_init(struct cpufreq_policy *policy)
 	struct cpufreq_frequency_table *table =
 		cpufreq_frequency_get_table(smp_processor_id());
 
+	BUG_ON(cpufreq_frequency_table_cpuinfo(policy, table));
 	policy->cur = acpuclk_get_rate();
-	if (cpufreq_frequency_table_cpuinfo(policy, table)) {
-		policy->cpuinfo.min_freq = CONFIG_MSM_CPU_FREQ_ONDEMAND_MIN;
-		policy->cpuinfo.max_freq = CONFIG_MSM_CPU_FREQ_ONDEMAND_MAX;
-	}
-	policy->min = CONFIG_MSM_CPU_FREQ_ONDEMAND_MIN;
-	policy->max = CONFIG_MSM_CPU_FREQ_ONDEMAND_MAX;
-
 	policy->cpuinfo.transition_latency =
 		acpuclk_get_switch_time() * NSEC_PER_USEC;
 	return 0;
