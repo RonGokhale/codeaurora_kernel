@@ -57,6 +57,11 @@ extern MDP_CCS_TYPE mdp_ccs_rgb2yuv;
 extern uint32 mdp_plv[];
 extern struct semaphore mdp_ppp_mutex;
 
+uint32_t mdp_get_bytes_per_pixel(uint32_t format)
+{
+	return bytes_per_pixel[format];
+}
+
 static uint32 mdp_conv_matx_rgb2yuv(uint32 input_pixel,
 				    uint16 *matrix_and_bias_vector,
 				    uint32 *clamp_vector,
