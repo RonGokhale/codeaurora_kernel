@@ -26,7 +26,6 @@
 #include <linux/debugfs.h>
 #include <linux/device.h>
 #include <linux/seq_file.h>
-#include <linux/delay.h>
 
 #include "clock.h"
 #include "proc_comm.h"
@@ -243,10 +242,6 @@ static int clk_set_rate_locked(struct clk *clk, unsigned long rate)
 
 	if (!(clk->flags & (CLKFLAG_USE_MAX_TO_SET | CLKFLAG_USE_MIN_TO_SET)))
 		ret = pc_clk_set_rate(clk->id, rate);
-
-	/* without this delay we see instability when changing axi clock rate,
-	 * investigating with qualcomm, should remove with radio fix */
-	udelay(10);
 err:
 	return ret;
 }
