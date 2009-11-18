@@ -186,6 +186,7 @@ struct microp_i2c_client_data {
 	struct delayed_work hpin_enable_intr_work;
 	struct delayed_work hpin_debounce_work;
 	struct early_suspend early_suspend;
+	uint8_t enable_early_suspend;
 	uint8_t enable_reset_button;
 	int microp_is_suspend;
 	int auto_backlight_enabled;
@@ -1964,11 +1965,13 @@ static int microp_i2c_probe(struct i2c_client *client,
 	}
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-	cdata->early_suspend.level =
-		EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
-	cdata->early_suspend.suspend = microp_early_suspend;
-	cdata->early_suspend.resume = microp_early_resume;
-	register_early_suspend(&cdata->early_suspend);
+	if (cdata->enable_early_suspend) {
+		cdata->early_suspend.level =
+				EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+		cdata->early_suspend.suspend = microp_early_suspend;
+		cdata->early_suspend.resume = microp_early_resume;
+		register_early_suspend(&cdata->early_suspend);
+	}
 #endif
 
 	ret = microp_function_initialize(client);
@@ -2033,7 +2036,9 @@ static int __devexit microp_i2c_remove(struct i2c_client *client)
 	}
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-	unregister_early_suspend(&cdata->early_suspend);
+	if (cdata->enable_early_suspend) {
+		unregister_early_suspend(&cdata->early_suspend);
+	}
 #endif
 
 	for (i = 0; i < ARRAY_SIZE(microp_leds); ++i) {
