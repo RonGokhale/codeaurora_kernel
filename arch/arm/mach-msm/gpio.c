@@ -499,7 +499,7 @@ void msm_gpio_enter_sleep(int from_idle)
 	int i;
 	struct tramp_gpio_smem *smem_gpio;
 
-#ifdef CONFIG_MACH_SMD
+#ifdef CONFIG_MSM_SMD
 	smem_gpio = smem_alloc(SMEM_GPIO_INT, sizeof(*smem_gpio)); 
 #else
 	smem_gpio = NULL;
@@ -552,7 +552,7 @@ void msm_gpio_exit_sleep(void)
 	int i;
 	struct tramp_gpio_smem *smem_gpio;
 
-#ifdef CONFIG_MACH_SMD
+#ifdef CONFIG_MSM_SMD
 	smem_gpio = smem_alloc(SMEM_GPIO_INT, sizeof(*smem_gpio)); 
 #else
 	smem_gpio = NULL;
