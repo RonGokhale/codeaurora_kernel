@@ -689,7 +689,7 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 				    latency * LATENCY_MULTIPLIER);
 		}
 		mutex_unlock(&dbs_mutex);
-
+		rc = input_register_handler(&dbs_input_handler);
 		dbs_timer_init(this_dbs_info);
 		break;
 
