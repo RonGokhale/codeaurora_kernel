@@ -110,15 +110,27 @@ static struct cpufreq_frequency_table freq_table[ARRAY_SIZE(acpu_freq_tbl)];
 static void __init acpuclk_init_cpufreq_table(void)
 {
 	int i;
+	int vdd;
 	for (i = 0; acpu_freq_tbl[i].acpu_khz; i++) {
 		freq_table[i].index = i;
+		freq_table[i].frequency = CPUFREQ_ENTRY_INVALID;
+
 		/* Skip speeds using the global pll */
 		if (acpu_freq_tbl[i].acpu_khz == 256000 ||
-				acpu_freq_tbl[i].acpu_khz == 19200) {
-			freq_table[i].frequency = CPUFREQ_ENTRY_INVALID;
+				acpu_freq_tbl[i].acpu_khz == 19200)
+			continue;
+
+		vdd = acpu_freq_tbl[i].vdd;
+		/* Allow mpll and the first scpll speeds */
+		if (acpu_freq_tbl[i].acpu_khz == 245000 ||
+				acpu_freq_tbl[i].acpu_khz == 384000) {
+			freq_table[i].frequency = acpu_freq_tbl[i].acpu_khz;
 			continue;
 		}
-		freq_table[i].frequency = acpu_freq_tbl[i].acpu_khz;
+
+		/* Take the fastest speed available at the specified VDD level */
+		if (vdd != acpu_freq_tbl[i + 1].vdd)
+			freq_table[i].frequency = acpu_freq_tbl[i].acpu_khz;
 	}
 
 	freq_table[i].index = i;
