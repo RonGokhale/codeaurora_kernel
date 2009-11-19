@@ -104,6 +104,10 @@ msmsdcc_enable_clocks(struct msmsdcc_host *host, int enable)
 
 	WARN_ON(enable == host->clks_on);
 	if (enable) {
+		rc = clk_set_rate(host->eclk, 128000000);
+		if (rc)
+			dev_err(mmc_dev(host->mmc), "err locking axi\n");
+
 		rc = clk_enable(host->pclk);
 		if (rc)
 			return rc;
@@ -118,6 +122,9 @@ msmsdcc_enable_clocks(struct msmsdcc_host *host, int enable)
 	} else {
 		clk_disable(host->clk);
 		clk_disable(host->pclk);
+		rc = clk_set_rate(host->eclk, 0);
+		if (rc)
+			dev_err(mmc_dev(host->mmc), "err unlocking axi\n");
 		host->clks_on = 0;
 	}
 	return 0;
@@ -1200,10 +1207,15 @@ msmsdcc_probe(struct platform_device *pdev)
 		goto pclk_put;
 	}
 
-	/* Enable clocks */
+	host->eclk = clk_get(&pdev->dev, "ebi1_clk");
+	if (IS_ERR(host->eclk)) {
+		ret = PTR_ERR(host->eclk);
+		goto clk_put;
+	}
+
 	ret = msmsdcc_enable_clocks(host, 1);
 	if (ret)
-		goto clk_put;
+		goto eclk_put;
 
 	ret = clk_set_rate(host->clk, msmsdcc_fmin);
 	if (ret) {
@@ -1349,6 +1361,8 @@ msmsdcc_probe(struct platform_device *pdev)
 		free_irq(host->stat_irq, host);
  clk_disable:
 	msmsdcc_enable_clocks(host, 0);
+ eclk_put:
+	clk_put(host->eclk);
  clk_put:
 	clk_put(host->clk);
  pclk_put:
