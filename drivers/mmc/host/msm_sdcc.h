@@ -210,7 +210,6 @@ struct msmsdcc_host {
 	struct msmsdcc_curr_req	curr;
 
 	struct mmc_host		*mmc;
-	struct clk		*eclk;
 	struct clk		*clk;		/* main MMC bus clock */
 	struct clk		*pclk;		/* SDCC peripheral bus clock */
 	unsigned int		clks_on;	/* set if clocks are enabled */
