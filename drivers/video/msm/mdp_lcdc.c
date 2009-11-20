@@ -22,6 +22,7 @@
 #include <linux/platform_device.h>
 #include <linux/sched.h>
 #include <linux/wait.h>
+#include <linux/delay.h>
 
 #include <asm/io.h>
 #include <asm/mach-types.h>
@@ -213,7 +214,14 @@ static void lcdc_dma_start(void *priv, uint32_t addr, uint32_t stride,
 {
 	struct mdp_lcdc_info *lcdc = priv;
 
-	mdp_dev->configure_dma(mdp_dev);
+	struct mdp_info *mdp = container_of(mdp_dev, struct mdp_info, mdp_dev);
+	if (mdp->dma_config_dirty)
+	{
+		mdp_writel(lcdc->mdp, 0, MDP_LCDC_EN);
+		mdelay(20);
+		mdp_dev->configure_dma(mdp_dev);
+		mdp_writel(lcdc->mdp, 1, MDP_LCDC_EN);
+	}
 	mdp_writel(lcdc->mdp, stride, MDP_DMA_P_IBUF_Y_STRIDE);
 	mdp_writel(lcdc->mdp, addr, MDP_DMA_P_IBUF_ADDR);
 }
