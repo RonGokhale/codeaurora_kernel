@@ -39,6 +39,7 @@ struct class *mdp_class;
 
 static DECLARE_WAIT_QUEUE_HEAD(mdp_ppp_waitqueue);
 static unsigned int mdp_irq_mask;
+struct clk *mdp_clk_to_disable_later = 0;
 DEFINE_MUTEX(mdp_mutex);
 
 static int locked_enable_mdp_irq(struct mdp_info *mdp, uint32_t mask)
@@ -729,8 +730,8 @@ int mdp_probe(struct platform_device *pdev)
 	disable_irq(mdp->irq);
 
 	clk_enable(mdp->clk);
+	mdp_clk_to_disable_later = mdp->clk;
 	mdp_hw_init(mdp);
-	clk_disable(mdp->clk);
 
 	/* register mdp device */
 	mdp->mdp_dev.dev.parent = &pdev->dev;
@@ -744,6 +745,8 @@ int mdp_probe(struct platform_device *pdev)
 	ret = device_register(&mdp->mdp_dev.dev);
 	if (ret)
 		goto error_device_register;
+
+	pr_info("%s: initialized\n", __func__);
 
 	return 0;
 
@@ -767,6 +770,13 @@ static struct platform_driver msm_mdp_driver = {
 	.driver = {.name = "msm_mdp"},
 };
 
+static int __init mdp_lateinit(void)
+{
+	if (mdp_clk_to_disable_later)
+		clk_disable(mdp_clk_to_disable_later);
+	return 0;
+}
+
 static int __init mdp_init(void)
 {
 	mdp_class = class_create(THIS_MODULE, "msm_mdp");
@@ -778,3 +788,4 @@ static int __init mdp_init(void)
 }
 
 subsys_initcall(mdp_init);
+late_initcall(mdp_lateinit);
