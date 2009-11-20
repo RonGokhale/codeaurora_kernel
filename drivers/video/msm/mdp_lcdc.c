@@ -154,6 +154,7 @@ static int lcdc_hw_init(struct mdp_lcdc_info *lcdc)
 		   DMA_PACK_PATTERN_RGB |
 		   DMA_DITHER_EN);
 	dma_cfg |= DMA_OUT_SEL_LCDC;
+	dma_cfg &= ~DMA_DST_BITS_MASK;
 	dma_cfg |= DMA_DSTC0G_6BITS | DMA_DSTC1B_5BITS | DMA_DSTC2R_5BITS;
 	mdp_writel(lcdc->mdp, dma_cfg, MDP_DMA_P_CONFIG);
 

@@ -689,17 +689,19 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 
 
 /* MDP_DMA_CONFIG / MDP_FULL_BYPASS_WORD32 */
-#define DMA_DSTC0G_6BITS (1<<1)
-#define DMA_DSTC1B_6BITS (1<<3)
-#define DMA_DSTC2R_6BITS (1<<5)
-
 #define DMA_DSTC0G_5BITS (1<<0)
 #define DMA_DSTC1B_5BITS (1<<2)
 #define DMA_DSTC2R_5BITS (1<<4)
 
+#define DMA_DSTC0G_6BITS (2<<0)
+#define DMA_DSTC1B_6BITS (2<<2)
+#define DMA_DSTC2R_6BITS (2<<4)
+
 #define DMA_DSTC0G_8BITS (3<<0)
 #define DMA_DSTC1B_8BITS (3<<2)
 #define DMA_DSTC2R_8BITS (3<<4)
+
+#define DMA_DST_BITS_MASK 0x3F
 
 #define DMA_PACK_TIGHT (1<<6)
 #define DMA_PACK_LOOSE 0
