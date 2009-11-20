@@ -125,6 +125,26 @@ struct smsc911x_data {
 
 static inline u32 smsc911x_reg_read(struct smsc911x_data *pdata, u32 reg)
 {
+#ifdef CONFIG_ST1_EXPERIMENTAL
+	if (pdata->config.flags & SMSC911X_USE_16BIT) {
+		u32 data;
+		unsigned long flags;
+
+		/* these two 16-bit reads must be performed consecutively, so
+		* must not be interrupted by our own ISR (which would start
+		* another read operation) */
+		spin_lock_irqsave(&pdata->dev_lock, flags);
+		data = ((readw(pdata->ioaddr + reg * 2) & 0xFFFF) |
+		((readw(pdata->ioaddr + reg * 2 + 4) & 0xFFFF) << 16));
+		spin_unlock_irqrestore(&pdata->dev_lock, flags);
+
+		return data;
+}
+
+	BUG();
+	return 0;
+#endif
+
 	if (pdata->config.flags & SMSC911X_USE_32BIT)
 		return readl(pdata->ioaddr + reg);
 
@@ -150,6 +170,23 @@ static inline u32 smsc911x_reg_read(struct smsc911x_data *pdata, u32 reg)
 static inline void smsc911x_reg_write(struct smsc911x_data *pdata, u32 reg,
 				      u32 val)
 {
+#ifdef CONFIG_ST1_EXPERIMENTAL
+	if (pdata->config.flags & SMSC911X_USE_16BIT) {
+		unsigned long flags;
+
+		/* these two 16-bit writes must be performed consecutively, so
+		* must not be interrupted by our own ISR (which would start
+		* another read operation) */
+		spin_lock_irqsave(&pdata->dev_lock, flags);
+		writew(val & 0xFFFF, pdata->ioaddr + reg * 2);
+		writew((val >> 16) & 0xFFFF, pdata->ioaddr + reg * 2 + 4);
+		spin_unlock_irqrestore(&pdata->dev_lock, flags);
+		return;
+	}
+
+	BUG();
+#endif
+
 	if (pdata->config.flags & SMSC911X_USE_32BIT) {
 		writel(val, pdata->ioaddr + reg);
 		return;
