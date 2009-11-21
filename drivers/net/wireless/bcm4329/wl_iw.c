@@ -3854,17 +3854,16 @@ wl_iw_set_priv(
 	net_os_wake_lock(dev);
 	
 	if (dwrq->length && extra) {
+		if (strnicmp(extra, "START", strlen("START")) == 0) {
+			wl_iw_control_wl_on(dev, info);
+			WL_TRACE(("%s, Received regular START command\n", __FUNCTION__));
+		}
+
 		if (g_onoff == G_WLAN_SET_OFF) {
-			if (strnicmp(extra, "START", strlen("START")) != 0) {
-				WL_TRACE(("%s, missing START, Fail\n", __FUNCTION__));
-				kfree(extra);
-				net_os_wake_unlock(dev);
-				return -EFAULT;
-			}
-			else {
-				wl_iw_control_wl_on(dev, info);
-				WL_TRACE(("%s, Received regular START command\n", __FUNCTION__));
-			}
+			WL_TRACE(("%s, missing START, Fail\n", __FUNCTION__));
+			kfree(extra);
+			net_os_wake_unlock(dev);
+			return -EFAULT;
 		}
 
 	    if (strnicmp(extra, "SCAN-ACTIVE", strlen("SCAN-ACTIVE")) == 0) {
