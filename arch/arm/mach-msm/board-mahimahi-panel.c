@@ -99,7 +99,7 @@ static struct lcm_tbl samsung_oled_init_table[] = {
 	{ 0x13, 0x8 },
 	{ 0x15, 0x0 },
 	{ 0x16, 0x02 },
-	{ 0x39, 0x44 },
+	{ 0x39, 0x24 },
 	{ 0x17, 0x22 },
 	{ 0x18, 0x33 },
 	{ 0x19, 0x3 },
@@ -434,7 +434,6 @@ static int samsung_oled_panel_init(struct msm_lcdc_panel_ops *ops)
 	for (i = 0; i < ARRAY_SIZE(samsung_oled_init_table); i++)
 		lcm_writeb(samsung_oled_init_table[i].reg,
 			   samsung_oled_init_table[i].val);
-	gamma_table_bank_select();
 	clk_disable(spi_clk);
 
 	mutex_unlock(&panel_lock);
