@@ -635,4 +635,4 @@ int __init mahimahi_init_panel(void)
 	return 0;
 }
 
-late_initcall(mahimahi_init_panel);
+device_initcall(mahimahi_init_panel);
