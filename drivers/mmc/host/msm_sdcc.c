@@ -171,7 +171,6 @@ msmsdcc_request_end(struct msmsdcc_host *host, struct mmc_request *mrq)
 static void
 msmsdcc_stop_data(struct msmsdcc_host *host)
 {
-	del_timer(&host->data_wdt);
 	msmsdcc_writel(host, 0, MMCIDATACTRL);
 	host->curr.data = NULL;
 	host->curr.got_dataend = host->curr.got_datablkend = 0;
@@ -427,7 +426,6 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data)
 	if (data->flags & MMC_DATA_READ)
 		datactrl |= MCI_DPSM_DIRECTION;
 
-	mod_timer(&host->data_wdt, jiffies + (HZ * 5));
 	msmsdcc_writel(host, pio_irqmask, MMCIMASK1);
 	msmsdcc_writel(host, datactrl, MMCIDATACTRL);
 
@@ -658,7 +656,7 @@ static void msmsdcc_do_cmdirq(struct msmsdcc_host *host, uint32_t status)
 	cmd->resp[2] = msmsdcc_readl(host, MMCIRESPONSE2);
 	cmd->resp[3] = msmsdcc_readl(host, MMCIRESPONSE3);
 
-	del_timer(&host->command_wdt);
+	del_timer(&host->command_timer);
 	if (status & MCI_CMDTIMEOUT) {
 #if VERBOSE_COMMAND_TIMEOUTS
 		printk(KERN_ERR "%s: Command timeout\n",
@@ -854,7 +852,7 @@ msmsdcc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		host->stats.cmdpoll_hits++;
 	} else {
 		host->stats.cmdpoll_misses++;
-		mod_timer(&host->command_wdt, jiffies + HZ);
+		mod_timer(&host->command_timer, jiffies + HZ);
 	}
 	spin_unlock_irqrestore(&host->lock, flags);
 }
@@ -1011,8 +1009,13 @@ msmsdcc_busclk_expired(unsigned long _data)
 	spin_unlock_irqrestore(&host->lock, flags);
 }
 
+/*
+ * called when a command expires.
+ * Dump some debugging, and then error
+ * out the transaction.
+ */
 static void
-msmsdcc_wdt_expired(unsigned long _data)
+msmsdcc_command_expired(unsigned long _data)
 {
 	struct msmsdcc_host	*host = (struct msmsdcc_host *) _data;
 	struct mmc_request	*mrq;
@@ -1026,30 +1029,18 @@ msmsdcc_wdt_expired(unsigned long _data)
 		return;
 	}
 
-	dev_err(mmc_dev(host->mmc), "Controller %s lockup detected\n",
-		(host->curr.cmd ? "cmd" : "data"));
-	dev_err(mmc_dev(host->mmc), "opcode %d, arg %x, flags %x\n",
-		mrq->cmd->opcode, mrq->cmd->arg, mrq->cmd->flags);
-
-	if (mrq->data) {
-		dev_err(mmc_dev(host->mmc),
-			"blksz %d, blks %d, xfered %u, flags %x dma_bsy %d\n",
-			mrq->data->blksz, mrq->data->blocks,
-			mrq->data->bytes_xfered, mrq->data->flags,
-			host->dma.busy);
-		mrq->data->error = -ETIMEDOUT;
-	}
+	printk(KERN_ERR "%s: Controller lockup detected\n",
+	       mmc_hostname(host->mmc));
 	mrq->cmd->error = -ETIMEDOUT;
+	msmsdcc_stop_data(host);
+
+	msmsdcc_writel(host, 0, MMCICOMMAND);
+
 	host->curr.mrq = NULL;
 	host->curr.cmd = NULL;
 
-	if (!host->clks_on)
-		msmsdcc_enable_clocks(host, 1);
-
-	msmsdcc_stop_data(host);
-	msmsdcc_writel(host, 0, MMCICOMMAND);
-
-	msmsdcc_enable_clocks(host, 0);
+	if (host->clks_on)
+		msmsdcc_enable_clocks(host, 0);
 	spin_unlock_irqrestore(&host->lock, flags);
 	mmc_request_done(host->mmc, mrq);
 }
@@ -1283,13 +1274,13 @@ msmsdcc_probe(struct platform_device *pdev)
 		host->eject = !host->oldstat;
 	}
 
-	init_timer(&host->command_wdt);
-	host->command_wdt.data = (unsigned long) host;
-	host->command_wdt.function = msmsdcc_wdt_expired;
-
-	init_timer(&host->data_wdt);
-	host->data_wdt.data = (unsigned long) host;
-	host->data_wdt.function = msmsdcc_wdt_expired;
+	/*
+	 * Setup a command timer. We currently need this due to
+	 * some 'strange' timeout / error handling situations.
+	 */
+	init_timer(&host->command_timer);
+	host->command_timer.data = (unsigned long) host;
+	host->command_timer.function = msmsdcc_command_expired;
 
 	init_timer(&host->busclk_timer);
 	host->busclk_timer.data = (unsigned long) host;
