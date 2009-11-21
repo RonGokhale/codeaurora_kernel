@@ -420,8 +420,8 @@ static int q6_encode(struct q6venc_dev *q6venc, struct encode_param *enc_param)
 	// of the input buffer, so we can properly flush the cache on it.  Since
 	// userspace does not fill in the size fields, we have to assume the size
 	// based on the encoder configuration for now.
-	dmac_clean_range((const void*)buf->vaddr,
-			(const void*)(buf->vaddr + q6venc->enc_buf_size));
+	flush_pmem_file(buf->file, enc_param->y_addr.offset,
+		q6venc->enc_buf_size);
 
 	ret = dal_call_f5(q6venc->venc, VENC_DALRPC_ENCODE, q6_param,
 			  sizeof(struct q6_encode_param));
