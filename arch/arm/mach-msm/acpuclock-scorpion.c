@@ -157,9 +157,40 @@ static struct clock_state drv_state = { 0 };
 
 static DEFINE_SPINLOCK(acpu_lock);
 
+#define PLLMODE_POWERDOWN	0
+#define PLLMODE_BYPASS		1
+#define PLLMODE_STANDBY		2
+#define PLLMODE_FULL_CAL	4
+#define PLLMODE_HALF_CAL	5
+#define PLLMODE_STEP_CAL	6
+#define PLLMODE_NORMAL		7
+#define PLLMODE_MASK		7
+
+static void scpll_power_down(void)
+{
+	uint32_t val;
+
+	/* Wait for any frequency switches to finish. */
+	while (readl(SCPLL_STATUS_ADDR) & 0x1)
+		;
+
+	/* put the pll in standby mode */
+	val = readl(SCPLL_CTL_ADDR);
+	val = (val & (~PLLMODE_MASK)) | PLLMODE_STANDBY;
+	writel(val, SCPLL_CTL_ADDR);
+	dmb();
+
+	/* wait to stabilize in standby mode */
+	udelay(10);
+
+	val = (val & (~PLLMODE_MASK)) | PLLMODE_POWERDOWN;
+	writel(val, SCPLL_CTL_ADDR);
+	dmb();
+}
+
 static void scpll_set_freq(uint32_t lval)
 {
-	uint32_t regval;
+	uint32_t val, ctl;
 
 	if (lval > 33)
 		lval = 33;
@@ -170,91 +201,47 @@ static void scpll_set_freq(uint32_t lval)
 	while (readl(SCPLL_STATUS_ADDR) & 0x3)
 		;
 
+	ctl = readl(SCPLL_CTL_ADDR);
+
+	if ((ctl & PLLMODE_MASK) != PLLMODE_NORMAL) {
+		/* put the pll in standby mode */
+		writel((ctl & (~PLLMODE_MASK)) | PLLMODE_STANDBY, SCPLL_CTL_ADDR);
+		dmb();
+
+		/* wait to stabilize in standby mode */
+		udelay(10);
+
+		/* switch to 384 MHz */
+		val = readl(SCPLL_FSM_CTL_EXT_ADDR);
+		val = (val & (~0x1FF)) | (0x0A << 3) | SHOT_SWITCH;
+		writel(val, SCPLL_FSM_CTL_EXT_ADDR);
+		dmb();
+
+		ctl = readl(SCPLL_CTL_ADDR);
+		writel(ctl | PLLMODE_NORMAL, SCPLL_CTL_ADDR);
+		dmb();
+
+		/* wait for frequency switch to finish */
+		while (readl(SCPLL_STATUS_ADDR) & 0x1)
+			;
+
+		/* completion bit is not reliable for SHOT switch */
+		udelay(100);
+	}
+
 	/* write the new L val and switch mode */
-	regval = readl(SCPLL_FSM_CTL_EXT_ADDR);
-	regval &= ~(0x3f << 3);
-	regval |= (lval << 3);
-
-	regval &= ~(0x3 << 0);
-	regval |= (HOP_SWITCH << 0);
-	writel(regval, SCPLL_FSM_CTL_EXT_ADDR);
-
+	val = readl(SCPLL_FSM_CTL_EXT_ADDR);
+	val = (val & (~0x1FF)) | (lval << 3) | HOP_SWITCH;
+	writel(val, SCPLL_FSM_CTL_EXT_ADDR);
 	dmb();
 
-	/* put in normal mode */
-	regval = readl(SCPLL_CTL_ADDR);
-	regval |= 0x7;
-	writel(regval, SCPLL_CTL_ADDR);
-
+	ctl = readl(SCPLL_CTL_ADDR);
+	writel(ctl | PLLMODE_NORMAL, SCPLL_CTL_ADDR);
 	dmb();
 
 	/* wait for frequency switch to finish */
 	while (readl(SCPLL_STATUS_ADDR) & 0x1)
 		;
-
-	/* status bit seems to clear early, requires at least
-	 * ~8 microseconds to settle, using 100uS based on stability
-	 * tests across tempeperature/process  */
-	udelay(100);
-}
-
-static void scpll_apps_enable(bool state)
-{
-	uint32_t regval;
-
-	/* Wait for any frequency switches to finish. */
-	while (readl(SCPLL_STATUS_ADDR) & 0x1)
-		;
-
-	/* put the pll in standby mode */
-	regval = readl(SCPLL_CTL_ADDR);
-	regval &= ~(0x7);
-	regval |= (0x2);
-	writel(regval, SCPLL_CTL_ADDR);
-
-	dmb();
-
-	if (state) {
-		/* put the pll in normal mode */
-		regval = readl(SCPLL_CTL_ADDR);
-		regval |= (0x7);
-		writel(regval, SCPLL_CTL_ADDR);
-		udelay(200);
-	} else {
-		/* put the pll in power down mode */
-		regval = readl(SCPLL_CTL_ADDR);
-		regval &= ~(0x7);
-		writel(regval, SCPLL_CTL_ADDR);
-	}
-	udelay(drv_state.vdd_switch_time_us);
-}
-
-static void scpll_init(uint32_t lval)
-{
-	/* power down scpll */
-	writel(0x0, SCPLL_CTL_ADDR);
-
-	dmb();
-
-	/* set bypassnl, put into standby */
-	writel(0x00400002, SCPLL_CTL_ADDR);
-
-	/* set bypassnl, reset_n, full calibration */
-	writel(0x00600004, SCPLL_CTL_ADDR);
-
-	/* Ensure register write to initiate calibration has taken
-	effect before reading status flag */
-	dmb();
-
-	/* wait for cal_all_done */
-	while (readl(SCPLL_STATUS_ADDR) & 0x2)
-		;
-
-	/* power down scpll */
-	writel(0x0, SCPLL_CTL_ADDR);
-
-	/* switch scpll to desired freq */
-	scpll_set_freq(lval);
 }
 
 /* this is still a bit weird... */
@@ -342,8 +329,6 @@ int acpuclk_set_rate(unsigned long rate, int for_power_collapse)
 	      next->clk_sel, next->clk_cfg, next->sc_l_value);
 
 	if (next->clk_sel == SRC_SCPLL) {
-		if (cur->clk_sel != SRC_SCPLL)
-			scpll_apps_enable(1);
 		if (!IS_ACPU_STANDBY(cur))
 			select_clock(acpu_stby->clk_sel, acpu_stby->clk_cfg);
 		loops_per_jiffy = next->lpj;
@@ -354,7 +339,7 @@ int acpuclk_set_rate(unsigned long rate, int for_power_collapse)
 		if (cur->clk_sel == SRC_SCPLL) {
 			select_clock(acpu_stby->clk_sel, acpu_stby->clk_cfg);
 			select_clock(next->clk_sel, next->clk_cfg);
-			scpll_apps_enable(0);
+			scpll_power_down();
 		} else {
 			select_clock(next->clk_sel, next->clk_cfg);
 		}
@@ -438,14 +423,13 @@ static void __init acpuclk_init(void)
 	}
 
 	if (init_khz != speed->acpu_khz) {
-		/* Force over to standby clock so we can init the SCPLL
-		 * even if it was already running when we started.
+		/* Bootloader needs to have SCPLL operating, but we're
+		 * going to step over to the standby clock and make sure
+		 * we select the right frequency on SCPLL and then
+		 * step back to it, to make sure we're sane here.
 		 */
 		select_clock(acpu_stby->clk_sel, acpu_stby->clk_cfg);
-
-		scpll_init(0x14);
-
-		scpll_apps_enable(1);
+		scpll_power_down();
 		scpll_set_freq(speed->sc_l_value);
 		select_clock(SRC_SCPLL, 0);
 	}
