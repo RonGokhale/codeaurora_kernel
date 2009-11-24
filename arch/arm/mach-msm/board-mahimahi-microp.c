@@ -1105,7 +1105,7 @@ static int microp_lightsensor_read(uint16_t *adc_value,
 				break;
 			}
 		}
-		pr_info("%s: ADC value: 0x%X, level: %d #\n",
+		pr_debug("%s: ADC value: 0x%X, level: %d #\n",
 				__func__, *adc_value, *adc_level);
 	}
 
@@ -1373,6 +1373,11 @@ static int gsensor_read_acceleration(short *buf)
 	} else {
 		ret = i2c_read_block(client, MICROP_I2C_RCMD_GSENSOR_DATA,
 				     tmp, 6);
+		if (ret < 0) {
+			dev_err(&client->dev, "%s: i2c_read_block fail\n",
+				__func__);
+			return ret;
+		}
 		buf[0] = (short)(tmp[0] << 8 | tmp[1]);
 		buf[0] >>= 6;
 		buf[1] = (short)(tmp[2] << 8 | tmp[3]);
