@@ -245,6 +245,7 @@ msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 
 	mrq = host->curr.mrq;
 	BUG_ON(!mrq);
+	WARN_ON(!mrq->data);
 
 	if (!(result & DMOV_RSLT_VALID)) {
 		printk(KERN_ERR "msmsdcc: Invalid DataMover result\n");
@@ -793,12 +794,12 @@ msmsdcc_irq(int irq, void *dev_id)
 		if (!status)
 			break;
 
+		data = host->curr.data;
                 if (status & (MCI_CMDSENT | MCI_CMDRESPEND | MCI_CMDCRCFAIL |
                               MCI_CMDTIMEOUT) && host->curr.cmd) {
                         msmsdcc_do_cmdirq(host, status);
                 }
 
-		data = host->curr.data;
 		if (data) {
 			/* Check for data errors */
 			if (status & (MCI_DATACRCFAIL|MCI_DATATIMEOUT|
@@ -809,7 +810,8 @@ msmsdcc_irq(int irq, void *dev_id)
 					msm_dmov_stop_cmd(host->dma.channel,
 							  &host->dma.hdr, 0);
 				else {
-					msmsdcc_stop_data(host);
+					if (host->curr.data)
+						msmsdcc_stop_data(host);
 					if (!data->stop)
 						msmsdcc_request_end(host,
 								    data->mrq);
