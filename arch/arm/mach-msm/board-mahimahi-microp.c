@@ -191,6 +191,7 @@ struct microp_i2c_client_data {
 	int microp_is_suspend;
 	int auto_backlight_enabled;
 	uint8_t light_sensor_enabled;
+	uint8_t force_light_sensor_read;
 	uint8_t button_led_value;
 	int headset_is_in;
 	int is_hpin_pin_stable;
@@ -1036,10 +1037,11 @@ static int lightsensor_enable(void)
 	/* report an invalid value first to ensure we trigger an event
 	 * when adc_level is zero.
 	 */
-	input_report_abs(cdata->ls_input_dev, ABS_MISC, -1);
-	input_sync(cdata->ls_input_dev);
 	/* send current light sensor value when we enable */
 	disable_irq(client->irq);
+	input_report_abs(cdata->ls_input_dev, ABS_MISC, -1);
+	input_sync(cdata->ls_input_dev);
+	cdata->force_light_sensor_read = 1;
 	schedule_work(&cdata->work.work);
 
 	return 0;
@@ -1608,10 +1610,11 @@ static void microp_i2c_intr_work_func(struct work_struct *work)
 	}
 	pr_debug("intr_status=0x%02x\n", intr_status);
 	msleep(1);
-	if (intr_status & IRQ_LSENSOR) {
+	if ((intr_status & IRQ_LSENSOR) || cdata->force_light_sensor_read) {
 		ret = microp_lightsensor_read(&adc_value, &adc_level);
 		input_report_abs(cdata->ls_input_dev, ABS_MISC, (int)adc_level);
 		input_sync(cdata->ls_input_dev);
+		cdata->force_light_sensor_read = 0;
 	}
 
 	if (intr_status & IRQ_SDCARD) {
