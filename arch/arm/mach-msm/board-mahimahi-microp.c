@@ -1025,7 +1025,11 @@ static int lightsensor_enable(void)
 	client = private_microp_client;
 	cdata = i2c_get_clientdata(client);
 
-	gpio_direction_output(MAHIMAHI_GPIO_LS_EN_N, 0);
+	if (cdata->microp_is_suspend) {
+		pr_err("%s: abort, uP is going to suspend after #\n",
+		       __func__);
+		return -EIO;
+	}
 
 	ret = microp_i2c_auto_backlight_mode(client, 1);
 	if (ret < 0) {
@@ -1057,19 +1061,18 @@ static int lightsensor_disable(void)
 	client = private_microp_client;
 	cdata = i2c_get_clientdata(client);
 
-	if (cancel_work_sync(&cdata->work.work))
-		enable_irq(client->irq);
-
-	ret = microp_i2c_auto_backlight_mode(client, 0);
-	if (ret < 0) {
-		pr_err("%s: disable auto light sensor fail\n",
+	if (cdata->microp_is_suspend) {
+		pr_err("%s: abort, uP is going to suspend after #\n",
 		       __func__);
-		return ret;
+		return -EIO;
 	}
 
-	cdata->auto_backlight_enabled = 0;
-	gpio_direction_output(MAHIMAHI_GPIO_LS_EN_N, 1);
-
+	ret = microp_i2c_auto_backlight_mode(client, 0);
+	if (ret < 0)
+		pr_err("%s: disable auto light sensor fail\n",
+		       __func__);
+	else
+		cdata->auto_backlight_enabled = 0;
 	return 0;
 }
 
@@ -1638,6 +1641,7 @@ static void microp_i2c_intr_work_func(struct work_struct *work)
 			htc_35mm_key_event(keycode);
 		}
 	}
+
 	enable_irq(client->irq);
 }
 
@@ -1688,13 +1692,13 @@ static int microp_function_initialize(struct i2c_client *client)
 		dev_err(&client->dev, "failed on request gpio ls_on\n");
 		goto exit;
 	}
-	ret = gpio_direction_output(MAHIMAHI_GPIO_LS_EN_N, 1);
+	ret = gpio_direction_output(MAHIMAHI_GPIO_LS_EN_N, 0);
 	if (ret < 0) {
 		dev_err(&client->dev, "failed on gpio_direction_output"
 				"ls_on\n");
 		goto err_gpio_ls;
 	}
-	cdata->light_sensor_enabled = 0;
+	cdata->light_sensor_enabled = 1;
 
 	/* Headset */
 	for (i = 0; i < 6; i++) {
