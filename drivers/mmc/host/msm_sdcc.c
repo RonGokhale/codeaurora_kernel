@@ -1614,6 +1614,7 @@ msmsdcc_dbg_state_read(struct file *file, char __user *ubuf,
 		       msmsdcc_readl(host, MMCIDATACTRL));
 	i += scnprintf(buf + i, max - i, "DataLength : 0x%x\n", 
 		       msmsdcc_readl(host, MMCIDATALENGTH));
+	i += scnprintf(buf + i, max - i, "DmCh8Status : 0x%x\n", readl(DMOV_STATUS(8)));
 
 	return simple_read_from_buffer(ubuf, count, ppos, buf, i);
 }
