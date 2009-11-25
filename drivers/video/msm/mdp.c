@@ -426,30 +426,37 @@ int mdp_blit_and_wait(struct mdp_info *mdp, struct mdp_blit_req *req,
 	ret = mdp_ppp_blit(mdp, req,
 			src_file, src_start, src_len,
 			dst_file, dst_start, dst_len);
-	if (ret) {
+	if (unlikely(ret)) {
 		disable_mdp_irq(mdp, DL0_ROI_DONE);
 		return ret;
 	}
 	ret = mdp_ppp_wait(mdp);
-	if (ret) {
+	if (unlikely(ret)) {
 		printk(KERN_ERR "%s: failed!\n", __func__);
 
 		printk(KERN_ERR "flags: 0x%x\n", req->flags);
-		printk(KERN_ERR "src.format: 0x%x\n", req->src.format);
-		printk(KERN_ERR "src.width: %d\n", req->src.width);
-		printk(KERN_ERR "src.height: %d\n", req->src.height);
-		printk(KERN_ERR "src_rect.x: %d\n", req->src_rect.x);
-		printk(KERN_ERR "src_rect.y: %d\n", req->src_rect.y);
-		printk(KERN_ERR "src_rect.w: %d\n", req->src_rect.w);
-		printk(KERN_ERR "src_rect.h: %d\n", req->src_rect.h);
+		printk(KERN_ERR "src_start:  0x%08lx\n", src_start);
+		printk(KERN_ERR "src_len:    0x%08lx\n", src_len);
+		printk(KERN_ERR "src.offset: 0x%x\n",    req->src.offset);
+		printk(KERN_ERR "src.format: 0x%x\n",    req->src.format);
+		printk(KERN_ERR "src.width:  %d\n",      req->src.width);
+		printk(KERN_ERR "src.height: %d\n",      req->src.height);
+		printk(KERN_ERR "src_rect.x: %d\n",      req->src_rect.x);
+		printk(KERN_ERR "src_rect.y: %d\n",      req->src_rect.y);
+		printk(KERN_ERR "src_rect.w: %d\n",      req->src_rect.w);
+		printk(KERN_ERR "src_rect.h: %d\n",      req->src_rect.h);
 
-		printk(KERN_ERR "dst.format: 0x%x\n", req->dst.format);
-		printk(KERN_ERR "dst.width: %d\n", req->dst.width);
-		printk(KERN_ERR "dst.height: %d\n", req->dst.height);
-		printk(KERN_ERR "dst_rect.x: %d\n", req->dst_rect.x);
-		printk(KERN_ERR "dst_rect.y: %d\n", req->dst_rect.y);
-		printk(KERN_ERR "dst_rect.w: %d\n", req->dst_rect.w);
-		printk(KERN_ERR "dst_rect.h: %d\n", req->dst_rect.h);
+		printk(KERN_ERR "dst_start:  0x%08lx\n", dst_start);
+		printk(KERN_ERR "dst_len:    0x%08lx\n", dst_len);
+		printk(KERN_ERR "dst.offset: 0x%x\n",    req->dst.offset);
+		printk(KERN_ERR "dst.format: 0x%x\n",    req->dst.format);
+		printk(KERN_ERR "dst.width:  %d\n",      req->dst.width);
+		printk(KERN_ERR "dst.height: %d\n",      req->dst.height);
+		printk(KERN_ERR "dst_rect.x: %d\n",      req->dst_rect.x);
+		printk(KERN_ERR "dst_rect.y: %d\n",      req->dst_rect.y);
+		printk(KERN_ERR "dst_rect.w: %d\n",      req->dst_rect.w);
+		printk(KERN_ERR "dst_rect.h: %d\n",      req->dst_rect.h);
+
 		BUG();
 		return ret;
 	}
