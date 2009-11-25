@@ -406,9 +406,6 @@ s32 ard_close(s32 session_id)
 
 				/* invoke the state m/c */
 				rc = ard_state_control(session_id, dev_id);
-
-				mutex_unlock(&local_ard_state->
-					ard_state_machine_mutex);
 			} else
 				D("Ses Closed no teardown, ses %d, dev %d,"
 						 "%d\n", session_id, dev_id,
