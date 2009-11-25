@@ -39,6 +39,9 @@
 #include <linux/console.h>
 #include <linux/android_pmem.h>
 #include <linux/leds.h>
+#ifdef CONFIG_ARCH_QSD8X50
+#include <mach/dma_cache_ops.h>
+#endif
 
 #define MSM_FB_C
 #include "msm_fb.h"
@@ -80,6 +83,9 @@ u32 msm_fb_msg_level = 7;
 /* Setting mddi_msg_level to 8 prints out ALL messages */
 u32 mddi_msg_level = 5;
 
+/* Initial page protection setting */
+u32 mdp_fb_page_protection = MDP_FB_PAGE_PROTECTION_WRITECOMBINE;
+
 extern int32 mdp_block_power_cnt[MDP_MAX_BLOCK];
 extern unsigned long mdp_timer_duration;
 
@@ -99,6 +105,7 @@ static int msm_fb_suspend_sub(struct msm_fb_data_type *mfd);
 static int msm_fb_resume_sub(struct msm_fb_data_type *mfd);
 static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg);
+static int msm_fb_mmap(struct fb_info *info, struct vm_area_struct * vma);
 
 #ifdef MSM_FB_ENABLE_DBGFS
 
@@ -639,6 +646,61 @@ static int msm_fb_set_lut(struct fb_cmap *cmap, struct fb_info *info)
 	return 0;
 }
 
+/*
+ * Custom Framebuffer mmap() function for MSM driver.
+ * Differs from standard mmap() function by allowing for customized
+ * page-protection.
+ */
+static int msm_fb_mmap(struct fb_info *info, struct vm_area_struct * vma)
+{
+	/* Get frame buffer memory range. */
+	unsigned long start = info->fix.smem_start;
+	u32 len = PAGE_ALIGN((start & ~PAGE_MASK) + info->fix.smem_len);
+	unsigned long off = vma->vm_pgoff << PAGE_SHIFT;
+	if (off >= len) {
+		/* memory mapped io */
+		off -= len;
+		if (info->var.accel_flags) {
+			mutex_unlock(&info->lock);
+			return -EINVAL;
+		}
+		start = info->fix.mmio_start;
+		len = PAGE_ALIGN((start & ~PAGE_MASK) + info->fix.mmio_len);
+	}
+
+	/* Set VM flags. */
+	start &= PAGE_MASK;
+	if ((vma->vm_end - vma->vm_start + off) > len)
+		return -EINVAL;
+	off += start;
+	vma->vm_pgoff = off >> PAGE_SHIFT;
+	/* This is an IO map - tell maydump to skip this VMA */
+	vma->vm_flags |= VM_IO | VM_RESERVED;
+
+	/* Set VM page protection */
+	if (mdp_fb_page_protection == MDP_FB_PAGE_PROTECTION_WRITECOMBINE)
+		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+	else if (mdp_fb_page_protection ==
+			MDP_FB_PAGE_PROTECTION_WRITETHROUGHCACHE)
+		vma->vm_page_prot = pgprot_writethroughcache(vma->vm_page_prot);
+	else if (mdp_fb_page_protection ==
+			MDP_FB_PAGE_PROTECTION_WRITEBACKCACHE)
+		vma->vm_page_prot = pgprot_writebackcache(vma->vm_page_prot);
+	else if (mdp_fb_page_protection ==
+			MDP_FB_PAGE_PROTECTION_WRITEBACKWACACHE)
+		vma->vm_page_prot = pgprot_writebackwacache(vma->vm_page_prot);
+	else
+		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+
+	/* Remap the frame buffer I/O range */
+	if (io_remap_pfn_range(vma, vma->vm_start, off >> PAGE_SHIFT,
+				vma->vm_end - vma->vm_start,
+				vma->vm_page_prot))
+		return -EAGAIN;
+
+	return 0;
+}
+
 static struct fb_ops msm_fb_ops = {
 	.owner = THIS_MODULE,
 	.fb_open = msm_fb_open,
@@ -657,7 +719,7 @@ static struct fb_ops msm_fb_ops = {
 	.fb_rotate = NULL,
 	.fb_sync = NULL,	/* wait for blit idle, optional */
 	.fb_ioctl = msm_fb_ioctl,	/* perform fb specific ioctl (optional) */
-	.fb_mmap = NULL,
+	.fb_mmap = msm_fb_mmap,
 };
 
 static int msm_fb_register(struct msm_fb_data_type *mfd)
@@ -1319,23 +1381,335 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	return ret;
 }
 
+typedef void (*msm_dma_barrier_function_pointer) (unsigned long, unsigned long);
+
+/* Do the write barrier for a rectangle. */
+static inline void msm_fb_dma_barrier_for_rect(struct fb_info *info,
+			struct mdp_img *img, struct mdp_rect *rect,
+			msm_dma_barrier_function_pointer dma_barrier_fp)
+{
+	/*
+	 * Compute the start and end addresses of the rectangles.
+	 * NOTE: As currently implemented, the data between
+	 *       the end of one row and the start of the next is
+	 *       included in the address range rather than
+	 *       doing multiple calls for each row.
+	 */
+	char * const pmem_start = info->screen_base;
+	int bytes_per_pixel = mdp_get_bytes_per_pixel(img->format);
+	char * const start = pmem_start + img->offset +
+		(img->width * rect->y + rect->x) * bytes_per_pixel;
+	char * const end   = start +
+		(rect->h * img->width + rect->w) * bytes_per_pixel;
+
+	/* Call the appropriate barrier functions. */
+	(*dma_barrier_fp) ((unsigned long) start, (unsigned long) end);
+}
+
+
+/*
+ * Do the write barriers required to guarantee data is committed to RAM
+ * (from CPU cache or internal buffers) before a DMA operation starts.
+ */
+static void msm_fb_ensure_memory_coherency_before_dma(struct fb_info *info,
+		struct mdp_blit_req *req_list,
+		int req_list_count)
+ {
+#ifdef CONFIG_ARCH_QSD8X50
+	int i;
+
+	/*
+	 * Normally, do the requested barriers for each address
+	 * range that corresponds to a rectangle.
+	 *
+	 * But if at least one write barrier is requested for data
+	 * going to or from the device but no address range is
+	 * needed for that barrier, then do the barrier, but do it
+	 * only once, no matter how many requests there are.
+	 */
+	switch (mdp_fb_page_protection)	{
+	default:
+	case MDP_FB_PAGE_PROTECTION_NONCACHED:
+	case MDP_FB_PAGE_PROTECTION_WRITECOMBINE:
+		/*
+		 * The following barrier is only done at most once,
+		 * since further calls would be redundant.
+		 */
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_TODEVICE)) {
+				msm_dma_todevice_nc_pre();
+				break;
+			}
+		}
+		/*
+		 * The following barrier is only done at most once,
+		 * since further calls would be redundant.
+		 */
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_FROMDEVICE)) {
+				msm_dma_fromdevice_nc_pre();
+				break;
+			}
+		}
+		break;
+	case MDP_FB_PAGE_PROTECTION_WRITETHROUGHCACHE:
+		/*
+		 * The following barrier is only done at most once,
+		 * since further calls would be redundant.
+		 */
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_TODEVICE)) {
+				msm_dma_todevice_wt_pre();
+				break;
+			}
+		}
+		/*
+		 * The following barrier is only done at most once,
+		 * since further calls would be redundant.
+		 */
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_FROMDEVICE)) {
+				msm_dma_fromdevice_wt_pre();
+				break;
+			}
+		}
+		break;
+	case MDP_FB_PAGE_PROTECTION_WRITEBACKCACHE:
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_TODEVICE)) {
+				msm_fb_dma_barrier_for_rect(info,
+						&(req_list[i].src),
+						&(req_list[i].src_rect),
+						msm_dma_cb_todevice_wb_pre);
+				msm_fb_dma_barrier_for_rect(info,
+						&(req_list[i].dst),
+						&(req_list[i].dst_rect),
+						msm_dma_cb_todevice_wb_pre);
+			}
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_FROMDEVICE)) {
+				msm_fb_dma_barrier_for_rect(info,
+						&(req_list[i].dst),
+						&(req_list[i].dst_rect),
+						msm_dma_cb_fromdevice_wb_pre);
+			}
+		}
+		break;
+	case MDP_FB_PAGE_PROTECTION_WRITEBACKWACACHE:
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_TODEVICE)) {
+				msm_fb_dma_barrier_for_rect(info,
+						&(req_list[i].src),
+						&(req_list[i].src_rect),
+						msm_dma_cb_todevice_wbwa_pre);
+				msm_fb_dma_barrier_for_rect(info,
+						&(req_list[i].dst),
+						&(req_list[i].dst_rect),
+						msm_dma_cb_todevice_wbwa_pre);
+			}
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_FROMDEVICE)) {
+				msm_fb_dma_barrier_for_rect(info,
+						&(req_list[i].dst),
+						&(req_list[i].dst_rect),
+						msm_dma_cb_fromdevice_wbwa_pre);
+			}
+		}
+		break;
+	}
+#else
+	dmb();
+#endif
+}
+
+
+/*
+ * Do the write barriers required to guarantee data will be re-read from RAM by
+ * the CPU after a DMA operation ends.
+ */
+static void msm_fb_ensure_memory_coherency_after_dma(struct fb_info *info,
+		struct mdp_blit_req *req_list,
+		int req_list_count)
+{
+#ifdef CONFIG_ARCH_QSD8X50
+	int i;
+
+	switch (mdp_fb_page_protection)	{
+	default:
+	case MDP_FB_PAGE_PROTECTION_NONCACHED:
+	case MDP_FB_PAGE_PROTECTION_WRITECOMBINE:
+		/*
+		 * The following barrier is only done at most once,
+		 * since further calls would be redundant.
+		 */
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_TODEVICE)) {
+				msm_dma_todevice_nc_post();
+				break;
+			}
+		}
+		/*
+		 * The following barrier is only done at most once,
+		 * since further calls would be redundant.
+		 */
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_FROMDEVICE)) {
+				msm_dma_fromdevice_nc_post();
+				break;
+			}
+		}
+		break;
+	case MDP_FB_PAGE_PROTECTION_WRITETHROUGHCACHE:
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_TODEVICE))
+				msm_dma_todevice_wt_post();
+		}
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_FROMDEVICE)) {
+				msm_fb_dma_barrier_for_rect(info,
+						&(req_list[i].dst),
+						&(req_list[i].dst_rect),
+						msm_dma_cb_fromdevice_wt_post);
+			}
+		}
+		break;
+	case MDP_FB_PAGE_PROTECTION_WRITEBACKCACHE:
+		/*
+		 * The following barrier is only done at most once,
+		 * since further calls would be redundant.
+		 */
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_TODEVICE)) {
+				msm_dma_todevice_wb_post();
+				break;
+			}
+		}
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_FROMDEVICE)) {
+				msm_fb_dma_barrier_for_rect(info,
+						&(req_list[i].dst),
+						&(req_list[i].dst_rect),
+						msm_dma_cb_fromdevice_wb_post);
+			}
+		}
+		break;
+	case MDP_FB_PAGE_PROTECTION_WRITEBACKWACACHE:
+		/*
+		 * The following barrier is only done at most once,
+		 * since further calls would be redundant.
+		 */
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_TODEVICE)) {
+				msm_fb_dma_barrier_for_rect(info,
+						&(req_list[i].src),
+						&(req_list[i].src_rect),
+						msm_dma_cb_todevice_wbwa_post);
+				break;
+			}
+		}
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags &
+					MDP_NO_DMA_BARRIER_FROMDEVICE)) {
+				msm_fb_dma_barrier_for_rect(info,
+					&(req_list[i].dst),
+					&(req_list[i].dst_rect),
+					msm_dma_cb_fromdevice_wbwa_post);
+			}
+		}
+		break;
+	}
+#else
+	dmb();
+#endif
+}
+
+
 static int msmfb_blit(struct fb_info *info, void __user *p)
 {
-	struct mdp_blit_req req;
-	struct mdp_blit_req_list req_list;
-	int i;
-	int ret;
+	/*
+	 * CAUTION: The names of the struct types intentionally *DON'T* match
+	 * the names of the variables declared -- they appear to be swapped.
+	 * Read the code carefully and you should see that the variable names
+	 * make sense.
+	 */
+	const int MAX_LIST_WINDOW = 16;
+	struct mdp_blit_req req_list[MAX_LIST_WINDOW];
+	struct mdp_blit_req_list req_list_header;
 
-	if (copy_from_user(&req_list, p, sizeof(req_list)))
+	int count, i, req_list_count;
+
+	/* Get the count size for the total BLIT request. */
+	if (copy_from_user(&req_list_header, p, sizeof(req_list_header)))
 		return -EFAULT;
-
-	for (i = 0; i < req_list.count; i++) {
-		struct mdp_blit_req_list *list = (struct mdp_blit_req_list *)p;
-		if (copy_from_user(&req, &list->req[i], sizeof(req)))
+	p += sizeof(req_list_header);
+	count = req_list_header.count;
+	while (count > 0) {
+		/*
+		 * Access the requests through a narrow window to decrease copy
+		 * overhead and make larger requests accessible to the
+		 * coherency management code.
+		 * NOTE: The window size is intended to be larger than the
+		 *       typical request size, but not require more than 2
+		 *       kbytes of stack storage.
+		 */
+		req_list_count = count;
+		if (req_list_count > MAX_LIST_WINDOW)
+			req_list_count = MAX_LIST_WINDOW;
+		if (copy_from_user(&req_list, p,
+				sizeof(struct mdp_blit_req)*req_list_count))
 			return -EFAULT;
-		ret = mdp_blit(info, &req);
-		if (ret)
-			return ret;
+
+		/*
+		 * Ensure that any data CPU may have previously written to
+		 * internal state (but not yet committed to memory) is
+		 * guaranteed to be committed to memory now.
+		 */
+		msm_fb_ensure_memory_coherency_before_dma(info,
+				req_list, req_list_count);
+
+		/*
+		 * Do the blit DMA, if required -- returning early only if
+		 * there is a failure.
+		 */
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags & MDP_NO_BLIT)) {
+				/* Do the actual blit. */
+				int ret = mdp_blit(info, &(req_list[i]));
+
+				/*
+				 * Note that early returns don't guarantee
+				 * memory coherency.
+				 */
+				if (ret)
+					return ret;
+			}
+		}
+
+		/*
+		 * Ensure that CPU cache and other internal CPU state is
+		 * updated to reflect any change in memory modified by MDP blit
+		 * DMA.
+		 */
+		msm_fb_ensure_memory_coherency_after_dma(info,
+				req_list,
+				req_list_count);
+
+		/* Go to next window of requests. */
+		count -= req_list_count;
+		p += sizeof(struct mdp_blit_req)*req_list_count;
 	}
 	return 0;
 }
@@ -1352,7 +1726,7 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	struct fb_cursor cursor;
 	struct fb_cmap cmap;
 	struct mdp_histogram hist;
-
+	struct mdp_page_protection fb_page_protection;
 	int ret = 0;
 
 	if (!mfd->op_enable)
@@ -1431,8 +1805,48 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		mutex_unlock(&msm_fb_ioctl_hist_sem);
 		break;
 
+	case MSMFB_GET_PAGE_PROTECTION:
+		fb_page_protection.page_protection = mdp_fb_page_protection;
+		ret = copy_to_user(argp, &fb_page_protection,
+				sizeof(fb_page_protection));
+		if (ret)
+				return ret;
+		break;
+
+	case MSMFB_SET_PAGE_PROTECTION:
+#ifdef CONFIG_ARCH_QSD8X50
+		ret = copy_from_user(&fb_page_protection, argp,
+				sizeof(fb_page_protection));
+		if (ret)
+				return ret;
+
+		/* Validate the proposed page protection settings. */
+		switch (fb_page_protection.page_protection)	{
+		case MDP_FB_PAGE_PROTECTION_NONCACHED:
+		case MDP_FB_PAGE_PROTECTION_WRITECOMBINE:
+		case MDP_FB_PAGE_PROTECTION_WRITETHROUGHCACHE:
+		/* Write-back cache (read allocate)  */
+		case MDP_FB_PAGE_PROTECTION_WRITEBACKCACHE:
+		/* Write-back cache (write allocate) */
+		case MDP_FB_PAGE_PROTECTION_WRITEBACKWACACHE:
+			mdp_fb_page_protection =
+				fb_page_protection.page_protection;
+			break;
+		default:
+			ret = -EINVAL;
+			break;
+		}
+#else
+		/*
+		 * Don't allow caching until 7k DMA cache operations are
+		 * available.
+		 */
+		ret = -EINVAL;
+#endif
+		break;
+
 	default:
-		MSM_FB_INFO("MDP: unknown ioctl received!\n");
+		MSM_FB_INFO("MDP: unknown ioctl (cmd=%d) received!\n", cmd);
 		ret = -EINVAL;
 		break;
 	}
