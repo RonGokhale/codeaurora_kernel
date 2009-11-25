@@ -19,6 +19,7 @@ obj-y += mdp_hw_init.o
 obj-y += mdp_ppp.o
 ifeq ($(CONFIG_FB_MSM_MDP31),y)
 obj-y += mdp_ppp_v31.o
+obj-$(CONFIG_MDP_PPP_ASYNC_OP) += mdp_ppp_dq.o
 else
 obj-y += mdp_ppp_v20.o
 endif

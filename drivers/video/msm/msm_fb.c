@@ -1354,8 +1354,7 @@ int msm_fb_resume_sw_refresher(struct msm_fb_data_type *mfd)
 	return 0;
 }
 
-void mdp_ppp_put_img(struct mdp_blit_req *req, struct file *p_src_file,
-		struct file *p_dst_file)
+void mdp_ppp_put_img(struct file *p_src_file, struct file *p_dst_file)
 {
 #ifdef CONFIG_ANDROID_PMEM
 	if (p_src_file)
@@ -1365,6 +1364,55 @@ void mdp_ppp_put_img(struct mdp_blit_req *req, struct file *p_src_file,
 #endif
 }
 
+#ifdef CONFIG_MDP_PPP_ASYNC_OP
+static int msmfb_blit(struct fb_info *info, void __user *p)
+{
+	struct mdp_blit_req_list req_list;
+	struct mdp_blit_req_list *list;
+	struct mdp_ppp_djob *job;
+	int i, ret = 0;
+
+	if (unlikely(copy_from_user(&req_list, p, sizeof(req_list))))
+		return -EFAULT;
+
+	for (i = 0; i < req_list.count; i++) {
+
+		/* create a new display job */
+		job = mdp_ppp_new_djob();
+		if (unlikely(!job))
+			return -ENOMEM;
+
+		list = (struct mdp_blit_req_list *)p;
+		if (copy_from_user(&job->req, &list->req[i],
+				sizeof(struct mdp_blit_req))) {
+			kfree(job);
+			return -EFAULT;
+		}
+
+		if (unlikely(job->req.src_rect.h == 0 ||
+				job->req.src_rect.w == 0)) {
+			printk(KERN_ERR "mpd_ppp: src img of zero size!\n");
+			kfree(job);
+			return -EINVAL;
+		}
+
+		if (unlikely(job->req.dst_rect.h == 0 ||
+				job->req.dst_rect.w == 0)) {
+			kfree(job);
+			return 0;
+		}
+
+		/* blit request */
+		ret = mdp_ppp_blit(info, &job->req, &job->p_src_file,
+				&job->p_dst_file);
+		if (ret) {
+			kfree(job);
+			return ret;
+		}
+	}
+	return 0;
+}
+#else
 int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 {
 	int ret;
@@ -1377,7 +1425,7 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 		return 0;
 
 	ret = mdp_ppp_blit(info, req, &p_src_file, &p_dst_file);
-	mdp_ppp_put_img(req, p_src_file, p_dst_file);
+	mdp_ppp_put_img(p_src_file, p_dst_file);
 	return ret;
 }
 
@@ -1713,6 +1761,7 @@ static int msmfb_blit(struct fb_info *info, void __user *p)
 	}
 	return 0;
 }
+#endif
 
 DECLARE_MUTEX(msm_fb_ioctl_ppp_sem);
 DEFINE_MUTEX(msm_fb_ioctl_lut_sem);
@@ -1739,6 +1788,14 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		up(&msm_fb_ioctl_ppp_sem);
 
 		break;
+
+#ifdef CONFIG_MDP_PPP_ASYNC_OP
+	case MSMFB_MDP_SYNC:
+		down(&msm_fb_ioctl_ppp_sem);
+		mdp_ppp_wait();
+		up(&msm_fb_ioctl_ppp_sem);
+		break;
+#endif
 
 	case MSMFB_GRP_DISP:
 #ifdef CONFIG_FB_MSM_MDP22

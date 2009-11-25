@@ -2180,6 +2180,12 @@ config FB_MSM_MDP40
 	  Say Y here if this is msm7x30 variant platform.
 endchoice
 
+config MDP_PPP_ASYNC_OP
+	depends on FB_MSM_MDP31
+	bool "MDP PPP Asynchronous Operations"
+	default n
+	help
+	Say Y here to enable async blit operation.
 
 config FB_MSM_EBI2
 	bool
