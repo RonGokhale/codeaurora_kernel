@@ -75,6 +75,7 @@
 
 #include "mdp.h"
 #include "msm_fb.h"
+#include "mdp4.h"
 
 #ifdef CONFIG_FB_MSM_MDP40
 #define LCDC_BASE	0xC0000
@@ -82,13 +83,10 @@
 #define LCDC_BASE	0xE0000
 #endif
 
-extern spinlock_t mdp_spin_lock;
-#ifndef CONFIG_FB_MSM_MDP40
-extern uint32 mdp_intr_mask;
-#endif
-
 int first_pixel_start_x;
 int first_pixel_start_y;
+
+static struct mdp4_overlay_pipe lcdc_pipe;
 
 int mdp_lcdc_on(struct platform_device *pdev)
 {
@@ -124,10 +122,11 @@ int mdp_lcdc_on(struct platform_device *pdev)
 	int hsync_end_x;
 	uint8 *buf;
 	int bpp;
-	uint32 dma2_cfg_reg;
+	uint32 format;
 	struct fb_info *fbi;
 	struct fb_var_screeninfo *var;
 	struct msm_fb_data_type *mfd;
+	struct mdp4_overlay_pipe *pipe;
 	int ret;
 
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
@@ -146,56 +145,38 @@ int mdp_lcdc_on(struct platform_device *pdev)
 
 	bpp = fbi->var.bits_per_pixel / 8;
 	buf = (uint8 *) fbi->fix.smem_start;
-	buf += fbi->var.xoffset * bpp + fbi->var.yoffset * fbi->fix.line_length;
-
-	dma2_cfg_reg = DMA_PACK_ALIGN_LSB | DMA_DITHER_EN | DMA_OUT_SEL_LCDC;
-
-	if (mfd->fb_imgType == MDP_BGR_565)
-		dma2_cfg_reg |= DMA_PACK_PATTERN_BGR;
-	else
-		dma2_cfg_reg |= DMA_PACK_PATTERN_RGB;
+	buf += fbi->var.xoffset * bpp +
+		fbi->var.yoffset * fbi->fix.line_length;
 
 	if (bpp == 2)
-		dma2_cfg_reg |= DMA_IBUF_FORMAT_RGB565;
+		format = MDP_RGB_565;
 	else if (bpp == 3)
-		dma2_cfg_reg |= DMA_IBUF_FORMAT_RGB888;
+		format = MDP_RGB_888;
 	else
-		dma2_cfg_reg |= DMA_IBUF_FORMAT_xRGB8888_OR_ARGB8888;
+		format = MDP_ARGB_8888;
 
-	switch (mfd->panel_info.bpp) {
-	case 24:
-		dma2_cfg_reg |= DMA_DSTC0G_8BITS |
-		    DMA_DSTC1B_8BITS | DMA_DSTC2R_8BITS;
-		break;
+	pipe = &lcdc_pipe;
+	memset(pipe, 0, sizeof(*pipe));
 
-	case 18:
-		dma2_cfg_reg |= DMA_DSTC0G_6BITS |
-		    DMA_DSTC1B_6BITS | DMA_DSTC2R_6BITS;
-		break;
+	mdp4_overlay_format_to_pipe(format, pipe);
 
-	case 16:
-		dma2_cfg_reg |= DMA_DSTC0G_6BITS |
-		    DMA_DSTC1B_5BITS | DMA_DSTC2R_5BITS;
-		break;
+	/* use RGB1 pipe */
+	pipe->pipe_type = OVERLAY_TYPE_RGB;
+	pipe->pipe_num = OVERLAY_PIPE_RGB1;
+	pipe->mixer_stage  = MDP4_MIXER_STAGE_BASE;
+	pipe->mixer_num  = MDP4_MIXER0;
+	pipe->src_height = fbi->var.yres;
+	pipe->src_width = fbi->var.xres;
+	pipe->src_y = 0;
+	pipe->src_x = 0;
+	pipe->src_addr[0] = (uint32) buf;
+	pipe->y_stride[0] = fbi->fix.line_length;
 
-	default:
-		printk(KERN_ERR "mdp lcdc can't support format %d bpp!\n",
-		       mfd->panel_info.bpp);
-		return -ENODEV;
-	}
+	mdp4_overlay_rgb_setup(pipe);
 
-	/* DMA register config */
+	mdp4_mixer_stage_setup(pipe);
 
-	/* starting address */
-	MDP_OUTP(MDP_BASE + 0x90008, (uint32) buf);
-	/* active window width and height */
-	MDP_OUTP(MDP_BASE + 0x90004, ((fbi->var.yres) << 16) | (fbi->var.xres));
-	/* buffer ystride */
-	MDP_OUTP(MDP_BASE + 0x9000c, fbi->fix.line_length);
-	/* x/y coordinate = always 0 for lcdc */
-	MDP_OUTP(MDP_BASE + 0x90010, 0);
-	/* dma config */
-	MDP_OUTP(MDP_BASE + 0x90000, dma2_cfg_reg);
+	mdp4_overlayproc_cfg(pipe);
 
 	/*
 	 * LCDC timing setting
@@ -248,12 +229,19 @@ int mdp_lcdc_on(struct platform_device *pdev)
 		active_v_end = 0;
 	}
 
+
+#ifdef CONFIG_FB_MSM_MDP40
+	hsync_polarity = 1;
+	vsync_polarity = 1;
+	lcdc_underflow_clr |= 0x80000000;	/* enable recovery */
+#else
 	hsync_polarity = 0;
 	vsync_polarity = 0;
+#endif
 	data_en_polarity = 0;
 
 	ctrl_polarity =
-	    (hsync_polarity << 2) | (vsync_polarity << 1) | (hsync_polarity);
+	    (data_en_polarity << 2) | (vsync_polarity << 1) | (hsync_polarity);
 
 	MDP_OUTP(MDP_BASE + LCDC_BASE + 0x4, hsync_ctrl);
 	MDP_OUTP(MDP_BASE + LCDC_BASE + 0x8, vsync_period);
@@ -272,7 +260,7 @@ int mdp_lcdc_on(struct platform_device *pdev)
 	ret = panel_next_on(pdev);
 	if (ret == 0) {
 		/* enable LCDC block */
-		MDP_OUTP(MDP_BASE + 0xE0000, 1);
+		MDP_OUTP(MDP_BASE + LCDC_BASE, 1);
 		mdp_pipe_ctrl(MDP_DMA2_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	}
 	/* MDP cmd block disable */
@@ -284,6 +272,7 @@ int mdp_lcdc_on(struct platform_device *pdev)
 int mdp_lcdc_off(struct platform_device *pdev)
 {
 	int ret = 0;
+	struct mdp4_overlay_pipe *pipe;
 
 	/* MDP cmd block enable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
@@ -297,44 +286,46 @@ int mdp_lcdc_off(struct platform_device *pdev)
 	/* delay to make sure the last frame finishes */
 	mdelay(100);
 
+	/* dis-engage rgb0 from mixer */
+	pipe = &lcdc_pipe;
+	pipe->mixer_stage  = MDP4_MIXER_STAGE_NONE;
+	mdp4_mixer_stage_setup(pipe);
+
 	return ret;
 }
 
-void mdp_lcdc_update(struct msm_fb_data_type *mfd)
+void mdp4_lcdc_overlay(struct msm_fb_data_type *mfd)
 {
 	struct fb_info *fbi = mfd->fbi;
 	uint8 *buf;
 	int bpp;
 	unsigned long flag;
+	struct mdp4_overlay_pipe *pipe;
 
 	if (!mfd->panel_power_on)
 		return;
+
 
 	/* no need to power on cmd block since it's lcdc mode */
 	bpp = fbi->var.bits_per_pixel / 8;
 	buf = (uint8 *) fbi->fix.smem_start;
 	buf += fbi->var.xoffset * bpp +
 		fbi->var.yoffset * fbi->fix.line_length;
-	/* starting address */
-	MDP_OUTP(MDP_BASE + 0x90008, (uint32) buf);
 
-	/* enable LCDC irq */
+	pipe = &lcdc_pipe;
+	pipe->src_addr[0] = (uint32) buf;
+	mdp4_overlay_rgb_setup(pipe);
+	mdp4_overlay_reg_flush(0x11); /* rgb1 and mixer0 */
+
+	/* enable irq */
 	spin_lock_irqsave(&mdp_spin_lock, flag);
-	mdp_enable_irq(MDP_DMA2_TERM);
+	mdp_enable_irq(MDP_OVERLAY0_TERM);
 	INIT_COMPLETION(mfd->dma->comp);
 	mfd->dma->waiting = TRUE;
-#ifdef CONFIG_FB_MSM_MDP40
-	/*
-	 * mdp4 has different interrupt mechanism
-	 * and it will be add later.
-	 */
-#else
-	outp32(MDP_INTR_CLEAR, LCDC_FRAME_START);
-	mdp_intr_mask |= LCDC_FRAME_START;
+	outp32(MDP_INTR_CLEAR, INTR_OVERLAY0_DONE);
+	mdp_intr_mask |= INTR_OVERLAY0_DONE;
 	outp32(MDP_INTR_ENABLE, mdp_intr_mask);
-#endif
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
-
 	wait_for_completion_killable(&mfd->dma->comp);
-	mdp_disable_irq(MDP_DMA2_TERM);
+	mdp_disable_irq(MDP_OVERLAY0_TERM);
 }
