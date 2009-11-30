@@ -425,15 +425,12 @@ static void samsung_oled_set_gamma_val(int val)
 
 static int samsung_oled_panel_init(struct msm_lcdc_panel_ops *ops)
 {
-	int i;
-
 	pr_info("%s: +()\n", __func__);
 	mutex_lock(&panel_lock);
 
 	clk_enable(spi_clk);
-	for (i = 0; i < ARRAY_SIZE(samsung_oled_init_table); i++)
-		lcm_writeb(samsung_oled_init_table[i].reg,
-			   samsung_oled_init_table[i].val);
+	/* Set the gamma write target to 4, leave the current gamma set at 2 */
+	lcm_writeb(0x39, 0x24);
 	clk_disable(spi_clk);
 
 	mutex_unlock(&panel_lock);
@@ -458,15 +455,15 @@ static int samsung_oled_panel_unblank(struct msm_lcdc_panel_ops *ops)
 
 	clk_enable(spi_clk);
 
-	lcm_writeb(0x1d, 0xa0);
 	for (i = 0; i < ARRAY_SIZE(samsung_oled_init_table); i++)
 		lcm_writeb(samsung_oled_init_table[i].reg,
 			   samsung_oled_init_table[i].val);
+	lcm_writew(0xef, 0xd0e8);
+	lcm_writeb(0x1d, 0xa0);
 	table_sel_idx = 0;
 	gamma_table_bank_select();
 	samsung_oled_set_gamma_val(last_val);
-	msleep(200);
-	lcm_writew(0xef, 0xd0e8);
+	msleep(250);
 	lcm_writeb(0x14, 0x03);
 	clk_disable(spi_clk);
 
@@ -482,7 +479,8 @@ static int samsung_oled_panel_blank(struct msm_lcdc_panel_ops *ops)
 	mutex_lock(&panel_lock);
 
 	clk_enable(spi_clk);
-	lcm_writeb(0x14, 0x1);
+	lcm_writeb(0x14, 0x0);
+	mdelay(1);
 	lcm_writeb(0x1d, 0xa1);
 	clk_disable(spi_clk);
 	msleep(200);
