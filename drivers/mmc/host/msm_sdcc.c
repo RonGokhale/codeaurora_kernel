@@ -53,7 +53,7 @@
 	pr_debug("%s: %s: " fmt, mmc_hostname(host->mmc), __func__ , args)
 
 #define IRQ_DEBUG 0
-#define BUSCLK_PWRSAVE 0
+#define BUSCLK_PWRSAVE 1
 
 #if defined(CONFIG_DEBUG_FS)
 static void msmsdcc_dbg_createhost(struct msmsdcc_host *);
@@ -110,7 +110,6 @@ msmsdcc_disable_clocks(struct msmsdcc_host *host, int deferr)
 		mod_timer(&host->busclk_timer, jiffies + BUSCLK_TIMEOUT);
 	} else {
 		del_timer_sync(&host->busclk_timer);
-//		dev_info(mmc_dev(host->mmc), "Immediate clock shutdown\n");
 		clk_disable(host->clk);
 		clk_disable(host->pclk);
 		host->clks_on = 0;
