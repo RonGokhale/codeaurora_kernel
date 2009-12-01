@@ -39,6 +39,10 @@
 #include <asm/mach/mmc.h>
 #include <mach/htc_35mm_jack.h>
 #include <asm/setup.h>
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
+#include <linux/mutex.h>
+#include <linux/jiffies.h>
 
 #include "board-mahimahi.h"
 
@@ -106,6 +110,72 @@
 
 /* Check pattern, to check if ALS has been calibrated */
 #define ALS_CALIBRATED	0x6DA5
+
+#define DEBUG_BMA150  /*STOPSHIP turn logging off before ship */
+#ifdef DEBUG_BMA150
+/* Debug logging of accelleration data */
+#define GSENSOR_LOG_MAX 2048  /* needs to be power of 2 */
+#define GSENSOR_LOG_MASK (GSENSOR_LOG_MAX - 1)
+
+struct gsensor_log {
+	ktime_t timestamp;
+	short x;
+	short y;
+	short z;
+};
+
+static DEFINE_MUTEX(gsensor_log_lock);
+static struct gsensor_log gsensor_log[GSENSOR_LOG_MAX];
+static unsigned gsensor_log_head;
+static unsigned gsensor_log_tail;
+
+void gsensor_log_status(ktime_t time, short x, short y, short z)
+{
+	unsigned n;
+	mutex_lock(&gsensor_log_lock);
+	n = gsensor_log_head;
+	gsensor_log[n].timestamp = time;
+	gsensor_log[n].x = x;
+	gsensor_log[n].y = y;
+	gsensor_log[n].z = z;
+	n = (n + 1) & GSENSOR_LOG_MASK;
+	if (n == gsensor_log_tail)
+		gsensor_log_tail = (gsensor_log_tail + 1) & GSENSOR_LOG_MASK;
+	gsensor_log_head = n;
+	mutex_unlock(&gsensor_log_lock);
+}
+
+static int gsensor_log_print(struct seq_file *sf, void *private)
+{
+	unsigned n;
+
+	mutex_lock(&gsensor_log_lock);
+	seq_printf(sf, "timestamp                  X      Y      Z\n");
+	for (n = gsensor_log_tail;
+	     n != gsensor_log_head;
+	     n = (n + 1) & GSENSOR_LOG_MASK) {
+		seq_printf(sf, "%10d.%010d %6d %6d %6d\n",
+			   gsensor_log[n].timestamp.tv.sec,
+			   gsensor_log[n].timestamp.tv.nsec,
+			   gsensor_log[n].x, gsensor_log[n].y,
+			   gsensor_log[n].z);
+	}
+	mutex_unlock(&gsensor_log_lock);
+	return 0;
+}
+
+static int gsensor_log_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, gsensor_log_print, NULL);
+}
+
+static struct file_operations gsensor_log_fops = {
+	.open = gsensor_log_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+#endif /* def DEBUG_BMA150 */
 
 static int microp_headset_has_mic(void);
 static int microp_enable_headset_plug_event(void);
@@ -1391,9 +1461,10 @@ static int gsensor_read_acceleration(short *buf)
 		buf[2] >>= 6;
 	}
 
-	pr_debug("%s x = %x y = %x, z = %x\n", __func__,
-	       buf[0], buf[1], buf[2]);
-
+#ifdef DEBUG_BMA150
+	/* Log this to debugfs */
+	gsensor_log_status(ktime_get(), buf[0], buf[1], buf[2]);
+#endif
 	return 1;
 }
 
@@ -1954,7 +2025,9 @@ static int microp_i2c_probe(struct i2c_client *client,
 				__func__);
 		goto err_register_bma150;
 	}
-
+#ifdef DEBUG_BMA150
+	debugfs_create_file("gsensor_log", 0444, NULL, NULL, &gsensor_log_fops);
+#endif
 	/* Setup IRQ handler */
 	INIT_WORK(&cdata->work.work, microp_i2c_intr_work_func);
 	cdata->work.client = client;
