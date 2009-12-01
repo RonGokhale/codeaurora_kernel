@@ -77,23 +77,23 @@ static char *mahimahi_usb_functions[] = {
 
 static struct msm_hsusb_product mahimahi_usb_products[] = {
 	{
-		.product_id     = 0x0c01,
+		.product_id     = 0x4e11,
 		.functions      = 0x00000001, /* "usb_mass_storage" only */
 	},
 	{
-		.product_id     = 0x0c02,
+		.product_id     = 0x4e12,
 		.functions      = 0x00000003, /* "usb_mass_storage" and "adb" */
 	},
 	{
-		.product_id     = 0x0c07,
+		.product_id     = 0x4e17,
 		.functions      = 0x00000007, /* ums, usb, diag */
 	},
 	{
-		.product_id     = 0x0c04,
+		.product_id     = 0x4e14,
 		.functions      = 0x0000000b, /* ums, adb, fserial */
 	},
 	{
-		.product_id     = 0x0c09,
+		.product_id     = 0x4e19,
 		.functions      = 0x0000000f, /* ums, adb, diag, fserial */
 	},
 };
@@ -150,11 +150,11 @@ static struct msm_hsusb_platform_data msm_hsusb_pdata = {
 	.phy_reset		= mahimahi_usb_phy_reset,
 	.hw_reset		= mahimahi_usb_hw_reset,
 	.usb_connected		= notify_usb_connected,
-	.vendor_id		= 0x0bb4,
-	.product_id		= 0x0c02,
+	.vendor_id		= 0x18d1,
+	.product_id		= 0x4e12,
 	.version		= 0x0100,
-	.product_name		= "Android Phone",
-	.manufacturer_name	= "HTC",
+	.product_name		= "Nexus One",
+	.manufacturer_name	= "Google, Inc.",
 
 	.functions		= mahimahi_usb_functions,
 	.num_functions		= ARRAY_SIZE(mahimahi_usb_functions),
@@ -165,8 +165,8 @@ static struct msm_hsusb_platform_data msm_hsusb_pdata = {
 static struct usb_mass_storage_platform_data mass_storage_pdata = {
 	.nluns		= 1,
 	.buf_size	= 16384,
-	.vendor		= "Google",
-	.product	= "Android Phone",
+	.vendor		= "Google, Inc.",
+	.product	= "Nexus One",
 	.release	= 0x0100,
 };
 
