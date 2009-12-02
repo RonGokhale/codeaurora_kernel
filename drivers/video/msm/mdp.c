@@ -641,11 +641,15 @@ irqreturn_t mdp_isr(int irq, void *ptr)
 		}
 		/* PPP Complete */
 		if (mdp_interrupt & MDP_PPP_DONE) {
+#ifdef CONFIG_MDP_PPP_ASYNC_OP
+			mdp_ppp_djob_done();
+#else
 			mdp_pipe_ctrl(MDP_PPP_BLOCK, MDP_BLOCK_POWER_OFF, TRUE);
 			if (mdp_ppp_waiting) {
 				mdp_ppp_waiting = FALSE;
 				complete(&mdp_ppp_comp);
 			}
+#endif
 		}
 	} while (1);
 
@@ -670,6 +674,9 @@ static void mdp_drv_init(void)
 	mdp_pipe_ctrl_wq = create_singlethread_workqueue("mdp_pipe_ctrl_wq");
 	INIT_DELAYED_WORK(&mdp_pipe_ctrl_worker,
 			  mdp_pipe_ctrl_workqueue_handler);
+#ifdef CONFIG_MDP_PPP_ASYNC_OP
+	mdp_ppp_dq_init();
+#endif
 
 	/* initialize semaphore */
 	init_completion(&mdp_ppp_comp);

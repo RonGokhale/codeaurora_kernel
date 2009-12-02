@@ -31,6 +31,9 @@
 #define MSMFB_SET_PAGE_PROTECTION _IOW(MSMFB_IOCTL_MAGIC, 139, \
 					struct mdp_page_protection)
 
+/* new ioctl for apps to sync up with the mdp */
+#define MSMFB_MDP_SYNC _IOR(MSMFB_IOCTL_MAGIC, 140, unsigned int)
+
 #define MDP_IMGTYPE2_START 0x10000
 enum {
 	MDP_RGB_565,      /* RGB 565 planer */

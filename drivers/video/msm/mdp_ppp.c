@@ -1120,7 +1120,11 @@ struct mdp_blit_req *req, struct file *p_src_file, struct file *p_dst_file)
 		 (dest0_ystride << 16 | dest0_ystride));
 
 	flush_imgs(req, inpBpp, iBuf->bpp, p_src_file, p_dst_file);
+#ifdef CONFIG_MDP_PPP_ASYNC_OP
+	mdp_ppp_process_curr_djob();
+#else
 	mdp_pipe_kickoff(MDP_PPP_TERM, mfd);
+#endif
 }
 
 #define MDP_IS_IMGTYPE_BAD(x) (((x) >= MDP_IMGTYPE_LIMIT) && \

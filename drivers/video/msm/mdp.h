@@ -46,6 +46,10 @@
 
 #include "msm_fb_panel.h"
 
+#ifdef CONFIG_MDP_PPP_ASYNC_OP
+#include "mdp_ppp_dq.h"
+#endif
+
 #ifdef BIT
 #undef BIT
 #endif
@@ -102,7 +106,13 @@ typedef struct mdpImg_ {
 	int    sp_value;        /* sharpening strength */
 } MDPIMG;
 
+#ifdef CONFIG_MDP_PPP_ASYNC_OP
+#define MDP_OUTP(addr, data)	mdp_ppp_outdw((uint32_t)(addr),	\
+					 (uint32_t)(data))
+#else
 #define MDP_OUTP(addr, data) outpdw((addr), (data))
+#endif
+
 #define MDP_KTIME2USEC(kt) (kt.tv.sec*1000000 + kt.tv.nsec/1000)
 
 #define MDP_BASE msm_mdp_base
