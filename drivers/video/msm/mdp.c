@@ -175,9 +175,16 @@ static int mdp_wait(struct mdp_info *mdp, uint32_t mask, wait_queue_head_t *wq)
 
 	spin_lock_irqsave(&mdp->lock, irq_flags);
 	if (mdp_irq_mask & mask) {
-		locked_disable_mdp_irq(mdp, mask);
 		pr_warning("%s: timeout waiting for mdp to complete 0x%x\n",
 			   __func__, mask);
+		printk("GLBL_CLK_ENA: %08X\n", readl(MSM_CLK_CTL_BASE + 0x0000));
+		printk("GLBL_CLK_STATE: %08X\n", readl(MSM_CLK_CTL_BASE + 0x0004));
+		printk("GLBL_SLEEP_EN: %08X\n", readl(MSM_CLK_CTL_BASE + 0x001C));
+		printk("GLBL_CLK_ENA_2: %08X\n", readl(MSM_CLK_CTL_BASE + 0x0220));
+		printk("GLBL_CLK_STATE_2: %08X\n", readl(MSM_CLK_CTL_BASE + 0x0224));
+		printk("GLBL_CLK_SLEEP_EN_2: %08X\n", readl(MSM_CLK_CTL_BASE + 0x023C));
+		mdp_ppp_dump_debug(mdp);
+		locked_disable_mdp_irq(mdp, mask);
 		ret = -ETIMEDOUT;
 	} else {
 //		pr_info("%s: SUCCESS waiting for 0x%x\n", __func__, mask);

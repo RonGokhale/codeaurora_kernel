@@ -68,6 +68,8 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 		 unsigned long src_len, struct file *dst_file,
 		 unsigned long dst_start, unsigned long dst_len);
 
+void mdp_ppp_dump_debug(const struct mdp_info *mdp);
+
 #define mdp_writel(mdp, value, offset) writel(value, mdp->base + offset)
 #define mdp_readl(mdp, offset) readl(mdp->base + offset)
 
@@ -195,6 +197,11 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 #define MDP_TFETCH_TILE_COUNT            ( 0x20010)
 #define MDP_TFETCH_FETCH_COUNT           ( 0x20014)
 #define MDP_TFETCH_CONSTANT_COLOR        ( 0x20040)
+#define MDP_BGTFETCH_TEST_MODE           ( 0x28004)
+#define MDP_BGTFETCH_STATUS              ( 0x28008)
+#define MDP_BGTFETCH_TILE_COUNT          ( 0x28010)
+#define MDP_BGTFETCH_FETCH_COUNT         ( 0x28014)
+#define MDP_BGTFETCH_CONSTANT_COLOR      ( 0x28040)
 #define MDP_CSC_BYPASS                   ( 0x40004)
 #define MDP_SCALE_COEFF_LSB              ( 0x5fffc)
 #define MDP_TV_OUT_CTL                   ( 0xc0000)
@@ -243,6 +250,12 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 #define MDP_LCDC_HSYNC_SKEW              ( 0xe0030)
 #define MDP_LCDC_TEST_CTL                ( 0xe0034)
 #define MDP_LCDC_CTL_POLARITY            ( 0xe0038)
+
+#define MDP_PPP_SCALE_STATUS             ( 0x50000)
+#define MDP_PPP_BLEND_STATUS             ( 0x70000)
+
+/* MDP_SW_RESET */
+#define MDP_PPP_SW_RESET                (1<<4)
 
 /* MDP_INTR_ENABLE */
 #define DL0_ROI_DONE			(1<<0)

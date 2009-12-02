@@ -633,3 +633,21 @@ int mdp_ppp_blit(const struct mdp_info *mdp, struct mdp_blit_req *req,
 	send_blit(mdp, req, &regs, src_file, dst_file);
 	return 0;
 }
+
+
+#define mdp_dump_register(mdp, reg) \
+	printk(# reg ": %08x\n", mdp_readl((mdp), (reg)))
+
+void mdp_ppp_dump_debug(const struct mdp_info *mdp)
+{
+	mdp_dump_register(mdp, MDP_TFETCH_STATUS);
+	mdp_dump_register(mdp, MDP_TFETCH_TILE_COUNT);
+	mdp_dump_register(mdp, MDP_TFETCH_FETCH_COUNT);
+	mdp_dump_register(mdp, MDP_BGTFETCH_STATUS);
+	mdp_dump_register(mdp, MDP_BGTFETCH_TILE_COUNT);
+	mdp_dump_register(mdp, MDP_BGTFETCH_FETCH_COUNT);
+	mdp_dump_register(mdp, MDP_PPP_SCALE_STATUS);
+	mdp_dump_register(mdp, MDP_PPP_BLEND_STATUS);
+	mdp_dump_register(mdp, MDP_INTR_STATUS);
+	mdp_dump_register(mdp, MDP_INTR_ENABLE);
+}
