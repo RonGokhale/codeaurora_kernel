@@ -309,6 +309,7 @@ static int i2c_read_block(struct i2c_client *client, uint8_t addr,
 	}
 	};
 
+	mdelay(1);
 	for (retry = 0; retry <= I2C_READ_RETRY_TIMES; retry++) {
 		ret = i2c_transfer(client->adapter, msgs, 2);
 		if (ret == 2) {
@@ -352,6 +353,7 @@ static int i2c_write_block(struct i2c_client *client, uint8_t addr,
 	buf[0] = addr;
 	memcpy((void *)&buf[1], (void *)data, length);
 
+	mdelay(1);
 	for (retry = 0; retry <= I2C_WRITE_RETRY_TIMES; retry++) {
 		ret = i2c_transfer(client->adapter, msg, 1);
 		if (ret == 1)
@@ -378,7 +380,7 @@ static int microp_read_adc(uint8_t channel, uint16_t *value)
 		dev_err(&client->dev, "%s: request adc fail\n", __func__);
 		return -EIO;
 	}
-	msleep(1);
+
 	ret = i2c_read_block(client, MICROP_I2C_RCMD_ADC_VALUE, data, 2);
 	if (ret < 0) {
 		dev_err(&client->dev, "%s: read adc fail\n", __func__);
@@ -1674,7 +1676,7 @@ static void microp_i2c_intr_work_func(struct work_struct *work)
 		dev_err(&client->dev, "%s: read interrupt status fail\n",
 			 __func__);
 	}
-	msleep(1);
+
 	intr_status = data[0]<<8 | data[1];
 	ret = i2c_write_block(client, MICROP_I2C_WCMD_GPI_INT_STATUS_CLR,
 			      data, 2);
@@ -1683,7 +1685,7 @@ static void microp_i2c_intr_work_func(struct work_struct *work)
 			 __func__);
 	}
 	pr_debug("intr_status=0x%02x\n", intr_status);
-	msleep(1);
+
 	if ((intr_status & IRQ_LSENSOR) || cdata->force_light_sensor_read) {
 		ret = microp_lightsensor_read(&adc_value, &adc_level);
 		input_report_abs(cdata->ls_input_dev, ABS_MISC, (int)adc_level);
