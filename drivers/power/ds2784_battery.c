@@ -27,7 +27,7 @@
 #include <linux/kernel.h>
 #include <linux/err.h>
 #include <linux/wakelock.h>
-#include <asm/gpio.h>
+#include <linux/gpio.h>
 
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
@@ -76,6 +76,13 @@ struct battery_status {
 #define BATTERY_LOG_MAX 4096
 #define BATTERY_LOG_MASK (BATTERY_LOG_MAX - 1)
 
+/* When we're awake or running on wall power, sample the battery
+ * gauge every FAST_POLL seconds.  If we're asleep and on battery
+ * power, sample every SLOW_POLL seconds
+ */
+#define FAST_POLL	(1 * 60)
+#define SLOW_POLL	(10 * 60)
+
 static DEFINE_MUTEX(battery_log_lock);
 static struct battery_status battery_log[BATTERY_LOG_MAX];
 static unsigned battery_log_head;
@@ -122,7 +129,6 @@ struct ds2784_device_info {
 	struct device *dev;
 
 	/* DS2784 data, valid after calling ds2784_battery_read_status() */
-	unsigned long update_time;	/* jiffies when data read */
 	char raw[DS2784_DATA_SIZE];	/* raw DS2784 data */
 
 	struct battery_status status;
@@ -136,6 +142,9 @@ struct ds2784_device_info {
 
 	u8 dummy; /* dummy battery flag */
 	u8 last_charge_mode; /* previous charger state */
+	u8 slow_poll;
+
+	ktime_t last_poll;
 };
 
 #define psy_to_dev_info(x) container_of((x), struct ds2784_device_info, bat)
@@ -231,7 +240,6 @@ static int ds2784_battery_read_status(struct ds2784_device_info *di)
 			 di->w1_dev);
 		return 1;
 	}
-	di->update_time = jiffies;
 
 	if (battery_initial == 0) {
 		if (!memcmp(di->raw + 0x20, "DUMMY!", 6)) {
@@ -243,15 +251,15 @@ static int ds2784_battery_read_status(struct ds2784_device_info *di)
 			/* reset ACC register to ~500mAh, since it may have zeroed out */
 			acr[0] = 0x05;
 			acr[1] = 0x06;
-			w1_ds2784_write(di->w1_dev, acr,DS2784_REG_ACCUMULATE_CURR_MSB, 2);
+			w1_ds2784_write(di->w1_dev, acr, DS2784_REG_ACCUMULATE_CURR_MSB, 2);
 		}
 		battery_initial = 1;
 	}
 
 	pr_info("batt: %02x %02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x\n",
-		di->raw[0x00], di->raw[0x01], di->raw[0x02], di->raw[0x03], 
-		di->raw[0x04], di->raw[0x05], di->raw[0x06], di->raw[0x07], 
-		di->raw[0x08], di->raw[0x09], di->raw[0x0a], di->raw[0x0b], 
+		di->raw[0x00], di->raw[0x01], di->raw[0x02], di->raw[0x03],
+		di->raw[0x04], di->raw[0x05], di->raw[0x06], di->raw[0x07],
+		di->raw[0x08], di->raw[0x09], di->raw[0x0a], di->raw[0x0b],
 		di->raw[0x0c], di->raw[0x0d], di->raw[0x0e], di->raw[0x0f]
 		);
 
@@ -262,7 +270,7 @@ static int ds2784_battery_read_status(struct ds2784_device_info *di)
 		di->status.voltage_uV / 1000, di->status.current_uA / 1000,
 		di->status.current_avg_uA / 1000,
 		di->status.temp_C, di->status.charge_uAh / 1000);
-	
+
 	return 0;
 }
 
@@ -380,7 +388,7 @@ static int battery_adjust_charge_state(struct ds2784_device_info *di)
 		di->status.battery_full = 1;
 		charge_mode = CHARGE_OFF;
 	} else {
-		/* We don't move from full to not-full until 
+		/* We don't move from full to not-full until
 		 * we drop below 99%, to avoid confusing the
 		 * user while we're maintaining a full charge
 		 * (slowly draining to 99 and charging back
@@ -397,7 +405,7 @@ static int battery_adjust_charge_state(struct ds2784_device_info *di)
 		/* once we charge to max voltage when hot, disable
 		 * charging until the temp drops or the voltage drops
 		 */
-		if (volt >= TEMP_HOT_MAX_MV) 
+		if (volt >= TEMP_HOT_MAX_MV)
 			di->status.cooldown = 1;
 	}
 
@@ -424,7 +432,7 @@ static int battery_adjust_charge_state(struct ds2784_device_info *di)
 		gpio_direction_output(GPIO_BATTERY_CHARGER_EN, 1);
 		if (temp >= TEMP_CRITICAL)
 			pr_info("batt: charging OFF [OVERTEMP]\n");
-		else if (di->status.cooldown) 
+		else if (di->status.cooldown)
 			pr_info("batt: charging OFF [COOLDOWN]\n");
 		else if (di->status.battery_full)
 			pr_info("batt: charging OFF [FULL]\n");
@@ -448,34 +456,39 @@ done:
 	return rc;
 }
 
+static void ds2784_program_alarm(struct ds2784_device_info *di, int seconds)
+{
+	ktime_t low_interval = ktime_set(seconds - 10, 0);
+	ktime_t slack = ktime_set(20, 0);
+	ktime_t next;
+
+	next = ktime_add(di->last_poll, low_interval);
+
+	alarm_start_range(&di->alarm, next, ktime_add(next, slack));
+}
+
 static void ds2784_battery_work(struct work_struct *work)
 {
 	struct ds2784_device_info *di =
 		container_of(work, struct ds2784_device_info, monitor_work);
-	const ktime_t low_interval = ktime_set(50, 0);
-	const ktime_t slack = ktime_set(20, 0);
-	ktime_t now;
-	ktime_t next_alarm;
 	struct timespec ts;
 	unsigned long flags;
 
 	ds2784_battery_update_status(di);
-	now = alarm_get_elapsed_realtime();
+
+	di->last_poll = alarm_get_elapsed_realtime();
 
 	if (battery_adjust_charge_state(di))
 		power_supply_changed(&di->bat);
 
-	next_alarm = ktime_add(now, low_interval);
-
-	ts = ktime_to_timespec(now);
+	ts = ktime_to_timespec(di->last_poll);
 	di->status.timestamp = ts.tv_sec;
 	battery_log_status(&di->status);
 
 	/* prevent suspend before starting the alarm */
 	local_irq_save(flags);
-
 	wake_unlock(&di->work_wake_lock);
-	alarm_start_range(&di->alarm, next_alarm, ktime_add(next_alarm, slack));
+	ds2784_program_alarm(di, FAST_POLL);
 	local_irq_restore(flags);
 }
 
@@ -524,7 +537,6 @@ static int ds2784_battery_probe(struct platform_device *pdev)
 	if (!di)
 		return -ENOMEM;
 
-	di->update_time = jiffies;
 	platform_set_drvdata(pdev, di);
 
 	pdata = pdev->dev.platform_data;
@@ -545,6 +557,10 @@ static int ds2784_battery_probe(struct platform_device *pdev)
 
 	INIT_WORK(&di->monitor_work, ds2784_battery_work);
 	di->monitor_wqueue = create_singlethread_workqueue(dev_name(&pdev->dev));
+
+	/* init to something sane */
+	di->last_poll = alarm_get_elapsed_realtime();
+
 	if (!di->monitor_wqueue) {
 		rc = -ESRCH;
 		goto fail_workqueue;
@@ -564,9 +580,46 @@ fail_register:
 	return rc;
 }
 
+static int ds2784_suspend(struct device *dev)
+{
+	struct ds2784_device_info *di = dev_get_drvdata(dev);
+
+	/* If we are on battery, reduce our update rate until
+	 * we next resume.
+	 */
+	if (di->status.charge_source == SOURCE_NONE) {
+		ds2784_program_alarm(di, SLOW_POLL);
+		di->slow_poll = 1;
+	}
+	return 0;
+}
+
+static int ds2784_resume(struct device *dev)
+{
+	struct ds2784_device_info *di = dev_get_drvdata(dev);
+
+	/* We might be on a slow sample cycle.  If we're
+	 * resuming we should resample the battery state
+	 * if it's been over a minute since we last did
+	 * so, and move back to sampling every minute until
+	 * we suspend again.
+	 */
+	if (di->slow_poll) {
+		ds2784_program_alarm(di, FAST_POLL);
+		di->slow_poll = 0;
+	}
+	return 0;
+}
+
+static struct dev_pm_ops ds2784_pm_ops = {
+	.suspend	= ds2784_suspend,
+	.resume		= ds2784_resume,
+};
+
 static struct platform_driver ds2784_battery_driver = {
 	.driver = {
 		.name = "ds2784-battery",
+		.pm = &ds2784_pm_ops,
 	},
 	.probe	  = ds2784_battery_probe,
 };
