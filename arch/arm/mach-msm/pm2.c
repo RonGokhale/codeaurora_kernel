@@ -392,7 +392,7 @@ static void msm_pm_config_hw_before_swfi(void)
  *
  * NOTE: The function never returns.
  */
-static void msm_pm_timeout(void)
+void msm_pm_timeout(void)
 {
 #if defined(CONFIG_MSM_PM_TIMEOUT_RESET_CHIP)
 	printk(KERN_EMERG "%s(): resetting chip\n", __func__);

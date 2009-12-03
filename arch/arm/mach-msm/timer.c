@@ -220,6 +220,8 @@ static void msm_timer_set_mode(enum clock_event_mode mode,
 	local_irq_restore(irq_flags);
 }
 
+void msm_pm_timeout(void);
+
 /*
  * Retrieve the cycle count from the slow clock through SMEM and optionally
  * synchronize local clock(s) with the slow clock.  The function implements
@@ -275,7 +277,7 @@ static uint32_t msm_timer_sync_sclk(
 		if (time_expired(data)) {
 			printk(KERN_INFO "get_smem_clock: timeout 1 still "
 				"invalid state %x\n", state);
-			return 0;
+			goto sync_sclk_timeout;
 		}
 	}
 
@@ -289,7 +291,7 @@ static uint32_t msm_timer_sync_sclk(
 			printk(KERN_INFO "get_smem_clock: timeout 2 still "
 				"invalid state %x\n", state);
 			smem_clock_val = 0;
-			goto sync_sclk_exit;
+			goto sync_sclk_timeout;
 		}
 	}
 
@@ -313,12 +315,16 @@ static uint32_t msm_timer_sync_sclk(
 	} else {
 		printk(KERN_INFO "get_smem_clock: timeout state %x clock %u\n",
 			state, smem_clock_val);
+		goto sync_sclk_timeout;
 	}
 
-sync_sclk_exit:
 	smsm_change_state(SMSM_APPS_DEM, SLAVE_TIME_REQUEST | SLAVE_TIME_POLL,
 		SLAVE_TIME_INIT);
 	return smem_clock_val;
+
+sync_sclk_timeout:
+	msm_pm_timeout();
+	return 0;
 }
 #else /* CONFIG_MSM_N_WAY_SMSM */
 static uint32_t msm_timer_sync_sclk(
@@ -401,8 +407,8 @@ static uint32_t msm_timer_sync_sclk(
 static void msm_timer_sync_smem_clock_time_start(
 	struct msm_timer_sync_data_t *data)
 {
-	/* approx 1/128th of a second */
-	uint32_t delta = data->clock->freq >> 7 << data->clock->shift;
+	/* approx 2 seconds */
+	uint32_t delta = data->clock->freq << data->clock->shift << 1;
 	data->timeout = msm_read_timer_count(data->clock) + delta;
 }
 
@@ -573,7 +579,7 @@ void msm_timer_exit_idle(int low_power)
 static void msm_timer_get_smem_clock_time_start(
 	struct msm_timer_sync_data_t *data)
 {
-	data->timeout = 10000;
+	data->timeout = 1000000;
 }
 
 /*
