@@ -134,6 +134,8 @@ static int AKECS_StartMeasure(void)
 {
 	char buffer[2];
 
+	atomic_set(&data_ready, 0);
+
 	/* Set measure mode */
 	buffer[0] = AKECS_REG_MS1;
 	buffer[1] = AKECS_MODE_MEASURE;
