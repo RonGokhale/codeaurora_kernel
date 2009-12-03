@@ -66,31 +66,28 @@
 #include <linux/platform_device.h>
 #include <linux/rfkill.h>
 
-static int bluetooth_toggle_radio(void *data, enum rfkill_state state)
+static int bluetooth_toggle_radio(void *data, bool blocked)
 {
 	int ret;
 	int (*power_control)(int enable);
 
 	power_control = data;
-	ret = (*power_control)((state == RFKILL_STATE_UNBLOCKED) ? 1 : 0);
+	ret = (*power_control)(!blocked);
 	return ret;
 }
+
+static const struct rfkill_ops bluetooth_power_rfkill_ops = {
+	.set_block = bluetooth_toggle_radio,
+};
 
 static int bluetooth_power_rfkill_probe(struct platform_device *pdev)
 {
 	struct rfkill *rfkill;
 	int ret;
 
-	/* force Bluetooth off during init to allow for user control */
-	ret = rfkill_set_default(RFKILL_TYPE_BLUETOOTH,
-				RFKILL_STATE_SOFT_BLOCKED);
-	if (ret) {
-		printk(KERN_DEBUG
-			"%s: rfkill set default failed=%d\n", __func__, ret);
-		return ret;
-	}
-
-	rfkill = rfkill_allocate(&pdev->dev, RFKILL_TYPE_BLUETOOTH);
+	rfkill = rfkill_alloc("bt_power", &pdev->dev, RFKILL_TYPE_BLUETOOTH,
+			      &bluetooth_power_rfkill_ops,
+			      pdev->dev.platform_data);
 
 	if (!rfkill) {
 		printk(KERN_DEBUG
@@ -98,15 +95,15 @@ static int bluetooth_power_rfkill_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	rfkill->name = "bt_power";
-	rfkill->toggle_radio = bluetooth_toggle_radio;
-	rfkill->data = pdev->dev.platform_data;
+	/* force Bluetooth off during init to allow for user control */
+	rfkill_init_sw_state(rfkill, 1);
+
 	ret = rfkill_register(rfkill);
 	if (ret) {
 		printk(KERN_DEBUG
 			"%s: rfkill register failed=%d\n", __func__,
 			ret);
-		rfkill_free(rfkill);
+		rfkill_destroy(rfkill);
 		return ret;
 	}
 
@@ -122,7 +119,7 @@ static void bluetooth_power_rfkill_remove(struct platform_device *pdev)
 	rfkill = platform_get_drvdata(pdev);
 	if (rfkill)
 		rfkill_unregister(rfkill);
-
+	rfkill_destroy(rfkill);
 	platform_set_drvdata(pdev, NULL);
 }
 
