@@ -72,10 +72,12 @@ struct dhd_bus *g_bus;
 static struct wifi_platform_data *wifi_control_data = NULL;
 static struct resource *wifi_irqres = NULL;
 
-int wifi_get_irq_number(void)
+int wifi_get_irq_number(unsigned long *irq_flags_ptr)
 {
-	if (wifi_irqres)
+	if (wifi_irqres) {
+		*irq_flags_ptr = wifi_irqres->flags & IRQF_TRIGGER_MASK;
 		return (int)wifi_irqres->start;
+	}
 #ifdef CUSTOM_OOB_GPIO_NUM
 	return CUSTOM_OOB_GPIO_NUM;
 #else
