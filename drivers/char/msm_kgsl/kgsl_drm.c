@@ -220,17 +220,20 @@ kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
 	file_priv = filp->private_data;
 	if (unlikely(file_priv == NULL)) {
 		printk(KERN_ERR "%s:%u\n", __func__, __LINE__);
+		fput(filp);
 		return -EINVAL;
 	}
 	dev = file_priv->minor->dev;
 	if (unlikely(dev == NULL)) {
 		printk(KERN_ERR "%s:%u\n", __func__, __LINE__);
+		fput(filp);
 		return -EINVAL;
 	}
 
 	obj = drm_gem_object_lookup(dev, file_priv, handle);
 	if (unlikely(obj == NULL)) {
 		printk(KERN_ERR "%s:%u\n", __func__, __LINE__);
+		fput(filp);
 		return -EINVAL;
 	}
 
@@ -243,6 +246,7 @@ kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
 	drm_gem_object_unreference(obj);
 	mutex_unlock(&dev->struct_mutex);
 
+	fput(filp);
 	return 0;
 }
 #else
