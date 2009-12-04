@@ -111,7 +111,7 @@
 /* Check pattern, to check if ALS has been calibrated */
 #define ALS_CALIBRATED	0x6DA5
 
-#define DEBUG_BMA150  /*STOPSHIP turn logging off before ship */
+/*#define DEBUG_BMA150  */
 #ifdef DEBUG_BMA150
 /* Debug logging of accelleration data */
 #define GSENSOR_LOG_MAX 2048  /* needs to be power of 2 */
