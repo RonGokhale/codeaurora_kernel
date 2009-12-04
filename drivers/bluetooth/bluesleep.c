@@ -60,7 +60,7 @@
  * Defines
  */
 
-#define VERSION		"1.1"
+#define VERSION		"1.2"
 #define PROC_DIR	"bluetooth/sleep"
 
 struct bluesleep_info {
@@ -245,6 +245,23 @@ static void bluesleep_outgoing_data(void)
 }
 
 /**
+ * Saves handle for UART port if it isn't already available
+ * @param hdev
+ */
+static void bluesleep_save_uart_handle(struct hci_dev *hdev)
+{
+	struct hci_uart *hu;
+	struct uart_state *state;
+
+	if (!bluesleep_hdev) {
+		bluesleep_hdev = hdev;
+		hu  = (struct hci_uart *) hdev->driver_data;
+		state = (struct uart_state *) hu->tty->driver_data;
+		bsi->uport = state->port;
+	}
+}
+
+/**
  * Handles HCI device events.
  * @param this Not used.
  * @param event The event that occurred.
@@ -255,26 +272,20 @@ static int bluesleep_hci_event(struct notifier_block *this,
 				unsigned long event, void *data)
 {
 	struct hci_dev *hdev = (struct hci_dev *) data;
-	struct hci_uart *hu;
-	struct uart_state *state;
 
 	if (!hdev)
 		return NOTIFY_DONE;
 
 	switch (event) {
 	case HCI_DEV_REG:
-		if (!bluesleep_hdev) {
-			bluesleep_hdev = hdev;
-			hu  = (struct hci_uart *) hdev->driver_data;
-			state = (struct uart_state *) hu->tty->driver_data;
-			bsi->uport = state->port;
-		}
+		bluesleep_save_uart_handle(hdev);
 		break;
 	case HCI_DEV_UNREG:
 		bluesleep_hdev = NULL;
 		bsi->uport = NULL;
 		break;
 	case HCI_DEV_WRITE:
+		bluesleep_save_uart_handle(hdev);
 		bluesleep_outgoing_data();
 		break;
 	}
