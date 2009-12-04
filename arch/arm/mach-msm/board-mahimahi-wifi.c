@@ -77,7 +77,7 @@ static struct resource mahimahi_wifi_resources[] = {
 		.name		= "bcm4329_wlan_irq",
 		.start		= MSM_GPIO_TO_INT(MAHIMAHI_GPIO_WIFI_IRQ),
 		.end		= MSM_GPIO_TO_INT(MAHIMAHI_GPIO_WIFI_IRQ),
-		.flags          = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL,
+		.flags          = IORESOURCE_IRQ | IORESOURCE_IRQ_LOWEDGE,
 	},
 };
 
