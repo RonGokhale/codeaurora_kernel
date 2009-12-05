@@ -1,7 +1,6 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.31.5
-# Tue Nov 17 18:44:51 2009
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -850,6 +849,7 @@ CONFIG_INPUT_MISC=y
 # CONFIG_INPUT_CM109 is not set
 CONFIG_INPUT_UINPUT=y
 CONFIG_INPUT_GPIO=y
+# CONFIG_INPUT_KEYCHORD is not set
 # CONFIG_BMA150 is not set
 
 #
