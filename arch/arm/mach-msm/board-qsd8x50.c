@@ -1152,6 +1152,27 @@ static struct resource bluesleep_resources[] = {
 	},
 };
 
+static struct resource st1_bluesleep_resources[] = {
+	{
+		.name	= "gpio_host_wake",
+		.start	= 40,
+		.end	= 40,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "gpio_ext_wake",
+		.start	= 29,
+		.end	= 29,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "host_wake",
+		.start	= MSM_GPIO_TO_INT(40),
+		.end	= MSM_GPIO_TO_INT(40),
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
 static struct platform_device msm_bluesleep_device = {
 	.name = "bluesleep",
 	.id		= -1,
@@ -1212,6 +1233,48 @@ static struct msm_gpio bt_config_power_on[] = {
 		"UART1DM_RX" },
 	{ GPIO_CFG(46, 2, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA),
 		"UART1DM_TX" }
+};
+
+static struct msm_gpio st1_bt_config_power_off[] = {
+	{ GPIO_CFG(18, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),
+		"BT SYSRST" },
+	{ GPIO_CFG(29, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),
+		"BT WAKE" },
+	{ GPIO_CFG(40, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),
+		"HOST WAKE" },
+	{ GPIO_CFG(22, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),
+		"BT VDD_IO" },
+	{ GPIO_CFG(43, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),
+		"UART1DM_RFR" },
+	{ GPIO_CFG(44, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),
+		"UART1DM_CTS" },
+	{ GPIO_CFG(45, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),
+		"UART1DM_RX" },
+	{ GPIO_CFG(46, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),
+		"UART1DM_TX" },
+	{ GPIO_CFG(109, 0, GPIO_INPUT, GPIO_PULL_DOWN, GPIO_2MA),
+		"BT PWR 2" },
+};
+
+static struct msm_gpio st1_bt_config_power_on[] = {
+	{ GPIO_CFG(18, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA),
+		"BT SYSRST" },
+	{ GPIO_CFG(29, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA),
+		"BT WAKE" },
+	{ GPIO_CFG(40, 0, GPIO_INPUT,  GPIO_NO_PULL, GPIO_2MA),
+		"HOST WAKE" },
+	{ GPIO_CFG(22, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA),
+		"BT VDD_IO" },
+	{ GPIO_CFG(43, 2, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA),
+		"UART1DM_RFR" },
+	{ GPIO_CFG(44, 2, GPIO_INPUT,  GPIO_NO_PULL, GPIO_2MA),
+		"UART1DM_CTS" },
+	{ GPIO_CFG(45, 2, GPIO_INPUT,  GPIO_NO_PULL, GPIO_2MA),
+		"UART1DM_RX" },
+	{ GPIO_CFG(46, 2, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA),
+		"UART1DM_TX" },
+	{ GPIO_CFG(109, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA),
+		"BT PWR 2" },
 };
 
 static struct msm_gpio wlan_config_power_off[] = {
@@ -1280,7 +1343,11 @@ static int bluetooth_power(int on)
 			return -EIO;
 		}
 
-		rc = msm_gpios_enable(bt_config_power_on,
+		if (machine_is_qsd8x50_st1())
+			rc = msm_gpios_enable(st1_bt_config_power_on,
+					ARRAY_SIZE(st1_bt_config_power_on));
+		else
+			rc = msm_gpios_enable(bt_config_power_on,
 					ARRAY_SIZE(bt_config_power_on));
 		if (rc < 0) {
 			printk(KERN_ERR
@@ -1302,6 +1369,8 @@ static int bluetooth_power(int on)
 			}
 		}
 
+		if (machine_is_qsd8x50_st1())
+			gpio_set_value(109, on); /* PWR 2 */
 		gpio_set_value(22, on); /* VDD_IO */
 		gpio_set_value(18, on); /* SYSRST */
 
@@ -1317,6 +1386,8 @@ static int bluetooth_power(int on)
 
 		gpio_set_value(18, on); /* SYSRST */
 		gpio_set_value(22, on); /* VDD_IO */
+		if (machine_is_qsd8x50_st1())
+			gpio_set_value(109, on); /* PWR 2 */
 
 		rc = vreg_disable(vreg_wlan);
 		if (rc) {
@@ -1325,7 +1396,11 @@ static int bluetooth_power(int on)
 			return -EIO;
 		}
 
-		rc = msm_gpios_enable(bt_config_power_off,
+		if (machine_is_qsd8x50_st1())
+			rc = msm_gpios_enable(st1_bt_config_power_off,
+					ARRAY_SIZE(st1_bt_config_power_off));
+		else
+			rc = msm_gpios_enable(bt_config_power_off,
 					ARRAY_SIZE(bt_config_power_off));
 		if (rc < 0) {
 			printk(KERN_ERR
@@ -2516,6 +2591,8 @@ static void __init qsd8x50_init(void)
 #if defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE)
 	msm_device_tsif.dev.platform_data = &tsif_platform_data;
 #endif
+	if (machine_is_qsd8x50_st1())
+		msm_bluesleep_device.resource = st1_bluesleep_resources;
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 	msm_fb_add_devices();
 #ifdef CONFIG_MSM_CAMERA
@@ -2524,9 +2601,7 @@ static void __init qsd8x50_init(void)
 
 	qsd8x50_init_host();
 	qsd8x50_init_mmc();
-#ifndef CONFIG_ST1_EXPERIMENTAL
 	bt_power_init();
-#endif
 	audio_gpio_init();
 	msm_device_i2c_init();
 #ifndef CONFIG_ST1_EXPERIMENTAL
