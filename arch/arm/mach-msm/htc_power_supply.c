@@ -56,6 +56,7 @@ struct dock_state {
 
 static struct workqueue_struct *dock_wq;
 static struct work_struct dock_work;
+static struct wake_lock dock_work_wake_lock;
 static struct dock_state ds = {
 	.lock = __MUTEX_INITIALIZER(ds.lock),
 };
@@ -487,16 +488,16 @@ static void dock_work_proc(struct work_struct *work)
 		msm_hsusb_set_vbus_state(0);
 		dock_mains = !!(dockid & 0x80);
 		switch_set_state(&dock_switch, (dockid & 1) ? 2 : 1);
-		power_supply_changed(&ac_supply);
-		power_supply_changed(&usb_supply);
-		return;
+		goto done;
 	}
 no_dock:
 	dock_mains = false;
 	switch_set_state(&dock_switch, 0);
 	msm_hsusb_set_vbus_state(vbus_present);
+done:
 	power_supply_changed(&ac_supply);
 	power_supply_changed(&usb_supply);
+	wake_unlock(&dock_work_wake_lock);
 }
 
 static int htc_battery_probe(struct platform_device *pdev)
@@ -568,6 +569,7 @@ static int handle_battery_call(struct msm_rpc_server *server,
 	args->status = !!args->status;
 
 	vbus_present = args->status;
+	wake_lock(&dock_work_wake_lock);
 	queue_work(dock_wq, &dock_work);
 	return 0;
 }
@@ -595,6 +597,7 @@ static int __init htc_battery_init(void)
 {
 	int ret;
 	dock_in();
+	wake_lock_init(&dock_work_wake_lock, WAKE_LOCK_SUSPEND, "dock");
 	platform_driver_register(&htc_battery_driver);
 	msm_rpc_create_server(&battery_server);
 	if (switch_dev_register(&dock_switch) == 0) {
