@@ -338,7 +338,7 @@ static int rmnet_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct rmnet_private *p = netdev_priv(dev);
 	smd_channel_t *ch = p->ch;
 
-	if (smd_write(ch, skb->data, skb->len) != skb->len) {
+	if (smd_write_atomic(ch, skb->data, skb->len) != skb->len) {
 		pr_err("rmnet fifo full, dropping packet\n");
 	} else {
 		if (count_this_packet(skb->data, skb->len)) {
