@@ -14,6 +14,7 @@ drm-y       :=	drm_auth.o drm_bufs.o drm_cache.o \
 		drm_info.o drm_debugfs.o
 
 drm-$(CONFIG_COMPAT) += drm_ioc32.o
+CFLAGS_REMOVE_drm_edid.o += -Werror
 
 obj-$(CONFIG_DRM)	+= drm.o
 obj-$(CONFIG_DRM_TTM)	+= ttm/
