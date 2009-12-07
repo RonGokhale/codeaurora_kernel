@@ -1103,20 +1103,16 @@ static int lightsensor_enable(void)
 		return -EIO;
 	}
 
+	disable_irq(client->irq);
 	ret = microp_i2c_auto_backlight_mode(client, 1);
 	if (ret < 0) {
 		pr_err("%s: set auto light sensor fail\n", __func__);
+		enable_irq(client->irq);
 		return ret;
 	}
 
 	cdata->auto_backlight_enabled = 1;
-	/* report an invalid value first to ensure we trigger an event
-	 * when adc_level is zero.
-	 */
 	/* send current light sensor value when we enable */
-	disable_irq(client->irq);
-	input_report_abs(cdata->ls_input_dev, ABS_MISC, -1);
-	input_sync(cdata->ls_input_dev);
 	cdata->force_light_sensor_read = 1;
 	schedule_work(&cdata->work.work);
 
@@ -1688,9 +1684,16 @@ static void microp_i2c_intr_work_func(struct work_struct *work)
 
 	if ((intr_status & IRQ_LSENSOR) || cdata->force_light_sensor_read) {
 		ret = microp_lightsensor_read(&adc_value, &adc_level);
+		if (cdata->force_light_sensor_read) {
+			/* report an invalid value first to ensure we trigger an event
+			 * when adc_level is zero.
+			 */
+			input_report_abs(cdata->ls_input_dev, ABS_MISC, -1);
+			input_sync(cdata->ls_input_dev);
+			cdata->force_light_sensor_read = 0;
+		}
 		input_report_abs(cdata->ls_input_dev, ABS_MISC, (int)adc_level);
 		input_sync(cdata->ls_input_dev);
-		cdata->force_light_sensor_read = 0;
 	}
 
 	if (intr_status & IRQ_SDCARD) {
