@@ -133,6 +133,7 @@ struct ehci_hcd {			/* one per controller */
 	unsigned		broken_periodic:1;
 	unsigned		fs_i_thresh:1;	/* Intel iso scheduling */
 	unsigned		use_dummy_qh:1;	/* AMD Frame List table quirk*/
+	unsigned		controller_resets_phy:1;
 
 	/* required for usb32 quirk */
 	#define OHCI_CTRL_HCFS          (3 << 6)
