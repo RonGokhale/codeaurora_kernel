@@ -226,7 +226,7 @@ static void scpll_set_freq(uint32_t lval)
 			;
 
 		/* completion bit is not reliable for SHOT switch */
-		udelay(100);
+		udelay(25);
 	}
 
 	/* write the new L val and switch mode */
