@@ -73,7 +73,7 @@ struct battery_status {
 #define TEMP_HOT_MAX_MV	4100 /* stop charging here when hot */
 #define TEMP_HOT_MIN_MV	3800 /* resume charging here when hot */
 
-#define BATTERY_LOG_MAX 4096
+#define BATTERY_LOG_MAX 1024
 #define BATTERY_LOG_MASK (BATTERY_LOG_MAX - 1)
 
 /* When we're awake or running on wall power, sample the battery
@@ -256,20 +256,14 @@ static int ds2784_battery_read_status(struct ds2784_device_info *di)
 		battery_initial = 1;
 	}
 
-	pr_info("batt: %02x %02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x\n",
-		di->raw[0x00], di->raw[0x01], di->raw[0x02], di->raw[0x03],
-		di->raw[0x04], di->raw[0x05], di->raw[0x06], di->raw[0x07],
-		di->raw[0x08], di->raw[0x09], di->raw[0x0a], di->raw[0x0b],
-		di->raw[0x0c], di->raw[0x0d], di->raw[0x0e], di->raw[0x0f]
-		);
-
 	ds2784_parse_data(di->raw, &di->status);
 
-	pr_info("batt: %3d%%, %d mV, %d mA (%d avg), %d C, %d mAh\n",
+	pr_info("batt: %3d%%, %d mV, %d mA (%d avg), %d.%d C, %d mAh\n",
 		di->status.percentage,
 		di->status.voltage_uV / 1000, di->status.current_uA / 1000,
 		di->status.current_avg_uA / 1000,
-		di->status.temp_C, di->status.charge_uAh / 1000);
+		di->status.temp_C / 10, di->status.temp_C % 10,
+		di->status.charge_uAh / 1000);
 
 	return 0;
 }
@@ -507,8 +501,6 @@ static void battery_ext_power_changed(struct power_supply *psy)
 
 	di = psy_to_dev_info(psy);
 	got_power = power_supply_am_i_supplied(psy);
-
-	pr_info("*** batt ext power changed (%d) ***\n", got_power);
 
 	if (got_power) {
 		if (is_ac_power_supplied())
