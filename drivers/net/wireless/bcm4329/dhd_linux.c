@@ -890,6 +890,7 @@ dhd_start_xmit(struct sk_buff *skb, struct net_device *net)
 	/* Reject if down */
 	if (!dhd->pub.up || (dhd->pub.busstate == DHD_BUS_DOWN)) {
 		DHD_ERROR(("%s: xmit rejected due to dhd bus down status \n", __FUNCTION__));
+		netif_stop_queue(net);
 		return -ENODEV;
 	}
 
