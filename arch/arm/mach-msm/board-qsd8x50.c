@@ -339,6 +339,38 @@ static struct platform_device hs_device = {
 	},
 };
 
+static struct msm_gpio hsusb_gpio_config_data[] = {
+	{ GPIO_CFG(98, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "fs_power" },
+	{ GPIO_CFG(154, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "swch_ctrl" },
+	{ GPIO_CFG(108, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "hub_reset" },
+};
+
+static void msm_hsusb_setup_gpio(unsigned int enable)
+{
+	int rc;
+
+	if (enable) {
+		if (machine_is_qsd8x50_st1()) {
+			rc = msm_gpios_request_enable(hsusb_gpio_config_data,
+				ARRAY_SIZE(hsusb_gpio_config_data));
+
+			if (rc) {
+				printk(KERN_ERR "Error gpio req for hsusb\n");
+				return;
+			}
+
+			/* Config analog switch as USB host. */
+			gpio_set_value(98, 0); /* USB_FS_POWER_EN */
+			gpio_set_value(154, 0); /* SWITCH_CONTROL */
+			gpio_set_value(108, 1); /* USB_HUB_RESET */
+		}
+	} else {
+		if (machine_is_qsd8x50_st1())
+			msm_gpios_disable_free(hsusb_gpio_config_data,
+				ARRAY_SIZE(hsusb_gpio_config_data));
+	}
+}
+
 #ifdef CONFIG_USB_FS_HOST
 static int fsusb_gpio_init(void)
 {
@@ -608,6 +640,7 @@ static void msm_hsusb_vbus_power(unsigned phy_info, int on)
 static struct msm_usb_host_platform_data msm_usb_host_pdata = {
 	.phy_info	= (USB_PHY_INTEGRATED | USB_PHY_MODEL_180NM),
 	.phy_reset = msm_hsusb_native_phy_reset,
+	.config_gpio = msm_hsusb_setup_gpio,
 	.vbus_power = msm_hsusb_vbus_power,
 };
 
