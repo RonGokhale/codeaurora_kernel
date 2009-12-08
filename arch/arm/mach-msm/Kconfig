@@ -42,6 +42,8 @@ config  ARCH_MSM_ARM11
 	bool
 config  ARCH_MSM_SCORPION
 	bool
+config  ARCH_MSM_SCORPIONMP
+	bool
 
 config REMOTE_SPINLOCK_DEKKERS
 	bool
