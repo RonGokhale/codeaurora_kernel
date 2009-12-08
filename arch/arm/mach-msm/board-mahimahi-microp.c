@@ -111,6 +111,9 @@
 /* Check pattern, to check if ALS has been calibrated */
 #define ALS_CALIBRATED	0x6DA5
 
+/* delay for deferred light sensor read */
+#define LS_READ_DELAY   (HZ/2)
+
 /*#define DEBUG_BMA150  */
 #ifdef DEBUG_BMA150
 /* Debug logging of accelleration data */
@@ -253,8 +256,8 @@ struct microp_i2c_client_data {
 	struct microp_led_data leds[NUM_LEDS];
 	uint16_t version;
 	struct microp_i2c_work work;
-	struct delayed_work hpin_enable_intr_work;
 	struct delayed_work hpin_debounce_work;
+	struct delayed_work ls_read_work;
 	struct early_suspend early_suspend;
 	uint8_t enable_early_suspend;
 	uint8_t enable_reset_button;
@@ -1112,8 +1115,10 @@ static int lightsensor_enable(void)
 	}
 
 	cdata->auto_backlight_enabled = 1;
-	/* send current light sensor value when we enable */
-	cdata->force_light_sensor_read = 1;
+	/* TEMPORARY HACK: schedule a deferred light sensor read
+	 * to work around sensor manager race condition
+	 */
+	schedule_delayed_work(&cdata->ls_read_work, LS_READ_DELAY);
 	schedule_work(&cdata->work.work);
 
 	return 0;
@@ -1134,6 +1139,8 @@ static int lightsensor_disable(void)
 		       __func__);
 		return -EIO;
 	}
+
+	cancel_delayed_work(&cdata->ls_read_work);
 
 	ret = microp_i2c_auto_backlight_mode(client, 0);
 	if (ret < 0)
@@ -1721,6 +1728,17 @@ static void microp_i2c_intr_work_func(struct work_struct *work)
 	enable_irq(client->irq);
 }
 
+static void ls_read_do_work(struct work_struct *work)
+{
+	struct i2c_client *client = private_microp_client;
+	struct microp_i2c_client_data *cdata = i2c_get_clientdata(client);
+
+	/* force a light sensor reading */
+	disable_irq(client->irq);
+	cdata->force_light_sensor_read = 1;
+	schedule_work(&cdata->work.work);
+}
+
 static int microp_function_initialize(struct i2c_client *client)
 {
 	struct microp_i2c_client_data *cdata;
@@ -1788,6 +1806,8 @@ static int microp_function_initialize(struct i2c_client *client)
 
 	INIT_DELAYED_WORK(
 		&cdata->hpin_debounce_work, hpin_debounce_do_work);
+	INIT_DELAYED_WORK(
+		&cdata->ls_read_work, ls_read_do_work);
 
 	/* SD Card */
 	interrupts |= IRQ_SDCARD;
