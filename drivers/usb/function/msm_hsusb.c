@@ -1518,7 +1518,8 @@ void usb_function_reenumerate(void)
 	usb_pullup(ui, true);
 }
 
-#if defined(CONFIG_DEBUG_FS)
+
+#if defined(CONFIG_DEBUG_FS) && 0
 static char debug_buffer[PAGE_SIZE];
 
 static ssize_t debug_read_status(struct file *file, char __user *ubuf,
@@ -1627,8 +1628,8 @@ static void usb_debugfs_init(struct usb_info *ui)
 		return;
 
 	debugfs_create_file("status", 0444, dent, ui, &debug_stat_ops);
-	debugfs_create_file("reset", 0222, dent, ui, &debug_reset_ops);
-	debugfs_create_file("cycle", 0222, dent, ui, &debug_cycle_ops);
+	debugfs_create_file("reset", 0220, dent, ui, &debug_reset_ops);
+	debugfs_create_file("cycle", 0220, dent, ui, &debug_cycle_ops);
 }
 #else
 static void usb_debugfs_init(struct usb_info *ui) {}
