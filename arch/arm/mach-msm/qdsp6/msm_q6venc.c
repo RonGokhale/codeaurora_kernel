@@ -252,12 +252,14 @@ static int q6venc_release(struct inode *inode, struct file *file)
 	file->private_data = NULL;
 
 	pr_info("q6venc_close() handle=%p\n", q6venc->venc);
+
+	dal_detach(q6venc->venc);
+
 	for (id = 0; id < q6venc->num_enc_bufs; id++)
 		put_buf_info(&q6venc->enc_bufs[id]);
 	put_buf_info(&q6venc->rlc_bufs[0]);
 	put_buf_info(&q6venc->rlc_bufs[1]);
 
-	dal_detach(q6venc->venc);
 	mutex_destroy(&q6venc->lock);
 	kfree(q6venc);
 	return 0;
