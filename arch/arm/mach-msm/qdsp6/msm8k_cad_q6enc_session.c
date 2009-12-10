@@ -191,7 +191,6 @@ static s32 send_buffers(struct q6_enc_session_data *self)
 			self->used_nodes = self->used_nodes->next;
 			node->next = self->free_nodes;
 			self->free_nodes = node;
-			mutex_unlock(&self->session_mutex);
 			res = CAD_RES_FAILURE;
 			break;
 		}
