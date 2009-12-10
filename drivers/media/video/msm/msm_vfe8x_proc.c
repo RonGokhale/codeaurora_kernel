@@ -1774,6 +1774,8 @@ int vfe_cmd_init(struct msm_vfe_callback *presp,
 		goto cmd_init_failed1;
 	}
 
+	spin_lock_init(&ctrl->irqs_lock);
+
 	ctrl->vfeirq = vfeirq->start;
 
 	ctrl->vfebase =
