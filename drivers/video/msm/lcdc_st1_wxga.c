@@ -74,12 +74,12 @@ static int __init lcdc_st1_wxga_init(void)
 	pinfo.fb_num = 2;
 	pinfo.clk_rate = 74250000;
 
-	pinfo.lcdc.h_back_porch = 190;
-	pinfo.lcdc.h_front_porch = 56;
+	pinfo.lcdc.h_back_porch = 124;
+	pinfo.lcdc.h_front_porch = 110;
 	pinfo.lcdc.h_pulse_width = 136;
-	pinfo.lcdc.v_back_porch = 22;
-	pinfo.lcdc.v_front_porch = 1;
-	pinfo.lcdc.v_pulse_width = 3;
+	pinfo.lcdc.v_back_porch = 19;
+	pinfo.lcdc.v_front_porch = 5;
+	pinfo.lcdc.v_pulse_width = 6;
 	pinfo.lcdc.border_clr = 0;	/* blk */
 	pinfo.lcdc.underflow_clr = 0xff;	/* blue */
 	pinfo.lcdc.hsync_skew = 0;
