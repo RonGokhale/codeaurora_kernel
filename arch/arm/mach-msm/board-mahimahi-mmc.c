@@ -176,6 +176,20 @@ static uint32_t wifi_off_gpio_table[] = {
 	PCOM_GPIO_CFG(152, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_4MA),  /* WLAN IRQ */
 };
 
+/* BCM4329 returns wrong sdio_vsn(1) when we read cccr,
+ * we use predefined value (sdio_vsn=2) here to initial sdio driver well
+ */
+static struct embedded_sdio_data mahimahi_wifi_emb_data = {
+	.cccr	= {
+		.sdio_vsn	= 2,
+		.multi_block	= 1,
+		.low_speed	= 0,
+		.wide_bus	= 0,
+		.high_power	= 1,
+		.high_speed	= 1,
+	},
+};
+
 static int mahimahi_wifi_cd = 0; /* WIFI virtual 'card detect' status */
 static void (*wifi_status_cb)(int card_present, void *dev_id);
 static void *wifi_status_cb_devid;
@@ -200,7 +214,7 @@ static struct mmc_platform_data mahimahi_wifi_data = {
 	.ocr_mask		= MMC_VDD_28_29,
 	.status			= mahimahi_wifi_status,
 	.register_status_notify	= mahimahi_wifi_status_register,
-	.embedded_sdio		= NULL,
+	.embedded_sdio		= &mahimahi_wifi_emb_data,
 };
 
 int mahimahi_wifi_set_carddetect(int val)
