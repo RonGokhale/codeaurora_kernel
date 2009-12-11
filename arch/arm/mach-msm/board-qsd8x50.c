@@ -1788,6 +1788,9 @@ static struct i2c_board_info msm_i2c_st1_info[] __initdata = {
 	{
 		I2C_BOARD_INFO("qci-i2cbrg", 0x1A),
 	},
+	{
+		I2C_BOARD_INFO("tps65023", 0x48),
+	},
 };
 
 #ifdef CONFIG_MSM_CAMERA
