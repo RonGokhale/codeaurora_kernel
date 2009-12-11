@@ -298,7 +298,7 @@ int acpuclk_set_rate(unsigned long rate, int for_power_collapse)
 
 	DEBUG("acpuclk_set_rate(%d,%d)\n", (int) rate, for_power_collapse);
 
-	if (rate == cur->acpu_khz)
+	if (rate == 0 || rate == cur->acpu_khz)
 		return 0;
 
 	next = acpu_freq_tbl;
