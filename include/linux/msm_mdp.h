@@ -34,6 +34,11 @@
 /* new ioctl for apps to sync up with the mdp */
 #define MSMFB_MDP_SYNC _IOR(MSMFB_IOCTL_MAGIC, 140, unsigned int)
 
+/* new ioctls for async ops */
+#define MSMFB_ASYNC_OP_GET _IOR(MSMFB_IOCTL_MAGIC, 141, unsigned int)
+#define MSMFB_ASYNC_OP_SET _IOW(MSMFB_IOCTL_MAGIC, 142, unsigned int)
+
+
 #define MDP_IMGTYPE2_START 0x10000
 enum {
 	MDP_RGB_565,      /* RGB 565 planer */

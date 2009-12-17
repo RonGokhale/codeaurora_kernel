@@ -642,14 +642,18 @@ irqreturn_t mdp_isr(int irq, void *ptr)
 		/* PPP Complete */
 		if (mdp_interrupt & MDP_PPP_DONE) {
 #ifdef CONFIG_MDP_PPP_ASYNC_OP
-			mdp_ppp_djob_done();
-#else
-			mdp_pipe_ctrl(MDP_PPP_BLOCK, MDP_BLOCK_POWER_OFF, TRUE);
-			if (mdp_ppp_waiting) {
-				mdp_ppp_waiting = FALSE;
-				complete(&mdp_ppp_comp);
-			}
+			if (mdp_ppp_async_op_get())
+				mdp_ppp_djob_done();
+			else
 #endif
+			{
+				mdp_pipe_ctrl(MDP_PPP_BLOCK,
+					MDP_BLOCK_POWER_OFF, TRUE);
+				if (mdp_ppp_waiting) {
+					mdp_ppp_waiting = FALSE;
+					complete(&mdp_ppp_comp);
+				}
+			}
 		}
 	} while (1);
 
