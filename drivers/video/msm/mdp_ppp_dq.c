@@ -70,6 +70,32 @@ static DEFINE_SPINLOCK(mdp_ppp_dq_lock);
 /* Current Display Job for MDP PPP */
 static struct mdp_ppp_djob *curr_djob;
 
+/* Track ret code for the last opeartion */
+static int mdp_ppp_ret_code;
+
+/* Flag to enable/disable MDP PPP Async ops */
+static unsigned int mdp_ppp_async_op;
+
+inline int mdp_ppp_get_ret_code(void)
+{
+	return mdp_ppp_ret_code;
+}
+
+inline unsigned int mdp_ppp_async_op_get(void)
+{
+	return mdp_ppp_async_op;
+}
+
+inline void mdp_ppp_async_op_set(unsigned int flag)
+{
+
+	/* if enabled, make sure MDP is free before disabling */
+	if (mdp_ppp_async_op && !flag)
+		mdp_ppp_wait();
+
+	mdp_ppp_async_op = flag;
+}
+
 /* Push <Reg, Val> pair into DQ (if available) to later
  * program the MDP PPP Block */
 inline void mdp_ppp_outdw(uint32_t addr, uint32_t data)
@@ -77,7 +103,13 @@ inline void mdp_ppp_outdw(uint32_t addr, uint32_t data)
 	if (curr_djob) {
 		struct mdp_ppp_roi *roi = &curr_djob->roi;
 
-		BUG_ON(roi->ncmds >= MDP_PPP_ROI_MAX_SIZE);
+		if (roi->ncmds >= MDP_PPP_ROI_MAX_SIZE) {
+			printk(KERN_ERR "MDP_PPP: num of ROI cmds"
+				" = %d not supported, max is %d \n",
+				roi->ncmds, MDP_PPP_ROI_MAX_SIZE);
+			mdp_ppp_ret_code = -EINVAL;
+			return;
+		}
 
 		/* register ROI commands */
 		roi->cmd[roi->ncmds].reg = addr;
@@ -112,6 +144,10 @@ static void mdp_ppp_djob_cleaner(struct work_struct *work)
 	/* cleanup display job */
 	job = container_of(work, struct mdp_ppp_djob, cleaner.work);
 	if (likely(work && job)) {
+		/* keep mem state coherent */
+		msm_fb_ensure_mem_coherency_after_dma(job->info, &job->req, 1);
+
+		/* release mem */
 		mdp_ppp_put_img(job->p_src_file, job->p_dst_file);
 		kfree(job);
 	}
@@ -144,6 +180,10 @@ void mdp_ppp_wait(void)
 {
 	unsigned long flags;
 
+	/* if MDP PPP Async Ops not enabled, return immediately */
+	if (!mdp_ppp_async_op)
+		return;
+
 	spin_lock_irqsave(&mdp_ppp_dq_lock, flags);
 	if (test_bit(0, (unsigned long *)&mdp_ppp_busy_flag)) {
 
@@ -157,6 +197,9 @@ void mdp_ppp_wait(void)
 		wait_for_completion_killable(&mdp_ppp_comp);
 	} else
 		spin_unlock_irqrestore(&mdp_ppp_dq_lock, flags);
+
+	/* force cleanup for mem coherency */
+	flush_workqueue(mdp_ppp_djob_clnr);
 }
 
 /* Program MDP PPP block to process this ROI */

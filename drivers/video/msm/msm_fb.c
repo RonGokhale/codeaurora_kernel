@@ -1364,55 +1364,6 @@ void mdp_ppp_put_img(struct file *p_src_file, struct file *p_dst_file)
 #endif
 }
 
-#ifdef CONFIG_MDP_PPP_ASYNC_OP
-static int msmfb_blit(struct fb_info *info, void __user *p)
-{
-	struct mdp_blit_req_list req_list;
-	struct mdp_blit_req_list *list;
-	struct mdp_ppp_djob *job;
-	int i, ret = 0;
-
-	if (unlikely(copy_from_user(&req_list, p, sizeof(req_list))))
-		return -EFAULT;
-
-	for (i = 0; i < req_list.count; i++) {
-
-		/* create a new display job */
-		job = mdp_ppp_new_djob();
-		if (unlikely(!job))
-			return -ENOMEM;
-
-		list = (struct mdp_blit_req_list *)p;
-		if (copy_from_user(&job->req, &list->req[i],
-				sizeof(struct mdp_blit_req))) {
-			kfree(job);
-			return -EFAULT;
-		}
-
-		if (unlikely(job->req.src_rect.h == 0 ||
-				job->req.src_rect.w == 0)) {
-			printk(KERN_ERR "mpd_ppp: src img of zero size!\n");
-			kfree(job);
-			return -EINVAL;
-		}
-
-		if (unlikely(job->req.dst_rect.h == 0 ||
-				job->req.dst_rect.w == 0)) {
-			kfree(job);
-			return 0;
-		}
-
-		/* blit request */
-		ret = mdp_ppp_blit(info, &job->req, &job->p_src_file,
-				&job->p_dst_file);
-		if (ret) {
-			kfree(job);
-			return ret;
-		}
-	}
-	return 0;
-}
-#else
 int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 {
 	int ret;
@@ -1684,6 +1635,117 @@ static void msm_fb_ensure_memory_coherency_after_dma(struct fb_info *info,
 #endif
 }
 
+#ifdef CONFIG_MDP_PPP_ASYNC_OP
+void msm_fb_ensure_mem_coherency_after_dma(struct fb_info *info,
+	struct mdp_blit_req *req_list, int req_list_count)
+{
+	BUG_ON(!info);
+
+	/*
+	 * Ensure that CPU cache and other internal CPU state is
+	 * updated to reflect any change in memory modified by MDP blit
+	 * DMA.
+	 */
+	msm_fb_ensure_memory_coherency_after_dma(info,
+			req_list, req_list_count);
+}
+
+static int msmfb_async_blit(struct fb_info *info, void __user *p)
+{
+	/*
+	 * CAUTION: The names of the struct types intentionally *DON'T* match
+	 * the names of the variables declared -- they appear to be swapped.
+	 * Read the code carefully and you should see that the variable names
+	 * make sense.
+	 */
+	const int MAX_LIST_WINDOW = 16;
+	struct mdp_blit_req req_list[MAX_LIST_WINDOW];
+	struct mdp_blit_req_list req_list_header;
+
+	int count, i, req_list_count;
+
+	/* Get the count size for the total BLIT request. */
+	if (copy_from_user(&req_list_header, p, sizeof(req_list_header)))
+		return -EFAULT;
+	p += sizeof(req_list_header);
+	count = req_list_header.count;
+	while (count > 0) {
+		/*
+		 * Access the requests through a narrow window to decrease copy
+		 * overhead and make larger requests accessible to the
+		 * coherency management code.
+		 * NOTE: The window size is intended to be larger than the
+		 *       typical request size, but not require more than 2
+		 *       kbytes of stack storage.
+		 */
+		req_list_count = count;
+		if (req_list_count > MAX_LIST_WINDOW)
+			req_list_count = MAX_LIST_WINDOW;
+		if (copy_from_user(&req_list, p,
+				sizeof(struct mdp_blit_req)*req_list_count))
+			return -EFAULT;
+
+		/*
+		 * Ensure that any data CPU may have previously written to
+		 * internal state (but not yet committed to memory) is
+		 * guaranteed to be committed to memory now.
+		 */
+		msm_fb_ensure_memory_coherency_before_dma(info,
+				req_list, req_list_count);
+
+		/*
+		 * Do the blit DMA, if required -- returning early only if
+		 * there is a failure.
+		 */
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags & MDP_NO_BLIT)) {
+				int ret = 0;
+
+				/* create a new display job */
+				struct mdp_ppp_djob *job = mdp_ppp_new_djob();
+				if (unlikely(!job))
+					return -ENOMEM;
+
+				job->info = info;
+				memcpy(&job->req, &req_list[i],
+					sizeof(struct mdp_blit_req));
+
+				if (unlikely(job->req.src_rect.h == 0 ||
+					job->req.src_rect.w == 0)) {
+					printk(KERN_ERR "mpd_ppp: "
+						"src img of zero size!\n");
+					kfree(job);
+					return -EINVAL;
+				}
+
+				if (unlikely(job->req.dst_rect.h == 0 ||
+					job->req.dst_rect.w == 0)) {
+					kfree(job);
+					continue;
+				}
+
+				/* Do the actual blit. */
+				ret = mdp_ppp_blit(info, &job->req,
+					&job->p_src_file, &job->p_dst_file);
+
+				/*
+				 * Note that early returns don't guarantee
+				 * memory coherency.
+				 */
+				if (ret || mdp_ppp_get_ret_code()) {
+					kfree(job);
+					return ret;
+				}
+			}
+		}
+
+		/* Go to next window of requests. */
+		count -= req_list_count;
+		p += sizeof(struct mdp_blit_req)*req_list_count;
+	}
+	return 0;
+}
+#endif
 
 static int msmfb_blit(struct fb_info *info, void __user *p)
 {
@@ -1761,7 +1823,6 @@ static int msmfb_blit(struct fb_info *info, void __user *p)
 	}
 	return 0;
 }
-#endif
 
 DECLARE_MUTEX(msm_fb_ioctl_ppp_sem);
 DEFINE_MUTEX(msm_fb_ioctl_lut_sem);
@@ -1784,12 +1845,51 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	switch (cmd) {
 	case MSMFB_BLIT:
 		down(&msm_fb_ioctl_ppp_sem);
+#ifdef CONFIG_MDP_PPP_ASYNC_OP
+		if (mdp_ppp_async_op_get())
+			ret = msmfb_async_blit(info, argp);
+		else
+#endif
 		ret = msmfb_blit(info, argp);
 		up(&msm_fb_ioctl_ppp_sem);
 
 		break;
 
 #ifdef CONFIG_MDP_PPP_ASYNC_OP
+	case MSMFB_ASYNC_OP_GET:
+		{
+			unsigned int async_op_flag;
+
+			/* Current status */
+			down(&msm_fb_ioctl_ppp_sem);
+			async_op_flag = mdp_ppp_async_op_get();
+			up(&msm_fb_ioctl_ppp_sem);
+
+			ret = copy_to_user(argp, &async_op_flag,
+				sizeof(unsigned int));
+			if (ret)
+				return ret;
+		}
+
+		break;
+
+	case MSMFB_ASYNC_OP_SET:
+		{
+			unsigned int async_op_flag;
+
+			ret = copy_from_user(&async_op_flag, argp,
+				sizeof(unsigned int));
+			if (ret)
+				return ret;
+
+			/* Enable/Disable MDP PPP Async ops */
+			down(&msm_fb_ioctl_ppp_sem);
+			mdp_ppp_async_op_set(async_op_flag);
+			up(&msm_fb_ioctl_ppp_sem);
+		}
+
+		break;
+
 	case MSMFB_MDP_SYNC:
 		down(&msm_fb_ioctl_ppp_sem);
 		mdp_ppp_wait();
