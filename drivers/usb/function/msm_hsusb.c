@@ -30,6 +30,7 @@
 #include <linux/workqueue.h>
 #include <linux/clk.h>
 #include <linux/spinlock.h>
+#include <linux/switch.h>
 
 #include <linux/usb/ch9.h>
 #include <linux/io.h>
@@ -239,6 +240,7 @@ struct usb_info {
 	int active;
 	enum usb_device_state usb_state;
 	int vbus_sn_notif;
+	struct switch_dev sdev;
 };
 static struct usb_info *the_usb_info;
 
@@ -273,6 +275,18 @@ struct usb_device_descriptor desc_device = {
 };
 
 static void flush_endpoint(struct usb_endpoint *ept);
+
+static ssize_t print_switch_name(struct switch_dev *sdev, char *buf)
+{
+	return sprintf(buf, "%s\n", DRIVER_NAME);
+}
+
+static ssize_t print_switch_state(struct switch_dev *sdev, char *buf)
+{
+	struct usb_info *ui = the_usb_info;
+
+	return sprintf(buf, "%s\n", (ui->online ? "online" : "offline"));
+}
 
 static int usb_chg_detect_type(struct usb_info *ui)
 {
@@ -1290,6 +1304,8 @@ static void handle_setup(struct usb_info *ui)
 		set_configuration(ui, ctl.wValue);
 		ep0_setup_ack(ui);
 		ui->flags = USB_FLAG_CONFIGURE;
+		if (ui->configured)
+			ui->usb_state = USB_STATE_CONFIGURED;
 		queue_delayed_work(usb_work, &ui->work, 0);
 		return;
 
@@ -2177,6 +2193,8 @@ static void usb_switch_composition(unsigned short pid)
 
 		/* stop the controller */
 		usb_disable_pullup(ui);
+		ui->usb_state = USB_STATE_NOTATTACHED;
+		switch_set_state(&ui->sdev, 0);
 		/* Before starting again, wait for 300ms
 		 * to make sure host detects soft disconnection
 		 **/
@@ -2262,6 +2280,8 @@ EXPORT_SYMBOL(usb_function_enable);
 
 static int usb_free(struct usb_info *ui, int ret)
 {
+
+	switch_dev_unregister(&ui->sdev);
 	if (ui->irq) {
 		disable_irq_wake(ui->irq);
 		free_irq(ui->irq, ui);
@@ -2393,6 +2413,7 @@ static void usb_do_work(struct work_struct *w)
 					msm_pm_app_enable_usb_ldo(0);
 				ui->state = USB_STATE_OFFLINE;
 				enable_irq(ui->irq);
+				switch_set_state(&ui->sdev, 0);
 				pr_info("hsusb: ONLINE -> OFFLINE\n");
 				break;
 			}
@@ -2408,6 +2429,9 @@ static void usb_do_work(struct work_struct *w)
 					ui->usb_state = USB_STATE_CONFIGURED;
 					msm_chg_usb_i_is_available
 							(ui->maxpower * 2);
+
+					if (flags & USB_FLAG_CONFIGURE)
+						switch_set_state(&ui->sdev, 1);
 				} else {
 					ui->usb_state = USB_STATE_DEFAULT;
 					msm_chg_usb_i_is_available(100);
@@ -3153,6 +3177,18 @@ static int __init usb_probe(struct platform_device *pdev)
 			return usb_init_err;
 		}
 		pr_info("phy info:(%d)\n", ui->phy_info);
+	}
+
+	ui->sdev.name = DRIVER_NAME;
+	ui->sdev.print_name = print_switch_name;
+	ui->sdev.print_state = print_switch_state;
+
+	ret = switch_dev_register(&ui->sdev);
+	if (ret < 0) {
+		pr_err("%s(): switch_dev_register failed ret = %d\n",
+				__func__, ret);
+		usb_init_err = ret;
+		return usb_init_err;
 	}
 
 	irq = platform_get_irq(pdev, 0);
