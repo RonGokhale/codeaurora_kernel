@@ -101,22 +101,35 @@ inline void mdp_ppp_async_op_set(unsigned int flag)
 inline void mdp_ppp_outdw(uint32_t addr, uint32_t data)
 {
 	if (curr_djob) {
-		struct mdp_ppp_roi *roi = &curr_djob->roi;
 
-		if (roi->ncmds >= MDP_PPP_ROI_MAX_SIZE) {
-			printk(KERN_ERR "MDP_PPP: num of ROI cmds"
-				" = %d not supported, max is %d \n",
-				roi->ncmds, MDP_PPP_ROI_MAX_SIZE);
-			mdp_ppp_ret_code = -EINVAL;
-			return;
+		/* get the last node of the list. */
+		struct mdp_ppp_roi_cmd_set *node =
+			list_entry(curr_djob->roi_cmd_list.prev, struct mdp_ppp_roi_cmd_set, node);
+
+		/* If a node is already full, create a new one and add it to the list
+		 * (roi_cmd_list).
+		 */
+		if (node->ncmds == MDP_PPP_ROI_NODE_SIZE) {
+			node = kmalloc(sizeof(struct mdp_ppp_roi_cmd_set), GFP_KERNEL);
+			if (!node) {
+				printk(KERN_ERR "MDP_PPP: not enough memory.\n");
+				mdp_ppp_ret_code = -EINVAL;
+				return;
+			}
+
+			/* no ROI commands initially */
+			node->ncmds = 0;
+
+			/* add one node to roi_cmd_list. */
+			list_add_tail(&node->node, &curr_djob->roi_cmd_list);
 		}
 
 		/* register ROI commands */
-		roi->cmd[roi->ncmds].reg = addr;
-		roi->cmd[roi->ncmds].val = data;
-		roi->ncmds++;
+		node->cmd[node->ncmds].reg = addr;
+		node->cmd[node->ncmds].val = data;
+		node->ncmds++;
 	} else
-		/* Program MDP PPP block now */
+		/* program MDP PPP block now */
 		outpdw((addr), (data));
 }
 
@@ -144,11 +157,21 @@ static void mdp_ppp_djob_cleaner(struct work_struct *work)
 	/* cleanup display job */
 	job = container_of(work, struct mdp_ppp_djob, cleaner.work);
 	if (likely(work && job)) {
+		struct mdp_ppp_roi_cmd_set *node, *tmp;
+
 		/* keep mem state coherent */
 		msm_fb_ensure_mem_coherency_after_dma(job->info, &job->req, 1);
 
 		/* release mem */
 		mdp_ppp_put_img(job->p_src_file, job->p_dst_file);
+
+		/* release roi_cmd_list */
+		list_for_each_entry_safe(node, tmp, &job->roi_cmd_list, node) {
+			list_del(&node->node);
+			kfree(node);
+		}
+
+		/* release job struct */
 		kfree(job);
 	}
 }
@@ -157,17 +180,29 @@ static void mdp_ppp_djob_cleaner(struct work_struct *work)
 inline struct mdp_ppp_djob *mdp_ppp_new_djob(void)
 {
 	struct mdp_ppp_djob *job;
+	struct mdp_ppp_roi_cmd_set *node;
 
 	/* create a new djob */
 	job = kmalloc(sizeof(struct mdp_ppp_djob), GFP_KERNEL);
 	if (!job)
 		return NULL;
 
+	/* add the first node to curr_djob->roi_cmd_list */
+	node = kmalloc(sizeof(struct mdp_ppp_roi_cmd_set), GFP_KERNEL);
+	if (!node)
+	{
+		kfree(job);
+		return NULL;
+	}
+
 	/* make this current djob */
 	curr_djob = job;
+	INIT_LIST_HEAD(&curr_djob->roi_cmd_list);
 
 	/* no ROI commands initially */
-	curr_djob->roi.ncmds = 0;
+	node->ncmds = 0;
+	INIT_LIST_HEAD(&node->node);
+	list_add_tail(&node->node, &curr_djob->roi_cmd_list);
 
 	/* register this djob with the djob cleaner */
 	INIT_DELAYED_WORK(&curr_djob->cleaner, mdp_ppp_djob_cleaner);
@@ -203,20 +238,19 @@ void mdp_ppp_wait(void)
 }
 
 /* Program MDP PPP block to process this ROI */
-static void mdp_ppp_process_roi(struct mdp_ppp_roi *roi)
+static void mdp_ppp_process_roi(struct list_head *roi_cmd_list)
 {
-	int i = 0, count = roi->ncmds;
-
-	BUG_ON(!count || count >= MDP_PPP_ROI_MAX_SIZE);
 
 	/* program PPP engine with registered ROI commands */
-	for (; i < count; i++) {
-		MDP_PPP_DEBUG_MSG("%d: reg: 0x%x val: 0x%x \n",
-			i, roi->cmd[i].reg, roi->cmd[i].val);
-		outpdw(roi->cmd[i].reg, roi->cmd[i].val);
+	struct mdp_ppp_roi_cmd_set *node;
+	list_for_each_entry(node, roi_cmd_list, node) {
+		int i = 0;
+		for (; i < node->ncmds; i++) {
+			MDP_PPP_DEBUG_MSG("%d: reg: 0x%x val: 0x%x \n",
+					i, node->cmd[i].reg, node->cmd[i].val);
+			outpdw(node->cmd[i].reg, node->cmd[i].val);
+		}
 	}
-
-	MDP_PPP_DEBUG_MSG("reg count = %d \n", count);
 
 	/* kickoff MDP PPP engine */
 	MDP_PPP_DEBUG_MSG("kicking off mdp \n");
@@ -235,7 +269,7 @@ static void mdp_ppp_dispatch_djob(struct mdp_ppp_djob *job)
 	mdp_pipe_ctrl(MDP_PPP_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
 	/* process this ROI */
-	mdp_ppp_process_roi(&job->roi);
+	mdp_ppp_process_roi(&job->roi_cmd_list);
 }
 
 /* Enqueue this display job to be cleaned up later in "mdp_ppp_djob_done" */
@@ -288,7 +322,7 @@ void mdp_ppp_djob_done(void)
 		spin_unlock_irqrestore(&mdp_ppp_dq_lock, flags);
 
 		/* process next in the queue */
-		mdp_ppp_process_roi(&next->roi);
+		mdp_ppp_process_roi(&next->roi_cmd_list);
 	} else {
 		/* no pending display job */
 		spin_unlock_irqrestore(&mdp_ppp_dq_lock, flags);
