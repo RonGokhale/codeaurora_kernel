@@ -406,9 +406,6 @@ s32 ard_close(s32 session_id)
 
 				/* invoke the state m/c */
 				rc = ard_state_control(session_id, dev_id);
-
-				mutex_unlock(&local_ard_state->
-					ard_state_machine_mutex);
 			} else
 				D("Ses Closed no teardown, ses %d, dev %d,"
 						 "%d\n", session_id, dev_id,
@@ -523,6 +520,7 @@ s32 ard_ioctl(s32 session_id, u32 cmd_code, void *cmd_buf, u32 cmd_len)
 
 		if (dev_id == CAD_HW_DEVICE_ID_INVALID) {
 			pr_err("%s: unsupported device\n", __func__);
+			mutex_unlock(&local_ard_state->ard_state_machine_mutex);
 			return CAD_RES_FAILURE;
 		}
 
@@ -577,6 +575,8 @@ s32 ard_ioctl(s32 session_id, u32 cmd_code, void *cmd_buf, u32 cmd_len)
 				def_rx_device);
 			if (dev_id == CAD_HW_DEVICE_ID_INVALID) {
 				pr_err("%s: unsupported device\n", __func__);
+				mutex_unlock(&local_ard_state->
+					ard_state_machine_mutex);
 				return CAD_RES_FAILURE;
 			}
 
@@ -602,6 +602,8 @@ s32 ard_ioctl(s32 session_id, u32 cmd_code, void *cmd_buf, u32 cmd_len)
 				def_tx_device);
 			if (dev_id == CAD_HW_DEVICE_ID_INVALID) {
 				pr_err("%s: unsupported device\n", __func__);
+				mutex_unlock(&local_ard_state->
+					ard_state_machine_mutex);
 				return CAD_RES_FAILURE;
 			}
 
@@ -657,7 +659,7 @@ s32 ard_ioctl(s32 session_id, u32 cmd_code, void *cmd_buf, u32 cmd_len)
 				/* Log Error and do nothing */
 				pr_err("Q6 OPEN FAILED %d\n",
 					session_id);
-				goto done;
+				goto gd_done;
 			}
 
 			rc = qdsp6_devchg_notify(session_id,
@@ -667,7 +669,7 @@ s32 ard_ioctl(s32 session_id, u32 cmd_code, void *cmd_buf, u32 cmd_len)
 				pr_err("Q6 DEV_CHG FAILED %d\n",
 					session_id);
 				qdsp6_close(session_id);
-				goto done;
+				goto gd_done;
 			}
 
 			rc = qdsp6_standby(session_id);
@@ -676,7 +678,7 @@ s32 ard_ioctl(s32 session_id, u32 cmd_code, void *cmd_buf, u32 cmd_len)
 				pr_err("Q6 STANDBY FAILED %d\n",
 					session_id);
 				qdsp6_close(session_id);
-				goto done;
+				goto gd_done;
 			}
 
 			rc = qdsp6_start(session_id);
@@ -685,7 +687,7 @@ s32 ard_ioctl(s32 session_id, u32 cmd_code, void *cmd_buf, u32 cmd_len)
 				pr_err("Q6 START FAILED %d\n",
 					session_id);
 				qdsp6_close(session_id);
-				goto done;
+				goto gd_done;
 			}
 		}
 
@@ -698,7 +700,7 @@ s32 ard_ioctl(s32 session_id, u32 cmd_code, void *cmd_buf, u32 cmd_len)
 					local_ard_state->new_tx_device;
 
 
-
+gd_done:
 		/* Release mutex */
 		mutex_unlock(&local_ard_state->
 			ard_device[dev_id].device_mutex);
@@ -754,6 +756,8 @@ s32 ard_ioctl(s32 session_id, u32 cmd_code, void *cmd_buf, u32 cmd_len)
 			dev_id = get_device_id(cad_device);
 			if (dev_id == CAD_HW_DEVICE_ID_INVALID) {
 				pr_err("%s: unsupported device\n", __func__);
+				mutex_unlock(&local_ard_state->
+					ard_state_machine_mutex);
 				return CAD_RES_FAILURE;
 			}
 
