@@ -258,24 +258,31 @@ dev_wlc_ioctl(
 	struct ifreq ifr;
 	wl_ioctl_t ioc;
 	mm_segment_t fs;
-	int ret;
+	int ret = -EINVAL;
 
-	memset(&ioc, 0, sizeof(ioc));
-	ioc.cmd = cmd;
-	ioc.buf = arg;
-	ioc.len = len;
+	if (g_onoff == G_WLAN_SET_ON) {
+		memset(&ioc, 0, sizeof(ioc));
+		ioc.cmd = cmd;
+		ioc.buf = arg;
+		ioc.len = len;
 
-	strcpy(ifr.ifr_name, dev->name);
-	ifr.ifr_data = (caddr_t) &ioc;
+		strcpy(ifr.ifr_name, dev->name);
+		ifr.ifr_data = (caddr_t) &ioc;
 
-	
-	dev_open(dev);
+		ret = dev_open(dev);
+		if (ret) {
+			WL_ERROR(("%s: Error dev_open: %d\n", __func__, ret));
+			return ret;
+		}
 
-	fs = get_fs();
-	set_fs(get_ds());
-	ret = dev->do_ioctl(dev, &ifr, SIOCDEVPRIVATE);
-	set_fs(fs);
-
+		fs = get_fs();
+		set_fs(get_ds());
+		ret = dev->do_ioctl(dev, &ifr, SIOCDEVPRIVATE);
+		set_fs(fs);
+	}
+	else {
+		WL_TRACE(("%s: call after driver stop\n", __FUNCTION__));
+	}
 	return ret;
 }
 
@@ -522,9 +529,9 @@ wl_iw_set_country(
 	int country_offset;
 	int country_code_size;
 
+	WL_TRACE(("%s\n", __FUNCTION__));
 	memset(country_code, 0, sizeof(country_code));
 
-	
 	country_offset = strcspn(extra, " ");
 	country_code_size = strlen(extra) - country_offset;
 
