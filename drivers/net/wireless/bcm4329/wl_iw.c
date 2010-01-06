@@ -2483,6 +2483,14 @@ wl_iw_get_scan(
 	list->version = dtoh32(list->version);
 	list->count = dtoh32(list->count);
 
+	if (list->version != WL_BSS_INFO_VERSION) {
+		WL_ERROR(("%s : list->version %d != WL_BSS_INFO_VERSION\n",
+				__FUNCTION__, list->version));
+		if (g_scan_specified_ssid)
+			kfree(list);
+		return -EINVAL;
+	}
+
 	if (g_scan_specified_ssid) {
 		
 		wl_iw_add_bss_to_ss_cache(list);
