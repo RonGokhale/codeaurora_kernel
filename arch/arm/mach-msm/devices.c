@@ -24,11 +24,15 @@
 #include <mach/board.h>
 
 #include "devices.h"
+#include "smd_private.h"
 
 #include <asm/mach/flash.h>
 
 #include <asm/mach/mmc.h>
 #include <mach/msm_hsusb.h>
+#ifdef CONFIG_PMIC8058
+#include <linux/mfd/pmic8058.h>
+#endif
 
 static struct resource resources_uart1[] = {
 	{
@@ -365,6 +369,20 @@ static struct resource resources_hsusb_peripheral[] = {
 		.end	= INT_USB_HS,
 		.flags	= IORESOURCE_IRQ,
 	},
+#ifdef CONFIG_PMIC8058
+	{
+		.name	= "vbus_interrupt",
+		.start	= MSM_GPIO_TO_INT(112),
+		.end	= MSM_GPIO_TO_INT(112),
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name	= "id_interrupt",
+		.start	= MSM_GPIO_TO_INT(114),
+		.end	= MSM_GPIO_TO_INT(114),
+		.flags	= IORESOURCE_IRQ,
+	},
+#endif
 };
 
 static struct resource resources_gadget_peripheral[] = {
@@ -472,6 +490,10 @@ int msm_add_host(unsigned int host, struct msm_usb_host_platform_data *plat)
 }
 #if defined(CONFIG_ARCH_MSM7X30)
 #define MSM_NAND_PHYS		0xA0200000
+#define MSM_NANDC01_PHYS	0xA0240000
+#define MSM_NANDC10_PHYS	0xA0280000
+#define MSM_NANDC11_PHYS	0xA02C0000
+#define EBI2_REG_BASE		0xA0000000
 #else
 #define MSM_NAND_PHYS		0xA0A00000
 #endif
@@ -489,6 +511,32 @@ static struct resource resources_nand[] = {
 		.end    = MSM_NAND_PHYS + 0x7FF,
 		.flags  = IORESOURCE_MEM,
 	},
+#if defined(CONFIG_ARCH_MSM7X30)
+	[2] = {
+		.name   = "msm_nandc01_phys",
+		.start  = MSM_NANDC01_PHYS,
+		.end    = MSM_NANDC01_PHYS + 0x7FF,
+		.flags  = IORESOURCE_MEM,
+	},
+	[3] = {
+		.name   = "msm_nandc10_phys",
+		.start  = MSM_NANDC10_PHYS,
+		.end    = MSM_NANDC10_PHYS + 0x7FF,
+		.flags  = IORESOURCE_MEM,
+	},
+	[4] = {
+		.name   = "msm_nandc11_phys",
+		.start  = MSM_NANDC11_PHYS,
+		.end    = MSM_NANDC11_PHYS + 0x7FF,
+		.flags  = IORESOURCE_MEM,
+	},
+	[5] = {
+		.name   = "ebi2_reg_base",
+		.start  = EBI2_REG_BASE,
+		.end    = EBI2_REG_BASE + 0x60,
+		.flags  = IORESOURCE_MEM,
+	},
+#endif
 };
 
 static struct resource resources_otg[] = {
@@ -502,6 +550,14 @@ static struct resource resources_otg[] = {
 		.end	= INT_USB_HS,
 		.flags	= IORESOURCE_IRQ,
 	},
+#ifdef CONFIG_ARCH_MSM7X30
+	{
+		.name	= "vbus_on",
+		.start	= PM8058_IRQ_CHGVAL,
+		.end	= PM8058_IRQ_CHGVAL,
+		.flags	= IORESOURCE_IRQ,
+	},
+#endif
 };
 
 struct platform_device msm_device_otg = {
@@ -685,6 +741,77 @@ int __init msm_add_sdcc(unsigned int controller, struct mmc_platform_data *plat)
 	pdev = msm_sdcc_devices[controller-1];
 	pdev->dev.platform_data = plat;
 	return platform_device_register(pdev);
+}
+
+#define RAMFS_INFO_MAGICNUMBER		0x654D4D43
+#define RAMFS_INFO_VERSION		0x00000001
+#define RAMFS_MODEMSTORAGE_ID		0x4D454653
+
+static struct resource rmt_storage_resources[] = {
+       {
+		.flags  = IORESOURCE_MEM,
+       },
+};
+
+static struct platform_device rmt_storage_device = {
+       .name           = "rmt_storage",
+       .id             = -1,
+       .num_resources  = ARRAY_SIZE(rmt_storage_resources),
+       .resource       = rmt_storage_resources,
+};
+
+struct shared_ramfs_entry {
+	uint32_t client_id;   	/* Client id to uniquely identify a client */
+	uint32_t base_addr;	/* Base address of shared RAMFS memory */
+	uint32_t size;		/* Size of the shared RAMFS memory */
+	uint32_t reserved;	/* Reserved attribute for future use */
+};
+struct shared_ramfs_table {
+	uint32_t magic_id;  	/* Identify RAMFS details in SMEM */
+	uint32_t version;	/* Version of shared_ramfs_table */
+	uint32_t entries;	/* Total number of valid entries   */
+	struct shared_ramfs_entry ramfs_entry[3];	/* List all entries */
+};
+
+int __init rmt_storage_add_ramfs(void)
+{
+	struct shared_ramfs_table *ramfs_table;
+	struct shared_ramfs_entry *ramfs_entry;
+	int index;
+
+	ramfs_table = smem_alloc(SMEM_SEFS_INFO,
+			sizeof(struct shared_ramfs_table));
+
+	if (!ramfs_table) {
+		printk(KERN_WARNING "%s: No RAMFS table in SMEM\n", __func__);
+		return -ENOENT;
+	}
+
+	if ((ramfs_table->magic_id != (u32) RAMFS_INFO_MAGICNUMBER) ||
+		(ramfs_table->version != (u32) RAMFS_INFO_VERSION)) {
+		printk(KERN_WARNING "%s: Magic / Version mismatch:, "
+		       "magic_id=%#x, format_version=%#x\n", __func__,
+		       ramfs_table->magic_id, ramfs_table->version);
+		return -ENOENT;
+	}
+
+	for (index = 0; index < ramfs_table->entries; index++) {
+		ramfs_entry = &ramfs_table->ramfs_entry[index];
+
+		/* Find a match for the Modem Storage RAMFS area */
+		if (ramfs_entry->client_id == (u32) RAMFS_MODEMSTORAGE_ID) {
+			printk(KERN_INFO "%s: RAMFS Info (from SMEM): "
+				"Baseaddr = 0x%08x, Size = 0x%08x\n", __func__,
+				ramfs_entry->base_addr, ramfs_entry->size);
+
+			rmt_storage_resources[0].start = ramfs_entry->base_addr;
+			rmt_storage_resources[0].end = ramfs_entry->base_addr +
+							ramfs_entry->size - 1;
+			platform_device_register(&rmt_storage_device);
+			return 0;
+		}
+	}
+	return -ENOENT;
 }
 
 #if defined(CONFIG_ARCH_MSM7X30)
@@ -894,6 +1021,28 @@ struct platform_device msm_device_tssc = {
 	.resource = resources_tssc,
 };
 
+#ifdef CONFIG_MSM_ROTATOR
+static struct resource resources_msm_rotator[] = {
+	{
+		.start	= 0xA3E00000,
+		.end	= 0xA3F00000 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= INT_ROTATOR,
+		.end	= INT_ROTATOR,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm_rotator_device = {
+	.name		= "msm_rotator",
+	.id		= 0,
+	.num_resources  = ARRAY_SIZE(resources_msm_rotator),
+	.resource       = resources_msm_rotator,
+};
+#endif
+
 static void __init msm_register_device(struct platform_device *pdev, void *data)
 {
 	int ret;
@@ -1096,6 +1245,8 @@ struct clk msm_clocks_7x30[] = {
 	CLK_PCOM("i2c_clk",	I2C_CLK,	&msm_device_i2c.dev, 0),
 	CLK_PCOM("i2c_clk",	I2C_2_CLK,	&msm_device_i2c_2.dev, 0),
 	CLK_PCOM("imem_clk",	IMEM_CLK,	NULL, OFF),
+	CLK_PCOM("jpeg_clk",	JPEG_CLK,	NULL, OFF),
+	CLK_PCOM("jpeg_pclk",	JPEG_PCLK,	NULL, OFF),
 	CLK_PCOM("lpa_codec_clk",	LPA_CODEC_CLK,		NULL, 0),
 	CLK_PCOM("lpa_core_clk",	LPA_CORE_CLK,		NULL, 0),
 	CLK_PCOM("lpa_pclk",		LPA_PCLK,		NULL, 0),
@@ -1145,7 +1296,6 @@ struct clk msm_clocks_7x30[] = {
 	CLK_PCOM("usb_hs3_clk",		USB_HS3_CLK,		NULL, OFF),
 	CLK_PCOM("usb_hs3_pclk",	USB_HS3_PCLK,		NULL, OFF),
 	CLK_PCOM("usb_hs3_core_clk",	USB_HS3_CORE_CLK,	NULL, OFF),
-	CLK_PCOM("usb_otg_clk",	USB_OTG_CLK,	NULL, 0),
 	CLK_PCOM("vdc_clk",	VDC_CLK,	NULL, OFF | CLK_MIN),
 	CLK_PCOM("vfe_camif_clk",	VFE_CAMIF_CLK, 	NULL, 0),
 	CLK_PCOM("vfe_clk",	VFE_CLK,	NULL, 0),

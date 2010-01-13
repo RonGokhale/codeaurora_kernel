@@ -760,6 +760,10 @@ config PLAT_PXA
 
 source arch/arm/mm/Kconfig
 
+config DONT_RESERVE_FROM_MOVABLE_ZONE
+	def_bool y
+	depends on MEMORY_HOTPLUG
+
 config IWMMXT
 	bool "Enable iWMMXt support"
 	depends on CPU_XSCALE || CPU_XSC3 || CPU_MOHAWK
@@ -1071,6 +1075,14 @@ config HIGHMEM
 	  If unsure, say n.
 
 source "mm/Kconfig"
+
+config ARCH_MEMORY_PROBE
+	def_bool y
+	depends on MEMORY_HOTPLUG
+
+config ARCH_MEMORY_REMOVE
+	def_bool y
+	depends on MEMORY_HOTPLUG
 
 config LEDS
 	bool "Timer and CPU usage LEDs"
@@ -1486,6 +1498,8 @@ source "drivers/memstick/Kconfig"
 source "drivers/accessibility/Kconfig"
 
 source "drivers/leds/Kconfig"
+
+source "drivers/haptic/Kconfig"
 
 source "drivers/switch/Kconfig"
 

@@ -66,6 +66,7 @@
 #include <mach/qdsp5v2/audio_interct.h>
 #include <mach/qdsp5v2/mi2s.h>
 #include <mach/qdsp5v2/afe.h>
+#include <mach/qdsp5v2/lpa.h>
 #include <mach/vreg.h>
 #include <mach/pmic.h>
 
@@ -272,27 +273,24 @@ struct snddev_icodec_drv_state {
 	struct clk *lpa_core_clk;
 	struct clk *lpa_p_clk;
 	struct vreg *vreg_gp16;
-	struct vreg *vreg_ncp;
 	struct vreg *vreg_msme;
 	struct vreg *vreg_rf2;
+	struct lpa_drv *lpa;
 };
 
 static struct snddev_icodec_drv_state snddev_icodec_drv;
-
-static int afe_rx_enabled;
-static int afe_tx_enabled;
 
 static int snddev_icodec_open_rx(struct snddev_icodec_state *icodec)
 {
 	int trc;
 	struct msm_afe_config afe_config;
 	struct snddev_icodec_drv_state *drv = &snddev_icodec_drv;
+	struct lpa_codec_config lpa_config;
 
 	/* Voltage regulator voting
-	 * Vote GP16, NCP, MSME, RF2
+	 * Vote GP16, MSME, RF2
 	 */
 	vreg_enable(drv->vreg_gp16);
-	vreg_enable(drv->vreg_ncp);
 	vreg_enable(drv->vreg_msme);
 	vreg_enable(drv->vreg_rf2);
 
@@ -308,11 +306,24 @@ static int snddev_icodec_open_rx(struct snddev_icodec_state *icodec)
 	clk_enable(drv->lpa_p_clk);
 	clk_enable(drv->lpa_codec_clk);
 	clk_enable(drv->lpa_core_clk);
-	/* Set audio interconnect reg to ADSP */
-	audio_interct_codec(AUDIO_INTERCT_ADSP);
+
+	/* Enable LPA sub system
+	 */
+	drv->lpa = lpa_get();
+	if (!drv->lpa)
+		goto error_lpa;
+	lpa_config.sample_rate = icodec->sample_rate;
+	lpa_config.sample_width = 16;
+	lpa_config.output_interface = LPA_OUTPUT_INTF_WB_CODEC;
+	lpa_config.num_channels = icodec->data->channel_mode;
+	lpa_cmd_codec_config(drv->lpa, &lpa_config);
+
+	/* Set audio interconnect reg to LPA */
+	audio_interct_codec(AUDIO_INTERCT_LPA);
+
 	/* Set MI2S */
-	mi2s_set_codec_output_path((icodec->data->channel_mode == 2 ? 1 : 0),
-	WT_16_BIT);
+	mi2s_set_codec_output_path((icodec->data->channel_mode == 2 ?
+	MI2S_CHAN_STEREO : MI2S_CHAN_MONO_PACKED), WT_16_BIT);
 	/* Configure ADIE */
 	trc = adie_codec_open(icodec->data->profile, &icodec->adie_path);
 	if (IS_ERR_VALUE(trc))
@@ -321,31 +332,39 @@ static int snddev_icodec_open_rx(struct snddev_icodec_state *icodec)
 	 * If OSR is to be changed, need clock API for setting the divider
 	 */
 	adie_codec_setpath(icodec->adie_path, icodec->sample_rate, 256);
+	lpa_cmd_enable_codec(drv->lpa, 1);
 	/* Start AFE */
-	if (!afe_rx_enabled) {
-		afe_config.sample_rate = icodec->sample_rate / 1000;
-		afe_config.channel_mode = icodec->data->channel_mode;
-		afe_config.volume = AFE_VOLUME_UNITY;
-		trc = afe_enable(AFE_HW_PATH_CODEC_RX, &afe_config);
-		if (IS_ERR_VALUE(trc))
-			goto error_afe;
-		afe_rx_enabled = 1;
-	}
+	afe_config.sample_rate = icodec->sample_rate / 1000;
+	afe_config.channel_mode = icodec->data->channel_mode;
+	afe_config.volume = AFE_VOLUME_UNITY;
+	trc = afe_enable(AFE_HW_PATH_CODEC_RX, &afe_config);
+	if (IS_ERR_VALUE(trc))
+		goto error_afe;
 	/* Enable ADIE */
 	adie_codec_proceed_stage(icodec->adie_path, ADIE_CODEC_DIGITAL_READY);
 	adie_codec_proceed_stage(icodec->adie_path,
 	ADIE_CODEC_DIGITAL_ANALOG_READY);
+
+	/* Enable power amplifier */
+	if (icodec->data->pamp_on)
+		icodec->data->pamp_on();
+
 	icodec->enabled = 1;
 	return 0;
 
 error_afe:
 	adie_codec_close(icodec->adie_path);
+	icodec->adie_path = NULL;
 error_adie:
+	lpa_put(drv->lpa);
+error_lpa:
+	clk_disable(drv->lpa_p_clk);
+	clk_disable(drv->lpa_codec_clk);
+	clk_disable(drv->lpa_core_clk);
 	clk_disable(drv->rx_sclk);
 	clk_disable(drv->rx_mclk);
 error_invalid_freq:
 	vreg_disable(drv->vreg_gp16);
-	vreg_disable(drv->vreg_ncp);
 	vreg_disable(drv->vreg_msme);
 	vreg_disable(drv->vreg_rf2);
 
@@ -356,15 +375,18 @@ error_invalid_freq:
 static int snddev_icodec_open_tx(struct snddev_icodec_state *icodec)
 {
 	int trc;
+	int i;
 	struct msm_afe_config afe_config;
 	struct snddev_icodec_drv_state *drv = &snddev_icodec_drv;;
 
-	pmic_hsed_enable(PM_HSED_CONTROLLER_0, PM_HSED_ENABLE_PWM_TCXO);
+	for (i = 0; i < icodec->data->pmctl_id_sz; i++) {
+		pmic_hsed_enable(icodec->data->pmctl_id[i],
+			 PM_HSED_ENABLE_PWM_TCXO);
+	}
 	/* Voltage regulator voting
-	 * Vote GP16, NCP, MSME, RF2
+	 * Vote GP16, MSME, RF2
 	 */
 	vreg_enable(drv->vreg_gp16);
-	vreg_enable(drv->vreg_ncp);
 	vreg_enable(drv->vreg_msme);
 	vreg_enable(drv->vreg_rf2);
 
@@ -378,8 +400,8 @@ static int snddev_icodec_open_tx(struct snddev_icodec_state *icodec)
 	clk_enable(drv->tx_sclk);
 
 	/* Set MI2S */
-	mi2s_set_codec_input_path((icodec->data->channel_mode == 2 ? 1 : 0),
-	WT_16_BIT);
+	mi2s_set_codec_input_path((icodec->data->channel_mode == 2 ?
+	MI2S_CHAN_STEREO : MI2S_CHAN_MONO_RAW), WT_16_BIT);
 	/* Configure ADIE */
 	trc = adie_codec_open(icodec->data->profile, &icodec->adie_path);
 	if (IS_ERR_VALUE(trc))
@@ -391,26 +413,23 @@ static int snddev_icodec_open_tx(struct snddev_icodec_state *icodec)
 	ADIE_CODEC_DIGITAL_ANALOG_READY);
 
 	/* Start AFE */
-	if (!afe_tx_enabled) {
-		afe_config.sample_rate = icodec->sample_rate / 1000;
-		afe_config.channel_mode = icodec->data->channel_mode;
-		afe_config.volume = AFE_VOLUME_UNITY;
-		trc = afe_enable(AFE_HW_PATH_CODEC_TX, &afe_config);
-		if (IS_ERR_VALUE(trc))
-			goto error_afe;
-		afe_tx_enabled = 1;
-	}
+	afe_config.sample_rate = icodec->sample_rate / 1000;
+	afe_config.channel_mode = icodec->data->channel_mode;
+	afe_config.volume = AFE_VOLUME_UNITY;
+	trc = afe_enable(AFE_HW_PATH_CODEC_TX, &afe_config);
+	if (IS_ERR_VALUE(trc))
+		goto error_afe;
 	icodec->enabled = 1;
 	return 0;
 
 error_afe:
 	adie_codec_close(icodec->adie_path);
+	icodec->adie_path = NULL;
 error_adie:
 	clk_disable(drv->tx_sclk);
 	clk_disable(drv->tx_mclk);
 error_invalid_freq:
 	vreg_disable(drv->vreg_gp16);
-	vreg_disable(drv->vreg_ncp);
 	vreg_disable(drv->vreg_msme);
 	vreg_disable(drv->vreg_rf2);
 
@@ -422,10 +441,20 @@ static int snddev_icodec_close_rx(struct snddev_icodec_state *icodec)
 {
 	struct snddev_icodec_drv_state *drv = &snddev_icodec_drv;
 
+	/* Disable power amplifier */
+	if (icodec->data->pamp_off)
+		icodec->data->pamp_off();
+
 	/* Disable ADIE */
 	adie_codec_proceed_stage(icodec->adie_path, ADIE_CODEC_DIGITAL_OFF);
 	adie_codec_close(icodec->adie_path);
 	icodec->adie_path = NULL;
+
+	afe_disable(AFE_HW_PATH_CODEC_RX);
+
+	/* Disable LPA Sub system */
+	lpa_cmd_enable_codec(drv->lpa, 0);
+	lpa_put(drv->lpa);
 
 	/* Disable MI2S RX master block */
 	/* Disable MI2S RX bit clock */
@@ -433,7 +462,6 @@ static int snddev_icodec_close_rx(struct snddev_icodec_state *icodec)
 	clk_disable(drv->rx_mclk);
 
 	vreg_disable(drv->vreg_gp16);
-	vreg_disable(drv->vreg_ncp);
 	vreg_disable(drv->vreg_msme);
 	vreg_disable(drv->vreg_rf2);
 
@@ -444,6 +472,8 @@ static int snddev_icodec_close_rx(struct snddev_icodec_state *icodec)
 static int snddev_icodec_close_tx(struct snddev_icodec_state *icodec)
 {
 	struct snddev_icodec_drv_state *drv = &snddev_icodec_drv;
+	int i;
+	afe_disable(AFE_HW_PATH_CODEC_TX);
 
 	/* Disable ADIE */
 	adie_codec_proceed_stage(icodec->adie_path, ADIE_CODEC_DIGITAL_OFF);
@@ -456,9 +486,11 @@ static int snddev_icodec_close_tx(struct snddev_icodec_state *icodec)
 	clk_disable(drv->tx_mclk);
 
 	/* Disable mic bias */
-	pmic_hsed_enable(PM_HSED_CONTROLLER_0, PM_HSED_ENABLE_OFF);
+	for (i = 0; i < icodec->data->pmctl_id_sz; i++) {
+		pmic_hsed_enable(icodec->data->pmctl_id[i],
+			 PM_HSED_ENABLE_OFF);
+	}
 	vreg_disable(drv->vreg_gp16);
-	vreg_disable(drv->vreg_ncp);
 	vreg_disable(drv->vreg_msme);
 	vreg_disable(drv->vreg_rf2);
 
@@ -556,17 +588,15 @@ static int snddev_icodec_set_freq(struct msm_snddev_info *dev_info, u32 rate)
 		goto error;
 	}
 
-	if (rate != 8000 && rate != 16000 && rate != 48000) {
-		rc = -EINVAL;
-		goto error;
+	icodec = dev_info->private_data;
+	icodec->sample_rate = adie_codec_getfreq(icodec->data->profile, rate);
+
+	if (icodec->enabled) {
+		snddev_icodec_close(dev_info);
+		snddev_icodec_open(dev_info);
 	}
 
-	icodec = dev_info->private_data;
-
-	if (icodec->enabled)
-		pr_info("%s: set freq while enabled no dynamic switch yet\n",
-		__func__);
-	icodec->sample_rate = rate;
+	return icodec->sample_rate;
 
 error:
 	return rc;
@@ -613,7 +643,8 @@ static int snddev_icodec_probe(struct platform_device *pdev)
 	dev_info->opened = 0;
 	msm_snddev_register(dev_info);
 	icodec->data = pdata;
-	icodec->sample_rate = 8000; /* Default to 8KHz */
+	icodec->sample_rate = pdata->default_sample_rate;
+	dev_info->sample_rate = pdata->default_sample_rate;
 error:
 	return rc;
 }
@@ -626,7 +657,7 @@ static int snddev_icodec_remove(struct platform_device *pdev)
 static struct platform_driver snddev_icodec_driver = {
   .probe = snddev_icodec_probe,
   .remove = snddev_icodec_remove,
-  .driver = { .name = "msm_snddev_icodec" }
+  .driver = { .name = "snddev_icodec" }
 };
 
 #ifdef CONFIG_DEBUG_FS
@@ -649,7 +680,6 @@ static void debugfs_adie_loopback(u32 loop)
 
 	if (loop) {
 		vreg_enable(drv->vreg_gp16);
-		vreg_enable(drv->vreg_ncp);
 		vreg_enable(drv->vreg_msme);
 		vreg_enable(drv->vreg_rf2);
 
@@ -694,7 +724,6 @@ static void debugfs_adie_loopback(u32 loop)
 		pmic_hsed_enable(PM_HSED_CONTROLLER_0, PM_HSED_ENABLE_OFF);
 
 		vreg_disable(drv->vreg_gp16);
-		vreg_disable(drv->vreg_ncp);
 		vreg_disable(drv->vreg_msme);
 		vreg_disable(drv->vreg_rf2);
 
@@ -718,7 +747,6 @@ static void debugfs_afe_loopback(u32 loop)
 
 	if (loop) {
 		vreg_enable(drv->vreg_gp16);
-		vreg_enable(drv->vreg_ncp);
 		vreg_enable(drv->vreg_msme);
 		vreg_enable(drv->vreg_rf2);
 
@@ -786,7 +814,6 @@ static void debugfs_afe_loopback(u32 loop)
 		pmic_hsed_enable(PM_HSED_CONTROLLER_0, PM_HSED_ENABLE_OFF);
 
 		vreg_disable(drv->vreg_gp16);
-		vreg_disable(drv->vreg_ncp);
 		vreg_disable(drv->vreg_msme);
 		vreg_disable(drv->vreg_rf2);
 
@@ -847,8 +874,6 @@ static int __init snddev_icodec_init(void)
 	s32 rc;
 	struct snddev_icodec_drv_state *icodec_drv = &snddev_icodec_drv;
 
-	afe_rx_enabled = 0;
-	afe_tx_enabled = 0;
 	rc = platform_driver_register(&snddev_icodec_driver);
 	if (IS_ERR_VALUE(rc))
 		goto error_platform_driver;
@@ -876,9 +901,6 @@ static int __init snddev_icodec_init(void)
 	icodec_drv->vreg_gp16 = vreg_get(NULL, "gp16");
 	if (IS_ERR(icodec_drv->vreg_gp16))
 		goto error_vreg_gp16;
-	icodec_drv->vreg_ncp = vreg_get(NULL, "ncp");
-	if (IS_ERR(icodec_drv->vreg_ncp))
-		goto error_vreg_ncp;
 	icodec_drv->vreg_msme = vreg_get(NULL, "s2");
 	if (IS_ERR(icodec_drv->vreg_msme))
 		goto error_vreg_msme;
@@ -901,13 +923,12 @@ static int __init snddev_icodec_init(void)
 	mutex_init(&icodec_drv->tx_lock);
 	icodec_drv->rx_active = 0;
 	icodec_drv->tx_active = 0;
+	icodec_drv->lpa = NULL;
 	return 0;
 
 error_vreg_rf2:
 	vreg_put(icodec_drv->vreg_msme);
 error_vreg_msme:
-	vreg_put(icodec_drv->vreg_ncp);
-error_vreg_ncp:
 	vreg_put(icodec_drv->vreg_gp16);
 error_vreg_gp16:
 	clk_put(icodec_drv->lpa_p_clk);
@@ -943,7 +964,6 @@ static void __exit snddev_icodec_exit(void)
 	platform_driver_unregister(&snddev_icodec_driver);
 
 	vreg_put(icodec_drv->vreg_gp16);
-	vreg_put(icodec_drv->vreg_ncp);
 	vreg_put(icodec_drv->vreg_msme);
 	vreg_put(icodec_drv->vreg_rf2);
 

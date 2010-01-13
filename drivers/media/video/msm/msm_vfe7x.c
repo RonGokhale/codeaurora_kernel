@@ -62,8 +62,7 @@ static void vfe_7x_convert(struct msm_vfe_phy_info *pinfo,
 		void *data, void **ext, int32_t *elen)
 {
 	switch (type) {
-	case VFE_MSG_OUTPUT1:
-	case VFE_MSG_OUTPUT2: {
+	case VFE_MSG_OUTPUT_P: {
 		pinfo->y_phy = ((struct vfe_endframe *)data)->y_address;
 		pinfo->cbcr_phy =
 			((struct vfe_endframe *)data)->cbcr_address;
@@ -104,12 +103,14 @@ static void vfe_7x_ops(void *driver_data, unsigned id, size_t len,
 	uint32_t evt_buf[3];
 	struct msm_vfe_resp *rp;
 	void *data;
+	CDBG("%s:id=%d\n", __func__, id);
 
 	len = (id == VFE_ADSP_EVENT) ? 0 : len;
-	data = resp->vfe_alloc(sizeof(struct msm_vfe_resp) + len, vfe_syncdata);
+	data = resp->vfe_alloc(sizeof(struct msm_vfe_resp) + len,
+		vfe_syncdata,  GFP_ATOMIC);
 
 	if (!data) {
-		pr_err("rp: cannot allocate buffer\n");
+		pr_err("%s: rp: cannot allocate buffer\n", __func__);
 		return;
 	}
 	rp = (struct msm_vfe_resp *)data;
@@ -121,13 +122,16 @@ static void vfe_7x_ops(void *driver_data, unsigned id, size_t len,
 		rp->evt_msg.type   = MSM_CAMERA_EVT;
 		getevent(evt_buf, sizeof(evt_buf));
 		rp->evt_msg.msg_id = evt_buf[0];
-		resp->vfe_resp(rp, MSM_CAM_Q_VFE_EVT, vfe_syncdata);
+	CDBG("%s:event:msg_id=%d\n", __func__, rp->evt_msg.msg_id);
+		resp->vfe_resp(rp, MSM_CAM_Q_VFE_EVT, vfe_syncdata,
+		GFP_ATOMIC);
 	} else {
 		/* messages */
 		rp->evt_msg.type   = MSM_CAMERA_MSG;
 		rp->evt_msg.msg_id = id;
 		rp->evt_msg.data = rp + 1;
 		getevent(rp->evt_msg.data, len);
+	CDBG("%s:messages:msg_id=%d\n", __func__, rp->evt_msg.msg_id);
 
 		switch (rp->evt_msg.msg_id) {
 		case MSG_SNAPSHOT:
@@ -136,17 +140,11 @@ static void vfe_7x_ops(void *driver_data, unsigned id, size_t len,
 			break;
 
 		case MSG_OUTPUT1:
-			rp->type = VFE_MSG_OUTPUT1;
-			vfe_7x_convert(&(rp->phy), VFE_MSG_OUTPUT1,
+		case MSG_OUTPUT2:
+			rp->type = VFE_MSG_OUTPUT_P;
+			vfe_7x_convert(&(rp->phy), VFE_MSG_OUTPUT_P,
 				rp->evt_msg.data, &(rp->extdata),
 				&(rp->extlen));
-			break;
-
-		case MSG_OUTPUT2:
-			rp->type = VFE_MSG_OUTPUT2;
-			vfe_7x_convert(&(rp->phy), VFE_MSG_OUTPUT2,
-					rp->evt_msg.data, &(rp->extdata),
-					&(rp->extlen));
 			break;
 
 		case MSG_STATS_AF:
@@ -174,7 +172,7 @@ static void vfe_7x_ops(void *driver_data, unsigned id, size_t len,
 			rp->type = VFE_MSG_GENERAL;
 			break;
 		}
-		resp->vfe_resp(rp, MSM_CAM_Q_VFE_MSG, vfe_syncdata);
+		resp->vfe_resp(rp, MSM_CAM_Q_VFE_MSG, vfe_syncdata, GFP_ATOMIC);
 	}
 }
 
@@ -325,13 +323,14 @@ static int vfe_7x_config_axi(int mode,
 
 		CDBG("bufnum1 = %d\n", ad->bufnum1);
 		CDBG("config_axi1: O1, phy = 0x%lx, y_off = %d, cbcr_off =%d\n",
-			regptr->paddr, regptr->y_off, regptr->cbcr_off);
+			regptr->paddr, regptr->info.y_off,
+			regptr->info.cbcr_off);
 
 		bptr = &ao->output1buffer1_y_phy;
 		for (cnt = 0; cnt < ad->bufnum1; cnt++) {
-			*bptr = regptr->paddr + regptr->y_off;
+			*bptr = regptr->paddr + regptr->info.y_off;
 			bptr++;
-			*bptr = regptr->paddr + regptr->cbcr_off;
+			*bptr = regptr->paddr + regptr->info.cbcr_off;
 
 			bptr++;
 			regptr++;
@@ -339,9 +338,9 @@ static int vfe_7x_config_axi(int mode,
 
 		regptr--;
 		for (cnt = 0; cnt < (8 - ad->bufnum1); cnt++) {
-			*bptr = regptr->paddr + regptr->y_off;
+			*bptr = regptr->paddr + regptr->info.y_off;
 			bptr++;
-			*bptr = regptr->paddr + regptr->cbcr_off;
+			*bptr = regptr->paddr + regptr->info.cbcr_off;
 			bptr++;
 		}
 	} /* if OUTPUT1 or Both */
@@ -351,13 +350,13 @@ static int vfe_7x_config_axi(int mode,
 
 		CDBG("bufnum2 = %d\n", ad->bufnum2);
 		CDBG("config_axi2: O2, phy = 0x%lx, y_off = %d, cbcr_off =%d\n",
-			regptr->paddr, regptr->y_off, regptr->cbcr_off);
+		     regptr->paddr, regptr->info.y_off, regptr->info.cbcr_off);
 
 		bptr = &ao->output2buffer1_y_phy;
 		for (cnt = 0; cnt < ad->bufnum2; cnt++) {
-			*bptr = regptr->paddr + regptr->y_off;
+			*bptr = regptr->paddr + regptr->info.y_off;
 			bptr++;
-			*bptr = regptr->paddr + regptr->cbcr_off;
+			*bptr = regptr->paddr + regptr->info.cbcr_off;
 
 			bptr++;
 			regptr++;
@@ -365,9 +364,9 @@ static int vfe_7x_config_axi(int mode,
 
 		regptr--;
 		for (cnt = 0; cnt < (8 - ad->bufnum2); cnt++) {
-			*bptr = regptr->paddr + regptr->y_off;
+			*bptr = regptr->paddr + regptr->info.y_off;
 			bptr++;
-			*bptr = regptr->paddr + regptr->cbcr_off;
+			*bptr = regptr->paddr + regptr->info.cbcr_off;
 			bptr++;
 		}
 	}

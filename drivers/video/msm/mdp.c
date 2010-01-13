@@ -68,6 +68,7 @@
 #include <linux/io.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
+#include <linux/mutex.h>
 
 #include <asm/system.h>
 #include <asm/mach-types.h>
@@ -123,9 +124,11 @@ static struct delayed_work mdp_pipe_ctrl_worker;
 #ifdef CONFIG_FB_MSM_MDP40
 struct mdp_dma_data dma2_data;
 struct mdp_dma_data dma_s_data;
+struct mdp_dma_data dma_e_data;
 #else
 static struct mdp_dma_data dma2_data;
 static struct mdp_dma_data dma_s_data;
+static struct mdp_dma_data dma_e_data;
 #endif
 static struct mdp_dma_data dma3_data;
 
@@ -354,8 +357,25 @@ void mdp_disable_irq(uint32 term)
 	spin_unlock_irqrestore(&mdp_lock, irq_flags);
 }
 
+void mdp_disable_irq_nolock(uint32 term)
+{
+
+	if (!(mdp_irq_mask & term)) {
+		printk(KERN_ERR "MDP IRQ term-0x%x is not set\n", term);
+	} else {
+		mdp_irq_mask &= ~term;
+		if (!mdp_irq_mask && mdp_irq_enabled) {
+			mdp_irq_enabled = 0;
+			disable_irq(INT_MDP);
+		}
+	}
+}
+
 void mdp_pipe_kickoff(uint32 term, struct msm_fb_data_type *mfd)
 {
+
+	dmb();	/* memory barrier */
+
 	/* kick off PPP engine */
 	if (term == MDP_PPP_TERM) {
 		if (mdp_debug[MDP_PPP_BLOCK])
@@ -688,6 +708,7 @@ static void mdp_drv_init(void)
 	dma2_data.waiting = FALSE;
 	init_completion(&dma2_data.comp);
 	init_MUTEX(&dma2_data.mutex);
+	mutex_init(&dma2_data.ov_mutex);
 
 	dma3_data.busy = FALSE;
 	dma3_data.waiting = FALSE;
@@ -698,6 +719,10 @@ static void mdp_drv_init(void)
 	dma_s_data.waiting = FALSE;
 	init_completion(&dma_s_data.comp);
 	init_MUTEX(&dma_s_data.mutex);
+
+	dma_e_data.busy = FALSE;
+	dma_e_data.waiting = FALSE;
+	init_completion(&dma_e_data.comp);
 
 #ifndef CONFIG_FB_MSM_MDP22
 	init_completion(&mdp_hist_comp);
@@ -835,6 +860,15 @@ static int mdp_irq_clk_setup(void)
 	mdp_pclk = clk_get(NULL, "mdp_pclk");
 	if (IS_ERR(mdp_pclk))
 		mdp_pclk = NULL;
+
+#ifdef CONFIG_FB_MSM_MDP40
+	/*
+	 * mdp_clk should greater than mdp_pclk always
+	 */
+	clk_set_rate(mdp_clk, 122880000); /* 122.88 Mhz */
+	printk(KERN_INFO "mdp_clk: mdp_clk=%d mdp_pclk=%d\n",
+		(int)clk_get_rate(mdp_clk), (int)clk_get_rate(mdp_pclk));
+#endif
 
 	return 0;
 }
@@ -977,6 +1011,7 @@ static int mdp_probe(struct platform_device *pdev)
 		mdp_config_vsync(mfd);
 		break;
 
+	case HDMI_PANEL:
 	case LCDC_PANEL:
 		pdata->on = mdp_lcdc_on;
 		pdata->off = mdp_lcdc_off;
@@ -991,11 +1026,17 @@ static int mdp_probe(struct platform_device *pdev)
 #else
 		mfd->dma_fnc = mdp_lcdc_update;
 #endif
-		mfd->dma = &dma2_data;
 
 #ifdef CONFIG_FB_MSM_MDP40
-		mdp4_display_intf_sel(PRIMARY_INTF_SEL, LCDC_RGB_INTF);
+		if (mfd->panel.type == HDMI_PANEL) {
+			mfd->dma = &dma_e_data;
+			mdp4_display_intf_sel(EXTERNAL_INTF_SEL, LCDC_RGB_INTF);
+		} else {
+			mfd->dma = &dma2_data;
+			mdp4_display_intf_sel(PRIMARY_INTF_SEL, LCDC_RGB_INTF);
+		}
 #else
+		mfd->dma = &dma2_data;
 		spin_lock_irqsave(&mdp_spin_lock, flag);
 		mdp_intr_mask &= ~MDP_DMA_P_DONE;
 		outp32(MDP_INTR_ENABLE, mdp_intr_mask);

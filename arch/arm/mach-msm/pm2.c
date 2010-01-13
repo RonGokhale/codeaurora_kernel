@@ -41,6 +41,7 @@
 #endif
 
 #include "smd_private.h"
+#include "smd_rpcrouter.h"
 #include "acpuclock.h"
 #include "clock.h"
 #include "proc_comm.h"
@@ -355,18 +356,29 @@ enum {
  * Configure Hardware for Power Down/Up
  *****************************************************************************/
 
+#if defined(CONFIG_ARCH_MSM7X30)
+#define APPS_CLK_SLEEP_EN (MSM_GCC_BASE + 0x020)
+#define APPS_PWRDOWN      (MSM_ACC_BASE + 0x01c)
+#define APPS_SECOP        (MSM_TCSR_BASE + 0x038)
+#else /* defined(CONFIG_ARCH_MSM7X30) */
 #define APPS_CLK_SLEEP_EN (MSM_CSR_BASE + 0x11c)
 #define APPS_PWRDOWN      (MSM_CSR_BASE + 0x440)
 #define APPS_STANDBY_CTL  (MSM_CSR_BASE + 0x108)
+#endif /* defined(CONFIG_ARCH_MSM7X30) */
 
 /*
  * Configure hardware registers in preparation for Apps power down.
  */
 static void msm_pm_config_hw_before_power_down(void)
 {
+#if defined(CONFIG_ARCH_MSM7X30)
+	writel(1, APPS_PWRDOWN);
+	writel(4, APPS_SECOP);
+#else
 	writel(0x1f, APPS_CLK_SLEEP_EN);
 	writel(1, APPS_PWRDOWN);
 	writel(0, APPS_STANDBY_CTL);
+#endif
 }
 
 /*
@@ -374,8 +386,13 @@ static void msm_pm_config_hw_before_power_down(void)
  */
 static void msm_pm_config_hw_after_power_up(void)
 {
+#if defined(CONFIG_ARCH_MSM7X30)
+	writel(0, APPS_SECOP);
+	writel(0, APPS_PWRDOWN);
+#else
 	writel(0, APPS_PWRDOWN);
 	writel(0, APPS_CLK_SLEEP_EN);
+#endif
 }
 
 /*
@@ -383,9 +400,9 @@ static void msm_pm_config_hw_after_power_up(void)
  */
 static void msm_pm_config_hw_before_swfi(void)
 {
-#ifdef CONFIG_ARCH_MSM_SCORPION
+#if defined(CONFIG_ARCH_QSD8X50)
 	writel(0x1f, APPS_CLK_SLEEP_EN);
-#else
+#elif defined(CONFIG_ARCH_MSM7X27)
 	writel(0x0f, APPS_CLK_SLEEP_EN);
 #endif
 }
@@ -1555,6 +1572,7 @@ static uint32_t restart_reason = 0x776655AA;
 
 static void msm_pm_power_off(void)
 {
+	msm_rpcrouter_close();
 	msm_proc_comm(PCOM_POWER_DOWN, 0, 0);
 	for (;;)
 		;
@@ -1562,6 +1580,7 @@ static void msm_pm_power_off(void)
 
 static void msm_pm_restart(char str, const char *cmd)
 {
+	msm_rpcrouter_close();
 	msm_proc_comm(PCOM_RESET_CHIP, &restart_reason, 0);
 
 	for (;;)
@@ -1639,7 +1658,7 @@ static int __init msm_pm_init(void)
 	}
 #endif /* CONFIG_ARCH_MSM_SCORPION */
 
-	ret = msm_timer_init_time_sync();
+	ret = msm_timer_init_time_sync(msm_pm_timeout);
 	if (ret)
 		return ret;
 

@@ -66,6 +66,18 @@
 
 #include <mach/pmic8058-keypad.h>
 
+#define MATRIX_MIN_ROWS		5
+#define MATRIX_MIN_COLS		5
+
+#define MAX_SCAN_DELAY		128
+#define MIN_SCAN_DELAY		1
+
+#define MAX_DEBOUNCE_B0_TIME	20
+#define MIN_DEBOUNCE_B0_TIME	5
+
+#define MAX_DEBOUNCE_A0_TIME	8
+#define MIN_DEBOUNCE_A0_TIME	1
+
 #define KEYP_CTRL			0x148
 
 #define KEYP_CTRL_EVNTS			BIT(0)
@@ -121,6 +133,7 @@ struct pmic8058_kp {
 
 	struct device *dev;
 	u16 keystate[MATRIX_MAX_ROWS];
+	u16 stuckstate[MATRIX_MAX_ROWS];
 
 	u32	flags;
 };
@@ -254,9 +267,14 @@ static int pmic8058_kp_read_matrix(struct pmic8058_kp *kp, u16 *new_state,
 {
 	int rc, read_rows;
 	u8 scan_val;
+	static u8 rows[] = {
+		5, 6, 7, 8, 10, 10, 12, 12, 15, 15, 15, 18, 18, 18
+	};
 
-	if (kp->flags & KEYF_FIX_LAST_ROW)
-		read_rows = MATRIX_MAX_ROWS;
+	if (kp->flags & KEYF_FIX_LAST_ROW &&
+			(kp->pdata->num_rows != MATRIX_MAX_ROWS))
+		read_rows = rows[kp->pdata->num_rows - KEYP_CTRL_SCAN_ROWS_MIN
+					 + 1];
 	else
 		read_rows = kp->pdata->num_rows;
 
@@ -341,22 +359,48 @@ static int pmic8058_kp_scan_matrix(struct pmic8058_kp *kp, unsigned int events)
 	}
 	return rc;
 }
-
-/* REVISIT */
+/*
+ * NOTE: We are reading recent and old data registers blindly
+ * whenever key-stuck interrupt happens, because events counter doesn't
+ * get updated when this interrupt happens due to key stuck doesn't get
+ * considered as key state change.
+ *
+ * We are not using old data register contents after they are being read
+ * because it might report the key which was pressed before the key being stuck
+ * as stuck key because it's pressed status is stored in the old data
+ * register.
+ */
 static irqreturn_t pmic8058_kp_stuck_irq(int irq, void *data)
 {
+	u16 new_state[MATRIX_MAX_ROWS];
+	u16 old_state[MATRIX_MAX_ROWS];
+	int rc;
 	struct pmic8058_kp *kp = data;
 
-	dev_dbg(kp->dev, "some key got stuck\n");
+	rc = pmic8058_kp_read_matrix(kp, new_state, old_state);
+	__pmic8058_kp_scan_matrix(kp, new_state, kp->stuckstate);
 
 	return IRQ_HANDLED;
 }
 
+/*
+ * NOTE: Any row multiple interrupt issue - PMIC4 Rev A0
+ *
+ * If the S/W responds to the key-event interrupt too early and reads the
+ * recent data, the keypad FSM will mistakenly go to the IDLE state, instead
+ * of the scan pause state as it is supposed too. Since the key is still
+ * pressed, the keypad scanner will go through the debounce, scan, and generate
+ * another key event interrupt. The workaround for this issue is to add delay
+ * of 1ms between servicing the key event interrupt and reading the recent data.
+ */
 static irqreturn_t pmic8058_kp_irq(int irq, void *data)
 {
 	struct pmic8058_kp *kp = data;
 	u8 ctrl_val, events;
 	int rc;
+
+	if (pmic8058_is_rev_a0())
+		mdelay(1);
 
 	dev_dbg(kp->dev, "key sense irq\n");
 	__dump_kp_regs(kp, "pmic8058_kp_irq");
@@ -368,7 +412,16 @@ static irqreturn_t pmic8058_kp_irq(int irq, void *data)
 
 	return IRQ_HANDLED;
 }
-
+/*
+ * NOTE: Last row multi-interrupt issue
+ *
+ * In PMIC Rev A0, if any key in the last row of the keypad matrix
+ * is pressed and held, the H/W keeps on generating interrupts.
+ * Software work-arounds it by programming the keypad controller next level
+ * up rows (for 8x12 matrix it is 15 rows) so the keypad controller
+ * thinks of more-rows than the actual ones, so the actual last-row
+ * in the matrix won't generate multiple interrupts.
+ */
 static int pmic8058_kpd_init(struct pmic8058_kp *kp)
 {
 	int bits, rc, cycles;
@@ -394,8 +447,11 @@ static int pmic8058_kpd_init(struct pmic8058_kp *kp)
 		bits = row_bits[kp->pdata->num_rows - KEYP_CTRL_SCAN_ROWS_MIN];
 
 	/* Use max rows to fix last row problem if actual rows are less */
-	if (kp->flags & KEYF_FIX_LAST_ROW)
-		bits = KEYP_CTRL_SCAN_ROWS_BITS;
+	if (kp->flags & KEYF_FIX_LAST_ROW &&
+			 (kp->pdata->num_rows != MATRIX_MAX_ROWS))
+		bits = row_bits[kp->pdata->num_rows - KEYP_CTRL_SCAN_ROWS_MIN
+					 + 1];
+
 	ctrl_val |= (bits << KEYP_CTRL_SCAN_ROWS_SHIFT);
 
 	rc = pmic8058_kp_write_u8(kp, ctrl_val, KEYP_CTRL);
@@ -429,21 +485,17 @@ static int pmic8058_kpd_init(struct pmic8058_kp *kp)
 #ifdef CONFIG_PM
 static int pmic8058_kp_suspend(struct platform_device *pdev, pm_message_t msg)
 {
-	struct pmic8058_kp *kp = platform_get_drvdata(pdev);
-
-	if (device_may_wakeup(&pdev->dev))
-		enable_irq_wake(kp->key_sense_irq);
-
+	/* FIXME: Add enable_irq_wake support for key_sense_irq once pmic
+	 *  core driver adds sub-device APIs.
+	 */
 	return 0;
 }
 
 static int pmic8058_kp_resume(struct platform_device *pdev)
 {
-	struct pmic8058_kp *kp = platform_get_drvdata(pdev);
-
-	if (device_may_wakeup(&pdev->dev))
-		disable_irq_wake(kp->key_sense_irq);
-
+	/* FIXME: Add disable_irq_wake support for key_sense_irq once pmic
+	 *  core driver adds sub-device APIs.
+	 */
 	return 0;
 }
 #else
@@ -472,6 +524,8 @@ static int __devinit pmic8058_kp_probe(struct platform_device *pdev)
 	if (!pdata || !pdata->num_cols || !pdata->num_rows ||
 		pdata->num_cols > MATRIX_MAX_COLS ||
 		pdata->num_rows > MATRIX_MAX_ROWS ||
+		pdata->num_cols < MATRIX_MIN_COLS ||
+		pdata->num_rows < MATRIX_MIN_ROWS ||
 		!pdata->keymap) {
 		dev_err(&pdev->dev, "invalid platform data\n");
 		return -EINVAL;
@@ -594,6 +648,7 @@ static int __devinit pmic8058_kp_probe(struct platform_device *pdev)
 
 	/* initialize keypad state */
 	memset(kp->keystate, 0xff, sizeof(kp->keystate));
+	memset(kp->stuckstate, 0xff, sizeof(kp->stuckstate));
 
 	rc = pmic8058_kpd_init(kp);
 	if (rc < 0) {
@@ -636,6 +691,8 @@ static int __devinit pmic8058_kp_probe(struct platform_device *pdev)
 	__dump_kp_regs(kp, "probe");
 
 	device_init_wakeup(&pdev->dev, pdata->wakeup);
+	if (device_may_wakeup(&pdev->dev))
+		enable_irq_wake(kp->key_sense_irq);
 
 	return 0;
 

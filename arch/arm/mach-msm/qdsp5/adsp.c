@@ -377,7 +377,7 @@ static int rpc_send_accepted_void_reply(struct msm_rpc_endpoint *client,
 	return rc;
 }
 
-int msm_adsp_write(struct msm_adsp_module *module, unsigned dsp_queue_addr,
+int __msm_adsp_write(struct msm_adsp_module *module, unsigned dsp_queue_addr,
 		   void *cmd_buf, size_t cmd_size)
 {
 	uint32_t ctrl_word;
@@ -403,6 +403,7 @@ int msm_adsp_write(struct msm_adsp_module *module, unsigned dsp_queue_addr,
 		return -ENXIO;
 	}
 	if (dsp_queue_addr >= QDSP_MAX_NUM_QUEUES) {
+		spin_unlock_irqrestore(&adsp_write_lock, flags);
 		MM_INFO("Invalid Queue Index: %d\n", dsp_queue_addr);
 		return -ENXIO;
 	}
@@ -472,8 +473,7 @@ int msm_adsp_write(struct msm_adsp_module *module, unsigned dsp_queue_addr,
 
 	if ((ctrl_word & ADSP_RTOS_WRITE_CTRL_WORD_STATUS_M) !=
 	    ADSP_RTOS_WRITE_CTRL_WORD_NO_ERR_V) {
-		ret_status = -EIO;
-		MM_ERR("failed to write queue %x, retry\n", dsp_q_addr);
+		ret_status = -EAGAIN;
 		goto fail;
 	} else {
 		/* No error */
@@ -536,6 +536,22 @@ fail:
 }
 EXPORT_SYMBOL(msm_adsp_write);
 
+int msm_adsp_write(struct msm_adsp_module *module, unsigned dsp_queue_addr,
+			void *cmd_buf, size_t cmd_size)
+{
+	int rc, retries = 0;
+	do {
+		rc = __msm_adsp_write(module, dsp_queue_addr, cmd_buf,
+								cmd_size);
+		if (rc == -EAGAIN)
+			udelay(10);
+	} while (rc == -EAGAIN && retries++ < 100);
+	if (retries > 50)
+		pr_warning("adsp: %s command took %d attempts: rc %d\n",
+			module->name, retries, rc);
+	return rc;
+}
+
 static void *event_addr;
 static void read_event(void *buf, size_t len)
 {
@@ -588,8 +604,14 @@ static void handle_adsp_rtos_mtoa_app(struct rpc_request_hdr *req)
 
 		iptr = adsp_info.init_info_ptr;
 		iptr->image_count = be32_to_cpu(sptr->image_count);
+		if (iptr->image_count > IMG_MAX)
+			iptr->image_count = IMG_MAX;
 		iptr->num_queue_offsets = be32_to_cpu(sptr->num_queue_offsets);
 		num_entries = iptr->num_queue_offsets;
+		if (num_entries > ENTRIES_MAX) {
+			num_entries = ENTRIES_MAX;
+			iptr->num_queue_offsets = ENTRIES_MAX;
+		}
 		qptr = &sptr->queue_offsets_tbl[0][0];
 		for (i_no = 0; i_no < iptr->image_count; i_no++) {
 			qtbl = &iptr->queue_offsets_tbl[i_no][0];
@@ -603,6 +625,8 @@ static void handle_adsp_rtos_mtoa_app(struct rpc_request_hdr *req)
 		}
 
 		num_entries = be32_to_cpu(sptr->num_task_module_entries);
+		if (num_entries > ENTRIES_MAX)
+			num_entries = ENTRIES_MAX;
 		iptr->num_task_module_entries = num_entries;
 		entries_per_image = num_entries / iptr->image_count;
 		mptr = &sptr->task_to_module_tbl[0][0];
@@ -615,6 +639,8 @@ static void handle_adsp_rtos_mtoa_app(struct rpc_request_hdr *req)
 		}
 
 		iptr->module_table_size = be32_to_cpu(sptr->module_table_size);
+		if (iptr->module_table_size > MODULES_MAX)
+			iptr->module_table_size = MODULES_MAX;
 		mptr = &sptr->module_entries[0];
 		for (i_no = 0; i_no < iptr->module_table_size; i_no++)
 			iptr->module_entries[i_no] = be32_to_cpu(mptr[i_no]);
@@ -622,6 +648,8 @@ static void handle_adsp_rtos_mtoa_app(struct rpc_request_hdr *req)
 		mqptr = &sptr->mod_to_q_tbl[0];
 		mqtbl = &iptr->mod_to_q_tbl[0];
 		iptr->mod_to_q_entries = be32_to_cpu(sptr->mod_to_q_entries);
+		if (iptr->mod_to_q_entries > ENTRIES_MAX)
+			iptr->mod_to_q_entries = ENTRIES_MAX;
 		for (e_idx = 0; e_idx < iptr->mod_to_q_entries; e_idx++) {
 			mqtbl[e_idx].module = be32_to_cpu(mqptr->module);
 			mqtbl[e_idx].q_type = be32_to_cpu(mqptr->q_type);

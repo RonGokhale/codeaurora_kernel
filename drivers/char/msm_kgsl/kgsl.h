@@ -43,6 +43,14 @@
 #define DRIVER_NAME "kgsl"
 #define CHIP_REV_251 0x020501
 
+/* Flags to control whether to flush or invalidate a cached memory range */
+#define KGSL_CACHE_INV		0x00000000
+#define KGSL_CACHE_CLEAN	0x00000001
+#define KGSL_CACHE_FLUSH	0x00000002
+
+#define KGSL_CACHE_USER_ADDR	0x00000010
+#define KGSL_CACHE_VMALLOC_ADDR	0x00000020
+
 struct kgsl_driver {
 	struct miscdevice misc;
 	struct platform_device *pdev;
@@ -71,12 +79,17 @@ struct kgsl_driver {
 
 extern struct kgsl_driver kgsl_driver;
 
-struct kgsl_pmem_entry {
+struct kgsl_mem_entry {
 	struct kgsl_memdesc memdesc;
 	struct file *pmem_file;
 	struct list_head list;
 	struct list_head free_list;
 	uint32_t free_timestamp;
+#ifdef CONFIG_MSM_KGSL_MMU
+	/* back pointer to private structure under whose context this
+	* allocation is made */
+	struct kgsl_file_private *priv;
+#endif
 };
 
 enum kgsl_status {
@@ -104,9 +117,24 @@ while (1) { \
 #define KGSL_POST_HWACCESS() \
 	mutex_unlock(&kgsl_driver.mutex)
 
-void kgsl_remove_pmem_entry(struct kgsl_pmem_entry *entry);
+void kgsl_remove_mem_entry(struct kgsl_mem_entry *entry);
 
 int kgsl_pwrctrl(unsigned int pwrflag);
 int kgsl_yamato_sleep(struct kgsl_device *device, const int idle);
+
+#ifdef CONFIG_MSM_KGSL_DRM
+extern int kgsl_drm_init(struct platform_device *dev);
+extern void kgsl_drm_exit(void);
+extern void kgsl_gpu_mem_flush(void);
+#else
+static inline int kgsl_drm_init(struct platform_device *dev)
+{
+	return 0;
+}
+
+static inline void kgsl_drm_exit(void)
+{
+}
+#endif
 
 #endif /* _GSL_DRIVER_H */

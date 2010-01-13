@@ -7,35 +7,51 @@ choice
 config ARCH_MSM7X01A
 	bool "MSM7x00A / MSM7x01A"
 	select ARCH_MSM_ARM11
+	select MSM_VIC
 	select CPU_V6
-	select REMOTE_SPINLOCK_SWP
-
-config ARCH_MSM7X27
-	bool "MSM7x27"
-	select ARCH_MSM_ARM11
-	select CPU_V6
-	select REMOTE_SPINLOCK_SWP
-
-config ARCH_MSM7X30
-	bool "MSM7x30"
-	select ARCH_MSM_SCORPION
-	select CPU_V7
-	select REMOTE_SPINLOCK_DEKKERS
-
-config ARCH_QSD8X50
-	bool "QSD8X50"
-	select ARCH_MSM_SCORPION
-	select CPU_V7
-	select EMULATE_DOMAIN_MANAGER_V7
-	select VERIFY_PERMISSION_FAULT
-	select REMOTE_SPINLOCK_LDREX
+	select MSM_REMOTE_SPINLOCK_SWP
 
 config ARCH_MSM7X25
 	bool "MSM7x25"
 	select ARCH_MSM_ARM11
+	select MSM_VIC
 	select CPU_V6
-	select REMOTE_SPINLOCK_SWP
+	select MSM_REMOTE_SPINLOCK_SWP
 
+config ARCH_MSM7X27
+	bool "MSM7x27"
+	select ARCH_MSM_ARM11
+	select MSM_VIC
+	select CPU_V6
+	select MSM_REMOTE_SPINLOCK_SWP
+
+config ARCH_MSM7X30
+	bool "MSM7x30"
+	select ARCH_MSM_SCORPION
+	select MSM_VIC
+	select CPU_V7
+	select MSM_REMOTE_SPINLOCK_DEKKERS
+
+config ARCH_QSD8X50
+	bool "QSD8X50"
+	select ARCH_MSM_SCORPION
+	select MSM_VIC
+	select CPU_V7
+	select EMULATE_DOMAIN_MANAGER_V7
+	select VERIFY_PERMISSION_FAULT
+	select MSM_REMOTE_SPINLOCK_LDREX
+
+endchoice
+
+choice
+	prompt "MSM SoC Revision"
+	default MSM_SOC_REV_NONE
+config MSM_SOC_REV_NONE
+	bool "N/A"
+if ARCH_QSD8X50
+config MSM_SOC_REV_A
+	bool "Rev. A"
+endif
 endchoice
 
 config  ARCH_MSM_ARM11
@@ -45,11 +61,14 @@ config  ARCH_MSM_SCORPION
 config  ARCH_MSM_SCORPIONMP
 	bool
 
-config REMOTE_SPINLOCK_DEKKERS
+config  MSM_VIC
 	bool
-config REMOTE_SPINLOCK_SWP
+
+config MSM_REMOTE_SPINLOCK_DEKKERS
 	bool
-config REMOTE_SPINLOCK_LDREX
+config MSM_REMOTE_SPINLOCK_SWP
+	bool
+config MSM_REMOTE_SPINLOCK_LDREX
 	bool
 
 menu "MSM Board Selection"
@@ -131,6 +150,7 @@ config MACH_SAPPHIRE
 
 config MACH_QSD8X50_SURF
 	depends on ARCH_QSD8X50
+	depends on MSM_SOC_REV_NONE
 	depends on MSM_STACKED_MEMORY
 	default y
 	bool "QSD8x50 SURF"
@@ -139,6 +159,7 @@ config MACH_QSD8X50_SURF
 
 config MACH_QSD8X50_FFA
 	depends on ARCH_QSD8X50
+	depends on MSM_SOC_REV_NONE
 	depends on MSM_STACKED_MEMORY
 	default y
 	bool "QSD8x50 FFA"
@@ -147,6 +168,7 @@ config MACH_QSD8X50_FFA
 
 config MACH_QSD8X50_COMET
 	depends on ARCH_QSD8X50
+	depends on MSM_SOC_REV_NONE
 	depends on MSM_STACKED_MEMORY
 	default n
 	bool "QSD8x50 Comet"
@@ -160,6 +182,24 @@ config MACH_QSD8X50_GRAPEFRUIT
 	bool "QSD8x50 Grapefruit"
 	help
 	  Support for the Qualcomm Grapefruit eval board.
+
+config MACH_QSD8X50A_SURF
+	depends on ARCH_QSD8X50
+	depends on MSM_SOC_REV_A
+	depends on MSM_STACKED_MEMORY
+	default y
+	bool "QSD8x50A SURF"
+	help
+	  Support for the Qualcomm QSD8x50A SURF eval board.
+
+config MACH_QSD8X50A_FFA
+	depends on ARCH_QSD8X50
+	depends on MSM_SOC_REV_A
+	depends on MSM_STACKED_MEMORY
+	default y
+	bool "QSD8x50A FFA"
+	help
+	  Support for the Qualcomm QSD8x50A FFA eval board.
 
 config MACH_MSM7X25_SURF
 	depends on ARCH_MSM7X25
@@ -203,13 +243,26 @@ config MSM_STACKED_MEMORY
 	  memory.  When present this memory bank is used for a high speed
 	  shared memory interface.  When not present regular RAM is used.
 
-config PMEM_KERNEL_SIZE
-	int "PMEM for kernel components (in MB)"
-	default 2
-	depends on ARCH_QSD8X50
+config PHYS_OFFSET
+	hex
+	default "0x00200000" if !MSM_STACKED_MEMORY
+	default "0x00000000" if ARCH_QSD8X50 && MSM_SOC_REV_A
+	default "0x20000000" if ARCH_QSD8X50
+	default "0x10000000"
+
+config KERNEL_PMEM_SMI_REGION
+	bool "Enable in-kernel PMEM region for SMI"
+	default n
+	depends on ARCH_QSD8X50 && !PMEM_GPU0
 	help
-	  Configures the amount of PMEM for use by kernel components
-	  (in MB; minimum 2MB)
+	   Enable the in-kernel PMEM alloator to use SMI memory.
+
+config PMEM_GPU0
+	bool "Enable PMEM GPU0 region"
+	default y
+	depends on ARCH_QSD8X50 && ANDROID_PMEM
+	help
+	  Enable the PMEM GPU0 device
 
 config MSM_AMSS_VERSION
 	int
@@ -412,7 +465,7 @@ config HTC_PWRSINK
 
 config QSD_SVS
 	bool "QSD Static Voltage Scaling"
-	depends on (MACH_QSD8X50_SURF || MACH_QSD8X50_FFA || MACH_QSD8X50_COMET)
+	depends on (MACH_QSD8X50_SURF || MACH_QSD8X50_FFA || MACH_QSD8X50_COMET || MACH_QSD8X50A_SURF || MACH_QSD8X50A_FFA)
 	default y
 	select TPS65023
 	help
@@ -420,7 +473,7 @@ config QSD_SVS
 
 config QSD_PMIC_DEFAULT_DCDC1
 	int "PMIC default output voltage"
-	depends on (MACH_QSD8X50_SURF || MACH_QSD8X50_FFA || MACH_QSD8X50_COMET)
+	depends on (MACH_QSD8X50_SURF || MACH_QSD8X50_FFA || MACH_QSD8X50_COMET || MACH_QSD8X50A_SURF || MACH_QSD8X50A_FFA)
 	default 1250
 	help
 	  This is the PMIC voltage at Linux kernel boot.
@@ -601,8 +654,8 @@ config MSM_RPCSERVER_HANDSET
 	  headset switch and clamshell state.
 
 config MSM_RMT_STORAGE_SERVER
-	depends on (ARCH_MSM7X30 && MSM_ONCRPCROUTER)
-	default y
+	depends on (ARCH_MSM && MSM_ONCRPCROUTER)
+	default n
 	bool "Remote Storage RPC server"
 	help
 	  Provide RPC mechanism for remote processors to access storage
@@ -681,6 +734,7 @@ config MSM_HW3D
 	  library.
 
 config MSM_ADSP
+	depends on (ARCH_MSM7X01A || ARCH_MSM7X25 || ARCH_MSM7X27)
 	tristate "MSM ADSP driver"
 	depends on ANDROID_PMEM
 	default y
@@ -690,14 +744,14 @@ config MSM_ADSP
 config MSM_ADSP_REPORT_EVENTS
 	bool "Report modem events from the DSP"
 	default y
-	depends on MSM_ADSP
+	depends on (MSM_ADSP || MSM7KV2_AUDIO)
 	help
 	  Normally, only messages from the aDSP are reported to userspace.
 	  With this option, we report events from the aDSP as well.
 
 config MSM7KV2_AUDIO
 	bool "MSM7K v2 audio"
-	depends on (ARCH_MSM7X30 && MSM_ADSP)
+	depends on (ARCH_MSM7X30 && ANDROID_PMEM)
 	default y
 	help
 	  Enables QDSP5V2-based audio drivers for audio playbacks and
@@ -708,6 +762,13 @@ config MSM_VREG_SWITCH_INVERTED
 	default n
 	help
 	  Reverses the enable and disable for vreg switch.
+
+config MSM_QDSP6
+	tristate "QDSP6 support"
+	depends on ARCH_QSD8X50
+	default y
+	help
+	  Enable support for qdsp6. This provides audio and video functionality.
 
 config MSM_DMA_TEST
 	tristate "MSM DMA test module"
@@ -735,7 +796,7 @@ config QSD_AUDIO
 	  Provides PCM, MP3, and AAC audio playback.
 
 config AUDIO_AAC_PLUS
-	depends on (MSM_ADSP || QSD_AUDIO)
+	depends on (MSM_ADSP || QSD_AUDIO || MSM7KV2_AUDIO)
 	bool "AAC+ Audio"
 	default y
 	help

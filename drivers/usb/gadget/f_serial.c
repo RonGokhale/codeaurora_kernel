@@ -306,7 +306,7 @@ invalid:
 
 	/* respond with data transfer or status phase? */
 	if (value >= 0) {
-		printk(KERN_ERR "gser ttyGS%d req%02x.%02x v%04x i%04x l%d\n",
+		printk(KERN_DEBUG "gser ttyGS%d req%02x.%02x v%04x i%04x l%d\n",
 			gser->port_num, ctrl->bRequestType, ctrl->bRequest,
 			w_value, w_index, w_length);
 		req->zero = 0;
@@ -327,6 +327,19 @@ static int gser_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 	struct usb_composite_dev *cdev = f->config->cdev;
 
 	/* we know alt == 0, so this is an activation or a reset */
+
+#ifdef CONFIG_MODEM_SUPPORT
+	if (gser->notify->driver_data) {
+		DBG(cdev, "reset generic ttyGS%d\n", gser->port_num);
+		usb_ep_disable(gser->notify);
+	} else {
+		gser->notify_desc = ep_choose(cdev->gadget,
+				gser->hs.notify,
+				gser->fs.notify);
+	}
+	usb_ep_enable(gser->notify, gser->notify_desc);
+	gser->notify->driver_data = gser;
+#endif
 
 	if (gser->port.in->driver_data) {
 		DBG(cdev, "reset generic ttyGS%d\n", gser->port_num);
@@ -352,6 +365,8 @@ static void gser_disable(struct usb_function *f)
 	gserial_disconnect(&gser->port);
 #ifdef CONFIG_MODEM_SUPPORT
 	usb_ep_fifo_flush(gser->notify);
+	usb_ep_disable(gser->notify);
+	gser->notify->driver_data = NULL;
 #endif
 	gser->online = 0;
 }
@@ -399,7 +414,7 @@ static int gser_notify_serial_state(struct f_gser *gser)
 
 	spin_lock_irqsave(&gser->lock, flags);
 	if (gser->notify_req) {
-		printk(KERN_ERR "gser ttyGS%d serial state %04x\n",
+		printk(KERN_DEBUG "gser ttyGS%d serial state %04x\n",
 				gser->port_num, gser->serial_state);
 		status = gser_notify(gser, USB_CDC_NOTIFY_SERIAL_STATE,
 				0, &gser->serial_state,

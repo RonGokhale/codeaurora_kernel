@@ -1141,6 +1141,16 @@ config MSM_KGSL_DRM
 	bool "Build a DRM interface for the MSM_KGSL driver"
 	depends on MSM_KGSL && DRM
 
+config MSM_KGSL_MMU
+    bool "Enable the GPU MMU in the MSM_KGSL driver"
+    depends on MSM_KGSL && MMU
+    default n
+
+config KGSL_PER_PROCESS_PAGE_TABLE
+	bool "Enable Per Process page tables for the KGSL driver"
+	default n
+	depends on MSM_KGSL_MMU
+
 config Q6_VENC
 	tristate "q6 video encoder driver"
 	depends on ARCH_MSM_SCORPION && MSM_DALRPC
@@ -1157,12 +1167,23 @@ config MSM_Q6VDEC
 
 source "drivers/s390/char/Kconfig"
 
-config MSM_Q6VDEC
-	tristate "MSM QDSP6 Video Decoder Driver"
-	depends on ARCH_MSM_SCORPION && MSM_DALRPC
-	default m
-	---help---
-	  This driver provides access to MSM QDSP6 for video frame decoding.
+config MSM_ROTATOR
+	tristate "MSM Offline Image Rotator Driver"
+	depends on ARCH_MSM7X30
+	default y
+	help
+	  This driver provides support for the image rotator HW block in the
+	  MSM 7x30 SoC.
+
+config MSM_ROTATOR_USE_IMEM
+	bool "Enable rotator driver to use iMem"
+	depends on MSM_ROTATOR
+	default y
+	help
+	  This option enables the msm_rotator driver to use the move efficient
+	  iMem.  Some MSM platforms may not have iMem available for the rotator
+	  block.  Or some systems may want the iMem to be dedicated to a
+	  different function.
 
 endmenu
 

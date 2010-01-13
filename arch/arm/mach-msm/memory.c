@@ -17,6 +17,7 @@
 #include <linux/mm.h>
 #include <linux/mm_types.h>
 #include <linux/bootmem.h>
+#include <linux/module.h>
 #include <asm/pgtable.h>
 #include <asm/io.h>
 #include <asm/mach/map.h>
@@ -50,6 +51,7 @@ void write_to_strongly_ordered_memory(void)
 	map_zero_page_strongly_ordered();
 	*(int *)zero_page_strongly_ordered = 0;
 }
+EXPORT_SYMBOL(write_to_strongly_ordered_memory);
 
 void flush_axi_bus_buffer(void)
 {
@@ -138,4 +140,16 @@ void *alloc_bootmem_aligned(unsigned long size, unsigned long alignment)
 		free_bootmem(__pa(unused_addr), unused_size);
 
 	return (void *)addr;
+}
+
+int platform_physical_remove_pages(unsigned long start_pfn,
+	unsigned long nr_pages)
+{
+	unsigned long start = start_pfn << PAGE_SHIFT;
+	unsigned long size = nr_pages << PAGE_SHIFT;
+	unsigned long virtual = __phys_to_virt(start);
+
+	/* simulate turning off memory by writing bit pattern into it for now */
+	memset((void *)virtual, 0x27, size);
+	return 0;
 }

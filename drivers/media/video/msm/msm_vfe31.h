@@ -100,7 +100,14 @@
 #define VFE_IRQ_STATUS0_CAMIF_SOF_MASK            0x00000001
 #define VFE_IRQ_STATUS0_REG_UPDATE_MASK           0x00000020
 #define VFE_IRQ_STATUS0_IMAGE_COMPOSIT_DONE0_MASK 0x00200000
+#define VFE_IRQ_STATUS0_IMAGE_COMPOSIT_DONE1_MASK 0x00400000
+#define VFE_IRQ_STATUS0_IMAGE_COMPOSIT_DONE2_MASK 0x00800000
 #define VFE_IRQ_STATUS1_RESET_AXI_HALT_ACK_MASK   0x00800000
+#define VFE_IRQ_STATUS0_STATS_COMPOSIT_MASK       0x01000000
+
+#define VFE_IRQ_STATUS0_STATS_AEC                 0x2000
+#define VFE_IRQ_STATUS0_STATS_AF                  0x4000
+#define VFE_IRQ_STATUS0_STATS_AWB                 0x8000
 
 /* imask for while waiting for stop ack,  driver has already
  * requested stop, waiting for reset irq, and async timer irq.
@@ -116,15 +123,51 @@
 /* bit 0-21 are error irq bits */
 #define VFE_IMASK_ERROR_ONLY_1  0x003fffff
 
+/* For BPC bit 0,bit 12-17 and bit 26 -20 are set to zero and other's 1 */
+#define BPC_MASK 0xF80C0FFE
 
+/* For BPC bit 1 and 2 are set to zero and other's 1 */
+#define ABF_MASK 0xFFFFFFF9
 
+/* For MCE enable bit 28 set to zero and other's 1 */
+#define MCE_EN_MASK 0xEFFFFFFF
 
+/* For MCE Q_K bit 28 to 31 set to zero and other's 1 */
+#define MCE_Q_K_MASK 0x0FFFFFFF
+
+#define AWB_ENABLE_MASK 0x00000080
+
+#define AF_ENABLE_MASK 0x00000040
+
+#define AE_ENABLE_MASK 0x00000020
 #define VFE_REG_UPDATE_TRIGGER           1
 #define VFE_PM_BUF_MAX_CNT_MASK          0xFF
 #define VFE_DMI_CFG_DEFAULT              0x00000100
 #define LENS_ROLL_OFF_DELTA_TABLE_OFFSET 32
+#define VFE_AE_PINGPONG_STATUS_BIT       0x80
 #define VFE_AF_PINGPONG_STATUS_BIT       0x100
 #define VFE_AWB_PINGPONG_STATUS_BIT      0x200
+
+
+enum VFE31_DMI_RAM_SEL {
+	 NO_MEM_SELECTED          = 0,
+	 ROLLOFF_RAM              = 0x1,
+	 RGBLUT_RAM_CH0_BANK0     = 0x2,
+	 RGBLUT_RAM_CH0_BANK1     = 0x3,
+	 RGBLUT_RAM_CH1_BANK0     = 0x4,
+	 RGBLUT_RAM_CH1_BANK1     = 0x5,
+	 RGBLUT_RAM_CH2_BANK0     = 0x6,
+	 RGBLUT_RAM_CH2_BANK1     = 0x7,
+	 STATS_HIST_CB_EVEN_RAM   = 0x8,
+	 STATS_HIST_CB_ODD_RAM    = 0x9,
+	 STATS_HIST_CR_EVEN_RAM   = 0xa,
+	 STATS_HIST_CR_ODD_RAM    = 0xb,
+	 RGBLUT_CHX_BANK0         = 0xc,
+	 RGBLUT_CHX_BANK1         = 0xd,
+	 LUMA_ADAPT_LUT_RAM_BANK0 = 0xe,
+	 LUMA_ADAPT_LUT_RAM_BANK1 = 0xf
+
+};
 
 enum  VFE_STATE {
 	VFE_STATE_IDLE,
@@ -242,10 +285,18 @@ enum  VFE_STATE {
 #define V31_DEMUX_OFF             0x00000284
 #define V31_DEMUX_LEN             20
 
+#define V31_DEMOSAIC_0_OFF        0x00000298
+#define V31_DEMOSAIC_0_LEN        4
+/* ABF     */
+#define V31_DEMOSAIC_1_OFF        0x000002A4
+#define V31_DEMOSAIC_1_LEN        180
+/* BPC     */
+#define V31_DEMOSAIC_2_OFF        0x0000029C
+#define V31_DEMOSAIC_2_LEN        8
+
 #define V31_OUT_CLAMP_OFF         0x00000524
 #define V31_OUT_CLAMP_LEN         8
 
-#define V31_OPERATION_CFG_OFF     0xFFFFFFFF
 #define V31_OPERATION_CFG_LEN     28
 
 #define V31_AXI_OUT_OFF           0x00000038
@@ -257,19 +308,64 @@ enum  VFE_STATE {
 #define V31_CHROMA_SUBS_OFF       0x000004F8
 #define V31_CHROMA_SUBS_LEN       12
 
-#define V31_FOV_CFG_OFF           0x00000360
-#define V31_FOV_CFG_LEN           8
+#define V31_FOV_OFF           0x00000360
+#define V31_FOV_LEN           8
 
-#define V31_MAIN_SCALER_CFG_OFF 0x00000368
-#define V31_MAIN_SCALER_CFG_LEN 28
+#define V31_MAIN_SCALER_OFF 0x00000368
+#define V31_MAIN_SCALER_LEN 28
+
+#define V31_S2Y_OFF 0x000004D0
+#define V31_S2Y_LEN 20
+
+#define V31_S2CbCr_OFF 0x000004E4
+#define V31_S2CbCr_LEN 20
+
+#define V31_CHROMA_EN_OFF 0x000003C4
+#define V31_CHROMA_EN_LEN 36
+
+#define V31_BLACK_LEVEL_OFF 0x00000264
+#define V31_BLACK_LEVEL_LEN 16
+
+#define V31_ROLL_OFF_CFG_OFF 0x00000274
+#define V31_ROLL_OFF_CFG_LEN 16
+
+#define V31_COLOR_COR_OFF 0x00000388
+#define V31_COLOR_COR_LEN 52
+
+#define V31_WB_OFF 0x00000384
+#define V31_WB_LEN 4
+
+#define V31_RGB_G_OFF 0x000003BC
+#define V31_RGB_G_LEN 4
+
+#define V31_LA_OFF 0x000003C0
+#define V31_LA_LEN 4
+
+#define V31_CHROMA_SUP_OFF 0x000003E8
+#define V31_CHROMA_SUP_LEN 12
+
+#define V31_MCE_OFF 0x000003E8
+#define V31_MCE_LEN 36
+#define V31_STATS_AF_OFF 0x0000053c
+#define V31_STATS_AF_LEN 16
+
+#define V31_STATS_AE_OFF 0x00000534
+#define V31_STATS_AE_LEN 8
+
+#define V31_STATS_AWB_OFF 0x0000054c
+#define V31_STATS_AWB_LEN 32
+
+#define V31_ASF_OFF 0x000004A0
+#define V31_ASF_LEN 48
+#define V31_ASF_UPDATE_LEN 36
+
+#define V31_CAPTURE_LEN 4
 
 struct vfe_cmd_hw_version {
 	uint32_t minorVersion;
 	uint32_t majorVersion;
 	uint32_t coreVersion;
 };
-
-
 
 enum VFE_AXI_OUTPUT_MODE {
 	VFE_AXI_OUTPUT_MODE_Output1,
@@ -416,12 +512,15 @@ enum VFE_YUV_INPUT_COSITING_MODE {
 	VFE_YUV_INTERPOLATED
 };
 
-#define VFE_STATS_BUFFER_COUNT 3
 
 /* 13*1  */
-#define  VFE_ROLL_OFF_INIT_TABLE_SIZE  13
+#define VFE31_ROLL_OFF_INIT_TABLE_SIZE  13
 /* 13*16 */
-#define  VFE_ROLL_OFF_DELTA_TABLE_SIZE 208
+#define VFE31_ROLL_OFF_DELTA_TABLE_SIZE 208
+
+#define VFE31_GAMMA_NUM_ENTRIES  64
+
+#define VFE31_LA_TABLE_LENGTH    64
 
 struct vfe_cmds_demosaic_abf {
 	uint8_t   enable;
@@ -635,10 +734,18 @@ enum VFE31_MESSAGE_ID {
 	MSG_ID_START_ACK,
 	MSG_ID_STOP_ACK,
 	MSG_ID_UPDATE_ACK,
-	MSG_ID_OUTPUT,
+	MSG_ID_OUTPUT_P,
+	MSG_ID_OUTPUT_T,
+	MSG_ID_OUTPUT_S,
+	MSG_ID_OUTPUT_V,
 	MSG_ID_SNAPSHOT_DONE,
-	MSG_ID_STATS_AUTOFOCUS,
-	MSG_ID_STATS_WB_EXP,
+	MSG_ID_STATS_AEC,
+	MSG_ID_STATS_AF,
+	MSG_ID_STATS_AWB, /* 8 */
+	MSM_ID_STATS_RS,
+	MSM_ID_STATS_CS,
+	MSM_ID_STATS_IHIST,
+	MSM_ID_STATS_SKIN,
 	MSG_ID_EPOCH1,
 	MSG_ID_EPOCH2,
 	MSG_ID_SYNC_TIMER0_DONE,
@@ -648,8 +755,13 @@ enum VFE31_MESSAGE_ID {
 	MSG_ID_ASYNC_TIMER1_DONE,
 	MSG_ID_ASYNC_TIMER2_DONE,
 	MSG_ID_ASYNC_TIMER3_DONE,
+	MSG_ID_AE_OVERFLOW,
 	MSG_ID_AF_OVERFLOW,
 	MSG_ID_AWB_OVERFLOW,
+	MSG_ID_RS_OVERFLOW,
+	MSG_ID_CS_OVERFLOW,
+	MSG_ID_IHIST_OVERFLOW,
+	MSG_ID_SKIN_OVERFLOW,
 	MSG_ID_AXI_ERROR,
 	MSG_ID_CAMIF_OVERFLOW,
 	MSG_ID_VIOLATION,
@@ -657,15 +769,11 @@ enum VFE31_MESSAGE_ID {
 	MSG_ID_BUS_OVERFLOW,
 };
 
-struct vfe_msg_stats_autofocus {
-	uint32_t    afBuffer;
+struct vfe_msg_stats{
+	uint32_t    buffer;
 	uint32_t    frameCounter;
 };
 
-struct vfe_msg_stats_wb_exp {
-	uint32_t awbBuffer;
-	uint32_t frameCounter;
-};
 
 struct vfe_frame_bpc_info {
 	uint32_t greenDefectPixelCount;
@@ -693,7 +801,7 @@ struct vfe31_irq_status {
 };
 
 struct vfe_msg_output {
-	uint8_t   output_mode; /* VFE31_OUTPUT_MODE_P/S/V */
+	uint8_t   output_id; /* VFE_MSG_OUTPUT_P/V/S */
 	uint32_t  yBuffer;
 	uint32_t  cbcrBuffer;
 	struct vfe_frame_bpc_info bpcInfo;
@@ -705,8 +813,7 @@ struct vfe_message {
 	enum VFE31_MESSAGE_ID _d;
 	union {
 		struct vfe_msg_output              msgOut;
-		struct vfe_msg_stats_autofocus     msgStatsAf;
-		struct vfe_msg_stats_wb_exp        msgStatsWbExp;
+		struct vfe_msg_stats               msgStats;
 		struct vfe_msg_camif_status        msgCamifError;
    } _u;
 };
@@ -742,6 +849,8 @@ struct vfe31_output_ch {
 	int8_t ch0;
 	int8_t ch1;
 	int8_t ch2;
+	uint32_t  capture_cnt;
+	uint32_t  frame_drop_cnt;
 };
 
 /* no error irq in mask 0 */
@@ -792,6 +901,30 @@ struct vfe31_frame_extra {
 #define VFE_BUS_PING_PONG_STATUS        0x00000180
 #define VFE_AXI_CMD                     0x000001D8
 #define VFE_AXI_STATUS        0x000001DC
+#define VFE_BUS_STATS_PING_PONG_BASE    0x000000F4
+
+#define VFE_BUS_STATS_AEC_WR_PING_ADDR    0x000000F4
+#define VFE_BUS_STATS_AEC_WR_PONG_ADDR    0x000000F8
+#define VFE_BUS_STATS_AEC_UB_CFG          0x000000FC
+#define VFE_BUS_STATS_AF_WR_PING_ADDR     0x00000100
+#define VFE_BUS_STATS_AF_WR_PONG_ADDR     0x00000104
+#define VFE_BUS_STATS_AF_UB_CFG           0x00000108
+#define VFE_BUS_STATS_AWB_WR_PING_ADDR    0x0000010C
+#define VFE_BUS_STATS_AWB_WR_PONG_ADDR    0x00000110
+#define VFE_BUS_STATS_AWB_UB_CFG          0x00000114
+#define VFE_BUS_STATS_RS_WR_PING_ADDR    0x00000118
+#define VFE_BUS_STATS_RS_WR_PONG_ADDR    0x0000011C
+#define VFE_BUS_STATS_RS_UB_CFG          0x00000120
+
+#define VFE_BUS_STATS_CS_WR_PING_ADDR    0x00000124
+#define VFE_BUS_STATS_CS_WR_PONG_ADDR    0x00000128
+#define VFE_BUS_STATS_CS_UB_CFG          0x0000012C
+#define VFE_BUS_STATS_HIST_WR_PING_ADDR   0x00000130
+#define VFE_BUS_STATS_HIST_WR_PONG_ADDR   0x00000134
+#define VFE_BUS_STATS_HIST_UB_CFG          0x00000138
+#define VFE_BUS_STATS_SKIN_WR_PING_ADDR    0x0000013C
+#define VFE_BUS_STATS_SKIN_WR_PONG_ADDR    0x00000140
+#define VFE_BUS_STATS_SKIN_UB_CFG          0x00000144
 #define VFE_CAMIF_COMMAND               0x000001E0
 #define VFE_CAMIF_STATUS                0x00000204
 #define VFE_REG_UPDATE_CMD              0x00000260
@@ -810,6 +943,16 @@ struct vfe31_frame_extra {
 #define VFE_CLAMP_MIN                   0x00000528
 #define VFE_REALIGN_BUF                 0x0000052C
 #define VFE_STATS_CFG                   0x00000530
+#define VFE_DMI_CFG                     0x00000598
+#define VFE_DMI_ADDR                    0x0000059C
+#define VFE_DMI_DATA_LO                 0x000005A4
+
+struct vfe_stats_control {
+	uint8_t  ackPending;
+	uint32_t nextFrameAddrBuf;
+	uint32_t droppedStatsFrameCount;
+	uint32_t bufToRender;
+};
 
 struct vfe31_ctrl_type {
 	uint16_t operation_mode;     /* streaming or snapshot */
@@ -841,7 +984,7 @@ struct vfe31_ctrl_type {
 
 	uint32_t stats_comp;
 	uint8_t vstate;
-	uint32_t vfe_snapshot_count;
+	uint32_t vfe_capture_count;
 
 	uint32_t vfeFrameId;
 	uint32_t output1Pattern;
@@ -850,10 +993,26 @@ struct vfe31_ctrl_type {
 	uint32_t output2Period;
 	uint32_t vfeFrameSkipCount;
 	uint32_t vfeFrameSkipPeriod;
+	struct vfe_stats_control afStatsControl;
+	struct vfe_stats_control awbStatsControl;
+	struct vfe_stats_control aecStatsControl;
 };
 
-struct vfe_cmd_stats_wb_exp_ack {
-  uint32_t  nextWbExpOutputBufferAddr;
+#define statsAeNum      0
+#define statsAfNum      1
+#define statsAwbNum     2
+#define statsRsNum      3
+#define statsCsNum      4
+#define statsIhistNum   5
+#define statsSkinNum    6
+
+struct vfe_cmd_stats_ack{
+  uint32_t  nextStatsBuf;
 };
 
+#define VFE_STATS_BUFFER_COUNT            3
+
+struct vfe_cmd_stats_buf{
+   uint32_t statsBuf[VFE_STATS_BUFFER_COUNT];
+};
 #endif /* __MSM_VFE31_H__ */

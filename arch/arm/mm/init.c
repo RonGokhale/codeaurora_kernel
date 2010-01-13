@@ -15,6 +15,9 @@
 #include <linux/mman.h>
 #include <linux/nodemask.h>
 #include <linux/initrd.h>
+#ifdef CONFIG_MEMORY_HOTPLUG
+#include <linux/memory_hotplug.h>
+#endif
 #include <linux/highmem.h>
 
 #include <asm/mach-types.h>
@@ -349,6 +352,20 @@ static void __init bootmem_free_node(int node, struct meminfo *mi)
 	free_area_init_node(node, zone_size, min, zhole_size);
 }
 
+#ifdef CONFIG_MEMORY_HOTPLUG
+static void map_reserved_memory(void)
+{
+	struct map_desc map;
+
+	map.pfn = (movable_reserved_start >> PAGE_SHIFT);
+	map.virtual = __phys_to_virt(movable_reserved_start);
+	map.length = movable_reserved_size;
+	map.type = MT_MEMORY;
+
+	create_mapping(&map);
+}
+#endif
+
 void __init bootmem_init(void)
 {
 	struct meminfo *mi = &meminfo;
@@ -410,6 +427,13 @@ void __init bootmem_init(void)
 	for_each_node(node)
 		bootmem_free_node(node, mi);
 
+#ifdef CONFIG_MEMORY_HOTPLUG
+	if (movable_reserved_size) {
+		max_low = (movable_reserved_start + movable_reserved_size)
+			>> PAGE_SHIFT;
+		map_reserved_memory();
+	}
+#endif
 	high_memory = __va((max_low << PAGE_SHIFT) - 1) + 1;
 
 	/*
@@ -586,6 +610,26 @@ void free_initmem(void)
 					    __phys_to_pfn(__pa(__init_end)),
 					    "init");
 }
+
+#ifdef CONFIG_MEMORY_HOTPLUG
+int arch_add_memory(int nid, u64 start, u64 size)
+{
+	struct pglist_data *pgdata = NODE_DATA(nid);
+	struct zone *zone = pgdata->node_zones + ZONE_MOVABLE;
+	unsigned long start_pfn = start >> PAGE_SHIFT;
+	unsigned long nr_pages = size >> PAGE_SHIFT;
+
+	return __add_pages(nid, zone, start_pfn, nr_pages);
+}
+
+int arch_physical_remove_memory(u64 start, u64 size)
+{
+	unsigned long start_pfn = start >> PAGE_SHIFT;
+	unsigned long nr_pages = size >> PAGE_SHIFT;
+
+	return platform_physical_remove_pages(start_pfn, nr_pages);
+}
+#endif
 
 #ifdef CONFIG_BLK_DEV_INITRD
 

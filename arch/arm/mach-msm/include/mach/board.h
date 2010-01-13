@@ -147,7 +147,6 @@ struct tvenc_platform_data {
 struct mddi_platform_data {
 	void (*mddi_power_save)(int on);
 	int (*mddi_sel_clk)(u32 *clk_rate);
-	int (*mddi_power_on)(int);
 };
 
 struct msm_fb_platform_data {
@@ -157,7 +156,7 @@ struct msm_fb_platform_data {
 
 struct msm_i2c_platform_data {
 	int clk_freq;
-	uint32_t *rmutex;
+	uint32_t rmutex;
 	const char *rsl_id;
 	uint32_t pm_lat;
 	int pri_clk;
@@ -181,6 +180,7 @@ void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *);
 struct mmc_platform_data;
 int __init msm_add_sdcc(unsigned int controller,
 		struct mmc_platform_data *plat);
+int __init rmt_storage_add_ramfs(void);
 
 struct msm_usb_host_platform_data;
 int __init msm_add_host(unsigned int host,
@@ -192,6 +192,10 @@ static inline void msm_hsusb_set_vbus_state(int online) {}
 #endif
 
 void __init msm_snddev_init(void);
+void msm_snddev_poweramp_on(void);
+void msm_snddev_poweramp_off(void);
+void msm_snddev_hsed_pamp_on(void);
+void msm_snddev_hsed_pamp_off(void);
 
 extern int msm_shared_ram_phys; /* defined in arch/arm/mach-msm/io.c */
 

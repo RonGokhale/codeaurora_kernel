@@ -92,6 +92,10 @@ enum kgsl_timestamp_type {
 enum kgsl_property_type {
 	KGSL_PROP_DEVICE_INFO     = 0x00000001,
 	KGSL_PROP_DEVICE_SHADOW   = 0x00000002,
+	KGSL_PROP_DEVICE_POWER    = 0x00000003,
+	KGSL_PROP_SHMEM           = 0x00000004,
+	KGSL_PROP_SHMEM_APERTURES = 0x00000005,
+	KGSL_PROP_MMU_ENABLE 	  = 0x00000006
 };
 
 struct kgsl_shadowprop {
@@ -175,27 +179,27 @@ struct kgsl_ringbuffer_issueibcmds {
 /* read the most recently executed timestamp value
  * type should be a value from enum kgsl_timestamp_type
  */
-struct kgsl_ringbuffer_readtimestamp {
+struct kgsl_cmdstream_readtimestamp {
 	unsigned int type;
 	unsigned int timestamp; /*output param */
 };
 
-#define IOCTL_KGSL_RINGBUFFER_READTIMESTAMP \
-	_IOR(KGSL_IOC_TYPE, 0x11, struct kgsl_ringbuffer_readtimestamp)
+#define IOCTL_KGSL_CMDSTREAM_READTIMESTAMP \
+	_IOR(KGSL_IOC_TYPE, 0x11, struct kgsl_cmdstream_readtimestamp)
 
 /* free memory when the GPU reaches a given timestamp.
  * gpuaddr specify a memory region created by a
  * IOCTL_KGSL_SHAREDMEM_FROM_PMEM call
  * type should be a value from enum kgsl_timestamp_type
  */
-struct kgsl_ringbuffer_freememontimestamp {
+struct kgsl_cmdstream_freememontimestamp {
 	unsigned int gpuaddr;
 	unsigned int type;
 	unsigned int timestamp;
 };
 
-#define IOCTL_KGSL_RINGBUFFER_FREEMEMONTIMESTAMP \
-	_IOR(KGSL_IOC_TYPE, 0x12, struct kgsl_ringbuffer_freememontimestamp)
+#define IOCTL_KGSL_CMDSTREAM_FREEMEMONTIMESTAMP \
+	_IOR(KGSL_IOC_TYPE, 0x12, struct kgsl_cmdstream_freememontimestamp)
 
 /* create a draw context, which is used to preserve GPU state.
  * The flags field may contain a mask KGSL_CONTEXT_*  values
@@ -232,6 +236,59 @@ struct kgsl_sharedmem_free {
 
 #define IOCTL_KGSL_SHAREDMEM_FREE \
 	_IOW(KGSL_IOC_TYPE, 0x21, struct kgsl_sharedmem_free)
+
+
+struct kgsl_gmem_desc {
+	unsigned int x;
+	unsigned int y;
+	unsigned int width;
+	unsigned int height;
+	unsigned int pitch;
+};
+
+struct kgsl_buffer_desc {
+	void 			*hostptr;
+	unsigned int	gpuaddr;
+	int				size;
+	unsigned int	format;
+	unsigned int  	pitch;
+	unsigned int  	enabled;
+};
+
+struct kgsl_bind_gmem_shadow {
+	unsigned int drawctxt_id;
+	struct kgsl_gmem_desc gmem_desc;
+	unsigned int shadow_x;
+	unsigned int shadow_y;
+	struct kgsl_buffer_desc shadow_buffer;
+	unsigned int buffer_id;
+};
+
+#define IOCTL_KGSL_DRAWCTXT_BIND_GMEM_SHADOW \
+    _IOW(KGSL_IOC_TYPE, 0x22, struct kgsl_bind_gmem_shadow)
+
+/* add a block of memory into the GPU address space */
+struct kgsl_sharedmem_from_vmalloc {
+	unsigned int gpuaddr;	/*output param */
+	unsigned int hostptr;
+	/* If set from user space then will attempt to
+	 * allocate even if low watermark is crossed */
+	int force_no_low_watermark;
+};
+
+#define IOCTL_KGSL_SHAREDMEM_FROM_VMALLOC \
+	_IOWR(KGSL_IOC_TYPE, 0x23, struct kgsl_sharedmem_from_vmalloc)
+
+#define IOCTL_KGSL_SHAREDMEM_FLUSH_CACHE \
+	_IOW(KGSL_IOC_TYPE, 0x24, struct kgsl_sharedmem_free)
+
+struct kgsl_drawctxt_set_bin_base_offset {
+	unsigned int drawctxt_id;
+	unsigned int offset;
+};
+
+#define IOCTL_KGSL_DRAWCTXT_SET_BIN_BASE_OFFSET \
+	_IOW(KGSL_IOC_TYPE, 0x25, struct kgsl_drawctxt_set_bin_base_offset)
 
 #ifdef __KERNEL__
 #ifdef CONFIG_MSM_KGSL_DRM

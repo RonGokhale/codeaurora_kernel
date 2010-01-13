@@ -137,7 +137,9 @@ static struct map_desc msm7x30_io_desc[] __initdata = {
 	MSM_DEVICE(AD5),
 	MSM_DEVICE(MDC),
 	MSM_DEVICE(ACC),
+	MSM_DEVICE(SAW),
 	MSM_DEVICE(GCC),
+	MSM_DEVICE(TCSR),
 #ifdef CONFIG_MSM_DEBUG_UART
 	MSM_DEVICE(DEBUG_UART),
 #endif
@@ -187,11 +189,11 @@ void __iomem *
 __msm_ioremap(unsigned long phys_addr, size_t size, unsigned int mtype)
 {
 	if (mtype == MT_DEVICE) {
-		/* The peripherals in the 88000000 - D0000000 range
+		/* The peripherals in the 88000000 - F0000000 range
 		 * are only accessable by type MT_DEVICE_NONSHARED.
 		 * Adjust mtype as necessary to make this "just work."
 		 */
-		if ((phys_addr >= 0x88000000) && (phys_addr < 0xD0000000))
+		if ((phys_addr >= 0x88000000) && (phys_addr < 0xF0000000))
 			mtype = MT_DEVICE_NONSHARED;
 	}
 

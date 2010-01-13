@@ -564,6 +564,9 @@ static void msm_hsusb_request_host(void *handle, int request)
 	struct msmusb_hcd *mhcd = handle;
 	struct usb_hcd *hcd = mhcd_to_hcd(mhcd);
 	struct msm_usb_host_platform_data *pdata = mhcd->pdata;
+#ifdef CONFIG_USB_MSM_OTG_72K
+	struct msm_otg *otg = container_of(mhcd->xceiv, struct msm_otg, otg);
+#endif
 
 	switch (request) {
 	case REQUEST_RESUME:
@@ -578,6 +581,9 @@ static void msm_hsusb_request_host(void *handle, int request)
 #ifndef CONFIG_USB_MSM_OTG_72K
 		if (PHY_TYPE(pdata->phy_info) == USB_PHY_INTEGRATED)
 			clk_enable(mhcd->clk);
+#else
+		if (otg->set_clk)
+			otg->set_clk(mhcd->xceiv, 1);
 #endif
 		if (pdata->vbus_power)
 			pdata->vbus_power(pdata->phy_info, 1);
@@ -588,6 +594,9 @@ static void msm_hsusb_request_host(void *handle, int request)
 #ifndef CONFIG_USB_MSM_OTG_72K
 		if (PHY_TYPE(pdata->phy_info) == USB_PHY_INTEGRATED)
 			clk_disable(mhcd->clk);
+#else
+		if (otg->set_clk)
+			otg->set_clk(mhcd->xceiv, 0);
 #endif
 		break;
 	case REQUEST_STOP:

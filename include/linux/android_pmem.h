@@ -1,6 +1,7 @@
 /* include/linux/android_pmem.h
  *
  * Copyright (C) 2007 Google, Inc.
+ * Copyright (c) 2009, Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -96,7 +97,7 @@ enum pmem_allocator_type {
 #define PMEM_MEMTYPE_MASK 0x7
 #define PMEM_INVALID_MEMTYPE 0x0
 #define PMEM_MEMTYPE_EBI1 0x1
-#define PMEM_MEMTYPE_RESERVED_INVALID1 0x2
+#define PMEM_MEMTYPE_SMI  0x2
 #define PMEM_MEMTYPE_RESERVED_INVALID2 0x3
 #define PMEM_MEMTYPE_RESERVED_INVALID3 0x4
 #define PMEM_MEMTYPE_RESERVED_INVALID4 0x5
@@ -115,6 +116,7 @@ int32_t pmem_kfree(const int32_t physaddr);
 
 /* kernel api names for board specific data structures */
 #define PMEM_KERNEL_EBI1_DATA_NAME "pmem_kernel_ebi1"
+#define PMEM_KERNEL_SMI_DATA_NAME "pmem_kernel_smi"
 
 struct android_pmem_platform_data
 {
@@ -137,6 +139,8 @@ struct android_pmem_platform_data
 	unsigned cached;
 	/* The MSM7k has bits to enable a write buffer in the bus controller*/
 	unsigned buffered;
+	/* This PMEM is on memory that may be powered off */
+	unsigned unstable;
 };
 
 int pmem_setup(struct android_pmem_platform_data *pdata,

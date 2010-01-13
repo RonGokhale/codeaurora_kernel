@@ -44,6 +44,7 @@
 #include <mach/msm_rpcrouter.h>
 #include <mach/msm_hsusb.h>
 #include <mach/rpc_hsusb.h>
+#include <mach/rpc_pmapp.h>
 #include <mach/msm_serial_hs.h>
 #include <mach/memory.h>
 #include <mach/msm_battery.h>
@@ -70,18 +71,20 @@
 
 #ifdef CONFIG_ARCH_MSM7X25
 #define MSM_PMEM_MDP_SIZE	0xb21000
-#define MSM_PMEM_ADSP_SIZE	0x800000
+#define MSM_PMEM_ADSP_SIZE	0x97b000
 #define MSM_FB_SIZE		0x200000
+#define PMEM_KERNEL_EBI1_SIZE	0x80000
 #endif
 
 #ifdef CONFIG_ARCH_MSM7X27
 #define MSM_PMEM_MDP_SIZE	0x1591000
-#define MSM_PMEM_ADSP_SIZE	0xC1B000
+#define MSM_PMEM_ADSP_SIZE	0x9CA000
 #define MSM_PMEM_GPU1_SIZE	0x1600000
 #define MSM_FB_SIZE		0x200000
 #define MSM_GPU_PHYS_SIZE	SZ_2M
 #define PMEM_KERNEL_EBI1_SIZE	0x200000
 #endif
+
 
 static struct resource smc91x_resources[] = {
 	[0] = {
@@ -173,6 +176,7 @@ static struct android_usb_platform_data android_usb_pdata = {
 	.product_id	= 0x9018,
 	.functions	= 0x27614,
 	.version	= 0x0100,
+	.serial_number  = "1234567890ABCDEF",
 	.compositions   = usb_func_composition,
 	.num_compositions = ARRAY_SIZE(usb_func_composition),
 	.product_name	= "Qualcomm HSUSB Device",
@@ -273,43 +277,6 @@ static int hsusb_rpc_connect(int connect)
 		return msm_hsusb_rpc_close();
 }
 
-static int hsusb_chg_init(int connect)
-{
-	if (connect)
-		return msm_chg_rpc_connect();
-	else
-		return msm_chg_rpc_close();
-}
-
-void hsusb_chg_vbus_draw(unsigned mA)
-{
-	if (mA)
-		msm_chg_usb_i_is_available(mA);
-	else
-		msm_chg_usb_i_is_not_available();
-}
-
-void hsusb_chg_connected(enum chg_type chgtype)
-{
-	switch (chgtype) {
-	case CHG_TYPE_HOSTPC:
-		pr_debug("Charger Type: HOST PC\n");
-		msm_chg_usb_charger_connected(0);
-		msm_chg_usb_i_is_available(100);
-		break;
-	case CHG_TYPE_WALL_CHARGER:
-		pr_debug("Charger Type: WALL CHARGER\n");
-		msm_chg_usb_charger_connected(2);
-		msm_chg_usb_i_is_available(1500);
-		break;
-	case CHG_TYPE_INVALID:
-		pr_debug("Charger Type: DISCONNECTED\n");
-		msm_chg_usb_i_is_not_available();
-		msm_chg_usb_charger_disconnected();
-		break;
-	}
-}
-
 static int msm_hsusb_rpc_phy_reset(void __iomem *addr)
 {
 	return msm_hsusb_phy_reset();
@@ -318,14 +285,14 @@ static int msm_hsusb_rpc_phy_reset(void __iomem *addr)
 static struct msm_otg_platform_data msm_otg_pdata = {
 	.rpc_connect	= hsusb_rpc_connect,
 	.phy_reset	= msm_hsusb_rpc_phy_reset,
+	.pmic_notif_init         = msm_pm_app_rpc_init,
+	.pmic_notif_deinit       = msm_pm_app_rpc_deinit,
+	.pmic_register_vbus_sn   = msm_pm_app_register_vbus_sn,
+	.pmic_unregister_vbus_sn = msm_pm_app_unregister_vbus_sn,
+	.pmic_enable_ldo         = msm_pm_app_enable_usb_ldo,
 };
 
-static struct msm_hsusb_gadget_platform_data msm_gadget_pdata = {
-	/* charging apis */
-	.chg_init = hsusb_chg_init,
-	.chg_connected = hsusb_chg_connected,
-	.chg_vbus_draw = hsusb_chg_vbus_draw,
-};
+static struct msm_hsusb_gadget_platform_data msm_gadget_pdata;
 
 #define SND(desc, num) { .name = #desc, .id = num }
 static struct snd_endpoint snd_endpoints_list[] = {
@@ -448,7 +415,6 @@ static struct platform_device msm_device_adspdec = {
 	},
 };
 
-#ifdef CONFIG_ARCH_MSM7X27
 static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
 	.name = PMEM_KERNEL_EBI1_DATA_NAME,
 	/* if no allocator_type, defaults to PMEM_ALLOCATORTYPE_BITMAP,
@@ -459,7 +425,6 @@ static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
 	 */
 	.cached = 0,
 };
-#endif
 
 static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
@@ -493,6 +458,12 @@ static struct platform_device android_pmem_adsp_device = {
 	.dev = { .platform_data = &android_pmem_adsp_pdata },
 };
 
+static struct platform_device android_pmem_kernel_ebi1_device = {
+	.name = "android_pmem",
+	.id = 4,
+	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
+};
+
 #ifdef CONFIG_ARCH_MSM7X27
 static struct platform_device android_pmem_gpu1_device = {
 	.name = "android_pmem",
@@ -500,11 +471,6 @@ static struct platform_device android_pmem_gpu1_device = {
 	.dev = { .platform_data = &android_pmem_gpu1_pdata },
 };
 
-static struct platform_device android_pmem_kernel_ebi1_device = {
-	.name = "android_pmem",
-	.id = 4,
-	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
-};
 
 #endif
 
@@ -1140,9 +1106,7 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_i2c,
 	&smc91x_device,
 	&msm_device_tssc,
-#ifdef CONFIG_ARCH_MSM7X27
 	&android_pmem_kernel_ebi1_device,
-#endif
 	&android_pmem_device,
 	&android_pmem_adsp_device,
 #ifdef CONFIG_ARCH_MSM7X27
@@ -1207,7 +1171,7 @@ static struct msm_acpu_clock_platform_data msm7x2x_clock_data = {
 	.vdd_switch_time_us = 62,
 	.power_collapse_khz = 19200000,
 	.wait_for_irq_khz = 128000000,
-	.max_axi_khz = 128000,
+	.max_axi_khz = 160000,
 };
 
 void msm_serial_debug_init(unsigned int base, int irq,
@@ -1324,7 +1288,7 @@ static unsigned sdcc_cfg_data[][6] = {
 };
 
 static unsigned long vreg_sts, gpio_sts;
-static struct mpp *mpp_mmc;
+static unsigned mpp_mmc = 2;
 static struct vreg *vreg_mmc;
 
 static void msm_sdcc_setup_gpio(int dev_id, unsigned int enable)
@@ -1403,14 +1367,7 @@ static struct mmc_platform_data msm7x2x_sdcc_data = {
 
 static void __init msm7x2x_init_mmc(void)
 {
-	if (machine_is_msm7x25_ffa() || machine_is_msm7x27_ffa()) {
-		mpp_mmc = mpp_get(NULL, "mpp3");
-		if (!mpp_mmc) {
-			printk(KERN_ERR "%s: mpp get failed (%ld)\n",
-			       __func__, PTR_ERR(vreg_mmc));
-			return;
-		}
-	} else {
+	if (!machine_is_msm7x25_ffa() && !machine_is_msm7x27_ffa()) {
 		vreg_mmc = vreg_get(NULL, "mmc");
 		if (IS_ERR(vreg_mmc)) {
 			printk(KERN_ERR "%s: vreg get failed (%ld)\n",
@@ -1497,7 +1454,7 @@ msm_i2c_gpio_config(int iface, int config_type)
 
 static struct msm_i2c_platform_data msm_i2c_pdata = {
 	.clk_freq = 100000,
-	.rmutex = NULL,
+	.rmutex  = 0,
 	.pri_clk = 60,
 	.pri_dat = 61,
 	.aux_clk = 95,
@@ -1551,8 +1508,6 @@ static void __init msm7x2x_init(void)
 			       "%s: Err: Config GPIO-85 INT\n",
 				__func__);
 		}
-
-		msm7x2x_clock_data.max_axi_khz = 160000;
 	}
 
 	if (cpu_is_msm7x27())
@@ -1595,6 +1550,7 @@ static void __init msm7x2x_init(void)
 #endif
 	lcdc_gordon_gpio_init();
 	msm_fb_add_devices();
+	rmt_storage_add_ramfs();
 	msm7x2x_init_mmc();
 	bt_power_init();
 
@@ -1604,14 +1560,12 @@ static void __init msm7x2x_init(void)
 		msm_pm_set_platform_data(msm7x25_pm_data);
 }
 
-#ifdef CONFIG_ARCH_MSM7X27
 static unsigned pmem_kernel_ebi1_size = PMEM_KERNEL_EBI1_SIZE;
 static void __init pmem_kernel_ebi1_size_setup(char **p)
 {
 	pmem_kernel_ebi1_size = memparse(*p, p);
 }
 __early_param("pmem_kernel_ebi1_size=", pmem_kernel_ebi1_size_setup);
-#endif
 
 static unsigned pmem_mdp_size = MSM_PMEM_MDP_SIZE;
 static void __init pmem_mdp_size_setup(char **p)
@@ -1681,14 +1635,6 @@ static void __init msm_msm7x2x_allocate_memory_regions(void)
 	pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
 		size, addr, __pa(addr));
 
-#ifdef CONFIG_ARCH_MSM7X27
-	size = gpu_phys_size ? : MSM_GPU_PHYS_SIZE;
-	addr = alloc_bootmem(size);
-	kgsl_resources[1].start = __pa(addr);
-	kgsl_resources[1].end = kgsl_resources[1].start + size - 1;
-	pr_info("allocating %lu bytes at %p (%lx physical) for KGSL\n",
-		size, addr, __pa(addr));
-
 	size = pmem_kernel_ebi1_size;
 	if (size) {
 		addr = alloc_bootmem_aligned(size, 0x100000);
@@ -1697,6 +1643,14 @@ static void __init msm_msm7x2x_allocate_memory_regions(void)
 		pr_info("allocating %lu bytes at %p (%lx physical) for kernel"
 			" ebi1 pmem arena\n", size, addr, __pa(addr));
 	}
+#ifdef CONFIG_ARCH_MSM7X27
+	size = gpu_phys_size ? : MSM_GPU_PHYS_SIZE;
+	addr = alloc_bootmem(size);
+	kgsl_resources[1].start = __pa(addr);
+	kgsl_resources[1].end = kgsl_resources[1].start + size - 1;
+	pr_info("allocating %lu bytes at %p (%lx physical) for KGSL\n",
+		size, addr, __pa(addr));
+
 	size = pmem_gpu1_size;
 	if (size) {
 		addr = alloc_bootmem(size);
@@ -1741,7 +1695,7 @@ MACHINE_START(MSM7X27_SURF, "QCT MSM7x27 SURF")
 	.phys_io        = MSM_DEBUG_UART_PHYS,
 	.io_pg_offst    = ((MSM_DEBUG_UART_BASE) >> 18) & 0xfffc,
 #endif
-	.boot_params	= 0x00200100,
+	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= msm7x2x_map_io,
 	.init_irq	= msm7x2x_init_irq,
 	.init_machine	= msm7x2x_init,
@@ -1753,7 +1707,7 @@ MACHINE_START(MSM7X27_FFA, "QCT MSM7x27 FFA")
 	.phys_io        = MSM_DEBUG_UART_PHYS,
 	.io_pg_offst    = ((MSM_DEBUG_UART_BASE) >> 18) & 0xfffc,
 #endif
-	.boot_params	= 0x00200100,
+	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= msm7x2x_map_io,
 	.init_irq	= msm7x2x_init_irq,
 	.init_machine	= msm7x2x_init,
@@ -1765,7 +1719,7 @@ MACHINE_START(MSM7X25_SURF, "QCT MSM7x25 SURF")
 	.phys_io        = MSM_DEBUG_UART_PHYS,
 	.io_pg_offst    = ((MSM_DEBUG_UART_BASE) >> 18) & 0xfffc,
 #endif
-	.boot_params	= 0x00200100,
+	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= msm7x2x_map_io,
 	.init_irq	= msm7x2x_init_irq,
 	.init_machine	= msm7x2x_init,
@@ -1777,7 +1731,7 @@ MACHINE_START(MSM7X25_FFA, "QCT MSM7x25 FFA")
 	.phys_io        = MSM_DEBUG_UART_PHYS,
 	.io_pg_offst    = ((MSM_DEBUG_UART_BASE) >> 18) & 0xfffc,
 #endif
-	.boot_params	= 0x00200100,
+	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= msm7x2x_map_io,
 	.init_irq	= msm7x2x_init_irq,
 	.init_machine	= msm7x2x_init,

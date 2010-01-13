@@ -36,6 +36,7 @@
 #endif
 
 #include "smd_private.h"
+#include "smd_rpcrouter.h"
 #include "acpuclock.h"
 #include "clock.h"
 #include "proc_comm.h"
@@ -688,12 +689,14 @@ static uint32_t restart_reason = 0x776655AA;
 
 static void msm_pm_power_off(void)
 {
+	msm_rpcrouter_close();
 	msm_proc_comm(PCOM_POWER_DOWN, 0, 0);
 	for (;;) ;
 }
 
 static void msm_pm_restart(char str, const char *cmd)
 {
+	msm_rpcrouter_close();
 	msm_proc_comm(PCOM_RESET_CHIP, &restart_reason, 0);
 
 	for (;;) ;
@@ -876,6 +879,7 @@ static int __init msm_pm_init(void)
 #ifdef CONFIG_MSM_IDLE_STATS
 	struct proc_dir_entry *d_entry;
 #endif
+	int ret;
 
 	pm_power_off = msm_pm_power_off;
 	arm_pm_restart = msm_pm_restart;
@@ -927,6 +931,10 @@ static int __init msm_pm_init(void)
 		return -ENODEV;
 	}
 #endif /* CONFIG_ARCH_MSM_SCORPION */
+
+	ret = msm_timer_init_time_sync(msm_pm_timeout);
+	if (ret)
+		return ret;
 
 	BUG_ON(msm_pm_modes == NULL);
 

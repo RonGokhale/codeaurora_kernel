@@ -57,22 +57,20 @@ struct usb_composition {
 };
 #endif
 
+#ifdef CONFIG_USB_GADGET_MSM_72K
 enum chg_type {
-	CHG_TYPE_HOSTPC,
-	CHG_TYPE_WALL_CHARGER,
-	CHG_TYPE_INVALID
+	USB_CHG_TYPE__SDP,
+	USB_CHG_TYPE__CARKIT,
+	USB_CHG_TYPE__WALLCHARGER,
+	USB_CHG_TYPE__INVALID
 };
+#endif
 
 struct msm_hsusb_gadget_platform_data {
 	int *phy_init_seq;
 	void (*phy_reset)(void);
 
 	u32 swfi_latency;
-
-	/*charging apis*/
-	int  (*chg_init)(int);
-	void (*chg_connected)(enum chg_type);
-	void (*chg_vbus_draw)(unsigned);
 };
 
 struct msm_hsusb_platform_data {
@@ -86,9 +84,6 @@ struct msm_hsusb_platform_data {
 	int num_compositions;
 	struct usb_function_map *function_map;
 	int num_functions;
-	/* ULPI data pins used for LPM */
-	unsigned ulpi_data_1_pin;
-	unsigned ulpi_data_3_pin;
 	/* gpio mux function used for LPM */
 	int (*config_gpio)(int config);
 	/* gpio function for FSUSB */
@@ -109,6 +104,8 @@ struct msm_otg_platform_data {
 	int (*rpc_connect)(int);
 	int (*phy_reset)(void __iomem *);
 	unsigned int core_clk;
+	int pmic_vbus_irq;
+
 	/* pmic notfications apis */
 	int (*pmic_notif_init) (void);
 	void (*pmic_notif_deinit) (void);

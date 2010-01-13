@@ -32,12 +32,20 @@
 #include "kgsl_log.h"
 #include "kgsl_sharedmem.h"
 
+/* Identifier for the global page table */
+/* Per process page tables will probably pass in the thread group
+   as an identifier */
+
+#define KGSL_MMU_GLOBAL_PT 0
+
 #define GSL_PT_SUPER_PTE 8
 #define GSL_PT_PAGE_WV		0x00000001
 #define GSL_PT_PAGE_RV		0x00000002
 #define GSL_PT_PAGE_DIRTY	0x00000004
 
-extern unsigned int kgsl_mmu_enable;
+#ifdef CONFIG_MSM_KGSL_MMU
+extern unsigned int kgsl_cache_enable;
+#endif
 
 struct kgsl_device;
 
@@ -72,6 +80,8 @@ struct kgsl_pagetable {
 	unsigned int   last_superpte;
 	unsigned int   max_entries;
 	struct gen_pool *pool;
+	struct list_head list;
+	unsigned int name;
 };
 
 struct kgsl_mmu {
@@ -86,7 +96,12 @@ struct kgsl_mmu {
 	struct kgsl_memdesc    dummyspace;
 	/* current page table object being used by device mmu */
 	struct kgsl_pagetable  *hwpagetable;
-	struct kgsl_pagetable  *defaultpagetable;
+
+	/* List of pagetables atatched to this mmu */
+	struct list_head pagetable_list;
+
+	/* Mutex for accessing the pagetable list */
+	struct mutex pt_mutex;
 };
 
 
@@ -101,21 +116,26 @@ int kgsl_mmu_init(struct kgsl_device *device);
 
 int kgsl_mmu_close(struct kgsl_device *device);
 
-struct kgsl_pagetable *kgsl_mmu_createpagetableobject(struct kgsl_mmu *mmu);
+struct kgsl_pagetable *kgsl_mmu_getpagetable(struct kgsl_mmu *mmu,
+					     unsigned long name);
 
-int kgsl_mmu_destroypagetableobject(struct kgsl_pagetable *pagetable);
+void kgsl_mmu_putpagetable(struct kgsl_pagetable *pagetable);
 
 int kgsl_mmu_setpagetable(struct kgsl_device *device,
 				struct kgsl_pagetable *pagetable);
 
+#ifdef CONFIG_MSM_KGSL_MMU
 int kgsl_mmu_map(struct kgsl_pagetable *pagetable,
-		 unsigned int physaddr,
+		 unsigned int address,
 		 int range,
 		 unsigned int protflags,
 		 unsigned int *gpuaddr);
 
 int kgsl_mmu_unmap(struct kgsl_pagetable *pagetable,
 					unsigned int gpuaddr, int range);
+
+pte_t *kgsl_get_pte_from_vaddr(unsigned int virtaddr);
+#endif
 
 int kgsl_mmu_querystats(struct kgsl_pagetable *pagetable,
 			struct kgsl_ptstats *stats);

@@ -38,6 +38,10 @@
 #include "mdp.h"
 #include "msm_fb.h"
 
+#define MDP_IS_IMGTYPE_BAD(x) (((x) >= MDP_IMGTYPE_LIMIT) && \
+				(((x) < MDP_IMGTYPE2_START) || \
+				 ((x) >= MDP_IMGTYPE_LIMIT2)))
+
 static uint32_t bytes_per_pixel[] = {
 	[MDP_RGB_565] = 2,
 	[MDP_RGB_888] = 3,
@@ -55,6 +59,16 @@ static uint32_t bytes_per_pixel[] = {
 
 extern uint32 mdp_plv[];
 extern struct semaphore mdp_ppp_mutex;
+
+uint32_t mdp_get_bytes_per_pixel(uint32_t format)
+{
+	uint32_t bpp = 0;
+	if (format < ARRAY_SIZE(bytes_per_pixel))
+		bpp = bytes_per_pixel[format];
+
+	BUG_ON(!bpp);
+	return bpp;
+}
 
 static uint32 mdp_conv_matx_rgb2yuv(uint32 input_pixel,
 				    uint16 *matrix_and_bias_vector,
@@ -1117,10 +1131,6 @@ struct mdp_blit_req *req, struct file *p_src_file, struct file *p_dst_file)
 	mdp_pipe_kickoff(MDP_PPP_TERM, mfd);
 }
 
-#define MDP_IS_IMGTYPE_BAD(x) (((x) >= MDP_IMGTYPE_LIMIT) && \
-				(((x) < MDP_IMGTYPE2_START) || \
-				 ((x) >= MDP_IMGTYPE_LIMIT2)))
-
 static int mdp_ppp_verify_req(struct mdp_blit_req *req)
 {
 	u32 src_width, src_height, dst_width, dst_height;
@@ -1319,6 +1329,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req,
 		iBuf.mdpImg.mdpOp |= MDPOP_ALPHAB;
 		iBuf.mdpImg.alpha = req->alpha;
 	}
+
 	/* rotation check */
 	if (req->flags & MDP_FLIP_LR)
 		iBuf.mdpImg.mdpOp |= MDPOP_LR;
@@ -1328,6 +1339,14 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req,
 		iBuf.mdpImg.mdpOp |= MDPOP_ROT90;
 	if (req->flags & MDP_DITHER)
 		iBuf.mdpImg.mdpOp |= MDPOP_DITHER;
+
+	if (req->flags & MDP_BLEND_FG_PREMULT) {
+#ifdef CONFIG_FB_MSM_MDP31
+		iBuf.mdpImg.mdpOp |= MDPOP_FG_PM_ALPHA;
+#else
+		return -EINVAL;
+#endif
+	}
 
 	if (req->flags & MDP_DEINTERLACE) {
 #ifdef CONFIG_FB_MSM_MDP31

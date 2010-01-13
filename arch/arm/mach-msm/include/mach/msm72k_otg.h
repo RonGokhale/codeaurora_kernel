@@ -57,6 +57,7 @@ struct msm_otg {
 	struct clk		*pclk;
 	struct clk		*cclk;
 	int			irq;
+	int			vbus_on_irq;
 	void __iomem		*regs;
 	u8			in_lpm;
 	struct wake_lock	wlock;
@@ -65,6 +66,8 @@ struct msm_otg {
 	int 			(*rpc_connect)(int);
 	int 			(*phy_reset)(void __iomem *);
 	void (*start_host)	(struct usb_bus *bus, int suspend);
+	/* Enable/disable the clocks */
+	int (*set_clk)		(struct otg_transceiver *otg, int on);
 	/* pmic notfications apis */
 	u8 pmic_notif_supp;
 	int (*pmic_notif_init) (void);

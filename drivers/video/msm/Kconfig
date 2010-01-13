@@ -72,6 +72,11 @@ config FB_MSM_LCDC
 	bool
 	default n
 
+config FB_MSM_OVERLAY
+	depends on FB_MSM_MDP40
+	bool "MDP4 overlay support"
+	default n
+
 config FB_MSM_EXTMDDI
 	bool
 	default n
@@ -110,6 +115,16 @@ config FB_MSM_LCDC_GORDON_VGA
 	select FB_MSM_LCDC_PANEL
 	default n
 
+config FB_MSM_LCDC_TOSHIBA_WVGA_PT
+	bool
+	select FB_MSM_LCDC_PANEL
+	default n
+
+config FB_MSM_LCDC_SHARP_WVGA_PT
+	bool
+	select FB_MSM_LCDC_PANEL
+	default n
+
 config FB_MSM_LCDC_GRAPEFRUIT_VGA
 	bool
 	select FB_MSM_LCDC_PANEL
@@ -143,6 +158,20 @@ config FB_MSM_LCDC_GORDON_VGA_PANEL
 	---help---
 	  Support for LCDC Gordon VGA (480x640) panel
 
+config FB_MSM_LCDC_TOSHIBA_WVGA_PT_PANEL
+	depends on FB_MSM_LCDC_HW
+	bool "LCDC Toshiba WVGA PT Panel"
+	select FB_MSM_LCDC_TOSHIBA_WVGA_PT
+	---help---
+	  Support for LCDC Toshiba WVGA PT (480x800) panel
+
+config FB_MSM_LCDC_SHARP_WVGA_PT_PANEL
+	depends on FB_MSM_LCDC_HW
+	bool "LCDC Sharp WVGA PT Panel"
+	select FB_MSM_LCDC_SHARP_WVGA_PT
+	---help---
+	  Support for LCDC Sharp WVGA PT (480x800) panel
+
 config FB_MSM_LCDC_GRAPEFRUIT_PANEL
 	depends on FB_MSM_LCDC_HW
 	bool "LCDC Grapefruit VGA Panel"
@@ -163,6 +192,8 @@ config FB_MSM_TRY_MDDI_CATCH_LCDC_PRISM
 	select FB_MSM_MDDI_AUTO_DETECT
 	select FB_MSM_LCDC_PRISM_WVGA
 	select FB_MSM_LCDC_GORDON_VGA
+	select FB_MSM_LCDC_TOSHIBA_WVGA_PT
+	select FB_MSM_LCDC_SHARP_WVGA_PT
 	select FB_MSM_LCDC_WXGA
 	select FB_MSM_LCDC_GRAPEFRUIT_VGA
 	select FB_MSM_LCDC_ST1_WXGA
@@ -286,6 +317,14 @@ config FB_MSM_TVOUT_NONE
 	---help---
 	  This will disable TV Out functionality.
 endchoice
+
+config FB_MSM_TVOUT_SVIDEO
+	bool "TVOut on S-video"
+	depends on FB_MSM_TVOUT
+	default n
+	---help---
+	  Selects whether the TVOut signal uses S-video.
+	  Choose n for composite output.
 
 choice
 	depends on  FB_MSM_MDP22

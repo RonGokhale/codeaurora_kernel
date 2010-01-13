@@ -108,10 +108,10 @@
 #define PM4_DRAW_INDX_2		0x36
 
 /* initiate fetch of index buffer and binIDs and draw */
-#define PM4_DRAW_INDX_BIN	0x37
+#define PM4_DRAW_INDX_BIN	0x34
 
 /* initiate fetch of bin IDs and draw using supplied indices */
-#define PM4_DRAW_INDX_2_BIN	0x38
+#define PM4_DRAW_INDX_2_BIN	0x35
 
 
 /* begin/end initiator for viz query extent processing */
@@ -155,6 +155,10 @@
 
 /* copy sequencer instruction memory to system memory */
 #define PM4_IM_STORE            0x2c
+
+/* program an offset that will added to the BIN_BASE value of
+ * the 3D_DRAW_INDX_BIN packet */
+#define PM4_SET_BIN_BASE_OFFSET     0x4B
 
 
 /* packet header building macros */

@@ -58,10 +58,21 @@
 #define KGSL_PWRFLAGS_CLK_OFF            0x00000008
 #define KGSL_PWRFLAGS_OVERRIDE_ON        0x00000010
 #define KGSL_PWRFLAGS_OVERRIDE_OFF       0x00000020
+#define KGSL_PWRFLAGS_IRQ_ON             0x00000040
+#define KGSL_PWRFLAGS_IRQ_OFF            0x00000080
 
 #define KGSL_CHIPID_YAMATODX_REV21  0x20100
 #define KGSL_CHIPID_YAMATODX_REV211 0x20101
 
+#ifdef CONFIG_MSM_KGSL_MMU
+/* Private memory flags for use with memdesc->priv feild */
+#define KGSL_MEMFLAGS_MEM_REQUIRES_FLUSH    0x00000001
+#define KGSL_MEMFLAGS_VMALLOC_MEM           0x00000002
+
+#define KGSL_GRAPHICS_MEMORY_LOW_WATERMARK  0x1000000
+
+#define KGSL_IS_PAGE_ALIGNED(addr) (!((addr) & (~PAGE_MASK)))
+#endif
 
 struct kgsl_device;
 struct platform_device;
@@ -107,6 +118,12 @@ struct kgsl_devconfig {
 	struct kgsl_memregion gmemspace;
 };
 
+static inline struct kgsl_mmu *
+kgsl_yamato_get_mmu(struct kgsl_device *device)
+{
+	return (struct kgsl_mmu *) (device ? &device->mmu : NULL);
+}
+
 int kgsl_yamato_start(struct kgsl_device *device, uint32_t flags);
 
 int kgsl_yamato_stop(struct kgsl_device *device);
@@ -139,10 +156,6 @@ int kgsl_yamato_runpending(struct kgsl_device *device);
 
 int __init kgsl_yamato_config(struct kgsl_devconfig *,
 				struct platform_device *pdev);
-
-int kgsl_yamato_setup_pt(struct kgsl_device *device, struct kgsl_pagetable *);
-
-int kgsl_yamato_cleanup_pt(struct kgsl_device *device, struct kgsl_pagetable *);
 
 int kgsl_yamato_setpagetable(struct kgsl_device *device);
 

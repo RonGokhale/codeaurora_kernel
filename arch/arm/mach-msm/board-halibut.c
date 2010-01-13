@@ -318,8 +318,6 @@ static struct msm_hsusb_platform_data msm_hsusb_pdata = {
 	.num_compositions = ARRAY_SIZE(usb_func_composition),
 	.function_map   = usb_functions_map,
 	.num_functions	= ARRAY_SIZE(usb_functions_map),
-	.ulpi_data_1_pin = 112,
-	.ulpi_data_3_pin = 114,
 	.config_gpio 	= usb_config_gpio,
 #endif
 };
@@ -1093,7 +1091,7 @@ static unsigned sdcc_cfg_data[][6] = {
 };
 
 static unsigned long vreg_sts, gpio_sts;
-static struct mpp *mpp_mmc;
+static unsigned mpp_mmc = 2;
 static struct vreg *vreg_mmc;
 
 static void msm_sdcc_setup_gpio(int dev_id, unsigned int enable)
@@ -1167,7 +1165,7 @@ static uint32_t msm_sdcc_setup_power(struct device *dv, unsigned int vdd)
 #ifdef CONFIG_MMC_MSM_CARD_HW_DETECTION
 static unsigned int halibut_sdcc_slot_status(struct device *dev)
 {
-	return (unsinged int) gpio_get_value(49);
+	return (unsigned int) gpio_get_value(49);
 }
 #endif
 
@@ -1183,14 +1181,7 @@ static struct mmc_platform_data halibut_sdcc_data = {
 
 static void __init halibut_init_mmc(void)
 {
-	if (machine_is_msm7201a_ffa()) {
-		mpp_mmc = mpp_get(NULL, "mpp3");
-		if (!mpp_mmc) {
-			printk(KERN_ERR "%s: mpp get failed (%ld)\n",
-			       __func__, PTR_ERR(vreg_mmc));
-			return;
-		}
-	} else {
+	if (!machine_is_msm7201a_ffa()) {
 		vreg_mmc = vreg_get(NULL, "mmc");
 		if (IS_ERR(vreg_mmc)) {
 			printk(KERN_ERR "%s: vreg get failed (%ld)\n",
@@ -1260,7 +1251,7 @@ msm_i2c_gpio_config(int iface, int config_type)
 
 static struct msm_i2c_platform_data msm_i2c_pdata = {
 	.clk_freq = 100000,
-	.rmutex = NULL,
+	.rmutex  = 0,
 	.pri_clk = 60,
 	.pri_dat = 61,
 	.aux_clk = 95,
@@ -1453,7 +1444,7 @@ MACHINE_START(HALIBUT, "Halibut Board (QCT SURF7200A)")
 	.phys_io        = MSM_DEBUG_UART_PHYS,
 	.io_pg_offst    = ((MSM_DEBUG_UART_BASE) >> 18) & 0xfffc,
 #endif
-	.boot_params	= 0x10000100,
+	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= halibut_map_io,
 	.init_irq	= halibut_init_irq,
 	.init_machine	= halibut_init,
@@ -1465,7 +1456,7 @@ MACHINE_START(MSM7201A_FFA, "QCT FFA7201A Board")
 	.phys_io        = MSM_DEBUG_UART_PHYS,
 	.io_pg_offst    = ((MSM_DEBUG_UART_BASE) >> 18) & 0xfffc,
 #endif
-	.boot_params	= 0x10000100,
+	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= halibut_map_io,
 	.init_irq	= halibut_init_irq,
 	.init_machine	= halibut_init,
@@ -1477,7 +1468,7 @@ MACHINE_START(MSM7201A_SURF, "QCT SURF7201A Board")
 	.phys_io        = MSM_DEBUG_UART_PHYS,
 	.io_pg_offst    = ((MSM_DEBUG_UART_BASE) >> 18) & 0xfffc,
 #endif
-	.boot_params	= 0x10000100,
+	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= halibut_map_io,
 	.init_irq	= halibut_init_irq,
 	.init_machine	= halibut_init,

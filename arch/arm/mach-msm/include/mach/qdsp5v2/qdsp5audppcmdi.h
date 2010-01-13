@@ -98,11 +98,8 @@ struct audpp_cmd_cfg_dec_type {
 
 struct audpp_cmd_dec_ctrl{
 	unsigned short cmd_id;
-	unsigned short dec0_ctrl;
-	unsigned short dec1_ctrl;
-	unsigned short dec2_ctrl;
-	unsigned short dec3_ctrl;
-	unsigned short dec4_ctrl;
+	unsigned short stream_id;
+	unsigned short dec_ctrl;
 } __attribute__((packed));
 
 /*
@@ -114,9 +111,14 @@ struct audpp_cmd_dec_ctrl{
 
 struct audpp_cmd_avsync{
 	unsigned short cmd_id;
-	unsigned short object_number;
-	unsigned short interrupt_interval_lsw;
-	unsigned short interrupt_interval_msw;
+	unsigned short stream_id;
+	unsigned short interrupt_interval;
+	unsigned short sample_counter_dlsw;
+	unsigned short sample_counter_dmsw;
+	unsigned short sample_counter_msw;
+	unsigned short byte_counter_dlsw;
+	unsigned short byte_counter_dmsw;
+	unsigned short byte_counter_msw;
 } __attribute__((packed));
 
 /*
@@ -157,43 +159,7 @@ struct audpp_cmd_adjust_samp {
  * Command Structure to Configure AVSync Feedback Mechanism
  */
 
-#define AUDPP_CMD_AVSYNC_CMD_2		0x0006
-#define AUDPP_CMD_AVSYNC_CMD_2_LEN	sizeof(struct audpp_cmd_avsync_cmd_2)
-
-struct audpp_cmd_avsync_cmd_2 {
-	unsigned short cmd_id;
-	unsigned short object_number;
-	unsigned short interrupt_interval_lsw;
-	unsigned short interrupt_interval_msw;
-	unsigned short sample_counter_dlsw;
-	unsigned short sample_counter_dmsw;
-	unsigned short sample_counter_msw;
-	unsigned short byte_counter_dlsw;
-	unsigned short byte_counter_dmsw;
-	unsigned short byte_counter_msw;
-} __attribute__((packed));
-
-/*
- * Command Structure to Configure AVSync Feedback Mechanism
- */
-
-#define AUDPP_CMD_AVSYNC_CMD_3		0x0007
-#define AUDPP_CMD_AVSYNC_CMD_3_LEN	sizeof(struct audpp_cmd_avsync_cmd_3)
-
-struct audpp_cmd_avsync_cmd_3 {
-	unsigned short cmd_id;
-	unsigned short object_number;
-	unsigned short interrupt_interval_lsw;
-	unsigned short interrupt_interval_msw;
-	unsigned short sample_counter_dlsw;
-	unsigned short sample_counter_dmsw;
-	unsigned short sample_counter_msw;
-	unsigned short byte_counter_dlsw;
-	unsigned short byte_counter_dmsw;
-	unsigned short byte_counter_msw;
-} __attribute__((packed));
-
-#define AUDPP_CMD_ROUTING_MODE      0x0008
+#define AUDPP_CMD_ROUTING_MODE      0x0007
 #define AUDPP_CMD_ROUTING_MODE_LEN  \
 sizeof(struct audpp_cmd_routing_mode)
 
@@ -401,6 +367,40 @@ struct audpp_cmd_cfg_adec_params_evrc {
 } __attribute__ ((packed));
 
 /*
+ * Command Structure to configure Per decoder Parameters (AMRWB)
+ */
+
+#define AUDPP_CMD_CFG_ADEC_PARAMS_AMRWB_LEN \
+	sizeof(struct audpp_cmd_cfg_adec_params_amrwb)
+
+struct audpp_cmd_cfg_adec_params_amrwb {
+	struct audpp_cmd_cfg_adec_params_common    	common;
+	unsigned short			stereo_cfg;
+} __attribute__((packed));
+
+/*
+ * Command Structure to configure Per decoder Parameters (WMAPRO)
+ */
+
+#define AUDPP_CMD_CFG_ADEC_PARAMS_WMAPRO_LEN	\
+	sizeof(struct audpp_cmd_cfg_adec_params_wmapro)
+
+struct audpp_cmd_cfg_adec_params_wmapro {
+	struct audpp_cmd_cfg_adec_params_common    common;
+	unsigned short 	armdatareqthr;
+	uint8_t         validbitspersample;
+	uint8_t         numchannels;
+	unsigned short  formattag;
+	unsigned short  samplingrate;
+	unsigned short  avgbytespersecond;
+	unsigned short  asfpacketlength;
+	unsigned short 	channelmask;
+	unsigned short 	encodeopt;
+	unsigned short	advancedencodeopt;
+	uint32_t	advancedencodeopt2;
+} __attribute__((packed));
+
+/*
  * Command Structure to configure the  HOST PCM interface
  */
 
@@ -437,7 +437,8 @@ struct audpp_cmd_cfg_adec_params_evrc {
 
 struct audpp_cmd_pcm_intf {
 	unsigned short  cmd_id;
-	unsigned short  object_num;
+	unsigned short  stream;
+	unsigned short  stream_id;
 	signed short  config;
 	unsigned short  intf_type;
 
@@ -484,7 +485,8 @@ struct audpp_cmd_pcm_intf {
 
 struct audpp_cmd_pcm_intf_send_buffer {
 	unsigned short  cmd_id;
-	unsigned short  host_pcm_object;
+	unsigned short  stream;
+	unsigned short  stream_id;
 	/* set config = 0xFFFF for configuration*/
 	signed short  config;
 	unsigned short  intf_type;
@@ -525,16 +527,15 @@ struct audpp_cmd_pcm_intf_send_buffer {
 #define AUDPP_CMD_COMMON_CFG_UPDATE		0x8000
 #define AUDPP_CMD_COMMON_CFG_DONT_UPDATE	0x0000
 
-struct audpp_cmd_cfg_object_params_common {
+#define AUDPP_CMD_POPP_STREAM   0xFFFF
+#define AUDPP_CMD_COPP_STREAM   0x0000
+
+struct audpp_cmd_cfg_object_params_common{
 	unsigned short  cmd_id;
-	unsigned short	obj0_cfg;
-	unsigned short	obj1_cfg;
-	unsigned short	obj2_cfg;
-	unsigned short	obj3_cfg;
-	unsigned short	obj4_cfg;
-	unsigned short	host_pcm_obj_cfg;
-	unsigned short	comman_cfg;
-	unsigned short  command_type;
+	unsigned short	stream;
+	unsigned short	stream_id;
+	unsigned short	obj_cfg;
+	unsigned short	command_type;
 } __attribute__((packed));
 
 /*
@@ -742,7 +743,6 @@ struct audpp_cmd_cfg_object_params_eqalizer {
 		struct eq_coeff_12	eq_coeffs_12;
 	} __attribute__((packed)) eq_coeff;
 } __attribute__((packed));
-
 
 /*
  * Command Structure to configure post processing parameters (ADRC)
@@ -960,6 +960,5 @@ struct audpp_cmd_reverb_config_env_15 {
 	unsigned short			object_num;
 	unsigned short			absolute_gain;
 } __attribute__((packed));
-
 
 #endif /* __MACH_QDSP5_V2_QDSP5AUDPPCMDI_H */

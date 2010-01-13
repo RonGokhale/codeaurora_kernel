@@ -41,6 +41,7 @@
 
 #define	PM8058_IRQ_KEYPAD	(PM8058_FIRST_MISC_IRQ)
 #define	PM8058_IRQ_KEYSTUCK	(PM8058_FIRST_MISC_IRQ + 1)
+#define PM8058_IRQ_CHGVAL	(PM8058_FIRST_MISC_IRQ + 2)
 
 #define PM8058_IRQS		NR_PMIC8058_IRQS
 
@@ -50,6 +51,7 @@
 struct pm8058_platform_data {
 	/* This table is only needed for misc interrupts. */
 	unsigned int	pm_irqs[PM8058_IRQS];	/* block*8 + bit-pos */
+	int 		(*init)(void);
 };
 
 /* GPIO parameters */

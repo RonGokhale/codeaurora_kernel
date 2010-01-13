@@ -158,7 +158,8 @@ int msm_chg_rpc_connect(void)
 	uint32_t chg_vers;
 
 	if (machine_is_msm7201a_surf() || machine_is_msm7x27_surf() ||
-	    machine_is_qsd8x50_surf() || machine_is_msm7x25_surf())
+	    machine_is_qsd8x50_surf() || machine_is_msm7x25_surf() ||
+	    machine_is_qsd8x50a_surf())
 		return -ENOTSUPP;
 
 	if (chg_ep && !IS_ERR(chg_ep)) {
@@ -400,7 +401,7 @@ int msm_chg_usb_i_is_available(uint32_t sample)
 		printk(KERN_ERR "%s: charger_i_available failed! rc = %d\n",
 			__func__, rc);
 	} else
-		printk(KERN_INFO "msm_chg_usb_i_is_available\n");
+		pr_info("msm_chg_usb_i_is_available(%u)\n", sample);
 
 	return rc;
 }
@@ -573,3 +574,40 @@ int msm_hsusb_disable_pmic_ulpidata0(void)
 	return msm_hsusb_pmic_ulpidata0_config(0);
 }
 EXPORT_SYMBOL(msm_hsusb_disable_pmic_ulpidata0);
+
+#ifdef CONFIG_USB_GADGET_MSM_72K
+/* charger api wrappers */
+int hsusb_chg_init(int connect)
+{
+	if (connect)
+		return msm_chg_rpc_connect();
+	else
+		return msm_chg_rpc_close();
+}
+EXPORT_SYMBOL(hsusb_chg_init);
+
+void hsusb_chg_vbus_draw(unsigned mA)
+{
+	msm_chg_usb_i_is_available(mA);
+}
+EXPORT_SYMBOL(hsusb_chg_vbus_draw);
+
+void hsusb_chg_connected(enum chg_type chgtype)
+{
+	char *chg_types[] = {"STD DOWNSTREAM PORT",
+			"CARKIT",
+			"DEDICATED CHARGER",
+			"INVALID"};
+
+	if (chgtype == USB_CHG_TYPE__INVALID) {
+		msm_chg_usb_i_is_not_available();
+		msm_chg_usb_charger_disconnected();
+		return;
+	}
+
+	pr_info("\nCharger Type: %s\n", chg_types[chgtype]);
+
+	msm_chg_usb_charger_connected(chgtype);
+}
+EXPORT_SYMBOL(hsusb_chg_connected);
+#endif

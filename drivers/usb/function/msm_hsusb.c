@@ -30,6 +30,7 @@
 #include <linux/workqueue.h>
 #include <linux/clk.h>
 #include <linux/spinlock.h>
+#include <linux/switch.h>
 
 #include <linux/usb/ch9.h>
 #include <linux/io.h>
@@ -67,12 +68,12 @@
 #define TRUE			1
 #define FALSE			0
 #define USB_LINK_RESET_TIMEOUT	(msecs_to_jiffies(10))
+#define USB_CHG_DET_DELAY	msecs_to_jiffies(1000)
 
 #define is_phy_45nm()     (PHY_MODEL(ui->phy_info) == USB_PHY_MODEL_45NM)
 #define is_phy_external() (PHY_TYPE(ui->phy_info) == USB_PHY_EXTERNAL)
 
 static int pid = 0x9018;
-static int usb_init_err;
 
 struct usb_fi_ept {
 	struct usb_endpoint *ept;
@@ -112,7 +113,6 @@ static void usb_vbus_online(struct usb_info *);
 static void usb_vbus_offline(struct usb_info *ui);
 static void usb_lpm_exit(struct usb_info *ui);
 static void usb_lpm_wakeup_phy(struct work_struct *);
-static void usb_lpm_detach_int_h(struct work_struct *w);
 static void usb_exit(void);
 static int usb_is_online(struct usb_info *ui);
 static void usb_do_work(struct work_struct *w);
@@ -123,8 +123,6 @@ static void usb_disable_pullup(struct usb_info *ui);
 
 static struct workqueue_struct *usb_work;
 static void usb_chg_stop(struct work_struct *w);
-static int usb_chg_detect_type(struct usb_info *ui);
-static void usb_chg_set_type(struct usb_info *ui);
 
 #define USB_STATE_IDLE    0
 #define USB_STATE_ONLINE  1
@@ -143,16 +141,14 @@ static void usb_chg_set_type(struct usb_info *ui);
 #define DRIVER_NAME		"msm_hsusb_peripheral"
 
 struct lpm_info {
-	unsigned int rs_rw;
-	unsigned int pmic_h_disabled;
-	struct work_struct detach_int_h;
 	struct work_struct wakeup_phy;
 };
 
 enum charger_type {
-	CHG_HOST_PC,
-	CHG_WALL = 2,
-	CHG_UNDEFINED,
+	USB_CHG_TYPE__SDP,
+	USB_CHG_TYPE__CARKIT,
+	USB_CHG_TYPE__WALLCHARGER,
+	USB_CHG_TYPE__INVALID
 };
 
 struct usb_info {
@@ -202,6 +198,7 @@ struct usb_info {
 	struct usb_endpoint ept[32];
 
 	struct delayed_work work;
+	struct delayed_work chg_legacy_det;
 	unsigned phy_status;
 	unsigned phy_fail_count;
 	struct usb_composition *composition;
@@ -239,6 +236,7 @@ struct usb_info {
 	int active;
 	enum usb_device_state usb_state;
 	int vbus_sn_notif;
+	struct switch_dev sdev;
 };
 static struct usb_info *the_usb_info;
 
@@ -273,46 +271,102 @@ struct usb_device_descriptor desc_device = {
 };
 
 static void flush_endpoint(struct usb_endpoint *ept);
+static void msm_hsusb_suspend_locks_acquire(struct usb_info *, int);
 
-static int usb_chg_detect_type(struct usb_info *ui)
+static ssize_t print_switch_name(struct switch_dev *sdev, char *buf)
 {
-	int ret = CHG_UNDEFINED;
+	return sprintf(buf, "%s\n", DRIVER_NAME);
+}
 
-	msleep(10);
-	switch (PHY_TYPE(ui->phy_info)) {
-	case USB_PHY_EXTERNAL:
-		if (ulpi_write(ui, 0x30, 0x3A))
-			return ret;
+static ssize_t print_switch_state(struct switch_dev *sdev, char *buf)
+{
+	struct usb_info *ui = the_usb_info;
 
-		/* 50ms is requried for charging circuit to powerup
-		 * and start functioning
-		 */
-		msleep(50);
-		if ((readl(USB_PORTSC) & PORTSC_LS) == PORTSC_LS)
-			ret = CHG_WALL;
-		else
-			ret = CHG_HOST_PC;
+	return sprintf(buf, "%s\n", (ui->online ? "online" : "offline"));
+}
 
-		ulpi_write(ui, 0x30, 0x3B);
-		break;
-	case USB_PHY_INTEGRATED:
-	{
-		unsigned running = readl(USB_USBCMD) & USBCMD_RS;
+#define USB_WALLCHARGER_CHG_CURRENT 1800
+static int usb_get_max_power(struct usb_info *ui)
+{
+	unsigned long flags;
+	enum charger_type temp;
+	int suspended;
+	int configured;
 
-		if (!running)
-			return CHG_UNDEFINED;
+	spin_lock_irqsave(&ui->lock, flags);
+	temp = ui->chg_type;
+	suspended = ui->usb_state == USB_STATE_SUSPENDED ? 1 : 0;
+	configured = ui->configured;
+	spin_unlock_irqrestore(&ui->lock, flags);
 
-		if ((readl(USB_PORTSC) & PORTSC_LS) == PORTSC_LS)
-			ret = CHG_WALL;
-		else
-			ret = CHG_HOST_PC;
-		break;
+	if (temp == USB_CHG_TYPE__INVALID)
+		return -ENODEV;
+
+	if (temp == USB_CHG_TYPE__WALLCHARGER)
+		return USB_WALLCHARGER_CHG_CURRENT;
+
+	if (suspended || !configured)
+		return 0;
+
+	return ui->maxpower * 2;
+}
+
+static void usb_chg_legacy_detect(struct work_struct *w)
+{
+	struct usb_info *ui = the_usb_info;
+	unsigned long flags;
+	enum charger_type temp = USB_CHG_TYPE__INVALID;
+	int maxpower;
+	int ret = 0;
+
+	spin_lock_irqsave(&ui->lock, flags);
+
+	if (ui->usb_state == USB_STATE_NOTATTACHED) {
+		ret = -ENODEV;
+		goto chg_legacy_det_out;
 	}
-	default:
-		pr_err("%s: undefined phy type\n", __func__);
+
+	if ((readl(USB_PORTSC) & PORTSC_LS) == PORTSC_LS) {
+		ui->chg_type = temp = USB_CHG_TYPE__WALLCHARGER;
+		goto chg_legacy_det_out;
 	}
 
-	return ret;
+	ui->chg_type = temp = USB_CHG_TYPE__SDP;
+chg_legacy_det_out:
+	spin_unlock_irqrestore(&ui->lock, flags);
+
+	if (ret)
+		return;
+
+	msm_chg_usb_charger_connected(temp);
+	maxpower = usb_get_max_power(ui);
+	if (maxpower > 0)
+		msm_chg_usb_i_is_available(maxpower);
+
+	/* USB driver prevents idle and suspend power collapse(pc)
+	 * while usb cable is connected. But when dedicated charger is
+	 * connected, driver can vote for idle and suspend pc. In order
+	 * to allow pc, driver has to initiate low power mode which it
+	 * cannot do as phy cannot be accessed when dedicated charger
+	 * is connected due to phy lockup issues. Just to allow idle &
+	 * suspend pc when dedicated charger is connected, release the
+	 * wakelock, set driver latency to default and act as if we are
+	 * in low power mode so that, driver will re-acquire wakelocks
+	 * for any sub-sequent usb interrupts.
+	 */
+	if (temp == USB_CHG_TYPE__WALLCHARGER) {
+		pr_info("\n%s: WALL-CHARGER\n", __func__);
+		spin_lock_irqsave(&ui->lock, flags);
+		if (ui->usb_state == USB_STATE_NOTATTACHED) {
+			spin_unlock_irqrestore(&ui->lock, flags);
+			return;
+		}
+		ui->in_lpm = 1;
+		spin_unlock_irqrestore(&ui->lock, flags);
+
+		msm_hsusb_suspend_locks_acquire(ui, 0);
+	} else
+		pr_info("\n%s: Standard Downstream Port\n", __func__);
 }
 
 int usb_msm_get_next_strdesc_id(char *str)
@@ -757,6 +811,8 @@ void usb_ept_enable(struct usb_endpoint *ept, int yes)
 		else
 			n &= ~(CTRL_RXE);
 	}
+	/* complete all the updates to ept->head before enabling endpoint*/
+	dma_coherent_pre_ops();
 	writel(n, USB_ENDPTCTRL(ept->num));
 }
 EXPORT_SYMBOL(usb_ept_enable);
@@ -773,7 +829,7 @@ static void usb_ept_start(struct usb_endpoint *ept)
 	ept->head->info = 0;
 
 	/* memory barrier to flush the data before priming endpoint*/
-	dmb();
+	dma_coherent_pre_ops();
 	/* start the endpoint */
 	writel(1 << ept->bit, USB_ENDPTPRIME);
 
@@ -1290,6 +1346,8 @@ static void handle_setup(struct usb_info *ui)
 		set_configuration(ui, ctl.wValue);
 		ep0_setup_ack(ui);
 		ui->flags = USB_FLAG_CONFIGURE;
+		if (ui->configured)
+			ui->usb_state = USB_STATE_CONFIGURED;
 		queue_delayed_work(usb_work, &ui->work, 0);
 		return;
 
@@ -1340,6 +1398,8 @@ static void handle_endpoint(struct usb_info *ui, unsigned bit)
 	/* expire all requests that are no longer active */
 	spin_lock_irqsave(&ui->lock, flags);
 	while ((req = ept->req)) {
+		/* clean speculative fetches on req->item->info */
+		dma_coherent_post_ops();
 		info = req->item->info;
 
 		/* if we've processed all live requests, time to
@@ -1512,13 +1572,25 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 				break;
 			}
 		}
-		ui->flags = USB_FLAG_RESUME;
-		queue_delayed_work(usb_work, &ui->work, 0);
+
+		/* pci interrutpt would also be generated when resuming
+		 * from bus suspend, following check would avoid kick
+		 * starting usb main thread in case of pci interrupts
+		 * during enumeration
+		 */
+		if (ui->configured && ui->chg_type == USB_CHG_TYPE__SDP) {
+			ui->usb_state = USB_STATE_CONFIGURED;
+			ui->flags = USB_FLAG_RESUME;
+			queue_delayed_work(usb_work, &ui->work, 0);
+		}
 	}
 
 	if (n & STS_URI) {
 		pr_info("hsusb reset interrupt\n");
 		ui->usb_state = USB_STATE_DEFAULT;
+		ui->configured = 0;
+		schedule_work(&ui->chg_stop);
+
 		writel(readl(USB_ENDPTSETUPSTAT), USB_ENDPTSETUPSTAT);
 		writel(readl(USB_ENDPTCOMPLETE), USB_ENDPTCOMPLETE);
 		writel(0xffffffff, USB_ENDPTFLUSH);
@@ -1539,6 +1611,8 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 
 	if (n & STS_SLI) {
 		pr_info("hsusb suspend interrupt\n");
+		ui->usb_state = USB_STATE_SUSPENDED;
+
 		/* stop usb charging */
 		schedule_work(&ui->chg_stop);
 	}
@@ -1569,8 +1643,7 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 			/* Wait for 100ms to stabilize VBUS before initializing
 			 * USB and detecting charger type
 			 */
-			queue_delayed_work(usb_work, &ui->work,
-						DELAY_FOR_USB_VBUS_STABILIZE);
+			queue_delayed_work(usb_work, &ui->work, 0);
 		} else {
 			int i;
 
@@ -1578,6 +1651,7 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 
 			printk(KERN_INFO "usb cable disconnected\n");
 			ui->usb_state = USB_STATE_NOTATTACHED;
+			ui->configured = 0;
 			for (i = 0; i < ui->num_funcs; i++) {
 				struct usb_function_info *fi = ui->func[i];
 				if (!fi ||
@@ -1618,9 +1692,9 @@ static void usb_prepare(struct usb_info *ui)
 	ui->ep0out_req = usb_ept_alloc_req(&ui->ep0out, ui->ep0out.max_pkt);
 
 	INIT_WORK(&ui->chg_stop, usb_chg_stop);
-	INIT_WORK(&ui->li.detach_int_h, usb_lpm_detach_int_h);
 	INIT_WORK(&ui->li.wakeup_phy, usb_lpm_wakeup_phy);
 	INIT_DELAYED_WORK(&ui->work, usb_do_work);
+	INIT_DELAYED_WORK(&ui->chg_legacy_det, usb_chg_legacy_detect);
 }
 
 static int usb_is_online(struct usb_info *ui)
@@ -1677,18 +1751,19 @@ static int usb_suspend_phy(struct usb_info *ui)
 	 */
 	switch (PHY_TYPE(ui->phy_info)) {
 	case USB_PHY_INTEGRATED:
-		if (!is_phy_45nm()) {
+		if (!is_phy_45nm())
 			ulpi_read(ui, 0x14);
-			ulpi_write(ui, 0x08, 0x09);
-		}
 
+		/* turn on/off otg comparators */
 		if (ui->vbus_sn_notif &&
 			ui->usb_state == USB_STATE_NOTATTACHED)
-			/* turn off OTG PHY comparators */
 			ulpi_write(ui, 0x00, 0x30);
 		else
-			/* turn on the PHY comparators */
-			ulpi_write(ui, 0x01 | (1 << is_phy_45nm()), 0x30);
+			ulpi_write(ui, 0x01, 0x30);
+
+		if (!is_phy_45nm())
+			ulpi_write(ui, 0x08, 0x09);
+
 		break;
 
 	case USB_PHY_UNDEFINED:
@@ -1830,6 +1905,10 @@ static int usb_hw_reset(struct usb_info *ui)
 	ulpi_write(ui, val, ULPI_INT_RISE_CLR);
 	ulpi_write(ui, val, ULPI_INT_FALL_CLR);
 
+	/* we are just setting the pointer in the hwblock. Since the
+	 * endpoint isnt enabled the hw block doenst read the contents
+	 * of ui->dma - so we dont need a barrier here
+	 * */
 	writel(ui->dma, USB_ENDPOINTLISTADDR);
 
 	clk_disable(ui->clk);
@@ -2177,6 +2256,8 @@ static void usb_switch_composition(unsigned short pid)
 
 		/* stop the controller */
 		usb_disable_pullup(ui);
+		ui->usb_state = USB_STATE_NOTATTACHED;
+		switch_set_state(&ui->sdev, 0);
 		/* Before starting again, wait for 300ms
 		 * to make sure host detects soft disconnection
 		 **/
@@ -2262,28 +2343,24 @@ EXPORT_SYMBOL(usb_function_enable);
 
 static int usb_free(struct usb_info *ui, int ret)
 {
-	if (ui->irq) {
-		disable_irq_wake(ui->irq);
-		free_irq(ui->irq, ui);
-	}
-	msm_hsusb_suspend_locks_init(ui, 0);
+	disable_irq_wake(ui->irq);
+	free_irq(ui->irq, ui);
 	if (ui->gpio_irq[0])
 		free_irq(ui->gpio_irq[0], NULL);
 	if (ui->gpio_irq[1])
 		free_irq(ui->gpio_irq[1], NULL);
-	if (ui->pool)
-		dma_pool_destroy(ui->pool);
-	if (ui->dma)
-		dma_free_coherent(&ui->pdev->dev, 4096, ui->buf, ui->dma);
-	if (ui->addr)
-		iounmap(ui->addr);
-	if (ui->clk)
-		clk_put(ui->clk);
-	if (ui->pclk)
-		clk_put(ui->pclk);
-	if (ui->cclk)
-		clk_put(ui->cclk);
+
+	dma_pool_destroy(ui->pool);
+	dma_free_coherent(&ui->pdev->dev, 4096, ui->buf, ui->dma);
+	kfree(ui->func);
+	kfree(ui->strdesc);
+	iounmap(ui->addr);
+	clk_put(ui->clk);
+	clk_put(ui->pclk);
+	clk_put(ui->cclk);
+	msm_hsusb_suspend_locks_init(ui, 0);
 	kfree(ui);
+
 	return ret;
 }
 
@@ -2349,14 +2426,9 @@ static void usb_do_work(struct work_struct *w)
 					msm_hsusb_suspend_locks_acquire(ui, 1);
 					ui->state = USB_STATE_ONLINE;
 					usb_enable_pullup(ui);
-					usb_chg_set_type(ui);
-					if ((ui->chg_type == CHG_WALL) &&
-						(PHY_TYPE(ui->phy_info) ==
-							USB_PHY_EXTERNAL)) {
-						usb_disable_pullup(ui);
-						msleep(500);
-						usb_lpm_enter(ui);
-					}
+					schedule_delayed_work(
+							&ui->chg_legacy_det,
+							USB_CHG_DET_DELAY);
 					pr_info("hsusb: IDLE -> ONLINE\n");
 				} else {
 					ui->usb_state = USB_STATE_NOTATTACHED;
@@ -2378,9 +2450,26 @@ static void usb_do_work(struct work_struct *w)
 			 * the signal to go offline, we must honor it
 			 */
 			if (flags & USB_FLAG_VBUS_OFFLINE) {
-				msm_chg_usb_i_is_not_available();
-				ui->chg_type = CHG_UNDEFINED;
-				msm_chg_usb_charger_disconnected();
+				enum charger_type temp;
+				unsigned long f;
+
+				cancel_delayed_work_sync(&ui->chg_legacy_det);
+
+				spin_lock_irqsave(&ui->lock, f);
+				temp = ui->chg_type;
+				ui->chg_type = USB_CHG_TYPE__INVALID;
+				spin_unlock_irqrestore(&ui->lock, f);
+
+				if (temp != USB_CHG_TYPE__INVALID) {
+					/* re-acquire wakelock and restore axi
+					 * freq if they have been reduced by
+					 * charger work item
+					 */
+					msm_hsusb_suspend_locks_acquire(ui, 1);
+
+					msm_chg_usb_i_is_not_available();
+					msm_chg_usb_charger_disconnected();
+				}
 
 				/* reset usb core and usb phy */
 				disable_irq(ui->irq);
@@ -2393,6 +2482,7 @@ static void usb_do_work(struct work_struct *w)
 					msm_pm_app_enable_usb_ldo(0);
 				ui->state = USB_STATE_OFFLINE;
 				enable_irq(ui->irq);
+				switch_set_state(&ui->sdev, 0);
 				pr_info("hsusb: ONLINE -> OFFLINE\n");
 				break;
 			}
@@ -2404,14 +2494,14 @@ static void usb_do_work(struct work_struct *w)
 			}
 			if ((flags & USB_FLAG_RESUME) ||
 					(flags & USB_FLAG_CONFIGURE)) {
-				if (ui->online) {
-					ui->usb_state = USB_STATE_CONFIGURED;
-					msm_chg_usb_i_is_available
-							(ui->maxpower * 2);
-				} else {
-					ui->usb_state = USB_STATE_DEFAULT;
-					msm_chg_usb_i_is_available(100);
-				}
+				int maxpower = usb_get_max_power(ui);
+
+				if (maxpower > 0)
+					msm_chg_usb_i_is_available(maxpower);
+
+				if (flags & USB_FLAG_CONFIGURE)
+					switch_set_state(&ui->sdev, 1);
+
 				break;
 			}
 			goto reset;
@@ -2435,16 +2525,11 @@ static void usb_do_work(struct work_struct *w)
 					goto reset;
 				}
 				usb_enable_pullup(ui);
-				enable_irq(ui->irq);
-				usb_chg_set_type(ui);
-				if ((ui->chg_type == CHG_WALL) &&
-					(PHY_TYPE(ui->phy_info) ==
-						USB_PHY_EXTERNAL)) {
-					usb_disable_pullup(ui);
-					msleep(500);
-					usb_lpm_enter(ui);
-				}
+				schedule_delayed_work(
+						&ui->chg_legacy_det,
+						USB_CHG_DET_DELAY);
 				pr_info("hsusb: OFFLINE -> ONLINE\n");
+				enable_irq(ui->irq);
 				break;
 			}
 			if (flags & USB_FLAG_SUSPEND) {
@@ -2483,31 +2568,6 @@ static irqreturn_t usb_lpm_gpio_isr(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static int usb_lpm_config_pmic_handler(struct usb_info *ui)
-{
-	int reset_handler = ui->li.rs_rw;
-
-	if (reset_handler < 0) {
-		pr_err("failed to check if reset rework"
-				" is installed or not\n");
-		return -1;
-	}
-
-	if (!reset_handler)
-		return 0;
-
-	if (!ui->li.pmic_h_disabled &&
-			msm_hsusb_enable_pmic_ulpidata0() < 0) {
-		pr_err("failed to enable s/w to wakeup on"
-				"usb reset from suspend\n");
-		return -1;
-	}
-
-	ui->li.pmic_h_disabled = 1;
-
-	return 0;
-}
-
 static void usb_lpm_exit(struct usb_info *ui)
 {
 	if (ui->in_lpm == 0)
@@ -2515,9 +2575,6 @@ static void usb_lpm_exit(struct usb_info *ui)
 
 	if (usb_lpm_config_gpio)
 		usb_lpm_config_gpio(0);
-
-	if (ui->li.pmic_h_disabled)
-		schedule_work(&ui->li.detach_int_h);
 
 	wake_lock(&ui->wlock);
 	usb_clk_enable(ui);
@@ -2530,16 +2587,6 @@ static void usb_lpm_exit(struct usb_info *ui)
 		disable_irq(ui->irq);
 		schedule_work(&ui->li.wakeup_phy);
 	} else {
-		if (PHY_TYPE(ui->phy_info) == USB_PHY_EXTERNAL) {
-			/* enable vbus valid and session end raise/fall
-			   interrupts */
-			ulpi_write(ui,
-				ULPI_VBUS_VALID_RAISE | ULPI_SESSION_END_RAISE,
-				ULPI_USBINTR_ENABLE_RASING_S);
-			ulpi_write(ui,
-				ULPI_VBUS_VALID_FALL | ULPI_SESSION_END_FALL,
-				ULPI_USBINTR_ENABLE_FALLING_S);
-		}
 		ui->in_lpm = 0;
 		if (ui->xceiv)
 			ui->xceiv->set_suspend(ui->xceiv, 0);
@@ -2611,15 +2658,6 @@ static int usb_lpm_enter(struct usb_info *ui)
 		enable_irq(ui->gpio_irq[1]);
 	}
 
-	if (!connected && usb_lpm_config_pmic_handler(ui)) {
-		pr_err("%s: unable to config msm wake interrupts\n", __func__);
-		spin_lock_irqsave(&ui->lock, flags);
-		usb_lpm_exit(ui);
-		spin_unlock_irqrestore(&ui->lock, flags);
-		enable_irq(ui->irq);
-		return -1;
-	}
-
 	enable_irq(ui->irq);
 	msm_hsusb_suspend_locks_acquire(ui, 0);
 	pr_info("%s: usb in low power mode\n", __func__);
@@ -2657,27 +2695,15 @@ static void usb_disable_pullup(struct usb_info *ui)
 static void usb_chg_stop(struct work_struct *w)
 {
 	struct usb_info *ui = the_usb_info;
+	enum charger_type temp;
+	unsigned long flags;
 
-	if (ui->chg_type == CHG_HOST_PC)
+	spin_lock_irqsave(&ui->lock, flags);
+	temp = ui->chg_type;
+	spin_unlock_irqrestore(&ui->lock, flags);
+
+	if (temp == USB_CHG_TYPE__SDP)
 		msm_chg_usb_i_is_not_available();
-}
-
-static void usb_chg_set_type(struct usb_info *ui)
-{
-	ui->chg_type = usb_chg_detect_type(ui);
-	switch (ui->chg_type) {
-	case CHG_WALL:
-		pr_info("\n*********** Charger Type: WALL CHARGER\n\n");
-		msm_chg_usb_charger_connected(CHG_WALL);
-		msm_chg_usb_i_is_available(1500);
-		break;
-	case CHG_HOST_PC:
-		pr_info("\n*********** Charger Type: HOST PC\n\n");
-		msm_chg_usb_charger_connected(CHG_HOST_PC);
-		break;
-	default:
-		pr_err("%s:undefned charger type", __func__);
-	}
 }
 
 static void usb_vbus_online(struct usb_info *ui)
@@ -2771,20 +2797,6 @@ static void usb_lpm_wakeup_phy(struct work_struct *w)
 	if (ui->xceiv)
 		ui->xceiv->set_suspend(ui->xceiv, 0);
 	enable_irq(ui->irq);
-}
-
-static void usb_lpm_detach_int_h(struct work_struct *w)
-{
-	struct usb_info *ui = the_usb_info;
-
-	if (ui->li.rs_rw == 1 && ui->li.pmic_h_disabled) {
-		if (msm_hsusb_disable_pmic_ulpidata0() < 0) {
-			pr_err("failed to disable s/w work-around to wakeup on"
-					"usb reset from suspend\n");
-			return;
-		}
-		ui->li.pmic_h_disabled = 0;
-	}
 }
 
 void usb_function_reenumerate(void)
@@ -3091,138 +3103,204 @@ static struct attribute_group msm_hsusb_attr_grp = {
 	.attrs = msm_hsusb_attrs,
 };
 
+#define msm_hsusb_func_attr(function, index)				\
+static ssize_t  show_##function(struct device *dev,			\
+		struct device_attribute *attr, char *buf)		\
+{									\
+	struct usb_info *ui = the_usb_info;				\
+	struct usb_function_info *fi = ui->func[index];			\
+									\
+	return sprintf(buf, "%d", fi->enabled);				\
+									\
+}									\
+									\
+static DEVICE_ATTR(function, S_IRUGO, show_##function, NULL);
+
+msm_hsusb_func_attr(diag, 0);
+msm_hsusb_func_attr(adb, 1);
+msm_hsusb_func_attr(modem, 2);
+msm_hsusb_func_attr(nmea, 3);
+msm_hsusb_func_attr(mass_storage, 4);
+msm_hsusb_func_attr(ethernet, 5);
+
+static struct attribute *msm_hsusb_func_attrs[] = {
+	&dev_attr_diag.attr,
+	&dev_attr_adb.attr,
+	&dev_attr_modem.attr,
+	&dev_attr_nmea.attr,
+	&dev_attr_mass_storage.attr,
+	&dev_attr_ethernet.attr,
+	NULL,
+};
+
+static struct attribute_group msm_hsusb_func_attr_grp = {
+	.name  = "functions",
+	.attrs = msm_hsusb_func_attrs,
+};
+
 static int __init usb_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	struct usb_info *ui;
 	int irq;
-	int ret;
+	int ulpi_irq1 = 0;
+	int ulpi_irq2 = 0;
 	int i;
+	int ret = 0;
 
-	ui = kzalloc(sizeof(struct usb_info), GFP_KERNEL);
-	if (!ui)
-		return -ENOMEM;
-
-	ui->pdev = pdev;
-	if (!ui->pdev || !ui->pdev->dev.platform_data) {
+	if (!pdev || !pdev->dev.platform_data) {
 		pr_err("%s:pdev or platform data is null\n", __func__);
-		return -1;
-	}
-
-	ui->pdata = ui->pdev->dev.platform_data;
-
-	spin_lock_init(&ui->lock);
-	msm_hsusb_suspend_locks_init(ui, 1);
-	the_usb_info = ui;
-
-	ui->functions_map = ui->pdata->function_map;
-	ui->num_funcs = ui->pdata->num_functions;
-
-	/* to allow swfi latency, driver latency
-	 * must be above listed swfi latency
-	 */
-	ui->pdata->swfi_latency += 1;
-
-	/* zero is reserved for language id */
-	ui->strdesc_index = 1;
-	/* Allocate memory for string descriptor arrary to store strings */
-	ui->strdesc = kzalloc(sizeof(char *) * MAX_STRDESC_NUM, GFP_KERNEL);
-	if (!ui->strdesc) {
-		usb_init_err = -ENOMEM;
-		return usb_init_err;
-	}
-	ui->func = kzalloc(sizeof(struct usb_function *) *
-				ui->num_funcs, GFP_KERNEL);
-	if (!ui->func) {
-		kfree(ui);
-		usb_init_err = -ENOMEM;
-		return usb_init_err;
-	}
-
-	if (!usb_set_composition(pid)) {
-		usb_init_err = -ENODEV;
-		return usb_init_err;
-	}
-
-	/* initializing phy type */
-	if (ui->pdata) {
-		ui->phy_info = ui->pdata->phy_info;
-		if (ui->phy_info == USB_PHY_UNDEFINED) {
-			pr_err("undefined phy_info: (%d)\n", ui->phy_info);
-			usb_init_err = -ENOMEM;
-			return usb_init_err;
-		}
-		pr_info("phy info:(%d)\n", ui->phy_info);
+		return -ENODEV;
 	}
 
 	irq = platform_get_irq(pdev, 0);
+	if (irq < 0) {
+		pr_err("%s: failed to get irq num from platform_get_irq\n",
+				__func__);
+		return -ENODEV;
+	}
+
+#ifdef CONFIG_ARCH_MSM7201A
+	ulpi_irq1 = platform_get_irq_byname(pdev, "vbus_interrupt");
+	if (ulpi_irq1 < 0) {
+		pr_err("%s: failed to get vbus gpio interrupt\n", __func__);
+		return -ENODEV;
+	}
+
+	ulpi_irq2 = platform_get_irq_byname(pdev, "id_interrupt");
+	if (ulpi_irq2 < 0) {
+		pr_err("%s: failed to get id gpio interrupt\n", __func__);
+		return -ENODEV;
+	}
+#endif
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res || (irq < 0)) {
-		usb_free(ui, -ENODEV);
-		usb_init_err = 	-ENODEV;
-		return usb_init_err;
+	if (!res) {
+		pr_err("%s: failed to get mem resource\n", __func__);
+		return -ENODEV;
+	}
+
+	ret = sysfs_create_group(&pdev->dev.kobj, &msm_hsusb_attr_grp);
+	if (ret) {
+		pr_err("%s: unable to create sysfs group\n", __func__);
+		return ret;
+	}
+
+	usb_work = create_singlethread_workqueue("usb_work");
+	if (!usb_work) {
+		pr_err("%s: unable to create work queue\n", __func__);
+		ret = -ENOMEM;
+		goto free_sysfs_grp;
+	}
+
+	ui = kzalloc(sizeof(struct usb_info), GFP_KERNEL);
+	if (!ui) {
+		pr_err("%s: unable to allocate memory for ui\n", __func__);
+		ret = -ENOMEM;
+		goto free_workqueue;
+	}
+
+	ui->pdev = pdev;
+	ui->pdata = pdev->dev.platform_data;
+
+	for (i = 0; i < ui->pdata->num_compositions; i++)
+		if (ui->pdata->compositions[i].product_id == pid) {
+			ui->composition = &ui->pdata->compositions[i];
+			break;
+		}
+	if (!ui->composition) {
+		pr_err("%s: unable to find the composition with pid:(%d)\n",
+				__func__, pid);
+		ret = -ENODEV;
+		goto free_ui;
+	}
+
+	ui->phy_info = ui->pdata->phy_info;
+	if (ui->phy_info == USB_PHY_UNDEFINED) {
+		pr_err("undefined phy_info: (%d)\n", ui->phy_info);
+		ret = -ENOMEM;
+		goto free_ui;
+	}
+
+	/* zero is reserved for language id */
+	ui->strdesc_index = 1;
+	ui->strdesc = kzalloc(sizeof(char *) * MAX_STRDESC_NUM, GFP_KERNEL);
+	if (!ui->strdesc) {
+		pr_err("%s: unable allocate mem for string descriptors\n",
+				__func__);
+		ret = -ENOMEM;
+		goto free_ui;
+	}
+
+	ui->num_funcs = ui->pdata->num_functions;
+	ui->func = kzalloc(sizeof(struct usb_function *) * ui->num_funcs,
+				GFP_KERNEL);
+	if (!ui->func) {
+		pr_err("%s: unable allocate mem for functions\n", __func__);
+		ret = -ENOMEM;
+		goto free_str_desc;
+	}
+
+	ret = sysfs_create_group(&pdev->dev.kobj, &msm_hsusb_func_attr_grp);
+	if (ret) {
+		pr_err("%s: unable to create functions sysfs group\n",
+				__func__);
+		goto free_func;
 	}
 
 	ui->addr = ioremap(res->start, resource_size(res));
 	if (!ui->addr) {
-		usb_free(ui, -ENOMEM);
-		usb_init_err = -ENOMEM;
-		return usb_init_err;
+		pr_err("%s: unable ioremap\n", __func__);
+		ret = -ENOMEM;
+		goto free_func_sysfs_grp;
 	}
 
 	ui->buf = dma_alloc_coherent(&pdev->dev, 4096, &ui->dma, GFP_KERNEL);
 	if (!ui->buf) {
-		usb_free(ui, -ENOMEM);
-		usb_init_err = -ENOMEM;
-		return usb_init_err;
+		pr_err("%s: failed allocate dma coherent memory\n", __func__);
+		ret = -ENOMEM;
+		goto free_iounmap;
 	}
 
 	ui->pool = dma_pool_create("hsusb", NULL, 32, 32, 0);
 	if (!ui->pool) {
-		usb_free(ui, -ENOMEM);
-		usb_init_err = -ENOMEM;
-		return usb_init_err;
+		pr_err("%s: unable to allocate dma pool\n", __func__);
+		ret = -ENOMEM;
+		goto free_dma_coherent;
 	}
-
-	printk(KERN_INFO "usb_probe() io=%p, irq=%d, dma=%p(%x)\n",
-	       ui->addr, irq, ui->buf, ui->dma);
 
 	ui->clk = clk_get(&pdev->dev, "usb_hs_clk");
 	if (IS_ERR(ui->clk)) {
-		usb_free(ui, PTR_ERR(ui->clk));
-		usb_init_err = PTR_ERR(ui->clk);
-		return usb_init_err;
+		pr_err("%s: unable get usb_hs_clk\n", __func__);
+		ret = PTR_ERR(ui->clk);
+		goto free_dma_pool;
 	}
 
 	ui->pclk = clk_get(&pdev->dev, "usb_hs_pclk");
 	if (IS_ERR(ui->pclk)) {
-		usb_free(ui, PTR_ERR(ui->pclk));
-		usb_init_err = PTR_ERR(ui->clk);
-		return usb_init_err;
+		pr_err("%s: unable get usb_hs_pclk\n", __func__);
+		ret = PTR_ERR(ui->pclk);
+		goto free_hs_clk;
 	}
 
 	if (ui->pdata->core_clk) {
 		ui->cclk = clk_get(&pdev->dev, "usb_hs_core_clk");
 		if (IS_ERR(ui->cclk)) {
-			usb_free(ui, PTR_ERR(ui->cclk));
-			usb_init_err = PTR_ERR(ui->cclk);
-			return usb_init_err;
+			pr_err("%s: unable get usb_hs_core_clk\n", __func__);
+			ret = PTR_ERR(ui->cclk);
+			goto free_hs_pclk;
 		}
 	}
 
 	if (ui->pdata->vreg5v_required) {
 		ui->vreg = vreg_get(NULL, "boost");
-		if (IS_ERR(ui->vreg) || (!ui->vreg)) {
+		if (IS_ERR(ui->vreg)) {
 			pr_err("%s: vreg get failed\n", __func__);
 			ui->vreg = NULL;
-			usb_free(ui, PTR_ERR(ui->vreg));
-			usb_init_err = PTR_ERR(ui->vreg);
-			return usb_init_err;
+			ret = PTR_ERR(ui->vreg);
+			goto free_hs_cclk;
 		}
 	}
-
-	/* memory barrier initialization in non-interrupt context */
-	dmb();
 
 	/* disable interrupts before requesting irq */
 	usb_clk_enable(ui);
@@ -3232,83 +3310,109 @@ static int __init usb_probe(struct platform_device *pdev)
 
 	ret = request_irq(irq, usb_interrupt, IRQF_SHARED, pdev->name, ui);
 	if (ret) {
-		usb_free(ui, ret);
-		usb_init_err = ret;
-		return ret;
+		pr_err("%s: request_irq failed\n", __func__);
+		goto free_vreg5v;
 	}
-	enable_irq_wake(irq);
 	ui->irq = irq;
 
-	/* TODO: add dynamic port speed detect, bmAttributes and max power */
+	if (ui->pdata->config_gpio) {
+		usb_lpm_config_gpio = ui->pdata->config_gpio;
+
+		ret = request_irq(ulpi_irq1,
+				&usb_lpm_gpio_isr,
+				IRQF_TRIGGER_HIGH,
+				"vbus_interrupt", NULL);
+		if (ret) {
+			pr_err("%s: failed to request vbus interrupt:(%d)\n",
+					__func__, ulpi_irq1);
+			goto free_irq;
+		}
+
+		ret = request_irq(ulpi_irq2,
+				&usb_lpm_gpio_isr,
+				IRQF_TRIGGER_RISING,
+				"usb_ulpi_data3", NULL);
+		if (ret) {
+			pr_err("%s: failed to request irq ulpi_data_3:(%d)\n",
+							__func__, ulpi_irq2);
+			goto free_ulpi_irq1;
+		}
+
+		ui->gpio_irq[0] = ulpi_irq1;
+		ui->gpio_irq[1] = ulpi_irq2;
+	}
+
+	ui->sdev.name = DRIVER_NAME;
+	ui->sdev.print_name = print_switch_name;
+	ui->sdev.print_state = print_switch_state;
+
+	ret = switch_dev_register(&ui->sdev);
+	if (ret < 0) {
+		pr_err("%s(): switch_dev_register failed ret = %d\n",
+				__func__, ret);
+		goto free_ulpi_irq2;
+	}
+
+	the_usb_info = ui;
+	ui->functions_map = ui->pdata->function_map;
 	ui->selfpowered = 0;
 	ui->remote_wakeup = 0;
 	ui->maxpower = 0xFA;
-	ui->chg_type = CHG_UNDEFINED;
+	ui->chg_type = USB_CHG_TYPE__INVALID;
+	/* to allow swfi latency, driver latency
+	 * must be above listed swfi latency
+	 */
+	ui->pdata->swfi_latency += 1;
 
-	if (!ui->pdata->ulpi_data_1_pin)
-		goto no_gpios;
+	spin_lock_init(&ui->lock);
+	msm_hsusb_suspend_locks_init(ui, 1);
+	enable_irq_wake(irq);
 
-	/* initialize lpm variables */
-	ui->li.pmic_h_disabled = 0;
-	ui->li.rs_rw = 0;
-	/* check if reset rework is installed or not */
-	i = msm_hsusb_reset_rework_installed();
-	if (i < 0) {
-		pr_err("%s: unable to verify if reset"
-				" rework is installed or not\n", __func__);
-		ui->li.rs_rw = -1;
-	} else if (i) {
-		pr_info("%s: reset rework is installed\n", __func__);
-		ui->li.rs_rw = 1;
-	} else
-		pr_info("%s: reset rework is not installed\n", __func__);
+	/* memory barrier initialization in non-interrupt context */
+	dmb();
 
-	usb_lpm_config_gpio = ui->pdata->config_gpio;
-	/* request gpio irqs */
-	/* ulpi_data_1: level detect, active high */
-	ui->gpio_irq[0] = MSM_GPIO_TO_INT(ui->pdata->ulpi_data_1_pin);
-	ret = request_irq(ui->gpio_irq[0],
-			&usb_lpm_gpio_isr,
-			IRQF_TRIGGER_HIGH,
-			"usb_ulpi_data1", NULL);
-	if (ret) {
-		pr_err("%s: failed to request irq ulpi_data_1:(%d)\n",
-						__func__,
-						ui->gpio_irq[0]);
-		ui->gpio_irq[0] = 0;
-		usb_free(ui, ret);
-		return ret;
-	}
-	disable_irq(ui->gpio_irq[0]);
-
-	/* ulpi_data_3: edge detect, active high */
-	ui->gpio_irq[1] = MSM_GPIO_TO_INT(ui->pdata->ulpi_data_3_pin);
-	ret = request_irq(ui->gpio_irq[1],
-			&usb_lpm_gpio_isr,
-			IRQF_TRIGGER_RISING,
-			"usb_ulpi_data3", NULL);
-	if (ret) {
-		pr_err("%s: failed to request irq ulpi_data_3:(%d)\n",
-						__func__,
-						ui->gpio_irq[1]);
-		ui->gpio_irq[1] = 0;
-		usb_free(ui, ret);
-		return ret;
-	}
-	disable_irq(ui->gpio_irq[1]);
-no_gpios:
 	usb_debugfs_init(ui);
-
-	if (!sysfs_create_group(&pdev->dev.kobj, &msm_hsusb_attr_grp))
-		pr_info("Created the sysfs entry successfully \n");
-
-	usb_work = create_singlethread_workqueue("usb_work");
-	if (!usb_work)
-		return -ENOMEM;
-
 	usb_prepare(ui);
 
+	pr_info("%s: io=%p, irq=%d, dma=%p(%x)\n",
+			__func__, ui->addr, ui->irq, ui->buf, ui->dma);
 	return 0;
+
+free_ulpi_irq2:
+	free_irq(ulpi_irq2, NULL);
+free_ulpi_irq1:
+	free_irq(ulpi_irq1, NULL);
+free_irq:
+	free_irq(ui->irq, ui);
+free_vreg5v:
+	if (ui->pdata->vreg5v_required)
+		vreg_put(ui->vreg);
+free_hs_cclk:
+	clk_put(ui->cclk);
+free_hs_pclk:
+	clk_put(ui->pclk);
+free_hs_clk:
+	clk_put(ui->clk);
+free_dma_pool:
+	dma_pool_destroy(ui->pool);
+free_dma_coherent:
+	dma_free_coherent(&pdev->dev, 4096, ui->buf, ui->dma);
+free_iounmap:
+	iounmap(ui->addr);
+free_func_sysfs_grp:
+	sysfs_remove_group(&pdev->dev.kobj, &msm_hsusb_func_attr_grp);
+free_func:
+	kfree(ui->func);
+free_str_desc:
+	kfree(ui->strdesc);
+free_ui:
+	kfree(ui);
+free_workqueue:
+	destroy_workqueue(usb_work);
+free_sysfs_grp:
+	sysfs_remove_group(&pdev->dev.kobj, &msm_hsusb_attr_grp);
+
+	return ret;
 }
 
 #ifdef CONFIG_PM
@@ -3342,37 +3446,24 @@ static int usb_platform_suspend(struct platform_device *pdev,
 
 	return ret;
 }
-#else
-static int usb_platform_suspend(struct platform_device *pdev,
-		pm_message_t state)
-{
-}
 #endif
 
 static struct platform_driver usb_driver = {
 	.probe = usb_probe,
+#ifdef CONFIG_PM
 	.suspend = usb_platform_suspend,
+#endif
 	.driver = { .name = DRIVER_NAME, },
 };
 
 static int __init usb_module_init(void)
 {
-	int ret, err;
 	/* rpc connect for phy_reset */
 	msm_hsusb_rpc_connect();
 	/* rpc connect for charging */
 	msm_chg_rpc_connect();
 
-	ret = platform_driver_register(&usb_driver);
-
-	if (ret != 0 || usb_init_err != 0) {
-		usb_exit();
-		err = usb_init_err;
-		usb_init_err = 0;
-		return err;
-	} else
-		return ret;
-
+	return platform_driver_register(&usb_driver);
 }
 
 static void free_usb_info(void)
@@ -3411,12 +3502,13 @@ static void usb_exit(void)
 		msm_otg_put_transceiver(ui->xceiv);
 	}
 
-	cancel_work_sync(&ui->li.detach_int_h);
 	cancel_work_sync(&ui->li.wakeup_phy);
 
 	destroy_workqueue(usb_work);
 	/* free the usb_info structure */
 	free_usb_info();
+	switch_dev_unregister(&ui->sdev);
+	sysfs_remove_group(&ui->pdev->dev.kobj, &msm_hsusb_func_attr_grp);
 	sysfs_remove_group(&ui->pdev->dev.kobj, &msm_hsusb_attr_grp);
 	usb_debugfs_uninit();
 	platform_driver_unregister(&usb_driver);
@@ -3668,8 +3760,6 @@ cancel_req:
 		req->item->next = TERMINATE;
 		req->item->info = 0;
 		req->live = 0;
-		/* memory barrier to flush the data */
-		dmb();
 		dma_unmap_single(NULL, req->dma, req->req.length,
 				(ept->flags & EPT_FLAG_IN) ?
 				DMA_TO_DEVICE : DMA_FROM_DEVICE);

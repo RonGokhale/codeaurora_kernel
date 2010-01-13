@@ -59,6 +59,7 @@ enum {
 	I2C_INTERFACE_SELECT_SCL            = 1U << 8,
 	I2C_INTERFACE_SELECT_SDA            = 1U << 9,
 	I2C_STATUS_RX_DATA_STATE            = 3U << 11,
+	I2C_STATUS_LOW_CLK_STATE            = 3U << 13,
 };
 
 struct msm_i2c_dev {
@@ -78,7 +79,8 @@ struct msm_i2c_dev {
 	int                          err;
 	int                          flush_cnt;
 	int                          rd_acked;
-	remote_spinlock_t            rspin_lock;
+	int                          one_bit_t;
+	remote_mutex_t               r_lock;
 	int                          suspended;
 	struct mutex                 mlock;
 	struct msm_i2c_platform_data *pdata;
@@ -174,7 +176,8 @@ msm_i2c_interrupt(int irq, void *devid)
 				goto out_err;
 			}
 		} else if (dev->msg->len == 1 && dev->rd_acked == 0 &&
-				(status & I2C_STATUS_RX_DATA_STATE))
+				((status & I2C_STATUS_RX_DATA_STATE) ==
+				 I2C_STATUS_RX_DATA_STATE))
 			writel(I2C_WRITE_DATA_LAST_BYTE,
 				dev->base + I2C_WRITE_DATA);
 	} else {
@@ -193,6 +196,24 @@ msm_i2c_interrupt(int irq, void *devid)
 			if (dev->cnt == 1 && dev->rem == 1)
 				data |= I2C_WRITE_DATA_LAST_BYTE;
 
+			status = readl(dev->base + I2C_STATUS);
+			/*
+			 * Due to a hardware timing issue, data line setup time
+			 * may be reduced to less than recommended 250 ns.
+			 * This happens when next byte is written in a
+			 * particular window of clock line being low and master
+			 * not stretching the clock line. Due to setup time
+			 * violation, some slaves may miss first-bit of data, or
+			 * misinterprete data as start condition.
+			 * We introduce delay of just over 1/2 clock cycle to
+			 * ensure master stretches the clock line thereby
+			 * avoiding setup time violation. Delay is introduced
+			 * only if I2C clock FSM is LOW. The delay is not needed
+			 * if I2C clock FSM is HIGH or FORCED_LOW.
+			 */
+			if ((status & I2C_STATUS_LOW_CLK_STATE) ==
+					I2C_STATUS_LOW_CLK_STATE)
+				udelay((dev->one_bit_t >> 1) + 1);
 			writel(data, dev->base + I2C_WRITE_DATA);
 			dev->pos++;
 			dev->cnt--;
@@ -241,37 +262,6 @@ msm_i2c_poll_notbusy(struct msm_i2c_dev *dev)
 			udelay(100);
 	}
 	return -ETIMEDOUT;
-}
-
-static void
-msm_i2c_rmutex_lock(struct msm_i2c_dev *dev)
-{
-	int gotlock = 0;
-	unsigned long flags;
-	if (!dev->pdata->rmutex)
-		return;
-	do {
-		remote_spin_lock_irqsave(&dev->rspin_lock, flags);
-		if (*(dev->pdata->rmutex) == 0) {
-			*(dev->pdata->rmutex) = 1;
-			gotlock = 1;
-		}
-		remote_spin_unlock_irqrestore(&dev->rspin_lock, flags);
-		/* wait for 1-byte clock interval */
-		if (!gotlock)
-			udelay(10000000/dev->pdata->clk_freq);
-	} while (!gotlock);
-}
-
-static void
-msm_i2c_rmutex_unlock(struct msm_i2c_dev *dev)
-{
-	unsigned long flags;
-	if (!dev->pdata->rmutex)
-		return;
-	remote_spin_lock_irqsave(&dev->rspin_lock, flags);
-	*(dev->pdata->rmutex) = 0;
-	remote_spin_unlock_irqrestore(&dev->rspin_lock, flags);
 }
 
 static int
@@ -365,7 +355,8 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	/* Don't allow power collapse until we release remote spinlock */
 	pm_qos_update_requirement(PM_QOS_CPU_DMA_LATENCY, "msm_i2c",
 					dev->pdata->pm_lat);
-	msm_i2c_rmutex_lock(dev);
+	if (dev->pdata->rmutex)
+		remote_mutex_lock(&dev->r_lock);
 	if (adap == &dev->adap_pri)
 		writel(0, dev->base + I2C_INTERFACE_SELECT);
 	else
@@ -436,7 +427,8 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 			while (retries != 2000) {
 				uint32_t status = readl(dev->base + I2C_STATUS);
 
-					if (status & I2C_STATUS_RX_DATA_STATE)
+					if ((status & I2C_STATUS_RX_DATA_STATE)
+						== I2C_STATUS_RX_DATA_STATE)
 						break;
 				retries++;
 			}
@@ -507,7 +499,8 @@ wait_for_int:
 	dev->cnt = 0;
 	spin_unlock_irqrestore(&dev->lock, flags);
 	disable_irq(dev->irq);
-	msm_i2c_rmutex_unlock(dev);
+	if (dev->pdata->rmutex)
+		remote_mutex_unlock(&dev->r_lock);
 	pm_qos_update_requirement(PM_QOS_CPU_DMA_LATENCY, "msm_i2c",
 					PM_QOS_DEFAULT_VALUE);
 	mutex_unlock(&dev->mlock);
@@ -599,13 +592,19 @@ msm_i2c_probe(struct platform_device *pdev)
 		goto err_ioremap_failed;
 	}
 
+	dev->one_bit_t = USEC_PER_SEC/pdata->clk_freq;
 	spin_lock_init(&dev->lock);
 	platform_set_drvdata(pdev, dev);
 
 	clk_enable(clk);
 
-	if (pdata->rmutex != NULL)
-		remote_spin_lock_init(&dev->rspin_lock, pdata->rsl_id);
+	if (pdata->rmutex) {
+		struct remote_mutex_id rmid;
+		rmid.r_spinlock_id = pdata->rsl_id;
+		rmid.delay_us = 10000000/pdata->clk_freq;
+		if (remote_mutex_init(&dev->r_lock, &rmid) != 0)
+			pdata->rmutex = 0;
+	}
 	/* I2C_HS_CLK = I2C_CLK/(3*(HS_DIVIDER_VALUE+1) */
 	/* I2C_FS_CLK = I2C_CLK/(2*(FS_DIVIDER_VALUE+3) */
 	/* FS_DIVIDER_VALUE = ((I2C_CLK / I2C_FS_CLK) / 2) - 3 */

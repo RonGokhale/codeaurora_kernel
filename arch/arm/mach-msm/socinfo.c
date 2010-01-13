@@ -126,13 +126,17 @@ static enum msm_cpu cpu_of_id[] = {
 
 	/* 7x25 IDs */
 	[20] = MSM_CPU_7X25,
-	[21] = MSM_CPU_7X25,
-	[24] = MSM_CPU_7X25,
-	[27] = MSM_CPU_7X25,
+	[21] = MSM_CPU_7X25, /* 7225 */
+	[24] = MSM_CPU_7X25, /* 7525 */
+	[27] = MSM_CPU_7X25, /* 7625 */
 	[39] = MSM_CPU_7X25,
 	[40] = MSM_CPU_7X25,
 	[41] = MSM_CPU_7X25,
 	[42] = MSM_CPU_7X25,
+	[62] = MSM_CPU_7X25, /* 7625-1 */
+	[63] = MSM_CPU_7X25, /* 7225-1 */
+	[66] = MSM_CPU_7X25, /* 7225-2 */
+
 
 	/* 7x27 IDs */
 	[43] = MSM_CPU_7X27,
@@ -145,13 +149,17 @@ static enum msm_cpu cpu_of_id[] = {
 	[37] = MSM_CPU_8X50,
 	[38] = MSM_CPU_8X50,
 
+	/* 8x50A IDs */
+	[64] = MSM_CPU_8X50A,
+	[65] = MSM_CPU_8X50A,
+
 	/* 7x30 IDs */
 	[59] = MSM_CPU_7X30,
 	[60] = MSM_CPU_7X30,
 
 	/* Uninitialized IDs are not known to run Linux.
 	   MSM_CPU_UNKNOWN is set to 0 to ensure these IDs are
-	   considered as unknown CPU. Any ID > 60 is invalid.  */
+	   considered as unknown CPU. */
 };
 
 static enum msm_cpu cur_cpu;
