@@ -347,6 +347,7 @@ kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
 	struct drm_file *file_priv;
 	struct drm_gem_object *obj;
 	struct drm_kgsl_gem_object *priv;
+	int ret = 0;
 
 	filp = fget(drm_fd);
 	if (unlikely(filp == NULL)) {
@@ -376,13 +377,26 @@ kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
 	mutex_lock(&dev->struct_mutex);
 	priv = obj->driver_private;
 
-	/* priv->mmap_offset is used for virt addr */
-	*len = obj->size;
+	/* We can only use the MDP for PMEM regions */
+
+	if (priv->phys &&
+	    (priv->type == DRM_KGSL_GEM_TYPE_EBI ||
+	    priv->type == DRM_KGSL_GEM_TYPE_SMI)) {
+
+		*start = priv->phys;
+		/* priv->mmap_offset is used for virt addr */
+		*len = obj->size;
+	} else {
+		*start = 0;
+		*len = 0;
+		ret = -EINVAL;
+	}
+
 	drm_gem_object_unreference(obj);
 	mutex_unlock(&dev->struct_mutex);
 
 	fput(filp);
-	return 0;
+	return ret;
 }
 #else
 int kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
