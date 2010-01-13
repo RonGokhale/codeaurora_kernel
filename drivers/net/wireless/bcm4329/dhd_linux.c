@@ -2127,20 +2127,25 @@ dhd_module_init(void)
 		return -EINVAL;
 	} while (0);
 
+	/* Call customer gpio to turn on power with WL_REG_ON signal */
+	dhd_customer_gpio_wlan_ctrl(WLAN_POWER_ON);
+
 #if defined(CUSTOMER_HW2) && defined(CONFIG_WIFI_CONTROL_FUNC)
 	sema_init(&wifi_control_sem, 0);
-	wifi_add_dev();
+
+	error = wifi_add_dev();
+	if (error) {
+		DHD_ERROR(("%s: platform_driver_register failed\n", __FUNCTION__));
+		goto fail_0;
+	}
 
 	/* Waiting callback after platform_driver_register is done or exit with error */
 	if (down_timeout(&wifi_control_sem,  msecs_to_jiffies(5000)) != 0) {
 		error = -EINVAL;
-		DHD_ERROR(("%s: platform_driver_register callback timeout\n", __FUNCTION__));
-		goto fail;
+		DHD_ERROR(("%s: platform_driver_register timeout\n", __FUNCTION__));
+		goto fail_1;
 	}
 #endif /* #if defined(CUSTOMER_HW2) && defined(CONFIG_WIFI_CONTROL_FUNC) */
-
-	/* Call customer gpio to turn on power with WL_REG_ON signal */
-	dhd_customer_gpio_wlan_ctrl(WLAN_POWER_ON);
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && 1
 	sema_init(&dhd_registration_sem, 0);
@@ -2150,7 +2155,10 @@ dhd_module_init(void)
 
 	if (!error)
 		printf("\n%s\n", dhd_version);
-
+	else {
+		DHD_ERROR(("%s: sdio_register_driver failed\n", __FUNCTION__));
+		goto fail_1;
+	}
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && 1
 	/*
 	 * Wait till MMC sdio_register_driver callback called and made driver attach.
@@ -2159,13 +2167,20 @@ dhd_module_init(void)
 	 */
 	if (down_timeout(&dhd_registration_sem,  msecs_to_jiffies(10000)) != 0) {
 		error = -EINVAL;
-		DHD_ERROR(("%s: sdio_register_driver failed \n", __FUNCTION__));
+		DHD_ERROR(("%s: sdio_register_driver timeout\n", __FUNCTION__));
+		goto fail_1;
 	}
-#endif 
+#endif
+	return error;
 
+fail_1:
 #if defined(CUSTOMER_HW2) && defined(CONFIG_WIFI_CONTROL_FUNC)
-fail:
+	wifi_del_dev();
+fail_0:
 #endif /* defined(CUSTOMER_HW2) && defined(CONFIG_WIFI_CONTROL_FUNC) */
+
+	/* Call customer gpio to turn off power with WL_REG_ON signal */
+	dhd_customer_gpio_wlan_ctrl(WLAN_POWER_OFF);
 
 	return error;
 }
