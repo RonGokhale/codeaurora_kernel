@@ -2332,8 +2332,6 @@ static void __init qsd8x50_init_host(void)
 #endif
 }
 
-static struct vreg *vreg_mmc;
-
 #if (defined(CONFIG_MMC_MSM_SDC1_SUPPORT)\
 	|| defined(CONFIG_MMC_MSM_SDC2_SUPPORT)\
 	|| defined(CONFIG_MMC_MSM_SDC3_SUPPORT)\
@@ -2554,6 +2552,8 @@ static void __init qsd8x50_init_mmc(void)
 	if (machine_is_qsd8x50_ffa() || machine_is_qsd8x50a_ffa() ||
 	    machine_is_qsd8x50_grapefruit() || machine_is_qsd8x50_st1())
 		vreg_mmc = vreg_get(NULL, "gp6");
+	else if (machine_is_qsd8x50a_st1_5())
+		vreg_mmc = vreg_get(NULL, "wlan");
 	else
 		vreg_mmc = vreg_get(NULL, "gp5");
 
@@ -2563,7 +2563,8 @@ static void __init qsd8x50_init_mmc(void)
 		return;
 	}
 
-	if (machine_is_qsd8x50_grapefruit() || machine_is_qsd8x50_st1()) {
+	if (machine_is_qsd8x50_grapefruit() || machine_is_qsd8x50_st1()
+		|| machine_is_qsd8x50a_st1_5()) {
 		int rc;
 		rc = vreg_disable(vreg_mmc);
 		if (rc)
@@ -2591,7 +2592,8 @@ static void __init qsd8x50_init_mmc(void)
 #endif
 
 	if (machine_is_qsd8x50_surf() || machine_is_qsd8x50a_surf() ||
-	    machine_is_qsd8x50_grapefruit() || machine_is_qsd8x50_st1()) {
+	    machine_is_qsd8x50_grapefruit() || machine_is_qsd8x50_st1()
+	    || machine_is_qsd8x50a_st1_5()) {
 #ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
 		msm_add_sdcc(2, &qsd8x50_sdc2_data);
 #endif
