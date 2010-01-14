@@ -2862,6 +2862,7 @@ fsg_function_bind(struct usb_configuration *c, struct usb_function *f)
 		curlun->dev.release = lun_release;
 		curlun->dev.parent = &cdev->gadget->dev;
 		dev_set_drvdata(&curlun->dev, fsg);
+		dev_set_name(&curlun->dev, "lun%d", i);
 
 		rc = device_register(&curlun->dev);
 		if (rc != 0) {
