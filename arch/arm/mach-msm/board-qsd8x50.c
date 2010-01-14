@@ -3030,3 +3030,15 @@ MACHINE_START(QSD8X50_ST1, "QCT QSD8X50 ST1")
 	.init_machine = qsd8x50_init,
 	.timer = &msm_timer,
 MACHINE_END
+
+MACHINE_START(QSD8X50A_ST1_5, "QCT QSD8X50A ST1.5")
+#ifdef CONFIG_MSM_DEBUG_UART
+	.phys_io  = MSM_DEBUG_UART_PHYS,
+	.io_pg_offst = ((MSM_DEBUG_UART_BASE) >> 18) & 0xfffc,
+#endif
+	.boot_params = PHYS_OFFSET + 0x100,
+	.map_io = qsd8x50_map_io,
+	.init_irq = qsd8x50_init_irq,
+	.init_machine = qsd8x50_init,
+	.timer = &msm_timer,
+MACHINE_END
