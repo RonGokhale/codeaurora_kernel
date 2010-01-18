@@ -246,8 +246,8 @@ static struct usb_composition usb_func_composition[] = {
 };
 static struct android_usb_platform_data android_usb_pdata = {
 	.vendor_id	= 0x05C6,
-	.product_id	= 0x9018,
-	.functions	= 0x27614,
+	.product_id	= 0x900E,
+	.functions	= 0x4,
 	.version	= 0x0100,
 	.serial_number  = "1234567890ABCDEF",
 	.compositions   = usb_func_composition,
