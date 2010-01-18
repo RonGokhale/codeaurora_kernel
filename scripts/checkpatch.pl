@@ -1192,6 +1192,27 @@ sub process {
 		}
 	}
 
+#Check if original author is a Qualcomm or QUIC person
+	my $qmail = "\@qualcomm\.com>";
+	my $quicmail = "\@quicinc\.com>";
+	my $is_quic_author;
+
+	foreach my $line (@lines) {
+		if ($line =~ /^\s*From:/i) {
+			if ($line =~ /$qmail|$quicmail/i) {
+
+				$is_quic_author = 1;
+
+			} else {
+
+				$is_quic_author = 0;
+
+			}
+
+			last;
+		}
+	}
+
 	$prefix = '';
 
 	$realcnt = 0;
@@ -1289,7 +1310,7 @@ sub process {
 		my $herecurr = "$here\n$rawline\n";
 		my $hereprev = "$here\n$prevrawline\n$rawline\n";
 
-		if ($shorttext != AFTER_SHORTTEXT) {
+		if ($is_quic_author && $shorttext != AFTER_SHORTTEXT) {
 			if ($shorttext == IN_SHORTTEXT) {
 				if ($line=~/^---/ || $line=~/^diff.*/) {
 					$shorttext = AFTER_SHORTTEXT;
