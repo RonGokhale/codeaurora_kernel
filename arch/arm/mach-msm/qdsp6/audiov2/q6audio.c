@@ -186,12 +186,6 @@ static inline int adie_proceed_to_stage(struct dal_client *client,
 			   path_type, stage);
 }
 
-static inline int adie_mute_path(struct dal_client *client,
-				 uint32_t path_type, uint32_t mute_state)
-{
-	return dal_call_f1(client, ADIE_OP_MUTE_PATH, path_type, mute_state);
-}
-
 static int adie_refcount;
 
 static struct dal_client *adie;
@@ -314,7 +308,8 @@ static int audio_ioctl(struct audio_client *ac, void *ptr, uint32_t len)
 	int r;
 
 	hdr->size = len - sizeof(u32);
-	hdr->addr = AUDIO_ADDR(ac->session, 0);
+	hdr->dest = AUDIO_ADDR(DOMAIN_DSP, ac->session, 0);
+	hdr->src = AUDIO_ADDR(DOMAIN_APP, ac->session, 0);
 	hdr->context = ac->session;
 	ac->cb_status = -EBUSY;
 	r = dal_call(ac->client, AUDIO_OP_CONTROL, 5, ptr, len,
@@ -339,6 +334,8 @@ static int audio_open_control(struct audio_client *ac)
 
 	memset(&rpc, 0, sizeof(rpc));
 	rpc.hdr.opcode = ADSP_AUDIO_IOCTL_CMD_OPEN_DEVICE;
+	rpc.hdr.dest = AUDIO_ADDR(DOMAIN_DSP, ac->session, 0);
+	rpc.hdr.src = AUDIO_ADDR(DOMAIN_APP, ac->session, 0);
 	return audio_ioctl(ac, &rpc, sizeof(rpc));
 }
 
@@ -357,11 +354,15 @@ static int audio_set_table(struct audio_client *ac,
 
 	memset(&rpc, 0, sizeof(rpc));
 	rpc.hdr.opcode = ADSP_AUDIO_IOCTL_SET_DEVICE_CONFIG_TABLE;
+	rpc.hdr.dest = AUDIO_ADDR(DOMAIN_DSP, ac->session, 0);
+	rpc.hdr.src = AUDIO_ADDR(DOMAIN_APP, ac->session, 0);
 	rpc.device_id = device_id;
 	rpc.phys_addr = audio_phys;
 	rpc.phys_size = size;
 	rpc.phys_used = size;
 
+	if (q6_device_to_dir(device_id) == Q6_TX)
+		rpc.hdr.data = tx_clk_freq;
 	return audio_ioctl(ac, &rpc, sizeof(rpc));
 }
 
@@ -373,16 +374,22 @@ int q6audio_read(struct audio_client *ac, struct audio_buffer *ab)
 
 	memset(&rpc, 0, sizeof(rpc));
 	rpc.hdr.size = sizeof(rpc) - sizeof(u32);
-	rpc.hdr.addr = AUDIO_ADDR(ac->session, 0);
+	rpc.hdr.dest = AUDIO_ADDR(DOMAIN_DSP, ac->session, 0);
+	rpc.hdr.src = AUDIO_ADDR(DOMAIN_APP, ac->session, 0);
 	rpc.hdr.context = ac->session;
 	rpc.hdr.opcode = ADSP_AUDIO_IOCTL_CMD_DATA_TX;
 	rpc.buffer.addr = ab->phys;
 	rpc.buffer.max_size = ab->size;
-	rpc.buffer.actual_size = ab->used;
+	rpc.buffer.actual_size = ab->actual_size;
 
 	r = dal_call(ac->client, AUDIO_OP_DATA, 5, &rpc, sizeof(rpc),
 		     &res, sizeof(res));
-	return 0;
+
+	if ((r == sizeof(res)))
+		return 0;
+
+	return -EIO;
+
 }
 
 int q6audio_write(struct audio_client *ac, struct audio_buffer *ab)
@@ -393,12 +400,13 @@ int q6audio_write(struct audio_client *ac, struct audio_buffer *ab)
 
 	memset(&rpc, 0, sizeof(rpc));
 	rpc.hdr.size = sizeof(rpc) - sizeof(u32);
-	rpc.hdr.addr = AUDIO_ADDR(ac->session, 0);
+	rpc.hdr.src = AUDIO_ADDR(DOMAIN_APP, ac->session, 0);
+	rpc.hdr.dest = AUDIO_ADDR(DOMAIN_DSP, ac->session, 0);
 	rpc.hdr.context = ac->session;
 	rpc.hdr.opcode = ADSP_AUDIO_IOCTL_CMD_DATA_RX;
 	rpc.buffer.addr = ab->phys;
 	rpc.buffer.max_size = ab->size;
-	rpc.buffer.actual_size = ab->used;
+	rpc.buffer.actual_size = ab->size;
 
 	r = dal_call(ac->client, AUDIO_OP_DATA, 5, &rpc, sizeof(rpc),
 		     &res, sizeof(res));
@@ -412,6 +420,8 @@ static int audio_rx_volume(struct audio_client *ac, uint32_t dev_id,
 
 	memset(&rpc, 0, sizeof(rpc));
 	rpc.hdr.opcode = ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_VOL;
+	rpc.hdr.dest = AUDIO_ADDR(DOMAIN_DSP, ac->session, 0);
+	rpc.hdr.src = AUDIO_ADDR(DOMAIN_APP, ac->session, 0);
 	rpc.device_id = dev_id;
 	rpc.path = ADSP_PATH_RX;
 	rpc.volume = volume;
@@ -424,6 +434,8 @@ static int audio_rx_mute(struct audio_client *ac, uint32_t dev_id, int mute)
 
 	memset(&rpc, 0, sizeof(rpc));
 	rpc.hdr.opcode = ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_MUTE;
+	rpc.hdr.dest = AUDIO_ADDR(DOMAIN_DSP, ac->session, 0);
+	rpc.hdr.src = AUDIO_ADDR(DOMAIN_APP, ac->session, 0);
 	rpc.device_id = dev_id;
 	rpc.path = ADSP_PATH_RX;
 	rpc.mute = !!mute;
@@ -437,6 +449,8 @@ static int audio_tx_volume(struct audio_client *ac, uint32_t dev_id,
 
 	memset(&rpc, 0, sizeof(rpc));
 	rpc.hdr.opcode = ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_VOL;
+	rpc.hdr.dest = AUDIO_ADDR(DOMAIN_DSP, ac->session, 0);
+	rpc.hdr.src = AUDIO_ADDR(DOMAIN_APP, ac->session, 0);
 	rpc.device_id = dev_id;
 	rpc.path = ADSP_PATH_TX;
 	rpc.volume = volume;
@@ -449,6 +463,8 @@ static int audio_tx_mute(struct audio_client *ac, uint32_t dev_id, int mute)
 
 	memset(&rpc, 0, sizeof(rpc));
 	rpc.hdr.opcode = ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_MUTE;
+	rpc.hdr.dest = AUDIO_ADDR(DOMAIN_DSP, ac->session, 0);
+	rpc.hdr.src = AUDIO_ADDR(DOMAIN_APP, ac->session, 0);
 	rpc.device_id = dev_id;
 	rpc.path = ADSP_PATH_TX;
 	rpc.mute = !!mute;
@@ -459,6 +475,7 @@ static void callback(void *data, int len, void *cookie)
 {
 	struct adsp_event_hdr *e = data;
 	struct audio_client *ac;
+	struct adsp_buffer_event *abe = data;
 
 	if (e->context >= SESSION_MAX) {
 		pr_err("audio callback: bogus session %d\n",
@@ -486,6 +503,8 @@ static void callback(void *data, int len, void *cookie)
 	if (e->event_id == ADSP_AUDIO_EVT_STATUS_BUF_DONE) {
 		if (e->status)
 			pr_err("buffer status %d\n", e->status);
+
+		ac->buf[ac->dsp_buf].actual_size = abe->buffer.actual_size;
 		ac->buf[ac->dsp_buf].used = 0;
 		ac->dsp_buf ^= 1;
 		wake_up(&ac->wait);
@@ -507,7 +526,7 @@ static void audio_init(struct dal_client *client)
 	u32 tmp[3];
 
 	tmp[0] = 2 * sizeof(u32);
-	tmp[1] = 1;
+	tmp[1] = 0;
 	tmp[2] = 0;
 	dal_call(client, AUDIO_OP_INIT, 5, tmp, sizeof(tmp),
 		 tmp, sizeof(u32));
@@ -605,6 +624,7 @@ static int acdb_get_config_table(uint32_t device_id, uint32_t sample_rate)
 	rpc.size = sizeof(rpc) - (2 * sizeof(uint32_t));
 	rpc.command_id = ACDB_GET_DEVICE_TABLE;
 	rpc.device_id = q6_device_to_cad_id(device_id);
+	rpc.network_id = 0x00010023;
 	rpc.sample_rate_id = sample_rate;
 	rpc.total_bytes = 4096;
 	rpc.unmapped_buf = audio_phys;
@@ -637,6 +657,9 @@ static int qdsp6_devchg_notify(struct audio_client *ac,
 
 	memset(&rpc, 0, sizeof(rpc));
 	rpc.hdr.opcode = ADSP_AUDIO_IOCTL_CMD_DEVICE_SWITCH_PREPARE;
+	rpc.hdr.dest = AUDIO_ADDR(DOMAIN_DSP, ac->session, 0);
+	rpc.hdr.src = AUDIO_ADDR(DOMAIN_APP, ac->session, 0);
+
 	if (dev_type == ADSP_AUDIO_RX_DEVICE) {
 		rpc.old_device = audio_rx_device_id;
 		rpc.new_device = dev_id;
@@ -1185,7 +1208,6 @@ struct audio_client *q6audio_open(uint32_t flags, uint32_t bufsz)
 		return 0;
 
 	ac->flags = flags;
-	ac->running = 0;
 	if (ac->flags & AUDIO_FLAG_WRITE)
 		audio_rx_path_enable(1);
 	else
@@ -1209,17 +1231,13 @@ int q6audio_start(struct audio_client *ac, void *rpc,
 		q6audio_read(ac, &ac->buf[1]);
 	}
 
-	ac->running = 1;
 	audio_prevent_sleep();
 	return 0;
 }
 
 int q6audio_close(struct audio_client *ac)
 {
-	if (ac->running) {
-		audio_close(ac);
-		ac->running = 0;
-	}
+	audio_close(ac);
 
 	if (ac->flags & AUDIO_FLAG_WRITE)
 		audio_rx_path_enable(0);

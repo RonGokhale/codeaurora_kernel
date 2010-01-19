@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,8 +30,8 @@
 #include <mach/qdsp5v2/audio_def.h>
 
 #define AUDIO_DEV_CTL_MAX_DEV 64
-#define DIR_TX	1
-#define DIR_RX	2
+#define DIR_TX	2
+#define DIR_RX	1
 
 struct msm_snddev_info {
 	const char *name;
@@ -48,8 +48,16 @@ struct msm_snddev_info {
 	void *private_data;
 	bool state;
 	u32 sample_rate;
+	u32 set_sample_rate;
 	u32 sessions;
 };
+
+struct msm_volume {
+	int volume; /* Volume parameter, in % Scale */
+	int pan;
+};
+
+extern struct msm_volume msm_vol_ctl;
 
 void msm_snddev_register(struct msm_snddev_info *);
 void msm_snddev_unregister(struct msm_snddev_info *);
@@ -70,16 +78,11 @@ void msm_release_voc_thread(void);
 int snddev_voice_set_volume(int vol, int path);
 
 struct auddev_evt_voc_devinfo {
-	u32 rxdev_id;
-	u32 txdev_id;
-	u32 rxdev_vol;
-	u32 txdev_vol;
-	u32 rxdev_sample;
-	u32 txdev_sample;
-	u32 rx_mute;
-	u32 tx_mute;
-
+	u32 dev_type;
+	u32 acdb_dev_id;
+	u32 dev_sample;
 };
+
 struct auddev_evt_audcal_info {
 	u32 dev_id;
 	u32 acdb_id;
@@ -87,9 +90,22 @@ struct auddev_evt_audcal_info {
 	u32 dev_type;
 };
 
+union msm_vol_mute {
+	int vol;
+	bool mute;
+};
+
+struct auddev_evt_voc_mute_info {
+	u32 dev_type;
+	u32 acdb_dev_id;
+	union msm_vol_mute dev_vm_val;
+};
+
 union auddev_evt_data {
 	struct auddev_evt_voc_devinfo voc_devinfo;
+	struct auddev_evt_voc_mute_info voc_vm_info;
 	u32 routing_id;
+	s32 session_vol;
 	struct auddev_evt_audcal_info audcal_info;
 };
 
@@ -98,24 +114,24 @@ struct message_header {
 	uint32_t data_len;
 };
 
-#define AUDDEV_EVT_DEV_CHG_VOICE	0x01 /* device change event */
-#define AUDDEV_EVT_DEV_CHG_AUDIO	0x02 /* device change event */
-#define AUDDEV_EVT_DEV_RDY 		0x04 /* device ready event */
-#define AUDDEV_EVT_DEV_RLS 		0x08 /* device released event */
-#define AUDDEV_EVT_DEV_CONCURRENT 	0x10 /* device have >1 active session */
-#define AUDDEV_EVT_DEV_NON_CONCURRENT 	0x20 /* device have 1 active session */
-#define AUDDEV_EVT_REL_PENDING		0x40
-#define AUDDEV_EVT_DEVICE_VOL_MUTE_CHG	0x80
+#define AUDDEV_EVT_DEV_CHG_VOICE	0x01 	/* device change event */
+#define AUDDEV_EVT_DEV_RDY 		0x02 	/* device ready event */
+#define AUDDEV_EVT_DEV_RLS 		0x04 	/* device released event */
+#define AUDDEV_EVT_REL_PENDING		0x08 	/* device release pending */
+#define AUDDEV_EVT_DEVICE_VOL_MUTE_CHG	0x10 	/* device volume changed */
+#define AUDDEV_EVT_START_VOICE		0x20	/* voice call start */
+#define AUDDEV_EVT_END_VOICE		0x40	/* voice call end */
+#define AUDDEV_EVT_STREAM_VOL_CHG	0x80 	/* device volume changed */
 
-#define AUDDEV_CLNT_VOC 0x1
-#define AUDDEV_CLNT_DEC 0x2
-#define AUDDEV_CLNT_ENC 0x3
-#define AUDDEV_CLNT_AUDIOCAL 0x4
+#define AUDDEV_CLNT_VOC 		0x1	/* Vocoder clients */
+#define AUDDEV_CLNT_DEC 		0x2	/* Decoder clients */
+#define AUDDEV_CLNT_ENC 		0x3	/* Encoder clients */
+#define AUDDEV_CLNT_AUDIOCAL 		0x4	/* AudioCalibration client */
 
-#define AUDIO_DEV_CTL_MAX_LISTNER	20
+#define AUDIO_DEV_CTL_MAX_LISTNER	20	/* Max Listeners Supported */
 
 struct msm_snd_evt_listner {
-	uint32_t evt_id; /* TODO remove this if not req*/
+	uint32_t evt_id;
 	uint32_t clnt_type;
 	uint32_t clnt_id;
 	void *private_data;
@@ -141,7 +157,10 @@ int auddev_register_evt_listner(u32 evt_id, u32 clnt_type, u32 clnt_id,
 		void *private_data);
 int auddev_unregister_evt_listner(u32 clnt_type, u32 clnt_id);
 void mixer_post_event(u32 evt_id, u32 dev_id);
-int snddev_request_freq(int *freq, u32 session_id, u32 clnt_type);
-int msm_snddev_request_freq(int *freq, u32 session_id, u32 clnt_type);
-
+int msm_snddev_request_freq(int *freq, u32 session_id,
+			u32 capability, u32 clnt_type);
+int msm_device_is_voice(int dev_id);
+int msm_get_voc_freq(int *tx_freq, int *rx_freq);
+int msm_set_voice_vol(int dir, s32 volume);
+int msm_set_voice_mute(int dir, int mute);
 #endif

@@ -316,6 +316,8 @@ int mdp4_overlay_format2type(uint32 format)
 	case MDP_Y_CBCR_H2V1:
 	case MDP_Y_CRCB_H2V2:
 	case MDP_Y_CBCR_H2V2:
+	case MDP_Y_CBCR_H2V2_TILE:
+	case MDP_Y_CRCB_H2V2_TILE:
 		return OVERLAY_TYPE_VG;
 	default:
 		return -ERANGE;
@@ -784,14 +786,6 @@ void mdp4_mixer_blend_setup(struct mdp4_overlay_pipe *pipe)
 		blend_op = (MDP4_BLEND_BG_ALPHA_BG_CONST |
 				MDP4_BLEND_FG_ALPHA_FG_CONST);
 
-	if (pipe->transp != MDP_TRANSP_NOP) {
-		if (pipe->is_fg)
-			blend_op |= MDP4_BLEND_FG_TRANSP_EN; /* Fg blocked */
-		else
-			blend_op |= MDP4_BLEND_BG_TRANSP_EN; /* bg blocked */
-	}
-
-	outpdw(overlay_base + off + 0x104, blend_op);
 
 	if (pipe->alpha_enable == 0) { 	/* not ARGB */
 		if (pipe->is_fg) {
@@ -803,20 +797,67 @@ void mdp4_mixer_blend_setup(struct mdp4_overlay_pipe *pipe)
 		}
 	}
 
-	transp_color_key(pipe->src_format, pipe->transp, &c0, &c1, &c2);
-
-	c0 -= 0x10;	 /* lower limit */
-	c1 -= 0x10;
-	c2 -= 0x10;
-
-	outpdw(overlay_base + off + 0x110, (c1 << 16 | c0));/* low */
-	outpdw(overlay_base + off + 0x114, c2);/* low */
-
-	c0 += 0x20; 	/* upper limit */
-	c1 += 0x20;
-	c2 += 0x20;
-	outpdw(overlay_base + off + 0x118, (c1 << 16 | c0));/* high */
-	outpdw(overlay_base + off + 0x11c, c2);/* high */
+	if (pipe->transp != MDP_TRANSP_NOP) {
+		transp_color_key(pipe->src_format, pipe->transp, &c0, &c1, &c2);
+		if (pipe->is_fg) {
+			blend_op |= MDP4_BLEND_FG_TRANSP_EN; /* Fg blocked */
+			/* lower limit */
+			if (c0 > 0x10)
+				c0 -= 0x10;
+			if (c1 > 0x10)
+				c1 -= 0x10;
+			if (c2 > 0x10)
+				c2 -= 0x10;
+			outpdw(overlay_base + off + 0x110,
+						(c1 << 16 | c0));/* low */
+			outpdw(overlay_base + off + 0x114, c2);/* low */
+			/* upper limit */
+			if ((c0 + 0x20) < 0x0fff)
+				c0 += 0x20;
+			else
+				c0 = 0x0fff;
+			if ((c1 + 0x20) < 0x0fff)
+				c1 += 0x20;
+			else
+				c1 = 0x0fff;
+			if ((c2 + 0x20) < 0x0fff)
+				c2 += 0x20;
+			else
+				c2 = 0x0fff;
+			outpdw(overlay_base + off + 0x118,
+					(c1 << 16 | c0));/* high */
+			outpdw(overlay_base + off + 0x11c, c2);/* high */
+		} else {
+			blend_op |= MDP4_BLEND_BG_TRANSP_EN; /* bg blocked */
+			/* lower limit */
+			if (c0 > 0x10)
+				c0 -= 0x10;
+			if (c1 > 0x10)
+				c1 -= 0x10;
+			if (c2 > 0x10)
+				c2 -= 0x10;
+			outpdw(overlay_base + 0x180,
+						(c1 << 16 | c0));/* low */
+			outpdw(overlay_base + 0x184, c2);/* low */
+			/* upper limit */
+			if ((c0 + 0x20) < 0x0fff)
+				c0 += 0x20;
+			else
+				c0 = 0x0fff;
+			if ((c1 + 0x20) < 0x0fff)
+				c1 += 0x20;
+			else
+				c1 = 0x0fff;
+			if ((c2 + 0x20) < 0x0fff)
+				c2 += 0x20;
+			else
+				c2 = 0x0fff;
+			outpdw(overlay_base + 0x188,
+						(c1 << 16 | c0));/* high */
+			outpdw(overlay_base + 0x18c, c2);/* high */
+		}
+	}
+	outpdw(overlay_base + off + 0x104, blend_op);
 }
 
 void mdp4_overlay_reg_flush(struct mdp4_overlay_pipe *pipe, int all)
@@ -1040,6 +1081,18 @@ static int get_img(struct msmfb_data *img, struct fb_info *info,
 	}
 	return ret;
 }
+int mdp4_overlay_get(struct fb_info *info, struct mdp_overlay *req)
+{
+	struct mdp4_overlay_pipe *pipe;
+
+	pipe = mdp4_overlay_ndx2pipe(req->id);
+	if (pipe == NULL)
+		return -ENODEV;
+
+	*req = pipe->req_data;
+
+	return 0;
+}
 
 int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 {
@@ -1074,6 +1127,7 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 
 	/* return id back to user */
 	req->id = pipe->pipe_ndx;	/* pipe_ndx start from 1 */
+	pipe->req_data = *req;		/* keep original req */
 
 	mutex_unlock(&mfd->dma->ov_mutex);
 
@@ -1131,10 +1185,17 @@ struct tile_desc {
 
 void tile_samsung(struct tile_desc *tp)
 {
+	/*
+	 * each row of samsung tile consists of two tiles in height
+	 * and two tiles in width which means width should align to
+	 * 64 x 2 bytes and height should align to 32 x 2 bytes.
+	 * video decoder generate two tiles in width and one tile
+	 * in height which ends up height align to 32 X 1 bytes.
+	 */
 	tp->width = 64;		/* 64 bytes */
 	tp->row_tile_w = 2;	/* 2 tiles per row's width */
 	tp->height = 32;	/* 32 bytes */
-	tp->row_tile_h = 2;	/* 2 tiles per row's height */
+	tp->row_tile_h = 1;	/* 1 tiles per row's height */
 }
 
 uint32 tile_mem_size(struct mdp4_overlay_pipe *pipe, struct tile_desc *tp)

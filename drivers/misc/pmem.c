@@ -937,7 +937,7 @@ bitmap_allocate_contiguous(uint32_t *bitp, int num_bits_to_alloc,
 			& ~(spacing - 1)) {
 		int bit_end = bit_start + num_bits_to_alloc, total_words;
 
-		if (bit_end >= total_bits)
+		if (bit_end > total_bits)
 			return -1; /* out of contiguous memory */
 
 		word_index = bit_start >> PMEM_32BIT_WORD_ORDER;
@@ -1632,6 +1632,56 @@ end:
 	up_read(&data->sem);
 }
 
+int pmem_cache_maint(struct file *file, unsigned int cmd,
+		struct pmem_addr *pmem_addr)
+{
+	struct pmem_data *data;
+	int id;
+	unsigned long vaddr, paddr, length, offset,
+		      pmem_len, pmem_start_addr;
+
+	/* Called from kernel-space so file may be NULL */
+	if (!file)
+		return -EBADF;
+
+	data = file->private_data;
+	id = get_id(file);
+
+	if (!pmem[id].cached)
+		return 0;
+
+	offset = pmem_addr->offset;
+	length = pmem_addr->length;
+
+	down_read(&data->sem);
+	if (!has_allocation(file)) {
+		up_read(&data->sem);
+		return -EINVAL;
+	}
+	pmem_len = pmem[id].len(id, data);
+	pmem_start_addr = pmem[id].start_addr(id, data);
+	up_read(&data->sem);
+
+	if (offset + length > pmem_len)
+		return -EINVAL;
+
+	vaddr = pmem_addr->vaddr;
+	paddr = pmem_start_addr + offset;
+
+	DLOG("pmem cache maint on id %d (vaddr %lx paddr %lx len %lu bytes)\n",
+			id, vaddr, paddr, length);
+	if (cmd == PMEM_CLEAN_INV_CACHES)
+		clean_and_invalidate_caches(vaddr,
+				length, paddr);
+	else if (cmd == PMEM_CLEAN_CACHES)
+		clean_caches(vaddr, length, paddr);
+	else if (cmd == PMEM_INV_CACHES)
+		invalidate_caches(vaddr, length, paddr);
+
+	return 0;
+}
+EXPORT_SYMBOL(pmem_cache_maint);
+
 int32_t pmem_kalloc(const size_t size, const uint32_t flags)
 {
 	int info_id, i, memtype, fallback = 0;
@@ -2204,43 +2254,12 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case PMEM_INV_CACHES:
 		{
 			struct pmem_addr pmem_addr;
-			unsigned long vaddr, paddr, length, offset,
-				      pmem_len, pmem_start_addr;
-
-			if (!pmem[id].cached)
-				return 0;
 
 			if (copy_from_user(&pmem_addr, (void __user *)arg,
 						sizeof(struct pmem_addr)))
 				return -EFAULT;
 
-			offset = pmem_addr.offset;
-			length = pmem_addr.length;
-
-			down_read(&data->sem);
-			if (!has_allocation(file)) {
-				up_read(&data->sem);
-				return -EINVAL;
-			}
-			pmem_len = pmem[id].len(id, data);
-			pmem_start_addr = pmem[id].start_addr(id, data);
-			up_read(&data->sem);
-
-			if (offset + length > pmem_len)
-				return -EINVAL;
-
-			vaddr = pmem_addr.vaddr;
-			paddr = pmem_start_addr + offset;
-
-			if (cmd == PMEM_CLEAN_INV_CACHES)
-				clean_and_invalidate_caches(vaddr,
-						length, paddr);
-			else if (cmd == PMEM_CLEAN_CACHES)
-				clean_caches(vaddr, length, paddr);
-			else if (cmd == PMEM_INV_CACHES)
-				invalidate_caches(vaddr, length, paddr);
-
-			break;
+			return pmem_cache_maint(file, cmd, &pmem_addr);
 		}
 	default:
 		if (pmem[id].ioctl)
