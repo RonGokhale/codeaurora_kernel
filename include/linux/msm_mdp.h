@@ -80,8 +80,6 @@ enum {
 #define MDP_DEINTERLACE 	0x80000000
 #define MDP_SHARPENING  	0x40000000
 
-#define MDP_BLIT_SRC_GEM	0x08000000 /* set for GEM, clear for PMEM */
-#define MDP_BLIT_DST_GEM	0x04000000 /* set for GEM, clear for PMEM */
 
 #define MDP_NO_DMA_BARRIER_START	0x20000000
 #define MDP_NO_DMA_BARRIER_END		0x10000000
@@ -91,6 +89,9 @@ enum {
 	(MDP_NO_DMA_BARRIER_START | MDP_NO_DMA_BARRIER_END)
 #define MDP_TRANSP_NOP 0xffffffff
 #define MDP_ALPHA_NOP 0xff
+
+#define MDP_BLIT_SRC_GEM	0x02000000 /* set for GEM, clear for PMEM */
+#define MDP_BLIT_DST_GEM	0x01000000 /* set for GEM, clear for PMEM */
 
 #define MDP_FB_PAGE_PROTECTION_NONCACHED         (0)
 #define MDP_FB_PAGE_PROTECTION_WRITECOMBINE      (1)
