@@ -26,33 +26,32 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef _CAD_ADPCM_FORMAT_H_
+#define _CAD_ADPCM_FORMAT_H_
 
-#include <linux/msm_audio.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+/* cad adpcm version */
+#define CAD_ADPCM_VERSION_10		0x10
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-};
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
+/* cad ADPCM boolean flags */
+#define CAD_ADPCM_SIGNED		0x00000001	/*signed*/
+#define CAD_ADPCM_INTERLEAVED		0x00000002	/*interleaved*/
+#define CAD_ADPCM_LITTLE_ENDIAN		0x00000004	/*little endian*/
+
+
+struct cad_adpcm_format_struct {
+	/* cad adpcm version */
+	u32			version;
+	/* number of channels */
+	u32			channels;
+	/* value is defined by enum cad_sample_bits */
+	u32			bit_per_sample;
+	/* the value is defined by enum cad_pcm_sampling_rate */
+	u32			sampling_rate;
+	/* bit map for the boolean maps, a bit 1 indicates true */
+	u32			flags;
+	u32			block_size;
 };
 
-#endif /* __MSM_AUDIO_QCP_H */
+#endif
+

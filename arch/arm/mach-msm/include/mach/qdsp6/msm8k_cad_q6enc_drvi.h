@@ -26,33 +26,60 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef _QDSP6AUDIOENCDRIVERI_H_
+#define _QDSP6AUDIOENCDRIVERI_H_
 
-#include <linux/msm_audio.h>
+#include <linux/completion.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+#include <mach/qdsp6/msm8k_cad_module.h>
+#include <mach/qdsp6/msm8k_adsp_audio_command.h>
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-};
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
+#define		Q6_ENC_MAX_SESSION_COUNT	4
+#define		Q6_ENC_BUF_PER_SESSION		4
+#define		Q6_ENC_BUF_MAX_SIZE		(1024 * 11)
+
+enum q6_enc_session_state {
+	Q6_ENC_STATE_RESET = 0,
+	Q6_ENC_STATE_INIT,
+	Q6_ENC_STATE_PROCESS,
+	Q6_ENC_STATE_VOICE,
+	Q6_ENC_STATE_CLOSING
 };
 
-#endif /* __MSM_AUDIO_QCP_H */
+struct q6_enc_session_buf_node {
+	u8					*buf;
+	u32					phys_addr;
+	u32					buf_len;
+	struct q6_enc_session_buf_node		*next;
+	/* the following is used when smaller user buffer is used */
+	u8					*read_ptr;
+};
+
+struct q6_enc_session_data {
+	struct mutex			session_mutex;
+	struct mutex			close_mutex;
+	u32				session_id;
+	u32				group_id;
+	u32				buf_size;
+	struct completion		buf_done_compl;
+	s32				signal_buf_done;
+	struct completion		all_buf_done_compl;
+	s32				signal_all_buf_done;
+	u32				need_flush;
+	struct q6_enc_session_buf_node	*free_nodes;
+	struct q6_enc_session_buf_node	*used_nodes;
+	struct q6_enc_session_buf_node	*full_nodes_head;
+	struct q6_enc_session_buf_node	*full_nodes_tail;
+	enum q6_enc_session_state	session_state;
+	struct q6_enc_session_data	*next;
+	struct cad_event_struct_type	cb_data;
+	u8				*shared_buffer;
+	struct adsp_audio_data_command	q6_data_buf;
+};
+
+struct q6_audio_enc_data {
+	struct q6_enc_session_data	*q6_enc_free_sessions;
+	struct q6_enc_session_data	*q6_enc_used_sessions;
+};
+
+#endif

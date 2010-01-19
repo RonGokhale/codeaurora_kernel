@@ -26,33 +26,48 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef ARDIADIEI_H
+#define ARDIADIEI_H
 
-#include <linux/msm_audio.h>
+#include "msm8k_cad.h"
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+#define MAX_ADIE_PATH_TYPES   2
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-};
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
+enum adie_state_enum_type {
+	ADIE_STATE_RESET,
+	ADIE_STATE_DIGITAL_ACTIVE,
+	ADIE_STATE_DIGITAL_ANALOG_ACTIVE,
 };
 
-#endif /* __MSM_AUDIO_QCP_H */
+enum adie_state_ret_enum_type {
+	ADIE_STATE_RC_SUCCESS,
+	ADIE_STATE_RC_CONTINUE,
+	ADIE_STATE_RC_FAILURE
+};
+
+enum adie_ret_enum_type {
+	ADIE_FALSE = 0,
+	ADIE_TRUE
+};
+
+struct adie_path_type_struct_type {
+	u32		state;
+	u8		enable_request;
+	u8		enabled;
+};
+
+struct adie_state_struct_type {
+	void					*adie_handle;
+	u8					adie_opened;
+	struct adie_path_type_struct_type
+					adie_path_type[MAX_ADIE_PATH_TYPES];
+};
+
+u32 adie_state_control(u32 dev_type, u32 dev_id);
+enum adie_state_ret_enum_type adie_state_reset(u32 dev_type, u32 dev_id);
+enum adie_state_ret_enum_type adie_state_digital_active(u32 dev_type,
+		u32 dev_id);
+enum adie_state_ret_enum_type adie_state_digital_analog_active(u32 dev_type,
+		u32 dev_id);
+
+#endif

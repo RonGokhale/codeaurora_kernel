@@ -26,33 +26,67 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef __DALIACDB_H__
+#define __DALIACDB_H__
 
-#include <linux/msm_audio.h>
+/* ACDB Command ID definitions */
+#define ACDB_GET_DEVICE		0x0108bb92
+#define ACDB_SET_DEVICE		0x0108bb93
+#define ACDB_GET_STREAM		0x0108bb95
+#define ACDB_SET_STREAM		0x0108bb96
+#define ACDB_GET_DEVICE_TABLE	0x0108bb97
+#define ACDB_GET_STREAM_TABLE	0x0108bb98
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
+/* ACDB Error Codes */
+#define ACDB_RES_SUCCESS	0
+#define ACDB_RES_FAILURE	-1
+#define ACDB_RES_BADPARM	-2
+#define ACDB_RES_BADSTATE	-3
+
+
+/* ACDB Structure Definitions */
+
+/* These structures are passed as input argument to the */
+/* acdb_ioctl function defined below */
+
+struct acdb_cmd_device_struct {
+	u32	command_id;
+	u32	device_id;
+	u32	network_id;
+	u32	sample_rate_id;
+	u32	interface_id;
+	u32	algorithm_block_id;
+
+	/* Actual Length of allocated memory pointed to by phys_addr */
+	u32	total_bytes;
+
+	/* Physical address pointing to first memory location allocated by */
+	/* CAD - translated from a page aligned virtual address. */
+	u32	unmapped_buf;
 };
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
+
+struct acbd_cmd_device_table_struct {
+	u32	command_id;
+	u32	device_id;
+	u32	network_id;
+	u32	sample_rate_id;
+
+	/* Actual Length of allocated memory pointed to by phys_addr */
+	u32	total_bytes;
+
+	/* Physical address pointing to first memory location allocated by */
+	/* CAD - translated from a page aligned virtual address. */
+	u32	unmapped_buf;
 };
 
-#endif /* __MSM_AUDIO_QCP_H */
+struct acdb_result_struct {
+	/* Physical address pointing to first shared memory location */
+	u32	unmapped_buf;
+	/* The size of data copied to phys_addr by ACDB */
+	u32	used_bytes;
+	/* Result of operation */
+	u32	result;
+};
+
+#endif

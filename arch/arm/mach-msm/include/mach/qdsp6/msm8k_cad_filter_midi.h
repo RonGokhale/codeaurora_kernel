@@ -26,33 +26,21 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef _CAD_FILTER_MIDI_H_
+#define _CAD_FILTER_MIDI_H_
 
-#include <linux/msm_audio.h>
+#define CAD_FILTER_TYPE_MIDI			0x0108e025
+#define CAD_FILTER_CONFIG_SET_DLS_TABLE		0x0108e02a
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-};
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
+struct cad_filter_dls_table {
+	u32	length;
+	u32	addr;
 };
 
-#endif /* __MSM_AUDIO_QCP_H */
+
+
+#endif
+
+
+

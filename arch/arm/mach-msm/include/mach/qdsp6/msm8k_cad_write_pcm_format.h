@@ -26,33 +26,39 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef CAD_WRITE_PCM_FORMAT_H
+#define CAD_WRITE_PCM_FORMAT_H
 
-#include <linux/msm_audio.h>
+#define CAD_WRITE_PCM_VERSION_10	0x10
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
-
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
+struct cad_write_pcm_struct_type {
+	/*
+	*  0. 96000, 1. 88200, 2. 64000, 3. 48000, 4. 44100, 5. 32000
+	*  6. 24000, 7. 22050, 8. 16000, 9. 12000, 10. 11025, 11. 8000
+	*/
+	u16	us_sample_rate;
+	/*
+	*  1: Mono
+	*  2: Stereo, non-interleaved, left channel first (not currently
+	*     supported)
+	*/
+	u16	us_channel_config;
+	/*
+	*  0: 8 bit PCM
+	*  1: 16 bit PCM
+	*  2: 24 bit PCM
+	*/
+	u16	us_width;
+	/*
+	*  0: Signed
+	*  1: Unsigned
+	*/
+	u16	us_sign;
 };
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
-};
 
-#endif /* __MSM_AUDIO_QCP_H */
+struct cad_write_pcm_format_struct_type {
+	u16 us_ver_id;
+	struct cad_write_pcm_struct_type pcm;
+};
+#endif
+

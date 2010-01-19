@@ -26,33 +26,30 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef _MSM8K_CAD_RPC_H_
+#define _MSM8K_CAD_RPC_H_
 
-#include <linux/msm_audio.h>
+#include <linux/kernel.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+#include <mach/qdsp6/msm8k_cad_module.h>
+#include <mach/qdsp6/msm8k_cad_itypes.h>
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-};
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
-};
+#include <mach/qdsp6/msm8k_adsp_audio_event.h>
+#include <mach/qdsp6/msm8k_adsp_audio_types.h>
 
-#endif /* __MSM_AUDIO_QCP_H */
+
+typedef void (*RPC_CB_FCN)(union adsp_audio_event *return_event,
+				void *client_data);
+
+s32 cad_rpc_init(u32 processor_id);
+s32 cad_rpc_deinit(void);
+s32 cad_rpc_reg_callback(u32 stream_id, RPC_CB_FCN cbFCN, void *client_data);
+s32 cad_rpc_dereg_callback(u32 stream_id, RPC_CB_FCN cbFCN);
+
+s32 cad_rpc_data(u32 stream_id, u32 group_id, void *data_buf, u32 data_buf_len,
+	union adsp_audio_event *ret_evt);
+
+s32 cad_rpc_control(u32 stream_id, u32 group_id, void *cmd_buf,
+	u32 cmd_buf_len, union adsp_audio_event *ret_evt);
+
+#endif

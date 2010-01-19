@@ -26,33 +26,30 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef CAD_QCELP13K_FORMAT_H
+#define CAD_QCELP13K_FORMAT_H
 
-#include <linux/msm_audio.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+#include <mach/qdsp6/msm8k_cad_format_comm.h>
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
+/* cad qcelp13k format block */
+struct cad_qcelp13k_format {
+	/* size of the structure in bytes */
+	u32	size;
+	/* version information */
+	u32	version;
+
+	/* number of channels in the data stream (not necessarily the */
+	/* same as the number of channels to be randered */
+	u32	channels;
+
+	/* enum cad_cdma_rate */
+	u32	cdma_rate;
+
+	u32	min_bit_rate;
+
+	u32	max_bit_rate;
 };
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
-};
+#endif
 
-#endif /* __MSM_AUDIO_QCP_H */
+

@@ -26,33 +26,69 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef CADMODULE_H
+#define CADMODULE_H
 
-#include <linux/msm_audio.h>
+#include <mach/qdsp6/msm8k_cad.h>
+#include <mach/qdsp6/msm8k_cad_ioctl.h>
+#include <mach/qdsp6/msm8k_cad_event.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+#define MEMORY_PADDING			4096
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
+
+typedef s32 (*cad_open_func_ptr_type)(s32 session_id,
+	struct cad_open_struct_type *open_param);
+
+typedef s32 (*cad_close_func_ptr_type)(s32 session_id);
+
+typedef s32 (*cad_write_func_ptr_type)(s32 session_id,
+	struct cad_buf_struct_type *buf);
+
+typedef s32 (*cad_read_func_ptr_type)(s32 session_id,
+	struct cad_buf_struct_type *buf);
+
+typedef s32 (*cad_ioctl_func_ptr_type)(s32 session_id, u32 cmd_code,
+	void *cmd_buf, u32 cmd_len);
+
+struct cad_func_tbl_type {
+	cad_open_func_ptr_type          open;
+	cad_close_func_ptr_type         close;
+	cad_write_func_ptr_type         write;
+	cad_read_func_ptr_type          read;
+	cad_ioctl_func_ptr_type         ioctl;
 };
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
-};
 
-#endif /* __MSM_AUDIO_QCP_H */
+
+s32 cad_resource_init(struct cad_func_tbl_type **func_tbl);
+
+s32 cad_resource_dinit(void);
+
+s32 cad_audio_dec_init(struct cad_func_tbl_type **func_tbl);
+
+s32 cad_audio_dec_dinit(void);
+
+s32 cad_audio_enc_init(struct cad_func_tbl_type **func_tbl);
+
+s32 cad_audio_enc_dinit(void);
+
+s32 cad_voice_dec_init(struct cad_func_tbl_type **func_tbl);
+
+s32 cad_voice_dec_dinit(void);
+
+s32 cad_voice_enc_init(struct cad_func_tbl_type **func_tbl);
+
+s32 cad_voice_enc_dinit(void);
+
+s32 cad_ard_init(struct cad_func_tbl_type **func_tbl);
+
+s32 cad_ard_dinit(void);
+
+s32 cad_dtmf_init(struct cad_func_tbl_type **func_tbl);
+
+s32 cad_dtmf_dinit(void);
+
+s32 cad_filter_eq_init(struct cad_func_tbl_type **func_tbl);
+
+s32 cad_filter_eq_dinit(void);
+
+#endif

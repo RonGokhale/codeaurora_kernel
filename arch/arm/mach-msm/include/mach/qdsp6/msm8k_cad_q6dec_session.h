@@ -26,33 +26,28 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef _QDSP6_CADDECSESSION_H_
+#define _QDSP6_CADDECSESSION_H_
 
-#include <linux/msm_audio.h>
+#include <mach/qdsp6/msm8k_cad_q6dec_drvi.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-};
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
-};
+/* These functions are only called during the driver init and deinit */
+s32 cad_q6dec_session_init(struct q6dec_session_data *self);
+s32 cad_q6dec_session_deinit(struct q6dec_session_data *self);
+s32 cad_q6dec_session_open(struct q6dec_session_data *self,
+				s32 session_id,
+				struct cad_open_struct_type *open_param);
 
-#endif /* __MSM_AUDIO_QCP_H */
+s32 cad_q6dec_session_close(struct q6dec_session_data *self);
+s32 cad_q6dec_session_ioctl(struct q6dec_session_data *self,
+				u32 cmd_code,
+				void *cmd_buf,
+				u32 cmd_len);
+
+s32 cad_q6dec_session_write(struct q6dec_session_data *self,
+				struct cad_buf_struct_type *buffer);
+
+
+
+#endif

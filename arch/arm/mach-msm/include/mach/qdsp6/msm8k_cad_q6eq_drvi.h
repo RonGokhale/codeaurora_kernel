@@ -26,33 +26,33 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef _QDSP6EQDRVI_H_
+#define _QDSP6EQDRVI_H_
 
-#include <linux/msm_audio.h>
+#include <mach/qdsp6/msm8k_cad_module.h>
+#include <mach/qdsp6/msm8k_ardi.h>
+#include <mach/qdsp6/msm8k_adsp_audio_device_ioctl.h>
+#include <mach/qdsp6/msm8k_adsp_audio_stream_ioctl.h>
+#include <mach/qdsp6/msm8k_adsp_audio_command.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
+#define CAD_EQ_INVALID_DATA       0xFFFFFFFF
+
+
+struct cad_audio_eq_cfg {
+	u32                             enable;
+	/* Number of consequtive bands specified */
+	u32                             num_bands;
+	struct adsp_audio_eq_band       eq_bands[ADSP_AUDIO_MAX_EQ_BANDS];
+} __attribute__ ((packed));
+
+
+struct cad_filter_eq_driver_struct {
+	/* this is the device control session */
+	u32     device_session_id;
+	/* indexed by session id */
+	struct adsp_audio_set_equalizer_command	eq_stream_data[CAD_MAX_SESSION];
 };
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
-};
 
-#endif /* __MSM_AUDIO_QCP_H */
+
+#endif

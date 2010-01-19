@@ -26,33 +26,67 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef _MSM8K_CAD_Q6DEC_DRVI_H_
+#define _MSM8K_CAD_Q6DEC_DRVI_H_
 
-#include <linux/msm_audio.h>
+#include <linux/mutex.h>
+#include <linux/completion.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+#include <mach/qdsp6/msm8k_cad_module.h>
+#include <mach/qdsp6/msm8k_adsp_audio_command.h>
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-};
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
+
+#define Q6_DEC_MAX_STREAM_COUNT			4
+#define Q6_DEC_BUFFER_NUM_PER_STREAM		4
+#define Q6_DEC_BUFFER_SIZE_MAX			(1024 * 11)
+
+enum q6dec_session_state {
+	Q6_DEC_RESET		= 0x0,
+	Q6_DEC_INIT		= 0x1,
+	Q6_DEC_READY		= 0x2,
+	Q6_DEC_FLUSHING		= 0x4,
+	Q6_DEC_CLOSING		= 0x8,
+	Q6_DEC_VOICE,
+	Q6_DEC_STATE_MAX	= 0x7FFFFFFF
 };
 
-#endif /* __MSM_AUDIO_QCP_H */
+struct q6dec_sesson_buffer_node;
+struct q6dec_sesson_buffer_node {
+	u8					*buf;
+	u32					phys_addr;
+	struct q6dec_sesson_buffer_node		*next;
+};
+
+struct q6dec_session_data;
+struct q6dec_session_data {
+	u8					*shared_buf;
+	struct mutex				session_mutex;
+	struct mutex				close_mutex;
+	u32					session_id;
+	u32					group_id;
+	u32					buffer_size;
+	struct completion			buf_done_compl;
+	struct completion			all_buf_done_compl;
+	struct q6dec_sesson_buffer_node		*free_buf_list;
+	struct q6dec_sesson_buffer_node		*used_buf_list;
+	enum q6dec_session_state		session_state;
+	struct q6dec_session_data		*next;
+	/* debug variables */
+	u32					use_counter;
+	u32					ret_counter;
+	/* flag to tell if we need flush before close */
+	u32					need_flush;
+	/* flag for buffer done event */
+	u32					need_buffer_done;
+	u32					need_all_buf_done;
+	struct cad_event_struct_type    	cb_data;
+	struct adsp_audio_data_command		q6_data_buf;
+};
+
+struct q6dec_data {
+	u32				used_stream_count;
+	struct q6dec_session_data	*free_session_list;
+	struct q6dec_session_data	*used_session_list;
+};
+
+#endif

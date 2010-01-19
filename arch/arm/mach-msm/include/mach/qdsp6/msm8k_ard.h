@@ -26,33 +26,40 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef ARD_H
+#define ARD_H
 
-#include <linux/msm_audio.h>
+#include "msm8k_cad_module.h"
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
-
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-};
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
+enum sample_rate_type {
+	SAMPLE_RATE_NONE,
+	SAMPLE_RATE_8000,
+	SAMPLE_RATE_11025,
+	SAMPLE_RATE_12000,
+	SAMPLE_RATE_16000,
+	SAMPLE_RATE_22050,
+	SAMPLE_RATE_24000,
+	SAMPLE_RATE_32000,
+	SAMPLE_RATE_44100,
+	SAMPLE_RATE_48000,
+	SAMPLE_RATE_MAX
 };
 
-#endif /* __MSM_AUDIO_QCP_H */
+
+void print_data(u32 session_id);
+
+s32 cad_ard_init(struct cad_func_tbl_type **func_ptr_tbl);
+
+s32 ard_open(s32 session_id,
+	struct cad_open_struct_type *open_param);
+
+s32 ard_close(s32 session_id);
+
+s32 ard_ioctl(s32 session_id, u32 cmd_code, void *cmd_buf, u32 cmd_len);
+
+s32 ard_read(s32 session_id, struct cad_buf_struct_type *buf);
+
+s32 ard_write(s32 session_id, struct cad_buf_struct_type *buf);
+
+
+#endif

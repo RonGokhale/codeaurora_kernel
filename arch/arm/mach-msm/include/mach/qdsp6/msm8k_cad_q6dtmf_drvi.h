@@ -26,33 +26,25 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef _QDSP6DTMFDRIVERI_H_
+#define _QDSP6DTMFDRIVERI_H_
 
-#include <linux/msm_audio.h>
+#include <mach/qdsp6/msm8k_cad_module.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+#define CAD_DTMF_SESSION_MAX 4
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-};
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
+struct q6dtmf_session;
+
+struct q6dtmf_session {
+	u32				session_id;
+	u32				group_id;
+	struct q6dtmf_session		*next;
 };
 
-#endif /* __MSM_AUDIO_QCP_H */
+
+struct q6dtmf_driver {
+	struct q6dtmf_session		*free_session_list;
+	struct q6dtmf_session		*used_session_list;
+};
+
+#endif

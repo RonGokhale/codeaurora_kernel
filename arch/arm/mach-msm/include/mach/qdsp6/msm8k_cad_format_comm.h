@@ -26,33 +26,44 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef _CAD_FORMAT_COMMOM_H_
+#define _CAD_FORMAT_COMMOM_H_
 
-#include <linux/msm_audio.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+#define CAD_WRITE_AMR_VERSION_10	0x10
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
+
+/* common digital sample rate */
+enum cad_sample_rate {
+	CAD_SR_VARIABLE = 0,	/* variable rate or unknown bit rate */
+	CAD_SR_8000,
+	CAD_SR_11025,
+	CAD_SR_22050,
+	CAD_SR_32000,
+	CAD_SR_44056,
+	CAD_SR_44100,
+	CAD_SR_47250,
+	CAD_SR_48000,
+	CAD_SR_50000,
+	CAD_SR_50400,
+	CAD_SR_88200,
+	CAD_SR_96000,
+	CAD_SR_176400,
+	CAD_SR_192000,
+	CAD_SR_2822400,
+	CAD_SR_MAX = 0x7FFFFFFF
 };
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
+
+/* CDMA Rate types */
+enum cad_cdma_rate {
+	cad_cdma_rate_blank = 0,	/*CDMA encoded frame is blank*/
+	cad_cdma_rate_eighth,		/*CDMA encoded frame in eighth rate*/
+	cad_cdma_rate_quarter,		/*CDMA encoded frame in quarter rate*/
+	cad_cdma_rate_half,		/*CDMA encoded frame in half rate*/
+	cad_cdma_rate_full,		/*CDMA encoded frame in full rate*/
+	cad_cdma_rate_erasure,		/*CDMA erasure frame*/
+	cad_cdma_rate_max = 0x7FFFFFFF
 };
 
-#endif /* __MSM_AUDIO_QCP_H */
+#endif
+

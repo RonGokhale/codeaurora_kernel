@@ -26,33 +26,18 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef _QDSP6DTMFSESSION_H_
+#define _QDSP6DTMFSESSION_H_
 
-#include <linux/msm_audio.h>
+#include <mach/qdsp6/msm8k_cad_q6dtmf_drvi.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+s32 cad_dtmf_session_init(struct q6dtmf_session *self);
+s32 cad_dtmf_session_dinit(struct q6dtmf_session *self);
+s32 cad_dtmf_session_open(struct q6dtmf_session *self, s32 session_id,
+				struct cad_open_struct_type *open_param);
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-};
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
-};
+s32 cad_dtmf_session_close(struct q6dtmf_session *self);
+s32 cad_dtmf_session_ioctl(struct q6dtmf_session *self, s32 cmd_code,
+				void *cmd_buf, s32 cmd_len);
 
-#endif /* __MSM_AUDIO_QCP_H */
+#endif

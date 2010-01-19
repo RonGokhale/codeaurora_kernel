@@ -26,33 +26,40 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef ARDCLK_H
+#define ARDCLK_H
 
-#include <linux/msm_audio.h>
+#include "msm8k_ardi.h"
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+void ard_clk_enable(u32 dev_id);
+void ard_clk_disable(u32 dev_id);
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
+void ard_clk_set_icodec_rx_clk(void);
+void ard_clk_set_icodec_tx_clk(void);
+
+void ard_clk_enable_internal_codec_clk_rx(void);
+void ard_clk_enable_internal_codec_clk_tx(void);
+void ard_clk_disable_internal_codec_clk_rx(void);
+void ard_clk_disable_internal_codec_clk_tx(void);
+
+void ard_clk_enable_external_codec_clk(void);
+void ard_clk_disable_external_codec_clk(void);
+void ard_clk_set_ecodec_clk(void);
+
+void ard_clk_enable_sdac_rx_clk(void);
+void ard_clk_enable_sdac_tx_clk(void);
+void ard_clk_set_sdac_rx_clk(void);
+void ard_clk_set_sdac_tx_clk(void);
+void ard_clk_disable_sdac_clk(void);
+
+struct clk_info {
+
+	u32 tx_clk_freq;
+	u16 open_rec_sessions;
 };
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
-};
 
-#endif /* __MSM_AUDIO_QCP_H */
+extern struct clk_info g_clk_info;
+
+#endif
+
+

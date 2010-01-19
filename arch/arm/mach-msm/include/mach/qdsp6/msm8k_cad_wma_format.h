@@ -26,33 +26,41 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef WMA_FORMAT_H
+#define WMA_FORMAT_H
 
-#include <linux/msm_audio.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+/* Audio content encoded using Windows Media Audio version 9 codec */
+#define CAD_MT_MN_WMA_V9STD		0x0108efb4
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
+/* Audio content encoded using Windows Media Audio version 10 codec */
+#define CAD_MT_MN_WMA_V10PRO		0x0108efb5
+
+
+/* Use for both V10 & V9 */
+struct cad_wma_format {
+	u16	format_tag;
+	u16	channels;
+	u32	samples_per_sec;
+	u32	avg_bytes_per_sec;
+	u16	block_align;
+	u16	valid_bits_per_sample;
+	u32	channel_mask;
+	u16	encode_opt;
+
+	/* Only WMA PRO uses these two values */
+	u16	advanced_encode_opt;
+	u32	advanced_encode_opt2;
+
+	u32	drc_peak_reference;
+	u32	drc_peak_target;
+	u32	drc_average_reference;
+	u32	drc_average_target;
 };
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
-};
 
-#endif /* __MSM_AUDIO_QCP_H */
+
+
+#endif
+
+
+

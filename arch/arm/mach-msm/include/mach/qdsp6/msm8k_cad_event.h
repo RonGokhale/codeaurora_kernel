@@ -26,33 +26,24 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef CADEVENT_H
+#define CADEVENT_H
 
-#include <linux/msm_audio.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+#define CAD_EVT_STATUS_BUF_DONE				0x01076062
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-};
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
+#define CAD_EVT_STATUS_BUF_UNDERRUN			0x01076061
+
+#define CAD_EVT_STATUS_BUF_OVERFLOW			0x01076060
+
+#define CAD_EVT_AV_SYNC					0x0107605f
+
+#define CAD_EVT_STATUS_EOS				0x108b2cc
+
+struct cad_evt_avsync_struct_type {
+	u64		num_of_samples;
+	u64		num_of_bytes;
+	u64		sample_rate;
 };
 
-#endif /* __MSM_AUDIO_QCP_H */
+#endif

@@ -26,33 +26,47 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef CAD_WRITE_SBC_FORMAT_H
+#define CAD_WRITE_SBC_FORMAT_H
 
-#include <linux/msm_audio.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+/* indicating SNR/Loudness */
+#define CAD_ENC_SBC_ALLOCATION_METHOD_LOUDNESS		0x0
+#define CAD_ENC_SBC_ALLOCATION_METHOD_SNR		0x1
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
+
+/* four or eight sub-bands are supported for SBC */
+#define CAD_SBC_FOUR_SUBBANDS		4
+#define CAD_SBC_EIGHT_SUBBANDS		8
+
+
+/* four different block lengths are supported */
+#define CAD_SBC_BLOCK_LEN_FOUR		4
+#define CAD_SBC_BLOCK_LEN_EIGHT		8
+#define CAD_SBC_BLOCK_LEN_TWELVE	12
+#define CAD_SBC_BLOCK_LEN_SIXTEEN	16
+
+
+/* This structure provides configuration of SBC on QCOM MSM */
+struct cad_sbc_enc_cfg_struct_type {
+	/* Subband number : ( 4 OR 8 ) */
+	u32	num_subbands;
+
+	/* Block length: (4, 8, 12, 16) */
+	u32	block_len;
+
+	/* Channel Mode (Mono, Dual, Stereo, or Joint Stereo) */
+	u32	channel_mode;
+
+	/* Allocation method: SNR or Loundness */
+	u32	allocation_method;
+
+	/* bits per second */
+	u32	bit_rate;
 };
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
-};
 
-#endif /* __MSM_AUDIO_QCP_H */
+
+#endif
+
+
+

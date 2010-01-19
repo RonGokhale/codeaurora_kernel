@@ -26,33 +26,61 @@
  *
  */
 
-#ifndef __MSM_AUDIO_QCP_H
-#define __MSM_AUDIO_QCP_H
+#ifndef __ADSP_AUDIO_DEVICE_IOCTL_H
+#define __ADSP_AUDIO_DEVICE_IOCTL_H
 
-#include <linux/msm_audio.h>
 
-#define CDMA_RATE_BLANK		0x00
-#define CDMA_RATE_EIGHTH	0x01
-#define CDMA_RATE_QUARTER	0x02
-#define CDMA_RATE_HALF		0x03
-#define CDMA_RATE_FULL		0x04
-#define CDMA_RATE_ERASURE	0x05
+#include <mach/qdsp6/msm8k_adsp_audio_stream_ioctl.h>
 
-struct msm_audio_qcelp_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-};
-struct msm_audio_evrc_config {
-	uint32_t channels;
-	uint32_t cdma_rate;
-	uint32_t min_bit_rate;
-	uint32_t max_bit_rate;
-	uint8_t bit_rate_reduction;
-	uint8_t hi_pass_filter;
-	uint8_t	noise_suppressor;
-	uint8_t	post_filter;
-};
 
-#endif /* __MSM_AUDIO_QCP_H */
+/* Device control session only IOCTL command definitions */
+/* These commands will affect a logical device and all its associated */
+/* streams. */
+
+
+/* Set device volume. */
+/* This command has data payload struct adsp_audio_set_dev_volume_command. */
+
+#define ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_VOL		0x0107605c
+
+
+/* Set Device stereo volume. This command has data payload, */
+/* struct adsp_audio_set_dev_stereo_volume_command. */
+
+#define ADSP_AUDIO_IOCTL_SET_DEVICE_STEREO_VOL		0x0108df3e
+
+
+/* Set L, R cross channel gain for a Device. This command has */
+/* data payload, struct adsp_audio_set_dev_x_chan_gain_command. */
+
+#define ADSP_AUDIO_IOCTL_SET_DEVICE_XCHAN_GAIN		0x0108df40
+
+
+/* Set device mute state. */
+/* This command has data payload struct adsp_audio_set_dev_mute_command. */
+
+#define ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_MUTE		0x0107605f
+
+
+/* Set device RVE state. */
+/* This command has data payload struct adsp_audio_set_dev_rve_command. */
+
+#define ADSP_AUDIO_IOCTL_SET_DEVICE_RVE			0x01090832
+
+
+/* Set device WNR state. */
+/* This command has data payload struct adsp_audio_set_dev_wnr_command. */
+
+#define ADSP_AUDIO_IOCTL_SET_DEVICE_WNR			0x01090831
+
+
+/* Configure Equalizer for a device. */
+/* This command has payload struct adsp_audio_set_dev_equalizer_command. */
+
+#define ADSP_AUDIO_IOCTL_CMD_SET_DEVICE_EQ_CONFIG	0x0108b10e
+
+
+
+#endif
+
+
