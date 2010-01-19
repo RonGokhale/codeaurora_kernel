@@ -58,7 +58,7 @@ int drm_platform_init(struct drm_driver *driver)
 
 	DRM_DEBUG("\n");
 
-	dev = kmalloc(sizeof(*dev), GFP_KERNEL);
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev)
 		return -ENOMEM;
 
