@@ -337,7 +337,6 @@ kgsl_gem_create_mmap_offset(struct drm_gem_object *obj)
 	return 0;
 }
 
-#ifdef CONFIG_MSM_KGSL_DRM
 int
 kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
 			unsigned long *len)
@@ -398,14 +397,6 @@ kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
 	fput(filp);
 	return ret;
 }
-#else
-int kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
-                        unsigned long *len)
-{
-        printk(KERN_ERR "%s: MSM_KGSL_DRM not configured \n", __func__);
-        return -1;
-}
-#endif
 
 int
 kgsl_gem_create_ioctl(struct drm_device *dev, void *data,
