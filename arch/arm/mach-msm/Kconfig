@@ -259,6 +259,14 @@ config PHYS_OFFSET
 	default "0x20000000" if ARCH_QSD8X50
 	default "0x10000000"
 
+config PMEM_KERNEL_SIZE
+	int "EBI1 PMEM for kernel components (in MB)"
+	default 0
+	depends on ARCH_QSD8X50
+	help
+	  Configures the amount of EBI1 PMEM for use by kernel components
+	  (in MB; minimum 0MB).
+
 config KERNEL_PMEM_SMI_REGION
 	bool "Enable in-kernel PMEM region for SMI"
 	default n
