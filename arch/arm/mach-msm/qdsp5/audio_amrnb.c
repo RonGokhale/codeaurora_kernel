@@ -201,9 +201,12 @@ static int audamrnb_enable(struct audio *audio)
 		cfg.tx_rate = RPC_AUD_DEF_SAMPLE_RATE_NONE;
 		cfg.rx_rate = RPC_AUD_DEF_SAMPLE_RATE_48000;
 		cfg.def_method = RPC_AUD_DEF_METHOD_PLAYBACK;
-		cfg.codec = RPC_AUD_DEF_CODEC_AMR_NB;
-		cfg.snd_method = RPC_SND_METHOD_MIDI;
+		if (machine_is_msm7x25_surf())
+			cfg.codec = RPC_AUD_DEF_CODEC_VOC_AMR;
+		else
+			cfg.codec = RPC_AUD_DEF_CODEC_AMR_NB;
 
+		cfg.snd_method = RPC_SND_METHOD_MIDI;
 		rc = audmgr_enable(&audio->audmgr, &cfg);
 		if (rc < 0)
 			return rc;
