@@ -59,6 +59,7 @@ enum {
 	I2C_INTERFACE_SELECT_SCL            = 1U << 8,
 	I2C_INTERFACE_SELECT_SDA            = 1U << 9,
 	I2C_STATUS_RX_DATA_STATE            = 3U << 11,
+	I2C_STATUS_LOW_CLK_STATE            = 3U << 13,
 };
 
 struct msm_i2c_dev {
@@ -78,6 +79,7 @@ struct msm_i2c_dev {
 	int                          err;
 	int                          flush_cnt;
 	int                          rd_acked;
+	int                          one_bit_t;
 	remote_spinlock_t            rspin_lock;
 	int                          suspended;
 	struct mutex                 mlock;
@@ -601,6 +603,7 @@ msm_i2c_probe(struct platform_device *pdev)
 		goto err_ioremap_failed;
 	}
 
+	dev->one_bit_t = USEC_PER_SEC/pdata->clk_freq;
 	spin_lock_init(&dev->lock);
 	platform_set_drvdata(pdev, dev);
 
