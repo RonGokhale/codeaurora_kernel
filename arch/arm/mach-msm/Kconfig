@@ -219,6 +219,7 @@ config MACH_MSM7X25_FFA
 
 config MACH_QSD8X50_ST1
 	depends on ARCH_QSD8X50
+	depends on MSM_SOC_REV_NONE
 	depends on MSM_STACKED_MEMORY
 	select ST1_EXPERIMENTAL
 	default n
