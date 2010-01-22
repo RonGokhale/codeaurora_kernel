@@ -847,6 +847,11 @@ static int msm_fb_detect_panel(const char *name)
 			ret = 0;
 		else
 			ret = -ENODEV;
+	} else if (machine_is_qsd8x50a_st1_5()) {
+		if (!strcmp(name, "lcdc_st15"))
+			ret = 0;
+		else
+			ret = -ENODEV;
 	}
 
 	return ret;
@@ -1157,6 +1162,24 @@ static int msm_fb_lcdc_gpio_config(int on)
 			mdelay(100);
 			gpio_set_value(32, 0);
 		}
+	} else if (machine_is_qsd8x50a_st1_5()) {
+		if (on) {
+			gpio_set_value(17, 1);
+			gpio_set_value(19, 1);
+			gpio_set_value(20, 1);
+			gpio_set_value(22, 0);
+			gpio_set_value(32, 1);
+			gpio_set_value(155, 1);
+			gpio_set_value(22, 1);
+
+		} else {
+			gpio_set_value(17, 0);
+			gpio_set_value(19, 0);
+			gpio_set_value(20, 0);
+			gpio_set_value(22, 0);
+			gpio_set_value(32, 0);
+			gpio_set_value(155, 0);
+		}
 	}
 	return 0;
 }
@@ -1174,6 +1197,15 @@ static struct msm_gpio msm_fb_st1_gpio_config_data[] = {
 	{ GPIO_CFG(19, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl1" },
 	{ GPIO_CFG(20, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl2" },
 	{ GPIO_CFG(32, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_bl3" },
+};
+
+static struct msm_gpio msm_fb_st15_gpio_config_data[] = {
+	{ GPIO_CFG(17, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_en0" },
+	{ GPIO_CFG(19, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "dat_pwr_sv" },
+	{ GPIO_CFG(20, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lvds_pwr_dn" },
+	{ GPIO_CFG(22, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_en1" },
+	{ GPIO_CFG(32, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "lcdc_en2" },
+	{ GPIO_CFG(155, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "hdmi_3v3" },
 };
 
 static struct lcdc_platform_data lcdc_pdata = {
@@ -1206,6 +1238,16 @@ static void __init msm_fb_add_devices(void)
 		rc = msm_gpios_request_enable(
 			msm_fb_st1_gpio_config_data,
 			ARRAY_SIZE(msm_fb_st1_gpio_config_data));
+		if (rc) {
+			printk(KERN_ERR "%s: unable to init lcdc gpios\n",
+			       __func__);
+			return;
+		}
+		msm_fb_register_device("lcdc", &lcdc_pdata);
+	} else if (machine_is_qsd8x50a_st1_5()) {
+		rc = msm_gpios_request_enable(
+			msm_fb_st15_gpio_config_data,
+			ARRAY_SIZE(msm_fb_st15_gpio_config_data));
 		if (rc) {
 			printk(KERN_ERR "%s: unable to init lcdc gpios\n",
 			       __func__);
@@ -2961,11 +3003,21 @@ static void __init qsd8x50_allocate_memory_regions(void)
 	}
 
 	size = MSM_FB_SIZE;
-	addr = (void *)MSM_FB_BASE;
-	msm_fb_resources[0].start = (unsigned long)addr;
-	msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
-	pr_info("using %lu bytes of SMI at %lx physical for fb\n",
-	       size, (unsigned long)addr);
+	if (machine_is_qsd8x50a_st1_5()) {
+		/* Framebuffer from DDR memory */
+		addr = alloc_bootmem(size);
+		addr = (void *)__pa(addr);
+		msm_fb_resources[0].start = (unsigned long)addr;
+		msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
+		pr_info("using %lu bytes of DDR at %lx physical for fb\n",
+			size, (unsigned long)addr);
+	} else {
+		addr = (void *)MSM_FB_BASE;
+		msm_fb_resources[0].start = (unsigned long)addr;
+		msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
+		pr_info("using %lu bytes of SMI at %lx physical for fb\n",
+			size, (unsigned long)addr);
+	}
 
 	size = audio_size ? : MSM_AUDIO_SIZE;
 	addr = alloc_bootmem(size);
