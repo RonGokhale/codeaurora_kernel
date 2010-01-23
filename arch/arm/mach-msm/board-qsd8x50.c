@@ -433,9 +433,15 @@ static struct platform_device hs_device = {
 	},
 };
 
+#ifdef CONFIG_MACH_QSD8X50A_ST1_5
+#define HUB_RESET_GPIO 104
+#else
+#define HUB_RESET_GPIO 154
+#endif
 static struct msm_gpio hsusb_gpio_config_data[] = {
 	{ GPIO_CFG(98, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "fs_power" },
-	{ GPIO_CFG(154, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "swch_ctrl" },
+	{ GPIO_CFG(HUB_RESET_GPIO, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA),
+								"swch_ctrl" },
 	{ GPIO_CFG(108, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "hub_reset" },
 };
 
@@ -444,7 +450,7 @@ static void msm_hsusb_setup_gpio(unsigned int enable)
 	int rc;
 
 	if (enable) {
-		if (machine_is_qsd8x50_st1()) {
+		if (machine_is_qsd8x50_st1() || machine_is_qsd8x50a_st1_5()) {
 			rc = msm_gpios_request_enable(hsusb_gpio_config_data,
 				ARRAY_SIZE(hsusb_gpio_config_data));
 
@@ -455,11 +461,11 @@ static void msm_hsusb_setup_gpio(unsigned int enable)
 
 			/* Config analog switch as USB host. */
 			gpio_set_value(98, 0); /* USB_FS_POWER_EN */
-			gpio_set_value(154, 0); /* SWITCH_CONTROL */
+			gpio_set_value(HUB_RESET_GPIO, 0); /* SWITCH_CONTROL */
 			gpio_set_value(108, 1); /* USB_HUB_RESET */
 		}
 	} else {
-		if (machine_is_qsd8x50_st1())
+		if (machine_is_qsd8x50_st1() || machine_is_qsd8x50a_st1_5())
 			msm_gpios_disable_free(hsusb_gpio_config_data,
 				ARRAY_SIZE(hsusb_gpio_config_data));
 	}
