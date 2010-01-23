@@ -1,3 +1,5 @@
+
+
 /* drivers/usb/gadget/f_diag.c
  *Diag Function Device - Route ARM9 and ARM11 DIAG messages
  *between HOST and DEVICE.
@@ -91,6 +93,7 @@ static struct usb_descriptor_header *hs_diag_desc[] = {
 struct diag_req_entry {
 	struct list_head re_entry;
 	struct usb_request *usb_req;
+	void *diag_request;
 };
 
 struct diag_context {
@@ -371,7 +374,7 @@ static struct diag_req_entry *diag_alloc_req_entry(struct usb_ep *ep,
 	return req;
 }
 
-int diag_read(unsigned char *buf, int length)
+int diag_read(struct diag_request *d_req)
 {
 	unsigned long flags;
 	struct usb_request *req = NULL;
@@ -385,13 +388,14 @@ int diag_read(unsigned char *buf, int length)
 	if (!list_empty(&ctxt->dev_read_req_list)) {
 		req_entry = list_entry(ctxt->dev_read_req_list.next ,
 				struct diag_req_entry , re_entry);
+		req_entry->diag_request = d_req;
 		req = req_entry->usb_req;
 		list_del(&req_entry->re_entry);
 	}
 	spin_unlock_irqrestore(&ctxt->dev_lock , flags);
 	if (req) {
-		req->buf = buf;
-		req->length = length;
+		req->buf = d_req->buf;
+		req->length = d_req->length;
 		if (usb_ep_queue(ctxt->out, req, GFP_ATOMIC)) {
 			/* If error add the link to the linked list again. */
 			spin_lock_irqsave(&ctxt->dev_lock , flags);
@@ -410,7 +414,7 @@ int diag_read(unsigned char *buf, int length)
 }
 EXPORT_SYMBOL(diag_read);
 
-int diag_write(unsigned char *buf, int length)
+int diag_write(struct diag_request *d_req)
 {
 	unsigned long flags;
 	struct usb_request *req = NULL;
@@ -423,13 +427,14 @@ int diag_write(unsigned char *buf, int length)
 	if (!list_empty(&ctxt->dev_write_req_list)) {
 		req_entry = list_entry(ctxt->dev_write_req_list.next ,
 				struct diag_req_entry , re_entry);
+		req_entry->diag_request = d_req;
 		req = req_entry->usb_req;
 		list_del(&req_entry->re_entry);
 	}
 	spin_unlock_irqrestore(&ctxt->dev_lock, flags);
 	if (req) {
-		req->buf = buf;
-		req->length = length;
+		req->buf = d_req->buf;
+		req->length = d_req->length;
 		if (usb_ep_queue(ctxt->in, req, GFP_ATOMIC)) {
 			/* If error add the link to linked list again*/
 			spin_lock_irqsave(&ctxt->dev_lock, flags);
@@ -453,6 +458,8 @@ static void diag_write_complete(struct usb_ep *ep ,
 {
 	struct diag_context *ctxt = &_context;
 	struct diag_req_entry *diag_req = req->context;
+	struct diag_request *d_req = (struct diag_request *)
+						diag_req->diag_request;
 	unsigned long flags;
 
 	if (ctxt == NULL) {
@@ -460,20 +467,40 @@ static void diag_write_complete(struct usb_ep *ep ,
 				"NULL device pointer\n", __func__);
 		return;
 	}
+
+	if (req->status == WRITE_COMPLETE) {
+		if ((req->length >= ep->maxpacket) &&
+				((req->length % ep->maxpacket) == 0)) {
+			req->length = 0;
+			req->device = ctxt;
+			d_req->actual = req->actual;
+			d_req->status = req->status;
+			/* Queue zero length packet */
+			usb_ep_queue(ctxt->in, req, GFP_ATOMIC);
+			return;
+		}
+	}
+
 	spin_lock_irqsave(&ctxt->dev_lock, flags);
 	list_add_tail(&diag_req->re_entry ,
 			&ctxt->dev_write_req_list);
+	if (req->length != 0) {
+		d_req->actual = req->actual;
+		d_req->status = req->status;
+	}
 	spin_unlock_irqrestore(&ctxt->dev_lock , flags);
 	if ((ctxt->operations) &&
 		(ctxt->operations->diag_char_write_complete))
 			ctxt->operations->diag_char_write_complete(
-				req->buf, req->actual, req->status);
+				d_req);
 }
 static void diag_read_complete(struct usb_ep *ep ,
 		struct usb_request *req)
 {
 	 struct diag_context *ctxt = &_context;
 	 struct diag_req_entry *diag_req = req->context;
+	 struct diag_request *d_req = (struct diag_request *)
+							diag_req->diag_request;
 	 unsigned long flags;
 
 	if (ctxt == NULL) {
@@ -484,11 +511,13 @@ static void diag_read_complete(struct usb_ep *ep ,
 	spin_lock_irqsave(&ctxt->dev_lock, flags);
 	list_add_tail(&diag_req->re_entry ,
 			&ctxt->dev_read_req_list);
+	d_req->actual = req->actual;
+	d_req->status = req->status;
 	spin_unlock_irqrestore(&ctxt->dev_lock, flags);
 	if ((ctxt->operations) &&
 		(ctxt->operations->diag_char_read_complete))
 			ctxt->operations->diag_char_read_complete(
-				req->buf, req->actual, req->status);
+				d_req);
 }
 int diag_function_add(struct usb_configuration *c,
 				char *serial_number)
