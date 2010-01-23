@@ -157,7 +157,7 @@ static struct resource smsc911x_resources[] = {
 static struct smsc911x_platform_config smsc911x_config = {
 	.irq_polarity	= SMSC911X_IRQ_POLARITY_ACTIVE_LOW,
 	.irq_type	= SMSC911X_IRQ_TYPE_OPEN_DRAIN,
-	.flags		= SMSC911X_USE_16BIT,
+	.flags		= SMSC911X_USE_32BIT,
 	.phy_interface	= PHY_INTERFACE_MODE_MII,
 };
 
@@ -2658,14 +2658,24 @@ static void __init qsd8x50_init_mmc(void)
 
 }
 
-#define SMSC911X_ENET_CLK_EN_GPIO 33
-#define SMSC911X_IRQ_GPIO 156
-
 static int __init qsd8x50_cfg_smsc911x(void)
 {
 	int rc = 0;
-	u8 enet_clk_en_gpio = SMSC911X_ENET_CLK_EN_GPIO;
-	u8 irq_gpio = SMSC911X_IRQ_GPIO;
+	u8 enet_clk_en_gpio = 33;
+	u8 irq_gpio;
+
+	if (machine_is_qsd8x50_st1()) {
+		irq_gpio = 156;
+		smsc911x_config.flags = SMSC911X_USE_16BIT;
+		smsc911x_resources[0].start = 0x70000000;
+		smsc911x_resources[0].end = 0x700002ff;
+	} else {
+		irq_gpio = 105;
+		smsc911x_resources[0].start = 0x9C000000;
+		smsc911x_resources[0].end = 0x9C0002ff;
+	}
+	smsc911x_resources[1].start = MSM_GPIO_TO_INT(irq_gpio);
+	smsc911x_resources[1].end = MSM_GPIO_TO_INT(irq_gpio);
 
 	rc = gpio_request(enet_clk_en_gpio, "smsc911x_enet_clk_en");
 	if (rc) {
@@ -2680,11 +2690,6 @@ static int __init qsd8x50_cfg_smsc911x(void)
 			irq_gpio, rc);
 		goto err;
 	}
-
-	smsc911x_resources[0].start = 0x70000000;
-	smsc911x_resources[0].end = 0x700002ff;
-	smsc911x_resources[1].start = MSM_GPIO_TO_INT(irq_gpio);
-	smsc911x_resources[1].end = MSM_GPIO_TO_INT(irq_gpio);
 
 	rc = gpio_tlmm_config(GPIO_CFG(irq_gpio, 0, GPIO_INPUT,
 					GPIO_PULL_UP, GPIO_2MA),
@@ -2890,7 +2895,7 @@ static void __init qsd8x50_init(void)
 	if (socinfo_init() < 0)
 		printk(KERN_ERR "%s: socinfo_init() failed!\n",
 		       __func__);
-	if (machine_is_qsd8x50_st1())
+	if (machine_is_qsd8x50a_st1_5() || machine_is_qsd8x50_st1())
 		qsd8x50_cfg_smsc911x();
 	else
 		qsd8x50_cfg_smc91x();
