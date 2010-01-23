@@ -1989,6 +1989,30 @@ static struct i2c_board_info msm_i2c_st1_info[] __initdata = {
 	},
 };
 
+static struct i2c_board_info msm_i2c_st1_5_info[] __initdata = {
+	{
+		I2C_BOARD_INFO("qci-i2ckbd", 0x18),
+	},
+	{
+		I2C_BOARD_INFO("qci-i2cpad", 0x19),
+	},
+	{
+		I2C_BOARD_INFO("qci-i2cec", 0x1A),
+	},
+	{
+		I2C_BOARD_INFO("hmc5843", 0x1E),
+	},
+	{
+		I2C_BOARD_INFO("bma150", 0x38),
+	},
+	{
+		I2C_BOARD_INFO("isl29011", 0x44),
+	},
+	{
+		I2C_BOARD_INFO("tps65023", 0x48),
+	},
+};
+
 #ifdef CONFIG_MSM_CAMERA
 static uint32_t camera_off_gpio_table[] = {
 	/* parallel CAMERA interfaces */
@@ -2927,7 +2951,10 @@ static void __init qsd8x50_init(void)
 #ifndef CONFIG_ST1_EXPERIMENTAL
 	msm_qsd_spi_init();
 #endif
-	if (machine_is_qsd8x50_st1())
+	if (machine_is_qsd8x50a_st1_5())
+		i2c_register_board_info(0, msm_i2c_st1_5_info,
+				ARRAY_SIZE(msm_i2c_st1_5_info));
+	else if (machine_is_qsd8x50_st1())
 		i2c_register_board_info(0, msm_i2c_st1_info,
 				ARRAY_SIZE(msm_i2c_st1_info));
 	else
