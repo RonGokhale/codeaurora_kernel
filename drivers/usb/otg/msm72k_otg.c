@@ -73,8 +73,8 @@
 #include <linux/uaccess.h>
 
 #define MSM_USB_BASE	(dev->regs)
-#define is_host()	((OTGSC_ID & readl(USB_OTGSC)) ? 0 : 1)
-#define is_b_sess_vld()	((OTGSC_BSV & readl(USB_OTGSC)) ? 1 : 0)
+#define A_HOST		0x01
+#define B_PERIPHERAL	0x02
 #define DRIVER_NAME	"msm_otg"
 
 static void otg_reset(struct msm_otg *dev);
@@ -123,6 +123,24 @@ static int ulpi_write(struct msm_otg *dev, unsigned val, unsigned reg)
 	return 0;
 }
 
+static int is_host(void)
+{
+	struct msm_otg *dev = the_msm_otg;
+
+	if (dev->otg_mode == OTG_ID)
+		return (OTGSC_ID & readl(USB_OTGSC)) ? 0 : 1;
+	else
+		return (atomic_read(&dev->sysfs_mode) == A_HOST);
+}
+static int is_b_sess_vld(void)
+{
+	struct msm_otg *dev = the_msm_otg;
+
+	if (dev->otg_mode == OTG_ID)
+		return (OTGSC_BSV & readl(USB_OTGSC)) ? 1 : 0;
+	else
+		return (atomic_read(&dev->sysfs_mode) == B_PERIPHERAL);
+}
 static void enable_idgnd(struct msm_otg *dev)
 {
 	ulpi_write(dev, (1<<4), 0x0E);
@@ -250,11 +268,16 @@ static int msm_otg_set_clk(struct otg_transceiver *xceiv, int on)
 }
 static void msm_otg_start_peripheral(struct otg_transceiver *xceiv, int on)
 {
+	struct msm_otg *dev = container_of(xceiv, struct msm_otg, otg);
+
 	if (!xceiv->gadget)
 		return;
 
-	if (on)
+	if (on) {
+		if (dev->setup_gpio)
+			dev->setup_gpio(0);
 		usb_gadget_vbus_connect(xceiv->gadget);
+	}
 	else
 		usb_gadget_vbus_disconnect(xceiv->gadget);
 }
@@ -266,8 +289,13 @@ static void msm_otg_start_host(struct otg_transceiver *xceiv, int on)
 	if (!xceiv->host)
 		return;
 
-	if (dev->start_host)
+	if (dev->start_host) {
+		if (on) {
+			if (dev->setup_gpio)
+				dev->setup_gpio(1);
+		}
 		dev->start_host(xceiv->host, on);
+	}
 }
 
 static int msm_otg_suspend(struct msm_otg *dev)
@@ -287,13 +315,15 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	/* In case of fast plug-in and plug-out inside the otg_reset() the
 	 * servicing of BSV is missed (in the window of after phy and link
 	 * reset). Handle it if any missing bsv is detected */
-	if (is_b_sess_vld() && !is_host()) {
-		otgsc = readl(USB_OTGSC);
-		writel(otgsc, USB_OTGSC);
-		pr_info("%s:Process mising BSV\n", __func__);
-		msm_otg_start_peripheral(&dev->otg, 1);
-		enable_irq(dev->irq);
-		return -1;
+	if (dev->otg_mode == OTG_ID) {
+		if (is_b_sess_vld() && !is_host()) {
+			otgsc = readl(USB_OTGSC);
+			writel(otgsc, USB_OTGSC);
+			pr_info("%s:Process mising BSV\n", __func__);
+			msm_otg_start_peripheral(&dev->otg, 1);
+			enable_irq(dev->irq);
+			return -1;
+		}
 	}
 
 	ulpi_read(dev, 0x14);/* clear PHY interrupt latch register */
@@ -423,13 +453,15 @@ static int msm_otg_set_peripheral(struct otg_transceiver *xceiv,
 	if (!gadget) {
 		msm_otg_start_peripheral(xceiv, 0);
 		dev->otg.gadget = 0;
-		disable_sess_valid(dev);
+		if (dev->otg_mode == OTG_ID)
+			disable_sess_valid(dev);
 		if (dev->pmic_notif_supp && dev->pmic_unregister_vbus_sn)
 			dev->pmic_unregister_vbus_sn(&msm_otg_set_vbus_state);
 		return 0;
 	}
 	dev->otg.gadget = gadget;
-	enable_sess_valid(dev);
+	if (dev->otg_mode == OTG_ID)
+		enable_sess_valid(dev);
 	if (dev->pmic_notif_supp && dev->pmic_register_vbus_sn)
 		dev->pmic_register_vbus_sn(&msm_otg_set_vbus_state);
 	pr_info("peripheral driver registered w/ tranceiver\n");
@@ -458,11 +490,13 @@ static int msm_otg_set_host(struct otg_transceiver *xceiv, struct usb_bus *host)
 		msm_otg_start_host(xceiv, 0);
 		dev->otg.host = 0;
 		dev->start_host = 0;
-		disable_idgnd(dev);
+		if (dev->otg_mode == OTG_ID)
+			disable_idgnd(dev);
 		return 0;
 	}
 	dev->otg.host = host;
-	enable_idgnd(dev);
+	if (dev->otg_mode == OTG_ID)
+		enable_idgnd(dev);
 	pr_info("host driver registered w/ tranceiver\n");
 
 #ifndef CONFIG_USB_GADGET_MSM_72K
@@ -508,6 +542,9 @@ static irqreturn_t msm_otg_irq(int irq, void *data)
 		msm_otg_resume(dev);
 		return IRQ_HANDLED;
 	}
+
+	if (dev->otg_mode == OTG_SYSFS)
+		return IRQ_HANDLED;
 
 	otgsc = readl(USB_OTGSC);
 	if (!(otgsc & OTGSC_INTR_STS_MASK))
@@ -557,12 +594,67 @@ static void otg_reset(struct msm_otg *dev)
 	writel(0x00, USB_AHB_MODE);
 	clk_disable(dev->clk);
 
-	if (dev->otg.gadget)
-		enable_sess_valid(dev);
-	if (dev->otg.host)
-		enable_idgnd(dev);
+	if (dev->otg_mode == OTG_ID) {
+		if (dev->otg.gadget)
+			enable_sess_valid(dev);
+		if (dev->otg.host)
+			enable_idgnd(dev);
+	}
 }
 
+static ssize_t msm_otg_show_mode(struct device *device,
+					struct device_attribute *attr,
+					char *buf)
+{
+	int ret;
+
+	if (is_host())
+		ret = sprintf(buf, "%s\n", "host");
+	else
+		ret = sprintf(buf, "%s\n", "peripheral");
+
+	return ret;
+}
+static ssize_t msm_otg_store_mode(struct device *device,
+					  struct device_attribute *attr,
+					  const char *buf, size_t size)
+{
+	struct msm_otg *dev = the_msm_otg;
+
+	if (dev->in_lpm)
+		msm_otg_set_suspend(&dev->otg, 0);
+
+	mutex_lock(&dev->mutex);
+	if (sysfs_streq(buf, "host")) {
+		msm_otg_start_peripheral(&dev->otg, 0);
+		if (dev->in_lpm)
+			msm_otg_set_suspend(&dev->otg, 0);
+		msm_otg_start_host(&dev->otg, 1);
+		atomic_set(&dev->sysfs_mode, A_HOST);
+	} else if (sysfs_streq(buf, "peripheral")) {
+		msm_otg_start_host(&dev->otg, 0);
+		if (dev->in_lpm)
+			msm_otg_set_suspend(&dev->otg, 0);
+		msm_otg_start_peripheral(&dev->otg, 1);
+		atomic_set(&dev->sysfs_mode, B_PERIPHERAL);
+	} else {
+		pr_info("%s: configuring USB in unknown mode\n",
+				__func__);
+		size = -EINVAL;
+	}
+	mutex_unlock(&dev->mutex);
+	return size;
+}
+static DEVICE_ATTR(mode, 0666, msm_otg_show_mode, msm_otg_store_mode);
+
+static struct attribute *msm_otg_attrs[] = {
+	&dev_attr_mode.attr,
+	NULL,
+};
+
+static struct attribute_group msm_otg_attr_grp = {
+	.attrs = msm_otg_attrs,
+};
 static int __init msm_otg_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -588,6 +680,8 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 		dev->pmic_register_vbus_sn = pdata->pmic_register_vbus_sn;
 		dev->pmic_unregister_vbus_sn = pdata->pmic_unregister_vbus_sn;
 		dev->pmic_enable_ldo = pdata->pmic_enable_ldo;
+		dev->setup_gpio = pdata->setup_gpio;
+		dev->otg_mode = pdata->otg_mode;
 	}
 
 	if (pdata && pdata->pmic_vbus_irq) {
@@ -697,9 +791,18 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 	wake_lock_init(&dev->wlock,
 			WAKE_LOCK_SUSPEND, "usb_bus_active");
 	wake_lock(&dev->wlock);
+	if (dev->otg_mode == OTG_SYSFS)
+		mutex_init(&dev->mutex);
 	msm_otg_debugfs_init(dev);
 	device_init_wakeup(&pdev->dev, 1);
 
+	if (dev->otg_mode == OTG_SYSFS) {
+		if (sysfs_create_group(&pdev->dev.kobj, &msm_otg_attr_grp)) {
+			pr_err("%s: sysfs entry creation fail \n", __func__);
+			goto free_regs;
+		}
+		atomic_set(&dev->sysfs_mode, A_HOST);
+	}
 	if (vbus_on_irq) {
 		ret = request_irq(vbus_on_irq, pmic_vbus_on_irq,
 				IRQF_TRIGGER_RISING, "msm_otg_vbus_on", NULL);
@@ -736,6 +839,8 @@ static int __exit msm_otg_remove(struct platform_device *pdev)
 	if (dev->pmic_notif_supp)
 		dev->pmic_notif_deinit();
 
+	if (dev->otg_mode == OTG_SYSFS)
+		sysfs_remove_group(&pdev->dev.kobj, &msm_otg_attr_grp);
 	free_irq(dev->irq, pdev);
 	if (dev->vbus_on_irq)
 		free_irq(dev->irq, 0);
@@ -747,6 +852,8 @@ static int __exit msm_otg_remove(struct platform_device *pdev)
 		clk_put(dev->cclk);
 	clk_put(dev->pclk);
 	clk_put(dev->clk);
+	if (dev->otg_mode == OTG_SYSFS)
+		mutex_destroy(&dev->mutex);
 	wake_lock_destroy(&dev->wlock);
 	msm_otg_debugfs_cleanup();
 	kfree(dev);
