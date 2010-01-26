@@ -445,29 +445,35 @@ static struct msm_gpio hsusb_gpio_config_data[] = {
 	{ GPIO_CFG(108, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "hub_reset" },
 };
 
-static void msm_hsusb_setup_gpio(unsigned int enable)
+static int msm_otg_gpio_init(void)
 {
 	int rc;
 
-	if (enable) {
-		if (machine_is_qsd8x50_st1() || machine_is_qsd8x50a_st1_5()) {
-			rc = msm_gpios_request_enable(hsusb_gpio_config_data,
-				ARRAY_SIZE(hsusb_gpio_config_data));
+	if (machine_is_qsd8x50_st1() || machine_is_qsd8x50a_st1_5()) {
+		rc = msm_gpios_request_enable(hsusb_gpio_config_data,
+			ARRAY_SIZE(hsusb_gpio_config_data));
 
-			if (rc) {
-				printk(KERN_ERR "Error gpio req for hsusb\n");
-				return;
-			}
-
+		if (rc) {
+			printk(KERN_ERR "Error gpio req for hsusb\n");
+			return rc;
+		}
+	}
+	return 0;
+}
+static void msm_otg_setup_gpio(unsigned int enable)
+{
+	if (machine_is_qsd8x50_st1() || machine_is_qsd8x50a_st1_5()) {
+		if (enable) {
 			/* Config analog switch as USB host. */
 			gpio_set_value(98, 0); /* USB_FS_POWER_EN */
 			gpio_set_value(HUB_RESET_GPIO, 0); /* SWITCH_CONTROL */
 			gpio_set_value(108, 1); /* USB_HUB_RESET */
+		} else {
+			/* Config analog switch as USB peripheral. */
+			gpio_set_value(98, 0); /* USB_FS_POWER_EN */
+			gpio_set_value(HUB_RESET_GPIO, 1); /* SWITCH_CONTROL */
+			gpio_set_value(108, 0); /* USB_HUB_RESET */
 		}
-	} else {
-		if (machine_is_qsd8x50_st1() || machine_is_qsd8x50a_st1_5())
-			msm_gpios_disable_free(hsusb_gpio_config_data,
-				ARRAY_SIZE(hsusb_gpio_config_data));
 	}
 }
 
@@ -719,7 +725,6 @@ static void msm_hsusb_vbus_power(unsigned phy_info, int on)
 static struct msm_usb_host_platform_data msm_usb_host_pdata = {
 	.phy_info	= (USB_PHY_INTEGRATED | USB_PHY_MODEL_180NM),
 	.phy_reset = msm_hsusb_native_phy_reset,
-	.config_gpio = msm_hsusb_setup_gpio,
 	.vbus_power = msm_hsusb_vbus_power,
 };
 
@@ -2312,6 +2317,8 @@ static int hsusb_rpc_connect(int connect)
 static struct msm_otg_platform_data msm_otg_pdata = {
 	.rpc_connect	= hsusb_rpc_connect,
 	.phy_reset	= msm_hsusb_native_phy_reset,
+	.setup_gpio 	= msm_otg_setup_gpio,
+	.otg_mode	= OTG_SYSFS,
 };
 
 static struct msm_hsusb_gadget_platform_data msm_gadget_pdata;
@@ -2405,6 +2412,8 @@ static void __init qsd8x50_init_host(void)
 	}
 
 	platform_device_register(&msm_device_hsusb_otg);
+	if (msm_otg_gpio_init())
+		return;
 	msm_add_host(0, &msm_usb_host_pdata);
 #ifdef CONFIG_USB_FS_HOST
 	if (fsusb_gpio_init())

@@ -61,7 +61,10 @@ struct msm_otg {
 	void __iomem		*regs;
 	u8			in_lpm;
 	struct wake_lock	wlock;
+	struct mutex		mutex;
+	atomic_t		sysfs_mode;
 
+	u8			otg_mode;
 	unsigned int 		core_clk;
 	int 			(*rpc_connect)(int);
 	int 			(*phy_reset)(void __iomem *);
@@ -75,6 +78,7 @@ struct msm_otg {
 	int (*pmic_register_vbus_sn) (void (*callback)(int online));
 	void (*pmic_unregister_vbus_sn) (void (*callback)(int online));
 	int (*pmic_enable_ldo) (int);
+	void (*setup_gpio)(unsigned int config);
 };
 
 #endif
