@@ -3050,21 +3050,11 @@ static void __init qsd8x50_allocate_memory_regions(void)
 	}
 
 	size = MSM_FB_SIZE;
-	if (machine_is_qsd8x50a_st1_5()) {
-		/* Framebuffer from DDR memory */
-		addr = alloc_bootmem(size);
-		addr = (void *)__pa(addr);
-		msm_fb_resources[0].start = (unsigned long)addr;
-		msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
-		pr_info("using %lu bytes of DDR at %lx physical for fb\n",
-			size, (unsigned long)addr);
-	} else {
-		addr = (void *)MSM_FB_BASE;
-		msm_fb_resources[0].start = (unsigned long)addr;
-		msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
-		pr_info("using %lu bytes of SMI at %lx physical for fb\n",
-			size, (unsigned long)addr);
-	}
+	addr = (void *)MSM_FB_BASE;
+	msm_fb_resources[0].start = (unsigned long)addr;
+	msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
+	pr_info("using %lu bytes of SMI at %lx physical for fb\n",
+		size, (unsigned long)addr);
 
 	size = audio_size ? : MSM_AUDIO_SIZE;
 	addr = alloc_bootmem(size);
