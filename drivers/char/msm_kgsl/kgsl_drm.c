@@ -79,6 +79,26 @@
 
 #define DRM_KGSL_GEM_FLAG_MAPPED (1 << 0)
 
+/* Returns true if the memory type is in PMEM */
+
+#ifdef CONFIG_PMEM_SMI_REGION
+#define TYPE_IS_PMEM(_t) \
+  (((_t) == DRM_KGSL_GEM_TYPE_EBI) || \
+   ((_t) == DRM_KGSL_GEM_TYPE_SMI) || \
+   ((_t) & DRM_KGSL_GEM_TYPE_PMEM))
+#else
+#define TYPE_IS_PMEM(_t) \
+  (((_t) == DRM_KGSL_GEM_TYPE_EBI) || \
+   ((_t) & (DRM_KGSL_GEM_TYPE_PMEM & DRM_KGSL_GEM_PMEM_EBI)))
+#endif
+
+/* Returns true if the memory type is regular */
+
+#define TYPE_IS_MEM(_t) \
+  (((_t) == DRM_KGSL_GEM_TYPE_KMEM) || \
+   ((_t) == DRM_KGSL_GEM_TYPE_KMEM_NOCACHE) || \
+   ((_t) & DRM_KGSL_GEM_TYPE_MEM))
+
 struct drm_kgsl_gem_object {
 	struct drm_gem_object *obj;
 	uint32_t phys;
@@ -173,17 +193,14 @@ kgsl_gem_memory_allocated(struct drm_gem_object *obj)
 {
 	struct drm_kgsl_gem_object *priv = obj->driver_private;
 
-	switch (priv->type) {
-	case DRM_KGSL_GEM_TYPE_EBI:
-	case DRM_KGSL_GEM_TYPE_SMI:
+	if (TYPE_IS_PMEM(priv->type))
 		return priv->phys ? 1 : 0;
-	case DRM_KGSL_GEM_TYPE_KMEM:
-	case DRM_KGSL_GEM_TYPE_KMEM_NOCACHE:
+	else if (TYPE_IS_MEM(priv->type))
 		return priv->kmem ? 1 : 0;
-	}
 
 	return 0;
 }
+
 
 static int
 kgsl_gem_alloc_memory(struct drm_gem_object *obj)
@@ -195,12 +212,14 @@ kgsl_gem_alloc_memory(struct drm_gem_object *obj)
 	if (kgsl_gem_memory_allocated(obj))
 		return 0;
 
-	switch (priv->type) {
-	case DRM_KGSL_GEM_TYPE_EBI:
-	case DRM_KGSL_GEM_TYPE_SMI:
-	{
-		int type = priv->type == DRM_KGSL_GEM_TYPE_EBI ?
-			PMEM_MEMTYPE_EBI1 : PMEM_MEMTYPE_SMI;
+	if (TYPE_IS_PMEM(priv->type)) {
+		int type;
+
+		if (priv->type == DRM_KGSL_GEM_TYPE_EBI ||
+		    priv->type & DRM_KGSL_GEM_PMEM_EBI)
+			type = PMEM_MEMTYPE_EBI1;
+		else
+			type = PMEM_MEMTYPE_SMI;
 
 		priv->phys = pmem_kalloc(obj->size,
 					 type | PMEM_ALIGNMENT_4K);
@@ -210,18 +229,13 @@ kgsl_gem_alloc_memory(struct drm_gem_object *obj)
 			priv->phys = 0;
 			return -ENOMEM;
 		}
-	}
-	break;
-	case DRM_KGSL_GEM_TYPE_KMEM:
-	case DRM_KGSL_GEM_TYPE_KMEM_NOCACHE:
-	{
+	} else if (TYPE_IS_MEM(priv->type)) {
 		priv->kmem = (void *) vmalloc_user(obj->size);
 
 		if (priv->kmem == NULL)
 			return -ENOMEM;
-	}
-	break;
-	}
+	} else
+		return -EINVAL;
 
 	return 0;
 }
@@ -234,14 +248,9 @@ kgsl_gem_free_memory(struct drm_gem_object *obj)
 	if (!kgsl_gem_memory_allocated(obj))
 		return;
 
-	switch (priv->type) {
-	case DRM_KGSL_GEM_TYPE_EBI:
-	case DRM_KGSL_GEM_TYPE_SMI:
+	if (TYPE_IS_PMEM(priv->type))
 		pmem_kfree(priv->phys);
-		break;
-
-	case DRM_KGSL_GEM_TYPE_KMEM:
-	case DRM_KGSL_GEM_TYPE_KMEM_NOCACHE:
+	else if (TYPE_IS_MEM(priv->type)) {
 #ifdef CONFIG_MSM_KGSL_MMU
 		if (priv->flags & DRM_KGSL_GEM_FLAG_MAPPED) {
 			kgsl_mmu_unmap(priv->pagetable,
@@ -251,14 +260,14 @@ kgsl_gem_free_memory(struct drm_gem_object *obj)
 			kgsl_mmu_putpagetable(priv->pagetable);
 			priv->pagetable = NULL;
 			priv->gpuaddr = 0;
-			if (priv->type == DRM_KGSL_GEM_TYPE_KMEM)
+			if ((priv->type == DRM_KGSL_GEM_TYPE_KMEM) ||
+			    (priv->type & DRM_KGSL_GEM_CACHE_MASK))
 				list_del(&priv->list);
 			priv->flags &= ~DRM_KGSL_GEM_FLAG_MAPPED;
 		}
 #endif
 
 		vfree(priv->kmem);
-		break;
 	}
 
 	priv->phys = 0;
@@ -378,10 +387,7 @@ kgsl_gem_obj_addr(int drm_fd, int handle, unsigned long *start,
 
 	/* We can only use the MDP for PMEM regions */
 
-	if (priv->phys &&
-	    (priv->type == DRM_KGSL_GEM_TYPE_EBI ||
-	    priv->type == DRM_KGSL_GEM_TYPE_SMI)) {
-
+	if (priv->phys && TYPE_IS_PMEM(priv->type)) {
 		*start = priv->phys;
 		/* priv->mmap_offset is used for virt addr */
 		*len = obj->size;
@@ -422,7 +428,7 @@ kgsl_gem_create_ioctl(struct drm_device *dev, void *data,
 	/* To preserve backwards compatability, the default memory source
 	   is EBI */
 
-	priv->type = DRM_KGSL_GEM_TYPE_EBI;
+	priv->type = DRM_KGSL_GEM_TYPE_PMEM | DRM_KGSL_GEM_PMEM_EBI;
 
 	ret = drm_gem_handle_create(file_priv, obj, &handle);
 
@@ -453,19 +459,10 @@ kgsl_gem_setmemtype_ioctl(struct drm_device *dev, void *data,
 	mutex_lock(&dev->struct_mutex);
 	priv = obj->driver_private;
 
-	switch (args->type) {
-	case DRM_KGSL_GEM_TYPE_EBI:
-	case DRM_KGSL_GEM_TYPE_KMEM:
-	case DRM_KGSL_GEM_TYPE_KMEM_NOCACHE:
-#ifdef CONFIG_PMEM_SMI_REGION
-	case DRM_KGSL_GEM_TYPE_SMI:
-#endif
+	if (TYPE_IS_PMEM(args->type) || TYPE_IS_MEM(args->type))
 		priv->type = args->type;
-		break;
-
-	default:
+	else
 		ret = -EINVAL;
-	}
 
 	drm_gem_object_unreference(obj);
 	mutex_unlock(&dev->struct_mutex);
@@ -562,10 +559,7 @@ kgsl_gem_bind_gpu_ioctl(struct drm_device *dev, void *data,
 		goto out;
 	}
 
-	/* Only KMEM needs to be mapped in the MMU */
-
-	if (priv->type == DRM_KGSL_GEM_TYPE_KMEM ||
-	    priv->type == DRM_KGSL_GEM_TYPE_KMEM_NOCACHE) {
+	if (TYPE_IS_MEM(priv->type)) {
 #ifdef CONFIG_MSM_KGSL_MMU
 		/* Get the global page table */
 
@@ -596,7 +590,8 @@ kgsl_gem_bind_gpu_ioctl(struct drm_device *dev, void *data,
 
 			/* Add cached memory to the list to be cached */
 
-			if (priv->type == DRM_KGSL_GEM_TYPE_KMEM)
+			if (priv->type == DRM_KGSL_GEM_TYPE_KMEM ||
+			    priv->type & DRM_KGSL_GEM_CACHE_MASK)
 				list_add(&priv->list, &kgsl_mem_list);
 		}
 #endif
@@ -840,8 +835,7 @@ int msm_drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 	 * in other words, not "normal" memory.  If you try to use it
 	 * with "normal" memory then the mappings don't get flushed. */
 
-	if (gpriv->type == DRM_KGSL_GEM_TYPE_KMEM ||
-		gpriv->type == DRM_KGSL_GEM_TYPE_KMEM_NOCACHE) {
+	if (TYPE_IS_MEM(gpriv->type)) {
 		vma->vm_flags |= VM_RESERVED | VM_DONTEXPAND;
 		vma->vm_ops = &kgsl_gem_kmem_vm_ops;
 	} else {
@@ -852,15 +846,14 @@ int msm_drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 
 	vma->vm_private_data = map->handle;
 
-	switch (gpriv->type) {
-	case DRM_KGSL_GEM_TYPE_KMEM_NOCACHE:
-	case DRM_KGSL_GEM_TYPE_EBI:
-	case DRM_KGSL_GEM_TYPE_SMI:
-		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-		break;
-	case DRM_KGSL_GEM_TYPE_KMEM:
+
+	if (gpriv->type == DRM_KGSL_GEM_TYPE_KMEM ||
+	    gpriv->type & DRM_KGSL_GEM_CACHE_WCOMBINE)
 		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
-	}
+	else
+		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+
+	/* Add the other memory types here */
 
 	/* Take a ref for this mapping of the object, so that the fault
 	 * handler can dereference the mmap offset's pointer to the object.
