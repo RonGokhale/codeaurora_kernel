@@ -2117,7 +2117,8 @@ static int __devinit smsc911x_drv_probe(struct platform_device *pdev)
 			/* eeprom values are valid  so use them */
 			SMSC_TRACE(PROBE,
 				"Mac Address is read from LAN911x EEPROM");
-		} else {
+		} else if (!(pdata->config.flags &
+			     SMSC911X_NO_RANDOM_MAC_ADDRESS)) {
 			/* eeprom values are invalid, generate random MAC */
 			random_ether_addr(dev->dev_addr);
 			smsc911x_set_hw_mac_address(pdata, dev->dev_addr);

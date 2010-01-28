@@ -56,5 +56,6 @@ struct smsc911x_platform_config {
  * this swapping but the driver doesn't currently use them.
  */
 #define SMSC911X_SWAP_FIFO			(BIT(5))
+#define SMSC911X_NO_RANDOM_MAC_ADDRESS		(BIT(6))
 
 #endif /* __LINUX_SMSC911X_H__ */
