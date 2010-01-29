@@ -68,10 +68,33 @@ DRM_IOWR(DRM_COMMAND_BASE + DRM_KGSL_GEM_BIND_GPU, struct drm_kgsl_gem_bind_gpu)
 DRM_IOWR(DRM_COMMAND_BASE + DRM_KGSL_GEM_UNBIND_GPU, \
 struct drm_kgsl_gem_bind_gpu)
 
+/* Memory types - these define the source and caching policies
+   of the GEM memory chunk */
+
+/* Legacy definitions left for compatability */
+
 #define DRM_KGSL_GEM_TYPE_EBI          0
 #define DRM_KGSL_GEM_TYPE_SMI          1
 #define DRM_KGSL_GEM_TYPE_KMEM         2
 #define DRM_KGSL_GEM_TYPE_KMEM_NOCACHE 3
+
+/* Contiguous memory (PMEM) */
+#define DRM_KGSL_GEM_TYPE_PMEM       0x000100
+
+/* PMEM memory types */
+#define DRM_KGSL_GEM_PMEM_EBI        0x001000
+#define DRM_KGSL_GEM_PMEM_SMI        0x002000
+
+/* Standard paged memory */
+#define DRM_KGSL_GEM_TYPE_MEM        0x010000
+
+/* Caching controls */
+#define DRM_KGSL_GEM_CACHE_NONE      0x000000
+#define DRM_KGSL_GEM_CACHE_WCOMBINE  0x100000
+#define DRM_KGSL_GEM_CACHE_WTHROUGH  0x200000
+#define DRM_KGSL_GEM_CACHE_WBACK     0x400000
+#define DRM_KGSL_GEM_CACHE_WBACKWA   0x800000
+#define DRM_KGSL_GEM_CACHE_MASK      0xF00000
 
 struct drm_kgsl_gem_create {
 	uint32_t size;
