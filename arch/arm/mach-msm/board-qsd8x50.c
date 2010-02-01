@@ -2710,6 +2710,7 @@ static int __init qsd8x50_cfg_smsc911x(void)
 		smsc911x_resources[0].end = 0x700002ff;
 	} else {
 		irq_gpio = 105;
+		smsc911x_config.flags |= SMSC911X_NO_RANDOM_MAC_ADDRESS;
 		smsc911x_resources[0].start = 0x9C000000;
 		smsc911x_resources[0].end = 0x9C0002ff;
 	}
