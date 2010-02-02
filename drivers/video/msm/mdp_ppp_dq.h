@@ -33,8 +33,10 @@
 
 #define MDP_PPP_DEBUG_MSG MSM_FB_DEBUG
 
-/* Max number of <Reg,Val> pairs in a ROI */
-#define MDP_PPP_ROI_MAX_SIZE 256
+/* The maximum number of <Reg,Val> pairs in an mdp_ppp_roi_cmd_set structure (a
+ * node)
+ */
+#define MDP_PPP_ROI_NODE_SIZE 32
 
 /* ROI config command (<Reg,Val> pair) for MDP PPP block */
 struct mdp_ppp_roi_cmd {
@@ -42,17 +44,20 @@ struct mdp_ppp_roi_cmd {
 	uint32_t val;
 };
 
-/* This defines a ROI for MDP PPP block */
-struct mdp_ppp_roi {
-	uint32_t ncmds;
-	struct mdp_ppp_roi_cmd cmd[MDP_PPP_ROI_MAX_SIZE];
+/* ROI config commands for MDP PPP block are stored in a list of
+ * mdp_ppp_roi_cmd_set structures (nodes).
+ */
+struct mdp_ppp_roi_cmd_set {
+	struct list_head node;
+	uint32_t ncmds; /* number of commands in this set (node). */
+	struct mdp_ppp_roi_cmd cmd[MDP_PPP_ROI_NODE_SIZE];
 };
 
 /* MDP PPP Display Job (DJob) */
 struct mdp_ppp_djob {
 	struct list_head entry;
 	/* One ROI per MDP PPP DJob */
-	struct mdp_ppp_roi roi;
+	struct list_head roi_cmd_list;
 	struct mdp_blit_req req;
 	struct fb_info *info;
 	struct delayed_work cleaner;
