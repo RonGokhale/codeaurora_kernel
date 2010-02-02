@@ -140,7 +140,11 @@
 #define PMEM_KERNEL_EBI1_SIZE	(CONFIG_PMEM_KERNEL_SIZE * 1024 * 1024)
 
 #define PMIC_VREG_WLAN_LEVEL	2600
+#define PMIC_VREG_GP5_LEVEL	2900
 #define PMIC_VREG_GP6_LEVEL	2900
+#define PMIC_VREG_MMC_LEVEL	2850
+#define PMIC_VREG_MOVI_LEVEL	2850
+#define PMIC_VREG_BT_LEVEL	2900
 
 #define FPGA_SDCC_STATUS	0x70000280
 
@@ -1692,7 +1696,7 @@ static void __attribute__((unused)) __init bt_power_init(void)
 	}
 
 	/* units of mV, steps of 50 mV */
-	rc = vreg_set_level(vreg_bt, PMIC_VREG_GP6_LEVEL);
+	rc = vreg_set_level(vreg_bt, PMIC_VREG_BT_LEVEL);
 	if (rc) {
 		printk(KERN_ERR "%s: vreg bt set level failed (%d)\n",
 		       __func__, rc);
@@ -2496,6 +2500,7 @@ static struct sdcc_gpio sdcc_cfg_data[] = {
 
 static unsigned long vreg_sts, gpio_sts;
 static struct vreg *vreg_mmc;
+static unsigned long vlevel_mmc;
 static struct vreg *vreg_movi;
 
 static void msm_sdcc_setup_gpio(int dev_id, unsigned int enable)
@@ -2551,7 +2556,7 @@ static uint32_t msm_sdcc_setup_power(struct device *dv, unsigned int vdd)
 	}
 
 	if (!vreg_sts) {
-		rc = vreg_set_level(vreg_mmc, PMIC_VREG_GP6_LEVEL);
+		rc = vreg_set_level(vreg_mmc, vlevel_mmc);
 		if (!rc)
 			rc = vreg_enable(vreg_mmc);
 		if (rc)
@@ -2559,7 +2564,7 @@ static uint32_t msm_sdcc_setup_power(struct device *dv, unsigned int vdd)
 					__func__, rc);
 		if (machine_is_qsd8x50_grapefruit() ||
 				machine_is_qsd8x50_st1()) {
-			rc = vreg_set_level(vreg_movi, 2850);
+			rc = vreg_set_level(vreg_movi, PMIC_VREG_MOVI_LEVEL);
 			if (!rc)
 				rc = vreg_enable(vreg_movi);
 			if (rc)
@@ -2640,12 +2645,16 @@ static struct mmc_platform_data qsd8x50_sdc4_data = {
 static void __init qsd8x50_init_mmc(void)
 {
 	if (machine_is_qsd8x50_ffa() || machine_is_qsd8x50a_ffa() ||
-	    machine_is_qsd8x50_grapefruit() || machine_is_qsd8x50_st1())
+	    machine_is_qsd8x50_grapefruit() || machine_is_qsd8x50_st1()) {
 		vreg_mmc = vreg_get(NULL, "gp6");
-	else if (machine_is_qsd8x50a_st1_5())
+		vlevel_mmc = PMIC_VREG_GP6_LEVEL;
+	} else if (machine_is_qsd8x50a_st1_5()) {
 		vreg_mmc = vreg_get(NULL, "wlan");
-	else
+		vlevel_mmc = PMIC_VREG_MMC_LEVEL;
+	} else {
 		vreg_mmc = vreg_get(NULL, "gp5");
+		vlevel_mmc = PMIC_VREG_GP5_LEVEL;
+	}
 
 	if (IS_ERR(vreg_mmc)) {
 		printk(KERN_ERR "%s: vreg get failed (%ld)\n",
