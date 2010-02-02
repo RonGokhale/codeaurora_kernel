@@ -60,6 +60,10 @@
 static boolean mdp_ppp_intr_flag = FALSE;
 static boolean mdp_ppp_busy_flag = FALSE;
 
+/* Queue to keep track of the completed jobs for cleaning */
+static LIST_HEAD(mdp_ppp_djob_clnrq);
+static DEFINE_SPINLOCK(mdp_ppp_djob_clnrq_lock);
+
 /* Worker to cleanup Display Jobs */
 static struct workqueue_struct *mdp_ppp_djob_clnr;
 
@@ -143,24 +147,13 @@ inline void mdp_ppp_dq_init(void)
 static void mdp_ppp_djob_cleaner(struct work_struct *work)
 {
 	struct mdp_ppp_djob *job;
-	unsigned long flags;
 
 	MDP_PPP_DEBUG_MSG("mdp ppp display job cleaner started \n");
-
-	/* if MDP PPP engine is free, disable INT_MDP if enabled */
-	spin_lock_irqsave(&mdp_ppp_dq_lock, flags);
-	if (!test_bit(0, (unsigned long *)&mdp_ppp_busy_flag) &&
-		test_and_clear_bit(0, (unsigned long *)&mdp_ppp_intr_flag))
-			mdp_disable_irq(MDP_PPP_TERM);
-	spin_unlock_irqrestore(&mdp_ppp_dq_lock, flags);
 
 	/* cleanup display job */
 	job = container_of(work, struct mdp_ppp_djob, cleaner.work);
 	if (likely(work && job)) {
 		struct mdp_ppp_roi_cmd_set *node, *tmp;
-
-		/* keep mem state coherent */
-		msm_fb_ensure_mem_coherency_after_dma(job->info, &job->req, 1);
 
 		/* release mem */
 		mdp_ppp_put_img(job->p_src_file, job->p_dst_file);
@@ -195,7 +188,12 @@ inline struct mdp_ppp_djob *mdp_ppp_new_djob(void)
 		return NULL;
 	}
 
-	/* make this current djob */
+	/* make this current djob container to keep track of the curr djob not
+	 * used in the async path i.e. no sync needed
+	 *
+	 * Should not contain any references from the past djob
+	 */
+	BUG_ON(curr_djob);
 	curr_djob = job;
 	INIT_LIST_HEAD(&curr_djob->roi_cmd_list);
 
@@ -204,21 +202,62 @@ inline struct mdp_ppp_djob *mdp_ppp_new_djob(void)
 	INIT_LIST_HEAD(&node->node);
 	list_add_tail(&node->node, &curr_djob->roi_cmd_list);
 
-	/* register this djob with the djob cleaner */
+	/* register this djob with the djob cleaner
+	 * initializes 'work' data struct
+	 */
 	INIT_DELAYED_WORK(&curr_djob->cleaner, mdp_ppp_djob_cleaner);
 	INIT_LIST_HEAD(&curr_djob->entry);
 	return job;
+}
+
+/* Cleanup dirty djobs */
+static void mdp_ppp_flush_dirty_djobs(void *cond)
+{
+	unsigned long flags;
+	struct mdp_ppp_djob *job;
+
+	/* Flush the jobs from the djob clnr queue */
+	while (cond && test_bit(0, (unsigned long *)cond)) {
+
+		/* Until we are done with the cleanup queue */
+		spin_lock_irqsave(&mdp_ppp_djob_clnrq_lock, flags);
+		if (list_empty(&mdp_ppp_djob_clnrq)) {
+			spin_unlock_irqrestore(&mdp_ppp_djob_clnrq_lock, flags);
+			break;
+		}
+
+		MDP_PPP_DEBUG_MSG("flushing djobs ... loop \n");
+
+		/* Retrieve the job that needs to be cleaned */
+		job = list_entry(mdp_ppp_djob_clnrq.next,
+				struct mdp_ppp_djob, entry);
+		list_del_init(&job->entry);
+		spin_unlock_irqrestore(&mdp_ppp_djob_clnrq_lock, flags);
+
+		/* Keep mem state coherent */
+		msm_fb_ensure_mem_coherency_after_dma(job->info, &job->req, 1);
+
+		/* Schedule jobs for cleanup
+		 * A seperate worker thread does this */
+		queue_delayed_work(mdp_ppp_djob_clnr, &job->cleaner,
+			mdp_timer_duration);
+	}
 }
 
 /* If MDP PPP engine is busy, wait until it is available again */
 void mdp_ppp_wait(void)
 {
 	unsigned long flags;
+	int cond = 1;
 
 	/* if MDP PPP Async Ops not enabled, return immediately */
 	if (!mdp_ppp_async_op)
 		return;
 
+	/* keep flushing dirty djobs as long as MDP PPP engine is busy */
+	mdp_ppp_flush_dirty_djobs(&mdp_ppp_busy_flag);
+
+	/* block if MDP PPP engine is still busy */
 	spin_lock_irqsave(&mdp_ppp_dq_lock, flags);
 	if (test_bit(0, (unsigned long *)&mdp_ppp_busy_flag)) {
 
@@ -230,11 +269,19 @@ void mdp_ppp_wait(void)
 		/* block uninterruptibly until available */
 		MDP_PPP_DEBUG_MSG("waiting for mdp... \n");
 		wait_for_completion_killable(&mdp_ppp_comp);
-	} else
-		spin_unlock_irqrestore(&mdp_ppp_dq_lock, flags);
 
-	/* force cleanup for mem coherency */
-	flush_workqueue(mdp_ppp_djob_clnr);
+		/* if MDP PPP engine is still free,
+		 * disable INT_MDP if enabled
+		 */
+		spin_lock_irqsave(&mdp_ppp_dq_lock, flags);
+		if (!test_bit(0, (unsigned long *)&mdp_ppp_busy_flag) &&
+		test_and_clear_bit(0, (unsigned long *)&mdp_ppp_intr_flag))
+			mdp_disable_irq(MDP_PPP_TERM);
+	}
+	spin_unlock_irqrestore(&mdp_ppp_dq_lock, flags);
+
+	/* flush remaining dirty djobs, if any */
+	mdp_ppp_flush_dirty_djobs(&cond);
 }
 
 /* Program MDP PPP block to process this ROI */
@@ -310,11 +357,12 @@ void mdp_ppp_djob_done(void)
 	list_del_init(&curr->entry);
 	spin_unlock_irqrestore(&mdp_ppp_dq_lock, flags);
 
-	/* cleanup current */
-	queue_delayed_work(mdp_ppp_djob_clnr, &curr->cleaner,
-		mdp_timer_duration);
+	/* cleanup current - enqueue in the djob clnr queue */
+	spin_lock_irqsave(&mdp_ppp_djob_clnrq_lock, flags);
+	list_add_tail(&curr->entry, &mdp_ppp_djob_clnrq);
+	spin_unlock_irqrestore(&mdp_ppp_djob_clnrq_lock, flags);
 
-	/* grab pending */
+	/* grab next pending */
 	spin_lock_irqsave(&mdp_ppp_dq_lock, flags);
 	if (!list_empty(&mdp_ppp_dq)) {
 		next = list_entry(mdp_ppp_dq.next, struct mdp_ppp_djob,
