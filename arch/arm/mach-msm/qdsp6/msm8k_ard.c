@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -59,6 +59,7 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/dma-mapping.h>
+#include <linux/wakelock.h>
 
 #include <mach/qdsp6/msm8k_cad.h>
 #include <mach/qdsp6/msm8k_ard_clk.h>
@@ -74,12 +75,14 @@
 #include <mach/qdsp6/msm8k_cad_write_aac_format.h>
 #include <mach/qdsp6/msm8k_adsp_audio_types.h>
 
+
 static struct ard_session_info_struct_type	ard_session
 							[ARD_AUDIO_MAX_CLIENT];
 struct ard_session_info_struct_type		*ardsession[CAD_MAX_SESSION];
 struct ard_state_struct_type			ard_state;
 struct clk_info 				g_clk_info = {8000, 0};
 u32						device_control_session;
+static struct wake_lock				idlelock;
 
 
 #if 0
@@ -144,6 +147,9 @@ s32 cad_ard_init(struct cad_func_tbl_type **func_ptr_tbl)
 
 	/* Create a mutex for the state machine */
 	mutex_init(&local_ard_state->ard_state_machine_mutex);
+
+	/* Initialize wake lock to avoid power collapse during use */
+	wake_lock_init(&idlelock, WAKE_LOCK_IDLE, "audio_idle");
 
 	/* Initialize the ADIE */
 	dal_rc = adie_init();
@@ -319,6 +325,8 @@ s32 ard_open(s32 session_id, struct cad_open_struct_type *open_param)
 
 	mutex_unlock(&ardsession[session_id]->session_mutex);
 
+	audio_prevent_sleep(session_id);
+
 	D("ARD Opened session_id %d, sess_opn_info(cadr) = %p\n",
 		session_id, op);
 
@@ -344,6 +352,8 @@ s32 ard_close(s32 session_id)
 	rc = dal_rc = CAD_RES_SUCCESS;
 	if (ardsession[session_id]->enabled == ARD_FALSE)
 		return rc;
+
+	audio_allow_sleep(session_id);
 
 	/*PCM recording specific change*/
 	if (ardsession[session_id]->sess_open_info->cad_open.op_code ==
@@ -1448,6 +1458,28 @@ enum ard_ret_enum_type device_needs_setup(u32 cad_device)
 	}
 
 	return rc;
+}
+
+void audio_prevent_sleep(s32 session_id)
+{
+	if (ardsession[session_id]->session_type == CAD_OPEN_OP_DEVICE_CTRL)
+		return;
+
+	mutex_lock(&ard_state.ard_state_machine_mutex);
+	if (ard_state.num_active_stream_sessions++ == 0)
+		wake_lock(&idlelock);
+	mutex_unlock(&ard_state.ard_state_machine_mutex);
+}
+
+void audio_allow_sleep(s32 session_id)
+{
+	if (ardsession[session_id]->session_type == CAD_OPEN_OP_DEVICE_CTRL)
+		return;
+
+	mutex_lock(&ard_state.ard_state_machine_mutex);
+	if (ard_state.num_active_stream_sessions-- == 1)
+		wake_unlock(&idlelock);
+	mutex_unlock(&ard_state.ard_state_machine_mutex);
 }
 
 

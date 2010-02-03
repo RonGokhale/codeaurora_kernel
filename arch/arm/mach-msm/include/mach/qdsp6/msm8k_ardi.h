@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -109,6 +109,7 @@ struct ard_device_struct_type {
 struct ard_state_struct_type {
 	struct ard_device_struct_type	ard_device[MAX_NUM_DEVICES];
 	struct mutex			ard_state_machine_mutex;
+	s32				num_active_stream_sessions;
 	u32				def_tx_device;
 	u32				def_rx_device;
 	u32				new_tx_device;
