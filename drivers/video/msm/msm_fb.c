@@ -43,6 +43,9 @@
 #include <mach/dma_cache_ops.h>
 #endif
 
+#include <linux/file.h>
+#include <linux/major.h>
+
 #define MSM_FB_C
 #include "msm_fb.h"
 #include "mddihosti.h"
@@ -1394,15 +1397,24 @@ static inline void msm_fb_dma_barrier_for_rect(struct fb_info *info,
 	 *       included in the address range rather than
 	 *       doing multiple calls for each row.
 	 */
-	char * const pmem_start = info->screen_base;
-	int bytes_per_pixel = mdp_get_bytes_per_pixel(img->format);
-	char * const start = pmem_start + img->offset +
+
+	struct msm_fb_data_type *mfd =
+		(struct msm_fb_data_type *)info->par;
+
+	int format = (img->format == MDP_FB_FORMAT) ?
+			mfd->fb_imgType : img->format;
+
+	int bytes_per_pixel = mdp_get_bytes_per_pixel(format);
+
+	unsigned long start =
+		(unsigned long)info->screen_base + img->offset +
 		(img->width * rect->y + rect->x) * bytes_per_pixel;
-	char * const end   = start +
+
+	unsigned long end = start +
 		(rect->h * img->width + rect->w) * bytes_per_pixel;
 
 	/* Call the appropriate barrier functions. */
-	(*dma_barrier_fp) ((unsigned long) start, (unsigned long) end);
+	(*dma_barrier_fp) (start, end);
 }
 
 
@@ -1485,10 +1497,22 @@ static void msm_fb_ensure_memory_coherency_before_dma(struct fb_info *info,
 						&(req_list[i].src),
 						&(req_list[i].src_rect),
 						msm_dma_cb_todevice_wb_pre);
-				msm_fb_dma_barrier_for_rect(info,
+				/*
+				 * The destination area only needs DMA cache
+				 * operations with alpha blending, but not with
+				 * normal copies.
+				 *
+				 * However, this may be moot because alpha
+				 * blending only works correctly when source
+				 * and destination memory are on different
+				 * buses.
+				 */
+				if (req_list[i].alpha != MDP_ALPHA_NOP) {
+					msm_fb_dma_barrier_for_rect(info,
 						&(req_list[i].dst),
 						&(req_list[i].dst_rect),
 						msm_dma_cb_todevice_wb_pre);
+				}
 			}
 			if (!(req_list[i].flags &
 					MDP_NO_DMA_BARRIER_FROMDEVICE)) {
@@ -1507,10 +1531,22 @@ static void msm_fb_ensure_memory_coherency_before_dma(struct fb_info *info,
 						&(req_list[i].src),
 						&(req_list[i].src_rect),
 						msm_dma_cb_todevice_wbwa_pre);
-				msm_fb_dma_barrier_for_rect(info,
+				/*
+				 * The destination area only needs DMA cache
+				 * operations with alpha blending, but not with
+				 * normal copies.
+				 *
+				 * However, this may be moot because alpha
+				 * blending only works correctly when source
+				 * and destination memory are on different
+				 * buses.
+				 */
+				if (req_list[i].alpha != MDP_ALPHA_NOP) {
+					msm_fb_dma_barrier_for_rect(info,
 						&(req_list[i].dst),
 						&(req_list[i].dst_rect),
 						msm_dma_cb_todevice_wbwa_pre);
+				}
 			}
 			if (!(req_list[i].flags &
 					MDP_NO_DMA_BARRIER_FROMDEVICE)) {
@@ -1635,6 +1671,75 @@ static void msm_fb_ensure_memory_coherency_after_dma(struct fb_info *info,
 #endif
 }
 
+/* Returns true if fd is for the framebuffer */
+static inline bool msm_fb_is_in_framebuffer(int fd)
+{
+	int put_needed = 0;
+	bool ret = false;
+	struct file *fp = fget_light(fd, &put_needed);
+
+	if (fp) {
+		if (MAJOR(fp->f_dentry->d_inode->i_rdev) == FB_MAJOR)
+			ret = true;
+		fput_light(fp, put_needed);
+	}
+
+	return ret;
+}
+
+/* Set flags accordingly depending on whether the src and dst are in the
+ * framebuffer. Returns error if src or dst has invalid format.
+ */
+static inline int msm_fb_filter_non_framebuffer_barriers(
+		struct mdp_blit_req *req_list, int count)
+{
+	int i;
+	bool last_src_in_fb = false, last_dst_in_fb = false;
+
+	for (i = 0; i < count; i++) {
+
+		/* Make sure the format is correct. */
+		if (req_list[i].src.format >= MDP_IMGTYPE_LIMIT2) {
+			printk(KERN_ERR "Invalid image format %d \n",
+					req_list[i].src.format);
+			return -EINVAL;
+		}
+
+		if (req_list[i].dst.format >= MDP_IMGTYPE_LIMIT2) {
+			printk(KERN_ERR "Invalid image format %d \n",
+					req_list[i].dst.format);
+			return -EINVAL;
+		}
+
+		/* Only need to update last_src_in_fb if memory_id is
+		 * different, otherwise whether it is in framebuffer will be
+		 * the same as last time. Same for last_dst_in_fb.
+		 */
+		if (i == 0 || req_list[i].src.memory_id !=
+				req_list[i - 1].src.memory_id)
+			last_src_in_fb = msm_fb_is_in_framebuffer(
+					req_list[i].src.memory_id);
+
+		if (i == 0 || req_list[i].dst.memory_id !=
+				req_list[i - 1].dst.memory_id)
+			last_dst_in_fb = msm_fb_is_in_framebuffer(
+					req_list[i].dst.memory_id);
+
+		/*
+		 * The following two if statements disable barriers for memory
+		 * regions that are not in the framebuffer.
+		 */
+		if (!last_src_in_fb)
+			req_list[i].flags |= MDP_NO_DMA_BARRIER_TODEVICE;
+
+		if (!last_dst_in_fb)
+			req_list[i].flags |= MDP_NO_DMA_BARRIER_FROMDEVICE;
+
+	}
+
+	return 0;
+}
+
 #ifdef CONFIG_MDP_PPP_ASYNC_OP
 void msm_fb_ensure_mem_coherency_after_dma(struct fb_info *info,
 	struct mdp_blit_req *req_list, int req_list_count)
@@ -1661,8 +1766,8 @@ static int msmfb_async_blit(struct fb_info *info, void __user *p)
 	const int MAX_LIST_WINDOW = 16;
 	struct mdp_blit_req req_list[MAX_LIST_WINDOW];
 	struct mdp_blit_req_list req_list_header;
-
 	int count, i, req_list_count;
+	int ret = 0;
 
 	/* Get the count size for the total BLIT request. */
 	if (copy_from_user(&req_list_header, p, sizeof(req_list_header)))
@@ -1684,6 +1789,15 @@ static int msmfb_async_blit(struct fb_info *info, void __user *p)
 		if (copy_from_user(&req_list, p,
 				sizeof(struct mdp_blit_req)*req_list_count))
 			return -EFAULT;
+
+		/*
+		 * Make sure dma barrier operations are not performed outside
+		 * of framebuffer.
+		 */
+		ret = msm_fb_filter_non_framebuffer_barriers(req_list,
+			req_list_count);
+		if (ret)
+			return ret;
 
 		/*
 		 * Ensure that any data CPU may have previously written to
@@ -1758,8 +1872,8 @@ static int msmfb_blit(struct fb_info *info, void __user *p)
 	const int MAX_LIST_WINDOW = 16;
 	struct mdp_blit_req req_list[MAX_LIST_WINDOW];
 	struct mdp_blit_req_list req_list_header;
-
 	int count, i, req_list_count;
+	int ret = 0;
 
 	/* Get the count size for the total BLIT request. */
 	if (copy_from_user(&req_list_header, p, sizeof(req_list_header)))
@@ -1781,6 +1895,15 @@ static int msmfb_blit(struct fb_info *info, void __user *p)
 		if (copy_from_user(&req_list, p,
 				sizeof(struct mdp_blit_req)*req_list_count))
 			return -EFAULT;
+
+		/*
+		 * Make sure dma barrier operations are not performed outside
+		 * of framebuffer.
+		 */
+		ret = msm_fb_filter_non_framebuffer_barriers(req_list,
+			req_list_count);
+		if (ret)
+			return ret;
 
 		/*
 		 * Ensure that any data CPU may have previously written to
