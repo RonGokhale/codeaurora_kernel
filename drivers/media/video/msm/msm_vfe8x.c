@@ -23,6 +23,7 @@
 
 #define ON  1
 #define OFF 0
+#define MSM_AXI_QOS_PREVIEW	128000
 
 struct mutex vfe_lock;
 static void     *vfe_syncdata;
