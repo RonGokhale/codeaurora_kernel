@@ -891,6 +891,21 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	}
 }
 
+static int msmsdcc_get_ro(struct mmc_host *mmc)
+{
+	int wpswitch_status = -ENOSYS;
+	struct msmsdcc_host *host = mmc_priv(mmc);
+
+	if (host->plat->wpswitch) {
+		wpswitch_status = host->plat->wpswitch(mmc_dev(mmc));
+		if (wpswitch_status < 0)
+			wpswitch_status = -ENOSYS;
+	}
+	pr_debug("%s: Card read-only status %d\n", __func__, wpswitch_status);
+	return wpswitch_status;
+}
+
+#ifdef CONFIG_MMC_MSM_SDIO_SUPPORT
 static void msmsdcc_enable_sdio_irq(struct mmc_host *mmc, int enable)
 {
 	struct msmsdcc_host *host = mmc_priv(mmc);
@@ -910,11 +925,15 @@ static void msmsdcc_enable_sdio_irq(struct mmc_host *mmc, int enable)
 	}
 	spin_unlock_irqrestore(&host->lock, flags);
 }
+#endif /* CONFIG_MMC_MSM_SDIO_SUPPORT */
 
 static const struct mmc_host_ops msmsdcc_ops = {
 	.request	= msmsdcc_request,
 	.set_ios	= msmsdcc_set_ios,
+	.get_ro		= msmsdcc_get_ro,
+#ifdef CONFIG_MMC_MSM_SDIO_SUPPORT
 	.enable_sdio_irq = msmsdcc_enable_sdio_irq,
+#endif
 };
 
 static void
