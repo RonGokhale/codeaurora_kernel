@@ -969,6 +969,7 @@ static void usb_prepare(struct usb_info *ui)
 static void usb_reset(struct usb_info *ui)
 {
 	unsigned long flags;
+	unsigned cfg_val;
 	unsigned otgsc;
 
 	INFO("msm72k_udc: reset controller\n");
@@ -1003,7 +1004,10 @@ static void usb_reset(struct usb_info *ui)
 	 * were observed w/ integrated phy. To avoid failure
 	 * raise signal amplitude to 400mv
 	 */
-	ulpi_write(ui, ULPI_AMPLITUDE, ULPI_CONFIG_REG);
+
+	cfg_val = ulpi_read(ui, ULPI_CONFIG_REG);
+	cfg_val |= ULPI_AMPLITUDE_MAX;
+	ulpi_write(ui, cfg_val, ULPI_CONFIG_REG);
 
 	/* fix potential usb stability issues with "integrated phy"
 	 * by enabling unspecified length of INCR burst and using
