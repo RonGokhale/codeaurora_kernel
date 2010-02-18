@@ -717,33 +717,29 @@ wl_iw_get_rssi(
 )
 {
 	static int rssi = 0;
-	int error = 0;
+	int error, ret = 0;
 	wlc_ssid_t ssid;
 	char *p = extra;
 	static char ssidbuf[SSID_FMT_BUF_LEN];
-	scb_val_t scb_val;
-
-	scb_val.val = 0;
+	unsigned long val = 0;
 
 	bzero(&ssid, sizeof(ssid));
 	if (g_onoff == G_WLAN_SET_ON) {
-		error = dev_wlc_ioctl(dev, WLC_GET_RSSI, &scb_val, sizeof(scb_val_t));
-		rssi = dtoh32(scb_val.val);
+		ret = dev_wlc_ioctl(dev, WLC_GET_RSSI, &val, sizeof(val));
+		rssi = dtoh32(val);
 
 		error = dev_wlc_ioctl(dev, WLC_GET_SSID, &ssid, sizeof(ssid));
-
-		ssid.SSID_len = dtoh32(ssid.SSID_len);
+		if (!error) {
+			ssid.SSID_len = dtoh32(ssid.SSID_len);
+			wl_format_ssid(ssidbuf, ssid.SSID, dtoh32(ssid.SSID_len));
+		}
+		ret = (ret) ? ret : error;
 	}
 
-	if (!ssid.SSID_len) {
-		return 0;
-	}
-
-	wl_format_ssid(ssidbuf, ssid.SSID, dtoh32(ssid.SSID_len));
 	p += snprintf(p, MAX_WX_STRING, "%s rssi %d ", ssidbuf, rssi);
 	wrqu->data.length = p - extra + 1;
 
-	return error;
+	return ret;
 }
 
 static int
@@ -4500,21 +4496,21 @@ int wl_iw_get_wireless_stats(struct net_device *dev, struct iw_statistics *wstat
 	wl_cnt_t cnt;
 	int phy_noise;
 	int rssi;
-	scb_val_t scb_val;
+	unsigned long val;
 
 	phy_noise = 0;
 	if ((res = dev_wlc_ioctl(dev, WLC_GET_PHY_NOISE, &phy_noise, sizeof(phy_noise))))
 		goto done;
 
 	phy_noise = dtoh32(phy_noise);
-	WL_TRACE(("wl_iw_get_wireless_stats phy noise=%d\n *****", phy_noise));
+	WL_TRACE(("wl_iw_get_wireless_stats phy noise=%d\n", phy_noise));
 
-	scb_val.val = 0;
-	if ((res = dev_wlc_ioctl(dev, WLC_GET_RSSI, &scb_val, sizeof(scb_val_t))))
+	val = 0;
+	if ((res = dev_wlc_ioctl(dev, WLC_GET_RSSI, &val, sizeof(val))))
 		goto done;
 
-	rssi = dtoh32(scb_val.val);
-	WL_TRACE(("wl_iw_get_wireless_stats rssi=%d ****** \n", rssi));
+	rssi = dtoh32(val);
+	WL_TRACE(("wl_iw_get_wireless_stats rssi=%d\n", rssi));
 	if (rssi <= WL_IW_RSSI_NO_SIGNAL)
 		wstats->qual.qual = 0;
 	else if (rssi <= WL_IW_RSSI_VERY_LOW)
