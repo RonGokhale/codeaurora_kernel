@@ -1342,9 +1342,13 @@ static void __init msm7x27_init(void)
 		msm7x27_clock_data.max_axi_khz = 200000;
 
 	msm_acpu_clock_init(&msm7x27_clock_data);
-	kgsl_pdata.max_axi_freq = msm7x27_clock_data.max_axi_khz;
 
 	msm_hsusb_pdata.max_axi_khz = msm7x27_clock_data.max_axi_khz;
+	/* This value has been set to 160000 for power savings. */
+	/* OEMs may modify the value at their discretion for performance */
+	/* The appropriate maximum replacement for 160000 is: */
+	/* clk_get_max_axi_khz() */
+	kgsl_pdata.max_axi_freq = 160000;
 	msm_device_hsusb_peripheral.dev.platform_data = &msm_hsusb_pdata;
 	msm_device_hsusb_host.dev.platform_data = &msm_hsusb_pdata;
 	platform_add_devices(devices, ARRAY_SIZE(devices));
