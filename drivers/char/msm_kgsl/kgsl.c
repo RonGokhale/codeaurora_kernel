@@ -66,6 +66,7 @@
 #include <linux/io.h>
 #include <linux/mm.h>
 #include <linux/android_pmem.h>
+#include <linux/pm_qos_params.h>
 
 #include <linux/delay.h>
 #include <asm/atomic.h>
@@ -862,6 +863,7 @@ static int __devinit kgsl_platform_probe(struct platform_device *pdev)
 	int result = 0;
 	struct clk *clk;
 	struct resource *res = NULL;
+	struct kgsl_platform_data *pdata = NULL;
 
 	kgsl_debug_init();
 
@@ -956,6 +958,8 @@ static int kgsl_platform_remove(struct platform_device *pdev)
 static struct platform_driver kgsl_platform_driver = {
 	.probe = kgsl_platform_probe,
 	.remove = __devexit_p(kgsl_platform_remove),
+	.suspend = kgsl_suspend,
+	.resume = kgsl_resume,
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = DRIVER_NAME
