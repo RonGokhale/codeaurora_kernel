@@ -1,3 +1,5 @@
 menu "Chromeos Supplied Third-Party Device Drivers"
 
+source "chromeos/drivers/ath6kl/Kconfig"
+
 endmenu
