@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -80,6 +80,11 @@ s32 cad_filter_eq_send_stream_config(u32 sess_id)
 	static union adsp_audio_event	result;
 	s32				rc = CAD_RES_SUCCESS;
 
+	cad_filter_eq_data.eq_stream_data[sess_id].cmd.op_code =
+			ADSP_AUDIO_IOCTL_SET_SESSION_EQ_CONFIG;
+	cad_filter_eq_data.eq_stream_data[sess_id].cmd.response_type =
+			ADSP_AUDIO_RESPONSE_COMMAND;
+
 	if (ardsession[sess_id]->group_id == 0) {
 		pr_err("CAD::EQ=>Can not get group id");
 		return CAD_RES_FAILURE;
@@ -135,6 +140,7 @@ s32 cad_filter_eq_process_stream_config(s32 sess_id,
 
 	/* send it if stream is active */
 	rc = cad_filter_eq_send_stream_config(sess_id);
+
 	return CAD_RES_SUCCESS;
 }
 

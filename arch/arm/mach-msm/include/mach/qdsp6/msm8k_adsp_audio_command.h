@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -367,10 +367,14 @@ struct adsp_audio_set_dev_wnr_command {
 struct adsp_audio_set_dev_equalizer_command {
 	/* destination address, used in routing */
 	struct adsp_audio_address	dest;
+	/* source address, used in routing */
+	struct adsp_audio_address		source;
 	/* command data, used for processing */
 	struct adsp_audio_command_data	cmd;
 	/* read-only client data */
 	struct adsp_audio_client_data	client_data;
+	/* pad header to 64byte aligned/also match event status */
+	u32					padding;
 
 	/* payload */
 	/* ADSP Device ID */
@@ -529,10 +533,14 @@ struct adsp_audio_set_mute_command {
 struct adsp_audio_set_equalizer_command {
 	/* destination address, used in routing */
 	struct adsp_audio_address	dest;
+	/* source address, used in routing */
+	struct adsp_audio_address		source;
 	/* command data, used for processing */
 	struct adsp_audio_command_data	cmd;
 	/* read-only client data */
 	struct adsp_audio_client_data	client_data;
+	/* pad header to 64byte aligned/also match event status */
+	u32					padding;
 
 	/* payload */
 	/* 0 == Off, 1 == On */
