@@ -335,7 +335,7 @@ static int smd_debugfs_init(void)
 
 	dent = debugfs_create_dir("smd", 0);
 	if (IS_ERR(dent))
-		return -EIO;
+		return PTR_ERR(dent);
 
 	debug_create("ch", 0444, dent, debug_read_ch);
 	debug_create("stat", 0444, dent, debug_read_stat);
