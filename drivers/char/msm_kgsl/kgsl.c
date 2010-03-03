@@ -83,12 +83,17 @@
 #include "kgsl_log.h"
 #include "kgsl_drm.h"
 
+#define KGSL_MAX_PRESERVED_BUFFERS		10
+#define KGSL_MAX_SIZE_OF_PRESERVED_BUFFER	0x10000
+
 struct kgsl_file_private {
 	struct list_head list;
 	struct list_head mem_list;
 	uint32_t ctxt_id_mask;
 	struct kgsl_pagetable *pagetable;
 	unsigned long vmalloc_size;
+	struct list_head preserve_entry_list;
+	int preserve_list_size;
 };
 
 static void kgsl_put_phys_file(struct file *file);
@@ -351,7 +356,13 @@ static int kgsl_release(struct inode *inodep, struct file *filep)
 			kgsl_drawctxt_destroy(&kgsl_driver.yamato_device, i);
 
 	list_for_each_entry_safe(entry, entry_tmp, &private->mem_list, list)
-		kgsl_remove_mem_entry(entry);
+		kgsl_remove_mem_entry(entry, false);
+
+	entry = NULL;
+	entry_tmp = NULL;
+	list_for_each_entry_safe(entry, entry_tmp,
+			&private->preserve_entry_list, list)
+		kgsl_remove_mem_entry(entry, false);
 
 	if (private->pagetable != NULL) {
 #ifdef CONFIG_KGSL_PER_PROCESS_PAGE_TABLE
@@ -397,6 +408,8 @@ static int kgsl_open(struct inode *inodep, struct file *filep)
 
 	private->ctxt_id_mask = 0;
 	INIT_LIST_HEAD(&private->mem_list);
+	INIT_LIST_HEAD(&private->preserve_entry_list);
+	private->preserve_list_size = 0;
 
 	filep->private_data = private;
 
@@ -700,8 +713,27 @@ done:
 	return result;
 }
 
-void kgsl_remove_mem_entry(struct kgsl_mem_entry *entry)
+void kgsl_remove_mem_entry(struct kgsl_mem_entry *entry, bool preserve)
 {
+	/* If allocation is vmalloc and preserve is requested then save
+	* the allocation in a free list to be used later instead of
+	* freeing it here */
+	if (KGSL_MEMFLAGS_VMALLOC_MEM & entry->memdesc.priv &&
+		preserve &&
+		entry->priv->preserve_list_size < KGSL_MAX_PRESERVED_BUFFERS &&
+		entry->memdesc.size <= KGSL_MAX_SIZE_OF_PRESERVED_BUFFER) {
+		if (entry->free_list.prev) {
+			list_del(&entry->free_list);
+			entry->free_list.prev = NULL;
+		}
+		if (entry->list.prev) {
+			list_del(&entry->list);
+			entry->list.prev = NULL;
+		}
+		list_add(&entry->list, &entry->priv->preserve_entry_list);
+		entry->priv->preserve_list_size++;
+		return;
+	}
 	kgsl_mmu_unmap(entry->memdesc.pagetable,
 			entry->memdesc.gpuaddr & KGSL_PAGEMASK,
 			entry->memdesc.size);
@@ -740,7 +772,7 @@ static long kgsl_ioctl_sharedmem_free(struct kgsl_file_private *private,
 		goto done;
 	}
 
-	kgsl_remove_mem_entry(entry);
+	kgsl_remove_mem_entry(entry, false);
 done:
 	return result;
 }
@@ -749,9 +781,9 @@ done:
 static long kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_file_private *private,
 					      void __user *arg)
 {
-	int result = 0, len;
+	int result = 0, len, found = 0;
 	struct kgsl_sharedmem_from_vmalloc param;
-	struct kgsl_mem_entry *entry = NULL;
+	struct kgsl_mem_entry *entry = NULL, *entry_tmp = NULL;
 	void *vmalloc_area;
 	struct vm_area_struct *vma;
 
@@ -796,21 +828,54 @@ static long kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_file_private *private,
 		goto error;
 	}
 
-	entry = kzalloc(sizeof(struct kgsl_mem_entry), GFP_KERNEL);
-	if (entry == NULL) {
-		result = -ENOMEM;
-		goto error;
+	list_for_each_entry_safe(entry, entry_tmp,
+				&private->preserve_entry_list, list) {
+		if (entry->memdesc.size == len) {
+			list_del(&entry->list);
+			found = 1;
+			break;
+		}
 	}
 
-	/* allocate memory and map it to user space */
-	vmalloc_area = vmalloc_user(len);
-	if (!vmalloc_area) {
-		KGSL_MEM_ERR("vmalloc failed\n");
-		result = -ENOMEM;
-		goto error_free_entry;
+	if (!found) {
+		entry = kzalloc(sizeof(struct kgsl_mem_entry), GFP_KERNEL);
+		if (entry == NULL) {
+			result = -ENOMEM;
+			goto error;
+		}
+
+		/* allocate memory and map it to user space */
+		vmalloc_area = vmalloc_user(len);
+		if (!vmalloc_area) {
+			KGSL_MEM_ERR("vmalloc failed\n");
+			result = -ENOMEM;
+			goto error_free_entry;
+		}
+		kgsl_cache_range_op((unsigned int)vmalloc_area, len,
+				KGSL_CACHE_INV | KGSL_CACHE_VMALLOC_ADDR);
+
+		result =
+		    kgsl_mmu_map(private->pagetable,
+			(unsigned long)vmalloc_area, len,
+			GSL_PT_PAGE_RV | GSL_PT_PAGE_WV,
+			&entry->memdesc.gpuaddr, KGSL_MEMFLAGS_ALIGN4K);
+		if (result != 0)
+			goto error_free_vmalloc;
+
+		entry->memdesc.pagetable = private->pagetable;
+		entry->memdesc.size = len;
+		entry->memdesc.priv = KGSL_MEMFLAGS_VMALLOC_MEM |
+			    KGSL_MEMFLAGS_MEM_REQUIRES_FLUSH;
+		entry->memdesc.physaddr = (unsigned long)vmalloc_area;
+		entry->priv = private;
+		private->vmalloc_size += len;
+
+	} else {
+		KGSL_MEM_INFO("Reusing memory entry: %x, size: %x\n",
+				(unsigned int)entry, entry->memdesc.size);
+		entry->priv->preserve_list_size--;
+		vmalloc_area = (void *)entry->memdesc.physaddr;
 	}
-	kgsl_cache_range_op((unsigned int)vmalloc_area, len,
-			KGSL_CACHE_INV | KGSL_CACHE_VMALLOC_ADDR);
 
 	if (!kgsl_cache_enable)
 		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
@@ -818,24 +883,10 @@ static long kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_file_private *private,
 	result = remap_vmalloc_range(vma, vmalloc_area, 0);
 	if (result) {
 		KGSL_MEM_ERR("remap_vmalloc_range returned %d\n", result);
-		goto error_free_vmalloc;
+		goto error_unmap_entry;
 	}
 
-	result =
-	    kgsl_mmu_map(private->pagetable, (unsigned long)vmalloc_area, len,
-			 GSL_PT_PAGE_RV | GSL_PT_PAGE_WV,
-			 &entry->memdesc.gpuaddr, KGSL_MEMFLAGS_ALIGN4K);
-
-	if (result != 0)
-		goto error_free_vmalloc;
-
-	entry->memdesc.pagetable = private->pagetable;
-	entry->memdesc.size = len;
 	entry->memdesc.hostptr = (void *)param.hostptr;
-	entry->memdesc.priv = KGSL_MEMFLAGS_VMALLOC_MEM |
-	    KGSL_MEMFLAGS_MEM_REQUIRES_FLUSH;
-	entry->memdesc.physaddr = (unsigned long)vmalloc_area;
-	entry->priv = private;
 
 	param.gpuaddr = entry->memdesc.gpuaddr;
 
@@ -843,7 +894,6 @@ static long kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_file_private *private,
 		result = -EFAULT;
 		goto error_unmap_entry;
 	}
-	private->vmalloc_size += len;
 	list_add(&entry->list, &private->mem_list);
 
 	return 0;
