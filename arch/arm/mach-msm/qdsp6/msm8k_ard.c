@@ -82,7 +82,8 @@ struct ard_session_info_struct_type		*ardsession[CAD_MAX_SESSION];
 struct ard_state_struct_type			ard_state;
 struct clk_info 				g_clk_info = {8000, 0};
 u32						device_control_session;
-static struct wake_lock				idlelock;
+static struct wake_lock				idle_lock;
+static struct wake_lock				suspend_lock;
 
 
 #if 0
@@ -149,7 +150,8 @@ s32 cad_ard_init(struct cad_func_tbl_type **func_ptr_tbl)
 	mutex_init(&local_ard_state->ard_state_machine_mutex);
 
 	/* Initialize wake lock to avoid power collapse during use */
-	wake_lock_init(&idlelock, WAKE_LOCK_IDLE, "audio_idle");
+	wake_lock_init(&idle_lock, WAKE_LOCK_IDLE, "audio_idle");
+	wake_lock_init(&suspend_lock, WAKE_LOCK_SUSPEND, "audio_suspend");
 
 	/* Initialize the ADIE */
 	dal_rc = adie_init();
@@ -1466,8 +1468,10 @@ void audio_prevent_sleep(s32 session_id)
 		return;
 
 	mutex_lock(&ard_state.ard_state_machine_mutex);
-	if (ard_state.num_active_stream_sessions++ == 0)
-		wake_lock(&idlelock);
+	if (ard_state.num_active_stream_sessions++ == 0) {
+		wake_lock(&idle_lock);
+		wake_lock(&suspend_lock);
+	}
 	mutex_unlock(&ard_state.ard_state_machine_mutex);
 }
 
@@ -1477,8 +1481,10 @@ void audio_allow_sleep(s32 session_id)
 		return;
 
 	mutex_lock(&ard_state.ard_state_machine_mutex);
-	if (ard_state.num_active_stream_sessions-- == 1)
-		wake_unlock(&idlelock);
+	if (ard_state.num_active_stream_sessions-- == 1) {
+		wake_unlock(&idle_lock);
+		wake_unlock(&suspend_lock);
+	}
 	mutex_unlock(&ard_state.ard_state_machine_mutex);
 }
 
