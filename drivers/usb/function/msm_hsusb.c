@@ -3195,6 +3195,7 @@ msm_hsusb_func_attr(modem, 2);
 msm_hsusb_func_attr(nmea, 3);
 msm_hsusb_func_attr(mass_storage, 4);
 msm_hsusb_func_attr(ethernet, 5);
+msm_hsusb_func_attr(rmnet, 6);
 
 static struct attribute *msm_hsusb_func_attrs[] = {
 	&dev_attr_diag.attr,
@@ -3203,6 +3204,7 @@ static struct attribute *msm_hsusb_func_attrs[] = {
 	&dev_attr_nmea.attr,
 	&dev_attr_mass_storage.attr,
 	&dev_attr_ethernet.attr,
+	&dev_attr_rmnet.attr,
 	NULL,
 };
 
