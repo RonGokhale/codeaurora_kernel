@@ -577,6 +577,7 @@ again:
 
 			if (!ctxt->online) {
 //				printk("$$$ discard %d\n", r);
+				req_put(ctxt, &ctxt->tx_req_idle, req);
 				goto again;
 			}
 			req->complete = diag_in_complete;
@@ -590,6 +591,7 @@ again:
 				pr_err("%s: usb_ep_queue failed: %d\n",
 					__func__, r);
 				req_put(ctxt, &ctxt->tx_req_idle, req);
+				ctxt->in_busy = 0;
 			}
 		}
 	}
