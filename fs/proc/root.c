@@ -107,6 +107,7 @@ void __init proc_root_init(void)
 	init_pid_ns.proc_mnt = mnt;
 	proc_symlink("mounts", NULL, "self/mounts");
 
+	proc_breakme_init();
 	proc_net_init();
 
 #ifdef CONFIG_SYSVIPC
