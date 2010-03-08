@@ -72,7 +72,8 @@
 #include <mach/qdsp6/msm8k_cad_devices.h>
 #include <mach/qdsp6/msm8k_cad_volume.h>
 #include <mach/qdsp6/msm8k_cad_q6eq_drvi.h>
-
+#include <linux/wakelock.h>
+static struct wake_lock pcm_wake_lock;
 #if 0
 #define D(fmt, args...) printk(KERN_INFO "msm8k_pcm: " fmt, ##args)
 #else
@@ -128,6 +129,7 @@ static int msm8k_pcm_open(struct inode *inode, struct file *f)
 
 	if (pcm->cad_w_handle == 0)
 		return CAD_RES_FAILURE;
+       wake_lock(&pcm_wake_lock);
 
 	return CAD_RES_SUCCESS;
 }
@@ -159,6 +161,8 @@ static int msm8k_pcm_release(struct inode *inode, struct file *f)
 	D("%s\n", __func__);
 
 	cad_close(pcm->cad_w_handle);
+	wake_unlock(&pcm_wake_lock);
+
 	kfree(pcm);
 
 	return rc;
@@ -434,6 +438,7 @@ static int __init msm8k_pcm_init(void)
 	create_proc_read_entry(MSM8K_PCM_PROC_NAME,
 			0, NULL, msm8k_pcm_read_proc, NULL);
 #endif
+	wake_lock_init(&pcm_wake_lock, WAKE_LOCK_SUSPEND, "pcm");
 
 	return rc;
 }
