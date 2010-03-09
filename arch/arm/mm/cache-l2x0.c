@@ -28,6 +28,7 @@
 static void __iomem *l2x0_base;
 static DEFINE_SPINLOCK(l2x0_lock);
 static uint32_t l2x0_way_mask;	/* Bitmask of active ways */
+bool l2x0_disabled;
 
 static inline void cache_wait(void __iomem *reg, unsigned long mask)
 {
@@ -213,6 +214,11 @@ void __init l2x0_init(void __iomem *base, __u32 aux_val, __u32 aux_mask)
 	int ways;
 	const char *type;
 
+	if (l2x0_disabled) {
+		printk(KERN_INFO "L2X0 cache controller disabled\n");
+		return;
+	}
+
 	l2x0_base = base;
 
 	cache_id = readl_relaxed(l2x0_base + L2X0_CACHE_ID);
@@ -268,3 +274,10 @@ void __init l2x0_init(void __iomem *base, __u32 aux_val, __u32 aux_mask)
 	printk(KERN_INFO "l2x0: %d ways, CACHE_ID 0x%08x, AUX_CTRL 0x%08x\n",
 			 ways, cache_id, aux);
 }
+
+static int __init l2x0_disable(char *unused)
+{
+	l2x0_disabled = 1;
+	return 0;
+}
+early_param("nol2x0", l2x0_disable);
