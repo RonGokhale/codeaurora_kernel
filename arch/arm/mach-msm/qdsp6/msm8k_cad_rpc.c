@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -210,7 +210,7 @@ static s32 cad_rpc_get_remote_handle(void)
 		return err;
 	}
 
-	D("Attached for session %d!\n", session_id);
+	D("Attached for session!\n");
 	/*  get physical addresss of the buffer */
 	memset(&info, 0, sizeof(struct cad_rpc_config_info));
 	info.domain_id = cad_rpc_data_type.processor_id;
@@ -218,13 +218,13 @@ static s32 cad_rpc_get_remote_handle(void)
 		remote_handle,
 		&remote_cb_function, &cad_rpc_data_type);
 
-	D("Try to configure the remote session %d!\n", session_id);
+	D("Try to configure the remote session!\n");
 	/* initlize the rpc call */
 	err = dalrpc_fcn_5(ADSP_RPC_INIT,
 		cad_rpc_data_type.remote_handle,
 		(void *)&info,
 		sizeof(struct cad_rpc_config_info));
-	D("Configured remote session %d!\n", session_id);
+	D("Configured remote session!\n");
 	mutex_unlock(&cad_rpc_data_type.resource_mutex);
 	return err;
 }
