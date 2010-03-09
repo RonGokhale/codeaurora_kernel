@@ -1397,6 +1397,7 @@ enum ard_ret_enum_type valid_session_present(u32 dev_id)
 	case 6:	/* I2S */
 		for (i = 0; i < ARD_AUDIO_MAX_CLIENT; i++) {
 			if ((ard_session[i].enabled == ARD_TRUE)
+				&& (ard_session[i].sess_open_info != NULL)
 				&& (ard_session[i].sess_open_info->
 					cad_open.op_code
 						== CAD_OPEN_OP_WRITE)) {
@@ -1412,6 +1413,7 @@ enum ard_ret_enum_type valid_session_present(u32 dev_id)
 	case 7:	/* I2S */
 		for (i = 0; i < ARD_AUDIO_MAX_CLIENT; i++) {
 			if ((ard_session[i].enabled == ARD_TRUE)
+				&& (ard_session[i].sess_open_info != NULL)
 				&& (ard_session[i].sess_open_info->
 					cad_open.op_code
 						== CAD_OPEN_OP_READ)) {
