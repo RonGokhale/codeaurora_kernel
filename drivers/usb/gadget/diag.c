@@ -268,8 +268,10 @@ static ssize_t diag_read(struct file *fp, char __user *buf,
 		goto end;
 	}
 
+	mutex_unlock(&ctxt->user_lock);
 	ret = wait_event_interruptible(ctxt->read_wq,
 		(req = req_get(ctxt, &ctxt->rx_req_user)) || !ctxt->online);
+	mutex_lock(&ctxt->user_lock);
 	if (ret < 0) {
 		pr_err("%s: wait_event_interruptible error %d\n",
 			__func__, ret);
@@ -315,10 +317,10 @@ static ssize_t diag_write(struct file *fp, const char __user *buf,
 	struct usb_request *req = 0;
 	int ret = 0;
 
-	mutex_lock(&ctxt->user_lock);
-
 	ret = wait_event_interruptible(ctxt->write_wq,
 		((req = req_get(ctxt, &ctxt->tx_req_idle)) || !ctxt->online));
+
+	mutex_lock(&ctxt->user_lock);
 	if (ret < 0) {
 		pr_err("%s: wait_event_interruptible error %d\n",
 			__func__, ret);
@@ -757,6 +759,7 @@ static int diag_function_set_alt(struct usb_function *f,
 	smd_try_to_send(ctxt);
 #if ROUTE_TO_USERSPACE
 	wake_up(&ctxt->read_wq);
+	wake_up(&ctxt->write_wq);
 #endif
 
 	return 0;
@@ -767,6 +770,10 @@ static void diag_function_disable(struct usb_function *f)
 	struct diag_context	*ctxt = func_to_dev(f);
 
 	ctxt->online = 0;
+#if ROUTE_TO_USERSPACE
+	wake_up(&ctxt->read_wq);
+	wake_up(&ctxt->write_wq);
+#endif
 	usb_ep_disable(ctxt->in);
 	usb_ep_disable(ctxt->out);
 }
