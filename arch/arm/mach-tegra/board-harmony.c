@@ -204,6 +204,7 @@ static void __init tegra_harmony_init(void)
 	tegra_clk_init_from_table(harmony_clk_init_table);
 
 	harmony_pinmux_init();
+	harmony_sdhci_init();
 
 	platform_add_devices(harmony_devices, ARRAY_SIZE(harmony_devices));
 
