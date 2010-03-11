@@ -164,6 +164,7 @@ struct q6venc_dev {
 	struct callback_event_data cb_ev_data;
 	int encode_done;
 	int stop_encode;
+	int stop_called;
 	unsigned int buf_num;
 	unsigned int rlc_buf_ptr;
 	unsigned int rlc_buf_len;
@@ -275,6 +276,7 @@ static int q6venc_open(struct inode *inode, struct file *file)
 	}
 	DBG("%s  done \n", __func__);
 
+	q6venc_devp->stop_called = 0;
 	return 0;
 
 err_q6venc_set_cb_channel:
@@ -289,10 +291,28 @@ err_q6venc_dalrpc_alloc_cb:
 
 static int q6venc_release(struct inode *inode, struct file *file)
 {
+	int err, id;
 	struct q6venc_dev *q6venc_devp;
 
 	DBG("%s\n", __func__);
 	q6venc_devp = file->private_data;
+
+	if (!q6venc_devp->stop_called) {
+		err = q6venc_stop(q6venc_devp->q6venc_handle);
+		if (err) {
+			printk(KERN_ERR "%s: q6venc_stop faild \n", __func__);
+			return -EIO;
+		}
+		q6venc_devp->stop_called = 1;
+
+		for (id = 0; id < q6venc_devp->buf_num; id++) {
+			if (q6venc_devp->phy_to_vbuf_map[id].file)
+				put_pmem_file(q6venc_devp->
+					phy_to_vbuf_map[id].file);
+		}
+		put_pmem_file(q6venc_devp->rlc_buf_map[0].file);
+		put_pmem_file(q6venc_devp->rlc_buf_map[1].file);
+	}
 
 	dalrpc_dealloc_cb(q6venc_devp->q6venc_handle,
 			  (q6venc_devp->cb_ev_data).enc_cb_handle);
@@ -679,6 +699,7 @@ static int q6venc_ioctl(struct inode *inode, struct file *file,
 			printk(KERN_ERR "%s: q6venc_stop faild \n", __func__);
 			return -EIO;
 		}
+		q6venc_devp->stop_called = 1;
 		break;
 
 	case VENC_IOCTL_WAIT_FOR_ENCODE:
