@@ -12,3 +12,4 @@ obj-$(CONFIG_HOTPLUG_CPU)               += hotplug.o
 
 obj-${CONFIG_MACH_HARMONY}              += board-harmony.o
 obj-${CONFIG_MACH_HARMONY}              += board-harmony-pinmux.o
+obj-${CONFIG_MACH_HARMONY}              += board-harmony-sdhci.o
