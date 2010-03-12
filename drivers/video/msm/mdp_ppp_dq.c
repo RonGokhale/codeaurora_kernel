@@ -143,6 +143,24 @@ inline void mdp_ppp_dq_init(void)
 	mdp_ppp_djob_clnr = create_singlethread_workqueue("MDPDJobClnrThrd");
 }
 
+/* Release resources of a job (DJob). */
+static void mdp_ppp_del_djob(struct mdp_ppp_djob *job)
+{
+	struct mdp_ppp_roi_cmd_set *node, *tmp;
+
+	/* release mem */
+	mdp_ppp_put_img(job->p_src_file, job->p_dst_file);
+
+	/* release roi_cmd_list */
+	list_for_each_entry_safe(node, tmp, &job->roi_cmd_list, node) {
+		list_del(&node->node);
+		kfree(node);
+	}
+
+	/* release job struct */
+	kfree(job);
+}
+
 /* Worker thread to reclaim resources once a display job is done */
 static void mdp_ppp_djob_cleaner(struct work_struct *work)
 {
@@ -152,21 +170,8 @@ static void mdp_ppp_djob_cleaner(struct work_struct *work)
 
 	/* cleanup display job */
 	job = container_of(work, struct mdp_ppp_djob, cleaner.work);
-	if (likely(work && job)) {
-		struct mdp_ppp_roi_cmd_set *node, *tmp;
-
-		/* release mem */
-		mdp_ppp_put_img(job->p_src_file, job->p_dst_file);
-
-		/* release roi_cmd_list */
-		list_for_each_entry_safe(node, tmp, &job->roi_cmd_list, node) {
-			list_del(&node->node);
-			kfree(node);
-		}
-
-		/* release job struct */
-		kfree(job);
-	}
+	if (likely(work && job))
+		mdp_ppp_del_djob(job);
 }
 
 /* Create a new Display Job (DJob) */
@@ -207,7 +212,20 @@ inline struct mdp_ppp_djob *mdp_ppp_new_djob(void)
 	 */
 	INIT_DELAYED_WORK(&curr_djob->cleaner, mdp_ppp_djob_cleaner);
 	INIT_LIST_HEAD(&curr_djob->entry);
+
+	curr_djob->p_src_file = 0;
+	curr_djob->p_dst_file = 0;
+
 	return job;
+}
+
+/* Undo the effect of mdp_ppp_new_djob() */
+inline void mdp_ppp_clear_curr_djob(void)
+{
+	if (likely(curr_djob)) {
+		mdp_ppp_del_djob(curr_djob);
+		curr_djob = NULL;
+	}
 }
 
 /* Cleanup dirty djobs */

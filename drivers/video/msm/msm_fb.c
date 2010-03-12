@@ -1814,29 +1814,27 @@ static int msmfb_async_blit(struct fb_info *info, void __user *p)
 		for (i = 0; i < req_list_count; i++) {
 			if (!(req_list[i].flags & MDP_NO_BLIT)) {
 				int ret = 0;
+				struct mdp_ppp_djob *job = NULL;
+
+				if (unlikely(req_list[i].src_rect.h == 0 ||
+					req_list[i].src_rect.w == 0)) {
+					MSM_FB_ERR("mpd_ppp: "
+						"src img of zero size!\n");
+					return -EINVAL;
+				}
+
+				if (unlikely(req_list[i].dst_rect.h == 0 ||
+					req_list[i].dst_rect.w == 0))
+					continue;
 
 				/* create a new display job */
-				struct mdp_ppp_djob *job = mdp_ppp_new_djob();
+				job = mdp_ppp_new_djob();
 				if (unlikely(!job))
 					return -ENOMEM;
 
 				job->info = info;
 				memcpy(&job->req, &req_list[i],
 					sizeof(struct mdp_blit_req));
-
-				if (unlikely(job->req.src_rect.h == 0 ||
-					job->req.src_rect.w == 0)) {
-					printk(KERN_ERR "mpd_ppp: "
-						"src img of zero size!\n");
-					kfree(job);
-					return -EINVAL;
-				}
-
-				if (unlikely(job->req.dst_rect.h == 0 ||
-					job->req.dst_rect.w == 0)) {
-					kfree(job);
-					continue;
-				}
 
 				/* Do the actual blit. */
 				ret = mdp_ppp_blit(info, &job->req,
@@ -1847,7 +1845,7 @@ static int msmfb_async_blit(struct fb_info *info, void __user *p)
 				 * memory coherency.
 				 */
 				if (ret || mdp_ppp_get_ret_code()) {
-					kfree(job);
+					mdp_ppp_clear_curr_djob();
 					return ret;
 				}
 			}

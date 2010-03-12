@@ -76,6 +76,7 @@ void mdp_ppp_put_img(struct file *p_src_file, struct file *p_dst_file);
 void mdp_ppp_dq_init(void);
 void mdp_ppp_outdw(uint32_t addr, uint32_t data);
 struct mdp_ppp_djob *mdp_ppp_new_djob(void);
+void mdp_ppp_clear_curr_djob(void);
 void mdp_ppp_process_curr_djob(void);
 int mdp_ppp_get_ret_code(void);
 void mdp_ppp_djob_done(void);
