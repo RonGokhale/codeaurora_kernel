@@ -38,6 +38,10 @@
 #define MSMFB_ASYNC_OP_GET _IOR(MSMFB_IOCTL_MAGIC, 141, unsigned int)
 #define MSMFB_ASYNC_OP_SET _IOW(MSMFB_IOCTL_MAGIC, 142, unsigned int)
 
+/* ioctl for apps to wait for all mdp operations including memory
+ * de-allocation.  */
+#define MSMFB_MDP_HARD_SYNC _IOR(MSMFB_IOCTL_MAGIC, 143, unsigned int)
+
 
 #define MDP_IMGTYPE2_START 0x10000
 enum {

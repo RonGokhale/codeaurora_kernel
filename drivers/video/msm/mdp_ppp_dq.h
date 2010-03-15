@@ -81,5 +81,6 @@ void mdp_ppp_process_curr_djob(void);
 int mdp_ppp_get_ret_code(void);
 void mdp_ppp_djob_done(void);
 void mdp_ppp_wait(void);
+void mdp_ppp_hard_wait(void);
 
 #endif /* MDP_PPP_DQ_H */

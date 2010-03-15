@@ -2016,6 +2016,12 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		mdp_ppp_wait();
 		up(&msm_fb_ioctl_ppp_sem);
 		break;
+
+	case MSMFB_MDP_HARD_SYNC:
+		down(&msm_fb_ioctl_ppp_sem);
+		mdp_ppp_hard_wait();
+		up(&msm_fb_ioctl_ppp_sem);
+		break;
 #endif
 
 	case MSMFB_GRP_DISP:

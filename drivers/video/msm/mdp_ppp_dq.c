@@ -257,8 +257,7 @@ static void mdp_ppp_flush_dirty_djobs(void *cond)
 
 		/* Schedule jobs for cleanup
 		 * A seperate worker thread does this */
-		queue_delayed_work(mdp_ppp_djob_clnr, &job->cleaner,
-			mdp_timer_duration);
+		queue_delayed_work(mdp_ppp_djob_clnr, &job->cleaner, 0);
 	}
 }
 
@@ -300,6 +299,13 @@ void mdp_ppp_wait(void)
 
 	/* flush remaining dirty djobs, if any */
 	mdp_ppp_flush_dirty_djobs(&cond);
+}
+
+/* Wait until all MDP operations are finished, including memory de-allocation. */
+void mdp_ppp_hard_wait(void)
+{
+	mdp_ppp_wait();
+	flush_workqueue(mdp_ppp_djob_clnr);
 }
 
 /* Program MDP PPP block to process this ROI */
