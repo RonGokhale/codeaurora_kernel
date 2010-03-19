@@ -438,6 +438,8 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data)
 		host->dma.busy = 1;
 		dsb();
 		msm_dmov_enqueue_cmd(host->dma.channel, &host->dma.hdr);
+		if (data->flags & MMC_DATA_WRITE)
+			host->prog_scan = 1;
 	}
 }
 
@@ -469,6 +471,11 @@ msmsdcc_start_command(struct msmsdcc_host *host, struct mmc_command *cmd, u32 c)
 	     ((cmd->opcode == 24) || (cmd->opcode == 25))) ||
 	      (cmd->opcode == 53))
 		c |= MCI_CSPM_DATCMD;
+
+	if (host->prog_scan && (cmd->opcode == 12)) {
+		c |= MCI_CPSM_PROGENA;
+		host->prog_enable = 1;
+	}
 
 	if (cmd == cmd->mrq->stop)
 		c |= MCI_CSPM_MCIABORT;
@@ -678,8 +685,24 @@ static void msmsdcc_do_cmdirq(struct msmsdcc_host *host, uint32_t status)
 		else if (host->curr.data) { /* Non DMA */
 			msmsdcc_stop_data(host);
 			msmsdcc_request_end(host, cmd->mrq);
-		} else /* host->data == NULL */
-			msmsdcc_request_end(host, cmd->mrq);
+		} else { /* host->data == NULL */
+			if (!cmd->error && host->prog_enable) {
+				if (status & MCI_PROGDONE) {
+					host->prog_scan = 0;
+					host->prog_enable = 0;
+					msmsdcc_request_end(
+						 host, cmd->mrq);
+				 } else {
+					host->curr.cmd = cmd;
+				}
+			} else {
+				 if (host->prog_enable) {
+					host->prog_scan = 0;
+					host->prog_enable = 0;
+				}
+				msmsdcc_request_end(host, cmd->mrq);
+			}
+		}
 	} else if (!(cmd->data->flags & MMC_DATA_READ))
 		msmsdcc_start_data(host, cmd->data);
 }
@@ -780,7 +803,8 @@ msmsdcc_irq(int irq, void *dev_id)
 		}
 
 		if (status & (MCI_CMDSENT | MCI_CMDRESPEND | MCI_CMDCRCFAIL |
-			      MCI_CMDTIMEOUT) && host->curr.cmd) {
+			      MCI_CMDTIMEOUT | MCI_PROGDONE)
+				 && host->curr.cmd) {
 			msmsdcc_do_cmdirq(host, status);
 		}
 
@@ -1050,6 +1074,11 @@ msmsdcc_command_expired(unsigned long _data)
 
 	host->curr.mrq = NULL;
 	host->curr.cmd = NULL;
+
+	if (host->prog_enable || host->prog_scan) {
+		host->prog_scan = 0;
+		host->prog_enable = 0;
+	}
 
 	spin_unlock_irqrestore(&host->lock, flags);
 	mmc_request_done(host->mmc, mrq);
