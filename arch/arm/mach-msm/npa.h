@@ -72,7 +72,7 @@ struct npa_event_data {
 /* The NPA callback function */
 typedef void (*npa_cb_fn)(void *, unsigned int, void *, unsigned int);
 
-#ifdef CONFIG_NPA
+#ifdef CONFIG_MSM_NPA
 /* NPA CLIENT AND EVENT FUNCTIONS */
 
 /* NPA functions in general do not copy strings and data pointed by pointers,
