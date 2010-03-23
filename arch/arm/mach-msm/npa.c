@@ -66,8 +66,9 @@
 #include <linux/string.h>
 #include <linux/workqueue.h>
 #include <linux/spinlock_types.h>
-#include <linux/npa.h>
-#include <linux/npa_resource.h>
+
+#include "npa.h"
+#include "npa_resource.h"
 
 #define NPA_STR_NPA_INTERNAL "NPA-Internal"
 #define NPA_STR_USER_CALLBACK "User-Callback"
@@ -75,7 +76,7 @@
 /* Resource lock could be called with NULL mutex, when only the container
  * is created and the node is not defined yet.
  */
-#ifdef CONFIG_NPA_LOG
+#ifdef CONFIG_MSM_NPA_LOG
 #define RESOURCE_LOCK(r) do { \
 	BUG_ON(!r); \
 	if ((r)->definition)\
@@ -115,7 +116,7 @@
 	while (0)
 #endif
 
-#ifdef CONFIG_NPA_LOG
+#ifdef CONFIG_MSM_NPA_LOG
 int npa_log_mask;
 EXPORT_SYMBOL(npa_log_mask);
 char npa_log_resource_name[NPA_NAME_MAX] = {0};
@@ -157,7 +158,7 @@ static void resource_creation_handler(void *data, unsigned int state,
 static void send_single_event(struct work_struct *work);
 static void send_update_events(struct work_struct *work);
 
-#ifdef CONFIG_NPA_LOG
+#ifdef CONFIG_MSM_NPA_LOG
 void _npa_log(int log_mask, struct npa_resource *res, const char *fmt, ...)
 {
 	if (npa_log_reset) {
@@ -937,7 +938,7 @@ int npa_alias_resource(const char *resource_name, const char *alias_name,
 				resource_destruction_handler, resource);
 	}
 
-#ifdef CONFIG_NPA_LOG
+#ifdef CONFIG_MSM_NPA_LOG
 	/* If we were looking to log an alias, then re-acquire the resource* */
 	npa_log_resource = __get_resource(npa_log_resource_name);
 #endif
@@ -1540,7 +1541,7 @@ static int npa_init(void)
 	return 0;
 }
 
-#ifdef CONFIG_NPA_DEBUG
+#ifdef CONFIG_MSM_NPA_DEBUG
 /* ** DEBUG use only **
  * NPA reset function. Releases all resources and resource states.
  * This function should be called only when there all the clients and events

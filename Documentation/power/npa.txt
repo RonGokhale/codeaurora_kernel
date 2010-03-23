@@ -120,9 +120,9 @@ log_reset: Reset logging. Will stop logging.
 Config options
 ==============
 
-CONFIG_NPA: Enable/Disable NPA
-CONFIG_NPA_LOG: Enable/Disable NPA logging in code.
-CONFIG_NPA_TEST: Enable/Disable NPA stress and performance test code.
+CONFIG_MSM_NPA: Enable/Disable NPA
+CONFIG_MSM_NPA_LOG: Enable/Disable NPA logging in code.
+CONFIG_MSM_NPA_TEST: Enable/Disable NPA stress and performance test code.
 
 Dependencies
 ============

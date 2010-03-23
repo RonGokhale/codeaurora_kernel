@@ -35,10 +35,11 @@
 #define NPA_REMOTE_H
 
 #include <linux/errno.h>
-#include <linux/npa.h>
-#include <linux/npa_resource.h>
 
-#ifdef CONFIG_NPA_REMOTE
+#include "npa.h"
+#include "npa_resource.h"
+
+#ifdef CONFIG_MSM_NPA_REMOTE
 
 #define NPA_REMOTE_VERSION_MAJOR	1
 #define NPA_REMOTE_VERSION_MINOR	0
