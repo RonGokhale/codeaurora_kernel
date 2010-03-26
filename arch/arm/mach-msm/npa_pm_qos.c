@@ -73,7 +73,7 @@
 #include <linux/pm_qos_params.h>
 #include <linux/completion.h>
 #include <linux/err.h>
-#include "../../arch/arm/mach-msm/npa_remote.h"
+#include "npa_remote.h"
 
 struct npa_client_info {
 	char *resource_name;
