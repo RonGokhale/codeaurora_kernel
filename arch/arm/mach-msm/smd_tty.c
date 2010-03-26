@@ -39,7 +39,7 @@ struct smd_tty_info {
 	struct tty_struct *tty;
 	struct wake_lock wake_lock;
 	int open_count;
-	struct work_struct tty_work;
+	struct delayed_work tty_work;
 };
 
 static struct smd_tty_info smd_tty[MAX_SMD_TTYS];
@@ -51,7 +51,7 @@ static void smd_tty_work_func(struct work_struct *work)
 	int avail;
 	struct smd_tty_info *info = container_of(work,
 						struct smd_tty_info,
-						tty_work);
+						tty_work.work);
 	struct tty_struct *tty = info->tty;
 
 	if (!tty)
@@ -72,7 +72,19 @@ static void smd_tty_work_func(struct work_struct *work)
 			break;
 		}
 
+		/*
+		 * This function can return 0 if the allocation fails.
+		 * In that case, we want to give up the processor so the
+		 * kernel can attempt to gather some more contiguous blocks.
+		 * Schedule another attempt so we don't lose any data.
+		 */
 		avail = tty_prepare_flip_string(tty, &ptr, avail);
+		if (avail <= 0) {
+			mutex_unlock(&smd_tty_lock);
+			queue_delayed_work(smd_tty_wq, &info->tty_work,
+							msecs_to_jiffies(50));
+			break;
+		}
 
 		if (smd_read(info->ch, ptr, avail) != avail) {
 			/* shouldn't be possible since we're in interrupt
@@ -98,7 +110,7 @@ static void smd_tty_notify(void *priv, unsigned event)
 	if (event != SMD_EVENT_DATA)
 		return;
 
-	queue_work(smd_tty_wq, &info->tty_work);
+	queue_delayed_work(smd_tty_wq, &info->tty_work, 0);
 }
 
 static int smd_tty_open(struct tty_struct *tty, struct file *f)
@@ -202,7 +214,7 @@ static int smd_tty_chars_in_buffer(struct tty_struct *tty)
 static void smd_tty_unthrottle(struct tty_struct *tty)
 {
 	struct smd_tty_info *info = tty->driver_data;
-	queue_work(smd_tty_wq, &info->tty_work);
+	queue_delayed_work(smd_tty_wq, &info->tty_work, 0);
 	return;
 }
 
@@ -269,19 +281,19 @@ static int __init smd_tty_init(void)
 
 	/* this should be dynamic */
 	tty_register_device(smd_tty_driver, 0, 0);
-	INIT_WORK(&smd_tty[0].tty_work, smd_tty_work_func);
+	INIT_DELAYED_WORK(&smd_tty[0].tty_work, smd_tty_work_func);
 
 	tty_register_device(smd_tty_driver, 7, 0);
-	INIT_WORK(&smd_tty[7].tty_work, smd_tty_work_func);
+	INIT_DELAYED_WORK(&smd_tty[7].tty_work, smd_tty_work_func);
 
 	tty_register_device(smd_tty_driver, 27, 0);
-	INIT_WORK(&smd_tty[27].tty_work, smd_tty_work_func);
+	INIT_DELAYED_WORK(&smd_tty[27].tty_work, smd_tty_work_func);
 
 	tty_register_device(smd_tty_driver, 36, 0);
-	INIT_WORK(&smd_tty[36].tty_work, smd_tty_work_func);
+	INIT_DELAYED_WORK(&smd_tty[36].tty_work, smd_tty_work_func);
 
 	tty_register_device(smd_tty_driver, 21, 0);
-	INIT_WORK(&smd_tty[21].tty_work, smd_tty_work_func);
+	INIT_DELAYED_WORK(&smd_tty[21].tty_work, smd_tty_work_func);
 
 	return 0;
 }
