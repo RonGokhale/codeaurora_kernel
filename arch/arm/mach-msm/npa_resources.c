@@ -71,9 +71,9 @@
  */
 
 #include <linux/init.h>
-#include "npa_remote.h"
-#include <linux/npa_pm_qos.h>
 #include <linux/pm_qos_params.h>
+#include "npa_pm_qos.h"
+#include "npa_remote.h"
 
 #ifdef CONFIG_MSM_NPA_REMOTE
 
