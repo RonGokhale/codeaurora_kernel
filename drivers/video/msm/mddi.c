@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -295,6 +295,13 @@ static int mddi_probe(struct platform_device *pdev)
 	if (clk_set_max_rate(mddi_clk, clk_rate) < 0)
 		printk(KERN_ERR "%s: clk_set_max_rate failed\n", __func__);
 	mfd->panel_info.clk_rate = mfd->panel_info.clk_min;
+
+	if (!mddi_client_type)
+		mddi_client_type = mfd->panel_info.lcd.rev;
+	else if (!mfd->panel_info.lcd.rev)
+		printk(KERN_ERR
+		"%s: mddi client is trying to revert back to type 1	!!!\n",
+		__func__);
 
 	/*
 	 * set driver data
