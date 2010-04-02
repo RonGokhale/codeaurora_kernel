@@ -93,6 +93,9 @@ u32 vcd_check_for_client_context
 u32 vcd_validate_driver_handle
     (struct vcd_dev_ctxt_type *p_dev_ctxt, s32 driver_handle);
 
+void vcd_handle_for_last_clnt_close
+	(struct vcd_dev_ctxt_type *p_dev_ctxt, u32 b_send_deinit);
+
 u32 vcd_common_allocate_set_buffer
     (struct vcd_clnt_ctxt_type_t *p_cctxt,
      enum vcd_buffer_type e_buffer,

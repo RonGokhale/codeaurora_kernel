@@ -1229,8 +1229,10 @@ void vcd_submit_cmd_client_close(struct vcd_clnt_ctxt_type_t *p_cctxt)
 	(void) ddl_close(&p_cctxt->ddl_handle);
 	p_cctxt->b_ddl_hdl_valid = FALSE;
 	p_cctxt->status.b_cleaning_up = FALSE;
-	if (p_cctxt->status.b_close_pending)
+	if (p_cctxt->status.b_close_pending) {
 		vcd_destroy_client_context(p_cctxt);
+		vcd_handle_for_last_clnt_close(p_cctxt->p_dev_ctxt, TRUE);
+	}
 }
 
 u32 vcd_submit_command_in_continue(struct vcd_dev_ctxt_type
@@ -1849,7 +1851,7 @@ u32 vcd_add_client_to_sched(struct vcd_clnt_ctxt_type_t *p_cctxt)
 	VCD_FAILED_RETURN(rc, "Failed: Get DDL_I_FRAME_PROC_UNITS");
 
 	if (p_cctxt->b_decoding) {
-		p_cctxt->frm_rate.n_fps_numerator = 10;
+		p_cctxt->frm_rate.n_fps_numerator = VCD_DEC_INITIAL_FRAME_RATE;
 		p_cctxt->frm_rate.n_fps_denominator = 1;
 
 		sched_input_init.n_o_tkn_per_ip_frm =
@@ -2076,7 +2078,8 @@ void vcd_handle_input_done_with_trans_end(
 	if (!p_cctxt->b_decoding)
 		return;
 
-	if (p_cctxt->out_buf_pool.n_in_use != p_cctxt->out_buf_pool.n_count)
+	if (p_cctxt->out_buf_pool.n_in_use <
+		p_cctxt->out_buf_pool.buf_req.n_min_count)
 		return;
 
 	rc = vcd_map_sched_status(sched_get_client_param(
@@ -2687,8 +2690,10 @@ void vcd_handle_stop_done_in_invalid(struct vcd_clnt_ctxt_type_t
 	if (VCD_FAILED(rc))
 		VCD_MSG_ERROR("VCD_EVT_PWR_CLNT_ERRFATAL failed");
 	if (!p_cctxt->status.b_cleaning_up &&
-		p_cctxt->status.b_close_pending)
+		p_cctxt->status.b_close_pending) {
 		vcd_destroy_client_context(p_cctxt);
+		vcd_handle_for_last_clnt_close(p_cctxt->p_dev_ctxt, FALSE);
+	}
 }
 
 u32 vcd_handle_input_frame(
@@ -3069,7 +3074,8 @@ u32 vcd_calculate_frame_delta(
 	VCD_MSG_LOW("temp1=%lld  n_temp=%lld", temp1, n_temp);
 	p_cctxt->status.n_time_elapsed += n_frm_delta;
 
-	n_temp = (p_cctxt->status.n_time_elapsed * VCD_TIMESTAMP_RESOLUTION);
+	n_temp = ((u64)p_cctxt->status.n_time_elapsed \
+			  * VCD_TIMESTAMP_RESOLUTION);
 	n_temp = (n_temp + (p_cctxt->n_time_resoln >> 1));
 	temp1 = do_div(n_temp, p_cctxt->n_time_resoln);
 

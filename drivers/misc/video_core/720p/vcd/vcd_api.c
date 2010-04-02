@@ -90,7 +90,10 @@ u32 vcd_init(struct vcd_init_config_type *p_config, s32 *p_driver_handle)
 	p_drv_ctxt = vcd_get_drv_context();
 
 	if (!p_drv_ctxt->dev_cs)
-		vcd_critical_section_create(&p_drv_ctxt->dev_cs);
+		rc = vcd_critical_section_create(&p_drv_ctxt->dev_cs);
+
+	if (rc)
+		return VCD_ERR_ALLOC_FAIL;
 
 	vcd_critical_section_enter(p_drv_ctxt->dev_cs);
 
