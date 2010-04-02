@@ -130,11 +130,9 @@ void ddl_pmem_alloc(struct ddl_buf_addr_type *buff_addr, u32 size, u32 align)
 
 void ddl_pmem_free(struct ddl_buf_addr_type buff_addr)
 {
-	if (buff_addr.p_virtual_base_addr != NULL) {
-		kfree(buff_addr.p_virtual_base_addr);
-		buff_addr.n_buffer_size = 0;
-		buff_addr.p_virtual_base_addr = NULL;
-	}
+	kfree(buff_addr.p_virtual_base_addr);
+	buff_addr.n_buffer_size = 0;
+	buff_addr.p_virtual_base_addr = NULL;
 }
 
 #else

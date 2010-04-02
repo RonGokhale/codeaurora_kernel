@@ -84,30 +84,6 @@
 #define VIDC_720P_VERSION_STRING "VIDC_V1.0"
 u8 *vid_c_base_addr;
 
-u32 VID_C_REG_319934_SHADOW;
-u32 VID_C_REG_101184_SHADOW;
-u32 VID_C_REG_490443_SHADOW;
-u32 VID_C_REG_64895_SHADOW;
-u32 VID_C_REG_804959_SHADOW;
-u32 VID_C_REG_883500_SHADOW;
-u32 VID_C_REG_615716_SHADOW[32];
-u32 VID_C_REG_603032_SHADOW;
-u32 VID_C_REG_792026_SHADOW;
-u32 VID_C_REG_844152_SHADOW;
-u32 VID_C_REG_147682_SHADOW;
-u32 VID_C_REG_407718_SHADOW;
-u32 VID_C_REG_854681_SHADOW;
-u32 VID_C_REG_128234_SHADOW;
-u32 VID_C_REG_988552_SHADOW;
-u32 VID_C_REG_94750_SHADOW;
-u32 VID_C_REG_76706_SHADOW;
-u32 VID_C_REG_486169_SHADOW;
-u32 VID_C_REG_699747_SHADOW;
-u32 VID_C_REG_166247_SHADOW;
-u32 VID_C_REG_926519_SHADOW;
-u32 VID_C_REG_965480_SHADOW;
-
-
 #ifdef VIDC_REGISTER_LOG_INTO_BUFFER
 char vidclog[VIDC_REGLOG_BUFSIZE];
 unsigned int vidclog_index;
@@ -200,17 +176,16 @@ void vidc_720p_start_cpu(enum vidc_720p_endian_type e_dma_endian,
 						  u32 *p_debug_core_dump_addr,
 						  u32  debug_buffer_size)
 {
+	u32 dbg_info_input0_reg = 0x1;
 	VIDC_IO_OUT(REG_361582, 0);
 	VIDC_IO_OUT(REG_958768, p_icontext_bufferstart);
 	VIDC_IO_OUT(REG_736316, e_dma_endian);
-	VIDC_IO_OUT(REG_699747, 0x1);
 	if (debug_buffer_size) {
-		VIDC_IO_OUTF(REG_699747, ALLOCATED_MEM_SIZE, \
-					 debug_buffer_size);
-		VIDC_IO_OUTF(REG_699747,
-					  SET_MEMORY_DUMP_TYPE, 0x2);
+		dbg_info_input0_reg = (debug_buffer_size << 0x10)
+			| (0x2 << 1) | 0x1;
 		VIDC_IO_OUT(REG_166247, p_debug_core_dump_addr);
 	}
+	VIDC_IO_OUT(REG_699747, dbg_info_input0_reg);
 	VIDC_IO_OUT(REG_224135, 1);
 }
 
@@ -329,38 +304,38 @@ void vidc_720p_set_channel(u32 i_ch_id,
 
 	switch (e_codec) {
 	default:
-	case VIDC_720p_DIVX:
-	case VIDC_720p_XVID:
-	case VIDC_720p_MPEG4:
+	case VIDC_720P_DIVX:
+	case VIDC_720P_XVID:
+	case VIDC_720P_MPEG4:
 		{
-			if (VIDC_720p_ENCODER == e_enc_dec_sel)
+			if (e_enc_dec_sel == VIDC_720P_ENCODER)
 				VIDC_IO_OUT(REG_765787, pi_fw);
 			else
 				VIDC_IO_OUT(REG_225040, pi_fw);
 			break;
 		}
-	case VIDC_720p_H264:
+	case VIDC_720P_H264:
 		{
-			if (VIDC_720p_ENCODER == e_enc_dec_sel)
+			if (e_enc_dec_sel == VIDC_720P_ENCODER)
 				VIDC_IO_OUT(REG_942456, pi_fw);
 			else
 				VIDC_IO_OUT(REG_942170_ADDR_3, pi_fw);
 			break;
 		}
-	case VIDC_720p_H263:
+	case VIDC_720P_H263:
 		{
-			if (VIDC_720p_ENCODER == e_enc_dec_sel)
+			if (e_enc_dec_sel == VIDC_720P_ENCODER)
 				VIDC_IO_OUT(REG_765787, pi_fw);
 			else
 				VIDC_IO_OUT(REG_942170_ADDR_6, pi_fw);
 			break;
 		}
-	case VIDC_720p_VC1:
+	case VIDC_720P_VC1:
 		{
 			VIDC_IO_OUT(REG_880188, pi_fw);
 			break;
 		}
-	case VIDC_720p_MPEG2:
+	case VIDC_720P_MPEG2:
 		{
 			VIDC_IO_OUT(REG_40293, pi_fw);
 			break;
@@ -373,11 +348,8 @@ void vidc_720p_set_channel(u32 i_ch_id,
 
 void vidc_720p_encode_set_profile(u32 i_profile, u32 i_level)
 {
-	VIDC_IO_OUT(REG_839021, 0x0);
-
-	VIDC_IO_OUTF(REG_839021, PROFILE, i_profile);
-	VIDC_IO_OUTF(REG_839021, LEVEL, i_level);
-
+	u32 profile_level = i_profile|(i_level << 0x8);
+	VIDC_IO_OUT(REG_839021, profile_level);
 }
 
 void vidc_720p_set_frame_size(u32 i_size_x, u32 i_size_y)
@@ -389,9 +361,7 @@ void vidc_720p_set_frame_size(u32 i_size_x, u32 i_size_y)
 
 void vidc_720p_encode_set_fps(u32 i_rc_frame_rate)
 {
-	VIDC_IO_OUT(REG_625444, 0);
-
-	VIDC_IO_OUTF(REG_625444, FRAME_RATE, i_rc_frame_rate);
+	VIDC_IO_OUT(REG_625444, i_rc_frame_rate);
 }
 
 void vidc_720p_encode_set_short_header(u32 i_short_header)
@@ -402,104 +372,62 @@ void vidc_720p_encode_set_short_header(u32 i_short_header)
 void vidc_720p_encode_set_vop_time(u32 n_vop_time_resolution,
 				    u32 n_vop_time_increment)
 {
-	if (!n_vop_time_resolution) {
+	u32 enable_vop, vop_timing_reg;
+	if (!n_vop_time_resolution)
 		VIDC_IO_OUT(REG_64895, 0x0);
-	} else {
-		VIDC_IO_OUTF(REG_64895, VOP_TIMING_ENABLE, 0x1);
-		VIDC_IO_OUTF(REG_64895, VOP_TIME_RESOLUTION,
-				  n_vop_time_resolution);
-		VIDC_IO_OUTF(REG_64895, FRAME_DELTA,
-					  n_vop_time_increment);
+	else {
+		enable_vop = 0x1;
+		vop_timing_reg = (enable_vop << 0x1f) |
+		(n_vop_time_resolution << 0x10) | n_vop_time_increment;
+		VIDC_IO_OUT(REG_64895, vop_timing_reg);
 	}
 }
 
-void vidc_720p_encode_hdr_ext_control(u32 n_header_extension)
+void vidc_720p_encode_set_hec_period(u32 n_hec_period)
 {
-	if (n_header_extension) {
-		VIDC_IO_OUTF(REG_128234, HEC_ENABLE, 0x1);
-		VIDC_IO_OUT(REG_407718, n_header_extension);
-	} else {
-		VIDC_IO_OUTF(REG_128234, HEC_ENABLE, 0x0);
-	}
+	VIDC_IO_OUT(REG_407718, n_hec_period);
 }
 
 void vidc_720p_encode_set_qp_params(u32 i_max_qp, u32 i_min_qp)
 {
-	VIDC_IO_OUT(REG_734318, 0);
-
-	VIDC_IO_OUTF(REG_734318, MAX_QP, i_max_qp);
-
-	VIDC_IO_OUTF(REG_734318, MIN_QP, i_min_qp);
+	u32 qp = i_min_qp | (i_max_qp << 0x8);
+	VIDC_IO_OUT(REG_734318, qp);
 }
 
 void vidc_720p_encode_set_rc_config(u32 b_enable_frame_level_rc,
 				     u32 b_enable_mb_level_rc_flag,
 				     u32 i_frame_qp, u32 n_pframe_qp)
 {
-	VIDC_IO_OUT(REG_58211, 0);
+   u32 n_rc_config = i_frame_qp;
 
-	VIDC_IO_OUTF(REG_58211, FR_RC_EN,
-		      b_enable_frame_level_rc);
+	if (b_enable_frame_level_rc)
+		n_rc_config |= (0x1 << 0x9);
 
-	VIDC_IO_OUTF(REG_58211, MB_RC_EN,
-		      b_enable_mb_level_rc_flag);
+	if (b_enable_mb_level_rc_flag)
+		n_rc_config |= (0x1 << 0x8);
 
-	VIDC_IO_OUTF(REG_58211, FRAME_QP, i_frame_qp);
-
-	VIDC_IO_OUTF(REG_548359, P_FRAME_QP, n_pframe_qp);
+	VIDC_IO_OUT(REG_58211, n_rc_config);
+	VIDC_IO_OUT(REG_548359, n_pframe_qp);
 }
 
 void vidc_720p_encode_set_bit_rate(u32 i_target_bitrate)
 {
-	VIDC_IO_OUTF(REG_174150, BIT_RATE, i_target_bitrate);
+	VIDC_IO_OUT(REG_174150, i_target_bitrate);
 }
 
-void vidc_720p_encode_dynamic_req_reset(void)
+void vidc_720p_encoder_set_param_change(u32 n_enc_param_change)
 {
-	VIDC_IO_OUTF(REG_128234, INSERT_I_FRAME, 0x0);
-	VIDC_IO_OUT(REG_804959, 0x0);
+	VIDC_IO_OUT(REG_804959, n_enc_param_change);
 }
 
-void vidc_720p_encode_dynamic_req_set(u32 n_param_type, u32 n_param_val)
+void vidc_720p_encode_set_control_param(u32 n_param_val)
 {
-	switch (n_param_type) {
-	case VIDC_720p_ENC_IFRAME_REQ:
-		{
-			VIDC_IO_OUTF(REG_128234, INSERT_I_FRAME,
-				      0x1);
-			break;
-		}
-	case VIDC_720p_ENC_IPERIOD_CHANGE:
-		{
-			VIDC_IO_OUTF(REG_804959,
-				      I_PERIOD_CHANGE, 0x1);
-			VIDC_IO_OUT(REG_950374, n_param_val);
-			break;
-		}
-	case VIDC_720p_ENC_FRAMERATE_CHANGE:
-		{
-			VIDC_IO_OUTF(REG_804959,
-				      RC_FRAME_RATE_CHANGE, 0x1);
-			VIDC_IO_OUTF(REG_625444, FRAME_RATE,
-				      n_param_val);
-			break;
-		}
-	case VIDC_720p_ENC_BITRATE_CHANGE:
-		{
-			VIDC_IO_OUTF(REG_804959,
-				      RC_BIT_RATE_CHANGE, 0x1);
-			VIDC_IO_OUT(REG_174150, n_param_val);
-
-			break;
-		}
-	}
+	VIDC_IO_OUT(REG_128234, n_param_val);
 }
 
 void vidc_720p_encode_set_frame_level_rc_params(u32 i_reaction_coeff)
 {
-	VIDC_IO_OUT(REG_677784, 0);
-
-	VIDC_IO_OUTF(REG_677784, REACT_PARA, i_reaction_coeff);
+	VIDC_IO_OUT(REG_677784, i_reaction_coeff);
 }
 
 void vidc_720p_encode_set_mb_level_rc_params(u32 b_dark_region_as_flag,
@@ -507,17 +435,17 @@ void vidc_720p_encode_set_mb_level_rc_params(u32 b_dark_region_as_flag,
 					      u32 b_static_region_as_flag,
 					      u32 b_activity_region_flag)
 {
-	VIDC_IO_OUT(REG_995041, 0);
-
-	VIDC_IO_OUTF(REG_995041, DARK_DISABLE, b_dark_region_as_flag);
-
-	VIDC_IO_OUTF(REG_995041, SMOOTH_DISABLE,
-		      b_smooth_region_as_flag);
-
-	VIDC_IO_OUTF(REG_995041, STATIC_DISABLE,
-		      b_static_region_as_flag);
-
-	VIDC_IO_OUTF(REG_995041, ACT_DISABLE, b_activity_region_flag);
+	u32 n_mb_level_rc = 0x0;
+	if (b_activity_region_flag)
+		n_mb_level_rc |= 0x1;
+	if (b_static_region_as_flag)
+		n_mb_level_rc |= (0x1 << 0x1);
+	if (b_smooth_region_as_flag)
+		n_mb_level_rc |= (0x1 << 0x2);
+	if (b_dark_region_as_flag)
+		n_mb_level_rc |= (0x1 << 0x3);
+	/* Write MB level rate control */
+	VIDC_IO_OUT(REG_995041, n_mb_level_rc);
 }
 
 void vidc_720p_encode_set_entropy_control(enum vidc_720p_entropy_sel_type
@@ -525,13 +453,15 @@ void vidc_720p_encode_set_entropy_control(enum vidc_720p_entropy_sel_type
 					   enum vidc_720p_cabac_model_type
 					   e_cabac_model_number)
 {
-	u32 n_sel = (u32) e_entropy_sel;
-	VIDC_IO_OUT(REG_504878, n_sel);
-
-	if (e_entropy_sel == VIDC_720p_ENTROPY_SEL_CABAC) {
-		u32 n_num = (u32) e_cabac_model_number;
-		VIDC_IO_OUTF(REG_504878, FIXED_NUMBER, n_num);
+	u32 n_num;
+	u32 n_entropy_params = (u32)e_entropy_sel;
+	/* Set Model Number */
+	if (e_entropy_sel == VIDC_720P_ENTROPY_SEL_CABAC) {
+		n_num = (u32)e_cabac_model_number;
+		n_entropy_params |= (n_num << 0x2);
 	}
+	/* Set Entropy parameters */
+	VIDC_IO_OUT(REG_504878, n_entropy_params);
 }
 
 void vidc_720p_encode_set_db_filter_control(enum vidc_720p_DBConfig_type
@@ -539,16 +469,13 @@ void vidc_720p_encode_set_db_filter_control(enum vidc_720p_DBConfig_type
 					     u32 i_slice_alpha_offset,
 					     u32 i_slice_beta_offset)
 {
-	VIDC_IO_OUT(REG_458130, 0);
+	u32 n_deblock_params;
+	n_deblock_params = (u32)e_db_config;
+	n_deblock_params |=
+		((i_slice_beta_offset << 0x2) | (i_slice_alpha_offset << 0x7));
 
-	VIDC_IO_OUTF(REG_458130,
-		      SLICE_ALPHA_C0_OFFSET_DIV2, i_slice_alpha_offset);
-
-	VIDC_IO_OUTF(REG_458130,
-		      SLICE_BETA_OFFSET_DIV2, i_slice_beta_offset);
-
-	VIDC_IO_OUTF(REG_458130,
-		      DISABLE_DEBLOCKING_FILTER_IDC, e_db_config);
+	/* Write deblocking control settings */
+	VIDC_IO_OUT(REG_458130, n_deblock_params);
 }
 
 void vidc_720p_encode_set_intra_refresh_mb_number(u32 i_cir_mb_number)
@@ -879,7 +806,7 @@ void vidc_720p_decode_skip_frm_details(u32 *p_free_luma_dpb)
 	u32 n_disp_frm_type;
 	VIDC_IO_IN(REG_697961, &n_disp_frm_type);
 
-	if (VIDC_720p_NOTCODED == n_disp_frm_type)
+	if (n_disp_frm_type == VIDC_720P_NOTCODED)
 		VIDC_IO_IN(REG_347105, p_free_luma_dpb);
 }
 
@@ -891,34 +818,20 @@ void vidc_720p_metadata_enable(u32 n_flag, u32 *p_input_buffer)
 
 void vidc_720p_decode_dynamic_req_reset(void)
 {
-	VIDC_IO_OUTF(REG_76706, DPB_FLUSH, 0x0);
-	VIDC_IO_OUTF(REG_147682, PUT_EXTRADATA, 0x0);
+	VIDC_IO_OUT(REG_76706, 0x0);
+	VIDC_IO_OUT(REG_147682, 0x0);
 	VIDC_IO_OUT(REG_896825, 0x0);
 }
 
 void vidc_720p_decode_dynamic_req_set(u32 n_property)
 {
-	if (VIDC_720p_FLUSH_REQ == n_property)
-		VIDC_IO_OUTF(REG_76706, DPB_FLUSH, 0x1);
-	else if (VIDC_720p_EXTRADATA == n_property)
-		VIDC_IO_OUTF(REG_147682, PUT_EXTRADATA, 0x1);
+	if (n_property == VIDC_720P_FLUSH_REQ)
+		VIDC_IO_OUT(REG_76706, 0x1);
+	else if (n_property == VIDC_720P_EXTRADATA)
+		VIDC_IO_OUT(REG_147682, 0x1);
 }
 
 void vidc_720p_decode_setpassthrough_start(u32 n_pass_startaddr)
 {
 	VIDC_IO_OUT(REG_486169, n_pass_startaddr);
-}
-
-void vidc_720p_RCFrame_skip(u32 n_op, u32 n_vbv_size)
-{
-	if (!n_op) {
-		VIDC_IO_OUTF(REG_128234, FRAME_SKIP_ENABLE,
-			      n_op);
-		return;
-	}
-	VIDC_IO_OUTF(REG_128234, FRAME_SKIP_ENABLE, n_op);
-	if (n_op == 2) {
-		VIDC_IO_OUTF(REG_128234, VBV_BUFFER_SIZE,
-			      n_vbv_size);
-	}
 }

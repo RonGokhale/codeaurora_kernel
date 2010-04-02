@@ -96,8 +96,6 @@ void vcd_do_device_state_transition(struct vcd_drv_ctxt_type_t *p_drv_ctxt,
 	if (!p_drv_ctxt || e_to_state >= VCD_DEVICE_STATE_MAX) {
 		VCD_MSG_ERROR("Bad parameters. p_drv_ctxt=%p, e_to_state=%d",
 				  p_drv_ctxt, e_to_state);
-
-		vcd_assert();
 	}
 
 	p_state_ctxt = &p_drv_ctxt->dev_state;
@@ -418,7 +416,20 @@ void vcd_handle_device_err_fatal(struct vcd_dev_ctxt_type *p_dev_ctxt,
 		DEVICE_STATE_EVENT_NUMBER(pf_dev_cb));
 }
 
-
+void vcd_handle_for_last_clnt_close(
+	struct vcd_dev_ctxt_type *p_dev_ctxt, u32 b_send_deinit)
+{
+	if (!p_dev_ctxt->p_cctxt_list_head) {
+		VCD_MSG_HIGH("All clients are closed");
+		if (b_send_deinit)
+			(void) vcd_deinit_device_context(
+				vcd_get_drv_context(),
+				DEVICE_STATE_EVENT_NUMBER(pf_close));
+		else
+			p_dev_ctxt->e_pending_cmd =
+			VCD_CMD_DEVICE_TERM;
+	}
+}
 void vcd_continue(void)
 {
 	struct vcd_drv_ctxt_type_t *p_drv_ctxt;
@@ -886,13 +897,8 @@ static u32 vcd_close_in_ready
 		rc = VCD_ERR_BAD_STATE;
 	}
 
-	if (!VCD_FAILED(rc) && !p_drv_ctxt->dev_ctxt.p_cctxt_list_head) {
-		VCD_MSG_HIGH("All clients are closed");
-
-		(void)vcd_deinit_device_context(p_drv_ctxt,
-						DEVICE_STATE_EVENT_NUMBER
-						(pf_close));
-	}
+	if (!VCD_FAILED(rc))
+		vcd_handle_for_last_clnt_close(&p_drv_ctxt->dev_ctxt, TRUE);
 
 	return rc;
 }

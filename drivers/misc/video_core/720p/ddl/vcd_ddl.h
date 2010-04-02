@@ -165,6 +165,7 @@ struct ddl_encoder_data_type {
 	struct vcd_property_buffer_format_type re_con_buf_format;
 	u32 n_dynamic_prop_change;
 	u32 b_dynmic_prop_change_req;
+	u32 n_ext_enc_control_val;
 	struct vidc_720p_enc_frame_info_type enc_frame_info;
 	struct ddl_buf_addr_type enc_dpb_addr;
 	struct ddl_buf_addr_type seq_header;

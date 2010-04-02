@@ -154,11 +154,11 @@ void ddl_channel_set(struct ddl_client_context_type *p_ddl)
 	struct vcd_fw_details_type fw_details;
 
 	if (p_ddl->b_decoding) {
-		e_enc_dec_sel = VIDC_720p_DECODER;
+		e_enc_dec_sel = VIDC_720P_DECODER;
 		fw_property_id = VCD_FW_DECODE;
 		p_codec = &(p_ddl->codec_data.decoder.codec_type.e_codec);
 	} else {
-		e_enc_dec_sel = VIDC_720p_ENCODER;
+		e_enc_dec_sel = VIDC_720P_ENCODER;
 		fw_property_id = VCD_FW_ENCODE;
 		p_codec = &(p_ddl->codec_data.encoder.codec_type.e_codec);
 	}
@@ -166,7 +166,7 @@ void ddl_channel_set(struct ddl_client_context_type *p_ddl)
 	default:
 	case VCD_CODEC_MPEG4:
 		{
-			e_codec = VIDC_720p_MPEG4;
+			e_codec = VIDC_720P_MPEG4;
 
 		if (p_ddl->b_decoding) {
 			vidc_720p_decode_set_mpeg4_data_partitionbuffer
@@ -178,35 +178,35 @@ void ddl_channel_set(struct ddl_client_context_type *p_ddl)
 		}
 	case VCD_CODEC_H264:
 		{
-			e_codec = VIDC_720p_H264;
+			e_codec = VIDC_720P_H264;
 			break;
 		}
 	case VCD_CODEC_DIVX_4:
 	case VCD_CODEC_DIVX_5:
 	case VCD_CODEC_DIVX_6:
 		{
-			e_codec = VIDC_720p_DIVX;
+			e_codec = VIDC_720P_DIVX;
 			break;
 		}
 	case VCD_CODEC_XVID:
 		{
-			e_codec = VIDC_720p_XVID;
+			e_codec = VIDC_720P_XVID;
 			break;
 		}
 	case VCD_CODEC_H263:
 		{
-			e_codec = VIDC_720p_H263;
+			e_codec = VIDC_720P_H263;
 			break;
 		}
 	case VCD_CODEC_MPEG2:
 		{
-			e_codec = VIDC_720p_MPEG2;
+			e_codec = VIDC_720P_MPEG2;
 			break;
 		}
 	case VCD_CODEC_VC1:
 	case VCD_CODEC_VC1_RCV:
 		{
-			e_codec = VIDC_720p_VC1;
+			e_codec = VIDC_720P_VC1;
 			break;
 		}
 	}
@@ -298,7 +298,7 @@ void ddl_decode_dynamic_property(struct ddl_client_context_type *p_ddl,
 		p_decoder->b_dynmic_prop_change_req = TRUE;
 		p_decoder->n_dynamic_prop_change &= ~(DDL_DEC_REQ_OUTPUT_FLUSH);
 		p_decoder->dpb_mask.n_hw_mask = 0;
-		vidc_720p_decode_dynamic_req_set(VIDC_720p_FLUSH_REQ);
+		vidc_720p_decode_dynamic_req_set(VIDC_720P_FLUSH_REQ);
 	}
 	if (((p_decoder->n_meta_data_enable_flag & VCD_METADATA_PASSTHROUGH))
 	    && ((VCD_FRAME_FLAG_EXTRADATA & p_bit_stream->n_flags))
@@ -313,7 +313,7 @@ void ddl_decode_dynamic_property(struct ddl_client_context_type *p_ddl,
 
 		vidc_720p_decode_setpassthrough_start(n_extra_datastart);
 
-		vidc_720p_decode_dynamic_req_set(VIDC_720p_EXTRADATA);
+		vidc_720p_decode_dynamic_req_set(VIDC_720P_EXTRADATA);
 	}
 }
 
@@ -321,38 +321,47 @@ void ddl_encode_dynamic_property(struct ddl_client_context_type *p_ddl,
 				 u32 b_enable)
 {
 	struct ddl_encoder_data_type *p_encoder = &(p_ddl->codec_data.encoder);
+	u32 n_enc_param_change = 0;
 
 	if (!b_enable) {
 		if (p_encoder->b_dynmic_prop_change_req) {
 			p_encoder->b_dynmic_prop_change_req = FALSE;
-			vidc_720p_encode_dynamic_req_reset();
+			p_encoder->n_ext_enc_control_val &=
+				~(VIDC_720P_ENC_IFRAME_REQ);
+			vidc_720p_encode_set_control_param
+			(p_encoder->n_ext_enc_control_val);
+			vidc_720p_encoder_set_param_change(n_enc_param_change);
 		}
 		return;
 	}
 	if ((p_encoder->n_dynamic_prop_change & DDL_ENC_REQ_IFRAME)) {
-		u32 n_dummy = 0;
-		vidc_720p_encode_dynamic_req_set(VIDC_720p_ENC_IFRAME_REQ,
-						  n_dummy);
 		p_encoder->n_dynamic_prop_change &= ~(DDL_ENC_REQ_IFRAME);
+		p_encoder->n_ext_enc_control_val |= VIDC_720P_ENC_IFRAME_REQ;
+		vidc_720p_encode_set_control_param
+		(p_encoder->n_ext_enc_control_val);
 	}
 	if ((p_encoder->n_dynamic_prop_change & DDL_ENC_CHANGE_BITRATE)) {
-		vidc_720p_encode_dynamic_req_set(VIDC_720p_ENC_BITRATE_CHANGE,
-			p_encoder->target_bit_rate.n_target_bitrate);
+		vidc_720p_encode_set_bit_rate(
+		p_encoder->target_bit_rate.n_target_bitrate);
+		n_enc_param_change |= VIDC_720P_ENC_BITRATE_CHANGE;
 		p_encoder->n_dynamic_prop_change &= ~(DDL_ENC_CHANGE_BITRATE);
 	}
 	if ((p_encoder->n_dynamic_prop_change & DDL_ENC_CHANGE_IPERIOD)) {
-		vidc_720p_encode_dynamic_req_set(VIDC_720p_ENC_IPERIOD_CHANGE,
-			p_encoder->i_period.n_p_frames);
+		vidc_720p_encode_set_i_period
+			(p_encoder->i_period.n_p_frames);
+		n_enc_param_change |= VIDC_720P_ENC_IPERIOD_CHANGE;
 		p_encoder->n_dynamic_prop_change &= ~(DDL_ENC_CHANGE_IPERIOD);
 	}
 	if ((p_encoder->n_dynamic_prop_change &
 				DDL_ENC_CHANGE_FRAMERATE)) {
-		vidc_720p_encode_dynamic_req_set
-		    (VIDC_720p_ENC_FRAMERATE_CHANGE,
-		     (p_encoder->frame_rate.n_fps_numerator * 1000) /
+		vidc_720p_encode_set_fps
+		    ((p_encoder->frame_rate.n_fps_numerator * 1000) /
 		     p_encoder->frame_rate.n_fps_denominator);
+		n_enc_param_change |= VIDC_720P_ENC_FRAMERATE_CHANGE;
 		p_encoder->n_dynamic_prop_change &= ~(DDL_ENC_CHANGE_FRAMERATE);
 	}
+	if (n_enc_param_change)
+		vidc_720p_encoder_set_param_change(n_enc_param_change);
 }
 
 static void ddl_encode_set_profile_level(struct ddl_client_context_type *p_ddl)
@@ -365,32 +374,32 @@ static void ddl_encode_set_profile_level(struct ddl_client_context_type *p_ddl)
 	default:
 	case VCD_PROFILE_MPEG4_SP:
 		{
-			profile = VIDC_720p_PROFILE_MPEG4_SP;
+			profile = VIDC_720P_PROFILE_MPEG4_SP;
 			break;
 		}
 	case VCD_PROFILE_MPEG4_ASP:
 		{
-			profile = VIDC_720p_PROFILE_MPEG4_ASP;
+			profile = VIDC_720P_PROFILE_MPEG4_ASP;
 			break;
 		}
 	case VCD_PROFILE_H264_BASELINE:
 		{
-			profile = VIDC_720p_PROFILE_H264_BASELINE;
+			profile = VIDC_720P_PROFILE_H264_BASELINE;
 			break;
 		}
 	case VCD_PROFILE_H264_MAIN:
 		{
-			profile = VIDC_720p_PROFILE_H264_MAIN;
+			profile = VIDC_720P_PROFILE_H264_MAIN;
 			break;
 		}
 	case VCD_PROFILE_H264_HIGH:
 		{
-			profile = VIDC_720p_PROFILE_H264_HIGH;
+			profile = VIDC_720P_PROFILE_H264_HIGH;
 			break;
 		}
 	case VCD_PROFILE_H263_BASELINE:
 		{
-			profile = VIDC_720p_PROFILE_H263_BASELINE;
+			profile = VIDC_720P_PROFILE_H263_BASELINE;
 			break;
 		}
 	}
@@ -556,8 +565,14 @@ void ddl_encode_init_codec(struct ddl_client_context_type *p_ddl)
 	     p_encoder->session_qp.n_i_frame_qp,
 	     p_encoder->session_qp.n_p_frame_qp);
 
-	vidc_720p_RCFrame_skip
-	    (p_encoder->n_r_cframe_skip, p_encoder->n_vb_vbuffer_size);
+	if (p_encoder->n_r_cframe_skip) {
+		if (p_encoder->n_vb_vbuffer_size) {
+			p_encoder->n_ext_enc_control_val = (0x2 << 0x2) |
+			(p_encoder->n_vb_vbuffer_size << 0x10);
+		} else
+			p_encoder->n_ext_enc_control_val = (0x1 << 2);
+	} else
+		p_encoder->n_ext_enc_control_val = 0;
 
 	vidc_720p_encode_set_fps
 	    ((p_encoder->frame_rate.n_fps_numerator * 1000) /
@@ -584,8 +599,16 @@ void ddl_encode_init_codec(struct ddl_client_context_type *p_ddl)
 		vidc_720p_encode_set_short_header
 		    (p_encoder->short_header.b_short_header);
 
-		vidc_720p_encode_hdr_ext_control(p_encoder->n_hdr_ext_control);
+		if (p_encoder->n_hdr_ext_control) {
+			vidc_720p_encode_set_hec_period
+			(p_encoder->n_hdr_ext_control);
+			p_encoder->n_ext_enc_control_val |= (0x1 << 0x1);
+		}
 	}
+	/* set extended encoder control settings */
+	vidc_720p_encode_set_control_param
+	(p_encoder->n_ext_enc_control_val);
+
 	if (p_encoder->codec_type.e_codec == VCD_CODEC_H264) {
 		enum vidc_720p_entropy_sel_type e_entropy_sel;
 		enum vidc_720p_cabac_model_type e_cabac_model_number;
@@ -593,12 +616,12 @@ void ddl_encode_init_codec(struct ddl_client_context_type *p_ddl)
 		default:
 		case VCD_ENTROPY_SEL_CAVLC:
 			{
-				e_entropy_sel = VIDC_720p_ENTROPY_SEL_CAVLC;
+				e_entropy_sel = VIDC_720P_ENTROPY_SEL_CAVLC;
 				break;
 			}
 		case VCD_ENTROPY_SEL_CABAC:
 			{
-				e_entropy_sel = VIDC_720p_ENTROPY_SEL_CABAC;
+				e_entropy_sel = VIDC_720P_ENTROPY_SEL_CABAC;
 				break;
 			}
 		}
@@ -607,19 +630,19 @@ void ddl_encode_init_codec(struct ddl_client_context_type *p_ddl)
 		case VCD_CABAC_MODEL_NUMBER_0:
 			{
 				e_cabac_model_number =
-				    VIDC_720p_CABAC_MODEL_NUMBER_0;
+				    VIDC_720P_CABAC_MODEL_NUMBER_0;
 				break;
 			}
 		case VCD_CABAC_MODEL_NUMBER_1:
 			{
 				e_cabac_model_number =
-				    VIDC_720p_CABAC_MODEL_NUMBER_1;
+				    VIDC_720P_CABAC_MODEL_NUMBER_1;
 				break;
 			}
 		case VCD_CABAC_MODEL_NUMBER_2:
 			{
 				e_cabac_model_number =
-				    VIDC_720p_CABAC_MODEL_NUMBER_2;
+				    VIDC_720P_CABAC_MODEL_NUMBER_2;
 				break;
 			}
 		}
@@ -630,19 +653,19 @@ void ddl_encode_init_codec(struct ddl_client_context_type *p_ddl)
 		case VCD_DB_ALL_BLOCKING_BOUNDARY:
 			{
 				e_db_config =
-				    VIDC_720p_DB_ALL_BLOCKING_BOUNDARY;
+				    VIDC_720P_DB_ALL_BLOCKING_BOUNDARY;
 				break;
 			}
 		case VCD_DB_DISABLE:
 			{
 				e_db_config =
-				    VIDC_720p_DB_ALL_BLOCKING_BOUNDARY;
+				    VIDC_720P_DB_DISABLE;
 				break;
 			}
 		case VCD_DB_SKIP_SLICE_BOUNDARY:
 			{
 				e_db_config =
-				    VIDC_720p_DB_ALL_BLOCKING_BOUNDARY;
+				    VIDC_720P_DB_SKIP_SLICE_BOUNDARY;
 				break;
 			}
 		}
