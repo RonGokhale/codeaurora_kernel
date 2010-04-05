@@ -1031,6 +1031,9 @@ static int msm_marimba_tsadc_power(int vreg_on)
 			__func__, vreg_on ? "" : "de-");
 		goto do_vote_fail;
 	}
+
+	mdelay(5); /* ensure power is stable */
+
 	return 0;
 
 do_vote_fail:
