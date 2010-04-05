@@ -334,8 +334,6 @@ static u32 vcd_resume_in_paused(struct vcd_clnt_ctxt_type_t *p_cctxt)
 				    ("rc = 0x%x. Failed: "
 				     "sched_suspend_resume_client",
 				     rc);
-
-				vcd_assert();
 			}
 
 		}
@@ -551,6 +549,7 @@ static u32 vcd_set_property_cmn
 	u32 rc;
 
 	VCD_MSG_LOW("vcd_set_property_cmn in %d:", p_cctxt->clnt_state.e_state);
+	VCD_MSG_LOW("property Id = %d", p_prop_hdr->prop_id);
 
 	if (!p_prop_hdr->n_size || !p_prop_hdr->prop_id) {
 		VCD_MSG_MED("Bad parameters");
@@ -611,13 +610,12 @@ static u32 vcd_get_property_cmn
      struct vcd_property_hdr_type *p_prop_hdr, void *p_prop_val)
 {
 	VCD_MSG_LOW("vcd_get_property_cmn in %d:", p_cctxt->clnt_state.e_state);
-
+	VCD_MSG_LOW("property Id = %d", p_prop_hdr->prop_id);
 	if (!p_prop_hdr->n_size || !p_prop_hdr->prop_id) {
 		VCD_MSG_MED("Bad parameters");
 
 		return VCD_ERR_ILLEGAL_PARM;
 	}
-
 	return ddl_get_property(p_cctxt->ddl_handle, p_prop_hdr, p_prop_val);
 }
 
@@ -1576,8 +1574,6 @@ void vcd_do_client_state_transition(struct vcd_clnt_ctxt_type_t *p_cctxt,
 	if (!p_cctxt || e_to_state >= VCD_CLIENT_STATE_MAX) {
 		VCD_MSG_ERROR("Bad parameters. p_cctxt=%p, e_to_state=%d",
 			      p_cctxt, e_to_state);
-
-		vcd_assert();
 	}
 
 	p_state_ctxt = &p_cctxt->clnt_state;
@@ -1720,7 +1716,7 @@ static const struct vcd_clnt_state_table_type_t vcd_clnt_table_stopping = {
 	 NULL,
 	 NULL,
 	 NULL,
-	 NULL,
+	 vcd_get_property_cmn,
 	 NULL,
 	 NULL,
 	 NULL,
@@ -1745,7 +1741,7 @@ static const struct vcd_clnt_state_table_type_t vcd_clnt_table_eos = {
 	 vcd_flush_in_eos,
 	 vcd_stop_in_eos,
 	 NULL,
-	 NULL,
+	 vcd_get_property_cmn,
 	 NULL,
 	 NULL,
 	 NULL,
@@ -1770,7 +1766,7 @@ static const struct vcd_clnt_state_table_type_t vcd_clnt_table_pausing = {
 	 NULL,
 	 NULL,
 	 NULL,
-	 NULL,
+	 vcd_get_property_cmn,
 	 NULL,
 	 NULL,
 	 NULL,

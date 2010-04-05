@@ -509,19 +509,19 @@ void ddl_metadata_enable(struct ddl_client_context_type *p_ddl)
 	}
 	if (n_flag) {
 		if (n_flag & VCD_METADATA_QPARRAY)
-			n_hal_flag |= VIDC_720p_METADATA_ENABLE_QP;
+			n_hal_flag |= VIDC_720P_METADATA_ENABLE_QP;
 		if (n_flag & VCD_METADATA_CONCEALMB)
-			n_hal_flag |= VIDC_720p_METADATA_ENABLE_CONCEALMB;
+			n_hal_flag |= VIDC_720P_METADATA_ENABLE_CONCEALMB;
 		if (n_flag & VCD_METADATA_VC1)
-			n_hal_flag |= VIDC_720p_METADATA_ENABLE_VC1;
+			n_hal_flag |= VIDC_720P_METADATA_ENABLE_VC1;
 		if (n_flag & VCD_METADATA_SEI)
-			n_hal_flag |= VIDC_720p_METADATA_ENABLE_SEI;
+			n_hal_flag |= VIDC_720P_METADATA_ENABLE_SEI;
 		if (n_flag & VCD_METADATA_VUI)
-			n_hal_flag |= VIDC_720p_METADATA_ENABLE_VUI;
+			n_hal_flag |= VIDC_720P_METADATA_ENABLE_VUI;
 		if (n_flag & VCD_METADATA_ENC_SLICE)
-			n_hal_flag |= VIDC_720p_METADATA_ENABLE_ENCSLICE;
+			n_hal_flag |= VIDC_720P_METADATA_ENABLE_ENCSLICE;
 		if (n_flag & VCD_METADATA_PASSTHROUGH)
-			n_hal_flag |= VIDC_720p_METADATA_ENABLE_PASSTHROUGH;
+			n_hal_flag |= VIDC_720P_METADATA_ENABLE_PASSTHROUGH;
 	} else {
 		p_metadata_input = 0;
 	}

@@ -1560,7 +1560,9 @@ static void ddl_set_default_enc_property(struct ddl_client_context_type *p_ddl)
 
 	p_encoder->entropy_control.e_entropy_sel = VCD_ENTROPY_SEL_CAVLC;
 	p_encoder->entropy_control.e_cabac_model = VCD_CABAC_MODEL_NUMBER_0;
-	p_encoder->db_control.e_db_config = VCD_DB_DISABLE;
+	p_encoder->db_control.e_db_config = VCD_DB_ALL_BLOCKING_BOUNDARY;
+	p_encoder->db_control.n_slice_alpha_offset = 0;
+	p_encoder->db_control.n_slice_beta_offset = 0;
 
 	p_encoder->re_con_buf_format.e_buffer_format =
 		VCD_BUFFER_FORMAT_TILE_4x2;
@@ -1876,12 +1878,12 @@ static u32 ddl_decoder_min_num_dpb(struct ddl_decoder_data_type *p_decoder)
 	case VCD_CODEC_DIVX_6:
 	case VCD_CODEC_XVID:
 		{
-			n_min_dpb = 10;
+			n_min_dpb = 3;
 			break;
 		}
 	case VCD_CODEC_H263:
 		{
-			n_min_dpb = 10;
+			n_min_dpb = 2;
 			break;
 		}
 	case VCD_CODEC_VC1:
@@ -1899,9 +1901,7 @@ static u32 ddl_decoder_min_num_dpb(struct ddl_decoder_data_type *p_decoder)
 			if (n_min_dpb > 16)
 				n_min_dpb = 16;
 
-			n_min_dpb *= 2;
-			if (n_min_dpb < 10)
-				n_min_dpb = 10;
+			n_min_dpb += 2;
 			break;
 		}
 	}

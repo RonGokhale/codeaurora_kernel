@@ -62,29 +62,6 @@ do { \
 	(void) out_dword(io,  ((current_reg_content & (u32)(~(mask))) | \
 				((u32)((val) & (mask)))))
 
-extern u32 VID_C_REG_319934_SHADOW;
-extern u32 VID_C_REG_101184_SHADOW;
-extern u32 VID_C_REG_490443_SHADOW;
-extern u32 VID_C_REG_64895_SHADOW;
-extern u32 VID_C_REG_804959_SHADOW;
-extern u32 VID_C_REG_883500_SHADOW;
-extern u32 VID_C_REG_615716_SHADOW[32];
-extern u32 VID_C_REG_603032_SHADOW;
-extern u32 VID_C_REG_792026_SHADOW;
-extern u32 VID_C_REG_844152_SHADOW;
-extern u32 VID_C_REG_147682_SHADOW;
-extern u32 VID_C_REG_407718_SHADOW;
-extern u32 VID_C_REG_854681_SHADOW;
-extern u32 VID_C_REG_128234_SHADOW;
-extern u32 VID_C_REG_988552_SHADOW;
-extern u32 VID_C_REG_94750_SHADOW;
-extern u32 VID_C_REG_76706_SHADOW;
-extern u32 VID_C_REG_486169_SHADOW;
-extern u32 VID_C_REG_699747_SHADOW;
-extern u32 VID_C_REG_166247_SHADOW;
-extern u32 VID_C_REG_926519_SHADOW;
-extern u32 VID_C_REG_965480_SHADOW;
-
 extern u8 *vid_c_base_addr;
 
 #define VIDC720P_BASE  vid_c_base_addr
@@ -1805,13 +1782,6 @@ do { \
 #define VIDC_REG_101184_SHFT                0
 #define VIDC_REG_101184_OUT(v)                     \
 	out_dword(VIDC_REG_101184_ADDR, v)
-#define VIDC_REG_101184_OUTM(m, v)                  \
-	out_dword_masked(VIDC_REG_101184_ADDR, m, v, \
-			VID_C_REG_101184_SHADOW)
-#define VIDC_REG_101184_ALLOCATED_DB_BUF_SIZE_BMSK \
-		0xffffffff
-#define VIDC_REG_101184_ALLOCATED_DB_BUF_SIZE_SHFT \
-		0
 
 #define VIDC_REG_490443_ADDR  \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000d08)
@@ -1824,14 +1794,6 @@ do { \
 VIDC_REG_490443_SHFT                                0
 #define VIDC_REG_490443_OUT(v)                     \
 	out_dword(VIDC_REG_490443_ADDR, v)
-#define VIDC_REG_490443_OUTM(m, v)                  \
-	out_dword_masked(VIDC_REG_490443_ADDR, m, v, \
-			VID_C_REG_490443_SHADOW)
-#define VIDC_REG_490443_ALLOCATED_COMV_BUF_SIZE_BMSK \
-	0xffffffff
-#define \
-	\
-VIDC_REG_490443_ALLOCATED_COMV_BUF_SIZE_SHFT          0
 
 #define VIDC_REG_625444_ADDR                 \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000d14)
@@ -1862,30 +1824,15 @@ do { \
 #define VIDC_REG_64895_SHFT                             0
 #define VIDC_REG_64895_OUT(v)                  \
 	out_dword(VIDC_REG_64895_ADDR, v)
-#define VIDC_REG_64895_OUTM(m, v)               \
-	out_dword_masked(VIDC_REG_64895_ADDR, m, v, \
-			VID_C_REG_64895_SHADOW)
-#define VIDC_REG_64895_VOP_TIMING_ENABLE_BMSK  0x80000000
-#define VIDC_REG_64895_VOP_TIMING_ENABLE_SHFT        0x1f
-#define VIDC_REG_64895_VOP_TIME_RESOLUTION_BMSK 0x7fff0000
-#define VIDC_REG_64895_VOP_TIME_RESOLUTION_SHFT       0x10
-#define VIDC_REG_64895_FRAME_DELTA_BMSK            0xffff
-#define VIDC_REG_64895_FRAME_DELTA_SHFT                 0
 
 #define VIDC_REG_965480_ADDR \
 		(VIDC_720P_WRAPPER_REG_BASE + 0x00000e04)
 #define VIDC_REG_965480_PHYS \
 		(VIDC_720P_WRAPPER_REG_BASE_PHYS + 0x00000e04)
-#define VIDC_REG_965480_RMSK 0x7f
+#define VIDC_REG_965480_RMSK 0x1
 #define VIDC_REG_965480_SHFT 0
 #define VIDC_REG_965480_OUT(v) \
 		out_dword(VIDC_REG_965480_ADDR, v)
-#define VIDC_REG_965480_OUTM(m, v) \
-		out_dword_masked(VIDC_REG_965480_ADDR, m, \
-		v, VID_C_REG_965480_SHADOW)
-#define VIDC_REG_965480_OUTPUT_ORDER_SETTING_BMSK 0x1
-#define VIDC_REG_965480_OUTPUT_ORDER_SETTING_SHFT 0
-
 
 #define VIDC_REG_804959_ADDR              \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000e08)
@@ -1895,15 +1842,6 @@ do { \
 #define VIDC_REG_804959_SHFT                       0
 #define VIDC_REG_804959_OUT(v)            \
 	out_dword(VIDC_REG_804959_ADDR, v)
-#define VIDC_REG_804959_OUTM(m, v)         \
-	out_dword_masked(VIDC_REG_804959_ADDR, m, v, \
-			VID_C_REG_804959_SHADOW)
-#define VIDC_REG_804959_RC_BIT_RATE_CHANGE_BMSK        0x4
-#define VIDC_REG_804959_RC_BIT_RATE_CHANGE_SHFT        0x2
-#define VIDC_REG_804959_RC_FRAME_RATE_CHANGE_BMSK        0x2
-#define VIDC_REG_804959_RC_FRAME_RATE_CHANGE_SHFT        0x1
-#define VIDC_REG_804959_I_PERIOD_CHANGE_BMSK        0x1
-#define VIDC_REG_804959_I_PERIOD_CHANGE_SHFT          0
 
 #define VIDC_REG_257463_ADDR                   \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000e10)
@@ -1927,11 +1865,6 @@ do { \
 #define VIDC_REG_883500_SHFT                                0
 #define VIDC_REG_883500_OUT(v)                     \
 	out_dword(VIDC_REG_883500_ADDR, v)
-#define VIDC_REG_883500_OUTM(m, v)                  \
-	out_dword_masked(VIDC_REG_883500_ADDR, m, v, \
-			VID_C_REG_883500_SHADOW)
-#define VIDC_REG_883500_NUM_DPB_BMSK               0xffffffff
-#define VIDC_REG_883500_NUM_DPB_SHFT                        0
 
 #define VIDC_REG_615716_ADDR(n)               \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000e18 + 4 * (n))
@@ -1941,11 +1874,6 @@ do { \
 #define VIDC_REG_615716_SHFT                           0
 #define VIDC_REG_615716_OUTI(n, v) \
 	out_dword(VIDC_REG_615716_ADDR(n), v)
-#define VIDC_REG_615716_OUTMI(n, mask, v) \
-	out_dword_masked(VIDC_REG_615716_ADDR(n), mask, v, \
-			VID_C_REG_615716_SHADOW[n])
-#define VIDC_REG_615716_DEC_DPB_BUF_BMSK      0xffffffff
-#define VIDC_REG_615716_DEC_DPB_BUF_SHFT               0
 
 #define VIDC_REG_603032_ADDR                \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000e98)
@@ -1955,11 +1883,6 @@ do { \
 #define VIDC_REG_603032_SHFT                         0
 #define VIDC_REG_603032_OUT(v)              \
 	out_dword(VIDC_REG_603032_ADDR, v)
-#define VIDC_REG_603032_OUTM(m, v)           \
-	out_dword_masked(VIDC_REG_603032_ADDR, m, v, \
-			VID_C_REG_603032_SHADOW)
-#define VIDC_REG_603032_RELEASE_BUFFER_BMSK 0xffffffff
-#define VIDC_REG_603032_RELEASE_BUFFER_SHFT          0
 
 #define VIDC_REG_300310_ADDR                  \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000e9c)
@@ -1983,15 +1906,6 @@ do { \
 #define VIDC_REG_792026_SHFT                 0
 #define VIDC_REG_792026_OUT(v)      \
 	out_dword(VIDC_REG_792026_ADDR, v)
-#define VIDC_REG_792026_OUTM(m, v)   \
-	out_dword_masked(VIDC_REG_792026_ADDR, m, v, \
-			VID_C_REG_792026_SHADOW)
-#define VIDC_REG_792026_UPPER_UNALIGNED_BACKUP_BMSK \
-	0xffffffff
-#define \
-	\
-VIDC_REG_792026_UPPER_UNALIGNED_BACKUP_SHFT          \
-0
 
 #define VIDC_REG_844152_ADDR        \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000ea4)
@@ -2001,14 +1915,6 @@ VIDC_REG_792026_UPPER_UNALIGNED_BACKUP_SHFT          \
 #define VIDC_REG_844152_SHFT                 0
 #define VIDC_REG_844152_OUT(v)      \
 	out_dword(VIDC_REG_844152_ADDR, v)
-#define VIDC_REG_844152_OUTM(m, v)   \
-	out_dword_masked(VIDC_REG_844152_ADDR, m, v, \
-			VID_C_REG_844152_SHADOW)
-#define VIDC_REG_844152_LOWER_UNALIGNED_BACKUP_BMSK \
-	0xffffffff
-#define \
-	\
-VIDC_REG_844152_LOWER_UNALIGNED_BACKUP_SHFT          0
 
 #define VIDC_REG_370409_ADDR            \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000ea8)
@@ -2032,11 +1938,6 @@ VIDC_REG_844152_LOWER_UNALIGNED_BACKUP_SHFT          0
 #define VIDC_REG_147682_SHFT                        0
 #define VIDC_REG_147682_OUT(v)             \
 	out_dword(VIDC_REG_147682_ADDR, v)
-#define VIDC_REG_147682_OUTM(m, v)          \
-	out_dword_masked(VIDC_REG_147682_ADDR, m, v, \
-			VID_C_REG_147682_SHADOW)
-#define VIDC_REG_147682_PUT_EXTRADATA_BMSK         0x1
-#define VIDC_REG_147682_PUT_EXTRADATA_SHFT            0
 
 #define VIDC_REG_407718_ADDR                    \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000eb0)
@@ -2046,12 +1947,6 @@ VIDC_REG_844152_LOWER_UNALIGNED_BACKUP_SHFT          0
 #define VIDC_REG_407718_SHFT                             0
 #define VIDC_REG_407718_OUT(v)                  \
 	out_dword(VIDC_REG_407718_ADDR, v)
-#define VIDC_REG_407718_OUTM(m, v)               \
-	out_dword_masked(VIDC_REG_407718_ADDR, m, v, \
-			VID_C_REG_407718_SHADOW)
-#define VIDC_REG_407718_HEC_PERIOD_BMSK         \
-	0xffffffff
-#define VIDC_REG_407718_HEC_PERIOD_SHFT                  0
 
 #define VIDC_REG_697961_ADDR \
 		(VIDC_720P_WRAPPER_REG_BASE + 0x00000eb4)
@@ -2122,23 +2017,7 @@ VIDC_REG_844152_LOWER_UNALIGNED_BACKUP_SHFT          0
 #define VIDC_REG_854681_SHFT                        0
 #define VIDC_REG_854681_OUT(v)             \
 	out_dword(VIDC_REG_854681_ADDR, v)
-#define VIDC_REG_854681_OUTM(m, v)          \
-	out_dword_masked(VIDC_REG_854681_ADDR, m, v, \
-			VID_C_REG_854681_SHADOW)
-#define VIDC_REG_854681_EXTRADATA_ENABLE_BMSK       0x40
-#define VIDC_REG_854681_EXTRADATA_ENABLE_SHFT        0x6
-#define VIDC_REG_854681_ENC_SLICE_SIZE_ENABLE_BMSK       0x20
-#define VIDC_REG_854681_ENC_SLICE_SIZE_ENABLE_SHFT        0x5
-#define VIDC_REG_854681_VUI_ENABLE_BMSK          0x10
-#define VIDC_REG_854681_VUI_ENABLE_SHFT           0x4
-#define VIDC_REG_854681_SEI_NAL_ENABLE_BMSK        0x8
-#define VIDC_REG_854681_SEI_NAL_ENABLE_SHFT        0x3
-#define VIDC_REG_854681_VC1_PARAM_ENABLE_BMSK        0x4
-#define VIDC_REG_854681_VC1_PARAM_ENABLE_SHFT        0x2
-#define VIDC_REG_854681_CONCEALED_MB_ENABLE_BMSK        0x2
-#define VIDC_REG_854681_CONCEALED_MB_ENABLE_SHFT        0x1
-#define VIDC_REG_854681_QP_ENABLE_BMSK            0x1
-#define VIDC_REG_854681_QP_ENABLE_SHFT              0
+
 #define VIDC_REG_128234_ADDR               \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000ec8)
 #define VIDC_REG_128234_PHYS               \
@@ -2147,17 +2026,6 @@ VIDC_REG_844152_LOWER_UNALIGNED_BACKUP_SHFT          0
 #define VIDC_REG_128234_SHFT                        0
 #define VIDC_REG_128234_OUT(v)             \
 	out_dword(VIDC_REG_128234_ADDR, v)
-#define VIDC_REG_128234_OUTM(m, v)          \
-	out_dword_masked(VIDC_REG_128234_ADDR, m, v, \
-			VID_C_REG_128234_SHADOW)
-#define VIDC_REG_128234_VBV_BUFFER_SIZE_BMSK 0xffff0000
-#define VIDC_REG_128234_VBV_BUFFER_SIZE_SHFT       0x10
-#define VIDC_REG_128234_FRAME_SKIP_ENABLE_BMSK        0xc
-#define VIDC_REG_128234_FRAME_SKIP_ENABLE_SHFT        0x2
-#define VIDC_REG_128234_HEC_ENABLE_BMSK           0x2
-#define VIDC_REG_128234_HEC_ENABLE_SHFT           0x1
-#define VIDC_REG_128234_INSERT_I_FRAME_BMSK        0x1
-#define VIDC_REG_128234_INSERT_I_FRAME_SHFT          0
 
 #define VIDC_REG_1137_ADDR        \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000ecc)
@@ -2184,14 +2052,6 @@ VIDC_REG_1137_METADATA_DISPLAY_INDEX_SHFT          0
 #define VIDC_REG_988552_SHFT                0
 #define VIDC_REG_988552_OUT(v)     \
 	out_dword(VIDC_REG_988552_ADDR, v)
-#define VIDC_REG_988552_OUTM(m, v)  \
-	out_dword_masked(VIDC_REG_988552_ADDR, m, v, \
-			VID_C_REG_988552_SHADOW)
-#define VIDC_REG_988552_EXT_METADATA_START_ADDR_BMSK \
-	0xffffffff
-#define \
-	\
-VIDC_REG_988552_EXT_METADATA_START_ADDR_SHFT          0
 
 #define VIDC_REG_319934_ADDR  \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000ed4)
@@ -2201,14 +2061,6 @@ VIDC_REG_988552_EXT_METADATA_START_ADDR_SHFT          0
 #define VIDC_REG_319934_SHFT                   0
 #define VIDC_REG_319934_OUT(v)                     \
 	out_dword(VIDC_REG_319934_ADDR, v)
-#define VIDC_REG_319934_OUTM(m, v)                  \
-	out_dword_masked(VIDC_REG_319934_ADDR, m, v, \
-			VID_C_REG_319934_SHADOW)
-#define VIDC_REG_319934_ALLOCATED_DPB_SIZE_BMSK               \
-	0xffffffff
-#define \
-	\
-VIDC_REG_319934_ALLOCATED_DPB_SIZE_SHFT         0
 
 #define VIDC_REG_679165_ADDR                   \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000ed8)
@@ -2246,11 +2098,6 @@ VIDC_REG_319934_ALLOCATED_DPB_SIZE_SHFT         0
 #define VIDC_REG_94750_SHFT                          0
 #define VIDC_REG_94750_OUT(v)               \
 	out_dword(VIDC_REG_94750_ADDR, v)
-#define VIDC_REG_94750_OUTM(m, v)            \
-	out_dword_masked(VIDC_REG_94750_ADDR, m, v, \
-			VID_C_REG_94750_SHADOW)
-#define VIDC_REG_94750_SET_FRAME_TAG_BMSK   0xffffffff
-#define VIDC_REG_94750_SET_FRAME_TAG_SHFT            0
 
 #define VIDC_REG_438677_ADDR          \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00000ee4)
@@ -2274,11 +2121,6 @@ VIDC_REG_319934_ALLOCATED_DPB_SIZE_SHFT         0
 #define VIDC_REG_76706_SHFT                        0
 #define VIDC_REG_76706_OUT(v)             \
 	out_dword(VIDC_REG_76706_ADDR, v)
-#define VIDC_REG_76706_OUTM(m, v)          \
-	out_dword_masked(VIDC_REG_76706_ADDR, m, v, \
-			VID_C_REG_76706_SHADOW)
-#define VIDC_REG_76706_DPB_FLUSH_BMSK            0x1
-#define VIDC_REG_76706_DPB_FLUSH_SHFT              0
 
 #define VIDC_REG_809984_ADDR                       \
 	(VIDC_720P_WRAPPER_REG_BASE      + 0x00001000)
@@ -2305,16 +2147,6 @@ VIDC_REG_319934_ALLOCATED_DPB_SIZE_SHFT         0
 #define VIDC_REG_699747_OUT(v)                  \
 		out_dword(VIDC_REG_699747_ADDR, v)
 
-#define VIDC_REG_699747_OUTM(m, v)               \
-		out_dword_masked(VIDC_REG_699747_ADDR, m, v, \
-		VID_C_REG_699747_SHADOW)
-#define VIDC_REG_699747_ALLOCATED_MEM_SIZE_BMSK  0xffff0000
-#define VIDC_REG_699747_ALLOCATED_MEM_SIZE_SHFT      0x10
-#define VIDC_REG_699747_SET_MEMORY_DUMP_TYPE_BMSK     0x6
-#define VIDC_REG_699747_SET_MEMORY_DUMP_TYPE_SHFT     0x1
-#define VIDC_REG_699747_ENABLE_FW_DEBUG_INFO_BMSK     0x1
-#define VIDC_REG_699747_ENABLE_FW_DEBUG_INFO_SHFT     0x0
-
 #define VIDC_REG_166247_ADDR \
        (VIDC_720P_WRAPPER_REG_BASE + 0x00000d10)
 #define VIDC_REG_166247_PHYS \
@@ -2323,11 +2155,6 @@ VIDC_REG_319934_ALLOCATED_DPB_SIZE_SHFT         0
 #define VIDC_REG_166247_SHFT 0
 #define VIDC_REG_166247_OUT(v)               \
 		out_dword(VIDC_REG_166247_ADDR, v)
-#define VIDC_REG_166247_OUTM(m, v)            \
-		out_dword_masked(VIDC_REG_166247_ADDR, \
-		m, v, VID_C_REG_166247_SHADOW)
-#define VIDC_REG_166247_DBG_INFO_INPUT1_BMSK 0xffffffff
-#define VIDC_REG_166247_DBG_INFO_INPUT1_SHFT 0
 
 #define VIDC_REG_486169_ADDR \
 		(VIDC_720P_WRAPPER_REG_BASE + 0x00000d18)
@@ -2337,12 +2164,6 @@ VIDC_REG_319934_ALLOCATED_DPB_SIZE_SHFT         0
 #define VIDC_REG_486169_SHFT 0
 #define VIDC_REG_486169_OUT(v) \
 		out_dword(VIDC_REG_486169_ADDR, v)
-#define VIDC_REG_486169_OUTM(m, v)\
-		out_dword_masked(VIDC_REG_486169_ADDR, \
-		m, v, VID_C_REG_486169_SHADOW)
-#define VIDC_REG_486169_EXTRADATA_ADDR_BMSK   0xffffffff
-#define VIDC_REG_486169_EXTRADATA_ADDR_SHFT            0
-
 
 #define VIDC_REG_926519_ADDR \
 		(VIDC_720P_WRAPPER_REG_BASE + 0x00000d1c)
@@ -2352,28 +2173,21 @@ VIDC_REG_319934_ALLOCATED_DPB_SIZE_SHFT         0
 #define VIDC_REG_926519_SHFT 0
 #define VIDC_REG_926519_OUT(v) \
 		out_dword(VIDC_REG_926519_ADDR, v)
-#define VIDC_REG_926519_OUTM(m, v) \
-		out_dword_masked(VIDC_REG_926519_ADDR, m, v, \
-		VID_C_REG_926519_SHADOW)
-#define VIDC_REG_926519_CMD_START_BMSK   0xffffffff
-#define VIDC_REG_926519_CMD_START_SHFT            0
-
-
 
 /** List all the levels and their register valus */
 
-#define VIDC_720p_PROFILE_MPEG4_SP      0
-#define VIDC_720p_PROFILE_MPEG4_ASP     1
-#define VIDC_720p_PROFILE_H264_BASELINE 0
-#define VIDC_720p_PROFILE_H264_MAIN     1
-#define VIDC_720p_PROFILE_H264_HIGH     2
-#define VIDC_720p_PROFILE_H263_BASELINE 0
+#define VIDC_720P_PROFILE_MPEG4_SP      0
+#define VIDC_720P_PROFILE_MPEG4_ASP     1
+#define VIDC_720P_PROFILE_H264_BASELINE 0
+#define VIDC_720P_PROFILE_H264_MAIN     1
+#define VIDC_720P_PROFILE_H264_HIGH     2
+#define VIDC_720P_PROFILE_H263_BASELINE 0
 
-#define VIDC_720p_PROFILE_VC1_SP        0
-#define VIDC_720p_PROFILE_VC1_MAIN      1
-#define VIDC_720p_PROFILE_VC1_ADV       2
-#define VIDC_720p_PROFILE_MPEG2_MAIN    4
-#define VIDC_720p_PROFILE_MPEG2_SP      5
+#define VIDC_720P_PROFILE_VC1_SP        0
+#define VIDC_720P_PROFILE_VC1_MAIN      1
+#define VIDC_720P_PROFILE_VC1_ADV       2
+#define VIDC_720P_PROFILE_MPEG2_MAIN    4
+#define VIDC_720P_PROFILE_MPEG2_SP      5
 
 #define VIDC_720P_MPEG4_LEVEL0  0
 #define VIDC_720P_MPEG4_LEVEL0b 9
@@ -2455,42 +2269,42 @@ enum vidc_720p_interrupt_level_selection_type {
 #define VIDC_720P_INTR_FRAME_DONE              0x100
 
 enum vidc_720p_enc_dec_selection_type {
-	VIDC_720p_DECODER = 0,
-	VIDC_720p_ENCODER = 1
+	VIDC_720P_DECODER = 0,
+	VIDC_720P_ENCODER = 1
 };
 
 enum vidc_720p_codec_type {
-	VIDC_720p_MPEG4 = 0,
-	VIDC_720p_H264 = 1,
-	VIDC_720p_DIVX = 2,
-	VIDC_720p_XVID = 3,
-	VIDC_720p_H263 = 4,
-	VIDC_720p_MPEG2 = 5,
-	VIDC_720p_VC1 = 6
+	VIDC_720P_MPEG4 = 0,
+	VIDC_720P_H264 = 1,
+	VIDC_720P_DIVX = 2,
+	VIDC_720P_XVID = 3,
+	VIDC_720P_H263 = 4,
+	VIDC_720P_MPEG2 = 5,
+	VIDC_720P_VC1 = 6
 };
 
 enum vidc_720p_frame_type {
-	VIDC_720p_NOTCODED = 0,
-	VIDC_720p_IFRAME = 1,
-	VIDC_720p_PFRAME = 2,
-	VIDC_720p_BFRAME = 3
+	VIDC_720P_NOTCODED = 0,
+	VIDC_720P_IFRAME = 1,
+	VIDC_720P_PFRAME = 2,
+	VIDC_720P_BFRAME = 3
 };
 
 enum vidc_720p_entropy_sel_type {
-	VIDC_720p_ENTROPY_SEL_CAVLC = 0,
-	VIDC_720p_ENTROPY_SEL_CABAC = 1
+	VIDC_720P_ENTROPY_SEL_CAVLC = 0,
+	VIDC_720P_ENTROPY_SEL_CABAC = 1
 };
 
 enum vidc_720p_cabac_model_type {
-	VIDC_720p_CABAC_MODEL_NUMBER_0 = 0,
-	VIDC_720p_CABAC_MODEL_NUMBER_1 = 1,
-	VIDC_720p_CABAC_MODEL_NUMBER_2 = 2
+	VIDC_720P_CABAC_MODEL_NUMBER_0 = 0,
+	VIDC_720P_CABAC_MODEL_NUMBER_1 = 1,
+	VIDC_720P_CABAC_MODEL_NUMBER_2 = 2
 };
 
 enum vidc_720p_DBConfig_type {
-	VIDC_720p_DB_ALL_BLOCKING_BOUNDARY = 0,
-	VIDC_720p_DB_DISABLE = 1,
-	VIDC_720p_DB_SKIP_SLICE_BOUNDARY = 2
+	VIDC_720P_DB_ALL_BLOCKING_BOUNDARY = 0,
+	VIDC_720P_DB_DISABLE = 1,
+	VIDC_720P_DB_SKIP_SLICE_BOUNDARY = 2
 };
 
 enum vidc_720p_MSlice_selection_type {
@@ -2501,27 +2315,27 @@ enum vidc_720p_MSlice_selection_type {
 };
 
 enum vidc_720p_display_status_type {
-	VIDC_720p_DECODE_ONLY = 0,
-	VIDC_720p_DECODE_AND_DISPLAY = 1,
-	VIDC_720p_DISPLAY_ONLY = 2,
-  VIDC_720p_EMPTY_BUFFER = 3
+	VIDC_720P_DECODE_ONLY = 0,
+	VIDC_720P_DECODE_AND_DISPLAY = 1,
+	VIDC_720P_DISPLAY_ONLY = 2,
+  VIDC_720P_EMPTY_BUFFER = 3
 };
 
-#define VIDC_720p_ENC_IFRAME_REQ       0x1
-#define VIDC_720p_ENC_IPERIOD_CHANGE   0x2
-#define VIDC_720p_ENC_FRAMERATE_CHANGE 0x3
-#define VIDC_720p_ENC_BITRATE_CHANGE   0x4
+#define VIDC_720P_ENC_IFRAME_REQ       0x1
+#define VIDC_720P_ENC_IPERIOD_CHANGE   0x1
+#define VIDC_720P_ENC_FRAMERATE_CHANGE 0x2
+#define VIDC_720P_ENC_BITRATE_CHANGE   0x4
 
-#define VIDC_720p_FLUSH_REQ     0x1
-#define VIDC_720p_EXTRADATA     0x2
+#define VIDC_720P_FLUSH_REQ     0x1
+#define VIDC_720P_EXTRADATA     0x2
 
-#define VIDC_720p_METADATA_ENABLE_QP           0x01
-#define VIDC_720p_METADATA_ENABLE_CONCEALMB    0x02
-#define VIDC_720p_METADATA_ENABLE_VC1          0x04
-#define VIDC_720p_METADATA_ENABLE_SEI          0x08
-#define VIDC_720p_METADATA_ENABLE_VUI          0x10
-#define VIDC_720p_METADATA_ENABLE_ENCSLICE     0x20
-#define VIDC_720p_METADATA_ENABLE_PASSTHROUGH  0x40
+#define VIDC_720P_METADATA_ENABLE_QP           0x01
+#define VIDC_720P_METADATA_ENABLE_CONCEALMB    0x02
+#define VIDC_720P_METADATA_ENABLE_VC1          0x04
+#define VIDC_720P_METADATA_ENABLE_SEI          0x08
+#define VIDC_720P_METADATA_ENABLE_VUI          0x10
+#define VIDC_720P_METADATA_ENABLE_ENCSLICE     0x20
+#define VIDC_720P_METADATA_ENABLE_PASSTHROUGH  0x40
 
 struct vidc_720p_dec_disp_info_type {
 	enum vidc_720p_display_status_type e_disp_status;
@@ -2614,7 +2428,7 @@ void vidc_720p_encode_set_fps(u32 i_rc_frame_rate);
 void vidc_720p_encode_set_vop_time(u32 n_vop_time_resolution,
 		u32 n_vop_time_increment);
 
-void vidc_720p_encode_hdr_ext_control(u32 n_header_extension);
+void vidc_720p_encode_set_hec_period(u32 n_hec_period);
 
 void vidc_720p_encode_set_short_header(u32 i_short_header);
 
@@ -2625,9 +2439,9 @@ void vidc_720p_encode_set_rc_config(u32 b_enable_frame_level_rc,
 
 void vidc_720p_encode_set_bit_rate(u32 i_target_bitrate);
 
-void vidc_720p_encode_dynamic_req_reset(void);
+void vidc_720p_encoder_set_param_change(u32 n_enc_param_change);
 
-void vidc_720p_encode_dynamic_req_set(u32 n_param_type, u32 n_param_val);
+void vidc_720p_encode_set_control_param(u32 n_param_val);
 
 void vidc_720p_encode_set_frame_level_rc_params(u32 i_reaction_coeff);
 
@@ -2719,7 +2533,6 @@ void vidc_720p_decode_dynamic_req_set(u32 n_property);
 
 void vidc_720p_decode_setpassthrough_start(u32 n_pass_startaddr);
 
-void vidc_720p_RCFrame_skip(u32 n_op, u32 n_vbv_size);
 
 
 #define DDL_720P_REG_BASE VIDC_720P_WRAPPER_REG_BASE

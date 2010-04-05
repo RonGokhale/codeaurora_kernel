@@ -617,7 +617,7 @@ u32 vid_enc_set_get_profile_level(struct video_client_ctx *client_ctx,
 			level_type.e_level = VCD_LEVEL_MPEG4_3b;
 			break;
 		case VEN_LEVEL_MPEG4_6:
-			status = FALSE;
+			level_type.e_level = VCD_LEVEL_MPEG4_6;
 			break;
 		case VEN_LEVEL_H264_1:
 			level_type.e_level = VCD_LEVEL_H264_1;

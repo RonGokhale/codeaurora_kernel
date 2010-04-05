@@ -369,8 +369,7 @@ static u32 ddl_handle_core_recoverable_errors(struct ddl_context_type \
 			}
 
 			if (pending_display >=
-				p_ddl->codec_data.decoder.\
-				dp_buf.n_no_of_dec_pic_buf) {
+				p_ddl->codec_data.decoder.n_min_dpb_num) {
 				DBG("FWISSUE-REQBUF!!");
 				/* callback to client for client fatal error */
 				ddl_client_fatal_cb(p_ddl_context);

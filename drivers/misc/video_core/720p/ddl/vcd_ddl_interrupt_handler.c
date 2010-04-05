@@ -145,8 +145,8 @@ static void ddl_eos_done_callback(struct ddl_context_type *p_ddl_context)
 	ddl_move_command_state(p_ddl_context, DDL_CMD_INVALID);
 
 	vidc_720p_eos_info(&n_displaystatus);
-	if (VIDC_720p_EMPTY_BUFFER !=
-		(enum vidc_720p_display_status_type)n_displaystatus) {
+	if ((enum vidc_720p_display_status_type)n_displaystatus
+		!= VIDC_720P_EMPTY_BUFFER) {
 		VIDC_LOG_STRING("EOSDONE-EMPTYBUF-ISSUE");
 	}
 
@@ -258,14 +258,7 @@ static u32 ddl_header_done_callback(struct ddl_context_type *p_ddl_context)
 	p_decoder = &(p_ddl->codec_data.decoder);
 	p_decoder->frame_size.n_width = seq_hdr_info.n_img_size_x;
 	p_decoder->frame_size.n_height = seq_hdr_info.n_img_size_y;
-	if (p_decoder->codec_type.e_codec == VCD_CODEC_H264)
-		p_decoder->n_min_dpb_num =
-		(seq_hdr_info.n_min_num_dpb - 2) << 1;
-	else
-		p_decoder->n_min_dpb_num =
-		seq_hdr_info.n_min_num_dpb + 4;
-	if (p_decoder->n_min_dpb_num < 10)
-		p_decoder->n_min_dpb_num = 10;
+	p_decoder->n_min_dpb_num = seq_hdr_info.n_min_num_dpb;
 	p_decoder->n_y_cb_cr_size = seq_hdr_info.n_min_dpb_size;
 	p_decoder->n_progressive_only = 1 - seq_hdr_info.n_progressive;
 	ddl_getdec_profilelevel(p_decoder, seq_hdr_info.n_profile,
@@ -284,7 +277,22 @@ static u32 ddl_header_done_callback(struct ddl_context_type *p_ddl_context)
 	if (p_decoder->b_header_in_start) {
 		p_decoder->client_frame_size = p_decoder->frame_size;
 		p_decoder->client_output_buf_req =
-		    p_decoder->actual_output_buf_req;
+			p_decoder->actual_output_buf_req;
+		if ((p_decoder->frame_size.n_width *
+			 p_decoder->frame_size.n_height) >= (800*480)) {
+			if ((p_decoder->actual_output_buf_req.\
+				 n_actual_count + 2) < 10)
+				p_decoder->client_output_buf_req.\
+				n_actual_count = 10;
+			else
+				p_decoder->client_output_buf_req.\
+				n_actual_count += 2;
+		} else
+			p_decoder->client_output_buf_req.\
+			n_actual_count =
+			p_decoder->actual_output_buf_req.\
+			n_actual_count + 5;
+
 		p_decoder->client_input_buf_req =
 		    p_decoder->actual_input_buf_req;
 	} else {
@@ -452,27 +460,27 @@ static u32 ddl_decoder_frame_run_callback(struct ddl_context_type
 	}
 
 
-	if (VIDC_720p_DECODE_ONLY == p_dec_disp_info->e_disp_status ||
-		VIDC_720p_DECODE_AND_DISPLAY ==
-		p_dec_disp_info->e_disp_status) {
+	if (p_dec_disp_info->e_disp_status == VIDC_720P_DECODE_ONLY ||
+		p_dec_disp_info->e_disp_status
+			== VIDC_720P_DECODE_AND_DISPLAY) {
 		if (!eos_present)
-			b_callback_end = (VIDC_720p_DECODE_ONLY
-				== p_dec_disp_info->e_disp_status);
+			b_callback_end = (p_dec_disp_info->e_disp_status
+					== VIDC_720P_DECODE_ONLY);
 
 	  ddl_decoder_input_done_callback(p_ddl, b_callback_end);
 	}
 
-	if (VIDC_720p_DECODE_AND_DISPLAY == p_dec_disp_info->e_disp_status
-		|| VIDC_720p_DISPLAY_ONLY == p_dec_disp_info->e_disp_status) {
+	if (p_dec_disp_info->e_disp_status == VIDC_720P_DECODE_AND_DISPLAY
+		|| p_dec_disp_info->e_disp_status == VIDC_720P_DISPLAY_ONLY) {
 		if (!eos_present)
 			b_callback_end =
-			(VIDC_720p_DECODE_AND_DISPLAY
-			 == p_dec_disp_info->e_disp_status);
+			(p_dec_disp_info->e_disp_status
+				== VIDC_720P_DECODE_AND_DISPLAY);
 
 		ddl_decoder_ouput_done_callback(p_ddl, b_callback_end);
 	}
 
-	if (p_dec_disp_info->e_disp_status ==  VIDC_720p_DISPLAY_ONLY) {
+	if (p_dec_disp_info->e_disp_status ==  VIDC_720P_DISPLAY_ONLY) {
 		/* send the same input once again for decoding */
 		ddl_decode_frame_run(p_ddl);
 		/* client need to ignore the interrupt */
@@ -515,7 +523,7 @@ static u32 ddl_eos_frame_done_callback(struct ddl_context_type *p_ddl_context)
 	else if (p_dec_disp_info->n_resl_change)
 		VIDC_LOGERR_STRING("ddl_eos_frm_done:Dec_reconfig!!");
 
-	if (VIDC_720p_DISPLAY_ONLY == p_dec_disp_info->e_disp_status)
+	if (p_dec_disp_info->e_disp_status == VIDC_720P_DISPLAY_ONLY)
 		ddl_decoder_ouput_done_callback(p_ddl, FALSE);
 	else
 		VIDC_LOG_STRING("STATE-CRITICAL-WRONG-DISP-STATUS");
@@ -812,23 +820,23 @@ static u32 ddl_get_frame_type
 	u32 b_status = TRUE;
 
 	switch (e_frame_type) {
-	case VIDC_720p_IFRAME:
+	case VIDC_720P_IFRAME:
 		{
 			p_frame->n_flags |= VCD_FRAME_FLAG_SYNCFRAME;
 			p_frame->e_frame_type = VCD_FRAME_I;
 			break;
 		}
-	case VIDC_720p_PFRAME:
+	case VIDC_720P_PFRAME:
 		{
 			p_frame->e_frame_type = VCD_FRAME_P;
 			break;
 		}
-	case VIDC_720p_BFRAME:
+	case VIDC_720P_BFRAME:
 		{
 			p_frame->e_frame_type = VCD_FRAME_B;
 			break;
 		}
-	case VIDC_720p_NOTCODED:
+	case VIDC_720P_NOTCODED:
 		{
 			p_frame->n_data_len = 0;
 			break;
@@ -1044,9 +1052,9 @@ static void ddl_getdec_profilelevel(struct ddl_decoder_data_type *p_decoder,
 	switch (p_decoder->codec_type.e_codec) {
 	case VCD_CODEC_MPEG4:
 		{
-			if (VIDC_720p_PROFILE_MPEG4_SP == n_profile)
+			if (n_profile == VIDC_720P_PROFILE_MPEG4_SP)
 				profile = VCD_PROFILE_MPEG4_SP;
-			else if (VIDC_720p_PROFILE_MPEG4_ASP == n_profile)
+			else if (n_profile == VIDC_720P_PROFILE_MPEG4_ASP)
 				profile = VCD_PROFILE_MPEG4_ASP;
 
 			ddl_getmpeg4_declevel(&level, n_level);
@@ -1054,11 +1062,11 @@ static void ddl_getdec_profilelevel(struct ddl_decoder_data_type *p_decoder,
 		}
 	case VCD_CODEC_H264:
 		{
-			if (VIDC_720p_PROFILE_H264_BASELINE == n_profile)
+			if (n_profile == VIDC_720P_PROFILE_H264_BASELINE)
 				profile = VCD_PROFILE_H264_BASELINE;
-			else if (VIDC_720p_PROFILE_H264_MAIN == n_profile)
+			else if (n_profile == VIDC_720P_PROFILE_H264_MAIN)
 				profile = VCD_PROFILE_H264_MAIN;
-			else if (VIDC_720p_PROFILE_H264_HIGH == n_profile)
+			else if (n_profile == VIDC_720P_PROFILE_H264_HIGH)
 				profile = VCD_PROFILE_H264_HIGH;
 			ddl_geth264_declevel(&level, n_level);
 			break;
@@ -1071,27 +1079,21 @@ static void ddl_getdec_profilelevel(struct ddl_decoder_data_type *p_decoder,
 	case VCD_CODEC_VC1:
 	case VCD_CODEC_VC1_RCV:
 		{
-			if (VIDC_720p_PROFILE_VC1_SP == n_profile) {
+			if (n_profile == VIDC_720P_PROFILE_VC1_SP)
 				profile = VCD_PROFILE_VC1_SIMPLE;
-			} else if (VIDC_720p_PROFILE_VC1_MAIN ==
-				n_profile) {
+			else if (n_profile == VIDC_720P_PROFILE_VC1_MAIN)
 				profile = VCD_PROFILE_VC1_MAIN;
-			} else if (VIDC_720p_PROFILE_VC1_ADV ==
-				n_profile) {
+			else if (n_profile == VIDC_720P_PROFILE_VC1_ADV)
 				profile = VCD_PROFILE_VC1_ADVANCE;
-			}
 			ddl_get_vc1_dec_level(&level, n_level, profile);
 			break;
 		}
 	case VCD_CODEC_MPEG2:
 		{
-			if (VIDC_720p_PROFILE_MPEG2_MAIN ==
-				n_profile) {
+			if (n_profile == VIDC_720P_PROFILE_MPEG2_MAIN)
 				profile = VCD_PROFILE_MPEG2_MAIN;
-			} else if (VIDC_720p_PROFILE_MPEG2_SP ==
-				n_profile) {
+			else if (n_profile == VIDC_720P_PROFILE_MPEG2_SP)
 				profile = VCD_PROFILE_MPEG2_SIMPLE;
-			}
 			ddl_get_mpeg2_dec_level(&level, n_level);
 			break;
 		}
