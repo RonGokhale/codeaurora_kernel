@@ -77,8 +77,9 @@
 #include <linux/kernel.h>
 #include <linux/err.h>
 #include <linux/platform_device.h>
-#include <linux/npa_remote.h>
 #include <mach/msm_rpcrouter.h>
+
+#include "npa_remote.h"
 
 #define NPA_REMOTEPROG			0x300000A4
 #define NPA_REMOTEVERS			0x00010001

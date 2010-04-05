@@ -34,7 +34,7 @@
 #define NPA_RESOURCE_H
 
 #include <linux/workqueue.h>
-#include <linux/npa.h>
+#include "npa.h"
 
 #define ACTIVE_REQUEST		0
 #define PENDING_REQUEST		1
@@ -256,7 +256,7 @@ struct npa_event {
 	struct work_struct		work;
 };
 
-#ifdef CONFIG_NPA
+#ifdef CONFIG_MSM_NPA
 /* NPA RESOURCE FUNCTIONS */
 
 /* Defines the node.
@@ -333,7 +333,7 @@ int npa_assign_resource_state(struct npa_resource *resource,
 
 #endif
 
-#ifdef CONFIG_NPA_LOG
+#ifdef CONFIG_MSM_NPA_LOG
 /* NPA logging */
 extern int npa_log_mask;
 extern char npa_log_resource_name[];
@@ -357,7 +357,7 @@ static inline void __print_client_states(struct npa_resource *resource) {}
 static inline void __print_aliases(void) {}
 #endif
 
-#ifdef CONFIG_NPA_DEBUG
+#ifdef CONFIG_MSM_NPA_DEBUG
 /* Clear all internal NPA resources, their clients and events. */
 void npa_reset(void);
 #else

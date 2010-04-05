@@ -71,12 +71,11 @@
  */
 
 #include <linux/init.h>
-#include <linux/npa.h>
-#include <linux/npa_remote.h>
+#include "npa_remote.h"
 #include <linux/npa_pm_qos.h>
 #include <linux/pm_qos_params.h>
 
-#ifdef CONFIG_NPA_REMOTE
+#ifdef CONFIG_MSM_NPA_REMOTE
 
 #define SYSTEM_BUS_NPA_RESOURCE_NAME "/bus/arbiter"
 static struct pm_qos_plugin system_bus_plugin = {
@@ -114,4 +113,4 @@ static int __init npa_resource_init(void)
 }
 arch_initcall(npa_resource_init);
 
-#endif /* CONFIG_NPA_REMOTE */
+#endif /* CONFIG_MSM_NPA_REMOTE */

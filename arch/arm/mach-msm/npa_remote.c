@@ -78,7 +78,8 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/workqueue.h>
-#include <linux/npa_remote.h>
+
+#include "npa_remote.h"
 
 
 enum npa_data_type {
