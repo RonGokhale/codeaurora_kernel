@@ -249,6 +249,13 @@ static void tegra_gpio_irq_handler(unsigned int irq, struct irq_desc *desc)
 
 }
 
+#ifdef CONFIG_PM
+static int tegra_gpio_wake_enable(unsigned int irq, unsigned int enable)
+{
+	struct tegra_gpio_bank *bank = get_irq_chip_data(irq);
+	return set_irq_wake(bank->irq, enable);
+}
+#endif
 
 static struct irq_chip tegra_gpio_irq_chip = {
 	.name		= "GPIO",
@@ -256,6 +263,9 @@ static struct irq_chip tegra_gpio_irq_chip = {
 	.mask		= tegra_gpio_irq_mask,
 	.unmask		= tegra_gpio_irq_unmask,
 	.set_type	= tegra_gpio_irq_set_type,
+#ifdef CONFIG_PM
+	.set_wake	= tegra_gpio_wake_enable,
+#endif
 };
 
 
