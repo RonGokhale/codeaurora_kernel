@@ -1466,7 +1466,7 @@ enum ard_ret_enum_type device_needs_setup(u32 cad_device)
 
 void audio_prevent_sleep(s32 session_id)
 {
-	if (ardsession[session_id]->session_type == CAD_OPEN_OP_DEVICE_CTRL)
+	if (ardsession[session_id]->session_type == DEVICE_CTRL_TYPE)
 		return;
 
 	mutex_lock(&ard_state.ard_state_machine_mutex);
@@ -1479,7 +1479,7 @@ void audio_prevent_sleep(s32 session_id)
 
 void audio_allow_sleep(s32 session_id)
 {
-	if (ardsession[session_id]->session_type == CAD_OPEN_OP_DEVICE_CTRL)
+	if (ardsession[session_id]->session_type == DEVICE_CTRL_TYPE)
 		return;
 
 	mutex_lock(&ard_state.ard_state_machine_mutex);
