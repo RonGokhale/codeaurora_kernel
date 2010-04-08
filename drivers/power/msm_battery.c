@@ -55,6 +55,12 @@
  *
  */
 
+/*
+ * this needs to be before <linux/kernel.h> is loaded,
+ * and <linux/sched.h> loads <linux/kernel.h>
+ */
+#define DEBUG  1
+
 #include <linux/earlysuspend.h>
 #include <linux/err.h>
 #include <linux/module.h>
@@ -108,15 +114,12 @@
 #define RPC_TYPE_REPLY   1
 #define RPC_REQ_REPLY_COMMON_HEADER_SIZE   (3 * sizeof(uint32_t))
 
-#define DEBUG  0
 
 #if DEBUG
-#define DBG(x...) pr_info(x)
+#define DBG_LIMIT(x...) do {if (printk_ratelimit()) pr_debug(x); } while (0)
 #else
-#define DBG(x...) do {} while (0)
+#define DBG_LIMIT(x...) do {} while (0)
 #endif
-
-#define PR_LIMIT(x...)	do {if (printk_ratelimit()) pr_info(x); } while (0)
 
 enum {
 	BATTERY_REGISTRATION_SUCCESSFUL = 0,
@@ -313,14 +316,10 @@ static int msm_power_get_property(struct power_supply *psy,
 		if (psy->type == POWER_SUPPLY_TYPE_MAINS) {
 			val->intval = msm_batt_info.current_chg_source & AC_CHG
 			    ? 1 : 0;
-			DBG("%s: power supply = %s, online = %d\n",
-			    __func__, psy->name, val->intval);
 		}
 		if (psy->type == POWER_SUPPLY_TYPE_USB) {
 			val->intval = msm_batt_info.current_chg_source & USB_CHG
 			    ? 1 : 0;
-			DBG("%s: power supply = %s, online = %d\n",
-			    __func__, psy->name, val->intval);
 		}
 		break;
 	default:
@@ -518,20 +517,20 @@ static void msm_batt_update_psy_status(void)
 		 */
 		unnecessary_event_count++;
 		if ((unnecessary_event_count % 20) == 1)
-			PR_LIMIT("BATT: same event count = %u\n",
+			DBG_LIMIT("BATT: same event count = %u\n",
 				 unnecessary_event_count);
 		return;
 	}
 
 	unnecessary_event_count = 0;
 
-	PR_LIMIT("BATT: rcvd: %d, %d, %d, %d; %d, %d\n",
+	DBG_LIMIT("BATT: rcvd: %d, %d, %d, %d; %d, %d\n",
 		 charger_status, charger_type, battery_status,
 		 battery_level, battery_voltage, battery_temp);
 
 	if (battery_status == BATTERY_STATUS_INVALID &&
 	    battery_level != BATTERY_LEVEL_INVALID) {
-		PR_LIMIT("BATT: change status(%d) to (%d) for level=%d\n",
+		DBG_LIMIT("BATT: change status(%d) to (%d) for level=%d\n",
 			 battery_status, BATTERY_STATUS_GOOD, battery_level);
 		battery_status = BATTERY_STATUS_GOOD;
 	}
@@ -540,26 +539,26 @@ static void msm_batt_update_psy_status(void)
 		if (charger_type == CHARGER_TYPE_USB_WALL ||
 		    charger_type == CHARGER_TYPE_USB_PC ||
 		    charger_type == CHARGER_TYPE_USB_CARKIT) {
-			PR_LIMIT("BATT: USB charger plugged in\n");
+			DBG_LIMIT("BATT: USB charger plugged in\n");
 			msm_batt_info.current_chg_source = USB_CHG;
 			supp = &msm_psy_usb;
 		} else if (charger_type == CHARGER_TYPE_WALL) {
-			PR_LIMIT("BATT: AC Wall changer plugged in\n");
+			DBG_LIMIT("BATT: AC Wall changer plugged in\n");
 			msm_batt_info.current_chg_source = AC_CHG;
 			supp = &msm_psy_ac;
 		} else {
 			if (msm_batt_info.current_chg_source & AC_CHG)
-				PR_LIMIT("BATT: AC Wall charger removed\n");
+				DBG_LIMIT("BATT: AC Wall charger removed\n");
 			else if (msm_batt_info.current_chg_source & USB_CHG)
-				PR_LIMIT("BATT: USB charger removed\n");
+				DBG_LIMIT("BATT: USB charger removed\n");
 			else
-				PR_LIMIT("BATT: no charger present\n");
+				DBG_LIMIT("BATT: No charger present\n");
 			msm_batt_info.current_chg_source = 0;
 			supp = &msm_psy_batt;
 
 			/* Correct charger status */
 			if (charger_status != CHARGER_STATUS_INVALID) {
-				PR_LIMIT("BATT: No charging!\n");
+				DBG_LIMIT("BATT: No charging!\n");
 				charger_status = CHARGER_STATUS_INVALID;
 				msm_batt_info.batt_status =
 					POWER_SUPPLY_STATUS_NOT_CHARGING;
@@ -572,7 +571,7 @@ static void msm_batt_update_psy_status(void)
 		if (charger_status == CHARGER_STATUS_GOOD ||
 		    charger_status == CHARGER_STATUS_WEAK) {
 			if (msm_batt_info.current_chg_source) {
-				PR_LIMIT("BATT: Charging.\n");
+				DBG_LIMIT("BATT: Charging.\n");
 				msm_batt_info.batt_status =
 					POWER_SUPPLY_STATUS_CHARGING;
 
@@ -583,7 +582,7 @@ static void msm_batt_update_psy_status(void)
 					supp = &msm_psy_usb;
 			}
 		} else {
-			PR_LIMIT("BATT: No charging.\n");
+			DBG_LIMIT("BATT: No charging.\n");
 			msm_batt_info.batt_status =
 				POWER_SUPPLY_STATUS_NOT_CHARGING;
 			supp = &msm_psy_batt;
@@ -592,7 +591,7 @@ static void msm_batt_update_psy_status(void)
 		/* Correct charger status */
 		if (charger_type != CHARGER_TYPE_INVALID &&
 		    charger_status == CHARGER_STATUS_GOOD) {
-			PR_LIMIT("BATT: In charging\n");
+			DBG_LIMIT("BATT: In charging\n");
 			msm_batt_info.batt_status =
 				POWER_SUPPLY_STATUS_CHARGING;
 		}
@@ -601,7 +600,7 @@ static void msm_batt_update_psy_status(void)
 	/* Correct battery voltage and status */
 	if (!battery_voltage) {
 		if (charger_status == CHARGER_STATUS_INVALID) {
-			PR_LIMIT("BATT: Read VBATT\n");
+			DBG_LIMIT("BATT: Read VBATT\n");
 			battery_voltage = msm_batt_get_vbatt_voltage();
 		} else
 			/* Use previous */
@@ -610,7 +609,7 @@ static void msm_batt_update_psy_status(void)
 	if (battery_status == BATTERY_STATUS_INVALID) {
 		if (battery_voltage >= msm_batt_info.voltage_min_design &&
 		    battery_voltage <= msm_batt_info.voltage_max_design) {
-			PR_LIMIT("BATT: Battery valid\n");
+			DBG_LIMIT("BATT: Battery valid\n");
 			msm_batt_info.batt_valid = 1;
 			battery_status = BATTERY_STATUS_GOOD;
 		}
@@ -621,31 +620,31 @@ static void msm_batt_update_psy_status(void)
 			msm_batt_info.batt_valid = 1;
 
 			if (battery_status == BATTERY_STATUS_BAD) {
-				PR_LIMIT("BATT: Battery bad.\n");
+				DBG_LIMIT("BATT: Battery bad.\n");
 				msm_batt_info.batt_health =
 					POWER_SUPPLY_HEALTH_DEAD;
 			} else if (battery_status == BATTERY_STATUS_BAD_TEMP) {
-				PR_LIMIT("BATT: Battery overheat.\n");
+				DBG_LIMIT("BATT: Battery overheat.\n");
 				msm_batt_info.batt_health =
 					POWER_SUPPLY_HEALTH_OVERHEAT;
 			} else {
-				PR_LIMIT("BATT: Battery good.\n");
+				DBG_LIMIT("BATT: Battery good.\n");
 				msm_batt_info.batt_health =
 					POWER_SUPPLY_HEALTH_GOOD;
 			}
 		} else {
 			msm_batt_info.batt_valid = 0;
-			PR_LIMIT("BATT: Battery invalid.\n");
+			DBG_LIMIT("BATT: Battery invalid.\n");
 			msm_batt_info.batt_health = POWER_SUPPLY_HEALTH_UNKNOWN;
 		}
 
 		if (msm_batt_info.batt_status != POWER_SUPPLY_STATUS_CHARGING) {
 			if (battery_status == BATTERY_STATUS_INVALID) {
-				PR_LIMIT("BATT: Battery -> unknown\n");
+				DBG_LIMIT("BATT: Battery -> unknown\n");
 				msm_batt_info.batt_status =
 					POWER_SUPPLY_STATUS_UNKNOWN;
 			} else {
-				PR_LIMIT("BATT: Battery -> discharging\n");
+				DBG_LIMIT("BATT: Battery -> discharging\n");
 				msm_batt_info.batt_status =
 					POWER_SUPPLY_STATUS_DISCHARGING;
 			}
@@ -663,13 +662,13 @@ static void msm_batt_update_psy_status(void)
 	}
 
 	if (msm_batt_info.battery_voltage != battery_voltage) {
-		PR_LIMIT("BATT: New voltage = %u mV\n", battery_voltage);
+		DBG_LIMIT("BATT: New voltage = %u mV\n", battery_voltage);
 		msm_batt_info.batt_capacity =
 			msm_batt_info.calculate_capacity(battery_voltage);
 	}
 
 	if (supp) {
-		PR_LIMIT("BATT: supply = %s\n", supp->name);
+		DBG_LIMIT("BATT: supply = %s\n", supp->name);
 		power_supply_changed(supp);
 	}
 
@@ -786,7 +785,7 @@ void msm_batt_early_suspend(struct early_suspend *h)
 {
 	int rc;
 
-	pr_info("%s: enter\n", __func__);
+	pr_debug("%s: enter\n", __func__);
 
 	if (msm_batt_info.batt_handle != INVALID_BATT_HANDLE) {
 		rc = msm_batt_modify_client(msm_batt_info.batt_handle,
@@ -803,14 +802,14 @@ void msm_batt_early_suspend(struct early_suspend *h)
 		return;
 	}
 
-	pr_info("%s: exit\n", __func__);
+	pr_debug("%s: exit\n", __func__);
 }
 
 void msm_batt_late_resume(struct early_suspend *h)
 {
 	int rc;
 
-	pr_info("%s: exter\n", __func__);
+	pr_debug("%s: enter\n", __func__);
 
 	if (msm_batt_info.batt_handle != INVALID_BATT_HANDLE) {
 		rc = msm_batt_modify_client(msm_batt_info.batt_handle,
@@ -826,7 +825,7 @@ void msm_batt_late_resume(struct early_suspend *h)
 		return;
 	}
 
-	pr_info("%s: exit\n", __func__);
+	pr_debug("%s: exit\n", __func__);
 }
 #endif
 
@@ -903,7 +902,7 @@ static int msm_batt_enable_filter(u32 vbatt_filter)
 		return -EIO;
 	}
 
-	pr_info("%s: enable vbatt filter: OK\n", __func__);
+	pr_debug("%s: enable vbatt filter: OK\n", __func__);
 	return rc;
 }
 
@@ -1003,7 +1002,8 @@ static int msm_batt_register(u32 desired_batt_voltage,
 
 	msm_batt_info.batt_handle = batt_reg_rep.batt_handle;
 
-	pr_info("%s: got handle = %d\n", __func__, msm_batt_info.batt_handle);
+	pr_debug("%s: got handle = %d\n", __func__, msm_batt_info.batt_handle);
+
 	return 0;
 }
 
@@ -1066,6 +1066,7 @@ static int msm_batt_deregister(u32 batt_handle)
 		       __func__, rep.batt_error, batt_handle);
 		return -EIO;
 	}
+
 	return 0;
 }
 
@@ -1206,7 +1207,7 @@ int msm_batt_get_charger_api_version(void)
 		rc = be32_to_cpu(
 			rep_chg_api_ver->chg_api_versions[num_of_versions - 1]);
 
-		pr_info("%s: num_of_chg_api_versions = %u. "
+		pr_debug("%s: num_of_chg_api_versions = %u. "
 			"The chg api version = 0x%08x\n", __func__,
 			num_of_versions, rc);
 		break;
@@ -1449,7 +1450,7 @@ static int __init msm_batt_init(void)
 {
 	int rc;
 
-	pr_info("%s: enter\n", __func__);
+	pr_debug("%s: enter\n", __func__);
 
 	rc = msm_batt_init_rpc();
 
@@ -1459,8 +1460,10 @@ static int __init msm_batt_init(void)
 		return rc;
 	}
 
-	pr_info("%s: Charger/Battery = 0x%08x/0x%08x (RPC version)\n", __func__,
-		msm_batt_info.chg_api_version, msm_batt_info.batt_api_version);
+	pr_info("%s: Charger/Battery = 0x%08x/0x%08x (RPC version)\n",
+		__func__, msm_batt_info.chg_api_version,
+		msm_batt_info.batt_api_version);
+
 	return 0;
 }
 
