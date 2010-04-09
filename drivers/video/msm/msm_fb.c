@@ -1411,7 +1411,7 @@ static inline void msm_fb_dma_barrier_for_rect(struct fb_info *info,
 		(img->width * rect->y + rect->x) * bytes_per_pixel;
 
 	unsigned long end = start +
-		(rect->h * img->width + rect->w) * bytes_per_pixel;
+		( ( (rect->h) - 1 ) * img->width + rect->w) * bytes_per_pixel;
 
 	/* Call the appropriate barrier functions. */
 	(*dma_barrier_fp) (start, end);
