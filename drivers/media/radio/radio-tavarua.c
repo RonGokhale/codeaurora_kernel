@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -1871,7 +1871,7 @@ static int tavarua_vidioc_dqbuf(struct file *file, void *priv,
  * This function is here to make the v4l2 framework happy.
  * We cannot use private buffers without it
  */
-static int tavarua_vidioc_try_fmt_type_private(struct file *file, void *priv,
+static int tavarua_vidioc_g_fmt_type_private(struct file *file, void *priv,
 						struct v4l2_format *f)
 {
 	return 0;
@@ -1905,7 +1905,7 @@ static const struct v4l2_ioctl_ops tavarua_ioctl_ops = {
 	.vidioc_s_frequency           = tavarua_vidioc_s_frequency,
 	.vidioc_s_hw_freq_seek        = tavarua_vidioc_s_hw_freq_seek,
 	.vidioc_dqbuf                 = tavarua_vidioc_dqbuf,
-	.vidioc_try_fmt_type_private  = tavarua_vidioc_try_fmt_type_private,
+	.vidioc_g_fmt_type_private    = tavarua_vidioc_g_fmt_type_private,
 };
 
 static struct video_device tavarua_viddev_template = {
