@@ -244,7 +244,7 @@ static int audio_disable(struct audio *audio)
 	if (audio->enabled) {
 		audio->enabled = 0;
 		audio_dsp_out_enable(audio, 0);
-
+		udelay(200);
 		audpp_disable(-1, audio);
 
 		wake_up(&audio->wait);
