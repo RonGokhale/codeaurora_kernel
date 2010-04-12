@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -823,8 +823,7 @@ static int msm_rotator_do_rotate(unsigned long arg)
 	if (rc != 0) {
 		msm_rotator_dev->last_session_idx = INVALID_SESSION;
 		goto do_rotate_exit;
-	} else
-		msm_rotator_dev->last_session_idx = s;
+	}
 
 	iowrite32(3, MSM_ROTATOR_INTR_ENABLE);
 
