@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -62,6 +62,7 @@
 #include <linux/err.h>
 #include <mach/qdsp5v2/aux_pcm.h>
 #include <mach/gpio.h>
+#include <linux/delay.h>
 
 /*----------------------------------------------------------------------------
  * Preprocessor Definitions and Constants
@@ -197,6 +198,17 @@ EXPORT_SYMBOL(aux_pcm_gpios_request);
 void aux_pcm_gpios_free(void)
 {
 	MM_INFO(" aux_pcm_gpios_free \n");
+
+	/*
+	 * Feed silence frames before close to prevent buzzing sound in BT at
+	 * call end. This fix is applicable only to Marimba BT.
+	 */
+	gpio_tlmm_config(GPIO_CFG(the_aux_pcm_state.dout, 0, GPIO_OUTPUT,
+		GPIO_NO_PULL, GPIO_2MA), GPIO_ENABLE);
+	gpio_set_value(the_aux_pcm_state.dout, 0);
+	msleep(20);
+	gpio_tlmm_config(GPIO_CFG(the_aux_pcm_state.dout, 1, GPIO_OUTPUT,
+		GPIO_NO_PULL, GPIO_2MA), GPIO_ENABLE);
 
 	gpio_free(the_aux_pcm_state.dout);
 	gpio_free(the_aux_pcm_state.din);
