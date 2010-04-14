@@ -132,6 +132,7 @@ struct tavarua_device {
 	unsigned char sync_xfr_regs[XFR_REG_NUM];
 	struct completion sync_xfr_start;
 	struct completion sync_req_done;
+	int tune_req;
 	/* internal register status */
 	unsigned char registers[RADIO_REGISTERS];
 	/* regional settings */
@@ -173,7 +174,7 @@ static int tavarua_setup_interrupts(struct tavarua_device *radio,
 static int tavarua_start(struct tavarua_device *radio,
 			enum radio_state_t state);
 static int tavarua_request_irq(struct tavarua_device *radio);
-static int start_pending_xfr(struct tavarua_device *radio);
+static void start_pending_xfr(struct tavarua_device *radio);
 /* work function */
 static void read_int_stat(struct work_struct *work);
 
@@ -367,12 +368,13 @@ static int sync_write_xfr(struct tavarua_device *radio,
 /*
  * start_pending_xfr
  */
-static int start_pending_xfr(struct tavarua_device *radio)
+static void start_pending_xfr(struct tavarua_device *radio)
 {
 	int i;
 	enum tavarua_xfr_t xfr;
 	for (i = 0; i < TAVARUA_XFR_MAX; i++) {
 		if (radio->pending_xfrs[i]) {
+			radio->xfr_in_progress = 1;
 			xfr = (enum tavarua_xfr_t)i;
 			switch (xfr) {
 			/* priority given to synchronous xfrs */
@@ -397,11 +399,10 @@ static int start_pending_xfr(struct tavarua_device *radio)
 			}
 			radio->pending_xfrs[i] = 0;
 			FMDBG("resurrect xfr %d\n", i);
-			return i;
 			}
 
 	}
-	return -1;
+	return;
 }
 
 /*
@@ -456,7 +457,10 @@ static void tavarua_handle_interrupts(struct tavarua_device *radio)
 
 	/* Tune completed */
 	if (radio->registers[STATUS_REG1] & TUNE) {
-		complete(&radio->sync_req_done);
+		if (radio->tune_req) {
+			complete(&radio->sync_req_done);
+			radio->tune_req = 0;
+		}
 		tavarua_q_event(radio, TAVARUA_EVT_TUNE_SUCC);
 		if (radio->srch_params.get_list) {
 			tavarua_start_xfr(radio, TAVARUA_XFR_SRCH_LIST,
@@ -679,10 +683,8 @@ static void tavarua_handle_interrupts(struct tavarua_device *radio)
 		default:
 			FMDBG("UNKNOWN XFR\n");
 		}
-		if (!radio->xfr_in_progress) {
-			if (start_pending_xfr(radio) != -1)
-				radio->xfr_in_progress = 1;
-		}
+		if (!radio->xfr_in_progress)
+			start_pending_xfr(radio);
 
 	}
 
@@ -961,6 +963,7 @@ static int tavarua_set_freq(struct tavarua_device *radio, unsigned int freq)
 	unsigned char chan;
 	unsigned char cmd[] = {0x00, 0x00};
 	unsigned int spacing;
+	int retval;
 	band_bottom = radio->region_params.band_low;;
 	spacing  = 0.100 * FREQ_MUL;
 	if ((freq % 1600) == 800) {
@@ -972,7 +975,12 @@ static int tavarua_set_freq(struct tavarua_device *radio, unsigned int freq)
 
 	cmd[0] = chan;
 	cmd[1] |= TUNE_STATION;
-	return tavarua_write_registers(radio, FREQ, cmd, 2);
+	radio->tune_req = 1;
+	retval = tavarua_write_registers(radio, FREQ, cmd, 2);
+	if (retval < 0)
+		radio->tune_req = 0;
+	return retval;
+
 }
 
 /**************************************************************************
@@ -2125,6 +2133,7 @@ static int  __init tavarua_probe(struct platform_device *pdev)
 	/* init completion flags */
 	init_completion(&radio->sync_xfr_start);
 	init_completion(&radio->sync_req_done);
+	radio->tune_req = 0;
 	/* initialize wait queue for event read */
 	init_waitqueue_head(&radio->event_queue);
 
