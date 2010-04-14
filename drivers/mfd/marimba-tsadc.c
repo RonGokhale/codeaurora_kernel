@@ -438,8 +438,8 @@ static struct platform_driver tsadc_driver = {
 		.name = "marimba_tsadc",
 		.owner = THIS_MODULE,
 	},
-	.resume = marimba_tsadc_resume,
-	.suspend = marimba_tsadc_suspend,
+	.resume_early = marimba_tsadc_resume,
+	.suspend_late = marimba_tsadc_suspend,
 };
 
 static int __init marimba_tsadc_init(void)
