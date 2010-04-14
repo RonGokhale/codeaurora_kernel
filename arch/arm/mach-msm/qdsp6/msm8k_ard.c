@@ -802,9 +802,6 @@ gd_done:
 
 		}
 
-		/* Release mutex */
-		mutex_unlock(&local_ard_state->ard_state_machine_mutex);
-
 		/* If Device needed setup, the Q6 would've been */
 		/* Opened for this session if not, then go  */
 		/* ahead and open & send the Q6 info */
@@ -816,6 +813,8 @@ gd_done:
 				/* Log Error and do nothing */
 				pr_err("ARD DAL RPC OPEN FAILED %d\n",
 					session_id);
+				mutex_unlock(&local_ard_state->
+						ard_state_machine_mutex);
 				goto done;
 			}
 
@@ -825,6 +824,8 @@ gd_done:
 				pr_err("ARD IOCTL STANDBY FAILED %d\n",
 					session_id);
 				qdsp6_close(session_id);
+				mutex_unlock(&local_ard_state->
+						ard_state_machine_mutex);
 				goto done;
 			}
 
@@ -834,9 +835,14 @@ gd_done:
 				pr_err("ARD IOCTL START FAILED %d\n",
 					session_id);
 				qdsp6_close(session_id);
+				mutex_unlock(&local_ard_state->
+					ard_state_machine_mutex);
 				goto done;
 			}
 		}
+
+		/* Release mutex */
+		mutex_unlock(&local_ard_state->ard_state_machine_mutex);
 
 		/* We don't know which of the devices are default device.
 		   Also, the stream can request more than one device */
