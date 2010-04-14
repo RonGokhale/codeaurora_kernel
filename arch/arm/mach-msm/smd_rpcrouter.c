@@ -439,6 +439,7 @@ struct msm_rpc_endpoint *msm_rpcrouter_create_local_endpoint(dev_t dev)
 	init_waitqueue_head(&ept->restart_wait);
 	ept->restart_state = RESTART_NORMAL;
 	wake_lock_init(&ept->read_q_wake_lock, WAKE_LOCK_SUSPEND, "rpc_read");
+	wake_lock_init(&ept->reply_q_wake_lock, WAKE_LOCK_SUSPEND, "rpc_reply");
 	INIT_LIST_HEAD(&ept->incomplete);
 	spin_lock_init(&ept->incomplete_lock);
 
@@ -477,6 +478,7 @@ int msm_rpcrouter_destroy_local_endpoint(struct msm_rpc_endpoint *ept)
 	spin_unlock_irqrestore(&ept->reply_q_lock, flags);
 
 	wake_lock_destroy(&ept->read_q_wake_lock);
+	wake_lock_destroy(&ept->reply_q_wake_lock);
 	list_del(&ept->list);
 	kfree(ept);
 	return 0;
@@ -967,6 +969,7 @@ static void do_read_data(struct work_struct *work)
 
 packet_complete:
 	spin_lock_irqsave(&ept->read_q_lock, flags);
+	D("%s: take read lock on ept %p\n", __func__, ept);
 	wake_lock(&ept->read_q_wake_lock);
 	list_add_tail(&pkt->list, &ept->read_q);
 	wake_up(&ept->wait_q);
@@ -1297,6 +1300,8 @@ static void set_pend_reply(struct msm_rpc_endpoint *ept,
 {
 		unsigned long flags;
 		spin_lock_irqsave(&ept->reply_q_lock, flags);
+		D("%s: take reply lock on ept %p\n", __func__, ept);
+		wake_lock(&ept->reply_q_wake_lock);
 		list_add_tail(&reply->list, &ept->reply_pend_q);
 		spin_unlock_irqrestore(&ept->reply_q_lock, flags);
 }
@@ -1313,6 +1318,7 @@ int msm_rpc_write(struct msm_rpc_endpoint *ept, void *buffer, int count)
 	int rc;
 	int first_pkt = 1;
 	uint32_t mid;
+	unsigned long flags;
 
 	/* snoop the RPC packet and enforce permissions */
 
@@ -1370,7 +1376,8 @@ int msm_rpc_write(struct msm_rpc_endpoint *ept, void *buffer, int count)
 		printk(KERN_ERR
 			"msm_rpc_write(): No route to ept "
 			"[PID %x CID %x]\n", hdr.dst_pid, hdr.dst_cid);
-		return -EHOSTUNREACH;
+		count = -EHOSTUNREACH;
+		goto write_release_lock;
 	}
 
 	tx_cnt = count;
@@ -1387,8 +1394,10 @@ int msm_rpc_write(struct msm_rpc_endpoint *ept, void *buffer, int count)
 			rc = msm_rpc_write_pkt(&hdr, ept, r_ept,
 					       tx_buf, max_tx,
 					       first_pkt, 0, mid);
-			if (rc < 0)
-				return rc;
+			if (rc < 0) {
+				count = rc;
+				goto write_release_lock;
+			}
 			IO("Wrote %d bytes First %d, Last 0 mid %d\n",
 			   rc, first_pkt, mid);
 			tx_cnt -= max_tx;
@@ -1397,13 +1406,27 @@ int msm_rpc_write(struct msm_rpc_endpoint *ept, void *buffer, int count)
 			rc = msm_rpc_write_pkt(&hdr, ept, r_ept,
 					       tx_buf, tx_cnt,
 					       first_pkt, 1, mid);
-			if (rc < 0)
-				return rc;
+			if (rc < 0) {
+				count = rc;
+				goto write_release_lock;
+			}
 			IO("Wrote %d bytes First %d Last 1 mid %d\n",
 			   rc, first_pkt, mid);
 			break;
 		}
 		first_pkt = 0;
+	}
+
+ write_release_lock:
+
+	/* if reply, release wakelock after writing to the transport */
+	if (rq->type != 0) {
+		spin_lock_irqsave(&ept->reply_q_lock, flags);
+		if (list_empty(&ept->reply_pend_q)) {
+			D("%s: release reply lock on ept %p\n", __func__, ept);
+			wake_unlock(&ept->reply_q_wake_lock);
+		}
+		spin_unlock_irqrestore(&ept->reply_q_lock, flags);
 	}
 
 	return count;
@@ -1606,8 +1629,6 @@ int __msm_rpc_read(struct msm_rpc_endpoint *ept,
 		return -ETOOSMALL;
 	}
 	list_del(&pkt->list);
-	if (list_empty(&ept->read_q))
-		wake_unlock(&ept->read_q_wake_lock);
 	spin_unlock_irqrestore(&ept->read_q_lock, flags);
 
 	rc = pkt->length;
@@ -1617,8 +1638,10 @@ int __msm_rpc_read(struct msm_rpc_endpoint *ept,
 	if ((rc >= (sizeof(uint32_t) * 3)) && (rq->type == 0)) {
 		/* RPC CALL */
 		reply = get_avail_reply(ept);
-		if (!reply)
-			return -ENOMEM;
+		if (!reply) {
+			rc = -ENOMEM;
+			goto read_release_lock;
+		}
 		reply->cid = pkt->hdr.src_cid;
 		reply->pid = pkt->hdr.src_pid;
 		reply->xid = rq->xid;
@@ -1630,6 +1653,17 @@ int __msm_rpc_read(struct msm_rpc_endpoint *ept,
 	kfree(pkt);
 
 	IO("READ on ept %p (%d bytes)\n", ept, rc);
+
+ read_release_lock:
+
+	/* release read wakelock after taking reply wakelock */
+	spin_lock_irqsave(&ept->read_q_lock, flags);
+	if (list_empty(&ept->read_q)) {
+		D("%s: release read lock on ept %p\n", __func__, ept);
+		wake_unlock(&ept->read_q_wake_lock);
+	}
+	spin_unlock_irqrestore(&ept->read_q_lock, flags);
+
 	return rc;
 }
 
