@@ -72,6 +72,7 @@
 #include <linux/smsc911x.h>
 #include <linux/ofn_atlab.h>
 #include <linux/power_supply.h>
+#include <linux/input/pmic8058-keypad.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -88,7 +89,6 @@
 #include <mach/qdsp5v2/msm_lpa.h>
 #include <mach/dma.h>
 #include <linux/android_pmem.h>
-#include <mach/pmic8058-keypad.h>
 #include <mach/msm_ts.h>
 #include <mach/pmic.h>
 #include <mach/rpc_pmapp.h>
@@ -2353,8 +2353,9 @@ static struct platform_device android_pmem_audio_device = {
 };
 
 static struct kgsl_platform_data kgsl_pdata = {
-	.max_axi_freq = 192000,
-	.max_grp2d_freq = 245 * 1000*1000,
+	.high_axi_3d = 192000,
+	.high_axi_2d = 192000,
+	.max_grp2d_freq = 192 * 1000*1000,
 	.min_grp2d_freq = 192 * 1000*1000,
 	.set_grp2d_async = set_grp2d_async,
 	.max_grp3d_freq = 245 * 1000*1000,
