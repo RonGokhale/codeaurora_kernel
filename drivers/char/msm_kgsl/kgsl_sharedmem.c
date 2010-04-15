@@ -287,7 +287,13 @@ kgsl_sharedmem_read(const struct kgsl_memdesc *memdesc, void *dst,
 				offsetbytes, sizebytes, memdesc->size);
 		return -ERANGE;
 	}
-	memcpy(dst, memdesc->hostptr + offsetbytes, sizebytes);
+	if (sizebytes == 4) {
+		uint32_t data;
+		data = *((uint32_t *)(memdesc->hostptr + offsetbytes));
+		memcpy(dst, &data, sizebytes);
+	} else {
+		memcpy(dst, memdesc->hostptr + offsetbytes, sizebytes);
+	}
 	return 0;
 }
 
