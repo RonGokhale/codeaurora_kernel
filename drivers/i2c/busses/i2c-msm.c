@@ -771,8 +771,8 @@ static int msm_i2c_resume(struct platform_device *pdev)
 static struct platform_driver msm_i2c_driver = {
 	.probe		= msm_i2c_probe,
 	.remove		= msm_i2c_remove,
-	.suspend	= msm_i2c_suspend,
-	.resume		= msm_i2c_resume,
+	.suspend_late	= msm_i2c_suspend,
+	.resume_early	= msm_i2c_resume,
 	.driver		= {
 		.name	= "msm_i2c",
 		.owner	= THIS_MODULE,
