@@ -61,6 +61,7 @@
 
 #define ON  1
 #define OFF 0
+#define MSM_AXI_QOS_PREVIEW 128000
 
 struct mutex vfe_lock;
 static uint32_t vfe_inuse;
@@ -92,6 +93,9 @@ static void vfe_release(struct platform_device *dev)
 	vfe_inuse = 0;
 	vfe_syncdata = NULL;
 	mutex_unlock(&vfe_lock);
+	/* release AXI frequency request */
+	release_axi_qos();
+
 }
 
 static void vfe_config_axi(enum vfeoutput_mode_t mode,
@@ -803,7 +807,16 @@ static int vfe_init(struct msm_vfe_resp *presp,
 		return rc;
 
 	/* Bring up all the required GPIOs and Clocks */
-	return msm_camio_enable(dev);
+	rc = msm_camio_enable(dev);
+	if (rc < 0)
+		return rc;
+
+	/* Set required axi bus frequency */
+	rc = request_axi_qos(MSM_AXI_QOS_PREVIEW);
+	if (rc < 0)
+		CDBG("request of axi qos failed\n");
+
+	return rc;
 }
 
 void msm_camvfe_fn_init(struct msm_camvfe_fn_t *fptr)

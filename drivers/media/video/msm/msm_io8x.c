@@ -58,6 +58,8 @@
 #include <linux/delay.h>
 #include <linux/clk.h>
 #include <linux/io.h>
+
+#include <mach/clk.h>
 #include <mach/gpio.h>
 #include <mach/board.h>
 #include <mach/camera.h>
@@ -88,6 +90,7 @@ static struct clk *camio_vfe_clk;
 static struct clk *camio_vfe_axi_clk;
 static struct msm_camera_io_ext camio_ext;
 static struct resource *appio, *mdcio;
+
 void __iomem *appbase, *mdcbase;
 
 extern int clk_set_flags(struct clk *clk, unsigned long flags);
