@@ -397,7 +397,8 @@ s32 ard_close(s32 session_id)
 				device_mutex);
 
 			/* Decrement the number of streams on this device */
-			local_ard_state->ard_device[dev_id].stream_count--;
+			if (local_ard_state->ard_device[dev_id].stream_count != 0)
+				local_ard_state->ard_device[dev_id].stream_count--;
 
 			if (local_ard_state->ard_device[dev_id].stream_count
 				== 0) {
@@ -406,7 +407,6 @@ s32 ard_close(s32 session_id)
 				/* No more streams, so teardown device */
 				local_ard_state->ard_device[dev_id].
 					device_configured = ARD_FALSE;
-
 				/* invoke the state m/c */
 				rc = ard_state_control(session_id, dev_id);
 
@@ -466,6 +466,7 @@ s32 ard_close(s32 session_id)
 	ardsession[session_id]->sess_open_info = NULL;
 
 	mutex_lock(&ardsession[session_id]->session_mutex);
+	ardsession[session_id]->enabled = ARD_FALSE;
 	ardsession[session_id]->available = ARD_FALSE;
 	mutex_unlock(&ardsession[session_id]->session_mutex);
 
@@ -1399,6 +1400,7 @@ enum ard_ret_enum_type valid_session_present(u32 dev_id)
 	case 6:	/* I2S */
 		for (i = 0; i < ARD_AUDIO_MAX_CLIENT; i++) {
 			if ((ard_session[i].enabled == ARD_TRUE)
+				&& (ard_session[i].sess_open_info)
 				&& (ard_session[i].sess_open_info->
 					cad_open.op_code
 						== CAD_OPEN_OP_WRITE)) {
@@ -1414,6 +1416,7 @@ enum ard_ret_enum_type valid_session_present(u32 dev_id)
 	case 7:	/* I2S */
 		for (i = 0; i < ARD_AUDIO_MAX_CLIENT; i++) {
 			if ((ard_session[i].enabled == ARD_TRUE)
+				&& (ard_session[i].sess_open_info)
 				&& (ard_session[i].sess_open_info->
 					cad_open.op_code
 						== CAD_OPEN_OP_READ)) {
