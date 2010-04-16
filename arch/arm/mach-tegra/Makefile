@@ -8,7 +8,9 @@ obj-y                                   += pinmux.o
 obj-y                                   += devices.o
 obj-y                                   += delay.o
 obj-y                                   += powergate.o
+obj-y					+= suspend.o
 obj-$(CONFIG_FIQ)                       += fiq.o fiq_glue.o
+
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += clock.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += tegra2_clocks.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)		+= cortex_a9_save.o
