@@ -1304,20 +1304,342 @@ void mdp_ppp_put_img(struct mdp_blit_req *req, struct file *p_src_file,
 #endif
 }
 
+#ifdef CONFIG_FB_MSM_MDP31
+static int mdp_blit_split_height(struct fb_info *info,
+				struct mdp_blit_req *req)
+{
+	int ret;
+	struct file *p_src_file = 0, *p_dst_file = 0;
+	struct mdp_blit_req splitreq;
+	int s_x_0, s_x_1, s_w_0, s_w_1, s_y_0, s_y_1, s_h_0, s_h_1;
+	int d_x_0, d_x_1, d_w_0, d_w_1, d_y_0, d_y_1, d_h_0, d_h_1;
+
+	splitreq = *req;
+	/* break dest roi at height*/
+	d_x_0 = d_x_1 = req->dst_rect.x;
+	d_w_0 = d_w_1 = req->dst_rect.w;
+	d_y_0 = req->dst_rect.y;
+	if (req->dst_rect.h % 32 == 3)
+		d_h_1 = (req->dst_rect.h - 3) / 2 - 1;
+	else if (req->dst_rect.h % 32 == 2)
+		d_h_1 = (req->dst_rect.h - 2) / 2 - 6;
+	else
+		d_h_1 = (req->dst_rect.h - 1) / 2 - 1;
+	d_h_0 = req->dst_rect.h - d_h_1;
+	d_y_1 = d_y_0 + d_h_0;
+	if (req->dst_rect.h == 3) {
+		d_h_1 = 2;
+		d_h_0 = 2;
+		d_y_1 = d_y_0 + 1;
+	}
+
+	/* blit first region */
+	if (((splitreq.flags & 0x07) == 0x04) ||
+		((splitreq.flags & 0x07) == 0x0)) {
+
+		if (splitreq.flags & MDP_ROT_90) {
+			s_y_0 = s_y_1 = req->src_rect.y;
+			s_h_0 = s_h_1 = req->src_rect.h;
+			s_x_0 = req->src_rect.x;
+			s_w_1 = (req->src_rect.w * d_h_1) / req->dst_rect.h;
+			s_w_0 = req->src_rect.w - s_w_1;
+			s_x_1 = s_x_0 + s_w_0;
+			if (d_h_1 >= 8 * s_w_1) {
+				s_w_1++;
+				s_x_1--;
+			}
+		} else {
+			s_x_0 = s_x_1 = req->src_rect.x;
+			s_w_0 = s_w_1 = req->src_rect.w;
+			s_y_0 = req->src_rect.y;
+			s_h_1 = (req->src_rect.h * d_h_1) / req->dst_rect.h;
+			s_h_0 = req->src_rect.h - s_h_1;
+			s_y_1 = s_y_0 + s_h_0;
+			if (d_h_1 >= 8 * s_h_1) {
+				s_h_1++;
+				s_y_1--;
+			}
+		}
+
+		splitreq.src_rect.h = s_h_0;
+		splitreq.src_rect.y = s_y_0;
+		splitreq.dst_rect.h = d_h_0;
+		splitreq.dst_rect.y = d_y_0;
+		splitreq.src_rect.x = s_x_0;
+		splitreq.src_rect.w = s_w_0;
+		splitreq.dst_rect.x = d_x_0;
+		splitreq.dst_rect.w = d_w_0;
+	} else {
+
+		if (splitreq.flags & MDP_ROT_90) {
+			s_y_0 = s_y_1 = req->src_rect.y;
+			s_h_0 = s_h_1 = req->src_rect.h;
+			s_x_0 = req->src_rect.x;
+			s_w_1 = (req->src_rect.w * d_h_0) / req->dst_rect.h;
+			s_w_0 = req->src_rect.w - s_w_1;
+			s_x_1 = s_x_0 + s_w_0;
+			if (d_h_0 >= 8 * s_w_1) {
+				s_w_1++;
+				s_x_1--;
+			}
+		} else {
+			s_x_0 = s_x_1 = req->src_rect.x;
+			s_w_0 = s_w_1 = req->src_rect.w;
+			s_y_0 = req->src_rect.y;
+			s_h_1 = (req->src_rect.h * d_h_0) / req->dst_rect.h;
+			s_h_0 = req->src_rect.h - s_h_1;
+			s_y_1 = s_y_0 + s_h_0;
+			if (d_h_0 >= 8 * s_h_1) {
+				s_h_1++;
+				s_y_1--;
+			}
+		}
+		splitreq.src_rect.h = s_h_0;
+		splitreq.src_rect.y = s_y_0;
+		splitreq.dst_rect.h = d_h_1;
+		splitreq.dst_rect.y = d_y_1;
+		splitreq.src_rect.x = s_x_0;
+		splitreq.src_rect.w = s_w_0;
+		splitreq.dst_rect.x = d_x_1;
+		splitreq.dst_rect.w = d_w_1;
+	}
+	ret = mdp_ppp_blit(info, &splitreq, &p_src_file, &p_dst_file);
+	mdp_ppp_put_img(req, p_src_file, p_dst_file);
+	if (ret)
+		return ret;
+
+	/* blit second region */
+	if (((splitreq.flags & 0x07) == 0x04) ||
+		((splitreq.flags & 0x07) == 0x0)) {
+		splitreq.src_rect.h = s_h_1;
+		splitreq.src_rect.y = s_y_1;
+		splitreq.dst_rect.h = d_h_1;
+		splitreq.dst_rect.y = d_y_1;
+		splitreq.src_rect.x = s_x_1;
+		splitreq.src_rect.w = s_w_1;
+		splitreq.dst_rect.x = d_x_1;
+		splitreq.dst_rect.w = d_w_1;
+	} else {
+		splitreq.src_rect.h = s_h_1;
+		splitreq.src_rect.y = s_y_1;
+		splitreq.dst_rect.h = d_h_0;
+		splitreq.dst_rect.y = d_y_0;
+		splitreq.src_rect.x = s_x_1;
+		splitreq.src_rect.w = s_w_1;
+		splitreq.dst_rect.x = d_x_0;
+		splitreq.dst_rect.w = d_w_0;
+	}
+	ret = mdp_ppp_blit(info, &splitreq, &p_src_file, &p_dst_file);
+	mdp_ppp_put_img(req, p_src_file, p_dst_file);
+	return ret;
+}
+#endif
+
 int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 {
 	int ret;
 	struct file *p_src_file = 0, *p_dst_file = 0;
+#ifdef CONFIG_FB_MSM_MDP31
+	unsigned int remainder = 0, is_bpp_4 = 0;
+	struct mdp_blit_req splitreq;
+	int s_x_0, s_x_1, s_w_0, s_w_1, s_y_0, s_y_1, s_h_0, s_h_1;
+	int d_x_0, d_x_1, d_w_0, d_w_1, d_y_0, d_y_1, d_h_0, d_h_1;
+
+	if (req->flags & MDP_ROT_90) {
+		if (((req->dst_rect.h == 1) && ((req->src_rect.w != 1) ||
+			(req->dst_rect.w != req->src_rect.h))) ||
+			((req->dst_rect.w == 1) && ((req->src_rect.h != 1) ||
+			(req->dst_rect.h != req->src_rect.w)))) {
+			printk(KERN_ERR "mpd_ppp: error scaling when size is 1!\n");
+			return -EINVAL;
+		}
+	} else {
+		if (((req->dst_rect.w == 1) && ((req->src_rect.w != 1) ||
+			(req->dst_rect.h != req->src_rect.h))) ||
+			((req->dst_rect.h == 1) && ((req->src_rect.h != 1) ||
+			(req->dst_rect.w != req->src_rect.w)))) {
+			printk(KERN_ERR "mpd_ppp: error scaling when size is 1!\n");
+			return -EINVAL;
+		}
+	}
+#endif
+
 	if (unlikely(req->src_rect.h == 0 || req->src_rect.w == 0)) {
 		printk(KERN_ERR "mpd_ppp: src img of zero size!\n");
 		return -EINVAL;
 	}
 	if (unlikely(req->dst_rect.h == 0 || req->dst_rect.w == 0))
 		return 0;
+#ifdef CONFIG_FB_MSM_MDP31
+	/* MDP width split workaround */
+	remainder = (req->dst_rect.w)%32;
+	is_bpp_4 = (mdp_get_bytes_per_pixel(req->dst.format) == 4) ? 1 : 0;
 
+	if ((is_bpp_4 && (remainder == 6 || remainder == 14 ||
+	remainder == 22 || remainder == 30)) || remainder == 3 ||
+	(remainder == 1 && req->dst_rect.w != 1) ||
+	(remainder == 2 && req->dst_rect.w != 2)) {
+		/* make new request as provide by user */
+		splitreq = *req;
+
+		/* break dest roi at width*/
+		d_y_0 = d_y_1 = req->dst_rect.y;
+		d_h_0 = d_h_1 = req->dst_rect.h;
+		d_x_0 = req->dst_rect.x;
+
+		if (remainder == 14)
+			d_w_1 = (req->dst_rect.w - 14) / 2 + 4;
+		else if (remainder == 22)
+			d_w_1 = (req->dst_rect.w - 22) / 2 + 10;
+		else if (remainder == 30)
+			d_w_1 = (req->dst_rect.w - 30) / 2 + 10;
+		else if (remainder == 6)
+			d_w_1 = req->dst_rect.w / 2 - 1;
+		else if (remainder == 3)
+			d_w_1 = (req->dst_rect.w - 3) / 2 - 1;
+		else if (remainder == 2)
+			d_w_1 = (req->dst_rect.w - 2) / 2 - 6;
+		else
+			d_w_1 = (req->dst_rect.w - 1) / 2 - 1;
+		d_w_0 = req->dst_rect.w - d_w_1;
+		d_x_1 = d_x_0 + d_w_0;
+		if (req->dst_rect.w == 3) {
+			d_w_1 = 2;
+			d_w_0 = 2;
+			d_x_1 = d_x_0 + 1;
+		}
+
+		/* blit first region */
+		if (((splitreq.flags & 0x07) == 0x07) ||
+			((splitreq.flags & 0x07) == 0x0)) {
+
+			if (splitreq.flags & MDP_ROT_90) {
+				s_x_0 = s_x_1 = req->src_rect.x;
+				s_w_0 = s_w_1 = req->src_rect.w;
+				s_y_0 = req->src_rect.y;
+				s_h_1 = (req->src_rect.h * d_w_1) /
+					req->dst_rect.w;
+				s_h_0 = req->src_rect.h - s_h_1;
+				s_y_1 = s_y_0 + s_h_0;
+				if (d_w_1 >= 8 * s_h_1) {
+					s_h_1++;
+					s_y_1--;
+				}
+			} else {
+				s_y_0 = s_y_1 = req->src_rect.y;
+				s_h_0 = s_h_1 = req->src_rect.h;
+				s_x_0 = req->src_rect.x;
+				s_w_1 = (req->src_rect.w * d_w_1) /
+					req->dst_rect.w;
+				s_w_0 = req->src_rect.w - s_w_1;
+				s_x_1 = s_x_0 + s_w_0;
+				if (d_w_1 >= 8 * s_w_1) {
+					s_w_1++;
+					s_x_1--;
+				}
+			}
+
+			splitreq.src_rect.h = s_h_0;
+			splitreq.src_rect.y = s_y_0;
+			splitreq.dst_rect.h = d_h_0;
+			splitreq.dst_rect.y = d_y_0;
+			splitreq.src_rect.x = s_x_0;
+			splitreq.src_rect.w = s_w_0;
+			splitreq.dst_rect.x = d_x_0;
+			splitreq.dst_rect.w = d_w_0;
+		} else {
+			if (splitreq.flags & MDP_ROT_90) {
+				s_x_0 = s_x_1 = req->src_rect.x;
+				s_w_0 = s_w_1 = req->src_rect.w;
+				s_y_0 = req->src_rect.y;
+				s_h_1 = (req->src_rect.h * d_w_0) /
+					req->dst_rect.w;
+				s_h_0 = req->src_rect.h - s_h_1;
+				s_y_1 = s_y_0 + s_h_0;
+				if (d_w_0 >= 8 * s_h_1) {
+					s_h_1++;
+					s_y_1--;
+				}
+			} else {
+				s_y_0 = s_y_1 = req->src_rect.y;
+				s_h_0 = s_h_1 = req->src_rect.h;
+				s_x_0 = req->src_rect.x;
+				s_w_1 = (req->src_rect.w * d_w_0) /
+					req->dst_rect.w;
+				s_w_0 = req->src_rect.w - s_w_1;
+				s_x_1 = s_x_0 + s_w_0;
+				if (d_w_0 >= 8 * s_w_1) {
+					s_w_1++;
+					s_x_1--;
+				}
+			}
+			splitreq.src_rect.h = s_h_0;
+			splitreq.src_rect.y = s_y_0;
+			splitreq.dst_rect.h = d_h_1;
+			splitreq.dst_rect.y = d_y_1;
+			splitreq.src_rect.x = s_x_0;
+			splitreq.src_rect.w = s_w_0;
+			splitreq.dst_rect.x = d_x_1;
+			splitreq.dst_rect.w = d_w_1;
+		}
+
+		if ((splitreq.dst_rect.h % 32 == 3) ||
+			((req->dst_rect.h % 32) == 1 && req->dst_rect.h != 1) ||
+			((req->dst_rect.h % 32) == 2 && req->dst_rect.h != 2))
+			ret = mdp_blit_split_height(info, &splitreq);
+		else {
+			ret = mdp_ppp_blit(info, &splitreq,
+				&p_src_file, &p_dst_file);
+			mdp_ppp_put_img(req, p_src_file, p_dst_file);
+		}
+		if (ret)
+			return ret;
+		/* blit second region */
+		if (((splitreq.flags & 0x07) == 0x07) ||
+			((splitreq.flags & 0x07) == 0x0)) {
+			splitreq.src_rect.h = s_h_1;
+			splitreq.src_rect.y = s_y_1;
+			splitreq.dst_rect.h = d_h_1;
+			splitreq.dst_rect.y = d_y_1;
+			splitreq.src_rect.x = s_x_1;
+			splitreq.src_rect.w = s_w_1;
+			splitreq.dst_rect.x = d_x_1;
+			splitreq.dst_rect.w = d_w_1;
+		} else {
+			splitreq.src_rect.h = s_h_1;
+			splitreq.src_rect.y = s_y_1;
+			splitreq.dst_rect.h = d_h_0;
+			splitreq.dst_rect.y = d_y_0;
+			splitreq.src_rect.x = s_x_1;
+			splitreq.src_rect.w = s_w_1;
+			splitreq.dst_rect.x = d_x_0;
+			splitreq.dst_rect.w = d_w_0;
+		}
+		if (((splitreq.dst_rect.h % 32) == 3) ||
+			((req->dst_rect.h % 32) == 1 && req->dst_rect.h != 1) ||
+			((req->dst_rect.h % 32) == 2 && req->dst_rect.h != 2))
+			ret = mdp_blit_split_height(info, &splitreq);
+		else {
+			ret = mdp_ppp_blit(info, &splitreq,
+				&p_src_file, &p_dst_file);
+			mdp_ppp_put_img(req, p_src_file, p_dst_file);
+		}
+		if (ret)
+			return ret;
+	} else if ((req->dst_rect.h % 32) == 3 ||
+		((req->dst_rect.h % 32) == 1 && req->dst_rect.h != 1) ||
+		((req->dst_rect.h % 32) == 2 && req->dst_rect.h != 2))
+		ret = mdp_blit_split_height(info, req);
+	else {
+		ret = mdp_ppp_blit(info, req, &p_src_file, &p_dst_file);
+		mdp_ppp_put_img(req, p_src_file, p_dst_file);
+	}
+	return ret;
+#else
 	ret = mdp_ppp_blit(info, req, &p_src_file, &p_dst_file);
 	mdp_ppp_put_img(req, p_src_file, p_dst_file);
 	return ret;
+#endif
 }
 
 static int msmfb_blit(struct fb_info *info, void __user *p)

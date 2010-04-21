@@ -649,6 +649,7 @@ void mdp_lcdc_update(struct msm_fb_data_type *mfd);
 int mdp_hw_cursor_update(struct fb_info *info, struct fb_cursor *cursor);
 void mdp_enable_irq(uint32 term);
 void mdp_disable_irq(uint32 term);
+uint32_t mdp_get_bytes_per_pixel(uint32_t format);
 
 #ifdef MDP_HW_VSYNC
 void mdp_hw_vsync_clk_enable(struct msm_fb_data_type *mfd);
