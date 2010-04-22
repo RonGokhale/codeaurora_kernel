@@ -65,7 +65,6 @@ struct diag_master_table {
 	int process_id;
 };
 
-
 struct diagchar_dev {
 
 	/* State for the char driver */
