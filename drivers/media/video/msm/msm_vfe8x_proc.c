@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -62,6 +62,8 @@ struct msm_vfe8x_ctrl {
 
 	enum VFE_AXI_OUTPUT_MODE        axiOutputMode;
 	enum VFE_START_OPERATION_MODE   vfeOperationMode;
+
+	atomic_t vfe_serv_interrupt;
 
 	uint32_t            vfeSnapShotCount;
 	uint32_t            vfeRequestedSnapShotCount;
@@ -1698,6 +1700,9 @@ static irqreturn_t vfe_parse_irq(int irq_num, void *data)
 
 	CDBG("vfe_parse_irq\n");
 
+	if (!atomic_read(&ctrl->vfe_serv_interrupt))
+		return IRQ_HANDLED;
+
 	vfe_read_irq_status(&irq);
 
 	if (irq.vfeIrqStatus == 0) {
@@ -1770,7 +1775,7 @@ int vfe_cmd_init(struct msm_vfe_callback *presp,
 		rc = -ENOMEM;
 		goto cmd_init_failed1;
 	}
-
+	atomic_set(&ctrl->vfe_serv_interrupt, 0);
 	ctrl->vfeirq  = vfeirq->start;
 
 	ctrl->vfebase =
@@ -1814,7 +1819,7 @@ cmd_init_failed1:
 void vfe_cmd_release(struct platform_device *dev)
 {
 	struct resource	*mem;
-
+	atomic_set(&ctrl->vfe_serv_interrupt, 0);
 	disable_irq(ctrl->vfeirq);
 	free_irq(ctrl->vfeirq, 0);
 
@@ -3753,6 +3758,7 @@ void vfe_reset(void)
 {
 	vfe_reset_internal_variables();
 
+	atomic_set(&ctrl->vfe_serv_interrupt, 1);
 	ctrl->vfeImaskLocal.resetAckIrq = TRUE;
 	ctrl->vfeImaskPacked = vfe_irq_pack(ctrl->vfeImaskLocal);
 
