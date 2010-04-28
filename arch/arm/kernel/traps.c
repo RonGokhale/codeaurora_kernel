@@ -438,11 +438,13 @@ do_cache_op(unsigned long start, unsigned long end, int flags)
 		if (end > vma->vm_end)
 			end = vma->vm_end;
 
-		flush_cache_user_range(vma, start, end);
+		up_read(&mm->mmap_sem);
+		flush_cache_user_range(start, end);
+
 #ifdef CONFIG_ARCH_MSM7X27
 		dmb();
 #endif
-
+		return;
 	}
 	up_read(&mm->mmap_sem);
 }
