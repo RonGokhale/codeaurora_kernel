@@ -1585,6 +1585,8 @@ static int msm_spi_suspend(struct platform_device *pdev, pm_message_t state)
 	if (dd->use_rlock)
 		remote_mutex_unlock(&dd->r_lock);
 	clk_disable(dd->clk);
+	if (dd->pclk)
+		clk_disable(dd->pclk);
 
 suspend_exit:
 	return 0;
@@ -1607,6 +1609,15 @@ static int msm_spi_resume(struct platform_device *pdev)
 		dev_err(dd->dev, "%s: unable to enable spi_clk\n",
 			__func__);
 		goto resume_exit;
+	}
+	if (dd->pclk) {
+		rc = clk_enable(dd->pclk);
+		if (rc) {
+			dev_err(&pdev->dev, "%s: unable to enable spi_pclk\n",
+				__func__);
+			clk_disable(dd->clk);
+			goto resume_exit;
+		}
 	}
 
 	enable_irq(dd->irq_in);
