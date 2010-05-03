@@ -613,7 +613,7 @@ duration:
 }
 EXPORT_SYMBOL_GPL(tpm_get_timeouts);
 
-void tpm_continue_selftest(struct tpm_chip *chip)
+int tpm_continue_selftest(struct tpm_chip *chip)
 {
 	u8 data[] = {
 		0, 193,			/* TPM_TAG_RQU_COMMAND */
@@ -621,7 +621,7 @@ void tpm_continue_selftest(struct tpm_chip *chip)
 		0, 0, 0, 83,		/* TPM_ORD_ContinueSelfTest */
 	};
 
-	tpm_transmit(chip, data, sizeof(data));
+	return tpm_transmit(chip, data, sizeof(data)) == sizeof(data);
 }
 EXPORT_SYMBOL_GPL(tpm_continue_selftest);
 
