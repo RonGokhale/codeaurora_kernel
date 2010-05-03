@@ -45,6 +45,7 @@
 #include <mach/msm_smd.h>
 #include <mach/smem_log.h>
 #include "smd_rpcrouter.h"
+#include "smd_private.h"
 #include "modem_notifier.h"
 
 enum {
@@ -1787,6 +1788,7 @@ static int msm_rpcrouter_modem_notify(struct notifier_block *this,
 
 int msm_rpcrouter_close(void)
 {
+	smsm_change_state(SMSM_APPS_STATE, SMSM_RPCINIT, 0);
 	return smd_close(smd_channel);
 }
 
@@ -1823,6 +1825,7 @@ static int msm_rpcrouter_probe(struct platform_device *pdev)
 	rc = smd_open("RPCCALL", &smd_channel, NULL, rpcrouter_smdnotify);
 	if (rc < 0)
 		goto fail_remove_reset_notifier;
+	smsm_change_state(SMSM_APPS_STATE, 0, SMSM_RPCINIT);
 
 	queue_work(rpcrouter_workqueue, &work_read_data);
 	return 0;
