@@ -94,6 +94,7 @@
 #include <mach/rpc_pmapp.h>
 #include <mach/qdsp5v2/aux_pcm.h>
 #include <mach/msm_battery.h>
+#include <mach/rpc_server_handset.h>
 
 #include <asm/mach/mmc.h>
 #include <mach/vreg.h>
@@ -1906,11 +1907,15 @@ static struct msm_gpio bma_spi_gpio_config_data[] = {
 	{ GPIO_CFG(51, 0, GPIO_INPUT,  GPIO_NO_PULL, GPIO_2MA), "bma_irq" },
 };
 
+static struct msm_handset_platform_data hs_platform_data = {
+	.hs_name = "7k_handset",
+};
+
 static struct platform_device hs_device = {
 	.name   = "msm-handset",
 	.id     = -1,
 	.dev    = {
-		.platform_data = "7k_handset",
+		.platform_data = &hs_platform_data,
 	},
 };
 

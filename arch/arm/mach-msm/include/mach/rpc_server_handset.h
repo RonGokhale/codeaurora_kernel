@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -28,6 +28,11 @@
 
 #ifndef __ASM_ARCH_MSM_RPC_SERVER_HANDSET_H
 #define __ASM_ARCH_MSM_RPC_SERVER_HANDSET_H
+
+struct msm_handset_platform_data {
+	const char *hs_name;
+	uint32_t pwr_key_delay_ms; /* default 500ms */
+};
 
 void report_headset_status(bool connected);
 
