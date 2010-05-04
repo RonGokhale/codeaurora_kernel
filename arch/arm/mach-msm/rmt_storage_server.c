@@ -72,6 +72,7 @@
 #include <asm/uaccess.h>
 #include <asm/pgtable.h>
 #include <mach/msm_rpcrouter.h>
+#include <mach/board.h>
 
 static int handle_rmt_storage_call(struct msm_rpc_server *server,
 				struct rpc_request_hdr *req, unsigned len);
@@ -575,6 +576,7 @@ static struct miscdevice rmt_storage_device = {
 static int rmt_storage_server_probe(struct platform_device *pdev)
 {
 	struct rmt_storage_server_info *rms;
+	struct shared_ramfs_entry *smem_info;
 	struct resource *res;
 	int ret;
 
@@ -582,6 +584,12 @@ static int rmt_storage_server_probe(struct platform_device *pdev)
 	if (!res) {
 		pr_err("%s: No resources for rmt_storage server\n", __func__);
 		return -ENODEV;
+	}
+
+	smem_info = pdev->dev.platform_data;
+	if (!smem_info) {
+		pr_err("%s: platform data is not available\n", __func__);
+		return -EINVAL;
 	}
 
 	rms = kzalloc(sizeof(struct rmt_storage_server_info), GFP_KERNEL);
@@ -623,14 +631,29 @@ static int rmt_storage_server_probe(struct platform_device *pdev)
 		kfree(rms);
 		return ret;
 	}
+	/* RPC server is now ready to process any request */
+	smem_info->server_status = 1;
 
 	pr_info("%s: Remote storage RPC server initialized\n", __func__);
 	_rms = rms;
 	return 0;
 }
 
+static void rmt_storage_server_shutdown(struct platform_device *pdev)
+{
+	struct shared_ramfs_entry *smem_info;
+
+	smem_info = pdev->dev.platform_data;
+	if (!smem_info) {
+		pr_err("%s: platform data is not available\n", __func__);
+		return;
+	}
+	smem_info->server_status = 0;
+}
+
 static struct platform_driver rmt_storage_driver = {
 	.probe	= rmt_storage_server_probe,
+	.shutdown = rmt_storage_server_shutdown,
 	.driver	= {
 		.name	= "rmt_storage",
 		.owner	= THIS_MODULE,
