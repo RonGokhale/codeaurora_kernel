@@ -85,6 +85,7 @@ struct cad_flt_cfg_dev_mute {
 struct cad_flt_cfg_strm_mute {
 	u32 ver_id;
 	u32 mute;    /* 0 == UnMute,  1 == Mute */
+	u32 path;
 };
 
 #define QDSP6VOLUME_MAX_DEVICE_COUNT         0x0F
