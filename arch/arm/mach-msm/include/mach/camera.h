@@ -295,6 +295,7 @@ void msm_camio_disable(struct platform_device *);
 int msm_camio_probe_on(struct platform_device *);
 int msm_camio_probe_off(struct platform_device *);
 
-int request_axi_qos(void);
+int request_axi_qos(uint32_t freq);
+int update_axi_qos(uint32_t freq);
 void release_axi_qos(void);
 #endif
