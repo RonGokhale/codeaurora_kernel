@@ -877,7 +877,6 @@ static long audamrwb_ioctl(struct file *file, unsigned int cmd,
 				msecs_to_jiffies(MSM_AUD_DECODER_WAIT_MS));
 			pr_debug("dec_state %d rc = %d\n",
 					audio->dec_state, rc);
-
 			if (audio->dec_state != MSM_AUD_DECODER_STATE_SUCCESS)
 				rc = -ENODEV;
 			else
