@@ -122,7 +122,10 @@
 #define P_MI2S_HDMI_CLK		88
 #define P_MI2S_HDMI_MCLK	89
 
+#define P_CE_CLK		100 /* Crypto engine */
+#define P_CODEC_SSBI_CLK	101
 #define P_NR_CLKS		90
+
 
 struct clk_ops;
 extern struct clk_ops clk_ops_pcom;
