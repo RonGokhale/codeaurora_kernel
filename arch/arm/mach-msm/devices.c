@@ -34,6 +34,8 @@
 #include <linux/mfd/pmic8058.h>
 #endif
 
+static void msm_register_device(struct platform_device *, void *);
+
 static struct resource resources_uart1[] = {
 	{
 		.start	= INT_UART1,
@@ -760,19 +762,6 @@ static struct platform_device rmt_storage_device = {
        .resource       = rmt_storage_resources,
 };
 
-struct shared_ramfs_entry {
-	uint32_t client_id;   	/* Client id to uniquely identify a client */
-	uint32_t base_addr;	/* Base address of shared RAMFS memory */
-	uint32_t size;		/* Size of the shared RAMFS memory */
-	uint32_t reserved;	/* Reserved attribute for future use */
-};
-struct shared_ramfs_table {
-	uint32_t magic_id;  	/* Identify RAMFS details in SMEM */
-	uint32_t version;	/* Version of shared_ramfs_table */
-	uint32_t entries;	/* Total number of valid entries   */
-	struct shared_ramfs_entry ramfs_entry[3];	/* List all entries */
-};
-
 int __init rmt_storage_add_ramfs(void)
 {
 	struct shared_ramfs_table *ramfs_table;
@@ -807,7 +796,7 @@ int __init rmt_storage_add_ramfs(void)
 			rmt_storage_resources[0].start = ramfs_entry->base_addr;
 			rmt_storage_resources[0].end = ramfs_entry->base_addr +
 							ramfs_entry->size - 1;
-			platform_device_register(&rmt_storage_device);
+			msm_register_device(&rmt_storage_device, ramfs_entry);
 			return 0;
 		}
 	}
