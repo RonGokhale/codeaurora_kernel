@@ -77,6 +77,17 @@
 static int handle_rmt_storage_call(struct msm_rpc_server *server,
 				struct rpc_request_hdr *req, unsigned len);
 
+struct rmt_storage_sync_data {
+	uint32_t cb_id;
+	struct msm_rpc_client_info cinfo;
+};
+
+struct rmt_storage_sync_sts_data {
+	uint32_t cb_id;
+	struct msm_rpc_client_info cinfo;
+	int token;
+};
+
 struct rmt_storage_server_info {
 	unsigned long cids;
 	struct rmt_shrd_mem_param rmt_shrd_mem;
@@ -90,6 +101,8 @@ struct rmt_storage_server_info {
 	/* Wakelock to be acquired when processing requests from modem */
 	struct wake_lock wlock;
 	atomic_t wcount;
+	struct rmt_storage_sync_data sync_data;
+	struct rmt_storage_sync_sts_data sync_sts_data;
 };
 
 struct rmt_storage_kevent {
@@ -115,7 +128,12 @@ static struct rmt_storage_server_info *_rms;
 #define RMT_STORAGE_SRV_GET_DEV_ERROR_PROC 5
 #define RMT_STORAGE_SRV_WRITE_IOVEC_PROC 6
 #define RMT_STORAGE_SRV_REGISTER_CALLBACK_PROC 7
+#define RMT_STORAGE_SRV_REGISTER_SYNC_PROC 8
+#define RMT_STORAGE_SRV_REGISTER_SYNC_STATUS_PROC 10
+
 #define RMT_STORAGE_EVENT_FUNC_PTR_TYPE_PROC 1
+#define RMT_STORAGE_REG_SYNC_CB_TYPE_PROC 2
+#define RMT_STORAGE_REG_SYNC_STATUS_CB_TYPE_PROC 3
 
 static struct msm_rpc_server rmt_storage_server = {
 	.prog = RMT_STORAGE_SRV_APIPROG,
@@ -238,6 +256,100 @@ static int rmt_storage_send_callback(struct rmt_storage_cb *args)
 			RMT_STORAGE_EVENT_FUNC_PTR_TYPE_PROC,
 			rmt_storage_callback_arg, args,
 			NULL, NULL, -1);
+}
+
+struct rmt_storage_sync_args {
+	uint32_t cb_id;
+};
+
+static int rmt_storage_send_sync_arg(struct msm_rpc_server *server,
+				void *buf, void *data)
+{
+	struct rmt_storage_sync_data *args = data;
+	struct rmt_storage_sync_args *req = buf;
+	int size;
+
+	req->cb_id = cpu_to_be32(args->cb_id);
+	size = sizeof(struct rmt_storage_sync_args);
+	return size;
+}
+
+struct rmt_storage_sync_recv_arg {
+	int data;
+};
+
+static int rmt_storage_receive_sync_arg(struct msm_rpc_server *server,
+				void *buf, void *data)
+{
+	struct rmt_storage_sync_recv_arg *args = data;
+	struct rmt_storage_sync_recv_arg *recv_args = buf;
+
+	args->data = be32_to_cpu(recv_args->data);
+	_rms->sync_sts_data.token = args->data;
+	return 0;
+}
+
+static int rmt_storage_force_sync(void)
+{
+	int rc;
+	struct rmt_storage_sync_recv_arg args;
+	struct rmt_storage_sync_data *s_data;
+
+	s_data = &_rms->sync_data;
+	rc = msm_rpc_server_cb_req(&rmt_storage_server, &s_data->cinfo,
+			RMT_STORAGE_REG_SYNC_CB_TYPE_PROC,
+			rmt_storage_send_sync_arg, s_data,
+			rmt_storage_receive_sync_arg, &args, -1);
+	if (rc)
+		pr_err("%s: force sync cb req failed: %d\n", __func__, rc);
+
+	return 0;
+}
+
+struct rmt_storage_sync_sts_cb_arg {
+	uint32_t cb_id;
+	int token;
+};
+
+static int rmt_storage_send_sync_sts_arg(struct msm_rpc_server *server,
+				void *buf, void *data)
+{
+	struct rmt_storage_sync_sts_data *args = data;
+	struct rmt_storage_sync_sts_cb_arg *req = buf;
+	int size;
+
+	req->cb_id = cpu_to_be32(args->cb_id);
+	req->token = cpu_to_be32(args->token);
+	size = sizeof(struct rmt_storage_sync_sts_cb_arg);
+	return size;
+}
+
+static int rmt_storage_receive_sync_sts_arg(struct msm_rpc_server *server,
+				void *buf, void *data)
+{
+	struct rmt_storage_sync_recv_arg *args = data;
+	struct rmt_storage_sync_recv_arg *recv_args = buf;
+
+	args->data = be32_to_cpu(recv_args->data);
+	return 0;
+}
+
+static int rmt_storage_get_sync_status(void)
+{
+	int rc;
+	struct rmt_storage_sync_recv_arg args;
+	struct rmt_storage_sync_sts_data *sts_data;
+
+	sts_data = &_rms->sync_sts_data;
+	rc = msm_rpc_server_cb_req(&rmt_storage_server, &sts_data->cinfo,
+			RMT_STORAGE_REG_SYNC_STATUS_CB_TYPE_PROC,
+			rmt_storage_send_sync_sts_arg, sts_data,
+			rmt_storage_receive_sync_sts_arg, &args, -1);
+	if (rc) {
+		pr_err("%s: sync status cb req failed: %d\n", __func__, rc);
+		return rc;
+	}
+	return args.data;
 }
 
 static void put_event(struct rmt_storage_server_info *rms,
@@ -420,6 +532,30 @@ static int handle_rmt_storage_call(struct msm_rpc_server *server,
 		break;
 	}
 
+	case RMT_STORAGE_SRV_REGISTER_SYNC_PROC: {
+		struct rmt_storage_sync_args *args;
+		struct rmt_storage_sync_data *s_data;
+
+		pr_info("%s: register force sync callback\n", __func__);
+		s_data = &_rms->sync_data;
+		args = (struct rmt_storage_sync_args *)(req + 1);
+		s_data->cb_id = be32_to_cpu(args->cb_id);
+		msm_rpc_server_get_requesting_client(&s_data->cinfo);
+		goto out;
+	}
+
+	case RMT_STORAGE_SRV_REGISTER_SYNC_STATUS_PROC: {
+		struct rmt_storage_sync_args *args;
+		struct rmt_storage_sync_sts_data *sts_data;
+
+		pr_info("%s: register sync status callback\n", __func__);
+		sts_data = &_rms->sync_sts_data;
+		args = (struct rmt_storage_sync_args *)(req + 1);
+		sts_data->cb_id = be32_to_cpu(args->cb_id);
+		msm_rpc_server_get_requesting_client(&sts_data->cinfo);
+		goto out;
+	}
+
 	default:
 		kfree(kevent);
 		pr_err("%s: program 0x%08x:%d: unknown procedure %d\n",
@@ -573,6 +709,37 @@ static struct miscdevice rmt_storage_device = {
 	.fops = &rmt_storage_fops,
 };
 
+static ssize_t
+set_force_sync(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	int value;
+
+	sscanf(buf, "%d", &value);
+	if (!!value)
+		rmt_storage_force_sync();
+	return count;
+}
+
+static ssize_t
+show_sync_sts(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int ret;
+	ret = rmt_storage_get_sync_status();
+	return snprintf(buf, PAGE_SIZE, "%d\n", ret);
+}
+
+static DEVICE_ATTR(force_sync, S_IRUGO | S_IWUSR, NULL, set_force_sync);
+static DEVICE_ATTR(sync_sts, S_IRUGO | S_IWUSR, show_sync_sts, NULL);
+static struct attribute *dev_attrs[] = {
+	&dev_attr_force_sync.attr,
+	&dev_attr_sync_sts.attr,
+	NULL,
+};
+static struct attribute_group dev_attr_grp = {
+	.attrs = dev_attrs,
+};
+
 static int rmt_storage_server_probe(struct platform_device *pdev)
 {
 	struct rmt_storage_server_info *rms;
@@ -633,6 +800,10 @@ static int rmt_storage_server_probe(struct platform_device *pdev)
 	}
 	/* RPC server is now ready to process any request */
 	smem_info->server_status = 1;
+
+	ret = sysfs_create_group(&pdev->dev.kobj, &dev_attr_grp);
+	if (ret)
+		pr_info("%s: Failed to create sysfs node: %d\n", __func__, ret);
 
 	pr_info("%s: Remote storage RPC server initialized\n", __func__);
 	_rms = rms;
