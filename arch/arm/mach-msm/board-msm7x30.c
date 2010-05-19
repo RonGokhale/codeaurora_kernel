@@ -395,7 +395,7 @@ static struct pm8058_platform_data pm8058_7x30_data = {
 	},
 	.init = pm8058_gpios_init,
 
-	.num_subdevs = 4,
+	.num_subdevs = 5,
 	.sub_devices = {
 		{	.name = "pm8058-keypad",
 			.num_resources	= ARRAY_SIZE(resources_keypad),
@@ -406,6 +406,8 @@ static struct pm8058_platform_data pm8058_7x30_data = {
 		{	.name = "pm8058-mpp",
 		},
 		{	.name = "pm8058-pwm",
+		},
+		{	.name = "pm8058-nfc",
 		},
 	},
 };
