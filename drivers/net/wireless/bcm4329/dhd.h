@@ -59,11 +59,6 @@
 
 #include <wlioctl.h>
 
-#ifdef DHD_DEBUG
-#ifndef DHD_DEBUG_TRAP
-#define DHD_DEBUG_TRAP
-#endif
-#endif
 
 /* Forward decls */
 struct dhd_bus;
@@ -325,7 +320,6 @@ typedef enum cust_gpio_modes {
 	WLAN_POWER_OFF
 } cust_gpio_modes_t;
 extern int wl_iw_iscan_set_scan_broadcast_prep(struct net_device *dev, uint flag);
-extern int wl_iw_send_priv_event(struct net_device *dev, char *flag);
 /*
  * Insmod parameters for debug/test
  */
@@ -333,10 +327,6 @@ extern int wl_iw_send_priv_event(struct net_device *dev, char *flag);
 /* Watchdog timer interval */
 extern uint dhd_watchdog_ms;
 
-#if defined(DHD_DEBUG)
-/* Console output poll interval */
-extern uint dhd_console_ms;
-#endif 
 
 /* Use interrupts */
 extern uint dhd_intr;
