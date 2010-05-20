@@ -251,7 +251,7 @@ static unsigned spi_tegra_drain_rx_fifo(struct spi_tegra_data *tspi,
 	unsigned long val;
 
 	for (i = 0; i < len; i += tspi->cur_bytes_per_word) {
-		val = tspi->rx_bb[i / tspi->cur_byes_per_word];
+		val = tspi->rx_bb[i / tspi->cur_bytes_per_word];
 		for (j = 0; j < tspi->cur_bytes_per_word; j++)
 			rx_buf[i + j] = (val >> (j * 8)) & 0xff;
 	}
