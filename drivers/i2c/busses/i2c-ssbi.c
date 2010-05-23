@@ -136,7 +136,6 @@ struct i2c_ssbi_dev {
 	struct i2c_adapter	 adapter;
 	unsigned long		 mem_phys_addr;
 	size_t			 mem_size;
-	bool                     suspended;
 	remote_spinlock_t	 rspin_lock;
 };
 
@@ -265,9 +264,6 @@ i2c_ssbi_transfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	unsigned long flags;
 	struct i2c_ssbi_dev *ssbi = i2c_get_adapdata(adap);
 
-	if (ssbi->suspended)
-		return -EBUSY;
-
 	remote_spin_lock_irqsave(&ssbi->rspin_lock, flags);
 	while (rem) {
 		if (msgs->flags & I2C_M_RD) {
@@ -347,7 +343,6 @@ static int __init i2c_ssbi_probe(struct platform_device *pdev)
 	}
 
 	ssbi->dev = &pdev->dev;
-	ssbi->suspended = 0;
 	platform_set_drvdata(pdev, ssbi);
 
 	i2c_set_adapdata(&ssbi->adapter, ssbi);
@@ -383,27 +378,6 @@ err_probe_exit:
 	return ret;
 }
 
-#ifdef CONFIG_PM
-static int i2c_ssbi_suspend(struct platform_device *pdev, pm_message_t state)
-{
-	struct i2c_ssbi_dev *ssbi = platform_get_drvdata(pdev);
-	if (ssbi)
-		ssbi->suspended = 1;
-	return 0;
-}
-
-static int i2c_ssbi_resume(struct platform_device *pdev)
-{
-	struct i2c_ssbi_dev *ssbi = platform_get_drvdata(pdev);
-	if (ssbi)
-		ssbi->suspended = 0;
-	return 0;
-}
-#else
-#define i2c_ssbi_suspend NULL
-#define i2c_ssbi_resume NULL
-#endif /* CONFIG_PM */
-
 static int __devexit i2c_ssbi_remove(struct platform_device *pdev)
 {
 	struct i2c_ssbi_dev *ssbi = platform_get_drvdata(pdev);
@@ -422,8 +396,6 @@ static struct platform_driver i2c_ssbi_driver = {
 		.name	= "i2c_ssbi",
 		.owner	= THIS_MODULE,
 	},
-	.suspend_late	= i2c_ssbi_suspend,
-	.resume_early	= i2c_ssbi_resume,
 	.remove		= __exit_p(i2c_ssbi_remove),
 };
 
