@@ -281,10 +281,9 @@ s32 send_voice_mute(s32 sess_id, u32 device_id, u32 path, u32 mute)
 s32 handle_voice_mute(s32 session_id,
 		struct cad_flt_cfg_strm_mute *stream_mute_buf)
 {
-	u32 path = 1;
 	s32 rc;
-	rc = send_voice_mute(audio_ctrl_handle, CAD_HW_DEVICE_ID_VOICE, path,
-		stream_mute_buf->mute);
+	rc = send_voice_mute(audio_ctrl_handle, CAD_HW_DEVICE_ID_VOICE,
+		stream_mute_buf->path, stream_mute_buf->mute);
 
 	return rc;
 }

@@ -287,6 +287,7 @@ static int msm8k_voice_ioctl(struct inode *inode, struct file *f,
 		memset(&cad_strm_mute, 0,
 				sizeof(struct cad_flt_cfg_strm_mute));
 		cad_strm_mute.mute = mi.mute;
+		cad_strm_mute.path = mi.path;
 		flt.filter_type = CAD_DEVICE_FILTER_TYPE_VOL;
 		flt.format_block = &cad_strm_mute;
 		flt.cmd = CAD_FILTER_CONFIG_STREAM_MUTE;
