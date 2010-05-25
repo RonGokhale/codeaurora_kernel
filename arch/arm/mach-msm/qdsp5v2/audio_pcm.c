@@ -1030,7 +1030,6 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				msecs_to_jiffies(MSM_AUD_DECODER_WAIT_MS));
 			pr_info("dec_state %d rc = %d\n",
 					audio->dec_state, rc);
-
 			if (audio->dec_state != MSM_AUD_DECODER_STATE_SUCCESS)
 				rc = -ENODEV;
 			else
