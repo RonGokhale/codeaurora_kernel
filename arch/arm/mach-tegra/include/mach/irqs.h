@@ -168,6 +168,8 @@
 #define INT_GPIO_BASE			(INT_QUAD_BASE + 32)
 #define INT_GPIO_NR			(28 * 8)
 
+#define FIQ_START			INT_GIC_BASE
+
 #define NR_IRQS				(INT_GPIO_BASE + INT_GPIO_NR)
 
 #endif

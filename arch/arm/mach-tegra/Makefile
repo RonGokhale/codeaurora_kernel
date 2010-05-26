@@ -1,6 +1,6 @@
 obj-y                                   += common.o
 obj-y                                   += io.o
-obj-y                                   += irq.o
+obj-y                                   += irq.o legacy_irq.o
 obj-y                                   += clock.o
 obj-y                                   += timer.o
 obj-y                                   += gpio.o
@@ -8,6 +8,7 @@ obj-y                                   += pinmux.o
 obj-y                                   += devices.o
 obj-y                                   += delay.o
 obj-y                                   += powergate.o
+obj-$(CONFIG_FIQ)                       += fiq.o fiq_glue.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += clock.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += tegra2_clocks.o
 obj-$(CONFIG_SMP)                       += platsmp.o localtimer.o headsmp.o
