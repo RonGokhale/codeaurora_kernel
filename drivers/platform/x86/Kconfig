@@ -537,4 +537,11 @@ config INTEL_SCU_IPC
 	  some embedded Intel x86 platforms. This is not needed for PC-type
 	  machines.
 
+config ACPI_CHROMEOS
+	tristate "ChromeOS specific ACPI extensions"
+	depends on ACPI
+	---help---
+	  This driver adds support for access to certain proprietary hardware
+	  available on from ChromeOS BIOS.
+
 endif # X86_PLATFORM_DEVICES
