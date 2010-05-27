@@ -66,7 +66,6 @@ void __init tegra_common_init(void)
 	tegra_init_fuse();
 	tegra_init_clock();
 	tegra_clk_init_from_table(common_clk_init_table);
-	tegra_init_suspend();
 	tegra_init_cache();
 #ifdef CONFIG_TEGRA_SYSTEM_DMA
 	tegra_dma_init();

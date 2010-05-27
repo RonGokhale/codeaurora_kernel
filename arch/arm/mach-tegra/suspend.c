@@ -28,6 +28,9 @@
 #include <linux/irq.h>
 #include <linux/interrupt.h>
 #include <linux/clk.h>
+#include <linux/err.h>
+#include <linux/delay.h>
+#include <linux/suspend.h>
 
 #include <asm/cacheflush.h>
 #include <asm/hardware/gic.h>
@@ -36,6 +39,7 @@
 #include <asm/cacheflush.h>
 
 #include <mach/iomap.h>
+#include <mach/iovmm.h>
 #include <mach/irqs.h>
 
 #include "power.h"
@@ -51,6 +55,7 @@ struct suspend_context
 	u32 pllx_timeout;
 	u32 twd_ctrl;
 	u32 twd_load;
+	u32 cclk_divider;
 };
 
 volatile struct suspend_context tegra_sctx;
@@ -62,12 +67,16 @@ static void __iomem *evp_reset = IO_ADDRESS(TEGRA_EXCEPTION_VECTORS_BASE)+0x100;
 static void __iomem *tmrus = IO_ADDRESS(TEGRA_TMRUS_BASE);
 
 #define PMC_CTRL		0x0
+#define PMC_COREPWRGOOD_TIMER	0x3c
 #define PMC_SCRATCH1		0x54
 #define PMC_CPUPWRGOOD_TIMER	0xc8
+#define PMC_CPUPWROFF_TIMER	0xcc
+#define PMC_COREPWROFF_TIMER	0xe0
 #define PMC_SCRATCH38		0x134
 #define PMC_SCRATCH39		0x138
 
 #define CLK_RESET_CCLK_BURST	0x20
+#define CLK_RESET_CCLK_DIVIDER  0x24
 #define CLK_RESET_PLLX_BASE	0xe0
 #define CLK_RESET_PLLX_MISC	0xe4
 #define CLK_RESET_SOURCE_CSITE	0x1d4
@@ -81,14 +90,9 @@ static void __iomem *tmrus = IO_ADDRESS(TEGRA_TMRUS_BASE);
 #define FLOW_CTRL_CPU1_CSR	0x18
 
 static struct clk *tegra_pclk = NULL;
+static const struct tegra_suspend_platform_data *pdata = NULL;
 
-void __init tegra_init_suspend(void)
-{
-	tegra_pclk = clk_get_sys(NULL, "pclk");
-	BUG_ON(!tegra_pclk);
-}
-
-static void set_powergood_time(unsigned int us)
+static void set_power_timers(unsigned long us_on, unsigned long us_off)
 {
 	static int last_pclk = 0;
 	unsigned long long ticks;
@@ -96,9 +100,13 @@ static void set_powergood_time(unsigned int us)
 
 	pclk = clk_get_rate(tegra_pclk);
 	if (pclk != last_pclk) {
-		ticks = (us * pclk) + 999999ull;
+		ticks = (us_on * pclk) + 999999ull;
 		do_div(ticks, 1000000);
-		writel((unsigned int)ticks, pmc + PMC_CPUPWRGOOD_TIMER);
+		writel((unsigned long)ticks, pmc + PMC_CPUPWRGOOD_TIMER);
+
+		ticks = (us_off * pclk) + 999999ull;
+		do_div(ticks, 1000000);
+		writel((unsigned long)ticks, pmc + PMC_CPUPWROFF_TIMER);
 		wmb();
 	}
 	last_pclk = pclk;
@@ -126,12 +134,14 @@ static noinline void restore_cpu_complex(void)
 		while (readl(tmrus)-tegra_sctx.pllx_timeout >= 0x80000000UL)
 			cpu_relax();
 	}
+	writel(tegra_sctx.cclk_divider, clk_rst + CLK_RESET_CCLK_DIVIDER);
 	writel(tegra_sctx.cpu_burst, clk_rst + CLK_RESET_CCLK_BURST);
 	writel(tegra_sctx.clk_csite_src, clk_rst + CLK_RESET_SOURCE_CSITE);
 
 	/* do not power-gate the CPU when flow controlled */
 	reg = readl(flow_ctrl + FLOW_CTRL_CPU_CSR);
-	reg &= ~((1<<14) | (1<<5) | (1<<4) | 1); /* clear WFE bitmask */
+	reg &= ~((1<<5) | (1<<4) | 1); /* clear WFE bitmask */
+	reg |= (1<<14); /* write-1-clear event flag */
 	writel(reg, flow_ctrl + FLOW_CTRL_CPU_CSR);
 	wmb();
 
@@ -160,6 +170,7 @@ static noinline void suspend_cpu_complex(void)
 	tegra_sctx.cpu_burst = readl(clk_rst + CLK_RESET_CCLK_BURST);
 	tegra_sctx.pllx_base = readl(clk_rst + CLK_RESET_PLLX_BASE);
 	tegra_sctx.pllx_misc = readl(clk_rst + CLK_RESET_PLLX_MISC);
+	tegra_sctx.cclk_divider = readl(clk_rst + CLK_RESET_CCLK_DIVIDER);
 
 	tegra_sctx.twd_ctrl = readl(twd_base + 0x8);
 	tegra_sctx.twd_load = readl(twd_base + 0);
@@ -193,11 +204,10 @@ unsigned int tegra_suspend_lp2(unsigned int us)
 	orig = readl(evp_reset);
 	writel(virt_to_phys(tegra_lp2_startup), evp_reset);
 
-	/* FIXME: power good time (in us) should come from the board file,
-	 * not hard-coded here. */
-	set_powergood_time(2000);
+	set_power_timers(pdata->cpu_timer, pdata->cpu_off_timer);
 
-	tegra_lp2_set_trigger(us);
+	if (us)
+		tegra_lp2_set_trigger(us);
 	suspend_cpu_complex();
 	flush_cache_all();
 	/* structure is written by reset code, so the L2 lines
@@ -208,10 +218,129 @@ unsigned int tegra_suspend_lp2(unsigned int us)
 	__cortex_a9_save(mode);
 	/* return from __cortex_a9_restore */
 	restore_cpu_complex();
+	if (us)
+		tegra_lp2_set_trigger(0);
 
 	writel(orig, evp_reset);
 
 	entry = readl(pmc + PMC_SCRATCH38);
 	exit = readl(pmc + PMC_SCRATCH39);
 	return exit - entry;
+}
+
+#ifdef CONFIG_PM
+static int tegra_suspend_prepare_late(void)
+{
+	return tegra_iovmm_suspend();
+}
+
+static void tegra_suspend_wake(void)
+{
+	tegra_iovmm_resume();
+}
+
+extern void tegra_pinmux_suspend(void);
+extern void tegra_irq_suspend(void);
+extern void tegra_gpio_suspend(void);
+extern void tegra_clk_suspend(void);
+extern void tegra_dma_suspend(void);
+
+extern void tegra_pinmux_resume(void);
+extern void tegra_irq_resume(void);
+extern void tegra_gpio_resume(void);
+extern void tegra_clk_resume(void);
+extern void tegra_dma_resume(void);
+
+#define MC_SECURITY_START	0x6c
+#define MC_SECURITY_SIZE	0x70
+
+static int tegra_suspend_enter(suspend_state_t state)
+{
+	struct irq_desc *desc;
+	void __iomem *mc = IO_ADDRESS(TEGRA_MC_BASE);
+	unsigned long flags;
+	u32 mc_data[2];
+	int irq;
+
+	local_irq_save(flags);
+	tegra_irq_suspend();
+	tegra_dma_suspend();
+	tegra_pinmux_suspend();
+	tegra_gpio_suspend();
+	tegra_clk_suspend();
+
+	mc_data[0] = readl(mc + MC_SECURITY_START);
+	mc_data[1] = readl(mc + MC_SECURITY_SIZE);
+
+	for_each_irq_desc(irq, desc) {
+		if ((desc->status & IRQ_WAKEUP) &&
+		    (desc->status & IRQ_SUSPENDED)) {
+			get_irq_chip(irq)->unmask(irq);
+		}
+	}
+
+	tegra_suspend_lp2(0);
+
+	for_each_irq_desc(irq, desc) {
+		if ((desc->status & IRQ_WAKEUP) &&
+		    (desc->status & IRQ_SUSPENDED)) {
+			get_irq_chip(irq)->mask(irq);
+		}
+	}
+
+	writel(mc_data[0], mc + MC_SECURITY_START);
+	writel(mc_data[1], mc + MC_SECURITY_SIZE);
+
+	tegra_clk_resume();
+	tegra_gpio_resume();
+	tegra_pinmux_resume();
+	tegra_dma_resume();
+	tegra_irq_resume();
+
+	local_irq_restore(flags);
+
+	return 0;
+}
+
+static struct platform_suspend_ops tegra_suspend_ops = {
+	.valid		= suspend_valid_only_mem,
+	.prepare_late	= tegra_suspend_prepare_late,
+	.wake		= tegra_suspend_wake,
+	.enter		= tegra_suspend_enter,
+};
+#endif
+
+void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
+{
+	tegra_pclk = clk_get_sys(NULL, "pclk");
+	BUG_ON(!tegra_pclk);
+	pdata = plat;
+
+	if (pdata->core_off) {
+		u32 reg = 0, mode;
+
+		writel(pdata->core_timer, pmc + PMC_COREPWRGOOD_TIMER);
+		writel(pdata->core_off_timer, pmc + PMC_COREPWROFF_TIMER);
+		reg = readl(pmc + PMC_CTRL);
+		mode = (reg >> TEGRA_POWER_PMC_SHIFT) & TEGRA_POWER_PMC_MASK;
+
+		mode &= ~TEGRA_POWER_SYSCLK_POLARITY;
+		mode &= ~TEGRA_POWER_PWRREQ_POLARITY;
+
+		if (!pdata->sysclkreq_high)
+			mode |= TEGRA_POWER_SYSCLK_POLARITY;
+		if (!pdata->corereq_high)
+			mode |= TEGRA_POWER_PWRREQ_POLARITY;
+
+		/* configure output inverters while the request is tristated */
+		reg |= (mode << TEGRA_POWER_PMC_SHIFT);
+		writel(reg, pmc + PMC_CTRL);
+		wmb();
+		udelay(2000); /* 32KHz domain delay */
+		reg |= (TEGRA_POWER_SYSCLK_OE << TEGRA_POWER_PMC_SHIFT);
+		writel(reg, pmc + PMC_CTRL);
+	}
+#ifdef CONFIG_PM
+	suspend_set_ops(&tegra_suspend_ops);
+#endif
 }
