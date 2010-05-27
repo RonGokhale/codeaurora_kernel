@@ -129,7 +129,7 @@
 
 .macro	ctx_ptr, rd, tmp
 	cpu_id	\tmp
-	ldr	\rd, =tegra_context_area
+	mov32	\rd, tegra_context_area
 	ldr	\rd, [\rd]
 	add	\rd, \rd, \tmp, lsl #(CONTEXT_SIZE_WORDS_SHIFT+2)
 .endm
@@ -273,7 +273,7 @@ ENTRY(__cortex_a9_save)
 	cpu_id	r4
 	cmp	r4, #0
 	bne	__cortex_a9_save_clean_cache
-	ldr	r4, =(TEGRA_ARM_PL310_BASE-IO_CPU_PHYS+IO_CPU_VIRT)
+	mov32	r4, (TEGRA_ARM_PL310_BASE-IO_CPU_PHYS+IO_CPU_VIRT)
 	add	r9, r8, #CTX_L2_CTRL
 	ldr	r0, [r4, #L2X0_CTRL]
 	ldr	r1, [r4, #L2X0_AUX_CTRL]
@@ -281,6 +281,7 @@ ENTRY(__cortex_a9_save)
 	ldr	r3, [r4, #L2X0_DATA_LATENCY_CTRL]
 	stmia	r9, {r0-r3}
 #endif
+
 
 __cortex_a9_save_clean_cache:
 	mov	r10, r8
@@ -301,7 +302,7 @@ __cortex_a9_save_clean_cache:
 	mcr	p15, 0, r0, c1, c0, 1	@ exit coherency
 	isb
 	cpu_id	r0
-	ldr	r1, =(TEGRA_ARM_PERIF_BASE-IO_CPU_PHYS+IO_CPU_VIRT+0xC)
+	mov32	r1, (TEGRA_ARM_PERIF_BASE-IO_CPU_PHYS+IO_CPU_VIRT+0xC)
 	mov	r3, r0, lsl #2
 	mov	r2, #0xf
 	mov	r2, r2, lsl r3
@@ -322,7 +323,7 @@ ENDPROC(__cortex_a9_save)
 ENTRY(__cortex_a9_l2x0_restart)
 #ifdef CONFIG_CACHE_L2X0
 	ctx_ptr	r8, r9
-	ldr	r9, =(TEGRA_ARM_PL310_BASE-IO_CPU_PHYS+IO_CPU_VIRT)
+	mov32	r9, (TEGRA_ARM_PL310_BASE-IO_CPU_PHYS+IO_CPU_VIRT)
 	add	r10, r8, #CTX_L2_CTRL
 	ldmia	r10, {r4-r7}
 	str	r6, [r9, #L2X0_TAG_LATENCY_CTRL]
@@ -479,7 +480,7 @@ __tear_down_master:
 	 * preserve the data in the L2, the control words (L2X0_CTRL,
 	 * L2X0_AUX_CTRL, etc.) need to be cleaned to L3 so that they
 	 * will be visible on reboot */
-	ldr	r0, =(TEGRA_ARM_PL310_BASE-IO_CPU_PHYS+IO_CPU_VIRT)
+	mov32	r0, (TEGRA_ARM_PL310_BASE-IO_CPU_PHYS+IO_CPU_VIRT)
 	add	r3, r8, #(CONTEXT_SIZE_WORDS*4)
 	bic	r8, r8, #0x1f
 	add	r3, r3, #0x1f
@@ -505,14 +506,16 @@ __tear_down_master:
 	 * LP0 / LP1 use physical address, since the MMU needs to be
 	 * disabled before putting SDRAM into self-refresh to avoid
 	 * memory access due to page table walks */
-	ldreq	r4, =(TEGRA_PMC_BASE-IO_APB_PHYS+IO_APB_VIRT)
-	ldreq	r5, =(TEGRA_CLK_RESET_BASE-IO_PPSB_PHYS+IO_PPSB_VIRT)
-	ldreq	r6, =(TEGRA_FLOW_CTRL_BASE-IO_PPSB_PHYS+IO_PPSB_VIRT)
-	ldreq	r7, =(TEGRA_TMRUS_BASE-IO_PPSB_PHYS+IO_PPSB_VIRT)
-	ldrne	r4, =(TEGRA_PMC_BASE)
-	ldrne	r5, =(TEGRA_CLK_RESET_BASE)
-	ldrne	r6, =(TEGRA_FLOW_CTRL_BASE)
-	ldrne	r7, =(TEGRA_TMRUS_BASE)
+	mov32	r0, (IO_APB_VIRT-IO_APB_PHYS)
+	mov32	r4, TEGRA_PMC_BASE
+	addeq	r4, r4, r0
+	mov32	r0, (IO_PPSB_VIRT-IO_PPSB_PHYS)
+	mov32	r5, TEGRA_CLK_RESET_BASE
+	mov32	r6, TEGRA_FLOW_CTRL_BASE
+	mov32	r7, TEGRA_TMRUS_BASE
+	addeq	r5, r5, r0
+	addeq	r6, r6, r0
+	addeq	r7, r7, r0
 
 	beq	__tear_down_master_pll_cpu
 
@@ -527,7 +530,7 @@ __tear_down_master:
 	isb
 	mcr	p15, 0, r3, c2, c0, 0	@ TTB 0
 	isb
-	ldrne	r3, =(IO_IRAM_PHYS)	@ __tear_down_master_sdram, in IRAM
+	mov32	r3, (IO_IRAM_PHYS)	@ __tear_down_master_sdram, in IRAM
 	movne	pc, r3
 ENDPROC(__tear_down_master)
 	.type	__tear_down_master_data, %object
@@ -540,7 +543,7 @@ __tear_down_master_data:
 __tear_down_master_sdram:
 	mrc	p15, 0, r3, c1, c0, 0
 	bic	r3, r3, #(1<<0)
-	mcr	p15, 0, r3, c1, c0, 0	@ disable MMU
+	mcr	p15, 0, r3, c1, c0, 0	@ disable MMU to prevent page misses
 	/* FIXME: save off DDR pad settings, put SDRAM in self refresh,
 	 * jump to tear_down_master_pll_cpu */
 	b	.
@@ -622,14 +625,14 @@ __put_cpu_in_reset:
 	movne	r1, r1, lsl #3
 	addne	r1, r1, #0x14
 	moveq	r1, #0			@ r1 = CPUx_HALT_EVENTS register offset
-	ldr	r7, =(TEGRA_FLOW_CTRL_BASE-IO_PPSB_PHYS+IO_PPSB_VIRT)
+	mov32	r7, (TEGRA_FLOW_CTRL_BASE-IO_PPSB_PHYS+IO_PPSB_VIRT)
 	mov	r2, #(0x2<<29)
 	str	r2, [r7, r1]		@ put flow controller in wait event mode
 	isb
 	dsb
-	ldr	r1, =0x1011
+	movw	r1, 0x1011
 	mov	r1, r1, lsl r0
-	ldr	r7, =(TEGRA_CLK_RESET_BASE-IO_PPSB_PHYS+IO_PPSB_VIRT)
+	mov32	r7, (TEGRA_CLK_RESET_BASE-IO_PPSB_PHYS+IO_PPSB_VIRT)
 	str	r1, [r7, #0x340]	@ put slave CPU in reset
 	isb
 	dsb
