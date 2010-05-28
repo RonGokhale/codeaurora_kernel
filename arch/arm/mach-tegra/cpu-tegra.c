@@ -127,7 +127,7 @@ static int tegra_target(struct cpufreq_policy *policy,
 	return tegra_update_cpu_speed();
 }
 
-static int __init tegra_cpu_init(struct cpufreq_policy *policy)
+static int tegra_cpu_init(struct cpufreq_policy *policy)
 {
 	if (policy->cpu >= NUM_CPUS)
 		return -EINVAL;
