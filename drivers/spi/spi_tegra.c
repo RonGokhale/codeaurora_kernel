@@ -349,7 +349,7 @@ static void spi_tegra_start_message(struct spi_device *spi,
 	spi_tegra_start_transfer(spi, t);
 }
 
-static void tegra_spi_rx_dma_complete(struct tegra_dma_req *req, int err)
+static void tegra_spi_rx_dma_complete(struct tegra_dma_req *req)
 {
 	struct spi_tegra_data *tspi = req->dev;
 	unsigned long flags;
