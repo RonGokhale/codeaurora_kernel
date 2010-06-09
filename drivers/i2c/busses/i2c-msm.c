@@ -84,6 +84,7 @@ struct msm_i2c_dev {
 	int                          rd_acked;
 	int                          one_bit_t;
 	remote_mutex_t               r_lock;
+	remote_spinlock_t            s_lock;
 	int                          suspended;
 	struct mutex                 mlock;
 	struct msm_i2c_platform_data *pdata;
@@ -358,6 +359,32 @@ msm_i2c_recover_bus_busy(struct msm_i2c_dev *dev, struct i2c_adapter *adap)
 	return -EBUSY;
 }
 
+static void
+msm_i2c_rspin_lock(struct msm_i2c_dev *dev)
+{
+	int gotlock = 0;
+	unsigned long flags;
+	uint32_t *smem_ptr = (uint32_t *)dev->pdata->rmutex;
+	do {
+		remote_spin_lock_irqsave(&dev->s_lock, flags);
+		if (*smem_ptr == 0) {
+			*smem_ptr = 1;
+			gotlock = 1;
+		}
+		remote_spin_unlock_irqrestore(&dev->s_lock, flags);
+	} while (!gotlock);
+}
+
+static void
+msm_i2c_rspin_unlock(struct msm_i2c_dev *dev)
+{
+	unsigned long flags;
+	uint32_t *smem_ptr = (uint32_t *)dev->pdata->rmutex;
+	remote_spin_lock_irqsave(&dev->s_lock, flags);
+	*smem_ptr = 0;
+	remote_spin_unlock_irqrestore(&dev->s_lock, flags);
+}
+
 static int
 msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 {
@@ -386,7 +413,15 @@ msm_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	pm_qos_update_requirement(PM_QOS_CPU_DMA_LATENCY, "msm_i2c",
 					dev->pdata->pm_lat);
 	if (dev->pdata->rmutex) {
-		remote_mutex_lock(&dev->r_lock);
+		/*
+		 * Older modem side uses remote_mutex lock only to update
+		 * shared variable, and newer modem side uses remote mutex
+		 * to protect the whole transaction
+		 */
+		if (dev->pdata->rsl_id[0] == 'S')
+			msm_i2c_rspin_lock(dev);
+		else
+			remote_mutex_lock(&dev->r_lock);
 		/* If other processor did some transactions, we may have
 		 * interrupt pending. Clear it
 		 */
@@ -535,8 +570,12 @@ wait_for_int:
 	dev->cnt = 0;
 	spin_unlock_irqrestore(&dev->lock, flags);
 	disable_irq(dev->irq);
-	if (dev->pdata->rmutex)
-		remote_mutex_unlock(&dev->r_lock);
+	if (dev->pdata->rmutex) {
+		if (dev->pdata->rsl_id[0] == 'S')
+			msm_i2c_rspin_unlock(dev);
+		else
+			remote_mutex_unlock(&dev->r_lock);
+	}
 	pm_qos_update_requirement(PM_QOS_CPU_DMA_LATENCY, "msm_i2c",
 					PM_QOS_DEFAULT_VALUE);
 	mod_timer(&dev->pwr_timer, (jiffies + 3*HZ));
@@ -635,7 +674,12 @@ msm_i2c_probe(struct platform_device *pdev)
 
 	clk_enable(clk);
 
-	if (pdata->rmutex) {
+	if (pdata->rmutex && pdata->rsl_id[0] == 'S') {
+		remote_spinlock_id_t rmid;
+		rmid = pdata->rsl_id;
+		if (remote_spin_lock_init(&dev->s_lock, rmid) != 0)
+			pdata->rmutex = 0;
+	} else if (pdata->rmutex) {
 		struct remote_mutex_id rmid;
 		rmid.r_spinlock_id = pdata->rsl_id;
 		rmid.delay_us = 10000000/pdata->clk_freq;
