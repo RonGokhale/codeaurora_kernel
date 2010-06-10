@@ -629,7 +629,15 @@ int arch_add_memory(int nid, u64 start, u64 size)
 	ret = __add_pages(nid, zone, start_pfn, nr_pages);
 	if (ret)
 		return ret;
-	return platform_physical_add_pages(start_pfn, nr_pages);
+	return platform_physical_active_pages(start_pfn, nr_pages);
+}
+
+int arch_physical_active_memory(u64 start, u64 size)
+{
+	unsigned long start_pfn = start >> PAGE_SHIFT;
+	unsigned long nr_pages = size >> PAGE_SHIFT;
+
+	return platform_physical_active_pages(start_pfn, nr_pages);
 }
 
 int arch_physical_remove_memory(u64 start, u64 size)
