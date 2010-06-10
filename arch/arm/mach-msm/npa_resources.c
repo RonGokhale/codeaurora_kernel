@@ -77,11 +77,11 @@
 
 #ifdef CONFIG_MSM_NPA_REMOTE
 
-DECLARE_RESOURCE_REMOTE_AGGREGATION(
+DECLARE_RESOURCE_LOCAL_AGGREGATION(
 	npa_memory_node,
 	npa_memory_resource,
 	NPA_MEMORY_NODE_NAME,
-	"", 2);
+	"", 2, npa_max_plugin);
 
 #ifdef CONFIG_MSM_NPA_SYSTEM_BUS
 #define SYSTEM_BUS_NPA_RESOURCE_NAME "/bus/arbiter"
@@ -111,7 +111,7 @@ static int __init npa_resource_init(void)
 #ifdef CONFIG_MSM_NPA_SYSTEM_BUS
 	npa_remote_define_node(&npa_system_bus_node, 0, NULL, NULL);
 #endif
-	npa_remote_define_node(&npa_memory_node, 0, NULL, NULL);
+	npa_remote_define_node(&npa_memory_node, 1, NULL, NULL);
 
 	return 0;
 }
