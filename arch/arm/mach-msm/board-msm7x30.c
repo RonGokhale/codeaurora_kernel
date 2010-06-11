@@ -3809,6 +3809,7 @@ static void __init msm7x30_init(void)
 	if (socinfo_init() < 0)
 		printk(KERN_ERR "%s: socinfo_init() failed!\n",
 		       __func__);
+	msm_clock_init(msm_clocks_7x30, msm_num_clocks_7x30);
 	msm_spm_init(&msm_spm_data, 1);
 	msm_acpu_clock_init(&msm7x30_clock_data);
 	if (machine_is_msm7x30_surf() || machine_is_msm7x30_fluid())
@@ -3973,7 +3974,6 @@ static void __init msm7x30_map_io(void)
 	msm_shared_ram_phys = 0x00100000;
 	msm_map_msm7x30_io();
 	msm7x30_allocate_memory_regions();
-	msm_clock_init(msm_clocks_7x30, msm_num_clocks_7x30);
 }
 
 MACHINE_START(MSM7X30_SURF, "QCT MSM7X30 SURF")
