@@ -197,6 +197,7 @@ static void audio_dsp_event(void *private, unsigned id, uint16_t *msg)
 	struct audio *audio = private;
 	struct buffer *frame;
 	unsigned long flags;
+	static unsigned long pcmdmamsd_time;
 
 	switch (id) {
 	case AUDPP_MSG_HOST_PCM_INTF_MSG: {
@@ -234,7 +235,11 @@ static void audio_dsp_event(void *private, unsigned id, uint16_t *msg)
 		break;
 	}
 	case AUDPP_MSG_PCMDMAMISSED:
-		MM_INFO("PCMDMAMISSED %d\n", msg[0]);
+		/* prints only if 1 second is elapsed since the last time
+		 * this message has been printed */
+		if (printk_timed_ratelimit(&pcmdmamsd_time, 1000))
+			printk(KERN_INFO "[%s:%s] PCMDMAMISSED %d\n",
+			__MM_FILE__, __func__, msg[0]);
 		audio->teos++;
 		MM_DBG("PCMDMAMISSED Count per Buffer %d\n", audio->teos);
 		wake_up(&audio->wait);
