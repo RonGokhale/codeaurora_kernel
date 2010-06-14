@@ -56,7 +56,8 @@
 #define PERIPH_CLK_SOURCE_MASK		(3<<30)
 #define PERIPH_CLK_SOURCE_SHIFT		30
 #define PERIPH_CLK_SOURCE_ENABLE	(1<<28)
-#define PERIPH_CLK_SOURCE_DIV_MASK	0xFF
+#define PERIPH_CLK_SOURCE_DIVU71_MASK	0xFF
+#define PERIPH_CLK_SOURCE_DIVU16_MASK	0xFFFF
 #define PERIPH_CLK_SOURCE_DIV_SHIFT	0
 
 #define PLL_BASE			0x0
@@ -153,6 +154,18 @@ static int clk_div71_get_divider(struct clk *c, unsigned long rate)
 		return -EINVAL;
 
 	return divider_u71 - 2;
+}
+
+static int clk_div16_get_divider(struct clk *c, unsigned long rate)
+{
+	unsigned long divider_u16;
+
+	divider_u16 = DIV_ROUND_UP(c->rate, rate);
+
+	if (divider_u16 - 1 > 255 || divider_u16 - 1 < 0)
+		return -EINVAL;
+
+	return divider_u16 - 1;
 }
 
 static unsigned long tegra2_clk_recalculate_rate(struct clk *c)
@@ -621,9 +634,13 @@ static void tegra2_periph_clk_init(struct clk *c)
 	}
 
 	if (c->flags & DIV_U71) {
-		u32 divu71 = val & PERIPH_CLK_SOURCE_DIV_MASK;
+		u32 divu71 = val & PERIPH_CLK_SOURCE_DIVU71_MASK;
 		c->div = divu71 + 2;
 		c->mul = 2;
+	} else if (c->flags & DIV_U16) {
+		u32 divu16 = val & PERIPH_CLK_SOURCE_DIVU16_MASK;
+		c->div = divu16 + 1;
+		c->mul = 1;
 	} else {
 		c->div = 1;
 		c->mul = 1;
@@ -708,17 +725,29 @@ static int tegra2_periph_clk_set_parent(struct clk *c, struct clk *p)
 static int tegra2_periph_clk_set_rate(struct clk *c, unsigned long rate)
 {
 	u32 val;
-	int divider_u71;
+	int divider;
 	pr_debug("%s: %lu\n", __func__, rate);
 	if (c->flags & DIV_U71) {
-		divider_u71 = clk_div71_get_divider(c->parent, rate);
-		if (divider_u71 >= 0) {
+		divider = clk_div71_get_divider(c->parent, rate);
+		if (divider >= 0) {
 			val = clk_readl(c->reg);
-			val &= ~PERIPH_CLK_SOURCE_DIV_MASK;
-			val |= divider_u71;
+			val &= ~PERIPH_CLK_SOURCE_DIVU71_MASK;
+			val |= divider;
 			clk_writel(val, c->reg);
-			c->div = divider_u71 + 2;
+			c->div = divider + 2;
 			c->mul = 2;
+			tegra2_clk_recalculate_rate(c);
+			return 0;
+		}
+	} else if (c->flags & DIV_U16) {
+		divider = clk_div16_get_divider(c->parent, rate);
+		if (divider >= 0) {
+			val = clk_readl(c->reg);
+			val &= ~PERIPH_CLK_SOURCE_DIVU16_MASK;
+			val |= divider;
+			clk_writel(val, c->reg);
+			c->div = divider + 1;
+			c->mul = 1;
 			tegra2_clk_recalculate_rate(c);
 			return 0;
 		}
@@ -1236,10 +1265,10 @@ struct clk tegra_periph_clks[] = {
 	PERIPH_CLK("owr",	"owr",			NULL,	71,	0x1cc,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
 	PERIPH_CLK("nor",	"nor",			NULL,	42,	0x1d0,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
 	PERIPH_CLK("mipi",	"mipi",			NULL,	50,	0x174,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
-	PERIPH_CLK("i2c1",	"tegra-i2c.0",		NULL,	12,	0x124,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
-	PERIPH_CLK("i2c2",	"tegra-i2c.1",		NULL,	54,	0x198,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
-	PERIPH_CLK("i2c3",	"tegra-i2c.2",		NULL,	67,	0x1b8,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
-	PERIPH_CLK("dvc",	"tegra-i2c.3",		NULL,	47,	0x128,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
+	PERIPH_CLK("i2c1",	"tegra-i2c.0",		NULL,	12,	0x124,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U16),
+	PERIPH_CLK("i2c2",	"tegra-i2c.1",		NULL,	54,	0x198,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U16),
+	PERIPH_CLK("i2c3",	"tegra-i2c.2",		NULL,	67,	0x1b8,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U16),
+	PERIPH_CLK("dvc",	"tegra-i2c.3",		NULL,	47,	0x128,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U16),
 	PERIPH_CLK("i2c1_i2c",	"tegra-i2c.0",		"i2c",	0,	0,	mux_pllp_out3,			0),
 	PERIPH_CLK("i2c2_i2c",	"tegra-i2c.1",		"i2c",	0,	0,	mux_pllp_out3,			0),
 	PERIPH_CLK("i2c3_i2c",	"tegra-i2c.2",		"i2c",	0,	0,	mux_pllp_out3,			0),
