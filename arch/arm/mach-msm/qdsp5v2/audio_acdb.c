@@ -76,7 +76,7 @@
 #include <mach/qdsp5v2/audio_acdb.h>
 #include <mach/qdsp5v2/audio_acdbi.h>
 #include <mach/qdsp5v2/acdb_commands.h>
-
+#include <mach/qdsp5v2/audio_acdb_def.h>
 
 /* this is the ACDB device ID */
 #define DALDEVICEID_ACDB		0x02000069
