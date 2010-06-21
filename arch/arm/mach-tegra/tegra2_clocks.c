@@ -786,7 +786,7 @@ static struct clk_ops tegra_clk_double_ops = {
 /* Clock definitions */
 static struct clk tegra_clk_32k = {
 	.name = "clk_32k",
-	.rate = 32678,
+	.rate = 32768,
 	.ops  = NULL,
 };
 
