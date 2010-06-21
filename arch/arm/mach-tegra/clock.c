@@ -203,10 +203,17 @@ int clk_set_rate(struct clk *c, unsigned long rate)
 
 	pr_debug("%s: %s\n", __func__, c->name);
 
-	if (c->ops && c->ops->set_rate)
-		ret = c->ops->set_rate(c, rate);
-	else
-		ret = -ENOSYS;
+	if (rate > c->max_rate) {
+		spin_unlock_irqrestore(&clock_lock, flags);
+		return -EINVAL;
+	}
+
+	if (!c->ops || !c->ops->set_rate) {
+		spin_unlock_irqrestore(&clock_lock, flags);
+		return -ENOSYS;
+	}
+
+	ret = c->ops->set_rate(c, rate);
 
 	if (!ret)
 		propagate_rate(c);
@@ -336,8 +343,10 @@ static void clock_tree_show_one(struct seq_file *s, struct clk *c, int level)
 				(c->div % c->mul) ? ".5" : "");
 	}
 
-	seq_printf(s, "%*s%-*s %-6s %-3d %-5s %-10lu\n",
-		level * 3 + 1, c->set ? "" : "*",
+	seq_printf(s, "%*s%c%c%-*s %-6s %-3d %-5s %-10lu\n",
+		level * 3 + 1, "",
+		c->rate > c->max_rate ? '!' : ' ',
+		!c->set ? '*' : ' ',
 		30 - level * 3, c->name,
 		state, c->refcnt, div, c->rate);
 	list_for_each_entry_safe(child, safe, &c->children, sibling) {
