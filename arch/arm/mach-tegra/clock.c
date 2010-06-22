@@ -211,7 +211,8 @@ int clk_set_rate(struct clk *c, unsigned long rate)
 	else
 		ret = -ENOSYS;
 
-	propagate_rate(c);
+	if (!ret)
+		propagate_rate(c);
 
 	spin_unlock_irqrestore(&clock_lock, flags);
 
