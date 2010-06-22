@@ -144,6 +144,9 @@
 #define	PM8058_GPIO_NON_INT_POL_INV	0x08
 #define PM8058_GPIO_BANKS		6
 
+/* MISC register */
+#define	SSBI_REG_ADDR_MISC		0x1CC
+
 #define	MAX_PM_IRQ		256
 #define	MAX_PM_BLOCKS		(MAX_PM_IRQ / 8 + 1)
 #define	MAX_PM_MASTERS		(MAX_PM_BLOCKS / 8 + 1)
@@ -542,6 +545,43 @@ bail_out:
 
 	return rc;
 }
+
+int pm8058_misc_control(struct pm8058_chip *chip, int mask, int flag)
+{
+	int		rc;
+	u8		misc;
+	unsigned long	irqsave;
+
+	if (chip == NULL)
+		chip = pmic_chip;	/* for calls from non child */
+	if (chip == NULL)
+		return -ENODEV;
+
+	spin_lock_irqsave(&chip->pm_lock, irqsave);
+
+	rc = ssbi_read(chip->dev, SSBI_REG_ADDR_MISC, &misc, 1);
+	if (rc) {
+		pr_err("%s: FAIL ssbi_read(0x%x): rc=%d\n",
+		       __func__, SSBI_REG_ADDR_MISC, rc);
+		goto get_out;
+	}
+
+	misc &= ~mask;
+	misc |= flag;
+
+	rc = ssbi_write(chip->dev, SSBI_REG_ADDR_MISC, &misc, 1);
+	if (rc) {
+		pr_err("%s: FAIL ssbi_write(0x%x)=0x%x: rc=%d\n",
+		       __func__, SSBI_REG_ADDR_MISC, misc, rc);
+		goto get_out;
+	}
+
+get_out:
+	spin_unlock_irqrestore(&chip->pm_lock, irqsave);
+
+	return rc;
+}
+EXPORT_SYMBOL(pm8058_misc_control);
 
 /* Internal functions */
 static inline int

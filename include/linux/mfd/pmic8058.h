@@ -120,6 +120,19 @@ struct pm8058_gpio {
 	int		inv_int_pol;	/* invert interrupt polarity */
 };
 
+/* chip revision */
+#define PM_8058_REV_1p0			0xE1
+#define PM_8058_REV_2p0			0xE2
+#define PM_8058_REV_2p1			0xE3
+
+/* misc: control mask and flag */
+#define	PM8058_UART_MUX_MASK		0x60
+
+#define PM8058_UART_MUX_NO		0x0
+#define PM8058_UART_MUX_1		0x20
+#define PM8058_UART_MUX_2		0x40
+#define PM8058_UART_MUX_3		0x60
+
 int pm8058_read(struct pm8058_chip *pm_chip, u16 addr, u8 *values,
 		unsigned int len);
 int pm8058_write(struct pm8058_chip *pm_chip, u16 addr, u8 *values,
@@ -142,3 +155,6 @@ int pm8058_gpio_config_kypd_sns(int gpio_start, int num_gpios);
 int pm8058_rev_is_a0(struct pm8058_chip *pm_chip);
 int pm8058_rev_is_b0(struct pm8058_chip *pm_chip);
 
+int pm8058_irq_get_rt_status(struct pm8058_chip *pm_chip, int irq);
+
+int pm8058_misc_control(struct pm8058_chip *pm_chip, int mask, int flag);
