@@ -2081,6 +2081,7 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	i915_mch_dev = dev_priv;
 	dev_priv->mchdev_lock = &mchdev_lock;
 	spin_unlock(&mchdev_lock);
+	i915_backlight_init(dev);
 
 	ips_ping_for_i915_load();
 
@@ -2120,6 +2121,7 @@ int i915_driver_unload(struct drm_device *dev)
 	spin_lock(&mchdev_lock);
 	i915_mch_dev = NULL;
 	spin_unlock(&mchdev_lock);
+	i915_backlight_exit(dev);
 
 	if (dev_priv->mm.inactive_shrinker.shrink)
 		unregister_shrinker(&dev_priv->mm.inactive_shrinker);
