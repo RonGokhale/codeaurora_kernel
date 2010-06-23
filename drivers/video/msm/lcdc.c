@@ -136,11 +136,18 @@ static int lcdc_on(struct platform_device *pdev)
 	mfd = platform_get_drvdata(pdev);
 	panel_pixclock_freq = mfd->fbi->var.pixclock;
 
+#ifdef CONFIG_FB_MSM_MDP30
+	/* for targets 7x25, 7x27 */
+	pm_qos_freq = 160000;
+
+#else
 	if (panel_pixclock_freq > 62000000)
 		/* pm_qos_freq should be in Khz */
 		pm_qos_freq = panel_pixclock_freq / 1000 ;
 	else
 		pm_qos_freq = 62000;
+
+#endif
 
 	pm_qos_update_requirement(PM_QOS_SYSTEM_BUS_FREQ , "lcdc",
 						pm_qos_freq);
