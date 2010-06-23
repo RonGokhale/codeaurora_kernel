@@ -30,6 +30,8 @@
 #include <mach/iomap.h>
 
 #include "clock.h"
+#include "fuse.h"
+#include "tegra2_dvfs.h"
 
 #define RST_DEVICES			0x004
 #define RST_DEVICES_SET			0x300
@@ -331,6 +333,62 @@ static struct clk_ops tegra_super_ops = {
 	.recalculate_rate	= tegra2_clk_recalculate_rate,
 };
 
+/* virtual cpu clock functions */
+/* some clocks can not be stopped (cpu, memory bus) while the SoC is running.
+   To change the frequency of these clocks, the parent pll may need to be
+   reprogrammed, so the clock must be moved off the pll, the pll reprogrammed,
+   and then the clock moved back to the pll.  To hide this sequence, a virtual
+   clock handles it.
+ */
+static void tegra2_cpu_clk_init(struct clk *c)
+{
+	tegra2_clk_recalculate_rate(c);
+}
+
+static int tegra2_cpu_clk_enable(struct clk *c)
+{
+	return 0;
+}
+
+static void tegra2_cpu_clk_disable(struct clk *c)
+{
+	pr_debug("%s on clock %s\n", __func__, c->name);
+
+	/* oops - don't disable the CPU clock! */
+	BUG();
+}
+
+static int tegra2_cpu_clk_set_rate(struct clk *c, unsigned long rate)
+{
+	int ret;
+	ret = clk_set_parent_locked(c->parent, c->backup);
+	if (ret) {
+		pr_err("Failed to switch cpu to clock %s\n", c->backup->name);
+		return ret;
+	}
+
+	ret = clk_set_rate_locked(c->main, rate);
+	if (ret) {
+		pr_err("Failed to change cpu pll to %lu\n", rate);
+		return ret;
+	}
+
+	ret = clk_set_parent_locked(c->parent, c->main);
+	if (ret) {
+		pr_err("Failed to switch cpu to clock %s\n", c->main->name);
+		return ret;
+	}
+	return 0;
+}
+
+static struct clk_ops tegra_cpu_ops = {
+	.init     = tegra2_cpu_clk_init,
+	.enable   = tegra2_cpu_clk_enable,
+	.disable  = tegra2_cpu_clk_disable,
+	.set_rate = tegra2_cpu_clk_set_rate,
+	.recalculate_rate = tegra2_clk_recalculate_rate,
+};
+
 /* bus clock functions */
 static void tegra2_bus_clk_init(struct clk *c)
 {
@@ -519,6 +577,22 @@ static struct clk_ops tegra_pll_ops = {
 	.disable		= tegra2_pll_clk_disable,
 	.set_rate		= tegra2_pll_clk_set_rate,
 	.recalculate_rate	= tegra2_pll_clk_recalculate_rate,
+};
+
+static void tegra2_pllx_clk_init(struct clk *c)
+{
+	tegra2_pll_clk_init(c);
+
+	if (tegra_sku_id() == 7)
+		c->max_rate = 750000000;
+}
+
+static struct clk_ops tegra_pllx_ops = {
+	.init     = tegra2_pllx_clk_init,
+	.enable   = tegra2_pll_clk_enable,
+	.disable  = tegra2_pll_clk_disable,
+	.set_rate = tegra2_pll_clk_set_rate,
+	.recalculate_rate = tegra2_pll_clk_recalculate_rate,
 };
 
 /* Clock divider ops */
@@ -1169,21 +1243,55 @@ static struct clk tegra_pll_u = {
 };
 
 static struct clk_pll_table tegra_pll_x_table[] = {
+	/* 1 GHz */
 	{ 12000000, 1000000000, 1000, 12, 1, 12},
 	{ 13000000, 1000000000, 1000, 13, 1, 12},
 	{ 19200000, 1000000000, 625,  12, 1, 8},
 	{ 26000000, 1000000000, 1000, 26, 1, 12},
-	{ 12000000, 750000000,  750,  12, 1, 12},
-	{ 13000000, 750000000,  750,  13, 1, 12},
-	{ 19200000, 750000000,  625,  16, 1, 8},
-	{ 26000000, 750000000,  750,  26, 1, 12},
+
+	/* 912 MHz */
+	{ 12000000, 912000000,  912,  12, 1, 12},
+	{ 13000000, 912000000,  912,  13, 1, 12},
+	{ 19200000, 912000000,  760,  16, 1, 8},
+	{ 26000000, 912000000,  912,  26, 1, 12},
+
+	/* 816 MHz */
+	{ 12000000, 816000000,  816,  12, 1, 12},
+	{ 13000000, 816000000,  816,  13, 1, 12},
+	{ 19200000, 816000000,  680,  16, 1, 8},
+	{ 26000000, 816000000,  816,  26, 1, 12},
+
+	/* 760 MHz */
+	{ 12000000, 760000000,  760,  12, 1, 12},
+	{ 13000000, 760000000,  760,  13, 1, 12},
+	{ 19200000, 760000000,  950,  24, 1, 8},
+	{ 26000000, 760000000,  760,  26, 1, 12},
+
+	/* 608 MHz */
+	{ 12000000, 608000000,  760,  12, 1, 12},
+	{ 13000000, 608000000,  760,  13, 1, 12},
+	{ 19200000, 608000000,  380,  12, 1, 8},
+	{ 26000000, 608000000,  760,  26, 1, 12},
+
+	/* 456 MHz */
+	{ 12000000, 456000000,  456,  12, 1, 12},
+	{ 13000000, 456000000,  456,  13, 1, 12},
+	{ 19200000, 456000000,  380,  16, 1, 8},
+	{ 26000000, 456000000,  456,  26, 1, 12},
+
+	/* 312 MHz */
+	{ 12000000, 312000000,  312,  12, 1, 12},
+	{ 13000000, 312000000,  312,  13, 1, 12},
+	{ 19200000, 312000000,  260,  16, 1, 8},
+	{ 26000000, 312000000,  312,  26, 1, 12},
+
 	{ 0, 0, 0, 0, 0, 0 },
 };
 
 static struct clk tegra_pll_x = {
 	.name      = "pll_x",
 	.flags     = PLL_HAS_CPCON | PLL_ALT_MISC_REG,
-	.ops       = &tegra_pll_ops,
+	.ops       = &tegra_pllx_ops,
 	.reg       = 0xe0,
 	.input_min = 2000000,
 	.input_max = 31000000,
@@ -1299,26 +1407,36 @@ static struct clk_mux_sel mux_sclk[] = {
 	{ 0, 0},
 };
 
-static struct clk tegra_clk_cpu = {
-	.name	= "cpu",
+static struct clk tegra_clk_cclk = {
+	.name	= "cclk",
 	.inputs	= mux_cclk,
 	.reg	= 0x20,
 	.ops	= &tegra_super_ops,
 	.max_rate = 1000000000,
 };
 
-static struct clk tegra_clk_sys = {
-	.name	= "sys",
+static struct clk tegra_clk_sclk = {
+	.name	= "sclk",
 	.inputs	= mux_sclk,
 	.reg	= 0x28,
 	.ops	= &tegra_super_ops,
 	.max_rate = 600000000,
 };
 
+static struct clk tegra_clk_virtual_cpu = {
+	.name      = "cpu",
+	.parent    = &tegra_clk_cclk,
+	.main      = &tegra_pll_x,
+	.backup    = &tegra_clk_m,
+	.ops       = &tegra_cpu_ops,
+	.max_rate  = 1000000000,
+	.dvfs      = &tegra_dvfs_virtual_cpu_dvfs,
+};
+
 static struct clk tegra_clk_hclk = {
 	.name		= "hclk",
 	.flags		= DIV_BUS,
-	.parent		= &tegra_clk_sys,
+	.parent		= &tegra_clk_sclk,
 	.reg		= 0x30,
 	.reg_shift	= 4,
 	.ops		= &tegra_bus_ops,
@@ -1542,11 +1660,12 @@ struct clk_lookup tegra_clk_lookups[] = {
 	CLK(NULL,	"pll_d_out0",	&tegra_pll_d_out0),
 	CLK(NULL,	"pll_u",	&tegra_pll_u),
 	CLK(NULL,	"pll_x",	&tegra_pll_x),
-	CLK(NULL,	"cpu",		&tegra_clk_cpu),
-	CLK(NULL,	"sys",		&tegra_clk_sys),
+	CLK(NULL,	"cclk",		&tegra_clk_cclk),
+	CLK(NULL,	"sclk",		&tegra_clk_sclk),
 	CLK(NULL,	"hclk",		&tegra_clk_hclk),
 	CLK(NULL,	"pclk",		&tegra_clk_pclk),
 	CLK(NULL,	"clk_d",	&tegra_clk_d),
+	CLK(NULL,	"cpu",		&tegra_clk_virtual_cpu),
 };
 
 void __init tegra2_init_clocks(void)

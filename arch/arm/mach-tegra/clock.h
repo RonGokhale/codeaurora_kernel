@@ -141,6 +141,10 @@ struct clk {
 	u32				sel;
 	u32				reg_mask;
 
+	/* Virtual cpu clock */
+	struct clk			*main;
+	struct clk			*backup;
+
 	struct dvfs			*dvfs;
 };
 
@@ -166,6 +170,7 @@ unsigned long clk_measure_input_freq(void);
 void clk_disable_locked(struct clk *c);
 int clk_enable_locked(struct clk *c);
 int clk_set_parent_locked(struct clk *c, struct clk *parent);
+int clk_set_rate_locked(struct clk *c, unsigned long rate);
 int clk_reparent(struct clk *c, struct clk *parent);
 void tegra_clk_init_from_table(struct tegra_clk_init_table *table);
 
