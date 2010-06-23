@@ -40,6 +40,27 @@
 #define ENABLE_ON_INIT		(1 << 28)
 
 struct clk;
+struct regulator;
+
+struct dvfs_table {
+	unsigned long rate;
+	int millivolts;
+};
+
+struct dvfs_process_id_table {
+	int process_id;
+	struct dvfs_table *table;
+};
+
+
+struct dvfs {
+	int process_id_table_length;
+	struct dvfs_table *table;
+	struct regulator *reg;
+	const char *reg_id;
+	bool cpu;
+	struct dvfs_process_id_table process_id_table[];
+};
 
 struct clk_mux_sel {
 	struct clk	*input;
@@ -119,6 +140,8 @@ struct clk {
 	const struct clk_mux_sel	*inputs;
 	u32				sel;
 	u32				reg_mask;
+
+	struct dvfs			*dvfs;
 };
 
 
