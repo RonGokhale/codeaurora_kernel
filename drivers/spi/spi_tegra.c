@@ -325,6 +325,8 @@ static int spi_tegra_start_transfer(struct spi_device *spi,
 	else
 		val |= IDLE_SCLK_DRIVE_LOW;
 
+	val |= M_S;
+
 	spi_writel(tspi, val, SLINK_COMMAND);
 
 	spi_writel(tspi, RX_FLUSH | TX_FLUSH, SLINK_STATUS);
