@@ -95,8 +95,11 @@
 #define APB_SEQ_WRAP_SHIFT			16
 #define APB_SEQ_WRAP_MASK			(0x7<<APB_SEQ_WRAP_SHIFT)
 
+#define TEGRA_SYSTEM_DMA_CH_NR			16
+#define TEGRA_SYSTEM_DMA_AVP_CH_NUM		4
 #define TEGRA_SYSTEM_DMA_CH_MIN			0
-#define TEGRA_SYSTEM_DMA_CH_MAX			15
+#define TEGRA_SYSTEM_DMA_CH_MAX	\
+	(TEGRA_SYSTEM_DMA_CH_NR - TEGRA_SYSTEM_DMA_AVP_CH_NUM - 1)
 
 #define NV_DMA_MAX_TRASFER_SIZE 0x10000
 
@@ -646,7 +649,8 @@ int __init tegra_dma_init(void)
 	addr = IO_ADDRESS(TEGRA_APB_DMA_BASE);
 	writel(GEN_ENABLE, addr + APB_DMA_GEN);
 	writel(0, addr + APB_DMA_CNTRL);
-	writel(0xFFFF, addr + APB_DMA_IRQ_MASK_SET);
+	writel(0xFFFFFFFFul >> (31 - TEGRA_SYSTEM_DMA_CH_MAX),
+	       addr + APB_DMA_IRQ_MASK_SET);
 
 	memset(channel_usage, 0, sizeof(channel_usage));
 	memset(dma_channels, 0, sizeof(dma_channels));
@@ -680,6 +684,8 @@ int __init tegra_dma_init(void)
 		}
 		ch->irq = irq;
 	}
+	/* mark the shared channel allocated */
+	__set_bit(TEGRA_SYSTEM_DMA_CH_MIN, channel_usage);
 
 	for (i = TEGRA_SYSTEM_DMA_CH_MAX+1; i < NV_DMA_MAX_CHANNELS; i++)
 		__set_bit(i, channel_usage);
