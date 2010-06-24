@@ -580,7 +580,8 @@ static void handle_continuous_dma(struct tegra_dma_channel *ch)
 			req->status = TEGRA_DMA_REQ_SUCCESS;
 			/* DMA lock is NOT held when callback is called */
 			spin_unlock(&ch->lock);
-			req->threshold(req);
+			if (likely(req->threshold))
+				req->threshold(req);
 			return;
 
 		} else if (req->buffer_status ==
