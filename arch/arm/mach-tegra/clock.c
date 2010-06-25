@@ -27,6 +27,7 @@
 #include <asm/clkdev.h>
 
 #include "clock.h"
+#include "board.h"
 
 static LIST_HEAD(clocks);
 
@@ -51,11 +52,7 @@ struct clk *tegra_get_clock_by_name(const char *name)
 int clk_reparent(struct clk *c, struct clk *parent)
 {
 	pr_debug("%s: %s\n", __func__, c->name);
-	if (c->refcnt && c->parent)
-		clk_disable_locked(c->parent);
 	c->parent = parent;
-	if (c->refcnt && c->parent)
-		clk_enable_locked(c->parent);
 	list_del(&c->sibling);
 	list_add_tail(&c->sibling, &parent->children);
 	return 0;
@@ -309,11 +306,9 @@ void tegra_periph_reset_assert(struct clk *c)
 }
 EXPORT_SYMBOL(tegra_periph_reset_assert);
 
-int __init tegra_init_clock(void)
+void __init tegra_init_clock(void)
 {
 	tegra2_init_clocks();
-
-	return 0;
 }
 
 #ifdef CONFIG_DEBUG_FS

@@ -291,6 +291,7 @@ static int tegra2_super_clk_set_parent(struct clk *c, struct clk *p)
 	u32 val;
 	const struct clk_mux_sel *sel;
 	int shift;
+
 	val = clk_readl(c->reg + SUPER_CLK_MUX);;
 	BUG_ON(((val & SUPER_STATE_MASK) != SUPER_STATE_RUN) &&
 		((val & SUPER_STATE_MASK) != SUPER_STATE_IDLE));
@@ -298,10 +299,18 @@ static int tegra2_super_clk_set_parent(struct clk *c, struct clk *p)
 		SUPER_IDLE_SOURCE_SHIFT : SUPER_RUN_SOURCE_SHIFT;
 	for (sel = c->inputs; sel->input != NULL; sel++) {
 		if (sel->input == p) {
-			clk_reparent(c, p);
 			val &= ~(SUPER_SOURCE_MASK << shift);
 			val |= sel->value << shift;
+
+			if (c->refcnt)
+				clk_enable_locked(p);
+
 			clk_writel(val, c->reg);
+
+			if (c->refcnt && c->parent)
+				clk_disable_locked(c->parent);
+
+			clk_reparent(c, p);
 			c->rate = c->parent->rate;
 			return 0;
 		}
@@ -721,11 +730,19 @@ static int tegra2_periph_clk_set_parent(struct clk *c, struct clk *p)
 	pr_debug("%s: %s %s\n", __func__, c->name, p->name);
 	for (sel = c->inputs; sel->input != NULL; sel++) {
 		if (sel->input == p) {
-			clk_reparent(c, p);
 			val = clk_readl(c->reg);
 			val &= ~PERIPH_CLK_SOURCE_MASK;
 			val |= (sel->value) << PERIPH_CLK_SOURCE_SHIFT;
+
+			if (c->refcnt)
+				clk_enable_locked(p);
+
 			clk_writel(val, c->reg);
+
+			if (c->refcnt && c->parent)
+				clk_disable_locked(c->parent);
+
+			clk_reparent(c, p);
 			c->rate = c->parent->rate;
 			return 0;
 		}
@@ -827,11 +844,19 @@ static int tegra2_audio_sync_clk_set_parent(struct clk *c, struct clk *p)
 	const struct clk_mux_sel *sel;
 	for (sel = c->inputs; sel->input != NULL; sel++) {
 		if (sel->input == p) {
-			clk_reparent(c, p);
 			val = clk_readl(c->reg);
 			val &= ~0xf;
 			val |= sel->value;
+
+			if (c->refcnt)
+				clk_enable_locked(p);
+
 			clk_writel(val, c->reg);
+
+			if (c->refcnt && c->parent)
+				clk_disable_locked(c->parent);
+
+			clk_reparent(c, p);
 			c->rate = c->parent->rate;
 			return 0;
 		}
