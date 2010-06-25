@@ -29,24 +29,25 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 
-#include <mach/hardware.h>
 #include <asm/system.h>
 
+#include <mach/hardware.h>
+#include <mach/clk.h>
+
 static struct cpufreq_frequency_table freq_table[] = {
-	{ 1, 750000 },
-	{ 2, 1000000 },
+	{ 1, 312000 },
+	{ 2, 456000 },
+	{ 3, 608000 },
+	{ 4, 760000 },
+	{ 5, 816000 },
+	{ 6, 912000 },
+	{ 7, 1000000 },
 	{ 0, CPUFREQ_TABLE_END },
 };
-
-#define CPU_CLK		"cpu"
-#define SWITCH_CLK	"clk_m"
-#define MAIN_CLK	"pll_x"
 
 #define NUM_CPUS	2
 
 static struct clk *cpu_clk;
-static struct clk *switch_clk;
-static struct clk *main_clk;
 
 static unsigned long target_cpu_speed[NUM_CPUS];
 
@@ -90,21 +91,10 @@ static int tegra_update_cpu_speed(void)
 	       freqs.old, freqs.new);
 #endif
 
-	ret = clk_set_parent(cpu_clk, switch_clk);
+	ret = clk_set_rate_cansleep(cpu_clk, freqs.new * 1000);
 	if (ret) {
-		pr_err("Failed to switch cpu to clock %s\n", SWITCH_CLK);
-		return ret;
-	}
-
-	ret = clk_set_rate(main_clk, freqs.new * 1000);
-	if (ret) {
-		pr_err("Failed to change cpu pll to %d\n", freqs.new * 1000);
-		return ret;
-	}
-
-	ret = clk_set_parent(cpu_clk, main_clk);
-	if (ret) {
-		pr_err("Failed to switch cpu to clock %s\n", MAIN_CLK);
+		pr_err("cpu-tegra: Failed to set cpu frequency to %d kHz\n",
+			freqs.new);
 		return ret;
 	}
 
@@ -132,23 +122,19 @@ static int tegra_cpu_init(struct cpufreq_policy *policy)
 	if (policy->cpu >= NUM_CPUS)
 		return -EINVAL;
 
-	cpu_clk = clk_get_sys(NULL, CPU_CLK);
+	cpu_clk = clk_get_sys(NULL, "cpu");
 	if (IS_ERR(cpu_clk))
 		return PTR_ERR(cpu_clk);
 
-	main_clk = clk_get_sys(NULL, MAIN_CLK);
-	if (IS_ERR(main_clk))
-		return PTR_ERR(main_clk);
-
-	switch_clk = clk_get_sys(NULL, SWITCH_CLK);
-	if (IS_ERR(switch_clk))
-		return PTR_ERR(switch_clk);
-
 	cpufreq_frequency_table_cpuinfo(policy, freq_table);
-	policy->cur = policy->min = policy->max = tegra_getspeed(policy->cpu);
+	policy->cur = tegra_getspeed(policy->cpu);
+	target_cpu_speed[policy->cpu] = policy->cur;
 
 	/* FIXME: what's the actual transition time? */
 	policy->cpuinfo.transition_latency = 300 * 1000;
+
+	policy->shared_type = CPUFREQ_SHARED_TYPE_ALL;
+	cpumask_copy(policy->related_cpus, cpu_possible_mask);
 
 	return 0;
 }
@@ -156,8 +142,6 @@ static int tegra_cpu_init(struct cpufreq_policy *policy)
 static int tegra_cpu_exit(struct cpufreq_policy *policy)
 {
 	clk_put(cpu_clk);
-	clk_put(main_clk);
-	clk_put(switch_clk);
 	return 0;
 }
 
