@@ -2245,7 +2245,7 @@ static unsigned dtv_reset_gpio =
 	GPIO_CFG(37, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA);
 #endif
 
-static void dtv_panel_power(int on)
+static int dtv_panel_power(int on)
 {
 	int flag_on = !!on;
 	static int dtv_power_save_on;
@@ -2253,7 +2253,7 @@ static void dtv_panel_power(int on)
 	int rc;
 
 	if (dtv_power_save_on == flag_on)
-		return;
+		return 0;
 
 	dtv_power_save_on = flag_on;
 
@@ -2264,7 +2264,7 @@ static void dtv_panel_power(int on)
 		if (rc) {
 			pr_err("%s: gpio_tlmm_config(%#x)=%d\n",
 				       __func__, dtv_reset_gpio, rc);
-			return;
+			return rc;
 		}
 
 		gpio_set_value(37, 0);	/* bring reset line low to hold reset*/
@@ -2275,26 +2275,34 @@ static void dtv_panel_power(int on)
 		rc = msm_gpios_enable(dtv_panel_gpios,
 				ARRAY_SIZE(dtv_panel_gpios));
 		if (rc < 0) {
-			printk(KERN_ERR "%s: gpio config failed: %d\n",
+			printk(KERN_ERR "%s: gpio enable failed: %d\n",
 				__func__, rc);
+			return rc;
 		}
-	} else
-		msm_gpios_disable(dtv_panel_gpios,
+	} else {
+		rc = msm_gpios_disable(dtv_panel_gpios,
 				ARRAY_SIZE(dtv_panel_gpios));
+		if (rc < 0) {
+			printk(KERN_ERR "%s: gpio disable failed: %d\n",
+				__func__, rc);
+			return rc;
+		}
+	}
 
 	vreg_ldo8 = vreg_get(NULL, "gp7");
 
 	if (IS_ERR(vreg_ldo8)) {
-		pr_err("%s:  vreg17 get failed (%ld)\n",
-			__func__, PTR_ERR(vreg_ldo8));
-		return;
+		rc = PTR_ERR(vreg_ldo8);
+		pr_err("%s:  vreg17 get failed (%d)\n",
+			__func__, rc);
+		return rc;
 	}
 
 	rc = vreg_set_level(vreg_ldo8, 1800);
 	if (rc) {
 		pr_err("%s: vreg LDO18 set level failed (%d)\n",
 			__func__, rc);
-		return;
+		return rc;
 	}
 
 	if (on)
@@ -2305,7 +2313,7 @@ static void dtv_panel_power(int on)
 	if (rc) {
 		pr_err("%s: LDO8 vreg enable failed (%d)\n",
 			__func__, rc);
-		return;
+		return rc;
 	}
 
 	mdelay(5);		/* ensure power is stable */
@@ -2314,16 +2322,17 @@ static void dtv_panel_power(int on)
 	vreg_ldo17 = vreg_get(NULL, "gp11");
 
 	if (IS_ERR(vreg_ldo17)) {
-		pr_err("%s:  vreg17 get failed (%ld)\n",
-			__func__, PTR_ERR(vreg_ldo17));
-		return;
+		rc = PTR_ERR(vreg_ldo17);
+		pr_err("%s:  vreg17 get failed (%d)\n",
+			__func__, rc);
+		return rc;
 	}
 
 	rc = vreg_set_level(vreg_ldo17, 2600);
 	if (rc) {
 		pr_err("%s: vreg LDO17 set level failed (%d)\n",
 			__func__, rc);
-		return;
+		return rc;
 	}
 
 	if (on)
@@ -2334,7 +2343,7 @@ static void dtv_panel_power(int on)
 	if (rc) {
 		pr_err("%s: LDO17 vreg enable failed (%d)\n",
 			__func__, rc);
-		return;
+		return rc;
 	}
 
 	mdelay(5);		/* ensure power is stable */
@@ -2346,6 +2355,7 @@ static void dtv_panel_power(int on)
 	}
 #endif
 
+	return rc;
 }
 
 static struct lcdc_platform_data dtv_pdata = {
@@ -2532,15 +2542,15 @@ static struct msm_gpio fluid_vee_reset_gpio[] = {
 	{ GPIO_CFG(20, 0, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_2MA), "vee_reset" },
 };
 
-static void display_common_power(int on)
+static int display_common_power(int on)
 {
-	int rc, flag_on = !!on;
+	int rc = 0, flag_on = !!on;
 	static int display_common_power_save_on;
 	struct vreg *vreg_ldo12, *vreg_ldo15 = NULL;
 	struct vreg *vreg_ldo20, *vreg_ldo16, *vreg_ldo8 = NULL;
 
 	if (display_common_power_save_on == flag_on)
-		return;
+		return 0;
 
 	display_common_power_save_on = flag_on;
 
@@ -2550,7 +2560,7 @@ static void display_common_power(int on)
 		if (rc) {
 			pr_err("%s: gpio_tlmm_config(%#x)=%d\n",
 				       __func__, wega_reset_gpio, rc);
-			return;
+			return rc;
 		}
 
 		gpio_set_value(180, 0);	/* bring reset line low to hold reset*/
@@ -2561,27 +2571,30 @@ static void display_common_power(int on)
 	vreg_ldo20 = vreg_get(NULL, "gp13");
 
 	if (IS_ERR(vreg_ldo20)) {
-		pr_err("%s: gp13 vreg get failed (%ld)\n",
-		       __func__, PTR_ERR(vreg_ldo20));
-		return;
+		rc = PTR_ERR(vreg_ldo20);
+		pr_err("%s: gp13 vreg get failed (%d)\n",
+		       __func__, rc);
+		return rc;
 	}
 
 	/* 1.8V -- LDO12 */
 	vreg_ldo12 = vreg_get(NULL, "gp9");
 
 	if (IS_ERR(vreg_ldo12)) {
-		pr_err("%s: gp9 vreg get failed (%ld)\n",
-		       __func__, PTR_ERR(vreg_ldo12));
-		return;
+		rc = PTR_ERR(vreg_ldo12);
+		pr_err("%s: gp9 vreg get failed (%d)\n",
+		       __func__, rc);
+		return rc;
 	}
 
 	/* 2.6V -- LDO16 */
 	vreg_ldo16 = vreg_get(NULL, "gp10");
 
 	if (IS_ERR(vreg_ldo16)) {
-		pr_err("%s: gp10 vreg get failed (%ld)\n",
-		       __func__, PTR_ERR(vreg_ldo16));
-		return;
+		rc = PTR_ERR(vreg_ldo16);
+		pr_err("%s: gp10 vreg get failed (%d)\n",
+		       __func__, rc);
+		return rc;
 	}
 
 	if (machine_is_msm7x30_fluid()) {
@@ -2589,9 +2602,10 @@ static void display_common_power(int on)
 		vreg_ldo8 = vreg_get(NULL, "gp7");
 
 		if (IS_ERR(vreg_ldo8)) {
-			pr_err("%s: gp7 vreg get failed (%ld)\n",
-				__func__, PTR_ERR(vreg_ldo8));
-			return;
+			rc = PTR_ERR(vreg_ldo8);
+			pr_err("%s: gp7 vreg get failed (%d)\n",
+				__func__, rc);
+			return rc;
 		}
 	} else {
 		/* lcd panel power */
@@ -2599,9 +2613,10 @@ static void display_common_power(int on)
 		vreg_ldo15 = vreg_get(NULL, "gp6");
 
 		if (IS_ERR(vreg_ldo15)) {
-			pr_err("%s: gp6 vreg get failed (%ld)\n",
-				__func__, PTR_ERR(vreg_ldo15));
-			return;
+			rc = PTR_ERR(vreg_ldo15);
+			pr_err("%s: gp6 vreg get failed (%d)\n",
+				__func__, rc);
+			return rc;
 		}
 	}
 
@@ -2609,21 +2624,21 @@ static void display_common_power(int on)
 	if (rc) {
 		pr_err("%s: vreg LDO20 set level failed (%d)\n",
 		       __func__, rc);
-		return;
+		return rc;
 	}
 
 	rc = vreg_set_level(vreg_ldo12, 1800);
 	if (rc) {
 		pr_err("%s: vreg LDO12 set level failed (%d)\n",
 		       __func__, rc);
-		return;
+		return rc;
 	}
 
 	rc = vreg_set_level(vreg_ldo16, 2600);
 	if (rc) {
 		pr_err("%s: vreg LDO16 set level failed (%d)\n",
 		       __func__, rc);
-		return;
+		return rc;
 	}
 
 	if (machine_is_msm7x30_fluid()) {
@@ -2631,14 +2646,14 @@ static void display_common_power(int on)
 		if (rc) {
 			pr_err("%s: vreg LDO8 set level failed (%d)\n",
 				__func__, rc);
-			return;
+			return rc;
 		}
 	} else {
 		rc = vreg_set_level(vreg_ldo15, 3100);
 		if (rc) {
 			pr_err("%s: vreg LDO15 set level failed (%d)\n",
 				__func__, rc);
-			return;
+			return rc;
 		}
 	}
 
@@ -2647,21 +2662,21 @@ static void display_common_power(int on)
 		if (rc) {
 			pr_err("%s: LDO20 vreg enable failed (%d)\n",
 			       __func__, rc);
-			return;
+			return rc;
 		}
 
 		rc = vreg_enable(vreg_ldo12);
 		if (rc) {
 			pr_err("%s: LDO12 vreg enable failed (%d)\n",
 			       __func__, rc);
-			return;
+			return rc;
 		}
 
 		rc = vreg_enable(vreg_ldo16);
 		if (rc) {
 			pr_err("%s: LDO16 vreg enable failed (%d)\n",
 			       __func__, rc);
-			return;
+			return rc;
 		}
 
 		if (machine_is_msm7x30_fluid()) {
@@ -2669,14 +2684,14 @@ static void display_common_power(int on)
 			if (rc) {
 				pr_err("%s: LDO8 vreg enable failed (%d)\n",
 					__func__, rc);
-				return;
+				return rc;
 			}
 		} else {
 			rc = vreg_enable(vreg_ldo15);
 			if (rc) {
 				pr_err("%s: LDO15 vreg enable failed (%d)\n",
 					__func__, rc);
-				return;
+				return rc;
 			}
 		}
 
@@ -2699,14 +2714,19 @@ static void display_common_power(int on)
 
 		gpio_set_value(180, 1);	/* bring reset line high */
 		mdelay(10);	/* 10 msec before IO can be accessed */
-		pmapp_display_clock_config(1);
+		rc = pmapp_display_clock_config(1);
+		if (rc) {
+			pr_err("%s pmapp_display_clock_config rc=%d\n",
+					__func__, rc);
+			return rc;
+		}
 
 	} else {
 		rc = vreg_disable(vreg_ldo20);
 		if (rc) {
 			pr_err("%s: LDO20 vreg enable failed (%d)\n",
 			       __func__, rc);
-			return;
+			return rc;
 		}
 
 
@@ -2714,7 +2734,7 @@ static void display_common_power(int on)
 		if (rc) {
 			pr_err("%s: LDO16 vreg enable failed (%d)\n",
 			       __func__, rc);
-			return;
+			return rc;
 		}
 
 		gpio_set_value(180, 0);	/* bring reset line low */
@@ -2724,14 +2744,14 @@ static void display_common_power(int on)
 			if (rc) {
 				pr_err("%s: LDO8 vreg enable failed (%d)\n",
 					__func__, rc);
-				return;
+				return rc;
 			}
 		} else {
 			rc = vreg_disable(vreg_ldo15);
 			if (rc) {
 				pr_err("%s: LDO15 vreg enable failed (%d)\n",
 					__func__, rc);
-				return;
+				return rc;
 			}
 		}
 
@@ -2741,7 +2761,7 @@ static void display_common_power(int on)
 		if (rc) {
 			pr_err("%s: LDO12 vreg enable failed (%d)\n",
 			       __func__, rc);
-			return;
+			return rc;
 		}
 
 		if (machine_is_msm7x30_fluid()) {
@@ -2749,8 +2769,15 @@ static void display_common_power(int on)
 					ARRAY_SIZE(fluid_vee_reset_gpio));
 		}
 
-		pmapp_display_clock_config(0);
+		rc = pmapp_display_clock_config(0);
+		if (rc) {
+			pr_err("%s pmapp_display_clock_config rc=%d\n",
+					__func__, rc);
+			return rc;
+		}
 	}
+
+	return rc;
 }
 
 static int msm_fb_mddi_sel_clk(u32 *clk_rate)
@@ -2835,19 +2862,24 @@ static struct msm_gpio lcd_sharp_panel_gpios[] = {
 	{ GPIO_CFG(109, 1, GPIO_OUTPUT,  GPIO_NO_PULL, GPIO_2MA), "lcdc_red7" },
 };
 
-static void lcdc_toshiba_panel_power(int on)
+static int lcdc_toshiba_panel_power(int on)
 {
 	int rc, i;
 	struct msm_gpio *gp;
 
-	display_common_power(on);
+	rc = display_common_power(on);
+	if (rc < 0) {
+		printk(KERN_ERR "%s display_common_power failed: %d\n",
+				__func__, rc);
+		return rc;
+	}
 
 	if (on) {
 		rc = msm_gpios_enable(lcd_panel_gpios,
 				ARRAY_SIZE(lcd_panel_gpios));
 		if (rc < 0) {
-			printk(KERN_ERR "%s: gpio config failed: %d\n",
-				__func__, rc);
+			printk(KERN_ERR "%s: gpio enable failed: %d\n",
+					__func__, rc);
 		}
 	} else {	/* off */
 		gp = lcd_panel_gpios;
@@ -2857,20 +2889,27 @@ static void lcdc_toshiba_panel_power(int on)
 			gp++;
 		}
 	}
+
+	return rc;
 }
 
-static void lcdc_sharp_panel_power(int on)
+static int lcdc_sharp_panel_power(int on)
 {
 	int rc, i;
 	struct msm_gpio *gp;
 
-	display_common_power(on);
+	rc = display_common_power(on);
+	if (rc < 0) {
+		printk(KERN_ERR "%s display_common_power failed: %d\n",
+				__func__, rc);
+		return rc;
+	}
 
 	if (on) {
 		rc = msm_gpios_enable(lcd_sharp_panel_gpios,
 				ARRAY_SIZE(lcd_sharp_panel_gpios));
 		if (rc < 0) {
-			printk(KERN_ERR "%s: gpio config failed: %d\n",
+			printk(KERN_ERR "%s: gpio enable failed: %d\n",
 				__func__, rc);
 		}
 	} else {	/* off */
@@ -2881,22 +2920,24 @@ static void lcdc_sharp_panel_power(int on)
 			gp++;
 		}
 	}
+
+	return rc;
 }
 
-static void lcdc_panel_power(int on)
+static int lcdc_panel_power(int on)
 {
 	int flag_on = !!on;
 	static int lcdc_power_save_on;
 
 	if (lcdc_power_save_on == flag_on)
-		return;
+		return 0;
 
 	lcdc_power_save_on = flag_on;
 
 	if (machine_is_msm7x30_fluid())
-		lcdc_sharp_panel_power(on);
+		return lcdc_sharp_panel_power(on);
 	else
-		lcdc_toshiba_panel_power(on);
+		return lcdc_toshiba_panel_power(on);
 }
 
 static struct lcdc_platform_data lcdc_pdata = {
