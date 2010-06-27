@@ -21,4 +21,5 @@ obj-$(CONFIG_CPU_IDLE)			+= cpuidle.o
 
 obj-${CONFIG_MACH_HARMONY}              += board-harmony.o
 obj-${CONFIG_MACH_HARMONY}              += board-harmony-pinmux.o
+obj-${CONFIG_MACH_HARMONY}              += board-harmony-panel.o
 obj-${CONFIG_MACH_HARMONY}              += board-harmony-sdhci.o
