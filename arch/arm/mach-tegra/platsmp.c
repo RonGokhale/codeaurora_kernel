@@ -304,7 +304,7 @@ void platform_cpu_die(unsigned int cpu)
 	writel(smp_processor_id(), EVP_CPU_RESET_VECTOR);
 }
 
-int mach_cpu_disable(unsigned int cpu)
+int platform_cpu_disable(unsigned int cpu)
 {
 	/*
 	 * we don't allow CPU 0 to be shutdown (it is still too special
