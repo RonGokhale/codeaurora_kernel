@@ -34,10 +34,15 @@
 #define RST_DEVICES			0x004
 #define RST_DEVICES_SET			0x300
 #define RST_DEVICES_CLR			0x304
+#define RST_DEVICES_NUM			3
 
 #define CLK_OUT_ENB			0x010
 #define CLK_OUT_ENB_SET			0x320
 #define CLK_OUT_ENB_CLR			0x324
+#define CLK_OUT_ENB_NUM			3
+
+#define CLK_MASK_ARM			0x44
+#define MISC_CLK_ENB			0x48
 
 #define OSC_CTRL			0x50
 #define OSC_CTRL_OSC_FREQ_MASK		(3<<30)
@@ -45,6 +50,7 @@
 #define OSC_CTRL_OSC_FREQ_19_2MHZ	(1<<30)
 #define OSC_CTRL_OSC_FREQ_12MHZ		(2<<30)
 #define OSC_CTRL_OSC_FREQ_26MHZ		(3<<30)
+#define OSC_CTRL_MASK			0x3f2
 
 #define OSC_FREQ_DET			0x58
 #define OSC_FREQ_DET_TRIG		(1<<31)
@@ -52,6 +58,12 @@
 #define OSC_FREQ_DET_STATUS		0x5C
 #define OSC_FREQ_DET_BUSY		(1<<31)
 #define OSC_FREQ_DET_CNT_MASK		0xFFFF
+
+#define PERIPH_CLK_SOURCE_I2S1		0x100
+#define PERIPH_CLK_SOURCE_EMC		0x19c
+#define PERIPH_CLK_SOURCE_OSC		0x1fc
+#define PERIPH_CLK_SOURCE_NUM \
+	((PERIPH_CLK_SOURCE_OSC - PERIPH_CLK_SOURCE_I2S1) / 4)
 
 #define PERIPH_CLK_SOURCE_MASK		(3<<30)
 #define PERIPH_CLK_SOURCE_SHIFT		30
@@ -1520,3 +1532,70 @@ void __init tegra2_init_clocks(void)
 
 	init_audio_sync_clock_mux();
 }
+
+#ifdef CONFIG_PM
+static u32 clk_rst_suspend[RST_DEVICES_NUM + CLK_OUT_ENB_NUM +
+			   PERIPH_CLK_SOURCE_NUM + 3];
+
+void tegra_clk_suspend(void)
+{
+	unsigned long off, i;
+	u32 *ctx = clk_rst_suspend;
+
+	*ctx++ = clk_readl(OSC_CTRL) & OSC_CTRL_MASK;
+
+	for (off=PERIPH_CLK_SOURCE_I2S1; off<=PERIPH_CLK_SOURCE_OSC; off+=4) {
+		if (off == PERIPH_CLK_SOURCE_EMC)
+			continue;
+		*ctx++ = clk_readl(off);
+	}
+
+	off = RST_DEVICES;
+	for (i=0; i<RST_DEVICES_NUM; i++, off+=4)
+		*ctx++ = clk_readl(off);
+
+	off = CLK_OUT_ENB;
+	for (i=0; i<CLK_OUT_ENB_NUM; i++, off+=4)
+		*ctx++ = clk_readl(off);
+
+	*ctx++ = clk_readl(MISC_CLK_ENB);
+	*ctx++ = clk_readl(CLK_MASK_ARM);
+}
+
+void tegra_clk_resume(void)
+{
+	unsigned long off, i;
+	const u32 *ctx = clk_rst_suspend;
+	u32 val;
+
+	val = clk_readl(OSC_CTRL) & ~OSC_CTRL_MASK;
+	val |= *ctx++;
+	clk_writel(val, OSC_CTRL);
+
+	/* enable all clocks before configuring clock sources */
+	writel(0xbffffff9ul, CLK_OUT_ENB);
+	writel(0xfefffff7ul, CLK_OUT_ENB + 4);
+	writel(0x77f01bfful, CLK_OUT_ENB + 8);
+	wmb();
+
+	for (off=PERIPH_CLK_SOURCE_I2S1; off<=PERIPH_CLK_SOURCE_OSC; off+=4) {
+		if (off == PERIPH_CLK_SOURCE_EMC)
+			continue;
+		clk_writel(*ctx++, off);
+	}
+	wmb();
+
+	off = RST_DEVICES;
+	for (i=0; i<RST_DEVICES_NUM; i++, off+=4)
+		clk_writel(*ctx++, off);
+	wmb();
+
+	off = CLK_OUT_ENB;
+	for (i=0; i<CLK_OUT_ENB_NUM; i++, off+=4)
+		clk_writel(*ctx++, off);
+	wmb();
+
+	clk_writel(*ctx++, MISC_CLK_ENB);
+	clk_writel(*ctx++, CLK_MASK_ARM);
+}
+#endif
