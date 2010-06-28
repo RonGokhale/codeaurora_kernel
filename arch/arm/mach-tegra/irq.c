@@ -41,6 +41,10 @@
 #define ICTLR_CPU_IER_SET	0x24
 #define ICTLR_CPU_IER_CLR	0x28
 #define ICTLR_CPU_IEP_CLASS	0x2c
+#define ICTLR_COP_IER		0x30
+#define ICTLR_COP_IER_SET	0x34
+#define ICTLR_COP_IER_CLR	0x38
+#define ICTLR_COP_IEP_CLASS	0x3c
 
 static void (*gic_mask_irq)(unsigned int irq) = NULL;
 static void (*gic_unmask_irq)(unsigned int irq) = NULL;
@@ -107,3 +111,59 @@ void __init tegra_init_irq(void)
 		set_irq_flags(i, IRQF_VALID);
 	}
 }
+
+#ifdef CONFIG_PM
+static u32 cop_ier[PPI_NR];
+static u32 cpu_ier[PPI_NR];
+static u32 cpu_iep[PPI_NR];
+
+void tegra_irq_suspend(void)
+{
+	unsigned long flags;
+	int i;
+
+	for (i=INT_PRI_BASE; i<INT_GPIO_BASE; i++) {
+		struct irq_desc *desc = irq_to_desc(i);
+		if (!desc) continue;
+		if (desc->status & IRQ_WAKEUP) {
+			pr_debug("irq %d is wakeup\n", i);
+			continue;
+		}
+		disable_irq(i);
+	}
+
+	local_irq_save(flags);
+	for (i=0; i<PPI_NR; i++) {
+		void __iomem *ictlr = ictlr_to_virt(i);
+		cpu_ier[i] = readl(ictlr + ICTLR_CPU_IER);
+		cpu_iep[i] = readl(ictlr + ICTLR_CPU_IEP_CLASS);
+		cop_ier[i] = readl(ictlr + ICTLR_COP_IER);
+		writel(~0, ictlr + ICTLR_COP_IER_CLR);
+	}
+	local_irq_restore(flags);
+}
+
+void tegra_irq_resume(void)
+{
+	unsigned long flags;
+	int i;
+
+	local_irq_save(flags);
+	for (i=0; i<PPI_NR; i++) {
+		void __iomem *ictlr = ictlr_to_virt(i);
+		writel(cpu_iep[i], ictlr + ICTLR_CPU_IEP_CLASS);
+		writel(~0ul, ictlr + ICTLR_CPU_IER_CLR);
+		writel(cpu_ier[i], ictlr + ICTLR_CPU_IER_SET);
+		writel(0, ictlr + ICTLR_COP_IEP_CLASS);
+		writel(~0ul, ictlr + ICTLR_COP_IER_CLR);
+		writel(cop_ier[i], ictlr + ICTLR_COP_IER_SET);
+	}
+	local_irq_restore(flags);
+
+	for (i=INT_PRI_BASE; i<INT_GPIO_BASE; i++) {
+		struct irq_desc *desc = irq_to_desc(i);
+		if (!desc || (desc->status & IRQ_WAKEUP)) continue;
+		enable_irq(i);
+	}
+}
+#endif
