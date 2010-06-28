@@ -1262,7 +1262,7 @@ struct clk tegra_periph_clks[] = {
 	PERIPH_CLK("csite",	"csite",		NULL,	73,	0x1d4,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
 	/* FIXME: what is la? */
 	PERIPH_CLK("la",	"la",			NULL,	76,	0x1f8,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
-	PERIPH_CLK("owr",	"owr",			NULL,	71,	0x1cc,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
+	PERIPH_CLK("owr",	"tegra_w1",		NULL,	71,	0x1cc,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
 	PERIPH_CLK("nor",	"nor",			NULL,	42,	0x1d0,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
 	PERIPH_CLK("mipi",	"mipi",			NULL,	50,	0x174,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
 	PERIPH_CLK("i2c1",	"tegra-i2c.0",		NULL,	12,	0x124,	mux_pllp_pllc_pllm_clkm,	MUX | DIV_U16),
