@@ -252,6 +252,7 @@ struct msm_spi {
 	int                      bytes_per_word;
 	bool                     suspended;
 	bool                     transfer_in_progress;
+	wait_queue_head_t	 continue_suspend;
 	/* DMA data */
 	enum msm_spi_mode        mode;
 	bool                     use_dma;
@@ -843,15 +844,18 @@ static void msm_spi_workq(struct work_struct *work)
 	u32                  spi_op;
 	u32                  status_error = 0;
 
-	if (dd->use_rlock) {
-		/* Don't allow power collapse until we release remote mutex */
-		pm_qos_update_requirement(PM_QOS_CPU_DMA_LATENCY, "msm_spi",
-					  dd->pm_lat);
+	/* Don't allow power collapse */
+	pm_qos_update_requirement(PM_QOS_CPU_DMA_LATENCY, "msm_spi",
+				  dd->pm_lat);
+	if (dd->use_rlock)
 		remote_mutex_lock(&dd->r_lock);
-		enable_irq(dd->irq_in);
-		enable_irq(dd->irq_out);
-		enable_irq(dd->irq_err);
-	}
+
+	clk_enable(dd->clk);
+	if (dd->pclk)
+		clk_enable(dd->pclk);
+	enable_irq(dd->irq_in);
+	enable_irq(dd->irq_out);
+	enable_irq(dd->irq_err);
 
 	spi_op = readl(dd->base + SPI_OPERATIONAL);
 	if (spi_op & SPI_OP_STATE_VALID) {
@@ -886,14 +890,21 @@ static void msm_spi_workq(struct work_struct *work)
 	spin_unlock_irqrestore(&dd->queue_lock, flags);
 	dd->transfer_in_progress = 0;
 
-	if (dd->use_rlock) {
-		disable_irq(dd->irq_in);
-		disable_irq(dd->irq_out);
-		disable_irq(dd->irq_err);
+	disable_irq(dd->irq_in);
+	disable_irq(dd->irq_out);
+	disable_irq(dd->irq_err);
+	clk_disable(dd->clk);
+	if (dd->pclk)
+		clk_disable(dd->pclk);
+
+	if (dd->use_rlock)
 		remote_mutex_unlock(&dd->r_lock);
-		pm_qos_update_requirement(PM_QOS_CPU_DMA_LATENCY, "msm_spi",
-					  PM_QOS_DEFAULT_VALUE);
-	}
+
+	pm_qos_update_requirement(PM_QOS_CPU_DMA_LATENCY, "msm_spi",
+				  PM_QOS_DEFAULT_VALUE);
+
+	if (dd->suspended)
+		wake_up_interruptible(&dd->continue_suspend);
 }
 
 static int msm_spi_transfer(struct spi_device *spi, struct spi_message *msg)
@@ -1010,6 +1021,10 @@ static int msm_spi_setup(struct spi_device *spi)
 	if (dd->use_rlock)
 		remote_mutex_lock(&dd->r_lock);
 
+	clk_enable(dd->clk);
+	if (dd->pclk)
+		clk_enable(dd->pclk);
+
 	spi_ioc = readl(dd->base + SPI_IO_CONTROL);
 	mask = SPI_IO_C_CS_N_POLARITY_0 << spi->chip_select;
 	if (spi->mode & SPI_CS_HIGH)
@@ -1020,6 +1035,7 @@ static int msm_spi_setup(struct spi_device *spi)
 		spi_ioc |= SPI_IO_C_CLK_IDLE_HIGH;
 	else
 		spi_ioc &= ~SPI_IO_C_CLK_IDLE_HIGH;
+
 	writel(spi_ioc, dd->base + SPI_IO_CONTROL);
 
 	spi_config = readl(dd->base + SPI_CONFIG);
@@ -1032,6 +1048,11 @@ static int msm_spi_setup(struct spi_device *spi)
 	else
 		spi_config |= SPI_CFG_INPUT_FIRST;
 	writel(spi_config, dd->base + SPI_CONFIG);
+
+	clk_disable(dd->clk);
+	if (dd->pclk)
+		clk_disable(dd->pclk);
+
 	if (dd->use_rlock)
 		remote_mutex_unlock(&dd->r_lock);
 
@@ -1328,6 +1349,8 @@ static int __init msm_spi_probe(struct platform_device *pdev)
 	struct resource	       *resource;
 	int			rc = 0;
 	struct clk	       *pclk;
+	int                     clk_enabled = 0;
+	int                     pclk_enabled = 0;
 	struct msm_spi_platform_data *pdata = pdev->dev.platform_data;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(struct msm_spi));
@@ -1393,6 +1416,7 @@ static int __init msm_spi_probe(struct platform_device *pdev)
 	spin_lock_init(&dd->queue_lock);
 	INIT_LIST_HEAD(&dd->queue);
 	INIT_WORK(&dd->work_data, msm_spi_workq);
+	init_waitqueue_head(&dd->continue_suspend);
 	dd->workqueue = create_singlethread_workqueue(
 		master->dev.parent->bus_id);
 	if (!dd->workqueue)
@@ -1446,6 +1470,8 @@ static int __init msm_spi_probe(struct platform_device *pdev)
 			__func__);
 		goto err_probe_clk_enable;
 	}
+	clk_enabled = 1;
+
 	pclk = clk_get(&pdev->dev, "spi_pclk");
 	if (!IS_ERR(pclk)) {
 		dd->pclk = pclk;
@@ -1455,6 +1481,7 @@ static int __init msm_spi_probe(struct platform_device *pdev)
 				__func__);
 			goto err_probe_pclk_enable;
 		}
+		pclk_enabled = 1;
 	}
 	if (pdata && pdata->max_clock_speed) {
 		msm_spi_clock_set(dd, pdata->max_clock_speed);
@@ -1479,6 +1506,12 @@ static int __init msm_spi_probe(struct platform_device *pdev)
 	}
 	writel(SPI_OP_STATE_RUN, dd->base + SPI_OPERATIONAL);
 
+	clk_disable(dd->clk);
+	if (dd->pclk)
+		clk_disable(dd->pclk);
+	clk_enabled = 0;
+	pclk_enabled = 0;
+
 	dd->suspended = 0;
 	dd->transfer_in_progress = 0;
 	dd->mode = SPI_MODE_NONE;
@@ -1496,12 +1529,12 @@ static int __init msm_spi_probe(struct platform_device *pdev)
 	if (rc)
 		goto err_probe_irq3;
 
-	if (dd->use_rlock) {
-		disable_irq(dd->irq_in);
-		disable_irq(dd->irq_out);
-		disable_irq(dd->irq_err);
+	disable_irq(dd->irq_in);
+	disable_irq(dd->irq_out);
+	disable_irq(dd->irq_err);
+
+	if (dd->use_rlock)
 		remote_mutex_unlock(&dd->r_lock);
-	}
 
 	rc = spi_register_master(master);
 	if (rc)
@@ -1528,12 +1561,13 @@ err_probe_irq1:
 err_probe_state:
 	msm_spi_teardown_dma(dd);
 err_probe_dma:
-	if (dd->pclk)
+	if (pclk_enabled)
 		clk_disable(dd->pclk);
 err_probe_pclk_enable:
 	if (dd->pclk)
 		clk_put(dd->pclk);
-	clk_disable(dd->clk);
+	if (clk_enabled)
+		clk_disable(dd->clk);
 err_probe_clk_enable:
 	clk_put(dd->clk);
 err_probe_clk_get:
@@ -1561,32 +1595,17 @@ static int msm_spi_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct msm_spi    *dd;
-	int                limit = 0;
 
 	if (!master)
 		goto suspend_exit;
 	dd = spi_master_get_devdata(master);
 	if (!dd)
 		goto suspend_exit;
-	dd->suspended = 1;
-	while ((!list_empty(&dd->queue) || dd->transfer_in_progress) &&
-	       limit < 50) {
-		if (dd->mode == SPI_DMOV_MODE) {
-			msm_dmov_flush(dd->tx_dma_chan);
-			msm_dmov_flush(dd->rx_dma_chan);
-		}
-		limit++;
-		msleep(1);
-	}
 
-	disable_irq(dd->irq_in);
-	disable_irq(dd->irq_out);
-	disable_irq(dd->irq_err);
-	if (dd->use_rlock)
-		remote_mutex_unlock(&dd->r_lock);
-	clk_disable(dd->clk);
-	if (dd->pclk)
-		clk_disable(dd->pclk);
+	/* Wait for outstanding transaction to complete */
+	dd->suspended = 1;
+	wait_event_interruptible(dd->continue_suspend,
+			!dd->transfer_in_progress);
 
 suspend_exit:
 	return 0;
@@ -1596,7 +1615,6 @@ static int msm_spi_resume(struct platform_device *pdev)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct msm_spi    *dd;
-	int rc;
 
 	if (!master)
 		goto resume_exit;
@@ -1604,25 +1622,6 @@ static int msm_spi_resume(struct platform_device *pdev)
 	if (!dd)
 		goto resume_exit;
 
-	rc = clk_enable(dd->clk);
-	if (rc) {
-		dev_err(dd->dev, "%s: unable to enable spi_clk\n",
-			__func__);
-		goto resume_exit;
-	}
-	if (dd->pclk) {
-		rc = clk_enable(dd->pclk);
-		if (rc) {
-			dev_err(&pdev->dev, "%s: unable to enable spi_pclk\n",
-				__func__);
-			clk_disable(dd->clk);
-			goto resume_exit;
-		}
-	}
-
-	enable_irq(dd->irq_in);
-	enable_irq(dd->irq_out);
-	enable_irq(dd->irq_err);
 	dd->suspended = 0;
 resume_exit:
 	return 0;
@@ -1653,12 +1652,9 @@ static int __devexit msm_spi_remove(struct platform_device *pdev)
 
 	iounmap(dd->base);
 	release_mem_region(dd->mem_phys_addr, dd->mem_size);
-	clk_disable(dd->clk);
 	clk_put(dd->clk);
-	if (dd->pclk) {
-		clk_disable(dd->pclk);
+	if (dd->pclk)
 		clk_put(dd->pclk);
-	}
 	destroy_workqueue(dd->workqueue);
 	platform_set_drvdata(pdev, 0);
 	spi_unregister_master(master);
