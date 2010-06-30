@@ -10,6 +10,7 @@ obj-y                                   += delay.o
 obj-y                                   += powergate.o
 obj-y					+= suspend.o
 obj-y					+= fuse.o
+obj-y                                   += usb_phy.o
 obj-$(CONFIG_FIQ)                       += fiq.o fiq_glue.o
 
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += clock.o
