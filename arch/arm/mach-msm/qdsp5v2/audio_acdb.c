@@ -84,6 +84,7 @@
 #define ACDB_CPU			SMD_APPS_MODEM
 #define ACDB_BUF_SIZE			4096
 
+#define MAX_RETRY			10
 
 /* rpc table index */
 enum {
@@ -438,6 +439,7 @@ s32 acdb_get_calibration(void)
 {
 	struct acdb_cmd_get_device_table	acdb_cmd;
 	s32					result = 0;
+	u32 iterations = 0;
 
 	MM_DBG("acdb state = %d\n", acdb_data.acdb_state);
 	acdb_cmd.command_id = ACDB_GET_DEVICE_TABLE;
@@ -447,26 +449,42 @@ s32 acdb_get_calibration(void)
 	acdb_cmd.total_bytes = ACDB_BUF_SIZE;
 	acdb_cmd.phys_buf = (u32 *)acdb_data.phys_addr;
 
-	result = dalrpc_fcn_8(ACDB_DalACDB_ioctl, acdb_data.handle,
-			(const void *)&acdb_cmd, sizeof(acdb_cmd),
-			&acdb_data.acdb_result, sizeof(acdb_data.acdb_result));
+	do {
+		result = dalrpc_fcn_8(ACDB_DalACDB_ioctl, acdb_data.handle,
+				(const void *)&acdb_cmd, sizeof(acdb_cmd),
+				&acdb_data.acdb_result,
+				sizeof(acdb_data.acdb_result));
 
-	if (result < 0) {
-		MM_ERR("ACDB=> Device table RPC failure result = %d\n", result);
-		result = -EINVAL;
-		goto done;
-	}
-
-	if (acdb_data.acdb_result.result != ACDB_RES_SUCCESS) {
-		MM_ERR("ACDB=> Failed to query the ACDB (%d)\n",
+		if (result < 0) {
+			MM_ERR("ACDB=> Device table RPC failure"
+				" result = %d\n", result);
+			goto error;
+		}
+		/*following check is introduced to handle boot up race
+		condition between AUDCAL SW peers running on apps
+		and modem (ACDB_RES_BADSTATE indicates modem AUDCAL SW is
+		not in initialized sate) we need to retry to get ACDB
+		values*/
+		if (acdb_data.acdb_result.result == ACDB_RES_BADSTATE) {
+			msleep(500);
+			iterations++;
+		} else if (acdb_data.acdb_result.result == ACDB_RES_SUCCESS) {
+			MM_DBG("Modem query for acdb values is successful"
+					" (iterations = %d)\n", iterations);
+			acdb_data.acdb_state |= CAL_DATA_READY;
+			return result;
+		} else {
+			MM_ERR("ACDB=> modem failed to fill acdb values,"
+					" reuslt = %d, (iterations = %d)\n",
+					acdb_data.acdb_result.result,
+					iterations);
+			goto error;
+		}
+	} while (iterations < MAX_RETRY);
+	MM_ERR("ACDB=> AUDCAL SW on modem is not in intiailized state (%d)\n",
 			acdb_data.acdb_result.result);
-		result = -EINVAL;
-		goto done;
-	}
-
-	acdb_data.acdb_state |= CAL_DATA_READY;
-	acdb_data.enable = 1;
-done:
+error:
+	result = -EINVAL;
 	return result;
 }
 
@@ -1050,7 +1068,6 @@ s32 acdb_fill_audpreproc_iir(void)
 		acdb_iir->stages_a[1].a2_lo;
 	acdb_data.preproc_iir->denominator_coeff_a1_filter1_msw =
 		acdb_iir->stages_a[1].a2_hi;
-
 	acdb_data.preproc_iir->denominator_coeff_a0_filter2_lsw =
 		acdb_iir->stages_a[2].a1_lo;
 	acdb_data.preproc_iir->denominator_coeff_a0_filter2_msw =
@@ -1059,7 +1076,6 @@ s32 acdb_fill_audpreproc_iir(void)
 		acdb_iir->stages_a[2].a2_lo;
 	acdb_data.preproc_iir->denominator_coeff_a1_filter2_msw =
 		acdb_iir->stages_a[2].a2_hi;
-
 	acdb_data.preproc_iir->denominator_coeff_a0_filter3_lsw =
 		acdb_iir->stages_a[3].a1_lo;
 	acdb_data.preproc_iir->denominator_coeff_a0_filter3_msw =
@@ -1124,7 +1140,7 @@ static void __exit acdb_exit(void)
 	memset(&acdb_data, 0, sizeof(acdb_data));
 }
 
-module_init(acdb_init);
+late_initcall(acdb_init);
 module_exit(acdb_exit);
 
 MODULE_DESCRIPTION("MSM 7x30 Audio ACDB driver");
