@@ -158,25 +158,33 @@ unsigned long clk_measure_input_freq(void)
 	}
 }
 
-static int clk_div71_get_divider(struct clk *c, unsigned long rate)
+static int clk_div71_get_divider(unsigned long parent_rate, unsigned long rate)
 {
-	unsigned long divider_u71;
+	s64 divider_u71 = parent_rate * 2;
+	divider_u71 += rate - 1;
+	do_div(divider_u71, rate);
 
-	divider_u71 = DIV_ROUND_UP(c->rate * 2, rate);
+	if (divider_u71 - 2 < 0)
+		return 0;
 
-	if (divider_u71 - 2 > 255 || divider_u71 - 2 < 0)
+	if (divider_u71 - 2 > 255)
 		return -EINVAL;
 
 	return divider_u71 - 2;
 }
 
-static int clk_div16_get_divider(struct clk *c, unsigned long rate)
+static int clk_div16_get_divider(unsigned long parent_rate, unsigned long rate)
 {
-	unsigned long divider_u16;
+	s64 divider_u16;
 
-	divider_u16 = DIV_ROUND_UP(c->rate, rate);
+	divider_u16 = parent_rate;
+	divider_u16 += rate - 1;
+	do_div(divider_u16, rate);
 
-	if (divider_u16 - 1 > 255 || divider_u16 - 1 < 0)
+	if (divider_u16 - 1 < 0)
+		return 0;
+
+	if (divider_u16 - 1 > 255)
 		return -EINVAL;
 
 	return divider_u16 - 1;
@@ -195,11 +203,9 @@ static unsigned long tegra2_clk_recalculate_rate(struct clk *c, int mul,
 		rate = rate;
 	}
 
-	if (rate > c->max_rate) {
-		pr_err("Attempted to set clock %s rate to %llu, max is %lu\n",
-			c->name, rate, c->max_rate);
+	if (rate > c->max_rate)
 		rate = c->max_rate;
-	}
+
 	return rate;
 }
 
@@ -683,7 +689,7 @@ static int tegra2_pll_div_clk_set_rate(struct clk *c, unsigned long rate)
 	int divider_u71;
 	pr_debug("%s: %s %lu\n", __func__, c->name, rate);
 	if (c->flags & DIV_U71) {
-		divider_u71 = clk_div71_get_divider(c->parent, rate);
+		divider_u71 = clk_div71_get_divider(c->parent->rate, rate);
 		if (divider_u71 >= 0) {
 			val = clk_readl(c->reg);
 			new_val = val >> c->reg_shift;
@@ -714,8 +720,12 @@ static long tegra2_pll_div_clk_round_rate(struct clk *c, unsigned long rate)
 {
 	int divider;
 	pr_debug("%s: %s %lu\n", __func__, c->name, rate);
+
+	if (rate > c->max_rate)
+		rate = c->max_rate;
+
 	if (c->flags & DIV_U71) {
-		divider = clk_div71_get_divider(c->parent, rate);
+		divider = clk_div71_get_divider(c->parent->rate, rate);
 		if (divider < 0)
 			return divider;
 		return tegra2_clk_recalculate_rate(c, 2, divider + 2);
@@ -856,7 +866,7 @@ static int tegra2_periph_clk_set_rate(struct clk *c, unsigned long rate)
 	int divider;
 	pr_debug("%s: %lu\n", __func__, rate);
 	if (c->flags & DIV_U71) {
-		divider = clk_div71_get_divider(c->parent, rate);
+		divider = clk_div71_get_divider(c->parent->rate, rate);
 		if (divider >= 0) {
 			val = clk_readl(c->reg);
 			val &= ~PERIPH_CLK_SOURCE_DIVU71_MASK;
@@ -868,7 +878,7 @@ static int tegra2_periph_clk_set_rate(struct clk *c, unsigned long rate)
 			return 0;
 		}
 	} else if (c->flags & DIV_U16) {
-		divider = clk_div16_get_divider(c->parent, rate);
+		divider = clk_div16_get_divider(c->parent->rate, rate);
 		if (divider >= 0) {
 			val = clk_readl(c->reg);
 			val &= ~PERIPH_CLK_SOURCE_DIVU16_MASK;
@@ -888,14 +898,18 @@ static long tegra2_periph_clk_round_rate(struct clk *c,
 {
 	int divider;
 	pr_debug("%s: %s %lu\n", __func__, c->name, rate);
+
+	if (rate > c->max_rate)
+		rate = c->max_rate;
+
 	if (c->flags & DIV_U71) {
-		divider = clk_div71_get_divider(c->parent, rate);
+		divider = clk_div71_get_divider(c->parent->rate, rate);
 		if (divider < 0)
 			return divider;
 
 		return tegra2_clk_recalculate_rate(c, 2, divider + 2);
 	} else if (c->flags & DIV_U16) {
-		divider = clk_div16_get_divider(c->parent, rate);
+		divider = clk_div16_get_divider(c->parent->rate, rate);
 		if (divider < 0)
 			return divider;
 		return tegra2_clk_recalculate_rate(c, 1, divider + 1);
