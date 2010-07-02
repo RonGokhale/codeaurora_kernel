@@ -118,7 +118,7 @@ static void propagate_rate(struct clk *c)
 	list_for_each_entry(clkp, &c->children, sibling) {
 		pr_debug("   %s\n", clkp->name);
 		if (clkp->ops->recalculate_rate)
-			clkp->ops->recalculate_rate(clkp);
+			clkp->ops->recalculate_rate(clkp, clkp->mul, clkp->div);
 		propagate_rate(clkp);
 	}
 }
@@ -375,6 +375,17 @@ unsigned long clk_get_rate(struct clk *c)
 	return ret;
 }
 EXPORT_SYMBOL(clk_get_rate);
+
+long clk_round_rate(struct clk *c, unsigned long rate)
+{
+	pr_debug("%s: %s\n", __func__, c->name);
+
+	if (!c->ops || !c->ops->round_rate)
+		return -ENOSYS;
+
+	return c->ops->round_rate(c, rate);
+}
+EXPORT_SYMBOL(clk_round_rate);
 
 static int tegra_clk_init_one_from_table(struct tegra_clk_init_table *table)
 {
