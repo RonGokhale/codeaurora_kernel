@@ -902,6 +902,7 @@ static struct clk_ops tegra_clk_double_ops = {
 	.set_rate		= &tegra2_clk_double_set_rate,
 };
 
+/* Audio sync clock ops */
 static void tegra2_audio_sync_clk_init(struct clk *c)
 {
 	int source;
@@ -978,6 +979,40 @@ static struct clk_ops tegra_audio_sync_clk_ops = {
 	.disable    = tegra2_audio_sync_clk_disable,
 	.set_rate   = tegra2_audio_sync_clk_set_rate,
 	.set_parent = tegra2_audio_sync_clk_set_parent,
+};
+
+/* cdev1 and cdev2 (dap_mclk1 and dap_mclk2) ops */
+
+static void tegra2_cdev_clk_init(struct clk *c)
+{
+	/* We could un-tristate the cdev1 or cdev2 pingroup here; this is
+	 * currently done in the pinmux code. */
+	pr_info("%s: %s\n", __func__, c->name);
+	c->state = ON;
+	if (!(clk_readl(CLK_OUT_ENB + PERIPH_CLK_TO_ENB_REG(c)) &
+			PERIPH_CLK_TO_ENB_BIT(c)))
+		c->state = OFF;
+}
+
+static int tegra2_cdev_clk_enable(struct clk *c)
+{
+	pr_info("%s: %s\n", __func__, c->name);
+	clk_writel(PERIPH_CLK_TO_ENB_BIT(c),
+		CLK_OUT_ENB_SET + PERIPH_CLK_TO_ENB_SET_REG(c));
+	return 0;
+}
+
+static void tegra2_cdev_clk_disable(struct clk *c)
+{
+	pr_info("%s: %s\n", __func__, c->name);
+	clk_writel(PERIPH_CLK_TO_ENB_BIT(c),
+		CLK_OUT_ENB_CLR + PERIPH_CLK_TO_ENB_SET_REG(c));
+}
+
+static struct clk_ops tegra_cdev_clk_ops = {
+	.init			= &tegra2_cdev_clk_init,
+	.enable			= &tegra2_cdev_clk_enable,
+	.disable		= &tegra2_cdev_clk_disable,
 };
 
 /* Clock definitions */
@@ -1326,6 +1361,15 @@ static struct clk tegra_clk_d = {
 	.reg_shift = 12,
 	.parent    = &tegra_clk_m,
 	.max_rate  = 52000000,
+};
+
+/* dap_mclk1, belongs to the cdev1 pingroup. */
+static struct clk tegra_dev1_clk = {
+	.name      = "clk_dev1",
+	.ops       = &tegra_cdev_clk_ops,
+	.clk_num   = 94,
+	.rate      = 26000000,
+	.max_rate  = 26000000,
 };
 
 /* initialized before peripheral clocks */
@@ -1684,6 +1728,7 @@ struct clk_lookup tegra_clk_lookups[] = {
 	CLK(NULL,	"hclk",		&tegra_clk_hclk),
 	CLK(NULL,	"pclk",		&tegra_clk_pclk),
 	CLK(NULL,	"clk_d",	&tegra_clk_d),
+	CLK(NULL,	"clk_dev1",	&tegra_dev1_clk),
 	CLK(NULL,	"cpu",		&tegra_clk_virtual_cpu),
 };
 
