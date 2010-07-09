@@ -1659,8 +1659,8 @@ struct clk tegra_periph_clks[] = {
 	PERIPH_CLK("disp1",	"tegrafb.0",		NULL,	27,	0x138,	190000000, mux_pllp_plld_pllc_clkm,	MUX | DIV_U71), /* scales with voltage and process_id */
 	PERIPH_CLK("disp2",	"tegrafb.1",		NULL,	26,	0x13c,	190000000, mux_pllp_plld_pllc_clkm,	MUX | DIV_U71), /* scales with voltage and process_id */
 	PERIPH_CLK("usbd",	"fsl-tegra-udc",	NULL,	22,	0,	480000000, mux_clk_m,			0), /* requires min voltage */
-	PERIPH_CLK("usb2",	"usb.1",		NULL,	58,	0,	480000000, mux_clk_m,			0), /* requires min voltage */
-	PERIPH_CLK("usb3",	"usb.2",		NULL,	59,	0,	480000000, mux_clk_m,			0), /* requires min voltage */
+	PERIPH_CLK("usb2",	"tegra-ehci.1",		NULL,	58,	0,	480000000, mux_clk_m,			0), /* requires min voltage */
+	PERIPH_CLK("usb3",	"tegra-ehci.2",		NULL,	59,	0,	480000000, mux_clk_m,			0), /* requires min voltage */
 	PERIPH_CLK("emc",	"emc",			NULL,	57,	0x19c,	600000000, mux_pllm_pllc_pllp_clkm,	MUX | DIV_U71 | PERIPH_EMC_ENB), /* max rate??? */
 	PERIPH_CLK("dsi",	"dsi",			NULL,	48,	0,	500000000, mux_plld,			0), /* scales with voltage */
 };
@@ -1686,6 +1686,7 @@ struct clk_duplicate tegra_clk_duplicates[] = {
 	CLK_DUPLICATE("uarte",	"tegra_uart.4",	NULL),
 	CLK_DUPLICATE("host1x", "tegrafb.0", "host1x"),
 	CLK_DUPLICATE("host1x", "tegrafb.1", "host1x"),
+	CLK_DUPLICATE("usbd", "tegra-ehci.0", NULL),
 };
 
 #define CLK(dev, con, ck)	\
