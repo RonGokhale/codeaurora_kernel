@@ -518,6 +518,7 @@ static int __init spi_tegra_probe(struct platform_device *pdev)
 	tspi = spi_master_get_devdata(master);
 	tspi->master = master;
 	tspi->pdev = pdev;
+	spin_lock_init(&tspi->lock);
 
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (r == NULL) {
