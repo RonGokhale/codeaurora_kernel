@@ -1801,9 +1801,9 @@ void tegra_clk_resume(void)
 	clk_writel(val, OSC_CTRL);
 
 	/* enable all clocks before configuring clock sources */
-	writel(0xbffffff9ul, CLK_OUT_ENB);
-	writel(0xfefffff7ul, CLK_OUT_ENB + 4);
-	writel(0x77f01bfful, CLK_OUT_ENB + 8);
+	clk_writel(0xbffffff9ul, CLK_OUT_ENB);
+	clk_writel(0xfefffff7ul, CLK_OUT_ENB + 4);
+	clk_writel(0x77f01bfful, CLK_OUT_ENB + 8);
 	wmb();
 
 	for (off=PERIPH_CLK_SOURCE_I2S1; off<=PERIPH_CLK_SOURCE_OSC; off+=4) {
