@@ -19,6 +19,7 @@
 
 #include <linux/init.h>
 #include <linux/irq.h>
+#include <linux/interrupt.h>
 
 #include <linux/io.h>
 #include <linux/gpio.h>
