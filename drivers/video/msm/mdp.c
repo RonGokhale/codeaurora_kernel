@@ -75,6 +75,7 @@
 #include <linux/semaphore.h>
 #include <linux/uaccess.h>
 
+#include "mddihost.h"
 #include "mdp.h"
 #include "msm_fb.h"
 #ifdef CONFIG_FB_MSM_MDP40
@@ -551,6 +552,7 @@ void mdp_pipe_ctrl(MDP_BLOCK_TYPE block, MDP_BLOCK_POWER_STATE state,
 			if (block == MDP_MASTER_BLOCK) {
 				mdp_current_clk_on = FALSE;
 				/* turn off MDP clks */
+				pmdh_clk_disable();
 				if (mdp_clk != NULL) {
 					clk_disable(mdp_clk);
 					MSM_FB_DEBUG("MDP CLK OFF\n");
@@ -568,6 +570,7 @@ void mdp_pipe_ctrl(MDP_BLOCK_TYPE block, MDP_BLOCK_POWER_STATE state,
 		} else if ((!mdp_all_blocks_off) && (!mdp_current_clk_on)) {
 			mdp_current_clk_on = TRUE;
 			/* turn on MDP clks */
+			pmdh_clk_enable();
 			if (mdp_clk != NULL) {
 				clk_enable(mdp_clk);
 				MSM_FB_DEBUG("MDP CLK ON\n");

@@ -222,4 +222,6 @@ void mddi_assign_max_pkt_dimensions(uint16 image_cols,
 uint16 mddi_assign_pkt_height(uint16 pkt_width, uint16 pkt_height, uint16 bpp);
 void mddi_queue_reverse_encapsulation(boolean wait);
 void mddi_disable(int lock);
+void pmdh_clk_disable(void);
+void pmdh_clk_enable(void);
 #endif /* MDDIHOST_H */
