@@ -94,14 +94,17 @@
 #define PLL_OUT_RESET_DISABLE		(1<<0)
 
 #define PLL_MISC(c)			(((c)->flags & PLL_ALT_MISC_REG) ? 0x4 : 0xc)
+#define PLL_MISC_LOCK_ENABLE(c)		(((c)->flags & PLLU) ? (1<<22) : (1<<18))
+
 #define PLL_MISC_DCCON_SHIFT		20
-#define PLL_MISC_LOCK_ENABLE		(1<<18)
 #define PLL_MISC_CPCON_SHIFT		8
 #define PLL_MISC_CPCON_MASK		(0xF<<PLL_MISC_CPCON_SHIFT)
 #define PLL_MISC_LFCON_SHIFT		4
 #define PLL_MISC_LFCON_MASK		(0xF<<PLL_MISC_LFCON_SHIFT)
 #define PLL_MISC_VCOCON_SHIFT		0
 #define PLL_MISC_VCOCON_MASK		(0xF<<PLL_MISC_VCOCON_SHIFT)
+
+#define PLLU_BASE_POST_DIV		(1<<20)
 
 #define PLLD_MISC_CLKENABLE		(1<<30)
 #define PLLD_MISC_DIV_RST		(1<<23)
@@ -469,6 +472,7 @@ static int tegra2_pll_clk_wait_for_lock(struct clk *c)
 	ktime_t before;
 
 	before = ktime_get();
+
 	while (!(clk_readl(c->reg + PLL_BASE) & PLL_BASE_LOCK)) {
 		if (ktime_us_delta(ktime_get(), before) > 5000) {
 			pr_err("Timed out waiting for lock bit on pll %s",
@@ -498,7 +502,10 @@ static void tegra2_pll_clk_init(struct clk *c)
 	} else {
 		c->n = (val & PLL_BASE_DIVN_MASK) >> PLL_BASE_DIVN_SHIFT;
 		c->m = (val & PLL_BASE_DIVM_MASK) >> PLL_BASE_DIVM_SHIFT;
-		c->p = (val & PLL_BASE_DIVP_MASK) ? 2 : 1;
+		if (c->flags & PLLU)
+			c->p = (val & PLLU_BASE_POST_DIV) ? 1 : 2;
+		else
+			c->p = (val & PLL_BASE_DIVP_MASK) ? 2 : 1;
 	}
 
 	val = clk_readl(c->reg + PLL_MISC(c));
@@ -519,7 +526,7 @@ static int tegra2_pll_clk_enable(struct clk *c)
 	clk_writel(val, c->reg + PLL_BASE);
 
 	val = clk_readl(c->reg + PLL_MISC(c));
-	val |= PLL_MISC_LOCK_ENABLE;
+	val |= PLL_MISC_LOCK_ENABLE(c);
 	clk_writel(val, c->reg + PLL_MISC(c));
 
 	tegra2_pll_clk_wait_for_lock(c);
@@ -562,13 +569,19 @@ static int tegra2_pll_clk_set_rate(struct clk *c, unsigned long rate)
 			val |= (c->m << PLL_BASE_DIVM_SHIFT) |
 				(c->n << PLL_BASE_DIVN_SHIFT);
 			BUG_ON(c->p > 2);
-			if (c->p == 2)
-				val |= 1 << PLL_BASE_DIVP_SHIFT;
+			if (c->flags & PLLU) {
+				if (c->p == 1)
+					val |= PLLU_BASE_POST_DIV;
+			} else {
+				if (c->p == 2)
+					val |= 1 << PLL_BASE_DIVP_SHIFT;
+			}
 			clk_writel(val, c->reg + PLL_BASE);
 
 			if (c->flags & PLL_HAS_CPCON) {
-				val = c->cpcon << PLL_MISC_CPCON_SHIFT;
-				val |= PLL_MISC_LOCK_ENABLE;
+				val = clk_readl(c->reg + PLL_MISC(c));
+				val &= ~PLL_MISC_CPCON_MASK;
+				val |= c->cpcon << PLL_MISC_CPCON_SHIFT;
 				clk_writel(val, c->reg + PLL_MISC(c));
 			}
 
@@ -1274,16 +1287,16 @@ static struct clk tegra_pll_d_out0 = {
 };
 
 static struct clk_pll_table tegra_pll_u_table[] = {
-	{ 12000000, 480000000, 960, 12, 1, 0},
-	{ 13000000, 480000000, 960, 13, 1, 0},
-	{ 19200000, 480000000, 200, 4,  1, 0},
-	{ 26000000, 480000000, 960, 26, 1, 0},
+	{ 12000000, 480000000, 960, 12, 2, 0},
+	{ 13000000, 480000000, 960, 13, 2, 0},
+	{ 19200000, 480000000, 200, 4,  2, 0},
+	{ 26000000, 480000000, 960, 26, 2, 0},
 	{ 0, 0, 0, 0, 0, 0 },
 };
 
 static struct clk tegra_pll_u = {
 	.name      = "pll_u",
-	.flags     = 0,
+	.flags     = PLLU,
 	.ops       = &tegra_pll_ops,
 	.reg       = 0xc0,
 	.input_min = 2000000,
