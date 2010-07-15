@@ -102,6 +102,27 @@ struct clk *tegra_get_clock_by_name(const char *name)
 	return ret;
 }
 
+static void clk_recalculate_rate(struct clk *c)
+{
+	u64 rate;
+
+	if (!c->parent)
+		return;
+
+	rate = c->parent->rate;
+
+	if (c->mul != 0 && c->div != 0) {
+		rate = rate * c->mul;
+		do_div(rate, c->div);
+	}
+
+	if (rate > c->max_rate)
+		pr_warn("clocks: Set clock %s to rate %llu, max is %lu\n",
+			c->name, rate, c->max_rate);
+
+	c->rate = rate;
+}
+
 int clk_reparent(struct clk *c, struct clk *parent)
 {
 	pr_debug("%s: %s\n", __func__, c->name);
@@ -117,8 +138,7 @@ static void propagate_rate(struct clk *c)
 	pr_debug("%s: %s\n", __func__, c->name);
 	list_for_each_entry(clkp, &c->children, sibling) {
 		pr_debug("   %s\n", clkp->name);
-		if (clkp->ops->recalculate_rate)
-			clkp->ops->recalculate_rate(clkp, clkp->mul, clkp->div);
+		clk_recalculate_rate(clkp);
 		propagate_rate(clkp);
 	}
 }
@@ -127,6 +147,8 @@ void clk_init(struct clk *c)
 {
 	unsigned long flags;
 
+	pr_debug("%s: %s\n", __func__, c->name);
+
 	spin_lock_irqsave(&clock_lock, flags);
 
 	INIT_LIST_HEAD(&c->children);
@@ -134,6 +156,8 @@ void clk_init(struct clk *c)
 
 	if (c->ops && c->ops->init)
 		c->ops->init(c);
+
+	clk_recalculate_rate(c);
 
 	list_add(&c->node, &clocks);
 
@@ -271,6 +295,8 @@ int clk_set_parent_locked(struct clk *c, struct clk *parent)
 	if (ret)
 		return ret;
 
+	clk_recalculate_rate(c);
+
 	propagate_rate(c);
 
 	return 0;
@@ -298,7 +324,7 @@ int clk_set_rate_locked(struct clk *c, unsigned long rate)
 	int ret;
 
 	if (rate > c->max_rate)
-		return -EINVAL;
+		rate = c->max_rate;
 
 	if (!c->ops || !c->ops->set_rate)
 		return -ENOSYS;
@@ -307,6 +333,8 @@ int clk_set_rate_locked(struct clk *c, unsigned long rate)
 
 	if (ret)
 		return ret;
+
+	clk_recalculate_rate(c);
 
 	propagate_rate(c);
 
@@ -382,6 +410,9 @@ long clk_round_rate(struct clk *c, unsigned long rate)
 
 	if (!c->ops || !c->ops->round_rate)
 		return -ENOSYS;
+
+	if (rate > c->max_rate)
+		rate = c->max_rate;
 
 	return c->ops->round_rate(c, rate);
 }
@@ -491,7 +522,7 @@ static void clock_tree_show_one(struct seq_file *s, struct clk *c, int level)
 	struct clk *child;
 	struct clk *safe;
 	const char *state = "uninit";
-	char div[5] = {0};
+	char div[8] = {0};
 
 	if (c->state == ON)
 		state = "on";
@@ -499,15 +530,23 @@ static void clock_tree_show_one(struct seq_file *s, struct clk *c, int level)
 		state = "off";
 
 	if (c->mul != 0 && c->div != 0) {
-		BUG_ON(c->mul > 2);
-		if (c->mul > c->div)
-			snprintf(div, sizeof(div), "x%d", c->mul / c->div);
-		else
+		if (c->mul > c->div) {
+			int mul = c->mul / c->div;
+			int mul2 = (c->mul * 10 / c->div) % 10;
+			int mul3 = (c->mul * 10) % c->div;
+			if (mul2 == 0 && mul3 == 0)
+				snprintf(div, sizeof(div), "x%d", mul);
+			else if (mul3 == 0)
+				snprintf(div, sizeof(div), "x%d.%d", mul, mul2);
+			else
+				snprintf(div, sizeof(div), "x%d.%d..", mul, mul2);
+		} else {
 			snprintf(div, sizeof(div), "%d%s", c->div / c->mul,
 				(c->div % c->mul) ? ".5" : "");
+		}
 	}
 
-	seq_printf(s, "%*s%c%c%-*s %-6s %-3d %-5s %-10lu\n",
+	seq_printf(s, "%*s%c%c%-*s %-6s %-3d %-8s %-10lu\n",
 		level * 3 + 1, "",
 		c->rate > c->max_rate ? '!' : ' ',
 		!c->set ? '*' : ' ',
@@ -522,8 +561,8 @@ static int clock_tree_show(struct seq_file *s, void *data)
 {
 	struct clk *c;
 	unsigned long flags;
-	seq_printf(s, " clock                          state  ref div   rate      \n");
-	seq_printf(s, "-----------------------------------------------------------\n");
+	seq_printf(s, "   clock                          state  ref div      rate      \n");
+	seq_printf(s, "--------------------------------------------------------------\n");
 	spin_lock_irqsave(&clock_lock, flags);
 	list_for_each_entry(c, &clocks, node)
 		if (c->parent == NULL)

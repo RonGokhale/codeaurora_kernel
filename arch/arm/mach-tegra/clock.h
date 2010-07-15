@@ -127,10 +127,6 @@ struct clk {
 	unsigned long			cf_max;
 	unsigned long			vco_min;
 	unsigned long			vco_max;
-	u32				m;
-	u32				n;
-	u32				p;
-	u32				cpcon;
 	const struct clk_pll_table	*pll_table;
 
 	/* DIV */
