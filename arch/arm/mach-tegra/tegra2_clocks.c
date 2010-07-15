@@ -837,6 +837,10 @@ static int tegra2_periph_clk_set_rate(struct clk *c, unsigned long rate)
 			c->mul = 1;
 			return 0;
 		}
+	} else if (c->parent->rate <= rate) {
+		c->div = 1;
+		c->mul = 1;
+		return 0;
 	}
 	return -EINVAL;
 }
@@ -1044,10 +1048,14 @@ static struct clk tegra_pll_c_out1 = {
 };
 
 static struct clk_pll_table tegra_pll_m_table[] = {
-	{ 12000000, 600000000, 600, 12, 1, 12},
-	{ 13000000, 600000000, 600, 13, 1, 12},
-	{ 19200000, 600000000, 375,  12, 1, 8},
-	{ 26000000, 600000000, 600, 26, 1, 12},
+	{ 12000000, 666000000, 666, 12, 1, 8},
+	{ 13000000, 666000000, 666, 13, 1, 8},
+	{ 19200000, 666000000, 555, 16, 1, 8},
+	{ 26000000, 666000000, 666, 26, 1, 8},
+	{ 12000000, 600000000, 600, 12, 1, 8},
+	{ 13000000, 600000000, 600, 13, 1, 8},
+	{ 19200000, 600000000, 375, 12, 1, 6},
+	{ 26000000, 600000000, 600, 26, 1, 8},
 	{ 0, 0, 0, 0, 0, 0 },
 };
 
@@ -1064,7 +1072,7 @@ static struct clk tegra_pll_m = {
 	.vco_min   = 20000000,
 	.vco_max   = 1200000000,
 	.pll_table = tegra_pll_m_table,
-	.max_rate  = 600000000,
+	.max_rate  = 800000000,
 };
 
 static struct clk tegra_pll_m_out1 = {
@@ -1577,11 +1585,11 @@ struct clk tegra_periph_clks[] = {
 	PERIPH_CLK("i2c2_i2c",	"tegra-i2c.1",		"i2c",	0,	0,	72000000,  mux_pllp_out3,			0),
 	PERIPH_CLK("i2c3_i2c",	"tegra-i2c.2",		"i2c",	0,	0,	72000000,  mux_pllp_out3,			0),
 	PERIPH_CLK("dvc_i2c",	"tegra-i2c.3",		"i2c",	0,	0,	72000000,  mux_pllp_out3,			0),
-	PERIPH_CLK("uarta",	"uart.0",		NULL,	6,	0x178,	72000000,  mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
-	PERIPH_CLK("uartb",	"uart.1",		NULL,	7,	0x17c,	72000000,  mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
-	PERIPH_CLK("uartc",	"uart.2",		NULL,	55,	0x1a0,	72000000,  mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
-	PERIPH_CLK("uartd",	"uart.3",		NULL,	65,	0x1c0,	72000000,  mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
-	PERIPH_CLK("uarte",	"uart.4",		NULL,	66,	0x1c4,	72000000,  mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71),
+	PERIPH_CLK("uarta",	"uart.0",		NULL,	6,	0x178,	216000000, mux_pllp_pllc_pllm_clkm,	MUX),
+	PERIPH_CLK("uartb",	"uart.1",		NULL,	7,	0x17c,	216000000, mux_pllp_pllc_pllm_clkm,	MUX),
+	PERIPH_CLK("uartc",	"uart.2",		NULL,	55,	0x1a0,	216000000, mux_pllp_pllc_pllm_clkm,	MUX),
+	PERIPH_CLK("uartd",	"uart.3",		NULL,	65,	0x1c0,	216000000, mux_pllp_pllc_pllm_clkm,	MUX),
+	PERIPH_CLK("uarte",	"uart.4",		NULL,	66,	0x1c4,	216000000, mux_pllp_pllc_pllm_clkm,	MUX),
 	PERIPH_CLK("3d",	"3d",			NULL,	24,	0x158,	300000000, mux_pllm_pllc_pllp_plla,	MUX | DIV_U71 | PERIPH_MANUAL_RESET), /* scales with voltage and process_id */
 	PERIPH_CLK("2d",	"2d",			NULL,	21,	0x15c,	300000000, mux_pllm_pllc_pllp_plla,	MUX | DIV_U71), /* scales with voltage and process_id */
 	/* FIXME: vi and vi_sensor share an enable */
@@ -1600,7 +1608,7 @@ struct clk tegra_periph_clks[] = {
 	PERIPH_CLK("usbd",	"fsl-tegra-udc",	NULL,	22,	0,	480000000, mux_clk_m,			0), /* requires min voltage */
 	PERIPH_CLK("usb2",	"tegra-ehci.1",		NULL,	58,	0,	480000000, mux_clk_m,			0), /* requires min voltage */
 	PERIPH_CLK("usb3",	"tegra-ehci.2",		NULL,	59,	0,	480000000, mux_clk_m,			0), /* requires min voltage */
-	PERIPH_CLK("emc",	"emc",			NULL,	57,	0x19c,	600000000, mux_pllm_pllc_pllp_clkm,	MUX | DIV_U71 | PERIPH_EMC_ENB), /* max rate??? */
+	PERIPH_CLK("emc",	"emc",			NULL,	57,	0x19c,	800000000, mux_pllm_pllc_pllp_clkm,	MUX | DIV_U71 | PERIPH_EMC_ENB),
 	PERIPH_CLK("dsi",	"dsi",			NULL,	48,	0,	500000000, mux_plld,			0), /* scales with voltage */
 };
 
