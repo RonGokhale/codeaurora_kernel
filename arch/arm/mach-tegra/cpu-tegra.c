@@ -34,15 +34,16 @@
 #include <mach/hardware.h>
 #include <mach/clk.h>
 
+/* Frequency table index must be sequential starting at 0 */
 static struct cpufreq_frequency_table freq_table[] = {
-	{ 1, 312000 },
-	{ 2, 456000 },
-	{ 3, 608000 },
-	{ 4, 760000 },
-	{ 5, 816000 },
-	{ 6, 912000 },
-	{ 7, 1000000 },
-	{ 0, CPUFREQ_TABLE_END },
+	{ 0, 312000 },
+	{ 1, 456000 },
+	{ 2, 608000 },
+	{ 3, 760000 },
+	{ 4, 816000 },
+	{ 5, 912000 },
+	{ 6, 1000000 },
+	{ 7, CPUFREQ_TABLE_END },
 };
 
 #define NUM_CPUS	2
@@ -108,11 +109,15 @@ static int tegra_target(struct cpufreq_policy *policy,
 		       unsigned int target_freq,
 		       unsigned int relation)
 {
-	/* Ensure desired rate is within allowed range.  Some govenors
-	 * (ondemand) will just pass target_freq=0 to get the minimum. */
-	clamp(target_freq, policy->min, policy->max);
+	int idx;
+	unsigned int freq;
 
-	target_cpu_speed[policy->cpu] = target_freq;
+	cpufreq_frequency_table_target(policy, freq_table, target_freq,
+		relation, &idx);
+
+	freq = freq_table[idx].frequency;
+
+	target_cpu_speed[policy->cpu] = freq;
 
 	return tegra_update_cpu_speed();
 }
@@ -127,6 +132,7 @@ static int tegra_cpu_init(struct cpufreq_policy *policy)
 		return PTR_ERR(cpu_clk);
 
 	cpufreq_frequency_table_cpuinfo(policy, freq_table);
+	cpufreq_frequency_table_get_attr(freq_table, policy->cpu);
 	policy->cur = tegra_getspeed(policy->cpu);
 	target_cpu_speed[policy->cpu] = policy->cur;
 
@@ -141,6 +147,7 @@ static int tegra_cpu_init(struct cpufreq_policy *policy)
 
 static int tegra_cpu_exit(struct cpufreq_policy *policy)
 {
+	cpufreq_frequency_table_cpuinfo(policy, freq_table);
 	clk_put(cpu_clk);
 	return 0;
 }
