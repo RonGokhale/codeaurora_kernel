@@ -55,9 +55,11 @@ struct dvfs_process_id_table {
 
 
 struct dvfs {
-	int process_id_table_length;
-	struct dvfs_table *table;
 	struct regulator *reg;
+	struct dvfs_table *table;
+	int max_millivolts;
+
+	int process_id_table_length;
 	const char *reg_id;
 	bool cpu;
 	struct dvfs_process_id_table process_id_table[];

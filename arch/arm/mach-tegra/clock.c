@@ -48,7 +48,7 @@ static int dvfs_set_rate(struct dvfs *d, unsigned long rate)
 	for (t = d->table; t->rate != 0; t++) {
 		if (rate <= t->rate) {
 			regulator_set_voltage(d->reg, t->millivolts * 1000,
-				INT_MAX);
+				d->max_millivolts * 1000);
 			return 0;
 		}
 	}
@@ -60,6 +60,7 @@ static void dvfs_init(struct clk *c)
 {
 	int process_id;
 	int i;
+	struct dvfs_table *table;
 
 	process_id = c->dvfs->cpu ? tegra_core_process_id() :
 		tegra_cpu_process_id();
@@ -76,11 +77,16 @@ static void dvfs_init(struct clk *c)
 		if (process_id == c->dvfs->process_id_table[i].process_id)
 			c->dvfs->table = c->dvfs->process_id_table[i].table;
 
-	if (i == c->dvfs->process_id_table_length) {
+	if (c->dvfs->table == NULL) {
 		pr_err("Failed to find dvfs table for clock %s process %d\n",
 			c->name, process_id);
 		return;
 	}
+
+	c->dvfs->max_millivolts = 0;
+	for (table = c->dvfs->table; table->rate != 0; table++)
+		if (c->dvfs->max_millivolts < table->millivolts)
+			c->dvfs->max_millivolts = table->millivolts;
 
 	if (c->refcnt > 0)
 		dvfs_set_rate(c->dvfs, c->rate);
