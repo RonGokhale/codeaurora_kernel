@@ -886,10 +886,20 @@ static void tegra2_clk_double_init(struct clk *c)
 		c->state = OFF;
 };
 
+static int tegra2_clk_double_set_rate(struct clk *c, unsigned long rate)
+{
+	if (rate != 2 * c->parent->rate)
+		return -EINVAL;
+	c->mul = 2;
+	c->div = 1;
+	return 0;
+}
+
 static struct clk_ops tegra_clk_double_ops = {
 	.init			= &tegra2_clk_double_init,
 	.enable			= &tegra2_periph_clk_enable,
 	.disable		= &tegra2_periph_clk_disable,
+	.set_rate		= &tegra2_clk_double_set_rate,
 };
 
 static void tegra2_audio_sync_clk_init(struct clk *c)
@@ -958,6 +968,7 @@ static int tegra2_audio_sync_clk_set_rate(struct clk *c, unsigned long rate)
 			c->parent->name, parent_rate);
 		return -EINVAL;
 	}
+	c->rate = parent_rate;
 	return 0;
 }
 
@@ -1322,7 +1333,7 @@ static struct clk_mux_sel mux_audio_sync_clk[8+1];
 static const struct audio_sources {
 	const char *name;
 	int value;
-} mux_audio_sync_clk_sources[8+1] = {
+} mux_audio_sync_clk_sources[] = {
 	{ .name = "spdif_in", .value = 0 },
 	{ .name = "i2s1", .value = 1 },
 	{ .name = "i2s2", .value = 2 },
@@ -1340,12 +1351,14 @@ static struct clk tegra_clk_audio = {
 	.name      = "audio",
 	.inputs    = mux_audio_sync_clk,
 	.reg       = 0x38,
+	.max_rate  = 24000000,
 	.ops       = &tegra_audio_sync_clk_ops
 };
 
 static struct clk tegra_clk_audio_2x = {
 	.name      = "audio_2x",
 	.flags     = PERIPH_NO_RESET,
+	.max_rate  = 48000000,
 	.ops       = &tegra_clk_double_ops,
 	.clk_num   = 89,
 	.reg       = 0x34,
