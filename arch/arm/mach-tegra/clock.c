@@ -38,17 +38,22 @@ static DEFINE_MUTEX(dvfs_lock);
 
 static int clk_is_dvfs(struct clk *c)
 {
-	return (c->dvfs && c->dvfs->reg);
+	return (c->dvfs != NULL);
 };
 
 static int dvfs_set_rate(struct dvfs *d, unsigned long rate)
 {
 	struct dvfs_table *t;
 
+	if (d->table == NULL)
+		return -ENODEV;
+
 	for (t = d->table; t->rate != 0; t++) {
 		if (rate <= t->rate) {
-			regulator_set_voltage(d->reg, t->millivolts * 1000,
-				d->max_millivolts * 1000);
+			if (d->reg)
+				regulator_set_voltage(d->reg,
+					t->millivolts * 1000,
+					d->max_millivolts * 1000);
 			return 0;
 		}
 	}
@@ -64,14 +69,6 @@ static void dvfs_init(struct clk *c)
 
 	process_id = c->dvfs->cpu ? tegra_core_process_id() :
 		tegra_cpu_process_id();
-	c->dvfs->reg = regulator_get(NULL, c->dvfs->reg_id);
-
-	if (IS_ERR(c->dvfs->reg)) {
-		pr_err("Failed to get regulator %s for clock %s\n",
-			c->dvfs->reg_id, c->name);
-		c->dvfs->reg = NULL;
-		return;
-	}
 
 	for (i = 0; i < c->dvfs->process_id_table_length; i++)
 		if (process_id == c->dvfs->process_id_table[i].process_id)
@@ -87,6 +84,15 @@ static void dvfs_init(struct clk *c)
 	for (table = c->dvfs->table; table->rate != 0; table++)
 		if (c->dvfs->max_millivolts < table->millivolts)
 			c->dvfs->max_millivolts = table->millivolts;
+
+	c->dvfs->reg = regulator_get(NULL, c->dvfs->reg_id);
+
+	if (IS_ERR(c->dvfs->reg)) {
+		pr_err("Failed to get regulator %s for clock %s\n",
+			c->dvfs->reg_id, c->name);
+		c->dvfs->reg = NULL;
+		return;
+	}
 
 	if (c->refcnt > 0)
 		dvfs_set_rate(c->dvfs, c->rate);
