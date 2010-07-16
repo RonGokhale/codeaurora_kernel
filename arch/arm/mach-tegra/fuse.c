@@ -24,6 +24,8 @@
 
 #include "fuse.h"
 
+#define FUSE_UID_LOW		0x108
+#define FUSE_UID_HIGH		0x10c
 #define FUSE_SKU_INFO		0x110
 #define FUSE_SPARE_BIT		0x200
 
@@ -46,6 +48,15 @@ void tegra_init_fuse(void)
 	pr_info("Tegra SKU: %d CPU Process: %d Core Process: %d\n",
 		tegra_sku_id(), tegra_cpu_process_id(),
 		tegra_core_process_id());
+}
+
+unsigned long long tegra_chip_uid(void)
+{
+	unsigned long long lo, hi;
+
+	lo = fuse_readl(FUSE_UID_LOW);
+	hi = fuse_readl(FUSE_UID_HIGH);
+	return (hi << 32ull) | lo;
 }
 
 int tegra_sku_id(void)
