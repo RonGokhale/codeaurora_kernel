@@ -1,5 +1,5 @@
 /*
- * arch/arm/mach-tegra/cortex_a9_save.S
+ * arch/arm/mach-tegra/cortex-a9.S
  *
  * CPU state save & restore routines for CPU hotplug
  *
@@ -33,30 +33,10 @@
 #include <mach/iomap.h>
 #include <mach/io.h>
 
-#include "power.h"
-
 /*	.section ".cpuinit.text", "ax"*/
-
-#define TTB_FLAGS 0x6A	@ IRGN_WBWA, OC_RGN_WBWA, S, NOS
 
 #define CONTEXT_SIZE_WORDS_SHIFT 7
 #define CONTEXT_SIZE_WORDS (1<<CONTEXT_SIZE_WORDS_SHIFT)
-
-#define PMC_CTRL			0x0
-#define PMC_CTRL_BFI_SHIFT		8
-#define PMC_CTRL_BFI_WIDTH		9
-#define PMC_SCRATCH38			0x134
-
-#define CLK_RESET_CCLK_BURST		0x20
-#define CLK_RESET_CCLK_DIVIDER		0x24
-#define CLK_RESET_SCLK_BURST		0x28
-#define CLK_RESET_SCLK_DIVIDER		0x2c
-
-#define CLK_RESET_PLLC_BASE		0x80
-#define CLK_RESET_PLLM_BASE		0x90
-#define CLK_RESET_PLLP_BASE		0xa0
-
-#define FLOW_CTRL_HALT_CPU_EVENTS	0x0
 
 /*
  * spooled CPU context is 512B / CPU
@@ -120,6 +100,7 @@
 #define CTX_L2_AUX	228
 #define CTX_L2_TAG_CTRL	232
 #define CTX_L2_DAT_CTRL	236
+#define CTX_L2_PREFETCH 240
 #endif
 
 #define CTX_VFP_REGS	256
@@ -238,7 +219,6 @@ ENTRY(__cortex_a9_save)
 	mrc	p15, 0, r1, c13, c0, 2	@ TPIDRURW
 	mrc	p15, 0, r2, c13, c0, 3	@ TPIDRURO
 	mrc	p15, 0, r3, c13, c0, 4	@ TPIDRPRW
-
 	stmia	r9, {r0-r3}
 
 	cps	0x1f			@ SYS mode
@@ -279,7 +259,8 @@ ENTRY(__cortex_a9_save)
 	ldr	r1, [r4, #L2X0_AUX_CTRL]
 	ldr	r2, [r4, #L2X0_TAG_LATENCY_CTRL]
 	ldr	r3, [r4, #L2X0_DATA_LATENCY_CTRL]
-	stmia	r9, {r0-r3}
+	ldr	r4, [r4, #L2X0_PREFETCH_OFFSET]
+	stmia	r9, {r0-r4}
 #endif
 
 
@@ -313,43 +294,6 @@ __cortex_a9_save_clean_cache:
 	mov	r8, r10
 	b	__tear_down_master
 ENDPROC(__cortex_a9_save)
-
-/*
- *	__cortex_a9_l2x0_restart(bool invalidate)
- *
- *	 Reconfigures the L2 cache following a power event.
- */
-	.align L1_CACHE_SHIFT
-ENTRY(__cortex_a9_l2x0_restart)
-#ifdef CONFIG_CACHE_L2X0
-	ctx_ptr	r8, r9
-	mov32	r9, (TEGRA_ARM_PL310_BASE-IO_CPU_PHYS+IO_CPU_VIRT)
-	add	r10, r8, #CTX_L2_CTRL
-	ldmia	r10, {r4-r7}
-	str	r6, [r9, #L2X0_TAG_LATENCY_CTRL]
-	str	r7, [r9, #L2X0_DATA_LATENCY_CTRL]
-	str	r5, [r9, #L2X0_AUX_CTRL]
-	cmp	r0, #0
-
-	beq	__reenable_l2x0
-
-	mov	r0, #0xff
-	str	r0, [r9, #L2X0_INV_WAY]
-1:	ldr	r1, [r9, #L2X0_INV_WAY]
-	tst	r1, r0
-	bne	1b
-	mov	r0, #0
-	str	r0, [r9, #L2X0_CACHE_SYNC]
-__reenable_l2x0:
-	mov	r5, #0
-	mcr	p15, 0, r5, c8, c3, 0	@ invalidate TLB
-	mcr	p15, 0, r5, c7, c5, 6	@ flush BTAC
-	mcr	p15, 0, r5, c7, c5, 0	@ flush instruction cache
-	dsb
-	isb
-	str	r4, [r9, #L2X0_CTRL]
-#endif
-	b	__cortex_a9_restore
 
 /*
  *	__cortex_a9_restore
@@ -463,184 +407,52 @@ ENTRY(__cortex_a9_restore)
 	mov	pc, lr
 ENDPROC(__cortex_a9_restore)
 
-
 /*
+ *	__cortex_a9_l2x0_restart(bool invalidate)
  *
- *	__tear_down_master( r8 = context_pa, sp = power state )
- *
- *	  Set the clock burst policy to the selected wakeup source
- *	  Enable CPU power-request mode in the PMC
- *	  Put the CPU in wait-for-event mode on the flow controller
- *	  Trigger the PMC state machine to put the CPU in reset
+ *	 Reconfigures the L2 cache following a power event.
  */
-__tear_down_master:
+	.align L1_CACHE_SHIFT
+ENTRY(__cortex_a9_l2x0_restart)
 #ifdef CONFIG_CACHE_L2X0
-	/* clean out the dirtied L2 lines, since all power transitions
-	 * cause the cache state to get invalidated (although LP1 & LP2
-	 * preserve the data in the L2, the control words (L2X0_CTRL,
-	 * L2X0_AUX_CTRL, etc.) need to be cleaned to L3 so that they
-	 * will be visible on reboot */
-	mov32	r0, (TEGRA_ARM_PL310_BASE-IO_CPU_PHYS+IO_CPU_VIRT)
-	add	r3, r8, #(CONTEXT_SIZE_WORDS*4)
-	bic	r8, r8, #0x1f
-	add	r3, r3, #0x1f
-11:	str	r8, [r0, #L2X0_CLEAN_LINE_PA]
-	add	r8, r8, #32
-	cmp	r8, r3
-	blo	11b
-12:	ldr	r1, [r0, #L2X0_CLEAN_LINE_PA]
-	tst	r1, #1
-	bne	12b
-	mov	r1, #0
-	str	r1, [r0, #L2X0_CACHE_SYNC]
-13:	ldr	r1, [r0, #L2X0_CACHE_SYNC]
-	tst	r1, #1
-	bne	13b
-#endif
-
-	tst	sp, #TEGRA_POWER_SDRAM_SELFREFRESH
-
-	/* preload all the address literals that are needed for the
-	 * CPU power-gating process, to avoid loads from SDRAM (which are
-	 * not supported once SDRAM is put into self-refresh.
-	 * LP0 / LP1 use physical address, since the MMU needs to be
-	 * disabled before putting SDRAM into self-refresh to avoid
-	 * memory access due to page table walks */
-	mov32	r0, (IO_APB_VIRT-IO_APB_PHYS)
-	mov32	r4, TEGRA_PMC_BASE
-	addeq	r4, r4, r0
-	mov32	r0, (IO_PPSB_VIRT-IO_PPSB_PHYS)
-	mov32	r5, TEGRA_CLK_RESET_BASE
-	mov32	r6, TEGRA_FLOW_CTRL_BASE
-	mov32	r7, TEGRA_TMRUS_BASE
-	addeq	r5, r5, r0
-	addeq	r6, r6, r0
-	addeq	r7, r7, r0
-
-	beq	__tear_down_master_pll_cpu
-
-	/* change page table pointer to tegra_pgd_phys, so that IRAM
-	 * will be mapped virtual == physical */
-	adr	r3, __tear_down_master_data
-	ldr	r3, [r3]		@ &tegra_pgd_phys
-	ldr	r3, [r3]
-	orr	r3, r3, #TTB_FLAGS
-	mov	r2, #0
-	mcr	p15, 0, r2, c13, c0, 1	@ reserved context
-	isb
-	mcr	p15, 0, r3, c2, c0, 0	@ TTB 0
-	isb
-	mov32	r3, (IO_IRAM_PHYS)	@ __tear_down_master_sdram, in IRAM
-	movne	pc, r3
-ENDPROC(__tear_down_master)
-	.type	__tear_down_master_data, %object
-__tear_down_master_data:
-	.long	tegra_pgd_phys
-	.size	__tear_down_master_data, . - __tear_down_master_data
-
-/*  START OF ROUTINES COPIED TO IRAM  */
-	.align 5
-__tear_down_master_sdram:
-	mrc	p15, 0, r3, c1, c0, 0
-	bic	r3, r3, #(1<<0)
-	mcr	p15, 0, r3, c1, c0, 0	@ disable MMU to prevent page misses
-	/* FIXME: save off DDR pad settings, put SDRAM in self refresh,
-	 * jump to tear_down_master_pll_cpu */
-	b	.
-ENDPROC(__tear_down_master_sdram)
-
-	.align 5
-__tear_down_master_pll_cpu:
-	ldr	r0, [r4, #PMC_CTRL]
-	bfi	r0, sp, #PMC_CTRL_BFI_SHIFT, #PMC_CTRL_BFI_WIDTH
-	str	r0, [r4, #PMC_CTRL]
-	tst	sp, #TEGRA_POWER_SDRAM_SELFREFRESH
-
-	/* in LP2 idle (SDRAM active), set the CPU burst policy to PLLP */
-	moveq	r0, #(2<<28)    /* burst policy = run mode */
-	orreq	r0, r0, #(4<<4) /* use PLLP in run mode burst */
-	streq	r0, [r5, #CLK_RESET_CCLK_BURST]
-	moveq	r0, #0
-	streq	r0, [r5, #CLK_RESET_CCLK_DIVIDER]
-	beq	__cclk_burst_set
-
-	/* in other modes, set system & CPU burst policies to 32KHz.
-	 * start by jumping to CLKM to safely disable PLLs, then jump
-	 * to CLKS */
-	mov	r0, #(1<<28)
-	str	r0, [r5, #CLK_RESET_SCLK_BURST]
-	str	r0, [r5, #CLK_RESET_CCLK_BURST]
-	mov	r0, #0
-	str	r0, [r5, #CLK_RESET_CCLK_DIVIDER]
-	str	r0, [r5, #CLK_RESET_SCLK_DIVIDER]
-	mov	r0, #0		/* burst policy = 32KHz */
-	str	r0, [r5, #CLK_RESET_SCLK_BURST]
-	str	r0, [r5, #CLK_RESET_SCLK_DIVIDER]
-
-	/* 2 us delay between changing sclk and disabling PLLs */
-	wait_for_us r1, r7, r9
-	add	r1, r1, #2
-	wait_until r1, r7, r9
-
-	/* switch to CLKS */
-	str	r0, [r5, #CLK_RESET_SCLK_BURST]
-	str	r0, [r5, #CLK_RESET_CCLK_BURST]
-
-	/* disable PLLP, PLLM, PLLC in LP0 and LP1 states */
-	ldr	r0, [r5, #CLK_RESET_PLLM_BASE]
-	bic	r0, r0, #(1<<30)
-	str	r0, [r5, #CLK_RESET_PLLM_BASE]
-	ldr	r0, [r5, #CLK_RESET_PLLP_BASE]
-	bic	r0, r0, #(1<<30)
-	str	r0, [r5, #CLK_RESET_PLLP_BASE]
-	ldr	r0, [r5, #CLK_RESET_PLLC_BASE]
-	bic	r0, r0, #(1<<30)
-	str	r0, [r5, #CLK_RESET_PLLC_BASE]
-
-__cclk_burst_set:
-	mov	r0, #(4<<29)			/* STOP_UNTIL_IRQ */
-	orr	r0, r0, #(1<<10) | (1<<8)	/* IRQ_0, FIQ_0	*/
-	ldr	r1, [r7]
-	str	r1, [r4, #PMC_SCRATCH38]
-	dsb
-	str	r0, [r6, #FLOW_CTRL_HALT_CPU_EVENTS]
-	dsb
-	ldr	r0, [r6, #FLOW_CTRL_HALT_CPU_EVENTS] /* memory barrier */
-
-halted:	dsb
-	wfe	/* CPU should be power gated here */
-	isb
-	b	halted
-ENDPROC(__tear_down_master_pll_cpu)
-
-/*
- *	__put_cpu_in_reset(cpu_nr)
- *
- *	 puts the specified CPU in wait-for-event mode on the flow controller
- *	 and puts the CPU in reset
- */
-__put_cpu_in_reset:
+	ctx_ptr	r8, r9
+	mov32	r9, (TEGRA_ARM_PL310_BASE-IO_CPU_PHYS+IO_CPU_VIRT)
+	add	r10, r8, #CTX_L2_CTRL
+	ldmia	r10, {r3-r7}
+	str	r5, [r9, #L2X0_TAG_LATENCY_CTRL]
+	str	r6, [r9, #L2X0_DATA_LATENCY_CTRL]
+	str	r7, [r9, #L2X0_PREFETCH_OFFSET]
+	str	r4, [r9, #L2X0_AUX_CTRL]
 	cmp	r0, #0
-	subne	r1, r0, #1
-	movne	r1, r1, lsl #3
-	addne	r1, r1, #0x14
-	moveq	r1, #0			@ r1 = CPUx_HALT_EVENTS register offset
-	mov32	r7, (TEGRA_FLOW_CTRL_BASE-IO_PPSB_PHYS+IO_PPSB_VIRT)
-	mov	r2, #(0x2<<29)
-	str	r2, [r7, r1]		@ put flow controller in wait event mode
-	isb
+
+	beq	__reenable_l2x0
+
+	mov	r0, #0xff
+	str	r0, [r9, #L2X0_INV_WAY]
+1:	ldr	r1, [r9, #L2X0_INV_WAY]
+	tst	r1, r0
+	bne	1b
+	mov	r0, #0
+	str	r0, [r9, #L2X0_CACHE_SYNC]
+__reenable_l2x0:
+	mov	r5, #0
+	mcr	p15, 0, r5, c8, c3, 0	@ invalidate TLB
+	mcr	p15, 0, r5, c7, c5, 6	@ flush BTAC
+	mcr	p15, 0, r5, c7, c5, 0	@ flush instruction cache
 	dsb
-	movw	r1, 0x1011
-	mov	r1, r1, lsl r0
-	mov32	r7, (TEGRA_CLK_RESET_BASE-IO_PPSB_PHYS+IO_PPSB_VIRT)
-	str	r1, [r7, #0x340]	@ put slave CPU in reset
 	isb
+	str	r3, [r9, #L2X0_CTRL]
+#endif
+	b	__cortex_a9_restore
+
+
+	.align L1_CACHE_SHIFT
+ENTRY(__shut_off_mmu)
+	mrc	p15, 0, r3, c1, c0, 0
+	movw	r2, #(1<<12) | (1<<11) | (1<<2) | (1<<0)
+	bic	r3, r3, r2
 	dsb
-	b	.
-ENDPROC(__put_cpu_in_reset)
-
-
-/*
- */
-
-/*  END OF ROUTINES COPIED TO IRAM  */
+	mcr	p15, 0, r3, c1, c0, 0
+	isb
+	bx	r9
+ENDPROC(__shut_off_mmu)

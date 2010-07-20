@@ -31,6 +31,7 @@
 #include <linux/err.h>
 #include <linux/delay.h>
 #include <linux/suspend.h>
+#include <linux/slab.h>
 
 #include <asm/cacheflush.h>
 #include <asm/hardware/gic.h>
@@ -60,23 +61,37 @@ struct suspend_context
 
 volatile struct suspend_context tegra_sctx;
 
+#ifdef CONFIG_HOTPLUG_CPU
 static void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
 static void __iomem *clk_rst = IO_ADDRESS(TEGRA_CLK_RESET_BASE);
 static void __iomem *flow_ctrl = IO_ADDRESS(TEGRA_FLOW_CTRL_BASE);
 static void __iomem *evp_reset = IO_ADDRESS(TEGRA_EXCEPTION_VECTORS_BASE)+0x100;
 static void __iomem *tmrus = IO_ADDRESS(TEGRA_TMRUS_BASE);
+#endif
 
 #define PMC_CTRL		0x0
+#define PMC_CTRL_LATCH_WAKEUPS	(1 << 5)
+#define PMC_WAKE_MASK		0xc
+#define PMC_WAKE_LEVEL		0x10
+#define PMC_DPAD_ORIDE		0x1C
+#define PMC_WAKE_DELAY		0xe0
+#define PMC_DPD_SAMPLE  	0x20
+
+#define PMC_SW_WAKE_STATUS	0x18
 #define PMC_COREPWRGOOD_TIMER	0x3c
+#define PMC_SCRATCH0		0x50
 #define PMC_SCRATCH1		0x54
 #define PMC_CPUPWRGOOD_TIMER	0xc8
 #define PMC_CPUPWROFF_TIMER	0xcc
-#define PMC_COREPWROFF_TIMER	0xe0
+#define PMC_COREPWROFF_TIMER	PMC_WAKE_DELAY
 #define PMC_SCRATCH38		0x134
 #define PMC_SCRATCH39		0x138
+#define PMC_SCRATCH41		0x140
 
 #define CLK_RESET_CCLK_BURST	0x20
 #define CLK_RESET_CCLK_DIVIDER  0x24
+#define CLK_RESET_PLLC_BASE	0x80
+#define CLK_RESET_PLLM_BASE	0x90
 #define CLK_RESET_PLLX_BASE	0xe0
 #define CLK_RESET_PLLX_MISC	0xe4
 #define CLK_RESET_SOURCE_CSITE	0x1d4
@@ -91,6 +106,7 @@ static void __iomem *tmrus = IO_ADDRESS(TEGRA_TMRUS_BASE);
 
 static struct clk *tegra_pclk = NULL;
 static const struct tegra_suspend_platform_data *pdata = NULL;
+static unsigned long wb0_restore = 0;
 
 static void set_power_timers(unsigned long us_on, unsigned long us_off)
 {
@@ -126,7 +142,7 @@ static noinline void restore_cpu_complex(void)
 
 	/* restore original burst policy setting; PLLX state restored
 	 * by CPU boot-up code - wait for PLL stabilization if PLLX
-	 * was enabled */
+	 * was enabled, or if explicitly requested by caller */
 
 	BUG_ON(readl(clk_rst + CLK_RESET_PLLX_BASE) != tegra_sctx.pllx_base);
 
@@ -153,8 +169,6 @@ static noinline void restore_cpu_complex(void)
 
 	enable_irq(INT_SYS_STATS_MON);
 }
-
-extern unsigned long tegra_pgd_phys;
 
 static noinline void suspend_cpu_complex(void)
 {
@@ -198,9 +212,17 @@ static noinline void suspend_cpu_complex(void)
 unsigned int tegra_suspend_lp2(unsigned int us)
 {
 	unsigned int mode, entry, exit;
-	unsigned long orig;
+	unsigned long orig, reg;
 
-	mode = TEGRA_POWER_CPU_PWRREQ_OE;
+	reg = readl(pmc + PMC_CTRL);
+	mode = (reg >> TEGRA_POWER_PMC_SHIFT) & TEGRA_POWER_PMC_MASK;
+	mode |= TEGRA_POWER_CPU_PWRREQ_OE;
+	if (pdata->separate_req)
+		mode |= TEGRA_POWER_PWRREQ_OE;
+	else
+		mode &= ~TEGRA_POWER_PWRREQ_OE;
+	mode &= ~TEGRA_POWER_EFFECT_LP0;
+
 	orig = readl(evp_reset);
 	writel(virt_to_phys(tegra_lp2_startup), evp_reset);
 
@@ -208,6 +230,7 @@ unsigned int tegra_suspend_lp2(unsigned int us)
 
 	if (us)
 		tegra_lp2_set_trigger(us);
+
 	suspend_cpu_complex();
 	flush_cache_all();
 	/* structure is written by reset code, so the L2 lines
@@ -225,19 +248,169 @@ unsigned int tegra_suspend_lp2(unsigned int us)
 
 	entry = readl(pmc + PMC_SCRATCH38);
 	exit = readl(pmc + PMC_SCRATCH39);
+
 	return exit - entry;
 }
 
 #ifdef CONFIG_PM
+
+/* ensures that sufficient time is passed for a register write to
+ * serialize into the 32KHz domain */
+static void pmc_32kwritel(u32 val, unsigned long offs)
+{
+	writel(val, pmc + offs);
+	wmb();
+	udelay(130);
+}
+
+static void tegra_setup_wakepads(bool do_lp0)
+{
+	u32 temp, status, lvl;
+
+	/* wakeup by interrupt, nothing to do here */
+	if (!do_lp0)
+		return;
+
+	pmc_32kwritel(0, PMC_SW_WAKE_STATUS);
+	temp = readl(pmc + PMC_CTRL);
+	temp |= PMC_CTRL_LATCH_WAKEUPS;
+	pmc_32kwritel(temp, PMC_CTRL);
+	temp &= ~PMC_CTRL_LATCH_WAKEUPS;
+	pmc_32kwritel(temp, PMC_CTRL);
+	status = readl(pmc + PMC_SW_WAKE_STATUS);
+	lvl = readl(pmc + PMC_WAKE_LEVEL);
+
+	/* flip the wakeup trigger for any-edge triggered pads
+	 * which are currently asserting as wakeups */
+	status &= pdata->wake_any;
+	lvl &= ~pdata->wake_low;
+	lvl |= pdata->wake_high;
+	lvl ^= status;
+
+	writel(lvl, pmc + PMC_WAKE_LEVEL);
+	/* Enable DPD sample to trigger sampling pads data and direction
+	 * in which pad will be driven during lp0 mode*/
+	writel(0x1, pmc + PMC_DPD_SAMPLE);
+
+	writel(pdata->wake_enb, pmc + PMC_WAKE_MASK);
+
+}
+
+extern void __tegra_lp1_reset(void);
+extern void __tegra_iram_end(void);
+
+static u8 *iram_save = NULL;
+static unsigned int iram_save_size = 0;
+static void __iomem *iram_code = IO_ADDRESS(TEGRA_IRAM_CODE_AREA);
+static void __iomem *iram_avp_resume = IO_ADDRESS(TEGRA_IRAM_BASE);
+
+static void tegra_suspend_dram(bool do_lp0)
+{
+	static unsigned long cpu_timer_32k = 0;
+	static unsigned long cpu_off_timer_32k = 0;
+
+	unsigned int on_timer, off_timer;
+	unsigned int mode = TEGRA_POWER_SDRAM_SELFREFRESH;
+	unsigned long orig, reg;
+
+	orig = readl(evp_reset);
+	/* copy the reset vector and SDRAM shutdown code into IRAM */
+	memcpy(iram_save, iram_code, iram_save_size);
+	memcpy(iram_code, (void *)__tegra_lp1_reset, iram_save_size);
+
+	if (!cpu_timer_32k) {
+		unsigned long long temp = 32768ull*pdata->cpu_timer + 999999;
+		do_div(temp, 1000000ul);
+		cpu_timer_32k = temp;
+
+		temp = 32768ull*pdata->cpu_off_timer + 999999;
+		do_div(temp, 1000000ul);
+		cpu_off_timer_32k = temp;
+	}
+
+	reg = readl(pmc + PMC_CTRL);
+	mode |= ((reg >> TEGRA_POWER_PMC_SHIFT) & TEGRA_POWER_PMC_MASK);
+
+	if (!do_lp0) {
+		writel(TEGRA_IRAM_CODE_AREA, evp_reset);
+		on_timer = readl(pmc + PMC_CPUPWRGOOD_TIMER);
+		writel(cpu_timer_32k, pmc + PMC_CPUPWRGOOD_TIMER);
+		off_timer = readl(pmc + PMC_CPUPWROFF_TIMER);
+		writel(cpu_off_timer_32k, pmc + PMC_CPUPWROFF_TIMER);
+
+		mode |= TEGRA_POWER_CPU_PWRREQ_OE;
+		if (pdata->separate_req)
+			mode |= TEGRA_POWER_PWRREQ_OE;
+		else
+			mode &= ~TEGRA_POWER_PWRREQ_OE;
+		mode &= ~TEGRA_POWER_EFFECT_LP0;
+	} else {
+		u32 boot_flag = readl(pmc + PMC_SCRATCH0);
+		pmc_32kwritel(boot_flag | 1, PMC_SCRATCH0);
+		pmc_32kwritel(wb0_restore, PMC_SCRATCH1);
+
+		set_power_timers(pdata->cpu_timer, pdata->cpu_off_timer);
+		mode |= TEGRA_POWER_CPU_PWRREQ_OE;
+		mode |= TEGRA_POWER_PWRREQ_OE;
+		mode |= TEGRA_POWER_EFFECT_LP0;
+
+		/* for platforms where the core & CPU power requests are
+		 * combined as a single request to the PMU, transition to
+		 * LP0 state by temporarily enabling both requests
+		 */
+		if (!pdata->separate_req) {
+			reg |= ((mode & TEGRA_POWER_PMC_MASK) <<
+				TEGRA_POWER_PMC_SHIFT);
+			pmc_32kwritel(reg, PMC_CTRL);
+			mode &= ~TEGRA_POWER_CPU_PWRREQ_OE;
+		}
+	}
+
+	tegra_setup_wakepads(do_lp0);
+	suspend_cpu_complex();
+	flush_cache_all();
+	outer_shutdown();
+
+	__cortex_a9_save(mode);
+	restore_cpu_complex();
+
+	writel(orig, evp_reset);
+	outer_restart();
+
+	if (!do_lp0) {
+		writel(on_timer, pmc + PMC_CPUPWRGOOD_TIMER);
+		writel(off_timer, pmc + PMC_CPUPWROFF_TIMER);
+		memcpy(iram_code, iram_save, iram_save_size);
+	} else {
+		/* for platforms where the core & CPU power requests are
+		 * combined as a single request to the PMU, transition out
+		 * of LP0 state by temporarily enabling both requests
+		 */
+		if (!pdata->separate_req) {
+			reg = readl(pmc + PMC_CTRL);
+			reg |= (TEGRA_POWER_CPU_PWRREQ_OE << TEGRA_POWER_PMC_SHIFT);
+			pmc_32kwritel(reg, PMC_CTRL);
+			reg &= ~(TEGRA_POWER_PWRREQ_OE << TEGRA_POWER_PMC_SHIFT);
+			writel(reg, pmc + PMC_CTRL);
+		}
+	}
+
+	wmb();
+}
+
 static int tegra_suspend_prepare_late(void)
 {
+	disable_irq(INT_SYS_STATS_MON);
 	return tegra_iovmm_suspend();
 }
 
 static void tegra_suspend_wake(void)
 {
 	tegra_iovmm_resume();
+	enable_irq(INT_SYS_STATS_MON);
 }
+
+extern void __init lp0_suspend_init(void);
 
 extern void tegra_pinmux_suspend(void);
 extern void tegra_irq_suspend(void);
@@ -261,16 +434,20 @@ static int tegra_suspend_enter(suspend_state_t state)
 	unsigned long flags;
 	u32 mc_data[2];
 	int irq;
+	bool do_lp0 = pdata->core_off && (wb0_restore != 0);
 
 	local_irq_save(flags);
-	tegra_irq_suspend();
-	tegra_dma_suspend();
-	tegra_pinmux_suspend();
-	tegra_gpio_suspend();
-	tegra_clk_suspend();
 
-	mc_data[0] = readl(mc + MC_SECURITY_START);
-	mc_data[1] = readl(mc + MC_SECURITY_SIZE);
+	if (do_lp0) {
+		tegra_irq_suspend();
+		tegra_dma_suspend();
+		tegra_pinmux_suspend();
+		tegra_gpio_suspend();
+		tegra_clk_suspend();
+
+		mc_data[0] = readl(mc + MC_SECURITY_START);
+		mc_data[1] = readl(mc + MC_SECURITY_SIZE);
+	}
 
 	for_each_irq_desc(irq, desc) {
 		if ((desc->status & IRQ_WAKEUP) &&
@@ -279,7 +456,10 @@ static int tegra_suspend_enter(suspend_state_t state)
 		}
 	}
 
-	tegra_suspend_lp2(0);
+	if (!pdata->dram_suspend || !iram_save)
+		tegra_suspend_lp2(0);
+	else
+		tegra_suspend_dram(do_lp0);
 
 	for_each_irq_desc(irq, desc) {
 		if ((desc->status & IRQ_WAKEUP) &&
@@ -288,14 +468,19 @@ static int tegra_suspend_enter(suspend_state_t state)
 		}
 	}
 
-	writel(mc_data[0], mc + MC_SECURITY_START);
-	writel(mc_data[1], mc + MC_SECURITY_SIZE);
+	/* Clear DPD sample */
+	writel(0x0, pmc + PMC_DPD_SAMPLE);
 
-	tegra_clk_resume();
-	tegra_gpio_resume();
-	tegra_pinmux_resume();
-	tegra_dma_resume();
-	tegra_irq_resume();
+	if (do_lp0) {
+		writel(mc_data[0], mc + MC_SECURITY_START);
+		writel(mc_data[1], mc + MC_SECURITY_SIZE);
+
+		tegra_clk_resume();
+		tegra_gpio_resume();
+		tegra_pinmux_resume();
+		tegra_dma_resume();
+		tegra_irq_resume();
+	}
 
 	local_irq_restore(flags);
 
@@ -310,37 +495,102 @@ static struct platform_suspend_ops tegra_suspend_ops = {
 };
 #endif
 
+static unsigned long lp0_vec_orig_start = 0;
+static unsigned long lp0_vec_orig_size = 0;
+
+static int __init tegra_lp0_vec_arg(char *options)
+{
+	char *p = options;
+
+	lp0_vec_orig_size = memparse(p, &p);
+	if (*p == '@')
+		lp0_vec_orig_start = memparse(p+1, &p);
+
+	return 0;
+}
+__setup("lp0_vec=", tegra_lp0_vec_arg);
+
 void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
 {
+	u32 reg, mode;
+
 	tegra_pclk = clk_get_sys(NULL, "pclk");
 	BUG_ON(!tegra_pclk);
 	pdata = plat;
+	(void)reg;
+	(void)mode;
 
-	if (pdata->core_off) {
-		u32 reg = 0, mode;
+	if (plat->core_off && lp0_vec_orig_size && lp0_vec_orig_start) {
+		unsigned char *reloc_lp0;
+		unsigned long tmp;
+		void __iomem *orig;
+		reloc_lp0 = kmalloc(lp0_vec_orig_size+L1_CACHE_BYTES-1,
+				    GFP_KERNEL);
+		WARN_ON(!reloc_lp0);
+		if (!reloc_lp0)
+			goto out;
 
-		writel(pdata->core_timer, pmc + PMC_COREPWRGOOD_TIMER);
-		writel(pdata->core_off_timer, pmc + PMC_COREPWROFF_TIMER);
-		reg = readl(pmc + PMC_CTRL);
-		mode = (reg >> TEGRA_POWER_PMC_SHIFT) & TEGRA_POWER_PMC_MASK;
-
-		mode &= ~TEGRA_POWER_SYSCLK_POLARITY;
-		mode &= ~TEGRA_POWER_PWRREQ_POLARITY;
-
-		if (!pdata->sysclkreq_high)
-			mode |= TEGRA_POWER_SYSCLK_POLARITY;
-		if (!pdata->corereq_high)
-			mode |= TEGRA_POWER_PWRREQ_POLARITY;
-
-		/* configure output inverters while the request is tristated */
-		reg |= (mode << TEGRA_POWER_PMC_SHIFT);
-		writel(reg, pmc + PMC_CTRL);
-		wmb();
-		udelay(2000); /* 32KHz domain delay */
-		reg |= (TEGRA_POWER_SYSCLK_OE << TEGRA_POWER_PMC_SHIFT);
-		writel(reg, pmc + PMC_CTRL);
+		orig = ioremap(lp0_vec_orig_start, lp0_vec_orig_size);
+		WARN_ON(!orig);
+		if (!orig) {
+			kfree(reloc_lp0);
+			goto out;
+		}
+		tmp = (unsigned long) reloc_lp0;
+		tmp = (tmp + L1_CACHE_BYTES - 1) & ~(L1_CACHE_BYTES-1);
+		reloc_lp0 = (unsigned char *)tmp;
+		memcpy(reloc_lp0, orig, lp0_vec_orig_size);
+		iounmap(orig);
+		wb0_restore = virt_to_phys(reloc_lp0);
 	}
+out:
+
 #ifdef CONFIG_PM
+	iram_save_size = (unsigned long)__tegra_iram_end;
+	iram_save_size -= (unsigned long)__tegra_lp1_reset;
+
+	iram_save = kmalloc(iram_save_size, GFP_KERNEL);
+	if (!iram_save) {
+		pr_err("%s: unable to allocate memory for SDRAM self-refresh "
+		       "LP0/LP1 unavailable\n", __func__);
+	}
+	/* CPU reset vector for LP0 and LP1 */
+	writel(virt_to_phys(tegra_lp2_startup), pmc + PMC_SCRATCH41);
+
+	/* Always enable CPU power request; just normal polarity is supported */
+	reg = readl(pmc + PMC_CTRL);
+	BUG_ON(reg & TEGRA_POWER_CPU_PWRREQ_POLARITY);
+	reg |= (TEGRA_POWER_CPU_PWRREQ_OE << TEGRA_POWER_PMC_SHIFT);
+	pmc_32kwritel(reg, PMC_CTRL);
+
+	/* Configure core power request and system clock control if LP0
+	   is supported */
+	writel(pdata->core_timer, pmc + PMC_COREPWRGOOD_TIMER);
+	writel(pdata->core_off_timer, pmc + PMC_COREPWROFF_TIMER);
+	reg = readl(pmc + PMC_CTRL);
+	mode = (reg >> TEGRA_POWER_PMC_SHIFT) & TEGRA_POWER_PMC_MASK;
+
+	mode &= ~TEGRA_POWER_SYSCLK_POLARITY;
+	mode &= ~TEGRA_POWER_PWRREQ_POLARITY;
+
+	if (!pdata->sysclkreq_high)
+		mode |= TEGRA_POWER_SYSCLK_POLARITY;
+	if (!pdata->corereq_high)
+		mode |= TEGRA_POWER_PWRREQ_POLARITY;
+
+	/* configure output inverters while the request is tristated */
+	reg |= (mode << TEGRA_POWER_PMC_SHIFT);
+	pmc_32kwritel(reg, PMC_CTRL);
+
+	/* now enable requests */
+	reg |= (TEGRA_POWER_SYSCLK_OE << TEGRA_POWER_PMC_SHIFT);
+	if (pdata->separate_req)
+		reg |= (TEGRA_POWER_PWRREQ_OE << TEGRA_POWER_PMC_SHIFT);
+	writel(reg, pmc + PMC_CTRL);
+
+	if (pdata->core_off)
+		lp0_suspend_init();
+
 	suspend_set_ops(&tegra_suspend_ops);
 #endif
 }
