@@ -96,6 +96,7 @@ static char *tegra_mux_names[TEGRA_MAX_MUX] = {
 	[TEGRA_MUX_VI] = "VI",
 	[TEGRA_MUX_VI_SENSOR_CLK] = "VI_SENSOR_CLK",
 	[TEGRA_MUX_XIO] = "XIO",
+	[TEGRA_MUX_SAFE] = "<safe>",
 };
 
 static const char *tegra_drive_names[TEGRA_MAX_DRIVE] = {
@@ -196,6 +197,9 @@ static int tegra_pinmux_set_func(const struct tegra_pingroup_config *config)
 
 	if (func < 0)
 		return -ERANGE;
+
+	if (func == TEGRA_MUX_SAFE)
+		func = pingroups[pg].func_safe;
 
 	if (func & TEGRA_MUX_RSVD) {
 		mux = func & 0x3;

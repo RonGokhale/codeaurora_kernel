@@ -90,6 +90,7 @@ enum tegra_mux_func {
 	TEGRA_MUX_VI,
 	TEGRA_MUX_VI_SENSOR_CLK,
 	TEGRA_MUX_XIO,
+	TEGRA_MUX_SAFE,
 	TEGRA_MAX_MUX,
 };
 
