@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -43,9 +43,9 @@ s32 register_audpp_cb(void);
 s32 register_audpreproc_cb(void);
 s32 acdb_calibrate_audpp(void);
 s32 acdb_calibrate_audpreproc(void);
-void acdb_fill_audpp_iir(void);
-void acdb_fill_audpp_mbadrc(void);
-void acdb_fill_audpreproc_agc(void);
-void acdb_fill_audpreproc_iir(void);
+s32 acdb_fill_audpp_iir(void);
+s32 acdb_fill_audpp_mbadrc(void);
+s32 acdb_fill_audpreproc_agc(void);
+s32 acdb_fill_audpreproc_iir(void);
 
 #endif
