@@ -1,5 +1,5 @@
 /*
- * arch/arm/mach-tegra/legacy_irq.h
+ * arch/arm/mach-tegra/include/mach/legacy_irq.h
  *
  * Copyright (C) 2010 Google, Inc.
  * Author: Colin Cross <ccross@android.com>

@@ -27,9 +27,9 @@
 
 #include <mach/iomap.h>
 #include <mach/fiq.h>
+#include <mach/legacy_irq.h>
 
 #include "board.h"
-#include "legacy_irq.h"
 
 void tegra_fiq_enable(int irq)
 {

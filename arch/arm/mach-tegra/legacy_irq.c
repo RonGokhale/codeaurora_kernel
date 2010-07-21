@@ -18,8 +18,7 @@
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <mach/iomap.h>
-
-#include "legacy_irq.h"
+#include <mach/legacy_irq.h>
 
 #define ICTLR_CPU_IER		0x20
 #define ICTLR_CPU_IER_SET	0x24
