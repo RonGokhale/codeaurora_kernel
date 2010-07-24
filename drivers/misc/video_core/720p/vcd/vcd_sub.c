@@ -296,8 +296,8 @@ u32 vcd_get_frame_channel_in_loop(
 			VCD_MSG_FATAL("\n%s: All transactions are busy;"
 				"Couldnt find free one\n", __func__);
 			++p_dev_ctxt->n_ddl_frame_ch_interim;
-		}
-
+		} else
+			(*pp_transc)->e_type = VCD_CMD_CODE_FRAME;
 	}
 
 	return b_result;
@@ -887,6 +887,7 @@ void vcd_flush_output_buffers(struct vcd_clnt_ctxt_type_t *p_cctxt)
 		(void)ddl_set_property(p_cctxt->ddl_handle, &prop_hdr,
 					   &n_count);
 	}
+	vcd_release_all_clnt_frm_transc(p_cctxt);
 }
 
 u32 vcd_flush_buffers(struct vcd_clnt_ctxt_type_t *p_cctxt, u32 n_mode)
@@ -937,18 +938,10 @@ u32 vcd_flush_buffers(struct vcd_clnt_ctxt_type_t *p_cctxt, u32 n_mode)
 	}
 	VCD_FAILED_RETURN(rc, "Failed: sched_flush_client_buffer");
 
-	if (p_cctxt->status.n_frame_submitted > 0) {
-
+	if (p_cctxt->status.n_frame_submitted > 0)
 		p_cctxt->status.n_flush_mode |= n_mode;
-
-	} else {
-
-		if (n_mode & VCD_FLUSH_OUTPUT) {
-			vcd_flush_output_buffers(p_cctxt);
-			vcd_release_all_clnt_frm_transc(p_cctxt);
-		}
-
-	}
+	else if (n_mode & VCD_FLUSH_OUTPUT)
+		vcd_flush_output_buffers(p_cctxt);
 
 	return VCD_S_SUCCESS;
 }
@@ -2854,31 +2847,16 @@ void vcd_release_all_clnt_frm_transc(struct vcd_clnt_ctxt_type_t *p_cctxt)
 
 	for (i = 0; i < p_dev_ctxt->n_trans_tbl_size; i++) {
 		if (p_dev_ctxt->a_trans_tbl[i].b_in_use &&
-			p_cctxt == p_dev_ctxt->a_trans_tbl[i].p_cctxt &&
-			p_dev_ctxt->a_trans_tbl[i].
-			e_type == VCD_CMD_CODE_FRAME) {
-			vcd_release_trans_tbl_entry(&p_dev_ctxt->
+			p_cctxt == p_dev_ctxt->a_trans_tbl[i].p_cctxt) {
+			if (p_dev_ctxt->a_trans_tbl[i].
+				e_type == VCD_CMD_CODE_FRAME ||
+				p_dev_ctxt->a_trans_tbl[i].
+				e_type == VCD_CMD_NONE) {
+				vcd_release_trans_tbl_entry(&p_dev_ctxt->
 							a_trans_tbl[i]);
-		}
-	}
-}
-
-void vcd_release_all_clnt_def_frm_transc(struct vcd_clnt_ctxt_type_t *p_cctxt)
-{
-		struct vcd_dev_ctxt_type *p_dev_ctxt = p_cctxt->p_dev_ctxt;
-		u8 i;
-
-		VCD_MSG_LOW("vcd_release_all_clnt_def_frm_transc:");
-
-		for (i = 0; i < p_dev_ctxt->n_trans_tbl_size; i++) {
-			if (p_dev_ctxt->a_trans_tbl[i].b_in_use &&
-				p_cctxt == p_dev_ctxt->a_trans_tbl[i].p_cctxt
-				&& p_dev_ctxt->a_trans_tbl[i].e_type ==
-				VCD_CMD_NONE) {
-					vcd_release_trans_tbl_entry(
-						&p_dev_ctxt->a_trans_tbl[i]);
 			}
 		}
+	}
 }
 
 void vcd_release_all_clnt_transc(struct vcd_clnt_ctxt_type_t *p_cctxt)
