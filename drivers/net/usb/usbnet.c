@@ -1170,10 +1170,11 @@ static void usbnet_bh (unsigned long param)
 		}
 
 	// or are we maybe short a few urbs?
-	} else if (netif_running (dev->net) &&
-		   netif_device_present (dev->net) &&
-		   !timer_pending (&dev->delay) &&
-		   !test_bit (EVENT_RX_HALT, &dev->flags)) {
+	} else if (netif_running (dev->net)
+			&& netif_device_present (dev->net)
+			&& dev->udev->can_submit
+			&& !timer_pending (&dev->delay)
+			&& !test_bit (EVENT_RX_HALT, &dev->flags)) {
 		int	temp = dev->rxq.qlen;
 		int	qlen = RX_QLEN (dev);
 
