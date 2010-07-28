@@ -224,8 +224,8 @@ static int mmc_read_ext_csd(struct mmc_card *card)
 			ext_csd[EXT_CSD_SEC_CNT + 3] << 24;
 		if (card->ext_csd.sectors) {
 			unsigned boot_sectors;
-			boot_sectors = ext_csd[EXT_CSD_BOOT_SIZE_MULTI];
-			boot_sectors *= SZ_256K / 512;
+			/* size is in 256K chunks, i.e. 512 sectors each */
+			boot_sectors = ext_csd[EXT_CSD_BOOT_SIZE_MULTI] * 512;
 			card->ext_csd.sectors -= boot_sectors;
 			mmc_card_set_blockaddr(card);
 		}
