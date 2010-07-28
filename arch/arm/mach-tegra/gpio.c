@@ -260,10 +260,10 @@ void tegra_gpio_resume(void)
 
 	local_irq_save(flags);
 
-	for (b=0; b<ARRAY_SIZE(tegra_gpio_banks); b++) {
+	for (b = 0; b < ARRAY_SIZE(tegra_gpio_banks); b++) {
 		struct tegra_gpio_bank *bank = &tegra_gpio_banks[b];
 
-		for (p=0; p<ARRAY_SIZE(bank->oe); p++) {
+		for (p = 0; p < ARRAY_SIZE(bank->oe); p++) {
 			unsigned int gpio = (b<<5) | (p<<3);
 			__raw_writel(bank->cnf[p], GPIO_CNF(gpio));
 			__raw_writel(bank->out[p], GPIO_OUT(gpio));
@@ -271,14 +271,14 @@ void tegra_gpio_resume(void)
 			__raw_writel(bank->int_lvl[p], GPIO_INT_LVL(gpio));
 			__raw_writel(bank->int_enb[p], GPIO_INT_ENB(gpio));
 		}
-
 	}
 
 	local_irq_restore(flags);
 
-	for (i=INT_GPIO_BASE; i<(INT_GPIO_BASE+ARCH_NR_GPIOS); i++) {
+	for (i = INT_GPIO_BASE; i < (INT_GPIO_BASE + ARCH_NR_GPIOS); i++) {
 		struct irq_desc *desc = irq_to_desc(i);
-		if (!desc || (desc->status & IRQ_WAKEUP)) continue;
+		if (!desc || (desc->status & IRQ_WAKEUP))
+			continue;
 		enable_irq(i);
 	}
 }
@@ -288,23 +288,23 @@ void tegra_gpio_suspend(void)
 	unsigned long flags;
 	int b, p, i;
 
-
-	for (i=INT_GPIO_BASE; i<(INT_GPIO_BASE+ARCH_NR_GPIOS); i++) {
+	for (i = INT_GPIO_BASE; i < (INT_GPIO_BASE + ARCH_NR_GPIOS); i++) {
 		struct irq_desc *desc = irq_to_desc(i);
-		if (!desc) continue;
+		if (!desc)
+			continue;
 		if (desc->status & IRQ_WAKEUP) {
 			int gpio = i - INT_GPIO_BASE;
 			pr_debug("gpio %d.%d is wakeup\n", gpio/8, gpio&7);
 			continue;
-                }
+		}
 		disable_irq(i);
 	}
 
 	local_irq_save(flags);
-	for (b=0; b<ARRAY_SIZE(tegra_gpio_banks); b++) {
+	for (b = 0; b < ARRAY_SIZE(tegra_gpio_banks); b++) {
 		struct tegra_gpio_bank *bank = &tegra_gpio_banks[b];
 
-		for (p=0; p<ARRAY_SIZE(bank->oe); p++) {
+		for (p = 0; p < ARRAY_SIZE(bank->oe); p++) {
 			unsigned int gpio = (b<<5) | (p<<3);
 			bank->cnf[p] = __raw_readl(GPIO_CNF(gpio));
 			bank->out[p] = __raw_readl(GPIO_OUT(gpio));
@@ -312,7 +312,6 @@ void tegra_gpio_suspend(void)
 			bank->int_enb[p] = __raw_readl(GPIO_INT_ENB(gpio));
 			bank->int_lvl[p] = __raw_readl(GPIO_INT_LVL(gpio));
 		}
-
 	}
 	local_irq_restore(flags);
 }
@@ -394,15 +393,16 @@ static int dbg_gpio_show(struct seq_file *s, void *unused)
 	for (i = 0; i < 7; i++) {
 		for (j = 0; j < 4; j++) {
 			int gpio = tegra_gpio_compose(i, j, 0);
-			seq_printf(s, "%d:%d %02x %02x %02x %02x %02x %02x %06x\n",
-			       i, j,
-			       __raw_readl(GPIO_CNF(gpio)),
-			       __raw_readl(GPIO_OE(gpio)),
-			       __raw_readl(GPIO_OUT(gpio)),
-			       __raw_readl(GPIO_IN(gpio)),
-			       __raw_readl(GPIO_INT_STA(gpio)),
-			       __raw_readl(GPIO_INT_ENB(gpio)),
-			       __raw_readl(GPIO_INT_LVL(gpio)));
+			seq_printf(s,
+				"%d:%d %02x %02x %02x %02x %02x %02x %06x\n",
+				i, j,
+				__raw_readl(GPIO_CNF(gpio)),
+				__raw_readl(GPIO_OE(gpio)),
+				__raw_readl(GPIO_OUT(gpio)),
+				__raw_readl(GPIO_IN(gpio)),
+				__raw_readl(GPIO_INT_STA(gpio)),
+				__raw_readl(GPIO_INT_ENB(gpio)),
+				__raw_readl(GPIO_INT_LVL(gpio)));
 		}
 	}
 	return 0;
