@@ -4280,8 +4280,10 @@ msm_i2c_gpio_config(int adap_id, int config_type)
 		msm_i2c_table = &msm_i2c_gpios_io[adap_id*2];
 	msm_gpios_enable(msm_i2c_table, 2);
 }
-
+/*This needs to be enabled only for OEMS*/
+#ifndef CONFIG_QUP_EXCLUSIVE_TO_CAMERA
 static struct vreg *qup_vreg;
+#endif
 static void
 qup_i2c_gpio_config(int adap_id, int config_type)
 {
@@ -4297,6 +4299,8 @@ qup_i2c_gpio_config(int adap_id, int config_type)
 	rc = msm_gpios_enable(qup_i2c_table, 2);
 	if (rc < 0)
 		printk(KERN_ERR "QUP GPIO enable failed: %d\n", rc);
+	/*This needs to be enabled only for OEMS*/
+#ifndef CONFIG_QUP_EXCLUSIVE_TO_CAMERA
 	if (qup_vreg) {
 		int rc = vreg_set_level(qup_vreg, 1800);
 		if (rc) {
@@ -4309,6 +4313,7 @@ qup_i2c_gpio_config(int adap_id, int config_type)
 			__func__, rc);
 		}
 	}
+#endif
 }
 
 static struct msm_i2c_platform_data msm_i2c_pdata = {
@@ -4351,11 +4356,14 @@ static void __init qup_device_i2c_init(void)
 		pr_err("failed to request I2C gpios\n");
 
 	qup_device_i2c.dev.platform_data = &qup_i2c_pdata;
+	/*This needs to be enabled only for OEMS*/
+#ifndef CONFIG_QUP_EXCLUSIVE_TO_CAMERA
 	qup_vreg = vreg_get(NULL, "lvsw1");
 	if (IS_ERR(qup_vreg)) {
 		printk(KERN_ERR "%s: vreg get failed (%ld)\n",
 			__func__, PTR_ERR(qup_vreg));
 	}
+#endif
 }
 
 #ifdef CONFIG_I2C_SSBI
