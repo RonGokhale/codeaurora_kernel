@@ -574,7 +574,7 @@ static int clock_tree_show(struct seq_file *s, void *data)
 {
 	struct clk *c;
 	unsigned long flags;
-	seq_printf(s, "   clock                          state  ref div      rate      \n");
+	seq_printf(s, "   clock                          state  ref div      rate\n");
 	seq_printf(s, "--------------------------------------------------------------\n");
 	spin_lock_irqsave(&clock_lock, flags);
 	list_for_each_entry(c, &clocks, node)
