@@ -49,4 +49,5 @@ static inline int irq_to_gpio(unsigned int irq)
 
 void tegra_gpio_enable(int gpio);
 void tegra_gpio_disable(int gpio);
+
 #endif
