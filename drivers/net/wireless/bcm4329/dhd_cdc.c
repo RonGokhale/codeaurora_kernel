@@ -630,6 +630,7 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	uint32					pattern_size;
 	char buf[256];
 	uint filter_mode = 1;
+	char mac_buf[16];
 #ifdef SET_RANDOM_MAC_SOFTAP
 	uint rand_mac;
 #endif
@@ -758,11 +759,16 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	pkt_filter.u.pattern.offset = htod32(0);
 
 	/* Parse pattern filter mask. */
-	mask_size =	htod32(wl_pattern_atoh("0xff",
+	mask_size =	htod32(wl_pattern_atoh("0xffffffffffff",
 		(char *) pkt_filterp->u.pattern.mask_and_pattern));
 
 	/* Parse pattern filter pattern. */
-	pattern_size = htod32(wl_pattern_atoh("0x00",
+	sprintf( mac_buf, "0x%02x%02x%02x%02x%02x%02x",
+		dhd->mac.octet[0], dhd->mac.octet[1], dhd->mac.octet[2],
+		dhd->mac.octet[3], dhd->mac.octet[4], dhd->mac.octet[5]
+	);
+
+	pattern_size = htod32(wl_pattern_atoh(mac_buf,
 		(char *) &pkt_filterp->u.pattern.mask_and_pattern[mask_size]));
 
 	if (mask_size != pattern_size) {
