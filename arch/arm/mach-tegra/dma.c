@@ -20,8 +20,6 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-/*#define DEBUG 1*/
-
 #include <linux/io.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
@@ -548,8 +546,8 @@ static void handle_oneshot_dma(struct tegra_dma_channel *ch)
 
 	if (!list_empty(&ch->list)) {
 		req = list_entry(ch->list.next, typeof(*req), node);
-		/* the complete function we just called may have enqueued another
-		   req, in which case dma has already started */
+		/* the complete function we just called may have enqueued
+		   another req, in which case dma has already started */
 		if (req->status != TEGRA_DMA_REQ_INFLIGHT)
 			tegra_dma_update_hw(ch, req);
 	}
@@ -717,7 +715,7 @@ void tegra_dma_suspend(void)
 	*ctx++ = readl(addr + APB_DMA_CNTRL);
 	*ctx++ = readl(addr + APB_DMA_IRQ_MASK);
 
-	for (i=0; i<TEGRA_SYSTEM_DMA_CH_NR; i++) {
+	for (i = 0; i < TEGRA_SYSTEM_DMA_CH_NR; i++) {
 		addr = IO_ADDRESS(TEGRA_APB_DMA_CH0_BASE +
 				  TEGRA_APB_DMA_CH0_SIZE * i);
 
@@ -739,7 +737,7 @@ void tegra_dma_resume(void)
 	writel(*ctx++, addr + APB_DMA_CNTRL);
 	writel(*ctx++, addr + APB_DMA_IRQ_MASK);
 
-	for (i=0; i<TEGRA_SYSTEM_DMA_CH_NR; i++) {
+	for (i = 0; i < TEGRA_SYSTEM_DMA_CH_NR; i++) {
 		addr = IO_ADDRESS(TEGRA_APB_DMA_CH0_BASE +
 				  TEGRA_APB_DMA_CH0_SIZE * i);
 
