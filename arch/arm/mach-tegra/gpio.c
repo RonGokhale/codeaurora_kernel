@@ -81,11 +81,6 @@ static struct tegra_gpio_bank tegra_gpio_banks[] = {
 	{.bank = 6, .irq = INT_GPIO7},
 };
 
-int tegra_gpio_to_chained_irq(int gpio)
-{
-	return tegra_gpio_banks[GPIO_BANK(gpio)].irq;
-}
-
 static int tegra_gpio_compose(int bank, int port, int bit)
 {
 	return (bank << 5) | ((port & 0x3) << 3) | (bit & 0x7);
