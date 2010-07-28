@@ -1781,18 +1781,19 @@ void tegra_clk_suspend(void)
 
 	*ctx++ = clk_readl(OSC_CTRL) & OSC_CTRL_MASK;
 
-	for (off=PERIPH_CLK_SOURCE_I2S1; off<=PERIPH_CLK_SOURCE_OSC; off+=4) {
+	for (off = PERIPH_CLK_SOURCE_I2S1; off <= PERIPH_CLK_SOURCE_OSC;
+			off += 4) {
 		if (off == PERIPH_CLK_SOURCE_EMC)
 			continue;
 		*ctx++ = clk_readl(off);
 	}
 
 	off = RST_DEVICES;
-	for (i=0; i<RST_DEVICES_NUM; i++, off+=4)
+	for (i = 0; i < RST_DEVICES_NUM; i++, off += 4)
 		*ctx++ = clk_readl(off);
 
 	off = CLK_OUT_ENB;
-	for (i=0; i<CLK_OUT_ENB_NUM; i++, off+=4)
+	for (i = 0; i < CLK_OUT_ENB_NUM; i++, off += 4)
 		*ctx++ = clk_readl(off);
 
 	*ctx++ = clk_readl(MISC_CLK_ENB);
@@ -1815,7 +1816,8 @@ void tegra_clk_resume(void)
 	clk_writel(0x77f01bfful, CLK_OUT_ENB + 8);
 	wmb();
 
-	for (off=PERIPH_CLK_SOURCE_I2S1; off<=PERIPH_CLK_SOURCE_OSC; off+=4) {
+	for (off = PERIPH_CLK_SOURCE_I2S1; off <= PERIPH_CLK_SOURCE_OSC;
+			off += 4) {
 		if (off == PERIPH_CLK_SOURCE_EMC)
 			continue;
 		clk_writel(*ctx++, off);
@@ -1823,12 +1825,12 @@ void tegra_clk_resume(void)
 	wmb();
 
 	off = RST_DEVICES;
-	for (i=0; i<RST_DEVICES_NUM; i++, off+=4)
+	for (i = 0; i < RST_DEVICES_NUM; i++, off += 4)
 		clk_writel(*ctx++, off);
 	wmb();
 
 	off = CLK_OUT_ENB;
-	for (i=0; i<CLK_OUT_ENB_NUM; i++, off+=4)
+	for (i = 0; i < CLK_OUT_ENB_NUM; i++, off += 4)
 		clk_writel(*ctx++, off);
 	wmb();
 
