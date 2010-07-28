@@ -46,8 +46,8 @@
 #define ICTLR_COP_IER_CLR	0x38
 #define ICTLR_COP_IEP_CLASS	0x3c
 
-static void (*gic_mask_irq)(unsigned int irq) = NULL;
-static void (*gic_unmask_irq)(unsigned int irq) = NULL;
+static void (*gic_mask_irq)(unsigned int irq);
+static void (*gic_unmask_irq)(unsigned int irq);
 
 #define irq_to_ictlr(irq) (((irq)-32) >> 5)
 static void __iomem *tegra_ictlr_base = IO_ADDRESS(TEGRA_PRIMARY_ICTLR_BASE);
@@ -89,7 +89,7 @@ void __init tegra_init_irq(void)
 	struct irq_chip *gic;
 	unsigned int i;
 
-	for (i=0; i<PPI_NR; i++) {
+	for (i = 0; i < PPI_NR; i++) {
 		writel(~0, ictlr_to_virt(i) + ICTLR_CPU_IER_CLR);
 		writel(0, ictlr_to_virt(i) + ICTLR_CPU_IEP_CLASS);
 	}
@@ -105,7 +105,7 @@ void __init tegra_init_irq(void)
 	tegra_irq.set_affinity = gic->set_affinity;
 #endif
 
-	for (i=INT_PRI_BASE; i<INT_GPIO_BASE; i++) {
+	for (i = INT_PRI_BASE; i < INT_GPIO_BASE; i++) {
 		set_irq_chip(i, &tegra_irq);
 		set_irq_handler(i, handle_level_irq);
 		set_irq_flags(i, IRQF_VALID);
@@ -122,9 +122,10 @@ void tegra_irq_suspend(void)
 	unsigned long flags;
 	int i;
 
-	for (i=INT_PRI_BASE; i<INT_GPIO_BASE; i++) {
+	for (i = INT_PRI_BASE; i < INT_GPIO_BASE; i++) {
 		struct irq_desc *desc = irq_to_desc(i);
-		if (!desc) continue;
+		if (!desc)
+			continue;
 		if (desc->status & IRQ_WAKEUP) {
 			pr_debug("irq %d is wakeup\n", i);
 			continue;
@@ -133,7 +134,7 @@ void tegra_irq_suspend(void)
 	}
 
 	local_irq_save(flags);
-	for (i=0; i<PPI_NR; i++) {
+	for (i = 0; i < PPI_NR; i++) {
 		void __iomem *ictlr = ictlr_to_virt(i);
 		cpu_ier[i] = readl(ictlr + ICTLR_CPU_IER);
 		cpu_iep[i] = readl(ictlr + ICTLR_CPU_IEP_CLASS);
@@ -149,7 +150,7 @@ void tegra_irq_resume(void)
 	int i;
 
 	local_irq_save(flags);
-	for (i=0; i<PPI_NR; i++) {
+	for (i = 0; i < PPI_NR; i++) {
 		void __iomem *ictlr = ictlr_to_virt(i);
 		writel(cpu_iep[i], ictlr + ICTLR_CPU_IEP_CLASS);
 		writel(~0ul, ictlr + ICTLR_CPU_IER_CLR);
@@ -160,9 +161,10 @@ void tegra_irq_resume(void)
 	}
 	local_irq_restore(flags);
 
-	for (i=INT_PRI_BASE; i<INT_GPIO_BASE; i++) {
+	for (i = INT_PRI_BASE; i < INT_GPIO_BASE; i++) {
 		struct irq_desc *desc = irq_to_desc(i);
-		if (!desc || (desc->status & IRQ_WAKEUP)) continue;
+		if (!desc || (desc->status & IRQ_WAKEUP))
+			continue;
 		enable_irq(i);
 	}
 }
