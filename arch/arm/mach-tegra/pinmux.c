@@ -593,7 +593,7 @@ void tegra_pinmux_set_safe_pinmux_table(const struct tegra_pingroup_config *conf
 	for (i = 0; i < len; i++) {
 		int err;
 		c = config[i];
-		if (c.pingroup < 0 || c.pingroup>=TEGRA_MAX_PINGROUP) {
+		if (c.pingroup < 0 || c.pingroup >= TEGRA_MAX_PINGROUP) {
 			WARN_ON(1);
 			continue;
 		}
@@ -614,7 +614,7 @@ void tegra_pinmux_config_pinmux_table(const struct tegra_pingroup_config *config
 	for (i = 0; i < len; i++) {
 		int err;
 		if (config[i].pingroup < 0 ||
-		    config[i].pingroup>=TEGRA_MAX_PINGROUP) {
+		    config[i].pingroup >= TEGRA_MAX_PINGROUP) {
 			WARN_ON(1);
 			continue;
 		}

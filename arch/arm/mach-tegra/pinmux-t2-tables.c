@@ -51,8 +51,8 @@ const struct tegra_drive_pingroup_desc tegra_soc_drive_pingroups[TEGRA_MAX_DRIVE
 	DRIVE_PINGROUP(DBG,		0x894),
 	DRIVE_PINGROUP(LCD1,		0x898),
 	DRIVE_PINGROUP(LCD2,		0x89c),
-	DRIVE_PINGROUP(SDMMC2,	0x8a0),
-	DRIVE_PINGROUP(SDMMC3,	0x8a4),
+	DRIVE_PINGROUP(SDMMC2,		0x8a0),
+	DRIVE_PINGROUP(SDMMC3,		0x8a4),
 	DRIVE_PINGROUP(SPI,		0x8a8),
 	DRIVE_PINGROUP(UAA,		0x8ac),
 	DRIVE_PINGROUP(UAB,		0x8b0),
@@ -63,8 +63,8 @@ const struct tegra_drive_pingroup_desc tegra_soc_drive_pingroups[TEGRA_MAX_DRIVE
 	DRIVE_PINGROUP(XM2A,		0x8c4),
 	DRIVE_PINGROUP(XM2C,		0x8c8),
 	DRIVE_PINGROUP(XM2D,		0x8cc),
-	DRIVE_PINGROUP(XM2CLK,	0x8d0),
-	DRIVE_PINGROUP(MEMCOMP,	0x8d4),
+	DRIVE_PINGROUP(XM2CLK,		0x8d0),
+	DRIVE_PINGROUP(MEMCOMP,		0x8d4),
 };
 
 #define PINGROUP(pg_name, vdd, f0, f1, f2, f3, f_safe,		\
@@ -233,13 +233,13 @@ void tegra_pinmux_suspend(void)
 	unsigned int i;
 	u32 *ctx = pinmux_reg;
 
-	for (i=0; i<TRISTATE_REG_NUM; i++)
+	for (i = 0; i < TRISTATE_REG_NUM; i++)
 		*ctx++ = pg_readl(TRISTATE_REG_A + i*4);
 
-	for (i=0; i<PIN_MUX_CTL_REG_NUM; i++)
+	for (i = 0; i < PIN_MUX_CTL_REG_NUM; i++)
 		*ctx++ = pg_readl(PIN_MUX_CTL_REG_A + i*4);
 
-	for (i=0; i<PULLUPDOWN_REG_NUM; i++)
+	for (i = 0; i < PULLUPDOWN_REG_NUM; i++)
 		*ctx++ = pg_readl(PULLUPDOWN_REG_A + i*4);
 }
 
@@ -248,13 +248,13 @@ void tegra_pinmux_resume(void)
 	unsigned int i;
 	u32 *ctx = pinmux_reg;
 
-	for (i=0; i<PIN_MUX_CTL_REG_NUM; i++)
+	for (i = 0; i < PIN_MUX_CTL_REG_NUM; i++)
 		pg_writel(*ctx++, PIN_MUX_CTL_REG_A + i*4);
 
-	for (i=0; i<PULLUPDOWN_REG_NUM; i++)
+	for (i = 0; i < PULLUPDOWN_REG_NUM; i++)
 		pg_writel(*ctx++, PULLUPDOWN_REG_A + i*4);
 
-	for (i=0; i<TRISTATE_REG_NUM; i++)
+	for (i = 0; i < TRISTATE_REG_NUM; i++)
 		pg_writel(*ctx++, TRISTATE_REG_A + i*4);
 }
 #endif
