@@ -213,11 +213,7 @@ static int tegra_fb_release(struct fb_info *info, int user)
 
 static int tegra_fb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 {
-	if ((var->xres != info->var.xres) ||
-	    (var->yres != info->var.yres) ||
-	    (var->xres_virtual != info->var.xres_virtual) ||
-	    (var->yres_virtual != info->var.yres_virtual) ||
-	    (var->grayscale != info->var.grayscale))
+	if ((var->grayscale != info->var.grayscale))
 		return -EINVAL;
 	return 0;
 }
