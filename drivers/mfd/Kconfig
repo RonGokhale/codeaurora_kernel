@@ -482,6 +482,20 @@ config MFD_JANZ_CMODIO
 	  host many different types of MODULbus daughterboards, including
 	  CAN and GPIO controllers.
 
+config MFD_TPS6586X
+	tristate "TPS6586x Power Management chips"
+	depends on I2C
+	select MFD_CORE
+	help
+	  If you say yes here you get support for the TPS6586X series of
+	  Power Management chips.
+  	  This driver provides common support for accessing the device,
+	  additional drivers must be enabled in order to use the
+	  functionality of the device.
+
+	  This driver can also be built as a module.  If so, the module
+	  will be called tps6586x.
+
 endif # MFD_SUPPORT
 
 menu "Multimedia Capabilities Port drivers"
