@@ -349,6 +349,14 @@ static void tegra_suspend_dram(bool do_lp0)
 		u32 boot_flag = readl(pmc + PMC_SCRATCH0);
 		pmc_32kwritel(boot_flag | 1, PMC_SCRATCH0);
 		pmc_32kwritel(wb0_restore, PMC_SCRATCH1);
+
+		/*********** HACK **********
+		 * Until the AVP is running, write 0 for it's resume address
+		 * so it doesn't crash on resume.
+		 ***************************
+		 */
+		writel(0x0, pmc + PMC_SCRATCH39);
+
 		mode |= TEGRA_POWER_CPU_PWRREQ_OE;
 		mode |= TEGRA_POWER_PWRREQ_OE;
 		mode |= TEGRA_POWER_EFFECT_LP0;
