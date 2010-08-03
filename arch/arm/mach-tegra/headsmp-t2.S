@@ -58,6 +58,7 @@ ENTRY(tegra_secondary_startup)
 	msr	cpsr_fsxc, #0xd3
 	bl	__invalidate_cpu_state
 	cpu_id	r0
+	enable_coresite r1
 	poke_ev	r0, r1
 	b	secondary_startup
 ENDPROC(tegra_secondary_startup)
@@ -105,16 +106,10 @@ __enable_coresite_access:
 	wait_for_us r3, r2, r4
 	add	r3, r3, #2
 	bic	r1, r1, #(1<<9)
-	mov32	r5, 0xC5ACCE55
-	mov32	r6, (TEGRA_CSITE_BASE + 0x10fb0)	@ CPUDBG0_LAR
-	mov	r7, #CONFIG_NR_CPUS
 	wait_until r3, r2, r4
 	str	r1, [r0]
-access:	str	r5, [r6]
-	add	r6, r6, #0x2000
-	subs	r7, r7, #1
-	bhi	access
-	mov	pc, lr
+	enable_coresite r3
+	bx	lr
 ENDPROC(__enable_coresite_access)
 /*
  *	tegra_lp2_startup
@@ -175,6 +170,7 @@ __tegra_lp2_data:
 ENTRY(tegra_hotplug_startup)
 	setmode	PSR_F_BIT | PSR_I_BIT | SVC_MODE, r9
 	bl	__invalidate_cpu_state
+	enable_coresite r1
 
 	/* most of the below is a retread of what happens in __v7_setup and
 	 * secondary_startup, to get the MMU re-enabled and to branch
