@@ -327,16 +327,16 @@ static void tegra_suspend_dram(bool do_lp0)
 		do_div(temp, 1000000ul);
 		cpu_off_timer_32k = temp;
 	}
+	on_timer = readl(pmc + PMC_CPUPWRGOOD_TIMER);
+	writel(cpu_timer_32k, pmc + PMC_CPUPWRGOOD_TIMER);
+	off_timer = readl(pmc + PMC_CPUPWROFF_TIMER);
+	writel(cpu_off_timer_32k, pmc + PMC_CPUPWROFF_TIMER);
 
 	reg = readl(pmc + PMC_CTRL);
 	mode |= ((reg >> TEGRA_POWER_PMC_SHIFT) & TEGRA_POWER_PMC_MASK);
 
 	if (!do_lp0) {
 		writel(TEGRA_IRAM_CODE_AREA, evp_reset);
-		on_timer = readl(pmc + PMC_CPUPWRGOOD_TIMER);
-		writel(cpu_timer_32k, pmc + PMC_CPUPWRGOOD_TIMER);
-		off_timer = readl(pmc + PMC_CPUPWROFF_TIMER);
-		writel(cpu_off_timer_32k, pmc + PMC_CPUPWROFF_TIMER);
 
 		mode |= TEGRA_POWER_CPU_PWRREQ_OE;
 		if (pdata->separate_req)
@@ -348,8 +348,6 @@ static void tegra_suspend_dram(bool do_lp0)
 		u32 boot_flag = readl(pmc + PMC_SCRATCH0);
 		pmc_32kwritel(boot_flag | 1, PMC_SCRATCH0);
 		pmc_32kwritel(wb0_restore, PMC_SCRATCH1);
-
-		set_power_timers(pdata->cpu_timer, pdata->cpu_off_timer);
 		mode |= TEGRA_POWER_CPU_PWRREQ_OE;
 		mode |= TEGRA_POWER_PWRREQ_OE;
 		mode |= TEGRA_POWER_EFFECT_LP0;
@@ -376,10 +374,10 @@ static void tegra_suspend_dram(bool do_lp0)
 
 	writel(orig, evp_reset);
 	outer_restart();
+	writel(on_timer, pmc + PMC_CPUPWRGOOD_TIMER);
+	writel(off_timer, pmc + PMC_CPUPWROFF_TIMER);
 
 	if (!do_lp0) {
-		writel(on_timer, pmc + PMC_CPUPWRGOOD_TIMER);
-		writel(off_timer, pmc + PMC_CPUPWROFF_TIMER);
 		memcpy(iram_code, iram_save, iram_save_size);
 	} else {
 		/* for platforms where the core & CPU power requests are
