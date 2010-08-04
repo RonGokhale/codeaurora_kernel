@@ -1376,6 +1376,18 @@ static inline int skb_network_offset(const struct sk_buff *skb)
 	return skb_network_header(skb) - skb->data;
 }
 
+#ifdef CONFIG_ARCH_TEGRA
+
+/*
+ * Unaligned DMA causes tegra dma to place data on 4-byte boundary after
+ * expected address. Call to skb_reserve(skb, NET_IP_ALIGN) was causing skb
+ * buffers in usbnet.c to become unaligned.
+ */
+#define NET_IP_ALIGN   0
+#define NET_SKB_PAD    L1_CACHE_BYTES
+
+#endif
+
 /*
  * CPUs often take a performance hit when accessing unaligned memory
  * locations. The actual performance hit varies, it can be small if the
