@@ -40,7 +40,7 @@
 #define USB_LINK_RESET_TIMEOUT	(msecs_to_jiffies(10))
 #define DRIVER_NAME	"msm_otg"
 
-static void otg_reset(struct msm_otg *dev);
+static void otg_reset(struct otg_transceiver *xceiv);
 static void msm_otg_set_vbus_state(int online);
 
 struct msm_otg *the_msm_otg;
@@ -206,7 +206,7 @@ static int msm_otg_suspend(struct msm_otg *dev)
 
 	/* Don't reset if mini-A cable is connected */
 	if (!is_host())
-		otg_reset(dev);
+		otg_reset(&dev->otg);
 
 	/* In case of fast plug-in and plug-out inside the otg_reset() the
 	 * servicing of BSV is missed (in the window of after phy and link
@@ -234,7 +234,7 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	while (!is_phy_clk_disabled()) {
 		if (time_after(jiffies, timeout)) {
 			pr_err("%s: Unable to suspend phy\n", __func__);
-			otg_reset(dev);
+			otg_reset(&dev->otg);
 			goto out;
 		}
 		msleep(1);
@@ -334,7 +334,7 @@ static int msm_otg_set_suspend(struct otg_transceiver *xceiv, int suspend)
 		while (is_phy_clk_disabled()) {
 			if (time_after(jiffies, timeout)) {
 				pr_err("%s: Unable to wakeup phy\n", __func__);
-				otg_reset(dev);
+				otg_reset(&dev->otg);
 				break;
 			}
 			udelay(10);
@@ -645,8 +645,9 @@ static int msm_otg_phy_reset(struct msm_otg *dev)
 	return 0;
 }
 
-static void otg_reset(struct msm_otg *dev)
+static void otg_reset(struct otg_transceiver *xceiv)
 {
+	struct msm_otg *dev = container_of(xceiv, struct msm_otg, otg);
 	unsigned long timeout;
 
 	clk_enable(dev->hs_clk);
@@ -868,7 +869,7 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 		}
 	}
 
-	otg_reset(dev);
+	otg_reset(&dev->otg);
 
 	ret = request_irq(dev->irq, msm_otg_irq, IRQF_SHARED,
 					"msm_otg", dev);
@@ -887,6 +888,7 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 	dev->otg.set_host = msm_otg_set_host;
 	dev->otg.set_suspend = msm_otg_set_suspend;
 	dev->set_clk = msm_otg_set_clk;
+	dev->reset = otg_reset;
 	if (otg_set_transceiver(&dev->otg)) {
 		WARN_ON(1);
 		goto free_otg_irq;
