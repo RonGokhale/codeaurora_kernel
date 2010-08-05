@@ -1772,7 +1772,7 @@ void __init tegra2_init_clocks(void)
 
 #ifdef CONFIG_PM
 static u32 clk_rst_suspend[RST_DEVICES_NUM + CLK_OUT_ENB_NUM +
-			   PERIPH_CLK_SOURCE_NUM + 3];
+			   PERIPH_CLK_SOURCE_NUM + 9];
 
 void tegra_clk_suspend(void)
 {
@@ -1780,6 +1780,12 @@ void tegra_clk_suspend(void)
 	u32 *ctx = clk_rst_suspend;
 
 	*ctx++ = clk_readl(OSC_CTRL) & OSC_CTRL_MASK;
+	*ctx++ = clk_readl(tegra_pll_p.reg + PLL_BASE);
+	*ctx++ = clk_readl(tegra_pll_p.reg + PLL_MISC(&tegra_pll_p));
+	*ctx++ = clk_readl(tegra_pll_c.reg + PLL_BASE);
+	*ctx++ = clk_readl(tegra_pll_c.reg + PLL_MISC(&tegra_pll_c));
+	*ctx++ = clk_readl(tegra_pll_a.reg + PLL_BASE);
+	*ctx++ = clk_readl(tegra_pll_a.reg + PLL_MISC(&tegra_pll_a));
 
 	for (off = PERIPH_CLK_SOURCE_I2S1; off <= PERIPH_CLK_SOURCE_OSC;
 			off += 4) {
@@ -1809,6 +1815,14 @@ void tegra_clk_resume(void)
 	val = clk_readl(OSC_CTRL) & ~OSC_CTRL_MASK;
 	val |= *ctx++;
 	clk_writel(val, OSC_CTRL);
+
+	clk_writel(*ctx++, tegra_pll_p.reg + PLL_BASE);
+	clk_writel(*ctx++, tegra_pll_p.reg + PLL_MISC(&tegra_pll_p));
+	clk_writel(*ctx++, tegra_pll_c.reg + PLL_BASE);
+	clk_writel(*ctx++, tegra_pll_c.reg + PLL_MISC(&tegra_pll_c));
+	clk_writel(*ctx++, tegra_pll_a.reg + PLL_BASE);
+	clk_writel(*ctx++, tegra_pll_a.reg + PLL_MISC(&tegra_pll_a));
+	udelay(300);
 
 	/* enable all clocks before configuring clock sources */
 	clk_writel(0xbffffff9ul, CLK_OUT_ENB);
