@@ -410,7 +410,7 @@ static void tegra_suspend_wake(void)
 }
 
 #ifdef CONFIG_DEBUG_LL
-static u32 uart_state[5];
+static u8 uart_state[5];
 
 static int tegra_debug_uart_suspend(void)
 {
@@ -422,23 +422,23 @@ static int tegra_debug_uart_suspend(void)
 
 	uart = IO_ADDRESS(TEGRA_DEBUG_UART_BASE);
 
-	lcr = readl(uart + UART_LCR * 4);
+	lcr = readb(uart + UART_LCR * 4);
 
 	uart_state[0] = lcr;
-	uart_state[1] = readl(uart + UART_MCR * 4);
+	uart_state[1] = readb(uart + UART_MCR * 4);
 
 	/* DLAB = 0 */
-	writel(lcr & ~UART_LCR_DLAB, uart + UART_LCR * 4);
+	writeb(lcr & ~UART_LCR_DLAB, uart + UART_LCR * 4);
 
-	uart_state[2] = readl(uart + UART_IER * 4);
+	uart_state[2] = readb(uart + UART_IER * 4);
 
 	/* DLAB = 1 */
-	writel(lcr | UART_LCR_DLAB, uart + UART_LCR * 4);
+	writeb(lcr | UART_LCR_DLAB, uart + UART_LCR * 4);
 
-	uart_state[3] = readl(uart + UART_DLL * 4);
-	uart_state[4] = readl(uart + UART_DLM * 4);
+	uart_state[3] = readb(uart + UART_DLL * 4);
+	uart_state[4] = readb(uart + UART_DLM * 4);
 
-	writel(lcr, uart + UART_LCR * 4);
+	writeb(lcr, uart + UART_LCR * 4);
 
 	return 0;
 }
@@ -455,20 +455,20 @@ static void tegra_debug_uart_resume(void)
 
 	lcr = uart_state[0];
 
-	writel(uart_state[1], uart + UART_MCR * 4);
+	writeb(uart_state[1], uart + UART_MCR * 4);
 
 	/* DLAB = 0 */
-	writel(lcr & ~UART_LCR_DLAB, uart + UART_LCR * 4);
+	writeb(lcr & ~UART_LCR_DLAB, uart + UART_LCR * 4);
 
-	writel(uart_state[2], uart + UART_IER * 4);
+	writeb(uart_state[2], uart + UART_IER * 4);
 
 	/* DLAB = 1 */
-	writel(lcr | UART_LCR_DLAB, uart + UART_LCR * 4);
+	writeb(lcr | UART_LCR_DLAB, uart + UART_LCR * 4);
 
-	writel(uart_state[3], uart + UART_DLL * 4);
-	writel(uart_state[4], uart + UART_DLM * 4);
+	writeb(uart_state[3], uart + UART_DLL * 4);
+	writeb(uart_state[4], uart + UART_DLM * 4);
 
-	writel(lcr, uart + UART_LCR * 4);
+	writeb(lcr, uart + UART_LCR * 4);
 }
 #else
 static int tegra_debug_uart_suspend(void)
