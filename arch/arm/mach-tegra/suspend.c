@@ -32,6 +32,7 @@
 #include <linux/delay.h>
 #include <linux/suspend.h>
 #include <linux/slab.h>
+#include <linux/serial_reg.h>
 
 #include <asm/cacheflush.h>
 #include <asm/hardware/gic.h>
@@ -408,6 +409,74 @@ static void tegra_suspend_wake(void)
 	enable_irq(INT_SYS_STATS_MON);
 }
 
+#ifdef CONFIG_DEBUG_LL
+static u32 uart_state[5];
+
+static int tegra_debug_uart_suspend(void)
+{
+	void __iomem *uart;
+
+	if (TEGRA_DEBUG_UART_BASE == NULL)
+		return 0;
+
+	uart = IO_ADDRESS(TEGRA_DEBUG_UART_BASE);
+
+	u32 lcr = readl(uart + UART_LCR * 4);
+
+	uart_state[0] = lcr;
+	uart_state[1] = readl(uart + UART_MCR * 4);
+
+	/* DLAB = 0 */
+	writel(lcr & ~UART_LCR_DLAB, uart + UART_LCR * 4);
+
+	uart_state[2] = readl(uart + UART_IER * 4);
+
+	/* DLAB = 1 */
+	writel(lcr | UART_LCR_DLAB, uart + UART_LCR * 4);
+
+	uart_state[3] = readl(uart + UART_DLL * 4);
+	uart_state[4] = readl(uart + UART_DLM * 4);
+
+	return 0;
+}
+
+static void tegra_debug_uart_resume(void)
+{
+	void __iomem *uart;
+
+	if (TEGRA_DEBUG_UART_BASE == NULL)
+		return 0;
+
+	uart = IO_ADDRESS(TEGRA_DEBUG_UART_BASE);
+
+	u32 lcr = uart_state[0];
+
+	writel(uart_state[1], uart + UART_MCR * 4);
+
+	/* DLAB = 0 */
+	writel(lcr & ~UART_LCR_DLAB, uart + UART_LCR * 4);
+
+	writel(uart_state[2], uart + UART_IER * 4);
+
+	/* DLAB = 1 */
+	writel(lcr | UART_LCR_DLAB, uart + UART_LCR * 4);
+
+	writel(uart_state[3], uart + UART_DLL * 4);
+	writel(uart_state[4], uart + UART_DLM * 4);
+
+	writel(lcr, uart + UART_LCR * 4);
+}
+#else
+static int tegra_debug_uart_suspend(void)
+{
+	return 0;
+}
+
+static void tegra_debug_uart_resume(void)
+{
+}
+#endif
+
 extern void __init lp0_suspend_init(void);
 
 extern void tegra_pinmux_suspend(void);
@@ -437,6 +506,7 @@ static int tegra_suspend_enter(suspend_state_t state)
 	local_irq_save(flags);
 
 	if (do_lp0) {
+		tegra_debug_uart_suspend();
 		tegra_irq_suspend();
 		tegra_dma_suspend();
 		tegra_pinmux_suspend();
@@ -478,6 +548,7 @@ static int tegra_suspend_enter(suspend_state_t state)
 		tegra_pinmux_resume();
 		tegra_dma_resume();
 		tegra_irq_resume();
+		tegra_debug_uart_resume();
 	}
 
 	local_irq_restore(flags);
