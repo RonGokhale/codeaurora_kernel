@@ -36,14 +36,15 @@
 
 /* Frequency table index must be sequential starting at 0 */
 static struct cpufreq_frequency_table freq_table[] = {
-	{ 0, 312000 },
-	{ 1, 456000 },
-	{ 2, 608000 },
-	{ 3, 760000 },
-	{ 4, 816000 },
-	{ 5, 912000 },
-	{ 6, 1000000 },
-	{ 7, CPUFREQ_TABLE_END },
+	{ 0, 216000 },
+	{ 1, 312000 },
+	{ 2, 456000 },
+	{ 3, 608000 },
+	{ 4, 760000 },
+	{ 5, 816000 },
+	{ 6, 912000 },
+	{ 7, 1000000 },
+	{ 8, CPUFREQ_TABLE_END },
 };
 
 #define NUM_CPUS	2
