@@ -415,13 +415,14 @@ static u32 uart_state[5];
 static int tegra_debug_uart_suspend(void)
 {
 	void __iomem *uart;
+	u32 lcr;
 
-	if (TEGRA_DEBUG_UART_BASE == NULL)
+	if (TEGRA_DEBUG_UART_BASE == 0)
 		return 0;
 
 	uart = IO_ADDRESS(TEGRA_DEBUG_UART_BASE);
 
-	u32 lcr = readl(uart + UART_LCR * 4);
+	lcr = readl(uart + UART_LCR * 4);
 
 	uart_state[0] = lcr;
 	uart_state[1] = readl(uart + UART_MCR * 4);
@@ -437,19 +438,22 @@ static int tegra_debug_uart_suspend(void)
 	uart_state[3] = readl(uart + UART_DLL * 4);
 	uart_state[4] = readl(uart + UART_DLM * 4);
 
+	writel(lcr, uart + UART_LCR * 4);
+
 	return 0;
 }
 
 static void tegra_debug_uart_resume(void)
 {
 	void __iomem *uart;
+	u32 lcr;
 
-	if (TEGRA_DEBUG_UART_BASE == NULL)
-		return 0;
+	if (TEGRA_DEBUG_UART_BASE == 0)
+		return;
 
 	uart = IO_ADDRESS(TEGRA_DEBUG_UART_BASE);
 
-	u32 lcr = uart_state[0];
+	lcr = uart_state[0];
 
 	writel(uart_state[1], uart + UART_MCR * 4);
 
