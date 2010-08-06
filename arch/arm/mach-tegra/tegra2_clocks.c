@@ -356,6 +356,9 @@ static int tegra2_cpu_clk_set_rate(struct clk *c, unsigned long rate)
 		return ret;
 	}
 
+	if (rate == c->backup->rate)
+		goto out;
+
 	ret = clk_set_rate_locked(c->main, rate);
 	if (ret) {
 		pr_err("Failed to change cpu pll to %lu\n", rate);
@@ -368,6 +371,7 @@ static int tegra2_cpu_clk_set_rate(struct clk *c, unsigned long rate)
 		return ret;
 	}
 
+out:
 	return 0;
 }
 
@@ -1486,7 +1490,7 @@ static struct clk tegra_clk_virtual_cpu = {
 	.name      = "cpu",
 	.parent    = &tegra_clk_cclk,
 	.main      = &tegra_pll_x,
-	.backup    = &tegra_clk_m,
+	.backup    = &tegra_pll_p,
 	.ops       = &tegra_cpu_ops,
 	.max_rate  = 1000000000,
 	.dvfs      = &tegra_dvfs_virtual_cpu_dvfs,
