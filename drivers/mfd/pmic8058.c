@@ -88,7 +88,7 @@ struct pm8058_chip {
 
 	u8	revision;
 
-	spinlock_t	pm_lock;
+	struct mutex	pm_lock;
 };
 
 static struct pm8058_chip *pmic_chip;
@@ -145,7 +145,6 @@ int pm8058_irq_get_rt_status(struct pm8058_chip *chip, int irq)
 {
 	int     rc;
 	u8      block, bits, bit;
-	unsigned long   irqsave;
 
 	if (chip == NULL || irq < chip->pdata.irq_base ||
 			irq >= chip->pdata.irq_base + MAX_PM_IRQ)
@@ -156,7 +155,7 @@ int pm8058_irq_get_rt_status(struct pm8058_chip *chip, int irq)
 	block = irq / 8;
 	bit = irq % 8;
 
-	spin_lock_irqsave(&chip->pm_lock, irqsave);
+	mutex_lock(&chip->pm_lock);
 
 	rc = ssbi_write(chip->dev, SSBI_REG_ADDR_IRQ_BLK_SEL, &block, 1);
 	if (rc) {
@@ -175,7 +174,7 @@ int pm8058_irq_get_rt_status(struct pm8058_chip *chip, int irq)
 	rc = (bits & (1 << bit)) ? 1 : 0;
 
 bail_out:
-	spin_unlock_irqrestore(&chip->pm_lock, irqsave);
+	mutex_unlock(&chip->pm_lock);
 
 	return rc;
 }
@@ -205,14 +204,13 @@ int pm8058_misc_control(struct pm8058_chip *chip, int mask, int flag)
 {
 	int		rc;
 	u8		misc;
-	unsigned long	irqsave;
 
 	if (chip == NULL)
 		chip = pmic_chip;	/* for calls from non child */
 	if (chip == NULL)
 		return -ENODEV;
 
-	spin_lock_irqsave(&chip->pm_lock, irqsave);
+	mutex_lock(&chip->pm_lock);
 
 	rc = ssbi_read(chip->dev, SSBI_REG_ADDR_MISC, &misc, 1);
 	if (rc) {
@@ -232,7 +230,7 @@ int pm8058_misc_control(struct pm8058_chip *chip, int mask, int flag)
 	}
 
 get_out:
-	spin_unlock_irqrestore(&chip->pm_lock, irqsave);
+	mutex_unlock(&chip->pm_lock);
 
 	return rc;
 }
@@ -242,12 +240,11 @@ int pm8058_reset_pwr_off(int reset)
 {
 	int		rc;
 	u8		pon;
-	unsigned long	irqsave;
 
 	if (pmic_chip == NULL)
 		return -ENODEV;
 
-	spin_lock_irqsave(&pmic_chip->pm_lock, irqsave);
+	mutex_lock(&pmic_chip->pm_lock);
 
 	rc = ssbi_read(pmic_chip->dev, SSBI_REG_ADDR_PON_CNTL_1, &pon, 1);
 	if (rc) {
@@ -267,7 +264,7 @@ int pm8058_reset_pwr_off(int reset)
 	}
 
 get_out:
-	spin_unlock_irqrestore(&pmic_chip->pm_lock, irqsave);
+	mutex_lock(&pmic_chip->pm_lock);
 
 	return rc;
 }
@@ -479,9 +476,8 @@ static irqreturn_t pm8058_isr_thread(int irq_requested, void *data)
 	u8	blocks[MAX_PM_MASTERS];
 	int	masters = 0, irq, handled = 0, spurious = 0;
 	u16     irqs_to_handle[MAX_PM_IRQ];
-	unsigned long	irqsave;
 
-	spin_lock_irqsave(&chip->pm_lock, irqsave);
+	mutex_lock(&chip->pm_lock);
 
 	/* Read root for masters */
 	if (pm8058_read_root(chip, &root))
@@ -570,7 +566,7 @@ static irqreturn_t pm8058_isr_thread(int irq_requested, void *data)
 
 bail_out:
 
-	spin_unlock_irqrestore(&chip->pm_lock, irqsave);
+	mutex_unlock(&chip->pm_lock);
 
 	for (i = 0; i < handled; i++)
 		generic_handle_irq(irqs_to_handle[i]);
@@ -654,7 +650,7 @@ static int pm8058_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, chip);
 
 	pmic_chip = chip;
-	spin_lock_init(&chip->pm_lock);
+	mutex_init(&chip->pm_lock);
 
 	/* Register for all reserved IRQs */
 	for (i = pdata->irq_base; i < (pdata->irq_base + MAX_PM_IRQ); i++) {
@@ -700,7 +696,7 @@ static int __devexit pm8058_remove(struct i2c_client *client)
 			set_irq_wake(chip->dev->irq, 0);
 			free_irq(chip->dev->irq, chip);
 		}
-
+		mutex_destroy(&chip->pm_lock);
 		chip->dev = NULL;
 
 		kfree(chip);
@@ -715,19 +711,18 @@ static int pm8058_suspend(struct device *dev)
 	struct i2c_client *client;
 	struct	pm8058_chip *chip;
 	int	i;
-	unsigned long	irqsave;
 
 	client = to_i2c_client(dev);
 	chip = i2c_get_clientdata(client);
 
 	for (i = 0; i < MAX_PM_IRQ; i++) {
-		spin_lock_irqsave(&chip->pm_lock, irqsave);
+		mutex_lock(&chip->pm_lock);
 		if (chip->config[i] && !chip->wake_enable[i]) {
 			if (!((chip->config[i] & PM8058_IRQF_MASK_ALL)
 			      == PM8058_IRQF_MASK_ALL))
 				pm8058_irq_mask(i + chip->pdata.irq_base);
 		}
-		spin_unlock_irqrestore(&chip->pm_lock, irqsave);
+		mutex_unlock(&chip->pm_lock);
 	}
 
 	if (!chip->count_wakeable)
@@ -741,19 +736,18 @@ static int pm8058_resume(struct device *dev)
 	struct i2c_client *client;
 	struct	pm8058_chip *chip;
 	int	i;
-	unsigned long	irqsave;
 
 	client = to_i2c_client(dev);
 	chip = i2c_get_clientdata(client);
 
 	for (i = 0; i < MAX_PM_IRQ; i++) {
-		spin_lock_irqsave(&chip->pm_lock, irqsave);
+		mutex_lock(&chip->pm_lock);
 		if (chip->config[i] && !chip->wake_enable[i]) {
 			if (!((chip->config[i] & PM8058_IRQF_MASK_ALL)
 			      == PM8058_IRQF_MASK_ALL))
 				pm8058_irq_unmask(i + chip->pdata.irq_base);
 		}
-		spin_unlock_irqrestore(&chip->pm_lock, irqsave);
+		mutex_unlock(&chip->pm_lock);
 	}
 
 	if (!chip->count_wakeable)
