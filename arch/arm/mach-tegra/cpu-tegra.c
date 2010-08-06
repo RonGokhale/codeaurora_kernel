@@ -28,6 +28,7 @@
 #include <linux/err.h>
 #include <linux/clk.h>
 #include <linux/io.h>
+#include <linux/suspend.h>
 
 #include <asm/system.h>
 
@@ -52,6 +53,8 @@ static struct cpufreq_frequency_table freq_table[] = {
 static struct clk *cpu_clk;
 
 static unsigned long target_cpu_speed[NUM_CPUS];
+static DEFINE_MUTEX(tegra_cpu_lock);
+static bool is_suspended;
 
 int tegra_verify_speed(struct cpufreq_policy *policy)
 {
@@ -69,15 +72,10 @@ unsigned int tegra_getspeed(unsigned int cpu)
 	return rate;
 }
 
-static int tegra_update_cpu_speed(void)
+static int tegra_update_cpu_speed(unsigned long rate)
 {
-	int i;
-	unsigned long rate = 0;
 	int ret = 0;
 	struct cpufreq_freqs freqs;
-
-	for_each_online_cpu(i)
-		rate = max(rate, target_cpu_speed[i]);
 
 	freqs.old = tegra_getspeed(0);
 	freqs.new = rate;
@@ -106,12 +104,29 @@ static int tegra_update_cpu_speed(void)
 	return 0;
 }
 
+static unsigned long tegra_cpu_highest_speed(void) {
+	unsigned long rate = 0;
+	int i;
+
+	for_each_online_cpu(i)
+		rate = max(rate, target_cpu_speed[i]);
+	return rate;
+}
+
 static int tegra_target(struct cpufreq_policy *policy,
 		       unsigned int target_freq,
 		       unsigned int relation)
 {
 	int idx;
 	unsigned int freq;
+	int ret = 0;
+
+	mutex_lock(&tegra_cpu_lock);
+
+	if (is_suspended) {
+		ret = -EBUSY;
+		goto out;
+	}
 
 	cpufreq_frequency_table_target(policy, freq_table, target_freq,
 		relation, &idx);
@@ -120,8 +135,33 @@ static int tegra_target(struct cpufreq_policy *policy,
 
 	target_cpu_speed[policy->cpu] = freq;
 
-	return tegra_update_cpu_speed();
+	ret = tegra_update_cpu_speed(tegra_cpu_highest_speed());
+
+out:
+	mutex_unlock(&tegra_cpu_lock);
+	return ret;
 }
+
+static int tegra_pm_notify(struct notifier_block *nb, unsigned long event,
+	void *dummy)
+{
+	mutex_lock(&tegra_cpu_lock);
+	if (event == PM_SUSPEND_PREPARE) {
+		is_suspended = true;
+		pr_info("Tegra cpufreq suspend: setting frequency to %d kHz\n",
+			freq_table[0].frequency);
+		tegra_update_cpu_speed(freq_table[0].frequency);
+	} else if (event == PM_POST_RESTORE) {
+		is_suspended = false;
+	}
+	mutex_unlock(&tegra_cpu_lock);
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block tegra_cpu_pm_notifier = {
+	.notifier_call = tegra_pm_notify,
+};
 
 static int tegra_cpu_init(struct cpufreq_policy *policy)
 {
@@ -142,6 +182,9 @@ static int tegra_cpu_init(struct cpufreq_policy *policy)
 
 	policy->shared_type = CPUFREQ_SHARED_TYPE_ALL;
 	cpumask_copy(policy->related_cpus, cpu_possible_mask);
+
+	if (policy->cpu == 0)
+		register_pm_notifier(&tegra_cpu_pm_notifier);
 
 	return 0;
 }
