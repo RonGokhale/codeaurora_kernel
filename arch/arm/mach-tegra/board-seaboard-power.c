@@ -124,15 +124,15 @@ static struct tps6586x_platform_data tps_platform = {
 	.gpio_base = TEGRA_NR_GPIOS,
 };
 
-static struct i2c_board_info __initdata ventana_regulators[] = {
+static struct i2c_board_info __initdata seaboard_regulators[] = {
 	{
 		I2C_BOARD_INFO("tps6586x", 0x34),
 		.platform_data = &tps_platform,
 	},
 };
 
-int __init ventana_regulator_init(void)
+int __init seaboard_regulator_init(void)
 {
-	i2c_register_board_info(4, ventana_regulators, 1);
+	i2c_register_board_info(4, seaboard_regulators, 1);
 	return 0;
 }
