@@ -1,5 +1,5 @@
 /*
- * drivers/spi/spi_tegra.c
+ * Driver for Nvidia TEGRA spi controller.
  *
  * Copyright (C) 2010 Google, Inc.
  *
@@ -33,10 +33,6 @@
 #include <linux/spi/spi.h>
 
 #include <mach/dma.h>
-
-#define DRIVER_NAME		"spi_tegra"
-
-#define BUSY_TIMEOUT		1000
 
 #define SLINK_COMMAND		0x000
 #define   BIT_LENGTH(x)			(((x) & 0x1f) << 0)
@@ -189,12 +185,13 @@ struct spi_tegra_data {
 };
 
 
-static unsigned long spi_readl(struct spi_tegra_data *tspi, unsigned long reg)
+static unsigned long spi_tegra_readl(struct spi_tegra_data *tspi,
+				     unsigned long reg)
 {
 	return readl(tspi->base + reg);
 }
 
-static void spi_writel(struct spi_tegra_data *tspi, unsigned long val,
+static void spi_tegra_writel(struct spi_tegra_data *tspi, unsigned long val,
 		       unsigned long reg)
 {
 	writel(val, tspi->base + reg);
@@ -206,15 +203,15 @@ static void spi_tegra_go(struct spi_tegra_data *tspi)
 
 	wmb();
 
-	val = spi_readl(tspi, SLINK_DMA_CTL);
+	val = spi_tegra_readl(tspi, SLINK_DMA_CTL);
 	val &= ~DMA_BLOCK_SIZE(~0) & ~DMA_EN;
 	val |= DMA_BLOCK_SIZE(tspi->rx_dma_req.size / 4 - 1);
-	spi_writel(tspi, val, SLINK_DMA_CTL);
+	spi_tegra_writel(tspi, val, SLINK_DMA_CTL);
 
 	tegra_dma_enqueue_req(tspi->rx_dma, &tspi->rx_dma_req);
 
 	val |= DMA_EN;
-	spi_writel(tspi, val, SLINK_DMA_CTL);
+	spi_tegra_writel(tspi, val, SLINK_DMA_CTL);
 }
 
 static unsigned spi_tegra_fill_tx_fifo(struct spi_tegra_data *tspi,
@@ -226,17 +223,17 @@ static unsigned spi_tegra_fill_tx_fifo(struct spi_tegra_data *tspi,
 	int i, j;
 	unsigned long val;
 
-	val = spi_readl(tspi, SLINK_COMMAND);
+	val = spi_tegra_readl(tspi, SLINK_COMMAND);
 	val &= ~WORD_SIZE(~0);
 	val |= WORD_SIZE(len / tspi->cur_bytes_per_word - 1);
-	spi_writel(tspi, val, SLINK_COMMAND);
+	spi_tegra_writel(tspi, val, SLINK_COMMAND);
 
 	for (i = 0; i < len; i += tspi->cur_bytes_per_word) {
 		val = 0;
 		for (j = 0; j < tspi->cur_bytes_per_word; j++)
 			val |= tx_buf[i + j] << j * 8;
 
-		spi_writel(tspi, val, SLINK_TX_FIFO);
+		spi_tegra_writel(tspi, val, SLINK_TX_FIFO);
 	}
 
 	tspi->rx_dma_req.size = len / tspi->cur_bytes_per_word * 4;
@@ -261,7 +258,7 @@ static unsigned spi_tegra_drain_rx_fifo(struct spi_tegra_data *tspi,
 	return len;
 }
 
-static int spi_tegra_start_transfer(struct spi_device *spi,
+static void spi_tegra_start_transfer(struct spi_device *spi,
 				    struct spi_transfer *t)
 {
 	struct spi_tegra_data *tspi = spi_master_get_devdata(spi->master);
@@ -273,16 +270,7 @@ static int spi_tegra_start_transfer(struct spi_device *spi,
 	bits_per_word = t->bits_per_word ? t->bits_per_word  :
 		spi->bits_per_word;
 
-	if (bits_per_word < 1 || bits_per_word > 32)
-		return -EINVAL;
-
-	if (t->len == 0)
-		return -EINVAL;
-
-	if (!t->rx_buf && !t->tx_buf)
-		return -EINVAL;
-
-	tspi->cur_bytes_per_word = bytes_per_word(bits_per_word);
+	tspi->cur_bytes_per_word = (bits_per_word - 1) / 8 + 1;
 
 	if (speed != tspi->cur_speed)
 		clk_set_rate(tspi->clk, speed);
@@ -292,7 +280,7 @@ static int spi_tegra_start_transfer(struct spi_device *spi,
 
 	tspi->cur_speed = speed;
 
-	val = spi_readl(tspi, SLINK_COMMAND2);
+	val = spi_tegra_readl(tspi, SLINK_COMMAND2);
 	if (t->rx_buf)
 		val |= RXEN;
 	else
@@ -307,9 +295,9 @@ static int spi_tegra_start_transfer(struct spi_device *spi,
 	val |= SS_EN_CS(spi->chip_select);
 	val |= SPIE;
 
-	spi_writel(tspi, val, SLINK_COMMAND2);
+	spi_tegra_writel(tspi, val, SLINK_COMMAND2);
 
-	val = spi_readl(tspi, SLINK_COMMAND);
+	val = spi_tegra_readl(tspi, SLINK_COMMAND);
 	val &= ~BIT_LENGTH(~0);
 	val |= BIT_LENGTH(bits_per_word - 1);
 
@@ -329,17 +317,15 @@ static int spi_tegra_start_transfer(struct spi_device *spi,
 
 	val |= M_S;
 
-	spi_writel(tspi, val, SLINK_COMMAND);
+	spi_tegra_writel(tspi, val, SLINK_COMMAND);
 
-	spi_writel(tspi, RX_FLUSH | TX_FLUSH, SLINK_STATUS);
+	spi_tegra_writel(tspi, RX_FLUSH | TX_FLUSH, SLINK_STATUS);
 
 	tspi->cur = t;
 	tspi->cur_pos = 0;
 	tspi->cur_len = spi_tegra_fill_tx_fifo(tspi, t);
 
 	spi_tegra_go(tspi);
-
-	return 0;
 }
 
 static void spi_tegra_start_message(struct spi_device *spi,
@@ -365,16 +351,17 @@ static void tegra_spi_rx_dma_complete(struct tegra_dma_req *req)
 
 	/* the SPI controller may come back with both the BSY and RDY bits
 	 * set.  In this case we need to wait for the BSY bit to clear so
-	 * that we are sure the DMA is finished.
+	 * that we are sure the DMA is finished.  1000 reads was empirically
+	 * determined to be long enough.
 	 */
-	while (timeout++ < BUSY_TIMEOUT) {
-		if (!(spi_readl(tspi, SLINK_STATUS) & BSY))
+	while (timeout++ < 1000) {
+		if (!(spi_tegra_readl(tspi, SLINK_STATUS) & BSY))
 			break;
 	}
 
-	val = spi_readl(tspi, SLINK_STATUS);
+	val = spi_tegra_readl(tspi, SLINK_STATUS);
 	val |= RDY;
-	spi_writel(tspi, val, SLINK_STATUS);
+	spi_tegra_writel(tspi, val, SLINK_STATUS);
 
 	spin_lock_irqsave(&tspi->lock, flags);
 
@@ -454,12 +441,12 @@ static int spi_tegra_setup(struct spi_device *spi)
 
 	spin_lock_irqsave(&tspi->lock, flags);
 
-	val = spi_readl(tspi, SLINK_COMMAND);
+	val = spi_tegra_readl(tspi, SLINK_COMMAND);
 	if (spi->mode & SPI_CS_HIGH)
 		val |= cs_bit;
 	else
 		val &= ~cs_bit;
-	spi_writel(tspi, val, SLINK_COMMAND);
+	spi_tegra_writel(tspi, val, SLINK_COMMAND);
 
 	spin_unlock_irqrestore(&tspi->lock, flags);
 
@@ -469,11 +456,23 @@ static int spi_tegra_setup(struct spi_device *spi)
 static int spi_tegra_transfer(struct spi_device *spi, struct spi_message *m)
 {
 	struct spi_tegra_data *tspi = spi_master_get_devdata(spi->master);
+	struct spi_transfer *t;
 	unsigned long flags;
 	int was_empty;
 
 	if (list_empty(&m->transfers) || !m->complete)
 		return -EINVAL;
+
+	list_for_each_entry(t, &m->transfers, transfer_list) {
+		if (t->bits_per_word < 0 || t->bits_per_word > 32)
+			return -EINVAL;
+
+		if (t->len == 0)
+			return -EINVAL;
+
+		if (!t->rx_buf && !t->tx_buf)
+			return -EINVAL;
+	}
 
 	spin_lock_irqsave(&tspi->lock, flags);
 
@@ -533,12 +532,6 @@ static int __init spi_tegra_probe(struct platform_device *pdev)
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (r == NULL) {
 		ret = -ENODEV;
-		goto err0;
-	}
-
-	if (!request_mem_region(r->start, (r->end - r->start) + 1,
-			dev_name(&pdev->dev))) {
-		ret = -EBUSY;
 		goto err0;
 	}
 
@@ -607,11 +600,10 @@ err0:
 	return ret;
 }
 
-static int __exit spi_tegra_remove(struct platform_device *pdev)
+static int __devexit spi_tegra_remove(struct platform_device *pdev)
 {
 	struct spi_master	*master;
 	struct spi_tegra_data	*tspi;
-	struct resource		*r;
 
 	master = dev_get_drvdata(&pdev->dev);
 	tspi = spi_master_get_devdata(master);
@@ -625,9 +617,6 @@ static int __exit spi_tegra_remove(struct platform_device *pdev)
 	iounmap(tspi->base);
 
 	spi_master_put(master);
-
-	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	release_mem_region(r->start, (r->end - r->start) + 1);
 
 	return 0;
 }
@@ -652,7 +641,7 @@ static int spi_tegra_suspend(struct platform_device *pdev, pm_message_t state)
 		spin_lock_irqsave(&tspi->lock, flags);
 	}
 
-	tspi->save_slink_cmd = spi_readl(tspi, SLINK_COMMAND);
+	tspi->save_slink_cmd = spi_tegra_readl(tspi, SLINK_COMMAND);
 	spin_unlock_irqrestore(&tspi->lock, flags);
 	return 0;
 }
@@ -667,7 +656,7 @@ static int spi_tegra_resume(struct platform_device *pdev)
 	tspi = spi_master_get_devdata(master);
 	spin_lock_irqsave(&tspi->lock, flags);
 	clk_enable(tspi->clk);
-	spi_writel(tspi, tspi->save_slink_cmd, SLINK_COMMAND);
+	spi_tegra_writel(tspi, tspi->save_slink_cmd, SLINK_COMMAND);
 	clk_disable(tspi->clk);
 	tspi->cur_speed = 0;
 	tspi->is_suspended = false;
@@ -676,21 +665,19 @@ static int spi_tegra_resume(struct platform_device *pdev)
 }
 #endif
 
-
-MODULE_ALIAS("platform:" DRIVER_NAME);
+MODULE_ALIAS("platform:spi_tegra");
 
 static struct platform_driver spi_tegra_driver = {
 	.driver = {
-		.name =		DRIVER_NAME,
+		.name =		"spi_tegra",
 		.owner =	THIS_MODULE,
 	},
-	.remove =	__exit_p(spi_tegra_remove),
+	.remove =	__devexit_p(spi_tegra_remove),
 #ifdef CONFIG_PM
 	.suspend =	spi_tegra_suspend,
 	.resume  =	spi_tegra_resume,
 #endif
 };
-
 
 static int __init spi_tegra_init(void)
 {
