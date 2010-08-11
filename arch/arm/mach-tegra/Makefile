@@ -35,3 +35,8 @@ obj-${CONFIG_MACH_VENTANA}              += board-ventana.o
 obj-${CONFIG_MACH_VENTANA}              += board-ventana-pinmux.o
 obj-${CONFIG_MACH_VENTANA}              += board-ventana-sdhci.o
 obj-${CONFIG_MACH_VENTANA}              += board-ventana-power.o
+
+obj-${CONFIG_MACH_SEABOARD}             += board-seaboard.o
+obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-pinmux.o
+obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-sdhci.o
+obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-power.o
