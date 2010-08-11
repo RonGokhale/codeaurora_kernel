@@ -1,5 +1,5 @@
 /*
- * arch/arm/mach-tegra/board-ventana.c
+ * arch/arm/mach-tegra/board-seaboard.c
  *
  * Copyright (c) 2010, NVIDIA Corporation.
  *
@@ -65,7 +65,7 @@ static struct platform_device debug_uart = {
 	},
 };
 
-static __initdata struct tegra_clk_init_table ventana_clk_init_table[] = {
+static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	/* name		parent		rate		enabled */
 	{ "uartd",	"pll_p",	216000000,	true},
 	{ "pll_m",	"clk_m",	600000000,	true},
@@ -141,33 +141,33 @@ static struct platform_device tegra_gart_dev = {
     .resource = tegra_gart_resources
 };
 
-static struct platform_device *ventana_devices[] __initdata = {
+static struct platform_device *seaboard_devices[] __initdata = {
 	&debug_uart,
 	&tegra_otg,
 	&pda_power_device,
 	&tegra_gart_dev,
 };
 
-extern int __init ventana_sdhci_init(void);
-extern int __init ventana_pinmux_init(void);
+extern int __init seaboard_sdhci_init(void);
+extern int __init seaboard_pinmux_init(void);
 
-static void __init tegra_ventana_init(void)
+static void __init tegra_seaboard_init(void)
 {
 	tegra_common_init();
 
-	tegra_clk_init_from_table(ventana_clk_init_table);
-	ventana_pinmux_init();
+	tegra_clk_init_from_table(seaboard_clk_init_table);
+	seaboard_pinmux_init();
 
-	platform_add_devices(ventana_devices, ARRAY_SIZE(ventana_devices));
-	ventana_sdhci_init();
+	platform_add_devices(seaboard_devices, ARRAY_SIZE(seaboard_devices));
+	seaboard_sdhci_init();
 }
 
-MACHINE_START(VENTANA, "ventana")
+MACHINE_START(TEGRA_SEABOARD, "seaboard")
 	.boot_params    = 0x00000100,
 	.phys_io        = IO_APB_PHYS,
 	.io_pg_offst    = ((IO_APB_VIRT) >> 18) & 0xfffc,
 	.init_irq       = tegra_init_irq,
-	.init_machine   = tegra_ventana_init,
+	.init_machine   = tegra_seaboard_init,
 	.map_io         = tegra_map_common_io,
 	.timer          = &tegra_timer,
 MACHINE_END
