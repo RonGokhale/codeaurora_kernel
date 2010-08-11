@@ -1,5 +1,5 @@
 /*
- * arch/arm/mach-tegra/board-ventana-pinmux.c
+ * arch/arm/mach-tegra/board-seaboard-pinmux.c
  *
  * Copyright (C) 2010 NVIDIA Corporation
  *
@@ -18,7 +18,7 @@
 #include <linux/init.h>
 #include <mach/pinmux.h>
 
-static __initdata struct tegra_pingroup_config ventana_pinmux[] = {
+static __initdata struct tegra_pingroup_config seaboard_pinmux[] = {
 	{TEGRA_PINGROUP_ATA,   TEGRA_MUX_IDE,           TEGRA_PUPD_NORMAL,    TEGRA_TRI_NORMAL},
 	{TEGRA_PINGROUP_ATB,   TEGRA_MUX_SDIO4,         TEGRA_PUPD_NORMAL,    TEGRA_TRI_NORMAL},
 	{TEGRA_PINGROUP_ATC,   TEGRA_MUX_NAND,          TEGRA_PUPD_NORMAL,    TEGRA_TRI_NORMAL},
@@ -137,7 +137,7 @@ static __initdata struct tegra_pingroup_config ventana_pinmux[] = {
 	{TEGRA_PINGROUP_XM2D,  TEGRA_MUX_NONE,          TEGRA_PUPD_NORMAL,    TEGRA_TRI_NORMAL},
 };
 
-void __init ventana_pinmux_init(void)
+void __init seaboard_pinmux_init(void)
 {
-	tegra_pinmux_config_table(ventana_pinmux, ARRAY_SIZE(ventana_pinmux));
+	tegra_pinmux_config_table(seaboard_pinmux, ARRAY_SIZE(seaboard_pinmux));
 }

@@ -120,7 +120,7 @@ static struct platform_device tegra_sdhci_device3 = {
 	},
 };
 
-int __init ventana_sdhci_init(void)
+int __init seaboard_sdhci_init(void)
 {
 	gpio_request(tegra_sdhci_platform_data2.power_gpio, "sdhci2_power");
 	gpio_request(tegra_sdhci_platform_data2.cd_gpio, "sdhci2_cd");
