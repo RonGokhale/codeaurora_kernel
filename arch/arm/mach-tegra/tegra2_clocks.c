@@ -1780,6 +1780,7 @@ static u32 clk_rst_suspend[RST_DEVICES_NUM + CLK_OUT_ENB_NUM +
 void tegra_clk_suspend(void)
 {
 	unsigned long off, i;
+	u32 pllx_misc;
 	u32 *ctx = clk_rst_suspend;
 
 	*ctx++ = clk_readl(OSC_CTRL) & OSC_CTRL_MASK;
@@ -1807,6 +1808,10 @@ void tegra_clk_suspend(void)
 
 	*ctx++ = clk_readl(MISC_CLK_ENB);
 	*ctx++ = clk_readl(CLK_MASK_ARM);
+
+	pllx_misc = clk_readl(tegra_pll_x.reg + PLL_MISC(&tegra_pll_x));
+	pllx_misc &= ~PLL_MISC_LOCK_ENABLE(&tegra_pll_x);
+	clk_writel(pllx_misc, tegra_pll_x.reg + PLL_MISC(&tegra_pll_x));
 }
 
 void tegra_clk_resume(void)
