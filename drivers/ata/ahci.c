@@ -405,9 +405,6 @@ static void ahci_pci_save_initial_config(struct pci_dev *pdev,
 		force_port_map = 1;
 	}
 
-	dev_printk(KERN_INFO, &pdev->dev, "Disabling link power management\n");
-	hpriv->cap &= ~HOST_CAP_ALPM;
-
 	/*
 	 * Temporary Marvell 6145 hack: PATA port presence
 	 * is asserted through the standard AHCI port
