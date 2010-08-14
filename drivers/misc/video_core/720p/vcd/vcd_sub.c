@@ -736,9 +736,12 @@ void vcd_reset_buffer_pool_for_reuse(struct vcd_buffer_pool_type *p_buf_pool)
 {
 	VCD_MSG_LOW("vcd_reset_buffer_pool_for_reuse:");
 
-	memset(&p_buf_pool->a_entries[1], 0,
-		sizeof(struct vcd_buffer_entry_type) *
-		p_buf_pool->n_count);
+	/* Video driver patch from mainline */
+	if (p_buf_pool->a_entries) {
+		memset(&p_buf_pool->a_entries[1], 0,
+			sizeof(struct vcd_buffer_entry_type) *
+			p_buf_pool->n_count);
+	}
 	memset(p_buf_pool->a_queue,
 		0, sizeof(struct vcd_buffer_entry_type *) *
 		p_buf_pool->n_count);
