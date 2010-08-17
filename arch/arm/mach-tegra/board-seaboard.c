@@ -42,6 +42,7 @@
 
 #include "board.h"
 #include "clock.h"
+#include "devices.h"
 
 static struct plat_serial8250_port debug_uart_platform_data[] = {
 	{
@@ -144,6 +145,7 @@ static struct platform_device tegra_gart_dev = {
 static struct platform_device *seaboard_devices[] __initdata = {
 	&debug_uart,
 	&tegra_otg,
+	&tegra_ehci3_device,
 	&pda_power_device,
 	&tegra_gart_dev,
 };
