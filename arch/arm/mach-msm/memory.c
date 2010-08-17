@@ -36,7 +36,7 @@ int arch_io_remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 
 void *zero_page_strongly_ordered;
 
-static void map_zero_page_strongly_ordered(void)
+void map_zero_page_strongly_ordered(void)
 {
 #if defined(CONFIG_ARCH_MSM7X27)
 	if (zero_page_strongly_ordered)
