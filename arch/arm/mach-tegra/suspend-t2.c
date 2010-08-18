@@ -22,8 +22,15 @@
 
 #include <linux/kernel.h>
 #include <linux/init.h>
+
 #include <asm/io.h>
+
+#include <mach/gpio.h>
 #include <mach/iomap.h>
+#include <mach/irqs.h>
+#include <mach/suspend.h>
+
+#include "gpio-names.h"
 
 #define PMC_SCRATCH3	0x5c
 #define PMC_SCRATCH5	0x64
@@ -346,4 +353,61 @@ void __init lp0_suspend_init(void)
 
 		writel(r, scratch[i].scratch_addr);
 	}
+}
+
+#define NUM_WAKE_EVENTS 31
+
+static int tegra_wake_event_irq[NUM_WAKE_EVENTS] = {
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PO5),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PV3),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PL1),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PB6),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PN7),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PA0),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PU5),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PU6),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PC7),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PS2),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PAA1),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PW3),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PW2),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PY6),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PV6),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PJ7),
+	INT_RTC,
+	INT_KBC,
+	INT_EXTERNAL_PMU,
+	-EINVAL, /* TEGRA_USB1_VBUS, */
+	-EINVAL, /* TEGRA_USB3_VBUS, */
+	-EINVAL, /* TEGRA_USB1_ID, */
+	-EINVAL, /* TEGRA_USB3_ID, */
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PI5),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PV2),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PS4),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PS5),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PS0),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PQ6),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PQ7),
+	TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PN2),
+};
+
+int tegra_irq_to_wake(int irq)
+{
+	int i;
+	for (i = 0; i < NUM_WAKE_EVENTS; i++)
+		if (tegra_wake_event_irq[i] == irq)
+			return i;
+
+	return -EINVAL;
+}
+
+int tegra_wake_to_irq(int wake)
+{
+	if (wake < 0)
+		return -EINVAL;
+
+	if (wake >= NUM_WAKE_EVENTS)
+		return -EINVAL;
+
+	return tegra_wake_event_irq[wake];
 }

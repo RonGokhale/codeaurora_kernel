@@ -38,4 +38,7 @@ void tegra_gpio_resume(void);
 void tegra_clk_resume(void);
 void tegra_dma_resume(void);
 
+int tegra_irq_to_wake(int irq);
+int tegra_wake_to_irq(int wake);
+
 #endif /* _MACH_TEGRA_SUSPEND_H_ */
