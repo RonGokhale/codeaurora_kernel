@@ -43,6 +43,7 @@
 #include <mach/iomap.h>
 #include <mach/iovmm.h>
 #include <mach/irqs.h>
+#include <mach/suspend.h>
 
 #include "power.h"
 
@@ -297,9 +298,6 @@ static void tegra_setup_wakepads(bool do_lp0)
 
 }
 
-extern void __tegra_lp1_reset(void);
-extern void __tegra_iram_end(void);
-
 static u8 *iram_save = NULL;
 static unsigned int iram_save_size = 0;
 static void __iomem *iram_code = IO_ADDRESS(TEGRA_IRAM_CODE_AREA);
@@ -481,20 +479,6 @@ static void tegra_debug_uart_resume(void)
 {
 }
 #endif
-
-extern void __init lp0_suspend_init(void);
-
-extern void tegra_pinmux_suspend(void);
-extern void tegra_irq_suspend(void);
-extern void tegra_gpio_suspend(void);
-extern void tegra_clk_suspend(void);
-extern void tegra_dma_suspend(void);
-
-extern void tegra_pinmux_resume(void);
-extern void tegra_irq_resume(void);
-extern void tegra_gpio_resume(void);
-extern void tegra_clk_resume(void);
-extern void tegra_dma_resume(void);
 
 #define MC_SECURITY_START	0x6c
 #define MC_SECURITY_SIZE	0x70
