@@ -51,6 +51,7 @@
 
 #define CTX_FPEXC	32
 #define CTX_FPSCR	36
+#define CTX_DIAGNOSTIC	40
 
 #define CTX_TTBR0	48
 #define CTX_TTBR1	52
@@ -224,6 +225,8 @@ ENTRY(__cortex_a9_save)
 	VFPFMXR	FPEXC, r2
 	mrc	p15, 0, r3, c1, c0, 2	@ restore original FPEXC/CPACR
 #endif
+	mrc	p15, 0, r0, c15, c0, 1	@ diag
+	str	r0, [r8, #CTX_DIAGNOSTIC]
 
 	add	r9, r8, #CTX_TTBR0
 	mrc	p15, 0, r0, c2, c0, 0	@ TTBR0
@@ -506,6 +509,9 @@ ENTRY(__cortex_a9_restore)
 	VFPFMXR	FPEXC, r0
 #endif
 	mcr	p15, 0, lr, c1, c0, 2	@ cpacr (loaded before VFP)
+
+	ldr	r9, [r8, #CTX_DIAGNOSTIC]
+	mcr	p15, 0, r9, c15, c0, 1	@ diag
 
 	/* finally, restore the stack and return */
 	ldmfd	sp!, {r3-r12, lr}
