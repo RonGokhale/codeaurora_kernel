@@ -229,6 +229,12 @@ __v7_setup:
 	orreq	r10, r10, #(1 << 22)		@ set the Write Allocate disable bit
 	mcreq	p15, 1, r10, c9, c0, 2		@ write the L2 cache aux ctrl register
 #endif
+#ifdef CONFIG_ARM_ERRATA_742230
+	cmp	r0, #0x23			@ present in r1p0 - r2p3
+	mrcle	p15, 0, r10, c15, c0, 1
+	orrle	r10, r10, #(1 << 4)		@ set the DMB_lite disable
+	mcrle	p15, 0, r10, c15, c0, 1
+#endif
 
 2:	mov	r10, #0
 #ifdef HARVARD_CACHE
