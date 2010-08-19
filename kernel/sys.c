@@ -283,7 +283,7 @@ out_unlock:
  *	trouble so this is our best effort to reboot.  This is
  *	safe to call in interrupt context.
  */
-void emergency_restart(void)
+void __weak emergency_restart(void)	/* defer to kernel/preserved.c */
 {
 	machine_emergency_restart();
 }
