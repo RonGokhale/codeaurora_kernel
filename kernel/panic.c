@@ -128,6 +128,8 @@ NORET_TYPE void panic(const char * fmt, ...)
 			touch_nmi_watchdog();
 			panic_blink_one_second();
 		}
+	}
+	if (panic_timeout != 0) {
 		/*
 		 * This will not be a clean reboot, with everything
 		 * shutting down.  But if there is a chance of
