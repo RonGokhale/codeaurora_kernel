@@ -31,6 +31,8 @@
 #include <linux/dma-mapping.h>
 #include <linux/fsl_devices.h>
 #include <linux/delay.h>
+#include <linux/input.h>
+#include <linux/gpio_keys.h>
 
 #include <mach/iomap.h>
 #include <mach/irqs.h>
@@ -44,6 +46,7 @@
 #include "board.h"
 #include "clock.h"
 #include "devices.h"
+#include "gpio-names.h"
 
 static struct plat_serial8250_port debug_uart_platform_data[] = {
 	{
@@ -202,12 +205,37 @@ static void seaboard_i2c_init(void)
 				ARRAY_SIZE(seaboard_i2c4_devices));
 }
 
+static struct gpio_keys_button seaboard_gpio_keys_buttons[] = {
+	{
+		.code		= SW_LID,
+		.gpio		= TEGRA_GPIO_PC7,
+		.active_low	= 0,
+		.desc		= "Lid",
+		.type		= EV_SW,
+		.wakeup		= 1,
+	},
+};
+
+static struct gpio_keys_platform_data seaboard_gpio_keys = {
+	.buttons	= seaboard_gpio_keys_buttons,
+	.nbuttons	= ARRAY_SIZE(seaboard_gpio_keys_buttons),
+};
+
+static struct platform_device seaboard_gpio_keys_device = {
+	.name		= "gpio-keys",
+	.id		= -1,
+	.dev		= {
+		.platform_data = &seaboard_gpio_keys,
+	}
+};
+
 static struct platform_device *seaboard_devices[] __initdata = {
 	&debug_uart,
 	&tegra_otg,
 	&tegra_ehci3_device,
 	&pda_power_device,
 	&tegra_gart_dev,
+	&seaboard_gpio_keys_device,
 };
 
 extern int __init seaboard_sdhci_init(void);
