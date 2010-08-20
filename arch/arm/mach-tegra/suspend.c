@@ -558,8 +558,19 @@ static int tegra_suspend_enter(suspend_state_t state)
 	u32 mc_data[2];
 	int irq;
 	bool do_lp0 = pdata->core_off && (wb0_restore != 0);
+	bool do_lp2 = !pdata->dram_suspend || !iram_save;
+	int lp_state;
+
+	if (do_lp2)
+		lp_state = 2;
+	else if (do_lp0)
+		lp_state = 0;
+	else
+		lp_state = 1;
 
 	local_irq_save(flags);
+
+	pr_info("Entering suspend state LP%d\n", lp_state);
 
 	if (do_lp0) {
 		tegra_debug_uart_suspend();
@@ -580,7 +591,7 @@ static int tegra_suspend_enter(suspend_state_t state)
 		}
 	}
 
-	if (!pdata->dram_suspend || !iram_save)
+	if (do_lp2)
 		tegra_suspend_lp2(0);
 	else
 		tegra_suspend_dram(do_lp0);
