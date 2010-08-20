@@ -23,12 +23,12 @@
 #ifndef __MACH_TEGRA_WAKEUPS_T2_H
 #define __MACH_TEGRA_WAKEUPS_T2_H
 
-#define TEGRA_WAKE_GPIO_P05	(1 << 0)
+#define TEGRA_WAKE_GPIO_PO5	(1 << 0)
 #define TEGRA_WAKE_GPIO_PV3	(1 << 1)
 #define TEGRA_WAKE_GPIO_PL1	(1 << 2)
 #define TEGRA_WAKE_GPIO_PB6	(1 << 3)
 #define TEGRA_WAKE_GPIO_PN7	(1 << 4)
-#define TEGRA_WAKE_GPIO_PAO	(1 << 5)
+#define TEGRA_WAKE_GPIO_PA0	(1 << 5)
 #define TEGRA_WAKE_GPIO_PU5	(1 << 6)
 #define TEGRA_WAKE_GPIO_PU6	(1 << 7)
 #define TEGRA_WAKE_GPIO_PC7	(1 << 8)
