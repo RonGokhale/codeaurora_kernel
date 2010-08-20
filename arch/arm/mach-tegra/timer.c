@@ -37,6 +37,10 @@
 #include "board.h"
 #include "clock.h"
 
+#define RTC_SECONDS		0x08
+#define RTC_SHADOW_SECONDS	0x0c
+#define RTC_MILLISECONDS	0x10
+
 #define TIMERUS_CNTR_1US 0x10
 #define TIMERUS_USEC_CFG 0x14
 #define TIMERUS_CNTR_FREEZE 0x4c
@@ -51,12 +55,13 @@
 
 struct tegra_timer;
 
-static void __iomem *timer_reg_base = IO_ADDRESS(TEGRA_TMR1_BASE);
+static void __iomem *timer_base = IO_ADDRESS(TEGRA_TMR1_BASE);
+static void __iomem *rtc_base = IO_ADDRESS(TEGRA_RTC_BASE);
 
 #define timer_writel(value, reg) \
-	__raw_writel(value, (u32)timer_reg_base + (reg))
+	__raw_writel(value, (u32)timer_base + (reg))
 #define timer_readl(reg) \
-	__raw_readl((u32)timer_reg_base + (reg))
+	__raw_readl((u32)timer_base + (reg))
 
 static int tegra_timer_set_next_event(unsigned long cycles,
 					 struct clock_event_device *evt)
@@ -90,9 +95,16 @@ static void tegra_timer_set_mode(enum clock_event_mode mode,
 	}
 }
 
-static cycle_t tegra_clocksource_read(struct clocksource *cs)
+static cycle_t tegra_clocksource_us_read(struct clocksource *cs)
 {
 	return cnt32_to_63(timer_readl(TIMERUS_CNTR_1US));
+}
+
+static cycle_t tegra_clocksource_32k_read(struct clocksource *cs)
+{
+	u32 ms = readl(rtc_base + RTC_MILLISECONDS);
+	u32 s = readl(rtc_base + RTC_SHADOW_SECONDS);
+	return cnt32_to_63(s * 1000 + ms);
 }
 
 static struct clock_event_device tegra_clockevent = {
@@ -103,18 +115,53 @@ static struct clock_event_device tegra_clockevent = {
 	.set_mode	= tegra_timer_set_mode,
 };
 
-static struct clocksource tegra_clocksource = {
+static struct clocksource tegra_clocksource_us = {
 	.name	= "timer_us",
 	.rating	= 300,
-	.read	= tegra_clocksource_read,
+	.read	= tegra_clocksource_us_read,
+	.mask	= 0x7FFFFFFFFFFFFFFFULL,
+	.flags	= CLOCK_SOURCE_IS_CONTINUOUS,
+};
+
+static struct clocksource tegra_clocksource_32k = {
+	.name	= "rtc_32k",
+	.rating	= 100,
+	.read	= tegra_clocksource_32k_read,
 	.mask	= 0x7FFFFFFFFFFFFFFFULL,
 	.flags	= CLOCK_SOURCE_IS_CONTINUOUS,
 };
 
 unsigned long long sched_clock(void)
 {
-	return clocksource_cyc2ns(tegra_clocksource.read(&tegra_clocksource),
-		tegra_clocksource.mult, tegra_clocksource.shift);
+	return clocksource_cyc2ns(tegra_clocksource_us.read(&tegra_clocksource_us),
+		tegra_clocksource_us.mult, tegra_clocksource_us.shift);
+}
+
+/**
+ * read_persistent_clock -  Return time from a persistent clock.
+ *
+ * Reads the time from a source which isn't disabled during PM, the
+ * 32k sync timer.  Convert the cycles elapsed since last read into
+ * nsecs and adds to a monotonically increasing timespec.
+ */
+static struct timespec persistent_ts;
+static cycles_t cycles, last_cycles;
+void read_persistent_clock(struct timespec *ts)
+{
+	unsigned long long nsecs;
+	cycles_t delta;
+	struct timespec *tsp = &persistent_ts;
+
+	last_cycles = cycles;
+	cycles = tegra_clocksource_32k.read(&tegra_clocksource_32k);
+	delta = cycles - last_cycles;
+
+	nsecs = clocksource_cyc2ns(delta,
+				   tegra_clocksource_32k.mult,
+				   tegra_clocksource_32k.shift);
+
+	timespec_add_ns(tsp, nsecs);
+	*ts = *tsp;
 }
 
 static irqreturn_t tegra_timer_interrupt(int irq, void *dev_id)
@@ -173,8 +220,13 @@ static void __init tegra_init_timer(void)
 		WARN(1, "Unknown clock rate");
 	}
 
-	if (clocksource_register_hz(&tegra_clocksource, 1000000)) {
-		printk(KERN_ERR "Failed to register clocksource\n");
+	if (clocksource_register_hz(&tegra_clocksource_us, 1000000)) {
+		printk(KERN_ERR "Failed to register us clocksource\n");
+		BUG();
+	}
+
+	if (clocksource_register_hz(&tegra_clocksource_32k, 1000)) {
+		printk(KERN_ERR "Failed to register 32k clocksource\n");
 		BUG();
 	}
 
