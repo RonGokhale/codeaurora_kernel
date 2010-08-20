@@ -33,6 +33,7 @@
 
 #include <mach/iomap.h>
 #include <mach/irqs.h>
+#include <mach/suspend.h>
 
 #include "board.h"
 #include "clock.h"
@@ -52,8 +53,6 @@
 
 #define TIMER_PTV 0x0
 #define TIMER_PCR 0x4
-
-struct tegra_timer;
 
 static void __iomem *timer_base = IO_ADDRESS(TEGRA_TMR1_BASE);
 static void __iomem *rtc_base = IO_ADDRESS(TEGRA_RTC_BASE);
@@ -95,9 +94,17 @@ static void tegra_timer_set_mode(enum clock_event_mode mode,
 	}
 }
 
+static u64 tegra_us_clocksource_offset;
+
 static cycle_t tegra_clocksource_us_read(struct clocksource *cs)
 {
-	return cnt32_to_63(timer_readl(TIMERUS_CNTR_1US));
+	return tegra_us_clocksource_offset +
+		cnt32_to_63(timer_readl(TIMERUS_CNTR_1US));
+}
+
+void tegra_clocksource_us_suspend(struct clocksource *cs)
+{
+	tegra_us_clocksource_offset = tegra_clocksource_us_read(cs);
 }
 
 static cycle_t tegra_clocksource_32k_read(struct clocksource *cs)
@@ -119,6 +126,7 @@ static struct clocksource tegra_clocksource_us = {
 	.name	= "timer_us",
 	.rating	= 300,
 	.read	= tegra_clocksource_us_read,
+	.suspend= tegra_clocksource_us_suspend,
 	.mask	= 0x7FFFFFFFFFFFFFFFULL,
 	.flags	= CLOCK_SOURCE_IS_CONTINUOUS,
 };
