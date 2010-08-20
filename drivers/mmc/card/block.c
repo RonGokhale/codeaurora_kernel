@@ -43,14 +43,26 @@
 #include "queue.h"
 
 MODULE_ALIAS("mmc:block");
+#ifdef MODULE_PARAM_PREFIX
+#undef MODULE_PARAM_PREFIX
+#endif
+#define MODULE_PARAM_PREFIX "mmcblk."
+
 
 /*
- * max 8 partitions per card
+ * The defaults come from config options but can be overriden by module
+ * or bootarg options.
  */
-#define MMC_SHIFT	3
-#define MMC_NUM_MINORS	(256 >> MMC_SHIFT)
+static int perdev_minors = CONFIG_MMC_BLOCK_MINORS;
 
-static DECLARE_BITMAP(dev_use, MMC_NUM_MINORS);
+/*
+ * We've only got one major, so number of mmcblk devices is
+ * limited to 256 / number of minors per device.
+ */
+static int max_devices;
+
+/* 256 minors, so at most 256 separate devices */
+static DECLARE_BITMAP(dev_use, 256);
 
 /*
  * There is one mmc_blk_data per slot.
@@ -65,6 +77,9 @@ struct mmc_blk_data {
 };
 
 static DEFINE_MUTEX(open_lock);
+
+module_param(perdev_minors, int, 0444);
+MODULE_PARM_DESC(perdev_minors, "Minors numbers to allocate per device");
 
 static struct mmc_blk_data *mmc_blk_get(struct gendisk *disk)
 {
@@ -87,10 +102,10 @@ static void mmc_blk_put(struct mmc_blk_data *md)
 	md->usage--;
 	if (md->usage == 0) {
 		int devmaj = MAJOR(disk_devt(md->disk));
-		int devidx = MINOR(disk_devt(md->disk)) >> MMC_SHIFT;
+		int devidx = MINOR(disk_devt(md->disk)) / perdev_minors;
 
 		if (!devmaj)
-			devidx = md->disk->first_minor >> MMC_SHIFT;
+			devidx = md->disk->first_minor / perdev_minors;
 
 		blk_cleanup_queue(md->queue.queue);
 
@@ -482,8 +497,8 @@ static struct mmc_blk_data *mmc_blk_alloc(struct mmc_card *card)
 	struct mmc_blk_data *md;
 	int devidx, ret;
 
-	devidx = find_first_zero_bit(dev_use, MMC_NUM_MINORS);
-	if (devidx >= MMC_NUM_MINORS)
+	devidx = find_first_zero_bit(dev_use, max_devices);
+	if (devidx >= max_devices)
 		return ERR_PTR(-ENOSPC);
 	__set_bit(devidx, dev_use);
 
@@ -500,7 +515,7 @@ static struct mmc_blk_data *mmc_blk_alloc(struct mmc_card *card)
 	 */
 	md->read_only = mmc_blk_readonly(card);
 
-	md->disk = alloc_disk(1 << MMC_SHIFT);
+	md->disk = alloc_disk(perdev_minors);
 	if (md->disk == NULL) {
 		ret = -ENOMEM;
 		goto err_kfree;
@@ -517,7 +532,7 @@ static struct mmc_blk_data *mmc_blk_alloc(struct mmc_card *card)
 	md->queue.data = md;
 
 	md->disk->major	= MMC_BLOCK_MAJOR;
-	md->disk->first_minor = devidx << MMC_SHIFT;
+	md->disk->first_minor = devidx * perdev_minors;
 	md->disk->fops = &mmc_bdops;
 	md->disk->private_data = md;
 	md->disk->queue = md->queue.queue;
@@ -593,7 +608,6 @@ static int mmc_blk_probe(struct mmc_card *card)
 {
 	struct mmc_blk_data *md;
 	int err;
-
 	char cap_str[10];
 
 	/*
@@ -682,6 +696,11 @@ static struct mmc_driver mmc_driver = {
 static int __init mmc_blk_init(void)
 {
 	int res;
+
+	if (perdev_minors != CONFIG_MMC_BLOCK_MINORS)
+		pr_info("mmcblk: using %d minors per device\n", perdev_minors);
+
+	max_devices = 256 / perdev_minors;
 
 	res = register_blkdev(MMC_BLOCK_MAJOR, "mmc");
 	if (res)
