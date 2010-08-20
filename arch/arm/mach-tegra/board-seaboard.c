@@ -180,6 +180,12 @@ static struct tegra_i2c_platform_data seaboard_dvc_platform_data = {
 	.is_dvc		= true,
 };
 
+static struct i2c_board_info __initdata seaboard_i2c4_devices[] = {
+	{
+		I2C_BOARD_INFO("adt7461", 0x4c),
+	},
+};
+
 static void seaboard_i2c_init(void)
 {
 	tegra_i2c_device1.dev.platform_data = &seaboard_i2c1_platform_data;
@@ -191,6 +197,9 @@ static void seaboard_i2c_init(void)
 	platform_device_register(&tegra_i2c_device2);
 	platform_device_register(&tegra_i2c_device3);
 	platform_device_register(&tegra_i2c_device4);
+
+	i2c_register_board_info(4, seaboard_i2c4_devices,
+				ARRAY_SIZE(seaboard_i2c4_devices));
 }
 
 static struct platform_device *seaboard_devices[] __initdata = {
