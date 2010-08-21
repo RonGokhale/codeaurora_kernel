@@ -222,6 +222,7 @@ void __init tegra_init_irq(void)
 {
 	struct irq_chip *gic;
 	unsigned int i;
+	int irq;
 
 	tegra_init_legacy_irq();
 
@@ -236,9 +237,10 @@ void __init tegra_init_irq(void)
 	tegra_irq.set_affinity = gic->set_affinity;
 #endif
 
-	for (i = INT_PRI_BASE; i < INT_GPIO_BASE; i++) {
-		set_irq_chip(i, &tegra_irq);
-		set_irq_handler(i, handle_level_irq);
-		set_irq_flags(i, IRQF_VALID);
+	for (i = 0; i < INT_MAIN_NR; i++) {
+		irq = INT_PRI_BASE + i;
+		set_irq_chip(irq, &tegra_irq);
+		set_irq_handler(irq, handle_level_irq);
+		set_irq_flags(irq, IRQF_VALID);
 	}
 }

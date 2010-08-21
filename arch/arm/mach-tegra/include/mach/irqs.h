@@ -166,7 +166,10 @@
 #define INT_QUAD_RES_30			(INT_QUAD_BASE + 30)
 #define INT_QUAD_RES_31			(INT_QUAD_BASE + 31)
 
-#define INT_GPIO_BASE			(INT_QUAD_BASE + 32)
+#define INT_MAIN_NR			(INT_QUAD_BASE + 32 - INT_PRI_BASE)
+
+#define INT_GPIO_BASE			(INT_PRI_BASE + INT_MAIN_NR)
+
 #define INT_GPIO_NR			(28 * 8)
 
 #define FIQ_START			INT_GIC_BASE
