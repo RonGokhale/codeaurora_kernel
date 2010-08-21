@@ -43,6 +43,7 @@
 #include <mach/iomap.h>
 #include <mach/iovmm.h>
 #include <mach/irqs.h>
+#include <mach/legacy_irq.h>
 #include <mach/suspend.h>
 
 #include "power.h"
@@ -270,107 +271,7 @@ unsigned int tegra_suspend_lp2(unsigned int us)
 static void pmc_32kwritel(u32 val, unsigned long offs)
 {
 	writel(val, pmc + offs);
-	wmb();
 	udelay(130);
-}
-
-static void tegra_log_wake_sources(void)
-{
-	int wake;
-	int irq;
-	struct irq_desc *desc;
-
-	unsigned long wake_status = readl(pmc + PMC_WAKE_STATUS);
-	for_each_set_bit(wake, &wake_status, sizeof(wake_status) * 8) {
-		irq = tegra_wake_to_irq(wake);
-		if (!irq) {
-			pr_info("Resume caused by WAKE%d\n", wake);
-			continue;
-		}
-
-		desc = irq_to_desc(irq);
-		if (!desc || !desc->action || !desc->action->name) {
-			pr_info("Resume caused by WAKE%d, irq %d\n", wake, irq);
-			continue;
-		}
-
-		pr_info("Resume caused by WAKE%d, %s\n", wake,
-			desc->action->name);
-	}
-}
-
-static void tegra_setup_wakepads(bool do_lp0)
-{
-	u32 temp, status, lvl;
-	int irq;
-	struct irq_desc *desc;
-	unsigned long wake_enb = pdata->wake_enb;
-	unsigned long wake_any = pdata->wake_any;
-	unsigned long wake_high = pdata->wake_high;
-	unsigned long wake_low = pdata->wake_low;
-	int wake_bit;
-
-	/* wakeup by interrupt, nothing to do here */
-	if (!do_lp0)
-		return;
-
-	for_each_irq_desc(irq, desc) {
-		if (!(desc->status & IRQ_WAKEUP))
-			continue;
-
-		wake_bit = tegra_irq_to_wake(irq);
-		if (wake_bit < 0) {
-			pr_warn("Can't set IRQ %d as wake interrupt\n", irq);
-			continue;
-		}
-
-		switch (desc->status & IRQ_TYPE_SENSE_MASK) {
-		case IRQ_TYPE_NONE:
-		case IRQ_TYPE_LEVEL_HIGH:
-		case IRQ_TYPE_EDGE_RISING:
-			wake_high |= 1 << wake_bit;
-			break;
-		case IRQ_TYPE_LEVEL_LOW:
-		case IRQ_TYPE_EDGE_FALLING:
-			wake_low |= 1 << wake_bit;
-			break;
-		case IRQ_TYPE_EDGE_BOTH:
-			wake_any |= 1 << wake_bit;
-			break;
-		default:
-			pr_warn("Unsupported wake IRQ type %d on irq %d\n",
-				desc->status & IRQ_TYPE_SENSE_MASK, irq);
-			continue;
-		}
-
-		wake_enb |= 1 << wake_bit;
-		pr_info("Set irq %d (%s) as WAKE%d\n", irq,
-			(desc && desc->action && desc->action->name) ? desc->action->name : "unknown",
-				wake_bit);
-	}
-
-	pmc_32kwritel(0, PMC_SW_WAKE_STATUS);
-	temp = readl(pmc + PMC_CTRL);
-	temp |= PMC_CTRL_LATCH_WAKEUPS;
-	pmc_32kwritel(temp, PMC_CTRL);
-	temp &= ~PMC_CTRL_LATCH_WAKEUPS;
-	pmc_32kwritel(temp, PMC_CTRL);
-	status = readl(pmc + PMC_SW_WAKE_STATUS);
-	lvl = readl(pmc + PMC_WAKE_LEVEL);
-
-	/* flip the wakeup trigger for any-edge triggered pads
-	 * which are currently asserting as wakeups */
-	status &= wake_any;
-	lvl &= ~wake_low;
-	lvl |= wake_high;
-	lvl ^= status;
-
-	writel(lvl, pmc + PMC_WAKE_LEVEL);
-	/* Enable DPD sample to trigger sampling pads data and direction
-	 * in which pad will be driven during lp0 mode*/
-	writel(0x1, pmc + PMC_DPD_SAMPLE);
-
-	writel(wake_enb, pmc + PMC_WAKE_MASK);
 }
 
 static u8 *iram_save = NULL;
@@ -418,6 +319,8 @@ static void tegra_suspend_dram(bool do_lp0)
 		else
 			mode &= ~TEGRA_POWER_PWRREQ_OE;
 		mode &= ~TEGRA_POWER_EFFECT_LP0;
+
+		tegra_legacy_irq_set_lp1_wake_mask();
 	} else {
 		u32 boot_flag = readl(pmc + PMC_SCRATCH0);
 		pmc_32kwritel(boot_flag | 1, PMC_SCRATCH0);
@@ -437,9 +340,11 @@ static void tegra_suspend_dram(bool do_lp0)
 			pmc_32kwritel(reg, PMC_CTRL);
 			mode &= ~TEGRA_POWER_CPU_PWRREQ_OE;
 		}
+
+		tegra_set_lp0_wake_pads(pdata->wake_enb, pdata->wake_high,
+			pdata->wake_any);
 	}
 
-	tegra_setup_wakepads(do_lp0);
 	suspend_cpu_complex();
 	flush_cache_all();
 	outer_shutdown();
@@ -454,6 +359,7 @@ static void tegra_suspend_dram(bool do_lp0)
 
 	if (!do_lp0) {
 		memcpy(iram_code, iram_save, iram_save_size);
+		tegra_legacy_irq_restore_mask();
 	} else {
 		/* for platforms where the core & CPU power requests are
 		 * combined as a single request to the PMU, transition out
@@ -568,7 +474,6 @@ static int tegra_suspend_enter(suspend_state_t state)
 	local_irq_save(flags);
 
 	pr_info("Entering suspend state LP%d\n", lp_state);
-
 	if (do_lp0) {
 		tegra_irq_suspend();
 		tegra_dma_suspend();
@@ -613,7 +518,7 @@ static int tegra_suspend_enter(suspend_state_t state)
 		tegra_debug_uart_resume();
 		tegra_dma_resume();
 		tegra_irq_resume();
-		tegra_log_wake_sources();
+		tegra_irq_handle_wake();
 	}
 
 	local_irq_restore(flags);
