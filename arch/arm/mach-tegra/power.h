@@ -51,22 +51,6 @@ void tegra_lp2_set_trigger(unsigned long cycles);
 void __cortex_a9_save(unsigned int mode);
 void tegra_lp2_startup(void);
 
-struct tegra_suspend_platform_data {
-	unsigned long cpu_timer;   /* CPU power good time in us,  LP2/LP1 */
-	unsigned long cpu_off_timer;	/* CPU power off time us, LP2/LP1 */
-	unsigned long core_timer;  /* core power good time in ticks,  LP0 */
-	unsigned long core_off_timer;	/* core power off time ticks, LP0 */
-	unsigned long wake_enb;    /* mask of enabled wake pads */
-	unsigned long wake_high;   /* high-level-triggered wake pads */
-	unsigned long wake_low;    /* low-level-triggered wake pads */
-	unsigned long wake_any;    /* any-edge-triggered wake pads */
-	bool dram_suspend;         /* platform supports DRAM self-refresh */
-	bool core_off;             /* platform supports core voltage off */
-	bool corereq_high;         /* Core power request active-high */
-	bool sysclkreq_high;       /* System clock request is active-high */
-	bool separate_req;         /* Core & CPU power request are separate */
-};
-
 #endif
 
 #endif

@@ -111,6 +111,14 @@ static struct clk *tegra_pclk = NULL;
 static const struct tegra_suspend_platform_data *pdata = NULL;
 static unsigned long wb0_restore = 0;
 
+enum tegra_suspend_mode tegra_get_suspend_mode(void)
+{
+	if (!pdata)
+		return TEGRA_SUSPEND_NONE;
+
+	return pdata->suspend_mode;
+}
+
 static void set_power_timers(unsigned long us_on, unsigned long us_off)
 {
 	static int last_pclk = 0;
@@ -546,8 +554,8 @@ static int tegra_suspend_enter(suspend_state_t state)
 	unsigned long flags;
 	u32 mc_data[2];
 	int irq;
-	bool do_lp0 = pdata->core_off && (wb0_restore != 0);
-	bool do_lp2 = !pdata->dram_suspend || !iram_save;
+	bool do_lp0 = (pdata->suspend_mode == TEGRA_SUSPEND_LP0);
+	bool do_lp2 = (pdata->suspend_mode == TEGRA_SUSPEND_LP1);
 	int lp_state;
 
 	if (do_lp2)
@@ -646,7 +654,8 @@ void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
 	(void)reg;
 	(void)mode;
 
-	if (plat->core_off && lp0_vec_orig_size && lp0_vec_orig_start) {
+	if (plat->suspend_mode == TEGRA_SUSPEND_LP0 &&
+			lp0_vec_orig_size && lp0_vec_orig_start) {
 		unsigned char *reloc_lp0;
 		unsigned long tmp;
 		void __iomem *orig;
@@ -670,6 +679,11 @@ void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
 		wb0_restore = virt_to_phys(reloc_lp0);
 	}
 out:
+	if (plat->suspend_mode == TEGRA_SUSPEND_LP0 && !wb0_restore) {
+		pr_warning("Suspend mode LP0 requested, but missing lp0_vec\n");
+		pr_warning("Disabling LP0\n");
+		plat->suspend_mode = TEGRA_SUSPEND_LP1;
+	}
 
 #ifdef CONFIG_PM
 	iram_save_size = (unsigned long)__tegra_iram_end;
@@ -679,6 +693,7 @@ out:
 	if (!iram_save) {
 		pr_err("%s: unable to allocate memory for SDRAM self-refresh "
 		       "LP0/LP1 unavailable\n", __func__);
+		plat->suspend_mode = TEGRA_SUSPEND_LP2;
 	}
 	/* CPU reset vector for LP0 and LP1 */
 	writel(virt_to_phys(tegra_lp2_startup), pmc + PMC_SCRATCH41);
@@ -714,7 +729,7 @@ out:
 		reg |= (TEGRA_POWER_PWRREQ_OE << TEGRA_POWER_PMC_SHIFT);
 	writel(reg, pmc + PMC_CTRL);
 
-	if (pdata->core_off)
+	if (pdata->suspend_mode == TEGRA_SUSPEND_LP0)
 		lp0_suspend_init();
 
 	suspend_set_ops(&tegra_suspend_ops);
