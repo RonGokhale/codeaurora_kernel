@@ -169,7 +169,7 @@ static int tegra_pm_notify(struct notifier_block *nb, unsigned long event,
 		pr_info("Tegra cpufreq suspend: setting frequency to %d kHz\n",
 			freq_table[0].frequency);
 		tegra_update_cpu_speed(freq_table[0].frequency);
-	} else if (event == PM_POST_RESTORE) {
+	} else if (event == PM_POST_SUSPEND) {
 		is_suspended = false;
 	}
 	mutex_unlock(&tegra_cpu_lock);
