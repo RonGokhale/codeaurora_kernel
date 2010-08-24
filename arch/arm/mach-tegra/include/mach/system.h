@@ -24,6 +24,8 @@
 #include <mach/hardware.h>
 #include <mach/iomap.h>
 
+extern void (*tegra_reset)(char mode, const char *cmd);
+
 static inline void arch_idle(void)
 {
 }
@@ -31,9 +33,17 @@ static inline void arch_idle(void)
 static inline void arch_reset(char mode, const char *cmd)
 {
 	void __iomem *reset = IO_ADDRESS(TEGRA_CLK_RESET_BASE + 0x04);
-	u32 reg = readl(reset);
-	reg |= 0x04;
-	writel(reg, reset);
+	u32 reg;
+
+	if (tegra_reset) {
+		tegra_reset(mode, cmd);
+	} else {
+		reg = readl(reset);
+		reg |= 0x04;
+		writel(reg, reset);
+	}
+
+	do { } while (1);
 }
 
 #endif
