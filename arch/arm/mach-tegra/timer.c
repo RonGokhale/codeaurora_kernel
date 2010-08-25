@@ -95,7 +95,7 @@ static void tegra_timer_set_mode(enum clock_event_mode mode,
 }
 
 static u64 tegra_us_clocksource_offset;
-
+static u64 tegra_us_resume_offset;
 static cycle_t tegra_clocksource_us_read(struct clocksource *cs)
 {
 	return tegra_us_clocksource_offset +
@@ -104,7 +104,12 @@ static cycle_t tegra_clocksource_us_read(struct clocksource *cs)
 
 void tegra_clocksource_us_suspend(struct clocksource *cs)
 {
-	tegra_us_clocksource_offset = tegra_clocksource_us_read(cs);
+	tegra_us_resume_offset = tegra_clocksource_us_read(cs);
+}
+
+void tegra_clocksource_us_resume(struct clocksource *cs)
+{
+	tegra_us_clocksource_offset = tegra_us_resume_offset;
 }
 
 static cycle_t tegra_clocksource_32k_read(struct clocksource *cs)
@@ -127,6 +132,7 @@ static struct clocksource tegra_clocksource_us = {
 	.rating	= 300,
 	.read	= tegra_clocksource_us_read,
 	.suspend= tegra_clocksource_us_suspend,
+	.resume	= tegra_clocksource_us_resume,
 	.mask	= 0x7FFFFFFFFFFFFFFFULL,
 	.flags	= CLOCK_SOURCE_IS_CONTINUOUS,
 };
