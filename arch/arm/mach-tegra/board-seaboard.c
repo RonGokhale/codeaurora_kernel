@@ -39,6 +39,7 @@
 #include <mach/pinmux.h>
 #include <mach/iomap.h>
 #include <mach/io.h>
+#include <mach/gpio.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -205,13 +206,25 @@ static void seaboard_i2c_init(void)
 				ARRAY_SIZE(seaboard_i2c4_devices));
 }
 
+#define TEGRA_GPIO_LIDSWITCH	TEGRA_GPIO_PC7
+#define TEGRA_GPIO_POWERKEY	TEGRA_GPIO_PV2
+
 static struct gpio_keys_button seaboard_gpio_keys_buttons[] = {
 	{
 		.code		= SW_LID,
-		.gpio		= TEGRA_GPIO_PC7,
+		.gpio		= TEGRA_GPIO_LIDSWITCH,
 		.active_low	= 0,
 		.desc		= "Lid",
 		.type		= EV_SW,
+		.wakeup		= 1,
+		.debounce_interval = 1,
+	},
+	{
+		.code		= KEY_POWER,
+		.gpio		= TEGRA_GPIO_POWERKEY,
+		.active_low	= 1,
+		.desc		= "Power",
+		.type		= EV_KEY,
 		.wakeup		= 1,
 	},
 };
@@ -251,6 +264,9 @@ static void __init tegra_seaboard_init(void)
 	platform_add_devices(seaboard_devices, ARRAY_SIZE(seaboard_devices));
 	seaboard_sdhci_init();
 	seaboard_i2c_init();
+
+	tegra_gpio_enable(TEGRA_GPIO_LIDSWITCH);
+	tegra_gpio_enable(TEGRA_GPIO_POWERKEY);
 }
 
 MACHINE_START(TEGRA_SEABOARD, "seaboard")
