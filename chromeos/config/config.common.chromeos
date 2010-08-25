@@ -299,7 +299,6 @@ CONFIG_FB=y
 # CONFIG_FB_MACMODES is not set
 # CONFIG_FB_MB862XX is not set
 # CONFIG_FB_METRONOME is not set
-# CONFIG_FB_MODE_HELPERS is not set
 # CONFIG_FB_S1D13XXX is not set
 # CONFIG_FB_SM7XX is not set
 # CONFIG_FB_SVGALIB is not set
