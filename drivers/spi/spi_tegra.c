@@ -17,8 +17,6 @@
  *
  */
 
-#undef DEBUG
-
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/err.h>
@@ -35,99 +33,99 @@
 #include <mach/dma.h>
 
 #define SLINK_COMMAND		0x000
-#define   BIT_LENGTH(x)			(((x) & 0x1f) << 0)
-#define   WORD_SIZE(x)			(((x) & 0x1f) << 5)
-#define   BOTH_EN			(1 << 10)
-#define   CS_SW				(1 << 11)
-#define   CS_VALUE			(1 << 12)
-#define   CS_POLARITY			(1 << 13)
-#define   IDLE_SDA_DRIVE_LOW		(0 << 16)
-#define   IDLE_SDA_DRIVE_HIGH		(1 << 16)
-#define   IDLE_SDA_PULL_LOW		(2 << 16)
-#define   IDLE_SDA_PULL_HIGH		(3 << 16)
-#define   IDLE_SDA_MASK			(3 << 16)
-#define   CS_POLARITY1			(1 << 20)
-#define   CK_SDA			(1 << 21)
-#define   CS_POLARITY2			(1 << 22)
-#define   CS_POLARITY3			(1 << 23)
-#define   IDLE_SCLK_DRIVE_LOW		(0 << 24)
-#define   IDLE_SCLK_DRIVE_HIGH		(1 << 24)
-#define   IDLE_SCLK_PULL_LOW		(2 << 24)
-#define   IDLE_SCLK_PULL_HIGH		(3 << 24)
-#define   IDLE_SCLK_MASK		(3 << 24)
-#define   M_S				(1 << 28)
-#define   WAIT				(1 << 29)
-#define   GO				(1 << 30)
-#define   ENB				(1 << 31)
+#define   SLINK_BIT_LENGTH(x)		(((x) & 0x1f) << 0)
+#define   SLINK_WORD_SIZE(x)		(((x) & 0x1f) << 5)
+#define   SLINK_BOTH_EN			(1 << 10)
+#define   SLINK_CS_SW			(1 << 11)
+#define   SLINK_CS_VALUE		(1 << 12)
+#define   SLINK_CS_POLARITY		(1 << 13)
+#define   SLINK_IDLE_SDA_DRIVE_LOW	(0 << 16)
+#define   SLINK_IDLE_SDA_DRIVE_HIGH	(1 << 16)
+#define   SLINK_IDLE_SDA_PULL_LOW	(2 << 16)
+#define   SLINK_IDLE_SDA_PULL_HIGH	(3 << 16)
+#define   SLINK_IDLE_SDA_MASK		(3 << 16)
+#define   SLINK_CS_POLARITY1		(1 << 20)
+#define   SLINK_CK_SDA			(1 << 21)
+#define   SLINK_CS_POLARITY2		(1 << 22)
+#define   SLINK_CS_POLARITY3		(1 << 23)
+#define   SLINK_IDLE_SCLK_DRIVE_LOW	(0 << 24)
+#define   SLINK_IDLE_SCLK_DRIVE_HIGH	(1 << 24)
+#define   SLINK_IDLE_SCLK_PULL_LOW	(2 << 24)
+#define   SLINK_IDLE_SCLK_PULL_HIGH	(3 << 24)
+#define   SLINK_IDLE_SCLK_MASK		(3 << 24)
+#define   SLINK_M_S			(1 << 28)
+#define   SLINK_WAIT			(1 << 29)
+#define   SLINK_GO			(1 << 30)
+#define   SLINK_ENB			(1 << 31)
 
 #define SLINK_COMMAND2		0x004
-#define   LSBFE				(1 << 0)
-#define   SSOE				(1 << 1)
-#define   SPIE				(1 << 4)
-#define   BIDIROE			(1 << 6)
-#define   MODFEN			(1 << 7)
-#define   INT_SIZE(x)			(((x) & 0x1f) << 8)
-#define   CS_ACTIVE_BETWEEN		(1 << 17)
-#define   SS_EN_CS(x)			(((x) & 0x3) << 18)
-#define   SS_SETUP(x)			(((x) & 0x3) << 20)
-#define   FIFO_REFILLS_0		(0 << 22)
-#define   FIFO_REFILLS_1		(1 << 22)
-#define   FIFO_REFILLS_2		(2 << 22)
-#define   FIFO_REFILLS_3		(3 << 22)
-#define   FIFO_REFILLS_MASK		(3 << 22)
-#define   WAIT_PACK_INT(x)		(((x) & 0x7) << 26)
-#define   SPC0				(1 << 29)
-#define   TXEN				(1 << 30)
-#define   RXEN				(1 << 31)
+#define   SLINK_LSBFE			(1 << 0)
+#define   SLINK_SSOE			(1 << 1)
+#define   SLINK_SPIE			(1 << 4)
+#define   SLINK_BIDIROE			(1 << 6)
+#define   SLINK_MODFEN			(1 << 7)
+#define   SLINK_INT_SIZE(x)		(((x) & 0x1f) << 8)
+#define   SLINK_CS_ACTIVE_BETWEEN	(1 << 17)
+#define   SLINK_SS_EN_CS(x)		(((x) & 0x3) << 18)
+#define   SLINK_SS_SETUP(x)		(((x) & 0x3) << 20)
+#define   SLINK_FIFO_REFILLS_0		(0 << 22)
+#define   SLINK_FIFO_REFILLS_1		(1 << 22)
+#define   SLINK_FIFO_REFILLS_2		(2 << 22)
+#define   SLINK_FIFO_REFILLS_3		(3 << 22)
+#define   SLINK_FIFO_REFILLS_MASK	(3 << 22)
+#define   SLINK_WAIT_PACK_INT(x)	(((x) & 0x7) << 26)
+#define   SLINK_SPC0			(1 << 29)
+#define   SLINK_TXEN			(1 << 30)
+#define   SLINK_RXEN			(1 << 31)
 
 #define SLINK_STATUS		0x008
-#define   COUNT(val)			(((val) >> 0) & 0x1f)
-#define   WORD(val)			(((val) >> 5) & 0x1f)
-#define   BLK_CNT(val)			(((val) >> 0) & 0xffff)
-#define   MODF				(1 << 16)
-#define   RX_UNF			(1 << 18)
-#define   TX_OVF			(1 << 19)
-#define   TX_FULL			(1 << 20)
-#define   TX_EMPTY			(1 << 21)
-#define   RX_FULL			(1 << 22)
-#define   RX_EMPTY			(1 << 23)
-#define   TX_UNF			(1 << 24)
-#define   RX_OVF			(1 << 25)
-#define   TX_FLUSH			(1 << 26)
-#define   RX_FLUSH			(1 << 27)
-#define   SCLK				(1 << 28)
-#define   ERR				(1 << 29)
-#define   RDY				(1 << 30)
-#define   BSY				(1 << 31)
+#define   SLINK_COUNT(val)		(((val) >> 0) & 0x1f)
+#define   SLINK_WORD(val)		(((val) >> 5) & 0x1f)
+#define   SLINK_BLK_CNT(val)		(((val) >> 0) & 0xffff)
+#define   SLINK_MODF			(1 << 16)
+#define   SLINK_RX_UNF			(1 << 18)
+#define   SLINK_TX_OVF			(1 << 19)
+#define   SLINK_TX_FULL			(1 << 20)
+#define   SLINK_TX_EMPTY		(1 << 21)
+#define   SLINK_RX_FULL			(1 << 22)
+#define   SLINK_RX_EMPTY		(1 << 23)
+#define   SLINK_TX_UNF			(1 << 24)
+#define   SLINK_RX_OVF			(1 << 25)
+#define   SLINK_TX_FLUSH		(1 << 26)
+#define   SLINK_RX_FLUSH		(1 << 27)
+#define   SLINK_SCLK			(1 << 28)
+#define   SLINK_ERR			(1 << 29)
+#define   SLINK_RDY			(1 << 30)
+#define   SLINK_BSY			(1 << 31)
 
 #define SLINK_MAS_DATA		0x010
 #define SLINK_SLAVE_DATA	0x014
 
 #define SLINK_DMA_CTL		0x018
-#define   DMA_BLOCK_SIZE(x)		(((x) & 0xffff) << 0)
-#define   TX_TRIG_1			(0 << 16)
-#define   TX_TRIG_4			(1 << 16)
-#define   TX_TRIG_8			(2 << 16)
-#define   TX_TRIG_16			(3 << 16)
-#define   TX_TRIG_MASK			(3 << 16)
-#define   RX_TRIG_1			(0 << 18)
-#define   RX_TRIG_4			(1 << 18)
-#define   RX_TRIG_8			(2 << 18)
-#define   RX_TRIG_16			(3 << 18)
-#define   RX_TRIG_MASK			(3 << 18)
-#define   PACKED			(1 << 20)
-#define   PACK_SIZE_4			(0 << 21)
-#define   PACK_SIZE_8			(1 << 21)
-#define   PACK_SIZE_16			(2 << 21)
-#define   PACK_SIZE_32			(3 << 21)
-#define   PACK_SIZE_MASK		(3 << 21)
-#define   IE_TXC			(1 << 26)
-#define   IE_RXC			(1 << 27)
-#define   DMA_EN			(1 << 31)
+#define   SLINK_DMA_BLOCK_SIZE(x)	(((x) & 0xffff) << 0)
+#define   SLINK_TX_TRIG_1		(0 << 16)
+#define   SLINK_TX_TRIG_4		(1 << 16)
+#define   SLINK_TX_TRIG_8		(2 << 16)
+#define   SLINK_TX_TRIG_16		(3 << 16)
+#define   SLINK_TX_TRIG_MASK		(3 << 16)
+#define   SLINK_RX_TRIG_1		(0 << 18)
+#define   SLINK_RX_TRIG_4		(1 << 18)
+#define   SLINK_RX_TRIG_8		(2 << 18)
+#define   SLINK_RX_TRIG_16		(3 << 18)
+#define   SLINK_RX_TRIG_MASK		(3 << 18)
+#define   SLINK_PACKED			(1 << 20)
+#define   SLINK_PACK_SIZE_4		(0 << 21)
+#define   SLINK_PACK_SIZE_8		(1 << 21)
+#define   SLINK_PACK_SIZE_16		(2 << 21)
+#define   SLINK_PACK_SIZE_32		(3 << 21)
+#define   SLINK_PACK_SIZE_MASK		(3 << 21)
+#define   SLINK_IE_TXC			(1 << 26)
+#define   SLINK_IE_RXC			(1 << 27)
+#define   SLINK_DMA_EN			(1 << 31)
 
 #define SLINK_STATUS2		0x01c
-#define   TX_FIFO_EMPTY_COUNT(val)	(((val) & 0x3f) >> 0)
-#define   RX_FIFO_FULL_COUNT(val)	(((val) & 0x3f) >> 16)
+#define   SLINK_TX_FIFO_EMPTY_COUNT(val)	(((val) & 0x3f) >> 0)
+#define   SLINK_RX_FIFO_FULL_COUNT(val)		(((val) & 0x3f) >> 16)
 
 #define SLINK_TX_FIFO		0x100
 #define SLINK_RX_FIFO		0x180
@@ -138,19 +136,6 @@ static const unsigned long spi_tegra_req_sels[] = {
 	TEGRA_DMA_REQ_SEL_SL2B3,
 	TEGRA_DMA_REQ_SEL_SL2B4,
 };
-
-static inline unsigned bytes_per_word(u8 bits)
-{
-	WARN_ON((bits < 1) || bits > 32);
-	if (bits <= 8)
-		return 1;
-	else if (bits <= 16)
-		return 2;
-	else if (bits <= 24)
-		return 3;
-	else
-		return 4;
-}
 
 #define BB_LEN			32
 
@@ -185,14 +170,15 @@ struct spi_tegra_data {
 };
 
 
-static unsigned long spi_tegra_readl(struct spi_tegra_data *tspi,
-				     unsigned long reg)
+static inline unsigned long spi_tegra_readl(struct spi_tegra_data *tspi,
+					    unsigned long reg)
 {
 	return readl(tspi->base + reg);
 }
 
-static void spi_tegra_writel(struct spi_tegra_data *tspi, unsigned long val,
-		       unsigned long reg)
+static inline void spi_tegra_writel(struct spi_tegra_data *tspi,
+				    unsigned long val,
+				    unsigned long reg)
 {
 	writel(val, tspi->base + reg);
 }
@@ -204,13 +190,13 @@ static void spi_tegra_go(struct spi_tegra_data *tspi)
 	wmb();
 
 	val = spi_tegra_readl(tspi, SLINK_DMA_CTL);
-	val &= ~DMA_BLOCK_SIZE(~0) & ~DMA_EN;
-	val |= DMA_BLOCK_SIZE(tspi->rx_dma_req.size / 4 - 1);
+	val &= ~SLINK_DMA_BLOCK_SIZE(~0) & ~SLINK_DMA_EN;
+	val |= SLINK_DMA_BLOCK_SIZE(tspi->rx_dma_req.size / 4 - 1);
 	spi_tegra_writel(tspi, val, SLINK_DMA_CTL);
 
 	tegra_dma_enqueue_req(tspi->rx_dma, &tspi->rx_dma_req);
 
-	val |= DMA_EN;
+	val |= SLINK_DMA_EN;
 	spi_tegra_writel(tspi, val, SLINK_DMA_CTL);
 }
 
@@ -224,8 +210,8 @@ static unsigned spi_tegra_fill_tx_fifo(struct spi_tegra_data *tspi,
 	unsigned long val;
 
 	val = spi_tegra_readl(tspi, SLINK_COMMAND);
-	val &= ~WORD_SIZE(~0);
-	val |= WORD_SIZE(len / tspi->cur_bytes_per_word - 1);
+	val &= ~SLINK_WORD_SIZE(~0);
+	val |= SLINK_WORD_SIZE(len / tspi->cur_bytes_per_word - 1);
 	spi_tegra_writel(tspi, val, SLINK_COMMAND);
 
 	for (i = 0; i < len; i += tspi->cur_bytes_per_word) {
@@ -281,45 +267,38 @@ static void spi_tegra_start_transfer(struct spi_device *spi,
 	tspi->cur_speed = speed;
 
 	val = spi_tegra_readl(tspi, SLINK_COMMAND2);
+	val &= ~SLINK_SS_EN_CS(~0) | SLINK_RXEN | SLINK_TXEN;
 	if (t->rx_buf)
-		val |= RXEN;
-	else
-		val &= ~RXEN;
-
+		val |= SLINK_RXEN;
 	if (t->tx_buf)
-		val |= TXEN;
-	else
-		val &= ~TXEN;
-
-	val &= ~SS_EN_CS(~0);
-	val |= SS_EN_CS(spi->chip_select);
-	val |= SPIE;
-
+		val |= SLINK_TXEN;
+	val |= SLINK_SS_EN_CS(spi->chip_select);
+	val |= SLINK_SPIE;
 	spi_tegra_writel(tspi, val, SLINK_COMMAND2);
 
 	val = spi_tegra_readl(tspi, SLINK_COMMAND);
-	val &= ~BIT_LENGTH(~0);
-	val |= BIT_LENGTH(bits_per_word - 1);
+	val &= ~SLINK_BIT_LENGTH(~0);
+	val |= SLINK_BIT_LENGTH(bits_per_word - 1);
 
 	/* FIXME: should probably control CS manually so that we can be sure
 	 * it does not go low between transfer and to support delay_usecs
 	 * correctly.
 	 */
-	val &= ~IDLE_SCLK_MASK & ~CK_SDA & ~CS_SW;
+	val &= ~SLINK_IDLE_SCLK_MASK & ~SLINK_CK_SDA & ~SLINK_CS_SW;
 
 	if (spi->mode & SPI_CPHA)
-		val |= CK_SDA;
+		val |= SLINK_CK_SDA;
 
 	if (spi->mode & SPI_CPOL)
-		val |= IDLE_SCLK_DRIVE_HIGH;
+		val |= SLINK_IDLE_SCLK_DRIVE_HIGH;
 	else
-		val |= IDLE_SCLK_DRIVE_LOW;
+		val |= SLINK_IDLE_SCLK_DRIVE_LOW;
 
-	val |= M_S;
+	val |= SLINK_M_S;
 
 	spi_tegra_writel(tspi, val, SLINK_COMMAND);
 
-	spi_tegra_writel(tspi, RX_FLUSH | TX_FLUSH, SLINK_STATUS);
+	spi_tegra_writel(tspi, SLINK_RX_FLUSH | SLINK_TX_FLUSH, SLINK_STATUS);
 
 	tspi->cur = t;
 	tspi->cur_pos = 0;
@@ -334,6 +313,7 @@ static void spi_tegra_start_message(struct spi_device *spi,
 	struct spi_transfer *t;
 
 	m->actual_length = 0;
+	m->status = 0;
 
 	t = list_first_entry(&m->transfers, struct spi_transfer, transfer_list);
 	spi_tegra_start_transfer(spi, t);
@@ -345,7 +325,6 @@ static void tegra_spi_rx_dma_complete(struct tegra_dma_req *req)
 	unsigned long flags;
 	struct spi_message *m;
 	struct spi_device *spi;
-	int complete = 0;
 	int timeout = 0;
 	unsigned long val;
 
@@ -355,15 +334,19 @@ static void tegra_spi_rx_dma_complete(struct tegra_dma_req *req)
 	 * determined to be long enough.
 	 */
 	while (timeout++ < 1000) {
-		if (!(spi_tegra_readl(tspi, SLINK_STATUS) & BSY))
+		if (!(spi_tegra_readl(tspi, SLINK_STATUS) & SLINK_BSY))
 			break;
 	}
 
+	spin_lock_irqsave(&tspi->lock, flags);
+
+	if (timeout >= 1000)
+		m->status = -EIO;
+
 	val = spi_tegra_readl(tspi, SLINK_STATUS);
-	val |= RDY;
+	val |= SLINK_RDY;
 	spi_tegra_writel(tspi, val, SLINK_STATUS);
 
-	spin_lock_irqsave(&tspi->lock, flags);
 
 	m = list_first_entry(&tspi->queue, struct spi_message, queue);
 	spi = m->state;
@@ -381,13 +364,8 @@ static void tegra_spi_rx_dma_complete(struct tegra_dma_req *req)
 					      transfer_list);
 		spi_tegra_start_transfer(spi, tspi->cur);
 	} else {
-		complete = 1;
-	}
-
-	if (complete) {
 		list_del(&m->queue);
 
-		m->status = 0;
 		m->complete(m->context);
 
 		if (!list_empty(&tspi->queue)) {
@@ -420,19 +398,19 @@ static int spi_tegra_setup(struct spi_device *spi)
 
 	switch (spi->chip_select) {
 	case 0:
-		cs_bit = CS_POLARITY;
+		cs_bit = SLINK_CS_POLARITY;
 		break;
 
 	case 1:
-		cs_bit = CS_POLARITY1;
+		cs_bit = SLINK_CS_POLARITY1;
 		break;
 
 	case 2:
-		cs_bit = CS_POLARITY2;
+		cs_bit = SLINK_CS_POLARITY2;
 		break;
 
 	case 4:
-		cs_bit = CS_POLARITY3;
+		cs_bit = SLINK_CS_POLARITY3;
 		break;
 
 	default:
@@ -535,6 +513,12 @@ static int __init spi_tegra_probe(struct platform_device *pdev)
 		goto err0;
 	}
 
+	if (!request_mem_region(r->start, (r->end - r->start) + 1,
+				dev_name(&pdev->dev))) {
+		ret = -EBUSY;
+		goto err0;
+	}
+
 	tspi->phys = r->start;
 	tspi->base = ioremap(r->start, r->end - r->start + 1);
 	if (!tspi->base) {
@@ -604,6 +588,7 @@ static int __devexit spi_tegra_remove(struct platform_device *pdev)
 {
 	struct spi_master	*master;
 	struct spi_tegra_data	*tspi;
+	struct resource		*r;
 
 	master = dev_get_drvdata(&pdev->dev);
 	tspi = spi_master_get_devdata(master);
@@ -617,6 +602,8 @@ static int __devexit spi_tegra_remove(struct platform_device *pdev)
 	iounmap(tspi->base);
 
 	spi_master_put(master);
+	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	release_mem_region(r->start, (r->end - r->start) + 1);
 
 	return 0;
 }
@@ -683,7 +670,7 @@ static int __init spi_tegra_init(void)
 {
 	return platform_driver_probe(&spi_tegra_driver, spi_tegra_probe);
 }
-subsys_initcall(spi_tegra_init);
+module_init(spi_tegra_init);
 
 static void __exit spi_tegra_exit(void)
 {
