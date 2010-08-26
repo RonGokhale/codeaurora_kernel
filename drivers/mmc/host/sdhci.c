@@ -1876,7 +1876,10 @@ int sdhci_add_host(struct sdhci_host *host)
 		mmc->f_min = host->max_clk / SDHCI_MAX_DIV_SPEC_200;
 
 	mmc->f_max = host->max_clk;
-	mmc->caps |= MMC_CAP_SDIO_IRQ;
+	mmc->caps = 0;
+
+	if (!(host->quirks & SDHCI_QUIRK_NO_SDIO_IRQ))
+		mmc->caps |= MMC_CAP_SDIO_IRQ;
 
 	/*
 	 * A controller may support 8-bit width, but the board itself
