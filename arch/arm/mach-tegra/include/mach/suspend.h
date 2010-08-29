@@ -43,6 +43,8 @@ struct tegra_suspend_platform_data {
 	enum tegra_suspend_mode suspend_mode;
 };
 
+unsigned long tegra_cpu_power_good_time(void);
+unsigned long tegra_cpu_power_off_time(void);
 enum tegra_suspend_mode tegra_get_suspend_mode(void);
 
 void __tegra_lp1_reset(void);

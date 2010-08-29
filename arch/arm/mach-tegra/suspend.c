@@ -112,6 +112,22 @@ static struct clk *tegra_pclk = NULL;
 static const struct tegra_suspend_platform_data *pdata = NULL;
 static unsigned long wb0_restore = 0;
 
+unsigned long tegra_cpu_power_good_time(void)
+{
+	if (WARN_ON_ONCE(!pdata))
+		return 5000;
+
+	return pdata->cpu_timer;
+}
+
+unsigned long tegra_cpu_power_off_time(void)
+{
+	if (WARN_ON_ONCE(!pdata))
+		return 5000;
+
+	return pdata->cpu_off_timer;
+}
+
 enum tegra_suspend_mode tegra_get_suspend_mode(void)
 {
 	if (!pdata)
@@ -278,7 +294,6 @@ static void pmc_32kwritel(u32 val, unsigned long offs)
 static u8 *iram_save = NULL;
 static unsigned int iram_save_size = 0;
 static void __iomem *iram_code = IO_ADDRESS(TEGRA_IRAM_CODE_AREA);
-static void __iomem *iram_avp_resume = IO_ADDRESS(TEGRA_IRAM_BASE);
 
 static void tegra_suspend_dram(bool do_lp0)
 {
