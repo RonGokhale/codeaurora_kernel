@@ -116,7 +116,7 @@ static cycle_t tegra_clocksource_32k_read(struct clocksource *cs)
 {
 	u32 ms = readl(rtc_base + RTC_MILLISECONDS);
 	u32 s = readl(rtc_base + RTC_SHADOW_SECONDS);
-	return cnt32_to_63(s * 1000 + ms);
+	return (u64)s * 1000 + ms;
 }
 
 static struct clock_event_device tegra_clockevent = {
