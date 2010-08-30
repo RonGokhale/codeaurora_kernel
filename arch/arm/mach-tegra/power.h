@@ -48,6 +48,7 @@
 
 #ifndef __ASSEMBLY__
 void tegra_lp2_set_trigger(unsigned long cycles);
+unsigned long tegra_lp2_timer_remain(void);
 void __cortex_a9_save(unsigned int mode);
 void tegra_lp2_startup(void);
 unsigned int tegra_suspend_lp2(unsigned int us);

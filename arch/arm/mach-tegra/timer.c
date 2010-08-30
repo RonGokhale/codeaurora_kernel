@@ -282,6 +282,11 @@ void tegra_lp2_set_trigger(unsigned long cycles)
 }
 EXPORT_SYMBOL(tegra_lp2_set_trigger);
 
+unsigned long tegra_lp2_timer_remain(void)
+{
+	return timer_readl(TIMER4_BASE + TIMER_PCR) & 0x1ffffffful;
+}
+
 static u32 usec_config;
 void tegra_timer_suspend(void)
 {

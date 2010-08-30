@@ -239,8 +239,9 @@ static noinline void suspend_cpu_complex(void)
 
 unsigned int tegra_suspend_lp2(unsigned int us)
 {
-	unsigned int mode, entry, exit;
+	unsigned int mode;
 	unsigned long orig, reg;
+	unsigned int remain;
 
 	reg = readl(pmc + PMC_CTRL);
 	mode = (reg >> TEGRA_POWER_PMC_SHIFT) & TEGRA_POWER_PMC_MASK;
@@ -270,15 +271,14 @@ unsigned int tegra_suspend_lp2(unsigned int us)
 	/* return from __cortex_a9_restore */
 	barrier();
 	restore_cpu_complex();
+
+	remain = tegra_lp2_timer_remain();
 	if (us)
 		tegra_lp2_set_trigger(0);
 
 	writel(orig, evp_reset);
 
-	entry = readl(pmc + PMC_SCRATCH38);
-	exit = readl(pmc + PMC_SCRATCH39);
-
-	return exit - entry;
+	return remain;
 }
 
 #ifdef CONFIG_PM
