@@ -252,6 +252,7 @@ unsigned int tegra_suspend_lp2(unsigned int us)
 
 	__cortex_a9_save(mode);
 	/* return from __cortex_a9_restore */
+	barrier();
 	restore_cpu_complex();
 	if (us)
 		tegra_lp2_set_trigger(0);
