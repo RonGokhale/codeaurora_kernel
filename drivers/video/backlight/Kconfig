@@ -243,6 +243,13 @@ config BACKLIGHT_MBP_NVIDIA
          If you have an Apple Macbook Pro with Nvidia graphics hardware say Y
 	 to enable a driver for its backlight
 
+config BACKLIGHT_TEGRA_PWM
+	tristate "Backlight driver for NVIDIA Tegra PWM controller"
+	depends on ARCH_TEGRA && GPIOLIB
+	help
+	  If you have an LCD connected to the Tegra 2 PWM controller, say
+	  Y here to enable this driver
+
 config BACKLIGHT_TOSA
 	tristate "Sharp SL-6000 Backlight Driver"
 	depends on I2C && MACH_TOSA && LCD_TOSA
