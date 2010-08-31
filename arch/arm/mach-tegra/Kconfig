@@ -64,6 +64,8 @@ config TEGRA_SYSTEM_DMA
 	  Adds system DMA functionality for NVIDIA Tegra SoCs, used by
 	  several Tegra device drivers
 
+source "arch/arm/mach-tegra/nv/Kconfig"
+
 endif
 
 config TEGRA_IOVMM_GART
