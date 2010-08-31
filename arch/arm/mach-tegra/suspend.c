@@ -461,7 +461,7 @@ static int tegra_suspend_enter(suspend_state_t state)
 	u32 mc_data[2];
 	int irq;
 	bool do_lp0 = (pdata->suspend_mode == TEGRA_SUSPEND_LP0);
-	bool do_lp2 = (pdata->suspend_mode == TEGRA_SUSPEND_LP1);
+	bool do_lp2 = (pdata->suspend_mode == TEGRA_SUSPEND_LP2);
 	int lp_state;
 
 	if (do_lp2)
@@ -605,7 +605,7 @@ out:
 
 	/* Always enable CPU power request; just normal polarity is supported */
 	reg = readl(pmc + PMC_CTRL);
-	BUG_ON(reg & TEGRA_POWER_CPU_PWRREQ_POLARITY);
+	BUG_ON(reg & (TEGRA_POWER_CPU_PWRREQ_POLARITY << TEGRA_POWER_PMC_SHIFT));
 	reg |= (TEGRA_POWER_CPU_PWRREQ_OE << TEGRA_POWER_PMC_SHIFT);
 	pmc_32kwritel(reg, PMC_CTRL);
 
