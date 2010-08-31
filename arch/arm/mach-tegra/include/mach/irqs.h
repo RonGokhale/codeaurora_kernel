@@ -178,7 +178,12 @@
 
 #define FIQ_START			INT_GIC_BASE
 
-#define NR_IRQS				(INT_GPIO_BASE + INT_GPIO_NR)
+#define TEGRA_NR_IRQS			(INT_GPIO_BASE + INT_GPIO_NR)
+
+#define INT_BOARD_BASE			TEGRA_NR_IRQS
+#define NR_BOARD_IRQS			8
+
+#define NR_IRQS				(INT_BOARD_BASE + NR_BOARD_IRQS)
 #endif
 
 #endif
