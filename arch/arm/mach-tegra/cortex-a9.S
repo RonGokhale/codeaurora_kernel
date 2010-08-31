@@ -510,6 +510,7 @@ ENTRY(__cortex_a9_restore)
 	/* finally, restore the stack and return */
 	ldmfd	sp!, {r3-r12, lr}
 	msr	cpsr_fsxc, r3		@ restore original processor mode
+        isb
 	mov	pc, lr
 ENDPROC(__cortex_a9_restore)
 
