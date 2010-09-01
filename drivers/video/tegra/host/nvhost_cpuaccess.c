@@ -37,12 +37,7 @@ int nvhost_cpuaccess_init(struct nvhost_cpuaccess *ctx,
 			dev_err(&pdev->dev, "missing module memory resource\n");
 			return -ENXIO;
 		}
-		ctx->reg_mem[i] = request_mem_region(mem->start,
-						resource_size(mem), pdev->name);
-		if (!ctx->reg_mem[i]) {
-			dev_err(&pdev->dev, "failed to get module memory\n");
-			return -ENXIO;
-		}
+
 		ctx->regs[i] = ioremap(mem->start, resource_size(mem));
 		if (!ctx->regs[i]) {
 			dev_err(&pdev->dev, "failed to map module registers\n");

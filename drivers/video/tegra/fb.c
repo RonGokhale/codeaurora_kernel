@@ -340,6 +340,7 @@ static struct fb_ops tegra_fb_ops = {
 	.fb_fillrect = tegra_fb_fillrect,
 	.fb_copyarea = tegra_fb_copyarea,
 	.fb_imageblit = tegra_fb_imageblit,
+	.fb_ioctl = tegra_fb_ioctl,
 };
 
 void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
