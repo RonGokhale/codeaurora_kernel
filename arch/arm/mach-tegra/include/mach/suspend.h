@@ -55,12 +55,14 @@ void tegra_irq_suspend(void);
 void tegra_gpio_suspend(void);
 void tegra_clk_suspend(void);
 void tegra_dma_suspend(void);
+void tegra_timer_suspend(void);
 
 void tegra_pinmux_resume(void);
 void tegra_irq_resume(void);
 void tegra_gpio_resume(void);
 void tegra_clk_resume(void);
 void tegra_dma_resume(void);
+void tegra_timer_resume(void);
 
 int tegra_irq_to_wake(int irq);
 int tegra_wake_to_irq(int wake);
