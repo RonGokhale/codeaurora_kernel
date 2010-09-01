@@ -53,7 +53,7 @@
 #define OSC_CTRL_OSC_FREQ_19_2MHZ	(1<<30)
 #define OSC_CTRL_OSC_FREQ_12MHZ		(2<<30)
 #define OSC_CTRL_OSC_FREQ_26MHZ		(3<<30)
-#define OSC_CTRL_MASK			0x3f2
+#define OSC_CTRL_MASK			(0x3f2 | OSC_CTRL_OSC_FREQ_MASK)
 
 #define OSC_FREQ_DET			0x58
 #define OSC_FREQ_DET_TRIG		(1<<31)
