@@ -358,7 +358,7 @@ struct tegra_dma_channel *tegra_dma_allocate_channel(int mode)
 		channel = find_first_zero_bit(channel_usage,
 			ARRAY_SIZE(dma_channels));
 		if (channel >= ARRAY_SIZE(dma_channels))
-			return ERR_PTR(ENODEV);
+			return NULL;
 	}
 	__set_bit(channel, channel_usage);
 	ch = &dma_channels[channel];
