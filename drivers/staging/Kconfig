@@ -1,5 +1,5 @@
 menuconfig STAGING
-	bool "Staging drivers"
+bool "Staging drivers"
 	default n
 	---help---
 	  This option allows you to select a number of drivers that are
@@ -154,6 +154,8 @@ source "drivers/staging/solo6x10/Kconfig"
 source "drivers/staging/tidspbridge/Kconfig"
 
 source "drivers/staging/quickstart/Kconfig"
+
+source "drivers/staging/ath6kl/Kconfig"
 
 endif # !STAGING_EXCLUDE_BUILD
 endif # STAGING
