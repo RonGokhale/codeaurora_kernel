@@ -52,6 +52,7 @@ unsigned long tegra_lp2_timer_remain(void);
 void __cortex_a9_save(unsigned int mode);
 void tegra_lp2_startup(void);
 unsigned int tegra_suspend_lp2(unsigned int us);
+void tegra_hotplug_startup(void);
 #endif
 
 #endif
