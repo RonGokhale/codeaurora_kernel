@@ -180,6 +180,7 @@ static struct platform_device *harmony_devices[] __initdata = {
 	&tegra_spi_device3,
 	&tegra_spi_device4,
 	&tegra_gart_device,
+	&tegra_grhost_device,
 };
 
 static void __init tegra_harmony_fixup(struct machine_desc *desc,
@@ -197,16 +198,33 @@ static void __init tegra_harmony_fixup(struct machine_desc *desc,
 static __initdata struct tegra_clk_init_table harmony_clk_init_table[] = {
 	/* name		parent		rate		enabled */
 	{ "uartd",	"pll_p",	216000000,	true },
+	{ "host1x",	"pll_p",	166000000,	true},
+	{ "2d",		"pll_m",	300000000,	true},
+	{ "3d",		"pll_m",	300000000,	true},
+	{ "epp",	"pll_m",	50000000,	true},
+	{ "vi",		"pll_m",	50000000,	true},
 	{ NULL,		NULL,		0,		0},
 };
 
 static void __init tegra_harmony_init(void)
 {
+	struct clk *clk;
+
 	tegra_common_init();
 
 	tegra_clk_init_from_table(harmony_clk_init_table);
 
 	harmony_pinmux_init();
+
+	/* HACK: reset 3d clock */
+	clk = clk_get_sys("3d", NULL);
+	tegra_periph_reset_assert(clk);
+	writel(0x101, IO_ADDRESS(TEGRA_PMC_BASE) + 0x30);
+	clk_enable(clk);
+	udelay(10);
+	writel(1 << 1, IO_ADDRESS(TEGRA_PMC_BASE) + 0x34);
+	tegra_periph_reset_deassert(clk);
+	clk_put(clk);
 
 	platform_add_devices(harmony_devices, ARRAY_SIZE(harmony_devices));
 

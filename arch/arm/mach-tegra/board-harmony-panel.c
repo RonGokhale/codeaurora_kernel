@@ -16,49 +16,86 @@
 
 #include <linux/resource.h>
 #include <linux/platform_device.h>
+#include <linux/nvhost.h>
 #include <asm/mach-types.h>
 #include <mach/irqs.h>
 #include <mach/iomap.h>
-#include <mach/tegra_fb.h>
+#include <mach/dc.h>
+#include <mach/fb.h>
 
-/* Framebuffer */
-static struct resource fb_resource[] = {
-	[0] = {
+
+/* Display Controller */
+static struct resource harmony_panel_resources[] = {
+	{
+		.name   = "irq",
 		.start  = INT_DISPLAY_GENERAL,
 		.end    = INT_DISPLAY_GENERAL,
 		.flags  = IORESOURCE_IRQ,
 	},
-	[1] = {
+	{
+		.name   = "regs",
 		.start	= TEGRA_DISPLAY_BASE,
 		.end	= TEGRA_DISPLAY_BASE + TEGRA_DISPLAY_SIZE-1,
 		.flags	= IORESOURCE_MEM,
 	},
-	[2] = {
+	{
+		.name   = "fbmem",
 		.start	= 0x1c012000,
 		.end	= 0x1c012000 + 0x500000 - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 };
 
-static struct tegra_fb_lcd_data tegra_fb_lcd_platform_data = {
-	.lcd_xres	= 1024,
-	.lcd_yres	= 600,
-	.fb_xres	= 1024,
-	.fb_yres	= 600,
-	.bits_per_pixel	= 16,
+static struct tegra_dc_mode harmony_panel_modes[] = {
+	{
+		.pclk = 79500000,
+		.h_ref_to_sync = 4,
+		.v_ref_to_sync = 2,
+		.h_sync_width = 136,
+		.v_sync_width = 4,
+		.h_back_porch = 138,
+		.v_back_porch = 21,
+		.h_active = 1024,
+		.v_active = 600,
+		.h_front_porch = 34,
+		.v_front_porch = 4,
+	},
 };
 
-static struct platform_device tegra_fb_device = {
-	.name 		= "tegrafb",
-	.id		= 0,
-	.resource	= fb_resource,
-	.num_resources 	= ARRAY_SIZE(fb_resource),
+static struct tegra_fb_data harmony_fb_data = {
+	.win            = 0,
+	.xres           = 1024,
+	.yres           = 600,
+	.bits_per_pixel = 24,
+};
+
+static struct tegra_dc_out harmony_panel_out = {
+	.type = TEGRA_DC_OUT_RGB,
+
+	.align = TEGRA_DC_ALIGN_MSB,
+	.order = TEGRA_DC_ORDER_RED_BLUE,
+
+	.modes = harmony_panel_modes,
+	.n_modes = ARRAY_SIZE(harmony_panel_modes),
+};
+
+static struct tegra_dc_platform_data harmony_panel_pdata = {
+	.flags       = TEGRA_DC_FLAG_ENABLED,
+	.default_out = &harmony_panel_out,
+	.fb          = &harmony_fb_data,
+};
+
+static struct nvhost_device harmony_panel_device = {
+	.name          = "tegradc",
+	.id            = 0,
+	.resource      = harmony_panel_resources,
+	.num_resources = ARRAY_SIZE(harmony_panel_resources),
 	.dev = {
-		.platform_data = &tegra_fb_lcd_platform_data,
+		.platform_data = &harmony_panel_pdata,
 	},
 };
 
 int __init harmony_panel_init(void) {
-	return platform_device_register(&tegra_fb_device);
+	return nvhost_device_register(&harmony_panel_device);
 }
 
