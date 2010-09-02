@@ -40,11 +40,13 @@
 #include <mach/iomap.h>
 #include <mach/io.h>
 #include <mach/gpio.h>
+#include <mach/clk.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 
 #include "board.h"
+#include "board-seaboard.h"
 #include "clock.h"
 #include "devices.h"
 #include "gpio-names.h"
@@ -76,6 +78,12 @@ static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	{ "uartd",	"pll_p",	216000000,	true},
 	{ "pll_m",	"clk_m",	600000000,	true},
 	{ "emc",	"pll_m",	600000000,	true},
+	{ "host1x",	"pll_p",	166000000,	true},
+	{ "2d",		"pll_m",	300000000,	true},
+	{ "3d",		"pll_m",	300000000,	true},
+	{ "epp",	"pll_m",	50000000,	true},
+	{ "pwm",	"clk_m",	300000,		true},
+	{ "vi",		"pll_m",	50000000,	true},
 	{ NULL,		NULL,		0,		0},
 };
 
@@ -123,28 +131,6 @@ static struct platform_device pda_power_device = {
 	.dev    = {
 		.platform_data  = &pda_power_pdata,
 	},
-};
-
-static struct resource tegra_gart_resources[] = {
-	{
-		.name = "mc",
-		.flags = IORESOURCE_MEM,
-		.start = TEGRA_MC_BASE,
-		.end = TEGRA_MC_BASE + TEGRA_MC_SIZE - 1,
-	},
-	{
-		.name = "gart",
-		.flags = IORESOURCE_MEM,
-		.start = 0x58000000,
-		.end = 0x58000000 - 1 + 32 * 1024 * 1024,
-	}
-};
-
-static struct platform_device tegra_gart_dev = {
-	.name = "tegra_gart",
-	.id = -1,
-	.num_resources = ARRAY_SIZE(tegra_gart_resources),
-	.resource = tegra_gart_resources
 };
 
 static struct tegra_i2c_platform_data seaboard_i2c1_platform_data = {
@@ -247,21 +233,33 @@ static struct platform_device *seaboard_devices[] __initdata = {
 	&tegra_otg,
 	&tegra_ehci3_device,
 	&pda_power_device,
-	&tegra_gart_dev,
 	&seaboard_gpio_keys_device,
+	&tegra_gart_device,
+	&tegra_grhost_device,
 };
-
-extern int __init seaboard_sdhci_init(void);
-extern int __init seaboard_pinmux_init(void);
 
 static void __init tegra_seaboard_init(void)
 {
+	struct clk *clk;
+
 	tegra_common_init();
 
 	tegra_clk_init_from_table(seaboard_clk_init_table);
 	seaboard_pinmux_init();
 
+	/* HACK: reset 3d clock */
+	clk = clk_get_sys("3d", NULL);
+	tegra_periph_reset_assert(clk);
+	writel(0x101, IO_ADDRESS(TEGRA_PMC_BASE) + 0x30);
+	clk_enable(clk);
+	udelay(10);
+	writel(1 << 1, IO_ADDRESS(TEGRA_PMC_BASE) + 0x34);
+	tegra_periph_reset_deassert(clk);
+	clk_put(clk);
+
 	platform_add_devices(seaboard_devices, ARRAY_SIZE(seaboard_devices));
+
+	seaboard_panel_init();
 	seaboard_sdhci_init();
 	seaboard_i2c_init();
 
