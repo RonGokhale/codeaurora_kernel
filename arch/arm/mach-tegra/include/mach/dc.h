@@ -96,6 +96,7 @@ struct tegra_dc_win {
 	unsigned		y;
 	unsigned		w;
 	unsigned		h;
+	unsigned		stride;
 	unsigned		out_w;
 	unsigned		out_h;
 
@@ -137,6 +138,7 @@ struct tegra_fb_data {
 
 	int		xres;
 	int		yres;
+	int		pitch;
 	int		bits_per_pixel;
 };
 

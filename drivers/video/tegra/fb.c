@@ -38,6 +38,8 @@
 
 #include "host/dev.h"
 
+#define FB_STRIDE_ATOM 16
+
 struct tegra_fb_info {
 	struct tegra_dc_win	*win;
 	struct nvhost_device	*ndev;
@@ -48,6 +50,7 @@ struct tegra_fb_info {
 
 	int			xres;
 	int			yres;
+	int			pitch;
 
 	atomic_t		in_use;
 	struct file		*nvmap_file;
@@ -127,6 +130,8 @@ static int tegra_fb_set_par(struct fb_info *info)
 		return -EINVAL;
 	}
 	info->fix.line_length = var->xres * var->bits_per_pixel / 8;
+	info->fix.line_length = ALIGN(info->fix.line_length, FB_STRIDE_ATOM);
+	tegra_fb->win->stride = info->fix.line_length;
 
 	if (var->pixclock) {
 		struct tegra_dc_mode mode;
@@ -408,6 +413,8 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 	tegra_fb->fb_mem = fb_mem;
 	tegra_fb->xres = fb_data->xres;
 	tegra_fb->yres = fb_data->yres;
+	tegra_fb->pitch = fb_data->pitch;
+	WARN_ON(tegra_fb->pitch & (FB_STRIDE_ATOM-1));
 	atomic_set(&tegra_fb->in_use, 0);
 
 	if (fb_mem) {

@@ -385,7 +385,8 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 		tegra_dc_writel(dc, win->fmt, DC_WIN_COLOR_DEPTH);
 		tegra_dc_writel(dc, 0, DC_WIN_BYTE_SWAP);
 
-		stride = win->w * tegra_dc_fmt_bpp(win->fmt) / 8;
+		stride = win->stride;
+		BUG_ON(!stride);
 
 		/* TODO: implement filter on settings */
 		h_dda = (win->w * 0x1000) / (win->out_w - 1);
