@@ -1392,6 +1392,15 @@ static struct clk tegra_dev1_clk = {
 	.max_rate  = 26000000,
 };
 
+/* dap_mclk2, belongs to the cdev2 pingroup. */
+static struct clk tegra_dev2_clk = {
+	.name      = "clk_dev2",
+	.ops       = &tegra_cdev_clk_ops,
+	.clk_num   = 93,
+	.rate      = 26000000,
+	.max_rate  = 26000000,
+};
+
 /* initialized before peripheral clocks */
 static struct clk_mux_sel mux_audio_sync_clk[8+1];
 static const struct audio_sources {
@@ -1756,6 +1765,7 @@ struct clk_lookup tegra_clk_lookups[] = {
 	CLK(NULL,	"pclk",		&tegra_clk_pclk),
 	CLK(NULL,	"clk_d",	&tegra_clk_d),
 	CLK(NULL,	"clk_dev1",	&tegra_dev1_clk),
+	CLK(NULL,	"clk_dev2",	&tegra_dev2_clk),
 	CLK(NULL,	"cpu",		&tegra_clk_virtual_cpu),
 };
 
