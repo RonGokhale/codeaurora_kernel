@@ -143,9 +143,6 @@
 #define SPI_OP_OP_FIFO_NOT_EMPTY      0x00000010
 #define SPI_OP_STATE_VALID            0x00000004
 #define SPI_OP_STATE                  0x00000003
-#define SPI_OP_STATE_RESET            0x00000000
-#define SPI_OP_STATE_RUN              0x00000001
-#define SPI_OP_STATE_PAUSE            0x00000003
 
 /* SPI_ERROR_FLAGS fields */
 #define SPI_ERR_TIME_OUT_ERR          0x00000040
@@ -166,6 +163,10 @@
 #define SPI_NUM_CHIPSELECTS           4
 #define SPI_QSD_NAME                  "spi_qsd"
 
+#define SPI_DELAY_THRESHOLD           1
+/* Default timeout is 10 milliseconds */
+#define SPI_DEFAULT_TIMEOUT           10
+
 /* 250 microseconds */
 #define SPI_TRYLOCK_DELAY             250
 
@@ -174,6 +175,12 @@
 /* Data Mover commands should be aligned to 64 bit(8 bytes) */
 #define DM_BYTE_ALIGN                 8
 
+#define SPI_OP_STATE_CLEAR_BITS       0x2
+enum msm_spi_state {
+	SPI_OP_STATE_RESET = 0x00000000,
+	SPI_OP_STATE_RUN   = 0x00000001,
+	SPI_OP_STATE_PAUSE = 0x00000003,
+};
 enum msm_spi_mode {
 	SPI_FIFO_MODE  = 0x0,  /* 00 */
 	SPI_BLOCK_MODE = 0x1,  /* 01 */
@@ -356,6 +363,68 @@ fifo_size_err:
 	return;
 }
 
+static inline bool msm_spi_is_valid_state(struct msm_spi *dd)
+{
+	u32 spi_op = readl(dd->base + SPI_OPERATIONAL);
+
+	return spi_op & SPI_OP_STATE_VALID;
+}
+
+static inline int msm_spi_wait_valid(struct msm_spi *dd)
+{
+	unsigned long delay = 0;
+	unsigned long timeout = 0;
+
+	if (dd->clock_speed == 0)
+		return -EINVAL;
+	/*
+	 * Based on the SPI clock speed, sufficient time
+	 * should be given for the SPI state transition
+	 * to occur
+	 */
+	delay = (10 * USEC_PER_SEC) / dd->clock_speed;
+	/*
+	 * For small delay values, the default timeout would
+	 * be one jiffy
+	*/
+	if (delay < SPI_DELAY_THRESHOLD)
+		delay = SPI_DELAY_THRESHOLD;
+	timeout = jiffies + msecs_to_jiffies(delay * SPI_DEFAULT_TIMEOUT);
+	while (!msm_spi_is_valid_state(dd)) {
+		if (time_after(jiffies, timeout)) {
+			dd->cur_msg->status = -EIO;
+			dev_err(dd->dev, "%s: SPI operational state not valid"
+				"\n", __func__);
+			return -1;
+		}
+		if (delay)
+			udelay(delay);
+	}
+	return 0;
+}
+
+static inline int msm_spi_set_state(struct msm_spi *dd,
+				    enum msm_spi_state state)
+{
+	enum msm_spi_state cur_state;
+	if (msm_spi_wait_valid(dd))
+		return -1;
+	cur_state = readl(dd->base + SPI_OPERATIONAL);
+	/* Per spec:
+	   For PAUSE_STATE to RESET_STATE, two writes of (10) are required */
+	if (((cur_state & SPI_OP_STATE) == SPI_OP_STATE_PAUSE) &&
+			(state == SPI_OP_STATE_RESET)) {
+		writel(SPI_OP_STATE_CLEAR_BITS, dd->base + SPI_OPERATIONAL);
+		writel(SPI_OP_STATE_CLEAR_BITS, dd->base + SPI_OPERATIONAL);
+	} else {
+		writel((cur_state & ~SPI_OP_STATE) | state,
+		       dd->base + SPI_OPERATIONAL);
+	}
+	if (msm_spi_wait_valid(dd))
+		return -1;
+	return 0;
+}
+
 static void msm_spi_read_word_from_fifo(struct msm_spi *dd)
 {
 	u32   data_in;
@@ -492,15 +561,10 @@ static int msm_spi_dm_send_next(struct msm_spi *dd)
 	/* We need to send more chunks, if we sent max last time */
 	if (dd->tx_bytes_remaining > SPI_MAX_LEN) {
 		dd->tx_bytes_remaining -= SPI_MAX_LEN;
-		writel((readl(dd->base + SPI_OPERATIONAL)
-			& ~SPI_OP_STATE) | SPI_OP_STATE_PAUSE,
-			dd->base + SPI_OPERATIONAL);
+		msm_spi_set_state(dd, SPI_OP_STATE_PAUSE);
 		msm_spi_setup_dm_transfer(dd);
 		msm_spi_enqueue_dm_commands(dd);
-
-		writel((readl(dd->base + SPI_OPERATIONAL)
-			& ~SPI_OP_STATE) | SPI_OP_STATE_RUN,
-			dd->base + SPI_OPERATIONAL);
+		msm_spi_set_state(dd, SPI_OP_STATE_RUN);
 		return 1;
 	}
 
@@ -803,9 +867,8 @@ static void msm_spi_process_transfer(struct msm_spi *dd)
 	   might fire before the first word is written resulting in a
 	   possible race condition.
 	 */
-	writel((readl(dd->base + SPI_OPERATIONAL)
-		& ~SPI_OP_STATE) | SPI_OP_STATE_RUN,
-	       dd->base + SPI_OPERATIONAL);
+
+	msm_spi_set_state(dd, SPI_OP_STATE_RUN);
 
 	timeout = 100 * msecs_to_jiffies(
 	      DIV_ROUND_UP(dd->cur_transfer->len * 8,
@@ -830,9 +893,7 @@ static void msm_spi_process_transfer(struct msm_spi *dd)
 	dd->mode = SPI_MODE_NONE;
 
 	writel(spi_ioc & ~SPI_IO_C_MX_CS_MODE, dd->base + SPI_IO_CONTROL);
-	writel((readl(dd->base + SPI_OPERATIONAL)
-		& ~SPI_OP_STATE) | SPI_OP_STATE_RESET,
-	       dd->base + SPI_OPERATIONAL);
+	msm_spi_set_state(dd, SPI_OP_STATE_RESET);
 }
 
 /* workqueue - pull messages from queue & process */
@@ -1504,7 +1565,7 @@ static int __init msm_spi_probe(struct platform_device *pdev)
 		rc = -1;
 		goto err_probe_state;
 	}
-	writel(SPI_OP_STATE_RUN, dd->base + SPI_OPERATIONAL);
+	msm_spi_set_state(dd, SPI_OP_STATE_RUN);
 
 	clk_disable(dd->clk);
 	if (dd->pclk)
