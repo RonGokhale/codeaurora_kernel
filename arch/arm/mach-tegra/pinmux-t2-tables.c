@@ -227,7 +227,8 @@ const struct tegra_pingroup_desc tegra_soc_pingroups[TEGRA_MAX_PINGROUP] = {
 #define PULLUPDOWN_REG_NUM     5
 
 static u32 pinmux_reg[TRISTATE_REG_NUM + PIN_MUX_CTL_REG_NUM +
-		     PULLUPDOWN_REG_NUM];
+		      PULLUPDOWN_REG_NUM +
+		      ARRAY_SIZE(tegra_soc_drive_pingroups)];
 
 static inline unsigned long pg_readl(unsigned long offset)
 {
@@ -252,6 +253,9 @@ void tegra_pinmux_suspend(void)
 
 	for (i = 0; i < TRISTATE_REG_NUM; i++)
 		*ctx++ = pg_readl(TRISTATE_REG_A + i*4);
+
+	for (i = 0; i < ARRAY_SIZE(tegra_soc_drive_pingroups); i++)
+		*ctx++ = pg_readl(tegra_soc_drive_pingroups[i].reg);
 }
 
 void tegra_pinmux_resume(void)
@@ -267,5 +271,8 @@ void tegra_pinmux_resume(void)
 
 	for (i = 0; i < TRISTATE_REG_NUM; i++)
 		pg_writel(*ctx++, TRISTATE_REG_A + i*4);
+
+	for (i = 0; i < ARRAY_SIZE(tegra_soc_drive_pingroups); i++)
+		pg_writel(*ctx++, tegra_soc_drive_pingroups[i].reg);
 }
 #endif
