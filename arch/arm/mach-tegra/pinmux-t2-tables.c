@@ -66,6 +66,16 @@ const struct tegra_drive_pingroup_desc tegra_soc_drive_pingroups[TEGRA_MAX_DRIVE
 	DRIVE_PINGROUP(XM2D,		0x8cc),
 	DRIVE_PINGROUP(XM2CLK,		0x8d0),
 	DRIVE_PINGROUP(MEMCOMP,		0x8d4),
+	DRIVE_PINGROUP(SDIO1,		0x8e0),
+	DRIVE_PINGROUP(CRT,		0x8ec),
+	DRIVE_PINGROUP(DDC,		0x8f0),
+	DRIVE_PINGROUP(GMA,		0x8f4),
+	DRIVE_PINGROUP(GMB,		0x8f8),
+	DRIVE_PINGROUP(GMC,		0x8fc),
+	DRIVE_PINGROUP(GMD,		0x900),
+	DRIVE_PINGROUP(GME,		0x904),
+	DRIVE_PINGROUP(OWR,		0x908),
+	DRIVE_PINGROUP(UAD,		0x90c),
 };
 
 #define PINGROUP(pg_name, vdd, f0, f1, f2, f3, f_safe,		\
