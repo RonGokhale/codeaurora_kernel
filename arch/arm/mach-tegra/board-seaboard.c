@@ -41,6 +41,7 @@
 #include <mach/io.h>
 #include <mach/gpio.h>
 #include <mach/clk.h>
+#include <mach/kbc.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -262,6 +263,9 @@ static void __init tegra_seaboard_init(void)
 	seaboard_panel_init();
 	seaboard_sdhci_init();
 	seaboard_i2c_init();
+#if CONFIG_KEYBOARD_TEGRA
+	seaboard_kbc_init();
+#endif
 
 	tegra_gpio_enable(TEGRA_GPIO_LIDSWITCH);
 	tegra_gpio_enable(TEGRA_GPIO_POWERKEY);
