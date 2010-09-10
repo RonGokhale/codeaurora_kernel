@@ -198,11 +198,17 @@ static void __init tegra_harmony_fixup(struct machine_desc *desc,
 static __initdata struct tegra_clk_init_table harmony_clk_init_table[] = {
 	/* name		parent		rate		enabled */
 	{ "uartd",	"pll_p",	216000000,	true },
+	{ "pll_m",	"clk_m",	666000000,	true},
+	{ "pll_m_out1",	"pll_m",	222000000,	true},
 	{ "host1x",	"pll_p",	166000000,	true},
-	{ "2d",		"pll_m",	300000000,	true},
-	{ "3d",		"pll_m",	300000000,	true},
-	{ "epp",	"pll_m",	50000000,	true},
-	{ "vi",		"pll_m",	50000000,	true},
+	{ "disp1",	"pll_p",	216000000,	true},
+	{ "2d",		"pll_m",	266400000,	true},
+	{ "3d",		"pll_m",	266400000,	true},
+	{ "epp",	"pll_m",	266400000,	true},
+	{ "vi",		"pll_m",	49333333,	true},
+	{ "emc",	"pll_m",	666000000,	true},
+	{ "pll_c",	"clk_m",	600000000,	true},
+	{ "pll_c_out1",	"pll_c",	240000000,	true},
 	{ NULL,		NULL,		0,		0},
 };
 
@@ -217,6 +223,7 @@ static void __init tegra_harmony_init(void)
 	harmony_pinmux_init();
 
 	/* HACK: reset 3d clock */
+	writel(0x101, IO_ADDRESS(TEGRA_PMC_BASE) + 0x30);
 	clk = clk_get_sys("3d", NULL);
 	tegra_periph_reset_assert(clk);
 	writel(0x101, IO_ADDRESS(TEGRA_PMC_BASE) + 0x30);

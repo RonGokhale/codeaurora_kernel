@@ -22,7 +22,36 @@
 #include <mach/iomap.h>
 #include <mach/dc.h>
 #include <mach/fb.h>
+#include <mach/pwm-bl.h>
+#include <mach/gpio.h>
 
+#include "devices.h"
+#include "gpio-names.h"
+#include "board-harmony.h"
+
+
+static struct tegra_pwm_bl_platform_data harmony_bl = {
+	.pwr_gpio	= TEGRA_GPIO_BACKLIGHT,
+	.init_intensity	= 1,
+};
+
+static struct resource harmony_pwm_resources[] = {
+	[0] = {
+		.start	= TEGRA_PWFM2_BASE,
+		.end	= TEGRA_PWFM2_BASE + TEGRA_PWFM2_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
+static struct platform_device harmony_pwm_bl_device = {
+	.name		= "tegra-pwm-bl",
+	.id		= 0,
+	.resource	= harmony_pwm_resources,
+	.num_resources	= ARRAY_SIZE(harmony_pwm_resources),
+	.dev	= {
+		.platform_data	= &harmony_bl,
+	},
+};
 
 /* Display Controller */
 static struct resource harmony_panel_resources[] = {
@@ -95,7 +124,51 @@ static struct nvhost_device harmony_panel_device = {
 	},
 };
 
-int __init harmony_panel_init(void) {
+int __init harmony_panel_init(void) 
+{
+	int err;
+
+	tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT);
+	tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT_PWM);
+	tegra_gpio_enable(TEGRA_GPIO_LVDS_SHUTDOWN);
+	tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT_VDD);
+	tegra_gpio_enable(TEGRA_GPIO_EN_VDD_PNL);
+
+	err = gpio_request(TEGRA_GPIO_LVDS_SHUTDOWN, "lvds shutdown");
+	if (err < 0) {
+		pr_err("could not acquire LVDS shutdown GPIO\n");
+	} else {
+		gpio_direction_output(TEGRA_GPIO_LVDS_SHUTDOWN, 1);
+		gpio_free(TEGRA_GPIO_LVDS_SHUTDOWN);
+	}
+
+	err = gpio_request(TEGRA_GPIO_BACKLIGHT_VDD, "backlight vdd");
+	if (err < 0) {
+		pr_err("could not acquire backlight VDD GPIO\n");
+	} else {
+		gpio_direction_output(TEGRA_GPIO_BACKLIGHT_VDD, 1);
+		gpio_free(TEGRA_GPIO_BACKLIGHT_VDD);
+	}
+
+	err = gpio_request(TEGRA_GPIO_BACKLIGHT_PWM, "backlight pwm");
+	if (err < 0) {
+		pr_err("could not acquire backlight PWM GPIP\n");
+	} else {
+		gpio_direction_output(TEGRA_GPIO_BACKLIGHT_PWM, 1);
+		gpio_free(TEGRA_GPIO_BACKLIGHT_PWM);
+	}
+
+	err = gpio_request(TEGRA_GPIO_EN_VDD_PNL, "enable VDD to panel");
+	if (err < 0) {
+		pr_err("could not acquire panel VDD enable GPIO\n");
+	} else {
+		gpio_direction_output(TEGRA_GPIO_EN_VDD_PNL, 1);
+		gpio_free(TEGRA_GPIO_EN_VDD_PNL);
+	}
+
+	platform_device_register(&harmony_pwm_bl_device);
+	printk("panel init done\n");
+
 	return nvhost_device_register(&harmony_panel_device);
 }
 
