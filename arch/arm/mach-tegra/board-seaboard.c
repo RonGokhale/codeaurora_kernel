@@ -270,9 +270,6 @@ static void seaboard_i2c_init(void)
 				ARRAY_SIZE(seaboard_i2c4_devices));
 }
 
-#define TEGRA_GPIO_LIDSWITCH	TEGRA_GPIO_PC7
-#define TEGRA_GPIO_POWERKEY	TEGRA_GPIO_PV2
-
 static struct gpio_keys_button seaboard_gpio_keys_buttons[] = {
 	{
 		.code		= SW_LID,
@@ -326,6 +323,7 @@ static void __init tegra_seaboard_init(void)
 	seaboard_pinmux_init();
 
 	/* HACK: reset 3d clock */
+	writel(0x101, IO_ADDRESS(TEGRA_PMC_BASE) + 0x30);
 	clk = clk_get_sys("3d", NULL);
 	tegra_periph_reset_assert(clk);
 	writel(0x101, IO_ADDRESS(TEGRA_PMC_BASE) + 0x30);

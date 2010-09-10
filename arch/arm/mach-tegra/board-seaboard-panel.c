@@ -28,12 +28,15 @@
 #include <mach/dc.h>
 #include <mach/fb.h>
 #include <mach/pwm-bl.h>
+#include <mach/gpio.h>
 
 #include "devices.h"
 #include "gpio-names.h"
+#include "board-seaboard.h"
 
 static struct tegra_pwm_bl_platform_data seaboard_bl = {
 	.pwr_gpio	= TEGRA_GPIO_PD4,
+	.init_intensity	= 1,
 };
 
 static struct resource seaboard_pwm_resources[] = {
@@ -127,6 +130,46 @@ static struct nvhost_device seaboard_disp1_device = {
 
 int __init seaboard_panel_init(void)
 {
+	int err;
+
+	tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT);
+	tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT_PWM);
+	tegra_gpio_enable(TEGRA_GPIO_LVDS_SHUTDOWN);
+	tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT_VDD);
+	tegra_gpio_enable(TEGRA_GPIO_EN_VDD_PNL);
+
+	err = gpio_request(TEGRA_GPIO_LVDS_SHUTDOWN, "lvds shutdown");
+	if (err < 0) {
+		pr_err("could not acquire LVDS shutdown GPIO\n");
+	} else {
+		gpio_direction_output(TEGRA_GPIO_LVDS_SHUTDOWN, 1);
+		gpio_free(TEGRA_GPIO_LVDS_SHUTDOWN);
+	}
+
+	err = gpio_request(TEGRA_GPIO_BACKLIGHT_VDD, "backlight vdd");
+	if (err < 0) {
+		pr_err("could not acquire backlight VDD GPIO\n");
+	} else {
+		gpio_direction_output(TEGRA_GPIO_BACKLIGHT_VDD, 1);
+		gpio_free(TEGRA_GPIO_BACKLIGHT_VDD);
+	}
+
+	err = gpio_request(TEGRA_GPIO_BACKLIGHT_PWM, "backlight pwm");
+	if (err < 0) {
+		pr_err("could not acquire backlight PWM GPIP\n");
+	} else {
+		gpio_direction_output(TEGRA_GPIO_BACKLIGHT_PWM, 1);
+		gpio_free(TEGRA_GPIO_BACKLIGHT_PWM);
+	}
+
+	err = gpio_request(TEGRA_GPIO_EN_VDD_PNL, "enable VDD to panel");
+	if (err < 0) {
+		pr_err("could not acquire panel VDD enable GPIO\n");
+	} else {
+		gpio_direction_output(TEGRA_GPIO_EN_VDD_PNL, 1);
+		gpio_free(TEGRA_GPIO_EN_VDD_PNL);
+	}
+
 	platform_device_register(&seaboard_pwm_bl_device);
 
 	return nvhost_device_register(&seaboard_disp1_device);
