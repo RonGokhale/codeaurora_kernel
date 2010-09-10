@@ -29,10 +29,13 @@
 #include <linux/interrupt.h>
 #include <linux/clk.h>
 #include <linux/err.h>
+#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/suspend.h>
 #include <linux/slab.h>
 #include <linux/serial_reg.h>
+#include <linux/seq_file.h>
+#include <linux/uaccess.h>
 
 #include <asm/cacheflush.h>
 #include <asm/hardware/gic.h>
@@ -111,6 +114,7 @@ static void __iomem *tmrus = IO_ADDRESS(TEGRA_TMRUS_BASE);
 static struct clk *tegra_pclk = NULL;
 static const struct tegra_suspend_platform_data *pdata = NULL;
 static unsigned long wb0_restore = 0;
+static enum tegra_suspend_mode current_suspend_mode;
 
 unsigned long tegra_cpu_power_good_time(void)
 {
@@ -476,8 +480,8 @@ static int tegra_suspend_enter(suspend_state_t state)
 	unsigned long flags;
 	u32 mc_data[2];
 	int irq;
-	bool do_lp0 = (pdata->suspend_mode == TEGRA_SUSPEND_LP0);
-	bool do_lp2 = (pdata->suspend_mode == TEGRA_SUSPEND_LP2);
+	bool do_lp0 = (current_suspend_mode == TEGRA_SUSPEND_LP0);
+	bool do_lp2 = (current_suspend_mode == TEGRA_SUSPEND_LP2);
 	int lp_state;
 
 	if (do_lp2)
@@ -657,4 +661,77 @@ out:
 
 	suspend_set_ops(&tegra_suspend_ops);
 #endif
+
+	current_suspend_mode = plat->suspend_mode;
 }
+
+#ifdef CONFIG_DEBUG_FS
+static const char *tegra_suspend_name[TEGRA_MAX_SUSPEND_MODE] = {
+	[TEGRA_SUSPEND_NONE]	= "none",
+	[TEGRA_SUSPEND_LP2]	= "lp2",
+	[TEGRA_SUSPEND_LP1]	= "lp1",
+	[TEGRA_SUSPEND_LP0]	= "lp0",
+};
+
+static int tegra_suspend_debug_show(struct seq_file *s, void *data)
+{
+	seq_printf(s, "%s\n", tegra_suspend_name[*(int *)s->private]);
+	return 0;
+}
+
+static int tegra_suspend_debug_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, tegra_suspend_debug_show, inode->i_private);
+}
+
+static int tegra_suspend_debug_write(struct file *file,
+	const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	char buf[32];
+	int buf_size;
+	int i;
+	struct seq_file *s = file->private_data;
+	enum tegra_suspend_mode *val = s->private;
+
+	memset(buf, 0x00, sizeof(buf));
+	buf_size = min(count, (sizeof(buf)-1));
+	if (copy_from_user(buf, user_buf, buf_size))
+		return -EFAULT;
+
+	for (i = 0; i < TEGRA_MAX_SUSPEND_MODE; i++) {
+		if (!strnicmp(buf, tegra_suspend_name[i],
+		    strlen(tegra_suspend_name[i]))) {
+			if (i > pdata->suspend_mode)
+				return -EINVAL;
+			*val = i;
+			return count;
+		}
+	}
+
+	return -EINVAL;
+}
+
+static const struct file_operations tegra_suspend_debug_fops = {
+	.open		= tegra_suspend_debug_open,
+	.write		= tegra_suspend_debug_write,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int __init tegra_suspend_debug_init(void)
+{
+	struct dentry *d;
+
+	d = debugfs_create_file("suspend_mode", 0755, NULL,
+		(void *)&current_suspend_mode, &tegra_suspend_debug_fops);
+	if (!d) {
+		pr_info("Failed to create suspend_mode debug file\n");
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+late_initcall(tegra_suspend_debug_init);
+#endif
