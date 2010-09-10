@@ -322,11 +322,17 @@ void tegra_gpio_suspend(void)
 
 static int tegra_gpio_wake_enable(unsigned int irq, unsigned int enable)
 {
+	int ret;
 	struct tegra_gpio_bank *bank = get_irq_chip_data(irq);
+
+	ret = tegra_set_lp1_wake(bank->irq, enable);
+	if (ret)
+		return ret;
+
 	if (tegra_get_suspend_mode() == TEGRA_SUSPEND_LP0)
 		return tegra_set_lp0_wake(irq, enable);
-	else
-		return tegra_set_lp1_wake(bank->irq, enable);
+
+	return 0;
 }
 #endif
 
