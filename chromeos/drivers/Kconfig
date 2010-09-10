@@ -1,7 +1,6 @@
 menu "Chromeos Supplied Third-Party Device Drivers"
 
 source "chromeos/drivers/ath6kl/Kconfig"
-source "chromeos/drivers/mwifiex/Kconfig"
 source "chromeos/drivers/gobi/Kconfig"
 
 endmenu
