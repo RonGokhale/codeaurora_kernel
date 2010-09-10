@@ -202,11 +202,15 @@ static void tegra_unmask(unsigned int irq)
 
 static int tegra_set_wake(unsigned int irq, unsigned int enable)
 {
+	int ret;
+	ret = tegra_set_lp1_wake(irq, enable);
+	if (ret)
+		return ret;
+
 	if (tegra_get_suspend_mode() == TEGRA_SUSPEND_LP0)
 		return tegra_set_lp0_wake(irq, enable);
-	else
-		return tegra_set_lp1_wake(irq, enable);
 
+	return 0;
 }
 
 static int tegra_set_type(unsigned int irq, unsigned int flow_type)
