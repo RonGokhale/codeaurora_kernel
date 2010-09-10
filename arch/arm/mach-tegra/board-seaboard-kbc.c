@@ -17,8 +17,6 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
-#if CONFIG_KEYBOARD_TEGRA
-
 #include <linux/platform_device.h>
 #include <linux/input.h>
 #include <mach/kbc.h>
@@ -265,4 +263,3 @@ void seaboard_kbc_init()
 
 	platform_device_register(&tegra_kbc_device);
 }
-#endif

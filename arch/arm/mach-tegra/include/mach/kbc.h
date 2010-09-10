@@ -75,5 +75,4 @@ static inline unsigned int kbc_indexof(unsigned r, unsigned c)
 	return c*KBC_MAX_ROW + r;
 }
 
-void seaboard_kbc_init(void);
 #endif
