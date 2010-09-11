@@ -223,8 +223,11 @@ int kgsl_setstate(struct kgsl_device *device, uint32_t flags)
 {
 	int status = -ENXIO;
 
-	if (device->ftbl.device_setstate)
+	if (flags && device->ftbl.device_setstate) {
 		status = device->ftbl.device_setstate(device, flags);
+		device->mmu.tlb_flags &= ~flags;
+	} else
+		status = 0;
 
 	return status;
 }
@@ -433,15 +436,12 @@ static int kgsl_first_open_locked(void)
 	if (kgsl_driver.g12_device.hwaccess_blocked == KGSL_FALSE)
 		kgsl_driver.power_flags |= KGSL_PWRFLAGS_G12_CLK_OFF |
 			KGSL_PWRFLAGS_G12_IRQ_OFF;
-	#ifndef CONFIG_ARCH_MSM7X30
-		kgsl_pwrctrl(KGSL_PWRFLAGS_POWER_ON);
-	#endif
+
+	/* Turn the clocks on before the power.  Required for some platforms,
+	   has no adverse effect on the others */
 	kgsl_pwrctrl(KGSL_PWRFLAGS_YAMATO_CLK_ON);
-	#ifdef CONFIG_ARCH_MSM7X30
-		/* 7x30 has HW bug and needs clocks turned on before the power
-		rails */
-		kgsl_pwrctrl(KGSL_PWRFLAGS_POWER_ON);
-	#endif
+	kgsl_pwrctrl(KGSL_PWRFLAGS_POWER_ON);
+
 	kgsl_driver.is_suspended = KGSL_FALSE;
 
 	INIT_LIST_HEAD(&kgsl_driver.pagetable_list);
@@ -474,15 +474,10 @@ static int kgsl_last_release_locked(void)
 	/* close yamato */
 	kgsl_yamato_close(&kgsl_driver.yamato_device);
 
-	#ifndef CONFIG_ARCH_MSM7X30
-		kgsl_pwrctrl(KGSL_PWRFLAGS_YAMATO_CLK_OFF);
-	#endif
+	/* For some platforms, power needs to go off before clocks */
 	kgsl_pwrctrl(KGSL_PWRFLAGS_POWER_OFF);
-	#ifdef CONFIG_ARCH_MSM7X30
-		/* 7x30 has HW bug and needs clocks turned off before the power
-		rails */
-		kgsl_pwrctrl(KGSL_PWRFLAGS_YAMATO_CLK_OFF);
-	#endif
+	kgsl_pwrctrl(KGSL_PWRFLAGS_YAMATO_CLK_OFF);
+
 	kgsl_driver.power_flags = 0;
 
 	return 0;
@@ -752,7 +747,6 @@ static long kgsl_ioctl_device_waittimestamp(struct kgsl_file_private *private,
 		goto done;
 	}
 
-	mutex_unlock(&kgsl_driver.mutex);
 	/* Don't wait forever, set a max value for now */
 	if (param.timeout == -1)
 		param.timeout = 10 * MSEC_PER_SEC;
@@ -760,11 +754,9 @@ static long kgsl_ioctl_device_waittimestamp(struct kgsl_file_private *private,
 		result = kgsl_yamato_waittimestamp(&kgsl_driver.yamato_device,
 				     param.timestamp,
 				     param.timeout);
-		mutex_lock(&kgsl_driver.mutex);
 
 		kgsl_runpending(&kgsl_driver.yamato_device);
 	} else if (param.device_id == KGSL_DEVICE_G12) {
-		mutex_lock(&kgsl_driver.mutex);
 		KGSL_G12_PRE_HWACCESS();
 		mutex_unlock(&kgsl_driver.mutex);
 		result = kgsl_g12_waittimestamp(&kgsl_driver.g12_device,
@@ -820,9 +812,7 @@ static long kgsl_ioctl_rb_issueibcmds(struct kgsl_file_private *private,
 					     param.flags);
 	} else if (param.device_id == KGSL_DEVICE_G12) {
 		KGSL_G12_PRE_HWACCESS();
-		if (param.drawctxt_id >= KGSL_CONTEXT_MAX ||
-			(private->g12_ctxt_id_mask & 1 <<
-				(param.drawctxt_id - 1)) == 0) {
+		if ((private->g12_ctxt_id_mask & 1 << param.drawctxt_id) == 0) {
 
 			result = -EINVAL;
 			KGSL_DRV_ERR("invalid drawctxt drawctxt_id %d\n",
@@ -971,9 +961,8 @@ static long kgsl_ioctl_drawctxt_create(struct kgsl_file_private *private,
 	} else if (param.device_id == KGSL_DEVICE_G12) {
 		KGSL_G12_PRE_HWACCESS();
 		result = kgsl_g12_drawctxt_create(&kgsl_driver.g12_device,
-					0,
-					&param.drawctxt_id,
-					param.flags);
+					private->g12_ctxt_id_mask,
+					&param.drawctxt_id);
 		if (result != 0)
 			goto done;
 
@@ -984,7 +973,7 @@ static long kgsl_ioctl_drawctxt_create(struct kgsl_file_private *private,
 
 		/* if KGSL_CONTEXT_MAX is more than 16,
 		then linked list should be used for them */
-		private->g12_ctxt_id_mask |= 1 << (param.drawctxt_id - 1);
+		private->g12_ctxt_id_mask |= 1 << param.drawctxt_id;
 	} else {
 		result = -EINVAL;
 	}
@@ -1019,9 +1008,7 @@ static long kgsl_ioctl_drawctxt_destroy(struct kgsl_file_private *private,
 					~(1 << param.drawctxt_id);
 	} else if (param.device_id == KGSL_DEVICE_G12) {
 		KGSL_G12_PRE_HWACCESS();
-		if (param.drawctxt_id >= KGSL_CONTEXT_MAX
-				|| (private->g12_ctxt_id_mask & 1 <<
-				(param.drawctxt_id-1)) == 0) {
+		if ((private->g12_ctxt_id_mask & 1 << param.drawctxt_id) == 0) {
 			result = -EINVAL;
 			goto done;
 		}
@@ -1030,7 +1017,7 @@ static long kgsl_ioctl_drawctxt_destroy(struct kgsl_file_private *private,
 					param.drawctxt_id);
 		if (result == 0)
 			private->g12_ctxt_id_mask &= ~(1 <<
-						(param.drawctxt_id-1));
+						param.drawctxt_id);
 
 		kgsl_runpending(&kgsl_driver.g12_device);
 	} else {
@@ -1689,10 +1676,6 @@ static int __devinit kgsl_platform_probe(struct platform_device *pdev)
 
 	/* put the AXI bus into asynchronous mode with the graphics cores */
 	if (pdata != NULL) {
-		if ((pdata->set_grp2d_async != NULL) &&
-			(pdata->max_grp2d_freq) &&
-			(!pdata->set_grp2d_async()))
-			clk_set_min_rate(clk, pdata->max_grp2d_freq);
 		if ((pdata->set_grp3d_async != NULL) &&
 			(pdata->max_grp3d_freq) &&
 			(!pdata->set_grp3d_async()))
@@ -1720,6 +1703,13 @@ static int __devinit kgsl_platform_probe(struct platform_device *pdev)
 		KGSL_DRV_ERR("clk_get(grp_2d_clk) returned %d\n", result);
 	}
 	kgsl_driver.g12_grp_clk = clk;
+
+	if (pdata != NULL && clk != NULL) {
+		if ((pdata->set_grp2d_async != NULL) &&
+			(pdata->max_grp2d_freq) &&
+			(!pdata->set_grp2d_async()))
+			clk_set_min_rate(clk, pdata->max_grp2d_freq);
+	}
 
 	kgsl_driver.power_flags = 0;
 

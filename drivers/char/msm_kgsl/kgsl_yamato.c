@@ -227,8 +227,17 @@ void kgsl_yamato_rbbm_intrcallback(struct kgsl_device *device)
 	kgsl_yamato_regread(device, REG_RBBM_INT_STATUS, &status);
 
 	if (status & RBBM_INT_CNTL__RDERR_INT_MASK) {
+		union rbbm_read_error_u rerr;
 		kgsl_yamato_regread(device, REG_RBBM_READ_ERROR, &rderr);
-		KGSL_DRV_FATAL("rbbm read error interrupt: %08x\n", rderr);
+		rerr.val = rderr;
+		if (rerr.f.read_address == REG_CP_INT_STATUS &&
+			rerr.f.read_error &&
+			rerr.f.read_requester)
+			KGSL_DRV_WARN("rbbm read error interrupt: %08x\n",
+					rderr);
+		else
+			KGSL_DRV_FATAL("rbbm read error interrupt: %08x\n",
+					rderr);
 	} else if (status & RBBM_INT_CNTL__DISPLAY_UPDATE_INT_MASK) {
 		KGSL_DRV_DBG("rbbm display update interrupt\n");
 	} else if (status & RBBM_INT_CNTL__GUI_IDLE_INT_MASK) {
@@ -476,7 +485,14 @@ int kgsl_yamato_setstate(struct kgsl_device *device, uint32_t flags)
 			sizedwords += 21;
 		}
 
-		kgsl_ringbuffer_issuecmds(device, 1, &link[0], sizedwords);
+		if (flags & (KGSL_MMUFLAGS_PTUPDATE | KGSL_MMUFLAGS_TLBFLUSH)) {
+			*cmds++ = pm4_type3_packet(PM4_INVALIDATE_STATE, 1);
+			*cmds++ = 0x7fff; /* invalidate all base pointers */
+			sizedwords += 2;
+		}
+
+		kgsl_ringbuffer_issuecmds(device, KGSL_CMD_FLAGS_PMODE,
+					&link[0], sizedwords);
 	} else {
 		KGSL_MEM_DBG("regs\n");
 
@@ -530,6 +546,7 @@ kgsl_yamato_getchipid(struct kgsl_device *device)
 int kgsl_yamato_init(struct kgsl_device *device, struct kgsl_devconfig *config)
 {
 	int status = -EINVAL;
+	int init_reftimestamp = 0x7fffffff;
 	struct kgsl_memregion *regspace = &device->regspace;
 	unsigned int memflags = KGSL_MEMFLAGS_ALIGNPAGE | KGSL_MEMFLAGS_CONPHYS;
 
@@ -636,6 +653,10 @@ int kgsl_yamato_init(struct kgsl_device *device, struct kgsl_devconfig *config)
 		goto error_close_cmdstream;
 	}
 	kgsl_sharedmem_set(&device->memstore, 0, 0, device->memstore.size);
+
+	kgsl_sharedmem_writel(&device->memstore,
+			     KGSL_DEVICE_MEMSTORE_OFFSET(ref_wait_ts),
+			     init_reftimestamp);
 
 	kgsl_yamato_regwrite(device, REG_RBBM_DEBUG, 0x00080000);
 
@@ -824,6 +845,20 @@ int kgsl_yamato_getproperty(struct kgsl_device *device,
 			status = 0;
 		}
 		break;
+	case KGSL_PROP_INTERRUPT_WAITS:
+		{
+			int int_waits = 1;
+			if (sizebytes != sizeof(int)) {
+				status = -EINVAL;
+				break;
+			}
+			if (copy_to_user(value, &int_waits, sizeof(int))) {
+				status = -EFAULT;
+				break;
+			}
+			status = 0;
+		}
+		break;
 	default:
 		status = -EINVAL;
 	}
@@ -854,13 +889,8 @@ int kgsl_yamato_idle(struct kgsl_device *device, unsigned int timeout)
 			GSL_RB_GET_READPTR(rb, &rb->rptr);
 
 		} while (rb->rptr != rb->wptr && idle_count < IDLE_COUNT_MAX);
-		if (idle_count == IDLE_COUNT_MAX) {
-			KGSL_DRV_ERR("spun too long waiting for RB to idle\n");
-			status = -EINVAL;
-			kgsl_ringbuffer_dump(rb);
-			kgsl_mmu_debug(&device->mmu, &mmu_dbg);
-			goto done;
-		}
+		if (idle_count == IDLE_COUNT_MAX)
+			goto err;
 	}
 	/* now, wait for the GPU to finish its operations */
 	for (idle_count = 0; idle_count < IDLE_COUNT_MAX; idle_count++) {
@@ -868,17 +898,17 @@ int kgsl_yamato_idle(struct kgsl_device *device, unsigned int timeout)
 
 		if (rbbm_status == 0x110) {
 			status = 0;
-			break;
+			goto done;
 		}
 	}
 
-	if (idle_count == IDLE_COUNT_MAX) {
-		KGSL_DRV_ERR("spun too long waiting for RBBM status to idle\n");
-		status = -EINVAL;
-		kgsl_ringbuffer_dump(rb);
-		kgsl_mmu_debug(&device->mmu, &mmu_dbg);
-		goto done;
-	}
+err:
+	KGSL_DRV_ERR("spun too long waiting for RB to idle\n");
+	kgsl_register_dump(device);
+	kgsl_ringbuffer_dump(rb);
+	kgsl_mmu_debug(&device->mmu, &mmu_dbg);
+	BUG();
+
 done:
 	KGSL_DRV_VDBG("return %d\n", status);
 
@@ -1006,14 +1036,11 @@ int kgsl_yamato_regwrite(struct kgsl_device *device, unsigned int offsetwords,
 	return 0;
 }
 
-int kgsl_yamato_waittimestamp(struct kgsl_device *device,
+static inline int _wait_timestamp(struct kgsl_device *device,
 				unsigned int timestamp,
 				unsigned int msecs)
 {
 	long status;
-
-	KGSL_DRV_INFO("enter (device=%p,timestamp=%d,timeout=0x%08x)\n",
-			device, timestamp, msecs);
 
 	status = wait_event_interruptible_timeout(device->ib1_wq,
 			kgsl_cmdstream_check_timestamp(device, timestamp),
@@ -1028,7 +1055,48 @@ int kgsl_yamato_waittimestamp(struct kgsl_device *device,
 		}
 	}
 
-	KGSL_DRV_INFO("return %d\n", (int)status);
+	return (int)status;
+}
+
+/* MUST be called with the kgsl_driver.mutex held */
+int kgsl_yamato_waittimestamp(struct kgsl_device *device,
+				unsigned int timestamp,
+				unsigned int msecs)
+{
+	long status = 0;
+	uint32_t ref_ts;
+	unsigned int enableflag = 1;
+	unsigned int cmd[2];
+
+	KGSL_DRV_INFO("enter (device=%p,timestamp=%d,timeout=0x%08x)\n",
+			 device, timestamp, msecs);
+
+	if (!kgsl_cmdstream_check_timestamp(device, timestamp)) {
+		kgsl_sharedmem_readl(&device->memstore, &ref_ts,
+			KGSL_DEVICE_MEMSTORE_OFFSET(ref_wait_ts));
+		if (timestamp_cmp(ref_ts, timestamp)) {
+			kgsl_sharedmem_writel(&device->memstore,
+				KGSL_DEVICE_MEMSTORE_OFFSET(ref_wait_ts),
+				timestamp);
+		}
+
+		cmd[0] = pm4_type3_packet(PM4_INTERRUPT, 1);
+		cmd[1] = CP_INT_CNTL__IB1_INT_MASK;
+
+		/* Need to flush tlb before submitting commands to GPU */
+		kgsl_setstate(device, device->mmu.tlb_flags);
+		kgsl_ringbuffer_issuecmds(device, KGSL_CMD_FLAGS_NO_TS_CMP,
+						cmd, 2);
+		kgsl_sharedmem_writel(&device->memstore,
+			KGSL_DEVICE_MEMSTORE_OFFSET(ts_cmp_enable),
+			enableflag);
+
+		mutex_unlock(&kgsl_driver.mutex);
+		status = _wait_timestamp(device, timestamp, msecs);
+		mutex_lock(&kgsl_driver.mutex);
+	}
+
+	KGSL_DRV_INFO("return %ld\n", status);
 	return (int)status;
 }
 
