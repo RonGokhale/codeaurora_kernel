@@ -2147,22 +2147,21 @@ static int __msm_release(struct msm_sync *sync)
 	if (sync->opencnt)
 		sync->opencnt--;
 	if (!sync->opencnt) {
-		/*sensor release*/
-		sync->sctrl.s_release();
 		/* need to clean up system resource */
 		if (sync->vfefn.vfe_release)
 			sync->vfefn.vfe_release(sync->pdev);
+		/*sensor release */
+		sync->sctrl.s_release();
+		msm_camio_sensor_clk_off(sync->pdev);
 		kfree(sync->cropinfo);
 		sync->cropinfo = NULL;
 		sync->croplen = 0;
-
 		hlist_for_each_entry_safe(region, hnode, n,
 				&sync->pmem_frames, list) {
 			hlist_del(hnode);
 			put_pmem_file(region->file);
 			kfree(region);
 		}
-
 		hlist_for_each_entry_safe(region, hnode, n,
 				&sync->pmem_stats, list) {
 			hlist_del(hnode);
@@ -2598,16 +2597,22 @@ static int __msm_open(struct msm_sync *sync, const char *const apps_id)
 		if (sync->vfefn.vfe_init) {
 			sync->pp_frame_avail = 0;
 			sync->get_pic_abort = 0;
-			rc = sync->vfefn.vfe_init(&msm_vfe_s,
-				sync->pdev);
+			rc = msm_camio_sensor_clk_on(sync->pdev);
 			if (rc < 0) {
-				pr_err("%s: vfe_init failed at %d\n",
+				pr_err("%s: setting sensor clocks failed: %d\n",
 					__func__, rc);
 				goto msm_open_done;
 			}
 			rc = sync->sctrl.s_init(sync->sdata);
 			if (rc < 0) {
 				pr_err("%s: sensor init failed: %d\n",
+					__func__, rc);
+				goto msm_open_done;
+			}
+			rc = sync->vfefn.vfe_init(&msm_vfe_s,
+				sync->pdev);
+			if (rc < 0) {
+				pr_err("%s: vfe_init failed at %d\n",
 					__func__, rc);
 				goto msm_open_done;
 			}
@@ -2634,7 +2639,7 @@ msm_open_done:
 }
 
 static int msm_open_common(struct inode *inode, struct file *filep,
-			   int once)
+			int once)
 {
 	int rc;
 	struct msm_cam_device *pmsm =
@@ -2658,9 +2663,7 @@ static int msm_open_common(struct inode *inode, struct file *filep,
 	rc = __msm_open(pmsm->sync, MSM_APPS_ID_PROP);
 	if (rc < 0)
 		return rc;
-
 	filep->private_data = pmsm;
-
 	CDBG("%s: rc %d\n", __func__, rc);
 	return rc;
 }
@@ -2690,9 +2693,7 @@ static int msm_open_control(struct inode *inode, struct file *filep)
 
 	if (!g_v4l2_opencnt)
 		g_v4l2_control_device = ctrl_pmsm;
-
 	g_v4l2_opencnt++;
-
 	CDBG("%s: rc %d\n", __func__, rc);
 	return rc;
 }
