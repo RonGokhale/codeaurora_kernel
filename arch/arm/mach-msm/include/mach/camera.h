@@ -121,6 +121,7 @@ struct msm_queue_cmd {
 	void *command;
 	atomic_t on_heap;
 	struct timespec ts;
+	uint32_t error_code;
 };
 
 struct msm_device_queue {
