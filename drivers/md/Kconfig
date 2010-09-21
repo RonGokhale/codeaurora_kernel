@@ -263,9 +263,8 @@ config DM_VERITY
 	select CRYPTO
 	select CRYPTO_HASH
 	# TODO(wad) it is possible that the hash context per cpu approach
-	#           is not safe with PREEMPT.  Until checked, PREEMPT is
-	#           not allowed.
-	depends on !PREEMPT
+	#           is not safe with PREEMPT.  It seems to work, but it
+	#           needs to be more thoroughly checked.
 	---help---
 	  This device-mapper target allows you to create a device that
 	  transparently integrity checks the data on it. You'll need to
