@@ -37,6 +37,7 @@ static __initdata struct tegra_drive_pingroup_config ventana_drive_pinmux[] = {
 	DEFAULT_DRIVE(VI1),
 	DEFAULT_DRIVE(VI2),
 	DEFAULT_DRIVE(SDIO1),
+	DEFAULT_DRIVE(SDMMC1),
 };
 
 static __initdata struct tegra_pingroup_config ventana_pinmux[] = {
@@ -125,7 +126,7 @@ static __initdata struct tegra_pingroup_config ventana_pinmux[] = {
 	{TEGRA_PINGROUP_SDB,   TEGRA_MUX_SDIO3,         TEGRA_PUPD_NORMAL,    TEGRA_TRI_NORMAL},
 	{TEGRA_PINGROUP_SDC,   TEGRA_MUX_SDIO3,         TEGRA_PUPD_NORMAL,    TEGRA_TRI_NORMAL},
 	{TEGRA_PINGROUP_SDD,   TEGRA_MUX_SDIO3,         TEGRA_PUPD_NORMAL,    TEGRA_TRI_NORMAL},
-	{TEGRA_PINGROUP_SDIO1, TEGRA_MUX_SDIO1,         TEGRA_PUPD_PULL_UP,    TEGRA_TRI_NORMAL},
+	{TEGRA_PINGROUP_SDIO1, TEGRA_MUX_SDIO1,         TEGRA_PUPD_PULL_UP,   TEGRA_TRI_NORMAL},
 	{TEGRA_PINGROUP_SLXA,  TEGRA_MUX_PCIE,          TEGRA_PUPD_PULL_UP,   TEGRA_TRI_TRISTATE},
 	{TEGRA_PINGROUP_SLXC,  TEGRA_MUX_SPDIF,         TEGRA_PUPD_NORMAL,    TEGRA_TRI_TRISTATE},
 	{TEGRA_PINGROUP_SLXD,  TEGRA_MUX_SPDIF,         TEGRA_PUPD_NORMAL,    TEGRA_TRI_TRISTATE},
@@ -161,6 +162,7 @@ static __initdata struct tegra_pingroup_config ventana_pinmux[] = {
 void __init ventana_pinmux_init(void)
 {
 	tegra_pinmux_config_table(ventana_pinmux, ARRAY_SIZE(ventana_pinmux));
+
 	tegra_drive_pinmux_config_table(ventana_drive_pinmux,
 					ARRAY_SIZE(ventana_drive_pinmux));
 }
