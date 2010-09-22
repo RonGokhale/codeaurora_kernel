@@ -29,13 +29,4 @@ void seaboard_pinmux_init(void);
 int seaboard_panel_init(void);
 int seaboard_sdhci_init(void);
 
-#ifdef CONFIG_KEYBOARD_TEGRA
-void seaboard_kbc_init(void);
-#else
-static void seaboard_kbc_init(void)
-{
-	return;
-}
-#endif
-
 #endif
