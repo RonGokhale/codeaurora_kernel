@@ -76,6 +76,7 @@ const struct tegra_drive_pingroup_desc tegra_soc_drive_pingroups[TEGRA_MAX_DRIVE
 	DRIVE_PINGROUP(GME,		0x904),
 	DRIVE_PINGROUP(OWR,		0x908),
 	DRIVE_PINGROUP(UAD,		0x90c),
+	DRIVE_PINGROUP(SDMMC1,		0x8e0),
 };
 
 #define PINGROUP(pg_name, vdd, f0, f1, f2, f3, f_safe,		\
