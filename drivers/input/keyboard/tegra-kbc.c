@@ -53,38 +53,125 @@ struct tegra_kbc {
 	spinlock_t lock;
 	unsigned int repoll_time;
 	struct tegra_kbc_platform_data *pdata;
+	int *plain_keycode;
+	int *fn_keycode;
 	struct work_struct key_repeat;
 	struct workqueue_struct *kbc_work_queue;
 	struct clk *clk;
 };
 
-static int tegra_kbc_keycode(const struct tegra_kbc *kbc, int idx, int r, int c)
+static int plain_kbd_keycode[] = {
+	/*
+	 * Row 0 Unused, Unused, 'W', 'S', 'A', 'Z', Unused, Function,
+	 * Row 1 Unused, Unused, Unused, Unused, Unused, Unused, Unused, Menu
+	 * Row 2 Unused, Unused, Unused, Unused, Unused, Unused, Alt, Alt2
+	 * Row 3 '5', '4', 'R', 'E', 'F', 'D', 'X', Unused,
+	 * Row 4 '7', '6', 'T', 'H', 'G', 'V', 'C', SPACEBAR,
+	 * Row 5 '9', '8', 'U', 'Y', 'J', 'N', 'B', '|\',
+	 * Row 6 Minus, '0', 'O', 'I', 'L', 'K', '<', M,
+	 * Row 7 Unused, '+', '}]', '#', Unused, Unused, Unused, Menu,
+	 * Row 8 Unused, Unused, Unused, Unused, SHIFT, SHIFT, Unused, Unused,
+	 * Row 9 Unused, Unused, Unused, Unused, Unused, Ctrl, Unused, Ctrl,
+	 * Row A Unused, Unused, Unused, Unused, Unused, Unused, Unused, Unused,
+	 * Row B '{[', 'P', '"', ':;', '/?, '>', Unused, Unused,
+	 * Row C 'F10', 'F9', 'BckSpc', '3', '2', Up, Prntscr, Pause
+	 * Row D INS, DEL, Unused, Pgup, PgDn, right, Down, Left,
+	 * Row E F11, F12, F8, 'Q', F4, F3, '1', F7,
+	 * Row F ESC, '~', F5, TAB, F1, F2, CAPLOCK, F6,
+	 */
+	KEY_RESERVED, KEY_RESERVED, KEY_W, KEY_S,
+		KEY_A, KEY_Z, KEY_RESERVED, KEY_FN,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_MENU,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_RESERVED, KEY_LEFTALT, KEY_RIGHTALT,
+	KEY_5, KEY_4, KEY_R, KEY_E,
+		KEY_F, KEY_D, KEY_X, KEY_RESERVED,
+	KEY_7, KEY_6, KEY_T, KEY_H,
+		KEY_G, KEY_V, KEY_C, KEY_SPACE,
+	KEY_9, KEY_8, KEY_U, KEY_Y,
+		KEY_J, KEY_N, KEY_B, KEY_BACKSLASH,
+	KEY_MINUS, KEY_0, KEY_O, KEY_I,
+		KEY_L, KEY_K, KEY_COMMA, KEY_M,
+	KEY_RESERVED, KEY_EQUAL, KEY_RIGHTBRACE, KEY_ENTER,
+		KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_MENU,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_LEFTSHIFT, KEY_RIGHTSHIFT, KEY_RESERVED, KEY_RESERVED,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_LEFTCTRL, KEY_RESERVED, KEY_RIGHTCTRL,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+	KEY_LEFTBRACE, KEY_P, KEY_APOSTROPHE, KEY_SEMICOLON,
+		KEY_SLASH, KEY_DOT, KEY_RESERVED, KEY_RESERVED,
+	KEY_F10, KEY_F9, KEY_BACKSPACE, KEY_3,
+		KEY_2, KEY_UP, KEY_PRINT, KEY_PAUSE,
+	KEY_INSERT, KEY_DELETE, KEY_RESERVED, KEY_PAGEUP,
+		KEY_PAGEDOWN, KEY_RIGHT, KEY_DOWN, KEY_LEFT,
+	KEY_F11, KEY_F12, KEY_F8, KEY_Q,
+		KEY_F4, KEY_F3, KEY_1, KEY_F7,
+	KEY_ESC, KEY_GRAVE, KEY_F5, KEY_TAB,
+		KEY_F1, KEY_F2, KEY_CAPSLOCK, KEY_F6
+};
+
+static int fn_kbd_keycode[] = {
+	/*
+	 * Row 0 Unused, Unused, 'W', 'S', 'A', 'Z', Unused, Function,
+	 * Row 1 Special, Unused, Unused, Unused, Unused, Unused, Unused, Menu
+	 * Row 2 Unused, Unused, Unused, Unused, Unused, Unused, Alt, Alt2
+	 * Row 3 '5', '4', 'R', 'E', 'F', 'D', 'X', Unused,
+	 * Row 4 '7', '6', 'T', 'H', 'G', 'V', 'C', SPACEBAR,
+	 * Row 5 '9', '8', 'U', 'Y', 'J', 'N', 'B', '|\',
+	 * Row 6 Minus, '0', 'O', 'I', 'L', 'K', '<', M,
+	 * Row 7 Unused, '+', '}]', '#', Unused, Unused, Unused, Menu,
+	 * Row 8 Unused, Unused, Unused, Unused, SHIFT, SHIFT, Unused, Unused,
+	 * Row 9 Unused, Unused, Unused, Unused, Unused, Ctrl, Unused, Control,
+	 * Row A Unused, Unused, Unused, Unused, Unused, Unused, Unused, Unused,
+	 * Row B '{[', 'P', '"', ':;', '/?, '>', Unused, Unused,
+	 * Row C 'F10', 'F9', 'BckSpc', '3', '2', 'Up, Prntscr, Pause
+	 * Row D INS, DEL, Unused, Pgup, PgDn, right, Down, Left,
+	 * Row E F11, F12, F8, 'Q', F4, F3, '1', F7,
+	 * Row F ESC, '~', F5, TAB, F1, F2, CAPLOCK, F6,
+	 */
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+	KEY_7, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+	KEY_9, KEY_8, KEY_4, KEY_RESERVED,
+		KEY_1, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+	KEY_RESERVED, KEY_SLASH, KEY_6, KEY_5,
+		KEY_3, KEY_2, KEY_RESERVED, KEY_0,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+	KEY_RESERVED, KEY_KPASTERISK, KEY_RESERVED, KEY_KPMINUS,
+		KEY_KPPLUS, KEY_DOT, KEY_RESERVED, KEY_RESERVED,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_RESERVED, KEY_VOLUMEUP, KEY_RESERVED, KEY_RESERVED,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_HOME,
+		KEY_END, KEY_BRIGHTNESSUP, KEY_VOLUMEDOWN, KEY_BRIGHTNESSDOWN,
+	KEY_NUMLOCK, KEY_SCROLLLOCK, KEY_MUTE, KEY_RESERVED,
+		KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+	KEY_RESERVED, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED,
+		KEY_QUESTION, KEY_RESERVED, KEY_RESERVED, KEY_RESERVED
+};
+
+static int tegra_kbc_keycode(struct tegra_kbc *kbc, int r, int c, bool fn_key)
 {
-	unsigned int i = kbc_indexof(r, c);
-
-	if (kbc->pdata->keymap)
-		return kbc->pdata->keymap[idx][i];
-
-	return i;
-}
-
-static int tegra_kbc_filter_keys(int *rows, int *cols, int keys_pressed)
-{
-	bool fn_key = false;
-	int index;
-
-	for (index = 0; index < keys_pressed; ++index) {
-		if ((rows[index] == KBC_FUNCTION_KEY_ROW_NUMBER) &&
-		    (cols[index] == KBC_FUNCTION_KEY_COLUMN_NUMBER)) {
-			fn_key = true;
-			break;
-		}
-	}
-
 	if (!fn_key)
-		return KBC_NORMAL_KEYMAP;
+		return kbc->plain_keycode[(r * KBC_MAX_COL) + c];
 	else
-		return KBC_FUNCTION_KEYMAP;
+		return kbc->fn_keycode[(r * KBC_MAX_COL) + c];
 }
 
 #ifdef CONFIG_PM
@@ -132,7 +219,7 @@ static void tegra_kbc_report_keys(struct tegra_kbc *kbc, int *fifo)
 	u32 kp_ent = 0;
 	unsigned long flags;
 	int i, j, valid = 0;
-	int idx;
+	bool fn = false;
 
 	local_irq_save(flags);
 	for (i = 0; i < ARRAY_SIZE(kp_ent_val); i++)
@@ -151,11 +238,17 @@ static void tegra_kbc_report_keys(struct tegra_kbc *kbc, int *fifo)
 		kp_ent >>= 8;
 	}
 
-	idx = tegra_kbc_filter_keys(rows_val, cols_val, valid);
+	for (i = 0; i < valid; i++) {
+		int k = tegra_kbc_keycode(kbc, rows_val[i], cols_val[i], false);
+		if (k == KEY_FN) {
+			fn = true;
+			break;
+		}
+	}
 
 	j = 0;
 	for (i = 0; i < valid; i++) {
-		int k = tegra_kbc_keycode(kbc, idx, rows_val[i], cols_val[i]);
+		int k = tegra_kbc_keycode(kbc, rows_val[i], cols_val[i], fn);
 		if (likely(k != -1))
 			curr_fifo[j++] = k;
 	}
@@ -493,6 +586,15 @@ static int __init tegra_kbc_probe(struct platform_device *pdev)
 
 	kbc->idev->evbit[0] = BIT_MASK(EV_KEY);
 
+	/* Override the default keycodes with the board supplied ones. */
+	if (pdata->plain_keycode) {
+		kbc->plain_keycode = pdata->plain_keycode;
+		kbc->fn_keycode = pdata->fn_keycode;
+	} else {
+		kbc->plain_keycode = plain_kbd_keycode;
+		kbc->fn_keycode = fn_kbd_keycode;
+	}
+
 	for (i = 0; i < KBC_MAX_COL; i++) {
 		if (!cols[i])
 			continue;
@@ -500,8 +602,7 @@ static int __init tegra_kbc_probe(struct platform_device *pdev)
 			int keycode;
 			if (!rows[j])
 				continue;
-			keycode = tegra_kbc_keycode(kbc, KBC_NORMAL_KEYMAP,
-						    j, i);
+			keycode = tegra_kbc_keycode(kbc, j, i, false);
 			if (keycode == -1)
 				continue;
 			set_bit(keycode, kbc->idev->keybit);
