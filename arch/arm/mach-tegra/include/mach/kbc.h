@@ -38,18 +38,6 @@
 
 #define KBC_MAX_KEY (KBC_MAX_ROW*KBC_MAX_COL)
 
-#define KBC_NORMAL_KEY_CODE_BASE          0x1000
-#define KBC_FUNCTION_KEY_CODE_BASE        0x2000
-
-#define KBC_FUNCTION_KEY_ROW_NUMBER       0
-#define KBC_FUNCTION_KEY_COLUMN_NUMBER    7
-
-enum tegra_kbc_keymap_type {
-	KBC_NORMAL_KEYMAP = 0,
-	KBC_FUNCTION_KEYMAP,
-	KBC_MAX_KEYMAP
-};
-
 struct tegra_kbc_pin_cfg {
 	bool is_row;
 	bool is_col;
@@ -65,14 +53,9 @@ struct tegra_kbc_platform_data {
 	unsigned int debounce_cnt;
 	unsigned int repeat_cnt;
 	int wake_cnt; /* 0:wake on any key >1:wake on wake_cfg */
+	int *plain_keycode;
+	int *fn_keycode;
 	struct tegra_kbc_pin_cfg pin_cfg[KBC_MAX_GPIO];
 	struct tegra_kbc_wake_key *wake_cfg;
-	int keymap[KBC_MAX_KEYMAP][KBC_MAX_KEY];
 };
-
-static inline unsigned int kbc_indexof(unsigned r, unsigned c)
-{
-	return c*KBC_MAX_ROW + r;
-}
-
 #endif

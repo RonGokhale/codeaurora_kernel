@@ -303,6 +303,74 @@ static struct platform_device seaboard_gpio_keys_device = {
 	}
 };
 
+static struct tegra_kbc_wake_key seaboard_wake_cfg[] = {
+	[0] = {
+		.row = 1,
+		.col = 7,
+	},
+	[1] = {
+		.row = 15,
+		.col = 0,
+	},
+};
+
+static struct resource seaboard_kbc_resources[] = {
+	[0] = {
+		.start = TEGRA_KBC_BASE,
+		.end   = TEGRA_KBC_BASE + TEGRA_KBC_SIZE - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = INT_KBC,
+		.end   = INT_KBC,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct tegra_kbc_platform_data seaboard_kbc_platform_data = {
+	.debounce_cnt = 2,
+	.repeat_cnt = 5 * 32,
+	.wake_cnt = 2,
+	.wake_cfg = &seaboard_wake_cfg[0],
+};
+
+static struct platform_device seaboard_kbc_device = {
+	.name = "tegra-kbc",
+	.id = -1,
+	.resource = seaboard_kbc_resources,
+	.num_resources = ARRAY_SIZE(seaboard_kbc_resources),
+	.dev = {
+		.platform_data = &seaboard_kbc_platform_data,
+	},
+
+};
+
+static void seaboard_kbc_init(void)
+{
+	struct tegra_kbc_platform_data *data = &seaboard_kbc_platform_data;
+	int i, j;
+
+	BUG_ON((KBC_MAX_ROW + KBC_MAX_COL) > KBC_MAX_GPIO);
+	/*
+	 * Setup the pin configuration information.
+	 */
+	for (i = 0; i < KBC_MAX_ROW; i++) {
+		data->pin_cfg[i].num = i;
+		data->pin_cfg[i].is_row = true;
+		data->pin_cfg[i].is_col = false;
+	}
+
+	for (j = 0; j < KBC_MAX_COL; j++) {
+		data->pin_cfg[i + j].num = j;
+		data->pin_cfg[i + j].is_row = false;
+		data->pin_cfg[i + j].is_col = true;
+	}
+
+	/* tegra-kbc will use default keycodes. */
+	data->plain_keycode = data->fn_keycode = NULL;
+	platform_device_register(&seaboard_kbc_device);
+}
+
 static struct platform_device *seaboard_devices[] __initdata = {
 	&debug_uart,
 	&tegra_otg,
