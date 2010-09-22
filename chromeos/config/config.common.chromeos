@@ -419,7 +419,7 @@ CONFIG_HIDRAW=y
 # CONFIG_HID_3M_PCT is not set
 # CONFIG_HID_A4TECH is not set
 # CONFIG_HID_BELKIN is not set
-# CONFIG_HID_CANDO is not set
+CONFIG_HID_CANDO=m
 # CONFIG_HID_CHERRY is not set
 # CONFIG_HID_CHICONY is not set
 # CONFIG_HID_CYPRESS is not set
