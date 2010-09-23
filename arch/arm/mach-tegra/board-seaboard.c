@@ -52,6 +52,12 @@
 #include "devices.h"
 #include "gpio-names.h"
 
+#define	PMC_CTRL		0x0
+#define	PMC_DPD_PADS_ORIDE	0x1c
+#define	PMC_BLINK_TIMER		0x40
+#define	PMC_CTRL_BLINK_EN	(1<<7)
+#define	PMC_DPD_PADS_ORIDE_BLINK_ENABLE	(1<<20)
+
 static struct plat_serial8250_port debug_uart_platform_data[] = {
 	{
 		.membase	= IO_ADDRESS(TEGRA_UARTD_BASE),
@@ -381,6 +387,29 @@ static struct platform_device *seaboard_devices[] __initdata = {
 	&tegra_grhost_device,
 };
 
+static void __init seaboard_wlan_init(void)
+{
+	unsigned int ctrl_reg = 0, dpd_reg = 0, timer_reg = 0;
+	void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
+
+	/* set wifi power/reset gpio */
+	tegra_gpio_enable(TEGRA_GPIO_PK6);
+	gpio_request(TEGRA_GPIO_PK6, "wlan_pwr_rst");
+	gpio_direction_output(TEGRA_GPIO_PK6, 1);
+
+	/* enable 32K Clock */
+	timer_reg = 0;
+	writel(timer_reg, pmc + PMC_BLINK_TIMER);
+
+	dpd_reg = readl(pmc + PMC_DPD_PADS_ORIDE);
+	dpd_reg |= PMC_DPD_PADS_ORIDE_BLINK_ENABLE;
+	writel(dpd_reg, pmc + PMC_DPD_PADS_ORIDE);
+
+	ctrl_reg = readl(pmc + PMC_CTRL);
+	ctrl_reg |= PMC_CTRL_BLINK_EN;
+	writel(ctrl_reg, pmc + PMC_CTRL);
+}
+
 static void __init tegra_seaboard_init(void)
 {
 	struct clk *clk;
@@ -407,6 +436,8 @@ static void __init tegra_seaboard_init(void)
 	seaboard_sdhci_init();
 	seaboard_i2c_init();
 	seaboard_kbc_init();
+
+	seaboard_wlan_init();
 
 	tegra_gpio_enable(TEGRA_GPIO_LIDSWITCH);
 	tegra_gpio_enable(TEGRA_GPIO_POWERKEY);
