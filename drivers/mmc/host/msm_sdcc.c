@@ -37,6 +37,7 @@
 #include <linux/debugfs.h>
 #include <linux/io.h>
 #include <linux/memory.h>
+#include <linux/wakelock.h>
 
 #include <asm/cacheflush.h>
 #include <asm/div64.h>
@@ -1177,7 +1178,16 @@ msmsdcc_platform_status_irq(int irq, void *dev_id)
 static irqreturn_t
 msmsdcc_platform_sdiowakeup_irq(int irq, void *dev_id)
 {
+	struct msmsdcc_host	*host = dev_id;
+
 	pr_info("%s: SDIO Wake up IRQ : %d\n", __func__, irq);
+	wake_lock(&host->sdio_wlock);
+	disable_irq_nosync(irq);
+	disable_irq_wake(irq);
+	spin_lock(&host->lock);
+	host->sdio_irq_disabled = 1;
+	spin_unlock(&host->lock);
+
 	return IRQ_HANDLED;
 }
 
@@ -1462,15 +1472,16 @@ msmsdcc_probe(struct platform_device *pdev)
 	if (plat->sdiowakeup_irq) {
 		ret = request_irq(plat->sdiowakeup_irq,
 			msmsdcc_platform_sdiowakeup_irq,
-			IRQF_SHARED | IRQF_TRIGGER_FALLING,
+			IRQF_SHARED | IRQF_TRIGGER_LOW,
 			DRIVER_NAME "sdiowakeup", host);
 		if (ret) {
 			pr_err("Unable to get sdio wakeup IRQ %d (%d)\n",
 				plat->sdiowakeup_irq, ret);
 			goto irq_free;
 		} else {
-			set_irq_wake(plat->sdiowakeup_irq, 1);
 			disable_irq(plat->sdiowakeup_irq);
+			wake_lock_init(&host->sdio_wlock, WAKE_LOCK_SUSPEND,
+					mmc_hostname(mmc));
 		}
 	}
 
@@ -1553,7 +1564,7 @@ msmsdcc_probe(struct platform_device *pdev)
 		free_irq(plat->status_irq, host);
  sdiowakeup_irq_free:
 	if (plat->sdiowakeup_irq) {
-		set_irq_wake(plat->sdiowakeup_irq, 0);
+		wake_lock_destroy(&host->sdio_wlock);
 		free_irq(plat->sdiowakeup_irq, host);
 	}
  irq_free:
@@ -1603,6 +1614,7 @@ static int msmsdcc_remove(struct platform_device *pdev)
 		free_irq(plat->status_irq, host);
 
 	if (plat->sdiowakeup_irq) {
+		wake_lock_destroy(&host->sdio_wlock);
 		set_irq_wake(plat->sdiowakeup_irq, 0);
 		free_irq(plat->sdiowakeup_irq, host);
 	}
@@ -1660,8 +1672,11 @@ msmsdcc_suspend(struct platform_device *dev, pm_message_t state)
 			}
 		}
 
-		if (host->plat->sdiowakeup_irq)
+		if (host->plat->sdiowakeup_irq && mmc->card &&
+				mmc->card->type == MMC_TYPE_SDIO) {
+			enable_irq_wake(host->plat->sdiowakeup_irq);
 			enable_irq(host->plat->sdiowakeup_irq);
+		}
 	}
 	return rc;
 }
@@ -1672,6 +1687,7 @@ msmsdcc_resume(struct platform_device *dev)
 	struct mmc_host *mmc = mmc_get_drvdata(dev);
 	struct msmsdcc_host *host = mmc_priv(mmc);
 	unsigned long flags;
+	int release_lock = 0;
 
 #ifdef CONFIG_MMC_AUTO_SUSPEND
 	if (!test_and_clear_bit(0, &host->suspended))
@@ -1688,15 +1704,28 @@ msmsdcc_resume(struct platform_device *dev)
 
 		writel(host->mci_irqenable, host->base + MMCIMASK0);
 
-		spin_unlock_irqrestore(&host->lock, flags);
-
-		if (host->plat->sdiowakeup_irq)
-			disable_irq(host->plat->sdiowakeup_irq);
+		if (host->plat->sdiowakeup_irq && !host->sdio_irq_disabled) {
+			spin_unlock_irqrestore(&host->lock, flags);
+			if (mmc->card && mmc->card->type == MMC_TYPE_SDIO) {
+				disable_irq(host->plat->sdiowakeup_irq);
+				disable_irq_wake(host->plat->sdiowakeup_irq);
+			}
+		} else {
+			release_lock = 1;
+			host->sdio_irq_disabled = 0;
+			spin_unlock_irqrestore(&host->lock, flags);
+		}
 
 		if (!mmc->card || mmc->card->type != MMC_TYPE_SDIO)
 			mmc_resume_host(mmc);
 		if (host->plat->status_irq)
 			enable_irq(host->plat->status_irq);
+		/*
+		 * After resuming the host wait for sometime so that
+		 * the SDIO work will be processed.
+		 */
+		if (host->plat->sdiowakeup_irq && release_lock)
+			wake_lock_timeout(&host->sdio_wlock, HZ / 2);
 
 	}
 	return 0;
