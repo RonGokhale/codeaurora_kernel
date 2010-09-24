@@ -474,7 +474,7 @@ static irqreturn_t tegra_kbc_isr(int irq, void *args)
 	return IRQ_HANDLED;
 }
 
-static int __init tegra_kbc_probe(struct platform_device *pdev)
+static int __devinit tegra_kbc_probe(struct platform_device *pdev)
 {
 	struct tegra_kbc *kbc;
 	struct tegra_kbc_platform_data *pdata = pdev->dev.platform_data;
