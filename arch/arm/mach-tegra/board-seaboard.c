@@ -260,7 +260,7 @@ static struct i2c_board_info __initdata seaboard_i2c4_devices[] = {
 	},
 };
 
-static void seaboard_i2c_init(void)
+static void __init seaboard_i2c_init(void)
 {
 	tegra_i2c_device1.dev.platform_data = &seaboard_i2c1_platform_data;
 	tegra_i2c_device2.dev.platform_data = &seaboard_i2c2_platform_data;
