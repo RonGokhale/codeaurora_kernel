@@ -180,6 +180,11 @@ struct ept_queue_item {
 #define CTRL_RXT_INT          (3 << 2)
 #define CTRL_RXT_EP_TYPE_SHIFT 2
 
+#if defined(CONFIG_ARCH_MSM7X30)
+#define ULPI_DIGOUT_CTRL        0X36
+#define ULPI_SE1_GATE           (1 << 2)
+#endif
+
 #define ULPI_CONFIG_REG		0x31
 #define ULPI_AMPLITUDE_MAX	0x0C
 #define ULPI_OTG_CTRL		0x0B
