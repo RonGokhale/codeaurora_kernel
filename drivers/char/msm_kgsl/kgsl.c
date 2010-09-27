@@ -161,6 +161,7 @@ static long kgsl_cache_range_op(unsigned long addr, int size,
 				outer_inv_range(physaddr,
 					physaddr + KGSL_PAGESIZE);
 	}
+	mb();
 #endif
 	return 0;
 }
