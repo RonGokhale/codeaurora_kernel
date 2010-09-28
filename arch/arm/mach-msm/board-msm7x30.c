@@ -2129,18 +2129,36 @@ static int msm_pmic_enable_ldo(int enable)
 	ldo_on = enable;
 
 	if (enable)
-		return vreg_enable(usb_vreg);
+		return vreg_set_level(usb_vreg, 3400);
 	else
-		return vreg_disable(usb_vreg);
+		return vreg_set_level(usb_vreg, 3075);
+
+
+	return 0;
 }
 
 static int msm_pmic_notify_init(void)
 {
+	int ret;
+
 	usb_vreg = vreg_get(NULL, "usb");
 	if (IS_ERR(usb_vreg)) {
 		pr_err("%s: usb vreg get failed\n", __func__);
 		vreg_put(usb_vreg);
 		return PTR_ERR(usb_vreg);
+	}
+
+	ret = vreg_set_level(usb_vreg, 3400);
+	if (ret) {
+		pr_err("%s: usb_vreg set level failed (%d)\n",
+			__func__, ret);
+		return ret;
+	}
+	ret = vreg_enable(usb_vreg);
+	if (ret) {
+		pr_err("%s: usb_vreg enable failed(%d)\n",
+			__func__, ret);
+		return ret;
 	}
 
 	return 0;
