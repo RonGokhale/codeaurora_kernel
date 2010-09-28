@@ -480,6 +480,13 @@ static void otg_reset(struct msm_otg *dev)
 	temp |= ULPI_AMPLITUDE_MAX;
 	ulpi_write(dev, temp, ULPI_CONFIG_REG);
 
+#if defined(CONFIG_ARCH_MSM7X30)
+	/* disable SE1 gating */
+	temp = ulpi_read(dev, ULPI_DIGOUT_CTRL);
+	temp |= ULPI_SE1_GATE;
+	ulpi_write(dev, temp, ULPI_DIGOUT_CTRL);
+#endif
+
 	writel(0x0, USB_AHB_BURST);
 	writel(0x00, USB_AHB_MODE);
 	clk_disable(dev->clk);
