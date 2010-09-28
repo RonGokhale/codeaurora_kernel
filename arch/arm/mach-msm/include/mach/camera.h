@@ -119,7 +119,7 @@ struct msm_queue_cmd {
 	struct list_head list_pict;
 	enum msm_queue type;
 	void *command;
-	int on_heap;
+	atomic_t on_heap;
 	struct timespec ts;
 };
 
