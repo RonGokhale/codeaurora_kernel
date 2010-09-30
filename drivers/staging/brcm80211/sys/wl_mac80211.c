@@ -1579,7 +1579,7 @@ static int wl_resume(struct pci_dev *pdev)
 }
 #endif				/* LINUXSTA_PS */
 
-static void __devexit wl_remove(struct pci_dev *pdev)
+static void wl_remove(struct pci_dev *pdev)
 {
 	wl_info_t *wl;
 	struct ieee80211_hw *hw;
