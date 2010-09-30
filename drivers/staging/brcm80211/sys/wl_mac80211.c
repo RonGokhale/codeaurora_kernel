@@ -181,7 +181,7 @@ static struct pci_device_id wl_id_table[] = {
 };
 
 MODULE_DEVICE_TABLE(pci, wl_id_table);
-static void __devexit wl_remove(struct pci_dev *pdev);
+static void wl_remove(struct pci_dev *pdev);
 #endif				/* !BCMSDIO */
 
 #ifdef BCMSDIO
