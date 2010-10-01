@@ -1055,7 +1055,8 @@ static void adie_rx_path_enable(uint32_t acdb_id)
 	adie_set_path_freq_plan(adie, ADIE_PATH_RX, 48000);
 
 	adie_proceed_to_stage(adie, ADIE_PATH_RX, ADIE_STAGE_DIGITAL_READY);
-	adie_proceed_to_stage(adie, ADIE_PATH_RX, ADIE_STAGE_DIGITAL_ANALOG_READY);
+	adie_proceed_to_stage(adie, ADIE_PATH_RX,
+			ADIE_STAGE_DIGITAL_ANALOG_READY);
 }
 
 static void q6_rx_path_enable(int reconf, uint32_t acdb_id)
@@ -1070,7 +1071,8 @@ static void q6_rx_path_enable(int reconf, uint32_t acdb_id)
 static void _audio_rx_path_enable(int reconf, uint32_t acdb_id)
 {
 	q6_rx_path_enable(reconf, acdb_id);
-	adie_rx_path_enable(acdb_id);
+	if (audio_rx_path_id)
+		adie_rx_path_enable(acdb_id);
 	audio_rx_analog_enable(1);
 }
 
@@ -1078,9 +1080,9 @@ static void _audio_tx_path_enable(int reconf, uint32_t acdb_id)
 {
 	audio_tx_analog_enable(1);
 
-	adie_enable();
-	adie_set_path(adie, audio_tx_path_id, ADIE_PATH_TX);
-
+	if (audio_tx_path_id) {
+		adie_enable();
+		adie_set_path(adie, audio_tx_path_id, ADIE_PATH_TX);
 		if (tx_clk_freq > 16000)
 			adie_set_path_freq_plan(adie, ADIE_PATH_TX, 48000);
 		else if (tx_clk_freq > 8000)
@@ -1088,8 +1090,11 @@ static void _audio_tx_path_enable(int reconf, uint32_t acdb_id)
 		else
 			adie_set_path_freq_plan(adie, ADIE_PATH_TX, 8000);
 
-	adie_proceed_to_stage(adie, ADIE_PATH_TX, ADIE_STAGE_DIGITAL_READY);
-	adie_proceed_to_stage(adie, ADIE_PATH_TX, ADIE_STAGE_DIGITAL_ANALOG_READY);
+		adie_proceed_to_stage(adie, ADIE_PATH_TX,
+				ADIE_STAGE_DIGITAL_READY);
+		adie_proceed_to_stage(adie, ADIE_PATH_TX,
+				ADIE_STAGE_DIGITAL_ANALOG_READY);
+	}
 
 	audio_update_acdb(audio_tx_device_id, acdb_id);
 
@@ -1105,18 +1110,26 @@ static void _audio_rx_path_disable(void)
 {
 	audio_rx_analog_enable(0);
 
-	adie_proceed_to_stage(adie, ADIE_PATH_RX, ADIE_STAGE_ANALOG_OFF);
-	adie_proceed_to_stage(adie, ADIE_PATH_RX, ADIE_STAGE_DIGITAL_OFF);
-	adie_disable();
+	if (audio_rx_path_id) {
+		adie_proceed_to_stage(adie, ADIE_PATH_RX,
+				ADIE_STAGE_ANALOG_OFF);
+		adie_proceed_to_stage(adie, ADIE_PATH_RX,
+				ADIE_STAGE_DIGITAL_OFF);
+		adie_disable();
+	}
 }
 
 static void _audio_tx_path_disable(void)
 {
 	audio_tx_analog_enable(0);
 
-	adie_proceed_to_stage(adie, ADIE_PATH_TX, ADIE_STAGE_ANALOG_OFF);
-	adie_proceed_to_stage(adie, ADIE_PATH_TX, ADIE_STAGE_DIGITAL_OFF);
-	adie_disable();
+	if (audio_tx_path_id) {
+		adie_proceed_to_stage(adie, ADIE_PATH_TX,
+				ADIE_STAGE_ANALOG_OFF);
+		adie_proceed_to_stage(adie, ADIE_PATH_TX,
+				ADIE_STAGE_DIGITAL_OFF);
+		adie_disable();
+	}
 }
 
 static int icodec_rx_clk_refcount;
