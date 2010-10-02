@@ -275,7 +275,7 @@ static int audio_mvs_setup_amr(struct audio_mvs_info_type *audio)
 			   sizeof(set_amr_mode_msg));
 
 	if (rc >= 0) {
-		pr_debug("%s; RPC write for set amr mode done\n", __func__);
+		pr_debug("%s: RPC write for set amr mode done\n", __func__);
 
 		rc = wait_event_timeout(audio->wait,
 				(audio->rpc_status != RPC_STATUS_FAILURE),
@@ -443,14 +443,14 @@ static int audio_mvs_stop(struct audio_mvs_info_type *audio)
 	rc = msm_rpc_write(audio->rpc_endpt, &release_msg, sizeof(release_msg));
 
 	if (rc >= 0) {
-		pr_debug("%s; RPC write for release done\n", __func__);
+		pr_debug("%s: RPC write for release done\n", __func__);
 
 		rc = wait_event_timeout(audio->wait,
 				(audio->rpc_status != RPC_STATUS_FAILURE),
 				1 * HZ);
 
 		if (rc > 0) {
-			pr_debug("%s; Wait event for release succeeded\n",
+			pr_debug("%s: Wait event for release succeeded\n",
 				 __func__);
 
 			audio->state = AUDIO_MVS_STOPPED;
@@ -584,7 +584,7 @@ static void audio_mvs_process_rpc_request(uint32_t procedure,
 			args++;
 
 			frame_mode = be32_to_cpu(*args);
-			pr_debug("%s; UL frame_mode %d\n",
+			pr_debug("%s: UL frame_mode %d\n",
 				 __func__, frame_mode);
 			args++;
 
@@ -698,7 +698,7 @@ static void audio_mvs_process_rpc_request(uint32_t procedure,
 				dl_reply.amr_frame = 0;
 				dl_reply.amr_mode = 0;
 			} else {
-				pr_err("DL Unknown frame mode %d\n",
+				pr_err("%s: DL Unknown frame mode %d\n",
 				       __func__, frame_mode);
 			}
 
@@ -738,7 +738,7 @@ static void audio_mvs_process_rpc_request(uint32_t procedure,
 	}
 
 	default:
-		pr_err("%s; Unknown CB type %d\n", __func__, procedure);
+		pr_err("%s: Unknown CB type %d\n", __func__, procedure);
 	}
 }
 
@@ -756,7 +756,7 @@ static int audio_mvs_thread(void *data)
 					       -1);
 
 		if (rpc_hdr_len < 0) {
-			pr_err("%s; RPC read failed %d\n",
+			pr_err("%s: RPC read failed %d\n",
 			       __func__, rpc_hdr_len);
 
 			break;
