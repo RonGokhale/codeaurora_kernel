@@ -1140,6 +1140,8 @@ void msm_rpc_read_wakeup(struct msm_rpc_endpoint *ept)
 
 int msm_rpc_close(struct msm_rpc_endpoint *ept)
 {
+	if (!ept)
+		return -EINVAL;
 	return msm_rpcrouter_destroy_local_endpoint(ept);
 }
 EXPORT_SYMBOL(msm_rpc_close);
