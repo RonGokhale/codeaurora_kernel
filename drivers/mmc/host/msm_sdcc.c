@@ -1734,7 +1734,7 @@ msmsdcc_resume(struct platform_device *dev)
 		 * the SDIO work will be processed.
 		 */
 		if ((mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ) && release_lock)
-			wake_lock_timeout(&host->sdio_wlock, HZ / 2);
+			wake_lock_timeout(&host->sdio_wlock, 1);
 
 	}
 	return 0;
