@@ -414,7 +414,7 @@ static char dhd_version[] = "Dongle Host Driver, version " EPI_VERSION_STR
 struct iw_statistics *dhd_get_wireless_stats(struct net_device *dev);
 #endif				/* defined(CONFIG_WIRELESS_EXT) */
 
-static void dhd_dpc(ulong data);
+static void dhd_dpc(unsigned long data);
 /* forward decl */
 extern int dhd_wait_pend8021x(struct net_device *dev);
 
@@ -1330,7 +1330,7 @@ static int dhd_watchdog_thread(void *data)
 	complete_and_exit(&dhd->watchdog_exited, 0);
 }
 
-static void dhd_watchdog(ulong data)
+static void dhd_watchdog(unsigned long data)
 {
 	dhd_info_t *dhd = (dhd_info_t *) data;
 
@@ -1401,7 +1401,7 @@ static int dhd_dpc_thread(void *data)
 	complete_and_exit(&dhd->dpc_exited, 0);
 }
 
-static void dhd_dpc(ulong data)
+static void dhd_dpc(unsigned long data)
 {
 	dhd_info_t *dhd;
 
@@ -2003,7 +2003,7 @@ dhd_pub_t *dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 
 	/* Set up the watchdog timer */
 	init_timer(&dhd->timer);
-	dhd->timer.data = (ulong) dhd;
+	dhd->timer.data = (unsigned long) dhd;
 	dhd->timer.function = dhd_watchdog;
 
 	/* Initialize thread based operation and lock */
@@ -2029,7 +2029,7 @@ dhd_pub_t *dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 		init_completion(&dhd->dpc_exited);
 		dhd->dpc_pid = kernel_thread(dhd_dpc_thread, dhd, 0);
 	} else {
-		tasklet_init(&dhd->tasklet, dhd_dpc, (ulong) dhd);
+		tasklet_init(&dhd->tasklet, dhd_dpc, (unsigned long) dhd);
 		dhd->dpc_pid = -1;
 	}
 
