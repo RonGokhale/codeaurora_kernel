@@ -42,6 +42,7 @@
 #include <mach/gpio.h>
 #include <mach/clk.h>
 #include <mach/kbc.h>
+#include <mach/suspend.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -410,11 +411,23 @@ static void __init seaboard_wlan_init(void)
 	writel(ctrl_reg, pmc + PMC_CTRL);
 }
 
+static struct tegra_suspend_platform_data seaboard_suspend = {
+	.cpu_timer = 5000,
+	.cpu_off_timer = 5000,
+	.core_timer = 0x7e7e,
+	.core_off_timer = 0x7f,
+	.separate_req = true,
+	.corereq_high = false,
+	.sysclkreq_high = true,
+	.suspend_mode = TEGRA_SUSPEND_LP1,
+};
+
 static void __init tegra_seaboard_init(void)
 {
 	struct clk *clk;
 
 	tegra_common_init();
+	tegra_init_suspend(&seaboard_suspend);
 
 	tegra_clk_init_from_table(seaboard_clk_init_table);
 	seaboard_pinmux_init();
