@@ -448,6 +448,7 @@ static void __init tegra_seaboard_init(void)
 	seaboard_panel_init();
 	seaboard_sdhci_init();
 	seaboard_i2c_init();
+	seaboard_regulator_init();
 	seaboard_kbc_init();
 
 	seaboard_wlan_init();
