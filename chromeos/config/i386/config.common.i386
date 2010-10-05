@@ -724,6 +724,7 @@ CONFIG_R8169=m
 # CONFIG_RCU_FAST_NO_HZ is not set
 # CONFIG_RD_BZIP2 is not set
 # CONFIG_RD_LZMA is not set
+# CONFIG_REGULATOR is not set
 # CONFIG_RELOCATABLE is not set
 # CONFIG_RISCOM8 is not set
 # CONFIG_ROCKETPORT is not set
