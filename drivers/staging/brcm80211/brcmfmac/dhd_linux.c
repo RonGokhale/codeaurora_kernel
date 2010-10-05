@@ -1155,7 +1155,7 @@ void dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt)
 {
 	dhd_info_t *dhd = (dhd_info_t *) dhdp->info;
 	struct sk_buff *skb;
-	uchar *eth;
+	unsigned char *eth;
 	uint len;
 	void *data, *pnext, *save_pktbuf;
 	int i;
@@ -2902,7 +2902,7 @@ int dhd_dev_pno_enable(struct net_device *dev, int pfn_enabled)
 /* Linux wrapper to call common dhd_pno_set */
 int
 dhd_dev_pno_set(struct net_device *dev, wlc_ssid_t *ssids_local, int nssid,
-		uchar scan_fr)
+		unsigned char scan_fr)
 {
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
 
