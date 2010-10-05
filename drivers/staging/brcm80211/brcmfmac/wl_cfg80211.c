@@ -296,7 +296,7 @@ static int32 wl_config_dongle(struct wl_priv *wl, bool need_lock);
 /*
 ** iscan handler
 */
-static void wl_iscan_timer(ulong data);
+static void wl_iscan_timer(unsigned long data);
 static void wl_term_iscan(struct wl_priv *wl);
 static int32 wl_init_iscan(struct wl_priv *wl);
 static int32 wl_iscan_thread(void *data);
@@ -2960,7 +2960,7 @@ static int32 wl_iscan_thread(void *data)
 	return 0;
 }
 
-static void wl_iscan_timer(ulong data)
+static void wl_iscan_timer(unsigned long data)
 {
 	struct wl_iscan_ctrl *iscan = (struct wl_iscan_ctrl *)data;
 
@@ -3011,7 +3011,7 @@ static int32 wl_init_iscan(struct wl_priv *wl)
 		wl_init_iscan_eloop(&iscan->el);
 		iscan->timer_ms = WL_ISCAN_TIMER_INTERVAL_MS;
 		init_timer(&iscan->timer);
-		iscan->timer.data = (ulong) iscan;
+		iscan->timer.data = (unsigned long) iscan;
 		iscan->timer.function = wl_iscan_timer;
 		sema_init(&iscan->sync, 0);
 		init_completion(&iscan->exited);
