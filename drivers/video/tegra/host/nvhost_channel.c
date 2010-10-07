@@ -176,7 +176,8 @@ void nvhost_channel_submit(
 	struct nvmap_handle **unpins,
 	int num_unpins,
 	u32 syncpt_id,
-	u32 syncpt_val)
+	u32 syncpt_val,
+	int num_nulled_incrs)
 {
 	int i;
 	struct nvhost_op_pair *p;
@@ -193,6 +194,31 @@ void nvhost_channel_submit(
 	/* push ops */
 	for (i = 0, p = ops; i < num_pairs; i++, p++)
 		nvhost_cdma_push(&ch->cdma, p->op1, p->op2);
+
+	/* extra work to do for null kickoff */
+	if (num_nulled_incrs) {
+		u32 incr;
+		u32 op_incr;
+
+		/* TODO ideally we'd also perform host waits here */
+
+		/* push increments that correspond to nulled out commands */
+		op_incr = nvhost_opcode_imm(0, 0x100 | syncpt_id);
+		for (incr = 0; incr < (num_nulled_incrs >> 1); incr++)
+			nvhost_cdma_push(&ch->cdma, op_incr, op_incr);
+		if (num_nulled_incrs & 1)
+			nvhost_cdma_push(&ch->cdma, op_incr, NVHOST_OPCODE_NOOP);
+
+		/* for 3d, waitbase needs to be incremented after each submit */
+		if (ch->desc->class == NV_GRAPHICS_3D_CLASS_ID) {
+			u32 op1 = nvhost_opcode_setclass(NV_HOST1X_CLASS_ID,
+					NV_CLASS_HOST_INCR_SYNCPT_BASE, 1);
+			u32 op2 = nvhost_class_host_incr_syncpt_base(NVWAITBASE_3D,
+					num_nulled_incrs);
+
+			nvhost_cdma_push(&ch->cdma, op1, op2);
+		}
+	}
 
 	/* end CDMA submit & stash pinned hMems into sync queue for later cleanup */
 	nvhost_cdma_end(&ch->cdma, syncpt_id, syncpt_val, unpins, num_unpins);
@@ -224,7 +250,7 @@ static void power_3d(struct nvhost_module *mod, enum nvhost_power_action action)
 			save.op2 = ch->cur_ctx->save_phys;
 			ctxsw.intr_data = ch->cur_ctx;
 			ctxsw.syncpt_val = syncval - 1;
-			nvhost_channel_submit(ch, &save, 1, &ctxsw, 1, NULL, 0, NVSYNCPT_3D, syncval);
+			nvhost_channel_submit(ch, &save, 1, &ctxsw, 1, NULL, 0, NVSYNCPT_3D, syncval, 0);
 			ch->cur_ctx->last_access_id = NVSYNCPT_3D;
 			ch->cur_ctx->last_access_value = syncval;
 			ch->cur_ctx->valid = true;
