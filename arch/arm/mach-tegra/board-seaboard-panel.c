@@ -102,6 +102,18 @@ static struct tegra_fb_data seaboard_fb_data = {
 	.bits_per_pixel	= 16,
 };
 
+static int seaboard_panel_enable(void)
+{
+	gpio_set_value(TEGRA_GPIO_EN_VDD_PNL, 1);
+	return 0;
+}
+
+static int seaboard_panel_disable(void)
+{
+	gpio_set_value(TEGRA_GPIO_EN_VDD_PNL, 0);
+	return 0;
+}
+
 static struct tegra_dc_out seaboard_disp1_out = {
 	.type = TEGRA_DC_OUT_RGB,
 
@@ -110,6 +122,8 @@ static struct tegra_dc_out seaboard_disp1_out = {
 
 	.modes = seaboard_panel_modes,
 	.n_modes = ARRAY_SIZE(seaboard_panel_modes),
+	.enable = seaboard_panel_enable,
+	.disable = seaboard_panel_disable,
 };
 
 static struct tegra_dc_platform_data seaboard_disp1_pdata = {
