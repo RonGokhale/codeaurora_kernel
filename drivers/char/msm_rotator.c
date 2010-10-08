@@ -125,7 +125,8 @@ static struct msm_rotator_dev *msm_rotator_dev;
 
 enum {
 	CLK_EN,
-	CLK_DIS
+	CLK_DIS,
+	CLK_SUSPEND,
 };
 
 int msm_rotator_imem_allocate(int requestor)
@@ -155,7 +156,7 @@ int msm_rotator_imem_allocate(int requestor)
 #endif
 	if (rc == 1) {
 		cancel_delayed_work(&msm_rotator_dev->imem_clk_work);
-		if (msm_rotator_dev->imem_clk_state == CLK_DIS
+		if (msm_rotator_dev->imem_clk_state != CLK_EN
 			&& msm_rotator_dev->imem_clk) {
 			clk_enable(msm_rotator_dev->imem_clk);
 			msm_rotator_dev->imem_clk_state = CLK_EN;
@@ -188,7 +189,8 @@ static void msm_rotator_imem_clk_work_f(struct work_struct *work)
 		     && msm_rotator_dev->imem_clk) {
 			clk_disable(msm_rotator_dev->imem_clk);
 			msm_rotator_dev->imem_clk_state = CLK_DIS;
-		}
+		} else if (msm_rotator_dev->imem_clk_state == CLK_SUSPEND)
+			msm_rotator_dev->imem_clk_state = CLK_DIS;
 		mutex_unlock(&msm_rotator_dev->imem_lock);
 	}
 #endif
@@ -214,7 +216,8 @@ static void msm_rotator_rot_clk_work_f(struct work_struct *work)
 		if (msm_rotator_dev->rot_clk_state == CLK_EN) {
 			disable_rot_clks();
 			msm_rotator_dev->rot_clk_state = CLK_DIS;
-		}
+		} else if (msm_rotator_dev->rot_clk_state == CLK_SUSPEND)
+			msm_rotator_dev->rot_clk_state = CLK_DIS;
 		mutex_unlock(&msm_rotator_dev->rotator_lock);
 	}
 }
@@ -743,7 +746,7 @@ static int msm_rotator_do_rotate(unsigned long arg)
 	}
 
 	cancel_delayed_work(&msm_rotator_dev->rot_clk_work);
-	if (msm_rotator_dev->rot_clk_state == CLK_DIS) {
+	if (msm_rotator_dev->rot_clk_state != CLK_EN) {
 		enable_rot_clks();
 		msm_rotator_dev->rot_clk_state = CLK_EN;
 	}
@@ -1250,12 +1253,16 @@ static int msm_rotator_suspend(struct platform_device *dev, pm_message_t state)
 {
 	mutex_lock(&msm_rotator_dev->imem_lock);
 	if (msm_rotator_dev->imem_clk_state == CLK_EN
-		&& msm_rotator_dev->imem_clk)
+		&& msm_rotator_dev->imem_clk) {
 		clk_disable(msm_rotator_dev->imem_clk);
+		msm_rotator_dev->imem_clk_state = CLK_SUSPEND;
+	}
 	mutex_unlock(&msm_rotator_dev->imem_lock);
 	mutex_lock(&msm_rotator_dev->rotator_lock);
-	if (msm_rotator_dev->rot_clk_state == CLK_EN)
+	if (msm_rotator_dev->rot_clk_state == CLK_EN) {
 		disable_rot_clks();
+		msm_rotator_dev->rot_clk_state = CLK_SUSPEND;
+	}
 	mutex_unlock(&msm_rotator_dev->rotator_lock);
 	return 0;
 }
@@ -1263,12 +1270,12 @@ static int msm_rotator_suspend(struct platform_device *dev, pm_message_t state)
 static int msm_rotator_resume(struct platform_device *dev)
 {
 	mutex_lock(&msm_rotator_dev->imem_lock);
-	if (msm_rotator_dev->imem_clk_state == CLK_EN
+	if (msm_rotator_dev->imem_clk_state == CLK_SUSPEND
 		&& msm_rotator_dev->imem_clk)
 		clk_enable(msm_rotator_dev->imem_clk);
 	mutex_unlock(&msm_rotator_dev->imem_lock);
 	mutex_lock(&msm_rotator_dev->rotator_lock);
-	if (msm_rotator_dev->rot_clk_state == CLK_EN)
+	if (msm_rotator_dev->rot_clk_state == CLK_SUSPEND)
 		enable_rot_clks();
 	mutex_unlock(&msm_rotator_dev->rotator_lock);
 	return 0;
