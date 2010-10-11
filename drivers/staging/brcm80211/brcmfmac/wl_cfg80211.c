@@ -56,8 +56,8 @@
 #define NL80211_TX_POWER_FIXED		TX_POWER_FIXED
 #endif
 
-static struct sdio_func *cfg80211_sdio_func = NULL;
-static struct wl_dev *wl_cfg80211_dev = NULL;
+static struct sdio_func *cfg80211_sdio_func;
+static struct wl_dev *wl_cfg80211_dev;
 
 uint32 wl_dbg_level = WL_DBG_ERR | WL_DBG_INFO;
 
