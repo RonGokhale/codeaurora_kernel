@@ -2277,7 +2277,8 @@ static int32 wl_inform_single_bss(struct wl_priv *wl, struct wl_bss_info *bi)
 	freq = ieee80211_channel_to_frequency(notif_bss_info->channel);
 	channel = ieee80211_get_channel(wiphy, freq);
 
-	WL_DBG(("SSID : \"%s\", rssi %d, channel %d, capability : 0x04%x\n", bi->SSID,
+	WL_DBG(("SSID : \"%s\", rssi %d, channel %d, capability : 0x04%x\n",
+		bi->SSID,
 		notif_bss_info->rssi, notif_bss_info->channel,
 		mgmt->u.probe_resp.capab_info));
 
@@ -2564,7 +2565,11 @@ wl_bss_connect_done(struct wl_priv *wl, struct net_device *ndev,
 					conn_info->req_ie_len,
 					conn_info->resp_ie,
 					conn_info->resp_ie_len,
+<<<<<<< HEAD
 					completed ? WLAN_STATUS_SUCCESS : WLAN_STATUS_AUTH_TIMEOUT ,
+=======
+					completed ? WLAN_STATUS_SUCCESS : WLAN_STATUS_AUTH_TIMEOUT,
+>>>>>>> b3164c7... staging: brcm80211: bug fix - connection status report
 					GFP_KERNEL);
 		WL_DBG(("Report connect result - connection %s\n",
 			completed ? "succeeded" : "failed"));
@@ -3820,7 +3825,13 @@ wl_update_prof(struct wl_priv *wl, const wl_event_msg_t *e, void *data,
 
 void wl_cfg80211_dbg_level(uint32 level)
 {
-	wl_dbg_level = level;
+	/*
+	* prohibit to change debug level
+	* by insmod parameter.
+	* eventually debug level will be configured
+	* in compile time by using CONFIG_XXX
+	*/
+	/* wl_dbg_level = level; */
 }
 
 static bool wl_is_ibssmode(struct wl_priv *wl)
