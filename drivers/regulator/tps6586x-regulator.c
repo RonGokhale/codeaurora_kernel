@@ -134,7 +134,7 @@ static int tps6586x_ldo_get_voltage(struct regulator_dev *rdev)
 	mask = ((1 << ri->volt_nbits) - 1) << ri->volt_shift;
 	val = (val & mask) >> ri->volt_shift;
 
-	if (val > ri->desc.n_voltages)
+	if (val >= ri->desc.n_voltages)
 		BUG();
 
 	return ri->voltages[val] * 1000;
@@ -151,7 +151,7 @@ static int tps6586x_dvm_set_voltage(struct regulator_dev *rdev,
 	if (ret)
 		return ret;
 
-	return tps6586x_set_bits(parent, ri->go_reg, ri->go_bit);
+	return tps6586x_set_bits(parent, ri->go_reg, 1 << ri->go_bit);
 }
 
 static int tps6586x_regulator_enable(struct regulator_dev *rdev)
@@ -232,8 +232,7 @@ static int tps6586x_dvm_voltages[] = {
 };
 
 #define TPS6586X_REGULATOR(_id, vdata, _ops, vreg, shift, nbits,	\
-			   ereg0, ebit0, ereg1, ebit1, goreg, gobit)	\
-{									\
+			   ereg0, ebit0, ereg1, ebit1)	\
 	.desc	= {							\
 		.name	= "REG-" #_id,					\
 		.ops	= &tps6586x_regulator_##_ops,			\
@@ -249,18 +248,26 @@ static int tps6586x_dvm_voltages[] = {
 	.enable_bit[0]	= (ebit0),					\
 	.enable_reg[1]	= TPS6586X_SUPPLY##ereg1,			\
 	.enable_bit[1]	= (ebit1),					\
-	.voltages	= tps6586x_##vdata##_voltages,			\
-}
+	.voltages	= tps6586x_##vdata##_voltages,
+
+#define TPS6586X_REGULATOR_DVM_GOREG(goreg, gobit)	\
+	.go_reg = TPS6586X_##goreg, \
+	.go_bit = (gobit),
 
 #define TPS6586X_LDO(_id, vdata, vreg, shift, nbits,			\
 		     ereg0, ebit0, ereg1, ebit1)			\
+{	\
 	TPS6586X_REGULATOR(_id, vdata, ldo_ops, vreg, shift, nbits,	\
-			   ereg0, ebit0, ereg1, ebit1, 0, 0)
+			   ereg0, ebit0, ereg1, ebit1)			\
+}
 
 #define TPS6586X_DVM(_id, vdata, vreg, shift, nbits,			\
 		     ereg0, ebit0, ereg1, ebit1, goreg, gobit)		\
+{	\
 	TPS6586X_REGULATOR(_id, vdata, dvm_ops, vreg, shift, nbits,	\
-			   ereg0, ebit0, ereg1, ebit1, goreg, gobit)
+			   ereg0, ebit0, ereg1, ebit1)			\
+	TPS6586X_REGULATOR_DVM_GOREG(goreg, gobit)		\
+}
 
 static struct tps6586x_regulator tps6586x_regulator[] = {
 	TPS6586X_LDO(LDO_0, ldo, SUPPLYV1, 5, 3, ENC, 0, END, 0),
@@ -291,6 +298,10 @@ static inline int tps6586x_regulator_preinit(struct device *parent,
 	uint8_t val1, val2;
 	int ret;
 
+	if (ri->enable_reg[0] == ri->enable_reg[1] &&
+	    ri->enable_bit[0] == ri->enable_bit[1])
+			return 0;
+
 	ret = tps6586x_read(parent, ri->enable_reg[0], &val1);
 	if (ret)
 		return ret;
@@ -299,14 +310,14 @@ static inline int tps6586x_regulator_preinit(struct device *parent,
 	if (ret)
 		return ret;
 
-	if (!(val2 & ri->enable_bit[1]))
+	if (!(val2 & (1 << ri->enable_bit[1])))
 		return 0;
 
 	/*
 	 * The regulator is on, but it's enabled with the bit we don't
 	 * want to use, so we switch the enable bits
 	 */
-	if (!(val1 & ri->enable_bit[0])) {
+	if (!(val1 & (1 << ri->enable_bit[0]))) {
 		ret = tps6586x_set_bits(parent, ri->enable_reg[0],
 					1 << ri->enable_bit[0]);
 		if (ret)
