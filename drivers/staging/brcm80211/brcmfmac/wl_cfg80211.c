@@ -17,6 +17,7 @@
 #include <typedefs.h>
 #include <linuxver.h>
 #include <osl.h>
+#include <linux/kernel.h>
 
 #include <bcmutils.h>
 #include <bcmendian.h>
@@ -3597,7 +3598,6 @@ dongle_offload_out:
 
 static s32 wl_pattern_atoh(s8 *src, s8 *dst)
 {
-#define strtoul(nptr, endptr, base) bcm_strtoul((nptr), (endptr), (base))
 	int i;
 	if (strncmp(src, "0x", 2) != 0 && strncmp(src, "0X", 2) != 0) {
 		WL_ERR(("Mask invalid format. Needs to start with 0x\n"));
@@ -3612,7 +3612,7 @@ static s32 wl_pattern_atoh(s8 *src, s8 *dst)
 		char num[3];
 		strncpy(num, src, 2);
 		num[2] = '\0';
-		dst[i] = (u8) strtoul(num, NULL, 16);
+		dst[i] = (u8) simple_strtoul(num, NULL, 16);
 		src += 2;
 	}
 	return i;
