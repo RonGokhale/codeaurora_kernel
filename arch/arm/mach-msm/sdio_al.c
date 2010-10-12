@@ -441,6 +441,8 @@ struct sdio_al {
 	int is_err;
 
 	u32 signature;
+
+	unsigned int clock;
 };
 
 /** The driver context */
@@ -518,6 +520,7 @@ static int read_mailbox(int from_isr)
 	int ret;
 	struct sdio_func *func1 = sdio_al->card->sdio_func[0];
 	struct sdio_mailbox *mailbox = sdio_al->mailbox;
+	struct mmc_host *host = func1->card->host;
 	u32 new_write_avail = 0;
 	u32 old_write_avail = 0;
 	u32 any_read_avail = 0;
@@ -690,6 +693,13 @@ static int read_mailbox(int from_isr)
 		/* Mark HOST_OK_TOSLEEP */
 		sdio_al->is_ok_to_sleep = 1;
 		write_lpm_info();
+
+		/* Clock rate is required to enable the clock and set its rate.
+		 * Hence, save the clock rate before disabling it */
+		sdio_al->clock = host->ios.clock;
+		/* Disable clocks here */
+		host->ios.clock = 0;
+		host->ops->set_ios(host, &host->ios);
 		pr_info(MODULE_NAME "Finished sleep sequence. Sleep now.\n");
 		/* Release wakelock */
 		wake_unlock(&sdio_al->wake_lock);
@@ -1376,6 +1386,7 @@ static int sdio_al_wake_up(u32 enable_wake_up_func)
 	struct sdio_func *wk_func =
 		sdio_al->card->sdio_func[SDIO_AL_WAKEUP_FUNC-1];
 	unsigned long time_to_wait;
+	struct mmc_host *host = wk_func->card->host;
 
 	/* Wake up sequence */
 	wake_lock(&sdio_al->wake_lock);
@@ -1387,6 +1398,9 @@ static int sdio_al_wake_up(u32 enable_wake_up_func)
 	}
 
 	pr_debug(MODULE_NAME ":Turn clock on\n");
+	/* Enable the clock and set its rate */
+	host->ios.clock = sdio_al->clock;
+	host->ops->set_ios(host, &host->ios);
 	msmsdcc_set_pwrsave(sdio_al->card->host, 0);
 	/* Poll the GPIO */
 	time_to_wait = jiffies + msecs_to_jiffies(100);
