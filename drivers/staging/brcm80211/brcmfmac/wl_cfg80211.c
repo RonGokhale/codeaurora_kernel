@@ -2858,6 +2858,7 @@ static s32 wl_create_event_handler(struct wl_priv *wl)
 static void wl_destroy_event_handler(struct wl_priv *wl)
 {
 	if (wl->event_tsk) {
+		KILL_PROC(wl->event_tsk->pid, SIGTERM);
 		kthread_stop(wl->event_tsk);
 		wl->event_tsk = NULL;
 	}
@@ -2869,6 +2870,7 @@ static void wl_term_iscan(struct wl_priv *wl)
 
 	if (wl->iscan_on && iscan->tsk) {
 		iscan->state = WL_ISCAN_STATE_IDLE;
+		KILL_PROC(iscan->tsk->pid, SIGTERM);
 		kthread_stop(iscan->tsk);
 		iscan->tsk = NULL;
 	}
@@ -3003,6 +3005,7 @@ static s32 wl_iscan_thread(void *data)
 	int err = 0;
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
+	allow_signal(SIGTERM);
 	status = WL_SCAN_RESULTS_PARTIAL;
 	while (likely(!down_interruptible(&iscan->sync))) {
 		if (kthread_should_stop())
@@ -3024,6 +3027,7 @@ static s32 wl_iscan_thread(void *data)
 		del_timer_sync(&iscan->timer);
 		iscan->timer_on = 0;
 	}
+	WL_DBG(("%s was terminated\n", __func__));
 
 	return 0;
 }
@@ -3224,6 +3228,7 @@ static s32 wl_event_handler(void *data)
 	struct wl_event_q *e;
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
+	allow_signal(SIGTERM);
 	while (likely(!down_interruptible(&wl->event_sync))) {
 		if (kthread_should_stop())
 			break;
@@ -3241,6 +3246,7 @@ static s32 wl_event_handler(void *data)
 		}
 		wl_put_event(e);
 	}
+	WL_DBG(("%s was terminated\n", __func__));
 	return 0;
 }
 
@@ -3808,7 +3814,14 @@ static s32 __wl_cfg80211_down(struct wl_priv *wl)
 	if (wl->scan_request) {
 		cfg80211_scan_done(wl->scan_request, true);	/* true
 								 means abort */
-		wl_set_mpc(ndev, 1);
+		/* wl_set_mpc(wl_to_ndev(wl), 1); */	/* BUG
+						* this operation cannot help
+						* but here because sdio
+						* is already down through
+						* rmmod process.
+						* Need to figure out how to
+						* address this issue
+						*/
 		wl->scan_request = NULL;
 	}
 	clear_bit(WL_STATUS_READY, &wl->status);
