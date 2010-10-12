@@ -2643,11 +2643,7 @@ wl_bss_connect_done(struct wl_priv *wl, struct net_device *ndev,
 					conn_info->req_ie_len,
 					conn_info->resp_ie,
 					conn_info->resp_ie_len,
-<<<<<<< HEAD
-					completed ? WLAN_STATUS_SUCCESS : WLAN_STATUS_AUTH_TIMEOUT ,
-=======
 					completed ? WLAN_STATUS_SUCCESS : WLAN_STATUS_AUTH_TIMEOUT,
->>>>>>> b3164c7... staging: brcm80211: bug fix - connection status report
 					GFP_KERNEL);
 		WL_DBG(("Report connect result - connection %s\n",
 			completed ? "succeeded" : "failed"));
