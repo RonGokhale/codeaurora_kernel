@@ -1359,7 +1359,9 @@ static void restart_timer(void)
 }
 
 /**
- *  Do the wakup sequence
+ *  Do the wakup sequence.
+ *  This function should be called after claiming the host!
+ *  The caller is responsible for releasing the host.
  *
  *  Wake up sequence
  *  1. Get lock
@@ -1368,7 +1370,7 @@ static void restart_timer(void)
  *  4. Restore default thresholds
  *  5. Start the mailbox and inactivity timer again
  */
-static int sdio_al_wake_up(u32 enable_wake_up_func, int is_host_claimed)
+static int sdio_al_wake_up(u32 enable_wake_up_func)
 {
 	int ret = 0, i;
 	struct sdio_func *wk_func =
@@ -1377,10 +1379,12 @@ static int sdio_al_wake_up(u32 enable_wake_up_func, int is_host_claimed)
 
 	/* Wake up sequence */
 	wake_lock(&sdio_al->wake_lock);
-	pr_info(MODULE_NAME "Wake up");
+	pr_info(MODULE_NAME ": Wake up");
 
-	if (!is_host_claimed)
-		sdio_claim_host(wk_func);
+	if (!sdio_al->is_ok_to_sleep) {
+		pr_info(MODULE_NAME ": already awake, no need to wake up\n");
+		return 0;
+	}
 
 	pr_debug(MODULE_NAME ":Turn clock on\n");
 	msmsdcc_set_pwrsave(sdio_al->card->host, 0);
@@ -1422,8 +1426,6 @@ static int sdio_al_wake_up(u32 enable_wake_up_func, int is_host_claimed)
 	}
 	if (enable_wake_up_func)
 		sdio_disable_func(wk_func);
-	if (!is_host_claimed)
-		sdio_release_host(wk_func);
 
 	/* Start the timer again*/
 	restart_inactive_time();
@@ -1458,7 +1460,7 @@ static void sdio_func_irq(struct sdio_func *func)
 	pr_debug(MODULE_NAME ":start %s.\n", __func__);
 
 	if (sdio_al->is_ok_to_sleep)
-		sdio_al_wake_up(0, 1);
+		sdio_al_wake_up(0);
 	else
 		restart_timer();
 
@@ -1695,10 +1697,11 @@ int sdio_open(const char *name, struct sdio_channel **ret_ch, void *priv,
 		return -EPERM;
 	}
 
-	if (sdio_al->is_ok_to_sleep) {
-		ret = sdio_al_wake_up(1, 0);
-		if (ret)
-			return ret;
+	sdio_claim_host(sdio_al->card->sdio_func[0]);
+	ret = sdio_al_wake_up(1);
+	if (ret) {
+		sdio_release_host(sdio_al->card->sdio_func[0]);
+		return ret;
 	}
 
 	ch->name = name;
@@ -1713,10 +1716,10 @@ int sdio_open(const char *name, struct sdio_channel **ret_ch, void *priv,
 		ch->is_suspend = false;
 		ch->is_open = true;
 		ask_reading_mailbox();
+		sdio_release_host(sdio_al->card->sdio_func[0]);
 		return 0;
 	}
 
-	sdio_claim_host(sdio_al->card->sdio_func[0]);
 	ret = open_channel(ch);
 	sdio_release_host(sdio_al->card->sdio_func[0]);
 
@@ -1747,10 +1750,11 @@ int sdio_close(struct sdio_channel *ch)
 	if (!ch->is_open)
 		return -EINVAL;
 
-	if (sdio_al->is_ok_to_sleep) {
-		ret = sdio_al_wake_up(1, 0);
-		if (ret)
-			return ret;
+	sdio_claim_host(sdio_al->card->sdio_func[0]);
+	ret = sdio_al_wake_up(1);
+	if (ret) {
+		sdio_release_host(sdio_al->card->sdio_func[0]);
+		return ret;
 	}
 
 	pr_info(MODULE_NAME ":sdio_close %s\n", ch->name);
@@ -1761,7 +1765,6 @@ int sdio_close(struct sdio_channel *ch)
 
 	ch->notify = NULL;
 
-	sdio_claim_host(sdio_al->card->sdio_func[0]);
 	ret = close_channel(ch);
 	sdio_release_host(sdio_al->card->sdio_func[0]);
 
@@ -1900,10 +1903,13 @@ int sdio_write(struct sdio_channel *ch, const void *data, int len)
 		return -EINVAL;
 	}
 
+	sdio_claim_host(sdio_al->card->sdio_func[0]);
 	if (sdio_al->is_ok_to_sleep) {
-		ret = sdio_al_wake_up(1, 0);
-		if (ret)
+		ret = sdio_al_wake_up(1);
+		if (ret) {
+			sdio_release_host(sdio_al->card->sdio_func[0]);
 			return ret;
+		}
 	} else {
 		restart_inactive_time();
 	}
@@ -1914,10 +1920,10 @@ int sdio_write(struct sdio_channel *ch, const void *data, int len)
 	if (len > ch->write_avail) {
 		pr_info(MODULE_NAME ":ERR ch %s write %d avail %d.\n",
 				ch->name, len, ch->write_avail);
+		sdio_release_host(sdio_al->card->sdio_func[0]);
 		return -ENOMEM;
 	}
 
-	sdio_claim_host(sdio_al->card->sdio_func[0]);
 	ret = sdio_ch_write(ch, data, len);
 
 	ch->total_tx_bytes += len;
@@ -1957,10 +1963,11 @@ int sdio_set_write_threshold(struct sdio_channel *ch, int threshold)
 		pr_info(MODULE_NAME ":In Error state, ignore %s\n", __func__);
 		return -ENODEV;
 	}
-	if (sdio_al->is_ok_to_sleep) {
-		ret = sdio_al_wake_up(1, 0);
-		if (ret)
-			return ret;
+	sdio_claim_host(sdio_al->card->sdio_func[0]);
+	ret = sdio_al_wake_up(1);
+	if (ret) {
+		sdio_release_host(sdio_al->card->sdio_func[0]);
+		return ret;
 	}
 
 	ch->write_threshold = threshold;
@@ -1968,7 +1975,6 @@ int sdio_set_write_threshold(struct sdio_channel *ch, int threshold)
 	pr_debug(MODULE_NAME ":sdio_set_write_threshold %s 0x%x\n",
 			 ch->name, ch->write_threshold);
 
-	sdio_claim_host(sdio_al->card->sdio_func[0]);
 	ret = set_pipe_threshold(ch->tx_pipe_index, ch->write_threshold);
 	sdio_release_host(sdio_al->card->sdio_func[0]);
 
@@ -1990,10 +1996,14 @@ int sdio_set_read_threshold(struct sdio_channel *ch, int threshold)
 		pr_info(MODULE_NAME ":In Error state, ignore %s\n", __func__);
 		return -ENODEV;
 	}
+
+	sdio_claim_host(sdio_al->card->sdio_func[0]);
 	if (sdio_al->is_ok_to_sleep) {
-		ret = sdio_al_wake_up(1, 0);
-		if (ret)
+		ret = sdio_al_wake_up(1);
+		if (ret) {
+			sdio_release_host(sdio_al->card->sdio_func[0]);
 			return ret;
+		}
 	}
 
 	ch->read_threshold = threshold;
@@ -2001,7 +2011,6 @@ int sdio_set_read_threshold(struct sdio_channel *ch, int threshold)
 	pr_debug(MODULE_NAME ":sdio_set_write_threshold %s 0x%x\n",
 			 ch->name, ch->read_threshold);
 
-	sdio_claim_host(sdio_al->card->sdio_func[0]);
 	ret = set_pipe_threshold(ch->rx_pipe_index, ch->read_threshold);
 	sdio_release_host(sdio_al->card->sdio_func[0]);
 
@@ -2016,6 +2025,8 @@ EXPORT_SYMBOL(sdio_set_read_threshold);
  */
 int sdio_set_poll_time(struct sdio_channel *ch, int poll_delay_msec)
 {
+	int ret;
+
 	BUG_ON(ch->signature != SDIO_AL_SIGNATURE);
 	if (sdio_al->is_err) {
 		pr_info(MODULE_NAME ":In Error state, ignore %s\n", __func__);
@@ -2025,13 +2036,11 @@ int sdio_set_poll_time(struct sdio_channel *ch, int poll_delay_msec)
 	if (poll_delay_msec <= 0 || poll_delay_msec > INACTIVITY_TIME_MSEC)
 		return -EPERM;
 
-	if (sdio_al->is_ok_to_sleep) {
-		int ret;
-
-		ret = sdio_al_wake_up(1, 0);
-		if (ret)
-			return ret;
-	}
+	sdio_claim_host(sdio_al->card->sdio_func[0]);
+	ret = sdio_al_wake_up(1);
+	sdio_release_host(sdio_al->card->sdio_func[0]);
+	if (ret)
+		return ret;
 
 	ch->poll_delay_msec = poll_delay_msec;
 
