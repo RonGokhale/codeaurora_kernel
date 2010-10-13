@@ -2181,13 +2181,15 @@ static char *usb_functions_default_adb[] = {
 	"usb_mass_storage",
 };
 
-static char *usb_functions_rndis[] = {
+static char *usb_functions_rndis_diag[] = {
 	"rndis",
+	"diag",
 };
 
-static char *usb_functions_rndis_adb[] = {
+static char *usb_functions_rndis_adb_diag[] = {
 	"rndis",
 	"adb",
+	"diag",
 };
 
 static char *usb_functions_all[] = {
@@ -2223,14 +2225,14 @@ static struct android_usb_product usb_products[] = {
 		.functions	= usb_functions_default_adb,
 	},
 	{
-		.product_id	= 0xf00e,
-		.num_functions	= ARRAY_SIZE(usb_functions_rndis),
-		.functions	= usb_functions_rndis,
+		.product_id	= 0x902C,
+		.num_functions	= ARRAY_SIZE(usb_functions_rndis_diag),
+		.functions	= usb_functions_rndis_diag,
 	},
 	{
-		.product_id	= 0x9024,
-		.num_functions	= ARRAY_SIZE(usb_functions_rndis_adb),
-		.functions	= usb_functions_rndis_adb,
+		.product_id	= 0x902D,
+		.num_functions	= ARRAY_SIZE(usb_functions_rndis_adb_diag),
+		.functions	= usb_functions_rndis_adb_diag,
 	},
 };
 
