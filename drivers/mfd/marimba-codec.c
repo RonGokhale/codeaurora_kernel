@@ -421,8 +421,9 @@ int adie_codec_set_device_digital_volume(struct adie_codec_path *path_ptr,
 	u32 step_index;
 	u32 cur_step_index = 0;
 
-	if (path_ptr->curr_stage != ADIE_CODEC_DIGITAL_ANALOG_READY) {
-		pr_info("%s: Marimba codec not ready for volume control \n",
+	if (!path_ptr  || (path_ptr->curr_stage !=
+				ADIE_CODEC_DIGITAL_ANALOG_READY)) {
+		pr_info("%s: Marimba codec not ready for volume control\n",
 		       __func__);
 		return  -EPERM;
 	}
