@@ -28,8 +28,17 @@ endmenu
 config PHYS_OFFSET
 	hex
 	default "0x10000000" if ARCH_FSM9XXX && !MSM_STACKED_MEMORY
-endif
 
 
 config FSM9XXX_TLMM
        bool
+
+config QCE
+	tristate "Qualcomm Crypto Engine module"
+	default n
+	help
+          This driver supports Qualcomm Crypto Engine in the FSM9xxx.
+	  To compile this driver as a module, choose M here: the
+	  module will be called qce.
+
+endif
