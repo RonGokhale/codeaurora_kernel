@@ -20,6 +20,14 @@
 #define SKU_ID_T20	8
 #define SKU_ID_T25	24
 
+enum tegra_revision {
+	TEGRA_REVISION_UNKNOWN = 0,
+	TEGRA_REVISION_A02,
+	TEGRA_REVISION_A03,
+	TEGRA_REVISION_A03p,
+	TEGRA_REVISION_MAX,
+};
+
 unsigned long long tegra_chip_uid(void);
 int tegra_sku_id(void);
 int tegra_cpu_process_id(void);
@@ -28,3 +36,4 @@ void tegra_init_fuse(void);
 void tegra_init_fuse_dma(void);
 u32 tegra_fuse_readl(unsigned long offset);
 void tegra_fuse_writel(u32 value, unsigned long offset);
+enum tegra_revision tegra_get_revision(void);
