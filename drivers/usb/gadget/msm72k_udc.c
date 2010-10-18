@@ -331,15 +331,31 @@ static void usb_chg_detect(struct work_struct *w)
 	 * driver will reacquire wakelocks for any sub-sequent usb interrupts.
 	 * */
 	if (temp == USB_CHG_TYPE__WALLCHARGER) {
-		/* Workaround: Reset PHY in SE1 state */
+		/* Workaround: Reset Link and PHY to avoid of SE1 state */
 		otg->reset(ui->xceiv);
-		/* select DEVICE mode */
-		writel(0x12, USB_USBMODE);
-		msleep(1);
+
+		if (!is_b_sess_vld() && is_usb_online(ui)) {
+			pr_info("%s: Missed BSV interrupt\n", __func__);
+			msm_hsusb_set_vbus_state(0);
+			return;
+		}
+
 		otg_set_suspend(ui->xceiv, 1);
+	}
+
+	/* check if the cable status is changed after set_suspend */
+	if (!is_b_sess_vld() && is_usb_online(ui)) {
+		otg_set_suspend(ui->xceiv, 0);
+		pr_info("%s: Missed BSV interrupt-2\n", __func__);
+		msm_hsusb_set_vbus_state(0);
+		return;
+	}
+
+	if (temp == USB_CHG_TYPE__WALLCHARGER) {
 		msm72k_pm_qos_update(0);
 		wake_unlock(&ui->wlock);
 	}
+
 }
 
 static int usb_ep_get_stall(struct msm_endpoint *ept)
