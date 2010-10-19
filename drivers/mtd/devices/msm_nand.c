@@ -2337,6 +2337,7 @@ msm_nand_write_oob_dualnandc(struct mtd_info *mtd, loff_t to,
 			uint32_t cfg1;
 			uint32_t exec;
 			uint32_t ecccfg;
+			uint32_t cfg0_nc01;
 			uint32_t ebi2_chip_select_cfg0;
 			uint32_t adm_mux_data_ack_req_nc01;
 			uint32_t adm_mux_cmd_ack_req_nc01;
@@ -2470,14 +2471,23 @@ msm_nand_write_oob_dualnandc(struct mtd_info *mtd, loff_t to,
 
 		if (ops->mode != MTD_OOB_RAW) {
 			dma_buffer->data.cfg0 = ((chip->CFG0 & ~(7U << 6))
-				| (1 << 4)) | ((((cwperpage >> 1)-1)) << 6);
+				& ~(1 << 4)) | ((((cwperpage >> 1)-1)) << 6);
 			dma_buffer->data.cfg1 = chip->CFG1;
 		} else {
 			dma_buffer->data.cfg0 = ((MSM_NAND_CFG0_RAW &
-			~(7U << 6)) | (1<<4)) | (((cwperpage >> 1)-1) << 6);
+			~(7U << 6)) & ~(1 << 4)) | (((cwperpage >> 1)-1) << 6);
 			dma_buffer->data.cfg1 = MSM_NAND_CFG1_RAW |
 					(chip->CFG1 & CFG1_WIDE_FLASH);
 		}
+
+		/* Disables the automatic issuing of the read
+		 * status command for first NAND controller.
+		 */
+		if (!interleave_enable)
+			dma_buffer->data.cfg0_nc01 = dma_buffer->data.cfg0
+							| (1 << 4);
+		else
+			dma_buffer->data.cfg0 |= (1 << 4);
 
 		dma_buffer->data.cmd = MSM_NAND_CMD_PRG_PAGE;
 		dma_buffer->data.chipsel_cs0 = (1<<4) | 4;
@@ -2529,11 +2539,29 @@ msm_nand_write_oob_dualnandc(struct mtd_info *mtd, loff_t to,
 					cmd->len = 8;
 					cmd++;
 
+					/* Disables the automatic issue of the
+					 * read status command after the write
+					 * operation.
+					 */
+					cmd->cmd = 0;
+					cmd->src = msm_virt_to_dma(chip,
+						&dma_buffer->data.cfg0_nc01);
+					cmd->dst = NC01(MSM_NAND_DEV0_CFG0);
+					cmd->len = 4;
+					cmd++;
+
 					cmd->cmd = 0;
 					cmd->src = msm_virt_to_dma(chip,
 						&dma_buffer->data.cfg0);
-					cmd->dst = NC11(MSM_NAND_DEV0_CFG0);
-					cmd->len = 8;
+					cmd->dst = NC10(MSM_NAND_DEV0_CFG0);
+					cmd->len = 4;
+					cmd++;
+
+					cmd->cmd = 0;
+					cmd->src = msm_virt_to_dma(chip,
+						&dma_buffer->data.cfg1);
+					cmd->dst = NC11(MSM_NAND_DEV0_CFG1);
+					cmd->len = 4;
 					cmd++;
 				} else {
 					/* enable CS1 */
@@ -2840,6 +2868,13 @@ msm_nand_write_oob_dualnandc(struct mtd_info *mtd, loff_t to,
 				break;
 			}
 		}
+		/* check for flash status busy for the last codeword */
+		if (!interleave_enable)
+			if (!(dma_buffer->data.flash_status[cwperpage - 1]
+								& 0x20)) {
+				err = -EIO;
+				break;
+			}
 #if VERBOSE
 	if (!interleave_enable) {
 		pr_info("write pg %d: status: %x %x %x %x %x %x %x %x\n", page,
