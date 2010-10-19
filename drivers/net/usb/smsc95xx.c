@@ -1180,7 +1180,10 @@ static struct sk_buff *smsc95xx_tx_fixup(struct usbnet *dev,
 	/* We do not advertise SG, so skbs should be already linearized */
 	BUG_ON(skb_shinfo(skb)->nr_frags);
 
-	if (skb_headroom(skb) < overhead) {
+	// TODO(piman): This is a hack to work-around a driver bug. It hangs
+	// unless we always do this.
+	// if (skb_headroom(skb) < overhead)
+	{
 		struct sk_buff *skb2 = skb_copy_expand(skb,
 			overhead, 0, flags);
 		dev_kfree_skb_any(skb);
