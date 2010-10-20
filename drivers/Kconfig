@@ -136,4 +136,6 @@ source "drivers/hv/Kconfig"
 
 source "drivers/devfreq/Kconfig"
 
+source "chromeos/drivers/Kconfig"
+
 endmenu
