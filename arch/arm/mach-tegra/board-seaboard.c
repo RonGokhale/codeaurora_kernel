@@ -43,6 +43,7 @@
 #include <mach/usb_phy.h>
 #include <mach/kbc.h>
 #include <mach/suspend.h>
+#include <linux/tegra_usb.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -218,6 +219,65 @@ static struct platform_device pda_power_device = {
 	},
 };
 
+static struct tegra_utmip_config utmi_phy_config[] = {
+	[0] = {
+		.hssync_start_delay = 0,
+		.idle_wait_delay = 17,
+		.elastic_limit = 16,
+		.term_range_adj = 6,
+		.xcvr_setup = 15,
+		.xcvr_lsfslew = 2,
+		.xcvr_lsrslew = 2,
+	},
+	[1] = {
+		.hssync_start_delay = 0,
+		.idle_wait_delay = 17,
+		.elastic_limit = 16,
+		.term_range_adj = 6,
+		.xcvr_setup = 8,
+		.xcvr_lsfslew = 2,
+		.xcvr_lsrslew = 2,
+	},
+};
+
+static struct tegra_ulpi_config ulpi_phy_config = {
+	.reset_gpio = TEGRA_GPIO_PG2,
+	.clk = "clk_dev2",
+};
+
+static struct tegra_ehci_platform_data tegra_ehci_pdata[] = {
+	[0] = {
+		.phy_config = &utmi_phy_config[0],
+		.operating_mode = TEGRA_USB_OTG,
+		.power_down_on_bus_suspend = 0,
+	},
+	[1] = {
+		.phy_config = &ulpi_phy_config,
+		.operating_mode = TEGRA_USB_HOST,
+		.power_down_on_bus_suspend = 1,
+	},
+	[2] = {
+		.phy_config = &utmi_phy_config[1],
+		.operating_mode = TEGRA_USB_HOST,
+		.power_down_on_bus_suspend = 1,
+	},
+};
+
+static struct resource tegra_gart_resources[] = {
+	{
+		.name = "mc",
+		.flags = IORESOURCE_MEM,
+		.start = TEGRA_MC_BASE,
+		.end = TEGRA_MC_BASE + TEGRA_MC_SIZE - 1,
+	},
+	{
+		.name = "gart",
+		.flags = IORESOURCE_MEM,
+		.start = 0x58000000,
+		.end = 0x58000000 - 1 + 32 * 1024 * 1024,
+	}
+};
+
 static struct tegra_i2c_platform_data seaboard_i2c1_platform_data = {
 	.adapter_nr	= 0,
 	.bus_count	= 1,
@@ -380,7 +440,6 @@ static void seaboard_kbc_init(void)
 
 static struct platform_device *seaboard_devices[] __initdata = {
 	&debug_uart,
-	&tegra_otg,
 	&tegra_ehci3_device,
 	&pda_power_device,
 	&seaboard_gpio_keys_device,
