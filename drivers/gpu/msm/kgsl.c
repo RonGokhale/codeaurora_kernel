@@ -323,8 +323,6 @@ int kgsl_pwrctrl(unsigned int pwrflag)
 	case KGSL_PWRFLAGS_YAMATO_POWER_OFF:
 		if (kgsl_driver.power_flags & KGSL_PWRFLAGS_YAMATO_POWER_ON) {
 			internal_pwr_rail_ctl(PWR_RAIL_GRP_CLK, KGSL_FALSE);
-			internal_pwr_rail_mode(PWR_RAIL_GRP_CLK,
-					PWR_RAIL_CTL_AUTO);
 			if (kgsl_driver.yamato_reg)
 				regulator_disable(kgsl_driver.yamato_reg);
 			kgsl_driver.power_flags &=
@@ -349,8 +347,6 @@ int kgsl_pwrctrl(unsigned int pwrflag)
 	case KGSL_PWRFLAGS_G12_POWER_OFF:
 		if (kgsl_driver.power_flags & KGSL_PWRFLAGS_G12_POWER_ON) {
 			internal_pwr_rail_ctl(PWR_RAIL_GRP_2D_CLK, KGSL_FALSE);
-			internal_pwr_rail_mode(PWR_RAIL_GRP_2D_CLK,
-					PWR_RAIL_CTL_AUTO);
 			if (kgsl_driver.g12_reg)
 				regulator_disable(kgsl_driver.g12_reg);
 			kgsl_driver.power_flags &=
