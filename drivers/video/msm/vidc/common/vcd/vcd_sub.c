@@ -1709,7 +1709,8 @@ u32 vcd_handle_input_done(
 	if (VCD_FAILED(status)) {
 		VCD_MSG_ERROR("INPUT_DONE returned err = 0x%x", status);
 		vcd_handle_input_done_failed(cctxt, transc);
-	}
+	} else
+		cctxt->status.mask |= VCD_FIRST_IP_DONE;
 
 	if (cctxt->status.frame_submitted > 0)
 		cctxt->status.frame_submitted--;
@@ -1740,7 +1741,7 @@ u32 vcd_handle_input_done_in_eos(
 	struct vcd_transc *transc;
 	struct ddl_frame_data_tag *frame =
 		(struct ddl_frame_data_tag *) payload;
-	u32 rc = VCD_ERR_FAIL, codec_config = 0;
+	u32 rc = VCD_ERR_FAIL, codec_config = false;
 	rc = vcd_validate_io_done_pyld(cctxt, payload, status);
 	VCD_FAILED_RETURN(rc, "Failed: vcd_validate_io_done_pyld");
 	transc = (struct vcd_transc *)frame->vcd_frm.ip_frm_tag;
@@ -1752,7 +1753,9 @@ u32 vcd_handle_input_done_in_eos(
 		VCD_MSG_HIGH("Got input done for EOS initiator");
 		transc->input_done = false;
 		transc->in_use = true;
-		if (codec_config || status == VCD_ERR_BITSTREAM_ERR)
+		if (codec_config ||
+			(status == VCD_ERR_BITSTREAM_ERR &&
+			 !(cctxt->status.mask & VCD_FIRST_IP_DONE)))
 			vcd_handle_eos_done(cctxt, transc, VCD_S_SUCCESS);
 	}
 	return rc;
@@ -2443,7 +2446,7 @@ u32 vcd_handle_input_frame(
 						  VCD_EVT_PWR_CLNT_FIRST_FRAME);
 		}
 	}
-	VCD_FAILED_RETURN(rc, "Failed: Frist frame handling");
+	VCD_FAILED_RETURN(rc, "Failed: First frame handling");
 
 	buf_entry = vcd_find_buffer_pool_entry(&cctxt->in_buf_pool,
 						 input_frame->virtual);
