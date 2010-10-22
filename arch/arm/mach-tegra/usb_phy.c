@@ -28,6 +28,7 @@
 #include <asm/mach-types.h>
 #include <mach/usb_phy.h>
 #include <mach/iomap.h>
+#include "gpio-names.h"
 
 #define USB_USBSTS		0x144
 #define   USB_USBSTS_PCI	(1 << 2)
@@ -182,6 +183,13 @@ static struct tegra_utmip_config utmip_default[] = {
 		.xcvr_setup = 9,
 		.xcvr_lsfslew = 2,
 		.xcvr_lsrslew = 2,
+	},
+};
+
+static struct tegra_ulpi_config ulpi_default[] = {
+	[1] = {
+		.reset_gpio = TEGRA_GPIO_PV1,
+		.clk = "clk_dev2",
 	},
 };
 
@@ -609,8 +617,9 @@ struct tegra_usb_phy *tegra_usb_phy_open(int instance, void __iomem *regs,
 
 	if (!phy->config) {
 		if (instance == 1) {
-			pr_err("%s: ulpi phy configuration missing", __func__);
-			goto err0;
+			pr_info("%s: ulpi phy configuration missing - "
+				"using default", __func__);
+			phy->config = config = &ulpi_default[instance];
 		} else {
 			phy->config = &utmip_default[instance];
 		}
