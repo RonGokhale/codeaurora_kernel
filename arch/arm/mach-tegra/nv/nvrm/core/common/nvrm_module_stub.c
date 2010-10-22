@@ -12,11 +12,14 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/delay.h>
 #include <mach/iomap.h>
+
 #include "nvcommon.h"
 #include "nvrm_module.h"
+#include "../../../../clock.h"
 
 NvError NvRmModuleGetCapabilities( NvRmDeviceHandle hDeviceHandle,
     NvRmModuleID Module, NvRmModuleCapability * pCaps, NvU32 NumCaps,
@@ -142,6 +145,21 @@ void NvRmModuleGetBaseAddress( NvRmDeviceHandle hRmDeviceHandle, NvRmModuleID Mo
 		*pSize = 256 * 1024;
 		break;
 
+	case NvRmModuleID_Vcp:
+		*pBaseAddress = 0x6000e000;
+		*pSize = 4096;
+		break;
+
+    case NvRmModuleID_BseA:
+        *pBaseAddress = 0x60011000;
+        *pSize = 4096;
+        break;
+
+    case NvRmModuleID_Vde:
+        *pBaseAddress = 0x6001a000;
+        *pSize = 0x3c00;
+        break;
+
 	case NvRmModuleID_Vi:
 		*pBaseAddress = 0x54080000;
 		*pSize = 256 * 1024;
@@ -160,18 +178,37 @@ void NvRmModuleGetBaseAddress( NvRmDeviceHandle hRmDeviceHandle, NvRmModuleID Mo
 	printk("%s module %d 0x%08x x %dK\n", __func__, Module, *pBaseAddress, *pSize / 1024);
 }
 
+#define is_avp(_mod) (NVRM_MODULE_ID_MODULE(_mod)==NvRmModuleID_Avp)
+#define is_vcp(_mod) (NVRM_MODULE_ID_MODULE(_mod)==NvRmModuleID_Vcp)
+#define is_bsea(_mod) (NVRM_MODULE_ID_MODULE(_mod)==NvRmModuleID_BseA)
+#define is_vde(_mod) (NVRM_MODULE_ID_MODULE(_mod)==NvRmModuleID_Vde)
+
 void NvRmModuleReset(NvRmDeviceHandle hRmDevice, NvRmModuleID Module)
 {
+    struct clk *clk = NULL;
     void __iomem *clk_rst = IO_ADDRESS(TEGRA_CLK_RESET_BASE);
-    if (NVRM_MODULE_ID_MODULE(Module) != NvRmModuleID_Avp ||
-        NVRM_MODULE_ID_INSTANCE(Module) != 0) {
+
+    if (is_avp(Module)) {
+        writel(1<<1, clk_rst + 0x300);
+        udelay(10);
+        writel(1<<1, clk_rst + 0x304);
+    } else if (is_vcp(Module))
+        clk = clk_get_sys("vcp", NULL);
+    else if (is_bsea(Module))
+        clk = clk_get_sys("bsea", NULL);
+    else if (is_vde(Module))
+        clk = clk_get_sys("vde", NULL);
+    else {
         printk("%s MOD[%lu] INST[%lu] not implemented\n", __func__,
                NVRM_MODULE_ID_MODULE(Module),
                NVRM_MODULE_ID_INSTANCE(Module));
         return;
     }
 
-    writel(1<<1, clk_rst + 0x300);
-    udelay(10);
-    writel(1<<1, clk_rst + 0x304);
+    if (clk) {
+        tegra2_periph_reset_assert(clk);
+        udelay(10);
+        tegra2_periph_reset_deassert(clk);
+        clk_put(clk);
+    }
 }
