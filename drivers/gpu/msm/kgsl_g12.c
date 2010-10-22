@@ -396,12 +396,11 @@ static int kgsl_g12_stop(struct kgsl_device *device)
 {
 	kgsl_g12_idle(device, KGSL_TIMEOUT_DEFAULT);
 
-	kgsl_pwrctrl(KGSL_PWRFLAGS_G12_IRQ_OFF);
-
 	del_timer(&device->idle_timer);
 
 	kgsl_mmu_stop(device);
 
+	kgsl_pwrctrl(KGSL_PWRFLAGS_G12_IRQ_OFF);
 	kgsl_pwrctrl(KGSL_PWRFLAGS_G12_CLK_OFF);
 	kgsl_pwrctrl(KGSL_PWRFLAGS_G12_POWER_OFF);
 	device->hwaccess_blocked = KGSL_TRUE;
