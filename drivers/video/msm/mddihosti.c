@@ -1651,7 +1651,7 @@ static void mddi_host_powerup(mddi_host_type host_idx)
 		mddi_host_timer_service(0);
 }
 
-static void mddi_send_fw_link_skew_cal(mddi_host_type host_idx)
+void mddi_send_fw_link_skew_cal(mddi_host_type host_idx)
 {
 	mddi_host_reg_out(CMD, MDDI_CMD_FW_LINK_SKEW_CAL);
 	MDDI_MSG_DEBUG("%s: Skew Calibration done!!\n", __func__);
@@ -1672,8 +1672,6 @@ void mddi_host_init(mddi_host_type host_idx)
 	if (!initialized) {
 		uint16 idx;
 		mddi_host_type host;
-
-		mddi_send_fw_link_skew_cal(host_idx);
 
 		for (host = MDDI_HOST_PRIM; host < MDDI_NUM_HOST_CORES; host++) {
 			pmhctl = &(mhctl[host]);
