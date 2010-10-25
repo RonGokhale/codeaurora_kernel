@@ -171,3 +171,4 @@ obj-$(CONFIG_MSM_BUS_SCALING)	+= msm_bus_core.o
 obj-$(CONFIG_MSM7200A_TLMM)	+= gpiomux.o gpiomux-7x00.o
 obj-$(CONFIG_MSM8660_TLMM)	+= gpiomux.o gpiomux-8x60.o
 obj-$(CONFIG_QCE) += qce.o
+obj-$(CONFIG_OTA_CRYPTO) += ota_crypto.o

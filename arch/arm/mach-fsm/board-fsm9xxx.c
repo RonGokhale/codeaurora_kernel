@@ -27,6 +27,8 @@
 #include <linux/input.h>
 #include <linux/ofn_atlab.h>
 #include <linux/power_supply.h>
+#include <linux/dma-mapping.h>
+#include <linux/dmapool.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -191,6 +193,114 @@ static struct platform_device qfec_device = {
 	.resource       = qfec_resources,
 };
 
+#define QCE_SIZE		0x10000
+
+#define QCE_0_BASE		0x80C00000
+#define QCE_1_BASE		0x80E00000
+#define QCE_2_BASE		0x81000000
+
+#define ADM_CHANNEL_CE_0_IN	DMOV_CE_IN_CHAN		/* 5 */
+#define ADM_CHANNEL_CE_0_OUT	DMOV_CE_OUT_CHAN	/* 6 */
+#define ADM_CHANNEL_CE_1_IN	12
+#define ADM_CHANNEL_CE_1_OUT	13
+#define ADM_CHANNEL_CE_2_IN	14
+#define ADM_CHANNEL_CE_2_OUT	15
+
+#define ADM_CRCI_0_IN		DMOV_CE_IN_CRCI		/* 1 */
+#define ADM_CRCI_0_OUT		DMOV_CE_OUT_CRCI	/* 2 */
+#define ADM_CRCI_0_HASH		3
+#define ADM_CRCI_1_IN		9
+#define ADM_CRCI_1_OUT		10
+#define ADM_CRCI_1_HASH		11
+#define ADM_CRCI_2_IN		12
+#define ADM_CRCI_2_OUT		13
+#define ADM_CRCI_2_HASH		14
+
+
+static struct resource qcrypto_resources[] = {
+	[0] = {
+		.start = QCE_0_BASE,
+		.end = QCE_0_BASE + QCE_SIZE - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.name = "crypto_channels",
+		.start = ADM_CHANNEL_CE_0_IN,
+		.end = ADM_CHANNEL_CE_0_OUT,
+		.flags = IORESOURCE_DMA,
+	},
+	[2] = {
+		.name = "crypto_crci_in",
+		.start = ADM_CRCI_0_IN,
+		.end = ADM_CRCI_0_IN,
+		.flags = IORESOURCE_DMA,
+	},
+	[3] = {
+		.name = "crypto_crci_out",
+		.start = ADM_CRCI_0_OUT,
+		.end = ADM_CRCI_0_OUT,
+		.flags = IORESOURCE_DMA,
+	},
+	[4] = {
+		.name = "crypto_crci_hash",
+		.start = ADM_CRCI_0_HASH,
+		.end = ADM_CRCI_0_HASH,
+		.flags = IORESOURCE_DMA,
+	},
+};
+
+static struct resource ota_qcrypto_resources[] = {
+	[0] = {
+		.start = QCE_1_BASE,
+		.end = QCE_1_BASE + QCE_SIZE - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.name = "crypto_channels",
+		.start = ADM_CHANNEL_CE_1_IN,
+		.end = ADM_CHANNEL_CE_1_OUT,
+		.flags = IORESOURCE_DMA,
+	},
+	[2] = {
+		.name = "crypto_crci_in",
+		.start = ADM_CRCI_1_IN,
+		.end = ADM_CRCI_1_IN,
+		.flags = IORESOURCE_DMA,
+	},
+	[3] = {
+		.name = "crypto_crci_out",
+		.start = ADM_CRCI_1_OUT,
+		.end = ADM_CRCI_1_OUT,
+		.flags = IORESOURCE_DMA,
+	},
+	[4] = {
+		.name = "crypto_crci_hash",
+		.start = ADM_CRCI_1_HASH,
+		.end = ADM_CRCI_1_HASH,
+		.flags = IORESOURCE_DMA,
+	},
+};
+
+static struct platform_device qcrypto_device = {
+	.name		= "qcrypto",
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(qcrypto_resources),
+	.resource	= qcrypto_resources,
+	.dev		= {
+		.coherent_dma_mask = DMA_BIT_MASK(32),
+	},
+};
+
+static struct platform_device ota_qcrypto_device = {
+	.name		= "qcota",
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(ota_qcrypto_resources),
+	.resource	= ota_qcrypto_resources,
+	.dev		= {
+		.coherent_dma_mask = DMA_BIT_MASK(32),
+	},
+};
+
 static struct msm_gpio phy_config_data[] = {
 	{ GPIO_CFG(GPIO_MAC_RST_N, 0, GPIO_CFG_OUTPUT,
 			GPIO_CFG_NO_PULL, GPIO_CFG_2MA), "MAC_RST_N"},
@@ -231,6 +341,8 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_uart1,
 #endif
 	&qfec_device,
+	&qcrypto_device,
+	&ota_qcrypto_device,
 };
 
 #ifdef NOTNOW

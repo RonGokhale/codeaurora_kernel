@@ -41,4 +41,12 @@ config QCE
 	  To compile this driver as a module, choose M here: the
 	  module will be called qce.
 
+config OTA_CRYPTO
+	tristate "OTA Crypto module"
+	default n
+	help
+          This driver supports Qualcomm OTA Crypto in the FSM9xxx.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ota_qcrpto.
+
 endif
