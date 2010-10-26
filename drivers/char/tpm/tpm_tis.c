@@ -457,6 +457,8 @@ static DEVICE_ATTR(caps, S_IRUGO, tpm_show_caps_1_2, NULL);
 static DEVICE_ATTR(cancel, S_IWUSR | S_IWGRP, NULL, tpm_store_cancel);
 static DEVICE_ATTR(durations, S_IRUGO, tpm_show_durations, NULL);
 static DEVICE_ATTR(timeouts, S_IRUGO, tpm_show_timeouts, NULL);
+static DEVICE_ATTR(s3power, S_IRUGO | S_IWUSR, tpm_s3power_get,
+		   tpm_s3power_set);
 
 static struct attribute *tis_attrs[] = {
 	&dev_attr_pubek.attr,
@@ -469,6 +471,8 @@ static struct attribute *tis_attrs[] = {
 	&dev_attr_cancel.attr,
 	&dev_attr_durations.attr,
 	&dev_attr_timeouts.attr, NULL,
+	&dev_attr_s3power.attr,
+	NULL,
 };
 
 static struct attribute_group tis_attr_grp = {
