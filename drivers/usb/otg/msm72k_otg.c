@@ -925,7 +925,7 @@ static int usbdev_notify(struct notifier_block *self,
 			if (udev->actconfig) {
 				set_aca_bmaxpower(dev,
 					udev->actconfig->desc.bMaxPower * 2);
-				goto out;
+				goto do_work;
 			}
 			if (udev->portnum == udev->bus->otg_port)
 				set_aca_bmaxpower(dev, USB_IB_UNCFG);
@@ -944,7 +944,7 @@ static int usbdev_notify(struct notifier_block *self,
 		work = 0;
 		break;
 	}
-
+do_work:
 	if (work) {
 		wake_lock(&dev->wlock);
 		queue_work(dev->wq, &dev->sm_work);
