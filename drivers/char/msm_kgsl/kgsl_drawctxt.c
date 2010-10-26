@@ -509,9 +509,6 @@ static void build_regsave_cmds(struct kgsl_device *device,
 {
 	unsigned int *start = ctx->cmd;
 	unsigned int *cmd = start;
-	unsigned int pm_override1;
-
-	kgsl_yamato_regread(device, REG_RBBM_PM_OVERRIDE1, &pm_override1);
 
 	*cmd++ = pm4_type3_packet(PM4_WAIT_FOR_IDLE, 1);
 	*cmd++ = 0;
@@ -522,10 +519,6 @@ static void build_regsave_cmds(struct kgsl_device *device,
 	*cmd++ = pm4_type3_packet(PM4_CONTEXT_UPDATE, 1);
 	*cmd++ = 0;
 #endif
-
-	/* Enable clock override for REG_FIFOS_SCLK */
-	*cmd++ = pm4_type0_packet(REG_RBBM_PM_OVERRIDE1, 1);
-	*cmd++ = pm_override1 | (1 << 6);
 
 #ifdef DISABLE_SHADOW_WRITES
 	/* Write HW registers into shadow */
@@ -615,12 +608,8 @@ static void build_regsave_cmds(struct kgsl_device *device,
 	*cmd++ = ctx->reg_values[1];
 
 	*cmd++ = pm4_type3_packet(PM4_REG_TO_MEM, 2);
-	*cmd++ = REG_RBBM_PM_OVERRIDE1;
-	*cmd++ = ctx->reg_values[2];
-
-	*cmd++ = pm4_type3_packet(PM4_REG_TO_MEM, 2);
 	*cmd++ = REG_RBBM_PM_OVERRIDE2;
-	*cmd++ = ctx->reg_values[3];
+	*cmd++ = ctx->reg_values[2];
 
 	/* Copy Boolean constants */
 	cmd = reg_to_mem(cmd, ctx->bool_shadow, REG_SQ_CF_BOOLEANS,
@@ -628,12 +617,6 @@ static void build_regsave_cmds(struct kgsl_device *device,
 
 	/* Copy Loop constants */
 	cmd = reg_to_mem(cmd, ctx->loop_shadow, REG_SQ_CF_LOOP, LOOP_CONSTANTS);
-
-	/* Restore RBBM_PM_OVERRIDE1 */
-	*cmd++ = pm4_type3_packet(PM4_WAIT_FOR_IDLE, 1);
-	*cmd++ = 0;
-	*cmd++ = pm4_type0_packet(REG_RBBM_PM_OVERRIDE1, 1);
-	*cmd++ = pm_override1;
 
 	/* create indirect buffer command for above command sequence */
 	create_ib1(drawctxt, drawctxt->reg_save, start, cmd);
@@ -649,14 +632,11 @@ static unsigned int *build_gmem2sys_cmds(struct kgsl_device *device,
 {
 	unsigned int *cmds = shadow->gmem_save_commands;
 	unsigned int *start = cmds;
-	unsigned int pm_override1;
 	/* Calculate the new offset based on the adjusted base */
 	unsigned int bytesperpixel = format2bytesperpixel[shadow->format];
 	unsigned int addr =
 	    (shadow->gmemshadow.gpuaddr + shadow->offset * bytesperpixel);
 	unsigned int offset = (addr - (addr & 0xfffff000)) / bytesperpixel;
-
-	kgsl_yamato_regread(device, REG_RBBM_PM_OVERRIDE1, &pm_override1);
 
 	/* Store TP0_CHICKEN register */
 	*cmds++ = pm4_type3_packet(PM4_REG_TO_MEM, 2);
@@ -668,10 +648,6 @@ static unsigned int *build_gmem2sys_cmds(struct kgsl_device *device,
 
 	*cmds++ = pm4_type3_packet(PM4_WAIT_FOR_IDLE, 1);
 	*cmds++ = 0;
-
-	/* Enable clock override for REG_FIFOS_SCLK */
-	*cmds++ = pm4_type0_packet(REG_RBBM_PM_OVERRIDE1, 1);
-	*cmds++ = pm_override1 | (1 << 6);
 
 	/* Set TP0_CHICKEN to zero */
 	*cmds++ = pm4_type0_packet(REG_TP0_CHICKEN, 1);
@@ -811,11 +787,6 @@ static unsigned int *build_gmem2sys_cmds(struct kgsl_device *device,
 	/* PrimType=RectList, NumIndices=3, SrcSel=AutoIndex */
 	*cmds++ = 0x00030088;
 
-	/* Restore RBBM_PM_OVERRIDE1 */
-	*cmds++ = pm4_type3_packet(PM4_WAIT_FOR_IDLE, 1);
-	*cmds++ = 0;
-	*cmds++ = pm4_type0_packet(REG_RBBM_PM_OVERRIDE1, 1);
-	*cmds++ = pm_override1;
 	/* create indirect buffer command for above command sequence */
 	create_ib1(drawctxt, shadow->gmem_save, start, cmds);
 
@@ -832,9 +803,6 @@ static unsigned int *build_sys2gmem_cmds(struct kgsl_device *device,
 {
 	unsigned int *cmds = shadow->gmem_restore_commands;
 	unsigned int *start = cmds;
-	unsigned int pm_override1;
-
-	kgsl_yamato_regread(device, REG_RBBM_PM_OVERRIDE1, &pm_override1);
 
 	/* Store TP0_CHICKEN register */
 	*cmds++ = pm4_type3_packet(PM4_REG_TO_MEM, 2);
@@ -846,10 +814,6 @@ static unsigned int *build_sys2gmem_cmds(struct kgsl_device *device,
 
 	*cmds++ = pm4_type3_packet(PM4_WAIT_FOR_IDLE, 1);
 	*cmds++ = 0;
-
-	/* Enable clock override for REG_FIFOS_SCLK */
-	*cmds++ = pm4_type0_packet(REG_RBBM_PM_OVERRIDE1, 1);
-	*cmds++ = pm_override1 | (1 << 6);
 
 	/* Set TP0_CHICKEN to zero */
 	*cmds++ = pm4_type0_packet(REG_TP0_CHICKEN, 1);
@@ -1021,12 +985,6 @@ static unsigned int *build_sys2gmem_cmds(struct kgsl_device *device,
 	/* PrimType=RectList, NumIndices=3, SrcSel=AutoIndex */
 	*cmds++ = 0x00030088;
 
-	/* Restore RBBM_PM_OVERRIDE1 */
-	*cmds++ = pm4_type3_packet(PM4_WAIT_FOR_IDLE, 1);
-	*cmds++ = 0;
-	*cmds++ = pm4_type0_packet(REG_RBBM_PM_OVERRIDE1, 1);
-	*cmds++ = pm_override1;
-
 	/* create indirect buffer command for above command sequence */
 	create_ib1(drawctxt, shadow->gmem_restore, start, cmds);
 
@@ -1048,16 +1006,9 @@ static void build_regrestore_cmds(struct kgsl_device *device,
 {
 	unsigned int *start = ctx->cmd;
 	unsigned int *cmd = start;
-	unsigned int pm_override1;
-
-	kgsl_yamato_regread(device, REG_RBBM_PM_OVERRIDE1, &pm_override1);
 
 	*cmd++ = pm4_type3_packet(PM4_WAIT_FOR_IDLE, 1);
 	*cmd++ = 0;
-
-	/* Enable clock override for REG_FIFOS_SCLK */
-	*cmd++ = pm4_type0_packet(REG_RBBM_PM_OVERRIDE1, 1);
-	*cmd++ = pm_override1 | (1 << 6);
 
 	/* H/W Registers */
 	/* deferred pm4_type3_packet(PM4_LOAD_CONSTANT_CONTEXT, ???); */
@@ -1084,13 +1035,13 @@ static void build_regrestore_cmds(struct kgsl_device *device,
 	/* Now we know how many register blocks we have, we can compute command
 	 * length
 	 */
-	start[4] =
-	    pm4_type3_packet(PM4_LOAD_CONSTANT_CONTEXT, (cmd - start) - 5);
+	start[2] =
+	    pm4_type3_packet(PM4_LOAD_CONSTANT_CONTEXT, (cmd - start) - 3);
 	/* Enable shadowing for the entire register block. */
 #ifdef DISABLE_SHADOW_WRITES
-	start[6] |= (0 << 24) | (4 << 16);	/* Disable shadowing. */
+	start[4] |= (0 << 24) | (4 << 16);	/* Disable shadowing. */
 #else
-	start[6] |= (1 << 24) | (4 << 16);
+	start[4] |= (1 << 24) | (4 << 16);
 #endif
 
 	/* Need to handle some of the registers separately */
@@ -1104,12 +1055,8 @@ static void build_regrestore_cmds(struct kgsl_device *device,
 	ctx->reg_values[1] = gpuaddr(cmd, &drawctxt->gpustate);
 	*cmd++ = 0x00000000;
 
-	*cmd++ = pm4_type0_packet(REG_RBBM_PM_OVERRIDE1, 1);
-	ctx->reg_values[2] = gpuaddr(cmd, &drawctxt->gpustate);
-	*cmd++ = 0x00000000;
-
 	*cmd++ = pm4_type0_packet(REG_RBBM_PM_OVERRIDE2, 1);
-	ctx->reg_values[3] = gpuaddr(cmd, &drawctxt->gpustate);
+	ctx->reg_values[2] = gpuaddr(cmd, &drawctxt->gpustate);
 	*cmd++ = 0x00000000;
 
 	/* ALU Constants */
@@ -1152,12 +1099,6 @@ static void build_regrestore_cmds(struct kgsl_device *device,
 	 */
 	ctx->loop_shadow = gpuaddr(cmd, &drawctxt->gpustate);
 	cmd += LOOP_CONSTANTS;
-
-	/* Restore RBBM_PM_OVERRIDE1 */
-	*cmd++ = pm4_type3_packet(PM4_WAIT_FOR_IDLE, 1);
-	*cmd++ = 0;
-	*cmd++ = pm4_type0_packet(REG_RBBM_PM_OVERRIDE1, 1);
-	*cmd++ = pm_override1;
 
 	/* create indirect buffer command for above command sequence */
 	create_ib1(drawctxt, drawctxt->reg_restore, start, cmd);
