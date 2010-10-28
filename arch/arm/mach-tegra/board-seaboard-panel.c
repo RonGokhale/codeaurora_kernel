@@ -340,9 +340,9 @@ int __init seaboard_panel_init(void)
 	if (!err)
 		err = nvhost_device_register(&seaboard_disp1_device);
 
-	if (!err)
+/*	if (!err)
 		err = nvhost_device_register(&seaboard_disp2_device);
-
+*/
 	return err;
 }
 
