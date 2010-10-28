@@ -1181,8 +1181,6 @@ static void vcd_clnt_cb_in_stopping
 			(void) vcd_handle_ind_output_reconfig(cctxt,
 				payload, status);
 
-			vcd_mark_frame_channel(cctxt->dev_ctxt);
-
 			frm_trans_end = true;
 			payload = NULL;
 
