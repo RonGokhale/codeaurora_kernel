@@ -18,7 +18,6 @@ config CRYPTO_DEV_PADLOCK
 	  (so called VIA PadLock ACE, Advanced Cryptography Engine)
 	  that provides instructions for very fast cryptographic
 	  operations with supported algorithms.
-	  
 	  The instructions are used only when the CPU supports them.
 	  Otherwise software encryption is used.
 
@@ -221,5 +220,17 @@ config CRYPTO_DEV_PPC4XX
 	select CRYPTO_BLKCIPHER
 	help
 	  This option allows you to have support for AMCC crypto acceleration.
+
+config CRYPTO_DEV_QCRYPTO
+	tristate "Qualcomm Crypto accelerator"
+	select CRYPTO_ALGAPI
+	select CRYPTO_AUTHENC
+	select CRYPTO_BLKCIPHER
+	depends on ARCH_FSM
+	default n
+	help
+          This driver supports Qualcomm crypto acceleration.
+          To compile this driver as a module, choose M here: the
+          module will be called qcrypto.
 
 endif # CRYPTO_HW
