@@ -42,6 +42,8 @@ static struct mdp4_overlay_pipe *mddi_pipe;
 static struct mdp4_overlay_pipe *pending_pipe;
 static struct msm_fb_data_type *mddi_mfd;
 
+static struct completion mddi_comp;
+
 static int vsync_start_y_adjust = 4;
 
 #ifdef MDP4_MDDI_DMA_SWITCH
@@ -128,6 +130,8 @@ void mdp4_overlay_update_lcd(struct msm_fb_data_type *mfd)
 			printk(KERN_INFO "%s: format2type failed\n", __func__);
 
 		mddi_pipe = pipe; /* keep it */
+
+		init_completion(&mddi_comp);
 
 		mddi_ld_param = 0;
 		mddi_vdo_packet_reg = mfd->panel_info.mddi.vdopkt;
@@ -248,14 +252,26 @@ void mdp4_overlay0_done_mddi()
 
 #ifdef MDP4_NONBLOCKING
 	mdp_disable_irq_nosync(MDP_OVERLAY0_TERM);
-#endif
-
+    complete_all(&mddi_comp);
+#else
 	if (pending_pipe)
 		complete(&pending_pipe->comp);
+#endif
 }
 
 void mdp4_mddi_overlay_restore(void)
 {
+	if (mddi_mfd == NULL)
+		return;
+
+#ifdef MDP4_NONBLOCKING
+	if (mddi_mfd->panel_power_on == 0)
+		return;
+#else
+	if (mddi_mfd->dma->busy || mddi_mfd->panel_power_on == 0)
+		return;
+#endif
+
 #ifdef MDP4_MDDI_DMA_SWITCH
 	mdp4_mddi_overlay_dmas_restore();
 #else
@@ -289,14 +305,14 @@ void mdp4_mddi_overlay_kickoff(struct msm_fb_data_type *mfd,
 
 	spin_lock_irqsave(&mdp_spin_lock, flag);
 	if (mfd->dma->busy == TRUE) {
-		INIT_COMPLETION(pipe->comp);
+		INIT_COMPLETION(mddi_comp);
 		pending_pipe = pipe;
 	}
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
 
 	if (pending_pipe != NULL) {
 		/* wait until DMA finishes the current job */
-		wait_for_completion_killable(&pipe->comp);
+		wait_for_completion_killable(&mddi_comp);
 		pending_pipe = NULL;
 	}
 	down(&mfd->sem);
@@ -413,6 +429,24 @@ void mdp4_dma_s_update_lcd(struct msm_fb_data_type *mfd,
 void mdp4_mddi_dma_s_kickoff(struct msm_fb_data_type *mfd,
 				struct mdp4_overlay_pipe *pipe)
 {
+#ifdef MDP4_NONBLOCKING
+	unsigned long flag;
+	boolean busy;
+
+	busy = FALSE;
+	spin_lock_irqsave(&mdp_spin_lock, flag);
+	if (mfd->dma->busy == TRUE) {
+		INIT_COMPLETION(mddi_comp);
+		busy = TRUE;
+	}
+	spin_unlock_irqrestore(&mdp_spin_lock, flag);
+
+	if (busy == TRUE) {
+		/* wait until DMA finishes the current job */
+		wait_for_completion_killable(&mddi_comp);
+	}
+#endif
+
 	down(&mfd->sem);
 	mdp_enable_irq(MDP_DMA_S_TERM);
 	mfd->dma->busy = TRUE;
@@ -438,6 +472,7 @@ void mdp4_mddi_overlay_dmas_restore(void)
 	}
 }
 #endif
+
 
 void mdp4_mddi_overlay(struct msm_fb_data_type *mfd)
 {
