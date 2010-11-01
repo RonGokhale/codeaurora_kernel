@@ -1480,7 +1480,6 @@ msmsdcc_probe(struct platform_device *pdev)
 				plat->sdiowakeup_irq, ret);
 			goto platform_irq_free;
 		} else {
-			set_irq_wake(host->plat->sdiowakeup_irq, 1);
 			disable_irq(host->plat->sdiowakeup_irq);
 		}
 	}
@@ -1545,7 +1544,6 @@ msmsdcc_probe(struct platform_device *pdev)
 	free_irq(irqres->start, host);
  sdiowakeup_irq_free:
 	if (plat->sdiowakeup_irq) {
-		set_irq_wake(host->plat->sdiowakeup_irq, 0);
 		free_irq(plat->sdiowakeup_irq, host);
 	}
  platform_irq_free:
@@ -1650,8 +1648,11 @@ msmsdcc_suspend(struct platform_device *dev, pm_message_t state)
 			}
 		}
 
-		if (host->plat->sdiowakeup_irq)
+		if (host->plat->sdiowakeup_irq && mmc->card &&
+				mmc->card->type == MMC_TYPE_SDIO) {
+			enable_irq_wake(host->plat->sdiowakeup_irq);
 			enable_irq(host->plat->sdiowakeup_irq);
+		}
 	}
 	return rc;
 }
@@ -1679,8 +1680,11 @@ msmsdcc_resume(struct platform_device *dev)
 
 		spin_unlock_irqrestore(&host->lock, flags);
 
-		if (host->plat->sdiowakeup_irq)
+		if (host->plat->sdiowakeup_irq && mmc->card &&
+				mmc->card->type == MMC_TYPE_SDIO) {
 			disable_irq(host->plat->sdiowakeup_irq);
+			disable_irq_wake(host->plat->sdiowakeup_irq);
+		}
 
 		if (!mmc->card || mmc->card->type != MMC_TYPE_SDIO) {
 #ifdef CONFIG_MMC_MSM7X00A_RESUME_IN_WQ
