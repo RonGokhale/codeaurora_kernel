@@ -1030,10 +1030,11 @@ static long kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_file_private *private,
 		goto error;
 	}
 
+	down_write(&current->mm->mmap_sem);
 	vma = kgsl_get_vma_from_start_addr(param.hostptr);
 	if (!vma) {
 		result = -EINVAL;
-		goto error;
+		goto error_up_write;
 	}
 	len = vma->vm_end - vma->vm_start;
 
@@ -1055,7 +1056,7 @@ static long kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_file_private *private,
 		entry = kzalloc(sizeof(struct kgsl_mem_entry), GFP_KERNEL);
 		if (entry == NULL) {
 			result = -ENOMEM;
-			goto error;
+			goto error_up_write;
 		}
 
 		/* allocate memory and map it to user space */
@@ -1113,6 +1114,7 @@ static long kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_file_private *private,
 		goto error_unmap_entry;
 	}
 	list_add(&entry->list, &private->mem_list);
+	up_write(&current->mm->mmap_sem);
 
 	return 0;
 
@@ -1126,6 +1128,8 @@ error_free_vmalloc:
 error_free_entry:
 	kfree(entry);
 
+error_up_write:
+	up_write(&current->mm->mmap_sem);
 error:
 	return result;
 }
