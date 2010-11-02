@@ -23,7 +23,9 @@
 
 #include <linux/types.h>
 
-void __init tegra_common_init(void);
+#include "clock.h"
+
+void __init tegra_common_init(struct tegra_clk_init_table *board_clk_init_table);
 void __init tegra_map_common_io(void);
 void __init tegra_init_irq(void);
 void __init tegra_init_clock(void);

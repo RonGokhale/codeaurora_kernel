@@ -25,7 +25,9 @@
 #include <asm/hardware/cache-l2x0.h>
 
 #include <mach/iomap.h>
+#include <mach/clk.h>
 #include <mach/dma.h>
+#include <mach/powergate.h>
 #include <mach/system.h>
 
 #include "board.h"
@@ -66,11 +68,26 @@ void __init tegra_init_cache(void)
 
 }
 
-void __init tegra_common_init(void)
+void __init tegra_common_init(struct tegra_clk_init_table *board_clk_init_table)
 {
+	struct clk *clk;
+
 	tegra_init_fuse();
 	tegra_init_clock();
 	tegra_clk_init_from_table(common_clk_init_table);
+	tegra_clk_init_from_table(board_clk_init_table);
+
+	/* HACK: reset 3d clock */
+	clk = clk_get_sys("3d", NULL);
+	tegra_powergate_power_off(TEGRA_POWERGATE_3D);
+	tegra_periph_reset_assert(clk);
+	tegra_powergate_power_on(TEGRA_POWERGATE_3D);
+	clk_enable(clk);
+	udelay(10);
+	tegra_powergate_remove_clamping(TEGRA_POWERGATE_3D);
+	tegra_periph_reset_deassert(clk);
+	clk_put(clk);
+
 	tegra_init_cache();
 #ifdef CONFIG_TEGRA_SYSTEM_DMA
 	tegra_dma_init();

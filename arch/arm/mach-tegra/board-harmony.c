@@ -34,12 +34,10 @@
 #include <mach/iomap.h>
 #include <mach/irqs.h>
 #include <mach/nand.h>
-#include <mach/clk.h>
 
 #include "clock.h"
 #include "board.h"
 #include "board-harmony.h"
-#include "clock.h"
 #include "devices.h"
 
 /* NVidia bootloader tags */
@@ -214,27 +212,9 @@ static __initdata struct tegra_clk_init_table harmony_clk_init_table[] = {
 
 static void __init tegra_harmony_init(void)
 {
-	struct clk *clk;
-
-	tegra_common_init();
-
-	tegra_clk_init_from_table(harmony_clk_init_table);
-
+	tegra_common_init(harmony_clk_init_table);
 	harmony_pinmux_init();
-
-	/* HACK: reset 3d clock */
-	writel(0x101, IO_ADDRESS(TEGRA_PMC_BASE) + 0x30);
-	clk = clk_get_sys("3d", NULL);
-	tegra_periph_reset_assert(clk);
-	writel(0x101, IO_ADDRESS(TEGRA_PMC_BASE) + 0x30);
-	clk_enable(clk);
-	udelay(10);
-	writel(1 << 1, IO_ADDRESS(TEGRA_PMC_BASE) + 0x34);
-	tegra_periph_reset_deassert(clk);
-	clk_put(clk);
-
 	platform_add_devices(harmony_devices, ARRAY_SIZE(harmony_devices));
-
 	harmony_panel_init();
 	harmony_sdhci_init();
 }

@@ -233,11 +233,8 @@ static void __init ventana_wlan_init(void)
 
 static void __init tegra_ventana_init(void)
 {
-	tegra_common_init();
-
-	tegra_clk_init_from_table(ventana_clk_init_table);
+	tegra_common_init(ventana_clk_init_table);
 	ventana_pinmux_init();
-
 	platform_add_devices(ventana_devices, ARRAY_SIZE(ventana_devices));
 	ventana_sdhci_init();
 	ventana_i2c_init();
