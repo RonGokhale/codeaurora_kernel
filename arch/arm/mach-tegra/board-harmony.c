@@ -207,6 +207,8 @@ static __initdata struct tegra_clk_init_table harmony_clk_init_table[] = {
 	{ "emc",	"pll_m",	666000000,	true},
 	{ "pll_c",	"clk_m",	600000000,	true},
 	{ "pll_c_out1",	"pll_c",	240000000,	true},
+	{ "pwm",	"clk_32k",	32768,		false},
+	{ "clk_32k",	NULL,	32768,		true},
 	{ NULL,		NULL,		0,		0},
 };
 

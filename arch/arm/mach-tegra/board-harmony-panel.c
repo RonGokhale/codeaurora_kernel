@@ -16,40 +16,103 @@
 
 #include <linux/resource.h>
 #include <linux/platform_device.h>
+#include <linux/pwm_backlight.h>
 #include <linux/nvhost.h>
 #include <asm/mach-types.h>
 #include <mach/irqs.h>
 #include <mach/iomap.h>
 #include <mach/dc.h>
 #include <mach/fb.h>
-#include <mach/pwm-bl.h>
 #include <mach/gpio.h>
 
 #include "devices.h"
 #include "gpio-names.h"
 #include "board-harmony.h"
 
+static int harmony_backlight_init(struct device *dev)
+{
+	int ret;
 
-static struct tegra_pwm_bl_platform_data harmony_bl = {
-	.pwr_gpio	= TEGRA_GPIO_BACKLIGHT,
-	.init_intensity	= 1,
+	ret = gpio_request(TEGRA_GPIO_BACKLIGHT_VDD, "backlight vdd");
+	if (ret < 0)
+		return ret;
+
+	ret = gpio_direction_output(TEGRA_GPIO_BACKLIGHT_VDD, 1);
+	if (ret < 0)
+		goto free_bl_vdd;
+	else
+		tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT_VDD);
+
+	ret = gpio_request(TEGRA_GPIO_EN_VDD_PNL, "enable VDD to panel");
+	if (ret < 0)
+		goto free_bl_vdd;
+
+	ret = gpio_direction_output(TEGRA_GPIO_EN_VDD_PNL, 1);
+	if (ret < 0)
+		goto free_en_vdd_pnl;
+	else
+		tegra_gpio_enable(TEGRA_GPIO_EN_VDD_PNL);
+
+	ret = gpio_request(TEGRA_GPIO_BACKLIGHT, "backlight_enb");
+	if (ret < 0)
+		goto free_en_vdd_pnl;
+
+	ret = gpio_direction_output(TEGRA_GPIO_BACKLIGHT, 1);
+	if (ret < 0)
+		goto free_bl_enb;
+	else
+		tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT);
+
+	return ret;
+
+free_bl_enb:
+	gpio_free(TEGRA_GPIO_BACKLIGHT);
+free_en_vdd_pnl:
+	gpio_free(TEGRA_GPIO_EN_VDD_PNL);
+free_bl_vdd:
+	gpio_free(TEGRA_GPIO_BACKLIGHT_VDD);
+
+	return ret;
 };
 
-static struct resource harmony_pwm_resources[] = {
-	[0] = {
-		.start	= TEGRA_PWFM2_BASE,
-		.end	= TEGRA_PWFM2_BASE + TEGRA_PWFM2_SIZE - 1,
-		.flags	= IORESOURCE_MEM,
-	},
+static void harmony_backlight_exit(struct device *dev)
+{
+	gpio_set_value(TEGRA_GPIO_BACKLIGHT, 0);
+	gpio_free(TEGRA_GPIO_BACKLIGHT);
+	tegra_gpio_disable(TEGRA_GPIO_BACKLIGHT);
+
+	gpio_set_value(TEGRA_GPIO_BACKLIGHT_VDD, 0);
+	gpio_free(TEGRA_GPIO_BACKLIGHT_VDD);
+	tegra_gpio_disable(TEGRA_GPIO_BACKLIGHT_VDD);
+
+	gpio_set_value(TEGRA_GPIO_EN_VDD_PNL, 0);
+	gpio_free(TEGRA_GPIO_EN_VDD_PNL);
+	tegra_gpio_disable(TEGRA_GPIO_EN_VDD_PNL);
+}
+
+static int harmony_backlight_notify(struct device *unused, int brightness)
+{
+	gpio_set_value(TEGRA_GPIO_BACKLIGHT_VDD, !!brightness);
+	gpio_set_value(TEGRA_GPIO_EN_VDD_PNL, !!brightness);
+	gpio_set_value(TEGRA_GPIO_BACKLIGHT, !!brightness);
+	return brightness;
+}
+
+static struct platform_pwm_backlight_data harmony_backlight_data = {
+	.pwm_id		= 0,
+	.max_brightness	= 255,
+	.dft_brightness	= 224,
+	.pwm_period_ns	= 5000000,
+	.init		= harmony_backlight_init,
+	.exit		= harmony_backlight_exit,
+	.notify		= harmony_backlight_notify,
 };
 
-static struct platform_device harmony_pwm_bl_device = {
-	.name		= "tegra-pwm-bl",
-	.id		= 0,
-	.resource	= harmony_pwm_resources,
-	.num_resources	= ARRAY_SIZE(harmony_pwm_resources),
+static struct platform_device harmony_backlight_device = {
+	.name	= "pwm-backlight",
+	.id	= -1,
 	.dev	= {
-		.platform_data	= &harmony_bl,
+		.platform_data = &harmony_backlight_data,
 	},
 };
 
@@ -124,15 +187,16 @@ static struct nvhost_device harmony_panel_device = {
 	},
 };
 
+static struct platform_device *harmony_panel_devices[] __initdata = {
+	&tegra_pwfm0_device,
+	&harmony_backlight_device,
+};
+
 int __init harmony_panel_init(void) 
 {
 	int err;
 
-	tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT);
-	tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT_PWM);
 	tegra_gpio_enable(TEGRA_GPIO_LVDS_SHUTDOWN);
-	tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT_VDD);
-	tegra_gpio_enable(TEGRA_GPIO_EN_VDD_PNL);
 
 	err = gpio_request(TEGRA_GPIO_LVDS_SHUTDOWN, "lvds shutdown");
 	if (err < 0) {
@@ -142,33 +206,12 @@ int __init harmony_panel_init(void)
 		gpio_free(TEGRA_GPIO_LVDS_SHUTDOWN);
 	}
 
-	err = gpio_request(TEGRA_GPIO_BACKLIGHT_VDD, "backlight vdd");
-	if (err < 0) {
-		pr_err("could not acquire backlight VDD GPIO\n");
-	} else {
-		gpio_direction_output(TEGRA_GPIO_BACKLIGHT_VDD, 1);
-		gpio_free(TEGRA_GPIO_BACKLIGHT_VDD);
-	}
+	err = platform_add_devices(harmony_panel_devices,
+				ARRAY_SIZE(harmony_panel_devices));
 
-	err = gpio_request(TEGRA_GPIO_BACKLIGHT_PWM, "backlight pwm");
-	if (err < 0) {
-		pr_err("could not acquire backlight PWM GPIP\n");
-	} else {
-		gpio_direction_output(TEGRA_GPIO_BACKLIGHT_PWM, 1);
-		gpio_free(TEGRA_GPIO_BACKLIGHT_PWM);
-	}
+	if (!err)
+		err = nvhost_device_register(&harmony_panel_device);
 
-	err = gpio_request(TEGRA_GPIO_EN_VDD_PNL, "enable VDD to panel");
-	if (err < 0) {
-		pr_err("could not acquire panel VDD enable GPIO\n");
-	} else {
-		gpio_direction_output(TEGRA_GPIO_EN_VDD_PNL, 1);
-		gpio_free(TEGRA_GPIO_EN_VDD_PNL);
-	}
-
-	platform_device_register(&harmony_pwm_bl_device);
-	printk("panel init done\n");
-
-	return nvhost_device_register(&harmony_panel_device);
+	return err;
 }
 

@@ -51,6 +51,7 @@ static int pwm_backlight_update_status(struct backlight_device *bl)
 		pwm_config(pb->pwm, brightness * pb->period / max, pb->period);
 		pwm_enable(pb->pwm);
 	}
+
 	return 0;
 }
 
@@ -116,6 +117,7 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 	backlight_update_status(bl);
 
 	platform_set_drvdata(pdev, bl);
+
 	return 0;
 
 err_bl:
