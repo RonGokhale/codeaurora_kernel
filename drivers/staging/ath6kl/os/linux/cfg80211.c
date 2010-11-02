@@ -32,6 +32,18 @@ extern A_WAITQUEUE_HEAD arEvent;
 extern unsigned int wmitimeout;
 extern int reconnect_flag;
 
+#include <linux/version.h>
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,35)
+/* Backport compatibility from 2.6.36 drivers/staging tree. This change allows
+the driver to build with CONFIG_ATH6KL_CFG80211=y, and it will run and get
+a connection throguh flimflam, but it crashes later as the init is not yet 
+done properly */
+#define nl80211_tx_power_setting	tx_power_setting
+#define NL80211_TX_POWER_AUTOMATIC	TX_POWER_AUTOMATIC
+#define NL80211_TX_POWER_LIMITED	TX_POWER_LIMITED
+#define NL80211_TX_POWER_FIXED		TX_POWER_FIXED
+#endif
+
 
 #define RATETAB_ENT(_rate, _rateid, _flags) {   \
     .bitrate    = (_rate),                  \
