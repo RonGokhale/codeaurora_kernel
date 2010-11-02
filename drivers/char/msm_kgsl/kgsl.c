@@ -1139,7 +1139,12 @@ static long kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_file_private *private,
 
 	list_for_each_entry_safe(entry, entry_tmp,
 				&private->preserve_entry_list, list) {
-		if (entry->memdesc.size == len) {
+	/* make sure that read only pages aren't accidently
+	 * used when read-write pages are requested
+	*/
+	if (entry->memdesc.size == len &&
+   		((entry->memdesc.priv & KGSL_MEMFLAGS_GPUREADONLY) ==
+		(param.flags & KGSL_MEMFLAGS_GPUREADONLY))) {
 			list_del(&entry->list);
 			found = 1;
 			break;
@@ -1176,7 +1181,8 @@ static long kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_file_private *private,
 		entry->memdesc.pagetable = private->pagetable;
 		entry->memdesc.size = len;
 		entry->memdesc.priv = KGSL_MEMFLAGS_VMALLOC_MEM |
-			    KGSL_MEMFLAGS_MEM_REQUIRES_FLUSH;
+			    KGSL_MEMFLAGS_MEM_REQUIRES_FLUSH |
+			    (param.flags & KGSL_MEMFLAGS_GPUREADONLY);
 		entry->memdesc.physaddr = (unsigned long)vmalloc_area;
 		entry->priv = private;
 		private->vmalloc_size += len;
