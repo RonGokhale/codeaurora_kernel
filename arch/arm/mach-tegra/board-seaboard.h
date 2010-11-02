@@ -24,6 +24,7 @@
 #define TEGRA_GPIO_BACKLIGHT_PWM	TEGRA_GPIO_PU5
 #define TEGRA_GPIO_BACKLIGHT_VDD	TEGRA_GPIO_PW0
 #define TEGRA_GPIO_EN_VDD_PNL		TEGRA_GPIO_PC6
+#define TEGRA_GPIO_MAGNETOMETER		TEGRA_GPIO_PN5
 
 void seaboard_pinmux_init(void);
 int seaboard_panel_init(void);
