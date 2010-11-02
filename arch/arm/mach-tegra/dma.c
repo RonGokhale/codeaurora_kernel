@@ -27,10 +27,12 @@
 #include <linux/err.h>
 #include <linux/irq.h>
 #include <linux/delay.h>
+#include <linux/clk.h>
 #include <mach/dma.h>
 #include <mach/irqs.h>
 #include <mach/iomap.h>
 #include <mach/suspend.h>
+#include "clock.h"
 
 #define APB_DMA_GEN				0x000
 #define GEN_ENABLE				(1<<31)
@@ -773,6 +775,16 @@ int __init tegra_dma_init(void)
 	int i;
 	unsigned int irq;
 	void __iomem *addr;
+	struct clk *c;
+
+	c = tegra_get_clock_by_name("apbdma");
+	if (c) {
+		ret = clk_enable(c);
+		if (ret != 0) {
+			pr_err("Unable to enable clock for APB DMA\n");
+			goto fail;
+		}
+	}
 
 	addr = IO_ADDRESS(TEGRA_APB_DMA_BASE);
 	writel(GEN_ENABLE, addr + APB_DMA_GEN);
