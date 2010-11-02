@@ -30,6 +30,7 @@ struct tegra_utmip_config {
 	u8 xcvr_setup;
 	u8 xcvr_lsfslew;
 	u8 xcvr_lsrslew;
+	int vbus_gpio;
 };
 
 struct tegra_ulpi_config {

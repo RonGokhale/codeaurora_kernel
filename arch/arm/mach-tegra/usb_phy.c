@@ -341,6 +341,9 @@ static void utmi_phy_power_on(struct tegra_usb_phy *phy)
 	void __iomem *base = phy->regs;
 	struct tegra_utmip_config *config = phy->config;
 
+	if ((phy->instance == 2) && (config->vbus_gpio))
+		gpio_direction_output(config->vbus_gpio, 1);
+
 	val = readl(base + USB_SUSP_CTRL);
 	val |= UTMIP_RESET;
 	writel(val, base + USB_SUSP_CTRL);
@@ -454,6 +457,7 @@ static void utmi_phy_power_off(struct tegra_usb_phy *phy)
 {
 	unsigned long val;
 	void __iomem *base = phy->regs;
+	struct tegra_utmip_config *config = phy->config;
 
 	utmi_phy_clk_disable(phy);
 
@@ -478,6 +482,9 @@ static void utmi_phy_power_off(struct tegra_usb_phy *phy)
 	val |= UTMIP_FORCE_PDDISC_POWERDOWN | UTMIP_FORCE_PDCHRP_POWERDOWN |
 	       UTMIP_FORCE_PDDR_POWERDOWN;
 	writel(val, base + UTMIP_XCVR_CFG1);
+
+	if ((phy->instance == 2) && (config->vbus_gpio))
+		gpio_direction_output(config->vbus_gpio, 0);
 
 	utmip_pad_power_off(phy);
 }

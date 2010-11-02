@@ -42,6 +42,7 @@
 #include <mach/gpio.h>
 #include <mach/kbc.h>
 #include <mach/suspend.h>
+#include <mach/usb_phy.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -383,11 +384,39 @@ static void seaboard_kbc_init(void)
 	platform_device_register(&seaboard_kbc_device);
 }
 
+static struct tegra_utmip_config tegra_ehci_pdata[] = {
+	[0] = {
+		.hssync_start_delay = 9,
+		.idle_wait_delay = 17,
+		.elastic_limit = 16,
+		.term_range_adj = 6,
+		.xcvr_setup = 9,
+		.xcvr_lsfslew = 1,
+		.xcvr_lsrslew = 1,
+	},
+	[1] = {
+		.hssync_start_delay = 9,
+		.idle_wait_delay = 17,
+		.elastic_limit = 16,
+		.term_range_adj = 6,
+		.xcvr_setup = 9,
+		.xcvr_lsfslew = 2,
+		.xcvr_lsrslew = 2,
+		.vbus_gpio = TEGRA_GPIO_PD3,
+	},
+};
+
+static void seaboard_usb_init(void)
+{
+	tegra_ehci3_device.dev.platform_data = &tegra_ehci_pdata[1];
+
+	platform_device_register(&tegra_otg);
+	platform_device_register(&tegra_ehci2_device);
+	platform_device_register(&tegra_ehci3_device);
+}
+
 static struct platform_device *seaboard_devices[] __initdata = {
 	&debug_uart,
-	&tegra_otg,
-	&tegra_ehci2_device,
-	&tegra_ehci3_device,
 	&pda_power_device,
 	&seaboard_gpio_keys_device,
 	&tegra_gart_device,
@@ -440,6 +469,14 @@ static void __init tegra_seaboard_init(void)
 	seaboard_regulator_init();
 	seaboard_kbc_init();
 	seaboard_wlan_init();
+
+	/* Enable usb3 vbus_gpio */
+	tegra_gpio_enable(TEGRA_GPIO_PD3);
+	gpio_request(TEGRA_GPIO_PD3, "usb3_vbus");
+	gpio_direction_output(TEGRA_GPIO_PD3, 1);
+	gpio_export(TEGRA_GPIO_PD3, false);
+
+	seaboard_usb_init();
 
 	tegra_gpio_enable(TEGRA_GPIO_LIDSWITCH);
 	tegra_gpio_enable(TEGRA_GPIO_POWERKEY);
