@@ -2,7 +2,6 @@
 # Makefile for Chromeos Supplied Third-Party device drivers
 #
 
-obj-$(CONFIG_ATH6K_LEGACY)	+= ath6kl/
 obj-$(CONFIG_MWIFIEX)	+= mwifiex/
 obj-$(CONFIG_TCG_TPM)	+= tpmd_dev/
 obj-$(CONFIG_GOBI)      += gobi/QCSerial2k/
