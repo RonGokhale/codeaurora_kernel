@@ -447,6 +447,7 @@ static void seaboard_kbc_init(void)
 static struct platform_device *seaboard_devices[] __initdata = {
 	&debug_uart,
 	&tegra_ehci3_device,
+	&pmu_device,
 	&pda_power_device,
 	&seaboard_gpio_keys_device,
 	&tegra_gart_device,
