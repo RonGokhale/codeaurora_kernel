@@ -417,6 +417,7 @@ static void seaboard_usb_init(void)
 
 static struct platform_device *seaboard_devices[] __initdata = {
 	&debug_uart,
+	&pmu_device,
 	&pda_power_device,
 	&seaboard_gpio_keys_device,
 	&tegra_gart_device,
