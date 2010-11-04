@@ -1129,6 +1129,14 @@ config MSM_NPA_SYSTEM_BUS
 	  PM_QOS System Bus rate requests are interpreted as 'Flow IDs' and
 	  are routed through the NPA framework.
 
+config MSM_IDLE_WAIT_ON_MODEM
+	int "Wait for Modem to become ready for idle power collapse"
+	default 0
+	help
+	  If Modem is not ready to handle Application Processor's request
+	  for idle power collapse, wait the number of microseconds in case
+	  Modem becomes ready soon.
+
 config MSM_PIL
 	bool "Peripheral image loading"
 	select FW_LOADER
