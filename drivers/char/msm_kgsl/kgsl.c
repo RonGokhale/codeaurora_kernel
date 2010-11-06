@@ -1527,6 +1527,9 @@ static int kgsl_mmap(struct file *file, struct vm_area_struct *vma)
 			goto done;
 		}
 		memdesc = &device->memstore;
+	} else {
+		result = -EINVAL;
+		goto done;
 	}
 
 	if (memdesc->size != vma_size) {
