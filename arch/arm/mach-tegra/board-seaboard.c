@@ -23,7 +23,6 @@
 #include <linux/slab.h>
 #include <linux/ctype.h>
 #include <linux/platform_device.h>
-#include <linux/clk.h>
 #include <linux/serial_8250.h>
 #include <linux/i2c.h>
 #include <linux/i2c-tegra.h>
@@ -41,6 +40,7 @@
 #include <mach/io.h>
 #include <mach/gpio.h>
 #include <mach/clk.h>
+#include <mach/usb_phy.h>
 #include <mach/kbc.h>
 #include <mach/suspend.h>
 
@@ -424,24 +424,13 @@ static struct tegra_suspend_platform_data seaboard_suspend = {
 
 static void __init tegra_seaboard_init(void)
 {
-	struct clk *clk;
-
 	tegra_common_init();
 	tegra_init_suspend(&seaboard_suspend);
 
 	tegra_clk_init_from_table(seaboard_clk_init_table);
 	seaboard_pinmux_init();
 
-	/* HACK: reset 3d clock */
-	writel(0x101, IO_ADDRESS(TEGRA_PMC_BASE) + 0x30);
-	clk = clk_get_sys("3d", NULL);
-	tegra_periph_reset_assert(clk);
-	writel(0x101, IO_ADDRESS(TEGRA_PMC_BASE) + 0x30);
-	clk_enable(clk);
-	udelay(10);
-	writel(1 << 1, IO_ADDRESS(TEGRA_PMC_BASE) + 0x34);
-	tegra_periph_reset_deassert(clk);
-	clk_put(clk);
+	tegra_ehci3_device.dev.platform_data = &tegra_ehci_pdata[2];
 
 	platform_add_devices(seaboard_devices, ARRAY_SIZE(seaboard_devices));
 
