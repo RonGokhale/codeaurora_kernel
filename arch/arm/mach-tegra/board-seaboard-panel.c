@@ -18,44 +18,113 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <linux/delay.h>
+#include <linux/gpio.h>
+#include <linux/regulator/consumer.h>
 #include <linux/resource.h>
 #include <asm/mach-types.h>
-#include <linux/nvhost.h>
-#include <linux/nvmap.h>
 #include <linux/platform_device.h>
+#include <linux/pwm_backlight.h>
+#include <mach/nvhost.h>
+#include <mach/nvmap.h>
 #include <mach/irqs.h>
 #include <mach/iomap.h>
 #include <mach/dc.h>
 #include <mach/fb.h>
-#include <mach/pwm-bl.h>
-#include <mach/gpio.h>
 
 #include "devices.h"
 #include "gpio-names.h"
-#include "board-seaboard.h"
 
-static struct tegra_pwm_bl_platform_data seaboard_bl = {
-	.pwr_gpio	= TEGRA_GPIO_PD4,
-	.init_intensity	= 1,
+#define seaboard_bl_enb		TEGRA_GPIO_PD4
+#define seaboard_lvds_shutdown	TEGRA_GPIO_PB2
+#define seaboard_hdmi_hpd	TEGRA_GPIO_PN7
+#define seaboard_hdmi_enb	TEGRA_GPIO_PV5
+#define seaboard_en_vdd_pnl	TEGRA_GPIO_PC6
+#define seaboard_bl_vdd		TEGRA_GPIO_PW0
+#define seaboard_bl_pwm		TEGRA_GPIO_PU5
+
+static int seaboard_backlight_init(struct device *dev) {
+	int ret;
+
+	ret = gpio_request(seaboard_bl_enb, "backlight_enb");
+	if (ret < 0)
+		return ret;
+
+	ret = gpio_direction_output(seaboard_bl_enb, 1);
+	if (ret < 0)
+		gpio_free(seaboard_bl_enb);
+	else
+		tegra_gpio_enable(seaboard_bl_enb);
+
+	return ret;
 };
 
-static struct resource seaboard_pwm_resources[] = {
-	[0] = {
-		.start	= TEGRA_PWFM2_BASE,
-		.end	= TEGRA_PWFM2_BASE + TEGRA_PWFM2_SIZE - 1,
-		.flags	= IORESOURCE_MEM,
-	},
+static void seaboard_backlight_exit(struct device *dev) {
+	gpio_set_value(seaboard_bl_enb, 0);
+	gpio_free(seaboard_bl_enb);
+	tegra_gpio_disable(seaboard_bl_enb);
+}
+
+static int seaboard_backlight_notify(struct device *unused, int brightness)
+{
+	gpio_set_value(seaboard_bl_enb, !!brightness);
+	return brightness;
+}
+
+static struct platform_pwm_backlight_data seaboard_backlight_data = {
+	.pwm_id		= 2,
+	.max_brightness	= 255,
+	.dft_brightness	= 224,
+	.pwm_period_ns	= 5000000,
+	.init		= seaboard_backlight_init,
+	.exit		= seaboard_backlight_exit,
+	.notify		= seaboard_backlight_notify,
 };
 
-static struct platform_device seaboard_pwm_bl_device = {
-	.name		= "tegra-pwm-bl",
-	.id		= 0,
-	.resource	= seaboard_pwm_resources,
-	.num_resources	= ARRAY_SIZE(seaboard_pwm_resources),
+static struct platform_device seaboard_backlight_device = {
+	.name	= "pwm-backlight",
+	.id	= -1,
 	.dev	= {
-		.platform_data	= &seaboard_bl,
+		.platform_data = &seaboard_backlight_data,
 	},
 };
+
+static int seaboard_panel_enable(void)
+{
+#if 0
+	static struct regulator *reg = NULL;
+
+	if (reg == NULL) {
+		reg = regulator_get(NULL, "avdd_lvds");
+		if (WARN_ON(IS_ERR(reg)))
+			pr_err("%s: couldn't get regulator avdd_lvds: %ld\n",
+			       __func__, PTR_ERR(reg));
+		else
+			regulator_enable(reg);
+	}
+#endif
+
+	gpio_set_value(seaboard_lvds_shutdown, 1);
+	return 0;
+}
+
+static int seaboard_panel_disable(void)
+{
+	gpio_set_value(seaboard_lvds_shutdown, 0);
+	return 0;
+}
+
+static int seaboard_hdmi_enable(void)
+{
+	gpio_set_value(seaboard_hdmi_enb, 1);
+	return 0;
+}
+
+static int seaboard_hdmi_disable(void)
+{
+	gpio_set_value(seaboard_hdmi_enb, 0);
+	return 0;
+}
 
 static struct resource seaboard_disp1_resources[] = {
 	{
@@ -73,7 +142,34 @@ static struct resource seaboard_disp1_resources[] = {
 	{
 		.name	= "fbmem",
 		.start	= 0x18012000,
-		.end	= 0x18414000 - 1,
+		.end	= 0x18414000 - 1, /* enough for 1080P 16bpp */
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
+static struct resource seaboard_disp2_resources[] = {
+	{
+		.name	= "irq",
+		.start	= INT_DISPLAY_B_GENERAL,
+		.end	= INT_DISPLAY_B_GENERAL,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name	= "regs",
+		.start	= TEGRA_DISPLAY2_BASE,
+		.end	= TEGRA_DISPLAY2_BASE + TEGRA_DISPLAY2_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "fbmem",
+		.flags	= IORESOURCE_MEM,
+		.start	= 0x18414000,
+		.end	= 0x18BFD000 - 1,
+	},
+	{
+		.name	= "hdmi_regs",
+		.start	= TEGRA_HDMI_BASE,
+		.end	= TEGRA_HDMI_BASE + TEGRA_HDMI_SIZE - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 };
@@ -98,38 +194,53 @@ static struct tegra_fb_data seaboard_fb_data = {
 	.win		= 0,
 	.xres		= 1366,
 	.yres		= 768,
-	.pitch		= 2736,
 	.bits_per_pixel	= 16,
 };
 
-static int seaboard_panel_enable(void)
-{
-	gpio_set_value(TEGRA_GPIO_EN_VDD_PNL, 1);
-	return 0;
-}
-
-static int seaboard_panel_disable(void)
-{
-	gpio_set_value(TEGRA_GPIO_EN_VDD_PNL, 0);
-	return 0;
-}
+static struct tegra_fb_data seaboard_hdmi_fb_data = {
+	.win		= 0,
+	.xres		= 1280,
+	.yres		= 720,
+	.bits_per_pixel	= 16,
+};
 
 static struct tegra_dc_out seaboard_disp1_out = {
-	.type = TEGRA_DC_OUT_RGB,
+	.type		= TEGRA_DC_OUT_RGB,
 
-	.align = TEGRA_DC_ALIGN_MSB,
-	.order = TEGRA_DC_ORDER_RED_BLUE,
+	.align		= TEGRA_DC_ALIGN_MSB,
+	.order		= TEGRA_DC_ORDER_RED_BLUE,
 
-	.modes = seaboard_panel_modes,
-	.n_modes = ARRAY_SIZE(seaboard_panel_modes),
-	.enable = seaboard_panel_enable,
-	.disable = seaboard_panel_disable,
+	.modes	 	= seaboard_panel_modes,
+	.n_modes 	= ARRAY_SIZE(seaboard_panel_modes),
+
+	.enable		= seaboard_panel_enable,
+	.disable	= seaboard_panel_disable,
+};
+
+static struct tegra_dc_out seaboard_disp2_out = {
+	.type		= TEGRA_DC_OUT_HDMI,
+	.flags		= TEGRA_DC_OUT_HOTPLUG_HIGH,
+
+	.dcc_bus	= 1,
+	.hotplug_gpio	= seaboard_hdmi_hpd,
+
+	.align		= TEGRA_DC_ALIGN_MSB,
+	.order		= TEGRA_DC_ORDER_RED_BLUE,
+
+	.enable		= seaboard_hdmi_enable,
+	.disable	= seaboard_hdmi_disable,
 };
 
 static struct tegra_dc_platform_data seaboard_disp1_pdata = {
 	.flags		= TEGRA_DC_FLAG_ENABLED,
 	.default_out	= &seaboard_disp1_out,
 	.fb		= &seaboard_fb_data,
+};
+
+static struct tegra_dc_platform_data seaboard_disp2_pdata = {
+	.flags		= TEGRA_DC_FLAG_ENABLED,
+	.default_out	= &seaboard_disp2_out,
+	.fb		= &seaboard_hdmi_fb_data,
 };
 
 static struct nvhost_device seaboard_disp1_device = {
@@ -142,50 +253,96 @@ static struct nvhost_device seaboard_disp1_device = {
 	},
 };
 
+static struct nvhost_device seaboard_disp2_device = {
+	.name		= "tegradc",
+	.id		= 1,
+	.resource	= seaboard_disp2_resources,
+	.num_resources	= ARRAY_SIZE(seaboard_disp2_resources),
+	.dev = {
+		.platform_data = &seaboard_disp2_pdata,
+	},
+};
+
+static struct nvmap_platform_carveout seaboard_carveouts[] = {
+	[0] = {
+		.name		= "iram",
+		.usage_mask	= NVMAP_HEAP_CARVEOUT_IRAM,
+		.base		= TEGRA_IRAM_BASE,
+		.size		= TEGRA_IRAM_SIZE,
+		.buddy_size	= 0, /* no buddy allocation for IRAM */
+	},
+	[1] = {
+		.name		= "generic-0",
+		.usage_mask	= NVMAP_HEAP_CARVEOUT_GENERIC,
+		.base		= 0x18C00000,
+		.size		= SZ_128M - 0xC00000,
+		.buddy_size	= SZ_32K,
+	},
+};
+
+static struct nvmap_platform_data seaboard_nvmap_data = {
+	.carveouts	= seaboard_carveouts,
+	.nr_carveouts	= ARRAY_SIZE(seaboard_carveouts),
+};
+
+static struct platform_device seaboard_nvmap_device = {
+	.name	= "tegra-nvmap",
+	.id	= -1,
+	.dev	= {
+		.platform_data = &seaboard_nvmap_data,
+	},
+};
+
+static struct platform_device *seaboard_gfx_devices[] __initdata = {
+	&seaboard_nvmap_device,
+	&tegra_grhost_device,
+	&tegra_pwfm2_device,
+	&seaboard_backlight_device,
+};
+
 int __init seaboard_panel_init(void)
 {
 	int err;
 
-	tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT);
-	tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT_PWM);
-	tegra_gpio_enable(TEGRA_GPIO_LVDS_SHUTDOWN);
-	tegra_gpio_enable(TEGRA_GPIO_BACKLIGHT_VDD);
-	tegra_gpio_enable(TEGRA_GPIO_EN_VDD_PNL);
+	gpio_request(seaboard_en_vdd_pnl, "en_vdd_pnl");
+	gpio_direction_output(seaboard_en_vdd_pnl, 1);
+	tegra_gpio_enable(seaboard_en_vdd_pnl);
 
-	err = gpio_request(TEGRA_GPIO_LVDS_SHUTDOWN, "lvds shutdown");
-	if (err < 0) {
-		pr_err("could not acquire LVDS shutdown GPIO\n");
-	} else {
-		gpio_direction_output(TEGRA_GPIO_LVDS_SHUTDOWN, 1);
-		gpio_free(TEGRA_GPIO_LVDS_SHUTDOWN);
-	}
+	gpio_request(seaboard_bl_enb, "bl_enb");
+	gpio_direction_output(seaboard_bl_enb, 1);
+	tegra_gpio_enable(seaboard_bl_enb);
 
-	err = gpio_request(TEGRA_GPIO_BACKLIGHT_VDD, "backlight vdd");
-	if (err < 0) {
-		pr_err("could not acquire backlight VDD GPIO\n");
-	} else {
-		gpio_direction_output(TEGRA_GPIO_BACKLIGHT_VDD, 1);
-		gpio_free(TEGRA_GPIO_BACKLIGHT_VDD);
-	}
+#if 1
+	gpio_request(seaboard_bl_pwm, "bl_pwm");
+	gpio_direction_output(seaboard_bl_pwm, 1);
+	tegra_gpio_enable(seaboard_bl_pwm);
+#endif
 
-	err = gpio_request(TEGRA_GPIO_BACKLIGHT_PWM, "backlight pwm");
-	if (err < 0) {
-		pr_err("could not acquire backlight PWM GPIP\n");
-	} else {
-		gpio_direction_output(TEGRA_GPIO_BACKLIGHT_PWM, 1);
-		gpio_free(TEGRA_GPIO_BACKLIGHT_PWM);
-	}
+	gpio_request(seaboard_bl_vdd, "bl_vdd");
+	gpio_direction_output(seaboard_bl_vdd, 1);
+	tegra_gpio_enable(seaboard_bl_vdd);
 
-	err = gpio_request(TEGRA_GPIO_EN_VDD_PNL, "enable VDD to panel");
-	if (err < 0) {
-		pr_err("could not acquire panel VDD enable GPIO\n");
-	} else {
-		gpio_direction_output(TEGRA_GPIO_EN_VDD_PNL, 1);
-		gpio_free(TEGRA_GPIO_EN_VDD_PNL);
-	}
+	gpio_request(seaboard_lvds_shutdown, "lvds_shdn");
+	gpio_direction_output(seaboard_lvds_shutdown, 1);
+	tegra_gpio_enable(seaboard_lvds_shutdown);
 
-	platform_device_register(&seaboard_pwm_bl_device);
+	gpio_request(seaboard_hdmi_enb, "hdmi_5v_en");
+	gpio_direction_output(seaboard_hdmi_enb, 0);
+	tegra_gpio_enable(seaboard_hdmi_enb);
 
-	return nvhost_device_register(&seaboard_disp1_device);
+	gpio_request(seaboard_hdmi_hpd, "hdmi_hpd");
+	gpio_direction_input(seaboard_hdmi_hpd);
+	tegra_gpio_enable(seaboard_hdmi_hpd);
+
+	err = platform_add_devices(seaboard_gfx_devices,
+				   ARRAY_SIZE(seaboard_gfx_devices));
+
+	if (!err)
+		err = nvhost_device_register(&seaboard_disp1_device);
+
+	if (!err)
+		err = nvhost_device_register(&seaboard_disp2_device);
+
+	return err;
 }
 
