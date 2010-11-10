@@ -251,6 +251,8 @@ void __init tegra_init_irq(void)
 	}
 }
 
+#ifdef CONFIG_PM
+
 void tegra_irq_suspend(void)
 {
 	tegra_legacy_irq_suspend();
@@ -261,6 +263,7 @@ void tegra_irq_resume(void)
 	tegra_legacy_irq_resume();
 	tegra_irq_handle_wake();
 }
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 static int tegra_wake_irq_debug_show(struct seq_file *s, void *data)

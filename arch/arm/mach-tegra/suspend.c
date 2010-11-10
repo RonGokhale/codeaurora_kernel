@@ -295,6 +295,7 @@ static noinline void restore_cpu_complex(void)
 	enable_irq(INT_SYS_STATS_MON);
 }
 
+#ifdef CONFIG_PM
 static noinline void suspend_cpu_complex(void)
 {
 	unsigned int reg;
@@ -386,8 +387,6 @@ unsigned int tegra_suspend_lp2(unsigned int us)
 
 	return remain;
 }
-
-#ifdef CONFIG_PM
 
 /* ensures that sufficient time is passed for a register write to
  * serialize into the 32KHz domain */
