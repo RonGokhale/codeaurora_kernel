@@ -86,8 +86,6 @@ static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	/* name		parent		rate		enabled */
 	{ "clk_dev1",	NULL,		26000000,	true},
 	{ "clk_m",	NULL,		12000000,	true},
-	{ "pll_m",	"clk_m",	600000000,	true},
-	{ "pll_m_out1",	"pll_m",	600000000,	true},
 	{ "3d",		"pll_m",	300000000,	true},
 	{ "2d",		"pll_m",	300000000,	true},
 	{ "vi",		"pll_m",	50000000,	true},
@@ -451,7 +449,6 @@ static struct platform_device *seaboard_devices[] __initdata = {
 	&pda_power_device,
 	&seaboard_gpio_keys_device,
 	&tegra_gart_device,
-	&tegra_grhost_device,
 };
 
 static void __init seaboard_wlan_init(void)
