@@ -199,24 +199,6 @@ static struct platform_device qfec_device = {
 #define QCE_1_BASE		0x80E00000
 #define QCE_2_BASE		0x81000000
 
-#define ADM_CHANNEL_CE_0_IN	DMOV_CE_IN_CHAN		/* 5 */
-#define ADM_CHANNEL_CE_0_OUT	DMOV_CE_OUT_CHAN	/* 6 */
-#define ADM_CHANNEL_CE_1_IN	12
-#define ADM_CHANNEL_CE_1_OUT	13
-#define ADM_CHANNEL_CE_2_IN	14
-#define ADM_CHANNEL_CE_2_OUT	15
-
-#define ADM_CRCI_0_IN		DMOV_CE_IN_CRCI		/* 1 */
-#define ADM_CRCI_0_OUT		DMOV_CE_OUT_CRCI	/* 2 */
-#define ADM_CRCI_0_HASH		3
-#define ADM_CRCI_1_IN		9
-#define ADM_CRCI_1_OUT		10
-#define ADM_CRCI_1_HASH		11
-#define ADM_CRCI_2_IN		12
-#define ADM_CRCI_2_OUT		13
-#define ADM_CRCI_2_HASH		14
-
-
 static struct resource qcrypto_resources[] = {
 	[0] = {
 		.start = QCE_0_BASE,
@@ -225,26 +207,26 @@ static struct resource qcrypto_resources[] = {
 	},
 	[1] = {
 		.name = "crypto_channels",
-		.start = ADM_CHANNEL_CE_0_IN,
-		.end = ADM_CHANNEL_CE_0_OUT,
+		.start = DMOV_CE1_IN_CHAN,
+		.end = DMOV_CE1_OUT_CHAN,
 		.flags = IORESOURCE_DMA,
 	},
 	[2] = {
 		.name = "crypto_crci_in",
-		.start = ADM_CRCI_0_IN,
-		.end = ADM_CRCI_0_IN,
+		.start = DMOV_CE1_IN_CRCI,
+		.end = DMOV_CE1_IN_CRCI,
 		.flags = IORESOURCE_DMA,
 	},
 	[3] = {
 		.name = "crypto_crci_out",
-		.start = ADM_CRCI_0_OUT,
-		.end = ADM_CRCI_0_OUT,
+		.start = DMOV_CE1_OUT_CRCI,
+		.end = DMOV_CE1_OUT_CRCI,
 		.flags = IORESOURCE_DMA,
 	},
 	[4] = {
 		.name = "crypto_crci_hash",
-		.start = ADM_CRCI_0_HASH,
-		.end = ADM_CRCI_0_HASH,
+		.start = DMOV_CE1_HASH_CRCI,
+		.end = DMOV_CE1_HASH_CRCI,
 		.flags = IORESOURCE_DMA,
 	},
 };
@@ -257,26 +239,26 @@ static struct resource ota_qcrypto_resources[] = {
 	},
 	[1] = {
 		.name = "crypto_channels",
-		.start = ADM_CHANNEL_CE_1_IN,
-		.end = ADM_CHANNEL_CE_1_OUT,
+		.start = DMOV_CE2_IN_CHAN,
+		.end = DMOV_CE2_OUT_CHAN,
 		.flags = IORESOURCE_DMA,
 	},
 	[2] = {
 		.name = "crypto_crci_in",
-		.start = ADM_CRCI_1_IN,
-		.end = ADM_CRCI_1_IN,
+		.start = DMOV_CE2_IN_CRCI,
+		.end = DMOV_CE2_IN_CRCI,
 		.flags = IORESOURCE_DMA,
 	},
 	[3] = {
 		.name = "crypto_crci_out",
-		.start = ADM_CRCI_1_OUT,
-		.end = ADM_CRCI_1_OUT,
+		.start = DMOV_CE2_OUT_CRCI,
+		.end = DMOV_CE2_OUT_CRCI,
 		.flags = IORESOURCE_DMA,
 	},
 	[4] = {
 		.name = "crypto_crci_hash",
-		.start = ADM_CRCI_1_HASH,
-		.end = ADM_CRCI_1_HASH,
+		.start = DMOV_CE2_HASH_CRCI,
+		.end = DMOV_CE2_HASH_CRCI,
 		.flags = IORESOURCE_DMA,
 	},
 };

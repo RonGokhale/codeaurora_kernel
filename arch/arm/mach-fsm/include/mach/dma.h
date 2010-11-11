@@ -19,6 +19,10 @@
 #include <linux/list.h>
 #include <mach/msm_iomap.h>
 
+#if defined(CONFIG_ARCH_FSM9XXX)
+#include <mach/dma-fsm9xxx.h>
+#endif
+
 struct msm_dmov_errdata {
 	uint32_t flush[6];
 };
@@ -66,11 +70,7 @@ unsigned int msm_dmov_build_crci_mask(int n, ...);
 #define DMOV_SD_MASTER_ADDR(off, ch) DMOV_ADDR(off, ch, DMOV_SD_MASTER)
 #define DMOV_SD_AARM_ADDR(off, ch) DMOV_ADDR(off, ch, DMOV_SD_AARM)
 #elif defined(CONFIG_ARCH_FSM9XXX)
-#define DMOV_SD_SIZE 0x1400
-#define DMOV_SD_MASTER 0
-#define DMOV_SD_AARM 3
-#define DMOV_SD_MASTER_ADDR(off, ch) DMOV_ADDR(off, ch, DMOV_SD_MASTER)
-#define DMOV_SD_AARM_ADDR(off, ch) DMOV_ADDR(off, ch, DMOV_SD_AARM)
+/* defined in dma-fsm9xxx.h */
 #else
 #define DMOV_SD_SIZE 0x400
 #define DMOV_SD_AARM 3
@@ -191,6 +191,10 @@ unsigned int msm_dmov_build_crci_mask(int n, ...);
 
 #define DMOV_HSUART2_RX_CHAN   8
 #define DMOV_HSUART2_RX_CRCI   14
+
+#elif defined(CONFIG_ARCH_FSM9XXX)
+/* defined in dma-fsm9xxx.h */
+
 #else
 #define DMOV_GP_CHAN          4
 
