@@ -600,12 +600,18 @@ static int __devinit tegra_kbc_probe(struct platform_device *pdev)
 			continue;
 		for (j = 0; j < KBC_MAX_ROW; j++) {
 			int keycode;
+
 			if (!rows[j])
 				continue;
+
+			/* enable all the mapped keys. */
 			keycode = tegra_kbc_keycode(kbc, j, i, false);
-			if (keycode == -1)
-				continue;
-			set_bit(keycode, kbc->idev->keybit);
+			if (keycode != -1)
+				set_bit(keycode, kbc->idev->keybit);
+
+			keycode = tegra_kbc_keycode(kbc, j, i, true);
+			if (keycode != -1)
+				set_bit(keycode, kbc->idev->keybit);
 		}
 	}
 
