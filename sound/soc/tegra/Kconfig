@@ -1,0 +1,7 @@
+config TEGRA_ALSA
+    tristate "Tegra ALSA SoC support"
+    select SND_SOC_WM8903
+    help
+       Say Y if you want to add support for codec attached to
+       alsa interface on tegra.
+       TEGRA_ALSA and TEGRA_I2S_AUDIO options are mutually exclusive.
