@@ -655,6 +655,7 @@ kgsl_ringbuffer_addcmds(struct kgsl_ringbuffer *rb,
 	unsigned int pmodesizedwords;
 	unsigned int *ringcmds;
 	unsigned int timestamp;
+	unsigned int i;
 
 	/* reserve space to temporarily turn off protected mode
 	*  error checking if needed
@@ -666,32 +667,35 @@ kgsl_ringbuffer_addcmds(struct kgsl_ringbuffer *rb,
 
 	if (pmodeoff) {
 		/* disable protected mode error checking */
-		*ringcmds++ = pm4_type3_packet(PM4_SET_PROTECTED_MODE, 1);
-		*ringcmds++ = 0;
+		GSL_RB_WRITE(ringcmds,
+			pm4_type3_packet(PM4_SET_PROTECTED_MODE, 1));
+		GSL_RB_WRITE(ringcmds, 0);
 	}
 
-	memcpy(ringcmds, cmds, (sizedwords << 2));
-
-	ringcmds += sizedwords;
+	for (i = 0; i < sizedwords; i++) {
+		GSL_RB_WRITE(ringcmds, *cmds);
+		cmds++;
+	}
 
 	if (pmodeoff) {
 		/* re-enable protected mode error checking */
-		*ringcmds++ = pm4_type3_packet(PM4_SET_PROTECTED_MODE, 1);
-		*ringcmds++ = 1;
+		GSL_RB_WRITE(ringcmds,
+			pm4_type3_packet(PM4_SET_PROTECTED_MODE, 1));
+		GSL_RB_WRITE(ringcmds, 1);
 	}
 
 	rb->timestamp++;
 	timestamp = rb->timestamp;
 
 	/* start-of-pipeline and end-of-pipeline timestamps */
-	*ringcmds++ = pm4_type0_packet(REG_CP_TIMESTAMP, 1);
-	*ringcmds++ = rb->timestamp;
-	*ringcmds++ = pm4_type3_packet(PM4_EVENT_WRITE, 3);
-	*ringcmds++ = CACHE_FLUSH_TS;
-	*ringcmds++ =
+	GSL_RB_WRITE(ringcmds, pm4_type0_packet(REG_CP_TIMESTAMP, 1));
+	GSL_RB_WRITE(ringcmds, rb->timestamp);
+	GSL_RB_WRITE(ringcmds, pm4_type3_packet(PM4_EVENT_WRITE, 3));
+	GSL_RB_WRITE(ringcmds, CACHE_FLUSH_TS);
+	GSL_RB_WRITE(ringcmds,
 		     (rb->device->memstore.gpuaddr +
-		      KGSL_DEVICE_MEMSTORE_OFFSET(eoptimestamp));
-	*ringcmds++ = rb->timestamp;
+		      KGSL_DEVICE_MEMSTORE_OFFSET(eoptimestamp)));
+	GSL_RB_WRITE(ringcmds, rb->timestamp);
 
 	kgsl_ringbuffer_submit(rb);
 
