@@ -40,7 +40,8 @@
 #include <mach/pinmux.h>
 #include <mach/iomap.h>
 #include <mach/io.h>
-
+#include <mach/i2s.h>
+#include <mach/audio.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 
@@ -83,7 +84,19 @@ static __initdata struct tegra_clk_init_table ventana_clk_init_table[] = {
 	{ "uartd",	"pll_p",	216000000,	true},
 	{ "pll_m",	"clk_m",	600000000,	true},
 	{ "pwm",	"clk_32k",	32768,		false},
+	{ "pll_a",	NULL,		11289600,	true},
+	{ "pll_a_out0",	NULL,		11289600,	true},
+	{ "i2s1",	"pll_a_out0",	11289600,	true},
+	{ "i2s2",	"pll_a_out0",	11289600,	true},
+	{ "audio",	"pll_a_out0",	11289600,	true},
+	{ "audio_2x",	"audio",	22579200,	true},
 	{ NULL,		NULL,		0,		0},
+};
+
+static struct i2c_board_info __initdata ventana_i2c_bus1_board_info[] = {
+	{
+		I2C_BOARD_INFO("wm8903", 0x1a),
+	},
 };
 
 static struct tegra_i2c_platform_data ventana_i2c1_platform_data = {
@@ -123,12 +136,25 @@ static struct tegra_i2c_platform_data ventana_dvc_platform_data = {
 	.is_dvc		= true,
 };
 
+static struct tegra_audio_platform_data tegra_audio_pdata = {
+	.master		= false,
+	.dma_on		= true,  /* use dma by default */
+	.i2s_clk_rate	= 240000000,
+	.dap_clk	= "clk_dev1",
+	.audio_sync_clk = "audio_2x",
+	.mode		= I2S_BIT_FORMAT_I2S,
+	.fifo_fmt	= I2S_FIFO_16_LSB,
+	.bit_size	= I2S_BIT_SIZE_16,
+};
+
 static void ventana_i2c_init(void)
 {
 	tegra_i2c_device1.dev.platform_data = &ventana_i2c1_platform_data;
 	tegra_i2c_device2.dev.platform_data = &ventana_i2c2_platform_data;
 	tegra_i2c_device3.dev.platform_data = &ventana_i2c3_platform_data;
 	tegra_i2c_device4.dev.platform_data = &ventana_dvc_platform_data;
+
+	i2c_register_board_info(0, ventana_i2c_bus1_board_info, 1);
 
 	platform_device_register(&tegra_i2c_device4);
 	platform_device_register(&tegra_i2c_device3);
@@ -175,6 +201,7 @@ static struct platform_device *ventana_devices[] __initdata = {
 	&tegra_udc_device,
 	&tegra_gart_device,
 	&ventana_keys_device,
+	&tegra_i2s_device1,
 };
 
 static void ventana_keys_init(void)
@@ -236,6 +263,9 @@ static void __init tegra_ventana_init(void)
 {
 	tegra_common_init(ventana_clk_init_table);
 	ventana_pinmux_init();
+
+	tegra_i2s_device1.dev.platform_data = &tegra_audio_pdata;
+
 	platform_add_devices(ventana_devices, ARRAY_SIZE(ventana_devices));
 	ventana_sdhci_init();
 	ventana_i2c_init();

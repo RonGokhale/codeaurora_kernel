@@ -33,6 +33,8 @@
 #include <asm/mach/time.h>
 #include <asm/setup.h>
 
+#include <mach/audio.h>
+#include <mach/i2s.h>
 #include <mach/iomap.h>
 #include <mach/irqs.h>
 #include <mach/nand.h>
@@ -163,6 +165,11 @@ static struct platform_device pda_power_device = {
 	},
 };
 
+static struct i2c_board_info __initdata harmony_i2c_bus1_board_info[] = {
+	{
+		I2C_BOARD_INFO("wm8903", 0x1a),
+	},
+};
 
 static struct tegra_i2c_platform_data harmony_i2c1_platform_data = {
 	.adapter_nr	= 0,
@@ -201,12 +208,25 @@ static struct tegra_i2c_platform_data harmony_dvc_platform_data = {
 	.is_dvc		= true,
 };
 
+static struct tegra_audio_platform_data tegra_audio_pdata = {
+	.master		= false,
+	.dma_on		= true,  /* use dma by default */
+	.i2s_clk_rate	= 240000000,
+	.dap_clk	= "clk_dev1",
+	.audio_sync_clk = "audio_2x",
+	.mode		= I2S_BIT_FORMAT_I2S,
+	.fifo_fmt	= I2S_FIFO_16_LSB,
+	.bit_size	= I2S_BIT_SIZE_16,
+};
+
 static void harmony_i2c_init(void)
 {
 	tegra_i2c_device1.dev.platform_data = &harmony_i2c1_platform_data;
 	tegra_i2c_device2.dev.platform_data = &harmony_i2c2_platform_data;
 	tegra_i2c_device3.dev.platform_data = &harmony_i2c3_platform_data;
 	tegra_i2c_device4.dev.platform_data = &harmony_dvc_platform_data;
+
+	i2c_register_board_info(0, harmony_i2c_bus1_board_info, 1);
 
 	platform_device_register(&tegra_i2c_device1);
 	platform_device_register(&tegra_i2c_device2);
@@ -227,6 +247,7 @@ static struct platform_device *harmony_devices[] __initdata = {
 	&tegra_spi_device4,
 	&tegra_gart_device,
 	&tegra_grhost_device,
+	&tegra_i2s_device1,
 };
 
 static void __init tegra_harmony_fixup(struct machine_desc *desc,
@@ -257,6 +278,12 @@ static __initdata struct tegra_clk_init_table harmony_clk_init_table[] = {
 	{ "pll_c_out1",	"pll_c",	240000000,	true},
 	{ "pwm",	"clk_32k",	32768,		false},
 	{ "clk_32k",	NULL,	32768,		true},
+	{ "pll_a",	NULL,		11289600,	true},
+	{ "pll_a_out0",	NULL,		11289600,	true},
+	{ "i2s1",	"pll_a_out0",	11289600,	true},
+	{ "i2s2",	"pll_a_out0",	11289600,	true},
+	{ "audio",	"pll_a_out0",	11289600,	true},
+	{ "audio_2x",	"audio",	22579200,	true},
 	{ NULL,		NULL,		0,		0},
 };
 
@@ -264,6 +291,8 @@ static void __init tegra_harmony_init(void)
 {
 	tegra_common_init(harmony_clk_init_table);
 	harmony_pinmux_init();
+
+	tegra_i2s_device1.dev.platform_data = &tegra_audio_pdata;
 
 	platform_add_devices(harmony_devices, ARRAY_SIZE(harmony_devices));
 	harmony_panel_init();
