@@ -121,3 +121,11 @@ config TEGRA_THERMAL_THROTTLE
        default y
        help
          Also requires enabling a temperature sensor such as NCT1008.
+
+config TEGRA_I2S_AUDIO
+	bool "Enable Tegra I2S Audio support"
+	default y
+	help
+	  Say Y if you want to add support for i2s audio on tegra.
+	  TEGRA_ALSA and TEGRA_I2S_AUDIO options are mutually exclusive.
+
