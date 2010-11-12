@@ -623,7 +623,8 @@ static int __devinit tegra_kbc_probe(struct platform_device *pdev)
 	 * interrupts disabled when handling KBC interrupt */
 	INIT_WORK(&kbc->key_repeat, tegra_kbc_key_repeat);
 
-	err = request_irq(irq, tegra_kbc_isr, IRQF_DISABLED, pdev->name, kbc);
+	err = request_irq(irq, tegra_kbc_isr, IRQF_TRIGGER_HIGH,
+		pdev->name, kbc);
 	if (err) {
 		dev_err(&pdev->dev, "failed to request keypad IRQ\n");
 		goto fail;
