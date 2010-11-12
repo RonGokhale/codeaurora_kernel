@@ -38,6 +38,10 @@ fw-shipped-$(CONFIG_BNX2) += bnx2/bnx2-mips-09-5.0.0.j15.fw \
 			     bnx2/bnx2-rv2p-09ax-5.0.0.j10.fw \
 			     bnx2/bnx2-mips-06-5.0.0.j6.fw \
 			     bnx2/bnx2-rv2p-06-5.0.0.j3.fw
+fw-shipped-$(CONFIG_BRCM80211) += brcm/bcm43xx-0.fw \
+				  brcm/bcm43xx_hdr-0.fw
+fw-shipped-$(CONFIG_BRCMFMAC) += brcm/bcm4329-fullmac-4.bin \
+				brcm/bcm4329-fullmac-4.txt
 fw-shipped-$(CONFIG_CASSINI) += sun/cassini.bin
 fw-shipped-$(CONFIG_COMPUTONE) += intelliport2.bin
 fw-shipped-$(CONFIG_CHELSIO_T3) += cxgb3/t3b_psram-1.1.0.bin \
