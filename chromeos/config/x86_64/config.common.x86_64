@@ -976,6 +976,7 @@ CONFIG_SND_PCI=y
 # CONFIG_SND_RME32 is not set
 # CONFIG_SND_RME96 is not set
 # CONFIG_SND_RME9652 is not set
+# CONFIG_SND_SOC is not set
 # CONFIG_SND_SONICVIBES is not set
 CONFIG_SND_SPI=y
 # CONFIG_SND_TRIDENT is not set
