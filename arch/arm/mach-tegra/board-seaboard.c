@@ -36,6 +36,8 @@
 #include <mach/iomap.h>
 #include <mach/irqs.h>
 #include <mach/pinmux.h>
+#include <mach/i2s.h>
+#include <mach/audio.h>
 #include <mach/iomap.h>
 #include <mach/io.h>
 #include <mach/gpio.h>
@@ -313,6 +315,12 @@ static struct tegra_i2c_platform_data seaboard_dvc_platform_data = {
 	.is_dvc		= true,
 };
 
+static struct i2c_board_info __initdata seaboard_i2c1_devices[] = {
+	{
+		I2C_BOARD_INFO("wm8903", 0x1a),
+	},
+};
+
 static struct i2c_board_info __initdata seaboard_i2c4_devices[] = {
 	{
 		I2C_BOARD_INFO("adt7461", 0x4c),
@@ -321,6 +329,18 @@ static struct i2c_board_info __initdata seaboard_i2c4_devices[] = {
 		I2C_BOARD_INFO("ak8975", 0x0c),
 		.irq		= TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_MAGNETOMETER),
 	},
+};
+
+static struct tegra_audio_platform_data tegra_audio_pdata = {
+	.i2s_master	= false,
+	.dsp_master	= false,
+	.dma_on		= true,  /* use dma by default */
+	.i2s_clk_rate	= 240000000,
+	.dap_clk	= "clk_dev1",
+	.audio_sync_clk = "audio_2x",
+	.mode		= I2S_BIT_FORMAT_I2S,
+	.fifo_fmt	= I2S_FIFO_16_LSB,
+	.bit_size	= I2S_BIT_SIZE_16,
 };
 
 static void __init seaboard_i2c_init(void)
@@ -336,6 +356,9 @@ static void __init seaboard_i2c_init(void)
 	platform_device_register(&tegra_i2c_device2);
 	platform_device_register(&tegra_i2c_device3);
 	platform_device_register(&tegra_i2c_device4);
+
+	i2c_register_board_info(0, seaboard_i2c1_devices,
+				ARRAY_SIZE(seaboard_i2c1_devices));
 
 	i2c_register_board_info(4, seaboard_i2c4_devices,
 				ARRAY_SIZE(seaboard_i2c4_devices));
@@ -470,6 +493,7 @@ static struct platform_device *seaboard_devices[] __initdata = {
 	&pda_power_device,
 	&seaboard_gpio_keys_device,
 	&tegra_gart_device,
+	&tegra_i2s_device1,
 };
 
 static void __init seaboard_wlan_init(void)
@@ -515,6 +539,7 @@ static void __init tegra_seaboard_init(void)
 	seaboard_pinmux_init();
 
 	tegra_ehci3_device.dev.platform_data = &tegra_ehci_pdata[2];
+	tegra_i2s_device1.dev.platform_data = &tegra_audio_pdata;
 
 	platform_add_devices(seaboard_devices, ARRAY_SIZE(seaboard_devices));
 
