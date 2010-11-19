@@ -1090,9 +1090,7 @@ struct mdp4_overlay_pipe *mdp4_overlay_pipe_alloc(int ptype, boolean usevg)
 	for (; i < MDP4_MAX_PIPE; i++) {
 		if (pipe->pipe_type == ptype && pipe->pipe_used == 0) {
 			init_completion(&pipe->comp);
-#ifdef MDP4_MDDI_DMA_SWITCH
 			init_completion(&pipe->dmas_comp);
-#endif
 	printk(KERN_INFO "mdp4_overlay_pipe_alloc: pipe=%x ndx=%d\n",
 					(int)pipe, pipe->pipe_ndx);
 			return pipe;
@@ -1208,14 +1206,17 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 		return -ERANGE;
 	}
 
-	/*  non integer down saceling ratio  smaller than 1/4
-	 *  is not supportted
-	 */
-	if (req->src_rect.h > (req->dst_rect.h * 4)) {
-		if (req->src_rect.h % req->dst_rect.h) { /* need integer */
-			mdp4_stat.err_scale++;
-			printk(KERN_ERR "mpd_overlay_req2pipe: need integer (h)!\n");
-			return -ERANGE;
+	if (mdp_hw_revision == MDP4_REVISION_V1) {
+		/*  non integer down saceling ratio  smaller than 1/4
+		 *  is not supportted
+		 */
+		if (req->src_rect.h > (req->dst_rect.h * 4)) {
+			if (req->src_rect.h % req->dst_rect.h) {
+				mdp4_stat.err_scale++;
+				printk(KERN_ERR "mpd_overlay_req2pipe: \
+						need integer (h)!\n");
+				return -ERANGE;
+			}
 		}
 	}
 
