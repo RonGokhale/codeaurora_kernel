@@ -217,6 +217,7 @@ struct msm_panel_common_pdata {
 struct lcdc_platform_data {
 	int (*lcdc_gpio_config)(int on);
 	int (*lcdc_power_save)(int);
+	unsigned int (*lcdc_get_clk)(void);
 };
 
 struct tvenc_platform_data {
