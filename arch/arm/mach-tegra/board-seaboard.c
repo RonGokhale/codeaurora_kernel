@@ -315,9 +315,13 @@ static struct tegra_i2c_platform_data seaboard_dvc_platform_data = {
 	.is_dvc		= true,
 };
 
-static struct i2c_board_info __initdata seaboard_i2c1_devices[] = {
+static struct i2c_board_info __initdata seaboard_i2c0_devices[] = {
 	{
 		I2C_BOARD_INFO("wm8903", 0x1a),
+	},
+	{
+		I2C_BOARD_INFO("isl29018", 0x44),
+		.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_ISL29018_IRQ),
 	},
 };
 
@@ -330,6 +334,13 @@ static struct i2c_board_info __initdata seaboard_i2c4_devices[] = {
 		.irq		= TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_MAGNETOMETER),
 	},
 };
+
+static void seaboard_isl29018_init(void)
+{
+	tegra_gpio_enable(TEGRA_GPIO_ISL29018_IRQ);
+	gpio_request(TEGRA_GPIO_ISL29018_IRQ, "isl29018");
+	gpio_direction_input(TEGRA_GPIO_ISL29018_IRQ);
+}
 
 static struct tegra_audio_platform_data tegra_audio_pdata = {
 	.i2s_master	= false,
@@ -353,6 +364,8 @@ static void __init seaboard_i2c_init(void)
 {
 	tegra_gpio_enable(TEGRA_GPIO_MAGNETOMETER);
 
+	seaboard_isl29018_init();
+
 	tegra_i2c_device1.dev.platform_data = &seaboard_i2c1_platform_data;
 	tegra_i2c_device2.dev.platform_data = &seaboard_i2c2_platform_data;
 	tegra_i2c_device3.dev.platform_data = &seaboard_i2c3_platform_data;
@@ -363,8 +376,8 @@ static void __init seaboard_i2c_init(void)
 	platform_device_register(&tegra_i2c_device3);
 	platform_device_register(&tegra_i2c_device4);
 
-	i2c_register_board_info(0, seaboard_i2c1_devices,
-				ARRAY_SIZE(seaboard_i2c1_devices));
+	i2c_register_board_info(0, seaboard_i2c0_devices,
+				ARRAY_SIZE(seaboard_i2c0_devices));
 
 	i2c_register_board_info(4, seaboard_i2c4_devices,
 				ARRAY_SIZE(seaboard_i2c4_devices));
