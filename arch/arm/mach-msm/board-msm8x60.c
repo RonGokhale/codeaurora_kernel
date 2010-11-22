@@ -4337,8 +4337,16 @@ void msm_snddev_poweramp_off(void)
 	config_class_d1_gpio(0);
 }
 
+int mdp_core_clk_rate_table[] = {
+	59080000,
+	128000000,
+	160000000,
+	200000000,
+};
 static struct msm_panel_common_pdata mdp_pdata = {
 	.mdp_core_clk_rate = 200000000,
+	.mdp_core_clk_table = mdp_core_clk_rate_table,
+	.num_mdp_clk = ARRAY_SIZE(mdp_core_clk_rate_table),
 };
 
 static void __init msm_fb_add_devices(void)
