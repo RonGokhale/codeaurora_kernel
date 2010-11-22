@@ -1766,6 +1766,11 @@ kgsl_drawctxt_switch(struct kgsl_device *device, struct kgsl_drawctxt *drawctxt,
 			active_ctxt->flags |= CTXT_FLAGS_SHADER_RESTORE;
 		}
 
+#ifdef CONFIG_MSM_KGSL_FORCE_GMEM_SAVE
+		if (!(active_ctxt->flags & CTXT_FLAGS_GMEM_SAVE))
+			active_ctxt->flags |= CTXT_FLAGS_GMEM_SAVE;
+#endif
+
 		if (active_ctxt->flags & CTXT_FLAGS_GMEM_SAVE
 			&& active_ctxt->flags & CTXT_FLAGS_GMEM_SHADOW) {
 			/* save gmem.
