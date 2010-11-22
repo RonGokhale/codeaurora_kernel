@@ -343,6 +343,12 @@ static struct tegra_audio_platform_data tegra_audio_pdata = {
 	.bit_size	= I2S_BIT_SIZE_16,
 };
 
+static struct i2c_board_info __initdata seaboard_i2c2_devices[] = {
+	{
+		I2C_BOARD_INFO("bq20z75", 0x0b),
+	},
+};
+
 static void __init seaboard_i2c_init(void)
 {
 	tegra_gpio_enable(TEGRA_GPIO_MAGNETOMETER);
@@ -362,6 +368,9 @@ static void __init seaboard_i2c_init(void)
 
 	i2c_register_board_info(4, seaboard_i2c4_devices,
 				ARRAY_SIZE(seaboard_i2c4_devices));
+
+	i2c_register_board_info(2, seaboard_i2c2_devices,
+				ARRAY_SIZE(seaboard_i2c2_devices));
 }
 
 static struct resource tegra_rtc_resources[] = {
