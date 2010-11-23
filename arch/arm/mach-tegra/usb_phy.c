@@ -65,6 +65,7 @@
 #define   UTMIP_PHY_ENABLE		(1 << 12)
 #define   ULPI_PHY_ENABLE	(1 << 13)
 #define   USB_SUSP_SET		(1 << 14)
+#define   USB_WAKEUP_DEBOUNCE_COUNT(x)	(((x) & 0x7) << 16)
 
 #define USB1_LEGACY_CTRL	0x410
 #define   USB1_NO_LEGACY_MODE			(1 << 0)
@@ -113,6 +114,7 @@
 
 #define UTMIP_TX_CFG0		0x820
 #define   UTMIP_FS_PREABMLE_J		(1 << 19)
+#define   UTMIP_HS_DISCON_DISABLE	(1 << 8)
 
 #define UTMIP_MISC_CFG0		0x824
 #define   UTMIP_SUSPEND_EXIT_ON_EDGE	(1 << 22)
@@ -449,9 +451,12 @@ static void utmi_phy_power_off(struct tegra_usb_phy *phy)
 
 	utmi_phy_clk_disable(phy);
 
-	val = readl(base + USB_SUSP_CTRL);
-	val |= USB_WAKE_ON_CNNT_EN_DEV | USB_WAKE_ON_DISCON_EN_DEV;
-	writel(val, base + USB_SUSP_CTRL);
+	if (phy->mode == TEGRA_USB_PHY_MODE_DEVICE) {
+		val = readl(base + USB_SUSP_CTRL);
+		val &= ~USB_WAKEUP_DEBOUNCE_COUNT(~0);
+		val |= USB_WAKE_ON_CNNT_EN_DEV | USB_WAKEUP_DEBOUNCE_COUNT(5);
+		writel(val, base + USB_SUSP_CTRL);
+	}
 
 	val = readl(base + USB_SUSP_CTRL);
 	val |= UTMIP_RESET;
@@ -472,6 +477,26 @@ static void utmi_phy_power_off(struct tegra_usb_phy *phy)
 	writel(val, base + UTMIP_XCVR_CFG1);
 
 	utmip_pad_power_off(phy);
+}
+
+static void utmi_phy_preresume(struct tegra_usb_phy *phy)
+{
+	unsigned long val;
+	void __iomem *base = phy->regs;
+
+	val = readl(base + UTMIP_TX_CFG0);
+	val |= UTMIP_HS_DISCON_DISABLE;
+	writel(val, base + UTMIP_TX_CFG0);
+}
+
+static void utmi_phy_postresume(struct tegra_usb_phy *phy)
+{
+	unsigned long val;
+	void __iomem *base = phy->regs;
+
+	val = readl(base + UTMIP_TX_CFG0);
+	val &= ~UTMIP_HS_DISCON_DISABLE;
+	writel(val, base + UTMIP_TX_CFG0);
 }
 
 static void ulpi_viewport_write(struct tegra_usb_phy *phy, u8 addr, u8 data)
@@ -662,6 +687,20 @@ int tegra_usb_phy_power_off(struct tegra_usb_phy *phy)
 	else
 		utmi_phy_power_off(phy);
 
+	return 0;
+}
+
+int tegra_usb_phy_preresume(struct tegra_usb_phy *phy)
+{
+	if (phy->instance == 2)
+		utmi_phy_preresume(phy);
+	return 0;
+}
+
+int tegra_usb_phy_postresume(struct tegra_usb_phy *phy)
+{
+	if (phy->instance == 2)
+		utmi_phy_postresume(phy);
 	return 0;
 }
 

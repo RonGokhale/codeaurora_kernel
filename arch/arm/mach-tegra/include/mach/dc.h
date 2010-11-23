@@ -86,7 +86,10 @@ struct tegra_dc_win {
 
 	void			*virt_addr;
 	dma_addr_t		phys_addr;
+	unsigned		offset_u;
+	unsigned		offset_v;
 	unsigned		stride;
+	unsigned		stride_uv;
 	unsigned		x;
 	unsigned		y;
 	unsigned		w;
@@ -142,7 +145,7 @@ struct tegra_fb_data {
 
 	int		xres;
 	int		yres;
-	int		bits_per_pixel;
+	int		bits_per_pixel; /* -1 means autodetect */
 
 	unsigned long	flags;
 };
