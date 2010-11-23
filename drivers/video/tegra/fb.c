@@ -124,13 +124,14 @@ static int tegra_fb_set_par(struct fb_info *info)
 		/* we only support RGB ordering for now */
 		switch (var->bits_per_pixel) {
 		case 32:
-		case 24:
 			var->red.offset = 0;
 			var->red.length = 8;
 			var->green.offset = 8;
 			var->green.length = 8;
 			var->blue.offset = 16;
 			var->blue.length = 8;
+			var->transp.offset = 24;
+			var->transp.length = 8;
 			tegra_fb->win->fmt = TEGRA_WIN_FMT_R8G8B8A8;
 			break;
 		case 16:
@@ -148,6 +149,9 @@ static int tegra_fb_set_par(struct fb_info *info)
 		}
 		info->fix.line_length = var->xres * var->bits_per_pixel / 8;
 		tegra_fb->win->stride = info->fix.line_length;
+		tegra_fb->win->stride_uv = 0;
+		tegra_fb->win->offset_u = 0;
+		tegra_fb->win->offset_v = 0;
 	}
 
 	if (var->pixclock) {
@@ -175,9 +179,9 @@ static int tegra_fb_set_par(struct fb_info *info)
 		tegra_dc_set_mode(tegra_fb->win->dc, &mode);
 
 		tegra_fb->win->w = info->mode->xres;
-		tegra_fb->win->h = info->mode->xres;
+		tegra_fb->win->h = info->mode->yres;
 		tegra_fb->win->out_w = info->mode->xres;
-		tegra_fb->win->out_h = info->mode->xres;
+		tegra_fb->win->out_h = info->mode->yres;
 	}
 	return 0;
 }
@@ -193,6 +197,10 @@ static int tegra_fb_setcolreg(unsigned regno, unsigned red, unsigned green,
 
 		if (regno >= 16)
 			return -EINVAL;
+
+		red = (red >> (16 - info->var.red.length));
+		green = (green >> (16 - info->var.green.length));
+		blue = (blue >> (16 - info->var.blue.length));
 
 		v = (red << var->red.offset) |
 			(green << var->green.offset) |
@@ -216,6 +224,7 @@ static int tegra_fb_blank(int blank, struct fb_info *info)
 
 	case FB_BLANK_POWERDOWN:
 		dev_dbg(&tegra_fb->ndev->dev, "blank\n");
+		flush_workqueue(tegra_fb->flip_wq);
 		tegra_dc_disable(tegra_fb->win->dc);
 		return 0;
 
@@ -223,6 +232,12 @@ static int tegra_fb_blank(int blank, struct fb_info *info)
 		return -ENOTTY;
 	}
 }
+
+void tegra_fb_suspend(struct tegra_fb_info *tegra_fb)
+{
+	flush_workqueue(tegra_fb->flip_wq);
+}
+
 
 static int tegra_fb_pan_display(struct fb_var_screeninfo *var,
 				struct fb_info *info)
@@ -341,6 +356,7 @@ static int tegra_fb_set_windowattr(struct tegra_fb_info *tegra_fb,
 {
 	if (flip_win->handle == NULL) {
 		win->flags = 0;
+		win->cur_handle = NULL;
 		return 0;
 	}
 
@@ -363,7 +379,10 @@ static int tegra_fb_set_windowattr(struct tegra_fb_info *tegra_fb,
 
 	/* STOPSHIP verify that this won't read outside of the surface */
 	win->phys_addr = flip_win->phys_addr + flip_win->attr.offset;
+	win->offset_u = flip_win->attr.offset_u + flip_win->attr.offset;
+	win->offset_v = flip_win->attr.offset_v + flip_win->attr.offset;
 	win->stride = flip_win->attr.stride;
+	win->stride_uv = flip_win->attr.stride_uv;
 
 	if ((s32)flip_win->attr.pre_syncpt_id >= 0) {
 		nvhost_syncpt_wait_timeout(&tegra_fb->ndev->host->syncpt,
@@ -604,15 +623,21 @@ void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
 		}
 	}
 
-	/* in case the first mode was not matched */
-	m = list_first_entry(&fb_info->info->modelist, struct fb_modelist, list);
-	m->mode.flag |= FB_MODE_IS_FIRST;
+	if (list_empty(&fb_info->info->modelist)) {
+		struct tegra_dc_mode mode;
+		memset(&fb_info->info->var, 0x0, sizeof(fb_info->info->var));
+		memset(&mode, 0x0, sizeof(mode));
+		tegra_dc_set_mode(fb_info->win->dc, &mode);
+	} else {
+		/* in case the first mode was not matched */
+		m = list_first_entry(&fb_info->info->modelist, struct fb_modelist, list);
+		m->mode.flag |= FB_MODE_IS_FIRST;
+		fb_info->info->mode = (struct fb_videomode *)
+			fb_find_best_display(specs, &fb_info->info->modelist);
 
-	fb_info->info->mode = (struct fb_videomode *)
-		fb_find_best_display(specs, &fb_info->info->modelist);
-
-	fb_videomode_to_var(&fb_info->info->var, fb_info->info->mode);
-	tegra_fb_set_par(fb_info->info);
+		fb_videomode_to_var(&fb_info->info->var, fb_info->info->mode);
+		tegra_fb_set_par(fb_info->info);
+	}
 
 	event.info = fb_info->info;
 	fb_notifier_call_chain(FB_EVENT_NEW_MODELIST, &event);
@@ -722,7 +747,10 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 	win->z = 0;
 	win->phys_addr = fb_phys;
 	win->virt_addr = fb_base;
+	win->offset_u = 0;
+	win->offset_v = 0;
 	win->stride = fb_data->xres * fb_data->bits_per_pixel / 8;
+	win->stride_uv = 0;
 	win->flags = TEGRA_WIN_FLAG_ENABLED;
 
 	if (fb_mem)
