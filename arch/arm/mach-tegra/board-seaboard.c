@@ -26,7 +26,6 @@
 #include <linux/serial_8250.h>
 #include <linux/i2c.h>
 #include <linux/i2c-tegra.h>
-#include <linux/pda_power.h>
 #include <linux/dma-mapping.h>
 #include <linux/fsl_devices.h>
 #include <linux/delay.h>
@@ -205,18 +204,6 @@ static struct platform_device tegra_otg = {
 	},
 	.resource = tegra_otg_resources,
 	.num_resources = ARRAY_SIZE(tegra_otg_resources),
-};
-
-/* PDA power */
-static struct pda_power_pdata pda_power_pdata = {
-};
-
-static struct platform_device pda_power_device = {
-	.name   = "pda_power",
-	.id     = -1,
-	.dev    = {
-		.platform_data  = &pda_power_pdata,
-	},
 };
 
 static struct tegra_utmip_config utmi_phy_config[] = {
@@ -512,7 +499,6 @@ static struct platform_device *seaboard_devices[] __initdata = {
 	&tegra_ehci3_device,
 	&tegra_rtc_device,
 	&pmu_device,
-	&pda_power_device,
 	&seaboard_gpio_keys_device,
 	&tegra_gart_device,
 	&tegra_i2s_device1,
@@ -568,7 +554,7 @@ static void __init tegra_seaboard_init(void)
 	seaboard_panel_init();
 	seaboard_sdhci_init();
 	seaboard_i2c_init();
-	seaboard_regulator_init();
+	seaboard_power_init();
 	seaboard_kbc_init();
 
 	seaboard_wlan_init();

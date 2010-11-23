@@ -19,6 +19,11 @@
 #include <linux/regulator/machine.h>
 #include <linux/mfd/tps6586x.h>
 #include <linux/gpio.h>
+#include <linux/power/gpio-charger.h>
+#include <linux/platform_device.h>
+
+#include "board-seaboard.h"
+#include "gpio-names.h"
 
 static struct regulator_consumer_supply tps658621_sm0_supply[] = {
 	REGULATOR_SUPPLY("vdd_core", NULL),
@@ -134,5 +139,71 @@ static struct i2c_board_info __initdata seaboard_regulators[] = {
 int __init seaboard_regulator_init(void)
 {
 	i2c_register_board_info(4, seaboard_regulators, 1);
+	return 0;
+}
+
+/* ac power */
+static char *tegra_batteries[] = {
+	"battery",
+};
+
+static struct resource seaboard_ac_resources[] = {
+	[0] = {
+		.name = "ac",
+		.start = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_AC_ONLINE),
+		.end = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_AC_ONLINE),
+		.flags = (IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHEDGE |
+				IORESOURCE_IRQ_LOWEDGE),
+	},
+};
+
+static struct gpio_charger_platform_data seaboard_ac_platform_data = {
+	.name			= "ac",
+	.gpio			= TEGRA_GPIO_AC_ONLINE,
+	.gpio_active_low	= 1,
+	.supplied_to		= tegra_batteries,
+	.num_supplicants	= ARRAY_SIZE(tegra_batteries),
+};
+
+static struct platform_device seaboard_ac_power_device = {
+	.name		= "gpio-charger",
+	.id		= 0,
+	.resource	= seaboard_ac_resources,
+	.num_resources	= ARRAY_SIZE(seaboard_ac_resources),
+	.dev = {
+		.platform_data	= &seaboard_ac_platform_data,
+	},
+};
+
+int __init seaboard_ac_power_init(void)
+{
+	int err;
+
+	tegra_gpio_enable(TEGRA_GPIO_AC_ONLINE);
+
+	err = gpio_request(TEGRA_GPIO_AC_ONLINE, "ac online");
+	if (err < 0) {
+		pr_err("could not acquire ac online GPIO\n");
+	} else {
+		gpio_direction_input(TEGRA_GPIO_AC_ONLINE);
+		gpio_free(TEGRA_GPIO_AC_ONLINE);
+	}
+
+	err = platform_device_register(&seaboard_ac_power_device);
+	return err;
+}
+
+int __init seaboard_power_init(void)
+{
+	int err;
+
+	err = seaboard_regulator_init();
+	if (err < 0)
+		pr_warning("Unable to initialize regulator\n");
+
+	err = seaboard_ac_power_init();
+	if (err < 0)
+		pr_warning("Unable to initialize ac power\n");
+
 	return 0;
 }

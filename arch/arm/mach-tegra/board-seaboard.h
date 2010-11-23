@@ -26,10 +26,11 @@
 #define TEGRA_GPIO_EN_VDD_PNL		TEGRA_GPIO_PC6
 #define TEGRA_GPIO_MAGNETOMETER		TEGRA_GPIO_PN5
 #define TEGRA_GPIO_ISL29018_IRQ		TEGRA_GPIO_PZ2
+#define TEGRA_GPIO_AC_ONLINE		TEGRA_GPIO_PV3
 
 void seaboard_pinmux_init(void);
 int seaboard_panel_init(void);
 int seaboard_sdhci_init(void);
-int seaboard_regulator_init(void);
+int seaboard_power_init(void);
 
 #endif
