@@ -22,6 +22,7 @@ CONFIG_ARM_VIC_NR=2
 # CONFIG_ATL1E is not set
 # CONFIG_ATL2 is not set
 # CONFIG_ATMEL is not set
+# CONFIG_BATTERY_BQ20Z75 is not set
 # CONFIG_BE2ISCSI is not set
 # CONFIG_BE2NET is not set
 # CONFIG_BLK_CPQ_CISS_DA is not set
