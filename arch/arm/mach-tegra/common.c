@@ -127,12 +127,11 @@ static void tegra_pm_restart(char mode, const char *cmd)
 void __init tegra_init_early(void)
 {
 	arm_pm_restart = tegra_pm_restart;
-#ifdef CONFIG_TEGRA_SYSTEM_DMA
-	tegra_dma_init();
-#endif
 	tegra_init_fuse();
 	tegra_init_clock();
 	tegra_clk_init_from_table(common_clk_init_table);
 	tegra_init_power();
 	tegra_init_cache();
+	tegra_dma_init();
+	tegra_init_fuse_dma();
 }
