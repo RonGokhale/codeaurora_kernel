@@ -215,7 +215,7 @@ int afe_open(int port_id, int rate, int channel_mode)
 	ret = wait_event_timeout(this_afe.wait,
 			(atomic_read(&this_afe.state) == 0),
 				msecs_to_jiffies(TIMEOUT_MS));
-	if (ret < 0) {
+	if (!ret) {
 		pr_err("%s: wait_event timeout\n", __func__);
 		ret = -EINVAL;
 		goto fail_cmd;
@@ -243,7 +243,7 @@ int afe_open(int port_id, int rate, int channel_mode)
 	ret = wait_event_timeout(this_afe.wait,
 			(atomic_read(&this_afe.state) == 0),
 				msecs_to_jiffies(TIMEOUT_MS));
-	if (ret < 0) {
+	if (!ret) {
 		pr_err("%s: wait_event timeout\n", __func__);
 		ret = -EINVAL;
 		goto fail_cmd;
@@ -289,7 +289,7 @@ int afe_loopback(u16 enable, u16 rx_port, u16 tx_port)
 	ret = wait_event_timeout(this_afe.wait,
 		(atomic_read(&this_afe.state) == 0),
 				msecs_to_jiffies(TIMEOUT_MS));
-	if (ret < 0) {
+	if (!ret) {
 		pr_err("%s: wait_event timeout\n", __func__);
 		ret = -EINVAL;
 	}
@@ -331,7 +331,7 @@ int afe_close(int port_id)
 	ret = wait_event_timeout(this_afe.wait,
 			(atomic_read(&this_afe.state) == 0),
 					msecs_to_jiffies(TIMEOUT_MS));
-	if (ret < 0) {
+	if (!ret) {
 		pr_err("%s: wait_event timeout\n", __func__);
 		ret = -EINVAL;
 		goto fail_cmd;
