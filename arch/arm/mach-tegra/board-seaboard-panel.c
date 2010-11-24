@@ -67,6 +67,8 @@ static void seaboard_backlight_exit(struct device *dev) {
 
 static int seaboard_backlight_notify(struct device *unused, int brightness)
 {
+	gpio_set_value(seaboard_en_vdd_pnl, !!brightness);
+	gpio_set_value(seaboard_lvds_shutdown, !!brightness);
 	gpio_set_value(seaboard_bl_enb, !!brightness);
 	return brightness;
 }
@@ -307,16 +309,6 @@ int __init seaboard_panel_init(void)
 	gpio_request(seaboard_en_vdd_pnl, "en_vdd_pnl");
 	gpio_direction_output(seaboard_en_vdd_pnl, 1);
 	tegra_gpio_enable(seaboard_en_vdd_pnl);
-
-	gpio_request(seaboard_bl_enb, "bl_enb");
-	gpio_direction_output(seaboard_bl_enb, 1);
-	tegra_gpio_enable(seaboard_bl_enb);
-
-#if 1
-	gpio_request(seaboard_bl_pwm, "bl_pwm");
-	gpio_direction_output(seaboard_bl_pwm, 1);
-	tegra_gpio_enable(seaboard_bl_pwm);
-#endif
 
 	gpio_request(seaboard_bl_vdd, "bl_vdd");
 	gpio_direction_output(seaboard_bl_vdd, 1);
