@@ -44,6 +44,7 @@ static struct msm_fb_data_type *mddi_mfd;
 
 static int vsync_start_y_adjust = 4;
 
+#ifdef MDP4_MDDI_DMA_SWITCH
 static int dmap_vsync_enable;
 
 void mdp_dmap_vsync_set(int enable)
@@ -55,6 +56,7 @@ int mdp_dmap_vsync_get(void)
 {
 	return dmap_vsync_enable;
 }
+#endif
 
 void mdp4_mddi_vsync_enable(struct msm_fb_data_type *mfd,
 		struct mdp4_overlay_pipe *pipe, int which)
@@ -66,13 +68,11 @@ void mdp4_mddi_vsync_enable(struct msm_fb_data_type *mfd,
 	if ((mfd->use_mdp_vsync) && (mfd->ibuf.vsync_enable) &&
 		(mfd->panel_info.lcd.vsync_enable)) {
 
-		if (mdp_hw_revision < MDP4_REVISION_V2_1) {
-			/* need dmas dmap switch */
-			if (which == 0 && dmap_vsync_enable == 0 &&
-				mfd->panel_info.lcd.rev < 2) /* dma_p */
-				return;
-		}
-
+#ifdef MDP4_MDDI_DMA_SWITCH
+		if (which == 0 && dmap_vsync_enable == 0 &&
+			mfd->panel_info.lcd.rev < 2) /* dma_p */
+			return;
+#endif
 		if (vsync_start_y_adjust <= pipe->dst_y)
 			start_y = pipe->dst_y - vsync_start_y_adjust;
 		else
@@ -275,16 +275,16 @@ void mdp4_mddi_overlay_restore(void)
 		return;
 #endif
 
-	if (mdp_hw_revision < MDP4_REVISION_V2_1) /* need dmas dmap switch */
-		mdp4_mddi_overlay_dmas_restore();
-	else { /* no dmas dmap switch */
-		/* mutex holded by caller */
-		if (mddi_mfd && mddi_pipe) {
-			mdp4_mddi_dma_busy_wait(mddi_mfd, mddi_pipe);
-			mdp4_overlay_update_lcd(mddi_mfd);
-			mdp4_mddi_overlay_kickoff(mddi_mfd, mddi_pipe);
-		}
+#ifdef MDP4_MDDI_DMA_SWITCH
+	mdp4_mddi_overlay_dmas_restore();
+#else
+	/* mutex holded by caller */
+	if (mddi_mfd && mddi_pipe) {
+		mdp4_mddi_dma_busy_wait(mddi_mfd, mddi_pipe);
+		mdp4_overlay_update_lcd(mddi_mfd);
+		mdp4_mddi_overlay_kickoff(mddi_mfd, mddi_pipe);
 	}
+#endif
 }
 
 #ifdef MDP4_NONBLOCKING
@@ -337,6 +337,8 @@ void mdp4_mddi_overlay_kickoff(struct msm_fb_data_type *mfd,
 	mdp_disable_irq(MDP_OVERLAY0_TERM);
 #endif
 }
+
+#ifdef MDP4_MDDI_DMA_SWITCH
 
 void mdp4_dma_s_done_mddi()
 {
@@ -440,6 +442,8 @@ void mdp4_mddi_overlay_dmas_restore(void)
 		mdp4_mddi_dma_s_kickoff(mddi_mfd, mddi_pipe);
 	}
 }
+#endif
+
 
 void mdp4_mddi_overlay(struct msm_fb_data_type *mfd)
 {
@@ -453,15 +457,12 @@ void mdp4_mddi_overlay(struct msm_fb_data_type *mfd)
 #endif
 		mdp4_overlay_update_lcd(mfd);
 
-		if (mdp_hw_revision < MDP4_REVISION_V2_1) {
-			/* dmas dmap switch */
-			if (mdp4_overlay_pipe_staged(mddi_pipe->mixer_num)
-						<= 1) {
-				mdp4_dma_s_update_lcd(mfd, mddi_pipe);
-				mdp4_mddi_dma_s_kickoff(mfd, mddi_pipe);
-			} else
-				mdp4_mddi_overlay_kickoff(mfd, mddi_pipe);
-		} else	/* no dams dmap switch  */
+#ifdef MDP4_MDDI_DMA_SWITCH
+		if (mdp4_overlay_mixer_play(mddi_pipe->mixer_num) < 1) {
+			mdp4_dma_s_update_lcd(mfd, mddi_pipe);
+			mdp4_mddi_dma_s_kickoff(mfd, mddi_pipe);
+		} else
+#endif
 			mdp4_mddi_overlay_kickoff(mfd, mddi_pipe);
 
 		mdp4_stat.kickoff_mddi++;
