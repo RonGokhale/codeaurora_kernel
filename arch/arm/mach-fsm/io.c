@@ -234,6 +234,8 @@ static struct map_desc fsm9xxx_io_desc[] __initdata = {
 	MSM_DEVICE(GCC),
 	MSM_DEVICE(TCSR),
 	MSM_DEVICE(TLMM),
+	MSM_DEVICE(GRFC),
+	MSM_DEVICE(HH),
 #ifdef CONFIG_MSM_DEBUG_UART
 	MSM_DEVICE(DEBUG_UART),
 #endif

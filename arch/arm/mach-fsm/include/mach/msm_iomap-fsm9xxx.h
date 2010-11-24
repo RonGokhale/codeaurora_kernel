@@ -100,8 +100,16 @@
 
 #define MSM_DMOV_BASE		  MSM_DMOV_SD0_BASE
 
+#define MSM_GRFC_BASE	      IOMEM(0xF000E000)
+#define MSM_GRFC_PHYS	      0x94038000
+#define MSM_GRFC_SIZE	      SZ_4K
+
 #define MSM_SHARED_RAM_BASE   IOMEM(0xF0100000)
 #define MSM_SHARED_RAM_SIZE   SZ_1M
+
+#define MSM_HH_BASE	      IOMEM(0xF0200000)
+#define MSM_HH_PHYS	      0x94200000
+#define MSM_HH_SIZE	      SZ_1M
 
 #define MSM_UART1_PHYS        0x94000000
 #define MSM_UART1_SIZE        SZ_4K
