@@ -106,6 +106,16 @@
 #define SSBI_PA_RD_STATUS_TRANS_COMPLETE \
 	(SSBI_PA_RD_STATUS_TRANS_DONE|SSBI_PA_RD_STATUS_TRANS_DENIED)
 
+/* SSBI_FSM Read and Write commands for the FSM9xxx SSBI implementation */
+#define SSBI_FSM_CMD_REG_ADDR_SHFT	(0x08)
+
+#define SSBI_FSM_CMD_READ(AD) \
+	(SSBI_CMD_RDWRN | (((AD) & 0xFFFF) << SSBI_FSM_CMD_REG_ADDR_SHFT))
+
+#define SSBI_FSM_CMD_WRITE(AD, DT) \
+	((((AD) & 0xFFFF) << SSBI_FSM_CMD_REG_ADDR_SHFT) | \
+	 (((DT) & 0xFF) << SSBI_CMD_REG_DATA_SHFT))
+
 #define SSBI_MSM_NAME			"i2c_ssbi"
 
 MODULE_LICENSE("GPL v2");
@@ -183,7 +193,12 @@ i2c_ssbi_read_bytes(struct i2c_ssbi_dev *ssbi, struct i2c_msg *msg)
 	u8 *buf = msg->buf;
 	u16 len = msg->len;
 	u16 addr = msg->addr;
-	u32 read_cmd = SSBI_CMD_READ(addr);
+	u32 read_cmd;
+
+	if (ssbi->controller_type == FSM_SBI_CTRL_SSBI)
+		read_cmd = SSBI_FSM_CMD_READ(addr);
+	else
+		read_cmd = SSBI_CMD_READ(addr);
 
 	if (ssbi->controller_type == MSM_SBI_CTRL_SSBI2) {
 		u32 mode2 = readl(ssbi->base + SSBI2_MODE2);
@@ -229,7 +244,12 @@ i2c_ssbi_write_bytes(struct i2c_ssbi_dev *ssbi, struct i2c_msg *msg)
 		if (ret)
 			goto write_failed;
 
-		writel(SSBI_CMD_WRITE(addr, *buf++), ssbi->base + SSBI2_CMD);
+		if (ssbi->controller_type == FSM_SBI_CTRL_SSBI)
+			writel(SSBI_FSM_CMD_WRITE(addr, *buf++),
+				ssbi->base + SSBI2_CMD);
+		else
+			writel(SSBI_CMD_WRITE(addr, *buf++),
+				ssbi->base + SSBI2_CMD);
 
 		ret = i2c_ssbi_poll_for_transfer_completed(ssbi);
 		if (ret)
