@@ -455,8 +455,8 @@ void mdp4_mddi_overlay(struct msm_fb_data_type *mfd)
 
 		if (mdp_hw_revision < MDP4_REVISION_V2_1) {
 			/* dmas dmap switch */
-			if (mdp4_overlay_pipe_staged(mddi_pipe->mixer_num)
-						<= 1) {
+			if (mdp4_overlay_mixer_play(mddi_pipe->mixer_num)
+						< 1) {
 				mdp4_dma_s_update_lcd(mfd, mddi_pipe);
 				mdp4_mddi_dma_s_kickoff(mfd, mddi_pipe);
 			} else

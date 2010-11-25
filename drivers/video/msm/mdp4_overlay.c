@@ -1449,7 +1449,8 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 
 
 #ifdef CONFIG_FB_MSM_MDDI
-	if (ctrl->panel_mode & MDP4_PANEL_MDDI) /* MDDI panel */
+	if (pipe->mixer_num == MDP4_MIXER0 &&
+			ctrl->panel_mode & MDP4_PANEL_MDDI) /* MDDI panel */
 		mdp4_mddi_overlay_restore();
 	else    /* LCDC, DTV, ATV, MIPI_VIDEO panel */
 #endif
