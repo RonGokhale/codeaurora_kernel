@@ -189,6 +189,8 @@ struct hci_dev {
 
 	__u16			init_last_cmd;
 
+	struct crypto_blkcipher	*tfm;
+
 	struct inquiry_cache	inq_cache;
 	struct hci_conn_hash	conn_hash;
 	struct hci_chan_list	chan_list;
