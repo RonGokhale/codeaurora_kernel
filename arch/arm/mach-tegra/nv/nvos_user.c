@@ -360,6 +360,7 @@ static long nvos_ioctl(struct file *filp,
     NvError err;
     NvOsSemaphoreHandle kernelSem;
     NvOsInstance *Instance = (NvOsInstance *)filp->private_data;
+    static DEFINE_MUTEX(irq_mutex);
 
     #define DO_CLEANUP( code ) \
         do { \
@@ -427,18 +428,18 @@ static long nvos_ioctl(struct file *filp,
         break;
     }
     case NV_IOCTL_INTERRUPT_REGISTER:
-        lock_kernel();
+        mutex_lock(&irq_mutex);
         e = interrupt_register(Instance, arg);
-        unlock_kernel();
+        mutex_unlock(&irq_mutex);
         return e;
 
     case NV_IOCTL_INTERRUPT_UNREGISTER:
     case NV_IOCTL_INTERRUPT_DONE:
     case NV_IOCTL_INTERRUPT_ENABLE:
     case NV_IOCTL_INTERRUPT_MASK:
-        lock_kernel();
+        mutex_lock(&irq_mutex);
         e = interrupt_op(Instance, cmd, arg);
-        unlock_kernel();
+        mutex_unlock(&irq_mutex);
         return (e) ? -EINVAL : 0;
 
     case NV_IOCTL_MEMORY_RANGE:
