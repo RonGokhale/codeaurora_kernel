@@ -40,8 +40,6 @@ extern uint32 mdp_intr_mask;
 extern spinlock_t mdp_spin_lock;
 extern struct mdp4_statistic mdp4_stat;
 
-#define MDP4_NONBLOCKING
-
 #define MDP4_OVERLAYPROC0_BASE	0x10000
 #define MDP4_OVERLAYPROC1_BASE	0x18000
 
@@ -115,6 +113,7 @@ enum {
 #define INTR_PRIMARY_INTF_UDERRUN	BIT(8)
 #define INTR_EXTERNAL_VSYNC		BIT(9)
 #define INTR_EXTERNAL_INTF_UDERRUN	BIT(10)
+#define INTR_PRIMARY_READ_PTR		BIT(11)
 #define INTR_DMA_P_HISTOGRAM		BIT(17)
 
 /* histogram interrupts */
@@ -286,6 +285,9 @@ struct mdp4_overlay_pipe {
 	uint32 element1; /* 0 = C0, 1 = C1, 2 = C2, 3 = C3 */
 	uint32 element0; /* 0 = C0, 1 = C1, 2 = C2, 3 = C3 */
 	struct completion comp;
+	ulong blt_addr; /* blt mode addr */
+	uint32 blt_cnt;
+	uint32 blt_end;
 	struct completion dmas_comp;
 	struct mdp_overlay req_data;
 };
@@ -305,7 +307,7 @@ struct mdp4_statistic {
 	ulong intr_underrun_p;	/* Primary interface */
 	ulong intr_underrun_e;	/* external interface */
 	ulong kickoff_mddi;
-	ulong kickoff_mddi_skip;
+	ulong kickoff_piggy;
 	ulong kickoff_lcdc;
 	ulong kickoff_dtv;
 	ulong kickoff_atv;
@@ -420,9 +422,10 @@ uint32 mdp4_overlay_panel_list(void);
 void mdp4_lcdc_overlay_kickoff(struct msm_fb_data_type *mfd,
 			struct mdp4_overlay_pipe *pipe);
 
-#ifdef CONFIG_DEBUG_FS
-int mdp4_debugfs_init(void);
-#endif
+void mdp4_mddi_kickoff_video(struct msm_fb_data_type *mfd,
+                                struct mdp4_overlay_pipe *pipe);
+
+void mdp4_mddi_read_ptr_intr(void);
 
 void mdp_dmap_vsync_set(int enable);
 int mdp_dmap_vsync_get(void);

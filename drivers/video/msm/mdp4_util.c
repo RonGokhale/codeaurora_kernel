@@ -469,6 +469,8 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 				complete(&mdp_hist_comp);
 			}
 		}
+		if (isr & INTR_PRIMARY_READ_PTR)
+			mdp4_mddi_read_ptr_intr();
 	}
 
 	mdp_is_in_isr = FALSE;
