@@ -227,9 +227,7 @@ static ssize_t print_switch_name(struct switch_dev *sdev, char *buf)
 
 static ssize_t print_switch_state(struct switch_dev *sdev, char *buf)
 {
-	struct usb_info *ui = the_usb_info;
-
-	return sprintf(buf, "%s\n", (ui->online ? "online" : "offline"));
+	return sprintf(buf, "%s\n", (sdev->state ? "online" : "offline"));
 }
 
 static inline enum chg_type usb_get_chg_type(struct usb_info *ui)
