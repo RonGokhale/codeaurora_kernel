@@ -48,6 +48,9 @@ struct mdp4_overlay_ctrl {
 	struct mdp4_pipe_desc ov_pipe[OVERLAY_PIPE_MAX];/* 4 */
 	struct mdp4_overlay_pipe plist[MDP4_MAX_PIPE];	/* 4 + 2 */
 	struct mdp4_overlay_pipe *stage[MDP4_MAX_MIXER][MDP4_MAX_STAGE];
+	uint32 panel_mode;
+	uint32 mixer0_played;
+	uint32 mixer1_played;
 } mdp4_overlay_db = {
 	.plist = {
 		{
@@ -85,6 +88,24 @@ struct mdp4_overlay_ctrl {
 };
 
 static struct mdp4_overlay_ctrl *ctrl = &mdp4_overlay_db;
+
+int mdp4_overlay_mixer_play(int mixer_num)
+{
+	if (mixer_num == MDP4_MIXER1)
+		return ctrl->mixer1_played;
+	else
+		return ctrl->mixer0_played;
+}
+
+void mdp4_overlay_panel_mode(int mixer_num, uint32 mode)
+{
+	ctrl->panel_mode |= mode;
+}
+
+uint32 mdp4_overlay_panel_list(void)
+{
+	return ctrl->panel_mode;
+}
 
 void mdp4_overlay_dmae_cfg(struct msm_fb_data_type *mfd, int atv)
 {
@@ -1360,24 +1381,6 @@ int mdp4_overlay_get(struct fb_info *info, struct mdp_overlay *req)
 	return 0;
 }
 
-static int mdp4_pull_mode(int mixer)
-{
-	uint32 lcdc;
-	int off;
-
-	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
-	if (mixer == MDP4_MIXER1) /* DTV */
-		off = 0xd0000;
-	else			/* LCDC */
-		off = 0xc0000;
-
-	lcdc = inpdw(MDP_BASE + off);
-	lcdc &= 0x01;
-	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
-
-	return lcdc;
-}
-
 int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
@@ -1421,7 +1424,6 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 	struct mdp4_overlay_pipe *pipe;
-	int pull;
 
 	if (mfd == NULL)
 		return -ENODEV;
@@ -1436,16 +1438,21 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 		return -ENODEV;
 	}
 
-	pull = mdp4_pull_mode(pipe->mixer_num);
+	if (pipe->mixer_num == MDP4_MIXER1)
+		ctrl->mixer1_played = 0;
+	else
+		ctrl->mixer0_played = 0;
 
 	mdp4_mixer_stage_down(pipe);
 
-	if (pull) /* LCDC or DTV mode */
-		mdp4_overlay_reg_flush(pipe, 0);
+
+
 #ifdef CONFIG_FB_MSM_MDDI
-	else  	/* mddi */
+	if (ctrl->panel_mode & MDP4_PANEL_MDDI) /* MDDI panel */
 		mdp4_mddi_overlay_restore();
+	else    /* LCDC, DTV, ATV, MIPI_VIDEO panel */
 #endif
+		mdp4_overlay_reg_flush(pipe, 0);
 
 	mdp4_stat.overlay_unset[pipe->mixer_num]++;
 
@@ -1502,7 +1509,6 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req,
 	ulong start, addr;
 	ulong len = 0;
 	struct file *p_src_file = 0;
-	int pull;
 
 	if (mfd == NULL)
 		return -ENODEV;
@@ -1552,6 +1558,13 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req,
 		pipe->srcp1_ystride = pipe->src_width;
 	}
 
+#ifdef CONFIG_FB_MSM_MDDI
+	if (pipe->mixer_num == MDP4_MIXER0) {
+		if (ctrl->panel_mode & MDP4_PANEL_MDDI)
+			mdp4_mddi_dma_busy_wait(mfd, pipe);
+	}
+#endif
+
 	if (pipe->pipe_num >= OVERLAY_PIPE_VG1)
 		mdp4_overlay_vg_setup(pipe);	/* video/graphic pipe */
 	else
@@ -1560,21 +1573,30 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req,
 	mdp4_mixer_blend_setup(pipe);
 	mdp4_mixer_stage_up(pipe);
 
-	pull = mdp4_pull_mode(pipe->mixer_num);
-
-
-	if (pull)	/* LCDC or DTV mode */
-		mdp4_overlay_reg_flush(pipe, 1);
+	if (pipe->mixer_num == MDP4_MIXER1) {
+		ctrl->mixer1_played++;
+		/* enternal interface */
+		if (ctrl->panel_mode & MDP4_PANEL_DTV)
+			mdp4_overlay_reg_flush(pipe, 1);
+		else if (ctrl->panel_mode & MDP4_PANEL_ATV)
+			mdp4_overlay_reg_flush(pipe, 1);
+	} else {
+		/* primary interface */
+		ctrl->mixer0_played++;
+		if (ctrl->panel_mode & MDP4_PANEL_LCDC)
+			mdp4_overlay_reg_flush(pipe, 1);
+		else if (ctrl->panel_mode & MDP4_PANEL_DSI_VIDEO)
+			mdp4_overlay_reg_flush(pipe, 1);
 #ifdef CONFIG_FB_MSM_MDDI
-	else { 	/* MDDI mode */
+		else if (ctrl->panel_mode & MDP4_PANEL_MDDI) {
 
 #ifdef MDP4_NONBLOCKING
-		if (mfd->panel_power_on)
+			if (mfd->panel_power_on)
 #else
-		if (!mfd->dma->busy && mfd->panel_power_on)
+			if (!mfd->dma->busy && mfd->panel_power_on)
 #endif
-			mdp4_mddi_overlay_kickoff(mfd, pipe);
-
+				mdp4_mddi_overlay_kickoff(mfd, pipe);
+		}
 	}
 #endif
 
