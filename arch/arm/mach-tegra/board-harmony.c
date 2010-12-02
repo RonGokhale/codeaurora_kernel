@@ -246,8 +246,6 @@ static void harmony_i2c_init(void)
 	tegra_i2c_device3.dev.platform_data = &harmony_i2c3_platform_data;
 	tegra_i2c_device4.dev.platform_data = &harmony_dvc_platform_data;
 
-	i2c_register_board_info(0, harmony_i2c_bus1_board_info, 1);
-
 	platform_device_register(&tegra_i2c_device1);
 	platform_device_register(&tegra_i2c_device2);
 	platform_device_register(&tegra_i2c_device3);
