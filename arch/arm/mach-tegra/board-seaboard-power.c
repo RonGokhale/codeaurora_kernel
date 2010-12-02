@@ -162,6 +162,7 @@ static struct gpio_charger_platform_data seaboard_ac_platform_data = {
 	.gpio			= TEGRA_GPIO_AC_ONLINE,
 	.gpio_active_low	= 1,
 	.supplied_to		= tegra_batteries,
+	.type			= POWER_SUPPLY_TYPE_MAINS,
 	.num_supplicants	= ARRAY_SIZE(tegra_batteries),
 };
 
