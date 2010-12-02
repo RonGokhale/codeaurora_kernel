@@ -836,15 +836,15 @@ static uint32_t camera_on_gpio_table[] = {
 static uint32_t camera_off_gpio_fluid_table[] = {
 	/* FLUID: CAM_VGA_RST_N */
 	GPIO_CFG(31, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
-	/* FLUID: Disable CAMIF_STANDBY */
-	GPIO_CFG(143, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA)
+	/* FLUID: CAMIF_STANDBY */
+	GPIO_CFG(143, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA)
 };
 
 static uint32_t camera_on_gpio_fluid_table[] = {
 	/* FLUID: CAM_VGA_RST_N */
 	GPIO_CFG(31, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
-	/* FLUID: Disable CAMIF_STANDBY */
-	GPIO_CFG(143, 1, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA)
+	/* FLUID: CAMIF_STANDBY */
+	GPIO_CFG(143, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA)
 };
 
 static void config_gpio_table(uint32_t *table, int len)
@@ -873,6 +873,8 @@ static void config_camera_on_gpios(void)
 	if (machine_is_msm7x30_fluid()) {
 		config_gpio_table(camera_on_gpio_fluid_table,
 			ARRAY_SIZE(camera_on_gpio_fluid_table));
+		/* FLUID: drive high to put secondary sensor to STANDBY */
+		gpio_set_value(143, 1);
 	}
 }
 
