@@ -169,6 +169,7 @@ static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	{ "pll_s",	"clk_32k",	32768,		false},
 	{ "rtc",	"clk_32k",	32768,		true},
 	{ "kbc",	"clk_32k",	32768,		true},
+	{ "blink",      "clk_32k",      32768,          true},
 	{ NULL,		NULL,		0,		0},
 };
 
@@ -506,25 +507,10 @@ static struct platform_device *seaboard_devices[] __initdata = {
 
 static void __init seaboard_wlan_init(void)
 {
-	unsigned int ctrl_reg = 0, dpd_reg = 0, timer_reg = 0;
-	void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
-
 	/* set wifi power/reset gpio */
 	tegra_gpio_enable(TEGRA_GPIO_PK6);
 	gpio_request(TEGRA_GPIO_PK6, "wlan_pwr_rst");
 	gpio_direction_output(TEGRA_GPIO_PK6, 1);
-
-	/* enable 32K Clock */
-	timer_reg = 0;
-	writel(timer_reg, pmc + PMC_BLINK_TIMER);
-
-	dpd_reg = readl(pmc + PMC_DPD_PADS_ORIDE);
-	dpd_reg |= PMC_DPD_PADS_ORIDE_BLINK_ENABLE;
-	writel(dpd_reg, pmc + PMC_DPD_PADS_ORIDE);
-
-	ctrl_reg = readl(pmc + PMC_CTRL);
-	ctrl_reg |= PMC_CTRL_BLINK_EN;
-	writel(ctrl_reg, pmc + PMC_CTRL);
 }
 
 static struct tegra_suspend_platform_data seaboard_suspend = {
