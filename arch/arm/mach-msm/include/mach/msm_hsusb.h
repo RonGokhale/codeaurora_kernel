@@ -104,6 +104,7 @@ struct msm_otg_platform_data {
 	int (*phy_reset)(void __iomem *);
 	unsigned int core_clk;
 	int pmic_vbus_irq;
+	int pclk_required_during_lpm;
 
 	/* pmic notfications apis */
 	int (*pmic_notif_init) (void);

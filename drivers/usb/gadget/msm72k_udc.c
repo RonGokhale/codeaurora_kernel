@@ -281,6 +281,7 @@ static void usb_chg_stop(struct work_struct *w)
 static void usb_chg_detect(struct work_struct *w)
 {
 	struct usb_info *ui = container_of(w, struct usb_info, chg_det.work);
+	struct msm_otg *otg = to_msm_otg(ui->xceiv);
 	enum chg_type temp = USB_CHG_TYPE__INVALID;
 	unsigned long flags;
 	int maxpower;
@@ -294,7 +295,9 @@ static void usb_chg_detect(struct work_struct *w)
 	temp = ui->chg_type = usb_get_chg_type(ui);
 	spin_unlock_irqrestore(&ui->lock, flags);
 
+	atomic_set(&otg->chg_type, temp);
 	hsusb_chg_connected(temp);
+
 	maxpower = usb_get_max_power(ui);
 	if (maxpower > 0)
 		hsusb_chg_vbus_draw(maxpower);
@@ -309,6 +312,7 @@ static void usb_chg_detect(struct work_struct *w)
 	if (temp == USB_CHG_TYPE__WALLCHARGER) {
 		msm72k_pm_qos_update(0);
 		wake_unlock(&ui->wlock);
+		otg_set_suspend(ui->xceiv, 1);
 	}
 }
 

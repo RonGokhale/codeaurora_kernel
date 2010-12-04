@@ -151,6 +151,7 @@ static void disable_sess_valid(struct msm_otg *dev)
 	writel(readl(USB_OTGSC) & ~OTGSC_BSVIE, USB_OTGSC);
 }
 
+
 static int msm_otg_set_clk(struct otg_transceiver *xceiv, int on)
 {
 	struct msm_otg *dev = container_of(xceiv, struct msm_otg, otg);
@@ -168,13 +169,30 @@ static int msm_otg_set_clk(struct otg_transceiver *xceiv, int on)
 }
 static void msm_otg_start_peripheral(struct otg_transceiver *xceiv, int on)
 {
+	struct msm_otg *dev = container_of(xceiv, struct msm_otg, otg);
 	if (!xceiv->gadget)
 		return;
 
-	if (on)
+	if (on) {
+		/* increment the clk reference count so that
+		 * it would be still on when disabled from
+		 * low power mode routine
+		 */
+		if (dev->pclk_required_during_lpm)
+			clk_enable(dev->pclk);
+
 		usb_gadget_vbus_connect(xceiv->gadget);
-	else
+	} else {
+		atomic_set(&dev->chg_type, USB_CHG_TYPE__INVALID);
+
 		usb_gadget_vbus_disconnect(xceiv->gadget);
+		/* decrement the clk reference count so that
+		 * it would be off when disabled from
+		 * low power mode routine
+		 */
+		if (dev->pclk_required_during_lpm)
+			clk_disable(dev->pclk);
+	}
 }
 
 static void msm_otg_start_host(struct otg_transceiver *xceiv, int on)
@@ -192,7 +210,7 @@ static int msm_otg_suspend(struct msm_otg *dev)
 {
 	unsigned long timeout;
 	int vbus = 0;
-	unsigned otgsc;
+	enum chg_type chg_type = atomic_read(&dev->chg_type);
 
 	disable_irq(dev->irq);
 	if (dev->in_lpm)
@@ -202,21 +220,10 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	if (!is_host())
 		otg_reset(dev);
 
-	/* In case of fast plug-in and plug-out inside the otg_reset() the
-	 * servicing of BSV is missed (in the window of after phy and link
-	 * reset). Handle it if any missing bsv is detected */
-	if (is_b_sess_vld() && !is_host()) {
-		otgsc = readl(USB_OTGSC);
-		writel(otgsc, USB_OTGSC);
-		pr_info("%s:Process mising BSV\n", __func__);
-		msm_otg_start_peripheral(&dev->otg, 1);
-		enable_irq(dev->irq);
-		return -1;
-	}
 
 	ulpi_read(dev, 0x14);/* clear PHY interrupt latch register */
 	/* If there is no pmic notify support turn on phy comparators. */
-	if (!dev->pmic_notif_supp)
+	if (!dev->pmic_notif_supp || chg_type == USB_CHG_TYPE__WALLCHARGER)
 		ulpi_write(dev, 0x01, 0x30);
 	ulpi_write(dev, 0x08, 0x09);/* turn off PLL on integrated phy */
 
@@ -229,6 +236,10 @@ static int msm_otg_suspend(struct msm_otg *dev)
 			goto out;
 		}
 		msleep(1);
+		if (((readl(USB_OTGSC) & OTGSC_INTR_MASK) >> 8) &
+				readl(USB_OTGSC)) {
+			goto out;
+		}
 	}
 
 	writel(readl(USB_USBCMD) | ASYNC_INTR_CTRL | ULPI_STP_CTRL, USB_USBCMD);
@@ -515,6 +526,7 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 		dev->pmic_register_vbus_sn = pdata->pmic_register_vbus_sn;
 		dev->pmic_unregister_vbus_sn = pdata->pmic_unregister_vbus_sn;
 		dev->pmic_enable_ldo = pdata->pmic_enable_ldo;
+		dev->pclk_required_during_lpm = pdata->pclk_required_during_lpm;
 	}
 
 	if (pdata && pdata->pmic_vbus_irq) {

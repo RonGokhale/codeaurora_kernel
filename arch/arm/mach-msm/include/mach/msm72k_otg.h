@@ -59,7 +59,8 @@ struct msm_otg {
 	int			vbus_on_irq;
 	void __iomem		*regs;
 	u8			in_lpm;
-
+	atomic_t		chg_type;
+	struct msm_otg_platform_data *pdata;
 	unsigned int 		core_clk;
 	int 			(*rpc_connect)(int);
 	int 			(*phy_reset)(void __iomem *);
@@ -73,6 +74,7 @@ struct msm_otg {
 	int (*pmic_register_vbus_sn) (void (*callback)(int online));
 	void (*pmic_unregister_vbus_sn) (void (*callback)(int online));
 	int (*pmic_enable_ldo) (int);
+	int pclk_required_during_lpm;
 };
 
 /* usb controller's protocol engine depends on AXI clock.
