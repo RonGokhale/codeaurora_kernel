@@ -23,6 +23,7 @@
 #include <linux/io.h>
 #include <linux/usb/mass_storage_function.h>
 #include <linux/mfd/pmic8058.h>
+#include <linux/regulator/pmic8058-regulator.h>
 #include <linux/i2c.h>
 #include <linux/input.h>
 #include <linux/ofn_atlab.h>
@@ -34,6 +35,7 @@
 #include <asm/mach/arch.h>
 #include <asm/setup.h>
 
+#include <mach/mpp.h>
 #include <mach/gpio.h>
 #include <mach/board.h>
 #include <mach/memory.h>
@@ -55,6 +57,10 @@
 #include <mach/dal_axi.h>
 #include <mach/msm_serial_hs.h>
 #include <mach/msm_reqs.h>
+#include <linux/regulator/consumer.h>
+#include <linux/regulator/machine.h>
+#include "tlmm-fsm9xxx.h"
+
 
 #define PMIC_GPIO_INT		144
 #define PMIC_VREG_WLAN_LEVEL	2900
@@ -64,31 +70,174 @@
 
 #define FPGA_SDCC_STATUS       0x8E0001A8
 
-#ifdef NOTNOW
-int pm8058_gpios_init(struct pm8058_chip *pm_chip)
+/* Macros assume PMIC GPIOs start at 0 */
+#define PM8058_GPIO_PM_TO_SYS(pm_gpio)	   (pm_gpio + NR_MSM_GPIOS)
+#define PM8058_GPIO_SYS_TO_PM(sys_gpio)    (sys_gpio - NR_MSM_GPIOS)
+
+#define PMIC_GPIO_5V_PA_PWR	21	/* PMIC GPIO Number 22 */
+#define PMIC_GPIO_4_2V_PA_PWR	22	/* PMIC GPIO Number 23 */
+#define PMIC_MPP_3		2	/* PMIC MPP Number 3 */
+#define PMIC_MPP_6		5	/* PMIC MPP Number 6 */
+#define PMIC_MPP_7		6	/* PMIC MPP Number 7 */
+#define PMIC_MPP_10		9	/* PMIC MPP Number 10 */
+
+static int pm8058_gpios_init(void)
 {
+	int i;
+	int rc;
+	struct pm8058_gpio_cfg {
+		int gpio;
+		struct pm8058_gpio cfg;
+	};
+
+	struct pm8058_gpio_cfg gpio_cfgs[] = {
+		{				/* 5V PA Power */
+			PMIC_GPIO_5V_PA_PWR,
+			{
+				.vin_sel = 0,
+				.direction = PM_GPIO_DIR_BOTH,
+				.output_value = 1,
+				.output_buffer = PM_GPIO_OUT_BUF_CMOS,
+				.pull = PM_GPIO_PULL_DN,
+				.out_strength = PM_GPIO_STRENGTH_HIGH,
+				.function = PM_GPIO_FUNC_NORMAL,
+				.inv_int_pol = 0,
+			},
+		},
+		{				/* 4.2V PA Power */
+			PMIC_GPIO_4_2V_PA_PWR,
+			{
+				.vin_sel = 0,
+				.direction = PM_GPIO_DIR_BOTH,
+				.output_value = 1,
+				.output_buffer = PM_GPIO_OUT_BUF_CMOS,
+				.pull = PM_GPIO_PULL_DN,
+				.out_strength = PM_GPIO_STRENGTH_HIGH,
+				.function = PM_GPIO_FUNC_NORMAL,
+				.inv_int_pol = 0,
+			},
+		},
+	};
+
+	for (i = 0; i < ARRAY_SIZE(gpio_cfgs); ++i) {
+		rc = pm8058_gpio_config(gpio_cfgs[i].gpio, &gpio_cfgs[i].cfg);
+		if (rc < 0) {
+			pr_err("%s pmic gpio config failed\n", __func__);
+			return rc;
+		}
+	}
+
 	return 0;
 }
 
+static int pm8058_mpps_init(void)
+{
+	/* Set up MPP 7 and 10 as analog inputs,
+	 * MPP 3 and 6 as analog outputs at 1.25V
+	 */
+	pm8058_mpp_config_analog_input(PMIC_MPP_7, PM_MPP_AIN_AMUX_CH5, 0);
+	pm8058_mpp_config_analog_input(PMIC_MPP_10, PM_MPP_AIN_AMUX_CH6, 0);
+	pm8058_mpp_config_analog_output(PMIC_MPP_3, PM_MPP_AOUT_LVL_1V25_2,
+		PM_MPP_AOUT_CTL_ENABLE);
+	pm8058_mpp_config_analog_output(PMIC_MPP_6, PM_MPP_AOUT_LVL_1V25_2,
+		PM_MPP_AOUT_CTL_ENABLE);
+	pr_info("MPP initialization complete\n");
+	return 0;
+}
 
-/* Put sub devices with fixed location first in sub_devices array */
-
-static struct pm8058_gpio_platform_data pm8058_mpp_data = {
-	.irq_base	= PM8058_MPP_IRQ(PMIC8058_IRQ_BASE, 0),
+static struct pm8058_gpio_platform_data pm8058_gpio_data = {
+	.gpio_base = PM8058_GPIO_PM_TO_SYS(0),
+	.irq_base = PM8058_GPIO_IRQ(PMIC8058_IRQ_BASE, 0),
+	.init = pm8058_gpios_init,
 };
 
+  static struct pm8058_gpio_platform_data pm8058_mpp_data = {
+	.gpio_base = PM8058_GPIO_PM_TO_SYS(PM8058_GPIOS),
+	.irq_base = PM8058_MPP_IRQ(PMIC8058_IRQ_BASE, 0),
+	.init = pm8058_mpps_init,
+};
+
+static struct regulator_consumer_supply pm8058_vreg_supply[PM8058_VREG_MAX] = {
+	[PM8058_VREG_ID_L3] = REGULATOR_SUPPLY("8058_l3", NULL),
+	[PM8058_VREG_ID_L8] = REGULATOR_SUPPLY("8058_l8", NULL),
+	[PM8058_VREG_ID_L11] = REGULATOR_SUPPLY("8058_l11", NULL),
+	[PM8058_VREG_ID_L14] = REGULATOR_SUPPLY("8058_l14", NULL),
+	[PM8058_VREG_ID_L15] = REGULATOR_SUPPLY("8058_l15", NULL),
+	[PM8058_VREG_ID_L18] = REGULATOR_SUPPLY("8058_l18", NULL),
+	[PM8058_VREG_ID_S4] = REGULATOR_SUPPLY("8058_s4", NULL),
+};
+
+#define PM8058_VREG_INIT(_id, _min_uV, _max_uV, _modes, _ops, _apply_uV) \
+	[_id] = { \
+		.constraints = { \
+			.valid_modes_mask = _modes, \
+			.valid_ops_mask = _ops, \
+			.min_uV = _min_uV, \
+			.max_uV = _max_uV, \
+			.apply_uV = _apply_uV, \
+			.always_on = 1, \
+		}, \
+		.num_consumer_supplies = 1, \
+		.consumer_supplies = &pm8058_vreg_supply[_id], \
+	}
+
+#define PM8058_VREG_INIT_LDO(_id, _min_uV, _max_uV) \
+	PM8058_VREG_INIT(_id, _min_uV, _max_uV, REGULATOR_MODE_NORMAL | \
+			REGULATOR_MODE_IDLE | REGULATOR_MODE_STANDBY, \
+			REGULATOR_CHANGE_VOLTAGE | REGULATOR_CHANGE_STATUS | \
+			REGULATOR_CHANGE_MODE, 1)
+
+#define PM8058_VREG_INIT_SMPS(_id, _min_uV, _max_uV) \
+	PM8058_VREG_INIT(_id, _min_uV, _max_uV, REGULATOR_MODE_NORMAL | \
+			REGULATOR_MODE_IDLE | REGULATOR_MODE_STANDBY, \
+			REGULATOR_CHANGE_VOLTAGE | REGULATOR_CHANGE_STATUS | \
+			REGULATOR_CHANGE_MODE, 1)
+
+static struct regulator_init_data pm8058_vreg_init[PM8058_VREG_MAX] = {
+	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L3, 1800000, 1800000),
+	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L8, 2200000, 2200000),
+	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L11, 2850000, 2850000),
+	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L14, 2850000, 2850000),
+	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L15, 2200000, 2200000),
+	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L18, 2200000, 2200000),
+	PM8058_VREG_INIT_SMPS(PM8058_VREG_ID_S4, 1300000, 1300000),
+  };
+
+#define PM8058_VREG(_id) { \
+	.name = "pm8058-regulator", \
+	.id = _id, \
+	.platform_data = &pm8058_vreg_init[_id], \
+	.data_size = sizeof(pm8058_vreg_init[_id]), \
+}
+
+/* Put sub devices with fixed location first in sub_devices array */
 static struct mfd_cell pm8058_subdevs[] = {
 	{	.name = "pm8058-mpp",
 		.platform_data	= &pm8058_mpp_data,
 		.data_size	= sizeof(pm8058_mpp_data),
 	},
-	{	.name = "pm8058-pwm",
+	{
+		.name = "pm8058-gpio",
+		.id = -1,
+		.platform_data = &pm8058_gpio_data,
+		.data_size = sizeof(pm8058_gpio_data),
 	},
-};
+	PM8058_VREG(PM8058_VREG_ID_L3),
+	PM8058_VREG(PM8058_VREG_ID_L6),
+	PM8058_VREG(PM8058_VREG_ID_L8),
+	PM8058_VREG(PM8058_VREG_ID_L11),
+	PM8058_VREG(PM8058_VREG_ID_L14),
+	PM8058_VREG(PM8058_VREG_ID_L15),
+	PM8058_VREG(PM8058_VREG_ID_L18),
+	PM8058_VREG(PM8058_VREG_ID_S4),
+	{
+		.name = "pm8058-femto",
+		.id = -1,
+	},
+  };
 
 static struct pm8058_platform_data pm8058_fsm9xxx_data = {
 	.irq_base = PMIC8058_IRQ_BASE,
-	.init = pm8058_gpios_init,
 
 	.num_subdevs = ARRAY_SIZE(pm8058_subdevs),
 	.sub_devices = pm8058_subdevs,
@@ -104,21 +253,12 @@ static struct i2c_board_info pm8058_boardinfo[] __initdata = {
 
 static int __init buses_init(void)
 {
-
-#ifdef NOTNOW
-	if (gpio_tlmm_config(GPIO_CFG(PMIC_GPIO_INT, 1, GPIO_CFG_INPUT,
-				  GPIO_NO_PULL, GPIO_CFG_2MA), GPIO_ENABLE))
-		pr_err("%s: gpio_tlmm_config (gpio=%d) failed\n",
-		       __func__, PMIC_GPIO_INT);
-#endif /* NOTNOW */
-
-	i2c_register_board_info(6 /* I2C_SSBI ID */, pm8058_boardinfo,
+	i2c_register_board_info(0 /* I2C_SSBI ID */, pm8058_boardinfo,
 				ARRAY_SIZE(pm8058_boardinfo));
 
 	return 0;
 }
 
-#endif
 
 static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR] = {
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE].supported = 1,
@@ -310,11 +450,10 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_smd,
 	&msm_device_dmov,
 	&msm_device_nand,
-#ifdef NOTNOW
 #ifdef CONFIG_I2C_SSBI
 	&msm_device_ssbi0,
 	&msm_device_ssbi1,
-#endif
+	&msm_device_ssbi2,
 #endif
 #ifdef NOTNOW
 	&msm_device_i2c,
@@ -373,18 +512,19 @@ static void __init msm_device_i2c_init(void)
 
 	msm_device_i2c.dev.platform_data = &msm_i2c_pdata;
 }
-
 #endif
 
 #ifdef CONFIG_I2C_SSBI
 static struct msm_ssbi_platform_data msm_i2c_ssbi0_pdata = {
-	.rsl_id = "D:PMIC_SSBI",
-	.controller_type = MSM_SBI_CTRL_SSBI,
+	.controller_type = FSM_SBI_CTRL_SSBI,
 };
 
 static struct msm_ssbi_platform_data msm_i2c_ssbi1_pdata = {
-	.rsl_id = "D:CODEC_SSBI",
-	.controller_type = MSM_SBI_CTRL_SSBI,
+	.controller_type = FSM_SBI_CTRL_SSBI,
+};
+
+static struct msm_ssbi_platform_data msm_i2c_ssbi2_pdata = {
+	.controller_type = FSM_SBI_CTRL_SSBI,
 };
 #endif
 
@@ -610,6 +750,24 @@ static void fsm9xxx_init_uart1(void)
 }
 #endif
 
+/* Intialize GPIO configuration for SSBI */
+static struct msm_gpio ssbi_gpio_config_data[] = {
+	{ GPIO_CFG(140, 1, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_4MA),
+		"SSBI_0"},
+	{ GPIO_CFG(141, 1, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_4MA),
+		"SSBI_1"},
+	{ GPIO_CFG(92, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_4MA),
+		"SSBI_2"},
+};
+
+static void
+fsm9xxx_init_ssbi_gpio(void)
+{
+	msm_gpios_request_enable(ssbi_gpio_config_data,
+		ARRAY_SIZE(ssbi_gpio_config_data));
+
+}
+
 #ifdef CONFIG_MSM_SPM
 static struct msm_spm_platform_data msm_spm_data __initdata = {
 	.reg_base_addr = MSM_SAW_BASE,
@@ -643,6 +801,8 @@ static void __init fsm9xxx_init(void)
 		       __func__);
 	msm_acpu_clock_init(&fsm9xxx_clock_data);
 
+	regulator_has_full_constraints();
+
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 
 	/* rmt_storage_add_ramfs(); */
@@ -656,16 +816,18 @@ static void __init fsm9xxx_init(void)
 	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
 #ifdef NOTNOW
 	msm_device_i2c_init();
-	buses_init();
 #endif
+	buses_init();
 	phy_init();
 
 #ifdef CONFIG_SERIAL_MSM_CONSOLE
 	fsm9xxx_init_uart1();
 #endif
 #ifdef CONFIG_I2C_SSBI
+	fsm9xxx_init_ssbi_gpio();
 	msm_device_ssbi0.dev.platform_data = &msm_i2c_ssbi0_pdata;
 	msm_device_ssbi1.dev.platform_data = &msm_i2c_ssbi1_pdata;
+	msm_device_ssbi2.dev.platform_data = &msm_i2c_ssbi2_pdata;
 #endif
 }
 
