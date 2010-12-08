@@ -159,10 +159,12 @@ config REGULATOR_TPS6507X
 
 config REGULATOR_PMIC8058
         tristate "PMIC8058 regulator driver"
-        depends on PMIC8058 && ARCH_MSM8X60
-        default y if PMIC8058 && ARCH_MSM8X60
+        depends on PMIC8058 && (ARCH_MSM8X60 || ARCH_FSM9XXX)
+        default y if PMIC8058 && (ARCH_MSM8X60 || ARCH_FSM9XXX)
         help
-         Say Y here to support the voltage regulators on PMIC8058
+	  This driver supports the voltage regulators on the Qualcomm PMIC8058
+	  power management IC. The device provides 26 general-purpose LDO voltage
+	  regulators in addition to LED management, vibrator capability, etc.
 
 config REGULATOR_PMIC8901
         tristate "PMIC8901 regulator driver"
