@@ -324,36 +324,46 @@ int kgsl_pwrctrl(unsigned int pwrflag)
 			kgsl_driver.power_flags |= KGSL_PWRFLAGS_G12_CLK_ON;
 		}
 		return KGSL_SUCCESS;
-	case KGSL_PWRFLAGS_POWER_OFF:
-		if (kgsl_driver.power_flags & KGSL_PWRFLAGS_POWER_ON) {
+	case KGSL_PWRFLAGS_YAMATO_POWER_OFF:
+		if (kgsl_driver.power_flags & KGSL_PWRFLAGS_YAMATO_POWER_ON) {
 			internal_pwr_rail_ctl(PWR_RAIL_GRP_CLK, KGSL_FALSE);
 			internal_pwr_rail_mode(PWR_RAIL_GRP_CLK,
 					PWR_RAIL_CTL_AUTO);
-			if (kgsl_driver.g12_device.hwaccess_blocked
-				== KGSL_FALSE) {
-				internal_pwr_rail_ctl(PWR_RAIL_GRP_2D_CLK,
-					KGSL_FALSE);
-				internal_pwr_rail_mode(PWR_RAIL_GRP_2D_CLK,
-					PWR_RAIL_CTL_AUTO);
-			}
-			kgsl_driver.power_flags &= ~(KGSL_PWRFLAGS_POWER_ON);
-			kgsl_driver.power_flags |= KGSL_PWRFLAGS_POWER_OFF;
+			kgsl_driver.power_flags &=
+					~(KGSL_PWRFLAGS_YAMATO_POWER_ON);
+			kgsl_driver.power_flags |=
+					KGSL_PWRFLAGS_YAMATO_POWER_OFF;
 		}
 		return KGSL_SUCCESS;
-	case KGSL_PWRFLAGS_POWER_ON:
-		if (kgsl_driver.power_flags & KGSL_PWRFLAGS_POWER_OFF) {
+	case KGSL_PWRFLAGS_YAMATO_POWER_ON:
+		if (kgsl_driver.power_flags & KGSL_PWRFLAGS_YAMATO_POWER_OFF) {
 			internal_pwr_rail_mode(PWR_RAIL_GRP_CLK,
 					PWR_RAIL_CTL_MANUAL);
 			internal_pwr_rail_ctl(PWR_RAIL_GRP_CLK, KGSL_TRUE);
-			if (kgsl_driver.g12_device.hwaccess_blocked
-				== KGSL_FALSE) {
-				internal_pwr_rail_mode(PWR_RAIL_GRP_2D_CLK,
+			kgsl_driver.power_flags &=
+					~(KGSL_PWRFLAGS_YAMATO_POWER_OFF);
+			kgsl_driver.power_flags |=
+					KGSL_PWRFLAGS_YAMATO_POWER_ON;
+		}
+		return KGSL_SUCCESS;
+	case KGSL_PWRFLAGS_G12_POWER_OFF:
+		if (kgsl_driver.power_flags & KGSL_PWRFLAGS_G12_POWER_ON) {
+			internal_pwr_rail_ctl(PWR_RAIL_GRP_2D_CLK, KGSL_FALSE);
+			internal_pwr_rail_mode(PWR_RAIL_GRP_2D_CLK,
+					PWR_RAIL_CTL_AUTO);
+			kgsl_driver.power_flags &=
+					~(KGSL_PWRFLAGS_G12_POWER_ON);
+			kgsl_driver.power_flags |= KGSL_PWRFLAGS_G12_POWER_OFF;
+		}
+		return KGSL_SUCCESS;
+	case KGSL_PWRFLAGS_G12_POWER_ON:
+		if (kgsl_driver.power_flags & KGSL_PWRFLAGS_G12_POWER_OFF) {
+			internal_pwr_rail_mode(PWR_RAIL_GRP_2D_CLK,
 					PWR_RAIL_CTL_MANUAL);
-				internal_pwr_rail_ctl(PWR_RAIL_GRP_2D_CLK,
-					KGSL_TRUE);
-			}
-			kgsl_driver.power_flags &= ~(KGSL_PWRFLAGS_POWER_OFF);
-			kgsl_driver.power_flags |= KGSL_PWRFLAGS_POWER_ON;
+			internal_pwr_rail_ctl(PWR_RAIL_GRP_2D_CLK, KGSL_TRUE);
+			kgsl_driver.power_flags &=
+					~(KGSL_PWRFLAGS_G12_POWER_OFF);
+			kgsl_driver.power_flags |= KGSL_PWRFLAGS_G12_POWER_ON;
 		}
 		return KGSL_SUCCESS;
 	case KGSL_PWRFLAGS_YAMATO_IRQ_ON:
@@ -433,15 +443,15 @@ static int kgsl_first_open_locked(void)
 	BUG_ON(kgsl_driver.imem_clk == NULL);
 
 	kgsl_driver.power_flags = KGSL_PWRFLAGS_YAMATO_CLK_OFF |
-			KGSL_PWRFLAGS_POWER_OFF | KGSL_PWRFLAGS_YAMATO_IRQ_OFF;
+			KGSL_PWRFLAGS_YAMATO_POWER_OFF | KGSL_PWRFLAGS_YAMATO_IRQ_OFF;
 	if (kgsl_driver.g12_device.hwaccess_blocked == KGSL_FALSE)
 		kgsl_driver.power_flags |= KGSL_PWRFLAGS_G12_CLK_OFF |
-			KGSL_PWRFLAGS_G12_IRQ_OFF;
+			KGSL_PWRFLAGS_G12_POWER_OFF | KGSL_PWRFLAGS_G12_IRQ_OFF;
 
 	/* Turn the clocks on before the power.  Required for some platforms,
 	   has no adverse effect on the others */
 	kgsl_pwrctrl(KGSL_PWRFLAGS_YAMATO_CLK_ON);
-	kgsl_pwrctrl(KGSL_PWRFLAGS_POWER_ON);
+	kgsl_pwrctrl(KGSL_PWRFLAGS_YAMATO_POWER_ON);
 
 	kgsl_driver.is_suspended = KGSL_FALSE;
 
@@ -476,7 +486,7 @@ static int kgsl_last_release_locked(void)
 	kgsl_yamato_close(&kgsl_driver.yamato_device);
 
 	/* For some platforms, power needs to go off before clocks */
-	kgsl_pwrctrl(KGSL_PWRFLAGS_POWER_OFF);
+	kgsl_pwrctrl(KGSL_PWRFLAGS_YAMATO_POWER_OFF);
 	kgsl_pwrctrl(KGSL_PWRFLAGS_YAMATO_CLK_OFF);
 
 	kgsl_driver.power_flags = 0;

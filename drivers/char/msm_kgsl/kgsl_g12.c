@@ -136,6 +136,7 @@ int kgsl_g12_last_release_locked(void)
 		kgsl_pwrctrl(KGSL_PWRFLAGS_G12_IRQ_OFF);
 		kgsl_g12_close(&kgsl_driver.g12_device);
 		kgsl_pwrctrl(KGSL_PWRFLAGS_G12_CLK_OFF);
+		kgsl_pwrctrl(KGSL_PWRFLAGS_G12_POWER_OFF);
 		kgsl_driver.g12_device.hwaccess_blocked = KGSL_FALSE;
 	}
 
@@ -150,6 +151,7 @@ int kgsl_g12_first_open_locked(void)
 
 	if (kgsl_driver.g12_device.hwaccess_blocked == KGSL_FALSE) {
 		kgsl_pwrctrl(KGSL_PWRFLAGS_G12_CLK_ON);
+		kgsl_pwrctrl(KGSL_PWRFLAGS_G12_POWER_ON);
 
 		result = kgsl_g12_init(&kgsl_driver.g12_device,
 			&kgsl_driver.g12_config);
