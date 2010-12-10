@@ -201,7 +201,7 @@ static int pm8058_gpios_init(void)
 			return rc;
 		}
 		gpio_set_value_cansleep(
-			PM8058_GPIO_PM_TO_SYS(PMIC_GPIO_SDC4_EN), 1);
+			PM8058_GPIO_PM_TO_SYS(PMIC_GPIO_SDC4_EN), 0);
 	}
 
 	return 0;
