@@ -220,6 +220,10 @@ static int bq20z75_get_battery_property(struct i2c_client *client,
 	if (bq20z75_data[reg_offset].min_value < 0)
 		ret = (s16)ret;
 
+	/* for current, it shoud be always positive */
+	if (psp == POWER_SUPPLY_PROP_CURRENT_NOW)
+		ret = abs(ret);
+
 	if (ret >= bq20z75_data[reg_offset].min_value &&
 	    ret <= bq20z75_data[reg_offset].max_value) {
 		val->intval = ret;
