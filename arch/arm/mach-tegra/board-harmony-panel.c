@@ -67,12 +67,14 @@ static void harmony_backlight_exit(struct device *dev)
 
 static int harmony_backlight_notify(struct device *unused, int brightness)
 {
+	gpio_set_value(harmony_en_vdd_pnl, !!brightness);
+	gpio_set_value(harmony_lvds_shutdown, !!brightness);
 	gpio_set_value(harmony_bl_enb, !!brightness);
 	return brightness;
 }
 
 static struct platform_pwm_backlight_data harmony_backlight_data = {
-	.pwm_id		= 2,
+	.pwm_id		= 0,
 	.max_brightness	= 255,
 	.dft_brightness	= 224,
 	.pwm_period_ns	= 5000000,
@@ -207,7 +209,7 @@ static struct platform_device harmony_nvmap_device = {
 static struct platform_device *harmony_gfx_devices[] __initdata = {
 	&harmony_nvmap_device,
 	&tegra_grhost_device,
-	&tegra_pwfm2_device,
+	&tegra_pwfm0_device,
 	&harmony_backlight_device,
 };
 
@@ -218,14 +220,6 @@ int __init harmony_panel_init(void)
 	gpio_request(harmony_en_vdd_pnl, "en_vdd_pnl");
 	gpio_direction_output(harmony_en_vdd_pnl, 1);
 	tegra_gpio_enable(harmony_en_vdd_pnl);
-
-	gpio_request(harmony_bl_enb, "bl_enb");
-	gpio_direction_output(harmony_bl_enb, 1);
-	tegra_gpio_enable(harmony_bl_enb);
-
-	gpio_request(harmony_bl_pwm, "bl_pwm");
-	gpio_direction_output(harmony_bl_pwm, 1);
-	tegra_gpio_enable(harmony_bl_pwm);
 
 	gpio_request(harmony_bl_vdd, "bl_vdd");
 	gpio_direction_output(harmony_bl_vdd, 1);
