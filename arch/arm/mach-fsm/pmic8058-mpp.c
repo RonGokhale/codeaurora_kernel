@@ -214,6 +214,11 @@ static int __devinit pm8058_mpp_probe(struct platform_device *pdev)
 	pm8058_mpp_chip.dev = &pdev->dev;
 	pm8058_mpp_chip.base = pdata->gpio_base;
 	ret = gpiochip_add(&pm8058_mpp_chip);
+	if (!ret) {
+		if (pdata->init)
+			ret = pdata->init();
+	}
+
 	pr_info("%s: gpiochip_add(): rc=%d\n", __func__, ret);
 	return ret;
 }
