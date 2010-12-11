@@ -209,7 +209,8 @@
 /* Quarter Size	*/
 #define	VX6953_HRZ_QTR_BLK_PIXELS	1628
 #define	VX6953_VER_QTR_BLK_LINES	28
-#define	MAX_LINE_LENGTH_PCK		8190
+#define	MAX_LINE_LENGTH_PCK		4095
+#define	MAX_FRAME_LENGTH_LINES	16383
 #define	VX6953_REVISION_NUMBER_CUT2	0x10/*revision number	for	Cut2.0*/
 #define	VX6953_REVISION_NUMBER_CUT3	0x20/*revision number	for	Cut3.0*/
 /* FIXME: Changes from here */
@@ -2156,7 +2157,7 @@ static int32_t vx6953_i2c_write_seq_sensor(unsigned short waddr,
 		CDBG("i2c_write_b failed, addr = 0x%x, val = 0x%x!\n",
 			 waddr, bdata[0]);
 	}
-	mdelay(1);
+	msleep(1);
 	return rc;
 }
 
@@ -2256,23 +2257,25 @@ static int32_t vx6953_set_fps(struct fps_cfg	*fps)
 	int32_t rc = 0;
 	total_lines_per_frame = (uint16_t)((VX6953_QTR_SIZE_HEIGHT +
 		VX6953_VER_QTR_BLK_LINES) * vx6953_ctrl->fps_divider/0x400);
+	vx6953_i2c_write_b_sensor(REG_GROUPED_PARAMETER_HOLD,
+			GROUPED_PARAMETER_HOLD);
 	if (vx6953_i2c_write_b_sensor(REG_FRAME_LENGTH_LINES_HI,
 		((total_lines_per_frame & 0xFF00) >> 8)) < 0)
 		return rc;
 	if (vx6953_i2c_write_b_sensor(REG_FRAME_LENGTH_LINES_LO,
 		(total_lines_per_frame & 0x00FF)) < 0)
 		return rc;
+	vx6953_i2c_write_b_sensor(REG_GROUPED_PARAMETER_HOLD,
+			GROUPED_PARAMETER_HOLD_OFF);
 	return rc;
 }
 
 static int32_t vx6953_write_exp_gain(uint16_t gain, uint32_t line)
 {
-	static uint16_t stored_line_length_ratio = 1*Q8;
 	uint16_t line_length_pck, frame_length_lines;
 	uint8_t gain_hi, gain_lo;
 	uint8_t intg_time_hi, intg_time_lo;
-	uint8_t line_length_pck_hi = 0, line_length_pck_lo = 0;
-	uint16_t line_length_ratio = 1 * Q8;
+	uint8_t frame_length_lines_hi = 0, frame_length_lines_lo = 0;
 	int32_t rc = 0;
 	if (vx6953_ctrl->sensormode != SENSOR_SNAPSHOT_MODE) {
 		frame_length_lines = VX6953_QTR_SIZE_HEIGHT +
@@ -2293,32 +2296,27 @@ static int32_t vx6953_write_exp_gain(uint16_t gain, uint32_t line)
 		line_length_pck = VX6953_FULL_SIZE_WIDTH +
 				VX6953_HRZ_FULL_BLK_PIXELS;
 	}
-	/* calculate line_length_ratio */
-	if ((frame_length_lines - VX6953_STM5M0EDOF_OFFSET) < line) {
-		line_length_ratio = (line*Q8) /
-			(frame_length_lines - VX6953_STM5M0EDOF_OFFSET);
-		line = frame_length_lines - VX6953_STM5M0EDOF_OFFSET;
-	} else {
-		line_length_ratio = 1*Q8;
-	}
+
 	vx6953_i2c_write_b_sensor(REG_GROUPED_PARAMETER_HOLD,
 		GROUPED_PARAMETER_HOLD);
-	if (line_length_ratio != stored_line_length_ratio) {
-		line_length_pck = (line_length_pck >
-			MAX_LINE_LENGTH_PCK) ?
-			MAX_LINE_LENGTH_PCK : line_length_pck;
-		line_length_pck = (uint16_t) (line_length_pck *
-			line_length_ratio/Q8);
-		line_length_pck_hi = (uint8_t) ((line_length_pck &
-			0xFF00) >> 8);
-		line_length_pck_lo = (uint8_t) (line_length_pck &
-			0x00FF);
-		vx6953_i2c_write_b_sensor(REG_LINE_LENGTH_PCK_HI,
-			line_length_pck_hi);
-		vx6953_i2c_write_b_sensor(REG_LINE_LENGTH_PCK_LO,
-			line_length_pck_lo);
-		stored_line_length_ratio = line_length_ratio;
+
+	if ((line + VX6953_STM5M0EDOF_OFFSET) > MAX_FRAME_LENGTH_LINES) {
+		frame_length_lines = MAX_FRAME_LENGTH_LINES;
+		line = MAX_FRAME_LENGTH_LINES - VX6953_STM5M0EDOF_OFFSET;
+	} else if ((line + VX6953_STM5M0EDOF_OFFSET) > frame_length_lines) {
+		frame_length_lines = line + VX6953_STM5M0EDOF_OFFSET;
+		line = frame_length_lines;
 	}
+
+	frame_length_lines_hi = (uint8_t) ((frame_length_lines &
+		0xFF00) >> 8);
+	frame_length_lines_lo = (uint8_t) (frame_length_lines &
+		0x00FF);
+	vx6953_i2c_write_b_sensor(REG_FRAME_LENGTH_LINES_HI,
+		frame_length_lines_hi);
+	vx6953_i2c_write_b_sensor(REG_FRAME_LENGTH_LINES_LO,
+		frame_length_lines_lo);
+
 	/* update analogue gain registers */
 	gain_hi = (uint8_t) ((gain & 0xFF00) >> 8);
 	gain_lo = (uint8_t) (gain & 0x00FF);
@@ -2463,13 +2461,14 @@ static int32_t vx6953_sensor_setting(int update_type, int rt)
 				{REG_0x0112,
 					vx6953_regs.reg_pat_init[0].
 					reg_0x0112},
-				{0x6003, 0x01},
 				{REG_0x0113,
 					vx6953_regs.reg_pat_init[0].
 					reg_0x0113},
 				{REG_VT_PIX_CLK_DIV,
 					vx6953_regs.reg_pat_init[0].
 					vt_pix_clk_div},
+				{0x303, 0x01},
+				{0x30b, 0x01},
 				{REG_PRE_PLL_CLK_DIV,
 					vx6953_regs.reg_pat_init[0].
 					pre_pll_clk_div},
@@ -2486,14 +2485,6 @@ static int32_t vx6953_sensor_setting(int update_type, int rt)
 				{REG_0x0b00,
 					vx6953_regs.reg_pat_init[0].
 					reg_0x0b00},
-				{REG_0x3004,
-					vx6953_regs.reg_pat_init[0].
-					reg_0x3004},
-				{REG_0x3006, 0x00},
-				{REG_0x3007,
-					vx6953_regs.reg_pat_init[0].
-					reg_0x3007},
-				{REG_0x301b, 0x29},
 				{REG_0x0136,
 					vx6953_regs.reg_pat_init[0].
 					reg_0x0136},
@@ -2532,19 +2523,12 @@ static int32_t vx6953_sensor_setting(int update_type, int rt)
 					reg_0x0b8a},
 				{0x3393, 0x06},
 				{0x3394, 0x07},
+				{0x338d, 0x08},
+				{0x338e, 0x08},
+				{0x338f, 0x00},
 			};
 			/* reset fps_divider */
 			vx6953_ctrl->fps = 30 * Q8;
-
-			/* Reset everything first */
-			if (vx6953_i2c_write_b_sensor(0x103, 0x01) < 0) {
-				CDBG("S/W reset failed\n");
-				return rc;
-			} else
-				CDBG("S/W reset successful\n");
-
-			msleep(10);
-
 			CDBG("Init vx6953_sensor_setting standby\n");
 			if (vx6953_i2c_write_b_sensor(REG_MODE_SELECT,
 				MODE_SELECT_STANDBY_MODE) < 0)
@@ -2560,25 +2544,33 @@ static int32_t vx6953_sensor_setting(int update_type, int rt)
 			rc = msm_camio_csi_config(&vx6953_csi_params);
 			if (rc < 0)
 				CDBG(" config csi controller failed \n");
-			msleep(vx6953_stm5m0edof_delay_msecs_stdby);
+			msleep(20);
+			vx6953_i2c_write_b_sensor(REG_GROUPED_PARAMETER_HOLD,
+			GROUPED_PARAMETER_HOLD);
 
 			rc = vx6953_i2c_write_w_table(cut3_cali_data,
 				ARRAY_SIZE(cut3_cali_data));
 
 			vx6953_lsc_patch();
 
+			vx6953_i2c_write_w_sensor(0x100A, 0x07A3);
+			vx6953_i2c_write_w_sensor(0x114A, 0x002A);
+			vx6953_i2c_write_w_sensor(0x1716, 0x0204);
+			vx6953_i2c_write_w_sensor(0x1718, 0x0880);
+
 			rc = vx6953_i2c_write_w_table(&init_tbl[0],
 				ARRAY_SIZE(init_tbl));
 			if (rc < 0)
 				return rc;
 
-			msleep(vx6953_stm5m0edof_delay_msecs_stdby);
+			msleep(10);
 		}
 		return rc;
 		case UPDATE_PERIODIC:
 		if (rt == RES_PREVIEW || rt == RES_CAPTURE) {
 			struct vx6953_i2c_reg_conf preview_mode_tbl[] = {
-				{0x3030, 0x08},
+				{0x200, 0x02},
+				{0x201, 0x26},
 				{REG_COARSE_INTEGRATION_TIME_HI,
 					vx6953_regs.reg_pat[rt].
 					coarse_integration_time_hi},
@@ -2600,33 +2592,6 @@ static int32_t vx6953_sensor_setting(int update_type, int rt)
 				{REG_LINE_LENGTH_PCK_LO,
 					vx6953_regs.reg_pat[rt].
 					line_length_pck_lo},
-				{REG_0x3005,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3005},
-				{REG_0x3010,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3010},
-				{REG_0x3011,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3011},
-				{REG_0x301a,
-					vx6953_regs.reg_pat[rt].
-					reg_0x301a},
-				{REG_0x3035,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3035},
-				{REG_0x3036,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3036},
-				{REG_0x3041,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3041},
-				{REG_0x3042,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3042},
-				{REG_0x3045,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3045},
 				{REG_0x0b80,
 					vx6953_regs.reg_pat[rt].
 					reg_0x0b80},
@@ -2657,11 +2622,12 @@ static int32_t vx6953_sensor_setting(int update_type, int rt)
 				{REG_0x034f,
 					vx6953_regs.reg_pat[rt].
 					reg_0x034f},
-				{REG_0x3388, 0x03},
 				{REG_0x3640, 0x00},
 			};
 
 			struct vx6953_i2c_reg_conf snapshot_mode_tbl[] = {
+				{0x0200, 0x02},
+				{0x0201, 0x54},
 				{REG_COARSE_INTEGRATION_TIME_HI,
 					vx6953_regs.reg_pat[rt].
 					coarse_integration_time_hi},
@@ -2683,25 +2649,6 @@ static int32_t vx6953_sensor_setting(int update_type, int rt)
 				{REG_LINE_LENGTH_PCK_LO,
 					vx6953_regs.reg_pat[rt].
 					line_length_pck_lo},
-				{REG_0x3005,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3005},
-				{REG_0x3010,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3010},
-				{REG_0x3011,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3011},
-				{REG_0x301a, 0x6A},
-				{REG_0x3035,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3035},
-				{REG_0x3036,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3036},
-				{REG_0x3045,
-					vx6953_regs.reg_pat[rt].
-					reg_0x3045},
 				{REG_0x0b80,
 					vx6953_regs.reg_pat[rt].
 					reg_0x0b80},
@@ -2732,29 +2679,18 @@ static int32_t vx6953_sensor_setting(int update_type, int rt)
 				{REG_0x034f,
 					vx6953_regs.reg_pat[rt].
 					reg_0x034f},
-				{0x0303, 0x01},
-				{0x030b, 0x01},
 				{0x3140, 0x01},
-				{REG_0x3388, 0x03},
 				{REG_0x3640, 0x00},
 			};
-
 			if (vx6953_i2c_write_b_sensor(REG_MODE_SELECT,
 				MODE_SELECT_STANDBY_MODE) < 0)
 				return rc;
 			/*vx6953_stm5m0edof_delay_msecs_stdby*/
+			msleep(30);
 			msleep(vx6953_stm5m0edof_delay_msecs_stdby);
 
-			vx6953_csi_params.data_format = CSI_8BIT;
-			vx6953_csi_params.lane_cnt = 1;
-			vx6953_csi_params.lane_assign = 0xe4;
-			vx6953_csi_params.dpcm_scheme = 0;
-			vx6953_csi_params.settle_cnt = 7;
-			rc = msm_camio_csi_config(&vx6953_csi_params);
-			if (rc < 0)
-				CDBG(" config csi controller failed \n");
-
-			msleep(vx6953_stm5m0edof_delay_msecs_stdby);
+			vx6953_i2c_write_b_sensor(REG_GROUPED_PARAMETER_HOLD,
+					GROUPED_PARAMETER_HOLD);
 
 			if (rt == RES_PREVIEW) {
 				rc = vx6953_i2c_write_w_table(
@@ -2770,14 +2706,16 @@ static int32_t vx6953_sensor_setting(int update_type, int rt)
 				if (rc < 0)
 					return rc;
 			}
-			msleep(vx6953_stm5m0edof_delay_msecs_stdby);
+			msleep(15);
+
+			vx6953_i2c_write_b_sensor(REG_GROUPED_PARAMETER_HOLD,
+			GROUPED_PARAMETER_HOLD_OFF);
 
 			/* Start sensor streaming */
 			if (vx6953_i2c_write_b_sensor(REG_MODE_SELECT,
 				MODE_SELECT_STREAM) < 0)
 				return rc;
 			msleep(vx6953_stm5m0edof_delay_msecs_stream);
-
 			if (vx6953_i2c_read(0x0005, &frame_cnt, 1) < 0)
 				return rc;
 
@@ -2785,8 +2723,9 @@ static int32_t vx6953_sensor_setting(int update_type, int rt)
 				if (vx6953_i2c_read(0x0005, &frame_cnt, 1) < 0)
 					return rc;
 				CDBG("frame_cnt=%d", frame_cnt);
-				msleep(10);
+				msleep(2);
 			}
+
 		}
 		return rc;
 		default:
@@ -3404,15 +3343,14 @@ static int vx6953_probe_init_sensor(const struct msm_camera_sensor_info *data)
 		CDBG("sensor_reset = %d\n", rc);
 		CDBG(" vx6953_probe_init_sensor 1\n");
 		gpio_direction_output(data->sensor_reset, 0);
-		mdelay(50);
+		msleep(20);
 		CDBG(" vx6953_probe_init_sensor 1\n");
 		gpio_direction_output(data->sensor_reset, 1);
-		mdelay(13);
 	} else {
 		CDBG(" vx6953_probe_init_sensor 2\n");
 		goto init_probe_done;
 	}
-	mdelay(20);
+	msleep(20);
 	CDBG(" vx6953_probe_init_sensor is called \n");
 	/* 3. Read sensor Model ID: */
 	rc = vx6953_i2c_read(0x0000, &chipidh, 1);
@@ -3472,7 +3410,7 @@ int vx6953_sensor_open_init(const struct msm_camera_sensor_info *data)
 	CDBG("%s: %d\n", __func__, __LINE__);
 	/* enable mclk first */
 	msm_camio_clk_rate_set(VX6953_STM5M0EDOF_DEFAULT_MASTER_CLK_RATE);
-	mdelay(20);
+	msleep(20);
 	CDBG("%s: %d\n", __func__, __LINE__);
 	rc = vx6953_probe_init_sensor(data);
 	if (rc < 0) {
@@ -3565,7 +3503,7 @@ static int vx6953_i2c_probe(struct i2c_client *client,
 	vx6953_init_client(client);
 	vx6953_client = client;
 
-	mdelay(50);
+	msleep(50);
 
 	CDBG("vx6953_probe successed! rc = %d\n", rc);
 	return 0;
