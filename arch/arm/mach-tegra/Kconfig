@@ -38,6 +38,12 @@ config MACH_TEGRA_SEABOARD
        help
          Support for NVIDIA Seaboard development platform
 
+config MACH_KAEN
+	bool "Kaen board"
+	depends on MACH_TEGRA_SEABOARD
+	help
+	  Support for the Kaen version of Seaboard.
+
 choice
         prompt "Low-level debug console UART"
         default TEGRA_DEBUG_UART_NONE
