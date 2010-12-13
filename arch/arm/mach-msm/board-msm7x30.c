@@ -192,13 +192,6 @@ static int pm8058_gpios_init(void)
 		pr_err("%s PMIC_GPIO_HDMI_5V_EN config failed\n", __func__);
 		return rc;
 	}
-	rc = gpio_request(PM8058_GPIO_PM_TO_SYS(pmic_gpio_hdmi_5v_en),
-		"hdmi_5V_en");
-	if (rc) {
-		pr_err("%s PMIC_GPIO_HDMI_5V_EN gpio_request failed\n",
-			__func__);
-		return rc;
-	}
 
 	if (machine_is_msm7x30_fluid()) {
 		rc = pm8058_gpio_config(PMIC_GPIO_SDC4_EN, &sdc4_en);
@@ -3191,8 +3184,8 @@ static int hdmi_enable_5v(int on)
 		rc = gpio_request(PM8058_GPIO_PM_TO_SYS(pmic_gpio_hdmi_5v_en),
 			"hdmi_5V_en");
 		if (rc) {
-			pr_err("%s PMIC_GPIO_HDMI_5V_EN gpio_request failed\n",
-				__func__);
+			pr_err("%s PMIC_GPIO_HDMI_5V_EN request failed:: %d\n",
+				__func__,rc);
 			return rc;
 		}
 		gpio_set_value_cansleep(
