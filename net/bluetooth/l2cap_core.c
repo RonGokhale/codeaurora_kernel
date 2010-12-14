@@ -54,6 +54,7 @@
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
 #include <net/bluetooth/l2cap.h>
+#include <net/bluetooth/smp.h>
 #include <net/bluetooth/amp.h>
 
 int disable_ertm;
@@ -964,6 +965,8 @@ static void l2cap_conn_ready(struct l2cap_conn *conn)
 			l2cap_sock_clear_timer(sk);
 			sk->sk_state = BT_CONNECTED;
 			sk->sk_state_change(sk);
+			if (smp_conn_security(conn, l2cap_pi(sk)->sec_level))
+				BT_DBG("Insufficient security");
 		}
 
 		if (sk->sk_type != SOCK_SEQPACKET &&
@@ -6648,6 +6651,11 @@ static void l2cap_recv_frame(struct l2cap_conn *conn, struct sk_buff *skb)
 
 	case L2CAP_CID_LE_DATA:
 		l2cap_att_channel(conn, cid, skb);
+		break;
+
+	case L2CAP_CID_SMP:
+		if (smp_sig_channel(conn, skb))
+			l2cap_conn_del(conn->hcon, EACCES);
 		break;
 
 	default:
