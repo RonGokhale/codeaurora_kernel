@@ -182,6 +182,7 @@ enum register_t {
 	RMSSI,
 	AUDIOIND = 0x1E,
 	XFRCTRL,
+	FM_CTL0 = 0xFF,
 	LEAKAGE_CNTRL = 0xFE,
 };
 

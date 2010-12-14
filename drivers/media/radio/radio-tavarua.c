@@ -1620,6 +1620,9 @@ static int tavarua_fops_release(struct file *file)
 	int retval;
 	struct tavarua_device *radio = video_get_drvdata(video_devdata(file));
 	unsigned char value;
+	/*FM Core shutdown sequence for Marimba*/
+	char buffer[] = {0x18, 0xB7, 0x48};
+
 	if (!radio)
 		return -ENODEV;
 	FMDBG("In %s", __func__);
@@ -1635,6 +1638,13 @@ static int tavarua_fops_release(struct file *file)
 		return retval;
 	}
 
+	retval = tavarua_write_registers(radio, FM_CTL0,
+				buffer, sizeof(buffer)/sizeof(buffer[0]));
+	if (retval < 0) {
+		printk(KERN_ERR "%s: failed to bring down the  FM Core\n",
+					__func__);
+		return retval;
+	}
 	/* disable fm core */
 	radio->marimba->mod_id = MARIMBA_SLAVE_ID_MARIMBA;
 	value = 0x00;
