@@ -549,7 +549,7 @@ static void __init tegra_seaboard_init(void)
 	tegra_gpio_enable(TEGRA_GPIO_POWERKEY);
 }
 
-MACHINE_START(TEGRA_SEABOARD, "seaboard")
+MACHINE_START(SEABOARD, "seaboard")
 	.boot_params    = 0x00000100,
 	.init_irq       = tegra_init_irq,
 	.init_machine   = tegra_seaboard_init,
