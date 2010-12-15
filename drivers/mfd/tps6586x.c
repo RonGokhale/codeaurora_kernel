@@ -499,10 +499,8 @@ static int __devinit tps6586x_i2c_probe(struct i2c_client *client,
 	}
 
 	if ((ret != TPS658621A_VERSIONCRC) &&
-	    (ret != TPS658621C_VERSIONCRC)) {
-		dev_err(&client->dev, "Unsupported chip ID: %x\n", ret);
-		return -ENODEV;
-	}
+	    (ret != TPS658621C_VERSIONCRC))
+		dev_warn(&client->dev, "Unsupported chip ID: %x\n", ret);
 
 	tps6586x = kzalloc(sizeof(struct tps6586x), GFP_KERNEL);
 	if (tps6586x == NULL)

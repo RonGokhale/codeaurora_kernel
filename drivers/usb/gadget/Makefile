@@ -17,7 +17,12 @@ obj-$(CONFIG_USB_AT91)		+= at91_udc.o
 obj-$(CONFIG_USB_ATMEL_USBA)	+= atmel_usba_udc.o
 obj-$(CONFIG_USB_FSL_USB2)	+= fsl_usb2_udc.o
 fsl_usb2_udc-y			:= fsl_udc_core.o
-fsl_usb2_udc-$(CONFIG_ARCH_MXC)	+= fsl_mxc_udc.o
+ifeq ($(CONFIG_ARCH_MXC),y)
+fsl_usb2_udc-y			+= fsl_mxc_udc.o
+endif
+ifeq ($(CONFIG_ARCH_TEGRA),y)
+fsl_usb2_udc-y			+= fsl_tegra_udc.o
+endif
 obj-$(CONFIG_USB_M66592)	+= m66592-udc.o
 obj-$(CONFIG_USB_R8A66597)	+= r8a66597-udc.o
 obj-$(CONFIG_USB_FSL_QE)	+= fsl_qe_udc.o

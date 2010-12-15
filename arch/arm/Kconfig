@@ -129,6 +129,10 @@ config RWSEM_GENERIC_SPINLOCK
 config RWSEM_XCHGADD_ALGORITHM
 	bool
 
+config ARCH_HAS_DEFAULT_IDLE
+	bool
+	default y
+
 config ARCH_HAS_ILOG2_U32
 	bool
 
@@ -178,6 +182,9 @@ config ARM_L1_CACHE_SHIFT_6
 	bool
 	help
 	  Setting ARM L1 cache line size to 64 Bytes.
+
+config ARCH_PROVIDES_UDELAY
+  bool
 
 config VECTORS_BASE
 	hex
@@ -567,6 +574,8 @@ config ARCH_TEGRA
 	select COMMON_CLKDEV
 	select ARCH_HAS_BARRIERS if CACHE_L2X0
 	select ARCH_HAS_CPUFREQ
+	select ARCH_PROVIDES_UDELAY
+	select FIQ
 	help
 	  This enables support for NVIDIA Tegra based systems (Tegra APX,
 	  Tegra 6xx and Tegra 2 series).
@@ -1311,7 +1320,7 @@ config HZ
 
 config THUMB2_KERNEL
 	bool "Compile the kernel in Thumb-2 mode"
-	depends on CPU_V7 && EXPERIMENTAL
+	depends on CPU_V7 && !CPU_V6 && EXPERIMENTAL
 	select AEABI
 	select ARM_ASM_UNIFIED
 	help
@@ -1759,7 +1768,7 @@ comment "At least one emulation must be selected"
 
 config FPE_NWFPE
 	bool "NWFPE math emulation"
-	depends on !AEABI || OABI_COMPAT
+	depends on (!AEABI || OABI_COMPAT) && !THUMB2_KERNEL
 	---help---
 	  Say Y to include the NWFPE floating point emulator in the kernel.
 	  This is necessary to run most binaries. Linux does not currently

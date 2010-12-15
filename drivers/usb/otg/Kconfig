@@ -81,4 +81,12 @@ config USB_LANGWELL_OTG
 	  To compile this driver as a module, choose M here: the
 	  module will be called langwell_otg.
 
+config USB_TEGRA_OTG
+	boolean "Tegra OTG Driver"
+	depends on USB && ARCH_TEGRA
+	select USB_OTG_UTILS
+	help
+	  Enable this driver on boards which use the internal VBUS and ID
+	  sensing of the Tegra USB PHY.
+
 endif # USB || OTG

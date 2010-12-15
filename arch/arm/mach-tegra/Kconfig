@@ -10,6 +10,7 @@ config ARCH_TEGRA_2x_SOC
 	select CPU_V7
 	select ARM_GIC
 	select ARCH_REQUIRE_GPIOLIB
+	select ARM_ERRATA_742230
 	help
 	  Support for NVIDIA Tegra AP20 and T20 processors, based on the
 	  ARM CortexA9MP CPU and the ARM PL310 L2 cache controller
@@ -25,7 +26,23 @@ comment "Tegra board type"
 config MACH_HARMONY
        bool "Harmony board"
        help
-         Support for nVidia Harmony development platform
+         Support for NVIDIA Harmony development platform
+
+config MACH_VENTANA
+       bool "Ventana board"
+       help
+         Support for NVIDIA Ventana development platform
+
+config MACH_SEABOARD
+       bool "Seaboard board"
+       help
+         Support for NVIDIA Seaboard development platform
+
+config MACH_KAEN
+	bool "Kaen board"
+	depends on MACH_SEABOARD
+	help
+	  Support for the Kaen version of Seaboard.
 
 choice
         prompt "Low-level debug console UART"
@@ -58,4 +75,53 @@ config TEGRA_SYSTEM_DMA
 	  Adds system DMA functionality for NVIDIA Tegra SoCs, used by
 	  several Tegra device drivers
 
+config TEGRA_PWM
+	tristate "Enable PWM driver"
+	select HAVE_PWM
+	help
+	  Enable support for the Tegra PWM controller(s).
+
+config TEGRA_FIQ_DEBUGGER
+	bool "Enable the FIQ serial debugger on Tegra"
+	default y
+	select FIQ_DEBUGGER
+	help
+	  Enables the FIQ serial debugger on Tegra"
+
+source "arch/arm/mach-tegra/nv/Kconfig"
+
 endif
+
+config TEGRA_EMC_SCALING_ENABLE
+	bool "Enable scaling the memory frequency"
+	default n
+
+config TEGRA_CPU_DVFS
+	bool "Enable voltage scaling on Tegra CPU"
+	default y
+
+config TEGRA_CORE_DVFS
+	bool "Enable voltage scaling on Tegra core"
+	depends on TEGRA_CPU_DVFS
+	default y
+
+config TEGRA_IOVMM_GART
+	bool "Enable I/O virtual memory manager for GART"
+	depends on ARCH_TEGRA_2x_SOC
+	default y
+	select TEGRA_IOVMM
+	help
+	  Enables support for remapping discontiguous physical memory
+	  shared with the operating system into contiguous I/O virtual
+	  space through the GART hardware included on Tegra SoCs
+
+config TEGRA_IOVMM
+	bool
+
+config TEGRA_I2S_AUDIO
+	bool "Enable Tegra I2S Audio support"
+	default y
+	help
+	  Say Y if you want to add support for i2s audio on tegra.
+	  TEGRA_ALSA and TEGRA_I2S_AUDIO options are mutually exclusive.
+
