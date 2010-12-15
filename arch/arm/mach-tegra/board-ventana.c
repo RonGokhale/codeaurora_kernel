@@ -220,8 +220,6 @@ static void __init tegra_ventana_init(void)
 
 MACHINE_START(VENTANA, "ventana")
 	.boot_params    = 0x00000100,
-	.phys_io        = IO_APB_PHYS,
-	.io_pg_offst    = ((IO_APB_VIRT) >> 18) & 0xfffc,
 	.init_irq       = tegra_init_irq,
 	.init_machine   = tegra_ventana_init,
 	.map_io         = tegra_map_common_io,
