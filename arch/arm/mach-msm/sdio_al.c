@@ -543,6 +543,7 @@ static int read_mailbox(int from_isr)
 	u32 new_write_avail = 0;
 	u32 old_write_avail = 0;
 	u32 any_read_avail = 0;
+	u32 any_no_write_avail = 0;
 	int i;
 	u32 rx_notify_bitmask = 0;
 	u32 tx_notify_bitmask = 0;
@@ -651,10 +652,15 @@ static int read_mailbox(int from_isr)
 		if ((old_write_avail <= ch->min_write_avail) &&
 			(new_write_avail >= ch->min_write_avail))
 			tx_notify_bitmask |= (1<<ch->num);
+
+		/* There is not enough write avail for this channel.
+		   We need to keep reading mailbox to wait for the appropriate
+		   write avail and cannot sleep */
+		any_no_write_avail |= (new_write_avail <= ch->min_write_avail);
 	}
 
 	if ((rx_notify_bitmask == 0) && (tx_notify_bitmask == 0) &&
-	    !any_read_avail) {
+	    !any_read_avail && !any_no_write_avail) {
 		pr_debug(MODULE_NAME ":Nothing to Notify\n");
 	} else {
 		pr_debug(MODULE_NAME ":Notify bitmask rx=0x%x, tx=0x%x.\n",
