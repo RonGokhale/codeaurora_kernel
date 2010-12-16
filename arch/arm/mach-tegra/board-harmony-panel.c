@@ -119,7 +119,7 @@ static struct resource harmony_disp1_resources[] = {
 	{
 		.name	= "fbmem",
 		.start	= 0x1c012000,
-		.end	= 0x1c012000 + 0x500000 - 1,
+		.end	= 0x1c012000 + 0x258000 - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 };
@@ -144,7 +144,7 @@ static struct tegra_fb_data harmony_fb_data = {
 	.win		= 0,
 	.xres		= 1024,
 	.yres		= 600,
-	.bits_per_pixel	= 24,
+	.bits_per_pixel	= 16,
 };
 
 static struct tegra_dc_out harmony_disp1_out = {
