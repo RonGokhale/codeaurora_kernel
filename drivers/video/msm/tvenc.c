@@ -397,8 +397,7 @@ static int tvenc_probe(struct platform_device *pdev)
 #endif
 
 #ifdef CONFIG_MSM_BUS_SCALING
-	if (!tvenc_bus_scale_handle && tvenc_pdata &&
-		tvenc_pdata->bus_scale_table) {
+	if (tvenc_pdata && tvenc_pdata->bus_scale_table) {
 		tvenc_bus_scale_handle =
 			msm_bus_scale_register_client(
 				tvenc_pdata->bus_scale_table);
