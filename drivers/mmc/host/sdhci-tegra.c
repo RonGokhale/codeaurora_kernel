@@ -33,6 +33,7 @@
 struct tegra_sdhci_host {
 	struct sdhci_host *sdhci;
 	struct clk *clk;
+	int wp_pin;
 };
 
 static irqreturn_t carddetect_irq(int irq, void *data)
@@ -48,8 +49,19 @@ static int tegra_sdhci_enable_dma(struct sdhci_host *host)
 	return 0;
 }
 
+static int tegra_sdhci_get_ro(struct sdhci_host *sdhci)
+{
+	struct tegra_sdhci_host *host = sdhci_priv(sdhci);
+
+	if (host->wp_pin != -1)
+		return gpio_get_value(host->wp_pin);
+
+	return -1;
+}
+
 static struct sdhci_ops tegra_sdhci_ops = {
 	.enable_dma = tegra_sdhci_enable_dma,
+	.get_ro		= tegra_sdhci_get_ro,
 };
 
 static int __devinit tegra_sdhci_probe(struct platform_device *pdev)
@@ -96,6 +108,8 @@ static int __devinit tegra_sdhci_probe(struct platform_device *pdev)
 	rc = clk_enable(host->clk);
 	if (rc != 0)
 		goto err_clkput;
+
+	host->wp_pin = plat->wp_gpio;
 
 	sdhci->hw_name = "tegra";
 	sdhci->ops = &tegra_sdhci_ops;
