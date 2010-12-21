@@ -236,8 +236,8 @@ static struct tegra_ulpi_config ulpi_phy_config = {
 static struct tegra_ehci_platform_data tegra_ehci_pdata[] = {
 	[0] = {
 		.phy_config = &utmi_phy_config[0],
-		.operating_mode = TEGRA_USB_OTG,
-		.power_down_on_bus_suspend = 0,
+		.operating_mode = TEGRA_USB_HOST,
+		.power_down_on_bus_suspend = 1,
 	},
 	[1] = {
 		.phy_config = &ulpi_phy_config,
@@ -497,7 +497,6 @@ static void seaboard_kbc_init(void)
 
 static struct platform_device *seaboard_devices[] __initdata = {
 	&debug_uart,
-	&tegra_ehci3_device,
 	&tegra_rtc_device,
 	&pmu_device,
 	&seaboard_gpio_keys_device,
@@ -524,6 +523,30 @@ static struct tegra_suspend_platform_data seaboard_suspend = {
 	.suspend_mode = TEGRA_SUSPEND_LP0,
 };
 
+static int seaboard_ehci_init(void)
+{
+	int gpio_status;
+
+	gpio_status = gpio_request(TEGRA_GPIO_USB1, "VBUS_USB1");
+	if (gpio_status < 0) {
+		pr_err("VBUS_USB1 request GPIO FAILED\n");
+		WARN_ON(1);
+	}
+	tegra_gpio_enable(TEGRA_GPIO_USB1);
+	gpio_status = gpio_direction_output(TEGRA_GPIO_USB1, 1);
+	if (gpio_status < 0) {
+		pr_err("VBUS_USB1 request GPIO DIRECTION FAILED\n");
+		WARN_ON(1);
+	}
+	gpio_set_value(TEGRA_GPIO_USB1, 1);
+
+	tegra_ehci1_device.dev.platform_data = &tegra_ehci_pdata[0];
+	tegra_ehci3_device.dev.platform_data = &tegra_ehci_pdata[2];
+
+	platform_device_register(&tegra_ehci1_device);
+	platform_device_register(&tegra_ehci3_device);
+}
+
 static void __init tegra_seaboard_init(void)
 {
 	tegra_common_init();
@@ -532,11 +555,11 @@ static void __init tegra_seaboard_init(void)
 	tegra_clk_init_from_table(seaboard_clk_init_table);
 	seaboard_pinmux_init();
 
-	tegra_ehci3_device.dev.platform_data = &tegra_ehci_pdata[2];
 	tegra_i2s_device1.dev.platform_data = &tegra_audio_pdata;
 
 	platform_add_devices(seaboard_devices, ARRAY_SIZE(seaboard_devices));
 
+	seaboard_ehci_init();
 	seaboard_panel_init();
 	seaboard_sdhci_init();
 	seaboard_i2c_init();
