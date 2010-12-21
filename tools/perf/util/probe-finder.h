@@ -28,8 +28,8 @@ extern int find_perf_probe_point(int fd, unsigned long addr,
 extern int find_line_range(int fd, struct line_range *lr);
 
 #include <dwarf.h>
-#include <libdw.h>
-#include <version.h>
+#include <elfutils/libdw.h>
+#include <elfutils/version.h>
 
 struct probe_finder {
 	struct perf_probe_event	*pev;		/* Target probe event */
