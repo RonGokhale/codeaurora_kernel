@@ -196,6 +196,7 @@ struct usb_info {
 	atomic_t ep0_dir;
 	atomic_t test_mode;
 	atomic_t offline_pending;
+	atomic_t softconnect;
 #ifdef CONFIG_USB_OTG
 	u8 hnp_avail;
 #endif
@@ -1315,6 +1316,12 @@ static void usb_do_work(struct work_struct *w)
 					break;
 				}
 				ui->irq = otg->irq;
+				ui->state = USB_STATE_ONLINE;
+				usb_do_work_check_vbus(ui);
+
+				if (!atomic_read(&ui->softconnect))
+					break;
+
 				msm72k_pullup_internal(&ui->gadget, 1);
 
 				if (!ui->gadget.is_a_peripheral)
@@ -1322,8 +1329,6 @@ static void usb_do_work(struct work_struct *w)
 							&ui->chg_det,
 							USB_CHG_DET_DELAY);
 
-				ui->state = USB_STATE_ONLINE;
-				usb_do_work_check_vbus(ui);
 			}
 			break;
 		case USB_STATE_ONLINE:
@@ -1463,6 +1468,9 @@ static void usb_do_work(struct work_struct *w)
 				}
 				ui->irq = otg->irq;
 				enable_irq_wake(otg->irq);
+
+				if (!atomic_read(&ui->softconnect))
+					break;
 				msm72k_pullup_internal(&ui->gadget, 1);
 
 				if (!ui->gadget.is_a_peripheral)
@@ -1939,6 +1947,8 @@ static int msm72k_pullup(struct usb_gadget *_gadget, int is_active)
 {
 	struct usb_info *ui = container_of(_gadget, struct usb_info, gadget);
 
+	atomic_set(&ui->softconnect, is_active);
+
 	/* Reset PHY before enabling pull-up to workaround
 	 * PHY stuck issue during mutiple times of function
 	 * enable/disable.
@@ -1949,6 +1959,9 @@ static int msm72k_pullup(struct usb_gadget *_gadget, int is_active)
 		atomic_set(&ui->offline_pending, 1);
 
 	msm72k_pullup_internal(_gadget, is_active);
+
+	if (is_active && !ui->gadget.is_a_peripheral)
+		schedule_delayed_work(&ui->chg_det, USB_CHG_DET_DELAY);
 
 	return 0;
 }
@@ -2295,6 +2308,7 @@ int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 	ui->gadget.ep0 = &ui->ep0in.ep;
 	INIT_LIST_HEAD(&ui->gadget.ep0->ep_list);
 	ui->gadget.speed = USB_SPEED_UNKNOWN;
+	atomic_set(&ui->softconnect, 1);
 
 	for (n = 1; n < 16; n++) {
 		struct msm_endpoint *ept = ui->ept + n;
