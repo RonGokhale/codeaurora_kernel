@@ -468,8 +468,15 @@ static int sdio_al_wake_up(u32 enable_wake_up_func);
 		if (sdio_al->is_err) {					\
 			if (!sdio_al->is_err_printed) {			\
 				pr_err(MODULE_NAME			\
-					":In Error state, ignore %s\n",	\
-					func);				\
+					":In Error state, ignore %s "	\
+					"(%d,%d,%d,%d,%d,%d)\n",	\
+					func,				\
+					sdio_al->channel[0].total_rx_bytes, \
+					sdio_al->channel[0].total_tx_bytes, \
+					sdio_al->channel[1].total_rx_bytes, \
+					sdio_al->channel[1].total_tx_bytes, \
+					sdio_al->channel[2].total_rx_bytes, \
+					sdio_al->channel[2].total_tx_bytes);\
 				sdio_al->is_err_printed = true;		\
 			}						\
 			return ret;					\
@@ -723,7 +730,14 @@ static int read_mailbox(int from_isr)
 		/* Disable clocks here */
 		host->ios.clock = 0;
 		host->ops->set_ios(host, &host->ios);
-		pr_info(MODULE_NAME ":Finished sleep sequence. Sleep now.\n");
+		pr_info(MODULE_NAME
+			":Finished sleep sequence (%d,%d,%d,%d,%d,%d)\n",
+			sdio_al->channel[0].total_rx_bytes,
+			sdio_al->channel[0].total_tx_bytes,
+			sdio_al->channel[1].total_rx_bytes,
+			sdio_al->channel[1].total_tx_bytes,
+			sdio_al->channel[2].total_rx_bytes,
+			sdio_al->channel[2].total_tx_bytes);
 		/* Release wakelock */
 		wake_unlock(&sdio_al->wake_lock);
 	}
@@ -1848,8 +1862,16 @@ int sdio_read(struct sdio_channel *ch, void *data, int len)
 	sdio_claim_host(sdio_al->card->sdio_func[0]);
 	ret = sdio_memcpy_fromio(ch->func, data, PIPE_RX_FIFO_ADDR, len);
 
-	if (ret)
-		pr_info(MODULE_NAME ":sdio_read err=%d\n", -ret);
+	if (ret) {
+		pr_info(MODULE_NAME ":sdio_read err=%d (%d,%d,%d,%d,%d,%d)\n",
+			-ret,
+			sdio_al->channel[0].total_rx_bytes,
+			sdio_al->channel[0].total_tx_bytes,
+			sdio_al->channel[1].total_rx_bytes,
+			sdio_al->channel[1].total_tx_bytes,
+			sdio_al->channel[2].total_rx_bytes,
+			sdio_al->channel[2].total_tx_bytes);
+	}
 
 	/* Remove handled packet from the list regardless if ret is ok */
 	if (ch->is_packet_mode)
@@ -1918,7 +1940,14 @@ int sdio_write(struct sdio_channel *ch, const void *data, int len)
 		ch->name, len, ch->write_avail, ch->total_tx_bytes);
 
 	if (ret) {
-		pr_info(MODULE_NAME ":sdio_write err=%d\n", -ret);
+		pr_info(MODULE_NAME ":sdio_write err=%d (%d,%d,%d,%d,%d,%d)\n",
+			-ret,
+			sdio_al->channel[0].total_rx_bytes,
+			sdio_al->channel[0].total_tx_bytes,
+			sdio_al->channel[1].total_rx_bytes,
+			sdio_al->channel[1].total_tx_bytes,
+			sdio_al->channel[2].total_rx_bytes,
+			sdio_al->channel[2].total_tx_bytes);
 	} else {
 		/* Round up to whole buffer size */
 		len = ROUND_UP(len, ch->peer_tx_buf_size);
