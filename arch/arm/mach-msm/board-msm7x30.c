@@ -1506,6 +1506,26 @@ static void msm_timpani_shutdown_power(void)
 	msm_gpios_free(timpani_reset_gpio_cfg,
 				   ARRAY_SIZE(timpani_reset_gpio_cfg));
 };
+static struct msm_gpio marimba_svlte_config_clock[] = {
+	{ GPIO_CFG(34, 0, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL,    GPIO_CFG_2MA),
+			"MARIMBA_SVLTE_CLOCK_ENABLE" },
+};
+
+
+static unsigned int msm_marimba_gpio_config_svlte(int gpio_cfg_marimba)
+{
+	if (machine_is_msm8x55_svlte_surf() ||
+		machine_is_msm8x55_svlte_ffa()) {
+		if (gpio_cfg_marimba)
+			gpio_set_value(GPIO_PIN
+				(marimba_svlte_config_clock->gpio_cfg),	1);
+		else
+			gpio_set_value(GPIO_PIN
+				(marimba_svlte_config_clock->gpio_cfg),	0);
+	}
+
+	return 0;
+};
 
 static unsigned int msm_marimba_setup_power(void)
 {
@@ -1524,6 +1544,24 @@ static unsigned int msm_marimba_setup_power(void)
 		goto out;
 	}
 
+	if (machine_is_msm8x55_svlte_surf() || machine_is_msm8x55_svlte_ffa()) {
+		rc = msm_gpios_request_enable(marimba_svlte_config_clock,
+					ARRAY_SIZE(marimba_svlte_config_clock));
+		if (rc < 0) {
+			printk(KERN_ERR
+				"%s: msm_gpios_request_enable failed (%d)\n",
+					__func__, rc);
+			return rc;
+		}
+		rc = gpio_direction_output
+			(GPIO_PIN(marimba_svlte_config_clock->gpio_cfg), 0);
+		if (rc < 0) {
+			printk(KERN_ERR
+				"%s: gpio_direction_output failed (%d)\n",
+					__func__, rc);
+			return rc;
+		}
+	}
 out:
 	return rc;
 };
@@ -1827,12 +1865,14 @@ static struct marimba_platform_data marimba_pdata = {
 	.slave_id[MARIMBA_SLAVE_ID_QMEMBIST] = MARIMBA_SLAVE_ID_QMEMBIST_ADDR,
 	.marimba_setup = msm_marimba_setup_power,
 	.marimba_shutdown = msm_marimba_shutdown_power,
+	.marimba_gpio_config = msm_marimba_gpio_config_svlte,
 	.fm = &marimba_fm_pdata,
 	.codec = &mariba_codec_pdata,
 };
 
 static void __init msm7x30_init_marimba(void)
 {
+
 	vreg_marimba_1 = vreg_get(NULL, "s3");
 	if (IS_ERR(vreg_marimba_1)) {
 		printk(KERN_ERR "%s: vreg get failed (%ld)\n",
@@ -4087,11 +4127,6 @@ static struct msm_gpio bt_config_power_off[] = {
 		"UART1DM_Tx" }
 };
 
-static struct msm_gpio bt_config_clock[] = {
-	{ GPIO_CFG(34, 0, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL,    GPIO_CFG_2MA),
-		"BT_REF_CLOCK_ENABLE" },
-};
-
 static int marimba_bt(int on)
 {
 	int rc;
@@ -4268,8 +4303,8 @@ static int bluetooth_power(int on)
 
 		if (machine_is_msm8x55_svlte_surf() ||
 				machine_is_msm8x55_svlte_ffa())
-			gpio_set_value(
-				GPIO_PIN(bt_config_clock->gpio_cfg), 1);
+			gpio_set_value(GPIO_PIN
+				(marimba_svlte_config_clock->gpio_cfg), 1);
 
 		rc = marimba_bt(on);
 		if (rc < 0)
@@ -4284,8 +4319,8 @@ static int bluetooth_power(int on)
 
 		if (machine_is_msm8x55_svlte_surf() ||
 				machine_is_msm8x55_svlte_ffa())
-			gpio_set_value(
-				GPIO_PIN(bt_config_clock->gpio_cfg), 0);
+			gpio_set_value(GPIO_PIN
+				(marimba_svlte_config_clock->gpio_cfg), 0);
 
 		rc = msm_gpios_enable(bt_config_power_on,
 			ARRAY_SIZE(bt_config_power_on));
@@ -4331,7 +4366,7 @@ out:
 
 static void __init bt_power_init(void)
 {
-	int i, rc;
+	int i;
 
 	for (i = 0; i < ARRAY_SIZE(vregs_bt_name); i++) {
 		vregs_bt[i] = vreg_get(NULL, vregs_bt_name[i]);
@@ -4342,27 +4377,6 @@ static void __init bt_power_init(void)
 			return;
 		}
 	}
-
-	if (machine_is_msm8x55_svlte_surf() || machine_is_msm8x55_svlte_ffa()) {
-		rc = msm_gpios_request_enable(bt_config_clock,
-					ARRAY_SIZE(bt_config_clock));
-		if (rc < 0) {
-			printk(KERN_ERR
-				"%s: msm_gpios_request_enable failed (%d)\n",
-					__func__, rc);
-			return;
-		}
-
-		rc = gpio_direction_output(GPIO_PIN(bt_config_clock->gpio_cfg),
-						0);
-		if (rc < 0) {
-			printk(KERN_ERR
-				"%s: gpio_direction_output failed (%d)\n",
-					__func__, rc);
-			return;
-		}
-	}
-
 
 	msm_bt_power_device.dev.platform_data = &bluetooth_power;
 }
