@@ -518,6 +518,21 @@ struct platform_device tegra_spdif_device = {
 	.num_resources	= ARRAY_SIZE(spdif_resource),
 };
 
+struct platform_device tegra_i2s_dai_device1 = {
+	.name = "tegra-i2s-dai",
+	.id = 0,
+};
+
+struct platform_device tegra_i2s_dai_device2 = {
+	.name = "tegra-i2s-dai",
+	.id = 1,
+};
+
+struct platform_device tegra_pcm_device = {
+        .name   = "tegra-pcm-audio",
+        .id     = -1,
+};
+
 static struct resource tegra_gart_resources[] = {
 	[0] = {
 		.name	= "mc",

@@ -462,14 +462,14 @@ static int tegra_pcm_new(struct snd_card *card,
 	if (!card->dev->coherent_dma_mask)
 		card->dev->coherent_dma_mask = 0xffffffff;
 
-	if (dai->playback.channels_min) {
+	if (dai->driver->playback.channels_min) {
 		ret = tegra_pcm_preallocate_dma_buffer(pcm,
 						SNDRV_PCM_STREAM_PLAYBACK);
 		if (ret)
 			goto out;
 	}
 
-	if (dai->capture.channels_min) {
+	if (dai->driver->capture.channels_min) {
 		ret = tegra_pcm_preallocate_dma_buffer(pcm,
 						SNDRV_PCM_STREAM_CAPTURE);
 		if (ret)
@@ -479,25 +479,44 @@ out:
 	return ret;
 }
 
-struct snd_soc_platform tegra_soc_platform = {
-	.name     = "tegra-audio",
-	.pcm_ops  = &tegra_pcm_ops,
-	.pcm_new  = tegra_pcm_new,
-	.pcm_free = tegra_pcm_free_dma_buffers,
+struct snd_soc_platform_driver tegra_soc_platform = {
+	.ops		= &tegra_pcm_ops,
+	.pcm_new	= tegra_pcm_new,
+	.pcm_free	= tegra_pcm_free_dma_buffers,
 };
-EXPORT_SYMBOL_GPL(tegra_soc_platform);
 
-static int __init tegra_soc_platform_init(void)
+static int __devinit tegra_soc_platform_probe(struct platform_device *pdev)
 {
-	return snd_soc_register_platform(&tegra_soc_platform);
+	return snd_soc_register_platform(&pdev->dev, &tegra_soc_platform);
 }
-module_init(tegra_soc_platform_init);
 
-static void __exit tegra_soc_platform_exit(void)
+static int __devexit tegra_soc_platform_remove(struct platform_device *pdev)
 {
-	snd_soc_unregister_platform(&tegra_soc_platform);
+	snd_soc_unregister_platform(&pdev->dev);
+	return 0;
 }
-module_exit(tegra_soc_platform_exit);
+
+static struct platform_driver tegra_pcm_driver = {
+	.driver = {
+			.name = "tegra-pcm-audio",
+			.owner = THIS_MODULE,
+	},
+
+	.probe = tegra_soc_platform_probe,
+	.remove = __devexit_p(tegra_soc_platform_remove),
+};
+
+static int __init snd_tegra_pcm_init(void)
+{
+    return platform_driver_register(&tegra_pcm_driver);
+}
+module_init(snd_tegra_pcm_init);
+
+static void __exit snd_tegra_pcm_exit(void)
+{
+	platform_driver_unregister(&tegra_pcm_driver);
+}
+module_exit(snd_tegra_pcm_exit);
 
 MODULE_DESCRIPTION("Tegra PCM DMA module");
 MODULE_LICENSE("GPL");

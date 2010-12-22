@@ -97,7 +97,4 @@ struct tegra_runtime_data {
 	struct clk *audio_sync_clk;
 };
 
-extern struct snd_soc_dai tegra_i2s_dai;
-extern struct snd_soc_platform tegra_soc_platform;
-
 #endif
