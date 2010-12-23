@@ -213,8 +213,6 @@ kgsl_g12_init(struct kgsl_device *device,
 {
 	int status = -EINVAL;
 	struct kgsl_memregion *regspace = &device->regspace;
-	unsigned int memflags = KGSL_MEMFLAGS_ALIGNPAGE |
-				KGSL_MEMFLAGS_CONPHYS;
 	struct kgsl_g12_device *g12_device = (struct kgsl_g12_device *) device;
 
 
@@ -288,13 +286,10 @@ kgsl_g12_init(struct kgsl_device *device,
 		goto error_iounmap;
 	}
 
-	status = kgsl_sharedmem_alloc(memflags, sizeof(device->memstore),
-					&device->memstore);
-
-	if (status != 0)  {
-		status = -ENODEV;
+	status = kgsl_sharedmem_alloc_coherent(&device->memstore,
+						sizeof(device->memstore));
+	if (status != 0)
 		goto error_close_mmu;
-	}
 
 	kgsl_sharedmem_set(&device->memstore, 0, 0, device->memstore.size);
 

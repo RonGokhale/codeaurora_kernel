@@ -41,8 +41,8 @@ kgsl_g12_drawctxt_create(struct kgsl_device_private *dev_priv,
 	struct kgsl_device *device = dev_priv->device;
 
 	if (g_z1xx.numcontext == 0) {
-		if (kgsl_sharedmem_alloc(0, KGSL_G12_RB_SIZE,
-					&g_z1xx.cmdbufdesc) !=  0)
+		if (kgsl_sharedmem_alloc_coherent(&g_z1xx.cmdbufdesc,
+						  KGSL_G12_RB_SIZE) !=  0)
 			return -ENOMEM;
 
 		cmd = (int)(((VGV3_NEXTCMD_JUMP) &
