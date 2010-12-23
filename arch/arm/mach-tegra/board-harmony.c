@@ -269,6 +269,8 @@ static struct platform_device *harmony_devices[] __initdata = {
 	&tegra_spi_device4,
 	&tegra_gart_device,
 	&tegra_i2s_device1,
+	&tegra_i2s_dai_device1,
+	&tegra_pcm_device,
 };
 
 static void __init tegra_harmony_fixup(struct machine_desc *desc,
