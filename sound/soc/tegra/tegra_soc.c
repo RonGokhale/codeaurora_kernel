@@ -15,8 +15,8 @@
  *
  */
 
-#include "../codecs/wm8903.h"
 #include "tegra_soc.h"
+#include "../codecs/wm8903.h"
 #include <mach/audio.h>
 
 static struct platform_device *tegra_snd_device;
@@ -108,8 +108,8 @@ static int tegra_hifi_hw_params(struct snd_pcm_substream *substream,
 					struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *codec_dai = rtd->dai->codec_dai;
-	struct snd_soc_dai *cpu_dai = rtd->dai->cpu_dai;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	int err;
 	struct snd_soc_codec *codec = codec_dai->codec;
 	int ctrl_reg = 0;
@@ -298,8 +298,9 @@ static const struct snd_kcontrol_new wm8903_tegra_controls[] = {
 };
 
 
-static int tegra_codec_init(struct snd_soc_codec *codec)
+static int tegra_codec_init(struct snd_soc_pcm_runtime *rtd)
 {
+	struct snd_soc_codec *codec = rtd->codec;
 	int err;
 
 	/* Add tegra specific controls */
@@ -328,41 +329,30 @@ static int tegra_codec_init(struct snd_soc_codec *codec)
 static struct snd_soc_dai_link tegra_soc_dai = {
 	.name = "WM8903",
 	.stream_name = "WM8903 HiFi",
-	.cpu_dai = &tegra_i2s_dai,
-	.codec_dai = &wm8903_dai,
+	.cpu_dai_name = "tegra-i2s-dai.0",
+	.platform_name = "tegra-pcm-audio",
+	.codec_name = "wm8903-codec.0-001a",
+	.codec_dai_name = "wm8903-hifi",
 	.init = tegra_codec_init,
 	.ops = &tegra_hifi_ops,
 };
 
 static struct snd_soc_card tegra_snd_soc = {
 	.name = "tegra",
-	.platform = &tegra_soc_platform,
 	.dai_link = &tegra_soc_dai,
 	.num_links = 1,
-};
-
-struct tegra_setup_data {
-	int i2c_bus;
-	unsigned short i2c_address;
-};
-
-static struct snd_soc_device tegra_snd_devdata = {
-	.card = &tegra_snd_soc,
-	.codec_dev = &soc_codec_dev_wm8903,
 };
 
 static int __init tegra_init(void)
 {
 	int ret;
-	struct tegra_setup_data tegra_setup;
 
 	tegra_snd_device = platform_device_alloc("soc-audio", -1);
 	if (!tegra_snd_device)
 		return -ENOMEM;
 
-	memset(&tegra_setup, 0, sizeof(struct tegra_setup_data));
-	platform_set_drvdata(tegra_snd_device, &tegra_snd_devdata);
-	tegra_snd_devdata.dev = &tegra_snd_device->dev;
+	platform_set_drvdata(tegra_snd_device, &tegra_snd_soc);
+
 	ret = platform_device_add(tegra_snd_device);
 	if (ret) {
 		printk(KERN_ERR "audio device could not be added\n");
@@ -376,6 +366,7 @@ static int __init tegra_init(void)
 static void __exit tegra_exit(void)
 {
 	platform_device_unregister(tegra_snd_device);
+	tegra_snd_device = NULL;
 }
 
 module_init(tegra_init);
