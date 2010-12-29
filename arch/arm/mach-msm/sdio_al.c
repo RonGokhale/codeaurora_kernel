@@ -1851,6 +1851,8 @@ int sdio_read(struct sdio_channel *ch, void *data, int len)
 
 	restart_inactive_time();
 
+	sdio_claim_host(sdio_al->card->sdio_func[0]);
+
 	if ((ch->is_packet_mode) && (len != ch->read_avail)) {
 		pr_info(MODULE_NAME ":sdio_read ch %s len != read_avail\n",
 				 ch->name);
@@ -1863,7 +1865,6 @@ int sdio_read(struct sdio_channel *ch, void *data, int len)
 		return -ENOMEM;
 	}
 
-	sdio_claim_host(sdio_al->card->sdio_func[0]);
 	ret = sdio_memcpy_fromio(ch->func, data, PIPE_RX_FIFO_ADDR, len);
 
 	if (ret) {
