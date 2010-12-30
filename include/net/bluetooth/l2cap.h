@@ -456,6 +456,8 @@ struct l2cap_conn {
 	__u8		pcnf[16]; /* SMP Pairing Confirm */
 	__u8		tk[16]; /* SMP Temporary Key */
 
+	struct timer_list security_timer;
+
 	struct l2cap_chan_list chan_list;
 };
 
