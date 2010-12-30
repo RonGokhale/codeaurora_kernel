@@ -122,13 +122,15 @@ static int __devinit tegra_sdhci_probe(struct platform_device *pdev)
 			SDHCI_QUIRK_BROKEN_WRITE_PROTECT |
 			SDHCI_QUIRK_BROKEN_CTRL_HISPD |
 			SDHCI_QUIRK_NO_HISPD_BIT |
-			SDHCI_QUIRK_8_BIT_DATA |
 			SDHCI_QUIRK_NO_VERSION_REG |
 			SDHCI_QUIRK_BROKEN_ADMA_ZEROLEN_DESC |
 			SDHCI_QUIRK_NO_SDIO_IRQ;
 
 	if (plat->force_hs != 0)
 		sdhci->quirks |= SDHCI_QUIRK_FORCE_HIGH_SPEED_MODE;
+
+	if (plat->support_8bit != 0)
+		sdhci->quirks |= SDHCI_QUIRK_8_BIT_DATA;
 
 	rc = sdhci_add_host(sdhci);
 	if (rc)
