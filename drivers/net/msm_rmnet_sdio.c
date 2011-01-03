@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -39,6 +39,7 @@
 #define SDIO_MUX_HDR_CMD_OPEN    1
 #define SDIO_MUX_HDR_CMD_CLOSE   2
 
+#define SDIO_OOM_RETRY_DELAY_MS  200
 #define DEBUG
 
 static int msm_rmnet_sdio_debug_enable;
@@ -117,7 +118,7 @@ static void sdio_mux_read_data(struct work_struct *work);
 static void sdio_mux_write_data(struct work_struct *work);
 
 static DEFINE_MUTEX(sdio_mux_lock);
-static DECLARE_WORK(work_sdio_mux_read, sdio_mux_read_data);
+static DECLARE_DELAYED_WORK(work_sdio_mux_read, sdio_mux_read_data);
 static DECLARE_WORK(work_sdio_mux_write, sdio_mux_write_data);
 
 static struct workqueue_struct *sdio_mux_workqueue;
@@ -294,6 +295,9 @@ static void sdio_mux_read_data(struct work_struct *work)
 		if (sz + NET_IP_ALIGN + len <= PAGE_SIZE) {
 			pr_err("%s: allocation failed\n", __func__);
 			mutex_unlock(&sdio_mux_lock);
+			queue_delayed_work(sdio_mux_workqueue,
+				&work_sdio_mux_read,
+				msecs_to_jiffies(SDIO_OOM_RETRY_DELAY_MS));
 			return;
 		}
 		sz /= 2;
@@ -310,7 +314,8 @@ static void sdio_mux_read_data(struct work_struct *work)
 		pr_err("%s: sdio read failed %d\n", __func__, rc);
 		dev_kfree_skb_any(skb_mux);
 		mutex_unlock(&sdio_mux_lock);
-		queue_work(sdio_mux_workqueue, &work_sdio_mux_read);
+		queue_delayed_work(sdio_mux_workqueue,
+				   &work_sdio_mux_read, 0);
 		return;
 	}
 	mutex_unlock(&sdio_mux_lock);
@@ -341,7 +346,7 @@ static void sdio_mux_read_data(struct work_struct *work)
 	dev_kfree_skb_any(skb_mux);
 
 	DBG("%s: read done\n", __func__);
-	queue_work(sdio_mux_workqueue, &work_sdio_mux_read);
+	queue_delayed_work(sdio_mux_workqueue, &work_sdio_mux_read, 0);
 }
 
 static int sdio_mux_write(struct sk_buff *skb)
@@ -561,7 +566,8 @@ static void sdio_mux_notify(void *_dev, unsigned event)
 
 	if ((event == SDIO_EVENT_DATA_READ_AVAIL) &&
 	    sdio_read_avail(sdio_mux_ch))
-		queue_work(sdio_mux_workqueue, &work_sdio_mux_read);
+		queue_delayed_work(sdio_mux_workqueue,
+				   &work_sdio_mux_read, 0);
 }
 
 static int msm_rmnet_sdio_probe(struct platform_device *pdev)
