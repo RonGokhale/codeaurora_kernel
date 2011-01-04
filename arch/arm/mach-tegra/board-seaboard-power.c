@@ -21,6 +21,7 @@
 #include <linux/gpio.h>
 #include <linux/power/gpio-charger.h>
 #include <linux/platform_device.h>
+#include <linux/err.h>
 
 #include "board-seaboard.h"
 #include "gpio-names.h"
@@ -194,6 +195,38 @@ int __init seaboard_ac_power_init(void)
 	return err;
 }
 
+static void reg_off(const char *reg)
+{
+	int rc;
+	struct regulator *regulator;
+
+	regulator = regulator_get(NULL, reg);
+
+	if (IS_ERR(regulator)) {
+		pr_err("%s: regulator_get returned %ld\n", __func__,
+		       PTR_ERR(regulator));
+		return;
+	}
+
+	regulator_enable(regulator);
+	rc = regulator_disable(regulator);
+	if (rc)
+		pr_err("%s: regulator_disable returned %d\n", __func__, rc);
+	regulator_put(regulator);
+}
+
+static void seaboard_power_off(void)
+{
+	reg_off("vdd_sm2");
+	reg_off("vdd_core");
+	reg_off("vdd_cpu");
+	local_irq_disable();
+	while (1) {
+		dsb();
+		__asm__ ("wfi");
+	}
+}
+
 int __init seaboard_power_init(void)
 {
 	int err;
@@ -205,6 +238,8 @@ int __init seaboard_power_init(void)
 	err = seaboard_ac_power_init();
 	if (err < 0)
 		pr_warning("Unable to initialize ac power\n");
+
+	pm_power_off = seaboard_power_off;
 
 	return 0;
 }
