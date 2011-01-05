@@ -37,6 +37,7 @@
 #define KBC_INT_0	4
 #define KBC_ROW_CFG0_0	8
 #define KBC_COL_CFG0_0	0x18
+#define KBC_INIT_DLY_0	0x28
 #define KBC_RPT_DLY_0	0x2c
 #define KBC_KP_ENT0_0	0x30
 #define KBC_KP_ENT1_0	0x34
@@ -52,11 +53,12 @@ struct tegra_kbc {
 	unsigned int wake_enable_cols;
 	spinlock_t lock;
 	unsigned int repoll_time;
+	unsigned long cp_dly;
+	int fifo[KBC_MAX_KPENT];
 	struct tegra_kbc_platform_data *pdata;
 	int *plain_keycode;
 	int *fn_keycode;
-	struct work_struct key_repeat;
-	struct workqueue_struct *kbc_work_queue;
+	struct hrtimer timer;
 	struct clk *clk;
 };
 
@@ -283,38 +285,40 @@ static void tegra_kbc_report_keys(struct tegra_kbc *kbc, int *fifo)
 	}
 }
 
-static void tegra_kbc_key_repeat(struct work_struct *work)
+static enum hrtimer_restart tegra_kbc_key_repeat_timer(struct hrtimer *handle)
 {
 	struct tegra_kbc *kbc;
 	unsigned long flags;
 	u32 val;
-	int fifo[KBC_MAX_KPENT];
 	int i;
 
-	kbc = container_of(work, struct tegra_kbc, key_repeat);
-	for (i = 0; i < ARRAY_SIZE(fifo); i++)
-		fifo[i] = -1;
+	kbc = container_of(handle, struct tegra_kbc, timer);
 
-	while (1) {
-		val = (readl(kbc->mmio + KBC_INT_0) >> 4) & 0xf;
-		if (!val) {
-			/* release any pressed keys and exit the loop */
-			for (i = 0; i < ARRAY_SIZE(fifo); i++) {
-				if (fifo[i] == -1)
-					continue;
-				input_report_key(kbc->idev, fifo[i], 0);
-			}
-			break;
+	val = (readl(kbc->mmio + KBC_INT_0) >> 4) & 0xf;
+	if (val) {
+		unsigned long dly;
+
+		tegra_kbc_report_keys(kbc, kbc->fifo);
+
+		dly = ((val == 1) ? kbc->repoll_time : 1) * 1000000;
+		hrtimer_start(&kbc->timer, ktime_set(0, dly), HRTIMER_MODE_REL);
+	} else {
+		/* release any pressed keys and exit the loop */
+		for (i = 0; i < ARRAY_SIZE(kbc->fifo); i++) {
+			if (kbc->fifo[i] == -1)
+				continue;
+			input_report_key(kbc->idev, kbc->fifo[i], 0);
+			kbc->fifo[i] = -1;
 		}
-		tegra_kbc_report_keys(kbc, fifo);
-		msleep((val == 1) ? kbc->repoll_time : 1);
-	}
 
-	spin_lock_irqsave(&kbc->lock, flags);
-	val = readl(kbc->mmio + KBC_CONTROL_0);
-	val |= (1<<3);
-	writel(val, kbc->mmio + KBC_CONTROL_0);
-	spin_unlock_irqrestore(&kbc->lock, flags);
+		/* All keys are released so enable the keypress interrupt */
+		spin_lock_irqsave(&kbc->lock, flags);
+		val = readl(kbc->mmio + KBC_CONTROL_0);
+		val |= (1<<3);
+		writel(val, kbc->mmio + KBC_CONTROL_0);
+		spin_unlock_irqrestore(&kbc->lock, flags);
+	}
+	return HRTIMER_NORESTART;
 }
 
 static void tegra_kbc_close(struct input_dev *dev)
@@ -409,6 +413,11 @@ static int tegra_kbc_open(struct input_dev *dev)
 	val |= 1;     /* enable */
 	writel(val, kbc->mmio + KBC_CONTROL_0);
 
+	/* Compute the delay(ns) from interrupt mode to continuous polling mode
+	 * so the timer routine is scheduled appropriately. */
+	val = readl(kbc->mmio + KBC_INIT_DLY_0);
+	kbc->cp_dly = (val & 0xfffff) * 32 * 1000;
+
 	/* atomically clear out any remaining entries in the key FIFO
 	 * and enable keyboard interrupts */
 	spin_lock_irqsave(&kbc->lock, flags);
@@ -435,13 +444,13 @@ static int __devexit tegra_kbc_remove(struct platform_device *pdev)
 	struct resource *res;
 
 	free_irq(kbc->irq, pdev);
+	hrtimer_cancel(&kbc->timer);
 	clk_disable(kbc->clk);
 	clk_put(kbc->clk);
 
 	input_unregister_device(kbc->idev);
 	input_free_device(kbc->idev);
 	iounmap(kbc->mmio);
-	destroy_workqueue(kbc->kbc_work_queue);
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	release_mem_region(res->start, res_size(res));
 
@@ -470,7 +479,9 @@ static irqreturn_t tegra_kbc_isr(int irq, void *args)
 		writel(ctl, kbc->mmio + KBC_CONTROL_0);
 		return IRQ_HANDLED;
 	}
-	queue_work(kbc->kbc_work_queue, &kbc->key_repeat);
+
+	/* Schedule timer to run when hardware is in continuous polling mode. */
+	hrtimer_start(&kbc->timer, ktime_set(0, kbc->cp_dly), HRTIMER_MODE_REL);
 	return IRQ_HANDLED;
 }
 
@@ -485,7 +496,6 @@ static int __devinit tegra_kbc_probe(struct platform_device *pdev)
 	int cols[KBC_MAX_COL];
 	int i, j;
 	int nr = 0;
-	char name[64];
 
 	if (!pdata)
 		return -EINVAL;
@@ -615,20 +625,14 @@ static int __devinit tegra_kbc_probe(struct platform_device *pdev)
 		}
 	}
 
-
-	/* create the workqueue for the kbc path */
-	snprintf(name, sizeof(name), "tegra-kbc");
-	kbc->kbc_work_queue = create_singlethread_workqueue(name);
-	if (kbc->kbc_work_queue == NULL) {
-		dev_err(&pdev->dev, "Failed to create work queue\n");
-		err = -ENODEV;
-		goto fail;
-	}
+	hrtimer_init(&kbc->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	kbc->timer.function = tegra_kbc_key_repeat_timer;
+	/* Initialize the FIFO to invalid entries */
+	for (i = 0; i < ARRAY_SIZE(kbc->fifo); i++)
+		kbc->fifo[i] = -1;
 
 	/* keycode FIFO needs to be read atomically; leave local
 	 * interrupts disabled when handling KBC interrupt */
-	INIT_WORK(&kbc->key_repeat, tegra_kbc_key_repeat);
-
 	err = request_irq(irq, tegra_kbc_isr, IRQF_TRIGGER_HIGH,
 		pdev->name, kbc);
 	if (err) {
@@ -655,8 +659,6 @@ fail:
 		clk_put(kbc->clk);
 	if (kbc->mmio)
 		iounmap(kbc->mmio);
-	if (kbc->kbc_work_queue)
-		destroy_workqueue(kbc->kbc_work_queue);
 	kfree(kbc);
 	return err;
 }
