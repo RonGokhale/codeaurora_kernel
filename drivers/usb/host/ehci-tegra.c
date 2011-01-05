@@ -35,7 +35,6 @@
 struct tegra_ehci_context {
 	bool valid;
 	u32 command;
-	u32 intr_enable;
 	u32 frame_list;
 	u32 async_next;
 	u32 txfilltunning;
@@ -281,9 +280,6 @@ static void tegra_ehci_restart(struct usb_hcd *hcd)
 	/* flush posted writes */
 	ehci_readl(ehci, &ehci->regs->command);
 	up_write(&ehci_cf_port_reset_rwsem);
-
-	/* Turn On Interrupts */
-	ehci_writel(ehci, INTR_MASK, &ehci->regs->intr_enable);
 }
 
 static int tegra_usb_suspend(struct usb_hcd *hcd)
@@ -303,7 +299,6 @@ static int tegra_usb_suspend(struct usb_hcd *hcd)
 		context->valid = false;
 	} else {
 		context->command	= readl(&hw->command);
-		context->intr_enable	= readl(&hw->intr_enable);
 		context->frame_list	= readl(&hw->frame_list);
 		context->async_next	= readl(&hw->async_next);
 		context->txfilltunning	= readl(&hw->reserved[2]);
@@ -398,10 +393,6 @@ static int tegra_usb_resume(struct usb_hcd *hcd)
 			goto restart;
 		}
 	}
-
-	/* Restore interrupt register */
-	writel(context->intr_enable, &hw->intr_enable);
-	udelay(10);
 
 	return 0;
 
