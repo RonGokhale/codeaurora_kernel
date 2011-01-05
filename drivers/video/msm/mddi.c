@@ -107,7 +107,19 @@ extern int int_mddi_pri_flag;
 
 static int mddi_off(struct platform_device *pdev)
 {
-	int ret = 0;
+	struct msm_fb_data_type *mfd;
+	boolean dma_pending, dma_update_flag;
+	int ret, i;
+
+	mfd = platform_get_drvdata(pdev);
+
+	for (i = 0; i < 6; i++) {
+		dma_update_flag = mfd->dma_update_flag;
+		dma_pending = mfd->dma->busy;
+		if (dma_update_flag && !dma_pending)
+			break;
+		msleep(5);
+	}
 
 	ret = panel_next_off(pdev);
 
