@@ -789,7 +789,14 @@ msmsdcc_irq(int irq, void *dev_id)
 
 		if ((host->plat->dummy52_required) &&
 		    (host->dummy_52_state == DUMMY_52_STATE_SENT)) {
-			if (status & MCI_PROGDONE) {
+			if (status & (MCI_PROGDONE | MCI_CMDCRCFAIL |
+					MCI_CMDTIMEOUT)) {
+				if (status & MCI_CMDTIMEOUT)
+					pr_debug("%s: dummy CMD52 timeout\n",
+						mmc_hostname(host->mmc));
+				if (status & MCI_CMDCRCFAIL)
+					pr_debug("%s: dummy CMD52 CRC failed\n",
+						mmc_hostname(host->mmc));
 				host->dummy_52_state = DUMMY_52_STATE_NONE;
 				host->curr.cmd = NULL;
 				spin_unlock(&host->lock);
