@@ -63,9 +63,7 @@
 
 static struct plat_serial8250_port debug_uart_platform_data[] = {
 	{
-		.membase	= IO_ADDRESS(TEGRA_UARTD_BASE),
-		.mapbase	= TEGRA_UARTD_BASE,
-		.irq		= INT_UARTD,
+		/* Memory and IRQ filled in before registration */
 		.flags		= UPF_BOOT_AUTOCONF,
 		.iotype		= UPIO_MEM,
 		.regshift	= 2,
@@ -117,7 +115,6 @@ static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	{ "pclk",	"hclk",		54000000,	true},
 	{ "spdif_in",	"pll_p",	36000000,	false},
 	{ "csite",	"pll_p",	144000000,	true},
-	{ "uartd",	"pll_p",	216000000,	true},
 	{ "host1x",	"pll_p",	144000000,	true},
 	{ "disp1",	"pll_p",	216000000,	true},
 	{ "pll_d",	"clk_m",	1000000,	false},
@@ -151,8 +148,9 @@ static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	{ "i2c3",	"clk_m",	3000000,	false},
 	{ "dvc",	"clk_m",	3000000,	false},
 	{ "uarta",	"clk_m",	12000000,	false},
-	{ "uartb",	"clk_m",	12000000,	false},
+	{ "uartb",	"pll_p",	216000000,	true},
 	{ "uartc",	"clk_m",	12000000,	false},
+	{ "uartd",	"pll_p",	216000000,	true},
 	{ "uarte",	"clk_m",	12000000,	false},
 	{ "cve",	"clk_m",	12000000,	false},
 	{ "tvo",	"clk_m",	12000000,	false},
@@ -547,7 +545,7 @@ static int seaboard_ehci_init(void)
 	platform_device_register(&tegra_ehci3_device);
 }
 
-static void __init tegra_seaboard_init(void)
+static void __init __tegra_seaboard_init(void)
 {
 	tegra_common_init();
 	tegra_init_suspend(&seaboard_suspend);
@@ -572,6 +570,27 @@ static void __init tegra_seaboard_init(void)
 	tegra_gpio_enable(TEGRA_GPIO_POWERKEY);
 }
 
+static void __init tegra_seaboard_init(void)
+{
+	/* Seaboard uses UARTD for the debug port. */
+	debug_uart_platform_data[0].membase = IO_ADDRESS(TEGRA_UARTD_BASE);
+	debug_uart_platform_data[0].mapbase = TEGRA_UARTD_BASE;
+	debug_uart_platform_data[0].irq = INT_UARTD;
+
+	__tegra_seaboard_init();
+}
+
+static void __init tegra_kaen_init(void)
+{
+	/* Kaen uses UARTB for the debug port. */
+	debug_uart_platform_data[0].membase = IO_ADDRESS(TEGRA_UARTB_BASE);
+	debug_uart_platform_data[0].mapbase = TEGRA_UARTB_BASE;
+	debug_uart_platform_data[0].irq = INT_UARTB;
+
+	__tegra_seaboard_init();
+}
+
+
 MACHINE_START(SEABOARD, "seaboard")
 	.boot_params    = 0x00000100,
 	.phys_io        = IO_APB_PHYS,
@@ -587,7 +606,7 @@ MACHINE_START(KAEN, "kaen")
 	.phys_io        = IO_APB_PHYS,
 	.io_pg_offst    = ((IO_APB_VIRT) >> 18) & 0xfffc,
 	.init_irq       = tegra_init_irq,
-	.init_machine   = tegra_seaboard_init,
+	.init_machine   = tegra_kaen_init,
 	.map_io         = tegra_map_common_io,
 	.timer          = &tegra_timer,
 MACHINE_END
