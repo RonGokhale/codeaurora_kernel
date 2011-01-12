@@ -1,7 +1,7 @@
 /*
  * qualcomm fast Ethernet controller HW description
  *
- * Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -455,6 +455,17 @@ struct qfec_buf_desc {
 
 /* ------------------------------------------------------------------ */
 # define FLOW_CONTROL_REG          0x0018
+
+# define FLOW_CONTROL_PT           0xFFFF0000 /* pause time */
+# define FLOW_CONTROL_DZPQ         0x00000080 /* disable zero-quanta pause */
+# define FLOW_CONTROL_PLT          0x00000030 /* pause level threshold */
+
+# define FLOW_CONTROL_UP           0x00000008 /* unicast pause frame detect */
+# define FLOW_CONTROL_RFE          0x00000004 /* receive flow control enable */
+# define FLOW_CONTROL_TFE          0x00000002 /* transmit flow control enable */
+# define FLOW_CONTROL_FCB          0x00000001 /* flow control busy (BPA) */
+
+/* ------------------------------------------------------------------ */
 # define VLAN_TAG_REG              0x001c
 
 /* ------------------------------------------------------------------ */

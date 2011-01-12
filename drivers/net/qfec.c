@@ -1,7 +1,7 @@
 /*
  * qfec.c - qualcomm fast Ethernet driver
  *
- * Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -33,6 +33,8 @@
 # include <linux/timer.h>
 # include <linux/mii.h>
 
+# include <linux/net_tstamp.h>
+
 #include "qfec.h"
 
 #define QFEC_NAME       "qfec"
@@ -58,8 +60,8 @@ module_param(qfec_debug, int, 0400);
 #ifdef QFEC_DEBUG
 # define QFEC_LOG(flag, ...)                    \
 	do {                                    \
-		if (flag & qfec_debug)        \
-			pr_devel(__VA_ARGS__);   \
+		if (flag & qfec_debug)          \
+			printk(__VA_ARGS__);  \
 	} while (0)
 #else
 # define QFEC_LOG(flag, ...)
@@ -363,6 +365,11 @@ enum cntr {
 	queue_stop,
 
 	rx_paddr_nok,
+	ts_ioctl,
+	ts_tx_en,
+	ts_tx_rtn,
+
+	ts_rec,
 	cntr_last,
 };
 
@@ -409,7 +416,11 @@ static char *cntr_name[]  = {
 	"queue_stop",
 
 	"rx_paddr_nok",
+	"ts_ioctl",
+	"ts_tx_en",
+	"ts_tx_rtn",
 
+	"ts_rec",
 	""
 };
 
@@ -422,6 +433,7 @@ static struct net_device  *qfec_dev;
 enum qfec_state {
 	queue_started = 0x01,
 	queue_stopped = 0x02,
+	timestamping  = 0x04,
 };
 
 struct qfec_priv {
@@ -430,7 +442,8 @@ struct qfec_priv {
 
 	struct device           dev;
 
-	spinlock_t              hw_lock;
+	spinlock_t              xmit_lock;
+	spinlock_t              mdio_lock;
 
 	unsigned int            state;            /* driver state */
 
@@ -984,6 +997,47 @@ static int qfec_speed_cfg(struct net_device *dev, unsigned int spd,
 }
 
 /* -------------------------------------------------------------------------
+ * configure PTP divider for 25 MHz assuming EMAC PLL 250 MHz
+ */
+
+static struct qfec_pll_cfg qfec_pll_ptp = {
+	/* 25 MHz */
+	0,      ETH_MD_M(1) | ETH_MD_2D_N(10),    ETH_NS_NM(10-1)
+						| EMAC_PTP_NS_ROOT_EN
+						| EMAC_PTP_NS_CLK_EN
+						| ETH_NS_MCNTR_EN
+						| ETH_NS_MCNTR_MODE_DUAL
+						| ETH_NS_PRE_DIV(0)
+						| CLK_SRC_PLL_EMAC
+};
+
+#define PLLTEST_PAD_CFG     0x01E0
+#define PLLTEST_PLL_7       0x3700
+
+#define CLKTEST_REG         0x01EC
+#define CLKTEST_EMAC_RX     0x3fc07f7a
+
+static int qfec_ptp_cfg(struct qfec_priv *priv)
+{
+	struct qfec_pll_cfg    *p    = &qfec_pll_ptp;
+
+	QFEC_LOG(QFEC_LOG_DBG2, "%s: %08x md, %08x ns\n",
+		__func__, p->eth_md, p->eth_ns);
+
+	qfec_clkreg_write(priv, EMAC_PTP_MD_REG, p->eth_md);
+	qfec_clkreg_write(priv, EMAC_PTP_NS_REG, p->eth_ns);
+
+	/* inc for 25 MHz: 85.9 = 40 ns / 0.465 (10^9 / 2^31) */
+	qfec_reg_write(priv, TS_SUB_SEC_INCR_REG, 86);
+
+	/* configure HS/LS clk test ports to verify clks */
+	qfec_clkreg_write(priv, CLKTEST_REG,     CLKTEST_EMAC_RX);
+	qfec_clkreg_write(priv, PLLTEST_PAD_CFG, PLLTEST_PLL_7);
+
+	return 0;
+}
+
+/* -------------------------------------------------------------------------
  * MDIO operations
  * ------------------------------------------------------------------------- */
 
@@ -1012,10 +1066,7 @@ static int qfec_mdio_busy(struct net_device *dev)
 static int qfec_mdio_oper(struct net_device *dev, int phy_id, int reg, int wr)
 {
 	struct qfec_priv   *priv = netdev_priv(dev);
-	unsigned long       flags;
 	int                 res = 0;
-
-	spin_lock_irqsave(&priv->hw_lock, flags);
 
 	/* insure phy not busy */
 	res = qfec_mdio_busy(dev);
@@ -1034,13 +1085,10 @@ static int qfec_mdio_oper(struct net_device *dev, int phy_id, int reg, int wr)
 
 	/* wait for operation to complete */
 	res = qfec_mdio_busy(dev);
-	if (res)  {
+	if (res)
 		QFEC_LOG_ERR("%s: timeout\n", __func__);
-		goto done;
-	}
 
 done:
-	spin_unlock_irqrestore(&priv->hw_lock, flags);
 	return res;
 }
 
@@ -1049,20 +1097,25 @@ done:
  */
 static int qfec_mdio_read(struct net_device *dev, int phy_id, int reg)
 {
-	int     val;
-	int	res = 0;
+	struct qfec_priv   *priv = netdev_priv(dev);
+	int                 res = 0;
+	unsigned long       flags;
+
+	spin_lock_irqsave(&priv->mdio_lock, flags);
 
 	res = qfec_mdio_oper(dev, phy_id, reg, 0);
 	if (res)  {
 		QFEC_LOG_ERR("%s: oper\n", __func__);
-		return res;
+		goto done;
 	}
 
-	val = qfec_reg_read(netdev_priv(dev), GMII_DATA_REG);
+	res = qfec_reg_read(priv, GMII_DATA_REG);
 	QFEC_LOG(QFEC_LOG_DBG2, "%s: %2d reg, 0x%04x val\n",
-		__func__, reg, val);
+		__func__, reg, res);
 
-	return val;
+done:
+	spin_unlock_irqrestore(&priv->mdio_lock, flags);
+	return res;
 }
 
 /* -----------------------------------------------------
@@ -1072,6 +1125,9 @@ static void qfec_mdio_write(struct net_device *dev, int phy_id, int reg,
 	int val)
 {
 	struct qfec_priv   *priv = netdev_priv(dev);
+	unsigned long       flags;
+
+	spin_lock_irqsave(&priv->mdio_lock, flags);
 
 	QFEC_LOG(QFEC_LOG_DBG2, "%s:\n", __func__);
 
@@ -1079,6 +1135,8 @@ static void qfec_mdio_write(struct net_device *dev, int phy_id, int reg,
 
 	if (qfec_mdio_oper(dev, phy_id, reg, 1))
 		QFEC_LOG_ERR("%s: oper\n", __func__);
+
+	spin_unlock_irqrestore(&priv->mdio_lock, flags);
 }
 
 /* -------------------------------------------------------------------------
@@ -1286,6 +1344,30 @@ static int qfec_bd_rx_show(char *buf, char **start, off_t offset,
 }
 
 /* -------------------------------------------------------------------------
+ * read timestamp from buffer descriptor
+ *    the pbuf and next fields of the buffer descriptors are overwritten
+ *    with the timestamp high and low register values.   The high register
+ *    counts seconds, but the sub-second increment register is programmed
+ *    with the appropriate value to increment the timestamp low register
+ *    such that it overflows at 0x8000 0000.  The low register value
+ *    (next) must be converted to units of nano secs, * 10^9 / 2^31.
+ */
+static void qfec_read_timestamp(struct buf_desc *p_bd,
+	struct skb_shared_hwtstamps *ts)
+{
+	unsigned long  sec = (unsigned long)qfec_bd_next_get(p_bd);
+	long long      ns  = (unsigned long)qfec_bd_pbuf_get(p_bd);
+
+#define BILLION		1000000000
+#define LOW_REG_BITS    31
+	ns  *= BILLION;
+	ns >>= LOW_REG_BITS;
+
+	ts->hwtstamp  = ktime_set(sec, ns);
+	ts->syststamp = ktime_set(sec, ns);
+}
+
+/* -------------------------------------------------------------------------
  * free transmitted skbufs from buffer-descriptor no owned by HW
  */
 static int qfec_tx_replenish(struct net_device *dev)
@@ -1296,6 +1378,7 @@ static int qfec_tx_replenish(struct net_device *dev)
 	struct sk_buff     *skb;
 
 	QFEC_LOG(QFEC_LOG_DBG2, "%s:\n", __func__);
+	CNTR_INC(priv, tx_replenish);
 
 	while (!qfec_ring_empty(p_ring))  {
 		if (qfec_bd_own(p_bd))
@@ -1306,6 +1389,13 @@ static int qfec_tx_replenish(struct net_device *dev)
 			QFEC_LOG_ERR("%s: null sk_buff\n", __func__);
 			CNTR_INC(priv, tx_skb_null);
 			return -ENOMEM;
+		}
+
+		/* retrieve timestamp if requested */
+		if (qfec_bd_status_get(p_bd) & BUF_TX_TTSS)  {
+			CNTR_INC(priv, ts_tx_rtn);
+			qfec_read_timestamp(p_bd, skb_hwtstamps(skb));
+			skb_tstamp_tx(skb, skb_hwtstamps(skb));
 		}
 
 		/* update statistics before freeing skb */
@@ -1363,13 +1453,11 @@ static void qfec_rx_int(struct net_device *dev)
 	QFEC_LOG(QFEC_LOG_DBG2, "%s:\n", __func__);
 	CNTR_INC(priv, rx_int);
 
-	spin_lock(&priv->hw_lock);
-
 	/* check that valid interrupt occurred */
 	if (qfec_bd_own(p_bd))  {
 		QFEC_LOG_ERR("%s: owned by DMA\n", __func__);
 		CNTR_INC(priv, rx_owned);
-		goto done;
+		return;
 	}
 
 	/* process all unowned frames */
@@ -1384,6 +1472,11 @@ static void qfec_rx_int(struct net_device *dev)
 
 		else  {
 			skb->len = qfec_bd_status_len(p_bd);
+
+			if (priv->state & timestamping)  {
+				CNTR_INC(priv, ts_rec);
+				qfec_read_timestamp(p_bd, skb_hwtstamps(skb));
+			}
 
 			/* update statistics before freeing skb */
 			priv->stats.rx_packets++;
@@ -1418,8 +1511,6 @@ static void qfec_rx_int(struct net_device *dev)
 		qfec_ring_tail_adv(p_ring);
 	}
 
-done:
-	spin_unlock(&priv->hw_lock);
 }
 
 /* -------------------------------------------------------------------------
@@ -1535,6 +1626,9 @@ static int qfec_open(struct net_device *dev)
 		qfec_ring_tail_adv(p_ring);
 	}
 
+	/* config ptp clock */
+	qfec_ptp_cfg(priv);
+
 	/* initialize controller after BDs allocated */
 	res = qfec_hw_init(priv);
 	if (res)
@@ -1638,10 +1732,9 @@ static int qfec_xmit(struct sk_buff *skb, struct net_device *dev)
 	unsigned long       flags;
 
 	QFEC_LOG(QFEC_LOG_DBG2, "%s: skb %p\n", __func__, skb);
-
 	CNTR_INC(priv, xmit);
 
-	spin_lock_irqsave(&priv->hw_lock, flags);
+	spin_lock_irqsave(&priv->xmit_lock, flags);
 	qfec_tx_replenish(dev);
 
 	/* stop queuing if no resources available */
@@ -1664,7 +1757,16 @@ static int qfec_xmit(struct sk_buff *skb, struct net_device *dev)
 		(void *)skb->data, ETH_BUF_SIZE, DMA_TO_DEVICE));
 
 	ctrl  = skb->len;
-	ctrl |= BUF_TX_IC;              /* interrupt on complete */
+
+	/* check if timestamping enabled and requested */
+	if (priv->state & timestamping)  {
+		if (skb_tx(skb)->hardware)  {
+			CNTR_INC(priv, ts_tx_en);
+			ctrl |= BUF_TX_IC;      /* interrupt on complete */
+			ctrl |= BUF_TX_TTSE;	/* enable timestamp */
+			skb_tx(skb)->in_progress = 1;
+		}
+	}
 
 	if (qfec_bd_last_bd(p_bd))
 		ctrl |= BUF_RX_RER;
@@ -1679,7 +1781,8 @@ static int qfec_xmit(struct sk_buff *skb, struct net_device *dev)
 	qfec_reg_write(priv, TX_POLL_DEM_REG, 1);      /* poll */
 
 done:
-	spin_unlock_irqrestore(&priv->hw_lock, flags);
+	spin_unlock_irqrestore(&priv->xmit_lock, flags);
+
 	return ret;
 }
 
@@ -1688,9 +1791,27 @@ done:
  */
 static int qfec_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 {
-	struct qfec_priv   *priv = netdev_priv(dev);
+	struct qfec_priv        *priv = netdev_priv(dev);
+	struct hwtstamp_config  *cfg  = (struct hwtstamp_config *) ifr;
 
 	QFEC_LOG(QFEC_LOG_DBG, "%s:\n", __func__);
+
+	if (cmd == SIOCSHWTSTAMP) {
+		CNTR_INC(priv, ts_ioctl);
+		QFEC_LOG(QFEC_LOG_DBG,
+			"%s: SIOCSHWTSTAMP - %x flags  %x tx  %x rx\n",
+			__func__, cfg->flags, cfg->tx_type, cfg->rx_filter);
+
+		cfg->flags      = 0;
+		cfg->tx_type    = HWTSTAMP_TX_ON;
+		cfg->rx_filter  = HWTSTAMP_FILTER_ALL;
+
+		priv->state |= timestamping;
+		qfec_reg_write(priv, TS_CTL_REG,
+			qfec_reg_read(priv, TS_CTL_REG) | TS_CTL_TSENALL);
+
+		return 0;
+	}
 
 	return generic_mii_ioctl(&priv->mii, if_mii(ifr), cmd, NULL);
 }
@@ -1934,7 +2055,8 @@ static int __devinit qfec_probe(struct platform_device *plat)
 		goto err4;
 	}
 
-	spin_lock_init(&priv->hw_lock);
+	spin_lock_init(&priv->mdio_lock);
+	spin_lock_init(&priv->xmit_lock);
 	qfec_proc_fs_create(dev);
 
 	return 0;
