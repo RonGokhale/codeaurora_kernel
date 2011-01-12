@@ -21,6 +21,7 @@
 #define __MACH_CLK_H
 
 struct dvfs;
+struct clk;
 
 void tegra_periph_reset_deassert(struct clk *c);
 void tegra_periph_reset_assert(struct clk *c);
