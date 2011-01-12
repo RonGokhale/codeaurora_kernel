@@ -62,8 +62,8 @@ extern bool l2x0_disabled;
 extern void l2x0_shutdown(void);
 extern void l2x0_restart(void);
 #else
-static inline l2x0_shutdown(void) { }
-static inline l2x0_restart(void) { }
+static inline void l2x0_shutdown(void) { }
+static inline void l2x0_restart(void) { }
 #endif
 #endif
 
