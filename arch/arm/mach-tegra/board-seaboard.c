@@ -167,40 +167,6 @@ static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	{ NULL,		NULL,		0,		0},
 };
 
-/* OTG gadget device */
-static u64 tegra_otg_dmamask = DMA_BIT_MASK(32);
-
-
-static struct resource tegra_otg_resources[] = {
-	[0] = {
-		.start  = TEGRA_USB_BASE,
-		.end    = TEGRA_USB_BASE + TEGRA_USB_SIZE - 1,
-		.flags  = IORESOURCE_MEM,
-	},
-	[1] = {
-		.start  = INT_USB,
-		.end    = INT_USB,
-		.flags  = IORESOURCE_IRQ,
-	},
-};
-
-static struct fsl_usb2_platform_data tegra_otg_pdata = {
-	.operating_mode	= FSL_USB2_DR_DEVICE,
-	.phy_mode	= FSL_USB2_PHY_UTMI,
-};
-
-static struct platform_device tegra_otg = {
-	.name = "fsl-tegra-udc",
-	.id   = -1,
-	.dev  = {
-		.dma_mask		= &tegra_otg_dmamask,
-		.coherent_dma_mask	= 0xffffffff,
-		.platform_data = &tegra_otg_pdata,
-	},
-	.resource = tegra_otg_resources,
-	.num_resources = ARRAY_SIZE(tegra_otg_resources),
-};
-
 static struct tegra_utmip_config utmi_phy_config[] = {
 	[0] = {
 		.hssync_start_delay = 0,
@@ -541,6 +507,8 @@ static int seaboard_ehci_init(void)
 
 	platform_device_register(&tegra_ehci1_device);
 	platform_device_register(&tegra_ehci3_device);
+
+	return 0;
 }
 
 static void __init __tegra_seaboard_init(void)
