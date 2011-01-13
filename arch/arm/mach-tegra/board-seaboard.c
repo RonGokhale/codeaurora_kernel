@@ -268,6 +268,26 @@ static struct i2c_board_info __initdata seaboard_i2c4_devices[] = {
 	},
 };
 
+static int cros_kbd_keycode[] = {
+	/* Row 0 */	KEY_RESERVED,	KEY_RESERVED,	KEY_LEFTCTRL,	KEY_RESERVED,	KEY_RIGHTCTRL,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,
+	/* Row 1 */	KEY_SEARCH,	KEY_ESC,	KEY_TAB,	KEY_GRAVE,	KEY_A,		KEY_Z,		KEY_1,		KEY_Q,
+	/* Row 2 */	KEY_BACK,	KEY_RESERVED,	KEY_REFRESH,	KEY_FORWARD,	KEY_D,		KEY_C,		KEY_3,		KEY_E,
+	/* Row 3 */	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,
+	/* Row 4 */	KEY_B,		KEY_G,		KEY_T,		KEY_5,		KEY_F,		KEY_V,		KEY_4,		KEY_R,
+	/* Row 5 */	KEY_VOLUMEUP,	KEY_BRIGHTNESSUP,	KEY_BRIGHTNESSDOWN,	KEY_RESERVED,	KEY_S,	KEY_X,	KEY_2,		KEY_W,
+	/* Row 6 */	KEY_RESERVED,	KEY_RESERVED,	KEY_RIGHTBRACE,	KEY_RESERVED,	KEY_K,		KEY_COMMA,	KEY_8,		KEY_I,
+	/* Row 7 */	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,
+	/* Row 8 */	KEY_N,		KEY_H,		KEY_Y,		KEY_6,		KEY_J,		KEY_M,		KEY_7,		KEY_U,
+	/* Row 9 */	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_LEFTSHIFT,	KEY_RESERVED,	KEY_RIGHTSHIFT,
+	/* Row A */	KEY_EQUAL,	KEY_APOSTROPHE,	KEY_LEFTBRACE,	KEY_MINUS,	KEY_SEMICOLON,	KEY_SLASH,	KEY_0,		KEY_P,
+	/* Row B */	KEY_RESERVED,	KEY_VOLUMEDOWN,	KEY_MUTE,	KEY_RESERVED,	KEY_L,		KEY_DOT,	KEY_9,		KEY_O,
+	/* Row C */	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,
+	/* Row D */	KEY_RIGHTALT,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_LEFTALT,	KEY_RESERVED,
+	/* Row E */	KEY_RESERVED,	KEY_BACKSPACE,	KEY_RESERVED,	KEY_BACKSLASH,	KEY_ENTER,	KEY_SPACE,	KEY_DOWN,	KEY_UP,
+	/* Row F */	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,	KEY_RIGHT,	KEY_LEFT
+};
+
+
 static void seaboard_isl29018_init(void)
 {
 	tegra_gpio_enable(TEGRA_GPIO_ISL29018_IRQ);
@@ -435,8 +455,6 @@ static void seaboard_kbc_init(void)
 		data->pin_cfg[i + j].is_col = true;
 	}
 
-	/* tegra-kbc will use default keycodes. */
-	data->plain_keycode = data->fn_keycode = NULL;
 	platform_device_register(&seaboard_kbc_device);
 }
 
@@ -542,6 +560,20 @@ static void __init tegra_kaen_init(void)
 }
 
 
+static void __init tegra_wario_init(void)
+{
+	/* Wario uses UARTB for the debug port. */
+	debug_uart_platform_data[0].membase = IO_ADDRESS(TEGRA_UARTB_BASE);
+	debug_uart_platform_data[0].mapbase = TEGRA_UARTB_BASE;
+	debug_uart_platform_data[0].irq = INT_UARTB;
+
+	seaboard_kbc_platform_data.plain_keycode = cros_kbd_keycode;
+	seaboard_kbc_platform_data.fn_keycode = cros_kbd_keycode;
+
+	__tegra_seaboard_init();
+}
+
+
 MACHINE_START(SEABOARD, "seaboard")
 	.boot_params    = 0x00000100,
 	.init_irq       = tegra_init_irq,
@@ -554,6 +586,16 @@ MACHINE_START(KAEN, "kaen")
 	.boot_params    = 0x00000100,
 	.init_irq       = tegra_init_irq,
 	.init_machine   = tegra_kaen_init,
+	.map_io         = tegra_map_common_io,
+	.timer          = &tegra_timer,
+MACHINE_END
+
+MACHINE_START(WARIO, "wario")
+	.boot_params    = 0x00000100,
+	.phys_io        = IO_APB_PHYS,
+	.io_pg_offst    = ((IO_APB_VIRT) >> 18) & 0xfffc,
+	.init_irq       = tegra_init_irq,
+	.init_machine   = tegra_wario_init,
 	.map_io         = tegra_map_common_io,
 	.timer          = &tegra_timer,
 MACHINE_END
