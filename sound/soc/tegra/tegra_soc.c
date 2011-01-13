@@ -173,8 +173,8 @@ static int tegra_hifi_hw_params(struct snd_pcm_substream *substream,
 
 	/* replicate mic setting on both channels */
 	ctrl_reg = snd_soc_read(codec, WM8903_AUDIO_INTERFACE_0);
-	ctrl_reg = SET_REG_VAL(ctrl_reg, 0x1, B06_AIF_ADCR, 0x0);
-	ctrl_reg = SET_REG_VAL(ctrl_reg, 0x1, B06_AIF_ADCL, 0x0);
+	ctrl_reg = SET_REG_VAL(ctrl_reg, 0x1, B06_AIF_ADCR, 0x1);
+	ctrl_reg = SET_REG_VAL(ctrl_reg, 0x1, B06_AIF_ADCL, 0x1);
 	snd_soc_write(codec, WM8903_AUDIO_INTERFACE_0, ctrl_reg);
 
 	/* Enable analog inputs */
@@ -275,7 +275,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"Ext Spk", NULL, "LINEOUTR"}, {"Ext Spk", NULL, "LINEOUTL"},
 
 	/* mic is connected to MICIN (via right channel of headphone jack) */
-	{"IN1L", NULL, "Mic Jack"},
+	{"IN1R", NULL, "Mic Jack"},
 
 	/* Same as the above but no mic bias for line signals */
 	{"IN2L", NULL, "Line Jack"},
