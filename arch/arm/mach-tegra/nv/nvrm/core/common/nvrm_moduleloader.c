@@ -566,7 +566,7 @@ static NvError NvRmPrivInitAvp(NvRmDeviceHandle hRm)
     void *map = NULL;
     NvError e;
     NvU32 len;
-    NvU32 phys;
+    NvU32 phys = 0;
 
     if (s_KernelImage)
         return NvSuccess;
