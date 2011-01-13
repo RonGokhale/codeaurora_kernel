@@ -63,7 +63,7 @@ static long nvrm_unlocked_ioctl(struct file *file,
 static int nvrm_mmap(struct file *file, struct vm_area_struct *vma);
 extern void reset_cpu(unsigned int cpu, unsigned int reset);
 
-static NvOsThreadHandle s_DfsThread = NULL;
+static __attribute__((unused)) NvOsThreadHandle s_DfsThread = NULL;
 static NvRtHandle s_RtHandle = NULL;
 
 #define DEVICE_NAME "nvrm"
@@ -673,7 +673,7 @@ static int __init nvrm_init(void)
 
 	// Create /sys/power/nvrm/notifier.
 	nvrm_kobj = kobject_create_and_add("nvrm", power_kobj);
-	sysfs_create_file(nvrm_kobj, &nvrm_notifier_attribute.attr);
+	ret = sysfs_create_file(nvrm_kobj, &nvrm_notifier_attribute.attr);
 	sys_nvrm_notifier = NULL;
 	init_waitqueue_head(&sys_nvrm_notifier_wait);
 	#endif
