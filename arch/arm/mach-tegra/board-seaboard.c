@@ -215,21 +215,6 @@ static struct tegra_ehci_platform_data tegra_ehci_pdata[] = {
 	},
 };
 
-static struct resource tegra_gart_resources[] = {
-	{
-		.name = "mc",
-		.flags = IORESOURCE_MEM,
-		.start = TEGRA_MC_BASE,
-		.end = TEGRA_MC_BASE + TEGRA_MC_SIZE - 1,
-	},
-	{
-		.name = "gart",
-		.flags = IORESOURCE_MEM,
-		.start = 0x58000000,
-		.end = 0x58000000 - 1 + 32 * 1024 * 1024,
-	}
-};
-
 static struct tegra_i2c_platform_data seaboard_i2c1_platform_data = {
 	.adapter_nr	= 0,
 	.bus_count	= 1,
