@@ -134,8 +134,6 @@
 #define NVOS_IRQ_IS_KERNEL_THREAD (0x2 << NVOS_IRQ_TYPE_SHIFT)
 #define NVOS_IRQ_IS_USER          (0x3 << NVOS_IRQ_TYPE_SHIFT)
 
-static DEFINE_SPINLOCK(gs_NvOsSpinLock);
-
 typedef struct NvOsIrqHandlerRec
 {
     union
@@ -347,13 +345,14 @@ void NvOsMemmove(void *dest, const void *src, size_t size)
 
 NvError NvOsCopyIn(void *pDst, const void *pSrc, size_t Bytes)
 {
+    int ret;
     if (!Bytes)
         return NvSuccess;
 
     if( access_ok( VERIFY_READ, pSrc, Bytes ) )
     {
-        __copy_from_user(pDst, pSrc, Bytes);
-        return NvSuccess;
+        ret = __copy_from_user(pDst, pSrc, Bytes);
+        return ret;
     }
 
     return NvError_InvalidAddress;
@@ -361,13 +360,14 @@ NvError NvOsCopyIn(void *pDst, const void *pSrc, size_t Bytes)
 
 NvError NvOsCopyOut(void *pDst, const void *pSrc, size_t Bytes)
 {
+    int ret;
     if (!Bytes)
         return NvSuccess;
 
     if( access_ok( VERIFY_WRITE, pDst, Bytes ) )
     {
-        __copy_to_user(pDst, pSrc, Bytes);
-        return NvSuccess;
+        ret = __copy_to_user(pDst, pSrc, Bytes);
+        return ret;
     }
 
     return NvError_InvalidAddress;

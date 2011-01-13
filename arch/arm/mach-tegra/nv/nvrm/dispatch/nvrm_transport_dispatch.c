@@ -572,7 +572,7 @@ static NvError NvRmTransportGetPortName_dispatch_( void *InBuffer, NvU32 InSize,
         }
     }
 clean:
-    if ( PortName != PortNameBuff )
+    if ( PortName != (NvU8 *)PortNameBuff )
         NvOsFree( PortName );
     return err_;
 }
@@ -624,7 +624,7 @@ static NvError NvRmTransportOpen_dispatch_( void *InBuffer, NvU32 InSize, void *
     p_out->ret_ = NvRmTransportOpen( p_in->hRmDevice, pPortName, RecvMessageSemaphore, &p_out->phTransport );
 
 clean:
-    if( pPortName != PortNameBuff )
+    if( pPortName != (char *)PortNameBuff )
         NvOsFree( pPortName );
     NvOsSemaphoreDestroy( RecvMessageSemaphore );
     return err_;
