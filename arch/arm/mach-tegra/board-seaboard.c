@@ -248,26 +248,6 @@ static struct tegra_i2c_platform_data seaboard_dvc_platform_data = {
 	.is_dvc		= true,
 };
 
-static struct i2c_board_info __initdata seaboard_i2c0_devices[] = {
-	{
-		I2C_BOARD_INFO("wm8903", 0x1a),
-	},
-	{
-		I2C_BOARD_INFO("isl29018", 0x44),
-		.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_ISL29018_IRQ),
-	},
-};
-
-static struct i2c_board_info __initdata seaboard_i2c4_devices[] = {
-	{
-		I2C_BOARD_INFO("adt7461", 0x4c),
-	},
-	{
-		I2C_BOARD_INFO("ak8975", 0x0c),
-		.irq		= TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_MAGNETOMETER),
-	},
-};
-
 static int cros_kbd_keycode[] = {
 	/* Row 0 */	KEY_RESERVED,	KEY_RESERVED,	KEY_LEFTCTRL,	KEY_RESERVED,	KEY_RIGHTCTRL,	KEY_RESERVED,	KEY_RESERVED,	KEY_RESERVED,
 	/* Row 1 */	KEY_SEARCH,	KEY_ESC,	KEY_TAB,	KEY_GRAVE,	KEY_A,		KEY_Z,		KEY_1,		KEY_Q,
@@ -307,18 +287,32 @@ static struct tegra_audio_platform_data tegra_audio_pdata = {
 	.bit_size	= I2S_BIT_SIZE_16,
 };
 
-static struct i2c_board_info __initdata seaboard_i2c2_devices[] = {
-	{
-		I2C_BOARD_INFO("bq20z75", 0x0b),
-	},
+
+static struct i2c_board_info __initdata wm8903_device = {
+	I2C_BOARD_INFO("wm8903", 0x1a),
 };
 
-static void __init seaboard_i2c_init(void)
+static struct i2c_board_info __initdata isl29018_device = {
+	I2C_BOARD_INFO("isl29018", 0x44),
+	.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_ISL29018_IRQ),
+};
+
+static struct i2c_board_info __initdata bq20x75_device = {
+	I2C_BOARD_INFO("bq20z75", 0x0b),
+};
+
+
+static struct i2c_board_info __initdata adt7461_device = {
+	I2C_BOARD_INFO("adt7461", 0x4c),
+};
+
+static struct i2c_board_info __initdata ak8975_device = {
+	I2C_BOARD_INFO("ak8975", 0x0c),
+	.irq		= TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_MAGNETOMETER),
+};
+
+static void __init common_i2c_init(void)
 {
-	tegra_gpio_enable(TEGRA_GPIO_MAGNETOMETER);
-
-	seaboard_isl29018_init();
-
 	tegra_i2c_device1.dev.platform_data = &seaboard_i2c1_platform_data;
 	tegra_i2c_device2.dev.platform_data = &seaboard_i2c2_platform_data;
 	tegra_i2c_device3.dev.platform_data = &seaboard_i2c3_platform_data;
@@ -328,15 +322,45 @@ static void __init seaboard_i2c_init(void)
 	platform_device_register(&tegra_i2c_device2);
 	platform_device_register(&tegra_i2c_device3);
 	platform_device_register(&tegra_i2c_device4);
+}
 
-	i2c_register_board_info(0, seaboard_i2c0_devices,
-				ARRAY_SIZE(seaboard_i2c0_devices));
+static void __init seaboard_i2c_init(void)
+{
+	tegra_gpio_enable(TEGRA_GPIO_MAGNETOMETER);
 
-	i2c_register_board_info(4, seaboard_i2c4_devices,
-				ARRAY_SIZE(seaboard_i2c4_devices));
+	seaboard_isl29018_init();
 
-	i2c_register_board_info(2, seaboard_i2c2_devices,
-				ARRAY_SIZE(seaboard_i2c2_devices));
+	i2c_register_board_info(0, &wm8903_device, 1);
+	i2c_register_board_info(0, &isl29018_device, 1);
+
+	i2c_register_board_info(4, &bq20x75_device, 1);
+
+	i2c_register_board_info(2, &adt7461_device, 1);
+	i2c_register_board_info(2, &ak8975_device, 1);
+
+	common_i2c_init();
+}
+
+static void __init kaen_i2c_init(void)
+{
+	i2c_register_board_info(0, &wm8903_device, 1);
+	i2c_register_board_info(0, &isl29018_device, 1);
+
+	i2c_register_board_info(2, &adt7461_device, 1);
+	i2c_register_board_info(2, &ak8975_device, 1);
+
+	common_i2c_init();
+}
+
+static void __init wario_i2c_init(void)
+{
+	i2c_register_board_info(0, &wm8903_device, 1);
+	i2c_register_board_info(0, &isl29018_device, 1);
+
+	i2c_register_board_info(2, &adt7461_device, 1);
+	i2c_register_board_info(2, &ak8975_device, 1);
+
+	common_i2c_init();
 }
 
 static struct resource tegra_rtc_resources[] = {
@@ -529,7 +553,6 @@ static void __init __tegra_seaboard_init(void)
 	seaboard_ehci_init();
 	seaboard_panel_init();
 	seaboard_sdhci_init();
-	seaboard_i2c_init();
 	seaboard_power_init();
 	seaboard_kbc_init();
 
@@ -547,6 +570,8 @@ static void __init tegra_seaboard_init(void)
 	debug_uart_platform_data[0].irq = INT_UARTD;
 
 	__tegra_seaboard_init();
+
+	seaboard_i2c_init();
 }
 
 static void __init tegra_kaen_init(void)
@@ -557,6 +582,8 @@ static void __init tegra_kaen_init(void)
 	debug_uart_platform_data[0].irq = INT_UARTB;
 
 	__tegra_seaboard_init();
+
+	kaen_i2c_init();
 }
 
 
@@ -571,6 +598,8 @@ static void __init tegra_wario_init(void)
 	seaboard_kbc_platform_data.fn_keycode = cros_kbd_keycode;
 
 	__tegra_seaboard_init();
+
+	wario_i2c_init();
 }
 
 
