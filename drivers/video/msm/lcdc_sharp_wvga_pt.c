@@ -37,12 +37,12 @@ static int lcdc_sharp_panel_off(struct platform_device *pdev);
 #ifdef CONFIG_PMIC8058_PWM
 static struct pwm_device *bl_pwm;
 
-/* 50 Khz == 20000 ns period
- * divide 20000 ns to 15 levels
- * each level has 1333 ns
+/* 50 Khz == 20 us period
+ * divide 20 us to 20 levels
+ * each level has 20 us
  */
 
-#define PWM_PERIOD 20000	/* ns, period of 50Khz */
+#define PWM_PERIOD 20	/* us, period of 50Khz */
 #endif
 
 #ifndef CONFIG_SPI_QSD
@@ -373,7 +373,7 @@ static int __init lcdc_sharp_panel_init(void)
 	pinfo->bpp = 18;
 	pinfo->fb_num = 2;
 	pinfo->clk_rate = 24500000;
-	pinfo->bl_max = 15;
+	pinfo->bl_max = 20;
 	pinfo->bl_min = 1;
 
 	pinfo->lcdc.h_back_porch = 20;
