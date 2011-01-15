@@ -42,5 +42,6 @@ obj-$(CONFIG_REGULATOR_ISL6271A) += isl6271a-regulator.o
 obj-$(CONFIG_REGULATOR_AB8500)	+= ab8500.o
 obj-$(CONFIG_REGULATOR_PMIC8058) += pmic8058-regulator.o
 obj-$(CONFIG_REGULATOR_PMIC8901) += pmic8901-regulator.o
+obj-$(CONFIG_REGULATOR_PM8921) += pm8921-regulator.o
 
 ccflags-$(CONFIG_REGULATOR_DEBUG) += -DDEBUG
