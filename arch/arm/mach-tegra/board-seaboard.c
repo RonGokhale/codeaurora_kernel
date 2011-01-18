@@ -81,7 +81,6 @@ static struct platform_device debug_uart = {
 
 static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	/* name		parent		rate		enabled */
-	{ "clk_dev1",	NULL,		26000000,	true},
 	{ "clk_m",	NULL,		12000000,	true},
 	{ "3d",		"pll_m",	300000000,	true},
 	{ "2d",		"pll_m",	300000000,	true},
@@ -95,11 +94,12 @@ static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	{ "vde",	"pll_c",	240000000,	false},
 	{ "pll_p",	"clk_m",	216000000,	true},
 	{ "pll_p_out1",	"pll_p",	28800000,	true},
-	{ "pll_a",	"pll_p_out1",	73728000,	true},
-	{ "pll_a_out0",	"pll_a",	73728000,	true},
-	{ "i2s1",	"pll_a_out0",	576000,		true},
-	{ "audio",	"pll_a_out0",	73728000,	true},
-	{ "audio_2x",	"audio",	147456000,	false},
+	{ "pll_a",	"pll_p_out1",	56448000,	true},
+	{ "pll_a_out0",	"pll_a",	11289600,	true},
+	{ "cdev1",	"pll_a_out0",	11289600,	true},
+	{ "i2s1",	"pll_a_out0",	11289600,	false},
+	{ "audio",	"pll_a_out0",	11289600,	false},
+	{ "audio_2x",	"audio",	22579200,	false},
 	{ "pll_p_out2",	"pll_p",	48000000,	true},
 	{ "pll_p_out3",	"pll_p",	72000000,	true},
 	{ "i2c1_i2c",	"pll_p_out3",	72000000,	true},
@@ -473,6 +473,8 @@ static struct platform_device *seaboard_devices[] __initdata = {
 	&pmu_device,
 	&seaboard_gpio_keys_device,
 	&tegra_gart_device,
+	&tegra_i2s_device1,
+	&tegra_das_device,
 	&tegra_pcm_device,
 };
 
@@ -523,11 +525,12 @@ static int seaboard_ehci_init(void)
 
 static void __init __tegra_seaboard_init(void)
 {
+	seaboard_pinmux_init();
+
 	tegra_common_init();
 	tegra_init_suspend(&seaboard_suspend);
 
 	tegra_clk_init_from_table(seaboard_clk_init_table);
-	seaboard_pinmux_init();
 
 	platform_add_devices(seaboard_devices, ARRAY_SIZE(seaboard_devices));
 
