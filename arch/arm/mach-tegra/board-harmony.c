@@ -254,6 +254,8 @@ static struct platform_device *harmony_devices[] __initdata = {
 	&tegra_spi_device3,
 	&tegra_spi_device4,
 	&tegra_gart_device,
+	&tegra_i2s_device1,
+	&tegra_das_device,
 	&tegra_pcm_device,
 };
 
@@ -285,8 +287,9 @@ static __initdata struct tegra_clk_init_table harmony_clk_init_table[] = {
 	{ "pll_p_out1",	"pll_p",	28800000,	true},
 	{ "pll_a",	"pll_p_out1",	56448000,	true},
 	{ "pll_a_out0",	"pll_a",	11289600,	true},
-	{ "i2s1",	"pll_a_out0",	11289600,	true},
-	{ "audio",	"pll_a_out0",	11289600,	true},
+	{ "cdev1",	"pll_a_out0",	11289600,	true},
+	{ "i2s1",	"pll_a_out0",	11289600,	false},
+	{ "audio",	"pll_a_out0",	11289600,	false},
 	{ "audio_2x",	"audio",	22579200,	false},
 	{ "pll_p_out2",	"pll_p",	48000000,	true},
 	{ "pll_p_out3",	"pll_p",	72000000,	true},
@@ -370,13 +373,14 @@ static struct tegra_suspend_platform_data harmony_suspend = {
 
 static void __init tegra_harmony_init(void)
 {
+	harmony_pinmux_init();
+
 	tegra_common_init();
 
 	tegra_init_suspend(&harmony_suspend);
 
 	tegra_clk_init_from_table(harmony_clk_init_table);
 
-	harmony_pinmux_init();
 	harmony_sdhci_init();
 
 	tegra_ehci3_device.dev.platform_data = &tegra_ehci_pdata;
