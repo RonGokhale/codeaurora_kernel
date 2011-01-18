@@ -45,7 +45,8 @@ static DEFINE_MUTEX(pcm_mutex);
 static DECLARE_WAIT_QUEUE_HEAD(soc_pm_waitq);
 
 #ifdef CONFIG_DEBUG_FS
-static struct dentry *debugfs_root;
+struct dentry *asoc_debugfs_root;
+EXPORT_SYMBOL_GPL(asoc_debugfs_root);
 #endif
 
 static DEFINE_MUTEX(client_mutex);
@@ -239,7 +240,7 @@ static const struct file_operations codec_reg_fops = {
 static void soc_init_codec_debugfs(struct snd_soc_codec *codec)
 {
 	codec->debugfs_codec_root = debugfs_create_dir(codec->name ,
-						       debugfs_root);
+						       asoc_debugfs_root);
 	if (!codec->debugfs_codec_root) {
 		printk(KERN_WARNING
 		       "ASoC: Failed to create codec debugfs directory\n");
@@ -3314,22 +3315,22 @@ EXPORT_SYMBOL_GPL(snd_soc_unregister_codec);
 static int __init snd_soc_init(void)
 {
 #ifdef CONFIG_DEBUG_FS
-	debugfs_root = debugfs_create_dir("asoc", NULL);
-	if (IS_ERR(debugfs_root) || !debugfs_root) {
+	asoc_debugfs_root = debugfs_create_dir("asoc", NULL);
+	if (IS_ERR(asoc_debugfs_root) || !asoc_debugfs_root) {
 		printk(KERN_WARNING
 		       "ASoC: Failed to create debugfs directory\n");
-		debugfs_root = NULL;
+		asoc_debugfs_root = NULL;
 	}
 
-	if (!debugfs_create_file("codecs", 0444, debugfs_root, NULL,
+	if (!debugfs_create_file("codecs", 0444, asoc_debugfs_root, NULL,
 				 &codec_list_fops))
 		pr_warn("ASoC: Failed to create CODEC list debugfs file\n");
 
-	if (!debugfs_create_file("dais", 0444, debugfs_root, NULL,
+	if (!debugfs_create_file("dais", 0444, asoc_debugfs_root, NULL,
 				 &dai_list_fops))
 		pr_warn("ASoC: Failed to create DAI list debugfs file\n");
 
-	if (!debugfs_create_file("platforms", 0444, debugfs_root, NULL,
+	if (!debugfs_create_file("platforms", 0444, asoc_debugfs_root, NULL,
 				 &platform_list_fops))
 		pr_warn("ASoC: Failed to create platform list debugfs file\n");
 #endif
@@ -3341,7 +3342,7 @@ module_init(snd_soc_init);
 static void __exit snd_soc_exit(void)
 {
 #ifdef CONFIG_DEBUG_FS
-	debugfs_remove_recursive(debugfs_root);
+	debugfs_remove_recursive(asoc_debugfs_root);
 #endif
 	platform_driver_unregister(&soc_driver);
 }
