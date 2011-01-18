@@ -479,6 +479,14 @@ static struct resource i2s_resource2[] = {
 	}
 };
 
+static struct resource tegra_das_resources[] = {
+	[0] = {
+		.start = TEGRA_APB_MISC_DAS_BASE,
+		.end = TEGRA_APB_MISC_DAS_BASE + TEGRA_APB_MISC_DAS_SIZE - 1,
+		.flags = IORESOURCE_MEM,
+	},
+};
+
 static struct resource spdif_resource[] = {
 	[0] = {
 		.start	= INT_SPDIF,
@@ -498,14 +506,14 @@ static struct resource spdif_resource[] = {
 };
 
 struct platform_device tegra_i2s_device1 = {
-	.name		= "i2s",
+	.name		= "tegra-i2s",
 	.id		= 0,
 	.resource	= i2s_resource1,
 	.num_resources	= ARRAY_SIZE(i2s_resource1),
 };
 
 struct platform_device tegra_i2s_device2 = {
-	.name		= "i2s",
+	.name		= "tegra-i2s",
 	.id		= 1,
 	.resource	= i2s_resource2,
 	.num_resources	= ARRAY_SIZE(i2s_resource2),
@@ -518,19 +526,16 @@ struct platform_device tegra_spdif_device = {
 	.num_resources	= ARRAY_SIZE(spdif_resource),
 };
 
-struct platform_device tegra_i2s_dai_device1 = {
-	.name = "tegra-i2s-dai",
-	.id = 0,
-};
-
-struct platform_device tegra_i2s_dai_device2 = {
-	.name = "tegra-i2s-dai",
-	.id = 1,
+struct platform_device tegra_das_device = {
+	.name		= "tegra-das",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(tegra_das_resources),
+	.resource	= tegra_das_resources,
 };
 
 struct platform_device tegra_pcm_device = {
-        .name   = "tegra-pcm-audio",
-        .id     = -1,
+	.name = "tegra-pcm-audio",
+	.id = -1,
 };
 
 static struct resource tegra_gart_resources[] = {
