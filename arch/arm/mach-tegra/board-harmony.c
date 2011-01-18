@@ -34,8 +34,6 @@
 #include <asm/mach/time.h>
 #include <asm/setup.h>
 
-#include <mach/audio.h>
-#include <mach/i2s.h>
 #include <mach/iomap.h>
 #include <mach/irqs.h>
 #include <mach/nand.h>
@@ -228,18 +226,6 @@ static struct i2c_board_info __initdata harmony_i2c_bus1_board_info[] = {
 	},
 };
 
-static struct tegra_audio_platform_data tegra_audio_pdata = {
-	.i2s_master	= false,
-	.dsp_master	= false,
-	.dma_on		= true,  /* use dma by default */
-	.i2s_clk_rate	= 240000000,
-	.dap_clk	= "clk_dev1",
-	.audio_sync_clk = "audio_2x",
-	.mode		= I2S_BIT_FORMAT_I2S,
-	.fifo_fmt	= I2S_FIFO_16_LSB,
-	.bit_size	= I2S_BIT_SIZE_16,
-};
-
 static void harmony_i2c_init(void)
 {
 	tegra_i2c_device1.dev.platform_data = &harmony_i2c1_platform_data;
@@ -268,8 +254,6 @@ static struct platform_device *harmony_devices[] __initdata = {
 	&tegra_spi_device3,
 	&tegra_spi_device4,
 	&tegra_gart_device,
-	&tegra_i2s_device1,
-	&tegra_i2s_dai_device1,
 	&tegra_pcm_device,
 };
 
@@ -396,8 +380,6 @@ static void __init tegra_harmony_init(void)
 	harmony_sdhci_init();
 
 	tegra_ehci3_device.dev.platform_data = &tegra_ehci_pdata;
-
-	tegra_i2s_device1.dev.platform_data = &tegra_audio_pdata;
 
 	platform_add_devices(harmony_devices, ARRAY_SIZE(harmony_devices));
 
