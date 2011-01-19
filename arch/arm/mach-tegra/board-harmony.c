@@ -381,8 +381,6 @@ static void __init tegra_harmony_init(void)
 
 	tegra_clk_init_from_table(harmony_clk_init_table);
 
-	harmony_sdhci_init();
-
 	tegra_ehci3_device.dev.platform_data = &tegra_ehci_pdata;
 
 	platform_add_devices(harmony_devices, ARRAY_SIZE(harmony_devices));
