@@ -328,6 +328,8 @@ static void __init seaboard_i2c_init(void)
 
 static void __init kaen_i2c_init(void)
 {
+	seaboard_isl29018_init();
+
 	i2c_register_board_info(0, &wm8903_device, 1);
 	i2c_register_board_info(0, &isl29018_device, 1);
 
