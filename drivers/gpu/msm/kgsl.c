@@ -972,8 +972,9 @@ static long kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_file_private *private,
 		result = -EINVAL;
 		goto error;
 	}
-
+        down_read(&current->mm->mmap_sem);
 	vma = find_vma(current->mm, param.hostptr);
+        up_read(&current->mm->mmap_sem);
 	if (!vma) {
 		KGSL_MEM_ERR("Could not find vma for address %x\n",
 			     param.hostptr);
