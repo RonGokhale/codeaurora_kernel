@@ -1460,8 +1460,10 @@ static inline void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff
 
 	BT_DBG("%s status %d", hdev->name, ev->status);
 
-	if (ev->status)
+	if (ev->status) {
+		mgmt_disconnect_failed(hdev->id);
 		return;
+	}
 
 	hci_dev_lock(hdev);
 
@@ -1927,6 +1929,10 @@ static inline void hci_cmd_status_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	case HCI_OP_DISCONN_PHYS_LINK:
 		hci_cs_disconn_physical_link(hdev, ev->status);
+
+	case HCI_OP_DISCONNECT:
+		if (ev->status != 0)
+			mgmt_disconnect_failed(hdev->id);
 		break;
 
 	default:
