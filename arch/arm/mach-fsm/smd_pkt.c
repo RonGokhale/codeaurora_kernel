@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -42,7 +42,12 @@
 
 #define NUM_SMD_PKT_PORTS 5
 #define DEVICE_NAME "smdpkt"
+
+#if defined(CONFIG_ARCH_FSM9XXX)
+#define MAX_BUF_SIZE ((64*1024) - 20)
+#else
 #define MAX_BUF_SIZE 2048
+#endif
 
 struct smd_pkt_dev {
 	struct cdev cdev;
