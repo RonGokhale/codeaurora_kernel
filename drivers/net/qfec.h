@@ -73,6 +73,8 @@ struct qfec_buf_desc {
 # define BUF_RX_FL_GET(p)         ((p.status & BUF_RX_FL) >> 16)
 # define BUF_RX_FL_SET(p, x) \
 	(p.status = (p.status & ~BUF_RX_FL) | ((x << 16) & BUF_RX_FL))
+# define BUF_RX_FL_GET_FROM_STATUS(status) \
+				  (((status) & BUF_RX_FL) >> 16)
 
 # define BUF_RX_ES                0x00008000 /* error summary */
 # define BUF_RX_DE                0x00004000 /* error descriptor (es) */
@@ -184,7 +186,7 @@ struct qfec_buf_desc {
 				| BUS_MODE_AAL \
 				| BUS_MODE_PBLSET(16) \
 				| BUS_MODE_DA \
-				| BUS_MODE_DSL_SET(2))
+				| BUS_MODE_DSL_SET(0))
 
 /* ------------------------------------------------------------------ */
 # define TX_POLL_DEM_REG          0x1004      /* transmit poll demand */

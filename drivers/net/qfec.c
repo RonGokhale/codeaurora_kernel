@@ -50,6 +50,10 @@
 #define MAX_N_BD        50
 #define MAC_ADDR_SIZE	6
 
+#define RX_TX_BD_RATIO  4
+#define RX_BD_NUM       32
+#define TX_BD_NUM       (RX_BD_NUM * RX_TX_BD_RATIO)
+
 /* -----------------------------------------------------
  * logging macros
  */
@@ -82,7 +86,7 @@ static int qfec_debug = QFEC_LOG_PR;
 #define BD_FLAG_LAST_BD     1
 
 struct buf_desc {
-	struct qfec_buf_desc    desc;       /* must be first */
+	struct qfec_buf_desc   *p_desc;
 	struct sk_buff         *skb;
 	void                   *buf_virt_addr;
 	void                   *buf_phys_addr;
@@ -144,65 +148,70 @@ static inline void qfec_bd_last_bd_set(struct buf_desc *p_bd)
 /* ownership bit */
 static inline uint32_t qfec_bd_own(struct buf_desc *p_bd)
 {
-	return p_bd->desc.status & BUF_OWN;
+	return p_bd->p_desc->status & BUF_OWN;
 };
 
 static inline void qfec_bd_own_set(struct buf_desc *p_bd)
 {
-	p_bd->desc.status |= BUF_OWN ;
+	p_bd->p_desc->status |= BUF_OWN ;
 };
 
 static inline void qfec_bd_own_clr(struct buf_desc *p_bd)
 {
-	p_bd->desc.status &= ~(BUF_OWN);
+	p_bd->p_desc->status &= ~(BUF_OWN);
 };
 
 static inline uint32_t qfec_bd_status_get(struct buf_desc *p_bd)
 {
-	return p_bd->desc.status;
+	return p_bd->p_desc->status;
+};
+
+static inline void qfec_bd_status_set(struct buf_desc *p_bd, uint32_t status)
+{
+	p_bd->p_desc->status = status;
 };
 
 static inline uint32_t qfec_bd_status_len(struct buf_desc *p_bd)
 {
-	return BUF_RX_FL_GET(p_bd->desc);
+	return BUF_RX_FL_GET((*p_bd->p_desc));
 };
 
 /* control register */
 static inline void qfec_bd_ctl_reset(struct buf_desc *p_bd)
 {
-	p_bd->desc.ctl  = 0;
+	p_bd->p_desc->ctl  = 0;
 };
 
 static inline uint32_t qfec_bd_ctl_get(struct buf_desc *p_bd)
 {
-	return p_bd->desc.ctl;
+	return p_bd->p_desc->ctl;
 };
 
 static inline void qfec_bd_ctl_set(struct buf_desc *p_bd, uint32_t val)
 {
-	p_bd->desc.ctl |= val;
+	p_bd->p_desc->ctl |= val;
 };
 
 static inline void qfec_bd_ctl_wr(struct buf_desc *p_bd, uint32_t val)
 {
-	p_bd->desc.ctl = val;
+	p_bd->p_desc->ctl = val;
 };
 
 /* pbuf register  */
 static inline void *qfec_bd_pbuf_get(struct buf_desc *p_bd)
 {
-	return p_bd->desc.p_buf;
+	return p_bd->p_desc->p_buf;
 }
 
 static inline void qfec_bd_pbuf_set(struct buf_desc *p_bd, void *p)
 {
-	p_bd->desc.p_buf = p;
+	p_bd->p_desc->p_buf = p;
 }
 
 /* next register */
 static inline void *qfec_bd_next_get(struct buf_desc *p_bd)
 {
-	return p_bd->desc.next;
+	return p_bd->p_desc->next;
 };
 
 /* -----------------------------------------------------
@@ -211,11 +220,8 @@ static inline void *qfec_bd_next_get(struct buf_desc *p_bd)
 static int qfec_rbd_init(struct net_device *dev, struct buf_desc *p_bd)
 {
 	struct sk_buff     *skb;
-	uint32_t            ctrl;
 	void               *p;
 	void               *v;
-
-	QFEC_LOG(QFEC_LOG_DBG2, "%s: %p bd\n", __func__, p_bd);
 
 	/* allocate and record ptrs for sk buff */
 	skb   = dev_alloc_skb(ETH_BUF_SIZE);
@@ -223,7 +229,6 @@ static int qfec_rbd_init(struct net_device *dev, struct buf_desc *p_bd)
 		goto err;
 
 	qfec_bd_skbuf_set(p_bd, skb);
-	QFEC_LOG(QFEC_LOG_DBG2, "%s: %p skb\n", __func__, skb);
 
 	v = skb_put(skb, ETH_BUF_SIZE);
 	qfec_bd_virt_set(p_bd, v);
@@ -233,6 +238,21 @@ static int qfec_rbd_init(struct net_device *dev, struct buf_desc *p_bd)
 	qfec_bd_pbuf_set(p_bd, p);
 	qfec_bd_phys_set(p_bd, p);
 
+	/* populate control register */
+	/* mark the last BD and set end-of-ring bit */
+	qfec_bd_ctl_wr(p_bd, ETH_BUF_SIZE |
+		(qfec_bd_last_bd(p_bd) ? BUF_RX_RER : 0));
+
+	qfec_bd_status_set(p_bd, BUF_OWN);
+
+	if (!(qfec_debug & QFEC_LOG_DBG2))
+		return 0;
+
+	/* debug messages */
+	QFEC_LOG(QFEC_LOG_DBG2, "%s: %p bd\n", __func__, p_bd);
+
+	QFEC_LOG(QFEC_LOG_DBG2, "%s: %p skb\n", __func__, skb);
+
 	QFEC_LOG(QFEC_LOG_DBG2,
 		"%s: %p p_bd, %p data, %p skb_put, %p virt, %p p_buf, %p p\n",
 		__func__, (void *)p_bd,
@@ -240,16 +260,6 @@ static int qfec_rbd_init(struct net_device *dev, struct buf_desc *p_bd)
 		(void *)qfec_bd_virt_get(p_bd), (void *)qfec_bd_pbuf_get(p_bd),
 		(void *)p);
 
-	/* populate control register */
-	ctrl  = ETH_BUF_SIZE;
-	qfec_bd_ctl_reset(p_bd);
-	qfec_bd_ctl_set(p_bd, ctrl);
-
-	/* mark the last BD and set end-of-ring bit */
-	if (qfec_bd_last_bd(p_bd))
-		qfec_bd_ctl_set(p_bd, BUF_RX_RER);
-
-	qfec_bd_own_set(p_bd);
 	return 0;
 
 err:
@@ -452,7 +462,7 @@ struct qfec_priv {
 
 	unsigned int            state;            /* driver state */
 
-	void                   *bd_base;          /* addr buf-desc */
+	struct qfec_buf_desc   *bd_base;          /* * qfec-buf-desc */
 	dma_addr_t              tbd_dma;          /* dma/phy-addr buf-desc */
 	dma_addr_t              rbd_dma;          /* dma/phy-addr buf-desc */
 
@@ -467,11 +477,13 @@ struct qfec_priv {
 
 	unsigned int            n_tbd;            /* # of TX buf-desc */
 	struct ring             ring_tbd;         /* TX ring */
-	struct buf_desc        *p_tbd;            /* * TX buf-desc */
+	struct buf_desc         p_tbd[TX_BD_NUM]; /* TX buf-desc[] */
 
 	unsigned int            n_rbd;            /* # of RX buf-desc */
 	struct ring             ring_rbd;         /* RX ring */
-	struct buf_desc        *p_rbd;            /* * RX buf-desc */
+	struct buf_desc         p_rbd[RX_BD_NUM]; /* RX buf-desc[] */
+	struct buf_desc        *p_latest_rbd;
+	struct buf_desc        *p_ending_rbd;
 
 	unsigned long           cntr[cntr_last];  /* activity counters */
 
@@ -566,10 +578,11 @@ static int qfec_config_show(char *buf, char **start, off_t offset,
 
 	l += sprintf(&buf[l], "%s:", __func__);
 
-	l += sprintf(&buf[l], "  [0x%08x] %4dM %s", cfg,
+	l += sprintf(&buf[l], "  [0x%08x] %4dM %s %s", cfg,
 		(cfg & MAC_CONFIG_REG_PS)
 			? ((cfg & MAC_CONFIG_REG_FES) ? 100 : 10) : 1000,
-		cfg & MAC_CONFIG_REG_DM ? "FD" : "HD");
+		cfg & MAC_CONFIG_REG_DM ? "FD" : "HD",
+		cfg & MAC_CONFIG_REG_IPC ? "IPC" : "NoIPC");
 
 	flow &= FLOW_CONTROL_RFE | FLOW_CONTROL_TFE;
 	l += sprintf(&buf[l], "  [0x%08x] %s", flow,
@@ -620,7 +633,8 @@ static struct reg_entry  qfec_reg_tbl[] = {
 	{ 0, MAC_CONFIG_REG,         "MAC_CONFIG_REG",    MAC_CONFIG_REG_SPD_1G
 							| MAC_CONFIG_REG_DM
 							| MAC_CONFIG_REG_TE
-							| MAC_CONFIG_REG_RE },
+							| MAC_CONFIG_REG_RE
+							| MAC_CONFIG_REG_IPC },
 
 	/* ------------------ */
 	{ 1, INTRP_STATUS_REG,       "INTRP_STATUS_REG",   0 },
@@ -1198,16 +1212,15 @@ static void qfec_mem_dealloc(struct net_device *dev)
 /* -------------------------------------------------------------------------
  * allocate shared device memory for TX/RX buf-desc (and buffers)
  */
-#define RX_TX_BD_RATIO      2
-#define MIN_NUM_TX_BD       10
 
 static int qfec_mem_alloc(struct net_device *dev)
 {
 	struct qfec_priv   *priv = netdev_priv(dev);
-	unsigned int        size = PAGE_SIZE;
-	unsigned int        unit;
+	unsigned int        size;
 
 	QFEC_LOG(QFEC_LOG_DBG, "%s: %p dev\n", __func__, dev);
+
+	size = (TX_BD_NUM + RX_BD_NUM) * sizeof(struct qfec_buf_desc);
 
 	/* alloc mem for buf-desc, if not already alloc'd */
 	if (!priv->bd_base)  {
@@ -1221,41 +1234,15 @@ static int qfec_mem_alloc(struct net_device *dev)
 		return -ENOMEM;
 	}
 
-	/* determine the space requires per TX BD knowing the
-	  * ratio of RX to TX BDs desired, and the BD size
-	  */
-	unit = (sizeof(struct buf_desc)
-	     + (RX_TX_BD_RATIO * sizeof(struct buf_desc)));
-
-	/* determine the number of TX BDs from the available memory and the
-	  * unit size calc'd above.  the apply some minimums, compromising
-	  * on the RX/TX ratio. report error if minimums not met.
-	  */
-	priv->n_tbd = size / unit;
-	priv->n_tbd = priv->n_tbd < MIN_NUM_TX_BD ? MIN_NUM_TX_BD : priv->n_tbd;
-
-	priv->n_rbd = priv->n_tbd * RX_TX_BD_RATIO;
-
-	QFEC_LOG(QFEC_LOG_DBG,
-		" %s: 0x%08x size, %d unit, %d n_tbd, %d n_rbd\n",
-		__func__, size, unit, priv->n_tbd, priv->n_rbd);
-
-
-	if (priv->n_rbd < MIN_NUM_TX_BD) {
-		QFEC_LOG_ERR("%s: insufficient memory, %d unit\n",
-			__func__, unit);
-		return -ENOMEM;
-	}
-
-	/* allocate the space */
-	priv->p_tbd     = (struct buf_desc *) priv->bd_base;
-	QFEC_LOG(QFEC_LOG_DBG2, " %s: %p p_tbd\n", __func__, priv->p_tbd);
-
-	priv->p_rbd     = (struct buf_desc *) &priv->p_tbd[priv->n_tbd];
-	QFEC_LOG(QFEC_LOG_DBG2, " %s: %p p_rbd\n", __func__, priv->p_rbd);
+	priv->n_tbd = TX_BD_NUM;
+	priv->n_rbd = RX_BD_NUM;
 
 	priv->rbd_dma   = priv->tbd_dma
-			+ (priv->n_tbd * sizeof(struct buf_desc));
+			+ (priv->n_tbd * sizeof(struct qfec_buf_desc));
+
+	QFEC_LOG(QFEC_LOG_DBG,
+		" %s: 0x%08x size, %d n_tbd, %d n_rbd\n",
+		__func__, size, priv->n_tbd, priv->n_rbd);
 
 	return 0;
 }
@@ -1394,7 +1381,6 @@ static int qfec_tx_replenish(struct net_device *dev)
 		dev_kfree_skb_any(skb);
 		qfec_bd_skbuf_set(p_bd, NULL);
 
-
 		qfec_ring_tail_adv(p_ring);
 		p_bd   = &priv->p_tbd[qfec_ring_tail(p_ring)];
 	}
@@ -1429,14 +1415,17 @@ static void qfec_rx_int(struct net_device *dev)
 {
 	struct qfec_priv   *priv   = netdev_priv(dev);
 	struct ring        *p_ring = &priv->ring_rbd;
-	struct buf_desc    *p_bd   = &priv->p_rbd[qfec_ring_head(p_ring)];
-	struct sk_buff     *skb;
+	struct buf_desc    *p_bd   = priv->p_latest_rbd;
+	uint32_t desc_status;
+	uint32_t mis_fr_reg;
 
-	QFEC_LOG(QFEC_LOG_DBG2, "%s:\n", __func__);
+	desc_status = qfec_bd_status_get(p_bd);
+	mis_fr_reg = qfec_reg_read(priv, MIS_FR_REG);
+
 	CNTR_INC(priv, rx_int);
 
 	/* check that valid interrupt occurred */
-	if (qfec_bd_own(p_bd))  {
+	if (unlikely(desc_status & BUF_OWN)) {
 		char  s[100];
 
 		qfec_bd_fmt(s, p_bd);
@@ -1447,21 +1436,36 @@ static void qfec_rx_int(struct net_device *dev)
 	}
 
 	/* accumulate missed-frame count (reg reset when read) */
-	priv->stats.rx_missed_errors += qfec_reg_read(priv, MIS_FR_REG)
+	priv->stats.rx_missed_errors += mis_fr_reg
 					& MIS_FR_REG_MISS_CNT;
 
 	/* process all unowned frames */
-	while ((!qfec_bd_own(p_bd)) && (!qfec_ring_full(p_ring)))  {
+	while (!(desc_status & BUF_OWN) && (!qfec_ring_full(p_ring)))  {
+		struct sk_buff     *skb;
+		struct buf_desc    *p_bd_next;
+
 		skb = qfec_bd_skbuf_get(p_bd);
 
-		if (skb == NULL)  {
+		if (unlikely(skb == NULL))  {
 			QFEC_LOG_ERR("%s: null sk_buff\n", __func__);
 			CNTR_INC(priv, rx_skb_null);
 			break;
 		}
 
-		else  {
-			skb->len = qfec_bd_status_len(p_bd);
+		/* cache coherency before skb->data is accessed */
+		dma_unmap_single(&dev->dev,
+			(dma_addr_t) qfec_bd_phys_get(p_bd),
+			ETH_BUF_SIZE, DMA_FROM_DEVICE);
+		prefetch(skb->data);
+
+		if (unlikely(desc_status & BUF_RX_ES)) {
+			priv->stats.rx_dropped++;
+			CNTR_INC(priv, rx_dropped);
+			dev_kfree_skb(skb);
+		} else  {
+			qfec_reg_write(priv, STATUS_REG, STATUS_REG_RI);
+
+			skb->len = BUF_RX_FL_GET_FROM_STATUS(desc_status);
 
 			if (priv->state & timestamping)  {
 				CNTR_INC(priv, ts_rec);
@@ -1476,10 +1480,6 @@ static void qfec_rx_int(struct net_device *dev)
 			skb->protocol   = eth_type_trans(skb, dev);
 			skb->ip_summed  = CHECKSUM_UNNECESSARY;
 
-			dma_unmap_single(&dev->dev,
-				(int) qfec_bd_phys_get(p_bd),
-				ETH_BUF_SIZE, DMA_FROM_DEVICE);
-
 			if (NET_RX_DROP == netif_rx(skb))  {
 				priv->stats.rx_dropped++;
 				CNTR_INC(priv, rx_dropped);
@@ -1487,11 +1487,19 @@ static void qfec_rx_int(struct net_device *dev)
 			CNTR_INC(priv, netif_rx_cntr);
 		}
 
+		if (p_bd != priv->p_ending_rbd)
+			p_bd_next = p_bd + 1;
+		else
+			p_bd_next = priv->p_rbd;
+		desc_status = qfec_bd_status_get(p_bd_next);
+
 		qfec_bd_skbuf_set(p_bd, NULL);
 
 		qfec_ring_head_adv(p_ring);
-		p_bd   = &priv->p_rbd[qfec_ring_head(p_ring)];
+		p_bd = p_bd_next;
 	}
+
+	priv->p_latest_rbd = p_bd;
 
 	/* replenish bufs */
 	while (!qfec_ring_empty(p_ring))  {
@@ -1499,7 +1507,6 @@ static void qfec_rx_int(struct net_device *dev)
 			break;
 		qfec_ring_tail_adv(p_ring);
 	}
-
 }
 
 /* -------------------------------------------------------------------------
@@ -1547,7 +1554,6 @@ static irqreturn_t qfec_int(int irq, void *dev_id)
 	if (status & STATUS_REG_RI)  {
 		CNTR_INC(priv, rx_isr);
 		qfec_rx_int(dev);
-		int_bits |= STATUS_REG_ERI | STATUS_REG_RI;
 	}
 
 	/* transmit interrupt */
@@ -1578,6 +1584,7 @@ static int qfec_open(struct net_device *dev)
 	struct qfec_priv   *priv = netdev_priv(dev);
 	struct buf_desc    *p_bd;
 	struct ring        *p_ring;
+	struct qfec_buf_desc *p_desc;
 	int                 n;
 	int                 res = 0;
 
@@ -1595,7 +1602,11 @@ static int qfec_open(struct net_device *dev)
 		goto err;
 
 	/* initialize TX */
+	p_desc = priv->bd_base;
+
 	for (n = 0, p_bd = priv->p_tbd; n < priv->n_tbd; n++, p_bd++) {
+		p_bd->p_desc = p_desc++;
+
 		if (n == (priv->n_tbd - 1))
 			qfec_bd_last_bd_set(p_bd);
 
@@ -1610,10 +1621,15 @@ static int qfec_open(struct net_device *dev)
 	qfec_bd_last_bd_set(&priv->p_rbd[priv->n_rbd - 1]);
 
 	for (n = 0, p_bd = priv->p_rbd; n < priv->n_rbd; n++, p_bd++) {
+		p_bd->p_desc = p_desc++;
+
 		if (qfec_rbd_init(dev, p_bd))
 			break;
 		qfec_ring_tail_adv(p_ring);
 	}
+
+	priv->p_latest_rbd = priv->p_rbd;
+	priv->p_ending_rbd = priv->p_rbd + priv->n_rbd - 1;
 
 	/* config ptp clock */
 	qfec_ptp_cfg(priv);
@@ -1689,8 +1705,6 @@ static int qfec_stop(struct net_device *dev)
 	}
 
 	qfec_mem_dealloc(dev);
-
-	priv->p_tbd = priv->p_rbd = NULL;
 
 	QFEC_LOG(QFEC_LOG_DBG, " %s: done\n", __func__);
 
