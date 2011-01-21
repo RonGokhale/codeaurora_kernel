@@ -333,6 +333,8 @@ static void __init kaen_i2c_init(void)
 	i2c_register_board_info(0, &wm8903_device, 1);
 	i2c_register_board_info(0, &isl29018_device, 1);
 
+	i2c_register_board_info(2, &bq20z75_device, 1);
+
 	i2c_register_board_info(4, &adt7461_device, 1);
 	i2c_register_board_info(4, &ak8975_device, 1);
 
