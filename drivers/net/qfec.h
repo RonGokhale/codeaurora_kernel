@@ -1,7 +1,7 @@
 /*
  * qualcomm fast Ethernet controller HW description
  *
- * Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2010, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -324,7 +324,15 @@ struct qfec_buf_desc {
 # define INTRP_EN_REG_All          (~(INTRP_EN_REG_RSVD1))
 
 /* ------------------------------------------------------------------ */
-# define MIS_FR_BU_Of_CNT_REG      0x1020
+# define MIS_FR_REG                0x1020
+
+# define MIS_FR_REG_FIFO_OVFL      0x10000000  /* fifo overflow */
+# define MIS_FR_REG_FIFO_CNT       0x0FFE0000  /* fifo cnt */
+
+# define MIS_FR_REG_MISS_OVFL      0x00010000  /* missed-frame overflow */
+# define MIS_FR_REG_MISS_CNT       0x0000FFFF  /* missed-frame cnt */
+
+/* ------------------------------------------------------------------ */
 # define RX_INTRP_WTCHDOG_REG      0x1024
 /* ------------------------------------------------------------------ */
 # define AXI_BUS_MODE_REG          0x1028

@@ -33,11 +33,15 @@
 # include <linux/timer.h>
 # include <linux/mii.h>
 
+# include <linux/ethtool.h>
 # include <linux/net_tstamp.h>
+# include <linux/phy.h>
+# include <linux/inet.h>
 
 #include "qfec.h"
 
 #define QFEC_NAME       "qfec"
+#define QFEC_DRV_VER    "Jan 17 2011"
 
 /* -------------------------------------------------------------------------
  */
@@ -49,12 +53,13 @@
 /* -----------------------------------------------------
  * logging macros
  */
-#define QFEC_LOG_PR    1
-#define QFEC_LOG_DBG   2
-#define QFEC_LOG_DBG2  4
+#define QFEC_LOG_PR     1
+#define QFEC_LOG_DBG    2
+#define QFEC_LOG_DBG2   4
+#define QFEC_LOG_MDIO_W 8
+#define QFEC_LOG_MDIO_R 16
 
-static int qfec_debug = QFEC_LOG_PR | QFEC_LOG_DBG;
-module_param(qfec_debug, int, 0400);
+static int qfec_debug = QFEC_LOG_PR;
 
 #define QFEC_DEBUG
 #ifdef QFEC_DEBUG
@@ -545,79 +550,39 @@ static void qfec_reg_write(struct qfec_priv *priv, uint32_t reg, uint32_t val)
 	iowrite32(val, (void *)addr);
 }
 
-/* --------------------------------------------------------------------
- * retrieve some frame statistics from controller
+/* -------------------------------------------------------------------------
+ * speed/duplex/pause  settings
  */
-static struct qfec_stat {
-	int32_t     tx_reg;
-	int32_t     rx_reg;
-	char       *label;
-} qfec_stats[] = {
-	{  69,       97,  "good/bad Bytes"   },
-	{  89,       98,  "Bytes"   },
-
-	{  70,       96,  "good/bad Frames"   },
-	{  71,       99,  "Bcast Frames"   },
-	{  72,      100,  "Mcast Frames"   },
-	{  90,      113,  "Unicast Frames"   },
-	{  -1,      106,  "Jumbo Frames"   },
-
-	{  92,      116,  "Pause Frames"   },
-	{  93,      118,  "Vlan Frames"   },
-
-	{  73,      107,  "Frames 64"  },
-	{  74,      108,  "Frames 65-127"  },
-	{  75,      109,  "Frames 128-255"  },
-	{  76,      110,  "Frames 256-511"  },
-	{  77,      111,  "Frames 512-1023"  },
-	{  78,      112,  "Frames 1024+"  },
-
-	{  -1,      101,  "Crc error Frames"   },
-	{  -1,      117,  "Drop due to FIFO Ovrfl"   },
-	{  -1,      114,  "Length error Frames"   },
-	{  -1,      115,  "Length invalid Frames"   },
-	{  -1,      105,  "Runt Frames"   },
-};
-
-#define QFEC_REG_OFFSET(reg)    (reg * sizeof(uint32_t))
-
-/* ------------------------------------------------ */
-static int qfec_stats_show(char *buf, char **start, off_t offset,
+static int qfec_config_show(char *buf, char **start, off_t offset,
 	int count, int *eof, void *data)
 {
 	struct net_device       *dev  = (struct net_device *) data;
 	struct qfec_priv        *priv = netdev_priv(dev);
-	struct qfec_stat        *p    = qfec_stats;
+	int                      cfg  = qfec_reg_read(priv, MAC_CONFIG_REG);
+	int                      flow = qfec_reg_read(priv, FLOW_CONTROL_REG);
 	int                      l    = 0;
-	int                      n;
 
 	QFEC_LOG(QFEC_LOG_DBG2, "%s:\n", __func__);
 
-	l += sprintf(&buf[l], "%s:\n", __func__);
-	l += sprintf(&buf[l], "      %12s  %12s\n", "TX", "RX");
+	l += sprintf(&buf[l], "%s:", __func__);
 
-	for (n = ARRAY_SIZE(qfec_stats); n > 0; n--, p++) {
-		if ((p->tx_reg > 0) && (p->rx_reg > 0)) {
-			l += sprintf(&buf[l], "      %12u  %12u    %s\n",
-				qfec_reg_read(priv, QFEC_REG_OFFSET(p->tx_reg)),
-				qfec_reg_read(priv, QFEC_REG_OFFSET(p->rx_reg)),
-				p->label);
-		} else if (p->rx_reg) {
-			l += sprintf(&buf[l], "      %12s  %12u    %s\n",
-				"",
-				qfec_reg_read(priv, QFEC_REG_OFFSET(p->rx_reg)),
-				p->label);
-		} else {
-			l += sprintf(&buf[l], "      %12u  %12s    %s\n",
-				qfec_reg_read(priv, QFEC_REG_OFFSET(p->tx_reg)),
-				"",
-				p->label);
-		}
-	}
+	l += sprintf(&buf[l], "  [0x%08x] %4dM %s", cfg,
+		(cfg & MAC_CONFIG_REG_PS)
+			? ((cfg & MAC_CONFIG_REG_FES) ? 100 : 10) : 1000,
+		cfg & MAC_CONFIG_REG_DM ? "FD" : "HD");
 
+	flow &= FLOW_CONTROL_RFE | FLOW_CONTROL_TFE;
+	l += sprintf(&buf[l], "  [0x%08x] %s", flow,
+		(flow == (FLOW_CONTROL_RFE | FLOW_CONTROL_TFE)) ? "PAUSE"
+			: ((flow == FLOW_CONTROL_RFE) ? "RX-PAUSE"
+			: ((flow == FLOW_CONTROL_TFE) ? "TX-PAUSE" : "")));
+
+	l += sprintf(&buf[l], " %s", QFEC_DRV_VER);
+	l += sprintf(&buf[l], "\n");
 	*eof = 1;
 	return l;
 }
+
 
 /* -------------------------------------------------------------------------
  * table and functions to initialize controller registers
@@ -1110,7 +1075,7 @@ static int qfec_mdio_read(struct net_device *dev, int phy_id, int reg)
 	}
 
 	res = qfec_reg_read(priv, GMII_DATA_REG);
-	QFEC_LOG(QFEC_LOG_DBG2, "%s: %2d reg, 0x%04x val\n",
+	QFEC_LOG(QFEC_LOG_MDIO_R, "%s: %2d reg, 0x%04x val\n",
 		__func__, reg, res);
 
 done:
@@ -1129,7 +1094,8 @@ static void qfec_mdio_write(struct net_device *dev, int phy_id, int reg,
 
 	spin_lock_irqsave(&priv->mdio_lock, flags);
 
-	QFEC_LOG(QFEC_LOG_DBG2, "%s:\n", __func__);
+	QFEC_LOG(QFEC_LOG_MDIO_W, "%s: %2d reg, %04x\n",
+		__func__, reg, val);
 
 	qfec_reg_write(priv, GMII_DATA_REG, val);
 
@@ -1143,31 +1109,49 @@ static void qfec_mdio_write(struct net_device *dev, int phy_id, int reg,
  * get auto-negotiation results
  */
 
-#define BMSR_100        (BMSR_100HALF2 | BMSR_100FULL2 | BMSR_100HALF  \
-			| BMSR_100FULL  | BMSR_100BASE4)
-
-#define BMSR_100_FD     (BMSR_100FULL2 | BMSR_100FULL | BMSR_100BASE4)
-
-#define BMSR_10         (BMSR_10HALF | BMSR_10FULL)
+#define QFEC_100        (LPA_100HALF | LPA_100FULL | LPA_100HALF)
+#define QFEC_100_FD     (LPA_100FULL | LPA_100BASE4)
+#define QFEC_10         (LPA_10HALF  | LPA_10FULL)
+#define QFEC_10_FD       LPA_10FULL
 
 static void qfec_get_an(struct net_device *dev, uint32_t *spd, uint32_t *dplx)
 {
 	struct qfec_priv   *priv = netdev_priv(dev);
 	uint32_t            status;
+	uint32_t            advert;
+	uint32_t            lpa;
+	uint32_t            flow;
 
-	status = qfec_mdio_read(dev, priv->phy_id, MII_BMSR);
+	advert = qfec_mdio_read(dev, priv->phy_id, MII_ADVERTISE);
+	lpa    = qfec_mdio_read(dev, priv->phy_id, MII_LPA);
+	status = advert & lpa;
 
 	/* todo: check extended status register for 1G abilities */
 
-	if (status & BMSR_100)  {
+	if (status & QFEC_100)  {
 		*spd  = spd_100;
-		*dplx = status & BMSR_100_FD ? 1 : 0;
+		*dplx = status & QFEC_100_FD ? 1 : 0;
 	}
 
-	else if (status & BMSR_10)  {
+	else if (status & QFEC_10)  {
 		*spd  = spd_10;
-		*dplx = status & BMSR_10FULL ? 1 : 0;
+		*dplx = status & QFEC_10_FD ? 1 : 0;
 	}
+
+	/* check pause */
+	flow  = qfec_reg_read(priv, FLOW_CONTROL_REG);
+	flow &= ~(FLOW_CONTROL_TFE | FLOW_CONTROL_RFE);
+
+	if (status & ADVERTISE_PAUSE_CAP)  {
+		flow |= FLOW_CONTROL_RFE | FLOW_CONTROL_TFE;
+	} else if (status & ADVERTISE_PAUSE_ASYM)  {
+		if (lpa & ADVERTISE_PAUSE_CAP)
+			flow |= FLOW_CONTROL_TFE;
+		else if (advert & ADVERTISE_PAUSE_CAP)
+			flow |= FLOW_CONTROL_RFE;
+	}
+
+	qfec_reg_write(priv, FLOW_CONTROL_REG, flow);
 }
 
 /*
@@ -1180,9 +1164,6 @@ static void qfec_phy_monitor(unsigned long data)
 	struct qfec_priv   *priv = netdev_priv(dev);
 	unsigned int        spd  = 0;
 	unsigned int        dplx = 1;
-
-	QFEC_LOG(QFEC_LOG_DBG2, "%s: %08x link, %08x carrier\n", __func__,
-		mii_link_ok(&priv->mii), netif_carrier_ok(priv->net_dev));
 
 	mod_timer(&priv->phy_tmr, jiffies + HZ);
 
@@ -1286,11 +1267,12 @@ static int qfec_mem_alloc(struct net_device *dev)
 static int qfec_bd_fmt(char *buf, struct buf_desc *p_bd)
 {
 	return sprintf(buf,
-		"%8p: %08x %08x %8p %8p  %8p %8p %8p",
+		"%8p: %08x %08x %8p %8p  %8p %8p %8p %x",
 		p_bd,                     qfec_bd_status_get(p_bd),
 		qfec_bd_ctl_get(p_bd),    qfec_bd_pbuf_get(p_bd),
 		qfec_bd_next_get(p_bd),   qfec_bd_skbuf_get(p_bd),
-		qfec_bd_virt_get(p_bd),   qfec_bd_phys_get(p_bd));
+		qfec_bd_virt_get(p_bd),   qfec_bd_phys_get(p_bd),
+		qfec_bd_last_bd(p_bd));
 }
 
 static int qfec_bd_show(char *buf, struct buf_desc *p_bd, int n_bd,
@@ -1455,10 +1437,18 @@ static void qfec_rx_int(struct net_device *dev)
 
 	/* check that valid interrupt occurred */
 	if (qfec_bd_own(p_bd))  {
-		QFEC_LOG_ERR("%s: owned by DMA\n", __func__);
+		char  s[100];
+
+		qfec_bd_fmt(s, p_bd);
+		QFEC_LOG_ERR("%s: owned by DMA, %08x, %s\n", __func__,
+			qfec_reg_read(priv, CUR_HOST_RX_DES_REG), s);
 		CNTR_INC(priv, rx_owned);
 		return;
 	}
+
+	/* accumulate missed-frame count (reg reset when read) */
+	priv->stats.rx_missed_errors += qfec_reg_read(priv, MIS_FR_REG)
+					& MIS_FR_REG_MISS_CNT;
 
 	/* process all unowned frames */
 	while ((!qfec_bd_own(p_bd)) && (!qfec_ring_full(p_ring)))  {
@@ -1492,7 +1482,6 @@ static void qfec_rx_int(struct net_device *dev)
 
 			if (NET_RX_DROP == netif_rx(skb))  {
 				priv->stats.rx_dropped++;
-				QFEC_LOG_ERR("%s: dropped\n", __func__);
 				CNTR_INC(priv, rx_dropped);
 			}
 			CNTR_INC(priv, netif_rx_cntr);
@@ -1629,6 +1618,9 @@ static int qfec_open(struct net_device *dev)
 	/* config ptp clock */
 	qfec_ptp_cfg(priv);
 
+	/* configure PHY - must be set before reset/hw_init */
+	qfec_intf_sel(priv, intfc_mii);
+
 	/* initialize controller after BDs allocated */
 	res = qfec_hw_init(priv);
 	if (res)
@@ -1636,11 +1628,6 @@ static int qfec_open(struct net_device *dev)
 
 	/* get/set (primary) MAC address */
 	qfec_set_adr_regs(priv, dev->dev_addr);
-
-	/* configure PHY */
-	priv->phy_id = 0;
-
-	qfec_intf_sel(priv, intfc_mii);
 
 	/* start phy monitor */
 	QFEC_LOG(QFEC_LOG_DBG, " %s: start timer\n", __func__);
@@ -1739,7 +1726,6 @@ static int qfec_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	/* stop queuing if no resources available */
 	if (qfec_ring_room(p_ring) == 0)  {
-		QFEC_LOG_ERR("%s: no free buf-desc\n", __func__);
 		qfec_queue_stop(dev);
 		CNTR_INC(priv, tx_no_resource);
 
@@ -1858,8 +1844,8 @@ static struct qfec_proc_entry {
 	{ "bd_rx",   qfec_bd_rx_show      },
 	{ "clk_reg", qfec_clk_reg_show    },
 	{ "cntrs",   qfec_cntrs_show      },
+	{ "cfg",     qfec_config_show     },
 	{ "reg",     qfec_reg_show        },
-	{ "stats",   qfec_stats_show      },
 };
 
 #define QFEC_PROC_ENTRIES  \
@@ -1897,15 +1883,23 @@ static void qfec_proc_fs_remove(struct net_device *dev)
  *  read discontinuous MAC address from corrected fuse memory region
  */
 
-static void qfec_get_mac_address(char *buf, char *mac_base, int nBytes)
+static int qfec_get_mac_address(char *buf, char *mac_base, int nBytes)
 {
-	static int offset[] = { 0, 1, 2, 3, 4, 8 };
-	int        n;
+	static int  offset[] = { 0, 1, 2, 3, 4, 8 };
+	int         n;
 
 	QFEC_LOG(QFEC_LOG_DBG, "%s:\n", __func__);
 
 	for (n = 0; n < nBytes; n++)
-		*buf++ = ioread8(mac_base + offset[n]);
+		buf[n] = ioread8(mac_base + offset[n]);
+
+	/* check that MAC programmed  */
+	if ((buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5]) == 0)  {
+		QFEC_LOG_ERR("%s: null MAC address\n", __func__);
+		return -ENODATA;
+	}
+
+	return 0;
 }
 
 /* -------------------------------------------------------------------------
@@ -1927,7 +1921,308 @@ static const struct net_device_ops qfec_netdev_ops = {
 	.ndo_set_config         = qfec_set_config,
 };
 
-/*
+/* -------------------------------------------------------------------------
+ * ethtool functions
+ */
+
+static int qfec_nway_reset(struct net_device *dev)
+{
+	struct qfec_priv  *priv = netdev_priv(dev);
+	return mii_nway_restart(&priv->mii);
+}
+
+/* ------------------------------------------------
+ * speed, duplex, auto-neg settings
+ */
+static void qfec_ethtool_getpauseparam(struct net_device *dev,
+			struct ethtool_pauseparam *pp)
+{
+	struct qfec_priv  *priv = netdev_priv(dev);
+	u32                flow = qfec_reg_read(priv, FLOW_CONTROL_REG);
+	u32                advert;
+
+	QFEC_LOG(QFEC_LOG_DBG, "%s:\n", __func__);
+
+	/* report current settings */
+	pp->tx_pause = (flow & FLOW_CONTROL_TFE) != 0;
+	pp->rx_pause = (flow & FLOW_CONTROL_RFE) != 0;
+
+	/* report if pause is being advertised */
+	advert = qfec_mdio_read(dev, priv->phy_id, MII_ADVERTISE);
+	pp->autoneg =
+		(advert & (ADVERTISE_PAUSE_CAP | ADVERTISE_PAUSE_ASYM)) != 0;
+}
+
+static int qfec_ethtool_setpauseparam(struct net_device *dev,
+			struct ethtool_pauseparam *pp)
+{
+	struct qfec_priv  *priv = netdev_priv(dev);
+	u32                advert;
+
+	QFEC_LOG(QFEC_LOG_DBG, "%s: %d aneg, %d rx, %d tx\n", __func__,
+		pp->autoneg, pp->rx_pause, pp->tx_pause);
+
+	advert  =  qfec_mdio_read(dev, priv->phy_id, MII_ADVERTISE);
+	advert &= ~(ADVERTISE_PAUSE_CAP | ADVERTISE_PAUSE_ASYM);
+
+	/* If pause autonegotiation is enabled, but both rx and tx are not
+	 * because neither was specified in the ethtool cmd,
+	 * enable both symetrical and asymetrical pause.
+	 * otherwise, only enable the pause mode indicated by rx/tx.
+	 */
+	if (pp->autoneg)  {
+		if (pp->rx_pause)
+			advert |= ADVERTISE_PAUSE_ASYM | ADVERTISE_PAUSE_CAP;
+		else if (pp->tx_pause)
+			advert |= ADVERTISE_PAUSE_ASYM;
+		else
+			advert |= ADVERTISE_PAUSE_CAP;
+	}
+
+	qfec_mdio_write(dev, priv->phy_id, MII_ADVERTISE, advert);
+
+	return 0;
+}
+
+/* ------------------------------------------------
+ * speed, duplex, auto-neg settings
+ */
+static int
+qfec_ethtool_getsettings(struct net_device *dev, struct ethtool_cmd *cmd)
+{
+	struct qfec_priv  *priv = netdev_priv(dev);
+
+	QFEC_LOG(QFEC_LOG_DBG, "%s:\n", __func__);
+
+	cmd->maxrxpkt = priv->n_rbd;
+	cmd->maxtxpkt = priv->n_tbd;
+
+	return mii_ethtool_gset(&priv->mii, cmd);
+}
+
+static int
+qfec_ethtool_setsettings(struct net_device *dev, struct ethtool_cmd *cmd)
+{
+	struct qfec_priv  *priv = netdev_priv(dev);
+
+	QFEC_LOG(QFEC_LOG_DBG, "%s:\n", __func__);
+
+	return mii_ethtool_sset(&priv->mii, cmd);
+}
+
+/* ------------------------------------------------
+ * msg/debug level
+ */
+static u32 qfec_ethtool_getmsglevel(struct net_device *dev)
+{
+	return qfec_debug;
+}
+
+static void qfec_ethtool_setmsglevel(struct net_device *dev, u32 level)
+{
+	qfec_debug ^= level;	/* toggle on/off */
+}
+
+/* ------------------------------------------------
+ * register dump
+ */
+#define DMA_DMP_OFFSET  0x0000
+#define DMA_REG_OFFSET  0x1000
+#define DMA_REG_LEN     23
+
+#define MAC_DMP_OFFSET  0x0080
+#define MAC_REG_OFFSET  0x0000
+#define MAC_REG_LEN     55
+
+#define TS_DMP_OFFSET   0x0180
+#define TS_REG_OFFSET   0x0700
+#define TS_REG_LEN      15
+
+#define MDIO_DMP_OFFSET 0x0200
+#define MDIO_REG_LEN    16
+
+#define REG_SIZE    (MDIO_DMP_OFFSET + (MDIO_REG_LEN * sizeof(short)))
+
+static int qfec_ethtool_getregs_len(struct net_device *dev)
+{
+	return REG_SIZE;
+}
+
+static void
+qfec_ethtool_getregs(struct net_device *dev, struct ethtool_regs *regs,
+			 void *buf)
+{
+	struct qfec_priv  *priv   = netdev_priv(dev);
+	u32               *data   = buf;
+	u16               *data16;
+	unsigned int       i;
+	unsigned int       j;
+	unsigned int       n;
+
+	memset(buf, 0, REG_SIZE);
+
+	j = DMA_DMP_OFFSET / sizeof(u32);
+	for (i = DMA_REG_OFFSET, n = DMA_REG_LEN; n--; i += sizeof(u32))
+		data[j++] = htonl(qfec_reg_read(priv, i));
+
+	j = MAC_DMP_OFFSET / sizeof(u32);
+	for (i = MAC_REG_OFFSET, n = MAC_REG_LEN; n--; i += sizeof(u32))
+		data[j++] = htonl(qfec_reg_read(priv, i));
+
+	j = TS_DMP_OFFSET / sizeof(u32);
+	for (i = TS_REG_OFFSET, n = TS_REG_LEN; n--; i += sizeof(u32))
+		data[j++] = htonl(qfec_reg_read(priv, i));
+
+	data16 = (u16 *)&data[MDIO_DMP_OFFSET / sizeof(u32)];
+	for (i = 0, n = 0; i < MDIO_REG_LEN; i++)
+		data16[n++] = htons(qfec_mdio_read(dev, 0, i));
+
+	regs->len     = REG_SIZE;
+
+	QFEC_LOG(QFEC_LOG_DBG, "%s: %d bytes\n", __func__, regs->len);
+}
+
+/* ------------------------------------------------
+ * statistics
+ *   return counts of various ethernet activity.
+ *   many of these are same as in struct net_device_stats
+ *
+ *   missed-frames indicates the number of attempts made by the ethernet
+ *      controller to write to a buffer-descriptor when the BD ownership
+ *      bit was not set.   The rxfifooverflow counter (0x1D4) is not
+ *      available.  The Missed Frame and Buffer Overflow Counter register
+ *      (0x1020) is used, but has only 16-bits and is reset when read.
+ *      It is read and updates the value in priv->stats.rx_missed_errors
+ *      in qfec_rx_int().
+ */
+static char qfec_stats_strings[][ETH_GSTRING_LEN] = {
+	"TX good/bad Bytes         ",
+	"TX Bytes                  ",
+	"TX good/bad Frames        ",
+	"TX Bcast Frames           ",
+	"TX Mcast Frames           ",
+	"TX Unicast Frames         ",
+	"TX Pause Frames           ",
+	"TX Vlan Frames            ",
+	"TX Frames 64              ",
+	"TX Frames 65-127          ",
+	"TX Frames 128-255         ",
+	"TX Frames 256-511         ",
+	"TX Frames 512-1023        ",
+	"TX Frames 1024+           ",
+	"TX Pause Frames           ",
+	"TX Collisions             ",
+	"TX Late Collisions        ",
+	"TX Excessive Collisions   ",
+
+	"RX good/bad Bytes         ",
+	"RX Bytes                  ",
+	"RX good/bad Frames        ",
+	"RX Bcast Frames           ",
+	"RX Mcast Frames           ",
+	"RX Unicast Frames         ",
+	"RX Pause Frames           ",
+	"RX Vlan Frames            ",
+	"RX Frames 64              ",
+	"RX Frames 65-127          ",
+	"RX Frames 128-255         ",
+	"RX Frames 256-511         ",
+	"RX Frames 512-1023        ",
+	"RX Frames 1024+           ",
+	"RX Pause Frames           ",
+	"RX Crc error Frames       ",
+	"RX Length error Frames    ",
+	"RX Alignment error Frames ",
+	"RX Runt Frames            ",
+	"RX Oversize Frames        ",
+	"RX Missed Frames          ",
+
+};
+
+static u32 qfec_stats_regs[] =  {
+
+	     69,     89,     70,     71,     72,     90,     92,     93,
+	     73,     74,     75,     76,     77,     78,     92,     84,
+	     86,     87,
+
+	     97,     98,     96,     99,    100,    113,    116,    118,
+	    107,    108,    109,    110,    111,    112,    116,    101,
+	    114,    102,    103,    106
+};
+
+static int qfec_get_sset_count(struct net_device *dev, int sset)
+{
+	switch (sset) {
+	case ETH_SS_STATS:
+		return ARRAY_SIZE(qfec_stats_regs) + 1;	/* missed frames */
+
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+static void qfec_ethtool_getstrings(struct net_device *dev, u32 stringset,
+		u8 *buf)
+{
+	QFEC_LOG(QFEC_LOG_DBG, "%s: %d bytes\n", __func__,
+		sizeof(qfec_stats_strings));
+
+	memcpy(buf, qfec_stats_strings, sizeof(qfec_stats_strings));
+}
+
+static void qfec_ethtool_getstats(struct net_device *dev,
+		struct ethtool_stats *stats, uint64_t *data)
+{
+	struct qfec_priv        *priv = netdev_priv(dev);
+	int                      j = 0;
+	int                      n;
+
+	for (n = 0; n < ARRAY_SIZE(qfec_stats_regs); n++)
+		data[j++] = qfec_reg_read(priv,
+				qfec_stats_regs[n] * sizeof(uint32_t));
+
+	data[j++] = priv->stats.rx_missed_errors;
+
+	stats->n_stats = j;
+}
+
+static void qfec_ethtool_getdrvinfo(struct net_device *dev,
+					struct ethtool_drvinfo *info)
+{
+	strlcpy(info->driver,  QFEC_NAME,    sizeof(info->driver));
+	strlcpy(info->version, QFEC_DRV_VER, sizeof(info->version));
+	strlcpy(info->bus_info, dev_name(dev->dev.parent),
+		sizeof(info->bus_info));
+
+	info->eedump_len  = 0;
+	info->regdump_len = qfec_ethtool_getregs_len(dev);
+}
+
+/* ------------------------------------------------
+ * ethtool ops table
+ */
+static const struct ethtool_ops qfec_ethtool_ops = {
+	.nway_reset         = qfec_nway_reset,
+
+	.get_settings       = qfec_ethtool_getsettings,
+	.set_settings       = qfec_ethtool_setsettings,
+	.get_link           = ethtool_op_get_link,
+	.get_drvinfo        = qfec_ethtool_getdrvinfo,
+	.get_msglevel       = qfec_ethtool_getmsglevel,
+	.set_msglevel       = qfec_ethtool_setmsglevel,
+	.get_regs_len       = qfec_ethtool_getregs_len,
+	.get_regs           = qfec_ethtool_getregs,
+
+	.get_pauseparam     = qfec_ethtool_getpauseparam,
+	.set_pauseparam     = qfec_ethtool_setpauseparam,
+
+	.get_sset_count     = qfec_get_sset_count,
+	.get_strings        = qfec_ethtool_getstrings,
+	.get_ethtool_stats  = qfec_ethtool_getstats,
+};
+
+
+/* -------------------------------------------------------------------------
  * map a specified resource
  */
 static int qfec_map_resource(struct platform_device *plat, int resource,
@@ -1976,7 +2271,7 @@ static void qfec_free_res(struct resource *res, void *base)
 	}
 };
 
-/*
+/* --------------------------------------------------------------------
  * probe function that obtain configuration info and allocate net_device
  */
 static int __devinit qfec_probe(struct platform_device *plat)
@@ -1999,6 +2294,7 @@ static int __devinit qfec_probe(struct platform_device *plat)
 	SET_NETDEV_DEV(dev, &plat->dev);
 
 	dev->netdev_ops      = &qfec_netdev_ops;
+	dev->ethtool_ops     = &qfec_ethtool_ops;
 	dev->watchdog_timeo  = 2 * HZ;
 	dev->irq             = platform_get_irq(plat, 0);
 
@@ -2041,7 +2337,10 @@ static int __devinit qfec_probe(struct platform_device *plat)
 	}
 
 	/* initialize MAC addr */
-	qfec_get_mac_address(dev->dev_addr, priv->fuse_base, MAC_ADDR_SIZE);
+	ret = qfec_get_mac_address(dev->dev_addr, priv->fuse_base,
+		MAC_ADDR_SIZE);
+	if (ret)
+		goto err4;
 
 	QFEC_LOG(QFEC_LOG_DBG, "%s: mac  %02x:%02x:%02x:%02x:%02x:%02x\n",
 		__func__,
