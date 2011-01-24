@@ -704,7 +704,8 @@ struct qfec_buf_desc {
 					| INTRP_EN_REG_TJE \
 					| INTRP_EN_REG_TSE \
 					| INTRP_EN_REG_NIE \
-					| INTRP_EN_REG_RIE)
+					| INTRP_EN_REG_RIE \
+					| INTRP_EN_REG_TIE)
 
 /* -------------------------------------------------------------------------
  * -------------------------------------------------------------------------

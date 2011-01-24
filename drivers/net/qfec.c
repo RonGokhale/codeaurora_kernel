@@ -446,8 +446,6 @@ static char *cntr_name[]  = {
 static struct net_device  *qfec_dev;
 
 enum qfec_state {
-	queue_started = 0x01,
-	queue_stopped = 0x02,
 	timestamping  = 0x04,
 };
 
@@ -529,9 +527,8 @@ static inline void qfec_queue_start(struct net_device *dev)
 {
 	struct qfec_priv  *priv = netdev_priv(dev);
 
-	if (priv->state & queue_stopped)  {
+	if (netif_queue_stopped(dev)) {
 		netif_wake_queue(dev);
-		priv->state &= ~queue_stopped;
 		CNTR_INC(priv, queue_start);
 	}
 };
@@ -541,7 +538,6 @@ static inline void qfec_queue_stop(struct net_device *dev)
 	struct qfec_priv  *priv = netdev_priv(dev);
 
 	netif_stop_queue(dev);
-	priv->state |= queue_stopped;
 	CNTR_INC(priv, queue_stop);
 };
 
@@ -1345,20 +1341,25 @@ static int qfec_tx_replenish(struct net_device *dev)
 	struct ring        *p_ring = &priv->ring_tbd;
 	struct buf_desc    *p_bd   = &priv->p_tbd[qfec_ring_tail(p_ring)];
 	struct sk_buff     *skb;
+	unsigned long      flags;
 
-	QFEC_LOG(QFEC_LOG_DBG2, "%s:\n", __func__);
 	CNTR_INC(priv, tx_replenish);
+
+	spin_lock_irqsave(&priv->xmit_lock, flags);
 
 	while (!qfec_ring_empty(p_ring))  {
 		if (qfec_bd_own(p_bd))
 			break;          /* done for now */
 
 		skb = qfec_bd_skbuf_get(p_bd);
-		if (skb == NULL)  {
+		if (unlikely(skb == NULL))  {
 			QFEC_LOG_ERR("%s: null sk_buff\n", __func__);
 			CNTR_INC(priv, tx_skb_null);
-			return -ENOMEM;
+			break;
 		}
+
+		qfec_reg_write(priv, STATUS_REG,
+			STATUS_REG_TU | STATUS_REG_TI);
 
 		/* retrieve timestamp if requested */
 		if (qfec_bd_status_get(p_bd) & BUF_TX_TTSS)  {
@@ -1371,19 +1372,17 @@ static int qfec_tx_replenish(struct net_device *dev)
 		priv->stats.tx_packets++;
 		priv->stats.tx_bytes  += skb->len;
 
-		QFEC_LOG(QFEC_LOG_DBG2, " %s: unmap buf %08x\n", __func__,
-						(int) qfec_bd_pbuf_get(p_bd));
+		dma_unmap_single(&dev->dev, (dma_addr_t) qfec_bd_pbuf_get(p_bd),
+				skb->len, DMA_TO_DEVICE);
 
-		dma_unmap_single(&dev->dev, (int) qfec_bd_pbuf_get(p_bd),
-				ETH_BUF_SIZE, DMA_TO_DEVICE);
-
-		QFEC_LOG(QFEC_LOG_DBG2, " %s: free skb %p\n", __func__, skb);
 		dev_kfree_skb_any(skb);
 		qfec_bd_skbuf_set(p_bd, NULL);
 
 		qfec_ring_tail_adv(p_ring);
 		p_bd   = &priv->p_tbd[qfec_ring_tail(p_ring)];
 	}
+
+	spin_unlock_irqrestore(&priv->xmit_lock, flags);
 
 	qfec_queue_start(dev);
 
@@ -1558,8 +1557,8 @@ static irqreturn_t qfec_int(int irq, void *dev_id)
 
 	/* transmit interrupt */
 	if (status & STATUS_REG_TI)  {
-		int_bits |= STATUS_REG_ETI | STATUS_REG_TU | STATUS_REG_TI;
 		CNTR_INC(priv, tx_isr);
+		qfec_tx_replenish(dev);
 	}
 
 	/* gmac interrupt */
@@ -1659,6 +1658,7 @@ static int qfec_open(struct net_device *dev)
 
 	/* enable controller */
 	qfec_hw_enable(priv);
+	netif_start_queue(dev);
 
 	QFEC_LOG(QFEC_LOG_DBG, "%s: %08x link, %08x carrier\n", __func__,
 		mii_link_ok(&priv->mii), netif_carrier_ok(priv->net_dev));
@@ -1732,11 +1732,9 @@ static int qfec_xmit(struct sk_buff *skb, struct net_device *dev)
 	int                 ret    = NETDEV_TX_OK;
 	unsigned long       flags;
 
-	QFEC_LOG(QFEC_LOG_DBG2, "%s: skb %p\n", __func__, skb);
 	CNTR_INC(priv, xmit);
 
 	spin_lock_irqsave(&priv->xmit_lock, flags);
-	qfec_tx_replenish(dev);
 
 	/* stop queuing if no resources available */
 	if (qfec_ring_room(p_ring) == 0)  {
@@ -1754,15 +1752,14 @@ static int qfec_xmit(struct sk_buff *skb, struct net_device *dev)
 	/* set DMA ptr to sk_buff data and write cache to memory */
 	qfec_bd_pbuf_set(p_bd, (void *)
 	dma_map_single(&dev->dev,
-		(void *)skb->data, ETH_BUF_SIZE, DMA_TO_DEVICE));
+		(void *)skb->data, skb->len, DMA_TO_DEVICE));
 
-	ctrl  = skb->len;
+	ctrl  = skb->len | BUF_TX_IC; /* interrupt on complete */
 
 	/* check if timestamping enabled and requested */
 	if (priv->state & timestamping)  {
 		if (skb_tx(skb)->hardware)  {
 			CNTR_INC(priv, ts_tx_en);
-			ctrl |= BUF_TX_IC;      /* interrupt on complete */
 			ctrl |= BUF_TX_TTSE;	/* enable timestamp */
 			skb_tx(skb)->in_progress = 1;
 		}
@@ -1775,7 +1772,7 @@ static int qfec_xmit(struct sk_buff *skb, struct net_device *dev)
 	ctrl |= BUF_TX_FS | BUF_TX_LS;  /* 1st and last segment */
 
 	qfec_bd_ctl_wr(p_bd, ctrl);
-	qfec_bd_own_set(p_bd);
+	qfec_bd_status_set(p_bd, BUF_OWN);
 
 	qfec_ring_head_adv(p_ring);
 	qfec_reg_write(priv, TX_POLL_DEM_REG, 1);      /* poll */
