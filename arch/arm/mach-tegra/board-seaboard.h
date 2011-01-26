@@ -31,6 +31,10 @@
 #define TEGRA_GPIO_MAXTOUCH_RST		TEGRA_GPIO_PV7
 #define TEGRA_GPIO_MAXTOUCH_IRQ		TEGRA_GPIO_PV6
 
+#define TPS_GPIO_BASE			TEGRA_NR_GPIOS
+
+#define TPS_GPIO_WWAN_PWR		(TPS_GPIO_BASE + 2)
+
 void seaboard_pinmux_init(void);
 int seaboard_panel_init(void);
 void seaboard_sdhci_init(void);
