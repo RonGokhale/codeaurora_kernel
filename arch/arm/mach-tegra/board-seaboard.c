@@ -653,6 +653,8 @@ static void __init tegra_kaen_init(void)
 
 static void __init tegra_wario_init(void)
 {
+	struct clk *c, *p;
+
 	/* Wario uses UARTB for the debug port. */
 	debug_uart_platform_data[0].membase = IO_ADDRESS(TEGRA_UARTB_BASE);
 	debug_uart_platform_data[0].mapbase = TEGRA_UARTB_BASE;
@@ -662,6 +664,15 @@ static void __init tegra_wario_init(void)
 	seaboard_kbc_platform_data.fn_keycode = cros_kbd_keycode;
 
 	__tegra_seaboard_init();
+
+	/* Temporary hack to keep eMMC controller at 24MHz */
+	c = tegra_get_clock_by_name("sdmmc4");
+	p = tegra_get_clock_by_name("pll_p");
+	if (c && p) {
+		clk_set_parent(c, p);
+		clk_set_rate(c, 24000000);
+		clk_enable(c);
+	}
 
 	wario_i2c_init();
 }
