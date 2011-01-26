@@ -91,7 +91,7 @@ static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	{ "mpe",	"pll_m",	100000000,	false},
 	{ "emc",	"pll_m",	600000000,	true},
 	{ "pll_c",	"clk_m",	600000000,	true},
-	{ "pll_c_out1",	"pll_c",	240000000,	true},
+	{ "pll_c_out1",	"pll_c",	108000000,	true},
 	{ "vde",	"pll_c",	240000000,	false},
 	{ "pll_p",	"clk_m",	216000000,	true},
 	{ "pll_p_out1",	"pll_p",	28800000,	true},
@@ -108,8 +108,8 @@ static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	{ "i2c3_i2c",	"pll_p_out3",	72000000,	true},
 	{ "dvc_i2c",	"pll_p_out3",	72000000,	true},
 	{ "csi",	"pll_p_out3",	72000000,	false},
-	{ "pll_p_out4",	"pll_p",	108000000,	true},
-	{ "sclk",	"pll_p_out4",	108000000,	true},
+	{ "pll_p_out4",	"pll_p",	24000000,	true},
+	{ "sclk",	"pll_c_out1",	108000000,	true},
 	{ "hclk",	"sclk",		108000000,	true},
 	{ "pclk",	"hclk",		54000000,	true},
 	{ "spdif_in",	"pll_p",	36000000,	false},
@@ -188,8 +188,8 @@ static struct tegra_utmip_config utmi_phy_config[] = {
 };
 
 static struct tegra_ulpi_config ulpi_phy_config = {
-	.reset_gpio = TEGRA_GPIO_PG2,
-	.clk = "clk_dev2",
+	.reset_gpio = TEGRA_GPIO_PV1,
+	.clk = "cdev2",
 };
 
 static struct tegra_ehci_platform_data tegra_ehci_pdata[] = {
@@ -593,9 +593,11 @@ static int seaboard_ehci_init(void)
 	gpio_set_value(TEGRA_GPIO_USB1, 1);
 
 	tegra_ehci1_device.dev.platform_data = &tegra_ehci_pdata[0];
+	tegra_ehci2_device.dev.platform_data = &tegra_ehci_pdata[1];
 	tegra_ehci3_device.dev.platform_data = &tegra_ehci_pdata[2];
 
 	platform_device_register(&tegra_ehci1_device);
+	platform_device_register(&tegra_ehci2_device);
 	platform_device_register(&tegra_ehci3_device);
 
 	return 0;

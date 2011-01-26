@@ -17,6 +17,7 @@
  */
 #include <linux/i2c.h>
 #include <linux/regulator/machine.h>
+#include <linux/regulator/fixed.h>
 #include <linux/mfd/tps6586x.h>
 #include <linux/gpio.h>
 #include <linux/power/gpio-charger.h>
@@ -72,6 +73,28 @@ static struct regulator_consumer_supply tps658621_ldo9_supply[] = {
 	REGULATOR_SUPPLY("avdd_amp", NULL),
 };
 
+static struct regulator_consumer_supply wwan_pwr_consumer_supply[] = {
+	REGULATOR_SUPPLY("vcc_modem3v", NULL),
+};
+
+struct regulator_init_data wwan_pwr_initdata = {
+	.consumer_supplies = wwan_pwr_consumer_supply,
+	.num_consumer_supplies = 1,
+	.constraints = {
+		.valid_ops_mask = REGULATOR_CHANGE_STATUS,
+	},
+};
+
+static struct fixed_voltage_config wwan_pwr = {
+	.supply_name		= "si4825",
+	.microvolts		= 3300000, /* 3.3V */
+	.gpio			= TPS_GPIO_WWAN_PWR,
+	.startup_delay		= 0,
+	.enable_high		= 1,
+	.enabled_at_boot	= 1,
+	.init_data		= &wwan_pwr_initdata,
+};
+
 #define REGULATOR_INIT(_id, _minmv, _maxmv)				\
 	{								\
 		.constraints = {					\
@@ -108,6 +131,13 @@ static struct regulator_init_data ldo9_data = REGULATOR_INIT(ldo9, 1250, 3300);
 		.platform_data = _data,		\
 	}
 
+#define TPS_GPIO_FIXED_REG(_id, _data)		\
+	{					\
+		.id = _id,			\
+		.name = "reg-fixed-voltage",	\
+		.platform_data = _data,		\
+	}
+
 static struct tps6586x_subdev_info tps_devs[] = {
 	TPS_REG(SM_0, &sm0_data),
 	TPS_REG(SM_1, &sm1_data),
@@ -122,12 +152,13 @@ static struct tps6586x_subdev_info tps_devs[] = {
 	TPS_REG(LDO_7, &ldo7_data),
 	TPS_REG(LDO_8, &ldo8_data),
 	TPS_REG(LDO_9, &ldo9_data),
+	TPS_GPIO_FIXED_REG(0, &wwan_pwr),
 };
 
 static struct tps6586x_platform_data tps_platform = {
 	.num_subdevs = ARRAY_SIZE(tps_devs),
 	.subdevs = tps_devs,
-	.gpio_base = TEGRA_NR_GPIOS,
+	.gpio_base = TPS_GPIO_BASE,
 };
 
 static struct i2c_board_info __initdata seaboard_regulators[] = {
