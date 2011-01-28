@@ -124,6 +124,49 @@ static inline struct snd_soc_dapm_widget *dapm_cnew_widget(
 	return kmemdup(_widget, sizeof(*_widget), GFP_KERNEL);
 }
 
+static int soc_widget_read(struct snd_soc_dapm_widget *w, int reg)
+{
+	if (w->codec)
+		return snd_soc_read(w->codec, reg);
+	return 0;
+}
+
+static int soc_widget_write(struct snd_soc_dapm_widget *w,int reg, int val)
+{
+	if (w->codec)
+		return snd_soc_write(w->codec, reg, val);
+	return 0;
+}
+
+int soc_widget_update_bits(struct snd_soc_dapm_widget *w, unsigned short reg,
+				unsigned int mask, unsigned int value)
+{
+	int change;
+	unsigned int old, new;
+
+	old = soc_widget_read(w, reg);
+	new = (old & ~mask) | value;
+	change = old != new;
+	if (change)
+		soc_widget_write(w, reg, new);
+
+	return change;
+}
+
+int soc_widget_test_bits(struct snd_soc_dapm_widget *w, unsigned short reg,
+				unsigned int mask, unsigned int value)
+{
+	int change;
+	unsigned int old, new;
+
+	old = soc_widget_read(w, reg);
+	new = (old & ~mask) | value;
+	change = old != new;
+
+	return change;
+}
+
+
 /**
  * snd_soc_dapm_set_bias_level - set the bias level for the system
  * @card: audio device
@@ -194,7 +237,7 @@ static void dapm_set_path_status(struct snd_soc_dapm_widget *w,
 		unsigned int mask = (1 << fls(max)) - 1;
 		unsigned int invert = mc->invert;
 
-		val = snd_soc_read(w->codec, reg);
+		val = soc_widget_read(w, reg);
 		val = (val >> shift) & mask;
 
 		if ((invert && !val) || (!invert && val))
@@ -209,7 +252,7 @@ static void dapm_set_path_status(struct snd_soc_dapm_widget *w,
 
 		for (bitmask = 1; bitmask < e->max; bitmask <<= 1)
 		;
-		val = snd_soc_read(w->codec, e->reg);
+		val = soc_widget_read(w, e->reg);
 		item = (val >> e->shift_l) & (bitmask - 1);
 
 		p->connect = 0;
@@ -238,7 +281,7 @@ static void dapm_set_path_status(struct snd_soc_dapm_widget *w,
 			w->kcontrols[i].private_value;
 		int val, item;
 
-		val = snd_soc_read(w->codec, e->reg);
+		val = soc_widget_read(w, e->reg);
 		val = (val >> e->shift_l) & e->mask;
 		for (item = 0; item < e->max; item++) {
 			if (val == e->values[item])
@@ -327,7 +370,6 @@ static int dapm_update_bits(struct snd_soc_dapm_widget *widget)
 {
 	int change, power;
 	unsigned int old, new;
-	struct snd_soc_codec *codec = widget->codec;
 	struct snd_soc_dapm_context *dapm = widget->dapm;
 	struct snd_soc_card *card = dapm->card;
 
@@ -344,7 +386,7 @@ static int dapm_update_bits(struct snd_soc_dapm_widget *widget)
 	if (widget->invert)
 		power = (power ? 0:1);
 
-	old = snd_soc_read(codec, widget->reg);
+	old = soc_widget_read(widget, widget->reg);
 	new = (old & ~(0x1 << widget->shift)) | (power << widget->shift);
 
 	change = old != new;
@@ -354,7 +396,7 @@ static int dapm_update_bits(struct snd_soc_dapm_widget *widget)
 			widget->name, widget->power ? "on" : "off",
 			card->pop_time);
 		pop_wait(card->pop_time);
-		snd_soc_write(codec, widget->reg, new);
+		soc_widget_write(widget, widget->reg, new);
 	}
 	dev_dbg(dapm->dev, "reg %x old %x new %x change %d\n", widget->reg,
 		old, new, change);
@@ -602,7 +644,7 @@ int dapm_reg_event(struct snd_soc_dapm_widget *w,
 	else
 		val = w->off_val;
 
-	snd_soc_update_bits(w->codec, -(w->reg + 1),
+	soc_widget_update_bits(w, -(w->reg + 1),
 			    w->mask << w->shift, val << w->shift);
 
 	return 0;
@@ -848,7 +890,7 @@ static void dapm_seq_run_coalesced(struct snd_soc_dapm_context *dapm,
 			"pop test : Applying 0x%x/0x%x to %x in %dms\n",
 			value, mask, reg, card->pop_time);
 		pop_wait(card->pop_time);
-		snd_soc_update_bits(dapm->codec, reg, mask, value);
+		soc_widget_update_bits(w, reg, mask, value);
 	}
 
 	list_for_each_entry(w, pending, power_list) {
@@ -1688,7 +1730,7 @@ int snd_soc_dapm_new_widgets(struct snd_soc_dapm_context *dapm)
 
 		/* Read the initial power state from the device */
 		if (w->reg >= 0) {
-			val = snd_soc_read(w->codec, w->reg);
+			val = soc_widget_read(w, w->reg);
 			val &= 1 << w->shift;
 			if (w->invert)
 				val = !val;
