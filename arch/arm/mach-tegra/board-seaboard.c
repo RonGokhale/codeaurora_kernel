@@ -554,6 +554,7 @@ static struct platform_device *seaboard_devices[] __initdata = {
 	&tegra_i2s_device1,
 	&tegra_das_device,
 	&tegra_pcm_device,
+	&tegra_avp_device,
 };
 
 static void __init seaboard_wlan_init(void)
