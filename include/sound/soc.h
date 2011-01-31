@@ -324,6 +324,8 @@ struct snd_kcontrol *snd_soc_cnew(const struct snd_kcontrol_new *_template,
 	void *data, char *long_name);
 int snd_soc_add_controls(struct snd_soc_codec *codec,
 	const struct snd_kcontrol_new *controls, int num_controls);
+int snd_soc_add_platform_controls(struct snd_soc_platform *platform,
+	const struct snd_kcontrol_new *controls, int num_controls);
 int snd_soc_info_enum_double(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_info *uinfo);
 int snd_soc_info_enum_ext(struct snd_kcontrol *kcontrol,
@@ -555,6 +557,9 @@ struct snd_soc_platform_driver {
 	bool early_remove;
 
 	int (*stream_event)(struct snd_soc_dapm_context *dapm);
+	/* platform DAPM IO TODO: refactor this */
+	unsigned int (*read)(struct snd_soc_platform *, unsigned int);
+	int (*write)(struct snd_soc_platform *, unsigned int, unsigned int);
 };
 
 struct snd_soc_platform {
@@ -566,6 +571,7 @@ struct snd_soc_platform {
 	unsigned int suspended:1; /* platform is suspended */
 	unsigned int probed:1;
 
+	struct snd_card *snd_card;
 	struct snd_soc_card *card;
 	struct list_head list;
 	struct list_head card_list;
@@ -733,6 +739,10 @@ struct soc_enum {
 unsigned int snd_soc_read(struct snd_soc_codec *codec, unsigned int reg);
 unsigned int snd_soc_write(struct snd_soc_codec *codec,
 			   unsigned int reg, unsigned int val);
+unsigned int snd_soc_platform_read(struct snd_soc_platform *platform,
+					unsigned int reg);
+unsigned int snd_soc_platform_write(struct snd_soc_platform *platform,
+					 unsigned int reg, unsigned int val);
 
 /* device driver data */
 

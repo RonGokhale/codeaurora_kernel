@@ -1515,6 +1515,7 @@ static int soc_probe_dai_link(struct snd_soc_card *card, int num, int late)
 	cpu_dai->platform = platform;
 	codec_dai->card = card;
 	cpu_dai->card = card;
+	codec->dapm.card = platform->dapm.card = card;
 
 	/* set default power off timeout */
 	rtd->pmdown_time = pmdown_time;
@@ -2141,6 +2142,28 @@ unsigned int snd_soc_write(struct snd_soc_codec *codec,
 }
 EXPORT_SYMBOL_GPL(snd_soc_write);
 
+unsigned int snd_soc_platform_read(struct snd_soc_platform *platform,
+					unsigned int reg)
+{
+	unsigned int ret;
+
+	ret = platform->driver->read(platform, reg);
+	dev_dbg(platform->dev, "read %x => %x\n", reg, ret);
+	trace_snd_soc_preg_read(platform, reg, ret);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(snd_soc_platform_read);
+
+unsigned int snd_soc_platform_write(struct snd_soc_platform *platform,
+					 unsigned int reg, unsigned int val)
+{
+	dev_dbg(platform->dev, "write %x = %x\n", reg, val);
+	trace_snd_soc_preg_write(platform, reg, val);
+	return platform->driver->write(platform, reg, val);
+}
+EXPORT_SYMBOL_GPL(snd_soc_platform_write);
+
 /**
  * snd_soc_update_bits - update codec register bits
  * @codec: audio codec
@@ -2304,6 +2327,35 @@ int snd_soc_add_controls(struct snd_soc_codec *codec,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_add_controls);
+
+/**
+ * snd_soc_add_platform_controls - add an array of controls to a platform.
+ * Convienience function to add a list of controls.
+ *
+ * @platform: platform to add controls to
+ * @controls: array of controls to add
+ * @num_controls: number of elements in the array
+ *
+ * Return 0 for success, else error.
+ */
+int snd_soc_add_platform_controls(struct snd_soc_platform *platform,
+	const struct snd_kcontrol_new *controls, int num_controls)
+{
+	struct snd_card *card = platform->card->snd_card;
+	int err, i;
+
+	for (i = 0; i < num_controls; i++) {
+		const struct snd_kcontrol_new *control = &controls[i];
+		err = snd_ctl_add(card, snd_soc_cnew(control, platform, NULL));
+		if (err < 0) {
+			dev_err(platform->dev, "Failed to add %s %d\n",control->name, err);
+			return err;
+		}
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(snd_soc_add_platform_controls);
 
 /**
  * snd_soc_info_enum_double - enumerated double mixer info callback
@@ -3398,6 +3450,7 @@ int snd_soc_register_platform(struct device *dev,
 	}
 
 	platform->dev = dev;
+	platform->dapm.platform = platform;
 	platform->driver = platform_drv;
 	platform->dapm.dev = dev;
 	platform->dapm.stream_event = platform_drv->stream_event;

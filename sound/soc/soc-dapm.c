@@ -30,6 +30,8 @@
  *    o Support for reduced codec bias currents.
  */
 
+#define DEBUG
+
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -124,10 +126,33 @@ static inline struct snd_soc_dapm_widget *dapm_cnew_widget(
 	return kmemdup(_widget, sizeof(*_widget), GFP_KERNEL);
 }
 
+static inline struct snd_card *dapm_get_card(struct snd_soc_dapm_context *dapm)
+{
+	if (dapm->codec)
+		return dapm->codec->card->snd_card;
+	else if (dapm->platform)
+		return dapm->platform->card->snd_card;
+	else
+		BUG();
+}
+
+static inline struct snd_soc_card *dapm_get_soc_card(
+		struct snd_soc_dapm_context *dapm)
+{
+	if (dapm->codec)
+		return dapm->codec->card;
+	else if (dapm->platform)
+		return dapm->platform->card;
+	else
+		BUG();
+}
+
 static int soc_widget_read(struct snd_soc_dapm_widget *w, int reg)
 {
 	if (w->codec)
 		return snd_soc_read(w->codec, reg);
+	else if  (w->platform)
+		return snd_soc_platform_read(w->platform, reg);
 	return 0;
 }
 
@@ -135,6 +160,8 @@ static int soc_widget_write(struct snd_soc_dapm_widget *w,int reg, int val)
 {
 	if (w->codec)
 		return snd_soc_write(w->codec, reg, val);
+	else if  (w->platform)
+		return snd_soc_platform_write(w->platform, reg, val);
 	return 0;
 }
 
@@ -410,7 +437,7 @@ static int dapm_new_mixer(struct snd_soc_dapm_context *dapm,
 	int i, ret = 0;
 	size_t name_len;
 	struct snd_soc_dapm_path *path;
-	struct snd_card *card = dapm->codec->card->snd_card;
+	struct snd_card *card = dapm_get_card(dapm);
 
 	/* add kcontrol */
 	for (i = 0; i < w->num_kcontrols; i++) {
@@ -472,7 +499,7 @@ static int dapm_new_mux(struct snd_soc_dapm_context *dapm,
 {
 	struct snd_soc_dapm_path *path = NULL;
 	struct snd_kcontrol *kcontrol;
-	struct snd_card *card = dapm->codec->card->snd_card;
+	struct snd_card *card = dapm_get_card(dapm);
 	int ret = 0;
 
 	if (!w->num_kcontrols) {
@@ -522,7 +549,8 @@ static inline void dapm_clear_walk(struct snd_soc_dapm_context *dapm)
  */
 static int snd_soc_dapm_suspend_check(struct snd_soc_dapm_widget *widget)
 {
-	int level = snd_power_get_state(widget->dapm->codec->card->snd_card);
+	struct snd_card *card = dapm_get_card(widget->dapm);
+	int level = snd_power_get_state(card);
 
 	switch (level) {
 	case SNDRV_CTL_POWER_D3hot:
@@ -1033,7 +1061,7 @@ static void dapm_widget_update(struct snd_soc_dapm_context *dapm)
  */
 static int dapm_power_widgets(struct snd_soc_dapm_context *dapm, int event)
 {
-	struct snd_soc_card *card = dapm->codec->card;
+	struct snd_soc_card *card = dapm_get_soc_card(dapm);
 	struct snd_soc_dapm_widget *w;
 	struct snd_soc_dapm_context *d;
 	LIST_HEAD(up_list);
@@ -1095,7 +1123,11 @@ static int dapm_power_widgets(struct snd_soc_dapm_context *dapm, int event)
 			dapm->dev_power = 1;
 			break;
 		case SND_SOC_DAPM_STREAM_STOP:
-			dapm->dev_power = !!dapm->codec->active;
+#warning need re-work
+			if (dapm->codec)
+				dapm->dev_power = !!dapm->codec->active;
+			else
+				dapm->dev_power = 0;
 			break;
 		case SND_SOC_DAPM_STREAM_SUSPEND:
 			dapm->dev_power = 0;
@@ -1354,19 +1386,15 @@ static int dapm_mixer_update_power(struct snd_soc_dapm_widget *widget,
 }
 
 /* show dapm widget status in sys fs */
-static ssize_t dapm_widget_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
+static ssize_t widget_show(struct snd_soc_dapm_context *dapm,
+	const char *name, char *buf, ssize_t count)
 {
-	struct snd_soc_pcm_runtime *rtd =
-			container_of(dev, struct snd_soc_pcm_runtime, dev);
-	struct snd_soc_codec *codec =rtd->codec;
 	struct snd_soc_dapm_widget *w;
-	int count = 0;
 	char *state = "not set";
 
-	list_for_each_entry(w, &codec->card->widgets, list) {
-		if (w->dapm != &codec->dapm)
-			continue;
+	count += sprintf(buf + count, "\n%s\n", name);
+
+	list_for_each_entry(w, &dapm->widgets, list) {
 
 		/* only display widgets that burnm power */
 		switch (w->id) {
@@ -1391,7 +1419,7 @@ static ssize_t dapm_widget_show(struct device *dev,
 		}
 	}
 
-	switch (codec->dapm.bias_level) {
+	switch (dapm->bias_level) {
 	case SND_SOC_BIAS_ON:
 		state = "On";
 		break;
@@ -1407,6 +1435,21 @@ static ssize_t dapm_widget_show(struct device *dev,
 	}
 	count += sprintf(buf + count, "PM State: %s\n", state);
 
+	return count;
+}
+
+/* show dapm widget status in sys fs */
+static ssize_t dapm_widget_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct snd_soc_pcm_runtime *rtd =
+			container_of(dev, struct snd_soc_pcm_runtime, dev);
+	struct snd_soc_codec *codec = rtd->codec;
+	struct snd_soc_platform *platform = rtd->platform;
+	ssize_t count = 0;
+
+	count += widget_show(&codec->dapm, codec->name, buf, count);
+	count += widget_show(&platform->dapm, platform->name, buf, count);
 	return count;
 }
 
@@ -1507,7 +1550,7 @@ static int snd_soc_dapm_add_route(struct snd_soc_dapm_context *dapm,
 	char prefixed_source[80];
 	int ret = 0;
 
-	if (dapm->codec->name_prefix) {
+	if (dapm->codec && dapm->codec->name_prefix) {
 		snprintf(prefixed_sink, sizeof(prefixed_sink), "%s %s",
 			 dapm->codec->name_prefix, route->sink);
 		sink = prefixed_sink;
@@ -2174,14 +2217,14 @@ int snd_soc_dapm_new_control(struct snd_soc_dapm_context *dapm,
 		return -ENOMEM;
 
 	name_len = strlen(widget->name) + 1;
-	if (dapm->codec->name_prefix)
+	if (dapm->codec && dapm->codec->name_prefix)
 		name_len += 1 + strlen(dapm->codec->name_prefix);
 	w->name = kmalloc(name_len, GFP_KERNEL);
 	if (w->name == NULL) {
 		kfree(w);
 		return -ENOMEM;
 	}
-	if (dapm->codec->name_prefix)
+	if (dapm->codec && dapm->codec->name_prefix)
 		snprintf(w->name, name_len, "%s %s",
 			dapm->codec->name_prefix, widget->name);
 	else
@@ -2190,6 +2233,7 @@ int snd_soc_dapm_new_control(struct snd_soc_dapm_context *dapm,
 	dapm->n_widgets++;
 	w->dapm = dapm;
 	w->codec = dapm->codec;
+	w->platform = dapm->platform;
 	INIT_LIST_HEAD(&w->sources);
 	INIT_LIST_HEAD(&w->sinks);
 	INIT_LIST_HEAD(&w->list);
@@ -2279,14 +2323,20 @@ static void soc_dapm_stream_event(struct snd_soc_dapm_context *dapm,
 int snd_soc_dapm_stream_event(struct snd_soc_pcm_runtime *rtd,
 	const char *stream, int event)
 {
-	struct snd_soc_codec *codec = rtd->codec;
-
 	if (stream == NULL)
 		return 0;
+#warning  this needs re-work
+	if (rtd->dai_link->dynamic) {
+		struct snd_soc_platform *platform = rtd->platform;
 
-	mutex_lock(&codec->mutex);
-	soc_dapm_stream_event(&codec->dapm, stream, event);
-	mutex_unlock(&codec->mutex);
+		soc_dapm_stream_event(&platform->dapm, stream, event);
+	} else {
+		struct snd_soc_codec *codec = rtd->codec;
+
+		mutex_lock(&codec->mutex);
+		soc_dapm_stream_event(&codec->dapm, stream, event);
+		mutex_unlock(&codec->mutex);
+	}
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_dapm_stream_event);
@@ -2478,10 +2528,16 @@ static void soc_dapm_shutdown_codec(struct snd_soc_dapm_context *dapm)
 void snd_soc_dapm_shutdown(struct snd_soc_card *card)
 {
 	struct snd_soc_codec *codec;
+	struct snd_soc_platform *platform;
 
 	list_for_each_entry(codec, &card->codec_dev_list, list) {
 		soc_dapm_shutdown_codec(&codec->dapm);
 		snd_soc_dapm_set_bias_level(card, &codec->dapm, SND_SOC_BIAS_OFF);
+	}
+
+	list_for_each_entry(platform, &card->platform_dev_list, list) {
+		soc_dapm_shutdown_codec(&platform->dapm);
+		snd_soc_dapm_set_bias_level(card, &platform->dapm, SND_SOC_BIAS_OFF);
 	}
 }
 
