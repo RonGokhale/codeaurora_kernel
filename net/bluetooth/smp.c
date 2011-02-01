@@ -198,7 +198,7 @@ static __u8 seclevel_to_authreq(__u8 level)
 static void build_pairing_cmd(struct l2cap_conn *conn,
 				struct smp_cmd_pairing *cmd, __u8 authreq)
 {
-	cmd->io_capability = SMP_IO_NO_INPUT_OUTPUT;
+	cmd->io_capability = conn->hcon->io_capability;
 	cmd->oob_flag = SMP_OOB_NOT_PRESENT;
 	cmd->max_key_size = SMP_MAX_ENC_KEY_SIZE;
 	cmd->init_key_dist = SMP_DIST_ENC_KEY | SMP_DIST_ID_KEY | SMP_DIST_SIGN;
