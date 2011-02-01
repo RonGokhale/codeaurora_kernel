@@ -37,6 +37,8 @@
 
 static DEFINE_MUTEX(tegra_fuse_dma_lock);
 
+int tegra_sku_id;
+
 #ifdef CONFIG_TEGRA_SYSTEM_DMA
 static struct tegra_dma_channel *tegra_fuse_dma;
 static u32 *tegra_fuse_bb;
@@ -154,9 +156,11 @@ void tegra_init_fuse(void)
 	reg |= 1 << 28;
 	writel(reg, IO_TO_VIRT(TEGRA_CLK_RESET_BASE + 0x48));
 
+	tegra_sku_id = fuse_readl(FUSE_SKU_INFO) & 0xff;
+
 	pr_info("Tegra Revision: %s SKU: %d CPU Process: %d Core Process: %d\n",
 		tegra_revision_name[tegra_get_revision()],
-		tegra_sku_id(), tegra_cpu_process_id(),
+		tegra_sku_id, tegra_cpu_process_id(),
 		tegra_core_process_id());
 }
 
@@ -188,14 +192,6 @@ unsigned long long tegra_chip_uid(void)
 	lo = fuse_readl(FUSE_UID_LOW);
 	hi = fuse_readl(FUSE_UID_HIGH);
 	return (hi << 32ull) | lo;
-}
-
-int tegra_sku_id(void)
-{
-	int sku_id;
-	u32 reg = fuse_readl(FUSE_SKU_INFO);
-	sku_id = reg & 0xFF;
-	return sku_id;
 }
 
 int tegra_cpu_process_id(void)
