@@ -625,6 +625,21 @@ struct l2cap_pinfo {
 				(pi)->tx_win_max + 1 - (y) + (x))
 #define __next_seq(x, pi) ((x + 1) & ((pi)->tx_win_max))
 
+extern int disable_ertm;
+extern const struct proto_ops l2cap_sock_ops;
+extern struct bt_sock_list l2cap_sk_list;
+
+int l2cap_init_sockets(void);
+void l2cap_cleanup_sockets(void);
+
+void l2cap_sock_set_timer(struct sock *sk, long timeout);
+void __l2cap_sock_close(struct sock *sk, int reason);
+void l2cap_sock_kill(struct sock *sk);
+void l2cap_sock_init(struct sock *sk, struct sock *parent);
+struct sock *l2cap_sock_alloc(struct net *net, struct socket *sock,
+							int proto, gfp_t prio);
+
+
 void l2cap_load(void);
 
 void l2cap_fixed_channel_config(struct sock *sk, struct l2cap_options *opt,

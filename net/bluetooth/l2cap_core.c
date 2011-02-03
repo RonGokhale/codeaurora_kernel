@@ -24,7 +24,7 @@
    SOFTWARE IS DISCLAIMED.
 */
 
-/* Bluetooth L2CAP core and sockets. */
+/* Bluetooth L2CAP core. */
 
 #include <linux/module.h>
 
@@ -58,16 +58,14 @@
 
 #define VERSION "2.15"
 
-static int disable_ertm;
+int disable_ertm;
 
 static u32 l2cap_feat_mask = L2CAP_FEAT_FIXED_CHAN;
 static u8 l2cap_fixed_chan[8] = { L2CAP_FC_L2CAP | L2CAP_FC_A2MP, };
 
-static const struct proto_ops l2cap_sock_ops;
-
 struct workqueue_struct *_l2cap_wq;
 
-static struct bt_sock_list l2cap_sk_list = {
+struct bt_sock_list l2cap_sk_list = {
 	.lock = __RW_LOCK_UNLOCKED(l2cap_sk_list.lock)
 };
 
@@ -86,9 +84,7 @@ static int l2cap_data_channel(struct sock *sk, struct sk_buff *skb);
 static int l2cap_ertm_rx_queued_iframes(struct sock *sk);
 int l2cap_ertm_send(struct sock *sk);
 
-static void __l2cap_sock_close(struct sock *sk, int reason);
 static void l2cap_sock_close(struct sock *sk);
-static void l2cap_sock_kill(struct sock *sk);
 
 static int l2cap_build_conf_req(struct sock *sk, void *data);
 static struct sk_buff *l2cap_build_cmd(struct l2cap_conn *conn,
@@ -96,7 +92,7 @@ static struct sk_buff *l2cap_build_cmd(struct l2cap_conn *conn,
 static int l2cap_answer_move_poll(struct sock *sk);
 
 /* ---- L2CAP timers ---- */
-static void l2cap_sock_set_timer(struct sock *sk, long timeout)
+void l2cap_sock_set_timer(struct sock *sk, long timeout)
 {
 	BT_DBG("sk %p state %d timeout %ld", sk, sk->sk_state, timeout);
 	sk_reset_timer(sk, &sk->sk_timer, jiffies + timeout);
@@ -106,39 +102,6 @@ static void l2cap_sock_clear_timer(struct sock *sk)
 {
 	BT_DBG("sock %p state %d", sk, sk->sk_state);
 	sk_stop_timer(sk, &sk->sk_timer);
-}
-
-static void l2cap_sock_timeout(unsigned long arg)
-{
-	struct sock *sk = (struct sock *) arg;
-	int reason;
-
-	BT_DBG("sock %p state %d", sk, sk->sk_state);
-
-	bh_lock_sock(sk);
-
-	if (sock_owned_by_user(sk)) {
-		/* sk is owned by user. Try again later */
-		l2cap_sock_set_timer(sk, HZ / 5);
-		bh_unlock_sock(sk);
-		sock_put(sk);
-		return;
-	}
-
-	if (sk->sk_state == BT_CONNECTED || sk->sk_state == BT_CONFIG)
-		reason = ECONNREFUSED;
-	else if (sk->sk_state == BT_CONNECT &&
-				l2cap_pi(sk)->sec_level != BT_SECURITY_SDP)
-		reason = ECONNREFUSED;
-	else
-		reason = ETIMEDOUT;
-
-	__l2cap_sock_close(sk, reason);
-
-	bh_unlock_sock(sk);
-
-	l2cap_sock_kill(sk);
-	sock_put(sk);
 }
 
 /* ---- L2CAP channels ---- */
@@ -1097,17 +1060,6 @@ static struct sock *l2cap_get_sock_by_psm(int state, __le16 psm, bdaddr_t *src)
 	return node ? sk : sk1;
 }
 
-static void l2cap_sock_destruct(struct sock *sk)
-{
-	BT_DBG("sk %p", sk);
-
-	skb_queue_purge(&sk->sk_receive_queue);
-	skb_queue_purge(&sk->sk_write_queue);
-
-	l2cap_seq_list_free(&l2cap_pi(sk)->srej_list);
-	l2cap_seq_list_free(&l2cap_pi(sk)->retrans_list);
-}
-
 static void l2cap_sock_cleanup_listen(struct sock *parent)
 {
 	struct sock *sk;
@@ -1125,7 +1077,7 @@ static void l2cap_sock_cleanup_listen(struct sock *parent)
 /* Kill socket (only if zapped and orphan)
  * Must be called on unlocked socket.
  */
-static void l2cap_sock_kill(struct sock *sk)
+void l2cap_sock_kill(struct sock *sk)
 {
 	if (!sock_flag(sk, SOCK_ZAPPED) || sk->sk_socket)
 		return;
@@ -1138,7 +1090,7 @@ static void l2cap_sock_kill(struct sock *sk)
 	sock_put(sk);
 }
 
-static void __l2cap_sock_close(struct sock *sk, int reason)
+void __l2cap_sock_close(struct sock *sk, int reason)
 {
 	BT_DBG("sk %p state %d socket %p", sk, sk->sk_state, sk->sk_socket);
 
@@ -1201,145 +1153,6 @@ static void l2cap_sock_close(struct sock *sk)
 	__l2cap_sock_close(sk, ECONNRESET);
 	release_sock(sk);
 	l2cap_sock_kill(sk);
-}
-
-static void set_default_config(struct l2cap_conf_prm *conf_prm)
-{
-	conf_prm->fcs = L2CAP_FCS_CRC16;
-	conf_prm->retrans_timeout = 0;
-	conf_prm->monitor_timeout = 0;
-	conf_prm->flush_to = L2CAP_DEFAULT_FLUSH_TO;
-}
-
-static void l2cap_sock_init(struct sock *sk, struct sock *parent)
-{
-	struct l2cap_pinfo *pi = l2cap_pi(sk);
-
-	BT_DBG("sk %p parent %p", sk, parent);
-
-	if (parent) {
-		sk->sk_type = parent->sk_type;
-		sk->sk_rcvbuf = parent->sk_rcvbuf;
-		sk->sk_sndbuf = parent->sk_sndbuf;
-		bt_sk(sk)->defer_setup = bt_sk(parent)->defer_setup;
-
-		pi->imtu = l2cap_pi(parent)->imtu;
-		pi->omtu = l2cap_pi(parent)->omtu;
-		pi->conf_state = l2cap_pi(parent)->conf_state;
-		pi->mode = l2cap_pi(parent)->mode;
-		pi->fcs  = l2cap_pi(parent)->fcs;
-		pi->max_tx = l2cap_pi(parent)->max_tx;
-		pi->tx_win = l2cap_pi(parent)->tx_win;
-		pi->sec_level = l2cap_pi(parent)->sec_level;
-		pi->role_switch = l2cap_pi(parent)->role_switch;
-		pi->force_reliable = l2cap_pi(parent)->force_reliable;
-		pi->flushable = l2cap_pi(parent)->flushable;
-		pi->force_active = l2cap_pi(parent)->force_active;
-		pi->amp_pref = l2cap_pi(parent)->amp_pref;
-	} else {
-		pi->imtu = L2CAP_DEFAULT_MTU;
-		pi->omtu = 0;
-		if (!disable_ertm && sk->sk_type == SOCK_STREAM) {
-			pi->mode = L2CAP_MODE_ERTM;
-			pi->conf_state |= L2CAP_CONF_STATE2_DEVICE;
-		} else {
-			pi->mode = L2CAP_MODE_BASIC;
-		}
-		pi->reconf_state = L2CAP_RECONF_NONE;
-		pi->max_tx = L2CAP_DEFAULT_MAX_TX;
-		pi->fcs = L2CAP_FCS_CRC16;
-		pi->tx_win = L2CAP_DEFAULT_TX_WINDOW;
-		pi->sec_level = BT_SECURITY_LOW;
-		pi->role_switch = 0;
-		pi->force_reliable = 0;
-		pi->flushable = 0;
-		pi->force_active = 1;
-		pi->amp_pref = BT_AMP_POLICY_REQUIRE_BR_EDR;
-	}
-
-	/* Default config options */
-	sk->sk_backlog_rcv = l2cap_data_channel;
-	pi->ampcon = NULL;
-	pi->ampchan = NULL;
-	pi->conf_len = 0;
-	pi->flush_to = L2CAP_DEFAULT_FLUSH_TO;
-	pi->scid = 0;
-	pi->dcid = 0;
-	pi->tx_win_max = L2CAP_TX_WIN_MAX_ENHANCED;
-	pi->extended_control = 0;
-
-	pi->local_conf.fcs = pi->fcs;
-	if (pi->mode == L2CAP_MODE_BASIC) {
-		pi->local_conf.retrans_timeout = 0;
-		pi->local_conf.monitor_timeout = 0;
-	} else {
-		pi->local_conf.retrans_timeout = L2CAP_DEFAULT_RETRANS_TO;
-		pi->local_conf.monitor_timeout = L2CAP_DEFAULT_MONITOR_TO;
-	}
-
-	pi->local_conf.flush_to = pi->flush_to;
-
-	set_default_config(&pi->remote_conf);
-
-	skb_queue_head_init(TX_QUEUE(sk));
-	skb_queue_head_init(SREJ_QUEUE(sk));
-}
-
-static struct proto l2cap_proto = {
-	.name		= "L2CAP",
-	.owner		= THIS_MODULE,
-	.obj_size	= sizeof(struct l2cap_pinfo)
-};
-
-static struct sock *l2cap_sock_alloc(struct net *net, struct socket *sock, int proto, gfp_t prio)
-{
-	struct sock *sk;
-
-	sk = sk_alloc(net, PF_BLUETOOTH, prio, &l2cap_proto);
-	if (!sk)
-		return NULL;
-
-	sock_init_data(sock, sk);
-	INIT_LIST_HEAD(&bt_sk(sk)->accept_q);
-
-	sk->sk_destruct = l2cap_sock_destruct;
-	sk->sk_sndtimeo = msecs_to_jiffies(L2CAP_CONN_TIMEOUT);
-
-	sock_reset_flag(sk, SOCK_ZAPPED);
-
-	sk->sk_protocol = proto;
-	sk->sk_state = BT_OPEN;
-
-	setup_timer(&sk->sk_timer, l2cap_sock_timeout, (unsigned long) sk);
-
-	bt_sock_link(&l2cap_sk_list, sk);
-	return sk;
-}
-
-static int l2cap_sock_create(struct net *net, struct socket *sock, int protocol,
-							int kern)
-{
-	struct sock *sk;
-
-	BT_DBG("sock %p", sock);
-
-	sock->state = SS_UNCONNECTED;
-
-	if (sock->type != SOCK_SEQPACKET && sock->type != SOCK_STREAM &&
-			sock->type != SOCK_DGRAM && sock->type != SOCK_RAW)
-		return -ESOCKTNOSUPPORT;
-
-	if (sock->type == SOCK_RAW && !kern && !capable(CAP_NET_RAW))
-		return -EPERM;
-
-	sock->ops = &l2cap_sock_ops;
-
-	sk = l2cap_sock_alloc(net, sock, protocol, GFP_ATOMIC);
-	if (!sk)
-		return -ENOMEM;
-
-	l2cap_sock_init(sk, NULL);
-	return 0;
 }
 
 static int l2cap_sock_bind(struct socket *sock, struct sockaddr *addr, int alen)
@@ -7939,7 +7752,7 @@ static const struct file_operations l2cap_debugfs_fops = {
 
 static struct dentry *l2cap_debugfs;
 
-static const struct proto_ops l2cap_sock_ops = {
+const struct proto_ops l2cap_sock_ops = {
 	.family		= PF_BLUETOOTH,
 	.owner		= THIS_MODULE,
 	.release	= l2cap_sock_release,
@@ -7959,12 +7772,6 @@ static const struct proto_ops l2cap_sock_ops = {
 	.getsockopt	= l2cap_sock_getsockopt
 };
 
-static const struct net_proto_family l2cap_sock_family_ops = {
-	.family	= PF_BLUETOOTH,
-	.owner	= THIS_MODULE,
-	.create	= l2cap_sock_create,
-};
-
 static struct hci_proto l2cap_hci_proto = {
 	.name		= "L2CAP",
 	.id		= HCI_PROTO_L2CAP,
@@ -7982,19 +7789,13 @@ static int __init l2cap_init(void)
 {
 	int err;
 
-	err = proto_register(&l2cap_proto, 0);
+	err = l2cap_init_sockets();
 	if (err < 0)
 		return err;
 
 	_l2cap_wq = create_singlethread_workqueue("l2cap");
 	if (!_l2cap_wq) {
-		proto_unregister(&l2cap_proto);
-		return -ENOMEM;
-	}
-
-	err = bt_sock_register(BTPROTO_L2CAP, &l2cap_sock_family_ops);
-	if (err < 0) {
-		BT_ERR("L2CAP socket registration failed");
+		err = -ENOMEM;
 		goto error;
 	}
 
@@ -8024,7 +7825,7 @@ static int __init l2cap_init(void)
 
 error:
 	destroy_workqueue(_l2cap_wq);
-	proto_unregister(&l2cap_proto);
+	l2cap_cleanup_sockets();
 	return err;
 }
 
@@ -8037,13 +7838,10 @@ static void __exit l2cap_exit(void)
 	flush_workqueue(_l2cap_wq);
 	destroy_workqueue(_l2cap_wq);
 
-	if (bt_sock_unregister(BTPROTO_L2CAP) < 0)
-		BT_ERR("L2CAP socket unregistration failed");
-
 	if (hci_unregister_proto(&l2cap_hci_proto) < 0)
 		BT_ERR("L2CAP protocol unregistration failed");
 
-	proto_unregister(&l2cap_proto);
+	l2cap_cleanup_sockets();
 }
 
 void l2cap_load(void)
