@@ -838,11 +838,10 @@ static struct snd_pcm_ops msm_mvs_pcm_ops = {
 
 };
 
-static int msm_pcm_new(struct snd_card *card,
-			struct snd_soc_dai *codec,
-			struct snd_pcm *pcm)
+static int msm_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
 	int   i, ret, offset = 0;
+	struct snd_pcm *pcm = rtd->pcm;
 
 	audio_mvs_info.mem_chunk = kmalloc(
 		2 * MVS_MAX_VOC_PKT_SIZE * MVS_MAX_Q_LEN, GFP_KERNEL);
