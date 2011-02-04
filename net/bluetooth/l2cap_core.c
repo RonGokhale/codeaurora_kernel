@@ -1276,7 +1276,7 @@ static void l2cap_skb_destructor(struct sk_buff *skb)
 		queue_work(_l2cap_wq, &l2cap_pi(sk)->tx_work);
 }
 
-static inline void l2cap_do_send(struct sock *sk, struct sk_buff *skb)
+void l2cap_do_send(struct sock *sk, struct sk_buff *skb)
 {
 	struct l2cap_pinfo *pi = l2cap_pi(sk);
 
@@ -1563,7 +1563,7 @@ static inline int l2cap_skbuff_fromiovec(struct sock *sk, struct msghdr *msg,
 	return sent;
 }
 
-static struct sk_buff *l2cap_create_connless_pdu(struct sock *sk, struct msghdr *msg, size_t len)
+struct sk_buff *l2cap_create_connless_pdu(struct sock *sk, struct msghdr *msg, size_t len)
 {
 	struct l2cap_conn *conn = l2cap_pi(sk)->conn;
 	struct sk_buff *skb;
@@ -1592,7 +1592,7 @@ static struct sk_buff *l2cap_create_connless_pdu(struct sock *sk, struct msghdr 
 	return skb;
 }
 
-static struct sk_buff *l2cap_create_basic_pdu(struct sock *sk, struct msghdr *msg, size_t len)
+struct sk_buff *l2cap_create_basic_pdu(struct sock *sk, struct msghdr *msg, size_t len)
 {
 	struct l2cap_conn *conn = l2cap_pi(sk)->conn;
 	struct sk_buff *skb;
@@ -2581,127 +2581,6 @@ static int l2cap_setup_resegment(struct sock *sk)
 	l2cap_pi(sk)->amp_move_state = L2CAP_AMP_STATE_RESEGMENT;
 
 	return 0;
-}
-
-int l2cap_sock_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len)
-{
-	struct sock *sk = sock->sk;
-	struct l2cap_pinfo *pi = l2cap_pi(sk);
-	struct sk_buff *skb;
-	struct sk_buff_head seg_queue;
-	int err;
-	u8 amp_id;
-
-	BT_DBG("sock %p, sk %p", sock, sk);
-
-	err = sock_error(sk);
-	if (err)
-		return err;
-
-	if (msg->msg_flags & MSG_OOB)
-		return -EOPNOTSUPP;
-
-	lock_sock(sk);
-
-	if (sk->sk_state != BT_CONNECTED) {
-		err = -ENOTCONN;
-		goto done;
-	}
-
-	/* Connectionless channel */
-	if (sk->sk_type == SOCK_DGRAM) {
-		skb = l2cap_create_connless_pdu(sk, msg, len);
-		if (IS_ERR(skb)) {
-			err = PTR_ERR(skb);
-		} else {
-			l2cap_do_send(sk, skb);
-			err = len;
-		}
-		goto done;
-	}
-
-	switch (pi->mode) {
-	case L2CAP_MODE_BASIC:
-		/* Check outgoing MTU */
-		if (len > pi->omtu) {
-			err = -EMSGSIZE;
-			goto done;
-		}
-
-		/* Create a basic PDU */
-		skb = l2cap_create_basic_pdu(sk, msg, len);
-		if (IS_ERR(skb)) {
-			err = PTR_ERR(skb);
-			goto done;
-		}
-
-		l2cap_do_send(sk, skb);
-		err = len;
-		break;
-
-	case L2CAP_MODE_ERTM:
-	case L2CAP_MODE_STREAMING:
-
-		/* Check outgoing MTU */
-		if (len > pi->omtu) {
-			err = -EMSGSIZE;
-			goto done;
-		}
-
-		__skb_queue_head_init(&seg_queue);
-
-		/* Do segmentation before calling in to the state machine,
-		 * since it's possible to block while waiting for memory
-		 * allocation.
-		 */
-		amp_id = pi->amp_id;
-		err = l2cap_segment_sdu(sk, &seg_queue, msg, len, 0);
-
-		/* The socket lock is released while segmenting, so check
-		 * that the socket is still connected
-		 */
-		if (sk->sk_state != BT_CONNECTED) {
-			__skb_queue_purge(&seg_queue);
-			err = -ENOTCONN;
-		}
-
-		if (err) {
-			BT_DBG("Error %d, sk_sndbuf %d, sk_wmem_alloc %d",
-				err, sk->sk_sndbuf,
-				atomic_read(&sk->sk_wmem_alloc));
-			break;
-		}
-
-		if (pi->amp_id != amp_id) {
-			/* Channel moved while unlocked. Resegment. */
-			err = l2cap_resegment_queue(sk, &seg_queue);
-
-			if (err)
-				break;
-		}
-
-		if (pi->mode != L2CAP_MODE_STREAMING)
-			err = l2cap_ertm_tx(sk, 0, &seg_queue,
-				L2CAP_ERTM_EVENT_DATA_REQUEST);
-		else
-			err = l2cap_strm_tx(sk, &seg_queue);
-		if (!err)
-			err = len;
-
-		/* If the skbs were not queued for sending, they'll still be in
-		 * seg_queue and need to be purged.
-		 */
-		__skb_queue_purge(&seg_queue);
-		break;
-
-	default:
-		BT_DBG("bad state %1.1x", pi->mode);
-		err = -EBADFD;
-	}
-
-done:
-	release_sock(sk);
-	return err;
 }
 
 static inline int l2cap_rmem_available(struct sock *sk)
