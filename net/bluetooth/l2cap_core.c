@@ -1155,7 +1155,7 @@ static void l2cap_sock_close(struct sock *sk)
 	l2cap_sock_kill(sk);
 }
 
-static int l2cap_sock_bind(struct socket *sock, struct sockaddr *addr, int alen)
+int l2cap_sock_bind(struct socket *sock, struct sockaddr *addr, int alen)
 {
 	struct sock *sk = sock->sk;
 	struct sockaddr_l2 la;
@@ -1298,7 +1298,7 @@ done:
 	return err;
 }
 
-static int l2cap_sock_connect(struct socket *sock, struct sockaddr *addr, int alen, int flags)
+int l2cap_sock_connect(struct socket *sock, struct sockaddr *addr, int alen, int flags)
 {
 	struct sock *sk = sock->sk;
 	struct sockaddr_l2 la;
@@ -1388,7 +1388,7 @@ done:
 	return err;
 }
 
-static int l2cap_sock_listen(struct socket *sock, int backlog)
+int l2cap_sock_listen(struct socket *sock, int backlog)
 {
 	struct sock *sk = sock->sk;
 	int err = 0;
@@ -1447,7 +1447,7 @@ done:
 	return err;
 }
 
-static int l2cap_sock_accept(struct socket *sock, struct socket *newsock, int flags)
+int l2cap_sock_accept(struct socket *sock, struct socket *newsock, int flags)
 {
 	DECLARE_WAITQUEUE(wait, current);
 	struct sock *sk = sock->sk, *nsk;
@@ -1503,7 +1503,7 @@ done:
 	return err;
 }
 
-static int l2cap_sock_getname(struct socket *sock, struct sockaddr *addr, int *len, int peer)
+int l2cap_sock_getname(struct socket *sock, struct sockaddr *addr, int *len, int peer)
 {
 	struct sockaddr_l2 *la = (struct sockaddr_l2 *) addr;
 	struct sock *sk = sock->sk;
@@ -2887,7 +2887,7 @@ static int l2cap_setup_resegment(struct sock *sk)
 	return 0;
 }
 
-static int l2cap_sock_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len)
+int l2cap_sock_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len)
 {
 	struct sock *sk = sock->sk;
 	struct l2cap_pinfo *pi = l2cap_pi(sk);
@@ -3022,7 +3022,7 @@ static inline int l2cap_rmem_full(struct sock *sk)
 	return atomic_read(&sk->sk_rmem_alloc) > (2 * sk->sk_rcvbuf) / 3;
 }
 
-static int l2cap_sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len, int flags)
+int l2cap_sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len, int flags)
 {
 	struct sock *sk = sock->sk;
 	int err;
@@ -3194,7 +3194,7 @@ static int l2cap_sock_setsockopt_old(struct socket *sock, int optname, char __us
 	return err;
 }
 
-static int l2cap_sock_setsockopt(struct socket *sock, int level, int optname, char __user *optval, unsigned int optlen)
+int l2cap_sock_setsockopt(struct socket *sock, int level, int optname, char __user *optval, unsigned int optlen)
 {
 	struct sock *sk = sock->sk;
 	struct bt_security sec;
@@ -3389,7 +3389,7 @@ static int l2cap_sock_getsockopt_old(struct socket *sock, int optname, char __us
 	return err;
 }
 
-static int l2cap_sock_getsockopt(struct socket *sock, int level, int optname, char __user *optval, int __user *optlen)
+int l2cap_sock_getsockopt(struct socket *sock, int level, int optname, char __user *optval, int __user *optlen)
 {
 	struct sock *sk = sock->sk;
 	struct bt_security sec;
@@ -3465,7 +3465,7 @@ static int l2cap_sock_getsockopt(struct socket *sock, int level, int optname, ch
 	return err;
 }
 
-static int l2cap_sock_shutdown(struct socket *sock, int how)
+int l2cap_sock_shutdown(struct socket *sock, int how)
 {
 	struct sock *sk = sock->sk;
 	int err = 0;
@@ -3502,7 +3502,7 @@ static int l2cap_sock_shutdown(struct socket *sock, int how)
 	return err;
 }
 
-static int l2cap_sock_release(struct socket *sock)
+int l2cap_sock_release(struct socket *sock)
 {
 	struct sock *sk = sock->sk;
 	int err;
@@ -7751,26 +7751,6 @@ static const struct file_operations l2cap_debugfs_fops = {
 };
 
 static struct dentry *l2cap_debugfs;
-
-const struct proto_ops l2cap_sock_ops = {
-	.family		= PF_BLUETOOTH,
-	.owner		= THIS_MODULE,
-	.release	= l2cap_sock_release,
-	.bind		= l2cap_sock_bind,
-	.connect	= l2cap_sock_connect,
-	.listen		= l2cap_sock_listen,
-	.accept		= l2cap_sock_accept,
-	.getname	= l2cap_sock_getname,
-	.sendmsg	= l2cap_sock_sendmsg,
-	.recvmsg	= l2cap_sock_recvmsg,
-	.poll		= bt_sock_poll,
-	.ioctl		= bt_sock_ioctl,
-	.mmap		= sock_no_mmap,
-	.socketpair	= sock_no_socketpair,
-	.shutdown	= l2cap_sock_shutdown,
-	.setsockopt	= l2cap_sock_setsockopt,
-	.getsockopt	= l2cap_sock_getsockopt
-};
 
 static struct hci_proto l2cap_hci_proto = {
 	.name		= "L2CAP",
