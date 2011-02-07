@@ -56,8 +56,6 @@
 #include <net/bluetooth/l2cap.h>
 #include <net/bluetooth/amp.h>
 
-#define VERSION "2.15"
-
 int disable_ertm;
 
 static u32 l2cap_feat_mask = L2CAP_FEAT_FIXED_CHAN;
@@ -6773,7 +6771,7 @@ static struct hci_proto l2cap_hci_proto = {
 	.destroy_cfm	= l2cap_destroy_cfm,
 };
 
-static int __init l2cap_init(void)
+int __init l2cap_init(void)
 {
 	int err;
 
@@ -6806,7 +6804,6 @@ static int __init l2cap_init(void)
 		goto error;
 	}
 
-	BT_INFO("L2CAP ver %s", VERSION);
 	BT_INFO("L2CAP socket layer initialized");
 
 	return 0;
@@ -6817,7 +6814,7 @@ error:
 	return err;
 }
 
-static void __exit l2cap_exit(void)
+void l2cap_exit(void)
 {
 	amp_exit();
 
@@ -6840,14 +6837,5 @@ void l2cap_load(void)
 }
 EXPORT_SYMBOL(l2cap_load);
 
-module_init(l2cap_init);
-module_exit(l2cap_exit);
-
 module_param(disable_ertm, bool, 0644);
 MODULE_PARM_DESC(disable_ertm, "Disable enhanced retransmission mode");
-
-MODULE_AUTHOR("Marcel Holtmann <marcel@holtmann.org>");
-MODULE_DESCRIPTION("Bluetooth L2CAP ver " VERSION);
-MODULE_VERSION(VERSION);
-MODULE_LICENSE("GPL");
-MODULE_ALIAS("bt-proto-0");
