@@ -1025,8 +1025,6 @@ static int __init hidp_init(void)
 {
 	int ret;
 
-	l2cap_load();
-
 	BT_INFO("HIDP (Human Interface Emulation) ver %s", VERSION);
 
 	ret = hid_register_driver(&hidp_driver);

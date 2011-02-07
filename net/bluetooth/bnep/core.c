@@ -711,8 +711,6 @@ static int __init bnep_init(void)
 {
 	char flt[50] = "";
 
-	l2cap_load();
-
 #ifdef CONFIG_BT_BNEP_PROTO_FILTER
 	strcat(flt, "protocol ");
 #endif
