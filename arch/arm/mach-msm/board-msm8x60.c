@@ -2436,7 +2436,7 @@ static struct platform_device msm_batt_device = {
 /* VGA = 1440 x 900 x 4(bpp) x 2(pages)
    prim = 1024 x 600 x 4(bpp) x 2(pages)
    This is the difference. */
-#define MSM_FB_DSUB_PMEM_ADDER (0x9E3400-0x4B0000)
+#define MSM_FB_DSUB_PMEM_ADDER (0xA32000-0x4B0000)
 #else
 #define MSM_FB_DSUB_PMEM_ADDER (0)
 #endif
