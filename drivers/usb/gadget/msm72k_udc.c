@@ -226,9 +226,7 @@ static void usb_reset(struct usb_info *ui);
 static unsigned ulpi_read(struct usb_info *ui, unsigned reg)
 {
 	unsigned ret, timeout = 100000;
-	unsigned long flags;
 
-	spin_lock_irqsave(&ui->lock, flags);
 
 	/* initiate read operation */
 	writel(ULPI_RUN | ULPI_READ | ULPI_ADDR(reg),
@@ -241,21 +239,16 @@ static unsigned ulpi_read(struct usb_info *ui, unsigned reg)
 	if (timeout == 0) {
 		printk(KERN_ERR "ulpi_read: timeout %08x\n",
 			readl(USB_ULPI_VIEWPORT));
-		spin_unlock_irqrestore(&ui->lock, flags);
 		return 0xffffffff;
 	}
 	ret = ULPI_DATA_READ(readl(USB_ULPI_VIEWPORT));
 
-	spin_unlock_irqrestore(&ui->lock, flags);
 
 	return ret;
 }
 static int ulpi_write(struct usb_info *ui, unsigned val, unsigned reg)
 {
 	unsigned timeout = 10000;
-	unsigned long flags;
-
-	spin_lock_irqsave(&ui->lock, flags);
 
 	/* initiate write operation */
 	writel(ULPI_RUN | ULPI_WRITE |
@@ -268,10 +261,8 @@ static int ulpi_write(struct usb_info *ui, unsigned val, unsigned reg)
 
 	if (timeout == 0) {
 		dev_err(&ui->pdev->dev, "ulpi_write: timeout\n");
-		spin_unlock_irqrestore(&ui->lock, flags);
 		return -1;
 	}
-	spin_unlock_irqrestore(&ui->lock, flags);
 
 	return 0;
 }
@@ -349,12 +340,14 @@ static int usb_get_max_power(struct usb_info *ui)
 
 static int usb_phy_stuck_check(struct usb_info *ui)
 {
+	unsigned long flags;
 	/*
 	 * write some value (0xAA) into scratch reg (0x16) and read it back,
 	 * If the read value is same as written value, means PHY is normal
 	 * otherwise, PHY seems to have stuck.
 	 */
 
+	spin_lock_irqsave(&ui->lock, flags);
 	if (ulpi_write(ui, 0xAA, 0x16) == -1) {
 		dev_dbg(&ui->pdev->dev,
 			"%s(): ulpi write timeout\n", __func__);
@@ -365,6 +358,7 @@ static int usb_phy_stuck_check(struct usb_info *ui)
 			"%s(): read value is incorrect\n", __func__);
 		return -EIO;
 	}
+	spin_unlock_irqrestore(&ui->lock, flags);
 	return 0;
 }
 
