@@ -1665,6 +1665,11 @@ static int msm_error_config(struct msm_sync *sync, void __user *arg)
 	struct msm_queue_cmd *qcmd =
 		kmalloc(sizeof(struct msm_queue_cmd), GFP_KERNEL);
 
+	qcmd->command = NULL;
+
+	if (qcmd)
+		atomic_set(&(qcmd->on_heap), 1);
+
 	if (copy_from_user(&(qcmd->error_code), arg, sizeof(uint32_t))) {
 		ERR_COPY_FROM_USER();
 		return -EFAULT;
