@@ -1699,6 +1699,7 @@ int wl_ucode_init_buf(struct wl_info *wl, void **pbuf, u32 idx)
 				if (*pbuf == NULL) {
 					WL_ERROR("fail to alloc %d bytes\n",
 						 hdr->len);
+					goto fail;
 				}
 				bcopy(pdata, *pbuf, hdr->len);
 				return 0;
@@ -1707,6 +1708,7 @@ int wl_ucode_init_buf(struct wl_info *wl, void **pbuf, u32 idx)
 	}
 	WL_ERROR("ERROR: ucode buf tag:%d can not be found!\n", idx);
 	*pbuf = NULL;
+fail:
 	return -1;
 }
 
