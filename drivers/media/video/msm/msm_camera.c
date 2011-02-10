@@ -1237,7 +1237,7 @@ static int msm_get_stats(struct msm_sync *sync, void __user *arg)
 				rc = -EINVAL;
 				goto failure;
 			}
-
+			se.stats_event.frame_id = data->phy.frame_id;
 			if (copy_to_user((void *)(se.stats_event.data),
 					&stats,
 					sizeof(struct msm_stats_buf))) {
@@ -1293,11 +1293,15 @@ static int msm_get_stats(struct msm_sync *sync, void __user *arg)
 				(data->type == VFE_MSG_OUTPUT_P)) {
 					CDBG("%s:%d:preiew PP\n",
 					__func__, __LINE__);
+					se.stats_event.frame_id =
+							data->phy.frame_id;
 					rc = msm_divert_frame(sync, data, &se);
 					sync->pp_frame_avail = 0;
 			} else {
 				if ((sync->pp_mask & PP_PREV) &&
 					(data->type == VFE_MSG_OUTPUT_P)) {
+					se.stats_event.frame_id =
+							data->phy.frame_id;
 					free_qcmd(qcmd);
 					return 0;
 				} else
