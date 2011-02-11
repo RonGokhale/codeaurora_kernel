@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2008-2009, 2011 Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -314,7 +314,7 @@ int mdp_lcdc_off(struct platform_device *pdev)
 	ret = panel_next_off(pdev);
 
 	/* delay to make sure the last frame finishes */
-	mdelay(100);
+	msleep(33);
 
 	return ret;
 }
