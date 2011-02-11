@@ -31,7 +31,6 @@
 #include <linux/delay.h>
 #include <linux/input.h>
 #include <linux/gpio_keys.h>
-#include <linux/atmel_maxtouch.h>
 
 #include <mach/iomap.h>
 #include <mach/irqs.h>
@@ -274,72 +273,6 @@ static void seaboard_isl29018_init(void)
 	gpio_direction_input(TEGRA_GPIO_ISL29018_IRQ);
 }
 
-static u8 seaboard_maxtouch_read_chg(void)
-{
-	return gpio_get_value(TEGRA_GPIO_MAXTOUCH_IRQ);
-}
-
-static u8 seaboard_maxtouch_valid_interrupt(void)
-{
-	return !seaboard_maxtouch_read_chg();
-}
-
-static void seaboard_maxtouch_init(void)
-{
-	unsigned long time;
-	int ret = gpio_request(TEGRA_GPIO_MAXTOUCH_RST, "maxTouch_rst");
-	if (ret < 0) {
-		pr_err("Could not fetch GPIO for maxTouch");
-		return;
-	}
-	ret = gpio_direction_output(TEGRA_GPIO_MAXTOUCH_RST, 0);
-	if (ret < 0) {
-		pr_err("Could not set GPIO direction");
-		gpio_free(TEGRA_GPIO_MAXTOUCH_RST);
-		return;
-	} else {
-		tegra_gpio_enable(TEGRA_GPIO_MAXTOUCH_RST);
-	}
-	/* From the mxt1386 datasheet */
-	/* need to hold low for 10 ns, bring high than sleep for 90 ms */
-	gpio_set_value(TEGRA_GPIO_MAXTOUCH_RST, 0);
-	usleep_range(1, 1); /* smallest non-busy wait sleep */
-	gpio_set_value(TEGRA_GPIO_MAXTOUCH_RST, 1);
-
-	/* may as well setup the IRQ while we're waiting */
-	tegra_gpio_enable(TEGRA_GPIO_MAXTOUCH_IRQ);
-	ret = gpio_request(TEGRA_GPIO_MAXTOUCH_IRQ, "maxTouch_irq");
-	if (ret < 0) {
-		pr_err("Could not get GPIO IRQ for maxTouch");
-		gpio_free(TEGRA_GPIO_MAXTOUCH_RST);
-		return;
-	}
-	gpio_direction_input(TEGRA_GPIO_MAXTOUCH_IRQ);
-
-	/* Using datasheet value of 90 ms prevernted clean bringup */
-	/* Doubling to 180 ms gave consistant startup */
-	msleep(180);
-}
-
-static void seaboard_maxtouch_exit(void)
-{
-	tegra_gpio_disable(TEGRA_GPIO_MAXTOUCH_IRQ);
-	gpio_free(TEGRA_GPIO_MAXTOUCH_IRQ);
-	tegra_gpio_disable(TEGRA_GPIO_MAXTOUCH_RST);
-	gpio_free(TEGRA_GPIO_MAXTOUCH_RST);
-}
-
-static struct mxt_platform_data atmel_mxt_info = {
-	.numtouch         = 10,
-	.init_platform_hw = seaboard_maxtouch_init,
-	.exit_platform_hw = seaboard_maxtouch_exit,
-	.max_x            = 1023,
-	.max_y            = 1023,
-	.valid_interrupt  = seaboard_maxtouch_valid_interrupt,
-	.read_chg         = seaboard_maxtouch_read_chg,
-};
-
-
 static struct i2c_board_info __initdata wm8903_device = {
 	I2C_BOARD_INFO("wm8903", 0x1a),
 };
@@ -347,12 +280,6 @@ static struct i2c_board_info __initdata wm8903_device = {
 static struct i2c_board_info __initdata isl29018_device = {
 	I2C_BOARD_INFO("isl29018", 0x44),
 	.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_ISL29018_IRQ),
-};
-
-static struct i2c_board_info __initdata maxtouch_device = {
-	I2C_BOARD_INFO("maXTouch", MXT_I2C_ADDRESS),
-	.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_MAXTOUCH_IRQ),
-	.platform_data = &atmel_mxt_info,
 };
 
 static struct i2c_board_info __initdata bq20z75_device = {
@@ -390,7 +317,6 @@ static void __init seaboard_i2c_init(void)
 
 	i2c_register_board_info(0, &wm8903_device, 1);
 	i2c_register_board_info(0, &isl29018_device, 1);
-	i2c_register_board_info(0, &maxtouch_device, 1);
 
 	i2c_register_board_info(2, &bq20z75_device, 1);
 
