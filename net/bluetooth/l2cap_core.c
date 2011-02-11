@@ -874,6 +874,12 @@ static void l2cap_conn_ready(struct l2cap_conn *conn)
 	for (sk = l->head; sk; sk = l2cap_pi(sk)->next_c) {
 		bh_lock_sock(sk);
 
+		if (conn->hcon->type == LE_LINK) {
+			l2cap_sock_clear_timer(sk);
+			sk->sk_state = BT_CONNECTED;
+			sk->sk_state_change(sk);
+		}
+
 		if (sk->sk_type != SOCK_SEQPACKET &&
 				sk->sk_type != SOCK_STREAM) {
 			l2cap_sock_clear_timer(sk);
@@ -932,7 +938,11 @@ static struct l2cap_conn *l2cap_conn_add(struct hci_conn *hcon, u8 status)
 
 	BT_DBG("hcon %p conn %p", hcon, conn);
 
-	conn->mtu = hcon->hdev->acl_mtu;
+	if (hcon->hdev->le_mtu && hcon->type == LE_LINK)
+		conn->mtu = hcon->hdev->le_mtu;
+	else
+		conn->mtu = hcon->hdev->acl_mtu;
+
 	conn->src = &hcon->hdev->bdaddr;
 	conn->dst = &hcon->dst;
 
@@ -1052,6 +1062,10 @@ int l2cap_do_connect(struct sock *sk)
 
 	auth_type = l2cap_get_auth_type(sk);
 
+	if (l2cap_pi(sk)->dcid == L2CAP_CID_LE_DATA)
+		hcon = hci_connect(hdev, LE_LINK, dst,
+					l2cap_pi(sk)->sec_level, auth_type);
+	else
 	if (l2cap_pi(sk)->fixed_channel) {
 		/* Fixed channels piggyback on existing ACL connections */
 		hcon = hci_conn_hash_lookup_ba(hdev, ACL_LINK, dst);
@@ -6474,7 +6488,7 @@ static int l2cap_connect_cfm(struct hci_conn *hcon, u8 status)
 
 	BT_DBG("hcon %p bdaddr %s status %d", hcon, batostr(&hcon->dst), status);
 
-	if (hcon->type != ACL_LINK)
+	if (!(hcon->type == ACL_LINK || hcon->type == LE_LINK))
 		return -EINVAL;
 
 	if (!status) {
@@ -6503,7 +6517,7 @@ static int l2cap_disconn_cfm(struct hci_conn *hcon, u8 reason)
 {
 	BT_DBG("hcon %p reason %d", hcon, reason);
 
-	if (hcon->type != ACL_LINK)
+	if (!(hcon->type == ACL_LINK || hcon->type == LE_LINK))
 		return -EINVAL;
 
 	l2cap_conn_del(hcon, bt_err(reason));
