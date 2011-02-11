@@ -44,6 +44,7 @@
 
 #define L2CAP_TX_WIN_MAX_ENHANCED	0x3f
 #define L2CAP_TX_WIN_MAX_EXTENDED	0x3fff
+#define L2CAP_LE_DEFAULT_MTU		23
 
 #define L2CAP_CONN_TIMEOUT	(40000) /* 40 seconds */
 #define L2CAP_INFO_TIMEOUT	(4000)  /*  4 seconds */
