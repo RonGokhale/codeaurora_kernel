@@ -104,6 +104,8 @@ struct l2cap_conninfo {
 #define L2CAP_MOVE_CHAN_RSP		0x0f
 #define L2CAP_MOVE_CHAN_CFM		0x10
 #define L2CAP_MOVE_CHAN_CFM_RSP	0x11
+#define L2CAP_CONN_PARAM_UPDATE_REQ	0x12
+#define L2CAP_CONN_PARAM_UPDATE_RSP	0x13
 
 /* L2CAP feature mask */
 #define L2CAP_FEAT_FLOWCTL	0x00000001
