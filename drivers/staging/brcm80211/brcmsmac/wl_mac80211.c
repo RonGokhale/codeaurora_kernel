@@ -142,6 +142,7 @@ static int wl_sta_remove(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 static int wl_ampdu_action(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			   enum ieee80211_ampdu_mlme_action action,
 			   struct ieee80211_sta *sta, u16 tid, u16 *ssn);
+static void wl_ops_rfkill_poll(struct ieee80211_hw *hw);
 
 static int wl_ops_tx(struct ieee80211_hw *hw, struct sk_buff *skb)
 {
@@ -162,6 +163,7 @@ static int wl_ops_tx(struct ieee80211_hw *hw, struct sk_buff *skb)
 static int wl_ops_start(struct ieee80211_hw *hw)
 {
 	struct wl_info *wl = hw->priv;
+	bool blocked;
 	/*
 	  struct ieee80211_channel *curchan = hw->conf.channel;
 	  WL_NONE("%s : Initial channel: %d\n", __func__, curchan->hw_value);
@@ -170,6 +172,9 @@ static int wl_ops_start(struct ieee80211_hw *hw)
 	WL_LOCK(wl);
 	ieee80211_wake_queues(hw);
 	WL_UNLOCK(wl);
+	blocked = wl_rfkill_set_hw_state(wl);
+	if (!blocked)
+		wiphy_rfkill_stop_polling(wl->pub->ieee_hw->wiphy);
 
 	return 0;
 }
@@ -179,11 +184,8 @@ static void wl_ops_stop(struct ieee80211_hw *hw)
 	struct wl_info *wl = hw->priv;
 	ASSERT(wl);
 	WL_LOCK(wl);
-	wl_down(wl);
 	ieee80211_stop_queues(hw);
 	WL_UNLOCK(wl);
-
-	return;
 }
 
 static int
@@ -208,15 +210,23 @@ wl_ops_add_interface(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 	err = wl_up(wl);
 	WL_UNLOCK(wl);
 
-	if (err != 0)
+	if (err != 0) {
 		WL_ERROR("%s: wl_up() returned %d\n", __func__, err);
+	}
 	return err;
 }
 
 static void
 wl_ops_remove_interface(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 {
-	return;
+	struct wl_info *wl;
+
+	wl = HW_TO_WL(hw);
+
+	/* put driver in down state */
+	WL_LOCK(wl);
+	wl_down(wl);
+	WL_UNLOCK(wl);
 }
 
 static int
@@ -451,7 +461,11 @@ wl_ops_get_stats(struct ieee80211_hw *hw,
 
 static int wl_ops_set_rts_threshold(struct ieee80211_hw *hw, u32 value)
 {
-	WL_ERROR("%s: Enter\n", __func__);
+	struct wl_info *wl = hw->priv;
+
+	WL_LOCK(wl);
+	wlc_iovar_setint(wl->wlc, "rtsthresh", value & 0xFFFF);
+	WL_UNLOCK(wl);
 	return 0;
 }
 
@@ -579,6 +593,19 @@ wl_ampdu_action(struct ieee80211_hw *hw,
 	return 0;
 }
 
+static void wl_ops_rfkill_poll(struct ieee80211_hw *hw)
+{
+	struct wl_info *wl = HW_TO_WL(hw);
+	bool blocked;
+
+	WL_LOCK(wl);
+	blocked = wlc_check_radio_disabled(wl->wlc);
+	WL_UNLOCK(wl);
+
+	WL_ERROR("wl: rfkill_poll: %d\n", blocked);
+	wiphy_rfkill_set_hw_state(wl->pub->ieee_hw->wiphy, blocked);
+}
+
 static const struct ieee80211_ops wl_ops = {
 	.tx = wl_ops_tx,
 	.start = wl_ops_start,
@@ -600,6 +627,7 @@ static const struct ieee80211_ops wl_ops = {
 	.sta_add = wl_sta_add,
 	.sta_remove = wl_sta_remove,
 	.ampdu_action = wl_ampdu_action,
+	.rfkill_poll = wl_ops_rfkill_poll,
 };
 
 static int wl_set_hint(struct wl_info *wl, char *abbrev)
@@ -738,18 +766,11 @@ static struct wl_info *wl_attach(u16 vendor, u16 device, unsigned long regs,
 		WL_ERROR("%s: regulatory_hint failed, status %d\n",
 			 __func__, err);
 	}
-	WL_ERROR("wl%d: Broadcom BCM43xx 802.11 MAC80211 Driver (" PHY_VERSION_STR ")",
-		 unit);
-
-#ifdef BCMDBG
-	printf(" (Compiled at " __TIME__ " on " __DATE__ ")");
-#endif				/* BCMDBG */
-	printf("\n");
 
 	wl_found++;
 	return wl;
 
- fail:
+fail:
 	wl_free(wl);
 fail1:
 	return NULL;
@@ -1060,7 +1081,6 @@ wl_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	return 0;
 }
 
-#ifdef LINUXSTA_PS
 static int wl_suspend(struct pci_dev *pdev, pm_message_t state)
 {
 	struct wl_info *wl;
@@ -1075,11 +1095,12 @@ static int wl_suspend(struct pci_dev *pdev, pm_message_t state)
 		return -ENODEV;
 	}
 
+	/* only need to flag hw is down for proper resume */
 	WL_LOCK(wl);
-	wl_down(wl);
 	wl->pub->hw_up = false;
 	WL_UNLOCK(wl);
-	pci_save_state(pdev, wl->pci_psstate);
+
+	pci_save_state(pdev);
 	pci_disable_device(pdev);
 	return pci_set_power_state(pdev, PCI_D3hot);
 }
@@ -1103,7 +1124,7 @@ static int wl_resume(struct pci_dev *pdev)
 	if (err)
 		return err;
 
-	pci_restore_state(pdev, wl->pci_psstate);
+	pci_restore_state(pdev);
 
 	err = pci_enable_device(pdev);
 	if (err)
@@ -1115,13 +1136,12 @@ static int wl_resume(struct pci_dev *pdev)
 	if ((val & 0x0000ff00) != 0)
 		pci_write_config_dword(pdev, 0x40, val & 0xffff00ff);
 
-	WL_LOCK(wl);
-	err = wl_up(wl);
-	WL_UNLOCK(wl);
-
+	/*
+	*  done. driver will be put in up state
+	*  in wl_ops_add_interface() call.
+	*/
 	return err;
 }
-#endif				/* LINUXSTA_PS */
 
 static void wl_remove(struct pci_dev *pdev)
 {
@@ -1134,6 +1154,11 @@ static void wl_remove(struct pci_dev *pdev)
 		WL_ERROR("wl: wl_remove: pci_get_drvdata failed\n");
 		return;
 	}
+
+	/* make sure rfkill is not using driver */
+	wiphy_rfkill_set_hw_state(wl->pub->ieee_hw->wiphy, false);
+	wiphy_rfkill_stop_polling(wl->pub->ieee_hw->wiphy);
+
 	if (!wlc_chipmatch(pdev->vendor, pdev->device)) {
 		WL_ERROR("wl: wl_remove: wlc_chipmatch failed\n");
 		return;
@@ -1154,12 +1179,10 @@ static void wl_remove(struct pci_dev *pdev)
 }
 
 static struct pci_driver wl_pci_driver = {
-	.name  = KBUILD_MODNAME,
-	.probe = wl_pci_probe,
-#ifdef LINUXSTA_PS
-	.suspend = wl_suspend,
-	.resume  = wl_resume,
-#endif				/* LINUXSTA_PS */
+	.name     = KBUILD_MODNAME,
+	.probe    = wl_pci_probe,
+	.suspend  = wl_suspend,
+	.resume   = wl_resume,
 	.remove   = __devexit_p(wl_remove),
 	.id_table = wl_id_table,
 };
@@ -1814,3 +1837,13 @@ int wl_check_firmwares(struct wl_info *wl)
 	return rc;
 }
 
+bool wl_rfkill_set_hw_state(struct wl_info *wl)
+{
+	bool blocked = wlc_check_radio_disabled(wl->wlc);
+
+	WL_ERROR("%s: update hw state: blocked=%s\n", __func__, blocked ? "true" : "false");
+	wiphy_rfkill_set_hw_state(wl->pub->ieee_hw->wiphy, blocked);
+	if (blocked)
+		wiphy_rfkill_start_polling(wl->pub->ieee_hw->wiphy);
+	return blocked;
+}
