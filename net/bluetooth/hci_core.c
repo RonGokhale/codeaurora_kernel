@@ -1229,6 +1229,8 @@ int hci_unregister_dev(struct hci_dev *hdev)
 
 	hci_unregister_sysfs(hdev);
 
+	hci_del_off_timer(hdev);
+
 	destroy_workqueue(hdev->workqueue);
 
 	hci_dev_lock_bh(hdev);
