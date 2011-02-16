@@ -1069,14 +1069,15 @@ static void dapm_seq_run_coalesced(struct snd_soc_dapm_context *dapm,
 				   struct list_head *pending)
 {
 	struct snd_soc_card *card = dapm->card;
-	struct snd_soc_dapm_widget *w;
+	struct snd_soc_dapm_widget *w, *_w;
 	int reg, power;
 	unsigned int value = 0;
 	unsigned int mask = 0;
 	unsigned int cur_mask;
 
-	reg = list_first_entry(pending, struct snd_soc_dapm_widget,
-			       power_list)->reg;
+	_w = list_first_entry(pending, struct snd_soc_dapm_widget,
+				power_list);
+	reg = _w->reg;
 
 	list_for_each_entry(w, pending, power_list) {
 		cur_mask = 1 << w->shift;
@@ -1105,7 +1106,7 @@ static void dapm_seq_run_coalesced(struct snd_soc_dapm_context *dapm,
 			"pop test : Applying 0x%x/0x%x to %x in %dms\n",
 			value, mask, reg, card->pop_time);
 		pop_wait(card->pop_time);
-		soc_widget_update_bits(w, reg, mask, value);
+		soc_widget_update_bits(_w, reg, mask, value);
 	}
 
 	list_for_each_entry(w, pending, power_list) {
@@ -1265,6 +1266,7 @@ static int dapm_power_widgets(struct snd_soc_dapm_context *dapm, int event)
 	/* Check which widgets we need to power and store them in
 	 * lists indicating if they should be powered up or down.
 	 */
+
 	list_for_each_entry(w, &card->widgets, list) {
 		switch (w->id) {
 		case snd_soc_dapm_pre:
@@ -1400,7 +1402,6 @@ static int dapm_power_widgets(struct snd_soc_dapm_context *dapm, int event)
 	pop_wait(card->pop_time);
 
 	trace_snd_soc_dapm_done(card);
-
 	return 0;
 }
 
@@ -2463,6 +2464,7 @@ int snd_soc_dapm_new_controls(struct snd_soc_dapm_context *dapm,
 }
 EXPORT_SYMBOL_GPL(snd_soc_dapm_new_controls);
 
+
 static void soc_dapm_stream_event(struct snd_soc_dapm_context *dapm,
 	const char *stream, int event)
 {
@@ -2492,6 +2494,7 @@ static void soc_dapm_stream_event(struct snd_soc_dapm_context *dapm,
 	}
 
 	dapm_power_widgets(dapm, event);
+
 	/* do we need to notify any clients that DAPM stream is complete */
 	if (dapm->stream_event)
 		dapm->stream_event(dapm);
@@ -2513,21 +2516,19 @@ int snd_soc_dapm_stream_event(struct snd_soc_pcm_runtime *rtd,
 {
 	if (stream == NULL)
 		return 0;
-#warning  this needs re-work
-	if (rtd->dai_link->dynamic) {
-		struct snd_soc_platform *platform = rtd->platform;
 
-		soc_dapm_stream_event(&platform->dapm, stream, event);
-	} else {
-		struct snd_soc_codec *codec = rtd->codec;
+	mutex_lock(&rtd->card->dapm_mutex);
 
-		mutex_lock(&codec->mutex);
-		soc_dapm_stream_event(&codec->dapm, stream, event);
-		mutex_unlock(&codec->mutex);
-	}
+	if (rtd->dai_link->dynamic)
+		soc_dapm_stream_event(&rtd->platform->dapm, stream, event);
+	else
+		soc_dapm_stream_event(&rtd->codec->dapm, stream, event);
+
+	mutex_unlock(&rtd->card->dapm_mutex);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_dapm_stream_event);
+
 
 /**
  * snd_soc_dapm_enable_pin - enable pin.
