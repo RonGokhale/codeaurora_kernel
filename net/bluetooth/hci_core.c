@@ -41,6 +41,7 @@
 #include <linux/interrupt.h>
 #include <linux/notifier.h>
 #include <linux/rfkill.h>
+#include <linux/timer.h>
 #include <net/sock.h>
 
 #include <asm/system.h>
@@ -652,6 +653,7 @@ static int hci_dev_do_close(struct hci_dev *hdev)
 
 	/* Drop last sent command */
 	if (hdev->sent_cmd) {
+		del_timer_sync(&hdev->cmd_timer);
 		kfree_skb(hdev->sent_cmd);
 		hdev->sent_cmd = NULL;
 	}
@@ -1095,6 +1097,16 @@ int hci_remove_link_key(struct hci_dev *hdev, bdaddr_t *bdaddr)
 	return 0;
 }
 
+/* HCI command timer function */
+static void hci_cmd_timer(unsigned long arg)
+{
+	struct hci_dev *hdev = (void *) arg;
+
+	BT_ERR("%s command tx timeout", hdev->name);
+	atomic_set(&hdev->cmd_cnt, 1);
+	tasklet_schedule(&hdev->cmd_task);
+}
+
 /* Register HCI device */
 int hci_register_dev(struct hci_dev *hdev)
 {
@@ -1140,6 +1152,8 @@ int hci_register_dev(struct hci_dev *hdev)
 	skb_queue_head_init(&hdev->rx_q);
 	skb_queue_head_init(&hdev->cmd_q);
 	skb_queue_head_init(&hdev->raw_q);
+
+	setup_timer(&hdev->cmd_timer, hci_cmd_timer, (unsigned long) hdev);
 
 	for (i = 0; i < NUM_REASSEMBLY; i++)
 		hdev->reassembly[i] = NULL;
@@ -2124,11 +2138,6 @@ static void hci_cmd_task(unsigned long arg)
 
 	BT_DBG("%s cmd %d", hdev->name, atomic_read(&hdev->cmd_cnt));
 
-	if (!atomic_read(&hdev->cmd_cnt) && time_after(jiffies, hdev->cmd_last_tx + HZ)) {
-		BT_ERR("%s command tx timeout", hdev->name);
-		atomic_set(&hdev->cmd_cnt, 1);
-	}
-
 	/* Send queued commands */
 	if (atomic_read(&hdev->cmd_cnt)) {
 		skb = skb_dequeue(&hdev->cmd_q);
@@ -2141,7 +2150,8 @@ static void hci_cmd_task(unsigned long arg)
 		if (hdev->sent_cmd) {
 			atomic_dec(&hdev->cmd_cnt);
 			hci_send_frame(skb);
-			hdev->cmd_last_tx = jiffies;
+			mod_timer(&hdev->cmd_timer,
+				  jiffies + msecs_to_jiffies(HCI_CMD_TIMEOUT));
 		} else {
 			skb_queue_head(&hdev->cmd_q, skb);
 			tasklet_schedule(&hdev->cmd_task);
