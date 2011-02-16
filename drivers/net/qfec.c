@@ -50,9 +50,10 @@
 #define MAX_N_BD        50
 #define MAC_ADDR_SIZE	6
 
-#define RX_TX_BD_RATIO  4
+#define RX_TX_BD_RATIO  8
 #define RX_BD_NUM       32
 #define TX_BD_NUM       (RX_BD_NUM * RX_TX_BD_RATIO)
+#define TX_BD_TI_RATIO  4
 
 /* -----------------------------------------------------
  * logging macros
@@ -1754,12 +1755,16 @@ static int qfec_xmit(struct sk_buff *skb, struct net_device *dev)
 	dma_map_single(&dev->dev,
 		(void *)skb->data, skb->len, DMA_TO_DEVICE));
 
-	ctrl  = skb->len | BUF_TX_IC; /* interrupt on complete */
+	ctrl  = skb->len;
+	if (qfec_ring_head(p_ring) %
+		(TX_BD_NUM / TX_BD_TI_RATIO) == 0)
+		ctrl |= BUF_TX_IC; /* interrupt on complete */
 
 	/* check if timestamping enabled and requested */
 	if (priv->state & timestamping)  {
 		if (skb_tx(skb)->hardware)  {
 			CNTR_INC(priv, ts_tx_en);
+			ctrl |= BUF_TX_IC;	/* interrupt on complete */
 			ctrl |= BUF_TX_TTSE;	/* enable timestamp */
 			skb_tx(skb)->in_progress = 1;
 		}
