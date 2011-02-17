@@ -740,6 +740,18 @@ void mipi_dsi_host_init(struct mipi_panel_info *pinfo)
 	wmb();
 }
 
+void mipi_set_tx_power_mode(int mode)
+{
+	uint32 data = MIPI_INP(MIPI_DSI_BASE + 0x38);
+
+	if (mode == 0)
+		data &= ~BIT(26);
+	else
+		data |= BIT(26);
+
+	MIPI_OUTP(MIPI_DSI_BASE + 0x38, data);
+}
+
 void mipi_dsi_op_mode_config(int mode)
 {
 
