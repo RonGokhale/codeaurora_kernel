@@ -187,7 +187,7 @@ static int bq20z75_write_word_data(struct i2c_client *client, u8 address,
 	while (retries > 0) {
 		ret = i2c_smbus_write_word_data(client, address,
 			le16_to_cpu(value));
-		if (ret >=0)
+		if (ret >= 0)
 			break;
 		retries--;
 	}
@@ -588,7 +588,7 @@ static int __devinit bq20z75_probe(struct platform_device *pdev)
 	irq = gpio_to_irq(pdata->battery_detect);
 	if (irq <= 0) {
 		gpio_free(pdata->battery_detect);
-		bq20z75_device->gpio_detect= false;
+		bq20z75_device->gpio_detect = false;
 		goto skip_gpio;
 	}
 
@@ -598,7 +598,7 @@ static int __devinit bq20z75_probe(struct platform_device *pdev)
 	if (rc) {
 		dev_warn(&pdev->dev, "Failed to request irq: %d\n", rc);
 		gpio_free(pdata->battery_detect);
-		bq20z75_device->gpio_detect= false;
+		bq20z75_device->gpio_detect = false;
 	}
 
 	bq20z75_device->irq = irq;
@@ -633,8 +633,7 @@ skip_gpio:
 	if (bq20z75_device->gpio_detect) {
 		int present = gpio_get_value(pdata->battery_detect);
 		bq20z75_device->is_present = (present == 0);
-	}
-	else {
+	} else {
 		union power_supply_propval val;
 		bq20z75_get_battery_presence_and_health(client,
 			POWER_SUPPLY_PROP_PRESENT, &val);
