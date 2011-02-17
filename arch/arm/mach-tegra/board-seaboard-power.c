@@ -22,10 +22,15 @@
 #include <linux/gpio.h>
 #include <linux/power/gpio-charger.h>
 #include <linux/platform_device.h>
+#include <linux/io.h>
+#include <mach/iomap.h>
 #include <linux/err.h>
 
 #include "board-seaboard.h"
 #include "gpio-names.h"
+
+#define PMC_CTRL		0x0
+#define PMC_CTRL_INTR_LOW	(1 << 17)
 
 static struct regulator_consumer_supply tps658621_sm0_supply[] = {
 	REGULATOR_SUPPLY("vdd_core", NULL),
@@ -181,6 +186,14 @@ static struct i2c_board_info __initdata seaboard_regulators[] = {
 
 int __init seaboard_regulator_init(void)
 {
+	void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
+	u32 pmc_ctrl;
+
+	/* configure the power management controller to trigger PMU
+	 * interrupts when low */
+	pmc_ctrl = readl(pmc + PMC_CTRL);
+	writel(pmc_ctrl | PMC_CTRL_INTR_LOW, pmc + PMC_CTRL);
+
 	i2c_register_board_info(4, seaboard_regulators, 1);
 	return 0;
 }
