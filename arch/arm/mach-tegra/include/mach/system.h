@@ -37,7 +37,9 @@ static inline void tegra_assert_system_reset(void)
 
 	reg = readl(reset);
 	reg |= 0x04;
-	writel(reg, reset);
+
+	/* use writel_related to avoid spinlock since L1 cache may be off */
+	writel_relaxed(reg, reset);
 }
 
 static inline void arch_reset(char mode, const char *cmd)
