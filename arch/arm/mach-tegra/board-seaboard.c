@@ -548,6 +548,7 @@ static void __init __tegra_seaboard_init(void)
 	seaboard_kbc_init();
 
 	seaboard_wlan_init();
+	seaboard_emc_init();
 
 	tegra_gpio_enable(TEGRA_GPIO_LIDSWITCH);
 	tegra_gpio_enable(TEGRA_GPIO_POWERKEY);

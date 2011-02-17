@@ -57,3 +57,4 @@ obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-pinmux.o
 obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-sdhci.o
 obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-power.o
 obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-panel.o
+obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-memory.o
