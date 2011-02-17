@@ -37,5 +37,6 @@ void seaboard_pinmux_init(void);
 int seaboard_panel_init(void);
 void seaboard_sdhci_init(void);
 int seaboard_power_init(void);
+void seaboard_emc_init(void);
 
 #endif
