@@ -128,7 +128,7 @@ static void tegra_pm_flush_console(void)
 static void tegra_pm_restart(char mode, const char *cmd)
 {
 	tegra_pm_flush_console();
-	arch_reset(mode, cmd);
+	arm_machine_restart(mode, cmd);
 }
 
 void __init tegra_common_init(void)
