@@ -273,6 +273,10 @@ struct hci_conn {
 	__u8             key_type;
 
 	struct hci_conn	*link;
+
+	void (*connect_cfm_cb)	(struct hci_conn *conn, u8 status);
+	void (*security_cfm_cb)	(struct hci_conn *conn, u8 status);
+	void (*disconn_cfm_cb)	(struct hci_conn *conn, u8 reason);
 };
 
 struct hci_chan {
@@ -678,6 +682,9 @@ static inline void hci_proto_connect_cfm(struct hci_conn *conn, __u8 status)
 	hp = hci_proto[HCI_PROTO_SCO];
 	if (hp && hp->connect_cfm)
 		hp->connect_cfm(conn, status);
+
+	if (conn->connect_cfm_cb)
+		conn->connect_cfm_cb(conn, status);
 }
 
 static inline int hci_proto_disconn_ind(struct hci_conn *conn)
@@ -707,6 +714,9 @@ static inline void hci_proto_disconn_cfm(struct hci_conn *conn, __u8 reason)
 	hp = hci_proto[HCI_PROTO_SCO];
 	if (hp && hp->disconn_cfm)
 		hp->disconn_cfm(conn, reason);
+
+	if (conn->disconn_cfm_cb)
+		conn->disconn_cfm_cb(conn, reason);
 }
 
 static inline void hci_proto_auth_cfm(struct hci_conn *conn, __u8 status)
@@ -726,6 +736,9 @@ static inline void hci_proto_auth_cfm(struct hci_conn *conn, __u8 status)
 	hp = hci_proto[HCI_PROTO_SCO];
 	if (hp && hp->security_cfm)
 		hp->security_cfm(conn, status, encrypt);
+
+	if (conn->security_cfm_cb)
+		conn->security_cfm_cb(conn, status);
 }
 
 static inline void hci_proto_encrypt_cfm(struct hci_conn *conn, __u8 status, __u8 encrypt)
@@ -739,6 +752,9 @@ static inline void hci_proto_encrypt_cfm(struct hci_conn *conn, __u8 status, __u
 	hp = hci_proto[HCI_PROTO_SCO];
 	if (hp && hp->security_cfm)
 		hp->security_cfm(conn, status, encrypt);
+
+	if (conn->security_cfm_cb)
+		conn->security_cfm_cb(conn, status);
 }
 
 static inline void hci_proto_create_cfm(struct hci_chan *chan, __u8 status)
