@@ -191,8 +191,6 @@ static int sco_connect(struct sock *sk)
 
 	hci_dev_lock_bh(hdev);
 
-	err = -ENOMEM;
-
 	if (lmp_esco_capable(hdev) && !disable_esco)
 		type = ESCO_LINK;
 	else {
@@ -202,12 +200,15 @@ static int sco_connect(struct sock *sk)
 
 	hcon = hci_connect(hdev, type, pkt_type, dst,
 					BT_SECURITY_LOW, HCI_AT_NO_BONDING);
-	if (!hcon)
+	if (IS_ERR(hcon)) {
+		err = PTR_ERR(hcon);
 		goto done;
+	}
 
 	conn = sco_conn_add(hcon, 0);
 	if (!conn) {
 		hci_conn_put(hcon);
+		err = -ENOMEM;
 		goto done;
 	}
 

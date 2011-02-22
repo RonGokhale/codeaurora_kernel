@@ -1146,8 +1146,6 @@ int l2cap_do_connect(struct sock *sk)
 
 	hci_dev_lock_bh(hdev);
 
-	err = -ENOMEM;
-
 	auth_type = l2cap_get_auth_type(sk);
 
 	if (l2cap_pi(sk)->fixed_channel) {
@@ -1165,17 +1163,18 @@ int l2cap_do_connect(struct sock *sk)
 			hcon = hci_connect(hdev, ACL_LINK, 0, dst,
 					   l2cap_pi(sk)->sec_level, auth_type);
 
-		if (!hcon)
+		if (IS_ERR(hcon)) {
+			err = PTR_ERR(hcon);
 			goto done;
+		}
 
 		conn = l2cap_conn_add(hcon, 0);
 		if (!conn) {
 			hci_conn_put(hcon);
+			err = -ENOMEM;
 			goto done;
 		}
 	}
-
-	err = 0;
 
 	/* Update source addr of the socket */
 	bacpy(src, conn->src);
@@ -1204,6 +1203,8 @@ int l2cap_do_connect(struct sock *sk)
 				l2cap_do_start(sk);
 		}
 	}
+
+	err = 0;
 
 done:
 	hci_dev_unlock_bh(hdev);
