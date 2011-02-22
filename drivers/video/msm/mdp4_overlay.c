@@ -38,6 +38,8 @@
 #include "msm_fb.h"
 #include "mdp4.h"
 
+#define VERSION_KEY_MASK	0xFFFFFF00
+
 struct mdp4_overlay_ctrl {
 	struct mdp4_pipe_desc ov_pipe[OVERLAY_PIPE_MAX];/* 4 */
 	struct mdp4_overlay_pipe plist[MDP4_MAX_PIPE];	/* 4 + 2 */
@@ -1991,7 +1993,8 @@ uint32 tile_mem_size(struct mdp4_overlay_pipe *pipe, struct tile_desc *tp)
 }
 
 int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req,
-		struct file **pp_src_file)
+		struct file **pp_src_file, struct file **pp_src_plane1_file,
+		struct file **pp_src_plane2_file)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 	struct msmfb_data *img;
@@ -2000,6 +2003,8 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req,
 	ulong start, addr;
 	ulong len = 0;
 	struct file *p_src_file = 0;
+	struct file *p_src_plane1_file = 0, *p_src_plane2_file = 0;
+	uint32_t overlay_version = 0;
 
 	if (mfd == NULL)
 		return -ENODEV;
@@ -2036,23 +2041,60 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req,
 	pipe->srcp0_addr = addr;
 	pipe->srcp0_ystride = pipe->src_width * pipe->bpp;
 
+	if ((req->version_key & VERSION_KEY_MASK) == 0xF9E8D700)
+		overlay_version = (req->version_key & ~VERSION_KEY_MASK);
+
 	if (pipe->fetch_plane == OVERLAY_PLANE_PSEUDO_PLANAR) {
-		if (pipe->frame_format == MDP4_FRAME_FORMAT_VIDEO_SUPERTILE) {
+		if (overlay_version > 0) {
+			img = &req->plane1_data;
+			get_img(img, info, &start, &len, &p_src_plane1_file);
+			if (len == 0) {
+				mutex_unlock(&mfd->dma->ov_mutex);
+				pr_err("%s: Error to get plane1\n", __func__);
+				return -EINVAL;
+			}
+			pipe->srcp1_addr = start + img->offset;
+			*pp_src_plane1_file = p_src_plane1_file;
+		} else if (pipe->frame_format ==
+				MDP4_FRAME_FORMAT_VIDEO_SUPERTILE) {
 			struct tile_desc tile;
 
 			tile_samsung(&tile);
 			pipe->srcp1_addr = addr + tile_mem_size(pipe, &tile);
-		} else
-			pipe->srcp1_addr = addr +
-					pipe->src_width * pipe->src_height;
-
+		} else {
+			pipe->srcp1_addr = addr + (pipe->src_width *
+						pipe->src_height);
+		}
 		pipe->srcp0_ystride = pipe->src_width;
 		pipe->srcp1_ystride = pipe->src_width;
 	} else if (pipe->fetch_plane == OVERLAY_PLANE_PLANAR) {
-		addr += pipe->src_width * pipe->src_height;
-		pipe->srcp1_addr = addr;
-		addr += ((pipe->src_width / 2) * (pipe->src_height / 2));
-		pipe->srcp2_addr = addr;
+		if (overlay_version > 0) {
+			img = &req->plane1_data;
+			get_img(img, info, &start, &len, &p_src_plane1_file);
+			if (len == 0) {
+				mutex_unlock(&mfd->dma->ov_mutex);
+				pr_err("%s: Error to get plane1\n", __func__);
+				return -EINVAL;
+			}
+			pipe->srcp1_addr = start + img->offset;
+			*pp_src_plane1_file = p_src_plane1_file;
+
+			img = &req->plane2_data;
+			get_img(img, info, &start, &len, &p_src_plane2_file);
+			if (len == 0) {
+				mutex_unlock(&mfd->dma->ov_mutex);
+				pr_err("%s: Error to get plane2\n", __func__);
+				return -EINVAL;
+			}
+			pipe->srcp2_addr = start + img->offset;
+			*pp_src_plane2_file = p_src_plane2_file;
+		} else {
+			addr += (pipe->src_width * pipe->src_height);
+			pipe->srcp1_addr = addr;
+			addr += ((pipe->src_width / 2) *
+					(pipe->src_height / 2));
+			pipe->srcp2_addr = addr;
+		}
 		pipe->srcp0_ystride = pipe->src_width;
 		pipe->srcp1_ystride = pipe->src_width / 2;
 		pipe->srcp2_ystride = pipe->src_width / 2;

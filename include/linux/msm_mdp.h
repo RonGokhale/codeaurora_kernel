@@ -51,6 +51,7 @@
 						struct msmfb_overlay_3d)
 
 #define MDP_IMGTYPE2_START 0x10000
+#define MSMFB_DRIVER_VERSION	0xF9E8D701
 
 enum {
 	MDP_RGB_565,      /* RGB 565 planer */
@@ -189,6 +190,9 @@ struct msmfb_data {
 struct msmfb_overlay_data {
 	uint32_t id;
 	struct msmfb_data data;
+	uint32_t version_key;
+	struct msmfb_data plane1_data;
+	struct msmfb_data plane2_data;
 };
 
 struct msmfb_img {
