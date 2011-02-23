@@ -143,6 +143,7 @@ static enum power_supply_property bq20z75_properties[] = {
 	POWER_SUPPLY_PROP_CHARGE_NOW,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
+	POWER_SUPPLY_PROP_POWER_NOW,
 };
 
 struct bq20z75_info {
@@ -406,6 +407,32 @@ static int bq20z75_get_battery_capacity(struct i2c_client *client,
 	return 0;
 }
 
+static int bq20z75_get_power_now(struct i2c_client *client,
+	union power_supply_propval *val)
+{
+	int voltage_now = 0;
+	int current_now = 0;
+
+	voltage_now = bq20z75_read_word_data(client,
+		bq20z75_data[REG_VOLTAGE].addr);
+	if (voltage_now < 0)
+		return voltage_now;
+
+	current_now = bq20z75_read_word_data(client,
+		bq20z75_data[REG_CURRENT].addr);
+	if (current_now < 0)
+		return current_now;
+
+	/* returned values are 16 bit */
+	current_now = (s16)current_now;
+	/* need to ensure it is positive */
+	current_now = abs(current_now);
+
+	val->intval = voltage_now * current_now;
+
+	return 0;
+}
+
 static char bq20z75_serial[5];
 static int bq20z75_get_battery_serial_number(struct i2c_client *client,
 	union power_supply_propval *val)
@@ -473,6 +500,10 @@ static int bq20z75_get_property(struct power_supply *psy,
 		}
 
 		ret = bq20z75_get_battery_capacity(client, ps_index, psp, val);
+		break;
+
+	case POWER_SUPPLY_PROP_POWER_NOW:
+		ret = bq20z75_get_power_now(client, val);
 		break;
 
 	case POWER_SUPPLY_PROP_SERIAL_NUMBER:
