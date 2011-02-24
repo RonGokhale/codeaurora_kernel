@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -8,47 +8,73 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
- *
  */
-#include <linux/clk.h>
-#include <linux/err.h>
-#include <linux/module.h>
 
-struct clk *clk_get(struct device *dev, const char *id)
-{
-	return ERR_PTR(-ENOENT);
-}
-EXPORT_SYMBOL(clk_get);
+#include "clock.h"
 
-int clk_enable(struct clk *clk)
-{
-	return -ENOENT;
-}
-EXPORT_SYMBOL(clk_enable);
-
-void clk_disable(struct clk *clk)
-{
-}
-EXPORT_SYMBOL(clk_disable);
-
-unsigned long clk_get_rate(struct clk *clk)
+static int dummy_clk_enable(unsigned id)
 {
 	return 0;
 }
-EXPORT_SYMBOL(clk_get_rate);
 
-int clk_set_rate(struct clk *clk, unsigned long rate)
-{
-	return -ENOENT;
-}
-EXPORT_SYMBOL(clk_set_rate);
-
-void clk_put(struct clk *clk)
+static void dummy_clk_disable(unsigned id)
 {
 }
-EXPORT_SYMBOL(clk_put);
+
+static int dummy_clk_reset(unsigned id, enum clk_reset_action action)
+{
+	return 0;
+}
+
+static int dummy_clk_set_rate(unsigned id, unsigned rate)
+{
+	return 0;
+}
+
+static int dummy_clk_set_min_rate(unsigned id, unsigned rate)
+{
+	return 0;
+}
+
+static int dummy_clk_set_max_rate(unsigned id, unsigned rate)
+{
+	return 0;
+}
+
+static int dummy_clk_set_flags(unsigned id, unsigned flags)
+{
+	return 0;
+}
+
+static unsigned dummy_clk_get_rate(unsigned id)
+{
+	return 0;
+}
+
+static int dummy_clk_is_enabled(unsigned id)
+{
+	return 0;
+}
+
+static long dummy_clk_round_rate(unsigned id, unsigned rate)
+{
+	return rate;
+}
+
+struct clk_ops clk_ops_dummy = {
+	.enable = dummy_clk_enable,
+	.disable = dummy_clk_disable,
+	.reset = dummy_clk_reset,
+	.set_rate = dummy_clk_set_rate,
+	.set_min_rate = dummy_clk_set_min_rate,
+	.set_max_rate = dummy_clk_set_max_rate,
+	.set_flags = dummy_clk_set_flags,
+	.get_rate = dummy_clk_get_rate,
+	.is_enabled = dummy_clk_is_enabled,
+	.round_rate = dummy_clk_round_rate,
+};
+
+#if defined(CONFIG_ARCH_MSM8960)
+struct clk_ops clk_ops_remote = {
+};
+#endif

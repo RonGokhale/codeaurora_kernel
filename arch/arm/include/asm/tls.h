@@ -29,11 +29,11 @@
 #define has_tls_reg		1
 #define set_tls		set_tls_none
 #elif __LINUX_ARM_ARCH__ >= 7 ||					\
-	(__LINUX_ARM_ARCH__ == 6 && defined(CONFIG_CPU_32v6K))
+	(__LINUX_ARM_ARCH__ == 6 && defined(CONFIG_CPU_32v6K))  && !defined(CONFIG_ARCH_MSM7X27)
 #define tls_emu		0
 #define has_tls_reg		1
 #define set_tls		set_tls_v6k
-#elif __LINUX_ARM_ARCH__ == 6
+#elif __LINUX_ARM_ARCH__ == 6 && !defined(CONFIG_ARCH_MSM7X27)
 #define tls_emu		0
 #define has_tls_reg		(elf_hwcap & HWCAP_TLS)
 #define set_tls		set_tls_v6

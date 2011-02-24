@@ -383,6 +383,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	int err, ddr = 0;
 	u32 cid[4];
 	unsigned int max_dtr;
+	u32 rocr;
 
 	BUG_ON(!host);
 	WARN_ON(!host->claimed);
@@ -396,7 +397,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	mmc_go_idle(host);
 
 	/* The extra bit indicates that we support high capacity */
-	err = mmc_send_op_cond(host, ocr | (1 << 30), NULL);
+	err = mmc_send_op_cond(host, ocr | MMC_CARD_SECTOR_ADDR, &rocr);
 	if (err)
 		goto err;
 
@@ -486,6 +487,9 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 			goto free_card;
 		/* Erase size depends on CSD and Extended CSD */
 		mmc_set_erase_size(card);
+
+		if (card->ext_csd.sectors && (rocr & MMC_CARD_SECTOR_ADDR))
+			mmc_card_set_blockaddr(card);
 	}
 
 	/*

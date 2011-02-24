@@ -77,6 +77,7 @@ struct usb_mass_storage_platform_data {
 	char *product;
 	int release;
 
+	char can_stall;
 	/* number of LUNS */
 	int nluns;
 };
@@ -86,11 +87,6 @@ struct usb_ether_platform_data {
 	u8	ethaddr[ETH_ALEN];
 	u32	vendorID;
 	const char *vendorDescr;
-};
-
-/* Platform data for ACM driver. */
-struct acm_platform_data {
-	u8	num_inst;
 };
 
 extern void android_register_function(struct android_usb_function *f);

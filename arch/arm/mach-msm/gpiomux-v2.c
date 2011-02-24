@@ -8,18 +8,24 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
  */
+#include <linux/bitops.h>
 #include <linux/io.h>
 #include <mach/msm_iomap.h>
 #include "gpiomux.h"
 
-void __msm_gpiomux_write(unsigned gpio, gpiomux_config_t val)
+#define GPIO_CFG(n)    (MSM_TLMM_BASE + 0x1000 + (0x10 * n))
+#define GPIO_IN_OUT(n) (MSM_TLMM_BASE + 0x1004 + (0x10 * n))
+
+void __msm_gpiomux_write(unsigned gpio, struct gpiomux_setting val)
 {
-	writel(val & ~GPIOMUX_CTL_MASK,
-	       MSM_TLMM_BASE + 0x1000 + (0x10 * gpio));
+	uint32_t bits;
+
+	bits = (val.drv << 6) | (val.func << 2) | val.pull;
+	if (val.func == GPIOMUX_FUNC_GPIO) {
+		bits |= val.dir > GPIOMUX_IN ? BIT(9) : 0;
+		writel(val.dir == GPIOMUX_OUT_HIGH ? BIT(1) : 0,
+			GPIO_IN_OUT(gpio));
+	}
+	writel(bits, GPIO_CFG(gpio));
 }

@@ -147,8 +147,6 @@ source "drivers/staging/ti-st/Kconfig"
 
 source "drivers/staging/xgifb/Kconfig"
 
-source "drivers/staging/msm/Kconfig"
-
 source "drivers/staging/lirc/Kconfig"
 
 source "drivers/staging/smbfs/Kconfig"

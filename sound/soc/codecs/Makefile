@@ -70,6 +70,7 @@ snd-soc-wm9712-objs := wm9712.o
 snd-soc-wm9713-objs := wm9713.o
 snd-soc-wm-hubs-objs := wm_hubs.o
 snd-soc-jz4740-codec-objs := jz4740.o
+snd-soc-timpani-objs := timpani.o
 
 # Amp
 snd-soc-max9877-objs := max9877.o

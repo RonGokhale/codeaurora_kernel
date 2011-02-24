@@ -15,10 +15,10 @@
 
 #ifndef __ASM_ARCH_MSM_UNCOMPRESS_H
 
-#include "hardware.h"
 #include "linux/io.h"
 #include "mach/msm_iomap.h"
 
+#ifndef CONFIG_DEBUG_ICEDCC
 static void putc(int c)
 {
 #if defined(MSM_DEBUG_UART_PHYS)
@@ -27,6 +27,7 @@ static void putc(int c)
 	writel(c, base + 0x0c);
 #endif
 }
+#endif
 
 static inline void flush(void)
 {

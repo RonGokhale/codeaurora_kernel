@@ -204,7 +204,7 @@ armpmu_event_set_period(struct perf_event *event,
 static u64
 armpmu_event_update(struct perf_event *event,
 		    struct hw_perf_event *hwc,
-		    int idx)
+		    int idx, int overflow)
 {
 	int shift = 64 - 32;
 	s64 prev_raw_count, new_raw_count;
@@ -221,6 +221,9 @@ again:
 	delta = (new_raw_count << shift) - (prev_raw_count << shift);
 	delta >>= shift;
 
+	if (overflow && (new_raw_count - prev_raw_count) > 0)
+		delta += local64_read(&hwc->period_left) + prev_raw_count;
+
 	local64_add(delta, &event->count);
 	local64_sub(delta, &hwc->period_left);
 
@@ -236,7 +239,7 @@ armpmu_read(struct perf_event *event)
 	if (hwc->idx < 0)
 		return;
 
-	armpmu_event_update(event, hwc, hwc->idx);
+	armpmu_event_update(event, hwc, hwc->idx, 0);
 }
 
 static void
@@ -254,7 +257,7 @@ armpmu_stop(struct perf_event *event, int flags)
 	if (!(hwc->state & PERF_HES_STOPPED)) {
 		armpmu->disable(hwc, hwc->idx);
 		barrier(); /* why? */
-		armpmu_event_update(event, hwc, hwc->idx);
+		armpmu_event_update(event, hwc, hwc->idx, 0);
 		hwc->state |= PERF_HES_STOPPED | PERF_HES_UPTODATE;
 	}
 }
@@ -608,6 +611,7 @@ static struct pmu pmu = {
 #include "perf_event_xscale.c"
 #include "perf_event_v6.c"
 #include "perf_event_v7.c"
+#include "perf_event_msm.c"
 
 static int __init
 init_hw_perf_events(void)
@@ -643,6 +647,16 @@ init_hw_perf_events(void)
 			break;
 		case 2:
 			armpmu = xscale2pmu_init();
+			break;
+		}
+	/* Qualcomm CPUs */
+	} else if (0x51 == implementor) {
+		switch (part_number) {
+		case 0x00F0:    /* 8x50 & 7x30*/
+			armpmu = armv7_scorpion_pmu_init();
+			break;
+		case 0x02D0:    /* 8x60 */
+			armpmu = armv7_scorpionmp_pmu_init();
 			break;
 		}
 	}
