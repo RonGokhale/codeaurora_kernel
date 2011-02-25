@@ -989,18 +989,16 @@ static s32 acdb_send_calibration(void)
 {
 	s32 result = 0;
 
-	if ((acdb_data.device_info->dev_type & RX_DEVICE) == 1) {
+	if ((acdb_data.device_info->dev_type & RX_DEVICE) == 1)
 		result = acdb_calibrate_audpp();
+	else if ((acdb_data.device_info->dev_type & TX_DEVICE) == 2) {
+		result = acdb_calibrate_audpreproc();
 		if (result)
 			goto done;
-	} else if ((acdb_data.device_info->dev_type & TX_DEVICE) == 2) {
-		result = acdb_calibrate_audpreproc();
 		if (acdb_data.preproc_stream_id == 1)
 			acdb_data.audrec1_applied = 1;
 		else
 			acdb_data.audrec0_applied = 1;
-		if (result)
-			goto done;
 	}
 done:
 	return result;
