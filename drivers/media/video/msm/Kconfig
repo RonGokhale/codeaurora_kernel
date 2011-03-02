@@ -107,6 +107,16 @@ config QS_S5K4E1
 	---help---
 	  Samsung 5M with Autofocus
 
+config S5K4E1
+	bool "Sensor Sensor s5k4e1 (Samsung 5M)"
+	depends on MSM_CAMERA
+	default n
+	---help---
+	  Support for S5k4E1 samsung sensor driver.
+	  It is a Bayer 5MP sensor with auto focus and it supports
+	  two mipi lanes, required for msm7x2xA platform.
+	  Say Y here if this is msm7x2xA variant platform.
+
 config OV2720
 	bool "Sensor ov2720"
 	depends on MSM_CAMERA && ARCH_MSM8960 && !MSM_CAMERA_V4L2
