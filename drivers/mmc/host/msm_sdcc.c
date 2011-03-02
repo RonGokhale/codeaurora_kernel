@@ -1826,13 +1826,13 @@ msmsdcc_runtime_suspend(struct device *dev)
 			 */
 			mmc->ios.clock = 0;
 			mmc->ops->set_ios(host->mmc, &host->mmc->ios);
-		}
 
-		if ((mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ) && mmc->card &&
-				mmc->card->type == MMC_TYPE_SDIO) {
-			host->sdio_irq_disabled = 0;
-			enable_irq_wake(host->plat->sdiowakeup_irq);
-			enable_irq(host->plat->sdiowakeup_irq);
+			if ((mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ) &&
+				mmc->card && mmc->card->type == MMC_TYPE_SDIO) {
+				host->sdio_irq_disabled = 0;
+				enable_irq_wake(host->plat->sdiowakeup_irq);
+				enable_irq(host->plat->sdiowakeup_irq);
+			}
 		}
 		host->sdcc_suspending = 0;
 		mmc->suspend_task = NULL;
