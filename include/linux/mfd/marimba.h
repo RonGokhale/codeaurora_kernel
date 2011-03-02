@@ -70,6 +70,12 @@ enum chip_id {
 	CHIP_ID_MAX
 };
 
+enum bahama_version {
+	BAHAMA_VER_1_0,
+	BAHAMA_VER_2_0,
+	BAHAMA_VER_UNSUPPORTED = 0xFF
+};
+
 struct marimba{
 	struct i2c_client *client;
 
@@ -196,5 +202,5 @@ bool marimba_get_fm_status(struct marimba *);
 bool marimba_get_bt_status(struct marimba *);
 void marimba_set_fm_status(struct marimba *, bool);
 void marimba_set_bt_status(struct marimba *, bool);
-
+int marimba_read_bahama_ver(struct marimba *);
 #endif

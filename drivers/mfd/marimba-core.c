@@ -46,9 +46,35 @@ static bool bt_status;
 #define NUM_ADD	(MARIMBA_NUM_CHILD - 1)
 #endif
 
+
+/**
+ * marimba_read_bahama_ver - Reads Bahama version.
+ * @param marimba: marimba structure pointer passed by client
+ * @returns result of the operation.
+ */
+int marimba_read_bahama_ver(struct marimba *marimba)
+{
+	int rc;
+	u8 bahama_version;
+
+	rc = marimba_read_bit_mask(marimba, 0x00,  &bahama_version, 1, 0x1F);
+	if (rc < 0)
+		return rc;
+	switch (bahama_version) {
+	case 0x08: /* varient of bahama v1 */
+	case 0x10:
+	case 0x00:
+		return BAHAMA_VER_1_0;
+	case 0x09: /* variant of bahama v2 */
+		return BAHAMA_VER_2_0;
+	default:
+		return BAHAMA_VER_UNSUPPORTED;
+	}
+}
+EXPORT_SYMBOL(marimba_read_bahama_ver);
 /**
  * marimba_ssbi_write - Writes a n bit TSADC register in Marimba
- * @param mariba: marimba structure pointer passed by client
+ * @param marimba: marimba structure pointer passed by client
  * @param reg: register address
  * @param value: buffer to be written
  * @param len: num of bytes
@@ -111,7 +137,7 @@ EXPORT_SYMBOL(marimba_ssbi_read);
 
 /**
  * marimba_write_bit_mask - Sets n bit register using bit mask
- * @param mariba: marimba structure pointer passed by client
+ * @param marimba: marimba structure pointer passed by client
  * @param reg: register address
  * @param value: buffer to be written to the registers
  * @param num_bytes: n bytes to write
