@@ -26,6 +26,7 @@
 #include <linux/gpio_keys.h>
 #include <linux/i2c-tegra.h>
 #include <linux/clk.h>
+#include <linux/power/bq20z75.h>
 
 #include <sound/wm8903.h>
 
@@ -386,8 +387,13 @@ static struct i2c_board_info __initdata wm8903_device = {
 	.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_CDC_IRQ),
 };
 
+static struct bq20z75_platform_data bq20z75_pdata = {
+	.i2c_retry_count	= 2,
+};
+
 static struct i2c_board_info __initdata bq20z75_device = {
 	I2C_BOARD_INFO("bq20z75", 0x0b),
+	.platform_data	= &bq20z75_pdata,
 };
 
 static struct i2c_board_info __initdata ak8975_device = {
