@@ -31,7 +31,6 @@
 #include <linux/delay.h>
 #include <linux/input.h>
 #include <linux/gpio_keys.h>
-#include <linux/power/bq20z75.h>
 
 #include <mach/iomap.h>
 #include <mach/irqs.h>
@@ -283,6 +282,11 @@ static struct i2c_board_info __initdata isl29018_device = {
 	.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_ISL29018_IRQ),
 };
 
+static struct i2c_board_info __initdata bq20z75_device = {
+	I2C_BOARD_INFO("bq20z75", 0x0b),
+};
+
+
 static struct i2c_board_info __initdata adt7461_device = {
 	I2C_BOARD_INFO("adt7461", 0x4c),
 };
@@ -314,6 +318,8 @@ static void __init seaboard_i2c_init(void)
 	i2c_register_board_info(0, &wm8903_device, 1);
 	i2c_register_board_info(0, &isl29018_device, 1);
 
+	i2c_register_board_info(2, &bq20z75_device, 1);
+
 	i2c_register_board_info(4, &adt7461_device, 1);
 	i2c_register_board_info(4, &ak8975_device, 1);
 
@@ -326,6 +332,8 @@ static void __init kaen_i2c_init(void)
 
 	i2c_register_board_info(0, &wm8903_device, 1);
 	i2c_register_board_info(0, &isl29018_device, 1);
+
+	i2c_register_board_info(2, &bq20z75_device, 1);
 
 	i2c_register_board_info(4, &adt7461_device, 1);
 	i2c_register_board_info(4, &ak8975_device, 1);
@@ -463,20 +471,6 @@ static void seaboard_kbc_init(void)
 	platform_device_register(&seaboard_kbc_device);
 }
 
-static struct bq20z75_platform_data seaboard_battery_platform_data = {
-	.battery_detect		= TEGRA_GPIO_BATT_DETECT,
-	.i2c_retry_count	= 0,
-	.bus			= 2,
-};
-
-static struct platform_device seaboard_battery_device = {
-	.name		= "bq20z75-battery",
-	.id		= 0,
-	. dev = {
-		.platform_data	= &seaboard_battery_platform_data,
-	},
-};
-
 static struct platform_device *seaboard_devices[] __initdata = {
 	&debug_uart,
 	&tegra_rtc_device,
@@ -570,12 +564,6 @@ static void __init tegra_seaboard_init(void)
 	__tegra_seaboard_init();
 
 	seaboard_i2c_init();
-
-	/* seaboard's battery detect gpio isn't hooked up */
-	seaboard_battery_platform_data.battery_detect = -1;
-	seaboard_battery_platform_data.i2c_retry_count = 3;
-
-	platform_device_register(&seaboard_battery_device);
 }
 
 static void __init tegra_kaen_init(void)
@@ -588,9 +576,6 @@ static void __init tegra_kaen_init(void)
 	__tegra_seaboard_init();
 
 	kaen_i2c_init();
-	tegra_gpio_enable(TEGRA_GPIO_BATT_DETECT);
-	seaboard_battery_platform_data.i2c_retry_count = 3;
-	platform_device_register(&seaboard_battery_device);
 }
 
 
