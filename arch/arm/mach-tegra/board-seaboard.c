@@ -31,6 +31,7 @@
 #include <linux/delay.h>
 #include <linux/input.h>
 #include <linux/gpio_keys.h>
+#include <linux/power/bq20z75.h>
 
 #include <sound/wm8903.h>
 
@@ -301,10 +302,14 @@ static struct i2c_board_info __initdata isl29018_device = {
 	.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_ISL29018_IRQ),
 };
 
-static struct i2c_board_info __initdata bq20z75_device = {
-	I2C_BOARD_INFO("bq20z75", 0x0b),
+static struct bq20z75_platform_data bq20z75_pdata = {
+	.i2c_retry_count	= 2,
 };
 
+static struct i2c_board_info __initdata bq20z75_device = {
+	I2C_BOARD_INFO("bq20z75", 0x0b),
+	.platform_data	= &bq20z75_pdata,
+};
 
 static struct i2c_board_info __initdata adt7461_device = {
 	I2C_BOARD_INFO("adt7461", 0x4c),
@@ -352,6 +357,9 @@ static void __init kaen_i2c_init(void)
 	i2c_register_board_info(0, &wm8903_device, 1);
 	i2c_register_board_info(0, &isl29018_device, 1);
 
+	bq20z75_pdata.battery_detect = TEGRA_GPIO_BATT_DETECT;
+	/* battery present is low */
+	bq20z75_pdata.battery_detect_present = 0;
 	i2c_register_board_info(2, &bq20z75_device, 1);
 
 	i2c_register_board_info(4, &adt7461_device, 1);
