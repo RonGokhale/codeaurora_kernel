@@ -543,6 +543,7 @@ kgsl_yamato_init(struct kgsl_device *device, struct kgsl_devconfig *config)
 	device->interval_timeout = INTERVAL_YAMATO_TIMEOUT;
 
 	ATOMIC_INIT_NOTIFIER_HEAD(&device->ts_notifier_list);
+	INIT_LIST_HEAD(&device->memqueue);
 
 	pdata = kgsl_driver.pdev->dev.platform_data;
 
