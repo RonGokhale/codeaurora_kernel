@@ -368,6 +368,19 @@ static void __init kaen_i2c_init(void)
 	common_i2c_init();
 }
 
+static void __init aebl_i2c_init(void)
+{
+	seaboard_isl29018_init();
+
+	i2c_register_board_info(0, &wm8903_device, 1);
+	i2c_register_board_info(0, &isl29018_device, 1);
+
+	i2c_register_board_info(4, &adt7461_device, 1);
+	i2c_register_board_info(4, &ak8975_device, 1);
+
+	common_i2c_init();
+}
+
 static void __init wario_i2c_init(void)
 {
 	i2c_register_board_info(0, &wm8903_device, 1);
@@ -622,6 +635,17 @@ static void __init tegra_kaen_init(void)
 	kaen_i2c_init();
 }
 
+static void __init tegra_aebl_init(void)
+{
+	/* Aebl uses UARTB for the debug port. */
+	debug_uart_platform_data[0].membase = IO_ADDRESS(TEGRA_UARTB_BASE);
+	debug_uart_platform_data[0].mapbase = TEGRA_UARTB_BASE;
+	debug_uart_platform_data[0].irq = INT_UARTB;
+
+	__tegra_seaboard_init();
+
+	aebl_i2c_init();
+}
 
 static void __init tegra_wario_init(void)
 {
@@ -662,6 +686,14 @@ MACHINE_START(KAEN, "kaen")
 	.boot_params    = 0x00000100,
 	.init_irq       = tegra_init_irq,
 	.init_machine   = tegra_kaen_init,
+	.map_io         = tegra_map_common_io,
+	.timer          = &tegra_timer,
+MACHINE_END
+
+MACHINE_START(AEBL, "aebl")
+	.boot_params    = 0x00000100,
+	.init_irq       = tegra_init_irq,
+	.init_machine   = tegra_aebl_init,
 	.map_io         = tegra_map_common_io,
 	.timer          = &tegra_timer,
 MACHINE_END
