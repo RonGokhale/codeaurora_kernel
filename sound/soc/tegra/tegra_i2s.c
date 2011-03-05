@@ -104,7 +104,7 @@ static void tegra_i2s_debug_add(struct tegra_i2s *i2s, int id)
 	char name[] = DRV_NAME ".0";
 
 	snprintf(name, sizeof(name), DRV_NAME".%1d", id);
-	i2s->debug = debugfs_create_file(name, S_IRUGO, asoc_debugfs_root,
+	i2s->debug = debugfs_create_file(name, S_IRUGO, snd_soc_debugfs_root,
 						i2s, &tegra_i2s_debug_fops);
 }
 
@@ -386,7 +386,7 @@ static __devinit int tegra_i2s_platform_probe(struct platform_device *pdev)
 	snprintf(clk_name, sizeof(clk_name), DRV_NAME ".%d", pdev->id);
 	i2s->clk_i2s = clk_get_sys(clk_name, NULL);
 	if (IS_ERR(i2s->clk_i2s)) {
-		pr_err("Can't retrieve i2s clock\n");
+		dev_err(&pdev->dev, "Can't retrieve i2s clock\n");
 		ret = PTR_ERR(i2s->clk_i2s);
 		goto err_free;
 	}
@@ -500,3 +500,4 @@ module_exit(snd_tegra_i2s_exit);
 MODULE_AUTHOR("Stephen Warren <swarren@nvidia.com>");
 MODULE_DESCRIPTION("Tegra I2S ASoC driver");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:" DRV_NAME);
