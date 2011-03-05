@@ -16,8 +16,7 @@ config SND_TEGRA_SOC_I2S
 
 config SND_TEGRA_SOC_HARMONY
 	tristate "SoC Audio support for Tegra Harmony reference board"
-	depends on SND_TEGRA_SOC && I2C
-        depends on MACH_HARMONY || MACH_SEABOARD || MACH_VENTANA || MACH_WARIO
+	depends on SND_TEGRA_SOC && MACH_HARMONY && I2C
 	default m
 	select SND_TEGRA_SOC_I2S
 	select SND_SOC_WM8903
@@ -25,4 +24,3 @@ config SND_TEGRA_SOC_HARMONY
 	  Say Y or M here if you want to add support for SoC audio on the
 	  Tegra Harmony reference board.
 
-          This option also supports Seaboard, Ventana, and Wario for now.

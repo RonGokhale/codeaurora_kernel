@@ -144,8 +144,9 @@ static const struct file_operations tegra_das_debug_fops = {
 
 static void tegra_das_debug_add(struct tegra_das *das)
 {
-	das->debug = debugfs_create_file(DRV_NAME, S_IRUGO, asoc_debugfs_root,
-						das, &tegra_das_debug_fops);
+	das->debug = debugfs_create_file(DRV_NAME, S_IRUGO,
+					 snd_soc_debugfs_root, das,
+					 &tegra_das_debug_fops);
 }
 
 static void tegra_das_debug_remove(struct tegra_das *das)
@@ -261,3 +262,4 @@ module_exit(tegra_das_modexit);
 MODULE_AUTHOR("Stephen Warren <swarren@nvidia.com>");
 MODULE_DESCRIPTION("Tegra DAS driver");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:" DRV_NAME);
