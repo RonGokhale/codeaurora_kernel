@@ -294,7 +294,7 @@ static __devinit int tegra_snd_harmony_probe(struct platform_device *pdev)
 	struct harmony_audio_platform_data *pdata;
 	int ret;
 
-	if (!machine_is_harmony()) {
+	if (!machine_is_harmony() && !machine_is_ventana()) {
 		dev_err(&pdev->dev, "Not running on Tegra Harmony!\n");
 		return -ENODEV;
 	}
