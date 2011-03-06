@@ -33,6 +33,8 @@
 
 #define TPS_GPIO_WWAN_PWR		(TPS_GPIO_BASE + 2)
 
+#define GPIO_WM8903(_x_)		(TPS_GPIO_BASE + 4 + (_x_))
+
 void seaboard_pinmux_init(void);
 int seaboard_panel_init(void);
 void seaboard_sdhci_init(void);

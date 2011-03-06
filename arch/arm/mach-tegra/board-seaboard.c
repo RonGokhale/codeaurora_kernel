@@ -32,6 +32,9 @@
 #include <linux/input.h>
 #include <linux/gpio_keys.h>
 
+#include <sound/wm8903.h>
+
+#include <mach/seaboard_audio.h>
 #include <mach/iomap.h>
 #include <mach/irqs.h>
 #include <mach/pinmux.h>
@@ -273,8 +276,24 @@ static void seaboard_isl29018_init(void)
 	gpio_direction_input(TEGRA_GPIO_ISL29018_IRQ);
 }
 
+static struct wm8903_platform_data wm8903_pdata = {
+	.irq_active_low = 0,
+	.micdet_cfg = 0,
+	.micdet_delay = 100,
+	.gpio_base = GPIO_WM8903(0),
+	.gpio_cfg = {
+		WM8903_GPIO_NO_CONFIG,
+		WM8903_GPIO_NO_CONFIG,
+		0,
+		WM8903_GPIO_NO_CONFIG,
+		WM8903_GPIO_NO_CONFIG,
+	},
+};
+
 static struct i2c_board_info __initdata wm8903_device = {
 	I2C_BOARD_INFO("wm8903", 0x1a),
+	.platform_data = &wm8903_pdata,
+	.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PX3),
 };
 
 static struct i2c_board_info __initdata isl29018_device = {
@@ -471,6 +490,19 @@ static void seaboard_kbc_init(void)
 	platform_device_register(&seaboard_kbc_device);
 }
 
+static struct seaboard_audio_platform_data audio_pdata = {
+	.gpio_spkr_en = GPIO_WM8903(2),
+	.gpio_hp_det = TEGRA_GPIO_PX1,
+};
+
+static struct platform_device audio_device = {
+	.name = "tegra-snd-seaboard",
+	.id   = 0,
+	.dev  = {
+		.platform_data = &audio_pdata,
+	},
+};
+
 static struct platform_device *seaboard_devices[] __initdata = {
 	&debug_uart,
 	&tegra_rtc_device,
@@ -480,6 +512,7 @@ static struct platform_device *seaboard_devices[] __initdata = {
 	&tegra_i2s_device1,
 	&tegra_das_device,
 	&tegra_pcm_device,
+	&audio_device,
 	&tegra_avp_device,
 };
 
@@ -538,6 +571,9 @@ static void __init __tegra_seaboard_init(void)
 	tegra_init_suspend(&seaboard_suspend);
 
 	tegra_clk_init_from_table(seaboard_clk_init_table);
+
+	tegra_gpio_enable(audio_pdata.gpio_hp_det);
+	tegra_gpio_enable(TEGRA_IRQ_TO_GPIO(wm8903_device.irq));
 
 	platform_add_devices(seaboard_devices, ARRAY_SIZE(seaboard_devices));
 
