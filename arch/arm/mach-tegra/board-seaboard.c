@@ -705,12 +705,6 @@ static void __init tegra_wario_init(void)
 	}
 
 	wario_i2c_init();
-
-	/* seaboard's battery detect gpio isn't hooked up */
-	seaboard_battery_platform_data.battery_detect = -1;
-	seaboard_battery_platform_data.i2c_retry_count = 3;
-
-	platform_device_register(&seaboard_battery_device);
 }
 
 
