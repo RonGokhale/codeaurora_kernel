@@ -127,7 +127,7 @@ static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	{ "clk_d",	"clk_m",	24000000,	true},
 	{ "timer",	"clk_m",	12000000,	true},
 	{ "i2s2",	"clk_m",	12000000,	false},
-	{ "spdif_out",	"clk_m",	12000000,	false},
+	{ "spdif_out",	"pll_a_out0",	11289600,	false},
 	{ "spi",	"clk_m",	12000000,	false},
 	{ "xio",	"clk_m",	12000000,	false},
 	{ "twc",	"clk_m",	12000000,	false},
@@ -551,12 +551,19 @@ static struct platform_device audio_device = {
 	},
 };
 
+static struct platform_device spdif_dit_device = {
+	.name   = "spdif-dit",
+	.id     = -1,
+};
+
 static struct platform_device *seaboard_devices[] __initdata = {
 	&debug_uart,
 	&tegra_rtc_device,
 	&pmu_device,
 	&seaboard_gpio_keys_device,
 	&tegra_gart_device,
+	&tegra_spdif_device,
+	&spdif_dit_device,
 	&tegra_i2s_device1,
 	&tegra_das_device,
 	&tegra_pcm_device,
