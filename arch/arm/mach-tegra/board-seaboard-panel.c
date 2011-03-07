@@ -200,6 +200,7 @@ static struct tegra_dc_platform_data seaboard_disp1_pdata = {
 	.flags		= TEGRA_DC_FLAG_ENABLED,
 	.default_out	= &seaboard_disp1_out,
 	.fb		= &seaboard_fb_data,
+	.emc_clk_rate	= 300000000,
 };
 
 static struct nvhost_device seaboard_disp1_device = {
