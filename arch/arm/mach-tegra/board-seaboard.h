@@ -26,6 +26,7 @@
 #define TEGRA_GPIO_BACKLIGHT_VDD	TEGRA_GPIO_PW0
 #define TEGRA_GPIO_EN_VDD_PNL		TEGRA_GPIO_PC6
 #define TEGRA_GPIO_MAGNETOMETER		TEGRA_GPIO_PN5
+#define TEGRA_GPIO_NCT1008_THERM2_IRQ	TEGRA_GPIO_PN6
 #define TEGRA_GPIO_ISL29018_IRQ		TEGRA_GPIO_PZ2
 #define TEGRA_GPIO_AC_ONLINE		TEGRA_GPIO_PV3
 #define TEGRA_GPIO_BATT_DETECT		TEGRA_GPIO_PP2
@@ -35,6 +36,8 @@
 #define TPS_GPIO_WWAN_PWR		(TPS_GPIO_BASE + 2)
 
 #define GPIO_WM8903(_x_)		(TPS_GPIO_BASE + 4 + (_x_))
+
+extern void tegra_throttling_enable(bool enable);
 
 void seaboard_pinmux_init(void);
 int seaboard_panel_init(void);
