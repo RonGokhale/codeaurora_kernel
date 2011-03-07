@@ -180,4 +180,10 @@ int tegra_dc_sync_windows(struct tegra_dc_win *windows[], int n);
 
 int tegra_dc_set_mode(struct tegra_dc *dc, const struct tegra_dc_mode *mode);
 
+/*
+ * This sets the sample rate for all display controllers at once,
+ * since there is a single audio source routed to themn all.
+ */
+int tegra_dc_hdmi_set_audio_sample_rate(unsigned audio_freq);
+
 #endif
