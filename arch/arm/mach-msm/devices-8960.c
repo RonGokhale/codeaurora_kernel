@@ -23,6 +23,7 @@
 #include <mach/msm_hsusb.h>
 #include <mach/msm_sps.h>
 #include <mach/rpm.h>
+#include <mach/msm_bus_board.h>
 
 #include "clock.h"
 #include "devices.h"
@@ -1445,3 +1446,25 @@ struct msm_rpm_map_data rpm_map_data[] __initdata = {
 
 };
 unsigned int rpm_map_data_size = ARRAY_SIZE(rpm_map_data);
+#ifdef CONFIG_MSM_BUS_SCALING
+struct platform_device msm_bus_sys_fabric = {
+	.name  = "msm_bus_fabric",
+	.id    =  MSM_BUS_FAB_SYSTEM,
+};
+struct platform_device msm_bus_apps_fabric = {
+	.name  = "msm_bus_fabric",
+	.id    = MSM_BUS_FAB_APPSS,
+};
+struct platform_device msm_bus_mm_fabric = {
+	.name  = "msm_bus_fabric",
+	.id    = MSM_BUS_FAB_MMSS,
+};
+struct platform_device msm_bus_sys_fpb = {
+	.name  = "msm_bus_fabric",
+	.id    = MSM_BUS_FAB_SYSTEM_FPB,
+};
+struct platform_device msm_bus_cpss_fpb = {
+	.name  = "msm_bus_fabric",
+	.id    = MSM_BUS_FAB_CPSS_FPB,
+};
+#endif

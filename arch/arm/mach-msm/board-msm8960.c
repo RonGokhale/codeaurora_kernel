@@ -43,6 +43,7 @@
 #include <mach/rpm.h>
 #include <mach/irqs.h>
 #include <mach/gpio.h>
+#include <mach/msm_bus_board.h>
 
 #ifdef CONFIG_WCD9310_CODEC
 #include <linux/slimbus/slimbus.h>
@@ -632,6 +633,22 @@ static void __init msm8960_init_mmc(void)
 #endif
 }
 
+static void __init msm8960_init_buses(void)
+{
+#ifdef CONFIG_MSM_BUS_SCALING
+	msm_bus_apps_fabric_pdata.rpm_enabled = 1;
+	msm_bus_sys_fabric_pdata.rpm_enabled = 1;
+	msm_bus_mm_fabric_pdata.rpm_enabled = 1;
+	msm_bus_sys_fpb_pdata.rpm_enabled = 1;
+	msm_bus_cpss_fpb_pdata.rpm_enabled = 1;
+	msm_bus_apps_fabric.dev.platform_data = &msm_bus_apps_fabric_pdata;
+	msm_bus_sys_fabric.dev.platform_data = &msm_bus_sys_fabric_pdata;
+	msm_bus_mm_fabric.dev.platform_data = &msm_bus_mm_fabric_pdata;
+	msm_bus_sys_fpb.dev.platform_data = &msm_bus_sys_fpb_pdata;
+	msm_bus_cpss_fpb.dev.platform_data = &msm_bus_cpss_fpb_pdata;
+#endif
+}
+
 static struct msm_spi_platform_data msm8960_qup_spi_gsbi1_pdata = {
 	.max_clock_speed = 26000000,
 };
@@ -897,6 +914,13 @@ static struct platform_device *sim_devices[] __initdata = {
 #endif
 	&mipi_dsi_simulator_panel_device,
 	&msm_fb_device,
+#ifdef CONFIG_MSM_BUS_SCALING
+	&msm_bus_apps_fabric,
+	&msm_bus_sys_fabric,
+	&msm_bus_mm_fabric,
+	&msm_bus_sys_fpb,
+	&msm_bus_cpss_fpb,
+#endif
 };
 
 static struct platform_device *rumi3_devices[] __initdata = {
@@ -1264,6 +1288,7 @@ static void __init msm8960_sim_init(void)
 	gpiomux_init();
 	msm8960_i2c_init();
 	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
+	msm8960_init_buses();
 	platform_add_devices(sim_devices, ARRAY_SIZE(sim_devices));
 	msm_acpu_clock_init(&msm8960_acpu_clock_data);
 	msm8960_init_mmc();
