@@ -39,6 +39,9 @@
 
 extern void tegra_throttling_enable(bool enable);
 
+//for Cypress Trackpad gpio interrupt.
+#define TEGRA_GPIO_CYTP_INT		TEGRA_GPIO_PW2
+
 void seaboard_pinmux_init(void);
 int seaboard_panel_init(void);
 void seaboard_sdhci_init(void);
