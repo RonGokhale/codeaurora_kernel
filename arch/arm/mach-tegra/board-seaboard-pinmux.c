@@ -240,6 +240,7 @@ static struct tegra_gpio_table common_gpio_table[] = {
 	{ .gpio = TEGRA_GPIO_BT_RESET,		.enable = true },
 	{ .gpio = TEGRA_GPIO_BT_SHUTDOWN,	.enable = true },
 	{ .gpio = TEGRA_GPIO_HDMI_HPD,		.enable = true },
+	{ .gpio = TEGRA_GPIO_CYTP_INT,		.enable = true },
 };
 
 static void __init update_pinmux(struct tegra_pingroup_config *newtbl, int size)

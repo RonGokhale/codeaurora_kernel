@@ -493,6 +493,12 @@ static __initdata struct tegra_pingroup_config mxt_pinmux_config[] = {
 	{TEGRA_PINGROUP_LVP0,  TEGRA_MUX_RSVD4,         TEGRA_PUPD_NORMAL,    TEGRA_TRI_NORMAL},
 };
 
+static struct i2c_board_info __initdata cyapa_device = {
+	I2C_BOARD_INFO("cyapa", 0x67),
+	.irq		= TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_CYTP_INT),
+	.flags		= I2C_CLIENT_WAKE,
+};
+
 static int seaboard_ehci_init(void)
 {
 	int gpio_status;
@@ -538,10 +544,14 @@ static void __init seaboard_i2c_init(void)
 	gpio_request(TEGRA_GPIO_NCT1008_THERM2_IRQ, "temp_alert");
 	gpio_direction_input(TEGRA_GPIO_NCT1008_THERM2_IRQ);
 
+	gpio_request(TEGRA_GPIO_CYTP_INT, "gpio_cytp_int");
+	gpio_direction_input(TEGRA_GPIO_CYTP_INT);
+
 	i2c_register_board_info(0, &isl29018_device, 1);
 	i2c_register_board_info(0, &wm8903_device, 1);
 	i2c_register_board_info(0, &mxt_device, 1);
 	i2c_register_board_info(0, &mpu3050_device, 1);
+	i2c_register_board_info(0, &cyapa_device, 1);
 
 	i2c_register_board_info(2, &bq20z75_device, 1);
 
