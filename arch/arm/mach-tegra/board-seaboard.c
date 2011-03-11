@@ -33,6 +33,7 @@
 #include <linux/gpio_keys.h>
 #include <linux/power/bq20z75.h>
 #include <linux/nct1008.h>
+#include <linux/cyapa.h>
 
 #include <sound/wm8903.h>
 
@@ -214,6 +215,21 @@ static struct tegra_ehci_platform_data tegra_ehci_pdata[] = {
 	},
 };
 
+
+static struct cyapa_platform_data cyapa_i2c_platform_data = {
+	.flag				= 0,
+	.gen				= CYAPA_GEN2,
+	.power_state			= CYAPA_PWR_ACTIVE,
+	.use_absolute_mode		= false,
+	.use_polling_mode		= false,
+	.polling_interval_time_active	= CYAPA_ACTIVE_POLLING_INTVAL_TIME,
+	.polling_interval_time_lowpower	= CYAPA_LOWPOWER_POLLING_INTVAL_TIME,
+	.active_touch_timeout		= CYAPA_ACTIVE_TOUCH_TIMEOUT,
+	.name				= CYAPA_I2C_NAME,
+	.irq_gpio			= TEGRA_GPIO_CYTP_INT,
+	.report_rate			= CYAPA_REPORT_RATE,
+};
+
 static struct tegra_i2c_platform_data seaboard_i2c1_platform_data = {
 	.adapter_nr	= 0,
 	.bus_count	= 1,
@@ -343,6 +359,12 @@ static struct i2c_board_info __initdata ak8975_device = {
 	.irq		= TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_MAGNETOMETER),
 };
 
+static struct i2c_board_info __initdata cyapa_device = {
+	I2C_BOARD_INFO("cypress_i2c_apa", 0x67),
+	.irq		= TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_CYTP_INT),
+	.platform_data	= &cyapa_i2c_platform_data,
+};
+
 static void __init common_i2c_init(void)
 {
 	tegra_i2c_device1.dev.platform_data = &seaboard_i2c1_platform_data;
@@ -379,8 +401,13 @@ static void __init kaen_i2c_init(void)
 	seaboard_isl29018_init();
 	seaboard_nct1008_init();
 
+	tegra_gpio_enable(TEGRA_GPIO_CYTP_INT);
+	gpio_request(TEGRA_GPIO_CYTP_INT, "gpio_cytp_int");
+	gpio_direction_input(TEGRA_GPIO_CYTP_INT);
+
 	i2c_register_board_info(0, &wm8903_device, 1);
 	i2c_register_board_info(0, &isl29018_device, 1);
+	i2c_register_board_info(0, &cyapa_device, 1);
 
 	bq20z75_pdata.battery_detect = TEGRA_GPIO_BATT_DETECT;
 	/* battery present is low */
@@ -398,8 +425,13 @@ static void __init aebl_i2c_init(void)
 	seaboard_isl29018_init();
 	seaboard_nct1008_init();
 
+	tegra_gpio_enable(TEGRA_GPIO_CYTP_INT);
+	gpio_request(TEGRA_GPIO_CYTP_INT, "gpio_cytp_int");
+	gpio_direction_input(TEGRA_GPIO_CYTP_INT);
+
 	i2c_register_board_info(0, &wm8903_device, 1);
 	i2c_register_board_info(0, &isl29018_device, 1);
+	i2c_register_board_info(0, &cyapa_device, 1);
 
 	i2c_register_board_info(4, &nct1008_device, 1);
 	i2c_register_board_info(4, &ak8975_device, 1);
@@ -411,8 +443,13 @@ static void __init wario_i2c_init(void)
 {
 	seaboard_nct1008_init();
 
+	tegra_gpio_enable(TEGRA_GPIO_CYTP_INT);
+	gpio_request(TEGRA_GPIO_CYTP_INT, "gpio_cytp_int");
+	gpio_direction_input(TEGRA_GPIO_CYTP_INT);
+
 	i2c_register_board_info(0, &wm8903_device, 1);
 	i2c_register_board_info(0, &isl29018_device, 1);
+	i2c_register_board_info(0, &cyapa_device, 1);
 
 	i2c_register_board_info(2, &bq20z75_device, 1);
 
