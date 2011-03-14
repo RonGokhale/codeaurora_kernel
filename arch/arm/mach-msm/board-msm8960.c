@@ -19,6 +19,10 @@
 #include <linux/msm_ssbi.h>
 #include <linux/mfd/pm8xxx/pm8921.h>
 #include <linux/spi/spi.h>
+#include <linux/bootmem.h>
+#ifdef CONFIG_ANDROID_PMEM
+#include <linux/android_pmem.h>
+#endif
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -214,6 +218,86 @@ static struct msm_gpiomux_config msm8960_cam_configs[] __initdata = {
 	},
 };
 
+
+#define MSM_PMEM_KERNEL_EBI1_SIZE  0x110C000
+#define MSM_PMEM_ADSP_SIZE         0x12000
+
+#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
+static unsigned pmem_kernel_ebi1_size = MSM_PMEM_KERNEL_EBI1_SIZE;
+static int __init pmem_kernel_ebi1_size_setup(char *p)
+{
+	pmem_kernel_ebi1_size = memparse(p, NULL);
+	return 0;
+}
+early_param("pmem_kernel_ebi1_size", pmem_kernel_ebi1_size_setup);
+#endif
+
+#ifdef CONFIG_ANDROID_PMEM
+static unsigned pmem_adsp_size = MSM_PMEM_ADSP_SIZE;
+
+static int __init pmem_adsp_size_setup(char *p)
+{
+	pmem_adsp_size = memparse(p, NULL);
+	return 0;
+}
+early_param("pmem_adsp_size", pmem_adsp_size_setup);
+#endif
+
+#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
+static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
+	.name = PMEM_KERNEL_EBI1_DATA_NAME,
+	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
+	.cached = 0,
+};
+
+static struct platform_device android_pmem_kernel_ebi1_device = {
+	.name = "android_pmem",
+	.id = 1,
+	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
+};
+#endif
+
+#ifdef CONFIG_ANDROID_PMEM
+static struct android_pmem_platform_data android_pmem_adsp_pdata = {
+	.name = "pmem_adsp",
+	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
+	.cached = 0,
+};
+static struct platform_device android_pmem_adsp_device = {
+	.name = "android_pmem",
+	.id = 2,
+	.dev = { .platform_data = &android_pmem_adsp_pdata },
+};
+#endif
+
+
+static void __init msm8960_allocate_memory_regions(void)
+{
+#if defined CONFIG_KERNEL_PMEM_EBI_REGION || defined CONFIG_ANDROID_PMEM
+	void *addr;
+	unsigned long size;
+#endif
+#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
+	size = pmem_kernel_ebi1_size;
+	if (size) {
+		addr = alloc_bootmem_align(size, SZ_1M);
+		android_pmem_kernel_ebi1_pdata.start = __pa(addr);
+		android_pmem_kernel_ebi1_pdata.size = size;
+		pr_info("allocating %lu bytes at %p (%lx physical) for kernel"
+			" ebi1 pmem arena\n", size, addr, __pa(addr));
+	}
+#endif
+#ifdef CONFIG_ANDROID_PMEM
+	size = pmem_adsp_size;
+	if (size) {
+		addr = alloc_bootmem(size);
+		android_pmem_adsp_pdata.start = __pa(addr);
+		android_pmem_adsp_pdata.size = size;
+		pr_info("allocating %lu bytes at %p (%lx physical) for adsp "
+			"pmem arena\n", size, addr, __pa(addr));
+	}
+#endif
+}
 
 static int __init gpiomux_init(void)
 {
@@ -566,6 +650,12 @@ static struct platform_device *sim_devices[] __initdata = {
 	&fish_battery_device,
 #endif
 	&msm_device_vidc,
+#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
+	&android_pmem_kernel_ebi1_device,
+#endif
+#ifdef CONFIG_ANDROID_PMEM
+	&android_pmem_adsp_device,
+#endif
 };
 
 static struct platform_device *rumi3_devices[] __initdata = {
@@ -587,6 +677,12 @@ static struct platform_device *rumi3_devices[] __initdata = {
 	&msm_device_sps,
 #ifdef CONFIG_MSM_FAKE_BATTERY
 	&fish_battery_device,
+#endif
+#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
+	&android_pmem_kernel_ebi1_device,
+#endif
+#ifdef CONFIG_ANDROID_PMEM
+	&android_pmem_adsp_device,
 #endif
 };
 
@@ -965,6 +1061,7 @@ MACHINE_START(MSM8960_SIM, "QCT MSM8960 SIMULATOR")
 	.init_irq = msm8960_init_irq,
 	.timer = &msm_timer,
 	.init_machine = msm8960_sim_init,
+	.init_early = msm8960_allocate_memory_regions,
 MACHINE_END
 
 MACHINE_START(MSM8960_RUMI3, "QCT MSM8960 RUMI3")
@@ -972,4 +1069,5 @@ MACHINE_START(MSM8960_RUMI3, "QCT MSM8960 RUMI3")
 	.init_irq = msm8960_init_irq,
 	.timer = &msm_timer,
 	.init_machine = msm8960_rumi3_init,
+	.init_early = msm8960_allocate_memory_regions,
 MACHINE_END
