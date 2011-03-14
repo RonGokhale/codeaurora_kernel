@@ -779,6 +779,9 @@ static void __init tegra_kaen_init(void)
 	debug_uart_platform_data[0].mapbase = TEGRA_UARTB_BASE;
 	debug_uart_platform_data[0].irq = INT_UARTB;
 
+	seaboard_kbc_platform_data.plain_keycode = cros_kbd_keycode;
+	seaboard_kbc_platform_data.fn_keycode = cros_kbd_keycode;
+
 	__tegra_seaboard_init();
 
 	kaen_i2c_init();
@@ -790,6 +793,9 @@ static void __init tegra_aebl_init(void)
 	debug_uart_platform_data[0].membase = IO_ADDRESS(TEGRA_UARTB_BASE);
 	debug_uart_platform_data[0].mapbase = TEGRA_UARTB_BASE;
 	debug_uart_platform_data[0].irq = INT_UARTB;
+
+	seaboard_kbc_platform_data.plain_keycode = cros_kbd_keycode;
+	seaboard_kbc_platform_data.fn_keycode = cros_kbd_keycode;
 
 	__tegra_seaboard_init();
 
