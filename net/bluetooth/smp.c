@@ -366,13 +366,18 @@ static u8 smp_cmd_pairing_random(struct l2cap_conn *conn, struct sk_buff *skb)
 	}
 
 	if (conn->hcon->out) {
+		__le16 ediv;
+		u8 rand[8];
+
 		smp_s1(tfm, conn->tk, random, conn->prnd, key);
 		swap128(key, hcon->ltk);
 
 		memset(hcon->ltk + conn->smp_key_size, 0,
 				SMP_MAX_ENC_KEY_SIZE - conn->smp_key_size);
 
-		hci_le_start_enc(hcon, hcon->ltk);
+		memset(rand, 0, sizeof(rand));
+		ediv = 0;
+		hci_le_start_enc(hcon, ediv, rand, hcon->ltk);
 	} else {
 		u8 r[16];
 
