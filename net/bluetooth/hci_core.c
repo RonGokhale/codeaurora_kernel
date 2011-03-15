@@ -1049,6 +1049,50 @@ struct link_key *hci_find_link_key(struct hci_dev *hdev, bdaddr_t *bdaddr)
 	return NULL;
 }
 
+struct link_key *hci_find_ltk(struct hci_dev *hdev, __le16 ediv, u8 rand[8])
+{
+	struct list_head *p;
+
+	list_for_each(p, &hdev->link_keys) {
+		struct link_key *k;
+		struct key_master_id *id;
+
+		k = list_entry(p, struct link_key, list);
+
+		if (k->type != KEY_TYPE_LTK)
+			continue;
+
+		if (k->dlen != sizeof(*id))
+			continue;
+
+		id = (void *) &k->data;
+		if (id->ediv == ediv &&
+				(memcmp(rand, id->rand, sizeof(id->rand)) == 0))
+			return k;
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL(hci_find_ltk);
+
+struct link_key *hci_find_link_key_type(struct hci_dev *hdev,
+					bdaddr_t *bdaddr, u8 type)
+{
+	struct list_head *p;
+
+	list_for_each(p, &hdev->link_keys) {
+		struct link_key *k;
+
+		k = list_entry(p, struct link_key, list);
+
+		if ((k->type == type) && (bacmp(bdaddr, &k->bdaddr) == 0))
+			return k;
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL(hci_find_link_key_type);
+
 int hci_add_link_key(struct hci_dev *hdev, int new_key, bdaddr_t *bdaddr,
 						u8 *val, u8 type, u8 pin_len)
 {
@@ -1079,6 +1123,43 @@ int hci_add_link_key(struct hci_dev *hdev, int new_key, bdaddr_t *bdaddr,
 
 	if (type == 0x06)
 		key->type = old_key_type;
+
+	return 0;
+}
+
+int hci_add_ltk(struct hci_dev *hdev, int new_key, bdaddr_t *bdaddr,
+					__le16 ediv, u8 rand[8], u8 ltk[16])
+{
+	struct link_key *key, *old_key;
+	struct key_master_id *id;
+	u8 old_key_type;
+
+	BT_DBG("%s addr %s", hdev->name, batostr(bdaddr));
+
+	old_key = hci_find_link_key_type(hdev, bdaddr, KEY_TYPE_LTK);
+	if (old_key) {
+		key = old_key;
+		old_key_type = old_key->type;
+	} else {
+		key = kzalloc(sizeof(*key) + sizeof(*id), GFP_ATOMIC);
+		if (!key)
+			return -ENOMEM;
+		list_add(&key->list, &hdev->link_keys);
+		old_key_type = 0xff;
+	}
+
+	key->dlen = sizeof(*id);
+
+	bacpy(&key->bdaddr, bdaddr);
+	memcpy(key->val, ltk, sizeof(key->val));
+	key->type = KEY_TYPE_LTK;
+
+	id = (void *) &key->data;
+	id->ediv = ediv;
+	memcpy(id->rand, rand, sizeof(id->rand));
+
+	if (new_key)
+		mgmt_new_key(hdev->id, key, old_key_type);
 
 	return 0;
 }
