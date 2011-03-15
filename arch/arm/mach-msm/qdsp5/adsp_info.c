@@ -1,6 +1,6 @@
 /* arch/arm/mach-msm/adsp_info.c
  *
- * Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2008-2009, 2011 Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -104,6 +104,9 @@ static struct adsp_module_info module_info[] = {
 	QDSP_MODULE(VIDEO_AMR_TURBO, NULL, 0, NULL, NULL),
 	QDSP_MODULE(WM_TURBO_MODE, NULL, 0, NULL, NULL),
 	QDSP_MODULE(VDEC_LP_MODE_TURBO, NULL, 0, NULL, NULL),
+#if defined(CONFIG_MSM7X27A_AUDIO)
+	QDSP_MODULE(AUDREC1TASK, NULL, 0, NULL, NULL),
+#endif
 #else
 	QDSP_MODULE(AFETASK , NULL, 0, NULL, NULL),
 	QDSP_MODULE(AUDREC0TASK, NULL, 0, NULL, NULL),
