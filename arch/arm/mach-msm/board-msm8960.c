@@ -1355,7 +1355,7 @@ static void __init msm8960_sim_init(void)
 	BUG_ON(msm_rpm_init(&msm_rpm_data));
 #endif
 
-	msm_clock_init(msm_clocks_8960, msm_num_clocks_8960);
+	msm_clock_init(msm_clocks_8960_dummy, msm_num_clocks_8960_dummy);
 	msm8960_device_ssbi_pm8921.dev.platform_data =
 				&msm8960_ssbi_pm8921_pdata;
 	pm8921_platform_data.num_regulators = msm_pm8921_regulator_pdata_len;
@@ -1400,7 +1400,7 @@ static void __init msm8960_rumi3_init(void)
 	BUG_ON(msm_rpm_init(&msm_rpm_data));
 #endif
 
-	msm_clock_init(msm_clocks_8960, msm_num_clocks_8960);
+	msm_clock_init(msm_clocks_8960_dummy, msm_num_clocks_8960_dummy);
 	gpiomux_init();
 	ethernet_init();
 	msm8960_device_ssbi_pm8921.dev.platform_data =
