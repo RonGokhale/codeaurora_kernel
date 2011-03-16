@@ -459,15 +459,11 @@ static void msm_otg_start_host(struct otg_transceiver *otg, int on)
 		 */
 		if (pdata->setup_gpio)
 			pdata->setup_gpio(OTG_STATE_A_HOST);
-#ifdef CONFIG_USB
 		usb_add_hcd(hcd, hcd->irq, IRQF_SHARED);
-#endif
 	} else {
 		dev_dbg(otg->dev, "host off\n");
 
-#ifdef CONFIG_USB
 		usb_remove_hcd(hcd);
-#endif
 		if (pdata->setup_gpio)
 			pdata->setup_gpio(OTG_STATE_UNDEFINED);
 		if (pdata->vbus_power)
