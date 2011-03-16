@@ -1605,6 +1605,7 @@ usb_maxpacket(struct usb_device *udev, int pipe, int is_out)
 #define USB_DEVICE_REMOVE	0x0002
 #define USB_BUS_ADD		0x0003
 #define USB_BUS_REMOVE		0x0004
+#define USB_DEVICE_CONFIG	0x0005
 
 #ifdef CONFIG_USB
 extern void usb_register_notify(struct notifier_block *nb);
