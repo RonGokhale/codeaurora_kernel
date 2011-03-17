@@ -449,14 +449,20 @@ void mdp4_mddi_kickoff_ui(struct msm_fb_data_type *mfd,
 {
 
 	if (mdp4_overlay_mixer_play(mddi_pipe->mixer_num) > 0) {
+		INIT_COMPLETION(mddi_delay_comp);
 #ifdef MDDI_TIMER
 		mddi_add_delay_timer(10);
 #endif
 		atomic_set(&mddi_delay_kickoff_cnt, 1);
-		INIT_COMPLETION(mddi_delay_comp);
 		mutex_unlock(&mfd->dma->ov_mutex);
 		wait_for_completion_killable(&mddi_delay_comp);
 		mutex_lock(&mfd->dma->ov_mutex);
+		/*
+		 * since mutex had been unlocked and locked again,
+		 * check dma busy is necessary to prevent dma
+		 * bging kicked off twice
+		 */
+		mdp4_mddi_dma_busy_wait(mfd, pipe);
 	}
 
 	mdp4_mddi_overlay_kickoff(mfd, pipe);
