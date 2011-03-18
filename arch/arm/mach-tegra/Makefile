@@ -33,6 +33,7 @@ obj-${CONFIG_MACH_PAZ00}		+= board-paz00-pinmux.o
 
 obj-${CONFIG_MACH_SEABOARD}             += board-seaboard.o
 obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-pinmux.o
+obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-power.o
 
 obj-${CONFIG_MACH_TEGRA_DT}             += board-dt.o
 obj-${CONFIG_MACH_TEGRA_DT}             += board-harmony-pinmux.o

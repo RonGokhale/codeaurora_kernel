@@ -198,6 +198,7 @@ static struct tegra_gpio_table common_gpio_table[] = {
 	{ .gpio = TEGRA_GPIO_USB1,		.enable = true },
 	{ .gpio = TEGRA_GPIO_NCT1008_THERM2_IRQ,.enable = true },
 	{ .gpio = TEGRA_GPIO_WLAN_POWER,	.enable = true },
+	{ .gpio = TEGRA_GPIO_AC_ONLINE,		.enable = true },
 };
 
 static void __init update_pinmux(struct tegra_pingroup_config *newtbl, int size)

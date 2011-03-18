@@ -46,5 +46,6 @@
 #define TEGRA_GPIO_WLAN_POWER		TEGRA_GPIO_PK6
 
 void seaboard_pinmux_init(void);
+int seaboard_power_init(void);
 
 #endif
