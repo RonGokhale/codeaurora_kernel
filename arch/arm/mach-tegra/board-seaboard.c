@@ -743,7 +743,6 @@ static void __init __tegra_seaboard_init(void)
 	tegra_clk_init_from_table(seaboard_clk_init_table);
 
 	tegra_gpio_enable(audio_pdata.gpio_hp_det);
-	tegra_gpio_enable(TEGRA_IRQ_TO_GPIO(wm8903_device.irq));
 
 	platform_add_devices(seaboard_devices, ARRAY_SIZE(seaboard_devices));
 
