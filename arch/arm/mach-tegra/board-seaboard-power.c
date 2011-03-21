@@ -237,6 +237,7 @@ int __init seaboard_ac_power_init(void)
 	int err;
 
 	tegra_gpio_enable(TEGRA_GPIO_AC_ONLINE);
+	tegra_gpio_enable(TEGRA_GPIO_DISABLE_CHARGER);
 
 	err = gpio_request(TEGRA_GPIO_AC_ONLINE, "ac online");
 	if (err < 0) {
@@ -244,6 +245,14 @@ int __init seaboard_ac_power_init(void)
 	} else {
 		gpio_direction_input(TEGRA_GPIO_AC_ONLINE);
 		gpio_free(TEGRA_GPIO_AC_ONLINE);
+	}
+
+	err = gpio_request(TEGRA_GPIO_DISABLE_CHARGER, "disable charger");
+	if (err < 0) {
+		pr_err("could not acquire charger disable\n");
+	} else {
+		gpio_direction_output(TEGRA_GPIO_DISABLE_CHARGER, 0);
+		gpio_free(TEGRA_GPIO_DISABLE_CHARGER);
 	}
 
 	err = platform_device_register(&seaboard_ac_power_device);
