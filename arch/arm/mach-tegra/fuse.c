@@ -63,6 +63,7 @@ static const char *tegra_revision_name[TEGRA_REVISION_MAX] = {
 	[TEGRA_REVISION_A02] = "A02",
 	[TEGRA_REVISION_A03] = "A03",
 	[TEGRA_REVISION_A03p] = "A03 prime",
+	[TEGRA_REVISION_A04] = "A04",
 };
 
 static void fuse_dma_complete(struct tegra_dma_req *req)
@@ -294,6 +295,8 @@ enum tegra_revision tegra_get_revision(void)
 			return TEGRA_REVISION_A03p;
 		else
 			return TEGRA_REVISION_A03;
+	case 4:
+		return TEGRA_REVISION_A04;
 	default:
 		return TEGRA_REVISION_UNKNOWN;
 	}
