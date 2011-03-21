@@ -116,31 +116,6 @@ static int seaboard_panel_disable(void)
 	return 0;
 }
 
-static struct regulator *seaboard_hdmi_reg;
-static struct regulator *seaboard_hdmi_pll;
-
-static int seaboard_hdmi_enable(void)
-{
-	if (WARN_ON(!seaboard_hdmi_reg || !seaboard_hdmi_pll))
-		return -ENODEV;
-
-	gpio_set_value(seaboard_hdmi_enb, 1);
-	regulator_enable(seaboard_hdmi_reg);
-	regulator_enable(seaboard_hdmi_pll);
-	return 0;
-}
-
-static int seaboard_hdmi_disable(void)
-{
-	if (WARN_ON(!seaboard_hdmi_reg || !seaboard_hdmi_pll))
-		return -ENODEV;
-
-	gpio_set_value(seaboard_hdmi_enb, 0);
-	regulator_disable(seaboard_hdmi_reg);
-	regulator_disable(seaboard_hdmi_pll);
-	return 0;
-}
-
 static struct resource seaboard_disp1_resources[] = {
 	{
 		.name	= "irq",
@@ -158,27 +133,6 @@ static struct resource seaboard_disp1_resources[] = {
 		.name	= "fbmem",
 		.start	= 0x18012000,
 		.end	= 0x18012000 + 0x402000 - 1, /* enough for 1368*768 16bpp */
-		.flags	= IORESOURCE_MEM,
-	},
-};
-
-static struct resource seaboard_disp2_resources[] = {
-	{
-		.name	= "irq",
-		.start	= INT_DISPLAY_B_GENERAL,
-		.end	= INT_DISPLAY_B_GENERAL,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name	= "regs",
-		.start	= TEGRA_DISPLAY2_BASE,
-		.end	= TEGRA_DISPLAY2_BASE + TEGRA_DISPLAY2_SIZE - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name	= "hdmi_regs",
-		.start	= TEGRA_HDMI_BASE,
-		.end	= TEGRA_HDMI_BASE + TEGRA_HDMI_SIZE - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 };
@@ -229,13 +183,6 @@ static struct tegra_fb_data wario_fb_data = {
 	.bits_per_pixel	= 16,
 };
 
-static struct tegra_fb_data seaboard_hdmi_fb_data = {
-	.win		= 0,
-	.xres		= 1280,
-	.yres		= 720,
-	.bits_per_pixel	= 16,
-};
-
 static struct tegra_dc_out seaboard_disp1_out = {
 	.type		= TEGRA_DC_OUT_RGB,
 
@@ -249,31 +196,11 @@ static struct tegra_dc_out seaboard_disp1_out = {
 	.disable	= seaboard_panel_disable,
 };
 
-static struct tegra_dc_out seaboard_disp2_out = {
-	.type		= TEGRA_DC_OUT_HDMI,
-	.flags		= TEGRA_DC_OUT_HOTPLUG_HIGH,
-
-	.dcc_bus	= 1,
-	.hotplug_gpio	= seaboard_hdmi_hpd,
-
-	.align		= TEGRA_DC_ALIGN_MSB,
-	.order		= TEGRA_DC_ORDER_RED_BLUE,
-
-	.enable		= seaboard_hdmi_enable,
-	.disable	= seaboard_hdmi_disable,
-};
-
 static struct tegra_dc_platform_data seaboard_disp1_pdata = {
 	.flags		= TEGRA_DC_FLAG_ENABLED,
 	.default_out	= &seaboard_disp1_out,
 	.fb		= &seaboard_fb_data,
 	.emc_clk_rate	= 300000000,
-};
-
-static struct tegra_dc_platform_data seaboard_disp2_pdata = {
-	.flags		= 0,
-	.default_out	= &seaboard_disp2_out,
-	.fb		= &seaboard_hdmi_fb_data,
 };
 
 static struct nvhost_device seaboard_disp1_device = {
@@ -283,16 +210,6 @@ static struct nvhost_device seaboard_disp1_device = {
 	.num_resources	= ARRAY_SIZE(seaboard_disp1_resources),
 	.dev = {
 		.platform_data = &seaboard_disp1_pdata,
-	},
-};
-
-static struct nvhost_device seaboard_disp2_device = {
-	.name		= "tegradc",
-	.id		= 1,
-	.resource	= seaboard_disp2_resources,
-	.num_resources	= ARRAY_SIZE(seaboard_disp2_resources),
-	.dev = {
-		.platform_data = &seaboard_disp2_pdata,
 	},
 };
 
@@ -350,7 +267,7 @@ int __init seaboard_panel_init(void)
 	tegra_gpio_enable(seaboard_lvds_shutdown);
 
 	gpio_request(seaboard_hdmi_enb, "hdmi_5v_en");
-	gpio_direction_output(seaboard_hdmi_enb, 1);
+	gpio_direction_output(seaboard_hdmi_enb, 0);
 	tegra_gpio_enable(seaboard_hdmi_enb);
 
 	gpio_request(seaboard_hdmi_hpd, "hdmi_hpd");
@@ -368,42 +285,9 @@ int __init seaboard_panel_init(void)
 	if (!err)
 		err = nvhost_device_register(&seaboard_disp1_device);
 
-	if (!err)
+/*	if (!err)
 		err = nvhost_device_register(&seaboard_disp2_device);
-
+*/
 	return err;
 }
 
-static int __init seaboard_hdmi_late_init(void)
-{
-	int ret;
-
-	seaboard_hdmi_reg = regulator_get(NULL, "avdd_hdmi");
-	if (IS_ERR_OR_NULL(seaboard_hdmi_reg)) {
-		ret = PTR_ERR(seaboard_hdmi_reg);
-		goto fail;
-	}
-
-	seaboard_hdmi_pll = regulator_get(NULL, "avdd_hdmi_pll");
-	if (IS_ERR_OR_NULL(seaboard_hdmi_pll)) {
-		ret = PTR_ERR(seaboard_hdmi_pll);
-		goto fail;
-	}
-
-	return 0;
-
-fail:
-	if (seaboard_hdmi_pll) {
-		regulator_disable(seaboard_hdmi_pll);
-		seaboard_hdmi_pll = NULL;
-	}
-
-	if (seaboard_hdmi_reg) {
-		regulator_disable(seaboard_hdmi_reg);
-		seaboard_hdmi_reg = NULL;
-	}
-
-	return ret;
-}
-
-late_initcall(seaboard_hdmi_late_init);
