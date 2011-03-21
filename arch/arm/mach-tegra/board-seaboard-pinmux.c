@@ -16,7 +16,9 @@
 
 #include <linux/kernel.h>
 #include <linux/init.h>
+#include <linux/gpio.h>
 #include <mach/pinmux.h>
+#include "gpio-names.h"
 
 #define DEFAULT_DRIVE(_name)					\
 	{							\
@@ -155,6 +157,23 @@ static __initdata struct tegra_pingroup_config seaboard_pinmux[] = {
 
 void __init seaboard_pinmux_init(void)
 {
+	/*
+	 * PINGROUP_SPIC contains two pins:
+	 * + PX2, DISABLE_CHRGR (output)
+	 * + PX3, WM8903 codec IRQ (input)
+	 *
+	 * The pinmux module can only configure TRISTATE vs. NORMAL on a
+	 * per-group rather than per-pin basis. The group must be NORMAL
+	 * since at least one pin is an output. However, we must ensure that
+	 * the WM8903 IRQ is never driven, since the WM8903 itself is driving
+	 * it, and we don't want multiple drivers. To ensure this, configure
+	 * PX3 as a GPIO here, and set is as an input, before the pinmux table
+	 * is written, which is when the pins will be un-tristated.
+	 */
+	tegra_gpio_enable(TEGRA_GPIO_PX3);
+	gpio_request(TEGRA_GPIO_PX3, "wm8903");
+	gpio_direction_input(TEGRA_GPIO_PX3);
+
 	tegra_pinmux_config_table(seaboard_pinmux, ARRAY_SIZE(seaboard_pinmux));
 
 	tegra_drive_pinmux_config_table(seaboard_drive_pinmux,
