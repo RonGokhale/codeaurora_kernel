@@ -553,16 +553,18 @@ static int l2cap_sock_setsockopt_old(struct socket *sock, int optname, char __us
 {
 	struct sock *sk = sock->sk;
 	struct l2cap_options opts;
-	int len, err = 0;
+	int len, le_sock, err = 0;
 	u32 opt;
 
 	BT_DBG("sk %p", sk);
 
 	lock_sock(sk);
 
+	le_sock = l2cap_pi(sk)->scid == L2CAP_CID_LE_DATA;
+
 	switch (optname) {
 	case L2CAP_OPTIONS:
-		if (sk->sk_state == BT_CONNECTED) {
+		if (sk->sk_state == BT_CONNECTED && !le_sock) {
 			err = -EINVAL;
 			break;
 		}
@@ -578,6 +580,18 @@ static int l2cap_sock_setsockopt_old(struct socket *sock, int optname, char __us
 		len = min_t(unsigned int, sizeof(opts), optlen);
 		if (copy_from_user((char *) &opts, optval, len)) {
 			err = -EFAULT;
+			break;
+		}
+
+		if ((opts.imtu || opts.omtu) && le_sock &&
+				(sk->sk_state == BT_CONNECTED)) {
+			if (opts.imtu >= L2CAP_LE_DEFAULT_MTU)
+				l2cap_pi(sk)->imtu = opts.imtu;
+			if (opts.omtu >= L2CAP_LE_DEFAULT_MTU)
+				l2cap_pi(sk)->omtu = opts.omtu;
+			if (opts.imtu < L2CAP_LE_DEFAULT_MTU ||
+					opts.omtu < L2CAP_LE_DEFAULT_MTU)
+				err = -EINVAL;
 			break;
 		}
 

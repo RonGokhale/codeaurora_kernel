@@ -492,7 +492,11 @@ static void __l2cap_chan_add(struct l2cap_conn *conn, struct sock *sk)
 		(sk->sk_type == SOCK_SEQPACKET || sk->sk_type == SOCK_STREAM)) {
 		if (conn->hcon->type == LE_LINK) {
 			/* LE connection */
-			l2cap_pi(sk)->omtu = L2CAP_LE_DEFAULT_MTU;
+			if (l2cap_pi(sk)->imtu < L2CAP_LE_DEFAULT_MTU)
+				l2cap_pi(sk)->imtu = L2CAP_LE_DEFAULT_MTU;
+			if (l2cap_pi(sk)->omtu < L2CAP_LE_DEFAULT_MTU)
+				l2cap_pi(sk)->omtu = L2CAP_LE_DEFAULT_MTU;
+
 			l2cap_pi(sk)->scid = L2CAP_CID_LE_DATA;
 			l2cap_pi(sk)->dcid = L2CAP_CID_LE_DATA;
 		} else {
