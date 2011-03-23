@@ -367,6 +367,11 @@ static struct i2c_board_info __initdata cyapa_device = {
 	.platform_data	= &cyapa_i2c_platform_data,
 };
 
+static struct i2c_board_info __initdata mpu3050_device = {
+	I2C_BOARD_INFO("mpu3050", 0x68),
+	.irq		= TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_MPU3050_IRQ),
+};
+
 static const u8 mxt_config_data[] = {
 	/* MXT_GEN_COMMAND(6) */
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -445,6 +450,16 @@ static void seaboard_mxt_init(void)
 	mxt_device.irq = TEGRA_GPIO_TO_IRQ(gpio);
 }
 
+static void seaboard_mpu3050_init(void)
+{
+	int gpio;
+
+	gpio = TEGRA_GPIO_MPU3050_IRQ;
+	gpio_request(gpio, "mpu_int");
+	tegra_gpio_enable(gpio);
+	gpio_direction_input(gpio);
+}
+
 static void __init common_i2c_init(void)
 {
 	tegra_i2c_device1.dev.platform_data = &seaboard_i2c1_platform_data;
@@ -465,10 +480,12 @@ static void __init seaboard_i2c_init(void)
 	seaboard_isl29018_init();
 	seaboard_mxt_init();
 	seaboard_nct1008_init();
+	seaboard_mpu3050_init();
 
 	i2c_register_board_info(0, &wm8903_device, 1);
 	i2c_register_board_info(0, &isl29018_device, 1);
 	i2c_register_board_info(0, &mxt_device, 1);
+	i2c_register_board_info(0, &mpu3050_device, 1);
 
 	i2c_register_board_info(2, &bq20z75_device, 1);
 
