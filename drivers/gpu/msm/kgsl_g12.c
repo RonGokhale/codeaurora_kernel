@@ -1,4 +1,4 @@
-/* Copyright (c) 2002,2007-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2002,2007-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -204,7 +204,7 @@ kgsl_g12_init(struct kgsl_device *device,
 	int status = -EINVAL;
 	struct kgsl_memregion *regspace = &device->regspace;
 	struct kgsl_g12_device *g12_device = (struct kgsl_g12_device *) device;
-
+	struct kgsl_platform_data *pdata = NULL;
 
 	KGSL_DRV_VDBG("enter (device=%p, config=%p)\n", device, config);
 
@@ -268,13 +268,15 @@ kgsl_g12_init(struct kgsl_device *device,
 
 	INIT_LIST_HEAD(&device->ringbuffer.memqueue);
 
+	pdata = kgsl_driver.pdev->dev.platform_data;
+
 	printk(KERN_INFO "kgsl mmu config 0x%x\n", config->mmu_config);
 	if (config->mmu_config) {
 		device->mmu.config    = config->mmu_config;
 		device->mmu.mpu_base  = config->mpu_base;
 		device->mmu.mpu_range = config->mpu_range;
 		device->mmu.va_base   = config->va_base;
-		device->mmu.va_range  = config->va_range;
+		device->mmu.va_range  = pdata->pt_va_size;
 	}
 
 	status = kgsl_g12_cmdstream_init(device);
