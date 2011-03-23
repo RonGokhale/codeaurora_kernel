@@ -36,9 +36,10 @@
 #include <linux/platform_device.h>
 #include <linux/acpi.h>
 
-MODULE_AUTHOR("Google Inc.");
-MODULE_DESCRIPTION("Chrome OS Extras Driver");
-MODULE_LICENSE("GPL");
+#include "chromeos_acpi.h"
+
+struct chromeos_acpi_if chromeos_acpi_if_data;
+EXPORT_SYMBOL_GPL(chromeos_acpi_if_data);
 
 #define MY_LOGPREFIX "chromeos_acpi: "
 #define MY_ERR KERN_ERR MY_LOGPREFIX
@@ -111,13 +112,6 @@ struct chromeos_acpi_dev {
 };
 
 static struct chromeos_acpi_dev chromeos_acpi = { };
-
-
-/* Values set at probe time */
-int chromeos_acpi_chnv = -1;
-int chromeos_acpi_chsw = -1;
-
-bool chromeos_acpi_available;
 
 
 /*
@@ -335,28 +329,34 @@ static void handle_nested_acpi_package(union acpi_object *po, char *pm,
 }
 
 /*
- * handle_single_int() extract a single int value
+ * maybe_export_acpi_int() export a single int value when required
  *
- * @po: package contents as returned by ACPI
- * @found:	integer pointer to store the value in
- *
+ * @pm: name of the package
+ * @index: index of the element of the package
+ * @value: value of the element
  */
-static void handle_single_int(union acpi_object *po, int *found)
+static void maybe_export_acpi_int(const char *pm, int index, unsigned value)
 {
-	union acpi_object *element = po->package.elements;
+	struct chromeos_acpi_datum *cad = NULL;
 
-	if (!element) {
-		WARN_ON(1);
-		return;
+	/* Only a couple of variables need to be exported. */
+	if (!strncmp(pm, "VBNV", 4)) {
+		switch (index) {
+		case 0:
+			cad = &chromeos_acpi_if_data.nv_base;
+			break;
+		case 1:
+			cad = &chromeos_acpi_if_data.nv_size;
+			break;
+		}
+	} else if (!strncmp(pm,  "CHSW", 4)) {
+		cad = &chromeos_acpi_if_data.switch_state;
 	}
-
-	if (element->type == ACPI_TYPE_INTEGER)
-		*found = (int) element->integer.value;
-	else
-		printk(MY_ERR "acpi_object unexpected type %d, expected int\n",
-		       element->type);
+	if (cad) {
+		cad->cad_value = value;
+		cad->cad_is_set = true;
+	}
 }
-
 
 /*
  * handle_acpi_package() create sysfs group including attributes
@@ -383,6 +383,8 @@ static void handle_acpi_package(union acpi_object *po, char *pm)
 			copy_size = snprintf(attr_value, sizeof(attr_value),
 					     "%d", (int)element->integer.value);
 			add_sysfs_attribute(attr_value, pm, count, j);
+			maybe_export_acpi_int(pm, j, (unsigned)
+					      element->integer.value);
 			break;
 
 		case ACPI_TYPE_STRING:
@@ -393,12 +395,67 @@ static void handle_acpi_package(union acpi_object *po, char *pm)
 			add_sysfs_attribute(attr_value, pm, count, j);
 			break;
 
+		case ACPI_TYPE_BUFFER: {
+			char *base, *p;
+			int i;
+			unsigned room_left;
+			/* Include this many characters per line */
+			unsigned char_per_line = 16;
+			unsigned string_buffer_size =
+				/* three characters to display one byte */
+				element->buffer.length * 3 +
+				/* one newline per line, all rounded up, plus
+				 * extra newline in the end, plus terminating
+				 * zero, hence + 4
+				 */
+				element->buffer.length/char_per_line + 4;
+
+			if (string_buffer_size > sizeof(attr_value)) {
+				p = kzalloc(string_buffer_size, GFP_KERNEL);
+				if (!p) {
+					printk(MY_ERR "out of memory in %s!\n",
+					       __func__);
+					break;
+				}
+			} else {
+				p = attr_value;
+			}
+
+			base = p;
+			room_left = string_buffer_size;
+			for (i = 0; i < element->buffer.length; i++) {
+				int printed;
+				printed = snprintf(p, room_left, " %2.2x",
+						   element->buffer.pointer[i]);
+				room_left -= printed;
+				p += printed;
+				if (((i + 1) % char_per_line) == 0) {
+					if (!room_left)
+						break;
+					room_left--;
+					*p++ = '\n';
+				}
+			}
+			if (room_left < 2) {
+				printk(MY_ERR "%s: no room in the buffer!\n",
+				       __func__);
+				*p = '\0';
+			} else {
+				*p++ = '\n';
+				*p++ = '\0';
+			}
+			add_sysfs_attribute(base, pm, count, j);
+			if (string_buffer_size > sizeof(attr_value))
+				kfree(p);
+			break;
+		}
 		case ACPI_TYPE_PACKAGE:
 			handle_nested_acpi_package(element, pm, count, j);
 			break;
 
 		default:
-			printk(MY_ERR "ignoring type %d\n", element->type);
+			printk(MY_ERR "ignoring type %d (%s)\n",
+			       element->type, pm);
 			break;
 		}
 	}
@@ -433,13 +490,6 @@ static void add_acpi_method(struct acpi_device *device, char *pm)
 		printk(MY_ERR "%s is not a package, ignored\n", pm);
 	else
 		handle_acpi_package(po, pm);
-
-	/* Need to export a couple of variables to chromeos.c */
-	if (!strncmp(pm, "CHNV", 4))
-		handle_single_int(po, &chromeos_acpi_chnv);
-	else if (!strncmp(pm, "CHSW", 4))
-		handle_single_int(po, &chromeos_acpi_chsw);
-
 	kfree(output.pointer);
 }
 
@@ -482,7 +532,8 @@ static int chromeos_process_mlst(struct acpi_device *device)
 		char method[ACPI_NAME_SIZE + 1];
 
 		if (element->type == ACPI_TYPE_STRING) {
-			copy_size = min(element->string.length, ACPI_NAME_SIZE);
+			copy_size = min(element->string.length,
+					(u32)ACPI_NAME_SIZE);
 			memcpy(method, element->string.pointer, copy_size);
 			method[copy_size] = '\0';
 			add_acpi_method(device, method);
@@ -537,9 +588,8 @@ static int __init chromeos_acpi_init(void)
 		chromeos_acpi.p_dev = NULL;
 		return ret;
 	}
-
-	chromeos_acpi_available = true;
-
+	printk(MY_INFO "installed\n");
 	return 0;
 }
+
 subsys_initcall(chromeos_acpi_init);
