@@ -1774,6 +1774,13 @@ kgsl_ptpool_init(void)
 {
 	int size = kgsl_driver.ptpool.entries * kgsl_driver.ptsize;
 
+	if (size > SZ_4M) {
+		size = SZ_4M;
+		kgsl_driver.ptpool.entries = SZ_4M / kgsl_driver.ptsize;
+		KGSL_DRV_ERR("Pagetable pool too big.  Limiting to "
+			"%d processes\n", kgsl_driver.ptpool.entries);
+	}
+
 	/* Allocate a large chunk of memory for the page tables */
 
 	kgsl_driver.ptpool.hostptr =
