@@ -553,12 +553,9 @@ static int kgsl_release(struct inode *inodep, struct file *filep)
 	filep->private_data = NULL;
 	list_del(&dev_priv->list);
 
-	while (dev_priv->ctxt_id_mask) {
-		if (dev_priv->ctxt_id_mask & (1 << i)) {
+	for (i = 0; i < KGSL_CONTEXT_MAX; i++) {
+		if (test_bit(i, dev_priv->ctxt_bitmap))
 			device->ftbl.device_drawctxt_destroy(device, i);
-			dev_priv->ctxt_id_mask &= ~(1 << i);
-		}
-		i++;
 	}
 
 	kgsl_put_process_private(device, private);
@@ -617,7 +614,7 @@ static int kgsl_open(struct inode *inodep, struct file *filep)
 
 	mutex_lock(&kgsl_driver.mutex);
 
-	dev_priv->ctxt_id_mask = 0;
+	bitmap_zero(dev_priv->ctxt_bitmap, KGSL_CONTEXT_MAX);
 	dev_priv->device = device;
 	dev_priv->pid = task_pid_nr(current);
 	filep->private_data = dev_priv;
@@ -767,7 +764,7 @@ static long kgsl_ioctl_rb_issueibcmds(struct kgsl_device_private *dev_priv,
 		goto done;
 	}
 
-	if ((dev_priv->ctxt_id_mask & 1 << param.drawctxt_id) == 0) {
+	if (!test_bit(param.drawctxt_id, dev_priv->ctxt_bitmap)) {
 		result = -EINVAL;
 		KGSL_DRV_ERR("invalid drawctxt drawctxt_id %d\n",
 				      param.drawctxt_id);
@@ -882,7 +879,7 @@ static long kgsl_ioctl_drawctxt_create(struct kgsl_device_private *dev_priv,
 		goto done;
 	}
 
-	dev_priv->ctxt_id_mask |= 1 << param.drawctxt_id;
+	set_bit(param.drawctxt_id, dev_priv->ctxt_bitmap);
 
 done:
 	return result;
@@ -899,7 +896,7 @@ static long kgsl_ioctl_drawctxt_destroy(struct kgsl_device_private *dev_priv,
 		goto done;
 	}
 
-	if ((dev_priv->ctxt_id_mask & 1 << param.drawctxt_id) == 0) {
+	if (!test_bit(param.drawctxt_id, dev_priv->ctxt_bitmap)) {
 		result = -EINVAL;
 		goto done;
 	}
@@ -908,7 +905,7 @@ static long kgsl_ioctl_drawctxt_destroy(struct kgsl_device_private *dev_priv,
 							dev_priv->device,
 							param.drawctxt_id);
 	if (result == 0)
-		dev_priv->ctxt_id_mask &= ~(1 << param.drawctxt_id);
+		clear_bit(param.drawctxt_id, dev_priv->ctxt_bitmap);
 
 done:
 	return result;

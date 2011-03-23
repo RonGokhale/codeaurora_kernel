@@ -31,3 +31,12 @@ config MSM_KGSL_MMU_PAGE_FAULT
 	bool "Force the GPU MMU to page fault for unmapped regions"
 	default n
 	depends on MSM_KGSL_MMU && !MSM_KGSL_DRM
+
+config MSM_KGSL_CONTEXTS
+	int "Maximum number of GPU HW contexts"
+	default 32
+	depends on MSM_KGSL
+	help
+	  Set the maximum number of possible concurrent GPU HW contexts.
+	  The actual number of contexts that can be allocated depends
+	  on available system memory.
