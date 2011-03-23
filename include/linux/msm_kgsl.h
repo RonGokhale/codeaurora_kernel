@@ -1,4 +1,4 @@
-/* Copyright (c) 2002,2007-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2002,2007-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -130,6 +130,8 @@ struct kgsl_platform_data {
 	const char *imem_clk_name;
 	const char *grp3d_clk_name;
 	const char *grp2d0_clk_name;
+	unsigned int pt_va_size;
+	unsigned int pt_max_count;
 };
 
 /* ioctls */

@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -301,6 +301,15 @@ static struct kgsl_platform_data kgsl_pdata = {
 	.imem_clk_name = NULL,
 	.grp3d_clk_name = "gfx3d_clk",
 	.grp2d0_clk_name = "gfx2d0_clk",
+#ifdef CONFIG_KGSL_PER_PROCESS_PAGE_TABLE
+	.pt_va_size = SZ_32M,
+	/* Maximum of 32 concurrent processes */
+	.pt_max_count = 32,
+#else
+	.pt_va_size = SZ_128M,
+	/* We only ever have one pagetable for everybody */
+	.pt_max_count = 1,
+#endif
 };
 
 struct platform_device msm_device_kgsl = {
