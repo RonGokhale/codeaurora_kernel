@@ -1253,6 +1253,24 @@ struct hci_ev_le_conn_complete {
 	__u8     clk_accurancy;
 } __packed;
 
+#define ADV_IND		0x00
+#define ADV_DIRECT_IND	0x01
+#define ADV_SCAN_IND	0x02
+#define ADV_NONCONN_IND	0x03
+#define ADV_SCAN_RSP	0x04
+
+#define ADDR_LE_DEV_PUBLIC	0x00
+#define ADDR_LE_DEV_RANDOM	0x01
+
+#define HCI_EV_LE_ADVERTISING_REPORT	0x02
+struct hci_ev_le_advertising_info {
+	__u8	 evt_type;
+	__u8	 bdaddr_type;
+	bdaddr_t bdaddr;
+	__u8	 length;
+	__u8	 data[0];
+} __packed;
+
 #define HCI_EV_LE_LTK_REQ		0x05
 struct hci_ev_le_ltk_req {
 	__le16	handle;

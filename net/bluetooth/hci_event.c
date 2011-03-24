@@ -2945,6 +2945,23 @@ static inline void hci_le_ltk_request_evt(struct hci_dev *hdev,
 	hci_dev_unlock(hdev);
 }
 
+static inline void hci_le_adv_report_evt(struct hci_dev *hdev,
+						struct sk_buff *skb)
+{
+	struct hci_ev_le_advertising_info *ev;
+	u8 num_reports;
+
+	num_reports = skb->data[0];
+	ev = (void *) &skb->data[1];
+
+	BT_DBG("adv from: %s", batostr(&ev->bdaddr));
+
+	while (--num_reports) {
+		ev = (void *) (ev->data + ev->length + 1);
+		BT_DBG("adv from: %s", batostr(&ev->bdaddr));
+	}
+}
+
 static inline void hci_le_meta_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_ev_le_meta *le_ev = (void *) skb->data;
@@ -2958,6 +2975,10 @@ static inline void hci_le_meta_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	case HCI_EV_LE_LTK_REQ:
 		hci_le_ltk_request_evt(hdev, skb);
+		break;
+
+	case HCI_EV_LE_ADVERTISING_REPORT:
+		hci_le_adv_report_evt(hdev, skb);
 		break;
 
 	default:
