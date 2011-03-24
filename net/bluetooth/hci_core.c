@@ -1150,7 +1150,7 @@ int hci_remote_oob_data_clear(struct hci_dev *hdev)
 	return 0;
 }
 
-static int hci_adv_entries_clear(struct hci_dev *hdev)
+int hci_adv_entries_clear(struct hci_dev *hdev)
 {
 	struct list_head *p, *n;
 
