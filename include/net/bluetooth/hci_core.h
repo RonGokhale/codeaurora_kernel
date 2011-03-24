@@ -209,6 +209,7 @@ struct hci_dev {
 	struct list_head	remote_oob_data;
 
 	struct list_head	adv_entries;
+	rwlock_t		adv_entries_lock;
 
 	struct hci_dev_stats	stat;
 

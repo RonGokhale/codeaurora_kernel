@@ -1154,6 +1154,8 @@ static int hci_adv_entries_clear(struct hci_dev *hdev)
 {
 	struct list_head *p, *n;
 
+	write_lock_bh(&hdev->adv_entries_lock);
+
 	list_for_each_safe(p, n, &hdev->adv_entries) {
 		struct adv_entry *entry;
 
@@ -1163,23 +1165,31 @@ static int hci_adv_entries_clear(struct hci_dev *hdev)
 		kfree(entry);
 	}
 
+	write_unlock_bh(&hdev->adv_entries_lock);
+
 	return 0;
 }
 
 struct adv_entry *hci_find_adv_entry(struct hci_dev *hdev, bdaddr_t *bdaddr)
 {
 	struct list_head *p;
+	struct adv_entry *res = NULL;
+
+	read_lock_bh(&hdev->adv_entries_lock);
 
 	list_for_each(p, &hdev->adv_entries) {
 		struct adv_entry *entry;
 
 		entry = list_entry(p, struct adv_entry, list);
 
-		if (bacmp(bdaddr, &entry->bdaddr) == 0)
-			return entry;
+		if (bacmp(bdaddr, &entry->bdaddr) == 0) {
+			res = entry;
+			goto out;
+		}
 	}
-
-	return NULL;
+out:
+	read_unlock_bh(&hdev->adv_entries_lock);
+	return res;
 }
 
 static inline int is_connectable_adv(u8 evt_type)
@@ -1235,7 +1245,9 @@ int hci_add_adv_entry(struct hci_dev *hdev,
 	bacpy(&entry->bdaddr, &ev->bdaddr);
 	entry->bdaddr_type = ev->bdaddr_type;
 
+	write_lock(&hdev->adv_entries_lock);
 	list_add(&entry->list, &hdev->adv_entries);
+	write_unlock(&hdev->adv_entries_lock);
 
 	return 0;
 }
@@ -1316,6 +1328,7 @@ int hci_register_dev(struct hci_dev *hdev)
 	INIT_LIST_HEAD(&hdev->remote_oob_data);
 
 	INIT_LIST_HEAD(&hdev->adv_entries);
+	rwlock_init(&hdev->adv_entries_lock);
 
 	INIT_WORK(&hdev->power_on, hci_power_on);
 	INIT_WORK(&hdev->power_off, hci_power_off);
