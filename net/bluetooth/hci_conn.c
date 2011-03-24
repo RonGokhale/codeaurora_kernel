@@ -619,8 +619,8 @@ struct hci_conn *hci_connect(struct hci_dev *hdev, int type,
 		le = hci_le_conn_add(hdev, dst, 0);
 		if (!le)
 			return ERR_PTR(-ENOMEM);
-		if (le->state == BT_OPEN)
-			hci_le_connect(le);
+
+		hci_le_connect(le);
 
 		hci_conn_hold(le);
 
