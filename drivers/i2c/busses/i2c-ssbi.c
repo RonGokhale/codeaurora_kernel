@@ -120,15 +120,25 @@ struct i2c_ssbi_dev {
 	int (*write)(struct i2c_ssbi_dev *, struct i2c_msg *);
 };
 
+static inline u32 ssbi_readl(struct i2c_ssbi_dev *ssbi, u32 reg)
+{
+	return readl_relaxed(ssbi->base + reg);
+}
+
+static inline void ssbi_writel(struct i2c_ssbi_dev *ssbi, u32 reg, u32 val)
+{
+	writel_relaxed(val, ssbi->base + reg);
+}
+
 static inline int
 i2c_ssbi_poll_for_device_ready(struct i2c_ssbi_dev *ssbi)
 {
 	u32 timeout = SSBI_TIMEOUT_US;
 
-	while (!(readl(ssbi->base + SSBI2_STATUS) & SSBI_STATUS_READY)) {
+	while (!(ssbi_readl(ssbi, SSBI2_STATUS) & SSBI_STATUS_READY)) {
 		if (--timeout == 0) {
 			dev_err(ssbi->dev, "%s: timeout, status %x\n", __func__,
-				readl(ssbi->base + SSBI2_STATUS));
+				ssbi_readl(ssbi, SSBI2_STATUS));
 			return -ETIMEDOUT;
 		}
 		udelay(1);
@@ -142,10 +152,10 @@ i2c_ssbi_poll_for_read_completed(struct i2c_ssbi_dev *ssbi)
 {
 	u32 timeout = SSBI_TIMEOUT_US;
 
-	while (!(readl(ssbi->base + SSBI2_STATUS) & SSBI_STATUS_RD_READY)) {
+	while (!(ssbi_readl(ssbi, SSBI2_STATUS) & SSBI_STATUS_RD_READY)) {
 		if (--timeout == 0) {
 			dev_err(ssbi->dev, "%s: timeout, status %x\n", __func__,
-				readl(ssbi->base + SSBI2_STATUS));
+				ssbi_readl(ssbi, SSBI2_STATUS));
 			return -ETIMEDOUT;
 		}
 		udelay(1);
@@ -159,10 +169,10 @@ i2c_ssbi_poll_for_transfer_completed(struct i2c_ssbi_dev *ssbi)
 {
 	u32 timeout = SSBI_TIMEOUT_US;
 
-	while ((readl(ssbi->base + SSBI2_STATUS) & SSBI_STATUS_MCHN_BUSY)) {
+	while ((ssbi_readl(ssbi, SSBI2_STATUS) & SSBI_STATUS_MCHN_BUSY)) {
 		if (--timeout == 0) {
 			dev_err(ssbi->dev, "%s: timeout, status %x\n", __func__,
-				readl(ssbi->base + SSBI2_STATUS));
+				ssbi_readl(ssbi, SSBI2_STATUS));
 			return -ETIMEDOUT;
 		}
 		udelay(1);
@@ -181,9 +191,9 @@ i2c_ssbi_read_bytes(struct i2c_ssbi_dev *ssbi, struct i2c_msg *msg)
 	u32 read_cmd = SSBI_CMD_READ(addr);
 
 	if (ssbi->controller_type == MSM_SBI_CTRL_SSBI2) {
-		u32 mode2 = readl(ssbi->base + SSBI2_MODE2);
-		writel(SSBI_MODE2_REG_ADDR_15_8(mode2, addr),
-				ssbi->base + SSBI2_MODE2);
+		u32 mode2 = ssbi_readl(ssbi, SSBI2_MODE2);
+		ssbi_writel(ssbi, SSBI2_MODE2,
+				SSBI_MODE2_REG_ADDR_15_8(mode2, addr));
 	}
 
 	while (len) {
@@ -191,13 +201,13 @@ i2c_ssbi_read_bytes(struct i2c_ssbi_dev *ssbi, struct i2c_msg *msg)
 		if (ret)
 			goto read_failed;
 
-		writel(read_cmd, ssbi->base + SSBI2_CMD);
+		ssbi_writel(ssbi, SSBI2_CMD, read_cmd);
 
 		ret = i2c_ssbi_poll_for_read_completed(ssbi);
 		if (ret)
 			goto read_failed;
 
-		*buf++ = readl(ssbi->base + SSBI2_RD) & SSBI_RD_REG_DATA_MASK;
+		*buf++ = ssbi_readl(ssbi, SSBI2_RD) & SSBI_RD_REG_DATA_MASK;
 		len--;
 	}
 
@@ -214,9 +224,9 @@ i2c_ssbi_write_bytes(struct i2c_ssbi_dev *ssbi, struct i2c_msg *msg)
 	u16 addr = msg->addr;
 
 	if (ssbi->controller_type == MSM_SBI_CTRL_SSBI2) {
-		u32 mode2 = readl(ssbi->base + SSBI2_MODE2);
-		writel(SSBI_MODE2_REG_ADDR_15_8(mode2, addr),
-				ssbi->base + SSBI2_MODE2);
+		u32 mode2 = ssbi_readl(ssbi, SSBI2_MODE2);
+		ssbi_writel(ssbi, SSBI2_MODE2,
+				SSBI_MODE2_REG_ADDR_15_8(mode2, addr));
 	}
 
 	while (len) {
@@ -224,7 +234,7 @@ i2c_ssbi_write_bytes(struct i2c_ssbi_dev *ssbi, struct i2c_msg *msg)
 		if (ret)
 			goto write_failed;
 
-		writel(SSBI_CMD_WRITE(addr, *buf++), ssbi->base + SSBI2_CMD);
+		ssbi_writel(ssbi, SSBI2_CMD, SSBI_CMD_WRITE(addr, *buf++));
 
 		ret = i2c_ssbi_poll_for_transfer_completed(ssbi);
 		if (ret)
@@ -243,8 +253,8 @@ i2c_ssbi_pa_transfer(struct i2c_ssbi_dev *ssbi, u32 cmd, u8 *data)
 	u32 rd_status;
 	u32 timeout = SSBI_TIMEOUT_US;
 
-	writel(cmd, ssbi->base + SSBI_PA_CMD);
-	rd_status = readl(ssbi->base + SSBI_PA_RD_STATUS);
+	ssbi_writel(ssbi, SSBI_PA_CMD, cmd);
+	rd_status = ssbi_readl(ssbi, SSBI_PA_RD_STATUS);
 
 	while ((rd_status & (SSBI_PA_RD_STATUS_TRANS_COMPLETE)) == 0) {
 
@@ -254,7 +264,7 @@ i2c_ssbi_pa_transfer(struct i2c_ssbi_dev *ssbi, u32 cmd, u8 *data)
 			return -ETIMEDOUT;
 		}
 		udelay(1);
-		rd_status = readl(ssbi->base + SSBI_PA_RD_STATUS);
+		rd_status = ssbi_readl(ssbi, SSBI_PA_RD_STATUS);
 	}
 
 	if (rd_status & SSBI_PA_RD_STATUS_TRANS_DENIED) {
