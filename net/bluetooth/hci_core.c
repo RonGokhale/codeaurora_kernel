@@ -1150,6 +1150,13 @@ int hci_remote_oob_data_clear(struct hci_dev *hdev)
 	return 0;
 }
 
+static void hci_adv_clear(unsigned long arg)
+{
+	struct hci_dev *hdev = (void *) arg;
+
+	hci_adv_entries_clear(hdev);
+}
+
 int hci_adv_entries_clear(struct hci_dev *hdev)
 {
 	struct list_head *p, *n;
@@ -1329,6 +1336,7 @@ int hci_register_dev(struct hci_dev *hdev)
 
 	INIT_LIST_HEAD(&hdev->adv_entries);
 	rwlock_init(&hdev->adv_entries_lock);
+	setup_timer(&hdev->adv_timer, hci_adv_clear, (unsigned long) hdev);
 
 	INIT_WORK(&hdev->power_on, hci_power_on);
 	INIT_WORK(&hdev->power_off, hci_power_off);
@@ -1410,6 +1418,7 @@ int hci_unregister_dev(struct hci_dev *hdev)
 	hci_unregister_sysfs(hdev);
 
 	hci_del_off_timer(hdev);
+	del_timer(&hdev->adv_timer);
 
 	destroy_workqueue(hdev->workqueue);
 

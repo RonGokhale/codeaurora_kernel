@@ -210,6 +210,7 @@ struct hci_dev {
 
 	struct list_head	adv_entries;
 	rwlock_t		adv_entries_lock;
+	struct timer_list	adv_timer;
 
 	struct hci_dev_stats	stat;
 
@@ -639,6 +640,7 @@ int hci_add_remote_oob_data(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 *hash,
 								u8 *randomizer);
 int hci_remove_remote_oob_data(struct hci_dev *hdev, bdaddr_t *bdaddr);
 
+#define ADV_CLEAR_TIMEOUT (3*60*HZ) /* Three minutes */
 int hci_adv_entries_clear(struct hci_dev *hdev);
 struct adv_entry *hci_find_adv_entry(struct hci_dev *hdev, bdaddr_t *bdaddr);
 int hci_add_adv_entry(struct hci_dev *hdev,

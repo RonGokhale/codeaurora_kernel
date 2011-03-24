@@ -963,8 +963,12 @@ static void hci_cc_le_set_scan_enable(struct hci_dev *hdev,
 		return;
 
 	param_scan_enable = *((__u8 *) sent);
-	if (param_scan_enable == 0x01)
+	if (param_scan_enable == 0x01) {
+		del_timer(&hdev->adv_timer);
 		hci_adv_entries_clear(hdev);
+	} else if (param_scan_enable == 0x00) {
+		mod_timer(&hdev->adv_timer, jiffies + ADV_CLEAR_TIMEOUT);
+	}
 }
 
 static inline void hci_cs_inquiry(struct hci_dev *hdev, __u8 status)
