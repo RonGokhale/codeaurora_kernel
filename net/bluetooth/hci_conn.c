@@ -59,6 +59,7 @@ static void hci_le_connect(struct hci_conn *conn)
 	cp.scan_interval = cpu_to_le16(0x0004);
 	cp.scan_window = cpu_to_le16(0x0004);
 	bacpy(&cp.peer_addr, &conn->dst);
+	cp.peer_addr_type = conn->dst_type;
 	cp.conn_interval_min = cpu_to_le16(0x0008);
 	cp.conn_interval_max = cpu_to_le16(0x0100);
 	cp.supervision_timeout = cpu_to_le16(0x0064);
@@ -613,10 +614,17 @@ struct hci_conn *hci_connect(struct hci_dev *hdev, int type,
 	BT_DBG("%s dst %s", hdev->name, batostr(dst));
 
 	if (type == LE_LINK) {
+		struct adv_entry *entry;
+
 		le = hci_conn_hash_lookup_ba(hdev, LE_LINK, dst);
 		if (le)
 			return ERR_PTR(-EBUSY);
-		le = hci_le_conn_add(hdev, dst, 0);
+
+		entry = hci_find_adv_entry(hdev, dst);
+		if (!entry)
+			return ERR_PTR(-EHOSTUNREACH);
+
+		le = hci_le_conn_add(hdev, dst, entry->bdaddr_type);
 		if (!le)
 			return ERR_PTR(-ENOMEM);
 
