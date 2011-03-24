@@ -1150,6 +1150,46 @@ int hci_remote_oob_data_clear(struct hci_dev *hdev)
 	return 0;
 }
 
+static int hci_adv_entries_clear(struct hci_dev *hdev)
+{
+	struct list_head *p, *n;
+
+	list_for_each_safe(p, n, &hdev->adv_entries) {
+		struct adv_entry *entry;
+
+		entry = list_entry(p, struct adv_entry, list);
+
+		list_del(p);
+		kfree(entry);
+	}
+
+	return 0;
+}
+
+struct adv_entry *hci_find_adv_entry(struct hci_dev *hdev, bdaddr_t *bdaddr)
+{
+	struct list_head *p;
+
+	list_for_each(p, &hdev->adv_entries) {
+		struct adv_entry *entry;
+
+		entry = list_entry(p, struct adv_entry, list);
+
+		if (bacmp(bdaddr, &entry->bdaddr) == 0)
+			return entry;
+	}
+
+	return NULL;
+}
+
+static inline int is_connectable_adv(u8 evt_type)
+{
+	if (evt_type == ADV_IND || evt_type == ADV_DIRECT_IND)
+		return 1;
+
+	return 0;
+}
+
 int hci_add_remote_oob_data(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 *hash,
 								u8 *randomizer)
 {
@@ -1170,6 +1210,32 @@ int hci_add_remote_oob_data(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 *hash,
 	memcpy(data->randomizer, randomizer, sizeof(data->randomizer));
 
 	BT_DBG("%s for %s", hdev->name, batostr(bdaddr));
+
+	return 0;
+}
+
+int hci_add_adv_entry(struct hci_dev *hdev,
+					struct hci_ev_le_advertising_info *ev)
+{
+	struct adv_entry *entry;
+
+	if (!is_connectable_adv(ev->evt_type))
+		return -EINVAL;
+
+	entry = hci_find_adv_entry(hdev, &ev->bdaddr);
+	/* Only new entries should be added to adv_entries. So, if
+	 * bdaddr was found, don't add it. */
+	if (entry)
+		return 0;
+
+	entry = kzalloc(sizeof(*entry), GFP_ATOMIC);
+	if (!entry)
+		return -ENOMEM;
+
+	bacpy(&entry->bdaddr, &ev->bdaddr);
+	entry->bdaddr_type = ev->bdaddr_type;
+
+	list_add(&entry->list, &hdev->adv_entries);
 
 	return 0;
 }
@@ -1248,6 +1314,8 @@ int hci_register_dev(struct hci_dev *hdev)
 	INIT_LIST_HEAD(&hdev->link_keys);
 
 	INIT_LIST_HEAD(&hdev->remote_oob_data);
+
+	INIT_LIST_HEAD(&hdev->adv_entries);
 
 	INIT_WORK(&hdev->power_on, hci_power_on);
 	INIT_WORK(&hdev->power_off, hci_power_off);
@@ -1337,6 +1405,7 @@ int hci_unregister_dev(struct hci_dev *hdev)
 	hci_uuids_clear(hdev);
 	hci_link_keys_clear(hdev);
 	hci_remote_oob_data_clear(hdev);
+	hci_adv_entries_clear(hdev);
 	hci_dev_unlock_bh(hdev);
 
 	__hci_dev_put(hdev);

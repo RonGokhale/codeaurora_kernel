@@ -2953,12 +2953,11 @@ static inline void hci_le_adv_report_evt(struct hci_dev *hdev,
 
 	num_reports = skb->data[0];
 	ev = (void *) &skb->data[1];
-
-	BT_DBG("adv from: %s", batostr(&ev->bdaddr));
+	hci_add_adv_entry(hdev, ev);
 
 	while (--num_reports) {
 		ev = (void *) (ev->data + ev->length + 1);
-		BT_DBG("adv from: %s", batostr(&ev->bdaddr));
+		hci_add_adv_entry(hdev, ev);
 	}
 }
 
