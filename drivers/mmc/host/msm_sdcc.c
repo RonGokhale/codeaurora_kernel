@@ -1694,14 +1694,14 @@ msmsdcc_suspend(struct platform_device *dev, pm_message_t state)
 					clk_disable(host->pclk);
 				host->clks_on = 0;
 			}
+			if ((mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ) &&
+				mmc->card && mmc->card->type == MMC_TYPE_SDIO) {
+				host->sdio_irq_disabled = 0;
+				enable_irq_wake(host->plat->sdiowakeup_irq);
+				enable_irq(host->plat->sdiowakeup_irq);
+			}
 		}
 
-		if ((mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ) && mmc->card &&
-				mmc->card->type == MMC_TYPE_SDIO) {
-			host->sdio_irq_disabled = 0;
-			enable_irq_wake(host->plat->sdiowakeup_irq);
-			enable_irq(host->plat->sdiowakeup_irq);
-		}
 		host->sdcc_suspending = 0;
 	}
 	return rc;
