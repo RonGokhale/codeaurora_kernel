@@ -804,10 +804,6 @@ static int mxt_initialize(struct mxt_data *data)
 	if (error)
 		return error;
 
-	error = mxt_make_highchg(data);
-	if (error)
-		return error;
-
 	mxt_handle_pdata(data);
 
 	/* Backup to memory */
@@ -1095,6 +1091,10 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		goto err_free_irq;
 
 	error = sysfs_create_group(&client->dev.kobj, &mxt_attr_group);
+	if (error)
+		goto err_unregister_device;
+
+	error = mxt_make_highchg(data);
 	if (error)
 		goto err_unregister_device;
 
