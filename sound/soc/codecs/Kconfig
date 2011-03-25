@@ -339,3 +339,5 @@ config SND_SOC_WM2000
 config SND_SOC_WM9090
 	tristate
 
+config SND_SOC_MSM_STUB
+	tristate
