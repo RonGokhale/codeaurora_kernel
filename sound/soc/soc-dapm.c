@@ -1314,7 +1314,6 @@ static int dapm_power_widgets(struct snd_soc_dapm_context *dapm, int event)
 			dapm->dev_power = 1;
 			break;
 		case SND_SOC_DAPM_STREAM_STOP:
-#warning need re-work
 			if (dapm->codec)
 				dapm->dev_power = !!dapm->codec->active;
 			else
