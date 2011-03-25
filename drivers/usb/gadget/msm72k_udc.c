@@ -1334,6 +1334,9 @@ static void usb_do_work(struct work_struct *w)
 					msm72k_pm_qos_update(0);
 					wake_unlock(&ui->wlock);
 					break;
+				} else if (!is_usb_online(ui)) {
+					ui->state = USB_STATE_OFFLINE;
+					break;
 				}
 
 				msm72k_pm_qos_update(1);
