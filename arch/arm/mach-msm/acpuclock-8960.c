@@ -330,7 +330,7 @@ static struct core_speed *compute_l2_speed(unsigned int voting_cpu,
 	/* Find max L2 speed vote. */
 	l2_vote[voting_cpu] = vote_s;
 	new_s = &l2_freq_tbl->speed;
-	for_each_online_cpu(cpu)
+	for_each_present_cpu(cpu)
 		new_s = max(new_s, l2_vote[cpu]);
 
 	return new_s;
