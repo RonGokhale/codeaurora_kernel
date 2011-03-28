@@ -240,7 +240,9 @@ void __init seaboard_emc_init(void)
 	else if (tegra_sku_id == SKU_ID_T25)
 		tegra_init_emc(seaboard_emc_tables_hynix_400Mhz,
 			ARRAY_SIZE(seaboard_emc_tables_hynix_400Mhz));
-	else
+	else {
+		tegra_init_emc(NULL, 0);
 		pr_warning("EMC table not found\n");
+	}
 }
 

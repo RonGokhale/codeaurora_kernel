@@ -1082,12 +1082,6 @@ void tegra2_sdmmc_tap_delay(struct clk *c, int delay) {
 }
 
 /* External memory controller clock ops */
-static void tegra2_emc_clk_init(struct clk *c)
-{
-	tegra2_periph_clk_init(c);
-	c->max_rate = clk_get_rate_locked(c);
-}
-
 static long tegra2_emc_clk_round_rate(struct clk *c, unsigned long rate)
 {
 	long new_rate = rate;
@@ -1119,7 +1113,7 @@ static int tegra2_emc_clk_set_rate(struct clk *c, unsigned long rate)
 }
 
 static struct clk_ops tegra_emc_clk_ops = {
-	.init			= &tegra2_emc_clk_init,
+	.init			= &tegra2_periph_clk_init,
 	.enable			= &tegra2_periph_clk_enable,
 	.disable		= &tegra2_periph_clk_disable,
 	.set_parent		= &tegra2_periph_clk_set_parent,
