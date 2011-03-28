@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -63,6 +63,7 @@ static int __init mipi_cmd_novatek_blue_qhd_pt_init(void)
 	pinfo.bl_min = 1;
 	pinfo.fb_num = 2;
 	pinfo.clk_rate = 454000000;
+	pinfo.is_3d_panel = FB_TYPE_3D_PANEL;
 	pinfo.lcd.vsync_enable = TRUE;
 	pinfo.lcd.hw_vsync_mode = TRUE;
 	pinfo.lcd.refx100 = 6000; /* adjust refx100 to prevent tearing */
