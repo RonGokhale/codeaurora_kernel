@@ -346,7 +346,8 @@ static int msm_adc_fluid_hw_deinit(struct msm_adc_drv *msm_adc)
 	if (!epm_init)
 		return -EINVAL;
 
-	if (epm_fluid_enabled && pdata->adc_fluid_disable != NULL) {
+	if (pdata->gpio_config == APROC_CONFIG &&
+		epm_fluid_enabled && pdata->adc_fluid_disable != NULL) {
 		pdata->adc_fluid_disable();
 		epm_fluid_enabled = false;
 	}
@@ -363,7 +364,8 @@ static int msm_adc_fluid_hw_init(struct msm_adc_drv *msm_adc)
 
 	printk(KERN_DEBUG "msm_adc_fluid_hw_init: Calling adc_fluid_enable.\n");
 
-	if (!epm_fluid_enabled && pdata->adc_fluid_enable != NULL) {
+	if (pdata->gpio_config == APROC_CONFIG &&
+		!epm_fluid_enabled && pdata->adc_fluid_enable != NULL) {
 		pdata->adc_fluid_enable();
 		epm_fluid_enabled = true;
 	}
@@ -600,7 +602,8 @@ static ssize_t msm_adc_show_curr(struct device *dev,
 		rc = msm_adc_blocking_conversion(msm_adc,
 					attr->index, &result);
 	} else {
-		if (!epm_fluid_enabled && pdata->adc_fluid_enable != NULL) {
+		if (pdata->gpio_config == APROC_CONFIG && !epm_fluid_enabled
+					&& pdata->adc_fluid_enable != NULL) {
 			printk(KERN_DEBUG "This is to read ADC value for "
 				"Fluid EPM and init. Do it only once.\n");
 			pdata->adc_fluid_enable();
@@ -628,14 +631,16 @@ static int msm_rpc_adc_blocking_conversion(struct msm_adc_drv *msm_adc,
 	struct adc_dev_spec dest;
 	int timeout, rc = 0;
 
-	if (pdata->adc_gpio_enable != NULL)
+	if (pdata->gpio_config == APROC_CONFIG &&
+			pdata->adc_gpio_enable != NULL)
 		pdata->adc_gpio_enable(hwmon_chan-pdata->num_chan_supported);
 
 	rc = msm_adc_translate_dal_to_hwmon(msm_adc, hwmon_chan, &dest);
 	if (rc) {
 		dev_err(dev, "%s: translation from chan %u failed\n",
 							__func__, hwmon_chan);
-		if (pdata->adc_gpio_disable != NULL)
+		if (pdata->gpio_config == APROC_CONFIG &&
+				pdata->adc_gpio_disable != NULL)
 			pdata->adc_gpio_disable(hwmon_chan
 					-pdata->num_chan_supported);
 		return -EINVAL;
@@ -690,7 +695,8 @@ static int msm_rpc_adc_blocking_conversion(struct msm_adc_drv *msm_adc,
 		rc = -ENODATA;
 
 blk_conv_err:
-	if (pdata->adc_gpio_disable != NULL)
+	if (pdata->gpio_config == APROC_CONFIG &&
+			pdata->adc_gpio_disable != NULL)
 		pdata->adc_gpio_disable(hwmon_chan-pdata->num_chan_supported);
 	msm_adc_restore_slot(conv_s, slot);
 
