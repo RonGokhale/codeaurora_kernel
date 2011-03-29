@@ -511,6 +511,8 @@ static void __init kaen_i2c_init(void)
 	bq20z75_pdata.battery_detect = TEGRA_GPIO_BATT_DETECT;
 	/* battery present is low */
 	bq20z75_pdata.battery_detect_present = 0;
+	tegra_gpio_enable(TEGRA_GPIO_BATT_DETECT);
+
 	i2c_register_board_info(2, &bq20z75_device, 1);
 
 	i2c_register_board_info(4, &nct1008_device, 1);
