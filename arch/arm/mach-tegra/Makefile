@@ -58,3 +58,8 @@ obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-sdhci.o
 obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-power.o
 obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-panel.o
 obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-memory.o
+obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-sensors.o
+
+obj-${CONFIG_MACH_KAEN}			+= board-kaen-sensors.o
+
+obj-${CONFIG_MACH_AEBL}			+= board-aebl-sensors.o

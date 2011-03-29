@@ -795,6 +795,8 @@ static void __init tegra_seaboard_init(void)
 	__tegra_seaboard_init();
 
 	seaboard_i2c_init();
+
+	seaboard_sensors_init();
 }
 
 static void __init tegra_kaen_init(void)
@@ -810,6 +812,8 @@ static void __init tegra_kaen_init(void)
 	__tegra_seaboard_init();
 
 	kaen_i2c_init();
+
+	kaen_sensors_init();
 }
 
 static void __init tegra_aebl_init(void)
@@ -825,6 +829,8 @@ static void __init tegra_aebl_init(void)
 	__tegra_seaboard_init();
 
 	aebl_i2c_init();
+
+	aebl_sensors_init();
 }
 
 static void __init tegra_wario_init(void)
