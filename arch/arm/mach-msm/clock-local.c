@@ -180,6 +180,7 @@ void set_rate_mnd_banked(struct clk_local *clk, struct clk_freq_tbl *nf)
 		 * Wait at least 6 cycles of slowest bank's clock
 		 * for the glitch-free MUX to fully switch sources.
 		 */
+		dsb();
 		udelay(1);
 
 		/* Disable old bank's MN counter. */
@@ -244,8 +245,11 @@ void set_rate_div_banked(struct clk_local *clk, struct clk_freq_tbl *nf)
 	if (clk->enabled && clk->current_freq->freq_hz) {
 		ns_reg_val ^= banks->bank_sel_mask;
 		writel(ns_reg_val, clk->ns_reg);
-		/* Wait at least 6 cycles of slowest bank's clock
-		 * for the glitch-free MUX to fully switch sources. */
+		/*
+		 * Wait at least 6 cycles of slowest bank's clock
+		 * for the glitch-free MUX to fully switch sources.
+		 */
+		dsb();
 		udelay(1);
 
 		/* Program old bank to a low-power source and divider. */
@@ -355,6 +359,14 @@ static void __branch_clk_enable_reg(const struct branch *clk, const char *name)
 		writel(reg_val, clk->en_reg);
 	}
 
+	/*
+	 * Use a memory barrier since some halt status registers are
+	 * not within the same 1K segment as the branch/root enable
+	 * registers.  It's also needed in the udelay() case to ensure
+	 * the delay starts after the branch enable.
+	 */
+	dsb();
+
 	/* Wait for clock to enable before returning. */
 	if (clk->halt_check == DELAY)
 		udelay(HALT_CHECK_DELAY_US);
@@ -362,12 +374,6 @@ static void __branch_clk_enable_reg(const struct branch *clk, const char *name)
 			|| clk->halt_check == ENABLE_VOTED
 			|| clk->halt_check == HALT_VOTED) {
 		int count;
-		/*
-		 * Use a memory barrier since some halt status registers are
-		 * not within the same 1K segment as the branch/root enable
-		 * registers.
-		 */
-		mb();
 
 		/* Wait up to HALT_CHECK_MAX_LOOPS for clock to enable. */
 		for (count = HALT_CHECK_MAX_LOOPS; branch_clk_is_halted(clk)
@@ -427,18 +433,20 @@ static u32 __branch_clk_disable_reg(const struct branch *clk, const char *name)
 		writel(reg_val, clk->en_reg);
 	}
 
+	/*
+	 * Use a memory barrier since some halt status registers are
+	 * not within the same K segment as the branch/root enable
+	 * registers.  It's also needed in the udelay() case to ensure
+	 * the delay starts after the branch disable.
+	 */
+	dsb();
+
 	/* Wait for clock to disable before continuing. */
 	if (clk->halt_check == DELAY || clk->halt_check == ENABLE_VOTED
 				     || clk->halt_check == HALT_VOTED)
 		udelay(HALT_CHECK_DELAY_US);
 	else if (clk->halt_check == ENABLE || clk->halt_check == HALT) {
 		int count;
-		/*
-		 * Use a memory barrier since some halt status registers are
-		 * not within the same 1K segment as the branch/root enable
-		 * registers.
-		 */
-		mb();
 
 		/* Wait up to HALT_CHECK_MAX_LOOPS for clock to disable. */
 		for (count = HALT_CHECK_MAX_LOOPS; !branch_clk_is_halted(clk)
@@ -813,6 +821,7 @@ static int pll_clk_enable(struct clk *clk)
 	 * H/W requires a 5us delay between disabling the bypass and
 	 * de-asserting the reset. Delay 10us just to be safe.
 	 */
+	dsb();
 	udelay(10);
 
 	/* De-assert active-low PLL reset. */

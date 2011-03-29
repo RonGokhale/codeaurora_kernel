@@ -4104,6 +4104,7 @@ static void reg_init(void)
 	clk_set_rate(&gfx3d_clk.c, 27000000);
 	clk_enable(&gfx3d_clk.c);
 	writel(BIT(12), SW_RESET_CORE_REG);
+	dsb();
 	udelay(5);
 	writel(0, SW_RESET_CORE_REG);
 	clk_disable(&gfx3d_clk.c);
