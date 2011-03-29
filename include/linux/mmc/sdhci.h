@@ -141,6 +141,8 @@ struct sdhci_host {
 
 	unsigned int caps;	/* Alternative capabilities */
 
+	unsigned int save_intmask;    /* Store original intmask */
+
 	unsigned long private[0] ____cacheline_aligned;
 };
 #endif /* __SDHCI_H */
