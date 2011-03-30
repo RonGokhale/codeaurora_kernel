@@ -1423,7 +1423,7 @@ static inline void hci_inquiry_result_evt(struct hci_dev *hdev, struct sk_buff *
 
 	hci_dev_lock(hdev);
 
-	for (; num_rsp; num_rsp--) {
+	for (; num_rsp; num_rsp--, info++) {
 		bacpy(&data.bdaddr, &info->bdaddr);
 		data.pscan_rep_mode	= info->pscan_rep_mode;
 		data.pscan_period_mode	= info->pscan_period_mode;
@@ -1432,8 +1432,9 @@ static inline void hci_inquiry_result_evt(struct hci_dev *hdev, struct sk_buff *
 		data.clock_offset	= info->clock_offset;
 		data.rssi		= 0x00;
 		data.ssp_mode		= 0x00;
-		info++;
 		hci_inquiry_cache_update(hdev, &data);
+		mgmt_device_found(hdev->id, &info->bdaddr, info->dev_class, 0,
+									NULL);
 	}
 
 	hci_dev_unlock(hdev);
@@ -2480,7 +2481,7 @@ static inline void hci_inquiry_result_with_rssi_evt(struct hci_dev *hdev, struct
 		struct inquiry_info_with_rssi_and_pscan_mode *info;
 		info = (void *) (skb->data + 1);
 
-		for (; num_rsp; num_rsp--) {
+		for (; num_rsp; num_rsp--, info++) {
 			bacpy(&data.bdaddr, &info->bdaddr);
 			data.pscan_rep_mode	= info->pscan_rep_mode;
 			data.pscan_period_mode	= info->pscan_period_mode;
@@ -2489,13 +2490,15 @@ static inline void hci_inquiry_result_with_rssi_evt(struct hci_dev *hdev, struct
 			data.clock_offset	= info->clock_offset;
 			data.rssi		= info->rssi;
 			data.ssp_mode		= 0x00;
-			info++;
 			hci_inquiry_cache_update(hdev, &data);
+			mgmt_device_found(hdev->id, &info->bdaddr,
+						info->dev_class, info->rssi,
+						NULL);
 		}
 	} else {
 		struct inquiry_info_with_rssi *info = (void *) (skb->data + 1);
 
-		for (; num_rsp; num_rsp--) {
+		for (; num_rsp; num_rsp--, info++) {
 			bacpy(&data.bdaddr, &info->bdaddr);
 			data.pscan_rep_mode	= info->pscan_rep_mode;
 			data.pscan_period_mode	= info->pscan_period_mode;
@@ -2504,8 +2507,10 @@ static inline void hci_inquiry_result_with_rssi_evt(struct hci_dev *hdev, struct
 			data.clock_offset	= info->clock_offset;
 			data.rssi		= info->rssi;
 			data.ssp_mode		= 0x00;
-			info++;
 			hci_inquiry_cache_update(hdev, &data);
+			mgmt_device_found(hdev->id, &info->bdaddr,
+						info->dev_class, info->rssi,
+						NULL);
 		}
 	}
 
@@ -2636,7 +2641,7 @@ static inline void hci_extended_inquiry_result_evt(struct hci_dev *hdev, struct 
 
 	hci_dev_lock(hdev);
 
-	for (; num_rsp; num_rsp--) {
+	for (; num_rsp; num_rsp--, info++) {
 		bacpy(&data.bdaddr, &info->bdaddr);
 		data.pscan_rep_mode	= info->pscan_rep_mode;
 		data.pscan_period_mode	= info->pscan_period_mode;
@@ -2645,8 +2650,9 @@ static inline void hci_extended_inquiry_result_evt(struct hci_dev *hdev, struct 
 		data.clock_offset	= info->clock_offset;
 		data.rssi		= info->rssi;
 		data.ssp_mode		= 0x01;
-		info++;
 		hci_inquiry_cache_update(hdev, &data);
+		mgmt_device_found(hdev->id, &info->bdaddr, info->dev_class,
+						info->rssi, info->data);
 	}
 
 	hci_dev_unlock(hdev);
