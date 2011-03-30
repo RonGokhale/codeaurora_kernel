@@ -519,6 +519,10 @@ struct snd_soc_codec_driver {
 	/* codec bias level */
 	int (*set_bias_level)(struct snd_soc_codec *,
 			      enum snd_soc_bias_level level);
+
+	/* probe ordering - for components with runtime dependencies */
+	bool late_probe;
+	bool early_remove;
 };
 
 /* SoC platform interface */
@@ -543,6 +547,10 @@ struct snd_soc_platform_driver {
 
 	/* platform stream ops */
 	struct snd_pcm_ops *ops;
+
+	/* probe ordering - for components with runtime dependencies */
+	bool late_probe;
+	bool early_remove;
 };
 
 struct snd_soc_platform {
