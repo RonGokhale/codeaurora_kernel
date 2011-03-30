@@ -43,6 +43,7 @@
 #define TEGRA_GPIO_CDC_IRQ		TEGRA_GPIO_PX3
 #define TEGRA_GPIO_SPKR_EN		SEABOARD_GPIO_WM8903(2)
 #define TEGRA_GPIO_HP_DET		TEGRA_GPIO_PX1
+#define TEGRA_GPIO_KAEN_HP_MUTE		TEGRA_GPIO_PA5
 
 extern void tegra_throttling_enable(bool enable);
 
