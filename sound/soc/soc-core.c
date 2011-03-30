@@ -3400,6 +3400,7 @@ int snd_soc_register_platform(struct device *dev,
 	platform->dev = dev;
 	platform->driver = platform_drv;
 	platform->dapm.dev = dev;
+	platform->dapm.stream_event = platform_drv->stream_event;
 
 	mutex_lock(&client_mutex);
 	list_add(&platform->list, &platform_list);
@@ -3505,6 +3506,7 @@ int snd_soc_register_codec(struct device *dev,
 
 	codec->write = codec_drv->write;
 	codec->read = codec_drv->read;
+	codec->dapm.stream_event = codec_drv->stream_event;
 	codec->dapm.bias_level = SND_SOC_BIAS_OFF;
 	codec->dapm.dev = dev;
 	codec->dapm.codec = codec;
