@@ -229,7 +229,7 @@ static struct wm8903_platform_data wm8903_pdata = {
 	.irq_active_low = 0,
 	.micdet_cfg = 0,
 	.micdet_delay = 100,
-	.gpio_base = GPIO_WM8903(0),
+	.gpio_base = HARMONY_GPIO_WM8903(0),
 	.gpio_cfg = {
 		WM8903_GPIO_NO_CONFIG,
 		WM8903_GPIO_NO_CONFIG,
@@ -239,12 +239,10 @@ static struct wm8903_platform_data wm8903_pdata = {
 	},
 };
 
-static struct i2c_board_info __initdata harmony_i2c_bus1_board_info[] = {
-	{
-		I2C_BOARD_INFO("wm8903", 0x1a),
-		.platform_data = &wm8903_pdata,
-		.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PX3),
-	},
+static struct i2c_board_info __initdata wm8903_board_info = {
+	I2C_BOARD_INFO("wm8903", 0x1a),
+	.platform_data = &wm8903_pdata,
+	.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_CDC_IRQ),
 };
 
 static void harmony_i2c_init(void)
@@ -259,15 +257,18 @@ static void harmony_i2c_init(void)
 	platform_device_register(&tegra_i2c_device3);
 	platform_device_register(&tegra_i2c_device4);
 
-	i2c_register_board_info(0, harmony_i2c_bus1_board_info,
-				ARRAY_SIZE(harmony_i2c_bus1_board_info));
+	tegra_gpio_enable(TEGRA_GPIO_CDC_IRQ);
+	gpio_request(TEGRA_GPIO_CDC_IRQ, "wm8903");
+	gpio_direction_input(TEGRA_GPIO_CDC_IRQ);
+
+	i2c_register_board_info(0, &wm8903_board_info, 1);
 }
 
 static struct harmony_audio_platform_data audio_pdata = {
-	.gpio_spkr_en = GPIO_WM8903(2),
-	.gpio_hp_det = TEGRA_GPIO_PW2,
-	.gpio_int_mic_en = TEGRA_GPIO_PX0,
-	.gpio_ext_mic_en = TEGRA_GPIO_PX1,
+	.gpio_spkr_en = TEGRA_GPIO_SPKR_EN,
+	.gpio_hp_det = TEGRA_GPIO_HP_DET,
+	.gpio_int_mic_en = TEGRA_GPIO_INT_MIC_EN,
+	.gpio_ext_mic_en = TEGRA_GPIO_EXT_MIC_EN,
 };
 
 static struct platform_device audio_device = {
@@ -421,10 +422,10 @@ static void __init tegra_harmony_init(void)
 
 	tegra_ehci3_device.dev.platform_data = &tegra_ehci_pdata;
 
-	tegra_gpio_enable(audio_pdata.gpio_hp_det);
-	tegra_gpio_enable(audio_pdata.gpio_int_mic_en);
-	tegra_gpio_enable(audio_pdata.gpio_ext_mic_en);
-	tegra_gpio_enable(TEGRA_IRQ_TO_GPIO(harmony_i2c_bus1_board_info[0].irq));
+	tegra_gpio_enable(TEGRA_GPIO_HP_DET);
+	tegra_gpio_enable(TEGRA_GPIO_INT_MIC_EN);
+	tegra_gpio_enable(TEGRA_GPIO_EXT_MIC_EN);
+	tegra_gpio_enable(TEGRA_GPIO_CDC_IRQ);
 
 	platform_add_devices(harmony_devices, ARRAY_SIZE(harmony_devices));
 

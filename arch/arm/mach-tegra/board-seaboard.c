@@ -300,7 +300,7 @@ static struct wm8903_platform_data wm8903_pdata = {
 	.irq_active_low = 0,
 	.micdet_cfg = 0,
 	.micdet_delay = 100,
-	.gpio_base = GPIO_WM8903(0),
+	.gpio_base = SEABOARD_GPIO_WM8903(0),
 	.gpio_cfg = {
 		WM8903_GPIO_NO_CONFIG,
 		WM8903_GPIO_NO_CONFIG,
@@ -332,7 +332,7 @@ static struct nct1008_platform_data nct1008_pdata = {
 static struct i2c_board_info __initdata wm8903_device = {
 	I2C_BOARD_INFO("wm8903", 0x1a),
 	.platform_data = &wm8903_pdata,
-	.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PX3),
+	.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_CDC_IRQ),
 };
 
 static struct i2c_board_info __initdata isl29018_device = {
@@ -680,8 +680,8 @@ static void seaboard_kbc_init(void)
 }
 
 static struct seaboard_audio_platform_data audio_pdata = {
-	.gpio_spkr_en = GPIO_WM8903(2),
-	.gpio_hp_det = TEGRA_GPIO_PX1,
+	.gpio_spkr_en = TEGRA_GPIO_SPKR_EN,
+	.gpio_hp_det = TEGRA_GPIO_HP_DET,
 };
 
 static struct platform_device audio_device = {

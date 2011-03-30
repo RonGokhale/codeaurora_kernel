@@ -18,6 +18,7 @@
 #include <linux/init.h>
 #include <linux/gpio.h>
 #include <mach/pinmux.h>
+#include "board-seaboard.h"
 #include "gpio-names.h"
 
 #define DEFAULT_DRIVE(_name)					\
@@ -172,9 +173,9 @@ void __init seaboard_pinmux_init(void)
 	 * PX3 as a GPIO here, and set is as an input, before the pinmux table
 	 * is written, which is when the pins will be un-tristated.
 	 */
-	tegra_gpio_enable(TEGRA_GPIO_PX3);
-	gpio_request(TEGRA_GPIO_PX3, "wm8903");
-	gpio_direction_input(TEGRA_GPIO_PX3);
+	tegra_gpio_enable(TEGRA_GPIO_CDC_IRQ);
+	gpio_request(TEGRA_GPIO_CDC_IRQ, "wm8903");
+	gpio_direction_input(TEGRA_GPIO_CDC_IRQ);
 
 	tegra_pinmux_config_table(seaboard_pinmux, ARRAY_SIZE(seaboard_pinmux));
 

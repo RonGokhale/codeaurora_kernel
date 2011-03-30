@@ -17,7 +17,13 @@
 #ifndef _MACH_TEGRA_BOARD_HARMONY_H
 #define _MACH_TEGRA_BOARD_HARMONY_H
 
-#define GPIO_WM8903(_x_)		(TEGRA_NR_GPIOS + (_x_))
+#define HARMONY_GPIO_WM8903(_x_)	(TEGRA_NR_GPIOS + (_x_))
+
+#define TEGRA_GPIO_CDC_IRQ		TEGRA_GPIO_PX3
+#define TEGRA_GPIO_SPKR_EN		HARMONY_GPIO_WM8903(2)
+#define TEGRA_GPIO_HP_DET		TEGRA_GPIO_PW2
+#define TEGRA_GPIO_INT_MIC_EN		TEGRA_GPIO_PX0
+#define TEGRA_GPIO_EXT_MIC_EN		TEGRA_GPIO_PX1
 
 void harmony_pinmux_init(void);
 int harmony_panel_init(void);
