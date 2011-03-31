@@ -45,15 +45,8 @@ static int msm_isp_enqueue(struct msm_cam_media_controller *pmctl,
 {
 	struct v4l2_event v4l2_evt;
 
-	struct videobuf_queue *q;
-	struct videobuf_buffer *buf = NULL;
-	uint32_t buf_phyaddr = 0;
 	struct msm_stats_buf stats;
-
 	struct msm_isp_stats_event_ctrl *isp_event;
-	/* struct msm_stats_buf stats; */
-	int i;
-	unsigned long flags = 0;
 	isp_event = (struct msm_isp_stats_event_ctrl *)v4l2_evt.u.data;
 	if (!data) {
 		D("%s !!!!data = 0x%p\n", __func__, data);
@@ -107,37 +100,12 @@ static int msm_isp_enqueue(struct msm_cam_media_controller *pmctl,
 			memcpy((void *)isp_event->isp_data.isp_msg.data,
 						data->evt_msg.data,
 						data->evt_msg.len);
-		} else if (data->type == VFE_MSG_OUTPUT_P) {
-			q = &(pmctl->sync.pcam_sync->vid_bufq);
-
-			D("q=0x%x\n", (u32)q);
-
-			/* find the videobuf which is done */
-			for (i = 0; i < VIDEO_MAX_FRAME; i++) {
-				if (NULL == q->bufs[i])
-					continue;
-				buf = q->bufs[i];
-				buf_phyaddr = videobuf_to_pmem_contig(buf);
-				D("buf_phyaddr=0x%x\n", (u32)buf_phyaddr);
-				D("data->phy.y_phy=0x%x\n",
-							(u32)data->phy.y_phy);
-				D("buf = 0x%x\n", (u32)buf);
-				if (buf_phyaddr == data->phy.y_phy)
-					break;
-			}
-
-			/* signal that buffer is done */
-			/* get the buf lock first */
-			spin_lock_irqsave(q->irqlock, flags);
-			buf->state = VIDEOBUF_DONE;
-			D("queuedequeue video_buffer 0x%x,"
-					"phyaddr = 0x%x\n",
-					(u32)buf, (u32)data->phy.y_phy);
-
-			do_gettimeofday(&buf->ts);
-			buf->field_count++;
-			wake_up(&buf->done);
-			spin_unlock_irqrestore(q->irqlock, flags);
+		} else if (data->type == VFE_MSG_OUTPUT_P ||
+			data->type == VFE_MSG_OUTPUT_V ||
+			data->type == VFE_MSG_OUTPUT_S ||
+			data->type == VFE_MSG_OUTPUT_T) {
+			msm_mctl_buf_done(pmctl, data->type,
+					(u32)data->phy.y_phy);
 		}
 		break;
 	default:
@@ -470,15 +438,27 @@ static int msm_frame_axi_cfg(struct v4l2_subdev *sd,
 	struct msm_pmem_region region[8];
 	int pmem_type;
 	int i = 0;
+	int idx = 0;
+	struct msm_cam_v4l2_device *pcam = sync->pcam_sync;
+	struct msm_cam_v4l2_dev_inst *pcam_inst;
 
 	memset(&axi_data, 0, sizeof(axi_data));
 
 	switch (cfgcmd->cmd_type) {
 
 	case CMD_AXI_CFG_PREVIEW:
+		pcam_inst =
+		pcam->dev_inst_map[MSM_V4L2_EXT_CAPTURE_MODE_PREVIEW];
+		if (pcam_inst)
+			idx = pcam_inst->my_index;
+		else
+			return rc;
+		pmem_type = MSM_PMEM_PREVIEW;
 		axi_data.bufnum2 =
-			msm_pmem_region_lookup_3(sync->pcam_sync,
-				&region[0], 0, 4);
+			msm_pmem_region_lookup_3(sync->pcam_sync, idx,
+				&region[0], 0,
+			sync->pcam_sync->dev_inst[idx]->buf_count,
+			pmem_type);
 		if (!axi_data.bufnum2) {
 			pr_err("%s %d: pmem region 3 lookup error\n",
 				__func__, __LINE__);
@@ -489,10 +469,18 @@ static int msm_frame_axi_cfg(struct v4l2_subdev *sd,
 		break;
 
 	case CMD_AXI_CFG_VIDEO:
+		pcam_inst =
+		pcam->dev_inst_map[MSM_V4L2_EXT_CAPTURE_MODE_PREVIEW];
+		if (pcam_inst)
+			idx = pcam_inst->my_index;
+		else
+			return rc;
 		pmem_type = MSM_PMEM_PREVIEW;
 		axi_data.bufnum1 =
-			msm_pmem_region_lookup_3(sync->pcam_sync,
-				&region[0], 0, 3);
+			msm_pmem_region_lookup_3(sync->pcam_sync, idx,
+				&region[0], 0,
+		sync->pcam_sync->dev_inst[idx]->buf_count,
+		pmem_type);
 		D("%s bufnum1 = %d\n", __func__, axi_data.bufnum1);
 		if (!axi_data.bufnum1) {
 			pr_err("%s %d: pmem region lookup error\n",
@@ -500,11 +488,16 @@ static int msm_frame_axi_cfg(struct v4l2_subdev *sd,
 			return -EINVAL;
 		}
 
-		pmem_type = MSM_PMEM_VIDEO;
-		axi_data.bufnum2 =
-			msm_pmem_region_lookup_3(sync->pcam_sync,
+		pcam_inst
+		= pcam->dev_inst_map[MSM_V4L2_EXT_CAPTURE_MODE_VIDEO];
+		if (pcam_inst)
+			idx = pcam_inst->my_index;
+			pmem_type = MSM_PMEM_VIDEO;
+			axi_data.bufnum2 =
+			msm_pmem_region_lookup_3(sync->pcam_sync, idx,
 				&region[axi_data.bufnum1],
-				4, 7);
+			0, sync->pcam_sync->dev_inst[idx]->buf_count,
+			pmem_type);
 		D("%s bufnum2 = %d\n", __func__, axi_data.bufnum2);
 		if (!axi_data.bufnum2) {
 			pr_err("%s %d: pmem region lookup error\n",
@@ -515,21 +508,36 @@ static int msm_frame_axi_cfg(struct v4l2_subdev *sd,
 
 
 	case CMD_AXI_CFG_SNAP:
+		pcam_inst
+		= pcam->dev_inst_map[MSM_V4L2_EXT_CAPTURE_MODE_THUMBNAIL];
+		if (pcam_inst)
+			idx = pcam_inst->my_index;
+		else
+			return rc;
 		pmem_type = MSM_PMEM_THUMBNAIL;
 		axi_data.bufnum1 =
-			msm_pmem_region_lookup_3(sync->pcam_sync,
-				&region[0], 0, 4);
+			msm_pmem_region_lookup_3(sync->pcam_sync, idx,
+				&region[0],
+			0, sync->pcam_sync->dev_inst[idx]->buf_count,
+			pmem_type);
 		if (!axi_data.bufnum1) {
 			pr_err("%s %d: pmem region lookup error\n",
 				__func__, __LINE__);
 			return -EINVAL;
 		}
 
+		pcam_inst
+		= pcam->dev_inst_map[MSM_V4L2_EXT_CAPTURE_MODE_MAIN];
+		if (pcam_inst)
+			idx = pcam_inst->my_index;
+		else
+			return rc;
 		pmem_type = MSM_PMEM_MAINIMG;
 		axi_data.bufnum2 =
-		msm_pmem_region_lookup_3(sync->pcam_sync,
+		msm_pmem_region_lookup_3(sync->pcam_sync, idx,
 				&region[axi_data.bufnum1],
-				axi_data.bufnum1, 8);
+		0, sync->pcam_sync->dev_inst[idx]->buf_count,
+		pmem_type);
 		if (!axi_data.bufnum2) {
 			pr_err("%s %d: pmem region lookup error\n",
 				__func__, __LINE__);
@@ -538,10 +546,18 @@ static int msm_frame_axi_cfg(struct v4l2_subdev *sd,
 		break;
 
 	case CMD_RAW_PICT_AXI_CFG:
+		pcam_inst
+		= pcam->dev_inst_map[MSM_V4L2_EXT_CAPTURE_MODE_MAIN];
+		if (pcam_inst)
+			idx = pcam_inst->my_index;
+		else
+			return rc;
 		pmem_type = MSM_PMEM_RAW_MAINIMG;
 		axi_data.bufnum2 =
-			msm_pmem_region_lookup_3(sync->pcam_sync,
-				&region[0], 0, 4);
+			msm_pmem_region_lookup_3(sync->pcam_sync, idx,
+				&region[0],
+		0, sync->pcam_sync->dev_inst[idx]->buf_count,
+		pmem_type);
 		if (!axi_data.bufnum2) {
 			pr_err("%s %d: pmem region lookup error\n",
 				__func__, __LINE__);

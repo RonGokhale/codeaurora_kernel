@@ -203,6 +203,8 @@ struct msm_ctrl_cmd {
 	uint16_t status;
 	uint32_t timeout_ms;
 	int resp_fd; /* FIXME: to be used by the kernel, pass-through for now */
+	int vnode_id;  /* video dev id. Can we overload resp_fd? */
+	uint32_t stream_type; /* used to pass value to qcamera server */
 };
 
 struct msm_isp_ctrl_cmd {
@@ -503,6 +505,41 @@ struct msm_stats_buf {
 	int fd;
 	uint32_t frame_id;
 };
+#define MSM_V4L2_EXT_CAPTURE_MODE_DEFAULT 0
+/* video capture mode in VIDIOC_S_PARM */
+#define MSM_V4L2_EXT_CAPTURE_MODE_PREVIEW \
+	(MSM_V4L2_EXT_CAPTURE_MODE_DEFAULT+1)
+/* extendedmode for video recording in VIDIOC_S_PARM */
+#define MSM_V4L2_EXT_CAPTURE_MODE_VIDEO \
+	(MSM_V4L2_EXT_CAPTURE_MODE_DEFAULT+2)
+/* extendedmode for the full size main image in VIDIOC_S_PARM */
+#define MSM_V4L2_EXT_CAPTURE_MODE_MAIN (MSM_V4L2_EXT_CAPTURE_MODE_DEFAULT+3)
+/* extendedmode for the thumb nail image in VIDIOC_S_PARM */
+#define MSM_V4L2_EXT_CAPTURE_MODE_THUMBNAIL \
+	(MSM_V4L2_EXT_CAPTURE_MODE_DEFAULT+4)
+#define MSM_V4L2_EXT_CAPTURE_MODE_MAX (MSM_V4L2_EXT_CAPTURE_MODE_DEFAULT+5)
+
+
+#define MSM_V4L2_PID_MOTION_ISO              V4L2_CID_PRIVATE_BASE
+#define MSM_V4L2_PID_EFFECT                 (V4L2_CID_PRIVATE_BASE+1)
+#define MSM_V4L2_PID_HJR                    (V4L2_CID_PRIVATE_BASE+2)
+#define MSM_V4L2_PID_LED_MODE               (V4L2_CID_PRIVATE_BASE+3)
+#define MSM_V4L2_PID_PREP_SNAPSHOT          (V4L2_CID_PRIVATE_BASE+4)
+#define MSM_V4L2_PID_EXP_METERING           (V4L2_CID_PRIVATE_BASE+5)
+#define MSM_V4L2_PID_ISO                    (V4L2_CID_PRIVATE_BASE+6)
+#define MSM_V4L2_PID_CAM_MODE		    (V4L2_CID_PRIVATE_BASE+7)
+#define MSM_V4L2_PID_MAX		     MSM_V4L2_PID_CAM_MODE
+
+/* camera operation mode for video recording - two frame output queues */
+#define MSM_V4L2_CAM_OP_DEFAULT         0
+/* camera operation mode for video recording - two frame output queues */
+#define MSM_V4L2_CAM_OP_PREVIEW         (MSM_V4L2_CAM_OP_DEFAULT+1)
+/* camera operation mode for video recording - two frame output queues */
+#define MSM_V4L2_CAM_OP_VIDEO           (MSM_V4L2_CAM_OP_DEFAULT+2)
+/* camera operation mode for standard shapshot - two frame output queues */
+#define MSM_V4L2_CAM_OP_CAPTURE         (MSM_V4L2_CAM_OP_DEFAULT+3)
+/* camera operation mode for zsl shapshot - three output queues */
+#define MSM_V4L2_CAM_OP_ZSL             (MSM_V4L2_CAM_OP_DEFAULT+4)
 
 #define MSM_V4L2_VID_CAP_TYPE	0
 #define MSM_V4L2_STREAM_ON	1
