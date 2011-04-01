@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -580,18 +580,7 @@ static int soc_clk_enable_nolock(unsigned id)
 	struct clk_local *t = &clk_local_tbl[id];
 	int ret = 0;
 
-	if (!t->count) {
-		ret = vote_msmc1(t->current_freq->msmc1);
-		if (ret)
-			return ret;
-		if (t->parent != C(NONE)) {
-			ret = soc_clk_enable_nolock(t->parent);
-			if (ret)
-				return ret;
-		}
-		src_enable(t->current_freq->src);
-		ret = _soc_clk_enable(id);
-	}
+	/* The clocks are always on. Done by the bootloader */
 	t->count++;
 
 	return ret;
@@ -605,15 +594,10 @@ static void soc_clk_disable_nolock(unsigned id)
 		pr_warning("Reference count mismatch in clock disable!\n");
 		return;
 	}
+	/* The clocks are never turned off */
+
 	if (t->count)
 		t->count--;
-	if (t->count == 0) {
-		_soc_clk_disable(id);
-		src_disable(t->current_freq->src);
-		unvote_msmc1(t->current_freq->msmc1);
-		if (t->parent != C(NONE))
-			soc_clk_disable_nolock(t->parent);
-	}
 
 	return;
 }
