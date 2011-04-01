@@ -399,6 +399,7 @@ static u8 smp_cmd_pairing_random(struct l2cap_conn *conn, struct sk_buff *skb)
 				SMP_MAX_ENC_KEY_SIZE - conn->smp_key_size);
 
 		hci_le_start_enc(hcon, ediv, rand, stk);
+		hcon->enc_key_size = conn->smp_key_size;
 	} else {
 		u8 stk[16], r[16], rand[8];
 		__le16 ediv;
@@ -415,7 +416,8 @@ static u8 smp_cmd_pairing_random(struct l2cap_conn *conn, struct sk_buff *skb)
 		memset(stk + conn->smp_key_size, 0,
 				SMP_MAX_ENC_KEY_SIZE - conn->smp_key_size);
 
-		hci_add_ltk(conn->hcon->hdev, 0, conn->dst, ediv, rand, stk);
+		hci_add_ltk(conn->hcon->hdev, 0, conn->dst, conn->smp_key_size,
+							ediv, rand, stk);
 	}
 
 	return 0;
@@ -481,6 +483,8 @@ int smp_conn_security(struct l2cap_conn *conn, __u8 sec_level)
 
 			hci_le_start_enc(hcon, master->ediv, master->rand,
 								key->val);
+			hcon->enc_key_size = key->pin_len;
+
 			goto done;
 		}
 	}
@@ -521,7 +525,7 @@ static int smp_cmd_encrypt_info(struct l2cap_conn *conn, struct sk_buff *skb)
 
 	memset(rand, 0, sizeof(rand));
 
-	err = hci_add_ltk(conn->hcon->hdev, 0, conn->dst, 0, rand, rp->ltk);
+	err = hci_add_ltk(conn->hcon->hdev, 0, conn->dst, 0, 0, rand, rp->ltk);
 	if (err)
 		return SMP_UNSPECIFIED;
 
@@ -548,8 +552,8 @@ static int smp_cmd_master_ident(struct l2cap_conn *conn, struct sk_buff *skb)
 	id->ediv = rp->ediv;
 	memcpy(id->rand, rp->rand, sizeof(rp->rand));
 
-	hci_add_ltk(conn->hcon->hdev, 1, conn->src, rp->ediv,
-						rp->rand, key->val);
+	hci_add_ltk(conn->hcon->hdev, 1, conn->src, conn->smp_key_size,
+						rp->ediv, rp->rand, key->val);
 
 	smp_distribute_keys(conn, 1);
 
@@ -668,8 +672,8 @@ int smp_distribute_keys(struct l2cap_conn *conn, __u8 force)
 
 		smp_send_cmd(conn, SMP_CMD_ENCRYPT_INFO, sizeof(enc), &enc);
 
-		hci_add_ltk(conn->hcon->hdev, 1, conn->dst, ediv,
-							ident.rand, enc.ltk);
+		hci_add_ltk(conn->hcon->hdev, 1, conn->dst, conn->smp_key_size,
+						ediv, ident.rand, enc.ltk);
 
 		ident.ediv = cpu_to_le16(ediv);
 

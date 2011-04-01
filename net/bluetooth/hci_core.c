@@ -1128,7 +1128,7 @@ int hci_add_link_key(struct hci_dev *hdev, int new_key, bdaddr_t *bdaddr,
 }
 
 int hci_add_ltk(struct hci_dev *hdev, int new_key, bdaddr_t *bdaddr,
-					__le16 ediv, u8 rand[8], u8 ltk[16])
+			u8 key_size, __le16 ediv, u8 rand[8], u8 ltk[16])
 {
 	struct link_key *key, *old_key;
 	struct key_master_id *id;
@@ -1153,6 +1153,7 @@ int hci_add_ltk(struct hci_dev *hdev, int new_key, bdaddr_t *bdaddr,
 	bacpy(&key->bdaddr, bdaddr);
 	memcpy(key->val, ltk, sizeof(key->val));
 	key->type = KEY_TYPE_LTK;
+	key->pin_len = key_size;
 
 	id = (void *) &key->data;
 	id->ediv = ediv;
