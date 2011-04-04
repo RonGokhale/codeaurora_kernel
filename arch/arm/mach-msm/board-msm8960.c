@@ -41,6 +41,7 @@
 #include <mach/gpio.h>
 
 #include "timer.h"
+#include "gpiomux.h"
 #include "devices.h"
 #include "devices-msm8x60.h"
 #include "gpiomux.h"
@@ -115,6 +116,103 @@ static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
 		},
 	},
 };
+static struct gpiomux_setting cam_suspend_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct gpiomux_setting cam_active_1_cfg = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting cam_active_2_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting cam_active_3_cfg = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_UP,
+};
+
+static struct msm_gpiomux_config msm8960_cam_configs[] __initdata = {
+	{
+		.gpio = 2,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_active_2_cfg,
+			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 3,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_active_1_cfg,
+			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 4,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_active_2_cfg,
+			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 5,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_active_1_cfg,
+			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 18,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_active_3_cfg,
+			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 19,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_active_3_cfg,
+			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 20,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_active_3_cfg,
+			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 21,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_active_3_cfg,
+			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 76,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_active_2_cfg,
+			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 107,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cam_active_2_cfg,
+			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
+		},
+	},
+};
+
 
 static int __init gpiomux_init(void)
 {
@@ -126,8 +224,8 @@ static int __init gpiomux_init(void)
 		return rc;
 	}
 
-	msm_gpiomux_install(msm8960_gpiomux_configs,
-			ARRAY_SIZE(msm8960_gpiomux_configs));
+	msm_gpiomux_install(msm8960_cam_configs,
+			ARRAY_SIZE(msm8960_cam_configs));
 
 	msm_gpiomux_install(msm8960_gsbi_configs,
 			ARRAY_SIZE(msm8960_gsbi_configs));
@@ -147,7 +245,6 @@ static int __init gpiomux_init(void)
 
 static void __init msm8960_map_io(void)
 {
-	msm_shared_ram_phys = MSM_SHARED_RAM_PHYS;
 	msm_map_msm8960_io();
 }
 
@@ -670,6 +767,55 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 	},
 };
 #endif
+#ifdef CONFIG_I2C
+#define I2C_SURF 1
+#define I2C_FFA  (1 << 1)
+#define I2C_RUMI (1 << 2)
+#define I2C_SIM  (1 << 3)
+#define I2C_FLUID (1 << 4)
+#define MSM_8960_GSBI4_QUP_I2C_BUS_ID 4
+
+struct i2c_registry {
+	u8                     machs;
+	int                    bus;
+	struct i2c_board_info *info;
+	int                    len;
+};
+
+#ifdef CONFIG_MSM_CAMERA
+static struct i2c_board_info msm_camera_boardinfo[] __initdata = {
+};
+#endif
+
+static struct i2c_registry msm8960_i2c_devices[] __initdata = {
+#ifdef CONFIG_MSM_CAMERA
+	{
+		I2C_SURF | I2C_FFA | I2C_FLUID | I2C_RUMI,
+		MSM_8960_GSBI4_QUP_I2C_BUS_ID,
+		msm_camera_boardinfo,
+		ARRAY_SIZE(msm_camera_boardinfo),
+	},
+#endif
+};
+#endif /* CONFIG_I2C */
+
+static void register_i2c_devices(void)
+{
+#ifdef CONFIG_I2C
+	u8 mach_mask = 0;
+	int i;
+
+	mach_mask = I2C_RUMI;
+
+	/* Run the array and install devices as appropriate */
+	for (i = 0; i < ARRAY_SIZE(msm8960_i2c_devices); ++i) {
+		if (msm8960_i2c_devices[i].machs & mach_mask)
+			i2c_register_board_info(msm8960_i2c_devices[i].bus,
+						msm8960_i2c_devices[i].info,
+						msm8960_i2c_devices[i].len);
+	}
+#endif
+}
 
 static void __init msm8960_sim_init(void)
 {
@@ -729,6 +875,8 @@ static void __init msm8960_rumi3_init(void)
 	msm8960_i2c_init();
 	platform_add_devices(rumi3_devices, ARRAY_SIZE(rumi3_devices));
 	msm8960_init_mmc();
+
+	register_i2c_devices();
 }
 
 MACHINE_START(MSM8960_SIM, "QCT MSM8960 SIMULATOR")
