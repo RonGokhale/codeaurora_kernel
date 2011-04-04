@@ -1368,7 +1368,7 @@ int hci_recv_frame(struct sk_buff *skb)
 EXPORT_SYMBOL(hci_recv_frame);
 
 static int hci_reassembly(struct hci_dev *hdev, int type, void *data,
-			  int count, __u8 index, gfp_t gfp_mask)
+						  int count, __u8 index)
 {
 	int len = 0;
 	int hlen = 0;
@@ -1398,7 +1398,7 @@ static int hci_reassembly(struct hci_dev *hdev, int type, void *data,
 			break;
 		}
 
-		skb = bt_skb_alloc(len, gfp_mask);
+		skb = bt_skb_alloc(len, GFP_ATOMIC);
 		if (!skb)
 			return -ENOMEM;
 
@@ -1484,8 +1484,7 @@ int hci_recv_fragment(struct hci_dev *hdev, int type, void *data, int count)
 		return -EILSEQ;
 
 	while (count) {
-		rem = hci_reassembly(hdev, type, data, count,
-						type - 1, GFP_ATOMIC);
+		rem = hci_reassembly(hdev, type, data, count, type - 1);
 		if (rem < 0)
 			return rem;
 
@@ -1519,8 +1518,8 @@ int hci_recv_stream_fragment(struct hci_dev *hdev, void *data, int count)
 		} else
 			type = bt_cb(skb)->pkt_type;
 
-		rem = hci_reassembly(hdev, type, data,
-					count, STREAM_REASSEMBLY, GFP_ATOMIC);
+		rem = hci_reassembly(hdev, type, data, count,
+							STREAM_REASSEMBLY);
 		if (rem < 0)
 			return rem;
 
