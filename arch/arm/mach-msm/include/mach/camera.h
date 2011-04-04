@@ -105,6 +105,46 @@ enum msm_stereo_state {
 	STEREO_RAW_SNAP_STARTED,
 };
 
+enum msm_ispif_intftype {
+	PIX0,
+	RDI0,
+	PIX1,
+	RDI1,
+	PIX2,
+	RDI2,
+};
+
+enum msm_ispif_vc {
+	VC0,
+	VC1,
+	VC2,
+	VC3,
+};
+
+enum msm_ispif_cid {
+	CID0,
+	CID1,
+	CID2,
+	CID3,
+	CID4,
+	CID5,
+	CID6,
+	CID7,
+	CID8,
+	CID9,
+	CID10,
+	CID11,
+	CID12,
+	CID13,
+	CID14,
+	CID15,
+};
+
+struct msm_ispif_params {
+	uint8_t intftype;
+	uint16_t cid_mask;
+	uint8_t csid;
+};
 struct msm_vpe_phy_info {
 	uint32_t sbuf_phy;
 	uint32_t y_phy;

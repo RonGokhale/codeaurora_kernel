@@ -48,6 +48,9 @@ struct msm_camera_io_ext {
 	uint32_t csiphy;
 	uint32_t csisz;
 	uint32_t csiirq;
+	uint32_t ispifphy;
+	uint32_t ispifsz;
+	uint32_t ispifirq;
 };
 
 struct msm_camera_io_clk {
