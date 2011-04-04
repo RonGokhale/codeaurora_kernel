@@ -159,7 +159,7 @@ static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
 
 			if (serial->interface->num_altsetting == 1) {
 				retval = 0; /* Success */
-				break;
+				goto out;
 			}
 
 			retval = usb_set_interface(serial->dev, ifnum, 1);
@@ -223,7 +223,7 @@ static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
 		kfree(data);
 		retval = -ENODEV;
 	}
-
+out:
 	/* Set serial->private if not returning -ENODEV */
 	if (retval != -ENODEV)
 		usb_set_serial_data(serial, data);
