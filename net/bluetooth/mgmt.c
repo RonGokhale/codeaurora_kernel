@@ -1582,7 +1582,7 @@ int mgmt_control(struct sock *sk, struct msghdr *msg, size_t msglen)
 	if (msglen < sizeof(*hdr))
 		return -EINVAL;
 
-	buf = kmalloc(msglen, GFP_ATOMIC);
+	buf = kmalloc(msglen, GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
 
