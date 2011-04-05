@@ -91,7 +91,7 @@ static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	{ "clk_m",	NULL,		12000000,	true},
 	{ "pll_m",	"clk_m",	600000000,	true},
 	{ "vi",		"pll_m",	150000000,	false},
-	{ "vi_sensor",	"pll_m",	18200000,	false},
+	{ "vi_sensor",	"pll_m",	24000000,	false},
 	{ "epp",	"pll_m",	300000000,	false},
 	{ "mpe",	"pll_m",	100000000,	false},
 	{ "pll_c",	"clk_m",	600000000,	true},
