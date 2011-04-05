@@ -41,7 +41,7 @@
 #include "qfec.h"
 
 #define QFEC_NAME       "qfec"
-#define QFEC_DRV_VER    "Jan 17 2011"
+#define QFEC_DRV_VER    "Apr 05 2011"
 
 /* -------------------------------------------------------------------------
  */
@@ -461,6 +461,7 @@ struct qfec_priv {
 
 	unsigned int            state;            /* driver state */
 
+	unsigned int            bd_size;          /* buf-desc alloc size */
 	struct qfec_buf_desc   *bd_base;          /* * qfec-buf-desc */
 	dma_addr_t              tbd_dma;          /* dma/phy-addr buf-desc */
 	dma_addr_t              rbd_dma;          /* dma/phy-addr buf-desc */
@@ -476,11 +477,13 @@ struct qfec_priv {
 
 	unsigned int            n_tbd;            /* # of TX buf-desc */
 	struct ring             ring_tbd;         /* TX ring */
-	struct buf_desc         p_tbd[TX_BD_NUM]; /* TX buf-desc[] */
+	struct buf_desc        *p_tbd;
+	unsigned int            tx_ic_mod;        /* (%) val for setting IC */
 
 	unsigned int            n_rbd;            /* # of RX buf-desc */
 	struct ring             ring_rbd;         /* RX ring */
-	struct buf_desc         p_rbd[RX_BD_NUM]; /* RX buf-desc[] */
+	struct buf_desc        *p_rbd;
+
 	struct buf_desc        *p_latest_rbd;
 	struct buf_desc        *p_ending_rbd;
 
@@ -1200,9 +1203,9 @@ static void qfec_phy_monitor(unsigned long data)
 static void qfec_mem_dealloc(struct net_device *dev)
 {
 	struct qfec_priv   *priv = netdev_priv(dev);
-	unsigned int        size = PAGE_SIZE;
 
-	dma_free_coherent(&dev->dev, size, priv->bd_base, priv->tbd_dma);
+	dma_free_coherent(&dev->dev,
+		priv->bd_size, priv->bd_base, priv->tbd_dma);
 	priv->bd_base = 0;
 }
 
@@ -1213,16 +1216,28 @@ static void qfec_mem_dealloc(struct net_device *dev)
 static int qfec_mem_alloc(struct net_device *dev)
 {
 	struct qfec_priv   *priv = netdev_priv(dev);
-	unsigned int        size;
 
 	QFEC_LOG(QFEC_LOG_DBG, "%s: %p dev\n", __func__, dev);
 
-	size = (TX_BD_NUM + RX_BD_NUM) * sizeof(struct qfec_buf_desc);
+	priv->bd_size =
+		(priv->n_tbd + priv->n_rbd) * sizeof(struct qfec_buf_desc);
+
+	priv->p_tbd = kcalloc(priv->n_tbd, sizeof(struct buf_desc), GFP_KERNEL);
+	if (!priv->p_tbd)  {
+		QFEC_LOG_ERR("%s: kcalloc failed p_tbd\n", __func__);
+		return -ENOMEM;
+	}
+
+	priv->p_rbd = kcalloc(priv->n_rbd, sizeof(struct buf_desc), GFP_KERNEL);
+	if (!priv->p_rbd)  {
+		QFEC_LOG_ERR("%s: kcalloc failed p_rbd\n", __func__);
+		return -ENOMEM;
+	}
 
 	/* alloc mem for buf-desc, if not already alloc'd */
 	if (!priv->bd_base)  {
 		priv->bd_base = dma_alloc_coherent(&dev->dev,
-			size, &priv->tbd_dma,
+			priv->bd_size, &priv->tbd_dma,
 			GFP_KERNEL | __GFP_DMA);
 	}
 
@@ -1231,15 +1246,12 @@ static int qfec_mem_alloc(struct net_device *dev)
 		return -ENOMEM;
 	}
 
-	priv->n_tbd = TX_BD_NUM;
-	priv->n_rbd = RX_BD_NUM;
-
 	priv->rbd_dma   = priv->tbd_dma
 			+ (priv->n_tbd * sizeof(struct qfec_buf_desc));
 
 	QFEC_LOG(QFEC_LOG_DBG,
 		" %s: 0x%08x size, %d n_tbd, %d n_rbd\n",
-		__func__, size, priv->n_tbd, priv->n_rbd);
+		__func__, priv->bd_size, priv->n_tbd, priv->n_rbd);
 
 	return 0;
 }
@@ -1615,6 +1627,10 @@ static int qfec_open(struct net_device *dev)
 
 	qfec_ring_init(&priv->ring_tbd, priv->n_tbd, priv->n_tbd);
 
+	priv->tx_ic_mod = priv->n_tbd / TX_BD_TI_RATIO;
+	if (priv->tx_ic_mod == 0)
+		priv->tx_ic_mod = 1;
+
 	/* initialize RX buffer descriptors and allocate sk_bufs */
 	p_ring = &priv->ring_rbd;
 	qfec_ring_init(p_ring, priv->n_rbd, 0);
@@ -1756,8 +1772,7 @@ static int qfec_xmit(struct sk_buff *skb, struct net_device *dev)
 		(void *)skb->data, skb->len, DMA_TO_DEVICE));
 
 	ctrl  = skb->len;
-	if (qfec_ring_head(p_ring) %
-		(TX_BD_NUM / TX_BD_TI_RATIO) == 0)
+	if (!(qfec_ring_head(p_ring) % priv->tx_ic_mod))
 		ctrl |= BUF_TX_IC; /* interrupt on complete */
 
 	/* check if timestamping enabled and requested */
@@ -2001,6 +2016,79 @@ static int qfec_ethtool_setpauseparam(struct net_device *dev,
 }
 
 /* ------------------------------------------------
+ * ethtool ring parameter (-g/G) support
+ */
+
+/*
+ * setringparamam - change the tx/rx ring lengths
+ */
+#define MIN_RING_SIZE	3
+#define MAX_RING_SIZE	1000
+static int qfec_ethtool_setringparam(struct net_device *dev,
+	struct ethtool_ringparam *ring)
+{
+	struct qfec_priv  *priv    = netdev_priv(dev);
+	u32                timeout = 20;
+
+	/* notify stack the link is down */
+	netif_carrier_off(dev);
+
+	/* allow tx to complete & free skbufs on the tx ring */
+	do {
+		usleep_range(10000, 100000);
+		qfec_tx_replenish(dev);
+
+		if (timeout-- == 0)  {
+			QFEC_LOG_ERR("%s: timeout\n", __func__);
+			return -ETIME;
+		}
+	} while (!qfec_ring_empty(&priv->ring_tbd));
+
+
+	qfec_stop(dev);
+
+	/* set tx ring size */
+	if (ring->tx_pending < MIN_RING_SIZE)
+		ring->tx_pending = MIN_RING_SIZE;
+	else if (ring->tx_pending > MAX_RING_SIZE)
+		ring->tx_pending = MAX_RING_SIZE;
+	priv->n_tbd = ring->tx_pending;
+
+	/* set rx ring size */
+	if (ring->rx_pending < MIN_RING_SIZE)
+		ring->rx_pending = MIN_RING_SIZE;
+	else if (ring->rx_pending > MAX_RING_SIZE)
+		ring->rx_pending = MAX_RING_SIZE;
+	priv->n_rbd = ring->rx_pending;
+
+
+	qfec_open(dev);
+
+	return 0;
+}
+
+/*
+ * getringparamam - returns local values
+ */
+static void qfec_ethtool_getringparam(struct net_device *dev,
+	struct ethtool_ringparam *ring)
+{
+	struct qfec_priv  *priv = netdev_priv(dev);
+
+	QFEC_LOG(QFEC_LOG_DBG, "%s:\n", __func__);
+
+	ring->rx_max_pending       = MAX_RING_SIZE;
+	ring->rx_mini_max_pending  = 0;
+	ring->rx_jumbo_max_pending = 0;
+	ring->tx_max_pending       = MAX_RING_SIZE;
+
+	ring->rx_pending           = priv->n_rbd;
+	ring->rx_mini_pending      = 0;
+	ring->rx_jumbo_pending     = 0;
+	ring->tx_pending           = priv->n_tbd;
+}
+
+/* ------------------------------------------------
  * speed, duplex, auto-neg settings
  */
 static int
@@ -2229,6 +2317,9 @@ static const struct ethtool_ops qfec_ethtool_ops = {
 	.get_regs_len       = qfec_ethtool_getregs_len,
 	.get_regs           = qfec_ethtool_getregs,
 
+	.get_ringparam      = qfec_ethtool_getringparam,
+	.set_ringparam      = qfec_ethtool_setringparam,
+
 	.get_pauseparam     = qfec_ethtool_getpauseparam,
 	.set_pauseparam     = qfec_ethtool_setpauseparam,
 
@@ -2322,6 +2413,9 @@ static int __devinit qfec_probe(struct platform_device *plat)
 
 	priv->net_dev   = dev;
 	platform_set_drvdata(plat, dev);
+
+	priv->n_tbd     = TX_BD_NUM;
+	priv->n_rbd     = RX_BD_NUM;
 
 	/* initialize phy structure */
 	priv->mii.phy_id_mask   = 0x1F;
