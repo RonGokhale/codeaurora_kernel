@@ -247,6 +247,7 @@ struct hci_conn {
 
 	bdaddr_t	dst;
 	__u8		 dst_id;
+	__u8            dst_type;
 	__u16		handle;
 	__u16		state;
 	__u8		mode;
