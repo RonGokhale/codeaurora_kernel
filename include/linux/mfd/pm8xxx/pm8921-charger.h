@@ -48,4 +48,21 @@ struct pm8921_charger_platform_data {
 	unsigned int			(*get_batt_capacity_percent) (void);
 };
 
+#if defined(CONFIG_PM8921_CHARGER) || defined(CONFIG_PM8921_CHARGER_MODULE)
+void pm8921_charger_vbus_draw(unsigned int mA);
+int pm8921_charger_register_vbus_sn(void (*callback)(int));
+void pm8921_charger_unregister_vbus_sn(void (*callback)(int));
+#else
+static inline void pm8921_charger_vbus_draw(unsigned int mA)
+{
+}
+static inline int pm8921_charger_register_vbus_sn(void (*callback)(int))
+{
+	return -ENXIO;
+}
+static inline void pm8921_charger_unregister_vbus_sn(void (*callback)(int))
+{
+}
+#endif
+
 #endif
