@@ -21,6 +21,7 @@
 #define __MACH_TEGRA_DC_H
 
 #include <linux/pm.h>
+#include <drm/drm_fixed.h>
 
 #define TEGRA_MAX_DC		2
 #define DC_N_WINDOWS		3
@@ -90,10 +91,10 @@ struct tegra_dc_win {
 	unsigned		offset_v;
 	unsigned		stride;
 	unsigned		stride_uv;
-	unsigned		x;
-	unsigned		y;
-	unsigned		w;
-	unsigned		h;
+	fixed20_12		x;
+	fixed20_12		y;
+	fixed20_12		w;
+	fixed20_12		h;
 	unsigned		out_x;
 	unsigned		out_y;
 	unsigned		out_w;
