@@ -163,8 +163,10 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 	dsi_border_clr = mfd->panel_info.lcdc.border_clr;
 	dsi_underflow_clr = mfd->panel_info.lcdc.underflow_clr;
 	dsi_hsync_skew = mfd->panel_info.lcdc.hsync_skew;
-	dsi_width = mfd->panel_info.xres;
-	dsi_height = mfd->panel_info.yres;
+	dsi_width = mfd->panel_info.xres +
+		mfd->panel_info.mipi.xres_pad;
+	dsi_height = mfd->panel_info.yres +
+		mfd->panel_info.mipi.yres_pad;
 	dsi_bpp = mfd->panel_info.bpp;
 
 	hsync_period = hsync_pulse_width + h_back_porch + dsi_width
