@@ -151,17 +151,6 @@ static int msm_rpm_fill_sel_masks(
 	return 0;
 }
 
-static inline void msm_rpm_write_barrier(void)
-{
-	mb();
-
-	/*
-	 * By the time the read from RPM memory returns, all previous
-	 * writes are guaranteed visible to RPM.
-	 */
-	msm_rpm_read(MSM_RPM_PAGE_STATUS, MSM_RPM_STATUS_ID_VERSION_MAJOR);
-}
-
 static inline void msm_rpm_send_req_interrupt(void)
 {
 	__raw_writel(msm_rpm_platform->msm_apps_ipc_rpm_val,
@@ -198,8 +187,9 @@ static int msm_rpm_process_ack_interrupt(void)
 
 		msm_rpm_write_contiguous_zeros(MSM_RPM_PAGE_CTRL,
 			MSM_RPM_CTRL_ACK_SEL_0, MSM_RPM_SEL_MASK_SIZE);
-		mb();
 		msm_rpm_write(MSM_RPM_PAGE_CTRL, MSM_RPM_CTRL_ACK_CTX_0, 0);
+		/* Ensure the write is complete before return */
+		dsb();
 
 		return 1;
 	}
@@ -218,8 +208,9 @@ static int msm_rpm_process_ack_interrupt(void)
 
 		msm_rpm_write_contiguous_zeros(MSM_RPM_PAGE_CTRL,
 			MSM_RPM_CTRL_ACK_SEL_0, MSM_RPM_SEL_MASK_SIZE);
-		mb();
 		msm_rpm_write(MSM_RPM_PAGE_CTRL, MSM_RPM_CTRL_ACK_CTX_0, 0);
+		/* Ensure the write is complete before return */
+		dsb();
 
 		if (msm_rpm_request->done)
 			complete_all(msm_rpm_request->done);
@@ -311,7 +302,8 @@ static int msm_rpm_set_exclusive(int ctx,
 		MSM_RPM_CTRL_REQ_SEL_0, sel_masks, MSM_RPM_SEL_MASK_SIZE);
 	msm_rpm_write(MSM_RPM_PAGE_CTRL, MSM_RPM_CTRL_REQ_CTX_0, ctx_mask);
 
-	msm_rpm_write_barrier();
+	/* Ensure RPM data is written before sending the interrupt */
+	dsb();
 	msm_rpm_send_req_interrupt();
 
 	spin_unlock(&msm_rpm_irq_lock);
@@ -370,7 +362,8 @@ static int msm_rpm_set_exclusive_noirq(int ctx,
 		MSM_RPM_CTRL_REQ_SEL_0, sel_masks, MSM_RPM_SEL_MASK_SIZE);
 	msm_rpm_write(MSM_RPM_PAGE_CTRL, MSM_RPM_CTRL_REQ_CTX_0, ctx_mask);
 
-	msm_rpm_write_barrier();
+	/* Ensure RPM data is written before sending the interrupt */
+	dsb();
 	msm_rpm_send_req_interrupt();
 
 	msm_rpm_busy_wait_for_request_completion(false);
