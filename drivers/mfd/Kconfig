@@ -711,6 +711,16 @@ config MFD_PM8XXX_IRQ
 	  This is required to use certain other PM 8xxx features, such as GPIO
 	  and MPP.
 
+config WCD9310_CODEC
+        tristate "WCD9310 Codec"
+        depends on SLIMBUS
+        select MFD_CORE
+        default n
+        help
+          Enables the WCD9310 core driver. The core driver provides
+          read/write capability to registers which are part of the
+          WCD9310 core and gives the ability to use the WCD9310 codec.
+
 endif # MFD_SUPPORT
 
 menu "Multimedia Capabilities Port drivers"
