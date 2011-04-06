@@ -394,6 +394,18 @@ struct hci_conn *hci_conn_add(struct hci_dev *hdev, int type,
 	return conn;
 }
 
+struct hci_conn *hci_le_conn_add(struct hci_dev *hdev, bdaddr_t *dst,
+							__u8 addr_type)
+{
+	struct hci_conn *conn = hci_conn_add(hdev, LE_LINK, dst);
+	if (!conn)
+		return NULL;
+
+	conn->dst_type = addr_type;
+
+	return conn;
+}
+
 int hci_conn_del(struct hci_conn *conn)
 {
 	struct hci_dev *hdev = conn->hdev;
@@ -604,7 +616,7 @@ struct hci_conn *hci_connect(struct hci_dev *hdev, int type,
 		le = hci_conn_hash_lookup_ba(hdev, LE_LINK, dst);
 		if (le)
 			return ERR_PTR(-EBUSY);
-		le = hci_conn_add(hdev, LE_LINK, 0, dst);
+		le = hci_le_conn_add(hdev, dst, 0);
 		if (!le)
 			return ERR_PTR(-ENOMEM);
 		if (le->state == BT_OPEN)
