@@ -44,6 +44,12 @@
 #include <mach/irqs.h>
 #include <mach/gpio.h>
 
+#ifdef CONFIG_WCD9310_CODEC
+#include <linux/slimbus/slimbus.h>
+#include <linux/mfd/wcd9310/core.h>
+#include <linux/mfd/wcd9310/pdata.h>
+#endif
+
 #include "timer.h"
 #include "gpiomux.h"
 #include "devices.h"
@@ -494,6 +500,38 @@ static void __init msm8960_allocate_memory_regions(void)
 	}
 #endif
 }
+#ifdef CONFIG_WCD9310_CODEC
+
+#define TABLA_INTERRUPT_BASE (NR_MSM_IRQS + NR_GPIO_IRQS + NR_PM8921_IRQS)
+
+static struct tabla_pdata tabla_platform_data = {
+	.slimbus_slave_device = {
+		.name = "tabla-slave",
+		.e_addr = {0, 0, 0x10, 0, 0x17, 2},
+	},
+	/* TODO find correct irq number */
+	.irq = VCODEC_IRQ,
+	.irq_base = TABLA_INTERRUPT_BASE,
+	.num_irqs = NR_TABLA_IRQS,
+};
+
+static struct slim_device msm_slim_tabla = {
+	.name = "tabla-slim",
+	.e_addr = {0, 1, 0x10, 0, 0x17, 2},
+	.dev = {
+		.platform_data = &tabla_platform_data,
+	},
+};
+
+static struct slim_boardinfo msm_slim_devices[] = {
+	{
+		.bus_num = 1,
+		.slim_slave = &msm_slim_tabla,
+	},
+	/* add more slimbus slaves as needed */
+};
+
+#endif
 
 static int __init gpiomux_init(void)
 {
@@ -1236,6 +1274,10 @@ static void __init msm8960_sim_init(void)
 #endif
 #endif
 
+#ifdef CONFIG_WCD9310_CODEC
+	slim_register_board_info(msm_slim_devices,
+		ARRAY_SIZE(msm_slim_devices));
+#endif
 }
 
 static void __init msm8960_rumi3_init(void)
@@ -1263,6 +1305,11 @@ static void __init msm8960_rumi3_init(void)
 
 	register_i2c_devices();
 	msm_fb_add_devices();
+
+#ifdef CONFIG_WCD9310_CODEC
+	slim_register_board_info(msm_slim_devices,
+		ARRAY_SIZE(msm_slim_devices));
+#endif
 }
 
 MACHINE_START(MSM8960_SIM, "QCT MSM8960 SIMULATOR")
