@@ -153,11 +153,39 @@ struct msm_vpe_phy_info {
 	uint32_t frame_id;
 };
 
+struct msm_camera_csid_lut_params {
+	uint8_t vc;
+	uint8_t dt;
+	uint8_t cid;
+	uint8_t rdi_en;
+	uint8_t ispif_en;
+	uint8_t decode_format;
+};
+
+struct msm_camera_csid_params {
+	uint8_t lane_cnt;
+	uint8_t lane_assign;
+	struct msm_camera_csid_lut_params lut_params;
+};
+
+struct msm_camera_csiphy_params {
+	uint8_t lane_cnt;
+	uint8_t settle_cnt;
+};
+
 #define VFE31_OUTPUT_MODE_PT (0x1 << 0)
 #define VFE31_OUTPUT_MODE_S (0x1 << 1)
 #define VFE31_OUTPUT_MODE_V (0x1 << 2)
 #define VFE31_OUTPUT_MODE_P (0x1 << 3)
 #define VFE31_OUTPUT_MODE_T (0x1 << 4)
+
+#define CSI_RAW8    0x2A
+#define CSI_RAW10   0x2B
+#define CSI_RAW12   0x2C
+
+#define CSI_DECODE_6BIT 0
+#define CSI_DECODE_8BIT 1
+#define CSI_DECODE_10BIT 2
 
 struct msm_vfe_phy_info {
 	uint32_t sbuf_phy;
@@ -459,6 +487,13 @@ enum msm_camio_clk_type {
 	CAMIO_CSI1_CLK,
 	CAMIO_CSI0_PCLK,
 	CAMIO_CSI1_PCLK,
+
+	CAMIO_CSI1_SRC_CLK,
+	CAMIO_CSI_PIX_CLK,
+	CAMIO_CSI_RDI_CLK,
+	CAMIO_CSIPHY0_TIMER_CLK,
+	CAMIO_CSIPHY1_TIMER_CLK,
+
 	CAMIO_JPEG_CLK,
 	CAMIO_JPEG_PCLK,
 	CAMIO_VPE_CLK,
@@ -538,6 +573,9 @@ int msm_camio_probe_off(struct platform_device *);
 int msm_camio_sensor_clk_off(struct platform_device *);
 int msm_camio_sensor_clk_on(struct platform_device *);
 int msm_camio_csi_config(struct msm_camera_csi_params *csi_params);
+int msm_camio_csiphy_config(struct msm_camera_csiphy_params *csiphy_params);
+int msm_camio_csid_config(struct msm_camera_csid_params *csid_params);
+void msm_io_read_interrupt(void);
 int add_axi_qos(void);
 int update_axi_qos(uint32_t freq);
 void release_axi_qos(void);
