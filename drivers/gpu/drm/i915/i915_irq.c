@@ -316,6 +316,8 @@ static void i915_hotplug_work_func(struct work_struct *work)
 	struct drm_mode_config *mode_config = &dev->mode_config;
 	struct intel_encoder *encoder;
 
+	DRM_DEBUG_KMS("running encoder hotplug functions\n");
+
 	list_for_each_entry(encoder, &mode_config->encoder_list, base.head)
 		if (encoder->hot_plug)
 			encoder->hot_plug(encoder);
@@ -1375,7 +1377,12 @@ int i915_enable_vblank(struct drm_device *dev, int pipe)
 	else
 		i915_enable_pipestat(dev_priv, pipe,
 				     PIPE_VBLANK_INTERRUPT_ENABLE);
+
+	/* maintain vblank delivery even in deep C-states */
+	if (dev_priv->info->gen == 3)
+		I915_WRITE(INSTPM, INSTPM_AGPBUSY_DIS << 16);
 	spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
+
 	return 0;
 }
 
@@ -1388,6 +1395,10 @@ void i915_disable_vblank(struct drm_device *dev, int pipe)
 	unsigned long irqflags;
 
 	spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
+	if (dev_priv->info->gen == 3)
+		I915_WRITE(INSTPM,
+			   INSTPM_AGPBUSY_DIS << 16 | INSTPM_AGPBUSY_DIS);
+
 	if (HAS_PCH_SPLIT(dev))
 		ironlake_disable_display_irq(dev_priv, (pipe == 0) ?
 					     DE_PIPEA_VBLANK: DE_PIPEB_VBLANK);
@@ -1649,9 +1660,7 @@ static int ironlake_irq_postinstall(struct drm_device *dev)
 	} else {
 		hotplug_mask = SDE_CRT_HOTPLUG | SDE_PORTB_HOTPLUG |
 			       SDE_PORTC_HOTPLUG | SDE_PORTD_HOTPLUG;
-		hotplug_mask |= SDE_AUX_MASK | SDE_FDI_MASK | SDE_TRANS_MASK;
-		I915_WRITE(FDI_RXA_IMR, 0);
-		I915_WRITE(FDI_RXB_IMR, 0);
+		hotplug_mask |= SDE_AUX_MASK;
 	}
 
 	dev_priv->pch_irq_mask = ~hotplug_mask;

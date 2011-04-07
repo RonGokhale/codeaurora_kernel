@@ -405,9 +405,12 @@
 #define   I915_ERROR_INSTRUCTION			(1<<0)
 #define INSTPM	        0x020c0
 #define   INSTPM_SELF_EN (1<<12) /* 915GM only */
+#define   INSTPM_AGPBUSY_DIS (1<<11) /* gen3: when disabled, pending interrupts
+					will not assert AGPBUSY# and will only
+					be delivered when out of C3. */
 #define ACTHD	        0x020c8
 #define FW_BLC		0x020d8
-#define FW_BLC2	 	0x020dc
+#define FW_BLC2		0x020dc
 #define FW_BLC_SELF	0x020e0 /* 915+ only */
 #define   FW_BLC_SELF_EN_MASK      (1<<31)
 #define   FW_BLC_SELF_FIFO_MASK    (1<<16) /* 945 only */
@@ -1553,7 +1556,17 @@
 
 /* Backlight control */
 #define BLC_PWM_CTL		0x61254
+#define   BACKLIGHT_MODULATION_FREQ_SHIFT		(17)
 #define BLC_PWM_CTL2		0x61250 /* 965+ only */
+#define   BLM_COMBINATION_MODE (1 << 30)
+/*
+ * This is the most significant 15 bits of the number of backlight cycles in a
+ * complete cycle of the modulated backlight control.
+ *
+ * The actual value is this field multiplied by two.
+ */
+#define   BACKLIGHT_MODULATION_FREQ_MASK		(0x7fff << 17)
+#define   BLM_LEGACY_MODE				(1 << 16)
 /*
  * This is the number of cycles out of the backlight modulation cycle for which
  * the backlight is on.
@@ -3260,6 +3273,8 @@
 
 #define  FORCEWAKE				0xA18C
 #define  FORCEWAKE_ACK				0x130090
+
+#define  GT_FIFO_FREE_ENTRIES			0x120008
 
 #define GEN6_RPNSWREQ				0xA008
 #define   GEN6_TURBO_DISABLE			(1<<31)
