@@ -4,7 +4,7 @@
  *
  * Copyright (C) 2008 Google, Inc.
  * Copyright (C) 2008 HTC Corporation
- * Copyright (c) 2008-2009, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2008-2009, 2011 Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -181,10 +181,8 @@ static void audplay_send_data(struct audio *audio, unsigned needed);
 static void audplay_config_hostpcm(struct audio *audio);
 static void audplay_buffer_refresh(struct audio *audio);
 static void audio_dsp_event(void *private, unsigned id, uint16_t *msg);
-#ifdef CONFIG_HAS_EARLYSUSPEND
 static void audaac_post_event(struct audio *audio, int type,
 		union msm_audio_event_payload payload);
-#endif
 
 static int rmt_put_resource(struct audio *audio)
 {
@@ -1493,7 +1491,6 @@ static int audio_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
 static void audaac_post_event(struct audio *audio, int type,
 		union msm_audio_event_payload payload)
 {
@@ -1523,6 +1520,7 @@ static void audaac_post_event(struct audio *audio, int type,
 	wake_up(&audio->event_wait);
 }
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
 static void audaac_suspend(struct early_suspend *h)
 {
 	struct audaac_suspend_ctl *ctl =

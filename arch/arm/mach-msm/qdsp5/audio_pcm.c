@@ -1,6 +1,6 @@
 /* audio_pcm.c - pcm audio decoder driver
  *
- * Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
  *
  * Based on the mp3 decoder driver in arch/arm/mach-msm/qdsp5/audio_mp3.c
  *
@@ -105,6 +105,8 @@
 	int res = (IN_RANGE(__r1, __v) || IN_RANGE(__r1, __e));	\
 	res;							\
 })
+
+struct audio;
 
 struct buffer {
 	void *data;
