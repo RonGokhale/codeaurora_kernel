@@ -62,6 +62,54 @@
 #define Q6SS_CLK_ENA		BIT(1)
 #define Q6SS_SRC_SWITCH_CLK_OVR	BIT(8)
 
+#define MSM_RIVA_PHYS			0x03204000
+#define RIVA_PMU_A2XB_CFG		(msm_riva_base + 0xB8)
+#define RIVA_PMU_A2XB_CFG_EN		BIT(0)
+
+#define RIVA_PMU_CFG			(msm_riva_base + 0x28)
+#define RIVA_PMU_CFG_WARM_BOOT		BIT(0)
+#define RIVA_PMU_CFG_IRIS_XO_MODE	0x6
+#define RIVA_PMU_CFG_IRIS_XO_MODE_48	(2 << 1)
+#define RIVA_PMU_CFG_IRIS_XO_CFG	BIT(3)
+#define RIVA_PMU_CFG_IRIS_XO_EN		BIT(4)
+#define RIVA_PMU_CFG_GC_BUS_MUX_SEL_TOP	BIT(5)
+#define RIVA_PMU_CFG_IRIS_XO_CFG_STS	BIT(6) /* 1: in progress, 0: done */
+
+#define RIVA_PMU_OVRD_VAL		(msm_riva_base + 0x30)
+#define RIVA_PMU_OVRD_VAL_CCPU_RESET	BIT(0)
+#define RIVA_PMU_OVRD_VAL_CCPU_CLK	BIT(1)
+
+#define RIVA_PMU_CCPU_CTL		(msm_riva_base + 0x9C)
+#define RIVA_PMU_CCPU_CTL_HIGH_IVT	BIT(0)
+#define RIVA_PMU_CCPU_CTL_REMAP_EN	BIT(2)
+
+#define RIVA_PMU_CCPU_BOOT_REMAP_ADDR	(msm_riva_base + 0xA0)
+
+#define RIVA_PLL_MODE			(MSM_CLK_CTL_BASE + 0x31A0)
+#define PLL_MODE_OUTCTRL		BIT(0)
+#define PLL_MODE_BYPASSNL		BIT(1)
+#define PLL_MODE_RESET_N		BIT(2)
+#define PLL_MODE_REF_XO_SEL		0x30
+#define PLL_MODE_REF_XO_SEL_RF		(3 << 4)
+#define RIVA_PLL_L_VAL			(MSM_CLK_CTL_BASE + 0x31A4)
+#define RIVA_PLL_M_VAL			(MSM_CLK_CTL_BASE + 0x31A8)
+#define RIVA_PLL_N_VAL			(MSM_CLK_CTL_BASE + 0x31Ac)
+#define RIVA_PLL_CONFIG			(MSM_CLK_CTL_BASE + 0x31B4)
+
+#define RIVA_PMU_ROOT_CLK_SEL		(msm_riva_base + 0xC8)
+#define RIVA_PMU_ROOT_CLK_SEL_3		BIT(2)
+
+#define RIVA_PMU_CLK_ROOT3			(msm_riva_base + 0x78)
+#define RIVA_PMU_CLK_ROOT3_ENA			BIT(0)
+#define RIVA_PMU_CLK_ROOT3_SRC0_DIV		0x3C
+#define RIVA_PMU_CLK_ROOT3_SRC0_DIV_2		(1 << 2)
+#define RIVA_PMU_CLK_ROOT3_SRC0_SEL		0x1C0
+#define RIVA_PMU_CLK_ROOT3_SRC0_SEL_RIVA	(1 << 6)
+#define RIVA_PMU_CLK_ROOT3_SRC1_DIV		0x1E00
+#define RIVA_PMU_CLK_ROOT3_SRC1_DIV_2		(1 << 9)
+#define RIVA_PMU_CLK_ROOT3_SRC1_SEL		0xE000
+#define RIVA_PMU_CLK_ROOT3_SRC1_SEL_RIVA	(1 << 13)
+
 enum q6 {
 	Q6_MODEM_FW,
 	Q6_MODEM_SW,
@@ -72,6 +120,7 @@ enum q6 {
 static int q6_start[NUM_Q6];
 static void __iomem *q6_reg_base[NUM_Q6];
 static void __iomem *mss_enable_reg;
+static void __iomem *msm_riva_base;
 
 static int init_image_modem_fw_q6_untrusted(const u8 *metadata, size_t size)
 {
@@ -226,6 +275,125 @@ static int shutdown_lpass_q6_untrusted(void)
 	return shutdown_q6_untrusted(Q6_LPASS);
 }
 
+static int init_image_riva_untrusted(const u8 *metadata, size_t size)
+{
+	return 0;
+}
+
+static int reset_riva_untrusted(void)
+{
+	u32 reg;
+
+	/* Enable A2XB bridge */
+	reg = readl(RIVA_PMU_A2XB_CFG);
+	reg |= RIVA_PMU_A2XB_CFG_EN;
+	writel(reg, RIVA_PMU_A2XB_CFG);
+
+	/* Enable IRIS XO */
+	reg = readl(RIVA_PMU_CFG);
+	reg |= RIVA_PMU_CFG_GC_BUS_MUX_SEL_TOP | RIVA_PMU_CFG_IRIS_XO_EN;
+	writel(reg, RIVA_PMU_CFG);
+
+	reg &= ~(RIVA_PMU_CFG_IRIS_XO_MODE);
+	reg |= RIVA_PMU_CFG_IRIS_XO_MODE_48;
+	writel(reg, RIVA_PMU_CFG);
+
+	/* Start IRIS XO configuration */
+	reg |= RIVA_PMU_CFG_IRIS_XO_CFG;
+	writel(reg, RIVA_PMU_CFG);
+
+	/* Wait for XO configuration to finish */
+	while (readl(RIVA_PMU_CFG) & RIVA_PMU_CFG_IRIS_XO_CFG_STS)
+		cpu_relax();
+
+	/* Stop IRIS XO configuration */
+	reg &= ~(RIVA_PMU_CFG_GC_BUS_MUX_SEL_TOP | RIVA_PMU_CFG_IRIS_XO_CFG);
+	writel(reg, RIVA_PMU_CFG);
+
+	/* Program PLL 13 to 960 MHz */
+	reg = readl(RIVA_PLL_MODE);
+	reg &= ~(PLL_MODE_BYPASSNL | PLL_MODE_OUTCTRL | PLL_MODE_RESET_N);
+	writel(reg, RIVA_PLL_MODE);
+
+	writel((0x40000C00) | 40, RIVA_PLL_L_VAL);
+	writel(0, RIVA_PLL_M_VAL);
+	writel(1, RIVA_PLL_N_VAL);
+	writel(0x01485227, RIVA_PLL_CONFIG);
+
+	reg = readl(RIVA_PLL_MODE);
+	reg &= ~(PLL_MODE_REF_XO_SEL);
+	reg |= PLL_MODE_REF_XO_SEL_RF;
+	writel(reg, RIVA_PLL_MODE);
+
+	/* Enable PLL 13 */
+	reg |= PLL_MODE_BYPASSNL;
+	writel(reg, RIVA_PLL_MODE);
+
+	usleep_range(10, 20);
+
+	reg |= PLL_MODE_RESET_N;
+	writel(reg, RIVA_PLL_MODE);
+	reg |= PLL_MODE_OUTCTRL;
+	writel(reg, RIVA_PLL_MODE);
+
+	/* TODO: Poll RIVA_PLL_STATUS */
+	msleep(20);
+
+	/* Configure cCPU for 240 MHz */
+	reg = readl(RIVA_PMU_CLK_ROOT3);
+	if (readl(RIVA_PMU_ROOT_CLK_SEL) & RIVA_PMU_ROOT_CLK_SEL_3) {
+		reg &= ~(RIVA_PMU_CLK_ROOT3_SRC0_SEL |
+			 RIVA_PMU_CLK_ROOT3_SRC0_DIV);
+		reg |= RIVA_PMU_CLK_ROOT3_SRC0_SEL_RIVA |
+		       RIVA_PMU_CLK_ROOT3_SRC0_DIV_2;
+	} else {
+		reg &= ~(RIVA_PMU_CLK_ROOT3_SRC1_SEL |
+			 RIVA_PMU_CLK_ROOT3_SRC1_DIV);
+		reg |= RIVA_PMU_CLK_ROOT3_SRC1_SEL_RIVA |
+		       RIVA_PMU_CLK_ROOT3_SRC1_DIV_2;
+	}
+	writel(reg, RIVA_PMU_CLK_ROOT3);
+	reg |= RIVA_PMU_CLK_ROOT3_ENA;
+	writel(reg, RIVA_PMU_CLK_ROOT3);
+	reg = readl(RIVA_PMU_ROOT_CLK_SEL);
+	reg ^= RIVA_PMU_ROOT_CLK_SEL_3;
+	writel(reg, RIVA_PMU_ROOT_CLK_SEL);
+
+	/* Use the high vector table */
+	reg = readl(RIVA_PMU_CCPU_CTL);
+	reg |= RIVA_PMU_CCPU_CTL_HIGH_IVT | RIVA_PMU_CCPU_CTL_REMAP_EN;
+	writel(reg, RIVA_PMU_CCPU_CTL);
+
+	/* Set base memory address */
+	writel((0x4f200000 >> 16), RIVA_PMU_CCPU_BOOT_REMAP_ADDR);
+
+	/* Clear warmboot bit indicating this is a cold boot */
+	reg = readl(RIVA_PMU_CFG);
+	reg &= ~(RIVA_PMU_CFG_WARM_BOOT);
+	writel(reg, RIVA_PMU_CFG);
+
+	/* Enable the cCPU clock */
+	reg = readl(RIVA_PMU_OVRD_VAL);
+	reg |= RIVA_PMU_OVRD_VAL_CCPU_CLK;
+	writel(reg, RIVA_PMU_OVRD_VAL);
+
+	/* Take cCPU out of reset */
+	reg |= RIVA_PMU_OVRD_VAL_CCPU_RESET;
+	writel(reg, RIVA_PMU_OVRD_VAL);
+
+	return 0;
+}
+
+static int shutdown_riva_untrusted(void)
+{
+	u32 reg;
+	/* Put riva into reset */
+	reg = readl(RIVA_PMU_OVRD_VAL);
+	reg &= ~(RIVA_PMU_OVRD_VAL_CCPU_RESET | RIVA_PMU_OVRD_VAL_CCPU_CLK);
+	writel(reg, RIVA_PMU_OVRD_VAL);
+	return 0;
+}
+
 static struct pil_reset_ops pil_modem_fw_q6_ops = {
 	.init_image = init_image_modem_fw_q6_untrusted,
 	.verify_blob = verify_blob,
@@ -246,6 +414,14 @@ static struct pil_reset_ops pil_lpass_q6_ops = {
 	.auth_and_reset = reset_lpass_q6_untrusted,
 	.shutdown = shutdown_lpass_q6_untrusted,
 };
+
+static struct pil_reset_ops pil_riva_ops = {
+	.init_image = init_image_riva_untrusted,
+	.verify_blob = verify_blob,
+	.auth_and_reset = reset_riva_untrusted,
+	.shutdown = shutdown_riva_untrusted,
+};
+
 
 static struct pil_device peripherals[] = {
 	{
@@ -274,6 +450,14 @@ static struct pil_device peripherals[] = {
 		},
 		.ops = &pil_modem_sw_q6_ops,
 	},
+	{
+		.name = "wcnss",
+		.pdev = {
+			.name = "pil_riva",
+			.id = -1,
+		},
+		.ops = &pil_riva_ops,
+	},
 };
 
 static int __init msm_peripheral_reset_init(void)
@@ -296,11 +480,17 @@ static int __init msm_peripheral_reset_init(void)
 	if (!q6_reg_base[Q6_LPASS])
 		goto err_lpass_q6;
 
+	msm_riva_base = ioremap(MSM_RIVA_PHYS, SZ_256);
+	if (!msm_riva_base)
+		goto err_riva;
+
 	for (i = 0; i < ARRAY_SIZE(peripherals); i++)
 		msm_pil_add_device(&peripherals[i]);
 
 	return 0;
 
+err_riva:
+	iounmap(q6_reg_base[Q6_LPASS]);
 err_lpass_q6:
 	iounmap(q6_reg_base[Q6_MODEM_SW]);
 err_modem_sw_q6:
