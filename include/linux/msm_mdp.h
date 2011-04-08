@@ -92,6 +92,7 @@ enum {
 #define MDP_BLIT_DST_GEM                0x02000000
 #define MDP_TRANSP_NOP 0xffffffff
 #define MDP_ALPHA_NOP 0xff
+#define MDP_SOURCE_ROTATED_90           0x00100000
 
 #define MDP_FB_PAGE_PROTECTION_NONCACHED         (0)
 #define MDP_FB_PAGE_PROTECTION_WRITECOMBINE      (1)

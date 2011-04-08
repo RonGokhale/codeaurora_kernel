@@ -774,6 +774,9 @@ uint32 mdp4_overlay_format(struct mdp4_overlay_pipe *pipe)
 
 	if (pipe->alpha_enable)
 		format |= MDP4_FORMAT_ALPHA_ENABLE;
+	
+       if (pipe->flags & MDP_SOURCE_ROTATED_90)
+               format |= MDP4_FORMAT_90_ROTATED;
 
 	format |= (pipe->unpack_count << 13);
 	format |= ((pipe->bpp - 1) << 9);
@@ -1413,6 +1416,8 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 	/* return id back to user */
 	req->id = pipe->pipe_ndx;	/* pipe_ndx start from 1 */
 	pipe->req_data = *req;		/* keep original req */
+
+	pipe->flags = req->flags;
 
 	mdp4_stat.overlay_set[pipe->mixer_num]++;
 
