@@ -106,7 +106,6 @@ struct bank_masks {
  * @halt_bit: ANDed with @halt_reg to test for clock halted
  * @reset_reg: reset register
  * @reset_mask: ORed with @reset_reg to reset the clock domain
- * @test_vector: bits to program to measure the clock
  */
 struct branch {
 	void __iomem *const en_reg;
@@ -118,8 +117,6 @@ struct branch {
 
 	void __iomem *const reset_reg;
 	const u32 reset_mask;
-
-	const u32 test_vector;
 };
 
 int branch_reset(struct branch *clk, enum clk_reset_action action);

@@ -53,11 +53,18 @@ static int clock_debug_rate_get(void *data, u64 *val)
 DEFINE_SIMPLE_ATTRIBUTE(clock_rate_fops, clock_debug_rate_get,
 			clock_debug_rate_set, "%llu\n");
 
+static struct clk *measure;
+
 static int clock_debug_measure_get(void *data, u64 *val)
 {
+	int ret;
 	struct clk *clock = data;
-	*val = clock->ops->measure_rate(clock);
-	return 0;
+
+	ret = clk_set_parent(measure, clock);
+	if (!ret)
+		*val = clk_get_rate(measure);
+
+	return ret;
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(clock_measure_fops, clock_debug_measure_get,
@@ -112,6 +119,8 @@ static unsigned num_msm_clocks;
 
 int __init clock_debug_init(struct clk_lookup *clocks, unsigned num_clocks)
 {
+	int ret = 0;
+
 	debugfs_base = debugfs_create_dir("clk", NULL);
 	if (!debugfs_base)
 		return -ENOMEM;
@@ -122,7 +131,14 @@ int __init clock_debug_init(struct clk_lookup *clocks, unsigned num_clocks)
 	}
 	msm_clocks = clocks;
 	num_msm_clocks = num_clocks;
-	return 0;
+
+	measure = clk_get_sys("debug", "measure");
+	if (IS_ERR(measure)) {
+		ret = PTR_ERR(measure);
+		measure = NULL;
+	}
+
+	return ret;
 }
 
 void clock_debug_print_enabled(void)
@@ -202,10 +218,11 @@ int __init clock_debug_add(struct clk *clock)
 				&clock_local_fops))
 		goto error;
 
-	if (clock->ops->measure_rate)
-		if (!debugfs_create_file("measure",
-				S_IRUGO, clk_dir, clock, &clock_measure_fops))
-			goto error;
+	if (measure &&
+	    !clk_set_parent(measure, clock) &&
+	    !debugfs_create_file("measure", S_IRUGO, clk_dir, clock,
+				&clock_measure_fops))
+		goto error;
 
 	if (clock->ops->list_rate)
 		if (!debugfs_create_file("list_rates",
