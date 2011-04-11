@@ -26,10 +26,10 @@
 #include "footswitch.h"
 
 #ifdef CONFIG_MSM_SECURE_IO
-#undef readl
-#undef writel
-#define readl secure_readl
-#define writel secure_writel
+#undef readl_relaxed
+#undef writel_relaxed
+#define readl_relaxed secure_readl
+#define writel_relaxed secure_writel
 #endif
 
 #define REG(off) (MSM_MMSS_CLK_CTL_BASE + (off))
@@ -171,9 +171,9 @@ static int footswitch_enable(struct regulator_dev *rdev)
 	}
 
 	/* Enable the power rail at the footswitch. */
-	regval = readl(fs->gfs_ctl_reg);
+	regval = readl_relaxed(fs->gfs_ctl_reg);
 	regval |= ENABLE_BIT;
-	writel(regval, fs->gfs_ctl_reg);
+	writel_relaxed(regval, fs->gfs_ctl_reg);
 	/* Wait 2us for the rail to fully charge. */
 	dsb();
 	udelay(2);
@@ -191,7 +191,7 @@ static int footswitch_enable(struct regulator_dev *rdev)
 
 	/* Un-clamp the I/O ports. */
 	regval &= ~CLAMP_BIT;
-	writel(regval, fs->gfs_ctl_reg);
+	writel_relaxed(regval, fs->gfs_ctl_reg);
 
 	/* Wait for the clamps to clear and signals to settle. */
 	dsb();
@@ -242,13 +242,13 @@ static int footswitch_disable(struct regulator_dev *rdev)
 
 	/* Clamp the I/O ports of the core to ensure the values
 	 * remain fixed while the core is collapsed. */
-	regval = readl(fs->gfs_ctl_reg);
+	regval = readl_relaxed(fs->gfs_ctl_reg);
 	regval |= CLAMP_BIT;
-	writel(regval, fs->gfs_ctl_reg);
+	writel_relaxed(regval, fs->gfs_ctl_reg);
 
 	/* Collapse the power rail at the footswitch. */
 	regval &= ~ENABLE_BIT;
-	writel(regval, fs->gfs_ctl_reg);
+	writel_relaxed(regval, fs->gfs_ctl_reg);
 
 	/* Return clocks to their state before this function. */
 	restore_clocks(fs);
@@ -300,15 +300,15 @@ static int gfx2d_footswitch_enable(struct regulator_dev *rdev)
 	udelay(20);
 
 	/* Enable the power rail at the footswitch. */
-	regval = readl(fs->gfs_ctl_reg);
+	regval = readl_relaxed(fs->gfs_ctl_reg);
 	regval |= ENABLE_BIT;
-	writel(regval, fs->gfs_ctl_reg);
+	writel_relaxed(regval, fs->gfs_ctl_reg);
 	dsb();
 	udelay(1);
 
 	/* Un-clamp the I/O ports. */
 	regval &= ~CLAMP_BIT;
-	writel(regval, fs->gfs_ctl_reg);
+	writel_relaxed(regval, fs->gfs_ctl_reg);
 
 	/* Deassert resets for all clocks in the power domain. */
 	if (fs->axi_clk)
@@ -361,13 +361,13 @@ static int gfx2d_footswitch_disable(struct regulator_dev *rdev)
 
 	/* Clamp the I/O ports of the core to ensure the values
 	 * remain fixed while the core is collapsed. */
-	regval = readl(fs->gfs_ctl_reg);
+	regval = readl_relaxed(fs->gfs_ctl_reg);
 	regval |= CLAMP_BIT;
-	writel(regval, fs->gfs_ctl_reg);
+	writel_relaxed(regval, fs->gfs_ctl_reg);
 
 	/* Collapse the power rail at the footswitch. */
 	regval &= ~ENABLE_BIT;
-	writel(regval, fs->gfs_ctl_reg);
+	writel_relaxed(regval, fs->gfs_ctl_reg);
 
 	/* Re-enable core clock. */
 	clk_enable(fs->core_clk);
@@ -500,10 +500,10 @@ static int footswitch_probe(struct platform_device *pdev)
 	/* Set number of AHB_CLK cycles to delay the assertion of gfs_en_all
 	 * after enabling the footswitch.  Also ensure the retention bit is
 	 * clear so disabling the footswitch will power-collapse the core. */
-	regval = readl(fs->gfs_ctl_reg);
+	regval = readl_relaxed(fs->gfs_ctl_reg);
 	regval |= fs->gfs_delay_cnt;
 	regval &= ~RETENTION_BIT;
-	writel(regval, fs->gfs_ctl_reg);
+	writel_relaxed(regval, fs->gfs_ctl_reg);
 
 	fs->rdev = regulator_register(&fs->desc, &pdev->dev, init_data, fs);
 	if (IS_ERR(footswitches[pdev->id].rdev)) {
