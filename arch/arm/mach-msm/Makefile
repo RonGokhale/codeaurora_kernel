@@ -107,6 +107,7 @@ obj-$(CONFIG_MSM_QDSP6) += qdsp6/
 obj-$(CONFIG_MSM8X60_AUDIO) += qdsp6v2/
 obj-$(CONFIG_MSM_HW3D) += hw3d.o
 ifdef CONFIG_PM
+	obj-$(CONFIG_ARCH_MSM8960) += pm-8x60.o
 	obj-$(CONFIG_ARCH_MSM8X60) += pm-8x60.o
 	obj-$(CONFIG_ARCH_QSD8X50) += pm2.o
 	obj-$(CONFIG_ARCH_MSM7X30) += pm2.o
@@ -138,8 +139,12 @@ obj-$(CONFIG_ARCH_MSM8X60) += footswitch-8x60.o
 obj-$(CONFIG_MSM_SUBSYSTEM_RESTART) += subsystem_notif.o
 obj-$(CONFIG_MSM_SUBSYSTEM_RESTART) += subsystem_restart.o
 
+ifdef CONFIG_CPU_IDLE
+	obj-$(CONFIG_ARCH_MSM8960) += cpuidle.o
+	obj-$(CONFIG_ARCH_MSM8X60) += cpuidle.o
+endif
+
 ifdef CONFIG_ARCH_MSM8X60
-	obj-$(CONFIG_CPU_IDLE) += cpuidle.o
 	obj-$(CONFIG_MSM_WATCHDOG) += msm_watchdog.o
 endif
 
