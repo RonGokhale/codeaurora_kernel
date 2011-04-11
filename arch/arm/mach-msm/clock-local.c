@@ -992,6 +992,9 @@ int branch_reset(struct branch *clk, enum clk_reset_action action)
 
 	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
 
+	/* Make sure write is issued before returning. */
+	dsb();
+
 	return ret;
 }
 

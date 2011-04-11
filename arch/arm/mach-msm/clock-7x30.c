@@ -2708,6 +2708,8 @@ int soc_clk_set_flags(struct clk *clk, unsigned clk_flags)
 			ret = -EINVAL;
 
 		writel(regval, CAM_VFE_NS_REG);
+		/* Make sure write is issued before returning. */
+		dsb();
 	} else
 		ret = -EPERM;
 

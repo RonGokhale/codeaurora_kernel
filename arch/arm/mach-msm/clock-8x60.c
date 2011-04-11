@@ -582,6 +582,8 @@ static int __soc_clk_measure_rate(u32 test_vector)
 		ret = -EPERM;
 		goto err;
 	}
+	/* Make sure test vector is set before starting measurements. */
+	dsb();
 
 	/* Enable CXO/4 and RINGOSC branch and root. */
 	pdm_reg_backup = readl(PDM_CLK_NS_REG);
@@ -3848,6 +3850,8 @@ static void reg_init(void)
 	dsb();
 	udelay(5);
 	writel(0, SW_RESET_CORE_REG);
+	/* Make sure reset is de-asserted before clock is disabled. */
+	mb();
 	clk_disable(&gfx3d_clk.c);
 
 	/* Enable TSSC and PDM PXO sources. */
