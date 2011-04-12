@@ -28,6 +28,15 @@
 #ifndef __Q6_ADM_H__
 #define __Q6_ADM_H__
 
+#define ADM_PATH_PLAYBACK 0x1
+#define ADM_PATH_LIVE_REC 0x2
+#define ADM_PATH_NONLIVE_REC 0x3
+
+int adm_open_mixer(int port_id, int path, int rate, int channel_mode,
+	int topology);
+
+int adm_route_session(int port_id, uint session_id, int set);
+
 int adm_open(int port, int path, int rate, int mode, int topology);
 
 int adm_memory_map_regions(uint32_t *buf_add, uint32_t mempool_id,
