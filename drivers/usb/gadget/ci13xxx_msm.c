@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -59,7 +59,8 @@ static struct ci13xxx_udc_driver ci13xxx_msm_udc_driver = {
 	.flags			= CI13XXX_REGS_SHARED |
 				  CI13XXX_REQUIRE_TRANSCEIVER |
 				  CI13XXX_PULLUP_ON_VBUS |
-				  CI13XXX_DISABLE_STREAMING,
+				  CI13XXX_DISABLE_STREAMING |
+				  CI13XXX_ZERO_ITC,
 
 	.notify_event		= ci13xxx_msm_notify_event,
 };
