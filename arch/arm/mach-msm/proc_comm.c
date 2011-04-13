@@ -28,15 +28,15 @@
 
 static inline void notify_other_proc_comm(void)
 {
+	/* Make sure the write completes before interrupt */
+	dsb();
 #if defined(CONFIG_ARCH_MSM7X30)
-	writel_relaxed(1 << 6, MSM_GCC_BASE + 0x8);
+	__raw_writel(1 << 6, MSM_GCC_BASE + 0x8);
 #elif defined(CONFIG_ARCH_MSM8X60)
-	writel_relaxed(1 << 5, MSM_GCC_BASE + 0x8);
+	__raw_writel(1 << 5, MSM_GCC_BASE + 0x8);
 #else
-	writel_relaxed(1, MSM_CSR_BASE + 0x400 + (6) * 4);
+	__raw_writel(1, MSM_CSR_BASE + 0x400 + (6) * 4);
 #endif
-	/* Make sure the write completes before returning */
-	wmb();
 }
 
 #define APP_COMMAND 0x00
