@@ -45,6 +45,7 @@
 #include "devices.h"
 #include "devices-msm8x60.h"
 #include "gpiomux.h"
+#include "spm.h"
 #include "board-msm8960.h"
 #include "pm.h"
 #include "cpuidle.h"
@@ -415,6 +416,84 @@ struct platform_device usb_mass_storage_device = {
 	.id	= -1,
 	.dev	= {
 	.platform_data = &mass_storage_pdata,
+	},
+};
+
+static uint8_t spm_wfi_cmd_sequence[] __initdata = {
+			0x03, 0x0B, 0x0f,
+};
+
+static uint8_t spm_power_collapse_without_rpm[] __initdata = {
+			0x00, 0x24, 0x54, 0x10,
+			0x09, 0x03, 0x01, 0x0B,
+			0x10, 0x54, 0x30, 0x0C,
+			0x24, 0x30, 0x0f,
+};
+
+static uint8_t spm_power_collapse_with_rpm[] __initdata = {
+			0x00, 0x24, 0x54, 0x10,
+			0x09, 0x07, 0x01, 0x0B,
+			0x10, 0x54, 0x30, 0x0C,
+			0x24, 0x30, 0x0f,
+};
+
+static struct msm_spm_seq_entry msm_spm_seq_list[] __initdata = {
+	[0] = {
+		.mode = MSM_SPM_MODE_CLOCK_GATING,
+		.notify_rpm = false,
+		.cmd = spm_wfi_cmd_sequence,
+	},
+	[1] = {
+		.mode = MSM_SPM_MODE_POWER_COLLAPSE,
+		.notify_rpm = false,
+		.cmd = spm_power_collapse_without_rpm,
+	},
+	[2] = {
+		.mode = MSM_SPM_MODE_POWER_COLLAPSE,
+		.notify_rpm = true,
+		.cmd = spm_power_collapse_with_rpm,
+	},
+};
+
+static struct msm_spm_platform_data msm_spm_data[] __initdata = {
+	[0] = {
+		.reg_base_addr = MSM_SAW0_BASE,
+		.reg_init_values[MSM_SPM_REG_SAW2_SECURE] = 0x00,
+#if defined(CONFIG_MSM_AVS_HW)
+		.reg_init_values[MSM_SPM_REG_SAW2_AVS_CTL] = 0x00,
+		.reg_init_values[MSM_SPM_REG_SAW2_AVS_HYSTERESIS] = 0x00,
+#endif
+		.reg_init_values[MSM_SPM_REG_SAW2_SPM_CTL] = 0x01,
+		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DLY] = 0x02020202,
+		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_0] = 0x00A000AE,
+		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_1] = 0x00A00020,
+		.vctl_timeout_us = 50,
+		.num_modes = ARRAY_SIZE(msm_spm_seq_list),
+		.modes = msm_spm_seq_list,
+	},
+	[1] = {
+		.reg_base_addr = MSM_SAW1_BASE,
+		.reg_init_values[MSM_SPM_REG_SAW2_SECURE] = 0x00,
+#if defined(CONFIG_MSM_AVS_HW)
+		.reg_init_values[MSM_SPM_REG_SAW2_AVS_CTL] = 0x00,
+		.reg_init_values[MSM_SPM_REG_SAW2_AVS_HYSTERESIS] = 0x00,
+#endif
+		.reg_init_values[MSM_SPM_REG_SAW2_SPM_CTL] = 0x01,
+		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DLY] = 0x02020202,
+		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_0] = 0x00A000AE,
+		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_1] = 0x00A00020,
+		.vctl_timeout_us = 50,
+		.num_modes = ARRAY_SIZE(msm_spm_seq_list),
+		.modes = msm_spm_seq_list,
+	},
+	[2] = {
+		.reg_base_addr = MSM_SAW_L2_BASE,
+		.reg_init_values[MSM_SPM_REG_SAW2_SECURE] = 0x00,
+		.reg_init_values[MSM_SPM_REG_SAW2_SPM_CTL] = 0x00,
+		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DLY] = 0x02020202,
+		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_0] = 0x00A000AE,
+		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_1] = 0x00A00020,
+		.modes = NULL,
 	},
 };
 
@@ -842,6 +921,7 @@ static void __init msm8960_sim_init(void)
 	msm_device_hsusb_host.dev.parent = &msm_device_otg.dev;
 	gpiomux_init();
 	msm8960_i2c_init();
+	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
 	platform_add_devices(sim_devices, ARRAY_SIZE(sim_devices));
 	msm8960_init_mmc();
 #ifdef CONFIG_PM
