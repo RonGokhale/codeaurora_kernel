@@ -16,7 +16,15 @@ config MT9T013
 	default y
 	---help---
 	  MICRON 3M Bayer Sensor with AutoFocus
-
+config MT9D113
+	bool "Sensor mt9d113 (YUV 2M)"
+	depends on MSM_CAMERA && ARCH_MSM8X60 && !MSM_CAMERA_V4L2
+	default y
+	---help---
+	  MICRON 2M YUV Sensor
+	  This sensor is the front camera on QT8660.
+	  This uses csi mipi interface.
+	  This sensor is used only on QT device.
 config MT9D112
 	bool "Sensor mt9d112 (YUV 2M)"
 	depends on MSM_CAMERA && !ARCH_MSM8X60 && !ARCH_MSM8960 && !MSM_CAMERA_V4L2
