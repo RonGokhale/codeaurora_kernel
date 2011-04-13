@@ -241,6 +241,7 @@ struct mdp4_overlay_pipe {
 	uint32 dst_h;		/* roi */
 	uint32 dst_x;		/* roi */
 	uint32 dst_y;		/* roi */
+	uint32 flags;
 	uint32 op_mode;
 	uint32 transp;
 	uint32 blend_op;
