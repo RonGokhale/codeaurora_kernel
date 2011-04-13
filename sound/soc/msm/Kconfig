@@ -132,4 +132,13 @@ config SND_SOC_QDSP6
 	help
 	 To add support for MSM QDSP6 Soc Audio.
 
+config SND_SOC_MSM8960
+	tristate "SoC Machine driver for MSM8960 boards"
+	depends on ARCH_MSM8960
+	select SND_SOC_QDSP6
+	select SND_SOC_MSM_STUB
+	default n
+	help
+	 To add support for SoC audio on MSM8960 boards
+
 endmenu
