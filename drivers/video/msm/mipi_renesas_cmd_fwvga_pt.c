@@ -18,21 +18,19 @@ static struct msm_panel_info pinfo;
 
 static struct mipi_dsi_phy_ctrl dsi_cmd_mode_phy_db = {
 	/* DSI_BIT_CLK at 400MHz, 1 lane, RGB888 */
-	/* regulator */
-	{0x03, 0x01, 0x01, 0x00},
-	/* timing */
-	{0x78, 0x1a, 0x1c, 0x00, 0x46, 0x3c, 0x1c,
-	0x1e, 0x28, 0x03, 0x04},
+	{0x03, 0x01, 0x01, 0x00},	/* regulator */
+	/* timing   */
+	{0x22, 0x0c, 0x7, 0x00, 0x10, 0x20, 0x10,
+	0xd, 0x8, 0x2, 0x3},
 	/* phy ctrl */
 	{0x7f, 0x00, 0x00, 0x00},
 	/* strength */
-	{0xee, 0x00, 0x86, 0x00},
+	{0xee, 0x00, 0x6, 0x00},
 	/* pll control */
-	{0x40, 0xc7, 0xb0, 0xda, 0x00, 0x50, 0x48, 0x63,
+	{0x40, 0x2f, 0xb1, 0xda, 0x00, 0x50, 0x48, 0x63,
 #if defined(RENESAS_FWVGA_TWO_LANE)
-	0x30, 0x07, 0x03,
-#else
-	/* default set to 1 lane */
+	0x33, 0x1f, 0x07,
+#else	/* default set to 1 lane */
 	0x30, 0x07, 0x07,
 #endif
 	0x05, 0x14, 0x03, 0x0, 0x0, 0x54, 0x06, 0x10, 0x04, 0x0},
@@ -81,7 +79,7 @@ static int __init mipi_cmd_renesas_fwvga_pt_init(void)
 	pinfo.bl_max = 15;
 	pinfo.bl_min = 1;
 	pinfo.fb_num = 2;
-	pinfo.clk_rate = 400000000;
+	pinfo.clk_rate = 152000000;
 #ifdef USE_HW_VSYNC
 	pinfo.lcd.vsync_enable = TRUE;
 	pinfo.lcd.hw_vsync_mode = TRUE;
@@ -91,7 +89,7 @@ static int __init mipi_cmd_renesas_fwvga_pt_init(void)
 	pinfo.mipi.mode = DSI_CMD_MODE;
 	pinfo.mipi.dst_format = DSI_CMD_DST_FORMAT_RGB888;
 	pinfo.mipi.vc = 0;
-	pinfo.mipi.rgb_swap = DSI_RGB_SWAP_BGR;
+	pinfo.mipi.rgb_swap = DSI_RGB_SWAP_RGB;
 	pinfo.mipi.data_lane0 = TRUE;
 #if defined(RENESAS_FWVGA_TWO_LANE)
 	pinfo.mipi.data_lane1 = TRUE;

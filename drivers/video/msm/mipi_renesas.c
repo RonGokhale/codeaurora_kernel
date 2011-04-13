@@ -161,7 +161,7 @@ static char config_Power_Ctrl_6a_cmd[3] = {0x4c, 0x01, 0x35};
 
 static char config_Auto_Sequencer_Setting_b_cmd[3] = {0x4c, 0x00, 0x02};
 
-static char config_Panel_IF_Ctrl_10_indx[3] = {0x4c, 0x00, 0x02};
+static char config_Panel_IF_Ctrl_10_indx[3] = {0x4c, 0x00, 0x29};
 static char config_Panel_IF_Ctrl_10a_cmd[3] = {0x4c, 0x03, 0xbf};
 static char config_Auto_Sequencer_Setting_indx[3] = {0x4c, 0x01, 0x06};
 static char config_Auto_Sequencer_Setting_c_cmd[3] = {0x4c, 0x00, 0x03};
