@@ -78,6 +78,9 @@ struct tegra_dc_out {
 
 	int	(*enable)(void);
 	int	(*disable)(void);
+
+	int	(*hotplug_init)(void);
+	int	(*postsuspend)(void);
 };
 
 #define TEGRA_DC_OUT_HOTPLUG_HIGH	(0 << 1)
