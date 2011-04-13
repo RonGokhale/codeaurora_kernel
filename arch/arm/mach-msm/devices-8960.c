@@ -216,7 +216,7 @@ static struct resource resources_sdc1[] = {
 		.name	= "core_mem",
 		.flags	= IORESOURCE_MEM,
 		.start	= MSM_SDC1_BASE,
-		.end	= MSM_SDC1_BASE + SZ_4K - 1,
+		.end	= MSM_SDC1_DML_BASE - 1,
 	},
 	{
 		.name	= "core_irq",
@@ -251,7 +251,7 @@ static struct resource resources_sdc2[] = {
 		.name	= "core_mem",
 		.flags	= IORESOURCE_MEM,
 		.start	= MSM_SDC2_BASE,
-		.end	= MSM_SDC2_BASE + SZ_4K - 1
+		.end	= MSM_SDC2_DML_BASE - 1,
 	},
 	{
 		.name	= "core_irq",
@@ -286,7 +286,7 @@ static struct resource resources_sdc3[] = {
 		.name	= "core_mem",
 		.flags	= IORESOURCE_MEM,
 		.start	= MSM_SDC3_BASE,
-		.end	= MSM_SDC3_BASE + SZ_4K - 1,
+		.end	= MSM_SDC3_DML_BASE - 1,
 	},
 	{
 		.name	= "core_irq",
@@ -321,7 +321,7 @@ static struct resource resources_sdc4[] = {
 		.name	= "core_mem",
 		.flags	= IORESOURCE_MEM,
 		.start	= MSM_SDC4_BASE,
-		.end	= MSM_SDC4_BASE + SZ_4K - 1,
+		.end	= MSM_SDC4_DML_BASE - 1,
 	},
 	{
 		.name	= "core_irq",
@@ -356,7 +356,7 @@ static struct resource resources_sdc5[] = {
 		.name	= "core_mem",
 		.flags	= IORESOURCE_MEM,
 		.start	= MSM_SDC5_BASE,
-		.end	= MSM_SDC5_BASE + SZ_4K - 1
+		.end	= MSM_SDC5_DML_BASE - 1,
 	},
 	{
 		.name	= "core_irq",
