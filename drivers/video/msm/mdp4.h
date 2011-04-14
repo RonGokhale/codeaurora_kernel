@@ -305,6 +305,7 @@ struct mdp4_overlay_pipe {
 	uint32 ov_cnt;
 	uint32 dmap_cnt;
 	uint32 blt_end;
+	uint32 luma_align_size;
 	struct completion dmas_comp;
 	struct mdp_overlay req_data;
 };
@@ -416,7 +417,8 @@ int mdp4_overlay_get(struct fb_info *info, struct mdp_overlay *req);
 int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req);
 int mdp4_overlay_unset(struct fb_info *info, int ndx);
 int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req,
-				struct file **pp_src_file);
+		struct file **pp_src_file, struct file **pp_src_plane1_file,
+		struct file **pp_src_plane2_file);
 struct mdp4_overlay_pipe *mdp4_overlay_pipe_alloc(int ptype, int mixer,
 				int req_share);
 void mdp4_overlay_pipe_free(struct mdp4_overlay_pipe *pipe);

@@ -2430,6 +2430,7 @@ static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 	struct msmfb_overlay_data req;
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 	struct file *p_src_file = 0;
+	struct file *p_src_plane1_file = 0, *p_src_plane2_file = 0;
 
 	if (mfd->overlay_play_enable == 0)	/* nothing to do */
 		return 0;
@@ -2441,11 +2442,16 @@ static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 		return ret;
 	}
 
-	ret = mdp4_overlay_play(info, &req, &p_src_file);
+	ret = mdp4_overlay_play(info, &req, &p_src_file, &p_src_plane1_file,
+				&p_src_plane2_file);
 
 #ifdef CONFIG_ANDROID_PMEM
 	if (p_src_file)
 		put_pmem_file(p_src_file);
+	if (p_src_plane1_file)
+		put_pmem_file(p_src_plane1_file);
+	if (p_src_plane2_file)
+		put_pmem_file(p_src_plane2_file);
 #endif
 
 	return ret;
