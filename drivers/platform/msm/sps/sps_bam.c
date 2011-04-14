@@ -23,7 +23,7 @@
 #include "spsi.h"
 
 /* All BAM global IRQ sources */
-#define BAM_IRQ_ALL (BAM_DEV_IRQ_HRESP_ERROR | BAM_DEV_IRQ_RDY_TO_SLEEP)
+#define BAM_IRQ_ALL (BAM_DEV_IRQ_HRESP_ERROR | BAM_DEV_IRQ_ERROR)
 
 /* BAM device state flags */
 #define BAM_STATE_INIT     (1UL << 1)
@@ -135,7 +135,7 @@ static irqreturn_t bam_isr(int irq, void *ctxt)
 	/* Get BAM interrupt source(s) */
 	if ((dev->state & BAM_STATE_MTI) == 0) {
 		u32 mask = dev->pipe_active_mask;
-		source = bam_get_and_clear_irq_status(dev->base,
+		source = bam_get_irq_status(dev->base,
 							  dev->props.ee,
 							  mask);
 
@@ -183,6 +183,7 @@ int sps_bam_enable(struct sps_bam *dev)
 	u32 irq_mask;
 	int result;
 	int rc;
+	int MTIenabled;
 
 	/* Is this BAM enabled? */
 	if ((dev->state & BAM_STATE_ENABLED))
@@ -237,14 +238,32 @@ int sps_bam_enable(struct sps_bam *dev)
 		return SPS_ERROR;
 	}
 
+	/* Check if this BAM supports MTIs (Message Triggered Interrupts) or
+	 * multiple EEs (Execution Environments).
+	 * MTI and EE support are mutually exclusive.
+	 */
+	MTIenabled = BAM_VERSION_MTI_SUPPORT(dev->version);
+
+	if ((dev->props.manage & SPS_BAM_MGR_DEVICE_REMOTE) != 0 &&
+			(dev->props.manage & SPS_BAM_MGR_MULTI_EE) != 0 &&
+			dev->props.ee == 0 && MTIenabled) {
+		/*
+		 * BAM global is owned by remote processor and local processor
+		 * must use MTI. Thus, force EE index to a non-zero value to
+		 * insure that EE zero globals can't be modified.
+		 */
+		SPS_ERR("bam: EE for satellite BAM must be set to non-zero");
+		return SPS_ERROR;
+	}
+
 	/*
 	 * Enable MTI use (message triggered interrupt)
 	 * if local processor does not control the global BAM config
 	 * and this BAM supports MTIs.
 	 */
 	if ((dev->state & BAM_STATE_IRQ) != 0 &&
-	    (dev->props.manage & SPS_BAM_MGR_DEVICE_REMOTE) != 0 &&
-	    BAM_VERSION_MTI_SUPPORT(dev->version)) {
+		(dev->props.manage & SPS_BAM_MGR_DEVICE_REMOTE) != 0 &&
+		MTIenabled) {
 		if (dev->props.irq_gen_addr == 0 ||
 		    dev->props.irq_gen_addr == SPS_ADDR_INVALID) {
 			SPS_ERR("MTI destination address not specified "
@@ -260,11 +279,81 @@ int sps_bam_enable(struct sps_bam *dev)
 				 BAM_ID(dev), dev->props.num_pipes);
 	}
 
+	/* Check EE index */
+	if (!MTIenabled && dev->props.ee >= SPS_BAM_NUM_EES) {
+		SPS_ERR("Invalid EE BAM 0x%x: %d", BAM_ID(dev), dev->props.ee);
+		return SPS_ERROR;
+	}
+
 	/*
-	 * If local processor controls the BAM global configuration,
-	 * set all restricted pipes to MTI mode
+	 * Process EE configuration parameters,
+	 * if specified in the properties
 	 */
-	if ((dev->props.manage & SPS_BAM_MGR_DEVICE_REMOTE) == 0) {
+	if (!MTIenabled && dev->props.sec_config == SPS_BAM_SEC_DO_CONFIG) {
+		struct sps_bam_sec_config_props *p_sec =
+						dev->props.p_sec_config_props;
+		if (p_sec == NULL) {
+			SPS_ERR("EE config table is not specified for "
+				"BAM 0x%x", BAM_ID(dev));
+			return SPS_ERROR;
+		}
+
+		/*
+		 * Set restricted pipes based on the pipes assigned to local EE
+		 */
+		dev->props.restricted_pipes =
+					~p_sec->ees[dev->props.ee].pipe_mask;
+
+		/*
+		 * If local processor manages the BAM, perform the EE
+		 * configuration
+		 */
+		if ((dev->props.manage & SPS_BAM_MGR_DEVICE_REMOTE) == 0) {
+			u32 ee;
+			u32 pipe_mask;
+			int n, i;
+
+			/*
+			 * Verify that there are no overlapping pipe
+			 * assignments
+			 */
+			for (n = 0; n < SPS_BAM_NUM_EES - 1; n++) {
+				for (i = n + 1; i < SPS_BAM_NUM_EES; i++) {
+					if ((p_sec->ees[n].pipe_mask &
+						p_sec->ees[i].pipe_mask) != 0) {
+						SPS_ERR("Overlapping pipe "
+							"assignments for BAM "
+							"0x%x: EEs %d and %d",
+							BAM_ID(dev), n, i);
+						return SPS_ERROR;
+					}
+				}
+			}
+
+			for (ee = 0; ee < SPS_BAM_NUM_EES; ee++) {
+				/*
+				 * MSbit specifies EE for the global (top-level)
+				 * BAM interrupt
+				 */
+				pipe_mask = p_sec->ees[ee].pipe_mask;
+				if (ee == dev->props.ee)
+					pipe_mask |= (1UL << 31);
+				else
+					pipe_mask &= ~(1UL << 31);
+
+				bam_security_init(dev->base, ee,
+						p_sec->ees[ee].vmid, pipe_mask);
+			}
+		}
+	}
+
+	/*
+	 * If local processor manages the BAM and the BAM supports MTIs
+	 * but does not support multiple EEs, set all restricted pipes
+	 * to MTI mode.
+	 */
+	if ((dev->props.manage & SPS_BAM_MGR_DEVICE_REMOTE) == 0
+			&& MTIenabled) {
 		u32 pipe_index;
 		u32 pipe_mask;
 		for (pipe_index = 0, pipe_mask = 1;
@@ -689,7 +778,7 @@ int sps_bam_pipe_connect(struct sps_pipe *bam_pipe,
 		goto exit_err;
 	}
 
-	if (bam_pipe_init(dev->base, pipe_index, &hw_params)) {
+	if (bam_pipe_init(dev->base, pipe_index, &hw_params, dev->props.ee)) {
 		SPS_ERR("BAM 0x%x pipe %d init error",
 			BAM_ID(dev), pipe_index);
 		goto exit_err;
