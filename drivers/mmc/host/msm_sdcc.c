@@ -507,7 +507,7 @@ static void msmsdcc_sps_complete_tlet(unsigned long data)
 			return;
 		} else {
 			msmsdcc_start_command(host, mrq->data->stop, 0);
-	}
+		}
 	}
 	spin_unlock_irqrestore(&host->lock, flags);
 }
@@ -540,8 +540,13 @@ static void msmsdcc_sps_exit_curr_xfer(struct msmsdcc_host *host)
 
 	host->sps.sg = NULL;
 	host->sps.busy = 0;
-	msmsdcc_stop_data(host);
-	msmsdcc_request_end(host, mrq);
+	if (host->curr.data)
+		msmsdcc_stop_data(host);
+
+	if (!mrq->data->stop || mrq->cmd->error)
+		msmsdcc_request_end(host, mrq);
+	else
+		msmsdcc_start_command(host, mrq->data->stop, 0);
 
 }
 #else
