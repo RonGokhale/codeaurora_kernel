@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -103,6 +103,10 @@
 #define MSM_GRFC_BASE	      IOMEM(0xF000E000)
 #define MSM_GRFC_PHYS	      0x94038000
 #define MSM_GRFC_SIZE	      SZ_4K
+
+#define MSM_QFP_FUSE_BASE     IOMEM(0xF0010000)
+#define MSM_QFP_FUSE_PHYS     0x80000000
+#define MSM_QFP_FUSE_SIZE     SZ_32K
 
 #define MSM_SHARED_RAM_BASE   IOMEM(0xF0100000)
 #define MSM_SHARED_RAM_SIZE   SZ_1M
