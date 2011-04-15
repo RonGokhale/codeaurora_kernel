@@ -35,6 +35,7 @@
 #endif
 #include <linux/types.h>
 #include <linux/ioctl.h>
+#include <linux/cdev.h>
 #ifdef MSM_CAMERA_GCC
 #include <time.h>
 #else
@@ -160,6 +161,9 @@
 #define MSM_CAM_IOCTL_PUT_ST_FRAME \
 	_IOW(MSM_CAM_IOCTL_MAGIC, 39, struct msm_camera_st_frame *)
 
+#define MSM_CAM_IOCTL_GET_CONFIG_INFO \
+	_IOR(MSM_CAM_IOCTL_MAGIC, 40, struct msm_cam_config_dev_info *)
+
 #define MSM_CAMERA_LED_OFF  0
 #define MSM_CAMERA_LED_LOW  1
 #define MSM_CAMERA_LED_HIGH 2
@@ -169,6 +173,8 @@
 
 #define MSM_MAX_CAMERA_SENSORS  5
 #define MAX_SENSOR_NAME 32
+
+#define MSM_MAX_CAMERA_CONFIGS 2
 
 #define PP_SNAP  0x01
 #define PP_RAW_SNAP ((0x01)<<1)
@@ -493,7 +499,9 @@ struct msm_stats_buf {
 #define MSM_V4L2_QUERY		7
 #define MSM_V4L2_GET_CROP	8
 #define MSM_V4L2_SET_CROP	9
-#define MSM_V4L2_MAX		10
+#define MSM_V4L2_OPEN		10
+#define MSM_V4L2_CLOSE		11
+#define MSM_V4L2_MAX		12
 
 #define V4L2_CAMERA_EXIT 	43
 struct crop_info {
@@ -684,6 +692,12 @@ struct sensor_large_data {
 	} data;
 };
 
+enum sensor_type_t {
+	BAYER,
+	YUV,
+	JPEG_SOC,
+};
+
 enum flash_type {
 	LED_FLASH,
 	STROBE_FLASH,
@@ -705,6 +719,14 @@ struct msm_camera_info {
 	uint8_t has_3d_support[MSM_MAX_CAMERA_SENSORS];
 	uint8_t is_internal_cam[MSM_MAX_CAMERA_SENSORS];
 	uint32_t s_mount_angle[MSM_MAX_CAMERA_SENSORS];
+	const char *video_dev_name[MSM_MAX_CAMERA_SENSORS];
+	enum sensor_type_t sensor_type[MSM_MAX_CAMERA_SENSORS];
+
+};
+
+struct msm_cam_config_dev_info {
+	int num_config_nodes;
+	const char *config_dev_name[MSM_MAX_CAMERA_CONFIGS];
 };
 
 struct flash_ctrl_data {

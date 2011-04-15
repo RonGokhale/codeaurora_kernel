@@ -1817,7 +1817,7 @@ struct vx6953_format {
 
 static const struct vx6953_format vx6953_cfmts[] = {
 	{
-	.code   = V4L2_MBUS_FMT_YUYV8_2X8_BE,
+	.code   = V4L2_MBUS_FMT_YUYV8_2X8,
 	.colorspace = V4L2_COLORSPACE_JPEG,
 	.fmt    = 1,
 	.order    = 0,
@@ -3996,7 +3996,7 @@ static int vx6953_g_fmt(struct v4l2_subdev *sd, struct v4l2_mbus_framefmt *mf)
 	if (!vx6953_ctrl->fmt) {
 		int ret = vx6953_set_params(client, VX6953_QTR_SIZE_WIDTH,
 						VX6953_QTR_SIZE_HEIGHT,
-						V4L2_MBUS_FMT_YUYV8_2X8_BE);
+						V4L2_MBUS_FMT_YUYV8_2X8);
 		if (ret < 0)
 			return ret;
 	}
