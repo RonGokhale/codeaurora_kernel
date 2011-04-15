@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
+#include <linux/irq.h>
 
 #include <asm/cputype.h>
 #include <asm/irq.h>
@@ -71,6 +72,10 @@ struct arm_pmu {
 	enum arm_perf_pmu_ids id;
 	const char	*name;
 	irqreturn_t	(*handle_irq)(int irq_num, void *dev);
+#ifdef CONFIG_SMP
+	void            (*secondary_enable)(unsigned int irq);
+	void            (*secondary_disable)(unsigned int irq);
+#endif
 	void		(*enable)(struct hw_perf_event *evt, int idx);
 	void		(*disable)(struct hw_perf_event *evt, int idx);
 	int		(*get_event_idx)(struct cpu_hw_events *cpuc,
@@ -410,6 +415,10 @@ armpmu_reserve_hardware(void)
 			pr_warning("unable to request IRQ%d for ARM perf "
 				"counters\n", irq);
 			break;
+#ifdef CONFIG_SMP
+		} else if (armpmu->secondary_enable) {
+			armpmu->secondary_enable(irq);
+#endif
 		}
 	}
 
@@ -433,8 +442,13 @@ armpmu_release_hardware(void)
 
 	for (i = pmu_device->num_resources - 1; i >= 0; --i) {
 		irq = platform_get_irq(pmu_device, i);
-		if (irq >= 0)
+		if (irq >= 0) {
 			free_irq(irq, NULL);
+#ifdef CONFIG_SMP
+			if (armpmu->secondary_disable)
+				armpmu->secondary_disable(irq);
+#endif
+		}
 	}
 	armpmu->stop();
 

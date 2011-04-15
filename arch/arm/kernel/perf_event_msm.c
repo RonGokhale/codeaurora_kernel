@@ -633,8 +633,39 @@ scorpion_out:
 	raw_spin_unlock_irqrestore(&pmu_lock, flags);
 }
 
+#ifdef CONFIG_SMP
+static void scorpion_secondary_enable_callback(void *info)
+{
+	int irq = *(unsigned int *)info;
+
+	if (get_irq_chip(irq)->irq_unmask)
+		get_irq_chip(irq)->irq_unmask(irq_get_irq_data(irq));
+}
+static void scorpion_secondary_disable_callback(void *info)
+{
+	int irq = *(unsigned int *)info;
+
+	if (get_irq_chip(irq)->irq_mask)
+		get_irq_chip(irq)->irq_mask(irq_get_irq_data(irq));
+}
+
+static void scorpion_secondary_enable(unsigned int irq)
+{
+	smp_call_function(scorpion_secondary_enable_callback, &irq, 1);
+}
+
+static void scorpion_secondary_disable(unsigned int irq)
+{
+	smp_call_function(scorpion_secondary_disable_callback, &irq, 1);
+}
+#endif
+
 static struct arm_pmu scorpion_pmu = {
 	.handle_irq		= armv7pmu_handle_irq,
+#ifdef CONFIG_SMP
+	.secondary_enable       = scorpion_secondary_enable,
+	.secondary_disable      = scorpion_secondary_disable,
+#endif
 	.enable			= scorpion_pmu_enable_event,
 	.disable		= scorpion_pmu_disable_event,
 	.read_counter		= armv7pmu_read_counter,
