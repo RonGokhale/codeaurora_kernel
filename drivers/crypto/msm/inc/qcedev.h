@@ -33,9 +33,9 @@
 #include <linux/types.h>
 #include <linux/ioctl.h>
 
-
+#define QCEDEV_MAX_SHA_BLOCK_SIZE	64
 #define QCEDEV_MAX_BEARER	31
-#define QCEDEV_MAX_KEY_SIZE	32   /* 256 bits of keys. */
+#define QCEDEV_MAX_KEY_SIZE	64
 #define QCEDEV_MAX_IV_SIZE	32
 
 #define QCEDEV_MAX_BUFFERS      16
@@ -94,12 +94,16 @@ enum qcedev_cipher_mode_enum {
 
 /**
 *enum qcedev_sha_alg_enum : Secure Hashing Algorithm
-* @QCEDEV_ALG_SHA1:		Digest returned 20 bytes (160 bits)
-* @QCEDEV_ALG_SHA256:		Digest returned 32 bytes (256 bit)
+* @QCEDEV_ALG_SHA1:		Digest returned: 20 bytes (160 bits)
+* @QCEDEV_ALG_SHA256:		Digest returned: 32 bytes (256 bit)
+* @QCEDEV_ALG_SHA1_HMAC:	HMAC returned 20 bytes (160 bits)
+* @QCEDEV_ALG_SHA256_HMAC:	HMAC returned 32 bytes (256 bit)
 */
 enum qcedev_sha_alg_enum {
 	QCEDEV_ALG_SHA1		= 0,
 	QCEDEV_ALG_SHA256	= 1,
+	QCEDEV_ALG_SHA1_HMAC	= 2,
+	QCEDEV_ALG_SHA256_HMAC	= 3,
 	QCEDEV_ALG_SHA_ALG_LAST
 };
 
@@ -136,6 +140,7 @@ struct	qcedev_sha_ctxt{
 	uint32_t		trailing_buf_len;
 	uint8_t			first_blk;
 	uint8_t			last_blk;
+	uint8_t			authkey[QCEDEV_MAX_SHA_BLOCK_SIZE];
 };
 
 /**
@@ -229,6 +234,8 @@ struct	qcedev_cipher_op_req {
 * @data_len (IN):		Length of data to be hashed
 * @digest (IN/OUT):		Returns the hashed data information
 * @diglen (OUT):		Size of the hashed/digest data
+* @authkey (IN):		Pointer to authentication key for HMAC
+* @authklen (IN):		Size of the authentication key
 * @alg (IN):			Secure Hash algorithm
 * @ctxt (Reserved):		RESERVED: User should not modify this data.
 */
@@ -238,6 +245,8 @@ struct	qcedev_sha_op_req {
 	uint32_t			data_len;
 	uint8_t				digest[QCEDEV_MAX_SHA_DIGEST];
 	uint32_t			diglen;
+	uint8_t				*authkey;
+	uint32_t			authklen;
 	enum qcedev_sha_alg_enum	alg;
 	struct qcedev_sha_ctxt		ctxt;
 };

@@ -68,6 +68,7 @@
 typedef void (*qce_comp_func_ptr_t)(void *areq,
 		unsigned char *icv, unsigned char *iv, int ret);
 
+/* Cipher algorithms supported */
 enum qce_cipher_alg_enum {
 	CIPHER_ALG_DES = 0,
 	CIPHER_ALG_3DES = 1,
@@ -75,18 +76,23 @@ enum qce_cipher_alg_enum {
 	CIPHER_ALG_LAST
 };
 
+/* Hash and hmac algorithms supported */
 enum qce_hash_alg_enum {
 	QCE_HASH_SHA1   = 0,
 	QCE_HASH_SHA256 = 1,
+	QCE_HASH_SHA1_HMAC   = 2,
+	QCE_HASH_SHA256_HMAC = 3,
 	QCE_HASH_LAST
 };
 
+/* Cipher encryption/decryption operations */
 enum qce_cipher_dir_enum {
 	QCE_ENCRYPT = 0,
 	QCE_DECRYPT = 1,
 	QCE_CIPHER_DIR_LAST
 };
 
+/* Cipher algorithms modes */
 enum qce_cipher_mode_enum {
 	QCE_MODE_CBC = 0,
 	QCE_MODE_ECB = 1,
@@ -94,6 +100,7 @@ enum qce_cipher_mode_enum {
 	QCE_CIPHER_MODE_LAST
 };
 
+/* Cipher operation type */
 enum qce_req_op_enum {
 	QCE_REQ_ABLK_CIPHER = 0,
 	QCE_REQ_ABLK_CIPHER_NO_KEY = 1,
@@ -101,6 +108,7 @@ enum qce_req_op_enum {
 	QCE_REQ_LAST
 };
 
+/* Algorithms/features supported in CE HW engine */
 struct ce_hw_support {
 	bool sha1_hmac_20; /* Supports 20 bytes of HMAC key*/
 	bool sha1_hmac; /* supports max HMAC key of 64 bytes*/
@@ -110,34 +118,36 @@ struct ce_hw_support {
 	bool ota;
 };
 
+/* Sha operation parameters */
 struct qce_sha_req {
-	qce_comp_func_ptr_t qce_cb;
-	enum qce_hash_alg_enum alg;
-	unsigned char *digest;
-	struct scatterlist *src;
-	uint32_t  auth_data[2];
-	bool first_blk;
-	bool last_blk;
-	unsigned int size;
+	qce_comp_func_ptr_t qce_cb;	/* call back */
+	enum qce_hash_alg_enum alg;	/* sha algorithm */
+	unsigned char *digest;		/* sha digest  */
+	struct scatterlist *src;	/* pointer to scatter list entry */
+	uint32_t  auth_data[2];		/* byte count */
+	unsigned char *authkey;		/* key length is SHA_BLOCK_SIZE */
+	bool first_blk;			/* first block indicator */
+	bool last_blk;			/* last block indicator */
+	unsigned int size;		/* data length in bytes */
 	void *areq;
 };
 
 struct qce_req {
-	enum qce_req_op_enum op;
-	qce_comp_func_ptr_t qce_cb;
+	enum qce_req_op_enum op;	/* operation type */
+	qce_comp_func_ptr_t qce_cb;	/* call back */
 	void *areq;
-	enum qce_cipher_alg_enum   alg;
-	enum qce_cipher_dir_enum dir;
-	enum qce_cipher_mode_enum mode;
-	unsigned char *authkey;
-	unsigned int authklen;
-	unsigned char *enckey;
-	unsigned int encklen;
-	unsigned char *iv;
-	unsigned int ivsize;
-	unsigned int cryptlen;
-	unsigned int use_pmem;
-	struct qcedev_pmem_info *pmem;
+	enum qce_cipher_alg_enum   alg;	/* cipher algorithms*/
+	enum qce_cipher_dir_enum dir;	/* encryption? decryption? */
+	enum qce_cipher_mode_enum mode;	/* algorithm mode */
+	unsigned char *authkey;		/* authentication key  */
+	unsigned int authklen;		/* authentication key kength */
+	unsigned char *enckey;		/* cipher key  */
+	unsigned int encklen;		/* cipher key length */
+	unsigned char *iv;		/* initialization vector */
+	unsigned int ivsize;		/* initialization vector size*/
+	unsigned int cryptlen;		/* data length */
+	unsigned int use_pmem;		/* is source of data PMEM allocated? */
+	struct qcedev_pmem_info *pmem;	/* pointer to pmem_info structure*/
 };
 
 void *qce_open(struct platform_device *pdev, int *rc);
