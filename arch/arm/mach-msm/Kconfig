@@ -78,6 +78,7 @@ config ARCH_MSM8X60
 	select MSM_SECURE_IO
 	select MSM_DALRPC
 	select MSM_SCHED_FAST_CPU_ONLINE
+	select MSM_QDSP6_APR
 
 config ARCH_MSM8960
 	bool "MSM8960"
@@ -91,6 +92,7 @@ config ARCH_MSM8960
 	select MSM_DIRECT_SCLK_ACCESS
 	select REGULATOR
 	select MSM_RPM
+	select MSM_QDSP6_APR
 
 endchoice
 
@@ -1409,4 +1411,13 @@ config MSM_FAKE_BATTERY
 		bool "MSM Fake Battery"
 		help
 		 Enables MSM fake battery driver.
+
+config MSM_QDSP6_APR
+	bool "Audio QDSP6 APR support"
+	depends on MSM_SMD
+	default n
+	help
+	  Enable APR IPC protocol support between
+	  application processor and QDSP6.
+
 endif

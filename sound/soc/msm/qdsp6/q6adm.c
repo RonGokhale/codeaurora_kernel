@@ -16,10 +16,10 @@
 #include <linux/jiffies.h>
 #include <linux/uaccess.h>
 #include <asm/atomic.h>
-#include <mach/qdsp6v2/apr_audio.h>
-#include <mach/qdsp6v2/q6afe.h>
-#include "audio_acdb.h"
-#include "rtac.h"
+#include <sound/apr_audio.h>
+#include <sound/q6afe.h>
+#include <mach/qdsp6v2/audio_acdb.h>
+#include <mach/qdsp6v2/rtac.h>
 
 #define TIMEOUT_MS 1000
 #define AUDIO_RX 0x0

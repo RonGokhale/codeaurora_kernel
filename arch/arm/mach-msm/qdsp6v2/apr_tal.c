@@ -25,8 +25,7 @@
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <mach/msm_smd.h>
-
-#include "apr_tal.h"
+#include <mach/qdsp6v2/apr_tal.h>
 #include "../clock-8x60.h"
 
 static char *svc_names[APR_DEST_MAX][APR_CLIENT_MAX] = {
@@ -166,7 +165,7 @@ struct apr_svc_ch_dev *apr_tal_open(uint32_t svc, uint32_t dest,
 			apr_svc_ch[dl][dest][svc].dest_state,
 				msecs_to_jiffies(APR_OPEN_TIMEOUT_MS));
 		if (rc == 0) {
-			pr_err("apr_tal:open timeout\n");
+			pr_debug("apr_tal:Open timeout\n");
 			mutex_unlock(&apr_svc_ch[dl][dest][svc].m_lock);
 			return NULL;
 		}

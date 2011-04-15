@@ -25,14 +25,14 @@
 #include <linux/spinlock.h>
 #include <linux/slab.h>
 #include <linux/msm_audio.h>
+#include <linux/android_pmem.h>
 #include <mach/debug_mm.h>
 #include <mach/peripheral-loader.h>
-#include <mach/qdsp6v2/apr_audio.h>
-#include <mach/qdsp6v2/q6asm.h>
-#include <linux/android_pmem.h>
+#include <mach/qdsp6v2/rtac.h>
+#include <sound/apr_audio.h>
+#include <sound/q6asm.h>
 #include <asm/atomic.h>
 #include <asm/ioctls.h>
-#include "rtac.h"
 
 #define TRUE        0x01
 #define FALSE       0x00
@@ -508,6 +508,11 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 	unsigned long dsp_flags;
 	uint32_t *payload;
 
+	if (data->opcode == RESET_EVENTS) {
+		pr_debug("q6asm_callback: Reset event is received: %d %d\n",
+				data->reset_event, data->reset_proc);
+		return 0;
+	}
 
 	if ((ac == NULL) || (data == NULL)) {
 		pr_err("ac or priv NULL\n");

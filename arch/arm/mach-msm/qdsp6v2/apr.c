@@ -29,10 +29,10 @@
 #include <mach/peripheral-loader.h>
 #include <mach/msm_smd.h>
 #include <mach/qdsp6v2/apr.h>
+#include <mach/qdsp6v2/apr_tal.h>
+#include <mach/qdsp6v2/dsp_debug.h>
 #include <mach/subsystem_notif.h>
 #include <mach/subsystem_restart.h>
-#include "apr_tal.h"
-#include "dsp_debug.h"
 
 struct apr_q6 q6;
 struct apr_client client[APR_DEST_MAX][APR_CLIENT_MAX];
@@ -549,7 +549,7 @@ static int modem_notifier_cb(struct notifier_block *this, unsigned long code,
 		pr_info("M-Notify: Bootup Completed\n");
 		break;
 	default:
-		pr_info("M-Notify: Generel: %lu\n", code);
+		pr_info("M-Notify: General: %lu\n", code);
 		break;
 	}
 	return NOTIFY_DONE;

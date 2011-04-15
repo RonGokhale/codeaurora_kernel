@@ -23,12 +23,12 @@
 #include <linux/wait.h>
 #include <linux/msm_audio.h>
 #include <linux/slab.h>
-#include <asm/atomic.h>
-#include <mach/debug_mm.h>
-#include <mach/qdsp6v2/apr_audio.h>
-#include <mach/qdsp6v2/q6asm.h>
-#include <mach/qdsp6v2/audio_dev_ctl.h>
 #include <linux/wakelock.h>
+#include <asm/atomic.h>
+#include <sound/q6asm.h>
+#include <sound/apr_audio.h>
+#include <mach/debug_mm.h>
+#include <mach/qdsp6v2/audio_dev_ctl.h>
 
 #define MAX_BUF 2
 #define BUFSZ (4800)

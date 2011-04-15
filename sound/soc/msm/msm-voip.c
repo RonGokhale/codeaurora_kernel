@@ -32,9 +32,9 @@
 #include <sound/pcm.h>
 #include <sound/initval.h>
 #include <sound/control.h>
+#include <sound/q6asm.h>
+#include <sound/apr_audio.h>
 #include <mach/msm_rpcrouter.h>
-#include <mach/qdsp6v2/apr_audio.h>
-#include <mach/qdsp6v2/q6asm.h>
 #include <mach/qdsp6v2/q6voice.h>
 #include <mach/qdsp6v2/audio_dev_ctl.h>
 #include "msm_audio_mvs.h"

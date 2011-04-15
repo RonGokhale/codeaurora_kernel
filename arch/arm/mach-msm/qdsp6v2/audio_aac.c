@@ -30,8 +30,8 @@
 #include <linux/slab.h>
 #include <asm/ioctls.h>
 #include <asm/atomic.h>
-#include <mach/qdsp6v2/apr_audio.h>
-#include <mach/qdsp6v2/q6asm.h>
+#include <sound/apr_audio.h>
+#include <sound/q6asm.h>
 
 #define ADRV_STATUS_AIO_INTF 0x00000001	/* AIO interface */
 #define ADRV_STATUS_FSYNC 0x00000008
