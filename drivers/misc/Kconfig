@@ -370,6 +370,16 @@ config PMIC8058_UPL
 	  simple truth table based logic via a set of control registers. I/O may
 	  be routed in and out of the UPL module via GPIO or DTEST pins.
 
+config QFP_FUSE
+    tristate "QFPROM Fuse Read/Write support"
+    depends on PMIC8058
+    default n
+    help
+        This option enables device driver to read/write QFPROM
+        fuses. The ioctls provides the necessary interface
+	to the fuse block. Currently this is supported only
+	on FSM targets.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
