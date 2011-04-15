@@ -1784,7 +1784,7 @@ __releases(mEp->lock)
 __acquires(mEp->lock)
 {
 	struct ci13xxx_req *mReq;
-	int retval;
+	int retval = 0;
 
 	trace("%p", mEp);
 
