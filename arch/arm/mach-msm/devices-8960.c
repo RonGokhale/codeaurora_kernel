@@ -14,6 +14,7 @@
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/platform_device.h>
+#include <linux/msm_rotator.h>
 #include <asm/clkdev.h>
 #include <linux/msm_kgsl.h>
 #include <mach/irqs-8960.h>
@@ -560,6 +561,52 @@ struct platform_device msm8960_device_qup_spi_gsbi1 = {
 struct platform_device *msm_footswitch_devices[] = {
 };
 unsigned msm_num_footswitch_devices = ARRAY_SIZE(msm_footswitch_devices);
+
+#ifdef CONFIG_MSM_ROTATOR
+#define ROTATOR_HW_BASE         0x04E00000
+static struct resource resources_msm_rotator[] = {
+	{
+		.start  = ROTATOR_HW_BASE,
+		.end    = ROTATOR_HW_BASE + 0x100000 - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.start  = ROT_IRQ,
+		.end    = ROT_IRQ,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+static struct msm_rot_clocks rotator_clocks[] = {
+	{
+		.clk_name = "rot_clk",
+		.clk_type = ROTATOR_AXI_CLK,
+		.clk_rate = 160 * 1000 * 1000,
+	},
+	{
+		.clk_name = "rotator_pclk",
+		.clk_type = ROTATOR_PCLK,
+		.clk_rate = 0,
+	},
+};
+
+static struct msm_rotator_platform_data rotator_pdata = {
+	.number_of_clocks = ARRAY_SIZE(rotator_clocks),
+	.hardware_version_number = 0x01020309,
+	.rotator_clks = rotator_clocks,
+	.regulator_name = "fs_rot",
+};
+
+struct platform_device msm_rotator_device = {
+	.name           = "msm_rotator",
+	.id             = 0,
+	.num_resources  = ARRAY_SIZE(resources_msm_rotator),
+	.resource       = resources_msm_rotator,
+	.dev            = {
+		.platform_data = &rotator_pdata,
+	},
+};
+#endif
 
 struct clk_lookup msm_clocks_8960[] = {
 	CLK_DUMMY("gsbi_uart_clk",	GSBI1_UART_CLK,		NULL, OFF),

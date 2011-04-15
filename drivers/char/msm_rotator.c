@@ -662,8 +662,11 @@ static int msm_rotator_rgb_types(struct msm_rotator_img_info *info,
 static int get_img(int memory_id, unsigned long *start, unsigned long *len,
 		struct file **pp_file)
 {
-	int put_needed, ret = 0, fb_num;
+	int ret = 0;
+#ifdef CONFIG_FB
 	struct file *file;
+	int put_needed, fb_num;
+#endif
 #ifdef CONFIG_ANDROID_PMEM
 	unsigned long vstart;
 #endif
@@ -672,6 +675,7 @@ static int get_img(int memory_id, unsigned long *start, unsigned long *len,
 	if (!get_pmem_file(memory_id, start, &vstart, len, pp_file))
 		return 0;
 #endif
+#ifdef CONFIG_FB
 	file = fget_light(memory_id, &put_needed);
 	if (file == NULL)
 		return -1;
@@ -686,6 +690,7 @@ static int get_img(int memory_id, unsigned long *start, unsigned long *len,
 		ret = -1;
 	if (ret)
 		fput_light(file, put_needed);
+#endif
 	return ret;
 }
 
