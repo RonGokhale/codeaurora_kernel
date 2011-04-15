@@ -42,7 +42,7 @@
 #include <media/v4l2-event.h>
 #include <media/v4l2-mediabus.h>
 #include <media/videobuf-dma-contig.h>
-#include <media/videobuf-pmem.h>
+#include <media/videobuf-msm-mem.h>
 #include <mach/camera.h>
 
 #define MSM_V4L2_DIMENSION_SIZE 24

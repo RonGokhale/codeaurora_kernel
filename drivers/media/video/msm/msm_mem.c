@@ -79,6 +79,7 @@
 
 static DEFINE_MUTEX(hlist_mut);
 
+#ifdef CONFIG_ANDROID_PMEM
 static int check_pmem_info(struct msm_pmem_info *info, int len)
 {
 	if (info->offset < len &&
@@ -96,6 +97,7 @@ static int check_pmem_info(struct msm_pmem_info *info, int len)
 						len);
 	return -EINVAL;
 }
+#endif
 
 static int check_overlap(struct hlist_head *ptype,
 				unsigned long paddr,
@@ -126,11 +128,13 @@ static int msm_pmem_table_add(struct hlist_head *ptype,
 {
 	struct file *file;
 	unsigned long paddr;
+#ifdef CONFIG_ANDROID_PMEM
 	unsigned long kvstart;
-	unsigned long len;
 	int rc;
+#endif
+	unsigned long len;
 	struct msm_pmem_region *region;
-
+#ifdef CONFIG_ANDROID_PMEM
 	rc = get_pmem_file(info->fd, &paddr, &kvstart, &len, &file);
 	if (rc < 0) {
 		pr_err("%s: get_pmem_file fd %d error %d\n",
@@ -138,14 +142,16 @@ static int msm_pmem_table_add(struct hlist_head *ptype,
 						info->fd, rc);
 		return rc;
 	}
-
 	if (!info->len)
 		info->len = len;
 
 	rc = check_pmem_info(info, len);
 	if (rc < 0)
 		return rc;
-
+#else
+	paddr = 0;
+	file = NULL;
+#endif
 	paddr += info->offset;
 	len = info->len;
 
@@ -216,7 +222,11 @@ static int __msm_pmem_table_del(struct hlist_head *ptype,
 				pinfo->vaddr == region->info.vaddr &&
 				pinfo->fd == region->info.fd) {
 				hlist_del(node);
+#ifdef CONFIG_ANDROID_PMEM
 				put_pmem_file(region->file);
+#else
+
+#endif
 				kfree(region);
 			}
 		}

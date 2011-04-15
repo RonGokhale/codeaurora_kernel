@@ -25,7 +25,7 @@
 #include <linux/sched.h>
 #include <linux/io.h>
 #include <linux/android_pmem.h>
-#include <media/videobuf-pmem.h>
+#include <media/videobuf-msm-mem.h>
 #include <media/msm_camera.h>
 
 #define MAGIC_PMEM 0x0733ac64
@@ -36,10 +36,35 @@
 	}
 
 #ifdef CONFIG_MSM_CAMERA_DEBUG
-#define D(fmt, args...) printk(KERN_DEBUG "videobuf-pmem: " fmt, ##args)
+#define D(fmt, args...) printk(KERN_DEBUG "videobuf-msm-mem: " fmt, ##args)
 #else
 #define D(fmt, args...) do {} while (0)
 #endif
+
+static int32_t msm_mem_allocate(const size_t size)
+{
+	int32_t phyaddr;
+#ifdef CONFIG_ANDROID_PMEM
+	phyaddr = pmem_kalloc(size,
+			PMEM_MEMTYPE_EBI1 | PMEM_ALIGNMENT_4K);
+#else
+	/*TO DO: USE SMMU CALLS*/
+	phyaddr = 0;
+#endif
+	return phyaddr;
+}
+
+static int32_t msm_mem_free(const int32_t phyaddr)
+{
+	int32_t rc;
+#ifdef CONFIG_ANDROID_PMEM
+	rc = pmem_kfree(phyaddr);
+#else
+	/*TO DO: USE SMMU CALLS*/
+	rc = -1;
+#endif
+	return rc;
+}
 
 static void
 videobuf_vm_open(struct vm_area_struct *vma)
@@ -99,7 +124,7 @@ static void videobuf_vm_close(struct vm_area_struct *vma)
 
 				/* free the virtual and physical memory */
 				iounmap(mem->vaddr);
-				rc = pmem_kfree(mem->phyaddr);
+				rc = msm_mem_free(mem->phyaddr);
 				if (rc < 0)
 					D("%s: Invalid memory location\n",
 								__func__);
@@ -178,8 +203,7 @@ static int videobuf_pmem_contig_user_get(struct videobuf_contig_pmem *mem,
 	if ((vb->baddr + mem->size) > vma->vm_end)
 		goto out_up;
 
-	mem->phyaddr = pmem_kalloc(mem->size,
-			PMEM_MEMTYPE_EBI1 | PMEM_ALIGNMENT_4K);
+	mem->phyaddr = msm_mem_allocate(mem->size);
 
 	if (IS_ERR((void *)mem->phyaddr)) {
 		D("%s : pmem memory allocation failed\n", __func__);
@@ -189,7 +213,7 @@ static int videobuf_pmem_contig_user_get(struct videobuf_contig_pmem *mem,
 	mem->vaddr = ioremap(mem->phyaddr, mem->size);
 	if (!mem->vaddr) {
 		D("%s: ioremap failed\n", __func__);
-		pmem_kfree(mem->phyaddr);
+		msm_mem_free(mem->phyaddr);
 		goto out_up;
 	}
 
@@ -206,7 +230,7 @@ static int videobuf_pmem_contig_user_get(struct videobuf_contig_pmem *mem,
 	if (ret) {
 		D("mmap: remap failed with error %d. ", ret);
 		iounmap(mem->vaddr);
-		ret = pmem_kfree(mem->phyaddr);
+		ret = msm_mem_free(mem->phyaddr);
 		if (ret < 0)
 			printk(KERN_ERR "%s: Invalid memory location\n",
 								__func__);
@@ -279,8 +303,7 @@ static int __videobuf_iolock(struct videobuf_queue *q,
 		/* allocate memory for the read() method */
 		mem->size = PAGE_ALIGN(vb->size);
 		/* need to check this one for userptr, may not work */
-		mem->phyaddr = pmem_kalloc(mem->size,
-				PMEM_MEMTYPE_EBI1 | PMEM_ALIGNMENT_4K);
+		mem->phyaddr = msm_mem_allocate(mem->size);
 
 		if (IS_ERR((void *)mem->phyaddr)) {
 			D("%s : pmem memory allocation failed\n", __func__);
@@ -292,7 +315,7 @@ static int __videobuf_iolock(struct videobuf_queue *q,
 		mem->vaddr = ioremap(mem->phyaddr, mem->size);
 		if (!mem->vaddr) {
 			D("%s: ioremap failed\n", __func__);
-			pmem_kfree(mem->phyaddr);
+			msm_mem_free(mem->phyaddr);
 			return -ENOMEM;
 		}
 
@@ -352,8 +375,7 @@ static int __videobuf_mmap_mapper(struct videobuf_queue *q,
 		mem->buffer_type = OUTPUT_TYPE_V;
 
 	buf->bsize = mem->size;
-	mem->phyaddr = pmem_kalloc(mem->size,
-			PMEM_MEMTYPE_EBI1 | PMEM_ALIGNMENT_4K);
+	mem->phyaddr = msm_mem_allocate(mem->size);
 
 	if (IS_ERR((void *)mem->phyaddr)) {
 		D("%s : pmem memory allocation failed\n", __func__);
@@ -363,7 +385,7 @@ static int __videobuf_mmap_mapper(struct videobuf_queue *q,
 	mem->vaddr = ioremap(mem->phyaddr, mem->size);
 	if (!mem->vaddr) {
 		D("%s: ioremap failed\n", __func__);
-		pmem_kfree(mem->phyaddr);
+		msm_mem_free(mem->phyaddr);
 		goto error;
 	}
 
@@ -381,7 +403,7 @@ static int __videobuf_mmap_mapper(struct videobuf_queue *q,
 	if (retval) {
 		D("mmap: remap failed with error %d. ", retval);
 		iounmap(mem->vaddr);
-		retval = pmem_kfree(mem->phyaddr);
+		retval = msm_mem_free(mem->phyaddr);
 		if (retval < 0)
 			printk(KERN_ERR "%s: Invalid memory location\n",
 								__func__);
@@ -476,7 +498,7 @@ int videobuf_pmem_contig_free(struct videobuf_queue *q,
 					(void *)mem->vaddr);
 	iounmap(mem->vaddr);
 
-	rc = pmem_kfree(mem->phyaddr);
+	rc = msm_mem_free(mem->phyaddr);
 	if (rc < 0)
 		printk(KERN_ERR "%s: Invalid memory location\n", __func__);
 	else {
