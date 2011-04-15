@@ -95,9 +95,13 @@ struct qcedev_async_req {
 
 struct qcedev_control{
 
-	struct msm_ce_hw_support ce_hw_support;
+	/* CE features supported by platform */
+	struct msm_ce_hw_support platform_support;
 
 	bool ce_locked;
+
+	/* CE features/algorithms supported by HW engine*/
+	struct ce_hw_support ce_support;
 
 	/* misc device */
 	struct miscdevice miscdevice;
@@ -147,10 +151,10 @@ static int qcedev_scm_cmd(int resource, int cmd, int *response)
 
 static int qcedev_unlock_ce(struct qcedev_control *podev)
 {
-	if ((podev->ce_hw_support.ce_shared) && (podev->ce_locked == true)) {
+	if ((podev->platform_support.ce_shared) && (podev->ce_locked == true)) {
 		int response = 0;
 
-		if (qcedev_scm_cmd(podev->ce_hw_support.shared_ce_resource,
+		if (qcedev_scm_cmd(podev->platform_support.shared_ce_resource,
 					QCEDEV_CE_UNLOCK_CMD, &response)) {
 			printk(KERN_ERR "%s Failed to release CE lock\n",
 				__func__);
@@ -163,13 +167,14 @@ static int qcedev_unlock_ce(struct qcedev_control *podev)
 
 static int qcedev_lock_ce(struct qcedev_control *podev)
 {
-	if ((podev->ce_hw_support.ce_shared) && (podev->ce_locked == false)) {
+	if ((podev->platform_support.ce_shared) &&
+					(podev->ce_locked == false)) {
 		int response = -CE_BUSY;
 		int i = 0;
 
 		do {
 			if (qcedev_scm_cmd(
-				podev->ce_hw_support.shared_ce_resource,
+				podev->platform_support.shared_ce_resource,
 				QCEDEV_CE_LOCK_CMD, &response)) {
 				response = -EINVAL;
 				break;
@@ -436,7 +441,7 @@ static int start_cipher_req(struct qcedev_control *podev)
 					break;
 			}
 
-			if ((podev->ce_hw_support.hw_key_support == 1) &&
+			if ((podev->platform_support.hw_key_support == 1) &&
 						(i == QCEDEV_MAX_KEY_SIZE))
 				creq.op = QCE_REQ_ABLK_CIPHER;
 			else {
@@ -1331,7 +1336,7 @@ static int qcedev_check_cipher_params(struct qcedev_cipher_op_req *req,
 					goto error;
 			if ((req->op != QCEDEV_OPER_ENC_NO_KEY) &&
 				(req->op != QCEDEV_OPER_DEC_NO_KEY))
-				if (!podev->ce_hw_support.hw_key_support)
+				if (!podev->platform_support.hw_key_support)
 					goto error;
 		} else
 		/* if not using HW key make sure key length is valid */
@@ -1530,7 +1535,7 @@ static int qcedev_probe(struct platform_device *pdev)
 	void *handle = NULL;
 	int rc = 0;
 	struct qcedev_control *podev;
-	struct msm_ce_hw_support *ce_hw_support;
+	struct msm_ce_hw_support *platform_support;
 
 	if (pdev->id >= MAX_QCE_DEVICE) {
 		printk(KERN_ERR "%s: device id %d  exceeds allowed %d\n",
@@ -1539,12 +1544,12 @@ static int qcedev_probe(struct platform_device *pdev)
 	}
 	podev = &qce_dev[pdev->id];
 
-	ce_hw_support = (struct msm_ce_hw_support *)pdev->dev.platform_data;
-	podev->ce_hw_support.ce_shared = ce_hw_support->ce_shared;
-	podev->ce_hw_support.shared_ce_resource =
-				ce_hw_support->shared_ce_resource;
-	podev->ce_hw_support.hw_key_support =
-				ce_hw_support->hw_key_support;
+	platform_support = (struct msm_ce_hw_support *)pdev->dev.platform_data;
+	podev->platform_support.ce_shared = platform_support->ce_shared;
+	podev->platform_support.shared_ce_resource =
+				platform_support->shared_ce_resource;
+	podev->platform_support.hw_key_support =
+				platform_support->hw_key_support;
 	podev->ce_locked = false;
 
 	INIT_LIST_HEAD(&podev->ready_commands);
@@ -1564,7 +1569,7 @@ static int qcedev_probe(struct platform_device *pdev)
 	podev->qce = handle;
 	podev->pdev = pdev;
 	platform_set_drvdata(pdev, podev);
-
+	qce_hw_support(podev->qce, &podev->ce_support);
 	rc = misc_register(&podev->miscdevice);
 
 	if (rc >= 0)
@@ -1718,7 +1723,7 @@ static void qcedev_exit(void)
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm DEV Crypto driver");
-MODULE_VERSION("1.11");
+MODULE_VERSION("1.12");
 
 module_init(qcedev_init);
 module_exit(qcedev_exit);

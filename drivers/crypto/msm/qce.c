@@ -1915,15 +1915,25 @@ int qce_close(void *handle)
 }
 EXPORT_SYMBOL(qce_close);
 
-int qce_hmac_support(void *handle)
+int qce_hw_support(void *handle, struct ce_hw_support *ce_support)
 {
 	struct qce_device *pce_dev = (struct qce_device *) handle;
 
-	if (handle == NULL)
-		return -ENODEV;
-	return pce_dev->hmac;
+	if (ce_support == NULL)
+		return -EINVAL;
+
+	if (pce_dev->hmac == 1)
+		ce_support->sha1_hmac_20 = true;
+	else
+		ce_support->sha1_hmac_20 = false;
+	ce_support->sha1_hmac = false;
+	ce_support->sha256_hmac = false;
+	ce_support->sha_hmac = false;
+	ce_support->cbc_mac  = false;
+	ce_support->ota = false;
+	return 0;
 }
-EXPORT_SYMBOL(qce_hmac_support);
+EXPORT_SYMBOL(qce_hw_support);
 
 static int __init _qce_init(void)
 {
@@ -1938,7 +1948,7 @@ static void __exit _qce_exit(void)
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Crypto Engine driver");
-MODULE_VERSION("1.06");
+MODULE_VERSION("1.07");
 
 module_init(_qce_init);
 module_exit(_qce_exit);

@@ -71,9 +71,11 @@ static struct dentry *_debug_dent;
 static char _debug_read_buf[DEBUG_MAX_RW_BUF];
 
 struct crypto_priv {
+	/* CE features supported by target device*/
+	struct msm_ce_hw_support platform_support;
 
-	struct msm_ce_hw_support ce_hw_support;
-
+	/* CE features/algorithms supported by HW engine*/
+	struct ce_hw_support ce_support;
 	/* the lock protects queue and req*/
 	spinlock_t lock;
 
@@ -137,7 +139,7 @@ static void qcrypto_unlock_ce(struct work_struct *work)
 	struct crypto_priv *cp = container_of(work, struct crypto_priv,
 							unlock_ce_ws);
 	if (cp->ce_lock_count == 1)
-		BUG_ON(qcrypto_scm_cmd(cp->ce_hw_support.shared_ce_resource,
+		BUG_ON(qcrypto_scm_cmd(cp->platform_support.shared_ce_resource,
 				QCRYPTO_CE_UNLOCK_CMD, &response) != 0);
 	spin_lock_irqsave(&cp->lock, flags);
 	cp->ce_lock_count--;
@@ -153,7 +155,7 @@ static int qcrypto_lock_ce(struct crypto_priv *cp)
 	if (cp->ce_lock_count == 0) {
 		do {
 			if (qcrypto_scm_cmd(
-				cp->ce_hw_support.shared_ce_resource,
+				cp->platform_support.shared_ce_resource,
 				QCRYPTO_CE_LOCK_CMD, &response)) {
 				response = -EINVAL;
 				break;
@@ -693,7 +695,7 @@ static void _qce_ahash_complete(void *cookie, unsigned char *digest,
 		pstat->sha_op_success++;
 	}
 
-	if (cp->ce_hw_support.ce_shared)
+	if (cp->platform_support.ce_shared)
 		schedule_work(&cp->unlock_ce_ws);
 	tasklet_schedule(&cp->done_tasklet);
 };
@@ -723,7 +725,7 @@ static void _qce_ablk_cipher_complete(void *cookie, unsigned char *icb,
 		cp->res = 0;
 		pstat->ablk_cipher_op_success++;
 	}
-	if (cp->ce_hw_support.ce_shared)
+	if (cp->platform_support.ce_shared)
 		schedule_work(&cp->unlock_ce_ws);
 	tasklet_schedule(&cp->done_tasklet);
 };
@@ -774,7 +776,7 @@ static void _qce_aead_complete(void *cookie, unsigned char *icv,
 	else
 		pstat->aead_op_success++;
 
-	if (cp->ce_hw_support.ce_shared)
+	if (cp->platform_support.ce_shared)
 		schedule_work(&cp->unlock_ce_ws);
 	tasklet_schedule(&cp->done_tasklet);
 }
@@ -831,7 +833,7 @@ again:
 		qreq.use_pmem = 0;
 
 		if ((cipher_ctx->enc_key_len == 0) &&
-				(cp->ce_hw_support.hw_key_support == 0))
+				(cp->platform_support.hw_key_support == 0))
 			ret = -EINVAL;
 		else
 			ret =  qce_ablk_cipher_req(cp->qce, &qreq);
@@ -909,7 +911,7 @@ static int _qcrypto_queue_req(struct crypto_priv *cp,
 	int ret;
 	unsigned long flags;
 
-	if (cp->ce_hw_support.ce_shared) {
+	if (cp->platform_support.ce_shared) {
 		ret = qcrypto_lock_ce(cp);
 		if (ret)
 			return ret;
@@ -2215,7 +2217,7 @@ static int  _qcrypto_probe(struct platform_device *pdev)
 	void *handle;
 	struct crypto_priv *cp;
 	int i;
-	struct msm_ce_hw_support *ce_hw_support;
+	struct msm_ce_hw_support *platform_support;
 
 	if (pdev->id >= MAX_CRYPTO_DEVICE) {
 		printk(KERN_ERR "%s: device id %d  exceeds allowed %d\n",
@@ -2245,15 +2247,15 @@ static int  _qcrypto_probe(struct platform_device *pdev)
 	crypto_init_queue(&cp->queue, 50);
 	cp->qce = handle;
 	cp->pdev = pdev;
-
-	ce_hw_support = (struct msm_ce_hw_support *)pdev->dev.platform_data;
-	cp->ce_hw_support.ce_shared = ce_hw_support->ce_shared;
-	cp->ce_hw_support.shared_ce_resource =
-				ce_hw_support->shared_ce_resource;
-	cp->ce_hw_support.hw_key_support =
-				ce_hw_support->hw_key_support;
+	qce_hw_support(cp->qce, &cp->ce_support);
+	platform_support = (struct msm_ce_hw_support *)pdev->dev.platform_data;
+	cp->platform_support.ce_shared = platform_support->ce_shared;
+	cp->platform_support.shared_ce_resource =
+				platform_support->shared_ce_resource;
+	cp->platform_support.hw_key_support =
+				platform_support->hw_key_support;
 	cp->ce_lock_count = 0;
-	if (cp->ce_hw_support.ce_shared)
+	if (cp->platform_support.ce_shared)
 		INIT_WORK(&cp->unlock_ce_ws, qcrypto_unlock_ce);
 	/* register crypto cipher algorithms the device supports */
 	for (i = 0; i < ARRAY_SIZE(_qcrypto_algos); i++) {
@@ -2267,7 +2269,9 @@ static int  _qcrypto_probe(struct platform_device *pdev)
 
 		if (((q_alg->cipher_alg.cra_flags & CRYPTO_ALG_TYPE_MASK) ==
 				CRYPTO_ALG_TYPE_AEAD) &&
-					qce_hmac_support(handle) <= 0) {
+			!(cp->ce_support.sha1_hmac_20 ||
+				cp->ce_support.sha1_hmac ||
+					cp->ce_support.sha256_hmac)){
 			kfree(q_alg);
 			continue;
 		}
@@ -2417,4 +2421,4 @@ module_exit(_qcrypto_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm Crypto driver");
-MODULE_VERSION("1.07");
+MODULE_VERSION("1.08");
