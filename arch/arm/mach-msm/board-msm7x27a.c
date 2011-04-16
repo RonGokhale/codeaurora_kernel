@@ -33,6 +33,8 @@
 #include <linux/i2c.h>
 #include <linux/i2c/sx150x.h>
 #include <linux/gpio.h>
+#include <linux/android_pmem.h>
+#include <linux/bootmem.h>
 #include "devices.h"
 #include "timer.h"
 #include "devices-msm7x2xa.h"
@@ -437,6 +439,17 @@ static void __init msm7x27a_init_mmc(void)
 #endif
 }
 
+static struct android_pmem_platform_data android_pmem_pdata = {
+	.name = "pmem",
+	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
+	.cached = 1,
+};
+static struct platform_device android_pmem_device = {
+	.name = "android_pmem",
+	.id = 0,
+	.dev = { .platform_data = &android_pmem_pdata },
+};
+
 static struct platform_device *rumi_sim_devices[] __initdata = {
 	&msm_device_dmov,
 	&msm_device_smd,
@@ -457,11 +470,17 @@ static struct platform_device *surf_ffa_devices[] __initdata = {
 	&msm_device_otg,
 	&msm_device_gadget_peripheral,
 	&android_usb_device,
+	&android_pmem_device,
 	&usb_mass_storage_device,
 	&rndis_device,
 	&usb_diag_device,
 	&usb_gadget_fserial_device,
 };
+
+static void __init msm_msm7x2x_allocate_memory_regions(void)
+{
+	/* TODO: Please add the memory regions here */
+}
 
 static void __init msm_device_i2c_init(void)
 {
@@ -613,6 +632,11 @@ static void msm7x27x_l2_cache_init(void)
 }
 #endif
 
+static void __init msm7x2x_init_early(void)
+{
+	msm_msm7x2x_allocate_memory_regions();
+}
+
 static void __init msm7x2x_map_io(void)
 {
 	msm_map_common_io();
@@ -627,6 +651,7 @@ MACHINE_START(MSM7X27A_RUMI3, "QCT MSM7x27a RUMI3")
 	.init_irq	= msm7x2x_init_irq,
 	.init_machine	= msm7x2x_init,
 	.timer		= &msm_timer,
+	.init_early     = msm7x2x_init_early,
 MACHINE_END
 MACHINE_START(MSM7X27A_SURF, "QCT MSM7x27a SURF")
 #ifdef CONFIG_MSM_DEBUG_UART
@@ -638,6 +663,7 @@ MACHINE_START(MSM7X27A_SURF, "QCT MSM7x27a SURF")
 	.init_irq	= msm7x2x_init_irq,
 	.init_machine	= msm7x2x_init,
 	.timer		= &msm_timer,
+	.init_early     = msm7x2x_init_early,
 MACHINE_END
 MACHINE_START(MSM7X27A_FFA, "QCT MSM7x27a FFA")
 #ifdef CONFIG_MSM_DEBUG_UART
@@ -649,4 +675,5 @@ MACHINE_START(MSM7X27A_FFA, "QCT MSM7x27a FFA")
 	.init_irq	= msm7x2x_init_irq,
 	.init_machine	= msm7x2x_init,
 	.timer		= &msm_timer,
+	.init_early     = msm7x2x_init_early,
 MACHINE_END
