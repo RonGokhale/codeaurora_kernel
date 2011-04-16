@@ -14,25 +14,24 @@
 #include "clock-pcom.h"
 #include "clock-voter.h"
 
-static DEFINE_CLK_PCOM(adm_clk,		ADM_CLK,	0);
-static DEFINE_CLK_PCOM(adsp_clk,	ADSP_CLK,	0);
-static DEFINE_CLK_PCOM(ahb_m_clk,	AHB_M_CLK,	0);
-static DEFINE_CLK_PCOM(ahb_s_clk,	AHB_S_CLK,	0);
-static DEFINE_CLK_PCOM(cam_m_clk,	CAM_M_CLK,	0);
-static DEFINE_CLK_PCOM(axi_rotator_clk,	AXI_ROTATOR_CLK, OFF);
-static DEFINE_CLK_PCOM(ce_clk,		CE_CLK,		0);
-static DEFINE_CLK_PCOM(csi0_clk,	CSI0_CLK,	0);
-static DEFINE_CLK_PCOM(csi0_p_clk,	CSI0_P_CLK,	0);
-static DEFINE_CLK_PCOM(csi0_vfe_clk,	CSI0_VFE_CLK,	0);
-static DEFINE_CLK_PCOM(csi1_clk,	CSI1_CLK,	0);
-static DEFINE_CLK_PCOM(csi1_p_clk,	CSI1_P_CLK,	0);
-static DEFINE_CLK_PCOM(csi1_vfe_clk,	CSI1_VFE_CLK,	0);
+static DEFINE_CLK_PCOM(adm_clk,		ADM_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(adsp_clk,	ADSP_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(ahb_m_clk,	AHB_M_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(ahb_s_clk,	AHB_S_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(cam_m_clk,	CAM_M_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(axi_rotator_clk,	AXI_ROTATOR_CLK, 0);
+static DEFINE_CLK_PCOM(ce_clk,		CE_CLK,		CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(csi0_clk,	CSI0_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(csi0_p_clk,	CSI0_P_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(csi0_vfe_clk,	CSI0_VFE_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(csi1_clk,	CSI1_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(csi1_p_clk,	CSI1_P_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(csi1_vfe_clk,	CSI1_VFE_CLK,	CLKFLAG_SKIP_AUTO_OFF);
 
 static struct pcom_clk dsi_byte_clk = {
 	.id = P_DSI_BYTE_CLK,
 	.c = {
 		.ops = &clk_ops_pcom_ext_config,
-		.flags = OFF,
 		.dbg_name = "dsi_byte_clk",
 		CLK_INIT(dsi_byte_clk.c),
 	},
@@ -42,7 +41,6 @@ static struct pcom_clk dsi_clk = {
 	.id = P_DSI_CLK,
 	.c = {
 		.ops = &clk_ops_pcom_ext_config,
-		.flags = OFF,
 		.dbg_name = "dsi_clk",
 		CLK_INIT(dsi_clk.c),
 	},
@@ -52,7 +50,6 @@ static struct pcom_clk dsi_esc_clk = {
 	.id = P_DSI_ESC_CLK,
 	.c = {
 		.ops = &clk_ops_pcom_ext_config,
-		.flags = OFF,
 		.dbg_name = "dsi_esc_clk",
 		CLK_INIT(dsi_esc_clk.c),
 	},
@@ -62,75 +59,78 @@ static struct pcom_clk dsi_pixel_clk = {
 	.id = P_DSI_PIXEL_CLK,
 	.c = {
 		.ops = &clk_ops_pcom_ext_config,
-		.flags = OFF,
 		.dbg_name = "dsi_pixel_clk",
 		CLK_INIT(dsi_pixel_clk.c),
 	},
 };
 
-static DEFINE_CLK_PCOM(dsi_ref_clk,	DSI_REF_CLK,	OFF);
-static DEFINE_CLK_PCOM(ebi1_clk,	EBI1_CLK,	CLK_MIN);
-static DEFINE_CLK_PCOM(ebi2_clk,	EBI2_CLK,	0);
-static DEFINE_CLK_PCOM(ecodec_clk,	ECODEC_CLK,	0);
-static DEFINE_CLK_PCOM(emdh_clk,	EMDH_CLK, OFF | CLK_MINMAX);
-static DEFINE_CLK_PCOM(gp_clk,		GP_CLK,		0);
-static DEFINE_CLK_PCOM(grp_2d_clk,	GRP_2D_CLK,	0);
-static DEFINE_CLK_PCOM(grp_2d_p_clk,	GRP_2D_P_CLK,	0);
-static DEFINE_CLK_PCOM(grp_3d_clk,	GRP_3D_CLK,	OFF);
-static DEFINE_CLK_PCOM(grp_3d_p_clk,	GRP_3D_P_CLK,	0);
-static DEFINE_CLK_PCOM(gsbi1_qup_clk,	GSBI1_QUP_CLK,	OFF);
-static DEFINE_CLK_PCOM(gsbi1_qup_p_clk,	GSBI1_QUP_P_CLK, OFF);
-static DEFINE_CLK_PCOM(gsbi2_qup_clk,	GSBI2_QUP_CLK,	OFF);
-static DEFINE_CLK_PCOM(gsbi2_qup_p_clk,	GSBI2_QUP_P_CLK, OFF);
-static DEFINE_CLK_PCOM(gsbi_clk,	GSBI_CLK,	0);
-static DEFINE_CLK_PCOM(gsbi_p_clk,	GSBI_P_CLK,	0);
-static DEFINE_CLK_PCOM(hdmi_clk,	HDMI_CLK,	0);
-static DEFINE_CLK_PCOM(i2c_clk,		I2C_CLK,	0);
-static DEFINE_CLK_PCOM(icodec_rx_clk,	ICODEC_RX_CLK,	0);
-static DEFINE_CLK_PCOM(icodec_tx_clk,	ICODEC_TX_CLK,	0);
-static DEFINE_CLK_PCOM(imem_clk,	IMEM_CLK,	OFF);
-static DEFINE_CLK_PCOM(mdc_clk,		MDC_CLK,	0);
-static DEFINE_CLK_PCOM(mdp_clk,		MDP_CLK,	OFF);
-static DEFINE_CLK_PCOM(mdp_lcdc_pad_pclk_clk, MDP_LCDC_PAD_PCLK_CLK, 0);
-static DEFINE_CLK_PCOM(mdp_lcdc_pclk_clk, MDP_LCDC_PCLK_CLK, 0);
-static DEFINE_CLK_PCOM(mdp_vsync_clk,	MDP_VSYNC_CLK,	OFF);
-static DEFINE_CLK_PCOM(mdp_dsi_p_clk,	MDP_DSI_P_CLK,	OFF);
-static DEFINE_CLK_PCOM(pbus_clk,	PBUS_CLK,	CLK_MIN);
-static DEFINE_CLK_PCOM(pcm_clk,		PCM_CLK,	0);
-static DEFINE_CLK_PCOM(pmdh_clk,	PMDH_CLK,	OFF | CLK_MINMAX);
-static DEFINE_CLK_PCOM(sdac_clk,	SDAC_CLK,	OFF);
-static DEFINE_CLK_PCOM(sdc1_clk,	SDC1_CLK,	OFF);
-static DEFINE_CLK_PCOM(sdc1_p_clk,	SDC1_P_CLK,	OFF);
-static DEFINE_CLK_PCOM(sdc2_clk,	SDC2_CLK,	OFF);
-static DEFINE_CLK_PCOM(sdc2_p_clk,	SDC2_P_CLK,	OFF);
-static DEFINE_CLK_PCOM(sdc3_clk,	SDC3_CLK,	OFF);
-static DEFINE_CLK_PCOM(sdc3_p_clk,	SDC3_P_CLK,	OFF);
-static DEFINE_CLK_PCOM(sdc4_clk,	SDC4_CLK,	OFF);
-static DEFINE_CLK_PCOM(sdc4_p_clk,	SDC4_P_CLK,	OFF);
-static DEFINE_CLK_PCOM(spi_clk,		SPI_CLK,	0);
-static DEFINE_CLK_PCOM(tsif_clk,	TSIF_CLK,	0);
-static DEFINE_CLK_PCOM(tsif_p_clk,	TSIF_P_CLK,	0);
-static DEFINE_CLK_PCOM(tsif_ref_clk,	TSIF_REF_CLK,	0);
-static DEFINE_CLK_PCOM(tv_dac_clk,	TV_DAC_CLK,	0);
-static DEFINE_CLK_PCOM(tv_enc_clk,	TV_ENC_CLK,	0);
-static DEFINE_CLK_PCOM(uart1_clk,	UART1_CLK,	OFF);
-static DEFINE_CLK_PCOM(uart1dm_clk,	UART1DM_CLK,	OFF);
-static DEFINE_CLK_PCOM(uart2_clk,	UART2_CLK,	OFF);
-static DEFINE_CLK_PCOM(uart2dm_clk,	UART2DM_CLK,	OFF);
-static DEFINE_CLK_PCOM(uart3_clk,	UART3_CLK,	OFF);
-static DEFINE_CLK_PCOM(usb_hs2_clk,	USB_HS2_CLK,	OFF);
-static DEFINE_CLK_PCOM(usb_hs2_p_clk,	USB_HS2_P_CLK,	OFF);
-static DEFINE_CLK_PCOM(usb_hs3_clk,	USB_HS3_CLK,	OFF);
-static DEFINE_CLK_PCOM(usb_hs3_p_clk,	USB_HS3_P_CLK,	OFF);
-static DEFINE_CLK_PCOM(usb_hs_clk,	USB_HS_CLK,	OFF);
-static DEFINE_CLK_PCOM(usb_hs_core_clk,	USB_HS_CORE_CLK, OFF);
-static DEFINE_CLK_PCOM(usb_hs_p_clk,	USB_HS_P_CLK,	OFF);
-static DEFINE_CLK_PCOM(usb_otg_clk,	USB_OTG_CLK,	0);
-static DEFINE_CLK_PCOM(usb_phy_clk,	USB_PHY_CLK,	0);
-static DEFINE_CLK_PCOM(vdc_clk,		VDC_CLK,	OFF | CLK_MIN);
-static DEFINE_CLK_PCOM(vfe_axi_clk,	VFE_AXI_CLK,	OFF);
-static DEFINE_CLK_PCOM(vfe_clk,		VFE_CLK,	OFF);
-static DEFINE_CLK_PCOM(vfe_mdc_clk,	VFE_MDC_CLK,	OFF);
+static DEFINE_CLK_PCOM(dsi_ref_clk,	DSI_REF_CLK,	0);
+static DEFINE_CLK_PCOM(ebi1_clk,	EBI1_CLK,
+		CLKFLAG_SKIP_AUTO_OFF | CLK_MIN);
+static DEFINE_CLK_PCOM(ebi2_clk,	EBI2_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(ecodec_clk,	ECODEC_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(emdh_clk,	EMDH_CLK,	CLK_MINMAX);
+static DEFINE_CLK_PCOM(gp_clk,		GP_CLK,		CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(grp_2d_clk,	GRP_2D_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(grp_2d_p_clk,	GRP_2D_P_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(grp_3d_clk,	GRP_3D_CLK,	0);
+static DEFINE_CLK_PCOM(grp_3d_p_clk,	GRP_3D_P_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(gsbi1_qup_clk,	GSBI1_QUP_CLK,	0);
+static DEFINE_CLK_PCOM(gsbi1_qup_p_clk,	GSBI1_QUP_P_CLK, 0);
+static DEFINE_CLK_PCOM(gsbi2_qup_clk,	GSBI2_QUP_CLK,	0);
+static DEFINE_CLK_PCOM(gsbi2_qup_p_clk,	GSBI2_QUP_P_CLK, 0);
+static DEFINE_CLK_PCOM(gsbi_clk,	GSBI_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(gsbi_p_clk,	GSBI_P_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(hdmi_clk,	HDMI_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(i2c_clk,		I2C_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(icodec_rx_clk,	ICODEC_RX_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(icodec_tx_clk,	ICODEC_TX_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(imem_clk,	IMEM_CLK,	0);
+static DEFINE_CLK_PCOM(mdc_clk,		MDC_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(mdp_clk,		MDP_CLK,	0);
+static DEFINE_CLK_PCOM(mdp_lcdc_pad_pclk_clk, MDP_LCDC_PAD_PCLK_CLK,
+		CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(mdp_lcdc_pclk_clk, MDP_LCDC_PCLK_CLK,
+		CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(mdp_vsync_clk,	MDP_VSYNC_CLK,	0);
+static DEFINE_CLK_PCOM(mdp_dsi_p_clk,	MDP_DSI_P_CLK,	0);
+static DEFINE_CLK_PCOM(pbus_clk,	PBUS_CLK,
+		CLKFLAG_SKIP_AUTO_OFF | CLK_MIN);
+static DEFINE_CLK_PCOM(pcm_clk,		PCM_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(pmdh_clk,	PMDH_CLK,	CLK_MINMAX);
+static DEFINE_CLK_PCOM(sdac_clk,	SDAC_CLK,	0);
+static DEFINE_CLK_PCOM(sdc1_clk,	SDC1_CLK,	0);
+static DEFINE_CLK_PCOM(sdc1_p_clk,	SDC1_P_CLK,	0);
+static DEFINE_CLK_PCOM(sdc2_clk,	SDC2_CLK,	0);
+static DEFINE_CLK_PCOM(sdc2_p_clk,	SDC2_P_CLK,	0);
+static DEFINE_CLK_PCOM(sdc3_clk,	SDC3_CLK,	0);
+static DEFINE_CLK_PCOM(sdc3_p_clk,	SDC3_P_CLK,	0);
+static DEFINE_CLK_PCOM(sdc4_clk,	SDC4_CLK,	0);
+static DEFINE_CLK_PCOM(sdc4_p_clk,	SDC4_P_CLK,	0);
+static DEFINE_CLK_PCOM(spi_clk,		SPI_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(tsif_clk,	TSIF_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(tsif_p_clk,	TSIF_P_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(tsif_ref_clk,	TSIF_REF_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(tv_dac_clk,	TV_DAC_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(tv_enc_clk,	TV_ENC_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(uart1_clk,	UART1_CLK,	0);
+static DEFINE_CLK_PCOM(uart1dm_clk,	UART1DM_CLK,	0);
+static DEFINE_CLK_PCOM(uart2_clk,	UART2_CLK,	0);
+static DEFINE_CLK_PCOM(uart2dm_clk,	UART2DM_CLK,	0);
+static DEFINE_CLK_PCOM(uart3_clk,	UART3_CLK,	0);
+static DEFINE_CLK_PCOM(usb_hs2_clk,	USB_HS2_CLK,	0);
+static DEFINE_CLK_PCOM(usb_hs2_p_clk,	USB_HS2_P_CLK,	0);
+static DEFINE_CLK_PCOM(usb_hs3_clk,	USB_HS3_CLK,	0);
+static DEFINE_CLK_PCOM(usb_hs3_p_clk,	USB_HS3_P_CLK,	0);
+static DEFINE_CLK_PCOM(usb_hs_clk,	USB_HS_CLK,	0);
+static DEFINE_CLK_PCOM(usb_hs_core_clk,	USB_HS_CORE_CLK, 0);
+static DEFINE_CLK_PCOM(usb_hs_p_clk,	USB_HS_P_CLK,	0);
+static DEFINE_CLK_PCOM(usb_otg_clk,	USB_OTG_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(usb_phy_clk,	USB_PHY_CLK,	CLKFLAG_SKIP_AUTO_OFF);
+static DEFINE_CLK_PCOM(vdc_clk,		VDC_CLK,	CLK_MIN);
+static DEFINE_CLK_PCOM(vfe_axi_clk,	VFE_AXI_CLK,	0);
+static DEFINE_CLK_PCOM(vfe_clk,		VFE_CLK,	0);
+static DEFINE_CLK_PCOM(vfe_mdc_clk,	VFE_MDC_CLK,	0);
 
 static DEFINE_CLK_VOTER(ebi_acpu_clk,	&ebi1_clk.c);
 static DEFINE_CLK_VOTER(ebi_kgsl_clk,	&ebi1_clk.c);

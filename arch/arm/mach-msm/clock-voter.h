@@ -51,6 +51,7 @@ static inline struct clk_voter *to_clk_voter(struct clk *clk)
 		.c = { \
 			.dbg_name = #clk_name, \
 			.ops = &clk_ops_voter, \
+			.flags = CLKFLAG_SKIP_AUTO_OFF, \
 			CLK_INIT(clk_name.c), \
 		}, \
 	}
