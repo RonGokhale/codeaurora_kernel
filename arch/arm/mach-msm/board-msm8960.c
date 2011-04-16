@@ -41,6 +41,8 @@
 #include "devices-msm8x60.h"
 #include "gpiomux.h"
 #include "board-msm8960.h"
+#include "pm.h"
+#include "cpuidle.h"
 
 #define KS8851_IRQ_GPIO		38
 
@@ -567,6 +569,77 @@ static void ethernet_init(void)
 		pr_err("ks8851 gpio_request failed: %d\n", ret);
 }
 
+#ifdef CONFIG_PM
+#ifdef CONFIG_CPU_IDLE
+static struct msm_cpuidle_state msm_cstates[] __initdata = {
+	{0, 0, "C0", "WFI",
+		MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT},
+
+	{0, 1, "C1", "STANDALONE_POWER_COLLAPSE",
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE},
+
+	{0, 2, "C2", "POWER_COLLAPSE",
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE},
+
+	{1, 0, "C0", "WFI",
+		MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT},
+
+	{1, 1, "C1", "STANDALONE_POWER_COLLAPSE",
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE},
+};
+#endif
+
+static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
+	[MSM_PM_MODE(0, MSM_PM_SLEEP_MODE_POWER_COLLAPSE)] = {
+		.supported = 1,
+		.suspend_enabled = 0,
+		.idle_enabled = 0,
+		.latency = 4000,
+		.residency = 13000,
+	},
+
+	[MSM_PM_MODE(0, MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE)] = {
+		.supported = 1,
+		.suspend_enabled = 0,
+		.idle_enabled = 0,
+		.latency = 500,
+		.residency = 6000,
+	},
+
+	[MSM_PM_MODE(0, MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT)] = {
+		.supported = 1,
+		.suspend_enabled = 1,
+		.idle_enabled = 1,
+		.latency = 2,
+		.residency = 0,
+	},
+
+	[MSM_PM_MODE(1, MSM_PM_SLEEP_MODE_POWER_COLLAPSE)] = {
+		.supported = 1,
+		.suspend_enabled = 0,
+		.idle_enabled = 0,
+		.latency = 600,
+		.residency = 7200,
+	},
+
+	[MSM_PM_MODE(1, MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE)] = {
+		.supported = 1,
+		.suspend_enabled = 0,
+		.idle_enabled = 0,
+		.latency = 500,
+		.residency = 6000,
+	},
+
+	[MSM_PM_MODE(1, MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT)] = {
+		.supported = 1,
+		.suspend_enabled = 1,
+		.idle_enabled = 1,
+		.latency = 2,
+		.residency = 0,
+	},
+};
+#endif
+
 static void __init msm8960_sim_init(void)
 {
 	if (socinfo_init() < 0)
@@ -592,6 +665,14 @@ static void __init msm8960_sim_init(void)
 	msm8960_i2c_init();
 	platform_add_devices(sim_devices, ARRAY_SIZE(sim_devices));
 	msm8960_init_mmc();
+#ifdef CONFIG_PM
+	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
+#ifdef CONFIG_CPU_IDLE
+	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),
+				msm_pm_data);
+#endif
+#endif
+
 }
 
 static void __init msm8960_rumi3_init(void)
