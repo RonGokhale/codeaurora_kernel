@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -26,7 +26,10 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-
+#ifdef CONFIG_ARCH_MSM7X27A
+#define mb()	do { dsb(); outer_sync(); } while (0)
+#else
 #define mb()	dmb()
+#endif
 #define rmb()	dmb()
-#define wmb()	dmb()
+#define wmb()	mb()
