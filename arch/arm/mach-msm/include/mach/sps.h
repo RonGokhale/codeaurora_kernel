@@ -80,14 +80,21 @@
 #define SPS_BAM_MGR_PIPE_NO_CTRL    (1UL << 4)
 /* "Globbed" management properties */
 #define SPS_BAM_MGR_NONE            \
-   (SPS_BAM_MGR_DEVICE_REMOTE | SPS_BAM_MGR_PIPE_NO_ALLOC | \
-    SPS_BAM_MGR_PIPE_NO_CONFIG | SPS_BAM_MGR_PIPE_NO_CTRL)
+	(SPS_BAM_MGR_DEVICE_REMOTE | SPS_BAM_MGR_PIPE_NO_ALLOC | \
+	 SPS_BAM_MGR_PIPE_NO_CONFIG | SPS_BAM_MGR_PIPE_NO_CTRL)
 #define SPS_BAM_MGR_LOCAL           0
 #define SPS_BAM_MGR_LOCAL_SHARED    SPS_BAM_MGR_MULTI_EE
 #define SPS_BAM_MGR_REMOTE_SHARED   \
-   (SPS_BAM_MGR_DEVICE_REMOTE | SPS_BAM_MGR_MULTI_EE | \
-    SPS_BAM_MGR_PIPE_NO_ALLOC)
+	(SPS_BAM_MGR_DEVICE_REMOTE | SPS_BAM_MGR_MULTI_EE | \
+	 SPS_BAM_MGR_PIPE_NO_ALLOC)
 #define SPS_BAM_MGR_ACCESS_MASK     SPS_BAM_MGR_NONE
+
+/*
+ * BAM security configuration
+ */
+#define SPS_BAM_NUM_EES             4
+#define SPS_BAM_SEC_DO_NOT_CONFIG   0
+#define SPS_BAM_SEC_DO_CONFIG       0x0A434553
 
 /* This enum specifies the operational mode for an SPS connection */
 enum sps_mode {
@@ -239,6 +246,19 @@ struct sps_iovec {
 	u32 flags:16;
 };
 
+/*
+ * BAM device's security configuation
+ */
+struct sps_bam_pipe_sec_config_props {
+	u32 pipe_mask;
+	u32 vmid;
+};
+
+struct sps_bam_sec_config_props {
+	/* Per-EE configuration - This is a pipe bit mask for each EE */
+	struct sps_bam_pipe_sec_config_props ees[SPS_BAM_NUM_EES];
+};
+
 /**
  * This struct defines a BAM device. The client must memset() this struct to
  * zero before writing device information.  A value of zero for uninitialized
@@ -275,6 +295,13 @@ struct sps_iovec {
  * global config is controlled by a remote processor.
  * NOTE: This address must correspond to the MTI associated with the "irq" IRQ
  * enum specified above.
+ *
+ * @sec_config - must be set to SPS_BAM_SEC_DO_CONFIG to perform BAM security
+ * configuration.  Only the processor that manages the BAM is allowed to
+ * perform the configuration. The global (top-level) BAM interrupt will be
+ * assigned to the EE of the processor that manages the BAM.
+ *
+ * @p_sec_config_props - BAM device's security configuation
  *
  */
 struct sps_bam_props {
@@ -315,6 +342,10 @@ struct sps_bam_props {
 
 	u32 irq_gen_addr;
 
+	/* Security configuration properties */
+
+	u32 sec_config;
+	struct sps_bam_sec_config_props *p_sec_config_props;
 };
 
 /**

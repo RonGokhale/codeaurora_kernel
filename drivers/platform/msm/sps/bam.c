@@ -19,13 +19,17 @@
 #include <linux/errno.h>	/* ENODEV */
 
 #include "bam.h"
+#include "sps_bam.h"
 
 /**
  *  Valid BAM Hardware version.
  *
  */
 #define BAM_MIN_VERSION 2
-#define BAM_MAX_VERSION 2
+#define BAM_MAX_VERSION 0x1f
+
+/* Maximum number of execution environment */
+#define BAM_MAX_EES 4
 
 /**
  *  BAM Hardware registers.
@@ -45,10 +49,16 @@
 #define AHB_MASTER_ERR_CTRLS        (0xfa4)
 #define AHB_MASTER_ERR_ADDR         (0xfa8)
 #define AHB_MASTER_ERR_DATA         (0xfac)
+/* The addresses for IRQ_DEST and PERIPH_IRQ_DEST become reserved */
 #define IRQ_DEST                    (0xfb4)
 #define PERIPH_IRQ_DEST             (0xfb8)
 #define TEST_BUS_REG                (0xff8)
 #define CNFG_BITS                   (0xffc)
+#define TEST_BUS_SEL                (0xff4)
+#define TRUST_REG                   (0xff0)
+#define IRQ_SRCS_EE(n)             (0x1800 + 128 * (n))
+#define IRQ_SRCS_MSK_EE(n)         (0x1804 + 128 * (n))
+#define IRQ_SRCS_UNMASKED_EE(n)    (0x1808 + 128 * (n))
 
 #define P_CTRL(n)                  (0x0000 + 128 * (n))
 #define P_RST(n)                   (0x0004 + 128 * (n))
@@ -58,6 +68,9 @@
 #define P_IRQ_EN(n)                (0x0018 + 128 * (n))
 #define P_TIMER(n)                 (0x001c + 128 * (n))
 #define P_TIMER_CTRL(n)            (0x0020 + 128 * (n))
+#define P_PRDCR_SDBND(n)            (0x0024 + 128 * (n))
+#define P_CNSMR_SDBND(n)            (0x0028 + 128 * (n))
+#define P_TRUST_REG(n)             (0x0030 + 128 * (n))
 #define P_EVNT_DEST_ADDR(n)        (0x102c + 64 * (n))
 #define P_EVNT_REG(n)              (0x1018 + 64 * (n))
 #define P_SW_OFSTS(n)              (0x1000 + 64 * (n))
@@ -80,37 +93,106 @@
  *
  */
 /* CTRL */
+#define IBC_DISABLE                            0x10000
 #define BAM_CACHED_DESC_STORE                   0x8000
 #define BAM_DESC_CACHE_SEL                      0x6000
+/* BAM_PERIPH_IRQ_SIC_SEL is an obsolete field; This bit is reserved now */
 #define BAM_PERIPH_IRQ_SIC_SEL                  0x1000
-#define BAM_TESTBUS_SEL                          0xfe0
 #define BAM_EN_ACCUM                              0x10
 #define BAM_EN                                     0x2
 #define BAM_SW_RST                                 0x1
+
+/* REVISION */
+#define BAM_INACTIV_TMR_BASE                0xff000000
+#define BAM_INACTIV_TMRS_EXST                  0x80000
+#define BAM_HIGH_FREQUENCY_BAM                 0x40000
+#define BAM_HAS_NO_BYPASS                      0x20000
+#define BAM_SECURED                            0x10000
+#define BAM_NUM_EES                              0xf00
+#define BAM_REVISION                              0xff
+
+/* NUM_PIPES */
+#define BAM_NON_PIPE_GRP                    0xff000000
+#define BAM_PERIPH_NON_PIPE_GRP               0xff0000
+#define BAM_NUM_PIPES                             0xff
+
+/* DESC_CNT_TRSHLD */
+#define BAM_DESC_CNT_TRSHLD                     0xffff
 
 /* IRQ_SRCS */
 #define BAM_IRQ                         0x80000000
 #define P_IRQ                           0x7fffffff
 
+#define IRQ_STTS_BAM_EMPTY_IRQ                          0x8
 #define IRQ_STTS_BAM_ERROR_IRQ                          0x4
 #define IRQ_STTS_BAM_HRESP_ERR_IRQ                      0x2
+#define IRQ_CLR_BAM_EMPTY_CLR                           0x8
 #define IRQ_CLR_BAM_ERROR_CLR                           0x4
 #define IRQ_CLR_BAM_HRESP_ERR_CLR                       0x2
+#define IRQ_EN_BAM_EMPTY_EN                             0x8
 #define IRQ_EN_BAM_ERROR_EN                             0x4
 #define IRQ_EN_BAM_HRESP_ERR_EN                         0x2
 #define IRQ_SIC_SEL_BAM_IRQ_SIC_SEL              0x80000000
 #define IRQ_SIC_SEL_P_IRQ_SIC_SEL                0x7fffffff
-#define AHB_MASTER_ERR_CTRLS_BAM_ERR_DIRECT_MODE    0x10000
-#define AHB_MASTER_ERR_CTRLS_BAM_ERR_HCID            0xf000
+#define AHB_MASTER_ERR_CTRLS_BAM_ERR_HVMID         0x7c0000
+#define AHB_MASTER_ERR_CTRLS_BAM_ERR_DIRECT_MODE    0x20000
+#define AHB_MASTER_ERR_CTRLS_BAM_ERR_HCID           0x1f000
 #define AHB_MASTER_ERR_CTRLS_BAM_ERR_HPROT            0xf00
 #define AHB_MASTER_ERR_CTRLS_BAM_ERR_HBURST            0xe0
 #define AHB_MASTER_ERR_CTRLS_BAM_ERR_HSIZE             0x18
 #define AHB_MASTER_ERR_CTRLS_BAM_ERR_HWRITE             0x4
 #define AHB_MASTER_ERR_CTRLS_BAM_ERR_HTRANS             0x3
+#define CNFG_BITS_BAM_AU_ACCUMED                  0x4000000
+#define CNFG_BITS_BAM_PSM_P_HD_DATA               0x2000000
+#define CNFG_BITS_BAM_REG_P_EN                    0x1000000
+#define CNFG_BITS_BAM_WB_DSC_AVL_P_RST             0x800000
+#define CNFG_BITS_BAM_WB_RETR_SVPNT                0x400000
+#define CNFG_BITS_BAM_WB_CSW_ACK_IDL               0x200000
+#define CNFG_BITS_BAM_WB_BLK_CSW                   0x100000
+#define CNFG_BITS_BAM_WB_P_RES                      0x80000
+#define CNFG_BITS_BAM_SI_P_RES                      0x40000
+#define CNFG_BITS_BAM_AU_P_RES                      0x20000
+#define CNFG_BITS_BAM_PSM_P_RES                     0x10000
+#define CNFG_BITS_BAM_PSM_CSW_REQ                    0x8000
+#define CNFG_BITS_BAM_SB_CLK_REQ                     0x4000
+#define CNFG_BITS_BAM_IBC_DISABLE                    0x2000
+#define CNFG_BITS_BAM_NO_EXT_P_RST                   0x1000
 #define CNFG_BITS_BAM_FULL_PIPE                       0x800
 #define CNFG_BITS_BAM_PIPE_CNFG                         0x4
 
+/* TEST_BUS_SEL */
+#define BAM_DATA_ERASE                         0x40000
+#define BAM_DATA_FLUSH                         0x20000
+#define BAM_CLK_ALWAYS_ON                      0x10000
+#define BAM_TESTBUS_SEL                           0x7f
+
+/* TRUST_REG  */
+#define BAM_VMID                                0x1f00
+#define BAM_RST_BLOCK                             0x80
+#define BAM_EE                                     0x3
+
+/* P_TRUST_REGn */
+#define BAM_P_VMID                              0x1f00
+#define BAM_P_EE                                   0x3
+
+/* P_PRDCR_SDBNDn */
+#define P_PRDCR_SDBNDn_BAM_P_SB_UPDATED      0x1000000
+#define P_PRDCR_SDBNDn_BAM_P_TOGGLE           0x100000
+#define P_PRDCR_SDBNDn_BAM_P_CTRL              0xf0000
+#define P_PRDCR_SDBNDn_BAM_P_BYTES_FREE         0xffff
+/* P_CNSMR_SDBNDn */
+#define P_CNSMR_SDBNDn_BAM_P_SB_UPDATED      0x1000000
+#define P_CNSMR_SDBNDn_BAM_P_WAIT_4_ACK       0x800000
+#define P_CNSMR_SDBNDn_BAM_P_ACK_TOGGLE       0x400000
+#define P_CNSMR_SDBNDn_BAM_P_ACK_TOGGLE_R     0x200000
+#define P_CNSMR_SDBNDn_BAM_P_TOGGLE           0x100000
+#define P_CNSMR_SDBNDn_BAM_P_CTRL              0xf0000
+#define P_CNSMR_SDBNDn_BAM_P_BYTES_AVAIL        0xffff
+
 /* P_ctrln */
+#define P_PREFETCH_LIMIT                         0x600
+#define P_AUTO_EOB_SEL                           0x180
+#define P_AUTO_EOB                                0x40
 #define P_SYS_MODE                             0x20
 #define P_SYS_STRM                             0x10
 #define P_DIRECTION                             0x8
@@ -183,6 +265,12 @@
 #define P_PSM_CNTXT_5_PSM_OFST_IN_DESC             0xffff
 
 #define BAM_ERROR   (-1)
+
+/* AHB buffer error control */
+enum bam_nonsecure_reset {
+	BAM_NONSECURE_RESET_ENABLE  = 0,
+	BAM_NONSECURE_RESET_DISABLE = 1,
+};
 
 /**
  *
@@ -268,12 +356,13 @@ int bam_init(void *base, u32 ee,
 	u32 cfg_bits = 0xffffffff & ~(1 << 11);
 	u32 ver = 0;
 
-	ver = bam_read_reg(base, REVISION);
+	ver = bam_read_reg_field(base, REVISION, BAM_REVISION);
 
 	if ((ver < BAM_MIN_VERSION) || (ver > BAM_MAX_VERSION)) {
-		pr_err("bam:Invalid BAM version 0x%x.\n", ver);
+		pr_err("bam:Invalid BAM REVISION 0x%x.\n", ver);
 		return -ENODEV;
-	}
+	} else
+		pr_info("bam:BAM REVISION is 0x%x.\n", ver);
 
 	if (summing_threshold == 0) {
 		summing_threshold = 4;
@@ -295,12 +384,86 @@ int bam_init(void *base, u32 ee,
 	 *  filter with mask.
 	 *  Note: Pipes interrupts are disabled until BAM_P_IRQ_enn is set
 	 */
-	bam_write_reg_field(base, IRQ_SRCS_MSK, BAM_IRQ, 1);
+	bam_write_reg_field(base, IRQ_SRCS_MSK_EE(ee), BAM_IRQ, 1);
 
 	bam_write_reg(base, IRQ_EN, irq_mask);
 
-	*num_pipes = bam_read_reg(base, NUM_PIPES);
+	*num_pipes = bam_read_reg_field(base, NUM_PIPES, BAM_NUM_PIPES);
+
 	*version = ver;
+
+	return 0;
+}
+
+/**
+ * Set BAM global execution environment
+ *
+ * @base - BAM virtual base address
+ *
+ * @ee - BAM execution environment index
+ *
+ * @vmid - virtual master identifier
+ *
+ * @reset - enable/disable BAM global software reset
+ */
+static void bam_set_ee(void *base, u32 ee, u32 vmid,
+			enum bam_nonsecure_reset reset)
+{
+	bam_write_reg_field(base, TRUST_REG, BAM_EE, ee);
+	bam_write_reg_field(base, TRUST_REG, BAM_VMID, vmid);
+	bam_write_reg_field(base, TRUST_REG, BAM_RST_BLOCK, reset);
+}
+
+/**
+ * Set the pipe execution environment
+ *
+ * @base - BAM virtual base address
+ *
+ * @pipe - pipe index
+ *
+ * @ee - BAM execution environment index
+ *
+ * @vmid - virtual master identifier
+ */
+static void bam_pipe_set_ee(void *base, u32 pipe, u32 ee, u32 vmid)
+{
+	bam_write_reg_field(base, P_TRUST_REG(pipe), BAM_P_EE, ee);
+	bam_write_reg_field(base, P_TRUST_REG(pipe), BAM_P_VMID, vmid);
+}
+
+/**
+ * Initialize BAM device security execution environment
+ */
+int bam_security_init(void *base, u32 ee, u32 vmid, u32 pipe_mask)
+{
+	u32 version;
+	u32 num_pipes;
+	u32 mask;
+	u32 pipe;
+
+	/*
+	 * Discover the hardware version number and the number of pipes
+	 * supported by this BAM
+	 */
+	version = bam_read_reg_field(base, REVISION, BAM_REVISION);
+	num_pipes = bam_read_reg_field(base, NUM_PIPES, BAM_NUM_PIPES);
+	if (version < 3 || version > 0x1F) {
+		pr_err("bam:Security is not supported for this BAM version 0x%x.\n",
+				version);
+		return -ENODEV;
+	}
+
+	if (num_pipes > BAM_MAX_PIPES)
+		return -ENODEV;
+
+	for (pipe = 0, mask = 1; pipe < num_pipes; pipe++, mask <<= 1)
+		if ((mask & pipe_mask) != 0)
+			bam_pipe_set_ee(base, pipe, ee, vmid);
+
+	/* If MSbit is set, assign top-level interrupt to this EE */
+	mask = 1UL << 31;
+	if ((mask & pipe_mask) != 0)
+		bam_set_ee(base, ee, vmid, BAM_NONSECURE_RESET_ENABLE);
 
 	return 0;
 }
@@ -317,7 +480,7 @@ int bam_check(void *base, u32 *version, u32 *num_pipes)
 	if (!bam_read_reg_field(base, CTRL, BAM_EN))
 		return -ENODEV;
 
-	ver = bam_read_reg(base, REVISION);
+	ver = bam_read_reg(base, REVISION) & BAM_REVISION;
 
 	/*
 	 *  Discover the hardware version number and the number of pipes
@@ -341,7 +504,7 @@ int bam_check(void *base, u32 *version, u32 *num_pipes)
  */
 void bam_exit(void *base, u32 ee)
 {
-	bam_write_reg_field(base, IRQ_SRCS_MSK, BAM_IRQ, 0);
+	bam_write_reg_field(base, IRQ_SRCS_MSK_EE(ee), BAM_IRQ, 0);
 
 	bam_write_reg(base, IRQ_EN, 0);
 
@@ -350,17 +513,12 @@ void bam_exit(void *base, u32 ee)
 }
 
 /**
- * Get and Clear BAM global IRQ status
- *
- * note: clear status only for pipes controlled by this
- * processor
+ * Get BAM global IRQ status
  */
-u32 bam_get_and_clear_irq_status(void *base, u32 ee, u32 mask)
+u32 bam_get_irq_status(void *base, u32 ee, u32 mask)
 {
-	u32 status = bam_read_reg(base, IRQ_SRCS);
-	u32 clr = status &= mask;
-
-	bam_write_reg(base, IRQ_CLR, clr);
+	u32 status = bam_read_reg(base, IRQ_SRCS_EE(ee));
+	status &= mask;
 
 	return status;
 }
@@ -368,7 +526,8 @@ u32 bam_get_and_clear_irq_status(void *base, u32 ee, u32 mask)
 /**
  * Initialize a BAM pipe
  */
-int bam_pipe_init(void *base, u32 pipe,	struct bam_pipe_parameters *param)
+int bam_pipe_init(void *base, u32 pipe,	struct bam_pipe_parameters *param,
+					u32 ee)
 {
 	/* Reset the BAM pipe */
 	bam_write_reg(base, P_RST(pipe), 1);
@@ -376,7 +535,7 @@ int bam_pipe_init(void *base, u32 pipe,	struct bam_pipe_parameters *param)
 	bam_write_reg(base, P_RST(pipe), 0);
 
 	/* Enable the Pipe Interrupt at the BAM level */
-	bam_write_reg_field(base, IRQ_SRCS_MSK, (1 << pipe), 1);
+	bam_write_reg_field(base, IRQ_SRCS_MSK_EE(ee), (1 << pipe), 1);
 
 	bam_write_reg(base, P_IRQ_EN(pipe), param->pipe_irq_mask);
 
@@ -424,7 +583,7 @@ void bam_pipe_exit(void *base, u32 pipe, u32 ee)
 	bam_write_reg(base, P_IRQ_EN(pipe), 0);
 
 	/* Disable the Pipe Interrupt at the BAM level */
-	bam_write_reg_field(base, IRQ_SRCS_MSK, (1 << pipe), 0);
+	bam_write_reg_field(base, IRQ_SRCS_MSK_EE(ee), (1 << pipe), 0);
 
 	/* Pipe Disable */
 	bam_write_reg_field(base, P_CTRL(pipe), P_EN, 0);
@@ -465,7 +624,7 @@ void bam_pipe_set_irq(void *base, u32 pipe, enum bam_enable irq_en,
 		      u32 src_mask, u32 ee)
 {
 	bam_write_reg(base, P_IRQ_EN(pipe), src_mask);
-	bam_write_reg_field(base, IRQ_SRCS_MSK, (1 << pipe), irq_en);
+	bam_write_reg_field(base, IRQ_SRCS_MSK_EE(ee), (1 << pipe), irq_en);
 }
 
 /**
