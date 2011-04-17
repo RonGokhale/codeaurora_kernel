@@ -94,6 +94,7 @@ config ARCH_MSM8960
 	select MSM_RPM
 	select MSM_QDSP6_APR
 	select MSM_PIL
+	select MSM_AUDIO_QDSP6 if SND_SOC
 
 endchoice
 
@@ -1101,7 +1102,6 @@ config MSM8X60_RTAC
 	  Enable support for rtac in qdsp6v2. This enables calibration during
 	  audio operation
 
-
 config MSM_VREG_SWITCH_INVERTED
 	bool "Reverse vreg switch polarity"
 	default n
@@ -1419,6 +1419,17 @@ config MSM_QDSP6_APR
 	default n
 	help
 	  Enable APR IPC protocol support between
-	  application processor and QDSP6.
+	  application processor and QDSP6. APR is
+	  used by audio driver to configure QDSP6's
+	  ASM, ADM and AFE.
+
+
+config MSM_AUDIO_QDSP6
+        bool "QDSP6 HW Audio support"
+        select SND_SOC_MSM_QDSP6_INTF
+        default n
+        help
+          Enable HW audio support in QDSP6.
+          QDSP6 can support HW encoder & decoder and audio processing
 
 endif
