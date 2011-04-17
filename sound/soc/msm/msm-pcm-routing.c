@@ -41,6 +41,8 @@ enum {
 	AUDIO_MIXER_SLIMBUS_0_RX,
 	AUDIO_MIXER_HDMI_RX,
 	AUDIO_MIXER_MM_UL1,
+	AUDIO_MIXER_INT_BT_SCO_RX,
+	AUDIO_MIXER_INT_FM_RX,
 	AUDIO_MIXER_MAX,
 };
 
@@ -55,6 +57,10 @@ static int bedai_port_map[MSM_BACKEND_DAI_MAX] = {
 	SLIMBUS_0_RX,
 	SLIMBUS_0_TX,
 	HDMI_RX,
+	INT_BT_SCO_RX,
+	INT_BT_SCO_TX,
+	INT_FM_RX,
+	INT_FM_TX,
 };
 
 /* Track ASM playback & capture sessions of DAI */
@@ -76,6 +82,10 @@ static struct audio_mixer_data audio_mixers[AUDIO_MIXER_MAX] = {
 	{HDMI_RX, 0, SNDRV_PCM_STREAM_PLAYBACK},
 	/* AUDIO_MIXER_MM_UL1 */
 	{MSM_FRONTEND_DAI_MULTIMEDIA1, 0, SNDRV_PCM_STREAM_CAPTURE},
+	/* AUDIO_MIXER_INT_BT_SCO_RX */
+	{INT_BT_SCO_RX, 0, SNDRV_PCM_STREAM_PLAYBACK},
+	/* AUDIO_MIXER_INT_FM_RX */
+	{INT_FM_RX, 0, SNDRV_PCM_STREAM_PLAYBACK},
 };
 static struct voice_mixer_data voice_mixers[VOICE_MIXER_MAX] = {
 	/* VOICE_MIXER_PRI_I2S_RX */
@@ -318,12 +328,36 @@ static const struct snd_kcontrol_new hdmi_mixer_controls[] = {
 	msm_routing_put_audio_mixer),
 };
 
+static const struct snd_kcontrol_new int_bt_sco_rx_mixer_controls[] = {
+	SOC_SINGLE_EXT("MultiMedia1", AUDIO_MIXER_INT_BT_SCO_RX,
+	MSM_FRONTEND_DAI_MULTIMEDIA1, 1, 0, msm_routing_get_audio_mixer,
+	msm_routing_put_audio_mixer),
+	SOC_SINGLE_EXT("MultiMedia2", AUDIO_MIXER_INT_BT_SCO_RX,
+	MSM_FRONTEND_DAI_MULTIMEDIA2, 1, 0, msm_routing_get_audio_mixer,
+	msm_routing_put_audio_mixer),
+};
+
+static const struct snd_kcontrol_new int_fm_rx_mixer_controls[] = {
+	SOC_SINGLE_EXT("MultiMedia1", AUDIO_MIXER_INT_FM_RX,
+	MSM_FRONTEND_DAI_MULTIMEDIA1, 1, 0, msm_routing_get_audio_mixer,
+	msm_routing_put_audio_mixer),
+	SOC_SINGLE_EXT("MultiMedia2", AUDIO_MIXER_INT_FM_RX,
+	MSM_FRONTEND_DAI_MULTIMEDIA2, 1, 0, msm_routing_get_audio_mixer,
+	msm_routing_put_audio_mixer),
+};
+
 static const struct snd_kcontrol_new mmul1_mixer_controls[] = {
 	SOC_SINGLE_EXT("PRI_TX", AUDIO_MIXER_MM_UL1,
 	MSM_BACKEND_DAI_PRI_I2S_TX, 1, 0, msm_routing_get_audio_mixer,
 	msm_routing_put_audio_mixer),
 	SOC_SINGLE_EXT("SLIM_0_TX", AUDIO_MIXER_MM_UL1,
 	MSM_BACKEND_DAI_SLIMBUS_0_TX, 1, 0, msm_routing_get_audio_mixer,
+	msm_routing_put_audio_mixer),
+	SOC_SINGLE_EXT("Int BT-SCO TX", AUDIO_MIXER_MM_UL1,
+	MSM_BACKEND_DAI_INT_BT_SCO_TX, 1, 0, msm_routing_get_audio_mixer,
+	msm_routing_put_audio_mixer),
+	SOC_SINGLE_EXT("Int FM TX", AUDIO_MIXER_MM_UL1,
+	MSM_BACKEND_DAI_INT_FM_TX, 1, 0, msm_routing_get_audio_mixer,
 	msm_routing_put_audio_mixer),
 };
 
@@ -384,6 +418,12 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	SND_SOC_DAPM_AIF_OUT("HDMI", "HDMI Playback", 0, 0, 0 , 0),
 	SND_SOC_DAPM_AIF_IN("PRI_I2S_TX", "Primary I2S Capture", 0, 0, 0, 0),
 	SND_SOC_DAPM_AIF_IN("SLIMBUS_0_TX", "Slimbus Capture", 0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("INT_BT_SCO_RX", "Int BT-SCO Playback",
+				0, 0, 0 , 0),
+	SND_SOC_DAPM_AIF_IN("INT_BT_SCO_TX", "Int BT-SCO Capture", 0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("INT_FM_RX", "Int FM Playback", 0, 0, 0 , 0),
+	SND_SOC_DAPM_AIF_IN("INT_FM_TX", "Int FM Capture", 0, 0, 0, 0),
+
 	/* Mixer definitions */
 	SND_SOC_DAPM_MIXER("PRI_RX Audio Mixer", SND_SOC_NOPM, 0, 0,
 	pri_i2s_rx_mixer_controls, ARRAY_SIZE(pri_i2s_rx_mixer_controls)),
@@ -407,6 +447,10 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	SND_SOC_DAPM_MIXER("Voip_Tx Mixer",
 				SND_SOC_NOPM, 0, 0, tx_voip_mixer_controls,
 				ARRAY_SIZE(tx_voip_mixer_controls)),
+	SND_SOC_DAPM_MIXER("Int BT-SCO RX Audio Mixer", SND_SOC_NOPM, 0, 0,
+	int_bt_sco_rx_mixer_controls, ARRAY_SIZE(int_bt_sco_rx_mixer_controls)),
+	SND_SOC_DAPM_MIXER("Int FM RX Audio Mixer", SND_SOC_NOPM, 0, 0,
+	int_fm_rx_mixer_controls, ARRAY_SIZE(int_fm_rx_mixer_controls)),
 };
 
 static const struct snd_soc_dapm_route intercon[] = {
@@ -426,6 +470,17 @@ static const struct snd_soc_dapm_route intercon[] = {
 
 	{"MultiMedia1 Mixer", "PRI_TX", "PRI_I2S_TX"},
 	{"MultiMedia1 Mixer", "SLIM_0_TX", "SLIMBUS_0_TX"},
+
+	{"Int BT-SCO RX Audio Mixer", "MultiMedia1", "MM_DL1"},
+	{"Int BT-SCO RX Audio Mixer", "MultiMedia2", "MM_DL2"},
+	{"INT_BT_SCO_RX", NULL, "Int BT-SCO RX Audio Mixer"},
+
+	{"Int FM RX Audio Mixer", "MultiMedia1", "MM_DL1"},
+	{"Int FM RX Audio Mixer", "MultiMedia2", "MM_DL2"},
+	{"INT_FM_RX", NULL, "Int FM RX Audio Mixer"},
+
+	{"MultiMedia1 Mixer", "Int BT-SCO TX", "INT_BT_SCO_TX"},
+	{"MultiMedia1 Mixer", "Int FM TX", "INT_FM_TX"},
 	{"MM_UL1", NULL, "MultiMedia1 Mixer"},
 
 	{"PRI_RX_Voice Mixer", "CSVoice", "CS-VOICE_DL1"},

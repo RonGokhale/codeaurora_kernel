@@ -53,6 +53,12 @@
 #define SLIMBUS_4_RX		0x4008
 #define SLIMBUS_4_TX		0x4009		/* index = 24 */
 
+#define INT_BT_SCO_RX 0x3000		/* index = 25 */
+#define INT_BT_SCO_TX 0x3001		/* index = 26 */
+#define INT_BT_A2DP_RX 0x3002		/* index = 27 */
+#define INT_FM_RX 0x3004		/* index = 28 */
+#define INT_FM_TX 0x3005		/* index = 29 */
+
 #define AFE_PORT_INVALID 0xFFFF
 
 #define AFE_PORT_CMD_START 0x000100ca

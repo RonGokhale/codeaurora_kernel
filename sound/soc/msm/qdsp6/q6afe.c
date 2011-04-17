@@ -98,7 +98,11 @@ int afe_validate_port(u16 port_id)
 	case VOICE_PLAYBACK_TX:
 	case SLIMBUS_0_RX:
 	case SLIMBUS_0_TX:
-
+	case INT_BT_SCO_RX:
+	case INT_BT_SCO_TX:
+	case INT_BT_A2DP_RX:
+	case INT_FM_RX:
+	case INT_FM_TX:
 	{
 		ret = 0;
 		break;
@@ -131,6 +135,12 @@ int afe_get_port_index(u16 port_id)
 	case VOICE_PLAYBACK_TX: return IDX_VOICE_PLAYBACK_TX;
 	case SLIMBUS_0_RX: return IDX_SLIMBUS_0_RX;
 	case SLIMBUS_0_TX: return IDX_SLIMBUS_0_TX;
+	case INT_BT_SCO_RX: return IDX_INT_BT_SCO_RX;
+	case INT_BT_SCO_TX: return IDX_INT_BT_SCO_TX;
+	case INT_BT_A2DP_RX: return IDX_INT_BT_A2DP_RX;
+	case INT_FM_RX: return IDX_INT_FM_RX;
+	case INT_FM_TX: return IDX_INT_FM_TX;
+
 	default: return -EINVAL;
 	}
 }

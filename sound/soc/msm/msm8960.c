@@ -233,6 +233,10 @@ static const char *mm_be[] = {
 	LPASS_BE_SLIMBUS_0_RX,
 	LPASS_BE_SLIMBUS_0_TX,
 	LPASS_BE_HDMI,
+	LPASS_BE_INT_BT_SCO_RX,
+	LPASS_BE_INT_BT_SCO_TX,
+	LPASS_BE_INT_FM_RX,
+	LPASS_BE_INT_FM_TX,
 };
 
 static struct snd_soc_dsp_link fe_media = {
@@ -363,6 +367,49 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.be_hw_params_fixup = slimbus_be_hw_params_fixup,
 		.ops = &msm8960_be_ops,
 	},
+	/* Backend BT/FM DAI Links */
+	{
+		.name = LPASS_BE_INT_BT_SCO_RX,
+		.stream_name = "Int BT-SCO Playback",
+		.cpu_dai_name = "msm-dai-q6.12288",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name	= "msm-stub-rx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_INT_BT_SCO_RX,
+	},
+	{
+		.name = LPASS_BE_INT_BT_SCO_TX,
+		.stream_name = "Int BT-SCO Capture",
+		.cpu_dai_name = "msm-dai-q6.12289",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name	= "msm-stub-tx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_INT_BT_SCO_TX,
+	},
+	{
+		.name = LPASS_BE_INT_FM_RX,
+		.stream_name = "Int FM Playback",
+		.cpu_dai_name = "msm-dai-q6.12292",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-rx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_INT_FM_RX,
+		.be_hw_params_fixup = slimbus_be_hw_params_fixup,
+	},
+	{
+		.name = LPASS_BE_INT_FM_TX,
+		.stream_name = "Int FM Capture",
+		.cpu_dai_name = "msm-dai-q6.12293",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-tx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_INT_FM_TX,
+		.be_hw_params_fixup = slimbus_be_hw_params_fixup,
+	}
 };
 
 struct snd_soc_card snd_soc_card_msm8960 = {

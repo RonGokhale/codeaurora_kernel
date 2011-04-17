@@ -198,7 +198,44 @@ failed_cmd:
 	return rc;
 }
 
+static int msm_dai_q6_bt_fm_hw_params(struct snd_pcm_hw_params *params,
+				struct snd_soc_dai *dai, int stream)
+{
+	union afe_port_config port_config;
+	int sample_rate, channels;
+	int rc;
 
+	channels = params_channels(params);
+	sample_rate = params_rate(params);
+
+	dev_dbg(dai->dev, "channels %d sample rate %d entered\n",
+		channels, sample_rate);
+
+	memset(&port_config, 0, sizeof(port_config));
+	rc = afe_open(dai->id, &port_config, sample_rate);
+
+	if (IS_ERR_VALUE(rc)) {
+		dev_err(dai->dev, "fail to open AFE port\n");
+		goto failed_cmd;
+	}
+
+	if (stream == SNDRV_PCM_STREAM_PLAYBACK)
+		rc = adm_open_mixer(dai->id, 1, sample_rate,
+			channels, DEFAULT_COPP_TOPOLOGY);
+	else
+		rc = adm_open_mixer(dai->id, 2, sample_rate,
+			channels, DEFAULT_COPP_TOPOLOGY);
+
+	if (IS_ERR_VALUE(rc)) {
+		dev_err(dai->dev, "fail to open ADM\n");
+		afe_close(dai->id);
+		goto failed_cmd;
+	}
+	return 0;
+
+failed_cmd:
+	return rc;
+}
 
 /* Current implementation assumes hw_param is called once
  * This may not be the case but what to do when ADM and AFE
@@ -223,6 +260,12 @@ static int msm_dai_q6_hw_params(struct snd_pcm_substream *substream,
 	case SLIMBUS_0_TX:
 		rc = msm_dai_q6_slim_bus_hw_params(params, dai,
 				substream->stream);
+		break;
+	case INT_BT_SCO_RX:
+	case INT_BT_SCO_TX:
+	case INT_FM_RX:
+	case INT_FM_TX:
+		rc = msm_dai_q6_bt_fm_hw_params(params, dai, substream->stream);
 		break;
 	default:
 		dev_err(dai->dev, "invalid AFE port ID\n");
@@ -305,7 +348,6 @@ static struct snd_soc_dai_driver msm_dai_q6_hdmi_rx_dai = {
 	.ops = &msm_dai_q6_ops,
 };
 
-
 static struct snd_soc_dai_driver msm_dai_q6_slimbus_rx_dai = {
 	.playback = {
 		.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
@@ -332,6 +374,55 @@ static struct snd_soc_dai_driver msm_dai_q6_slimbus_tx_dai = {
 	.ops = &msm_dai_q6_ops,
 };
 
+static struct snd_soc_dai_driver msm_dai_q6_bt_sco_rx_dai = {
+	.playback = {
+		.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+		.channels_min = 1,
+		.channels_max = 1,
+		.rate_max = 16000,
+		.rate_min = 8000,
+	},
+	.ops = &msm_dai_q6_ops,
+};
+
+static struct snd_soc_dai_driver msm_dai_q6_bt_sco_tx_dai = {
+	.playback = {
+		.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+		.channels_min = 1,
+		.channels_max = 1,
+		.rate_max = 16000,
+		.rate_min = 8000,
+	},
+	.ops = &msm_dai_q6_ops,
+};
+
+static struct snd_soc_dai_driver msm_dai_q6_fm_rx_dai = {
+	.playback = {
+		.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
+		SNDRV_PCM_RATE_16000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+		.channels_min = 2,
+		.channels_max = 2,
+		.rate_max = 48000,
+		.rate_min = 8000,
+	},
+	.ops = &msm_dai_q6_ops,
+};
+
+static struct snd_soc_dai_driver msm_dai_q6_fm_tx_dai = {
+	.playback = {
+		.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
+		SNDRV_PCM_RATE_16000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+		.channels_min = 2,
+		.channels_max = 2,
+		.rate_max = 48000,
+		.rate_min = 8000,
+	},
+	.ops = &msm_dai_q6_ops,
+};
 
 /* To do: change to register DAIs as batch */
 static __devinit int msm_dai_q6_dev_probe(struct platform_device *pdev)
@@ -357,6 +448,19 @@ static __devinit int msm_dai_q6_dev_probe(struct platform_device *pdev)
 	case SLIMBUS_0_TX:
 		rc = snd_soc_register_dai(&pdev->dev,
 				&msm_dai_q6_slimbus_tx_dai);
+	case INT_BT_SCO_RX:
+		rc = snd_soc_register_dai(&pdev->dev,
+					&msm_dai_q6_bt_sco_rx_dai);
+		break;
+	case INT_BT_SCO_TX:
+		rc = snd_soc_register_dai(&pdev->dev,
+					&msm_dai_q6_bt_sco_tx_dai);
+		break;
+	case INT_FM_RX:
+		rc = snd_soc_register_dai(&pdev->dev, &msm_dai_q6_fm_rx_dai);
+		break;
+	case INT_FM_TX:
+		rc = snd_soc_register_dai(&pdev->dev, &msm_dai_q6_fm_tx_dai);
 		break;
 	default:
 		rc = -ENODEV;
