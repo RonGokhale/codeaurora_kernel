@@ -809,6 +809,7 @@ static void __init tegra_seaboard_init(void)
 	debug_uart_platform_data[0].irq = INT_UARTD;
 
 	__tegra_seaboard_init();
+	seaboard_emc_init();
 
 	seaboard_i2c_init();
 	seaboard_audio_init();
