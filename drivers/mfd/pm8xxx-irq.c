@@ -178,13 +178,13 @@ static void pm8xxx_irq_handler(unsigned int irq, struct irq_desc *desc)
 		if (masters & (1 << i))
 			pm8xxx_irq_master_handler(chip, i);
 
-	irq_chip->ack(irq);
+	irq_chip->irq_ack(&desc->irq_data);
 }
 
-static void pm8xxx_irq_mask_ack(unsigned int irq)
+static void pm8xxx_irq_mask_ack(struct irq_data *d)
 {
-	struct pm_irq_chip *chip = get_irq_chip_data(irq);
-	unsigned int pmirq = irq - chip->irq_base;
+	struct pm_irq_chip *chip = irq_data_get_irq_chip_data(d);
+	unsigned int pmirq = d->irq - chip->irq_base;
 	int	master, irq_bit;
 	u8	block, config;
 
@@ -196,10 +196,10 @@ static void pm8xxx_irq_mask_ack(unsigned int irq)
 	pm8xxx_config_irq(chip, block, config);
 }
 
-static void pm8xxx_irq_unmask(unsigned int irq)
+static void pm8xxx_irq_unmask(struct irq_data *d)
 {
-	struct pm_irq_chip *chip = get_irq_chip_data(irq);
-	unsigned int pmirq = irq - chip->irq_base;
+	struct pm_irq_chip *chip = irq_data_get_irq_chip_data(d);
+	unsigned int pmirq = d->irq - chip->irq_base;
 	int	master, irq_bit;
 	u8	block, config;
 
@@ -211,10 +211,10 @@ static void pm8xxx_irq_unmask(unsigned int irq)
 	pm8xxx_config_irq(chip, block, config);
 }
 
-static int pm8xxx_irq_set_type(unsigned int irq, unsigned int flow_type)
+static int pm8xxx_irq_set_type(struct irq_data *d, unsigned int flow_type)
 {
-	struct pm_irq_chip *chip = get_irq_chip_data(irq);
-	unsigned int pmirq = irq - chip->irq_base;
+	struct pm_irq_chip *chip = irq_data_get_irq_chip_data(d);
+	unsigned int pmirq = d->irq - chip->irq_base;
 	int master, irq_bit;
 	u8 block, config;
 
@@ -242,17 +242,17 @@ static int pm8xxx_irq_set_type(unsigned int irq, unsigned int flow_type)
 	return pm8xxx_config_irq(chip, block, config);
 }
 
-static int pm8xxx_irq_set_wake(unsigned int irq, unsigned int on)
+static int pm8xxx_irq_set_wake(struct irq_data *d, unsigned int on)
 {
 	return 0;
 }
 
 static struct irq_chip pm8xxx_irq_chip = {
 	.name		= "pm8xxx",
-	.mask_ack	= pm8xxx_irq_mask_ack,
-	.unmask		= pm8xxx_irq_unmask,
-	.set_type	= pm8xxx_irq_set_type,
-	.set_wake	= pm8xxx_irq_set_wake,
+	.irq_mask_ack	= pm8xxx_irq_mask_ack,
+	.irq_unmask	= pm8xxx_irq_unmask,
+	.irq_set_type	= pm8xxx_irq_set_type,
+	.irq_set_wake	= pm8xxx_irq_set_wake,
 };
 
 /**
@@ -349,7 +349,7 @@ struct pm_irq_chip *  __devinit pm8xxx_irq_init(struct device *dev,
 #ifdef CONFIG_ARM
 		set_irq_flags(chip->irq_base + pmirq, IRQF_VALID);
 #else
-		set_irq_noprobe(chip->irq_base + pmirq);
+		irq_set_noprobe(chip->irq_base + pmirq);
 #endif
 	}
 
