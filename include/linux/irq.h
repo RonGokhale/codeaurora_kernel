@@ -148,6 +148,7 @@ struct irq_data {
  * @irq_retrigger:	resend an IRQ to the CPU
  * @irq_set_type:	set the flow type (IRQ_TYPE_LEVEL/etc.) of an IRQ
  * @irq_set_wake:	enable/disable power-management wake-on of an IRQ
+ * @irq_read_line:	return the current value on the irq line
  * @irq_bus_lock:	function to lock access to slow bus (i2c) chips
  * @irq_bus_sync_unlock:function to sync and unlock slow bus (i2c) chips
  *
@@ -191,6 +192,7 @@ struct irq_chip {
 	int		(*irq_set_affinity)(struct irq_data *data, const struct cpumask *dest, bool force);
 	int		(*irq_retrigger)(struct irq_data *data);
 	int		(*irq_set_type)(struct irq_data *data, unsigned int flow_type);
+	int		(*irq_read_line)(struct irq_data *data);
 	int		(*irq_set_wake)(struct irq_data *data, unsigned int on);
 
 	void		(*irq_bus_lock)(struct irq_data *data);
