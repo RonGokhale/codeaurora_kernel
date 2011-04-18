@@ -226,7 +226,7 @@ static struct usb_mass_storage_platform_data mass_storage_pdata = {
 static struct msm_otg_platform_data msm_otg_pdata;
 #else
 static struct msm_otg_platform_data msm_otg_pdata = {
-	.mode			= USB_PERIPHERAL,
+	.mode			= USB_OTG,
 	.otg_control		= OTG_PHY_CONTROL,
 	.phy_type		= SNPS_28NM_INTEGRATED_PHY,
 	.pclk_src_name		= "dfab_usb_hs_clk",
@@ -359,6 +359,7 @@ static struct platform_device *sim_devices[] __initdata = {
 	&msm8960_device_qup_spi_gsbi1,
 	&msm_device_otg,
 	&msm_device_gadget_peripheral,
+	&msm_device_hsusb_host,
 	&android_usb_device,
 	&usb_diag_device,
 	&msm8960_device_qup_i2c_gsbi4,
@@ -669,6 +670,7 @@ static void __init msm8960_sim_init(void)
 
 	msm_device_otg.dev.platform_data = &msm_otg_pdata;
 	msm_device_gadget_peripheral.dev.parent = &msm_device_otg.dev;
+	msm_device_hsusb_host.dev.parent = &msm_device_otg.dev;
 	gpiomux_init();
 	msm8960_i2c_init();
 	platform_add_devices(sim_devices, ARRAY_SIZE(sim_devices));
