@@ -35,6 +35,8 @@
 #include <linux/gpio.h>
 #include <linux/android_pmem.h>
 #include <linux/bootmem.h>
+
+#include <mach/vreg.h>
 #include "devices.h"
 #include "timer.h"
 #include "devices-msm7x2xa.h"
@@ -187,6 +189,12 @@ static struct msm_i2c_platform_data msm_gsbi1_qup_i2c_pdata = {
 	.pclk			= "gsbi_qup_pclk",
 	.msm_i2c_config_gpio	= gsbi_qup_i2c_gpio_config,
 };
+
+#ifdef CONFIG_ARCH_MSM7X27A
+#define MSM_PMEM_MDP_SIZE       0x1DD1000
+#define MSM_PMEM_ADSP_SIZE      0x1000000
+#define MSM_FB_SIZE             0x195000
+#endif
 
 static char *usb_functions_default[] = {
 	"diag",
@@ -425,6 +433,229 @@ static struct mmc_platform_data sdc4_plat_data = {
 };
 #endif
 
+
+static struct android_pmem_platform_data android_pmem_adsp_pdata = {
+	.name = "pmem_adsp",
+	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
+	.cached = 0,
+};
+
+static struct platform_device android_pmem_adsp_device = {
+	.name = "android_pmem",
+	.id = 1,
+	.dev = { .platform_data = &android_pmem_adsp_pdata },
+};
+
+static unsigned pmem_mdp_size = MSM_PMEM_MDP_SIZE;
+static int __init pmem_mdp_size_setup(char *p)
+{
+	pmem_mdp_size = memparse(p, NULL);
+	return 0;
+}
+
+early_param("pmem_mdp_size", pmem_mdp_size_setup);
+
+static unsigned pmem_adsp_size = MSM_PMEM_ADSP_SIZE;
+static int __init pmem_adsp_size_setup(char *p)
+{
+	pmem_adsp_size = memparse(p, NULL);
+	return 0;
+}
+
+early_param("pmem_adsp_size", pmem_adsp_size_setup);
+
+static unsigned fb_size = MSM_FB_SIZE;
+static int __init fb_size_setup(char *p)
+{
+	fb_size = memparse(p, NULL);
+	return 0;
+}
+
+early_param("fb_size", fb_size_setup);
+
+#ifdef CONFIG_FB_MSM_MIPI_DSI
+static struct platform_device mipi_dsi_toshiba_panel_device = {
+	.name = "mipi_toshiba",
+	.id = 0,
+};
+#endif
+
+#define LCDC_CONFIG_PROC          21
+#define LCDC_UN_CONFIG_PROC       22
+#define LCDC_API_PROG             0x30000066
+#define LCDC_API_VERS             0x00010001
+
+static struct msm_rpc_endpoint *lcdc_ep;
+
+static int msm_fb_lcdc_config(int on)
+{
+	int rc = 0;
+	struct rpc_request_hdr hdr;
+
+	if (on)
+		pr_info("lcdc config\n");
+	else
+		pr_info("lcdc un-config\n");
+
+	lcdc_ep = msm_rpc_connect_compatible(LCDC_API_PROG, LCDC_API_VERS, 0);
+
+	if (IS_ERR(lcdc_ep)) {
+		printk(KERN_ERR "%s: msm_rpc_connect failed! rc = %ld\n",
+			__func__, PTR_ERR(lcdc_ep));
+		return -EINVAL;
+	}
+
+	rc = msm_rpc_call(lcdc_ep,
+		(on) ? LCDC_CONFIG_PROC : LCDC_UN_CONFIG_PROC,
+		&hdr, sizeof(hdr), 5 * HZ);
+
+	if (rc)
+		printk(KERN_ERR
+			"%s: msm_rpc_call failed! rc = %d\n", __func__, rc);
+
+	msm_rpc_close(lcdc_ep);
+	return rc;
+}
+
+static uint32_t lcdc_gpio_initialized;
+
+static void lcdc_toshiba_gpio_init(void)
+{
+	if (!lcdc_gpio_initialized) {
+		if (gpio_request(GPIO_SPI_CLK, "spi_clk")) {
+			pr_err("failed to request gpio spi_clk\n");
+			goto fail_gpio;
+		}
+		if (gpio_request(GPIO_SPI_CS0_N, "spi_cs")) {
+			pr_err("failed to request gpio spi_cs0_N\n");
+			goto fail_gpio;
+		}
+		if (gpio_request(GPIO_SPI_MOSI, "spi_mosi")) {
+			pr_err("failed to request gpio spi_mosi\n");
+			goto fail_gpio;
+		}
+		if (gpio_request(GPIO_SPI_MISO, "spi_miso")) {
+			pr_err("failed to request gpio spi_miso\n");
+			goto fail_gpio;
+		}
+		if (gpio_request(GPIO_DISPLAY_PWR_EN, "gpio_disp_pwr")) {
+			pr_err("failed to request gpio_disp_pwr\n");
+			goto fail_gpio;
+		}
+		if (gpio_request(GPIO_BACKLIGHT_EN, "gpio_disp_pwr")) {
+			pr_err("failed to request gpio_disp_pwr\n");
+			goto fail_gpio;
+		}
+		lcdc_gpio_initialized = 1;
+		return;
+	}
+fail_gpio:
+	lcdc_gpio_initialized = 0;
+}
+
+static uint32_t lcdc_gpio_table[] = {
+	GPIO_SPI_CLK,
+	GPIO_SPI_CS0_N,
+	GPIO_SPI_MOSI,
+	GPIO_DISPLAY_PWR_EN,
+	GPIO_BACKLIGHT_EN,
+	GPIO_SPI_MISO,
+};
+
+static void config_lcdc_gpio_table(uint32_t *table, int len, unsigned enable)
+{
+	int n;
+
+	if (lcdc_gpio_initialized) {
+		/* All are IO Expander GPIOs */
+		for (n = 0; n < (len - 1); n++)
+			gpio_direction_output(table[n], 1);
+	}
+}
+
+static void lcdc_toshiba_config_gpios(int enable)
+{
+	config_lcdc_gpio_table(lcdc_gpio_table,
+		ARRAY_SIZE(lcdc_gpio_table), enable);
+}
+
+static int msm_fb_lcdc_power_save(int on)
+{
+	/* struct vreg *vreg[ARRAY_SIZE(msm_fb_lcdc_vreg)]; */
+	int rc = 0;
+
+	/* Doing the init of the LCDC GPIOs very late as they are from
+		an I2C-controlled IO Expander */
+	lcdc_toshiba_gpio_init();
+
+	if (lcdc_gpio_initialized) {
+		gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN, on);
+		gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, on);
+	}
+
+	pmapp_disp_backlight_init();
+	rc = pmapp_disp_backlight_set_brightness(100);
+
+	return 0;
+}
+
+static struct lcdc_platform_data lcdc_pdata = {
+	.lcdc_gpio_config = msm_fb_lcdc_config,
+	.lcdc_power_save   = msm_fb_lcdc_power_save,
+};
+
+static int lcd_panel_spi_gpio_num[] = {
+		GPIO_SPI_MOSI,  /* spi_sdi */
+		GPIO_SPI_MISO,  /* spi_sdoi */
+		GPIO_SPI_CLK,   /* spi_clk */
+		GPIO_SPI_CS0_N, /* spi_cs  */
+};
+
+static struct msm_panel_common_pdata lcdc_toshiba_panel_data = {
+	.panel_config_gpio = lcdc_toshiba_config_gpios,
+	.gpio_num	  = lcd_panel_spi_gpio_num,
+};
+
+static struct platform_device lcdc_toshiba_panel_device = {
+	.name   = "lcdc_toshiba_fwvga",
+	.id     = 0,
+	.dev    = {
+		.platform_data = &lcdc_toshiba_panel_data,
+	}
+};
+
+static struct resource msm_fb_resources[] = {
+	{
+		.flags  = IORESOURCE_DMA,
+	}
+};
+
+static int msm_fb_detect_panel(const char *name)
+{
+	int ret = -EPERM;
+
+	if (!strcmp(name, "lcdc_toshiba_fwvga"))
+		ret = 0;
+	else
+		ret = -ENODEV;
+
+	return ret;
+}
+
+static struct msm_fb_platform_data msm_fb_pdata = {
+	.detect_client = msm_fb_detect_panel,
+};
+
+static struct platform_device msm_fb_device = {
+	.name   = "msm_fb",
+	.id     = 0,
+	.num_resources  = ARRAY_SIZE(msm_fb_resources),
+	.resource       = msm_fb_resources,
+	.dev    = {
+		.platform_data = &msm_fb_pdata,
+	}
+};
+
 static void __init msm7x27a_init_mmc(void)
 {
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
@@ -639,6 +870,7 @@ static struct platform_device *surf_ffa_devices[] __initdata = {
 	&msm_device_gadget_peripheral,
 	&android_usb_device,
 	&android_pmem_device,
+	&android_pmem_adsp_device,
 	&usb_mass_storage_device,
 	&rndis_device,
 	&usb_diag_device,
@@ -647,6 +879,8 @@ static struct platform_device *surf_ffa_devices[] __initdata = {
 	&android_pmem_audio_device,
 	&msm_device_snd,
 	&msm_device_adspdec,
+	&msm_fb_device,
+	&lcdc_toshiba_panel_device,
 };
 
 static unsigned pmem_kernel_ebi1_size = PMEM_KERNEL_EBI1_SIZE;
@@ -687,12 +921,47 @@ static void __init msm_msm7x2x_allocate_memory_regions(void)
 		pr_info("allocating %lu bytes at %p (%lx physical) for kernel"
 			" ebi1 pmem arena\n", size, addr, __pa(addr));
 	}
+
+	size = pmem_mdp_size;
+	if (size) {
+		addr = alloc_bootmem(size);
+		android_pmem_pdata.start = __pa(addr);
+		android_pmem_pdata.size = size;
+		pr_info("allocating %lu bytes at %p (%lx physical) for mdp "
+			"pmem arena\n", size, addr, __pa(addr));
+	}
+
+	size = pmem_adsp_size;
+	if (size) {
+		addr = alloc_bootmem(size);
+		android_pmem_adsp_pdata.start = __pa(addr);
+		android_pmem_adsp_pdata.size = size;
+		pr_info("allocating %lu bytes at %p (%lx physical) for adsp "
+			"pmem arena\n", size, addr, __pa(addr));
+	}
+
+	size = fb_size ? : MSM_FB_SIZE;
+	addr = alloc_bootmem(size);
+	msm_fb_resources[0].start = __pa(addr);
+	msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
+	pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
+		size, addr, __pa(addr));
 }
 
 static void __init msm_device_i2c_init(void)
 {
 	msm_gsbi0_qup_i2c_device.dev.platform_data = &msm_gsbi0_qup_i2c_pdata;
 	msm_gsbi1_qup_i2c_device.dev.platform_data = &msm_gsbi1_qup_i2c_pdata;
+}
+
+static struct msm_panel_common_pdata mdp_pdata = {
+	.gpio = 97,
+};
+
+static void __init msm_fb_add_devices(void)
+{
+	msm_fb_register_device("mdp", &mdp_pdata);
+	msm_fb_register_device("lcdc", &lcdc_pdata);
 }
 
 static void __init msm7x27a_init_ebi2(void)
@@ -822,6 +1091,7 @@ static void __init msm7x2x_init(void)
 #endif
 		platform_add_devices(surf_ffa_devices,
 				ARRAY_SIZE(surf_ffa_devices));
+		msm_fb_add_devices();
 #ifdef CONFIG_USB_EHCI_MSM
 		msm7x2x_init_host();
 #endif
