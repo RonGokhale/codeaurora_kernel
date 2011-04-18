@@ -1000,25 +1000,33 @@ static int kgsl_yamato_suspend_context(struct kgsl_device *device)
 	return status;
 }
 
-void kgsl_yamato_regread(struct kgsl_device *device, unsigned int offsetwords,
+int kgsl_yamato_regread(struct kgsl_device *device, unsigned int offsetwords,
 				unsigned int *value)
 {
 	unsigned int *reg;
 
-	BUG_ON(offsetwords*sizeof(uint32_t) >= device->regspace.sizebytes);
-
 	kgsl_pre_hwaccess(device);
+	if (offsetwords*sizeof(uint32_t) >= device->regspace.sizebytes) {
+		KGSL_DRV_ERR(device, "invalid offset %d\n", offsetwords);
+		return -ERANGE;
+	}
+
 	reg = (unsigned int *)(device->regspace.mmio_virt_base
 				+ (offsetwords << 2));
 	*value = readl(reg);
+
+	return 0;
 }
 
-void kgsl_yamato_regwrite(struct kgsl_device *device, unsigned int offsetwords,
+int kgsl_yamato_regwrite(struct kgsl_device *device, unsigned int offsetwords,
 				unsigned int value)
 {
 	unsigned int *reg;
 
-	BUG_ON(offsetwords*sizeof(uint32_t) >= device->regspace.sizebytes);
+	if (offsetwords*sizeof(uint32_t) >= device->regspace.sizebytes) {
+		KGSL_DRV_ERR(device, "invalid offset %d\n", offsetwords);
+		return -ERANGE;
+	}
 
 	kgsl_cffdump_regwrite(device->id, offsetwords << 2, value);
 	reg = (unsigned int *)(device->regspace.mmio_virt_base
@@ -1026,6 +1034,8 @@ void kgsl_yamato_regwrite(struct kgsl_device *device, unsigned int offsetwords,
 
 	kgsl_pre_hwaccess(device);
 	writel(value, reg);
+
+	return 0;
 }
 
 static int kgsl_check_interrupt_timestamp(struct kgsl_device *device,
