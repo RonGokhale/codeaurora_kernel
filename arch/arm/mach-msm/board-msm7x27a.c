@@ -466,6 +466,7 @@ static struct platform_device *surf_ffa_devices[] __initdata = {
 	&msm_device_smd,
 	&msm_device_uart1,
 	&msm_device_uart_dm1,
+	&msm_device_nand,
 	&msm_gsbi0_qup_i2c_device,
 	&msm_gsbi1_qup_i2c_device,
 	&msm_device_otg,
