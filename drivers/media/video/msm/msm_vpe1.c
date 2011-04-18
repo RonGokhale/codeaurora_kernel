@@ -1248,17 +1248,17 @@ int msm_vpe_open(void)
 		return -ENOMEM;
 	}
 	/* don't change the order of clock and irq.*/
-	CDBG("%s: enable_clock \n", __func__);
+	CDBG("%s: enable_clock\n", __func__);
 	rc = msm_camio_vpe_clk_enable();
 
-	CDBG("%s: enable_irq \n", __func__);
+	CDBG("%s: enable_irq\n", __func__);
 	vpe_enable_irq();
 
 	/* initialize the data structure - lock, queue etc. */
 	spin_lock_init(&vpe_ctrl->tasklet_lock);
 	INIT_LIST_HEAD(&vpe_ctrl->tasklet_q);
 
-	CDBG("%s: Out \n", __func__);
+	CDBG("%s: Out\n", __func__);
 
 	return rc;
 }

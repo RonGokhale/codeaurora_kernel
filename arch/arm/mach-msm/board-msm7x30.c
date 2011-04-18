@@ -1051,6 +1051,11 @@ static struct platform_device msm_camera_sensor_mt9d112 = {
 #endif
 
 #ifdef CONFIG_WEBCAM_OV9726
+
+static struct msm_camera_sensor_platform_info ov9726_sensor_7630_info = {
+	.mount_angle = 90
+};
+
 static struct msm_camera_sensor_flash_data flash_ov9726 = {
 	.flash_type	= MSM_CAMERA_FLASH_LED,
 	.flash_src	= &msm_flash_src_pwm
@@ -1065,6 +1070,7 @@ static struct msm_camera_sensor_info msm_camera_sensor_ov9726_data = {
 	.resource	= msm_camera_resources,
 	.num_resources	= ARRAY_SIZE(msm_camera_resources),
 	.flash_data	= &flash_ov9726,
+	.sensor_platform_info = &ov9726_sensor_7630_info,
 	.csi_if		= 1
 };
 struct platform_device msm_camera_sensor_ov9726 = {
@@ -2018,6 +2024,7 @@ static struct marimba_fm_platform_data marimba_fm_pdata = {
 	.irq = MSM_GPIO_TO_INT(147),
 	.vreg_s2 = NULL,
 	.vreg_xo_out = NULL,
+	.is_fm_soc_i2s_master = false,
 };
 
 
@@ -3127,7 +3134,7 @@ static int sensors_ldo_enable(void)
 		goto fail_gp6_get;
 	}
 
-	rc = vreg_set_level(vreg_gp6, 2800);
+	rc = vreg_set_level(vreg_gp6, 3050);
 	if (rc) {
 		pr_err("%s: vreg_set_level gp6 failed\n", __func__);
 		goto fail_gp6_level;
@@ -4217,7 +4224,7 @@ static struct platform_device msm_kgsl_2d0 = {
 #define QCE_0_BASE		0xA8400000
 
 #define QCE_HW_KEY_SUPPORT	1
-
+#define QCE_SHA_HMAC_SUPPORT	0
 #define QCE_SHARE_CE_RESOURCE	0
 #define QCE_CE_SHARED		0
 
@@ -4294,6 +4301,7 @@ static struct msm_ce_hw_support qcrypto_ce_hw_suppport = {
 	.ce_shared = QCE_CE_SHARED,
 	.shared_ce_resource = QCE_SHARE_CE_RESOURCE,
 	.hw_key_support = QCE_HW_KEY_SUPPORT,
+	.sha_hmac = QCE_SHA_HMAC_SUPPORT,
 };
 
 static struct platform_device qcrypto_device = {
@@ -4315,6 +4323,7 @@ static struct msm_ce_hw_support qcedev_ce_hw_suppport = {
 	.ce_shared = QCE_CE_SHARED,
 	.shared_ce_resource = QCE_SHARE_CE_RESOURCE,
 	.hw_key_support = QCE_HW_KEY_SUPPORT,
+	.sha_hmac = QCE_SHA_HMAC_SUPPORT,
 };
 static struct platform_device qcedev_device = {
 	.name		= "qce",

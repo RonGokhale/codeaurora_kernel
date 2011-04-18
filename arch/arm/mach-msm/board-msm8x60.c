@@ -553,7 +553,7 @@ static struct platform_device smsc911x_device = {
 #define QCE_0_BASE		0x18500000
 
 #define QCE_HW_KEY_SUPPORT	0
-
+#define QCE_SHA_HMAC_SUPPORT	0
 #define QCE_SHARE_CE_RESOURCE	2
 #define QCE_CE_SHARED		1
 
@@ -630,6 +630,7 @@ static struct msm_ce_hw_support qcrypto_ce_hw_suppport = {
 	.ce_shared = QCE_CE_SHARED,
 	.shared_ce_resource = QCE_SHARE_CE_RESOURCE,
 	.hw_key_support = QCE_HW_KEY_SUPPORT,
+	.sha_hmac = QCE_SHA_HMAC_SUPPORT,
 };
 
 static struct platform_device qcrypto_device = {
@@ -651,6 +652,7 @@ static struct msm_ce_hw_support qcedev_ce_hw_suppport = {
 	.ce_shared = QCE_CE_SHARED,
 	.shared_ce_resource = QCE_SHARE_CE_RESOURCE,
 	.hw_key_support = QCE_HW_KEY_SUPPORT,
+	.sha_hmac = QCE_SHA_HMAC_SUPPORT,
 };
 
 static struct platform_device qcedev_device = {
@@ -1773,11 +1775,18 @@ static int config_gpio_table(enum msm_cam_stat stat)
 	return rc;
 }
 
+static struct msm_camera_sensor_platform_info sensor_board_info = {
+	.mount_angle = 0
+};
+
 #define CAM_BOOSTER_MPP	(0)
 static int config_camera_on_gpios_fluid(void)
 {
 	int rc = 0;
 
+#ifdef CONFIG_IMX074
+	sensor_board_info.mount_angle = 90;
+#endif
 	rc = config_gpio_table(MSM_CAM_ON);
 	if (rc < 0) {
 		printk(KERN_ERR "%s: CAMSENSOR gpio table request"
@@ -2117,6 +2126,7 @@ static struct msm_camera_sensor_info msm_camera_sensor_imx074_data = {
 	.num_resources		= ARRAY_SIZE(msm_camera_resources),
 	.flash_data		= &flash_imx074,
 	.strobe_flash_data	= &strobe_flash_xenon,
+	.sensor_platform_info = &sensor_board_info,
 	.csi_if			= 1
 };
 struct platform_device msm_camera_sensor_imx074 = {
@@ -2127,6 +2137,11 @@ struct platform_device msm_camera_sensor_imx074 = {
 };
 #endif
 #ifdef CONFIG_WEBCAM_OV9726
+
+static struct msm_camera_sensor_platform_info ov9726_sensor_8660_info = {
+	.mount_angle = 0
+};
+
 static struct msm_camera_sensor_flash_data flash_ov9726 = {
 	.flash_type	= MSM_CAMERA_FLASH_LED,
 	.flash_src	= &msm_flash_src
@@ -2141,6 +2156,7 @@ static struct msm_camera_sensor_info msm_camera_sensor_ov9726_data = {
 	.resource	= msm_camera_resources,
 	.num_resources	= ARRAY_SIZE(msm_camera_resources),
 	.flash_data	= &flash_ov9726,
+	.sensor_platform_info = &ov9726_sensor_8660_info,
 	.csi_if		= 1
 };
 struct platform_device msm_camera_sensor_webcam_ov9726 = {
@@ -2439,7 +2455,7 @@ static void __init msm8x60_init_dsps(void)
 
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x600000
 #define MSM_PMEM_ADSP_SIZE         0x2000000
-#define MSM_PMEM_AUDIO_SIZE        0x239000
+#define MSM_PMEM_AUDIO_SIZE        0x279000
 
 #define MSM_SMI_BASE          0x38000000
 /* Kernel SMI PMEM Region for video core, used for Firmware */
@@ -6431,6 +6447,7 @@ static struct marimba_fm_platform_data marimba_fm_pdata = {
 	.fm_setup =  fm_radio_setup,
 	.fm_shutdown = fm_radio_shutdown,
 	.irq = PM8058_GPIO_IRQ(PM8058_IRQ_BASE, FM_GPIO),
+	.is_fm_soc_i2s_master = false,
 };
 
 /*

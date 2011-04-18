@@ -94,31 +94,30 @@
 static void charm_ap2mdm_kpdpwr_on(void)
 {
 	if (machine_is_msm8x60_fusion())
-		gpio_direction_output(132, 0);
+		gpio_direction_output(AP2MDM_KPDPWR_N, 0);
 	else
-		gpio_direction_output(132, 1);
+		gpio_direction_output(AP2MDM_KPDPWR_N, 1);
 }
 
 static void charm_ap2mdm_kpdpwr_off(void)
 {
 	if (machine_is_msm8x60_fusion())
-		gpio_direction_output(132, 1);
+		gpio_direction_output(AP2MDM_KPDPWR_N, 1);
 	else
-		gpio_direction_output(132, 0);
-
+		gpio_direction_output(AP2MDM_KPDPWR_N, 0);
 }
 
 static struct resource charm_resources[] = {
 	/* MDM2AP_ERRFATAL */
 	{
-		.start	= MSM_GPIO_TO_INT(133),
-		.end	= MSM_GPIO_TO_INT(133),
+		.start	= MSM_GPIO_TO_INT(MDM2AP_ERRFATAL),
+		.end	= MSM_GPIO_TO_INT(MDM2AP_ERRFATAL),
 		.flags = IORESOURCE_IRQ,
 	},
 	/* MDM2AP_STATUS */
 	{
-		.start	= MSM_GPIO_TO_INT(134),
-		.end	= MSM_GPIO_TO_INT(134),
+		.start	= MSM_GPIO_TO_INT(MDM2AP_STATUS),
+		.end	= MSM_GPIO_TO_INT(MDM2AP_STATUS),
 		.flags = IORESOURCE_IRQ,
 	}
 };
@@ -983,7 +982,7 @@ static struct resource resources_sdc1[] = {
 static struct resource resources_sdc2[] = {
 	{
 		.start	= MSM_SDC2_BASE,
-		.end	= MSM_SDC2_BASE + SZ_4K - 1,
+		.end	= MSM_SDC2_DML_BASE - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
@@ -1100,7 +1099,7 @@ static struct resource resources_sdc4[] = {
 static struct resource resources_sdc5[] = {
 	{
 		.start	= MSM_SDC5_BASE,
-		.end	= MSM_SDC5_BASE + SZ_4K - 1,
+		.end	= MSM_SDC5_DML_BASE - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
@@ -1759,6 +1758,7 @@ static uint16_t msm_mpm_bypassed_apps_irqs[] = {
 	LPASS_SCSS_GP_LOW_IRQ,
 	LPASS_SCSS_GP_MEDIUM_IRQ,
 	LPASS_SCSS_GP_HIGH_IRQ,
+	SDC4_IRQ_0,
 	SPS_MTI_31,
 };
 

@@ -30,6 +30,7 @@
 struct pm8921 {
 	struct device			*dev;
 	struct pm_irq_chip		*irq_chip;
+	struct mfd_cell                 *mfd_regulators;
 };
 
 static int pm8921_readb(const struct device *dev, u16 addr, u8 *val)
@@ -114,6 +115,67 @@ static struct mfd_cell mpp_cell __devinitdata = {
 	.num_resources	= ARRAY_SIZE(mpp_cell_resources),
 };
 
+static const struct resource rtc_cell_resources[] __devinitconst = {
+	[0] = {
+		.start  = PM8921_RTC_ALARM_IRQ,
+		.end    = PM8921_RTC_ALARM_IRQ,
+		.flags  = IORESOURCE_IRQ,
+	},
+	[1] = {
+		.name   = "pmic_rtc_base",
+		.start  = PM8921_RTC_BASE,
+		.end    = PM8921_RTC_BASE,
+		.flags  = IORESOURCE_IO,
+	},
+};
+
+static struct mfd_cell rtc_cell __devinitdata = {
+	.name           = PM8XXX_RTC_DEV_NAME,
+	.id             = -1,
+	.resources      = rtc_cell_resources,
+	.num_resources  = ARRAY_SIZE(rtc_cell_resources),
+};
+
+static const struct resource resources_pwrkey[] __devinitconst = {
+	{
+		.start  = PM8921_PWRKEY_REL_IRQ,
+		.end    = PM8921_PWRKEY_REL_IRQ,
+		.flags  = IORESOURCE_IRQ,
+	},
+	{
+		.start  = PM8921_PWRKEY_PRESS_IRQ,
+		.end    = PM8921_PWRKEY_PRESS_IRQ,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+static struct mfd_cell pwrkey_cell __devinitdata = {
+	.name		= PM8XXX_PWRKEY_DEV_NAME,
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(resources_pwrkey),
+	.resources	= resources_pwrkey,
+};
+
+static const struct resource resources_keypad[] = {
+	{
+		.start  = PM8921_KEYPAD_IRQ,
+		.end    = PM8921_KEYPAD_IRQ,
+		.flags  = IORESOURCE_IRQ,
+	},
+	{
+		.start  = PM8921_KEYSTUCK_IRQ,
+		.end    = PM8921_KEYSTUCK_IRQ,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+static struct mfd_cell keypad_cell __devinitdata = {
+	.name		= PM8XXX_KEYPAD_DEV_NAME,
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(resources_keypad),
+	.resources	= resources_keypad,
+};
+
 static int __devinit pm8921_add_subdevices(const struct pm8921_platform_data
 					   *pdata,
 					   struct pm8921 *pmic,
@@ -121,6 +183,8 @@ static int __devinit pm8921_add_subdevices(const struct pm8921_platform_data
 {
 	int ret = 0, irq_base = 0;
 	struct pm_irq_chip *irq_chip;
+	static struct mfd_cell *mfd_regulators;
+	int i;
 
 	if (pdata->irq_pdata) {
 		pdata->irq_pdata->irq_cdata.nirqs = PM8921_NR_IRQS;
@@ -160,6 +224,71 @@ static int __devinit pm8921_add_subdevices(const struct pm8921_platform_data
 			pr_err("Failed to add mpp subdevice ret=%d\n", ret);
 			goto bail;
 		}
+	}
+
+	if (pdata->rtc_pdata) {
+		rtc_cell.platform_data = pdata->rtc_pdata;
+		rtc_cell.data_size = sizeof(struct pm8xxx_rtc_platform_data);
+		ret = mfd_add_devices(pmic->dev, 0, &rtc_cell, 1, NULL,
+				irq_base);
+		if (ret) {
+			pr_err("Failed to add rtc subdevice ret=%d\n", ret);
+			goto bail;
+		}
+	}
+
+	if (pdata->pwrkey_pdata) {
+		pwrkey_cell.platform_data = pdata->pwrkey_pdata;
+		pwrkey_cell.data_size =
+			sizeof(struct pm8xxx_pwrkey_platform_data);
+		ret = mfd_add_devices(pmic->dev, 0, &pwrkey_cell, 1, NULL,
+					irq_base);
+		if (ret) {
+			pr_err("Failed to add pwrkey subdevice ret=%d\n", ret);
+			goto bail;
+		}
+	}
+
+	if (pdata->keypad_pdata) {
+		keypad_cell.platform_data = pdata->keypad_pdata;
+		keypad_cell.data_size =
+			sizeof(struct pm8xxx_keypad_platform_data);
+		ret = mfd_add_devices(pmic->dev, 0, &keypad_cell, 1, NULL,
+					irq_base);
+		if (ret) {
+			pr_err("Failed to add keypad subdevice ret=%d\n", ret);
+			goto bail;
+		}
+	}
+
+	/* Add one device for each regulator used by the board. */
+	if (pdata->num_regulators > 0 && pdata->regulator_pdatas) {
+		mfd_regulators = kzalloc(sizeof(struct mfd_cell)
+					 * (pdata->num_regulators), GFP_KERNEL);
+		if (!mfd_regulators) {
+			pr_err("Cannot allocate %d bytes for pm8921 regulator "
+				"mfd cells\n", sizeof(struct mfd_cell)
+						* (pdata->num_regulators));
+			ret = -ENOMEM;
+			goto bail;
+		}
+		for (i = 0; i < pdata->num_regulators; i++) {
+			mfd_regulators[i].name = PM8921_REGULATOR_DEV_NAME;
+			mfd_regulators[i].id = pdata->regulator_pdatas[i].id;
+			mfd_regulators[i].platform_data =
+				&(pdata->regulator_pdatas[i]);
+			mfd_regulators[i].data_size =
+				sizeof(struct pm8921_regulator_platform_data);
+		}
+		ret = mfd_add_devices(pmic->dev, 0, mfd_regulators,
+				pdata->num_regulators, NULL, irq_base);
+		if (ret) {
+			pr_err("Failed to add regulator subdevices ret=%d\n",
+				ret);
+			kfree(mfd_regulators);
+			goto bail;
+		}
+		pmic->mfd_regulators = mfd_regulators;
 	}
 
 	return 0;
@@ -247,6 +376,7 @@ static int __devexit pm8921_remove(struct platform_device *pdev)
 		pmic->irq_chip = NULL;
 	}
 	platform_set_drvdata(pdev, NULL);
+	kfree(pmic->mfd_regulators);
 	kfree(pmic);
 
 	return 0;

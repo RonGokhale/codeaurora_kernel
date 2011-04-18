@@ -21,10 +21,16 @@
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
 #include <mach/msm_hsusb.h>
+#include <mach/msm_sps.h>
+#include <mach/rpm.h>
 
 #include "clock.h"
 #include "devices.h"
 #include "devices-msm8x60.h"
+
+#ifdef CONFIG_MSM_MPM
+#include "mpm.h"
+#endif
 
 /* Address of GSBI blocks */
 #define MSM_GSBI1_PHYS		0x16000000
@@ -211,7 +217,7 @@ static struct resource resources_sdc1[] = {
 		.name	= "core_mem",
 		.flags	= IORESOURCE_MEM,
 		.start	= MSM_SDC1_BASE,
-		.end	= MSM_SDC1_BASE + SZ_4K - 1,
+		.end	= MSM_SDC1_DML_BASE - 1,
 	},
 	{
 		.name	= "core_irq",
@@ -246,7 +252,7 @@ static struct resource resources_sdc2[] = {
 		.name	= "core_mem",
 		.flags	= IORESOURCE_MEM,
 		.start	= MSM_SDC2_BASE,
-		.end	= MSM_SDC2_BASE + SZ_4K - 1
+		.end	= MSM_SDC2_DML_BASE - 1,
 	},
 	{
 		.name	= "core_irq",
@@ -281,7 +287,7 @@ static struct resource resources_sdc3[] = {
 		.name	= "core_mem",
 		.flags	= IORESOURCE_MEM,
 		.start	= MSM_SDC3_BASE,
-		.end	= MSM_SDC3_BASE + SZ_4K - 1,
+		.end	= MSM_SDC3_DML_BASE - 1,
 	},
 	{
 		.name	= "core_irq",
@@ -316,7 +322,7 @@ static struct resource resources_sdc4[] = {
 		.name	= "core_mem",
 		.flags	= IORESOURCE_MEM,
 		.start	= MSM_SDC4_BASE,
-		.end	= MSM_SDC4_BASE + SZ_4K - 1,
+		.end	= MSM_SDC4_DML_BASE - 1,
 	},
 	{
 		.name	= "core_irq",
@@ -351,7 +357,7 @@ static struct resource resources_sdc5[] = {
 		.name	= "core_mem",
 		.flags	= IORESOURCE_MEM,
 		.start	= MSM_SDC5_BASE,
-		.end	= MSM_SDC5_BASE + SZ_4K - 1
+		.end	= MSM_SDC5_DML_BASE - 1,
 	},
 	{
 		.name	= "core_irq",
@@ -608,6 +614,141 @@ struct platform_device msm_rotator_device = {
 };
 #endif
 
+static struct resource resources_sps[] = {
+	{
+		.name	= "pipe_mem",
+		.start	= 0x12800000,
+		.end	= 0x12800000 + 0x4000 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "bamdma_dma",
+		.start	= 0x12240000,
+		.end	= 0x12240000 + 0x1000 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "bamdma_bam",
+		.start	= 0x12244000,
+		.end	= 0x12244000 + 0x4000 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "bamdma_irq",
+		.start	= SPS_BAM_DMA_IRQ,
+		.end	= SPS_BAM_DMA_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct msm_sps_platform_data msm_sps_pdata = {
+	.bamdma_restricted_pipes = 0x06,
+};
+
+struct platform_device msm_device_sps = {
+	.name		= "msm_sps",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(resources_sps),
+	.resource	= resources_sps,
+	.dev.platform_data = &msm_sps_pdata,
+};
+
+#ifdef CONFIG_MSM_MPM
+static uint16_t msm_mpm_irqs_m2a[MSM_MPM_NR_MPM_IRQS] = {
+	[1] = MSM_GPIO_TO_INT(61),
+	[4] = MSM_GPIO_TO_INT(87),
+	[5] = MSM_GPIO_TO_INT(88),
+	[6] = MSM_GPIO_TO_INT(89),
+	[7] = MSM_GPIO_TO_INT(90),
+	[8] = MSM_GPIO_TO_INT(91),
+	[9] = MSM_GPIO_TO_INT(34),
+	[10] = MSM_GPIO_TO_INT(38),
+	[11] = MSM_GPIO_TO_INT(42),
+	[12] = MSM_GPIO_TO_INT(46),
+	[13] = MSM_GPIO_TO_INT(50),
+	[14] = MSM_GPIO_TO_INT(54),
+	[15] = MSM_GPIO_TO_INT(58),
+	[16] = MSM_GPIO_TO_INT(63),
+	[17] = MSM_GPIO_TO_INT(160),
+	[18] = MSM_GPIO_TO_INT(162),
+	[19] = MSM_GPIO_TO_INT(144),
+	[20] = MSM_GPIO_TO_INT(146),
+	[25] = USB1_HS_IRQ,
+	[26] = TV_ENC_IRQ,
+	[27] = HDMI_IRQ,
+	[29] = MSM_GPIO_TO_INT(123),
+	[30] = MSM_GPIO_TO_INT(172),
+	[31] = MSM_GPIO_TO_INT(99),
+	[32] = MSM_GPIO_TO_INT(96),
+	[33] = MSM_GPIO_TO_INT(67),
+	[34] = MSM_GPIO_TO_INT(71),
+	[35] = MSM_GPIO_TO_INT(105),
+	[36] = MSM_GPIO_TO_INT(117),
+	[37] = MSM_GPIO_TO_INT(29),
+	[38] = MSM_GPIO_TO_INT(30),
+	[39] = MSM_GPIO_TO_INT(31),
+	[40] = MSM_GPIO_TO_INT(37),
+	[41] = MSM_GPIO_TO_INT(40),
+	[42] = MSM_GPIO_TO_INT(41),
+	[43] = MSM_GPIO_TO_INT(45),
+	[44] = MSM_GPIO_TO_INT(51),
+	[45] = MSM_GPIO_TO_INT(52),
+	[46] = MSM_GPIO_TO_INT(57),
+	[47] = MSM_GPIO_TO_INT(73),
+	[48] = MSM_GPIO_TO_INT(93),
+	[49] = MSM_GPIO_TO_INT(94),
+	[50] = MSM_GPIO_TO_INT(103),
+	[51] = MSM_GPIO_TO_INT(104),
+	[52] = MSM_GPIO_TO_INT(106),
+	[53] = MSM_GPIO_TO_INT(115),
+	[54] = MSM_GPIO_TO_INT(124),
+	[55] = MSM_GPIO_TO_INT(125),
+	[56] = MSM_GPIO_TO_INT(126),
+	[57] = MSM_GPIO_TO_INT(127),
+	[58] = MSM_GPIO_TO_INT(128),
+	[59] = MSM_GPIO_TO_INT(129),
+};
+
+static uint16_t msm_mpm_bypassed_apps_irqs[] = {
+	TLMM_MSM_SUMMARY_IRQ,
+	RPM_APCC_CPU0_GP_HIGH_IRQ,
+	RPM_APCC_CPU0_GP_MEDIUM_IRQ,
+	RPM_APCC_CPU0_GP_LOW_IRQ,
+	RPM_APCC_CPU0_WAKE_UP_IRQ,
+	RPM_APCC_CPU1_GP_HIGH_IRQ,
+	RPM_APCC_CPU1_GP_MEDIUM_IRQ,
+	RPM_APCC_CPU1_GP_LOW_IRQ,
+	RPM_APCC_CPU1_WAKE_UP_IRQ,
+	MSS_TO_APPS_IRQ_0,
+	MSS_TO_APPS_IRQ_1,
+	MSS_TO_APPS_IRQ_2,
+	MSS_TO_APPS_IRQ_3,
+	MSS_TO_APPS_IRQ_4,
+	MSS_TO_APPS_IRQ_5,
+	MSS_TO_APPS_IRQ_6,
+	MSS_TO_APPS_IRQ_7,
+	MSS_TO_APPS_IRQ_8,
+	MSS_TO_APPS_IRQ_9,
+	LPASS_SCSS_GP_LOW_IRQ,
+	LPASS_SCSS_GP_MEDIUM_IRQ,
+	LPASS_SCSS_GP_HIGH_IRQ,
+	SPS_MTI_31,
+};
+
+struct msm_mpm_device_data msm_mpm_dev_data = {
+	.irqs_m2a = msm_mpm_irqs_m2a,
+	.irqs_m2a_size = ARRAY_SIZE(msm_mpm_irqs_m2a),
+	.bypassed_apps_irqs = msm_mpm_bypassed_apps_irqs,
+	.bypassed_apps_irqs_size = ARRAY_SIZE(msm_mpm_bypassed_apps_irqs),
+	.mpm_request_reg_base = MSM_RPM_BASE + 0x9d8,
+	.mpm_status_reg_base = MSM_RPM_BASE + 0xdf8,
+	.mpm_apps_ipc_reg = MSM_APCS_GCC_BASE + 0x008,
+	.mpm_apps_ipc_val =  BIT(1),
+	.mpm_ipc_irq = RPM_APCC_CPU0_GP_MEDIUM_IRQ,
+
+};
+#endif
+
 struct clk_lookup msm_clocks_8960[] = {
 	CLK_DUMMY("gsbi_uart_clk",	GSBI1_UART_CLK,		NULL, OFF),
 	CLK_DUMMY("gsbi_uart_clk",	GSBI2_UART_CLK,
@@ -775,6 +916,8 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_DUMMY("dfab_sdc_clk",	DFAB_SDC3_CLK, "msm_sdcc.3", 0),
 	CLK_DUMMY("dfab_sdc_clk",	DFAB_SDC4_CLK, "msm_sdcc.4", 0),
 	CLK_DUMMY("dfab_sdc_clk",	DFAB_SDC5_CLK, "msm_sdcc.5", 0),
+	CLK_DUMMY("dfab_clk",		DFAB_CLK,		NULL, 0),
+	CLK_DUMMY("dma_bam_pclk",	DMA_BAM_P_CLK,		NULL, 0),
 };
 
 unsigned msm_num_clocks_8960 = ARRAY_SIZE(msm_clocks_8960);
@@ -1080,3 +1223,88 @@ struct platform_device msm_kgsl_2d1 = {
 };
 #endif
 
+struct msm_rpm_map_data rpm_map_data[] __initdata = {
+	MSM_RPM_MAP(TRIGGER_TIMED_TO, TRIGGER_TIMED, 1),
+	MSM_RPM_MAP(TRIGGER_TIMED_SCLK_COUNT, TRIGGER_TIMED, 1),
+
+	MSM_RPM_MAP(RPM_CTL, RPM_CTL, 1),
+
+	MSM_RPM_MAP(CXO_CLK, CXO_CLK, 1),
+	MSM_RPM_MAP(PXO_CLK, PXO_CLK, 1),
+	MSM_RPM_MAP(APPS_FABRIC_CLK, APPS_FABRIC_CLK, 1),
+	MSM_RPM_MAP(SYSTEM_FABRIC_CLK, SYSTEM_FABRIC_CLK, 1),
+	MSM_RPM_MAP(MM_FABRIC_CLK, MM_FABRIC_CLK, 1),
+	MSM_RPM_MAP(DAYTONA_FABRIC_CLK, DAYTONA_FABRIC_CLK, 1),
+	MSM_RPM_MAP(SFPB_CLK, SFPB_CLK, 1),
+	MSM_RPM_MAP(CFPB_CLK, CFPB_CLK, 1),
+	MSM_RPM_MAP(MMFPB_CLK, MMFPB_CLK, 1),
+	MSM_RPM_MAP(EBI1_CLK, EBI1_CLK, 1),
+
+	MSM_RPM_MAP(APPS_FABRIC_CFG_HALT_0, APPS_FABRIC_CFG_HALT, 2),
+	MSM_RPM_MAP(APPS_FABRIC_CFG_CLKMOD_0, APPS_FABRIC_CFG_CLKMOD, 3),
+	MSM_RPM_MAP(APPS_FABRIC_CFG_IOCTL, APPS_FABRIC_CFG_IOCTL, 1),
+	MSM_RPM_MAP(APPS_FABRIC_ARB_0, APPS_FABRIC_ARB, 12),
+
+	MSM_RPM_MAP(SYS_FABRIC_CFG_HALT_0, SYS_FABRIC_CFG_HALT, 2),
+	MSM_RPM_MAP(SYS_FABRIC_CFG_CLKMOD_0, SYS_FABRIC_CFG_CLKMOD, 3),
+	MSM_RPM_MAP(SYS_FABRIC_CFG_IOCTL, SYS_FABRIC_CFG_IOCTL, 1),
+	MSM_RPM_MAP(SYSTEM_FABRIC_ARB_0, SYSTEM_FABRIC_ARB, 27),
+
+	MSM_RPM_MAP(MMSS_FABRIC_CFG_HALT_0, MMSS_FABRIC_CFG_HALT, 2),
+	MSM_RPM_MAP(MMSS_FABRIC_CFG_CLKMOD_0, MMSS_FABRIC_CFG_CLKMOD, 3),
+	MSM_RPM_MAP(MMSS_FABRIC_CFG_IOCTL, MMSS_FABRIC_CFG_IOCTL, 1),
+	MSM_RPM_MAP(MM_FABRIC_ARB_0, MM_FABRIC_ARB, 23),
+
+	MSM_RPM_MAP(PM8921_S1_0, PM8921_S1, 2),
+	MSM_RPM_MAP(PM8921_S2_0, PM8921_S2, 2),
+	MSM_RPM_MAP(PM8921_S3_0, PM8921_S3, 2),
+	MSM_RPM_MAP(PM8921_S4_0, PM8921_S4, 2),
+	MSM_RPM_MAP(PM8921_S5_0, PM8921_S5, 2),
+	MSM_RPM_MAP(PM8921_S6_0, PM8921_S6, 2),
+	MSM_RPM_MAP(PM8921_S7_0, PM8921_S7, 2),
+	MSM_RPM_MAP(PM8921_S8_0, PM8921_S8, 2),
+	MSM_RPM_MAP(PM8921_L1_0, PM8921_L1, 2),
+	MSM_RPM_MAP(PM8921_L2_0, PM8921_L2, 2),
+	MSM_RPM_MAP(PM8921_L3_0, PM8921_L3, 2),
+	MSM_RPM_MAP(PM8921_L4_0, PM8921_L4, 2),
+	MSM_RPM_MAP(PM8921_L5_0, PM8921_L5, 2),
+	MSM_RPM_MAP(PM8921_L6_0, PM8921_L6, 2),
+	MSM_RPM_MAP(PM8921_L7_0, PM8921_L7, 2),
+	MSM_RPM_MAP(PM8921_L8_0, PM8921_L8, 2),
+	MSM_RPM_MAP(PM8921_L9_0, PM8921_L9, 2),
+	MSM_RPM_MAP(PM8921_L10_0, PM8921_L10, 2),
+	MSM_RPM_MAP(PM8921_L11_0, PM8921_L11, 2),
+	MSM_RPM_MAP(PM8921_L12_0, PM8921_L12, 2),
+	MSM_RPM_MAP(PM8921_L13_0, PM8921_L13, 2),
+	MSM_RPM_MAP(PM8921_L14_0, PM8921_L14, 2),
+	MSM_RPM_MAP(PM8921_L15_0, PM8921_L15, 2),
+	MSM_RPM_MAP(PM8921_L16_0, PM8921_L16, 2),
+	MSM_RPM_MAP(PM8921_L17_0, PM8921_L17, 2),
+	MSM_RPM_MAP(PM8921_L18_0, PM8921_L18, 2),
+	MSM_RPM_MAP(PM8921_L19_0, PM8921_L19, 2),
+	MSM_RPM_MAP(PM8921_L20_0, PM8921_L20, 2),
+	MSM_RPM_MAP(PM8921_L21_0, PM8921_L21, 2),
+	MSM_RPM_MAP(PM8921_L22_0, PM8921_L22, 2),
+	MSM_RPM_MAP(PM8921_L23_0, PM8921_L23, 2),
+	MSM_RPM_MAP(PM8921_L24_0, PM8921_L24, 2),
+	MSM_RPM_MAP(PM8921_L25_0, PM8921_L25, 2),
+	MSM_RPM_MAP(PM8921_L26_0, PM8921_L26, 2),
+	MSM_RPM_MAP(PM8921_L27_0, PM8921_L27, 2),
+	MSM_RPM_MAP(PM8921_L28_0, PM8921_L28, 2),
+	MSM_RPM_MAP(PM8921_L29_0, PM8921_L29, 2),
+	MSM_RPM_MAP(PM8921_CLK1_0, PM8921_CLK1, 2),
+	MSM_RPM_MAP(PM8921_CLK2_0, PM8921_CLK2, 2),
+	MSM_RPM_MAP(PM8921_LVS1, PM8921_LVS1, 1),
+	MSM_RPM_MAP(PM8921_LVS2, PM8921_LVS2, 1),
+	MSM_RPM_MAP(PM8921_LVS3, PM8921_LVS3, 1),
+	MSM_RPM_MAP(PM8921_LVS4, PM8921_LVS4, 1),
+	MSM_RPM_MAP(PM8921_LVS5, PM8921_LVS5, 1),
+	MSM_RPM_MAP(PM8921_LVS6, PM8921_LVS6, 1),
+	MSM_RPM_MAP(PM8921_LVS7, PM8921_LVS7, 1),
+	MSM_RPM_MAP(NCP_0, NCP, 2),
+	MSM_RPM_MAP(CXO_BUFFERS, CXO_BUFFERS, 1),
+	MSM_RPM_MAP(USB_OTG_SWITCH, USB_OTG_SWITCH, 1),
+	MSM_RPM_MAP(HDMI_SWITCH, HDMI_SWITCH, 1),
+
+};
+unsigned int rpm_map_data_size = ARRAY_SIZE(rpm_map_data);

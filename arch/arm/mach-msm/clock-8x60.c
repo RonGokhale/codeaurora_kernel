@@ -604,6 +604,9 @@ static void set_rate_div_banked(struct clk_local *clk, struct clk_freq_tbl *nf)
 		.sys_vdd = v, \
 	}
 static struct clk_freq_tbl clk_tbl_gsbi_uart[] = {
+	F_GSBI_UART(       0, BB_GND,  1,  0,   0, NONE),
+	F_GSBI_UART( 1843200, BB_PLL8, 1,  3, 625, LOW),
+	F_GSBI_UART( 3686400, BB_PLL8, 1,  6, 625, LOW),
 	F_GSBI_UART( 7372800, BB_PLL8, 1, 12, 625, LOW),
 	F_GSBI_UART(14745600, BB_PLL8, 1, 24, 625, LOW),
 	F_GSBI_UART(16000000, BB_PLL8, 4,  1,   6, LOW),
@@ -1678,8 +1681,6 @@ static struct clk_freq_tbl clk_tbl_aif_osr[] = {
 		.type = BASIC, \
 		.ns_reg = ns, \
 		.cc_reg = ns, \
-		.reset_reg = ns, \
-		.reset_mask = BIT(19), \
 		.halt_reg = h_r, \
 		.halt_check = DELAY, \
 		.br_en_mask = BIT(15), \
@@ -2503,6 +2504,13 @@ void __init msm_clk_soc_init(void)
 	local_clk_set_rate(C(USB_HS1_XCVR), 60000000);
 	local_clk_set_rate(C(USB_FS1_SRC), 60000000);
 	local_clk_set_rate(C(USB_FS2_SRC), 60000000);
+
+	/* The halt status bits for PDM and TSSC may be incorrect at boot.
+	 * Toggle these clocks on and off to refresh them. */
+	local_clk_enable(C(PDM));
+	local_clk_disable(C(PDM));
+	local_clk_enable(C(TSSC));
+	local_clk_disable(C(TSSC));
 }
 
 static int msm_clk_soc_late_init(void)

@@ -450,10 +450,11 @@ static inline void l2cap_ertm_stop_ack_timer(struct l2cap_pinfo *pi)
 
 static inline void l2cap_ertm_start_ack_timer(struct l2cap_pinfo *pi)
 {
-	BT_DBG("pi %p", pi);
-	__cancel_delayed_work(&pi->ack_work);
-	queue_delayed_work(_l2cap_wq, &pi->ack_work,
-		msecs_to_jiffies(L2CAP_DEFAULT_ACK_TO));
+	BT_DBG("pi %p, pending %d", pi, delayed_work_pending(&pi->ack_work));
+	if (!delayed_work_pending(&pi->ack_work)) {
+		queue_delayed_work(_l2cap_wq, &pi->ack_work,
+				msecs_to_jiffies(L2CAP_DEFAULT_ACK_TO));
+	}
 }
 
 static inline void l2cap_ertm_stop_retrans_timer(struct l2cap_pinfo *pi)
@@ -465,7 +466,7 @@ static inline void l2cap_ertm_stop_retrans_timer(struct l2cap_pinfo *pi)
 static inline void l2cap_ertm_start_retrans_timer(struct l2cap_pinfo *pi)
 {
 	BT_DBG("pi %p", pi);
-	if (!delayed_work_pending(&pi->monitor_work)) {
+	if (!delayed_work_pending(&pi->monitor_work) && pi->retrans_timeout) {
 		__cancel_delayed_work(&pi->retrans_work);
 		queue_delayed_work(_l2cap_wq, &pi->retrans_work,
 			msecs_to_jiffies(pi->retrans_timeout));
@@ -483,8 +484,10 @@ static inline void l2cap_ertm_start_monitor_timer(struct l2cap_pinfo *pi)
 	BT_DBG("pi %p", pi);
 	l2cap_ertm_stop_retrans_timer(pi);
 	__cancel_delayed_work(&pi->monitor_work);
-	queue_delayed_work(_l2cap_wq, &pi->monitor_work,
-		msecs_to_jiffies(pi->monitor_timeout));
+	if (pi->monitor_timeout) {
+		queue_delayed_work(_l2cap_wq, &pi->monitor_work,
+				msecs_to_jiffies(pi->monitor_timeout));
+	}
 }
 
 static u16 l2cap_alloc_cid(struct l2cap_chan_list *l)
@@ -2305,13 +2308,12 @@ static void l2cap_ertm_send_ack(struct sock *sk)
 	BT_DBG("last_acked_seq %d, buffer_seq %d", (int)pi->last_acked_seq,
 		(int)pi->buffer_seq);
 
-	l2cap_ertm_stop_ack_timer(pi);
-
 	memset(&control, 0, sizeof(control));
 	control.frame_type = 's';
 
 	if ((pi->conn_state & L2CAP_CONN_LOCAL_BUSY) &&
 		pi->rx_state == L2CAP_ERTM_RX_STATE_RECV) {
+		l2cap_ertm_stop_ack_timer(pi);
 		control.super = L2CAP_SFRAME_RNR;
 		control.reqseq = pi->buffer_seq;
 		l2cap_ertm_send_sframe(sk, &control);
@@ -2334,6 +2336,7 @@ static void l2cap_ertm_send_ack(struct sock *sk)
 			threshold);
 
 		if (frames_to_ack >= threshold) {
+			l2cap_ertm_stop_ack_timer(pi);
 			control.super = L2CAP_SFRAME_RR;
 			control.reqseq = pi->buffer_seq;
 			l2cap_ertm_send_sframe(sk, &control);
@@ -4040,8 +4043,8 @@ done:
 		else
 			rfc.txwin_size = pi->tx_win;
 		rfc.max_transmit    = pi->max_tx;
-		rfc.retrans_timeout = L2CAP_DEFAULT_RETRANS_TO;
-		rfc.monitor_timeout = L2CAP_DEFAULT_MONITOR_TO;
+		rfc.retrans_timeout = cpu_to_le16(L2CAP_DEFAULT_RETRANS_TO);
+		rfc.monitor_timeout = cpu_to_le16(L2CAP_DEFAULT_MONITOR_TO);
 		rfc.max_pdu_size    = cpu_to_le16(L2CAP_DEFAULT_MAX_PDU_SIZE);
 		if (L2CAP_DEFAULT_MAX_PDU_SIZE > pi->imtu)
 			rfc.max_pdu_size = cpu_to_le16(pi->imtu);
@@ -4128,11 +4131,15 @@ static int l2cap_build_amp_reconf_req(struct sock *sk, void *data)
 		rfc.txwin_size      = pi->tx_win;
 		rfc.max_transmit    = pi->max_tx;
 		if (pi->amp_move_id) {
-			rfc.retrans_timeout = (3 * be_flush_to) + 500;
-			rfc.monitor_timeout = (3 * be_flush_to) + 500;
+			rfc.retrans_timeout =
+					cpu_to_le16((3 * be_flush_to) + 500);
+			rfc.monitor_timeout =
+					cpu_to_le16((3 * be_flush_to) + 500);
 		} else {
-			rfc.retrans_timeout = 0;
-			rfc.monitor_timeout = 0;
+			rfc.retrans_timeout =
+					cpu_to_le16(L2CAP_DEFAULT_RETRANS_TO);
+			rfc.monitor_timeout =
+					cpu_to_le16(L2CAP_DEFAULT_MONITOR_TO);
 		}
 		rfc.max_pdu_size    = cpu_to_le16(L2CAP_DEFAULT_MAX_PDU_SIZE);
 		if (L2CAP_DEFAULT_MAX_PDU_SIZE > pi->imtu)
@@ -4289,9 +4296,9 @@ done:
 			pi->remote_mps = le16_to_cpu(rfc.max_pdu_size);
 
 			rfc.retrans_timeout =
-				le16_to_cpu(L2CAP_DEFAULT_RETRANS_TO);
+				cpu_to_le16(L2CAP_DEFAULT_RETRANS_TO);
 			rfc.monitor_timeout =
-				le16_to_cpu(L2CAP_DEFAULT_MONITOR_TO);
+				cpu_to_le16(L2CAP_DEFAULT_MONITOR_TO);
 
 			pi->conf_state |= L2CAP_CONF_MODE_DONE;
 
@@ -5843,6 +5850,9 @@ void l2cap_amp_physical_complete(int result, u8 local_id, u8 remote_id,
 			l2cap_rmem_available(sk))
 			l2cap_ertm_tx(sk, 0, 0,
 					L2CAP_ERTM_EVENT_LOCAL_BUSY_CLEAR);
+
+		/* Restart data transmission */
+		l2cap_ertm_send_txq(sk);
 	}
 
 	release_sock(sk);
