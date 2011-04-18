@@ -780,6 +780,15 @@ config MSM_SDIO_DMUX
 	help
 	  Support Muxed Data Channels over SDIO interface.
 
+config MSM_BAM_DMUX
+	bool "BAM Data Mux Driver"
+	default n
+	help
+	  Support Muxed Data Channels over BAM interface.
+	  BAM has a limited number of pipes.  This driver
+	  provides a means to support more logical channels
+	  via muxing than BAM could without muxing.
+
 config MSM_N_WAY_SMD
 	depends on (MSM_SMD && (ARCH_MSM_SCORPION || ARCH_MSM_SCORPIONMP || ARCH_MSM7X27 || ARCH_MSM7X25))
 	default y

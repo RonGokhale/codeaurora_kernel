@@ -1069,6 +1069,7 @@ static struct platform_device *sim_devices[] __initdata = {
 	&msm_bus_sys_fpb,
 	&msm_bus_cpss_fpb,
 #endif
+	&msm_device_bam_dmux,
 };
 
 static struct platform_device *rumi3_devices[] __initdata = {
@@ -1081,6 +1082,7 @@ static struct platform_device *rumi3_devices[] __initdata = {
 #ifdef CONFIG_MSM_GEMINI
 	&msm8960_gemini_device,
 #endif
+	&msm_device_bam_dmux,
 };
 
 static struct platform_device *cdp_devices[] __initdata = {

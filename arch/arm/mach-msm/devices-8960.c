@@ -492,6 +492,11 @@ struct platform_device msm_device_smd = {
 	.id		= -1,
 };
 
+struct platform_device msm_device_bam_dmux = {
+	.name		= "BAM_RMNT",
+	.id		= -1,
+};
+
 struct resource msm_dmov_resource[] = {
 	{
 		.start = ADM_0_SCSS_0_IRQ,
