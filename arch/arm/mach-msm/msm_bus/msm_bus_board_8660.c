@@ -77,6 +77,8 @@ enum msm_bus_8660_master_ports_type {
 
 };
 
+static int tier2[] = {MSM_BUS_BW_TIER2,};
+
 enum msm_bus_8660_slave_ports_type {
 	MSM_BUS_SLAVE_PORT_SMI = 0,
 	MSM_BUS_MMSS_SLAVE_PORT_APPS_FAB_0,
@@ -102,265 +104,424 @@ enum msm_bus_8660_slave_ports_type {
 static uint32_t master_iids[NMASTERS];
 static uint32_t slave_iids[NSLAVES];
 
+static int ampss_m0_mports[] = {MSM_BUS_MASTER_PORT_SMPSS_M1,};
+static int mmss_mport_apps_fab[] = {MSM_BUS_MMSS_MASTER_PORT_APPS_FAB,};
+static int system_mport_appss_fab[] = {MSM_BUS_SYSTEM_MASTER_PORT_APPSS_FAB,};
+
+static int sport_ebi_ch0[] = {MSM_BUS_SLAVE_PORT_EBI_CH0,};
+static int sport_smpss_l2[] = {MSM_BUS_SLAVE_PORT_SMPSS_L2,};
+static int appss_sport_mmss_fab[] = {MSM_BUS_APPSS_SLAVE_PORT_MMSS_FAB,};
+static int sport_system_fab[] = {MSM_BUS_SLAVE_PORT_SYSTEM_FAB,};
+
+static int tiered_slave_ebi[] = {MSM_BUS_TIERED_SLAVE_EBI_CH0,};
+static int tiered_slave_smpss[] = {MSM_BUS_TIERED_SLAVE_SMPSS_L2,};
+
 static struct msm_bus_node_info apps_fabric_info[] = {
 	{
 		.id = MSM_BUS_MASTER_AMPSS_M0,
-		.masterp = MSM_BUS_MASTER_PORT_SMPSS_M1,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = ampss_m0_mports,
+		.num_mports = ARRAY_SIZE(ampss_m0_mports),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_AMPSS_M1,
-		.masterp = MSM_BUS_MASTER_PORT_SMPSS_M1,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = ampss_m0_mports,
+		.num_mports = ARRAY_SIZE(ampss_m0_mports),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_SLAVE_EBI_CH0,
-		.slavep = MSM_BUS_SLAVE_PORT_EBI_CH0,
-		.tier = MSM_BUS_TIERED_SLAVE_EBI_CH0,
+		.slavep = sport_ebi_ch0,
+		.num_sports = ARRAY_SIZE(sport_ebi_ch0),
+		.tier = tiered_slave_ebi,
+		.num_tiers = ARRAY_SIZE(tiered_slave_ebi),
 		.buswidth = 8,
 		.slaveclk = "ebi1_clk",
 		.a_slaveclk = "ebi1_a_clk",
 	},
 	{
 		.id = MSM_BUS_SLAVE_AMPSS_L2,
-		.slavep = MSM_BUS_SLAVE_PORT_SMPSS_L2,
-		.tier = MSM_BUS_TIERED_SLAVE_SMPSS_L2,
+		.slavep = sport_smpss_l2,
+		.num_sports = ARRAY_SIZE(sport_smpss_l2),
+		.tier = tiered_slave_smpss,
+		.num_tiers = ARRAY_SIZE(tiered_slave_smpss),
 		.buswidth = 8,
 	},
 	{
 		.id = MSM_BUS_FAB_MMSS,
 		.gateway = 1,
-		.slavep = MSM_BUS_APPSS_SLAVE_PORT_MMSS_FAB,
-		.masterp = MSM_BUS_MMSS_MASTER_PORT_APPS_FAB,
+		.slavep = appss_sport_mmss_fab,
+		.num_sports = ARRAY_SIZE(appss_sport_mmss_fab),
+		.masterp = mmss_mport_apps_fab,
+		.num_mports = ARRAY_SIZE(mmss_mport_apps_fab),
 		.buswidth = 8,
 	},
 	{
 		.id = MSM_BUS_FAB_SYSTEM,
 		.gateway = 1,
-		.slavep = MSM_BUS_SLAVE_PORT_SYSTEM_FAB,
-		.masterp = MSM_BUS_SYSTEM_MASTER_PORT_APPSS_FAB,
+		.slavep = sport_system_fab,
+		.num_sports = ARRAY_SIZE(sport_system_fab),
+		.masterp = system_mport_appss_fab,
+		.num_mports = ARRAY_SIZE(system_mport_appss_fab),
 		.buswidth = 8,
 	},
 };
 
+static int mport_sps[] = {MSM_BUS_MASTER_PORT_SPS,};
+static int mport_adm0_port0[] = {MSM_BUS_MASTER_PORT_ADM0_PORT0,};
+static int mport_adm0_port1[] = {MSM_BUS_MASTER_PORT_ADM0_PORT1,};
+static int mport_adm1_port0[] = {MSM_BUS_MASTER_PORT_ADM1_PORT0,};
+static int mport_adm1_port1[] = {MSM_BUS_MASTER_PORT_ADM1_PORT1,};
+static int mport_lpass_proc[] = {MSM_BUS_MASTER_PORT_LPASS_PROC,};
+static int mport_mss_proci[] = {MSM_BUS_MASTER_PORT_MSS_PROCI,};
+static int mport_msm_mss_procd[] = {MSM_BUS_MASTER_PORT_MSM_MSS_PROCD,};
+static int mport_mss_mdm_port0[] = {MSM_BUS_MASTER_PORT_MSM_MDM_PORT0,};
+static int mport_lpass[] = {MSM_BUS_MASTER_PORT_LPASS,};
+static int mport_mmss_fpb[] = {MSM_BUS_MASTER_PORT_MMSS_FPB,};
+static int mport_adm1_ahb_ci[] = {MSM_BUS_MASTER_PORT_ADM1_AHB_CI,};
+static int mport_adm0_ahb_ci[] = {MSM_BUS_MASTER_PORT_ADM0_AHB_CI,};
+static int mport_mss_mdm_port1[] = {MSM_BUS_MASTER_PORT_MSS_MDM_PORT1,};
+static int appss_mport_fab_system[] = {MSM_BUS_APPSS_MASTER_PORT_FAB_SYSTEM,};
+static int mport_system_fpb[] = {MSM_BUS_MASTER_PORT_SYSTEM_FPB,};
+static int system_mport_cpss_fpb[] = {MSM_BUS_SYSTEM_MASTER_PORT_CPSS_FPB,};
+
+static int system_sport_appss_fab[] = {MSM_BUS_SYSTEM_SLAVE_PORT_APPSS_FAB,};
+static int system_sport_system_fpb[] = {MSM_BUS_SYSTEM_SLAVE_PORT_SYSTEM_FPB,};
+static int system_sport_cpss_fpb[] = {MSM_BUS_SYSTEM_SLAVE_PORT_CPSS_FPB,};
+static int sport_sps[] = {MSM_BUS_SLAVE_PORT_SPS,};
+static int sport_system_imem[] = {MSM_BUS_SLAVE_PORT_SYSTEM_IMEM,};
+static int sport_smpss[] = {MSM_BUS_SLAVE_PORT_SMPSS,};
+static int sport_mss[] = {MSM_BUS_SLAVE_PORT_MSS,};
+static int sport_lpass[] = {MSM_BUS_SLAVE_PORT_LPASS,};
+static int sport_mmss_fpb[] = {MSM_BUS_SLAVE_PORT_MMSS_FPB,};
+
+static int tiered_slave_system_imem[] = {MSM_BUS_TIERED_SLAVE_SYSTEM_IMEM,};
+static int system_tiered_slave_fab_appss[] = {
+	MSM_BUS_SYSTEM_TIERED_SLAVE_FAB_APPSS,};
+
 static struct msm_bus_node_info system_fabric_info[]  = {
 	{
 		.id = MSM_BUS_MASTER_SPS,
-		.masterp = MSM_BUS_MASTER_PORT_SPS,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_sps,
+		.num_mports = ARRAY_SIZE(mport_sps),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
-		.id = MSM_BUS_MASTER_ADM0_PORT0,
-		.masterp = MSM_BUS_MASTER_PORT_ADM0_PORT0,
-		.tier = MSM_BUS_BW_TIER2,
+		.id = MSM_BUS_MASTER_ADM_PORT0,
+		.masterp = mport_adm0_port0,
+		.num_mports = ARRAY_SIZE(mport_adm0_port0),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
-		.id = MSM_BUS_MASTER_ADM0_PORT1,
-		.masterp = MSM_BUS_MASTER_PORT_ADM0_PORT1,
-		.tier = MSM_BUS_BW_TIER2,
+		.id = MSM_BUS_MASTER_ADM_PORT1,
+		.masterp = mport_adm0_port1,
+		.num_mports = ARRAY_SIZE(mport_adm0_port1),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_SYSTEM_MASTER_ADM1_PORT0,
-		.masterp = MSM_BUS_MASTER_PORT_ADM1_PORT0,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_adm1_port0,
+		.num_mports = ARRAY_SIZE(mport_adm1_port0),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_ADM1_PORT1,
-		.masterp = MSM_BUS_MASTER_PORT_ADM1_PORT1,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_adm1_port1,
+		.num_mports = ARRAY_SIZE(mport_adm1_port1),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_LPASS_PROC,
-		.masterp = MSM_BUS_MASTER_PORT_LPASS_PROC,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_lpass_proc,
+		.num_mports = ARRAY_SIZE(mport_lpass_proc),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_MSS_PROCI,
-		.masterp = MSM_BUS_MASTER_PORT_MSS_PROCI,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_mss_proci,
+		.num_mports = ARRAY_SIZE(mport_mss_proci),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_MSS_PROCD,
-		.masterp = MSM_BUS_MASTER_PORT_MSM_MSS_PROCD,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_msm_mss_procd,
+		.num_mports = ARRAY_SIZE(mport_msm_mss_procd),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_MSS_MDM_PORT0,
-		.masterp = MSM_BUS_MASTER_PORT_MSM_MDM_PORT0,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_mss_mdm_port0,
+		.num_mports = ARRAY_SIZE(mport_mss_mdm_port0),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_LPASS,
-		.masterp = MSM_BUS_MASTER_PORT_LPASS,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_lpass,
+		.num_mports = ARRAY_SIZE(mport_lpass),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_SYSTEM_MASTER_MMSS_FPB,
-		.masterp = MSM_BUS_MASTER_PORT_MMSS_FPB,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_mmss_fpb,
+		.num_mports = ARRAY_SIZE(mport_mmss_fpb),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_ADM1_CI,
-		.masterp = MSM_BUS_MASTER_PORT_ADM1_AHB_CI,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_adm1_ahb_ci,
+		.num_mports = ARRAY_SIZE(mport_adm1_ahb_ci),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_ADM0_CI,
-		.masterp = MSM_BUS_MASTER_PORT_ADM0_AHB_CI,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_adm0_ahb_ci,
+		.num_mports = ARRAY_SIZE(mport_adm0_ahb_ci),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_MSS_MDM_PORT1,
-		.masterp = MSM_BUS_MASTER_PORT_MSS_MDM_PORT1,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_mss_mdm_port1,
+		.num_mports = ARRAY_SIZE(mport_mss_mdm_port1),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_FAB_APPSS,
 		.gateway = 1,
-		.slavep = MSM_BUS_SYSTEM_SLAVE_PORT_APPSS_FAB,
-		.masterp = MSM_BUS_APPSS_MASTER_PORT_FAB_SYSTEM,
-		.tier = MSM_BUS_SYSTEM_TIERED_SLAVE_FAB_APPSS,
+		.slavep = system_sport_appss_fab,
+		.num_sports = ARRAY_SIZE(system_sport_appss_fab),
+		.masterp = appss_mport_fab_system,
+		.num_mports = ARRAY_SIZE(appss_mport_fab_system),
+		.tier = system_tiered_slave_fab_appss,
+		.num_tiers = ARRAY_SIZE(system_tiered_slave_fab_appss),
 		.buswidth = 8,
 	},
 	{
 		.id = MSM_BUS_FAB_SYSTEM_FPB,
 		.gateway = 1,
-		.slavep = MSM_BUS_SYSTEM_SLAVE_PORT_SYSTEM_FPB,
-		.masterp = MSM_BUS_MASTER_PORT_SYSTEM_FPB,
+		.slavep = system_sport_system_fpb,
+		.num_sports = ARRAY_SIZE(system_sport_system_fpb),
+		.masterp = mport_system_fpb,
+		.num_mports = ARRAY_SIZE(mport_system_fpb),
 		.buswidth = 4,
 	},
 	{
 		.id = MSM_BUS_FAB_CPSS_FPB,
 		.gateway = 1,
-		.slavep = MSM_BUS_SYSTEM_SLAVE_PORT_CPSS_FPB,
-		.masterp = MSM_BUS_SYSTEM_MASTER_PORT_CPSS_FPB,
+		.slavep = system_sport_cpss_fpb,
+		.num_sports = ARRAY_SIZE(system_sport_cpss_fpb),
+		.masterp = system_mport_cpss_fpb,
+		.num_mports = ARRAY_SIZE(system_mport_cpss_fpb),
 		.buswidth = 4,
 	},
 	{
 		.id = MSM_BUS_SLAVE_SPS,
-		.slavep = MSM_BUS_SLAVE_PORT_SPS,
+		.slavep = sport_sps,
+		.num_sports = ARRAY_SIZE(sport_sps),
 		.buswidth = 8,
 	},
 	{
 		.id = MSM_BUS_SLAVE_SYSTEM_IMEM,
-		.slavep = MSM_BUS_SLAVE_PORT_SYSTEM_IMEM,
-		.tier = MSM_BUS_TIERED_SLAVE_SYSTEM_IMEM,
+		.slavep = sport_system_imem,
+		.num_sports = ARRAY_SIZE(sport_system_imem),
+		.tier = tiered_slave_system_imem,
+		.num_tiers = ARRAY_SIZE(tiered_slave_system_imem),
 		.buswidth = 8,
 	},
 	{
 		.id = MSM_BUS_SLAVE_AMPSS,
-		.slavep = MSM_BUS_SLAVE_PORT_SMPSS,
+		.slavep = sport_smpss,
+		.num_sports = ARRAY_SIZE(sport_smpss),
 		.buswidth = 8,
 	},
 	{
 		.id = MSM_BUS_SLAVE_MSS,
-		.slavep = MSM_BUS_SLAVE_PORT_MSS,
+		.slavep = sport_mss,
+		.num_sports = ARRAY_SIZE(sport_mss),
 		.buswidth = 8,
 	},
 	{
 		.id = MSM_BUS_SLAVE_LPASS,
-		.slavep = MSM_BUS_SLAVE_PORT_LPASS,
+		.slavep = sport_lpass,
+		.num_sports = ARRAY_SIZE(sport_lpass),
 		.buswidth = 8,
 	},
 	{
 		.id = MSM_BUS_SYSTEM_SLAVE_MMSS_FPB,
-		.slavep = MSM_BUS_SLAVE_PORT_MMSS_FPB,
+		.slavep = sport_mmss_fpb,
+		.num_sports = ARRAY_SIZE(sport_mmss_fpb),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 		.buswidth = 8,
 	},
 };
 
+static int mport_mdp_port0[] = {MSM_BUS_MASTER_PORT_MDP_PORT0,};
+static int mport_mdp_port1[] = {MSM_BUS_MASTER_PORT_MDP_PORT1,};
+static int mmss_mport_adm1_port0[] = {MSM_BUS_MMSS_MASTER_PORT_ADM1_PORT0,};
+static int mport_rotator[] = {MSM_BUS_MASTER_PORT_ROTATOR,};
+static int mport_graphics_3d[] = {MSM_BUS_MASTER_PORT_GRAPHICS_3D,};
+static int mport_jpeg_dec[] = {MSM_BUS_MASTER_PORT_JPEG_DEC,};
+static int mport_graphics_2d_core0[] = {MSM_BUS_MASTER_PORT_GRAPHICS_2D_CORE0,};
+static int mport_vfe[] = {MSM_BUS_MASTER_PORT_VFE,};
+static int mport_vpe[] = {MSM_BUS_MASTER_PORT_VPE,};
+static int mport_jpeg_enc[] = {MSM_BUS_MASTER_PORT_JPEG_ENC,};
+static int mport_graphics_2d_core1[] = {MSM_BUS_MASTER_PORT_GRAPHICS_2D_CORE1,};
+static int mport_hd_codec_port0[] = {MSM_BUS_MASTER_PORT_HD_CODEC_PORT0,};
+static int mport_hd_codec_port1[] = {MSM_BUS_MASTER_PORT_HD_CODEC_PORT1,};
+static int appss_mport_fab_mmss[] = {MSM_BUS_APPSS_MASTER_PORT_FAB_MMSS,};
+
+static int sport_smi[] = {MSM_BUS_SLAVE_PORT_SMI,};
+static int mmss_sport_apps_fab_0[] = {MSM_BUS_MMSS_SLAVE_PORT_APPS_FAB_0,};
+static int sport_mm_imem[] = {MSM_BUS_SLAVE_PORT_MM_IMEM,};
+
+static int tiered_slave_smi[] = {MSM_BUS_TIERED_SLAVE_SMI,};
+static int mmss_tiered_slave_fab_apps[] = {MSM_BUS_MMSS_TIERED_SLAVE_FAB_APPS,};
+static int tiered_slave_mm_imem[] = {MSM_BUS_TIERED_SLAVE_MM_IMEM,};
+
 static struct msm_bus_node_info mmss_fabric_info[]  = {
 	{
 		.id = MSM_BUS_MASTER_MDP_PORT0,
-		.masterp = MSM_BUS_MASTER_PORT_MDP_PORT0,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_mdp_port0,
+		.num_mports = ARRAY_SIZE(mport_mdp_port0),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_MDP_PORT1,
-		.masterp = MSM_BUS_MASTER_PORT_MDP_PORT1,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_mdp_port1,
+		.num_mports = ARRAY_SIZE(mport_mdp_port1),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MMSS_MASTER_ADM1_PORT0,
-		.masterp = MSM_BUS_MMSS_MASTER_PORT_ADM1_PORT0,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mmss_mport_adm1_port0,
+		.num_mports = ARRAY_SIZE(mmss_mport_adm1_port0),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_ROTATOR,
-		.masterp = MSM_BUS_MASTER_PORT_ROTATOR,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_rotator,
+		.num_mports = ARRAY_SIZE(mport_rotator),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_GRAPHICS_3D,
-		.masterp = MSM_BUS_MASTER_PORT_GRAPHICS_3D,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_graphics_3d,
+		.num_mports = ARRAY_SIZE(mport_graphics_3d),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_JPEG_DEC,
-		.masterp = MSM_BUS_MASTER_PORT_JPEG_DEC,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_jpeg_dec,
+		.num_mports = ARRAY_SIZE(mport_jpeg_dec),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_GRAPHICS_2D_CORE0,
-		.masterp = MSM_BUS_MASTER_PORT_GRAPHICS_2D_CORE0,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_graphics_2d_core0,
+		.num_mports = ARRAY_SIZE(mport_graphics_2d_core0),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_VFE,
-		.masterp = MSM_BUS_MASTER_PORT_VFE,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_vfe,
+		.num_mports = ARRAY_SIZE(mport_vfe),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_VPE,
-		.masterp = MSM_BUS_MASTER_PORT_VPE,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_vpe,
+		.num_mports = ARRAY_SIZE(mport_vpe),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_JPEG_ENC,
-		.masterp = MSM_BUS_MASTER_PORT_JPEG_ENC,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_jpeg_enc,
+		.num_mports = ARRAY_SIZE(mport_jpeg_enc),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	/* This port has been added for V2. It is absent in V1 */
 	{
 		.id = MSM_BUS_MASTER_GRAPHICS_2D_CORE1,
-		.masterp = MSM_BUS_MASTER_PORT_GRAPHICS_2D_CORE1,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_graphics_2d_core1,
+		.num_mports = ARRAY_SIZE(mport_graphics_2d_core1),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_HD_CODEC_PORT0,
-		.masterp = MSM_BUS_MASTER_PORT_HD_CODEC_PORT0,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_hd_codec_port0,
+		.num_mports = ARRAY_SIZE(mport_hd_codec_port0),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_HD_CODEC_PORT1,
-		.masterp = MSM_BUS_MASTER_PORT_HD_CODEC_PORT1,
-		.tier = MSM_BUS_BW_TIER2,
+		.masterp = mport_hd_codec_port1,
+		.num_mports = ARRAY_SIZE(mport_hd_codec_port1),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_SLAVE_SMI,
-		.slavep = MSM_BUS_SLAVE_PORT_SMI,
-		.tier = MSM_BUS_TIERED_SLAVE_SMI,
+		.slavep = sport_smi,
+		.num_sports = ARRAY_SIZE(sport_smi),
+		.tier = tiered_slave_smi,
+		.num_tiers = ARRAY_SIZE(tiered_slave_smi),
 		.buswidth = 16,
 		.slaveclk = "smi_clk",
 		.a_slaveclk = "smi_a_clk",
 	},
 	{
 		.id = MSM_BUS_MMSS_SLAVE_FAB_APPS_1,
-		.slavep = MSM_BUS_MMSS_SLAVE_PORT_APPS_FAB_0,
+		.slavep = mmss_sport_apps_fab_0,
+		.num_sports = ARRAY_SIZE(mmss_sport_apps_fab_0),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 		.buswidth = 8,
 	},
 	{
 		.id = MSM_BUS_FAB_APPSS,
 		.gateway = 1,
-		.slavep = MSM_BUS_MMSS_SLAVE_PORT_APPS_FAB_0,
-		.masterp = MSM_BUS_APPSS_MASTER_PORT_FAB_MMSS,
-		.tier = MSM_BUS_MMSS_TIERED_SLAVE_FAB_APPS,
+		.slavep = mmss_sport_apps_fab_0,
+		.num_sports = ARRAY_SIZE(mmss_sport_apps_fab_0),
+		.masterp = appss_mport_fab_mmss,
+		.num_mports = ARRAY_SIZE(appss_mport_fab_mmss),
+		.tier = mmss_tiered_slave_fab_apps,
+		.num_tiers = ARRAY_SIZE(mmss_tiered_slave_fab_apps),
 		.buswidth = 8,
 	},
 	{
 		.id = MSM_BUS_SLAVE_MM_IMEM,
-		.slavep = MSM_BUS_SLAVE_PORT_MM_IMEM,
-		.tier = MSM_BUS_TIERED_SLAVE_MM_IMEM,
+		.slavep = sport_mm_imem,
+		.num_sports = ARRAY_SIZE(sport_mm_imem),
+		.tier = tiered_slave_mm_imem,
+		.num_tiers = ARRAY_SIZE(tiered_slave_mm_imem),
 		.buswidth = 8,
 	},
 };
@@ -369,20 +530,24 @@ static struct msm_bus_node_info sys_fpb_fabric_info[]  = {
 	{
 		.id = MSM_BUS_FAB_SYSTEM,
 		.gateway = 1,
-		.slavep = MSM_BUS_SYSTEM_SLAVE_PORT_SYSTEM_FPB,
-		.masterp = MSM_BUS_MASTER_PORT_SYSTEM_FPB,
+		.slavep = system_sport_system_fpb,
+		.num_sports = ARRAY_SIZE(system_sport_system_fpb),
+		.masterp = mport_system_fpb,
+		.num_mports = ARRAY_SIZE(mport_system_fpb),
 		.buswidth = 4,
 		.ahb = 1,
 	},
 	{
 		.id = MSM_BUS_MASTER_SPDM,
 		.ahb = 1,
-		.tier = MSM_BUS_BW_TIER2,
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_MASTER_RPM,
 		.ahb = 1,
-		.tier = MSM_BUS_BW_TIER2,
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
 	},
 	{
 		.id = MSM_BUS_SLAVE_SPDM,
@@ -435,8 +600,10 @@ static struct msm_bus_node_info cpss_fpb_fabric_info[] = {
 	{
 		.id = MSM_BUS_FAB_SYSTEM,
 		.gateway = 1,
-		.slavep = MSM_BUS_SYSTEM_SLAVE_PORT_CPSS_FPB,
-		.masterp = MSM_BUS_SYSTEM_MASTER_PORT_CPSS_FPB,
+		.slavep = system_sport_cpss_fpb,
+		.num_sports = ARRAY_SIZE(system_sport_cpss_fpb),
+		.masterp = system_mport_cpss_fpb,
+		.num_mports = ARRAY_SIZE(system_mport_cpss_fpb),
 		.buswidth = 4,
 		.ahb = 1,
 	},

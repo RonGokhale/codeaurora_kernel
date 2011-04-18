@@ -74,9 +74,12 @@ struct msm_bus_node_info {
 	unsigned int id;
 	unsigned int priv_id;
 	int gateway;
-	int masterp;
-	int slavep;
-	int tier;
+	int *masterp;
+	int num_mports;
+	int *slavep;
+	int num_sports;
+	int *tier;
+	int num_tiers;
 	int ahb;
 	const char *slaveclk;
 	const char *a_slaveclk;
@@ -102,7 +105,8 @@ struct msm_bus_link_info {
 	long  bw;
 	long a_bw;
 	long *sel_bw;
-	int tier;
+	int *tier;
+	int num_tiers;
 };
 
 struct msm_bus_inode_info {
@@ -151,7 +155,7 @@ struct msm_bus_fab_algorithm {
 	struct list_head *(*get_gw_list)(struct msm_bus_fabric_device *fabdev);
 	void (*update_bw)(struct msm_bus_fabric_device *fabdev, struct
 		msm_bus_inode_info * hop, struct msm_bus_inode_info *info,
-		int add_bw, int master_tier, int context);
+		int add_bw, int *master_tiers, int context);
 };
 
 /**

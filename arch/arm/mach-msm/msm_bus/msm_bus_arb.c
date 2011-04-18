@@ -23,9 +23,6 @@
 #define INDEX_MASK 0x0000FFFF
 #define PNODE_MASK 0xFFFF0000
 #define SHIFT_VAL 16
-#define BWMASK 0x7FFF
-#define TIERMASK 0x8000
-#define GET_TIER(n) (((n) & TIERMASK) >> 15)
 #define CREATE_PNODE_ID(n, i) (((n) << SHIFT_VAL) | (i))
 #define GET_INDEX(n) ((n) & INDEX_MASK)
 #define GET_NODE(n) ((n) >> SHIFT_VAL)
@@ -285,7 +282,7 @@ static int update_path(int curr, int pnode, unsigned req_clk, unsigned req_bw,
 	int add_bw = req_bw - curr_bw;
 	unsigned bwsum = 0;
 	unsigned req_clk_hz, curr_clk_hz, bwsum_hz;
-	int master_tier = 0;
+	int *master_tiers;
 	struct msm_bus_fabric_device *fabdev = msm_bus_get_fabric_device
 		(GET_FABID(curr));
 
@@ -304,8 +301,10 @@ static int update_path(int curr, int pnode, unsigned req_clk, unsigned req_bw,
 	SELECT_BW_CLK(active_ctx, info->pnode[index]);
 	*info->link_info.sel_bw += add_bw;
 	*info->pnode[index].sel_bw += add_bw;
+
+	info->link_info.num_tiers = info->node_info->num_tiers;
 	info->link_info.tier = info->node_info->tier;
-	master_tier = info->node_info->tier;
+	master_tiers = info->node_info->tier;
 
 	do {
 		struct msm_bus_inode_info *hop;
@@ -339,6 +338,10 @@ static int update_path(int curr, int pnode, unsigned req_clk, unsigned req_bw,
 		SELECT_BW_CLK(active_ctx, hop->pnode[index]);
 
 		*hop->link_info.sel_bw += add_bw;
+		if (!hop->node_info->buswidth) {
+			MSM_BUS_WARN("No bus width found. Using default\n");
+			hop->node_info->buswidth = 8;
+		}
 		*hop->pnode[index].sel_clk = BW_TO_CLK_FREQ_HZ(hop->node_info->
 			buswidth, req_clk);
 		*hop->pnode[index].sel_bw += add_bw;
@@ -347,7 +350,7 @@ static int update_path(int curr, int pnode, unsigned req_clk, unsigned req_bw,
 			buswidth, info->node_info->priv_id);
 		/* Update Bandwidth */
 		fabdev->algo->update_bw(fabdev, hop, info, add_bw,
-			master_tier, active_ctx);
+			master_tiers, active_ctx);
 		bwsum = (uint16_t)*hop->link_info.sel_bw;
 		/* Update Fabric clocks */
 		curr_clk_hz = BW_TO_CLK_FREQ_HZ(hop->node_info->buswidth,
