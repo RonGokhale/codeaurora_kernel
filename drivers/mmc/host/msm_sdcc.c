@@ -313,6 +313,7 @@ msmsdcc_dma_complete_tlet(unsigned long data)
 
 	if (host->dma.result & DMOV_RSLT_DONE) {
 		host->curr.data_xfered = host->curr.xfer_size;
+		host->curr.xfer_remain -= host->curr.xfer_size;
 	} else {
 		/* Error or flush  */
 		if (host->dma.result & DMOV_RSLT_ERROR)
@@ -352,8 +353,10 @@ msmsdcc_dma_complete_tlet(unsigned long data)
 		 */
 		msmsdcc_stop_data(host);
 
-		if (!mrq->data->error)
+		if (!mrq->data->error) {
 			host->curr.data_xfered = host->curr.xfer_size;
+			host->curr.xfer_remain -= host->curr.xfer_size;
+		}
 		if (!mrq->data->stop || mrq->cmd->error) {
 			host->curr.mrq = NULL;
 			host->curr.cmd = NULL;
@@ -462,6 +465,7 @@ static void msmsdcc_sps_complete_tlet(unsigned long data)
 
 	if (data_xfered == host->curr.xfer_size) {
 		host->curr.data_xfered = host->curr.xfer_size;
+		host->curr.xfer_remain -= host->curr.xfer_size;
 		pr_debug("%s: Data xfer success. data_xfered=0x%x",
 			mmc_hostname(host->mmc),
 			host->curr.xfer_size);
@@ -488,8 +492,10 @@ static void msmsdcc_sps_complete_tlet(unsigned long data)
 		 */
 		msmsdcc_stop_data(host);
 
-		if (!mrq->data->error)
+		if (!mrq->data->error) {
 			host->curr.data_xfered = host->curr.xfer_size;
+			host->curr.xfer_remain -= host->curr.xfer_size;
+		}
 		if (!mrq->data->stop || mrq->cmd->error) {
 			host->curr.mrq = NULL;
 			host->curr.cmd = NULL;
@@ -1149,9 +1155,7 @@ static void msmsdcc_wait_for_rxdata(struct msmsdcc_host *host,
 	 * than a microsecond and thus looping for 1000 times is good enough
 	 * for that delay.
 	 */
-	while ((host->curr.xfer_remain > 0) &&
-		(host->curr.xfer_remain < MCI_FIFOSIZE) &&
-		(++loop_cnt < 1000)) {
+	while (((int)host->curr.xfer_remain > 0) && (++loop_cnt < 1000)) {
 		if (readl(host->base + MMCISTATUS) & MCI_RXDATAAVLBL) {
 			spin_unlock(&host->lock);
 			msmsdcc_pio_irq(1, host);
@@ -1354,9 +1358,7 @@ msmsdcc_irq(int irq, void *dev_id)
 				 * If DMA is still in progress, we complete
 				 * via the completion handler
 				 */
-				if ((host->is_dma_mode && !host->dma.busy)
-				|| (host->is_sps_mode && !host->sps.busy)
-				) {
+				if (!host->dma.busy && !host->sps.busy) {
 					/*
 					 * There appears to be an issue in the
 					 * controller where if you request a
@@ -1371,9 +1373,12 @@ msmsdcc_irq(int irq, void *dev_id)
 						msmsdcc_wait_for_rxdata(host,
 								data);
 					msmsdcc_stop_data(host);
-					if (!data->error)
+					if (!data->error) {
 						host->curr.data_xfered =
 							host->curr.xfer_size;
+						host->curr.xfer_remain -=
+							host->curr.xfer_size;
+					}
 
 					if (!data->stop)
 						timer |= msmsdcc_request_end(
@@ -2450,6 +2455,8 @@ msmsdcc_probe(struct platform_device *pdev)
 		ret = msmsdcc_init_dma(host);
 		if (ret)
 			goto ioremap_free;
+	} else {
+		host->dma.channel = -1;
 	}
 
 	/*
