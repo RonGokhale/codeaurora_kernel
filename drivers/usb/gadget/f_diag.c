@@ -505,7 +505,7 @@ static int diag_function_set_alt(struct usb_function *f,
 	dev->in_desc = ep_choose(cdev->gadget,
 			&hs_bulk_in_desc, &fs_bulk_in_desc);
 	dev->out_desc = ep_choose(cdev->gadget,
-			&hs_bulk_out_desc, &fs_bulk_in_desc);
+			&hs_bulk_out_desc, &fs_bulk_out_desc);
 	dev->in->driver_data = dev;
 	rc = usb_ep_enable(dev->in, dev->in_desc);
 	if (rc) {
