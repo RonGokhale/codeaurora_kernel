@@ -55,6 +55,7 @@ void nvhost_module_busy(struct nvhost_module *mod)
 	}
 	mutex_unlock(&mod->lock);
 }
+EXPORT_SYMBOL_GPL(nvhost_module_busy);
 
 static void powerdown_handler(struct work_struct *work)
 {
@@ -94,6 +95,7 @@ void nvhost_module_idle_mult(struct nvhost_module *mod, int refs)
 	if (kick)
 		wake_up(&mod->idle);
 }
+EXPORT_SYMBOL_GPL(nvhost_module_idle_mult);
 
 static const char *get_module_clk_id(const char *module, int index)
 {
