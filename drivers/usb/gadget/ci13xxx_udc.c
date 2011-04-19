@@ -318,6 +318,17 @@ static int hw_device_reset(struct ci13xxx *udc)
 	hw_cwrite(CAP_USBMODE, USBMODE_CM, USBMODE_CM_DEVICE);
 	hw_cwrite(CAP_USBMODE, USBMODE_SLOM, USBMODE_SLOM);  /* HW >= 2.3 */
 
+	/*
+	 * ITC (Interrupt Threshold Control) field is to set the maximum
+	 * rate at which the device controller will issue interrupts.
+	 * The maximum interrupt interval measured in micro frames.
+	 * Valid values are 0, 1, 2, 4, 8, 16, 32, 64. The default value is
+	 * 8 micro frames. If CPU can handle interrupts at faster rate, ITC
+	 * can be set to lesser value to gain performance.
+	 */
+	if (udc->udc_driver->flags && CI13XXX_ZERO_ITC)
+		hw_cwrite(CAP_USBCMD, USBCMD_ITC_MASK, USBCMD_ITC(0));
+
 	if (hw_cread(CAP_USBMODE, USBMODE_CM) != USBMODE_CM_DEVICE) {
 		pr_err("cannot enter in device mode");
 		pr_err("lpm = %i", hw_bank.lpm);
@@ -1600,8 +1611,6 @@ static int _gadget_stop_activity(struct usb_gadget *gadget)
 	gadget_for_each_ep(ep, gadget) {
 		usb_ep_disable(ep);
 	}
-	usb_ep_disable(&udc->ep0out.ep);
-	usb_ep_disable(&udc->ep0in.ep);
 
 	if (udc->status != NULL) {
 		usb_ep_free_request(&udc->ep0in.ep, udc->status);
@@ -1644,18 +1653,10 @@ __acquires(udc->lock)
 	if (retval)
 		goto done;
 
-	retval = usb_ep_enable(&udc->ep0out.ep, &ctrl_endpt_out_desc);
-	if (retval)
-		goto done;
+	udc->status = usb_ep_alloc_request(&udc->ep0in.ep, GFP_ATOMIC);
+	if (udc->status == NULL)
+		retval = -ENOMEM;
 
-	retval = usb_ep_enable(&udc->ep0in.ep, &ctrl_endpt_in_desc);
-	if (!retval) {
-		udc->status = usb_ep_alloc_request(&udc->ep0in.ep, GFP_ATOMIC);
-		if (udc->status == NULL) {
-			usb_ep_disable(&udc->ep0out.ep);
-			retval = -ENOMEM;
-		}
-	}
 	spin_lock(udc->lock);
 
  done:
@@ -1784,7 +1785,8 @@ __releases(mEp->lock)
 __acquires(mEp->lock)
 {
 	struct ci13xxx_req *mReq;
-	int retval;
+	struct ci13xxx_ep *mEpTemp = mEp;
+	int retval = 0;
 
 	trace("%p", mEp);
 
@@ -1814,7 +1816,10 @@ __acquires(mEp->lock)
 
 	if (mReq->req.complete != NULL) {
 		spin_unlock(mEp->lock);
-		mReq->req.complete(&mEp->ep, &mReq->req);
+		if ((mEp->type == USB_ENDPOINT_XFER_CONTROL) &&
+				mReq->req.length)
+			mEpTemp = &_udc->ep0in;
+		mReq->req.complete(&mEpTemp->ep, &mReq->req);
 		spin_lock(mEp->lock);
 	}
 
@@ -1843,7 +1848,7 @@ __acquires(udc->lock)
 
 	for (i = 0; i < hw_ep_max; i++) {
 		struct ci13xxx_ep *mEp  = &udc->ci13xxx_ep[i];
-		int type, num, err = -EINVAL;
+		int type, num, dir, err = -EINVAL;
 		struct usb_ctrlrequest req;
 
 		if (mEp->desc == NULL)
@@ -1901,7 +1906,10 @@ __acquires(udc->lock)
 			if (req.wLength != 0)
 				break;
 			num  = le16_to_cpu(req.wIndex);
+			dir = num & USB_ENDPOINT_DIR_MASK;
 			num &= USB_ENDPOINT_NUMBER_MASK;
+			if (dir) /* TX */
+				num += hw_ep_max/2;
 			if (!udc->ci13xxx_ep[num].wedge) {
 				spin_unlock(udc->lock);
 				err = usb_ep_clear_halt(
@@ -1940,7 +1948,10 @@ __acquires(udc->lock)
 			if (req.wLength != 0)
 				break;
 			num  = le16_to_cpu(req.wIndex);
+			dir = num & USB_ENDPOINT_DIR_MASK;
 			num &= USB_ENDPOINT_NUMBER_MASK;
+			if (dir) /* TX */
+				num += hw_ep_max/2;
 
 			spin_unlock(udc->lock);
 			err = usb_ep_set_halt(&udc->ci13xxx_ep[num].ep);
@@ -2021,7 +2032,12 @@ static int ep_enable(struct usb_ep *ep,
 		(mEp->ep.maxpacket << ffs_nr(QH_MAX_PKT)) & QH_MAX_PKT;
 	mEp->qh.ptr->td.next |= TD_TERMINATE;   /* needed? */
 
-	retval |= hw_ep_enable(mEp->num, mEp->dir, mEp->type);
+	/*
+	 * Enable endpoints in the HW other than ep0 as ep0
+	 * is always enabled
+	 */
+	if (mEp->num)
+		retval |= hw_ep_enable(mEp->num, mEp->dir, mEp->type);
 
 	spin_unlock_irqrestore(mEp->lock, flags);
 	return retval;
@@ -2153,11 +2169,15 @@ static int ep_queue(struct usb_ep *ep, struct usb_request *req,
 
 	spin_lock_irqsave(mEp->lock, flags);
 
-	if (mEp->type == USB_ENDPOINT_XFER_CONTROL &&
-	    !list_empty(&mEp->qh.queue)) {
-		_ep_nuke(mEp);
-		retval = -EOVERFLOW;
-		warn("endpoint ctrl %X nuked", _usb_addr(mEp));
+	if (mEp->type == USB_ENDPOINT_XFER_CONTROL) {
+		if (req->length)
+			mEp = (_udc->ep0_dir == RX) ?
+				&_udc->ep0out : &_udc->ep0in;
+		if (!list_empty(&mEp->qh.queue)) {
+			_ep_nuke(mEp);
+			retval = -EOVERFLOW;
+			warn("endpoint ctrl %X nuked", _usb_addr(mEp));
+		}
 	}
 
 	/* first nuke then test link, e.g. previous status has not sent */
@@ -2474,6 +2494,14 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 	}
 	if (retval)
 		goto done;
+	spin_unlock_irqrestore(udc->lock, flags);
+	retval = usb_ep_enable(&udc->ep0out.ep, &ctrl_endpt_out_desc);
+	if (retval)
+		return retval;
+	retval = usb_ep_enable(&udc->ep0in.ep, &ctrl_endpt_in_desc);
+	if (retval)
+		return retval;
+	spin_lock_irqsave(udc->lock, flags);
 
 	udc->gadget.ep0 = &udc->ep0in.ep;
 	/* bind gadget */
