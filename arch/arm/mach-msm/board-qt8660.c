@@ -2153,9 +2153,9 @@ static struct platform_device qt_gpio_keys = {
 };
 
 static const unsigned int qt_keymap[] = {
-	KEY(0, 3, KEY_VOLUMEDOWN),
-	KEY(1, 3, KEY_VOLUMEUP),
-	KEY(2, 3, KEY_HOME),
+	KEY(0, 0, KEY_VOLUMEDOWN),
+	KEY(1, 0, KEY_VOLUMEUP),
+	KEY(2, 0, KEY_HOME),
 };
 
 static struct matrix_keymap_data qt_keymap_data = {
