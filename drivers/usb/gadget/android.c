@@ -127,7 +127,7 @@ static const struct usb_descriptor_header *otg_desc[] = {
 static struct list_head _functions = LIST_HEAD_INIT(_functions);
 static bool _are_functions_bound;
 
-static void __maybe_unused android_set_default_product(int pid);
+static void android_set_default_product(int pid);
 
 void android_usb_set_connected(int connected)
 {
@@ -208,6 +208,7 @@ static void bind_functions(struct android_dev *dev)
 			pr_err("%s: function %s not found\n", __func__, name);
 	}
 
+	_are_functions_bound = true;
 	/*
 	 * set_alt(), or next config->bind(), sets up
 	 * ep->driver_data as needed.
@@ -222,8 +223,10 @@ static int __ref android_bind_config(struct usb_configuration *c)
 	pr_debug("android_bind_config\n");
 	dev->config = c;
 
-	if (should_bind_functions(dev))
+	if (should_bind_functions(dev)) {
 		bind_functions(dev);
+		android_set_default_product(dev->product_id);
+	}
 
 	return 0;
 }
@@ -402,8 +405,10 @@ void android_register_function(struct android_usb_function *f)
 
 	list_add_tail(&f->list, &_functions);
 
-	if (dev && should_bind_functions(dev))
+	if (dev && should_bind_functions(dev)) {
 		bind_functions(dev);
+		android_set_default_product(dev->product_id);
+	}
 }
 
 /**
@@ -450,7 +455,7 @@ static void android_set_function_mask(struct android_usb_product *up)
  * This function selects default product id using pdata information and
  * enables functions for same.
 */
-static void __maybe_unused android_set_default_product(int pid)
+static void android_set_default_product(int pid)
 {
 	struct android_dev *dev = _android_dev;
 	struct android_usb_product *up = dev->products;
