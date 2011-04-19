@@ -101,6 +101,15 @@ enum qce_req_op_enum {
 	QCE_REQ_LAST
 };
 
+struct ce_hw_support {
+	bool sha1_hmac_20; /* Supports 20 bytes of HMAC key*/
+	bool sha1_hmac; /* supports max HMAC key of 64 bytes*/
+	bool sha256_hmac; /* supports max HMAC key of 64 bytes*/
+	bool sha_hmac; /* supports SHA1 and SHA256 MAX HMAC key of 64 bytes*/
+	bool cbc_mac;
+	bool ota;
+};
+
 struct qce_sha_req {
 	qce_comp_func_ptr_t qce_cb;
 	enum qce_hash_alg_enum alg;
@@ -135,8 +144,7 @@ void *qce_open(struct platform_device *pdev, int *rc);
 int qce_close(void *handle);
 int qce_aead_req(void *handle, struct qce_req *req);
 int qce_ablk_cipher_req(void *handle, struct qce_req *req);
-int qce_ota_support(void *handle);
-int qce_hmac_support(void *handle);
+int qce_hw_support(void *handle, struct ce_hw_support *support);
 int qce_process_sha_req(void *handle, struct qce_sha_req *s_req);
 
 #endif /* __CRYPTO_MSM_QCE_H */
