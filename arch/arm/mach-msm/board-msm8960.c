@@ -15,6 +15,7 @@
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/i2c.h>
+#include <linux/gpio.h>
 #include <linux/usb/android_composite.h>
 #include <linux/msm_ssbi.h>
 #include <linux/mfd/pm8xxx/pm8921.h>
@@ -663,12 +664,94 @@ static struct usb_mass_storage_platform_data mass_storage_pdata = {
 #ifdef CONFIG_USB_MSM_OTG_72K
 static struct msm_otg_platform_data msm_otg_pdata;
 #else
+#define EXTERNAL_5V_EN		7
+#define USB_5V_EN		42
+static void msm_hsusb_vbus_power(bool on)
+{
+	int rc;
+	static bool vbus_is_on;
+	static struct regulator *mvs_otg_switch;
+	struct pm_gpio param = {
+		.direction	= PM_GPIO_DIR_OUT,
+		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
+		.output_value	= 1,
+		.pull		= PM_GPIO_PULL_NO,
+		.vin_sel	= PM_GPIO_VIN_S3,
+		.out_strength	= PM_GPIO_STRENGTH_MED,
+		.function	= PM_GPIO_FUNC_NORMAL,
+	};
+
+	if (vbus_is_on == on)
+		return;
+
+	if (on) {
+		mvs_otg_switch = regulator_get(&msm_device_otg.dev, "vbus_otg");
+		if (IS_ERR(mvs_otg_switch)) {
+			pr_err("Unable to get mvs_otg_switch\n");
+			return;
+		}
+
+		rc = gpio_request(PM8921_MPP_PM_TO_SYS(EXTERNAL_5V_EN),
+						"external_5v_en");
+		if (rc < 0) {
+			pr_err("failed to request external_5v_en gpio\n");
+			goto put_mvs_otg;
+		}
+
+		rc = gpio_request(PM8921_GPIO_PM_TO_SYS(USB_5V_EN),
+						"usb_5v_en");
+		if (rc < 0) {
+			pr_err("failed to request usb_5v_en gpio\n");
+			goto free_usb_5v_en;
+		}
+
+		rc = pm8xxx_mpp_config(PM8921_MPP_PM_TO_SYS(EXTERNAL_5V_EN),
+				PM8XXX_MPP_TYPE_D_OUTPUT,
+				PM8XXX_MPP_DIG_LEVEL_VIO_1,
+				PM8XXX_MPP_DOUT_CTRL_LOW);
+		if (rc < 0) {
+			pr_err("failed to configure external_5v_en gpio\n");
+			goto free_external_5v_en;
+		}
+
+		gpio_set_value_cansleep(PM8921_MPP_PM_TO_SYS(
+					EXTERNAL_5V_EN), 1);
+
+		if (regulator_enable(mvs_otg_switch)) {
+			pr_err("unable to enable mvs_otg_switch\n");
+			goto clear_external_5v_en;
+		}
+
+		rc = pm8xxx_gpio_config(PM8921_GPIO_PM_TO_SYS(USB_5V_EN),
+				&param);
+		if (rc < 0) {
+			pr_err("failed to configure usb_5v_en gpio\n");
+			goto disable_mvs_otg;
+		}
+		vbus_is_on = true;
+		return;
+	}
+disable_mvs_otg:
+		regulator_disable(mvs_otg_switch);
+clear_external_5v_en:
+		gpio_set_value_cansleep(PM8921_MPP_PM_TO_SYS(
+					EXTERNAL_5V_EN), 0);
+free_external_5v_en:
+		gpio_free(PM8921_MPP_PM_TO_SYS(EXTERNAL_5V_EN));
+free_usb_5v_en:
+		gpio_free(PM8921_GPIO_PM_TO_SYS(USB_5V_EN));
+put_mvs_otg:
+		regulator_put(mvs_otg_switch);
+		vbus_is_on = false;
+}
+
 static struct msm_otg_platform_data msm_otg_pdata = {
 	.mode			= USB_OTG,
 	.otg_control		= OTG_PHY_CONTROL,
 	.phy_type		= SNPS_28NM_INTEGRATED_PHY,
 	.pclk_src_name		= "dfab_usb_hs_clk",
 	.pmic_id_irq		= PM8921_USB_ID_IN_IRQ(PM8921_IRQ_BASE),
+	.vbus_power		= msm_hsusb_vbus_power,
 };
 #endif
 
