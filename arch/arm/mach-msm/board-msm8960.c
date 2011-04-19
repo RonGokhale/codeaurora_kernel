@@ -927,6 +927,9 @@ static struct platform_device *rumi3_devices[] __initdata = {
 #endif
 	&mipi_dsi_renesas_panel_device,
 	&msm_fb_device,
+#ifdef CONFIG_MSM_GEMINI
+	&msm8960_gemini_device,
+#endif
 };
 
 static void __init msm8960_i2c_init(void)
