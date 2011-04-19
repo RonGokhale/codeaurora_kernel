@@ -1416,6 +1416,25 @@ static char *svlte2_usb_functions_default_adb[] = {
 	"usb_mass_storage",
 };
 
+static char *charm_usb_acm_functions[] = {
+	"diag",
+	"diag_mdm",
+	"acm1",
+	"acm2",
+	"rmnet_sdio",
+	"usb_mass_storage",
+};
+
+static char *charm_usb_acm_functions_adb[] = {
+	"diag",
+	"diag_mdm",
+	"adb",
+	"acm1",
+	"acm2",
+	"rmnet_sdio",
+	"usb_mass_storage",
+};
+
 static char *charm_usb_functions_default[] = {
 	"diag",
 	"diag_mdm",
@@ -1493,13 +1512,14 @@ static char *svlte2_usb_functions_all[] = {
 	"modem",
 	"nmea",
 #endif
+#ifdef CONFIG_USB_ANDROID_ACM
+	"acm1",
+	"acm2",
+#endif
 #ifdef CONFIG_USB_ANDROID_RMNET_SMD_SDIO
 	"rmnet_smd_sdio",
 #endif
 	"usb_mass_storage",
-#ifdef CONFIG_USB_ANDROID_ACM
-	"acm",
-#endif
 };
 
 static char *charm_usb_functions_all[] = {
@@ -1518,13 +1538,14 @@ static char *charm_usb_functions_all[] = {
 	"modem",
 	"nmea",
 #endif
+#ifdef CONFIG_USB_ANDROID_ACM
+	"acm1",
+	"acm2",
+#endif
 #ifdef CONFIG_USB_ANDROID_RMNET_SDIO
 	"rmnet_sdio",
 #endif
 	"usb_mass_storage",
-#ifdef CONFIG_USB_ANDROID_ACM
-	"acm",
-#endif
 };
 
 static struct android_usb_product usb_products[] = {
@@ -1591,6 +1612,16 @@ static struct android_usb_product svlte2_usb_products[] = {
 		.num_functions	= ARRAY_SIZE(usb_functions_mtp_adb),
 		.functions	= usb_functions_mtp_adb,
 	},
+	{
+		.product_id	= 0x903C,
+		.num_functions	= ARRAY_SIZE(charm_usb_acm_functions),
+		.functions	= charm_usb_acm_functions,
+	},
+	{
+		.product_id	= 0x903B,
+		.num_functions	= ARRAY_SIZE(charm_usb_acm_functions_adb),
+		.functions	= charm_usb_acm_functions_adb,
+	},
 };
 
 static struct android_usb_product charm_usb_products[] = {
@@ -1623,6 +1654,17 @@ static struct android_usb_product charm_usb_products[] = {
 		.product_id	= 0x9039,
 		.num_functions	= ARRAY_SIZE(usb_functions_mtp_adb),
 		.functions	= usb_functions_mtp_adb,
+	},
+	/* below acm functions are same for charm or svlte2 */
+	{
+		.product_id	= 0x903C,
+		.num_functions	= ARRAY_SIZE(charm_usb_acm_functions),
+		.functions	= charm_usb_acm_functions,
+	},
+	{
+		.product_id	= 0x903B,
+		.num_functions	= ARRAY_SIZE(charm_usb_acm_functions_adb),
+		.functions	= charm_usb_acm_functions_adb,
 	},
 };
 
@@ -4557,6 +4599,9 @@ static struct platform_device *surf_devices[] __initdata = {
 #ifdef CONFIG_USB_F_SERIAL
 	&usb_gadget_fserial_device,
 #endif
+#ifdef CONFIG_USB_ANDROID_ACM
+	&usb_gadget_facm_device,
+#endif
 	&android_usb_device,
 #endif
 #ifdef CONFIG_BATTERY_MSM
@@ -6765,6 +6810,27 @@ static void __init msm8x60_init_buses(void)
 	msm_device_gadget_peripheral.dev.platform_data = &msm_gadget_pdata;
 #endif
 
+#if defined(CONFIG_USB_ANDROID_ACM_SMD) || defined(CONFIG_USB_ANDROID_ACM_SDIO)
+	if (machine_is_msm8x60_charm_surf() || machine_is_msm8x60_charm_ffa()) {
+		struct usb_gadget_facm_pdata *facm_pdata =
+			usb_gadget_facm_device.dev.platform_data;
+
+		/* for charm: Port1: SDIO - DUN,  Port2: TTY - NMEA
+		 * for svlte-2: Port1: SDIO - DUN1,  Port2: SMD - DUN2
+		 */
+		if (socinfo_get_platform_subtype() == 3) {
+			facm_pdata->transport[0] =
+				USB_GADGET_FSERIAL_TRANSPORT_SDIO;
+			facm_pdata->transport[1] =
+				USB_GADGET_FSERIAL_TRANSPORT_SMD;
+		} else {
+			facm_pdata->transport[0] =
+				USB_GADGET_FSERIAL_TRANSPORT_SDIO;
+			facm_pdata->transport[1] =
+				USB_GADGET_FSERIAL_TRANSPORT_TTY;
+		}
+	}
+#endif
 #if defined(CONFIG_USB_F_SERIAL_SDIO) || defined(CONFIG_USB_F_SERIAL_SMD)
 	if (machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa()) {
 		struct usb_gadget_fserial_platform_data *fserial_pdata =
