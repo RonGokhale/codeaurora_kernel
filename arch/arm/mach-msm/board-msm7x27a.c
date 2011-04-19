@@ -38,6 +38,7 @@
 #include "devices.h"
 #include "timer.h"
 #include "devices-msm7x2xa.h"
+#include <mach/rpc_server_handset.h>
 
 #define PMEM_KERNEL_EBI1_SIZE	0x1C000
 #define MSM_PMEM_AUDIO_SIZE	0x5B000
@@ -786,6 +787,18 @@ static struct platform_device kp_pdev = {
 	},
 };
 
+static struct msm_handset_platform_data hs_platform_data = {
+	.hs_name = "7k_handset",
+	.pwr_key_delay_ms = 500, /* 0 will disable end key */
+};
+
+static struct platform_device hs_pdev = {
+	.name   = "msm-handset",
+	.id     = -1,
+	.dev    = {
+		.platform_data = &hs_platform_data,
+	},
+};
 
 static void __init msm7x2x_init(void)
 {
@@ -822,6 +835,7 @@ static void __init msm7x2x_init(void)
 		kp_matrix_info.flags |= GPIOKPF_ACTIVE_HIGH;
 
 	platform_device_register(&kp_pdev);
+	platform_device_register(&hs_pdev);
 }
 
 #ifdef CONFIG_CACHE_L2X0
