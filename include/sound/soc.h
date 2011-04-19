@@ -575,6 +575,9 @@ struct snd_soc_platform {
 	struct snd_soc_card *card;
 	struct list_head list;
 	struct list_head card_list;
+
+	/* dapm */
+	struct snd_soc_dapm_context dapm;
 };
 
 struct snd_soc_dai_link {
