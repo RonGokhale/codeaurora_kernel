@@ -24,7 +24,7 @@
 #include <linux/bootmem.h>
 #include <linux/power_supply.h>
 
-
+#include <mach/msm_memtypes.h>
 #include <mach/hardware.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -596,33 +596,25 @@ static struct platform_device msm_device_adspdec = {
 	},
 };
 
-static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
-	.name = PMEM_KERNEL_EBI1_DATA_NAME,
-	/* if no allocator_type, defaults to PMEM_ALLOCATORTYPE_BITMAP,
-	 * the only valid choice at this time. The board structure is
-	 * set to all zeros by the C runtime initialization and that is now
-	 * the enum value of PMEM_ALLOCATORTYPE_BITMAP, now forced to 0 in
-	 * include/linux/android_pmem.h.
-	 */
-	.cached = 0,
-};
-
 static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
 	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
 	.cached = 1,
+	.memory_type = MEMTYPE_EBI1,
 };
 
 static struct android_pmem_platform_data android_pmem_adsp_pdata = {
 	.name = "pmem_adsp",
 	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
 	.cached = 0,
+	.memory_type = MEMTYPE_EBI1,
 };
 
 static struct android_pmem_platform_data android_pmem_audio_pdata = {
 	.name = "pmem_audio",
 	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
 	.cached = 0,
+	.memory_type = MEMTYPE_EBI1,
 };
 
 static struct platform_device android_pmem_device = {
@@ -641,12 +633,6 @@ static struct platform_device android_pmem_audio_device = {
 	.name = "android_pmem",
 	.id = 2,
 	.dev = { .platform_data = &android_pmem_audio_pdata },
-};
-
-static struct platform_device android_pmem_kernel_ebi1_device = {
-	.name = "android_pmem",
-	.id = 4,
-	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
 };
 
 static struct msm_handset_platform_data hs_platform_data = {
@@ -1442,7 +1428,6 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_i2c,
 	&smc91x_device,
 	&msm_device_tssc,
-	&android_pmem_kernel_ebi1_device,
 	&android_pmem_device,
 	&android_pmem_adsp_device,
 	&android_pmem_audio_device,
@@ -2028,48 +2013,70 @@ static void __init msm_msm7x2x_allocate_memory_regions(void)
 	void *addr;
 	unsigned long size;
 
-	size = pmem_mdp_size;
-	if (size) {
-		addr = alloc_bootmem_align(size, 0x1000);
-		android_pmem_pdata.start = __pa(addr);
-		android_pmem_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for mdp "
-			"pmem arena\n", size, addr, __pa(addr));
-	}
-
-	size = pmem_adsp_size;
-	if (size) {
-		addr = alloc_bootmem(size);
-		android_pmem_adsp_pdata.start = __pa(addr);
-		android_pmem_adsp_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for adsp "
-			"pmem arena\n", size, addr, __pa(addr));
-	}
-
-	size = pmem_audio_size;
-	if (size) {
-		addr = alloc_bootmem(size);
-		android_pmem_audio_pdata.start = __pa(addr);
-		android_pmem_audio_pdata.size = size;
-		pr_info("allocating %lu bytes (at %lx physical) for audio "
-			"pmem arena\n", size , __pa(addr));
-	}
-
 	size = fb_size ? : MSM_FB_SIZE;
 	addr = alloc_bootmem(size);
 	msm_fb_resources[0].start = __pa(addr);
 	msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
 	pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
 		size, addr, __pa(addr));
+}
 
-	size = pmem_kernel_ebi1_size;
-	if (size) {
-		addr = alloc_bootmem_align(size, 0x100000);
-		android_pmem_kernel_ebi1_pdata.start = __pa(addr);
-		android_pmem_kernel_ebi1_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for kernel"
-			" ebi1 pmem arena\n", size, addr, __pa(addr));
-	}
+static struct memtype_reserve msm7x27_reserve_table[] __initdata = {
+	[MEMTYPE_SMI] = {
+	},
+	[MEMTYPE_EBI0] = {
+		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
+	},
+	[MEMTYPE_EBI1] = {
+		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
+	},
+};
+
+static void __init size_pmem_devices(void)
+{
+#ifdef CONFIG_ANDROID_PMEM
+	android_pmem_adsp_pdata.size = pmem_adsp_size;
+	android_pmem_pdata.size = pmem_mdp_size;
+	android_pmem_audio_pdata.size = pmem_audio_size;
+#endif
+}
+
+static void __init reserve_memory_for(struct android_pmem_platform_data *p)
+{
+	msm7x27_reserve_table[p->memory_type].size += p->size;
+}
+
+static void __init reserve_pmem_memory(void)
+{
+#ifdef CONFIG_ANDROID_PMEM
+	reserve_memory_for(&android_pmem_adsp_pdata);
+	reserve_memory_for(&android_pmem_pdata);
+	reserve_memory_for(&android_pmem_audio_pdata);
+	msm7x27_reserve_table[MEMTYPE_EBI1].size += pmem_kernel_ebi1_size;
+#endif
+}
+
+static void __init msm7x27_calculate_reserve_sizes(void)
+{
+	size_pmem_devices();
+	reserve_pmem_memory();
+}
+
+static int msm7x27_paddr_to_memtype(unsigned int paddr)
+{
+	return MEMTYPE_EBI1;
+}
+
+static struct reserve_info msm7x27_reserve_info __initdata = {
+	.memtype_reserve_table = msm7x27_reserve_table,
+	.calculate_reserve_sizes = msm7x27_calculate_reserve_sizes,
+	.paddr_to_memtype = msm7x27_paddr_to_memtype,
+};
+
+static void __init msm7x27_reserve(void)
+{
+	reserve_info = &msm7x27_reserve_info;
+	msm_reserve();
 }
 
 static void __init msm7x27_init_early(void)
@@ -2104,6 +2111,7 @@ static void __init msm7x2x_map_io(void)
 MACHINE_START(MSM7X27_SURF, "QCT MSM7x27 SURF")
 	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= msm7x2x_map_io,
+	.reserve	= msm7x27_reserve,
 	.init_irq	= msm7x2x_init_irq,
 	.init_machine	= msm7x2x_init,
 	.timer		= &msm_timer,
@@ -2113,6 +2121,7 @@ MACHINE_END
 MACHINE_START(MSM7X27_FFA, "QCT MSM7x27 FFA")
 	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= msm7x2x_map_io,
+	.reserve	= msm7x27_reserve,
 	.init_irq	= msm7x2x_init_irq,
 	.init_machine	= msm7x2x_init,
 	.timer		= &msm_timer,
@@ -2122,6 +2131,7 @@ MACHINE_END
 MACHINE_START(MSM7X25_SURF, "QCT MSM7x25 SURF")
 	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= msm7x2x_map_io,
+	.reserve	= msm7x27_reserve,
 	.init_irq	= msm7x2x_init_irq,
 	.init_machine	= msm7x2x_init,
 	.timer		= &msm_timer,
@@ -2131,6 +2141,7 @@ MACHINE_END
 MACHINE_START(MSM7X25_FFA, "QCT MSM7x25 FFA")
 	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= msm7x2x_map_io,
+	.reserve	= msm7x27_reserve,
 	.init_irq	= msm7x2x_init_irq,
 	.init_machine	= msm7x2x_init,
 	.timer		= &msm_timer,

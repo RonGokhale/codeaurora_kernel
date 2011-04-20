@@ -64,6 +64,7 @@
 #include <mach/rpc_server_handset.h>
 #include <mach/msm_tsif.h>
 #include <mach/socinfo.h>
+#include <mach/msm_memtypes.h>
 #include <linux/cyttsp.h>
 
 #include <asm/mach/mmc.h>
@@ -93,7 +94,7 @@
 #endif
 #define MSM_PMEM_ADSP_SIZE      0x1E00000
 #define MSM_FLUID_PMEM_ADSP_SIZE	0x2800000
-#define PMEM_KERNEL_EBI1_SIZE   0x600000
+#define PMEM_KERNEL_EBI0_SIZE   0x600000
 #define MSM_PMEM_AUDIO_SIZE     0x200000
 
 #define PMIC_GPIO_INT		27
@@ -3646,6 +3647,7 @@ static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
 	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
 	.cached = 1,
+	.memory_type = MEMTYPE_EBI0,
 };
 
 static struct platform_device android_pmem_device = {
@@ -4070,33 +4072,18 @@ static struct platform_device msm_migrate_pages_device = {
 	.id     = -1,
 };
 
-static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
-       .name = PMEM_KERNEL_EBI1_DATA_NAME,
-	/* if no allocator_type, defaults to PMEM_ALLOCATORTYPE_BITMAP,
-	* the only valid choice at this time. The board structure is
-	* set to all zeros by the C runtime initialization and that is now
-	* the enum value of PMEM_ALLOCATORTYPE_BITMAP, now forced to 0 in
-	* include/linux/android_pmem.h.
-	*/
-       .cached = 0,
-};
-
 static struct android_pmem_platform_data android_pmem_adsp_pdata = {
        .name = "pmem_adsp",
        .allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
        .cached = 0,
+	.memory_type = MEMTYPE_EBI0,
 };
 
 static struct android_pmem_platform_data android_pmem_audio_pdata = {
        .name = "pmem_audio",
        .allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
        .cached = 0,
-};
-
-static struct platform_device android_pmem_kernel_ebi1_device = {
-       .name = "android_pmem",
-       .id = 1,
-       .dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
+	.memory_type = MEMTYPE_EBI0,
 };
 
 static struct platform_device android_pmem_adsp_device = {
@@ -5566,7 +5553,6 @@ static struct platform_device *devices[] __initdata = {
 	&msm_rotator_device,
 #endif
 	&lcdc_sharp_panel_device,
-	&android_pmem_kernel_ebi1_device,
 	&android_pmem_adsp_device,
 	&android_pmem_audio_device,
 	&msm_device_i2c,
@@ -7409,76 +7395,93 @@ static int __init pmem_audio_size_setup(char *p)
 }
 early_param("pmem_audio_size", pmem_audio_size_setup);
 
-static unsigned pmem_kernel_ebi1_size = PMEM_KERNEL_EBI1_SIZE;
-static int __init pmem_kernel_ebi1_size_setup(char *p)
+static unsigned pmem_kernel_ebi0_size = PMEM_KERNEL_EBI0_SIZE;
+static int __init pmem_kernel_ebi0_size_setup(char *p)
 {
-	pmem_kernel_ebi1_size = memparse(p, NULL);
+	pmem_kernel_ebi0_size = memparse(p, NULL);
 	return 0;
 }
-early_param("pmem_kernel_ebi1_size", pmem_kernel_ebi1_size_setup);
+early_param("pmem_kernel_ebi0_size", pmem_kernel_ebi0_size_setup);
+
+static struct memtype_reserve msm7x30_reserve_table[] __initdata = {
+	[MEMTYPE_SMI] = {
+	},
+	[MEMTYPE_EBI0] = {
+		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
+	},
+	[MEMTYPE_EBI1] = {
+		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
+	},
+};
+
+static void __init size_pmem_devices(void)
+{
+#ifdef CONFIG_ANDROID_PMEM
+	unsigned long size;
+
+	if machine_is_msm7x30_fluid()
+		size = fluid_pmem_adsp_size;
+	else
+		size = pmem_adsp_size;
+	android_pmem_adsp_pdata.size = size;
+	android_pmem_audio_pdata.size = pmem_audio_size;
+	android_pmem_pdata.size = pmem_sf_size;
+#endif
+}
+
+static void __init reserve_memory_for(struct android_pmem_platform_data *p)
+{
+	msm7x30_reserve_table[p->memory_type].size += p->size;
+}
+
+static void __init reserve_pmem_memory(void)
+{
+#ifdef CONFIG_ANDROID_PMEM
+	reserve_memory_for(&android_pmem_adsp_pdata);
+	reserve_memory_for(&android_pmem_audio_pdata);
+	reserve_memory_for(&android_pmem_pdata);
+	msm7x30_reserve_table[MEMTYPE_EBI0].size += pmem_kernel_ebi0_size;
+#endif
+}
+
+static void __init msm7x30_calculate_reserve_sizes(void)
+{
+	size_pmem_devices();
+	reserve_pmem_memory();
+}
+
+static int msm7x30_paddr_to_memtype(unsigned int paddr)
+{
+	if (paddr < 0x40000000)
+		return MEMTYPE_EBI0;
+	if (paddr >= 0x40000000 && paddr < 0x80000000)
+		return MEMTYPE_EBI1;
+	return MEMTYPE_NONE;
+}
+
+static struct reserve_info msm7x30_reserve_info __initdata = {
+	.memtype_reserve_table = msm7x30_reserve_table,
+	.calculate_reserve_sizes = msm7x30_calculate_reserve_sizes,
+	.paddr_to_memtype = msm7x30_paddr_to_memtype,
+};
+
+static void __init msm7x30_reserve(void)
+{
+	reserve_info = &msm7x30_reserve_info;
+	msm_reserve();
+}
 
 static void __init msm7x30_allocate_memory_regions(void)
 {
 	void *addr;
 	unsigned long size;
-/*
-   Request allocation of Hardware accessible PMEM regions
-   at the beginning to make sure they are allocated in EBI-0.
-   This will allow 7x30 with two mem banks enter the second
-   mem bank into Self-Refresh State during Idle Power Collapse.
 
-    The current HW accessible PMEM regions are
-    1. Frame Buffer.
-       LCDC HW can access msm_fb_resources during Idle-PC.
-
-    2. Audio
-       LPA HW can access android_pmem_audio_pdata during Idle-PC.
-*/
 	size = fb_size ? : MSM_FB_SIZE;
 	addr = alloc_bootmem_align(size, 0x1000);
 	msm_fb_resources[0].start = __pa(addr);
 	msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
 	pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
 		size, addr, __pa(addr));
-
-	size = pmem_audio_size;
-	if (size) {
-		addr = alloc_bootmem(size);
-		android_pmem_audio_pdata.start = __pa(addr);
-		android_pmem_audio_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for audio "
-			"pmem arena\n", size, addr, __pa(addr));
-	}
-
-	size = pmem_kernel_ebi1_size;
-	if (size) {
-		addr = alloc_bootmem_align(size, 0x100000);
-		android_pmem_kernel_ebi1_pdata.start = __pa(addr);
-		android_pmem_kernel_ebi1_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for kernel"
-			" ebi1 pmem arena\n", size, addr, __pa(addr));
-	}
-
-	size = pmem_sf_size;
-	if (size) {
-		addr = alloc_bootmem(size);
-		android_pmem_pdata.start = __pa(addr);
-		android_pmem_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for sf "
-			"pmem arena\n", size, addr, __pa(addr));
-	}
-
-	if machine_is_msm7x30_fluid()
-		size = fluid_pmem_adsp_size;
-	else
-		size = pmem_adsp_size;
-	if (size) {
-		addr = alloc_bootmem(size);
-		android_pmem_adsp_pdata.start = __pa(addr);
-		android_pmem_adsp_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for adsp "
-			"pmem arena\n", size, addr, __pa(addr));
-	}
 }
 
 static void __init msm7x30_map_io(void)
@@ -7495,6 +7498,7 @@ static void __init msm7x30_init_early(void)
 MACHINE_START(MSM7X30_SURF, "QCT MSM7X30 SURF")
 	.boot_params = PHYS_OFFSET + 0x100,
 	.map_io = msm7x30_map_io,
+	.reserve = msm7x30_reserve,
 	.init_irq = msm7x30_init_irq,
 	.init_machine = msm7x30_init,
 	.timer = &msm_timer,
@@ -7504,6 +7508,7 @@ MACHINE_END
 MACHINE_START(MSM7X30_FFA, "QCT MSM7X30 FFA")
 	.boot_params = PHYS_OFFSET + 0x100,
 	.map_io = msm7x30_map_io,
+	.reserve = msm7x30_reserve,
 	.init_irq = msm7x30_init_irq,
 	.init_machine = msm7x30_init,
 	.timer = &msm_timer,
@@ -7513,6 +7518,7 @@ MACHINE_END
 MACHINE_START(MSM7X30_FLUID, "QCT MSM7X30 FLUID")
 	.boot_params = PHYS_OFFSET + 0x100,
 	.map_io = msm7x30_map_io,
+	.reserve = msm7x30_reserve,
 	.init_irq = msm7x30_init_irq,
 	.init_machine = msm7x30_init,
 	.timer = &msm_timer,
@@ -7522,6 +7528,7 @@ MACHINE_END
 MACHINE_START(MSM8X55_SURF, "QCT MSM8X55 SURF")
 	.boot_params = PHYS_OFFSET + 0x100,
 	.map_io = msm7x30_map_io,
+	.reserve = msm7x30_reserve,
 	.init_irq = msm7x30_init_irq,
 	.init_machine = msm7x30_init,
 	.timer = &msm_timer,
@@ -7531,6 +7538,7 @@ MACHINE_END
 MACHINE_START(MSM8X55_FFA, "QCT MSM8X55 FFA")
 	.boot_params = PHYS_OFFSET + 0x100,
 	.map_io = msm7x30_map_io,
+	.reserve = msm7x30_reserve,
 	.init_irq = msm7x30_init_irq,
 	.init_machine = msm7x30_init,
 	.timer = &msm_timer,
@@ -7539,6 +7547,7 @@ MACHINE_END
 MACHINE_START(MSM8X55_SVLTE_SURF, "QCT MSM8X55 SVLTE SURF")
 	.boot_params = PHYS_OFFSET + 0x100,
 	.map_io = msm7x30_map_io,
+	.reserve = msm7x30_reserve,
 	.init_irq = msm7x30_init_irq,
 	.init_machine = msm7x30_init,
 	.timer = &msm_timer,
@@ -7547,6 +7556,7 @@ MACHINE_END
 MACHINE_START(MSM8X55_SVLTE_FFA, "QCT MSM8X55 SVLTE FFA")
 	.boot_params = PHYS_OFFSET + 0x100,
 	.map_io = msm7x30_map_io,
+	.reserve = msm7x30_reserve,
 	.init_irq = msm7x30_init_irq,
 	.init_machine = msm7x30_init,
 	.timer = &msm_timer,

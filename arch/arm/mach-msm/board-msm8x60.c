@@ -65,6 +65,7 @@
 #include <mach/msm_serial_hs.h>
 #include <mach/msm_serial_hs_lite.h>
 #include <mach/msm_iomap.h>
+#include <mach/msm_memtypes.h>
 #include <asm/mach/mmc.h>
 #include <mach/msm_battery.h>
 #include <mach/msm_hsusb.h>
@@ -2500,17 +2501,14 @@ static void __init msm8x60_init_dsps(void)
 #define MSM_PMEM_AUDIO_SIZE        0x279000
 
 #define MSM_SMI_BASE          0x38000000
-/* Kernel SMI PMEM Region for video core, used for Firmware */
-/* and encoder,decoder scratch buffers */
-/* Kernel SMI PMEM Region Should always precede the user space */
-/* SMI PMEM Region, as the video core will use offset address */
-/* from the Firmware base */
-#define PMEM_KERNEL_SMI_BASE  (MSM_SMI_BASE)
-#define PMEM_KERNEL_SMI_SIZE  0x300000
-/* User space SMI PMEM Region for video core*/
-/* used for encoder, decoder input & output buffers  */
-#define MSM_PMEM_SMIPOOL_BASE (PMEM_KERNEL_SMI_BASE + PMEM_KERNEL_SMI_SIZE)
-#define MSM_PMEM_SMIPOOL_SIZE 0x3D00000
+#define MSM_SMI_SIZE          0x4000000
+
+#define KERNEL_SMI_BASE       (MSM_SMI_BASE)
+#define KERNEL_SMI_SIZE       0x300000
+
+#define USER_SMI_BASE         (KERNEL_SMI_BASE + KERNEL_SMI_SIZE)
+#define USER_SMI_SIZE         (MSM_SMI_SIZE - KERNEL_SMI_SIZE)
+#define MSM_PMEM_SMIPOOL_SIZE USER_SMI_SIZE
 
 static unsigned fb_size;
 static int __init fb_size_setup(char *p)
@@ -2520,7 +2518,6 @@ static int __init fb_size_setup(char *p)
 }
 early_param("fb_size", fb_size_setup);
 
-#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
 static unsigned pmem_kernel_ebi1_size = MSM_PMEM_KERNEL_EBI1_SIZE;
 static int __init pmem_kernel_ebi1_size_setup(char *p)
 {
@@ -2528,7 +2525,6 @@ static int __init pmem_kernel_ebi1_size_setup(char *p)
 	return 0;
 }
 early_param("pmem_kernel_ebi1_size", pmem_kernel_ebi1_size_setup);
-#endif
 
 #ifdef CONFIG_ANDROID_PMEM
 static unsigned pmem_sf_size = MSM_PMEM_SF_SIZE;
@@ -2612,39 +2608,12 @@ static struct platform_device msm_fb_device = {
 #endif /* CONFIG_FB_MSM_LCDC_AUTO_DETECT */
 };
 
-#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
-static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
-	.name = PMEM_KERNEL_EBI1_DATA_NAME,
-	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
-	.cached = 0,
-};
-
-static struct platform_device android_pmem_kernel_ebi1_device = {
-	.name = "android_pmem",
-	.id = 1,
-	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
-};
-#endif
-
-#ifdef CONFIG_KERNEL_PMEM_SMI_REGION
-static struct android_pmem_platform_data android_pmem_kernel_smi_pdata = {
-	.name = PMEM_KERNEL_SMI_DATA_NAME,
-	/* defaults to bitmap don't edit */
-	.cached = 0,
-};
-
-static struct platform_device android_pmem_kernel_smi_device = {
-	.name = "android_pmem",
-	.id = 6,
-	.dev = { .platform_data = &android_pmem_kernel_smi_pdata },
-};
-#endif
-
 #ifdef CONFIG_ANDROID_PMEM
 static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
 	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
 	.cached = 1,
+	.memory_type = MEMTYPE_EBI1,
 };
 
 static struct platform_device android_pmem_device = {
@@ -2657,6 +2626,7 @@ static struct android_pmem_platform_data android_pmem_adsp_pdata = {
 	.name = "pmem_adsp",
 	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
 	.cached = 0,
+	.memory_type = MEMTYPE_EBI1,
 };
 
 static struct platform_device android_pmem_adsp_device = {
@@ -2669,6 +2639,7 @@ static struct android_pmem_platform_data android_pmem_audio_pdata = {
 	.name = "pmem_audio",
 	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
 	.cached = 0,
+	.memory_type = MEMTYPE_EBI1,
 };
 
 static struct platform_device android_pmem_audio_device = {
@@ -2681,6 +2652,7 @@ static struct android_pmem_platform_data android_pmem_smipool_pdata = {
 	.name = "pmem_smipool",
 	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
 	.cached = 0,
+	.memory_type = MEMTYPE_SMI,
 };
 static struct platform_device android_pmem_smipool_device = {
 	.name = "android_pmem",
@@ -2863,65 +2835,6 @@ static void __init msm8x60_allocate_memory_regions(void)
 	pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
 		size, addr, __pa(addr));
 
-#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
-	size = pmem_kernel_ebi1_size;
-	if (size) {
-		addr = alloc_bootmem_align(size, 0x100000);
-		android_pmem_kernel_ebi1_pdata.start = __pa(addr);
-		android_pmem_kernel_ebi1_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for kernel"
-			" ebi1 pmem arena\n", size, addr, __pa(addr));
-	}
-#endif
-
-#ifdef CONFIG_KERNEL_PMEM_SMI_REGION
-	size = PMEM_KERNEL_SMI_SIZE;
-	if (size) {
-		android_pmem_kernel_smi_pdata.start = PMEM_KERNEL_SMI_BASE;
-		android_pmem_kernel_smi_pdata.size = size;
-		pr_info("allocating %lu bytes at %lx physical for kernel"
-			" smi pmem arena\n", size,
-			(unsigned long) PMEM_KERNEL_SMI_BASE);
-	}
-#endif
-
-#ifdef CONFIG_ANDROID_PMEM
-	size = pmem_adsp_size;
-	if (size) {
-		addr = alloc_bootmem(size);
-		android_pmem_adsp_pdata.start = __pa(addr);
-		android_pmem_adsp_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for adsp "
-			"pmem arena\n", size, addr, __pa(addr));
-	}
-
-	size = MSM_PMEM_SMIPOOL_SIZE;
-	if (size) {
-		android_pmem_smipool_pdata.start = MSM_PMEM_SMIPOOL_BASE;
-		android_pmem_smipool_pdata.size = size;
-		pr_info("allocating %lu bytes at %lx physical for user"
-			" smi  pmem arena\n", size,
-			(unsigned long) MSM_PMEM_SMIPOOL_BASE);
-	}
-
-	size = MSM_PMEM_AUDIO_SIZE;
-	if (size) {
-		addr = alloc_bootmem(size);
-		android_pmem_audio_pdata.start = __pa(addr);
-		android_pmem_audio_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for audio "
-			"pmem arena\n", size, addr, __pa(addr));
-	}
-
-	size = pmem_sf_size;
-	if (size) {
-		addr = alloc_bootmem(size);
-		android_pmem_pdata.start = __pa(addr);
-		android_pmem_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for sf "
-			"pmem arena\n", size, addr, __pa(addr));
-	}
-#endif
 }
 
 #if defined(CONFIG_TOUCHSCREEN_CYTTSP_I2C) || \
@@ -3734,12 +3647,6 @@ static struct platform_device *rumi_sim_devices[] __initdata = {
 	&msm_device_ssbi1,
 	&msm_device_ssbi2,
 	&msm_device_ssbi3,
-#endif
-#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
-	&android_pmem_kernel_ebi1_device,
-#endif
-#ifdef CONFIG_KERNEL_PMEM_SMI_REGION
-	&android_pmem_kernel_smi_device,
 #endif
 #ifdef CONFIG_ANDROID_PMEM
 	&android_pmem_device,
@@ -4608,12 +4515,6 @@ static struct platform_device *surf_devices[] __initdata = {
 #ifdef CONFIG_BATTERY_MSM
 	&msm_batt_device,
 #endif
-#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
-	&android_pmem_kernel_ebi1_device,
-#endif
-#ifdef CONFIG_KERNEL_PMEM_SMI_REGION
-	&android_pmem_kernel_smi_device,
-#endif
 #ifdef CONFIG_ANDROID_PMEM
 	&android_pmem_device,
 	&android_pmem_adsp_device,
@@ -4757,6 +4658,86 @@ static struct platform_device *surf_devices[] __initdata = {
 	&msm_tsens_device,
 
 };
+
+static struct memtype_reserve msm8x60_reserve_table[] __initdata = {
+	/* Kernel SMI memory pool for video core, used for firmware */
+	/* and encoder, decoder scratch buffers */
+	/* Kernel SMI memory pool should always precede the user space */
+	/* SMI memory pool, as the video core will use offset address */
+	/* from the Firmware base */
+	[MEMTYPE_SMI_KERNEL] = {
+		.start	=	KERNEL_SMI_BASE,
+		.limit	=	KERNEL_SMI_SIZE,
+		.size	=	KERNEL_SMI_SIZE,
+		.flags	=	MEMTYPE_FLAGS_FIXED,
+	},
+	/* User space SMI memory pool for video core */
+	/* used for encoder, decoder input & output buffers  */
+	[MEMTYPE_SMI] = {
+		.start	=	USER_SMI_BASE,
+		.limit	=	USER_SMI_SIZE,
+		.flags	=	MEMTYPE_FLAGS_FIXED,
+	},
+	[MEMTYPE_EBI0] = {
+		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
+	},
+	[MEMTYPE_EBI1] = {
+		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
+	},
+};
+
+static void __init size_pmem_devices(void)
+{
+#ifdef CONFIG_ANDROID_PMEM
+	android_pmem_adsp_pdata.size = pmem_adsp_size;
+	android_pmem_smipool_pdata.size = MSM_PMEM_SMIPOOL_SIZE;
+	android_pmem_audio_pdata.size = MSM_PMEM_AUDIO_SIZE;
+	android_pmem_pdata.size = pmem_sf_size;
+#endif
+}
+
+static void __init reserve_memory_for(struct android_pmem_platform_data *p)
+{
+	msm8x60_reserve_table[p->memory_type].size += p->size;
+}
+
+static void __init reserve_pmem_memory(void)
+{
+#ifdef CONFIG_ANDROID_PMEM
+	reserve_memory_for(&android_pmem_adsp_pdata);
+	reserve_memory_for(&android_pmem_smipool_pdata);
+	reserve_memory_for(&android_pmem_audio_pdata);
+	reserve_memory_for(&android_pmem_pdata);
+	msm8x60_reserve_table[MEMTYPE_EBI1].size += pmem_kernel_ebi1_size;
+#endif
+}
+
+static void __init msm8x60_calculate_reserve_sizes(void)
+{
+	size_pmem_devices();
+	reserve_pmem_memory();
+}
+
+static int msm8x60_paddr_to_memtype(unsigned int paddr)
+{
+	if (paddr >= 0x40000000 && paddr < 0x60000000)
+		return MEMTYPE_EBI1;
+	if (paddr >= 0x38000000 && paddr < 0x40000000)
+		return MEMTYPE_SMI;
+	return MEMTYPE_NONE;
+}
+
+static struct reserve_info msm8x60_reserve_info __initdata = {
+	.memtype_reserve_table = msm8x60_reserve_table,
+	.calculate_reserve_sizes = msm8x60_calculate_reserve_sizes,
+	.paddr_to_memtype = msm8x60_paddr_to_memtype,
+};
+
+static void __init msm8x60_reserve(void)
+{
+	reserve_info = &msm8x60_reserve_info;
+	msm_reserve();
+}
 
 #define EXT_CHG_VALID_MPP 10
 #define EXT_CHG_VALID_MPP_2 11
@@ -9624,6 +9605,7 @@ static void __init msm8x60_charm_init_early(void)
 
 MACHINE_START(MSM8X60_RUMI3, "QCT MSM8X60 RUMI3")
 	.map_io = msm8x60_map_io,
+	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
 	.init_machine = msm8x60_rumi3_init,
 	.timer = &msm_timer,
@@ -9632,6 +9614,7 @@ MACHINE_END
 
 MACHINE_START(MSM8X60_SIM, "QCT MSM8X60 SIMULATOR")
 	.map_io = msm8x60_map_io,
+	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
 	.init_machine = msm8x60_sim_init,
 	.timer = &msm_timer,
@@ -9640,6 +9623,7 @@ MACHINE_END
 
 MACHINE_START(MSM8X60_SURF, "QCT MSM8X60 SURF")
 	.map_io = msm8x60_map_io,
+	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
 	.init_machine = msm8x60_surf_init,
 	.timer = &msm_timer,
@@ -9648,6 +9632,7 @@ MACHINE_END
 
 MACHINE_START(MSM8X60_FFA, "QCT MSM8X60 FFA")
 	.map_io = msm8x60_map_io,
+	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
 	.init_machine = msm8x60_ffa_init,
 	.timer = &msm_timer,
@@ -9656,6 +9641,7 @@ MACHINE_END
 
 MACHINE_START(MSM8X60_FLUID, "QCT MSM8X60 FLUID")
 	.map_io = msm8x60_map_io,
+	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
 	.init_machine = msm8x60_fluid_init,
 	.timer = &msm_timer,
@@ -9664,6 +9650,7 @@ MACHINE_END
 
 MACHINE_START(MSM8X60_FUSION, "QCT MSM8X60 FUSION SURF")
 	.map_io = msm8x60_map_io,
+	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
 	.init_machine = msm8x60_charm_surf_init,
 	.timer = &msm_timer,
@@ -9672,6 +9659,7 @@ MACHINE_END
 
 MACHINE_START(MSM8X60_FUSN_FFA, "QCT MSM8X60 FUSION FFA")
 	.map_io = msm8x60_map_io,
+	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
 	.init_machine = msm8x60_charm_ffa_init,
 	.timer = &msm_timer,
