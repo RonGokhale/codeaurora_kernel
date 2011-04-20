@@ -361,6 +361,12 @@ static struct spi_board_info spi_board_info[] __initdata = {
 	},
 };
 
+#ifdef CONFIG_MSM_FAKE_BATTERY
+static struct platform_device fish_battery_device = {
+	.name = "fish_battery",
+};
+#endif
+
 static struct platform_device *sim_devices[] __initdata = {
 	&msm_device_dmov,
 	&msm_device_smd,
@@ -380,6 +386,9 @@ static struct platform_device *sim_devices[] __initdata = {
 	&msm_rotator_device,
 #endif
 	&msm_device_sps,
+#ifdef CONFIG_MSM_FAKE_BATTERY
+	&fish_battery_device,
+#endif
 };
 
 static struct platform_device *rumi3_devices[] __initdata = {
@@ -399,6 +408,9 @@ static struct platform_device *rumi3_devices[] __initdata = {
 	&msm_rotator_device,
 #endif
 	&msm_device_sps,
+#ifdef CONFIG_MSM_FAKE_BATTERY
+	&fish_battery_device,
+#endif
 };
 
 static void __init msm8960_i2c_init(void)
