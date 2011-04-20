@@ -2,14 +2,14 @@
  * imx-ssi.c  --  ALSA Soc Audio Layer
  *
  * Copyright 2009 Sascha Hauer <s.hauer@pengutronix.de>
+ * Copyright (c) 2011, Code Aurora Forum. All rights reserved.
  *
  * This code is based on code copyrighted by Freescale,
  * Liam Girdwood, Javier Martin and probably others.
  *
  *  This program is free software; you can redistribute  it and/or modify it
  *  under  the terms of  the GNU General  Public License as published by the
- *  Free Software Foundation;  either version 2 of the  License, or (at your
- *  option) any later version.
+ *  Free Software Foundation;  only version 2 of the  License.
  *
  *
  * The i.MX SSI core has some nasty limitations in AC97 mode. While most
@@ -776,5 +776,5 @@ module_exit(imx_ssi_exit);
 /* Module information */
 MODULE_AUTHOR("Sascha Hauer, <s.hauer@pengutronix.de>");
 MODULE_DESCRIPTION("i.MX I2S/ac97 SoC Interface");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
 

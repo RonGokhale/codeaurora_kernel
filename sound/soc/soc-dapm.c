@@ -2,12 +2,13 @@
  * soc-dapm.c  --  ALSA SoC Dynamic Audio Power Management
  *
  * Copyright 2005 Wolfson Microelectronics PLC.
+ * Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+ *
  * Author: Liam Girdwood <lrg@slimlogic.co.uk>
  *
  *  This program is free software; you can redistribute  it and/or modify it
  *  under  the terms of  the GNU General  Public License as published by the
- *  Free Software Foundation;  either version 2 of the  License, or (at your
- *  option) any later version.
+ *  Free Software Foundation;  only version 2 of the  License.
  *
  *  Features:
  *    o Changes power status of internal codec blocks depending on the
@@ -2425,4 +2426,4 @@ void snd_soc_dapm_shutdown(struct snd_soc_card *card)
 /* Module information */
 MODULE_AUTHOR("Liam Girdwood, lrg@slimlogic.co.uk");
 MODULE_DESCRIPTION("Dynamic Audio Power Management core for ALSA SoC");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
