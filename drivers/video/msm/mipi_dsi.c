@@ -37,7 +37,6 @@
 #include "mdp4.h"
 
 u32 dsi_irq;
-static void  __iomem *periph_base;
 int mipi_dsi_clk_on;
 static struct dsi_clk_desc dsicore_clk;
 static struct dsi_clk_desc dsi_pclk;
@@ -50,12 +49,24 @@ static int mipi_dsi_on(struct platform_device *pdev);
 
 static struct clk *dsi_byte_div_clk;
 static struct clk *dsi_esc_clk;
+#ifndef CONFIG_FB_MSM_MDP303
 static struct clk *dsi_m_pclk;
 static struct clk *dsi_s_pclk;
+
 static struct clk *amp_pclk;
 
 static char *mmss_cc_base;	/* mutimedia sub system clock control */
 static char *mmss_sfpb_base;	/* mutimedia sub system sfpb */
+
+static void  __iomem *periph_base;
+#else
+static struct clk *dsi_pixel_clk;
+static struct clk *dsi_clk;
+static struct clk *dsi_ref_clk;
+static struct clk *mdp_dsi_pclk;
+static struct clk *ahb_m_clk;
+static struct clk *ahb_s_clk;
+#endif
 
 static struct platform_device *pdev_list[MSM_FB_MAX_DEV_LIST];
 static int pdev_list_cnt;
@@ -76,6 +87,7 @@ struct device dsi_dev;
 
 static void mipi_dsi_clk(struct dsi_clk_desc *clk, int clk_en)
 {
+#ifndef CONFIG_FB_MSM_MDP303
 	char	*cc, *ns, *md;
 	int	pmxo_sel = 0;
 	char	mnd_en = 1, root_en = 1;
@@ -115,8 +127,20 @@ static void mipi_dsi_clk(struct dsi_clk_desc *clk, int clk_en)
 		MIPI_OUTP_SECURE(cc, 0);
 
 	wmb();
+#else
+	uint32 data;
+	if (clk_en) {
+		data = (clk->pre_div_func) << 24 |
+			(clk->m) << 16 | (clk->n) << 8 |
+			((clk->d) * 2);
+		clk_set_rate(dsi_clk, data);
+		clk_enable(dsi_clk);
+	} else
+		clk_disable(dsi_clk);
+#endif
 }
 
+#ifndef CONFIG_FB_MSM_MDP303
 static void mipi_dsi_sfpb_cfg(void)
 {
 	char *sfpb;
@@ -129,10 +153,11 @@ static void mipi_dsi_sfpb_cfg(void)
 	MIPI_OUTP(sfpb, data);
 	wmb();
 }
-
+#endif
 
 static void mipi_dsi_pclk(struct dsi_clk_desc *clk, int clk_en)
 {
+#ifndef CONFIG_FB_MSM_MDP303
 	char	*cc, *ns, *md;
 	char	mnd_en = 1, root_en = 1;
 	uint32	data, val;
@@ -169,8 +194,23 @@ static void mipi_dsi_pclk(struct dsi_clk_desc *clk, int clk_en)
 		MIPI_OUTP_SECURE(cc, 0);
 
 	wmb();
+#else
+	uint32 data;
+
+	if (clk_en) {
+		data = (clk->pre_div_func) << 24 | (clk->m) << 16
+			| (clk->n) << 8 | ((clk->d) * 2);
+		if ((clk_set_rate(dsi_pixel_clk, data)) < 0)
+			pr_err("%s: pixel clk set rate failed\n", __func__);
+		if (clk_enable(dsi_pixel_clk))
+			pr_err("%s clk enable failed\n", __func__);
+	} else {
+		clk_disable(dsi_pixel_clk);
+	}
+#endif
 }
 
+#ifndef CONFIG_FB_MSM_MDP303
 static void mipi_dsi_ahb_en(void)
 {
 	char	*ahb;
@@ -180,13 +220,14 @@ static void mipi_dsi_ahb_en(void)
 	pr_debug("%s: ahb=%x %x\n",
 		__func__, (int) ahb, MIPI_INP_SECURE(ahb));
 }
+#endif
 
 static void mipi_dsi_calibration(void)
 {
+#ifndef CONFIG_FB_MSM_MDP303
 	uint32 data;
 
 	MIPI_OUTP(MIPI_DSI_BASE + 0xf4, 0x0000ff11); /* cal_ctrl */
-	MIPI_OUTP(MIPI_DSI_BASE + 0xf8, 0x00a105a1); /* cal_hw_ctrl */
 	MIPI_OUTP(MIPI_DSI_BASE + 0xf0, 0x01); /* cal_hw_trigger */
 
 	while (1) {
@@ -196,6 +237,8 @@ static void mipi_dsi_calibration(void)
 
 		udelay(10);
 	}
+#endif
+	MIPI_OUTP(MIPI_DSI_BASE + 0xf8, 0x00a105a1); /* cal_hw_ctrl */
 }
 
 struct dsiphy_pll_divider_config {
@@ -219,7 +262,11 @@ struct dsi_clk_mnd_table {
 	uint8 pclk_d;
 };
 
+#ifndef CONFIG_FB_MSM_MDP303
 #define PREF_DIV_RATIO 27
+#else
+#define PREF_DIV_RATIO 19
+#endif
 static struct dsiphy_pll_divider_config pll_divider_config;
 
 static const struct dsi_clk_mnd_table mnd_table[] = {
@@ -350,7 +397,17 @@ int mipi_dsi_clk_div_config(uint8 bpp, uint8 lanes,
 					((pll_divider_config.dsi_clk_divider)
 					* (mnd_entry->pclk_n)));
 	}
+#ifdef CONFIG_FB_MSM_MDP303
+	dsicore_clk.m = 1;
+	dsicore_clk.n = 1;
+	dsicore_clk.d = 2;
+	dsicore_clk.pre_div_func = 0;
 
+	dsi_pclk.m = 1;
+	dsi_pclk.n = 3;
+	dsi_pclk.d = 2;
+	dsi_pclk.pre_div_func = 0;
+#endif
 	return 0;
 }
 
@@ -407,8 +464,12 @@ void mipi_dsi_phy_init(int panel_ndx, struct msm_panel_info const *panel_info)
 		off += 4;
 	}
 
+#ifndef CONFIG_FB_MSM_MDP303
 	if (panel_info)
 		mipi_dsi_phy_pll_config(panel_info->clk_rate);
+#else
+	MIPI_OUTP(MIPI_DSI_BASE + 0x100, 0x67);
+#endif
 
 	/* pll ctrl 0 */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x200, pd->pll[0]);
@@ -418,6 +479,9 @@ void mipi_dsi_phy_init(int panel_ndx, struct msm_panel_info const *panel_info)
 
 void mipi_dsi_clk_enable(void)
 {
+#ifdef CONFIG_FB_MSM_MDP303
+	unsigned data = 0;
+#endif
 
 	if (mipi_dsi_clk_on) {
 		pr_err("%s: mipi_dsi_clk already ON\n", __func__);
@@ -426,15 +490,25 @@ void mipi_dsi_clk_enable(void)
 
 	mipi_dsi_clk_on = 1;
 
+#ifndef CONFIG_FB_MSM_MDP303
 	clk_enable(amp_pclk); /* clock for AHB-master to AXI */
 	clk_enable(dsi_m_pclk);
 	clk_enable(dsi_s_pclk);
+#else
+	clk_set_rate(dsi_byte_div_clk, data);
+	clk_set_rate(dsi_esc_clk, data);
+	clk_enable(mdp_dsi_pclk);
+	clk_enable(ahb_m_clk);
+	clk_enable(ahb_s_clk);
+#endif
 	clk_enable(dsi_byte_div_clk);
 	clk_enable(dsi_esc_clk);
 	mipi_dsi_pclk(&dsi_pclk, 1);
 	mipi_dsi_clk(&dsicore_clk, 1);
+#ifndef CONFIG_FB_MSM_MDP303
 	mipi_dsi_ahb_en();
 	mipi_dsi_sfpb_cfg();
+#endif
 }
 
 void mipi_dsi_clk_disable(void)
@@ -452,9 +526,15 @@ void mipi_dsi_clk_disable(void)
 	mipi_dsi_clk(&dsicore_clk, 0);
 	clk_disable(dsi_esc_clk);
 	clk_disable(dsi_byte_div_clk);
+#ifndef CONFIG_FB_MSM_MDP303
 	clk_disable(dsi_m_pclk);
 	clk_disable(dsi_s_pclk);
 	clk_disable(amp_pclk); /* clock for AHB-master to AXI */
+#else
+	clk_disable(mdp_dsi_pclk);
+	clk_disable(ahb_m_clk);
+	clk_disable(ahb_s_clk);
+#endif
 }
 
 static int mipi_dsi_off(struct platform_device *pdev)
@@ -466,7 +546,9 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	mfd = platform_get_drvdata(pdev);
 	pinfo = &mfd->panel_info;
 
+#ifndef CONFIG_FB_MSM_MDP303
 	mdp4_overlay_dsi_state_set(ST_DSI_SUSPEND);
+#endif
 
 	/* change to DSI_CMD_MODE since it needed to
 	 * tx DCS dsiplay off comamnd to panel
@@ -484,11 +566,17 @@ static int mipi_dsi_off(struct platform_device *pdev)
 
 	ret = panel_next_off(pdev);
 
+#ifndef CONFIG_FB_MSM_MDP303
 	mutex_lock(&mfd->dma->ov_mutex);
 
 	/* make sure mdp dma is not running */
 	if (mfd->panel_info.type == MIPI_CMD_PANEL)
 		mdp4_dsi_cmd_dma_busy_wait(mfd);
+#else
+	down(&mfd->dma->mutex);
+	/* make sure mdp dma is not running */
+	mdp3_dsi_cmd_dma_busy_wait(mfd);
+#endif
 
 
 #ifdef CONFIG_MSM_BUS_SCALING
@@ -529,7 +617,11 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	if (mipi_dsi_pdata && mipi_dsi_pdata->dsi_power_save)
 		mipi_dsi_pdata->dsi_power_save(0);
 
+#ifndef CONFIG_FB_MSM_MDP303
 	mutex_unlock(&mfd->dma->ov_mutex);
+#else
+	up(&mfd->dma->mutex);
+#endif
 
 	pr_debug("%s:\n", __func__);
 
@@ -538,7 +630,6 @@ static int mipi_dsi_off(struct platform_device *pdev)
 
 static int mipi_dsi_on(struct platform_device *pdev)
 {
-	void __iomem *cc = MIPI_DSI_BASE + 0x0130;
 	int ret = 0;
 	u32 clk_rate;
 	struct msm_fb_data_type *mfd;
@@ -548,13 +639,18 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	struct mipi_panel_info *mipi;
 	u32 hbp, hfp, vbp, vfp, hspw, vspw, width, height;
 	u32 ystride, bpp, data;
+#ifndef CONFIG_FB_MSM_MDP303
+	void __iomem *cc = MIPI_DSI_BASE + 0x0130;
+#endif
 
 	mfd = platform_get_drvdata(pdev);
 	fbi = mfd->fbi;
 	var = &fbi->var;
 	pinfo = &mfd->panel_info;
 
+#ifndef CONFIG_FB_MSM_MDP303
 	mdp4_overlay_dsi_state_set(ST_DSI_RESUME);
+#endif
 
 	if (mipi_dsi_pdata && mipi_dsi_pdata->dsi_power_save)
 		mipi_dsi_pdata->dsi_power_save(1);
@@ -562,8 +658,10 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	clk_rate = mfd->fbi->var.pixclock;
 	clk_rate = min(clk_rate, mfd->panel_info.clk_max);
 
+#ifndef CONFIG_FB_MSM_MDP303
 	if (clk_set_rate(dsi_byte_div_clk, 1) < 0)	/* divided by 1 */
 		pr_err("%s: clk_set_rate failed\n",	__func__);
+#endif
 
 	local_bh_disable();
 	mipi_dsi_clk_enable();
@@ -580,7 +678,6 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 	/* DSIPHY_PLL_CTRL_5 */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x0214, 0x050);
-
 	/* DSIPHY_TPA_CTRL_0 */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x0254, 0x020);
 
@@ -594,6 +691,7 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 	mipi  = &mfd->panel_info.mipi;
 	if (mfd->panel_info.type == MIPI_VIDEO_PANEL) {
+#ifndef CONFIG_FB_MSM_MDP303
 		MIPI_OUTP(MIPI_DSI_BASE + 0x20,
 			((hspw + hbp + width) << 16 | (hspw + hbp)));
 		MIPI_OUTP(MIPI_DSI_BASE + 0x24,
@@ -601,6 +699,18 @@ static int mipi_dsi_on(struct platform_device *pdev)
 		MIPI_OUTP(MIPI_DSI_BASE + 0x28,
 			(vspw + vbp + height + vfp - 1) << 16 |
 				(hspw + hbp + width + hfp - 1));
+#else
+	/* DSI_LAN_SWAP_CTRL */
+		MIPI_OUTP(MIPI_DSI_BASE + 0x00ac, mipi->dlane_swap);
+
+		MIPI_OUTP(MIPI_DSI_BASE + 0x20,
+			((hbp + width) << 16 | (hbp)));
+		MIPI_OUTP(MIPI_DSI_BASE + 0x24,
+			((vbp + height) << 16 | (vbp)));
+		MIPI_OUTP(MIPI_DSI_BASE + 0x28,
+			(vbp + height + vfp) << 16 |
+				(hbp + width + hfp));
+#endif
 		MIPI_OUTP(MIPI_DSI_BASE + 0x2c, (hspw << 16));
 		MIPI_OUTP(MIPI_DSI_BASE + 0x30, 0);
 		MIPI_OUTP(MIPI_DSI_BASE + 0x34, (vspw << 16));
@@ -629,6 +739,8 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	}
 
 	mipi_dsi_host_init(mipi);
+
+#ifndef CONFIG_FB_MSM_MDP303
 
 	/* PHY registers programemd thru S2P interface */
 	if (periph_base) {
@@ -695,6 +807,7 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	MIPI_OUTP(cc, 0x80730000);
 	MIPI_OUTP(cc, 0x80530000);
 	MIPI_OUTP(cc, 0x00000000);
+#endif
 
 	mipi_dsi_cmd_bta_sw_trigger(); /* clean up ack_err_status */
 
@@ -750,6 +863,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 		if (!mipi_dsi_base)
 			return -ENOMEM;
 
+#ifndef CONFIG_FB_MSM_MDP303
 		mmss_cc_base = ioremap(MMSS_CC_BASE_PHY, 0x200);
 		MSM_FB_INFO("msm_mmss_cc base = 0x%x\n",
 				(int) mmss_cc_base);
@@ -763,6 +877,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 		if (!mmss_sfpb_base)
 			return -ENOMEM;
+#endif
 
 		dsi_irq = platform_get_irq(pdev, 0);
 		if (dsi_irq < 0) {
@@ -778,6 +893,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 		}
 
 		disable_irq(dsi_irq);
+#ifndef CONFIG_FB_MSM_MDP303
 
 		/*
 		 * 0x4f00000 is the base for TV Encoder.
@@ -795,12 +911,23 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 			free_irq(dsi_irq, 0);
 			return -ENOMEM;
 		}
+#endif
 
 		mipi_dsi_calibration();
 
 		if (mipi_dsi_pdata) {
 			vsync_gpio = mipi_dsi_pdata->vsync_gpio;
 			pr_debug("%s: vsync_gpio=%d\n", __func__, vsync_gpio);
+#ifdef CONFIG_FB_MSM_MDP303
+			if (mipi_dsi_pdata->dsi_client_reset) {
+				if (mipi_dsi_pdata->dsi_client_reset())
+					pr_err("%s: DSI Client Reset failed!\n",
+						__func__);
+				else
+					pr_debug("%s: DSI Client Reset success\n",
+						__func__);
+			}
+#endif
 		}
 
 		mipi_dsi_resource_initialized = 1;
@@ -902,6 +1029,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 	else
 		bpp = 3;		/* Default format set to RGB888 */
 
+#ifndef CONFIG_FB_MSM_MDP303
 	if (mfd->panel_info.type == MIPI_VIDEO_PANEL) {
 		if (lanes > 0) {
 			pll_divider_config.clk_rate =
@@ -914,6 +1042,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 					 * (mipi->frame_rate) * bpp * 8);
 		}
 	} else
+#endif
 		pll_divider_config.clk_rate = mfd->panel_info.clk_rate;
 
 	rc = mipi_dsi_clk_div_config(bpp, lanes, &dsi_pclk_rate);
@@ -945,6 +1074,10 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 	pdev_list[pdev_list_cnt++] = pdev;
 
+#ifdef CONFIG_FB_MSM_MDP303
+	if (clk_enable(dsi_ref_clk))
+		pr_err("%s: dsi_ref_clk clk enable fail\n", __func__);
+#endif
 	return 0;
 
 mipi_dsi_probe_err:
@@ -957,7 +1090,7 @@ static int mipi_dsi_remove(struct platform_device *pdev)
 	struct msm_fb_data_type *mfd;
 
 	mfd = platform_get_drvdata(pdev);
-	iounmap(msm_pmdh_base);
+	iounmap(mipi_dsi_base);
 	return 0;
 }
 
@@ -970,6 +1103,7 @@ static int __init mipi_dsi_driver_init(void)
 {
 	int ret;
 
+#ifndef CONFIG_FB_MSM_MDP303
 	amp_pclk = clk_get(NULL, "amp_pclk");
 	if (IS_ERR(amp_pclk)) {
 		pr_err("can't find amp_pclk\n");
@@ -987,8 +1121,8 @@ static int __init mipi_dsi_driver_init(void)
 		pr_err("can't find dsi_s_pclk\n");
 		return PTR_ERR(dsi_s_pclk);
 	}
-
-	dsi_byte_div_clk = clk_get(NULL, "dsi_byte_div_clk");
+#endif
+	dsi_byte_div_clk = clk_get(NULL, "dsi_byte_clk");
 	if (IS_ERR(dsi_byte_div_clk)) {
 		pr_err("can't find dsi_byte_div_clk\n");
 		return PTR_ERR(dsi_byte_div_clk);
@@ -997,10 +1131,47 @@ static int __init mipi_dsi_driver_init(void)
 
 	dsi_esc_clk = clk_get(NULL, "dsi_esc_clk");
 	if (IS_ERR(dsi_esc_clk)) {
-		pr_err("can't find dsi_byte_div_clk\n");
-		return PTR_ERR(dsi_byte_div_clk);
+		printk(KERN_ERR "can't find dsi_esc_clk\n");
+		return PTR_ERR(dsi_esc_clk);
 	}
 
+#ifdef CONFIG_FB_MSM_MDP303
+	dsi_pixel_clk = clk_get(NULL, "dsi_pixel_clk");
+	if (IS_ERR(dsi_pixel_clk)) {
+		pr_err("can't find dsi_pixel_clk\n");
+		return PTR_ERR(dsi_pixel_clk);
+	}
+
+	dsi_clk = clk_get(NULL, "dsi_clk");
+	if (IS_ERR(dsi_clk)) {
+		pr_err("can't find dsi_clk\n");
+		return PTR_ERR(dsi_clk);
+	}
+
+	dsi_ref_clk = clk_get(NULL, "dsi_ref_clk");
+	if (IS_ERR(dsi_ref_clk)) {
+		pr_err("can't find dsi_ref_clk\n");
+		return PTR_ERR(dsi_ref_clk);
+	}
+
+	mdp_dsi_pclk = clk_get(NULL, "mdp_dsi_pclk");
+	if (IS_ERR(mdp_dsi_pclk)) {
+		pr_err("can't find mdp_dsi_pclk\n");
+		return PTR_ERR(mdp_dsi_pclk);
+	}
+
+	ahb_m_clk = clk_get(NULL, "ahb_m_clk");
+	if (IS_ERR(ahb_m_clk)) {
+		pr_err("can't find ahb_m_clk\n");
+		return PTR_ERR(ahb_m_clk);
+	}
+
+	ahb_s_clk = clk_get(NULL, "ahb_s_clk");
+	if (IS_ERR(ahb_s_clk)) {
+		pr_err("can't find ahb_s_clk\n");
+		return PTR_ERR(ahb_s_clk);
+	}
+#endif
 	mipi_dsi_init();
 
 	ret = mipi_dsi_register_driver();
@@ -1008,12 +1179,23 @@ static int __init mipi_dsi_driver_init(void)
 	device_initialize(&dsi_dev);
 
 	if (ret) {
+#ifndef CONFIG_FB_MSM_MDP303
 		clk_disable(amp_pclk);
 		clk_put(amp_pclk);
 		clk_disable(dsi_m_pclk);
 		clk_put(dsi_m_pclk);
 		clk_disable(dsi_s_pclk);
 		clk_put(dsi_s_pclk);
+#else
+		clk_disable(mdp_dsi_pclk);
+		clk_put(mdp_dsi_pclk);
+		clk_disable(ahb_m_clk);
+		clk_put(ahb_m_clk);
+		clk_disable(ahb_s_clk);
+		clk_put(ahb_s_clk);
+		clk_disable(dsi_ref_clk);
+		clk_put(dsi_ref_clk);
+#endif
 		clk_disable(dsi_byte_div_clk);
 		clk_put(dsi_byte_div_clk);
 		clk_disable(dsi_esc_clk);
