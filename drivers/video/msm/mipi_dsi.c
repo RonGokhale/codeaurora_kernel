@@ -36,7 +36,7 @@
 #include "mdp.h"
 #include "mdp4.h"
 
-
+u32 dsi_irq;
 int mipi_dsi_clk_on;
 static struct dsi_clk_desc dsicore_clk;
 static struct dsi_clk_desc dsi_pclk;
@@ -703,14 +703,20 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 		if (!mmss_sfpb_base)
 			return -ENOMEM;
 
-		rc = request_irq(DSI_IRQ, mipi_dsi_isr, IRQF_DISABLED,
+		dsi_irq = platform_get_irq(pdev, 0);
+		if (dsi_irq < 0) {
+			pr_err("mipi_dsi: can not get mdp irq\n");
+			return -ENOMEM;
+		}
+
+		rc = request_irq(dsi_irq, mipi_dsi_isr, IRQF_DISABLED,
 						"MIPI_DSI", 0);
 		if (rc) {
 			printk(KERN_ERR "mipi_dsi_host request_irq() failed!\n");
 			return rc;
 		}
 
-		disable_irq(DSI_IRQ);
+		disable_irq(dsi_irq);
 
 		mipi_dsi_calibration();
 

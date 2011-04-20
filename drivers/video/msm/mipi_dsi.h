@@ -124,6 +124,7 @@ enum {
 
 extern struct device dsi_dev;
 extern int mipi_dsi_clk_on;
+extern u32 dsi_irq;
 
 struct dsi_clk_desc {
 	uint32 src;

@@ -1216,7 +1216,12 @@ static struct resource msm_mipi_dsi_resources[] = {
 		.start  = MIPI_DSI_HW_BASE,
 		.end    = MIPI_DSI_HW_BASE + 0x000F0000 - 1,
 		.flags  = IORESOURCE_MEM,
-	}
+	},
+	{
+		.start  = DSI_IRQ,
+		.end    = DSI_IRQ,
+		.flags  = IORESOURCE_IRQ,
+	},
 };
 
 static struct platform_device msm_mipi_dsi_device = {
