@@ -633,4 +633,5 @@ int pmic_low_current_led_set_ext_signal(enum low_current_led led,
 int pmic_low_current_led_set_current(enum low_current_led led,
 		uint16_t milliamps);
 
+int pmic_xo_core_force_enable(uint enable);
 #endif
