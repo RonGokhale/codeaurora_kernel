@@ -1128,9 +1128,6 @@ static void __init msm7x2x_init(void)
 	register_i2c_devices();
 #endif
 
-	if (machine_is_msm7x27a_surf())
-		kp_matrix_info.flags |= GPIOKPF_ACTIVE_HIGH;
-
 	platform_device_register(&kp_pdev);
 	platform_device_register(&hs_pdev);
 }
