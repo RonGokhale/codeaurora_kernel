@@ -28,7 +28,11 @@
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
 #include <mach/msm_spi.h>
+#ifdef CONFIG_USB_MSM_OTG_72K
+#include <mach/msm_hsusb.h>
+#else
 #include <linux/usb/msm_hsusb.h>
+#endif
 #include <mach/usbdiag.h>
 #include <mach/socinfo.h>
 #include <mach/usb_gadget_fserial.h>
@@ -218,12 +222,16 @@ static struct usb_mass_storage_platform_data mass_storage_pdata = {
 	.can_stall	= 1,
 };
 
+#ifdef CONFIG_USB_MSM_OTG_72K
+static struct msm_otg_platform_data msm_otg_pdata;
+#else
 static struct msm_otg_platform_data msm_otg_pdata = {
 	.mode			= USB_PERIPHERAL,
 	.otg_control		= OTG_PHY_CONTROL,
 	.phy_type		= SNPS_28NM_INTEGRATED_PHY,
 	.pclk_src_name		= "dfab_usb_hs_clk",
 };
+#endif
 
 static struct usb_diag_platform_data usb_diag_pdata = {
 	.ch_name = DIAG_LEGACY,
