@@ -1055,6 +1055,7 @@ static void __init msm_timer_init(void)
 
 void __cpuinit local_timer_setup(struct clock_event_device *evt)
 {
+	static bool first_boot = true;
 	struct msm_clock *clock = &msm_clocks[MSM_GLOBAL_TIMER];
 
 	/* Use existing clock_event for cpu 0 */
@@ -1063,10 +1064,11 @@ void __cpuinit local_timer_setup(struct clock_event_device *evt)
 
 	__raw_writel(DGT_CLK_CTL_DIV_4, MSM_TMR_BASE + DGT_CLK_CTL);
 
-	if (!local_clock_event) {
+	if (first_boot) {
 		__raw_writel(0, clock->regbase  + TIMER_ENABLE);
 		__raw_writel(0, clock->regbase + TIMER_CLEAR);
 		__raw_writel(~0, clock->regbase + TIMER_MATCH_VAL);
+		first_boot = false;
 	}
 	evt->irq = clock->irq.irq;
 	evt->name = "local_timer";
