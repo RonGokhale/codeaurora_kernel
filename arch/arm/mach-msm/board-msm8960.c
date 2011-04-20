@@ -28,7 +28,7 @@
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
 #include <mach/msm_spi.h>
-#include <mach/msm_hsusb.h>
+#include <linux/usb/msm_hsusb.h>
 #include <mach/usbdiag.h>
 #include <mach/socinfo.h>
 #include <mach/usb_gadget_fserial.h>
@@ -216,7 +216,12 @@ static struct usb_mass_storage_platform_data mass_storage_pdata = {
 	.can_stall	= 1,
 };
 
-static struct msm_otg_platform_data msm_otg_pdata;
+static struct msm_otg_platform_data msm_otg_pdata = {
+	.mode			= USB_PERIPHERAL,
+	.otg_control		= OTG_PHY_CONTROL,
+	.phy_type		= SNPS_28NM_INTEGRATED_PHY,
+	.pclk_src_name		= "dfab_usb_hs_clk",
+};
 
 static struct usb_diag_platform_data usb_diag_pdata = {
 	.ch_name = DIAG_LEGACY,
@@ -227,30 +232,21 @@ static struct usb_gadget_fserial_platform_data fserial_pdata = {
 };
 static char *usb_functions_default[] = {
 	"diag",
-	"modem",
-	"nmea",
-	"usb_mass_storage",
 };
 
 static char *usb_functions_default_adb[] = {
 	"diag",
 	"adb",
-	"modem",
-	"nmea",
-	"usb_mass_storage",
 };
 
 static char *usb_functions_all[] = {
 	"diag",
 	"adb",
-	"modem",
-	"nmea",
-	"usb_mass_storage",
 };
 
 struct android_usb_product usb_products[] = {
 	{
-		.product_id	= 0x9018,
+		.product_id	= 0x901D,
 		.num_functions	= ARRAY_SIZE(usb_functions_default_adb),
 		.functions	= usb_functions_default_adb,
 	},
@@ -263,7 +259,7 @@ struct android_usb_product usb_products[] = {
 
 static struct android_usb_platform_data android_usb_pdata = {
 	.vendor_id	= 0x05C6,
-	.product_id	= 0x9018,
+	.product_id	= 0x901D,
 	.version	= 0x0100,
 	.product_name		= "Qualcomm HSUSB Device",
 	.manufacturer_name	= "Qualcomm Incorporated",
@@ -591,6 +587,7 @@ static void __init msm8960_sim_init(void)
 	pm8921_platform_data.keypad_pdata = &keypad_data_sim;
 
 	msm_device_otg.dev.platform_data = &msm_otg_pdata;
+	msm_device_gadget_peripheral.dev.parent = &msm_device_otg.dev;
 	gpiomux_init();
 	msm8960_i2c_init();
 	platform_add_devices(sim_devices, ARRAY_SIZE(sim_devices));

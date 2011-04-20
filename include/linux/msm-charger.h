@@ -112,6 +112,8 @@ struct msm_charger_platform_data {
 	unsigned int (*get_batt_capacity_percent) (void);
 };
 
+typedef void (*notify_vbus_state) (int);
+#if defined(CONFIG_BATTERY_MSM8X60) || defined(CONFIG_BATTERY_MSM8X60_MODULE)
 void msm_battery_gauge_register(struct msm_battery_gauge *batt_gauge);
 void msm_battery_gauge_unregister(struct msm_battery_gauge *batt_gauge);
 int msm_charger_register(struct msm_hardware_charger *hw_chg);
@@ -120,7 +122,38 @@ int msm_charger_notify_event(struct msm_hardware_charger *hw_chg,
 			     enum msm_hardware_charger_event event);
 void msm_charger_vbus_draw(unsigned int mA);
 
-typedef void (*notify_vbus_state) (int);
 int msm_charger_register_vbus_sn(void (*callback)(int));
 void msm_charger_unregister_vbus_sn(void (*callback)(int));
+#else
+static inline void msm_battery_gauge_register(struct msm_battery_gauge *gauge)
+{
+}
+static inline void msm_battery_gauge_unregister(struct msm_battery_gauge *gauge)
+{
+}
+static inline int msm_charger_register(struct msm_hardware_charger *hw_chg)
+{
+	return -ENXIO;
+}
+static inline int msm_charger_unregister(struct msm_hardware_charger *hw_chg)
+{
+	return -ENXIO;
+}
+static inline int msm_charger_notify_event(struct msm_hardware_charger *hw_chg,
+			     enum msm_hardware_charger_event event)
+{
+	return -ENXIO;
+}
+static inline void msm_charger_vbus_draw(unsigned int mA)
+{
+}
+static inline int msm_charger_register_vbus_sn(void (*callback)(int))
+{
+	return -ENXIO;
+}
+static inline void msm_charger_unregister_vbus_sn(void (*callback)(int))
+{
+}
+#endif
+
 #endif /* __MSM_CHARGER_H__ */
