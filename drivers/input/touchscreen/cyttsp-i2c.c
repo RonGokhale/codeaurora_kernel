@@ -220,6 +220,7 @@ enum bl_commands {
 static const  char _key[] = KEY;
 #define KEY_LEN sizeof(_key)
 
+static int rec_cnt;
 struct fw_record {
 	u8 seed;
 	u8 cmd;
@@ -281,7 +282,8 @@ static int cyttsp_soft_reset(struct cyttsp *ts)
 	do {
 		retval = i2c_smbus_write_i2c_block_data(ts->client,
 				CY_REG_BASE, sizeof(host_reg), &host_reg);
-		msleep(50);
+		if (retval < 0)
+			msleep(20);
 	} while (tries++ < 10 && (retval < 0));
 
 	if (retval < 0) {
@@ -291,8 +293,8 @@ static int cyttsp_soft_reset(struct cyttsp *ts)
 
 	tries = 0;
 	do {
-		msleep(10);
-		cyttsp_putbl(ts, 1, true, true, true);
+		msleep(20);
+		cyttsp_putbl(ts, 1, true, true, false);
 	} while (g_bl_data.bl_status != 0x10 &&
 		g_bl_data.bl_status != 0x11 &&
 		tries++ < 100);
@@ -310,10 +312,9 @@ static void cyttsp_exit_bl_mode(struct cyttsp *ts)
 	do {
 		retval = i2c_smbus_write_i2c_block_data(ts->client,
 			CY_REG_BASE, sizeof(bl_cmd), bl_cmd);
-		msleep(20);
+		if (retval < 0)
+			msleep(20);
 	} while (tries++ < 10 && (retval < 0));
-
-	msleep(50);
 }
 
 static void cyttsp_set_sysinfo_mode(struct cyttsp *ts)
@@ -324,11 +325,11 @@ static void cyttsp_set_sysinfo_mode(struct cyttsp *ts)
 	do {
 		retval = i2c_smbus_write_i2c_block_data(ts->client,
 			CY_REG_BASE, sizeof(host_reg), &host_reg);
-		msleep(20);
+		if (retval < 0)
+			msleep(20);
 	} while (tries++ < 10 && (retval < 0));
 
 	/* wait for TTSP Device to complete switch to SysInfo mode */
-	msleep(20);
 	if (!(retval < 0)) {
 		retval = i2c_smbus_read_i2c_block_data(ts->client,
 				CY_REG_BASE,
@@ -346,7 +347,8 @@ static void cyttsp_set_opmode(struct cyttsp *ts)
 	do {
 		retval = i2c_smbus_write_i2c_block_data(ts->client,
 				CY_REG_BASE, sizeof(host_reg), &host_reg);
-		msleep(20);
+		if (retval < 0)
+			msleep(20);
 	} while (tries++ < 10 && (retval < 0));
 }
 
@@ -380,13 +382,14 @@ static int flash_block(struct cyttsp *ts, u8 *blk, int len)
 
 	for (i = 0; i < len; i++, p += 2)
 		sprintf(p, "%02x", blk[i]);
-	pr_err("%s: size %d, pos %ld payload %s\n",
+	pr_debug("%s: size %d, pos %ld payload %s\n",
 		       __func__, len, (long)0, buf);
 
 	do {
 		retval = i2c_smbus_write_i2c_block_data(ts->client,
 			CY_REG_BASE, len, blk);
-		msleep(20);
+		if (retval < 0)
+			msleep(20);
 	} while (tries++ < 20 && (retval < 0));
 
 	if (retval < 0) {
@@ -491,7 +494,6 @@ static int flash_record(struct cyttsp *ts, const struct fw_record *record)
 		memcpy(data + 1, rec, blk_len);
 		rec += blk_len;
 		rc = flash_block(ts, data, blk_len + 1);
-		msleep(30);
 		if (rc < 0)
 			return rc;
 		blk_offset += blk_len;
@@ -524,12 +526,13 @@ static int flash_data_rec(struct cyttsp *ts, u8 *buf)
 
 	tries = 0;
 	do {
-		msleep(20);
-		cyttsp_putbl(ts, 4, true, true, true);
+		if (rec_cnt%2)
+			msleep(20);
+		cyttsp_putbl(ts, 4, true, false, false);
 	} while (g_bl_data.bl_status != 0x10 &&
 		g_bl_data.bl_status != 0x11 &&
 		tries++ < 100);
-
+	rec_cnt++;
 	return rc;
 }
 
@@ -547,7 +550,7 @@ static int cyttspfw_flash_firmware(struct cyttsp *ts, const u8 *data,
 
 	do {
 		msleep(100);
-		cyttsp_putbl(ts, 4, true, true, true);
+		cyttsp_putbl(ts, 4, true, false, false);
 	} while (g_bl_data.bl_status != 0x10 &&
 		g_bl_data.bl_status != 0x11 &&
 		tries++ < 100);
@@ -558,6 +561,7 @@ static int cyttspfw_flash_firmware(struct cyttsp *ts, const u8 *data,
 		return -ENOMEM;
 	}
 
+	rec_cnt = 0;
 	/* flash data records */
 	for (i = 0, j = 0; i < data_len; i++, j++) {
 		if ((data[i] == REC_START_CHR) && j) {
@@ -566,7 +570,6 @@ static int cyttspfw_flash_firmware(struct cyttsp *ts, const u8 *data,
 			if (rc < 0)
 				return rc;
 			j = 0;
-			msleep(50);
 		}
 		buf[j] = data[i];
 	}
@@ -582,10 +585,11 @@ static int cyttspfw_flash_firmware(struct cyttsp *ts, const u8 *data,
 	kfree(buf);
 
 	/* termiate bootload */
+	tries = 0;
 	rc = flash_command(ts, &terminate_rec);
 	do {
 		msleep(100);
-		cyttsp_putbl(ts, 4, true, true, true);
+		cyttsp_putbl(ts, 4, true, false, false);
 	} while (g_bl_data.bl_status != 0x10 &&
 		g_bl_data.bl_status != 0x11 &&
 		tries++ < 100);
@@ -660,15 +664,15 @@ static void cyttspfw_flash_start(struct cyttsp *ts, const u8 *data,
 	}
 
 	/* disable interrupts before flashing */
+	if (ts->client->irq == 0)
+		del_timer(&ts->timer);
+	else
+		disable_irq(ts->client->irq);
+
 	rc = cancel_work_sync(&ts->work);
 
 	if (rc && ts->client->irq)
 		enable_irq(ts->client->irq);
-
-	if (ts->client->irq == 0)
-		del_timer(&ts->timer);
-	else
-		disable_irq_nosync(ts->client->irq);
 
 	/* enter bootloader idle mode */
 	rc = cyttsp_soft_reset(ts);
@@ -713,6 +717,7 @@ static void cyttspfw_flash_start(struct cyttsp *ts, const u8 *data,
 	cyttsp_soft_reset(ts);
 	/* exit bootloader mode */
 	cyttsp_exit_bl_mode(ts);
+	msleep(100);
 	/* set sysinfo details */
 	cyttsp_set_sysinfo_mode(ts);
 	/* enter application mode */
