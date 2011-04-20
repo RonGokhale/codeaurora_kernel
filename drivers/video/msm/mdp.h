@@ -55,6 +55,7 @@
 
 extern uint32 mdp_hw_revision;
 extern ulong mdp4_display_intf;
+extern spinlock_t mdp_spin_lock;
 
 #define MDP4_REVISION_V1		0
 #define MDP4_REVISION_V2		1
@@ -549,6 +550,11 @@ struct mdp_dma_data {
 #define DMA_IBUF_FORMAT_RGB888              0
 #define DMA_IBUF_FORMAT_xRGB8888_OR_ARGB8888  BIT(26)
 
+#ifdef CONFIG_FB_MSM_MDP303
+#define DMA_OUT_SEL_DSI_CMD                  BIT(19)
+#define DMA_OUT_SEL_DSI_VIDEO               (3 << 19)
+#endif
+
 #ifdef CONFIG_FB_MSM_MDP22
 #define DMA_OUT_SEL_MDDI BIT(14)
 #define DMA_AHBM_LCD_SEL_PRIMARY 0
@@ -679,6 +685,14 @@ void mdp_dma3_update(struct msm_fb_data_type *mfd);
 int mdp_lcdc_on(struct platform_device *pdev);
 int mdp_lcdc_off(struct platform_device *pdev);
 void mdp_lcdc_update(struct msm_fb_data_type *mfd);
+
+#ifdef CONFIG_FB_MSM_MDP303
+int mdp_dsi_video_on(struct platform_device *pdev);
+int mdp_dsi_video_off(struct platform_device *pdev);
+void mdp_dsi_video_update(struct msm_fb_data_type *mfd);
+void mdp3_dsi_cmd_dma_busy_wait(struct msm_fb_data_type *mfd);
+#endif
+
 int mdp_hw_cursor_update(struct fb_info *info, struct fb_cursor *cursor);
 int mdp_hw_cursor_sync_update(struct fb_info *info, struct fb_cursor *cursor);
 void mdp_enable_irq(uint32 term);
