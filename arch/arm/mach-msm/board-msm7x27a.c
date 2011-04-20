@@ -35,8 +35,9 @@
 #include <linux/gpio.h>
 #include <linux/android_pmem.h>
 #include <linux/bootmem.h>
-
 #include <mach/vreg.h>
+#include <linux/power_supply.h>
+#include <mach/msm_battery.h>
 #include "devices.h"
 #include "timer.h"
 #include "devices-msm7x2xa.h"
@@ -847,6 +848,31 @@ static struct platform_device android_pmem_device = {
 	.dev = { .platform_data = &android_pmem_pdata },
 };
 
+static u32 msm_calculate_batt_capacity(u32 current_voltage);
+
+static struct msm_psy_batt_pdata msm_psy_batt_data = {
+	.voltage_min_design     = 2800,
+	.voltage_max_design     = 4300,
+	.avail_chg_sources      = AC_CHG | USB_CHG ,
+	.batt_technology        = POWER_SUPPLY_TECHNOLOGY_LION,
+	.calculate_capacity     = &msm_calculate_batt_capacity,
+};
+
+static u32 msm_calculate_batt_capacity(u32 current_voltage)
+{
+	u32 low_voltage	 = msm_psy_batt_data.voltage_min_design;
+	u32 high_voltage = msm_psy_batt_data.voltage_max_design;
+
+	return (current_voltage - low_voltage) * 100
+			/ (high_voltage - low_voltage);
+}
+
+static struct platform_device msm_batt_device = {
+	.name               = "msm-battery",
+	.id                 = -1,
+	.dev.platform_data  = &msm_psy_batt_data,
+};
+
 static struct platform_device *rumi_sim_devices[] __initdata = {
 	&msm_device_dmov,
 	&msm_device_smd,
@@ -881,6 +907,7 @@ static struct platform_device *surf_ffa_devices[] __initdata = {
 	&msm_device_adspdec,
 	&msm_fb_device,
 	&lcdc_toshiba_panel_device,
+	&msm_batt_device,
 };
 
 static unsigned pmem_kernel_ebi1_size = PMEM_KERNEL_EBI1_SIZE;
@@ -1100,9 +1127,6 @@ static void __init msm7x2x_init(void)
 #if defined(CONFIG_I2C) && defined(CONFIG_GPIO_SX150X)
 	register_i2c_devices();
 #endif
-
-	if (machine_is_msm7x27a_surf())
-		kp_matrix_info.flags |= GPIOKPF_ACTIVE_HIGH;
 
 	platform_device_register(&kp_pdev);
 	platform_device_register(&hs_pdev);

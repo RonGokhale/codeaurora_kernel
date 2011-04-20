@@ -113,10 +113,13 @@ static int lcdc_on(struct platform_device *pdev)
 		pm_qos_rate = 65000;
 #endif
 
+#ifndef CONFIG_FB_MSM_MDP303
 	if (mfd->ebi1_clk) {
 		clk_set_rate(mfd->ebi1_clk, pm_qos_rate * 1000);
 		clk_enable(mfd->ebi1_clk);
 	}
+#endif
+
 #endif
 	mfd = platform_get_drvdata(pdev);
 
