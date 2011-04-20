@@ -28,7 +28,11 @@
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
 #include <mach/msm_spi.h>
+#ifdef CONFIG_USB_MSM_OTG_72K
+#include <mach/msm_hsusb.h>
+#else
 #include <linux/usb/msm_hsusb.h>
+#endif
 #include <mach/usbdiag.h>
 #include <mach/socinfo.h>
 #include <mach/usb_gadget_fserial.h>
@@ -218,12 +222,16 @@ static struct usb_mass_storage_platform_data mass_storage_pdata = {
 	.can_stall	= 1,
 };
 
+#ifdef CONFIG_USB_MSM_OTG_72K
+static struct msm_otg_platform_data msm_otg_pdata;
+#else
 static struct msm_otg_platform_data msm_otg_pdata = {
-	.mode			= USB_PERIPHERAL,
+	.mode			= USB_OTG,
 	.otg_control		= OTG_PHY_CONTROL,
 	.phy_type		= SNPS_28NM_INTEGRATED_PHY,
 	.pclk_src_name		= "dfab_usb_hs_clk",
 };
+#endif
 
 static struct usb_diag_platform_data usb_diag_pdata = {
 	.ch_name = DIAG_LEGACY,
@@ -234,21 +242,30 @@ static struct usb_gadget_fserial_platform_data fserial_pdata = {
 };
 static char *usb_functions_default[] = {
 	"diag",
+	"modem",
+	"nmea",
+	"usb_mass_storage",
 };
 
 static char *usb_functions_default_adb[] = {
 	"diag",
 	"adb",
+	"modem",
+	"nmea",
+	"usb_mass_storage",
 };
 
 static char *usb_functions_all[] = {
 	"diag",
 	"adb",
+	"modem",
+	"nmea",
+	"usb_mass_storage",
 };
 
 struct android_usb_product usb_products[] = {
 	{
-		.product_id	= 0x901D,
+		.product_id	= 0x9018,
 		.num_functions	= ARRAY_SIZE(usb_functions_default_adb),
 		.functions	= usb_functions_default_adb,
 	},
@@ -261,7 +278,7 @@ struct android_usb_product usb_products[] = {
 
 static struct android_usb_platform_data android_usb_pdata = {
 	.vendor_id	= 0x05C6,
-	.product_id	= 0x901D,
+	.product_id	= 0x9018,
 	.version	= 0x0100,
 	.product_name		= "Qualcomm HSUSB Device",
 	.manufacturer_name	= "Qualcomm Incorporated",
@@ -351,6 +368,7 @@ static struct platform_device *sim_devices[] __initdata = {
 	&msm8960_device_qup_spi_gsbi1,
 	&msm_device_otg,
 	&msm_device_gadget_peripheral,
+	&msm_device_hsusb_host,
 	&android_usb_device,
 	&usb_diag_device,
 	&msm8960_device_qup_i2c_gsbi4,
@@ -661,6 +679,7 @@ static void __init msm8960_sim_init(void)
 
 	msm_device_otg.dev.platform_data = &msm_otg_pdata;
 	msm_device_gadget_peripheral.dev.parent = &msm_device_otg.dev;
+	msm_device_hsusb_host.dev.parent = &msm_device_otg.dev;
 	gpiomux_init();
 	msm8960_i2c_init();
 	platform_add_devices(sim_devices, ARRAY_SIZE(sim_devices));
