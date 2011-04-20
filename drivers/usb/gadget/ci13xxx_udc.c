@@ -1490,10 +1490,6 @@ static int _hardware_enqueue(struct ci13xxx_ep *mEp, struct ci13xxx_req *mReq)
 	 */
 	mEp->qh.ptr->td.next   = mReq->dma;    /* TERMINATE = 0 */
 	mEp->qh.ptr->td.token &= ~TD_STATUS;   /* clear status */
-	if (mReq->req.zero == 0)
-		mEp->qh.ptr->cap |=  QH_ZLT;
-	else
-		mEp->qh.ptr->cap &= ~QH_ZLT;
 
 	wmb();   /* synchronize before ep prime */
 
@@ -2026,7 +2022,7 @@ static int ep_enable(struct usb_ep *ep,
 	else if (mEp->type == USB_ENDPOINT_XFER_ISOC)
 		mEp->qh.ptr->cap &= ~QH_MULT;
 	else
-		mEp->qh.ptr->cap &= ~QH_ZLT;
+		mEp->qh.ptr->cap |= QH_ZLT;
 
 	mEp->qh.ptr->cap |=
 		(mEp->ep.maxpacket << ffs_nr(QH_MAX_PKT)) & QH_MAX_PKT;
