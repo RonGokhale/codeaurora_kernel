@@ -1502,6 +1502,7 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 #endif
 		mdp4_overlay_reg_flush(pipe, 0);
 
+	msleep(20);
 	mdp4_stat.overlay_unset[pipe->mixer_num]++;
 
 	mdp4_overlay_pipe_free(pipe);
