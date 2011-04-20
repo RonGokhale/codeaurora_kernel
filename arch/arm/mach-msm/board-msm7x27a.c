@@ -78,12 +78,42 @@ enum {
 	GPIO_SURF_CAM_GP_STROBE_CE,
 	GPIO_SURF_CAM_GP_LED_EN1,
 	GPIO_SURF_CAM_GP_LED_EN2,
+	/* FFA expander */
+	GPIO_FFA_EXPANDER_BASE	= GPIO_SURF_CAM_EXPANDER_BASE + 8,
+	GPIO_FFA_BT_SYS_REST_EN	= GPIO_FFA_EXPANDER_BASE,
+	GPIO_FFA_WLAN_EXT_POR_N,
+	GPIO_FFA_LCD_PWR_EN_N,
+	GPIO_FFA_GPIO_EXP_03,
+	GPIO_FFA_ALTIMETER_XCLR_N,
+	GPIO_FFA_GPIO_EXP_05,
+	GPIO_FFA_GPIO_EXP_06,
+	GPIO_FFA_GPIO_EXP_07,
+	GPIO_FFA_5V_BOOST_EN,
+	GPIO_FFA_EXPANDER_IO09,
+	GPIO_FFA_EXPANDER_IO10,
+	GPIO_FFA_EXPANDER_IO11,
+	GPIO_FFA_EXPANDER_IO12,
+	GPIO_FFA_EXPANDER_IO13,
+	GPIO_FFA_EXPANDER_IO14,
+	GPIO_FFA_EXPANDER_IO15,
+	/* Camera expander on FFA */
+	GPIO_FFA_CAM_EXPANDER_BASE	= GPIO_FFA_EXPANDER_BASE + 16,
+	GPIO_FFA_CAM_EXP_GPIO_00	= GPIO_FFA_CAM_EXPANDER_BASE,
+	GPIO_FFA_CAM_EXP_GPIO_O1,
+	GPIO_FFA_CAM_5MP_PWDN_VCM,
+	GPIO_FFA_CAM_1MP_XCLR,
+	GPIO_FFA_CAM_5MP_SHDN_N,
+	GPIO_FFA_CAM_EXP_GPIO_05,
+	GPIO_FFA_LED_DRV_EN1,
+	GPIO_FFA_LED_DRV_EN2,
 };
 
 #if defined(CONFIG_GPIO_SX150X)
 enum {
 	SX150X_SURF,
 	SX150X_SURF_CAM,
+	SX150X_FFA,
+	SX150X_FFA_CAM,
 };
 
 static struct sx150x_platform_data sx150x_data[] __initdata = {
@@ -107,6 +137,29 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 					  GPIO_SURF_CAM_EXPANDER_BASE -
 					  GPIO_EXPANDER_GPIO_BASE,
 	},
+	[SX150X_FFA]	= {
+		.gpio_base		= GPIO_FFA_EXPANDER_BASE,
+		.oscio_is_gpo		= false,
+		.io_pullup_ena		= 0,
+		.io_pulldn_ena		= 0,
+		.io_open_drain_ena	= 0,
+		.irq_summary		= -1,
+		.irq_base		= GPIO_EXPANDER_IRQ_BASE +
+					  GPIO_FFA_EXPANDER_BASE -
+					  GPIO_EXPANDER_GPIO_BASE,
+	},
+	[SX150X_FFA_CAM]	= {
+		.gpio_base		= GPIO_FFA_CAM_EXPANDER_BASE,
+		.oscio_is_gpo		= false,
+		.io_pullup_ena		= 0,
+		.io_pulldn_ena		= 0,
+		.io_open_drain_ena	= 0,
+		.irq_summary		= -1,
+		.irq_base		= GPIO_EXPANDER_IRQ_BASE +
+					  GPIO_FFA_CAM_EXPANDER_BASE -
+					  GPIO_EXPANDER_GPIO_BASE,
+	},
+
 };
 #endif
 
@@ -123,6 +176,19 @@ static struct i2c_board_info surf_cam_exp_i2c_info[] __initdata = {
 		.platform_data	= &sx150x_data[SX150X_SURF_CAM],
 	},
 };
+static struct i2c_board_info ffa_core_exp_i2c_info[] __initdata = {
+	{
+		I2C_BOARD_INFO("sx1509q", 0x3e),
+		.platform_data =  &sx150x_data[SX150X_FFA],
+	},
+};
+static struct i2c_board_info ffa_cam_exp_i2c_info[] __initdata = {
+	{
+		I2C_BOARD_INFO("sx1508q", 0x22),
+		.platform_data	= &sx150x_data[SX150X_FFA_CAM],
+	},
+
+};
 #endif
 
 #if defined(CONFIG_I2C) && defined(CONFIG_GPIO_SX150X)
@@ -135,6 +201,13 @@ static void __init register_i2c_devices(void)
 		i2c_register_board_info(MSM_GSBI0_QUP_I2C_BUS_ID,
 				surf_cam_exp_i2c_info,
 				ARRAY_SIZE(surf_cam_exp_i2c_info));
+	} else if (machine_is_msm7x27a_ffa()) {
+		i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
+				ffa_core_exp_i2c_info,
+				ARRAY_SIZE(ffa_core_exp_i2c_info));
+		i2c_register_board_info(MSM_GSBI0_QUP_I2C_BUS_ID,
+				ffa_cam_exp_i2c_info,
+				ARRAY_SIZE(ffa_cam_exp_i2c_info));
 	}
 }
 #endif
