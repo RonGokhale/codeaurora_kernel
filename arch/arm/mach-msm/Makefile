@@ -124,12 +124,12 @@ endif
 obj-$(CONFIG_MSM_DMA_TEST) += dma_test.o
 obj-$(CONFIG_SURF_FFA_GPIO_KEYPAD) += keypad-surf-ffa.o
 
-obj-$(CONFIG_ARCH_MSM7X01A) += board-halibut.o devices-msm7x01a.o
+obj-$(CONFIG_ARCH_MSM7X01A) += board-halibut.o devices-msm7x01a.o clock-pcom-lookup.o
 obj-$(CONFIG_MACH_TROUT) += board-trout.o board-trout-gpio.o
 obj-$(CONFIG_MACH_TROUT) += board-trout-keypad.o board-trout-panel.o
 obj-$(CONFIG_MACH_TROUT) += htc_akm_cal.o htc_wifi_nvs.o htc_acoustic.o
 obj-$(CONFIG_MACH_TROUT) += board-trout-mmc.o board-trout-wifi.o
-obj-$(CONFIG_ARCH_QSD8X50) += devices-qsd8x50.o
+obj-$(CONFIG_ARCH_QSD8X50) += devices-qsd8x50.o clock-pcom-lookup.o
 obj-$(CONFIG_MACH_QSD8X50_SURF) += board-qsd8x50.o
 obj-$(CONFIG_MACH_QSD8X50_FFA) += board-qsd8x50.o
 obj-$(CONFIG_MACH_QSD8X50A_SURF) += board-qsd8x50.o
@@ -165,8 +165,10 @@ obj-$(CONFIG_MACH_MSM8X60_QT) += board-qt8660.o
 obj-$(CONFIG_TROUT_H2W) += board-trout-h2w.o
 obj-$(CONFIG_TROUT_BATTCHG) += htc_battery.o
 obj-$(CONFIG_TROUT_PWRSINK) += htc_pwrsink.o
+obj-$(CONFIG_ARCH_MSM7X27) += clock-pcom-lookup.o
 obj-$(CONFIG_MACH_MSM7X27_SURF) += board-msm7x27.o devices-msm7x27.o
 obj-$(CONFIG_MACH_MSM7X27_FFA) += board-msm7x27.o devices-msm7x27.o
+obj-$(CONFIG_ARCH_MSM7X27A) += clock-pcom-lookup.o
 obj-$(CONFIG_MACH_MSM7X27A_RUMI3) += board-msm7x27a.o devices-msm7x27a.o
 obj-$(CONFIG_MACH_MSM7X27A_SURF) += board-msm7x27a.o devices-msm7x27a.o
 obj-$(CONFIG_MACH_MSM7X27A_FFA) += board-msm7x27a.o devices-msm7x27a.o

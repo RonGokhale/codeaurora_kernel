@@ -30,7 +30,6 @@
 #include <mach/socinfo.h>
 
 #include "acpuclock.h"
-#include "clock-8x60.h"
 #include "rpm-regulator.h"
 #include "avs.h"
 

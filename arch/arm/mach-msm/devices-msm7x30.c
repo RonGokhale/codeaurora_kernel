@@ -17,7 +17,6 @@
 #include <linux/platform_device.h>
 #include <linux/msm_rotator.h>
 #include <linux/dma-mapping.h>
-#include <asm/clkdev.h>
 #include <mach/irqs.h>
 #include <mach/msm_iomap.h>
 #include <mach/dma.h>
@@ -25,9 +24,6 @@
 #include <asm/clkdev.h>
 
 #include "devices.h"
-#include "clock-7x30.h"
-#include "clock-pcom.h"
-#include "clock-voter.h"
 #include "gpio_hw.h"
 
 #include <asm/mach/flash.h>
@@ -1064,119 +1060,3 @@ void __init msm_camera_register_device(void *res, uint32_t num,
 
 	msm_register_device(&msm_camera_device, data);
 }
-
-struct clk_lookup msm_clocks_7x30[] = {
-	CLK_PCOM("adsp_clk",	ADSP_CLK,	NULL, 0),
-	CLK_PCOM("codec_ssbi_clk",	CODEC_SSBI_CLK,	NULL, 0),
-	CLK_PCOM("ebi1_clk",	EBI1_CLK,	NULL, CLK_MIN),
-	CLK_PCOM("ecodec_clk",	ECODEC_CLK,	NULL, 0),
-	CLK_PCOM("gp_clk",	GP_CLK,		NULL, 0),
-	CLK_PCOM("uart_clk",	UART3_CLK,	"msm_serial.2", OFF),
-	CLK_PCOM("usb_phy_clk",	USB_PHY_CLK,	NULL, 0),
-	CLK_PCOM("vdc_clk",	VDC_CLK,	NULL, OFF | CLK_MIN),
-	{
-		.con_id = "pbus_clk",
-		.clk = &(struct clk){
-			.id = P_PBUS_CLK,
-			.remote_id = P_PBUS_CLK,
-			.ops = &clk_ops_pcom_div2,
-			.flags = CLK_MIN,
-			.dbg_name = "pbus_clk",
-		}
-	},
-
-	CLK_VOTER("ebi1_dtv_clk",	EBI_DTV_CLK,	"pbus_clk", NULL, 0),
-	CLK_VOTER("ebi1_kgsl_clk",	EBI_KGSL_CLK,	"pbus_clk", NULL, 0),
-	CLK_VOTER("ebi1_lcdc_clk",	EBI_LCDC_CLK,	"pbus_clk", NULL, 0),
-	CLK_VOTER("ebi1_mddi_clk",	EBI_MDDI_CLK,	"pbus_clk", NULL, 0),
-	CLK_VOTER("ebi1_tv_clk",	EBI_TV_CLK,	"pbus_clk", NULL, 0),
-	CLK_VOTER("ebi1_vcd_clk",	EBI_VCD_CLK,	"pbus_clk", NULL, 0),
-	CLK_VOTER("ebi1_vfe_clk",	EBI_VFE_CLK,	"pbus_clk", NULL, 0),
-
-	CLK_7X30("adm_clk",	ADM_CLK,	NULL, 0),
-	CLK_7X30L("adm_pclk",   ADM_P_CLK,       NULL, 0),
-	CLK_7X30("cam_m_clk",	CAM_M_CLK,	NULL, 0),
-	CLK_7X30("camif_pad_pclk",	CAMIF_PAD_P_CLK,	NULL, OFF),
-	CLK_7X30("ce_clk",	CE_CLK,		NULL, 0),
-	CLK_7X30("emdh_clk",	EMDH_CLK,	"msm_mddi.1", OFF | CLK_MINMAX),
-	CLK_7X30("emdh_pclk",	EMDH_P_CLK,	"msm_mddi.1", OFF),
-	CLK_7X30("grp_2d_clk",	GRP_2D_CLK,	NULL, 0),
-	CLK_7X30("grp_2d_pclk",	GRP_2D_P_CLK,	NULL, 0),
-	CLK_7X30("grp_clk",	GRP_3D_CLK,	NULL, 0),
-	CLK_7X30("grp_pclk",	GRP_3D_P_CLK,	NULL, 0),
-	CLK_7X30S("grp_src_clk", GRP_3D_SRC_CLK, GRP_3D_CLK,	NULL, 0),
-	CLK_7X30("hdmi_clk",	HDMI_CLK,	NULL, 0),
-	CLK_7X30("i2c_clk",	I2C_CLK,	"msm_i2c.0", 0),
-	CLK_7X30("i2c_clk",	I2C_2_CLK,	"msm_i2c.2", 0),
-	CLK_7X30("imem_clk",	IMEM_CLK,	NULL, OFF),
-	CLK_7X30("jpeg_clk",	JPEG_CLK,	NULL, OFF),
-	CLK_7X30("jpeg_pclk",	JPEG_P_CLK,	NULL, OFF),
-	CLK_7X30("lpa_codec_clk",	LPA_CODEC_CLK,		NULL, 0),
-	CLK_7X30("lpa_core_clk",	LPA_CORE_CLK,		NULL, 0),
-	CLK_7X30("lpa_pclk",		LPA_P_CLK,		NULL, 0),
-	CLK_7X30("mdc_clk",	MDC_CLK,	NULL, 0),
-	CLK_7X30("mddi_clk",	PMDH_CLK,	NULL, OFF | CLK_MINMAX),
-	CLK_7X30("mddi_pclk",	PMDH_P_CLK,	NULL, 0),
-	CLK_7X30("mdp_clk",	MDP_CLK,	NULL, OFF),
-	CLK_7X30("mdp_pclk",	MDP_P_CLK,	NULL, 0),
-	CLK_7X30("mdp_lcdc_pclk_clk", MDP_LCDC_PCLK_CLK, NULL, 0),
-	CLK_7X30("mdp_lcdc_pad_pclk_clk", MDP_LCDC_PAD_PCLK_CLK, NULL, 0),
-	CLK_7X30("mdp_vsync_clk",	MDP_VSYNC_CLK,  NULL, OFF),
-	CLK_7X30("mfc_clk",		MFC_CLK,		NULL, 0),
-	CLK_7X30("mfc_div2_clk",	MFC_DIV2_CLK,		NULL, 0),
-	CLK_7X30("mfc_pclk",		MFC_P_CLK,		NULL, 0),
-	CLK_7X30("mi2s_codec_rx_m_clk",	MI2S_CODEC_RX_M_CLK,  NULL, 0),
-	CLK_7X30("mi2s_codec_rx_s_clk",	MI2S_CODEC_RX_S_CLK,  NULL, 0),
-	CLK_7X30("mi2s_codec_tx_m_clk",	MI2S_CODEC_TX_M_CLK,  NULL, 0),
-	CLK_7X30("mi2s_codec_tx_s_clk",	MI2S_CODEC_TX_S_CLK,  NULL, 0),
-	CLK_7X30("mi2s_m_clk",		MI2S_M_CLK,  		NULL, 0),
-	CLK_7X30("mi2s_s_clk",		MI2S_S_CLK,  		NULL, 0),
-	CLK_7X30("qup_clk",	QUP_I2C_CLK,	"qup_i2c.4", 0),
-	CLK_7X30("rotator_clk",	AXI_ROTATOR_CLK,		NULL, 0),
-	CLK_7X30("rotator_imem_clk",	ROTATOR_IMEM_CLK,	NULL, OFF),
-	CLK_7X30("rotator_pclk",	ROTATOR_P_CLK,		NULL, OFF),
-	CLK_7X30("sdac_clk",	SDAC_CLK,	NULL, OFF),
-	CLK_7X30("sdac_m_clk",	SDAC_M_CLK,	NULL, OFF),
-	CLK_7X30("sdc_clk",	SDC1_CLK,	"msm_sdcc.1", OFF),
-	CLK_7X30("sdc_pclk",	SDC1_P_CLK,	"msm_sdcc.1", OFF),
-	CLK_7X30("sdc_clk",	SDC2_CLK,	"msm_sdcc.2", OFF),
-	CLK_7X30("sdc_pclk",	SDC2_P_CLK,	"msm_sdcc.2", OFF),
-	CLK_7X30("sdc_clk",	SDC3_CLK,	"msm_sdcc.3", OFF),
-	CLK_7X30("sdc_pclk",	SDC3_P_CLK,	"msm_sdcc.3", OFF),
-	CLK_7X30("sdc_clk",	SDC4_CLK,	"msm_sdcc.4", OFF),
-	CLK_7X30("sdc_pclk",	SDC4_P_CLK,	"msm_sdcc.4", OFF),
-	CLK_7X30("spi_clk",	SPI_CLK,	NULL, 0),
-	CLK_7X30("spi_pclk",	SPI_P_CLK,	NULL, 0),
-	CLK_7X30("tsif_ref_clk", TSIF_REF_CLK,	NULL, 0),
-	CLK_7X30("tsif_pclk",	TSIF_P_CLK,	NULL, 0),
-	CLK_7X30("tv_dac_clk",	TV_DAC_CLK,	NULL, 0),
-	CLK_7X30("tv_enc_clk",	TV_ENC_CLK,	NULL, 0),
-	CLK_7X30S("tv_src_clk",	TV_CLK, 	TV_ENC_CLK,	NULL, 0),
-	CLK_7X30("uart_clk",	UART1_CLK,	"msm_serial.0", OFF),
-	CLK_7X30("uart_clk",	UART2_CLK,	"msm_serial.1", 0),
-	CLK_7X30("uartdm_clk",	UART1DM_CLK,	"msm_serial_hs.0", OFF),
-	CLK_7X30L("uartdm_pclk", UART1DM_P_CLK,	"msm_serial_hs.0", 0),
-	CLK_7X30("uartdm_clk",	UART2DM_CLK,	"msm_serial_hs.1", 0),
-	CLK_7X30L("uartdm_pclk", UART2DM_P_CLK,	"msm_serial_hs.1", 0),
-	CLK_7X30("usb_hs_clk",		USB_HS_CLK,		NULL, OFF),
-	CLK_7X30("usb_hs_pclk",		USB_HS_P_CLK,		NULL, OFF),
-	CLK_7X30("usb_hs_core_clk",	USB_HS_CORE_CLK,	NULL, OFF),
-	CLK_7X30("usb_hs2_clk",		USB_HS2_CLK,		NULL, OFF),
-	CLK_7X30("usb_hs2_pclk",	USB_HS2_P_CLK,		NULL, OFF),
-	CLK_7X30("usb_hs2_core_clk",	USB_HS2_CORE_CLK,	NULL, OFF),
-	CLK_7X30("usb_hs3_clk",		USB_HS3_CLK,		NULL, OFF),
-	CLK_7X30("usb_hs3_pclk",	USB_HS3_P_CLK,		NULL, OFF),
-	CLK_7X30("usb_hs3_core_clk",	USB_HS3_CORE_CLK,	NULL, OFF),
-	CLK_7X30("vfe_camif_clk",	VFE_CAMIF_CLK, 	NULL, 0),
-	CLK_7X30("vfe_clk",	VFE_CLK,	NULL, 0),
-	CLK_7X30("vfe_mdc_clk",	VFE_MDC_CLK,	NULL, 0),
-	CLK_7X30("vfe_pclk",	VFE_P_CLK,	NULL, OFF),
-	CLK_7X30("vpe_clk",	VPE_CLK,	NULL, 0),
-
-	/* 7x30 v2 hardware only. */
-	CLK_7X30("csi_clk",	CSI0_CLK,	NULL, 0),
-	CLK_7X30("csi_pclk",	CSI0_P_CLK,	NULL, 0),
-	CLK_7X30("csi_vfe_clk",	CSI0_VFE_CLK,	NULL, 0),
-};
-
-unsigned msm_num_clocks_7x30 = ARRAY_SIZE(msm_clocks_7x30);

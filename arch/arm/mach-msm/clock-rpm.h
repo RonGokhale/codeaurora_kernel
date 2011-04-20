@@ -53,18 +53,27 @@ enum {
 };
 
 struct clk_ops;
-extern struct clk_ops clk_ops_remote;
+extern struct clk_ops clk_ops_rpm;
 
-#define CLK_RPM(clk_name, clk_id, clk_dev, clk_flags) {	\
-	.con_id = clk_name, \
-	.dev_id = clk_dev, \
-	.clk = &(struct clk){ \
+struct rpm_clk {
+	unsigned id;
+	struct clk c;
+};
+
+static inline struct rpm_clk *to_rpm_clk(struct clk *clk)
+{
+	return container_of(clk, struct rpm_clk, c);
+}
+
+#define DEFINE_CLK_RPM(clk_name, clk_id) \
+	struct rpm_clk clk_name = { \
 		.id = R_##clk_id, \
-		.remote_id = R_##clk_id, \
-		.ops = &clk_ops_remote, \
-		.flags = clk_flags, \
-		.dbg_name = #clk_id, \
-	}, \
+		.c = { \
+			.ops = &clk_ops_rpm, \
+			.flags = CLK_MIN, \
+			.dbg_name = #clk_id, \
+			CLK_INIT(clk_name.c), \
+		}, \
 	}
 
 #endif

@@ -62,5 +62,7 @@ int internal_pwr_rail_ctl(unsigned rail_id, bool enable);
 int internal_pwr_rail_mode(unsigned rail_id, enum rail_ctl_mode mode);
 #endif
 
+int internal_pwr_rail_ctl_auto(unsigned rail_id, bool enable);
+
 #endif /* _INTERNAL_POWER_RAIL_H */
 

@@ -31,8 +31,6 @@
 
 #include "smd_private.h"
 #include "clock.h"
-#include "clock-local.h"
-#include "clock-7x30.h"
 #include "acpuclock.h"
 #include "spm.h"
 
@@ -99,8 +97,19 @@ static struct pll pll2_tbl[] = {
 };
 
 /* Use negative numbers for sources that can't be enabled/disabled */
-#define SRC_LPXO (-2)
-#define SRC_AXI  (-1)
+
+enum acpuclk_source {
+	LPXO	= -2,
+	AXI	= -1,
+	PLL_0	=  0,
+	PLL_1,
+	PLL_2,
+	PLL_3,
+	MAX_SOURCE
+};
+
+static struct clk *acpuclk_sources[MAX_SOURCE];
+
 /*
  * Each ACPU frequency has a certain minimum MSMC1 voltage requirement
  * that is implicitly met by voting for a specific minimum AXI frequency.
@@ -108,11 +117,11 @@ static struct pll pll2_tbl[] = {
  * know all the h/w requirements.
  */
 static struct clkctl_acpu_speed acpu_freq_tbl[] = {
-	{ 0, 24576,  SRC_LPXO, 0, 0,  30720000,  900, VDD_RAW(900) },
+	{ 0, 24576,  LPXO, 0, 0,  30720000,  900, VDD_RAW(900) },
 	{ 0, 61440,  PLL_3,    5, 11, 61440000,  900, VDD_RAW(900) },
 	{ 1, 122880, PLL_3,    5, 5,  61440000,  900, VDD_RAW(900) },
 	{ 0, 184320, PLL_3,    5, 4,  61440000,  900, VDD_RAW(900) },
-	{ 0, MAX_AXI_KHZ, SRC_AXI, 1, 0, 61440000, 900, VDD_RAW(900) },
+	{ 0, MAX_AXI_KHZ, AXI, 1, 0, 61440000, 900, VDD_RAW(900) },
 	{ 1, 245760, PLL_3,    5, 2,  61440000,  900, VDD_RAW(900) },
 	{ 1, 368640, PLL_3,    5, 1,  122800000, 900, VDD_RAW(900) },
 	/* AXI has MSMC1 implications. See above. */
@@ -244,9 +253,9 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 
 	/* Move off of PLL2 if we're reprogramming it */
 	if (tgt_s->src == PLL_2 && strt_s->src == PLL_2) {
-		local_src_enable(backup_s->src);
+		clk_enable(acpuclk_sources[backup_s->src]);
 		acpuclk_set_src(backup_s);
-		local_src_disable(PLL_2);
+		clk_disable(acpuclk_sources[strt_s->src]);
 	}
 
 	/* Reconfigure PLL2 if we're moving to it */
@@ -254,11 +263,11 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 		acpuclk_config_pll2(tgt_s->pll_rate);
 
 	/* Make sure target PLL is on. */
-	if (strt_s->src != tgt_s->src && tgt_s->src >= 0) {
+	if ((strt_s->src != tgt_s->src && tgt_s->src >= 0) ||
+	    (tgt_s->src == PLL_2 && strt_s->src == PLL_2)) {
 		dprintk("Enabling PLL %d\n", tgt_s->src);
-		local_src_enable(tgt_s->src);
-	} else if (tgt_s->src == PLL_2 && strt_s->src == PLL_2)
-		local_src_enable(PLL_2);
+		clk_enable(acpuclk_sources[tgt_s->src]);
+	}
 
 	/* Perform the frequency switch */
 	acpuclk_set_src(tgt_s);
@@ -266,7 +275,7 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 	loops_per_jiffy = tgt_s->lpj;
 
 	if (tgt_s->src == PLL_2 && strt_s->src == PLL_2)
-		local_src_disable(backup_s->src);
+		clk_disable(acpuclk_sources[backup_s->src]);
 
 	/* Nothing else to do for SWFI. */
 	if (reason == SETRATE_SWFI)
@@ -275,7 +284,7 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 	/* Turn off previous PLL if not used. */
 	if (strt_s->src != tgt_s->src && strt_s->src >= 0) {
 		dprintk("Disabling PLL %d\n", strt_s->src);
-		local_src_disable(strt_s->src);
+		clk_disable(acpuclk_sources[strt_s->src]);
 	}
 
 	/* Decrease the AXI bus frequency if we can. */
@@ -391,7 +400,7 @@ static void __init acpuclk_init(void)
 
 	/* Initialize current PLL's reference count. */
 	if (s->src >= 0)
-		local_src_enable(s->src);
+		clk_enable(acpuclk_sources[s->src]);
 
 	res = clk_set_min_rate(drv_state.ebi1_clk, s->axi_clk_hz);
 	if (res < 0)
@@ -463,6 +472,16 @@ void __init pll2_fixup(void)
 #define RPM_BYPASS_MASK	(1 << 3)
 #define PMIC_MODE_MASK	(1 << 4)
 
+static void __init populate_plls(void)
+{
+	acpuclk_sources[PLL_1] = clk_get_sys("acpu", "pll1_clk");
+	BUG_ON(IS_ERR(acpuclk_sources[PLL_1]));
+	acpuclk_sources[PLL_2] = clk_get_sys("acpu", "pll2_clk");
+	BUG_ON(IS_ERR(acpuclk_sources[PLL_2]));
+	acpuclk_sources[PLL_3] = clk_get_sys("acpu", "pll3_clk");
+	BUG_ON(IS_ERR(acpuclk_sources[PLL_3]));
+}
+
 void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 {
 	pr_info("acpu_clock_init()\n");
@@ -471,6 +490,7 @@ void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 	drv_state.acpu_switch_time_us = clkdata->acpu_switch_time_us;
 	drv_state.vdd_switch_time_us = clkdata->vdd_switch_time_us;
 	pll2_fixup();
+	populate_plls();
 	acpuclk_init();
 	lpj_init();
 	setup_cpufreq_table();
