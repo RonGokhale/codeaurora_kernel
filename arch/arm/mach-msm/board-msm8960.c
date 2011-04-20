@@ -242,21 +242,30 @@ static struct usb_gadget_fserial_platform_data fserial_pdata = {
 };
 static char *usb_functions_default[] = {
 	"diag",
+	"modem",
+	"nmea",
+	"usb_mass_storage",
 };
 
 static char *usb_functions_default_adb[] = {
 	"diag",
 	"adb",
+	"modem",
+	"nmea",
+	"usb_mass_storage",
 };
 
 static char *usb_functions_all[] = {
 	"diag",
 	"adb",
+	"modem",
+	"nmea",
+	"usb_mass_storage",
 };
 
 struct android_usb_product usb_products[] = {
 	{
-		.product_id	= 0x901D,
+		.product_id	= 0x9018,
 		.num_functions	= ARRAY_SIZE(usb_functions_default_adb),
 		.functions	= usb_functions_default_adb,
 	},
@@ -269,7 +278,7 @@ struct android_usb_product usb_products[] = {
 
 static struct android_usb_platform_data android_usb_pdata = {
 	.vendor_id	= 0x05C6,
-	.product_id	= 0x901D,
+	.product_id	= 0x9018,
 	.version	= 0x0100,
 	.product_name		= "Qualcomm HSUSB Device",
 	.manufacturer_name	= "Qualcomm Incorporated",
