@@ -230,6 +230,7 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 	.otg_control		= OTG_PHY_CONTROL,
 	.phy_type		= SNPS_28NM_INTEGRATED_PHY,
 	.pclk_src_name		= "dfab_usb_hs_clk",
+	.pmic_id_irq		= PM8921_USB_ID_IN_IRQ(PM8921_IRQ_BASE),
 };
 #endif
 

@@ -20,6 +20,7 @@
 
 #include <linux/types.h>
 #include <linux/usb/otg.h>
+#include <linux/wakelock.h>
 
 /**
  * Supported USB modes
@@ -124,6 +125,7 @@ enum usb_chg_type {
  *              OTG switch is controller by user.
  * @pclk_src_name: pclk is derived from ebi1_usb_clk in case of 7x27 and 8k
  *              dfab_usb_hs_clk in case of 8660 and 8960.
+ * @pmic_id_irq: IRQ number assigned for PMIC USB ID line.
  */
 struct msm_otg_platform_data {
 	int *phy_init_seq;
@@ -135,6 +137,7 @@ struct msm_otg_platform_data {
 	enum msm_usb_phy_type phy_type;
 	void (*setup_gpio)(enum usb_otg_state state);
 	char *pclk_src_name;
+	int pmic_id_irq;
 };
 
 /**
@@ -158,6 +161,8 @@ struct msm_otg_platform_data {
  * @chg_type: The type of charger attached.
  * @dcd_retires: The retry count used to track Data contact
  *               detection process.
+ * @wlock: Wake lock struct to prevent system suspend when
+ *               USB is active.
  */
 struct msm_otg {
 	struct otg_transceiver otg;
@@ -180,6 +185,7 @@ struct msm_otg {
 	enum usb_chg_state chg_state;
 	enum usb_chg_type chg_type;
 	u8 dcd_retries;
+	struct wake_lock wlock;
 };
 
 #endif
