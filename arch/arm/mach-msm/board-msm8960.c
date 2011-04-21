@@ -270,13 +270,209 @@ static struct platform_device android_pmem_adsp_device = {
 };
 #endif
 
+#define MSM_FB_SIZE 0x600000
+#define MDP_VSYNC_GPIO 28
+
+static struct resource msm_fb_resources[] = {
+	{
+		.flags = IORESOURCE_DMA,
+	}
+};
+
+static struct platform_device msm_fb_device = {
+	.name   = "msm_fb",
+	.id     = 0,
+	.num_resources     = ARRAY_SIZE(msm_fb_resources),
+	.resource          = msm_fb_resources,
+};
+
+static int mipi_dsi_panel_power(int on)
+{
+	pr_debug("%s: state : %d\n", __func__, on);
+	return 0;
+}
+static struct mipi_dsi_platform_data mipi_dsi_pdata = {
+	.vsync_gpio = MDP_VSYNC_GPIO,
+	.dsi_power_save = mipi_dsi_panel_power,
+};
+
+
+int mdp_core_clk_rate_table[] = {
+	59080000,
+	59080000,
+	85330000,
+	200000000,
+	200000000,
+};
+
+#ifdef CONFIG_MSM_BUS_SCALING
+
+static struct msm_bus_vectors mdp_init_vectors[] = {
+	/* For now, 0th array entry is reserved.
+	 * Please leave 0 as is and don't use it
+	 */
+	{
+		.src = MSM_BUS_MASTER_MDP_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 0,
+	},
+	/* Master and slaves can be from different fabrics */
+	{
+		.src = MSM_BUS_MASTER_MDP_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 0,
+	},
+};
+
+static struct msm_bus_vectors mdp_vga_vectors[] = {
+	/* VGA and less video */
+	{
+		.src = MSM_BUS_MASTER_MDP_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 175110000,
+		.ib = 218887500,
+	},
+	{
+		.src = MSM_BUS_MASTER_MDP_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 175110000,
+		.ib = 218887500,
+	},
+};
+
+static struct msm_bus_vectors mdp_720p_vectors[] = {
+	/* 720p and less video */
+	{
+		.src = MSM_BUS_MASTER_MDP_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 230400000,
+		.ib = 288000000,
+	},
+	/* Master and slaves can be from different fabrics */
+	{
+		.src = MSM_BUS_MASTER_MDP_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 230400000,
+		.ib = 288000000,
+	},
+};
+
+static struct msm_bus_vectors mdp_1080p_vectors[] = {
+	/* 1080p and less video */
+	{
+		.src = MSM_BUS_MASTER_MDP_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 334080000,
+		.ib = 417600000,
+	},
+	/* Master and slaves can be from different fabrics */
+	{
+		.src = MSM_BUS_MASTER_MDP_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 334080000,
+		.ib = 417600000,
+	},
+};
+
+static struct msm_bus_vectors mdp_rgb_vectors[] = {
+	/* RGB playing on VG or RGB pipe, might be on EBI */
+	{
+		.src = MSM_BUS_MASTER_MDP_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 334080000,
+		.ib = 417600000,
+	},
+	/* FB on EBI, request for EBI too*/
+	{
+		.src = MSM_BUS_MASTER_MDP_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 334080000,
+		.ib = 417600000,
+	},
+};
+
+static struct msm_bus_paths mdp_bus_scale_usecases[] = {
+	{
+		ARRAY_SIZE(mdp_init_vectors),
+		mdp_init_vectors,
+	},
+	{
+		ARRAY_SIZE(mdp_sd_smi_vectors),
+		mdp_sd_smi_vectors,
+	},
+	{
+		ARRAY_SIZE(mdp_sd_ebi_vectors),
+		mdp_sd_ebi_vectors,
+	},
+	{
+		ARRAY_SIZE(mdp_vga_vectors),
+		mdp_vga_vectors,
+	},
+	{
+		ARRAY_SIZE(mdp_720p_vectors),
+		mdp_720p_vectors,
+	},
+	{
+		ARRAY_SIZE(mdp_1080p_vectors),
+		mdp_1080p_vectors,
+	},
+	{
+		ARRAY_SIZE(mdp_rgb_vectors),
+		mdp_rgb_vectors,
+	},
+};
+
+static struct msm_bus_scale_pdata mdp_bus_scale_pdata = {
+	mdp_bus_scale_usecases,
+	ARRAY_SIZE(mdp_bus_scale_usecases),
+	.name = "mdp",
+};
+
+#endif
+
+static struct msm_panel_common_pdata mdp_pdata = {
+	.gpio = MDP_VSYNC_GPIO,
+	.mdp_core_clk_rate = 59080000,
+	.mdp_core_clk_table = mdp_core_clk_rate_table,
+	.num_mdp_clk = ARRAY_SIZE(mdp_core_clk_rate_table),
+#ifdef CONFIG_MSM_BUS_SCALING
+	.mdp_bus_scale_table = &mdp_bus_scale_pdata,
+#endif
+};
+
+static struct platform_device mipi_dsi_renesas_panel_device = {
+	.name = "mipi_renesas",
+	.id = 0,
+};
+
+static struct platform_device mipi_dsi_simulator_panel_device = {
+	.name = "mipi_simulator",
+	.id = 0,
+};
+
+static void __init msm_fb_add_devices(void)
+{
+	if (machine_is_msm8x60_rumi3())
+		msm_fb_register_device("mdp", NULL);
+	else
+		msm_fb_register_device("mdp", &mdp_pdata);
+	msm_fb_register_device("mipi_dsi", &mipi_dsi_pdata);
+}
 
 static void __init msm8960_allocate_memory_regions(void)
 {
-#if defined CONFIG_KERNEL_PMEM_EBI_REGION || defined CONFIG_ANDROID_PMEM
 	void *addr;
 	unsigned long size;
-#endif
+
+	size = MSM_FB_SIZE;
+	addr = alloc_bootmem(size);
+	msm_fb_resources[0].start = __pa(addr);
+	msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
+	pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
+			size, addr, __pa(addr));
+
 #ifdef CONFIG_KERNEL_PMEM_EBI_REGION
 	size = pmem_kernel_ebi1_size;
 	if (size) {
@@ -661,6 +857,8 @@ static struct platform_device *sim_devices[] __initdata = {
 #ifdef CONFIG_ANDROID_PMEM
 	&android_pmem_adsp_device,
 #endif
+	&mipi_dsi_simulator_panel_device,
+	&msm_fb_device,
 };
 
 static struct platform_device *rumi3_devices[] __initdata = {
@@ -689,6 +887,8 @@ static struct platform_device *rumi3_devices[] __initdata = {
 #ifdef CONFIG_ANDROID_PMEM
 	&android_pmem_adsp_device,
 #endif
+	&mipi_dsi_renesas_panel_device,
+	&msm_fb_device,
 };
 
 static void __init msm8960_i2c_init(void)
@@ -1026,6 +1226,7 @@ static void __init msm8960_sim_init(void)
 	platform_add_devices(sim_devices, ARRAY_SIZE(sim_devices));
 	msm_acpu_clock_init(&msm8960_acpu_clock_data);
 	msm8960_init_mmc();
+	msm_fb_add_devices();
 #ifdef CONFIG_PM
 	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
 	msm_pm_set_rpm_wakeup_irq(RPM_APCC_CPU0_WAKE_UP_IRQ);
@@ -1061,6 +1262,7 @@ static void __init msm8960_rumi3_init(void)
 	msm8960_init_mmc();
 
 	register_i2c_devices();
+	msm_fb_add_devices();
 }
 
 MACHINE_START(MSM8960_SIM, "QCT MSM8960 SIMULATOR")
