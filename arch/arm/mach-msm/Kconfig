@@ -93,6 +93,7 @@ config ARCH_MSM8960
 	select REGULATOR
 	select MSM_RPM
 	select MSM_QDSP6_APR
+	select MSM_PIL
 
 endchoice
 
@@ -1233,7 +1234,7 @@ config MSM_IDLE_WAIT_ON_MODEM
 config MSM_PIL
 	bool "Peripheral image loading"
 	select FW_LOADER
-	depends on ARCH_MSM8X60
+	depends on (ARCH_MSM8X60 || ARCH_MSM8960)
 	default n
 	help
 	  Some peripherals need to be loaded into memory before they can be
