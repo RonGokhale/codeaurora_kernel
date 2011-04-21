@@ -533,7 +533,7 @@ static int msm_otg_suspend(struct msm_otg *motg)
 
 	if (motg->pdata->phy_type == SNPS_28NM_INTEGRATED_PHY &&
 			motg->pdata->phy_type == OTG_PMIC_CONTROL) {
-		msm_hsusb_ldo_enable(0);
+		msm_hsusb_ldo_set_mode(0);
 		msm_hsusb_config_vddcx(0);
 	}
 
@@ -571,7 +571,7 @@ static int msm_otg_resume(struct msm_otg *motg)
 
 	if (motg->pdata->phy_type == SNPS_28NM_INTEGRATED_PHY &&
 			motg->pdata->phy_type == OTG_PMIC_CONTROL) {
-		msm_hsusb_ldo_enable(1);
+		msm_hsusb_ldo_set_mode(1);
 		msm_hsusb_config_vddcx(1);
 		writel(readl(USB_PHY_CTRL) & ~PHY_RETEN, USB_PHY_CTRL);
 	}
@@ -613,13 +613,13 @@ skip_phy_resume:
 	if (bus)
 		set_bit(HCD_FLAG_HW_ACCESSIBLE, &(bus_to_hcd(bus))->flags);
 
+	atomic_set(&motg->in_lpm, 0);
+
 	if (motg->async_int) {
 		motg->async_int = 0;
 		pm_runtime_put(otg->dev);
 		enable_irq(motg->irq);
 	}
-
-	atomic_set(&motg->in_lpm, 0);
 
 	dev_info(otg->dev, "USB exited from low power mode\n");
 
