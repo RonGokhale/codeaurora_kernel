@@ -238,7 +238,7 @@ struct qcrypto_sha_ctx {
 	uint32_t		byte_count[2];
 	uint8_t			digest[SHA_MAX_DIGEST_SIZE];
 	uint32_t		diglen;
-	uint8_t			*tmp_buf;
+	uint8_t			*tmp_tbuf;
 	uint8_t			trailing_buf[SHA_MAX_BLOCK_SIZE];
 	uint32_t		trailing_buf_len;
 	uint8_t			first_blk;
@@ -378,10 +378,10 @@ static int _qcrypto_ahash_cra_init(struct crypto_tfm *tfm)
 	/* update context with ptr to cp */
 	sha_ctx->cp = q_alg->cp;
 	sha_ctx->sg = NULL;
-	sha_ctx->tmp_buf = kzalloc(SHA256_BLOCK_SIZE, GFP_KERNEL);
-	if (sha_ctx->tmp_buf == NULL) {
-		pr_err("qcrypto Can't Allocate mem: sha_ctx->tmp_buf, error %ld\n",
-			PTR_ERR(sha_ctx->tmp_buf));
+	sha_ctx->tmp_tbuf = kzalloc(SHA256_BLOCK_SIZE, GFP_KERNEL);
+	if (sha_ctx->tmp_tbuf == NULL) {
+		pr_err("qcrypto Can't Allocate mem: sha_ctx->tmp_tbuf, error %ld\n",
+			PTR_ERR(sha_ctx->tmp_tbuf));
 		return -ENOMEM;
 	}
 	return 0;
@@ -391,7 +391,7 @@ static void _qcrypto_ahash_cra_exit(struct crypto_tfm *tfm)
 {
 	struct qcrypto_sha_ctx *sha_ctx = crypto_tfm_ctx(tfm);
 
-	kfree(sha_ctx->tmp_buf);
+	kfree(sha_ctx->tmp_tbuf);
 	if (sha_ctx->sg != NULL)
 		kfree(sha_ctx->sg);
 };
@@ -596,24 +596,14 @@ static void _update_sha1_ctx(struct ahash_request  *req)
 	struct sha1_state *sha_state_ctx = &rctx->sha1_state_ctx;
 	struct qcrypto_sha_ctx *sha_ctx = crypto_tfm_ctx(req->base.tfm);
 
-	memset(sha_state_ctx->buffer, 0x00, SHA1_BLOCK_SIZE);
-	if (sha_ctx->last_blk == 0)
+	if (sha_ctx->last_blk == 1)
+		memset(sha_state_ctx, 0x00, sizeof(struct sha1_state));
+	else {
 		memcpy(sha_state_ctx->buffer, sha_ctx->trailing_buf,
 						sha_ctx->trailing_buf_len);
-	else {
-		memset(sha_ctx->trailing_buf, 0x00, SHA1_BLOCK_SIZE);
-		memset(&sha_ctx->digest[0], 0x00, SHA1_DIGESTSIZE);
-		sha_ctx->trailing_buf_len  = 0;
-		sha_ctx->first_blk = 0;
-		sha_ctx->last_blk = 0;
-		sha_ctx->diglen = 0;
-		sha_ctx->byte_count[0] = 0;
-		sha_ctx->byte_count[1] = 0;
-		sha_state_ctx->count = 0;
-	}
 	_byte_stream_to_words(sha_state_ctx->state , sha_ctx->digest,
-							sha_ctx->diglen);
-
+					SHA1_DIGEST_SIZE);
+	}
 	return;
 }
 
@@ -623,24 +613,14 @@ static void _update_sha256_ctx(struct ahash_request  *req)
 	struct sha256_state *sha_state_ctx = &rctx->sha256_state_ctx;
 	struct qcrypto_sha_ctx *sha_ctx = crypto_tfm_ctx(req->base.tfm);
 
-	memset(sha_state_ctx->buf, 0x00, SHA256_BLOCK_SIZE);
-	if (sha_ctx->last_blk == 0)
+	if (sha_ctx->last_blk == 1)
+		memset(sha_state_ctx, 0x00, sizeof(struct sha256_state));
+	else {
 		memcpy(sha_state_ctx->buf, sha_ctx->trailing_buf,
 						sha_ctx->trailing_buf_len);
-	else {
-		memset(sha_ctx->trailing_buf, 0x00, SHA256_BLOCK_SIZE);
-		memset(&sha_ctx->digest[0], 0x00, SHA256_DIGESTSIZE);
-		sha_ctx->trailing_buf_len  = 0;
-		sha_ctx->first_blk = 0;
-		sha_ctx->last_blk = 0;
-		sha_ctx->diglen = 0;
-		sha_ctx->byte_count[0] = 0;
-		sha_ctx->byte_count[1] = 0;
-		sha_state_ctx->count = 0;
-	}
 	_byte_stream_to_words(sha_state_ctx->state, sha_ctx->digest,
-							sha_ctx->diglen);
-
+					SHA256_DIGEST_SIZE);
+	}
 	return;
 }
 
@@ -1570,7 +1550,7 @@ static int qcrypto_count_sg(struct scatterlist *sg, int nbytes)
 	return i;
 }
 
-static int _sha_init(struct ahash_request *req, struct qcrypto_sha_ctx *ctx)
+static int _sha_init(struct qcrypto_sha_ctx *ctx)
 {
 	ctx->first_blk = 1;
 	ctx->last_blk = 0;
@@ -1590,7 +1570,7 @@ static int _sha1_init(struct ahash_request *req)
 
 	pstat = &_qcrypto_stat[cp->pdev->id];
 
-	_sha_init(req, sha_ctx);
+	_sha_init(sha_ctx);
 	sha_ctx->alg = QCE_HASH_SHA1;
 
 	memset(&sha_ctx->trailing_buf[0], 0x00, SHA1_BLOCK_SIZE);
@@ -1599,7 +1579,7 @@ static int _sha1_init(struct ahash_request *req)
 	sha_ctx->diglen = SHA1_DIGEST_SIZE;
 	_update_sha1_ctx(req);
 
-	memset(sha_ctx->tmp_buf, 0x00, SHA1_BLOCK_SIZE);
+	memset(sha_ctx->tmp_tbuf, 0x00, SHA1_BLOCK_SIZE);
 	pstat->sha1_digest++;
 	return 0;
 };
@@ -1612,7 +1592,7 @@ static int _sha256_init(struct ahash_request *req)
 
 	pstat = &_qcrypto_stat[cp->pdev->id];
 
-	_sha_init(req, sha_ctx);
+	_sha_init(sha_ctx);
 	sha_ctx->alg = QCE_HASH_SHA256;
 
 	memset(&sha_ctx->trailing_buf[0], 0x00, SHA256_BLOCK_SIZE);
@@ -1621,7 +1601,7 @@ static int _sha256_init(struct ahash_request *req)
 	sha_ctx->diglen = SHA256_DIGEST_SIZE;
 	_update_sha256_ctx(req);
 
-	memset(sha_ctx->tmp_buf, 0x00, SHA256_BLOCK_SIZE);
+	memset(sha_ctx->tmp_tbuf, 0x00, SHA256_BLOCK_SIZE);
 	pstat->sha256_digest++;
 	return 0;
 };
@@ -1747,7 +1727,7 @@ static int _sha_update(struct ahash_request  *req, uint32_t sha_block_size)
 	rctx->src = req->src;
 	rctx->nbytes = req->nbytes;
 
-	memcpy(sha_ctx->tmp_buf, sha_ctx->trailing_buf,
+	memcpy(sha_ctx->tmp_tbuf, sha_ctx->trailing_buf,
 					sha_ctx->trailing_buf_len);
 	k_src = &sha_ctx->trailing_buf[0];
 	/*  get new trailing buffer */
@@ -1792,7 +1772,7 @@ static int _sha_update(struct ahash_request  *req, uint32_t sha_block_size)
 			return -ENOMEM;
 		}
 
-		sg_set_buf(&sha_ctx->sg[0],  sha_ctx->tmp_buf,
+		sg_set_buf(&sha_ctx->sg[0],  sha_ctx->tmp_tbuf,
 						sha_ctx->trailing_buf_len);
 		for (i = 1; i < num_sg; i++)
 			sg_set_buf(&sha_ctx->sg[i], sg_virt(&req->src[i-1]),
@@ -1842,7 +1822,7 @@ static int _sha_final(struct ahash_request *req, uint32_t sha_block_size)
 	rctx->src = req->src;
 	rctx->nbytes = req->nbytes;
 
-	memcpy(sha_ctx->tmp_buf, &sha_ctx->trailing_buf[0],
+	memcpy(sha_ctx->tmp_tbuf, &sha_ctx->trailing_buf[0],
 						sha_ctx->trailing_buf_len);
 
 	sha_ctx->sg = kzalloc(sizeof(struct scatterlist), GFP_KERNEL);
@@ -1851,7 +1831,7 @@ static int _sha_final(struct ahash_request *req, uint32_t sha_block_size)
 			PTR_ERR(sha_ctx->sg));
 		return -ENOMEM;
 	}
-	sg_set_buf(sha_ctx->sg, sha_ctx->tmp_buf, sha_ctx->trailing_buf_len);
+	sg_set_buf(sha_ctx->sg, sha_ctx->tmp_tbuf, sha_ctx->trailing_buf_len);
 	sg_mark_end(sha_ctx->sg);
 
 	req->src = sha_ctx->sg;
@@ -2421,4 +2401,4 @@ module_exit(_qcrypto_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm Crypto driver");
-MODULE_VERSION("1.08");
+MODULE_VERSION("1.09");

@@ -1307,12 +1307,15 @@ static int qcedev_vbuf_ablk_cipher_max_xfer(struct qcedev_async_req *areq,
 	int i = 0;
 	int dst_i = *di;
 	struct scatterlist sg_src;
-	uint32_t byteoffset;
+	uint32_t byteoffset = 0;
 	uint8_t *user_src = NULL;
 	uint8_t *k_align_dst = k_align_src;
 	struct	qcedev_cipher_op_req *creq = &areq->cipher_op_req;
 
-	byteoffset = areq->cipher_op_req.byteoffset;
+
+	if (areq->cipher_op_req.mode == QCEDEV_AES_MODE_CTR)
+		byteoffset = areq->cipher_op_req.byteoffset;
+
 	user_src = (void __user *)areq->cipher_op_req.vbuf.src[0].vaddr;
 	if (user_src && __copy_from_user((k_align_src + byteoffset),
 				(void __user *)user_src,
@@ -1392,7 +1395,7 @@ static int qcedev_vbuf_ablk_cipher(struct qcedev_async_req *areq,
 	int i = 0;
 	int j = 0;
 	int k = 0;
-	uint32_t byteoffset;
+	uint32_t byteoffset = 0;
 	int num_entries = 0;
 	uint32_t total = 0;
 	uint8_t *k_buf_src = NULL;
@@ -1416,7 +1419,8 @@ static int qcedev_vbuf_ablk_cipher(struct qcedev_async_req *areq,
 					areq->cipher_op_req.vbuf.dst[i].len))
 				return -EFAULT;
 
-	byteoffset = areq->cipher_op_req.byteoffset;
+	if (areq->cipher_op_req.mode == QCEDEV_AES_MODE_CTR)
+		byteoffset = areq->cipher_op_req.byteoffset;
 	k_buf_src = kmalloc(QCE_MAX_OPER_DATA + CACHE_LINE_SIZE * 2,
 				GFP_KERNEL);
 	if (k_buf_src == NULL) {
@@ -1574,11 +1578,22 @@ static int qcedev_check_cipher_params(struct qcedev_cipher_op_req *req,
 					(req->encklen == QCEDEV_AES_KEY_256)))
 				goto error;
 	}
+	/* if using a byteoffset, make sure it is CTR mode using vbuf */
+	if (req->byteoffset) {
+		if (req->mode != QCEDEV_AES_MODE_CTR)
+			goto error;
+		else { /* if using CTR mode make sure not using Pmem */
+			if (req->use_pmem)
+				goto error;
+		}
+	}
 
-	if (req->ivlen != 0)
+	if (req->ivlen != 0) {
 		if ((req->mode == QCEDEV_AES_MODE_ECB) ||
 				(req->mode == QCEDEV_DES_MODE_ECB))
 			goto error;
+	}
+
 	return 0;
 error:
 	return -EINVAL;
@@ -1954,7 +1969,7 @@ static void qcedev_exit(void)
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm DEV Crypto driver");
-MODULE_VERSION("1.13");
+MODULE_VERSION("1.14");
 
 module_init(qcedev_init);
 module_exit(qcedev_exit);
