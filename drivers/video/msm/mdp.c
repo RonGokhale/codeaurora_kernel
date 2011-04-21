@@ -121,6 +121,8 @@ struct timeval mdp_ppp_timeval;
 static struct early_suspend early_suspend;
 #endif
 
+static u32 mdp_irq;
+
 #ifndef CONFIG_FB_MSM_MDP22
 DEFINE_MUTEX(mdp_lut_push_sem);
 static int mdp_lut_i;
@@ -394,7 +396,7 @@ void mdp_enable_irq(uint32 term)
 		mdp_irq_mask |= term;
 		if (mdp_irq_mask && !mdp_irq_enabled) {
 			mdp_irq_enabled = 1;
-			enable_irq(INT_MDP);
+			enable_irq(mdp_irq);
 		}
 	}
 	spin_unlock_irqrestore(&mdp_lock, irq_flags);
@@ -415,7 +417,7 @@ void mdp_disable_irq(uint32 term)
 		mdp_irq_mask &= ~term;
 		if (!mdp_irq_mask && mdp_irq_enabled) {
 			mdp_irq_enabled = 0;
-			disable_irq(INT_MDP);
+			disable_irq(mdp_irq);
 		}
 	}
 	spin_unlock_irqrestore(&mdp_lock, irq_flags);
@@ -431,7 +433,7 @@ void mdp_disable_irq_nosync(uint32 term)
 		mdp_irq_mask &= ~term;
 		if (!mdp_irq_mask && mdp_irq_enabled) {
 			mdp_irq_enabled = 0;
-			disable_irq_nosync(INT_MDP);
+			disable_irq_nosync(mdp_irq);
 		}
 	}
 	spin_unlock(&mdp_lock);
@@ -1119,15 +1121,15 @@ static int mdp_irq_clk_setup(void)
 	int ret;
 
 #ifdef CONFIG_FB_MSM_MDP40
-	ret = request_irq(INT_MDP, mdp4_isr, IRQF_DISABLED, "MDP", 0);
+	ret = request_irq(mdp_irq, mdp4_isr, IRQF_DISABLED, "MDP", 0);
 #else
-	ret = request_irq(INT_MDP, mdp_isr, IRQF_DISABLED, "MDP", 0);
+	ret = request_irq(mdp_irq, mdp_isr, IRQF_DISABLED, "MDP", 0);
 #endif
 	if (ret) {
 		printk(KERN_ERR "mdp request_irq() failed!\n");
 		return ret;
 	}
-	disable_irq(INT_MDP);
+	disable_irq(mdp_irq);
 
 	footswitch = regulator_get(NULL, "fs_mdp");
 	if (IS_ERR(footswitch))
@@ -1139,7 +1141,7 @@ static int mdp_irq_clk_setup(void)
 	if (IS_ERR(mdp_clk)) {
 		ret = PTR_ERR(mdp_clk);
 		printk(KERN_ERR "can't get mdp_clk error:%d!\n", ret);
-		free_irq(INT_MDP, 0);
+		free_irq(mdp_irq, 0);
 		return ret;
 	}
 
@@ -1189,6 +1191,12 @@ static int mdp_probe(struct platform_device *pdev)
 
 		if (unlikely(!msm_mdp_base))
 			return -ENOMEM;
+
+		mdp_irq = platform_get_irq(pdev, 0);
+		if (mdp_irq < 0) {
+			pr_err("mdp: can not get mdp irq\n");
+			return -ENOMEM;
+		}
 
 		rc = mdp_irq_clk_setup();
 

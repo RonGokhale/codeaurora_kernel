@@ -62,7 +62,7 @@ void mipi_dsi_enable_irq(void)
 		return;
 	}
 	dsi_irq_enabled = 1;
-	enable_irq(DSI_IRQ);
+	enable_irq(dsi_irq);
 	spin_unlock_irqrestore(&dsi_lock, flags);
 }
 
@@ -78,7 +78,7 @@ void mipi_dsi_disable_irq(void)
 	}
 
 	dsi_irq_enabled = 0;
-	disable_irq(DSI_IRQ);
+	disable_irq(dsi_irq);
 	spin_unlock_irqrestore(&dsi_lock, flags);
 }
 
@@ -95,7 +95,7 @@ void mipi_dsi_disable_irq(void)
 	}
 
 	dsi_irq_enabled = 0;
-	disable_irq_nosync(DSI_IRQ);
+	disable_irq_nosync(dsi_irq);
 	spin_unlock(&dsi_lock);
 }
 
