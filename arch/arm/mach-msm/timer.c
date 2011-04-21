@@ -406,6 +406,11 @@ static void msm_timer_set_mode(enum clock_event_mode mode,
 		get_cpu_var(msm_active_clock) = clock;
 		put_cpu_var(msm_active_clock);
 		__raw_writel(TIMER_ENABLE_EN, clock->regbase + TIMER_ENABLE);
+		if (get_irq_chip(clock->irq.irq) &&
+		   get_irq_chip(clock->irq.irq)->irq_unmask) {
+			get_irq_chip(clock->irq.irq)->irq_unmask(
+				irq_get_irq_data(clock->irq.irq));
+		}
 		if (clock != &msm_clocks[MSM_CLOCK_GPT])
 			__raw_writel(TIMER_ENABLE_EN,
 				msm_clocks[MSM_CLOCK_GPT].regbase +
@@ -421,6 +426,11 @@ static void msm_timer_set_mode(enum clock_event_mode mode,
 			msm_read_timer_count(clock, LOCAL_TIMER) +
 			clock_state->sleep_offset;
 		__raw_writel(0, clock->regbase + TIMER_MATCH_VAL);
+		if (get_irq_chip(clock->irq.irq) &&
+		   get_irq_chip(clock->irq.irq)->irq_mask) {
+			get_irq_chip(clock->irq.irq)->irq_mask(
+				irq_get_irq_data(clock->irq.irq));
+		}
 #ifdef CONFIG_ARCH_MSM_SCORPIONMP
 		if (clock != &msm_clocks[MSM_CLOCK_DGT] || smp_processor_id())
 #endif
@@ -1035,6 +1045,9 @@ static void __init msm_timer_init(void)
 			printk(KERN_ERR "msm_timer_init: setup_irq "
 			       "failed for %s\n", cs->name);
 
+		get_irq_chip(clock->irq.irq)->irq_mask(irq_get_irq_data(
+							       clock->irq.irq));
+
 		clockevents_register_device(ce);
 	}
 	msm_sched_clock_init();
@@ -1093,8 +1106,6 @@ int local_timer_ack(void)
 void __cpuexit local_timer_stop(void)
 {
 	local_clock_event->set_mode(CLOCK_EVT_MODE_SHUTDOWN, local_clock_event);
-	get_irq_chip(local_clock_event->irq)->irq_mask(
-				irq_get_irq_data(local_clock_event->irq));
 	local_clock_event = NULL;
 }
 #endif
