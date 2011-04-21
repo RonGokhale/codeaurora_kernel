@@ -492,9 +492,6 @@ static int mipi_dsi_off(struct platform_device *pdev)
 
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(0);
-#else
-	if (mfd->ebi1_clk)
-		clk_disable(mfd->ebi1_clk);
 #endif
 
 	/* DSIPHY_PLL_CTRL_5 */
@@ -650,13 +647,7 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(2);
-#else
-	if (mfd->ebi1_clk)
-		clk_enable(mfd->ebi1_clk);
 #endif
-
-	pr_debug("%s:\n", __func__);
-
 	return ret;
 }
 
@@ -689,7 +680,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 		if (!mipi_dsi_base)
 			return -ENOMEM;
 
-		mmss_cc_base = MSM_MMSS_CLK_CTL_BASE;
+		mmss_cc_base = ioremap(MMSS_CC_BASE_PHY, 0x200);
 		MSM_FB_INFO("msm_mmss_cc base = 0x%x\n",
 				(int) mmss_cc_base);
 
@@ -867,14 +858,6 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 	pdev_list[pdev_list_cnt++] = pdev;
 
-#ifndef CONFIG_MSM_BUS_SCALING
-	if (IS_ERR(mfd->ebi1_clk)) {
-		rc = PTR_ERR(mfd->ebi1_clk);
-		goto mipi_dsi_probe_err;
-	}
-	clk_set_rate(mfd->ebi1_clk, 122000000);
-#endif
-
 	return 0;
 
 mipi_dsi_probe_err:
@@ -887,12 +870,7 @@ static int mipi_dsi_remove(struct platform_device *pdev)
 	struct msm_fb_data_type *mfd;
 
 	mfd = platform_get_drvdata(pdev);
-#ifndef CONFIG_MSM_BUS_SCALING
-	clk_put(mfd->ebi1_clk);
-#endif
-
 	iounmap(msm_pmdh_base);
-
 	return 0;
 }
 
