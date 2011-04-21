@@ -103,7 +103,8 @@ int sps_bam_driver_init(u32 options)
 	 * to the client in the SPS_EVENT_IRQ.
 	 */
 	for (n = 0; n < ARRAY_SIZE(opt_event_table); n++) {
-		if (opt_event_table[n].option != opt_event_table[n].pipe_irq) {
+		if ((u32)opt_event_table[n].option !=
+			(u32)opt_event_table[n].pipe_irq) {
 			SPS_ERR("SPS_O 0x%x != HAL IRQ 0x%x",
 				opt_event_table[n].option,
 				opt_event_table[n].pipe_irq);
