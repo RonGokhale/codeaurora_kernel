@@ -192,7 +192,7 @@ static void pet_watchdog_work(struct work_struct *work)
 	pet_watchdog();
 
 	if (enable)
-		schedule_delayed_work(&dogwork_struct, delay_time);
+		schedule_delayed_work_on(0, &dogwork_struct, delay_time);
 }
 
 static void __exit exit_watchdog(void)
@@ -303,7 +303,7 @@ static int __init init_watchdog(void)
 		return ret;
 	}
 
-	schedule_delayed_work(&dogwork_struct, delay_time);
+	schedule_delayed_work_on(0, &dogwork_struct, delay_time);
 
 	atomic_notifier_chain_register(&panic_notifier_list,
 				       &panic_blk);
