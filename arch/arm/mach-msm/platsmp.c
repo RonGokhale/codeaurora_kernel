@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 2002 ARM Ltd.
  *  All Rights Reserved
- *  Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+ *  Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -53,6 +53,29 @@ void smp_init_cpus(void)
 		cpu_set(i, cpu_possible_map);
 }
 
+static void release_secondary(void)
+{
+	void *base_ptr;
+
+	/* KraitMP or ScorpionMP ? */
+	if ((read_cpuid_id() & 0xFF0) >> 4 != 0x2D) {
+		base_ptr = ioremap_nocache(0x02098000, SZ_4K);
+		if (base_ptr) {
+			writel(0x10, base_ptr+0x04);
+			writel(0x80, base_ptr+0x04);
+			iounmap(base_ptr);
+		}
+	} else {
+		base_ptr = ioremap_nocache(0x00902000, SZ_4K*2);
+		if (base_ptr) {
+			writel(0x0, base_ptr+0x15A0);
+			writel(0x0, base_ptr+0xD80);
+			writel(0x3, base_ptr+0xE64);
+			iounmap(base_ptr);
+		}
+	}
+}
+
 /* Executed by primary CPU, brings other CPUs out of reset. Called at boot
    as well as when a CPU is coming out of shutdown induced by echo 0 >
    /sys/devices/.../cpuX.
@@ -72,16 +95,9 @@ int boot_secondary(unsigned int cpu, struct task_struct *idle)
 		ret = scm_set_boot_addr((void *)
 					virt_to_phys(msm_secondary_startup),
 					SCM_FLAG_COLDBOOT_CPU1);
-		if (ret == 0) {
-			void *sc1_base_ptr;
-			sc1_base_ptr = ioremap_nocache(0x00902000, SZ_4K*2);
-			if (sc1_base_ptr) {
-				writel(0x0, sc1_base_ptr+0x15A0);
-				writel(0x0, sc1_base_ptr+0xD80);
-				writel(0x3, sc1_base_ptr+0xE64);
-				iounmap(sc1_base_ptr);
-			}
-		} else
+		if (ret == 0)
+			release_secondary();
+		else
 			printk(KERN_DEBUG "Failed to set secondary core boot "
 					  "address\n");
 		cold_boot_done = true;
