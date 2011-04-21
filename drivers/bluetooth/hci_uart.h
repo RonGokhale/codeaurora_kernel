@@ -35,7 +35,7 @@
 #define HCIUARTGETFLAGS		_IOR('U', 204, int)
 
 /* UART protocols */
-#define HCI_UART_MAX_PROTO	6
+#define HCI_UART_MAX_PROTO	7
 
 #define HCI_UART_H4	0
 #define HCI_UART_BCSP	1
