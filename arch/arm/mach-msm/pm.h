@@ -52,6 +52,7 @@ struct msm_pm_platform_data {
 };
 
 void msm_pm_set_platform_data(struct msm_pm_platform_data *data, int count);
+void msm_pm_set_rpm_wakeup_irq(unsigned int irq);
 int msm_pm_idle_prepare(struct cpuidle_device *dev);
 int msm_pm_idle_enter(enum msm_pm_sleep_mode sleep_mode);
 

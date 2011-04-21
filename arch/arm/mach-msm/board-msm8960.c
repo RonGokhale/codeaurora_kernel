@@ -687,6 +687,7 @@ static void __init msm8960_sim_init(void)
 	msm8960_init_mmc();
 #ifdef CONFIG_PM
 	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
+	msm_pm_set_rpm_wakeup_irq(RPM_APCC_CPU0_WAKE_UP_IRQ);
 #ifdef CONFIG_CPU_IDLE
 	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),
 				msm_pm_data);

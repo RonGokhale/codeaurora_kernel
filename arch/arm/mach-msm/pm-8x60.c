@@ -74,12 +74,18 @@ module_param_named(
  *****************************************************************************/
 
 static struct msm_pm_platform_data *msm_pm_modes;
+static int rpm_cpu0_wakeup_irq;
 
 void __init msm_pm_set_platform_data(
 	struct msm_pm_platform_data *data, int count)
 {
 	BUG_ON(MSM_PM_SLEEP_MODE_NR * num_possible_cpus() > count);
 	msm_pm_modes = data;
+}
+
+void __init msm_pm_set_rpm_wakeup_irq(unsigned int irq)
+{
+	rpm_cpu0_wakeup_irq = irq;
 }
 
 #define MSM_PM_MODE_ATTR_SUSPEND_ENABLED "suspend_enabled"
@@ -1099,7 +1105,6 @@ static int __init msm_pm_init(void)
 	pgd_t *pc_pgd;
 	pmd_t *pmd;
 	unsigned long pmdval;
-	unsigned int irq;
 	unsigned int cpu;
 #ifdef CONFIG_MSM_IDLE_STATS
 	struct proc_dir_entry *d_entry;
@@ -1129,19 +1134,19 @@ static int __init msm_pm_init(void)
 	flush_pmd_entry(pmd);
 	msm_pm_pc_pgd = virt_to_phys(pc_pgd);
 
-	irq = RPM_SCSS_CPU0_WAKE_UP_IRQ;
-	ret = request_irq(irq, msm_pm_rpm_wakeup_interrupt, IRQF_TRIGGER_RISING,
+	ret = request_irq(rpm_cpu0_wakeup_irq,
+			msm_pm_rpm_wakeup_interrupt, IRQF_TRIGGER_RISING,
 			"pm_drv", msm_pm_rpm_wakeup_interrupt);
 	if (ret) {
 		pr_err("%s: failed to request irq %u: %d\n",
-			__func__, irq, ret);
+			__func__, rpm_cpu0_wakeup_irq, ret);
 		return ret;
 	}
 
-	ret = set_irq_wake(irq, 1);
+	ret = set_irq_wake(rpm_cpu0_wakeup_irq, 1);
 	if (ret) {
 		pr_err("%s: failed to set wakeup irq %u: %d\n",
-			__func__, irq, ret);
+			__func__, rpm_cpu0_wakeup_irq, ret);
 		return ret;
 	}
 
