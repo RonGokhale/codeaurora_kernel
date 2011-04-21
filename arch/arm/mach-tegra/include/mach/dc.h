@@ -72,6 +72,12 @@ struct tegra_dc_out {
 
 	int	(*enable)(void);
 	int	(*disable)(void);
+	/*
+	 * Some output types require special handling when attempting to read
+	 * the EDID over DDC (such as HDMI enabling +5V).
+	 */
+	void	(*enable_ddc)(void);
+	void	(*disable_ddc)(void);
 };
 
 #define TEGRA_DC_OUT_HOTPLUG_HIGH	(0 << 1)
