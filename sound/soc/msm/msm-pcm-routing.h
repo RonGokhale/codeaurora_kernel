@@ -20,6 +20,8 @@
 enum {
 	MSM_FRONTEND_DAI_MULTIMEDIA1 = 0,
 	MSM_FRONTEND_DAI_MULTIMEDIA2,
+	MSM_FRONTEND_DAI_CS_VOICE,
+	MSM_FRONTEND_DAI_VOIP,
 	MSM_FRONTEND_DAI_MAX,
 };
 
@@ -28,6 +30,23 @@ enum {
 	MSM_BACKEND_DAI_PRI_I2S_TX,
 	MSM_BACKEND_DAI_HDMI_RX,
 	MSM_BACKEND_DAI_MAX,
+};
+
+struct voice_mixer_data {
+	u32 port_id;
+	unsigned long dai_sessions;
+	u32 mixer_type;
+};
+
+enum {
+	VOICE_MIXER_PRI_I2S_RX = 0,
+	VOICE_MIXER_MM_UL1,
+	VOICE_MIXER_MAX,
+};
+
+enum {
+	VOICE_PRI_I2S_RX = 0,
+	VOICE_PRI_I2S_TX,
 };
 
 /* dai_id: front-end ID,
