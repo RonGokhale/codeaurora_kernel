@@ -252,9 +252,9 @@ static int __devinit pm8xxx_mpp_probe(struct platform_device *pdev)
 	mpp_chip->base_addr = pdata->core_data.base_addr;
 	mpp_chip->nmpps = pdata->core_data.nmpps;
 
-	mutex_unlock(&pm8xxx_mpp_chips_lock);
-	list_add(&mpp_chip->link, &pm8xxx_mpp_chips);
 	mutex_lock(&pm8xxx_mpp_chips_lock);
+	list_add(&mpp_chip->link, &pm8xxx_mpp_chips);
+	mutex_unlock(&pm8xxx_mpp_chips_lock);
 
 	platform_set_drvdata(pdev, mpp_chip);
 
