@@ -827,6 +827,7 @@ static void __init tegra_kaen_init(void)
 	seaboard_kbc_platform_data.fn_keycode = cros_kbd_keycode;
 
 	__tegra_seaboard_init();
+	kaen_emc_init();
 
 	kaen_i2c_init();
 	kaen_audio_init();
