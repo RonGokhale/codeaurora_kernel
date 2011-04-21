@@ -38,6 +38,7 @@
 #include <mach/vreg.h>
 #include <linux/power_supply.h>
 #include <mach/msm_battery.h>
+#include <linux/smsc911x.h>
 #include "devices.h"
 #include "timer.h"
 #include "devices-msm7x2xa.h"
@@ -45,7 +46,6 @@
 
 #define PMEM_KERNEL_EBI1_SIZE	0x1C000
 #define MSM_PMEM_AUDIO_SIZE	0x5B000
-#define MSM_EBI2_PHYS 0xa0d00000
 
 enum {
 	GPIO_EXPANDER_IRQ_BASE	= NR_MSM_IRQS + NR_GPIO_IRQS,
@@ -946,6 +946,66 @@ static struct platform_device msm_batt_device = {
 	.dev.platform_data  = &msm_psy_batt_data,
 };
 
+static struct smsc911x_platform_config smsc911x_config = {
+	.irq_polarity	= SMSC911X_IRQ_POLARITY_ACTIVE_HIGH,
+	.irq_type	= SMSC911X_IRQ_TYPE_PUSH_PULL,
+	.flags		= SMSC911X_USE_16BIT,
+};
+
+static struct resource smsc911x_resources[] = {
+	[0] = {
+		.start	= 0x90000000,
+		.end	= 0x90007fff,
+		.flags	= IORESOURCE_MEM,
+	},
+	[1] = {
+		.start	= MSM_GPIO_TO_INT(48),
+		.end	= MSM_GPIO_TO_INT(48),
+		.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL,
+	},
+};
+
+static struct platform_device smsc911x_device = {
+	.name		= "smsc911x",
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(smsc911x_resources),
+	.resource	= smsc911x_resources,
+	.dev		= {
+		.platform_data	= &smsc911x_config,
+	},
+};
+
+static struct msm_gpio smsc911x_gpios[] = {
+	{ GPIO_CFG(48, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_6MA),
+							 "smsc911x_irq"  },
+	{ GPIO_CFG(49, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_6MA),
+							 "eth_fifo_sel" },
+};
+
+#define ETH_FIFO_SEL_GPIO	49
+static void msm7x27a_cfg_smsc911x(void)
+{
+	int res;
+
+	res = msm_gpios_request_enable(smsc911x_gpios,
+				 ARRAY_SIZE(smsc911x_gpios));
+	if (res) {
+		pr_err("%s: unable to enable gpios for SMSC911x\n", __func__);
+		return;
+	}
+
+	/* ETH_FIFO_SEL */
+	res = gpio_direction_output(ETH_FIFO_SEL_GPIO, 0);
+	if (res) {
+		pr_err("%s: unable to get direction for gpio %d\n", __func__,
+							 ETH_FIFO_SEL_GPIO);
+		msm_gpios_disable_free(smsc911x_gpios,
+						 ARRAY_SIZE(smsc911x_gpios));
+		return;
+	}
+	gpio_set_value(ETH_FIFO_SEL_GPIO, 0);
+}
+
 static struct platform_device *rumi_sim_devices[] __initdata = {
 	&msm_device_dmov,
 	&msm_device_smd,
@@ -981,6 +1041,7 @@ static struct platform_device *surf_ffa_devices[] __initdata = {
 	&msm_fb_device,
 	&lcdc_toshiba_panel_device,
 	&msm_batt_device,
+	&smsc911x_device,
 };
 
 static unsigned pmem_kernel_ebi1_size = PMEM_KERNEL_EBI1_SIZE;
@@ -1064,21 +1125,37 @@ static void __init msm_fb_add_devices(void)
 	msm_fb_register_device("lcdc", &lcdc_pdata);
 }
 
+#define MSM_EBI2_PHYS			0xa0d00000
+#define MSM_EBI2_XMEM_CS2_CFG1		0xa0d10030
+
 static void __init msm7x27a_init_ebi2(void)
 {
 	uint32_t ebi2_cfg;
 	void __iomem *ebi2_cfg_ptr;
 
 	ebi2_cfg_ptr = ioremap_nocache(MSM_EBI2_PHYS, sizeof(uint32_t));
-	if (ebi2_cfg_ptr) {
-		ebi2_cfg = readl(ebi2_cfg_ptr);
+	if (!ebi2_cfg_ptr)
+		return;
 
-		if (machine_is_msm7x27a_rumi3())
-			ebi2_cfg |= (1 << 4); /* CS2 */
+	ebi2_cfg = readl(ebi2_cfg_ptr);
+	if (machine_is_msm7x27a_rumi3() || machine_is_msm7x27a_surf())
+		ebi2_cfg |= (1 << 4); /* CS2 */
 
-		writel(ebi2_cfg, ebi2_cfg_ptr);
-		iounmap(ebi2_cfg_ptr);
-	}
+	writel(ebi2_cfg, ebi2_cfg_ptr);
+	iounmap(ebi2_cfg_ptr);
+
+	/* Enable A/D MUX[bit 31] from EBI2_XMEM_CS2_CFG1 */
+	ebi2_cfg_ptr = ioremap_nocache(MSM_EBI2_XMEM_CS2_CFG1,
+							 sizeof(uint32_t));
+	if (!ebi2_cfg_ptr)
+		return;
+
+	ebi2_cfg = readl(ebi2_cfg_ptr);
+	if (machine_is_msm7x27a_surf())
+		ebi2_cfg |= (1 << 31);
+
+	writel(ebi2_cfg, ebi2_cfg_ptr);
+	iounmap(ebi2_cfg_ptr);
 }
 
 static void __init msm7x2x_init_irq(void)
@@ -1189,6 +1266,7 @@ static void __init msm7x2x_init(void)
 #ifdef CONFIG_USB_MSM_OTG_72K
 		msm_device_otg.dev.platform_data = &msm_otg_pdata;
 #endif
+		msm7x27a_cfg_smsc911x();
 		platform_add_devices(surf_ffa_devices,
 				ARRAY_SIZE(surf_ffa_devices));
 		msm_fb_add_devices();
