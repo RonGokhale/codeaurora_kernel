@@ -533,7 +533,7 @@ static int msm_otg_suspend(struct msm_otg *motg)
 
 	if (motg->pdata->phy_type == SNPS_28NM_INTEGRATED_PHY &&
 			motg->pdata->phy_type == OTG_PMIC_CONTROL) {
-		msm_hsusb_ldo_enable(0);
+		msm_hsusb_ldo_set_mode(0);
 		msm_hsusb_config_vddcx(0);
 	}
 
@@ -571,7 +571,7 @@ static int msm_otg_resume(struct msm_otg *motg)
 
 	if (motg->pdata->phy_type == SNPS_28NM_INTEGRATED_PHY &&
 			motg->pdata->phy_type == OTG_PMIC_CONTROL) {
-		msm_hsusb_ldo_enable(1);
+		msm_hsusb_ldo_set_mode(1);
 		msm_hsusb_config_vddcx(1);
 		writel(readl(USB_PHY_CTRL) & ~PHY_RETEN, USB_PHY_CTRL);
 	}
