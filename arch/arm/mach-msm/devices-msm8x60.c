@@ -44,6 +44,7 @@
 #include <mach/msm_dsps.h>
 #endif
 #include <linux/gpio.h>
+#include <linux/delay.h>
 #include <mach/mdm.h>
 #include <mach/rpm.h>
 #include "rpm_stats.h"
@@ -93,6 +94,7 @@
 
 static void charm_ap2mdm_kpdpwr_on(void)
 {
+	gpio_direction_output(AP2MDM_PMIC_RESET_N, 1);
 	if (machine_is_msm8x60_fusion())
 		gpio_direction_output(AP2MDM_KPDPWR_N, 0);
 	else
@@ -101,10 +103,13 @@ static void charm_ap2mdm_kpdpwr_on(void)
 
 static void charm_ap2mdm_kpdpwr_off(void)
 {
-	if (machine_is_msm8x60_fusion())
-		gpio_direction_output(AP2MDM_KPDPWR_N, 1);
-	else
-		gpio_direction_output(AP2MDM_KPDPWR_N, 0);
+	gpio_direction_output(AP2MDM_PMIC_RESET_N, 0);
+	/* Currently, there is a debounce timer on the charm PMIC. It is
+	 * necessary to hold the AP2MDM_PMIC_RESET low for ~3.5 seconds for
+	 * the reset to fully take place. Sleep here to ensure the reset has
+	 * occured before the function exits.
+	 */
+	msleep(4000);
 }
 
 static struct resource charm_resources[] = {
