@@ -318,6 +318,11 @@ static int __init gpiomux_init(void)
 	return 0;
 }
 
+static struct msm_acpu_clock_platform_data msm8960_acpu_clock_data = {
+	.acpu_switch_time_us = 0,
+	.vdd_switch_time_us = 0,
+};
+
 #define MSM_SHARED_RAM_PHYS 0x40000000
 
 /* Macros assume PMIC GPIOs and MPPs start at 1 */
@@ -1019,6 +1024,7 @@ static void __init msm8960_sim_init(void)
 	msm8960_i2c_init();
 	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
 	platform_add_devices(sim_devices, ARRAY_SIZE(sim_devices));
+	msm_acpu_clock_init(&msm8960_acpu_clock_data);
 	msm8960_init_mmc();
 #ifdef CONFIG_PM
 	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
@@ -1051,6 +1057,7 @@ static void __init msm8960_rumi3_init(void)
 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
 	msm8960_i2c_init();
 	platform_add_devices(rumi3_devices, ARRAY_SIZE(rumi3_devices));
+	msm_acpu_clock_init(&msm8960_acpu_clock_data);
 	msm8960_init_mmc();
 
 	register_i2c_devices();

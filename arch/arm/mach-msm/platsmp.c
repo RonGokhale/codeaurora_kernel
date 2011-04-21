@@ -25,6 +25,7 @@
 
 #include "pm.h"
 #include "scm-boot.h"
+#include "acpuclock.h"
 
 #define SECONDARY_CPU_WAIT_MS 10
 
@@ -43,6 +44,9 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 
 	for (i = 0; i < max_cpus; i++)
 		cpu_set(i, cpu_present_map);
+
+	/* Setup acpuclock for non-primary CPU. */
+	acpuclock_secondary_init();
 }
 
 void smp_init_cpus(void)
