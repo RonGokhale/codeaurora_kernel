@@ -110,6 +110,9 @@ static void kgsl_memqueue_cleanup(struct kgsl_device *device,
 {
 	struct kgsl_mem_entry *entry, *entry_tmp;
 
+	if (!private)
+		return;
+
 	BUG_ON(!mutex_is_locked(&device->mutex));
 
 	list_for_each_entry_safe(entry, entry_tmp, &device->memqueue, list) {
@@ -491,6 +494,7 @@ kgsl_get_process_private(struct kgsl_device_private *cur_dev_priv)
 		if (private->pagetable == NULL) {
 			kfree(private);
 			private = NULL;
+			goto out;
 		}
 	}
 #endif
@@ -510,6 +514,9 @@ kgsl_put_process_private(struct kgsl_device *device,
 {
 	struct kgsl_mem_entry *entry = NULL;
 	struct kgsl_mem_entry *entry_tmp = NULL;
+
+	if (!private)
+		return;
 
 	mutex_lock(&kgsl_driver.process_mutex);
 
@@ -555,8 +562,8 @@ static int kgsl_release(struct inode *inodep, struct file *filep)
 	dev_priv = (struct kgsl_device_private *) filep->private_data;
 	BUG_ON(dev_priv == NULL);
 	BUG_ON(device != dev_priv->device);
+	/* private could be null if kgsl_open is not successful */
 	private = dev_priv->process_priv;
-	BUG_ON(private == NULL);
 	filep->private_data = NULL;
 
 	mutex_lock(&device->mutex);
