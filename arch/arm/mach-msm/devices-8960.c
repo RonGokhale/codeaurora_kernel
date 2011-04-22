@@ -188,6 +188,30 @@ struct platform_device msm8960_device_uart_gsbi5 = {
 	.num_resources	= ARRAY_SIZE(resources_uart_gsbi5),
 	.resource	= resources_uart_gsbi5,
 };
+/* MSM Video core device */
+
+#define MSM_VIDC_BASE_PHYS 0x04400000
+#define MSM_VIDC_BASE_SIZE 0x00100000
+
+static struct resource msm_device_vidc_resources[] = {
+	{
+		.start	= MSM_VIDC_BASE_PHYS,
+		.end	= MSM_VIDC_BASE_PHYS + MSM_VIDC_BASE_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= VCODEC_IRQ,
+		.end	= VCODEC_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm_device_vidc = {
+	.name = "msm_vidc",
+	.id = 0,
+	.num_resources = ARRAY_SIZE(msm_device_vidc_resources),
+	.resource = msm_device_vidc_resources,
+};
 
 #define MSM_WCNSS_PHYS	0x03000000
 #define MSM_WCNSS_SIZE	0x01000000

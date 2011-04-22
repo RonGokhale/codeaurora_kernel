@@ -486,6 +486,7 @@ static struct platform_device *sim_devices[] __initdata = {
 #ifdef CONFIG_MSM_FAKE_BATTERY
 	&fish_battery_device,
 #endif
+	&msm_device_vidc,
 };
 
 static struct platform_device *rumi3_devices[] __initdata = {
