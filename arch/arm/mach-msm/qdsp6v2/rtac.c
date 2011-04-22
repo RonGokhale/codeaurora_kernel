@@ -23,8 +23,8 @@
 #include <mach/qdsp6v2/apr_audio.h>
 #include <mach/qdsp6v2/q6asm.h>
 #include <mach/qdsp6v2/q6afe.h>
-#include "q6adm.h"
-#include "rtac.h"
+#include <mach/qdsp6v2/rtac.h>
+#include <sound/q6adm.h>
 
 
 /* Max size of payload (buf size - apr header) */

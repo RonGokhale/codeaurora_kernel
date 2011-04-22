@@ -54,3 +54,7 @@ obj-$(CONFIG_SND_VOIP_PCM) += snd-soc-msm-voip.o
 
 snd-soc-msm8660-qrdc-objs := msm8660-qrdc.o
 obj-$(CONFIG_SND_SOC_MSM8660_QRDC) += snd-soc-msm8660-qrdc.o
+
+# for MSM 8960 sound card driver
+
+obj-$(CONFIG_SND_SOC_MSM_QDSP6_INTF) += qdsp6/

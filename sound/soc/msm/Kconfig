@@ -59,6 +59,7 @@ config SND_SOC_MSM8X60
 	depends on ARCH_MSM8X60 && SND_SOC && MSM8X60_AUDIO
 	select SND_SOC_MSM8X60_PCM
 	select SND_SOC_MSM8X60_DAI
+	select SND_SOC_MSM_QDSP6_INTF
 	default y
 	help
 	 To add support for SoC audio on MSM8X60. This driver
@@ -81,6 +82,7 @@ config SND_SOC_MSM8660
 	select SND_SOC_MSM8660_LPAIF
 	select SND_SOC_TIMPANI
 	select MARIMBA_CORE
+	select SND_SOC_MSM_QDSP6_INTF
 	default n
 	help
 	 To add support for SoC audio on MSM8660 for direct playback
@@ -110,9 +112,17 @@ config SND_SOC_MSM8660_QRDC
 	select SND_SOC_WM8994
 	select SND_SOC_WM_HUBS
 	select MFD_WM8994
+	select SND_SOC_MSM_QDSP6_INTF
 	default n
 	help
 	 To add support for SoC audio on MSM8660 QRDC for direct playback
 	 and capture over hardware DMA.
+
+config SND_SOC_MSM_QDSP6_INTF
+	bool "SoC Q6 audio driver for MSM"
+	depends on MSM_QDSP6_APR
+	default n
+	help
+	 To add support for SoC Q6 audio on MSM.
 
 endmenu

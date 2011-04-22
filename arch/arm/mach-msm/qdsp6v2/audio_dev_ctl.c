@@ -21,11 +21,11 @@
 #include <asm/atomic.h>
 #include <mach/qdsp6v2/audio_dev_ctl.h>
 #include <mach/debug_mm.h>
-#include <mach/qdsp6v2/apr_audio.h>
-#include <mach/qdsp6v2/q6afe.h>
 #include <mach/qdsp6v2/q6voice.h>
-#include "q6adm.h"
-#include "rtac.h"
+#include <mach/qdsp6v2/rtac.h>
+#include <sound/apr_audio.h>
+#include <sound/q6afe.h>
+#include <sound/q6adm.h>
 
 #ifndef MAX
 #define  MAX(x, y) (((x) > (y)) ? (x) : (y))

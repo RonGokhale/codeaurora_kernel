@@ -26,7 +26,7 @@
 
 #include "../proc_comm.h"
 #include <mach/debug_mm.h>
-#include "dsp_debug.h"
+#include <mach/qdsp6v2/dsp_debug.h>
 
 static wait_queue_head_t dsp_wait;
 static int dsp_has_crashed;

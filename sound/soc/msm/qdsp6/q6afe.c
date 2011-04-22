@@ -17,8 +17,8 @@
 #include <linux/wait.h>
 #include <linux/jiffies.h>
 #include <linux/sched.h>
-#include <mach/qdsp6v2/apr_audio.h>
-#include <mach/qdsp6v2/q6afe.h>
+#include <sound/apr_audio.h>
+#include <sound/q6afe.h>
 
 struct afe_ctl {
 	void *apr;
@@ -628,6 +628,11 @@ int afe_close(int port_id)
 
 	atomic_set(&this_afe.state, 1);
 	ret = apr_send_pkt(this_afe.apr, (uint32_t *) &stop);
+
+	if (ret == -ENETRESET) {
+		pr_info("%s: Need to reset, calling APR deregister", __func__);
+		return apr_deregister(this_afe.apr);
+	}
 
 	if (ret < 0) {
 		pr_err("%s: AFE close failed\n", __func__);

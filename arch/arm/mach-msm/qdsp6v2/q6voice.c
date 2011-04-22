@@ -25,8 +25,8 @@
 #include <mach/qdsp6v2/audio_dev_ctl.h>
 #include <mach/dal.h>
 #include <mach/qdsp6v2/q6voice.h>
-#include "audio_acdb.h"
-#include "rtac.h"
+#include <mach/qdsp6v2/rtac.h>
+#include <mach/qdsp6v2/audio_acdb.h>
 
 #define TIMEOUT_MS 3000
 #define SNDDEV_CAP_TTY 0x20

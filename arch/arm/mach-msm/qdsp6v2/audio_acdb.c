@@ -17,7 +17,7 @@
 #include <linux/uaccess.h>
 #include <linux/android_pmem.h>
 #include <linux/mm.h>
-#include "audio_acdb.h"
+#include <mach/qdsp6v2/audio_acdb.h>
 
 
 #define MAX_NETWORKS		9

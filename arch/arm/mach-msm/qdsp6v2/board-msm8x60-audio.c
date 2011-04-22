@@ -26,8 +26,8 @@
 #include <linux/regulator/machine.h>
 
 #include <mach/qdsp6v2/audio_dev_ctl.h>
-#include <mach/qdsp6v2/apr_audio.h>
 #include <mach/mpp.h>
+#include <sound/apr_audio.h>
 #include <asm/mach-types.h>
 #include <asm/uaccess.h>
 
