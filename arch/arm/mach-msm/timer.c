@@ -149,8 +149,6 @@ struct msm_clock {
 	uint32_t                    write_delay;
 	uint32_t                    rollover_offset;
 	uint32_t                    index;
-	int set_event;
-	int irq_count;
 };
 
 enum {
@@ -207,8 +205,6 @@ static struct msm_clock msm_clocks[] = {
 		.regbase = MSM_GPT_BASE,
 		.freq = GPT_HZ,
 		.index = MSM_CLOCK_GPT,
-		.set_event = 0,
-		.irq_count = 0,
 		.flags =
 #if defined(CONFIG_ARCH_MSM_ARM11) || defined(CONFIG_ARCH_MSM_CORTEX_A5)
 			MSM_CLOCK_FLAGS_UNSTABLE_COUNT |
@@ -248,8 +244,6 @@ static struct msm_clock msm_clocks[] = {
 		.index = MSM_CLOCK_DGT,
 		.shift = MSM_DGT_SHIFT,
 		.write_delay = 9,
-		.set_event = 0,
-		.irq_count = 0,
 	}
 };
 
@@ -354,7 +348,6 @@ static int msm_timer_set_next_event(unsigned long cycles,
 #else
 	clock = container_of(evt, struct msm_clock, clockevent);
 #endif
-	clock->set_event++;
 	clock_state = &__get_cpu_var(msm_clocks_percpu)[clock->index];
 	if (clock_state->stopped)
 		return 0;

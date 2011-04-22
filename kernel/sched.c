@@ -3779,18 +3779,6 @@ void scheduler_tick(void)
 	raw_spin_lock(&rq->lock);
 	update_rq_clock(rq);
 	update_cpu_load_active(rq);
-	if (!curr) {
-		printk("%s: !curr\n", __func__);
-		panic("doh");
-		if (!curr->sched_class) {
-			printk("%s: !sched_class\n", __func__);
-			panic("doh");
-			if (!curr->sched_class->task_tick) {
-				printk("%s: !sched_class\n", __func__);
-				panic("doh");
-			}
-		}
-	}
 	curr->sched_class->task_tick(rq, curr, 0);
 	raw_spin_unlock(&rq->lock);
 
