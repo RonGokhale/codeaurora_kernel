@@ -128,7 +128,6 @@ static int seaboard_hdmi_enable(void)
 	if (WARN_ON(!seaboard_hdmi_reg || !seaboard_hdmi_pll))
 		return -ENODEV;
 
-	gpio_set_value(seaboard_hdmi_enb, 1);
 	regulator_enable(seaboard_hdmi_reg);
 	regulator_enable(seaboard_hdmi_pll);
 	return 0;
@@ -139,10 +138,19 @@ static int seaboard_hdmi_disable(void)
 	if (WARN_ON(!seaboard_hdmi_reg || !seaboard_hdmi_pll))
 		return -ENODEV;
 
-	gpio_set_value(seaboard_hdmi_enb, 0);
 	regulator_disable(seaboard_hdmi_reg);
 	regulator_disable(seaboard_hdmi_pll);
 	return 0;
+}
+
+static void seaboard_hdmi_enable_ddc(void)
+{
+	gpio_set_value(seaboard_hdmi_enb, 1);
+}
+
+static void seaboard_hdmi_disable_ddc(void)
+{
+	gpio_set_value(seaboard_hdmi_enb, 0);
 }
 
 static struct resource seaboard_disp1_resources[] = {
@@ -267,6 +275,8 @@ static struct tegra_dc_out seaboard_disp2_out = {
 
 	.enable		= seaboard_hdmi_enable,
 	.disable	= seaboard_hdmi_disable,
+	.enable_ddc	= seaboard_hdmi_enable_ddc,
+	.disable_ddc	= seaboard_hdmi_disable_ddc,
 };
 
 static struct tegra_dc_platform_data seaboard_disp1_pdata = {
@@ -363,6 +373,7 @@ int __init seaboard_panel_init(void)
 	gpio_request(seaboard_hdmi_enb, "hdmi_5v_en");
 	gpio_direction_output(seaboard_hdmi_enb, 1);
 	tegra_gpio_enable(seaboard_hdmi_enb);
+	gpio_set_value(seaboard_hdmi_enb, 0);
 
 	gpio_request(seaboard_hdmi_hpd, "hdmi_hpd");
 	gpio_direction_input(seaboard_hdmi_hpd);
