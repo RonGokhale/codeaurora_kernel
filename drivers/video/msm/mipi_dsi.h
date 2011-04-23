@@ -40,6 +40,7 @@
 
 #define MMSS_CC_BASE_PHY 0x04000000	/* mmss clcok control */
 #define MMSS_SFPB_BASE_PHY 0x05700000	/* mmss SFPB CFG */
+#define MMSS_SERDES_BASE_PHY 0x04f01000 /* mmss (De)Serializer CFG */
 
 #define MIPI_DSI_BASE mipi_dsi_base
 
@@ -60,8 +61,8 @@
 #define MIPI_DSI_PANEL_VGA	0
 #define MIPI_DSI_PANEL_WVGA	1
 #define MIPI_DSI_PANEL_WVGA_PT	2
-
-#define DSI_PANEL_MAX	2
+#define MIPI_DSI_PANEL_FWVGA_PT	3
+#define DSI_PANEL_MAX	3
 
 enum {		/* mipi dsi panel */
 	DSI_VIDEO_MODE,
@@ -225,4 +226,5 @@ void mipi_dsi_clk_disable(void);
 
 irqreturn_t mipi_dsi_isr(int irq, void *ptr);
 
+void mipi_set_tx_power_mode(int mode);
 #endif /* MIPI_DSI_H */

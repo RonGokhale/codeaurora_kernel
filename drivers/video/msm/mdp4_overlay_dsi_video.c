@@ -139,6 +139,9 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 	pipe->srcp0_addr = (uint32) buf;
 	pipe->srcp0_ystride = fbi->fix.line_length;
 
+	pipe->dst_h = fbi->var.yres;
+	pipe->dst_w = fbi->var.xres;
+
 	mdp4_overlay_dmap_xy(pipe);	/* dma_p */
 	mdp4_overlay_dmap_cfg(mfd, 1);
 

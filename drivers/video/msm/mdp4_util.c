@@ -282,9 +282,6 @@ void mdp4_hw_init(void)
 	mdp4_mixer1_csc_pre_lv_setup();
 	mdp4_mixer1_csc_post_lv_setup();
 
-	mdp4_mixer_gc_lut_setup(0);
-	mdp4_mixer_gc_lut_setup(1);
-
 	mdp4_vg_igc_lut_setup(0);
 	mdp4_vg_igc_lut_setup(1);
 

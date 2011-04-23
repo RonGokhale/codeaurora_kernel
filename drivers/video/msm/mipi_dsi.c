@@ -37,6 +37,7 @@
 #include "mdp4.h"
 
 u32 dsi_irq;
+static void  __iomem *periph_base;
 int mipi_dsi_clk_on;
 static struct dsi_clk_desc dsicore_clk;
 static struct dsi_clk_desc dsi_pclk;
@@ -492,9 +493,6 @@ static int mipi_dsi_off(struct platform_device *pdev)
 
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(0);
-#else
-	if (mfd->ebi1_clk)
-		clk_disable(mfd->ebi1_clk);
 #endif
 
 	/* DSIPHY_PLL_CTRL_5 */
@@ -540,6 +538,7 @@ static int mipi_dsi_off(struct platform_device *pdev)
 
 static int mipi_dsi_on(struct platform_device *pdev)
 {
+	void __iomem *cc = MIPI_DSI_BASE + 0x0130;
 	int ret = 0;
 	u32 clk_rate;
 	struct msm_fb_data_type *mfd;
@@ -564,8 +563,7 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	clk_rate = min(clk_rate, mfd->panel_info.clk_max);
 
 	if (clk_set_rate(dsi_byte_div_clk, 1) < 0)	/* divided by 1 */
-		printk(KERN_ERR "%s: clk_set_rate failed\n",
-			__func__);
+		pr_err("%s: clk_set_rate failed\n",	__func__);
 
 	local_bh_disable();
 	mipi_dsi_clk_enable();
@@ -582,6 +580,9 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 	/* DSIPHY_PLL_CTRL_5 */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x0214, 0x050);
+
+	/* DSIPHY_TPA_CTRL_0 */
+	MIPI_OUTP(MIPI_DSI_BASE + 0x0254, 0x020);
 
 	/* DSIPHY_TPA_CTRL_1 */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x0258, 0x00f);
@@ -629,6 +630,72 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 	mipi_dsi_host_init(mipi);
 
+	/* PHY registers programemd thru S2P interface */
+	if (periph_base) {
+		MIPI_OUTP(periph_base + 0x2c, 0x000000b6);
+		MIPI_OUTP(periph_base + 0x2c, 0x000001b5);
+		MIPI_OUTP(periph_base + 0x2c, 0x000001b4);
+		MIPI_OUTP(periph_base + 0x2c, 0x000003b3);
+		MIPI_OUTP(periph_base + 0x2c, 0x000003a2);
+		MIPI_OUTP(periph_base + 0x2c, 0x000002a1);
+		MIPI_OUTP(periph_base + 0x2c, 0x000008a0);
+		MIPI_OUTP(periph_base + 0x2c, 0x00000d9f);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000109e);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000209d);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000109c);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000079a);
+		MIPI_OUTP(periph_base + 0x2c, 0x00000c99);
+		MIPI_OUTP(periph_base + 0x2c, 0x00002298);
+		MIPI_OUTP(periph_base + 0x2c, 0x000000a7);
+		MIPI_OUTP(periph_base + 0x2c, 0x000000a6);
+		MIPI_OUTP(periph_base + 0x2c, 0x000000a5);
+		MIPI_OUTP(periph_base + 0x2c, 0x00007fa4);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000eea8);
+		MIPI_OUTP(periph_base + 0x2c, 0x000006aa);
+		MIPI_OUTP(periph_base + 0x2c, 0x00002095);
+		MIPI_OUTP(periph_base + 0x2c, 0x00000493);
+		MIPI_OUTP(periph_base + 0x2c, 0x00001092);
+		MIPI_OUTP(periph_base + 0x2c, 0x00000691);
+		MIPI_OUTP(periph_base + 0x2c, 0x00005490);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000038d);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000148c);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000058b);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000078a);
+		MIPI_OUTP(periph_base + 0x2c, 0x00001f89);
+		MIPI_OUTP(periph_base + 0x2c, 0x00003388);
+		MIPI_OUTP(periph_base + 0x2c, 0x00006387);
+		MIPI_OUTP(periph_base + 0x2c, 0x00004886);
+		MIPI_OUTP(periph_base + 0x2c, 0x00005085);
+		MIPI_OUTP(periph_base + 0x2c, 0x00000084);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000da83);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000b182);
+		MIPI_OUTP(periph_base + 0x2c, 0x00002f81);
+		MIPI_OUTP(periph_base + 0x2c, 0x00004080);
+		MIPI_OUTP(periph_base + 0x2c, 0x00004180);
+		MIPI_OUTP(periph_base + 0x2c, 0x000006aa);
+	}
+
+	MIPI_OUTP(cc, 0x806c11c8);
+	MIPI_OUTP(cc, 0x804c11c8);
+	MIPI_OUTP(cc, 0x806d0080);
+	MIPI_OUTP(cc, 0x804d0080);
+	MIPI_OUTP(cc, 0x00000000);
+	MIPI_OUTP(cc, 0x807b1597);
+	MIPI_OUTP(cc, 0x805b1597);
+	MIPI_OUTP(cc, 0x807c0080);
+	MIPI_OUTP(cc, 0x805c0080);
+	MIPI_OUTP(cc, 0x00000000);
+	MIPI_OUTP(cc, 0x807911c8);
+	MIPI_OUTP(cc, 0x805911c8);
+	MIPI_OUTP(cc, 0x807a0080);
+	MIPI_OUTP(cc, 0x805a0080);
+	MIPI_OUTP(cc, 0x00000000);
+	MIPI_OUTP(cc, 0x80721555);
+	MIPI_OUTP(cc, 0x80521555);
+	MIPI_OUTP(cc, 0x80730000);
+	MIPI_OUTP(cc, 0x80530000);
+	MIPI_OUTP(cc, 0x00000000);
+
 	mipi_dsi_cmd_bta_sw_trigger(); /* clean up ack_err_status */
 
 	ret = panel_next_on(pdev);
@@ -650,13 +717,7 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(2);
-#else
-	if (mfd->ebi1_clk)
-		clk_enable(mfd->ebi1_clk);
 #endif
-
-	pr_debug("%s:\n", __func__);
-
 	return ret;
 }
 
@@ -689,7 +750,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 		if (!mipi_dsi_base)
 			return -ENOMEM;
 
-		mmss_cc_base = MSM_MMSS_CLK_CTL_BASE;
+		mmss_cc_base = ioremap(MMSS_CC_BASE_PHY, 0x200);
 		MSM_FB_INFO("msm_mmss_cc base = 0x%x\n",
 				(int) mmss_cc_base);
 
@@ -712,17 +773,34 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 		rc = request_irq(dsi_irq, mipi_dsi_isr, IRQF_DISABLED,
 						"MIPI_DSI", 0);
 		if (rc) {
-			printk(KERN_ERR "mipi_dsi_host request_irq() failed!\n");
+			pr_err("mipi_dsi_host request_irq() failed!\n");
 			return rc;
 		}
 
 		disable_irq(dsi_irq);
 
+		/*
+		 * 0x4f00000 is the base for TV Encoder.
+		 * Unused Offset 0x1000 is used for
+		 * (de)serializer on emulation platform
+		 */
+		periph_base = ioremap(MMSS_SERDES_BASE_PHY, 0x100);
+
+		if (periph_base) {
+			pr_debug("periph_base %p\n", periph_base);
+			writel(0x4, periph_base + 0x28);
+			writel(0xc, periph_base + 0x28);
+		} else {
+			pr_err("periph_base is NULL\n");
+			free_irq(dsi_irq, 0);
+			return -ENOMEM;
+		}
+
 		mipi_dsi_calibration();
 
 		if (mipi_dsi_pdata) {
 			vsync_gpio = mipi_dsi_pdata->vsync_gpio;
-			pr_info("%s: vsync_gpio=%d\n", __func__, vsync_gpio);
+			pr_debug("%s: vsync_gpio=%d\n", __func__, vsync_gpio);
 		}
 
 		mipi_dsi_resource_initialized = 1;
@@ -761,7 +839,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 	if (platform_device_add_data
 	    (mdp_dev, pdev->dev.platform_data,
 	     sizeof(struct msm_fb_panel_data))) {
-		printk(KERN_ERR "mipi_dsi_probe: platform_device_add_data failed!\n");
+		pr_err("mipi_dsi_probe: platform_device_add_data failed!\n");
 		platform_device_put(mdp_dev);
 		return -ENOMEM;
 	}
@@ -849,7 +927,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 #ifdef DSI_CLK
 	clk_rate = mfd->panel_info.clk_max;
 	if (clk_set_max_rate(mipi_dsi_clk, clk_rate) < 0)
-		printk(KERN_ERR "%s: clk_set_max_rate failed\n", __func__);
+		pr_err("%s: clk_set_max_rate failed\n", __func__);
 	mfd->panel_info.clk_rate = mfd->panel_info.clk_min;
 #endif
 
@@ -867,14 +945,6 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 	pdev_list[pdev_list_cnt++] = pdev;
 
-#ifndef CONFIG_MSM_BUS_SCALING
-	if (IS_ERR(mfd->ebi1_clk)) {
-		rc = PTR_ERR(mfd->ebi1_clk);
-		goto mipi_dsi_probe_err;
-	}
-	clk_set_rate(mfd->ebi1_clk, 122000000);
-#endif
-
 	return 0;
 
 mipi_dsi_probe_err:
@@ -887,12 +957,7 @@ static int mipi_dsi_remove(struct platform_device *pdev)
 	struct msm_fb_data_type *mfd;
 
 	mfd = platform_get_drvdata(pdev);
-#ifndef CONFIG_MSM_BUS_SCALING
-	clk_put(mfd->ebi1_clk);
-#endif
-
 	iounmap(msm_pmdh_base);
-
 	return 0;
 }
 
@@ -907,32 +972,32 @@ static int __init mipi_dsi_driver_init(void)
 
 	amp_pclk = clk_get(NULL, "amp_pclk");
 	if (IS_ERR(amp_pclk)) {
-		printk(KERN_ERR "can't find amp_pclk\n");
+		pr_err("can't find amp_pclk\n");
 		return PTR_ERR(amp_pclk);
 	}
 
 	dsi_m_pclk = clk_get(NULL, "dsi_m_pclk");
 	if (IS_ERR(dsi_m_pclk)) {
-		printk(KERN_ERR "can't find dsi_m_pclk\n");
+		pr_err("can't find dsi_m_pclk\n");
 		return PTR_ERR(dsi_m_pclk);
 	}
 
 	dsi_s_pclk = clk_get(NULL, "dsi_s_pclk");
 	if (IS_ERR(dsi_s_pclk)) {
-		printk(KERN_ERR "can't find dsi_s_pclk\n");
+		pr_err("can't find dsi_s_pclk\n");
 		return PTR_ERR(dsi_s_pclk);
 	}
 
 	dsi_byte_div_clk = clk_get(NULL, "dsi_byte_div_clk");
 	if (IS_ERR(dsi_byte_div_clk)) {
-		printk(KERN_ERR "can't find dsi_byte_div_clk\n");
+		pr_err("can't find dsi_byte_div_clk\n");
 		return PTR_ERR(dsi_byte_div_clk);
 	}
 
 
 	dsi_esc_clk = clk_get(NULL, "dsi_esc_clk");
 	if (IS_ERR(dsi_esc_clk)) {
-		printk(KERN_ERR "can't find dsi_byte_div_clk\n");
+		pr_err("can't find dsi_byte_div_clk\n");
 		return PTR_ERR(dsi_byte_div_clk);
 	}
 
@@ -953,7 +1018,7 @@ static int __init mipi_dsi_driver_init(void)
 		clk_put(dsi_byte_div_clk);
 		clk_disable(dsi_esc_clk);
 		clk_put(dsi_esc_clk);
-		printk(KERN_ERR "mipi_dsi_register_driver() failed!\n");
+		pr_err("mipi_dsi_register_driver() failed!\n");
 		return ret;
 	}
 
