@@ -257,6 +257,7 @@ struct msm_adc_platform_data {
 	uint32_t chan_per_adc;
 	char **dev_names;
 	uint32_t target_hw;
+	uint32_t gpio_config;
 	u32 (*adc_gpio_enable) (int);
 	u32 (*adc_gpio_disable) (int);
 	u32 (*adc_fluid_enable) (void);
@@ -266,6 +267,11 @@ struct msm_adc_platform_data {
 enum hw_type {
 	MSM_7x30,
 	MSM_8x60,
+};
+
+enum epm_gpio_config {
+	MPROC_CONFIG,
+	APROC_CONFIG
 };
 
 enum adc_request {
