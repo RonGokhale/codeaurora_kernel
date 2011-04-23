@@ -107,6 +107,11 @@ config QS_S5K4E1
 	---help---
 	  Samsung 5M with Autofocus
 
+config OV2720
+	bool "Sensor ov2720"
+	depends on MSM_CAMERA && ARCH_MSM8960 && !MSM_CAMERA_V4L2
+	default n
+
 config VB6801
 	bool "Sensor vb6801"
 	depends on MSM_CAMERA && !ARCH_MSM8X60 && !MSM_CAMERA_V4L2

@@ -32,6 +32,7 @@ endif
 obj-$(CONFIG_QS_S5K4E1) += qs_s5k4e1.o qs_s5k4e1_reg.o
 obj-$(CONFIG_VB6801) += vb6801.o
 obj-$(CONFIG_IMX074) += imx074.o imx074_reg.o
+obj-$(CONFIG_OV2720) += ov2720.o ov2720_reg.o
 obj-$(CONFIG_WEBCAM_OV9726) += ov9726.o ov9726_reg.o
 obj-$(CONFIG_WEBCAM_OV7692) += ov7692.o
 obj-$(CONFIG_MT9D112) += mt9d112.o mt9d112_reg.o
