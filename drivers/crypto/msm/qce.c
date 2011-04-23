@@ -144,7 +144,6 @@ struct qce_device {
 	uint32_t aes_key_size;		/* cached aes key size in bytes */
 	int fastaes;			/* ce supports fast aes */
 	int hmac;			/* ce support hmac-sha1 */
-	unsigned int use_pmem;		/* uses PMEM allocated memory */
 
 	qce_comp_func_ptr_t qce_cb;	/* qce callback function pointer */
 
@@ -932,15 +931,13 @@ static int _ablk_cipher_complete(struct qce_device *pce_dev)
 
 	areq = (struct ablkcipher_request *) pce_dev->areq;
 
-	if (!pce_dev->use_pmem) {
-		if (areq->src != areq->dst) {
-			dma_unmap_sg(pce_dev->pdev, areq->dst,
-				pce_dev->dst_nents, DMA_FROM_DEVICE);
-		}
-		dma_unmap_sg(pce_dev->pdev, areq->src, pce_dev->src_nents,
-			(areq->src == areq->dst) ? DMA_BIDIRECTIONAL :
-							DMA_TO_DEVICE);
+	if (areq->src != areq->dst) {
+		dma_unmap_sg(pce_dev->pdev, areq->dst,
+			pce_dev->dst_nents, DMA_FROM_DEVICE);
 	}
+	dma_unmap_sg(pce_dev->pdev, areq->src, pce_dev->src_nents,
+		(areq->src == areq->dst) ? DMA_BIDIRECTIONAL :
+						DMA_TO_DEVICE);
 	/* get iv out */
 	if (pce_dev->mode == QCE_MODE_ECB) {
 		clk_disable(pce_dev->ce_clk);
@@ -960,6 +957,36 @@ static int _ablk_cipher_complete(struct qce_device *pce_dev)
 
 	return 0;
 };
+
+static int _ablk_cipher_use_pmem_complete(struct qce_device *pce_dev)
+{
+	struct ablkcipher_request *areq;
+	uint32_t iv_out[4];
+	unsigned char iv[4 * sizeof(uint32_t)];
+
+	areq = (struct ablkcipher_request *) pce_dev->areq;
+
+	/* get iv out */
+	if (pce_dev->mode == QCE_MODE_ECB) {
+		clk_disable(pce_dev->ce_clk);
+		pce_dev->qce_cb(areq, NULL, NULL, pce_dev->chan_ce_in_status |
+					pce_dev->chan_ce_out_status);
+	} else {
+		iv_out[0] = readl(pce_dev->iobase + CRYPTO_CNTR0_IV0_REG);
+		iv_out[1] = readl(pce_dev->iobase + CRYPTO_CNTR1_IV1_REG);
+		iv_out[2] = readl(pce_dev->iobase + CRYPTO_CNTR2_IV2_REG);
+		iv_out[3] = readl(pce_dev->iobase + CRYPTO_CNTR3_IV3_REG);
+
+		_net_words_to_byte_stream(iv_out, iv, sizeof(iv));
+		clk_disable(pce_dev->ce_clk);
+		pce_dev->qce_cb(areq, NULL, iv, pce_dev->chan_ce_in_status |
+					pce_dev->chan_ce_out_status);
+	}
+
+	return 0;
+};
+
+
 
 static int _chain_sg_buffer_in(struct qce_device *pce_dev,
 		struct scatterlist *sg, unsigned int nbytes)
@@ -1298,6 +1325,54 @@ static void _ablk_cipher_ce_out_call_back(struct msm_dmov_cmd *cmd_ptr,
 	}
 };
 
+
+static void _ablk_cipher_ce_in_call_back_pmem(struct msm_dmov_cmd *cmd_ptr,
+		unsigned int result, struct msm_dmov_errdata *err)
+{
+	struct qce_device *pce_dev;
+
+	pce_dev = (struct qce_device *) cmd_ptr->user;
+	if (result != ADM_STATUS_OK) {
+		dev_err(pce_dev->pdev, "Qualcomm ADM status error %x\n",
+						result);
+		pce_dev->chan_ce_in_status = -1;
+	} else
+		pce_dev->chan_ce_in_status = 0;
+
+	pce_dev->chan_ce_in_state = QCE_CHAN_STATE_COMP;
+	if (pce_dev->chan_ce_out_state == QCE_CHAN_STATE_COMP) {
+		pce_dev->chan_ce_in_state = QCE_CHAN_STATE_IDLE;
+		pce_dev->chan_ce_out_state = QCE_CHAN_STATE_IDLE;
+
+		/* done */
+		_ablk_cipher_use_pmem_complete(pce_dev);
+	}
+};
+
+static void _ablk_cipher_ce_out_call_back_pmem(struct msm_dmov_cmd *cmd_ptr,
+		unsigned int result, struct msm_dmov_errdata *err)
+{
+	struct qce_device *pce_dev;
+
+	pce_dev = (struct qce_device *) cmd_ptr->user;
+	if (result != ADM_STATUS_OK) {
+		dev_err(pce_dev->pdev, "Qualcomm ADM status error %x\n",
+						result);
+		pce_dev->chan_ce_out_status = -1;
+	} else {
+		pce_dev->chan_ce_out_status = 0;
+	};
+
+	pce_dev->chan_ce_out_state = QCE_CHAN_STATE_COMP;
+	if (pce_dev->chan_ce_in_state == QCE_CHAN_STATE_COMP) {
+		pce_dev->chan_ce_in_state = QCE_CHAN_STATE_IDLE;
+		pce_dev->chan_ce_out_state = QCE_CHAN_STATE_IDLE;
+
+		/* done */
+		_ablk_cipher_use_pmem_complete(pce_dev);
+	}
+};
+
 static int _setup_cmd_template(struct qce_device *pce_dev)
 {
 	dmov_sg *pcmd;
@@ -1631,7 +1706,6 @@ int qce_ablk_cipher_req(void *handle, struct qce_req *c_req)
 
 	_chain_buffer_in_init(pce_dev);
 	_chain_buffer_out_init(pce_dev);
-	pce_dev->use_pmem = c_req->use_pmem;
 
 	pce_dev->src_nents = 0;
 	pce_dev->dst_nents = 0;
@@ -1696,12 +1770,17 @@ int qce_ablk_cipher_req(void *handle, struct qce_req *c_req)
 	/* setup for callback, and issue command to adm */
 	pce_dev->areq = areq;
 	pce_dev->qce_cb = c_req->qce_cb;
-
-	pce_dev->chan_ce_in_cmd->complete_func =
+	if (c_req->use_pmem == 1) {
+		pce_dev->chan_ce_in_cmd->complete_func =
+					_ablk_cipher_ce_in_call_back_pmem;
+		pce_dev->chan_ce_out_cmd->complete_func =
+					_ablk_cipher_ce_out_call_back_pmem;
+	} else {
+		pce_dev->chan_ce_in_cmd->complete_func =
 					_ablk_cipher_ce_in_call_back;
-	pce_dev->chan_ce_out_cmd->complete_func =
+		pce_dev->chan_ce_out_cmd->complete_func =
 					_ablk_cipher_ce_out_call_back;
-
+	}
 	rc = _qce_start_dma(pce_dev, true, true);
 
 	if (rc == 0)
@@ -1948,7 +2027,7 @@ static void __exit _qce_exit(void)
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Crypto Engine driver");
-MODULE_VERSION("1.07");
+MODULE_VERSION("1.08");
 
 module_init(_qce_init);
 module_exit(_qce_exit);
