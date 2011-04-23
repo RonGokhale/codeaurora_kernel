@@ -55,7 +55,9 @@ ENTRY(msm_pm_collapse)
 	mrc     p15, 0, r1, c1, c0, 0 /* MMU control */
 	mrc     p15, 0, r2, c2, c0, 0 /* TTBR0 */
 	mrc     p15, 0, r3, c3, c0, 0 /* dacr */
+#ifndef CONFIG_ARCH_MSM8960
 	mrc     p15, 3, r4, c15, c0, 3 /* L2CR1 is the L2 cache control reg 1 */
+#endif
 	mrc     p15, 0, r5, c10, c2, 0 /* PRRR */
 	mrc     p15, 0, r6, c10, c2, 1 /* NMRR */
 	mrc     p15, 0, r7, c1, c0, 1 /* ACTLR */
@@ -69,9 +71,12 @@ ENTRY(msm_pm_collapse)
 	mrc     p15, 7, r2, c15, c0, 6 /* AVSDSCR is the Adaptive Voltage
 	                                * Scaling Delay Synthesizer Control
 					* Register */
+#ifndef CONFIG_ARCH_MSM8960
 	mrc     p15, 7, r3, c15, c1, 0 /* TSCSR is the Temperature Status and
 	                                * Control Register
 					*/
+#endif
+
 	stmia   r0!, {r1-r3}
 #endif
 
@@ -131,14 +136,18 @@ ENTRY(msm_pm_collapse_exit)
 
 #ifdef CONFIG_MSM_CPU_AVS
 	ldmdb   r1!, {r2-r4}
+#ifndef CONFIG_ARCH_MSM8960
 	mcr     p15, 7, r4, c15, c1, 0 /* TSCSR */
+#endif
 	mcr     p15, 7, r3, c15, c0, 6 /* AVSDSCR */
 	mcr     p15, 7, r2, c15, c1, 7 /* AVSCSR */
 #endif
 	ldmdb   r1!, {r2-r11}
 	mcr     p15, 0, r4, c3, c0, 0 /* dacr */
 	mcr     p15, 0, r3, c2, c0, 0 /* TTBR0 */
+#ifndef CONFIG_ARCH_MSM8960
 	mcr     p15, 3, r5, c15, c0, 3 /* L2CR1 */
+#endif
 	mcr     p15, 0, r6, c10, c2, 0 /* PRRR */
 	mcr     p15, 0, r7, c10, c2, 1 /* NMRR */
 	mcr     p15, 0, r8, c1, c0, 1 /* ACTLR */
