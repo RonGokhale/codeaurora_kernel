@@ -459,9 +459,13 @@ static struct resource msm_mdp_resources[] = {
 		.start  = MDP_BASE,
 		.end    = MDP_BASE + 0x000F0000 - 1,
 		.flags  = IORESOURCE_MEM,
-	}
+	},
+	{
+		.start  = INT_MDP,
+		.end    = INT_MDP,
+		.flags  = IORESOURCE_IRQ,
+	},
 };
-
 
 static struct platform_device msm_mdp_device = {
 	.name   = "mdp",
