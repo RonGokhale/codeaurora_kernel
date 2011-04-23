@@ -211,8 +211,7 @@ armpmu_event_update(struct perf_event *event,
 		    struct hw_perf_event *hwc,
 		    int idx, int overflow)
 {
-	int shift = 64 - 32;
-	s64 prev_raw_count, new_raw_count;
+	u64 prev_raw_count, new_raw_count;
 	u64 delta;
 
 again:
@@ -223,11 +222,13 @@ again:
 			     new_raw_count) != prev_raw_count)
 		goto again;
 
-	delta = (new_raw_count << shift) - (prev_raw_count << shift);
-	delta >>= shift;
+	new_raw_count &= armpmu->max_period;
+	prev_raw_count &= armpmu->max_period;
 
-	if (overflow && (new_raw_count - prev_raw_count) > 0)
-		delta += local64_read(&hwc->period_left) + prev_raw_count;
+	if (overflow)
+		delta = armpmu->max_period - prev_raw_count + new_raw_count;
+	else
+		delta = new_raw_count - prev_raw_count;
 
 	local64_add(delta, &event->count);
 	local64_sub(delta, &hwc->period_left);
