@@ -38,7 +38,7 @@ void *ddl_pmem_alloc(struct ddl_buf_addr *addr, size_t sz, u32 alignment)
 	DBG_PMEM("\n%s() IN: Requested alloc size(%u)", __func__, (u32)sz);
 	alloc_size = (sz + alignment);
 	addr->physical_base_addr = (u8 *) pmem_kalloc(alloc_size,
-		PMEM_MEMTYPE_SMI | PMEM_ALIGNMENT_4K);
+		PMEM_MEMTYPE | PMEM_ALIGNMENT_4K);
 	if (!addr->physical_base_addr) {
 		DDL_MSG_ERROR("%s() : pmem alloc failed (%d)\n", __func__,
 			alloc_size);
