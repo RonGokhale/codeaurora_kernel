@@ -58,3 +58,6 @@ obj-$(CONFIG_SND_SOC_MSM8660_QRDC) += snd-soc-msm8660-qrdc.o
 # for MSM 8960 sound card driver
 
 obj-$(CONFIG_SND_SOC_MSM_QDSP6_INTF) += qdsp6/
+
+snd-soc-qdsp6-objs := msm-dai-q6.o msm-pcm-q6.o msm-pcm-routing.o msm-dai-fe.o
+obj-$(CONFIG_SND_SOC_QDSP6) += snd-soc-qdsp6.o
