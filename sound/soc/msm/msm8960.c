@@ -58,7 +58,16 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.dsp_link = &fe_media,
 		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA2,
 	},
-	/* Backend DAI links */
+	{
+		.name = "Circuit-Switch Voice",
+		.stream_name = "CS-Voice",
+		.cpu_dai_name   = "CS-VOICE",
+		.platform_name  = "msm-pcm-voice",
+		.dynamic = 1,
+		.dsp_link = &fe_media,
+		.be_id = 0,
+	},
+	/* Backend DAI Links */
 	{
 		.name = LPASS_BE_PRI_I2S_RX,
 		.stream_name = "Primary I2S Playback",
