@@ -657,6 +657,34 @@ out:
 	return rc;
 }
 
+#define GPIO_SDC1_HW_DET 85
+
+#if defined(CONFIG_MMC_MSM_SDC1_SUPPORT) \
+	&& defined(CONFIG_MMC_MSM_CARD_HW_DETECTION)
+static unsigned int msm7x2xa_sdcc_slot_status(struct device *dev)
+{
+	int status;
+
+	status = gpio_tlmm_config(GPIO_CFG(GPIO_SDC1_HW_DET, 2, GPIO_CFG_INPUT,
+			GPIO_CFG_PULL_UP, GPIO_CFG_8MA), GPIO_CFG_ENABLE);
+	if (status)
+		pr_err("%s:Failed to configure tlmm for GPIO %d\n", __func__,
+				GPIO_SDC1_HW_DET);
+
+	status = gpio_request(GPIO_SDC1_HW_DET, "SD_HW_Detect");
+	if (status) {
+		pr_err("%s:Failed to request GPIO %d\n", __func__,
+				GPIO_SDC1_HW_DET);
+	} else {
+		status = gpio_direction_input(GPIO_SDC1_HW_DET);
+		if (!status)
+			status = gpio_get_value(GPIO_SDC1_HW_DET);
+		gpio_free(GPIO_SDC1_HW_DET);
+	}
+	return status;
+}
+#endif
+
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
 static struct mmc_platform_data sdc1_plat_data = {
 	.ocr_mask	= MMC_VDD_28_29,
@@ -665,6 +693,11 @@ static struct mmc_platform_data sdc1_plat_data = {
 	.msmsdcc_fmin	= 144000,
 	.msmsdcc_fmid	= 24576000,
 	.msmsdcc_fmax	= 49152000,
+#ifdef CONFIG_MMC_MSM_CARD_HW_DETECTION
+	.status      = msm7x2xa_sdcc_slot_status,
+	.status_irq  = MSM_GPIO_TO_INT(GPIO_SDC1_HW_DET),
+	.irq_flags   = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+#endif
 };
 #endif
 
