@@ -894,7 +894,7 @@ static struct msm_panel_common_pdata lcdc_toshiba_panel_data = {
 };
 
 static struct platform_device lcdc_toshiba_panel_device = {
-	.name   = "lcdc_toshiba_fwvga",
+	.name   = "lcdc_toshiba_fwvga_pt",
 	.id     = 0,
 	.dev    = {
 		.platform_data = &lcdc_toshiba_panel_data,
@@ -911,10 +911,12 @@ static int msm_fb_detect_panel(const char *name)
 {
 	int ret = -EPERM;
 
-	if (!strcmp(name, "lcdc_toshiba_fwvga"))
-		ret = 0;
-	else
+	if (machine_is_msm7x27a_surf()) {
+		if (!strncmp(name, "lcdc_toshiba_fwvga_pt", 21))
+			ret = 0;
+	} else {
 		ret = -ENODEV;
+	}
 
 	return ret;
 }

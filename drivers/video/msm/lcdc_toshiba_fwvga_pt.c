@@ -401,7 +401,7 @@ static int __devinit toshiba_probe(struct platform_device *pdev)
 static struct platform_driver this_driver = {
 	.probe  = toshiba_probe,
 	.driver = {
-		.name   = "lcdc_toshiba_fwvga",
+		.name   = "lcdc_toshiba_fwvga_pt",
 	},
 };
 
@@ -412,7 +412,7 @@ static struct msm_fb_panel_data toshiba_panel_data = {
 };
 
 static struct platform_device this_device = {
-	.name   = "lcdc_toshiba_fwvga",
+	.name   = "lcdc_toshiba_fwvga_pt",
 	.id	= 1,
 	.dev	= {
 		.platform_data = &toshiba_panel_data,
@@ -423,15 +423,11 @@ static int __init lcdc_toshiba_panel_init(void)
 {
 	int ret;
 	struct msm_panel_info *pinfo;
-#ifdef CONFIG_FB_MSM_TRY_MDDI_CATCH_LCDC_PRISM
-	if (mddi_get_client_id() != 0)
-		return 0;
 
 	ret = msm_fb_detect_client("lcdc_toshiba_fwvga_pt");
 	if (ret)
 		return 0;
 
-#endif
 
 	ret = platform_driver_register(&this_driver);
 	if (ret)
