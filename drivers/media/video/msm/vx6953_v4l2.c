@@ -180,10 +180,10 @@ struct vx6953_ctrl_t {
 
 	enum edof_mode_t edof_mode;
 
-  unsigned short imgaddr;
+	unsigned short imgaddr;
 
-  struct v4l2_subdev sensor_dev;
-  struct vx6953_format *fmt;
+	struct v4l2_subdev *sensor_dev;
+	struct vx6953_format *fmt;
 };
 
 
@@ -4099,7 +4099,7 @@ probe_fail:
 
 
 static int vx6953_sensor_probe_cb(const struct msm_camera_sensor_info *info,
-    struct v4l2_subdev **sdev, struct msm_sensor_ctrl *s)
+	struct v4l2_subdev *sdev, struct msm_sensor_ctrl *s)
 {
 	int rc = 0;
 	rc = vx6953_sensor_probe(info, s);
@@ -4112,12 +4112,13 @@ static int vx6953_sensor_probe_cb(const struct msm_camera_sensor_info *info,
 		return -ENOMEM;
 	}
 
-	/* probe is successful, create a v4l2 subdevice */
+	/* probe is successful, init a v4l2 subdevice */
 	printk(KERN_DEBUG "going into v4l2_i2c_subdev_init\n");
-	v4l2_i2c_subdev_init(&vx6953_ctrl->sensor_dev, vx6953_client,
+	if (sdev) {
+		v4l2_i2c_subdev_init(sdev, vx6953_client,
 						&vx6953_subdev_ops);
-
-	*sdev = &vx6953_ctrl->sensor_dev;
+		vx6953_ctrl->sensor_dev = sdev;
+	}
 	return rc;
 }
 

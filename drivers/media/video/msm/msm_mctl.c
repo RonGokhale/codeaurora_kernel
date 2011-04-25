@@ -28,10 +28,10 @@
 #include <linux/android_pmem.h>
 
 #include "msm.h"
-#include "msm_vfe31.h"
+#include "msm_ispif.h"
 
 #ifdef CONFIG_MSM_CAMERA_DEBUG
-#define D(fmt, args...) printk(KERN_DEBUG "msm_isp: " fmt, ##args)
+#define D(fmt, args...) printk(KERN_DEBUG "msm_mctl: " fmt, ##args)
 #else
 #define D(fmt, args...) do {} while (0)
 #endif
@@ -440,6 +440,35 @@ static int msm_get_sensor_info(struct msm_sync *sync, void __user *arg)
 	return rc;
 }
 
+/* called by other subdev to notify any changes*/
+
+static int msm_mctl_notify(struct msm_cam_media_controller *p_mctl,
+			unsigned int notification, void *arg)
+{
+	int rc = -EINVAL;
+	struct msm_ispif_params ispif_params;
+
+	/* if the CID changed, then reconfig the ISPIF*/
+	if (NOTIFY_CID_CHANGE == notification) {
+		if (p_mctl->ispif_fns->ispif_config) {
+			ispif_params.intftype = PIX0;
+			ispif_params.cid_mask = 0x0001;
+			ispif_params.csid = 0x01;
+
+			rc = p_mctl->ispif_fns->ispif_config(&ispif_params, 1);
+			if (rc < 0)
+				return rc;
+			rc = p_mctl->ispif_fns->ispif_start_intf_transfer
+					(&ispif_params);
+			if (rc < 0)
+				return rc;
+			msleep(20);
+		}
+	}
+
+	return rc;
+}
+
 /* called by the server or the config nodes to handle user space
   commands*/
 static int msm_mctl_cmd(struct msm_cam_media_controller *p_mctl,
@@ -638,6 +667,7 @@ int msm_mctl_init_module(struct msm_cam_v4l2_device *pcam)
 	/* init module operations*/
 	pmctl->mctl_open = msm_mctl_open;
 	pmctl->mctl_cmd = msm_mctl_cmd;
+	pmctl->mctl_notify = msm_mctl_notify;
 	pmctl->mctl_vidbuf_init = msm_vidbuf_init;
 	pmctl->mctl_release = msm_mctl_release;
 
