@@ -44,9 +44,6 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 
 	for (i = 0; i < max_cpus; i++)
 		cpu_set(i, cpu_present_map);
-
-	/* Setup acpuclock for non-primary CPU. */
-	acpuclock_secondary_init();
 }
 
 void smp_init_cpus(void)
@@ -152,4 +149,7 @@ void platform_secondary_init(unsigned int cpu)
 		writel(0x0000FFFF, MSM_QGIC_DIST_BASE + GIC_DIST_ENABLE_SET);
 
 	gic_secondary_init(0);
+
+	/* Setup acpuclock for non-primary CPU. */
+	acpuclock_secondary_init();
 }
