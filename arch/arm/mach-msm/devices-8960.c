@@ -1339,6 +1339,27 @@ struct platform_device msm_kgsl_2d1 = {
 };
 #endif
 
+#ifdef CONFIG_MSM_GEMINI
+static struct resource msm_gemini_resources[] = {
+	{
+		.start  = 0x04600000,
+		.end    = 0x04600000 + SZ_1M - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.start  = JPEG_IRQ,
+		.end    = JPEG_IRQ,
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm8960_gemini_device = {
+	.name           = "msm_gemini",
+	.resource       = msm_gemini_resources,
+	.num_resources  = ARRAY_SIZE(msm_gemini_resources),
+};
+#endif
+
 struct msm_rpm_map_data rpm_map_data[] __initdata = {
 	MSM_RPM_MAP(TRIGGER_TIMED_TO, TRIGGER_TIMED, 1),
 	MSM_RPM_MAP(TRIGGER_TIMED_SCLK_COUNT, TRIGGER_TIMED, 1),

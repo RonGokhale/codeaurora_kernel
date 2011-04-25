@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -33,17 +33,25 @@
 
 void msm_gemini_platform_p2v(struct file  *file)
 {
+#ifdef CONFIG_ANDROID_PMEM
 	put_pmem_file(file);
+#endif
 }
 
 uint32_t msm_gemini_platform_v2p(int fd, uint32_t len, struct file **file_p)
 {
 	unsigned long paddr;
-	unsigned long kvstart;
 	unsigned long size;
 	int rc;
 
+#ifdef CONFIG_ANDROID_PMEM
+	unsigned long kvstart;
 	rc = get_pmem_file(fd, &paddr, &kvstart, &size, file_p);
+#else
+	rc = 0;
+	paddr = 0;
+	size = 0;
+#endif
 	if (rc < 0) {
 		GMN_PR_ERR("%s: get_pmem_file fd %d error %d\n", __func__, fd,
 			rc);
@@ -108,8 +116,8 @@ int msm_gemini_platform_init(struct platform_device *pdev,
 	rc = request_irq(gemini_irq, handler, IRQF_TRIGGER_RISING, "gemini",
 		context);
 	if (rc) {
-		GMN_PR_ERR("%s: request_irq failed, %d, JPEG = %d\n", __func__,
-			gemini_irq, INT_JPEG);
+		GMN_PR_ERR("%s: request_irq failed, %d\n", __func__,
+			gemini_irq);
 		goto fail3;
 	}
 
