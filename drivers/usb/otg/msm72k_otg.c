@@ -1829,6 +1829,7 @@ static void msm_otg_sm_work(struct work_struct *w)
 				msm_otg_start_timer(dev, TA_WAIT_BCON,
 					A_WAIT_BCON);
 		} else if (test_bit(ID_A, &dev->inputs)) {
+			atomic_set(&dev->chg_type, USB_CHG_TYPE__SDP);
 			dev->pdata->vbus_power(USB_PHY_INTEGRATED, 0);
 			msm_otg_set_power(&dev->otg,
 					USB_IDCHG_MIN - get_aca_bmaxpower(dev));
