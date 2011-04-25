@@ -584,11 +584,13 @@ static int marimba_probe(struct i2c_client *client,
 		if (i != MARIMBA_ID_TSADC)
 			marimba->client = i2c_new_dummy(client->adapter,
 				pdata->slave_id[i + adie_slave_idx_offset]);
-		else {
-			ssbi_adap = i2c_get_adapter(MARIMBA_SSBI_ADAP);
+		else if (pdata->tsadc_ssbi_adap) {
+			ssbi_adap = i2c_get_adapter(pdata->tsadc_ssbi_adap);
 			marimba->client = i2c_new_dummy(ssbi_adap,
 						0x55);
-		}
+		} else
+			ssbi_adap = NULL;
+
 		if (!marimba->client) {
 			dev_err(&marimba->client->dev,
 				"can't attach client %d\n", i);

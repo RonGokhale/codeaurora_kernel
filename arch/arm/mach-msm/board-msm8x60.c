@@ -6110,6 +6110,7 @@ static struct marimba_platform_data timpani_pdata = {
 	.marimba_setup = msm_timpani_setup_power,
 	.marimba_shutdown = msm_timpani_shutdown_power,
 	.codec = &timpani_codec_pdata,
+	.tsadc_ssbi_adap = MARIMBA_SSBI_ADAP,
 };
 
 #define TIMPANI_I2C_SLAVE_ADDR	0xD
@@ -6506,6 +6507,7 @@ static struct marimba_platform_data marimba_pdata = {
 	.bahama_shutdown = msm_bahama_shutdown_power,
 	.bahama_core_config = msm_bahama_core_config,
 	.fm = &marimba_fm_pdata,
+	.tsadc_ssbi_adap = MARIMBA_SSBI_ADAP,
 };
 
 

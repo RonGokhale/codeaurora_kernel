@@ -160,6 +160,7 @@ struct marimba_platform_data {
 	u32 (*bahama_shutdown) (int);
 	u32 (*marimba_gpio_config) (int);
 	u32 (*bahama_core_config) (int type);
+	u32 tsadc_ssbi_adap;
 };
 
 /*
