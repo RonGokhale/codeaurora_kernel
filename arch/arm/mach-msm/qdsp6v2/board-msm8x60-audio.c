@@ -1323,6 +1323,7 @@ static struct platform_device msm_auxpga_lp_hs_device = {
 	.dev = { .platform_data = &snddev_auxpga_lp_hs_data },
 };
 
+#ifdef CONFIG_MSM8X60_FTM_AUDIO_DEVICES
 static struct adie_codec_action_unit ftm_headset_mono_rx_actions[] =
 	HEADSET_AB_CPLS_48000_OSR_256;
 
@@ -2303,6 +2304,7 @@ static struct platform_device ftm_headset_mic_adie_lp_tx_device = {
 	.name = "snddev_icodec",
 	.dev = { .platform_data = &ftm_headset_mic_adie_lp_tx_data },
 };
+#endif /* CONFIG_MSM8X60_FTM_AUDIO_DEVICES */
 
 static struct snddev_virtual_data snddev_uplink_rx_data = {
 	.capability = SNDDEV_CAP_RX,
@@ -2531,6 +2533,7 @@ static struct platform_device *snd_devices_common[] __initdata = {
 	&msm_uplink_rx_device,
 };
 
+#ifdef CONFIG_MSM8X60_FTM_AUDIO_DEVICES
 static struct platform_device *snd_devices_ftm[] __initdata = {
 	&ftm_headset_mono_rx_device,
 	&ftm_headset_mono_l_rx_device,
@@ -2563,6 +2566,9 @@ static struct platform_device *snd_devices_ftm[] __initdata = {
 	&ftm_spk_adie_lp_rx_device,
 	&ftm_handset_dual_tx_lp_device,
 };
+#else
+static struct platform_device *snd_devices_ftm[] __initdata = {};
+#endif
 
 
 void __init msm_snddev_init(void)
