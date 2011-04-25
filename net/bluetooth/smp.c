@@ -306,7 +306,7 @@ static u8 smp_cmd_pairing_rsp(struct l2cap_conn *conn, struct sk_buff *skb)
 		return SMP_UNSPECIFIED;
 
 	ret = smp_c1(tfm, conn->tk, conn->prnd, conn->preq, conn->prsp, 0,
-			conn->src, 0, conn->dst, res);
+			conn->src, conn->hcon->dst_type, conn->dst, res);
 	if (ret)
 		return SMP_UNSPECIFIED;
 
@@ -342,7 +342,8 @@ static u8 smp_cmd_pairing_confirm(struct l2cap_conn *conn, struct sk_buff *skb)
 			return SMP_UNSPECIFIED;
 
 		ret = smp_c1(tfm, conn->tk, conn->prnd, conn->preq, conn->prsp,
-					0, conn->dst, 0, conn->src, res);
+						conn->hcon->dst_type, conn->dst,
+						0, conn->src, res);
 		if (ret)
 			return SMP_CONFIRM_FAILED;
 
@@ -369,10 +370,12 @@ static u8 smp_cmd_pairing_random(struct l2cap_conn *conn, struct sk_buff *skb)
 
 	if (conn->hcon->out)
 		ret = smp_c1(tfm, conn->tk, random, conn->preq, conn->prsp, 0,
-				conn->src, 0, conn->dst, res);
+				conn->src, conn->hcon->dst_type, conn->dst,
+				res);
 	else
-		ret = smp_c1(tfm, conn->tk, random, conn->preq, conn->prsp, 0,
-				conn->dst, 0, conn->src, res);
+		ret = smp_c1(tfm, conn->tk, random, conn->preq, conn->prsp,
+				conn->hcon->dst_type, conn->dst, 0, conn->src,
+				res);
 	if (ret)
 		return SMP_UNSPECIFIED;
 
