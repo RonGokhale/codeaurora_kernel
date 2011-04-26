@@ -18,6 +18,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <mach/msm_iomap.h>
+#include <asm/mach-types.h>
 
 #include "peripheral-loader.h"
 
@@ -463,6 +464,13 @@ static struct pil_device peripherals[] = {
 static int __init msm_peripheral_reset_init(void)
 {
 	unsigned i;
+
+	/*
+	 * Don't initialize PIL on simulated targets, as some
+	 * subsystems may not be emulated on them.
+	 */
+	if (machine_is_msm8960_sim() || machine_is_msm8960_rumi3())
+		return 0;
 
 	mss_enable_reg = ioremap(MSM_MSS_ENABLE_PHYS, 1);
 	if (!mss_enable_reg)
