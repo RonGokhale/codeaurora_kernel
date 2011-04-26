@@ -30,5 +30,7 @@ int msm_spm_drv_set_vdd(struct msm_spm_driver_data *dev,
 int msm_spm_drv_write_seq_data(struct msm_spm_driver_data *dev,
 		uint8_t *cmd, uint32_t offset);
 void msm_spm_drv_flush_seq_entry(struct msm_spm_driver_data *dev);
+int msm_spm_drv_set_spm_enable(struct msm_spm_driver_data *dev,
+		bool enable);
 
 #endif

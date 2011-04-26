@@ -28,12 +28,19 @@
 
 #ifndef __ARCH_ARM_MACH_MSM_SPM_H
 #define __ARCH_ARM_MACH_MSM_SPM_H
-
 enum {
+	MSM_SPM_MODE_DISABLED,
 	MSM_SPM_MODE_CLOCK_GATING,
 	MSM_SPM_MODE_POWER_RETENTION,
 	MSM_SPM_MODE_POWER_COLLAPSE,
 	MSM_SPM_MODE_NR
+};
+
+enum {
+	MSM_SPM_L2_MODE_DISABLED = MSM_SPM_MODE_DISABLED,
+	MSM_SPM_L2_MODE_RETENTION,
+	MSM_SPM_L2_MODE_GDHS,
+	MSM_SPM_L2_MODE_POWER_COLLAPSE,
 };
 
 #if defined(CONFIG_MSM_SPM_V1)
@@ -120,7 +127,22 @@ void msm_spm_reinit(void);
 void msm_spm_allow_x_cpu_set_vdd(bool allowed);
 int msm_spm_init(struct msm_spm_platform_data *data, int nr_devs);
 
+#if defined(CONFIG_MSM_L2_SPM)
+int msm_spm_l2_set_low_power_mode(unsigned int mode, bool notify_rpm);
+int msm_spm_l2_init(struct msm_spm_platform_data *data);
 #else
+static inline int msm_spm_l2_set_low_power_mode(unsigned int mode,
+		bool notify_rpm)
+{
+	return -ENOSYS;
+}
+static inline int msm_spm_l2_init(struct msm_spm_platform_data *data)
+{
+	return -ENOSYS;
+}
+#endif /* defined(CONFIG_MSM_L2_SPM) */
+
+#else /* defined(CONFIG_MSM_SPM_V1) || defined(CONFIG_MSM_SPM_V2) */
 
 static inline int msm_spm_set_low_power_mode(unsigned int mode, bool notify_rpm)
 {
