@@ -506,6 +506,8 @@ void __init msm_fb_register_device(char *name, void *data)
 struct clk_lookup msm_clocks_7x27a[] = {
 	CLK_PCOM("adm_clk",	ADM_CLK,	NULL, 0),
 	CLK_PCOM("adsp_clk",	ADSP_CLK,	NULL, 0),
+	CLK_PCOM("ahb_m_clk",	AHB_M_CLK,	NULL, 0),
+	CLK_PCOM("ahb_s_clk",	AHB_S_CLK,	NULL, 0),
 	CLK_PCOM("cam_m_clk",	CAM_M_CLK,	NULL, 0),
 	CLK_PCOM("csi_clk",		CSI0_CLK,	NULL, 0),
 	CLK_PCOM("csi_pclk",		CSI0_P_CLK,	NULL, 0),
@@ -553,6 +555,7 @@ struct clk_lookup msm_clocks_7x27a[] = {
 			.dbg_name = "dsi_pixel_clk",
 		}
 	},
+	CLK_PCOM("dsi_ref_clk",	DSI_REF_CLK,	NULL, OFF),
 	CLK_PCOM("ebi1_clk",	EBI1_CLK,	NULL, CLK_MIN),
 	CLK_PCOM("ebi2_clk",	EBI2_CLK,	NULL, 0),
 	CLK_PCOM("ecodec_clk",	ECODEC_CLK,	NULL, 0),
@@ -574,6 +577,7 @@ struct clk_lookup msm_clocks_7x27a[] = {
 	CLK_PCOM("mdp_lcdc_pclk_clk", MDP_LCDC_PCLK_CLK, NULL, 0),
 	CLK_PCOM("mdp_lcdc_pad_pclk_clk", MDP_LCDC_PAD_PCLK_CLK, NULL, 0),
 	CLK_PCOM("mdp_vsync_clk",	MDP_VSYNC_CLK,	NULL, OFF),
+	CLK_PCOM("mdp_dsi_pclk",	MDP_DSI_P_CLK,	NULL, OFF),
 	CLK_PCOM("pbus_clk",	PBUS_CLK,	NULL, CLK_MIN),
 	CLK_PCOM("pcm_clk",	PCM_CLK,	NULL, 0),
 	CLK_PCOM("rotator_clk",	AXI_ROTATOR_CLK,	NULL, OFF),
