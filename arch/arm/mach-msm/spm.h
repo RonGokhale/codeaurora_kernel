@@ -98,8 +98,8 @@ struct msm_spm_seq_entry {
 	uint32_t mode;
 	uint8_t *cmd;
 	bool  notify_rpm;
-}
-;
+};
+
 struct msm_spm_platform_data {
 	void __iomem *reg_base_addr;
 	uint32_t reg_init_values[MSM_SPM_REG_NR_INITIALIZE];
