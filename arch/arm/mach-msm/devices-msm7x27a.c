@@ -506,6 +506,7 @@ void __init msm_fb_register_device(char *name, void *data)
 struct clk_lookup msm_clocks_7x27a[] = {
 	CLK_PCOM("adm_clk",	ADM_CLK,	NULL, 0),
 	CLK_PCOM("adsp_clk",	ADSP_CLK,	NULL, 0),
+	CLK_PCOM("cam_m_clk",	CAM_M_CLK,	NULL, 0),
 	CLK_PCOM("csi_clk",		CSI0_CLK,	NULL, 0),
 	CLK_PCOM("csi_pclk",		CSI0_P_CLK,	NULL, 0),
 	CLK_PCOM("csi_vfe_clk",	CSI0_VFE_CLK,	NULL, 0),
