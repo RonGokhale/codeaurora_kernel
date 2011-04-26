@@ -1,0 +1,22 @@
+/*****************************************************************************/
+About the driver:
+		This driver package is developed for Gobi3000 module device.
+		It includes two drivers: 
+				USB serial driver: the source code is option.c, which is in option_src/src/ directory.
+				USB network driver: the source code includes cdc_encap.h, cdc_encap.c and hw_cdc_driver.c, which are in ndis_src/src/ directory.
+
+		This driver can support the selective suspend feature, for Gobi3000 power management on Android.
+		This driver is now offer for demo on Ubuntu 10.04.
+/*****************************************************************************/
+How to install the driver 
+		1. Install USB serial driver:
+				1) Enter the directory of option_src on the terminal
+				2)	Run the following two commands to finish the installation:
+						make  modules
+						make  install
+		2. Install USB network driver:
+				1) Enter the directory of ndis_src on the terminal
+				2)	Run the following two commands to finish the installation:
+						make  modules
+						make  install
+
