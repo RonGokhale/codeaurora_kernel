@@ -152,10 +152,7 @@ ifdef CONFIG_CPU_IDLE
 	obj-$(CONFIG_ARCH_MSM8X60) += cpuidle.o
 endif
 
-ifdef CONFIG_ARCH_MSM8X60
-	obj-$(CONFIG_MSM_WATCHDOG) += msm_watchdog.o
-endif
-
+obj-$(CONFIG_MSM_WATCHDOG) += msm_watchdog.o
 obj-$(CONFIG_MACH_MSM8X60_RUMI3) += board-msm8x60.o
 obj-$(CONFIG_MACH_MSM8X60_SIM) += board-msm8x60.o
 obj-$(CONFIG_MACH_MSM8X60_SURF) += board-msm8x60.o
