@@ -151,6 +151,7 @@ static int usb_wakeup_phy(struct usb_hcd *hcd)
 	return ret;
 }
 
+#ifdef CONFIG_PM
 static int usb_suspend_phy(struct usb_hcd *hcd)
 {
 	int ret = 0;
@@ -217,6 +218,7 @@ static int usb_lpm_enter(struct usb_hcd *hcd)
 	pr_info("%s: lpm enter procedure end\n", __func__);
 	return 0;
 }
+#endif
 
 void usb_lpm_exit_w(struct work_struct *work)
 {
