@@ -197,7 +197,8 @@ void ddl_vidc_decode_init_codec(struct ddl_client_context *ddl)
 	if (vidc_msg_timing)
 		ddl_set_core_start_time(__func__, DEC_OP_TIME);
 	vidc_1080p_set_decode_mpeg4_pp_filter(decoder->post_filter.post_filter);
-
+	vidc_sm_set_concealment_color(&ddl->shared_mem[ddl->command_channel],
+		DDL_CONCEALMENT_Y_COLOR, DDL_CONCEALMENT_C_COLOR);
 	ddl_vidc_metadata_enable(ddl);
 	vidc_sm_set_metadata_start_address(&ddl->shared_mem
 		[ddl->command_channel],
