@@ -156,6 +156,15 @@ int pc_clk_set_flags(unsigned id, unsigned flags)
 		return (int)id < 0 ? -EINVAL : 0;
 }
 
+int pc_clk_set_ext_config(unsigned id, unsigned config)
+{
+	int rc = msm_proc_comm(PCOM_CLKCTL_RPC_SET_EXT_CONFIG, &id, &config);
+	if (rc < 0)
+		return rc;
+	else
+		return (int)id < 0 ? -EINVAL : 0;
+}
+
 unsigned pc_clk_get_rate(unsigned id)
 {
 	if (msm_proc_comm(PCOM_CLKCTL_RPC_RATE, &id, NULL))
@@ -220,3 +229,18 @@ struct clk_ops clk_ops_pcom_div2 = {
 	.is_enabled = pc_clk_is_enabled,
 	.round_rate = pc_clk_round_rate,
 };
+
+struct clk_ops clk_ops_pcom_ext_config = {
+	.enable = pc_clk_enable,
+	.disable = pc_clk_disable,
+	.auto_off = pc_clk_auto_off,
+	.reset = pc_clk_reset,
+	.set_rate = pc_clk_set_ext_config,
+	.set_min_rate = pc_clk_set_min_rate,
+	.set_max_rate = pc_clk_set_max_rate,
+	.set_flags = pc_clk_set_flags,
+	.get_rate = pc_clk_get_rate,
+	.is_enabled = pc_clk_is_enabled,
+	.round_rate = pc_clk_round_rate,
+};
+

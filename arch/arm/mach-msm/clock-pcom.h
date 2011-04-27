@@ -143,12 +143,17 @@
 #define P_DSI_ESC_CLK		108
 #define P_DSI_PIXEL_CLK		109
 #define P_DSI_BYTE_CLK		110
+#define P_DSI_REF_CLK		112
+#define P_MDP_DSI_P_CLK		113
+#define P_AHB_M_CLK		114
+#define P_AHB_S_CLK		115
 
-#define P_NR_CLKS		111
+#define P_NR_CLKS		116
 
 struct clk_ops;
 extern struct clk_ops clk_ops_remote;
 extern struct clk_ops clk_ops_pcom_div2;
+extern struct clk_ops clk_ops_pcom_ext_config;
 
 int pc_clk_reset(unsigned id, enum clk_reset_action action);
 
