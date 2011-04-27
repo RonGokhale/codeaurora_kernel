@@ -200,8 +200,7 @@ static void build_pairing_cmd(struct l2cap_conn *conn,
 				struct smp_cmd_pairing *rsp,
 				__u8 authreq)
 {
-	u8 all_keys = SMP_DIST_ENC_KEY | SMP_DIST_ID_KEY |
-						SMP_DIST_SIGN;
+	u8 all_keys = 0;
 	u8 dist_keys;
 
 	dist_keys = 0;
