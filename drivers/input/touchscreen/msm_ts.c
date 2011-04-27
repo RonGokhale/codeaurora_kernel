@@ -1,7 +1,7 @@
 /* drivers/input/touchscreen/msm_ts.c
  *
  * Copyright (C) 2008 Google, Inc.
- * Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -78,8 +78,10 @@ struct msm_ts {
 static uint32_t msm_tsdebug;
 module_param_named(tsdebug, msm_tsdebug, uint, 0664);
 
-#define tssc_readl(t, a)	(readl(((t)->tssc_base) + (a)))
-#define tssc_writel(t, v, a)	do {writel(v, ((t)->tssc_base) + (a));} while(0)
+#define tssc_readl(t, a)	(readl_relaxed(((t)->tssc_base) + (a)))
+#define tssc_writel(t, v, a)	do {writel_relaxed(v, \
+					((t)->tssc_base) + (a)); } \
+					while (0)
 
 static void setup_next_sample(struct msm_ts *ts)
 {
@@ -89,6 +91,8 @@ static void setup_next_sample(struct msm_ts *ts)
 	tmp = ((2 << 7) | TSSC_CTL_DEBOUNCE_EN | TSSC_CTL_EN_AVERAGE |
 	       TSSC_CTL_MODE_MASTER | TSSC_CTL_ENABLE);
 	tssc_writel(ts, tmp, TSSC_CTL);
+	/* barrier: Make sure the write completes before the next sample */
+	dsb();
 }
 
 static struct ts_virt_key *find_virt_key(struct msm_ts *ts,
