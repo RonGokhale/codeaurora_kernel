@@ -829,6 +829,36 @@ struct platform_device msm8960_device_qup_spi_gsbi1 = {
 	.resource	= resources_qup_spi_gsbi1,
 };
 
+struct platform_device msm_pcm = {
+	.name	= "msm-pcm-dsp",
+	.id	= -1,
+};
+
+struct platform_device msm_pcm_routing = {
+	.name	= "msm-pcm-routing",
+	.id	= -1,
+};
+
+struct platform_device msm_cpudai0 = {
+	.name	= "msm-dai-q6",
+	.id	= 0,
+};
+
+struct platform_device msm_cpudai1 = {
+	.name	= "msm-dai-q6",
+	.id	= 1,
+};
+
+struct platform_device msm_cpu_fe = {
+	.name	= "msm-dai-fe",
+	.id	= -1,
+};
+
+struct platform_device msm_stub_codec = {
+	.name	= "msm-stub-codec",
+	.id	= -1,
+};
+
 #define FS(_id, _name) (&(struct platform_device){ \
 	.name	= "footswitch-msm8x60", \
 	.id	= (_id), \
