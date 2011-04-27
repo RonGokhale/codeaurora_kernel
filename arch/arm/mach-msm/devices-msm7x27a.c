@@ -513,10 +513,46 @@ struct clk_lookup msm_clocks_7x27a[] = {
 	CLK_PCOM("csi_clk",		CSI1_CLK,	NULL, 0),
 	CLK_PCOM("csi_pclk",		CSI1_P_CLK,	NULL, 0),
 	CLK_PCOM("csi_vfe_clk",	CSI1_VFE_CLK,	NULL, 0),
-	CLK_PCOM("dsi_byte_clk",	DSI_BYTE_CLK,	NULL, OFF),
-	CLK_PCOM("dsi_clk",		DSI_CLK,	NULL, OFF),
-	CLK_PCOM("dsi_esc_clk",	DSI_ESC_CLK,	NULL, OFF),
-	CLK_PCOM("dsi_pixel_clk",	DSI_PIXEL_CLK,	NULL, OFF),
+	{
+		.con_id = "dsi_byte_clk",
+		.clk = &(struct clk){
+			.id = P_DSI_BYTE_CLK,
+			.remote_id = P_DSI_BYTE_CLK,
+			.ops = &clk_ops_pcom_ext_config,
+			.flags = OFF,
+			.dbg_name = "dsi_byte_clk",
+		}
+	},
+	{
+		.con_id = "dsi_clk",
+		.clk = &(struct clk){
+			.id = P_DSI_CLK,
+			.remote_id = P_DSI_CLK,
+			.ops = &clk_ops_pcom_ext_config,
+			.flags = OFF,
+			.dbg_name = "dsi_clk",
+		}
+	},
+	{
+		.con_id = "dsi_esc_clk",
+		.clk = &(struct clk){
+			.id = P_DSI_ESC_CLK,
+			.remote_id = P_DSI_ESC_CLK,
+			.ops = &clk_ops_pcom_ext_config,
+			.flags = OFF,
+			.dbg_name = "dsi_esc_clk",
+		}
+	},
+	{
+		.con_id = "dsi_pixel_clk",
+		.clk = &(struct clk){
+			.id = P_DSI_PIXEL_CLK,
+			.remote_id = P_DSI_PIXEL_CLK,
+			.ops = &clk_ops_pcom_ext_config,
+			.flags = OFF,
+			.dbg_name = "dsi_pixel_clk",
+		}
+	},
 	CLK_PCOM("ebi1_clk",	EBI1_CLK,	NULL, CLK_MIN),
 	CLK_PCOM("ebi2_clk",	EBI2_CLK,	NULL, 0),
 	CLK_PCOM("ecodec_clk",	ECODEC_CLK,	NULL, 0),
