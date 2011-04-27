@@ -1226,7 +1226,7 @@ struct platform_device msm_kgsl_3d0 = {
 };
 
 #ifdef CONFIG_MSM_KGSL_2D
-static struct resource kgsl_2d0_resources = {
+static struct resource kgsl_2d0_resources[] = {
 	{
 		.name = KGSL_2D0_REG_MEMORY,
 		.start = 0x04100000, /* Z180 base address */
@@ -1283,7 +1283,7 @@ struct platform_device msm_kgsl_2d0 = {
 	},
 };
 
-static struct resource kgsl_2d1_resources = {
+static struct resource kgsl_2d1_resources[] = {
 	{
 		.name = KGSL_2D1_REG_MEMORY,
 		.start = 0x04200000, /* Z180 device 1 base address */
