@@ -5654,6 +5654,7 @@ static struct resource resources_pm8058_misc[] = {
 
 #define PM8058_SUBDEV_KPD 0
 #define PM8058_SUBDEV_LED 1
+#define PM8058_SUBDEV_VIB 2
 
 static struct mfd_cell pm8058_subdevs[] = {
 	{
@@ -5664,6 +5665,10 @@ static struct mfd_cell pm8058_subdevs[] = {
 	},
 	{	.name = "pm8058-led",
 		.id		= -1,
+	},
+	{
+		.name = "pm8058-vib",
+		.id = -1,
 	},
 	{	.name = "pm8058-gpio",
 		.id		= -1,
@@ -5681,12 +5686,6 @@ static struct mfd_cell pm8058_subdevs[] = {
 		.num_resources = ARRAY_SIZE(resources_pwrkey),
 		.platform_data = &pwrkey_pdata,
 		.data_size = sizeof(pwrkey_pdata),
-	},
-	{
-		.name = "pm8058-vib",
-		.id = -1,
-		.platform_data = &pmic_vib_pdata,
-		.data_size     = sizeof(pmic_vib_pdata),
 	},
 	{
 		.name = "pm8058-pwm",
@@ -9575,6 +9574,13 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 			platform_data = &pm8058_flash_leds_data;
 		pm8058_platform_data.sub_devices[PM8058_SUBDEV_LED].data_size
 			= sizeof(pm8058_flash_leds_data);
+	}
+
+	if (machine_is_msm8x60_ffa() || machine_is_msm8x60_fusn_ffa()) {
+		pm8058_platform_data.sub_devices[PM8058_SUBDEV_VIB].
+					platform_data = &pmic_vib_pdata;
+		pm8058_platform_data.sub_devices[PM8058_SUBDEV_VIB].
+					data_size     = sizeof(pmic_vib_pdata);
 	}
 
 	msm8x60_multi_sdio_init();
