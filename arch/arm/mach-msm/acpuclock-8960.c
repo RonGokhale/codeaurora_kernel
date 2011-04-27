@@ -377,7 +377,9 @@ static void set_speed(enum scalables id, struct core_speed *tgt_s)
 		set_pri_clk_src_div(id, tgt_s->pri_src_sel, tgt_s->div_val);
 		/* TODO: Disable source. */
 	} else if (strt_s->src != HFPLL && tgt_s->src != HFPLL) {
-		BUG();
+		/* TODO: Enable source. */
+		set_sec_clk_src(id, tgt_s->sec_src_sel);
+		/* TODO: Disable source. */
 	} else {
 		BUG();
 	}
