@@ -751,12 +751,6 @@ static int __init fb_size_setup(char *p)
 
 early_param("fb_size", fb_size_setup);
 
-#ifdef CONFIG_FB_MSM_MIPI_DSI
-static struct platform_device mipi_dsi_toshiba_panel_device = {
-	.name = "mipi_toshiba",
-	.id = 0,
-};
-#endif
 
 #define LCDC_CONFIG_PROC          21
 #define LCDC_UN_CONFIG_PROC       22
@@ -935,6 +929,13 @@ static struct platform_device msm_fb_device = {
 		.platform_data = &msm_fb_pdata,
 	}
 };
+
+#ifdef CONFIG_FB_MSM_MIPI_DSI
+static struct platform_device mipi_dsi_renesas_panel_device = {
+	.name = "mipi_renesas",
+	.id = 0,
+};
+#endif
 
 static void __init msm7x27a_init_mmc(void)
 {
@@ -1585,6 +1586,9 @@ static struct platform_device *surf_ffa_devices[] __initdata = {
 #ifdef CONFIG_MT9E013
 	&msm_camera_sensor_mt9e013,
 #endif
+#ifdef CONFIG_FB_MSM_MIPI_DSI
+	&mipi_dsi_renesas_panel_device,
+#endif
 };
 
 static unsigned pmem_kernel_ebi1_size = PMEM_KERNEL_EBI1_SIZE;
@@ -1662,10 +1666,107 @@ static struct msm_panel_common_pdata mdp_pdata = {
 	.gpio = 97,
 };
 
+#define GPIO_LCDC_BRDG_PD	128
+#define GPIO_LCDC_BRDG_RESET_N	129
+static unsigned mipi_dsi_gpio[] = {
+	GPIO_CFG(GPIO_LCDC_BRDG_RESET_N, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL,
+		GPIO_CFG_2MA),       /* LCDC_BRDG_RESET_N */
+};
+
+static int msm_fb_dsi_client_reset(void)
+{
+	int rc = -1;
+	if (!gpio_request(GPIO_LCDC_BRDG_RESET_N, "lcdc_brdg_reset_n")) {
+		if (!gpio_tlmm_config(mipi_dsi_gpio[0], GPIO_CFG_ENABLE)) {
+			if (!gpio_direction_output(GPIO_LCDC_BRDG_RESET_N, 1)) {
+				gpio_set_value_cansleep(GPIO_LCDC_BRDG_RESET_N,
+					0);
+				msleep(20);
+				gpio_set_value_cansleep(GPIO_LCDC_BRDG_RESET_N,
+					1);
+				return 0;
+			} else {
+				goto gpio_error;
+			}
+		} else {
+			pr_err("Failed LCDC Bridge reset enable\n");
+			goto gpio_error;
+		}
+	} else {
+		return rc;
+	}
+
+gpio_error:
+	pr_err("Failed GPIO bridge reset\n");
+	gpio_free(GPIO_LCDC_BRDG_RESET_N);
+	return rc;
+}
+
+static int dsi_gpio_initialized;
+
+static int mipi_dsi_panel_power(int on)
+{
+	int rc = 0;
+
+	if (!on)
+		return 0;
+
+	/* I2C-controlled GPIO Expander -init of the GPIOs very late */
+	if (!dsi_gpio_initialized) {
+		pmapp_disp_backlight_init();
+
+		if (pmapp_disp_backlight_set_brightness(100))
+			pr_err("display backlight set brightness failed\n");
+
+		rc = gpio_request(GPIO_DISPLAY_PWR_EN, "gpio_disp_pwr");
+		if (rc < 0) {
+			pr_err("failed to request gpio_disp_pwr\n");
+			return rc;
+		}
+
+		if (gpio_request(GPIO_BACKLIGHT_EN, "gpio_disp_pwr")) {
+			pr_err("failed to request gpio_disp_pwr\n");
+			goto fail_gpio1;
+		}
+
+		if (!gpio_direction_output(GPIO_DISPLAY_PWR_EN, 1)) {
+			gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN, on);
+		} else {
+			pr_err("failed to enable display pwr\n");
+			goto fail_gpio2;
+		}
+
+		if (!gpio_direction_output(GPIO_BACKLIGHT_EN, 1)) {
+			gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, on);
+			return 0;
+		} else {
+			pr_err("failed to enable backlight\n");
+			goto fail_gpio2;
+		}
+	}
+
+fail_gpio2:
+	gpio_free(GPIO_BACKLIGHT_EN);
+fail_gpio1:
+	gpio_free(GPIO_DISPLAY_PWR_EN);
+	return 0;
+}
+
+#define MDP_303_VSYNC_GPIO 97
+
+#ifdef CONFIG_FB_MSM_MDP303
+static struct mipi_dsi_platform_data mipi_dsi_pdata = {
+	.vsync_gpio = MDP_303_VSYNC_GPIO,
+	.dsi_power_save   = mipi_dsi_panel_power,
+	.dsi_client_reset = msm_fb_dsi_client_reset,
+};
+#endif
+
 static void __init msm_fb_add_devices(void)
 {
 	msm_fb_register_device("mdp", &mdp_pdata);
 	msm_fb_register_device("lcdc", &lcdc_pdata);
+	msm_fb_register_device("mipi_dsi", &mipi_dsi_pdata);
 }
 
 #define MSM_EBI2_PHYS			0xa0d00000
