@@ -62,8 +62,10 @@ static void release_secondary(void)
 	if ((read_cpuid_id() & 0xFF0) >> 4 != 0x2D) {
 		base_ptr = ioremap_nocache(0x02098000, SZ_4K);
 		if (base_ptr) {
-			writel(0x10, base_ptr+0x04);
-			writel(0x80, base_ptr+0x04);
+			if (!machine_is_msm8960_sim()) {
+				writel(0x10, base_ptr+0x04);
+				writel(0x80, base_ptr+0x04);
+			}
 			iounmap(base_ptr);
 		}
 	} else {
