@@ -5,6 +5,12 @@ Description:
 		Hardware chip or device accessed by on communication port.
 		Corresponds to a grouping of sensor channels.
 
+What:		/sys/bus/iio/devices/device[n]/power_state
+KernelVersion:	2.6.37
+Contact:	linux-iio@vger.kernel.org
+Description:
+		This property gets/sets the device power state.
+
 What:		/sys/bus/iio/devices/trigger[n]
 KernelVersion:	2.6.35
 Contact:	linux-iio@vger.kernel.org
