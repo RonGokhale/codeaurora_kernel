@@ -502,5 +502,5 @@ void mdp4_overlay_dsi_video_wait4vsync(struct msm_fb_data_type *mfd);
 void mdp4_overlay_dsi_video_vsync_push(struct msm_fb_data_type *mfd,
 				struct mdp4_overlay_pipe *pipe);
 void mdp4_primary_vsync_dsi_video(void);
-
+uint32_t mdp4_ss_table_value(int8_t param, int8_t index);
 #endif /* MDP_H */

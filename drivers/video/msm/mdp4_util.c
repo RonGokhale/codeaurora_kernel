@@ -2029,3 +2029,44 @@ uint32 mdp4_rgb_igc_lut_cvt(uint32 ndx)
 {
 	return igc_rgb_lut[ndx & 0x0ff];
 }
+
+uint32_t mdp4_ss_table_value(int8_t value, int8_t index)
+{
+	uint32_t out = 0x0;
+	int8_t level = -1;
+	uint32_t mask = 0xffffffff;
+
+	if (value < 0) {
+		if (value == -128)
+			value = 127;
+		else
+			value = -value;
+		out = 0x11111111;
+	} else {
+		out = 0x88888888;
+		mask = 0x0fffffff;
+	}
+
+	if (value == 0)
+		level = 0;
+	else {
+		while (value > 0 && level < 7) {
+			level++;
+			value -= 16;
+		}
+	}
+
+	if (level == 0) {
+		if (index == 0)
+			out = 0x0;
+		else
+			out = 0x20000000;
+	} else {
+		out += (0x11111111 * level);
+		if (index == 1)
+			out &= mask;
+	}
+
+	return out;
+}
+
