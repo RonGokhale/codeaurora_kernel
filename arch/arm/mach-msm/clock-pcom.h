@@ -150,23 +150,37 @@
 
 #define P_NR_CLKS		116
 
+extern int pc_clk_reset(unsigned id, enum clk_reset_action action);
+
 struct clk_ops;
-extern struct clk_ops clk_ops_remote;
+extern struct clk_ops clk_ops_pcom;
 extern struct clk_ops clk_ops_pcom_div2;
 extern struct clk_ops clk_ops_pcom_ext_config;
 
-int pc_clk_reset(unsigned id, enum clk_reset_action action);
+/*
+ * struct pcom_clk - proc_comm controlled clock
+ * @id: proc_comm identifier
+ * @c:
+ */
+struct pcom_clk {
+	unsigned id;
+	struct clk c;
+};
 
-#define CLK_PCOM(clk_name, clk_id, clk_dev, clk_flags) {	\
-	.con_id = clk_name, \
-	.dev_id = clk_dev, \
-	.clk = &(struct clk){ \
+static inline struct pcom_clk *to_pcom_clk(struct clk *clk)
+{
+	return container_of(clk, struct pcom_clk, c);
+}
+
+#define DEFINE_CLK_PCOM(clk_name, clk_id, clk_flags) \
+	struct pcom_clk clk_name = { \
 		.id = P_##clk_id, \
-		.remote_id = P_##clk_id, \
-		.ops = &clk_ops_remote, \
-		.flags = clk_flags, \
-		.dbg_name = #clk_id, \
-	}, \
+		.c = { \
+			.ops = &clk_ops_pcom, \
+			.flags = clk_flags, \
+			.dbg_name = #clk_id, \
+			CLK_INIT(clk_name.c), \
+		}, \
 	}
 
 #endif

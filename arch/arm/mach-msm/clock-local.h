@@ -40,21 +40,6 @@
 #define BVAL(msb, lsb, val)	(((val) << lsb) & BM(msb, lsb))
 
 /*
- * Clock types
- */
-#define MND		1 /* Integer predivider and fractional MN:D divider. */
-#define BASIC		2 /* Integer divider. */
-#define NORATE		3 /* Just on/off. */
-#define RESET		4 /* Reset only. */
-
-/*
- * IDs for invalid sources, source selects, and XOs
- */
-#define SRC_NONE	-1
-#define SRC_SEL_NONE	-1
-#define XO_NONE		-1
-
-/*
  * Halt/Status Checking Mode Macros
  */
 #define NOCHECK		0	/* No bit to check, do nothing */
@@ -69,7 +54,7 @@
  */
 struct clk_freq_tbl {
 	const uint32_t	freq_hz;
-	const int	src;
+	struct clk	*src_clk;
 	const uint32_t	md_val;
 	const uint32_t	ns_val;
 	const uint32_t	cc_val;
@@ -95,9 +80,9 @@ struct bank_masks {
 	const struct bank_mask_info	bank1_mask;
 };
 
-#define F_RAW(f, s, m_v, n_v, c_v, m_m, v, e) { \
+#define F_RAW(f, sc, m_v, n_v, c_v, m_m, v, e) { \
 	.freq_hz = f, \
-	.src = s, \
+	.src_clk = sc, \
 	.md_val = m_v, \
 	.ns_val = n_v, \
 	.cc_val = c_v, \
@@ -109,69 +94,62 @@ struct bank_masks {
 #define F_END \
 	{ \
 		.freq_hz = FREQ_END, \
-		.src = SRC_NONE, \
 		.sys_vdd = LOW, \
 	}
+
+/**
+ * struct branch - branch on/off
+ * @en_reg: enable register
+ * @en_mask: ORed with @en_reg to enable the clock
+ * @halt_reg: halt register
+ * @halt_check: type of halt check to perform
+ * @halt_bit: ANDed with @halt_reg to test for clock halted
+ * @reset_reg: reset register
+ * @reset_mask: ORed with @reset_reg to reset the clock domain
+ * @test_vector: bits to program to measure the clock
+ */
+struct branch {
+	void __iomem *const en_reg;
+	const u32 en_mask;
+
+	void __iomem *const halt_reg;
+	const u16 halt_check;
+	const u16 halt_bit;
+
+	void __iomem *const reset_reg;
+	const u32 reset_mask;
+
+	const u32 test_vector;
+};
+
+int branch_reset(struct branch *clk, enum clk_reset_action action);
 
 /*
  * Generic clock-definition struct and macros
  */
 struct clk_local {
-	int		count;
-	const uint32_t	type;
+	bool		enabled;
 	void		*const ns_reg;
-	void		*const cc_reg;
 	void		*const md_reg;
-	void		*const reset_reg;
-	void		*const halt_reg;
-	const uint32_t	reset_mask;
-	const uint16_t	halt_check;
-	const uint16_t	halt_bit;
-	const uint32_t	br_en_mask;
+
 	const uint32_t	root_en_mask;
 	uint32_t	ns_mask;
 	const uint32_t	cc_mask;
-	const uint32_t	test_vector;
 	struct bank_masks *const bank_masks;
-	const int	parent;
-	const uint32_t	*const children;
-	void		(*set_rate)(struct clk_local *, struct clk_freq_tbl *);
+
+	void   (*set_rate)(struct clk_local *, struct clk_freq_tbl *);
 	struct clk_freq_tbl *const freq_tbl;
 	struct clk_freq_tbl *current_freq;
+
+	struct clk *depends;
+	struct branch	b;
+	struct clk	c;
 };
 
-#define C(x)		L_##x##_CLK
-#define L_NONE_CLK	-1
-#define CLK(id, t, ns_r, cc_r, md_r, r_r, r_m, h_r, h_c, h_b, br, root, \
-		n_m, c_m, s_fn, tbl, bmasks, par, chld_lst, tv) \
-	[C(id)] = { \
-	.type = t, \
-	.ns_reg = ns_r, \
-	.cc_reg = cc_r, \
-	.md_reg = md_r, \
-	.reset_reg = r_r, \
-	.halt_reg = h_r, \
-	.halt_check = h_c, \
-	.halt_bit = h_b, \
-	.reset_mask = r_m, \
-	.br_en_mask = br, \
-	.root_en_mask = root, \
-	.ns_mask = n_m, \
-	.cc_mask = c_m, \
-	.test_vector = tv, \
-	.bank_masks = bmasks, \
-	.parent = C(par), \
-	.children = chld_lst, \
-	.set_rate = s_fn, \
-	.freq_tbl = tbl, \
-	.current_freq = &local_dummy_freq, \
-	}
-
-/*
- * Convenience macros
- */
-#define set_1rate(clk) \
-	local_clk_set_rate(C(clk), soc_clk_local_tbl[C(clk)].freq_tbl->freq_hz)
+static inline struct clk_local *to_local(struct clk *clk)
+{
+	return container_of(clk, struct clk_local, c);
+}
 
 /*
  * SYS_VDD voltage levels
@@ -184,64 +162,159 @@ enum sys_vdd_level {
 	NUM_SYS_VDD_LEVELS
 };
 
-/*
- * Clock source descriptions
+/**
+ * struct fixed_clk - fixed rate clock (used for crystal oscillators)
+ * @rate: output rate
+ * @c: clk
  */
-struct clk_source {
-	int		(*enable_func)(unsigned src, unsigned enable);
-	const signed	par;
+struct fixed_clk {
+	unsigned long rate;
+	struct clk c;
 };
 
-/*
- * Variables from SoC-specific clock drivers
+static inline struct fixed_clk *to_fixed_clk(struct clk *clk)
+{
+	return container_of(clk, struct fixed_clk, c);
+}
+
+static inline unsigned fixed_clk_get_rate(struct clk *clk)
+{
+	struct fixed_clk *f = to_fixed_clk(clk);
+	return f->rate;
+}
+
+
+/**
+ * struct pll_vote_clk - phase locked loop (HW voteable)
+ * @rate: output rate
+ * @en_reg: enable register
+ * @en_mask: ORed with @en_reg to enable the clock
+ * @status_reg: status register
+ * @status_mask: ANDed with @status_reg to test if the PLL is enabled
+ * @parent: clock source
+ * @c: clk
  */
-extern struct clk_local		soc_clk_local_tbl[];
-extern struct clk_source	soc_clk_sources[];
+struct pll_vote_clk {
+	unsigned long rate;
+
+	void __iomem *const en_reg;
+	const u32 en_mask;
+
+	void __iomem *const status_reg;
+	const u32 status_mask;
+
+	struct clk *parent;
+	struct clk c;
+};
+
+extern struct clk_ops clk_ops_pll_vote;
+
+static inline struct pll_vote_clk *to_pll_vote_clk(struct clk *clk)
+{
+	return container_of(clk, struct pll_vote_clk, c);
+}
+
+/**
+ * struct pll_clk - phase locked loop
+ * @rate: output rate
+ * @mode_reg: enable register
+ * @status_reg: status register
+ * @parent: clock source
+ * @c: clk
+ */
+struct pll_clk {
+	unsigned long rate;
+
+	void __iomem *const mode_reg;
+	void __iomem *const status_reg;
+
+	struct clk *parent;
+	struct clk c;
+};
+
+extern struct clk_ops clk_ops_pll;
+
+static inline struct pll_clk *to_pll_clk(struct clk *clk)
+{
+	return container_of(clk, struct pll_clk, c);
+}
+
+/**
+ * struct branch_clk - branch
+ * @enabled: true if clock is on, false otherwise
+ * @b: branch
+ * @parent: clock source
+ * @c: clk
+ *
+ * An on/off switch with a rate derived from the parent.
+ */
+struct branch_clk {
+	bool enabled;
+	struct branch b;
+	struct clk *parent;
+	struct clk c;
+};
+
+static inline struct branch_clk *to_branch_clk(struct clk *clk)
+{
+	return container_of(clk, struct branch_clk, c);
+}
+
+int branch_clk_enable(struct clk *clk);
+void branch_clk_disable(struct clk *clk);
+struct clk *branch_clk_get_parent(struct clk *clk);
+int branch_clk_set_parent(struct clk *clk, struct clk *parent);
+int branch_clk_is_enabled(struct clk *clk);
+unsigned branch_clk_get_rate(struct clk *c);
+void branch_clk_auto_off(struct clk *clk);
+int branch_clk_reset(struct clk *c, enum clk_reset_action action);
+
+unsigned reset_clk_get_rate(struct clk *clk);
 
 /*
  * Variables from clock-local driver
  */
 extern spinlock_t		local_clock_reg_lock;
 extern struct clk_freq_tbl	local_dummy_freq;
+extern struct fixed_clk		gnd_clk;
 
 /*
  * Local-clock APIs
  */
-int local_src_enable(int src);
-int local_src_disable(int src);
-void local_clk_enable_reg(unsigned id);
-void local_clk_disable_reg(unsigned id);
 int local_vote_sys_vdd(enum sys_vdd_level level);
 int local_unvote_sys_vdd(enum sys_vdd_level level);
 
 /*
  * clk_ops APIs
  */
-int local_clk_enable(unsigned id);
-void local_clk_disable(unsigned id);
-void local_clk_auto_off(unsigned id);
-int local_clk_set_rate(unsigned id, unsigned rate);
-int local_clk_set_min_rate(unsigned id, unsigned rate);
-int local_clk_set_max_rate(unsigned id, unsigned rate);
-unsigned local_clk_get_rate(unsigned id);
-int local_clk_list_rate(unsigned id, unsigned n);
-int local_clk_is_enabled(unsigned id);
-long local_clk_round_rate(unsigned id, unsigned rate);
+int local_clk_enable(struct clk *clk);
+void local_clk_disable(struct clk *clk);
+void local_clk_auto_off(struct clk *clk);
+int local_clk_set_rate(struct clk *clk, unsigned rate);
+int local_clk_set_min_rate(struct clk *clk, unsigned rate);
+int local_clk_set_max_rate(struct clk *clk, unsigned rate);
+unsigned local_clk_get_rate(struct clk *clk);
+int local_clk_list_rate(struct clk *clk, unsigned n);
+int local_clk_is_enabled(struct clk *clk);
+long local_clk_round_rate(struct clk *clk, unsigned rate);
+bool local_clk_is_local(struct clk *clk);
+struct clk *local_clk_get_parent(struct clk *c);
 
 /*
  * Required SoC-specific functions, implemented for every supported SoC
  */
 int soc_update_sys_vdd(enum sys_vdd_level level);
-int soc_set_pwr_rail(unsigned id, int enable);
-int soc_clk_measure_rate(unsigned id);
-int soc_clk_set_flags(unsigned id, unsigned flags);
-int soc_clk_reset(unsigned id, enum clk_reset_action action);
+int soc_set_pwr_rail(struct clk *clk, int enable);
+int soc_clk_set_flags(struct clk *clk, unsigned flags);
 
 /*
  * Generic set-rate implementations
  */
 void set_rate_mnd(struct clk_local *clk, struct clk_freq_tbl *nf);
 void set_rate_nop(struct clk_local *clk, struct clk_freq_tbl *nf);
+void set_rate_mnd_8(struct clk_local *clk, struct clk_freq_tbl *nf);
+void set_rate_mnd_banked(struct clk_local *clk, struct clk_freq_tbl *nf);
+void set_rate_div_banked(struct clk_local *clk, struct clk_freq_tbl *nf);
 
 #endif /* __ARCH_ARM_MACH_MSM_CLOCK_LOCAL_H */
 

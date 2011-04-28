@@ -866,7 +866,7 @@ struct msm_mpm_device_data msm_mpm_dev_data = {
 };
 #endif
 
-struct clk_lookup msm_clocks_8960[] = {
+struct clk_lookup msm_clocks_8960_dummy[] = {
 	CLK_DUMMY("gsbi_uart_clk",	GSBI1_UART_CLK,		NULL, OFF),
 	CLK_DUMMY("gsbi_uart_clk",	GSBI2_UART_CLK,
 						  "msm_serial_hsl.0", OFF),
@@ -1037,7 +1037,7 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_DUMMY("dma_bam_pclk",	DMA_BAM_P_CLK,		NULL, 0),
 };
 
-unsigned msm_num_clocks_8960 = ARRAY_SIZE(msm_clocks_8960);
+unsigned msm_num_clocks_8960_dummy = ARRAY_SIZE(msm_clocks_8960_dummy);
 
 #ifdef CONFIG_MSM_BUS_SCALING
 static struct msm_bus_vectors grp3d_init_vectors[] = {

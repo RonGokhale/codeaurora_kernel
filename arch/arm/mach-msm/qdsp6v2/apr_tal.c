@@ -24,9 +24,9 @@
 #include <linux/debugfs.h>
 #include <linux/platform_device.h>
 #include <linux/delay.h>
+#include <linux/clk.h>
 #include <mach/msm_smd.h>
 #include <mach/qdsp6v2/apr_tal.h>
-#include "../clock-8x60.h"
 
 static char *svc_names[APR_DEST_MAX][APR_CLIENT_MAX] = {
 	{
@@ -224,6 +224,12 @@ static int apr_smd_probe(struct platform_device *pdev)
 {
 	int dest;
 	int clnt;
+	struct clk *pll4 = clk_get(NULL, "pll4");
+
+	if (IS_ERR(pll4)) {
+		pr_err("Failed to get pll4\n");
+		return PTR_ERR(pll4);
+	}
 
 	if (pdev->id == APR_DEST_MODEM) {
 		pr_info("apr_tal:Modem Is Up\n");
@@ -233,13 +239,14 @@ static int apr_smd_probe(struct platform_device *pdev)
 		wake_up(&apr_svc_ch[APR_DL_SMD][dest][clnt].dest);
 	} else if (pdev->id == APR_DEST_QDSP6) {
 		pr_info("apr_tal:Q6 Is Up\n");
-		local_src_disable(PLL_4);
+		clk_disable(pll4);
 		dest = APR_DEST_QDSP6;
 		clnt = APR_CLIENT_AUDIO;
 		apr_svc_ch[APR_DL_SMD][dest][clnt].dest_state = 1;
 		wake_up(&apr_svc_ch[APR_DL_SMD][dest][clnt].dest);
 	} else
 		pr_err("apr_tal:Invalid Dest Id: %d\n", pdev->id);
+	clk_put(pll4);
 	return 0;
 }
 

@@ -17,12 +17,12 @@
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/clk.h>
 
 #include <mach/scm.h>
 #include <mach/msm_iomap.h>
 
 #include "peripheral-loader.h"
-#include "clock-8x60.h"
 
 #define MSM_MMS_REGS_BASE		0x10200000
 #define MSM_LPASS_QDSP6SS_BASE		0x28800000
@@ -337,12 +337,14 @@ static int shutdown_modem_trusted(void)
 #define Q6_STRAP_TCM_BASE	(0x28C << 15)
 #define Q6_STRAP_TCM_CONFIG	0x28B
 
+static struct clk *pll4;
+
 static int reset_q6_untrusted(void)
 {
 	int ret;
 	u32 reg;
 
-	ret = local_src_enable(PLL_4);
+	ret = clk_enable(pll4);
 	if (ret)
 		goto err;
 
@@ -391,7 +393,7 @@ static int reset_q6_trusted(void)
 {
 	int ret;
 
-	ret = local_src_enable(PLL_4);
+	ret = clk_enable(pll4);
 	if (ret)
 		return ret;
 
@@ -539,6 +541,10 @@ static int __init msm_peripheral_reset_init(void)
 	if (!msm_lpass_qdsp6ss_base)
 		goto err_lpass;
 
+	pll4 = clk_get_sys("peripheral-reset", "pll4");
+	if (IS_ERR(pll4))
+		goto err_clk;
+
 	if (SECURE_PIL) {
 		pil_modem_ops.init_image = init_image_modem_trusted;
 		pil_modem_ops.auth_and_reset = reset_modem_trusted;
@@ -558,6 +564,8 @@ static int __init msm_peripheral_reset_init(void)
 
 	return 0;
 
+err_clk:
+	iounmap(msm_lpass_qdsp6ss_base);
 err_lpass:
 	iounmap(msm_mms_regs_base);
 err:
