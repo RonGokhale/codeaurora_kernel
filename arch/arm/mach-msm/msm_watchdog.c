@@ -77,7 +77,9 @@ static int print_all_stacks = 1;
 module_param(print_all_stacks, int,  S_IRUGO | S_IWUSR);
 
 static void pet_watchdog_work(struct work_struct *work);
+static void init_watchdog_work(struct work_struct *work);
 static DECLARE_DELAYED_WORK(dogwork_struct, pet_watchdog_work);
+static DECLARE_WORK(init_dogwork_struct, init_watchdog_work);
 
 static int msm_watchdog_suspend(void)
 {
@@ -246,7 +248,7 @@ static irqreturn_t wdog_bark_handler(int irq, void *dev_id)
 
 #define SCM_SET_REGSAVE_CMD 0x2
 
-static int __init init_watchdog(void)
+static void init_watchdog_work(struct work_struct *work)
 {
 	int ret;
 	void *regsave;
@@ -257,14 +259,14 @@ static int __init init_watchdog(void)
 
 	if (!enable) {
 		printk(KERN_INFO "MSM Watchdog Not Initialized\n");
-		return 0;
+		return;
 	}
 
 	/* Must request irq before sending scm command */
 	ret = request_irq(WDT0_ACCSCSSNBARK_INT, wdog_bark_handler, 0,
 			  "apps_wdog_bark", NULL);
 	if (ret)
-		return ret;
+		return;
 
 #ifdef CONFIG_MSM_SCM
 	if (!appsbark) {
@@ -300,7 +302,7 @@ static int __init init_watchdog(void)
 	ret = register_pm_notifier(&msm_watchdog_power_notifier);
 	if (ret) {
 		free_irq(WDT0_ACCSCSSNBARK_INT, NULL);
-		return ret;
+		return;
 	}
 
 	schedule_delayed_work_on(0, &dogwork_struct, delay_time);
@@ -314,6 +316,12 @@ static int __init init_watchdog(void)
 
 	printk(KERN_INFO "MSM Watchdog Initialized\n");
 
+	return;
+}
+
+static int __init init_watchdog(void)
+{
+	schedule_work_on(0, &init_dogwork_struct);
 	return 0;
 }
 
