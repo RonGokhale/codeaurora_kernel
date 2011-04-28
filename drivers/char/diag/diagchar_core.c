@@ -8,7 +8,6 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
  */
 
 #include <linux/slab.h>
@@ -28,6 +27,7 @@
 #include "diagmem.h"
 #include "diagchar.h"
 #include "diagfwd.h"
+#include "diagfwd_cntl.h"
 #ifdef CONFIG_DIAG_SDIO_PIPE
 #include "diagfwd_sdio.h"
 #endif
@@ -37,6 +37,8 @@ MODULE_DESCRIPTION("Diag Char Driver");
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION("1.0");
 
+#define INIT	1
+#define EXIT	-1
 struct diagchar_dev *driver;
 /* The following variables can be specified by module options */
  /* for copy buffer */
@@ -52,8 +54,8 @@ static unsigned int poolsize_write_struct = 8; /* Num of items in the mempool */
 static unsigned int max_clients = 15;
 static unsigned int threshold_client_limit = 30;
 /* This is the maximum number of pkt registrations supported at initialization*/
-unsigned int diag_max_registration = 25;
-unsigned int diag_threshold_registration = 100;
+unsigned int diag_max_registration = 500;
+unsigned int diag_threshold_registration = 650;
 
 /* Timer variables */
 static struct timer_list drain_timer;
@@ -104,7 +106,7 @@ void diag_drain_work_fn(struct work_struct *work)
 		}
 		buf_hdlc = NULL;
 #ifdef DIAG_DEBUG
-		printk(KERN_INFO "\n Number of bytes written "
+		pr_debug("diag: Number of bytes written "
 				 "from timer is %d ", driver->used);
 #endif
 		driver->used = 0;
@@ -218,8 +220,26 @@ static int diagchar_close(struct inode *inode, struct file *file)
 	return -ENOMEM;
 }
 
-static long diagchar_ioctl(struct file *filp, unsigned int iocmd,
-					      unsigned long ioarg)
+void diag_fill_reg_table(int j, struct bindpkt_params *params,
+					  int *success, int *count_entries)
+{
+	*success = 1;
+	driver->table[j].cmd_code = params->cmd_code;
+	driver->table[j].subsys_id = params->subsys_id;
+	driver->table[j].cmd_code_lo = params->cmd_code_lo;
+	driver->table[j].cmd_code_hi = params->cmd_code_hi;
+	if (params->proc_id == APPS_PROC) {
+		driver->table[j].process_id = current->tgid;
+		driver->table[j].ch_id = NULL;
+	} else {
+		driver->table[j].process_id = NON_APPS_PROC;
+		driver->table[j].ch_id = (smd_channel_t *)params->client_id;
+	}
+	(*count_entries)++;
+}
+
+long diagchar_ioctl(struct file *filp,
+			   unsigned int iocmd, unsigned long ioarg)
 {
 	int i, j, count_entries = 0, temp;
 	int success = -1;
@@ -230,17 +250,8 @@ static long diagchar_ioctl(struct file *filp, unsigned int iocmd,
 
 		for (i = 0; i < diag_max_registration; i++) {
 			if (driver->table[i].process_id == 0) {
-				success = 1;
-				driver->table[i].cmd_code =
-					pkt_params->params->cmd_code;
-				driver->table[i].subsys_id =
-					pkt_params->params->subsys_id;
-				driver->table[i].cmd_code_lo =
-					pkt_params->params->cmd_code_lo;
-				driver->table[i].cmd_code_hi =
-					pkt_params->params->cmd_code_hi;
-				driver->table[i].process_id = current->tgid;
-				count_entries++;
+				diag_fill_reg_table(i, pkt_params->params,
+						&success, &count_entries);
 				if (pkt_params->count > count_entries)
 					pkt_params->params++;
 				else
@@ -259,17 +270,8 @@ static long diagchar_ioctl(struct file *filp, unsigned int iocmd,
 					 diag_max_registration*sizeof(struct
 					 diag_master_table), GFP_KERNEL);
 			for (j = i; j < diag_max_registration; j++) {
-				success = 1;
-				driver->table[j].cmd_code = pkt_params->
-							params->cmd_code;
-				driver->table[j].subsys_id = pkt_params->
-							params->subsys_id;
-				driver->table[j].cmd_code_lo = pkt_params->
-							params->cmd_code_lo;
-				driver->table[j].cmd_code_hi = pkt_params->
-							params->cmd_code_hi;
-				driver->table[j].process_id = current->tgid;
-				count_entries++;
+				diag_fill_reg_table(j, pkt_params->params,
+						&success, &count_entries);
 				if (pkt_params->count > count_entries)
 					pkt_params->params++;
 				else
@@ -368,7 +370,7 @@ static int diagchar_read(struct file *file, char __user *buf, size_t count,
 			index = i;
 
 	if (index == -1) {
-		printk(KERN_ALERT "\n Client PID not found in table");
+		pr_err("diag: Client PID not found in table");
 		return -EINVAL;
 	}
 
@@ -387,7 +389,7 @@ static int diagchar_read(struct file *file, char __user *buf, size_t count,
 		for (i = 0; i < driver->poolsize_write_struct; i++) {
 			if (driver->buf_tbl[i].length > 0) {
 #ifdef DIAG_DEBUG
-				printk(KERN_INFO "\n WRITING the buf address "
+				pr_debug("diag: WRITING the buf address "
 				       "and length is %x , %d\n", (unsigned int)
 					(driver->buf_tbl[i].buf),
 					driver->buf_tbl[i].length);
@@ -411,7 +413,7 @@ static int diagchar_read(struct file *file, char __user *buf, size_t count,
 				ret += driver->buf_tbl[i].length;
 drop:
 #ifdef DIAG_DEBUG
-				printk(KERN_INFO "\n DEQUEUE buf address and"
+				pr_debug("diag: DEQUEUE buf address and"
 				       " length is %x,%d\n", (unsigned int)
 				       (driver->buf_tbl[i].buf), driver->
 				       buf_tbl[i].length);
@@ -572,7 +574,7 @@ static int diagchar_write(struct file *file, const char __user *buf,
 		}
 		buf = buf + 4;
 #ifdef DIAG_DEBUG
-		printk(KERN_INFO "\n I got the masks: %d\n", payload_size);
+		pr_debug("diag: masks: %d\n", payload_size);
 		for (i = 0; i < payload_size; i++)
 			printk(KERN_DEBUG "\t %x", *(((unsigned char *)buf)+i));
 #endif
@@ -602,7 +604,7 @@ static int diagchar_write(struct file *file, const char __user *buf,
 	send.last = (void *)(buf_copy + payload_size - 1);
 	send.terminate = 1;
 #ifdef DIAG_DEBUG
-	printk(KERN_INFO "\n Already used bytes in buffer %d, and"
+	pr_debug("diag: Already used bytes in buffer %d, and"
 	" incoming payload size is %d\n", driver->used, payload_size);
 	printk(KERN_DEBUG "hdlc encoded data is -->\n");
 	for (i = 0; i < payload_size + 8; i++) {
@@ -630,9 +632,6 @@ static int diagchar_write(struct file *file, const char __user *buf,
 			goto fail_free_hdlc;
 		}
 		buf_hdlc = NULL;
-#ifdef DIAG_DEBUG
-		printk(KERN_INFO "\n size written is %d\n", driver->used);
-#endif
 		driver->used = 0;
 		buf_hdlc = diagmem_alloc(driver, HDLC_OUT_BUF_SIZE,
 							 POOL_TYPE_HDLC);
@@ -661,9 +660,6 @@ static int diagchar_write(struct file *file, const char __user *buf,
 			goto fail_free_hdlc;
 		}
 		buf_hdlc = NULL;
-#ifdef DIAG_DEBUG
-		printk(KERN_INFO "\n size written is %d\n", driver->used);
-#endif
 		driver->used = 0;
 		buf_hdlc = diagmem_alloc(driver, HDLC_OUT_BUF_SIZE,
 							 POOL_TYPE_HDLC);
@@ -689,9 +685,6 @@ static int diagchar_write(struct file *file, const char __user *buf,
 			goto fail_free_hdlc;
 		}
 		buf_hdlc = NULL;
-#ifdef DIAG_DEBUG
-		printk(KERN_INFO "\n size written is %d\n", driver->used);
-#endif
 		driver->used = 0;
 	}
 
@@ -837,6 +830,20 @@ static int diagchar_cleanup(void)
 	return 0;
 }
 
+#ifdef CONFIG_DIAG_SDIO_PIPE
+void diag_sdio_fn(int type)
+{
+	if (machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa()) {
+		if (type == INIT)
+			diagfwd_sdio_init();
+		else if (type == EXIT)
+			diagfwd_sdio_exit();
+	}
+}
+#else
+inline void diag_sdio_fn(int type) {}
+#endif
+
 static int __init diagchar_init(void)
 {
 	dev_t dev;
@@ -863,9 +870,15 @@ static int __init diagchar_init(void)
 		init_waitqueue_head(&driver->wait_q);
 		INIT_WORK(&(driver->diag_drain_work), diag_drain_work_fn);
 		INIT_WORK(&(driver->diag_read_smd_work), diag_read_smd_work_fn);
+		INIT_WORK(&(driver->diag_read_smd_cntl_work),
+						 diag_read_smd_cntl_work_fn);
 		INIT_WORK(&(driver->diag_read_smd_qdsp_work),
 			   diag_read_smd_qdsp_work_fn);
+		INIT_WORK(&(driver->diag_read_smd_qdsp_cntl_work),
+			   diag_read_smd_qdsp_cntl_work_fn);
 		diagfwd_init();
+		diagfwd_cntl_init();
+		diag_sdio_fn(INIT);
 		pr_debug("diagchar initializing ..\n");
 		driver->num = 1;
 		driver->name = ((void *)driver) + sizeof(struct diagchar_dev);
@@ -896,8 +909,9 @@ static int __init diagchar_init(void)
 fail:
 	diagchar_cleanup();
 	diagfwd_exit();
+	diagfwd_cntl_exit();
+	diag_sdio_fn(EXIT);
 	return -1;
-
 }
 
 static void __exit diagchar_exit(void)
@@ -907,10 +921,8 @@ static void __exit diagchar_exit(void)
 	 ensure no memory leaks */
 	diagmem_exit(driver, POOL_TYPE_ALL);
 	diagfwd_exit();
-#ifdef CONFIG_DIAG_SDIO_PIPE
-	if (machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa())
-		diagfwd_sdio_exit();
-#endif
+	diagfwd_cntl_exit();
+	diag_sdio_fn(EXIT);
 	diagchar_cleanup();
 	printk(KERN_INFO "done diagchar exit\n");
 }

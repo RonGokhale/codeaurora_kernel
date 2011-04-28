@@ -8,7 +8,6 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
  */
 
 #include <linux/slab.h>
@@ -33,6 +32,7 @@
 #include "diagmem.h"
 #include "diagchar.h"
 #include "diagfwd.h"
+#include "diagfwd_cntl.h"
 #include "diagchar_hdlc.h"
 #ifdef CONFIG_DIAG_SDIO_PIPE
 #include "diagfwd_sdio.h"
@@ -45,6 +45,7 @@ MODULE_VERSION("1.0");
 int diag_debug_buf_idx;
 unsigned char diag_debug_buf[1024];
 static unsigned int buf_tbl_size = 8; /*Number of entries in table of buffers */
+struct diag_master_table entry;
 
 struct diag_send_desc_type send = { NULL, NULL, DIAG_STATE_START, 0 };
 struct diag_hdlc_dest_type enc = { NULL, NULL, 0 };
@@ -103,11 +104,11 @@ void __diag_smd_send_req(void)
 
 		if (r > IN_BUF_SIZE) {
 			if (r < MAX_IN_BUF_SIZE) {
-				printk(KERN_ALERT "\n diag: SMD sending in "
+				pr_err("diag: SMD sending in "
 						   "packets upto %d bytes", r);
 				buf = krealloc(buf, r, GFP_KERNEL);
 			} else {
-				printk(KERN_ALERT "\n diag: SMD sending in "
+				pr_err("diag: SMD sending in "
 				"packets more than %d bytes", MAX_IN_BUF_SIZE);
 				return;
 			}
@@ -140,7 +141,7 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 					driver->buf_tbl[i].length =
 								 driver->used;
 #ifdef DIAG_DEBUG
-					printk(KERN_INFO "\n ENQUEUE buf ptr"
+					pr_debug("diag: ENQUEUE buf ptr"
 						   " and length is %x , %d\n",
 						   (unsigned int)(driver->buf_
 				tbl[i].buf), driver->buf_tbl[i].length);
@@ -235,11 +236,11 @@ void __diag_smd_qdsp_send_req(void)
 
 		if (r > IN_BUF_SIZE) {
 			if (r < MAX_IN_BUF_SIZE) {
-				printk(KERN_ALERT "\n diag: SMD sending in "
+				pr_err("diag: SMD sending in "
 						   "packets upto %d bytes", r);
 				buf = krealloc(buf, r, GFP_KERNEL);
 			} else {
-				printk(KERN_ALERT "\n diag: SMD sending in "
+				pr_err("diag: SMD sending in "
 				"packets more than %d bytes", MAX_IN_BUF_SIZE);
 				return;
 			}
@@ -435,6 +436,20 @@ void diag_update_sleeping_process(int process_id)
 	mutex_unlock(&driver->diagchar_mutex);
 }
 
+void diag_send_data(struct diag_master_table entry, unsigned char *buf,
+							 int len, int i)
+{
+	pr_debug("diag: send data case %d", i);
+	driver->pkt_length = len;
+	if (entry.process_id != NON_APPS_PROC) {
+		diag_update_pkt_buffer(buf);
+		diag_update_sleeping_process(entry.process_id);
+	} else {
+		if (entry.ch_id && (len > 0))
+			smd_write(entry.ch_id, buf, len);
+	}
+}
+
 static int diag_process_apps_pkt(unsigned char *buf, int len)
 {
 	uint16_t subsys_cmd_code;
@@ -445,6 +460,48 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 	int payload_length;
 	unsigned char *ptr;
 #endif
+
+	/* Check for registered clients and forward packet to apropriate proc */
+	cmd_code = (int)(*(char *)buf);
+	temp++;
+	subsys_id = (int)(*(char *)temp);
+	temp++;
+	subsys_cmd_code = *(uint16_t *)temp;
+	temp += 2;
+
+	pr_debug("diag: %d %d %d", cmd_code, subsys_id, subsys_cmd_code);
+	for (i = 0; i < diag_max_registration; i++) {
+		entry = driver->table[i];
+		if (entry.process_id != NO_PROCESS) {
+			if (entry.cmd_code == cmd_code && entry.subsys_id ==
+				 subsys_id && entry.cmd_code_lo <=
+							 subsys_cmd_code &&
+				  entry.cmd_code_hi >= subsys_cmd_code){
+				diag_send_data(entry, buf, len, 1);
+				packet_type = 0;
+			} else if (entry.cmd_code == 255
+				  && cmd_code == 75) {
+				if (entry.subsys_id ==
+					subsys_id &&
+				   entry.cmd_code_lo <=
+					subsys_cmd_code &&
+					 entry.cmd_code_hi >=
+					subsys_cmd_code){
+					diag_send_data(entry, buf, len, 2);
+					packet_type = 0;
+				}
+			} else if (entry.cmd_code == 255 &&
+				  entry.subsys_id == 255) {
+				if (entry.cmd_code_lo <=
+						 cmd_code &&
+						 entry.
+						cmd_code_hi >= cmd_code){
+					diag_send_data(entry, buf, len, 3);
+					packet_type = 0;
+				}
+			}
+		}
+	}
 
 	/* set event mask */
 	if (*buf == 0x82) {
@@ -741,74 +798,27 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 		}
 	}
 #endif
-	/* Check for registered clients and forward packet to user-space */
-	else{
-		cmd_code = (int)(*(char *)buf);
-		temp++;
-		subsys_id = (int)(*(char *)temp);
-		temp++;
-		subsys_cmd_code = *(uint16_t *)temp;
-		temp += 2;
-
-		for (i = 0; i < diag_max_registration; i++) {
-			if (driver->table[i].process_id != 0) {
-				if (driver->table[i].cmd_code ==
-				     cmd_code && driver->table[i].subsys_id ==
-				     subsys_id &&
-				    driver->table[i].cmd_code_lo <=
-				     subsys_cmd_code &&
-					  driver->table[i].cmd_code_hi >=
-				     subsys_cmd_code){
-					driver->pkt_length = len;
-					diag_update_pkt_buffer(buf);
-					diag_update_sleeping_process(
-						driver->table[i].process_id);
-						return 0;
-				    } /* end of if */
-				else if (driver->table[i].cmd_code == 255
-					  && cmd_code == 75) {
-					if (driver->table[i].subsys_id ==
-					    subsys_id &&
-					   driver->table[i].cmd_code_lo <=
-					    subsys_cmd_code &&
-					     driver->table[i].cmd_code_hi >=
-					    subsys_cmd_code){
-						driver->pkt_length = len;
-						diag_update_pkt_buffer(buf);
-						diag_update_sleeping_process(
-							driver->table[i].
-							process_id);
-						return 0;
-					}
-				} /* end of else-if */
-				else if (driver->table[i].cmd_code == 255 &&
-					  driver->table[i].subsys_id == 255) {
-					if (driver->table[i].cmd_code_lo <=
-							 cmd_code &&
-						     driver->table[i].
-						    cmd_code_hi >= cmd_code){
-						driver->pkt_length = len;
-						diag_update_pkt_buffer(buf);
-						diag_update_sleeping_process
-							(driver->table[i].
-							 process_id);
-						return 0;
-					}
-				} /* end of else-if */
-			} /* if(driver->table[i].process_id != 0) */
-		}  /* for (i = 0; i < diag_max_registration; i++) */
-	} /* else */
 		return packet_type;
 }
+
+#ifdef CONFIG_DIAG_OVER_USB
+void diag_send_error_rsp(int index)
+{
+	int i;
+	driver->apps_rsp_buf[0] = 0x13; /* error code 13 */
+	for (i = 0; i < index; i++)
+		driver->apps_rsp_buf[i+1] = *(driver->hdlc_buf+i);
+	ENCODE_RSP_AND_SEND(index - 3);
+}
+#else
+static inline void diag_send_error_rsp(int index) {}
+#endif
 
 void diag_process_hdlc(void *data, unsigned len)
 {
 	struct diag_hdlc_decode_type hdlc;
 	int ret, type = 0;
-#if defined(DIAG_DEBUG) || defined(CONFIG_DIAG_OVER_USB)
-	int i;
-	pr_debug("\n HDLC decode function, len of data  %d\n", len);
-#endif
+	pr_debug("diag: HDLC decode fn, len of data  %d\n", len);
 	hdlc.dest_ptr = driver->hdlc_buf;
 	hdlc.dest_size = USB_MAX_OUT_BUF;
 	hdlc.src_ptr = data;
@@ -830,16 +840,15 @@ void diag_process_hdlc(void *data, unsigned len)
 					   DUMP_PREFIX_ADDRESS, data, len, 1);
 		driver->debug_flag = 0;
 	}
+	/* send error responses from APPS for Central Routing */
+	if (type == 1 && chk_config_get_id() == AO8960_TOOLS_ID) {
+		diag_send_error_rsp(hdlc.dest_idx);
+		type = 0;
+	}
 	/* implies this packet is NOT meant for apps */
 	if (!(driver->ch) && type == 1 && chk_config_get_id()) {
 		if (chk_config_get_id() == AO8960_TOOLS_ID) {
-#if defined(CONFIG_DIAG_OVER_USB)
-			driver->apps_rsp_buf[0] = 0x13;
-			for (i = 0; i < hdlc.dest_idx; i++)
-				driver->apps_rsp_buf[i+1] =
-							 *(driver->hdlc_buf+i);
-			ENCODE_RSP_AND_SEND(hdlc.dest_idx - 3);
-#endif
+			diag_send_error_rsp(hdlc.dest_idx);
 		} else { /* APQ 8060, Let Q6 respond */
 			if (driver->chqdsp)
 				smd_write(driver->chqdsp, driver->hdlc_buf,
@@ -849,7 +858,7 @@ void diag_process_hdlc(void *data, unsigned len)
 	}
 
 #ifdef DIAG_DEBUG
-	printk(KERN_INFO "\n hdlc.dest_idx = %d", hdlc.dest_idx);
+	pr_debug("diag: hdlc.dest_idx = %d", hdlc.dest_idx);
 	for (i = 0; i < hdlc.dest_idx; i++)
 		printk(KERN_DEBUG "\t%x", *(((unsigned char *)
 							driver->hdlc_buf)+i));
@@ -1068,7 +1077,7 @@ static int diag_smd_probe(struct platform_device *pdev)
 #endif
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
-	pr_debug("diag: opened SMD port ; r = %d\n", r);
+	pr_debug("diag: opened SMD port, Id = %d, r = %d\n", pdev->id, r);
 
 	return 0;
 }
@@ -1201,16 +1210,12 @@ void diagfwd_init(void)
 		printk(KERN_ERR "Unable to open USB diag legacy channel\n");
 		goto err;
 	}
-#ifdef CONFIG_DIAG_SDIO_PIPE
-	if (machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa())
-		diagfwd_sdio_init();
-#endif
 #endif
 	platform_driver_register(&msm_smd_ch1_driver);
 
 	return;
 err:
-		printk(KERN_INFO "\n Could not initialize diag buffers\n");
+		pr_err("diag: Could not initialize diag buffers");
 		kfree(driver->buf_in_1);
 		kfree(driver->buf_in_2);
 		kfree(driver->buf_in_qdsp_1);
@@ -1244,12 +1249,9 @@ void diagfwd_exit(void)
 #ifdef CONFIG_DIAG_OVER_USB
 	if (driver->usb_connected)
 		usb_diag_free_req(driver->legacy_ch);
-#endif
-	platform_driver_unregister(&msm_smd_ch1_driver);
-#ifdef CONFIG_DIAG_OVER_USB
 	usb_diag_close(driver->legacy_ch);
 #endif
-
+	platform_driver_unregister(&msm_smd_ch1_driver);
 	kfree(driver->buf_in_1);
 	kfree(driver->buf_in_2);
 	kfree(driver->buf_in_qdsp_1);
