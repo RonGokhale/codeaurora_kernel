@@ -62,9 +62,6 @@
 #include "clock.h"
 #include "msm-keypad-devices.h"
 #include "pm.h"
-#ifdef CONFIG_ARCH_MSM7X27
-#include <linux/msm_kgsl.h>
-#endif
 
 #ifdef CONFIG_USB_ANDROID
 #include <linux/usb/android_composite.h>
@@ -1004,35 +1001,6 @@ static void __init bt_power_init(void)
 #define bt_power_init(x) do {} while (0)
 #endif
 
-#ifdef CONFIG_ARCH_MSM7X27
-static struct resource kgsl_3d0_resources[] = {
-	{
-		.name  = KGSL_3D0_REG_MEMORY,
-		.start = 0xA0000000,
-		.end = 0xA001ffff,
-		.flags = IORESOURCE_MEM,
-	},
-	{
-		.name = KGSL_3D0_IRQ,
-		.start = INT_GRAPHICS,
-		.end = INT_GRAPHICS,
-		.flags = IORESOURCE_IRQ,
-	},
-};
-
-static struct kgsl_device_platform_data kgsl_3d0_pdata;
-
-static struct platform_device msm_kgsl_3d0 = {
-	.name = "kgsl-3d0",
-	.id = 0,
-	.num_resources = ARRAY_SIZE(kgsl_3d0_resources),
-	.resource = kgsl_3d0_resources,
-	.dev = {
-		.platform_data = &kgsl_3d0_pdata,
-	},
-};
-#endif
-
 static struct platform_device msm_device_pmic_leds = {
 	.name   = "pmic-leds",
 	.id = -1,
@@ -1946,23 +1914,6 @@ static void __init msm7x2x_init(void)
 
 	msm_acpu_clock_init(&msm7x2x_clock_data);
 
-#ifdef CONFIG_ARCH_MSM7X27
-	/* This value has been set to 160000 for power savings. */
-	/* OEMs may modify the value at their discretion for performance */
-	/* The appropriate maximum replacement for 160000 is: */
-	/* msm7x2x_clock_data.max_axi_khz */
-	kgsl_3d0_pdata.pwr_data.pwrlevel[0].gpu_freq = 0;
-	kgsl_3d0_pdata.pwr_data.pwrlevel[0].bus_freq = 160000000;
-	kgsl_3d0_pdata.pwr_data.init_level = 0;
-	kgsl_3d0_pdata.pwr_data.num_levels = 1;
-	/* 7x27 doesn't allow graphics clocks to be run asynchronously to */
-	/* the AXI bus */
-	kgsl_3d0_pdata.pwr_data.set_grp_async = NULL;
-	kgsl_3d0_pdata.pwr_data.idle_timeout = HZ/5;
-	kgsl_3d0_pdata.clk.name.clk = "grp_clk";
-	kgsl_3d0_pdata.clk.name.pclk = "grp_pclk";
-	kgsl_3d0_pdata.imem_clk_name.clk = "imem_clk";
-#endif
 	usb_mpp_init();
 
 #ifdef CONFIG_USB_FUNCTION
