@@ -464,7 +464,7 @@ int msm_camio_clk_enable(enum msm_camio_clk_type clktype)
 	case CAMIO_JPEG_CLK:
 		camio_jpeg_clk =
 		clk = clk_get(NULL, "ijpeg_clk");
-		clk_set_min_rate(clk, 144000000);
+		msm_camio_clk_rate_set_2(clk, 228571000);
 		break;
 
 	case CAMIO_JPEG_PCLK:
