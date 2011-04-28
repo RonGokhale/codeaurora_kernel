@@ -1185,7 +1185,7 @@ static void do_read_data(struct work_struct *work)
 		release_pkt(pkt);
 		goto done;
 	}
-#if defined(CONFIG_SMD_LOGGING)
+#if defined(CONFIG_MSM_SMD_LOGGING)
 #if defined(DEBUG)
 	if (msm_ipc_router_debug_mask & SMEM_LOG) {
 		smem_log_event((SMEM_LOG_PROC_ID_APPS |
@@ -1481,7 +1481,7 @@ static int msm_ipc_router_write_pkt(struct msm_ipc_port *src,
 		hdr->confirm_rx, hdr->size,
 		hdr->dst_node_id, hdr->dst_port_id);
 
-#if defined(CONFIG_SMD_LOGGING)
+#if defined(CONFIG_MSM_SMD_LOGGING)
 #if defined(DEBUG)
 	if (msm_ipc_router_debug_mask & SMEM_LOG) {
 		smem_log_event((SMEM_LOG_PROC_ID_APPS |
