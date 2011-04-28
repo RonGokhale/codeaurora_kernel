@@ -389,7 +389,7 @@ static struct platform_device rndis_device = {
 	},
 };
 
-#ifdef CONFIG_USB_EHCI_MSM
+#ifdef CONFIG_USB_EHCI_MSM_72K
 static int  msm_hsusb_vbus_init(int on)
 {
 	int rc = 0;
@@ -428,7 +428,7 @@ static int hsusb_rpc_connect(int connect)
 }
 
 static struct msm_otg_platform_data msm_otg_pdata = {
-#ifdef CONFIG_USB_EHCI_MSM
+#ifdef CONFIG_USB_EHCI_MSM_72K
 	.vbus_power		= msm_hsusb_vbus_power,
 #endif
 	.rpc_connect		 = hsusb_rpc_connect,
@@ -1813,7 +1813,7 @@ static void __init msm7x2x_init(void)
 		platform_add_devices(surf_ffa_devices,
 				ARRAY_SIZE(surf_ffa_devices));
 		msm_fb_add_devices();
-#ifdef CONFIG_USB_EHCI_MSM
+#ifdef CONFIG_USB_EHCI_MSM_72K
 		msm7x2x_init_host();
 #endif
 	}
