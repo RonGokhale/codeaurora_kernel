@@ -35,6 +35,7 @@ void audio_interct_codec(u32 source)
 	reg_val = (reg_val & ~AUDIO_INTERCT_ADSPLPA_WBRX_SEL_BMSK) |
 		(source << AUDIO_INTERCT_ADSPLPA_WBRX_SEL_SHFT);
 	writel(reg_val, aictl_reg);
+	dsb();
 }
 EXPORT_SYMBOL(audio_interct_codec);
 
@@ -46,6 +47,7 @@ void audio_interct_aux_regsel(u32 source)
 	reg_val = (reg_val & ~AUDIO_INTERCT_ADSPAV_AUX_REGSEL_BMSK) |
 		(source << AUDIO_INTERCT_ADSPAV_AUX_REGSEL_SHFT);
 	writel(reg_val, aictl_reg);
+	dsb();
 }
 EXPORT_SYMBOL(audio_interct_aux_regsel);
 
@@ -57,6 +59,7 @@ void audio_interct_tpcm_source(u32 source)
 	reg_val = (reg_val & ~AUDIO_INTERCT_ADSPAV_TPCMI2STX_SEL_BMSK) |
 		(source << AUDIO_INTERCT_ADSPAV_TPCMI2STX_SEL_SHFT);
 	writel(reg_val, aictl_reg);
+	dsb();
 }
 EXPORT_SYMBOL(audio_interct_tpcm_source);
 
@@ -68,6 +71,7 @@ void audio_interct_rpcm_source(u32 source)
 	reg_val = (reg_val & ~AUDIO_INTERCT_ADSPAV_RPCMI2SRX_SEL_BMSK) |
 		(source << AUDIO_INTERCT_ADSPAV_RPCMI2SRX_SEL_SHFT);
 	writel(reg_val, aictl_reg);
+	dsb();
 }
 EXPORT_SYMBOL(audio_interct_rpcm_source);
 
