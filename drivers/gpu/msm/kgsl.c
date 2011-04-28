@@ -14,7 +14,6 @@
 #include <linux/fb.h>
 #include <linux/file.h>
 #include <linux/fs.h>
-#include <linux/debugfs.h>
 #include <linux/uaccess.h>
 #include <linux/init.h>
 #include <linux/list.h>
@@ -37,12 +36,10 @@
 #include "kgsl_g12.h"
 #include "kgsl_cmdstream.h"
 #include "kgsl_postmortem.h"
-
+#include "kgsl_debugfs.h"
 #include "kgsl_log.h"
 #include "kgsl_drm.h"
 #include "kgsl_cffdump.h"
-
-static struct dentry *kgsl_debugfs_dir;
 
 static inline struct kgsl_mem_entry *
 kgsl_mem_entry_create(void)
@@ -1905,13 +1902,8 @@ kgsl_register_device(struct kgsl_device *device)
 
 	/* sysfs and debugfs initalization - failure here is non fatal */
 
-	/* Create a driver entry in the kgsl debugfs directory */
-	if (kgsl_debugfs_dir && !IS_ERR(kgsl_debugfs_dir))
-		device->d_debugfs = debugfs_create_dir(device->name,
-						       kgsl_debugfs_dir);
-
 	/* Initialize logging */
-	kgsl_device_log_init(device);
+	kgsl_device_debugfs_init(device);
 
 	/* Initialize common sysfs entries */
 	kgsl_pwrctrl_init_sysfs(device);
@@ -2109,7 +2101,7 @@ static int __init kgsl_core_init(void)
 		kobject_create_and_add("proc",
 				       &kgsl_driver.virtdev.kobj);
 
-	kgsl_debugfs_dir = debugfs_create_dir("kgsl", 0);
+	kgsl_core_debugfs_init();
 
 	kgsl_sharedmem_init_sysfs();
 	kgsl_cffdump_init();
