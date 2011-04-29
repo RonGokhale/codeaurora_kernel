@@ -345,7 +345,8 @@ static struct core_speed *compute_l2_speed(unsigned int voting_cpu,
 }
 
 /* Set the CPU or L2 clock speed. */
-static void set_speed(enum scalables id, struct core_speed *tgt_s)
+static void set_speed(enum scalables id, struct core_speed *tgt_s,
+		      enum setrate_reason reason)
 {
 	struct core_speed *strt_s = drv_state.current_speed[id];
 
@@ -368,16 +369,36 @@ static void set_speed(enum scalables id, struct core_speed *tgt_s)
 		set_pri_clk_src_div(id, tgt_s->pri_src_sel, tgt_s->div_val);
 	} else if (strt_s->src == HFPLL && tgt_s->src != HFPLL) {
 		/* TODO: Enable source. */
-		set_sec_clk_src(id, tgt_s->sec_src_sel);
-		set_pri_clk_src_div(id, tgt_s->pri_src_sel, 0);
+		/*
+		 * If responding to CPU_DEAD we must be running on another
+		 * CPU.  Therefore, we can't access the downed CPU's CP15
+		 * clock MUX registers from here and can't change clock sources.
+		 * Just turn off the PLL- since the CPU is down already, halting
+		 * its clock should be safe.
+		 */
+		if (reason != SETRATE_HOTPLUG || id == L2) {
+			set_sec_clk_src(id, tgt_s->sec_src_sel);
+			set_pri_clk_src_div(id, tgt_s->pri_src_sel, 0);
+		}
 		hfpll_disable(id);
 	} else if (strt_s->src != HFPLL && tgt_s->src == HFPLL) {
 		hfpll_set_rate(id, tgt_s);
 		hfpll_enable(id);
-		set_pri_clk_src_div(id, tgt_s->pri_src_sel, tgt_s->div_val);
+		/*
+		 * If responding to CPU_UP_PREPARE, we can't change CP15
+		 * registers for the CPU that's coming up since we're not
+		 * running on that CPU.  That's okay though, since the MUX
+		 * source was not changed on the way down, either.
+		 */
+		if (reason != SETRATE_HOTPLUG || id == L2)
+			set_pri_clk_src_div(id, tgt_s->pri_src_sel,
+					    tgt_s->div_val);
 		/* TODO: Disable source. */
 	} else if (strt_s->src != HFPLL && tgt_s->src != HFPLL) {
-		BUG();
+		/* TODO: Enable source. */
+		if (reason != SETRATE_HOTPLUG || id == L2)
+			set_sec_clk_src(id, tgt_s->sec_src_sel);
+		/* TODO: Disable source. */
 	} else {
 		BUG();
 	}
@@ -425,12 +446,12 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 		cpu, strt_acpu_s->khz, tgt_acpu_s->khz);
 
 	/* Set the CPU speed. */
-	set_speed(cpu, tgt_acpu_s);
+	set_speed(cpu, tgt_acpu_s, reason);
 
 	/* Update the L2 vote and apply the rate change. */
 	spin_lock_irqsave(&drv_state.l2_lock, flags);
 	tgt_l2_s = compute_l2_speed(cpu, tgt->l2_level);
-	set_speed(L2, tgt_l2_s);
+	set_speed(L2, tgt_l2_s, reason);
 	spin_unlock_irqrestore(&drv_state.l2_lock, flags);
 
 	/* Nothing else to do for power collapse or SWFI. */
