@@ -38,6 +38,8 @@ struct pm8xxx_keypad_platform_data {
 
 	unsigned int num_cols;
 	unsigned int num_rows;
+	unsigned int rows_gpio_start;
+	unsigned int cols_gpio_start;
 
 	unsigned int debounce_ms;
 	unsigned int scan_delay_ms;
