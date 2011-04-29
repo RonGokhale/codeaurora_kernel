@@ -30,6 +30,9 @@
 #include "irqs-8960.h"
 #elif defined(CONFIG_ARCH_MSM_ARM11) || defined(CONFIG_ARCH_MSM_CORTEX_A5)
 #include "irqs-7xxx.h"
+#elif defined(CONFIG_ARCH_FSM9XXX)
+#include "irqs-fsm9xxx.h"
+#include "sirc.h"
 #else
 #error "Unknown architecture specification"
 #endif
