@@ -437,6 +437,7 @@ struct kgsl_memdesc_ops kgsl_vmalloc_ops = {
 	.outer_cache = kgsl_vmalloc_outer_cache,
 #endif
 };
+EXPORT_SYMBOL(kgsl_vmalloc_ops);
 
 static struct kgsl_memdesc_ops kgsl_coherent_ops = {
 	.physaddr = kgsl_contig_physaddr,
@@ -453,6 +454,7 @@ struct kgsl_memdesc_ops kgsl_contig_ops = {
 	.outer_cache = kgsl_contig_outer_cache
 #endif
 };
+EXPORT_SYMBOL(kgsl_contig_ops);
 
 /* Global - also used by kgsl.c */
 struct kgsl_memdesc_ops kgsl_userptr_ops = {
@@ -461,6 +463,7 @@ struct kgsl_memdesc_ops kgsl_userptr_ops = {
 	.outer_cache = kgsl_userptr_outer_cache,
 #endif
 };
+EXPORT_SYMBOL(kgsl_userptr_ops);
 
 void kgsl_cache_range_op(struct kgsl_memdesc *memdesc, int op)
 {
@@ -482,6 +485,7 @@ void kgsl_cache_range_op(struct kgsl_memdesc *memdesc, int op)
 	if (memdesc->ops->outer_cache)
 		memdesc->ops->outer_cache(memdesc, op);
 }
+EXPORT_SYMBOL(kgsl_cache_range_op);
 
 static int
 _kgsl_sharedmem_vmalloc(struct kgsl_memdesc *memdesc,
@@ -536,6 +540,7 @@ kgsl_sharedmem_vmalloc(struct kgsl_memdesc *memdesc,
 	return _kgsl_sharedmem_vmalloc(memdesc, pagetable, ptr, size,
 		GSL_PT_PAGE_RV | GSL_PT_PAGE_WV);
 }
+EXPORT_SYMBOL(kgsl_sharedmem_vmalloc);
 
 int
 kgsl_sharedmem_vmalloc_user(struct kgsl_memdesc *memdesc,
@@ -561,6 +566,7 @@ kgsl_sharedmem_vmalloc_user(struct kgsl_memdesc *memdesc,
 	return _kgsl_sharedmem_vmalloc(memdesc, pagetable, ptr, size,
 		protflags);
 }
+EXPORT_SYMBOL(kgsl_sharedmem_vmalloc_user);
 
 int
 kgsl_sharedmem_alloc_coherent(struct kgsl_memdesc *memdesc, size_t size)
@@ -584,6 +590,7 @@ kgsl_sharedmem_alloc_coherent(struct kgsl_memdesc *memdesc, size_t size)
 
 	return 0;
 }
+EXPORT_SYMBOL(kgsl_sharedmem_alloc_coherent);
 
 void kgsl_sharedmem_free(struct kgsl_memdesc *memdesc)
 {
@@ -598,6 +605,7 @@ void kgsl_sharedmem_free(struct kgsl_memdesc *memdesc)
 
 	memset(memdesc, 0, sizeof(*memdesc));
 }
+EXPORT_SYMBOL(kgsl_sharedmem_free);
 
 int
 kgsl_sharedmem_readl(const struct kgsl_memdesc *memdesc,
@@ -613,6 +621,7 @@ kgsl_sharedmem_readl(const struct kgsl_memdesc *memdesc,
 	*dst = readl(memdesc->hostptr + offsetbytes);
 	return 0;
 }
+EXPORT_SYMBOL(kgsl_sharedmem_readl);
 
 int
 kgsl_sharedmem_writel(const struct kgsl_memdesc *memdesc,
@@ -627,6 +636,7 @@ kgsl_sharedmem_writel(const struct kgsl_memdesc *memdesc,
 	writel(src, memdesc->hostptr + offsetbytes);
 	return 0;
 }
+EXPORT_SYMBOL(kgsl_sharedmem_writel);
 
 int
 kgsl_sharedmem_set(const struct kgsl_memdesc *memdesc, unsigned int offsetbytes,
@@ -640,3 +650,4 @@ kgsl_sharedmem_set(const struct kgsl_memdesc *memdesc, unsigned int offsetbytes,
 	memset(memdesc->hostptr + offsetbytes, value, sizebytes);
 	return 0;
 }
+EXPORT_SYMBOL(kgsl_sharedmem_set);
