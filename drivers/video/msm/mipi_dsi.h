@@ -38,9 +38,11 @@
 
 #define BIT(x)  (1<<(x))
 
+#ifndef CONFIG_FB_MSM_MDP303
 #define MMSS_CC_BASE_PHY 0x04000000	/* mmss clcok control */
 #define MMSS_SFPB_BASE_PHY 0x05700000	/* mmss SFPB CFG */
 #define MMSS_SERDES_BASE_PHY 0x04f01000 /* mmss (De)Serializer CFG */
+#endif
 
 #define MIPI_DSI_BASE mipi_dsi_base
 
