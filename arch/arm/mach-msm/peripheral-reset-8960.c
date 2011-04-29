@@ -71,10 +71,6 @@
 #define RIVA_PMU_CFG_WARM_BOOT		BIT(0)
 #define RIVA_PMU_CFG_IRIS_XO_MODE	0x6
 #define RIVA_PMU_CFG_IRIS_XO_MODE_48	(2 << 1)
-#define RIVA_PMU_CFG_IRIS_XO_CFG	BIT(3)
-#define RIVA_PMU_CFG_IRIS_XO_EN		BIT(4)
-#define RIVA_PMU_CFG_GC_BUS_MUX_SEL_TOP	BIT(5)
-#define RIVA_PMU_CFG_IRIS_XO_CFG_STS	BIT(6) /* 1: in progress, 0: done */
 
 #define RIVA_PMU_OVRD_VAL		(msm_riva_base + 0x30)
 #define RIVA_PMU_OVRD_VAL_CCPU_RESET	BIT(0)
@@ -91,6 +87,7 @@
 #define PLL_MODE_BYPASSNL		BIT(1)
 #define PLL_MODE_RESET_N		BIT(2)
 #define PLL_MODE_REF_XO_SEL		0x30
+#define PLL_MODE_REF_XO_SEL_CXO		(2 << 4)
 #define PLL_MODE_REF_XO_SEL_RF		(3 << 4)
 #define RIVA_PLL_L_VAL			(MSM_CLK_CTL_BASE + 0x31A4)
 #define RIVA_PLL_M_VAL			(MSM_CLK_CTL_BASE + 0x31A8)
@@ -284,46 +281,33 @@ static int init_image_riva_untrusted(const u8 *metadata, size_t size)
 static int reset_riva_untrusted(void)
 {
 	u32 reg;
+	bool xo;
 
 	/* Enable A2XB bridge */
 	reg = readl(RIVA_PMU_A2XB_CFG);
 	reg |= RIVA_PMU_A2XB_CFG_EN;
 	writel(reg, RIVA_PMU_A2XB_CFG);
 
-	/* Enable IRIS XO */
+	/* Determine which XO to use */
 	reg = readl(RIVA_PMU_CFG);
-	reg |= RIVA_PMU_CFG_GC_BUS_MUX_SEL_TOP | RIVA_PMU_CFG_IRIS_XO_EN;
-	writel(reg, RIVA_PMU_CFG);
-
-	reg &= ~(RIVA_PMU_CFG_IRIS_XO_MODE);
-	reg |= RIVA_PMU_CFG_IRIS_XO_MODE_48;
-	writel(reg, RIVA_PMU_CFG);
-
-	/* Start IRIS XO configuration */
-	reg |= RIVA_PMU_CFG_IRIS_XO_CFG;
-	writel(reg, RIVA_PMU_CFG);
-
-	/* Wait for XO configuration to finish */
-	while (readl(RIVA_PMU_CFG) & RIVA_PMU_CFG_IRIS_XO_CFG_STS)
-		cpu_relax();
-
-	/* Stop IRIS XO configuration */
-	reg &= ~(RIVA_PMU_CFG_GC_BUS_MUX_SEL_TOP | RIVA_PMU_CFG_IRIS_XO_CFG);
-	writel(reg, RIVA_PMU_CFG);
+	xo = (reg & RIVA_PMU_CFG_IRIS_XO_MODE) == RIVA_PMU_CFG_IRIS_XO_MODE_48;
 
 	/* Program PLL 13 to 960 MHz */
 	reg = readl(RIVA_PLL_MODE);
 	reg &= ~(PLL_MODE_BYPASSNL | PLL_MODE_OUTCTRL | PLL_MODE_RESET_N);
 	writel(reg, RIVA_PLL_MODE);
 
-	writel((0x40000C00) | 40, RIVA_PLL_L_VAL);
+	if (xo)
+		writel(0x40000C00 | 40, RIVA_PLL_L_VAL);
+	else
+		writel(0x40000C00 | 50, RIVA_PLL_L_VAL);
 	writel(0, RIVA_PLL_M_VAL);
 	writel(1, RIVA_PLL_N_VAL);
 	writel(0x01485227, RIVA_PLL_CONFIG);
 
 	reg = readl(RIVA_PLL_MODE);
 	reg &= ~(PLL_MODE_REF_XO_SEL);
-	reg |= PLL_MODE_REF_XO_SEL_RF;
+	reg |= xo ? PLL_MODE_REF_XO_SEL_RF : PLL_MODE_REF_XO_SEL_CXO;
 	writel(reg, RIVA_PLL_MODE);
 
 	/* Enable PLL 13 */
