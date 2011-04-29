@@ -472,7 +472,7 @@ void msm_bus_fabric_update_bw(struct msm_bus_fabric_device *fabdev,
 	}
 
 	/* Update bwsum for slaves on fabric */
-	for (i = 0; i < info->node_info->num_sports; i++) {
+	for (i = 0; i < hop->node_info->num_sports; i++) {
 		sel_cdata->bwsum[hop->node_info->slavep[i]]
 			= (uint16_t)(*hop->link_info.sel_bw/hop->node_info->
 				num_sports);
