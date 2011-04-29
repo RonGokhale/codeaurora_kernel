@@ -1251,6 +1251,7 @@ static int tavarua_set_region(struct tavarua_device *radio,
 	switch (region) {
 	case TAVARUA_REGION_US:
 	case TAVARUA_REGION_EU:
+	case TAVARUA_REGION_JAPAN_WIDE:
 		SET_REG_FIELD(radio->registers[RDCTRL], 0,
 			RDCTRL_BAND_OFFSET, RDCTRL_BAND_MASK);
 		break;
@@ -1285,9 +1286,13 @@ static int tavarua_set_region(struct tavarua_device *radio,
 	switch (region) {
 	case TAVARUA_REGION_US:
 	case TAVARUA_REGION_EU:
-	case TAVARUA_REGION_JAPAN:
-	case TAVARUA_REGION_JAPAN_WIDE:
 		value = 0;
+		break;
+	case TAVARUA_REGION_JAPAN:
+		value = 1;
+		break;
+	case TAVARUA_REGION_JAPAN_WIDE:
+		value = 2;
 		break;
 	default:
 		value = radio->region_params.spacing;
@@ -1352,6 +1357,10 @@ static int tavarua_set_region(struct tavarua_device *radio,
 	case TAVARUA_REGION_JAPAN:
 		radio->region_params.band_low = 76 * FREQ_MUL;
 		radio->region_params.band_high = 90 * FREQ_MUL;
+		break;
+	case TAVARUA_REGION_JAPAN_WIDE:
+		radio->region_params.band_low = 90 * FREQ_MUL;
+		radio->region_params.band_high = 108 * FREQ_MUL;
 		break;
 	default:
 		break;
