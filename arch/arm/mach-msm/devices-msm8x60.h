@@ -53,11 +53,6 @@ extern struct platform_device msm_bus_cpss_fpb;
 #endif
 
 extern struct platform_device msm_device_smd;
-extern struct platform_device msm_kgsl_3d0;
-#ifdef CONFIG_MSM_KGSL_2D
-extern struct platform_device msm_kgsl_2d0;
-extern struct platform_device msm_kgsl_2d1;
-#endif
 extern struct platform_device msm_device_gpio;
 extern struct platform_device msm_device_vidc;
 

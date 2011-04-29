@@ -56,7 +56,6 @@
 #include "msm-keypad-devices.h"
 #include "pm.h"
 #include "proc_comm.h"
-#include <linux/msm_kgsl.h>
 #ifdef CONFIG_USB_ANDROID
 #include <linux/usb/android_composite.h>
 #endif
@@ -1182,54 +1181,6 @@ exit:
 #else
 #define bt_power_init(x) do {} while (0)
 #endif
-
-static struct resource kgsl_3d0_resources[] = {
-       {
-		.name  = KGSL_3D0_REG_MEMORY,
-		.start = 0xA0000000,
-		.end = 0xA001ffff,
-		.flags = IORESOURCE_MEM,
-       },
-       {
-		.name = KGSL_3D0_IRQ,
-		.start = INT_GRAPHICS,
-		.end = INT_GRAPHICS,
-		.flags = IORESOURCE_IRQ,
-       },
-};
-
-static struct kgsl_device_platform_data kgsl_3d0_pdata = {
-	.pwr_data = {
-		.pwrlevel = {
-			{
-				.gpu_freq = 0,
-				.bus_freq = 128000000,
-			},
-		},
-		.init_level = 0,
-		.num_levels = 1,
-		.set_grp_async = NULL,
-		.idle_timeout = HZ/5,
-	},
-	.clk = {
-		.name = {
-			.clk = "grp_clk",
-		},
-	},
-	.imem_clk_name = {
-		.clk = "imem_clk",
-	},
-};
-
-static struct platform_device msm_kgsl_3d0 = {
-       .name = "kgsl-3d0",
-       .id = 0,
-       .num_resources = ARRAY_SIZE(kgsl_3d0_resources),
-       .resource = kgsl_3d0_resources,
-	.dev = {
-		.platform_data = &kgsl_3d0_pdata,
-	},
-};
 
 static struct platform_device msm_device_pmic_leds = {
 	.name	= "pmic-leds",
