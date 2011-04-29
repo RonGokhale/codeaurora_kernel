@@ -947,11 +947,6 @@ int branch_clk_is_enabled(struct clk *clk)
 	return branch->enabled;
 }
 
-unsigned branch_clk_get_rate(struct clk *c)
-{
-	return 0;
-}
-
 void branch_clk_auto_off(struct clk *clk)
 {
 	struct branch_clk *branch = to_branch_clk(clk);
@@ -994,9 +989,4 @@ int branch_reset(struct branch *clk, enum clk_reset_action action)
 int branch_clk_reset(struct clk *clk, enum clk_reset_action action)
 {
 	return branch_reset(&to_branch_clk(clk)->b, action);
-}
-
-unsigned reset_clk_get_rate(struct clk *clk)
-{
-	return 0;
 }

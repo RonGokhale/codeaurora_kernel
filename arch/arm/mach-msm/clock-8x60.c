@@ -665,7 +665,6 @@ static struct clk_ops clk_ops_branch = {
 	.enable = branch_clk_enable,
 	.disable = branch_clk_disable,
 	.auto_off = branch_clk_auto_off,
-	.get_rate = branch_clk_get_rate,
 	.is_enabled = branch_clk_is_enabled,
 	.reset = branch_clk_reset,
 	.set_flags = soc_clk_set_flags,
@@ -676,7 +675,6 @@ static struct clk_ops clk_ops_branch = {
 };
 
 static struct clk_ops clk_ops_reset = {
-	.get_rate = reset_clk_get_rate,
 	.reset = branch_clk_reset,
 	.is_local = local_clk_is_local,
 };

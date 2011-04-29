@@ -265,11 +265,8 @@ void branch_clk_disable(struct clk *clk);
 struct clk *branch_clk_get_parent(struct clk *clk);
 int branch_clk_set_parent(struct clk *clk, struct clk *parent);
 int branch_clk_is_enabled(struct clk *clk);
-unsigned branch_clk_get_rate(struct clk *c);
 void branch_clk_auto_off(struct clk *clk);
 int branch_clk_reset(struct clk *c, enum clk_reset_action action);
-
-unsigned reset_clk_get_rate(struct clk *clk);
 
 /*
  * Variables from clock-local driver

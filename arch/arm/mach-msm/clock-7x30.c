@@ -3035,7 +3035,6 @@ static struct clk_ops clk_ops_branch = {
 	.enable = branch_clk_enable,
 	.disable = branch_clk_disable,
 	.auto_off = branch_clk_auto_off,
-	.get_rate = branch_clk_get_rate,
 	.is_enabled = branch_clk_is_enabled,
 	.reset = soc_branch_clk_reset,
 	.set_flags = soc_clk_set_flags,
