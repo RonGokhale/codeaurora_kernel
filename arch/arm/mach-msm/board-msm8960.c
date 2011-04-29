@@ -229,7 +229,7 @@ static struct msm_gpiomux_config msm8960_cam_configs[] __initdata = {
 
 
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x110C000
-#define MSM_PMEM_ADSP_SIZE         0x12000
+#define MSM_PMEM_ADSP_SIZE         0x3800000
 
 #ifdef CONFIG_KERNEL_PMEM_EBI_REGION
 static unsigned pmem_kernel_ebi1_size = MSM_PMEM_KERNEL_EBI1_SIZE;
