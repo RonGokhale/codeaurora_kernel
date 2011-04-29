@@ -21,6 +21,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/err.h>
+#include <linux/debugfs.h>
 #include <linux/mfd/pm8xxx/core.h>
 #include <linux/mfd/pm8xxx/pwm.h>
 
@@ -757,6 +758,262 @@ int pm8xxx_pwm_lut_enable(struct pwm_device *pwm, int start)
 }
 EXPORT_SYMBOL_GPL(pm8xxx_pwm_lut_enable);
 
+#if defined(CONFIG_DEBUG_FS)
+
+struct pm8xxx_pwm_dbg_device;
+
+struct pm8xxx_pwm_user {
+	int				pwm_id;
+	struct pwm_device		*pwm;
+	int				period;
+	int				duty_cycle;
+	int				enable;
+	struct pm8xxx_pwm_dbg_device	*dbgdev;
+};
+
+struct pm8xxx_pwm_dbg_device {
+	struct mutex		dbg_mutex;
+	struct device		*dev;
+	struct dentry		*dent;
+
+	struct pm8xxx_pwm_user	user[PM8XXX_PWM_CHANNELS];
+};
+
+static struct pm8xxx_pwm_dbg_device *pmic_dbg_device;
+
+static int dbg_pwm_check_period(int period)
+{
+	if (period < PM8XXX_PWM_PERIOD_MIN || period > PM8XXX_PWM_PERIOD_MAX) {
+		pr_err("period is invalid: %d\n", period);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int dbg_pwm_check_duty_cycle(int duty_cycle, const char *func_name)
+{
+	if (duty_cycle <= 0 || duty_cycle > 100) {
+		pr_err("%s: duty_cycle is invalid: %d\n",
+		      func_name, duty_cycle);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static void dbg_pwm_check_handle(struct pm8xxx_pwm_user *puser)
+{
+	struct pwm_device *tmp;
+
+	if (puser->pwm == NULL) {
+		tmp = pwm_request(puser->pwm_id, "pwm-dbg");
+		if (PTR_ERR(puser->pwm)) {
+			pr_err("pwm_request: err=%ld\n", PTR_ERR(puser->pwm));
+			puser->pwm = NULL;
+		}
+	}
+}
+
+static int dbg_pwm_enable_set(void *data, u64 val)
+{
+	struct pm8xxx_pwm_user	  *puser = data;
+	struct pm8xxx_pwm_dbg_device    *dbgdev = puser->dbgdev;
+	int     rc;
+
+	mutex_lock(&dbgdev->dbg_mutex);
+	rc = dbg_pwm_check_duty_cycle(puser->duty_cycle, __func__);
+	if (!rc) {
+		puser->enable = val;
+		dbg_pwm_check_handle(puser);
+		if (puser->pwm) {
+			if (puser->enable)
+				pwm_enable(puser->pwm);
+			else
+				pwm_disable(puser->pwm);
+		}
+	}
+	mutex_unlock(&dbgdev->dbg_mutex);
+	return 0;
+}
+
+static int dbg_pwm_enable_get(void *data, u64 *val)
+{
+	struct pm8xxx_pwm_user	  *puser = data;
+	struct pm8xxx_pwm_dbg_device    *dbgdev = puser->dbgdev;
+
+	mutex_lock(&dbgdev->dbg_mutex);
+	*val = puser->enable;
+	mutex_unlock(&dbgdev->dbg_mutex);
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(dbg_pwm_enable_fops,
+			dbg_pwm_enable_get, dbg_pwm_enable_set,
+			"%lld\n");
+
+static int dbg_pwm_duty_cycle_set(void *data, u64 val)
+{
+	struct pm8xxx_pwm_user	  *puser = data;
+	struct pm8xxx_pwm_dbg_device    *dbgdev = puser->dbgdev;
+	int     rc;
+
+	mutex_lock(&dbgdev->dbg_mutex);
+	rc = dbg_pwm_check_duty_cycle(val, __func__);
+	if (!rc) {
+		puser->duty_cycle = val;
+		dbg_pwm_check_handle(puser);
+		if (puser->pwm) {
+			int     duty_us;
+
+			duty_us = puser->duty_cycle * puser->period;
+			pwm_config(puser->pwm,
+				  puser->duty_cycle, puser->period);
+		}
+	}
+	mutex_unlock(&dbgdev->dbg_mutex);
+	return 0;
+}
+
+static int dbg_pwm_duty_cycle_get(void *data, u64 *val)
+{
+	struct pm8xxx_pwm_user	  *puser = data;
+	struct pm8xxx_pwm_dbg_device    *dbgdev = puser->dbgdev;
+
+	mutex_lock(&dbgdev->dbg_mutex);
+	*val = puser->duty_cycle;
+	mutex_unlock(&dbgdev->dbg_mutex);
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(dbg_pwm_duty_cycle_fops,
+			dbg_pwm_duty_cycle_get, dbg_pwm_duty_cycle_set,
+			"%lld\n");
+
+static int dbg_pwm_period_set(void *data, u64 val)
+{
+	struct pm8xxx_pwm_user	  *puser = data;
+	struct pm8xxx_pwm_dbg_device    *dbgdev = puser->dbgdev;
+	int     rc;
+
+	mutex_lock(&dbgdev->dbg_mutex);
+	rc = dbg_pwm_check_period(val);
+	if (!rc)
+		puser->period = val;
+	mutex_unlock(&dbgdev->dbg_mutex);
+	return 0;
+}
+
+static int dbg_pwm_period_get(void *data, u64 *val)
+{
+	struct pm8xxx_pwm_user	  *puser = data;
+	struct pm8xxx_pwm_dbg_device    *dbgdev = puser->dbgdev;
+
+	mutex_lock(&dbgdev->dbg_mutex);
+	*val = puser->period;
+	mutex_unlock(&dbgdev->dbg_mutex);
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(dbg_pwm_period_fops,
+			dbg_pwm_period_get, dbg_pwm_period_set, "%lld\n");
+
+static int __devinit pm8xxx_pwm_dbg_probe(struct device *dev)
+{
+	struct pm8xxx_pwm_dbg_device    *dbgdev;
+	struct dentry		   *dent;
+	struct dentry		   *temp;
+	struct pm8xxx_pwm_user	  *puser;
+	int			     i;
+
+	if (dev == NULL) {
+		pr_err("no parent data passed in.\n");
+		return -EINVAL;
+	}
+
+	dbgdev = kzalloc(sizeof *dbgdev, GFP_KERNEL);
+	if (dbgdev == NULL) {
+		pr_err("kzalloc() failed.\n");
+		return -ENOMEM;
+	}
+
+	mutex_init(&dbgdev->dbg_mutex);
+
+	dbgdev->dev = dev;
+
+	dent = debugfs_create_dir("pm8xxx-pwm-dbg", NULL);
+	if (dent == NULL || IS_ERR(dent)) {
+		pr_err("ERR debugfs_create_dir: dent=%p\n", dent);
+		return -ENOMEM;
+	}
+
+	dbgdev->dent = dent;
+
+	for (i = 0; i < PM8XXX_PWM_CHANNELS; i++) {
+		char pwm_ch[] = "0";
+
+		pwm_ch[0] = '0' + i;
+		dent = debugfs_create_dir(pwm_ch, dbgdev->dent);
+		if (dent == NULL || IS_ERR(dent)) {
+			pr_err("ERR: pwm=%d: dir: dent=%p\n", i, dent);
+			goto debug_error;
+		}
+
+		puser = &dbgdev->user[i];
+		puser->dbgdev = dbgdev;
+		puser->pwm_id = i;
+		temp = debugfs_create_file("period", S_IRUGO | S_IWUSR,
+				dent, puser, &dbg_pwm_period_fops);
+		if (temp == NULL || IS_ERR(temp)) {
+			pr_err("ERR: pwm=%d: period: dent=%p\n", i, dent);
+			goto debug_error;
+		}
+
+		temp = debugfs_create_file("duty-cycle", S_IRUGO | S_IWUSR,
+				dent, puser, &dbg_pwm_duty_cycle_fops);
+		if (temp == NULL || IS_ERR(temp)) {
+			pr_err("ERR: pwm=%d: duty-cycle: dent=%p\n", i, dent);
+			goto debug_error;
+		}
+
+		temp = debugfs_create_file("enable", S_IRUGO | S_IWUSR,
+				dent, puser, &dbg_pwm_enable_fops);
+		if (temp == NULL || IS_ERR(temp)) {
+			pr_err("ERR: pwm=%d: enable: dent=%p\n", i, dent);
+			goto debug_error;
+		}
+	}
+
+	pmic_dbg_device = dbgdev;
+
+	return 0;
+
+debug_error:
+	debugfs_remove_recursive(dbgdev->dent);
+	return -ENOMEM;
+}
+
+static int __devexit pm8xxx_pwm_dbg_remove(void)
+{
+	if (pmic_dbg_device) {
+		debugfs_remove_recursive(pmic_dbg_device->dent);
+		kfree(pmic_dbg_device);
+	}
+	return 0;
+}
+
+#else
+
+static int __devinit pm8xxx_pwm_dbg_probe(struct device *dev)
+{
+	return 0;
+}
+
+static int __devexit pm8xxx_pwm_dbg_remove(void)
+{
+	return 0;
+}
+
+#endif
+
 static int __devinit pm8xxx_pwm_probe(struct platform_device *pdev)
 {
 	struct pm8xxx_pwm_chip	*chip;
@@ -779,6 +1036,9 @@ static int __devinit pm8xxx_pwm_probe(struct platform_device *pdev)
 	pwm_chip = chip;
 	platform_set_drvdata(pdev, chip);
 
+	if (pm8xxx_pwm_dbg_probe(&pdev->dev) < 0)
+		pr_err("could not set up debugfs\n");
+
 	pr_notice("OK\n");
 	return 0;
 }
@@ -787,6 +1047,7 @@ static int __devexit pm8xxx_pwm_remove(struct platform_device *pdev)
 {
 	struct pm8xxx_pwm_chip	*chip = platform_get_drvdata(pdev);
 
+	pm8xxx_pwm_dbg_remove();
 	mutex_destroy(&chip->pwm_mutex);
 	platform_set_drvdata(pdev, NULL);
 	kfree(chip);
