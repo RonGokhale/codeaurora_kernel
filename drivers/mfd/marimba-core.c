@@ -395,6 +395,8 @@ bool marimba_get_fm_status(struct marimba *marimba)
 {
 	bool ret;
 
+	marimba = &marimba_modules[marimba->mod_id];
+
 	mutex_lock(&marimba->xfer_lock);
 
 	ret = fm_status;
@@ -407,6 +409,8 @@ EXPORT_SYMBOL(marimba_get_fm_status);
 
 void marimba_set_fm_status(struct marimba *marimba, bool value)
 {
+	marimba = &marimba_modules[marimba->mod_id];
+
 	mutex_lock(&marimba->xfer_lock);
 
 	fm_status = value;
@@ -418,6 +422,8 @@ EXPORT_SYMBOL(marimba_set_fm_status);
 bool marimba_get_bt_status(struct marimba *marimba)
 {
 	bool ret;
+
+	marimba = &marimba_modules[marimba->mod_id];
 
 	mutex_lock(&marimba->xfer_lock);
 
@@ -431,6 +437,8 @@ EXPORT_SYMBOL(marimba_get_bt_status);
 
 void marimba_set_bt_status(struct marimba *marimba, bool value)
 {
+	marimba = &marimba_modules[marimba->mod_id];
+
 	mutex_lock(&marimba->xfer_lock);
 
 	bt_status = value;
