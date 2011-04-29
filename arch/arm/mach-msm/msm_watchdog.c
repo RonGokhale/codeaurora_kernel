@@ -23,6 +23,7 @@
 #include <linux/suspend.h>
 #include <linux/interrupt.h>
 #include <mach/msm_iomap.h>
+#include <asm/mach-types.h>
 #include <mach/scm-io.h>
 #include <mach/scm.h>
 #include "msm_watchdog.h"
@@ -296,8 +297,13 @@ static void init_watchdog_work(struct work_struct *work)
 	delay_time = msecs_to_jiffies(PET_DELAY);
 
 	/* 32768 ticks = 1 second */
-	__raw_writel(32768*4, WDT0_BARK_TIME);
-	__raw_writel(32768*5, WDT0_BITE_TIME);
+	if (machine_is_msm8960_sim()) {
+		__raw_writel(32768*8, WDT0_BARK_TIME);
+		__raw_writel(32768*10, WDT0_BITE_TIME);
+	} else {
+		__raw_writel(32768*4, WDT0_BARK_TIME);
+		__raw_writel(32768*5, WDT0_BITE_TIME);
+	}
 
 	ret = register_pm_notifier(&msm_watchdog_power_notifier);
 	if (ret) {
