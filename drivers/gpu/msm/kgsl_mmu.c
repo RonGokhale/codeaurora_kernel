@@ -17,10 +17,8 @@
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/bitmap.h>
-#ifdef CONFIG_MSM_KGSL_MMU
 #include <asm/pgalloc.h>
 #include <asm/pgtable.h>
-#endif
 #include "kgsl_mmu.h"
 #include "kgsl_drawctxt.h"
 #include "kgsl.h"
@@ -592,6 +590,41 @@ void kgsl_mh_intrcallback(struct kgsl_device *device)
 	*/
 }
 
+static int kgsl_setup_pt(struct kgsl_pagetable *pt)
+{
+	int i = 0;
+	int status = 0;
+
+	for (i = 0; i < KGSL_DEVICE_MAX; i++) {
+		struct kgsl_device *device = kgsl_driver.devp[i];
+		if (device) {
+			status = device->ftbl.device_setup_pt(device, pt);
+			if (status)
+				goto error_pt;
+		}
+	}
+	return status;
+error_pt:
+	while (i >= 0) {
+		struct kgsl_device *device = kgsl_driver.devp[i];
+		if (device)
+			device->ftbl.device_cleanup_pt(device, pt);
+		i--;
+	}
+	return status;
+}
+
+static int kgsl_cleanup_pt(struct kgsl_pagetable *pt)
+{
+	int i;
+	for (i = 0; i < KGSL_DEVICE_MAX; i++) {
+		struct kgsl_device *device = kgsl_driver.devp[i];
+		if (device)
+			device->ftbl.device_cleanup_pt(device, pt);
+	}
+	return 0;
+}
+
 static struct kgsl_pagetable *kgsl_mmu_createpagetableobject(
 				unsigned int name)
 {
@@ -781,14 +814,6 @@ int kgsl_mmu_init(struct kgsl_device *device)
 
 	mmu->device = device;
 
-#ifndef CONFIG_MSM_KGSL_MMU
-	mmu->config = 0x00000000;
-#endif
-
-	/* MMU not enabled */
-	if ((mmu->config & 0x1) == 0)
-		return 0;
-
 	/* make sure aligned to pagesize */
 	BUG_ON(mmu->mpu_base & (PAGE_SIZE - 1));
 	BUG_ON((mmu->mpu_base + mmu->mpu_range) & (PAGE_SIZE - 1));
@@ -886,10 +911,6 @@ error:
 	kgsl_regwrite(device, device->mmu.reg.config, 0x00000000);
 	return status;
 }
-
-
-
-#ifdef CONFIG_MSM_KGSL_MMU
 
 unsigned int kgsl_virtaddr_to_physaddr(void *virtaddr)
 {
@@ -1049,7 +1070,6 @@ kgsl_mmu_unmap(struct kgsl_pagetable *pagetable,
 
 	return 0;
 }
-#endif /*CONFIG_MSM_KGSL_MMU*/
 
 int kgsl_mmu_map_global(struct kgsl_pagetable *pagetable,
 			struct kgsl_memdesc *memdesc, unsigned int protflags)
