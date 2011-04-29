@@ -47,6 +47,7 @@
 #include "devices.h"
 #include "timer.h"
 #include "devices-msm7x2xa.h"
+#include "pm.h"
 #include <mach/rpc_server_handset.h>
 
 #define PMEM_KERNEL_EBI1_SIZE	0x1C000
@@ -1208,6 +1209,37 @@ static struct mmc_platform_data sdc4_plat_data = {
 #endif
 #endif
 
+
+static struct msm_pm_platform_data msm7x27a_pm_data[MSM_PM_SLEEP_MODE_NR] = {
+	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE] = {
+					.supported = 1,
+					.suspend_enabled = 1,
+					.idle_enabled = 1,
+					.latency = 16000,
+					.residency = 20000,
+	},
+	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN] = {
+					.supported = 1,
+					.suspend_enabled = 1,
+					.idle_enabled = 1,
+					.latency = 12000,
+					.residency = 20000,
+	},
+	[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT] = {
+					.supported = 1,
+					.suspend_enabled = 1,
+					.idle_enabled = 0,
+					.latency = 2000,
+					.residency = 0,
+	},
+	[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT] = {
+					.supported = 1,
+					.suspend_enabled = 1,
+					.idle_enabled = 1,
+					.latency = 2,
+					.residency = 0,
+	},
+};
 
 static struct android_pmem_platform_data android_pmem_adsp_pdata = {
 	.name = "pmem_adsp",
@@ -2417,6 +2449,9 @@ static void __init msm7x2x_init(void)
 		msm7x2x_init_host();
 #endif
 	}
+
+	msm_pm_set_platform_data(msm7x27a_pm_data,
+				ARRAY_SIZE(msm7x27a_pm_data));
 
 #if defined(CONFIG_I2C) && defined(CONFIG_GPIO_SX150X)
 	register_i2c_devices();
