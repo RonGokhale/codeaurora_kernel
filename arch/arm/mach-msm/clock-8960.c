@@ -3750,11 +3750,11 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("pdm_clk",		pdm_clk.c,		NULL),
 	CLK_LOOKUP("pmem_clk",		pmem_clk.c,		NULL),
 	CLK_LOOKUP("prng_clk",		prng_clk.c,		NULL),
-	CLK_LOOKUP("sdc_clk",		sdc1_clk.c,		NULL),
-	CLK_LOOKUP("sdc_clk",		sdc2_clk.c,		NULL),
-	CLK_LOOKUP("sdc_clk",		sdc3_clk.c,		NULL),
-	CLK_LOOKUP("sdc_clk",		sdc4_clk.c,		NULL),
-	CLK_LOOKUP("sdc_clk",		sdc5_clk.c,		NULL),
+	CLK_LOOKUP("sdc_clk",		sdc1_clk.c,		"msm_sdcc.1"),
+	CLK_LOOKUP("sdc_clk",		sdc2_clk.c,		"msm_sdcc.2"),
+	CLK_LOOKUP("sdc_clk",		sdc3_clk.c,		"msm_sdcc.3"),
+	CLK_LOOKUP("sdc_clk",		sdc4_clk.c,		"msm_sdcc.4"),
+	CLK_LOOKUP("sdc_clk",		sdc5_clk.c,		"msm_sdcc.5"),
 	CLK_LOOKUP("tsif_ref_clk",	tsif_ref_clk.c,		NULL),
 	CLK_LOOKUP("tssc_clk",		tssc_clk.c,		NULL),
 	CLK_LOOKUP("usb_hs_clk",	usb_hs1_xcvr_clk.c,	NULL),
@@ -3784,11 +3784,11 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("usb_fs_pclk",	usb_fs1_p_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_pclk",	usb_fs2_p_clk.c,	NULL),
 	CLK_LOOKUP("usb_hs_pclk",	usb_hs1_p_clk.c,	NULL),
-	CLK_LOOKUP("sdc_pclk",		sdc1_p_clk.c,		NULL),
-	CLK_LOOKUP("sdc_pclk",		sdc2_p_clk.c,		NULL),
-	CLK_LOOKUP("sdc_pclk",		sdc3_p_clk.c,		NULL),
-	CLK_LOOKUP("sdc_pclk",		sdc4_p_clk.c,		NULL),
-	CLK_LOOKUP("sdc_pclk",		sdc5_p_clk.c,		NULL),
+	CLK_LOOKUP("sdc_pclk",		sdc1_p_clk.c,		"msm_sdcc.1"),
+	CLK_LOOKUP("sdc_pclk",		sdc2_p_clk.c,		"msm_sdcc.2"),
+	CLK_LOOKUP("sdc_pclk",		sdc3_p_clk.c,		"msm_sdcc.3"),
+	CLK_LOOKUP("sdc_pclk",		sdc4_p_clk.c,		"msm_sdcc.4"),
+	CLK_LOOKUP("sdc_pclk",		sdc5_p_clk.c,		"msm_sdcc.5"),
 	CLK_LOOKUP("adm_clk",		adm0_clk.c,		NULL),
 	CLK_LOOKUP("adm_pclk",		adm0_p_clk.c,		NULL),
 	CLK_LOOKUP("pmic_arb_pclk",	pmic_arb0_p_clk.c,	NULL),
@@ -3945,10 +3945,11 @@ static void reg_init(void)
 	/* Initialize MM AXI registers: Enable HW gating for all clocks that
 	 * support it. Also set FORCE_CORE_ON bits, and any sleep and wake-up
 	 * delays to safe values. */
-	rmwreg(0x00038FF9, MAXI_EN_REG,  0x0FFFFFFF);
-	rmwreg(0x1A27FCFF, MAXI_EN2_REG, 0x1FFFFFFF);
-	writel(0x3FE7FCFF, MAXI_EN3_REG);
-	writel(0x000001D8, SAXI_EN_REG);
+	/* TODO: Enable HW Gating */
+	rmwreg(0x000007F9, MAXI_EN_REG,  0x0FFFFFFF);
+	rmwreg(0x1027FCFF, MAXI_EN2_REG, 0x1FFFFFFF);
+	writel_relaxed(0x00E7FCFF, MAXI_EN3_REG);
+	writel_relaxed(0x00000000, SAXI_EN_REG);
 
 	/* Initialize MM CC registers: Set MM FORCE_CORE_ON bits so that core
 	 * memories retain state even when not clocked. Also, set sleep and
@@ -3996,7 +3997,7 @@ void __init msm_clk_soc_init(void)
 {
 	local_vote_sys_vdd(HIGH);
 
-	if (machine_is_msm8960_sim() || machine_is_msm8960_rumi3())
+	if (machine_is_msm8960_rumi3())
 		return;
 
 	/* Initialize clock registers. */
@@ -4011,6 +4012,15 @@ void __init msm_clk_soc_init(void)
 	clk_set_rate(&usb_hs1_xcvr_clk.c, 60000000);
 	clk_set_rate(&usb_fs1_src_clk.c, 60000000);
 	clk_set_rate(&usb_fs2_src_clk.c, 60000000);
+
+	if (machine_is_msm8960_sim()) {
+		clk_set_rate(&sdc1_clk.c, 48000000);
+		clk_enable(&sdc1_clk.c);
+		clk_enable(&sdc1_p_clk.c);
+		clk_set_rate(&sdc3_clk.c, 48000000);
+		clk_enable(&sdc3_clk.c);
+		clk_enable(&sdc3_p_clk.c);
+	}
 }
 
 static int msm_clk_soc_late_init(void)
