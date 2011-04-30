@@ -102,6 +102,7 @@ static int charm_subsys_ramdumps(int want_dumps)
 		complete(&charm_needs_reload);
 		wait_for_completion(&charm_ram_dumps);
 		INIT_COMPLETION(charm_ram_dumps);
+		power_down_charm();
 	}
 	return charm_ram_dump_status;
 }
