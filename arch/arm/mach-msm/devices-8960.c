@@ -190,6 +190,227 @@ struct platform_device msm8960_device_uart_gsbi5 = {
 	.resource	= resources_uart_gsbi5,
 };
 /* MSM Video core device */
+#ifdef CONFIG_MSM_BUS_SCALING
+static struct msm_bus_vectors vidc_init_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 0,
+		.ib  = 0,
+	},
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 0,
+		.ib  = 0,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 0,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 0,
+	},
+};
+static struct msm_bus_vectors vidc_venc_vga_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 54525952,
+		.ib  = 436207616,
+	},
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 72351744,
+		.ib  = 289406976,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 500000,
+		.ib  = 1000000,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 500000,
+		.ib  = 1000000,
+	},
+};
+static struct msm_bus_vectors vidc_vdec_vga_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 40894464,
+		.ib  = 327155712,
+	},
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 48234496,
+		.ib  = 192937984,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 500000,
+		.ib  = 2000000,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 500000,
+		.ib  = 2000000,
+	},
+};
+static struct msm_bus_vectors vidc_venc_720p_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 163577856,
+		.ib  = 1308622848,
+	},
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 219152384,
+		.ib  = 876609536,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 1750000,
+		.ib  = 3500000,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 1750000,
+		.ib  = 3500000,
+	},
+};
+static struct msm_bus_vectors vidc_vdec_720p_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 121634816,
+		.ib  = 973078528,
+	},
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 155189248,
+		.ib  = 620756992,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 1750000,
+		.ib  = 7000000,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 1750000,
+		.ib  = 7000000,
+	},
+};
+static struct msm_bus_vectors vidc_venc_1080p_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 372244480,
+		.ib  = 1861222400,
+	},
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 501219328,
+		.ib  = 2004877312,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 2500000,
+		.ib  = 5000000,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 2500000,
+		.ib  = 5000000,
+	},
+};
+static struct msm_bus_vectors vidc_vdec_1080p_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 222298112,
+		.ib  = 1778384896,
+	},
+	{
+		.src = MSM_BUS_MASTER_HD_CODEC_PORT1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 330301440,
+		.ib  = 1321205760,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 2500000,
+		.ib  = 700000000,
+	},
+	{
+		.src = MSM_BUS_MASTER_AMPSS_M0,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 2500000,
+		.ib  = 10000000,
+	},
+};
+
+static struct msm_bus_paths vidc_bus_client_config[] = {
+	{
+		ARRAY_SIZE(vidc_init_vectors),
+		vidc_init_vectors,
+	},
+	{
+		ARRAY_SIZE(vidc_venc_vga_vectors),
+		vidc_venc_vga_vectors,
+	},
+	{
+		ARRAY_SIZE(vidc_vdec_vga_vectors),
+		vidc_vdec_vga_vectors,
+	},
+	{
+		ARRAY_SIZE(vidc_venc_720p_vectors),
+		vidc_venc_720p_vectors,
+	},
+	{
+		ARRAY_SIZE(vidc_vdec_720p_vectors),
+		vidc_vdec_720p_vectors,
+	},
+	{
+		ARRAY_SIZE(vidc_venc_1080p_vectors),
+		vidc_venc_1080p_vectors,
+	},
+	{
+		ARRAY_SIZE(vidc_vdec_1080p_vectors),
+		vidc_vdec_1080p_vectors,
+	},
+};
+
+static struct msm_bus_scale_pdata vidc_bus_client_pdata = {
+	vidc_bus_client_config,
+	ARRAY_SIZE(vidc_bus_client_config),
+	.name = "vidc",
+};
+#endif
 
 #define MSM_VIDC_BASE_PHYS 0x04400000
 #define MSM_VIDC_BASE_SIZE 0x00100000
@@ -212,6 +433,11 @@ struct platform_device msm_device_vidc = {
 	.id = 0,
 	.num_resources = ARRAY_SIZE(msm_device_vidc_resources),
 	.resource = msm_device_vidc_resources,
+#ifdef CONFIG_MSM_BUS_SCALING
+	.dev = {
+		.platform_data	= &vidc_bus_client_pdata,
+	},
+#endif
 };
 
 #define MSM_WCNSS_PHYS	0x03000000
