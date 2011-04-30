@@ -174,7 +174,7 @@ put_3p3:
 }
 
 #ifdef CONFIG_PM_SLEEP
-static int usb_phy_susp_dig_vol = 500000;
+#define USB_PHY_SUSP_DIG_VOL  500000;
 static int msm_hsusb_config_vddcx(int high)
 {
 	int max_vol = USB_PHY_VDD_DIG_VOL_MAX;
@@ -184,7 +184,7 @@ static int msm_hsusb_config_vddcx(int high)
 	if (high)
 		min_vol = USB_PHY_VDD_DIG_VOL_MIN;
 	else
-		min_vol = usb_phy_susp_dig_vol;
+		min_vol = USB_PHY_SUSP_DIG_VOL;
 
 	ret = regulator_set_voltage(hsusb_vddcx, min_vol, max_vol);
 	if (ret) {
@@ -525,7 +525,7 @@ static int msm_otg_suspend(struct msm_otg *motg)
 	writel(readl(USB_USBCMD) | ASYNC_INTR_CTRL | ULPI_STP_CTRL, USB_USBCMD);
 
 	if (motg->pdata->phy_type == SNPS_28NM_INTEGRATED_PHY &&
-			motg->pdata->phy_type == OTG_PMIC_CONTROL)
+			motg->pdata->otg_control == OTG_PMIC_CONTROL)
 		writel(readl(USB_PHY_CTRL) | PHY_RETEN, USB_PHY_CTRL);
 
 	clk_disable(motg->pclk);
@@ -537,7 +537,7 @@ static int msm_otg_suspend(struct msm_otg *motg)
 		clk_disable(motg->pclk_src);
 
 	if (motg->pdata->phy_type == SNPS_28NM_INTEGRATED_PHY &&
-			motg->pdata->phy_type == OTG_PMIC_CONTROL) {
+			motg->pdata->otg_control == OTG_PMIC_CONTROL) {
 		msm_hsusb_ldo_set_mode(0);
 		msm_hsusb_config_vddcx(0);
 	}
@@ -575,7 +575,7 @@ static int msm_otg_resume(struct msm_otg *motg)
 		clk_enable(motg->core_clk);
 
 	if (motg->pdata->phy_type == SNPS_28NM_INTEGRATED_PHY &&
-			motg->pdata->phy_type == OTG_PMIC_CONTROL) {
+			motg->pdata->otg_control == OTG_PMIC_CONTROL) {
 		msm_hsusb_ldo_set_mode(1);
 		msm_hsusb_config_vddcx(1);
 		writel(readl(USB_PHY_CTRL) & ~PHY_RETEN, USB_PHY_CTRL);
