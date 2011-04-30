@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -22,10 +22,9 @@
 #include <sound/core.h>
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
-
 #include <sound/pcm.h>
+#include <sound/dai.h>
 #include "msm8660-pcm.h"
-#include "dai.h"
 #include "../codecs/timpani.h"
 
 #define PM8058_GPIO_BASE			NR_MSM_GPIOS
