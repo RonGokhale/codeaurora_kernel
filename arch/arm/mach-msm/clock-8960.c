@@ -72,6 +72,7 @@
 #define SDCn_APPS_CLK_NS_REG(n)			REG(0x282C+(0x20*((n)-1)))
 #define SDCn_HCLK_CTL_REG(n)			REG(0x2820+(0x20*((n)-1)))
 #define SDCn_RESET_REG(n)			REG(0x2830+(0x20*((n)-1)))
+#define SLIMBUS_XO_SRC_CLK_CTL_REG		REG(0x2628)
 #define TSIF_HCLK_CTL_REG			REG(0x2700)
 #define TSIF_REF_CLK_MD_REG			REG(0x270C)
 #define TSIF_REF_CLK_NS_REG			REG(0x2710)
@@ -212,6 +213,10 @@
 #define LCC_SPARE_I2S_SPKR_MD_REG		REG_LPA(0x0088)
 #define LCC_SPARE_I2S_SPKR_NS_REG		REG_LPA(0x0084)
 #define LCC_SPARE_I2S_SPKR_STATUS_REG		REG_LPA(0x008C)
+#define LCC_SLIMBUS_NS_REG			REG_LPA(0x00CC)
+#define LCC_SLIMBUS_MD_REG			REG_LPA(0x00D0)
+#define LCC_SLIMBUS_STATUS_REG			REG_LPA(0x00D4)
+#define LCC_AHBEX_BRANCH_CTL_REG		REG_LPA(0x00E4)
 
 /* MUX source input identifiers. */
 #define pxo_to_bb_mux		0
@@ -3693,7 +3698,7 @@ static struct clk_freq_tbl clk_tbl_pcm[] = {
 	F_END
 };
 
-struct clk_local pcm_clk = {
+static struct clk_local pcm_clk = {
 	.b = {
 		.en_reg = LCC_PCM_NS_REG,
 		.en_mask = BIT(11),
@@ -3716,6 +3721,67 @@ struct clk_local pcm_clk = {
 		.ops = &soc_clk_ops_8960,
 		.flags = CLKFLAG_AUTO_OFF,
 		CLK_INIT(pcm_clk.c),
+	},
+};
+
+static struct clk_local audio_slimbus_clk = {
+	.b = {
+		.en_reg = LCC_SLIMBUS_NS_REG,
+		.en_mask = BIT(10),
+		.reset_reg = LCC_AHBEX_BRANCH_CTL_REG,
+		.reset_mask = BIT(5),
+		.halt_reg = LCC_SLIMBUS_STATUS_REG,
+		.halt_check = ENABLE,
+		.halt_bit = 0,
+		.test_vector = TEST_LPA(0x1D),
+	},
+	.ns_reg = LCC_SLIMBUS_NS_REG,
+	.md_reg = LCC_SLIMBUS_MD_REG,
+	.root_en_mask = BIT(9),
+	.ns_mask = (BM(31, 24) | BM(6, 0)),
+	.set_rate = set_rate_mnd,
+	.freq_tbl = clk_tbl_aif_osr,
+	.current_freq = &local_dummy_freq,
+	.c = {
+		.dbg_name = "audio_slimbus_clk",
+		.ops = &soc_clk_ops_8960,
+		.flags = CLKFLAG_AUTO_OFF,
+		CLK_INIT(audio_slimbus_clk.c),
+	},
+};
+
+static struct branch_clk sps_slimbus_clk = {
+	.b = {
+		.en_reg = LCC_SLIMBUS_NS_REG,
+		.en_mask = BIT(12),
+		.halt_reg = LCC_SLIMBUS_STATUS_REG,
+		.halt_check = ENABLE,
+		.halt_bit = 1,
+	},
+	.parent = &audio_slimbus_clk.c,
+	.c = {
+		.dbg_name = "sps_slimbus_clk",
+		.ops = &clk_ops_branch,
+		.flags = CLKFLAG_AUTO_OFF,
+		CLK_INIT(sps_slimbus_clk.c),
+	},
+};
+
+static struct branch_clk slimbus_xo_src_clk = {
+	.b = {
+		.en_reg = SLIMBUS_XO_SRC_CLK_CTL_REG,
+		.en_mask = BIT(2),
+		.halt_reg = CLK_HALT_DFAB_STATE_REG,
+		.halt_check = HALT,
+		.halt_bit = 28,
+		.test_vector = TEST_PER_LS(0x08),
+	},
+	.parent = &sps_slimbus_clk.c,
+	.c = {
+		.dbg_name = "slimbus_xo_src_clk",
+		.ops = &clk_ops_branch,
+		.flags = CLKFLAG_AUTO_OFF,
+		CLK_INIT(slimbus_xo_src_clk.c),
 	},
 };
 
@@ -3755,6 +3821,7 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("sdc_clk",		sdc3_clk.c,		"msm_sdcc.3"),
 	CLK_LOOKUP("sdc_clk",		sdc4_clk.c,		"msm_sdcc.4"),
 	CLK_LOOKUP("sdc_clk",		sdc5_clk.c,		"msm_sdcc.5"),
+	CLK_LOOKUP("slimbus_xo_src_clk", slimbus_xo_src_clk.c,	NULL),
 	CLK_LOOKUP("tsif_ref_clk",	tsif_ref_clk.c,		NULL),
 	CLK_LOOKUP("tssc_clk",		tssc_clk.c,		NULL),
 	CLK_LOOKUP("usb_hs_clk",	usb_hs1_xcvr_clk.c,	NULL),
@@ -3872,6 +3939,8 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("i2s_spkr_osr_clk",	spare_i2s_spkr_osr_clk.c,	NULL),
 	CLK_LOOKUP("i2s_spkr_bit_clk",	spare_i2s_spkr_bit_clk.c,	NULL),
 	CLK_LOOKUP("pcm_clk",		pcm_clk.c,		NULL),
+	CLK_LOOKUP("audio_slimbus_clk",	audio_slimbus_clk.c,	NULL),
+	CLK_LOOKUP("sps_slimbus_clk",	sps_slimbus_clk.c,	NULL),
 	CLK_LOOKUP("iommu_clk",		jpegd_axi_clk.c,	NULL),
 	CLK_LOOKUP("iommu_clk",		vfe_axi_clk.c,		NULL),
 	CLK_LOOKUP("iommu_clk",		vcodec_axi_clk.c,	NULL),
@@ -3990,6 +4059,9 @@ static void reg_init(void)
 	/* Enable TSSC and PDM PXO sources. */
 	writel(BIT(11), TSSC_CLK_CTL_REG);
 	writel(BIT(15), PDM_CLK_NS_REG);
+
+	/* Source SLIMBus xo src from slimbus reference clock */
+	writel_relaxed(0x3, SLIMBUS_XO_SRC_CLK_CTL_REG);
 }
 
 /* Local clock driver initialization. */
