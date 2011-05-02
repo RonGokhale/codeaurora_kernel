@@ -27,6 +27,7 @@
 #include <mach/clk.h>
 
 #include "clock-local.h"
+#include "clock-rpm.h"
 #include "clock-voter.h"
 
 #define REG(off)	(MSM_CLK_CTL_BASE + (off))
@@ -3331,14 +3332,23 @@ static struct branch_clk slimbus_xo_src_clk = {
 	},
 };
 
-static DEFINE_CLK_VOTER(dfab_dsps_clk, &dummy_clk);
-static DEFINE_CLK_VOTER(dfab_usb_hs_clk, &dummy_clk);
-static DEFINE_CLK_VOTER(dfab_sdc1_clk, &dummy_clk);
-static DEFINE_CLK_VOTER(dfab_sdc2_clk, &dummy_clk);
-static DEFINE_CLK_VOTER(dfab_sdc3_clk, &dummy_clk);
-static DEFINE_CLK_VOTER(dfab_sdc4_clk, &dummy_clk);
-static DEFINE_CLK_VOTER(dfab_sdc5_clk, &dummy_clk);
-static DEFINE_CLK_VOTER(dfab_sps_clk, &dummy_clk);
+DEFINE_CLK_RPM(afab_clk, afab_a_clk, APPS_FABRIC);
+DEFINE_CLK_RPM(cfpb_clk, cfpb_a_clk, CFPB);
+DEFINE_CLK_RPM(dfab_clk, dfab_a_clk, DAYTONA_FABRIC);
+DEFINE_CLK_RPM(ebi1_clk, ebi1_a_clk, EBI1);
+DEFINE_CLK_RPM(mmfab_clk, mmfab_a_clk, MM_FABRIC);
+DEFINE_CLK_RPM(mmfpb_clk, mmfpb_a_clk, MMFPB);
+DEFINE_CLK_RPM(sfab_clk, sfab_a_clk, SYSTEM_FABRIC);
+DEFINE_CLK_RPM(sfpb_clk, sfpb_a_clk, SFPB);
+
+static DEFINE_CLK_VOTER(dfab_dsps_clk, &dfab_clk.c);
+static DEFINE_CLK_VOTER(dfab_usb_hs_clk, &dfab_clk.c);
+static DEFINE_CLK_VOTER(dfab_sdc1_clk, &dfab_clk.c);
+static DEFINE_CLK_VOTER(dfab_sdc2_clk, &dfab_clk.c);
+static DEFINE_CLK_VOTER(dfab_sdc3_clk, &dfab_clk.c);
+static DEFINE_CLK_VOTER(dfab_sdc4_clk, &dfab_clk.c);
+static DEFINE_CLK_VOTER(dfab_sdc5_clk, &dfab_clk.c);
+static DEFINE_CLK_VOTER(dfab_sps_clk, &dfab_clk.c);
 
 #ifdef CONFIG_DEBUG_FS
 struct measure_sel {
@@ -3654,22 +3664,22 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("pll4",		pll4_clk.c,		NULL),
 	CLK_LOOKUP("measure",		measure_clk,		"debug"),
 
-	CLK_DUMMY("afab_clk",		AFAB_CLK,	NULL, 0),
-	CLK_DUMMY("afab_a_clk",		AFAB_A_CLK,	NULL, 0),
-	CLK_DUMMY("cfpb_clk",		CFPB_CLK,	NULL, 0),
-	CLK_DUMMY("cfpb_a_clk",		CFPB_A_CLK,	NULL, 0),
-	CLK_DUMMY("dfab_clk",		DFAB_CLK,	NULL, 0),
-	CLK_DUMMY("dfab_a_clk",		DFAB_A_CLK,	NULL, 0),
-	CLK_DUMMY("ebi1_clk",		EBI1_CLK,	NULL, 0),
-	CLK_DUMMY("ebi1_a_clk",		EBI1_A_CLK,	NULL, 0),
-	CLK_DUMMY("mmfab_clk",		MMFAB_CLK,	NULL, 0),
-	CLK_DUMMY("mmfab_a_clk",	MMFAB_A_CLK,	NULL, 0),
-	CLK_DUMMY("mmfpb_clk",		MMFPB_CLK,	NULL, 0),
-	CLK_DUMMY("mmfpb_a_clk",	MMFPB_A_CLK,	NULL, 0),
-	CLK_DUMMY("sfab_clk",		SFAB_CLK,	NULL, 0),
-	CLK_DUMMY("sfab_a_clk",		SFAB_A_CLK,	NULL, 0),
-	CLK_DUMMY("sfpb_clk",		SFPB_CLK,	NULL, 0),
-	CLK_DUMMY("sfpb_a_clk",		SFPB_A_CLK,	NULL, 0),
+	CLK_LOOKUP("afab_clk",		afab_clk.c,	NULL),
+	CLK_LOOKUP("afab_a_clk",	afab_a_clk.c,	NULL),
+	CLK_LOOKUP("cfpb_clk",		cfpb_clk.c,	NULL),
+	CLK_LOOKUP("cfpb_a_clk",	cfpb_a_clk.c,	NULL),
+	CLK_LOOKUP("dfab_clk",		dfab_clk.c,	NULL),
+	CLK_LOOKUP("dfab_a_clk",	dfab_a_clk.c,	NULL),
+	CLK_LOOKUP("ebi1_clk",		ebi1_clk.c,	NULL),
+	CLK_LOOKUP("ebi1_a_clk",	ebi1_a_clk.c,	NULL),
+	CLK_LOOKUP("mmfab_clk",		mmfab_clk.c,	NULL),
+	CLK_LOOKUP("mmfab_a_clk",	mmfab_a_clk.c,	NULL),
+	CLK_LOOKUP("mmfpb_clk",		mmfpb_clk.c,	NULL),
+	CLK_LOOKUP("mmfpb_a_clk",	mmfpb_a_clk.c,	NULL),
+	CLK_LOOKUP("sfab_clk",		sfab_clk.c,	NULL),
+	CLK_LOOKUP("sfab_a_clk",	sfab_a_clk.c,	NULL),
+	CLK_LOOKUP("sfpb_clk",		sfpb_clk.c,	NULL),
+	CLK_LOOKUP("sfpb_a_clk",	sfpb_a_clk.c,	NULL),
 
 	CLK_LOOKUP("gsbi_uart_clk",	gsbi1_uart_clk.c,	NULL),
 	CLK_LOOKUP("gsbi_uart_clk",	gsbi2_uart_clk.c,	NULL),
