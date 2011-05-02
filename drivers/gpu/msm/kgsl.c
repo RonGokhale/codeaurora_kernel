@@ -41,6 +41,14 @@
 #include "kgsl_drm.h"
 #include "kgsl_cffdump.h"
 
+#undef MODULE_PARAM_PREFIX
+#define MODULE_PARAM_PREFIX "kgsl."
+
+static int kgsl_pagetable_count = KGSL_PAGETABLE_COUNT;
+module_param_named(ptcount, kgsl_pagetable_count, int, 0);
+MODULE_PARM_DESC(kgsl_pagetable_count,
+"Minimum number of pagetables for KGSL to allocate at initialization time");
+
 static inline struct kgsl_mem_entry *
 kgsl_mem_entry_create(void)
 {
@@ -2039,7 +2047,7 @@ kgsl_ptdata_init(void)
 	INIT_LIST_HEAD(&kgsl_driver.pagetable_list);
 
 	return kgsl_ptpool_init(&kgsl_driver.ptpool, KGSL_PAGETABLE_SIZE,
-		KGSL_PAGETABLE_COUNT);
+		kgsl_pagetable_count);
 }
 
 static void kgsl_core_exit(void)
