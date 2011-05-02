@@ -2346,8 +2346,66 @@ const struct file_operations otgfs_fops = {
 	.write	= otg_mode_write,
 };
 
+#define OTG_INFO_SIZE 512
+static ssize_t otg_info_read(struct file *file, char __user *ubuf,
+				size_t count, loff_t *ppos)
+{
+	char *buf;
+	int temp = 0;
+	int ret;
+	struct msm_otg *dev = file->private_data;
+
+	buf = kzalloc(sizeof(char) * OTG_INFO_SIZE, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	temp += scnprintf(buf + temp, OTG_INFO_SIZE - temp,
+			"OTG State:             %s\n"
+			"OTG Mode:              %d\n"
+			"OTG Inputs:            0x%lx\n"
+			"Charger Type:          %d\n"
+			"PMIC VBUS Support:     %u\n"
+			"PMIC ID Support:       %u\n"
+			"Core Clock:            %u\n"
+			"USB In SPS:            %d\n"
+			"pre_emphasis_level:    0x%x\n"
+			"cdr_auto_reset:        0x%x\n"
+			"hs_drv_amplitude:      0x%x\n"
+			"se1_gate_state:        0x%x\n"
+			"swfi_latency:          0x%x\n"
+			"PHY Powercollapse:     0x%x\n"
+			"PCLK Voting:           0x%x\n",
+			state_string(dev->otg.state),
+			dev->pdata->otg_mode,
+			dev->inputs,
+			atomic_read(&dev->chg_type),
+			dev->pmic_vbus_notif_supp,
+			dev->pmic_id_notif_supp,
+			dev->pdata->core_clk,
+			dev->pdata->usb_in_sps,
+			dev->pdata->pemp_level,
+			dev->pdata->cdr_autoreset,
+			dev->pdata->drv_ampl,
+			dev->pdata->se1_gating,
+			dev->pdata->swfi_latency,
+			dev->pdata->phy_can_powercollapse,
+			pclk_requires_voting(&dev->otg));
+
+	ret = simple_read_from_buffer(ubuf, count, ppos, buf, temp);
+
+	kfree(buf);
+
+	return ret;
+}
+
+const struct file_operations otgfs_info_fops = {
+	.open	= otg_open,
+	.read	= otg_info_read,
+};
+
 struct dentry *otg_debug_root;
 struct dentry *otg_debug_mode;
+struct dentry *otg_debug_info;
 #endif
 
 static int otg_debugfs_init(struct msm_otg *dev)
@@ -2360,11 +2418,25 @@ static int otg_debugfs_init(struct msm_otg *dev)
 	otg_debug_mode = debugfs_create_file("mode", 0222,
 						otg_debug_root, dev,
 						&otgfs_fops);
-	if (!otg_debug_mode) {
-		debugfs_remove(otg_debug_root);
-		otg_debug_root = NULL;
-		return -ENOENT;
-	}
+	if (!otg_debug_mode)
+		goto free_root;
+
+	otg_debug_info = debugfs_create_file("info", 0444,
+						otg_debug_root, dev,
+						&otgfs_info_fops);
+	if (!otg_debug_info)
+		goto free_mode;
+
+	return 0;
+
+free_mode:
+	debugfs_remove(otg_debug_mode);
+	otg_debug_mode = NULL;
+
+free_root:
+	debugfs_remove(otg_debug_root);
+	otg_debug_root = NULL;
+	return -ENOENT;
 #endif
 	return 0;
 }
@@ -2372,8 +2444,9 @@ static int otg_debugfs_init(struct msm_otg *dev)
 static void otg_debugfs_cleanup(void)
 {
 #ifdef CONFIG_DEBUG_FS
-       debugfs_remove(otg_debug_mode);
-       debugfs_remove(otg_debug_root);
+	debugfs_remove(otg_debug_info);
+	debugfs_remove(otg_debug_mode);
+	debugfs_remove(otg_debug_root);
 #endif
 }
 
