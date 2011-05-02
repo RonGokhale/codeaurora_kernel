@@ -35,4 +35,7 @@ extern int msm_pm8921_regulator_pdata_len __devinitdata;
 extern struct gpio_regulator_platform_data
 	msm_gpio_regulator_pdata[] __devinitdata;
 
+extern struct regulator_init_data msm_saw_regulator_pdata_s5;
+extern struct regulator_init_data msm_saw_regulator_pdata_s6;
+
 #endif

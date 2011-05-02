@@ -2185,6 +2185,22 @@ static struct spi_board_info spi_board_info[] __initdata = {
 	},
 };
 
+static struct platform_device msm_device_saw_core0 = {
+	.name          = "saw-regulator",
+	.id            = 0,
+	.dev	= {
+		.platform_data = &msm_saw_regulator_pdata_s5,
+	},
+};
+
+static struct platform_device msm_device_saw_core1 = {
+	.name          = "saw-regulator",
+	.id            = 1,
+	.dev	= {
+		.platform_data = &msm_saw_regulator_pdata_s6,
+	},
+};
+
 #ifdef CONFIG_MSM_FAKE_BATTERY
 static struct platform_device fish_battery_device = {
 	.name = "fish_battery",
@@ -2211,6 +2227,8 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm_device_dmov,
 	&msm_device_smd,
 	&msm8960_device_uart_gsbi5,
+	&msm_device_saw_core0,
+	&msm_device_saw_core1,
 	&msm8960_device_ext_5v_vreg,
 	&msm8960_device_ext_l2_vreg,
 	&msm8960_device_ssbi_pm8921,
