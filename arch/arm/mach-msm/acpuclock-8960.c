@@ -45,7 +45,6 @@
 /* Mux source selects. */
 #define PRI_SRC_SEL_SEC_SRC	0
 #define PRI_SRC_SEL_HFPLL	1
-#define PRI_SRC_SEL_HFPLL_DIV	2
 #define SEC_SRC_SEL_QSB		0
 
 /* HFPLL registers offsets. */
@@ -93,7 +92,7 @@ struct core_speed {
 	int			src;
 	unsigned int		pri_src_sel;
 	unsigned int		sec_src_sel;
-	unsigned int		div_val; /* 0:/2, 1:/4, 2:/6, 3:/8 */
+	bool			pll_post_div2;
 	unsigned int		pll_l_val;
 };
 
@@ -115,45 +114,47 @@ static struct clock_state {
 	uint32_t		vdd_switch_time_us;
 } drv_state;
 
-/*
- * Take an interger divider and convert it to the correct value to insert
- * into the PLLCLKDIV register field. Also, throw a divide-by-0 compiler
- * error if the value is invalid.
- */
-#define DVAL(_d) \
-	((((_d) >> 1) - 1)/(!!((_d) && ((_d) <= 8) && ((_d) % 2 == 0))))
-
 #define L2(x) (&l2_freq_tbl[(x)])
 static struct l2_level l2_freq_tbl[] = {
 	[0]  = { {STBY_KHZ, QSB,   0, 0, 0, 0x00 } },
 	[1]  = { {  384000, PLL_8, 0, 1, 0, 0x00 } },
-	[2]  = { {  648000, HFPLL, 1, 0, 0, 0x0C } },
-	[3]  = { {  702000, HFPLL, 1, 0, 0, 0x0D } },
-	[4]  = { {  756000, HFPLL, 1, 0, 0, 0x0E } },
-	[5]  = { {  810000, HFPLL, 1, 0, 0, 0x0F } },
-	[6]  = { {  864000, HFPLL, 1, 0, 0, 0x10 } },
-	[7]  = { {  918000, HFPLL, 1, 0, 0, 0x11 } },
-	[8]  = { {  972000, HFPLL, 1, 0, 0, 0x12 } },
-	[9]  = { { 1026000, HFPLL, 1, 0, 0, 0x13 } },
-	[10] = { { 1080000, HFPLL, 1, 0, 0, 0x14 } },
-	[11] = { { 1134000, HFPLL, 1, 0, 0, 0x15 } },
-	[12] = { { 1188000, HFPLL, 1, 0, 0, 0x16 } },
+	[2]  = { {  432000, HFPLL, 1, 0, 1, 0x10 } },
+	[3]  = { {  486000, HFPLL, 1, 0, 1, 0x12 } },
+	[4]  = { {  594000, HFPLL, 1, 0, 0, 0x0B } },
+	[5]  = { {  648000, HFPLL, 1, 0, 0, 0x0C } },
+	[6]  = { {  702000, HFPLL, 1, 0, 0, 0x0D } },
+	[7]  = { {  756000, HFPLL, 1, 0, 0, 0x0E } },
+	[8]  = { {  810000, HFPLL, 1, 0, 0, 0x0F } },
+	[9]  = { {  864000, HFPLL, 1, 0, 0, 0x10 } },
+	[10] = { {  918000, HFPLL, 1, 0, 0, 0x11 } },
+	[11] = { {  972000, HFPLL, 1, 0, 0, 0x12 } },
+	[12] = { { 1026000, HFPLL, 1, 0, 0, 0x13 } },
+	[13] = { { 1080000, HFPLL, 1, 0, 0, 0x14 } },
+	[14] = { { 1134000, HFPLL, 1, 0, 0, 0x15 } },
+	[15] = { { 1188000, HFPLL, 1, 0, 0, 0x16 } },
+	[16] = { { 1242000, HFPLL, 1, 0, 0, 0x17 } },
+	[17] = { { 1296000, HFPLL, 1, 0, 0, 0x18 } },
+	[18] = { { 1350000, HFPLL, 1, 0, 0, 0x19 } },
+	[19] = { { 1404000, HFPLL, 1, 0, 0, 0x1A } },
+	[20] = { { 1458000, HFPLL, 1, 0, 0, 0x1B } },
+	[21] = { { 1512000, HFPLL, 1, 0, 0, 0x1C } },
+	[22] = { { 1566000, HFPLL, 1, 0, 0, 0x1D } },
+	[23] = { { 1620000, HFPLL, 1, 0, 0, 0x1E } },
+	[24] = { { 1674000, HFPLL, 1, 0, 0, 0x1F } },
 };
 
 static struct acpu_level acpu_freq_tbl[] = {
 	{ 0, {STBY_KHZ, QSB,   0, 0, 0, 0x00 }, L2(1)  },
 	{ 1, {  384000, PLL_8, 0, 2, 0, 0x00 }, L2(1)  },
-	{ 1, {  648000, HFPLL, 1, 0, 0, 0x0C }, L2(2)  },
-	{ 1, {  702000, HFPLL, 1, 0, 0, 0x0D }, L2(3)  },
-	{ 1, {  756000, HFPLL, 1, 0, 0, 0x0E }, L2(4)  },
-	{ 1, {  810000, HFPLL, 1, 0, 0, 0x0F }, L2(5)  },
-	{ 1, {  864000, HFPLL, 1, 0, 0, 0x10 }, L2(6)  },
-	{ 1, {  918000, HFPLL, 1, 0, 0, 0x11 }, L2(7)  },
-	{ 1, {  972000, HFPLL, 1, 0, 0, 0x12 }, L2(8)  },
-	{ 1, { 1026000, HFPLL, 1, 0, 0, 0x13 }, L2(9)  },
-	{ 1, { 1080000, HFPLL, 1, 0, 0, 0x14 }, L2(10) },
-	{ 1, { 1134000, HFPLL, 1, 0, 0, 0x15 }, L2(11) },
-	{ 1, { 1188000, HFPLL, 1, 0, 0, 0x16 }, L2(12) },
+	{ 1, {  432000, HFPLL, 1, 0, 1, 0x10 }, L2(2)  },
+	{ 1, {  486000, HFPLL, 1, 0, 1, 0x12 }, L2(3)  },
+	{ 1, {  594000, HFPLL, 1, 0, 0, 0x0B }, L2(4)  },
+	{ 1, {  648000, HFPLL, 1, 0, 0, 0x0C }, L2(5)  },
+	{ 1, {  702000, HFPLL, 1, 0, 0, 0x0D }, L2(6)  },
+	{ 1, {  756000, HFPLL, 1, 0, 0, 0x0E }, L2(7)  },
+	{ 1, {  810000, HFPLL, 1, 0, 0, 0x0F }, L2(8)  },
+	{ 1, {  864000, HFPLL, 1, 0, 0, 0x10 }, L2(9)  },
+	{ 1, {  918000, HFPLL, 1, 0, 0, 0x11 }, L2(10) },
 	{ 0, { 0 } }
 };
 
@@ -236,8 +237,7 @@ static int get_pri_clk_src(enum scalables id)
 }
 
 /* Set the selected source on primary MUX. */
-static void set_pri_clk_src_div(enum scalables id, uint32_t pri_src_sel,
-				uint32_t div_val)
+static void set_pri_clk_src(enum scalables id, uint32_t pri_src_sel)
 {
 	uint32_t regval;
 
@@ -247,11 +247,6 @@ static void set_pri_clk_src_div(enum scalables id, uint32_t pri_src_sel,
 
 	regval = readl_cp15_l2ind(l2cpmr_iaddr[id]);
 	regval &= ~0x3;
-	regval |= (pri_src_sel & 0x3);
-	if (pri_src_sel == PRI_SRC_SEL_HFPLL_DIV) {
-		regval &= ~(0x3 << 6);
-		regval |= ((div_val & 0x3) << 6);
-	}
 	writel_cp15_l2ind(regval, l2cpmr_iaddr[id]);
 }
 
@@ -319,8 +314,15 @@ static void hfpll_disable(enum scalables id)
 /* Program the HFPLL rate. Assumes HFPLL is already disabled. */
 static void hfpll_set_rate(enum scalables id, struct core_speed *tgt_s)
 {
+	uint32_t regval;
+
 	BUG_ON(id >= NUM_SCALABLES);
 
+	regval = readl_relaxed(hf_pll_base[id] + HFPLL_CONFIG_CTL);
+	regval &= ~(0x3 << 19);
+	if (tgt_s->pll_post_div2)
+		regval |= (0x1 << 19);
+	writel_relaxed(regval, hf_pll_base[id] + HFPLL_CONFIG_CTL);
 	writel_relaxed(tgt_s->pll_l_val, hf_pll_base[id] + HFPLL_L_VAL);
 }
 
@@ -358,7 +360,7 @@ static void set_speed(enum scalables id, struct core_speed *tgt_s,
 	if (strt_s->src == HFPLL && tgt_s->src == HFPLL) {
 		/* Move CPU to QSB source. */
 		set_sec_clk_src(id, SEC_SRC_SEL_QSB);
-		set_pri_clk_src_div(id, PRI_SRC_SEL_SEC_SRC, 0);
+		set_pri_clk_src(id, PRI_SRC_SEL_SEC_SRC);
 
 		/* Program CPU HFPLL. */
 		hfpll_disable(id);
@@ -366,7 +368,7 @@ static void set_speed(enum scalables id, struct core_speed *tgt_s,
 		hfpll_enable(id);
 
 		/* Move CPU to HFPLL source. */
-		set_pri_clk_src_div(id, tgt_s->pri_src_sel, tgt_s->div_val);
+		set_pri_clk_src(id, tgt_s->pri_src_sel);
 	} else if (strt_s->src == HFPLL && tgt_s->src != HFPLL) {
 		/* TODO: Enable source. */
 		/*
@@ -378,7 +380,7 @@ static void set_speed(enum scalables id, struct core_speed *tgt_s,
 		 */
 		if (reason != SETRATE_HOTPLUG || id == L2) {
 			set_sec_clk_src(id, tgt_s->sec_src_sel);
-			set_pri_clk_src_div(id, tgt_s->pri_src_sel, 0);
+			set_pri_clk_src(id, tgt_s->pri_src_sel);
 		}
 		hfpll_disable(id);
 	} else if (strt_s->src != HFPLL && tgt_s->src == HFPLL) {
@@ -391,8 +393,7 @@ static void set_speed(enum scalables id, struct core_speed *tgt_s,
 		 * source was not changed on the way down, either.
 		 */
 		if (reason != SETRATE_HOTPLUG || id == L2)
-			set_pri_clk_src_div(id, tgt_s->pri_src_sel,
-					    tgt_s->div_val);
+			set_pri_clk_src(id, tgt_s->pri_src_sel);
 		/* TODO: Disable source. */
 	} else if (strt_s->src != HFPLL && tgt_s->src != HFPLL) {
 		/* TODO: Enable source. */
@@ -471,7 +472,7 @@ static void __init hfpll_init(enum scalables id, struct core_speed *tgt_s)
 {
 	BUG_ON(id >= NUM_SCALABLES);
 
-	dprintk("Initializing % HFPLL%d\n", id);
+	dprintk("Initializing HFPLL%d\n", id);
 
 	/* Disable the PLL for re-programming. */
 	hfpll_disable(id);
@@ -482,7 +483,7 @@ static void __init hfpll_init(enum scalables id, struct core_speed *tgt_s)
 	writel_relaxed(1, hf_pll_base[id] + HFPLL_N_VAL);
 
 	/* Set up droop controller. TODO: Enable droop controller. */
-	writel_relaxed(0x0000C000, hf_pll_base[id] + HFPLL_DROOP_CTL);
+	writel_relaxed(0x0100C000, hf_pll_base[id] + HFPLL_DROOP_CTL);
 
 	/* Set an initial rate and enable the PLL. */
 	hfpll_set_rate(id, tgt_s);
@@ -496,8 +497,8 @@ static void __init init_clock_sources(enum scalables id)
 {
 	struct core_speed *temp_s, *tgt_s;
 	static struct core_speed speed[] = {
-	[INIT_QSB_ID] =   { STBY_KHZ, INIT_QSB,   0, 0, 0, 0x00 },
-	[INIT_HFPLL_ID] = { 810000,   INIT_HFPLL, 1, 0, 0, 0x0F },
+		[INIT_QSB_ID] =   { STBY_KHZ, INIT_QSB,   0, 0, 0, 0x00 },
+		[INIT_HFPLL_ID] = { 810000,   INIT_HFPLL, 1, 0, 0, 0x0F },
 	};
 
 	/*
@@ -509,10 +510,10 @@ static void __init init_clock_sources(enum scalables id)
 	if (get_pri_clk_src(id) == PRI_SRC_SEL_HFPLL) {
 		temp_s = &speed[INIT_QSB_ID];
 		set_sec_clk_src(id, temp_s->sec_src_sel);
-		set_pri_clk_src_div(id, temp_s->pri_src_sel, temp_s->div_val);
+		set_pri_clk_src(id, temp_s->pri_src_sel);
 	}
 	hfpll_init(id, tgt_s);
-	set_pri_clk_src_div(id, tgt_s->pri_src_sel, tgt_s->div_val);
+	set_pri_clk_src(id, tgt_s->pri_src_sel);
 
 	/* Select PLL8 as AUX source input to the secondary MUX. */
 	writel_relaxed(0x3, aux_clk_sel[id]);
