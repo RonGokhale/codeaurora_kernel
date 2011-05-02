@@ -2086,9 +2086,7 @@ static struct platform_device *surf_ffa_devices[] __initdata = {
 #ifdef CONFIG_FB_MSM_MIPI_DSI
 	&mipi_dsi_renesas_panel_device,
 #endif
-#ifdef CONFIG_BT
-	&msm_bt_power_device,
-#endif
+	&msm_kgsl_3d0,
 
 };
 
