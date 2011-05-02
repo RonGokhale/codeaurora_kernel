@@ -57,6 +57,7 @@
 #define MSM_PMEM_AUDIO_SIZE	0x5B000
 #define BAHAMA_SLAVE_ID_FM_ADDR         0x2A
 #define BAHAMA_SLAVE_ID_QMEMBIST_ADDR   0x7B
+#define FM_GPIO	83
 
 enum {
 	GPIO_EXPANDER_IRQ_BASE	= NR_MSM_IRQS + NR_GPIO_IRQS,
@@ -173,6 +174,118 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 
 };
 #endif
+
+	/* FM Platform power and shutdown routines */
+
+static struct vreg *fm_regulator;
+static int fm_radio_setup(struct marimba_fm_platform_data *pdata)
+{
+	int rc = 0;
+	const char *id = "FMPW";
+	uint32_t irqcfg;
+
+	/* Voting for 1.8V Regulator */
+	fm_regulator = vreg_get(NULL , "msme1");
+	if (IS_ERR(fm_regulator)) {
+		pr_err("%s: vreg get failed with : (%ld)\n",
+			__func__, PTR_ERR(fm_regulator));
+		return -EINVAL;
+	}
+
+	/* Set the voltage level to 1.8V */
+	rc = vreg_set_level(fm_regulator, 1800);
+	if (rc < 0) {
+		pr_err("%s: set regulator level failed with :(%d)\n",
+			__func__, rc);
+		goto fm_vreg_fail;
+	}
+
+	/* Enabling the 1.8V regulator */
+	rc = vreg_enable(fm_regulator);
+	if (rc) {
+		pr_err("%s: enable regulator failed with :(%d)\n",
+			__func__, rc);
+		goto fm_vreg_fail;
+	}
+
+	/* Voting for 19.2MHz clock */
+	rc = pmapp_clock_vote(id, PMAPP_CLOCK_ID_D1,
+			PMAPP_CLOCK_VOTE_ON);
+	if (rc < 0) {
+		pr_err("%s: clock vote failed with :(%d)\n",
+			 __func__, rc);
+		goto fm_clock_vote_fail;
+	}
+
+	/* Configuring the FM GPIO */
+	irqcfg = GPIO_CFG(FM_GPIO, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL,
+			GPIO_CFG_2MA);
+
+	rc = gpio_tlmm_config(irqcfg, GPIO_CFG_ENABLE);
+	if (rc) {
+		pr_err("%s: gpio_tlmm_config(%#x)=%d\n",
+			 __func__, irqcfg, rc);
+		goto fm_gpio_config_fail;
+	}
+
+	return 0;
+
+fm_gpio_config_fail:
+	pmapp_clock_vote(id, PMAPP_CLOCK_ID_D1,
+		PMAPP_CLOCK_VOTE_OFF);
+
+fm_clock_vote_fail:
+	vreg_disable(fm_regulator);
+
+fm_vreg_fail:
+	vreg_put(fm_regulator);
+
+	return rc;
+
+};
+
+static void fm_radio_shutdown(struct marimba_fm_platform_data *pdata)
+{
+	int rc;
+	const char *id = "FMPW";
+
+	/* Releasing the GPIO line used by FM */
+	uint32_t irqcfg = GPIO_CFG(FM_GPIO, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP,
+		GPIO_CFG_2MA);
+
+	rc = gpio_tlmm_config(irqcfg, GPIO_CFG_ENABLE);
+	if (rc)
+		pr_err("%s: gpio_tlmm_config(%#x)=%d\n",
+			 __func__, irqcfg, rc);
+
+	/* Releasing the 1.8V Regulator */
+	if (fm_regulator != NULL) {
+		rc = vreg_disable(fm_regulator);
+
+		if (rc)
+			pr_err("%s: disable regulator failed:(%d)\n",
+				__func__, rc);
+		fm_regulator = NULL;
+	}
+
+	/* Voting off the clock */
+	rc = pmapp_clock_vote(id, PMAPP_CLOCK_ID_D1,
+		PMAPP_CLOCK_VOTE_OFF);
+
+	if (rc < 0)
+		pr_err("%s: voting off failed with :(%d)\n",
+			__func__, rc);
+}
+
+static struct marimba_fm_platform_data marimba_fm_pdata = {
+	.fm_setup = fm_radio_setup,
+	.fm_shutdown = fm_radio_shutdown,
+	.irq = MSM_GPIO_TO_INT(FM_GPIO),
+	.vreg_s2 = NULL,
+	.vreg_xo_out = NULL,
+	/* Configuring the FM SoC as I2S Master */
+	.is_fm_soc_i2s_master = true,
+};
 
 #if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
 
@@ -616,6 +729,7 @@ static struct marimba_platform_data marimba_pdata = {
 	.bahama_setup                        = msm_bahama_setup_power,
 	.bahama_shutdown                     = msm_bahama_shutdown_power,
 	.bahama_core_config                  = msm_bahama_core_config,
+	.fm				     = &marimba_fm_pdata,
 };
 
 #endif
