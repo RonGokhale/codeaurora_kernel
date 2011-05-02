@@ -867,6 +867,27 @@ struct msm_mpm_device_data msm_mpm_dev_data = {
 #endif
 
 struct clk_lookup msm_clocks_8960_dummy[] = {
+	CLK_DUMMY("pll2",		PLL2,		NULL, 0),
+	CLK_DUMMY("pll8",		PLL8,		NULL, 0),
+	CLK_DUMMY("pll4",		PLL4,		NULL, 0),
+
+	CLK_DUMMY("afab_clk",		AFAB_CLK,	NULL, 0),
+	CLK_DUMMY("afab_a_clk",		AFAB_A_CLK,	NULL, 0),
+	CLK_DUMMY("cfpb_clk",		CFPB_CLK,	NULL, 0),
+	CLK_DUMMY("cfpb_a_clk",		CFPB_A_CLK,	NULL, 0),
+	CLK_DUMMY("dfab_clk",		DFAB_CLK,	NULL, 0),
+	CLK_DUMMY("dfab_a_clk",		DFAB_A_CLK,	NULL, 0),
+	CLK_DUMMY("ebi1_clk",		EBI1_CLK,	NULL, 0),
+	CLK_DUMMY("ebi1_a_clk",		EBI1_A_CLK,	NULL, 0),
+	CLK_DUMMY("mmfab_clk",		MMFAB_CLK,	NULL, 0),
+	CLK_DUMMY("mmfab_a_clk",	MMFAB_A_CLK,	NULL, 0),
+	CLK_DUMMY("mmfpb_clk",		MMFPB_CLK,	NULL, 0),
+	CLK_DUMMY("mmfpb_a_clk",	MMFPB_A_CLK,	NULL, 0),
+	CLK_DUMMY("sfab_clk",		SFAB_CLK,	NULL, 0),
+	CLK_DUMMY("sfab_a_clk",		SFAB_A_CLK,	NULL, 0),
+	CLK_DUMMY("sfpb_clk",		SFPB_CLK,	NULL, 0),
+	CLK_DUMMY("sfpb_a_clk",		SFPB_A_CLK,	NULL, 0),
+
 	CLK_DUMMY("gsbi_uart_clk",	GSBI1_UART_CLK,		NULL, OFF),
 	CLK_DUMMY("gsbi_uart_clk",	GSBI2_UART_CLK,
 						  "msm_serial_hsl.0", OFF),

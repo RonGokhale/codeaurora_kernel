@@ -27,6 +27,7 @@
 #include <mach/clk.h>
 
 #include "clock-local.h"
+#include "clock-voter.h"
 
 #define REG(off)	(MSM_CLK_CTL_BASE + (off))
 #define REG_MM(off)	(MSM_MMSS_CLK_CTL_BASE + (off))
@@ -3785,10 +3786,37 @@ static struct branch_clk slimbus_xo_src_clk = {
 	},
 };
 
+static DEFINE_CLK_VOTER(dfab_dsps_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_usb_hs_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_sdc1_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_sdc2_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_sdc3_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_sdc4_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_sdc5_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_sps_clk, &dummy_clk);
+
 struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("pll2",		pll2_clk.c,		NULL),
 	CLK_LOOKUP("pll8",		pll8_clk.c,		NULL),
 	CLK_LOOKUP("pll4",		pll4_clk.c,		NULL),
+
+	CLK_DUMMY("afab_clk",		AFAB_CLK,	NULL, 0),
+	CLK_DUMMY("afab_a_clk",		AFAB_A_CLK,	NULL, 0),
+	CLK_DUMMY("cfpb_clk",		CFPB_CLK,	NULL, 0),
+	CLK_DUMMY("cfpb_a_clk",		CFPB_A_CLK,	NULL, 0),
+	CLK_DUMMY("dfab_clk",		DFAB_CLK,	NULL, 0),
+	CLK_DUMMY("dfab_a_clk",		DFAB_A_CLK,	NULL, 0),
+	CLK_DUMMY("ebi1_clk",		EBI1_CLK,	NULL, 0),
+	CLK_DUMMY("ebi1_a_clk",		EBI1_A_CLK,	NULL, 0),
+	CLK_DUMMY("mmfab_clk",		MMFAB_CLK,	NULL, 0),
+	CLK_DUMMY("mmfab_a_clk",	MMFAB_A_CLK,	NULL, 0),
+	CLK_DUMMY("mmfpb_clk",		MMFPB_CLK,	NULL, 0),
+	CLK_DUMMY("mmfpb_a_clk",	MMFPB_A_CLK,	NULL, 0),
+	CLK_DUMMY("sfab_clk",		SFAB_CLK,	NULL, 0),
+	CLK_DUMMY("sfab_a_clk",		SFAB_A_CLK,	NULL, 0),
+	CLK_DUMMY("sfpb_clk",		SFPB_CLK,	NULL, 0),
+	CLK_DUMMY("sfpb_a_clk",		SFPB_A_CLK,	NULL, 0),
+
 	CLK_LOOKUP("gsbi_uart_clk",	gsbi1_uart_clk.c,	NULL),
 	CLK_LOOKUP("gsbi_uart_clk",	gsbi2_uart_clk.c,	NULL),
 	CLK_LOOKUP("gsbi_uart_clk",	gsbi3_uart_clk.c,	NULL),
@@ -3948,14 +3976,14 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("iommu_clk",		gfx2d0_clk.c,	NULL),
 	CLK_LOOKUP("iommu_clk",		gfx2d1_clk.c,	NULL),
 
-	CLK_DUMMY("dfab_dsps_clk",	DFAB_DSPS_CLK, NULL, 0),
-	CLK_DUMMY("dfab_usb_hs_clk",	DFAB_USB_HS_CLK, NULL, 0),
-	CLK_DUMMY("dfab_sdc_clk",	DFAB_SDC1_CLK, "msm_sdcc.1", 0),
-	CLK_DUMMY("dfab_sdc_clk",	DFAB_SDC2_CLK, "msm_sdcc.2", 0),
-	CLK_DUMMY("dfab_sdc_clk",	DFAB_SDC3_CLK, "msm_sdcc.3", 0),
-	CLK_DUMMY("dfab_sdc_clk",	DFAB_SDC4_CLK, "msm_sdcc.4", 0),
-	CLK_DUMMY("dfab_sdc_clk",	DFAB_SDC5_CLK, "msm_sdcc.5", 0),
-	CLK_DUMMY("dfab_clk",		DFAB_CLK,	NULL /* sps */, 0),
+	CLK_LOOKUP("dfab_dsps_clk",	dfab_dsps_clk.c, NULL),
+	CLK_LOOKUP("dfab_usb_hs_clk",	dfab_usb_hs_clk.c, NULL),
+	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc1_clk.c, "msm_sdcc.1"),
+	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc2_clk.c, "msm_sdcc.2"),
+	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc3_clk.c, "msm_sdcc.3"),
+	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc4_clk.c, "msm_sdcc.4"),
+	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc5_clk.c, "msm_sdcc.5"),
+	CLK_LOOKUP("dfab_clk",		dfab_sps_clk.c,	NULL /* sps */),
 };
 
 unsigned msm_num_clocks_8960 = ARRAY_SIZE(msm_clocks_8960);
