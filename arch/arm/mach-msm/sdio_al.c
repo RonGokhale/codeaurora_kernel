@@ -3600,7 +3600,6 @@ static int sdio_al_subsys_notifier_cb(struct notifier_block *this,
 				__func__, sdio_al_dev->card->host->index);
 			sdio_al_dev->poll_delay_msec = 0;
 			del_timer_sync(&sdio_al_dev->timer);
-			sdio_al_dev->is_timer_initialized = 0;
 		}
 
 		func1 = sdio_al_dev->func1;
