@@ -408,6 +408,9 @@ static int start_cipher_req(struct qcedev_control *podev)
 	case QCEDEV_AES_MODE_CTR:
 		creq.mode = QCE_MODE_CTR;
 		break;
+	case QCEDEV_AES_MODE_XTS:
+		creq.mode = QCE_MODE_XTS;
+		break;
 	default:
 		break;
 	};
@@ -1564,6 +1567,9 @@ static int qcedev_check_cipher_params(struct qcedev_cipher_op_req *req,
 		(req->mode >= QCEDEV_AES_DES_MODE_LAST))
 		goto error;
 	if (req->alg == QCEDEV_ALG_AES) {
+		if ((req->mode == QCEDEV_AES_MODE_XTS) &&
+					(!podev->ce_support.aes_xts))
+			goto error;
 		/* if intending to use HW key make sure key fields are set
 		 * correctly and HW key is indeed supported in target
 		 */
@@ -1990,7 +1996,7 @@ static void qcedev_exit(void)
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm DEV Crypto driver");
-MODULE_VERSION("1.16");
+MODULE_VERSION("1.17");
 
 module_init(qcedev_init);
 module_exit(qcedev_exit);

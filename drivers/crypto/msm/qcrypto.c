@@ -1078,6 +1078,27 @@ static int _qcrypto_enc_aes_ctr(struct ablkcipher_request *req)
 	return _qcrypto_queue_req(cp, &req->base);
 };
 
+static int _qcrypto_enc_aes_xts(struct ablkcipher_request *req)
+{
+	struct qcrypto_cipher_req_ctx *rctx;
+	struct qcrypto_cipher_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
+	struct crypto_priv *cp = ctx->cp;
+	struct crypto_stat *pstat;
+
+	pstat = &_qcrypto_stat[cp->pdev->id];
+
+	BUG_ON(crypto_tfm_alg_type(req->base.tfm) !=
+					CRYPTO_ALG_TYPE_ABLKCIPHER);
+	rctx = ablkcipher_request_ctx(req);
+	rctx->aead = 0;
+	rctx->alg = CIPHER_ALG_AES;
+	rctx->dir = QCE_ENCRYPT;
+	rctx->mode = QCE_MODE_XTS;
+
+	pstat->ablk_cipher_aes_enc++;
+	return _qcrypto_queue_req(cp, &req->base);
+};
+
 static int _qcrypto_enc_des_ecb(struct ablkcipher_request *req)
 {
 	struct qcrypto_cipher_req_ctx *rctx;
@@ -1321,6 +1342,26 @@ static int _qcrypto_dec_3des_cbc(struct ablkcipher_request *req)
 	return _qcrypto_queue_req(cp, &req->base);
 };
 
+static int _qcrypto_dec_aes_xts(struct ablkcipher_request *req)
+{
+	struct qcrypto_cipher_req_ctx *rctx;
+	struct qcrypto_cipher_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
+	struct crypto_priv *cp = ctx->cp;
+	struct crypto_stat *pstat;
+
+	pstat = &_qcrypto_stat[cp->pdev->id];
+
+	BUG_ON(crypto_tfm_alg_type(req->base.tfm) !=
+					CRYPTO_ALG_TYPE_ABLKCIPHER);
+	rctx = ablkcipher_request_ctx(req);
+	rctx->aead = 0;
+	rctx->alg = CIPHER_ALG_AES;
+	rctx->mode = QCE_MODE_XTS;
+	rctx->dir = QCE_DECRYPT;
+
+	pstat->ablk_cipher_aes_dec++;
+	return _qcrypto_queue_req(cp, &req->base);
+};
 
 static int _qcrypto_aead_setauthsize(struct crypto_aead *authenc,
 				unsigned int authsize)
@@ -2547,6 +2588,28 @@ static struct crypto_alg _qcrypto_ablk_cipher_algos[] = {
 	},
 };
 
+static struct crypto_alg _qcrypto_ablk_cipher_xts_algo = {
+	.cra_name	= "xts(aes)",
+	.cra_driver_name = "qcrypto-xts-aes",
+	.cra_priority	= 300,
+	.cra_flags	= CRYPTO_ALG_TYPE_ABLKCIPHER | CRYPTO_ALG_ASYNC,
+	.cra_blocksize	= AES_BLOCK_SIZE,
+	.cra_ctxsize	= sizeof(struct qcrypto_cipher_ctx),
+	.cra_alignmask	= 0,
+	.cra_type	= &crypto_ablkcipher_type,
+	.cra_module	= THIS_MODULE,
+	.cra_init	= _qcrypto_cra_ablkcipher_init,
+	.cra_u		= {
+		.ablkcipher = {
+			.ivsize		= AES_BLOCK_SIZE,
+			.min_keysize	= AES_MIN_KEY_SIZE,
+			.max_keysize	= AES_MAX_KEY_SIZE,
+			.setkey		= _qcrypto_setkey_aes,
+			.encrypt	= _qcrypto_enc_aes_xts,
+			.decrypt	= _qcrypto_dec_aes_xts,
+		},
+	},
+};
 
 static struct crypto_alg _qcrypto_aead_sha1_hmac_algos[] = {
 	{
@@ -2705,6 +2768,28 @@ static int  _qcrypto_probe(struct platform_device *pdev)
 
 		q_alg = _qcrypto_cipher_alg_alloc(cp,
 					&_qcrypto_ablk_cipher_algos[i]);
+		if (IS_ERR(q_alg)) {
+			rc = PTR_ERR(q_alg);
+			goto err;
+		}
+		rc = crypto_register_alg(&q_alg->cipher_alg);
+		if (rc) {
+			dev_err(&pdev->dev, "%s alg registration failed\n",
+					q_alg->cipher_alg.cra_driver_name);
+			kfree(q_alg);
+		} else {
+			list_add_tail(&q_alg->entry, &cp->alg_list);
+			dev_info(&pdev->dev, "%s\n",
+					q_alg->cipher_alg.cra_driver_name);
+		}
+	}
+
+	/* register crypto cipher algorithms the device supports */
+	if (cp->ce_support.aes_xts) {
+		struct qcrypto_alg *q_alg;
+
+		q_alg = _qcrypto_cipher_alg_alloc(cp,
+					&_qcrypto_ablk_cipher_xts_algo);
 		if (IS_ERR(q_alg)) {
 			rc = PTR_ERR(q_alg);
 			goto err;
@@ -2911,4 +2996,4 @@ module_exit(_qcrypto_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm Crypto driver");
-MODULE_VERSION("1.14");
+MODULE_VERSION("1.15");
