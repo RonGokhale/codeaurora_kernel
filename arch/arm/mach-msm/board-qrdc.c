@@ -76,7 +76,6 @@
 #include "spm.h"
 #include "rpm_log.h"
 #include "timer.h"
-#include "saw-regulator.h"
 #include "gpiomux.h"
 #include "gpiomux-8x60.h"
 
@@ -169,6 +168,7 @@ static struct regulator_consumer_supply saw_s1_supply =
 
 static struct regulator_init_data saw_s0_init_data = {
 		.constraints = {
+			.name = "8901_s0",
 			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
 			.min_uV = 840000,
 			.max_uV = 1250000,
@@ -179,6 +179,7 @@ static struct regulator_init_data saw_s0_init_data = {
 
 static struct regulator_init_data saw_s1_init_data = {
 		.constraints = {
+			.name = "8901_s1",
 			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
 			.min_uV = 840000,
 			.max_uV = 1250000,
@@ -189,7 +190,7 @@ static struct regulator_init_data saw_s1_init_data = {
 
 static struct platform_device msm_device_saw_s0 = {
 	.name          = "saw-regulator",
-	.id            = SAW_VREG_ID_S0,
+	.id            = 0,
 	.dev           = {
 		.platform_data = &saw_s0_init_data,
 	},
@@ -197,7 +198,7 @@ static struct platform_device msm_device_saw_s0 = {
 
 static struct platform_device msm_device_saw_s1 = {
 	.name          = "saw-regulator",
-	.id            = SAW_VREG_ID_S1,
+	.id            = 1,
 	.dev           = {
 		.platform_data = &saw_s1_init_data,
 	},
