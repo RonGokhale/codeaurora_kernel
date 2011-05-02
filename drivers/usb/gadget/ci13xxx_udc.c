@@ -1896,8 +1896,8 @@ __acquires(udc->lock)
 
 		switch (req.bRequest) {
 		case USB_REQ_CLEAR_FEATURE:
-			if (type != (USB_DIR_OUT|USB_RECIP_ENDPOINT) &&
-			    le16_to_cpu(req.wValue) != USB_ENDPOINT_HALT)
+			if (!(type != (USB_DIR_OUT|USB_RECIP_ENDPOINT) &&
+			    le16_to_cpu(req.wValue) != USB_ENDPOINT_HALT))
 				goto delegate;
 			if (req.wLength != 0)
 				break;
