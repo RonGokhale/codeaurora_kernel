@@ -2268,7 +2268,7 @@ static int _sha256_hmac_digest(struct ahash_request *req)
 	return _sha_digest(req);
 }
 
-static struct ahash_alg _qcrypto_sha_algos[] = {
+static struct ahash_alg _qcrypto_ahash_algos[] = {
 	{
 		.init		=	_sha1_init,
 		.update		=	_sha1_update,
@@ -2384,7 +2384,7 @@ static struct ahash_alg _qcrypto_sha_hmac_algos[] = {
 	},
 };
 
-static struct crypto_alg _qcrypto_algos[] = {
+static struct crypto_alg _qcrypto_ablk_cipher_algos[] = {
 	{
 		.cra_name		= "ecb(aes)",
 		.cra_driver_name	= "qcrypto-ecb-aes",
@@ -2536,6 +2536,10 @@ static struct crypto_alg _qcrypto_algos[] = {
 			},
 		},
 	},
+};
+
+
+static struct crypto_alg _qcrypto_aead_sha1_hmac_algos[] = {
 	{
 		.cra_name	= "authenc(hmac(sha1),cbc(aes))",
 		.cra_driver_name = "qcrypto-aead-hmac-sha1-cbc-aes",
@@ -2685,25 +2689,17 @@ static int  _qcrypto_probe(struct platform_device *pdev)
 
 	if (cp->platform_support.ce_shared)
 		INIT_WORK(&cp->unlock_ce_ws, qcrypto_unlock_ce);
+
 	/* register crypto cipher algorithms the device supports */
-	for (i = 0; i < ARRAY_SIZE(_qcrypto_algos); i++) {
+	for (i = 0; i < ARRAY_SIZE(_qcrypto_ablk_cipher_algos); i++) {
 		struct qcrypto_alg *q_alg;
 
-		q_alg = _qcrypto_cipher_alg_alloc(cp, &_qcrypto_algos[i]);
+		q_alg = _qcrypto_cipher_alg_alloc(cp,
+					&_qcrypto_ablk_cipher_algos[i]);
 		if (IS_ERR(q_alg)) {
 			rc = PTR_ERR(q_alg);
 			goto err;
 		}
-
-		if (((q_alg->cipher_alg.cra_flags & CRYPTO_ALG_TYPE_MASK) ==
-				CRYPTO_ALG_TYPE_AEAD) &&
-			!(cp->ce_support.sha1_hmac_20 ||
-				cp->ce_support.sha1_hmac ||
-					cp->ce_support.sha256_hmac)){
-			kfree(q_alg);
-			continue;
-		}
-
 		rc = crypto_register_alg(&q_alg->cipher_alg);
 		if (rc) {
 			dev_err(&pdev->dev, "%s alg registration failed\n",
@@ -2716,11 +2712,14 @@ static int  _qcrypto_probe(struct platform_device *pdev)
 		}
 	}
 
-	/* register crypto hash algorithms the device supports */
-	for (i = 0; i < ARRAY_SIZE(_qcrypto_sha_algos); i++) {
+
+	/* Register crypto hash (sha1 and sha256) algorithms the
+	 * device supports
+	 */
+	for (i = 0; i < ARRAY_SIZE(_qcrypto_ahash_algos); i++) {
 		struct qcrypto_alg *q_alg = NULL;
 
-		q_alg = _qcrypto_sha_alg_alloc(cp, &_qcrypto_sha_algos[i]);
+		q_alg = _qcrypto_sha_alg_alloc(cp, &_qcrypto_ahash_algos[i]);
 
 		if (IS_ERR(q_alg)) {
 			rc = PTR_ERR(q_alg);
@@ -2736,6 +2735,33 @@ static int  _qcrypto_probe(struct platform_device *pdev)
 			list_add_tail(&q_alg->entry, &cp->alg_list);
 			dev_info(&pdev->dev, "%s\n",
 				q_alg->sha_alg.halg.base.cra_driver_name);
+		}
+	}
+
+	/* register crypto aead (hmac-sha1) algorithms the device supports */
+	if (cp->ce_support.sha1_hmac_20 || cp->ce_support.sha1_hmac) {
+		for (i = 0; i < ARRAY_SIZE(_qcrypto_aead_sha1_hmac_algos);
+									i++) {
+			struct qcrypto_alg *q_alg;
+
+			q_alg = _qcrypto_cipher_alg_alloc(cp,
+					&_qcrypto_aead_sha1_hmac_algos[i]);
+			if (IS_ERR(q_alg)) {
+				rc = PTR_ERR(q_alg);
+				goto err;
+			}
+
+			rc = crypto_register_alg(&q_alg->cipher_alg);
+			if (rc) {
+				dev_err(&pdev->dev,
+					"%s alg registration failed\n",
+					q_alg->cipher_alg.cra_driver_name);
+				kfree(q_alg);
+			} else {
+				list_add_tail(&q_alg->entry, &cp->alg_list);
+				dev_info(&pdev->dev, "%s\n",
+					q_alg->cipher_alg.cra_driver_name);
+			}
 		}
 	}
 
@@ -2876,4 +2902,4 @@ module_exit(_qcrypto_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm Crypto driver");
-MODULE_VERSION("1.11");
+MODULE_VERSION("1.12");
