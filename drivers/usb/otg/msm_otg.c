@@ -570,6 +570,7 @@ static int msm_otg_resume(struct msm_otg *motg)
 	if (!IS_ERR(motg->pclk_src))
 		clk_enable(motg->pclk_src);
 
+	clk_enable(motg->pclk);
 	clk_enable(motg->clk);
 	if (motg->core_clk)
 		clk_enable(motg->core_clk);
