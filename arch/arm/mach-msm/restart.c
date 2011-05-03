@@ -35,8 +35,6 @@
 
 #define PSHOLD_CTL_SU (MSM_TLMM_BASE + 0x820)
 
-#define IMEM_BASE           0x2A05F000
-
 #define RESTART_REASON_ADDR 0x65C
 #define DLOAD_MODE_ADDR     0x0
 
@@ -183,17 +181,15 @@ void arch_reset(char mode, const char *cmd)
 
 static int __init msm_restart_init(void)
 {
-	void *imem = ioremap_nocache(IMEM_BASE, SZ_4K);
-
 #ifdef CONFIG_MSM_DLOAD_MODE
 	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
-	dload_mode_addr = imem + DLOAD_MODE_ADDR;
+	dload_mode_addr = MSM_IMEM_BASE + DLOAD_MODE_ADDR;
 
 	/* Reset detection is switched on below.*/
 	set_dload_mode(1);
 	reset_detection = 1;
 #endif
-	restart_reason = imem + RESTART_REASON_ADDR;
+	restart_reason = MSM_IMEM_BASE + RESTART_REASON_ADDR;
 	pm_power_off = msm_power_off;
 
 	return 0;
