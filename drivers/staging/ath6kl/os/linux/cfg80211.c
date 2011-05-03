@@ -1520,6 +1520,11 @@ ar6k_cfg80211_init(struct device *dev)
     wdev->wiphy->cipher_suites = cipher_suites;
     wdev->wiphy->n_cipher_suites = ARRAY_SIZE(cipher_suites);
 
+    /*Support the seprate keys for unicast and multicast packets
+     *This flag is needed because because nl80211 checks for this
+     *flag before calling cfg ops for setting the key.*/
+    wdev->wiphy->flags |= WIPHY_FLAG_SUPPORTS_SEPARATE_DEFAULT_KEYS;
+
     ret = wiphy_register(wdev->wiphy);
     if(ret < 0) {
         AR_DEBUG_PRINTF(ATH_DEBUG_ERR,
