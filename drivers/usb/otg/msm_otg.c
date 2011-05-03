@@ -850,6 +850,9 @@ static bool msm_chg_aca_detect(struct msm_otg *motg)
 	u32 int_sts;
 	bool ret = false;
 
+	if (motg->pdata->phy_type == CI_45NM_INTEGRATED_PHY)
+		goto out;
+
 	int_sts = ulpi_read(otg, 0x87);
 	switch (int_sts & 0x1C) {
 	case 0x08:
@@ -892,7 +895,7 @@ static bool msm_chg_aca_detect(struct msm_otg *motg)
 			motg->chg_state = USB_CHG_STATE_UNDEFINED;
 		}
 	}
-
+out:
 	return ret;
 }
 
