@@ -890,9 +890,42 @@ static int hsusb_rpc_connect(int connect)
 		return msm_hsusb_rpc_close();
 }
 
+static struct vreg *vreg_3p3;
+static int msm_hsusb_ldo_init(int init)
+{
+	if (init) {
+		vreg_3p3 = vreg_get(NULL, "usb");
+		if (IS_ERR(vreg_3p3))
+			return PTR_ERR(vreg_3p3);
+	} else
+		vreg_put(vreg_3p3);
+
+	return 0;
+}
+
+static int msm_hsusb_ldo_enable(int enable)
+{
+	static int ldo_status;
+
+	if (!vreg_3p3 || IS_ERR(vreg_3p3))
+		return -ENODEV;
+
+	if (ldo_status == enable)
+		return 0;
+
+	ldo_status = enable;
+
+	if (enable)
+		return vreg_enable(vreg_3p3);
+
+	return vreg_disable(vreg_3p3);
+}
+
 static struct msm_otg_platform_data msm_otg_pdata = {
-#ifdef CONFIG_USB_EHCI_MSM_72K
-	.vbus_power		= msm_hsusb_vbus_power,
+#ifndef CONFIG_USB_EHCI_MSM_72K
+	.pmic_vbus_notif_init	 = msm_hsusb_pmic_notif_init,
+#else
+	.vbus_power		 = msm_hsusb_vbus_power,
 #endif
 	.rpc_connect		 = hsusb_rpc_connect,
 	.core_clk		 = 1,
@@ -900,6 +933,8 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 	.cdr_autoreset		 = CDR_AUTO_RESET_DISABLE,
 	.drv_ampl		 = HS_DRV_AMPLITUDE_DEFAULT,
 	.se1_gating		 = SE1_GATING_DISABLE,
+	.ldo_init		 = msm_hsusb_ldo_init,
+	.ldo_enable		 = msm_hsusb_ldo_enable,
 };
 #endif
 
