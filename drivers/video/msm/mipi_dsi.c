@@ -85,6 +85,78 @@ static struct platform_driver mipi_dsi_driver = {
 
 struct device dsi_dev;
 
+static void mipi_dsi_configure_serdes(void)
+{
+	void __iomem *cc;
+
+	/* PHY registers programemd thru S2P interface */
+	if (periph_base) {
+		MIPI_OUTP(periph_base + 0x2c, 0x000000b6);
+		MIPI_OUTP(periph_base + 0x2c, 0x000001b5);
+		MIPI_OUTP(periph_base + 0x2c, 0x000001b4);
+		MIPI_OUTP(periph_base + 0x2c, 0x000003b3);
+		MIPI_OUTP(periph_base + 0x2c, 0x000003a2);
+		MIPI_OUTP(periph_base + 0x2c, 0x000002a1);
+		MIPI_OUTP(periph_base + 0x2c, 0x000008a0);
+		MIPI_OUTP(periph_base + 0x2c, 0x00000d9f);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000109e);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000209d);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000109c);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000079a);
+		MIPI_OUTP(periph_base + 0x2c, 0x00000c99);
+		MIPI_OUTP(periph_base + 0x2c, 0x00002298);
+		MIPI_OUTP(periph_base + 0x2c, 0x000000a7);
+		MIPI_OUTP(periph_base + 0x2c, 0x000000a6);
+		MIPI_OUTP(periph_base + 0x2c, 0x000000a5);
+		MIPI_OUTP(periph_base + 0x2c, 0x00007fa4);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000eea8);
+		MIPI_OUTP(periph_base + 0x2c, 0x000006aa);
+		MIPI_OUTP(periph_base + 0x2c, 0x00002095);
+		MIPI_OUTP(periph_base + 0x2c, 0x00000493);
+		MIPI_OUTP(periph_base + 0x2c, 0x00001092);
+		MIPI_OUTP(periph_base + 0x2c, 0x00000691);
+		MIPI_OUTP(periph_base + 0x2c, 0x00005490);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000038d);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000148c);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000058b);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000078a);
+		MIPI_OUTP(periph_base + 0x2c, 0x00001f89);
+		MIPI_OUTP(periph_base + 0x2c, 0x00003388);
+		MIPI_OUTP(periph_base + 0x2c, 0x00006387);
+		MIPI_OUTP(periph_base + 0x2c, 0x00004886);
+		MIPI_OUTP(periph_base + 0x2c, 0x00005085);
+		MIPI_OUTP(periph_base + 0x2c, 0x00000084);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000da83);
+		MIPI_OUTP(periph_base + 0x2c, 0x0000b182);
+		MIPI_OUTP(periph_base + 0x2c, 0x00002f81);
+		MIPI_OUTP(periph_base + 0x2c, 0x00004080);
+		MIPI_OUTP(periph_base + 0x2c, 0x00004180);
+		MIPI_OUTP(periph_base + 0x2c, 0x000006aa);
+	}
+
+	cc = MIPI_DSI_BASE + 0x0130;
+	MIPI_OUTP(cc, 0x806c11c8);
+	MIPI_OUTP(cc, 0x804c11c8);
+	MIPI_OUTP(cc, 0x806d0080);
+	MIPI_OUTP(cc, 0x804d0080);
+	MIPI_OUTP(cc, 0x00000000);
+	MIPI_OUTP(cc, 0x807b1597);
+	MIPI_OUTP(cc, 0x805b1597);
+	MIPI_OUTP(cc, 0x807c0080);
+	MIPI_OUTP(cc, 0x805c0080);
+	MIPI_OUTP(cc, 0x00000000);
+	MIPI_OUTP(cc, 0x807911c8);
+	MIPI_OUTP(cc, 0x805911c8);
+	MIPI_OUTP(cc, 0x807a0080);
+	MIPI_OUTP(cc, 0x805a0080);
+	MIPI_OUTP(cc, 0x00000000);
+	MIPI_OUTP(cc, 0x80721555);
+	MIPI_OUTP(cc, 0x80521555);
+	MIPI_OUTP(cc, 0x80730000);
+	MIPI_OUTP(cc, 0x80530000);
+	MIPI_OUTP(cc, 0x00000000);
+}
+
 static void mipi_dsi_clk(struct dsi_clk_desc *clk, int clk_en)
 {
 #ifndef CONFIG_FB_MSM_MDP303
@@ -639,9 +711,6 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	struct mipi_panel_info *mipi;
 	u32 hbp, hfp, vbp, vfp, hspw, vspw, width, height;
 	u32 ystride, bpp, data;
-#ifndef CONFIG_FB_MSM_MDP303
-	void __iomem *cc = MIPI_DSI_BASE + 0x0130;
-#endif
 
 	mfd = platform_get_drvdata(pdev);
 	fbi = mfd->fbi;
@@ -678,8 +747,6 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 	/* DSIPHY_PLL_CTRL_5 */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x0214, 0x050);
-	/* DSIPHY_TPA_CTRL_0 */
-	MIPI_OUTP(MIPI_DSI_BASE + 0x0254, 0x020);
 
 	/* DSIPHY_TPA_CTRL_1 */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x0258, 0x00f);
@@ -740,74 +807,8 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 	mipi_dsi_host_init(mipi);
 
-#ifndef CONFIG_FB_MSM_MDP303
-
-	/* PHY registers programemd thru S2P interface */
-	if (periph_base) {
-		MIPI_OUTP(periph_base + 0x2c, 0x000000b6);
-		MIPI_OUTP(periph_base + 0x2c, 0x000001b5);
-		MIPI_OUTP(periph_base + 0x2c, 0x000001b4);
-		MIPI_OUTP(periph_base + 0x2c, 0x000003b3);
-		MIPI_OUTP(periph_base + 0x2c, 0x000003a2);
-		MIPI_OUTP(periph_base + 0x2c, 0x000002a1);
-		MIPI_OUTP(periph_base + 0x2c, 0x000008a0);
-		MIPI_OUTP(periph_base + 0x2c, 0x00000d9f);
-		MIPI_OUTP(periph_base + 0x2c, 0x0000109e);
-		MIPI_OUTP(periph_base + 0x2c, 0x0000209d);
-		MIPI_OUTP(periph_base + 0x2c, 0x0000109c);
-		MIPI_OUTP(periph_base + 0x2c, 0x0000079a);
-		MIPI_OUTP(periph_base + 0x2c, 0x00000c99);
-		MIPI_OUTP(periph_base + 0x2c, 0x00002298);
-		MIPI_OUTP(periph_base + 0x2c, 0x000000a7);
-		MIPI_OUTP(periph_base + 0x2c, 0x000000a6);
-		MIPI_OUTP(periph_base + 0x2c, 0x000000a5);
-		MIPI_OUTP(periph_base + 0x2c, 0x00007fa4);
-		MIPI_OUTP(periph_base + 0x2c, 0x0000eea8);
-		MIPI_OUTP(periph_base + 0x2c, 0x000006aa);
-		MIPI_OUTP(periph_base + 0x2c, 0x00002095);
-		MIPI_OUTP(periph_base + 0x2c, 0x00000493);
-		MIPI_OUTP(periph_base + 0x2c, 0x00001092);
-		MIPI_OUTP(periph_base + 0x2c, 0x00000691);
-		MIPI_OUTP(periph_base + 0x2c, 0x00005490);
-		MIPI_OUTP(periph_base + 0x2c, 0x0000038d);
-		MIPI_OUTP(periph_base + 0x2c, 0x0000148c);
-		MIPI_OUTP(periph_base + 0x2c, 0x0000058b);
-		MIPI_OUTP(periph_base + 0x2c, 0x0000078a);
-		MIPI_OUTP(periph_base + 0x2c, 0x00001f89);
-		MIPI_OUTP(periph_base + 0x2c, 0x00003388);
-		MIPI_OUTP(periph_base + 0x2c, 0x00006387);
-		MIPI_OUTP(periph_base + 0x2c, 0x00004886);
-		MIPI_OUTP(periph_base + 0x2c, 0x00005085);
-		MIPI_OUTP(periph_base + 0x2c, 0x00000084);
-		MIPI_OUTP(periph_base + 0x2c, 0x0000da83);
-		MIPI_OUTP(periph_base + 0x2c, 0x0000b182);
-		MIPI_OUTP(periph_base + 0x2c, 0x00002f81);
-		MIPI_OUTP(periph_base + 0x2c, 0x00004080);
-		MIPI_OUTP(periph_base + 0x2c, 0x00004180);
-		MIPI_OUTP(periph_base + 0x2c, 0x000006aa);
-	}
-
-	MIPI_OUTP(cc, 0x806c11c8);
-	MIPI_OUTP(cc, 0x804c11c8);
-	MIPI_OUTP(cc, 0x806d0080);
-	MIPI_OUTP(cc, 0x804d0080);
-	MIPI_OUTP(cc, 0x00000000);
-	MIPI_OUTP(cc, 0x807b1597);
-	MIPI_OUTP(cc, 0x805b1597);
-	MIPI_OUTP(cc, 0x807c0080);
-	MIPI_OUTP(cc, 0x805c0080);
-	MIPI_OUTP(cc, 0x00000000);
-	MIPI_OUTP(cc, 0x807911c8);
-	MIPI_OUTP(cc, 0x805911c8);
-	MIPI_OUTP(cc, 0x807a0080);
-	MIPI_OUTP(cc, 0x805a0080);
-	MIPI_OUTP(cc, 0x00000000);
-	MIPI_OUTP(cc, 0x80721555);
-	MIPI_OUTP(cc, 0x80521555);
-	MIPI_OUTP(cc, 0x80730000);
-	MIPI_OUTP(cc, 0x80530000);
-	MIPI_OUTP(cc, 0x00000000);
-#endif
+	if (mipi_dsi_pdata && mipi_dsi_pdata->target_type == 1)
+		mipi_dsi_configure_serdes();
 
 	mipi_dsi_cmd_bta_sw_trigger(); /* clean up ack_err_status */
 
@@ -864,7 +865,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 			return -ENOMEM;
 
 #ifndef CONFIG_FB_MSM_MDP303
-		mmss_cc_base = ioremap(MMSS_CC_BASE_PHY, 0x200);
+		mmss_cc_base = MSM_MMSS_CLK_CTL_BASE;
 		MSM_FB_INFO("msm_mmss_cc base = 0x%x\n",
 				(int) mmss_cc_base);
 
@@ -895,21 +896,23 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 		disable_irq(dsi_irq);
 #ifndef CONFIG_FB_MSM_MDP303
 
-		/*
-		 * 0x4f00000 is the base for TV Encoder.
-		 * Unused Offset 0x1000 is used for
-		 * (de)serializer on emulation platform
-		 */
-		periph_base = ioremap(MMSS_SERDES_BASE_PHY, 0x100);
+		if (mipi_dsi_pdata && mipi_dsi_pdata->target_type == 1) {
+			/* Target type is 1 for device with (De)serializer
+			 * 0x4f00000 is the base for TV Encoder.
+			 * Unused Offset 0x1000 is used for
+			 * (de)serializer on emulation platform
+			 */
+			periph_base = ioremap(MMSS_SERDES_BASE_PHY, 0x100);
 
-		if (periph_base) {
-			pr_debug("periph_base %p\n", periph_base);
-			writel(0x4, periph_base + 0x28);
-			writel(0xc, periph_base + 0x28);
-		} else {
-			pr_err("periph_base is NULL\n");
-			free_irq(dsi_irq, 0);
-			return -ENOMEM;
+			if (periph_base) {
+				pr_debug("periph_base %p\n", periph_base);
+				writel(0x4, periph_base + 0x28);
+				writel(0xc, periph_base + 0x28);
+			} else {
+				pr_err("periph_base is NULL\n");
+				free_irq(dsi_irq, 0);
+				return -ENOMEM;
+			}
 		}
 #endif
 
