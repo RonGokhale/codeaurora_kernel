@@ -528,7 +528,7 @@ static int modem_notifier_cb(struct notifier_block *this, unsigned long code,
 	int i, j;
 	switch (code) {
 	case SUBSYS_BEFORE_SHUTDOWN:
-		pr_info("M-Notify: Shutdown started\n");
+		pr_debug("M-Notify: Shutdown started\n");
 		modem_state = 0;
 		dispatch_event(code, APR_DEST_MODEM);
 		for (i = 0 ; i < APR_DEST_MAX; i++)
@@ -539,17 +539,17 @@ static int modem_notifier_cb(struct notifier_block *this, unsigned long code,
 				}
 		break;
 	case SUBSYS_AFTER_SHUTDOWN:
-		pr_info("M-Notify: Shutdown Completed\n");
+		pr_debug("M-Notify: Shutdown Completed\n");
 		break;
 	case SUBSYS_BEFORE_POWERUP:
-		pr_info("M-notify: Bootup started\n");
+		pr_debug("M-notify: Bootup started\n");
 		break;
 	case SUBSYS_AFTER_POWERUP:
 		modem_state = 1;
-		pr_info("M-Notify: Bootup Completed\n");
+		pr_debug("M-Notify: Bootup Completed\n");
 		break;
 	default:
-		pr_info("M-Notify: General: %lu\n", code);
+		pr_debug("M-Notify: General: %lu\n", code);
 		break;
 	}
 	return NOTIFY_DONE;
@@ -564,22 +564,22 @@ static int lpass_notifier_cb(struct notifier_block *this, unsigned long code,
 {
 	switch (code) {
 	case SUBSYS_BEFORE_SHUTDOWN:
-		pr_info("L-Notify: Shutdown started\n");
+		pr_debug("L-Notify: Shutdown started\n");
 		dsp_state = 0;
 		dispatch_event(code, APR_DEST_QDSP6);
 		break;
 	case SUBSYS_AFTER_SHUTDOWN:
-		pr_info("L-Notify: Shutdown Completed\n");
+		pr_debug("L-Notify: Shutdown Completed\n");
 		break;
 	case SUBSYS_BEFORE_POWERUP:
-		pr_info("L-notify: Bootup started\n");
+		pr_debug("L-notify: Bootup started\n");
 		break;
 	case SUBSYS_AFTER_POWERUP:
 		dsp_state = 1;
-		pr_info("L-Notify: Bootup Completed\n");
+		pr_debug("L-Notify: Bootup Completed\n");
 		break;
 	default:
-		pr_info("L-Notify: Generel: %lu\n", code);
+		pr_debug("L-Notify: Generel: %lu\n", code);
 		break;
 	}
 	return NOTIFY_DONE;
