@@ -2379,7 +2379,8 @@ static int ci13xxx_vbus_session(struct usb_gadget *_gadget, int is_active)
 		if (is_active) {
 			pm_runtime_get_sync(&_gadget->dev);
 			hw_device_reset(udc);
-			hw_device_state(udc->ep0out.qh.dma);
+			if (udc->softconnect)
+				hw_device_state(udc->ep0out.qh.dma);
 		} else {
 			hw_device_state(0);
 			if (udc->udc_driver->notify_event)
@@ -2402,6 +2403,31 @@ static int ci13xxx_vbus_draw(struct usb_gadget *_gadget, unsigned mA)
 	return -ENOTSUPP;
 }
 
+static int ci13xxx_pullup(struct usb_gadget *_gadget, int is_active)
+{
+	struct ci13xxx *udc = container_of(_gadget, struct ci13xxx, gadget);
+	unsigned long flags;
+
+	spin_lock_irqsave(udc->lock, flags);
+	udc->softconnect = is_active;
+	if (((udc->udc_driver->flags & CI13XXX_PULLUP_ON_VBUS) &&
+			!udc->vbus_active) || !udc->driver) {
+		spin_unlock_irqrestore(udc->lock, flags);
+		return 0;
+	}
+	spin_unlock_irqrestore(udc->lock, flags);
+
+	if (is_active) {
+		hw_device_state(udc->ep0out.qh.dma);
+	} else {
+		hw_device_state(0);
+		if (udc->udc_driver->notify_event)
+			udc->udc_driver->notify_event(udc,
+				CI13XXX_CONTROLLER_STOPPED_EVENT);
+	}
+	return 0;
+}
+
 /**
  * Device operations part of the API to the USB controller hardware,
  * which don't involve endpoints (or i/o)
@@ -2410,6 +2436,7 @@ static int ci13xxx_vbus_draw(struct usb_gadget *_gadget, unsigned mA)
 static const struct usb_gadget_ops usb_gadget_ops = {
 	.vbus_session	= ci13xxx_vbus_session,
 	.vbus_draw	= ci13xxx_vbus_draw,
+	.pullup		= ci13xxx_pullup,
 };
 
 /**
@@ -2513,6 +2540,7 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 	/* bind gadget */
 	driver->driver.bus     = NULL;
 	udc->gadget.dev.driver = &driver->driver;
+	udc->softconnect = 1;
 
 	spin_unlock_irqrestore(udc->lock, flags);
 	retval = bind(&udc->gadget);                /* MAY SLEEP */
@@ -2534,6 +2562,9 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 			goto done;
 		}
 	}
+
+	if (!udc->softconnect)
+		goto done;
 
 	retval = hw_device_state(udc->ep0out.qh.dma);
 	if (retval)

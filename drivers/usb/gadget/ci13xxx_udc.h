@@ -130,6 +130,7 @@ struct ci13xxx {
 	struct usb_gadget_driver  *driver;     /* 3rd party gadget driver */
 	struct ci13xxx_udc_driver *udc_driver; /* device controller driver */
 	int                        vbus_active; /* is VBUS active */
+	int                        softconnect; /* is pull-up enable allowed */
 	struct otg_transceiver    *transceiver; /* Transceiver struct */
 };
 
