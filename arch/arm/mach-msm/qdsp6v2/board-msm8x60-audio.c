@@ -1350,6 +1350,7 @@ static struct snddev_icodec_data ftm_headset_mono_rx_data = {
 	.default_sample_rate = 48000,
 	.voltage_on = msm_snddev_voltage_on,
 	.voltage_off = msm_snddev_voltage_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_headset_mono_rx_device = {
@@ -1384,6 +1385,7 @@ static struct snddev_icodec_data ftm_headset_mono_diff_rx_data = {
 	.default_sample_rate = 48000,
 	.voltage_on = msm_snddev_voltage_on,
 	.voltage_off = msm_snddev_voltage_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_headset_mono_diff_rx_device = {
@@ -1418,6 +1420,7 @@ static struct snddev_icodec_data ftm_spkr_mono_rx_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_poweramp_on,
 	.pamp_off = msm_snddev_poweramp_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_spkr_mono_rx_device = {
@@ -1452,6 +1455,7 @@ static struct snddev_icodec_data ftm_spkr_l_rx_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_poweramp_on,
 	.pamp_off = msm_snddev_poweramp_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_spkr_l_rx_device = {
@@ -1486,6 +1490,7 @@ static struct snddev_icodec_data ftm_spkr_r_rx_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_poweramp_on,
 	.pamp_off = msm_snddev_poweramp_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_spkr_r_rx_device = {
@@ -1520,6 +1525,7 @@ static struct snddev_icodec_data ftm_spkr_mono_diff_rx_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_poweramp_on,
 	.pamp_off = msm_snddev_poweramp_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_spkr_mono_diff_rx_device = {
@@ -1554,6 +1560,7 @@ static struct snddev_icodec_data ftm_headset_mono_l_rx_data = {
 	.default_sample_rate = 48000,
 	.voltage_on = msm_snddev_voltage_on,
 	.voltage_off = msm_snddev_voltage_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_headset_mono_l_rx_device = {
@@ -1588,6 +1595,7 @@ static struct snddev_icodec_data ftm_headset_mono_r_rx_data = {
 	.default_sample_rate = 48000,
 	.voltage_on = msm_snddev_voltage_on,
 	.voltage_off = msm_snddev_voltage_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_headset_mono_r_rx_device = {
@@ -1620,6 +1628,7 @@ static struct snddev_icodec_data ftm_linein_l_tx_data = {
 	.profile = &ftm_linein_l_tx_profile,
 	.channel_mode = 1,
 	.default_sample_rate = 48000,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_linein_l_tx_device = {
@@ -1652,6 +1661,7 @@ static struct snddev_icodec_data ftm_linein_r_tx_data = {
 	.profile = &ftm_linein_r_tx_profile,
 	.channel_mode = 1,
 	.default_sample_rate = 48000,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_linein_r_tx_device = {
@@ -1684,6 +1694,7 @@ static struct snddev_icodec_data ftm_aux_out_rx_data = {
 	.profile = &ftm_aux_out_rx_profile,
 	.channel_mode = 2,
 	.default_sample_rate = 48000,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_aux_out_rx_device = {
@@ -1718,6 +1729,7 @@ static struct snddev_icodec_data ftm_dmic1_left_tx_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_enable_dmic_power,
 	.pamp_off = msm_snddev_disable_dmic_power,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_dmic1_left_tx_device = {
@@ -1752,6 +1764,7 @@ static struct snddev_icodec_data ftm_dmic1_right_tx_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_enable_dmic_power,
 	.pamp_off = msm_snddev_disable_dmic_power,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_dmic1_right_tx_device = {
@@ -1786,6 +1799,7 @@ static struct snddev_icodec_data ftm_dmic1_l_and_r_tx_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_enable_dmic_power,
 	.pamp_off = msm_snddev_disable_dmic_power,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_dmic1_l_and_r_tx_device = {
@@ -1820,6 +1834,7 @@ static struct snddev_icodec_data ftm_dmic2_left_tx_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_enable_dmic_power,
 	.pamp_off = msm_snddev_disable_dmic_power,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_dmic2_left_tx_device = {
@@ -1854,6 +1869,7 @@ static struct snddev_icodec_data ftm_dmic2_right_tx_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_enable_dmic_power,
 	.pamp_off = msm_snddev_disable_dmic_power,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_dmic2_right_tx_device = {
@@ -1888,6 +1904,7 @@ static struct snddev_icodec_data ftm_dmic2_l_and_r_tx_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_enable_dmic_power,
 	.pamp_off = msm_snddev_disable_dmic_power,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_dmic2_l_and_r_tx_device = {
@@ -1923,6 +1940,7 @@ static struct snddev_icodec_data ftm_handset_mic1_aux_in_data = {
 	/* Assumption is that inputs are not tied to analog mic, so
 	 * no need to enable mic bias.
 	 */
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_handset_mic1_aux_in_device = {
@@ -1998,6 +2016,7 @@ static struct snddev_icodec_data ftm_handset_adie_lp_rx_data = {
 	.profile = &ftm_handset_adie_lp_rx_profile,
 	.channel_mode = 1,
 	.default_sample_rate = 48000,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_handset_adie_lp_rx_device = {
@@ -2032,6 +2051,7 @@ static struct snddev_icodec_data ftm_headset_l_adie_lp_rx_data = {
 	.default_sample_rate = 48000,
 	.voltage_on = msm_snddev_voltage_on,
 	.voltage_off = msm_snddev_voltage_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_headset_l_adie_lp_rx_device = {
@@ -2066,6 +2086,7 @@ static struct snddev_icodec_data ftm_headset_r_adie_lp_rx_data = {
 	.default_sample_rate = 48000,
 	.voltage_on = msm_snddev_voltage_on,
 	.voltage_off = msm_snddev_voltage_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_headset_r_adie_lp_rx_device = {
@@ -2100,6 +2121,7 @@ static struct snddev_icodec_data ftm_spkr_l_rx_lp_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_poweramp_on,
 	.pamp_off = msm_snddev_poweramp_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_spk_l_adie_lp_rx_device = {
@@ -2134,6 +2156,7 @@ static struct snddev_icodec_data ftm_spkr_r_adie_lp_rx_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_poweramp_on,
 	.pamp_off = msm_snddev_poweramp_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_spk_r_adie_lp_rx_device = {
@@ -2168,6 +2191,7 @@ static struct snddev_icodec_data ftm_spkr_adie_lp_rx_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_poweramp_on,
 	.pamp_off = msm_snddev_poweramp_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_spk_adie_lp_rx_device = {
@@ -2202,6 +2226,7 @@ static struct snddev_icodec_data ftm_handset_dual_tx_lp_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_enable_amic_power,
 	.pamp_off = msm_snddev_disable_amic_power,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_handset_dual_tx_lp_device = {
@@ -2237,6 +2262,7 @@ static struct snddev_icodec_data ftm_handset_mic_adie_lp_tx_data = {
 	.default_sample_rate = 48000,
 	.pamp_on = msm_snddev_enable_amic_power,
 	.pamp_off = msm_snddev_disable_amic_power,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_handset_mic_adie_lp_tx_device = {
@@ -2270,6 +2296,7 @@ static struct snddev_icodec_data ftm_headset_mic_adie_lp_tx_data = {
 	.profile = &ftm_headset_mic_adie_lp_tx_profile,
 	.channel_mode = 1,
 	.default_sample_rate = 48000,
+	.dev_vol_type = SNDDEV_DEV_VOL_DIGITAL,
 };
 
 static struct platform_device ftm_headset_mic_adie_lp_tx_device = {
