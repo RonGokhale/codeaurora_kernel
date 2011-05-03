@@ -1121,13 +1121,13 @@ static int __init mipi_dsi_driver_init(void)
 		pr_err("can't find dsi_s_pclk\n");
 		return PTR_ERR(dsi_s_pclk);
 	}
-#endif
-	dsi_byte_div_clk = clk_get(NULL, "dsi_byte_clk");
+
+	dsi_byte_div_clk = clk_get(NULL, "dsi_byte_div_clk");
 	if (IS_ERR(dsi_byte_div_clk)) {
 		pr_err("can't find dsi_byte_div_clk\n");
 		return PTR_ERR(dsi_byte_div_clk);
 	}
-
+#endif
 
 	dsi_esc_clk = clk_get(NULL, "dsi_esc_clk");
 	if (IS_ERR(dsi_esc_clk)) {
@@ -1136,6 +1136,12 @@ static int __init mipi_dsi_driver_init(void)
 	}
 
 #ifdef CONFIG_FB_MSM_MDP303
+	dsi_byte_div_clk = clk_get(NULL, "dsi_byte_clk");
+	if (IS_ERR(dsi_byte_div_clk)) {
+		pr_err("can't find dsi_byte_div_clk\n");
+		return PTR_ERR(dsi_byte_div_clk);
+	}
+
 	dsi_pixel_clk = clk_get(NULL, "dsi_pixel_clk");
 	if (IS_ERR(dsi_pixel_clk)) {
 		pr_err("can't find dsi_pixel_clk\n");
