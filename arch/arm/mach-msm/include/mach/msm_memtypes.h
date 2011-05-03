@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -40,3 +40,32 @@ unsigned int get_num_populated_chipselects(void);
 #endif
 
 #endif
+
+enum {
+	MEMTYPE_NONE = -1,
+	MEMTYPE_SMI_KERNEL = 0,
+	MEMTYPE_SMI,
+	MEMTYPE_EBI0,
+	MEMTYPE_EBI1,
+	MEMTYPE_MAX,
+};
+
+void msm_reserve(void);
+
+#define MEMTYPE_FLAGS_FIXED	0x1
+#define MEMTYPE_FLAGS_1M_ALIGN	0x2
+
+struct memtype_reserve {
+	unsigned long start;
+	unsigned long size;
+	unsigned long limit;
+	int flags;
+};
+
+struct reserve_info {
+	struct memtype_reserve *memtype_reserve_table;
+	void (*calculate_reserve_sizes)(void);
+	int (*paddr_to_memtype)(unsigned int);
+};
+
+extern struct reserve_info *reserve_info;

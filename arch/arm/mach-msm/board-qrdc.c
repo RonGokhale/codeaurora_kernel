@@ -1136,7 +1136,6 @@ static void __init msm8x60_allocate_memory_regions(void)
 	size = pmem_kernel_ebi1_size;
 	if (size) {
 		addr = alloc_bootmem_align(size, 0x100000);
-		android_pmem_kernel_ebi1_pdata.start = __pa(addr);
 		android_pmem_kernel_ebi1_pdata.size = size;
 		pr_info("allocating %lu bytes at %p (%lx physical) for kernel"
 			" ebi1 pmem arena\n", size, addr, __pa(addr));
@@ -1146,7 +1145,6 @@ static void __init msm8x60_allocate_memory_regions(void)
 #ifdef CONFIG_KERNEL_PMEM_SMI_REGION
 	size = PMEM_KERNEL_SMI_SIZE;
 	if (size) {
-		android_pmem_kernel_smi_pdata.start = PMEM_KERNEL_SMI_BASE;
 		android_pmem_kernel_smi_pdata.size = size;
 		pr_info("allocating %lu bytes at %lx physical for kernel"
 			" smi pmem arena\n", size,
@@ -1158,7 +1156,6 @@ static void __init msm8x60_allocate_memory_regions(void)
 	size = pmem_adsp_size;
 	if (size) {
 		addr = alloc_bootmem(size);
-		android_pmem_adsp_pdata.start = __pa(addr);
 		android_pmem_adsp_pdata.size = size;
 		pr_info("allocating %lu bytes at %p (%lx physical) for adsp "
 			"pmem arena\n", size, addr, __pa(addr));
@@ -1166,7 +1163,6 @@ static void __init msm8x60_allocate_memory_regions(void)
 
 	size = MSM_PMEM_SMIPOOL_SIZE;
 	if (size) {
-		android_pmem_smipool_pdata.start = MSM_PMEM_SMIPOOL_BASE;
 		android_pmem_smipool_pdata.size = size;
 		pr_info("allocating %lu bytes at %lx physical for user"
 			" smi  pmem arena\n", size,
@@ -1176,7 +1172,6 @@ static void __init msm8x60_allocate_memory_regions(void)
 	size = pmem_sf_size;
 	if (size) {
 		addr = alloc_bootmem(size);
-		android_pmem_pdata.start = __pa(addr);
 		android_pmem_pdata.size = size;
 		pr_info("allocating %lu bytes at %p (%lx physical) for sf "
 			"pmem arena\n", size, addr, __pa(addr));

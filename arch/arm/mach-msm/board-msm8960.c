@@ -45,6 +45,7 @@
 #include <mach/irqs.h>
 #include <mach/gpio.h>
 #include <mach/msm_bus_board.h>
+#include <mach/msm_memtypes.h>
 
 #ifdef CONFIG_WCD9310_CODEC
 #include <linux/slimbus/slimbus.h>
@@ -251,25 +252,12 @@ static int __init pmem_adsp_size_setup(char *p)
 early_param("pmem_adsp_size", pmem_adsp_size_setup);
 #endif
 
-#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
-static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
-	.name = PMEM_KERNEL_EBI1_DATA_NAME,
-	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
-	.cached = 0,
-};
-
-static struct platform_device android_pmem_kernel_ebi1_device = {
-	.name = "android_pmem",
-	.id = 1,
-	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
-};
-#endif
-
 #ifdef CONFIG_ANDROID_PMEM
 static struct android_pmem_platform_data android_pmem_adsp_pdata = {
 	.name = "pmem_adsp",
 	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
 	.cached = 0,
+	.memory_type = MEMTYPE_EBI1,
 };
 static struct platform_device android_pmem_adsp_device = {
 	.name = "android_pmem",
@@ -277,6 +265,60 @@ static struct platform_device android_pmem_adsp_device = {
 	.dev = { .platform_data = &android_pmem_adsp_pdata },
 };
 #endif
+
+static struct memtype_reserve msm8960_reserve_table[] __initdata = {
+	[MEMTYPE_SMI] = {
+	},
+	[MEMTYPE_EBI0] = {
+		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
+	},
+	[MEMTYPE_EBI1] = {
+		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
+	},
+};
+
+static void __init size_pmem_devices(void)
+{
+#ifdef CONFIG_ANDROID_PMEM
+	android_pmem_adsp_pdata.size = pmem_adsp_size;
+#endif
+}
+
+static void __init reserve_memory_for(struct android_pmem_platform_data *p)
+{
+	msm8960_reserve_table[p->memory_type].size += p->size;
+}
+
+static void __init reserve_pmem_memory(void)
+{
+#ifdef CONFIG_ANDROID_PMEM
+	reserve_memory_for(&android_pmem_adsp_pdata);
+	msm8960_reserve_table[MEMTYPE_EBI1].size += pmem_kernel_ebi1_size;
+#endif
+}
+
+static void __init msm8960_calculate_reserve_sizes(void)
+{
+	size_pmem_devices();
+	reserve_pmem_memory();
+}
+
+static int msm8960_paddr_to_memtype(unsigned int paddr)
+{
+	return MEMTYPE_EBI1;
+}
+
+static struct reserve_info msm8960_reserve_info __initdata = {
+	.memtype_reserve_table = msm8960_reserve_table,
+	.calculate_reserve_sizes = msm8960_calculate_reserve_sizes,
+	.paddr_to_memtype = msm8960_paddr_to_memtype,
+};
+
+static void __init msm8960_reserve(void)
+{
+	reserve_info = &msm8960_reserve_info;
+	msm_reserve();
+}
 
 #define MSM_FB_SIZE 0x600000
 #define MDP_VSYNC_GPIO 28
@@ -481,26 +523,6 @@ static void __init msm8960_allocate_memory_regions(void)
 	pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
 			size, addr, __pa(addr));
 
-#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
-	size = pmem_kernel_ebi1_size;
-	if (size) {
-		addr = alloc_bootmem_align(size, SZ_1M);
-		android_pmem_kernel_ebi1_pdata.start = __pa(addr);
-		android_pmem_kernel_ebi1_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for kernel"
-			" ebi1 pmem arena\n", size, addr, __pa(addr));
-	}
-#endif
-#ifdef CONFIG_ANDROID_PMEM
-	size = pmem_adsp_size;
-	if (size) {
-		addr = alloc_bootmem(size);
-		android_pmem_adsp_pdata.start = __pa(addr);
-		android_pmem_adsp_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for adsp "
-			"pmem arena\n", size, addr, __pa(addr));
-	}
-#endif
 }
 #ifdef CONFIG_WCD9310_CODEC
 
@@ -989,9 +1011,6 @@ static struct platform_device *sim_devices[] __initdata = {
 	&fish_battery_device,
 #endif
 	&msm_device_vidc,
-#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
-	&android_pmem_kernel_ebi1_device,
-#endif
 #ifdef CONFIG_ANDROID_PMEM
 	&android_pmem_adsp_device,
 #endif
@@ -1025,9 +1044,6 @@ static struct platform_device *rumi3_devices[] __initdata = {
 	&msm_device_sps,
 #ifdef CONFIG_MSM_FAKE_BATTERY
 	&fish_battery_device,
-#endif
-#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
-	&android_pmem_kernel_ebi1_device,
 #endif
 #ifdef CONFIG_ANDROID_PMEM
 	&android_pmem_adsp_device,
@@ -1425,6 +1441,7 @@ static void __init msm8960_rumi3_init(void)
 
 MACHINE_START(MSM8960_SIM, "QCT MSM8960 SIMULATOR")
 	.map_io = msm8960_map_io,
+	.reserve = msm8960_reserve,
 	.init_irq = msm8960_init_irq,
 	.timer = &msm_timer,
 	.init_machine = msm8960_sim_init,
@@ -1433,6 +1450,7 @@ MACHINE_END
 
 MACHINE_START(MSM8960_RUMI3, "QCT MSM8960 RUMI3")
 	.map_io = msm8960_map_io,
+	.reserve = msm8960_reserve,
 	.init_irq = msm8960_init_irq,
 	.timer = &msm_timer,
 	.init_machine = msm8960_rumi3_init,
