@@ -1920,7 +1920,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	mxt->mxt_class = class_create(THIS_MODULE, "maXTouch_memory");
 	if (IS_ERR(mxt->mxt_class)){
 	  printk(KERN_WARNING "class create failed! exiting...");
-	  goto err_read_ot;
+	  goto err_class_create;
 	  
 	}
 	/* 2 numbers; one for memory and one for messages */
@@ -2021,16 +2021,26 @@ err_irq:
 	kfree(mxt->rid_map);
 	kfree(mxt->object_table);
 	kfree(mxt->last_message);
+err_class_create:
+	if (mxt->debug_dir)
+		debugfs_remove(mxt->debug_dir);
+	kfree(mxt->last_message);
+	kfree(mxt->rid_map);
+	kfree(mxt->object_table);
 err_read_ot:
+	input_unregister_device(mxt->input);
+	mxt->input = NULL;
 err_register_device:
+	mutex_destroy(&mxt->debug_mutex);
+	mutex_destroy(&mxt->msg_mutex);
 err_identify:
+	if (mxt->exit_hw != NULL)
+		mxt->exit_hw(client);
 err_pdata:
 	input_free_device(input);
 err_input_dev_alloc:
 	kfree(id_data);
 err_id_alloc:
-	if (mxt->exit_hw != NULL)
-		mxt->exit_hw(client);
 	kfree(mxt);
 err_mxt_alloc:
 	return error;

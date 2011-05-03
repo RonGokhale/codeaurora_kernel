@@ -45,6 +45,7 @@
 
 #include <mach/msm_battery.h>
 #include <linux/smsc911x.h>
+#include <linux/atmel_maxtouch.h>
 #include "devices.h"
 #include "timer.h"
 #include "devices-msm7x2xa.h"
@@ -2400,6 +2401,126 @@ static void __init msm7x2x_init_irq(void)
 	msm_init_irq();
 }
 
+#define ATMEL_TS_I2C_NAME "maXTouch"
+static struct vreg *vreg_l2;
+static struct vreg *vreg_s3;
+
+#define ATMEL_TS_GPIO_IRQ 82
+
+static int atmel_ts_platform_init(struct i2c_client *client)
+{
+	int rc;
+
+	vreg_l2 = vreg_get(NULL, "rfrx2");
+	if (IS_ERR(vreg_l2)) {
+		pr_err("%s: vreg_get for L2 failed\n", __func__);
+		return PTR_ERR(vreg_l2);
+	}
+
+	rc = vreg_set_level(vreg_l2, 2850);
+	if (rc) {
+		pr_err("%s: vreg set level failed (%d) for l2\n",
+		       __func__, rc);
+		goto vreg_put_l2;
+	}
+
+	rc = vreg_enable(vreg_l2);
+	if (rc) {
+		pr_err("%s: vreg enable failed (%d)\n",
+		       __func__, rc);
+		goto vreg_put_l2;
+	}
+
+	vreg_s3 = vreg_get(NULL, "msme1");
+	if (IS_ERR(vreg_s3)) {
+		pr_err("%s: vreg_get for S3 failed\n", __func__);
+		rc = PTR_ERR(vreg_s3);
+		goto vreg_disable_l2;
+	}
+
+	rc = vreg_set_level(vreg_s3, 1800);
+	if (rc) {
+		pr_err("%s: vreg set level failed (%d) for S3\n",
+		       __func__, rc);
+		goto vreg_put_s3;
+	}
+
+	rc = vreg_enable(vreg_s3);
+	if (rc) {
+		pr_err("%s: vreg enable failed (%d) for S3\n",
+		       __func__, rc);
+		goto vreg_put_s3;
+	}
+
+	rc = gpio_tlmm_config(GPIO_CFG(ATMEL_TS_GPIO_IRQ, 0,
+				GPIO_CFG_INPUT, GPIO_CFG_PULL_UP,
+				GPIO_CFG_8MA), GPIO_CFG_ENABLE);
+	if (rc) {
+		pr_err("%s: gpio_tlmm_config for %d failed\n",
+			__func__, ATMEL_TS_GPIO_IRQ);
+		goto vreg_disable_s3;
+	}
+
+	/* configure touchscreen interrupt gpio */
+	rc = gpio_request(ATMEL_TS_GPIO_IRQ, "atmel_maxtouch_gpio");
+	if (rc) {
+		pr_err("%s: unable to request gpio %d\n",
+			__func__, ATMEL_TS_GPIO_IRQ);
+		goto ts_gpio_tlmm_unconfig;
+	}
+
+	rc = gpio_direction_input(ATMEL_TS_GPIO_IRQ);
+	if (rc < 0) {
+		pr_err("%s: unable to set the direction of gpio %d\n",
+			__func__, ATMEL_TS_GPIO_IRQ);
+		goto free_ts_gpio;
+	}
+	return 0;
+
+free_ts_gpio:
+	gpio_free(ATMEL_TS_GPIO_IRQ);
+ts_gpio_tlmm_unconfig:
+	gpio_tlmm_config(GPIO_CFG(ATMEL_TS_GPIO_IRQ, 0,
+				GPIO_CFG_INPUT, GPIO_CFG_NO_PULL,
+				GPIO_CFG_2MA), GPIO_CFG_DISABLE);
+vreg_disable_s3:
+	vreg_disable(vreg_s3);
+vreg_put_s3:
+	vreg_put(vreg_s3);
+vreg_disable_l2:
+	vreg_disable(vreg_l2);
+vreg_put_l2:
+	vreg_put(vreg_l2);
+	return rc;
+}
+
+static u8 atmel_ts_read_chg(void)
+{
+	return gpio_get_value(ATMEL_TS_GPIO_IRQ);
+}
+
+static u8 atmel_ts_valid_interrupt(void)
+{
+	return !atmel_ts_read_chg();
+}
+
+static struct mxt_platform_data atmel_ts_pdata = {
+	.numtouch = 10,
+	.init_platform_hw = atmel_ts_platform_init,
+	.max_x = 506,
+	.max_y = 864,
+	.valid_interrupt = atmel_ts_valid_interrupt,
+	.read_chg = atmel_ts_read_chg,
+};
+
+static struct i2c_board_info atmel_ts_i2c_info[] __initdata = {
+	{
+		I2C_BOARD_INFO(ATMEL_TS_I2C_NAME, 0x4a),
+		.platform_data = &atmel_ts_pdata,
+		.irq = MSM_GPIO_TO_INT(ATMEL_TS_GPIO_IRQ),
+	},
+};
+
 #define KP_INDEX(row, col) ((row)*ARRAY_SIZE(kp_col_gpios) + (col))
 
 static unsigned int kp_row_gpios[] = {31, 32, 33, 34, 35};
@@ -2521,6 +2642,9 @@ static void __init msm7x2x_init(void)
 #if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
 	bt_power_init();
 #endif
+	i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
+		atmel_ts_i2c_info,
+		ARRAY_SIZE(atmel_ts_i2c_info));
 
 	i2c_register_board_info(MSM_GSBI0_QUP_I2C_BUS_ID,
 			i2c_camera_devices,
