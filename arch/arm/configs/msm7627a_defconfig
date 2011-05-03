@@ -609,6 +609,7 @@ CONFIG_BT_SCO=y
 # Bluetooth device drivers
 #
 # CONFIG_BT_HCISMD is not set
+# CONFIG_BT_HCIBTUSB is not set
 # CONFIG_BT_HCIBTSDIO is not set
 CONFIG_BT_HCIUART=y
 CONFIG_BT_HCIUART_H4=y
@@ -616,7 +617,10 @@ CONFIG_BT_HCIUART_BCSP=y
 # CONFIG_BT_HCIUART_ATH3K is not set
 # CONFIG_BT_HCIUART_LL is not set
 # CONFIG_BT_HCIUART_IBS is not set
+# CONFIG_BT_HCIBCM203X is not set
+# CONFIG_BT_HCIBPA10X is not set
 CONFIG_BT_MSM_SLEEP=y
+# CONFIG_BT_HCIBFUSB is not set
 # CONFIG_BT_HCIVHCI is not set
 # CONFIG_BT_MRVL is not set
 CONFIG_MSM_BT_POWER=y
@@ -743,6 +747,7 @@ CONFIG_ANDROID_PMEM=y
 # CONFIG_DS1682 is not set
 # CONFIG_UID_STAT is not set
 # CONFIG_BMP085 is not set
+# CONFIG_WL127X_RFKILL is not set
 # CONFIG_APANIC is not set
 # CONFIG_TSIF is not set
 # CONFIG_HAPTIC_ISA1200 is not set
@@ -760,6 +765,7 @@ CONFIG_ANDROID_PMEM=y
 #
 # Texas Instruments shared transport line discipline
 #
+# CONFIG_TI_ST is not set
 CONFIG_HAVE_IDE=y
 # CONFIG_IDE is not set
 
@@ -874,6 +880,7 @@ CONFIG_NETDEV_1000=y
 # CONFIG_USB_PEGASUS is not set
 # CONFIG_USB_RTL8150 is not set
 # CONFIG_USB_USBNET is not set
+# CONFIG_USB_HSO is not set
 # CONFIG_USB_IPHETH is not set
 # CONFIG_WAN is not set
 
@@ -1145,12 +1152,12 @@ CONFIG_MFD_SUPPORT=y
 # CONFIG_HTC_I2CPLD is not set
 # CONFIG_TPS65010 is not set
 # CONFIG_TPS6507X is not set
-# CONFIG_TWL4030_CORE is not set
-# CONFIG_MFD_STMPE is not set
-# CONFIG_MFD_TC3589X is not set
 CONFIG_MARIMBA_CORE=y
 # CONFIG_MARIMBA_CODEC is not set
 # CONFIG_TIMPANI_CODEC is not set
+# CONFIG_TWL4030_CORE is not set
+# CONFIG_MFD_STMPE is not set
+# CONFIG_MFD_TC3589X is not set
 # CONFIG_MFD_TMIO is not set
 # CONFIG_MFD_T7L66XB is not set
 # CONFIG_MFD_TC6387XB is not set
@@ -1392,6 +1399,7 @@ CONFIG_RADIO_ADAPTERS=y
 # CONFIG_RADIO_SAA7706H is not set
 # CONFIG_RADIO_TEF6862 is not set
 # CONFIG_RADIO_WL1273 is not set
+# CONFIG_RADIO_TAVARUA is not set
 # CONFIG_RADIO_IRIS is not set
 # CONFIG_RADIO_IRIS_TRANSPORT is not set
 
@@ -1843,6 +1851,7 @@ CONFIG_ANDROID_LOW_MEMORY_KILLER=y
 #
 # Texas Instruments shared transport line discipline
 #
+# CONFIG_ST_BT is not set
 # CONFIG_LIRC_STAGING is not set
 # CONFIG_SMB_FS is not set
 # CONFIG_EASYCAP is not set
@@ -2251,6 +2260,7 @@ CONFIG_ZLIB_DEFLATE=y
 # CONFIG_XZ_DEC is not set
 # CONFIG_XZ_DEC_BCJ is not set
 CONFIG_DECOMPRESS_GZIP=y
+CONFIG_GENERIC_ALLOCATOR=y
 CONFIG_HAS_IOMEM=y
 CONFIG_HAS_IOPORT=y
 CONFIG_HAS_DMA=y
