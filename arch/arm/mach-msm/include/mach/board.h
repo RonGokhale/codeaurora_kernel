@@ -296,6 +296,7 @@ struct mipi_dsi_platform_data {
 #ifdef CONFIG_FB_MSM_MDP303
 	int (*dsi_client_reset)(void);
 #endif
+	int target_type;
 };
 
 struct msm_fb_platform_data {

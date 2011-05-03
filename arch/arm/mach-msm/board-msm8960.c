@@ -504,9 +504,10 @@ static struct platform_device mipi_dsi_simulator_panel_device = {
 
 static void __init msm_fb_add_devices(void)
 {
-	if (machine_is_msm8x60_rumi3())
+	if (machine_is_msm8x60_rumi3()) {
 		msm_fb_register_device("mdp", NULL);
-	else
+		mipi_dsi_pdata.target_type = 1;
+	} else
 		msm_fb_register_device("mdp", &mdp_pdata);
 	msm_fb_register_device("mipi_dsi", &mipi_dsi_pdata);
 }
