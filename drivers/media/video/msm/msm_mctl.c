@@ -60,9 +60,11 @@ static struct msm_isp_color_fmt msm_isp_formats[] = {
 /* master controller instance counter
 static atomic_t mctl_instance = ATOMIC_INIT(0);
 */
+
 /*
  *  Videobuf operations
  */
+
 static void free_buffer(struct videobuf_queue *vq,
 			struct msm_frame_buffer *buf)
 {
@@ -242,6 +244,7 @@ static void msm_vidbuf_queue(struct videobuf_queue *vq,
 	vb->state = VIDEOBUF_QUEUED;
 	if (vq->streaming) {
 		struct msm_frame frame;
+		struct msm_vfe_cfg_cmd cfgcmd;
 		/* we are returning a buffer to the queue */
 		struct videobuf_contig_pmem *mem = vb->priv;
 		/* get the physcial address of the buffer */
@@ -252,15 +255,13 @@ static void msm_vidbuf_queue(struct videobuf_queue *vq,
 		frame.buffer = 0;
 		frame.y_off = mem->y_off;
 		frame.cbcr_off = mem->cbcr_off;
+
 		/* now release frame to vfe */
-		{
-			struct msm_vfe_cfg_cmd cfgcmd;
-			cfgcmd.cmd_type = CMD_FRAME_BUF_RELEASE;
-			cfgcmd.value	= (void *)&frame;
-			/* yyan: later change to mctl APIs*/
-			rc = pcam->mctl.sync.vfefn.vfe_config
-			(&cfgcmd, &phyaddr);
-		}
+		cfgcmd.cmd_type = CMD_FRAME_BUF_RELEASE;
+		cfgcmd.value    = (void *)&frame;
+		/* yyan: later change to mctl APIs*/
+		rc = msm_isp_subdev_ioctl(&pcam->mctl.isp_sdev->sd,
+			&cfgcmd, &phyaddr);
 	}
 }
 
@@ -308,6 +309,8 @@ static struct videobuf_queue_ops msm_vidbuf_ops = {
 	.buf_queue  = msm_vidbuf_queue,
 	.buf_release  = msm_vidbuf_release,
 };
+
+
 
 /* prepare a video buffer queue for a vl42 device*/
 static int msm_vidbuf_init(struct msm_cam_v4l2_device *pcam,
@@ -448,8 +451,9 @@ static int msm_mctl_notify(struct msm_cam_media_controller *p_mctl,
 	int rc = -EINVAL;
 	struct msm_ispif_params ispif_params;
 
-	/* if the CID changed, then reconfig the ISPIF*/
-	if (NOTIFY_CID_CHANGE == notification) {
+	switch (notification) {
+	case NOTIFY_CID_CHANGE:
+		/* reconfig the ISPIF*/
 		if (p_mctl->ispif_fns->ispif_config) {
 			ispif_params.intftype = PIX0;
 			ispif_params.cid_mask = 0x0001;
@@ -464,6 +468,15 @@ static int msm_mctl_notify(struct msm_cam_media_controller *p_mctl,
 				return rc;
 			msleep(20);
 		}
+		break;
+	case NOTIFY_VFE_MSG_EVT:
+		if (p_mctl->isp_sdev && p_mctl->isp_sdev->isp_notify) {
+			rc = p_mctl->isp_sdev->isp_notify(
+				&p_mctl->isp_sdev->sd, arg);
+		}
+		break;
+	default:
+		break;
 	}
 
 	return rc;
@@ -554,7 +567,8 @@ static int msm_mctl_open(struct msm_cam_media_controller *p_mctl,
 
 		/* ISP first*/
 		if (p_mctl->isp_sdev && p_mctl->isp_sdev->isp_open)
-			rc = p_mctl->isp_sdev->isp_open(sync);
+			rc = p_mctl->isp_sdev->isp_open(
+				&p_mctl->isp_sdev->sd, sync);
 
 		if (rc < 0) {
 			pr_err("%s: isp init failed: %d\n", __func__, rc);
@@ -581,8 +595,8 @@ msm_open_done:
 
 static int msm_mctl_release(struct msm_cam_media_controller *p_mctl)
 {
-	if (p_mctl->sync.vfefn.vfe_release)
-		p_mctl->sync.vfefn.vfe_release(p_mctl->sync.pdev);
+	if (p_mctl->isp_sdev && p_mctl->isp_sdev->isp_release)
+		p_mctl->isp_sdev->isp_release(&p_mctl->sync);
 
 	if (p_mctl->sync.sctrl.s_release)
 		p_mctl->sync.sctrl.s_release();
@@ -592,7 +606,7 @@ static int msm_mctl_release(struct msm_cam_media_controller *p_mctl)
 
 int msm_mctl_init_user_formats(struct msm_cam_v4l2_device *pcam)
 {
-	struct v4l2_subdev *sd = pcam->isp.sdev;
+	struct v4l2_subdev *sd = &pcam->sensor_sdev;
 	enum v4l2_mbus_pixelcode pxlcode;
 	int numfmt = 0;
 	int rc = 0;

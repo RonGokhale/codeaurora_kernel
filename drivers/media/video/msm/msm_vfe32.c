@@ -18,7 +18,10 @@
 #include <mach/irqs.h>
 #include <mach/camera.h>
 #include <mach/msm_reqs.h>
+#include <media/v4l2-device.h>
+#include <media/v4l2-subdev.h>
 
+#include "msm.h"
 #include "msm_vfe32.h"
 #include "msm_vpe1.h"
 
@@ -366,7 +369,7 @@ static void vfe32_proc_ops(enum VFE32_MESSAGE_ID id, void *msg, size_t len)
 {
 	struct msm_vfe_resp *rp;
 
-	rp = vfe32_ctrl->resp->vfe_alloc(sizeof(struct msm_vfe_resp),
+	rp = msm_isp_sync_alloc(sizeof(struct msm_vfe_resp),
 		vfe32_ctrl->syncdata, GFP_ATOMIC);
 	if (!rp) {
 		CDBG("rp: cannot allocate buffer\n");
@@ -473,8 +476,7 @@ static void vfe32_proc_ops(enum VFE32_MESSAGE_ID id, void *msg, size_t len)
 	/* save the frame id.*/
 	rp->evt_msg.frame_id = rp->phy.frame_id;
 
-	vfe32_ctrl->resp->vfe_resp(rp, MSM_CAM_Q_VFE_MSG, vfe32_ctrl->syncdata,
-		GFP_ATOMIC);
+	v4l2_subdev_notify(vfe32_ctrl->subdev, NOTIFY_VFE_MSG_EVT, rp);
 }
 
 static void vfe_send_outmsg(uint8_t msgid, uint32_t pyaddr,
@@ -507,11 +509,6 @@ static void vfe_send_outmsg(uint8_t msgid, uint32_t pyaddr,
 	msg._u.msgOut.cbcrBuffer  = pcbcraddr;
 	vfe32_proc_ops(msgid, &msg, sizeof(struct vfe_message));
 	return;
-}
-
-static int vfe32_enable(struct camera_enable_cmd *enable)
-{
-	return 0;
 }
 
 static void vfe32_stop(void)
@@ -572,14 +569,6 @@ static void vfe32_stop(void)
 	to the command register using the barrier */
 	msm_io_w_mb(VFE_RESET_UPON_STOP_CMD,
 		vfe32_ctrl->vfebase + VFE_GLOBAL_RESET);
-}
-
-static int vfe32_disable(struct camera_enable_cmd *enable,
-	struct platform_device *dev)
-{
-	msm_camio_set_perf_lvl(S_EXIT);
-	msm_camio_disable(dev);
-	return 0;
 }
 
 static int vfe32_config_axi(int mode, struct axidata *ad, uint32_t *ao)
@@ -1789,269 +1778,6 @@ static void vfe32_stats_cs_ack(struct vfe_cmd_stats_ack *pAck)
 }
 
 
-static int vfe32_config(struct msm_vfe_cfg_cmd *cmd, void *data)
-{
-	struct msm_vfe32_cmd vfecmd;
-
-	long rc = 0;
-	uint32_t i = 0;
-	struct vfe_cmd_stats_buf *scfg = NULL;
-	struct msm_pmem_region   *regptr = NULL;
-	struct vfe_cmd_stats_ack *sack = NULL;
-	if (cmd->cmd_type != CMD_FRAME_BUF_RELEASE &&
-		cmd->cmd_type != CMD_STATS_AEC_BUF_RELEASE &&
-		cmd->cmd_type != CMD_STATS_AWB_BUF_RELEASE &&
-		cmd->cmd_type != CMD_STATS_IHIST_BUF_RELEASE &&
-		cmd->cmd_type != CMD_STATS_RS_BUF_RELEASE &&
-		cmd->cmd_type != CMD_STATS_CS_BUF_RELEASE &&
-		cmd->cmd_type != CMD_STATS_AF_BUF_RELEASE) {
-		if (copy_from_user(&vfecmd,
-				(void __user *)(cmd->value),
-				sizeof(vfecmd))) {
-			pr_err("%s %d: copy_from_user failed\n", __func__,
-				__LINE__);
-			return -EFAULT;
-		}
-	} else {
-	/* here eith stats release or frame release. */
-		if (cmd->cmd_type != CMD_FRAME_BUF_RELEASE) {
-			/* then must be stats release. */
-			if (!data)
-				return -EFAULT;
-				sack = kmalloc(sizeof(struct vfe_cmd_stats_ack),
-				GFP_ATOMIC);
-				if (!sack)
-					return -ENOMEM;
-
-				sack->nextStatsBuf = *(uint32_t *)data;
-			}
-	}
-
-	CDBG("%s: cmdType = %d\n", __func__, cmd->cmd_type);
-
-	if ((cmd->cmd_type == CMD_STATS_AF_ENABLE)    ||
-		(cmd->cmd_type == CMD_STATS_AWB_ENABLE)   ||
-		(cmd->cmd_type == CMD_STATS_IHIST_ENABLE) ||
-		(cmd->cmd_type == CMD_STATS_RS_ENABLE)    ||
-		(cmd->cmd_type == CMD_STATS_CS_ENABLE)    ||
-		(cmd->cmd_type == CMD_STATS_AEC_ENABLE)) {
-		struct axidata *axid;
-		axid = data;
-		if (!axid) {
-			rc = -EFAULT;
-			goto vfe32_config_done;
-		}
-
-		scfg =
-			kmalloc(sizeof(struct vfe_cmd_stats_buf),
-				GFP_ATOMIC);
-		if (!scfg) {
-			rc = -ENOMEM;
-			goto vfe32_config_done;
-		}
-		regptr = axid->region;
-		if (axid->bufnum1 > 0) {
-			for (i = 0; i < axid->bufnum1; i++) {
-				scfg->statsBuf[i] =
-					(uint32_t)(regptr->paddr);
-				regptr++;
-			}
-		}
-		/* individual */
-		switch (cmd->cmd_type) {
-		case CMD_STATS_AEC_ENABLE:
-			rc = vfe_stats_aec_buf_init(scfg);
-			break;
-		case CMD_STATS_AF_ENABLE:
-			rc = vfe_stats_af_buf_init(scfg);
-			break;
-		case CMD_STATS_AWB_ENABLE:
-			rc = vfe_stats_awb_buf_init(scfg);
-			break;
-		case CMD_STATS_IHIST_ENABLE:
-			rc = vfe_stats_ihist_buf_init(scfg);
-			break;
-		case CMD_STATS_RS_ENABLE:
-			rc = vfe_stats_rs_buf_init(scfg);
-			break;
-		case CMD_STATS_CS_ENABLE:
-			rc = vfe_stats_cs_buf_init(scfg);
-			break;
-		}
-	}
-	switch (cmd->cmd_type) {
-	case CMD_GENERAL:
-		rc = vfe32_proc_general(&vfecmd);
-		break;
-	case CMD_FRAME_BUF_RELEASE: {
-		struct msm_frame *b;
-		unsigned long p;
-		struct vfe32_free_buf *fbuf = NULL;
-		if (!data) {
-			rc = -EFAULT;
-			break;
-		}
-
-		b = (struct msm_frame *)(cmd->value);
-		p = *(unsigned long *)data;
-
-		CDBG("CMD_FRAME_BUF_RELEASE b->path = %d\n", b->path);
-
-		if (b->path & OUTPUT_TYPE_P) {
-			CDBG("CMD_FRAME_BUF_RELEASE got free buffer\n");
-			fbuf = &vfe32_ctrl->outpath.out0.free_buf;
-		} else if (b->path & OUTPUT_TYPE_S) {
-			fbuf = &vfe32_ctrl->outpath.out1.free_buf;
-		} else if (b->path & OUTPUT_TYPE_V) {
-			fbuf = &vfe32_ctrl->outpath.out2.free_buf;
-		} else {
-			rc = -EFAULT;
-			break;
-		}
-
-		fbuf->paddr = p;
-		fbuf->y_off = b->y_off;
-		fbuf->cbcr_off = b->cbcr_off;
-		fbuf->available = 1;
-	}
-		break;
-
-	case CMD_SNAP_BUF_RELEASE:
-		break;
-	case CMD_STATS_AEC_BUF_RELEASE:
-		vfe32_stats_aec_ack(sack);
-		break;
-	case CMD_STATS_AF_BUF_RELEASE:
-		vfe32_stats_af_ack(sack);
-		break;
-	case CMD_STATS_AWB_BUF_RELEASE:
-		vfe32_stats_awb_ack(sack);
-		break;
-
-	case CMD_STATS_IHIST_BUF_RELEASE:
-		vfe32_stats_ihist_ack(sack);
-		break;
-	case CMD_STATS_RS_BUF_RELEASE:
-		vfe32_stats_rs_ack(sack);
-		break;
-	case CMD_STATS_CS_BUF_RELEASE:
-		vfe32_stats_cs_ack(sack);
-		break;
-
-	case CMD_AXI_CFG_PREVIEW: {
-		struct axidata *axid;
-		uint32_t *axio = NULL;
-		axid = data;
-		if (!axid) {
-			rc = -EFAULT;
-			break;
-		}
-		axio =
-			kmalloc(vfe32_cmd[V32_AXI_OUT_CFG].length,
-				GFP_ATOMIC);
-		if (!axio) {
-			rc = -ENOMEM;
-			break;
-		}
-
-		if (copy_from_user(axio, (void __user *)(vfecmd.value),
-				vfe32_cmd[V32_AXI_OUT_CFG].length)) {
-			kfree(axio);
-			rc = -EFAULT;
-			break;
-		}
-		vfe32_config_axi(OUTPUT_2, axid, axio);
-		kfree(axio);
-	}
-		break;
-
-	case CMD_RAW_PICT_AXI_CFG: {
-		struct axidata *axid;
-		uint32_t *axio = NULL;
-		axid = data;
-		if (!axid) {
-			rc = -EFAULT;
-			break;
-		}
-		axio = kmalloc(vfe32_cmd[V32_AXI_OUT_CFG].length,
-				GFP_ATOMIC);
-		if (!axio) {
-			rc = -ENOMEM;
-			break;
-		}
-
-		if (copy_from_user(axio, (void __user *)(vfecmd.value),
-				vfe32_cmd[V32_AXI_OUT_CFG].length)) {
-			kfree(axio);
-			rc = -EFAULT;
-			break;
-		}
-		vfe32_config_axi(CAMIF_TO_AXI_VIA_OUTPUT_2, axid, axio);
-		kfree(axio);
-	}
-		break;
-
-	case CMD_AXI_CFG_SNAP: {
-		struct axidata *axid;
-		uint32_t *axio = NULL;
-		axid = data;
-		if (!axid)
-			return -EFAULT;
-		axio =
-			kmalloc(vfe32_cmd[V32_AXI_OUT_CFG].length,
-				GFP_ATOMIC);
-		if (!axio) {
-			rc = -ENOMEM;
-			break;
-		}
-
-		if (copy_from_user(axio, (void __user *)(vfecmd.value),
-				vfe32_cmd[V32_AXI_OUT_CFG].length)) {
-			kfree(axio);
-			rc = -EFAULT;
-			break;
-		}
-		vfe32_config_axi(OUTPUT_1_AND_2, axid, axio);
-		kfree(axio);
-	}
-		break;
-
-	case CMD_AXI_CFG_VIDEO: {
-		struct axidata *axid;
-		uint32_t *axio = NULL;
-		axid = data;
-		if (!axid) {
-			rc = -EFAULT;
-			break;
-		}
-
-		axio = kmalloc(vfe32_cmd[V32_AXI_OUT_CFG].length,
-				GFP_ATOMIC);
-		if (!axio) {
-			rc = -ENOMEM;
-			break;
-		}
-
-		if (copy_from_user(axio, (void __user *)(vfecmd.value),
-				vfe32_cmd[V32_AXI_OUT_CFG].length)) {
-			kfree(axio);
-			rc = -EFAULT;
-			break;
-		}
-		vfe32_config_axi(OUTPUT_1_AND_3, axid, axio);
-		kfree(axio);
-	}
-		break;
-	default:
-		break;
-	}
-vfe32_config_done:
-	kfree(scfg);
-	kfree(sack);
-	CDBG("%s done: rc = %d\n", __func__, (int) rc);
-	return rc;
-}
-
 static inline void vfe32_read_irq_status(struct vfe32_irq_status *out)
 {
 	uint32_t *temp;
@@ -2989,34 +2715,7 @@ static irqreturn_t vfe32_parse_irq(int irq_num, void *data)
 	return IRQ_HANDLED;
 }
 
-static void vfe32_release(struct platform_device *pdev)
-{
-	struct resource	*vfemem, *vfeio;
-
-	CDBG("%s, free_irq\n", __func__);
-	free_irq(vfe32_ctrl->vfeirq, 0);
-	tasklet_kill(&vfe32_tasklet);
-
-	if (atomic_read(&irq_cnt))
-		pr_warning("%s, Warning IRQ Count not ZERO\n", __func__);
-
-	vfemem = vfe32_ctrl->vfemem;
-	vfeio  = vfe32_ctrl->vfeio;
-
-	kfree(vfe32_ctrl->extdata);
-	iounmap(vfe32_ctrl->vfebase);
-	kfree(vfe32_ctrl);
-	vfe32_ctrl = NULL;
-	release_mem_region(vfemem->start, (vfemem->end - vfemem->start) + 1);
-	CDBG("%s, msm_camio_disable\n", __func__);
-	msm_camio_disable(pdev);
-	msm_camio_set_perf_lvl(S_EXIT);
-
-	vfe_syncdata = NULL;
-}
-
-static int vfe32_resource_init(struct msm_vfe_callback *presp,
-	struct platform_device *pdev, void *sdata)
+static int vfe32_resource_init(struct platform_device *pdev, void *sdata)
 {
 	struct resource	*vfemem, *vfeirq, *vfeio;
 	int rc;
@@ -3061,13 +2760,6 @@ static int vfe32_resource_init(struct msm_vfe_callback *presp,
 		goto cmd_init_failed2;
 	}
 
-	if (presp && presp->vfe_resp)
-		vfe32_ctrl->resp = presp;
-	else {
-		rc = -EINVAL;
-		goto cmd_init_failed3;
-	}
-
 	vfe32_ctrl->extdata =
 		kmalloc(sizeof(struct vfe32_frame_extra), GFP_KERNEL);
 	if (!vfe32_ctrl->extdata) {
@@ -3103,18 +2795,302 @@ cmd_init_failed1:
 	return rc;
 }
 
-static int vfe32_init(struct msm_vfe_callback *presp,
+static long msm_vfe_subdev_ioctl(struct v4l2_subdev *sd,
+			unsigned int subdev_cmd, void *arg)
+{
+	struct msm_vfe32_cmd vfecmd;
+	struct msm_camvfe_params *vfe_params =
+		(struct msm_camvfe_params *)arg;
+	struct msm_vfe_cfg_cmd *cmd = vfe_params->vfe_cfg;
+	void *data = vfe_params->data;
+
+	long rc = 0;
+	uint32_t i = 0;
+	struct vfe_cmd_stats_buf *scfg = NULL;
+	struct msm_pmem_region   *regptr = NULL;
+	struct vfe_cmd_stats_ack *sack = NULL;
+	if (cmd->cmd_type != CMD_FRAME_BUF_RELEASE &&
+		cmd->cmd_type != CMD_STATS_AEC_BUF_RELEASE &&
+		cmd->cmd_type != CMD_STATS_AWB_BUF_RELEASE &&
+		cmd->cmd_type != CMD_STATS_IHIST_BUF_RELEASE &&
+		cmd->cmd_type != CMD_STATS_RS_BUF_RELEASE &&
+		cmd->cmd_type != CMD_STATS_CS_BUF_RELEASE &&
+		cmd->cmd_type != CMD_STATS_AF_BUF_RELEASE) {
+		if (copy_from_user(&vfecmd,
+				(void __user *)(cmd->value),
+				sizeof(vfecmd))) {
+			pr_err("%s %d: copy_from_user failed\n", __func__,
+				__LINE__);
+			return -EFAULT;
+		}
+	} else {
+	/* here eith stats release or frame release. */
+		if (cmd->cmd_type != CMD_FRAME_BUF_RELEASE) {
+			/* then must be stats release. */
+			if (!data)
+				return -EFAULT;
+			sack = kmalloc(sizeof(struct vfe_cmd_stats_ack),
+							GFP_ATOMIC);
+			if (!sack)
+				return -ENOMEM;
+
+			sack->nextStatsBuf = *(uint32_t *)data;
+		}
+	}
+
+	CDBG("%s: cmdType = %d\n", __func__, cmd->cmd_type);
+
+	if ((cmd->cmd_type == CMD_STATS_AF_ENABLE)    ||
+		(cmd->cmd_type == CMD_STATS_AWB_ENABLE)   ||
+		(cmd->cmd_type == CMD_STATS_IHIST_ENABLE) ||
+		(cmd->cmd_type == CMD_STATS_RS_ENABLE)    ||
+		(cmd->cmd_type == CMD_STATS_CS_ENABLE)    ||
+		(cmd->cmd_type == CMD_STATS_AEC_ENABLE)) {
+		struct axidata *axid;
+		axid = data;
+		if (!axid) {
+			rc = -EFAULT;
+			goto vfe32_config_done;
+		}
+
+		scfg =
+			kmalloc(sizeof(struct vfe_cmd_stats_buf),
+				GFP_ATOMIC);
+		if (!scfg) {
+			rc = -ENOMEM;
+			goto vfe32_config_done;
+		}
+		regptr = axid->region;
+		if (axid->bufnum1 > 0) {
+			for (i = 0; i < axid->bufnum1; i++) {
+				scfg->statsBuf[i] =
+					(uint32_t)(regptr->paddr);
+				regptr++;
+			}
+		}
+		/* individual */
+		switch (cmd->cmd_type) {
+		case CMD_STATS_AEC_ENABLE:
+			rc = vfe_stats_aec_buf_init(scfg);
+			break;
+		case CMD_STATS_AF_ENABLE:
+			rc = vfe_stats_af_buf_init(scfg);
+			break;
+		case CMD_STATS_AWB_ENABLE:
+			rc = vfe_stats_awb_buf_init(scfg);
+			break;
+		case CMD_STATS_IHIST_ENABLE:
+			rc = vfe_stats_ihist_buf_init(scfg);
+			break;
+		case CMD_STATS_RS_ENABLE:
+			rc = vfe_stats_rs_buf_init(scfg);
+			break;
+		case CMD_STATS_CS_ENABLE:
+			rc = vfe_stats_cs_buf_init(scfg);
+			break;
+		}
+	}
+	switch (cmd->cmd_type) {
+	case CMD_GENERAL:
+		rc = vfe32_proc_general(&vfecmd);
+		break;
+	case CMD_FRAME_BUF_RELEASE: {
+		struct msm_frame *b;
+		unsigned long p;
+		struct vfe32_free_buf *fbuf = NULL;
+		if (!data) {
+			rc = -EFAULT;
+			break;
+		}
+
+		b = (struct msm_frame *)(cmd->value);
+		p = *(unsigned long *)data;
+
+		CDBG("CMD_FRAME_BUF_RELEASE b->path = %d\n", b->path);
+
+		if (b->path & OUTPUT_TYPE_P) {
+			CDBG("CMD_FRAME_BUF_RELEASE got free buffer\n");
+			fbuf = &vfe32_ctrl->outpath.out0.free_buf;
+		} else if (b->path & OUTPUT_TYPE_S) {
+			fbuf = &vfe32_ctrl->outpath.out1.free_buf;
+		} else if (b->path & OUTPUT_TYPE_V) {
+			fbuf = &vfe32_ctrl->outpath.out2.free_buf;
+		} else {
+			rc = -EFAULT;
+			break;
+		}
+
+		fbuf->paddr = p;
+		fbuf->y_off = b->y_off;
+		fbuf->cbcr_off = b->cbcr_off;
+		fbuf->available = 1;
+	}
+		break;
+
+	case CMD_SNAP_BUF_RELEASE:
+		break;
+	case CMD_STATS_AEC_BUF_RELEASE:
+		vfe32_stats_aec_ack(sack);
+		break;
+	case CMD_STATS_AF_BUF_RELEASE:
+		vfe32_stats_af_ack(sack);
+		break;
+	case CMD_STATS_AWB_BUF_RELEASE:
+		vfe32_stats_awb_ack(sack);
+		break;
+
+	case CMD_STATS_IHIST_BUF_RELEASE:
+		vfe32_stats_ihist_ack(sack);
+		break;
+	case CMD_STATS_RS_BUF_RELEASE:
+		vfe32_stats_rs_ack(sack);
+		break;
+	case CMD_STATS_CS_BUF_RELEASE:
+		vfe32_stats_cs_ack(sack);
+		break;
+
+	case CMD_AXI_CFG_PREVIEW: {
+		struct axidata *axid;
+		uint32_t *axio = NULL;
+		axid = data;
+		if (!axid) {
+			rc = -EFAULT;
+			break;
+		}
+		axio =
+			kmalloc(vfe32_cmd[V32_AXI_OUT_CFG].length,
+				GFP_ATOMIC);
+		if (!axio) {
+			rc = -ENOMEM;
+			break;
+		}
+
+		if (copy_from_user(axio, (void __user *)(vfecmd.value),
+				vfe32_cmd[V32_AXI_OUT_CFG].length)) {
+			kfree(axio);
+			rc = -EFAULT;
+			break;
+		}
+		vfe32_config_axi(OUTPUT_2, axid, axio);
+		kfree(axio);
+	}
+		break;
+
+	case CMD_RAW_PICT_AXI_CFG: {
+		struct axidata *axid;
+		uint32_t *axio = NULL;
+		axid = data;
+		if (!axid) {
+			rc = -EFAULT;
+			break;
+		}
+		axio = kmalloc(vfe32_cmd[V32_AXI_OUT_CFG].length,
+				GFP_ATOMIC);
+		if (!axio) {
+			rc = -ENOMEM;
+			break;
+		}
+
+		if (copy_from_user(axio, (void __user *)(vfecmd.value),
+				vfe32_cmd[V32_AXI_OUT_CFG].length)) {
+			kfree(axio);
+			rc = -EFAULT;
+			break;
+		}
+		vfe32_config_axi(CAMIF_TO_AXI_VIA_OUTPUT_2, axid, axio);
+		kfree(axio);
+	}
+		break;
+
+	case CMD_AXI_CFG_SNAP: {
+		struct axidata *axid;
+		uint32_t *axio = NULL;
+		axid = data;
+		if (!axid)
+			return -EFAULT;
+		axio =
+			kmalloc(vfe32_cmd[V32_AXI_OUT_CFG].length,
+				GFP_ATOMIC);
+		if (!axio) {
+			rc = -ENOMEM;
+			break;
+		}
+
+		if (copy_from_user(axio, (void __user *)(vfecmd.value),
+				vfe32_cmd[V32_AXI_OUT_CFG].length)) {
+			kfree(axio);
+			rc = -EFAULT;
+			break;
+		}
+		vfe32_config_axi(OUTPUT_1_AND_2, axid, axio);
+		kfree(axio);
+	}
+		break;
+
+	case CMD_AXI_CFG_VIDEO: {
+		struct axidata *axid;
+		uint32_t *axio = NULL;
+		axid = data;
+		if (!axid) {
+			rc = -EFAULT;
+			break;
+		}
+
+		axio = kmalloc(vfe32_cmd[V32_AXI_OUT_CFG].length,
+				GFP_ATOMIC);
+		if (!axio) {
+			rc = -ENOMEM;
+			break;
+		}
+
+		if (copy_from_user(axio, (void __user *)(vfecmd.value),
+				vfe32_cmd[V32_AXI_OUT_CFG].length)) {
+			kfree(axio);
+			rc = -EFAULT;
+			break;
+		}
+		vfe32_config_axi(OUTPUT_1_AND_3, axid, axio);
+		kfree(axio);
+	}
+		break;
+	default:
+		break;
+	}
+vfe32_config_done:
+	kfree(scfg);
+	kfree(sack);
+	CDBG("%s done: rc = %d\n", __func__, (int) rc);
+	return rc;
+}
+
+static const struct v4l2_subdev_core_ops msm_vfe_subdev_core_ops = {
+	.ioctl = msm_vfe_subdev_ioctl,
+};
+
+static const struct v4l2_subdev_ops msm_vfe_subdev_ops = {
+	.core = &msm_vfe_subdev_core_ops,
+};
+
+int msm_vfe_subdev_init(struct v4l2_subdev *sd, void *data,
 	struct platform_device *pdev)
 {
 	int rc = 0;
 	struct msm_camera_sensor_info *sinfo = pdev->dev.platform_data;
 	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
 
+	v4l2_subdev_init(sd, &msm_vfe_subdev_ops);
+	v4l2_set_subdev_hostdata(sd, data);
+	snprintf(sd->name, sizeof(sd->name), "vfe3.2");
+
+	vfe_syncdata = data;
+
 	camio_clk = camdev->ioclk;
 
-	rc = vfe32_resource_init(presp, pdev, vfe_syncdata);
+	rc = vfe32_resource_init(pdev, vfe_syncdata);
 	if (rc < 0)
 		return rc;
+
+	vfe32_ctrl->subdev = sd;
 	/* Bring up all the required GPIOs and Clocks */
 	rc = msm_camio_enable(pdev);
 	msm_camio_set_perf_lvl(S_INIT);
@@ -3127,15 +3103,30 @@ static int vfe32_init(struct msm_vfe_callback *presp,
 	return rc;
 }
 
-void msm_camvfe_fn_init(struct msm_camvfe_fn *fptr, void *data)
+void msm_vfe_subdev_release(struct platform_device *pdev)
 {
-	fptr->vfe_init    = vfe32_init;
-	fptr->vfe_enable  = vfe32_enable;
-	fptr->vfe_config  = vfe32_config;
-	fptr->vfe_disable = vfe32_disable;
-	fptr->vfe_release = vfe32_release;
-	fptr->vfe_stop = vfe32_stop;
-	vfe_syncdata = data;
+	struct resource	*vfemem, *vfeio;
+
+	CDBG("%s, free_irq\n", __func__);
+	free_irq(vfe32_ctrl->vfeirq, 0);
+	tasklet_kill(&vfe32_tasklet);
+
+	if (atomic_read(&irq_cnt))
+		pr_warning("%s, Warning IRQ Count not ZERO\n", __func__);
+
+	vfemem = vfe32_ctrl->vfemem;
+	vfeio  = vfe32_ctrl->vfeio;
+
+	kfree(vfe32_ctrl->extdata);
+	iounmap(vfe32_ctrl->vfebase);
+	kfree(vfe32_ctrl);
+	vfe32_ctrl = NULL;
+	release_mem_region(vfemem->start, (vfemem->end - vfemem->start) + 1);
+	CDBG("%s, msm_camio_disable\n", __func__);
+	msm_camio_disable(pdev);
+	msm_camio_set_perf_lvl(S_EXIT);
+
+	vfe_syncdata = NULL;
 }
 
 void msm_camvpe_fn_init(struct msm_camvpe_fn *fptr, void *data)

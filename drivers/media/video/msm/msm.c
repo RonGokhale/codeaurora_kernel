@@ -913,6 +913,7 @@ static int msm_cam_server_open_session(struct msm_cam_server_dev *ps,
 	pcam->mctl.isp_sdev = ps->isp_subdev[0];
 	pcam->mctl.ispif_fns = &ps->ispif_fns;
 
+
 	/*yyan: 8960 bring up - no VPE and flash; populate later*/
 	pcam->mctl.vpe_sdev = NULL;
 	pcam->mctl.flash_sdev = NULL;
@@ -932,6 +933,8 @@ static int msm_cam_server_close_session(struct msm_cam_server_dev *ps,
 		D("%s NULL pointer passed in!\n", __func__);
 		return rc;
 	}
+
+
 	atomic_dec(&ps->number_pcam_active);
 	ps->pcam_active = NULL;
 
@@ -962,6 +965,12 @@ static int msm_open(struct file *f)
 
 
 	rc = msm_cam_server_open_session(&g_server_dev, pcam);
+	if (rc < 0) {
+		pr_err("%s: cam_server_open_session failed %d\n",
+			__func__, rc);
+		mutex_unlock(&pcam->vid_lock);
+		return rc;
+	}
 
 	/* Should be set to sensor ops if any but right now its OK!! */
 	if (!pcam->mctl.mctl_open) {
@@ -979,6 +988,17 @@ static int msm_open(struct file *f)
 		D("%s: HW open failed rc = 0x%x\n",  __func__, rc);
 		return rc;
 	}
+
+	/* Register isp subdev */
+	rc = v4l2_device_register_subdev(&pcam->v4l2_dev,
+				&pcam->mctl.isp_sdev->sd);
+	if (rc < 0) {
+		mutex_unlock(&pcam->vid_lock);
+		D("%s: v4l2_device_register_subdev failed rc = %d\n",
+			__func__, rc);
+		return rc;
+	}
+
 	pcam->mctl.sync.pcam_sync = pcam;
 	rc = pcam->mctl.mctl_vidbuf_init(pcam, &pcam->vid_bufq);
 	if (rc < 0) {
@@ -1044,6 +1064,7 @@ static int msm_close(struct file *f)
 		return -EINVAL;
 	}
 
+
 	mutex_lock(&pcam->vid_lock);
 	pcam->use_count--;
 	mutex_unlock(&pcam->vid_lock);
@@ -1072,6 +1093,8 @@ static int msm_close(struct file *f)
 	/* Now we really have to release the camera */
 	D("%s: call mctl_open\n", __func__);
 	rc = pcam->mctl.mctl_release(&(pcam->mctl));
+
+	v4l2_device_unregister_subdev(&pcam->mctl.isp_sdev->sd);
 
 	rc = msm_cam_server_close_session(&g_server_dev, pcam);
 	rc = msm_send_close_server();
@@ -1802,8 +1825,6 @@ int msm_sensor_register(struct platform_device *pdev,
 	(pcam->sync)->pcam_sync = pcam;
 	/* bind the driver device to the sensor device */
 	pcam->pdev = pdev;
-	/* get the sensor subdevice */
-	pcam->isp.sdev = sdev;
 	pcam->sctrl = sctrl;
 
 	/* init the user count and lock*/
@@ -1846,7 +1867,6 @@ failure:
 	/* mutex_destroy not needed at this moment as the associated
 	implemenation of mutex_init is not consuming resources */
 	msm_sync_destroy(pcam->sync);
-	pcam->isp.sdev = NULL;
 	pcam->pdev = NULL;
 	kzfree(pcam->sync);
 	kzfree(pcam);
@@ -1906,4 +1926,10 @@ static int __init msm_camera_init(void)
 	return rc;
 }
 
+static void __exit msm_camera_exit(void)
+{
+	msm_isp_unregister(&g_server_dev);
+}
+
 module_init(msm_camera_init);
+module_exit(msm_camera_exit);

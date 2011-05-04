@@ -1027,7 +1027,6 @@ struct vfe32_ctrl_type {
 	spinlock_t  awb_ack_lock;
 	spinlock_t  af_ack_lock;
 
-	struct msm_vfe_callback *resp;
 	uint32_t extlen;
 	void *extdata;
 
@@ -1067,6 +1066,9 @@ struct vfe32_ctrl_type {
 	struct vfe_stats_control ihistStatsControl;
 	struct vfe_stats_control rsStatsControl;
 	struct vfe_stats_control csStatsControl;
+
+	/* v4l2 subdev */
+	struct v4l2_subdev *subdev;
 };
 
 #define statsAeNum      0

@@ -253,13 +253,19 @@ struct msm_vfe_callback {
 };
 
 struct msm_camvfe_fn {
-	int (*vfe_init)(struct msm_vfe_callback *, struct platform_device *);
+	int (*vfe_init)(struct msm_vfe_callback *,
+			struct platform_device *);
 	int (*vfe_enable)(struct camera_enable_cmd *);
 	int (*vfe_config)(struct msm_vfe_cfg_cmd *, void *);
 	int (*vfe_disable)(struct camera_enable_cmd *,
-		struct platform_device *dev);
+			struct platform_device *dev);
 	void (*vfe_release)(struct platform_device *);
 	void (*vfe_stop)(void);
+};
+
+struct msm_camvfe_params {
+	struct msm_vfe_cfg_cmd *vfe_cfg;
+	void *data;
 };
 
 struct msm_camvpe_fn {
@@ -592,4 +598,9 @@ u32 msm_io_r_mb(void __iomem *addr);
 void msm_io_dump(void __iomem *addr, int size);
 void msm_io_memcpy(void __iomem *dest_addr, void __iomem *src_addr, u32 len);
 void msm_camio_set_perf_lvl(enum msm_bus_perf_setting);
+
+void *msm_isp_sync_alloc(int size,
+	void *syncdata __attribute__((unused)), gfp_t gfp);
+
+void msm_isp_sync_free(void *ptr);
 #endif
