@@ -1056,6 +1056,9 @@ static struct platform_device *rumi3_devices[] __initdata = {
 #endif
 };
 
+static struct platform_device *cdp_devices[] __initdata = {
+};
+
 static void __init msm8960_i2c_init(void)
 {
 	msm8960_device_qup_i2c_gsbi4.dev.platform_data =
@@ -1440,6 +1443,15 @@ static void __init msm8960_rumi3_init(void)
 #endif
 }
 
+static void __init msm8960_cdp_init(void)
+{
+	if (socinfo_init() < 0)
+		pr_err("socinfo_init() failed!\n");
+
+	msm_clock_init(msm_clocks_8960_dummy, msm_num_clocks_8960_dummy);
+	platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
+}
+
 MACHINE_START(MSM8960_SIM, "QCT MSM8960 SIMULATOR")
 	.map_io = msm8960_map_io,
 	.reserve = msm8960_reserve,
@@ -1455,5 +1467,13 @@ MACHINE_START(MSM8960_RUMI3, "QCT MSM8960 RUMI3")
 	.init_irq = msm8960_init_irq,
 	.timer = &msm_timer,
 	.init_machine = msm8960_rumi3_init,
+	.init_early = msm8960_allocate_memory_regions,
+MACHINE_END
+
+MACHINE_START(MSM8960_CDP, "QCT MSM8960 CDP")
+	.map_io = msm8960_map_io,
+	.init_irq = msm8960_init_irq,
+	.timer = &msm_timer,
+	.init_machine = msm8960_cdp_init,
 	.init_early = msm8960_allocate_memory_regions,
 MACHINE_END
