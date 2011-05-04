@@ -73,9 +73,13 @@
 #define KGSL_PAGETABLE_ENTRIES(_sz) (((_sz) >> PAGE_SHIFT) + \
 				     KGSL_PT_EXTRA_ENTRIES)
 
+#ifdef CONFIG_MSM_KGSL_MMU
 #define KGSL_PAGETABLE_SIZE \
 ALIGN(KGSL_PAGETABLE_ENTRIES(CONFIG_MSM_KGSL_PAGE_TABLE_SIZE) * \
 KGSL_PAGETABLE_ENTRY_SIZE, PAGE_SIZE)
+#else
+#define KGSL_PAGETABLE_SIZE 0
+#endif
 
 #ifdef CONFIG_KGSL_PER_PROCESS_PAGE_TABLE
 #define KGSL_PAGETABLE_COUNT (CONFIG_MSM_KGSL_PAGE_TABLE_COUNT)
@@ -137,8 +141,13 @@ struct kgsl_driver {
 
 extern struct kgsl_driver kgsl_driver;
 
+#define KGSL_VMALLOC_MEMORY 0
+#define KGSL_EXTERNAL_MEMORY 1
+
 struct kgsl_mem_entry {
+	struct kref refcount;
 	struct kgsl_memdesc memdesc;
+	int memtype;
 	struct file *file_ptr;
 	struct list_head list;
 	uint32_t free_timestamp;
@@ -153,7 +162,7 @@ struct kgsl_mem_entry {
 #define MMU_CONFIG 1
 #endif
 
-void kgsl_destroy_mem_entry(struct kgsl_mem_entry *entry);
+void kgsl_mem_entry_destroy(struct kref *kref);
 uint8_t *kgsl_gpuaddr_to_vaddr(const struct kgsl_memdesc *memdesc,
 	unsigned int gpuaddr, unsigned int *size);
 struct kgsl_mem_entry *kgsl_sharedmem_find_region(
@@ -194,10 +203,6 @@ static inline void kgsl_regwrite_isr(struct kgsl_device *device,
 
 int kgsl_check_timestamp(struct kgsl_device *device, unsigned int timestamp);
 
-int kgsl_setup_pt(struct kgsl_pagetable *);
-
-int kgsl_cleanup_pt(struct kgsl_pagetable *);
-
 int kgsl_register_ts_notifier(struct kgsl_device *device,
 			      struct notifier_block *nb);
 
@@ -208,10 +213,6 @@ int kgsl_device_platform_probe(struct kgsl_device *device,
 		irqreturn_t (*dev_isr) (int, void*));
 void kgsl_device_platform_remove(struct kgsl_device *device);
 
-int kgsl_suspend(struct device *dev);
-int kgsl_resume(struct device *dev);
-int kgsl_runtime_suspend(struct device *dev);
-int kgsl_runtime_resume(struct device *dev);
 extern const struct dev_pm_ops kgsl_pm_ops;
 
 int kgsl_suspend_driver(struct platform_device *pdev, pm_message_t state);
@@ -258,6 +259,18 @@ static inline bool timestamp_cmp(unsigned int new, unsigned int old)
 {
 	int ts_diff = new - old;
 	return (ts_diff >= 0) || (ts_diff < -20000);
+}
+
+static inline void
+kgsl_mem_entry_get(struct kgsl_mem_entry *entry)
+{
+	kref_get(&entry->refcount);
+}
+
+static inline void
+kgsl_mem_entry_put(struct kgsl_mem_entry *entry)
+{
+	kref_put(&entry->refcount, kgsl_mem_entry_destroy);
 }
 
 #endif /* _GSL_DRIVER_H */
