@@ -130,7 +130,8 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 	if (hcd->self.root_hub->do_remote_wakeup) {
 		port = HCS_N_PORTS(ehci->hcs_params);
 		while (port--) {
-			if (ehci->reset_done[port] != 0) {
+			if ((ehci->reset_done[port] != 0) &&
+			    time_before(jiffies, ehci->reset_done[port])) {
 				spin_unlock_irq(&ehci->lock);
 				ehci_dbg(ehci, "suspend failed because "
 						"port %d is resuming\n",
