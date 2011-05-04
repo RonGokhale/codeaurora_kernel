@@ -11,14 +11,8 @@
  *
  */
 #include <linux/interrupt.h>
-#include <linux/err.h>
-#include <linux/kernel.h>
-#include <mach/clk.h>
-#include <mach/dal_axi.h>
-#include <mach/msm_bus.h>
 
 #include "kgsl.h"
-#include "kgsl_log.h"
 
 static int kgsl_pwrctrl_gpuclk_store(struct device *dev,
 				     struct device_attribute *attr,

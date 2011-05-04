@@ -26,38 +26,49 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifndef _KGSL_G12_H
-#define _KGSL_G12_H
+#ifndef __ADRENO_H
+#define __ADRENO_H
 
-#define IDX_2D(X) ((X)-KGSL_DEVICE_2D0)
+#include "adreno_drawctxt.h"
+#include "adreno_ringbuffer.h"
 
-#define DEVICE_2D_NAME "kgsl-2d"
-#define DEVICE_2D0_NAME "kgsl-2d0"
-#define DEVICE_2D1_NAME "kgsl-2d1"
+#define DEVICE_3D_NAME "kgsl-3d"
+#define DEVICE_3D0_NAME "kgsl-3d0"
 
-struct kgsl_g12_ringbuffer {
-	unsigned int prevctx;
-	struct kgsl_memdesc      cmdbufdesc;
-};
+/* Flags to control command packet settings */
+#define KGSL_CMD_FLAGS_PMODE		0x00000001
+#define KGSL_CMD_FLAGS_NO_TS_CMP	0x00000002
+#define KGSL_CMD_FLAGS_NOT_KERNEL_CMD	0x00000004
 
-struct kgsl_g12_device {
+/* Command identifiers */
+#define KGSL_CONTEXT_TO_MEM_IDENTIFIER	0xDEADBEEF
+#define KGSL_CMD_IDENTIFIER		0xFEEDFACE
+
+struct kgsl_yamato_device {
 	struct kgsl_device dev;    /* Must be first field in this struct */
-	int current_timestamp;
-	int timestamp;
-	struct kgsl_g12_ringbuffer ringbuffer;
-	spinlock_t cmdwin_lock;
+	struct kgsl_memregion gmemspace;
+	struct kgsl_yamato_context *drawctxt_active;
+	wait_queue_head_t ib1_wq;
+	unsigned int *pfp_fw;
+	size_t pfp_fw_size;
+	unsigned int *pm4_fw;
+	size_t pm4_fw_size;
+	struct kgsl_ringbuffer ringbuffer;
 };
 
-irqreturn_t kgsl_g12_isr(int irq, void *data);
-int kgsl_g12_setstate(struct kgsl_device *device, uint32_t flags);
-int kgsl_g12_idle(struct kgsl_device *device, unsigned int timeout);
-void kgsl_g12_regread(struct kgsl_device *device, unsigned int offsetwords,
+int kgsl_yamato_idle(struct kgsl_device *device, unsigned int timeout);
+void kgsl_yamato_regread(struct kgsl_device *device, unsigned int offsetwords,
 				unsigned int *value);
-void kgsl_g12_regwrite(struct kgsl_device *device, unsigned int offsetwords,
-			unsigned int value);
-void kgsl_g12_regread_isr(struct kgsl_device *device, unsigned int offsetwords,
-				unsigned int *value);
-void kgsl_g12_regwrite_isr(struct kgsl_device *device, unsigned int offsetwords,
-			unsigned int value);
+void kgsl_yamato_regwrite(struct kgsl_device *device, unsigned int offsetwords,
+				unsigned int value);
+void kgsl_yamato_regread_isr(struct kgsl_device *device,
+			     unsigned int offsetwords,
+			     unsigned int *value);
+void kgsl_yamato_regwrite_isr(struct kgsl_device *device,
+			      unsigned int offsetwords,
+			      unsigned int value);
 
-#endif /* _KGSL_G12_H */
+uint8_t *kgsl_sharedmem_convertaddr(struct kgsl_device *device,
+	unsigned int pt_base, unsigned int gpuaddr, unsigned int *size);
+
+#endif /*__ADRENO_H */
