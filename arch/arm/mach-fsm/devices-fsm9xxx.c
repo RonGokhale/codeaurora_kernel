@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -330,6 +330,22 @@ int __init rmt_storage_add_ramfs(void)
 	return -ENOENT;
 }
 
+#if defined(CONFIG_QFP_FUSE)
+struct resource qfp_fuse_resources[] = {
+	{
+		.start = (uint32_t) MSM_QFP_FUSE_BASE,
+		.end   = (uint32_t) MSM_QFP_FUSE_BASE + MSM_QFP_FUSE_SIZE,
+		.flags = IORESOURCE_MEM,
+	},
+};
+
+struct platform_device fsm_qfp_fuse_device = {
+	.name           = "qfp_fuse_driver",
+	.id             = 0,
+	.num_resources  = ARRAY_SIZE(qfp_fuse_resources),
+	.resource       = qfp_fuse_resources,
+};
+#endif
 
 #ifdef NOTNOW
 

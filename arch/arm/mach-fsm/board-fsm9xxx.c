@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -192,6 +192,8 @@ static struct regulator_consumer_supply pm8058_vreg_supply[PM8058_VREG_MAX] = {
 	[PM8058_VREG_ID_L15] = REGULATOR_SUPPLY("8058_l15", NULL),
 	[PM8058_VREG_ID_L18] = REGULATOR_SUPPLY("8058_l18", NULL),
 	[PM8058_VREG_ID_S4] = REGULATOR_SUPPLY("8058_s4", NULL),
+
+	[PM8058_VREG_ID_LVS0] = REGULATOR_SUPPLY("8058_lvs0", NULL),
 };
 
 #define PM8058_VREG_INIT(_id, _min_uV, _max_uV, _modes, _ops, _apply_uV) \
@@ -220,6 +222,10 @@ static struct regulator_consumer_supply pm8058_vreg_supply[PM8058_VREG_MAX] = {
 			REGULATOR_CHANGE_VOLTAGE | REGULATOR_CHANGE_STATUS | \
 			REGULATOR_CHANGE_MODE, 1)
 
+#define PM8058_VREG_INIT_LVS(_id, _min_uV, _max_uV) \
+	PM8058_VREG_INIT(_id, _min_uV, _min_uV, REGULATOR_MODE_NORMAL, \
+			REGULATOR_CHANGE_STATUS, 0)
+
 static struct regulator_init_data pm8058_vreg_init[PM8058_VREG_MAX] = {
 	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L3, 1800000, 1800000),
 	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L8, 2200000, 2200000),
@@ -227,6 +233,7 @@ static struct regulator_init_data pm8058_vreg_init[PM8058_VREG_MAX] = {
 	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L14, 2850000, 2850000),
 	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L15, 2200000, 2200000),
 	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L18, 2200000, 2200000),
+	PM8058_VREG_INIT_LVS(PM8058_VREG_ID_LVS0, 1800000, 1800000),
 	PM8058_VREG_INIT_SMPS(PM8058_VREG_ID_S4, 1300000, 1300000),
   };
 
@@ -257,6 +264,7 @@ static struct mfd_cell pm8058_subdevs[] = {
 	PM8058_VREG(PM8058_VREG_ID_L15),
 	PM8058_VREG(PM8058_VREG_ID_L18),
 	PM8058_VREG(PM8058_VREG_ID_S4),
+	PM8058_VREG(PM8058_VREG_ID_LVS0),
 	{
 		.name = "pm8058-femto",
 		.id = -1,
@@ -550,6 +558,9 @@ static struct platform_device *devices[] __initdata = {
 #endif
 #if defined(CONFIG_SERIAL_MSM) || defined(CONFIG_MSM_SERIAL_DEBUGGER)
 	&msm_device_uart1,
+#endif
+#if defined(CONFIG_QFP_FUSE)
+	&fsm_qfp_fuse_device,
 #endif
 	&qfec_device,
 	&qcrypto_device,

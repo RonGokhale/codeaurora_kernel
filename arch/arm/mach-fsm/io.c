@@ -3,7 +3,7 @@
  * MSM7K, QSD io support
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2008-2011, Code Aurora Forum. All rights reserved.
  * Author: Brian Swetland <swetland@google.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -235,6 +235,7 @@ static struct map_desc fsm9xxx_io_desc[] __initdata = {
 	MSM_DEVICE(TCSR),
 	MSM_DEVICE(TLMM),
 	MSM_DEVICE(GRFC),
+	MSM_DEVICE(QFP_FUSE),
 	MSM_DEVICE(HH),
 #ifdef CONFIG_MSM_DEBUG_UART
 	MSM_DEVICE(DEBUG_UART),
