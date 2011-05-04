@@ -77,6 +77,12 @@ static struct gpiomux_setting gsbi4 = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
+static struct gpiomux_setting gsbi5 = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
 static struct gpiomux_setting gpio_eth_irq_config = {
 	.pull = GPIOMUX_PULL_NONE,
 	.drv = GPIOMUX_DRV_8MA,
@@ -127,6 +133,30 @@ static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
 		.gpio      = 21,	/* GSBI4 I2C QUP SCL */
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &gsbi4,
+		},
+	},
+	{
+		.gpio      = 22,	/* GSBI5 UART2 */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi5,
+		},
+	},
+	{
+		.gpio      = 23,	/* GSBI5 UART2 */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi5,
+		},
+	},
+	{
+		.gpio      = 24,	/* GSBI5 UART2 */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi5,
+		},
+	},
+	{
+		.gpio      = 25,	/* GSBI5 UART2 */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi5,
 		},
 	},
 };
