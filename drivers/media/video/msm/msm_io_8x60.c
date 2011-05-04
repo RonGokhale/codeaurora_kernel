@@ -100,6 +100,7 @@ static struct msm_camera_io_clk camio_clk;
 static struct platform_device *camio_dev;
 static struct resource *csiio;
 void __iomem *csibase;
+static int vpe_clk_rate;
 
 static struct msm_bus_vectors cam_init_vectors[] = {
 	{
@@ -475,7 +476,7 @@ int msm_camio_clk_enable(enum msm_camio_clk_type clktype)
 	case CAMIO_VPE_CLK:
 		camio_vpe_clk =
 		clk = clk_get(NULL, "vpe_clk");
-		msm_camio_clk_set_min_rate(clk, 200000000);
+		msm_camio_clk_set_min_rate(camio_vpe_clk, vpe_clk_rate);
 		break;
 
 	case CAMIO_VPE_PCLK:
@@ -656,7 +657,7 @@ int msm_camio_vpe_clk_disable(void)
 	return rc;
 }
 
-int msm_camio_vpe_clk_enable(void)
+int msm_camio_vpe_clk_enable(uint32_t clk_rate)
 {
 	int rc = 0;
 	fs_vpe = regulator_get(NULL, "fs_vpe");
@@ -669,9 +670,11 @@ int msm_camio_vpe_clk_enable(void)
 		regulator_put(fs_vpe);
 	}
 
+	vpe_clk_rate = clk_rate;
 	rc = msm_camio_clk_enable(CAMIO_VPE_CLK);
 	if (rc < 0)
 		return rc;
+
 	rc = msm_camio_clk_enable(CAMIO_VPE_PCLK);
 	return rc;
 }
