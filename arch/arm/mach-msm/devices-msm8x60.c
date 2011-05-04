@@ -93,7 +93,7 @@
 
 static void charm_ap2mdm_kpdpwr_on(void)
 {
-	gpio_direction_output(AP2MDM_PMIC_RESET_N, 1);
+	gpio_direction_output(AP2MDM_PMIC_RESET_N, 0);
 	if (machine_is_msm8x60_fusion())
 		gpio_direction_output(AP2MDM_KPDPWR_N, 0);
 	else
@@ -116,7 +116,7 @@ static void charm_ap2mdm_kpdpwr_off(void)
 	if (i == 0) {
 		pr_err("%s: MDM2AP_STATUS never went low. Doing a hard reset \
 			of the charm modem.\n", __func__);
-		gpio_direction_output(AP2MDM_PMIC_RESET_N, 0);
+		gpio_direction_output(AP2MDM_PMIC_RESET_N, 1);
 		/*
 		* Currently, there is a debounce timer on the charm PMIC. It is
 		* necessary to hold the AP2MDM_PMIC_RESET low for ~3.5 seconds
@@ -124,7 +124,7 @@ static void charm_ap2mdm_kpdpwr_off(void)
 		* reset has occured before the function exits.
 		*/
 		msleep(4000);
-		gpio_direction_output(AP2MDM_PMIC_RESET_N, 1);
+		gpio_direction_output(AP2MDM_PMIC_RESET_N, 0);
 	}
 }
 
