@@ -304,10 +304,6 @@ void __init seaboard_common_pinmux_init(void)
 	gpio_request(TEGRA_GPIO_BT_RESET, "bt_nreset_gpio");
 	gpio_direction_output(TEGRA_GPIO_BT_RESET, 0);
 	gpio_export(TEGRA_GPIO_BT_RESET, false);
-
-	gpio_request(TEGRA_GPIO_BT_SHUTDOWN, "bt_nshutdown_gpio");
-	gpio_direction_output(TEGRA_GPIO_BT_SHUTDOWN, 0);
-	gpio_export(TEGRA_GPIO_BT_SHUTDOWN, false);
 }
 
 void __init seaboard_pinmux_init(void)
