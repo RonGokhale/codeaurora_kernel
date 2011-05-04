@@ -1,5 +1,5 @@
 /* qcusbnet.c - gobi network device
- * Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2011, Code Aurora Forum. All rights reserved.
 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -20,6 +20,8 @@
 #include "qmidevice.h"
 #include "qmi.h"
 #include "qcusbnet.h"
+
+#include <linux/ctype.h>
 
 #define DRIVER_VERSION "1.0.110+google"
 #define DRIVER_AUTHOR "Qualcomm Innovation Center"
@@ -64,6 +66,12 @@ struct qcusbnet *qcusbnet_get(struct qcusbnet *key)
 	}
 	mutex_unlock(&qcusbnet_lock);
 	return NULL;
+}
+
+static void wake_worker(struct worker *worker)
+{
+	atomic_inc(&worker->work_count);
+	wake_up(&worker->waitq);
 }
 
 int qc_suspend(struct usb_interface *iface, pm_message_t event)
@@ -148,7 +156,7 @@ static int qc_resume(struct usb_interface *iface)
 			return ret;
 		}
 
-		complete(&dev->worker.work);
+		wake_worker(&dev->worker);
 	} else {
 		DBG("nothing to resume\n");
 		return 0;
@@ -244,7 +252,7 @@ static void qcnet_urbhook(struct urb *urb)
 	worker->active = ERR_PTR(-EAGAIN);
 	spin_unlock_irqrestore(&worker->active_lock, flags);
 	/* XXX-fix race against qcnet_stop()? */
-	complete(&worker->work);
+	wake_worker(worker);
 	usb_free_urb(urb);
 }
 
@@ -285,7 +293,18 @@ static void qcnet_txtimeout(struct net_device *netdev)
 	}
 	spin_unlock_irqrestore(&worker->urbs_lock, listflags);
 
-	complete(&worker->work);
+	wake_worker(worker);
+}
+
+static int worker_should_wake(struct worker *worker)
+{
+	if (kthread_should_stop())
+		return 1;
+	/* This is safe only because we are the only place that decrements this
+	 * counter. */
+	if (atomic_read(&worker->work_count))
+		return 1;
+	return 0;
 }
 
 static int qcnet_worker(void *arg)
@@ -306,26 +325,11 @@ static int qcnet_worker(void *arg)
 	DBG("traffic thread started\n");
 
 	while (!kthread_should_stop()) {
-		wait_for_completion_interruptible(&worker->work);
+		wait_event(worker->waitq, worker_should_wake(worker));
 
-		if (kthread_should_stop()) {
-			spin_lock_irqsave(&worker->active_lock, activeflags);
-			if (worker->active) {
-				usb_kill_urb(worker->active);
-			}
-			spin_unlock_irqrestore(&worker->active_lock, activeflags);
-
-			spin_lock_irqsave(&worker->urbs_lock, listflags);
-			list_for_each_safe(node, tmp, &worker->urbs) {
-				req = list_entry(node, struct urbreq, node);
-				usb_free_urb(req->urb);
-				list_del(&req->node);
-				kfree(req);
-			}
-			spin_unlock_irqrestore(&worker->urbs_lock, listflags);
-
+		if (kthread_should_stop())
 			break;
-		}
+		atomic_dec(&worker->work_count);
 
 		spin_lock_irqsave(&worker->active_lock, activeflags);
 		if (IS_ERR(worker->active) && PTR_ERR(worker->active) == -EAGAIN) {
@@ -380,11 +384,26 @@ static int qcnet_worker(void *arg)
 			worker->active = NULL;
 			spin_unlock_irqrestore(&worker->active_lock, activeflags);
 			usb_autopm_put_interface(worker->iface);
-			complete(&worker->work);
+			wake_worker(worker);
 		}
 
 		kfree(req);
 	}
+
+	spin_lock_irqsave(&worker->active_lock, activeflags);
+	if (worker->active) {
+		usb_kill_urb(worker->active);
+	}
+	spin_unlock_irqrestore(&worker->active_lock, activeflags);
+
+	spin_lock_irqsave(&worker->urbs_lock, listflags);
+	list_for_each_safe(node, tmp, &worker->urbs) {
+		req = list_entry(node, struct urbreq, node);
+		usb_free_urb(req->urb);
+		list_del(&req->node);
+		kfree(req);
+	}
+	spin_unlock_irqrestore(&worker->urbs_lock, listflags);
 
 	DBG("traffic thread exiting\n");
 	worker->thread = NULL;
@@ -450,7 +469,7 @@ static int qcnet_startxmit(struct sk_buff *skb, struct net_device *netdev)
 	list_add_tail(&req->node, &worker->urbs);
 	spin_unlock_irqrestore(&worker->urbs_lock, listflags);
 
-	complete(&worker->work);
+	wake_worker(worker);
 
 	netdev->trans_start = jiffies;
 	dev_kfree_skb_any(skb);
@@ -482,7 +501,8 @@ static int qcnet_open(struct net_device *netdev)
 	dev->worker.active = NULL;
 	spin_lock_init(&dev->worker.urbs_lock);
 	spin_lock_init(&dev->worker.active_lock);
-	init_completion(&dev->worker.work);
+	atomic_set(&dev->worker.work_count, 0);
+	init_waitqueue_head(&dev->worker.waitq);
 
 	dev->worker.thread = kthread_run(qcnet_worker, &dev->worker, "qcnet_worker");
 	if (IS_ERR(dev->worker.thread)) {
@@ -520,7 +540,6 @@ int qcnet_stop(struct net_device *netdev)
 	}
 
 	qc_setdown(dev, DOWN_NET_IFACE_STOPPED);
-	complete(&dev->worker.work);
 	kthread_stop(dev->worker.thread);
 	DBG("thread stopped\n");
 
@@ -578,12 +597,24 @@ static const struct usb_device_id qc_vidpids[] = {
 
 MODULE_DEVICE_TABLE(usb, qc_vidpids);
 
+static u8 nibble(unsigned char c)
+{
+	if (likely(isdigit(c)))
+		return c - '0';
+	c = toupper(c);
+	if (likely(isxdigit(c)))
+		return 10 + c - 'A';
+	return 0;
+}
+
 int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids)
 {
 	int status;
 	struct usbnet *usbnet;
 	struct qcusbnet *dev;
 	struct net_device_ops *netdevops;
+	int i;
+	u8 *addr;
 
 	status = usbnet_probe(iface, vidpids);
 	if (status < 0) {
@@ -629,8 +660,6 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 	dev->iface = iface;
 	memset(&(dev->meid), '0', 14);
 
-	DBG("Mac Address: %pM\n", dev->usbnet->net->dev_addr);
-
 	dev->valid = false;
 	memset(&dev->qmi, 0, sizeof(dev->qmi));
 
@@ -639,7 +668,8 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 	kref_init(&dev->refcount);
 	INIT_LIST_HEAD(&dev->node);
 	INIT_LIST_HEAD(&dev->qmi.clients);
-	init_completion(&dev->worker.work);
+	atomic_set(&dev->worker.work_count, 0);
+	init_waitqueue_head(&dev->worker.waitq);
 	spin_lock_init(&dev->qmi.clients_lock);
 
 	dev->down = 0;
@@ -655,6 +685,13 @@ int qcnet_probe(struct usb_interface *iface, const struct usb_device_id *vidpids
 		list_add(&dev->node, &qcusbnet_list);
 		mutex_unlock(&qcusbnet_lock);
 	}
+	/* After calling qc_register, MEID is valid */
+	addr = &usbnet->net->dev_addr[0];
+	for (i = 0; i < 6; i++)
+		addr[i] = (nibble(dev->meid[i*2+2]) << 4)+
+			nibble(dev->meid[i*2+3]);
+	addr[0] &= 0xfe;		/* clear multicast bit */
+	addr[0] |= 0x02;		/* set local assignment bit (IEEE802) */
 
 	return status;
 }
