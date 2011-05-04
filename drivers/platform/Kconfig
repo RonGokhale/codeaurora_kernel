@@ -7,3 +7,5 @@ endif
 if ARM
 source "drivers/platform/arm/Kconfig"
 endif
+
+source "drivers/platform/cros/Kconfig"

@@ -1,0 +1,31 @@
+#
+# X86 Platform Specific Drivers
+#
+
+menuconfig CROS_PLATFORM_DEVICES
+	bool "Chrome OS Platform Specific Device Drivers"
+	default y
+	---help---
+	  Say Y here to get to see options for device drivers for various
+	  Chrome OS platforms. This option alone does not add any kernel code.
+
+	  If you say N, all options in this submenu will be skipped and disabled.
+
+if CROS_PLATFORM_DEVICES && ARM
+
+config ACPI_CHROMEOS_ARM
+	bool "ChromeOS specific ARM extensions"
+	default y
+	---help---
+	  This driver provides the firmware interface for the services exported
+	  through the CHROMEOS interfaces when using ChromeOS ARM firmware.
+
+config CHROMEOS
+	bool "ChromeOS specific platform functions"
+	default y
+	---help---
+	  This driver provides abstracted interfaces to the firmware features
+	  provided on ChromeOS devices. It depends on a lowlevel driver to
+	  implement the firmware interface on the platform.
+
+endif # CROS_PLATFORM_DEVICES
