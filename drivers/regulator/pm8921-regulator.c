@@ -2263,7 +2263,7 @@ static int __init pm8921_vreg_init(void)
 {
 	return platform_driver_register(&pm8921_vreg_driver);
 }
-subsys_initcall(pm8921_vreg_init);
+postcore_initcall(pm8921_vreg_init);
 
 static void __exit pm8921_vreg_exit(void)
 {
