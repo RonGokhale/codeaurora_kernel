@@ -989,21 +989,14 @@ static struct platform_device fish_battery_device = {
 };
 #endif
 
-static struct platform_device *sim_devices[] __initdata = {
+static struct platform_device *common_devices[] __initdata = {
 	&msm_device_dmov,
 	&msm_device_smd,
-	&msm8960_device_uart_gsbi2,
+	&msm8960_device_uart_gsbi5,
 	&msm8960_device_ssbi_pm8921,
 	&msm8960_device_qup_spi_gsbi1,
-	&msm_device_otg,
-	&msm_device_gadget_peripheral,
-	&msm_device_hsusb_host,
-	&android_usb_device,
-	&usb_diag_device,
 	&msm8960_device_qup_i2c_gsbi4,
 	&msm_device_wcnss_wlan,
-	&usb_mass_storage_device,
-	&usb_gadget_fserial_device,
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
 #endif
@@ -1011,12 +1004,22 @@ static struct platform_device *sim_devices[] __initdata = {
 #ifdef CONFIG_MSM_FAKE_BATTERY
 	&fish_battery_device,
 #endif
-	&msm_device_vidc,
 #ifdef CONFIG_ANDROID_PMEM
 	&android_pmem_adsp_device,
 #endif
-	&mipi_dsi_simulator_panel_device,
 	&msm_fb_device,
+};
+
+static struct platform_device *sim_devices[] __initdata = {
+	&msm_device_otg,
+	&msm_device_gadget_peripheral,
+	&msm_device_hsusb_host,
+	&android_usb_device,
+	&usb_diag_device,
+	&usb_mass_storage_device,
+	&usb_gadget_fserial_device,
+	&msm_device_vidc,
+	&mipi_dsi_simulator_panel_device,
 #ifdef CONFIG_MSM_BUS_SCALING
 	&msm_bus_apps_fabric,
 	&msm_bus_sys_fabric,
@@ -1027,30 +1030,12 @@ static struct platform_device *sim_devices[] __initdata = {
 };
 
 static struct platform_device *rumi3_devices[] __initdata = {
-	&msm_device_dmov,
-	&msm_device_smd,
-	&msm8960_device_uart_gsbi5,
-	&msm8960_device_ssbi_pm8921,
-	&msm8960_device_qup_spi_gsbi1,
-	&msm8960_device_qup_i2c_gsbi4,
 	&msm_kgsl_3d0,
 #ifdef CONFIG_MSM_KGSL_2D
 	&msm_kgsl_2d0,
 	&msm_kgsl_2d1,
 #endif
-	&msm_device_wcnss_wlan,
-#ifdef CONFIG_MSM_ROTATOR
-	&msm_rotator_device,
-#endif
-	&msm_device_sps,
-#ifdef CONFIG_MSM_FAKE_BATTERY
-	&fish_battery_device,
-#endif
-#ifdef CONFIG_ANDROID_PMEM
-	&android_pmem_adsp_device,
-#endif
 	&mipi_dsi_renesas_panel_device,
-	&msm_fb_device,
 #ifdef CONFIG_MSM_GEMINI
 	&msm8960_gemini_device,
 #endif
@@ -1392,6 +1377,7 @@ static void __init msm8960_sim_init(void)
 	msm8960_i2c_init();
 	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
 	msm8960_init_buses();
+	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	platform_add_devices(sim_devices, ARRAY_SIZE(sim_devices));
 	msm_acpu_clock_init(&msm8960_acpu_clock_data);
 	msm8960_init_mmc();
@@ -1430,6 +1416,7 @@ static void __init msm8960_rumi3_init(void)
 				&msm8960_qup_spi_gsbi1_pdata;
 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
 	msm8960_i2c_init();
+	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	platform_add_devices(rumi3_devices, ARRAY_SIZE(rumi3_devices));
 	msm_acpu_clock_init(&msm8960_acpu_clock_data);
 	msm8960_init_mmc();
@@ -1449,6 +1436,7 @@ static void __init msm8960_cdp_init(void)
 		pr_err("socinfo_init() failed!\n");
 
 	msm_clock_init(msm_clocks_8960_dummy, msm_num_clocks_8960_dummy);
+	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
 }
 
