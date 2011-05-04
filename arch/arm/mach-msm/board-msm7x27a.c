@@ -22,6 +22,7 @@
 #include <mach/usbdiag.h>
 #include <mach/usb_gadget_fserial.h>
 #include <mach/msm_memtypes.h>
+#include <mach/msm_serial_hs.h>
 #include <linux/usb/android_composite.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
@@ -1265,7 +1266,12 @@ static struct mmc_platform_data sdc4_plat_data = {
 #endif
 #endif
 
-
+#ifdef CONFIG_SERIAL_MSM_HS
+static struct msm_serial_hs_platform_data msm_uart_dm1_pdata = {
+	.inject_rx_on_wakeup	= 1,
+	.rx_to_inject		= 0xFD,
+};
+#endif
 static struct msm_pm_platform_data msm7x27a_pm_data[MSM_PM_SLEEP_MODE_NR] = {
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE] = {
 					.supported = 1,
@@ -2603,7 +2609,7 @@ static struct platform_device hs_pdev = {
 		.platform_data = &hs_platform_data,
 	},
 };
-
+#define UART1DM_RX_GPIO		45
 static void __init msm7x2x_init(void)
 {
 	if (socinfo_init() < 0)
@@ -2615,6 +2621,10 @@ static void __init msm7x2x_init(void)
 	msm_device_i2c_init();
 	msm7x27a_init_mmc();
 	msm7x27a_init_ebi2();
+#ifdef CONFIG_SERIAL_MSM_HS
+	msm_uart_dm1_pdata.wakeup_irq = gpio_to_irq(UART1DM_RX_GPIO);
+	msm_device_uart_dm1.dev.platform_data = &msm_uart_dm1_pdata;
+#endif
 
 	if (machine_is_msm7x27a_rumi3()) {
 		platform_add_devices(rumi_sim_devices,
