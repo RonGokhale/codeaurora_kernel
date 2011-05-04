@@ -67,7 +67,8 @@ void clk_disable(struct clk *clk)
 		return;
 
 	spin_lock_irqsave(&clk->lock, flags);
-	WARN_ON(clk->count == 0);
+	if (WARN_ON(clk->count == 0))
+		goto out;
 	if (clk->count == 1) {
 		if (clk->ops->disable)
 			clk->ops->disable(clk);
@@ -75,6 +76,7 @@ void clk_disable(struct clk *clk)
 		clk_disable(parent);
 	}
 	clk->count--;
+out:
 	spin_unlock_irqrestore(&clk->lock, flags);
 }
 EXPORT_SYMBOL(clk_disable);

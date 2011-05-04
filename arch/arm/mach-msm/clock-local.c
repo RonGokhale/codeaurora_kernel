@@ -896,7 +896,6 @@ int branch_clk_enable(struct clk *clk)
 
 	spin_lock_irqsave(&local_clock_reg_lock, flags);
 	__branch_clk_enable_reg(&branch->b, branch->c.dbg_name);
-	branch->enabled = true;
 	/*
 	 * With remote rail control, the remote processor might modify
 	 * the clock control register when the rail is enabled/disabled.
@@ -905,6 +904,8 @@ int branch_clk_enable(struct clk *clk)
 	rc = soc_set_pwr_rail(clk, 1);
 	if (rc)
 		__branch_clk_disable_reg(&branch->b, branch->c.dbg_name);
+	else
+		branch->enabled = true;
 	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
 	return rc;
 }
