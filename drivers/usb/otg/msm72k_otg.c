@@ -843,9 +843,10 @@ static void msm_otg_resume_w(struct work_struct *w)
 
 	timeout = jiffies + usecs_to_jiffies(100);
 	enable_phy_clk();
-	while (is_phy_clk_disabled()) {
+	while (is_phy_clk_disabled() || !is_phy_active()) {
 		if (time_after(jiffies, timeout)) {
-			pr_err("%s: Unable to wakeup phy\n", __func__);
+			pr_err("%s: Unable to wakeup phy. is_phy_active: %x\n",
+				 __func__, !!is_phy_active());
 			/* Reset both phy and link */
 			otg_reset(&dev->otg, 1);
 			break;
@@ -956,9 +957,11 @@ static int msm_otg_set_suspend(struct otg_transceiver *xceiv, int suspend)
 
 		timeout = jiffies + usecs_to_jiffies(100);
 		enable_phy_clk();
-		while (is_phy_clk_disabled()) {
+		while (is_phy_clk_disabled() || !is_phy_active()) {
 			if (time_after(jiffies, timeout)) {
-				pr_err("%s: Unable to wakeup phy\n", __func__);
+				pr_err("%s: Unable to wakeup phy. "
+					"is_phy_active: %x\n",
+					__func__, !!is_phy_active());
 				/* Reset both phy and link */
 				otg_reset(&dev->otg, 1);
 				break;

@@ -51,12 +51,15 @@
 
 #define ULPI_STP_CTRL   (1 << 30)
 #define ASYNC_INTR_CTRL (1 << 29)
+#define ULPI_SYNC_STATE (1 << 27)
 
 #define PORTSC_PHCD     (1 << 23)
 #define PORTSC_CSC	(1 << 1)
 #define disable_phy_clk() (writel(readl(USB_PORTSC) | PORTSC_PHCD, USB_PORTSC))
 #define enable_phy_clk() (writel(readl(USB_PORTSC) & ~PORTSC_PHCD, USB_PORTSC))
 #define is_phy_clk_disabled() (readl(USB_PORTSC) & PORTSC_PHCD)
+#define is_phy_active()       (readl_relaxed(USB_ULPI_VIEWPORT) &\
+						ULPI_SYNC_STATE)
 #define is_usb_active()       (!(readl(USB_PORTSC) & PORTSC_SUSP))
 
 /* Timeout (in msec) values (min - max) associated with OTG timers */
