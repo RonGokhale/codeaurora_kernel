@@ -2764,6 +2764,10 @@ static void register_i2c_devices(void)
 static void __init msm8x60_init_uart12dm(void)
 {
 	void *fpga_mem = ioremap_nocache(0x1D000000, SZ_4K);
+
+	if (!fpga_mem)
+		pr_err("%s(): No memory\n", __func__);
+
 	/* Advanced mode */
 	writew(0xFFFF, fpga_mem + 0x15C);
 	/* FPGA_UART_SEL */
