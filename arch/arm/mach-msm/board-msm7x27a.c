@@ -1406,8 +1406,8 @@ static void lcdc_toshiba_gpio_init(void)
 			pr_err("failed to request gpio_disp_pwr\n");
 			goto fail_gpio;
 		}
-		if (gpio_request(GPIO_BACKLIGHT_EN, "gpio_disp_pwr")) {
-			pr_err("failed to request gpio_disp_pwr\n");
+		if (gpio_request(GPIO_BACKLIGHT_EN, "gpio_bkl_en")) {
+			pr_err("failed to request gpio_bkl_en\n");
 			goto fail_gpio;
 		}
 		lcdc_gpio_initialized = 1;
@@ -2269,31 +2269,35 @@ static struct msm_panel_common_pdata mdp_pdata = {
 #define GPIO_LCDC_BRDG_PD	128
 #define GPIO_LCDC_BRDG_RESET_N	129
 static unsigned mipi_dsi_gpio[] = {
-	GPIO_CFG(GPIO_LCDC_BRDG_RESET_N, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL,
+	GPIO_CFG(GPIO_LCDC_BRDG_RESET_N, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL,
 		GPIO_CFG_2MA),       /* LCDC_BRDG_RESET_N */
 };
 
 static int msm_fb_dsi_client_reset(void)
 {
-	int rc = -1;
-	if (!gpio_request(GPIO_LCDC_BRDG_RESET_N, "lcdc_brdg_reset_n")) {
-		if (!gpio_tlmm_config(mipi_dsi_gpio[0], GPIO_CFG_ENABLE)) {
-			if (!gpio_direction_output(GPIO_LCDC_BRDG_RESET_N, 1)) {
-				gpio_set_value_cansleep(GPIO_LCDC_BRDG_RESET_N,
-					0);
-				msleep(20);
-				gpio_set_value_cansleep(GPIO_LCDC_BRDG_RESET_N,
-					1);
-				return 0;
-			} else {
-				goto gpio_error;
-			}
-		} else {
-			pr_err("Failed LCDC Bridge reset enable\n");
-			goto gpio_error;
-		}
-	} else {
+	int rc = 0;
+
+	rc = gpio_request(GPIO_LCDC_BRDG_RESET_N, "lcdc_brdg_reset_n");
+
+	if (rc < 0) {
+		pr_err("failed to request lcd brdg reset\n");
 		return rc;
+	}
+
+	rc = gpio_tlmm_config(mipi_dsi_gpio[0], GPIO_CFG_ENABLE);
+	if (rc) {
+		pr_err("Failed to enable LCDC Bridge reset enable\n");
+		goto gpio_error;
+	}
+
+	rc = gpio_direction_output(GPIO_LCDC_BRDG_RESET_N, 1);
+	if (!rc) {
+		gpio_set_value_cansleep(GPIO_LCDC_BRDG_RESET_N, 0);
+		msleep(20);
+		gpio_set_value_cansleep(GPIO_LCDC_BRDG_RESET_N, 1);
+		return rc;
+	} else {
+		goto gpio_error;
 	}
 
 gpio_error:
@@ -2309,7 +2313,7 @@ static int mipi_dsi_panel_power(int on)
 	int rc = 0;
 
 	if (!on)
-		return 0;
+		return rc;
 
 	/* I2C-controlled GPIO Expander -init of the GPIOs very late */
 	if (!dsi_gpio_initialized) {
@@ -2318,38 +2322,60 @@ static int mipi_dsi_panel_power(int on)
 		if (pmapp_disp_backlight_set_brightness(100))
 			pr_err("display backlight set brightness failed\n");
 
-		rc = gpio_request(GPIO_DISPLAY_PWR_EN, "gpio_disp_pwr");
-		if (rc < 0) {
-			pr_err("failed to request gpio_disp_pwr\n");
-			return rc;
-		}
+		if (machine_is_msm7x27a_surf()) {
+			rc = gpio_request(GPIO_DISPLAY_PWR_EN, "gpio_disp_pwr");
+			if (rc < 0) {
+				pr_err("failed to request gpio_disp_pwr\n");
+				return rc;
+			}
 
-		if (gpio_request(GPIO_BACKLIGHT_EN, "gpio_disp_pwr")) {
-			pr_err("failed to request gpio_disp_pwr\n");
-			goto fail_gpio1;
-		}
+			if (gpio_request(GPIO_BACKLIGHT_EN, "gpio_bkl_en")) {
+				pr_err("failed to request gpio_bkl_en\n");
+				goto fail_gpio1;
+			}
 
-		if (!gpio_direction_output(GPIO_DISPLAY_PWR_EN, 1)) {
-			gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN, on);
+			if (!gpio_direction_output(GPIO_DISPLAY_PWR_EN, 1)) {
+				gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN,
+					on);
+			} else {
+				pr_err("failed to enable display pwr\n");
+				goto fail_gpio2;
+			}
+
+			if (!gpio_direction_output(GPIO_BACKLIGHT_EN, 1)) {
+				gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, on);
+				return rc;
+			} else {
+				pr_err("failed to enable backlight\n");
+				goto fail_gpio2;
+			}
+
+fail_gpio2:
+		gpio_free(GPIO_BACKLIGHT_EN);
+fail_gpio1:
+		gpio_free(GPIO_DISPLAY_PWR_EN);
+
 		} else {
-			pr_err("failed to enable display pwr\n");
-			goto fail_gpio2;
-		}
+			rc = gpio_request(GPIO_FFA_LCD_PWR_EN_N,
+				"gpio_disp_pwr");
+			if (rc < 0) {
+				pr_err("failed to request lcd pwr\n");
+				return rc;
+			}
+			if (!gpio_direction_output(GPIO_FFA_LCD_PWR_EN_N,
+				1)) {
+				gpio_set_value_cansleep(GPIO_FFA_LCD_PWR_EN_N,
+					on);
+				return rc;
+			} else {
+				pr_err("failed to enable lcd pwr\n");
+				return rc;
+			}
 
-		if (!gpio_direction_output(GPIO_BACKLIGHT_EN, 1)) {
-			gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, on);
-			return 0;
-		} else {
-			pr_err("failed to enable backlight\n");
-			goto fail_gpio2;
 		}
 	}
 
-fail_gpio2:
-	gpio_free(GPIO_BACKLIGHT_EN);
-fail_gpio1:
-	gpio_free(GPIO_DISPLAY_PWR_EN);
-	return 0;
+	return rc;
 }
 
 #define MDP_303_VSYNC_GPIO 97
