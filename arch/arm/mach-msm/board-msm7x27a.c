@@ -2853,6 +2853,9 @@ static void __init msm7x2x_init(void)
 	}
 	if (machine_is_msm7x27a_surf() || machine_is_msm7x27a_ffa()) {
 #ifdef CONFIG_USB_MSM_OTG_72K
+		msm_otg_pdata.swfi_latency =
+			msm7x27a_pm_data
+		[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].latency;
 		msm_device_otg.dev.platform_data = &msm_otg_pdata;
 #endif
 		msm7x27a_cfg_smsc911x();
