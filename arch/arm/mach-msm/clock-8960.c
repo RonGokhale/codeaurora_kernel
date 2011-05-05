@@ -4024,6 +4024,11 @@ static void reg_init(void)
 	rmwreg(0, BB_MMC_PLL2_M_VAL_REG, 0x3FFFF);
 	rmwreg(0x3400000, BB_MMC_PLL2_N_VAL_REG, 0x3FFFF);
 
+	writel_relaxed(0x4, LCC_PLL0_MODE_REG);
+	udelay(10);
+	writel_relaxed(0x6, LCC_PLL0_MODE_REG);
+	writel_relaxed(0x7, LCC_PLL0_MODE_REG);
+
 	/* Deassert MM SW_RESET_ALL signal. */
 	writel(0, SW_RESET_ALL_REG);
 
@@ -4090,6 +4095,47 @@ static void reg_init(void)
 	writel_relaxed(0x3, SLIMBUS_XO_SRC_CLK_CTL_REG);
 }
 
+static int dummy_pll_clk_enable(struct clk *clk)
+{
+	return 0;
+}
+
+static int wr_pll_clk_enable(struct clk *clk)
+{
+	u32 mode;
+	unsigned long flags;
+	struct pll_clk *pll = to_pll_clk(clk);
+
+	spin_lock_irqsave(&local_clock_reg_lock, flags);
+	mode = readl_relaxed(pll->mode_reg);
+	/* De-assert active-low PLL reset. */
+	mode |= BIT(2);
+	writel_relaxed(mode, pll->mode_reg);
+
+	/*
+	 * H/W requires a 5us delay between disabling the bypass and
+	 * de-asserting the reset. Delay 10us just to be safe.
+	 */
+	dsb();
+	udelay(10);
+
+	/* Disable PLL bypass mode. */
+	mode |= BIT(1);
+	writel_relaxed(mode, pll->mode_reg);
+
+	/* Enable PLL output. */
+	mode |= BIT(0);
+	writel_relaxed(mode, pll->mode_reg);
+
+	/* Wait until PLL is enabled. */
+	while (!readl_relaxed(pll->status_reg))
+		cpu_relax();
+
+	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
+	return 0;
+}
+
+
 /* Local clock driver initialization. */
 void __init msm_clk_soc_init(void)
 {
@@ -4097,6 +4143,9 @@ void __init msm_clk_soc_init(void)
 
 	if (machine_is_msm8960_rumi3())
 		return;
+
+	clk_ops_pll_vote.enable = dummy_pll_clk_enable;
+	clk_ops_pll.enable = wr_pll_clk_enable;
 
 	/* Initialize clock registers. */
 	reg_init();
