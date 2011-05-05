@@ -1235,7 +1235,6 @@ static struct clk_freq_tbl clk_tbl_gsbi_uart[] = {
 	F_GSBI_UART( 7372800, pll8, 1, 12, 625, LOW),
 	F_GSBI_UART(14745600, pll8, 1, 24, 625, LOW),
 	F_GSBI_UART(16000000, pll8, 4,  1,   6, LOW),
-	F_GSBI_UART(18432000, pxo,  4, 48, 125, LOW),
 	F_GSBI_UART(24000000, pll8, 4,  1,   4, LOW),
 	F_GSBI_UART(32000000, pll8, 4,  1,   3, LOW),
 	F_GSBI_UART(40000000, pll8, 1,  5,  48, NOMINAL),
