@@ -1127,6 +1127,32 @@ static struct pm8xxx_pwrkey_platform_data pm8xxx_pwrkey_pdata = {
 	.pwrkey_time_ms		= 500,
 };
 
+static const unsigned int keymap[] = {
+	KEY(0, 0, KEY_VOLUMEUP),
+	KEY(0, 1, KEY_VOLUMEDOWN),
+	KEY(0, 2, KEY_CAMERA_SNAPSHOT),
+	KEY(0, 3, KEY_CAMERA_FOCUS),
+};
+
+static struct matrix_keymap_data keymap_data = {
+	.keymap_size    = ARRAY_SIZE(keymap),
+	.keymap         = keymap,
+};
+
+static struct pm8xxx_keypad_platform_data keypad_data = {
+	.input_name             = "keypad_8960",
+	.input_phys_device      = "keypad_8960/input0",
+	.num_rows               = 1,
+	.num_cols               = 5,
+	.rows_gpio_start	= PM8921_GPIO_PM_TO_SYS(9),
+	.cols_gpio_start	= PM8921_GPIO_PM_TO_SYS(1),
+	.debounce_ms            = 15,
+	.scan_delay_ms          = 32,
+	.row_hold_ns            = 91500,
+	.wakeup                 = 1,
+	.keymap_data            = &keymap_data,
+};
+
 static const unsigned int keymap_sim[] = {
 	KEY(0, 0, KEY_7),
 	KEY(0, 1, KEY_DOWN),
@@ -1251,6 +1277,8 @@ static struct pm8xxx_keypad_platform_data keypad_data_sim = {
 	.input_phys_device      = "keypad_8960/input0",
 	.num_rows               = 12,
 	.num_cols               = 8,
+	.rows_gpio_start	= PM8921_GPIO_PM_TO_SYS(9),
+	.cols_gpio_start	= PM8921_GPIO_PM_TO_SYS(1),
 	.debounce_ms            = 15,
 	.scan_delay_ms          = 32,
 	.row_hold_ns            = 91500,
@@ -1264,6 +1292,7 @@ static struct pm8921_platform_data pm8921_platform_data __devinitdata = {
 	.mpp_pdata		= &pm8xxx_mpp_pdata,
 	.rtc_pdata              = &pm8xxx_rtc_pdata,
 	.pwrkey_pdata		= &pm8xxx_pwrkey_pdata,
+	.keypad_pdata		= &keypad_data,
 	.regulator_pdatas	= msm_pm8921_regulator_pdata,
 };
 
