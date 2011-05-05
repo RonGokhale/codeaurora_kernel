@@ -110,6 +110,8 @@ VREG_CONSUMERS(L24) = {
 };
 VREG_CONSUMERS(L25) = {
 	REGULATOR_SUPPLY("8921_l25",		NULL),
+	REGULATOR_SUPPLY("VDDD_CDC_D",		"tabla-slim"),
+	REGULATOR_SUPPLY("CDC_VDDA_A_1P2V",	"tabla-slim"),
 };
 VREG_CONSUMERS(L26) = {
 	REGULATOR_SUPPLY("8921_l26",		NULL),
@@ -144,6 +146,10 @@ VREG_CONSUMERS(S4) = {
 	REGULATOR_SUPPLY("sdc_vccq",		"msm_sdcc.1"),
 	REGULATOR_SUPPLY("riva_vddpx",		"wcnss_wlan.0"),
 	REGULATOR_SUPPLY("hdmi_vcc",		"hdmi_msm.0"),
+	REGULATOR_SUPPLY("VDDIO_CDC",		"tabla-slim"),
+	REGULATOR_SUPPLY("CDC_VDD_CP",		"tabla-slim"),
+	REGULATOR_SUPPLY("CDC_VDDA_TX",		"tabla-slim"),
+	REGULATOR_SUPPLY("CDC_VDDA_RX",		"tabla-slim"),
 };
 VREG_CONSUMERS(S5) = {
 	REGULATOR_SUPPLY("8921_s5",		NULL),
