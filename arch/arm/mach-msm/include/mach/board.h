@@ -132,6 +132,8 @@ struct msm_camera_sensor_flash_current_driver {
 	uint32_t low_current;
 	uint32_t high_current;
 	const struct pmic8058_leds_platform_data *driver_channel;
+	uint32_t led1;
+	uint32_t led2;
 };
 
 struct msm_camera_sensor_flash_src {
@@ -167,6 +169,7 @@ struct msm_camera_sensor_platform_info {
 
 struct msm_camera_sensor_info {
 	const char *sensor_name;
+	int sensor_reset_enable;
 	int sensor_reset;
 	int sensor_pwd;
 	int vcm_pwd;

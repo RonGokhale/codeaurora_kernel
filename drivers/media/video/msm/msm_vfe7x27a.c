@@ -155,7 +155,7 @@ static void vfe_7x_ops(void *driver_data, unsigned id, size_t len,
 
 		switch (rp->evt_msg.msg_id) {
 		case MSG_SNAPSHOT:
-			/* TODO msm_camio_set_perf_lvl(S_PREVIEW); */
+			msm_camio_set_perf_lvl(S_PREVIEW);
 			vfe_7x_ops(driver_data, MSG_OUTPUT_S, len, getevent);
 			vfe_7x_ops(driver_data, MSG_OUTPUT_T, len, getevent);
 			rp->type = VFE_MSG_SNAPSHOT;
@@ -624,13 +624,16 @@ static int vfe_7x_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 		if (vfecmd->queue == QDSP_CMDQUEUE) {
 			switch (*(uint32_t *)cmd_data) {
 			case VFE_RESET_CMD:
+				msm_camio_vfe_blk_reset();
 				vfestopped = 0;
 				break;
 			case VFE_START_CMD:
 				_mode = (uint32_t *)cmd_data;
 				op_mode = *(++_mode);
-				/* TODO  msm_camio_set_perf_lvl for preview*/
-				/* TODO  msm_camio_set_perf_lvl for snap*/
+				if (op_mode & SNAPSHOT_MASK_MODE)
+					msm_camio_set_perf_lvl(S_CAPTURE);
+				else
+					msm_camio_set_perf_lvl(S_PREVIEW);
 				vfestopped = 0;
 				break;
 			case VFE_STOP_CMD:
