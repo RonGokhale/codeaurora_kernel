@@ -49,6 +49,7 @@
 #define GSBIn_RESET_REG(n)			REG(0x29DC+(0x20*((n)-1)))
 #define GSBIn_UART_APPS_MD_REG(n)		REG(0x29D0+(0x20*((n)-1)))
 #define GSBIn_UART_APPS_NS_REG(n)		REG(0x29D4+(0x20*((n)-1)))
+#define LPASS_XO_SRC_CLK_CTL_REG		REG(0x2EC0)
 #define PDM_CLK_NS_REG				REG(0x2CC0)
 #define BB_PLL_ENA_SC0_REG			REG(0x34C0)
 #define BB_PLL0_STATUS_REG			REG(0x30D8)
@@ -212,6 +213,7 @@
 #define LCC_PLL0_N_VAL_REG			REG_LPA(0x000C)
 #define LCC_PLL0_STATUS_REG			REG_LPA(0x0018)
 #define LCC_PRI_PLL_CLK_CTL_REG			REG_LPA(0x00C4)
+#define LCC_PXO_SRC_CLK_CTL_REG			REG_LPA(0x00B4)
 #define LCC_SPARE_I2S_MIC_MD_REG		REG_LPA(0x007C)
 #define LCC_SPARE_I2S_MIC_NS_REG		REG_LPA(0x0078)
 #define LCC_SPARE_I2S_MIC_STATUS_REG		REG_LPA(0x0080)
@@ -3521,7 +3523,7 @@ static struct clk_freq_tbl clk_tbl_aif_osr[] = {
 	F_END
 };
 
-#define CLK_AIF_OSR(i, ns, md, h_r, tv) \
+#define CLK_AIF_OSR(i, ns, md, h_r) \
 	struct clk_local i##_clk = { \
 		.b = { \
 			.en_reg = ns, \
@@ -3531,7 +3533,6 @@ static struct clk_freq_tbl clk_tbl_aif_osr[] = {
 			.halt_reg = h_r, \
 			.halt_check = ENABLE, \
 			.halt_bit = 1, \
-			.test_vector = tv, \
 		}, \
 		.ns_reg = ns, \
 		.md_reg = md, \
@@ -3547,17 +3548,16 @@ static struct clk_freq_tbl clk_tbl_aif_osr[] = {
 			CLK_INIT(i##_clk.c), \
 		}, \
 	}
-#define CLK_AIF_OSR_DIV(i, ns, md, h_r, tv) \
+#define CLK_AIF_OSR_DIV(i, ns, md, h_r) \
 	struct clk_local i##_clk = { \
 		.b = { \
 			.en_reg = ns, \
 			.en_mask = BIT(21), \
 			.reset_reg = ns, \
-			.reset_mask = BIT(19), \
+			.reset_mask = BIT(23), \
 			.halt_reg = h_r, \
 			.halt_check = ENABLE, \
 			.halt_bit = 1, \
-			.test_vector = tv, \
 		}, \
 		.ns_reg = ns, \
 		.md_reg = md, \
@@ -3632,7 +3632,7 @@ static struct clk_freq_tbl clk_tbl_aif_bit_div[] = {
 			.en_reg = ns, \
 			.en_mask = BIT(19), \
 			.halt_reg = h_r, \
-			.halt_check = DELAY, \
+			.halt_check = ENABLE, \
 			.test_vector = tv, \
 		}, \
 		.ns_reg = ns, \
@@ -3649,31 +3649,27 @@ static struct clk_freq_tbl clk_tbl_aif_bit_div[] = {
 	}
 
 static CLK_AIF_OSR(mi2s_osr, LCC_MI2S_NS_REG, LCC_MI2S_MD_REG,
-		LCC_MI2S_STATUS_REG, TEST_LPA(0x0A));
+		LCC_MI2S_STATUS_REG);
 static CLK_AIF_BIT(mi2s_bit, LCC_MI2S_NS_REG, LCC_MI2S_STATUS_REG,
-		TEST_LPA(0x0B));
+		TEST_LPA(0x0F));
 
 static CLK_AIF_OSR_DIV(codec_i2s_mic_osr, LCC_CODEC_I2S_MIC_NS_REG,
-		LCC_CODEC_I2S_MIC_MD_REG, LCC_CODEC_I2S_MIC_STATUS_REG,
-		TEST_LPA(0x0C));
+		LCC_CODEC_I2S_MIC_MD_REG, LCC_CODEC_I2S_MIC_STATUS_REG);
 static CLK_AIF_BIT_DIV(codec_i2s_mic_bit, LCC_CODEC_I2S_MIC_NS_REG,
-		LCC_CODEC_I2S_MIC_STATUS_REG, TEST_LPA(0x0D));
+		LCC_CODEC_I2S_MIC_STATUS_REG, TEST_LPA(0x10));
 
 static CLK_AIF_OSR_DIV(spare_i2s_mic_osr, LCC_SPARE_I2S_MIC_NS_REG,
-		LCC_SPARE_I2S_MIC_MD_REG, LCC_SPARE_I2S_MIC_STATUS_REG,
-		TEST_LPA(0x10));
+		LCC_SPARE_I2S_MIC_MD_REG, LCC_SPARE_I2S_MIC_STATUS_REG);
 static CLK_AIF_BIT_DIV(spare_i2s_mic_bit, LCC_SPARE_I2S_MIC_NS_REG,
-		LCC_SPARE_I2S_MIC_STATUS_REG, TEST_LPA(0x11));
+		LCC_SPARE_I2S_MIC_STATUS_REG, TEST_LPA(0x12));
 
 static CLK_AIF_OSR_DIV(codec_i2s_spkr_osr, LCC_CODEC_I2S_SPKR_NS_REG,
-		LCC_CODEC_I2S_SPKR_MD_REG, LCC_CODEC_I2S_SPKR_STATUS_REG,
-		TEST_LPA(0x0E));
+		LCC_CODEC_I2S_SPKR_MD_REG, LCC_CODEC_I2S_SPKR_STATUS_REG);
 static CLK_AIF_BIT_DIV(codec_i2s_spkr_bit, LCC_CODEC_I2S_SPKR_NS_REG,
-		LCC_CODEC_I2S_SPKR_STATUS_REG, TEST_LPA(0x0F));
+		LCC_CODEC_I2S_SPKR_STATUS_REG, TEST_LPA(0x11));
 
 static CLK_AIF_OSR_DIV(spare_i2s_spkr_osr, LCC_SPARE_I2S_SPKR_NS_REG,
-		LCC_SPARE_I2S_SPKR_MD_REG, LCC_SPARE_I2S_SPKR_STATUS_REG,
-		TEST_LPA(0x12));
+		LCC_SPARE_I2S_SPKR_MD_REG, LCC_SPARE_I2S_SPKR_STATUS_REG);
 static CLK_AIF_BIT_DIV(spare_i2s_spkr_bit, LCC_SPARE_I2S_SPKR_NS_REG,
 		LCC_SPARE_I2S_SPKR_STATUS_REG, TEST_LPA(0x13));
 
@@ -3970,8 +3966,8 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("i2s_spkr_osr_clk",	spare_i2s_spkr_osr_clk.c,	NULL),
 	CLK_LOOKUP("i2s_spkr_bit_clk",	spare_i2s_spkr_bit_clk.c,	NULL),
 	CLK_LOOKUP("pcm_clk",		pcm_clk.c,		NULL),
-	CLK_LOOKUP("audio_slimbus_clk",	audio_slimbus_clk.c,	NULL),
 	CLK_LOOKUP("sps_slimbus_clk",	sps_slimbus_clk.c,	NULL),
+	CLK_LOOKUP("audio_slimbus_clk",	audio_slimbus_clk.c,	NULL),
 	CLK_LOOKUP("iommu_clk",		jpegd_axi_clk.c,	NULL),
 	CLK_LOOKUP("iommu_clk",		vfe_axi_clk.c,		NULL),
 	CLK_LOOKUP("iommu_clk",		vcodec_axi_clk.c,	NULL),
@@ -4023,10 +4019,16 @@ static void reg_init(void)
 	rmwreg(0, BB_MMC_PLL2_M_VAL_REG, 0x3FFFF);
 	rmwreg(0x3400000, BB_MMC_PLL2_N_VAL_REG, 0x3FFFF);
 
+	/* Enable PLL4 */
 	writel_relaxed(0x4, LCC_PLL0_MODE_REG);
 	udelay(10);
 	writel_relaxed(0x6, LCC_PLL0_MODE_REG);
 	writel_relaxed(0x7, LCC_PLL0_MODE_REG);
+
+	/* Setup LPASS toplevel muxes */
+	writel_relaxed(0x15, LPASS_XO_SRC_CLK_CTL_REG); /* Select PXO */
+	writel_relaxed(0x1, LCC_PXO_SRC_CLK_CTL_REG); /* Select PXO */
+	writel_relaxed(0x1, LCC_PRI_PLL_CLK_CTL_REG); /* Select PLL4 */
 
 	/* Deassert MM SW_RESET_ALL signal. */
 	writel(0, SW_RESET_ALL_REG);
