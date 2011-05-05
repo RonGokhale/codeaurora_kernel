@@ -95,6 +95,14 @@ config ARCH_MSM8960
 	select MSM_PIL
 	select MSM_AUDIO_QDSP6 if SND_SOC
 
+config ARCH_FSM9XXX
+	bool "FSM9XXX"
+	select ARCH_MSM_SCORPION
+	select MSM_VIC
+	select CPU_V7
+	select MSM_REMOTE_SPINLOCK_LDREX
+	select FSM9XXX_TLMM
+
 endchoice
 
 choice
@@ -409,6 +417,16 @@ config MACH_MSM8X60_QT
 	help
 	  Support for the Qualcomm MSM8x60 QT board.
 
+config MACH_FSM9XXX_SURF
+	depends on ARCH_FSM9XXX
+	depends on !MSM_STACKED_MEMORY
+	default y
+	bool "FSM9XXX SURF"
+	help
+	  Support for the Qualcomm FSM9xxx femtocell
+	  chipset based SURF evaluation board and
+	  FFA board.
+
 endmenu
 
 config MSM_STACKED_MEMORY
@@ -422,6 +440,7 @@ config MSM_STACKED_MEMORY
 config PHYS_OFFSET
 	hex
 	default "0x40200000" if ARCH_MSM8960
+	default "0x10000000" if ARCH_FSM9XXX
 	default "0x00200000" if !MSM_STACKED_MEMORY
 	default "0x00000000" if ARCH_QSD8X50 && MSM_SOC_REV_A
 	default "0x20000000" if ARCH_QSD8X50
@@ -1330,6 +1349,9 @@ config MSM_GPIOMUX
 
 config MSM_V2_TLMM
        bool
+
+config FSM9XXX_TLMM
+	bool
 
 config MSM_SECURE_IO
 	bool
