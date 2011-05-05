@@ -1471,7 +1471,7 @@ static void __init msm8960_cdp_init(void)
 	if (socinfo_init() < 0)
 		pr_err("socinfo_init() failed!\n");
 
-	msm_clock_init(msm_clocks_8960_dummy, msm_num_clocks_8960_dummy);
+	msm_clock_init(msm_clocks_8960, msm_num_clocks_8960);
 	gpiomux_init();
 	ethernet_init();
 	msm8960_device_qup_spi_gsbi1.dev.platform_data =
