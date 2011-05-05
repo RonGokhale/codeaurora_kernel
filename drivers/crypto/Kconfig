@@ -252,6 +252,9 @@ config CRYPTO_DEV_OMAP_AES
 	  OMAP processors have AES module accelerator. Select this if you
 	  want to use the OMAP module for AES algorithms.
 
+config CRYPTO_DEV_QCE40
+	bool
+
 config CRYPTO_DEV_QCRYPTO
 	tristate "Qualcomm Crypto accelerator"
 	select CRYPTO_DES
@@ -266,17 +269,20 @@ config CRYPTO_DEV_QCRYPTO
 
 config CRYPTO_DEV_QCE
 	tristate "Qualcomm Crypto Engine (QCE) module"
+	select  CRYPTO_DEV_QCE40 if ARCH_MSM8960
 	default n
 	help
-          This driver supports Qualcomm Crypto Engine in MSM7x30 MSM8660.
+          This driver supports Qualcomm Crypto Engine in MSM7x30 MSM8660
+	  MSM8x55 and MSM8960
 	  To compile this driver as a module, choose M here: the
-	  module will be called qce.
+	  For MSM7x30 MSM8660 and MSM8x55 the module is called qce
+	  For MSM8960 the module is called qce40
 
 config CRYPTO_DEV_QCEDEV
 	tristate "QCEDEV Interface to CE module"
 	default n
 	help
-          This driver supports Qualcomm QCEDEV Crypto in MSM7x30 MSM8660.
+          This driver supports Qualcomm QCEDEV Crypto in MSM7x30 MSM8660, MSM8960.
           This exposes the interface to the QCE hardware accelerator via IOCTLs
 	  To compile this driver as a module, choose M here: the
 	  module will be called qcedev.

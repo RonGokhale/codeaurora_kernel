@@ -340,6 +340,8 @@ static void qcedev_sha_req_cb(void *cookie, unsigned char *digest,
 	if (authdata) {
 		areq->sha_ctxt->auth_data[0] = auth32[0];
 		areq->sha_ctxt->auth_data[1] = auth32[1];
+		areq->sha_ctxt->auth_data[2] = auth32[2];
+		areq->sha_ctxt->auth_data[3] = auth32[3];
 	}
 
 	tasklet_schedule(&pdev->done_tasklet);
@@ -512,6 +514,8 @@ static int start_sha_req(struct qcedev_control *podev,
 	sreq.qce_cb = qcedev_sha_req_cb;
 	sreq.auth_data[0] = sha_op_req->ctxt.auth_data[0];
 	sreq.auth_data[1] = sha_op_req->ctxt.auth_data[1];
+	sreq.auth_data[2] = sha_op_req->ctxt.auth_data[2];
+	sreq.auth_data[3] = sha_op_req->ctxt.auth_data[3];
 	sreq.digest = &sha_op_req->ctxt.digest[0];
 	sreq.first_blk = sha_op_req->ctxt.first_blk;
 	sreq.last_blk = sha_op_req->ctxt.last_blk;
@@ -1561,7 +1565,8 @@ static int qcedev_check_cipher_params(struct qcedev_cipher_op_req *req,
 		goto error;
 	if (req->alg == QCEDEV_ALG_AES) {
 		/* if intending to use HW key make sure key fields are set
-		correctly and HW key is indeed supported in target */
+		 * correctly and HW key is indeed supported in target
+		 */
 		if (req->encklen == 0) {
 			int i;
 			for (i = 0; i < QCEDEV_MAX_KEY_SIZE; i++)
@@ -1571,12 +1576,19 @@ static int qcedev_check_cipher_params(struct qcedev_cipher_op_req *req,
 				(req->op != QCEDEV_OPER_DEC_NO_KEY))
 				if (!podev->platform_support.hw_key_support)
 					goto error;
-		} else
-		/* if not using HW key make sure key length is valid */
-			if (!((req->encklen == QCEDEV_AES_KEY_128) ||
-					(req->encklen == QCEDEV_AES_KEY_192) ||
+		} else {
+			if (req->encklen == QCEDEV_AES_KEY_192) {
+				if (!podev->ce_support.aes_key_192)
+					goto error;
+			} else {
+				/* if not using HW key make sure key
+				 * length is valid
+				 */
+				if (!((req->encklen == QCEDEV_AES_KEY_128) ||
 					(req->encklen == QCEDEV_AES_KEY_256)))
-				goto error;
+					goto error;
+			}
+		}
 	}
 	/* if using a byteoffset, make sure it is CTR mode using vbuf */
 	if (req->byteoffset) {
@@ -1587,10 +1599,19 @@ static int qcedev_check_cipher_params(struct qcedev_cipher_op_req *req,
 				goto error;
 		}
 	}
-
+	/* if using PMEM with non-zero byteoffset, ensure it is in_place_op */
+	if (req->use_pmem) {
+		if (!req->in_place_op)
+			goto error;
+	}
+	/* Ensure zer ivlen for ECB  mode  */
 	if (req->ivlen != 0) {
 		if ((req->mode == QCEDEV_AES_MODE_ECB) ||
 				(req->mode == QCEDEV_DES_MODE_ECB))
+			goto error;
+	} else {
+		if ((req->mode != QCEDEV_AES_MODE_ECB) &&
+				(req->mode != QCEDEV_DES_MODE_ECB))
 			goto error;
 	}
 
@@ -1969,7 +1990,7 @@ static void qcedev_exit(void)
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm DEV Crypto driver");
-MODULE_VERSION("1.15");
+MODULE_VERSION("1.16");
 
 module_init(qcedev_init);
 module_exit(qcedev_exit);

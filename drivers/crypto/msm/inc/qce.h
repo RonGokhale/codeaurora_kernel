@@ -50,6 +50,7 @@
 
 /* key size in bytes */
 #define HMAC_KEY_SIZE			(SHA1_DIGESTSIZE)    /* hmac-sha1 */
+#define SHA_HMAC_KEY_SIZE		64
 #define DES_KEY_SIZE			8
 #define TRIPLE_DES_KEY_SIZE		24
 #define AES128_KEY_SIZE			16
@@ -64,6 +65,9 @@
 
 /* Maximum number of bytes per transfer */
 #define QCE_MAX_OPER_DATA		0x8000
+
+/* Maximum Nonce bytes  */
+#define MAX_NONCE  16
 
 typedef void (*qce_comp_func_ptr_t)(void *areq,
 		unsigned char *icv, unsigned char *iv, int ret);
@@ -82,6 +86,7 @@ enum qce_hash_alg_enum {
 	QCE_HASH_SHA256 = 1,
 	QCE_HASH_SHA1_HMAC   = 2,
 	QCE_HASH_SHA256_HMAC = 3,
+	QCE_HASH_AES_CMAC = 4,
 	QCE_HASH_LAST
 };
 
@@ -97,6 +102,8 @@ enum qce_cipher_mode_enum {
 	QCE_MODE_CBC = 0,
 	QCE_MODE_ECB = 1,
 	QCE_MODE_CTR = 2,
+	QCE_MODE_XTS = 3,
+	QCE_MODE_CCM = 4,
 	QCE_CIPHER_MODE_LAST
 };
 
@@ -114,7 +121,10 @@ struct ce_hw_support {
 	bool sha1_hmac; /* supports max HMAC key of 64 bytes*/
 	bool sha256_hmac; /* supports max HMAC key of 64 bytes*/
 	bool sha_hmac; /* supports SHA1 and SHA256 MAX HMAC key of 64 bytes*/
-	bool cbc_mac;
+	bool cmac;
+	bool aes_key_192;
+	bool aes_xts;
+	bool aes_ccm;
 	bool ota;
 };
 
@@ -124,8 +134,9 @@ struct qce_sha_req {
 	enum qce_hash_alg_enum alg;	/* sha algorithm */
 	unsigned char *digest;		/* sha digest  */
 	struct scatterlist *src;	/* pointer to scatter list entry */
-	uint32_t  auth_data[2];		/* byte count */
-	unsigned char *authkey;		/* key length is SHA_BLOCK_SIZE */
+	uint32_t  auth_data[4];		/* byte count */
+	unsigned char *authkey;		/* auth key */
+	unsigned int  authklen;		/* auth key length */
 	bool first_blk;			/* first block indicator */
 	bool last_blk;			/* last block indicator */
 	unsigned int size;		/* data length in bytes */
@@ -141,6 +152,11 @@ struct qce_req {
 	enum qce_cipher_mode_enum mode;	/* algorithm mode */
 	unsigned char *authkey;		/* authentication key  */
 	unsigned int authklen;		/* authentication key kength */
+	unsigned int authsize;		/* authentication key kength */
+	unsigned char  nonce[MAX_NONCE];/* nonce for ccm mode */
+	unsigned char *assoc;		/* Ptr to formatted associated data */
+	unsigned int assoclen;		/* Formatted associated data length  */
+	struct scatterlist *asg;	/* Formatted associated data sg  */
 	unsigned char *enckey;		/* cipher key  */
 	unsigned int encklen;		/* cipher key length */
 	unsigned char *iv;		/* initialization vector */
