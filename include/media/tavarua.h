@@ -55,12 +55,28 @@
 #define BYTES_PER_BLOCK             (3)
 #define MAX_PS_LENGTH              (96)
 #define MAX_RT_LENGTH              (64)
-#define INTDET_PEEK                (0x42)
+
 #define XFRDAT0                    (0x20)
 #define XFRDAT1                    (0x21)
 #define XFRDAT2                    (0x22)
+
 #define INTDET_PEEK_MSB            (0x88)
 #define INTDET_PEEK_LSB            (0x26)
+
+#define RMSSI_PEEK_MSB             (0x88)
+#define RMSSI_PEEK_LSB             (0xA8)
+
+#define MPX_DCC_BYPASS_POKE_MSB    (0x88)
+#define MPX_DCC_BYPASS_POKE_LSB    (0xC0)
+
+#define MPX_DCC_PEEK_MSB_REG1      (0x88)
+#define MPX_DCC_PEEK_LSB_REG1      (0xC2)
+
+#define MPX_DCC_PEEK_MSB_REG2      (0x88)
+#define MPX_DCC_PEEK_LSB_REG2      (0xC3)
+
+#define MPX_DCC_PEEK_MSB_REG3      (0x88)
+#define MPX_DCC_PEEK_LSB_REG3      (0xC4)
 
 /* Standard buffer size */
 #define STD_BUF_SIZE               (64)
@@ -72,8 +88,8 @@
 #define CTRL_ON                     (1)
 #define CTRL_OFF                    (0)
 
-#define US_LOW_BAND                 (87.5)
-#define US_HIGH_BAND                (108)
+#define US_LOW_BAND                (87.5)
+#define US_HIGH_BAND               (108)
 
 /* constant for Tx */
 
@@ -154,6 +170,7 @@ enum v4l2_cid_private_tavarua_t {
 	V4L2_CID_PRIVATE_TAVARUA_STOP_RDS_TX_RT,
 	V4L2_CID_PRIVATE_TAVARUA_IOVERC,
 	V4L2_CID_PRIVATE_TAVARUA_INTDET,
+	V4L2_CID_PRIVATE_TAVARUA_MPX_DCC,
 };
 
 enum tavarua_buf_t {
@@ -400,6 +417,8 @@ enum tavarua_xfr_ctrl_t {
 	PHY_CONFIG,
 	PHY_TXBLOCK,
 	PHY_TCB,
+	XFR_PEEK_MODE = 0x40,
+	XFR_POKE_MODE = 0xC0,
 	TAVARUA_XFR_CTRL_MAX
 };
 

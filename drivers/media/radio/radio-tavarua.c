@@ -2271,7 +2271,98 @@ static int tavarua_vidioc_queryctrl(struct file *file, void *priv,
 
 	return retval;
 }
+static int peek_MPX_DCC(struct tavarua_device *radio)
+{
+	int retval = 0;
+	unsigned char xfr_buf[XFR_REG_NUM];
+	int MPX_DCC[] = { 0 };
+	int DCC = 0;
+	int ct = 0;
+	unsigned char size = 0;
 
+	/*
+	Poking the MPX_DCC_BYPASS register to freeze the
+	value of MPX_DCC from changing while we access it
+	*/
+
+	/*Poking the MPX_DCC_BYPASS register : 0x88C0 */
+	size = 0x01;
+	xfr_buf[0] = (XFR_POKE_MODE | (size << 1));
+	xfr_buf[1] = MPX_DCC_BYPASS_POKE_MSB;
+	xfr_buf[2] = MPX_DCC_BYPASS_POKE_LSB;
+	xfr_buf[3] = 0x01;
+
+	retval = tavarua_write_registers(radio, XFRCTRL, xfr_buf, 4);
+	if (retval < 0) {
+		FMDBG("Failed to write\n");
+		return retval;
+	}
+	/*Wait for the XFR interrupt */
+	msleep(TAVARUA_DELAY*15);
+
+	for (ct = 0; ct < 5; ct++)
+		xfr_buf[ct] = 0;
+
+	/* Peeking Regs 0x88C2-0x88C4 */
+	size = 0x03;
+	xfr_buf[0] = (XFR_PEEK_MODE | (size << 1));
+	xfr_buf[1] = MPX_DCC_PEEK_MSB_REG1;
+	xfr_buf[2] = MPX_DCC_PEEK_LSB_REG1;
+	retval = tavarua_write_registers(radio, XFRCTRL, xfr_buf, 3);
+	if (retval < 0) {
+		FMDBG("Failed to write\n");
+		return retval;
+	}
+	/*Wait for the XFR interrupt */
+	msleep(TAVARUA_DELAY*10);
+	retval = tavarua_read_registers(radio, XFRDAT0, 3);
+	if (retval < 0) {
+		printk(KERN_INFO "INT_DET: Read failure\n");
+		return retval;
+	}
+	MPX_DCC[0] = (int)radio->registers[XFRDAT0];
+	MPX_DCC[1] = (int)radio->registers[XFRDAT1];
+	MPX_DCC[2] = (int)radio->registers[XFRDAT2];
+
+	/*
+	Form the final MPX_DCC parameter
+	MPX_DCC[0] will form the LSB part
+	MPX_DCC[1] will be the middle part and 4 bits of
+	MPX_DCC[2] will be the MSB par of the 20-bit signed MPX_DCC
+	*/
+
+	DCC = ((int)MPX_DCC[2] << 16) | ((int)MPX_DCC[1] << 8) |
+		((int)MPX_DCC[0]);
+
+	/*
+	if bit-19 is '1',set remaining bits to '1' &  make it -tive
+	*/
+	if (DCC & 0x00080000) {
+		FMDBG(KERN_INFO "bit-19 is '1'\n");
+		DCC |= 0xFFF00000;
+	}
+
+	/*
+	Poking the MPX_DCC_BYPASS register to be back to normal
+	*/
+
+	/*Poking the MPX_DCC_BYPASS register : 0x88C0 */
+	size = 0x01;
+	xfr_buf[0] = (XFR_POKE_MODE | (size << 1));
+	xfr_buf[1] = MPX_DCC_BYPASS_POKE_MSB;
+	xfr_buf[2] = MPX_DCC_BYPASS_POKE_LSB;
+	xfr_buf[3] = 0x00;
+
+	retval = tavarua_write_registers(radio, XFRCTRL, xfr_buf, 4);
+	if (retval < 0) {
+		FMDBG("Failed to write\n");
+		return retval;
+	}
+	/*Wait for the XFR interrupt */
+	msleep(TAVARUA_DELAY*10);
+
+	return DCC;
+}
 /*=============================================================================
 FUNCTION:  tavarua_vidioc_g_ctrl
 =============================================================================*/
@@ -2305,6 +2396,7 @@ static int tavarua_vidioc_g_ctrl(struct file *file, void *priv,
 	unsigned char xfr_buf[XFR_REG_NUM];
 	signed char cRmssiThreshold;
 	signed char ioc;
+	unsigned char size = 0;
 
 	switch (ctrl->id) {
 	case V4L2_CID_AUDIO_VOLUME:
@@ -2332,45 +2424,28 @@ static int tavarua_vidioc_g_ctrl(struct file *file, void *priv,
 		ctrl->value = ioc;
 		break;
 	case V4L2_CID_PRIVATE_TAVARUA_INTDET:
-		xfr_buf[0] = INTDET_PEEK_MSB;
-		xfr_buf[1] = INTDET_PEEK_LSB;
-		FMDBG("xfr_buf[2]: %x\n", xfr_buf[2]);
-		xfr_buf[2] = 0;
-		FMDBG("After reset: xfr_buf[2]: %x\n", xfr_buf[2]);
-
-		/*Write the MSB of the address to peek*/
-		retval = tavarua_write_register(radio, XFRDAT0, xfr_buf[0]);
+		size = 0x1;
+		xfr_buf[0] = (XFR_PEEK_MODE | (size << 1));
+		xfr_buf[1] = INTDET_PEEK_MSB;
+		xfr_buf[2] = INTDET_PEEK_LSB;
+		retval = tavarua_write_registers(radio, XFRCTRL, xfr_buf, 3);
 		if (retval < 0) {
-			FMDBG("write failure, xfrdat0\n");
-			return retval;
-		}
-		/*Write the LSB of the address to peek*/
-		retval = tavarua_write_register(radio, XFRDAT1, xfr_buf[1]);
-		if (retval < 0) {
-			FMDBG("write failure, xfrdat1\n");
-			return retval;
-		}
-		/*Clear the xfrdata2 */
-		retval = tavarua_write_register(radio, XFRDAT2, xfr_buf[2]);
-		if (retval < 0) {
-			FMDBG("write failure, xfrdat2\n");
-			return retval;
-		}
-		/*Set the memaccess mode in XFRCTRL*/
-		retval = tavarua_write_register(radio, XFRCTRL, INTDET_PEEK);
-		if (retval < 0) {
-			FMDBG("write failure, xfrctrl\n");
+			FMDBG("Failed to write\n");
 			return retval;
 		}
 		FMDBG("INT_DET:Sync write success\n");
 		/*Wait for the XFR interrupt */
-		msleep(TAVARUA_DELAY*2);
-		retval = tavarua_read_registers(radio, XFRDAT2, 1);
-		if (retval < 0)
+		msleep(TAVARUA_DELAY*10);
+		/* Read the XFRDAT0 register populated by FM SoC */
+		retval = tavarua_read_registers(radio, XFRDAT0, 3);
+		if (retval < 0) {
 			FMDBG("INT_DET: Read failure\n");
-
-		ctrl->value = radio->registers[XFRDAT2];
-		FMDBG("Returning INTDET: %x\n", ctrl->value);
+			return retval;
+		}
+		ctrl->value = radio->registers[XFRDAT0];
+		break;
+	case V4L2_CID_PRIVATE_TAVARUA_MPX_DCC:
+		ctrl->value = peek_MPX_DCC(radio);
 		break;
 	case V4L2_CID_PRIVATE_TAVARUA_REGION:
 		ctrl->value = radio->region_params.region;
@@ -2849,6 +2924,9 @@ static int tavarua_vidioc_g_tuner(struct file *file, void *priv,
 {
 	struct tavarua_device *radio = video_get_drvdata(video_devdata(file));
 	int retval;
+	unsigned char xfr_buf[XFR_REG_NUM];
+	char rmssi = 0;
+	unsigned char size = 0;
 
 	if (tuner->index > 0)
 		return -EINVAL;
@@ -2858,9 +2936,15 @@ static int tavarua_vidioc_g_tuner(struct file *file, void *priv,
 	if (retval < 0)
 		return retval;
 	/* read RMSSI */
-	retval = tavarua_read_registers(radio, RMSSI, 1);
-	if (retval < 0)
-		return retval;
+	size = 0x1;
+	xfr_buf[0] = (XFR_PEEK_MODE | (size << 1));
+	xfr_buf[1] = RMSSI_PEEK_MSB;
+	xfr_buf[2] = RMSSI_PEEK_LSB;
+	retval = tavarua_write_registers(radio, XFRCTRL, xfr_buf, 3);
+	msleep(TAVARUA_DELAY*10);
+	retval = tavarua_read_registers(radio, XFRDAT0, 3);
+	rmssi = radio->registers[XFRDAT0];
+	tuner->signal = rmssi;
 
 	strcpy(tuner->name, "FM");
 	tuner->type = V4L2_TUNER_RADIO;
@@ -2868,7 +2952,6 @@ static int tavarua_vidioc_g_tuner(struct file *file, void *priv,
 	tuner->rangehigh =  radio->region_params.band_high;
 	tuner->rxsubchans = V4L2_TUNER_SUB_MONO | V4L2_TUNER_SUB_STEREO;
 	tuner->capability = V4L2_TUNER_CAP_LOW;
-	tuner->signal = radio->registers[RMSSI];
 
 	/* Stereo indicator == Stereo (instead of Mono) */
 	if (radio->registers[IOCTRL] & IOC_MON_STR)
