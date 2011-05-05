@@ -62,18 +62,19 @@ static void release_secondary(void)
 	if ((read_cpuid_id() & 0xFF0) >> 4 != 0x2D) {
 		base_ptr = ioremap_nocache(0x02098000, SZ_4K);
 		if (base_ptr) {
-			if (!machine_is_msm8960_sim()) {
-				writel(0x10, base_ptr+0x04);
-				writel(0x80, base_ptr+0x04);
-			}
+			writel_relaxed(0x10, base_ptr+0x04);
+			writel_relaxed(0x80, base_ptr+0x04);
+			dsb();
 			iounmap(base_ptr);
 		}
 	} else {
 		base_ptr = ioremap_nocache(0x00902000, SZ_4K*2);
 		if (base_ptr) {
-			writel(0x0, base_ptr+0x15A0);
-			writel(0x0, base_ptr+0xD80);
-			writel(0x3, base_ptr+0xE64);
+			writel_relaxed(0x0, base_ptr+0x15A0);
+			dmb();
+			writel_relaxed(0x0, base_ptr+0xD80);
+			writel_relaxed(0x3, base_ptr+0xE64);
+			dsb();
 			iounmap(base_ptr);
 		}
 	}
