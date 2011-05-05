@@ -27,11 +27,11 @@
 #include <mach/msm_xo.h>
 #include <mach/scm-io.h>
 #include <mach/rpm.h>
+#include <mach/rpm-regulator.h>
 
 #include "clock-local.h"
 #include "clock-rpm.h"
 #include "clock-voter.h"
-#include "rpm-regulator.h"
 
 #ifdef CONFIG_MSM_SECURE_IO
 #undef readl

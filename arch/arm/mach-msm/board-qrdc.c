@@ -62,6 +62,7 @@
 #include <mach/tpm_st_i2c.h>
 #include <mach/socinfo.h>
 #include <mach/rpm.h>
+#include <mach/rpm-regulator.h>
 #ifdef CONFIG_USB_ANDROID
 #include <linux/usb/android_composite.h>
 #endif
@@ -76,7 +77,6 @@
 #include "rpm_log.h"
 #include "timer.h"
 #include "saw-regulator.h"
-#include "rpm-regulator.h"
 #include "gpiomux.h"
 #include "gpiomux-8x60.h"
 
