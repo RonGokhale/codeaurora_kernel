@@ -6713,6 +6713,10 @@ static void __init msm8x60_init_uart12dm(void)
 #if !defined(CONFIG_USB_PEHCI_HCD) && !defined(CONFIG_USB_PEHCI_HCD_MODULE)
 	/* 0x1D000000 now belongs to EBI2:CS3 i.e. USB ISP Controller */
 	void *fpga_mem = ioremap_nocache(0x1D000000, SZ_4K);
+
+	if (!fpga_mem)
+		pr_err("%s(): Error getting memory\n", __func__);
+
 	/* Advanced mode */
 	writew(0xFFFF, fpga_mem + 0x15C);
 	/* FPGA_UART_SEL */
