@@ -214,6 +214,10 @@ struct qcrypto_cipher_req_ctx {
 	u8 *iv;
 	unsigned int ivsize;
 	int  aead;
+	struct scatterlist asg;		/* Formatted associated data sg  */
+	unsigned char *assoc;		/* Pointer to formatted assoc data */
+	unsigned int assoclen;		/* Save Unformatted assoc data length */
+	struct scatterlist *assoc_sg;	/* Save Unformatted assoc data sg */
 	enum qce_cipher_alg_enum alg;
 	enum qce_cipher_dir_enum dir;
 	enum qce_cipher_mode_enum mode;
@@ -803,33 +807,45 @@ static void _qce_aead_complete(void *cookie, unsigned char *icv,
 
 	pstat = &_qcrypto_stat[cp->pdev->id];
 
-	if (ret == 0) {
-		rctx = aead_request_ctx(areq);
-		if (rctx->dir  == QCE_ENCRYPT) {
-			/* copy the icv to dst */
-			scatterwalk_map_and_copy(icv, areq->dst,
-					areq->cryptlen,
-					ctx->authsize, 1);
+	rctx = aead_request_ctx(areq);
 
-		} else {
-			unsigned char tmp[SHA256_DIGESTSIZE];
-
-			/* compare icv from src */
-			scatterwalk_map_and_copy(tmp,
-					areq->src, areq->cryptlen -
-					ctx->authsize, ctx->authsize,
-					0);
-			ret = memcmp(icv, tmp, ctx->authsize);
-			if (ret != 0)
+	if (rctx->mode == QCE_MODE_CCM) {
+		kzfree(rctx->assoc);
+		areq->assoc = rctx->assoc_sg;
+		areq->assoclen = rctx->assoclen;
+		if (ret) {
+			if (ret == 0x2000000)
 				ret = -EBADMSG;
-
+			else
+				ret = -ENXIO;
 		}
 	} else {
-		ret = -ENXIO;
-	}
+		if (ret == 0) {
+			if (rctx->dir  == QCE_ENCRYPT) {
+				/* copy the icv to dst */
+				scatterwalk_map_and_copy(icv, areq->dst,
+						areq->cryptlen,
+						ctx->authsize, 1);
 
-	if (iv)
-		memcpy(ctx->iv, iv, crypto_aead_ivsize(aead));
+			} else {
+				unsigned char tmp[SHA256_DIGESTSIZE];
+
+				/* compare icv from src */
+				scatterwalk_map_and_copy(tmp,
+					areq->src, areq->cryptlen -
+					ctx->authsize, ctx->authsize, 0);
+				ret = memcmp(icv, tmp, ctx->authsize);
+				if (ret != 0)
+					ret = -EBADMSG;
+
+			}
+		} else {
+			ret = -ENXIO;
+		}
+
+		if (iv)
+			memcpy(ctx->iv, iv, crypto_aead_ivsize(aead));
+	}
 
 	if (ret)
 		pstat->aead_op_fail++;
@@ -839,6 +855,82 @@ static void _qce_aead_complete(void *cookie, unsigned char *icv,
 	if (cp->platform_support.ce_shared)
 		schedule_work(&cp->unlock_ce_ws);
 	tasklet_schedule(&cp->done_tasklet);
+}
+
+static int aead_ccm_set_msg_len(u8 *block, unsigned int msglen, int csize)
+{
+	__be32 data;
+
+	memset(block, 0, csize);
+	block += csize;
+
+	if (csize >= 4)
+		csize = 4;
+	else if (msglen > (1 << (8 * csize)))
+		return -EOVERFLOW;
+
+	data = cpu_to_be32(msglen);
+	memcpy(block - csize, (u8 *)&data + 4 - csize, csize);
+
+	return 0;
+}
+
+static int qccrypto_set_aead_ccm_nonce(struct qce_req *qreq)
+{
+	struct aead_request *areq = (struct aead_request *) qreq->areq;
+	unsigned int i = ((unsigned int)qreq->iv[0]) + 1;
+
+	memcpy(&qreq->nonce[0] , qreq->iv, qreq->ivsize);
+	/*
+	 * Format control info per RFC 3610 and
+	 * NIST Special Publication 800-38C
+	 */
+	qreq->nonce[0] |= (8 * ((qreq->authsize - 2) / 2));
+	if (areq->assoclen)
+		qreq->nonce[0] |= 64;
+
+	return aead_ccm_set_msg_len(qreq->nonce + 16 - i, qreq->cryptlen, i);
+}
+
+static int qcrypto_aead_ccm_format_adata(struct qce_req *qreq, uint32_t alen,
+						struct scatterlist *sg)
+{
+	unsigned char *adata;
+	uint32_t len, l;
+
+	qreq->assoc = kzalloc((alen + 0x64), (GFP_KERNEL | __GFP_DMA));
+	if (!qreq->assoc) {
+		pr_err("qcrypto Memory allocation of adata FAIL, error %ld\n",
+				PTR_ERR(qreq->assoc));
+		return -ENOMEM;
+	}
+	adata = qreq->assoc;
+	/*
+	 * Add control info for associated data
+	 * RFC 3610 and NIST Special Publication 800-38C
+	 */
+	if (alen < 65280) {
+		*(__be16 *)adata = cpu_to_be16(alen);
+		len = 2;
+	} else {
+			if ((alen >= 65280) && (alen <= 0xffffffff)) {
+				*(__be16 *)adata = cpu_to_be16(0xfffe);
+				*(__be32 *)&adata[2] = cpu_to_be32(alen);
+				len = 6;
+		} else {
+				*(__be16 *)adata = cpu_to_be16(0xffff);
+				*(__be32 *)&adata[6] = cpu_to_be32(alen);
+				len = 10;
+		}
+	}
+	adata += len;
+	qreq->assoclen = ALIGN((alen + len), 16);
+	for (l = alen; l > 0; sg = sg_next(sg)) {
+		memcpy(adata, sg_virt(sg), sg->length);
+		l -= sg->length;
+		adata += sg->length;
+	}
+	return 0;
 }
 
 static void _start_qcrypto_process(struct crypto_priv *cp)
@@ -942,10 +1034,10 @@ again:
 			ret =  qce_process_sha_req(cp->qce, &sreq);
 
 		} else {
-			struct aead_request *req;
+			struct aead_request *req = container_of(async_req,
+						struct aead_request, base);
+			struct crypto_aead *aead = crypto_aead_reqtfm(req);
 
-			req = container_of(async_req, struct aead_request,
-									base);
 			rctx = aead_request_ctx(req);
 			cipher_ctx = crypto_tfm_ctx(async_req->tfm);
 
@@ -962,11 +1054,45 @@ again:
 			qreq.encklen = cipher_ctx->enc_key_len;
 			qreq.authkey = cipher_ctx->auth_key;
 			qreq.authklen = cipher_ctx->auth_key_len;
-
+			qreq.authsize = crypto_aead_authsize(aead);
+			qreq.ivsize =  crypto_aead_ivsize(aead);
+			if (qreq.mode == QCE_MODE_CCM) {
+				if (qreq.dir == QCE_ENCRYPT)
+					qreq.cryptlen = req->cryptlen;
+				else
+					qreq.cryptlen = req->cryptlen -
+								qreq.authsize;
+				/* Get NONCE */
+				ret = qccrypto_set_aead_ccm_nonce(&qreq);
+				if (ret)
+					goto done;
+				/* Format Associated data    */
+				ret = qcrypto_aead_ccm_format_adata(&qreq,
+								req->assoclen,
+								req->assoc);
+				if (ret)
+					goto done;
+				/*
+				 * Save the original associated data
+				 * length and sg
+				 */
+				rctx->assoc_sg  = req->assoc;
+				rctx->assoclen  = req->assoclen;
+				rctx->assoc  = qreq.assoc;
+				/*
+				 * update req with new formatted associated
+				 * data info
+				 */
+				req->assoc = &rctx->asg;
+				req->assoclen = qreq.assoclen;
+				sg_set_buf(req->assoc, qreq.assoc,
+							req->assoclen);
+				sg_mark_end(req->assoc);
+			}
 			ret =  qce_aead_req(cp->qce, &qreq);
 		}
 	};
-
+done:
 	if (ret) {
 
 		spin_lock_irqsave(&cp->lock, flags);
@@ -1098,6 +1224,32 @@ static int _qcrypto_enc_aes_xts(struct ablkcipher_request *req)
 	pstat->ablk_cipher_aes_enc++;
 	return _qcrypto_queue_req(cp, &req->base);
 };
+
+static int _qcrypto_aead_encrypt_aes_ccm(struct aead_request *req)
+{
+	struct qcrypto_cipher_req_ctx *rctx;
+	struct qcrypto_cipher_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
+	struct crypto_priv *cp = ctx->cp;
+	struct crypto_stat *pstat;
+
+	if ((ctx->authsize > 16) || (ctx->authsize < 4) || (ctx->authsize & 1))
+		return  -EINVAL;
+	if ((ctx->auth_key_len != AES_KEYSIZE_128) &&
+		(ctx->auth_key_len != AES_KEYSIZE_256))
+		return  -EINVAL;
+
+	pstat = &_qcrypto_stat[cp->pdev->id];
+
+	rctx = aead_request_ctx(req);
+	rctx->aead = 1;
+	rctx->alg = CIPHER_ALG_AES;
+	rctx->dir = QCE_ENCRYPT;
+	rctx->mode = QCE_MODE_CCM;
+	rctx->iv = req->iv;
+
+	pstat->aead_sha1_aes_enc++;
+	return _qcrypto_queue_req(cp, &req->base);
+}
 
 static int _qcrypto_enc_des_ecb(struct ablkcipher_request *req)
 {
@@ -1363,11 +1515,59 @@ static int _qcrypto_dec_aes_xts(struct ablkcipher_request *req)
 	return _qcrypto_queue_req(cp, &req->base);
 };
 
+
+static int _qcrypto_aead_decrypt_aes_ccm(struct aead_request *req)
+{
+	struct qcrypto_cipher_req_ctx *rctx;
+	struct qcrypto_cipher_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
+	struct crypto_priv *cp = ctx->cp;
+	struct crypto_stat *pstat;
+
+	if ((ctx->authsize > 16) || (ctx->authsize < 4) || (ctx->authsize & 1))
+		return  -EINVAL;
+	if ((ctx->auth_key_len != AES_KEYSIZE_128) &&
+		(ctx->auth_key_len != AES_KEYSIZE_256))
+		return  -EINVAL;
+
+	pstat = &_qcrypto_stat[cp->pdev->id];
+
+	rctx = aead_request_ctx(req);
+	rctx->aead = 1;
+	rctx->alg = CIPHER_ALG_AES;
+	rctx->dir = QCE_DECRYPT;
+	rctx->mode = QCE_MODE_CCM;
+	rctx->iv = req->iv;
+
+	pstat->aead_sha1_aes_dec++;
+	return _qcrypto_queue_req(cp, &req->base);
+}
+
 static int _qcrypto_aead_setauthsize(struct crypto_aead *authenc,
 				unsigned int authsize)
 {
 	struct qcrypto_cipher_ctx *ctx = crypto_aead_ctx(authenc);
 
+	ctx->authsize = authsize;
+	return 0;
+}
+
+static int _qcrypto_aead_ccm_setauthsize(struct crypto_aead *authenc,
+				  unsigned int authsize)
+{
+	struct qcrypto_cipher_ctx *ctx = crypto_aead_ctx(authenc);
+
+	switch (authsize) {
+	case 4:
+	case 6:
+	case 8:
+	case 10:
+	case 12:
+	case 14:
+	case 16:
+		break;
+	default:
+		return -EINVAL;
+	}
 	ctx->authsize = authsize;
 	return 0;
 }
@@ -1408,6 +1608,33 @@ badkey:
 	ctx->enc_key_len = 0;
 	crypto_aead_set_flags(tfm, CRYPTO_TFM_RES_BAD_KEY_LEN);
 	return -EINVAL;
+}
+
+static int _qcrypto_aead_ccm_setkey(struct crypto_aead *aead, const u8 *key,
+			unsigned int keylen)
+{
+	struct crypto_tfm *tfm = crypto_aead_tfm(aead);
+	struct qcrypto_cipher_ctx *ctx = crypto_tfm_ctx(tfm);
+	struct crypto_priv *cp = ctx->cp;
+
+	switch (keylen) {
+	case AES_KEYSIZE_128:
+	case AES_KEYSIZE_256:
+		break;
+	case AES_KEYSIZE_192:
+		if (cp->ce_support.aes_key_192)
+			break;
+	default:
+		ctx->enc_key_len = 0;
+		crypto_aead_set_flags(aead, CRYPTO_TFM_RES_BAD_KEY_LEN);
+		return -EINVAL;
+	};
+	ctx->enc_key_len = keylen;
+	memcpy(ctx->enc_key, key, keylen);
+	ctx->auth_key_len = keylen;
+	memcpy(ctx->auth_key, key, keylen);
+
+	return 0;
 }
 
 static int _qcrypto_aead_encrypt_aes_cbc(struct aead_request *req)
@@ -2713,6 +2940,31 @@ static struct crypto_alg _qcrypto_aead_sha1_hmac_algos[] = {
 	},
 };
 
+static struct crypto_alg _qcrypto_aead_ccm_algo = {
+	.cra_name	= "ccm(aes)",
+	.cra_driver_name = "qcrypto-aes-ccm",
+	.cra_priority	= 300,
+	.cra_flags	= CRYPTO_ALG_TYPE_AEAD | CRYPTO_ALG_ASYNC,
+	.cra_blocksize  = AES_BLOCK_SIZE,
+	.cra_ctxsize	= sizeof(struct qcrypto_cipher_ctx),
+	.cra_alignmask	= 0,
+	.cra_type	= &crypto_aead_type,
+	.cra_module	= THIS_MODULE,
+	.cra_init	= _qcrypto_cra_aead_init,
+	.cra_u		= {
+		.aead = {
+			.ivsize         = AES_BLOCK_SIZE,
+			.maxauthsize    = SHA1_DIGEST_SIZE,
+			.setkey = _qcrypto_aead_ccm_setkey,
+			.setauthsize = _qcrypto_aead_ccm_setauthsize,
+			.encrypt = _qcrypto_aead_encrypt_aes_ccm,
+			.decrypt = _qcrypto_aead_decrypt_aes_ccm,
+			.geniv = "<built-in>",
+		}
+	}
+};
+
+
 static int  _qcrypto_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -2806,8 +3058,8 @@ static int  _qcrypto_probe(struct platform_device *pdev)
 		}
 	}
 
-
-	/* Register crypto hash (sha1 and sha256) algorithms the
+	/*
+	 * Register crypto hash (sha1 and sha256) algorithms the
 	 * device supports
 	 */
 	for (i = 0; i < ARRAY_SIZE(_qcrypto_ahash_algos); i++) {
@@ -2883,6 +3135,29 @@ static int  _qcrypto_probe(struct platform_device *pdev)
 				dev_info(&pdev->dev, "%s\n",
 				q_alg->sha_alg.halg.base.cra_driver_name);
 			}
+		}
+	}
+	/*
+	 * Register crypto cipher (aes-ccm) algorithms the
+	 * device supports
+	 */
+	if (cp->ce_support.aes_ccm) {
+		struct qcrypto_alg *q_alg;
+
+		q_alg = _qcrypto_cipher_alg_alloc(cp, &_qcrypto_aead_ccm_algo);
+		if (IS_ERR(q_alg)) {
+			rc = PTR_ERR(q_alg);
+			goto err;
+		}
+		rc = crypto_register_alg(&q_alg->cipher_alg);
+		if (rc) {
+			dev_err(&pdev->dev, "%s alg registration failed\n",
+					q_alg->cipher_alg.cra_driver_name);
+			kfree(q_alg);
+		} else {
+			list_add_tail(&q_alg->entry, &cp->alg_list);
+			dev_info(&pdev->dev, "%s\n",
+					q_alg->cipher_alg.cra_driver_name);
 		}
 	}
 
@@ -2996,4 +3271,4 @@ module_exit(_qcrypto_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm Crypto driver");
-MODULE_VERSION("1.15");
+MODULE_VERSION("1.16");
