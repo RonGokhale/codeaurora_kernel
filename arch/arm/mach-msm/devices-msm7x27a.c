@@ -289,6 +289,28 @@ struct platform_device msm_device_uart_dm1 = {
 	},
 };
 
+#define MSM_UART2DM_PHYS	0xA0300000
+static struct resource msm_uart2dm_resources[] = {
+	{
+		.start	= MSM_UART2DM_PHYS,
+		.end	= MSM_UART2DM_PHYS + PAGE_SIZE - 1,
+		.name	= "uartdm_resource",
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= INT_UART2DM_IRQ,
+		.end	= INT_UART2DM_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm_device_uart_dm2 = {
+	.name	= "msm_serial_hsl",
+	.id	= 0,
+	.num_resources	= ARRAY_SIZE(msm_uart2dm_resources),
+	.resource	= msm_uart2dm_resources,
+};
+
 #define MSM_NAND_PHYS		0xA0A00000
 static struct resource resources_nand[] = {
 	[0] = {

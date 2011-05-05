@@ -2508,6 +2508,30 @@ static struct i2c_board_info i2c_camera_devices[] = {
 	},
 };
 #endif
+#if defined(CONFIG_SERIAL_MSM_HSL_CONSOLE) \
+		&& defined(CONFIG_MSM_SHARED_GPIO_FOR_UART2DM)
+static struct msm_gpio uart2dm_gpios[] = {
+	{GPIO_CFG(19, 2, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+							"uart2dm_rfr_n" },
+	{GPIO_CFG(20, 2, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+							"uart2dm_cts_n" },
+	{GPIO_CFG(21, 2, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+							"uart2dm_rx"    },
+	{GPIO_CFG(108, 2, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+							"uart2dm_tx"    },
+};
+
+static void msm7x27a_cfg_uart2dm_serial(void)
+{
+	int ret;
+	ret = msm_gpios_request_enable(uart2dm_gpios,
+					ARRAY_SIZE(uart2dm_gpios));
+	if (ret)
+		pr_err("%s: unable to enable gpios for uart2dm\n", __func__);
+}
+#else
+static void msm7x27a_cfg_uart2dm_serial(void) { }
+#endif
 
 static struct msm_acpu_clock_platform_data msm7x2x_clock_data = {
 	.acpu_switch_time_us = 50,
@@ -2532,6 +2556,7 @@ static struct platform_device *surf_ffa_devices[] __initdata = {
 	&msm_device_smd,
 	&msm_device_uart1,
 	&msm_device_uart_dm1,
+	&msm_device_uart_dm2,
 	&msm_device_nand,
 	&msm_gsbi0_qup_i2c_device,
 	&msm_gsbi1_qup_i2c_device,
@@ -3127,6 +3152,7 @@ static void __init msm7x2x_init(void)
 	msm_device_i2c_init();
 	msm7x27a_init_mmc();
 	msm7x27a_init_ebi2();
+	msm7x27a_cfg_uart2dm_serial();
 #ifdef CONFIG_SERIAL_MSM_HS
 	msm_uart_dm1_pdata.wakeup_irq = gpio_to_irq(UART1DM_RX_GPIO);
 	msm_device_uart_dm1.dev.platform_data = &msm_uart_dm1_pdata;

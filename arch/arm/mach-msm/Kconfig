@@ -1467,6 +1467,15 @@ config MSM_GSBI9_UART
 	help
 	  This enables GSBI9 configured into UART.
 
+config MSM_SHARED_GPIO_FOR_UART2DM
+	bool "Use shared GPIOs into UART mode"
+	depends on (ARCH_MSM7X27A && !MMC_MSM_SDC3_8_BIT_SUPPORT && !MMC_MSM_SDC4_SUPPORT)
+	help
+	  This option configures GPIO muxed with SDC4/MMC3
+	  8-bit mode into UART mode. It is used for serial
+	  console on UART2DM. Say Y if you want to have
+	  serial console on UART2DM.
+
 config MSM_SHOW_RESUME_IRQ
 	bool "Enable logging of interrupts that could have caused resume"
 	depends on ARCH_MSM8X60
