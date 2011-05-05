@@ -138,6 +138,8 @@ int msm_set_copp_id(int session_id, int copp_id)
 		return -EINVAL;
 
 	index = afe_get_port_index(copp_id);
+	if (index < 0 || index > AFE_MAX_PORTS)
+		return -EINVAL;
 	pr_debug("%s: session[%d] copp_id[%d] index[%d]\n", __func__,
 			session_id, copp_id, index);
 	mutex_lock(&routing_info.copp_list_mutex);
@@ -1392,8 +1394,14 @@ void broadcast_event(u32 evt_id, u32 dev_id, u64 session_id)
 	if ((evt_id != AUDDEV_EVT_START_VOICE)
 		&& (evt_id != AUDDEV_EVT_END_VOICE)
 		&& (evt_id != AUDDEV_EVT_STREAM_VOL_CHG)
-		&& (evt_id != AUDDEV_EVT_VOICE_STATE_CHG))
+		&& (evt_id != AUDDEV_EVT_VOICE_STATE_CHG)) {
 		dev_info = audio_dev_ctrl_find_dev(dev_id);
+		if (IS_ERR(dev_info)) {
+			pr_err("%s: pass invalid dev_id(%d)\n",
+					 __func__, dev_id);
+			return;
+		}
+	}
 
 #ifdef CONFIG_MSM8X60_RTAC
 	update_rtac(evt_id, dev_id, dev_info);
@@ -1411,6 +1419,11 @@ void broadcast_event(u32 evt_id, u32 dev_id, u64 session_id)
 	evt_payload = kzalloc(sizeof(union auddev_evt_data),
 			GFP_KERNEL);
 
+	if (evt_payload == NULL) {
+		pr_err("broadcast_event: cannot allocate memory\n");
+		mutex_unlock(&session_lock);
+		return;
+	}
 	for (; ;) {
 		if (!(evt_id & callback->evt_id)) {
 			if (callback->cb_next == NULL)
