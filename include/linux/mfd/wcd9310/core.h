@@ -65,6 +65,8 @@ struct tabla {
 			int bytes, void *dest, bool interface_reg);
 	int (*write_dev)(struct tabla *tabla, unsigned short reg,
 			 int bytes, void *src, bool interface_reg);
+
+	struct regulator_bulk_data *supplies;
 };
 
 int tabla_reg_read(struct tabla *tabla, unsigned short reg);
