@@ -500,19 +500,8 @@ static void msmsdcc_sps_complete_tlet(unsigned long data)
 			host->curr.mrq = NULL;
 			host->curr.cmd = NULL;
 			mrq->data->bytes_xfered = host->curr.data_xfered;
-
 			spin_unlock_irqrestore(&host->lock, flags);
 
-#ifdef CONFIG_MMC_MSM_PROG_DONE_SCAN
-			if ((mrq->cmd->opcode == SD_IO_RW_EXTENDED)
-				&& (mrq->cmd->arg & 0x80000000)) {
-				/* Set the prog_scan in a cmd53.*/
-				host->prog_scan = 1;
-				/* Send STOP to let the SDCC know to stop. */
-				writel(MCI_CSPM_MCIABORT,
-						host->base + MMCICOMMAND);
-			}
-#endif /* CONFIG_MMC_MSM_PROG_DONE_SCAN */
 			mmc_request_done(host->mmc, mrq);
 			return;
 		} else {
