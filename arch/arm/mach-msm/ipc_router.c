@@ -1779,8 +1779,13 @@ int msm_ipc_router_lookup_server_name(struct msm_ipc_port_name *srv_name,
 	struct msm_ipc_server_port *server_port;
 	int i = 0; /*num_entries_found*/
 
-	if (!srv_name || !srv_addr) {
-		pr_err("%s: Invalid srv_addr/name\n", __func__);
+	if (!srv_name) {
+		pr_err("%s: Invalid srv_name\n", __func__);
+		return -EINVAL;
+	}
+
+	if (num_entries_in_array && !srv_addr) {
+		pr_err("%s: srv_addr NULL\n", __func__);
 		return -EINVAL;
 	}
 
