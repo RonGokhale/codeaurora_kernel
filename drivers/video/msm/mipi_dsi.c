@@ -85,6 +85,7 @@ static struct platform_driver mipi_dsi_driver = {
 
 struct device dsi_dev;
 
+#ifndef CONFIG_FB_MSM_MDP303
 static void mipi_dsi_configure_serdes(void)
 {
 	void __iomem *cc;
@@ -156,6 +157,7 @@ static void mipi_dsi_configure_serdes(void)
 	MIPI_OUTP(cc, 0x80530000);
 	MIPI_OUTP(cc, 0x00000000);
 }
+#endif
 
 static void mipi_dsi_clk(struct dsi_clk_desc *clk, int clk_en)
 {
@@ -807,8 +809,10 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 	mipi_dsi_host_init(mipi);
 
+#ifndef CONFIG_FB_MSM_MDP303
 	if (mipi_dsi_pdata && mipi_dsi_pdata->target_type == 1)
 		mipi_dsi_configure_serdes();
+#endif
 
 	mipi_dsi_cmd_bta_sw_trigger(); /* clean up ack_err_status */
 
