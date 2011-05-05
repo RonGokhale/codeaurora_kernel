@@ -27,6 +27,7 @@
 #include <mach/clk.h>
 
 #include "clock-local.h"
+#include "clock-voter.h"
 
 #define REG(off)	(MSM_CLK_CTL_BASE + (off))
 #define REG_MM(off)	(MSM_MMSS_CLK_CTL_BASE + (off))
@@ -72,6 +73,7 @@
 #define SDCn_APPS_CLK_NS_REG(n)			REG(0x282C+(0x20*((n)-1)))
 #define SDCn_HCLK_CTL_REG(n)			REG(0x2820+(0x20*((n)-1)))
 #define SDCn_RESET_REG(n)			REG(0x2830+(0x20*((n)-1)))
+#define SLIMBUS_XO_SRC_CLK_CTL_REG		REG(0x2628)
 #define TSIF_HCLK_CTL_REG			REG(0x2700)
 #define TSIF_REF_CLK_MD_REG			REG(0x270C)
 #define TSIF_REF_CLK_NS_REG			REG(0x2710)
@@ -212,6 +214,10 @@
 #define LCC_SPARE_I2S_SPKR_MD_REG		REG_LPA(0x0088)
 #define LCC_SPARE_I2S_SPKR_NS_REG		REG_LPA(0x0084)
 #define LCC_SPARE_I2S_SPKR_STATUS_REG		REG_LPA(0x008C)
+#define LCC_SLIMBUS_NS_REG			REG_LPA(0x00CC)
+#define LCC_SLIMBUS_MD_REG			REG_LPA(0x00D0)
+#define LCC_SLIMBUS_STATUS_REG			REG_LPA(0x00D4)
+#define LCC_AHBEX_BRANCH_CTL_REG		REG_LPA(0x00E4)
 
 /* MUX source input identifiers. */
 #define pxo_to_bb_mux		0
@@ -3693,7 +3699,7 @@ static struct clk_freq_tbl clk_tbl_pcm[] = {
 	F_END
 };
 
-struct clk_local pcm_clk = {
+static struct clk_local pcm_clk = {
 	.b = {
 		.en_reg = LCC_PCM_NS_REG,
 		.en_mask = BIT(11),
@@ -3719,10 +3725,98 @@ struct clk_local pcm_clk = {
 	},
 };
 
+static struct clk_local audio_slimbus_clk = {
+	.b = {
+		.en_reg = LCC_SLIMBUS_NS_REG,
+		.en_mask = BIT(10),
+		.reset_reg = LCC_AHBEX_BRANCH_CTL_REG,
+		.reset_mask = BIT(5),
+		.halt_reg = LCC_SLIMBUS_STATUS_REG,
+		.halt_check = ENABLE,
+		.halt_bit = 0,
+		.test_vector = TEST_LPA(0x1D),
+	},
+	.ns_reg = LCC_SLIMBUS_NS_REG,
+	.md_reg = LCC_SLIMBUS_MD_REG,
+	.root_en_mask = BIT(9),
+	.ns_mask = (BM(31, 24) | BM(6, 0)),
+	.set_rate = set_rate_mnd,
+	.freq_tbl = clk_tbl_aif_osr,
+	.current_freq = &local_dummy_freq,
+	.c = {
+		.dbg_name = "audio_slimbus_clk",
+		.ops = &soc_clk_ops_8960,
+		.flags = CLKFLAG_AUTO_OFF,
+		CLK_INIT(audio_slimbus_clk.c),
+	},
+};
+
+static struct branch_clk sps_slimbus_clk = {
+	.b = {
+		.en_reg = LCC_SLIMBUS_NS_REG,
+		.en_mask = BIT(12),
+		.halt_reg = LCC_SLIMBUS_STATUS_REG,
+		.halt_check = ENABLE,
+		.halt_bit = 1,
+	},
+	.parent = &audio_slimbus_clk.c,
+	.c = {
+		.dbg_name = "sps_slimbus_clk",
+		.ops = &clk_ops_branch,
+		.flags = CLKFLAG_AUTO_OFF,
+		CLK_INIT(sps_slimbus_clk.c),
+	},
+};
+
+static struct branch_clk slimbus_xo_src_clk = {
+	.b = {
+		.en_reg = SLIMBUS_XO_SRC_CLK_CTL_REG,
+		.en_mask = BIT(2),
+		.halt_reg = CLK_HALT_DFAB_STATE_REG,
+		.halt_check = HALT,
+		.halt_bit = 28,
+		.test_vector = TEST_PER_LS(0x08),
+	},
+	.parent = &sps_slimbus_clk.c,
+	.c = {
+		.dbg_name = "slimbus_xo_src_clk",
+		.ops = &clk_ops_branch,
+		.flags = CLKFLAG_AUTO_OFF,
+		CLK_INIT(slimbus_xo_src_clk.c),
+	},
+};
+
+static DEFINE_CLK_VOTER(dfab_dsps_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_usb_hs_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_sdc1_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_sdc2_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_sdc3_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_sdc4_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_sdc5_clk, &dummy_clk);
+static DEFINE_CLK_VOTER(dfab_sps_clk, &dummy_clk);
+
 struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("pll2",		pll2_clk.c,		NULL),
 	CLK_LOOKUP("pll8",		pll8_clk.c,		NULL),
 	CLK_LOOKUP("pll4",		pll4_clk.c,		NULL),
+
+	CLK_DUMMY("afab_clk",		AFAB_CLK,	NULL, 0),
+	CLK_DUMMY("afab_a_clk",		AFAB_A_CLK,	NULL, 0),
+	CLK_DUMMY("cfpb_clk",		CFPB_CLK,	NULL, 0),
+	CLK_DUMMY("cfpb_a_clk",		CFPB_A_CLK,	NULL, 0),
+	CLK_DUMMY("dfab_clk",		DFAB_CLK,	NULL, 0),
+	CLK_DUMMY("dfab_a_clk",		DFAB_A_CLK,	NULL, 0),
+	CLK_DUMMY("ebi1_clk",		EBI1_CLK,	NULL, 0),
+	CLK_DUMMY("ebi1_a_clk",		EBI1_A_CLK,	NULL, 0),
+	CLK_DUMMY("mmfab_clk",		MMFAB_CLK,	NULL, 0),
+	CLK_DUMMY("mmfab_a_clk",	MMFAB_A_CLK,	NULL, 0),
+	CLK_DUMMY("mmfpb_clk",		MMFPB_CLK,	NULL, 0),
+	CLK_DUMMY("mmfpb_a_clk",	MMFPB_A_CLK,	NULL, 0),
+	CLK_DUMMY("sfab_clk",		SFAB_CLK,	NULL, 0),
+	CLK_DUMMY("sfab_a_clk",		SFAB_A_CLK,	NULL, 0),
+	CLK_DUMMY("sfpb_clk",		SFPB_CLK,	NULL, 0),
+	CLK_DUMMY("sfpb_a_clk",		SFPB_A_CLK,	NULL, 0),
+
 	CLK_LOOKUP("gsbi_uart_clk",	gsbi1_uart_clk.c,	NULL),
 	CLK_LOOKUP("gsbi_uart_clk",	gsbi2_uart_clk.c,	NULL),
 	CLK_LOOKUP("gsbi_uart_clk",	gsbi3_uart_clk.c,	NULL),
@@ -3750,11 +3844,12 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("pdm_clk",		pdm_clk.c,		NULL),
 	CLK_LOOKUP("pmem_clk",		pmem_clk.c,		NULL),
 	CLK_LOOKUP("prng_clk",		prng_clk.c,		NULL),
-	CLK_LOOKUP("sdc_clk",		sdc1_clk.c,		NULL),
-	CLK_LOOKUP("sdc_clk",		sdc2_clk.c,		NULL),
-	CLK_LOOKUP("sdc_clk",		sdc3_clk.c,		NULL),
-	CLK_LOOKUP("sdc_clk",		sdc4_clk.c,		NULL),
-	CLK_LOOKUP("sdc_clk",		sdc5_clk.c,		NULL),
+	CLK_LOOKUP("sdc_clk",		sdc1_clk.c,		"msm_sdcc.1"),
+	CLK_LOOKUP("sdc_clk",		sdc2_clk.c,		"msm_sdcc.2"),
+	CLK_LOOKUP("sdc_clk",		sdc3_clk.c,		"msm_sdcc.3"),
+	CLK_LOOKUP("sdc_clk",		sdc4_clk.c,		"msm_sdcc.4"),
+	CLK_LOOKUP("sdc_clk",		sdc5_clk.c,		"msm_sdcc.5"),
+	CLK_LOOKUP("slimbus_xo_src_clk", slimbus_xo_src_clk.c,	NULL),
 	CLK_LOOKUP("tsif_ref_clk",	tsif_ref_clk.c,		NULL),
 	CLK_LOOKUP("tssc_clk",		tssc_clk.c,		NULL),
 	CLK_LOOKUP("usb_hs_clk",	usb_hs1_xcvr_clk.c,	NULL),
@@ -3784,11 +3879,11 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("usb_fs_pclk",	usb_fs1_p_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_pclk",	usb_fs2_p_clk.c,	NULL),
 	CLK_LOOKUP("usb_hs_pclk",	usb_hs1_p_clk.c,	NULL),
-	CLK_LOOKUP("sdc_pclk",		sdc1_p_clk.c,		NULL),
-	CLK_LOOKUP("sdc_pclk",		sdc2_p_clk.c,		NULL),
-	CLK_LOOKUP("sdc_pclk",		sdc3_p_clk.c,		NULL),
-	CLK_LOOKUP("sdc_pclk",		sdc4_p_clk.c,		NULL),
-	CLK_LOOKUP("sdc_pclk",		sdc5_p_clk.c,		NULL),
+	CLK_LOOKUP("sdc_pclk",		sdc1_p_clk.c,		"msm_sdcc.1"),
+	CLK_LOOKUP("sdc_pclk",		sdc2_p_clk.c,		"msm_sdcc.2"),
+	CLK_LOOKUP("sdc_pclk",		sdc3_p_clk.c,		"msm_sdcc.3"),
+	CLK_LOOKUP("sdc_pclk",		sdc4_p_clk.c,		"msm_sdcc.4"),
+	CLK_LOOKUP("sdc_pclk",		sdc5_p_clk.c,		"msm_sdcc.5"),
 	CLK_LOOKUP("adm_clk",		adm0_clk.c,		NULL),
 	CLK_LOOKUP("adm_pclk",		adm0_p_clk.c,		NULL),
 	CLK_LOOKUP("pmic_arb_pclk",	pmic_arb0_p_clk.c,	NULL),
@@ -3872,6 +3967,8 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("i2s_spkr_osr_clk",	spare_i2s_spkr_osr_clk.c,	NULL),
 	CLK_LOOKUP("i2s_spkr_bit_clk",	spare_i2s_spkr_bit_clk.c,	NULL),
 	CLK_LOOKUP("pcm_clk",		pcm_clk.c,		NULL),
+	CLK_LOOKUP("audio_slimbus_clk",	audio_slimbus_clk.c,	NULL),
+	CLK_LOOKUP("sps_slimbus_clk",	sps_slimbus_clk.c,	NULL),
 	CLK_LOOKUP("iommu_clk",		jpegd_axi_clk.c,	NULL),
 	CLK_LOOKUP("iommu_clk",		vfe_axi_clk.c,		NULL),
 	CLK_LOOKUP("iommu_clk",		vcodec_axi_clk.c,	NULL),
@@ -3879,14 +3976,14 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("iommu_clk",		gfx2d0_clk.c,	NULL),
 	CLK_LOOKUP("iommu_clk",		gfx2d1_clk.c,	NULL),
 
-	CLK_DUMMY("dfab_dsps_clk",	DFAB_DSPS_CLK, NULL, 0),
-	CLK_DUMMY("dfab_usb_hs_clk",	DFAB_USB_HS_CLK, NULL, 0),
-	CLK_DUMMY("dfab_sdc_clk",	DFAB_SDC1_CLK, "msm_sdcc.1", 0),
-	CLK_DUMMY("dfab_sdc_clk",	DFAB_SDC2_CLK, "msm_sdcc.2", 0),
-	CLK_DUMMY("dfab_sdc_clk",	DFAB_SDC3_CLK, "msm_sdcc.3", 0),
-	CLK_DUMMY("dfab_sdc_clk",	DFAB_SDC4_CLK, "msm_sdcc.4", 0),
-	CLK_DUMMY("dfab_sdc_clk",	DFAB_SDC5_CLK, "msm_sdcc.5", 0),
-	CLK_DUMMY("dfab_clk",		DFAB_CLK,	NULL /* sps */, 0),
+	CLK_LOOKUP("dfab_dsps_clk",	dfab_dsps_clk.c, NULL),
+	CLK_LOOKUP("dfab_usb_hs_clk",	dfab_usb_hs_clk.c, NULL),
+	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc1_clk.c, "msm_sdcc.1"),
+	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc2_clk.c, "msm_sdcc.2"),
+	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc3_clk.c, "msm_sdcc.3"),
+	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc4_clk.c, "msm_sdcc.4"),
+	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc5_clk.c, "msm_sdcc.5"),
+	CLK_LOOKUP("dfab_clk",		dfab_sps_clk.c,	NULL /* sps */),
 };
 
 unsigned msm_num_clocks_8960 = ARRAY_SIZE(msm_clocks_8960);
@@ -3945,10 +4042,11 @@ static void reg_init(void)
 	/* Initialize MM AXI registers: Enable HW gating for all clocks that
 	 * support it. Also set FORCE_CORE_ON bits, and any sleep and wake-up
 	 * delays to safe values. */
-	rmwreg(0x00038FF9, MAXI_EN_REG,  0x0FFFFFFF);
-	rmwreg(0x1A27FCFF, MAXI_EN2_REG, 0x1FFFFFFF);
-	writel(0x3FE7FCFF, MAXI_EN3_REG);
-	writel(0x000001D8, SAXI_EN_REG);
+	/* TODO: Enable HW Gating */
+	rmwreg(0x000007F9, MAXI_EN_REG,  0x0FFFFFFF);
+	rmwreg(0x1027FCFF, MAXI_EN2_REG, 0x1FFFFFFF);
+	writel_relaxed(0x00E7FCFF, MAXI_EN3_REG);
+	writel_relaxed(0x00000000, SAXI_EN_REG);
 
 	/* Initialize MM CC registers: Set MM FORCE_CORE_ON bits so that core
 	 * memories retain state even when not clocked. Also, set sleep and
@@ -3989,6 +4087,9 @@ static void reg_init(void)
 	/* Enable TSSC and PDM PXO sources. */
 	writel(BIT(11), TSSC_CLK_CTL_REG);
 	writel(BIT(15), PDM_CLK_NS_REG);
+
+	/* Source SLIMBus xo src from slimbus reference clock */
+	writel_relaxed(0x3, SLIMBUS_XO_SRC_CLK_CTL_REG);
 }
 
 /* Local clock driver initialization. */
@@ -3996,7 +4097,7 @@ void __init msm_clk_soc_init(void)
 {
 	local_vote_sys_vdd(HIGH);
 
-	if (machine_is_msm8960_sim() || machine_is_msm8960_rumi3())
+	if (machine_is_msm8960_rumi3())
 		return;
 
 	/* Initialize clock registers. */
@@ -4011,6 +4112,15 @@ void __init msm_clk_soc_init(void)
 	clk_set_rate(&usb_hs1_xcvr_clk.c, 60000000);
 	clk_set_rate(&usb_fs1_src_clk.c, 60000000);
 	clk_set_rate(&usb_fs2_src_clk.c, 60000000);
+
+	if (machine_is_msm8960_sim()) {
+		clk_set_rate(&sdc1_clk.c, 48000000);
+		clk_enable(&sdc1_clk.c);
+		clk_enable(&sdc1_p_clk.c);
+		clk_set_rate(&sdc3_clk.c, 48000000);
+		clk_enable(&sdc3_clk.c);
+		clk_enable(&sdc3_p_clk.c);
+	}
 }
 
 static int msm_clk_soc_late_init(void)
