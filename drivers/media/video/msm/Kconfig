@@ -126,6 +126,14 @@ config MSM_CAMERA_FLASH_SC628A
 	  It is a samtech charge pump flash driver and it
 	  supports spotlight and flash light modes with
 	  differrent current levels.
+
+config IMX072
+	bool "Sensor imx072 (Sony 5M)"
+	default n
+	---help---
+	  Support for IMX072 sony sensor driver.
+	  It is a Bayer 5MP sensor with auto focus and it supports
+	  two mipi lanes, required for msm7x2xA platform.
 	  Say Y here if this is msm7x2xA variant platform.
 
 config OV2720

@@ -2185,6 +2185,37 @@ static struct platform_device msm_camera_sensor_s5k4e1 = {
 };
 #endif
 
+#ifdef CONFIG_IMX072
+static struct msm_camera_sensor_platform_info imx072_sensor_7627a_info = {
+	.mount_angle = 0
+};
+
+static struct msm_camera_sensor_flash_data flash_imx072 = {
+	.flash_type             = MSM_CAMERA_FLASH_LED,
+	.flash_src              = &msm_flash_src
+};
+
+static struct msm_camera_sensor_info msm_camera_sensor_imx072_data = {
+	.sensor_name    = "imx072",
+	.sensor_reset_enable = 1,
+	.sensor_reset   = GPIO_SURF_CAM_GP_CAMIF_RESET_N, /* TODO 106,*/
+	.sensor_pwd             = 85,
+	.vcm_pwd                = GPIO_SURF_CAM_GP_CAM_PWDN,
+	.vcm_enable             = 1,
+	.pdata                  = &msm_camera_device_data_rear,
+	.flash_data             = &flash_imx072,
+	.sensor_platform_info = &imx072_sensor_7627a_info,
+	.csi_if                 = 1
+};
+
+static struct platform_device msm_camera_sensor_imx072 = {
+	.name   = "msm_camera_imx072",
+	.dev    = {
+		.platform_data = &msm_camera_sensor_imx072_data,
+	},
+};
+#endif
+
 #ifdef CONFIG_WEBCAM_OV9726
 static struct msm_camera_sensor_platform_info ov9726_sensor_7627a_info = {
 	.mount_angle = 90
@@ -2261,6 +2292,11 @@ static struct i2c_board_info i2c_camera_devices[] = {
 		I2C_BOARD_INFO("ov9726", 0x10),
 	},
 	#endif
+	#ifdef CONFIG_IMX072
+	{
+		I2C_BOARD_INFO("imx072", 0x34),
+	},
+	#endif
 	#ifdef CONFIG_MT9E013
 	{
 		I2C_BOARD_INFO("mt9e013", 0x6C >> 2),
@@ -2309,6 +2345,9 @@ static struct platform_device *surf_ffa_devices[] __initdata = {
 	&smsc911x_device,
 #ifdef CONFIG_S5K4E1
 	&msm_camera_sensor_s5k4e1,
+#endif
+#ifdef CONFIG_IMX072
+	&msm_camera_sensor_imx072,
 #endif
 #ifdef CONFIG_WEBCAM_OV9726
 	&msm_camera_sensor_ov9726,
