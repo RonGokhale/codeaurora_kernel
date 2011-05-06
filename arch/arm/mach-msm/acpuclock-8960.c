@@ -39,8 +39,6 @@
 #define PLL_8			 0
 #define HFPLL			-1
 #define QSB			-2
-#define INIT_HFPLL		-3
-#define INIT_QSB		-4
 
 /* Mux source selects. */
 #define PRI_SRC_SEL_SEC_SRC	0
@@ -151,10 +149,10 @@ static struct acpu_level acpu_freq_tbl[] = {
 	{ 1, {  594000, HFPLL, 1, 0, 0, 0x0B }, L2(4)  },
 	{ 1, {  648000, HFPLL, 1, 0, 0, 0x0C }, L2(5)  },
 	{ 1, {  702000, HFPLL, 1, 0, 0, 0x0D }, L2(6)  },
-	{ 1, {  756000, HFPLL, 1, 0, 0, 0x0E }, L2(7)  },
-	{ 1, {  810000, HFPLL, 1, 0, 0, 0x0F }, L2(8)  },
-	{ 1, {  864000, HFPLL, 1, 0, 0, 0x10 }, L2(9)  },
-	{ 1, {  918000, HFPLL, 1, 0, 0, 0x11 }, L2(10) },
+	{ 0, {  756000, HFPLL, 1, 0, 0, 0x0E }, L2(7)  },
+	{ 0, {  810000, HFPLL, 1, 0, 0, 0x0F }, L2(8)  },
+	{ 0, {  864000, HFPLL, 1, 0, 0, 0x10 }, L2(9)  },
+	{ 0, {  918000, HFPLL, 1, 0, 0, 0x11 }, L2(10) },
 	{ 0, { 0 } }
 };
 
@@ -247,6 +245,7 @@ static void set_pri_clk_src(enum scalables id, uint32_t pri_src_sel)
 
 	regval = readl_cp15_l2ind(l2cpmr_iaddr[id]);
 	regval &= ~0x3;
+	regval |= (pri_src_sel & 0x3);
 	writel_cp15_l2ind(regval, l2cpmr_iaddr[id]);
 }
 
@@ -262,7 +261,6 @@ static void set_sec_clk_src(enum scalables id, uint32_t sec_src_sel)
 	regval = readl_cp15_l2ind(l2cpmr_iaddr[id]);
 	regval &= ~(0x3 << 2);
 	regval |= ((sec_src_sel & 0x3) << 2);
-
 	writel_cp15_l2ind(regval, l2cpmr_iaddr[id]);
 }
 
@@ -478,7 +476,7 @@ static void __init hfpll_init(enum scalables id, struct core_speed *tgt_s)
 	hfpll_disable(id);
 
 	/* Configure PLL parameters for integer mode. */
-	writel_relaxed(0x7805C665, hf_pll_base[id] + HFPLL_CONFIG_CTL);
+	writel_relaxed(0x7845C665, hf_pll_base[id] + HFPLL_CONFIG_CTL);
 	writel_relaxed(0, hf_pll_base[id] + HFPLL_M_VAL);
 	writel_relaxed(1, hf_pll_base[id] + HFPLL_N_VAL);
 
@@ -497,8 +495,8 @@ static void __init init_clock_sources(enum scalables id)
 {
 	struct core_speed *temp_s, *tgt_s;
 	static struct core_speed speed[] = {
-		[INIT_QSB_ID] =   { STBY_KHZ, INIT_QSB,   0, 0, 0, 0x00 },
-		[INIT_HFPLL_ID] = { 810000,   INIT_HFPLL, 1, 0, 0, 0x0F },
+		[INIT_QSB_ID] =   { STBY_KHZ, QSB,   0, 0, 0, 0x00 },
+		[INIT_HFPLL_ID] = { 702000,   HFPLL, 1, 0, 0, 0x0D },
 	};
 
 	/*
@@ -559,7 +557,7 @@ static void __init cpufreq_table_init(void)
 		/* Construct the freq_table tables from acpu_freq_tbl. */
 		for (i = 0; acpu_freq_tbl[i].speed.khz != 0
 				&& freq_cnt < ARRAY_SIZE(*freq_table); i++) {
-			if (acpu_freq_tbl[i].use_for_scaling[cpu]) {
+			if (acpu_freq_tbl[i].use_for_scaling) {
 				freq_table[cpu][freq_cnt].index = freq_cnt;
 				freq_table[cpu][freq_cnt].frequency
 					= acpu_freq_tbl[i].speed.khz;
