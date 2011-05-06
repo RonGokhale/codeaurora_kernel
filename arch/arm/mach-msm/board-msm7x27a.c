@@ -254,6 +254,10 @@ static int bahama_bt(int on)
 		{ 0xE6, 0x38, 0x7F },
 		{ 0xE7, 0x06, 0xFF },
 #endif
+		{ 0x8E, 0x15, 0xFF },
+		{ 0x8F, 0x15, 0xFF },
+		{ 0x90, 0x15, 0xFF },
+
 		{ 0xE9, 0x21, 0xFF },
 	};
 
@@ -543,6 +547,11 @@ static int bluetooth_power(int on)
 			goto fail_i2c;
 		}
 		msleep(20);
+		rc = pmapp_clock_vote(id, PMAPP_CLOCK_ID_D1,
+				  PMAPP_CLOCK_VOTE_PIN_CTRL);
+		if (rc < 0)
+			pr_err("%s:Pin Control Failed, rc = %d", __func__, rc);
+
 	} else {
 		rc = bahama_bt(0);
 		if (rc < 0)
@@ -1571,7 +1580,6 @@ static void __init msm7x27a_init_mmc(void)
 	msm_add_sdcc(4, &sdc4_plat_data);
 #endif
 }
-
 #define SND(desc, num) { .name = #desc, .id = num }
 static struct snd_endpoint snd_endpoints_list[] = {
 	SND(HANDSET, 0),
@@ -2166,7 +2174,9 @@ static struct platform_device *surf_ffa_devices[] __initdata = {
 	&mipi_dsi_renesas_panel_device,
 #endif
 	&msm_kgsl_3d0,
-
+#ifdef CONFIG_BT
+	&msm_bt_power_device,
+#endif
 };
 
 static unsigned pmem_kernel_ebi1_size = PMEM_KERNEL_EBI1_SIZE;
