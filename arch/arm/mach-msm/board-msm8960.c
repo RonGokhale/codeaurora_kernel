@@ -1497,6 +1497,7 @@ static void __init msm8960_cdp_init(void)
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
 	msm8960_init_mmc();
+	msm_acpu_clock_init(&msm8960_acpu_clock_data);
 }
 
 MACHINE_START(MSM8960_SIM, "QCT MSM8960 SIMULATOR")
