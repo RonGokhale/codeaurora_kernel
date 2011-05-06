@@ -49,6 +49,7 @@
 #define GSBIn_RESET_REG(n)			REG(0x29DC+(0x20*((n)-1)))
 #define GSBIn_UART_APPS_MD_REG(n)		REG(0x29D0+(0x20*((n)-1)))
 #define GSBIn_UART_APPS_NS_REG(n)		REG(0x29D4+(0x20*((n)-1)))
+#define LPASS_XO_SRC_CLK_CTL_REG		REG(0x2EC0)
 #define PDM_CLK_NS_REG				REG(0x2CC0)
 #define BB_PLL_ENA_SC0_REG			REG(0x34C0)
 #define BB_PLL0_STATUS_REG			REG(0x30D8)
@@ -61,6 +62,9 @@
 #define BB_PLL8_N_VAL_REG			REG(0x314C)
 #define BB_PLL8_STATUS_REG			REG(0x3158)
 #define BB_PLL8_CONFIG_REG			REG(0x3154)
+#define BB_PLL8_TEST_CTL_REG			REG(0x3150)
+#define BB_MMC_PLL2_M_VAL_REG			REG(0x3168)
+#define BB_MMC_PLL2_N_VAL_REG			REG(0x316C)
 #define PLLTEST_PAD_CFG_REG			REG(0x2FA4)
 #define PMEM_ACLK_CTL_REG			REG(0x25A0)
 #define PPSS_HCLK_CTL_REG			REG(0x2580)
@@ -101,8 +105,8 @@
 #define CSI0_CC_REG				REG_MM(0x0040)
 #define CSI0_MD_REG				REG_MM(0x0044)
 #define CSI1_NS_REG				REG_MM(0x0010)
-#define CSI1_CC_REG				REG_MM(0x0028)
-#define CSI1_MD_REG				REG_MM(0x0024)
+#define CSI1_CC_REG				REG_MM(0x0024)
+#define CSI1_MD_REG				REG_MM(0x0028)
 #define CSIPHYTIMER_CC_REG			REG_MM(0x0160)
 #define CSIPHYTIMER_MD_REG			REG_MM(0x0164)
 #define CSIPHYTIMER_NS_REG			REG_MM(0x0168)
@@ -165,6 +169,7 @@
 #define MM_PLL1_MODE_REG			REG_MM(0x031C)
 #define MM_PLL1_N_VAL_REG			REG_MM(0x0328)
 #define MM_PLL1_STATUS_REG			REG_MM(0x0334)
+#define MM_PLL1_TEST_CTL_REG			REG_MM(0x0330)
 #define ROT_CC_REG				REG_MM(0x00E0)
 #define ROT_NS_REG				REG_MM(0x00E8)
 #define SAXI_EN_REG				REG_MM(0x0030)
@@ -208,6 +213,7 @@
 #define LCC_PLL0_N_VAL_REG			REG_LPA(0x000C)
 #define LCC_PLL0_STATUS_REG			REG_LPA(0x0018)
 #define LCC_PRI_PLL_CLK_CTL_REG			REG_LPA(0x00C4)
+#define LCC_PXO_SRC_CLK_CTL_REG			REG_LPA(0x00B4)
 #define LCC_SPARE_I2S_MIC_MD_REG		REG_LPA(0x007C)
 #define LCC_SPARE_I2S_MIC_NS_REG		REG_LPA(0x0078)
 #define LCC_SPARE_I2S_MIC_STATUS_REG		REG_LPA(0x0080)
@@ -1231,7 +1237,6 @@ static struct clk_freq_tbl clk_tbl_gsbi_uart[] = {
 	F_GSBI_UART( 7372800, pll8, 1, 12, 625, LOW),
 	F_GSBI_UART(14745600, pll8, 1, 24, 625, LOW),
 	F_GSBI_UART(16000000, pll8, 4,  1,   6, LOW),
-	F_GSBI_UART(18432000, pxo,  4, 48, 125, LOW),
 	F_GSBI_UART(24000000, pll8, 4,  1,   4, LOW),
 	F_GSBI_UART(32000000, pll8, 4,  1,   3, LOW),
 	F_GSBI_UART(40000000, pll8, 1,  5,  48, NOMINAL),
@@ -2253,7 +2258,7 @@ static struct branch_clk amp_clk = {
 			.halt_check = HALT, \
 			.halt_reg = DBG_BUS_VEC_I_REG, \
 			.halt_bit = hb, \
-			.test_vector = TEST_MM_LS(0x1D), \
+			.test_vector = tv, \
 		}, \
 		.ns_reg = CAMCLKn_NS_REG(n), \
 		.md_reg = CAMCLKn_MD_REG(n), \
@@ -2464,9 +2469,7 @@ struct clk_local csi_pix_clk = {
 	.b = {
 		.en_reg = MISC_CC_REG,
 		.en_mask = BIT(26),
-		.halt_reg =  DBG_BUS_VEC_I_REG,\
-		.halt_check = HALT,
-		.halt_bit = 19,
+		.halt_check = DELAY,
 		.reset_reg = SW_RESET_CORE_REG,
 		.reset_mask = BIT(26),
 		.test_vector = TEST_MM_HS(0x26),
@@ -2476,7 +2479,6 @@ struct clk_local csi_pix_clk = {
 	.set_rate = set_rate_nop,
 	.freq_tbl = clk_tbl_csi_pix,
 	.current_freq = &local_dummy_freq,
-	.set_rate = set_rate_nop,
 	.c = {
 		.dbg_name = "csi_pix_clk",
 		.ops = &soc_clk_ops_8960,
@@ -2489,9 +2491,7 @@ struct clk_local csi_rdi_clk = {
 	.b = {
 		.en_reg = MISC_CC_REG,
 		.en_mask = BIT(13),
-		.halt_reg =  DBG_BUS_VEC_I_REG,\
-		.halt_check = HALT,
-		.halt_bit = 21,
+		.halt_check = DELAY,
 		.reset_reg = SW_RESET_CORE_REG,
 		.reset_mask = BIT(27),
 		.test_vector = TEST_MM_HS(0x27),
@@ -2501,7 +2501,6 @@ struct clk_local csi_rdi_clk = {
 	.set_rate = set_rate_nop,
 	.freq_tbl = clk_tbl_csi_rdi,
 	.current_freq = &local_dummy_freq,
-	.set_rate = set_rate_nop,
 	.c = {
 		.dbg_name = "csi_rdi_clk",
 		.ops = &soc_clk_ops_8960,
@@ -2586,7 +2585,7 @@ static struct branch_clk csi1phy_timer_clk = {
 #define F_DSI(d) \
 	{ \
 		.freq_hz = d, \
-		.ns_val = BVAL(27, 24, (d-1)), \
+		.ns_val = BVAL(15, 12, (d-1)), \
 	}
 /*
  * The DSI_BYTE/ESC clock is sourced from the DSI PHY PLL, which may change rate
@@ -2628,7 +2627,7 @@ static struct clk_local dsi1_byte_clk = {
 
 static struct clk_local dsi2_byte_clk = {
 	.b = {
-		.en_reg = DSI1_BYTE_CC_REG,
+		.en_reg = DSI2_BYTE_CC_REG,
 		.en_mask = BIT(0),
 		.reset_reg = SW_RESET_CORE_REG,
 		.reset_mask = BIT(25),
@@ -2637,7 +2636,7 @@ static struct clk_local dsi2_byte_clk = {
 		.halt_bit = 20,
 		.test_vector = TEST_MM_LS(0x01),
 	},
-	.ns_reg = DSI1_BYTE_NS_REG,
+	.ns_reg = DSI2_BYTE_NS_REG,
 	.root_en_mask = BIT(2),
 	.ns_mask = BM(15, 12),
 	.set_rate = set_rate_nop,
@@ -2677,14 +2676,14 @@ static struct clk_local dsi1_esc_clk = {
 
 static struct clk_local dsi2_esc_clk = {
 	.b = {
-		.en_reg = DSI1_BYTE_CC_REG,
+		.en_reg = DSI2_ESC_CC_REG,
 		.en_mask = BIT(0),
 		.halt_reg = DBG_BUS_VEC_I_REG,
 		.halt_check = HALT,
 		.halt_bit = 3,
 		.test_vector = TEST_MM_LS(0x23),
 	},
-	.ns_reg = DSI1_BYTE_NS_REG,
+	.ns_reg = DSI2_ESC_NS_REG,
 	.root_en_mask = BIT(2),
 	.ns_mask = BM(15, 12),
 	.set_rate = set_rate_nop,
@@ -3322,8 +3321,8 @@ static struct bank_masks bmnd_info_vcodec = {
 		.freq_hz = f, \
 		.src_clk = &s##_clk.c, \
 		.md_val = MD8(8, m, 0, n), \
-		.ns_val = NS_MND_BANKED8(18, 11, n, m, 0, 27, s##_to_mm_mux), \
-		.cc_val = CC_BANKED(11, 6, n), \
+		.ns_val = NS_MND_BANKED8(11, 19, n, m, 0, 27, s##_to_mm_mux), \
+		.cc_val = CC_BANKED(6, 11, n), \
 		.mnd_en_mask = (BIT(10) | BIT(5)) * !!(n), \
 		.sys_vdd = v, \
 	}
@@ -3479,8 +3478,8 @@ static struct branch_clk csi0_vfe_clk = {
 		.reset_mask = BIT(24),
 		.halt_reg = DBG_BUS_VEC_B_REG,
 		.halt_check = HALT,
-		.halt_bit = 7,
-		.test_vector = TEST_MM_HS(0x03),
+		.halt_bit = 8,
+		.test_vector = TEST_MM_HS(0x04),
 	},
 	.parent = &vfe_clk.c,
 	.c = {
@@ -3518,7 +3517,7 @@ static struct clk_freq_tbl clk_tbl_aif_osr[] = {
 	F_END
 };
 
-#define CLK_AIF_OSR(i, ns, md, h_r, tv) \
+#define CLK_AIF_OSR(i, ns, md, h_r) \
 	struct clk_local i##_clk = { \
 		.b = { \
 			.en_reg = ns, \
@@ -3528,7 +3527,6 @@ static struct clk_freq_tbl clk_tbl_aif_osr[] = {
 			.halt_reg = h_r, \
 			.halt_check = ENABLE, \
 			.halt_bit = 1, \
-			.test_vector = tv, \
 		}, \
 		.ns_reg = ns, \
 		.md_reg = md, \
@@ -3544,17 +3542,16 @@ static struct clk_freq_tbl clk_tbl_aif_osr[] = {
 			CLK_INIT(i##_clk.c), \
 		}, \
 	}
-#define CLK_AIF_OSR_DIV(i, ns, md, h_r, tv) \
+#define CLK_AIF_OSR_DIV(i, ns, md, h_r) \
 	struct clk_local i##_clk = { \
 		.b = { \
 			.en_reg = ns, \
 			.en_mask = BIT(21), \
 			.reset_reg = ns, \
-			.reset_mask = BIT(19), \
+			.reset_mask = BIT(23), \
 			.halt_reg = h_r, \
 			.halt_check = ENABLE, \
 			.halt_bit = 1, \
-			.test_vector = tv, \
 		}, \
 		.ns_reg = ns, \
 		.md_reg = md, \
@@ -3629,7 +3626,7 @@ static struct clk_freq_tbl clk_tbl_aif_bit_div[] = {
 			.en_reg = ns, \
 			.en_mask = BIT(19), \
 			.halt_reg = h_r, \
-			.halt_check = DELAY, \
+			.halt_check = ENABLE, \
 			.test_vector = tv, \
 		}, \
 		.ns_reg = ns, \
@@ -3646,31 +3643,27 @@ static struct clk_freq_tbl clk_tbl_aif_bit_div[] = {
 	}
 
 static CLK_AIF_OSR(mi2s_osr, LCC_MI2S_NS_REG, LCC_MI2S_MD_REG,
-		LCC_MI2S_STATUS_REG, TEST_LPA(0x0A));
+		LCC_MI2S_STATUS_REG);
 static CLK_AIF_BIT(mi2s_bit, LCC_MI2S_NS_REG, LCC_MI2S_STATUS_REG,
-		TEST_LPA(0x0B));
+		TEST_LPA(0x0F));
 
 static CLK_AIF_OSR_DIV(codec_i2s_mic_osr, LCC_CODEC_I2S_MIC_NS_REG,
-		LCC_CODEC_I2S_MIC_MD_REG, LCC_CODEC_I2S_MIC_STATUS_REG,
-		TEST_LPA(0x0C));
+		LCC_CODEC_I2S_MIC_MD_REG, LCC_CODEC_I2S_MIC_STATUS_REG);
 static CLK_AIF_BIT_DIV(codec_i2s_mic_bit, LCC_CODEC_I2S_MIC_NS_REG,
-		LCC_CODEC_I2S_MIC_STATUS_REG, TEST_LPA(0x0D));
+		LCC_CODEC_I2S_MIC_STATUS_REG, TEST_LPA(0x10));
 
 static CLK_AIF_OSR_DIV(spare_i2s_mic_osr, LCC_SPARE_I2S_MIC_NS_REG,
-		LCC_SPARE_I2S_MIC_MD_REG, LCC_SPARE_I2S_MIC_STATUS_REG,
-		TEST_LPA(0x10));
+		LCC_SPARE_I2S_MIC_MD_REG, LCC_SPARE_I2S_MIC_STATUS_REG);
 static CLK_AIF_BIT_DIV(spare_i2s_mic_bit, LCC_SPARE_I2S_MIC_NS_REG,
-		LCC_SPARE_I2S_MIC_STATUS_REG, TEST_LPA(0x11));
+		LCC_SPARE_I2S_MIC_STATUS_REG, TEST_LPA(0x12));
 
 static CLK_AIF_OSR_DIV(codec_i2s_spkr_osr, LCC_CODEC_I2S_SPKR_NS_REG,
-		LCC_CODEC_I2S_SPKR_MD_REG, LCC_CODEC_I2S_SPKR_STATUS_REG,
-		TEST_LPA(0x0E));
+		LCC_CODEC_I2S_SPKR_MD_REG, LCC_CODEC_I2S_SPKR_STATUS_REG);
 static CLK_AIF_BIT_DIV(codec_i2s_spkr_bit, LCC_CODEC_I2S_SPKR_NS_REG,
-		LCC_CODEC_I2S_SPKR_STATUS_REG, TEST_LPA(0x0F));
+		LCC_CODEC_I2S_SPKR_STATUS_REG, TEST_LPA(0x11));
 
 static CLK_AIF_OSR_DIV(spare_i2s_spkr_osr, LCC_SPARE_I2S_SPKR_NS_REG,
-		LCC_SPARE_I2S_SPKR_MD_REG, LCC_SPARE_I2S_SPKR_STATUS_REG,
-		TEST_LPA(0x12));
+		LCC_SPARE_I2S_SPKR_MD_REG, LCC_SPARE_I2S_SPKR_STATUS_REG);
 static CLK_AIF_BIT_DIV(spare_i2s_spkr_bit, LCC_SPARE_I2S_SPKR_NS_REG,
 		LCC_SPARE_I2S_SPKR_STATUS_REG, TEST_LPA(0x13));
 
@@ -3854,12 +3847,12 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("tssc_clk",		tssc_clk.c,		NULL),
 	CLK_LOOKUP("usb_hs_clk",	usb_hs1_xcvr_clk.c,	NULL),
 	CLK_LOOKUP("usb_phy_clk",	usb_phy0_clk.c,		NULL),
-	CLK_LOOKUP("usb_fs_src_clk",	usb_fs1_src_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_clk",	usb_fs1_xcvr_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_sys_clk",	usb_fs1_sys_clk.c,	NULL),
-	CLK_LOOKUP("usb_fs_src_clk",	usb_fs2_src_clk.c,	NULL),
+	CLK_LOOKUP("usb_fs_src_clk",	usb_fs1_src_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_clk",	usb_fs2_xcvr_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_sys_clk",	usb_fs2_sys_clk.c,	NULL),
+	CLK_LOOKUP("usb_fs_src_clk",	usb_fs2_src_clk.c,	NULL),
 	CLK_LOOKUP("ce_clk",		ce2_p_clk.c,		NULL),
 	CLK_LOOKUP("dma_bam_pclk",	dma_bam_p_clk.c,	NULL),
 	CLK_LOOKUP("spi_pclk",		gsbi1_p_clk.c,		"spi_qsd.0"),
@@ -3967,8 +3960,8 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("i2s_spkr_osr_clk",	spare_i2s_spkr_osr_clk.c,	NULL),
 	CLK_LOOKUP("i2s_spkr_bit_clk",	spare_i2s_spkr_bit_clk.c,	NULL),
 	CLK_LOOKUP("pcm_clk",		pcm_clk.c,		NULL),
-	CLK_LOOKUP("audio_slimbus_clk",	audio_slimbus_clk.c,	NULL),
 	CLK_LOOKUP("sps_slimbus_clk",	sps_slimbus_clk.c,	NULL),
+	CLK_LOOKUP("audio_slimbus_clk",	audio_slimbus_clk.c,	NULL),
 	CLK_LOOKUP("iommu_clk",		jpegd_axi_clk.c,	NULL),
 	CLK_LOOKUP("iommu_clk",		vfe_axi_clk.c,		NULL),
 	CLK_LOOKUP("iommu_clk",		vcodec_axi_clk.c,	NULL),
@@ -4004,27 +3997,32 @@ static void rmwreg(uint32_t val, void *reg, uint32_t mask)
 static void reg_init(void)
 {
 	/* Set MM_PLL1 (PLL2) @ 800 MHz but leave it off. */
-	rmwreg(0,  MM_PLL1_MODE_REG, BIT(0)); /* Disable output */
-	writel(29, MM_PLL1_L_VAL_REG);
-	writel(17, MM_PLL1_M_VAL_REG);
-	writel(27, MM_PLL1_N_VAL_REG);
-	/* Set ref, bypass, assert reset, disable output, disable test mode. */
-	writel(0,    MM_PLL1_MODE_REG); /* PXO */
-	writel(0x00C22080, MM_PLL1_CONFIG_REG); /* Enable MN, set VCO, misc */
-
-	/* Set PLL8 @ 384 MHz */
-	writel(14, BB_PLL8_L_VAL_REG);
-	writel(2, BB_PLL8_M_VAL_REG);
-	writel(9, BB_PLL8_N_VAL_REG);
-	writel(BIT(20) | 7, BB_PLL8_MODE_REG);
-	writel(0xC5248B, BB_PLL8_CONFIG_REG);
+	writel_relaxed(0, MM_PLL1_MODE_REG); /* PXO */
+	writel_relaxed(0x31000 | 29, MM_PLL1_L_VAL_REG);
+	writel_relaxed(17, MM_PLL1_M_VAL_REG);
+	writel_relaxed(27, MM_PLL1_N_VAL_REG);
+	writel_relaxed(0xC20000, MM_PLL1_CONFIG_REG); /* Enable MN, misc */
+	writel_relaxed(0x1000, MM_PLL1_TEST_CTL_REG); /* Enable aux output */
 
 	/* Set PLL4 @ 393.216 MHz */
-	writel(14, LCC_PLL0_L_VAL_REG);
-	writel(634, LCC_PLL0_M_VAL_REG);
-	writel(1125, LCC_PLL0_N_VAL_REG);
-	writel(BIT(20) | 7, LCC_PLL0_MODE_REG);
-	writel(BIT(23) | BIT(22) | (0x1 << 16), LCC_PLL0_CONFIG_REG);
+	writel_relaxed(0, LCC_PLL0_MODE_REG);
+	writel_relaxed(14, LCC_PLL0_L_VAL_REG);
+	writel_relaxed(634, LCC_PLL0_M_VAL_REG);
+	writel_relaxed(1125, LCC_PLL0_N_VAL_REG);
+	writel_relaxed(0xC00000, LCC_PLL0_CONFIG_REG); /* Fractional, main */
+	rmwreg(0, BB_MMC_PLL2_M_VAL_REG, 0x3FFFF);
+	rmwreg(0x3400000, BB_MMC_PLL2_N_VAL_REG, 0x3FFFF);
+
+	/* Enable PLL4 */
+	writel_relaxed(0x4, LCC_PLL0_MODE_REG);
+	udelay(10);
+	writel_relaxed(0x6, LCC_PLL0_MODE_REG);
+	writel_relaxed(0x7, LCC_PLL0_MODE_REG);
+
+	/* Setup LPASS toplevel muxes */
+	writel_relaxed(0x15, LPASS_XO_SRC_CLK_CTL_REG); /* Select PXO */
+	writel_relaxed(0x1, LCC_PXO_SRC_CLK_CTL_REG); /* Select PXO */
+	writel_relaxed(0x1, LCC_PRI_PLL_CLK_CTL_REG); /* Select PLL4 */
 
 	/* Deassert MM SW_RESET_ALL signal. */
 	writel(0, SW_RESET_ALL_REG);
@@ -4092,6 +4090,47 @@ static void reg_init(void)
 	writel_relaxed(0x3, SLIMBUS_XO_SRC_CLK_CTL_REG);
 }
 
+static int dummy_pll_clk_enable(struct clk *clk)
+{
+	return 0;
+}
+
+static int wr_pll_clk_enable(struct clk *clk)
+{
+	u32 mode;
+	unsigned long flags;
+	struct pll_clk *pll = to_pll_clk(clk);
+
+	spin_lock_irqsave(&local_clock_reg_lock, flags);
+	mode = readl_relaxed(pll->mode_reg);
+	/* De-assert active-low PLL reset. */
+	mode |= BIT(2);
+	writel_relaxed(mode, pll->mode_reg);
+
+	/*
+	 * H/W requires a 5us delay between disabling the bypass and
+	 * de-asserting the reset. Delay 10us just to be safe.
+	 */
+	dsb();
+	udelay(10);
+
+	/* Disable PLL bypass mode. */
+	mode |= BIT(1);
+	writel_relaxed(mode, pll->mode_reg);
+
+	/* Enable PLL output. */
+	mode |= BIT(0);
+	writel_relaxed(mode, pll->mode_reg);
+
+	/* Wait until PLL is enabled. */
+	while (!readl_relaxed(pll->status_reg))
+		cpu_relax();
+
+	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
+	return 0;
+}
+
+
 /* Local clock driver initialization. */
 void __init msm_clk_soc_init(void)
 {
@@ -4099,6 +4138,9 @@ void __init msm_clk_soc_init(void)
 
 	if (machine_is_msm8960_rumi3())
 		return;
+
+	clk_ops_pll_vote.enable = dummy_pll_clk_enable;
+	clk_ops_pll.enable = wr_pll_clk_enable;
 
 	/* Initialize clock registers. */
 	reg_init();
