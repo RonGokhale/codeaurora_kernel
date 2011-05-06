@@ -26,10 +26,11 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifdef CONFIG_ARCH_MSM7X27A
-#define mb()	do { dsb(); outer_sync(); } while (0)
-#else
-#define mb()	dmb()
-#endif
-#define rmb()	dmb()
+#define mb() do \
+	{ \
+		dsb();\
+		outer_sync(); \
+		write_to_strongly_ordered_memory(); \
+	} while (0)
+#define rmb()	do { dmb(); write_to_strongly_ordered_memory(); } while (0)
 #define wmb()	mb()
