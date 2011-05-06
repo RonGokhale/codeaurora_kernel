@@ -98,6 +98,8 @@
 #include "gpiomux.h"
 #include "gpiomux-8x60.h"
 #include "rpm_stats.h"
+#include <linux/platform_data/qcom_crypto_device.h>
+
 #define MSM_SHARED_RAM_PHYS 0x40000000
 
 /* Macros assume PMIC GPIOs start at 0 */

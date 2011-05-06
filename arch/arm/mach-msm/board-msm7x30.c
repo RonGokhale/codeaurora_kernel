@@ -70,6 +70,8 @@
 #include <asm/mach/mmc.h>
 #include <asm/mach/flash.h>
 #include <mach/vreg.h>
+#include <linux/platform_data/qcom_crypto_device.h>
+
 #include "devices.h"
 #include "timer.h"
 #ifdef CONFIG_USB_ANDROID

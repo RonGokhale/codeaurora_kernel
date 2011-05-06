@@ -29,7 +29,7 @@
 #include <linux/scatterlist.h>
 #include <linux/crypto.h>
 #include <crypto/hash.h>
-#include <mach/board.h>
+#include <linux/platform_data/qcom_crypto_device.h>
 #include <mach/scm.h>
 #include "inc/qcedev.h"
 #include "inc/qce.h"
@@ -1969,7 +1969,7 @@ static void qcedev_exit(void)
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm DEV Crypto driver");
-MODULE_VERSION("1.14");
+MODULE_VERSION("1.15");
 
 module_init(qcedev_init);
 module_exit(qcedev_exit);

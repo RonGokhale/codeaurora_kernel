@@ -36,7 +36,7 @@
 #include <crypto/internal/hash.h>
 
 #include <mach/scm.h>
-#include <mach/board.h>
+#include <linux/platform_data/qcom_crypto_device.h>
 #include "inc/qce.h"
 
 
@@ -2902,4 +2902,4 @@ module_exit(_qcrypto_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm Crypto driver");
-MODULE_VERSION("1.12");
+MODULE_VERSION("1.13");
