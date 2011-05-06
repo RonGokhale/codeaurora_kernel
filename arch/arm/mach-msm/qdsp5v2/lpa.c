@@ -60,6 +60,7 @@ static void lpa_enable_codec(struct lpa_drv *lpa, bool enable)
 		(val & ~LPA_OBUF_CODEC_CODEC_INTF_EN_BMSK);
 	val |= LPA_OBUF_CODEC_LOAD_BMSK;
 	LPA_REG_WRITEL(lpa, val, LPA_OBUF_CODEC);
+	dsb();
 }
 
 static void lpa_reset(struct lpa_drv *lpa)
@@ -81,6 +82,7 @@ static void lpa_reset(struct lpa_drv *lpa)
 	} while (!(status & LPA_OBUF_STATUS_RESET_DONE));
 
 	LPA_REG_WRITEL(lpa, LPA_OBUF_ACK_RESET_DONE_BMSK, LPA_OBUF_ACK);
+	dsb();
 	clk_disable(adsp_clk);
 	clk_put(adsp_clk);
 error:
@@ -338,7 +340,7 @@ struct lpa_drv *lpa_get(void)
 	}
 
 	lpa_enable_interrupt(ret_lpa, ret_lpa->dsp_proc_id);
-
+	dsb();
 	the_lpa_state.assigned++;
 error:
 	mutex_unlock(&the_lpa_state.lpa_lock);
@@ -453,6 +455,7 @@ int lpa_cmd_codec_config(struct lpa_drv *lpa,
 	LPA_OBUF_CODEC_INTF_BMSK;
 
 	LPA_REG_WRITEL(lpa, val, LPA_OBUF_CODEC);
+	dsb();
 
 	return 0;
 error:
@@ -524,6 +527,7 @@ int lpa_cmd_enable_codec(struct lpa_drv *lpa, bool enable)
 		} else
 			MM_ERR("LPA codec is already disable\n");
 	}
+	dsb();
 	return 0;
 }
 EXPORT_SYMBOL(lpa_cmd_enable_codec);
