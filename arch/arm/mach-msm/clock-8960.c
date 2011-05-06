@@ -762,36 +762,51 @@ static struct branch_clk vfe_axi_clk = {
 
 static struct branch_clk mdp_axi_clk = {
 	.b = {
+		.en_reg = MAXI_EN_REG,
+		.en_mask = BIT(23),
 		.reset_reg = SW_RESET_AXI_REG,
 		.reset_mask = BIT(13),
+		.halt_reg = DBG_BUS_VEC_E_REG,
+		.halt_check = HALT,
+		.halt_bit = 8,
 	},
 	.c = {
 		.dbg_name = "mdp_axi_clk",
-		.ops = &clk_ops_reset,
+		.ops = &clk_ops_branch,
 		CLK_INIT(mdp_axi_clk.c),
 	},
 };
 
 static struct branch_clk rot_axi_clk = {
 	.b = {
+		.en_reg = MAXI_EN2_REG,
+		.en_mask = BIT(24),
 		.reset_reg = SW_RESET_AXI_REG,
 		.reset_mask = BIT(6),
+		.halt_reg = DBG_BUS_VEC_E_REG,
+		.halt_check = HALT,
+		.halt_bit = 2,
 	},
 	.c = {
 		.dbg_name = "rot_axi_clk",
-		.ops = &clk_ops_reset,
+		.ops = &clk_ops_branch,
 		CLK_INIT(rot_axi_clk.c),
 	},
 };
 
 static struct branch_clk vpe_axi_clk = {
 	.b = {
+		.en_reg = MAXI_EN2_REG,
+		.en_mask = BIT(26),
 		.reset_reg = SW_RESET_AXI_REG,
 		.reset_mask = BIT(15),
+		.halt_reg = DBG_BUS_VEC_E_REG,
+		.halt_check = HALT,
+		.halt_bit = 1,
 	},
 	.c = {
 		.dbg_name = "vpe_axi_clk",
-		.ops = &clk_ops_reset,
+		.ops = &clk_ops_branch,
 		CLK_INIT(vpe_axi_clk.c),
 	},
 };
@@ -3949,16 +3964,16 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("vcodec_pclk",	vcodec_p_clk.c,		NULL),
 	CLK_LOOKUP("vfe_pclk",		vfe_p_clk.c,		NULL),
 	CLK_LOOKUP("vpe_pclk",		vpe_p_clk.c,		NULL),
-	CLK_LOOKUP("mi2s_osr_clk",	mi2s_osr_clk.c,		NULL),
 	CLK_LOOKUP("mi2s_bit_clk",	mi2s_bit_clk.c,		NULL),
-	CLK_LOOKUP("i2s_mic_osr_clk",	codec_i2s_mic_osr_clk.c,	NULL),
+	CLK_LOOKUP("mi2s_osr_clk",	mi2s_osr_clk.c,		NULL),
 	CLK_LOOKUP("i2s_mic_bit_clk",	codec_i2s_mic_bit_clk.c,	NULL),
-	CLK_LOOKUP("i2s_mic_osr_clk",	spare_i2s_mic_osr_clk.c,	NULL),
+	CLK_LOOKUP("i2s_mic_osr_clk",	codec_i2s_mic_osr_clk.c,	NULL),
 	CLK_LOOKUP("i2s_mic_bit_clk",	spare_i2s_mic_bit_clk.c,	NULL),
-	CLK_LOOKUP("i2s_spkr_osr_clk",	codec_i2s_spkr_osr_clk.c,	NULL),
+	CLK_LOOKUP("i2s_mic_osr_clk",	spare_i2s_mic_osr_clk.c,	NULL),
 	CLK_LOOKUP("i2s_spkr_bit_clk",	codec_i2s_spkr_bit_clk.c,	NULL),
-	CLK_LOOKUP("i2s_spkr_osr_clk",	spare_i2s_spkr_osr_clk.c,	NULL),
+	CLK_LOOKUP("i2s_spkr_osr_clk",	codec_i2s_spkr_osr_clk.c,	NULL),
 	CLK_LOOKUP("i2s_spkr_bit_clk",	spare_i2s_spkr_bit_clk.c,	NULL),
+	CLK_LOOKUP("i2s_spkr_osr_clk",	spare_i2s_spkr_osr_clk.c,	NULL),
 	CLK_LOOKUP("pcm_clk",		pcm_clk.c,		NULL),
 	CLK_LOOKUP("sps_slimbus_clk",	sps_slimbus_clk.c,	NULL),
 	CLK_LOOKUP("audio_slimbus_clk",	audio_slimbus_clk.c,	NULL),
@@ -4048,8 +4063,9 @@ static void reg_init(void)
 	/* TODO: Enable HW Gating */
 	rmwreg(0x000007F9, MAXI_EN_REG,  0x0FFFFFFF);
 	rmwreg(0x1027FCFF, MAXI_EN2_REG, 0x1FFFFFFF);
-	writel_relaxed(0x00E7FCFF, MAXI_EN3_REG);
-	writel_relaxed(0x00000000, SAXI_EN_REG);
+	writel_relaxed(0x0027FCFF, MAXI_EN3_REG);
+	writel_relaxed(0x0027FCFF, MAXI_EN4_REG);
+	writel_relaxed(0x000003C7, SAXI_EN_REG);
 
 	/* Initialize MM CC registers: Set MM FORCE_CORE_ON bits so that core
 	 * memories retain state even when not clocked. Also, set sleep and
@@ -4063,8 +4079,9 @@ static void reg_init(void)
 	writel(0x80FF0000, GFX3D_CC_REG);
 	writel(0x80FF0000, IJPEG_CC_REG);
 	writel(0x80FF0000, JPEGD_CC_REG);
-	/* MDP and PIXEL clocks may be running at boot, don't turn them off. */
+	/* MDP clocks may be running at boot, don't turn them off. */
 	rmwreg(0x80FF0000, MDP_CC_REG,   BM(31, 29) | BM(23, 16));
+	rmwreg(0x80FF0000, MDP_LUT_CC_REG,  BM(31, 29) | BM(23, 16));
 	writel(0x80FF0000, ROT_CC_REG);
 	writel(0x80FF0000, TV_CC_REG);
 	writel(0x000004FF, TV_CC2_REG);
