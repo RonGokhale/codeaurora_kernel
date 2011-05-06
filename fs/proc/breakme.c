@@ -12,6 +12,7 @@
 #include <linux/irqnr.h>
 #include <asm/cputime.h>
 #include <asm/uaccess.h>
+#include <linux/chromeos_platform.h>
 
 #define MAX_BREAKME_WRITE 64
 static ssize_t write_breakme(struct file *file, const char __user *buf,
