@@ -23,6 +23,7 @@
 #include <mach/msm_bus.h>
 #include <mach/msm_bus_board.h>
 #include "msm_ispif.h"
+#include "msm.h"
 
 /* ISPIF registers */
 
@@ -98,6 +99,7 @@ int msm_ispif_init(struct platform_device *pdev)
 	int rc = 0;
 	struct msm_camera_sensor_info *sinfo = pdev->dev.platform_data;
 	struct msm_camera_device_platform_data *camdev;
+	struct msm_ispif_fns ispif_fns;
 	if (sinfo == NULL)
 		return -EINVAL;
 	camdev = sinfo->pdata;
@@ -118,6 +120,13 @@ int msm_ispif_init(struct platform_device *pdev)
 	if (rc < 0)
 		goto ispif_irq_fail;
 	global_intf_cmd_mask = 0xFFFFFFFF;
+	ispif_fns.ispif_config = msm_ispif_config;
+	ispif_fns.ispif_start_intf_transfer =
+		msm_ispif_start_intf_transfer;
+	rc = msm_ispif_register(&ispif_fns);
+	if (rc < 0)
+		goto ispif_irq_fail;
+
 	return 0;
 
 ispif_irq_fail:

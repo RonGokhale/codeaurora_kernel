@@ -91,6 +91,11 @@ static inline void free_qcmd(struct msm_queue_cmd *qcmd)
 		kfree(qcmd);
 }
 
+/* message id for v4l2_subdev_notify*/
+enum msm_camera_v4l2_subdev_notify {
+	NOTIFY_CID_CHANGE, /* arg = msm_camera_csid_params */
+	NOTIFY_INVALID
+};
 
 enum isp_vfe_cmd_id {
 	/*
@@ -137,6 +142,13 @@ struct msm_ispif_ops {
 		enum ispif_op_id ispif_op_id_used, unsigned long arg);
 };
 
+struct msm_ispif_fns {
+	int (*ispif_config)(struct msm_ispif_params *ispif_params,
+						 uint8_t num_of_intf);
+	int (*ispif_start_intf_transfer)
+		(struct msm_ispif_params *ispif_params);
+};
+
 extern int msm_ispif_init_module(struct msm_ispif_ops *p_ispif);
 
 /*"Media Controller" represents a camera steaming session, which consists
@@ -150,7 +162,8 @@ struct msm_cam_media_controller {
 	int (*mctl_open)(struct msm_cam_media_controller *p_mctl,
 					 const char *const apps_id);
 	int (*mctl_cb)(void);
-	int (*mctl_evt)(void);
+	int (*mctl_notify)(struct msm_cam_media_controller *p_mctl,
+			unsigned int notification, void *arg);
 	int (*mctl_cmd)(struct msm_cam_media_controller *p_mctl,
 				unsigned int cmd, unsigned long arg);
 	int (*mctl_release)(struct msm_cam_media_controller *p_mctl);
@@ -173,6 +186,7 @@ struct msm_cam_media_controller {
 	struct v4l2_subdev *vpe_sdev;    /* vpe sub device : VPE */
 	struct v4l2_subdev *flash_sdev;    /* vpe sub device : VPE */
 	struct msm_cam_config_dev *config_device;
+	struct msm_ispif_fns *ispif_fns;
 };
 
 /* abstract camera device represents a VFE and connected sensor */
@@ -221,7 +235,7 @@ struct msm_cam_v4l2_device {
 	struct msm_isp_ops isp; /*to be removed*/
 	struct msm_cam_media_controller mctl;
 	/* sensor subdevice */
-	struct v4l2_subdev *sensor_sdev;
+	struct v4l2_subdev sensor_sdev;
 	struct msm_sensor_ctrl sctrl;
 
 	/* parent device */
@@ -273,6 +287,11 @@ struct msm_cam_v4l2_device {
 	uint8_t ctrl_data[max_control_command_size];
 	struct msm_ctrl_cmd ctrl;
 };
+static inline struct msm_cam_v4l2_device *to_pcam(
+	struct v4l2_device *v4l2_dev)
+{
+	return container_of(v4l2_dev, struct msm_cam_v4l2_device, v4l2_dev);
+}
 
 /*pseudo v4l2 device and v4l2 event queue
   for server and config cdevs*/
@@ -313,6 +332,7 @@ struct msm_cam_server_dev {
 	int use_count;
     /* all the registered ISP subdevice*/
 	struct msm_isp_ops *isp_subdev[MSM_MAX_CAMERA_CONFIGS];
+	struct msm_ispif_fns ispif_fns;
 
 };
 
@@ -325,9 +345,10 @@ void msm_isp_vfe_dev_init(struct v4l2_subdev *vd);
 int msm_isp_register(struct msm_cam_v4l2_device *pcam);
 */
 int msm_isp_register(struct msm_cam_server_dev *psvr);
+int msm_ispif_register(struct msm_ispif_fns *ispif);
 int msm_sensor_register(struct platform_device *pdev,
 	int (*sensor_probe)(const struct msm_camera_sensor_info *,
-	struct v4l2_subdev **, struct msm_sensor_ctrl *));
+	struct v4l2_subdev *, struct msm_sensor_ctrl *));
 int msm_isp_init_module(int g_num_config_nodes);
 
 int msm_mctl_init_module(struct msm_cam_v4l2_device *pcam);

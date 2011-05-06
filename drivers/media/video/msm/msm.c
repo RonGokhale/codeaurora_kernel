@@ -66,6 +66,26 @@ static void msm_enqueue(struct msm_device_queue *queue,
 	spin_unlock_irqrestore(&queue->lock, flags);
 }
 
+/* callback function from all subdevices of a msm_cam_v4l2_device */
+static void msm_cam_v4l2_subdev_notify(struct v4l2_subdev *sd,
+				    unsigned int notification, void *arg)
+{
+	struct msm_cam_v4l2_device *pcam;
+
+	if (sd == NULL)
+		return;
+
+	pcam = to_pcam(sd->v4l2_dev);
+
+	if (pcam == NULL)
+		return;
+
+	/* forward to media controller for any changes*/
+	if (pcam->mctl.mctl_notify) {
+		pcam->mctl.mctl_notify(&pcam->mctl, notification, arg);
+	}
+}
+
 static int msm_ctrl_cmd_done(void __user *arg)
 {
 	void __user *uptr;
@@ -654,7 +674,6 @@ static int msm_camera_v4l2_try_fmt_cap(struct file *f, void *pctx,
 	int rc = 0;
 	/* get the video device */
 	struct msm_cam_v4l2_device *pcam  = video_drvdata(f);
-	struct v4l2_pix_format *pix = &pfmt->fmt.pix;
 
 	D("%s\n", __func__);
 	WARN_ON(pctx != f->private_data);
@@ -662,7 +681,7 @@ static int msm_camera_v4l2_try_fmt_cap(struct file *f, void *pctx,
 	rc = msm_server_try_fmt(pcam, pfmt);
 	if (rc)
 		D("Format %x not found, rc = %d\n",
-				pix->pixelformat, rc);
+				pfmt->fmt.pix.pixelformat, rc);
 
 	return rc;
 }
@@ -889,9 +908,10 @@ static int msm_cam_server_open_session(struct msm_cam_server_dev *ps,
 
 	/*yyan: for single VFE msms (8660, 8960v1), just populate the session
 	with our VFE devices that registered*/
-	pcam->mctl.sensor_sdev = pcam->sensor_sdev;
+	pcam->mctl.sensor_sdev = &(pcam->sensor_sdev);
 
 	pcam->mctl.isp_sdev = ps->isp_subdev[0];
+	pcam->mctl.ispif_fns = &ps->ispif_fns;
 
 	/*yyan: 8960 bring up - no VPE and flash; populate later*/
 	pcam->mctl.vpe_sdev = NULL;
@@ -1564,6 +1584,7 @@ static int msm_setup_server_dev(int node, char *device_name)
 	g_server_dev.pcam_active = NULL;
 	g_server_dev.camera_info.num_cameras = 0;
 	atomic_set(&g_server_dev.number_pcam_active, 0);
+	g_server_dev.ispif_fns.ispif_config = NULL;
 
 	/*initialize fake video device and event queue*/
 
@@ -1592,6 +1613,9 @@ static int msm_cam_dev_init(struct msm_cam_v4l2_device *pcam)
 	rc = v4l2_device_register(pcam->v4l2_dev.dev, &pcam->v4l2_dev);
 	if (rc < 0)
 		return -EINVAL;
+	else
+		pcam->v4l2_dev.notify = msm_cam_v4l2_subdev_notify;
+
 
 	/* now setup video device */
 	pvdev = video_device_alloc();
@@ -1698,12 +1722,26 @@ static int msm_sync_init(struct msm_sync *sync,
 	return rc;
 }
 
+int msm_ispif_register(struct msm_ispif_fns *ispif)
+{
+	int rc = -EINVAL;
+	if (ispif != NULL) {
+		/*save ispif into server dev*/
+		g_server_dev.ispif_fns.ispif_config = ispif->ispif_config;
+		g_server_dev.ispif_fns.ispif_start_intf_transfer
+			= ispif->ispif_start_intf_transfer;
+		rc = 0;
+	}
+	return rc;
+}
+EXPORT_SYMBOL(msm_ispif_register);
+
 /* register a msm sensor into the msm device, which will probe the
    sensor HW. if the HW exist then create a video device (/dev/videoX/)
    to represent this sensor */
 int msm_sensor_register(struct platform_device *pdev,
 		int (*sensor_probe)(const struct msm_camera_sensor_info *,
-			struct v4l2_subdev **, struct msm_sensor_ctrl *))
+			struct v4l2_subdev *, struct msm_sensor_ctrl *))
 {
 
 	int rc = -EINVAL;
@@ -1714,34 +1752,43 @@ int msm_sensor_register(struct platform_device *pdev,
 
 	D("%s for %s\n", __func__, pdev->name);
 
+	/* allocate the memory for the camera device first */
+	pcam = kzalloc(sizeof(*pcam), GFP_KERNEL);
+	if (!pcam) {
+		D("%s: could not allocate memory for msm_cam_v4l2_device\n",
+			__func__);
+		return -ENOMEM;
+	} else{
+		sdev = &(pcam->sensor_sdev);
+		snprintf(sdev->name, sizeof(sdev->name), "%s", pdev->name);
+	}
+
 	/* come sensor probe logic */
 	rc = msm_camio_probe_on(pdev);
-	if (rc < 0)
+	if (rc < 0) {
+		kzfree(pcam);
 		return rc;
+	}
 
-	rc = sensor_probe(sdata, &sdev, &sctrl);
+	rc = sensor_probe(sdata, sdev, &sctrl);
 
 	msm_camio_probe_off(pdev);
 	if (rc < 0) {
 		D("%s: failed to detect %s\n",
 			__func__,
 		sdata->sensor_name);
+		kzfree(pcam);
 		return rc;
 	}
 
 	/* if the probe is successfull, allocat the camera driver object
 	   for this sensor */
-	pcam = kzalloc(sizeof(*pcam), GFP_KERNEL);
-	if (!pcam) {
-		D("%s: could not allocate memory for msm_cam_v4l2_device\n",
-			__func__);
-		return -ENOMEM;
-	}
 
 	pcam->sync = kzalloc(sizeof(struct msm_sync), GFP_ATOMIC);
 	if (!pcam->sync) {
 		D("%s: could not allocate memory for msm_sync object\n",
 			__func__);
+		kzfree(pcam);
 		return -ENOMEM;
 	}
 
@@ -1756,7 +1803,6 @@ int msm_sensor_register(struct platform_device *pdev,
 	/* bind the driver device to the sensor device */
 	pcam->pdev = pdev;
 	/* get the sensor subdevice */
-	pcam->sensor_sdev = sdev;
 	pcam->isp.sdev = sdev;
 	pcam->sctrl = sctrl;
 
@@ -1792,8 +1838,8 @@ int msm_sensor_register(struct platform_device *pdev,
 			goto failure;
 	}
 */
-	/* ming TBD: cannot start daemon if reg subdev
-	rc = v4l2_device_register_subdev(&pcam->v4l2_dev, sdev); */
+	/* register the subdevice, must be done for callbacks */
+	rc = v4l2_device_register_subdev(&pcam->v4l2_dev, sdev);
 	return rc;
 
 failure:
@@ -1802,7 +1848,8 @@ failure:
 	msm_sync_destroy(pcam->sync);
 	pcam->isp.sdev = NULL;
 	pcam->pdev = NULL;
-	kfree(pcam);
+	kzfree(pcam->sync);
+	kzfree(pcam);
 	return rc;
 }
 EXPORT_SYMBOL(msm_sensor_register);
