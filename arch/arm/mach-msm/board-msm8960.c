@@ -1105,6 +1105,48 @@ static struct platform_device mipi_dsi_toshiba_panel_device = {
 	.id = 0,
 };
 
+#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
+static struct resource hdmi_msm_resources[] = {
+	{
+		.name  = "hdmi_msm_qfprom_addr",
+		.start = 0x00700000,
+		.end   = 0x007060FF,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.name  = "hdmi_msm_hdmi_addr",
+		.start = 0x04A00000,
+		.end   = 0x04A00FFF,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.name  = "hdmi_msm_irq",
+		.start = HDMI_IRQ,
+		.end   = HDMI_IRQ,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static int hdmi_enable_5v(int on);
+static int hdmi_core_power(int on, int show);
+static int hdmi_cec_power(int on);
+
+static struct msm_hdmi_platform_data hdmi_msm_data = {
+	.irq = HDMI_IRQ,
+	.enable_5v = hdmi_enable_5v,
+	.core_power = hdmi_core_power,
+	.cec_power = hdmi_cec_power,
+};
+
+static struct platform_device hdmi_msm_device = {
+	.name = "hdmi_msm",
+	.id = 0,
+	.num_resources = ARRAY_SIZE(hdmi_msm_resources),
+	.resource = hdmi_msm_resources,
+	.dev.platform_data = &hdmi_msm_data,
+};
+#endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
+
 static void __init msm_fb_add_devices(void)
 {
 	if (machine_is_msm8x60_rumi3()) {
@@ -1114,6 +1156,206 @@ static void __init msm_fb_add_devices(void)
 		msm_fb_register_device("mdp", &mdp_pdata);
 	msm_fb_register_device("mipi_dsi", &mipi_dsi_pdata);
 }
+
+#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
+static struct gpiomux_setting hdmi_suspend_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct gpiomux_setting hdmi_active_1_cfg = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_UP,
+};
+
+static struct gpiomux_setting hdmi_active_2_cfg = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct msm_gpiomux_config msm8960_hdmi_configs[] __initdata = {
+	{
+		.gpio = 99,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &hdmi_active_1_cfg,
+			[GPIOMUX_SUSPENDED] = &hdmi_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 100,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &hdmi_active_1_cfg,
+			[GPIOMUX_SUSPENDED] = &hdmi_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 101,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &hdmi_active_1_cfg,
+			[GPIOMUX_SUSPENDED] = &hdmi_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 102,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &hdmi_active_2_cfg,
+			[GPIOMUX_SUSPENDED] = &hdmi_suspend_cfg,
+		},
+	},
+};
+
+static int hdmi_enable_5v(int on)
+{
+	/* TBD: PM8921 regulator instead of 8901 */
+	static struct regulator *reg_8921_hdmi_mvs;	/* HDMI_5V */
+	static int prev_on;
+	int rc;
+
+	if (on == prev_on)
+		return 0;
+
+	if (!reg_8921_hdmi_mvs)
+		reg_8921_hdmi_mvs = regulator_get(&hdmi_msm_device.dev,
+			"hdmi_mvs");
+
+	if (on) {
+		rc = regulator_enable(reg_8921_hdmi_mvs);
+		if (rc) {
+			pr_err("'%s' regulator enable failed, rc=%d\n",
+				"8921_hdmi_mvs", rc);
+			return rc;
+		}
+		pr_debug("%s(on): success\n", __func__);
+	} else {
+		rc = regulator_disable(reg_8921_hdmi_mvs);
+		if (rc)
+			pr_warning("'%s' regulator disable failed, rc=%d\n",
+				"8921_hdmi_mvs", rc);
+		pr_debug("%s(off): success\n", __func__);
+	}
+
+	prev_on = on;
+
+	return 0;
+}
+
+static int hdmi_core_power(int on, int show)
+{
+	static struct regulator *reg_8921_l23, *reg_8921_s4;
+	static int prev_on;
+	int rc;
+
+	if (on == prev_on)
+		return 0;
+
+	/* TBD: PM8921 regulator instead of 8901 */
+	if (!reg_8921_l23)
+		reg_8921_l23 = regulator_get(&hdmi_msm_device.dev, "hdmi_avdd");
+
+	if (!reg_8921_s4)
+		reg_8921_s4 = regulator_get(&hdmi_msm_device.dev, "hdmi_vcc");
+
+	if (on) {
+		rc = regulator_set_optimum_mode(reg_8921_l23, 100000);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l23 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+
+		rc = regulator_set_voltage(reg_8921_l23, 1800000, 1800000);
+		if (!rc)
+			rc = regulator_enable(reg_8921_l23);
+		if (rc) {
+			pr_err("'%s' regulator enable failed, rc=%d\n",
+				"hdmi_avdd", rc);
+			return rc;
+		}
+		rc = regulator_set_voltage(reg_8921_s4, 1800000, 1800000);
+		if (!rc)
+			rc = regulator_enable(reg_8921_s4);
+		if (rc) {
+			pr_err("'%s' regulator enable failed, rc=%d\n",
+				"hdmi_vcc", rc);
+			return rc;
+		}
+
+		rc = gpio_request(100, "HDMI_DDC_CLK");
+		if (rc) {
+			pr_err("'%s'(%d) gpio_request failed, rc=%d\n",
+				"HDMI_DDC_CLK", 100, rc);
+			goto error1;
+		}
+		rc = gpio_request(101, "HDMI_DDC_DATA");
+		if (rc) {
+			pr_err("'%s'(%d) gpio_request failed, rc=%d\n",
+				"HDMI_DDC_DATA", 101, rc);
+			goto error2;
+		}
+		rc = gpio_request(102, "HDMI_HPD");
+		if (rc) {
+			pr_err("'%s'(%d) gpio_request failed, rc=%d\n",
+				"HDMI_HPD", 102, rc);
+			goto error3;
+		}
+		pr_debug("%s(on): success\n", __func__);
+	} else {
+		gpio_free(100);
+		gpio_free(101);
+		gpio_free(102);
+
+		rc = regulator_set_optimum_mode(reg_8921_l23, 100);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l23 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+
+		pr_debug("%s(off): success\n", __func__);
+	}
+
+	prev_on = on;
+
+	return 0;
+
+error3:
+	gpio_free(101);
+error2:
+	gpio_free(100);
+error1:
+	regulator_disable(reg_8921_l23);
+	return rc;
+}
+
+static int hdmi_cec_power(int on)
+{
+	static int prev_on;
+	int rc;
+
+	if (on == prev_on)
+		return 0;
+
+	if (on) {
+		rc = gpio_request(99, "HDMI_CEC_VAR");
+		if (rc) {
+			pr_err("'%s'(%d) gpio_request failed, rc=%d\n",
+				"HDMI_CEC_VAR", 99, rc);
+			goto error;
+		}
+		pr_debug("%s(on): success\n", __func__);
+	} else {
+		gpio_free(99);
+		pr_debug("%s(off): success\n", __func__);
+	}
+
+	prev_on = on;
+
+	return 0;
+error:
+	return rc;
+}
+#endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
 
 static void __init msm8960_allocate_memory_regions(void)
 {
@@ -1301,6 +1543,11 @@ static int __init gpiomux_init(void)
 
 	msm_gpiomux_install(msm8960_audio_codec_configs,
 			ARRAY_SIZE(msm8960_audio_codec_configs));
+
+#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
+	msm_gpiomux_install(msm8960_hdmi_configs,
+			ARRAY_SIZE(msm8960_hdmi_configs));
+#endif
 
 	msm_gpiomux_install(wcnss_5wire_interface,
 			ARRAY_SIZE(wcnss_5wire_interface));
@@ -2352,6 +2599,9 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&msm_voice,
 	&msm_voip,
 	&msm_lpa_pcm,
+#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
+	&hdmi_msm_device,
+#endif
 };
 
 static void __init msm8960_i2c_init(void)
