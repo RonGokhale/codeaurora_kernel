@@ -17,6 +17,7 @@
 #include <linux/err.h>
 #include <linux/string.h>
 #include <linux/kernel.h>
+#include <linux/mutex.h>
 #include <linux/init.h>
 #include <linux/bitops.h>
 #include <linux/platform_device.h>
@@ -47,10 +48,18 @@
 #define SMPS_TEST_BANKS			8
 #define REGULATOR_TEST_BANKS_MAX	SMPS_TEST_BANKS
 
+/*
+ * This voltage in uV is returned by get_voltage functions when there is no way
+ * to determine the current voltage level.  It is needed because the regulator
+ * framework treats a 0 uV voltage as an error.
+ */
+#define VOLTAGE_UNKNOWN			1
+
 /* LDO masks and values */
 
 /* CTRL register */
 #define LDO_ENABLE_MASK			0x80
+#define LDO_DISABLE			0x00
 #define LDO_ENABLE			0x80
 #define LDO_PULL_DOWN_ENABLE_MASK	0x40
 #define LDO_PULL_DOWN_ENABLE		0x40
@@ -85,28 +94,51 @@
 /* TEST register bank 6 */
 #define LDO_TEST_PIN_CTRL_LPM_MASK	0x0F
 
-/* Allowable voltage ranges */
+
+/*
+ * If a given voltage could be output by two ranges, then the preferred one must
+ * be determined by the range limits.  Specified voltage ranges should must
+ * not overlap.
+ *
+ * Allowable voltage ranges:
+ */
 #define PLDO_LOW_UV_MIN			750000
-#define PLDO_LOW_UV_MAX			1537500
-#define PLDO_LOW_FINE_STEP_UV		12500
+#define PLDO_LOW_UV_MAX			1487500
+#define PLDO_LOW_UV_FINE_STEP		12500
 
 #define PLDO_NORM_UV_MIN		1500000
 #define PLDO_NORM_UV_MAX		3075000
-#define PLDO_NORM_FINE_STEP_UV		25000
+#define PLDO_NORM_UV_FINE_STEP		25000
 
 #define PLDO_HIGH_UV_MIN		1750000
+#define PLDO_HIGH_UV_SET_POINT_MIN	3100000
 #define PLDO_HIGH_UV_MAX		4900000
-#define PLDO_HIGH_FINE_STEP_UV		50000
+#define PLDO_HIGH_UV_FINE_STEP		50000
+
+#define PLDO_LOW_SET_POINTS		((PLDO_LOW_UV_MAX - PLDO_LOW_UV_MIN) \
+						/ PLDO_LOW_UV_FINE_STEP + 1)
+#define PLDO_NORM_SET_POINTS		((PLDO_NORM_UV_MAX - PLDO_NORM_UV_MIN) \
+						/ PLDO_NORM_UV_FINE_STEP + 1)
+#define PLDO_HIGH_SET_POINTS		((PLDO_HIGH_UV_MAX \
+						- PLDO_HIGH_UV_SET_POINT_MIN) \
+					/ PLDO_HIGH_UV_FINE_STEP + 1)
+#define PLDO_SET_POINTS			(PLDO_LOW_SET_POINTS \
+						+ PLDO_NORM_SET_POINTS \
+						+ PLDO_HIGH_SET_POINTS)
 
 #define NLDO_UV_MIN			750000
 #define NLDO_UV_MAX			1537500
-#define NLDO_FINE_STEP_UV		12500
+#define NLDO_UV_FINE_STEP		12500
+
+#define NLDO_SET_POINTS			((NLDO_UV_MAX - NLDO_UV_MIN) \
+						/ NLDO_UV_FINE_STEP + 1)
 
 /* NLDO1200 masks and values */
 
 /* CTRL register */
 #define NLDO1200_ENABLE_MASK		0x80
-#define NLDO1200_LDO_ENABLE		0x80
+#define NLDO1200_DISABLE		0x00
+#define NLDO1200_ENABLE			0x80
 
 /* Legacy mode */
 #define NLDO1200_LEGACY_PM_MASK		0x20
@@ -120,12 +152,21 @@
 #define NLDO1200_CTRL_VPROG_MASK	0x3F
 
 #define NLDO1200_LOW_UV_MIN		375000
-#define NLDO1200_LOW_UV_MAX		768750
+#define NLDO1200_LOW_UV_MAX		743750
 #define NLDO1200_LOW_UV_STEP		6250
 
 #define NLDO1200_HIGH_UV_MIN		750000
 #define NLDO1200_HIGH_UV_MAX		1537500
 #define NLDO1200_HIGH_UV_STEP		12500
+
+#define NLDO1200_LOW_SET_POINTS		((NLDO1200_LOW_UV_MAX \
+						- NLDO1200_LOW_UV_MIN) \
+					/ NLDO1200_LOW_UV_STEP + 1)
+#define NLDO1200_HIGH_SET_POINTS	((NLDO1200_HIGH_UV_MAX \
+						- NLDO1200_HIGH_UV_MIN) \
+					/ NLDO1200_HIGH_UV_STEP + 1)
+#define NLDO1200_SET_POINTS		(NLDO1200_LOW_SET_POINTS \
+						+ NLDO1200_HIGH_SET_POINTS)
 
 /* TEST register bank 0 */
 #define NLDO1200_TEST_LPM_MASK		0x04
@@ -155,6 +196,8 @@
 /* CTRL register */
 
 /* Legacy mode */
+#define SMPS_LEGACY_ENABLE_MASK		0x80
+#define SMPS_LEGACY_DISABLE		0x00
 #define SMPS_LEGACY_ENABLE		0x80
 #define SMPS_LEGACY_PULL_DOWN_ENABLE	0x40
 #define SMPS_LEGACY_VREF_SEL_MASK	0x20
@@ -169,33 +212,56 @@
 #define SMPS_ADVANCED_VPROG_MASK	0x3F
 
 /* Legacy mode voltage ranges */
+#define SMPS_MODE3_UV_MIN		375000
+#define SMPS_MODE3_UV_MAX		725000
+#define SMPS_MODE3_UV_STEP		25000
+
+#define SMPS_MODE2_UV_MIN		750000
+#define SMPS_MODE2_UV_MAX		1475000
+#define SMPS_MODE2_UV_STEP		25000
+
 #define SMPS_MODE1_UV_MIN		1500000
 #define SMPS_MODE1_UV_MAX		3050000
 #define SMPS_MODE1_UV_STEP		50000
 
-#define SMPS_MODE2_UV_MIN		750000
-#define SMPS_MODE2_UV_MAX		1525000
-#define SMPS_MODE2_UV_STEP		25000
-
-#define SMPS_MODE3_UV_MIN		375000
-#define SMPS_MODE3_UV_MAX		1150000
-#define SMPS_MODE3_UV_STEP		25000
+#define SMPS_MODE3_SET_POINTS		((SMPS_MODE3_UV_MAX \
+						- SMPS_MODE3_UV_MIN) \
+					/ SMPS_MODE3_UV_STEP + 1)
+#define SMPS_MODE2_SET_POINTS		((SMPS_MODE2_UV_MAX \
+						- SMPS_MODE2_UV_MIN) \
+					/ SMPS_MODE2_UV_STEP + 1)
+#define SMPS_MODE1_SET_POINTS		((SMPS_MODE1_UV_MAX \
+						- SMPS_MODE1_UV_MIN) \
+					/ SMPS_MODE1_UV_STEP + 1)
+#define SMPS_LEGACY_SET_POINTS		(SMPS_MODE3_SET_POINTS \
+						+ SMPS_MODE2_SET_POINTS \
+						+ SMPS_MODE1_SET_POINTS)
 
 /* Advanced mode voltage ranges */
+#define SMPS_BAND1_UV_MIN		375000
+#define SMPS_BAND1_UV_MAX		737500
+#define SMPS_BAND1_UV_STEP		12500
+
+#define SMPS_BAND2_UV_MIN		750000
+#define SMPS_BAND2_UV_MAX		1487500
+#define SMPS_BAND2_UV_STEP		12500
+
 #define SMPS_BAND3_UV_MIN		1500000
 #define SMPS_BAND3_UV_MAX		3075000
 #define SMPS_BAND3_UV_STEP		25000
 
-#define SMPS_BAND2_UV_MIN		750000
-#define SMPS_BAND2_UV_MAX		1537500
-#define SMPS_BAND2_UV_STEP		12500
-
-#define SMPS_BAND1_UV_MIN		375000
-#define SMPS_BAND1_UV_MAX		1162500
-#define SMPS_BAND1_UV_STEP		12500
-
-#define SMPS_UV_MIN			SMPS_MODE3_UV_MIN
-#define SMPS_UV_MAX			SMPS_MODE1_UV_MAX
+#define SMPS_BAND1_SET_POINTS		((SMPS_BAND1_UV_MAX \
+						- SMPS_BAND1_UV_MIN) \
+					/ SMPS_BAND1_UV_STEP + 1)
+#define SMPS_BAND2_SET_POINTS		((SMPS_BAND2_UV_MAX \
+						- SMPS_BAND2_UV_MIN) \
+					/ SMPS_BAND2_UV_STEP + 1)
+#define SMPS_BAND3_SET_POINTS		((SMPS_BAND3_UV_MAX \
+						- SMPS_BAND3_UV_MIN) \
+					/ SMPS_BAND3_UV_STEP + 1)
+#define SMPS_ADVANCED_SET_POINTS	(SMPS_BAND1_SET_POINTS \
+						+ SMPS_BAND2_SET_POINTS \
+						+ SMPS_BAND3_SET_POINTS)
 
 /* Test2 register bank 1 */
 #define SMPS_LEGACY_VLOW_SEL_MASK	0x01
@@ -213,16 +279,16 @@
 
 /* BUCK_SLEEP_CNTRL register */
 #define SMPS_PIN_CTRL_MASK		0xF0
-#define SMPS_PIN_CTRL_A1		0x80
-#define SMPS_PIN_CTRL_A0		0x40
-#define SMPS_PIN_CTRL_D1		0x20
-#define SMPS_PIN_CTRL_D0		0x10
+#define SMPS_PIN_CTRL_EN3		0x80
+#define SMPS_PIN_CTRL_EN2		0x40
+#define SMPS_PIN_CTRL_EN1		0x20
+#define SMPS_PIN_CTRL_EN0		0x10
 
 #define SMPS_PIN_CTRL_LPM_MASK		0x0F
-#define SMPS_PIN_CTRL_LPM_A1		0x08
-#define SMPS_PIN_CTRL_LPM_A0		0x04
-#define SMPS_PIN_CTRL_LPM_D1		0x02
-#define SMPS_PIN_CTRL_LPM_D0		0x01
+#define SMPS_PIN_CTRL_LPM_EN3		0x08
+#define SMPS_PIN_CTRL_LPM_EN2		0x04
+#define SMPS_PIN_CTRL_LPM_EN1		0x02
+#define SMPS_PIN_CTRL_LPM_EN0		0x01
 
 /* BUCK_CLOCK_CNTRL register */
 #define SMPS_CLK_DIVIDE2		0x40
@@ -244,19 +310,33 @@
 
 #define FTSMPS_BAND1_UV_MIN		350000
 #define FTSMPS_BAND1_UV_MAX		650000
-#define FTSMPS_BAND1_UV_STEP		6250
+/* 3 LSB's of program voltage must be 0 in band 1. */
+/* Logical step size */
+#define FTSMPS_BAND1_UV_LOG_STEP	50000
+/* Physical step size */
+#define FTSMPS_BAND1_UV_PHYS_STEP	6250
 
 #define FTSMPS_BAND2_UV_MIN		700000
 #define FTSMPS_BAND2_UV_MAX		1400000
 #define FTSMPS_BAND2_UV_STEP		12500
 
-#define FTSMPS_BAND3_UV_SETPOINT_MIN	1500000
 #define FTSMPS_BAND3_UV_MIN		1400000
+#define FTSMPS_BAND3_UV_SET_POINT_MIN	1500000
 #define FTSMPS_BAND3_UV_MAX		3300000
 #define FTSMPS_BAND3_UV_STEP		50000
 
-#define FTSMPS_UV_MIN			FTSMPS_BAND_1_UV_MIN
-#define FTSMPS_UV_MAX			FTSMPS_BAND_3_UV_MAX
+#define FTSMPS_BAND1_SET_POINTS		((FTSMPS_BAND1_UV_MAX \
+						- FTSMPS_BAND1_UV_MIN) \
+					/ FTSMPS_BAND1_UV_LOG_STEP + 1)
+#define FTSMPS_BAND2_SET_POINTS		((FTSMPS_BAND2_UV_MAX \
+						- FTSMPS_BAND2_UV_MIN) \
+					/ FTSMPS_BAND2_UV_STEP + 1)
+#define FTSMPS_BAND3_SET_POINTS		((FTSMPS_BAND3_UV_MAX \
+					  - FTSMPS_BAND3_UV_SET_POINT_MIN) \
+					/ FTSMPS_BAND3_UV_STEP + 1)
+#define FTSMPS_SET_POINTS		(FTSMPS_BAND1_SET_POINTS \
+						+ FTSMPS_BAND2_SET_POINTS \
+						+ FTSMPS_BAND3_SET_POINTS)
 
 /* FTS_CNFG1 register bank 0 */
 #define FTSMPS_CNFG1_PM_MASK		0x0C
@@ -267,16 +347,11 @@
 #define FTSMPS_PULL_DOWN_ENABLE_MASK	0x40
 #define FTSMPS_PULL_DOWN_ENABLE		0x40
 
-/*
- * Band 1 of PMIC 8921 FTSMPS regulators only supports set points with the 3
- * LSB's equal to 0.  This is accomplished in the macro by truncating the bits.
- */
-#define PM8921_FTSMPS_BAND_1_COMPENSATE(vprog)	((vprog) & ~0x7)
-
 /* VS masks and values */
 
 /* CTRL register */
 #define VS_ENABLE_MASK			0x80
+#define VS_DISABLE			0x00
 #define VS_ENABLE			0x80
 #define VS_PULL_DOWN_ENABLE_MASK	0x40
 #define VS_PULL_DOWN_ENABLE		0x40
@@ -301,6 +376,7 @@
 
 /* CTRL register */
 #define NCP_ENABLE_MASK			0x80
+#define NCP_DISABLE			0x00
 #define NCP_ENABLE			0x80
 #define NCP_VPROG_MASK			0x1F
 
@@ -308,10 +384,18 @@
 #define NCP_UV_MAX			3050000
 #define NCP_UV_STEP			50000
 
+#define NCP_SET_POINTS			((NCP_UV_MAX - NCP_UV_MIN) \
+						/ NCP_UV_STEP + 1)
+
+#define IS_REAL_REGULATOR(id)		((id) >= 0 && \
+					 (id) < PM8921_VREG_ID_L1_PC)
+
 struct pm8921_vreg {
 	/* Configuration data */
 	struct regulator_dev			*rdev;
+	struct regulator_dev			*rdev_pc;
 	struct device				*dev;
+	struct device				*dev_pc;
 	const char				*name;
 	struct pm8921_regulator_platform_data	pdata;
 	const int				hpm_min_load;
@@ -323,16 +407,17 @@ struct pm8921_vreg {
 	const u16				pwr_cnfg_addr;
 	const u8				type;
 	/* State data */
+	struct mutex				pc_lock;
 	int					save_uV;
-	unsigned				pc_vote;
-	unsigned				optimum;
+	int					mode;
+	bool					is_enabled;
+	bool					is_enabled_pc;
 	u8				test_reg[REGULATOR_TEST_BANKS_MAX];
 	u8					ctrl_reg;
 	u8					clk_ctrl_reg;
 	u8					sleep_ctrl_reg;
 	u8					pfm_ctrl_reg;
 	u8					pwr_cnfg_reg;
-	u8					state;
 };
 
 #define vreg_err(vreg, fmt, ...) \
@@ -460,6 +545,8 @@ static struct pm8921_vreg pm8921_vreg[] = {
  * Perform a masked write to a PMIC register only if the new value differs
  * from the last value written to the register.  This removes redundant
  * register writing.
+ *
+ * No locking is required because registers are not shared between regulators.
  */
 static int pm8921_vreg_masked_write(struct pm8921_vreg *vreg, u16 addr, u8 val,
 		u8 mask, u8 *reg_save)
@@ -523,14 +610,31 @@ static int pm8921_vreg_is_pin_controlled(struct pm8921_vreg *vreg)
 	return ret;
 }
 
+/*
+ * Returns the logical pin control enable state because the pin control options
+ * present in the hardware out of restart could be different from those desired
+ * by the consumer.
+ */
+static int pm8921_vreg_pin_control_is_enabled(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int enabled;
+
+	mutex_lock(&vreg->pc_lock);
+	enabled = vreg->is_enabled_pc;
+	mutex_unlock(&vreg->pc_lock);
+
+	return enabled;
+}
+
+/* Returns the physical enable state of the regulator. */
 static int _pm8921_vreg_is_enabled(struct pm8921_vreg *vreg)
 {
 	int rc = 0;
 
 	/*
 	 * All regulator types except advanced mode SMPS, FTSMPS, and VS300 have
-	 * enable bit in bit 7 of the control register.  Pin control also does
-	 * not work for advanced mode SMPS.
+	 * enable bit in bit 7 of the control register.
 	 */
 	switch (vreg->type) {
 	case REGULATOR_TYPE_FTSMPS:
@@ -548,26 +652,40 @@ static int _pm8921_vreg_is_enabled(struct pm8921_vreg *vreg)
 			if ((vreg->ctrl_reg & SMPS_ADVANCED_BAND_MASK)
 			    != SMPS_ADVANCED_BAND_OFF)
 				rc = 1;
-		} else if ((vreg->ctrl_reg & SMPS_LEGACY_ENABLE)
-			   || pm8921_vreg_is_pin_controlled(vreg)) {
-			rc = 1;
+			break;
 		}
-		break;
+		/* Fall through for legacy mode SMPS. */
 	default:
-		if (((vreg->ctrl_reg & REGULATOR_ENABLE_MASK)
-			== REGULATOR_ENABLE)
-		    || pm8921_vreg_is_pin_controlled(vreg))
+		if ((vreg->ctrl_reg & REGULATOR_ENABLE_MASK)
+		    == REGULATOR_ENABLE)
 			rc = 1;
 	}
 
 	return rc;
 }
 
+/*
+ * Returns the logical enable state of the regulator which may be different from
+ * the physical enable state thanks to HPM/LPM pin control.
+ */
 static int pm8921_vreg_is_enabled(struct regulator_dev *rdev)
 {
 	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int enabled;
 
-	return _pm8921_vreg_is_enabled(vreg);
+	if (vreg->type == REGULATOR_TYPE_LDO
+	    || vreg->type == REGULATOR_TYPE_SMPS
+	    || vreg->type == REGULATOR_TYPE_VS) {
+		/* Pin controllable */
+		mutex_lock(&vreg->pc_lock);
+		enabled = vreg->is_enabled;
+		mutex_unlock(&vreg->pc_lock);
+	} else {
+		/* Not pin controlable */
+		enabled = _pm8921_vreg_is_enabled(vreg);
+	}
+
+	return enabled;
 }
 
 static int pm8921_pldo_get_voltage(struct regulator_dev *rdev)
@@ -576,67 +694,105 @@ static int pm8921_pldo_get_voltage(struct regulator_dev *rdev)
 	int vmin, fine_step;
 	u8 range_ext, range_sel, vprog, fine_step_reg;
 
+	mutex_lock(&vreg->pc_lock);
+
 	fine_step_reg = vreg->test_reg[2] & LDO_TEST_FINE_STEP_MASK;
 	range_sel = vreg->test_reg[2] & LDO_TEST_RANGE_SEL_MASK;
 	range_ext = vreg->test_reg[4] & LDO_TEST_RANGE_EXT_MASK;
 	vprog = vreg->ctrl_reg & LDO_CTRL_VPROG_MASK;
 
+	mutex_unlock(&vreg->pc_lock);
+
 	vprog = (vprog << 1) | (fine_step_reg >> LDO_TEST_FINE_STEP_SHIFT);
 
 	if (range_sel) {
 		/* low range mode */
-		fine_step = PLDO_LOW_FINE_STEP_UV;
+		fine_step = PLDO_LOW_UV_FINE_STEP;
 		vmin = PLDO_LOW_UV_MIN;
 	} else if (!range_ext) {
 		/* normal mode */
-		fine_step = PLDO_NORM_FINE_STEP_UV;
+		fine_step = PLDO_NORM_UV_FINE_STEP;
 		vmin = PLDO_NORM_UV_MIN;
 	} else {
 		/* high range mode */
-		fine_step = PLDO_HIGH_FINE_STEP_UV;
+		fine_step = PLDO_HIGH_UV_FINE_STEP;
 		vmin = PLDO_HIGH_UV_MIN;
 	}
 
 	return fine_step * vprog + vmin;
 }
 
+static int pm8921_pldo_list_voltage(struct regulator_dev *rdev,
+				    unsigned selector)
+{
+	int uV;
+
+	if (selector >= PLDO_SET_POINTS)
+		return 0;
+
+	if (selector < PLDO_LOW_SET_POINTS)
+		uV = selector * PLDO_LOW_UV_FINE_STEP + PLDO_LOW_UV_MIN;
+	else if (selector < (PLDO_LOW_SET_POINTS + PLDO_NORM_SET_POINTS))
+		uV = (selector - PLDO_LOW_SET_POINTS) * PLDO_NORM_UV_FINE_STEP
+			+ PLDO_NORM_UV_MIN;
+	else
+		uV = (selector - PLDO_LOW_SET_POINTS - PLDO_NORM_SET_POINTS)
+				* PLDO_HIGH_UV_FINE_STEP
+			+ PLDO_HIGH_UV_SET_POINT_MIN;
+
+	return uV;
+}
+
 static int pm8921_pldo_set_voltage(struct regulator_dev *rdev, int min_uV,
 				   int max_uV, unsigned *selector)
 {
 	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
-	int rc = 0;
+	int rc = 0, uV = min_uV;
 	int vmin;
 	unsigned vprog, fine_step;
 	u8 range_ext, range_sel, fine_step_reg, prev_reg;
 	bool reg_changed = false;
 
-	if (min_uV < PLDO_LOW_UV_MIN || min_uV > PLDO_HIGH_UV_MAX) {
-		vreg_err(vreg, "request voltage %d is outside allowed range.\n",
-			 min_uV);
+	if (uV < PLDO_LOW_UV_MIN && max_uV >= PLDO_LOW_UV_MIN)
+		uV = PLDO_LOW_UV_MIN;
+
+	if (uV < PLDO_LOW_UV_MIN || uV > PLDO_HIGH_UV_MAX) {
+		vreg_err(vreg,
+			"request v=[%d, %d] is outside possible v=[%d, %d]\n",
+			 min_uV, max_uV, PLDO_LOW_UV_MIN, PLDO_HIGH_UV_MAX);
 		return -EINVAL;
 	}
 
-	if (min_uV < PLDO_NORM_UV_MIN) {
-		vmin = PLDO_LOW_UV_MIN;
-		fine_step = PLDO_LOW_FINE_STEP_UV;
-		range_ext = 0;
-		range_sel = LDO_TEST_RANGE_SEL_MASK;
-	} else if (min_uV < PLDO_NORM_UV_MAX + PLDO_NORM_FINE_STEP_UV) {
+	if (uV > PLDO_NORM_UV_MAX) {
+		vmin = PLDO_HIGH_UV_MIN;
+		fine_step = PLDO_HIGH_UV_FINE_STEP;
+		range_ext = LDO_TEST_RANGE_EXT_MASK;
+		range_sel = 0;
+	} else if (uV > PLDO_LOW_UV_MAX) {
 		vmin = PLDO_NORM_UV_MIN;
-		fine_step = PLDO_NORM_FINE_STEP_UV;
+		fine_step = PLDO_NORM_UV_FINE_STEP;
 		range_ext = 0;
 		range_sel = 0;
 	} else {
-		vmin = PLDO_HIGH_UV_MIN;
-		fine_step = PLDO_HIGH_FINE_STEP_UV;
-		range_ext = LDO_TEST_RANGE_EXT_MASK;
-		range_sel = 0;
+		vmin = PLDO_LOW_UV_MIN;
+		fine_step = PLDO_LOW_UV_FINE_STEP;
+		range_ext = 0;
+		range_sel = LDO_TEST_RANGE_SEL_MASK;
 	}
 
-	vprog = (min_uV - vmin) / fine_step;
+	vprog = (uV - vmin + fine_step - 1) / fine_step;
+	uV = vprog * fine_step + vmin;
 	fine_step_reg = (vprog & 1) << LDO_TEST_FINE_STEP_SHIFT;
 	vprog >>= 1;
 
+	if (uV > max_uV) {
+		vreg_err(vreg,
+			"request v=[%d, %d] cannot be met by any set point\n",
+			min_uV, max_uV);
+		return -EINVAL;
+	}
+
+	mutex_lock(&vreg->pc_lock);
 
 	/* Write fine step, range select and program voltage update. */
 	prev_reg = vreg->test_reg[2];
@@ -679,8 +835,10 @@ static int pm8921_pldo_set_voltage(struct regulator_dev *rdev, int min_uV,
 			LDO_CTRL_VPROG_MASK, &vreg->ctrl_reg);
 	}
 bail:
+	mutex_unlock(&vreg->pc_lock);
+
 	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
 
 	return rc;
 }
@@ -690,12 +848,25 @@ static int pm8921_nldo_get_voltage(struct regulator_dev *rdev)
 	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
 	u8 vprog, fine_step_reg;
 
+	mutex_lock(&vreg->pc_lock);
+
 	fine_step_reg = vreg->test_reg[2] & LDO_TEST_FINE_STEP_MASK;
 	vprog = vreg->ctrl_reg & LDO_CTRL_VPROG_MASK;
 
+	mutex_unlock(&vreg->pc_lock);
+
 	vprog = (vprog << 1) | (fine_step_reg >> LDO_TEST_FINE_STEP_SHIFT);
 
-	return NLDO_FINE_STEP_UV * vprog + NLDO_UV_MIN;
+	return NLDO_UV_FINE_STEP * vprog + NLDO_UV_MIN;
+}
+
+static int pm8921_nldo_list_voltage(struct regulator_dev *rdev,
+				    unsigned selector)
+{
+	if (selector >= NLDO_SET_POINTS)
+		return 0;
+
+	return selector * NLDO_UV_FINE_STEP + NLDO_UV_MIN;
 }
 
 static int pm8921_nldo_set_voltage(struct regulator_dev *rdev, int min_uV,
@@ -704,16 +875,31 @@ static int pm8921_nldo_set_voltage(struct regulator_dev *rdev, int min_uV,
 	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
 	unsigned vprog, fine_step_reg, prev_reg;
 	int rc;
+	int uV = min_uV;
 
-	if (min_uV < NLDO_UV_MIN || min_uV > NLDO_UV_MAX) {
-		vreg_err(vreg, "request voltage %d is outside allowed range.\n",
-			 min_uV);
+	if (uV < NLDO_UV_MIN && max_uV >= NLDO_UV_MIN)
+		uV = NLDO_UV_MIN;
+
+	if (uV < NLDO_UV_MIN || uV > NLDO_UV_MAX) {
+		vreg_err(vreg,
+			"request v=[%d, %d] is outside possible v=[%d, %d]\n",
+			 min_uV, max_uV, NLDO_UV_MIN, NLDO_UV_MAX);
 		return -EINVAL;
 	}
 
-	vprog = (min_uV - NLDO_UV_MIN) / NLDO_FINE_STEP_UV;
+	vprog = (uV - NLDO_UV_MIN + NLDO_UV_FINE_STEP - 1) / NLDO_UV_FINE_STEP;
+	uV = vprog * NLDO_UV_FINE_STEP + NLDO_UV_MIN;
 	fine_step_reg = (vprog & 1) << LDO_TEST_FINE_STEP_SHIFT;
 	vprog >>= 1;
+
+	if (uV > max_uV) {
+		vreg_err(vreg,
+			"request v=[%d, %d] cannot be met by any set point\n",
+			min_uV, max_uV);
+		return -EINVAL;
+	}
+
+	mutex_lock(&vreg->pc_lock);
 
 	/* Write fine step. */
 	prev_reg = vreg->test_reg[2];
@@ -741,8 +927,10 @@ static int pm8921_nldo_set_voltage(struct regulator_dev *rdev, int min_uV,
 			LDO_CTRL_VPROG_MASK, &vreg->ctrl_reg);
 	}
 bail:
+	mutex_unlock(&vreg->pc_lock);
+
 	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
 
 	return rc;
 }
@@ -776,31 +964,67 @@ static int pm8921_nldo1200_get_voltage(struct regulator_dev *rdev)
 	return _pm8921_nldo1200_get_voltage(vreg);
 }
 
-static int _pm8921_nldo1200_set_voltage(struct pm8921_vreg *vreg, int uV)
+static int pm8921_nldo1200_list_voltage(struct regulator_dev *rdev,
+					unsigned selector)
+{
+	int uV;
+
+	if (selector >= NLDO1200_SET_POINTS)
+		return 0;
+
+	if (selector < NLDO1200_LOW_SET_POINTS)
+		uV = selector * NLDO1200_LOW_UV_STEP + NLDO1200_LOW_UV_MIN;
+	else
+		uV = (selector - NLDO1200_LOW_SET_POINTS)
+				* NLDO1200_HIGH_UV_STEP
+			+ NLDO1200_HIGH_UV_MIN;
+
+	return uV;
+}
+
+static int _pm8921_nldo1200_set_voltage(struct pm8921_vreg *vreg, int min_uV,
+		int max_uV)
 {
 	u8 vprog, range;
 	int rc;
+	int uV = min_uV;
+
+	if (uV < NLDO1200_LOW_UV_MIN && max_uV >= NLDO1200_LOW_UV_MIN)
+		uV = NLDO1200_LOW_UV_MIN;
 
 	if (uV < NLDO1200_LOW_UV_MIN || uV > NLDO1200_HIGH_UV_MAX) {
-		vreg_err(vreg, "request voltage %d is outside allowed range.\n",
-			 uV);
+		vreg_err(vreg,
+			"request v=[%d, %d] is outside possible v=[%d, %d]\n",
+			 min_uV, max_uV, NLDO_UV_MIN, NLDO_UV_MAX);
 		return -EINVAL;
 	}
 
-	if (uV < NLDO1200_HIGH_UV_MIN) {
-		vprog = ((uV - NLDO1200_LOW_UV_MIN) / NLDO1200_LOW_UV_STEP);
-		vprog &= NLDO1200_CTRL_VPROG_MASK;
-		range = NLDO1200_CTRL_RANGE_LOW;
-	} else {
-		vprog = ((uV - NLDO1200_HIGH_UV_MIN) / NLDO1200_HIGH_UV_STEP);
+	if (uV > NLDO1200_LOW_UV_MAX) {
+		vprog = (uV - NLDO1200_HIGH_UV_MIN + NLDO1200_HIGH_UV_STEP - 1)
+			/ NLDO1200_HIGH_UV_STEP;
+		uV = vprog * NLDO1200_HIGH_UV_STEP + NLDO1200_HIGH_UV_MIN;
 		vprog &= NLDO1200_CTRL_VPROG_MASK;
 		range = NLDO1200_CTRL_RANGE_HIGH;
+	} else {
+		vprog = (uV - NLDO1200_LOW_UV_MIN + NLDO1200_LOW_UV_STEP - 1)
+			/ NLDO1200_LOW_UV_STEP;
+		uV = vprog * NLDO1200_LOW_UV_STEP + NLDO1200_LOW_UV_MIN;
+		vprog &= NLDO1200_CTRL_VPROG_MASK;
+		range = NLDO1200_CTRL_RANGE_LOW;
+	}
+
+	if (uV > max_uV) {
+		vreg_err(vreg,
+			"request v=[%d, %d] cannot be met by any set point\n",
+			min_uV, max_uV);
+		return -EINVAL;
 	}
 
 	/* Set to advanced mode */
 	rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
-		NLDO1200_ADVANCED_MODE, NLDO1200_ADVANCED_MODE_MASK,
-		&vreg->test_reg[2]);
+		NLDO1200_ADVANCED_MODE | REGULATOR_BANK_SEL(2)
+		| REGULATOR_BANK_WRITE, NLDO1200_ADVANCED_MODE_MASK
+		| REGULATOR_BANK_MASK, &vreg->test_reg[2]);
 	if (rc)
 		goto bail;
 
@@ -811,9 +1035,11 @@ static int _pm8921_nldo1200_set_voltage(struct pm8921_vreg *vreg, int uV)
 	if (rc)
 		goto bail;
 
+	vreg->save_uV = uV;
+
 bail:
 	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
 
 	return rc;
 }
@@ -823,7 +1049,7 @@ static int pm8921_nldo1200_set_voltage(struct regulator_dev *rdev, int min_uV,
 {
 	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
 
-	return _pm8921_nldo1200_set_voltage(vreg, min_uV);
+	return _pm8921_nldo1200_set_voltage(vreg, min_uV, max_uV);
 }
 
 static int pm8921_smps_get_voltage_advanced(struct pm8921_vreg *vreg)
@@ -840,8 +1066,10 @@ static int pm8921_smps_get_voltage_advanced(struct pm8921_vreg *vreg)
 		uV = vprog * SMPS_BAND2_UV_STEP + SMPS_BAND2_UV_MIN;
 	else if (band == SMPS_ADVANCED_BAND_3)
 		uV = vprog * SMPS_BAND3_UV_STEP + SMPS_BAND3_UV_MIN;
-	else
+	else if (vreg->save_uV > 0)
 		uV = vreg->save_uV;
+	else
+		uV = VOLTAGE_UNKNOWN;
 
 	return uV;
 }
@@ -877,37 +1105,78 @@ static int _pm8921_smps_get_voltage(struct pm8921_vreg *vreg)
 	return pm8921_smps_get_voltage_legacy(vreg);
 }
 
+static int pm8921_smps_list_voltage(struct regulator_dev *rdev,
+				    unsigned selector)
+{
+	int uV;
+
+	if (selector >= SMPS_ADVANCED_SET_POINTS)
+		return 0;
+
+	if (selector < SMPS_BAND1_SET_POINTS)
+		uV = selector * SMPS_BAND1_UV_STEP + SMPS_BAND1_UV_MIN;
+	else if (selector < (SMPS_BAND1_SET_POINTS + SMPS_BAND2_SET_POINTS))
+		uV = (selector - SMPS_BAND1_SET_POINTS) * SMPS_BAND2_UV_STEP
+			+ SMPS_BAND2_UV_MIN;
+	else
+		uV = (selector - SMPS_BAND1_SET_POINTS - SMPS_BAND2_SET_POINTS)
+				* SMPS_BAND3_UV_STEP
+			+ SMPS_BAND3_UV_MIN;
+
+	return uV;
+}
+
 static int pm8921_smps_get_voltage(struct regulator_dev *rdev)
 {
 	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int uV;
 
-	return _pm8921_smps_get_voltage(vreg);
+	mutex_lock(&vreg->pc_lock);
+	uV = _pm8921_smps_get_voltage(vreg);
+	mutex_unlock(&vreg->pc_lock);
+
+	return uV;
 }
 
-static int pm8921_smps_set_voltage_advanced(struct pm8921_vreg *vreg, int uV,
-					    int force_on)
+static int pm8921_smps_set_voltage_advanced(struct pm8921_vreg *vreg,
+					   int min_uV, int max_uV, int force_on)
 {
 	u8 vprog, band;
-	int rc, new_uV;
+	int rc;
+	int uV = min_uV;
+
+	if (uV < SMPS_BAND1_UV_MIN && max_uV >= SMPS_BAND1_UV_MIN)
+		uV = SMPS_BAND1_UV_MIN;
 
 	if (uV < SMPS_BAND1_UV_MIN || uV > SMPS_BAND3_UV_MAX) {
-		vreg_err(vreg, "request voltage %d is outside allowed range.\n",
-			 uV);
+		vreg_err(vreg,
+			"request v=[%d, %d] is outside possible v=[%d, %d]\n",
+			 min_uV, max_uV, SMPS_BAND1_UV_MIN, SMPS_BAND3_UV_MAX);
 		return -EINVAL;
 	}
 
-	if (uV < SMPS_BAND2_UV_MIN) {
-		vprog = ((uV - SMPS_BAND1_UV_MIN) / SMPS_BAND1_UV_STEP);
-		band = SMPS_ADVANCED_BAND_1;
-		new_uV = SMPS_BAND1_UV_MIN + vprog * SMPS_BAND1_UV_STEP;
-	} else if (uV < SMPS_BAND3_UV_MIN) {
-		vprog = ((uV - SMPS_BAND2_UV_MIN) / SMPS_BAND2_UV_STEP);
-		band = SMPS_ADVANCED_BAND_2;
-		new_uV = SMPS_BAND2_UV_MIN + vprog * SMPS_BAND2_UV_STEP;
-	} else {
-		vprog = ((uV - SMPS_BAND3_UV_MIN) / SMPS_BAND3_UV_STEP);
+	if (uV > SMPS_BAND2_UV_MAX) {
+		vprog = (uV - SMPS_BAND3_UV_MIN + SMPS_BAND3_UV_STEP - 1)
+			/ SMPS_BAND3_UV_STEP;
 		band = SMPS_ADVANCED_BAND_3;
-		new_uV = SMPS_BAND3_UV_MIN + vprog * SMPS_BAND3_UV_STEP;
+		uV = SMPS_BAND3_UV_MIN + vprog * SMPS_BAND3_UV_STEP;
+	} else if (uV > SMPS_BAND1_UV_MAX) {
+		vprog = (uV - SMPS_BAND2_UV_MIN + SMPS_BAND2_UV_STEP - 1)
+			/ SMPS_BAND2_UV_STEP;
+		band = SMPS_ADVANCED_BAND_2;
+		uV = SMPS_BAND2_UV_MIN + vprog * SMPS_BAND2_UV_STEP;
+	} else {
+		vprog = (uV - SMPS_BAND1_UV_MIN + SMPS_BAND1_UV_STEP - 1)
+			/ SMPS_BAND1_UV_STEP;
+		band = SMPS_ADVANCED_BAND_1;
+		uV = SMPS_BAND1_UV_MIN + vprog * SMPS_BAND1_UV_STEP;
+	}
+
+	if (uV > max_uV) {
+		vreg_err(vreg,
+			"request v=[%d, %d] cannot be met by any set point\n",
+			min_uV, max_uV);
+		return -EINVAL;
 	}
 
 	/* Do not set band if regulator currently disabled. */
@@ -929,38 +1198,58 @@ static int pm8921_smps_set_voltage_advanced(struct pm8921_vreg *vreg, int uV,
 	if (rc)
 		goto bail;
 
-	vreg->save_uV = new_uV;
+	vreg->save_uV = uV;
 
 bail:
 	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
 
 	return rc;
 }
 
-static int pm8921_smps_set_voltage_legacy(struct pm8921_vreg *vreg, int uV)
+static int pm8921_smps_set_voltage_legacy(struct pm8921_vreg *vreg, int min_uV,
+					  int max_uV)
 {
 	u8 vlow, vref, vprog, pd, en;
 	int rc;
+	int uV = min_uV;
+
+
+	if (uV < SMPS_MODE3_UV_MIN && max_uV >= SMPS_MODE3_UV_MIN)
+		uV = SMPS_MODE3_UV_MIN;
 
 	if (uV < SMPS_MODE3_UV_MIN || uV > SMPS_MODE1_UV_MAX) {
-		vreg_err(vreg, "request voltage %d is outside allowed range.\n",
-			 uV);
+		vreg_err(vreg,
+			"request v=[%d, %d] is outside possible v=[%d, %d]\n",
+			 min_uV, max_uV, SMPS_MODE3_UV_MIN, SMPS_MODE1_UV_MAX);
 		return -EINVAL;
 	}
 
-	if (uV < SMPS_MODE2_UV_MIN) {
-		vprog = ((uV - SMPS_MODE3_UV_MIN) / SMPS_MODE3_UV_STEP);
-		vref = SMPS_LEGACY_VREF_SEL_MASK;
-		vlow = SMPS_LEGACY_VLOW_SEL_MASK;
-	} else if (uV < SMPS_MODE1_UV_MIN) {
-		vprog = ((uV - SMPS_MODE2_UV_MIN) / SMPS_MODE2_UV_STEP);
-		vref = SMPS_LEGACY_VREF_SEL_MASK;
-		vlow = 0;
-	} else {
-		vprog = ((uV - SMPS_MODE1_UV_MIN) / SMPS_MODE1_UV_STEP);
+	if (uV > SMPS_MODE2_UV_MAX) {
+		vprog = (uV - SMPS_MODE1_UV_MIN + SMPS_MODE1_UV_STEP - 1)
+			/ SMPS_MODE1_UV_STEP;
 		vref = 0;
 		vlow = 0;
+		uV = SMPS_MODE1_UV_MIN + vprog * SMPS_MODE1_UV_STEP;
+	} else if (uV > SMPS_MODE3_UV_MAX) {
+		vprog = (uV - SMPS_MODE2_UV_MIN + SMPS_MODE2_UV_STEP - 1)
+			/ SMPS_MODE2_UV_STEP;
+		vref = SMPS_LEGACY_VREF_SEL_MASK;
+		vlow = 0;
+		uV = SMPS_MODE2_UV_MIN + vprog * SMPS_MODE2_UV_STEP;
+	} else {
+		vprog = (uV - SMPS_MODE3_UV_MIN + SMPS_MODE3_UV_STEP - 1)
+			/ SMPS_MODE3_UV_STEP;
+		vref = SMPS_LEGACY_VREF_SEL_MASK;
+		vlow = SMPS_LEGACY_VLOW_SEL_MASK;
+		uV = SMPS_MODE3_UV_MIN + vprog * SMPS_MODE3_UV_STEP;
+	}
+
+	if (uV > max_uV) {
+		vreg_err(vreg,
+			"request v=[%d, %d] cannot be met by any set point\n",
+			min_uV, max_uV);
+		return -EINVAL;
 	}
 
 	/* set vlow bit for ultra low voltage mode */
@@ -985,15 +1274,15 @@ static int pm8921_smps_set_voltage_legacy(struct pm8921_vreg *vreg, int uV)
 	/* Set voltage (and the rest of the control register). */
 	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
 		en | pd | vref | vprog,
-		SMPS_LEGACY_ENABLE | SMPS_LEGACY_PULL_DOWN_ENABLE
+		SMPS_LEGACY_ENABLE_MASK | SMPS_LEGACY_PULL_DOWN_ENABLE
 		  | SMPS_LEGACY_VREF_SEL_MASK | SMPS_LEGACY_VPROG_MASK,
 		&vreg->ctrl_reg);
 
-	vreg->save_uV = pm8921_smps_get_voltage_legacy(vreg);
+	vreg->save_uV = uV;
 
 bail:
 	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
 
 	return rc;
 }
@@ -1004,10 +1293,14 @@ static int pm8921_smps_set_voltage(struct regulator_dev *rdev, int min_uV,
 	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
 	int rc = 0;
 
+	mutex_lock(&vreg->pc_lock);
+
 	if (SMPS_IN_ADVANCED_MODE(vreg) || !pm8921_vreg_is_pin_controlled(vreg))
-		rc = pm8921_smps_set_voltage_advanced(vreg, min_uV, 0);
+		rc = pm8921_smps_set_voltage_advanced(vreg, min_uV, max_uV, 0);
 	else
-		rc = pm8921_smps_set_voltage_legacy(vreg, min_uV);
+		rc = pm8921_smps_set_voltage_legacy(vreg, min_uV, max_uV);
+
+	mutex_unlock(&vreg->pc_lock);
 
 	return rc;
 }
@@ -1031,13 +1324,15 @@ static int _pm8921_ftsmps_get_voltage(struct pm8921_vreg *vreg)
 	}
 
 	if (band == FTSMPS_VCTRL_BAND_1)
-		uV = vprog * FTSMPS_BAND1_UV_STEP + FTSMPS_BAND1_UV_MIN;
+		uV = vprog * FTSMPS_BAND1_UV_PHYS_STEP + FTSMPS_BAND1_UV_MIN;
 	else if (band == FTSMPS_VCTRL_BAND_2)
 		uV = vprog * FTSMPS_BAND2_UV_STEP + FTSMPS_BAND2_UV_MIN;
 	else if (band == FTSMPS_VCTRL_BAND_3)
 		uV = vprog * FTSMPS_BAND3_UV_STEP + FTSMPS_BAND3_UV_MIN;
-	else
+	else if (vreg->save_uV > 0)
 		uV = vreg->save_uV;
+	else
+		uV = VOLTAGE_UNKNOWN;
 
 	return uV;
 }
@@ -1049,38 +1344,77 @@ static int pm8921_ftsmps_get_voltage(struct regulator_dev *rdev)
 	return _pm8921_ftsmps_get_voltage(vreg);
 }
 
-static int _pm8921_ftsmps_set_voltage(struct pm8921_vreg *vreg, int uV,
-				      int force_on)
+static int pm8921_ftsmps_list_voltage(struct regulator_dev *rdev,
+				      unsigned selector)
 {
-	int rc, new_uV;
+	int uV;
+
+	if (selector >= FTSMPS_SET_POINTS)
+		return 0;
+
+	if (selector < FTSMPS_BAND1_SET_POINTS)
+		uV = selector * FTSMPS_BAND1_UV_LOG_STEP + FTSMPS_BAND1_UV_MIN;
+	else if (selector < (FTSMPS_BAND1_SET_POINTS + FTSMPS_BAND2_SET_POINTS))
+		uV = (selector - FTSMPS_BAND1_SET_POINTS) * FTSMPS_BAND2_UV_STEP
+			+ FTSMPS_BAND2_UV_MIN;
+	else
+		uV = (selector - FTSMPS_BAND1_SET_POINTS
+			- FTSMPS_BAND2_SET_POINTS)
+				* FTSMPS_BAND3_UV_STEP
+			+ FTSMPS_BAND3_UV_SET_POINT_MIN;
+
+	return uV;
+}
+
+static int _pm8921_ftsmps_set_voltage(struct pm8921_vreg *vreg, int min_uV,
+				      int max_uV, int force_on)
+{
+	int rc;
 	u8 vprog, band;
+	int uV = min_uV;
+
+	if (uV < FTSMPS_BAND1_UV_MIN && max_uV >= FTSMPS_BAND1_UV_MIN)
+		uV = FTSMPS_BAND1_UV_MIN;
 
 	if (uV < FTSMPS_BAND1_UV_MIN || uV > FTSMPS_BAND3_UV_MAX) {
-		vreg_err(vreg, "request voltage %d is outside allowed range.\n",
-			 uV);
+		vreg_err(vreg,
+			"request v=[%d, %d] is outside possible v=[%d, %d]\n",
+			 min_uV, max_uV, FTSMPS_BAND1_UV_MIN,
+			 FTSMPS_BAND3_UV_MAX);
 		return -EINVAL;
 	}
 
-	/* Round down for set points in the gaps between bands. */
+	/* Round up for set points in the gaps between bands. */
 	if (uV > FTSMPS_BAND1_UV_MAX && uV < FTSMPS_BAND2_UV_MIN)
-		uV = FTSMPS_BAND1_UV_MAX;
+		uV = FTSMPS_BAND2_UV_MIN;
 	else if (uV > FTSMPS_BAND2_UV_MAX
-			&& uV < FTSMPS_BAND3_UV_SETPOINT_MIN)
-		uV = FTSMPS_BAND2_UV_MAX;
+			&& uV < FTSMPS_BAND3_UV_SET_POINT_MIN)
+		uV = FTSMPS_BAND3_UV_SET_POINT_MIN;
 
-	if (uV < FTSMPS_BAND2_UV_MIN) {
-		vprog = ((uV - FTSMPS_BAND1_UV_MIN) / FTSMPS_BAND1_UV_STEP);
-		vprog = PM8921_FTSMPS_BAND_1_COMPENSATE(vprog);
-		band = FTSMPS_VCTRL_BAND_1;
-		new_uV = FTSMPS_BAND1_UV_MIN + vprog * FTSMPS_BAND1_UV_STEP;
-	} else if (uV < FTSMPS_BAND3_UV_SETPOINT_MIN) {
-		vprog = ((uV - FTSMPS_BAND2_UV_MIN) / FTSMPS_BAND2_UV_STEP);
-		band = FTSMPS_VCTRL_BAND_2;
-		new_uV = FTSMPS_BAND2_UV_MIN + vprog * FTSMPS_BAND2_UV_STEP;
-	} else {
-		vprog = ((uV - FTSMPS_BAND3_UV_MIN) / FTSMPS_BAND3_UV_STEP);
+	if (uV > FTSMPS_BAND2_UV_MAX) {
+		vprog = (uV - FTSMPS_BAND3_UV_MIN + FTSMPS_BAND3_UV_STEP - 1)
+			/ FTSMPS_BAND3_UV_STEP;
 		band = FTSMPS_VCTRL_BAND_3;
-		new_uV = FTSMPS_BAND3_UV_MIN + vprog * FTSMPS_BAND3_UV_STEP;
+		uV = FTSMPS_BAND3_UV_MIN + vprog * FTSMPS_BAND3_UV_STEP;
+	} else if (uV > FTSMPS_BAND1_UV_MAX) {
+		vprog = (uV - FTSMPS_BAND2_UV_MIN + FTSMPS_BAND2_UV_STEP - 1)
+			/ FTSMPS_BAND2_UV_STEP;
+		band = FTSMPS_VCTRL_BAND_2;
+		uV = FTSMPS_BAND2_UV_MIN + vprog * FTSMPS_BAND2_UV_STEP;
+	} else {
+		vprog = (uV - FTSMPS_BAND1_UV_MIN
+				+ FTSMPS_BAND1_UV_LOG_STEP - 1)
+			/ FTSMPS_BAND1_UV_LOG_STEP;
+		uV = FTSMPS_BAND1_UV_MIN + vprog * FTSMPS_BAND1_UV_LOG_STEP;
+		vprog *= FTSMPS_BAND1_UV_LOG_STEP / FTSMPS_BAND1_UV_PHYS_STEP;
+		band = FTSMPS_VCTRL_BAND_1;
+	}
+
+	if (uV > max_uV) {
+		vreg_err(vreg,
+			"request v=[%d, %d] cannot be met by any set point\n",
+			min_uV, max_uV);
+		return -EINVAL;
 	}
 
 	/*
@@ -1103,11 +1437,11 @@ static int _pm8921_ftsmps_set_voltage(struct pm8921_vreg *vreg, int uV,
 			goto bail;
 	}
 
-	vreg->save_uV = new_uV;
+	vreg->save_uV = uV;
 
 bail:
 	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
 
 	return rc;
 }
@@ -1117,7 +1451,7 @@ static int pm8921_ftsmps_set_voltage(struct regulator_dev *rdev, int min_uV,
 {
 	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
 
-	return _pm8921_ftsmps_set_voltage(vreg, min_uV, 0);
+	return _pm8921_ftsmps_set_voltage(vreg, min_uV, max_uV, 0);
 }
 
 static int pm8921_ncp_get_voltage(struct regulator_dev *rdev)
@@ -1130,330 +1464,139 @@ static int pm8921_ncp_get_voltage(struct regulator_dev *rdev)
 	return NCP_UV_MIN + vprog * NCP_UV_STEP;
 }
 
+static int pm8921_ncp_list_voltage(struct regulator_dev *rdev,
+				   unsigned selector)
+{
+	if (selector >= NCP_SET_POINTS)
+		return 0;
+
+	return selector * NCP_UV_STEP + NCP_UV_MIN;
+}
+
 static int pm8921_ncp_set_voltage(struct regulator_dev *rdev, int min_uV,
 				  int max_uV, unsigned *selector)
 {
 	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
 	int rc;
+	int uV = min_uV;
 	u8 val;
 
-	if (min_uV < NCP_UV_MIN || min_uV > NCP_UV_MAX) {
-		vreg_err(vreg, "request voltage %d is outside allowed range.\n",
-			 min_uV);
+	if (uV < NCP_UV_MIN && max_uV >= NCP_UV_MIN)
+		uV = NCP_UV_MIN;
+
+	if (uV < NCP_UV_MIN || uV > NCP_UV_MAX) {
+		vreg_err(vreg,
+			"request v=[%d, %d] is outside possible v=[%d, %d]\n",
+			 min_uV, max_uV, NCP_UV_MIN, NCP_UV_MAX);
 		return -EINVAL;
 	}
 
-	val = (min_uV - NCP_UV_MIN) / NCP_UV_STEP;
+	val = (uV - NCP_UV_MIN + NCP_UV_STEP - 1) / NCP_UV_STEP;
+	uV = val * NCP_UV_STEP + NCP_UV_MIN;
+
+	if (uV > max_uV) {
+		vreg_err(vreg,
+			"request v=[%d, %d] cannot be met by any set point\n",
+			min_uV, max_uV);
+		return -EINVAL;
+	}
 
 	/* voltage setting */
 	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, val,
 			NCP_VPROG_MASK, &vreg->ctrl_reg);
 	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
 
 	return rc;
 }
 
-static int pm8921_vreg_set_pin_ctrl(struct pm8921_vreg *vreg, int on)
-{
-	unsigned pc = vreg->pdata.pin_ctrl, pf = vreg->pdata.pin_fn;
-	int rc = 0;
-	int bank;
-	u8 val = 0;
-	u8 mask;
-
-	switch (vreg->type) {
-	case REGULATOR_TYPE_LDO:
-		if (on) {
-			if (pc & PM8921_VREG_PIN_CTRL_D0)
-				val |= LDO_TEST_PIN_CTRL_EN0;
-			if (pc & PM8921_VREG_PIN_CTRL_D1)
-				val |= LDO_TEST_PIN_CTRL_EN1;
-			if (pc & PM8921_VREG_PIN_CTRL_A0)
-				val |= LDO_TEST_PIN_CTRL_EN2;
-			if (pc & PM8921_VREG_PIN_CTRL_A1)
-				val |= LDO_TEST_PIN_CTRL_EN3;
-
-			bank = (pf == PM8921_VREG_PIN_FN_ENABLE ? 5 : 6);
-			rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
-				val | REGULATOR_BANK_SEL(bank)
-				  | REGULATOR_BANK_WRITE,
-				LDO_TEST_PIN_CTRL_MASK | REGULATOR_BANK_MASK,
-				&vreg->test_reg[bank]);
-			if (rc)
-				goto bail;
-
-			val = LDO_TEST_LPM_SEL_CTRL | REGULATOR_BANK_WRITE
-				| REGULATOR_BANK_SEL(0);
-			mask = LDO_TEST_LPM_MASK | REGULATOR_BANK_MASK;
-			rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
-					val, mask, &vreg->test_reg[0]);
-			if (rc)
-				goto bail;
-
-			if (pf == PM8921_VREG_PIN_FN_ENABLE) {
-				/* Pin control ON/OFF */
-				rc = pm8921_vreg_masked_write(vreg,
-					vreg->ctrl_addr,
-					LDO_CTRL_PM_HPM,
-					LDO_ENABLE_MASK | LDO_CTRL_PM_MASK,
-					&vreg->ctrl_reg);
-				if (rc)
-					goto bail;
-			} else {
-				/* Pin control LPM/HPM */
-				rc = pm8921_vreg_masked_write(vreg,
-					vreg->ctrl_addr,
-					LDO_ENABLE | LDO_CTRL_PM_LPM,
-					LDO_ENABLE_MASK | LDO_CTRL_PM_MASK,
-					&vreg->ctrl_reg);
-				if (rc)
-					goto bail;
-			}
-		} else {
-			/* Pin control off */
-			rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
-				REGULATOR_BANK_SEL(5) | REGULATOR_BANK_WRITE,
-				LDO_TEST_PIN_CTRL_MASK | REGULATOR_BANK_MASK,
-				&vreg->test_reg[5]);
-			if (rc)
-				goto bail;
-
-			rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
-				REGULATOR_BANK_SEL(6) | REGULATOR_BANK_WRITE,
-				LDO_TEST_PIN_CTRL_MASK | REGULATOR_BANK_MASK,
-				&vreg->test_reg[6]);
-			if (rc)
-				goto bail;
-		}
-		break;
-
-	case REGULATOR_TYPE_SMPS:
-		if (on) {
-			if (pf == PM8921_VREG_PIN_FN_ENABLE) {
-				/* Pin control ON/OFF */
-				if (pc & PM8921_VREG_PIN_CTRL_D0)
-					val |= SMPS_PIN_CTRL_D0;
-				if (pc & PM8921_VREG_PIN_CTRL_D1)
-					val |= SMPS_PIN_CTRL_D1;
-				if (pc & PM8921_VREG_PIN_CTRL_A0)
-					val |= SMPS_PIN_CTRL_A0;
-				if (pc & PM8921_VREG_PIN_CTRL_A1)
-					val |= SMPS_PIN_CTRL_A1;
-			} else {
-				/* Pin control LPM/HPM */
-				if (pc & PM8921_VREG_PIN_CTRL_D0)
-					val |= SMPS_PIN_CTRL_LPM_D0;
-				if (pc & PM8921_VREG_PIN_CTRL_D1)
-					val |= SMPS_PIN_CTRL_LPM_D1;
-				if (pc & PM8921_VREG_PIN_CTRL_A0)
-					val |= SMPS_PIN_CTRL_LPM_A0;
-				if (pc & PM8921_VREG_PIN_CTRL_A1)
-					val |= SMPS_PIN_CTRL_LPM_A1;
-			}
-
-			rc = pm8921_smps_set_voltage_legacy(vreg,
-							    vreg->save_uV);
-			if (rc)
-				goto bail;
-
-			rc = pm8921_vreg_masked_write(vreg,
-				vreg->sleep_ctrl_addr, val,
-				SMPS_PIN_CTRL_MASK | SMPS_PIN_CTRL_LPM_MASK,
-				&vreg->sleep_ctrl_reg);
-			if (rc)
-				goto bail;
-
-			rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
-				(pf == PM8921_VREG_PIN_FN_ENABLE
-				       ? 0 : SMPS_LEGACY_ENABLE),
-				SMPS_LEGACY_ENABLE, &vreg->ctrl_reg);
-			if (rc)
-				goto bail;
-
-			rc = pm8921_vreg_masked_write(vreg, vreg->clk_ctrl_addr,
-				(pf == PM8921_VREG_PIN_FN_ENABLE
-				       ? SMPS_CLK_CTRL_PWM : SMPS_CLK_CTRL_PFM),
-				SMPS_CLK_CTRL_MASK, &vreg->clk_ctrl_reg);
-			if (rc)
-				goto bail;
-		} else {
-			/* Pin control off */
-			if (!SMPS_IN_ADVANCED_MODE(vreg)) {
-				if (_pm8921_vreg_is_enabled(vreg))
-					val = SMPS_LEGACY_ENABLE;
-				rc = pm8921_vreg_masked_write(vreg,
-					vreg->ctrl_addr, val,
-					SMPS_LEGACY_ENABLE, &vreg->ctrl_reg);
-				if (rc)
-					goto bail;
-			}
-
-			rc = pm8921_vreg_masked_write(vreg,
-				vreg->sleep_ctrl_addr, 0,
-				SMPS_PIN_CTRL_MASK | SMPS_PIN_CTRL_LPM_MASK,
-				&vreg->sleep_ctrl_reg);
-			if (rc)
-				goto bail;
-
-			rc = pm8921_smps_set_voltage_advanced(vreg,
-							      vreg->save_uV, 0);
-			if (rc)
-				goto bail;
-		}
-		break;
-
-	case REGULATOR_TYPE_VS:
-		if (on) {
-			if (pc & PM8921_VREG_PIN_CTRL_D0)
-				val |= VS_PIN_CTRL_EN0;
-			if (pc & PM8921_VREG_PIN_CTRL_D1)
-				val |= VS_PIN_CTRL_EN1;
-			if (pc & PM8921_VREG_PIN_CTRL_A0)
-				val |= VS_PIN_CTRL_EN2;
-			if (pc & PM8921_VREG_PIN_CTRL_A1)
-				val |= VS_PIN_CTRL_EN3;
-
-			rc = pm8921_vreg_masked_write(vreg,
-					vreg->ctrl_addr, val,
-					VS_PIN_CTRL_MASK | VS_ENABLE_MASK,
-					&vreg->ctrl_reg);
-			if (rc)
-				goto bail;
-		} else {
-			/* Pin control off */
-			if (_pm8921_vreg_is_enabled(vreg))
-				val = VS_ENABLE;
-
-			rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
-					val, VS_ENABLE_MASK | VS_PIN_CTRL_MASK,
-					&vreg->ctrl_reg);
-			if (rc)
-				goto bail;
-		}
-		break;
-	}
-
-bail:
-	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
-
-	return rc;
-}
-
-static unsigned int pm8921_vreg_get_mode(struct regulator_dev *rdev)
+static unsigned int pm8921_ldo_get_mode(struct regulator_dev *rdev)
 {
 	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	unsigned int mode = 0;
 
-	/* Check physical pin control state. */
-	switch (vreg->type) {
-	case REGULATOR_TYPE_LDO:
-		if (!(vreg->ctrl_reg & LDO_ENABLE_MASK)
-		    && (vreg->test_reg[5] & LDO_TEST_PIN_CTRL_MASK))
-			return REGULATOR_MODE_IDLE;
-		else if ((vreg->ctrl_reg & LDO_ENABLE_MASK)
-		    && (vreg->ctrl_reg & LDO_CTRL_PM_MASK)
-		    && (vreg->test_reg[6] & LDO_TEST_PIN_CTRL_LPM_MASK))
-			return REGULATOR_MODE_IDLE;
-		break;
-	case REGULATOR_TYPE_SMPS:
-		if (!SMPS_IN_ADVANCED_MODE(vreg)
-		    && !(vreg->ctrl_reg & SMPS_LEGACY_ENABLE)
-		    && (vreg->sleep_ctrl_reg & SMPS_PIN_CTRL_MASK))
-			return REGULATOR_MODE_IDLE;
-		else if (!SMPS_IN_ADVANCED_MODE(vreg)
-		    && (vreg->ctrl_reg & SMPS_LEGACY_ENABLE)
-		    && ((vreg->clk_ctrl_reg & SMPS_CLK_CTRL_MASK)
-			== SMPS_CLK_CTRL_PFM)
-		    && (vreg->sleep_ctrl_reg & SMPS_PIN_CTRL_LPM_MASK))
-			return REGULATOR_MODE_IDLE;
-		break;
-	case REGULATOR_TYPE_VS:
-		if (!(vreg->ctrl_reg & VS_ENABLE_MASK)
-		    && (vreg->ctrl_reg & VS_PIN_CTRL_MASK))
-			return REGULATOR_MODE_IDLE;
-	}
+	mutex_lock(&vreg->pc_lock);
+	mode = vreg->mode;
+	mutex_unlock(&vreg->pc_lock);
 
-	if (vreg->optimum == REGULATOR_MODE_FAST)
-		return REGULATOR_MODE_FAST;
-	else if (vreg->pc_vote)
-		return REGULATOR_MODE_IDLE;
-	else if (vreg->optimum == REGULATOR_MODE_STANDBY)
-		return REGULATOR_MODE_STANDBY;
-	return REGULATOR_MODE_FAST;
+	return mode;
 }
 
-static int pm8921_ldo_set_mode(struct pm8921_vreg *vreg, unsigned int mode)
+static int pm8921_ldo_set_mode(struct regulator_dev *rdev, unsigned int mode)
 {
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
 	int rc = 0;
-	u8 mask, val;
 
-	switch (mode) {
-	case REGULATOR_MODE_FAST:
-		/* HPM */
-		val = (_pm8921_vreg_is_enabled(vreg) ? LDO_ENABLE : 0)
-			| LDO_CTRL_PM_HPM;
-		mask = LDO_ENABLE_MASK | LDO_CTRL_PM_MASK;
-		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, val, mask,
-					&vreg->ctrl_reg);
-		if (rc)
-			goto bail;
-
-		if (pm8921_vreg_is_pin_controlled(vreg))
-			rc = pm8921_vreg_set_pin_ctrl(vreg, 0);
-		if (rc)
-			goto bail;
-		break;
-
-	case REGULATOR_MODE_STANDBY:
-		/* LPM */
-		val = (_pm8921_vreg_is_enabled(vreg) ? LDO_ENABLE : 0)
-			| LDO_CTRL_PM_LPM;
-		mask = LDO_ENABLE_MASK | LDO_CTRL_PM_MASK;
-		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, val, mask,
-					&vreg->ctrl_reg);
-		if (rc)
-			goto bail;
-
-		val = LDO_TEST_LPM_SEL_CTRL | REGULATOR_BANK_WRITE
-			| REGULATOR_BANK_SEL(0);
-		mask = LDO_TEST_LPM_MASK | REGULATOR_BANK_MASK;
-		rc = pm8921_vreg_masked_write(vreg, vreg->test_addr, val, mask,
-					&vreg->test_reg[0]);
-		if (rc)
-			goto bail;
-
-		if (pm8921_vreg_is_pin_controlled(vreg))
-			rc = pm8921_vreg_set_pin_ctrl(vreg, 0);
-		if (rc)
-			goto bail;
-		break;
-
-	case REGULATOR_MODE_IDLE:
-		/* Pin Control */
-		if (_pm8921_vreg_is_enabled(vreg))
-			rc = pm8921_vreg_set_pin_ctrl(vreg, 1);
-		if (rc)
-			goto bail;
-		break;
-
-	default:
+	if (mode != REGULATOR_MODE_NORMAL && mode != REGULATOR_MODE_IDLE) {
 		vreg_err(vreg, "invalid mode: %u\n", mode);
 		return -EINVAL;
 	}
 
+	mutex_lock(&vreg->pc_lock);
+
+	if (mode == REGULATOR_MODE_NORMAL
+	    || (vreg->is_enabled_pc
+		&& vreg->pdata.pin_fn == PM8921_VREG_PIN_FN_ENABLE)) {
+		/* HPM */
+		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+			LDO_CTRL_PM_HPM, LDO_CTRL_PM_MASK, &vreg->ctrl_reg);
+	} else {
+		/* LPM */
+		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+			LDO_CTRL_PM_LPM, LDO_CTRL_PM_MASK, &vreg->ctrl_reg);
+		if (rc)
+			goto bail;
+
+		rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
+			LDO_TEST_LPM_SEL_CTRL | REGULATOR_BANK_WRITE
+			  | REGULATOR_BANK_SEL(0),
+			LDO_TEST_LPM_MASK | REGULATOR_BANK_MASK,
+			&vreg->test_reg[0]);
+	}
+
 bail:
+	if (!rc)
+		vreg->mode = mode;
+
+	mutex_unlock(&vreg->pc_lock);
+
 	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
 
 	return rc;
 }
 
-static int pm8921_nldo1200_set_mode(struct pm8921_vreg *vreg, unsigned int mode)
+static unsigned int pm8921_nldo1200_get_mode(struct regulator_dev *rdev)
 {
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	unsigned int mode = 0;
+
+	if (NLDO1200_IN_ADVANCED_MODE(vreg)) {
+		/* Advanced mode */
+		if ((vreg->test_reg[2] & NLDO1200_ADVANCED_PM_MASK)
+		    == NLDO1200_ADVANCED_PM_LPM)
+			mode = REGULATOR_MODE_IDLE;
+		else
+			mode = REGULATOR_MODE_NORMAL;
+	} else {
+		/* Legacy mode */
+		if ((vreg->ctrl_reg & NLDO1200_LEGACY_PM_MASK)
+		    == NLDO1200_LEGACY_PM_LPM)
+			mode = REGULATOR_MODE_IDLE;
+		else
+			mode = REGULATOR_MODE_NORMAL;
+	}
+
+	return mode;
+}
+
+static int pm8921_nldo1200_set_mode(struct regulator_dev *rdev,
+				    unsigned int mode)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
 	int rc = 0;
 
-	if (mode != REGULATOR_MODE_FAST && mode != REGULATOR_MODE_STANDBY) {
+	if (mode != REGULATOR_MODE_NORMAL && mode != REGULATOR_MODE_IDLE) {
 		vreg_err(vreg, "invalid mode: %u\n", mode);
 		return -EINVAL;
 	}
@@ -1463,208 +1606,119 @@ static int pm8921_nldo1200_set_mode(struct pm8921_vreg *vreg, unsigned int mode)
 	 * and update the voltage accordingly.
 	 */
 	if (!NLDO1200_IN_ADVANCED_MODE(vreg)) {
-		rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
-			NLDO1200_ADVANCED_MODE, NLDO1200_ADVANCED_MODE_MASK,
-			&vreg->test_reg[2]);
+		rc = _pm8921_nldo1200_set_voltage(vreg, vreg->save_uV,
+			vreg->save_uV);
 		if (rc)
 			goto bail;
-
-		_pm8921_nldo1200_set_voltage(vreg, vreg->save_uV);
 	}
 
-	if (mode == REGULATOR_MODE_FAST) {
+	if (mode == REGULATOR_MODE_NORMAL) {
 		/* HPM */
 		rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
-			NLDO1200_ADVANCED_PM_HPM, NLDO1200_ADVANCED_PM_MASK,
-			&vreg->test_reg[2]);
+			NLDO1200_ADVANCED_PM_HPM | REGULATOR_BANK_WRITE
+			| REGULATOR_BANK_SEL(2), NLDO1200_ADVANCED_PM_MASK
+			| REGULATOR_BANK_MASK, &vreg->test_reg[2]);
 	} else {
 		/* LPM */
 		rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
-			NLDO1200_ADVANCED_PM_LPM, NLDO1200_ADVANCED_PM_MASK,
-			&vreg->test_reg[2]);
+			NLDO1200_ADVANCED_PM_LPM | REGULATOR_BANK_WRITE
+			| REGULATOR_BANK_SEL(2), NLDO1200_ADVANCED_PM_MASK
+			| REGULATOR_BANK_MASK, &vreg->test_reg[2]);
 	}
 
 bail:
 	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
 
 	return rc;
 }
 
-static int pm8921_smps_set_mode(struct pm8921_vreg *vreg, unsigned int mode)
+static unsigned int pm8921_smps_get_mode(struct regulator_dev *rdev)
 {
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	unsigned int mode = 0;
+
+	mutex_lock(&vreg->pc_lock);
+	mode = vreg->mode;
+	mutex_unlock(&vreg->pc_lock);
+
+	return mode;
+}
+
+static int pm8921_smps_set_mode(struct regulator_dev *rdev, unsigned int mode)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
 	int rc = 0;
 
-	switch (mode) {
-	case REGULATOR_MODE_FAST:
+	if (mode != REGULATOR_MODE_NORMAL && mode != REGULATOR_MODE_IDLE) {
+		vreg_err(vreg, "invalid mode: %u\n", mode);
+		return -EINVAL;
+	}
+
+	mutex_lock(&vreg->pc_lock);
+
+	if (mode == REGULATOR_MODE_NORMAL
+	    || (vreg->is_enabled_pc
+		&& vreg->pdata.pin_fn == PM8921_VREG_PIN_FN_ENABLE)) {
 		/* HPM */
 		rc = pm8921_vreg_masked_write(vreg, vreg->clk_ctrl_addr,
 				       SMPS_CLK_CTRL_PWM, SMPS_CLK_CTRL_MASK,
 				       &vreg->clk_ctrl_reg);
-		if (rc)
-			goto bail;
-
-		if (pm8921_vreg_is_pin_controlled(vreg))
-			rc = pm8921_vreg_set_pin_ctrl(vreg, 0);
-		if (rc)
-			goto bail;
-		break;
-
-	case REGULATOR_MODE_STANDBY:
+	} else {
 		/* LPM */
 		rc = pm8921_vreg_masked_write(vreg, vreg->clk_ctrl_addr,
 				       SMPS_CLK_CTRL_PFM, SMPS_CLK_CTRL_MASK,
 				       &vreg->clk_ctrl_reg);
-		if (rc)
-			goto bail;
-
-		if (pm8921_vreg_is_pin_controlled(vreg))
-			rc = pm8921_vreg_set_pin_ctrl(vreg, 0);
-		if (rc)
-			goto bail;
-		break;
-
-	case REGULATOR_MODE_IDLE:
-		/* Pin Control */
-		if (_pm8921_vreg_is_enabled(vreg))
-			rc = pm8921_vreg_set_pin_ctrl(vreg, 1);
-		if (rc)
-			goto bail;
-		break;
-
-	default:
-		vreg_err(vreg, "invalid mode: %u\n", mode);
-		return -EINVAL;
 	}
 
-bail:
-	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+	if (!rc)
+		vreg->mode = mode;
 
-	return rc;
-}
-
-static int pm8921_ftsmps_set_mode(struct pm8921_vreg *vreg, unsigned int mode)
-{
-	int rc = 0;
-
-	if (mode == REGULATOR_MODE_FAST) {
-		/* HPM */
-		rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
-				FTSMPS_CNFG1_PM_PWM, FTSMPS_CNFG1_PM_MASK,
-				&vreg->test_reg[0]);
-	} else if (mode == REGULATOR_MODE_STANDBY) {
-		/* LPM */
-		rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
-				FTSMPS_CNFG1_PM_PFM, FTSMPS_CNFG1_PM_MASK,
-				&vreg->test_reg[0]);
-	} else {
-		vreg_err(vreg, "invalid mode: %u\n", mode);
-		return -EINVAL;
-	}
+	mutex_unlock(&vreg->pc_lock);
 
 	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
 
 	return rc;
 }
 
-static int pm8921_lvs_set_mode(struct pm8921_vreg *vreg, unsigned int mode)
-{
-	int rc = 0;
-
-	if (mode == REGULATOR_MODE_IDLE) {
-		/* Use pin control. */
-		if (_pm8921_vreg_is_enabled(vreg))
-			rc = pm8921_vreg_set_pin_ctrl(vreg, 1);
-	} else {
-		/* Turn off pin control. */
-		rc = pm8921_vreg_set_pin_ctrl(vreg, 0);
-	}
-
-	return rc;
-}
-
-/*
- * Optimum mode programming:
- * REGULATOR_MODE_FAST: Go to HPM (highest priority)
- * REGULATOR_MODE_STANDBY: Go to pin ctrl mode if there are any pin ctrl
- * votes, else go to LPM
- *
- * Pin ctrl mode voting via regulator set_mode:
- * REGULATOR_MODE_IDLE: Go to pin ctrl mode if the optimum mode is LPM, else
- * go to HPM
- * REGULATOR_MODE_NORMAL: Go to LPM if it is the optimum mode, else go to HPM
- */
-static int pm8921_vreg_set_mode(struct regulator_dev *rdev, unsigned int mode)
+static unsigned int pm8921_ftsmps_get_mode(struct regulator_dev *rdev)
 {
 	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
-	unsigned prev_optimum = vreg->optimum, prev_pc_vote = vreg->pc_vote;
-	int rc = 0, new_mode = REGULATOR_MODE_FAST;
+	unsigned int mode = 0;
 
-	/* Determine new mode to go into. */
-	switch (mode) {
-	case REGULATOR_MODE_FAST:
-		new_mode = REGULATOR_MODE_FAST;
-		vreg->optimum = mode;
-		break;
+	if ((vreg->test_reg[0] & FTSMPS_CNFG1_PM_MASK) == FTSMPS_CNFG1_PM_PFM)
+		mode = REGULATOR_MODE_IDLE;
+	else
+		mode = REGULATOR_MODE_NORMAL;
 
-	case REGULATOR_MODE_STANDBY:
-		if (vreg->pc_vote)
-			new_mode = REGULATOR_MODE_IDLE;
-		else
-			new_mode = REGULATOR_MODE_STANDBY;
-		vreg->optimum = mode;
-		break;
+	return mode;
+}
 
-	case REGULATOR_MODE_IDLE:
-		if (vreg->pc_vote++)
-			return rc; /* already taken care of */
+static int pm8921_ftsmps_set_mode(struct regulator_dev *rdev, unsigned int mode)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc = 0;
 
-		if (vreg->optimum == REGULATOR_MODE_FAST)
-			new_mode = REGULATOR_MODE_FAST;
-		else
-			new_mode = REGULATOR_MODE_IDLE;
-		break;
-
-	case REGULATOR_MODE_NORMAL:
-		if (vreg->pc_vote && --(vreg->pc_vote))
-			return rc; /* already taken care of */
-
-		if (vreg->optimum == REGULATOR_MODE_STANDBY)
-			new_mode = REGULATOR_MODE_STANDBY;
-		else
-			new_mode = REGULATOR_MODE_FAST;
-		break;
-
-	default:
-		vreg_err(vreg, "unknown mode, mode=%u\n", mode);
+	if (mode == REGULATOR_MODE_NORMAL) {
+		/* HPM */
+		rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
+				FTSMPS_CNFG1_PM_PWM | REGULATOR_BANK_WRITE
+				| REGULATOR_BANK_SEL(0), FTSMPS_CNFG1_PM_MASK
+				| REGULATOR_BANK_MASK, &vreg->test_reg[0]);
+	} else if (mode == REGULATOR_MODE_IDLE) {
+		/* LPM */
+		rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
+				FTSMPS_CNFG1_PM_PFM | REGULATOR_BANK_WRITE
+				| REGULATOR_BANK_SEL(0), FTSMPS_CNFG1_PM_MASK
+				| REGULATOR_BANK_MASK, &vreg->test_reg[0]);
+	} else {
+		vreg_err(vreg, "invalid mode: %u\n", mode);
 		return -EINVAL;
 	}
 
-	switch (vreg->type) {
-	case REGULATOR_TYPE_LDO:
-		rc = pm8921_ldo_set_mode(vreg, new_mode);
-		break;
-	case REGULATOR_TYPE_NLDO1200:
-		rc = pm8921_nldo1200_set_mode(vreg, new_mode);
-		break;
-	case REGULATOR_TYPE_SMPS:
-		rc = pm8921_smps_set_mode(vreg, new_mode);
-		break;
-	case REGULATOR_TYPE_FTSMPS:
-		rc = pm8921_ftsmps_set_mode(vreg, new_mode);
-		break;
-	case REGULATOR_TYPE_VS:
-		rc = pm8921_lvs_set_mode(vreg, new_mode);
-		break;
-	}
-
-	if (rc) {
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
-		vreg->optimum = prev_optimum;
-		vreg->pc_vote = prev_pc_vote;
-	}
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
 
 	return rc;
 }
@@ -1676,257 +1730,863 @@ static unsigned int pm8921_vreg_get_optimum_mode(struct regulator_dev *rdev,
 	unsigned int mode;
 
 	if (load_uA + vreg->pdata.system_uA >= vreg->hpm_min_load)
-		mode = REGULATOR_MODE_FAST;
+		mode = REGULATOR_MODE_NORMAL;
 	else
-		mode = REGULATOR_MODE_STANDBY;
+		mode = REGULATOR_MODE_IDLE;
 
 	return mode;
 }
 
-static int pm8921_vreg_enable(struct regulator_dev *rdev)
+static int pm8921_ldo_enable(struct regulator_dev *rdev)
 {
 	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
-	int rc = 0;
-	int mode;
+	int rc, val;
 
-	mode = pm8921_vreg_get_mode(rdev);
+	mutex_lock(&vreg->pc_lock);
 
-	if (mode == REGULATOR_MODE_IDLE) {
-		/* Turn on pin control. */
-		rc = pm8921_vreg_set_pin_ctrl(vreg, 1);
-		if (rc)
-			goto bail;
-		return rc;
-	}
 	/*
-	 * All regulator types except advanced mode SMPS, FTSMPS, and VS300 have
-	 * enable bit in bit 7 of the control register.
+	 * Choose HPM if previously set to HPM or if pin control is enabled in
+	 * on/off mode.
 	 */
-	switch (vreg->type) {
-	case REGULATOR_TYPE_SMPS:
-		if (SMPS_IN_ADVANCED_MODE(vreg)
-		    || !pm8921_vreg_is_pin_controlled(vreg)) {
-			/* Enable in advanced mode if not using pin control. */
-			rc = pm8921_smps_set_voltage_advanced(vreg,
-							vreg->save_uV, 1);
-		} else {
-			/* Leave in legacy mode because pin control is used. */
-			rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
-					SMPS_LEGACY_ENABLE, SMPS_LEGACY_ENABLE,
-					&vreg->ctrl_reg);
-		}
-		break;
-	case REGULATOR_TYPE_FTSMPS:
-		rc = _pm8921_ftsmps_set_voltage(vreg, vreg->save_uV, 1);
-		break;
-	case REGULATOR_TYPE_VS300:
-		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
-				VS300_CTRL_ENABLE, VS300_CTRL_ENABLE_MASK,
-				&vreg->ctrl_reg);
-		break;
-	default:
-		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
-				REGULATOR_ENABLE, REGULATOR_ENABLE_MASK,
-				&vreg->ctrl_reg);
-	}
+	val = LDO_CTRL_PM_LPM;
+	if (vreg->mode == REGULATOR_MODE_NORMAL
+		|| (vreg->is_enabled_pc
+			&& vreg->pdata.pin_fn == PM8921_VREG_PIN_FN_ENABLE))
+		val = LDO_CTRL_PM_HPM;
 
-bail:
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, val | LDO_ENABLE,
+		LDO_ENABLE_MASK | LDO_CTRL_PM_MASK, &vreg->ctrl_reg);
+
+	if (!rc)
+		vreg->is_enabled = true;
+
+	mutex_unlock(&vreg->pc_lock);
+
 	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
 
 	return rc;
 }
 
-static int pm8921_vreg_disable(struct regulator_dev *rdev)
+static int pm8921_ldo_disable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	mutex_lock(&vreg->pc_lock);
+
+	/*
+	 * Only disable the regulator if it isn't still required for HPM/LPM
+	 * pin control.
+	 */
+	if (!vreg->is_enabled_pc
+	    || vreg->pdata.pin_fn != PM8921_VREG_PIN_FN_MODE) {
+		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+			LDO_DISABLE, LDO_ENABLE_MASK, &vreg->ctrl_reg);
+		if (rc)
+			goto bail;
+	}
+
+	/* Change to LPM if HPM/LPM pin control is enabled. */
+	if (vreg->is_enabled_pc
+	    && vreg->pdata.pin_fn == PM8921_VREG_PIN_FN_MODE) {
+		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+			LDO_CTRL_PM_LPM, LDO_CTRL_PM_MASK, &vreg->ctrl_reg);
+		if (rc)
+			goto bail;
+
+		rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
+			LDO_TEST_LPM_SEL_CTRL | REGULATOR_BANK_WRITE
+			  | REGULATOR_BANK_SEL(0),
+			LDO_TEST_LPM_MASK | REGULATOR_BANK_MASK,
+			&vreg->test_reg[0]);
+	}
+
+	if (!rc)
+		vreg->is_enabled = false;
+bail:
+	mutex_unlock(&vreg->pc_lock);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_nldo1200_enable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, NLDO1200_ENABLE,
+		NLDO1200_ENABLE_MASK, &vreg->ctrl_reg);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_nldo1200_disable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, NLDO1200_DISABLE,
+		NLDO1200_ENABLE_MASK, &vreg->ctrl_reg);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_smps_enable(struct regulator_dev *rdev)
 {
 	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
 	int rc = 0;
+	int val;
 
-	/* Turn off pin control. */
-	rc = pm8921_vreg_set_pin_ctrl(vreg, 0);
+	mutex_lock(&vreg->pc_lock);
+
+	if (SMPS_IN_ADVANCED_MODE(vreg)
+	     || !pm8921_vreg_is_pin_controlled(vreg)) {
+		/* Enable in advanced mode if not using pin control. */
+		rc = pm8921_smps_set_voltage_advanced(vreg, vreg->save_uV,
+			vreg->save_uV, 1);
+	} else {
+		rc = pm8921_smps_set_voltage_legacy(vreg, vreg->save_uV,
+			vreg->save_uV);
+		if (rc)
+			goto bail;
+
+		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+			SMPS_LEGACY_ENABLE, SMPS_LEGACY_ENABLE_MASK,
+			&vreg->ctrl_reg);
+	}
+
+	/*
+	 * Choose HPM if previously set to HPM or if pin control is enabled in
+	 * on/off mode.
+	 */
+	val = SMPS_CLK_CTRL_PFM;
+	if (vreg->mode == REGULATOR_MODE_NORMAL
+		|| (vreg->is_enabled_pc
+			&& vreg->pdata.pin_fn == PM8921_VREG_PIN_FN_ENABLE))
+		val = SMPS_CLK_CTRL_PWM;
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->clk_ctrl_addr, val,
+			SMPS_CLK_CTRL_MASK, &vreg->clk_ctrl_reg);
+
+	if (!rc)
+		vreg->is_enabled = true;
+bail:
+	mutex_unlock(&vreg->pc_lock);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_smps_disable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	mutex_lock(&vreg->pc_lock);
+
+	if (SMPS_IN_ADVANCED_MODE(vreg)) {
+		/* Change SMPS to legacy mode before disabling. */
+		rc = pm8921_smps_set_voltage_legacy(vreg, vreg->save_uV,
+				vreg->save_uV);
+		if (rc)
+			goto bail;
+	}
+
+	/*
+	 * Only disable the regulator if it isn't still required for HPM/LPM
+	 * pin control.
+	 */
+	if (!vreg->is_enabled_pc
+	    || vreg->pdata.pin_fn != PM8921_VREG_PIN_FN_MODE) {
+		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+			SMPS_LEGACY_DISABLE, SMPS_LEGACY_ENABLE_MASK,
+			&vreg->ctrl_reg);
+		if (rc)
+			goto bail;
+	}
+
+	/* Change to LPM if HPM/LPM pin control is enabled. */
+	if (vreg->is_enabled_pc
+	    && vreg->pdata.pin_fn == PM8921_VREG_PIN_FN_MODE)
+		rc = pm8921_vreg_masked_write(vreg, vreg->clk_ctrl_addr,
+		       SMPS_CLK_CTRL_PFM, SMPS_CLK_CTRL_MASK,
+		       &vreg->clk_ctrl_reg);
+
+	if (!rc)
+		vreg->is_enabled = false;
+
+bail:
+	mutex_unlock(&vreg->pc_lock);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_ftsmps_enable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	rc = _pm8921_ftsmps_set_voltage(vreg, vreg->save_uV, vreg->save_uV, 1);
+
+	if (rc)
+		vreg_err(vreg, "set voltage failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_ftsmps_disable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+		FTSMPS_VCTRL_BAND_OFF, FTSMPS_VCTRL_BAND_MASK, &vreg->ctrl_reg);
 	if (rc)
 		goto bail;
 
-	/* Disable in control register. */
-	switch (vreg->type) {
-	case REGULATOR_TYPE_FTSMPS:
-		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
-			FTSMPS_VCTRL_BAND_OFF, FTSMPS_VCTRL_BAND_MASK,
-			&vreg->ctrl_reg);
-		if (rc)
-			goto bail;
-		rc = pm8921_vreg_masked_write(vreg, vreg->pfm_ctrl_addr,
-			FTSMPS_VCTRL_BAND_OFF, FTSMPS_VCTRL_BAND_MASK,
-			&vreg->pfm_ctrl_reg);
-		break;
-	case REGULATOR_TYPE_VS300:
-		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
-			VS300_CTRL_DISABLE, VS300_CTRL_ENABLE_MASK,
-			&vreg->ctrl_reg);
-		break;
-	case REGULATOR_TYPE_SMPS:
-		if (SMPS_IN_ADVANCED_MODE(vreg)) {
-			/* Change SMPS to legacy mode before disabling. */
-			rc = pm8921_smps_set_voltage_legacy(vreg,
-				vreg->save_uV);
-			if (rc)
-				goto bail;
-		}
-		/* Fall through and disable SMPS via control bit 7. */
-	default:
-		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
-			REGULATOR_DISABLE, REGULATOR_ENABLE_MASK,
-			&vreg->ctrl_reg);
-	}
-
+	rc = pm8921_vreg_masked_write(vreg, vreg->pfm_ctrl_addr,
+		FTSMPS_VCTRL_BAND_OFF, FTSMPS_VCTRL_BAND_MASK,
+		&vreg->pfm_ctrl_reg);
 bail:
 	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
 
 	return rc;
 }
 
+static int pm8921_vs_enable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	mutex_lock(&vreg->pc_lock);
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, VS_ENABLE,
+		VS_ENABLE_MASK, &vreg->ctrl_reg);
+
+	if (!rc)
+		vreg->is_enabled = true;
+
+	mutex_unlock(&vreg->pc_lock);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_vs_disable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	mutex_lock(&vreg->pc_lock);
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, VS_DISABLE,
+		VS_ENABLE_MASK, &vreg->ctrl_reg);
+
+	if (!rc)
+		vreg->is_enabled = false;
+
+	mutex_unlock(&vreg->pc_lock);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_vs300_enable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, VS300_CTRL_ENABLE,
+		VS300_CTRL_ENABLE_MASK, &vreg->ctrl_reg);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_vs300_disable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, VS300_CTRL_DISABLE,
+		VS300_CTRL_ENABLE_MASK, &vreg->ctrl_reg);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_ncp_enable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, NCP_ENABLE,
+		NCP_ENABLE_MASK, &vreg->ctrl_reg);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_ncp_disable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, NCP_DISABLE,
+		NCP_ENABLE_MASK, &vreg->ctrl_reg);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_ldo_pin_control_enable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc = 0;
+	int bank;
+	u8 val = 0;
+	u8 mask;
+
+	mutex_lock(&vreg->pc_lock);
+
+	if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_D1)
+		val |= LDO_TEST_PIN_CTRL_EN0;
+	if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_A0)
+		val |= LDO_TEST_PIN_CTRL_EN1;
+	if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_A1)
+		val |= LDO_TEST_PIN_CTRL_EN2;
+	if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_A2)
+		val |= LDO_TEST_PIN_CTRL_EN3;
+
+	bank = (vreg->pdata.pin_fn == PM8921_VREG_PIN_FN_ENABLE ? 5 : 6);
+	rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
+		val | REGULATOR_BANK_SEL(bank) | REGULATOR_BANK_WRITE,
+		LDO_TEST_PIN_CTRL_MASK | REGULATOR_BANK_MASK,
+		&vreg->test_reg[bank]);
+	if (rc)
+		goto bail;
+
+	/* Unset pin control bits in unused bank. */
+	bank = (bank == 5 ? 6 : 5);
+	rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
+		REGULATOR_BANK_SEL(bank) | REGULATOR_BANK_WRITE,
+		LDO_TEST_PIN_CTRL_MASK | REGULATOR_BANK_MASK,
+		&vreg->test_reg[bank]);
+	if (rc)
+		goto bail;
+
+	val = LDO_TEST_LPM_SEL_CTRL | REGULATOR_BANK_WRITE
+		| REGULATOR_BANK_SEL(0);
+	mask = LDO_TEST_LPM_MASK | REGULATOR_BANK_MASK;
+	rc = pm8921_vreg_masked_write(vreg, vreg->test_addr, val, mask,
+		&vreg->test_reg[0]);
+	if (rc)
+		goto bail;
+
+	if (vreg->pdata.pin_fn == PM8921_VREG_PIN_FN_ENABLE) {
+		/* Pin control ON/OFF */
+		val = LDO_CTRL_PM_HPM;
+		/* Leave physically enabled if already enabled. */
+		val |= (vreg->is_enabled ? LDO_ENABLE : LDO_DISABLE);
+		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, val,
+			LDO_ENABLE_MASK | LDO_CTRL_PM_MASK, &vreg->ctrl_reg);
+		if (rc)
+			goto bail;
+	} else {
+		/* Pin control LPM/HPM */
+		val = LDO_ENABLE;
+		/* Leave in HPM if already enabled in HPM. */
+		val |= (vreg->is_enabled && vreg->mode == REGULATOR_MODE_NORMAL
+			?  LDO_CTRL_PM_HPM : LDO_CTRL_PM_LPM);
+		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, val,
+			LDO_ENABLE_MASK | LDO_CTRL_PM_MASK, &vreg->ctrl_reg);
+		if (rc)
+			goto bail;
+	}
+
+bail:
+	if (!rc)
+		vreg->is_enabled_pc = true;
+
+	mutex_unlock(&vreg->pc_lock);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_ldo_pin_control_disable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	mutex_lock(&vreg->pc_lock);
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
+			REGULATOR_BANK_SEL(5) | REGULATOR_BANK_WRITE,
+			LDO_TEST_PIN_CTRL_MASK | REGULATOR_BANK_MASK,
+			&vreg->test_reg[5]);
+	if (rc)
+		goto bail;
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
+			REGULATOR_BANK_SEL(6) | REGULATOR_BANK_WRITE,
+			LDO_TEST_PIN_CTRL_MASK | REGULATOR_BANK_MASK,
+			&vreg->test_reg[6]);
+
+	/*
+	 * Physically disable the regulator if it was enabled in HPM/LPM pin
+	 * control mode previously and it logically should not be enabled.
+	 */
+	if ((vreg->ctrl_reg & LDO_ENABLE_MASK) == LDO_ENABLE
+	    && !vreg->is_enabled) {
+		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+			LDO_DISABLE, LDO_ENABLE_MASK, &vreg->ctrl_reg);
+		if (rc)
+			goto bail;
+	}
+
+	/* Change to LPM if LPM was enabled. */
+	if (vreg->is_enabled && vreg->mode == REGULATOR_MODE_IDLE) {
+		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+			LDO_CTRL_PM_LPM, LDO_CTRL_PM_MASK, &vreg->ctrl_reg);
+		if (rc)
+			goto bail;
+
+		rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
+			LDO_TEST_LPM_SEL_CTRL | REGULATOR_BANK_WRITE
+			  | REGULATOR_BANK_SEL(0),
+			LDO_TEST_LPM_MASK | REGULATOR_BANK_MASK,
+			&vreg->test_reg[0]);
+		if (rc)
+			goto bail;
+	}
+
+bail:
+	if (!rc)
+		vreg->is_enabled_pc = false;
+
+	mutex_unlock(&vreg->pc_lock);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_smps_pin_control_enable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc = 0;
+	u8 val = 0;
+
+	mutex_lock(&vreg->pc_lock);
+
+	if (vreg->pdata.pin_fn == PM8921_VREG_PIN_FN_ENABLE) {
+		/* Pin control ON/OFF */
+		if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_D1)
+			val |= SMPS_PIN_CTRL_EN0;
+		if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_A0)
+			val |= SMPS_PIN_CTRL_EN1;
+		if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_A1)
+			val |= SMPS_PIN_CTRL_EN2;
+		if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_A2)
+			val |= SMPS_PIN_CTRL_EN3;
+	} else {
+		/* Pin control LPM/HPM */
+		if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_D1)
+			val |= SMPS_PIN_CTRL_LPM_EN0;
+		if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_A0)
+			val |= SMPS_PIN_CTRL_LPM_EN1;
+		if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_A1)
+			val |= SMPS_PIN_CTRL_LPM_EN2;
+		if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_A2)
+			val |= SMPS_PIN_CTRL_LPM_EN3;
+	}
+
+	rc = pm8921_smps_set_voltage_legacy(vreg, vreg->save_uV, vreg->save_uV);
+	if (rc)
+		goto bail;
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->sleep_ctrl_addr, val,
+			SMPS_PIN_CTRL_MASK | SMPS_PIN_CTRL_LPM_MASK,
+			&vreg->sleep_ctrl_reg);
+	if (rc)
+		goto bail;
+
+	/*
+	 * Physically enable the regulator if using HPM/LPM pin control mode or
+	 * if the regulator should be logically left on.
+	 */
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+		((vreg->pdata.pin_fn == PM8921_VREG_PIN_FN_MODE
+		  || vreg->is_enabled) ?
+			SMPS_LEGACY_ENABLE : SMPS_LEGACY_DISABLE),
+		SMPS_LEGACY_ENABLE_MASK, &vreg->ctrl_reg);
+	if (rc)
+		goto bail;
+
+	/*
+	 * Set regulator to HPM if using on/off pin control or if the regulator
+	 * is already enabled in HPM.  Otherwise, set it to LPM.
+	 */
+	rc = pm8921_vreg_masked_write(vreg, vreg->clk_ctrl_addr,
+			(vreg->pdata.pin_fn == PM8921_VREG_PIN_FN_ENABLE
+			 || (vreg->is_enabled
+			     && vreg->mode == REGULATOR_MODE_NORMAL)
+				? SMPS_CLK_CTRL_PWM : SMPS_CLK_CTRL_PFM),
+			SMPS_CLK_CTRL_MASK, &vreg->clk_ctrl_reg);
+
+bail:
+	if (!rc)
+		vreg->is_enabled_pc = true;
+
+	mutex_unlock(&vreg->pc_lock);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_smps_pin_control_disable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	mutex_lock(&vreg->pc_lock);
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->sleep_ctrl_addr, 0,
+			SMPS_PIN_CTRL_MASK | SMPS_PIN_CTRL_LPM_MASK,
+			&vreg->sleep_ctrl_reg);
+	if (rc)
+		goto bail;
+
+	/*
+	 * Physically disable the regulator if it was enabled in HPM/LPM pin
+	 * control mode previously and it logically should not be enabled.
+	 */
+	if ((vreg->ctrl_reg & SMPS_LEGACY_ENABLE_MASK) == SMPS_LEGACY_ENABLE
+	    && vreg->is_enabled == false) {
+		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+			SMPS_LEGACY_DISABLE, SMPS_LEGACY_ENABLE_MASK,
+			&vreg->ctrl_reg);
+		if (rc)
+			goto bail;
+	}
+
+	/* Change to LPM if LPM was enabled. */
+	if (vreg->is_enabled && vreg->mode == REGULATOR_MODE_IDLE) {
+		rc = pm8921_vreg_masked_write(vreg, vreg->clk_ctrl_addr,
+		       SMPS_CLK_CTRL_PFM, SMPS_CLK_CTRL_MASK,
+		       &vreg->clk_ctrl_reg);
+		if (rc)
+			goto bail;
+	}
+
+	rc = pm8921_smps_set_voltage_advanced(vreg, vreg->save_uV,
+			vreg->save_uV, 0);
+
+bail:
+	if (!rc)
+		vreg->is_enabled_pc = false;
+
+	mutex_unlock(&vreg->pc_lock);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_vs_pin_control_enable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+	u8 val = 0;
+
+	mutex_lock(&vreg->pc_lock);
+
+	if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_D1)
+		val |= VS_PIN_CTRL_EN0;
+	if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_A0)
+		val |= VS_PIN_CTRL_EN1;
+	if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_A1)
+		val |= VS_PIN_CTRL_EN2;
+	if (vreg->pdata.pin_ctrl & PM8921_VREG_PIN_CTRL_A2)
+		val |= VS_PIN_CTRL_EN3;
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, val,
+			VS_PIN_CTRL_MASK | VS_ENABLE_MASK, &vreg->ctrl_reg);
+
+	if (!rc)
+		vreg->is_enabled_pc = true;
+
+	mutex_unlock(&vreg->pc_lock);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_vs_pin_control_disable(struct regulator_dev *rdev)
+{
+	struct pm8921_vreg *vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	mutex_lock(&vreg->pc_lock);
+
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr, 0,
+				      VS_PIN_CTRL_MASK, &vreg->ctrl_reg);
+
+	if (!rc)
+		vreg->is_enabled_pc = false;
+
+	mutex_unlock(&vreg->pc_lock);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+/* Real regulator operations. */
 static struct regulator_ops pm8921_pldo_ops = {
-	.enable			= pm8921_vreg_enable,
-	.disable		= pm8921_vreg_disable,
+	.enable			= pm8921_ldo_enable,
+	.disable		= pm8921_ldo_disable,
 	.is_enabled		= pm8921_vreg_is_enabled,
 	.set_voltage		= pm8921_pldo_set_voltage,
 	.get_voltage		= pm8921_pldo_get_voltage,
-	.set_mode		= pm8921_vreg_set_mode,
-	.get_mode		= pm8921_vreg_get_mode,
+	.list_voltage		= pm8921_pldo_list_voltage,
+	.set_mode		= pm8921_ldo_set_mode,
+	.get_mode		= pm8921_ldo_get_mode,
 	.get_optimum_mode	= pm8921_vreg_get_optimum_mode,
 };
 
 static struct regulator_ops pm8921_nldo_ops = {
-	.enable			= pm8921_vreg_enable,
-	.disable		= pm8921_vreg_disable,
+	.enable			= pm8921_ldo_enable,
+	.disable		= pm8921_ldo_disable,
 	.is_enabled		= pm8921_vreg_is_enabled,
 	.set_voltage		= pm8921_nldo_set_voltage,
 	.get_voltage		= pm8921_nldo_get_voltage,
-	.set_mode		= pm8921_vreg_set_mode,
-	.get_mode		= pm8921_vreg_get_mode,
+	.list_voltage		= pm8921_nldo_list_voltage,
+	.set_mode		= pm8921_ldo_set_mode,
+	.get_mode		= pm8921_ldo_get_mode,
 	.get_optimum_mode	= pm8921_vreg_get_optimum_mode,
 };
 
 static struct regulator_ops pm8921_nldo1200_ops = {
-	.enable			= pm8921_vreg_enable,
-	.disable		= pm8921_vreg_disable,
+	.enable			= pm8921_nldo1200_enable,
+	.disable		= pm8921_nldo1200_disable,
 	.is_enabled		= pm8921_vreg_is_enabled,
 	.set_voltage		= pm8921_nldo1200_set_voltage,
 	.get_voltage		= pm8921_nldo1200_get_voltage,
-	.set_mode		= pm8921_vreg_set_mode,
-	.get_mode		= pm8921_vreg_get_mode,
+	.list_voltage		= pm8921_nldo1200_list_voltage,
+	.set_mode		= pm8921_nldo1200_set_mode,
+	.get_mode		= pm8921_nldo1200_get_mode,
 	.get_optimum_mode	= pm8921_vreg_get_optimum_mode,
 };
 
 static struct regulator_ops pm8921_smps_ops = {
-	.enable			= pm8921_vreg_enable,
-	.disable		= pm8921_vreg_disable,
+	.enable			= pm8921_smps_enable,
+	.disable		= pm8921_smps_disable,
 	.is_enabled		= pm8921_vreg_is_enabled,
 	.set_voltage		= pm8921_smps_set_voltage,
 	.get_voltage		= pm8921_smps_get_voltage,
-	.set_mode		= pm8921_vreg_set_mode,
-	.get_mode		= pm8921_vreg_get_mode,
+	.list_voltage		= pm8921_smps_list_voltage,
+	.set_mode		= pm8921_smps_set_mode,
+	.get_mode		= pm8921_smps_get_mode,
 	.get_optimum_mode	= pm8921_vreg_get_optimum_mode,
 };
 
 static struct regulator_ops pm8921_ftsmps_ops = {
-	.enable			= pm8921_vreg_enable,
-	.disable		= pm8921_vreg_disable,
+	.enable			= pm8921_ftsmps_enable,
+	.disable		= pm8921_ftsmps_disable,
 	.is_enabled		= pm8921_vreg_is_enabled,
 	.set_voltage		= pm8921_ftsmps_set_voltage,
 	.get_voltage		= pm8921_ftsmps_get_voltage,
-	.set_mode		= pm8921_vreg_set_mode,
-	.get_mode		= pm8921_vreg_get_mode,
+	.list_voltage		= pm8921_ftsmps_list_voltage,
+	.set_mode		= pm8921_ftsmps_set_mode,
+	.get_mode		= pm8921_ftsmps_get_mode,
 	.get_optimum_mode	= pm8921_vreg_get_optimum_mode,
 };
 
 static struct regulator_ops pm8921_vs_ops = {
-	.enable			= pm8921_vreg_enable,
-	.disable		= pm8921_vreg_disable,
+	.enable			= pm8921_vs_enable,
+	.disable		= pm8921_vs_disable,
 	.is_enabled		= pm8921_vreg_is_enabled,
-	.set_mode		= pm8921_vreg_set_mode,
-	.get_mode		= pm8921_vreg_get_mode,
 };
 
 static struct regulator_ops pm8921_vs300_ops = {
-	.enable			= pm8921_vreg_enable,
-	.disable		= pm8921_vreg_disable,
+	.enable			= pm8921_vs300_enable,
+	.disable		= pm8921_vs300_disable,
 	.is_enabled		= pm8921_vreg_is_enabled,
 };
 
 static struct regulator_ops pm8921_ncp_ops = {
-	.enable			= pm8921_vreg_enable,
-	.disable		= pm8921_vreg_disable,
+	.enable			= pm8921_ncp_enable,
+	.disable		= pm8921_ncp_disable,
 	.is_enabled		= pm8921_vreg_is_enabled,
 	.set_voltage		= pm8921_ncp_set_voltage,
 	.get_voltage		= pm8921_ncp_get_voltage,
+	.list_voltage		= pm8921_ncp_list_voltage,
 };
 
-#define VREG_DESC(_id, _name, _ops) \
+/* Pin control regulator operations. */
+static struct regulator_ops pm8921_ldo_pc_ops = {
+	.enable			= pm8921_ldo_pin_control_enable,
+	.disable		= pm8921_ldo_pin_control_disable,
+	.is_enabled		= pm8921_vreg_pin_control_is_enabled,
+};
+
+static struct regulator_ops pm8921_smps_pc_ops = {
+	.enable			= pm8921_smps_pin_control_enable,
+	.disable		= pm8921_smps_pin_control_disable,
+	.is_enabled		= pm8921_vreg_pin_control_is_enabled,
+};
+
+static struct regulator_ops pm8921_vs_pc_ops = {
+	.enable			= pm8921_vs_pin_control_enable,
+	.disable		= pm8921_vs_pin_control_disable,
+	.is_enabled		= pm8921_vreg_pin_control_is_enabled,
+};
+
+#define VREG_DESC(_id, _name, _ops, _n_voltages) \
 	[PM8921_VREG_ID_##_id] = { \
 		.id	= PM8921_VREG_ID_##_id, \
 		.name	= _name, \
+		.n_voltages = _n_voltages, \
 		.ops	= _ops, \
 		.type	= REGULATOR_VOLTAGE, \
 		.owner	= THIS_MODULE, \
 	}
 
 static struct regulator_desc pm8921_vreg_description[] = {
-	VREG_DESC(L1,  "8921_l1",  &pm8921_nldo_ops),
-	VREG_DESC(L2,  "8921_l2",  &pm8921_nldo_ops),
-	VREG_DESC(L3,  "8921_l3",  &pm8921_pldo_ops),
-	VREG_DESC(L4,  "8921_l4",  &pm8921_pldo_ops),
-	VREG_DESC(L5,  "8921_l5",  &pm8921_pldo_ops),
-	VREG_DESC(L6,  "8921_l6",  &pm8921_pldo_ops),
-	VREG_DESC(L7,  "8921_l7",  &pm8921_pldo_ops),
-	VREG_DESC(L8,  "8921_l8",  &pm8921_pldo_ops),
-	VREG_DESC(L9,  "8921_l9",  &pm8921_pldo_ops),
-	VREG_DESC(L10, "8921_l10", &pm8921_pldo_ops),
-	VREG_DESC(L11, "8921_l11", &pm8921_pldo_ops),
-	VREG_DESC(L12, "8921_l12", &pm8921_nldo_ops),
-	VREG_DESC(L14, "8921_l14", &pm8921_pldo_ops),
-	VREG_DESC(L15, "8921_l15", &pm8921_pldo_ops),
-	VREG_DESC(L16, "8921_l16", &pm8921_pldo_ops),
-	VREG_DESC(L17, "8921_l17", &pm8921_pldo_ops),
-	VREG_DESC(L18, "8921_l18", &pm8921_nldo_ops),
-	VREG_DESC(L21, "8921_l21", &pm8921_pldo_ops),
-	VREG_DESC(L22, "8921_l22", &pm8921_pldo_ops),
-	VREG_DESC(L23, "8921_l23", &pm8921_pldo_ops),
-	VREG_DESC(L24, "8921_l24", &pm8921_nldo1200_ops),
-	VREG_DESC(L25, "8921_l25", &pm8921_nldo1200_ops),
-	VREG_DESC(L26, "8921_l26", &pm8921_nldo1200_ops),
-	VREG_DESC(L27, "8921_l27", &pm8921_nldo1200_ops),
-	VREG_DESC(L28, "8921_l28", &pm8921_nldo1200_ops),
-	VREG_DESC(L29, "8921_l29", &pm8921_pldo_ops),
+	VREG_DESC(L1,  "8921_l1",  &pm8921_nldo_ops, NLDO_SET_POINTS),
+	VREG_DESC(L2,  "8921_l2",  &pm8921_nldo_ops, NLDO_SET_POINTS),
+	VREG_DESC(L3,  "8921_l3",  &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L4,  "8921_l4",  &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L5,  "8921_l5",  &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L6,  "8921_l6",  &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L7,  "8921_l7",  &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L8,  "8921_l8",  &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L9,  "8921_l9",  &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L10, "8921_l10", &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L11, "8921_l11", &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L12, "8921_l12", &pm8921_nldo_ops, NLDO_SET_POINTS),
+	VREG_DESC(L14, "8921_l14", &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L15, "8921_l15", &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L16, "8921_l16", &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L17, "8921_l17", &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L18, "8921_l18", &pm8921_nldo_ops, NLDO_SET_POINTS),
+	VREG_DESC(L21, "8921_l21", &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L22, "8921_l22", &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L23, "8921_l23", &pm8921_pldo_ops, PLDO_SET_POINTS),
+	VREG_DESC(L24, "8921_l24", &pm8921_nldo1200_ops, NLDO1200_SET_POINTS),
+	VREG_DESC(L25, "8921_l25", &pm8921_nldo1200_ops, NLDO1200_SET_POINTS),
+	VREG_DESC(L26, "8921_l26", &pm8921_nldo1200_ops, NLDO1200_SET_POINTS),
+	VREG_DESC(L27, "8921_l27", &pm8921_nldo1200_ops, NLDO1200_SET_POINTS),
+	VREG_DESC(L28, "8921_l28", &pm8921_nldo1200_ops, NLDO1200_SET_POINTS),
+	VREG_DESC(L29, "8921_l29", &pm8921_pldo_ops, PLDO_SET_POINTS),
 
-	VREG_DESC(S1, "8921_s1", &pm8921_smps_ops),
-	VREG_DESC(S2, "8921_s2", &pm8921_smps_ops),
-	VREG_DESC(S3, "8921_s3", &pm8921_smps_ops),
-	VREG_DESC(S4, "8921_s4", &pm8921_smps_ops),
-	VREG_DESC(S5, "8921_s5", &pm8921_ftsmps_ops),
-	VREG_DESC(S6, "8921_s6", &pm8921_ftsmps_ops),
-	VREG_DESC(S7, "8921_s7", &pm8921_smps_ops),
-	VREG_DESC(S8, "8921_s8", &pm8921_smps_ops),
+	VREG_DESC(S1, "8921_s1", &pm8921_smps_ops, SMPS_ADVANCED_SET_POINTS),
+	VREG_DESC(S2, "8921_s2", &pm8921_smps_ops, SMPS_ADVANCED_SET_POINTS),
+	VREG_DESC(S3, "8921_s3", &pm8921_smps_ops, SMPS_ADVANCED_SET_POINTS),
+	VREG_DESC(S4, "8921_s4", &pm8921_smps_ops, SMPS_ADVANCED_SET_POINTS),
+	VREG_DESC(S5, "8921_s5", &pm8921_ftsmps_ops, FTSMPS_SET_POINTS),
+	VREG_DESC(S6, "8921_s6", &pm8921_ftsmps_ops, FTSMPS_SET_POINTS),
+	VREG_DESC(S7, "8921_s7", &pm8921_smps_ops, SMPS_ADVANCED_SET_POINTS),
+	VREG_DESC(S8, "8921_s8", &pm8921_smps_ops, SMPS_ADVANCED_SET_POINTS),
 
-	VREG_DESC(LVS1, "8921_lvs1", &pm8921_vs_ops),
-	VREG_DESC(LVS2, "8921_lvs2", &pm8921_vs300_ops),
-	VREG_DESC(LVS3, "8921_lvs3", &pm8921_vs_ops),
-	VREG_DESC(LVS4, "8921_lvs4", &pm8921_vs_ops),
-	VREG_DESC(LVS5, "8921_lvs5", &pm8921_vs_ops),
-	VREG_DESC(LVS6, "8921_lvs6", &pm8921_vs_ops),
-	VREG_DESC(LVS7, "8921_lvs7", &pm8921_vs_ops),
+	VREG_DESC(LVS1, "8921_lvs1", &pm8921_vs_ops, 0),
+	VREG_DESC(LVS2, "8921_lvs2", &pm8921_vs300_ops, 0),
+	VREG_DESC(LVS3, "8921_lvs3", &pm8921_vs_ops, 0),
+	VREG_DESC(LVS4, "8921_lvs4", &pm8921_vs_ops, 0),
+	VREG_DESC(LVS5, "8921_lvs5", &pm8921_vs_ops, 0),
+	VREG_DESC(LVS6, "8921_lvs6", &pm8921_vs_ops, 0),
+	VREG_DESC(LVS7, "8921_lvs7", &pm8921_vs_ops, 0),
 
-	VREG_DESC(USB_OTG, "8921_usb_otg", &pm8921_vs300_ops),
-	VREG_DESC(HDMI_MVS, "8921_hdmi_mvs", &pm8921_vs300_ops),
-	VREG_DESC(NCP, "8921_ncp", &pm8921_ncp_ops),
+	VREG_DESC(USB_OTG, "8921_usb_otg", &pm8921_vs300_ops, 0),
+	VREG_DESC(HDMI_MVS, "8921_hdmi_mvs", &pm8921_vs300_ops, 0),
+	VREG_DESC(NCP, "8921_ncp", &pm8921_ncp_ops, NCP_SET_POINTS),
+
+	VREG_DESC(L1_PC,  "8921_l1_pc",  &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L2_PC,  "8921_l2_pc",  &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L3_PC,  "8921_l3_pc",  &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L4_PC,  "8921_l4_pc",  &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L5_PC,  "8921_l5_pc",  &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L6_PC,  "8921_l6_pc",  &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L7_PC,  "8921_l7_pc",  &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L8_PC,  "8921_l8_pc",  &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L9_PC,  "8921_l9_pc",  &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L10_PC, "8921_l10_pc", &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L11_PC, "8921_l11_pc", &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L12_PC, "8921_l12_pc", &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L14_PC, "8921_l14_pc", &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L15_PC, "8921_l15_pc", &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L16_PC, "8921_l16_pc", &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L17_PC, "8921_l17_pc", &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L18_PC, "8921_l18_pc", &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L21_PC, "8921_l21_pc", &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L22_PC, "8921_l22_pc", &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L23_PC, "8921_l23_pc", &pm8921_ldo_pc_ops, 0),
+	VREG_DESC(L29_PC, "8921_l29_pc", &pm8921_ldo_pc_ops, 0),
+
+	VREG_DESC(S1_PC, "8921_s1_pc", &pm8921_smps_pc_ops, 0),
+	VREG_DESC(S2_PC, "8921_s2_pc", &pm8921_smps_pc_ops, 0),
+	VREG_DESC(S3_PC, "8921_s3_pc", &pm8921_smps_pc_ops, 0),
+	VREG_DESC(S4_PC, "8921_s4_pc", &pm8921_smps_pc_ops, 0),
+	VREG_DESC(S7_PC, "8921_s7_pc", &pm8921_smps_pc_ops, 0),
+	VREG_DESC(S8_PC, "8921_s8_pc", &pm8921_smps_pc_ops, 0),
+
+	VREG_DESC(LVS1_PC, "8921_lvs1_pc", &pm8921_vs_pc_ops, 0),
+	VREG_DESC(LVS3_PC, "8921_lvs3_pc", &pm8921_vs_pc_ops, 0),
+	VREG_DESC(LVS4_PC, "8921_lvs4_pc", &pm8921_vs_pc_ops, 0),
+	VREG_DESC(LVS5_PC, "8921_lvs5_pc", &pm8921_vs_pc_ops, 0),
+	VREG_DESC(LVS6_PC, "8921_lvs6_pc", &pm8921_vs_pc_ops, 0),
+	VREG_DESC(LVS7_PC, "8921_lvs7_pc", &pm8921_vs_pc_ops, 0),
 };
 
-static int pm8921_init_ldo(struct pm8921_vreg *vreg)
+static int pm8921_init_ldo(struct pm8921_vreg *vreg, bool is_real)
 {
 	int rc = 0;
 	int i;
 	u8 bank;
+
+	/* Save the current control register state. */
+	rc = pm8xxx_readb(vreg->dev->parent, vreg->ctrl_addr, &vreg->ctrl_reg);
+	if (rc)
+		goto bail;
 
 	/* Save the current test register state. */
 	for (i = 0; i < LDO_TEST_BANKS; i++) {
@@ -1942,15 +2602,18 @@ static int pm8921_init_ldo(struct pm8921_vreg *vreg)
 		vreg->test_reg[i] |= REGULATOR_BANK_WRITE;
 	}
 
-	if ((vreg->ctrl_reg & LDO_CTRL_PM_MASK) == LDO_CTRL_PM_LPM)
-		vreg->optimum = REGULATOR_MODE_STANDBY;
-	else
-		vreg->optimum = REGULATOR_MODE_FAST;
+	if (is_real) {
+		/* Set pull down enable based on platform data. */
+		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+		      (vreg->pdata.pull_down_enable ? LDO_PULL_DOWN_ENABLE : 0),
+		      LDO_PULL_DOWN_ENABLE_MASK, &vreg->ctrl_reg);
 
-	/* Set pull down enable based on platform data. */
-	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
-		     (vreg->pdata.pull_down_enable ? LDO_PULL_DOWN_ENABLE : 0),
-		     LDO_PULL_DOWN_ENABLE_MASK, &vreg->ctrl_reg);
+		vreg->is_enabled = !!_pm8921_vreg_is_enabled(vreg);
+
+		vreg->mode = ((vreg->ctrl_reg & LDO_CTRL_PM_MASK)
+					== LDO_CTRL_PM_LPM ?
+				REGULATOR_MODE_IDLE : REGULATOR_MODE_NORMAL);
+	}
 bail:
 	if (rc)
 		vreg_err(vreg, "pm8xxx_readb/writeb failed, rc=%d\n", rc);
@@ -1964,6 +2627,11 @@ static int pm8921_init_nldo1200(struct pm8921_vreg *vreg)
 	int i;
 	u8 bank;
 
+	/* Save the current control register state. */
+	rc = pm8xxx_readb(vreg->dev->parent, vreg->ctrl_addr, &vreg->ctrl_reg);
+	if (rc)
+		goto bail;
+
 	/* Save the current test register state. */
 	for (i = 0; i < LDO_TEST_BANKS; i++) {
 		bank = REGULATOR_BANK_SEL(i);
@@ -1978,31 +2646,15 @@ static int pm8921_init_nldo1200(struct pm8921_vreg *vreg)
 		vreg->test_reg[i] |= REGULATOR_BANK_WRITE;
 	}
 
-	/*
-	 * get_voltage must return >0 in order for regulator_set_optimum_mode
-	 * to succeed, but voltage may be unknown at probe time.
-	 */
-	vreg->save_uV = 1; /* This is not a no-op. */
 	vreg->save_uV = _pm8921_nldo1200_get_voltage(vreg);
-
-	if (NLDO1200_IN_ADVANCED_MODE(vreg)) {
-		if ((vreg->test_reg[2] & NLDO1200_ADVANCED_PM_MASK)
-		    == NLDO1200_ADVANCED_PM_LPM)
-			vreg->optimum = REGULATOR_MODE_STANDBY;
-		else
-			vreg->optimum = REGULATOR_MODE_FAST;
-	} else {
-		if ((vreg->ctrl_reg & NLDO1200_LEGACY_PM_MASK)
-		    == NLDO1200_LEGACY_PM_LPM)
-			vreg->optimum = REGULATOR_MODE_STANDBY;
-		else
-			vreg->optimum = REGULATOR_MODE_FAST;
-	}
 
 	/* Set pull down enable based on platform data. */
 	rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
-		 (vreg->pdata.pull_down_enable ? NLDO1200_PULL_DOWN_ENABLE : 0),
-		 NLDO1200_PULL_DOWN_ENABLE_MASK, &vreg->test_reg[1]);
+		 (vreg->pdata.pull_down_enable ? NLDO1200_PULL_DOWN_ENABLE : 0)
+		 | REGULATOR_BANK_SEL(1) | REGULATOR_BANK_WRITE,
+		 NLDO1200_PULL_DOWN_ENABLE_MASK | REGULATOR_BANK_MASK,
+		 &vreg->test_reg[1]);
+
 bail:
 	if (rc)
 		vreg_err(vreg, "pm8xxx_readb/writeb failed, rc=%d\n", rc);
@@ -2010,11 +2662,16 @@ bail:
 	return rc;
 }
 
-static int pm8921_init_smps(struct pm8921_vreg *vreg)
+static int pm8921_init_smps(struct pm8921_vreg *vreg, bool is_real)
 {
 	int rc = 0;
 	int i;
 	u8 bank;
+
+	/* Save the current control register state. */
+	rc = pm8xxx_readb(vreg->dev->parent, vreg->ctrl_addr, &vreg->ctrl_reg);
+	if (rc)
+		goto bail;
 
 	/* Save the current test2 register state. */
 	for (i = 0; i < SMPS_TEST_BANKS; i++) {
@@ -2042,29 +2699,27 @@ static int pm8921_init_smps(struct pm8921_vreg *vreg)
 	if (rc)
 		goto bail;
 
-	/*
-	 * get_voltage must return >0 in order for regulator_set_optimum_mode
-	 * to succeed, but voltage may be unknown at probe time.
-	 */
-	vreg->save_uV = 1; /* This is not a no-op. */
 	vreg->save_uV = _pm8921_smps_get_voltage(vreg);
 
-	if ((vreg->clk_ctrl_reg & SMPS_CLK_CTRL_MASK) == SMPS_CLK_CTRL_PFM)
-		vreg->optimum = REGULATOR_MODE_STANDBY;
-	else
-		vreg->optimum = REGULATOR_MODE_FAST;
+	if (is_real) {
+		/* Set advanced mode pull down enable based on platform data. */
+		rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
+			(vreg->pdata.pull_down_enable
+				? SMPS_ADVANCED_PULL_DOWN_ENABLE : 0)
+			| REGULATOR_BANK_SEL(6) | REGULATOR_BANK_WRITE,
+			REGULATOR_BANK_MASK | SMPS_ADVANCED_PULL_DOWN_ENABLE,
+			&vreg->test_reg[6]);
+		if (rc)
+			goto bail;
 
-	/* Set advanced mode pull down enable based on platform data. */
-	rc = pm8921_vreg_masked_write(vreg, vreg->test_addr,
-		(vreg->pdata.pull_down_enable
-			? SMPS_ADVANCED_PULL_DOWN_ENABLE : 0)
-		| REGULATOR_BANK_SEL(6) | REGULATOR_BANK_WRITE,
-		REGULATOR_BANK_MASK | SMPS_ADVANCED_PULL_DOWN_ENABLE,
-		&vreg->test_reg[6]);
-	if (rc)
-		goto bail;
+		vreg->is_enabled = !!_pm8921_vreg_is_enabled(vreg);
 
-	if (!SMPS_IN_ADVANCED_MODE(vreg)) {
+		vreg->mode = ((vreg->clk_ctrl_reg & SMPS_CLK_CTRL_MASK)
+					== SMPS_CLK_CTRL_PFM ?
+				REGULATOR_MODE_IDLE : REGULATOR_MODE_NORMAL);
+	}
+
+	if (!SMPS_IN_ADVANCED_MODE(vreg) && is_real) {
 		/* Set legacy mode pull down enable based on platform data. */
 		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
 			(vreg->pdata.pull_down_enable
@@ -2085,6 +2740,11 @@ static int pm8921_init_ftsmps(struct pm8921_vreg *vreg)
 {
 	int rc, i;
 	u8 bank;
+
+	/* Save the current control register state. */
+	rc = pm8xxx_readb(vreg->dev->parent, vreg->ctrl_addr, &vreg->ctrl_reg);
+	if (rc)
+		goto bail;
 
 	/* Store current regulator register values. */
 	rc = pm8xxx_readb(vreg->dev->parent, vreg->pfm_ctrl_addr,
@@ -2111,17 +2771,7 @@ static int pm8921_init_ftsmps(struct pm8921_vreg *vreg)
 		vreg->test_reg[i] |= REGULATOR_BANK_WRITE;
 	}
 
-	/*
-	 * get_voltage must return >0 in order for regulator_set_optimum_mode
-	 * to succeed, but voltage may be unknown at probe time.
-	 */
-	vreg->save_uV = 1; /* This is not a no-op. */
 	vreg->save_uV = _pm8921_ftsmps_get_voltage(vreg);
-
-	if ((vreg->test_reg[0] & FTSMPS_CNFG1_PM_MASK) == FTSMPS_CNFG1_PM_PFM)
-		vreg->optimum = REGULATOR_MODE_STANDBY;
-	else
-		vreg->optimum = REGULATOR_MODE_FAST;
 
 	/* Set pull down enable based on platform data. */
 	rc = pm8921_vreg_masked_write(vreg, vreg->pwr_cnfg_addr,
@@ -2135,19 +2785,29 @@ bail:
 	return rc;
 }
 
-static int pm8921_init_vs(struct pm8921_vreg *vreg)
+static int pm8921_init_vs(struct pm8921_vreg *vreg, bool is_real)
 {
 	int rc = 0;
 
-	vreg->optimum = REGULATOR_MODE_NORMAL;
+	/* Save the current control register state. */
+	rc = pm8xxx_readb(vreg->dev->parent, vreg->ctrl_addr, &vreg->ctrl_reg);
+	if (rc) {
+		vreg_err(vreg, "pm8xxx_readb failed, rc=%d\n", rc);
+		return rc;
+	}
 
-	/* Set pull down enable based on platform data. */
-	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
-		     (vreg->pdata.pull_down_enable ? VS_PULL_DOWN_ENABLE : 0),
-		     VS_PULL_DOWN_ENABLE_MASK, &vreg->ctrl_reg);
+	if (is_real) {
+		/* Set pull down enable based on platform data. */
+		rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+		       (vreg->pdata.pull_down_enable ? VS_PULL_DOWN_ENABLE : 0),
+		       VS_PULL_DOWN_ENABLE_MASK, &vreg->ctrl_reg);
 
-	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
+		if (rc)
+			vreg_err(vreg,
+				"pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+		vreg->is_enabled = !!_pm8921_vreg_is_enabled(vreg);
+	}
 
 	return rc;
 }
@@ -2156,82 +2816,160 @@ static int pm8921_init_vs300(struct pm8921_vreg *vreg)
 {
 	int rc;
 
-	/* Set pull down enable based on platform data. */
-	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
-		    (vreg->pdata.pull_down_enable ? VS300_PULL_DOWN_ENABLE : 0),
-		    VS300_PULL_DOWN_ENABLE_MASK, &vreg->ctrl_reg);
-
-	if (rc)
-		vreg_err(vreg, "pm8921_vreg_write failed, rc=%d\n", rc);
-
-	return rc;
-}
-
-static int pm8921_init_regulator(struct pm8921_vreg *vreg)
-{
-	int rc = 0;
-
-	/* save the current control register state */
+	/* Save the current control register state. */
 	rc = pm8xxx_readb(vreg->dev->parent, vreg->ctrl_addr, &vreg->ctrl_reg);
 	if (rc) {
 		vreg_err(vreg, "pm8xxx_readb failed, rc=%d\n", rc);
 		return rc;
 	}
 
-	switch (vreg->type) {
-	case REGULATOR_TYPE_LDO:
-		rc = pm8921_init_ldo(vreg);
-		break;
-	case REGULATOR_TYPE_NLDO1200:
-		rc = pm8921_init_nldo1200(vreg);
-		break;
-	case REGULATOR_TYPE_SMPS:
-		rc = pm8921_init_smps(vreg);
-		break;
-	case REGULATOR_TYPE_FTSMPS:
-		rc = pm8921_init_ftsmps(vreg);
-		break;
-	case REGULATOR_TYPE_VS:
-		rc = pm8921_init_vs(vreg);
-		break;
-	case REGULATOR_TYPE_VS300:
-		rc = pm8921_init_vs300(vreg);
-		break;
+	/* Set pull down enable based on platform data. */
+	rc = pm8921_vreg_masked_write(vreg, vreg->ctrl_addr,
+		    (vreg->pdata.pull_down_enable ? VS300_PULL_DOWN_ENABLE : 0),
+		    VS300_PULL_DOWN_ENABLE_MASK, &vreg->ctrl_reg);
+
+	if (rc)
+		vreg_err(vreg, "pm8921_vreg_masked_write failed, rc=%d\n", rc);
+
+	return rc;
+}
+
+static int pm8921_init_ncp(struct pm8921_vreg *vreg)
+{
+	int rc;
+
+	/* Save the current control register state. */
+	rc = pm8xxx_readb(vreg->dev->parent, vreg->ctrl_addr, &vreg->ctrl_reg);
+	if (rc) {
+		vreg_err(vreg, "pm8xxx_readb failed, rc=%d\n", rc);
+		return rc;
 	}
 
 	return rc;
 }
 
+int pc_id_to_real_id(int id)
+{
+	int real_id;
+
+	if (id >= PM8921_VREG_ID_L1_PC && id <= PM8921_VREG_ID_L23_PC)
+		real_id = id - PM8921_VREG_ID_L1_PC;
+	else if (id >= PM8921_VREG_ID_L29_PC && id <= PM8921_VREG_ID_S4_PC)
+		real_id = id - PM8921_VREG_ID_L29_PC + PM8921_VREG_ID_L29;
+	else if (id >= PM8921_VREG_ID_S7_PC && id <= PM8921_VREG_ID_LVS1_PC)
+		real_id = id - PM8921_VREG_ID_S7_PC + PM8921_VREG_ID_S7;
+	else
+		real_id = id - PM8921_VREG_ID_LVS3_PC + PM8921_VREG_ID_LVS3;
+
+	return real_id;
+}
+
 static int __devinit pm8921_vreg_probe(struct platform_device *pdev)
 {
+	const struct pm8921_regulator_platform_data *pdata;
+	enum pm8921_vreg_pin_function pin_fn;
 	struct regulator_desc *rdesc;
 	struct pm8921_vreg *vreg;
 	const char *reg_name = "";
-	int rc = 0;
+	unsigned pin_ctrl;
+	int rc = 0, id = pdev->id;
 
 	if (pdev == NULL)
 		return -EINVAL;
 
 	if (pdev->id >= 0 && pdev->id < PM8921_VREG_ID_MAX) {
+		pdata = pdev->dev.platform_data;
 		rdesc = &pm8921_vreg_description[pdev->id];
-		vreg = &pm8921_vreg[pdev->id];
-		memcpy(&(vreg->pdata), pdev->dev.platform_data,
-			sizeof(struct pm8921_regulator_platform_data));
+		if (!IS_REAL_REGULATOR(pdev->id))
+			id = pc_id_to_real_id(pdev->id);
+		vreg = &pm8921_vreg[id];
 		reg_name = pm8921_vreg_description[pdev->id].name;
-		vreg->name = reg_name;
-		vreg->dev = &pdev->dev;
+		if (!pdata) {
+			pr_err("%s requires platform data\n", reg_name);
+			return -EINVAL;
+		}
 
-		rc = pm8921_init_regulator(vreg);
+		mutex_lock(&vreg->pc_lock);
+
+		if (IS_REAL_REGULATOR(pdev->id)) {
+			/* Do not modify pin control and pin function values. */
+			pin_ctrl = vreg->pdata.pin_ctrl;
+			pin_fn = vreg->pdata.pin_fn;
+			memcpy(&(vreg->pdata), pdata,
+				sizeof(struct pm8921_regulator_platform_data));
+			vreg->pdata.pin_ctrl = pin_ctrl;
+			vreg->pdata.pin_fn = pin_fn;
+			vreg->dev = &pdev->dev;
+			vreg->name = reg_name;
+		} else {
+			/* Pin control regulator */
+			if ((pdata->pin_ctrl &
+			   (PM8921_VREG_PIN_CTRL_D1 | PM8921_VREG_PIN_CTRL_A0
+			   | PM8921_VREG_PIN_CTRL_A1 | PM8921_VREG_PIN_CTRL_A2))
+			      == PM8921_VREG_PIN_CTRL_NONE) {
+				pr_err("%s: no pin control input specified\n",
+					reg_name);
+				mutex_unlock(&vreg->pc_lock);
+				return -EINVAL;
+			}
+			vreg->pdata.pin_ctrl = pdata->pin_ctrl;
+			vreg->pdata.pin_fn = pdata->pin_fn;
+			vreg->dev_pc = &pdev->dev;
+			if (!vreg->dev)
+				vreg->dev = &pdev->dev;
+			if (!vreg->name)
+				vreg->name = reg_name;
+		}
+
+		/* Initialize register values. */
+		switch (vreg->type) {
+		case REGULATOR_TYPE_LDO:
+			rc = pm8921_init_ldo(vreg, IS_REAL_REGULATOR(pdev->id));
+			break;
+		case REGULATOR_TYPE_NLDO1200:
+			rc = pm8921_init_nldo1200(vreg);
+			break;
+		case REGULATOR_TYPE_SMPS:
+			rc = pm8921_init_smps(vreg,
+						IS_REAL_REGULATOR(pdev->id));
+			break;
+		case REGULATOR_TYPE_FTSMPS:
+			rc = pm8921_init_ftsmps(vreg);
+			break;
+		case REGULATOR_TYPE_VS:
+			rc = pm8921_init_vs(vreg, IS_REAL_REGULATOR(pdev->id));
+			break;
+		case REGULATOR_TYPE_VS300:
+			rc = pm8921_init_vs300(vreg);
+			break;
+		case REGULATOR_TYPE_NCP:
+			rc = pm8921_init_ncp(vreg);
+			break;
+		}
+
+		mutex_unlock(&vreg->pc_lock);
+
 		if (rc)
 			goto bail;
 
-		vreg->rdev = regulator_register(rdesc, &pdev->dev,
-				&(vreg->pdata.init_data), vreg);
-		if (IS_ERR(vreg->rdev)) {
-			rc = PTR_ERR(vreg->rdev);
-			vreg->rdev = NULL;
-			pr_err("regulator_register failed for %s, rc=%d\n",
-				reg_name, rc);
+		if (IS_REAL_REGULATOR(pdev->id)) {
+			vreg->rdev = regulator_register(rdesc, &pdev->dev,
+					&(pdata->init_data), vreg);
+			if (IS_ERR(vreg->rdev)) {
+				rc = PTR_ERR(vreg->rdev);
+				vreg->rdev = NULL;
+				pr_err("regulator_register failed: %s, rc=%d\n",
+					reg_name, rc);
+			}
+		} else {
+			vreg->rdev_pc = regulator_register(rdesc, &pdev->dev,
+					&(pdata->init_data), vreg);
+			if (IS_ERR(vreg->rdev_pc)) {
+				rc = PTR_ERR(vreg->rdev_pc);
+				vreg->rdev_pc = NULL;
+				pr_err("regulator_register failed: %s, rc=%d\n",
+					reg_name, rc);
+			}
 		}
 	} else {
 		rc = -ENODEV;
@@ -2246,7 +2984,12 @@ bail:
 
 static int __devexit pm8921_vreg_remove(struct platform_device *pdev)
 {
-	regulator_unregister(pm8921_vreg[pdev->id].rdev);
+	if (IS_REAL_REGULATOR(pdev->id))
+		regulator_unregister(pm8921_vreg[pdev->id].rdev);
+	else
+		regulator_unregister(
+			pm8921_vreg[pc_id_to_real_id(pdev->id)].rdev_pc);
+
 	return 0;
 }
 
@@ -2261,13 +3004,23 @@ static struct platform_driver pm8921_vreg_driver = {
 
 static int __init pm8921_vreg_init(void)
 {
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(pm8921_vreg); i++)
+		mutex_init(&pm8921_vreg[i].pc_lock);
+
 	return platform_driver_register(&pm8921_vreg_driver);
 }
 postcore_initcall(pm8921_vreg_init);
 
 static void __exit pm8921_vreg_exit(void)
 {
+	int i;
+
 	platform_driver_unregister(&pm8921_vreg_driver);
+
+	for (i = 0; i < ARRAY_SIZE(pm8921_vreg); i++)
+		mutex_destroy(&pm8921_vreg[i].pc_lock);
 }
 module_exit(pm8921_vreg_exit);
 
