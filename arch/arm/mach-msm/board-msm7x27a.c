@@ -279,6 +279,17 @@ static struct marimba_fm_platform_data marimba_fm_pdata = {
 
 #if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
 
+enum {
+	BT_RFR,
+	BT_CTS,
+	BT_RX,
+	BT_TX,
+	BT_PCM_DOUT,
+	BT_PCM_DIN,
+	BT_PCM_SYNC,
+	BT_PCM_CLK,
+};
+
 static struct platform_device msm_bt_power_device = {
 	.name = "bt_power",
 };
@@ -302,6 +313,14 @@ static unsigned bt_config_power_on[] = {
 	GPIO_CFG(45, 2, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
 	/*TX*/
 	GPIO_CFG(46, 2, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	/*PCM_DOUT*/
+	GPIO_CFG(68, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	/*PCM_DIN*/
+	GPIO_CFG(69, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	/*PCM_SYNC*/
+	GPIO_CFG(70, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	/*PCM_CLK*/
+	GPIO_CFG(71, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
 };
 static unsigned bt_config_power_off[] = {
 	/*RFR*/
@@ -312,6 +331,14 @@ static unsigned bt_config_power_off[] = {
 	GPIO_CFG(45, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
 	/*TX*/
 	GPIO_CFG(46, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	/*PCM_DOUT*/
+	GPIO_CFG(68, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	/*PCM_DIN*/
+	GPIO_CFG(69, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	/*PCM_SYNC*/
+	GPIO_CFG(70, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	/*PCM_CLK*/
+	GPIO_CFG(71, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
 };
 
 static int bahama_bt(int on)
@@ -630,8 +657,12 @@ static unsigned int msm_bahama_core_config(int type)
 
 static int bluetooth_power(int on)
 {
-	int pin, rc = 0;
+	int pin, pcm_state = 0, rc = 0;
 	const char *id = "BTPW";
+	struct marimba config = { .mod_id =  SLAVE_ID_BAHAMA};
+
+	pcm_state = marimba_get_fm_status(&config);
+
 	if (on) {
 		/*setup power for BT SOC*/
 		rc = bluetooth_switch_regulators(on);
@@ -640,10 +671,14 @@ static int bluetooth_power(int on)
 					__func__, rc);
 			goto exit;
 		}
-		/*setup BT UART lines*/
+		/*setup BT GPIO lines*/
 		for (pin = 0; pin < ARRAY_SIZE(bt_config_power_on);
 			pin++) {
-			rc = gpio_tlmm_config(bt_config_power_on[pin],
+			if (pin < BT_PCM_DOUT)
+				rc = gpio_tlmm_config(bt_config_power_on[pin],
+					GPIO_CFG_ENABLE);
+			else if (!pcm_state)
+				rc = gpio_tlmm_config(bt_config_power_on[pin],
 					GPIO_CFG_ENABLE);
 			if (rc < 0) {
 				pr_err("%s: gpio_tlmm_config(%#x)=%d\n",
@@ -686,6 +721,10 @@ fail_i2c:
 fail_clock:
 		for (pin = 0; pin < ARRAY_SIZE(bt_config_power_off);
 			pin++) {
+			if (pin < BT_PCM_DOUT)
+				rc = gpio_tlmm_config(bt_config_power_off[pin],
+					GPIO_CFG_ENABLE);
+			else if (!pcm_state)
 				rc = gpio_tlmm_config(bt_config_power_off[pin],
 					GPIO_CFG_ENABLE);
 				if (rc < 0) {
