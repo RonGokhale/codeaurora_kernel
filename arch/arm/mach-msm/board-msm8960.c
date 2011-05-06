@@ -77,6 +77,12 @@ static struct gpiomux_setting gsbi4 = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
+static struct gpiomux_setting gsbi5 = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
 static struct gpiomux_setting gpio_eth_irq_config = {
 	.pull = GPIOMUX_PULL_NONE,
 	.drv = GPIOMUX_DRV_8MA,
@@ -127,6 +133,30 @@ static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
 		.gpio      = 21,	/* GSBI4 I2C QUP SCL */
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &gsbi4,
+		},
+	},
+	{
+		.gpio      = 22,	/* GSBI5 UART2 */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi5,
+		},
+	},
+	{
+		.gpio      = 23,	/* GSBI5 UART2 */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi5,
+		},
+	},
+	{
+		.gpio      = 24,	/* GSBI5 UART2 */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi5,
+		},
+	},
+	{
+		.gpio      = 25,	/* GSBI5 UART2 */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi5,
 		},
 	},
 };
@@ -1374,12 +1404,18 @@ static void __init msm8960_sim_init(void)
 	msm_device_gadget_peripheral.dev.parent = &msm_device_otg.dev;
 	msm_device_hsusb_host.dev.parent = &msm_device_otg.dev;
 	gpiomux_init();
+	ethernet_init();
 	msm8960_i2c_init();
 	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
 	msm8960_init_buses();
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	platform_add_devices(sim_devices, ARRAY_SIZE(sim_devices));
 	msm_acpu_clock_init(&msm8960_acpu_clock_data);
+
+	msm8960_device_qup_spi_gsbi1.dev.platform_data =
+				&msm8960_qup_spi_gsbi1_pdata;
+	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
+
 	msm8960_init_mmc();
 	msm_fb_add_devices();
 #ifdef CONFIG_PM
@@ -1436,8 +1472,15 @@ static void __init msm8960_cdp_init(void)
 		pr_err("socinfo_init() failed!\n");
 
 	msm_clock_init(msm_clocks_8960_dummy, msm_num_clocks_8960_dummy);
+	gpiomux_init();
+	ethernet_init();
+	msm8960_device_qup_spi_gsbi1.dev.platform_data =
+				&msm8960_qup_spi_gsbi1_pdata;
+	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
+
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
+	msm8960_init_mmc();
 }
 
 MACHINE_START(MSM8960_SIM, "QCT MSM8960 SIMULATOR")
@@ -1460,6 +1503,7 @@ MACHINE_END
 
 MACHINE_START(MSM8960_CDP, "QCT MSM8960 CDP")
 	.map_io = msm8960_map_io,
+	.reserve = msm8960_reserve,
 	.init_irq = msm8960_init_irq,
 	.timer = &msm_timer,
 	.init_machine = msm8960_cdp_init,
