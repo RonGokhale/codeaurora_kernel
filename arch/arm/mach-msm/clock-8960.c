@@ -105,8 +105,8 @@
 #define CSI0_CC_REG				REG_MM(0x0040)
 #define CSI0_MD_REG				REG_MM(0x0044)
 #define CSI1_NS_REG				REG_MM(0x0010)
-#define CSI1_CC_REG				REG_MM(0x0028)
-#define CSI1_MD_REG				REG_MM(0x0024)
+#define CSI1_CC_REG				REG_MM(0x0024)
+#define CSI1_MD_REG				REG_MM(0x0028)
 #define CSIPHYTIMER_CC_REG			REG_MM(0x0160)
 #define CSIPHYTIMER_MD_REG			REG_MM(0x0164)
 #define CSIPHYTIMER_NS_REG			REG_MM(0x0168)
@@ -2258,7 +2258,7 @@ static struct branch_clk amp_clk = {
 			.halt_check = HALT, \
 			.halt_reg = DBG_BUS_VEC_I_REG, \
 			.halt_bit = hb, \
-			.test_vector = TEST_MM_LS(0x1D), \
+			.test_vector = tv, \
 		}, \
 		.ns_reg = CAMCLKn_NS_REG(n), \
 		.md_reg = CAMCLKn_MD_REG(n), \
@@ -2469,9 +2469,7 @@ struct clk_local csi_pix_clk = {
 	.b = {
 		.en_reg = MISC_CC_REG,
 		.en_mask = BIT(26),
-		.halt_reg =  DBG_BUS_VEC_I_REG,\
-		.halt_check = HALT,
-		.halt_bit = 19,
+		.halt_check = DELAY,
 		.reset_reg = SW_RESET_CORE_REG,
 		.reset_mask = BIT(26),
 		.test_vector = TEST_MM_HS(0x26),
@@ -2481,7 +2479,6 @@ struct clk_local csi_pix_clk = {
 	.set_rate = set_rate_nop,
 	.freq_tbl = clk_tbl_csi_pix,
 	.current_freq = &local_dummy_freq,
-	.set_rate = set_rate_nop,
 	.c = {
 		.dbg_name = "csi_pix_clk",
 		.ops = &soc_clk_ops_8960,
@@ -2494,9 +2491,7 @@ struct clk_local csi_rdi_clk = {
 	.b = {
 		.en_reg = MISC_CC_REG,
 		.en_mask = BIT(13),
-		.halt_reg =  DBG_BUS_VEC_I_REG,\
-		.halt_check = HALT,
-		.halt_bit = 21,
+		.halt_check = DELAY,
 		.reset_reg = SW_RESET_CORE_REG,
 		.reset_mask = BIT(27),
 		.test_vector = TEST_MM_HS(0x27),
@@ -2506,7 +2501,6 @@ struct clk_local csi_rdi_clk = {
 	.set_rate = set_rate_nop,
 	.freq_tbl = clk_tbl_csi_rdi,
 	.current_freq = &local_dummy_freq,
-	.set_rate = set_rate_nop,
 	.c = {
 		.dbg_name = "csi_rdi_clk",
 		.ops = &soc_clk_ops_8960,
@@ -2591,7 +2585,7 @@ static struct branch_clk csi1phy_timer_clk = {
 #define F_DSI(d) \
 	{ \
 		.freq_hz = d, \
-		.ns_val = BVAL(27, 24, (d-1)), \
+		.ns_val = BVAL(15, 12, (d-1)), \
 	}
 /*
  * The DSI_BYTE/ESC clock is sourced from the DSI PHY PLL, which may change rate
@@ -2633,7 +2627,7 @@ static struct clk_local dsi1_byte_clk = {
 
 static struct clk_local dsi2_byte_clk = {
 	.b = {
-		.en_reg = DSI1_BYTE_CC_REG,
+		.en_reg = DSI2_BYTE_CC_REG,
 		.en_mask = BIT(0),
 		.reset_reg = SW_RESET_CORE_REG,
 		.reset_mask = BIT(25),
@@ -2642,7 +2636,7 @@ static struct clk_local dsi2_byte_clk = {
 		.halt_bit = 20,
 		.test_vector = TEST_MM_LS(0x01),
 	},
-	.ns_reg = DSI1_BYTE_NS_REG,
+	.ns_reg = DSI2_BYTE_NS_REG,
 	.root_en_mask = BIT(2),
 	.ns_mask = BM(15, 12),
 	.set_rate = set_rate_nop,
@@ -2682,14 +2676,14 @@ static struct clk_local dsi1_esc_clk = {
 
 static struct clk_local dsi2_esc_clk = {
 	.b = {
-		.en_reg = DSI1_BYTE_CC_REG,
+		.en_reg = DSI2_ESC_CC_REG,
 		.en_mask = BIT(0),
 		.halt_reg = DBG_BUS_VEC_I_REG,
 		.halt_check = HALT,
 		.halt_bit = 3,
 		.test_vector = TEST_MM_LS(0x23),
 	},
-	.ns_reg = DSI1_BYTE_NS_REG,
+	.ns_reg = DSI2_ESC_NS_REG,
 	.root_en_mask = BIT(2),
 	.ns_mask = BM(15, 12),
 	.set_rate = set_rate_nop,
@@ -3327,8 +3321,8 @@ static struct bank_masks bmnd_info_vcodec = {
 		.freq_hz = f, \
 		.src_clk = &s##_clk.c, \
 		.md_val = MD8(8, m, 0, n), \
-		.ns_val = NS_MND_BANKED8(18, 11, n, m, 0, 27, s##_to_mm_mux), \
-		.cc_val = CC_BANKED(11, 6, n), \
+		.ns_val = NS_MND_BANKED8(11, 19, n, m, 0, 27, s##_to_mm_mux), \
+		.cc_val = CC_BANKED(6, 11, n), \
 		.mnd_en_mask = (BIT(10) | BIT(5)) * !!(n), \
 		.sys_vdd = v, \
 	}
@@ -3484,8 +3478,8 @@ static struct branch_clk csi0_vfe_clk = {
 		.reset_mask = BIT(24),
 		.halt_reg = DBG_BUS_VEC_B_REG,
 		.halt_check = HALT,
-		.halt_bit = 7,
-		.test_vector = TEST_MM_HS(0x03),
+		.halt_bit = 8,
+		.test_vector = TEST_MM_HS(0x04),
 	},
 	.parent = &vfe_clk.c,
 	.c = {
@@ -3853,12 +3847,12 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("tssc_clk",		tssc_clk.c,		NULL),
 	CLK_LOOKUP("usb_hs_clk",	usb_hs1_xcvr_clk.c,	NULL),
 	CLK_LOOKUP("usb_phy_clk",	usb_phy0_clk.c,		NULL),
-	CLK_LOOKUP("usb_fs_src_clk",	usb_fs1_src_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_clk",	usb_fs1_xcvr_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_sys_clk",	usb_fs1_sys_clk.c,	NULL),
-	CLK_LOOKUP("usb_fs_src_clk",	usb_fs2_src_clk.c,	NULL),
+	CLK_LOOKUP("usb_fs_src_clk",	usb_fs1_src_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_clk",	usb_fs2_xcvr_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_sys_clk",	usb_fs2_sys_clk.c,	NULL),
+	CLK_LOOKUP("usb_fs_src_clk",	usb_fs2_src_clk.c,	NULL),
 	CLK_LOOKUP("ce_clk",		ce2_p_clk.c,		NULL),
 	CLK_LOOKUP("dma_bam_pclk",	dma_bam_p_clk.c,	NULL),
 	CLK_LOOKUP("spi_pclk",		gsbi1_p_clk.c,		"spi_qsd.0"),
