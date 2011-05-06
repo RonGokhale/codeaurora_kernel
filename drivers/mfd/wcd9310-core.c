@@ -153,7 +153,6 @@ static int tabla_slim_read_device(struct tabla *tabla, unsigned short reg,
 	msg.start_offset = TABLA_REGISTER_START_OFFSET + reg;
 	msg.num_bytes = bytes;
 	msg.comp = NULL;
-	msg.dest_type = SLIM_MSG_DEST_LOGICALADDR;
 
 	mutex_lock(&tabla->xfer_lock);
 	if (interface)
@@ -179,7 +178,6 @@ static int tabla_slim_write_device(struct tabla *tabla, unsigned short reg,
 	msg.start_offset = TABLA_REGISTER_START_OFFSET + reg;
 	msg.num_bytes = bytes;
 	msg.comp = NULL;
-	msg.dest_type = SLIM_MSG_DEST_LOGICALADDR;
 
 	mutex_lock(&tabla->xfer_lock);
 	if (interface)
