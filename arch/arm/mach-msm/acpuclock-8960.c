@@ -39,10 +39,12 @@
 #define PLL_8			 0
 #define HFPLL			-1
 #define QSB			-2
+#define PXO			-3
 
 /* Mux source selects. */
 #define PRI_SRC_SEL_SEC_SRC	0
 #define PRI_SRC_SEL_HFPLL	1
+#define PRI_SRC_SEL_HFPLL_DIV2	2
 #define SEC_SRC_SEL_QSB		0
 
 /* HFPLL registers offsets. */
@@ -80,9 +82,9 @@ static const uint32_t l2cpmr_iaddr[NUM_SCALABLES] = {
 };
 
 static const void * __iomem const aux_clk_sel[NUM_SCALABLES] = {
-	[CPU0] = MSM_ACC0_BASE + 0x0014,
-	[CPU1] = MSM_ACC1_BASE + 0x0014,
-	[L2]   = MSM_APCS_GCC_BASE  + 0x1028,
+	[CPU0] = MSM_ACC0_BASE + 0x014,
+	[CPU1] = MSM_ACC1_BASE + 0x014,
+	[L2]   = MSM_APCS_GCC_BASE  + 0x028,
 };
 
 struct core_speed {
@@ -90,7 +92,6 @@ struct core_speed {
 	int			src;
 	unsigned int		pri_src_sel;
 	unsigned int		sec_src_sel;
-	bool			pll_post_div2;
 	unsigned int		pll_l_val;
 };
 
@@ -114,45 +115,47 @@ static struct clock_state {
 
 #define L2(x) (&l2_freq_tbl[(x)])
 static struct l2_level l2_freq_tbl[] = {
-	[0]  = { {STBY_KHZ, QSB,   0, 0, 0, 0x00 } },
-	[1]  = { {  384000, PLL_8, 0, 1, 0, 0x00 } },
-	[2]  = { {  432000, HFPLL, 1, 0, 1, 0x10 } },
-	[3]  = { {  486000, HFPLL, 1, 0, 1, 0x12 } },
-	[4]  = { {  594000, HFPLL, 1, 0, 0, 0x0B } },
-	[5]  = { {  648000, HFPLL, 1, 0, 0, 0x0C } },
-	[6]  = { {  702000, HFPLL, 1, 0, 0, 0x0D } },
-	[7]  = { {  756000, HFPLL, 1, 0, 0, 0x0E } },
-	[8]  = { {  810000, HFPLL, 1, 0, 0, 0x0F } },
-	[9]  = { {  864000, HFPLL, 1, 0, 0, 0x10 } },
-	[10] = { {  918000, HFPLL, 1, 0, 0, 0x11 } },
-	[11] = { {  972000, HFPLL, 1, 0, 0, 0x12 } },
-	[12] = { { 1026000, HFPLL, 1, 0, 0, 0x13 } },
-	[13] = { { 1080000, HFPLL, 1, 0, 0, 0x14 } },
-	[14] = { { 1134000, HFPLL, 1, 0, 0, 0x15 } },
-	[15] = { { 1188000, HFPLL, 1, 0, 0, 0x16 } },
-	[16] = { { 1242000, HFPLL, 1, 0, 0, 0x17 } },
-	[17] = { { 1296000, HFPLL, 1, 0, 0, 0x18 } },
-	[18] = { { 1350000, HFPLL, 1, 0, 0, 0x19 } },
-	[19] = { { 1404000, HFPLL, 1, 0, 0, 0x1A } },
-	[20] = { { 1458000, HFPLL, 1, 0, 0, 0x1B } },
-	[21] = { { 1512000, HFPLL, 1, 0, 0, 0x1C } },
-	[22] = { { 1566000, HFPLL, 1, 0, 0, 0x1D } },
-	[23] = { { 1620000, HFPLL, 1, 0, 0, 0x1E } },
-	[24] = { { 1674000, HFPLL, 1, 0, 0, 0x1F } },
+	[0]  = { {STBY_KHZ, QSB,   0, 0, 0x00 } },
+	[1]  = { {   27000, PXO,   0, 2, 0x00 } },
+	[2]  = { {  384000, PLL_8, 0, 2, 0x00 } },
+	[3]  = { {  432000, HFPLL, 2, 0, 0x20 } },
+	[4]  = { {  486000, HFPLL, 2, 0, 0x24 } },
+	[5]  = { {  594000, HFPLL, 1, 0, 0x16 } },
+	[6]  = { {  648000, HFPLL, 1, 0, 0x18 } },
+	[7]  = { {  702000, HFPLL, 1, 0, 0x1A } },
+	[8]  = { {  756000, HFPLL, 1, 0, 0x1C } },
+	[9]  = { {  810000, HFPLL, 1, 0, 0x1E } },
+	[10] = { {  864000, HFPLL, 1, 0, 0x20 } },
+	[11] = { {  918000, HFPLL, 1, 0, 0x22 } },
+	[12] = { {  972000, HFPLL, 1, 0, 0x24 } },
+	[13] = { { 1026000, HFPLL, 1, 0, 0x26 } },
+	[14] = { { 1080000, HFPLL, 1, 0, 0x28 } },
+	[15] = { { 1134000, HFPLL, 1, 0, 0x2A } },
+	[16] = { { 1188000, HFPLL, 1, 0, 0x2C } },
+	[17] = { { 1242000, HFPLL, 1, 0, 0x2E } },
+	[18] = { { 1296000, HFPLL, 1, 0, 0x30 } },
+	[19] = { { 1350000, HFPLL, 1, 0, 0x32 } },
+	[20] = { { 1404000, HFPLL, 1, 0, 0x34 } },
+	[21] = { { 1458000, HFPLL, 1, 0, 0x36 } },
+	[22] = { { 1512000, HFPLL, 1, 0, 0x38 } },
+	[23] = { { 1566000, HFPLL, 1, 0, 0x3A } },
+	[24] = { { 1620000, HFPLL, 1, 0, 0x3C } },
+	[25] = { { 1674000, HFPLL, 1, 0, 0x3E } },
 };
 
 static struct acpu_level acpu_freq_tbl[] = {
-	{ 0, {STBY_KHZ, QSB,   0, 0, 0, 0x00 }, L2(1)  },
-	{ 1, {  384000, PLL_8, 0, 2, 0, 0x00 }, L2(1)  },
-	{ 1, {  432000, HFPLL, 1, 0, 1, 0x10 }, L2(2)  },
-	{ 1, {  486000, HFPLL, 1, 0, 1, 0x12 }, L2(3)  },
-	{ 1, {  594000, HFPLL, 1, 0, 0, 0x0B }, L2(4)  },
-	{ 1, {  648000, HFPLL, 1, 0, 0, 0x0C }, L2(5)  },
-	{ 1, {  702000, HFPLL, 1, 0, 0, 0x0D }, L2(6)  },
-	{ 0, {  756000, HFPLL, 1, 0, 0, 0x0E }, L2(7)  },
-	{ 0, {  810000, HFPLL, 1, 0, 0, 0x0F }, L2(8)  },
-	{ 0, {  864000, HFPLL, 1, 0, 0, 0x10 }, L2(9)  },
-	{ 0, {  918000, HFPLL, 1, 0, 0, 0x11 }, L2(10) },
+	{ 0, {STBY_KHZ, QSB,   0, 0, 0x00 }, L2(1)  },
+	{ 1, {   27000, PXO,   0, 2, 0x00 }, L2(1)  },
+	{ 1, {  384000, PLL_8, 0, 2, 0x00 }, L2(2)  },
+	{ 1, {  432000, HFPLL, 2, 0, 0x20 }, L2(3)  },
+	{ 1, {  486000, HFPLL, 2, 0, 0x24 }, L2(4)  },
+	{ 1, {  594000, HFPLL, 1, 0, 0x16 }, L2(5)  },
+	{ 1, {  648000, HFPLL, 1, 0, 0x18 }, L2(6)  },
+	{ 1, {  702000, HFPLL, 1, 0, 0x1A }, L2(7)  },
+	{ 0, {  756000, HFPLL, 1, 0, 0x1C }, L2(8)  },
+	{ 0, {  810000, HFPLL, 1, 0, 0x1E }, L2(9)  },
+	{ 0, {  864000, HFPLL, 1, 0, 0x20 }, L2(10) },
+	{ 0, {  918000, HFPLL, 1, 0, 0x22 }, L2(11) },
 	{ 0, { 0 } }
 };
 
@@ -264,6 +267,19 @@ static void set_sec_clk_src(enum scalables id, uint32_t sec_src_sel)
 	writel_cp15_l2ind(regval, l2cpmr_iaddr[id]);
 }
 
+/* Set source on the AUX MUX. */
+/*
+ * TODO: Remove this function and default to PLL8 when PXO
+ * support is dropped.
+ */
+static void set_aux_clk_src(enum scalables id, uint32_t src)
+{
+	if (src == PXO)
+		writel_relaxed(0x0, aux_clk_sel[id]);
+	else
+		writel_relaxed(0x3, aux_clk_sel[id]);
+}
+
 /* Enable an already-configured HFPLL. */
 static void hfpll_enable(enum scalables id)
 {
@@ -312,15 +328,7 @@ static void hfpll_disable(enum scalables id)
 /* Program the HFPLL rate. Assumes HFPLL is already disabled. */
 static void hfpll_set_rate(enum scalables id, struct core_speed *tgt_s)
 {
-	uint32_t regval;
-
 	BUG_ON(id >= NUM_SCALABLES);
-
-	regval = readl_relaxed(hf_pll_base[id] + HFPLL_CONFIG_CTL);
-	regval &= ~(0x3 << 19);
-	if (tgt_s->pll_post_div2)
-		regval |= (0x1 << 19);
-	writel_relaxed(regval, hf_pll_base[id] + HFPLL_CONFIG_CTL);
 	writel_relaxed(tgt_s->pll_l_val, hf_pll_base[id] + HFPLL_L_VAL);
 }
 
@@ -377,6 +385,7 @@ static void set_speed(enum scalables id, struct core_speed *tgt_s,
 		 * its clock should be safe.
 		 */
 		if (reason != SETRATE_HOTPLUG || id == L2) {
+			set_aux_clk_src(id, tgt_s->src);
 			set_sec_clk_src(id, tgt_s->sec_src_sel);
 			set_pri_clk_src(id, tgt_s->pri_src_sel);
 		}
@@ -395,8 +404,10 @@ static void set_speed(enum scalables id, struct core_speed *tgt_s,
 		/* TODO: Disable source. */
 	} else if (strt_s->src != HFPLL && tgt_s->src != HFPLL) {
 		/* TODO: Enable source. */
-		if (reason != SETRATE_HOTPLUG || id == L2)
+		if (reason != SETRATE_HOTPLUG || id == L2) {
+			set_aux_clk_src(id, tgt_s->src);
 			set_sec_clk_src(id, tgt_s->sec_src_sel);
+		}
 		/* TODO: Disable source. */
 	} else {
 		BUG();
@@ -489,14 +500,17 @@ static void __init hfpll_init(enum scalables id, struct core_speed *tgt_s)
 }
 
 #define INIT_QSB_ID	0
-#define INIT_HFPLL_ID	1
+#define INIT_PXO_ID	1
+#define INIT_HFPLL_ID	2
 /* Set initial rate for a given core. */
 static void __init init_clock_sources(enum scalables id)
 {
 	struct core_speed *temp_s, *tgt_s;
+	uint32_t pri_src, regval;
 	static struct core_speed speed[] = {
-		[INIT_QSB_ID] =   { STBY_KHZ, QSB,   0, 0, 0, 0x00 },
-		[INIT_HFPLL_ID] = { 702000,   HFPLL, 1, 0, 0, 0x0D },
+		[INIT_QSB_ID] =   { STBY_KHZ, QSB,   0, 0, 0x00 },
+		[INIT_PXO_ID] =   {    27000, PXO,   0, 2, 0x00 },
+		[INIT_HFPLL_ID] = {   432000, HFPLL, 2, 0, 0x20 },
 	};
 
 	/*
@@ -504,18 +518,24 @@ static void __init init_clock_sources(enum scalables id)
 	 * re-initialize the HFPLL, and switch back to the HFPLL. Otherwise,
 	 * the HFPLL is not in use, so we can switch directly to it.
 	 */
-	tgt_s = &speed[INIT_HFPLL_ID];
-	if (get_pri_clk_src(id) == PRI_SRC_SEL_HFPLL) {
+	/* TODO: Use HFPLL for tgt_s for improved performance. */
+	tgt_s = &speed[INIT_PXO_ID];
+	pri_src = get_pri_clk_src(id);
+	if (pri_src == PRI_SRC_SEL_HFPLL || pri_src == PRI_SRC_SEL_HFPLL_DIV2) {
+		/* TODO: Use QSB for temp_s for improved performance. */
 		temp_s = &speed[INIT_QSB_ID];
 		set_sec_clk_src(id, temp_s->sec_src_sel);
 		set_pri_clk_src(id, temp_s->pri_src_sel);
 	}
 	hfpll_init(id, tgt_s);
+
+	/* Set PRI_SRC_SEL_HFPLL_DIV2 divider to div-2. */
+	regval = readl_cp15_l2ind(l2cpmr_iaddr[id]);
+	regval &= ~(0x3 << 6);
+	writel_cp15_l2ind(regval, l2cpmr_iaddr[id]);
+
+	set_aux_clk_src(id, tgt_s->src);
 	set_pri_clk_src(id, tgt_s->pri_src_sel);
-
-	/* Select PLL8 as AUX source input to the secondary MUX. */
-	writel_relaxed(0x3, aux_clk_sel[id]);
-
 	drv_state.current_speed[id] = tgt_s;
 }
 
