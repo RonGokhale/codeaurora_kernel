@@ -677,6 +677,18 @@ static struct mmc_platform_data msm8960_sdc3_data = {
 
 static void __init msm8960_init_mmc(void)
 {
+	msm_tlmm_set_hdrive(TLMM_HDRV_SDC1_CLK, GPIO_CFG_16MA);
+	msm_tlmm_set_hdrive(TLMM_HDRV_SDC1_CMD, GPIO_CFG_10MA);
+	msm_tlmm_set_hdrive(TLMM_HDRV_SDC1_DATA, GPIO_CFG_10MA);
+	msm_tlmm_set_pull(TLMM_PULL_SDC1_CMD, GPIO_CFG_PULL_UP);
+	msm_tlmm_set_pull(TLMM_PULL_SDC1_DATA, GPIO_CFG_PULL_UP);
+
+	msm_tlmm_set_hdrive(TLMM_HDRV_SDC3_CLK, GPIO_CFG_8MA);
+	msm_tlmm_set_hdrive(TLMM_HDRV_SDC3_CMD, GPIO_CFG_8MA);
+	msm_tlmm_set_hdrive(TLMM_HDRV_SDC3_DATA, GPIO_CFG_8MA);
+	msm_tlmm_set_pull(TLMM_PULL_SDC3_CMD, GPIO_CFG_PULL_UP);
+	msm_tlmm_set_pull(TLMM_PULL_SDC3_DATA, GPIO_CFG_PULL_UP);
+
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
 	/* SDC1 : eMMC card connected */
 	msm_add_sdcc(1, &msm8960_sdc1_data);
