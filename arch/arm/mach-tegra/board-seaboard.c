@@ -38,6 +38,7 @@
 #include <mach/kbc.h>
 #include <mach/pinmux.h>
 #include <mach/pinmux-t2.h>
+#include <mach/clk.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -566,6 +567,16 @@ static void __init seaboard_common_init(void)
 	gpio_export(TEGRA_GPIO_WP_STATUS, false);
 }
 
+static void __init tegra_set_clock_readskew(const char *clk_name, int skew)
+{
+	struct clk *c = tegra_get_clock_by_name(clk_name);
+	if (!c)
+		return;
+
+	tegra_sdmmc_tap_delay(c, skew);
+	clk_put(c);
+}
+
 static void __init tegra_seaboard_init(void)
 {
 	/* Seaboard uses UARTD for the debug port. */
@@ -589,6 +600,9 @@ static void __init tegra_kaen_init(void)
 	tegra_gpio_enable(TEGRA_GPIO_KAEN_HP_MUTE);
 
 	seaboard_kbc_platform_data.keymap_data = &cros_keymap_data;
+
+	/* setting skew makes WIFI stable when sdmmc1 runs 48MHz. */
+	tegra_set_clock_readskew("sdmmc1", 8);
 
 	seaboard_common_init();
 
