@@ -1413,7 +1413,7 @@ config MSM_SHOW_RESUME_IRQ
 
 config BT_MSM_PINTEST
 	tristate "MSM Bluetooth Pin Connectivity Test"
-	depends on (ARCH_MSM8X60 && DEBUG_FS)
+	depends on ((ARCH_MSM8X60 || ARCH_MSM7X27A) && DEBUG_FS)
         default n
 	help
 	  Bluetooth MSM Pin Connectivity test module.
