@@ -723,9 +723,10 @@ int msm_camio_vpe_clk_disable(void)
 	return rc;
 }
 
-int msm_camio_vpe_clk_enable(void)
+int msm_camio_vpe_clk_enable(uint32_t clk_rate)
 {
 	int rc = 0;
+	(void)clk_rate;
 	fs_vpe = regulator_get(NULL, "fs_vpe");
 	if (IS_ERR(fs_vpe)) {
 		CDBG("%s: Regulator FS_VPE get failed %ld\n", __func__,
