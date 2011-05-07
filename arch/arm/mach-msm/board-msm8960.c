@@ -63,7 +63,7 @@
 #include "pm.h"
 #include "cpuidle.h"
 
-#define KS8851_IRQ_GPIO		38
+#define KS8851_IRQ_GPIO		90
 
 static struct gpiomux_setting gsbi1 = {
 	.func = GPIOMUX_FUNC_1,
@@ -704,7 +704,7 @@ static void __init msm8960_init_buses(void)
 }
 
 static struct msm_spi_platform_data msm8960_qup_spi_gsbi1_pdata = {
-	.max_clock_speed = 26000000,
+	.max_clock_speed = 1100000,
 };
 
 static struct usb_mass_storage_platform_data mass_storage_pdata = {
@@ -1471,13 +1471,15 @@ static void __init msm8960_cdp_init(void)
 	if (socinfo_init() < 0)
 		pr_err("socinfo_init() failed!\n");
 
-	msm_clock_init(msm_clocks_8960_dummy, msm_num_clocks_8960_dummy);
+	msm_clock_init(msm_clocks_8960, msm_num_clocks_8960);
 	gpiomux_init();
 	ethernet_init();
 	msm8960_device_qup_spi_gsbi1.dev.platform_data =
 				&msm8960_qup_spi_gsbi1_pdata;
 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
-
+	msm8960_device_ssbi_pm8921.dev.platform_data =
+				&msm8960_ssbi_pm8921_pdata;
+	pm8921_platform_data.num_regulators = msm_pm8921_regulator_pdata_len;
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
 	msm8960_init_mmc();
