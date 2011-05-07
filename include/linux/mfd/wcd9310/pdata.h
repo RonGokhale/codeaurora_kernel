@@ -12,9 +12,9 @@
 
 #ifndef __MFD_TABLA_PDATA_H__
 
-#include <linux/slimbus.h>
-
 #define __MFD_TABLA_PDATA_H__
+
+#include <linux/slimbus/slimbus.h>
 
 struct tabla_pdata {
 	int irq;
