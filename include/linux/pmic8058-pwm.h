@@ -106,34 +106,4 @@ int pm8058_pwm_set_dtest(struct pwm_device *pwm, int enable);
 int pm8058_pwm_config_led(struct pwm_device *pwm, int id,
 			  int mode, int max_current);
 
-#if !defined(CONFIG_PMIC8058_PWM)
-inline struct pwm_device *pwm_request(int pwm_id, const char *label)
-{
-	return NULL;
-}
-
-inline void pwm_free(struct pwm_device *pwm)
-{
-}
-
-inline int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
-{
-	return 0;
-}
-
-inline int pwm_enable(struct pwm_device *pwm)
-{
-	return 0;
-}
-
-inline void pwm_disable(struct pwm_device *pwm)
-{
-}
-
-inline int pwm_set_dtest(struct pwm_device *pwm, int enable)
-{
-	return 0;
-}
-#endif
-
 #endif /* __PMIC8058_PWM_H__ */
