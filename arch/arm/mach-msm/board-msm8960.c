@@ -1086,6 +1086,13 @@ static struct platform_device *rumi3_devices[] __initdata = {
 };
 
 static struct platform_device *cdp_devices[] __initdata = {
+	&msm_device_otg,
+	&msm_device_gadget_peripheral,
+	&msm_device_hsusb_host,
+	&android_usb_device,
+	&usb_diag_device,
+	&usb_mass_storage_device,
+	&usb_gadget_fserial_device,
 };
 
 static void __init msm8960_i2c_init(void)
@@ -1486,6 +1493,9 @@ static void __init msm8960_cdp_init(void)
 		pr_err("socinfo_init() failed!\n");
 
 	msm_clock_init(msm_clocks_8960, msm_num_clocks_8960);
+	msm_device_otg.dev.platform_data = &msm_otg_pdata;
+	msm_device_gadget_peripheral.dev.parent = &msm_device_otg.dev;
+	msm_device_hsusb_host.dev.parent = &msm_device_otg.dev;
 	gpiomux_init();
 	ethernet_init();
 	msm8960_device_qup_spi_gsbi1.dev.platform_data =
