@@ -35,6 +35,7 @@
 #endif
 #include <linux/android_pmem.h>
 #include <mach/msm_iomap.h>
+#include <mach/socinfo.h>
 #include <../../mm/mm.h>
 
 int arch_io_remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
@@ -345,9 +346,7 @@ int32_t pmem_kalloc(const size_t size, const uint32_t flags)
 	}
 
 	/* on 7x30 and 8x55 "EBI1 kernel PMEM" is really on EBI0 */
-	if (machine_is_msm7x30_surf() || machine_is_msm7x30_fluid() ||
-		machine_is_msm8x55_svlte_surf() ||
-		machine_is_msm8x55_svlte_ffa())
+	if (cpu_is_msm7x30() || cpu_is_msm8x55())
 			ebi1_memtype = MEMTYPE_EBI0;
 
 	pmem_memtype = flags & PMEM_MEMTYPE_MASK;
