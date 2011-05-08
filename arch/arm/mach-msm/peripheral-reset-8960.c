@@ -35,8 +35,17 @@
 #define QDSP6SS_GFMUX_CTL	0x30
 #define QDSP6SS_PWR_CTL		0x38
 
-#define MMS_MODEM_RESET		0x2C48
-#define MMS_RESET		0x2C64
+#define MSS_S_HCLK_CTL		(MSM_CLK_CTL_BASE + 0x2C70)
+#define MSS_SLP_CLK_CTL		(MSM_CLK_CTL_BASE + 0x2C60)
+#define SFAB_MSS_M_ACLK_CTL	(MSM_CLK_CTL_BASE + 0x2340)
+#define SFAB_MSS_S_HCLK_CTL	(MSM_CLK_CTL_BASE + 0x2C00)
+#define SFAB_MSS_Q6_FW_ACLK_CTL (MSM_CLK_CTL_BASE + 0x2044)
+#define SFAB_MSS_Q6_SW_ACLK_CTL	(MSM_CLK_CTL_BASE + 0x2040)
+#define SFAB_LPASS_Q6_ACLK_CTL	(MSM_CLK_CTL_BASE + 0x23A0)
+#define MSS_Q6FW_JTAG_CLK_CTL	(MSM_CLK_CTL_BASE + 0x2C6C)
+#define MSS_Q6SW_JTAG_CLK_CTL	(MSM_CLK_CTL_BASE + 0x2C68)
+#define MMS_MODEM_RESET		(MSM_CLK_CTL_BASE + 0x2C48)
+#define MMS_RESET		(MSM_CLK_CTL_BASE + 0x2C64)
 
 #define Q6SS_SS_ARES		BIT(0)
 #define Q6SS_CORE_ARES		BIT(1)
@@ -106,6 +115,8 @@ struct q6_data {
 	const unsigned strap_ahb_upper;
 	const unsigned strap_ahb_lower;
 	void __iomem *reg_base;
+	void __iomem *aclk_reg;
+	void __iomem *jtag_clk_reg;
 	int start_addr;
 	struct regulator *vreg;
 	bool vreg_enabled;
@@ -113,9 +124,10 @@ struct q6_data {
 };
 
 static struct q6_data q6_lpass = {
-	.strap_tcm_base  = (0x146 << 4),
+	.strap_tcm_base  = (0x146 << 16),
 	.strap_ahb_upper = (0x029 << 16),
 	.strap_ahb_lower = (0x028 << 4),
+	.aclk_reg = SFAB_LPASS_Q6_ACLK_CTL,
 	.name = "q6_lpass",
 };
 
@@ -123,13 +135,17 @@ static struct q6_data q6_modem_fw = {
 	.strap_tcm_base  = (0x40 << 16),
 	.strap_ahb_upper = (0x09 << 16),
 	.strap_ahb_lower = (0x08 << 4),
+	.aclk_reg = SFAB_MSS_Q6_FW_ACLK_CTL,
+	.jtag_clk_reg = MSS_Q6FW_JTAG_CLK_CTL,
 	.name = "q6_modem_fw",
 };
 
 static struct q6_data q6_modem_sw = {
-	.strap_tcm_base  = (0x40 << 16),
+	.strap_tcm_base  = (0x42 << 16),
 	.strap_ahb_upper = (0x09 << 16),
 	.strap_ahb_lower = (0x08 << 4),
+	.aclk_reg = SFAB_MSS_Q6_SW_ACLK_CTL,
+	.jtag_clk_reg = MSS_Q6SW_JTAG_CLK_CTL,
 	.name = "q6_modem_sw",
 };
 
@@ -179,12 +195,37 @@ static int reset_q6_untrusted(struct q6_data *q6)
 	}
 	q6->vreg_enabled = true;
 
+	/* Enable Q6 ACLK */
+	writel_relaxed(0x10, q6->aclk_reg);
+
 	if (q6 == &q6_modem_fw || q6 == &q6_modem_sw) {
-		/* Make sure Modem Subsystem is enabled and not in reset. */
-		writel_relaxed(0x0, MSM_CLK_CTL_BASE + MMS_MODEM_RESET);
-		writel_relaxed(0x0, MSM_CLK_CTL_BASE + MMS_RESET);
-		writel_relaxed(0x7, mss_enable_reg);
+		/* Enable MSS clocks */
+		writel_relaxed(0x10, SFAB_MSS_M_ACLK_CTL);
+		writel_relaxed(0x10, SFAB_MSS_S_HCLK_CTL);
+		writel_relaxed(0x10, MSS_S_HCLK_CTL);
+		writel_relaxed(0x10, MSS_SLP_CLK_CTL);
+		/* Wait for clocks to enable */
+		dsb();
+		udelay(10);
+
+		/* Enable JTAG clocks */
+		/* TODO: Remove if/when Q6 software enables them? */
+		writel_relaxed(0x10, q6->jtag_clk_reg);
+
+		/* De-assert MSS resets */
+		writel_relaxed(0x0,  MMS_MODEM_RESET);
+		writel_relaxed(0x0,  MMS_RESET);
+		dsb();
+		udelay(10);
+
+		/* Enable MSS */
+		writel_relaxed(0x7,  mss_enable_reg);
 	}
+
+	/* Deassert Q6SS_SS_ARES */
+	reg = readl_relaxed(q6->reg_base + QDSP6SS_RESET);
+	reg &= ~(Q6SS_SS_ARES);
+	writel_relaxed(reg, q6->reg_base + QDSP6SS_RESET);
 
 	/* Program boot address */
 	writel_relaxed((q6->start_addr >> 8) & 0xFFFFFF,
@@ -196,12 +237,16 @@ static int reset_q6_untrusted(struct q6_data *q6)
 		       q6->reg_base + QDSP6SS_STRAP_AHB);
 
 	/* Turn off Q6 core clock */
-	reg = Q6SS_SRC_SWITCH_CLK_OVR;
-	writel_relaxed(reg, q6->reg_base + QDSP6SS_GFMUX_CTL);
+	writel_relaxed(Q6SS_SRC_SWITCH_CLK_OVR,
+		       q6->reg_base + QDSP6SS_GFMUX_CTL);
 
-	/* Put Q6 into reset */
-	reg = Q6SS_CORE_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES
-	    | Q6SS_STOP_CORE_ARES | Q6SS_PRIV_ARES;
+	/* Put memories to sleep */
+	writel_relaxed(Q6SS_CLAMP_IO, q6->reg_base + QDSP6SS_PWR_CTL);
+
+	/* Assert resets */
+	reg = readl_relaxed(q6->reg_base + QDSP6SS_RESET);
+	reg |= (Q6SS_CORE_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES
+	    | Q6SS_STOP_CORE_ARES);
 	writel_relaxed(reg, q6->reg_base + QDSP6SS_RESET);
 
 	/* Wait 8 AHB cycles for Q6 to be fully reset (AHB = 1.5Mhz) */
@@ -250,19 +295,16 @@ static int shutdown_q6_untrusted(struct q6_data *q6)
 	u32 reg;
 
 	/* Turn off Q6 core clock */
-	reg = Q6SS_SRC_SWITCH_CLK_OVR;
-	writel_relaxed(reg, q6->reg_base + QDSP6SS_GFMUX_CTL);
+	writel_relaxed(Q6SS_SRC_SWITCH_CLK_OVR,
+		       q6->reg_base + QDSP6SS_GFMUX_CTL);
 
-	/* Put Q6SS into reset */
-	reg = Q6SS_SS_ARES | Q6SS_CORE_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES
-	    | Q6SS_STOP_CORE_ARES | Q6SS_PRIV_ARES;
+	/* Assert resets */
+	reg = (Q6SS_SS_ARES | Q6SS_CORE_ARES | Q6SS_ISDB_ARES
+	     | Q6SS_ETM_ARES | Q6SS_STOP_CORE_ARES | Q6SS_PRIV_ARES);
 	writel_relaxed(reg, q6->reg_base + QDSP6SS_RESET);
 
 	/* Turn off Q6 memories */
-	reg &= ~(Q6SS_L2DATA_SLP_NRET_N | Q6SS_SLP_RET_N | Q6SS_L1TCM_SLP_NRET_N
-	    | Q6SS_L2TAG_SLP_NRET_N | Q6SS_ETB_SLEEP_NRET_N | Q6SS_ARR_STBY_N
-	    | Q6SS_CLAMP_IO);
-	writel_relaxed(reg, q6->reg_base + QDSP6SS_PWR_CTL);
+	writel_relaxed(Q6SS_CLAMP_IO, q6->reg_base + QDSP6SS_PWR_CTL);
 
 	if (q6->vreg_enabled) {
 		regulator_disable(q6->vreg);
