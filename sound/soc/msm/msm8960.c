@@ -65,7 +65,16 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.platform_name  = "msm-pcm-voice",
 		.dynamic = 1,
 		.dsp_link = &fe_media,
-		.be_id = 0,
+		.be_id = MSM_FRONTEND_DAI_CS_VOICE,
+	},
+	{
+		.name = "MSM VoIP",
+		.stream_name = "VoIP",
+		.cpu_dai_name	= "VoIP",
+		.platform_name  = "msm-voip-dsp",
+		.dynamic = 1,
+		.dsp_link = &fe_media,
+		.be_id = MSM_FRONTEND_DAI_VOIP,
 	},
 	/* Backend DAI Links */
 	{
