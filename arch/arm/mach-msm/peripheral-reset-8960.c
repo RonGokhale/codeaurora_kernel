@@ -17,6 +17,7 @@
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/regulator/consumer.h>
 #include <mach/msm_iomap.h>
 #include <asm/mach-types.h>
 
@@ -106,24 +107,30 @@ struct q6_data {
 	const unsigned strap_ahb_lower;
 	void __iomem *reg_base;
 	int start_addr;
+	struct regulator *vreg;
+	bool vreg_enabled;
+	const char *name;
 };
 
 static struct q6_data q6_lpass = {
 	.strap_tcm_base  = (0x146 << 4),
 	.strap_ahb_upper = (0x029 << 16),
 	.strap_ahb_lower = (0x028 << 4),
+	.name = "q6_lpass",
 };
 
 static struct q6_data q6_modem_fw = {
 	.strap_tcm_base  = (0x40 << 16),
 	.strap_ahb_upper = (0x09 << 16),
 	.strap_ahb_lower = (0x08 << 4),
+	.name = "q6_modem_fw",
 };
 
 static struct q6_data q6_modem_sw = {
 	.strap_tcm_base  = (0x40 << 16),
 	.strap_ahb_upper = (0x09 << 16),
 	.strap_ahb_lower = (0x08 << 4),
+	.name = "q6_modem_sw",
 };
 
 static void __iomem *mss_enable_reg;
@@ -158,7 +165,19 @@ static int verify_blob(u32 phy_addr, size_t size)
 
 static int reset_q6_untrusted(struct q6_data *q6)
 {
-	u32 reg;
+	u32 reg, err = 0;
+
+	err = regulator_set_voltage(q6->vreg, 1050000, 1050000);
+	if (err) {
+		pr_err("Failed to set %s regulator's voltage.\n", q6->name);
+		goto out;
+	}
+	err = regulator_enable(q6->vreg);
+	if (err) {
+		pr_err("Failed to enable %s's regulator.\n", q6->name);
+		goto out;
+	}
+	q6->vreg_enabled = true;
 
 	if (q6 == &q6_modem_fw || q6 == &q6_modem_sw) {
 		/* Make sure Modem Subsystem is enabled and not in reset. */
@@ -207,7 +226,8 @@ static int reset_q6_untrusted(struct q6_data *q6)
 	/* Bring Q6 core out of reset and start execution. */
 	writel_relaxed(0x0, q6->reg_base + QDSP6SS_RESET);
 
-	return 0;
+out:
+	return err;
 }
 
 static int reset_lpass_q6_untrusted(void)
@@ -243,6 +263,11 @@ static int shutdown_q6_untrusted(struct q6_data *q6)
 	    | Q6SS_L2TAG_SLP_NRET_N | Q6SS_ETB_SLEEP_NRET_N | Q6SS_ARR_STBY_N
 	    | Q6SS_CLAMP_IO);
 	writel_relaxed(reg, q6->reg_base + QDSP6SS_PWR_CTL);
+
+	if (q6->vreg_enabled) {
+		regulator_disable(q6->vreg);
+		q6->vreg_enabled = false;
+	}
 
 	return 0;
 }
@@ -439,6 +464,7 @@ static struct pil_device peripherals[] = {
 static int __init msm_peripheral_reset_init(void)
 {
 	unsigned i;
+	int err;
 
 	/*
 	 * Don't initialize PIL on simulated targets, as some
@@ -448,39 +474,73 @@ static int __init msm_peripheral_reset_init(void)
 		return 0;
 
 	mss_enable_reg = ioremap(MSM_MSS_ENABLE_PHYS, 1);
-	if (!mss_enable_reg)
-		goto err;
+	if (!mss_enable_reg) {
+		err = -ENOMEM;
+		goto err_map_mss;
+	}
 
 	q6_lpass.reg_base = ioremap(MSM_LPASS_QDSP6SS_PHYS, SZ_256);
-	if (!q6_lpass.reg_base)
-		goto err_lpass_q6;
+	if (!q6_lpass.reg_base) {
+		err = -ENOMEM;
+		goto err_map_lpass_q6;
+	}
 
 	q6_modem_fw.reg_base = ioremap(MSM_FW_QDSP6SS_PHYS, SZ_256);
-	if (!q6_modem_fw.reg_base)
-		goto err_modem_fw_q6;
+	if (!q6_modem_fw.reg_base) {
+		err = -ENOMEM;
+		goto err_map_modem_fw_q6;
+	}
 
 	q6_modem_sw.reg_base = ioremap(MSM_SW_QDSP6SS_PHYS, SZ_256);
-	if (!q6_modem_sw.reg_base)
-		goto err_modem_sw_q6;
+	if (!q6_modem_sw.reg_base) {
+		err = -ENOMEM;
+		goto err_map_modem_sw_q6;
+	}
 
 	msm_riva_base = ioremap(MSM_RIVA_PHYS, SZ_256);
-	if (!msm_riva_base)
-		goto err_riva;
+	if (!msm_riva_base) {
+		err = -ENOMEM;
+		goto err_map_riva;
+	}
+
+	q6_lpass.vreg = regulator_get(NULL, "lpass_q6");
+	if (IS_ERR(q6_lpass.vreg)) {
+		err = PTR_ERR(q6_lpass.vreg);
+		goto err_vreg_lpass;
+	}
+
+	q6_modem_fw.vreg = regulator_get(NULL, "modem_fw_q6");
+	if (IS_ERR(q6_modem_fw.vreg)) {
+		err = PTR_ERR(q6_modem_fw.vreg);
+		goto err_vreg_modem_fw_q6;
+	}
+
+	q6_modem_sw.vreg = regulator_get(NULL, "modem_sw_q6");
+	if (IS_ERR(q6_modem_sw.vreg)) {
+		err = PTR_ERR(q6_modem_sw.vreg);
+		goto err_vreg_modem_sw_q6;
+	}
 
 	for (i = 0; i < ARRAY_SIZE(peripherals); i++)
 		msm_pil_add_device(&peripherals[i]);
 
 	return 0;
 
-err_riva:
+err_vreg_modem_sw_q6:
+	regulator_put(q6_modem_fw.vreg);
+err_vreg_modem_fw_q6:
+	regulator_put(q6_lpass.vreg);
+err_vreg_lpass:
+	iounmap(msm_riva_base);
+err_map_riva:
 	iounmap(q6_modem_sw.reg_base);
-err_modem_sw_q6:
+err_map_modem_sw_q6:
 	iounmap(q6_modem_fw.reg_base);
-err_modem_fw_q6:
+err_map_modem_fw_q6:
 	iounmap(q6_lpass.reg_base);
-err_lpass_q6:
+err_map_lpass_q6:
 	iounmap(mss_enable_reg);
-err:
-	return -ENOMEM;
+err_map_mss:
+	return err;
 }
 arch_initcall(msm_peripheral_reset_init);
