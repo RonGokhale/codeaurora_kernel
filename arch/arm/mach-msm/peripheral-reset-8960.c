@@ -171,9 +171,9 @@ static int reset_q6_untrusted(enum q6 q6_id)
 	case Q6_MODEM_FW:
 	case Q6_MODEM_SW:
 		/* Make sure Modem Subsystem is enabled and not in reset. */
-		writel(0x0, MSM_CLK_CTL_BASE + MMS_MODEM_RESET);
-		writel(0x0, MSM_CLK_CTL_BASE + MMS_RESET);
-		writel(0x7, mss_enable_reg);
+		writel_relaxed(0x0, MSM_CLK_CTL_BASE + MMS_MODEM_RESET);
+		writel_relaxed(0x0, MSM_CLK_CTL_BASE + MMS_RESET);
+		writel_relaxed(0x7, mss_enable_reg);
 		break;
 	case Q6_LPASS:
 	default:
@@ -181,42 +181,44 @@ static int reset_q6_untrusted(enum q6 q6_id)
 	}
 
 	/* Program boot address */
-	writel((q6_start[q6_id] >> 8) & 0xFFFFFF, reg_base + QDSP6SS_RST_EVB);
+	writel_relaxed((q6_start[q6_id] >> 8) & 0xFFFFFF,
+		       reg_base + QDSP6SS_RST_EVB);
 
 	/* Program TCM and AHB address ranges */
-	writel(q6_strap_tcm_base[q6_id], reg_base + QDSP6SS_STRAP_TCM);
-	writel(q6_strap_ahb_upper[q6_id] | q6_strap_ahb_lower[q6_id],
+	writel_relaxed(q6_strap_tcm_base[q6_id], reg_base + QDSP6SS_STRAP_TCM);
+	writel_relaxed(q6_strap_ahb_upper[q6_id] | q6_strap_ahb_lower[q6_id],
 	       reg_base + QDSP6SS_STRAP_AHB);
 
 	/* Turn off Q6 core clock */
 	reg = Q6SS_SRC_SWITCH_CLK_OVR;
-	writel(reg, reg_base + QDSP6SS_GFMUX_CTL);
+	writel_relaxed(reg, reg_base + QDSP6SS_GFMUX_CTL);
 
 	/* Put Q6 into reset */
 	reg = Q6SS_CORE_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES
 	    | Q6SS_STOP_CORE_ARES | Q6SS_PRIV_ARES;
-	writel(reg, reg_base + QDSP6SS_RESET);
+	writel_relaxed(reg, reg_base + QDSP6SS_RESET);
 
 	/* Wait 8 AHB cycles for Q6 to be fully reset (AHB = 1.5Mhz) */
+	dsb();
 	usleep_range(20, 30);
 
 	/* Turn on Q6 memories */
 	reg = Q6SS_L2DATA_SLP_NRET_N | Q6SS_SLP_RET_N | Q6SS_L1TCM_SLP_NRET_N
 	    | Q6SS_L2TAG_SLP_NRET_N | Q6SS_ETB_SLEEP_NRET_N | Q6SS_ARR_STBY_N
 	    | Q6SS_CLAMP_IO;
-	writel(reg, reg_base + QDSP6SS_PWR_CTL);
+	writel_relaxed(reg, reg_base + QDSP6SS_PWR_CTL);
 
 	/* Turn on Q6 core clock */
 	reg = Q6SS_CLK_ENA | Q6SS_SRC_SWITCH_CLK_OVR;
-	writel(reg, reg_base + QDSP6SS_GFMUX_CTL);
+	writel_relaxed(reg, reg_base + QDSP6SS_GFMUX_CTL);
 
 	/* Remove Q6SS_CLAMP_IO */
-	reg = readl(reg_base + QDSP6SS_PWR_CTL);
+	reg = readl_relaxed(reg_base + QDSP6SS_PWR_CTL);
 	reg &= ~Q6SS_CLAMP_IO;
-	writel(reg, reg_base + QDSP6SS_PWR_CTL);
+	writel_relaxed(reg, reg_base + QDSP6SS_PWR_CTL);
 
 	/* Bring Q6 core out of reset and start execution. */
-	writel(0x0, reg_base + QDSP6SS_RESET);
+	writel_relaxed(0x0, reg_base + QDSP6SS_RESET);
 
 	return 0;
 }
@@ -243,18 +245,18 @@ static int shutdown_q6_untrusted(enum q6 q6_id)
 
 	/* Turn off Q6 core clock */
 	reg = Q6SS_SRC_SWITCH_CLK_OVR;
-	writel(reg, reg_base + QDSP6SS_GFMUX_CTL);
+	writel_relaxed(reg, reg_base + QDSP6SS_GFMUX_CTL);
 
 	/* Put Q6SS into reset */
 	reg = Q6SS_SS_ARES | Q6SS_CORE_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES
 	    | Q6SS_STOP_CORE_ARES | Q6SS_PRIV_ARES;
-	writel(reg, reg_base + QDSP6SS_RESET);
+	writel_relaxed(reg, reg_base + QDSP6SS_RESET);
 
 	/* Turn off Q6 memories */
 	reg &= ~(Q6SS_L2DATA_SLP_NRET_N | Q6SS_SLP_RET_N | Q6SS_L1TCM_SLP_NRET_N
 	    | Q6SS_L2TAG_SLP_NRET_N | Q6SS_ETB_SLEEP_NRET_N | Q6SS_ARR_STBY_N
 	    | Q6SS_CLAMP_IO);
-	writel(reg, reg_base + QDSP6SS_PWR_CTL);
+	writel_relaxed(reg, reg_base + QDSP6SS_PWR_CTL);
 
 	return 0;
 }
