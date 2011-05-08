@@ -37,14 +37,6 @@
 #define MMS_MODEM_RESET		0x2C48
 #define MMS_RESET		0x2C64
 
-#define MODEM_Q6_STRAP_TCM_BASE		(0x40 << 16)
-#define MODEM_Q6_STRAP_AHB_UPPER	(0x9 << 16)
-#define MODEM_Q6_STRAP_AHB_LOWER	(0x8 << 4)
-
-#define LPASS_Q6_STRAP_TCM_BASE		(0x146 << 4)
-#define LPASS_Q6_STRAP_AHB_UPPER	(0x29 << 16)
-#define LPASS_Q6_STRAP_AHB_LOWER	(0x28 << 4)
-
 #define Q6SS_SS_ARES		BIT(0)
 #define Q6SS_CORE_ARES		BIT(1)
 #define Q6SS_ISDB_ARES		BIT(2)
@@ -108,37 +100,54 @@
 #define RIVA_PMU_CLK_ROOT3_SRC1_SEL		0xE000
 #define RIVA_PMU_CLK_ROOT3_SRC1_SEL_RIVA	(1 << 13)
 
-enum q6 {
-	Q6_MODEM_FW,
-	Q6_MODEM_SW,
-	Q6_LPASS,
-	NUM_Q6
+struct q6_data {
+	const unsigned strap_tcm_base;
+	const unsigned strap_ahb_upper;
+	const unsigned strap_ahb_lower;
+	void __iomem *reg_base;
+	int start_addr;
 };
 
-static int q6_start[NUM_Q6];
-static void __iomem *q6_reg_base[NUM_Q6];
+static struct q6_data q6_lpass = {
+	.strap_tcm_base  = (0x146 << 4),
+	.strap_ahb_upper = (0x029 << 16),
+	.strap_ahb_lower = (0x028 << 4),
+};
+
+static struct q6_data q6_modem_fw = {
+	.strap_tcm_base  = (0x40 << 16),
+	.strap_ahb_upper = (0x09 << 16),
+	.strap_ahb_lower = (0x08 << 4),
+};
+
+static struct q6_data q6_modem_sw = {
+	.strap_tcm_base  = (0x40 << 16),
+	.strap_ahb_upper = (0x09 << 16),
+	.strap_ahb_lower = (0x08 << 4),
+};
+
 static void __iomem *mss_enable_reg;
 static void __iomem *msm_riva_base;
 static unsigned long riva_start;
 
+static int init_image_lpass_q6_untrusted(const u8 *metadata, size_t size)
+{
+	const struct elf32_hdr *ehdr = (struct elf32_hdr *)metadata;
+	q6_lpass.start_addr = ehdr->e_entry;
+	return 0;
+}
+
 static int init_image_modem_fw_q6_untrusted(const u8 *metadata, size_t size)
 {
 	const struct elf32_hdr *ehdr = (struct elf32_hdr *)metadata;
-	q6_start[Q6_MODEM_FW] = ehdr->e_entry;
+	q6_modem_fw.start_addr = ehdr->e_entry;
 	return 0;
 }
 
 static int init_image_modem_sw_q6_untrusted(const u8 *metadata, size_t size)
 {
 	const struct elf32_hdr *ehdr = (struct elf32_hdr *)metadata;
-	q6_start[Q6_MODEM_SW] = ehdr->e_entry;
-	return 0;
-}
-
-static int init_image_lpass_q6_untrusted(const u8 *metadata, size_t size)
-{
-	const struct elf32_hdr *ehdr = (struct elf32_hdr *)metadata;
-	q6_start[Q6_LPASS] = ehdr->e_entry;
+	q6_modem_sw.start_addr = ehdr->e_entry;
 	return 0;
 }
 
@@ -147,56 +156,34 @@ static int verify_blob(u32 phy_addr, size_t size)
 	return 0;
 }
 
-static int reset_q6_untrusted(enum q6 q6_id)
+static int reset_q6_untrusted(struct q6_data *q6)
 {
-	static const unsigned q6_strap_tcm_base[] = {
-		[Q6_MODEM_FW] = MODEM_Q6_STRAP_TCM_BASE,
-		[Q6_MODEM_SW] = MODEM_Q6_STRAP_TCM_BASE,
-		[Q6_LPASS] =    LPASS_Q6_STRAP_TCM_BASE,
-	};
-	static const unsigned q6_strap_ahb_upper[] = {
-		[Q6_MODEM_FW] = MODEM_Q6_STRAP_AHB_UPPER,
-		[Q6_MODEM_SW] = MODEM_Q6_STRAP_AHB_UPPER,
-		[Q6_LPASS] =    LPASS_Q6_STRAP_AHB_UPPER,
-	};
-	static const unsigned q6_strap_ahb_lower[] = {
-		[Q6_MODEM_FW] = MODEM_Q6_STRAP_AHB_LOWER,
-		[Q6_MODEM_SW] = MODEM_Q6_STRAP_AHB_LOWER,
-		[Q6_LPASS] =    LPASS_Q6_STRAP_AHB_LOWER,
-	};
-	void __iomem *reg_base = q6_reg_base[q6_id];
 	u32 reg;
 
-	switch (q6_id) {
-	case Q6_MODEM_FW:
-	case Q6_MODEM_SW:
+	if (q6 == &q6_modem_fw || q6 == &q6_modem_sw) {
 		/* Make sure Modem Subsystem is enabled and not in reset. */
 		writel_relaxed(0x0, MSM_CLK_CTL_BASE + MMS_MODEM_RESET);
 		writel_relaxed(0x0, MSM_CLK_CTL_BASE + MMS_RESET);
 		writel_relaxed(0x7, mss_enable_reg);
-		break;
-	case Q6_LPASS:
-	default:
-		break;
 	}
 
 	/* Program boot address */
-	writel_relaxed((q6_start[q6_id] >> 8) & 0xFFFFFF,
-		       reg_base + QDSP6SS_RST_EVB);
+	writel_relaxed((q6->start_addr >> 8) & 0xFFFFFF,
+			q6->reg_base + QDSP6SS_RST_EVB);
 
 	/* Program TCM and AHB address ranges */
-	writel_relaxed(q6_strap_tcm_base[q6_id], reg_base + QDSP6SS_STRAP_TCM);
-	writel_relaxed(q6_strap_ahb_upper[q6_id] | q6_strap_ahb_lower[q6_id],
-	       reg_base + QDSP6SS_STRAP_AHB);
+	writel_relaxed(q6->strap_tcm_base, q6->reg_base + QDSP6SS_STRAP_TCM);
+	writel_relaxed(q6->strap_ahb_upper | q6->strap_ahb_lower,
+		       q6->reg_base + QDSP6SS_STRAP_AHB);
 
 	/* Turn off Q6 core clock */
 	reg = Q6SS_SRC_SWITCH_CLK_OVR;
-	writel_relaxed(reg, reg_base + QDSP6SS_GFMUX_CTL);
+	writel_relaxed(reg, q6->reg_base + QDSP6SS_GFMUX_CTL);
 
 	/* Put Q6 into reset */
 	reg = Q6SS_CORE_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES
 	    | Q6SS_STOP_CORE_ARES | Q6SS_PRIV_ARES;
-	writel_relaxed(reg, reg_base + QDSP6SS_RESET);
+	writel_relaxed(reg, q6->reg_base + QDSP6SS_RESET);
 
 	/* Wait 8 AHB cycles for Q6 to be fully reset (AHB = 1.5Mhz) */
 	dsb();
@@ -206,74 +193,73 @@ static int reset_q6_untrusted(enum q6 q6_id)
 	reg = Q6SS_L2DATA_SLP_NRET_N | Q6SS_SLP_RET_N | Q6SS_L1TCM_SLP_NRET_N
 	    | Q6SS_L2TAG_SLP_NRET_N | Q6SS_ETB_SLEEP_NRET_N | Q6SS_ARR_STBY_N
 	    | Q6SS_CLAMP_IO;
-	writel_relaxed(reg, reg_base + QDSP6SS_PWR_CTL);
+	writel_relaxed(reg, q6->reg_base + QDSP6SS_PWR_CTL);
 
 	/* Turn on Q6 core clock */
 	reg = Q6SS_CLK_ENA | Q6SS_SRC_SWITCH_CLK_OVR;
-	writel_relaxed(reg, reg_base + QDSP6SS_GFMUX_CTL);
+	writel_relaxed(reg, q6->reg_base + QDSP6SS_GFMUX_CTL);
 
 	/* Remove Q6SS_CLAMP_IO */
-	reg = readl_relaxed(reg_base + QDSP6SS_PWR_CTL);
+	reg = readl_relaxed(q6->reg_base + QDSP6SS_PWR_CTL);
 	reg &= ~Q6SS_CLAMP_IO;
-	writel_relaxed(reg, reg_base + QDSP6SS_PWR_CTL);
+	writel_relaxed(reg, q6->reg_base + QDSP6SS_PWR_CTL);
 
 	/* Bring Q6 core out of reset and start execution. */
-	writel_relaxed(0x0, reg_base + QDSP6SS_RESET);
+	writel_relaxed(0x0, q6->reg_base + QDSP6SS_RESET);
 
 	return 0;
 }
 
+static int reset_lpass_q6_untrusted(void)
+{
+	return reset_q6_untrusted(&q6_lpass);
+}
+
 static int reset_modem_fw_q6_untrusted(void)
 {
-	return reset_q6_untrusted(Q6_MODEM_FW);
+	return reset_q6_untrusted(&q6_modem_fw);
 }
 
 static int reset_modem_sw_q6_untrusted(void)
 {
-	return reset_q6_untrusted(Q6_MODEM_SW);
+	return reset_q6_untrusted(&q6_modem_sw);
 }
 
-static int reset_lpass_q6_untrusted(void)
-{
-	return reset_q6_untrusted(Q6_LPASS);
-}
-
-static int shutdown_q6_untrusted(enum q6 q6_id)
+static int shutdown_q6_untrusted(struct q6_data *q6)
 {
 	u32 reg;
-	void *reg_base = q6_reg_base[q6_id];
 
 	/* Turn off Q6 core clock */
 	reg = Q6SS_SRC_SWITCH_CLK_OVR;
-	writel_relaxed(reg, reg_base + QDSP6SS_GFMUX_CTL);
+	writel_relaxed(reg, q6->reg_base + QDSP6SS_GFMUX_CTL);
 
 	/* Put Q6SS into reset */
 	reg = Q6SS_SS_ARES | Q6SS_CORE_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES
 	    | Q6SS_STOP_CORE_ARES | Q6SS_PRIV_ARES;
-	writel_relaxed(reg, reg_base + QDSP6SS_RESET);
+	writel_relaxed(reg, q6->reg_base + QDSP6SS_RESET);
 
 	/* Turn off Q6 memories */
 	reg &= ~(Q6SS_L2DATA_SLP_NRET_N | Q6SS_SLP_RET_N | Q6SS_L1TCM_SLP_NRET_N
 	    | Q6SS_L2TAG_SLP_NRET_N | Q6SS_ETB_SLEEP_NRET_N | Q6SS_ARR_STBY_N
 	    | Q6SS_CLAMP_IO);
-	writel_relaxed(reg, reg_base + QDSP6SS_PWR_CTL);
+	writel_relaxed(reg, q6->reg_base + QDSP6SS_PWR_CTL);
 
 	return 0;
 }
 
+static int shutdown_lpass_q6_untrusted(void)
+{
+	return shutdown_q6_untrusted(&q6_lpass);
+}
+
 static int shutdown_modem_fw_q6_untrusted(void)
 {
-	return shutdown_q6_untrusted(Q6_MODEM_FW);
+	return shutdown_q6_untrusted(&q6_modem_fw);
 }
 
 static int shutdown_modem_sw_q6_untrusted(void)
 {
-	return shutdown_q6_untrusted(Q6_MODEM_SW);
-}
-
-static int shutdown_lpass_q6_untrusted(void)
-{
-	return shutdown_q6_untrusted(Q6_LPASS);
+	return shutdown_q6_untrusted(&q6_modem_sw);
 }
 
 static int init_image_riva_untrusted(const u8 *metadata, size_t size)
@@ -465,17 +451,17 @@ static int __init msm_peripheral_reset_init(void)
 	if (!mss_enable_reg)
 		goto err;
 
-	q6_reg_base[Q6_MODEM_FW] = ioremap(MSM_FW_QDSP6SS_PHYS, SZ_256);
-	if (!q6_reg_base[Q6_MODEM_FW])
+	q6_lpass.reg_base = ioremap(MSM_LPASS_QDSP6SS_PHYS, SZ_256);
+	if (!q6_lpass.reg_base)
+		goto err_lpass_q6;
+
+	q6_modem_fw.reg_base = ioremap(MSM_FW_QDSP6SS_PHYS, SZ_256);
+	if (!q6_modem_fw.reg_base)
 		goto err_modem_fw_q6;
 
-	q6_reg_base[Q6_MODEM_SW] = ioremap(MSM_SW_QDSP6SS_PHYS, SZ_256);
-	if (!q6_reg_base[Q6_MODEM_SW])
+	q6_modem_sw.reg_base = ioremap(MSM_SW_QDSP6SS_PHYS, SZ_256);
+	if (!q6_modem_sw.reg_base)
 		goto err_modem_sw_q6;
-
-	q6_reg_base[Q6_LPASS] = ioremap(MSM_LPASS_QDSP6SS_PHYS, SZ_256);
-	if (!q6_reg_base[Q6_LPASS])
-		goto err_lpass_q6;
 
 	msm_riva_base = ioremap(MSM_RIVA_PHYS, SZ_256);
 	if (!msm_riva_base)
@@ -487,12 +473,12 @@ static int __init msm_peripheral_reset_init(void)
 	return 0;
 
 err_riva:
-	iounmap(q6_reg_base[Q6_LPASS]);
-err_lpass_q6:
-	iounmap(q6_reg_base[Q6_MODEM_SW]);
+	iounmap(q6_modem_sw.reg_base);
 err_modem_sw_q6:
-	iounmap(q6_reg_base[Q6_MODEM_FW]);
+	iounmap(q6_modem_fw.reg_base);
 err_modem_fw_q6:
+	iounmap(q6_lpass.reg_base);
+err_lpass_q6:
 	iounmap(mss_enable_reg);
 err:
 	return -ENOMEM;
