@@ -119,6 +119,7 @@ static int q6_start[NUM_Q6];
 static void __iomem *q6_reg_base[NUM_Q6];
 static void __iomem *mss_enable_reg;
 static void __iomem *msm_riva_base;
+static unsigned long riva_start;
 
 static int init_image_modem_fw_q6_untrusted(const u8 *metadata, size_t size)
 {
@@ -275,6 +276,8 @@ static int shutdown_lpass_q6_untrusted(void)
 
 static int init_image_riva_untrusted(const u8 *metadata, size_t size)
 {
+	const struct elf32_hdr *ehdr = (struct elf32_hdr *)metadata;
+	riva_start = ehdr->e_entry;
 	return 0;
 }
 
@@ -350,7 +353,7 @@ static int reset_riva_untrusted(void)
 	writel(reg, RIVA_PMU_CCPU_CTL);
 
 	/* Set base memory address */
-	writel((0x4f200000 >> 16), RIVA_PMU_CCPU_BOOT_REMAP_ADDR);
+	writel_relaxed(riva_start >> 16, RIVA_PMU_CCPU_BOOT_REMAP_ADDR);
 
 	/* Clear warmboot bit indicating this is a cold boot */
 	reg = readl(RIVA_PMU_CFG);
