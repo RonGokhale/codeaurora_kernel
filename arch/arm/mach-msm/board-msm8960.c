@@ -71,6 +71,12 @@ static struct gpiomux_setting gsbi1 = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
+static struct gpiomux_setting gsbi3 = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
 static struct gpiomux_setting gsbi4 = {
 	.func = GPIOMUX_FUNC_1,
 	.drv = GPIOMUX_DRV_8MA,
@@ -124,6 +130,18 @@ static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
 		},
 	},
 	{
+		.gpio      = 16,	/* GSBI3 I2C QUP SDA */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi3,
+		},
+	},
+	{
+		.gpio      = 17,	/* GSBI3 I2C QUP SCL */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi3,
+		},
+	},
+	{
 		.gpio      = 20,	/* GSBI4 I2C QUP SDA */
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &gsbi4,
@@ -160,6 +178,7 @@ static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
 		},
 	},
 };
+
 static struct gpiomux_setting cam_suspend_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
@@ -1001,6 +1020,14 @@ static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi4_pdata = {
 	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
 };
 
+static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi3_pdata = {
+	.clk_freq = 100000,
+	.src_clk_rate = 24000000,
+	.clk = "gsbi_qup_clk",
+	.pclk = "gsbi_pclk",
+	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
+};
+
 #ifdef CONFIG_MSM_RPM
 static struct msm_rpm_platform_data msm_rpm_data = {
 	.reg_base_addrs = {
@@ -1041,6 +1068,7 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm8960_device_uart_gsbi5,
 	&msm8960_device_ssbi_pm8921,
 	&msm8960_device_qup_spi_gsbi1,
+	&msm8960_device_qup_i2c_gsbi3,
 	&msm8960_device_qup_i2c_gsbi4,
 	&msm_device_wcnss_wlan,
 #ifdef CONFIG_MSM_ROTATOR
@@ -1115,6 +1143,9 @@ static void __init msm8960_i2c_init(void)
 {
 	msm8960_device_qup_i2c_gsbi4.dev.platform_data =
 					&msm8960_i2c_qup_gsbi4_pdata;
+
+	msm8960_device_qup_i2c_gsbi3.dev.platform_data =
+					&msm8960_i2c_qup_gsbi3_pdata;
 }
 
 static struct pm8xxx_irq_platform_data pm8xxx_irq_pdata __devinitdata = {
@@ -1404,6 +1435,7 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 #define I2C_SIM  (1 << 3)
 #define I2C_FLUID (1 << 4)
 #define MSM_8960_GSBI4_QUP_I2C_BUS_ID 4
+#define MSM_8960_GSBI3_QUP_I2C_BUS_ID 3
 
 struct i2c_registry {
 	u8                     machs;
