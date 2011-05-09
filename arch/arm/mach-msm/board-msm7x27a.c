@@ -80,18 +80,18 @@ enum {
 	GPIO_SURF_EXPANDER_IO13,
 	GPIO_SURF_EXPANDER_IO14,
 	GPIO_SURF_EXPANDER_IO15,
-	/* Camera expander on SURF */
-	GPIO_SURF_CAM_EXPANDER_BASE	= GPIO_SURF_EXPANDER_BASE + 16,
-	GPIO_SURF_CAM_GP_STROBE_READY	= GPIO_SURF_CAM_EXPANDER_BASE,
-	GPIO_SURF_CAM_GP_AFBUSY,
-	GPIO_SURF_CAM_GP_CAM_PWDN,
-	GPIO_SURF_CAM_GP_CAM1MP_XCLR,
-	GPIO_SURF_CAM_GP_CAMIF_RESET_N,
-	GPIO_SURF_CAM_GP_STROBE_CE,
-	GPIO_SURF_CAM_GP_LED_EN1,
-	GPIO_SURF_CAM_GP_LED_EN2,
+	/* Camera expander */
+	GPIO_CAM_EXPANDER_BASE	= GPIO_SURF_EXPANDER_BASE + 16,
+	GPIO_CAM_GP_STROBE_READY	= GPIO_CAM_EXPANDER_BASE,
+	GPIO_CAM_GP_AFBUSY,
+	GPIO_CAM_GP_CAM_PWDN,
+	GPIO_CAM_GP_CAM1MP_XCLR,
+	GPIO_CAM_GP_CAMIF_RESET_N,
+	GPIO_CAM_GP_STROBE_CE,
+	GPIO_CAM_GP_LED_EN1,
+	GPIO_CAM_GP_LED_EN2,
 	/* FFA expander */
-	GPIO_FFA_EXPANDER_BASE	= GPIO_SURF_CAM_EXPANDER_BASE + 8,
+	GPIO_FFA_EXPANDER_BASE	= GPIO_CAM_EXPANDER_BASE + 8,
 	GPIO_FFA_BT_SYS_REST_EN	= GPIO_FFA_EXPANDER_BASE,
 	GPIO_FFA_WLAN_EXT_POR_N,
 	GPIO_FFA_LCD_PWR_EN_N,
@@ -108,24 +108,13 @@ enum {
 	GPIO_FFA_EXPANDER_IO13,
 	GPIO_FFA_EXPANDER_IO14,
 	GPIO_FFA_EXPANDER_IO15,
-	/* Camera expander on FFA */
-	GPIO_FFA_CAM_EXPANDER_BASE	= GPIO_FFA_EXPANDER_BASE + 16,
-	GPIO_FFA_CAM_EXP_GPIO_00	= GPIO_FFA_CAM_EXPANDER_BASE,
-	GPIO_FFA_CAM_EXP_GPIO_O1,
-	GPIO_FFA_CAM_5MP_PWDN_VCM,
-	GPIO_FFA_CAM_1MP_XCLR,
-	GPIO_FFA_CAM_5MP_SHDN_N,
-	GPIO_FFA_CAM_EXP_GPIO_05,
-	GPIO_FFA_LED_DRV_EN1,
-	GPIO_FFA_LED_DRV_EN2,
 };
 
 #if defined(CONFIG_GPIO_SX150X)
 enum {
 	SX150X_SURF,
-	SX150X_SURF_CAM,
+	SX150X_CAM,
 	SX150X_FFA,
-	SX150X_FFA_CAM,
 };
 
 static struct sx150x_platform_data sx150x_data[] __initdata = {
@@ -137,8 +126,8 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 		.io_open_drain_ena	= 0,
 		.irq_summary		= -1,
 	},
-	[SX150X_SURF_CAM]	= {
-		.gpio_base		= GPIO_SURF_CAM_EXPANDER_BASE,
+	[SX150X_CAM]	= {
+		.gpio_base		= GPIO_CAM_EXPANDER_BASE,
 		.oscio_is_gpo		= false,
 		.io_pullup_ena		= 0,
 		.io_pulldn_ena		= 0,
@@ -153,15 +142,6 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 		.io_open_drain_ena	= 0,
 		.irq_summary		= -1,
 	},
-	[SX150X_FFA_CAM]	= {
-		.gpio_base		= GPIO_FFA_CAM_EXPANDER_BASE,
-		.oscio_is_gpo		= false,
-		.io_pullup_ena		= 0,
-		.io_pulldn_ena		= 0,
-		.io_open_drain_ena	= 0,
-		.irq_summary		= -1,
-	},
-
 };
 #endif
 
@@ -922,10 +902,10 @@ static struct i2c_board_info surf_core_exp_i2c_info[] __initdata = {
 		.platform_data =  &sx150x_data[SX150X_SURF],
 	},
 };
-static struct i2c_board_info surf_cam_exp_i2c_info[] __initdata = {
+static struct i2c_board_info cam_exp_i2c_info[] __initdata = {
 	{
 		I2C_BOARD_INFO("sx1508q", 0x22),
-		.platform_data	= &sx150x_data[SX150X_SURF_CAM],
+		.platform_data	= &sx150x_data[SX150X_CAM],
 	},
 };
 static struct i2c_board_info ffa_core_exp_i2c_info[] __initdata = {
@@ -933,13 +913,6 @@ static struct i2c_board_info ffa_core_exp_i2c_info[] __initdata = {
 		I2C_BOARD_INFO("sx1509q", 0x3e),
 		.platform_data =  &sx150x_data[SX150X_FFA],
 	},
-};
-static struct i2c_board_info ffa_cam_exp_i2c_info[] __initdata = {
-	{
-		I2C_BOARD_INFO("sx1508q", 0x22),
-		.platform_data	= &sx150x_data[SX150X_FFA_CAM],
-	},
-
 };
 #endif
 #if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
@@ -954,27 +927,31 @@ static struct i2c_board_info bahama_devices[] = {
 #if defined(CONFIG_I2C) && defined(CONFIG_GPIO_SX150X)
 static void __init register_i2c_devices(void)
 {
+
+	i2c_register_board_info(MSM_GSBI0_QUP_I2C_BUS_ID,
+			cam_exp_i2c_info,
+			ARRAY_SIZE(cam_exp_i2c_info));
+
 	if (machine_is_msm7x27a_surf()) {
 		i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
 				surf_core_exp_i2c_info,
 				ARRAY_SIZE(surf_core_exp_i2c_info));
-		i2c_register_board_info(MSM_GSBI0_QUP_I2C_BUS_ID,
-				surf_cam_exp_i2c_info,
-				ARRAY_SIZE(surf_cam_exp_i2c_info));
-	} else if (machine_is_msm7x27a_ffa()) {
-		i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
-				ffa_core_exp_i2c_info,
-				ARRAY_SIZE(ffa_core_exp_i2c_info));
-		i2c_register_board_info(MSM_GSBI0_QUP_I2C_BUS_ID,
-				ffa_cam_exp_i2c_info,
-				ARRAY_SIZE(ffa_cam_exp_i2c_info));
-	}
-
 #if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
 		i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
 				bahama_devices,
 				ARRAY_SIZE(bahama_devices));
 #endif
+
+	} else if (machine_is_msm7x27a_ffa()) {
+		i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
+				ffa_core_exp_i2c_info,
+				ARRAY_SIZE(ffa_core_exp_i2c_info));
+#if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
+		i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
+				bahama_devices,
+				ARRAY_SIZE(bahama_devices));
+#endif
+	}
 
 }
 #endif
@@ -2156,8 +2133,8 @@ static uint32_t camera_on_gpio_table[] = {
 #ifdef CONFIG_MSM_CAMERA_FLASH
 static struct msm_camera_sensor_flash_src msm_flash_src = {
 	.flash_sr_type = MSM_CAMERA_FLASH_SRC_CURRENT_DRIVER,
-	._fsrc.current_driver_src.led1 = GPIO_SURF_CAM_GP_LED_EN1,
-	._fsrc.current_driver_src.led2 = GPIO_SURF_CAM_GP_LED_EN2,
+	._fsrc.current_driver_src.led1 = GPIO_CAM_GP_LED_EN1,
+	._fsrc.current_driver_src.led2 = GPIO_CAM_GP_LED_EN2,
 };
 #endif
 
@@ -2258,19 +2235,6 @@ static int config_camera_on_gpios_rear(void)
 		return rc;
 	}
 
-	if (machine_is_msm7x27a_ffa()) {
-		gpio_tlmm_config(GPIO_CFG(GPIO_FFA_CAM_5MP_SHDN_N, 1,
-					GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN,
-					GPIO_CFG_2MA), GPIO_CFG_ENABLE);
-		msm_flash_src._fsrc.current_driver_src.led1 =
-						GPIO_FFA_LED_DRV_EN1;
-		msm_flash_src._fsrc.current_driver_src.led2 =
-						GPIO_FFA_LED_DRV_EN2;
-		msm_camera_sensor_s5k4e1_data.sensor_reset =
-						GPIO_FFA_CAM_5MP_SHDN_N;
-		msm_camera_sensor_s5k4e1_data.vcm_pwd =
-						GPIO_FFA_CAM_5MP_PWDN_VCM;
-	}
 	return rc;
 }
 
@@ -2281,11 +2245,6 @@ static void config_camera_off_gpios_rear(void)
 
 	config_gpio_table(camera_off_gpio_table,
 			ARRAY_SIZE(camera_off_gpio_table));
-
-	if (machine_is_msm7x27a_ffa())
-		gpio_tlmm_config(GPIO_CFG(GPIO_FFA_CAM_5MP_SHDN_N, 0,
-					GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN,
-					GPIO_CFG_2MA), GPIO_CFG_ENABLE);
 }
 
 static int config_camera_on_gpios_front(void)
@@ -2303,17 +2262,6 @@ static int config_camera_on_gpios_front(void)
 		return rc;
 	}
 
-	if (machine_is_msm7x27a_ffa()) {
-		gpio_tlmm_config(GPIO_CFG(GPIO_FFA_CAM_1MP_XCLR, 1,
-				GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP,
-				GPIO_CFG_2MA), GPIO_CFG_ENABLE);
-		msm_flash_src._fsrc.current_driver_src.led1 =
-						GPIO_FFA_LED_DRV_EN1;
-		msm_flash_src._fsrc.current_driver_src.led2 =
-						GPIO_FFA_LED_DRV_EN2;
-		msm_camera_sensor_ov9726_data.sensor_reset =
-						GPIO_FFA_CAM_1MP_XCLR;
-	}
 	return rc;
 }
 
@@ -2324,11 +2272,6 @@ static void config_camera_off_gpios_front(void)
 
 	config_gpio_table(camera_off_gpio_table,
 			ARRAY_SIZE(camera_off_gpio_table));
-
-	if (machine_is_msm7x27a_ffa())
-		gpio_tlmm_config(GPIO_CFG(GPIO_FFA_CAM_1MP_XCLR, 0,
-				GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP,
-				GPIO_CFG_2MA), GPIO_CFG_ENABLE);
 }
 
 struct msm_camera_device_platform_data msm_camera_device_data_rear = {
@@ -2367,10 +2310,10 @@ static struct msm_camera_sensor_flash_data flash_s5k4e1 = {
 
 static struct msm_camera_sensor_info msm_camera_sensor_s5k4e1_data = {
 	.sensor_name    = "s5k4e1",
-	.sensor_reset   = GPIO_SURF_CAM_GP_CAMIF_RESET_N,
 	.sensor_reset_enable = 1,
+	.sensor_reset   = GPIO_CAM_GP_CAMIF_RESET_N,
 	.sensor_pwd             = 85,
-	.vcm_pwd                = GPIO_SURF_CAM_GP_CAM_PWDN,
+	.vcm_pwd                = GPIO_CAM_GP_CAM_PWDN,
 	.vcm_enable             = 1,
 	.pdata                  = &msm_camera_device_data_rear,
 	.flash_data             = &flash_s5k4e1,
@@ -2399,9 +2342,9 @@ static struct msm_camera_sensor_flash_data flash_imx072 = {
 static struct msm_camera_sensor_info msm_camera_sensor_imx072_data = {
 	.sensor_name    = "imx072",
 	.sensor_reset_enable = 1,
-	.sensor_reset   = GPIO_SURF_CAM_GP_CAMIF_RESET_N, /* TODO 106,*/
+	.sensor_reset   = GPIO_CAM_GP_CAMIF_RESET_N, /* TODO 106,*/
 	.sensor_pwd             = 85,
-	.vcm_pwd                = GPIO_SURF_CAM_GP_CAM_PWDN,
+	.vcm_pwd                = GPIO_CAM_GP_CAM_PWDN,
 	.vcm_enable             = 1,
 	.pdata                  = &msm_camera_device_data_rear,
 	.flash_data             = &flash_imx072,
@@ -2429,8 +2372,8 @@ static struct msm_camera_sensor_flash_data flash_ov9726 = {
 
 static struct msm_camera_sensor_info msm_camera_sensor_ov9726_data = {
 	.sensor_name    = "ov9726",
-	.sensor_reset   = GPIO_SURF_CAM_GP_CAM1MP_XCLR,
 	.sensor_reset_enable = 0,
+	.sensor_reset   = GPIO_CAM_GP_CAM1MP_XCLR,
 	.sensor_pwd             = 85,
 	.vcm_pwd                = 1,
 	.vcm_enable             = 0,
