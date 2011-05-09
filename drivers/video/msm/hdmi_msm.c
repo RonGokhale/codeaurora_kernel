@@ -69,6 +69,7 @@ struct hdmi_msm_state_type {
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 	boolean hdcp_activating;
+	boolean reauth ;
 	struct work_struct hdcp_reauth_work, hdcp_work;
 	struct completion hdcp_success_done;
 	struct timer_list hdcp_timer;
@@ -86,7 +87,10 @@ struct hdmi_msm_state_type {
 };
 
 static struct hdmi_msm_state_type *hdmi_msm_state;
+
 static DEFINE_MUTEX(hdmi_msm_state_mutex);
+
+static void hdmi_msm_hdcp_enable(void);
 
 uint32 hdmi_msm_get_io_base(void)
 {
@@ -317,6 +321,9 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 		mutex_unlock(&hdmi_msm_state_mutex);
 		if (hpd_state) {
 			hdmi_msm_read_edid();
+#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
+			hdmi_msm_state->reauth = FALSE ;
+#endif
 			/* Build EDID table */
 			envp[0] = "HDCP_STATE=FAIL";
 			envp[1] = NULL;
@@ -324,10 +331,10 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 			kobject_uevent_env(external_common_state->uevent_kobj,
 				KOBJ_CHANGE, envp);
 			hdmi_msm_turn_on();
-
 			DEV_INFO("HDMI HPD: sense CONNECTED: send ONLINE\n");
 			kobject_uevent(external_common_state->uevent_kobj,
 				KOBJ_ONLINE);
+			hdmi_msm_hdcp_enable();
 		} else {
 			DEV_INFO("HDMI HPD: sense DISCONNECTED: send OFFLINE\n"
 				);
@@ -363,7 +370,6 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 static int full_auth_proc_done;
 static void hdcp_deauthenticate(void);
-static void hdmi_msm_hdcp_enable(void);
 static void hdmi_msm_hdcp_reauth_work(struct work_struct *work)
 {
 #ifdef CONFIG_SUSPEND
@@ -405,6 +411,7 @@ static void hdmi_msm_hdcp_work(struct work_struct *work)
 	mutex_lock(&external_common_state_hpd_mutex);
 	if (external_common_state->hpd_state && !full_auth_proc_done) {
 		mutex_unlock(&external_common_state_hpd_mutex);
+		hdmi_msm_state->reauth = TRUE;
 		hdmi_msm_turn_on();
 	} else
 		mutex_unlock(&external_common_state_hpd_mutex);
@@ -1886,6 +1893,9 @@ error:
 	if (hdmi_msm_state->panel_power_on)
 		queue_work(hdmi_work_queue, &hdmi_msm_state->hdcp_reauth_work);
 }
+
+#else
+	static inline void hdmi_msm_hdcp_enable(void) { return ; }
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 
 static void hdmi_msm_init_phy(int video_format)
@@ -2788,7 +2798,10 @@ static void hdmi_msm_turn_on(void)
 	HDMI_OUTP(0x0254, 4 | (external_common_state->hpd_state ? 0 : 2));
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
-	hdmi_msm_hdcp_enable();
+	if (hdmi_msm_state->reauth) {
+		hdmi_msm_hdcp_enable();
+		hdmi_msm_state->reauth = FALSE ;
+	}
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 	DEV_INFO("HDMI Core: Initialized\n");
 }
