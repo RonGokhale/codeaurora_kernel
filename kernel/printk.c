@@ -140,8 +140,6 @@ EXPORT_SYMBOL(console_set_on_cmdline);
 /* Flag: console code may call schedule() */
 static int console_may_schedule;
 
-#define MAX_CHARS_PER_RELEASE_LOOP 128
-
 #ifdef CONFIG_PRINTK
 
 static char __log_buf[__LOG_BUF_LEN];
@@ -1096,6 +1094,7 @@ static int __cpuinit console_cpu_notify(struct notifier_block *self,
 	switch (action) {
 	case CPU_ONLINE:
 	case CPU_DEAD:
+	case CPU_DYING:
 	case CPU_DOWN_FAILED:
 	case CPU_UP_CANCELED:
 		console_lock();
