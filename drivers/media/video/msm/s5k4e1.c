@@ -33,15 +33,15 @@
 /* AF Total steps parameters */
 #define S5K4E1_TOTAL_STEPS_NEAR_TO_FAR	32
 
-#define S5K4E1_REG_PREV_FRAME_LEN_1	30
-#define S5K4E1_REG_PREV_FRAME_LEN_2	31
-#define S5K4E1_REG_PREV_LINE_LEN_1	32
-#define S5K4E1_REG_PREV_LINE_LEN_2	33
+#define S5K4E1_REG_PREV_FRAME_LEN_1	31
+#define S5K4E1_REG_PREV_FRAME_LEN_2	32
+#define S5K4E1_REG_PREV_LINE_LEN_1	33
+#define S5K4E1_REG_PREV_LINE_LEN_2	34
 
-#define S5K4E1_REG_SNAP_FRAME_LEN_1	14
-#define S5K4E1_REG_SNAP_FRAME_LEN_2	15
-#define  S5K4E1_REG_SNAP_LINE_LEN_1	16
-#define S5K4E1_REG_SNAP_LINE_LEN_2	17
+#define S5K4E1_REG_SNAP_FRAME_LEN_1	15
+#define S5K4E1_REG_SNAP_FRAME_LEN_2	16
+#define  S5K4E1_REG_SNAP_LINE_LEN_1	17
+#define S5K4E1_REG_SNAP_LINE_LEN_2	18
 
 struct s5k4e1_work_t {
 	struct work_struct work;
@@ -196,7 +196,7 @@ static int32_t s5k4e1_af_i2c_txdata(unsigned short saddr,
 		},
 	};
 	if (i2c_transfer(s5k4e1_af_client->adapter, msg, 1) < 0) {
-		CDBG("s5k4e1_af_i2c_txdata faild 0x%x\n", saddr);
+		pr_err("s5k4e1_af_i2c_txdata faild 0x%x\n", saddr);
 		return -EIO;
 	}
 
@@ -212,9 +212,9 @@ static int32_t s5k4e1_af_i2c_write_b_sensor(uint8_t waddr, uint8_t bdata)
 	buf[0] = waddr;
 	buf[1] = bdata;
 	CDBG("i2c_write_b addr = 0x%x, val = 0x%x\n", waddr, bdata);
-	rc = s5k4e1_af_i2c_txdata(s5k4e1_af_client->addr, buf, 2);
+	rc = s5k4e1_af_i2c_txdata(s5k4e1_af_client->addr << 1, buf, 2);
 	if (rc < 0) {
-		CDBG("i2c_write_b failed, addr = 0x%x, val = 0x%x!\n",
+		pr_err("i2c_write_b failed, addr = 0x%x, val = 0x%x!\n",
 				waddr, bdata);
 	}
 	return rc;
@@ -380,19 +380,18 @@ static int32_t s5k4e1_move_focus(int direction,
 	code_val_lsb = (next_position & 0x000F) << 4;
 
 	if (s5k4e1_af_i2c_write_b_sensor(code_val_msb, code_val_lsb) < 0) {
-		CDBG("move_focus failed at line %d ...\n", __LINE__);
+		pr_err("move_focus failed at line %d ...\n", __LINE__);
 		return -EBUSY;
 	}
 
 	s5k4e1_ctrl->curr_lens_pos = next_position;
-
 	return 0;
 }
 
 static int32_t s5k4e1_set_default_focus(uint8_t af_step)
 {
 	int32_t rc = 0;
-	return 0;
+
 	if (s5k4e1_ctrl->curr_step_pos != 0) {
 		rc = s5k4e1_move_focus(MOVE_FAR,
 				s5k4e1_ctrl->curr_step_pos);
@@ -441,15 +440,6 @@ static int32_t s5k4e1_sensor_setting(int update_type, int rt)
 		CSI_CONFIG = 0;
 	} else if (update_type == UPDATE_PERIODIC) {
 		if (rt == RES_PREVIEW) {
-			s5k4e1_reset_sensor();
-			msleep(20);
-			s5k4e1_i2c_write_b_table(s5k4e1_regs.reg_mipi,
-					s5k4e1_regs.reg_mipi_size);
-			s5k4e1_i2c_write_b_table(s5k4e1_regs.rec_settings,
-					s5k4e1_regs.rec_size);
-			s5k4e1_i2c_write_b_table(s5k4e1_regs.reg_pll_p,
-					s5k4e1_regs.reg_pll_p_size);
-			msleep(20);
 			s5k4e1_i2c_write_b_table(s5k4e1_regs.reg_prev,
 					s5k4e1_regs.reg_prev_size);
 		} else {
@@ -682,6 +672,29 @@ int s5k4e1_sensor_open_init(const struct msm_camera_sensor_info *data)
 	else
 		rc = s5k4e1_sensor_setting(REG_INIT, RES_CAPTURE);
 	s5k4e1_ctrl->fps = 30 * Q8;
+
+	/* enable AF actuator */
+	if (s5k4e1_ctrl->sensordata->vcm_enable) {
+		CDBG("enable AF actuator, gpio = %d\n",
+			 s5k4e1_ctrl->sensordata->vcm_pwd);
+		rc = gpio_request(s5k4e1_ctrl->sensordata->vcm_pwd,
+						"s5k4e1_af");
+		if (!rc)
+			gpio_direction_output(
+				s5k4e1_ctrl->sensordata->vcm_pwd,
+				 1);
+		else {
+			pr_err("s5k4e1_ctrl gpio request failed!\n");
+			goto init_fail;
+		}
+		msleep(20);
+		rc = s5k4e1_set_default_focus(0);
+		if (rc < 0) {
+			gpio_direction_output(s5k4e1_ctrl->sensordata->vcm_pwd,
+								0);
+			gpio_free(s5k4e1_ctrl->sensordata->vcm_pwd);
+		}
+	}
 	if (rc < 0)
 		goto init_fail;
 	else

@@ -128,9 +128,9 @@
 /* Shutdown signal for MIPI data phy line */
 #define	MIPI_PHY_D1_CONTROL_MIPI_DATA_PHY_SHUTDOWNB_SHFT	0x8
 
-#define MSM_AXI_QOS_PREVIEW 122000
-#define MSM_AXI_QOS_SNAPSHOT 192000
-#define MSM_AXI_QOS_RECORDING 192000
+#define MSM_AXI_QOS_PREVIEW 200000
+#define MSM_AXI_QOS_SNAPSHOT 200000
+#define MSM_AXI_QOS_RECORDING 200000
 
 static struct clk *camio_cam_clk;
 static struct clk *camio_vfe_clk;
@@ -146,6 +146,7 @@ static struct msm_camera_io_ext camio_ext;
 static struct msm_camera_io_clk camio_clk;
 static struct platform_device *camio_dev;
 void __iomem *csibase;
+void __iomem *appbase;
 
 
 
@@ -345,6 +346,13 @@ int msm_camio_enable(struct platform_device *pdev)
 		(0x0 << MIPI_PHY_CL_CONTROL_LP_REC_EN_SHFT);
 	CDBG("%s MIPI_PHY_CL_CONTROL val=0x%x\n", __func__, val);
 	msm_io_w(val, csibase + MIPI_PHY_CL_CONTROL);
+
+	appbase = ioremap(camio_ext.appphy,
+		camio_ext.appsz);
+	if (!appbase) {
+		rc = -ENOMEM;
+		goto csi_irq_fail;
+	}
 	return 0;
 
 csi_irq_fail:
@@ -385,6 +393,7 @@ void msm_camio_disable(struct platform_device *pdev)
 
 	free_irq(camio_ext.csiirq, 0);
 	iounmap(csibase);
+	iounmap(appbase);
 	CDBG("disable clocks\n");
 
 	msm_camio_clk_disable(CAMIO_VFE_CLK);
@@ -422,7 +431,30 @@ int msm_camio_sensor_clk_off(struct platform_device *pdev)
 
 void msm_camio_vfe_blk_reset(void)
 {
-	/* TODO */
+	uint32_t val;
+
+	/* do apps reset */
+	val = readl_relaxed(appbase + 0x00000210);
+	val |= 0x1;
+	writel_relaxed(val, appbase + 0x00000210);
+	usleep_range(10000, 11000);
+
+	val = readl_relaxed(appbase + 0x00000210);
+	val &= ~0x1;
+	writel_relaxed(val, appbase + 0x00000210);
+	usleep_range(10000, 11000);
+
+	/* do axi reset */
+	val = readl_relaxed(appbase + 0x00000208);
+	val |= 0x1;
+	writel_relaxed(val, appbase + 0x00000208);
+	usleep_range(10000, 11000);
+
+	val = readl_relaxed(appbase + 0x00000208);
+	val &= ~0x1;
+	writel_relaxed(val, appbase + 0x00000208);
+	dsb();
+	usleep_range(10000, 11000);
 	return;
 }
 

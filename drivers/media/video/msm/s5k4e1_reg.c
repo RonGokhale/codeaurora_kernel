@@ -26,7 +26,7 @@ struct s5k4e1_i2c_reg_conf s5k4e1_mipi_settings[] = {
 struct s5k4e1_i2c_reg_conf s5k4e1_pll_preview_settings[] = {
 	{0x0305, 0x04},
 	{0x0306, 0x00},
-	{0x0307, 0x22},
+	{0x0307, 0x44},
 	{0x30B5, 0x00},
 	{0x30E2, 0x01},/* num lanes[1:0] = 2 */
 	{0x30F1, 0xB0},

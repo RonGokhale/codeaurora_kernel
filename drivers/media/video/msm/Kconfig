@@ -117,6 +117,17 @@ config S5K4E1
 	  two mipi lanes, required for msm7x2xA platform.
 	  Say Y here if this is msm7x2xA variant platform.
 
+config MSM_CAMERA_FLASH_SC628A
+	bool "Qualcomm MSM camera sc628a flash support"
+	depends on MSM_CAMERA
+	default n
+	---help---
+	  Enable support for LED flash for msm camera.
+	  It is a samtech charge pump flash driver and it
+	  supports spotlight and flash light modes with
+	  differrent current levels.
+	  Say Y here if this is msm7x2xA variant platform.
+
 config OV2720
 	bool "Sensor ov2720"
 	depends on MSM_CAMERA && ARCH_MSM8960 && !MSM_CAMERA_V4L2

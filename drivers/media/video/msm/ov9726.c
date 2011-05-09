@@ -482,13 +482,16 @@ static int ov9726_probe_init_sensor(const struct msm_camera_sensor_info *data)
 {
 	int32_t rc = 0;
 	uint16_t  chipidl, chipidh;
-	rc = gpio_request(data->sensor_reset, "ov9726");
-	if (!rc) {
-		gpio_direction_output(data->sensor_reset, 0);
-		gpio_set_value_cansleep(data->sensor_reset, 1);
-	} else
-		goto init_probe_done;
-	msleep(20);
+
+	if (data->sensor_reset_enable) {
+		rc = gpio_request(data->sensor_reset, "ov9726");
+		if (!rc) {
+			gpio_direction_output(data->sensor_reset, 0);
+			gpio_set_value_cansleep(data->sensor_reset, 1);
+			msleep(20);
+		} else
+			goto init_probe_done;
+	}
 	/* 3. Read sensor Model ID: */
 	rc = ov9726_i2c_read(OV9726_PIDH_REG, &chipidh, 1);
 	if (rc < 0)
@@ -509,8 +512,10 @@ static int ov9726_probe_init_sensor(const struct msm_camera_sensor_info *data)
 	goto init_probe_done;
 
 init_probe_fail:
-	gpio_direction_output(data->sensor_reset, 0);
-	gpio_free(data->sensor_reset);
+	if (data->sensor_reset_enable) {
+		gpio_direction_output(data->sensor_reset, 0);
+		gpio_free(data->sensor_reset);
+	}
 init_probe_done:
 	printk(KERN_INFO " ov9726_probe_init_sensor finishes\n");
 	return rc;
@@ -705,8 +710,10 @@ int ov9726_sensor_config(void __user *argp)
 
 static int ov9726_probe_init_done(const struct msm_camera_sensor_info *data)
 {
-	gpio_direction_output(data->sensor_reset, 0);
-	gpio_free(data->sensor_reset);
+	if (data->sensor_reset_enable) {
+		gpio_direction_output(data->sensor_reset, 0);
+		gpio_free(data->sensor_reset);
+	}
 	return 0;
 }
 
