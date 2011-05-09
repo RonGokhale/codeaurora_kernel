@@ -741,7 +741,7 @@ static void msm_hsusb_vbus_power(bool on)
 		.output_buffer	= PM_GPIO_OUT_BUF_CMOS,
 		.output_value	= 1,
 		.pull		= PM_GPIO_PULL_NO,
-		.vin_sel	= PM_GPIO_VIN_S3,
+		.vin_sel	= PM_GPIO_VIN_S4,
 		.out_strength	= PM_GPIO_STRENGTH_MED,
 		.function	= PM_GPIO_FUNC_NORMAL,
 	};
