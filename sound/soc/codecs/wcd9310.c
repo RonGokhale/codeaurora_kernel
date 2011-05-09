@@ -14,7 +14,6 @@
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/mfd/wcd9310/core.h>
-#include <linux/mfd/wcd9310/pdata.h>
 #include <linux/mfd/wcd9310/registers.h>
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
@@ -32,7 +31,6 @@ enum tabla_bandgap_type {
 struct tabla_priv { /* member undecided */
 	struct snd_soc_codec *codec;
 	u32 ref_cnt;
-	struct tabla_pdata *pdata;
 	enum tabla_bandgap_type bandgap_type;
 	bool clock_active;
 };
@@ -44,14 +42,15 @@ static int tabla_codec_enable_charge_pump(struct snd_soc_dapm_widget *w,
 	struct tabla_priv *tabla = snd_soc_codec_get_drvdata(codec);
 
 	pr_debug("%s %d\n", __func__, event);
-	if ((tabla->bandgap_type != TABLA_BANDGAP_AUDIO_MODE) ||
-		(!tabla->clock_active)) {
-		pr_err("%s: Error, Tabla must have clocks enabled for charge"
-			"pump\n", __func__);
-		return -EINVAL;
-	}
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
+		if ((tabla->bandgap_type != TABLA_BANDGAP_AUDIO_MODE) ||
+			(!tabla->clock_active)) {
+			pr_err("%s: Error, Tabla must have clocks enabled for "
+				"charge pump\n", __func__);
+			return -EINVAL;
+		}
+
 		snd_soc_update_bits(codec, TABLA_A_CP_EN, 0x01, 0x01);
 		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_OTHR_CTL, 0x01,
 			0x01);
@@ -68,9 +67,6 @@ static int tabla_codec_enable_charge_pump(struct snd_soc_dapm_widget *w,
 		snd_soc_update_bits(codec, TABLA_A_CDC_CLSG_CTL, 0x08, 0x00);
 		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_OTHR_CTL, 0x01,
 			0x00);
-
-		/* TODO disable PA */
-
 		snd_soc_update_bits(codec, TABLA_A_CP_STATIC, 0x08, 0x00);
 		snd_soc_update_bits(codec, TABLA_A_CP_EN, 0x01, 0x00);
 		break;
@@ -79,44 +75,120 @@ static int tabla_codec_enable_charge_pump(struct snd_soc_dapm_widget *w,
 }
 
 static const struct snd_kcontrol_new tabla_snd_controls[] = {
-	SOC_SINGLE_TLV("RX1 Digital Volume", TABLA_A_CDC_RX1_VOL_CTL_B2_CTL, 4,
-		127, 0, pga_tlv),
-	SOC_SINGLE_TLV("TX6 Digital Volume", TABLA_A_TX_1_2_EN, 4, 127, 0,
+	SOC_SINGLE_TLV("LINEOUT1 Volume", TABLA_A_RX_LINE_1_GAIN, 0, 127, 0,
+		pga_tlv),
+	SOC_SINGLE_TLV("LINEOUT3 Volume", TABLA_A_RX_LINE_3_GAIN, 0, 127, 0,
+		pga_tlv),
+	SOC_SINGLE_TLV("HPHL Volume", TABLA_A_RX_HPH_L_GAIN, 0, 127, 0,
+		pga_tlv),
+	SOC_SINGLE_TLV("HPHR Volume", TABLA_A_RX_HPH_R_GAIN, 0, 127, 0,
+		pga_tlv),
+
+	SOC_SINGLE_TLV("SLIM RX1 Digital Volume",
+		TABLA_A_CDC_RX1_VOL_CTL_B2_CTL, 4, 127, 0, pga_tlv),
+	SOC_SINGLE_TLV("SLIM TX6 Digital Volume", TABLA_A_TX_1_2_EN, 4, 127, 0,
 		pga_tlv),
 	/* TODO make the gain follow the correct scale */
 
 	SOC_SINGLE("MICBIAS1 CAPLESS Switch", TABLA_A_MICB_1_CTL, 4, 1, 1),
 };
+
 static const char *rx_mix1_text[] = {
 	"ZERO", "SRC1", "SRC2", "IIR1", "IIR2", "RX1", "RX2", "RX3", "RX4",
 		"RX5", "RX6", "RX7"
+};
+
+static const char *sb_tx1_mux_text[] = {
+	"ZERO", "RMIX1", "RMIX2", "RMIX3", "RMIX4", "RMIX5", "RMIX6", "RMIX7",
+		"DEC1"
 };
 
 static const char *sb_tx6_mux_text[] = {
 	"ZERO", "RMIX1", "RMIX2", "RMIX3", "RMIX4", "RMIX5", "RMIX6", "RMIX7",
 		"DEC6"
 };
+
+static const char *dec1_mux_text[] = {
+	"ZERO", "DMIC1", "ADC6",
+};
+
 static const char *dec6_mux_text[] = {
-	"ZERO", "DMIC1", "DMIC6", "ADC1", "ADC6", "RSVD1", "RSVD2"
+	"ZERO", "DMIC6", "ADC1",
+};
+
+static const char *iir1_inp1_text[] = {
+	"ZERO", "DEC1", "DEC2", "DEC3", "DEC4", "DEC5", "DEC6", "DEC7", "DEC8",
+	"DEC9", "DEC10", "RX1", "RX2", "RX3", "RX4", "RX5", "RX6", "RX7"
 };
 
 static const struct soc_enum rx_mix1_inp1_chain_enum =
 	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_RX1_B1_CTL, 0, 12, rx_mix1_text);
 
+static const struct soc_enum rx2_mix1_inp1_chain_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_RX2_B1_CTL, 0, 12, rx_mix1_text);
+
+static const struct soc_enum rx3_mix1_inp1_chain_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_RX3_B1_CTL, 0, 12, rx_mix1_text);
+
+static const struct soc_enum rx4_mix1_inp1_chain_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_RX4_B1_CTL, 0, 12, rx_mix1_text);
+
 static const struct soc_enum sb_tx6_mux_enum =
 	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_SB_B6_CTL, 0, 9, sb_tx6_mux_text);
 
+static const struct soc_enum sb_tx1_mux_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_SB_B7_CTL, 0, 9, sb_tx1_mux_text);
+
+static const struct soc_enum dec1_mux_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_B1_CTL, 0, 3, dec1_mux_text);
+
 static const struct soc_enum dec6_mux_enum =
-	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_B2_CTL, 0, 7, dec6_mux_text);
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_B2_CTL, 3, 3, dec6_mux_text);
+
+static const struct soc_enum iir1_inp1_mux_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_EQ1_B1_CTL, 0, 18, iir1_inp1_text);
 
 static const struct snd_kcontrol_new rx_mix1_inp1_mux =
-	SOC_DAPM_ENUM("RX MIX1 INP1 Mux", rx_mix1_inp1_chain_enum);
+	SOC_DAPM_ENUM("RX1 MIX1 INP1 Mux", rx_mix1_inp1_chain_enum);
+
+static const struct snd_kcontrol_new rx2_mix1_inp1_mux =
+	SOC_DAPM_ENUM("RX2 MIX1 INP1 Mux", rx2_mix1_inp1_chain_enum);
+
+static const struct snd_kcontrol_new rx3_mix1_inp1_mux =
+	SOC_DAPM_ENUM("RX3 MIX1 INP1 Mux", rx3_mix1_inp1_chain_enum);
+
+static const struct snd_kcontrol_new rx4_mix1_inp1_mux =
+	SOC_DAPM_ENUM("RX4 MIX1 INP1 Mux", rx4_mix1_inp1_chain_enum);
 
 static const struct snd_kcontrol_new sb_tx6_mux =
-	SOC_DAPM_ENUM("TX6 MUX Mux", sb_tx6_mux_enum);
+	SOC_DAPM_ENUM("SLIM TX6 MUX Mux", sb_tx6_mux_enum);
+
+static const struct snd_kcontrol_new sb_tx1_mux =
+	SOC_DAPM_ENUM("SLIM TX1 MUX Mux", sb_tx1_mux_enum);
+
+static const struct snd_kcontrol_new dec1_mux =
+	SOC_DAPM_ENUM("DEC1 MUX Mux", dec1_mux_enum);
 
 static const struct snd_kcontrol_new dec6_mux =
 	SOC_DAPM_ENUM("DEC6 MUX Mux", dec6_mux_enum);
+
+static const struct snd_kcontrol_new iir1_inp1_mux =
+	SOC_DAPM_ENUM("IIR1 INP1 Mux", iir1_inp1_mux_enum);
+
+static const struct snd_kcontrol_new dac1_control =
+	SOC_DAPM_SINGLE("Switch", TABLA_A_RX_EAR_EN, 5, 1, 0);
+
+static const struct snd_kcontrol_new hphl_switch =
+	SOC_DAPM_SINGLE("Switch", TABLA_A_RX_HPH_L_DAC_CTL, 6, 1, 0);
+
+static const struct snd_kcontrol_new hphr_switch =
+	SOC_DAPM_SINGLE("Switch", TABLA_A_RX_HPH_R_DAC_CTL, 6, 1, 0);
+
+static const struct snd_kcontrol_new lineout1_switch =
+	SOC_DAPM_SINGLE("Switch", TABLA_A_RX_LINE_1_DAC_CTL, 6, 1, 0);
+
+static const struct snd_kcontrol_new lineout3_switch =
+	SOC_DAPM_SINGLE("Switch", TABLA_A_RX_LINE_3_DAC_CTL, 6, 1, 0);
 
 static int tabla_codec_enable_adc1(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *kcontrol, int event)
@@ -168,6 +240,59 @@ static int tabla_codec_enable_pamp_gain(struct snd_soc_dapm_widget *w,
 	}
 	return 0;
 }
+static int tabla_codec_delay_40ms(struct snd_soc_dapm_widget *w,
+		struct snd_kcontrol *kcontrol, int event)
+{
+	pr_debug("%s %d\n", __func__, event);
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		usleep_range(40, 40);
+		break;
+	}
+	return 0;
+}
+
+static int tabla_codec_enable_dmic1(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+
+	pr_debug("%s %d\n", __func__, event);
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		snd_soc_update_bits(codec, TABLA_A_CDC_TX1_MUX_CTL, 0x1, 0x1);
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_DMIC_CTL, 0x2, 0x2);
+		snd_soc_update_bits(codec, TABLA_A_CDC_TX1_DMIC_CTL, 0x1, 0x1);
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_DMIC_CTL, 0x1, 0x1);
+		break;
+	case SND_SOC_DAPM_POST_PMD:
+		snd_soc_update_bits(codec, TABLA_A_CDC_TX1_DMIC_CTL, 0x1, 0);
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_DMIC_CTL, 0x3, 0);
+		break;
+	}
+	return 0;
+}
+
+static int tabla_codec_enable_micbias1(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+
+	pr_debug("%s %d\n", __func__, event);
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		snd_soc_update_bits(codec, TABLA_A_MICB_CFILT_1_CTL, 0x40,
+			0x40);
+		snd_soc_update_bits(codec, TABLA_A_MICB_CFILT_1_CTL, 0x80,
+			0x80);
+		break;
+	case SND_SOC_DAPM_POST_PMD:
+		snd_soc_update_bits(codec, TABLA_A_MICB_CFILT_2_CTL, 0x80, 0);
+		snd_soc_update_bits(codec, TABLA_A_MICB_CFILT_2_CTL, 0x40, 0);
+		break;
+	}
+	return 0;
+}
 
 static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 	/*RX stuff */
@@ -179,25 +304,55 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 
 	SND_SOC_DAPM_PGA("EAR PA Input", TABLA_A_CDC_CLSG_CTL, 2, 0, NULL, 0),
 
-	SND_SOC_DAPM_DAC("DAC1 REF", NULL, TABLA_A_RX_EAR_EN, 5, 0),
-	SND_SOC_DAPM_DAC("DAC1", NULL, TABLA_A_RX_EAR_EN, 6, 0),
-
-	SND_SOC_DAPM_SUPPLY("RX1 CP", TABLA_A_CDC_RX1_B6_CTL, 5, 0,
+	SND_SOC_DAPM_SWITCH("DAC1", TABLA_A_RX_EAR_EN, 6, 0, &dac1_control),
+	SND_SOC_DAPM_PGA_E("RX1 CP", TABLA_A_CDC_RX1_B6_CTL, 5, 0, NULL, 0,
 		tabla_codec_enable_charge_pump, SND_SOC_DAPM_POST_PMU |
 			SND_SOC_DAPM_PRE_PMD),
+	SND_SOC_DAPM_PGA("RX BIAS", TABLA_A_RX_COM_BIAS, 7, 0, NULL, 0),
+	SND_SOC_DAPM_MUX("RX1 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 0, 0,
+		&rx_mix1_inp1_mux),
+	SND_SOC_DAPM_AIF_IN("SLIM RX1", "AIF1 Playback", 0, SND_SOC_NOPM, 0, 0),
 
-	SND_SOC_DAPM_SUPPLY("RX1 CLOCK", TABLA_A_CDC_CLK_RX_B1_CTL, 0, 0, NULL,
-		0),
-	SND_SOC_DAPM_SUPPLY("RX1 BIAS", TABLA_A_RX_COM_BIAS, 7, 0, NULL, 0),
+	/* RX 2 path */
+	SND_SOC_DAPM_PGA_E("RX2 CP", TABLA_A_CDC_RX2_B6_CTL, 5, 0, NULL, 0,
+		tabla_codec_enable_charge_pump, SND_SOC_DAPM_POST_PMU |
+			SND_SOC_DAPM_PRE_PMD),
+	SND_SOC_DAPM_MUX("RX2 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 1, 0,
+		&rx2_mix1_inp1_mux),
+	SND_SOC_DAPM_AIF_IN("SLIM RX2", "AIF1 Playback", 0, SND_SOC_NOPM, 0, 0),
 
-	SND_SOC_DAPM_MUX("RX MIX1 INP1", SND_SOC_NOPM, 0, 0, &rx_mix1_inp1_mux),
-	SND_SOC_DAPM_AIF_IN("RX1", "AIF1 Playback", 0, TABLA_A_RX_COM_BIAS, 7,
-		0),
+	/* Headphone */
+	SND_SOC_DAPM_OUTPUT("HEADPHONE"),
+	SND_SOC_DAPM_PGA("HPHL", TABLA_A_RX_HPH_CNP_EN, 5, 0, NULL, 0),
+	SND_SOC_DAPM_SWITCH("HPHL DAC", TABLA_A_RX_HPH_L_DAC_CTL, 7, 0,
+		&hphl_switch),
+
+	SND_SOC_DAPM_PGA("HPHR", TABLA_A_RX_HPH_CNP_EN, 4, 0, NULL, 0),
+	SND_SOC_DAPM_SWITCH("HPHR DAC", TABLA_A_RX_HPH_R_DAC_CTL, 7, 0,
+		&hphr_switch),
+
+	/* Speaker */
+	SND_SOC_DAPM_OUTPUT("LINEOUT"),
+	SND_SOC_DAPM_PGA("LINEOUT1", TABLA_A_RX_LINE_CNP_EN, 0, 0, NULL, 0),
+
+	SND_SOC_DAPM_SWITCH("LINEOUT1 DAC", TABLA_A_RX_LINE_1_DAC_CTL, 7, 0,
+		&lineout1_switch),
+	SND_SOC_DAPM_MUX("RX3 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 2, 0,
+		&rx3_mix1_inp1_mux),
+
+	SND_SOC_DAPM_PGA_E("LINEOUT3", TABLA_A_RX_LINE_CNP_EN, 2, 0, NULL, 0,
+		tabla_codec_delay_40ms, SND_SOC_DAPM_PRE_PMU),
+
+	SND_SOC_DAPM_SWITCH("LINEOUT3 DAC", TABLA_A_RX_LINE_3_DAC_CTL, 7, 0,
+		&lineout3_switch),
+	SND_SOC_DAPM_MUX("RX4 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 3, 0,
+		&rx4_mix1_inp1_mux),
 
 	/* TX */
 	SND_SOC_DAPM_INPUT("AMIC1"),
-	/* TODO Enable CFILTER */
-	SND_SOC_DAPM_MICBIAS("MIC BIAS1", TABLA_A_MICB_1_CTL, 7, 0),
+	SND_SOC_DAPM_MICBIAS_E("MIC BIAS1", TABLA_A_MICB_1_CTL, 7, 0,
+		tabla_codec_enable_micbias1, SND_SOC_DAPM_PRE_PMU |
+		SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_ADC_E("ADC1", NULL, TABLA_A_TX_1_2_EN, 7, 0,
 		tabla_codec_enable_adc1, SND_SOC_DAPM_PRE_PMU),
 
@@ -206,31 +361,81 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 		SND_SOC_DAPM_POST_PMD),
 
 	SND_SOC_DAPM_MUX("DEC6 MUX", TABLA_A_CDC_CLK_OTHR_CTL, 2, 0, &dec6_mux),
-	SND_SOC_DAPM_MUX("TX6 MUX", 0x308, 5, 0, &sb_tx6_mux),
-	SND_SOC_DAPM_AIF_OUT("TX6", "AIF1 Capture", NULL, TABLA_A_TX_1_2_EN, 7,
+	SND_SOC_DAPM_MUX("SLIM TX6 MUX", TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL, 5, 0,
+		&sb_tx6_mux),
+	SND_SOC_DAPM_AIF_OUT("SLIM TX6", "AIF1 Capture", NULL,
+		TABLA_A_TX_1_2_EN, 7, 0),
+
+	/* Digital Mic */
+	SND_SOC_DAPM_INPUT("DMIC OUT"),
+	SND_SOC_DAPM_MIC("DMIC1", &tabla_codec_enable_dmic1),
+	SND_SOC_DAPM_MUX("DEC1 MUX", TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL, 0, 0,
+		&dec1_mux),
+	SND_SOC_DAPM_MUX("SLIM TX1 MUX", SND_SOC_NOPM, 0, 0, &sb_tx1_mux),
+	SND_SOC_DAPM_AIF_OUT("SLIM TX1", "AIF1 Capture", NULL, SND_SOC_NOPM, 0,
 		0),
+
+
+	/* Sidetone */
+	SND_SOC_DAPM_MUX("IIR1 INP1 MUX", SND_SOC_NOPM, 0, 0, &iir1_inp1_mux),
+	SND_SOC_DAPM_PGA("IIR1", TABLA_A_CDC_CLK_SD_CTL, 0, 0, NULL, 0),
 
 };
 
 static const struct snd_soc_dapm_route audio_map[] = {
-	/* Earpiece route */
+	/* SLIMBUS Connections */
+	{"RX BIAS", NULL, "SLIM RX1"},
+	{"RX BIAS", NULL, "SLIM RX2"},
+
+	{"SLIM TX1", NULL, "SLIM TX1 MUX"},
+	{"SLIM TX1 MUX", "DEC1", "DEC1 MUX"},
+	{"SLIM TX6", NULL, "SLIM TX6 MUX"},
+	{"SLIM TX6 MUX", "DEC6", "DEC6 MUX"},
+
+	/* Earpiece (RX MIX1) */
 	{"EAR", NULL, "EAR PA"},
 	{"EAR PA", NULL, "EAR PA Input"},
 	{"EAR PA Input", NULL, "DAC1"},
-	{"DAC1", NULL, "DAC1 REF"},
-	{"DAC1 REF", NULL, "RX MIX1 INP1"},
-	{"RX MIX1 INP1", "RX1", "RX1 CLOCK"},
-	{"RX1 CLOCK", NULL, "RX1 CP"},
-	{"RX1 CP", NULL, "RX1 BIAS"},
-	{"RX1 BIAS", NULL, "RX1"},
+	{"DAC1", "Switch", "RX1 CP"},
+	{"RX1 CP", NULL, "RX1 MIX1 INP1"},
+	{"RX1 MIX1 INP1", "RX1", "RX BIAS"},
 
-	/* Handset TX route */
-	{"TX6", NULL, "TX6 MUX"},
-	{"TX6 MUX", "DEC6", "DEC6 MUX"},
+	/* Headset (RX MIX1 and RX MIX2) */
+	{"HEADPHONE", NULL, "HPHL"},
+	{"HPHL", NULL, "HPHL DAC"},
+	{"HPHL DAC", "Switch", "RX1 MIX1 INP1"},
+
+	{"HEADPHONE", NULL, "HPHR"},
+	{"HPHR", NULL, "HPHR DAC"},
+	{"HPHR DAC", "Switch", "RX2 CP"},
+	{"RX2 CP", NULL, "RX2 MIX1 INP1"},
+	{"RX2 MIX1 INP1", "RX2", "RX BIAS"},
+
+	/* Speaker (RX MIX3 and RX MIX4) */
+	{"LINEOUT", NULL, "LINEOUT1"},
+	{"LINEOUT1", NULL, "LINEOUT1 DAC"},
+	{"LINEOUT1 DAC", "Switch", "RX3 MIX1 INP1"},
+	{"RX3 MIX1 INP1", "RX1", "RX BIAS"},
+
+	{"LINEOUT", NULL, "LINEOUT3"},
+	{"LINEOUT3", NULL, "LINEOUT3 DAC"},
+	{"LINEOUT3 DAC", "Switch", "RX4 MIX1 INP1"},
+	{"RX4 MIX1 INP1", "RX2", "RX BIAS"},
+
+	/* Handset TX */
 	{"DEC6 MUX", "ADC1", "ADC1"},
 	{"ADC1", NULL, "ADC BLOCK"},
 	{"ADC BLOCK", NULL, "MIC BIAS1"},
 	{"MIC BIAS1", NULL, "AMIC1"},
+
+	/* Digital Mic */
+	{"DEC1 MUX", "DMIC1", "DMIC1"},
+	{"DMIC1", NULL, "DMIC OUT"},
+
+	/* Sidetone (IIR1) */
+	{"RX1 MIX1 INP1", "IIR1", "IIR1"},
+	{"IIR1", NULL, "IIR1 INP1 MUX"},
+	{"IIR1 INP1 MUX", "DEC6", "DEC6 MUX"},
 
 };
 
@@ -259,7 +464,7 @@ static int tabla_write(struct snd_soc_codec *codec, unsigned int reg,
 
 	BUG_ON(reg > TABLA_MAX_REGISTER);
 
-	if (!tabla_volatile(codec)) {
+	if (!tabla_volatile(reg)) {
 		pr_debug("writing to cache\n");
 		ret = snd_soc_cache_write(codec, reg, value);
 		if (ret != 0)
@@ -340,8 +545,6 @@ static int tabla_codec_enable_clock_block(struct snd_soc_codec *codec)
 		return -EINVAL;
 	}
 
-	snd_soc_update_bits(codec, TABLA_A_CLK_BUFF_EN1, 1 << 4, 1 << 4);
-	usleep_range(1000, 1000);
 	snd_soc_update_bits(codec, TABLA_A_CLK_BUFF_EN2, 0x02, 0x00);
 	snd_soc_update_bits(codec, TABLA_A_CLK_BUFF_EN2, 0x04, 0x04);
 	snd_soc_update_bits(codec, TABLA_A_CDC_CLK_MCLK_CTL, 0x01, 0x01);
@@ -467,11 +670,36 @@ static int tabla_digital_mute(struct snd_soc_dai *codec_dai, int mute)
 	return 0;
 }
 
+static int tabla_set_dai_sysclk(struct snd_soc_dai *dai,
+		int clk_id, unsigned int freq, int dir)
+{
+	pr_debug("%s\n", __func__);
+	return 0;
+}
+
+static int tabla_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
+{
+	pr_debug("%s\n", __func__);
+	return 0;
+}
+
+static int tabla_hw_params(struct snd_pcm_substream *substream,
+			    struct snd_pcm_hw_params *params,
+			    struct snd_soc_dai *dai)
+{
+	pr_debug("%s: DAI-ID %x\n", __func__, dai->id);
+	return 0;
+}
+
 static struct snd_soc_dai_ops tabla_dai_ops = {
 	.startup = tabla_startup,
 	.shutdown = tabla_shutdown,
+	.hw_params = tabla_hw_params,
+	.set_sysclk = tabla_set_dai_sysclk,
+	.set_fmt = tabla_set_dai_fmt,
 	.digital_mute = tabla_digital_mute,
 };
+
 static struct snd_soc_dai_driver tabla_dai[] = {
 	{
 		.name = "tabla_rx1",
@@ -520,20 +748,35 @@ static int tabla_codec_probe(struct snd_soc_codec *codec)
 	}
 
 	snd_soc_codec_set_drvdata(codec, tabla);
-	tabla->pdata = dev_get_platdata(codec->dev->parent);
-	if (!tabla->pdata)
-		pr_info("%s: No Tabla Platform Data\n", __func__);
 
 	tabla->ref_cnt = 0;
 	tabla->bandgap_type = TABLA_BANDGAP_OFF;
 	tabla->clock_active = false;
 	tabla->codec = codec;
 
+	/* Initialize gain registers to use register gain */
+	snd_soc_update_bits(codec, TABLA_A_RX_HPH_L_GAIN, 0x10, 0x10);
+	snd_soc_update_bits(codec, TABLA_A_RX_HPH_R_GAIN, 0x10, 0x10);
+	snd_soc_update_bits(codec, TABLA_A_RX_LINE_1_GAIN, 0x10, 0x10);
+	snd_soc_update_bits(codec, TABLA_A_RX_LINE_3_GAIN, 0x10, 0x10);
+
+	/* Initialize mic biases to differential mode */
+	snd_soc_update_bits(codec, TABLA_A_MICB_1_INT_RBIAS, 0x24, 0x24);
+	snd_soc_update_bits(codec, TABLA_A_MICB_2_INT_RBIAS, 0x24, 0x24);
+	snd_soc_update_bits(codec, TABLA_A_MICB_3_INT_RBIAS, 0x24, 0x24);
+	snd_soc_update_bits(codec, TABLA_A_MICB_4_INT_RBIAS, 0x24, 0x24);
+
+	/* Set headset CFILT to fast mode */
+	snd_soc_update_bits(codec, TABLA_A_MICB_CFILT_1_CTL, 0x00, 0x00);
+	snd_soc_update_bits(codec, TABLA_A_MICB_CFILT_2_CTL, 0x00, 0x00);
+	snd_soc_update_bits(codec, TABLA_A_MICB_CFILT_3_CTL, 0x00, 0x00);
+
 	snd_soc_add_controls(codec, tabla_snd_controls,
 		ARRAY_SIZE(tabla_snd_controls));
 	snd_soc_dapm_new_controls(dapm, tabla_dapm_widgets,
 		ARRAY_SIZE(tabla_dapm_widgets));
 	snd_soc_dapm_add_routes(dapm, audio_map, ARRAY_SIZE(audio_map));
+	snd_soc_dapm_sync(dapm);
 
 	return ret;
 }
