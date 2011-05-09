@@ -264,7 +264,7 @@ static int tabla_slim_probe(struct slim_device *slim)
 
 	/* In our simulator environment with the kernel subsystem, two SLIMBUS
 	 * interrupts must be manually triggered before a SLIMBUS device
-	 * calls slim_getlogical_addr, or the function call fails.  This delay
+	 * calls slim_get_logical_addr, or the function call fails.  This delay
 	 * gives the tester 10 seconds to trigger those interrupts so that the
 	 * function call succeeds. During codec bringup, it will be determined
 	 * if this delay is necessary on the actual hardware. If the delay is
@@ -274,7 +274,7 @@ static int tabla_slim_probe(struct slim_device *slim)
 
 	msleep(10000);
 
-	ret = slim_getlogical_addr(tabla->slim, tabla->slim->e_addr,
+	ret = slim_get_logical_addr(tabla->slim, tabla->slim->e_addr,
 		ARRAY_SIZE(tabla->slim->e_addr), &tabla->slim->laddr);
 	if (ret) {
 		pr_err("fail to get slimbus logical address %d\n", ret);
@@ -301,7 +301,8 @@ static int tabla_slim_probe(struct slim_device *slim)
 		goto err;
 	}
 
-	ret = slim_getlogical_addr(tabla->slim_slave, tabla->slim_slave->e_addr,
+	ret = slim_get_logical_addr(tabla->slim_slave,
+		tabla->slim_slave->e_addr,
 		ARRAY_SIZE(tabla->slim_slave->e_addr),
 			&tabla->slim_slave->laddr);
 	if (ret) {
