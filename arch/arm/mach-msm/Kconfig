@@ -45,6 +45,7 @@ config ARCH_MSM7X30
 	select MSM_GPIOMUX
 	select RESERVE_FIRST_PAGE
 	select MSM_DALRPC
+	select MSM_SPM_V1
 
 config ARCH_QSD8X50
 	bool "QSD8X50"
@@ -107,6 +108,7 @@ config ARCH_MSM8X60
 	select ARCH_INLINE_WRITE_UNLOCK_BH
 	select ARCH_INLINE_WRITE_UNLOCK_IRQRESTORE
 	select CPU_HAS_L2_PMU
+	select MSM_SPM_V1
 
 config ARCH_MSM8960
 	bool "MSM8960"
@@ -124,6 +126,7 @@ config ARCH_MSM8960
 	select MSM_PIL
 	select MSM_AUDIO_QDSP6 if SND_SOC
 	select CPU_HAS_L2_PMU
+	select MSM_SPM_V2
 
 config ARCH_FSM9XXX
 	bool "FSM9XXX"
@@ -1565,4 +1568,19 @@ config PM8XXX_RPC_VIBRATOR
 	  Enable the vibrator support on MSM over RPC. The vibrator
 	  is connected on the PM8XXX PMIC. Say Y if you want to enable
 	  this feature.
+
+config MSM_SPM_V1
+	bool "Driver support for SPM Version 1"
+	help
+	  Enables the support for Version 1 of the SPM driver. SPM hardware is
+	  used to manage the processor power during sleep. The driver allows
+	  configuring SPM to allow different power modes.
+
+config MSM_SPM_V2
+	bool "Driver support for SPM Version 2"
+	help
+	  Enables the support for Version 2 of the SPM driver. SPM hardware is
+	  used to manage the processor power during sleep. The driver allows
+	  configuring SPM to allow different power modes.
+
 endif
