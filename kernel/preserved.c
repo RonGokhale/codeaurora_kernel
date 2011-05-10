@@ -15,6 +15,7 @@
 #include <linux/preserved.h>
 #include <linux/reboot.h>
 #include <linux/rtc.h>
+#include <linux/smp.h>
 #include <linux/sysctl.h>
 #include <linux/uaccess.h>
 
@@ -478,8 +479,29 @@ static void kcrash_preserve(bool first_time)
 			sizeof(preserved->buf), preserved->cursor));
 }
 
-void emergency_restart(void)	/* overriding the __weak one in kernel/sys.c */
+/*
+ * HACK ALERT:
+ * We are currently relying on undefined behavior of how reboot works in order
+ * to preserve a crash in RAM. On a panic (see panic.c) we use
+ * smp_call_function_single to trap to CPU 0 and reboot from there. Otherwise,
+ * the crash does not appear to be preserved. This is a short-term hack fix.
+ * Long term, we plan on using crash_kexec.
+ */
+void preserved_ram_panic_handler(void *info)
 {
+	static char buf[1024];
+
+	/*
+	 * Note smp_send_stop is the usual smp shutdown function, which
+	 * unfortunately means it may not be hardened to work in a panic
+	 * situation.
+	 */
+	smp_send_stop();
+
+	atomic_notifier_call_chain(&panic_notifier_list, 0, buf);
+
+	bust_spinlocks(0);
+
 	/*
 	 * Initialize a good header if that's not already been done.
 	 */

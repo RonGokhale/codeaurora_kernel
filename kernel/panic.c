@@ -22,6 +22,7 @@
 #include <linux/init.h>
 #include <linux/nmi.h>
 #include <linux/dmi.h>
+#include <linux/smp.h>
 
 #ifdef CONFIG_PRESERVED_RAM
 /*
@@ -90,6 +91,11 @@ NORET_TYPE void panic(const char * fmt, ...)
 	 * Do we want to call this before we try to display a message?
 	 */
 	crash_kexec(NULL);
+
+#ifdef CONFIG_PRESERVED_RAM
+	extern void preserved_ram_panic_handler(void *info);
+	smp_call_function_single(0, preserved_ram_panic_handler, NULL, 1);
+#endif
 
 	/*
 	 * Note smp_send_stop is the usual smp shutdown function, which
