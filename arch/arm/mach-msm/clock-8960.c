@@ -34,7 +34,8 @@
 #define REG_LPA(off)	(MSM_LPASS_CLK_CTL_BASE + (off))
 
 /* Peripheral clock registers. */
-#define CE2_HCLK_CTL_REG			REG(0x2740)
+#define CE1_HCLK_CTL_REG			REG(0x2720)
+#define CE1_CORE_CLK_CTL_REG			REG(0x2724)
 #define DMA_BAM_HCLK_CTL			REG(0x25C0)
 #define CLK_HALT_CFPB_STATEA_REG		REG(0x2FCC)
 #define CLK_HALT_CFPB_STATEB_REG		REG(0x2FD0)
@@ -1743,20 +1744,36 @@ static struct branch_clk usb_fs2_sys_clk = {
 };
 
 /* Fast Peripheral Bus Clocks */
-static struct branch_clk ce2_p_clk = {
+static struct branch_clk ce1_core_clk = {
 	.b = {
-		.en_reg = CE2_HCLK_CTL_REG,
+		.en_reg = CE1_CORE_CLK_CTL_REG,
 		.en_mask = BIT(4),
 		.halt_reg = CLK_HALT_CFPB_STATEC_REG,
 		.halt_check = HALT,
-		.halt_bit = 0,
-		.test_vector = TEST_PER_LS(0x93),
+		.halt_bit = 27,
+		.test_vector = TEST_PER_LS(0xA4),
 	},
 	.c = {
-		.dbg_name = "ce2_p_clk",
+		.dbg_name = "ce1_core_clk",
 		.ops = &clk_ops_branch,
 		.flags = CLKFLAG_AUTO_OFF,
-		CLK_INIT(ce2_p_clk.c),
+		CLK_INIT(ce1_core_clk.c),
+	},
+};
+static struct branch_clk ce1_p_clk = {
+	.b = {
+		.en_reg = CE1_HCLK_CTL_REG,
+		.en_mask = BIT(4),
+		.halt_reg = CLK_HALT_CFPB_STATEC_REG,
+		.halt_check = HALT,
+		.halt_bit = 1,
+		.test_vector = TEST_PER_LS(0x92),
+	},
+	.c = {
+		.dbg_name = "ce1_p_clk",
+		.ops = &clk_ops_branch,
+		.flags = CLKFLAG_AUTO_OFF,
+		CLK_INIT(ce1_p_clk.c),
 	},
 };
 
@@ -3873,7 +3890,8 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("usb_fs_clk",	usb_fs2_xcvr_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_sys_clk",	usb_fs2_sys_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_src_clk",	usb_fs2_src_clk.c,	NULL),
-	CLK_LOOKUP("ce_clk",		ce2_p_clk.c,		NULL),
+	CLK_LOOKUP("ce_pclk",		ce1_p_clk.c,		NULL),
+	CLK_LOOKUP("ce_clk",		ce1_core_clk.c,		NULL),
 	CLK_LOOKUP("dma_bam_pclk",	dma_bam_p_clk.c,	NULL),
 	CLK_LOOKUP("spi_pclk",		gsbi1_p_clk.c,		"spi_qsd.0"),
 	CLK_LOOKUP("gsbi_pclk",		gsbi2_p_clk.c,		NULL),
