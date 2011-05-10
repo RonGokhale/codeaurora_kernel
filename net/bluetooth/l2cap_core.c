@@ -7741,7 +7741,10 @@ static int l2cap_recv_acldata(struct hci_conn *hcon, struct sk_buff *skb, u16 fl
 	if (!conn && hcon->hdev->dev_type != HCI_BREDR)
 		goto drop;
 
-	if (!conn && !(conn = l2cap_conn_add(hcon, 0)))
+	if (!conn)
+		conn = l2cap_conn_add(hcon, 0);
+
+	if (!conn)
 		goto drop;
 
 	BT_DBG("conn %p len %d flags 0x%x", conn, skb->len, flags);

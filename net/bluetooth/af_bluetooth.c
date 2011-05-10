@@ -237,14 +237,15 @@ struct sock *bt_accept_dequeue(struct sock *parent, struct socket *newsock)
 
 	BT_DBG("parent %p", parent);
 
+	local_bh_disable();
 	list_for_each_safe(p, n, &bt_sk(parent)->accept_q) {
 		sk = (struct sock *) list_entry(p, struct bt_sock, accept_q);
 
-		lock_sock(sk);
+		bh_lock_sock(sk);
 
 		/* FIXME: Is this check still needed */
 		if (sk->sk_state == BT_CLOSED) {
-			release_sock(sk);
+			bh_unlock_sock(sk);
 			bt_accept_unlink(sk);
 			continue;
 		}
@@ -254,12 +255,16 @@ struct sock *bt_accept_dequeue(struct sock *parent, struct socket *newsock)
 			bt_accept_unlink(sk);
 			if (newsock)
 				sock_graft(sk, newsock);
-			release_sock(sk);
+
+			bh_unlock_sock(sk);
+			local_bh_enable();
 			return sk;
 		}
 
-		release_sock(sk);
+		bh_unlock_sock(sk);
 	}
+	local_bh_enable();
+
 	return NULL;
 }
 EXPORT_SYMBOL(bt_accept_dequeue);
@@ -278,7 +283,8 @@ int bt_sock_recvmsg(struct kiocb *iocb, struct socket *sock,
 	if (flags & (MSG_OOB))
 		return -EOPNOTSUPP;
 
-	if (!(skb = skb_recv_datagram(sk, flags, noblock, &err))) {
+	skb = skb_recv_datagram(sk, flags, noblock, &err);
+	if (!skb) {
 		if (sk->sk_shutdown & RCV_SHUTDOWN)
 			return 0;
 		return err;
@@ -361,7 +367,8 @@ int bt_sock_stream_recvmsg(struct kiocb *iocb, struct socket *sock,
 			if (copied >= target)
 				break;
 
-			if ((err = sock_error(sk)) != 0)
+			err = sock_error(sk);
+			if (err)
 				break;
 			if (sk->sk_shutdown & RCV_SHUTDOWN)
 				break;
