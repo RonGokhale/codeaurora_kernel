@@ -124,6 +124,7 @@ config ARCH_MSM8960
 	select MSM_DIRECT_SCLK_ACCESS
 	select REGULATOR
 	select MSM_RPM
+	select MSM_XO
 	select MSM_QDSP6_APR
 	select MSM_PIL
 	select MSM_AUDIO_QDSP6 if SND_SOC
