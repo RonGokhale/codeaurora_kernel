@@ -351,7 +351,7 @@ static int __devexit pm_gpio_remove(struct platform_device *pdev)
 
 int pm8xxx_gpio_config(int gpio, struct pm_gpio *param)
 {
-	int	rc, pm_gpio = 0;
+	int	rc, pm_gpio = -EINVAL;
 	u8	bank[8];
 	unsigned long flags;
 	struct pm_gpio_chip *pm_gpio_chip;
@@ -370,7 +370,7 @@ int pm8xxx_gpio_config(int gpio, struct pm_gpio *param)
 		}
 	}
 	mutex_unlock(&pm_gpio_chips_lock);
-	if (!pm_gpio) {
+	if (pm_gpio < 0) {
 		pr_err("called on gpio %d not handled by any pmic\n", gpio);
 		return -EINVAL;
 	}
