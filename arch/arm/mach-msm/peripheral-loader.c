@@ -18,6 +18,7 @@
 #include <linux/debugfs.h>
 #include <linux/elf.h>
 #include <linux/mutex.h>
+#include <linux/memblock.h>
 
 #include <asm/uaccess.h>
 #include <asm/setup.h>
@@ -51,31 +52,6 @@ static struct pil_device *find_peripheral(const char *str)
 	return dev;
 }
 
-static int segment_in_hole(unsigned long start, unsigned long end)
-{
-	struct meminfo *mi = &meminfo;
-	unsigned int i;
-	struct membank *bank;
-
-	if (start >= end)
-		return 0;
-
-	if (end < bank_phys_start(&mi->bank[0]))
-		return 1;
-
-	for (i = 0; i < mi->nr_banks - 1; i++) {
-		bank = &mi->bank[i];
-		if (start >= bank_phys_end(bank) &&
-				end < bank_phys_start(&mi->bank[i+1]))
-			return 1;
-	}
-
-	if (start >= bank_phys_end(&mi->bank[i]))
-		return 1;
-
-	return 0;
-}
-
 #define IOMAP_SIZE SZ_4M
 
 static int load_segment(const struct elf32_phdr *phdr, unsigned num,
@@ -86,8 +62,8 @@ static int load_segment(const struct elf32_phdr *phdr, unsigned num,
 	const struct firmware *fw = NULL;
 	const u8 *data;
 
-	if (!segment_in_hole(phdr->p_paddr, phdr->p_paddr + phdr->p_memsz)) {
-		dev_err(&pil->pdev.dev, "Kernel memory would be overwritten\n");
+	if (memblock_is_region_memory(phdr->p_paddr, phdr->p_memsz)) {
+		dev_err(&pil->pdev.dev, "Kernel memory would be overwritten");
 		return -EPERM;
 	}
 
