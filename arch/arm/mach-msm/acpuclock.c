@@ -662,7 +662,7 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 	/* Disable PLLs we are not using anymore. */
 	if (tgt_s->pll != ACPU_PLL_TCXO)
 		plls_enabled &= ~(1 << tgt_s->pll);
-	for (pll = ACPU_PLL_0; pll <= ACPU_PLL_2; pll++)
+	for (pll = ACPU_PLL_0; pll < ACPU_PLL_END; pll++)
 		if (plls_enabled & (1 << pll)) {
 			res = pc_pll_request(pll, 0);
 			if (res < 0)
