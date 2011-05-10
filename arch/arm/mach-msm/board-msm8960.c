@@ -612,7 +612,7 @@ static struct msm_acpu_clock_platform_data msm8960_acpu_clock_data = {
 	.vdd_switch_time_us = 0,
 };
 
-#define MSM_SHARED_RAM_PHYS 0x40000000
+#define MSM_SHARED_RAM_PHYS 0x80000000
 
 /* Macros assume PMIC GPIOs and MPPs start at 1 */
 #define PM8921_GPIO_BASE		NR_GPIO_IRQS
@@ -624,6 +624,7 @@ static struct msm_acpu_clock_platform_data msm8960_acpu_clock_data = {
 
 static void __init msm8960_map_io(void)
 {
+	msm_shared_ram_phys = MSM_SHARED_RAM_PHYS;
 	msm_map_msm8960_io();
 }
 
