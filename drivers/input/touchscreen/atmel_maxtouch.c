@@ -38,6 +38,13 @@
 
 #include <linux/atmel_maxtouch.h>
 
+#if defined(CONFIG_HAS_EARLYSUSPEND)
+#include <linux/earlysuspend.h>
+
+/* Early-suspend level */
+#define MXT_SUSPEND_LEVEL 1
+#endif
+
 
 #define DRIVER_VERSION "0.91a_mod"
 
@@ -158,6 +165,9 @@ struct mxt_data {
         /* Put only non-touch messages to buffer if this is set */
 	char                 nontouch_msg_only; 
 	struct mutex         msg_mutex;
+#if defined(CONFIG_HAS_EARLYSUSPEND)
+	struct early_suspend		early_suspend;
+#endif
 };
 /*default value, enough to read versioning*/
 #define CONFIG_DATA_SIZE	6
@@ -1732,6 +1742,51 @@ err_object_table_alloc:
 	return error;
 }
 
+#if defined(CONFIG_PM)
+static int mxt_suspend(struct device *dev)
+{
+	struct mxt_data *mxt = dev_get_drvdata(dev);
+
+	if (device_may_wakeup(dev))
+		enable_irq_wake(mxt->irq);
+
+	return 0;
+}
+
+static int mxt_resume(struct device *dev)
+{
+	struct mxt_data *mxt = dev_get_drvdata(dev);
+
+	if (device_may_wakeup(dev))
+		disable_irq_wake(mxt->irq);
+
+	return 0;
+}
+
+#if defined(CONFIG_HAS_EARLYSUSPEND)
+static void mxt_early_suspend(struct early_suspend *h)
+{
+	struct mxt_data *mxt = container_of(h, struct mxt_data, early_suspend);
+
+	mxt_suspend(&mxt->client->dev);
+}
+
+static void mxt_late_resume(struct early_suspend *h)
+{
+	struct mxt_data *mxt = container_of(h, struct mxt_data, early_suspend);
+
+	mxt_resume(&mxt->client->dev);
+}
+#endif
+
+static const struct dev_pm_ops mxt_pm_ops = {
+#ifndef CONFIG_HAS_EARLYSUSPEND
+	.suspend	= mxt_suspend,
+	.resume		= mxt_resume,
+#endif
+};
+#endif
+
 static int __devinit mxt_probe(struct i2c_client *client,
 			       const struct i2c_device_id *id)
 {
@@ -2013,6 +2068,14 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	kfree(t38_data);
 	kfree(id_data);
 
+#if defined(CONFIG_HAS_EARLYSUSPEND)
+	mxt->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN +
+						MXT_SUSPEND_LEVEL;
+	mxt->early_suspend.suspend = mxt_early_suspend;
+	mxt->early_suspend.resume = mxt_late_resume;
+	register_early_suspend(&mxt->early_suspend);
+#endif
+
 	return 0;
 
 err_t38:
@@ -2055,6 +2118,10 @@ static int __devexit mxt_remove(struct i2c_client *client)
 	/* Remove debug dir entries */
 	debugfs_remove_recursive(mxt->debug_dir);
 
+#if defined(CONFIG_HAS_EARLYSUSPEND)
+	unregister_early_suspend(&mxt->early_suspend);
+#endif
+
 	if (mxt != NULL) {
 		
 		if (mxt->exit_hw != NULL)
@@ -2087,31 +2154,6 @@ static int __devexit mxt_remove(struct i2c_client *client)
 	return 0;
 }
 
-#if defined(CONFIG_PM)
-static int mxt_suspend(struct i2c_client *client, pm_message_t mesg)
-{
-	struct mxt_data *mxt = i2c_get_clientdata(client);
-
-	if (device_may_wakeup(&client->dev))
-		enable_irq_wake(mxt->irq);
-
-	return 0;
-}
-
-static int mxt_resume(struct i2c_client *client)
-{
-	struct mxt_data *mxt = i2c_get_clientdata(client);
-
-	if (device_may_wakeup(&client->dev))
-		disable_irq_wake(mxt->irq);
-
-	return 0;
-}
-#else
-#define mxt_suspend NULL
-#define mxt_resume NULL
-#endif
-
 static const struct i2c_device_id mxt_idtable[] = {
 	{"maXTouch", 0,},
 	{ }
@@ -2123,14 +2165,14 @@ static struct i2c_driver mxt_driver = {
 	.driver = {
 		.name	= "maXTouch",
 		.owner  = THIS_MODULE,
+#if defined(CONFIG_PM)
+		.pm = &mxt_pm_ops,
+#endif
 	},
 
 	.id_table	= mxt_idtable,
 	.probe		= mxt_probe,
 	.remove		= __devexit_p(mxt_remove),
-	.suspend	= mxt_suspend,
-	.resume		= mxt_resume,
-
 };
 
 static int __init mxt_init(void)
