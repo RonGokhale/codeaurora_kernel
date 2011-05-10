@@ -3733,21 +3733,6 @@ static struct clk_local pcm_clk = {
 	},
 };
 
-#define F_SLIM(f, s, d, m, n, v) \
-	{ \
-		.freq_hz = f, \
-		.src_clk = &s##_clk.c, \
-		.md_val = MD8(8, m, 0, n), \
-		.ns_val = NS(31, 24, n, m, 5, 4, 3, d, 2, 0, s##_to_lpa_mux), \
-		.mnd_en_mask = BIT(8) * !!(n), \
-		.sys_vdd = v, \
-	}
-static struct clk_freq_tbl clk_tbl_slimbus[] = {
-	F_SLIM(13500000, pxo, 2, 0, 0, LOW),
-	F_SLIM(27000000, pxo, 1, 0, 0, LOW),
-	F_END
-};
-
 static struct clk_local audio_slimbus_clk = {
 	.b = {
 		.en_reg = LCC_SLIMBUS_NS_REG,
@@ -3764,7 +3749,7 @@ static struct clk_local audio_slimbus_clk = {
 	.root_en_mask = BIT(9),
 	.ns_mask = (BM(31, 24) | BM(6, 0)),
 	.set_rate = set_rate_mnd,
-	.freq_tbl = clk_tbl_slimbus,
+	.freq_tbl = clk_tbl_aif_osr,
 	.current_freq = &local_dummy_freq,
 	.c = {
 		.dbg_name = "audio_slimbus_clk",
