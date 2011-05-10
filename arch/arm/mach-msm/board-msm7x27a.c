@@ -53,7 +53,7 @@
 #include "pm.h"
 #include <mach/rpc_server_handset.h>
 
-#define PMEM_KERNEL_EBI1_SIZE	0x1C000
+#define PMEM_KERNEL_EBI1_SIZE	0x3A000
 #define MSM_PMEM_AUDIO_SIZE	0x5B000
 #define BAHAMA_SLAVE_ID_FM_ADDR         0x2A
 #define BAHAMA_SLAVE_ID_QMEMBIST_ADDR   0x7B
