@@ -811,7 +811,7 @@ put_mvs_otg:
 }
 
 static struct msm_otg_platform_data msm_otg_pdata = {
-	.mode			= USB_OTG,
+	.mode			= USB_PERIPHERAL,
 	.otg_control		= OTG_PHY_CONTROL,
 	.phy_type		= SNPS_28NM_INTEGRATED_PHY,
 	.pclk_src_name		= "dfab_usb_hs_clk",
