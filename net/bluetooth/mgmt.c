@@ -32,6 +32,16 @@
 #define MGMT_VERSION	0
 #define MGMT_REVISION	1
 
+struct pending_cmd {
+	struct list_head list;
+	__u16 opcode;
+	int index;
+	void *cmd;
+	struct sock *sk;
+};
+
+LIST_HEAD(cmd_list);
+
 static int cmd_status(struct sock *sk, u16 cmd, u8 status)
 {
 	struct sk_buff *skb;
@@ -111,8 +121,10 @@ static int read_index_list(struct sock *sk)
 
 	body_len = sizeof(*ev) + sizeof(*rp) + (2 * count);
 	skb = alloc_skb(sizeof(*hdr) + body_len, GFP_ATOMIC);
-	if (!skb)
+	if (!skb) {
+		read_unlock(&hci_dev_list_lock);
 		return -ENOMEM;
+	}
 
 	hdr = (void *) skb_put(skb, sizeof(*hdr));
 	hdr->opcode = cpu_to_le16(MGMT_EV_CMD_COMPLETE);
@@ -127,6 +139,14 @@ static int read_index_list(struct sock *sk)
 	i = 0;
 	list_for_each(p, &hci_dev_list) {
 		struct hci_dev *d = list_entry(p, struct hci_dev, list);
+
+		hci_del_off_timer(d);
+
+		set_bit(HCI_MGMT, &d->flags);
+
+		if (test_bit(HCI_SETUP, &d->flags))
+			continue;
+
 		put_unaligned_le16(d->id, &rp->index[i++]);
 		BT_DBG("Added hci%u", d->id);
 	}
@@ -178,12 +198,17 @@ static int read_controller_info(struct sock *sk, unsigned char *data, u16 len)
 		return cmd_status(sk, MGMT_OP_READ_INFO, ENODEV);
 	}
 
+	hci_del_off_timer(hdev);
+
 	hci_dev_lock_bh(hdev);
+
+	set_bit(HCI_MGMT, &hdev->flags);
 
 	put_unaligned_le16(hdev->id, &rp->index);
 	rp->type = hdev->dev_type;
 
 	rp->powered = test_bit(HCI_UP, &hdev->flags);
+	rp->connectable = test_bit(HCI_PSCAN, &hdev->flags);
 	rp->discoverable = test_bit(HCI_ISCAN, &hdev->flags);
 	rp->pairable = test_bit(HCI_PSCAN, &hdev->flags);
 
@@ -203,6 +228,280 @@ static int read_controller_info(struct sock *sk, unsigned char *data, u16 len)
 
 	hci_dev_unlock_bh(hdev);
 	hci_dev_put(hdev);
+
+	if (sock_queue_rcv_skb(sk, skb) < 0)
+		kfree_skb(skb);
+
+	return 0;
+}
+
+static void mgmt_pending_free(struct pending_cmd *cmd)
+{
+	sock_put(cmd->sk);
+	kfree(cmd->cmd);
+	kfree(cmd);
+}
+
+static int mgmt_pending_add(struct sock *sk, u16 opcode, int index,
+							void *data, u16 len)
+{
+	struct pending_cmd *cmd;
+
+	cmd = kmalloc(sizeof(*cmd), GFP_ATOMIC);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->opcode = opcode;
+	cmd->index = index;
+
+	cmd->cmd = kmalloc(len, GFP_ATOMIC);
+	if (!cmd->cmd) {
+		kfree(cmd);
+		return -ENOMEM;
+	}
+
+	memcpy(cmd->cmd, data, len);
+
+	cmd->sk = sk;
+	sock_hold(sk);
+
+	list_add(&cmd->list, &cmd_list);
+
+	return 0;
+}
+
+static void mgmt_pending_foreach(u16 opcode, int index,
+				void (*cb)(struct pending_cmd *cmd, void *data),
+				void *data)
+{
+	struct list_head *p, *n;
+
+	list_for_each_safe(p, n, &cmd_list) {
+		struct pending_cmd *cmd;
+
+		cmd = list_entry(p, struct pending_cmd, list);
+
+		if (cmd->opcode != opcode)
+			continue;
+
+		if (index >= 0 && cmd->index != index)
+			continue;
+
+		cb(cmd, data);
+	}
+}
+
+static struct pending_cmd *mgmt_pending_find(u16 opcode, int index)
+{
+	struct list_head *p;
+
+	list_for_each(p, &cmd_list) {
+		struct pending_cmd *cmd;
+
+		cmd = list_entry(p, struct pending_cmd, list);
+
+		if (cmd->opcode != opcode)
+			continue;
+
+		if (index >= 0 && cmd->index != index)
+			continue;
+
+		return cmd;
+	}
+
+	return NULL;
+}
+
+static void mgmt_pending_remove(u16 opcode, int index)
+{
+	struct pending_cmd *cmd;
+
+	cmd = mgmt_pending_find(opcode, index);
+	if (cmd == NULL)
+		return;
+
+	list_del(&cmd->list);
+	mgmt_pending_free(cmd);
+}
+
+static int set_powered(struct sock *sk, unsigned char *data, u16 len)
+{
+	struct mgmt_mode *cp;
+	struct hci_dev *hdev;
+	u16 dev_id;
+	int ret, up;
+
+	cp = (void *) data;
+	dev_id = get_unaligned_le16(&cp->index);
+
+	BT_DBG("request for hci%u", dev_id);
+
+	hdev = hci_dev_get(dev_id);
+	if (!hdev)
+		return cmd_status(sk, MGMT_OP_SET_POWERED, ENODEV);
+
+	hci_dev_lock_bh(hdev);
+
+	up = test_bit(HCI_UP, &hdev->flags);
+	if ((cp->val && up) || (!cp->val && !up)) {
+		ret = cmd_status(sk, MGMT_OP_SET_POWERED, EALREADY);
+		goto failed;
+	}
+
+	if (mgmt_pending_find(MGMT_OP_SET_POWERED, dev_id)) {
+		ret = cmd_status(sk, MGMT_OP_SET_POWERED, EBUSY);
+		goto failed;
+	}
+
+	ret = mgmt_pending_add(sk, MGMT_OP_SET_POWERED, dev_id, data, len);
+	if (ret < 0)
+		goto failed;
+
+	if (cp->val)
+		queue_work(hdev->workqueue, &hdev->power_on);
+	else
+		queue_work(hdev->workqueue, &hdev->power_off);
+
+	ret = 0;
+
+failed:
+	hci_dev_unlock_bh(hdev);
+	hci_dev_put(hdev);
+	return ret;
+}
+
+static int set_discoverable(struct sock *sk, unsigned char *data, u16 len)
+{
+	struct mgmt_mode *cp;
+	struct hci_dev *hdev;
+	u16 dev_id;
+	u8 scan;
+	int err;
+
+	cp = (void *) data;
+	dev_id = get_unaligned_le16(&cp->index);
+
+	BT_DBG("request for hci%u", dev_id);
+
+	hdev = hci_dev_get(dev_id);
+	if (!hdev)
+		return cmd_status(sk, MGMT_OP_SET_DISCOVERABLE, ENODEV);
+
+	hci_dev_lock_bh(hdev);
+
+	if (!test_bit(HCI_UP, &hdev->flags)) {
+		err = cmd_status(sk, MGMT_OP_SET_DISCOVERABLE, ENETDOWN);
+		goto failed;
+	}
+
+	if (mgmt_pending_find(MGMT_OP_SET_DISCOVERABLE, dev_id) ||
+			mgmt_pending_find(MGMT_OP_SET_CONNECTABLE, dev_id)) {
+		err = cmd_status(sk, MGMT_OP_SET_DISCOVERABLE, EBUSY);
+		goto failed;
+	}
+
+	if (cp->val == test_bit(HCI_ISCAN, &hdev->flags) &&
+					test_bit(HCI_PSCAN, &hdev->flags)) {
+		err = cmd_status(sk, MGMT_OP_SET_DISCOVERABLE, EALREADY);
+		goto failed;
+	}
+
+	err = mgmt_pending_add(sk, MGMT_OP_SET_DISCOVERABLE, dev_id, data, len);
+	if (err < 0)
+		goto failed;
+
+	scan = SCAN_PAGE;
+
+	if (cp->val)
+		scan |= SCAN_INQUIRY;
+
+	err = hci_send_cmd(hdev, HCI_OP_WRITE_SCAN_ENABLE, 1, &scan);
+	if (err < 0)
+		mgmt_pending_remove(MGMT_OP_SET_DISCOVERABLE, dev_id);
+
+failed:
+	hci_dev_unlock_bh(hdev);
+	hci_dev_put(hdev);
+
+	return err;
+}
+
+static int set_connectable(struct sock *sk, unsigned char *data, u16 len)
+{
+	struct mgmt_mode *cp;
+	struct hci_dev *hdev;
+	u16 dev_id;
+	u8 scan;
+	int err;
+
+	cp = (void *) data;
+	dev_id = get_unaligned_le16(&cp->index);
+
+	BT_DBG("request for hci%u", dev_id);
+
+	hdev = hci_dev_get(dev_id);
+	if (!hdev)
+		return cmd_status(sk, MGMT_OP_SET_CONNECTABLE, ENODEV);
+
+	hci_dev_lock_bh(hdev);
+
+	if (!test_bit(HCI_UP, &hdev->flags)) {
+		err = cmd_status(sk, MGMT_OP_SET_CONNECTABLE, ENETDOWN);
+		goto failed;
+	}
+
+	if (mgmt_pending_find(MGMT_OP_SET_DISCOVERABLE, dev_id) ||
+			mgmt_pending_find(MGMT_OP_SET_CONNECTABLE, dev_id)) {
+		err = cmd_status(sk, MGMT_OP_SET_CONNECTABLE, EBUSY);
+		goto failed;
+	}
+
+	if (cp->val == test_bit(HCI_PSCAN, &hdev->flags)) {
+		err = cmd_status(sk, MGMT_OP_SET_CONNECTABLE, EALREADY);
+		goto failed;
+	}
+
+	err = mgmt_pending_add(sk, MGMT_OP_SET_CONNECTABLE, dev_id, data, len);
+	if (err < 0)
+		goto failed;
+
+	if (cp->val)
+		scan = SCAN_PAGE;
+	else
+		scan = 0;
+
+	err = hci_send_cmd(hdev, HCI_OP_WRITE_SCAN_ENABLE, 1, &scan);
+	if (err < 0)
+		mgmt_pending_remove(MGMT_OP_SET_CONNECTABLE, dev_id);
+
+failed:
+	hci_dev_unlock_bh(hdev);
+	hci_dev_put(hdev);
+
+	return err;
+}
+
+static int send_mode_rsp(struct sock *sk, u16 opcode, u16 index, u8 val)
+{
+	struct mgmt_hdr *hdr;
+	struct mgmt_ev_cmd_complete *ev;
+	struct mgmt_mode *rp;
+	struct sk_buff *skb;
+
+	skb = alloc_skb(sizeof(*hdr) + sizeof(*ev) + sizeof(*rp), GFP_ATOMIC);
+	if (!skb)
+		return -ENOMEM;
+
+	hdr = (void *) skb_put(skb, sizeof(*hdr));
+	hdr->opcode = cpu_to_le16(MGMT_EV_CMD_COMPLETE);
+	hdr->len = cpu_to_le16(sizeof(*ev) + sizeof(*rp));
+
+	ev = (void *) skb_put(skb, sizeof(*ev));
+	put_unaligned_le16(opcode, &ev->opcode);
+
+	rp = (void *) skb_put(skb, sizeof(*rp));
+	put_unaligned_le16(index, &rp->index);
+	rp->val = val;
 
 	if (sock_queue_rcv_skb(sk, skb) < 0)
 		kfree_skb(skb);
@@ -250,6 +549,15 @@ int mgmt_control(struct sock *sk, struct msghdr *msg, size_t msglen)
 	case MGMT_OP_READ_INFO:
 		err = read_controller_info(sk, buf + sizeof(*hdr), len);
 		break;
+	case MGMT_OP_SET_POWERED:
+		err = set_powered(sk, buf + sizeof(*hdr), len);
+		break;
+	case MGMT_OP_SET_DISCOVERABLE:
+		err = set_discoverable(sk, buf + sizeof(*hdr), len);
+		break;
+	case MGMT_OP_SET_CONNECTABLE:
+		err = set_connectable(sk, buf + sizeof(*hdr), len);
+		break;
 	default:
 		BT_DBG("Unknown op %u", opcode);
 		err = cmd_status(sk, opcode, 0x01);
@@ -266,7 +574,7 @@ done:
 	return err;
 }
 
-static int mgmt_event(u16 event, void *data, u16 data_len)
+static int mgmt_event(u16 event, void *data, u16 data_len, struct sock *skip_sk)
 {
 	struct sk_buff *skb;
 	struct mgmt_hdr *hdr;
@@ -283,7 +591,7 @@ static int mgmt_event(u16 event, void *data, u16 data_len)
 
 	memcpy(skb_put(skb, data_len), data, data_len);
 
-	hci_send_to_sock(NULL, skb);
+	hci_send_to_sock(NULL, skb, skip_sk);
 	kfree_skb(skb);
 
 	return 0;
@@ -295,7 +603,7 @@ int mgmt_index_added(u16 index)
 
 	put_unaligned_le16(index, &ev.index);
 
-	return mgmt_event(MGMT_EV_INDEX_ADDED, &ev, sizeof(ev));
+	return mgmt_event(MGMT_EV_INDEX_ADDED, &ev, sizeof(ev), NULL);
 }
 
 int mgmt_index_removed(u16 index)
@@ -304,5 +612,88 @@ int mgmt_index_removed(u16 index)
 
 	put_unaligned_le16(index, &ev.index);
 
-	return mgmt_event(MGMT_EV_INDEX_REMOVED, &ev, sizeof(ev));
+	return mgmt_event(MGMT_EV_INDEX_REMOVED, &ev, sizeof(ev), NULL);
+}
+
+struct cmd_lookup {
+	u8 val;
+	struct sock *sk;
+};
+
+static void mode_rsp(struct pending_cmd *cmd, void *data)
+{
+	struct mgmt_mode *cp = cmd->cmd;
+	struct cmd_lookup *match = data;
+
+	if (cp->val != match->val)
+		return;
+
+	send_mode_rsp(cmd->sk, cmd->opcode, cmd->index, cp->val);
+
+	list_del(&cmd->list);
+
+	if (match->sk == NULL) {
+		match->sk = cmd->sk;
+		sock_hold(match->sk);
+	}
+
+	mgmt_pending_free(cmd);
+}
+
+int mgmt_powered(u16 index, u8 powered)
+{
+	struct mgmt_mode ev;
+	struct cmd_lookup match = { powered, NULL };
+	int ret;
+
+	mgmt_pending_foreach(MGMT_OP_SET_POWERED, index, mode_rsp, &match);
+
+	put_unaligned_le16(index, &ev.index);
+	ev.val = powered;
+
+	ret = mgmt_event(MGMT_EV_POWERED, &ev, sizeof(ev), match.sk);
+
+	if (match.sk)
+		sock_put(match.sk);
+
+	return ret;
+}
+
+int mgmt_discoverable(u16 index, u8 discoverable)
+{
+	struct mgmt_mode ev;
+	struct cmd_lookup match = { discoverable, NULL };
+	int ret;
+
+	mgmt_pending_foreach(MGMT_OP_SET_DISCOVERABLE, index,
+							mode_rsp, &match);
+
+	put_unaligned_le16(index, &ev.index);
+	ev.val = discoverable;
+
+	ret = mgmt_event(MGMT_EV_DISCOVERABLE, &ev, sizeof(ev), match.sk);
+
+	if (match.sk)
+		sock_put(match.sk);
+
+	return ret;
+}
+
+int mgmt_connectable(u16 index, u8 connectable)
+{
+	struct mgmt_mode ev;
+	struct cmd_lookup match = { connectable, NULL };
+	int ret;
+
+	mgmt_pending_foreach(MGMT_OP_SET_CONNECTABLE, index, mode_rsp, &match);
+
+	put_unaligned_le16(index, &ev.index);
+	ev.val = connectable;
+
+	ret = mgmt_event(MGMT_EV_CONNECTABLE, &ev, sizeof(ev), match.sk);
+
+	if (match.sk)
+		sock_put(match.sk);
+
+	return ret;
 }

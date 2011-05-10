@@ -134,6 +134,10 @@ struct hci_dev {
 
 	struct workqueue_struct	*workqueue;
 
+	struct work_struct	power_on;
+	struct work_struct	power_off;
+	struct timer_list	off_timer;
+
 	struct tasklet_struct	cmd_task;
 	struct tasklet_struct	rx_task;
 	struct tasklet_struct	tx_task;
@@ -542,6 +546,8 @@ int hci_inquiry(void __user *arg);
 struct bdaddr_list *hci_blacklist_lookup(struct hci_dev *hdev, bdaddr_t *bdaddr);
 int hci_blacklist_clear(struct hci_dev *hdev);
 
+void hci_del_off_timer(struct hci_dev *hdev);
+
 void hci_event_packet(struct hci_dev *hdev, struct sk_buff *skb);
 
 int hci_recv_frame(struct sk_buff *skb);
@@ -807,12 +813,16 @@ void *hci_sent_cmd_data(struct hci_dev *hdev, __u16 opcode);
 void hci_si_event(struct hci_dev *hdev, int type, int dlen, void *data);
 
 /* ----- HCI Sockets ----- */
-void hci_send_to_sock(struct hci_dev *hdev, struct sk_buff *skb);
+void hci_send_to_sock(struct hci_dev *hdev, struct sk_buff *skb,
+							struct sock *skip_sk);
 
 /* Management interface */
 int mgmt_control(struct sock *sk, struct msghdr *msg, size_t len);
 int mgmt_index_added(u16 index);
 int mgmt_index_removed(u16 index);
+int mgmt_powered(u16 index, u8 powered);
+int mgmt_discoverable(u16 index, u8 discoverable);
+int mgmt_connectable(u16 index, u8 connectable);
 
 /* HCI info for socket */
 #define hci_pi(sk) ((struct hci_pinfo *) sk)

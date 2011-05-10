@@ -47,6 +47,7 @@ struct mgmt_rp_read_info {
 	__le16 index;
 	__u8 type;
 	__u8 powered;
+	__u8 connectable;
 	__u8 discoverable;
 	__u8 pairable;
 	__u8 sec_mode;
@@ -57,6 +58,17 @@ struct mgmt_rp_read_info {
 	__u8 hci_ver;
 	__u16 hci_rev;
 } __packed;
+
+struct mgmt_mode {
+	__le16 index;
+	__u8 val;
+} __packed;
+
+#define MGMT_OP_SET_POWERED		0x0005
+
+#define MGMT_OP_SET_DISCOVERABLE	0x0006
+
+#define MGMT_OP_SET_CONNECTABLE		0x0007
 
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {
@@ -85,3 +97,9 @@ struct mgmt_ev_index_added {
 struct mgmt_ev_index_removed {
 	__le16 index;
 } __packed;
+
+#define MGMT_EV_POWERED			0x0006
+
+#define MGMT_EV_DISCOVERABLE		0x0007
+
+#define MGMT_EV_CONNECTABLE		0x0008
