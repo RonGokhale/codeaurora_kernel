@@ -53,7 +53,7 @@
 /* Data format for unpacking purpose */
 #define	MIPI_PROTOCOL_CONTROL_DATA_FORMAT_SHFT			0x13
 /* Enable decoding of payload based on data type filed of packet hdr */
-#define	MIPI_PROTOCOL_CONTROL_DECODE_ID_BMSK			0x40000
+#define	MIPI_PROTOCOL_CONTROL_DECODE_ID_BMSK			0x00000
 /* Enable error correction on packet headers */
 #define	MIPI_PROTOCOL_CONTROL_ECC_EN_BMSK			0x20000
 
