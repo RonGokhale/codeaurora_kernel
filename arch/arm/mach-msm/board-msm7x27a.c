@@ -539,22 +539,41 @@ static unsigned int msm_bahama_setup_power(void)
 		       __func__, rc);
 		goto vreg_fail;
 	}
-	/*setup Bahama_sys_reset_n*/
-	rc = gpio_request(GPIO_BT_SYS_REST_EN, "bahama sys_rst_n");
-	if (rc < 0) {
-		pr_err("%s: gpio_request %d = %d\n", __func__,
-			GPIO_BT_SYS_REST_EN, rc);
-		goto vreg_fail;
-	}
-	rc = gpio_direction_output(GPIO_BT_SYS_REST_EN, 1);
-	if (rc < 0) {
-		pr_err("%s: gpio_direction_output %d = %d\n", __func__,
-			GPIO_BT_SYS_REST_EN, rc);
-		goto gpio_fail;
+	if (machine_is_msm7x27a_surf()) {
+		/*setup Bahama_sys_reset_n*/
+		rc = gpio_request(GPIO_BT_SYS_REST_EN, "bahama sys_rst_n");
+		if (rc < 0) {
+			pr_err("%s: gpio_request %d = %d\n", __func__,
+				GPIO_BT_SYS_REST_EN, rc);
+			goto vreg_fail;
+		}
+		rc = gpio_direction_output(GPIO_BT_SYS_REST_EN, 1);
+		if (rc < 0) {
+			pr_err("%s: gpio_direction_output %d = %d\n", __func__,
+				GPIO_BT_SYS_REST_EN, rc);
+			goto gpio_fail;
+		}
+	} else if (machine_is_msm7x27a_ffa()) {
+		rc = gpio_request(GPIO_FFA_BT_SYS_REST_EN, "bahama sys_rst_n");
+		if (rc < 0) {
+			pr_err("%s: gpio_request %d = %d\n", __func__,
+				GPIO_FFA_BT_SYS_REST_EN, rc);
+			goto vreg_fail;
+		}
+		rc = gpio_direction_output(GPIO_FFA_BT_SYS_REST_EN, 1);
+		if (rc < 0) {
+			pr_err("%s: gpio_direction_output %d = %d\n", __func__,
+				GPIO_FFA_BT_SYS_REST_EN, rc);
+			goto gpio_fail;
+		}
 	}
 	return rc;
+
 gpio_fail:
-	gpio_free(GPIO_BT_SYS_REST_EN);
+	if (machine_is_msm7x27a_surf())
+		gpio_free(GPIO_BT_SYS_REST_EN);
+	else if (machine_is_msm7x27a_ffa())
+		gpio_free(GPIO_FFA_BT_SYS_REST_EN);
 vreg_fail:
 	vreg_put(vreg_s3);
 	return rc;
@@ -628,7 +647,7 @@ static int bluetooth_power(int on)
 		rc = bluetooth_switch_regulators(on);
 		if (rc < 0) {
 			pr_err("%s: bluetooth_switch_regulators rc = %d",
-			__func__, rc);
+					__func__, rc);
 			goto exit;
 		}
 		/*setup BT UART lines*/
@@ -780,12 +799,6 @@ static void __init register_i2c_devices(void)
 		i2c_register_board_info(MSM_GSBI0_QUP_I2C_BUS_ID,
 				surf_cam_exp_i2c_info,
 				ARRAY_SIZE(surf_cam_exp_i2c_info));
-#if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
-		i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
-				bahama_devices,
-				ARRAY_SIZE(bahama_devices));
-#endif
-
 	} else if (machine_is_msm7x27a_ffa()) {
 		i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
 				ffa_core_exp_i2c_info,
@@ -793,12 +806,14 @@ static void __init register_i2c_devices(void)
 		i2c_register_board_info(MSM_GSBI0_QUP_I2C_BUS_ID,
 				ffa_cam_exp_i2c_info,
 				ARRAY_SIZE(ffa_cam_exp_i2c_info));
+	}
+
 #if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
-		i2c_register_board_info(MSM_GSBI0_QUP_I2C_BUS_ID,
+		i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
 				bahama_devices,
 				ARRAY_SIZE(bahama_devices));
 #endif
-	}
+
 }
 #endif
 
