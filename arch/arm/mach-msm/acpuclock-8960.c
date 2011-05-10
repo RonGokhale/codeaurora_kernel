@@ -147,11 +147,11 @@ static struct acpu_level acpu_freq_tbl[] = {
 	{ 0, {STBY_KHZ, QSB,   0, 0, 0x00 }, L2(1)  },
 	{ 1, {   27000, PXO,   0, 2, 0x00 }, L2(1)  },
 	{ 1, {  384000, PLL_8, 0, 2, 0x00 }, L2(2)  },
-	{ 0, {  432000, HFPLL, 2, 0, 0x20 }, L2(3)  },
-	{ 0, {  486000, HFPLL, 2, 0, 0x24 }, L2(4)  },
-	{ 0, {  594000, HFPLL, 1, 0, 0x16 }, L2(5)  },
-	{ 0, {  648000, HFPLL, 1, 0, 0x18 }, L2(6)  },
-	{ 0, {  702000, HFPLL, 1, 0, 0x1A }, L2(7)  },
+	{ 1, {  432000, HFPLL, 2, 0, 0x20 }, L2(3)  },
+	{ 1, {  486000, HFPLL, 2, 0, 0x24 }, L2(4)  },
+	{ 1, {  594000, HFPLL, 1, 0, 0x16 }, L2(5)  },
+	{ 1, {  648000, HFPLL, 1, 0, 0x18 }, L2(6)  },
+	{ 1, {  702000, HFPLL, 1, 0, 0x1A }, L2(7)  },
 	{ 0, {  756000, HFPLL, 1, 0, 0x1C }, L2(8)  },
 	{ 0, {  810000, HFPLL, 1, 0, 0x1E }, L2(9)  },
 	{ 0, {  864000, HFPLL, 1, 0, 0x20 }, L2(10) },
@@ -223,6 +223,18 @@ static void writel_cp15_l2ind(uint32_t regval, uint32_t addr)
 	);
 	isb();
 	BUG_ON(readl_cp15_l2ind(addr) != regval);
+}
+
+/* Get the selected source on primary MUX. */
+static int get_pri_clk_src(enum scalables id)
+{
+	uint32_t regval = 0;
+
+	BUG_ON(id >= NUM_SCALABLES);
+	BUG_ON(id != smp_processor_id() && id != L2);
+
+	regval = readl_cp15_l2ind(l2cpmr_iaddr[id]);
+	return regval & 0x3;
 }
 
 /* Set the selected source on primary MUX. */
@@ -464,23 +476,65 @@ out:
 	return rc;
 }
 
+/* Initialize a HFPLL at a given rate and enable it. */
+static void __init hfpll_init(enum scalables id, struct core_speed *tgt_s)
+{
+	BUG_ON(id >= NUM_SCALABLES);
+
+	dprintk("Initializing HFPLL%d\n", id);
+
+	/* Disable the PLL for re-programming. */
+	hfpll_disable(id);
+
+	/* Configure PLL parameters for integer mode. */
+	writel_relaxed(0x7845C665, hf_pll_base[id] + HFPLL_CONFIG_CTL);
+	writel_relaxed(0, hf_pll_base[id] + HFPLL_M_VAL);
+	writel_relaxed(1, hf_pll_base[id] + HFPLL_N_VAL);
+
+	/* Set up droop controller. TODO: Enable droop controller. */
+	writel_relaxed(0x0100C000, hf_pll_base[id] + HFPLL_DROOP_CTL);
+
+	/* Set an initial rate and enable the PLL. */
+	hfpll_set_rate(id, tgt_s);
+	hfpll_enable(id);
+}
+
 #define INIT_QSB_ID	0
 #define INIT_PXO_ID	1
-#define INIT_PLL8_ID	2
+#define INIT_HFPLL_ID	2
 /* Set initial rate for a given core. */
 static void __init init_clock_sources(enum scalables id)
 {
-	struct core_speed *tgt_s;
+	struct core_speed *temp_s, *tgt_s;
+	uint32_t pri_src, regval;
 	static struct core_speed speed[] = {
 		[INIT_QSB_ID] =   { STBY_KHZ, QSB,   0, 0, 0x00 },
 		[INIT_PXO_ID] =   {    27000, PXO,   0, 2, 0x00 },
-		[INIT_PLL8_ID] =  {   384000, PLL_8, 0, 2, 0x00 },
+		[INIT_HFPLL_ID] = {   432000, HFPLL, 2, 0, 0x20 },
 	};
 
-	/* FIXME: Add back HFPLL initialization. */
+	/*
+	 * If the HFPLL is in use, program AUX source for QSB, switch to it,
+	 * re-initialize the HFPLL, and switch back to the HFPLL. Otherwise,
+	 * the HFPLL is not in use, so we can switch directly to it.
+	 */
+	/* TODO: Use HFPLL for tgt_s for improved performance. */
 	tgt_s = &speed[INIT_PXO_ID];
+	pri_src = get_pri_clk_src(id);
+	if (pri_src == PRI_SRC_SEL_HFPLL || pri_src == PRI_SRC_SEL_HFPLL_DIV2) {
+		/* TODO: Use QSB for temp_s for improved performance. */
+		temp_s = &speed[INIT_QSB_ID];
+		set_sec_clk_src(id, temp_s->sec_src_sel);
+		set_pri_clk_src(id, temp_s->pri_src_sel);
+	}
+	hfpll_init(id, tgt_s);
+
+	/* Set PRI_SRC_SEL_HFPLL_DIV2 divider to div-2. */
+	regval = readl_cp15_l2ind(l2cpmr_iaddr[id]);
+	regval &= ~(0x3 << 6);
+	writel_cp15_l2ind(regval, l2cpmr_iaddr[id]);
+
 	set_aux_clk_src(id, tgt_s->src);
-	set_sec_clk_src(id, tgt_s->sec_src_sel);
 	set_pri_clk_src(id, tgt_s->pri_src_sel);
 	drv_state.current_speed[id] = tgt_s;
 }
