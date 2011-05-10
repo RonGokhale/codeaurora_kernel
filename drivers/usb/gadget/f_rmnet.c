@@ -863,6 +863,7 @@ static void rmnet_connect_work(struct work_struct *w)
 	if (ret) {
 		ERROR(cdev, "Unable to open data smd channel\n");
 		smd_close(dev->smd_ctl.ch);
+		return;
 	}
 	wait_event(dev->smd_data.wait, test_bit(CH_OPENED,
 				&dev->smd_data.flags));
