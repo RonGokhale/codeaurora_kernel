@@ -34,10 +34,10 @@
 #include "clock-voter.h"
 
 #ifdef CONFIG_MSM_SECURE_IO
-#undef readl
-#undef writel
-#define readl secure_readl
-#define writel secure_writel
+#undef readl_relaxed
+#undef writel_relaxed
+#define readl_relaxed secure_readl
+#define writel_relaxed secure_writel
 #endif
 
 #define REG(off)	(MSM_CLK_CTL_BASE + (off))
@@ -458,44 +458,44 @@ static void set_rate_tv(struct clk_local *clk, struct clk_freq_tbl *nf)
 	uint32_t pll_mode, pll_config, misc_cc2;
 
 	/* Disable PLL output. */
-	pll_mode = readl(MM_PLL2_MODE_REG);
+	pll_mode = readl_relaxed(MM_PLL2_MODE_REG);
 	pll_mode &= ~BIT(0);
-	writel(pll_mode, MM_PLL2_MODE_REG);
+	writel_relaxed(pll_mode, MM_PLL2_MODE_REG);
 
 	/* Assert active-low PLL reset. */
 	pll_mode &= ~BIT(2);
-	writel(pll_mode, MM_PLL2_MODE_REG);
+	writel_relaxed(pll_mode, MM_PLL2_MODE_REG);
 
 	/* Program L, M and N values. */
-	writel(rate->l_val, MM_PLL2_L_VAL_REG);
-	writel(rate->m_val, MM_PLL2_M_VAL_REG);
-	writel(rate->n_val, MM_PLL2_N_VAL_REG);
+	writel_relaxed(rate->l_val, MM_PLL2_L_VAL_REG);
+	writel_relaxed(rate->m_val, MM_PLL2_M_VAL_REG);
+	writel_relaxed(rate->n_val, MM_PLL2_N_VAL_REG);
 
 	/* Configure MN counter, post-divide, VCO, and i-bits. */
-	pll_config = readl(MM_PLL2_CONFIG_REG);
+	pll_config = readl_relaxed(MM_PLL2_CONFIG_REG);
 	pll_config &= ~(BM(22, 20) | BM(18, 0));
 	pll_config |= rate->n_val ? BIT(22) : 0;
 	pll_config |= BVAL(21, 20, rate->post_div);
 	pll_config |= BVAL(17, 16, rate->vco);
 	pll_config |= rate->i_bits;
-	writel(pll_config, MM_PLL2_CONFIG_REG);
+	writel_relaxed(pll_config, MM_PLL2_CONFIG_REG);
 
 	/* Configure MND. */
 	set_rate_mnd(clk, nf);
 
 	/* Configure hdmi_ref_clk to be equal to the TV clock rate. */
-	misc_cc2 = readl(MISC_CC2_REG);
+	misc_cc2 = readl_relaxed(MISC_CC2_REG);
 	misc_cc2 &= ~(BIT(28)|BM(21, 18));
 	misc_cc2 |= (BIT(28)|BVAL(21, 18, (nf->ns_val >> 14) & 0x3));
-	writel(misc_cc2, MISC_CC2_REG);
+	writel_relaxed(misc_cc2, MISC_CC2_REG);
 
 	/* De-assert active-low PLL reset. */
 	pll_mode |= BIT(2);
-	writel(pll_mode, MM_PLL2_MODE_REG);
+	writel_relaxed(pll_mode, MM_PLL2_MODE_REG);
 
 	/* Enable PLL output. */
 	pll_mode |= BIT(0);
-	writel(pll_mode, MM_PLL2_MODE_REG);
+	writel_relaxed(pll_mode, MM_PLL2_MODE_REG);
 }
 
 /*
@@ -527,23 +527,23 @@ int soc_set_pwr_rail(struct clk *clk, int enable)
 static uint32_t run_measurement(unsigned ticks)
 {
 	/* Stop counters and set the XO4 counter start value. */
-	writel(0x0, RINGOSC_TCXO_CTL_REG);
-	writel(ticks, RINGOSC_TCXO_CTL_REG);
+	writel_relaxed(0x0, RINGOSC_TCXO_CTL_REG);
+	writel_relaxed(ticks, RINGOSC_TCXO_CTL_REG);
 
 	/* Wait for timer to become ready. */
-	while ((readl(RINGOSC_STATUS_REG) & BIT(25)) != 0)
+	while ((readl_relaxed(RINGOSC_STATUS_REG) & BIT(25)) != 0)
 		cpu_relax();
 
 	/* Run measurement and wait for completion. */
-	writel(BIT(20)|ticks, RINGOSC_TCXO_CTL_REG);
-	while ((readl(RINGOSC_STATUS_REG) & BIT(25)) == 0)
+	writel_relaxed(BIT(20)|ticks, RINGOSC_TCXO_CTL_REG);
+	while ((readl_relaxed(RINGOSC_STATUS_REG) & BIT(25)) == 0)
 		cpu_relax();
 
 	/* Stop counters. */
-	writel(0x0, RINGOSC_TCXO_CTL_REG);
+	writel_relaxed(0x0, RINGOSC_TCXO_CTL_REG);
 
 	/* Return measured ticks. */
-	return readl(RINGOSC_STATUS_REG) & BM(24, 0);
+	return readl_relaxed(RINGOSC_STATUS_REG) & BM(24, 0);
 }
 
 /* Perform a hardware rate measurement for a given clock.
@@ -561,22 +561,23 @@ static int __soc_clk_measure_rate(u32 test_vector)
 	clk_sel = test_vector & TEST_CLK_SEL_MASK;
 	switch (test_vector >> TEST_TYPE_SHIFT) {
 	case TEST_TYPE_PER_LS:
-		writel(0x4030D00|BVAL(7, 0, clk_sel), CLK_TEST_REG);
+		writel_relaxed(0x4030D00|BVAL(7, 0, clk_sel), CLK_TEST_REG);
 		break;
 	case TEST_TYPE_PER_HS:
-		writel(0x4020000|BVAL(16, 10, clk_sel), CLK_TEST_REG);
+		writel_relaxed(0x4020000|BVAL(16, 10, clk_sel), CLK_TEST_REG);
 		break;
 	case TEST_TYPE_MM_LS:
-		writel(0x4030D97, CLK_TEST_REG);
-		writel(BVAL(6, 1, clk_sel)|BIT(0), DBG_CFG_REG_LS_REG);
+		writel_relaxed(0x4030D97, CLK_TEST_REG);
+		writel_relaxed(BVAL(6, 1, clk_sel)|BIT(0), DBG_CFG_REG_LS_REG);
 		break;
 	case TEST_TYPE_MM_HS:
-		writel(0x402B800, CLK_TEST_REG);
-		writel(BVAL(6, 1, clk_sel)|BIT(0), DBG_CFG_REG_HS_REG);
+		writel_relaxed(0x402B800, CLK_TEST_REG);
+		writel_relaxed(BVAL(6, 1, clk_sel)|BIT(0), DBG_CFG_REG_HS_REG);
 		break;
 	case TEST_TYPE_LPA:
-		writel(0x4030D98, CLK_TEST_REG);
-		writel(BVAL(6, 1, clk_sel)|BIT(0), LCC_CLK_LS_DEBUG_CFG_REG);
+		writel_relaxed(0x4030D98, CLK_TEST_REG);
+		writel_relaxed(BVAL(6, 1, clk_sel)|BIT(0),
+			       LCC_CLK_LS_DEBUG_CFG_REG);
 		break;
 	default:
 		ret = -EPERM;
@@ -586,10 +587,10 @@ static int __soc_clk_measure_rate(u32 test_vector)
 	dsb();
 
 	/* Enable CXO/4 and RINGOSC branch and root. */
-	pdm_reg_backup = readl(PDM_CLK_NS_REG);
-	ringosc_reg_backup = readl(RINGOSC_NS_REG);
-	writel(0x2898, PDM_CLK_NS_REG);
-	writel(0xA00, RINGOSC_NS_REG);
+	pdm_reg_backup = readl_relaxed(PDM_CLK_NS_REG);
+	ringosc_reg_backup = readl_relaxed(RINGOSC_NS_REG);
+	writel_relaxed(0x2898, PDM_CLK_NS_REG);
+	writel_relaxed(0xA00, RINGOSC_NS_REG);
 
 	/*
 	 * The ring oscillator counter will not reset if the measured clock
@@ -603,8 +604,8 @@ static int __soc_clk_measure_rate(u32 test_vector)
 	/* Run a full measurement. (~14 ms) */
 	raw_count_full = run_measurement(0x10000);
 
-	writel(ringosc_reg_backup, RINGOSC_NS_REG);
-	writel(pdm_reg_backup, PDM_CLK_NS_REG);
+	writel_relaxed(ringosc_reg_backup, RINGOSC_NS_REG);
+	writel_relaxed(pdm_reg_backup, PDM_CLK_NS_REG);
 
 	/* Return 0 if the clock is off. */
 	if (raw_count_full == raw_count_short)
@@ -617,7 +618,7 @@ static int __soc_clk_measure_rate(u32 test_vector)
 	}
 
 	/* Route dbg_hs_clk to PLLTEST.  300mV single-ended amplitude. */
-	writel(0x3CF8, PLLTEST_PAD_CFG_REG);
+	writel_relaxed(0x3CF8, PLLTEST_PAD_CFG_REG);
 err:
 	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
 
@@ -3766,10 +3767,10 @@ unsigned msm_num_clocks_8x60 = ARRAY_SIZE(msm_clocks_8x60);
 /* Read, modify, then write-back a register. */
 static void rmwreg(uint32_t val, void *reg, uint32_t mask)
 {
-	uint32_t regval = readl(reg);
+	uint32_t regval = readl_relaxed(reg);
 	regval &= ~mask;
 	regval |= val;
-	writel(regval, reg);
+	writel_relaxed(regval, reg);
 }
 
 static void reg_init(void)
@@ -3777,8 +3778,8 @@ static void reg_init(void)
 	/* Setup MM_PLL2 (PLL3), but turn it off. Rate set by set_rate_tv(). */
 	rmwreg(0, MM_PLL2_MODE_REG, BIT(0)); /* Disable output */
 	/* Set ref, bypass, assert reset, disable output, disable test mode */
-	writel(0, MM_PLL2_MODE_REG); /* PXO */
-	writel(0x00800000, MM_PLL2_CONFIG_REG); /* Enable main out. */
+	writel_relaxed(0, MM_PLL2_MODE_REG); /* PXO */
+	writel_relaxed(0x00800000, MM_PLL2_CONFIG_REG); /* Enable main out. */
 
 	/* TODO:
 	 * The ADM clock votes below should removed once all users of the ADMs
@@ -3788,13 +3789,13 @@ static void reg_init(void)
 	 * HW-voteable clocks.  Clear its bits so that disabling bits in the
 	 * SC0 register will cause the corresponding clocks to be disabled. */
 	rmwreg(BIT(12)|BIT(11), SC0_U_CLK_BRANCH_ENA_VOTE_REG, BM(12, 11));
-	writel(BIT(12)|BIT(11)|BM(5, 2), SC1_U_CLK_BRANCH_ENA_VOTE_REG);
+	writel_relaxed(BIT(12)|BIT(11)|BM(5, 2), SC1_U_CLK_BRANCH_ENA_VOTE_REG);
 	/* Let sc_aclk and sc_clk halt when both Scorpions are collapsed. */
-	writel(BIT(12)|BIT(11), SC0_U_CLK_SLEEP_ENA_VOTE_REG);
-	writel(BIT(12)|BIT(11), SC1_U_CLK_SLEEP_ENA_VOTE_REG);
+	writel_relaxed(BIT(12)|BIT(11), SC0_U_CLK_SLEEP_ENA_VOTE_REG);
+	writel_relaxed(BIT(12)|BIT(11), SC1_U_CLK_SLEEP_ENA_VOTE_REG);
 
 	/* Deassert MM SW_RESET_ALL signal. */
-	writel(0, SW_RESET_ALL_REG);
+	writel_relaxed(0, SW_RESET_ALL_REG);
 
 	/* Initialize MM AHB registers: Enable the FPB clock and disable HW
 	 * gating for all clocks. Also set VFE_AHB's FORCE_CORE_ON bit to
@@ -3811,52 +3812,52 @@ static void reg_init(void)
 	 * delays to safe values. */
 	rmwreg(0x000207F9, MAXI_EN_REG,  0x0FFFFFFF);
 	/* MAXI_EN2_REG is owned by the RPM.  Don't touch it. */
-	writel(0x3FE7FCFF, MAXI_EN3_REG);
-	writel(0x000001D8, SAXI_EN_REG);
+	writel_relaxed(0x3FE7FCFF, MAXI_EN3_REG);
+	writel_relaxed(0x000001D8, SAXI_EN_REG);
 
 	/* Initialize MM CC registers: Set MM FORCE_CORE_ON bits so that core
 	 * memories retain state even when not clocked. Also, set sleep and
 	 * wake-up delays to safe values. */
-	writel(0x00000000, CSI_CC_REG);
+	writel_relaxed(0x00000000, CSI_CC_REG);
 	rmwreg(0x00000000, MISC_CC_REG,  0xFEFFF3FF);
 	rmwreg(0x000007FD, MISC_CC2_REG, 0xFFFF7FFF);
-	writel(0x80FF0000, GFX2D0_CC_REG);
-	writel(0x80FF0000, GFX2D1_CC_REG);
-	writel(0x80FF0000, GFX3D_CC_REG);
-	writel(0x80FF0000, IJPEG_CC_REG);
-	writel(0x80FF0000, JPEGD_CC_REG);
+	writel_relaxed(0x80FF0000, GFX2D0_CC_REG);
+	writel_relaxed(0x80FF0000, GFX2D1_CC_REG);
+	writel_relaxed(0x80FF0000, GFX3D_CC_REG);
+	writel_relaxed(0x80FF0000, IJPEG_CC_REG);
+	writel_relaxed(0x80FF0000, JPEGD_CC_REG);
 	/* MDP and PIXEL clocks may be running at boot, don't turn them off. */
 	rmwreg(0x80FF0000, MDP_CC_REG,   BM(31, 29) | BM(23, 16));
 	rmwreg(0x80FF0000, PIXEL_CC_REG, BM(31, 29) | BM(23, 16));
-	writel(0x000004FF, PIXEL_CC2_REG);
-	writel(0x80FF0000, ROT_CC_REG);
-	writel(0x80FF0000, TV_CC_REG);
-	writel(0x000004FF, TV_CC2_REG);
-	writel(0xC0FF0000, VCODEC_CC_REG);
-	writel(0x80FF0000, VFE_CC_REG);
-	writel(0x80FF0000, VPE_CC_REG);
+	writel_relaxed(0x000004FF, PIXEL_CC2_REG);
+	writel_relaxed(0x80FF0000, ROT_CC_REG);
+	writel_relaxed(0x80FF0000, TV_CC_REG);
+	writel_relaxed(0x000004FF, TV_CC2_REG);
+	writel_relaxed(0xC0FF0000, VCODEC_CC_REG);
+	writel_relaxed(0x80FF0000, VFE_CC_REG);
+	writel_relaxed(0x80FF0000, VPE_CC_REG);
 
 	/* De-assert MM AXI resets to all hardware blocks. */
-	writel(0, SW_RESET_AXI_REG);
+	writel_relaxed(0, SW_RESET_AXI_REG);
 
 	/* Deassert all MM core resets. */
-	writel(0, SW_RESET_CORE_REG);
+	writel_relaxed(0, SW_RESET_CORE_REG);
 
 	/* Reset 3D core once more, with its clock enabled. This can
 	 * eventually be done as part of the GDFS footswitch driver. */
 	clk_set_rate(&gfx3d_clk.c, 27000000);
 	clk_enable(&gfx3d_clk.c);
-	writel(BIT(12), SW_RESET_CORE_REG);
+	writel_relaxed(BIT(12), SW_RESET_CORE_REG);
 	dsb();
 	udelay(5);
-	writel(0, SW_RESET_CORE_REG);
+	writel_relaxed(0, SW_RESET_CORE_REG);
 	/* Make sure reset is de-asserted before clock is disabled. */
 	mb();
 	clk_disable(&gfx3d_clk.c);
 
 	/* Enable TSSC and PDM PXO sources. */
-	writel(BIT(11), TSSC_CLK_CTL_REG);
-	writel(BIT(15), PDM_CLK_NS_REG);
+	writel_relaxed(BIT(11), TSSC_CLK_CTL_REG);
+	writel_relaxed(BIT(15), PDM_CLK_NS_REG);
 	/* Set the dsi_byte_clk src to the DSI PHY PLL,
 	 * dsi_esc_clk to PXO/2, and the hdmi_app_clk src to PXO */
 	rmwreg(0x400001, MISC_CC2_REG, 0x424003);
