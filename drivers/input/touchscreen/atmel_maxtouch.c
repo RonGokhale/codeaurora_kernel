@@ -2068,6 +2068,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	kfree(t38_data);
 	kfree(id_data);
 
+	device_init_wakeup(&client->dev, pdata->wakeup);
 #if defined(CONFIG_HAS_EARLYSUSPEND)
 	mxt->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN +
 						MXT_SUSPEND_LEVEL;
@@ -2118,6 +2119,7 @@ static int __devexit mxt_remove(struct i2c_client *client)
 	/* Remove debug dir entries */
 	debugfs_remove_recursive(mxt->debug_dir);
 
+	device_init_wakeup(&client->dev, 0);
 #if defined(CONFIG_HAS_EARLYSUSPEND)
 	unregister_early_suspend(&mxt->early_suspend);
 #endif

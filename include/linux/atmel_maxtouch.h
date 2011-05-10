@@ -306,6 +306,7 @@ struct mxt_platform_data {
 	int   max_y;    /* The default reported Y range   */
 	u8    (*valid_interrupt) (void);
 	u8    (*read_chg) (void);
+	bool wakeup;
 };
 
 void	mxt_hw_reset(void);
