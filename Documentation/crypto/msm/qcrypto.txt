@@ -21,6 +21,10 @@ AES algorithms.
 In addition to those functions provided by Crypto 3 HW, Crypto 3E provides
 HMAC-SHA1 hashing algorithm.
 
+In addition to those functions provided by Crypto 3 HW, Crypto 4.0 provides
+HMAC-SHA1/SHA256, AES CBC-MAC hashing algorithm and AES XTS/CCM cipher
+algorithms.
+
 
 Software description
 ====================
@@ -35,18 +39,14 @@ Currently, qcrypto supports the following algorithms.
 
       ablkcipher -
           cbc(aes),ecb(aes),ctr(aes)
-
+      ahash -
+          sha1, sha256
       aead -
           authenc(hmac(sha1),cbc(aes))
 
-The {des, 3des} {cbc, ecb} support can be achieved by adding the
-algorithms to the internal table - _qcrypto_algos.
-
-The hmac(sha1), {{aes}{ctr,ecb},  {des,3des} {cbc,ecb}} can be
-    achieved by adding the algorithms to the table.
-
-The hashing transforms can be added for SHA-1, SHA-256.
-NOTE: The hash functionality (SHA1/SHA256) is yet to be implemented
+      The hmac(sha1), hmac(sha256, authenc(hmac(sha1),cbc(aes)), ccm(aes)
+      and xts(aes) algorithms are registered for some platforms that
+      support these in the CE hardware
 
 The HW device  can support various algorithms. However, the most important
 algorithms to gain the performance using a HW crypto accelerator are
@@ -55,7 +55,7 @@ AEAD, and ABLKCIPHER.
 AEAD stands for "authentication encryption with association data".
 ABLKCIPHER stands of "asynchronous block cipher".
 
-For the AEAD structure, it is described in the
+The AEAD structure is described in the following header file
     LINUX/opensource/kernel/include/crypto/aead.h
 
 The design of the driver is to allow multiple requests
@@ -64,14 +64,14 @@ Therefore, the driver will have to internally queue the requests, and
 serialize the requests to the low level qce driver.
 
 When a request is received from the client, if there is no outstanding
-request, a qce request is issued, otherwise, the request is queued in
-the driver queue.
+request, a qce (or qce40) request is issued, otherwise, the request is
+queued in the driver queue.
 
-On completion of a request, the qce invokes the (registered) callback
-from the qcrypto.  The internal tasklet (done_tasklet) is scheduled in
-this callback function. The sole purpose of done_tasklet is
+On completion of a request, the qce (or qce40) invokes the registered
+callback from the qcrypto.  The internal tasklet (done_tasklet) is scheduled
+in this callback function. The sole purpose of done_tasklet is
 to call the completion of the current active request, and
-issue more requests to the qce, if any exists.
+issue more requests to the qce (or qce40), if any exists.
 
 A spin lock is used to protect the critical section of internal queue to
 be accessed from multiple tasks, SMP, and completion callback
@@ -141,4 +141,4 @@ Limitations:
     application.  Any other user space or kernel application should be implemented
     to use the software implemenation of the crypto algorithms.
 
-    (NOTE:  Please refer to details on the limitations listed in qce.txt)
+    (NOTE:  Please refer to details on the limitations listed in qce/40.txt)
