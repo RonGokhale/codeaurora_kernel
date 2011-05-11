@@ -16,6 +16,7 @@
 #include <linux/mfd/core.h>
 #include <linux/mfd/wcd9310/core.h>
 #include <linux/mfd/wcd9310/pdata.h>
+#include <linux/mfd/wcd9310/registers.h>
 #include <linux/delay.h>
 #include <sound/soc.h>
 
@@ -197,6 +198,24 @@ static struct mfd_cell tabla_devs[] = {
 		.name = "tabla_codec",
 	},
 };
+
+static void tabla_bring_up(struct tabla *tabla)
+{
+	tabla_reg_write(tabla, TABLA_A_LEAKAGE_CTL, 0x4);
+	tabla_reg_write(tabla, TABLA_A_CDC_CTL, 0);
+	usleep_range(5000, 5000);
+	tabla_reg_write(tabla, TABLA_A_CDC_CTL, 3);
+	tabla_reg_write(tabla, TABLA_A_LEAKAGE_CTL, 3);
+}
+
+static void tabla_bring_down(struct tabla *tabla)
+{
+	tabla_reg_write(tabla, TABLA_A_LEAKAGE_CTL, 0x7);
+	tabla_reg_write(tabla, TABLA_A_LEAKAGE_CTL, 0x6);
+	tabla_reg_write(tabla, TABLA_A_LEAKAGE_CTL, 0xe);
+	tabla_reg_write(tabla, TABLA_A_LEAKAGE_CTL, 0x8);
+}
+
 static int tabla_device_init(struct tabla *tabla, int irq)
 {
 	int ret;
@@ -204,6 +223,8 @@ static int tabla_device_init(struct tabla *tabla, int irq)
 	mutex_init(&tabla->io_lock);
 	mutex_init(&tabla->xfer_lock);
 	dev_set_drvdata(tabla->dev, tabla);
+
+	tabla_bring_up(tabla);
 
 	ret = tabla_irq_init(tabla);
 	if (ret) {
@@ -223,14 +244,16 @@ static int tabla_device_init(struct tabla *tabla, int irq)
 err:
 	tabla_irq_exit(tabla);
 err_irq:
+	tabla_bring_down(tabla);
 	kfree(tabla);
 	return ret;
 }
 static void tabla_device_exit(struct tabla *tabla)
 {
+	tabla_irq_exit(tabla);
+	tabla_bring_down(tabla);
 	mutex_destroy(&tabla->io_lock);
 	mutex_destroy(&tabla->xfer_lock);
-	tabla_irq_exit(tabla);
 	kfree(tabla);
 }
 

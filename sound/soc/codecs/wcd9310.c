@@ -562,24 +562,6 @@ static void tabla_codec_disable_clock_block(struct snd_soc_codec *codec)
 	snd_soc_update_bits(codec, TABLA_A_CLK_BUFF_EN1, 0x04, 0x00);
 	tabla->clock_active = false;
 }
-static void tabla_codec_bring_up(struct snd_soc_codec *codec)
-{
-	pr_debug("%s\n", __func__);
-
-	snd_soc_update_bits(codec, TABLA_A_LEAKAGE_CTL, 0x4, 0x4);
-	snd_soc_update_bits(codec, TABLA_A_CDC_CTL, 1, 0);
-	usleep_range(5000, 5000);
-	snd_soc_update_bits(codec, TABLA_A_CDC_CTL, 1, 1);
-}
-static void tabla_codec_bring_down(struct snd_soc_codec *codec)
-{
-	pr_debug("%s\n", __func__);
-
-	snd_soc_write(codec, TABLA_A_LEAKAGE_CTL, 0x7);
-	snd_soc_write(codec, TABLA_A_LEAKAGE_CTL, 0x6);
-	snd_soc_write(codec, TABLA_A_LEAKAGE_CTL, 0xe);
-	snd_soc_write(codec, TABLA_A_LEAKAGE_CTL, 0x8);
-}
 
 static int tabla_startup(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
@@ -594,9 +576,6 @@ static int tabla_startup(struct snd_pcm_substream *substream,
 		pr_err("Error, no codec found\n");
 		return -EINVAL;
 	}
-	if (!tabla->ref_cnt)
-		tabla_codec_bring_up(codec);
-
 	tabla->ref_cnt++;
 
 	if (tabla->bandgap_type != TABLA_BANDGAP_AUDIO_MODE) {
@@ -623,9 +602,6 @@ static int tabla_startup(struct snd_pcm_substream *substream,
 	return ret;
 err_bandgap:
 	tabla->ref_cnt--;
-	if (!tabla->ref_cnt)
-		tabla_codec_bring_down(codec);
-
 	return ret;
 }
 
