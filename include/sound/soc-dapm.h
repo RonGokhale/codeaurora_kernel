@@ -254,6 +254,12 @@
 	.get = snd_soc_dapm_get_enum_virt, \
 	.put = snd_soc_dapm_put_enum_virt, \
 	.private_value = (unsigned long)&xenum }
+#define SOC_DAPM_ENUM_EXT(xname, xenum, xget, xput) \
+{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
+	.info = snd_soc_info_enum_double, \
+	.get = xget, \
+	.put = xput, \
+	.private_value = (unsigned long)&xenum }
 #define SOC_DAPM_VALUE_ENUM(xname, xenum) \
 {	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
 	.info = snd_soc_info_enum_double, \
@@ -336,11 +342,21 @@ int snd_soc_dapm_new_widgets(struct snd_soc_dapm_context *dapm);
 void snd_soc_dapm_free(struct snd_soc_dapm_context *dapm);
 int snd_soc_dapm_add_routes(struct snd_soc_dapm_context *dapm,
 			    const struct snd_soc_dapm_route *route, int num);
+int snd_soc_dapm_query_path(struct snd_soc_dapm_context *dapm,
+	const char *source_name, const char *sink_name, int stream);
+const char *snd_soc_dapm_get_aif(struct snd_soc_dapm_context *dapm,
+		const char *stream_name, enum snd_soc_dapm_type type);
 
 /* dapm events */
 int snd_soc_dapm_stream_event(struct snd_soc_pcm_runtime *rtd,
 	const char *stream, int event);
 void snd_soc_dapm_shutdown(struct snd_soc_card *card);
+/* external DAPM widget events */
+int snd_soc_dapm_mixer_update_power(struct snd_soc_dapm_widget *widget,
+		struct snd_kcontrol *kcontrol, int connect);
+int snd_soc_dapm_mux_update_power(struct snd_soc_dapm_widget *widget,
+				 struct snd_kcontrol *kcontrol, int change,
+				 int mux, struct soc_enum *e);
 
 /* dapm sys fs - used by the core */
 int snd_soc_dapm_sys_add(struct device *dev);
@@ -416,6 +432,7 @@ struct snd_soc_dapm_path {
 	/* status */
 	u32 connect:1;	/* source and sink widgets are connected */
 	u32 walked:1;	/* path has been walked */
+	u32 length:6;	/* path length - used by route mapper */
 
 	int (*connected)(struct snd_soc_dapm_widget *source,
 			 struct snd_soc_dapm_widget *sink);
@@ -431,6 +448,7 @@ struct snd_soc_dapm_widget {
 	char *name;		/* widget name */
 	char *sname;	/* stream name */
 	struct snd_soc_codec *codec;
+	struct snd_soc_platform *platform;
 	struct list_head list;
 	struct snd_soc_dapm_context *dapm;
 
@@ -439,6 +457,8 @@ struct snd_soc_dapm_widget {
 	unsigned char shift;			/* bits to shift */
 	unsigned int saved_value;		/* widget saved value */
 	unsigned int value;				/* widget current value */
+	unsigned int path_idx;
+	unsigned int hops;
 	unsigned int mask;			/* non-shifted mask */
 	unsigned int on_val;			/* on state value */
 	unsigned int off_val;			/* off state value */
@@ -489,11 +509,16 @@ struct snd_soc_dapm_context {
 
 	struct device *dev; /* from parent - for debug */
 	struct snd_soc_codec *codec; /* parent codec */
+	struct snd_soc_platform *platform; /*parent platform */
 	struct snd_soc_card *card; /* parent card */
 
 	/* used during DAPM updates */
 	int dev_power;
 	struct list_head list;
+
+	int num_valid_paths;
+
+	int (*stream_event)(struct snd_soc_dapm_context *dapm);
 
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_dapm;

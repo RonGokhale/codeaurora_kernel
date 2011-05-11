@@ -441,13 +441,13 @@ static struct snd_pcm_ops msm_mvs_pcm_ops = {
 
 };
 
-static int msm_pcm_new(struct snd_card *card,
-			struct snd_soc_dai *codec_dai,
-			struct snd_pcm *pcm)
+static int msm_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
 	int   i, ret, offset = 0;
 	struct snd_pcm_substream *substream = NULL;
 	struct snd_dma_buffer *dma_buffer = NULL;
+	struct snd_card *card = rtd->card->snd_card;
+	struct snd_pcm *pcm = rtd->pcm;
 
 	ret = snd_pcm_new_stream(pcm, SNDRV_PCM_STREAM_PLAYBACK, 1);
 	if (ret)
