@@ -1062,10 +1062,6 @@ int l2cap_do_connect(struct sock *sk)
 
 	auth_type = l2cap_get_auth_type(sk);
 
-	if (l2cap_pi(sk)->dcid == L2CAP_CID_LE_DATA)
-		hcon = hci_connect(hdev, LE_LINK, dst,
-					l2cap_pi(sk)->sec_level, auth_type);
-	else
 	if (l2cap_pi(sk)->fixed_channel) {
 		/* Fixed channels piggyback on existing ACL connections */
 		hcon = hci_conn_hash_lookup_ba(hdev, ACL_LINK, dst);
@@ -1074,8 +1070,13 @@ int l2cap_do_connect(struct sock *sk)
 
 		conn = hcon->l2cap_data;
 	} else {
-		hcon = hci_connect(hdev, ACL_LINK, 0, dst,
-				l2cap_pi(sk)->sec_level, auth_type);
+		if (l2cap_pi(sk)->dcid == L2CAP_CID_LE_DATA)
+			hcon = hci_connect(hdev, LE_LINK, 0, dst,
+					   l2cap_pi(sk)->sec_level, auth_type);
+		else
+			hcon = hci_connect(hdev, ACL_LINK, 0, dst,
+					   l2cap_pi(sk)->sec_level, auth_type);
+
 		if (!hcon)
 			goto done;
 

@@ -175,7 +175,7 @@ static int l2cap_sock_connect(struct socket *sock, struct sockaddr *addr, int al
 	lock_sock(sk);
 
 	if ((sk->sk_type == SOCK_SEQPACKET || sk->sk_type == SOCK_STREAM)
-			&& !(la.l2_psm || la.l2_cid)) {
+		&& !(la.l2_psm || la.l2_cid || l2cap_pi(sk)->fixed_channel)) {
 		err = -EINVAL;
 		goto done;
 	}
