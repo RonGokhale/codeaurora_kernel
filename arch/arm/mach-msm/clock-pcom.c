@@ -32,7 +32,7 @@ static int pc_clk_enable(struct clk *clk)
 	int id = to_pcom_clk(clk)->id;
 
 	/* Ignore clocks that are always on */
-	if (id == P_EBI1_CLK || id == P_PBUS_CLK)
+	if (id == P_EBI1_CLK || id == P_EBI1_FIXED_CLK || id == P_PBUS_CLK)
 		return 0;
 
 	rc = msm_proc_comm(PCOM_CLKCTL_RPC_ENABLE, &id, NULL);
@@ -47,7 +47,7 @@ static void pc_clk_disable(struct clk *clk)
 	int id = to_pcom_clk(clk)->id;
 
 	/* Ignore clocks that are always on */
-	if (id == P_EBI1_CLK || id == P_PBUS_CLK)
+	if (id == P_EBI1_CLK || id == P_EBI1_FIXED_CLK || id == P_PBUS_CLK)
 		return;
 
 	msm_proc_comm(PCOM_CLKCTL_RPC_DISABLE, &id, NULL);
