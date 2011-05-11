@@ -640,4 +640,13 @@ void l2cap_amp_logical_complete(int result, struct hci_conn *ampcon,
 
 void l2cap_amp_logical_destroyed(struct hci_conn *ampcon);
 
+/* Temporary changes */
+#define BT_FLUSHABLE_OFF 0
+#define BT_FLUSHABLE_ON 1
+#define BT_FLUSHABLE 0
+#define BUSY_QUEUE(sk) ((void *)0)
+#define SREJ_LIST(sk) ((void *)0)
+#define L2CAP_SDU_UNSEGMENTED 1
+#define L2CAP_CONN_WAIT_F 2
+
 #endif /* __L2CAP_H */

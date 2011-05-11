@@ -2111,7 +2111,7 @@ static struct sk_buff *l2cap_create_basic_pdu(struct sock *sk, struct msghdr *ms
 	return skb;
 }
 
-static struct sk_buff *l2cap_create_iframe_pdu(struct sock *sk,
+static struct sk_buff *l2cap_create_iframe_pdu_quic(struct sock *sk,
 					struct msghdr *msg, size_t len,
 					u16 sdulen, int reseg)
 {
@@ -2188,6 +2188,24 @@ static struct sk_buff *l2cap_create_iframe_pdu(struct sock *sk,
 
 	bt_cb(skb)->retries = 0;
 	return skb;
+}
+
+__used struct sk_buff *l2cap_create_iframe_pdu(struct sock *sk,
+					struct msghdr *msg, size_t len,
+					u16 control, u16 sdulen)
+{
+	return l2cap_create_iframe_pdu_quic(sk, msg, len, sdulen, 0);
+}
+
+__used int l2cap_sar_segment_sdu(struct sock *sk, struct msghdr *msg,
+				size_t len)
+{
+	return 0;
+}
+
+__used void l2cap_streaming_send(struct sock *sk)
+{
+	return;
 }
 
 static void l2cap_ertm_process_reqseq(struct sock *sk, u16 reqseq)
@@ -2761,7 +2779,8 @@ static int l2cap_segment_sdu(struct sock *sk, struct sk_buff_head* seg_queue,
 	}
 
 	while (len) {
-		skb = l2cap_create_iframe_pdu(sk, msg, pdu_len, sdu_len, reseg);
+		skb = l2cap_create_iframe_pdu_quic(sk, msg, pdu_len,
+							sdu_len, reseg);
 
 		BT_DBG("iframe skb %p", skb);
 
