@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
+#include <linux/mfd/wcd9310/core.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/soc.h>
@@ -115,6 +116,90 @@ failed_cmd:
 	return rc;
 }
 
+static int msm_dai_q6_slim_bus_hw_params(struct snd_pcm_hw_params *params,
+				    struct snd_soc_dai *dai, int stream)
+{
+	union afe_port_config port_config;
+	int sample_rate, channels;
+	u8 pgd_la, inf_la;
+	int rc;
+
+	channels = params_channels(params);
+	sample_rate = params_rate(params);
+	tabla_get_logical_addresses(&pgd_la, &inf_la);
+
+	port_config.slimbus.slimbus_dev_id =  AFE_SLIMBUS_DEVICE_1;
+	port_config.slimbus.slave_dev_pgd_la = pgd_la;
+	port_config.slimbus.slave_dev_intfdev_la = inf_la;
+	port_config.slimbus.bit_width = 16; /* Q6 only supports 16 as now */
+	port_config.slimbus.data_format = 0;
+	port_config.slimbus.num_channels = channels;
+
+	memset(port_config.slimbus.slave_port_mapping, 0,
+			sizeof(port_config.slimbus.slave_port_mapping));
+
+	switch (channels) {
+	case 2:
+		if (dai->id == SLIMBUS_0_RX) {
+			port_config.slimbus.slave_port_mapping[0] = 1;
+			port_config.slimbus.slave_port_mapping[1] = 2;
+		} else {
+			port_config.slimbus.slave_port_mapping[0] = 5;
+			port_config.slimbus.slave_port_mapping[1] = 6;
+		}
+		break;
+	case 1:
+	default:
+		if (dai->id == SLIMBUS_0_RX)
+			port_config.slimbus.slave_port_mapping[0] = 1;
+		else
+			port_config.slimbus.slave_port_mapping[0] = 6;
+
+		break;
+	}
+
+	port_config.slimbus.reserved = 0;
+
+	dev_dbg(dai->dev, "slimbus_dev_id  %hu  slave_dev_pgd_la 0x%hx\n"
+		"slave_dev_intfdev_la 0x%hx   bit_width %hu   data_format %hu\n"
+		"num_channel %hu  slave_port_mapping[0]  %hu\n"
+		"slave_port_mapping[1]  %hu slave_port_mapping[2]  %hu\n"
+		"sample_rate %d\n", port_config.slimbus.slimbus_dev_id,
+		port_config.slimbus.slave_dev_pgd_la,
+		port_config.slimbus.slave_dev_intfdev_la,
+		port_config.slimbus.bit_width, port_config.slimbus.data_format,
+		port_config.slimbus.num_channels,
+		port_config.slimbus.slave_port_mapping[0],
+		port_config.slimbus.slave_port_mapping[1],
+		port_config.slimbus.slave_port_mapping[2],
+		sample_rate);
+
+	rc = afe_open(dai->id, &port_config, sample_rate);
+
+	if (IS_ERR_VALUE(rc)) {
+		dev_err(dai->dev, "fail to open AFE port\n");
+		goto failed_cmd;
+	}
+	if (stream == SNDRV_PCM_STREAM_PLAYBACK)
+		rc = adm_open_mixer(dai->id, ADM_PATH_PLAYBACK, sample_rate,
+		channels, DEFAULT_COPP_TOPOLOGY);
+	else
+		rc = adm_open_mixer(dai->id, ADM_PATH_LIVE_REC, sample_rate,
+		channels, DEFAULT_COPP_TOPOLOGY);
+
+	if (IS_ERR_VALUE(rc)) {
+		dev_err(dai->dev, "fail to open AFE port\n");
+		goto failed_cmd;
+	}
+
+	return 0;
+
+failed_cmd:
+	return rc;
+}
+
+
+
 /* Current implementation assumes hw_param is called once
  * This may not be the case but what to do when ADM and AFE
  * port are already opened and parameter changes
@@ -134,6 +219,11 @@ static int msm_dai_q6_hw_params(struct snd_pcm_substream *substream,
 		rc = msm_dai_q6_hdmi_hw_params(params, dai);
 		break;
 
+	case SLIMBUS_0_RX:
+	case SLIMBUS_0_TX:
+		rc = msm_dai_q6_slim_bus_hw_params(params, dai,
+				substream->stream);
+		break;
 	default:
 		dev_err(dai->dev, "invalid AFE port ID\n");
 		rc = -EINVAL;
@@ -215,6 +305,34 @@ static struct snd_soc_dai_driver msm_dai_q6_hdmi_rx_dai = {
 	.ops = &msm_dai_q6_ops,
 };
 
+
+static struct snd_soc_dai_driver msm_dai_q6_slimbus_rx_dai = {
+	.playback = {
+		.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
+		SNDRV_PCM_RATE_16000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+		.channels_min = 1,
+		.channels_max = 2,
+		.rate_min =     8000,
+		.rate_max =	48000,
+	},
+	.ops = &msm_dai_q6_ops,
+};
+
+static struct snd_soc_dai_driver msm_dai_q6_slimbus_tx_dai = {
+	.capture = {
+		.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
+		SNDRV_PCM_RATE_16000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+		.channels_min = 1,
+		.channels_max = 2,
+		.rate_min =     8000,
+		.rate_max =	48000,
+	},
+	.ops = &msm_dai_q6_ops,
+};
+
+
 /* To do: change to register DAIs as batch */
 static __devinit int msm_dai_q6_dev_probe(struct platform_device *pdev)
 {
@@ -231,6 +349,14 @@ static __devinit int msm_dai_q6_dev_probe(struct platform_device *pdev)
 		break;
 	case HDMI_RX:
 		rc = snd_soc_register_dai(&pdev->dev, &msm_dai_q6_hdmi_rx_dai);
+		break;
+	case SLIMBUS_0_RX:
+		rc = snd_soc_register_dai(&pdev->dev,
+				&msm_dai_q6_slimbus_rx_dai);
+		break;
+	case SLIMBUS_0_TX:
+		rc = snd_soc_register_dai(&pdev->dev,
+				&msm_dai_q6_slimbus_tx_dai);
 		break;
 	default:
 		rc = -ENODEV;

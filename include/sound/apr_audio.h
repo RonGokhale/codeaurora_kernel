@@ -40,6 +40,19 @@
 #define VOICE_RECORD_RX 0x8003		/* index = 12 */
 #define VOICE_RECORD_TX 0x8004		/* index = 13 */
 #define VOICE_PLAYBACK_TX 0x8005	/* index = 14 */
+
+/* Slimbus Multi channel port id pool  */
+#define SLIMBUS_0_RX		0x4000		/* index = 15 */
+#define SLIMBUS_0_TX		0x4001		/* index = 16 */
+#define SLIMBUS_1_RX		0x4002		/* index = 17 */
+#define SLIMBUS_1_TX		0x4003		/* index = 18 */
+#define SLIMBUS_2_RX		0x4004
+#define SLIMBUS_2_TX		0x4005
+#define SLIMBUS_3_RX		0x4006
+#define SLIMBUS_3_TX		0x4007
+#define SLIMBUS_4_RX		0x4008
+#define SLIMBUS_4_TX		0x4009		/* index = 24 */
+
 #define AFE_PORT_INVALID 0xFFFF
 
 #define AFE_PORT_CMD_START 0x000100ca
@@ -211,12 +224,41 @@ struct afe_port_hdmi_cfg {
 				/* HDMI_non_Linaer = 1 */
 } __attribute__ ((packed));
 
+
+/* Slimbus Device Ids */
+#define AFE_SLIMBUS_DEVICE_1		0x0
+#define AFE_SLIMBUS_DEVICE_2		0x1
+#define AFE_PORT_MAX_AUDIO_CHAN_CNT	16
+
+struct afe_port_slimbus_cfg {
+	u16	slimbus_dev_id;		/* SLIMBUS Device id.*/
+
+	u16	slave_dev_pgd_la;	/* Slave ported generic device
+					* logical address.
+					*/
+	u16	slave_dev_intfdev_la;	/* Slave interface device logical
+					* address.
+					*/
+	u16	bit_width;		/**  bit width of the samples, 16, 24.*/
+
+	u16	data_format;		/** data format.*/
+
+	u16	num_channels;		/** Number of channels.*/
+
+	/** Slave port mapping for respective channels.*/
+	u16	slave_port_mapping[AFE_PORT_MAX_AUDIO_CHAN_CNT];
+
+	u16	reserved;
+} __packed;
+
+
 #define AFE_PORT_AUDIO_IF_CONFIG 0x000100d3
 
 union afe_port_config {
 	struct afe_port_pcm_cfg         pcm;
 	struct afe_port_mi2s_cfg        mi2s;
 	struct afe_port_hdmi_cfg        hdmi;
+	struct afe_port_slimbus_cfg	slimbus;
 } __attribute__((packed));
 
 struct afe_audioif_config_command {

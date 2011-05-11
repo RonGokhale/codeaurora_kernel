@@ -188,8 +188,8 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 }
 
 static const char *mm_be[] = {
-	LPASS_BE_PRI_I2S_RX,
-	LPASS_BE_PRI_I2S_TX,
+	LPASS_BE_SLIMBUS_0_RX,
+	LPASS_BE_SLIMBUS_0_TX,
 	LPASS_BE_HDMI,
 };
 
@@ -288,27 +288,27 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 	},
 	/* Backend DAI Links */
 	{
-		.name = LPASS_BE_PRI_I2S_RX,
-		.stream_name = "Primary I2S Playback",
-		.cpu_dai_name = "msm-dai-q6.0",
+		.name = LPASS_BE_SLIMBUS_0_RX,
+		.stream_name = "Slimbus Playback",
+		.cpu_dai_name = "msm-dai-q6.16384",
 		.platform_name = "msm-pcm-routing",
 		.codec_name     = "tabla_codec",
 		.codec_dai_name	= "tabla_rx1",
 		.no_pcm = 1,
-		.be_id = MSM_BACKEND_DAI_PRI_I2S_RX,
+		.be_id = MSM_BACKEND_DAI_SLIMBUS_0_RX,
 		.init = &msm8960_audrx_init,
 		.be_hw_params_fixup = slimbus_be_hw_params_fixup,
 		.ops = &msm8960_be_ops,
 	},
 	{
-		.name = LPASS_BE_PRI_I2S_TX,
-		.stream_name = "Primary I2S Capture",
-		.cpu_dai_name = "msm-dai-q6.1",
+		.name = LPASS_BE_SLIMBUS_0_TX,
+		.stream_name = "Slimbus Capture",
+		.cpu_dai_name = "msm-dai-q6.16385",
 		.platform_name = "msm-pcm-routing",
 		.codec_name     = "tabla_codec",
 		.codec_dai_name	= "tabla_tx1",
 		.no_pcm = 1,
-		.be_id = MSM_BACKEND_DAI_PRI_I2S_TX,
+		.be_id = MSM_BACKEND_DAI_SLIMBUS_0_TX,
 		.be_hw_params_fixup = slimbus_be_hw_params_fixup,
 		.ops = &msm8960_be_ops,
 	},
