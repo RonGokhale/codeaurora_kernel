@@ -340,17 +340,17 @@ static int pc_pll_request(unsigned id, unsigned on)
 		if (on) {
 			pll_control->pll[PLL_BASE + id].votes |= 2;
 			if (!pll_control->pll[PLL_BASE + id].on) {
-				writel(6, PLLn_MODE(id));
+				writel_relaxed(6, PLLn_MODE(id));
 				dsb();
 				udelay(50);
-				writel(7, PLLn_MODE(id));
+				writel_relaxed(7, PLLn_MODE(id));
 				pll_control->pll[PLL_BASE + id].on = 1;
 			}
 		} else {
 			pll_control->pll[PLL_BASE + id].votes &= ~2;
 			if (pll_control->pll[PLL_BASE + id].on
 			    && !pll_control->pll[PLL_BASE + id].votes) {
-				writel(0, PLLn_MODE(id));
+				writel_relaxed(0, PLLn_MODE(id));
 				pll_control->pll[PLL_BASE + id].on = 0;
 			}
 		}
@@ -396,15 +396,15 @@ static int acpuclk_set_vdd_level(int vdd)
 {
 	uint32_t current_vdd;
 
-	current_vdd = readl(A11S_VDD_SVS_PLEVEL_ADDR) & 0x07;
+	current_vdd = readl_relaxed(A11S_VDD_SVS_PLEVEL_ADDR) & 0x07;
 
 	dprintk("Switching VDD from %u mV -> %d mV\n",
 	       current_vdd, vdd);
 
-	writel((1 << 7) | (vdd << 3), A11S_VDD_SVS_PLEVEL_ADDR);
+	writel_relaxed((1 << 7) | (vdd << 3), A11S_VDD_SVS_PLEVEL_ADDR);
 	dsb();
 	udelay(drv_state.vdd_switch_time_us);
-	if ((readl(A11S_VDD_SVS_PLEVEL_ADDR) & 0x7) != vdd) {
+	if ((readl_relaxed(A11S_VDD_SVS_PLEVEL_ADDR) & 0x7) != vdd) {
 		pr_err("VDD set failed\n");
 		return -EIO;
 	}
@@ -419,7 +419,7 @@ static void acpuclk_set_div(const struct clkctl_acpu_speed *hunt_s)
 {
 	uint32_t reg_clkctl, reg_clksel, clk_div, src_sel;
 
-	reg_clksel = readl(A11S_CLK_SEL_ADDR);
+	reg_clksel = readl_relaxed(A11S_CLK_SEL_ADDR);
 
 	/* AHB_CLK_DIV */
 	clk_div = (reg_clksel >> 1) & 0x03;
@@ -433,19 +433,19 @@ static void acpuclk_set_div(const struct clkctl_acpu_speed *hunt_s)
 	if (hunt_s->ahbclk_div > clk_div) {
 		reg_clksel &= ~(0x3 << 1);
 		reg_clksel |= (hunt_s->ahbclk_div << 1);
-		writel(reg_clksel, A11S_CLK_SEL_ADDR);
+		writel_relaxed(reg_clksel, A11S_CLK_SEL_ADDR);
 	}
 
 	/* Program clock source and divider */
-	reg_clkctl = readl(A11S_CLK_CNTL_ADDR);
+	reg_clkctl = readl_relaxed(A11S_CLK_CNTL_ADDR);
 	reg_clkctl &= ~(0xFF << (8 * src_sel));
 	reg_clkctl |= hunt_s->a11clk_src_sel << (4 + 8 * src_sel);
 	reg_clkctl |= hunt_s->a11clk_src_div << (0 + 8 * src_sel);
-	writel(reg_clkctl, A11S_CLK_CNTL_ADDR);
+	writel_relaxed(reg_clkctl, A11S_CLK_CNTL_ADDR);
 
 	/* Program clock source selection */
 	reg_clksel ^= 1;
-	writel(reg_clksel, A11S_CLK_SEL_ADDR);
+	writel_relaxed(reg_clksel, A11S_CLK_SEL_ADDR);
 
 	/*
 	 * If the new clock divider is lower than the previous, then
@@ -454,7 +454,7 @@ static void acpuclk_set_div(const struct clkctl_acpu_speed *hunt_s)
 	if (hunt_s->ahbclk_div < clk_div) {
 		reg_clksel &= ~(0x3 << 1);
 		reg_clksel |= (hunt_s->ahbclk_div << 1);
-		writel(reg_clksel, A11S_CLK_SEL_ADDR);
+		writel_relaxed(reg_clksel, A11S_CLK_SEL_ADDR);
 	}
 }
 
@@ -525,9 +525,9 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 	}
 
 	/* Set wait states for CPU inbetween frequency changes */
-	reg_clkctl = readl(A11S_CLK_CNTL_ADDR);
+	reg_clkctl = readl_relaxed(A11S_CLK_CNTL_ADDR);
 	reg_clkctl |= (100 << 16); /* set WT_ST_CNT */
-	writel(reg_clkctl, A11S_CLK_CNTL_ADDR);
+	writel_relaxed(reg_clkctl, A11S_CLK_CNTL_ADDR);
 
 	dprintk("Switching from ACPU rate %u KHz -> %u KHz\n",
 		       strt_s->a11clk_khz, tgt_s->a11clk_khz);
@@ -648,16 +648,16 @@ static void __init acpuclk_init(void)
 	 * Determine the rate of ACPU clock
 	 */
 
-	if (!(readl(A11S_CLK_SEL_ADDR) & 0x01)) { /* CLK_SEL_SRC1N0 */
+	if (!(readl_relaxed(A11S_CLK_SEL_ADDR) & 0x01)) { /* CLK_SEL_SRC1N0 */
 		/* CLK_SRC0_SEL */
-		sel = (readl(A11S_CLK_CNTL_ADDR) >> 12) & 0x7;
+		sel = (readl_relaxed(A11S_CLK_CNTL_ADDR) >> 12) & 0x7;
 		/* CLK_SRC0_DIV */
-		div = (readl(A11S_CLK_CNTL_ADDR) >> 8) & 0x0f;
+		div = (readl_relaxed(A11S_CLK_CNTL_ADDR) >> 8) & 0x0f;
 	} else {
 		/* CLK_SRC1_SEL */
-		sel = (readl(A11S_CLK_CNTL_ADDR) >> 4) & 0x07;
+		sel = (readl_relaxed(A11S_CLK_CNTL_ADDR) >> 4) & 0x07;
 		/* CLK_SRC1_DIV */
-		div = readl(A11S_CLK_CNTL_ADDR) & 0x0f;
+		div = readl_relaxed(A11S_CLK_CNTL_ADDR) & 0x0f;
 	}
 
 	/* Accomodate bootloaders that might not be implementing the
@@ -724,17 +724,17 @@ static void __init acpu_freq_tbl_fixup(void)
 	/* Wait for the PLLs to be initialized and then read their frequency.
 	 */
 	do {
-		pll0_l = readl(PLLn_L_VAL(0)) & 0x3f;
+		pll0_l = readl_relaxed(PLLn_L_VAL(0)) & 0x3f;
 		cpu_relax();
 		udelay(50);
 	} while (pll0_l == 0);
 	do {
-		pll1_l = readl(PLLn_L_VAL(1)) & 0x3f;
+		pll1_l = readl_relaxed(PLLn_L_VAL(1)) & 0x3f;
 		cpu_relax();
 		udelay(50);
 	} while (pll1_l == 0);
 	do {
-		pll2_l = readl(PLLn_L_VAL(2)) & 0x3f;
+		pll2_l = readl_relaxed(PLLn_L_VAL(2)) & 0x3f;
 		cpu_relax();
 		udelay(50);
 	} while (pll2_l == 0);

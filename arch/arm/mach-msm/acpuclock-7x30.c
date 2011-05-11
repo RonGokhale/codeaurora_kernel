@@ -166,19 +166,19 @@ static int acpuclk_set_acpu_vdd(struct clkctl_acpu_speed *s)
 /* Assumes PLL2 is off and the acpuclock isn't sourced from PLL2 */
 static void acpuclk_config_pll2(struct pll *pll)
 {
-	uint32_t config = readl(PLL2_CONFIG_ADDR);
+	uint32_t config = readl_relaxed(PLL2_CONFIG_ADDR);
 
 	/* Make sure write to disable PLL_2 has completed
 	 * before reconfiguring that PLL. */
 	mb();
-	writel(pll->l, PLL2_L_VAL_ADDR);
-	writel(pll->m, PLL2_M_VAL_ADDR);
-	writel(pll->n, PLL2_N_VAL_ADDR);
+	writel_relaxed(pll->l, PLL2_L_VAL_ADDR);
+	writel_relaxed(pll->m, PLL2_M_VAL_ADDR);
+	writel_relaxed(pll->n, PLL2_N_VAL_ADDR);
 	if (pll->pre_div)
 		config |= BIT(15);
 	else
 		config &= ~BIT(15);
-	writel(config, PLL2_CONFIG_ADDR);
+	writel_relaxed(config, PLL2_CONFIG_ADDR);
 	/* Make sure PLL is programmed before returning. */
 	mb();
 }
@@ -188,23 +188,23 @@ static void acpuclk_set_src(const struct clkctl_acpu_speed *s)
 {
 	uint32_t reg_clksel, reg_clkctl, src_sel;
 
-	reg_clksel = readl(SCSS_CLK_SEL_ADDR);
+	reg_clksel = readl_relaxed(SCSS_CLK_SEL_ADDR);
 
 	/* CLK_SEL_SRC1NO */
 	src_sel = reg_clksel & 1;
 
 	/* Program clock source and divider. */
-	reg_clkctl = readl(SCSS_CLK_CTL_ADDR);
+	reg_clkctl = readl_relaxed(SCSS_CLK_CTL_ADDR);
 	reg_clkctl &= ~(0xFF << (8 * src_sel));
 	reg_clkctl |= s->acpu_src_sel << (4 + 8 * src_sel);
 	reg_clkctl |= s->acpu_src_div << (0 + 8 * src_sel);
-	writel(reg_clkctl, SCSS_CLK_CTL_ADDR);
+	writel_relaxed(reg_clkctl, SCSS_CLK_CTL_ADDR);
 
 	/* Toggle clock source. */
 	reg_clksel ^= 1;
 
 	/* Program clock source selection. */
-	writel(reg_clksel, SCSS_CLK_SEL_ADDR);
+	writel_relaxed(reg_clksel, SCSS_CLK_SEL_ADDR);
 
 	/* Make sure switch to new source is complete. */
 	dsb();
@@ -348,17 +348,17 @@ static void __init acpuclk_init(void)
 	uint32_t div, sel, src_num;
 	uint32_t reg_clksel, reg_clkctl;
 	int res;
-	u8 pll2_l = readl(PLL2_L_VAL_ADDR) & 0xFF;
+	u8 pll2_l = readl_relaxed(PLL2_L_VAL_ADDR) & 0xFF;
 
 	drv_state.ebi1_clk = clk_get(NULL, "ebi1_clk");
 	BUG_ON(IS_ERR(drv_state.ebi1_clk));
 
-	reg_clksel = readl(SCSS_CLK_SEL_ADDR);
+	reg_clksel = readl_relaxed(SCSS_CLK_SEL_ADDR);
 
 	/* Determine the ACPU clock rate. */
 	switch ((reg_clksel >> 1) & 0x3) {
 	case 0:	/* Running off the output of the raw clock source mux. */
-		reg_clkctl = readl(SCSS_CLK_CTL_ADDR);
+		reg_clkctl = readl_relaxed(SCSS_CLK_CTL_ADDR);
 		src_num = reg_clksel & 0x1;
 		sel = (reg_clkctl >> (12 - (8 * src_num))) & 0x7;
 		div = (reg_clkctl >> (8 -  (8 * src_num))) & 0xF;
@@ -384,9 +384,9 @@ static void __init acpuclk_init(void)
 			acpuclk_set_src(s);
 
 			/* Switch to raw clock source input of the core mux. */
-			reg_clksel = readl(SCSS_CLK_SEL_ADDR);
+			reg_clksel = readl_relaxed(SCSS_CLK_SEL_ADDR);
 			reg_clksel &= ~(0x3 << 1);
-			writel(reg_clksel, SCSS_CLK_SEL_ADDR);
+			writel_relaxed(reg_clksel, SCSS_CLK_SEL_ADDR);
 			break;
 		}
 		/* else fall through */
@@ -461,7 +461,7 @@ static inline void setup_cpufreq_table(void) { }
 void __init pll2_fixup(void)
 {
 	struct clkctl_acpu_speed *speed = acpu_freq_tbl;
-	u8 pll2_l = readl(PLL2_L_VAL_ADDR) & 0xFF;
+	u8 pll2_l = readl_relaxed(PLL2_L_VAL_ADDR) & 0xFF;
 
 	for ( ; speed->acpu_clk_khz; speed++) {
 		if (speed->src != PLL_2)
