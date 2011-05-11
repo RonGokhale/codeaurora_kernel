@@ -309,10 +309,12 @@ __v7_setup:
 #else
 	bic     r0, r0, #0x37
 #endif
+#ifndef CONFIG_ARCH_MSM8960
 #if defined (CONFIG_ARCH_MSM_SCORPIONMP)
 	orr    r0, r0, #0x1 << 24     @ optimal setting for Scorpion MP
 #endif
 	mcr     p15, 0, r0, c1, c0, 1           @ write ACTLR
+#endif
 #endif
 
 #if defined (CONFIG_ARCH_MSM_SCORPIONMP) && !defined (CONFIG_ARCH_MSM8960)
