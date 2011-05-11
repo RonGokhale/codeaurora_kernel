@@ -1079,6 +1079,9 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 	.se1_gating		 = SE1_GATING_DISABLE,
 	.ldo_init		 = msm_hsusb_ldo_init,
 	.ldo_enable		 = msm_hsusb_ldo_enable,
+	.chg_init		 = hsusb_chg_init,
+	.chg_connected		 = hsusb_chg_connected,
+	.chg_vbus_draw		 = hsusb_chg_vbus_draw,
 };
 #endif
 
