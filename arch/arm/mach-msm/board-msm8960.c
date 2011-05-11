@@ -1476,7 +1476,6 @@ static void __init msm8960_rumi3_init(void)
 	msm8960_i2c_init();
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	platform_add_devices(rumi3_devices, ARRAY_SIZE(rumi3_devices));
-	msm_acpu_clock_init(&msm8960_acpu_clock_data);
 	msm8960_init_mmc();
 
 	register_i2c_devices();
