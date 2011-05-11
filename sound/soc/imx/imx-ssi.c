@@ -2,14 +2,14 @@
  * imx-ssi.c  --  ALSA Soc Audio Layer
  *
  * Copyright 2009 Sascha Hauer <s.hauer@pengutronix.de>
+ * Copyright (c) 2011, Code Aurora Forum. All rights reserved.
  *
  * This code is based on code copyrighted by Freescale,
  * Liam Girdwood, Javier Martin and probably others.
  *
  *  This program is free software; you can redistribute  it and/or modify it
  *  under  the terms of  the GNU General  Public License as published by the
- *  Free Software Foundation;  either version 2 of the  License, or (at your
- *  option) any later version.
+ *  Free Software Foundation;  only version 2 of the  License.
  *
  *
  * The i.MX SSI core has some nasty limitations in AC97 mode. While most
@@ -388,10 +388,11 @@ static int imx_pcm_preallocate_dma_buffer(struct snd_pcm *pcm, int stream)
 
 static u64 imx_pcm_dmamask = DMA_BIT_MASK(32);
 
-int imx_pcm_new(struct snd_card *card, struct snd_soc_dai *dai,
-	struct snd_pcm *pcm)
+int imx_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
-
+	struct snd_card *card = rtd->card->snd_card;
+	struct snd_soc_dai *dai = rtd->cpu_dai;
+	struct snd_pcm *pcm = rtd->pcm;
 	int ret = 0;
 
 	if (!card->dev->dma_mask)
@@ -776,5 +777,5 @@ module_exit(imx_ssi_exit);
 /* Module information */
 MODULE_AUTHOR("Sascha Hauer, <s.hauer@pengutronix.de>");
 MODULE_DESCRIPTION("i.MX I2S/ac97 SoC Interface");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
 

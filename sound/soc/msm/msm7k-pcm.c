@@ -528,11 +528,12 @@ static void msm_pcm_free_dma_buffers(struct snd_pcm *pcm)
 	}
 }
 
-static int msm_pcm_new(struct snd_card *card,
-			struct snd_soc_dai *codec,
-			struct snd_pcm *pcm)
+static int msm_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
 	int ret;
+	struct snd_card *card = rtd->card->snd_card;
+	struct snd_pcm *pcm = rtd->pcm;
+
 	if (!card->dev->coherent_dma_mask)
 		card->dev->coherent_dma_mask = DMA_BIT_MASK(32);
 
