@@ -639,11 +639,17 @@ int __l2cap_wait_ack(struct sock *sk);
 
 struct sk_buff *l2cap_create_connless_pdu(struct sock *sk, struct msghdr *msg, size_t len);
 struct sk_buff *l2cap_create_basic_pdu(struct sock *sk, struct msghdr *msg, size_t len);
-struct sk_buff *l2cap_create_iframe_pdu(struct sock *sk, struct msghdr *msg, size_t len, u16 control, u16 sdulen);
-int l2cap_sar_segment_sdu(struct sock *sk, struct msghdr *msg, size_t len);
+struct sk_buff *l2cap_create_iframe_pdu(struct sock *sk, struct msghdr *msg,
+				size_t len, u16 sdulen, int reseg);
+int l2cap_segment_sdu(struct sock *sk, struct sk_buff_head* seg_queue,
+			struct msghdr *msg, size_t len, int reseg);
+int l2cap_resegment_queue(struct sock *sk, struct sk_buff_head *queue);
 void l2cap_do_send(struct sock *sk, struct sk_buff *skb);
 void l2cap_streaming_send(struct sock *sk);
 int l2cap_ertm_send(struct sock *sk);
+int l2cap_strm_tx(struct sock *sk, struct sk_buff_head *skbs);
+int l2cap_ertm_tx(struct sock *sk, struct bt_l2cap_control *control,
+			struct sk_buff_head *skbs, u8 event);
 
 void l2cap_sock_set_timer(struct sock *sk, long timeout);
 void l2cap_sock_clear_timer(struct sock *sk);
@@ -655,6 +661,11 @@ struct sock *l2cap_sock_alloc(struct net *net, struct socket *sock,
 void l2cap_send_disconn_req(struct l2cap_conn *conn, struct sock *sk, int err);
 void l2cap_chan_del(struct sock *sk, int err);
 int l2cap_do_connect(struct sock *sk);
+int l2cap_data_channel(struct sock *sk, struct sk_buff *skb);
+void l2cap_amp_move_init(struct sock *sk);
+void l2cap_ertm_destruct(struct sock *sk);
+void l2cap_ertm_shutdown(struct sock *sk);
+void l2cap_ertm_recv_done(struct sock *sk);
 
 void l2cap_load(void);
 
@@ -670,14 +681,5 @@ void l2cap_amp_logical_complete(int result, struct hci_conn *ampcon,
 				struct hci_chan *ampchan, struct sock *sk);
 
 void l2cap_amp_logical_destroyed(struct hci_conn *ampcon);
-
-/* Temporary changes */
-#define BT_FLUSHABLE_OFF 0
-#define BT_FLUSHABLE_ON 1
-#define BT_FLUSHABLE 0
-#define BUSY_QUEUE(sk) ((void *)0)
-#define SREJ_LIST(sk) ((void *)0)
-#define L2CAP_SDU_UNSEGMENTED 1
-#define L2CAP_CONN_WAIT_F 2
 
 #endif /* __L2CAP_H */

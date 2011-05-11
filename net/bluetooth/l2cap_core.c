@@ -80,9 +80,7 @@ static void l2cap_amp_move_setup(struct sock *sk);
 static void l2cap_amp_move_success(struct sock *sk);
 static void l2cap_amp_move_revert(struct sock *sk);
 
-static int l2cap_data_channel(struct sock *sk, struct sk_buff *skb);
 static int l2cap_ertm_rx_queued_iframes(struct sock *sk);
-int l2cap_ertm_send(struct sock *sk);
 
 static struct sk_buff *l2cap_build_cmd(struct l2cap_conn *conn,
 				u8 code, u8 ident, u16 dlen, void *data);
@@ -1274,7 +1272,7 @@ int l2cap_ertm_send(struct sock *sk)
 	return sent;
 }
 
-static int l2cap_strm_tx(struct sock *sk, struct sk_buff_head *skbs)
+int l2cap_strm_tx(struct sock *sk, struct sk_buff_head *skbs)
 {
 	struct sk_buff *skb;
 	struct l2cap_pinfo *pi = l2cap_pi(sk);
@@ -1510,7 +1508,7 @@ struct sk_buff *l2cap_create_basic_pdu(struct sock *sk, struct msghdr *msg, size
 	return skb;
 }
 
-static struct sk_buff *l2cap_create_iframe_pdu_quic(struct sock *sk,
+struct sk_buff *l2cap_create_iframe_pdu(struct sock *sk,
 					struct msghdr *msg, size_t len,
 					u16 sdulen, int reseg)
 {
@@ -1587,24 +1585,6 @@ static struct sk_buff *l2cap_create_iframe_pdu_quic(struct sock *sk,
 
 	bt_cb(skb)->retries = 0;
 	return skb;
-}
-
-__used struct sk_buff *l2cap_create_iframe_pdu(struct sock *sk,
-					struct msghdr *msg, size_t len,
-					u16 control, u16 sdulen)
-{
-	return l2cap_create_iframe_pdu_quic(sk, msg, len, sdulen, 0);
-}
-
-__used int l2cap_sar_segment_sdu(struct sock *sk, struct msghdr *msg,
-				size_t len)
-{
-	return 0;
-}
-
-__used void l2cap_streaming_send(struct sock *sk)
-{
-	return;
 }
 
 static void l2cap_ertm_process_reqseq(struct sock *sk, u16 reqseq)
@@ -2112,7 +2092,7 @@ static int l2cap_ertm_tx_state_wait_f(struct sock *sk,
 	return err;
 }
 
-static int l2cap_ertm_tx(struct sock *sk, struct bt_l2cap_control *control,
+int l2cap_ertm_tx(struct sock *sk, struct bt_l2cap_control *control,
 			struct sk_buff_head *skbs, u8 event)
 {
 	struct l2cap_pinfo *pi;
@@ -2138,7 +2118,7 @@ static int l2cap_ertm_tx(struct sock *sk, struct bt_l2cap_control *control,
 	return err;
 }
 
-static int l2cap_segment_sdu(struct sock *sk, struct sk_buff_head* seg_queue,
+int l2cap_segment_sdu(struct sock *sk, struct sk_buff_head* seg_queue,
 			struct msghdr *msg, size_t len, int reseg)
 {
 	struct sk_buff *skb;
@@ -2178,8 +2158,7 @@ static int l2cap_segment_sdu(struct sock *sk, struct sk_buff_head* seg_queue,
 	}
 
 	while (len) {
-		skb = l2cap_create_iframe_pdu_quic(sk, msg, pdu_len,
-							sdu_len, reseg);
+		skb = l2cap_create_iframe_pdu(sk, msg, pdu_len, sdu_len, reseg);
 
 		BT_DBG("iframe skb %p", skb);
 
@@ -2240,7 +2219,7 @@ static inline int l2cap_skbuff_to_kvec(struct sk_buff *skb, struct kvec *iv,
 	return 0;
 }
 
-static int l2cap_resegment_queue(struct sock *sk, struct sk_buff_head *queue)
+int l2cap_resegment_queue(struct sock *sk, struct sk_buff_head *queue)
 {
 	void *buf;
 	int buflen;
@@ -2487,7 +2466,7 @@ static inline int l2cap_rmem_full(struct sock *sk)
 	return atomic_read(&sk->sk_rmem_alloc) > (2 * sk->sk_rcvbuf) / 3;
 }
 
-static void l2cap_amp_move_init(struct sock *sk)
+void l2cap_amp_move_init(struct sock *sk)
 {
 	BT_DBG("sk %p", sk);
 
@@ -2812,6 +2791,39 @@ static inline void l2cap_ertm_init(struct sock *sk)
 	l2cap_seq_list_init(&l2cap_pi(sk)->srej_list, l2cap_pi(sk)->tx_win);
 	l2cap_seq_list_init(&l2cap_pi(sk)->retrans_list,
 			l2cap_pi(sk)->remote_tx_win);
+}
+
+void l2cap_ertm_destruct(struct sock *sk)
+{
+	l2cap_seq_list_free(&l2cap_pi(sk)->srej_list);
+	l2cap_seq_list_free(&l2cap_pi(sk)->retrans_list);
+}
+
+void l2cap_ertm_shutdown(struct sock *sk)
+{
+	l2cap_ertm_stop_ack_timer(l2cap_pi(sk));
+	l2cap_ertm_stop_retrans_timer(l2cap_pi(sk));
+	l2cap_ertm_stop_monitor_timer(l2cap_pi(sk));
+}
+
+void l2cap_ertm_recv_done(struct sock *sk)
+{
+	lock_sock(sk);
+
+	if (l2cap_pi(sk)->mode != L2CAP_MODE_ERTM) {
+		release_sock(sk);
+		return;
+	}
+
+	/* Consume any queued incoming frames and update local busy status */
+	if (l2cap_pi(sk)->rx_state == L2CAP_ERTM_RX_STATE_SREJ_SENT &&
+			l2cap_ertm_rx_queued_iframes(sk))
+		l2cap_send_disconn_req(l2cap_pi(sk)->conn, sk, ECONNRESET);
+	else if ((l2cap_pi(sk)->conn_state & L2CAP_CONN_LOCAL_BUSY) &&
+			l2cap_rmem_available(sk))
+		l2cap_ertm_tx(sk, 0, 0, L2CAP_ERTM_EVENT_LOCAL_BUSY_CLEAR);
+
+	release_sock(sk);
 }
 
 static inline __u8 l2cap_select_mode(__u8 mode, __u16 remote_feat_mask)
@@ -6208,7 +6220,7 @@ static const u8 l2cap_ertm_rx_func_to_event[4] = {
 	L2CAP_ERTM_EVENT_RECV_RNR, L2CAP_ERTM_EVENT_RECV_SREJ
 };
 
-static int l2cap_data_channel(struct sock *sk, struct sk_buff *skb)
+int l2cap_data_channel(struct sock *sk, struct sk_buff *skb)
 {
 	struct l2cap_pinfo *pi;
 	struct bt_l2cap_control *control;
