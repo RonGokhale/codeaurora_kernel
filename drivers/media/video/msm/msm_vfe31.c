@@ -177,6 +177,8 @@ static struct vfe31_cmd_type vfe31_cmd[] = {
 		{V31_LIVESHOT},
 		{V31_ZSL, V31_CAPTURE_LEN, 0xFF},
 		{V31_STEREOCAM},
+		{V31_LA_SETUP},
+/*110*/	{V31_XBAR_CFG, V31_XBAR_CFG_LEN, V31_XBAR_CFG_OFF},
 };
 
 static const char *vfe31_general_cmd[] = {
@@ -288,7 +290,9 @@ static const char *vfe31_general_cmd[] = {
 	"ASYNC_TIMER_SETTING",  /* 105 */
 	"V31_LIVESHOT",
 	"V31_ZSL",
-	"V31_STEREOCAM"
+	"V31_STEREOCAM",
+	"V31_LA_SETUP",
+	"V31_XBAR_CFG",
 };
 
 static void vfe_addr_convert(struct msm_vfe_phy_info *pinfo,
@@ -930,6 +934,10 @@ static void vfe31_reset_internal_variables(void)
 	vfe31_ctrl->start_ack_pending = FALSE;
 	atomic_set(&irq_cnt, 0);
 
+	spin_lock_irqsave(&vfe31_ctrl->xbar_lock, flags);
+	vfe31_ctrl->xbar_update_pending = 0;
+	spin_unlock_irqrestore(&vfe31_ctrl->xbar_lock, flags);
+
 	atomic_set(&vfe31_ctrl->stop_ack_pending, 0);
 	atomic_set(&vfe31_ctrl->vstate, 0);
 
@@ -1119,14 +1127,21 @@ static uint32_t vfe_stats_cs_buf_init(struct vfe_cmd_stats_buf *in)
 
 static void vfe31_start_common(void)
 {
+	uint32_t irq_mask = 0x00E00021;
 	vfe31_ctrl->start_ack_pending = TRUE;
 	CDBG("VFE opertaion mode = 0x%x, output mode = 0x%x\n",
 		vfe31_ctrl->operation_mode, vfe31_ctrl->outpath.output_mode);
 	/* Enable comp IRQ for stats  */
 	if (vfe31_ctrl->stats_comp)
-		msm_io_w(0x01E00021, vfe31_ctrl->vfebase + VFE_IRQ_MASK_0);
+		irq_mask |= 0x01000000;
 	else /* Disable comp IRQ and enable only AF irq */
-		msm_io_w(0x00E04021, vfe31_ctrl->vfebase + VFE_IRQ_MASK_0);
+		irq_mask |= 0x00004000;
+
+	/* Enable EOF for video mode */
+	if (VFE_MODE_OF_OPERATION_VIDEO == vfe31_ctrl->operation_mode)
+		irq_mask |= 0x4;
+
+	msm_io_w(irq_mask, vfe31_ctrl->vfebase + VFE_IRQ_MASK_0);
 
 	msm_io_w(VFE_IMASK_RESET,
 		vfe31_ctrl->vfebase + VFE_IRQ_MASK_1);
@@ -1602,6 +1617,37 @@ static int vfe31_proc_general(struct msm_vfe31_cmd *cmd)
 		}
 		break;
 
+	case V31_XBAR_CFG: {
+		unsigned long flags = 0;
+		spin_lock_irqsave(&vfe31_ctrl->xbar_lock, flags);
+		if ((cmd->length != V31_XBAR_CFG_LEN)
+			|| vfe31_ctrl->xbar_update_pending) {
+			rc = -EINVAL;
+			spin_unlock_irqrestore(&vfe31_ctrl->xbar_lock, flags);
+			goto proc_general_done;
+		}
+		spin_unlock_irqrestore(&vfe31_ctrl->xbar_lock, flags);
+		cmdp = kmalloc(cmd->length, GFP_ATOMIC);
+		if (!cmdp) {
+			rc = -ENOMEM;
+			goto proc_general_done;
+		}
+		if (copy_from_user(cmdp,
+			(void __user *)(cmd->value),
+			cmd->length)) {
+			rc = -EFAULT;
+			goto proc_general_done;
+		}
+		spin_lock_irqsave(&vfe31_ctrl->xbar_lock, flags);
+		vfe31_ctrl->xbar_cfg[0] = *cmdp;
+		vfe31_ctrl->xbar_cfg[1] = *(cmdp+1);
+		vfe31_ctrl->xbar_update_pending = 1;
+		spin_unlock_irqrestore(&vfe31_ctrl->xbar_lock, flags);
+		CDBG("%s: xbar0 0x%x xbar1 0x%x", __func__,
+			vfe31_ctrl->xbar_cfg[0],
+			vfe31_ctrl->xbar_cfg[1]);
+		}
+		break;
 
 	case V31_STATS_RS_START: {
 		cmdp = kmalloc(cmd->length, GFP_ATOMIC);
@@ -3458,6 +3504,16 @@ static irqreturn_t vfe31_parse_irq(int irq_num, void *data)
 		}
 	}
 
+	spin_lock_irqsave(&vfe31_ctrl->xbar_lock, flags);
+	if ((irq.vfeIrqStatus0 &
+		VFE_IRQ_STATUS0_CAMIF_EOF_MASK) &&
+		vfe31_ctrl->xbar_update_pending) {
+		CDBG("irq camifEofIrq\n");
+		msm_io_memcpy(vfe31_ctrl->vfebase + V31_XBAR_CFG_OFF,
+			(void *)vfe31_ctrl->xbar_cfg, V31_XBAR_CFG_LEN);
+		vfe31_ctrl->xbar_update_pending = 0;
+	}
+	spin_unlock_irqrestore(&vfe31_ctrl->xbar_lock, flags);
 	CDBG("vfe_parse_irq: Irq_status0 = 0x%x, Irq_status1 = 0x%x.\n",
 		irq.vfeIrqStatus0, irq.vfeIrqStatus1);
 
@@ -3572,6 +3628,7 @@ static int vfe31_resource_init(struct msm_vfe_callback *presp,
 	spin_lock_init(&vfe31_ctrl->aec_ack_lock);
 	spin_lock_init(&vfe31_ctrl->awb_ack_lock);
 	spin_lock_init(&vfe31_ctrl->af_ack_lock);
+	spin_lock_init(&vfe31_ctrl->xbar_lock);
 	INIT_LIST_HEAD(&vfe31_ctrl->tasklet_q);
 	vfe31_init_free_buf_queue();
 
