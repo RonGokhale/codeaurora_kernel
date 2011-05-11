@@ -177,7 +177,7 @@ int hci_ssbi_poke_reg(void __user *arg, struct hci_dev *hdev);
 #define HCI_FM_DISABLE_RECV_CMD 2
 #define HCI_FM_GET_RECV_CONF_CMD 3
 #define HCI_FM_GET_STATION_PARAM_CMD 4
-#define HCI_FM_GET_SIGNAL_THRESHOLD_CMD 5
+#define HCI_FM_GET_SIGNAL_TH_CMD 5
 #define HCI_FM_GET_PROGRAM_SERVICE_CMD 6
 #define HCI_FM_GET_RADIO_TEXT_CMD 7
 #define HCI_FM_GET_AF_LIST_CMD 8
@@ -291,9 +291,10 @@ struct hci_fm_ssbi_req {
 #define HCI_REQ_DONE	  0
 #define HCI_REQ_PEND	  1
 #define HCI_REQ_CANCELED  2
+#define HCI_REQ_STATUS    3
 
 struct hci_ev_tune_status {
-	__le32   station_freq;
+	__le32  station_freq;
 	__u8    serv_avble;
 	__u8    rssi;
 	__u8    stereo_prg;
@@ -343,13 +344,17 @@ struct hci_ev_cmd_status {
 	__le16   status_opcode;
 } __packed;
 
+struct hci_ev_srch_st {
+	__le32    station_freq;
+	__u8    rds_cap;
+	__u8   pty;
+	__le16   status_opcode;
+} __packed;
+
 struct hci_ev_srch_list_compl {
 	__u8    status;
 	__u8    num_stations_found;
-	__le32   station_freq;
-	__u8    rds_cap;
-	__u8    pty;
-	__le16   pi_code;
+	struct  hci_ev_srch_st  srch_st[20];
 } __packed;
 
 /* ----- HCI Event Response ----- */
@@ -455,6 +460,27 @@ enum v4l2_cid_private_iris_t {
 	V4L2_CID_PRIVATE_IRIS_INTDET,
 };
 
+enum iris_evt_t {
+	IRIS_EVT_RADIO_READY,
+	IRIS_EVT_TUNE_SUCC,
+	IRIS_EVT_SEEK_COMPLETE,
+	IRIS_EVT_SCAN_NEXT,
+	IRIS_EVT_NEW_RAW_RDS,
+	IRIS_EVT_NEW_RT_RDS,
+	IRIS_EVT_NEW_PS_RDS,
+	IRIS_EVT_ERROR,
+	IRIS_EVT_BELOW_TH,
+	IRIS_EVT_ABOVE_TH,
+	IRIS_EVT_STEREO,
+	IRIS_EVT_MONO,
+	IRIS_EVT_RDS_AVAIL,
+	IRIS_EVT_RDS_NOT_AVAIL,
+	IRIS_EVT_NEW_SRCH_LIST,
+	IRIS_EVT_NEW_AF_LIST,
+	IRIS_EVT_TXRDSDAT,
+	IRIS_EVT_TXRDSDONE
+};
+
 enum iris_region_t {
 	IRIS_REGION_US,
 	IRIS_REGION_EU,
@@ -463,15 +489,37 @@ enum iris_region_t {
 	IRIS_REGION_OTHER
 };
 
+#define STD_BUF_SIZE        (64)
+
+enum iris_buf_t {
+	IRIS_BUF_SRCH_LIST,
+	IRIS_BUF_EVENTS,
+	IRIS_BUF_RT_RDS,
+	IRIS_BUF_PS_RDS,
+	IRIS_BUF_RAW_RDS,
+	IRIS_BUF_AF_LIST,
+	IRIS_BUF_MAX
+};
+
+enum iris_xfr_t {
+	IRIS_XFR_SYNC,
+	IRIS_XFR_ERROR,
+	IRIS_XFR_SRCH_LIST,
+	IRIS_XFR_RT_RDS,
+	IRIS_XFR_PS_RDS,
+	IRIS_XFR_AF_LIST,
+	IRIS_XFR_MAX
+};
+
 #undef FMDBG
 #ifdef FM_DEBUG
-#define FMDBG(fmt, args...) pr_info("tavarua_radio: " fmt, ##args)
+#define FMDBG(fmt, args...) pr_info("iris_radio: " fmt, ##args)
 #else
 #define FMDBG(fmt, args...)
 #endif
 
 #undef FMDERR
-#define FMDERR(fmt, args...) pr_err("tavarua_radio: " fmt, ##args)
+#define FMDERR(fmt, args...) pr_err("iris_radio: " fmt, ##args)
 
 /* Search options */
 enum search_t {
@@ -500,6 +548,7 @@ enum search_t {
 
 /* RDS Control */
 #define RDS_ON		0x01
+#define RDS_BUF_SZ  100
 
 /* Search direction */
 #define SRCH_DIR_UP		(0)
