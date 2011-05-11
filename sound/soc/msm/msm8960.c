@@ -11,6 +11,8 @@
  */
 
 #include <linux/clk.h>
+#include <linux/gpio.h>
+#include <linux/mfd/pm8xxx/pm8921.h>
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
 #include <linux/mfd/pm8xxx/pm8921.h>
@@ -36,6 +38,8 @@ static int msm8960_pamp_on;
 
 static struct clk *codec_clk;
 static int clk_users;
+
+static int msm8960_headset_gpios_configured;
 
 static void codec_poweramp_on(void)
 {
@@ -318,6 +322,57 @@ struct snd_soc_card snd_soc_card_msm8960 = {
 
 static struct platform_device *msm8960_snd_device;
 
+static int msm8960_configure_headset_mic_gpios(void)
+{
+	int ret;
+	struct pm_gpio param = {
+		.direction      = PM_GPIO_DIR_OUT,
+		.output_buffer  = PM_GPIO_OUT_BUF_CMOS,
+		.output_value   = 1,
+		.pull	   = PM_GPIO_PULL_NO,
+		.vin_sel	= PM_GPIO_VIN_S4,
+		.out_strength   = PM_GPIO_STRENGTH_MED,
+		.function       = PM_GPIO_FUNC_NORMAL,
+	};
+
+	ret = gpio_request(PM8921_GPIO_PM_TO_SYS(23), "AV_SWITCH");
+	if (ret) {
+		pr_err("%s: Failed to request gpio %d\n", __func__,
+			PM8921_GPIO_PM_TO_SYS(23));
+		return ret;
+	}
+
+	ret = pm8xxx_gpio_config(PM8921_GPIO_PM_TO_SYS(23), &param);
+	if (ret)
+		pr_err("%s: Failed to configure gpio %d\n", __func__,
+			PM8921_GPIO_PM_TO_SYS(23));
+	else
+		gpio_direction_output(PM8921_GPIO_PM_TO_SYS(23), 0);
+
+	ret = gpio_request(PM8921_GPIO_PM_TO_SYS(35), "US_EURO_SWITCH");
+	if (ret) {
+		pr_err("%s: Failed to request gpio %d\n", __func__,
+			PM8921_GPIO_PM_TO_SYS(35));
+		gpio_free(PM8921_GPIO_PM_TO_SYS(23));
+		return ret;
+	}
+	ret = pm8xxx_gpio_config(PM8921_GPIO_PM_TO_SYS(35), &param);
+	if (ret)
+		pr_err("%s: Failed to configure gpio %d\n", __func__,
+			PM8921_GPIO_PM_TO_SYS(35));
+	else
+		gpio_direction_output(PM8921_GPIO_PM_TO_SYS(35), 1);
+
+	return 0;
+}
+static void msm8960_free_headset_mic_gpios(void)
+{
+	if (msm8960_headset_gpios_configured) {
+		gpio_free(PM8921_GPIO_PM_TO_SYS(23));
+		gpio_free(PM8921_GPIO_PM_TO_SYS(35));
+	}
+}
+
 static int __init msm8960_audio_init(void)
 {
 	int ret;
@@ -335,6 +390,12 @@ static int __init msm8960_audio_init(void)
 		return ret;
 	}
 
+	if (msm8960_configure_headset_mic_gpios()) {
+		pr_err("%s Fail to configure headset mic gpios\n", __func__);
+		msm8960_headset_gpios_configured = 0;
+	} else
+		msm8960_headset_gpios_configured = 1;
+
 	return ret;
 
 }
@@ -342,6 +403,7 @@ module_init(msm8960_audio_init);
 
 static void __exit msm8960_audio_exit(void)
 {
+	msm8960_free_headset_mic_gpios();
 	platform_device_unregister(msm8960_snd_device);
 }
 module_exit(msm8960_audio_exit);
