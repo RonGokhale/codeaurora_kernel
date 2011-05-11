@@ -2527,16 +2527,6 @@ static DEFINE_CLK_PCOM(p_axi_rotator_clk, AXI_ROTATOR_CLK, 0);
 static DEFINE_CLK_PCOM(p_rotator_imem_clk, ROTATOR_IMEM_CLK, CLKFLAG_AUTO_OFF);
 static DEFINE_CLK_PCOM(p_rotator_p_clk, ROTATOR_P_CLK, CLKFLAG_AUTO_OFF);
 
-static struct pcom_clk pbus_clk = {
-	.id = P_PBUS_CLK,
-	.c = {
-		.ops = &clk_ops_pcom_div2,
-		.flags = CLKFLAG_MIN,
-		.dbg_name = "pbus_clk",
-		CLK_INIT(pbus_clk.c),
-	},
-};
-
 static DEFINE_CLK_VOTER(ebi_dtv_clk, &ebi1_fixed_clk.c);
 static DEFINE_CLK_VOTER(ebi_kgsl_clk, &ebi1_fixed_clk.c);
 static DEFINE_CLK_VOTER(ebi_lcdc_clk, &ebi1_fixed_clk.c);
@@ -2797,7 +2787,6 @@ static struct clk_local_ownership {
 	{ CLK_LOOKUP("uart_clk",	uart3_clk.c,	"msm_serial.2") },
 	{ CLK_LOOKUP("usb_phy_clk",	usb_phy_clk.c,	NULL) },
 	{ CLK_LOOKUP("vdc_clk",		vdc_clk.c,	NULL) },
-	{ CLK_LOOKUP("pbus_clk",	pbus_clk.c,	NULL) },
 
 	/* Voters */
 	{ CLK_LOOKUP("ebi1_dtv_clk",	ebi_dtv_clk.c,	NULL) },
