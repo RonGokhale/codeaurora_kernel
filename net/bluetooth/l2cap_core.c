@@ -65,7 +65,7 @@ static u8 l2cap_fixed_chan[8] = { L2CAP_FC_L2CAP | L2CAP_FC_A2MP, };
 
 static const struct proto_ops l2cap_sock_ops;
 
-static struct workqueue_struct *_l2cap_wq;
+struct workqueue_struct *_l2cap_wq;
 
 static struct bt_sock_list l2cap_sk_list = {
 	.lock = __RW_LOCK_UNLOCKED(l2cap_sk_list.lock)
