@@ -823,6 +823,82 @@ static void __init msm8960_init_irq(void)
 	}
 }
 
+/* MSM8960 have 5 SDCC controllers */
+enum sdcc_controllers {
+	SDCC1,
+	SDCC2,
+	SDCC3,
+	SDCC4,
+	SDCC5,
+	MAX_SDCC_CONTROLLER
+};
+
+/* All SDCC controllers requires VDD/VCC voltage */
+static struct msm_mmc_reg_data mmc_vdd_reg_data[MAX_SDCC_CONTROLLER] = {
+	/* SDCC1 : eMMC card connected */
+	[SDCC1] = {
+		.name = "sdc_vdd",
+		.set_voltage_sup = 1,
+		.level = 2950000,
+		.always_on = 1,
+		.lpm_sup = 1,
+		.lpm_uA = 9000,
+		.hpm_uA = 200000, /* 200mA */
+	},
+	/* SDCC3 : External card slot connected */
+	[SDCC3] = {
+		.name = "sdc_vdd",
+		.set_voltage_sup = 1,
+		.level = 2950000,
+		.hpm_uA = 600000, /* 600mA */
+	}
+};
+
+/* Only slots having eMMC card will require VCCQ voltage */
+static struct msm_mmc_reg_data mmc_vccq_reg_data[1] = {
+	/* SDCC1 : eMMC card connected */
+	[SDCC1] = {
+		.name = "sdc_vccq",
+		.set_voltage_sup = 1,
+		.always_on = 1,
+		.level = 1800000,
+		.hpm_uA = 200000, /* 200mA */
+	}
+};
+
+/* All SDCC controllers may require voting for VDD PAD voltage */
+static struct msm_mmc_reg_data mmc_vddp_reg_data[MAX_SDCC_CONTROLLER] = {
+	/* SDCC3 : External card slot connected */
+	[SDCC3] = {
+		.name = "sdc_vddp",
+		.set_voltage_sup = 1,
+		.level = 2950000,
+		.always_on = 1,
+		.lpm_sup = 1,
+		/* Max. Active current required is 16 mA */
+		.hpm_uA = 16000,
+		/*
+		 * Sleep current required is ~300 uA. But min. vote can be
+		 * in terms of mA (min. 1 mA). So let's vote for 2 mA
+		 * during sleep.
+		 */
+		.lpm_uA = 2000,
+	}
+};
+
+static struct msm_mmc_slot_reg_data mmc_slot_vreg_data[MAX_SDCC_CONTROLLER] = {
+	/* SDCC1 : eMMC card connected */
+	[SDCC1] = {
+		.vdd_data = &mmc_vdd_reg_data[SDCC1],
+		.vccq_data = &mmc_vccq_reg_data[SDCC1],
+	},
+	/* SDCC3 : External card slot connected */
+	[SDCC3] = {
+		.vdd_data = &mmc_vdd_reg_data[SDCC3],
+		.vddp_data = &mmc_vddp_reg_data[SDCC3],
+	}
+};
+
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
 static struct mmc_platform_data msm8960_sdc1_data = {
 	.ocr_mask       = MMC_VDD_27_28 | MMC_VDD_28_29,
@@ -835,7 +911,8 @@ static struct mmc_platform_data msm8960_sdc1_data = {
 	.msmsdcc_fmid	= 24000000,
 	.msmsdcc_fmax	= 48000000,
 	.nonremovable	= 1,
-	.sdcc_v4_sup	= true
+	.sdcc_v4_sup	= true,
+	.vreg_data	= &mmc_slot_vreg_data[SDCC1],
 };
 #endif
 
@@ -846,7 +923,8 @@ static struct mmc_platform_data msm8960_sdc3_data = {
 	.msmsdcc_fmin	= 400000,
 	.msmsdcc_fmid	= 24000000,
 	.msmsdcc_fmax	= 48000000,
-	.sdcc_v4_sup	= true
+	.sdcc_v4_sup	= true,
+	.vreg_data	= &mmc_slot_vreg_data[SDCC3],
 };
 #endif
 
