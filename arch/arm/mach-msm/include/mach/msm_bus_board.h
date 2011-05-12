@@ -105,9 +105,9 @@ int msm_bus_board_get_iid(int id);
 #define MSM_BUS_GET_BW(val) ((val) & 0x7FFF)
 
 #define MSM_BUS_GET_BW_INFO(val, type, bw) \
-  do {	\
-	(type) = MSM_BUS_GET_BW_TYPE(val); \
-	(bw) = MSM_BUS_GET_BW(val);	\
+	do { \
+		(type) = MSM_BUS_GET_BW_TYPE(val); \
+		(bw) = MSM_BUS_GET_BW(val);	\
 	} while (0)
 
 #define ROUNDED_BW_VAL_FROM_BYTES(bw) \
@@ -128,9 +128,9 @@ int msm_bus_board_get_iid(int id);
 	(((val) & 0x7FFF) << 17)
 
 #define MSM_BUS_GET_BW_INFO_BYTES (val, type, bw) \
-  do {	\
-	(type) = MSM_BUS_GET_BW_TYPE(val); \
-	(bw) = MSM_BUS_GET_BW_BYTES(val); \
+	do { \
+		(type) = MSM_BUS_GET_BW_TYPE(val); \
+		(bw) = MSM_BUS_GET_BW_BYTES(val); \
 	} while (0)
 
 #define FAB_MAX_BW_BYTES(width, clk) ((uint32_t)(width) * (uint32_t)(clk))
@@ -196,6 +196,7 @@ enum msm_bus_fabric_type {
 };
 
 enum msm_bus_fabric_master_type {
+	MSM_BUS_MASTER_FIRST = 1,
 	MSM_BUS_MASTER_AMPSS_M0 = 1,
 	MSM_BUS_MASTER_AMPSS_M1,
 	MSM_BUS_APPSS_MASTER_FAB_MMSS,
@@ -244,6 +245,7 @@ enum msm_bus_fabric_master_type {
 	MSM_BUS_MASTER_MSS_FW_PROC,
 	MSM_BUS_MMSS_MASTER_UNUSED_2,
 
+	MSM_BUS_MASTER_LAST = MSM_BUS_MMSS_MASTER_UNUSED_2,
 
 	MSM_BUS_SYSTEM_FPB_MASTER_SYSTEM =
 		MSM_BUS_SYSTEM_MASTER_SYSTEM_FPB,
@@ -252,6 +254,7 @@ enum msm_bus_fabric_master_type {
 };
 
 enum msm_bus_fabric_slave_type {
+	MSM_BUS_SLAVE_FIRST = SLAVE_ID_KEY,
 	MSM_BUS_SLAVE_EBI_CH0 = SLAVE_ID_KEY,
 	MSM_BUS_SLAVE_AMPSS_L2,
 	MSM_BUS_APPSS_SLAVE_FAB_MMSS,
@@ -323,6 +326,8 @@ enum msm_bus_fabric_slave_type {
 	MSM_BUS_SLAVE_MSM_DIMEM,
 	MSM_BUS_SLAVE_MSM_TCSR,
 	MSM_BUS_SLAVE_MSM_PRNG,
+	MSM_BUS_SLAVE_LAST = MSM_BUS_SLAVE_MSM_PRNG,
+
 	MSM_BUS_SYSTEM_FPB_SLAVE_SYSTEM =
 		MSM_BUS_SYSTEM_SLAVE_SYSTEM_FPB,
 	MSM_BUS_CPSS_FPB_SLAVE_SYSTEM =
