@@ -201,6 +201,12 @@ static struct gpiomux_setting gsbi5 = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
+static struct gpiomux_setting cdc_mclk = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
 static struct gpiomux_setting gpio_eth_config = {
 	.pull = GPIOMUX_PULL_NONE,
 	.drv = GPIOMUX_DRV_8MA,
@@ -299,6 +305,15 @@ static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
 		.gpio      = 25,	/* GSBI5 UART2 */
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &gsbi5,
+		},
+	},
+};
+
+static struct msm_gpiomux_config msm8960_audio_codec_configs[] __initdata = {
+	{
+		.gpio = 59,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &cdc_mclk,
 		},
 	},
 };
@@ -1041,6 +1056,9 @@ static int __init gpiomux_init(void)
 
 	msm_gpiomux_install(msm8960_cyts_configs,
 			ARRAY_SIZE(msm8960_cyts_configs));
+
+	msm_gpiomux_install(msm8960_audio_codec_configs,
+			ARRAY_SIZE(msm8960_audio_codec_configs));
 
 	return 0;
 }
