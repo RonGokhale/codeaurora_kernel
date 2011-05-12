@@ -2960,6 +2960,9 @@ static int cyttsp_fluid_platform_init(struct i2c_client *client)
 		goto reg_s3_put;
 	}
 
+	/* wait for vregs to stabilize */
+	usleep_range(10000, 10000);
+
 	/* check this device active by reading first byte/register */
 	rc = i2c_smbus_read_byte_data(client, 0x01);
 	if (rc < 0) {
@@ -3067,6 +3070,10 @@ static int tmg200_power(int vreg_on)
 	if (rc < 0)
 		printk(KERN_ERR "%s: vreg 8058_s3 %s failed (%d)\n",
 				__func__, vreg_on ? "enable" : "disable", rc);
+
+	/* wait for vregs to stabilize */
+	usleep_range(10000, 10000);
+
 	return rc;
 }
 
