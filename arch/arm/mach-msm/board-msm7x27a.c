@@ -2326,6 +2326,13 @@ static struct i2c_board_info i2c_camera_devices[] = {
 };
 #endif
 
+static struct msm_acpu_clock_platform_data msm7x2x_clock_data = {
+	.acpu_switch_time_us = 50,
+	.max_speed_delta_khz = 400000,
+	.vdd_switch_time_us = 62,
+	.max_axi_khz = 200000,
+};
+
 static struct platform_device *rumi_sim_devices[] __initdata = {
 	&msm_device_dmov,
 	&msm_device_smd,
@@ -2856,6 +2863,8 @@ static void __init msm7x2x_init(void)
 		       __func__);
 
 	msm_clock_init(msm_clocks_7x27a, msm_num_clocks_7x27a);
+	msm_acpu_clock_init(&msm7x2x_clock_data);
+
 	/* Common functions for SURF/FFA/RUMI3 */
 	msm_device_i2c_init();
 	msm7x27a_init_mmc();

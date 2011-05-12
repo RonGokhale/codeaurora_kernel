@@ -18,7 +18,7 @@ obj-$(CONFIG_ARCH_MSM_ARM11) += acpuclock.o timer.o
 obj-$(CONFIG_ARCH_MSM_SCORPION) += timer.o
 obj-$(CONFIG_ARCH_MSM_SCORPION) += pmu.o
 obj-$(CONFIG_ARCH_MSM_SCORPIONMP) += timer.o
-obj-$(CONFIG_ARCH_MSM_CORTEX_A5) += timer.o
+obj-$(CONFIG_ARCH_MSM_CORTEX_A5) += timer.o acpuclock.o
 ifndef CONFIG_ARCH_MSM8960
 obj-$(CONFIG_ARCH_MSM_SCORPIONMP) += pmu.o
 endif
