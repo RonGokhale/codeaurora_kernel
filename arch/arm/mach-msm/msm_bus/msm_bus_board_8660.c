@@ -514,7 +514,7 @@ static struct msm_bus_node_info mmss_fabric_info[]  = {
 		.num_mports = ARRAY_SIZE(appss_mport_fab_mmss),
 		.tier = mmss_tiered_slave_fab_apps,
 		.num_tiers = ARRAY_SIZE(mmss_tiered_slave_fab_apps),
-		.buswidth = 8,
+		.buswidth = 16,
 	},
 	{
 		.id = MSM_BUS_SLAVE_MM_IMEM,
