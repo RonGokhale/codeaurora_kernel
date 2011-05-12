@@ -87,6 +87,7 @@ static int verify_vdec_pkt_cmd(struct msm_adsp_module *module,
 	struct file *filp = NULL;
 	unsigned long offset = 0;
 	struct pmem_addr pmem_addr;
+	unsigned long Codec_Id = 0;
 
 	MM_DBG("cmd_size %d cmd_id %d cmd_data %x\n", cmd_size, cmd_id,
 					(unsigned int)cmd_data);
@@ -108,14 +109,21 @@ static int verify_vdec_pkt_cmd(struct msm_adsp_module *module,
 				&subframe_pkt_size,
 				&filp, &offset))
 		return -1;
+	Codec_Id = pkt->codec_selection_word;
 
 	/* deref those ptrs and check if they are a frame header packet */
 	frame_header_pkt = (unsigned short *)subframe_pkt_addr;
 	switch (frame_header_pkt[0]) {
 	case 0xB201: /* h.264 vld in dsp */
+	   if (Codec_Id == 0x8) {
 		num_addr = 16;
 		skip = 0;
 		start_pos = 5;
+	   } else {
+	       num_addr = 33;
+	       skip = 0;
+	       start_pos = 6;
+	   }
 		break;
 	case 0x8201: /* h.264 vld in arm */
 		num_addr = 16;
@@ -153,6 +161,11 @@ static int verify_vdec_pkt_cmd(struct msm_adsp_module *module,
 		num_addr = 3;
 		skip = 0;
 		start_pos = 10;
+		break;
+	case 0xFD01: /* VP8 */
+		num_addr = 3;
+		skip = 0;
+		start_pos = 24;
 		break;
 	default:
 		return 0;
