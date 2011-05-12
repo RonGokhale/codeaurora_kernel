@@ -136,7 +136,6 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 		.io_pulldn_ena		= 0,
 		.io_open_drain_ena	= 0,
 		.irq_summary		= -1,
-		.irq_base		= GPIO_EXPANDER_IRQ_BASE,
 	},
 	[SX150X_SURF_CAM]	= {
 		.gpio_base		= GPIO_SURF_CAM_EXPANDER_BASE,
@@ -145,9 +144,6 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 		.io_pulldn_ena		= 0,
 		.io_open_drain_ena	= 0,
 		.irq_summary		= -1,
-		.irq_base		= GPIO_EXPANDER_IRQ_BASE +
-					  GPIO_SURF_CAM_EXPANDER_BASE -
-					  GPIO_EXPANDER_GPIO_BASE,
 	},
 	[SX150X_FFA]	= {
 		.gpio_base		= GPIO_FFA_EXPANDER_BASE,
@@ -156,9 +152,6 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 		.io_pulldn_ena		= 0,
 		.io_open_drain_ena	= 0,
 		.irq_summary		= -1,
-		.irq_base		= GPIO_EXPANDER_IRQ_BASE +
-					  GPIO_FFA_EXPANDER_BASE -
-					  GPIO_EXPANDER_GPIO_BASE,
 	},
 	[SX150X_FFA_CAM]	= {
 		.gpio_base		= GPIO_FFA_CAM_EXPANDER_BASE,
@@ -167,9 +160,6 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 		.io_pulldn_ena		= 0,
 		.io_open_drain_ena	= 0,
 		.irq_summary		= -1,
-		.irq_base		= GPIO_EXPANDER_IRQ_BASE +
-					  GPIO_FFA_CAM_EXPANDER_BASE -
-					  GPIO_EXPANDER_GPIO_BASE,
 	},
 
 };
