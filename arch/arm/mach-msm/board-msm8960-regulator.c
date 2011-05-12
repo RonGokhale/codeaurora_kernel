@@ -12,6 +12,7 @@
  */
 
 #include <linux/regulator/pm8921-regulator.h>
+#include <linux/regulator/gpio-regulator.h>
 
 #include "board-msm8960.h"
 
@@ -173,6 +174,12 @@ VREG_CONSUMERS(HDMI_MVS) = {
 VREG_CONSUMERS(NCP) = {
 	REGULATOR_SUPPLY("8921_ncp",		NULL),
 };
+VREG_CONSUMERS(EXT_5V) = {
+	REGULATOR_SUPPLY("ext_5v",		NULL),
+};
+VREG_CONSUMERS(EXT_L2) = {
+	REGULATOR_SUPPLY("ext_l2",		NULL),
+};
 
 #define PM8921_VREG_INIT(_id, _min_uV, _max_uV, _modes, _ops, _apply_uV, \
 			 _pull_down, _always_on, _supply_regulator, \
@@ -260,6 +267,26 @@ VREG_CONSUMERS(NCP) = {
 		.pin_ctrl = _pin_ctrl, \
 	}
 
+#define GPIO_VREG_INIT(_id, _reg_name, _gpio_label, _gpio) \
+	[GPIO_VREG_ID_##_id] = { \
+		.init_data = { \
+			.constraints = { \
+				.valid_ops_mask	= REGULATOR_CHANGE_STATUS, \
+			}, \
+			.num_consumer_supplies	= \
+					ARRAY_SIZE(vreg_consumers_##_id), \
+			.consumer_supplies	= vreg_consumers_##_id, \
+		}, \
+		.regulator_name = _reg_name, \
+		.gpio_label	= _gpio_label, \
+		.gpio		= _gpio, \
+	}
+
+struct gpio_regulator_platform_data msm_gpio_regulator_pdata[] __devinitdata = {
+	GPIO_VREG_INIT(EXT_5V, "ext_5v", "ext_5v_en", PM8921_MPP_PM_TO_SYS(7)),
+	GPIO_VREG_INIT(EXT_L2, "ext_l2", "ext_l2_en", 91),
+};
+
 /* Regulator constraints */
 struct pm8921_regulator_platform_data
 msm_pm8921_regulator_pdata[] __devinitdata = {
@@ -309,8 +336,8 @@ msm_pm8921_regulator_pdata[] __devinitdata = {
 	PM8921_VREG_INIT_VS(LVS6,	 0, 1,			 "8921_s4"),
 	PM8921_VREG_INIT_VS(LVS7,	 0, 1,			 "8921_s4"),
 
-	PM8921_VREG_INIT_VS300(USB_OTG,  0, 1,			 NULL),
-	PM8921_VREG_INIT_VS300(HDMI_MVS, 0, 1,			 NULL),
+	PM8921_VREG_INIT_VS300(USB_OTG,  0, 1,			 "ext_5v"),
+	PM8921_VREG_INIT_VS300(HDMI_MVS, 0, 1,			 "ext_5v"),
 
 	PM8921_VREG_INIT_NCP(NCP,	 0,    1800000, 1800000, "8921_l6"),
 };

@@ -18,6 +18,7 @@
 #include <linux/gpio.h>
 #include <linux/usb/android_composite.h>
 #include <linux/msm_ssbi.h>
+#include <linux/regulator/gpio-regulator.h>
 #include <linux/mfd/pm8xxx/pm8921.h>
 #include <linux/spi/spi.h>
 #include <linux/bootmem.h>
@@ -982,7 +983,6 @@ static struct usb_mass_storage_platform_data mass_storage_pdata = {
 #ifdef CONFIG_USB_MSM_OTG_72K
 static struct msm_otg_platform_data msm_otg_pdata;
 #else
-#define EXTERNAL_5V_EN		7
 #define USB_5V_EN		42
 static void msm_hsusb_vbus_power(bool on)
 {
@@ -998,11 +998,6 @@ static void msm_hsusb_vbus_power(bool on)
 		.out_strength	= PM_GPIO_STRENGTH_MED,
 		.function	= PM_GPIO_FUNC_NORMAL,
 	};
-	struct pm8xxx_mpp_config_data mpp_config = {
-		.type		= PM8XXX_MPP_TYPE_D_OUTPUT,
-		.level		= PM8XXX_MPP_DIG_LEVEL_VIO_1,
-		.control	= PM8XXX_MPP_DOUT_CTRL_LOW,
-	};
 
 	if (vbus_is_on == on)
 		return;
@@ -1014,33 +1009,16 @@ static void msm_hsusb_vbus_power(bool on)
 			return;
 		}
 
-		rc = gpio_request(PM8921_MPP_PM_TO_SYS(EXTERNAL_5V_EN),
-						"external_5v_en");
-		if (rc < 0) {
-			pr_err("failed to request external_5v_en gpio\n");
-			goto put_mvs_otg;
-		}
-
 		rc = gpio_request(PM8921_GPIO_PM_TO_SYS(USB_5V_EN),
 						"usb_5v_en");
 		if (rc < 0) {
 			pr_err("failed to request usb_5v_en gpio\n");
-			goto free_usb_5v_en;
+			goto put_mvs_otg;
 		}
-
-		rc = pm8xxx_mpp_config(PM8921_MPP_PM_TO_SYS(EXTERNAL_5V_EN),
-				&mpp_config);
-		if (rc < 0) {
-			pr_err("failed to configure external_5v_en gpio\n");
-			goto free_external_5v_en;
-		}
-
-		gpio_set_value_cansleep(PM8921_MPP_PM_TO_SYS(
-					EXTERNAL_5V_EN), 1);
 
 		if (regulator_enable(mvs_otg_switch)) {
 			pr_err("unable to enable mvs_otg_switch\n");
-			goto clear_external_5v_en;
+			goto free_usb_5v_en;
 		}
 
 		rc = pm8xxx_gpio_config(PM8921_GPIO_PM_TO_SYS(USB_5V_EN),
@@ -1054,11 +1032,6 @@ static void msm_hsusb_vbus_power(bool on)
 	}
 disable_mvs_otg:
 		regulator_disable(mvs_otg_switch);
-clear_external_5v_en:
-		gpio_set_value_cansleep(PM8921_MPP_PM_TO_SYS(
-					EXTERNAL_5V_EN), 0);
-free_external_5v_en:
-		gpio_free(PM8921_MPP_PM_TO_SYS(EXTERNAL_5V_EN));
 free_usb_5v_en:
 		gpio_free(PM8921_GPIO_PM_TO_SYS(USB_5V_EN));
 put_mvs_otg:
@@ -1395,10 +1368,28 @@ static struct platform_device fish_battery_device = {
 };
 #endif
 
+struct platform_device msm8960_device_ext_5v_vreg __devinitdata = {
+	.name	= GPIO_REGULATOR_DEV_NAME,
+	.id	= PM8921_MPP_PM_TO_SYS(7),
+	.dev	= {
+		.platform_data = &msm_gpio_regulator_pdata[GPIO_VREG_ID_EXT_5V],
+	},
+};
+
+struct platform_device msm8960_device_ext_l2_vreg __devinitdata = {
+	.name	= GPIO_REGULATOR_DEV_NAME,
+	.id	= 91,
+	.dev	= {
+		.platform_data = &msm_gpio_regulator_pdata[GPIO_VREG_ID_EXT_L2],
+	},
+};
+
 static struct platform_device *common_devices[] __initdata = {
 	&msm_device_dmov,
 	&msm_device_smd,
 	&msm8960_device_uart_gsbi5,
+	&msm8960_device_ext_5v_vreg,
+	&msm8960_device_ext_l2_vreg,
 	&msm8960_device_ssbi_pm8921,
 	&msm8960_device_qup_spi_gsbi1,
 	&msm8960_device_qup_i2c_gsbi3,
