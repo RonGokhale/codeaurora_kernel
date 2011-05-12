@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -34,6 +34,8 @@ struct rpcrouter_smd_xprt {
 };
 
 static struct rpcrouter_smd_xprt smd_remote_xprt;
+/* QDSP support */
+static struct rpcrouter_smd_xprt smd_remote_qdsp_xprt;
 
 static int rpcrouter_smd_remote_read_avail(void)
 {
@@ -65,6 +67,42 @@ static void rpcrouter_smd_remote_notify(void *_dev, unsigned event)
 {
 	if (event == SMD_EVENT_DATA)
 		msm_rpcrouter_xprt_notify(&smd_remote_xprt.xprt,
+					  RPCROUTER_XPRT_EVENT_DATA);
+}
+
+/* QDSP support */
+static int rpcrouter_smd_remote_qdsp_read_avail(void)
+{
+	return smd_read_avail(smd_remote_qdsp_xprt.channel);
+}
+
+static int rpcrouter_smd_remote_qdsp_read(void *data, uint32_t len)
+{
+	return smd_read(smd_remote_qdsp_xprt.channel, data, len);
+}
+
+static int rpcrouter_smd_remote_qdsp_write_avail(void)
+{
+	return smd_write_avail(smd_remote_qdsp_xprt.channel);
+}
+
+static int rpcrouter_smd_remote_qdsp_write(void *data, uint32_t len,
+	uint32_t type)
+{
+	return smd_write(smd_remote_qdsp_xprt.channel, data, len);
+}
+
+static int rpcrouter_smd_remote_qdsp_close(void)
+{
+    /* TBD: do we have N way SMSM ported
+	smsm_change_state(SMSM_APPS_STATE, SMSM_RPCINIT, 0); */
+	return smd_close(smd_remote_qdsp_xprt.channel);
+}
+
+static void rpcrouter_smd_remote_qdsp_notify(void *_dev, unsigned event)
+{
+	if (event == SMD_EVENT_DATA)
+		msm_rpcrouter_xprt_notify(&smd_remote_qdsp_xprt.xprt,
 					  RPCROUTER_XPRT_EVENT_DATA);
 }
 
@@ -164,6 +202,46 @@ static int rpcrouter_smd_remote_probe(struct platform_device *pdev)
 	return 0;
 }
 
+/* Q6 SMD XPORT probe */
+static int rpcrouter_smd_remote_qdsp_probe(struct platform_device *pdev)
+{
+	int rc;
+
+	smd_remote_qdsp_xprt.xprt.name = "rpcrotuer_smd_q6_xprt";
+	smd_remote_qdsp_xprt.xprt.read_avail =
+		rpcrouter_smd_remote_qdsp_read_avail;
+	smd_remote_qdsp_xprt.xprt.read = rpcrouter_smd_remote_qdsp_read;
+	smd_remote_qdsp_xprt.xprt.write_avail =
+		rpcrouter_smd_remote_qdsp_write_avail;
+	smd_remote_qdsp_xprt.xprt.write = rpcrouter_smd_remote_qdsp_write;
+	smd_remote_qdsp_xprt.xprt.close = rpcrouter_smd_remote_qdsp_close;
+	smd_remote_qdsp_xprt.xprt.priv = NULL;
+
+	/* Open up SMD channel */
+	rc = smd_named_open_on_edge("RPCCALL_QDSP", SMD_APPS_QDSP,
+			&smd_remote_qdsp_xprt.channel, NULL,
+			rpcrouter_smd_remote_qdsp_notify);
+	if (rc < 0)
+		return rc;
+
+	msm_rpcrouter_xprt_notify(&smd_remote_qdsp_xprt.xprt,
+	RPCROUTER_XPRT_EVENT_OPEN);
+
+	/* TBD QDSP SMSM may not be IN LINUX yet
+	smsm_change_state(SMSM_APPS_STATE, 0, SMSM_RPCINIT); */
+
+	return 0;
+}
+
+static struct platform_driver rpcrouter_smd_remote_qdsp_driver = {
+	.probe		= rpcrouter_smd_remote_qdsp_probe,
+	.driver		= {
+			.name	= "RPCCALL_QDSP",
+			.owner	= THIS_MODULE,
+	},
+};
+/* END QDSP PORT */
+
 static struct platform_driver rpcrouter_smd_remote_driver = {
 	.probe		= rpcrouter_smd_remote_probe,
 	.driver		= {
@@ -174,13 +252,16 @@ static struct platform_driver rpcrouter_smd_remote_driver = {
 
 static int __init rpcrouter_smd_init(void)
 {
-#if defined(CONFIG_MSM_RPC_LOOPBACK_XPRT)
 	int rc;
+#if defined(CONFIG_MSM_RPC_LOOPBACK_XPRT)
 	rc = platform_driver_register(&rpcrouter_smd_loopback_driver);
 	if (rc < 0)
 		return rc;
 #endif
-	return platform_driver_register(&rpcrouter_smd_remote_driver);
+	rc = platform_driver_register(&rpcrouter_smd_remote_driver);
+	if (rc < 0)
+		return rc;
+	return platform_driver_register(&rpcrouter_smd_remote_qdsp_driver);
 }
 
 module_init(rpcrouter_smd_init);

@@ -1,7 +1,7 @@
 /* arch/arm/mach-msm/smd.c
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2008-2011, Code Aurora Forum. All rights reserved.
  * Author: Brian Swetland <swetland@google.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -127,12 +127,8 @@ static unsigned last_heap_free = 0xffffffff;
 #elif defined(CONFIG_ARCH_FSM9XXX)
 #define MSM_TRIG_A2Q6_SMD_INT  (writel(1 << 10, MSM_GCC_BASE + 0x8))
 #define MSM_TRIG_A2Q6_SMSM_INT (writel(1 << 10, MSM_GCC_BASE + 0x8))
-/* Presently QDSP6 is proxing for modem. TODO uncomment when modem is ready
 #define MSM_TRIG_A2M_SMD_INT   (writel(1 << 0, MSM_GCC_BASE + 0x8))
 #define MSM_TRIG_A2M_SMSM_INT  (writel(1 << 5, MSM_GCC_BASE + 0x8))
-*/
-#define MSM_TRIG_A2M_SMD_INT   MSM_TRIG_A2Q6_SMD_INT
-#define MSM_TRIG_A2M_SMSM_INT  MSM_TRIG_A2Q6_SMSM_INT
 #define MSM_TRIG_A2DSPS_SMD_INT
 #elif defined(CONFIG_ARCH_MSM8X60)
 #define MSM_TRIG_A2M_SMD_INT     (writel(1 << 3, MSM_GCC_BASE + 0x8))
@@ -664,6 +660,10 @@ static int smd_is_packet(struct smd_alloc_elm *alloc_elm)
 
 	/* for cases where xfer type is 0 */
 	if (!strncmp(alloc_elm->name, "DAL", 3))
+		return 0;
+
+	/* for cases where xfer type is 0 */
+	if (!strncmp(alloc_elm->name, "RPCCALL_QDSP", 12))
 		return 0;
 
 	if (alloc_elm->cid > 4 || alloc_elm->cid == 1)
@@ -1515,15 +1515,9 @@ int smd_core_init(void)
 		       "enable_irq_wake failed for INT_A9_M2A_5\n");
 
 #if defined(CONFIG_QDSP6)
-#if defined(CONFIG_ARCH_FSM9XXX)
-	r = request_irq(INT_ADSP_A11, smd_modem_irq_handler,
-			IRQF_TRIGGER_RISING | IRQF_SHARED, "smd_dev",
-			smd_modem_irq_handler);
-#else
 	r = request_irq(INT_ADSP_A11, smd_dsp_irq_handler,
 			IRQF_TRIGGER_RISING | IRQF_SHARED, "smd_dev",
 			smd_dsp_irq_handler);
-#endif
 	if (r < 0) {
 		free_irq(INT_A9_M2A_0, 0);
 		free_irq(INT_A9_M2A_5, 0);

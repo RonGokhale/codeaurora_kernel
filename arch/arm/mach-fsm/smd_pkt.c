@@ -40,13 +40,14 @@
 #include "modem_notifier.h"
 #include "smd_private.h"
 
-#define NUM_SMD_PKT_PORTS 5
 #define DEVICE_NAME "smdpkt"
 
 #if defined(CONFIG_ARCH_FSM9XXX)
-#define MAX_BUF_SIZE ((64*1024) - 20)
+# define NUM_SMD_PKT_PORTS 3
+# define MAX_BUF_SIZE ((64*1024) - 20)
 #else
-#define MAX_BUF_SIZE 2048
+# define NUM_SMD_PKT_PORTS 5
+# define MAX_BUF_SIZE 2048
 #endif
 
 struct smd_pkt_dev {
@@ -402,16 +403,20 @@ static void ch_notify(void *priv, unsigned event)
 }
 
 static char *smd_pkt_dev_name[] = {
+#if !defined(CONFIG_ARCH_FSM9XXX)
 	"smdcntl0",
 	"smdcntl1",
+#endif
 	"smdcntl2",
 	"smd22",
 	"smd_pkt_loopback",
 };
 
 static char *smd_ch_name[] = {
+#if !defined(CONFIG_ARCH_FSM9XXX)
 	"DATA5_CNTL",
 	"DATA6_CNTL",
+#endif
 	"DATA7_CNTL",
 	"DATA22",
 	"LOOPBACK",
@@ -429,6 +434,9 @@ int smd_pkt_open(struct inode *inode, struct file *file)
 {
 	int r = 0;
 	struct smd_pkt_dev *smd_pkt_devp;
+	uint32_t edge;
+	int pil_idx = 0;
+	const char *pil_nm[] = {"modem", "q6", "dsps"};
 
 	smd_pkt_devp = container_of(inode->i_cdev, struct smd_pkt_dev, cdev);
 
@@ -437,10 +445,24 @@ int smd_pkt_open(struct inode *inode, struct file *file)
 
 	file->private_data = smd_pkt_devp;
 
+	if (!strcmp(smd_ch_name[smd_pkt_devp->i], "DATA22")) {
+		edge = SMD_APPS_QDSP;
+		pil_idx = 1;
+	} else if (!strcmp(smd_ch_name[smd_pkt_devp->i], "DATA7_CNTL")) {
+		edge = SMD_APPS_QDSP;
+		pil_idx = 1;
+	} else if (!strcmp(smd_ch_name[smd_pkt_devp->i], "LOOPBACK")) {
+		edge = SMD_APPS_QDSP;
+		pil_idx = 1;
+	} else {
+		edge = SMD_APPS_MODEM;
+		pil_idx = 0;
+	}
+
 	mutex_lock(&smd_pkt_devp->ch_lock);
 	if (smd_pkt_devp->ch == 0) {
 
-		smd_pkt_devp->pil = pil_get("modem");
+		smd_pkt_devp->pil = pil_get(pil_nm[pil_idx]);
 		if (IS_ERR(smd_pkt_devp->pil)) {
 			r = PTR_ERR(smd_pkt_devp->pil);
 			goto out;
@@ -468,14 +490,15 @@ int smd_pkt_open(struct inode *inode, struct file *file)
 			** to open the loopback port (Currently, this is
 			** this is effecient than polling).*/
 			smsm_change_state(SMSM_APPS_STATE,
-					  0, SMSM_SMD_LOOPBACK);
+					0, SMSM_SMD_LOOPBACK);
 			msleep(100);
 		}
 
-		r = smd_open(smd_ch_name[smd_pkt_devp->i],
-			     &smd_pkt_devp->ch,
-			     smd_pkt_devp,
-			     ch_notify);
+		r = smd_named_open_on_edge(smd_ch_name[smd_pkt_devp->i],
+					edge,
+					&smd_pkt_devp->ch,
+					smd_pkt_devp,
+					ch_notify);
 		if (r < 0) {
 			printk(KERN_ERR "%s failed for %s with rc %d\n",
 					__func__, smd_ch_name[smd_pkt_devp->i],
