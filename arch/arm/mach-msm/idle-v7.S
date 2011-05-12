@@ -2,7 +2,7 @@
  * Idle processing for ARMv7-based Qualcomm SoCs.
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2007-2009, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2007-2009, 2011 Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -39,6 +39,15 @@ ENTRY(msm_arch_idle)
 #endif
 	bx	lr
 
+#ifdef CONFIG_ARCH_7X27A
+ENTRY(l2_outer_sync)
+	/* L2 Outer_sync operation for 7x27A targets */
+	mov r0, #1
+	ldr r3, =L2CC_CACHE_SYNC
+	str r0,[r3]
+	bx lr
+#endif
+
 ENTRY(msm_pm_collapse)
 #if defined(CONFIG_MSM_FIQ_SUPPORT)
 	cpsid   f
@@ -55,7 +64,8 @@ ENTRY(msm_pm_collapse)
 	mrc     p15, 0, r1, c1, c0, 0 /* MMU control */
 	mrc     p15, 0, r2, c2, c0, 0 /* TTBR0 */
 	mrc     p15, 0, r3, c3, c0, 0 /* dacr */
-#ifndef CONFIG_ARCH_MSM8960
+#if !defined(CONFIG_ARCH_MSM8960) && !defined(CONFIG_ARCH_MSM7X27A)
+	/* This instruction is not valid for non scorpion processors */
 	mrc     p15, 3, r4, c15, c0, 3 /* L2CR1 is the L2 cache control reg 1 */
 #endif
 	mrc     p15, 0, r5, c10, c2, 0 /* PRRR */
@@ -91,6 +101,11 @@ ENTRY(msm_pm_collapse)
 	mcr     p15, 0, r0, c1, c0, 0    /* disable d/i cache  */
 
 	dsb
+
+#ifdef CONFIG_ARCH_7X27A
+	/* L2 Outer_sync operation for 7x27A targets */
+	bl l2_outer_sync
+#endif
 	wfi
 
 	mcr     p15, 0, r1, c1, c0, 0    /* restore d/i cache  */
@@ -145,7 +160,8 @@ ENTRY(msm_pm_collapse_exit)
 	ldmdb   r1!, {r2-r11}
 	mcr     p15, 0, r4, c3, c0, 0 /* dacr */
 	mcr     p15, 0, r3, c2, c0, 0 /* TTBR0 */
-#ifndef CONFIG_ARCH_MSM8960
+#if !defined(CONFIG_ARCH_MSM8960) && !defined(CONFIG_ARCH_MSM7X27A)
+	/* This instruction is not valid for non scorpion processors */
 	mcr     p15, 3, r5, c15, c0, 3 /* L2CR1 */
 #endif
 	mcr     p15, 0, r6, c10, c2, 0 /* PRRR */
@@ -179,6 +195,12 @@ msm_pm_pa_to_va:
 	mcr     p15, 0, r3, c8, c7, 0   /* UTLBIALL */
 	mcr     p15, 0, r3, c7, c5, 6   /* BPIALL */
 	dsb
+
+#ifdef CONFIG_ARCH_7X27A
+	/* L2 Outer_sync operation for 7x27A targets */
+	bl l2_outer_sync
+#endif
+
 	isb
 	stmfd   sp!, {lr}
 	bl      v7_flush_kern_cache_all
@@ -230,3 +252,9 @@ saved_state_end:
 
 msm_pm_boot_vector:
 	.space  4 * NR_CPUS
+
+#ifdef CONFIG_ARCH_7X27A
+/*L2X0 controller CACHE_SYNC reg virtual address for 7x27A */
+L2CC_CACHE_SYNC DCD 0xFA006730
+#endif
+
