@@ -489,7 +489,7 @@ static void __init init_clock_sources(enum scalables id)
 	uint32_t pri_src, regval;
 	static struct core_speed speed[] = {
 		[INIT_QSB_ID] =   { STBY_KHZ, QSB,   0, 0, 0x00 },
-		[INIT_HFPLL_ID] = { 432000,   HFPLL, 2, 0, 0x20 },
+		[INIT_HFPLL_ID] = { 702000,   HFPLL, 1, 0, 0x1A },
 	};
 
 	/*
