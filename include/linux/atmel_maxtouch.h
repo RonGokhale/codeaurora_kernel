@@ -307,6 +307,7 @@ struct mxt_platform_data {
 	u8    (*valid_interrupt) (void);
 	u8    (*read_chg) (void);
 	bool wakeup;
+	int (*power_on)(bool on);
 };
 
 void	mxt_hw_reset(void);

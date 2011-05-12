@@ -139,6 +139,7 @@ struct mxt_data {
 
 	int                  (*init_hw)(struct i2c_client *client);
 	int		     (*exit_hw)(struct i2c_client *client);
+	int		     (*power_on)(bool on);
 	u8                   (*valid_interrupt)(void);
 	u8                   (*read_chg)(void);
 
@@ -1746,19 +1747,52 @@ err_object_table_alloc:
 static int mxt_suspend(struct device *dev)
 {
 	struct mxt_data *mxt = dev_get_drvdata(dev);
+	int error;
 
-	if (device_may_wakeup(dev))
+	if (device_may_wakeup(dev)) {
 		enable_irq_wake(mxt->irq);
+		return 0;
+	}
 
+	disable_irq(mxt->irq);
+
+	cancel_delayed_work_sync(&mxt->dwork);
+
+	/* power off the device */
+	if (mxt->power_on) {
+		error = mxt->power_on(false);
+		if (error) {
+			dev_err(dev, "power off failed");
+			goto err_pwr_off;
+		}
+	}
 	return 0;
+
+err_pwr_off:
+	enable_irq(mxt->irq);
+	return error;
 }
 
 static int mxt_resume(struct device *dev)
 {
 	struct mxt_data *mxt = dev_get_drvdata(dev);
+	int error;
 
-	if (device_may_wakeup(dev))
+	if (device_may_wakeup(dev)) {
 		disable_irq_wake(mxt->irq);
+		return 0;
+	}
+
+	/* power on the device */
+	if (mxt->power_on) {
+		error = mxt->power_on(true);
+		if (error) {
+			dev_err(dev, "power on failed");
+			return error;
+		}
+	}
+
+	enable_irq(mxt->irq);
 
 	return 0;
 }
@@ -1869,6 +1903,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	/* Get data that is defined in board specific code. */
 	mxt->init_hw = pdata->init_platform_hw;
 	mxt->exit_hw = pdata->exit_platform_hw;
+	mxt->power_on = pdata->power_on;
 	mxt->read_chg = pdata->read_chg;
 
 	if (pdata->valid_interrupt != NULL)
@@ -1876,8 +1911,22 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	else
 		mxt->valid_interrupt = mxt_valid_interrupt_dummy;
 
-	if (mxt->init_hw != NULL)
-		mxt->init_hw(client);
+	if (mxt->init_hw) {
+		error = mxt->init_hw(client);
+		if (error) {
+			dev_err(&client->dev, "hw init failed");
+			goto err_init_hw;
+		}
+	}
+
+	/* power on the device */
+	if (mxt->power_on) {
+		error = mxt->power_on(true);
+		if (error) {
+			dev_err(&client->dev, "power on failed");
+			goto err_pwr_on;
+		}
+	}
 
 	if (debug >= DEBUG_TRACE)
 		printk(KERN_INFO "maXTouch driver identifying chip\n");
@@ -2098,8 +2147,12 @@ err_register_device:
 	mutex_destroy(&mxt->debug_mutex);
 	mutex_destroy(&mxt->msg_mutex);
 err_identify:
+	if (mxt->power_on)
+		mxt->power_on(false);
+err_pwr_on:
 	if (mxt->exit_hw != NULL)
 		mxt->exit_hw(client);
+err_init_hw:
 err_pdata:
 	input_free_device(input);
 err_input_dev_alloc:
@@ -2125,7 +2178,9 @@ static int __devexit mxt_remove(struct i2c_client *client)
 #endif
 
 	if (mxt != NULL) {
-		
+		if (mxt->power_on)
+			mxt->power_on(false);
+
 		if (mxt->exit_hw != NULL)
 			mxt->exit_hw(client);
 
