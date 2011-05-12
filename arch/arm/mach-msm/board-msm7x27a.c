@@ -2794,6 +2794,29 @@ static struct vreg *vreg_s3;
 
 #define ATMEL_TS_GPIO_IRQ 82
 
+static int atmel_ts_power_on(bool on)
+{
+	int rc;
+
+	rc = on ? vreg_enable(vreg_l2) : vreg_disable(vreg_l2);
+	if (rc) {
+		pr_err("%s: vreg %sable failed (%d)\n",
+		       __func__, on ? "en" : "dis", rc);
+		return rc;
+	}
+
+	rc = on ? vreg_enable(vreg_s3) : vreg_disable(vreg_s3);
+	if (rc) {
+		pr_err("%s: vreg %sable failed (%d) for S3\n",
+		       __func__, on ? "en" : "dis", rc);
+		!on ? vreg_enable(vreg_l2) : vreg_disable(vreg_l2);
+		return rc;
+	}
+	/* vreg stabilization delay */
+	usleep_range(10000, 10000);
+	return 0;
+}
+
 static int atmel_ts_platform_init(struct i2c_client *client)
 {
 	int rc;
@@ -2811,30 +2834,16 @@ static int atmel_ts_platform_init(struct i2c_client *client)
 		goto vreg_put_l2;
 	}
 
-	rc = vreg_enable(vreg_l2);
-	if (rc) {
-		pr_err("%s: vreg enable failed (%d)\n",
-		       __func__, rc);
-		goto vreg_put_l2;
-	}
-
 	vreg_s3 = vreg_get(NULL, "msme1");
 	if (IS_ERR(vreg_s3)) {
 		pr_err("%s: vreg_get for S3 failed\n", __func__);
 		rc = PTR_ERR(vreg_s3);
-		goto vreg_disable_l2;
+		goto vreg_put_l2;
 	}
 
 	rc = vreg_set_level(vreg_s3, 1800);
 	if (rc) {
 		pr_err("%s: vreg set level failed (%d) for S3\n",
-		       __func__, rc);
-		goto vreg_put_s3;
-	}
-
-	rc = vreg_enable(vreg_s3);
-	if (rc) {
-		pr_err("%s: vreg enable failed (%d) for S3\n",
 		       __func__, rc);
 		goto vreg_put_s3;
 	}
@@ -2845,7 +2854,7 @@ static int atmel_ts_platform_init(struct i2c_client *client)
 	if (rc) {
 		pr_err("%s: gpio_tlmm_config for %d failed\n",
 			__func__, ATMEL_TS_GPIO_IRQ);
-		goto vreg_disable_s3;
+		goto vreg_put_s3;
 	}
 
 	/* configure touchscreen interrupt gpio */
@@ -2870,15 +2879,24 @@ ts_gpio_tlmm_unconfig:
 	gpio_tlmm_config(GPIO_CFG(ATMEL_TS_GPIO_IRQ, 0,
 				GPIO_CFG_INPUT, GPIO_CFG_NO_PULL,
 				GPIO_CFG_2MA), GPIO_CFG_DISABLE);
-vreg_disable_s3:
-	vreg_disable(vreg_s3);
 vreg_put_s3:
 	vreg_put(vreg_s3);
-vreg_disable_l2:
-	vreg_disable(vreg_l2);
 vreg_put_l2:
 	vreg_put(vreg_l2);
 	return rc;
+}
+
+static int atmel_ts_platform_exit(struct i2c_client *client)
+{
+	gpio_free(ATMEL_TS_GPIO_IRQ);
+	gpio_tlmm_config(GPIO_CFG(ATMEL_TS_GPIO_IRQ, 0,
+				GPIO_CFG_INPUT, GPIO_CFG_NO_PULL,
+				GPIO_CFG_2MA), GPIO_CFG_DISABLE);
+	vreg_disable(vreg_s3);
+	vreg_put(vreg_s3);
+	vreg_disable(vreg_l2);
+	vreg_put(vreg_l2);
+	return 0;
 }
 
 static u8 atmel_ts_read_chg(void)
@@ -2894,6 +2912,8 @@ static u8 atmel_ts_valid_interrupt(void)
 static struct mxt_platform_data atmel_ts_pdata = {
 	.numtouch = 10,
 	.init_platform_hw = atmel_ts_platform_init,
+	.exit_platform_hw = atmel_ts_platform_exit,
+	.power_on = atmel_ts_power_on,
 	.max_x = 506,
 	.max_y = 864,
 	.valid_interrupt = atmel_ts_valid_interrupt,
