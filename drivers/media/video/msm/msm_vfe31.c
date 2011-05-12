@@ -1145,6 +1145,12 @@ static void vfe31_start_common(void)
 
 	msm_io_w(VFE_IMASK_RESET,
 		vfe31_ctrl->vfebase + VFE_IRQ_MASK_1);
+	/* enable out of order option */
+	msm_io_w(0x80000000, vfe31_ctrl->vfebase + VFE_AXI_CFG);
+	/* enable performance monitor */
+	msm_io_w(1, vfe31_ctrl->vfebase + VFE_BUS_PM_CFG);
+	msm_io_w(1, vfe31_ctrl->vfebase + VFE_BUS_PM_CMD);
+
 
 	msm_io_dump(vfe31_ctrl->vfebase, 0x600);
 
@@ -2687,7 +2693,7 @@ static void vfe31_process_camif_sof_irq(void)
 
 static void vfe31_process_error_irq(uint32_t errStatus)
 {
-	uint32_t camifStatus;
+	uint32_t camifStatus, read_val;
 	uint32_t *temp;
 
 	if (errStatus & VFE31_IMASK_CAMIF_ERROR) {
@@ -2758,8 +2764,27 @@ static void vfe31_process_error_irq(uint32_t errStatus)
 	if (errStatus & VFE31_IMASK_STATS_SKIN_BUS_OVFL)
 		pr_err("vfe31_irq: skin stats bus overflow\n");
 
-	if (errStatus & VFE31_IMASK_AXI_ERROR)
+	if (errStatus & VFE31_IMASK_AXI_ERROR) {
 		pr_err("vfe31_irq: axi error\n");
+		/* read status too when overflow happens.*/
+		read_val = msm_io_r(vfe31_ctrl->vfebase +
+			VFE_BUS_PING_PONG_STATUS);
+		pr_debug("VFE_BUS_PING_PONG_STATUS = 0x%x\n", read_val);
+		read_val = msm_io_r(vfe31_ctrl->vfebase +
+			VFE_BUS_OPERATION_STATUS);
+		pr_debug("VFE_BUS_OPERATION_STATUS = 0x%x\n", read_val);
+		read_val = msm_io_r(vfe31_ctrl->vfebase +
+			VFE_BUS_IMAGE_MASTER_0_WR_PM_STATS_0);
+		pr_debug("VFE_BUS_IMAGE_MASTER_0_WR_PM_STATS_0 = 0x%x\n",
+			read_val);
+		read_val = msm_io_r(vfe31_ctrl->vfebase +
+			VFE_BUS_IMAGE_MASTER_0_WR_PM_STATS_1);
+		pr_debug("VFE_BUS_IMAGE_MASTER_0_WR_PM_STATS_1 = 0x%x\n",
+			read_val);
+		read_val = msm_io_r(vfe31_ctrl->vfebase +
+			VFE_AXI_STATUS);
+		pr_debug("VFE_AXI_STATUS = 0x%x\n", read_val);
+	}
 }
 
 #define VFE31_AXI_OFFSET 0x0050
