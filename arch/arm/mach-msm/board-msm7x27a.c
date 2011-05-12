@@ -1015,23 +1015,40 @@ __setup("androidboot.serialno=", board_serialno_setup);
 static int  msm_hsusb_vbus_init(int on)
 {
 	int rc = 0;
-	rc = gpio_request(GPIO_HOST_VBUS_EN, "i2c_host_vbus_en");
-	if (rc < 0) {
-		pr_err("failed to request %d GPIO\n", GPIO_HOST_VBUS_EN);
-		return rc;
+	unsigned gpio;
+
+	if (machine_is_msm7x27a_surf())
+		gpio = GPIO_HOST_VBUS_EN;
+	else
+		gpio = GPIO_FFA_5V_BOOST_EN;
+	if (on) {
+		rc = gpio_request(gpio, "i2c_host_vbus_en");
+		if (rc < 0) {
+			pr_err("failed to request %d GPIO\n", gpio);
+			return rc;
+		}
+		gpio_direction_output(gpio, 1);
+	} else {
+		gpio_free(gpio);
 	}
-	gpio_direction_output(GPIO_HOST_VBUS_EN, 1);
+
 	return rc;
 }
 static void msm_hsusb_vbus_power(unsigned phy_info, int on)
 {
-	gpio_set_value(GPIO_HOST_VBUS_EN, !!on);
+	unsigned gpio;
+
+	if (machine_is_msm7x27a_surf())
+		gpio = GPIO_HOST_VBUS_EN;
+	else
+		gpio = GPIO_FFA_5V_BOOST_EN;
+
+	gpio_set_value_cansleep(gpio, !!on);
 }
 
 static struct msm_usb_host_platform_data msm_usb_host_pdata = {
 	.phy_info       = (USB_PHY_INTEGRATED | USB_PHY_MODEL_45NM),
 	.vbus_init	= msm_hsusb_vbus_init,
-	.vbus_power	= msm_hsusb_vbus_power,
 };
 
 static void __init msm7x2x_init_host(void)
