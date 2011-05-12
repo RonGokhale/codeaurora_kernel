@@ -180,7 +180,7 @@ static void smp_send_cmd(struct l2cap_conn *conn, u8 code, u16 len, void *data)
 	if (!skb)
 		return;
 
-	hci_send_acl(conn->hcon, skb, 0);
+	hci_send_acl(conn->hcon, NULL, skb, 0);
 }
 
 static __u8 seclevel_to_authreq(__u8 level)

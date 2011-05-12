@@ -397,7 +397,7 @@ struct hci_conn *hci_conn_add(struct hci_dev *hdev, int type,
 struct hci_conn *hci_le_conn_add(struct hci_dev *hdev, bdaddr_t *dst,
 							__u8 addr_type)
 {
-	struct hci_conn *conn = hci_conn_add(hdev, LE_LINK, dst);
+	struct hci_conn *conn = hci_conn_add(hdev, LE_LINK, 0, dst);
 	if (!conn)
 		return NULL;
 
