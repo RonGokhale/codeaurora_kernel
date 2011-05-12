@@ -3,7 +3,7 @@
  * MSM Power Management Routines
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2008-2011 Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -405,18 +405,25 @@ static void msm_pm_config_hw_before_power_down(void)
 	__raw_writel(1, APPS_PWRDOWN);
 	dsb();
 	__raw_writel(4, APPS_SECOP);
+	dsb();
 #elif defined(CONFIG_ARCH_MSM7X27)
 	__raw_writel(0x1f, APPS_CLK_SLEEP_EN);
 	dsb();
 	__raw_writel(1, APPS_PWRDOWN);
+	dsb();
+#elif defined(CONFIG_ARCH_MSM7x27A)
+	__raw_writel(0x7, APPS_CLK_SLEEP_EN);
+	mb();
+	__raw_writel(1, APPS_PWRDOWN);
+	mb();
 #else
 	__raw_writel(0x1f, APPS_CLK_SLEEP_EN);
 	dsb();
 	__raw_writel(1, APPS_PWRDOWN);
 	dsb();
 	__raw_writel(0, APPS_STANDBY_CTL);
-#endif
 	dsb();
+#endif
 }
 
 /*
@@ -430,6 +437,11 @@ static void msm_pm_config_hw_after_power_up(void)
 	__raw_writel(0, APPS_PWRDOWN);
 	dsb();
 	msm_spm_reinit();
+#elif defined(CONFIG_ARCH_MSM7x27A)
+	__raw_writel(0, APPS_PWRDOWN);
+	mb();
+	__raw_writel(0, APPS_CLK_SLEEP_EN);
+	mb();
 #else
 	__raw_writel(0, APPS_PWRDOWN);
 	dsb();
@@ -445,10 +457,14 @@ static void msm_pm_config_hw_before_swfi(void)
 {
 #if defined(CONFIG_ARCH_QSD8X50)
 	__raw_writel(0x1f, APPS_CLK_SLEEP_EN);
+	dsb();
 #elif defined(CONFIG_ARCH_MSM7X27)
 	__raw_writel(0x0f, APPS_CLK_SLEEP_EN);
-#endif
 	dsb();
+#elif defined(CONFIG_ARCH_MSM7X27A)
+	__raw_writel(0x7, APPS_CLK_SLEEP_EN);
+	mb();
+#endif
 }
 
 /*
