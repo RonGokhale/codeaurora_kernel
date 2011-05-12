@@ -746,6 +746,11 @@ static void msm_hsusb_vbus_power(bool on)
 		.out_strength	= PM_GPIO_STRENGTH_MED,
 		.function	= PM_GPIO_FUNC_NORMAL,
 	};
+	struct pm8xxx_mpp_config_data mpp_config = {
+		.type		= PM8XXX_MPP_TYPE_D_OUTPUT,
+		.level		= PM8XXX_MPP_DIG_LEVEL_VIO_1,
+		.control	= PM8XXX_MPP_DOUT_CTRL_LOW,
+	};
 
 	if (vbus_is_on == on)
 		return;
@@ -772,9 +777,7 @@ static void msm_hsusb_vbus_power(bool on)
 		}
 
 		rc = pm8xxx_mpp_config(PM8921_MPP_PM_TO_SYS(EXTERNAL_5V_EN),
-				PM8XXX_MPP_TYPE_D_OUTPUT,
-				PM8XXX_MPP_DIG_LEVEL_VIO_1,
-				PM8XXX_MPP_DOUT_CTRL_LOW);
+				&mpp_config);
 		if (rc < 0) {
 			pr_err("failed to configure external_5v_en gpio\n");
 			goto free_external_5v_en;

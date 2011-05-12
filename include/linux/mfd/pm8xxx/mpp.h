@@ -27,20 +27,13 @@ struct pm8xxx_mpp_platform_data {
 	int				mpp_base;
 };
 
-/* API */
-#if defined(CONFIG_GPIO_PM8XXX_MPP) || defined(CONFIG_GPIO_PM8XXX_MPP_MODULE)
-
 /**
- * pm8xxx_mpp_config() - configure control options of a multi-purpose pin (MPP)
- * @mpp:	global GPIO number corresponding to the MPP
+ * struct pm8xxx_mpp_config_data - structure to specify mpp configuration values
  * @type:	MPP type which determines the overall MPP function (i.e. digital
  *		in/out/bi, analog in/out, current sink, or test).  It should be
  *		set to the value of one of PM8XXX_MPP_TYPE_D_*.
  * @level:	meaning depends upon MPP type specified
  * @control:	meaning depends upon MPP type specified
- * Context: can sleep
- *
- * RETURNS: an appropriate -ERRNO error value on error, or zero for success.
  *
  * Usage of level argument:
  * 1. type = PM8XXX_MPP_TYPE_D_INPUT, PM8XXX_MPP_TYPE_D_OUTPUT,
@@ -106,13 +99,29 @@ struct pm8xxx_mpp_platform_data {
  *	control specifies which DTEST bus value to output.  It should be set to
  *	the value of one of PM8XXX_MPP_DTEST_*.
  */
-int pm8xxx_mpp_config(unsigned mpp, unsigned type, unsigned level,
-		      unsigned control);
+struct pm8xxx_mpp_config_data {
+	unsigned	type;
+	unsigned	level;
+	unsigned	control;
+};
+
+/* API */
+#if defined(CONFIG_GPIO_PM8XXX_MPP) || defined(CONFIG_GPIO_PM8XXX_MPP_MODULE)
+
+/**
+ * pm8xxx_mpp_config() - configure control options of a multi-purpose pin (MPP)
+ * @mpp:	global GPIO number corresponding to the MPP
+ * @config:	configuration to set for this MPP
+ * Context: can sleep
+ *
+ * RETURNS: an appropriate -ERRNO error value on error, or zero for success.
+ */
+int pm8xxx_mpp_config(unsigned mpp, struct pm8xxx_mpp_config_data *config);
 
 #else
 
-static inline int pm8xxx_mpp_config(unsigned mpp, unsigned type, unsigned level,
-		      unsigned control)
+static inline int pm8xxx_mpp_config(unsigned mpp,
+				    struct pm8xxx_mpp_config_data *config)
 {
 	return -ENXIO;
 }

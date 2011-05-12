@@ -155,12 +155,16 @@ static void pm8xxx_mpp_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 	}
 }
 
-int pm8xxx_mpp_config(unsigned mpp, unsigned type, unsigned level,
-		      unsigned control)
+int pm8xxx_mpp_config(unsigned mpp, struct pm8xxx_mpp_config_data *config)
 {
 	struct pm8xxx_mpp_chip *mpp_chip;
 	int rc, found = 0;
-	u8 config, mask;
+	u8 config_reg, mask;
+
+	if (!config) {
+		pr_err("config not specified for MPP %d\n", mpp);
+		return -EINVAL;
+	}
 
 	mutex_lock(&pm8xxx_mpp_chips_lock);
 	list_for_each_entry(mpp_chip, &pm8xxx_mpp_chips, link) {
@@ -178,12 +182,14 @@ int pm8xxx_mpp_config(unsigned mpp, unsigned type, unsigned level,
 
 	mask = PM8XXX_MPP_TYPE_MASK | PM8XXX_MPP_CONFIG_LVL_MASK |
 		PM8XXX_MPP_CONFIG_CTRL_MASK;
-	config = (type << PM8XXX_MPP_TYPE_SHIFT) & PM8XXX_MPP_TYPE_MASK;
-	config |= (level << PM8XXX_MPP_CONFIG_LVL_SHIFT) &
-			PM8XXX_MPP_CONFIG_LVL_MASK;
-	config |= control & PM8XXX_MPP_CONFIG_CTRL_MASK;
+	config_reg = (config->type << PM8XXX_MPP_TYPE_SHIFT)
+			& PM8XXX_MPP_TYPE_MASK;
+	config_reg |= (config->level << PM8XXX_MPP_CONFIG_LVL_SHIFT)
+			& PM8XXX_MPP_CONFIG_LVL_MASK;
+	config_reg |= config->control & PM8XXX_MPP_CONFIG_CTRL_MASK;
 
-	rc = pm8xxx_mpp_write(mpp_chip, mpp - mpp_chip->mpp_base, config, mask);
+	rc = pm8xxx_mpp_write(mpp_chip, mpp - mpp_chip->mpp_base, config_reg,
+			      mask);
 
 	if (rc)
 		pr_err("pm8xxx_mpp_write(): rc=%d\n", rc);
