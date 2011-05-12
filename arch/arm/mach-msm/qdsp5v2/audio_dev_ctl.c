@@ -263,7 +263,7 @@ void msm_snddev_register(struct msm_snddev_info *dev_info)
 	mutex_lock(&session_lock);
 	if (audio_dev_ctrl.num_dev < AUDIO_DEV_CTL_MAX_DEV) {
 		audio_dev_ctrl.devs[audio_dev_ctrl.num_dev] = dev_info;
-		dev_info->dev_volume = 0; /* 0 db */
+		dev_info->dev_volume = 50; /* 50%  */
 		dev_info->sessions = 0x0;
 		dev_info->usage_count = 0;
 		dev_info->set_sample_rate = 0;
