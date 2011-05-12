@@ -1151,8 +1151,10 @@ int l2cap_do_connect(struct sock *sk)
 	if (l2cap_pi(sk)->fixed_channel) {
 		/* Fixed channels piggyback on existing ACL connections */
 		hcon = hci_conn_hash_lookup_ba(hdev, ACL_LINK, dst);
-		if (!hcon || !hcon->l2cap_data)
+		if (!hcon || !hcon->l2cap_data) {
+			err = -ENOTCONN;
 			goto done;
+		}
 
 		conn = hcon->l2cap_data;
 	} else {
