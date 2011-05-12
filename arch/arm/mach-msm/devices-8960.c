@@ -869,12 +869,12 @@ struct platform_device msm_pcm_routing = {
 
 struct platform_device msm_cpudai0 = {
 	.name	= "msm-dai-q6",
-	.id	= 0,
+	.id	= 0x4000,
 };
 
 struct platform_device msm_cpudai1 = {
 	.name	= "msm-dai-q6",
-	.id	= 1,
+	.id	= 0x4001,
 };
 
 struct platform_device msm_cpu_fe = {
