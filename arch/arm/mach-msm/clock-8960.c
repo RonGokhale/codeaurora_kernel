@@ -118,6 +118,8 @@
 #define DSI1_ESC_CC_REG				REG_MM(0x00CC)
 #define DSI2_ESC_NS_REG				REG_MM(0x0150)
 #define DSI2_ESC_CC_REG				REG_MM(0x013C)
+#define DSI_PIXEL_CC_REG			REG_MM(0x0130)
+#define DSI2_PIXEL_CC_REG			REG_MM(0x0094)
 #define DBG_BUS_VEC_A_REG			REG_MM(0x01C8)
 #define DBG_BUS_VEC_B_REG			REG_MM(0x01CC)
 #define DBG_BUS_VEC_C_REG			REG_MM(0x01D0)
@@ -4072,8 +4074,10 @@ static void reg_init(void)
 	 * wake-up delays to safe values. */
 	writel(0x00000000, CSI0_CC_REG);
 	writel(0x00000000, CSI1_CC_REG);
-	rmwreg(0x00000000, MISC_CC_REG,  0xFEFFF3FF);
-	rmwreg(0x000007FD, MISC_CC2_REG, 0xFFFF7FFF);
+	rmwreg(0x80FF0000, DSI1_BYTE_CC_REG, BM(31, 29) | BM(23, 16));
+	rmwreg(0x80FF0000, DSI2_BYTE_CC_REG, BM(31, 29) | BM(23, 16));
+	rmwreg(0x80FF0000, DSI_PIXEL_CC_REG, BM(31, 29) | BM(23, 16));
+	rmwreg(0x80FF0000, DSI2_PIXEL_CC_REG, BM(31, 29) | BM(23, 16));
 	writel(0x80FF0000, GFX2D0_CC_REG);
 	writel(0x80FF0000, GFX2D1_CC_REG);
 	writel(0x80FF0000, GFX3D_CC_REG);
