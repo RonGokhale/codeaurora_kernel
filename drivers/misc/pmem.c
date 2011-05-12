@@ -1,7 +1,7 @@
 /* drivers/android/pmem.c
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -35,10 +35,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/memory_alloc.h>
 
-#define PMEM_MAX_USER_SPACE_DEVICES (10)
-#define PMEM_MAX_KERNEL_SPACE_DEVICES (2)
-#define PMEM_MAX_DEVICES \
-	(PMEM_MAX_USER_SPACE_DEVICES + PMEM_MAX_KERNEL_SPACE_DEVICES)
+#define PMEM_MAX_DEVICES (10)
 
 #define PMEM_MAX_ORDER (128)
 #define PMEM_MIN_ALLOC PAGE_SIZE
@@ -244,23 +241,6 @@ struct pmem_info {
 
 static struct pmem_info pmem[PMEM_MAX_DEVICES];
 static int id_count;
-static struct {
-	const char * const name;
-	const int memtype;
-	const int fallback_memtype;
-	int info_id;
-} kapi_memtypes[] = {
-#ifdef CONFIG_KERNEL_PMEM_SMI_REGION
-	{ PMEM_KERNEL_SMI_DATA_NAME,
-		PMEM_MEMTYPE_SMI,
-		PMEM_MEMTYPE_EBI1,  /* Fall back to EBI1 automatically */
-		-1 },
-#endif
-	{ PMEM_KERNEL_EBI1_DATA_NAME,
-		PMEM_MEMTYPE_EBI1,
-		PMEM_INVALID_MEMTYPE, /* MUST be set invalid if no fallback */
-		-1 },
-};
 
 #define PMEM_SYSFS_DIR_NAME "pmem_regions" /* under /sys/kernel/ */
 static struct kset *pmem_kset;
@@ -2661,7 +2641,7 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 	       long (*ioctl)(struct file *, unsigned int, unsigned long),
 	       int (*release)(struct inode *, struct file *))
 {
-	int i, index = 0, kapi_memtype_idx = -1, id, is_kernel_memtype = 0;
+	int i, index = 0, id;
 
 	if (id_count >= PMEM_MAX_DEVICES) {
 		pr_alert("pmem: %s: unable to register driver(%s) - no more "
@@ -2687,30 +2667,6 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 	}
 
 	pmem[id].allocator_type = pdata->allocator_type;
-
-	for (i = 0; i < ARRAY_SIZE(kapi_memtypes); i++) {
-		if (!strcmp(kapi_memtypes[i].name, pdata->name)) {
-			if (kapi_memtypes[i].info_id >= 0) {
-				pr_alert("Unable to register kernel pmem "
-					"driver - duplicate registration of "
-					"%s!\n", pdata->name);
-				goto err_no_mem;
-			}
-			if (pdata->cached) {
-				pr_alert("kernel arena memory must "
-					"NOT be configured as 'cached'. Check "
-					"and fix your board file. Failing "
-					"pmem driver %s registration!",
-					pdata->name);
-				goto err_no_mem;
-			}
-
-			is_kernel_memtype = 1;
-			kapi_memtypes[i].info_id = id;
-			kapi_memtype_idx = i;
-			break;
-		}
-	}
 
 	/* 'quantum' is a "hidden" variable that defaults to 0 in the board
 	 * files */
@@ -2883,19 +2839,14 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 	INIT_LIST_HEAD(&pmem[id].data_list);
 
 	pmem[id].dev.name = pdata->name;
-	if (!is_kernel_memtype) {
-		pmem[id].dev.minor = id;
-		pmem[id].dev.fops = &pmem_fops;
-		pr_info("pmem: Initializing %s (user-space) as %s\n",
-			pdata->name, pdata->cached ? "cached" : "non-cached");
+	pmem[id].dev.minor = id;
+	pmem[id].dev.fops = &pmem_fops;
+	pr_info("pmem: Initializing %s (user-space) as %s\n",
+		pdata->name, pdata->cached ? "cached" : "non-cached");
 
-		if (misc_register(&pmem[id].dev)) {
-			pr_alert("Unable to register pmem driver!\n");
-			goto err_cant_register_device;
-		}
-	} else { /* kernel region, no user accessible device */
-		pmem[id].dev.minor = -1;
-		pr_info("pmem: Initializing %s (in-kernel)\n", pdata->name);
+	if (misc_register(&pmem[id].dev)) {
+		pr_alert("Unable to register pmem driver!\n");
+		goto err_cant_register_device;
 	}
 
 	/* do not set up unstable pmem now, wait until first memory hotplug */
@@ -2905,8 +2856,7 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 	pmem[id].base = allocate_contiguous_memory_nomap(pmem[id].size,
 		pmem[id].memory_type, PAGE_SIZE);
 
-	if ((!is_kernel_memtype) &&
-		(pmem[id].allocator_type != PMEM_ALLOCATORTYPE_SYSTEM)) {
+	if (pmem[id].allocator_type != PMEM_ALLOCATORTYPE_SYSTEM) {
 		ioremap_pmem(id);
 		if (pmem[id].vbase == 0) {
 			pr_err("pmem: ioremap failed for device %s\n",
@@ -2923,8 +2873,7 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 	return 0;
 
 error_cant_remap:
-	if (!is_kernel_memtype)
-		misc_deregister(&pmem[id].dev);
+	misc_deregister(&pmem[id].dev);
 err_cant_register_device:
 out_put_kobj:
 	kobject_put(&pmem[id].kobj);
@@ -2937,8 +2886,6 @@ out_put_kobj:
 err_reset_pmem_info:
 	pmem[id].allocate = 0;
 	pmem[id].dev.minor = -1;
-	if (kapi_memtype_idx >= 0)
-		kapi_memtypes[i].info_id = -1;
 err_no_mem:
 	return -1;
 }
