@@ -270,6 +270,9 @@ static int __devinit pm8xxx_mpp_probe(struct platform_device *pdev)
 		goto remove_chip;
 	}
 
+	pr_info("OK: base=%d, ngpio=%d\n", mpp_chip->gpio_chip.base,
+		mpp_chip->gpio_chip.ngpio);
+
 	return 0;
 
 remove_chip:
