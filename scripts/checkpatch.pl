@@ -2495,7 +2495,7 @@ sub process {
 		if ($realfile !~ m@/vmlinux.lds.h$@ &&
 		    $line =~ /^.\s*\#\s*define\s*$Ident(\()?/) {
 			my $ln = $linenr;
-			my $cnt = $realcnt;
+			my $cnt = $realcnt - 1;
 			my ($off, $dstat, $dcond, $rest);
 			my $ctx = '';
 
@@ -2550,6 +2550,12 @@ sub process {
 			       $dstat =~ s/\[[^\{\}]*\]/1/)
 			{
 			}
+
+			# Extremely long macros may fall off the end of the
+			# available context without closing.  Give a dangling
+			# backslash the benefit of the doubt and allow it
+			# to gobble any hanging open-parens.
+			$dstat =~ s/\(.+\\$/1/;
 
 			my $exceptions = qr{
 				$Declare|
