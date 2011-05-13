@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -28,8 +28,10 @@
 #include <linux/uaccess.h>
 #include <linux/mfd/pmic8058.h>
 #include <linux/regulator/consumer.h>
+#include <mach/gpio.h>
 
 #include "pmic8058-femto.h"
+#include "tlmm-fsm9xxx.h"
 
 struct private {
 	struct mutex lock;
@@ -490,6 +492,41 @@ pm8058_femto_ioctl(struct inode *inode,
 			err = -EFAULT;
 		}
 
+		break;
+	case PM8058_FEMTO_IOC_CLKBUF:
+		pr_debug("[%s] CLKBUF control command issued.\n",
+			 __func__);
+
+		if (copy_from_user(&req, (void __user *)arg,
+			sizeof(req))) {
+			pr_err("[%s] Error copying from user space\n",
+				__func__);
+			err = -EFAULT;
+			break;
+		}
+
+		if (req.clkBuffer == XO_BUFFER_A0) {
+			if (req.clkBufEnable)
+				err = pm8058_femto_write(0x185, 0x04);
+			else
+				err = pm8058_femto_write(0x185, 0x08);
+		} else if (req.clkBuffer == XO_BUFFER_A1) {
+			if (req.clkBufEnable)
+				err = pm8058_femto_write(0x186, 0x04);
+			else
+				err = pm8058_femto_write(0x186, 0x08);
+		} else {
+			pr_err("[%s] Invalid ioctl argument.\n", __func__);
+			err = -ENOTTY;
+		}
+		break;
+	case PM8058_FEMTO_IOC_BOARD_RESET:
+		if (gpio_tlmm_config(GPIO_CFG(FEMTO_GPIO_PS_HOLD, 0,
+				GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL,
+				GPIO_CFG_2MA), GPIO_CFG_ENABLE))
+			pr_err("%s: gpio_tlmm_config (gpio=%d) failed\n",
+				__func__, FEMTO_GPIO_PS_HOLD);
+		gpio_set_value(FEMTO_GPIO_PS_HOLD, 0);
 		break;
 	default:
 		pr_err("[%s] Invalid ioctl command.\n", __func__);

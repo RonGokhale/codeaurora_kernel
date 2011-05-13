@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -39,9 +39,20 @@
 #define PM8058_FEMTO_IOC_THERM_PA	_IO(PM8058_FEMTO_IOC_MAGIC, 3)
 #define PM8058_FEMTO_IOC_THERM_FSM	_IO(PM8058_FEMTO_IOC_MAGIC, 4)
 #define PM8058_FEMTO_IOC_THERM_VCTCXO	_IO(PM8058_FEMTO_IOC_MAGIC, 5)
+#define PM8058_FEMTO_IOC_CLKBUF		_IO(PM8058_FEMTO_IOC_MAGIC, 6)
+#define PM8058_FEMTO_IOC_BOARD_RESET	_IO(PM8058_FEMTO_IOC_MAGIC, 7)
 
 #define PMIC_DEVICE_READY           0x01
 #define PMIC_DEVICE_OFF             0x00
+
+#define FEMTO_GPIO_PS_HOLD          161
+
+/* enum for TCXO clock output buffer definition */
+enum clk_buffer_type {
+    XO_BUFFER_A0 = 0,
+    XO_BUFFER_A1 = 1,
+    XO_BUFFER_LAST
+};
 
 /*
  * This user request structure is used to exchange the pmic device data
@@ -51,6 +62,8 @@
 */
 struct pm8058_femto_req {
 	u16                    *data;
+	enum clk_buffer_type   clkBuffer;
+	u8                     clkBufEnable;
 };
 
 #endif
