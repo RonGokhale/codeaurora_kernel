@@ -19,11 +19,13 @@
 #include <linux/mutex.h>
 #include <linux/proc_fs.h>
 #include <linux/spinlock.h>
+#include <linux/cpu.h>
 #include <mach/rpm.h>
 #include <mach/msm_iomap.h>
 #include <linux/io.h>
 #include "mpm.h"
 #include "rpm_resources.h"
+#include "spm.h"
 
 /******************************************************************************
  * Debug Definitions
@@ -50,6 +52,8 @@ enum {
 
 enum {
 	MSM_RPMRS_L2_CACHE_HSFS_OPEN = 0,
+	MSM_RPMRS_L2_CACHE_GDHS = 1,
+	MSM_RPMRS_L2_CACHE_RETENTION = 2,
 	MSM_RPMRS_L2_CACHE_ACTIVE = 3,
 };
 
@@ -348,6 +352,19 @@ static void msm_rpmrs_aggregate_l2_cache(struct msm_rpmrs_limits *limits)
 	}
 }
 
+#ifdef CONFIG_MSM_L2_SPM
+static bool msm_spm_l2_cache_beyond_limits(struct msm_rpmrs_limits *limits)
+{
+	struct msm_rpmrs_resource *rs = &msm_rpmrs_l2_cache;
+	uint32_t l2_cache = rs->rs[0].value;
+
+	if (!rs->enable_low_power)
+		l2_cache = MSM_RPMRS_L2_CACHE_ACTIVE;
+
+	return l2_cache > limits->l2_cache;
+}
+#endif
+
 static void msm_rpmrs_restore_l2_cache(void)
 {
 	struct msm_rpmrs_resource *rs = &msm_rpmrs_l2_cache;
@@ -590,6 +607,47 @@ static int msm_rpmrs_clear_buffer(struct msm_rpm_iv_pair *req, int count)
 	return listed ? 1 : 0;
 }
 
+#ifdef CONFIG_MSM_L2_SPM
+static int msm_rpmrs_flush_L2(struct msm_rpmrs_limits *limits, int notify_rpm)
+{
+	int rc = 0;
+	int lpm;
+
+	switch (limits->l2_cache) {
+	case MSM_RPMRS_L2_CACHE_HSFS_OPEN:
+		lpm = MSM_SPM_L2_MODE_POWER_COLLAPSE;
+		/* Increment the counter for TZ to init L2  on warmboot */
+		/* Barrier in msm_spm_l2_set_low_power_mode */
+		BUG_ON(!msm_rpmrs_l2_counter_addr);
+		writel_relaxed(++msm_rpmrs_l2_reset_count,
+				msm_rpmrs_l2_counter_addr);
+		break;
+	case MSM_RPMRS_L2_CACHE_GDHS:
+		lpm = MSM_SPM_L2_MODE_GDHS;
+		break;
+	case MSM_RPMRS_L2_CACHE_RETENTION:
+		lpm = MSM_SPM_L2_MODE_RETENTION;
+		break;
+	default:
+	case MSM_RPMRS_L2_CACHE_ACTIVE:
+		lpm = MSM_SPM_L2_MODE_DISABLED;
+		break;
+	}
+
+	rc = msm_spm_l2_set_low_power_mode(lpm, notify_rpm);
+	if (MSM_RPMRS_DEBUG_BUFFER & msm_rpmrs_debug_mask)
+		pr_info("%s: Requesting low power mode %d returned %d\n",
+				__func__, lpm, rc);
+
+	return rc;
+}
+#else
+static int msm_rpmrs_flush_L2(struct msm_rpmrs_limits *limits, int notify_rpm)
+{
+	return 0;
+}
+#endif
+
 static int msm_rpmrs_flush_buffer(
 	uint32_t sclk_count, struct msm_rpmrs_limits *limits, int from_idle)
 {
@@ -770,9 +828,6 @@ static int __init msm_rpmrs_resource_sysfs_add(void)
 	}
 
 	for (i = 0; i < ARRAY_SIZE(msm_rpmrs_resources); i++) {
-		if (msm_rpmrs_resources[i]->rs[0].id == MSM_RPM_ID_LAST + 1)
-			continue;
-
 		rs = kzalloc(sizeof(*rs), GFP_KERNEL);
 		if (!rs) {
 			pr_err("%s: cannot allocate memory for attributes\n",
@@ -844,13 +899,14 @@ void msm_rpmrs_show_resources(void)
 	spin_lock_irqsave(&msm_rpmrs_lock, flags);
 	for (i = 0; i < ARRAY_SIZE(msm_rpmrs_resources); i++) {
 		rs = msm_rpmrs_resources[i];
-		if (rs->rs[0].id == MSM_RPM_ID_LAST + 1)
-			continue;
-
-		pr_info("%s: resource %s: buffered %d, value 0x%x\n",
-			__func__, rs->name,
-			test_bit(rs->rs[0].id, msm_rpmrs_buffered),
-			msm_rpmrs_buffer[rs->rs[0].id]);
+		if (rs->rs[0].id < MSM_RPM_ID_LAST + 1)
+			pr_info("%s: resource %s: buffered %d, value 0x%x\n",
+				__func__, rs->name,
+				test_bit(rs->rs[0].id, msm_rpmrs_buffered),
+				msm_rpmrs_buffer[rs->rs[0].id]);
+		else
+			pr_info("%s: resource %s: value %d\n",
+				__func__, rs->name, rs->rs[0].value);
 	}
 	spin_unlock_irqrestore(&msm_rpmrs_lock, flags);
 }
@@ -911,26 +967,65 @@ struct msm_rpmrs_limits *msm_rpmrs_lowest_limits(
 	return best_level ? &best_level->rs_limits : NULL;
 }
 
-int msm_rpmrs_enter_sleep(
-	bool from_idle, uint32_t sclk_count, struct msm_rpmrs_limits *limits)
+int msm_rpmrs_enter_sleep(uint32_t sclk_count, struct msm_rpmrs_limits *limits,
+		bool from_idle, bool notify_rpm)
 {
-	int rc;
+	int rc = 0;
 
-	rc = msm_rpmrs_flush_buffer(sclk_count, limits, from_idle);
+	rc = msm_rpmrs_flush_L2(limits, notify_rpm);
 	if (rc)
 		return rc;
 
-	if (msm_rpmrs_use_mpm(limits))
-		msm_mpm_enter_sleep(from_idle);
+	if (notify_rpm) {
+		rc = msm_rpmrs_flush_buffer(sclk_count, limits, from_idle);
+		if (rc)
+			return rc;
 
-	return 0;
+		if (msm_rpmrs_use_mpm(limits))
+			msm_mpm_enter_sleep(from_idle);
+	}
+
+	return rc;
 }
 
-void msm_rpmrs_exit_sleep(bool from_idle, struct msm_rpmrs_limits *limits)
+void msm_rpmrs_exit_sleep(struct msm_rpmrs_limits *limits,
+		bool from_idle, bool notify_rpm)
 {
+
+	/* Disable L2 for now, we dont want L2 to do retention by default */
+	msm_spm_l2_set_low_power_mode(MSM_SPM_MODE_DISABLED, notify_rpm);
+
 	if (msm_rpmrs_use_mpm(limits))
 		msm_mpm_exit_sleep(from_idle);
 }
+
+#ifdef CONFIG_MSM_L2_SPM
+static int rpmrs_cpu_callback(struct notifier_block *nfb,
+		unsigned long action, void *hcpu)
+{
+	switch (action) {
+	case CPU_ONLINE_FROZEN:
+	case CPU_ONLINE:
+		if (num_online_cpus() > 1)
+			msm_rpmrs_l2_cache.rs[0].value =
+				MSM_RPMRS_L2_CACHE_ACTIVE;
+		break;
+	case CPU_DEAD_FROZEN:
+	case CPU_DEAD:
+		if (num_online_cpus() == 1)
+			msm_rpmrs_l2_cache.rs[0].value =
+				MSM_RPMRS_L2_CACHE_HSFS_OPEN;
+		break;
+	}
+
+	msm_rpmrs_update_levels();
+	return NOTIFY_OK;
+}
+
+static struct notifier_block __refdata rpmrs_cpu_notifier = {
+	.notifier_call = rpmrs_cpu_callback,
+};
+#endif
 
 static int __init msm_rpmrs_init(void)
 {
@@ -943,7 +1038,8 @@ static int __init msm_rpmrs_init(void)
 
 	rc = msm_rpm_set(MSM_RPM_CTX_SET_0, &req, 1);
 	if (rc) {
-		pr_err("%s: failed to request L2 cache: %d\n", __func__, rc);
+		pr_err("%s: failed to request L2 cache: %d\n",
+				__func__, rc);
 		goto init_exit;
 	}
 
@@ -952,12 +1048,11 @@ static int __init msm_rpmrs_init(void)
 
 	rc = msm_rpmrs_set(MSM_RPM_CTX_SET_SLEEP, &req, 1);
 	if (rc) {
-		pr_err("%s: failed to initialize L2 cache for sleep: %d\n",
-		       __func__, rc);
+		pr_err("%s: failed to initialize L2 cache for sleep: "
+				"%d\n", __func__, rc);
 		goto init_exit;
 	}
 #endif
-
 	req.id = MSM_RPMRS_ID_RPM_CTL;
 	req.value = 0;
 
@@ -979,17 +1074,11 @@ static int __init msm_rpmrs_early_init(void)
 {
 	int i, k;
 
-	/* initialize listed bitmap for valid resource IDs */
+	/* Initialize listed bitmap for valid resource IDs */
 	for (i = 0; i < ARRAY_SIZE(msm_rpmrs_resources); i++) {
-		if (msm_rpmrs_resources[i]->rs[0].id == MSM_RPM_ID_LAST + 1) {
-			msm_rpmrs_resources[i]->beyond_limits = NULL;
-			msm_rpmrs_resources[i]->aggregate = NULL;
-			msm_rpmrs_resources[i]->restore = NULL;
-		} else {
-			for (k = 0; k < msm_rpmrs_resources[i]->size; k++)
-				set_bit(msm_rpmrs_resources[i]->rs[k].id,
-					msm_rpmrs_listed);
-		}
+		for (k = 0; k < msm_rpmrs_resources[i]->size; k++)
+			set_bit(msm_rpmrs_resources[i]->rs[k].id,
+				msm_rpmrs_listed);
 	}
 
 	return 0;
@@ -1002,6 +1091,13 @@ static int __init msm_rpmrs_l2_counter_init(void)
 	msm_rpmrs_l2_counter_addr = MSM_IMEM_BASE + L2_PC_COUNTER_ADDR;
 	writel_relaxed(msm_rpmrs_l2_reset_count, msm_rpmrs_l2_counter_addr);
 	mb();
+
+	msm_rpmrs_l2_cache.beyond_limits = msm_spm_l2_cache_beyond_limits;
+	msm_rpmrs_l2_cache.aggregate = NULL;
+	msm_rpmrs_l2_cache.restore = NULL;
+
+	register_hotcpu_notifier(&rpmrs_cpu_notifier);
+
 	return 0;
 }
 early_initcall(msm_rpmrs_l2_counter_init);

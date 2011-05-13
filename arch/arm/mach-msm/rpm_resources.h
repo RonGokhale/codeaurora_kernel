@@ -84,8 +84,9 @@ struct msm_rpmrs_limits *msm_rpmrs_lowest_limits(
 	bool from_idle, enum msm_pm_sleep_mode sleep_mode, uint32_t latency_us,
 	uint32_t sleep_us);
 
-int msm_rpmrs_enter_sleep(
-	bool from_idle, uint32_t sclk_count, struct msm_rpmrs_limits *limits);
-void msm_rpmrs_exit_sleep(bool from_idle, struct msm_rpmrs_limits *limits);
+int msm_rpmrs_enter_sleep(uint32_t sclk_count, struct msm_rpmrs_limits *limits,
+		bool from_idle, bool notify_rpm);
+void msm_rpmrs_exit_sleep(struct msm_rpmrs_limits *limits,
+		bool from_idle, bool notify_rpm);
 
 #endif /* __ARCH_ARM_MACH_MSM_RPM_RESOURCES_H */

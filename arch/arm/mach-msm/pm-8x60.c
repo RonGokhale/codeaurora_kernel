@@ -864,6 +864,8 @@ int msm_pm_idle_enter(enum msm_pm_sleep_mode sleep_mode)
 		bool timer_halted = false;
 		uint32_t sleep_delay;
 		int ret;
+		int notify_rpm =
+			(sleep_mode == MSM_PM_SLEEP_MODE_POWER_COLLAPSE);
 
 		sleep_delay = (uint32_t) msm_pm_convert_and_cap_time(
 			timer_expiration, MSM_PM_SLEEP_TICK_LIMIT);
@@ -871,12 +873,13 @@ int msm_pm_idle_enter(enum msm_pm_sleep_mode sleep_mode)
 			sleep_delay = 1;
 
 		ret = msm_rpmrs_enter_sleep(
-				true, sleep_delay, msm_pm_idle_rs_limits);
+			sleep_delay, msm_pm_idle_rs_limits, true, notify_rpm);
 		if (!ret) {
 			msm_pm_power_collapse(true);
 			timer_halted = true;
 
-			msm_rpmrs_exit_sleep(true, msm_pm_idle_rs_limits);
+			msm_rpmrs_exit_sleep(msm_pm_idle_rs_limits, true,
+					notify_rpm);
 		}
 
 		msm_timer_exit_idle((int) timer_halted);
@@ -963,10 +966,10 @@ static int msm_pm_enter(suspend_state_t state)
 
 		if (rs_limits) {
 			ret = msm_rpmrs_enter_sleep(
-				false, msm_pm_max_sleep_time, rs_limits);
+				msm_pm_max_sleep_time, rs_limits, false, true);
 			if (!ret) {
 				msm_pm_power_collapse(false);
-				msm_rpmrs_exit_sleep(false, rs_limits);
+				msm_rpmrs_exit_sleep(rs_limits, false, true);
 			}
 		} else {
 			pr_err("%s: cannot find the lowest power limit\n",
