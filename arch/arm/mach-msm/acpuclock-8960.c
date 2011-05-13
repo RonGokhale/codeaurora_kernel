@@ -506,9 +506,13 @@ static void __init init_clock_sources(enum scalables id)
 	}
 	hfpll_init(id, tgt_s);
 
-	/* Set PRI_SRC_SEL_HFPLL_DIV2 divider to div-2. */
+	/*
+	 * Set PRI_SRC_SEL_HFPLL_DIV2 divider to div-2 and disable
+	 * auto-gating of secondary clock source.
+	 */
 	regval = readl_cp15_l2ind(l2cpmr_iaddr[id]);
 	regval &= ~(0x3 << 6);
+	regval |= BIT(4);
 	writel_cp15_l2ind(regval, l2cpmr_iaddr[id]);
 
 	/* Select PLL8 as AUX source input to the secondary MUX. */
