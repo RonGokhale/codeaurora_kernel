@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -226,7 +226,7 @@ u32 res_trk_power_up(void)
 	VCDRES_MSG_LOW("clk_regime_sel_rail_control");
 #ifdef CONFIG_MSM_BUS_SCALING
 	resource_context.pcl = msm_bus_scale_register_client(
-		&vidc_bus_client_pdata);
+		resource_context.vidc_bus_client_pdata);
 	VCDRES_MSG_LOW("%s(), resource_context.pcl = %x", __func__,
 		 resource_context.pcl);
 	if (resource_context.pcl == 0) {
@@ -399,6 +399,10 @@ void res_trk_init(struct device *device, u32 irq)
 		mutex_init(&resource_context.lock);
 		resource_context.device = device;
 		resource_context.irq_num = irq;
+#ifdef CONFIG_MSM_BUS_SCALING
+		resource_context.vidc_bus_client_pdata =
+			(struct msm_bus_scale_pdata *)device->platform_data;
+#endif
 		resource_context.core_type = VCD_CORE_1080P;
 	}
 }
