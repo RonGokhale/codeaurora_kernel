@@ -1078,6 +1078,7 @@ static void msm_hsusb_vbus_power(unsigned phy_info, int on)
 static struct msm_usb_host_platform_data msm_usb_host_pdata = {
 	.phy_info       = (USB_PHY_INTEGRATED | USB_PHY_MODEL_45NM),
 	.vbus_init	= msm_hsusb_vbus_init,
+	.vbus_power     = msm_hsusb_vbus_power,
 };
 
 static void __init msm7x2x_init_host(void)
