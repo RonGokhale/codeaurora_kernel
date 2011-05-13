@@ -675,7 +675,8 @@ bool radeon_get_atom_connector_info_from_object_table(struct drm_device *dev)
 							ATOM_ENCODER_CAP_RECORD *cap_record;
 							u16 caps = 0;
 
-							while (record->ucRecordType > 0 &&
+							while (record->ucRecordSize > 0 &&
+							       record->ucRecordType > 0 &&
 							       record->ucRecordType <= ATOM_MAX_OBJECT_RECORD_NUMBER) {
 								switch (record->ucRecordType) {
 								case ATOM_ENCODER_CAP_RECORD_TYPE:
@@ -720,7 +721,8 @@ bool radeon_get_atom_connector_info_from_object_table(struct drm_device *dev)
 									break;
 							}
 
-							while (record->ucRecordType > 0 &&
+							while (record->ucRecordSize > 0 &&
+							       record->ucRecordType > 0 &&
 							       record->ucRecordType <= ATOM_MAX_OBJECT_RECORD_NUMBER) {
 								switch (record->ucRecordType) {
 								case ATOM_I2C_RECORD_TYPE:
@@ -782,10 +784,9 @@ bool radeon_get_atom_connector_info_from_object_table(struct drm_device *dev)
 						ATOM_HPD_INT_RECORD *hpd_record;
 						ATOM_I2C_ID_CONFIG_ACCESS *i2c_config;
 
-						while (record->ucRecordType > 0
-						       && record->
-						       ucRecordType <=
-						       ATOM_MAX_OBJECT_RECORD_NUMBER) {
+						while (record->ucRecordSize > 0 &&
+						       record->ucRecordType > 0 &&
+						       record->ucRecordType <= ATOM_MAX_OBJECT_RECORD_NUMBER) {
 							switch (record->ucRecordType) {
 							case ATOM_I2C_RECORD_TYPE:
 								i2c_record =
@@ -1598,9 +1599,10 @@ struct radeon_encoder_atom_dig *radeon_atombios_get_lvds_info(struct
 							memcpy((u8 *)edid, (u8 *)&fake_edid_record->ucFakeEDIDString[0],
 							       fake_edid_record->ucFakeEDIDLength);
 
-							if (drm_edid_is_valid(edid))
+							if (drm_edid_is_valid(edid)) {
 								rdev->mode_info.bios_hardcoded_edid = edid;
-							else
+								rdev->mode_info.bios_hardcoded_edid_size = edid_size;
+							} else
 								kfree(edid);
 						}
 					}
