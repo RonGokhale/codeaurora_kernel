@@ -102,6 +102,7 @@
 #define VFE_CLEAR_ALL_IRQS   0xffffffff
 
 #define VFE_IRQ_STATUS0_CAMIF_SOF_MASK            0x00000001
+#define VFE_IRQ_STATUS0_CAMIF_EOF_MASK            0x00000004
 #define VFE_IRQ_STATUS0_REG_UPDATE_MASK           0x00000020
 #define VFE_IRQ_STATUS0_IMAGE_COMPOSIT_DONE0_MASK 0x00200000
 #define VFE_IRQ_STATUS0_IMAGE_COMPOSIT_DONE1_MASK 0x00400000
@@ -310,6 +311,8 @@ enum  vfe_recording_state {
 #define V31_LIVESHOT              106
 #define V31_ZSL                   107
 #define V31_STEREOCAM             108
+#define V31_LA_SETUP              109
+#define V31_XBAR_CFG              110
 
 #define V31_CAMIF_OFF             0x000001E4
 #define V31_CAMIF_LEN             32
@@ -411,6 +414,8 @@ enum  vfe_recording_state {
 #define V31_STATS_CS_OFF 0x00000574
 #define V31_STATS_CS_LEN 8
 
+#define V31_XBAR_CFG_OFF 0x00000040
+#define V31_XBAR_CFG_LEN 8
 
 #define V31_ASF_OFF 0x000004A0
 #define V31_ASF_LEN 48
@@ -1072,6 +1077,9 @@ struct vfe31_ctrl_type {
 	struct msm_camera_sensor_info *s_info;
 	struct vfe_message vMsgHold_Snap;
 	struct vfe_message vMsgHold_Thumb;
+	int8_t xbar_update_pending;
+	uint32_t xbar_cfg[2];
+	spinlock_t xbar_lock;
 };
 
 #define statsAeNum      0
