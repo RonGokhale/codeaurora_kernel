@@ -431,7 +431,7 @@ static void msm_timer_set_mode(enum clock_event_mode mode,
 			get_irq_chip(clock->irq.irq)->irq_mask(
 				irq_get_irq_data(clock->irq.irq));
 		}
-#ifdef CONFIG_ARCH_MSM_SCORPIONMP
+#ifdef CONFIG_MSM_SMP
 		if (clock != &msm_clocks[MSM_CLOCK_DGT] || smp_processor_id())
 #endif
 			__raw_writel(0, clock->regbase + TIMER_ENABLE);
@@ -850,7 +850,7 @@ void msm_timer_exit_idle(int low_power)
 	if (!enabled)
 		__raw_writel(TIMER_ENABLE_EN, gpt_clk->regbase + TIMER_ENABLE);
 
-#if defined(CONFIG_ARCH_MSM_SCORPION) || defined(CONFIG_ARCH_MSM_SCORPIONMP)
+#if defined(CONFIG_ARCH_MSM_SCORPION) || defined(CONFIG_ARCH_MSM_KRAIT)
 	gpt_clk_state->in_sync = 0;
 #else
 	gpt_clk_state->in_sync = gpt_clk_state->in_sync && enabled;
@@ -866,7 +866,7 @@ void msm_timer_exit_idle(int low_power)
 	if (!enabled)
 		__raw_writel(TIMER_ENABLE_EN, clock->regbase + TIMER_ENABLE);
 
-#if defined(CONFIG_ARCH_MSM_SCORPION) || defined(CONFIG_ARCH_MSM_SCORPIONMP)
+#if defined(CONFIG_ARCH_MSM_SCORPION) || defined(CONFIG_ARCH_MSM_KRAIT)
 	clock_state->in_sync = 0;
 #else
 	clock_state->in_sync = clock_state->in_sync && enabled;
@@ -980,7 +980,7 @@ static void notrace msm_update_sched_clock(void)
 	update_sched_clock(&cd, cyc, (u32)~0);
 }
 
-#ifdef CONFIG_ARCH_MSM_SCORPIONMP
+#ifdef CONFIG_MSM_SMP
 int read_current_timer(unsigned long *timer_val)
 {
 	struct msm_clock *dgt = &msm_clocks[MSM_CLOCK_DGT];
@@ -1051,7 +1051,7 @@ static void __init msm_timer_init(void)
 		clockevents_register_device(ce);
 	}
 	msm_sched_clock_init();
-#ifdef CONFIG_ARCH_MSM_SCORPIONMP
+#ifdef CONFIG_MSM_SMP
 	__raw_writel(1, msm_clocks[MSM_CLOCK_DGT].regbase + TIMER_ENABLE);
 	set_delay_fn(read_current_timer_delay_loop);
 #endif

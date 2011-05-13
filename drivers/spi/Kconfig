@@ -291,7 +291,7 @@ config SPI_PXA2XX_PCI
 config SPI_QSD
 	tristate "Qualcomm MSM SPI support"
 	default n
-	depends on ARCH_MSM_SCORPION
+	depends on ARCH_MSM_SCORPION && !MSM_SMP
 
 config SPI_S3C24XX
 	tristate "Samsung S3C24XX series SPI"
@@ -390,7 +390,7 @@ config SPI_NUC900
 config SPI_QSD
 	tristate "Qualcomm MSM SPI support"
 	default n
-	depends on ARCH_MSM_SCORPION
+	depends on ARCH_MSM_SCORPION && !MSM_SMP
 	help
 	  Support for Serial Peripheral Interface for Qualcomm MSM
 

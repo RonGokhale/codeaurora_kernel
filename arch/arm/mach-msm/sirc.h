@@ -16,7 +16,7 @@
 #ifndef _ARCH_ARM_MACH_MSM_SIRC_H
 #define _ARCH_ARM_MACH_MSM_SIRC_H
 
-#ifdef CONFIG_ARCH_MSM_SCORPION
+#if defined(CONFIG_ARCH_MSM_SCORPION) && !defined(CONFIG_MSM_SMP)
 void sirc_fiq_select(int irq, bool enable);
 #else
 static inline void sirc_fiq_select(int irq, bool enable) {}

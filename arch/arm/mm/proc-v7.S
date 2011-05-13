@@ -202,7 +202,7 @@ cpu_v7_name:
  *	- cache type register is implemented
  */
 __v7_ca9mp_setup:
-#if defined(CONFIG_SMP) && !defined(CONFIG_ARCH_MSM_SCORPIONMP)
+#if defined(CONFIG_SMP)
 	mrc	p15, 0, r0, c1, c0, 1
 	tst	r0, #(1 << 6)			@ SMP/nAMP mode enabled?
 	orreq	r0, r0, #(1 << 6) | (1 << 0)	@ Enable SMP/nAMP mode and
@@ -298,26 +298,26 @@ __v7_setup:
 	mov     r10, #0x1f                      @ domains 0, 1 = manager
 	mcr     p15, 0, r10, c3, c0, 0          @ load domain access register
 #endif
-#ifdef CONFIG_ARCH_MSM_SCORPION
+#if defined(CONFIG_ARCH_MSM_SCORPION) && !defined(CONFIG_MSM_SMP)
 	mov     r0, #0x33
 	mcr     p15, 3, r0, c15, c0, 3          @ set L2CR1
 #endif
-#if defined (CONFIG_ARCH_MSM_SCORPION) || defined (CONFIG_ARCH_MSM_SCORPIONMP)
+#if defined (CONFIG_ARCH_MSM_SCORPION)
 	mrc     p15, 0, r0, c1, c0, 1           @ read ACTLR
 #ifdef CONFIG_CPU_CACHE_ERR_REPORT
 	orr     r0, r0, #0x37                   @ turn on L1/L2 error reporting
 #else
 	bic     r0, r0, #0x37
 #endif
-#ifndef CONFIG_ARCH_MSM8960
 #if defined (CONFIG_ARCH_MSM_SCORPIONMP)
 	orr    r0, r0, #0x1 << 24     @ optimal setting for Scorpion MP
 #endif
+#ifndef CONFIG_ARCH_MSM_KRAIT
 	mcr     p15, 0, r0, c1, c0, 1           @ write ACTLR
 #endif
 #endif
 
-#if defined (CONFIG_ARCH_MSM_SCORPIONMP) && !defined (CONFIG_ARCH_MSM8960)
+#if defined (CONFIG_ARCH_MSM_SCORPIONMP)
 	mrc     p15, 3, r0, c15, c0, 2  @ optimal setting for Scorpion MP
 	orr	    r0, r0, #0x1 << 21
 	mcr     p15, 3, r0, c15, c0, 2
@@ -352,7 +352,7 @@ __v7_setup:
 	 *   NOS = PRRR[24+n] = 1	- not outer shareable
 	 */
 	ldr	r5, =0xff0a81a8			@ PRRR
-#ifdef CONFIG_ARCH_MSM_SCORPIONMP
+#ifdef CONFIG_MSM_SMP
 	ldr	r6, =0x40e080e0			@ NMRR
 #else
 	ldr	r6, =0x40e040e0			@ NMRR
