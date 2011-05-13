@@ -546,10 +546,7 @@ static int adreno_start(struct kgsl_device *device, unsigned int init_ram)
 	*issuing a soft reset.  The overrides will then be turned off (set to 0)
 	*/
 	adreno_regwrite(device, REG_RBBM_PM_OVERRIDE1, 0xfffffffe);
-	if (adreno_dev->chip_id == CHIP_REV_251)
-		adreno_regwrite(device, REG_RBBM_PM_OVERRIDE2, 0x000000ff);
-	else
-		adreno_regwrite(device, REG_RBBM_PM_OVERRIDE2, 0xffffffff);
+	adreno_regwrite(device, REG_RBBM_PM_OVERRIDE2, 0xffffffff);
 
 	/* Only reset CP block if all blocks have previously been reset */
 	if (!(device->flags & KGSL_FLAGS_SOFT_RESET) ||

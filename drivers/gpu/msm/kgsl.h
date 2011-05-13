@@ -47,8 +47,6 @@
 
 #define KGSL_NAME "kgsl"
 
-#define CHIP_REV_251 0x020501
-
 /* Flags to control whether to flush or invalidate a cached memory range */
 #define KGSL_CACHE_INV		0x00000000
 #define KGSL_CACHE_CLEAN	0x00000001
