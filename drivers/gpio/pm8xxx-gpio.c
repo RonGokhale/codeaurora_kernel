@@ -444,7 +444,7 @@ static int __init pm_gpio_init(void)
 {
 	return platform_driver_register(&pm_gpio_driver);
 }
-subsys_initcall(pm_gpio_init);
+postcore_initcall(pm_gpio_init);
 
 static void __exit pm_gpio_exit(void)
 {
