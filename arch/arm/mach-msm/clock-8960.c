@@ -2853,7 +2853,7 @@ static struct clk_freq_tbl clk_tbl_gfx3d[] = {
 	F_GFX3D(177778000, pll2, 2,  9, NOMINAL),
 	F_GFX3D(200000000, pll2, 1,  4, NOMINAL),
 	F_GFX3D(228571000, pll2, 2,  7, NOMINAL),
-	F_GFX3D(266667000, pll2, 1,  3, HIGH),
+	F_GFX3D(266667000, pll2, 1,  3, NOMINAL),
 	F_GFX3D(320000000, pll2, 2,  5, HIGH),
 	F_END
 };
@@ -3456,7 +3456,7 @@ static struct clk_freq_tbl clk_tbl_vfe[] = {
 	F_VFE(153600000, pll8,  1, 2,  5, NOMINAL),
 	F_VFE(200000000, pll2,  2, 1,  2, NOMINAL),
 	F_VFE(228570000, pll2,  1, 2,  7, NOMINAL),
-	F_VFE(266667000, pll2,  1, 1,  3, HIGH),
+	F_VFE(266667000, pll2,  1, 1,  3, NOMINAL),
 	F_END
 };
 
