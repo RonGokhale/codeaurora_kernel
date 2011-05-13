@@ -1,6 +1,6 @@
 /* Qualcomm Crypto Engine driver.
  *
- * Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -170,7 +170,7 @@ struct qce_device {
 	dma_addr_t phy_ota_src;
 	dma_addr_t phy_ota_dst;
 	unsigned int ota_size;
-
+	int err;
 };
 
 /* standard initialization vector for SHA-1, source: FIPS 180-2 */
@@ -548,7 +548,7 @@ static int _init_ce_engine(struct qce_device *pce_dev)
 	/* reset qce */
 	writel(1 << CRYPTO_SW_RST, pce_dev->iobase + CRYPTO_CONFIG_REG);
 	wmb(); /* barrier */
-	msleep(1);
+
 	/* configure ce */
 	val = (1 << CRYPTO_MASK_DOUT_INTR) | (1 << CRYPTO_MASK_DIN_INTR) |
 			(1 << CRYPTO_MASK_AUTH_DONE_INTR) |
@@ -800,6 +800,7 @@ static int _aead_complete(struct qce_device *pce_dev)
 	uint32_t ivsize;
 	uint32_t iv_out[4];
 	unsigned char iv[4 * sizeof(uint32_t)];
+	uint32_t status;
 
 	areq = (struct aead_request *) pce_dev->areq;
 	aead = crypto_aead_reqtfm(areq);
@@ -816,6 +817,18 @@ static int _aead_complete(struct qce_device *pce_dev)
 			ivsize, DMA_TO_DEVICE);
 	dma_unmap_sg(pce_dev->pdev, areq->assoc, pce_dev->assoc_nents,
 			DMA_TO_DEVICE);
+
+	/* check ce error status */
+	status = readl(pce_dev->iobase + CRYPTO_STATUS_REG);
+	if (status & (1 << CRYPTO_SW_ERR)) {
+		pce_dev->err++;
+		dev_err(pce_dev->pdev,
+			"Qualcomm Crypto Error at 0x%x, status%x\n",
+			pce_dev->phy_iobase, status);
+		_init_ce_engine(pce_dev);
+		pce_dev->qce_cb(areq, pce_dev->dig_result, NULL, -ENXIO);
+		return 0;
+	};
 
 	/* get iv out */
 	if (pce_dev->mode == QCE_MODE_ECB)
@@ -843,6 +856,7 @@ static int _ablk_cipher_complete(struct qce_device *pce_dev)
 	struct ablkcipher_request *areq;
 	uint32_t iv_out[4];
 	unsigned char iv[4 * sizeof(uint32_t)];
+	uint32_t status;
 
 	areq = (struct ablkcipher_request *) pce_dev->areq;
 
@@ -853,6 +867,18 @@ static int _ablk_cipher_complete(struct qce_device *pce_dev)
 	dma_unmap_sg(pce_dev->pdev, areq->src, pce_dev->src_nents,
 			(areq->src == areq->dst) ? DMA_BIDIRECTIONAL :
 							DMA_TO_DEVICE);
+
+	/* check ce error status */
+	status = readl(pce_dev->iobase + CRYPTO_STATUS_REG);
+	if (status & (1 << CRYPTO_SW_ERR)) {
+		pce_dev->err++;
+		dev_err(pce_dev->pdev,
+			"Qualcomm Crypto Error at 0x%x, status%x\n",
+			pce_dev->phy_iobase, status);
+		_init_ce_engine(pce_dev);
+		pce_dev->qce_cb(areq, NULL, NULL, -ENXIO);
+		return 0;
+	};
 
 	/* get iv out */
 	if (pce_dev->mode == QCE_MODE_ECB)
@@ -876,9 +902,20 @@ static int _ablk_cipher_complete(struct qce_device *pce_dev)
 static void _f9_complete(struct qce_device *pce_dev)
 {
 	uint32_t  mac_i;
+	uint32_t status;
 
 	dma_unmap_single(pce_dev->pdev, pce_dev->phy_ota_src,
 				pce_dev->ota_size, DMA_TO_DEVICE);
+	/* check ce error status */
+	status = readl(pce_dev->iobase + CRYPTO_STATUS_REG);
+	if (status & (1 << CRYPTO_SW_ERR)) {
+		pce_dev->err++;
+		dev_err(pce_dev->pdev,
+			"Qualcomm Crypto Error at 0x%x, status%x\n",
+			pce_dev->phy_iobase, status);
+		_init_ce_engine(pce_dev);
+		pce_dev->qce_cb(pce_dev->areq, NULL, NULL, -ENXIO);
+	};
 	mac_i = readl(pce_dev->iobase + CRYPTO_AUTH_IV0_REG);
 	pce_dev->qce_cb(pce_dev->areq, (void *) mac_i, NULL,
 				pce_dev->chan_ce_in_status);
@@ -886,6 +923,8 @@ static void _f9_complete(struct qce_device *pce_dev)
 
 static void _f8_complete(struct qce_device *pce_dev)
 {
+	uint32_t status;
+
 	if (pce_dev->phy_ota_dst != 0)
 		dma_unmap_single(pce_dev->pdev, pce_dev->phy_ota_dst,
 				pce_dev->ota_size, DMA_FROM_DEVICE);
@@ -893,6 +932,16 @@ static void _f8_complete(struct qce_device *pce_dev)
 		dma_unmap_single(pce_dev->pdev, pce_dev->phy_ota_src,
 				pce_dev->ota_size, (pce_dev->phy_ota_dst) ?
 				DMA_TO_DEVICE : DMA_BIDIRECTIONAL);
+	/* check ce error status */
+	status = readl(pce_dev->iobase + CRYPTO_STATUS_REG);
+	if (status & (1 << CRYPTO_SW_ERR)) {
+		pce_dev->err++;
+		dev_err(pce_dev->pdev,
+			"Qualcomm Crypto Error at 0x%x, status%x\n",
+			pce_dev->phy_iobase, status);
+		_init_ce_engine(pce_dev);
+		pce_dev->qce_cb(pce_dev->areq, NULL, NULL, -ENXIO);
+	};
 	pce_dev->qce_cb(pce_dev->areq, NULL, NULL,
 				pce_dev->chan_ce_in_status |
 					pce_dev->chan_ce_out_status);
@@ -1318,6 +1367,9 @@ void *qce_open(struct platform_device *pdev, int *rc)
 
 	pce_dev->chan_ce_in_state = QCE_CHAN_STATE_IDLE;
 	pce_dev->chan_ce_out_state = QCE_CHAN_STATE_IDLE;
+
+	pce_dev->err = 0;
+
 	return pce_dev;
 err:
 	if (pce_dev)
@@ -2183,7 +2235,7 @@ static void __exit _qce_exit(void)
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Rohit Vaswani <rvaswani@codeaurora.org>");
 MODULE_DESCRIPTION("Crypto Engine driver");
-MODULE_VERSION("1.01");
+MODULE_VERSION("1.02");
 
 module_init(_qce_init);
 module_exit(_qce_exit);
