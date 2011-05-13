@@ -291,7 +291,7 @@ int msm_bam_dmux_write(uint32_t id, struct sk_buff *skb)
 	int rc = 0;
 	struct bam_mux_hdr *hdr;
 	unsigned long flags;
-	struct sk_buff *new_skb;
+	struct sk_buff *new_skb = NULL;
 	dma_addr_t dma_address;
 	struct tx_pkt_info *pkt;
 
