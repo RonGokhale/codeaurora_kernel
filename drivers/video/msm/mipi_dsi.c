@@ -608,6 +608,7 @@ void mipi_dsi_clk_disable(void)
 	clk_disable(mdp_dsi_pclk);
 	clk_disable(ahb_m_clk);
 	clk_disable(ahb_s_clk);
+	clk_disable(dsi_ref_clk);
 #endif
 }
 
