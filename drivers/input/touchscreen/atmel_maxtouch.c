@@ -33,6 +33,7 @@
 #include <linux/cdev.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
+#include <linux/pm_runtime.h>
 
 #include <asm/uaccess.h>
 
@@ -1851,6 +1852,12 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		return	-EINVAL;
 	}
 
+	/* Enable runtime PM ops, start in ACTIVE mode */
+	error = pm_runtime_set_active(&client->dev);
+	if (error < 0)
+		dev_dbg(&client->dev, "unable to set runtime pm state\n");
+	pm_runtime_enable(&client->dev);
+
 	mxt_debug(DEBUG_INFO, "maXTouch driver v. %s\n", DRIVER_VERSION);
 	mxt_debug(DEBUG_INFO, "\t \"%s\"\n", client->name);
 	mxt_debug(DEBUG_INFO, "\taddr:\t0x%04x\n", client->addr);
@@ -2160,12 +2167,17 @@ err_input_dev_alloc:
 err_id_alloc:
 	kfree(mxt);
 err_mxt_alloc:
+	pm_runtime_set_suspended(&client->dev);
+	pm_runtime_disable(&client->dev);
 	return error;
 }
 
 static int __devexit mxt_remove(struct i2c_client *client)
 {
 	struct mxt_data *mxt;
+
+	pm_runtime_set_suspended(&client->dev);
+	pm_runtime_disable(&client->dev);
 
 	mxt = i2c_get_clientdata(client);
 
