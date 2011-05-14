@@ -783,6 +783,7 @@ config MSM_SDIO_DMUX
 
 config MSM_BAM_DMUX
 	bool "BAM Data Mux Driver"
+	depends on SPS
 	default n
 	help
 	  Support Muxed Data Channels over BAM interface.
