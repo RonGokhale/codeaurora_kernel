@@ -108,6 +108,13 @@ extern struct platform_device msm_device_wcnss_wlan;
 
 extern struct platform_device msm_device_vidc_720p;
 
+extern struct platform_device msm_pcm;
+extern struct platform_device msm_pcm_routing;
+extern struct platform_device msm_cpudai0;
+extern struct platform_device msm_cpudai1;
+extern struct platform_device msm_cpu_fe;
+extern struct platform_device msm_stub_codec;
+
 extern struct platform_device *msm_footswitch_devices[];
 extern unsigned msm_num_footswitch_devices;
 
