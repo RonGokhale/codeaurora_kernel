@@ -330,7 +330,7 @@ static struct core_speed *compute_l2_speed(unsigned int voting_cpu,
 	/* Find max L2 speed vote. */
 	l2_vote[voting_cpu] = vote_s;
 	new_s = &l2_freq_tbl->speed;
-	for_each_online_cpu(cpu)
+	for_each_present_cpu(cpu)
 		new_s = max(new_s, l2_vote[cpu]);
 
 	return new_s;
@@ -506,9 +506,13 @@ static void __init init_clock_sources(enum scalables id)
 	}
 	hfpll_init(id, tgt_s);
 
-	/* Set PRI_SRC_SEL_HFPLL_DIV2 divider to div-2. */
+	/*
+	 * Set PRI_SRC_SEL_HFPLL_DIV2 divider to div-2 and disable
+	 * auto-gating of secondary clock source.
+	 */
 	regval = readl_cp15_l2ind(l2cpmr_iaddr[id]);
 	regval &= ~(0x3 << 6);
+	regval |= BIT(4);
 	writel_cp15_l2ind(regval, l2cpmr_iaddr[id]);
 
 	/* Select PLL8 as AUX source input to the secondary MUX. */
