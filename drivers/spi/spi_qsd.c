@@ -2258,7 +2258,7 @@ skip_dma_resources:
 		rc = PTR_ERR(dd->pclk);
 		goto err_probe_pclk_get;
 	}
-	msm_spi_init_gsbi(dd);
+
 	if (pdata && pdata->max_clock_speed)
 		msm_spi_clock_set(dd, dd->pdata->max_clock_speed);
 
@@ -2277,7 +2277,7 @@ skip_dma_resources:
 		goto err_probe_pclk_enable;
 	}
 	pclk_enabled = 1;
-
+	msm_spi_init_gsbi(dd);
 	msm_spi_calculate_fifo_size(dd);
 	if (dd->use_dma) {
 		rc = msm_spi_init_dma(dd);
