@@ -26,6 +26,7 @@
 #include <linux/io.h>
 #include <mach/iomap.h>
 #include <linux/err.h>
+#include <linux/reboot.h>
 
 #include "board-seaboard.h"
 #include "gpio-names.h"
@@ -299,6 +300,35 @@ static void seaboard_power_off(void)
 	}
 }
 
+static struct device *tps6586x_restart_dev;
+static void (*chained_pm_restart)(char mode, const char *cmd);
+
+#define TPS6586X_DEVNAME "4-0034"
+#define TPS6586X_SUPPLYENE 0x14
+static void seaboard_pm_restart(char mode, const char *cmd)
+{
+	if (tps6586x_restart_dev) {
+		pr_warning("Set TPS6586X_SUPPLYENE bit0 to 1\n");
+		tps6586x_set_bits(tps6586x_restart_dev, TPS6586X_SUPPLYENE, 1);
+	}
+	if (chained_pm_restart)
+		chained_pm_restart(mode, cmd);
+}
+
+static int seaboard_softreset_cb(struct notifier_block *nb,
+				unsigned long event, void *data)
+{
+	tps6586x_restart_dev = bus_find_device_by_name(&i2c_bus_type, NULL,
+							TPS6586X_DEVNAME);
+	if (!tps6586x_restart_dev)
+		pr_warning("Unable to find tps6586x mfd\n");
+	return 0;
+}
+
+static struct notifier_block seaboard_softreset_nb = {
+	.notifier_call = seaboard_softreset_cb,
+};
+
 int __init seaboard_power_init(void)
 {
 	int err;
@@ -312,6 +342,13 @@ int __init seaboard_power_init(void)
 		pr_warning("Unable to initialize ac power\n");
 
 	pm_power_off = seaboard_power_off;
+	/* Register reboot notifier to get PMIC device before
+	 * kobj been dereferenced
+	 */
+	register_reboot_notifier(&seaboard_softreset_nb);
+	/* Hook arm_pm_restart chain */
+	chained_pm_restart = arm_pm_restart;
+	arm_pm_restart = seaboard_pm_restart;
 
 	return 0;
 }
