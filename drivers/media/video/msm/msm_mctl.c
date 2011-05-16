@@ -605,11 +605,23 @@ msm_open_done:
 
 static int msm_mctl_release(struct msm_cam_media_controller *p_mctl)
 {
+	struct msm_sync *sync = NULL;
+	int rc = 0;
+
+	sync = &(p_mctl->sync);
+
 	if (p_mctl->isp_sdev && p_mctl->isp_sdev->isp_release)
 		p_mctl->isp_sdev->isp_release(&p_mctl->sync);
 
 	if (p_mctl->sync.sctrl.s_release)
 		p_mctl->sync.sctrl.s_release();
+
+	rc = msm_camio_sensor_clk_off(sync->pdev);
+	if (rc < 0) {
+		pr_err("%s: msm_camio_sensor_clk_off failed:%d\n",
+			 __func__, rc);
+		return rc;
+	}
 
 	return 0;
 }
