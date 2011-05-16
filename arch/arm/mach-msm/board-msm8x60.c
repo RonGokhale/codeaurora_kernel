@@ -2972,14 +2972,6 @@ static int cyttsp_fluid_platform_init(struct i2c_client *client)
 		goto reg_s3_disable;
 	}
 
-	/* configure touchscreen interrupt gpio */
-	rc = gpio_request(FLUID_CYTTSP_TS_GPIO_IRQ, "cyttsp_irq_gpio");
-	if (rc) {
-		pr_err("%s: unable to request gpio %d\n",
-			__func__, FLUID_CYTTSP_TS_GPIO_IRQ);
-		goto reg_s3_disable;
-	}
-
 	/* virtual keys */
 	tma300_vkeys_attr.attr.name = "virtualkeys.cyttsp-i2c";
 	properties_kobj = kobject_create_and_add("board_properties",
@@ -3039,6 +3031,9 @@ static struct cyttsp_platform_data cyttsp_fluid_pdata = {
 	 * scanning/processing refresh interval for Operating mode
 	 */
 	.lp_intrvl = CY_LP_INTRVL_DFLT,
+	.sleep_gpio = -1,
+	.resout_gpio = -1,
+	.irq_gpio = FLUID_CYTTSP_TS_GPIO_IRQ,
 	.resume = cyttsp_fluid_platform_resume,
 	.init = cyttsp_fluid_platform_init,
 };
