@@ -28,7 +28,6 @@
 #include <linux/io.h>
 #include <linux/gpio.h>
 #include <mach/vreg.h>
-#include <asm/hardware/cache-l2x0.h>
 #include <mach/pmic.h>
 #include <mach/socinfo.h>
 #include <linux/mtd/nand.h>
@@ -3056,36 +3055,14 @@ static void __init msm7x2x_init(void)
 	platform_device_register(&hs_pdev);
 }
 
-#ifdef CONFIG_CACHE_L2X0
-static void msm7x27x_l2_cache_init(void)
-{
-	int aux_ctrl = 0;
-
-	/* Way Size 010(0x2) 32KB */
-	aux_ctrl = (0x1 << L2X0_AUX_CTRL_SHARE_OVERRIDE_SHIFT) | \
-		   (0x2 << L2X0_AUX_CTRL_WAY_SIZE_SHIFT) | \
-		   (0x1 << L2X0_AUX_CTRL_EVNT_MON_BUS_EN_SHIFT);
-
-	l2x0_init(MSM_L2CC_BASE, aux_ctrl, L2X0_AUX_CTRL_MASK);
-}
-#endif
-
 static void __init msm7x2x_init_early(void)
 {
 	msm_msm7x2x_allocate_memory_regions();
 }
 
-static void __init msm7x2x_map_io(void)
-{
-	msm_map_common_io();
-#ifdef CONFIG_CACHE_L2X0
-	msm7x27x_l2_cache_init();
-#endif
-}
-
 MACHINE_START(MSM7X27A_RUMI3, "QCT MSM7x27a RUMI3")
 	.boot_params	= PHYS_OFFSET + 0x100,
-	.map_io		= msm7x2x_map_io,
+	.map_io		= msm_common_io_init,
 	.reserve	= msm7x27a_reserve,
 	.init_irq	= msm_init_irq,
 	.init_machine	= msm7x2x_init,
@@ -3094,7 +3071,7 @@ MACHINE_START(MSM7X27A_RUMI3, "QCT MSM7x27a RUMI3")
 MACHINE_END
 MACHINE_START(MSM7X27A_SURF, "QCT MSM7x27a SURF")
 	.boot_params	= PHYS_OFFSET + 0x100,
-	.map_io		= msm7x2x_map_io,
+	.map_io		= msm_common_io_init,
 	.reserve	= msm7x27a_reserve,
 	.init_irq	= msm_init_irq,
 	.init_machine	= msm7x2x_init,
@@ -3103,7 +3080,7 @@ MACHINE_START(MSM7X27A_SURF, "QCT MSM7x27a SURF")
 MACHINE_END
 MACHINE_START(MSM7X27A_FFA, "QCT MSM7x27a FFA")
 	.boot_params	= PHYS_OFFSET + 0x100,
-	.map_io		= msm7x2x_map_io,
+	.map_io		= msm_common_io_init,
 	.reserve	= msm7x27a_reserve,
 	.init_irq	= msm_init_irq,
 	.init_machine	= msm7x2x_init,
