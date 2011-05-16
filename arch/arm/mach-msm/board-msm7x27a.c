@@ -2774,11 +2774,6 @@ static void __init msm7x27a_init_ebi2(void)
 	iounmap(ebi2_cfg_ptr);
 }
 
-static void __init msm7x2x_init_irq(void)
-{
-	msm_init_irq();
-}
-
 #define ATMEL_TS_I2C_NAME "maXTouch"
 static struct vreg *vreg_l2;
 static struct vreg *vreg_s3;
@@ -3092,7 +3087,7 @@ MACHINE_START(MSM7X27A_RUMI3, "QCT MSM7x27a RUMI3")
 	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= msm7x2x_map_io,
 	.reserve	= msm7x27a_reserve,
-	.init_irq	= msm7x2x_init_irq,
+	.init_irq	= msm_init_irq,
 	.init_machine	= msm7x2x_init,
 	.timer		= &msm_timer,
 	.init_early     = msm7x2x_init_early,
@@ -3101,7 +3096,7 @@ MACHINE_START(MSM7X27A_SURF, "QCT MSM7x27a SURF")
 	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= msm7x2x_map_io,
 	.reserve	= msm7x27a_reserve,
-	.init_irq	= msm7x2x_init_irq,
+	.init_irq	= msm_init_irq,
 	.init_machine	= msm7x2x_init,
 	.timer		= &msm_timer,
 	.init_early     = msm7x2x_init_early,
@@ -3110,7 +3105,7 @@ MACHINE_START(MSM7X27A_FFA, "QCT MSM7x27a FFA")
 	.boot_params	= PHYS_OFFSET + 0x100,
 	.map_io		= msm7x2x_map_io,
 	.reserve	= msm7x27a_reserve,
-	.init_irq	= msm7x2x_init_irq,
+	.init_irq	= msm_init_irq,
 	.init_machine	= msm7x2x_init,
 	.timer		= &msm_timer,
 	.init_early     = msm7x2x_init_early,
