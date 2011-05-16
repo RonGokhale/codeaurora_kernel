@@ -38,11 +38,9 @@
 
 #define BIT(x)  (1<<(x))
 
-#ifndef CONFIG_FB_MSM_MDP303
 #define MMSS_CC_BASE_PHY 0x04000000	/* mmss clcok control */
 #define MMSS_SFPB_BASE_PHY 0x05700000	/* mmss SFPB CFG */
 #define MMSS_SERDES_BASE_PHY 0x04f01000 /* mmss (De)Serializer CFG */
-#endif
 
 #define MIPI_DSI_BASE mipi_dsi_base
 
@@ -128,6 +126,44 @@ enum {
 extern struct device dsi_dev;
 extern int mipi_dsi_clk_on;
 extern u32 dsi_irq;
+
+extern void  __iomem *periph_base;
+extern char *mmss_cc_base;	/* mutimedia sub system clock control */
+extern char *mmss_sfpb_base;	/* mutimedia sub system sfpb */
+
+struct dsiphy_pll_divider_config {
+	u32 clk_rate;
+	u32 fb_divider;
+	u32 ref_divider_ratio;
+	u32 bit_clk_divider;	/* oCLK1 */
+	u32 byte_clk_divider;	/* oCLK2 */
+	u32 dsi_clk_divider;	/* oCLK3 */
+};
+
+extern struct dsiphy_pll_divider_config pll_divider_config;
+
+struct dsi_clk_mnd_table {
+	uint8 lanes;
+	uint8 bpp;
+	uint8 dsiclk_div;
+	uint8 dsiclk_m;
+	uint8 dsiclk_n;
+	uint8 dsiclk_d;
+	uint8 pclk_m;
+	uint8 pclk_n;
+	uint8 pclk_d;
+};
+
+static const struct dsi_clk_mnd_table mnd_table[] = {
+	{ 1, 2, 8, 1, 1, 0, 1,  2, 1},
+	{ 1, 3, 8, 1, 1, 0, 1,  3, 2},
+	{ 2, 2, 4, 1, 1, 0, 1,  2, 1},
+	{ 2, 3, 4, 1, 1, 0, 1,  3, 2},
+	{ 3, 2, 1, 3, 8, 4, 3, 16, 8},
+	{ 3, 3, 1, 3, 8, 4, 1,  8, 4},
+	{ 4, 2, 2, 1, 1, 0, 1,  2, 1},
+	{ 4, 3, 2, 1, 1, 0, 1,  3, 2},
+};
 
 struct dsi_clk_desc {
 	uint32 src;
@@ -229,4 +265,12 @@ void mipi_dsi_clk_disable(void);
 irqreturn_t mipi_dsi_isr(int irq, void *ptr);
 
 void mipi_set_tx_power_mode(int mode);
+void mipi_dsi_phy_ctrl(int on);
+void mipi_dsi_phy_init(int panel_ndx, struct msm_panel_info const *panel_info,
+	int target_type);
+int mipi_dsi_clk_div_config(uint8 bpp, uint8 lanes,
+			    uint32 *expected_dsi_pclk);
+void mipi_dsi_clk_init(struct device *dev);
+void mipi_dsi_clk_deinit(struct device *dev);
+
 #endif /* MIPI_DSI_H */

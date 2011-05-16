@@ -689,15 +689,6 @@ void mipi_dsi_host_init(struct mipi_panel_info *pinfo)
 	if (pinfo->data_lane0)
 		dsi_ctrl |= BIT(4);
 
-#ifdef RGB_SWAP
-	/* there has hardware problem
-	 * the color channel between dsi and mdp are swapped
-	 */
-#ifndef CONFIG_FB_MSM_MDP303
-	MIPI_OUTP(MIPI_DSI_BASE + 0x1c, 0x2000); /* rGB --> BGR */
-#endif
-
-#endif
 	/* from frame buffer, low power mode */
 	/* DSI_COMMAND_MODE_DMA_CTRL */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x38, 0x14000000);
@@ -734,12 +725,11 @@ void mipi_dsi_host_init(struct mipi_panel_info *pinfo)
 	MIPI_OUTP(MIPI_DSI_BASE + 0x010c, intr_ctrl); /* DSI_INTL_CTRL */
 
 	/* turn esc, byte, dsi, pclk, sclk, hclk on */
-#ifndef CONFIG_FB_MSM_MDP303
-	MIPI_OUTP(MIPI_DSI_BASE + 0x118, 0x23f); /* DSI_CLK_CTRL */
-#else
+	if (mdp_rev >= MDP_REV_41)
+		MIPI_OUTP(MIPI_DSI_BASE + 0x118, 0x23f); /* DSI_CLK_CTRL */
+	else
+		MIPI_OUTP(MIPI_DSI_BASE + 0x118, 0x33f); /* DSI_CLK_CTRL */
 
-	MIPI_OUTP(MIPI_DSI_BASE + 0x118, 0x33f); /* DSI_CLK_CTRL */
-#endif
 	dsi_ctrl |= BIT(0);	/* enable dsi */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x0000, dsi_ctrl);
 
@@ -817,34 +807,34 @@ static struct dsi_cmd_desc dsi_tear_off_cmd = {
 
 void mipi_dsi_set_tear_on(struct msm_fb_data_type *mfd)
 {
-#ifndef CONFIG_FB_MSM_MDP303
-	mutex_lock(&mfd->dma->ov_mutex);
-#else
-	down(&mfd->dma->mutex);
-#endif
+	if (mdp_rev >= MDP_REV_41)
+		mutex_lock(&mfd->dma->ov_mutex);
+	else
+		down(&mfd->dma->mutex);
+
 	mipi_dsi_buf_init(&dsi_tx_buf);
 	mipi_dsi_cmds_tx(mfd, &dsi_tx_buf, &dsi_tear_on_cmd, 1);
-#ifndef CONFIG_FB_MSM_MDP303
-	mutex_unlock(&mfd->dma->ov_mutex);
-#else
-	up(&mfd->dma->mutex);
-#endif
+
+	if (mdp_rev >= MDP_REV_41)
+		mutex_unlock(&mfd->dma->ov_mutex);
+	else
+		up(&mfd->dma->mutex);
 }
 
 void mipi_dsi_set_tear_off(struct msm_fb_data_type *mfd)
 {
-#ifndef CONFIG_FB_MSM_MDP303
-	mutex_lock(&mfd->dma->ov_mutex);
-#else
-	down(&mfd->dma->mutex);
-#endif
+	if (mdp_rev >= MDP_REV_41)
+		mutex_lock(&mfd->dma->ov_mutex);
+	else
+		down(&mfd->dma->mutex);
+
 	mipi_dsi_buf_init(&dsi_tx_buf);
 	mipi_dsi_cmds_tx(mfd, &dsi_tx_buf, &dsi_tear_off_cmd, 1);
-#ifndef CONFIG_FB_MSM_MDP303
-	mutex_unlock(&mfd->dma->ov_mutex);
-#else
-	up(&mfd->dma->mutex);
-#endif
+
+	if (mdp_rev >= MDP_REV_41)
+		mutex_unlock(&mfd->dma->ov_mutex);
+	else
+		up(&mfd->dma->mutex);
 }
 
 int mipi_dsi_cmd_reg_tx(uint32 data)
@@ -981,9 +971,9 @@ int mipi_dsi_cmds_rx(struct msm_fb_data_type *mfd,
 	if (mfd->panel_info.type == MIPI_CMD_PANEL) {
 		/* make sure mdp dma is not txing pixel data */
 #ifndef CONFIG_FB_MSM_MDP303
-		mdp4_dsi_cmd_dma_busy_wait(mfd);
+			mdp4_dsi_cmd_dma_busy_wait(mfd);
 #else
-		mdp3_dsi_cmd_dma_busy_wait(mfd);
+			mdp3_dsi_cmd_dma_busy_wait(mfd);
 #endif
 	}
 
