@@ -569,6 +569,7 @@ void mipi_dsi_clk_enable(void)
 	clk_enable(dsi_m_pclk);
 	clk_enable(dsi_s_pclk);
 #else
+	clk_enable(dsi_ref_clk);
 	clk_set_rate(dsi_byte_div_clk, data);
 	clk_set_rate(dsi_esc_clk, data);
 	clk_enable(mdp_dsi_pclk);
@@ -722,6 +723,9 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 #ifndef CONFIG_FB_MSM_MDP303
 	mdp4_overlay_dsi_state_set(ST_DSI_RESUME);
+#else
+	MIPI_OUTP(MIPI_DSI_BASE + 0x114, 1);
+	MIPI_OUTP(MIPI_DSI_BASE + 0x114, 0);
 #endif
 
 	if (mipi_dsi_pdata && mipi_dsi_pdata->dsi_power_save)
@@ -1082,11 +1086,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 	pdev_list[pdev_list_cnt++] = pdev;
 
-#ifdef CONFIG_FB_MSM_MDP303
-	if (clk_enable(dsi_ref_clk))
-		pr_err("%s: dsi_ref_clk clk enable fail\n", __func__);
-#endif
-	return 0;
+return 0;
 
 mipi_dsi_probe_err:
 	platform_device_put(mdp_dev);

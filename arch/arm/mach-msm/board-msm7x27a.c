@@ -2535,8 +2535,14 @@ static struct msm_panel_common_pdata mdp_pdata = {
 
 #define GPIO_LCDC_BRDG_PD	128
 #define GPIO_LCDC_BRDG_RESET_N	129
+
+#define LCDC_RESET_PHYS		0x90008014
+static	void __iomem *lcdc_reset_ptr;
+
 static unsigned mipi_dsi_gpio[] = {
 	GPIO_CFG(GPIO_LCDC_BRDG_RESET_N, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL,
+		GPIO_CFG_2MA),       /* LCDC_BRDG_RESET_N */
+	GPIO_CFG(GPIO_LCDC_BRDG_PD, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL,
 		GPIO_CFG_2MA),       /* LCDC_BRDG_RESET_N */
 };
 
@@ -2545,9 +2551,14 @@ static int msm_fb_dsi_client_reset(void)
 	int rc = 0;
 
 	rc = gpio_request(GPIO_LCDC_BRDG_RESET_N, "lcdc_brdg_reset_n");
-
 	if (rc < 0) {
-		pr_err("failed to request lcd brdg reset\n");
+		pr_err("failed to request lcd brdg reset_n\n");
+		return rc;
+	}
+
+	rc = gpio_request(GPIO_LCDC_BRDG_PD, "lcdc_brdg_pd");
+	if (rc < 0) {
+		pr_err("failed to request lcd brdg pd\n");
 		return rc;
 	}
 
@@ -2557,15 +2568,32 @@ static int msm_fb_dsi_client_reset(void)
 		goto gpio_error;
 	}
 
+	rc = gpio_tlmm_config(mipi_dsi_gpio[1], GPIO_CFG_ENABLE);
+	if (rc) {
+		pr_err("Failed to enable LCDC Bridge pd enable\n");
+		goto gpio_error2;
+	}
+
 	rc = gpio_direction_output(GPIO_LCDC_BRDG_RESET_N, 1);
+	rc |= gpio_direction_output(GPIO_LCDC_BRDG_PD, 1);
+	gpio_set_value_cansleep(GPIO_LCDC_BRDG_PD, 0);
+
 	if (!rc) {
-		gpio_set_value_cansleep(GPIO_LCDC_BRDG_RESET_N, 0);
-		msleep(20);
-		gpio_set_value_cansleep(GPIO_LCDC_BRDG_RESET_N, 1);
+		if (machine_is_msm7x27a_surf()) {
+			lcdc_reset_ptr = ioremap_nocache(LCDC_RESET_PHYS,
+				sizeof(uint32_t));
+
+			if (!lcdc_reset_ptr)
+				return 0;
+		}
 		return rc;
 	} else {
 		goto gpio_error;
 	}
+
+gpio_error2:
+	pr_err("Failed GPIO bridge pd\n");
+	gpio_free(GPIO_LCDC_BRDG_PD);
 
 gpio_error:
 	pr_err("Failed GPIO bridge reset\n");
@@ -2578,9 +2606,7 @@ static int dsi_gpio_initialized;
 static int mipi_dsi_panel_power(int on)
 {
 	int rc = 0;
-
-	if (!on)
-		return rc;
+	uint32_t lcdc_reset_cfg;
 
 	/* I2C-controlled GPIO Expander -init of the GPIOs very late */
 	if (!dsi_gpio_initialized) {
@@ -2601,27 +2627,15 @@ static int mipi_dsi_panel_power(int on)
 				goto fail_gpio1;
 			}
 
-			if (!gpio_direction_output(GPIO_DISPLAY_PWR_EN, 1)) {
-				gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN,
-					on);
-			} else {
+			if (gpio_direction_output(GPIO_DISPLAY_PWR_EN, 1)) {
 				pr_err("failed to enable display pwr\n");
 				goto fail_gpio2;
 			}
 
-			if (!gpio_direction_output(GPIO_BACKLIGHT_EN, 1)) {
-				gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, on);
-				return rc;
-			} else {
+			if (gpio_direction_output(GPIO_BACKLIGHT_EN, 1)) {
 				pr_err("failed to enable backlight\n");
 				goto fail_gpio2;
 			}
-
-fail_gpio2:
-		gpio_free(GPIO_BACKLIGHT_EN);
-fail_gpio1:
-		gpio_free(GPIO_DISPLAY_PWR_EN);
-
 		} else {
 			rc = gpio_request(GPIO_FFA_LCD_PWR_EN_N,
 				"gpio_disp_pwr");
@@ -2629,18 +2643,58 @@ fail_gpio1:
 				pr_err("failed to request lcd pwr\n");
 				return rc;
 			}
-			if (!gpio_direction_output(GPIO_FFA_LCD_PWR_EN_N,
-				1)) {
-				gpio_set_value_cansleep(GPIO_FFA_LCD_PWR_EN_N,
-					on);
-				return rc;
-			} else {
+			if (gpio_direction_output(GPIO_FFA_LCD_PWR_EN_N, 1)) {
 				pr_err("failed to enable lcd pwr\n");
+				gpio_free(GPIO_FFA_LCD_PWR_EN_N);
 				return rc;
 			}
-
 		}
+		dsi_gpio_initialized = 1;
 	}
+
+		if (machine_is_msm7x27a_surf()) {
+			gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN, on);
+			gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, on);
+		} else {
+			gpio_set_value_cansleep(GPIO_FFA_LCD_PWR_EN_N, on);
+		}
+
+		if (on) {
+			gpio_set_value_cansleep(GPIO_LCDC_BRDG_PD, 0);
+
+			if (machine_is_msm7x27a_surf()) {
+				lcdc_reset_cfg = readl_relaxed(lcdc_reset_ptr);
+				rmb();
+				lcdc_reset_cfg &= ~1;
+
+				writel_relaxed(lcdc_reset_cfg, lcdc_reset_ptr);
+				msleep(20);
+				wmb();
+				lcdc_reset_cfg |= 1;
+				writel_relaxed(lcdc_reset_cfg, lcdc_reset_ptr);
+			} else {
+				gpio_set_value_cansleep(GPIO_LCDC_BRDG_RESET_N,
+					0);
+				msleep(20);
+				gpio_set_value_cansleep(GPIO_LCDC_BRDG_RESET_N,
+					1);
+			}
+
+			if (pmapp_disp_backlight_set_brightness(100))
+				pr_err("backlight set brightness failed\n");
+		} else {
+			gpio_set_value_cansleep(GPIO_LCDC_BRDG_PD, 1);
+
+			if (pmapp_disp_backlight_set_brightness(0))
+				pr_err("backlight set brightness failed\n");
+		}
+
+	return rc;
+
+fail_gpio2:
+	gpio_free(GPIO_BACKLIGHT_EN);
+fail_gpio1:
+	gpio_free(GPIO_DISPLAY_PWR_EN);
 
 	return rc;
 }
