@@ -434,14 +434,16 @@ unsigned long acpuclk_wait_for_irq(void)
 	return ret;
 }
 
-/*
- * NOTE: v1.0 of 7x27a chip doesn't have working VDD switching
- *       support.
- */
-#ifndef CONFIG_ARCH_MSM7X27A
 static int acpuclk_set_vdd_level(int vdd)
 {
 	uint32_t current_vdd;
+
+	/*
+	 * NOTE: v1.0 of 7x27a chip doesn't have working
+	 * VDD switching support.
+	 */
+	if (cpu_is_msm7x27a())
+		return 0;
 
 	current_vdd = readl_relaxed(A11S_VDD_SVS_PLEVEL_ADDR) & 0x07;
 
@@ -460,9 +462,6 @@ static int acpuclk_set_vdd_level(int vdd)
 
 	return 0;
 }
-#else
-static int acpuclk_set_vdd_level(int vdd) { return 0; }
-#endif
 
 /* Set proper dividers for the given clock speed. */
 static void acpuclk_set_div(const struct clkctl_acpu_speed *hunt_s)
