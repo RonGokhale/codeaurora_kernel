@@ -184,6 +184,16 @@ static struct vfe32_cmd_type vfe32_cmd[] = {
 		{V32_DEMOSAICV3_DBPC_CFG},
 };
 
+uint32_t vfe32_AXI_WM_CFG[] = {
+	0x0000004C,
+	0x00000064,
+	0x0000007C,
+	0x00000094,
+	0x000000AC,
+	0x000000C4,
+	0x000000DC,
+};
+
 static const char * const vfe32_general_cmd[] = {
 	"DUMMY_0",  /* 0 */
 	"SET_CLK",
@@ -575,6 +585,7 @@ static int vfe32_config_axi(int mode, struct axidata *ad, uint32_t *ao)
 {
 	int i;
 	uint32_t *p, *p1, *p2;
+	int32_t *ch_info;
 	struct vfe32_output_ch *outp1, *outp2;
 	struct msm_pmem_region *regp1 = NULL;
 	struct msm_pmem_region *regp2 = NULL;
@@ -584,6 +595,18 @@ static int vfe32_config_axi(int mode, struct axidata *ad, uint32_t *ao)
 
 	p = ao + 2;
 
+	/* Update the corresponding write masters for each output*/
+	ch_info = ao + V32_AXI_CFG_LEN;
+	vfe32_ctrl->outpath.out0.ch0 = 0x0000FFFF & *ch_info;
+	vfe32_ctrl->outpath.out0.ch1 = 0x0000FFFF & (*ch_info++ >> 16);
+	vfe32_ctrl->outpath.out0.ch2 = 0x0000FFFF & *ch_info++;
+	vfe32_ctrl->outpath.out1.ch0 = 0x0000FFFF & *ch_info;
+	vfe32_ctrl->outpath.out1.ch1 = 0x0000FFFF & (*ch_info++ >> 16);
+	vfe32_ctrl->outpath.out1.ch2 = 0x0000FFFF & *ch_info++;
+	vfe32_ctrl->outpath.out2.ch0 = 0x0000FFFF & *ch_info;
+	vfe32_ctrl->outpath.out2.ch1 = 0x0000FFFF & (*ch_info++ >> 16);
+	vfe32_ctrl->outpath.out2.ch2 = 0x0000FFFF & *ch_info++;
+
 	CDBG("vfe32_config_axi: mode = %d, bufnum1 = %d, bufnum2 = %d\n",
 		mode, ad->bufnum1, ad->bufnum2);
 
@@ -592,8 +615,6 @@ static int vfe32_config_axi(int mode, struct axidata *ad, uint32_t *ao)
 	case OUTPUT_2: {
 		if (ad->bufnum2 != 3)
 			return -EINVAL;
-		vfe32_ctrl->outpath.out0.ch0 = 0; /* luma   */
-		vfe32_ctrl->outpath.out0.ch1 = 1; /* chroma */
 		regp1 = &(ad->region[ad->bufnum1]);
 		outp1 = &(vfe32_ctrl->outpath.out0);
 		vfe32_ctrl->outpath.output_mode |= VFE32_OUTPUT_MODE_PT;
@@ -622,11 +643,6 @@ static int vfe32_config_axi(int mode, struct axidata *ad, uint32_t *ao)
 		/* use wm0& 4 for thumbnail, wm1&5 for main image.*/
 		if ((ad->bufnum1 < 1) || (ad->bufnum2 < 1))
 			return -EINVAL;
-		/* at least one frame for snapshot.  */
-		vfe32_ctrl->outpath.out0.ch0 = 0; /* thumbnail luma   */
-		vfe32_ctrl->outpath.out0.ch1 = 4; /* thumbnail chroma */
-		vfe32_ctrl->outpath.out1.ch0 = 1; /* main image luma   */
-		vfe32_ctrl->outpath.out1.ch1 = 5; /* main image chroma */
 		vfe32_ctrl->outpath.output_mode |=
 			VFE32_OUTPUT_MODE_S;  /* main image.*/
 		vfe32_ctrl->outpath.output_mode |=
@@ -697,10 +713,6 @@ static int vfe32_config_axi(int mode, struct axidata *ad, uint32_t *ao)
 		*p++ = 0x1;    /* xbar cfg0 */
 		*p = 0x1a03;    /* xbar cfg1 */
 #endif
-		vfe32_ctrl->outpath.out0.ch0 = 0; /* preview luma   */
-		vfe32_ctrl->outpath.out0.ch1 = 4; /* preview chroma */
-		vfe32_ctrl->outpath.out2.ch0 = 1; /* video luma     */
-		vfe32_ctrl->outpath.out2.ch1 = 5; /* video chroma   */
 		vfe32_ctrl->outpath.output_mode |=
 			VFE32_OUTPUT_MODE_V;  /* video*/
 		vfe32_ctrl->outpath.output_mode |=
@@ -765,7 +777,7 @@ static int vfe32_config_axi(int mode, struct axidata *ad, uint32_t *ao)
 		break;
 	}
 	msm_io_memcpy(vfe32_ctrl->vfebase + vfe32_cmd[V32_AXI_OUT_CFG].offset,
-		ao, vfe32_cmd[V32_AXI_OUT_CFG].length);
+		ao, vfe32_cmd[V32_AXI_OUT_CFG].length - V32_AXI_CH_INF_LEN);
 	return 0;
 }
 
@@ -1022,7 +1034,6 @@ static void vfe32_liveshot(void){
 static int vfe32_capture(uint32_t num_frames_capture)
 {
 	uint32_t irq_comp_mask = 0;
-	uint32_t temp;
 	struct msm_sync* p_sync = (struct msm_sync *)vfe_syncdata;
 	if (p_sync) {
 		p_sync->snap_count = num_frames_capture;
@@ -1049,34 +1060,24 @@ static int vfe32_capture(uint32_t num_frames_capture)
 			0x1 << (vfe32_ctrl->outpath.out1.ch1 + 8));
 		}
 		if (vfe32_ctrl->outpath.output_mode & VFE32_OUTPUT_MODE_PT) {
-			msm_io_w(1, vfe32_ctrl->vfebase + V32_AXI_OUT_OFF + 20 +
-				24 * (vfe32_ctrl->outpath.out0.ch0));
-			temp = msm_io_r(vfe32_ctrl->vfebase + V32_AXI_OUT_OFF +
-				20 + 24 * (vfe32_ctrl->outpath.out0.ch0));
-			msm_io_w(1, vfe32_ctrl->vfebase + V32_AXI_OUT_OFF + 20 +
-				24 * (vfe32_ctrl->outpath.out0.ch1));
-			temp = msm_io_r(vfe32_ctrl->vfebase + V32_AXI_OUT_OFF +
-				 20 + 24 * (vfe32_ctrl->outpath.out0.ch1));
+			msm_io_w(1, vfe32_ctrl->vfebase +
+				vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out0.ch0]);
+			msm_io_w(1, vfe32_ctrl->vfebase +
+				vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out0.ch1]);
 		}
 		if (vfe32_ctrl->outpath.output_mode & VFE32_OUTPUT_MODE_S) {
-			msm_io_w(1, vfe32_ctrl->vfebase + V32_AXI_OUT_OFF + 20 +
-				24 * (vfe32_ctrl->outpath.out1.ch0));
-			temp = msm_io_r(vfe32_ctrl->vfebase + V32_AXI_OUT_OFF +
-				20 + 24 * (vfe32_ctrl->outpath.out1.ch0));
-			msm_io_w(1, vfe32_ctrl->vfebase + V32_AXI_OUT_OFF + 20 +
-				24 * (vfe32_ctrl->outpath.out1.ch1));
-			temp = msm_io_r(vfe32_ctrl->vfebase + V32_AXI_OUT_OFF +
-				20 + 24 * (vfe32_ctrl->outpath.out1.ch1));
+			msm_io_w(1, vfe32_ctrl->vfebase +
+				vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out1.ch0]);
+			msm_io_w(1, vfe32_ctrl->vfebase +
+				vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out1.ch1]);
 		}
 	} else {  /* this is raw snapshot mode. */
 		CDBG("config the comp imask for raw snapshot mode.\n");
 		if (vfe32_ctrl->outpath.output_mode & VFE32_OUTPUT_MODE_S) {
 			irq_comp_mask |=
 			(0x1 << (vfe32_ctrl->outpath.out1.ch0 + 8));
-			msm_io_w(1, vfe32_ctrl->vfebase + V32_AXI_OUT_OFF + 20 +
-				24 * (vfe32_ctrl->outpath.out1.ch0));
-			temp = msm_io_r(vfe32_ctrl->vfebase + V32_AXI_OUT_OFF +
-				20 + 24 * (vfe32_ctrl->outpath.out1.ch0));
+			msm_io_w(1, vfe32_ctrl->vfebase +
+				vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out1.ch0]);
 		}
 	}
 	msm_io_w(irq_comp_mask, vfe32_ctrl->vfebase + VFE_IRQ_COMP_MASK);
@@ -1092,7 +1093,6 @@ static int vfe32_capture(uint32_t num_frames_capture)
 static int vfe32_start(void)
 {
 	uint32_t irq_comp_mask = 0;
-	uint32_t temp;
 	/* start command now is only good for continuous mode. */
 	if (vfe32_ctrl->operation_mode & 1)
 		return 0;
@@ -1112,14 +1112,10 @@ static int vfe32_start(void)
 	msm_io_w(irq_comp_mask, vfe32_ctrl->vfebase + VFE_IRQ_COMP_MASK);
 
 	if (vfe32_ctrl->outpath.output_mode & VFE32_OUTPUT_MODE_PT) {
-		msm_io_w(1, vfe32_ctrl->vfebase + V32_AXI_OUT_OFF + 20 +
-			24 * (vfe32_ctrl->outpath.out0.ch0));
-		temp = msm_io_r(vfe32_ctrl->vfebase + V32_AXI_OUT_OFF +
-			20 + 24 * (vfe32_ctrl->outpath.out0.ch0));
-		msm_io_w(1, vfe32_ctrl->vfebase + V32_AXI_OUT_OFF + 20 +
-			24 * (vfe32_ctrl->outpath.out0.ch1));
-		temp = msm_io_r(vfe32_ctrl->vfebase + V32_AXI_OUT_OFF + 20 +
-			24 * (vfe32_ctrl->outpath.out0.ch1));
+		msm_io_w(1, vfe32_ctrl->vfebase +
+			vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out0.ch0]);
+		msm_io_w(1, vfe32_ctrl->vfebase +
+			vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out0.ch1]);
 	}
 	vfe32_start_common();
 	return 0;
@@ -1817,14 +1813,10 @@ static void vfe32_process_reg_update_irq(void)
 	unsigned long flags;
 	if (vfe32_ctrl->req_start_video_rec) {
 		if (vfe32_ctrl->outpath.output_mode & VFE32_OUTPUT_MODE_V) {
-			msm_io_w(1, vfe32_ctrl->vfebase + V32_AXI_OUT_OFF + 20 +
-				24 * (vfe32_ctrl->outpath.out2.ch0));
-			temp = msm_io_r(vfe32_ctrl->vfebase + V32_AXI_OUT_OFF +
-				20 + 24 * (vfe32_ctrl->outpath.out2.ch0));
-			msm_io_w(1, vfe32_ctrl->vfebase + V32_AXI_OUT_OFF + 20 +
-				24 * (vfe32_ctrl->outpath.out2.ch1));
-			temp = msm_io_r(vfe32_ctrl->vfebase + V32_AXI_OUT_OFF +
-				20 + 24 * (vfe32_ctrl->outpath.out2.ch1));
+			msm_io_w(1, vfe32_ctrl->vfebase +
+				vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out2.ch0]);
+			msm_io_w(1, vfe32_ctrl->vfebase +
+				vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out2.ch1]);
 			/* Mask with 0x7 to extract the pixel pattern*/
 			switch (msm_io_r(vfe32_ctrl->vfebase + VFE_CFG)
 				& 0x7) {
@@ -1850,14 +1842,10 @@ static void vfe32_process_reg_update_irq(void)
 		CDBG("start video triggered .\n");
 	} else if (vfe32_ctrl->req_stop_video_rec) {
 		if (vfe32_ctrl->outpath.output_mode & VFE32_OUTPUT_MODE_V) {
-			msm_io_w(0, vfe32_ctrl->vfebase + V32_AXI_OUT_OFF + 20 +
-				24 * (vfe32_ctrl->outpath.out2.ch0));
-			temp = msm_io_r(vfe32_ctrl->vfebase + V32_AXI_OUT_OFF +
-				20 + 24 * (vfe32_ctrl->outpath.out2.ch0));
-			msm_io_w(0, vfe32_ctrl->vfebase + V32_AXI_OUT_OFF + 20 +
-				24 * (vfe32_ctrl->outpath.out2.ch1));
-			temp = msm_io_r(vfe32_ctrl->vfebase + V32_AXI_OUT_OFF +
-				20 + 24 * (vfe32_ctrl->outpath.out2.ch1));
+			msm_io_w(0, vfe32_ctrl->vfebase +
+				vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out2.ch0]);
+			msm_io_w(0, vfe32_ctrl->vfebase +
+				vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out2.ch1]);
 			/* Mask with 0x7 to extract the pixel pattern*/
 			switch (msm_io_r(vfe32_ctrl->vfebase + VFE_CFG)
 				& 0x7) {
@@ -1905,32 +1893,20 @@ static void vfe32_process_reg_update_irq(void)
 			if (vfe32_ctrl->outpath.output_mode &
 					VFE32_OUTPUT_MODE_PT) {
 				msm_io_w(0, vfe32_ctrl->vfebase +
-					V32_AXI_OUT_OFF + 20 + 24 *
-					(vfe32_ctrl->outpath.out0.ch0));
-				temp = msm_io_r(vfe32_ctrl->vfebase +
-					V32_AXI_OUT_OFF + 20 + 24 *
-					(vfe32_ctrl->outpath.out0.ch0));
+					vfe32_AXI_WM_CFG[vfe32_ctrl->
+						outpath.out0.ch0]);
 				msm_io_w(0, vfe32_ctrl->vfebase +
-					V32_AXI_OUT_OFF + 20 + 24 *
-					(vfe32_ctrl->outpath.out0.ch1));
-				temp = msm_io_r(vfe32_ctrl->vfebase +
-					V32_AXI_OUT_OFF + 20 + 24 *
-					(vfe32_ctrl->outpath.out0.ch1));
+					vfe32_AXI_WM_CFG[vfe32_ctrl->
+						outpath.out0.ch1]);
 			}
 			if (vfe32_ctrl->outpath.output_mode &
 					VFE32_OUTPUT_MODE_S) {
 				msm_io_w(0, vfe32_ctrl->vfebase +
-					V32_AXI_OUT_OFF + 20 + 24 *
-					(vfe32_ctrl->outpath.out1.ch0));
-				temp = msm_io_r(vfe32_ctrl->vfebase +
-					V32_AXI_OUT_OFF + 20 + 24 *
-					(vfe32_ctrl->outpath.out1.ch0));
+					vfe32_AXI_WM_CFG[vfe32_ctrl->
+							outpath.out1.ch0]);
 				msm_io_w(0, vfe32_ctrl->vfebase +
-					V32_AXI_OUT_OFF + 20 + 24 *
-					(vfe32_ctrl->outpath.out1.ch1));
-				temp = msm_io_r(vfe32_ctrl->vfebase +
-					V32_AXI_OUT_OFF + 20 + 24 *
-					(vfe32_ctrl->outpath.out1.ch1));
+					vfe32_AXI_WM_CFG[vfe32_ctrl->
+							outpath.out1.ch1]);
 			}
 
 			/* Ensure the write order while writing
