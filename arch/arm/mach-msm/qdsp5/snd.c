@@ -50,6 +50,7 @@ static struct snd_ctxt the_snd;
 #define RPC_SND_CB_PROG	0x31000002
 
 #define RPC_SND_VERS                    0x00020001
+#define RPC_SND_VERS2                    0x00030001
 
 #define SND_SET_DEVICE_PROC 2
 #define SND_SET_VOLUME_PROC 3
@@ -312,6 +313,14 @@ static int snd_open(struct inode *inode, struct file *file)
 			snd->ept = msm_rpc_connect_compatible(RPC_SND_PROG,
 					RPC_SND_VERS, 0);
 			if (IS_ERR(snd->ept)) {
+				MM_DBG("connect failed with current VERS \
+					= %x, trying again with another API\n",
+					RPC_SND_VERS2);
+				snd->ept =
+					msm_rpc_connect_compatible(RPC_SND_PROG,
+							RPC_SND_VERS2, 0);
+			}
+			if (IS_ERR(snd->ept)) {
 				rc = PTR_ERR(snd->ept);
 				snd->ept = NULL;
 				MM_ERR("failed to connect snd svc\n");
@@ -338,6 +347,13 @@ static int snd_sys_open(void)
 	if (snd_sys->ept == NULL) {
 		snd_sys->ept = msm_rpc_connect_compatible(RPC_SND_PROG,
 			RPC_SND_VERS, 0);
+		if (IS_ERR(snd_sys->ept)) {
+			MM_DBG("connect failed with current VERS \
+				= %x, trying again with another API\n",
+				RPC_SND_VERS2);
+			snd_sys->ept = msm_rpc_connect_compatible(RPC_SND_PROG,
+					RPC_SND_VERS2, 0);
+		}
 		if (IS_ERR(snd_sys->ept)) {
 			rc = PTR_ERR(snd_sys->ept);
 			snd_sys->ept = NULL;
