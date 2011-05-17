@@ -352,13 +352,6 @@ static int cyttsp_platform_init(struct i2c_client *client)
 		goto l8_disable;
 	}
 
-	rc = gpio_request(CYTTSP_TS_GPIO_IRQ, "ts_irq");
-	if (rc) {
-		pr_err("%s: unable to request gpio %d (%d)\n",
-			__func__, CYTTSP_TS_GPIO_IRQ, rc);
-		goto l8_disable;
-	}
-
 	/* virtual keys */
 	tma300_vkeys_attr.attr.name = "virtualkeys.cyttsp-i2c";
 	properties_kobj = kobject_create_and_add("board_properties",
@@ -422,6 +415,9 @@ static struct cyttsp_platform_data cyttsp_data = {
 	.lp_intrvl = CY_LP_INTRVL_DFLT,
 	.resume = cyttsp_platform_resume,
 	.init = cyttsp_platform_init,
+	.sleep_gpio = -1,
+	.resout_gpio = -1,
+	.irq_gpio = CYTTSP_TS_GPIO_IRQ,
 };
 
 static int pm8058_pwm_config(struct pwm_device *pwm, int ch, int on)
