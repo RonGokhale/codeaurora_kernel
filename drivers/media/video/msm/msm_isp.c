@@ -20,15 +20,13 @@
 #include <linux/videodev2.h>
 #include <linux/proc_fs.h>
 #include <linux/vmalloc.h>
+#include <linux/android_pmem.h>
 
 #include <media/v4l2-dev.h>
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-device.h>
 
-#include <linux/android_pmem.h>
-
 #include "msm.h"
-#include "msm_vfe31.h"
 
 #ifdef CONFIG_MSM_CAMERA_DEBUG
 #define D(fmt, args...) printk(KERN_DEBUG "msm_isp: " fmt, ##args)
@@ -39,41 +37,6 @@
 				__func__, __LINE__, ((to) ? "to" : "from"))
 #define ERR_COPY_FROM_USER() ERR_USER_COPY(0)
 #define ERR_COPY_TO_USER() ERR_USER_COPY(1)
-
-
-#define PAD_TO_WORD(a)	  (((a) + 3) & ~3)
-
-#define __CONTAINS(r, v, l, field) ({			   \
-	typeof(r) __r = r;				  \
-	typeof(v) __v = v;				  \
-	typeof(v) __e = __v + l;				\
-	int res = __v >= __r->field &&			  \
-		__e <= __r->field + __r->len;		   \
-	res;							\
-})
-
-#define CONTAINS(r1, r2, field) ({			  \
-	typeof(r2) __r2 = r2;				   \
-	__CONTAINS(r1, __r2->field, __r2->len, field);	  \
-})
-
-#define IN_RANGE(r, v, field) ({				\
-	typeof(r) __r = r;				  \
-	typeof(v) __vv = v;				 \
-	int res = ((__vv >= __r->field) &&		  \
-		(__vv < (__r->field + __r->len)));	  \
-	res;							\
-})
-
-#define OVERLAPS(r1, r2, field) ({			  \
-	typeof(r1) __r1 = r1;				   \
-	typeof(r2) __r2 = r2;				   \
-	typeof(__r2->field) __v = __r2->field;		  \
-	typeof(__v) __e = __v + __r2->len - 1;		  \
-	int res = (IN_RANGE(__r1, __v, field) ||		\
-		IN_RANGE(__r1, __e, field));				 \
-	res;							\
-})
 
 /* This will enqueue ISP events or signal buffer completion */
 static int msm_isp_enqueue(struct msm_cam_media_controller *pmctl,
@@ -191,7 +154,7 @@ static int msm_isp_enqueue(struct msm_cam_media_controller *pmctl,
  * This function executes in interrupt context.
  */
 
-static void *msm_vfe_sync_alloc(int size,
+void *msm_isp_sync_alloc(int size,
 	  void *syncdata __attribute__((unused)),
 	  gfp_t gfp)
 {
@@ -205,7 +168,7 @@ static void *msm_vfe_sync_alloc(int size,
 	return NULL;
 }
 
-static void msm_vfe_sync_free(void *ptr)
+void msm_isp_sync_free(void *ptr)
 {
 	if (ptr) {
 		struct msm_queue_cmd *qcmd =
@@ -219,25 +182,22 @@ static void msm_vfe_sync_free(void *ptr)
 /*
  * This function executes in interrupt context.
  */
-
-static void msm_vfe_sync(struct msm_vfe_resp *vdata,
-		enum msm_queue qtype, void *syncdata,
-		gfp_t gfp)
+static int msm_isp_notify(struct v4l2_subdev *sd, void *arg)
 {
+	int rc = -EINVAL;
 	struct msm_queue_cmd *qcmd = NULL;
-	struct msm_sync *sync1 = (struct msm_sync *)syncdata;
+	struct msm_sync *sync =
+		(struct msm_sync *)v4l2_get_subdev_hostdata(sd);
+	struct msm_vfe_resp *vdata = (struct msm_vfe_resp *)arg;
 
-	if (!sync1) {
+	if (!sync) {
 		pr_err("%s: no context in dsp callback.\n", __func__);
-		return;
+		return rc;
 	}
 
 	qcmd = ((struct msm_queue_cmd *)vdata) - 1;
-	qcmd->type = qtype;
+	qcmd->type = MSM_CAM_Q_VFE_MSG;
 	qcmd->command = vdata;
-
-	if (qtype != MSM_CAM_Q_VFE_MSG)
-		goto for_config;
 
 	D("%s: vdata->type %d\n", __func__, vdata->type);
 	switch (vdata->type) {
@@ -275,22 +235,16 @@ static void msm_vfe_sync(struct msm_vfe_resp *vdata,
 		/* fall through, send to config. */
 	}
 
-for_config:
 	D("%s: msm_enqueue event_q\n", __func__);
-	msm_isp_enqueue(&sync1->pcam_sync->mctl, vdata, qtype);
+	rc = msm_isp_enqueue(&sync->pcam_sync->mctl, vdata, MSM_CAM_Q_VFE_MSG);
 
-	msm_vfe_sync_free(vdata);
+	msm_isp_sync_free(vdata);
+
+	return rc;
 }
 
-static struct msm_vfe_callback msm_vfe_s = {
-	.vfe_resp = msm_vfe_sync,
-	.vfe_alloc = msm_vfe_sync_alloc,
-	.vfe_free = msm_vfe_sync_free,
-};
-
 /* This function is called by open() function, so we need to init HW*/
-/*static int msm_isp_init(struct msm_cam_v4l2_device *pcam)*/
-static int msm_isp_open(struct msm_sync *sync)
+static int msm_isp_open(struct v4l2_subdev *sd, struct msm_sync *sync)
 {
 	/* init vfe and senor, register sync callbacks for init*/
 	int rc = 0;
@@ -299,50 +253,28 @@ static int msm_isp_open(struct msm_sync *sync)
 		D("%s: param is NULL", __func__);
 		return -EINVAL;
 	}
-	/* yyan: use old code for vfe31 for now*/
-	/*rc = __msm_open(psync, MSM_APPS_ID_V4L2);*/
-	msm_camvfe_fn_init(&sync->vfefn, sync);
-	if (sync->vfefn.vfe_init) {
-		sync->get_pic_abort = 0;
-		/*rc = msm_camio_sensor_clk_on(sync->pdev);*/
-		if (rc < 0) {
-			D("%s: setting sensor clocks failed: %d\n",
-							__func__, rc);
-			goto msm_isp_open_done;
-		}
-		rc = sync->vfefn.vfe_init(&msm_vfe_s, sync->pdev);
-		if (rc < 0) {
-			pr_err("%s: vfe_init failed at %d\n",
-						__func__, rc);
-			goto msm_isp_open_done;
-		}
 
-	} else {
-		pr_err("%s: no VFE init func\n", __func__);
-		rc = -ENODEV;
-		goto msm_isp_open_done;
+	rc = msm_vfe_subdev_init(sd, sync, sync->pdev);
+	if (rc < 0) {
+		pr_err("%s: vfe_init failed at %d\n",
+					__func__, rc);
 	}
 
-msm_isp_open_done:
 	return rc;
 }
 
-static int msm_isp_release(struct msm_sync *psync)
+static void msm_isp_release(struct msm_sync *psync)
 {
 	D("%s\n", __func__);
-	return 0;
+	msm_vfe_subdev_release(psync->pdev);
 }
 
-static int msm_config_vfe(struct msm_sync *sync, void __user *arg)
+static int msm_config_vfe(struct v4l2_subdev *sd,
+		struct msm_sync *sync, void __user *arg)
 {
 	struct msm_vfe_cfg_cmd cfgcmd;
 	struct msm_pmem_region region[8];
 	struct axidata axi_data;
-
-	if (!sync->vfefn.vfe_config) {
-		pr_err("%s: no vfe_config!\n", __func__);
-		return -EIO;
-	}
 
 	if (copy_from_user(&cfgcmd, arg, sizeof(cfgcmd))) {
 		ERR_COPY_FROM_USER();
@@ -352,21 +284,6 @@ static int msm_config_vfe(struct msm_sync *sync, void __user *arg)
 	memset(&axi_data, 0, sizeof(axi_data));
 	CDBG("%s: cmd_type %d\n", __func__, cfgcmd.cmd_type);
 	switch (cfgcmd.cmd_type) {
-	case CMD_STATS_ENABLE:
-		axi_data.bufnum1 =
-			msm_pmem_region_lookup(&sync->pmem_stats,
-					MSM_PMEM_AEC_AWB, &region[0],
-					NUM_STAT_OUTPUT_BUFFERS);
-		axi_data.bufnum2 =
-			msm_pmem_region_lookup(&sync->pmem_stats,
-					MSM_PMEM_AF, &region[axi_data.bufnum1],
-					NUM_STAT_OUTPUT_BUFFERS);
-		if (!axi_data.bufnum1 || !axi_data.bufnum2) {
-			pr_err("%s: pmem region lookup error\n", __func__);
-			return -EINVAL;
-		}
-		axi_data.region = &region[0];
-		return sync->vfefn.vfe_config(&cfgcmd, &axi_data);
 	case CMD_STATS_AF_ENABLE:
 		axi_data.bufnum1 =
 			msm_pmem_region_lookup(&sync->pmem_stats,
@@ -378,19 +295,8 @@ static int msm_config_vfe(struct msm_sync *sync, void __user *arg)
 			return -EINVAL;
 		}
 		axi_data.region = &region[0];
-		return sync->vfefn.vfe_config(&cfgcmd, &axi_data);
-	case CMD_STATS_AEC_AWB_ENABLE:
-		axi_data.bufnum1 =
-			msm_pmem_region_lookup(&sync->pmem_stats,
-			MSM_PMEM_AEC_AWB, &region[0],
-			NUM_STAT_OUTPUT_BUFFERS);
-		if (!axi_data.bufnum1) {
-			pr_err("%s %d: pmem region lookup error\n",
-				__func__, __LINE__);
-			return -EINVAL;
-		}
-		axi_data.region = &region[0];
-		return sync->vfefn.vfe_config(&cfgcmd, &axi_data);
+		return msm_isp_subdev_ioctl(sd, &cfgcmd,
+							&axi_data);
 	case CMD_STATS_AEC_ENABLE:
 		axi_data.bufnum1 =
 			msm_pmem_region_lookup(&sync->pmem_stats,
@@ -402,7 +308,8 @@ static int msm_config_vfe(struct msm_sync *sync, void __user *arg)
 			return -EINVAL;
 		}
 		axi_data.region = &region[0];
-		return sync->vfefn.vfe_config(&cfgcmd, &axi_data);
+		return msm_isp_subdev_ioctl(sd, &cfgcmd,
+							&axi_data);
 	case CMD_STATS_AWB_ENABLE:
 		axi_data.bufnum1 =
 			msm_pmem_region_lookup(&sync->pmem_stats,
@@ -414,9 +321,8 @@ static int msm_config_vfe(struct msm_sync *sync, void __user *arg)
 			return -EINVAL;
 		}
 		axi_data.region = &region[0];
-		return sync->vfefn.vfe_config(&cfgcmd, &axi_data);
-
-
+		return msm_isp_subdev_ioctl(sd, &cfgcmd,
+							&axi_data);
 	case CMD_STATS_IHIST_ENABLE:
 		axi_data.bufnum1 =
 			msm_pmem_region_lookup(&sync->pmem_stats,
@@ -428,8 +334,8 @@ static int msm_config_vfe(struct msm_sync *sync, void __user *arg)
 			return -EINVAL;
 		}
 		axi_data.region = &region[0];
-		return sync->vfefn.vfe_config(&cfgcmd, &axi_data);
-
+		return msm_isp_subdev_ioctl(sd, &cfgcmd,
+							&axi_data);
 	case CMD_STATS_RS_ENABLE:
 		axi_data.bufnum1 =
 			msm_pmem_region_lookup(&sync->pmem_stats,
@@ -441,8 +347,8 @@ static int msm_config_vfe(struct msm_sync *sync, void __user *arg)
 			return -EINVAL;
 		}
 		axi_data.region = &region[0];
-		return sync->vfefn.vfe_config(&cfgcmd, &axi_data);
-
+		return msm_isp_subdev_ioctl(sd, &cfgcmd,
+							&axi_data);
 	case CMD_STATS_CS_ENABLE:
 		axi_data.bufnum1 =
 			msm_pmem_region_lookup(&sync->pmem_stats,
@@ -454,11 +360,12 @@ static int msm_config_vfe(struct msm_sync *sync, void __user *arg)
 			return -EINVAL;
 		}
 		axi_data.region = &region[0];
-		return sync->vfefn.vfe_config(&cfgcmd, &axi_data);
-
+		return msm_isp_subdev_ioctl(sd, &cfgcmd,
+							&axi_data);
 	case CMD_GENERAL:
 	case CMD_STATS_DISABLE:
-		return sync->vfefn.vfe_config(&cfgcmd, NULL);
+		return msm_isp_subdev_ioctl(sd, &cfgcmd,
+							&axi_data);
 	default:
 		pr_err("%s: unknown command type %d\n",
 			__func__, cfgcmd.cmd_type);
@@ -510,13 +417,12 @@ static int msm_vpe_frame_cfg(struct msm_sync *sync,
 	return rc;
 }
 
-static int msm_stats_axi_cfg(struct msm_sync *sync,
-		struct msm_vfe_cfg_cmd *cfgcmd)
+static int msm_stats_axi_cfg(struct v4l2_subdev *sd,
+		struct msm_sync *sync, struct msm_vfe_cfg_cmd *cfgcmd)
 {
 	int rc = -EIO;
 	struct axidata axi_data;
 	void *data = &axi_data;
-
 	struct msm_pmem_region region[3];
 	int pmem_type = MSM_PMEM_MAX;
 
@@ -547,18 +453,16 @@ static int msm_stats_axi_cfg(struct msm_sync *sync,
 				__func__, __LINE__);
 			return -EINVAL;
 		}
-	axi_data.region = &region[0];
+		axi_data.region = &region[0];
 	}
 
 	/* send the AEC/AWB STATS configuration command to driver */
-	if (sync->vfefn.vfe_config)
-		rc = sync->vfefn.vfe_config(cfgcmd, &axi_data);
-
+	rc = msm_isp_subdev_ioctl(sd, cfgcmd, data);
 	return rc;
 }
 
-static int msm_frame_axi_cfg(struct msm_sync *sync,
-		struct msm_vfe_cfg_cmd *cfgcmd)
+static int msm_frame_axi_cfg(struct v4l2_subdev *sd,
+	struct msm_sync *sync, struct msm_vfe_cfg_cmd *cfgcmd)
 {
 	int rc = -EIO;
 	struct axidata axi_data;
@@ -665,13 +569,12 @@ static int msm_frame_axi_cfg(struct msm_sync *sync,
 			region[i].info.y_off, region[i].info.cbcr_off);
 	}
 	/* send the AXI configuration command to driver */
-	if (sync->vfefn.vfe_config)
-		rc = sync->vfefn.vfe_config(cfgcmd, data);
-
+	rc = msm_isp_subdev_ioctl(sd, cfgcmd, data);
 	return rc;
 }
 
-static int msm_axi_config(struct msm_sync *sync, void __user *arg)
+static int msm_axi_config(struct v4l2_subdev *sd,
+			struct msm_sync *sync, void __user *arg)
 {
 	struct msm_vfe_cfg_cmd cfgcmd;
 
@@ -685,14 +588,14 @@ static int msm_axi_config(struct msm_sync *sync, void __user *arg)
 	case CMD_AXI_CFG_PREVIEW:
 	case CMD_AXI_CFG_SNAP:
 	case CMD_RAW_PICT_AXI_CFG:
-		return msm_frame_axi_cfg(sync, &cfgcmd);
+		return msm_frame_axi_cfg(sd, sync, &cfgcmd);
 	case CMD_AXI_CFG_VPE:
 		return 0;
 		return msm_vpe_frame_cfg(sync, (void *)&cfgcmd);
 
 	case CMD_STATS_AXI_CFG:
 	case CMD_STATS_AF_AXI_CFG:
-		return msm_stats_axi_cfg(sync, &cfgcmd);
+		return msm_stats_axi_cfg(sd, sync, &cfgcmd);
 
 	default:
 		pr_err("%s: unknown command type %d\n",
@@ -735,7 +638,8 @@ static int msm_set_crop(struct msm_sync *sync, void __user *arg)
 	return 0;
 }
 
-static int msm_put_stats_buffer(struct msm_sync *sync, void __user *arg)
+static int msm_put_stats_buffer(struct v4l2_subdev *sd,
+			struct msm_sync *sync, void __user *arg)
 {
 	int rc = -EIO;
 
@@ -753,9 +657,7 @@ static int msm_put_stats_buffer(struct msm_sync *sync, void __user *arg)
 	pphy = msm_pmem_stats_vtop_lookup(sync, buf.buffer, buf.fd);
 
 	if (pphy != 0) {
-		if (buf.type == STAT_AEAW)
-			cfgcmd.cmd_type = CMD_STATS_BUF_RELEASE;
-		else if (buf.type == STAT_AF)
+		if (buf.type == STAT_AF)
 			cfgcmd.cmd_type = CMD_STATS_AF_BUF_RELEASE;
 		else if (buf.type == STAT_AEC)
 			cfgcmd.cmd_type = CMD_STATS_AEC_BUF_RELEASE;
@@ -778,13 +680,7 @@ static int msm_put_stats_buffer(struct msm_sync *sync, void __user *arg)
 
 		cfgcmd.value = (void *)&buf;
 
-		if (sync->vfefn.vfe_config) {
-			rc = sync->vfefn.vfe_config(&cfgcmd, &pphy);
-			if (rc < 0)
-				pr_err("%s: vfe_config error %d\n",
-					__func__, rc);
-		} else
-			pr_err("%s: vfe_config is NULL\n", __func__);
+		rc = msm_isp_subdev_ioctl(sd, &cfgcmd, &pphy);
 	} else {
 		pr_err("%s: NULL physical address\n", __func__);
 		rc = -EINVAL;
@@ -798,21 +694,13 @@ put_done:
 static int msm_isp_config(struct msm_cam_media_controller *pmctl,
 			 unsigned int cmd, unsigned long arg)
 {
+
 	int rc = -EINVAL;
 	void __user *argp = (void __user *)arg;
+	struct v4l2_subdev *sd = &pmctl->isp_sdev->sd;
 
 	D("%s: cmd %d\n", __func__, _IOC_NR(cmd));
 	switch (cmd) {
-/*yyan todo: move to mctl or sensor code
-	case MSM_CAM_IOCTL_GET_SENSOR_INFO:
-		rc = msm_get_sensor_info(pmsm->sync, argp);
-		D("%s rc = %d\n", __func__, rc);
-		break;
-
-	case MSM_CAM_IOCTL_SENSOR_IO_CFG:
-		rc = pmsm->sync->sctrl.s_config(argp);
-		break;
-*/
 	case MSM_CAM_IOCTL_PICT_PP_DONE:
 		/* Release the preview of snapshot frame
 		 * that was grabbed.
@@ -822,7 +710,7 @@ static int msm_isp_config(struct msm_cam_media_controller *pmctl,
 
 	case MSM_CAM_IOCTL_CONFIG_VFE:
 		/* Coming from config thread for update */
-		rc = msm_config_vfe(&pmctl->sync, argp);
+		rc = msm_config_vfe(sd, &pmctl->sync, argp);
 		break;
 
 	case MSM_CAM_IOCTL_CONFIG_VPE:
@@ -834,7 +722,7 @@ static int msm_isp_config(struct msm_cam_media_controller *pmctl,
 	case MSM_CAM_IOCTL_AXI_CONFIG:
 	case MSM_CAM_IOCTL_AXI_VPE_CONFIG:
 		D("Received MSM_CAM_IOCTL_AXI_CONFIG\n");
-		rc = msm_axi_config(&pmctl->sync, argp);
+		rc = msm_axi_config(sd, &pmctl->sync, argp);
 		break;
 
 	case MSM_CAM_IOCTL_SET_CROP:
@@ -842,7 +730,7 @@ static int msm_isp_config(struct msm_cam_media_controller *pmctl,
 		break;
 
 	case MSM_CAM_IOCTL_RELEASE_STATS_BUFFER:
-		rc = msm_put_stats_buffer(&pmctl->sync, argp);
+		rc = msm_put_stats_buffer(sd, &pmctl->sync, argp);
 		break;
 
 	default:
@@ -866,32 +754,43 @@ int msm_isp_init_module(int g_num_config_nodes)
 		isp_subdev[i].isp_config = msm_isp_config;
 		isp_subdev[i].isp_release  = msm_isp_release;
 		isp_subdev[i].isp_enqueue = msm_isp_enqueue;
+		isp_subdev[i].isp_notify = msm_isp_notify;
 	}
 	return 0;
 }
 EXPORT_SYMBOL(msm_isp_init_module);
 
 /*
-int msm_isp_register(struct msm_cam_v4l2_device *pcam)
 */
-
 int msm_isp_register(struct msm_cam_server_dev *psvr)
 {
-	int rc = -EINVAL;
 	int i = 0;
 
 	D("%s\n", __func__);
 
-	if (!psvr) {
-		D("%s psvr = %x\n", __func__, (unsigned int)psvr);
-		return rc;
-	}
+	BUG_ON(!psvr);
 
+	/* Initialize notify function for v4l2_dev */
 	for (i = 0; i < psvr->config_info.num_config_nodes; i++)
 		psvr->isp_subdev[i] = &(isp_subdev[i]);
 
 	return 0;
 }
-
 EXPORT_SYMBOL(msm_isp_register);
 
+/**/
+void msm_isp_unregister(struct msm_cam_server_dev *psvr)
+{
+	int i = 0;
+	for (i = 0; i < psvr->config_info.num_config_nodes; i++)
+		psvr->isp_subdev[i] = NULL;
+}
+
+int msm_isp_subdev_ioctl(struct v4l2_subdev *isp_subdev,
+	struct msm_vfe_cfg_cmd *cfgcmd, void *data)
+{
+	struct msm_camvfe_params vfe_params;
+	vfe_params.vfe_cfg = cfgcmd;
+	vfe_params.data = data;
+	return v4l2_subdev_call(isp_subdev, core, ioctl, 0, &vfe_params);
+}
