@@ -478,6 +478,9 @@ struct cyttsp_platform_data {
 	u8 lp_intrvl;
 	u8 power_state;
 	bool wakeup;
+	int sleep_gpio;
+	int resout_gpio;
+	int irq_gpio;
 #ifdef CY_USE_I2C_DRIVER
 	s32 (*init)(struct i2c_client *client);
 	s32 (*resume)(struct i2c_client *client);

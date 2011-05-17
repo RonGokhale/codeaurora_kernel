@@ -2407,6 +2407,61 @@ static int cyttsp_initialize(struct i2c_client *client, struct cyttsp *ts)
 	/* Prepare our worker structure prior to setting up the timer/ISR */
 	INIT_WORK(&ts->work, cyttsp_xy_worker);
 
+	if (gpio_is_valid(ts->platform_data->resout_gpio)) {
+		/* configure touchscreen reset out gpio */
+		retval = gpio_request(ts->platform_data->resout_gpio,
+						"cyttsp_resout_gpio");
+		if (retval) {
+			pr_err("%s: unable to request reset gpio %d\n",
+				__func__, ts->platform_data->resout_gpio);
+			goto error_free_device;
+		}
+
+		retval = gpio_direction_output(
+					ts->platform_data->resout_gpio, 1);
+		if (retval) {
+			pr_err("%s: unable to set direction for gpio %d\n",
+				__func__, ts->platform_data->resout_gpio);
+			goto error_resout_gpio_dir;
+		}
+	}
+
+	if (gpio_is_valid(ts->platform_data->sleep_gpio)) {
+		/* configure touchscreen reset out gpio */
+		retval = gpio_request(ts->platform_data->sleep_gpio,
+						"cy8c_sleep_gpio");
+		if (retval) {
+			pr_err("%s: unable to request sleep gpio %d\n",
+				__func__, ts->platform_data->sleep_gpio);
+			goto error_sleep_gpio_req;
+		}
+
+		retval = gpio_direction_output(
+					ts->platform_data->sleep_gpio, 0);
+		if (retval) {
+			pr_err("%s: unable to set direction for gpio %d\n",
+			__func__, ts->platform_data->resout_gpio);
+			goto error_sleep_gpio_dir;
+		}
+	}
+
+	if (gpio_is_valid(ts->platform_data->irq_gpio)) {
+		/* configure touchscreen irq gpio */
+		retval = gpio_request(ts->platform_data->irq_gpio,
+							"ts_irq_gpio");
+		if (retval) {
+			pr_err("%s: unable to request gpio [%d]\n", __func__,
+						ts->platform_data->irq_gpio);
+			goto error_irq_gpio_req;
+		}
+		retval = gpio_direction_input(ts->platform_data->irq_gpio);
+		if (retval) {
+			pr_err("%s: unable to set_direction for gpio [%d]\n",
+					__func__, ts->platform_data->irq_gpio);
+			goto error_irq_gpio_dir;
+		}
+	}
+
 	/* Power on the chip and make sure that I/Os are set as specified
 	 * in the platform */
 	if (ts->platform_data->init)
@@ -2416,7 +2471,7 @@ static int cyttsp_initialize(struct i2c_client *client, struct cyttsp *ts)
 		retval = cyttsp_power_on(ts);
 
 	if (retval < 0)
-		goto error_free_device;
+		goto error_irq_gpio_dir;
 
 	/* Timer or Interrupt setup */
 	if (ts->client->irq == 0) {
@@ -2432,7 +2487,7 @@ static int cyttsp_initialize(struct i2c_client *client, struct cyttsp *ts)
 		if (error) {
 			cyttsp_alert("error: could not request irq\n");
 			retval = error;
-			goto error_free_irq;
+			goto error_irq_gpio_dir;
 		}
 	}
 
@@ -2481,9 +2536,23 @@ error_rm_dev_file_fw_ver:
 error_rm_dev_file_irq_en:
 	device_remove_file(&client->dev, &dev_attr_irq_enable);
 error_free_irq:
-	cyttsp_alert("Error: Failed to register IRQ handler\n");
-	free_irq(client->irq, ts);
-
+	if (ts->client->irq)
+		free_irq(client->irq, ts);
+error_irq_gpio_dir:
+	if (gpio_is_valid(ts->platform_data->irq_gpio))
+		gpio_free(ts->platform_data->irq_gpio);
+error_irq_gpio_req:
+	if (gpio_is_valid(ts->platform_data->sleep_gpio))
+		gpio_direction_output(ts->platform_data->sleep_gpio, 1);
+error_sleep_gpio_dir:
+	if (gpio_is_valid(ts->platform_data->sleep_gpio))
+		gpio_free(ts->platform_data->sleep_gpio);
+error_sleep_gpio_req:
+	if (gpio_is_valid(ts->platform_data->resout_gpio))
+		gpio_direction_output(ts->platform_data->resout_gpio, 0);
+error_resout_gpio_dir:
+	if (gpio_is_valid(ts->platform_data->resout_gpio))
+		gpio_free(ts->platform_data->resout_gpio);
 error_free_device:
 	if (input_device)
 		input_free_device(input_device);
@@ -2725,6 +2794,20 @@ static int __devexit cyttsp_remove(struct i2c_client *client)
 #endif /* CONFIG_HAS_EARLYSUSPEND */
 
 	mutex_destroy(&ts->mutex);
+
+	if (gpio_is_valid(ts->platform_data->sleep_gpio)) {
+		gpio_direction_output(ts->platform_data->sleep_gpio, 1);
+		gpio_free(ts->platform_data->sleep_gpio);
+	}
+
+	if (gpio_is_valid(ts->platform_data->resout_gpio)) {
+		gpio_direction_output(ts->platform_data->resout_gpio, 0);
+		gpio_free(ts->platform_data->resout_gpio);
+	}
+
+	if (gpio_is_valid(ts->platform_data->irq_gpio))
+		gpio_free(ts->platform_data->irq_gpio);
+
 	/* housekeeping */
 	if (ts != NULL)
 		kfree(ts);
