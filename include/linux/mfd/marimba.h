@@ -75,8 +75,13 @@ enum bahama_version {
 	BAHAMA_VER_2_0,
 	BAHAMA_VER_UNSUPPORTED = 0xFF
 };
-
-struct marimba{
+enum {
+	BT_PCM_ON,
+	BT_PCM_OFF,
+	FM_I2S_ON,
+	FM_I2S_OFF,
+};
+struct marimba {
 	struct i2c_client *client;
 
 	struct i2c_msg xfer_msg[2];
@@ -86,11 +91,11 @@ struct marimba{
 	int mod_id;
 };
 
-struct marimba_top_level_platform_data{
+struct marimba_top_level_platform_data {
 	int slave_id;     /* Member added for eg. */
 };
 
-struct marimba_fm_platform_data{
+struct marimba_fm_platform_data {
 	int irq;
 	int (*fm_setup)(struct marimba_fm_platform_data *pdata);
 	void (*fm_shutdown)(struct marimba_fm_platform_data *pdata);
@@ -102,9 +107,10 @@ struct marimba_fm_platform_data{
 		true	- FM SoC is I2S master
 	*/
 	bool is_fm_soc_i2s_master;
+	int (*config_i2s_gpio)(int mode);
 };
 
-struct marimba_codec_platform_data{
+struct marimba_codec_platform_data {
 	int (*marimba_codec_power)(int vreg_on);
 	void (*snddev_profile_init) (void);
 };
