@@ -4815,8 +4815,12 @@ int dev_ioctl(struct net *net, unsigned int cmd, void __user *arg)
 		rtnl_unlock();
 		return ret;
 	}
-	if (cmd == SIOCGIFNAME)
-		return dev_ifname(net, (struct ifreq __user *)arg);
+	if (cmd == SIOCGIFNAME) {
+		rtnl_lock();
+		ret = dev_ifname(net, (struct ifreq __user *)arg);
+		rtnl_unlock();
+		return ret;
+	}
 
 	if (copy_from_user(&ifr, arg, sizeof(struct ifreq)))
 		return -EFAULT;
