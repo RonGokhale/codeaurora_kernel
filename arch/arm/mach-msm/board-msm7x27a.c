@@ -166,6 +166,33 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 #endif
 
 	/* FM Platform power and shutdown routines */
+#define FPGA_MSM_CNTRL_REG2 0x90008010
+static void config_pcm_i2s_mode(int mode)
+{
+	void __iomem *cfg_ptr;
+	u8 reg2;
+
+	cfg_ptr = ioremap_nocache(FPGA_MSM_CNTRL_REG2, sizeof(char));
+
+	if (!cfg_ptr)
+		return;
+	if (mode) {
+		/*enable the pcm mode in FPGA*/
+		reg2 = readb_relaxed(cfg_ptr);
+		if (reg2 == 0) {
+			reg2 = 1;
+			writeb_relaxed(reg2, cfg_ptr);
+		}
+	} else {
+		/*enable i2s mode in FPGA*/
+		reg2 = readb_relaxed(cfg_ptr);
+		if (reg2 == 1) {
+			reg2 = 0;
+			writeb_relaxed(reg2, cfg_ptr);
+		}
+	}
+	iounmap(cfg_ptr);
+}
 
 static struct vreg *fm_regulator;
 static int fm_radio_setup(struct marimba_fm_platform_data *pdata)
@@ -217,6 +244,8 @@ static int fm_radio_setup(struct marimba_fm_platform_data *pdata)
 			 __func__, irqcfg, rc);
 		goto fm_gpio_config_fail;
 	}
+	if (machine_is_msm7x27a_surf())
+		config_pcm_i2s_mode(0);
 
 	return 0;
 
@@ -664,6 +693,8 @@ static int bluetooth_power(int on)
 	pcm_state = marimba_get_fm_status(&config);
 
 	if (on) {
+		if (machine_is_msm7x27a_surf())
+			config_pcm_i2s_mode(on);
 		/*setup power for BT SOC*/
 		rc = bluetooth_switch_regulators(on);
 		if (rc < 0) {
