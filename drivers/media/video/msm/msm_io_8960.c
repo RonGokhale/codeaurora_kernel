@@ -24,6 +24,8 @@
 #include <mach/msm_bus_board.h>
 #include "msm_ispif.h"
 
+#define DBG_CSID 0
+#define DBG_CSIPHY 0
 
 /* MIPI	CSI	PHY registers */
 #define MIPI_CSIPHY_LNn_CFG1_ADDR                0x0
@@ -656,6 +658,7 @@ void msm_camio_clk_set_min_rate(struct clk *clk, int rate)
 	clk_set_min_rate(clk, rate);
 }
 
+#if DBG_CSID
 static irqreturn_t msm_io_csi_irq(int irq_num, void *data)
 {
 	uint32_t irq;
@@ -674,6 +677,7 @@ static irqreturn_t msm_io_csi_irq(int irq_num, void *data)
 	CDBG("%s PACKET Count = %d\n", __func__, irq);
 	return IRQ_HANDLED;
 }
+#endif
 /*
 void msm_io_read_interrupt(void)
 {
@@ -700,32 +704,30 @@ void msm_io_read_interrupt(void)
 	return;
 }
 */
-
+#if DBG_CSIPHY
 static irqreturn_t msm_io_csiphy_irq(int irq_num, void *data)
 {
 	uint32_t irq;
 	irq = msm_io_r(csiphybase + MIPI_CSIPHY_INTERRUPT_STATUS0_ADDR);
-	CDBG("%s MIPI_CSIPHY_INTERRUPT_STATUS0 = 0x%x\n", __func__, irq);
-	irq = msm_io_r(csiphybase + MIPI_CSIPHY_INTERRUPT_STATUS0_ADDR);
+	msm_io_w(irq, csiphybase + MIPI_CSIPHY_INTERRUPT_CLEAR0_ADDR);
 	CDBG("%s MIPI_CSIPHY_INTERRUPT_STATUS0 = 0x%x\n", __func__, irq);
 	irq = msm_io_r(csiphybase + MIPI_CSIPHY_INTERRUPT_STATUS1_ADDR);
+	msm_io_w(irq, csiphybase + MIPI_CSIPHY_INTERRUPT_CLEAR1_ADDR);
 	CDBG("%s MIPI_CSIPHY_INTERRUPT_STATUS1 = 0x%x\n", __func__, irq);
 	irq = msm_io_r(csiphybase + MIPI_CSIPHY_INTERRUPT_STATUS2_ADDR);
+	msm_io_w(irq, csiphybase + MIPI_CSIPHY_INTERRUPT_CLEAR2_ADDR);
 	CDBG("%s MIPI_CSIPHY_INTERRUPT_STATUS2 = 0x%x\n", __func__, irq);
 	irq = msm_io_r(csiphybase + MIPI_CSIPHY_INTERRUPT_STATUS3_ADDR);
+	msm_io_w(irq, csiphybase + MIPI_CSIPHY_INTERRUPT_CLEAR3_ADDR);
 	CDBG("%s MIPI_CSIPHY_INTERRUPT_STATUS3 = 0x%x\n", __func__, irq);
 	irq = msm_io_r(csiphybase + MIPI_CSIPHY_INTERRUPT_STATUS4_ADDR);
-	CDBG("%s MIPI_CSIPHY_INTERRUPT_STATUS4 = 0x%x\n", __func__, irq);
-	msm_io_w(irq, csiphybase + MIPI_CSIPHY_INTERRUPT_CLEAR0_ADDR);
-	msm_io_w(irq, csiphybase + MIPI_CSIPHY_INTERRUPT_CLEAR1_ADDR);
-	msm_io_w(irq, csiphybase + MIPI_CSIPHY_INTERRUPT_CLEAR2_ADDR);
-	msm_io_w(irq, csiphybase + MIPI_CSIPHY_INTERRUPT_CLEAR3_ADDR);
 	msm_io_w(irq, csiphybase + MIPI_CSIPHY_INTERRUPT_CLEAR4_ADDR);
+	CDBG("%s MIPI_CSIPHY_INTERRUPT_STATUS4 = 0x%x\n", __func__, irq);
 	msm_io_w(0x1, csiphybase + 0x164);
 	msm_io_w(0x0, csiphybase + 0x164);
 	return IRQ_HANDLED;
 }
-
+#endif
 static int msm_camio_enable_all_clks(void)
 {
 	int rc = 0;
@@ -915,11 +917,12 @@ int msm_camio_enable(struct platform_device *pdev)
 		rc = -ENOMEM;
 		goto csi_busy;
 	}
+#if DBG_CSID
 	rc = request_irq(camio_ext.csiirq, msm_io_csi_irq,
 		IRQF_TRIGGER_RISING, "csid", 0);
 	if (rc < 0)
 		goto csi_irq_fail;
-
+#endif
 	csiphyio = request_mem_region(camio_ext.csiphyphy,
 		camio_ext.csiphysz, pdev->name);
 	if (!csidio) {
@@ -932,10 +935,12 @@ int msm_camio_enable(struct platform_device *pdev)
 		rc = -ENOMEM;
 		goto csiphy_busy;
 	}
+#if DBG_CSIPHY
 	rc = request_irq(camio_ext.csiphyirq , msm_io_csiphy_irq,
 		IRQF_TRIGGER_RISING, "csiphy", 0);
 	if (rc < 0)
 		goto csiphy_irq_fail;
+#endif
 	rc = msm_ispif_init(pdev);
 	if (rc < 0)
 		goto csiphy_irq_fail;
@@ -958,12 +963,15 @@ common_fail:
 
 void msm_camio_disable(struct platform_device *pdev)
 {
-
+#if DBG_CSIPHY
 	free_irq(camio_ext.csiphy, 0);
+#endif
 	iounmap(csiphybase);
 	release_mem_region(camio_ext.csiphyphy, camio_ext.csiphysz);
 
+#if DBG_CSID
 	free_irq(camio_ext.csiirq, 0);
+#endif
 	iounmap(csidbase);
 	release_mem_region(camio_ext.csiphy, camio_ext.csisz);
 
@@ -1029,26 +1037,27 @@ int msm_camio_probe_off(struct platform_device *pdev)
 
 int msm_camio_csid_cid_lut(struct msm_camera_csid_lut_params *csid_lut_params)
 {
-	int rc = 0;
+	int rc = 0, i = 0;
 	uint32_t val = 0;
 
-	if (csid_lut_params->dt < 0x12 || csid_lut_params->dt > 0x37) {
-		CDBG("%s: unsupported data type 0x%x\n",
-			__func__, csid_lut_params->dt);
-		return rc;
+	for (i = 0; i < csid_lut_params->num_cid && i < 4; i++)	{
+		if (csid_lut_params->vc_cfg[i].dt < 0x12 ||
+			csid_lut_params->vc_cfg[i].dt > 0x37) {
+			CDBG("%s: unsupported data type 0x%x\n",
+				 __func__, csid_lut_params->vc_cfg[i].dt);
+			return rc;
+		}
+		val = msm_io_r(csidbase + CSID_CID_LUT_VC_0_ADDR +
+		(csid_lut_params->vc_cfg[i].cid >> 2) * 4)
+		& ~(0xFF << csid_lut_params->vc_cfg[i].cid * 8);
+		val |= csid_lut_params->vc_cfg[i].dt <<
+			csid_lut_params->vc_cfg[i].cid * 8;
+		msm_io_w(val, csidbase + CSID_CID_LUT_VC_0_ADDR +
+			(csid_lut_params->vc_cfg[i].cid >> 2) * 4);
+		val = csid_lut_params->vc_cfg[i].decode_format << 4 | 0x3;
+		msm_io_w(val, csidbase + CSID_CID_n_CFG_ADDR +
+			(csid_lut_params->vc_cfg[i].cid * 4));
 	}
-
-	val = msm_io_r(csidbase + CSID_CID_LUT_VC_0_ADDR + csid_lut_params->vc)
-		& ~(0xFF << csid_lut_params->cid * 8);
-	val |= csid_lut_params->dt << csid_lut_params->cid * 8;
-	msm_io_w(val, csidbase + CSID_CID_LUT_VC_0_ADDR + csid_lut_params->vc);
-
-	val = csid_lut_params->decode_format << 4 |
-		csid_lut_params->rdi_en << 1 |
-		csid_lut_params->ispif_en;
-
-	msm_io_w(val, csidbase + CSID_CID_n_CFG_ADDR +
-		(csid_lut_params->cid * 4));
 	return rc;
 }
 
@@ -1074,7 +1083,7 @@ int msm_camio_csid_config(struct msm_camera_csid_params *csid_params)
 
 	ispif_params.intftype = PIX0;
 	ispif_params.cid_mask = 0x0001;
-	ispif_params.csid = 0x01;
+	ispif_params.csid = 0x00;
 
 	msm_ispif_config(&ispif_params, 1);
 	msm_ispif_start_intf_transfer(&ispif_params);
@@ -1095,7 +1104,7 @@ int msm_camio_csiphy_config(struct msm_camera_csiphy_params *csiphy_params)
 	}
 
 	val = 0x3;
-	msm_io_w(((2 * csiphy_params->lane_cnt - 1) << 2) | val,
+	msm_io_w((((1 << csiphy_params->lane_cnt) - 1) << 2) | val,
 			 csiphybase + MIPI_CSIPHY_GLBL_PWR_CFG_ADDR);
 	msm_io_w(0x1, csiphybase + MIPI_CSIPHY_GLBL_T_INIT_CFG0_ADDR);
 	msm_io_w(0x1, csiphybase + MIPI_CSIPHY_T_WAKEUP_CFG0_ADDR);

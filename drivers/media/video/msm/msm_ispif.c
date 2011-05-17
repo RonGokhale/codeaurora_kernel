@@ -25,6 +25,7 @@
 #include "msm_ispif.h"
 #include "msm.h"
 
+#define DBG_ISPIF 0
 /* ISPIF registers */
 
 #define ISPIF_RST_CMD_ADDR                        0X00
@@ -75,7 +76,7 @@ static struct platform_device *camio_dev;
 static struct resource *ispifio;
 void __iomem *ispifbase;
 static uint32_t global_intf_cmd_mask = 0xFFFFFFFF;
-
+#if DBG_ISPIF
 static inline void msm_ispif_read_irq_status(struct ispif_irq_status *out)
 {
 	uint32_t *temp;
@@ -93,7 +94,7 @@ static irqreturn_t msm_io_ispif_irq(int irq_num, void *data)
 	msm_ispif_read_irq_status(&irq);
 	return IRQ_HANDLED;
 }
-
+#endif
 int msm_ispif_init(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -115,10 +116,12 @@ int msm_ispif_init(struct platform_device *pdev)
 		rc = -ENOMEM;
 		goto ispif_no_mem;
 	}
+#if DBG_ISPIF
 	rc = request_irq(camio_ext.ispifirq , msm_io_ispif_irq,
 		IRQF_TRIGGER_RISING, "ispif", 0);
 	if (rc < 0)
 		goto ispif_irq_fail;
+#endif
 	global_intf_cmd_mask = 0xFFFFFFFF;
 	ispif_fns.ispif_config = msm_ispif_config;
 	ispif_fns.ispif_start_intf_transfer =
@@ -143,7 +146,9 @@ void msm_ispif_release(struct platform_device *pdev)
 	camio_dev = pdev;
 	camio_ext = camdev->ioext;
 	CDBG("%s, free_irq\n", __func__);
+#if DBG_ISPIF
 	free_irq(camio_ext.ispifirq, 0);
+#endif
 	iounmap(ispifbase);
 	release_mem_region(camio_ext.ispifphy, camio_ext.ispifsz);
 }
