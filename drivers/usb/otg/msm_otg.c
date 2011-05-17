@@ -844,6 +844,7 @@ static int msm_otg_set_peripheral(struct otg_transceiver *otg,
 	return 0;
 }
 
+#ifdef CONFIG_USB_MSM_ACA
 static bool msm_chg_aca_detect(struct msm_otg *motg)
 {
 	struct otg_transceiver *otg = &motg->otg;
@@ -944,7 +945,23 @@ static bool msm_chg_check_aca_intr(struct msm_otg *motg)
 	}
 	return ret;
 }
+#else
+static inline bool msm_chg_aca_detect(struct msm_otg *motg)
+{
+	return false;
+}
 
+static inline void msm_chg_enable_aca_det(struct msm_otg *motg)
+{
+}
+static inline void msm_chg_enable_aca_intr(struct msm_otg *motg)
+{
+}
+static inline bool msm_chg_check_aca_intr(struct msm_otg *motg)
+{
+	return false;
+}
+#endif
 static bool msm_chg_check_secondary_det(struct msm_otg *motg)
 {
 	struct otg_transceiver *otg = &motg->otg;
