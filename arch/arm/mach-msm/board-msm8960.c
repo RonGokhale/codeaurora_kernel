@@ -1526,6 +1526,22 @@ static int cyttsp_platform_init(struct i2c_client *client)
 	return 0;
 }
 
+static struct cyttsp_regulator regulator_data[] = {
+	{
+		.name = "vdd",
+		.min_uV = CY_TMA300_VTG_MIN_UV,
+		.max_uV = CY_TMA300_VTG_MAX_UV,
+		.load_uA = CY_TMA300_CURR_24HZ_UA,
+	},
+	/* TODO: Remove after runtime PM is enabled in I2C driver */
+	{
+		.name = "vcc_i2c",
+		.min_uV = CY_I2C_VTG_MIN_UV,
+		.max_uV = CY_I2C_VTG_MAX_UV,
+		.load_uA = CY_I2C_CURR_UA,
+	},
+};
+
 static struct cyttsp_platform_data cyttsp_pdata = {
 	.panel_maxx = 634,
 	.panel_maxy = 1166,
@@ -1562,6 +1578,8 @@ static struct cyttsp_platform_data cyttsp_pdata = {
 	.sleep_gpio = CYTTSP_TS_SLEEP_GPIO,
 	.resout_gpio = CYTTSP_TS_RESOUT_N_GPIO,
 	.irq_gpio = CYTTSP_TS_GPIO_IRQ,
+	.regulator_info = regulator_data,
+	.num_regulators = ARRAY_SIZE(regulator_data),
 	.init = cyttsp_platform_init,
 };
 
