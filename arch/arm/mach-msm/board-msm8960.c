@@ -2024,7 +2024,6 @@ static struct msm_i2c_platform_data msm8960_i2c_qup_gsbi10_pdata = {
 	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
 };
 
-#ifdef CONFIG_MSM_RPM
 static struct msm_rpm_platform_data msm_rpm_data = {
 	.reg_base_addrs = {
 		[MSM_RPM_PAGE_STATUS] = MSM_RPM_BASE,
@@ -2039,7 +2038,6 @@ static struct msm_rpm_platform_data msm_rpm_data = {
 	.msm_apps_ipc_rpm_reg = MSM_APCS_GCC_BASE + 0x008,
 	.msm_apps_ipc_rpm_val = 4,
 };
-#endif
 
 static struct spi_board_info spi_board_info[] __initdata = {
 	{
@@ -2475,8 +2473,6 @@ fail:
 	return ret;
 }
 
-#ifdef CONFIG_PM
-#ifdef CONFIG_CPU_IDLE
 static struct msm_cpuidle_state msm_cstates[] __initdata = {
 	{0, 0, "C0", "WFI",
 		MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT},
@@ -2493,7 +2489,6 @@ static struct msm_cpuidle_state msm_cstates[] __initdata = {
 	{1, 1, "C1", "STANDALONE_POWER_COLLAPSE",
 		MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE},
 };
-#endif
 
 static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 	[MSM_PM_MODE(0, MSM_PM_SLEEP_MODE_POWER_COLLAPSE)] = {
@@ -2544,7 +2539,7 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 		.residency = 0,
 	},
 };
-#endif
+
 #ifdef CONFIG_I2C
 #define I2C_SURF 1
 #define I2C_FFA  (1 << 1)
@@ -2625,10 +2620,7 @@ static void __init msm8960_sim_init(void)
 	if (socinfo_init() < 0)
 		pr_err("socinfo_init() failed!\n");
 
-#ifdef CONFIG_MSM_RPM
 	BUG_ON(msm_rpm_init(&msm_rpm_data));
-#endif
-
 	msm_clock_init(msm_clocks_8960, msm_num_clocks_8960);
 	msm8960_device_ssbi_pm8921.dev.platform_data =
 				&msm8960_ssbi_pm8921_pdata;
@@ -2659,16 +2651,12 @@ static void __init msm8960_sim_init(void)
 
 	msm8960_init_mmc();
 	msm_fb_add_devices();
-#ifdef CONFIG_PM
-	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
-	msm_pm_set_rpm_wakeup_irq(RPM_APCC_CPU0_WAKE_UP_IRQ);
-#ifdef CONFIG_CPU_IDLE
-	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),
-				msm_pm_data);
-#endif
-#endif
 	slim_register_board_info(msm_slim_devices,
 		ARRAY_SIZE(msm_slim_devices));
+	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
+	msm_pm_set_rpm_wakeup_irq(RPM_APCC_CPU0_WAKE_UP_IRQ);
+	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),
+				msm_pm_data);
 }
 
 static void __init msm8960_rumi3_init(void)
@@ -2676,10 +2664,7 @@ static void __init msm8960_rumi3_init(void)
 	if (socinfo_init() < 0)
 		pr_err("socinfo_init() failed!\n");
 
-#ifdef CONFIG_MSM_RPM
 	BUG_ON(msm_rpm_init(&msm_rpm_data));
-#endif
-
 	msm_clock_init(msm_clocks_8960_dummy, msm_num_clocks_8960_dummy);
 	gpiomux_init();
 	ethernet_init();
@@ -2690,6 +2675,8 @@ static void __init msm8960_rumi3_init(void)
 				&msm8960_qup_spi_gsbi1_pdata;
 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
 	msm8960_i2c_init();
+	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
+	msm_spm_l2_init(msm_spm_l2_data);
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	pm8921_gpio_mpp_init();
 	platform_add_devices(rumi3_devices, ARRAY_SIZE(rumi3_devices));
@@ -2697,9 +2684,12 @@ static void __init msm8960_rumi3_init(void)
 
 	register_i2c_devices();
 	msm_fb_add_devices();
-
 	slim_register_board_info(msm_slim_devices,
 		ARRAY_SIZE(msm_slim_devices));
+	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
+	msm_pm_set_rpm_wakeup_irq(RPM_APCC_CPU0_WAKE_UP_IRQ);
+	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),
+				msm_pm_data);
 }
 
 static void __init msm8960_cdp_init(void)
@@ -2707,6 +2697,7 @@ static void __init msm8960_cdp_init(void)
 	if (socinfo_init() < 0)
 		pr_err("socinfo_init() failed!\n");
 
+	BUG_ON(msm_rpm_init(&msm_rpm_data));
 	msm_clock_init(msm_clocks_8960, msm_num_clocks_8960);
 	msm_device_otg.dev.platform_data = &msm_otg_pdata;
 	msm_device_gadget_peripheral.dev.parent = &msm_device_otg.dev;
@@ -2720,6 +2711,8 @@ static void __init msm8960_cdp_init(void)
 				&msm8960_ssbi_pm8921_pdata;
 	pm8921_platform_data.num_regulators = msm_pm8921_regulator_pdata_len;
 	msm8960_i2c_init();
+	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
+	msm_spm_l2_init(msm_spm_l2_data);
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	pm8921_gpio_mpp_init();
 	platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
@@ -2730,6 +2723,10 @@ static void __init msm8960_cdp_init(void)
 	msm_fb_add_devices();
 	slim_register_board_info(msm_slim_devices,
 		ARRAY_SIZE(msm_slim_devices));
+	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
+	msm_pm_set_rpm_wakeup_irq(RPM_APCC_CPU0_WAKE_UP_IRQ);
+	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),
+				msm_pm_data);
 }
 
 MACHINE_START(MSM8960_SIM, "QCT MSM8960 SIMULATOR")
