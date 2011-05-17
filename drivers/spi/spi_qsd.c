@@ -149,7 +149,6 @@ enum msm_spi_state {
 #define SPI_ERR_INPUT_OVER_RUN_ERR    0x00000004
 #define SPI_ERR_CLK_OVER_RUN_ERR      0x00000002
 #define SPI_ERR_CLK_UNDER_RUN_ERR     0x00000001
-#define SPI_ERR_MASK                  0x0000007F
 
 /* We don't allow transactions larger than 4K-64 or 64K-64 due to
    mx_input/output_cnt register size */
@@ -422,6 +421,16 @@ static inline void msm_spi_complete(struct msm_spi *dd)
 	complete(&dd->transfer_complete);
 }
 
+static inline void msm_spi_enable_error_flags(struct msm_spi *dd)
+{
+	writel_relaxed(0x0000007B, dd->base + SPI_ERROR_FLAGS_EN);
+}
+
+static inline void msm_spi_clear_error_flags(struct msm_spi *dd)
+{
+	writel_relaxed(0x0000007F, dd->base + SPI_ERROR_FLAGS);
+}
+
 #elif defined(CONFIG_SPI_QUP) || defined(CONFIG_SPI_QUP_MODULE)
 
 /* Interrupt Handling */
@@ -593,6 +602,16 @@ static inline void msm_spi_set_write_count(struct msm_spi *dd, int val)
 static inline void msm_spi_complete(struct msm_spi *dd)
 {
 	dd->done = 1;
+}
+
+static inline void msm_spi_enable_error_flags(struct msm_spi *dd)
+{
+	writel_relaxed(0x00000078, dd->base + SPI_ERROR_FLAGS_EN);
+}
+
+static inline void msm_spi_clear_error_flags(struct msm_spi *dd)
+{
+	writel_relaxed(0x0000007C, dd->base + SPI_ERROR_FLAGS);
 }
 
 #endif
@@ -1160,22 +1179,12 @@ static irqreturn_t msm_spi_error_irq(int irq, void *dev_id)
 		dev_warn(master->dev.parent, "SPI input underrun error\n");
 	if (spi_err & SPI_ERR_OUTPUT_UNDER_RUN_ERR)
 		dev_warn(master->dev.parent, "SPI output underrun error\n");
-	if (spi_err & SPI_ERR_INPUT_OVER_RUN_ERR) {
-		/*
-		 * When switching from Run to Reset state, the core generates
-		 * a bogus input overrun error on 8660. We ignore such errors
-		 * when the transfer has completed successfully.
-		 */
-		if (dd->mode != SPI_MODE_NONE)
-			dev_warn(master->dev.parent,
-				 "SPI input overrun error\n");
-	}
 	msm_spi_get_clk_err(dd, &spi_err);
 	if (spi_err & SPI_ERR_CLK_OVER_RUN_ERR)
 		dev_warn(master->dev.parent, "SPI clock overrun error\n");
 	if (spi_err & SPI_ERR_CLK_UNDER_RUN_ERR)
 		dev_warn(master->dev.parent, "SPI clock underrun error\n");
-	writel_relaxed(SPI_ERR_MASK, dd->base + SPI_ERROR_FLAGS);
+	msm_spi_clear_error_flags(dd);
 	msm_spi_ack_clk_err(dd);
 	/* Ensure clearing of QUP_ERROR_FLAGS was completed */
 	dsb();
@@ -2283,7 +2292,13 @@ skip_dma_resources:
 	writel_relaxed(0x00000000, dd->base + SPI_OPERATIONAL);
 	writel_relaxed(0x00000000, dd->base + SPI_CONFIG);
 	writel_relaxed(0x00000000, dd->base + SPI_IO_MODES);
-	writel_relaxed(0x0000007C, dd->base + SPI_ERROR_FLAGS_EN);
+	/*
+	 * The SPI core generates a bogus input overrun error on some targets,
+	 * when a transition from run to reset state occurs and if the FIFO has
+	 * an odd number of entries. Hence we disable the INPUT_OVER_RUN_ERR_EN
+	 * bit.
+	 */
+	msm_spi_enable_error_flags(dd);
 
 	writel_relaxed(SPI_IO_C_NO_TRI_STATE, dd->base + SPI_IO_CONTROL);
 	rc = msm_spi_set_state(dd, SPI_OP_STATE_RESET);
