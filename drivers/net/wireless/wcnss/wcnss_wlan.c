@@ -14,13 +14,19 @@
 #include <linux/slab.h>
 #include <linux/err.h>
 #include <linux/platform_device.h>
+#include <linux/firmware.h>
+#include <linux/parser.h>
 #include <linux/wcnss_wlan.h>
 #include <mach/peripheral-loader.h>
+#include "wcnss_riva.h"
 
-
-#define DEVICE	"wcnss_wlan"
-#define VERSION "1.00"
+#define DEVICE "wcnss_wlan"
+#define VERSION "1.01"
 #define WCNSS_PIL_DEVICE "wcnss"
+#define WCNSS_NV_NAME "wlan/prima/WCNSS_qcom_cfg.ini"
+
+/* By default assume 48MHz XO is populated */
+#define CONFIG_USE_48MHZ_XO_DEFAULT 1
 
 static struct {
 	struct platform_device *pdev;
@@ -30,8 +36,74 @@ static struct {
 	struct resource	*rx_irq_res;
 	const struct dev_pm_ops *pm_ops;
 	int             smd_channel_ready;
-
+	struct wcnss_wlan_config wlan_config;
 } *penv = NULL;
+
+enum {
+	nv_none = -1,
+	nv_use_48mhz_xo,
+	nv_end,
+};
+
+static const match_table_t nv_tokens = {
+	{nv_use_48mhz_xo, "gUse48MHzXO=%d"},
+	{nv_end, "END"},
+	{nv_none, NULL}
+};
+
+static void wcnss_init_config(void)
+{
+	penv->wlan_config.use_48mhz_xo = CONFIG_USE_48MHZ_XO_DEFAULT;
+}
+
+static void wcnss_parse_nv(char *nvp)
+{
+	substring_t args[MAX_OPT_ARGS];
+	char *cur;
+	char *tok;
+	int token;
+	int intval;
+
+	cur = nvp;
+	while (cur != NULL) {
+		if ('#' == *cur) {
+			/* comment, consume remainder of line */
+			tok = strsep(&cur, "\r\n");
+			continue;
+		}
+
+		tok = strsep(&cur, " \t\r\n,");
+		if (!*tok)
+			continue;
+
+		token = match_token(tok, nv_tokens, args);
+		switch (token) {
+		case nv_use_48mhz_xo:
+			if (match_int(&args[0], &intval)) {
+				dev_err(&penv->pdev->dev,
+					"Invalid value for gUse48MHzXO: %s\n",
+					args[0].from);
+				continue;
+			}
+			if ((0 > intval) || (1 < intval)) {
+				dev_err(&penv->pdev->dev,
+					"Invalid value for gUse48MHzXO: %d\n",
+					intval);
+				continue;
+			}
+			penv->wlan_config.use_48mhz_xo = intval;
+			dev_info(&penv->pdev->dev,
+					"gUse48MHzXO set to %d\n", intval);
+			break;
+		case nv_end:
+			/* end of options so we are done */
+			return;
+		default:
+			/* silently ignore unknown settings */
+			break;
+		}
+	}
+}
 
 static int __devinit
 wcnss_wlan_ctrl_probe(struct platform_device *pdev)
@@ -122,6 +194,8 @@ static int wcnss_wlan_resume(struct device *dev)
 static int __devinit
 wcnss_wlan_probe(struct platform_device *pdev)
 {
+	const struct firmware *nv;
+	char *nvp;
 	int ret;
 
 	/* verify we haven't been called more than once */
@@ -137,6 +211,35 @@ wcnss_wlan_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 	penv->pdev = pdev;
+
+	/* initialize the WCNSS default configuration */
+	wcnss_init_config();
+
+	/* update the WCNSS configuration from NV if present */
+	ret = request_firmware(&nv, WCNSS_NV_NAME, &pdev->dev);
+	if (ret) {
+		/* firmware is read-only so make a NUL-terminated copy */
+		nvp = kmalloc(nv->size+1, GFP_KERNEL);
+		if (nvp) {
+			memcpy(nvp, nv->data, nv->size);
+			nvp[nv->size] = '\0';
+			wcnss_parse_nv(nvp);
+			kfree(nvp);
+		} else {
+			dev_err(&pdev->dev, "cannot parse NV.\n");
+		}
+		release_firmware(nv);
+	} else {
+		dev_err(&pdev->dev, "cannot read NV.\n");
+	}
+
+	/* power up the WCNSS */
+	ret = wcnss_wlan_power(&pdev->dev, &penv->wlan_config,
+						WCNSS_WLAN_SWITCH_ON);
+	if (ret) {
+		dev_err(&pdev->dev, "WCNSS Power-up failed.\n");
+		goto fail_power;
+	}
 
 	/* trigger initialization of the WCNSS */
 	penv->pil = pil_get(WCNSS_PIL_DEVICE);
@@ -167,6 +270,9 @@ fail_res:
 	if (penv->pil)
 		pil_put(penv->pil);
 fail_pil:
+	wcnss_wlan_power(&pdev->dev, &penv->wlan_config,
+						WCNSS_WLAN_SWITCH_OFF);
+fail_power:
 	kfree(penv);
 	penv = NULL;
 	return ret;
