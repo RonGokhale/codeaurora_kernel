@@ -320,7 +320,7 @@ static int __init pm8xxx_mpp_init(void)
 {
 	return platform_driver_register(&pm8xxx_mpp_driver);
 }
-subsys_initcall(pm8xxx_mpp_init);
+postcore_initcall(pm8xxx_mpp_init);
 
 static void __exit pm8xxx_mpp_exit(void)
 {
