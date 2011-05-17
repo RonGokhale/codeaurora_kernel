@@ -4114,6 +4114,10 @@ static void reg_init(void)
 
 	/* Source SLIMBus xo src from slimbus reference clock */
 	writel_relaxed(0x3, SLIMBUS_XO_SRC_CLK_CTL_REG);
+
+	/* Source the dsi_byte_clks from the DSI PHY PLLs */
+	rmwreg(0x1, DSI1_BYTE_NS_REG, 0x7);
+	rmwreg(0x2, DSI2_BYTE_NS_REG, 0x7);
 }
 
 static int dummy_pll_clk_enable(struct clk *clk)
