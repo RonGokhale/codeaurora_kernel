@@ -217,6 +217,7 @@ int msmsdcc_dml_init(struct msmsdcc_host *host)
 	writel(host->sps.src_pipe_index |
 		(host->sps.dest_pipe_index << CONSUMER_PIPE_ID_SHFT),
 		(dml_base + DML_PIPE_ID));
+	dsb();
 out:
 	return rc;
 }
@@ -229,6 +230,7 @@ void msmsdcc_dml_reset(struct msmsdcc_host *host)
 {
 	/* Reset the DML block */
 	writel(1, (host->dml_base + DML_SW_RESET));
+	dsb();
 }
 
 /**
@@ -284,6 +286,7 @@ void msmsdcc_dml_start_xfer(struct msmsdcc_host *host, struct mmc_data *data)
 		/* Trigger consumer */
 		writel(1, (dml_base + DML_CONSUMER_START));
 	}
+	dsb();
 }
 
 /**

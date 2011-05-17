@@ -162,8 +162,10 @@ static void msmsdcc_soft_reset_and_restore(struct msmsdcc_host *host)
 	 * Reset SDCC controller's DPSM (data path state machine
 	 * and CPSM (command path state machine).
 	 */
+	dsb();
 	writel(0, host->base + MMCICOMMAND);
 	writel(0, host->base + MMCIDATACTRL);
+	dsb();
 
 	pr_debug("%s: Applied soft reset to Controller\n",
 			mmc_hostname(host->mmc));
@@ -196,6 +198,7 @@ static void msmsdcc_reset_and_restore(struct msmsdcc_host *host)
 		mci_clk = readl(host->base + MMCICLOCK);
 		mci_mask0 = readl(host->base + MMCIMASK0);
 
+		dsb();
 		/* Reset the controller */
 		ret = clk_reset(host->clk, CLK_RESET_ASSERT);
 		if (ret)
@@ -212,6 +215,7 @@ static void msmsdcc_reset_and_restore(struct msmsdcc_host *host)
 		pr_debug("%s: Controller has been reinitialized\n",
 				mmc_hostname(host->mmc));
 
+		dsb();
 		/* Restore the contoller state */
 		writel(host->pwr, host->base + MMCIPOWER);
 		writel(mci_clk, host->base + MMCICLOCK);
@@ -221,6 +225,7 @@ static void msmsdcc_reset_and_restore(struct msmsdcc_host *host)
 			pr_err("%s: Failed to set clk rate %u Hz. err %d\n",
 					mmc_hostname(host->mmc),
 					host->clk_rate, ret);
+		dsb();
 	}
 }
 
@@ -266,6 +271,7 @@ static inline uint32_t msmsdcc_fifo_addr(struct msmsdcc_host *host)
 
 static inline void msmsdcc_delay(struct msmsdcc_host *host)
 {
+	dsb();
 	udelay(1 + ((3 * USEC_PER_SEC) /
 		(host->clk_rate ? host->clk_rate : host->plat->msmsdcc_fmin)));
 }
@@ -276,6 +282,7 @@ msmsdcc_start_command_exec(struct msmsdcc_host *host, u32 arg, u32 c)
 	writel(arg, host->base + MMCIARGUMENT);
 	msmsdcc_delay(host);
 	writel(c, host->base + MMCICOMMAND);
+	dsb();
 }
 
 static void
@@ -860,6 +867,7 @@ msmsdcc_start_data(struct msmsdcc_host *host, struct mmc_data *data,
 			if (!msmsdcc_is_dml_busy(host)) {
 				if (!msmsdcc_sps_start_xfer(host, data)) {
 					/* Now kick start DML transfer */
+					dsb();
 					msmsdcc_dml_start_xfer(host, data);
 					datactrl |= MCI_DPSM_DMAENABLE;
 					host->sps.busy = 1;
@@ -1040,6 +1048,7 @@ msmsdcc_pio_write(struct msmsdcc_host *host, char *buffer,
 		if (remain == 0)
 			break;
 	}
+	dsb();
 
 	return ptr - buffer;
 }
@@ -1119,9 +1128,12 @@ msmsdcc_pio_irq(int irq, void *dev_id)
 			writel((readl(host->base + MMCIMASK0) &
 				(~(MCI_IRQ_PIO))) | 0, host->base + MMCIMASK0);
 		}
-	} else if (!host->curr.xfer_remain)
+		dsb();
+	} else if (!host->curr.xfer_remain) {
 		writel((readl(host->base + MMCIMASK0) & (~(MCI_IRQ_PIO))) | 0,
 				host->base + MMCIMASK0);
+		dsb();
+	}
 
 	spin_unlock(&host->lock);
 
@@ -1285,6 +1297,7 @@ msmsdcc_irq(int irq, void *dev_id)
 #endif
 		status &= readl(host->base + MMCIMASK0);
 		writel(status, host->base + MMCICLEAR);
+		dsb();
 #if IRQ_DEBUG
 		msmsdcc_print_status(host, "irq0-p", status);
 #endif
@@ -1523,6 +1536,7 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 				if (!host->plat->sdiowakeup_irq) {
 					writel(host->mci_irqenable,
 							host->base + MMCIMASK0);
+					dsb();
 					if (host->plat->cfg_mpm_sdiowakeup &&
 					(mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ))
 						host->plat->cfg_mpm_sdiowakeup(
@@ -1611,12 +1625,12 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		msmsdcc_delay(host);
 	}
 	writel(clk, host->base + MMCICLOCK);
-
-	udelay(50);
+	msmsdcc_delay(host);
 
 	if (host->pwr != pwr) {
 		host->pwr = pwr;
 		writel(pwr, host->base + MMCIPOWER);
+		dsb();
 	}
 	if (!host->clks_on) {
 		/* force the clocks to be off */
@@ -1632,6 +1646,7 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		if (mmc->card && mmc->card->type == MMC_TYPE_SDIO) {
 			if (!host->plat->sdiowakeup_irq) {
 				writel(MCI_SDIOINTMASK, host->base + MMCIMASK0);
+				dsb();
 				WARN_ON(host->sdcc_irq_disabled);
 				if (host->plat->cfg_mpm_sdiowakeup &&
 					(mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ))
@@ -1663,6 +1678,7 @@ int msmsdcc_set_pwrsave(struct mmc_host *mmc, int pwrsave)
 	else
 		clk &= ~MCI_CLK_PWRSAVE;
 	writel(clk, host->base + MMCICLOCK);
+	dsb();
 
 	return 0;
 }
@@ -1698,6 +1714,7 @@ static void msmsdcc_enable_sdio_irq(struct mmc_host *mmc, int enable)
 		writel(readl(host->base + MMCIMASK0) & ~MCI_SDIOINTOPERMASK,
 		       host->base + MMCIMASK0);
 	}
+	dsb();
 }
 #endif /* CONFIG_MMC_MSM_SDIO_SUPPORT */
 
@@ -2594,6 +2611,7 @@ msmsdcc_probe(struct platform_device *pdev)
 	/* Delay needed (MMCIMASK0 was just written above) */
 	msmsdcc_delay(host);
 	writel(MCI_IRQENABLE, host->base + MMCIMASK0);
+	dsb();
 	host->mci_irqenable = MCI_IRQENABLE;
 
 	ret = request_irq(core_irqres->start, msmsdcc_irq, IRQF_SHARED,
@@ -2988,6 +3006,7 @@ msmsdcc_runtime_resume(struct device *dev)
 
 		spin_lock_irqsave(&host->lock, flags);
 		writel(host->mci_irqenable, host->base + MMCIMASK0);
+		dsb();
 
 		if (mmc->card && (mmc->card->type == MMC_TYPE_SDIO) &&
 				(mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ) &&
