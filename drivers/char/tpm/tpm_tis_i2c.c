@@ -427,6 +427,9 @@ static int tpm_tis_i2c_send(struct tpm_chip *chip, u8 *buf, size_t len)
 		if (burstcnt > (len-1-count))
 			burstcnt = len-1-count;
 
+		if (burstcnt > 3)
+			burstcnt = 3;
+
 		dev_dbg(chip->dev, "send(): burstcount=%d\n", burstcnt);
 
 		rc = iic_tpm_write(TPM_DATA_FIFO(chip->vendor.locality),
