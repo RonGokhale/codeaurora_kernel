@@ -75,6 +75,8 @@
 #define VPE_SCALE_COEFF_LSP_0_OFFSET          0x50400
 #define VPE_SCALE_COEFF_MSP_0_OFFSET          0x50404
 
+#define VPE_AXI_ARB_2_OFFSET                  0x004C
+
 #define VPE_SCALE_COEFF_LSBn(n)	(0x50400 + 8 * (n))
 #define VPE_SCALE_COEFF_MSBn(n)	(0x50404 + 8 * (n))
 #define VPE_SCALE_COEFF_NUM			32
