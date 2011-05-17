@@ -32,12 +32,13 @@ void __msm_gpiomux_write(unsigned gpio, struct gpiomux_setting val)
 	if (val.func == GPIOMUX_FUNC_GPIO) {
 		tlmm_config |= (val.dir > GPIOMUX_IN ? BIT(14) : 0);
 		msm_gpio_find_out(gpio, &out_reg, &offset);
-		bits = readl(out_reg);
+		bits = __raw_readl(out_reg);
 		if (val.dir == GPIOMUX_OUT_HIGH)
-			writel(bits | BIT(offset), out_reg);
+			__raw_writel(bits | BIT(offset), out_reg);
 		else
-			writel(bits & ~BIT(offset), out_reg);
+			__raw_writel(bits & ~BIT(offset), out_reg);
 	}
+	dsb();
 	rc = msm_proc_comm(PCOM_RPC_GPIO_TLMM_CONFIG_EX,
 			   &tlmm_config, &tlmm_disable);
 	if (rc)

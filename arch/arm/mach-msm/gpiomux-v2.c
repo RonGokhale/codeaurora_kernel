@@ -24,8 +24,9 @@ void __msm_gpiomux_write(unsigned gpio, struct gpiomux_setting val)
 	bits = (val.drv << 6) | (val.func << 2) | val.pull;
 	if (val.func == GPIOMUX_FUNC_GPIO) {
 		bits |= val.dir > GPIOMUX_IN ? BIT(9) : 0;
-		writel(val.dir == GPIOMUX_OUT_HIGH ? BIT(1) : 0,
+		__raw_writel(val.dir == GPIOMUX_OUT_HIGH ? BIT(1) : 0,
 			GPIO_IN_OUT(gpio));
 	}
-	writel(bits, GPIO_CFG(gpio));
+	__raw_writel(bits, GPIO_CFG(gpio));
+	dsb();
 }
