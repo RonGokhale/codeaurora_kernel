@@ -22,6 +22,7 @@
 #include <asm/mach/mmc.h>
 #include <mach/usbdiag.h>
 #include <mach/usb_gadget_fserial.h>
+#include <mach/rpc_hsusb.h>
 
 #include "devices.h"
 #include "devices-msm7x2xa.h"
@@ -183,6 +184,7 @@ int msm_add_host(unsigned int host, struct msm_usb_host_platform_data *plat)
 
 struct usb_diag_platform_data usb_diag_pdata = {
 	.ch_name = DIAG_LEGACY,
+	.update_pid_and_serial_num = usb_diag_update_pid_and_serial_num,
 };
 
 struct platform_device usb_diag_device = {
