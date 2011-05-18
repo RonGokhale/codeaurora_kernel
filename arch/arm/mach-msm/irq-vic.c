@@ -23,6 +23,7 @@
 #include <linux/io.h>
 
 #include <asm/cacheflush.h>
+#include <asm/io.h>
 
 #include <mach/hardware.h>
 
@@ -233,6 +234,7 @@ static void msm_irq_ack(unsigned int irq)
 	void __iomem *reg = VIC_INT_TO_REG_ADDR(VIC_INT_CLEAR0, irq);
 	irq = 1 << (irq & 31);
 	writel(irq, reg);
+	dsb();
 }
 
 static void msm_irq_disable(unsigned int irq)
@@ -245,6 +247,7 @@ static void msm_irq_disable(unsigned int irq)
 	if (!(msm_irq_shadow_reg[index].int_en[1] & mask)) {
 		msm_irq_shadow_reg[index].int_en[0] &= ~mask;
 		writel(mask, reg);
+		dsb();
 		if (smsm_irq == 0)
 			msm_irq_idle_disable[index] &= ~mask;
 		else {
@@ -263,6 +266,7 @@ static void msm_irq_mask(unsigned int irq)
 
 	msm_irq_shadow_reg[index].int_en[0] &= ~mask;
 	writel(mask, reg);
+	dsb();
 	if (smsm_irq == 0)
 		msm_irq_idle_disable[index] &= ~mask;
 	else {
@@ -280,6 +284,7 @@ static void msm_irq_unmask(unsigned int irq)
 
 	msm_irq_shadow_reg[index].int_en[0] |= mask;
 	writel(mask, reg);
+	dsb();
 
 	if (smsm_irq == 0)
 		msm_irq_idle_disable[index] |= mask;
@@ -342,6 +347,7 @@ static int msm_irq_set_type(unsigned int irq, unsigned int flow_type)
 		irq_desc[irq].handle_irq = handle_level_irq;
 	}
 	writel(type, treg);
+	dsb();
 	msm_irq_shadow_reg[index].int_type = type;
 	return 0;
 }
@@ -445,6 +451,7 @@ int msm_irq_enter_sleep2(bool modem_wake, int from_idle)
 			writel(msm_irq_shadow_reg[i].int_en[1],
 						VIC_INT_ENSET0 + (i * 4));
 	}
+	dsb();
 
 	return 0;
 }
@@ -472,6 +479,7 @@ void msm_irq_exit_sleep1(uint32_t irq_mask, uint32_t wakeup_reason,
 	}
 
 	writel(3, VIC_INT_MASTEREN);
+	dsb();
 
 	if (msm_irq_debug_mask & IRQ_DEBUG_SLEEP)
 		DPRINT_REGS(VIC_IRQ_STATUS, "%s %x %x %x now",
@@ -523,6 +531,7 @@ void msm_irq_exit_sleep2(uint32_t irq_mask, uint32_t wakeup_reason,
 				"%s: irq %d need trigger, now",
 				__func__, i);
 	}
+	dsb();
 }
 
 /*
@@ -567,14 +576,16 @@ void __init msm_init_irq(void)
 	/* don't use vic */
 	writel(0, VIC_CONFIG);
 
-	/* enable interrupt controller */
-	writel(3, VIC_INT_MASTEREN);
 
 	for (n = 0; n < NR_MSM_IRQS; n++) {
 		set_irq_chip(n, &msm_irq_chip);
 		set_irq_handler(n, handle_level_irq);
 		set_irq_flags(n, IRQF_VALID);
 	}
+
+	/* enable interrupt controller */
+	writel(3, VIC_INT_MASTEREN);
+	dsb();
 }
 
 #if defined(CONFIG_MSM_FIQ_SUPPORT)
@@ -583,6 +594,7 @@ void msm_trigger_irq(int irq)
 	void __iomem *reg = VIC_INT_TO_REG_ADDR(VIC_SOFTINT0, irq);
 	uint32_t mask = 1UL << (irq & 31);
 	writel(mask, reg);
+	dsb();
 }
 
 void msm_fiq_enable(int irq)
@@ -611,6 +623,7 @@ void msm_fiq_select(int irq)
 	local_irq_save(flags);
 	msm_irq_shadow_reg[index].int_select |= mask;
 	writel(msm_irq_shadow_reg[index].int_select, reg);
+	dsb();
 	local_irq_restore(flags);
 }
 
@@ -624,6 +637,7 @@ void msm_fiq_unselect(int irq)
 	local_irq_save(flags);
 	msm_irq_shadow_reg[index].int_select &= (!mask);
 	writel(msm_irq_shadow_reg[index].int_select, reg);
+	dsb();
 	local_irq_restore(flags);
 }
 /* set_fiq_handler originally from arch/arm/kernel/fiq.c */
