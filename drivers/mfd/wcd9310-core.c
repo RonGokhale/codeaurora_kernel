@@ -14,10 +14,12 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/mfd/core.h>
+#include <linux/mfd/pm8xxx/pm8921.h>
 #include <linux/mfd/wcd9310/core.h>
 #include <linux/mfd/wcd9310/pdata.h>
 #include <linux/mfd/wcd9310/registers.h>
 #include <linux/delay.h>
+#include <linux/gpio.h>
 #include <sound/soc.h>
 
 #define TABLA_REGISTER_START_OFFSET 0x800
@@ -216,6 +218,50 @@ static void tabla_bring_down(struct tabla *tabla)
 	tabla_reg_write(tabla, TABLA_A_LEAKAGE_CTL, 0x8);
 }
 
+static int tabla_reset(struct tabla *tabla)
+{
+	int ret;
+	struct pm_gpio param = {
+		.direction      = PM_GPIO_DIR_OUT,
+		.output_buffer  = PM_GPIO_OUT_BUF_CMOS,
+		.output_value   = 1,
+		.pull	   = PM_GPIO_PULL_NO,
+		.vin_sel	= PM_GPIO_VIN_S4,
+		.out_strength   = PM_GPIO_STRENGTH_MED,
+		.function       = PM_GPIO_FUNC_NORMAL,
+	};
+
+	if (tabla->reset_gpio) {
+		ret = gpio_request(tabla->reset_gpio, "CDC_RESET");
+		if (ret) {
+			pr_err("%s: Failed to request gpio %d\n", __func__,
+				tabla->reset_gpio);
+			tabla->reset_gpio = 0;
+			return ret;
+		}
+
+		ret = pm8xxx_gpio_config(tabla->reset_gpio, &param);
+		if (ret)
+			pr_err("%s: Failed to configure gpio\n", __func__);
+
+		gpio_direction_output(tabla->reset_gpio, 1);
+		msleep(20);
+		gpio_direction_output(tabla->reset_gpio, 0);
+		msleep(20);
+		gpio_direction_output(tabla->reset_gpio, 1);
+		msleep(20);
+	}
+	return 0;
+}
+
+static void tabla_free_reset(struct tabla *tabla)
+{
+	if (tabla->reset_gpio) {
+		gpio_free(tabla->reset_gpio);
+		tabla->reset_gpio = 0;
+	}
+}
+
 static int tabla_device_init(struct tabla *tabla, int irq)
 {
 	int ret;
@@ -229,7 +275,7 @@ static int tabla_device_init(struct tabla *tabla, int irq)
 	ret = tabla_irq_init(tabla);
 	if (ret) {
 		pr_err("IRQ initialization failed\n");
-		goto err_irq;
+		goto err;
 	}
 
 	ret = mfd_add_devices(tabla->dev, -1,
@@ -237,21 +283,23 @@ static int tabla_device_init(struct tabla *tabla, int irq)
 			      NULL, 0);
 	if (ret != 0) {
 		dev_err(tabla->dev, "Failed to add children: %d\n", ret);
-		goto err;
+		goto err_irq;
 	}
 
 	return ret;
-err:
-	tabla_irq_exit(tabla);
 err_irq:
+	tabla_irq_exit(tabla);
+err:
 	tabla_bring_down(tabla);
-	kfree(tabla);
+	mutex_destroy(&tabla->io_lock);
+	mutex_destroy(&tabla->xfer_lock);
 	return ret;
 }
 static void tabla_device_exit(struct tabla *tabla)
 {
 	tabla_irq_exit(tabla);
 	tabla_bring_down(tabla);
+	tabla_free_reset(tabla);
 	mutex_destroy(&tabla->io_lock);
 	mutex_destroy(&tabla->xfer_lock);
 	kfree(tabla);
@@ -268,28 +316,35 @@ static int tabla_slim_probe(struct slim_device *slim)
 	if (!pdata) {
 		dev_err(&slim->dev, "Error, no platform data\n");
 		ret = -EINVAL;
-		goto err_initialization;
+		goto err;
 	}
 
 	tabla = kzalloc(sizeof(struct tabla), GFP_KERNEL);
 	if (tabla == NULL) {
 		pr_err("%s: error, allocation failed\n", __func__);
 		ret = -ENOMEM;
-		goto err_initialization;
+		goto err;
 	}
 	if (!slim->ctrl) {
 		pr_err("Error, no SLIMBUS control data\n");
-		goto err_slim;
 		ret = -EINVAL;
+		goto err_tabla;
 	}
 	tabla->slim = slim;
 	slim_set_clientdata(slim, tabla);
+	tabla->reset_gpio = pdata->reset_gpio;
+
+	ret = tabla_reset(tabla);
+	if (ret) {
+		pr_err("%s: Resetting Tabla failed\n", __func__);
+		goto err_tabla;
+	}
 
 	ret = slim_get_logical_addr(tabla->slim, tabla->slim->e_addr,
 		ARRAY_SIZE(tabla->slim->e_addr), &tabla->slim->laddr);
 	if (ret) {
 		pr_err("fail to get slimbus logical address %d\n", ret);
-		goto err_slim;
+		goto err_reset;
 	}
 	tabla->read_dev = tabla_slim_read_device;
 	tabla->write_dev = tabla_slim_write_device;
@@ -299,7 +354,7 @@ static int tabla_slim_probe(struct slim_device *slim)
 	if (pdata->num_irqs < TABLA_NUM_IRQS) {
 		pr_err("%s: Error, not enough interrupt lines allocated\n",
 			__func__);
-		goto err_slim;
+		goto err_reset;
 	}
 
 	tabla->dev = &slim->dev;
@@ -309,7 +364,7 @@ static int tabla_slim_probe(struct slim_device *slim)
 	ret = slim_add_device(slim->ctrl, tabla->slim_slave);
 	if (ret) {
 		pr_err("%s: error, adding SLIMBUS device failed\n", __func__);
-		goto err;
+		goto err_reset;
 	}
 
 	ret = slim_get_logical_addr(tabla->slim_slave,
@@ -318,21 +373,21 @@ static int tabla_slim_probe(struct slim_device *slim)
 			&tabla->slim_slave->laddr);
 	if (ret) {
 		pr_err("fail to get slimbus slave logical address %d\n", ret);
-		goto err;
+		goto err_reset;
 	}
 
 	ret = tabla_device_init(tabla, tabla->irq);
 	if (ret) {
 		pr_err("%s: error, initializing device failed\n", __func__);
-		goto err;
+		goto err_reset;
 	}
 	return ret;
 
-err:
-	kfree(tabla->slim_slave);
-err_slim:
+err_reset:
+	tabla_free_reset(tabla);
+err_tabla:
 	kfree(tabla);
-err_initialization:
+err:
 	return ret;
 }
 static int tabla_slim_remove(struct slim_device *pdev)

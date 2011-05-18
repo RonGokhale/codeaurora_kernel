@@ -20,6 +20,7 @@ struct tabla_pdata {
 	int irq;
 	int irq_base;
 	int num_irqs;
+	int reset_gpio;
 	struct slim_device slimbus_slave_device;
 };
 
