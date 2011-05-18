@@ -1228,6 +1228,11 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&msm_cpudai1,
 	&msm_cpu_fe,
 	&msm_stub_codec,
+	&msm_kgsl_3d0,
+#ifdef CONFIG_MSM_KGSL_2D
+	&msm_kgsl_2d0,
+	&msm_kgsl_2d1,
+#endif
 };
 
 static void __init msm8960_i2c_init(void)
