@@ -632,6 +632,7 @@ struct kgsl_platform_data kgsl_pdata = {
 	.grp2d1_bus_scale_table = &grp2d1_bus_scale_pdata,
 	.nap_allowed = true,
 #endif
+	.pwrrail_first = true,
 #ifdef CONFIG_KGSL_PER_PROCESS_PAGE_TABLE
 	.pt_va_size = SZ_32M,
 	/* Maximum of 32 concurrent processes */

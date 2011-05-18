@@ -549,6 +549,7 @@ kgsl_yamato_init_pwrctrl(struct kgsl_device *device)
 		KGSL_PWRFLAGS_AXI_OFF | KGSL_PWRFLAGS_POWER_OFF |
 		KGSL_PWRFLAGS_IRQ_OFF;
 	device->pwrctrl.nap_allowed = pdata->nap_allowed;
+	device->pwrctrl.pwrrail_first = pdata->pwrrail_first;
 	device->pwrctrl.clk_freq[KGSL_AXI_HIGH] = pdata->high_axi_3d;
 	/* per test, io_fraction default value is set to 33% for best
 	   power/performance result */
@@ -772,12 +773,13 @@ static int kgsl_yamato_start(struct kgsl_device *device, unsigned int init_ram)
 
 	device->state = KGSL_STATE_INIT;
 	device->requested_state = KGSL_STATE_NONE;
-	/* Turn the clocks on before the power.  Required for some platforms,
-	   has no adverse effect on the others */
+	/* Order pwrrail/clk sequence based upon platform. */
+	if (device->pwrctrl.pwrrail_first)
+		kgsl_pwrctrl_pwrrail(device, KGSL_PWRFLAGS_POWER_ON);
 	kgsl_pwrctrl_clk(device, KGSL_PWRFLAGS_CLK_ON);
 	kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_AXI_ON);
-	kgsl_pwrctrl_pwrrail(device, KGSL_PWRFLAGS_POWER_ON);
-
+	if (!device->pwrctrl.pwrrail_first)
+		kgsl_pwrctrl_pwrrail(device, KGSL_PWRFLAGS_POWER_ON);
 	if (kgsl_mmu_start(device))
 		goto error_clk_off;
 
@@ -905,11 +907,12 @@ static int kgsl_yamato_stop(struct kgsl_device *device)
 	kgsl_mmu_stop(device);
 
 	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_IRQ_OFF);
+	if (!device->pwrctrl.pwrrail_first)
+		kgsl_pwrctrl_pwrrail(device, KGSL_PWRFLAGS_POWER_OFF);
 	kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_AXI_OFF);
-	/* For some platforms, power needs to go off before clocks */
-	kgsl_pwrctrl_pwrrail(device, KGSL_PWRFLAGS_POWER_OFF);
 	kgsl_pwrctrl_clk(device, KGSL_PWRFLAGS_CLK_OFF);
-
+	if (device->pwrctrl.pwrrail_first)
+		kgsl_pwrctrl_pwrrail(device, KGSL_PWRFLAGS_POWER_OFF);
 	return 0;
 }
 
