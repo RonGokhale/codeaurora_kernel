@@ -977,6 +977,13 @@ static int s5k4e1_sensor_release(void)
 	mutex_lock(&s5k4e1_mut);
 	s5k4e1_power_down();
 	msleep(20);
+	gpio_set_value_cansleep(s5k4e1_ctrl->sensordata->sensor_reset, 0);
+	usleep_range(5000, 5100);
+	gpio_free(s5k4e1_ctrl->sensordata->sensor_reset);
+	if (s5k4e1_ctrl->sensordata->vcm_enable) {
+		gpio_direction_output(s5k4e1_ctrl->sensordata->vcm_pwd, 0);
+		gpio_free(s5k4e1_ctrl->sensordata->vcm_pwd);
+	}
 	kfree(s5k4e1_ctrl);
 	s5k4e1_ctrl = NULL;
 	CDBG("s5k4e1_release completed\n");
