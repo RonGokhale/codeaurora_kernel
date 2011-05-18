@@ -82,6 +82,18 @@ struct smsm_size_info_type {
 	uint32_t reserved1;
 };
 
+struct smsm_state_cb_info {
+	struct list_head cb_list;
+	uint32_t mask;
+	void *data;
+	void (*notify)(void *data, uint32_t old_state, uint32_t new_state);
+};
+
+struct smsm_state_info {
+	struct list_head callbacks;
+	uint32_t last_value;
+};
+
 #define SMSM_STATE_ADDR(entry)           (smsm_info.state + entry)
 #define SMSM_INTR_MASK_ADDR(entry, host) (smsm_info.intr_mask + \
 					  entry * SMSM_NUM_HOSTS + host)
@@ -182,6 +194,11 @@ static inline void smd_write_intr(unsigned int val,
 static LIST_HEAD(smd_ch_list_loopback);
 static void smd_fake_irq_handler(unsigned long arg);
 
+static void notify_smsm_cb_clients_worker(struct work_struct *work);
+static DECLARE_WORK(smsm_cb_work, notify_smsm_cb_clients_worker);
+static DEFINE_SPINLOCK(smsm_lock);
+static struct smsm_state_info *smsm_states;
+
 static inline void smd_write_intr(unsigned int val,
 				const void __iomem *addr)
 {
@@ -214,6 +231,7 @@ static void notify_other_smsm(uint32_t smsm_entry, uint32_t notify_mask)
 #endif
 		MSM_TRIG_A2Q6_SMSM_INT;
 	}
+	schedule_work(&smsm_cb_work);
 }
 
 static inline void notify_modem_smd(void)
@@ -1657,6 +1675,32 @@ void *smem_find(unsigned id, unsigned size_in)
 	return ptr;
 }
 
+static int smsm_cb_init(void)
+{
+	unsigned long flags;
+	struct smsm_state_info *state_info;
+	int n;
+	int ret = 0;
+
+	smsm_states = kmalloc(sizeof(struct smsm_state_info)*SMSM_NUM_ENTRIES,
+		   GFP_KERNEL);
+
+	if (!smsm_states) {
+		pr_err("%s: SMSM init failed\n", __func__);
+		return -ENOMEM;
+	}
+
+	spin_lock_irqsave(&smsm_lock, flags);
+	for (n = 0; n < SMSM_NUM_ENTRIES; n++) {
+		state_info = &smsm_states[n];
+		state_info->last_value = __raw_readl(SMSM_STATE_ADDR(n));
+		INIT_LIST_HEAD(&state_info->callbacks);
+	}
+	spin_unlock_irqrestore(&smsm_lock, flags);
+
+	return ret;
+}
+
 static int smsm_init(void)
 {
 	struct smem_shared *shared = (void *) MSM_SHARED_RAM_BASE;
@@ -1705,6 +1749,11 @@ static int smsm_init(void)
 		smsm_info.intr_mux = smem_alloc2(SMEM_SMD_SMSM_INTR_MUX,
 						 SMSM_NUM_INTR_MUX *
 						 sizeof(uint32_t));
+
+	i = smsm_cb_init();
+	if (i)
+		return i;
+
 
 	dsb();
 	return 0;
@@ -1815,6 +1864,8 @@ static irqreturn_t smsm_irq_handler(int irq, void *data)
 			do_smd_probe();
 			notify_other_smsm(SMSM_APPS_STATE, (old_apps ^ apps));
 		}
+
+		schedule_work(&smsm_cb_work);
 	}
 	spin_unlock_irqrestore(&smem_lock, flags);
 	return IRQ_HANDLED;
@@ -1915,6 +1966,170 @@ uint32_t smsm_get_state(uint32_t smsm_entry)
 
 	return rv;
 }
+
+/**
+ * Performs SMSM callback client notifiction.
+ */
+void notify_smsm_cb_clients_worker(struct work_struct *work)
+{
+	unsigned long flags;
+	struct smsm_state_cb_info *cb_info;
+	struct smsm_state_info *state_info;
+	int n;
+	uint32_t new_state;
+	uint32_t state_changes;
+
+	spin_lock_irqsave(&smsm_lock, flags);
+
+	if (!smsm_states) {
+		/* smsm not yet initialized */
+		spin_unlock_irqrestore(&smsm_lock, flags);
+		return;
+	}
+
+	for (n = 0; n < SMSM_NUM_ENTRIES; n++) {
+		state_info = &smsm_states[n];
+		new_state = __raw_readl(SMSM_STATE_ADDR(n));
+
+		if (new_state != state_info->last_value) {
+			state_changes = state_info->last_value ^ new_state;
+
+			list_for_each_entry(cb_info,
+				&state_info->callbacks, cb_list) {
+
+				if (cb_info->mask & state_changes)
+					cb_info->notify(cb_info->data,
+						state_info->last_value,
+						new_state);
+			}
+			state_info->last_value = new_state;
+		}
+	}
+
+	spin_unlock_irqrestore(&smsm_lock, flags);
+}
+
+
+/**
+ * Registers callback for SMSM state notifications when the specified
+ * bits change.
+ *
+ * @smsm_entry  Processor entry to deregister
+ * @mask        Bits to deregister (if result is 0, callback is removed)
+ * @notify      Notification function to deregister
+ * @data        Opaque data passed in to callback
+ *
+ * @returns Status code
+ *  <0 error code
+ *  0  inserted new entry
+ *  1  updated mask of existing entry
+ */
+int smsm_state_cb_register(uint32_t smsm_entry, uint32_t mask,
+		void (*notify)(void *, uint32_t, uint32_t), void *data)
+{
+	unsigned long flags;
+	struct smsm_state_cb_info *cb_info;
+	struct smsm_state_cb_info *cb_found = 0;
+	int ret = 0;
+
+	if (smsm_entry >= SMSM_NUM_ENTRIES)
+		return -EINVAL;
+
+	spin_lock_irqsave(&smsm_lock, flags);
+
+	if (!smsm_states) {
+		/* smsm not yet initialized */
+		ret = -ENODEV;
+		goto cleanup;
+	}
+
+	list_for_each_entry(cb_info,
+			&smsm_states[smsm_entry].callbacks, cb_list) {
+		if ((cb_info->notify == notify) &&
+				(cb_info->data == data)) {
+			cb_info->mask |= mask;
+			cb_found = cb_info;
+			ret = 1;
+			break;
+		}
+	}
+
+	if (!cb_found) {
+		cb_info = kmalloc(sizeof(struct smsm_state_cb_info),
+			GFP_ATOMIC);
+		if (!cb_info) {
+			ret = -ENOMEM;
+			goto cleanup;
+		}
+
+		cb_info->mask = mask;
+		cb_info->notify = notify;
+		cb_info->data = data;
+		INIT_LIST_HEAD(&cb_info->cb_list);
+		list_add_tail(&cb_info->cb_list,
+			&smsm_states[smsm_entry].callbacks);
+	}
+
+cleanup:
+	spin_unlock_irqrestore(&smsm_lock, flags);
+	return ret;
+}
+EXPORT_SYMBOL(smsm_state_cb_register);
+
+
+/**
+ * Deregisters for SMSM state notifications for the specified bits.
+ *
+ * @smsm_entry  Processor entry to deregister
+ * @mask        Bits to deregister (if result is 0, callback is removed)
+ * @notify      Notification function to deregister
+ * @data        Opaque data passed in to callback
+ *
+ * @returns Status code
+ *  <0 error code
+ *  0  not found
+ *  1  updated mask
+ *  2  removed callback
+ */
+int smsm_state_cb_deregister(uint32_t smsm_entry, uint32_t mask,
+		void (*notify)(void *, uint32_t, uint32_t), void *data)
+{
+	unsigned long flags;
+	struct smsm_state_cb_info *cb_info;
+	int ret = 0;
+
+	if (smsm_entry >= SMSM_NUM_ENTRIES)
+		return -EINVAL;
+
+	spin_lock_irqsave(&smsm_lock, flags);
+
+	if (!smsm_states) {
+		/* smsm not yet initialized */
+		spin_unlock_irqrestore(&smsm_lock, flags);
+		return -ENODEV;
+	}
+
+	list_for_each_entry(cb_info,
+		&smsm_states[smsm_entry].callbacks, cb_list) {
+		if ((cb_info->notify == notify) &&
+			(cb_info->data == data)) {
+			cb_info->mask &= ~mask;
+			ret = 1;
+			if (!cb_info->mask) {
+				/* no mask bits set, remove callback */
+				list_del(&cb_info->cb_list);
+				kfree(cb_info);
+				ret = 2;
+			}
+			break;
+		}
+	}
+
+	spin_unlock_irqrestore(&smsm_lock, flags);
+	return ret;
+}
+EXPORT_SYMBOL(smsm_state_cb_deregister);
+
 
 int smd_core_init(void)
 {
