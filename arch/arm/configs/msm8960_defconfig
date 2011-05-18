@@ -1669,7 +1669,7 @@ CONFIG_MSM_CAMERA_V4L2=y
 #
 # Camera Sensor Selection
 #
-# CONFIG_IMX074 is not set
+CONFIG_IMX074=y
 # CONFIG_S5K4E1 is not set
 # CONFIG_MSM_CAMERA_FLASH_SC628A is not set
 # CONFIG_IMX072 is not set
