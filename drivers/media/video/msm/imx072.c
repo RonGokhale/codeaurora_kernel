@@ -43,7 +43,16 @@
 #define IMX072_OFFSET		3
 
 /* AF Total steps parameters */
-#define IMX072_TOTAL_STEPS_NEAR_TO_FAR    32
+#define IMX072_AF_I2C_ADDR	0x18
+#define IMX072_TOTAL_STEPS_NEAR_TO_FAR    30
+
+static uint16_t imx072_step_position_table[IMX072_TOTAL_STEPS_NEAR_TO_FAR+1];
+static uint16_t imx072_nl_region_boundary1;
+static uint16_t imx072_nl_region_code_per_step1;
+static uint16_t imx072_l_region_code_per_step = 12;
+static uint16_t imx072_sw_damping_time_wait = 8;
+static uint16_t imx072_af_initial_code = 350;
+static uint16_t imx072_damping_threshold = 10;
 
 struct imx072_work_t {
 	struct work_struct work;
@@ -147,6 +156,7 @@ static int32_t imx072_i2c_read(unsigned short raddr,
 		return rc;
 	}
 	*rdata = (rlen == 2 ? buf[0] << 8 | buf[1] : buf[0]);
+	CDBG("imx072_i2c_read 0x%x val = 0x%x!\n", raddr, *rdata);
 	return rc;
 }
 
@@ -160,7 +170,7 @@ static int32_t imx072_i2c_write_w_sensor(unsigned short waddr,
 	buf[1] = (waddr & 0x00FF);
 	buf[2] = (wdata & 0xFF00) >> 8;
 	buf[3] = (wdata & 0x00FF);
-	pr_err("i2c_write_b addr = 0x%x, val = 0x%x\n", waddr, wdata);
+	CDBG("i2c_write_b addr = 0x%x, val = 0x%x\n", waddr, wdata);
 	rc = imx072_i2c_txdata(imx072_client->addr>>1, buf, 4);
 	if (rc < 0) {
 		pr_err("i2c_write_b failed, addr = 0x%x, val = 0x%x!\n",
@@ -178,12 +188,25 @@ static int32_t imx072_i2c_write_b_sensor(unsigned short waddr,
 	buf[0] = (waddr & 0xFF00) >> 8;
 	buf[1] = (waddr & 0x00FF);
 	buf[2] = bdata;
-	pr_err("i2c_write_b addr = 0x%x, val = 0x%x\n", waddr, bdata);
+	CDBG("i2c_write_b addr = 0x%x, val = 0x%x\n", waddr, bdata);
 	rc = imx072_i2c_txdata(imx072_client->addr>>1, buf, 3);
-	if (rc < 0) {
+	if (rc < 0)
 		pr_err("i2c_write_b failed, addr = 0x%x, val = 0x%x!\n",
 			waddr, bdata);
-	}
+	return rc;
+}
+
+static int32_t imx072_i2c_write_b_af(uint8_t msb, uint8_t lsb)
+{
+	int32_t rc = -EFAULT;
+	unsigned char buf[2];
+
+	buf[0] = msb;
+	buf[1] = lsb;
+	rc = imx072_i2c_txdata(IMX072_AF_I2C_ADDR>>1, buf, 2);
+	if (rc < 0)
+		pr_err("af_i2c_write faield msb = 0x%x lsb = 0x%x",
+			msb, lsb);
 	return rc;
 }
 
@@ -390,7 +413,7 @@ static int32_t imx072_raw_snapshot_config(int mode)
 static int32_t imx072_mode_init(int mode, struct sensor_init_cfg init_info)
 {
 	int32_t rc = 0;
-	pr_err("%s: %d\n", __func__, __LINE__);
+	CDBG("%s: %d\n", __func__, __LINE__);
 	if (mode != imx072_ctrl->cam_mode) {
 		imx072_ctrl->prev_res = init_info.prev_res;
 		imx072_ctrl->pict_res = init_info.pict_res;
@@ -440,9 +463,187 @@ static int32_t imx072_set_sensor_mode(int mode,
 	return rc;
 }
 
+#define DIV_CEIL(x, y) ((x/y + ((x%y) ? 1 : 0)))
+static int32_t imx072_move_focus(int direction,
+	int32_t num_steps)
+{
+	int32_t rc = 0;
+	int16_t step_direction, dest_lens_position, dest_step_position;
+	uint8_t code_val_msb, code_val_lsb;
+	int16_t next_lens_position, target_dist, small_step;
+
+	if (direction == MOVE_NEAR)
+		step_direction = 1;
+	else if (direction == MOVE_FAR)
+		step_direction = -1;
+	else {
+		pr_err("Illegal focus direction\n");
+		return -EINVAL;
+	}
+	dest_step_position = imx072_ctrl->curr_step_pos +
+			(step_direction * num_steps);
+
+	if (dest_step_position < 0)
+		dest_step_position = 0;
+	else if (dest_step_position > IMX072_TOTAL_STEPS_NEAR_TO_FAR)
+		dest_step_position = IMX072_TOTAL_STEPS_NEAR_TO_FAR;
+
+	if (dest_step_position == imx072_ctrl->curr_step_pos) {
+		CDBG("imx072 same position No-Move exit\n");
+		return rc;
+	}
+	CDBG("%s Index = [%d]\n", __func__, dest_step_position);
+
+	dest_lens_position = imx072_step_position_table[dest_step_position];
+	CDBG("%s lens_position value = %d\n", __func__, dest_lens_position);
+	target_dist = step_direction * (dest_lens_position -
+		imx072_ctrl->curr_lens_pos);
+	if (step_direction < 0 && (target_dist >=
+		(imx072_step_position_table[imx072_damping_threshold]
+			- imx072_af_initial_code))) {
+		small_step = DIV_CEIL(target_dist, 10);
+		imx072_sw_damping_time_wait = 30;
+	} else {
+		small_step = DIV_CEIL(target_dist, 4);
+		imx072_sw_damping_time_wait = 20;
+	}
+
+	CDBG("%s: small_step:%d, wait_time:%d\n", __func__, small_step,
+		imx072_sw_damping_time_wait);
+	for (next_lens_position = imx072_ctrl->curr_lens_pos +
+		(step_direction * small_step);
+		(step_direction * next_lens_position) <=
+		(step_direction * dest_lens_position);
+		next_lens_position += (step_direction * small_step)) {
+
+		code_val_msb = ((next_lens_position & 0x03F0) >> 4);
+		code_val_lsb = ((next_lens_position & 0x000F) << 4);
+		CDBG("position value = %d\n", next_lens_position);
+		CDBG("movefocus vcm_msb = %d\n", code_val_msb);
+		CDBG("movefocus vcm_lsb = %d\n", code_val_lsb);
+		rc = imx072_i2c_write_b_af(code_val_msb, code_val_lsb);
+		if (rc < 0) {
+			pr_err("imx072_move_focus failed writing i2c\n");
+			return rc;
+			}
+		imx072_ctrl->curr_lens_pos = next_lens_position;
+		usleep(imx072_sw_damping_time_wait*100);
+	}
+	if (imx072_ctrl->curr_lens_pos != dest_lens_position) {
+		code_val_msb = ((dest_lens_position & 0x03F0) >> 4);
+		code_val_lsb = ((dest_lens_position & 0x000F) << 4);
+		CDBG("position value = %d\n", dest_lens_position);
+		CDBG("movefocus vcm_msb = %d\n", code_val_msb);
+		CDBG("movefocus vcm_lsb = %d\n", code_val_lsb);
+		rc = imx072_i2c_write_b_af(code_val_msb, code_val_lsb);
+		if (rc < 0) {
+			pr_err("imx072_move_focus failed writing i2c\n");
+			return rc;
+			}
+		usleep(imx072_sw_damping_time_wait * 100);
+	}
+	imx072_ctrl->curr_lens_pos = dest_lens_position;
+	imx072_ctrl->curr_step_pos = dest_step_position;
+	return rc;
+
+}
+
+static int32_t imx072_init_focus(void)
+{
+	uint8_t i;
+	int32_t rc = 0;
+
+	imx072_step_position_table[0] = imx072_af_initial_code;
+	for (i = 1; i <= IMX072_TOTAL_STEPS_NEAR_TO_FAR; i++) {
+		if (i <= imx072_nl_region_boundary1)
+			imx072_step_position_table[i] =
+				imx072_step_position_table[i-1]
+				+ imx072_nl_region_code_per_step1;
+		else
+			imx072_step_position_table[i] =
+				imx072_step_position_table[i-1]
+				+ imx072_l_region_code_per_step;
+
+		if (imx072_step_position_table[i] > 1023)
+			imx072_step_position_table[i] = 1023;
+	}
+	imx072_ctrl->curr_lens_pos = 0;
+
+	return rc;
+}
+
+static int32_t imx072_set_default_focus(void)
+{
+	int32_t rc = 0;
+	uint8_t code_val_msb, code_val_lsb;
+	int16_t dest_lens_position = 0;
+
+	CDBG("%s Index = [%d]\n", __func__, 0);
+	if (imx072_ctrl->curr_step_pos != 0)
+		rc = imx072_move_focus(MOVE_FAR,
+		imx072_ctrl->curr_step_pos);
+	else {
+		dest_lens_position = imx072_af_initial_code;
+		code_val_msb = ((dest_lens_position & 0x03F0) >> 4);
+		code_val_lsb = ((dest_lens_position & 0x000F) << 4);
+
+		CDBG("position value = %d\n", dest_lens_position);
+		CDBG("movefocus vcm_msb = %d\n", code_val_msb);
+		CDBG("movefocus vcm_lsb = %d\n", code_val_lsb);
+		rc = imx072_i2c_write_b_af(code_val_msb, code_val_lsb);
+		if (rc < 0) {
+			pr_err("imx072_set_default_focus failed writing i2c\n");
+			return rc;
+		}
+
+		imx072_ctrl->curr_lens_pos = dest_lens_position;
+		imx072_ctrl->curr_step_pos = 0;
+
+	}
+	usleep(5000);
+	return rc;
+}
+
+static int32_t imx072_af_power_down(void)
+{
+	int32_t rc = 0;
+	int32_t i = 0;
+	int16_t dest_lens_position = imx072_af_initial_code;
+
+	if (imx072_ctrl->curr_lens_pos != 0) {
+		rc = imx072_set_default_focus();
+		CDBG("%s after imx072_set_default_focus\n", __func__);
+		msleep(40);
+		/*to avoid the sound during the power off.
+		brings the actuator to mechanical infinity gradually.*/
+		for (i = 0; i < IMX072_TOTAL_STEPS_NEAR_TO_FAR; i++) {
+			dest_lens_position = dest_lens_position -
+				(imx072_af_initial_code /
+					IMX072_TOTAL_STEPS_NEAR_TO_FAR);
+			CDBG("position value = %d\n", dest_lens_position);
+			rc = imx072_i2c_write_b_af(
+				((dest_lens_position & 0x03F0) >> 4),
+				((dest_lens_position & 0x000F) << 4));
+			CDBG("count = %d\n", i);
+			msleep(20);
+			if (rc < 0) {
+				pr_err("imx072_set_default_focus failed writing i2c\n");
+				return rc;
+			}
+		}
+		rc = imx072_i2c_write_b_af(0x00, 00);
+		msleep(40);
+	}
+	rc = imx072_i2c_write_b_af(0x80, 00);
+	return rc;
+}
+
 static int32_t imx072_power_down(void)
 {
-	return 0;
+	int32_t rc = 0;
+
+	rc = imx072_af_power_down();
+	return rc;
 }
 
 static int imx072_probe_init_done(const struct msm_camera_sensor_info *data)
@@ -457,9 +658,10 @@ static int imx072_probe_init_sensor(
 {
 	int32_t rc = 0;
 	uint16_t chipid = 0;
-	pr_err("%s: %d\n", __func__, __LINE__);
+
+	CDBG("%s: %d\n", __func__, __LINE__);
 	rc = gpio_request(data->sensor_reset, "imx072");
-	pr_err(" imx072_probe_init_sensor\n");
+	CDBG(" imx072_probe_init_sensor\n");
 	if (!rc) {
 		pr_err("sensor_reset = %d\n", rc);
 		gpio_direction_output(data->sensor_reset, 0);
@@ -470,9 +672,9 @@ static int imx072_probe_init_sensor(
 		goto init_probe_done;
 	}
 
-	pr_err(" imx072_probe_init_sensor is called\n");
+	CDBG(" imx072_probe_init_sensor is called\n");
 	rc = imx072_i2c_read(0x0, &chipid, 2);
-	pr_err("ID: %d\n", chipid);
+	CDBG("ID: %d\n", chipid);
 	/* 4. Compare sensor ID to IMX072 ID: */
 	if (chipid != 0x0045) {
 		rc = -ENODEV;
@@ -492,9 +694,8 @@ init_probe_done:
 int imx072_sensor_open_init(const struct msm_camera_sensor_info *data)
 {
 	int32_t rc = 0;
-	pr_err("%s: %d\n", __func__, __LINE__);
-	pr_err("Calling imx072_sensor_open_init\n");
 
+	CDBG("%s: %d\n", __func__, __LINE__);
 	imx072_ctrl = kzalloc(sizeof(struct imx072_ctrl_t), GFP_KERNEL);
 	if (!imx072_ctrl) {
 		pr_err("imx072_init failed!\n");
@@ -512,13 +713,14 @@ int imx072_sensor_open_init(const struct msm_camera_sensor_info *data)
 		pr_err("Calling imx072_sensor_open_init fail1\n");
 		return rc;
 	}
-	pr_err("%s: %d\n", __func__, __LINE__);
+	CDBG("%s: %d\n", __func__, __LINE__);
 	/* enable mclk first */
 	msm_camio_clk_rate_set(IMX072_MASTER_CLK_RATE);
 	rc = imx072_probe_init_sensor(data);
 	if (rc < 0)
 		goto init_fail;
 
+	imx072_init_focus();
 	imx072_ctrl->fps = 30*Q8;
 	if (rc < 0) {
 		gpio_set_value_cansleep(data->sensor_reset, 0);
@@ -549,7 +751,7 @@ static int imx072_i2c_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
 {
 	int rc = 0;
-	pr_err("imx072_probe called!\n");
+	CDBG("imx072_probe called!\n");
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		pr_err("i2c_check_functionality failed\n");
@@ -570,7 +772,7 @@ static int imx072_i2c_probe(struct i2c_client *client,
 
 	msleep(50);
 
-	pr_err("imx072_probe successed! rc = %d\n", rc);
+	CDBG("imx072_probe successed! rc = %d\n", rc);
 	return 0;
 
 probe_failure:
@@ -611,7 +813,7 @@ int imx072_sensor_config(void __user *argp)
 		sizeof(struct sensor_cfg_data)))
 		return -EFAULT;
 	mutex_lock(&imx072_mut);
-	pr_err("imx072_sensor_config: cfgtype = %d\n",
+	CDBG("imx072_sensor_config: cfgtype = %d\n",
 		 cdata.cfgtype);
 	switch (cdata.cfgtype) {
 	case CFG_GET_PICT_FPS:
@@ -690,8 +892,11 @@ int imx072_sensor_config(void __user *argp)
 		rc = imx072_power_down();
 		break;
 	case CFG_MOVE_FOCUS:
+		rc = imx072_move_focus(cdata.cfg.focus.dir,
+				cdata.cfg.focus.steps);
 		break;
 	case CFG_SET_DEFAULT_FOCUS:
+		imx072_set_default_focus();
 		break;
 	case CFG_GET_AF_MAX_STEPS:
 		cdata.max_steps = IMX072_TOTAL_STEPS_NEAR_TO_FAR;
@@ -820,6 +1025,100 @@ DEFINE_SIMPLE_ATTRIBUTE(cam_stream, cam_debug_stream_get,
 			cam_debug_stream_set, "%llu\n");
 
 
+
+static int imx072_set_af_codestep(void *data, u64 val)
+{
+	imx072_l_region_code_per_step = val;
+	imx072_init_focus();
+	return 0;
+}
+
+static int imx072_get_af_codestep(void *data, u64 *val)
+{
+	*val = imx072_l_region_code_per_step;
+	return 0;
+}
+
+static uint16_t imx072_linear_total_step = IMX072_TOTAL_STEPS_NEAR_TO_FAR;
+static int imx072_set_linear_total_step(void *data, u64 val)
+{
+	imx072_linear_total_step = val;
+	return 0;
+}
+
+static int imx072_af_linearity_test(void *data, u64 *val)
+{
+	int i = 0;
+
+	imx072_set_default_focus();
+	msleep(3000);
+	for (i = 0; i < imx072_linear_total_step; i++) {
+		imx072_move_focus(MOVE_NEAR, 1);
+		CDBG("moved to index =[%d]\n", i);
+		msleep(1000);
+	}
+
+	for (i = 0; i < imx072_linear_total_step; i++) {
+		imx072_move_focus(MOVE_FAR, 1);
+		CDBG("moved to index =[%d]\n", i);
+		msleep(1000);
+	}
+	return 0;
+}
+
+static uint16_t imx072_step_val = IMX072_TOTAL_STEPS_NEAR_TO_FAR;
+static uint8_t imx072_step_dir = MOVE_NEAR;
+static int imx072_af_step_config(void *data, u64 val)
+{
+	imx072_step_val = val & 0xFFFF;
+	imx072_step_dir = (val >> 16) & 0x1;
+	return 0;
+}
+
+static int imx072_af_step(void *data, u64 *val)
+{
+	int i = 0;
+	int dir = MOVE_NEAR;
+	imx072_set_default_focus();
+	msleep(3000);
+	if (imx072_step_dir == 1)
+		dir = MOVE_FAR;
+
+	for (i = 0; i < imx072_step_val; i += 4) {
+		imx072_move_focus(dir, 4);
+		msleep(1000);
+	}
+	imx072_set_default_focus();
+	msleep(3000);
+	return 0;
+}
+
+static int imx072_af_set_resolution(void *data, u64 val)
+{
+	imx072_init_focus();
+	return 0;
+}
+
+static int imx072_af_get_resolution(void *data, u64 *val)
+{
+	*val = 0xFF;
+	return 0;
+}
+
+
+
+DEFINE_SIMPLE_ATTRIBUTE(af_codeperstep, imx072_get_af_codestep,
+			imx072_set_af_codestep, "%llu\n");
+
+DEFINE_SIMPLE_ATTRIBUTE(af_linear, imx072_af_linearity_test,
+			imx072_set_linear_total_step, "%llu\n");
+
+DEFINE_SIMPLE_ATTRIBUTE(af_step, imx072_af_step,
+			imx072_af_step_config, "%llu\n");
+
+DEFINE_SIMPLE_ATTRIBUTE(af_step_res, imx072_af_get_resolution,
+			imx072_af_set_resolution, "%llu\n");
+
 static int cam_debug_init(void)
 {
 	struct dentry *cam_dir;
@@ -834,6 +1133,21 @@ static int cam_debug_init(void)
 	if (!debugfs_create_file("stream", S_IRUGO | S_IWUSR, cam_dir,
 							 NULL, &cam_stream))
 		return -ENOMEM;
+
+	if (!debugfs_create_file("af_codeperstep", S_IRUGO | S_IWUSR, cam_dir,
+							 NULL, &af_codeperstep))
+		return -ENOMEM;
+	if (!debugfs_create_file("af_linear", S_IRUGO | S_IWUSR, cam_dir,
+							 NULL, &af_linear))
+		return -ENOMEM;
+	if (!debugfs_create_file("af_step", S_IRUGO | S_IWUSR, cam_dir,
+							 NULL, &af_step))
+		return -ENOMEM;
+
+	if (!debugfs_create_file("af_step_res", S_IRUGO | S_IWUSR, cam_dir,
+							 NULL, &af_step_res))
+		return -ENOMEM;
+
 	return 0;
 }
 #endif
