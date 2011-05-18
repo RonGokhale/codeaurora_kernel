@@ -868,19 +868,19 @@ static int _smem_log_init(void)
 	ret = remote_spin_lock_init(&remote_spinlock,
 			      SMEM_SPINLOCK_SMEM_LOG);
 	if (ret) {
-		dsb();
+		mb();
 		return ret;
 	}
 
 	ret = remote_spin_lock_init(&remote_spinlock_static,
 			      SMEM_SPINLOCK_STATIC_LOG);
 	if (ret) {
-		dsb();
+		mb();
 		return ret;
 	}
 
 	init_syms();
-	dsb();
+	mb();
 
 	return 0;
 }
