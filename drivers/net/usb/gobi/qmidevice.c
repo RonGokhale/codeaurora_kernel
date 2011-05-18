@@ -1227,7 +1227,11 @@ static ssize_t devqmi_write(struct file *file, const char __user * buf,
 		return -EBADR;
 	}
 
+	if (size + qmux_size <= size)
+		return -EINVAL;
+
 	wbuf = buffer_new(size + qmux_size);
+
 	if (!wbuf)
 		return -ENOMEM;
 	status = copy_from_user(buffer_data(wbuf) + qmux_size, buf, size);
