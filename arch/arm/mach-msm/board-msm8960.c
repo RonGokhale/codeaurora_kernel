@@ -1712,7 +1712,7 @@ MACHINE_START(MSM8960_CDP, "QCT MSM8960 CDP")
 	.init_early = msm8960_allocate_memory_regions,
 MACHINE_END
 
-MACHINE_START(MSM8960_MDP, "QCT MSM8960 MTP")
+MACHINE_START(MSM8960_MTP, "QCT MSM8960 MTP")
 	.map_io = msm8960_map_io,
 	.reserve = msm8960_reserve,
 	.init_irq = msm8960_init_irq,
