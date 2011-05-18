@@ -2144,6 +2144,7 @@ static struct branch_clk adm0_clk = {
 		.halt_bit = 14,
 		.test_vector = TEST_PER_HS(0x2A),
 	},
+	.parent = &pxo_clk.c,
 	.c = {
 		.dbg_name = "adm0_clk",
 		.ops = &clk_ops_branch,
@@ -2178,6 +2179,7 @@ static struct branch_clk adm1_clk = {
 		.halt_bit = 12,
 		.test_vector = TEST_PER_HS(0x2B),
 	},
+	.parent = &pxo_clk.c,
 	.c = {
 		.dbg_name = "adm1_clk",
 		.ops = &clk_ops_branch,
