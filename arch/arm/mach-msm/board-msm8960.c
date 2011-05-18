@@ -24,6 +24,7 @@
 #ifdef CONFIG_ANDROID_PMEM
 #include <linux/android_pmem.h>
 #endif
+#include <linux/cyttsp.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -375,6 +376,66 @@ static struct msm_gpiomux_config msm8960_cam_configs[] __initdata = {
 	},
 };
 
+static struct gpiomux_setting cyts_resout_sus_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_6MA,
+	.pull = GPIOMUX_PULL_UP,
+};
+
+static struct gpiomux_setting cyts_resout_act_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_6MA,
+	.pull = GPIOMUX_PULL_UP,
+};
+
+static struct gpiomux_setting cyts_sleep_sus_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_6MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct gpiomux_setting cyts_sleep_act_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_6MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct gpiomux_setting cyts_int_act_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_UP,
+};
+
+static struct gpiomux_setting cyts_int_sus_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_UP,
+};
+
+
+static struct msm_gpiomux_config msm8960_cyts_configs[] __initdata = {
+	{	/* TS INTERRUPT */
+		.gpio = 11,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cyts_int_act_cfg,
+			[GPIOMUX_SUSPENDED] = &cyts_int_sus_cfg,
+		},
+	},
+	{	/* TS SLEEP */
+		.gpio = 50,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cyts_sleep_act_cfg,
+			[GPIOMUX_SUSPENDED] = &cyts_sleep_sus_cfg,
+		},
+	},
+	{	/* TS RESOUT */
+		.gpio = 52,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &cyts_resout_act_cfg,
+			[GPIOMUX_SUSPENDED] = &cyts_resout_sus_cfg,
+		},
+	},
+};
 
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x110C000
 #define MSM_PMEM_ADSP_SIZE         0x3800000
@@ -721,6 +782,9 @@ static int __init gpiomux_init(void)
 
 	msm_gpiomux_install(msm8960_gsbi_configs,
 			ARRAY_SIZE(msm8960_gsbi_configs));
+
+	msm_gpiomux_install(msm8960_cyts_configs,
+			ARRAY_SIZE(msm8960_cyts_configs));
 
 	return 0;
 }
@@ -1096,6 +1160,106 @@ static struct msm_spm_platform_data msm_spm_data[] __initdata = {
 		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_0] = 0x00A000AE,
 		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_1] = 0x00A00020,
 		.modes = NULL,
+	},
+};
+
+#define CYTTSP_TS_GPIO_IRQ		11
+#define CYTTSP_TS_SLEEP_GPIO		50
+#define CYTTSP_TS_RESOUT_N_GPIO		52
+
+/*virtual key support */
+static ssize_t tma340_vkeys_show(struct kobject *kobj,
+			struct kobj_attribute *attr, char *buf)
+{
+	return snprintf(buf, 200,
+	__stringify(EV_KEY) ":" __stringify(KEY_BACK) ":90:1057:97:120"
+	":" __stringify(EV_KEY) ":" __stringify(KEY_MENU) ":220:1057:97:120"
+	":" __stringify(EV_KEY) ":" __stringify(KEY_HOME) ":370:1057:97:120"
+	":" __stringify(EV_KEY) ":" __stringify(KEY_SEARCH) ":520:1057:97:120"
+	"\n");
+}
+
+static struct kobj_attribute tma340_vkeys_attr = {
+	.attr = {
+		.mode = S_IRUGO,
+	},
+	.show = &tma340_vkeys_show,
+};
+
+static struct attribute *tma340_properties_attrs[] = {
+	&tma340_vkeys_attr.attr,
+	NULL
+};
+
+static struct attribute_group tma340_properties_attr_group = {
+	.attrs = tma340_properties_attrs,
+};
+
+
+static int cyttsp_platform_init(struct i2c_client *client)
+{
+	int rc = 0;
+	static struct kobject *tma340_properties_kobj;
+
+	tma340_vkeys_attr.attr.name = "virtualkeys.cyttsp-i2c";
+	tma340_properties_kobj = kobject_create_and_add("board_properties",
+								NULL);
+	if (tma340_properties_kobj)
+		rc = sysfs_create_group(tma340_properties_kobj,
+					&tma340_properties_attr_group);
+	if (!tma340_properties_kobj || rc)
+		pr_err("%s: failed to create board_properties\n",
+				__func__);
+
+	return 0;
+}
+
+static struct cyttsp_platform_data cyttsp_pdata = {
+	.panel_maxx = 634,
+	.panel_maxy = 1166,
+	.disp_maxx = 616,
+	.disp_maxy = 1023,
+	.disp_minx = 0,
+	.disp_miny = 16,
+	.flags = 0x01,
+	.gen = CY_GEN3,	/* or */
+	.use_st = CY_USE_ST,
+	.use_mt = CY_USE_MT,
+	.use_hndshk = CY_SEND_HNDSHK,
+	.use_trk_id = CY_USE_TRACKING_ID,
+	.use_sleep = CY_USE_SLEEP,
+	.use_gestures = CY_USE_GESTURES,
+	/* activate up to 4 groups
+	 * and set active distance
+	 */
+	.gest_set = CY_GEST_GRP1 | CY_GEST_GRP2 |
+				CY_GEST_GRP3 | CY_GEST_GRP4 |
+				CY_ACT_DIST,
+	/* change act_intrvl to customize the Active power state
+	 * scanning/processing refresh interval for Operating mode
+	 */
+	.act_intrvl = CY_ACT_INTRVL_DFLT,
+	/* change tch_tmout to customize the touch timeout for the
+	 * Active power state for Operating mode
+	 */
+	.tch_tmout = CY_TCH_TMOUT_DFLT,
+	/* change lp_intrvl to customize the Low Power power state
+	 * scanning/processing refresh interval for Operating mode
+	 */
+	.lp_intrvl = CY_LP_INTRVL_DFLT,
+	.sleep_gpio = CYTTSP_TS_SLEEP_GPIO,
+	.resout_gpio = CYTTSP_TS_RESOUT_N_GPIO,
+	.irq_gpio = CYTTSP_TS_GPIO_IRQ,
+	.init = cyttsp_platform_init,
+};
+
+static struct i2c_board_info cyttsp_info[] __initdata = {
+	{
+		I2C_BOARD_INFO(CY_I2C_NAME, 0x24),
+		.platform_data = &cyttsp_pdata,
+#ifndef CY_USE_TIMER
+		.irq = MSM_GPIO_TO_INT(CYTTSP_TS_GPIO_IRQ),
+#endif /* CY_USE_TIMER */
 	},
 };
 
@@ -1554,6 +1718,12 @@ static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 		ARRAY_SIZE(msm_camera_boardinfo),
 	},
 #endif
+	{
+		I2C_SURF | I2C_FFA | I2C_FLUID,
+		MSM_8960_GSBI3_QUP_I2C_BUS_ID,
+		cyttsp_info,
+		ARRAY_SIZE(cyttsp_info),
+	}
 };
 #endif /* CONFIG_I2C */
 
