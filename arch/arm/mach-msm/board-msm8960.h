@@ -29,4 +29,10 @@ extern struct pm8921_regulator_platform_data
 
 extern int msm_pm8921_regulator_pdata_len __devinitdata;
 
+#define GPIO_VREG_ID_EXT_5V		0
+#define GPIO_VREG_ID_EXT_L2		1
+
+extern struct gpio_regulator_platform_data
+	msm_gpio_regulator_pdata[] __devinitdata;
+
 #endif
