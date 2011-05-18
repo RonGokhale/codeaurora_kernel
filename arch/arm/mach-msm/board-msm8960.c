@@ -1249,7 +1249,7 @@ static void __init msm8960_init_buses(void)
 }
 
 static struct msm_spi_platform_data msm8960_qup_spi_gsbi1_pdata = {
-	.max_clock_speed = 1100000,
+	.max_clock_speed = 15060000,
 };
 
 static struct usb_mass_storage_platform_data mass_storage_pdata = {
