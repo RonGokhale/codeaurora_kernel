@@ -20,6 +20,41 @@ struct embedded_sdio_data {
         int num_funcs;
 };
 
+/* This structure keeps information per regulator */
+struct msm_mmc_reg_data {
+	/* voltage regulator handle */
+	struct regulator *reg;
+	/* regulator name */
+	const char *name;
+	/* voltage level to be set */
+	unsigned int level;
+	/* Load values for low power and high power mode */
+	unsigned int lpm_uA;
+	unsigned int hpm_uA;
+	/*
+	 * is set voltage supported for this regulator?
+	 * false => set voltage is not supported
+	 * true  => set voltage is supported
+	 */
+	bool set_voltage_sup;
+	/* is this regulator enabled? */
+	bool is_enabled;
+	/* is this regulator needs to be always on? */
+	bool always_on;
+	/* is low power mode setting required for this regulator? */
+	bool lpm_sup;
+};
+
+/*
+ * This structure keeps information for all the
+ * regulators required for a SDCC slot.
+ */
+struct msm_mmc_slot_reg_data {
+	struct msm_mmc_reg_data *vdd_data; /* keeps VDD/VCC regulator info */
+	struct msm_mmc_reg_data *vccq_data; /* keeps VCCQ regulator info */
+	struct msm_mmc_reg_data *vddp_data; /* keeps VDD Pad regulator info */
+};
+
 struct mmc_platform_data {
 	unsigned int ocr_mask;			/* available voltages */
 	u32 (*translate_vdd)(struct device *, unsigned int);
@@ -40,6 +75,7 @@ struct mmc_platform_data {
 	bool pclk_src_dfab;
 	int (*cfg_mpm_sdiowakeup)(struct device *, unsigned);
 	bool sdcc_v4_sup;
+	struct msm_mmc_slot_reg_data *vreg_data;
 };
 
 #endif
