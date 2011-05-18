@@ -39,6 +39,7 @@
 #include <linux/memory.h>
 #include <linux/pm_runtime.h>
 #include <linux/wakelock.h>
+#include <linux/gpio.h>
 #include <linux/regulator/consumer.h>
 
 #include <asm/cacheflush.h>
@@ -1916,16 +1917,33 @@ int msmsdcc_set_pwrsave(struct mmc_host *mmc, int pwrsave)
 
 static int msmsdcc_get_ro(struct mmc_host *mmc)
 {
-	int wpswitch_status = -ENOSYS;
+	int status = -ENOSYS;
 	struct msmsdcc_host *host = mmc_priv(mmc);
 
 	if (host->plat->wpswitch) {
-		wpswitch_status = host->plat->wpswitch(mmc_dev(mmc));
-		if (wpswitch_status < 0)
-			wpswitch_status = -ENOSYS;
+		status = host->plat->wpswitch(mmc_dev(mmc));
+	} else if (host->plat->wpswitch_gpio) {
+		status = gpio_request(host->plat->wpswitch_gpio,
+					"SD_WP_Switch");
+		if (status) {
+			pr_err("%s: %s: Failed to request GPIO %d\n",
+				mmc_hostname(mmc), __func__,
+				host->plat->wpswitch_gpio);
+		} else {
+			status = gpio_direction_input(
+					host->plat->wpswitch_gpio);
+			if (!status)
+				status = gpio_get_value_cansleep(
+						host->plat->wpswitch_gpio);
+			gpio_free(host->plat->wpswitch_gpio);
+		}
 	}
-	pr_debug("%s: Card read-only status %d\n", __func__, wpswitch_status);
-	return wpswitch_status;
+
+	if (status < 0)
+		status = -ENOSYS;
+	pr_debug("%s: Card read-only status %d\n", __func__, status);
+
+	return status;
 }
 
 #ifdef CONFIG_MMC_MSM_SDIO_SUPPORT
