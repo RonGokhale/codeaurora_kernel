@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -32,5 +32,6 @@
 
 int set_grp2d_async(void);
 int set_grp3d_async(void);
+int set_grp_xbar_async(void);
 
 #endif  /* _DAL_AXI_H */
