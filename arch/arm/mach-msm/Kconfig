@@ -154,6 +154,7 @@ config  ARCH_MSM_SCORPIONMP
 	bool
 config  ARCH_MSM_CORTEX_A5
 	bool
+	select HAVE_HW_BRKPT_RESERVED_RW_ACCESS
 
 config ARCH_QSD8X50A
 	bool
