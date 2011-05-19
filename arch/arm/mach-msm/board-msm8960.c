@@ -164,6 +164,8 @@ static void __init pm8921_gpio_mpp_init(void)
 	}
 }
 
+#define FPGA_CS_GPIO		14
+#define KS8851_RST_GPIO		89
 #define KS8851_IRQ_GPIO		90
 
 static struct gpiomux_setting gsbi1 = {
@@ -190,7 +192,7 @@ static struct gpiomux_setting gsbi5 = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
-static struct gpiomux_setting gpio_eth_irq_config = {
+static struct gpiomux_setting gpio_eth_config = {
 	.pull = GPIOMUX_PULL_NONE,
 	.drv = GPIOMUX_DRV_8MA,
 	.func = GPIOMUX_FUNC_GPIO,
@@ -200,7 +202,19 @@ struct msm_gpiomux_config msm8960_gpiomux_configs[NR_GPIO_IRQS] = {
 	{
 		.gpio = KS8851_IRQ_GPIO,
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gpio_eth_irq_config,
+			[GPIOMUX_SUSPENDED] = &gpio_eth_config,
+		}
+	},
+	{
+		.gpio = KS8851_RST_GPIO,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gpio_eth_config,
+		}
+	},
+	{
+		.gpio = FPGA_CS_GPIO,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gpio_eth_config,
 		}
 	},
 };
@@ -780,6 +794,9 @@ static int __init gpiomux_init(void)
 
 	msm_gpiomux_install(msm8960_cam_configs,
 			ARRAY_SIZE(msm8960_cam_configs));
+
+	msm_gpiomux_install(msm8960_gpiomux_configs,
+			ARRAY_SIZE(msm8960_gsbi_configs));
 
 	msm_gpiomux_install(msm8960_gsbi_configs,
 			ARRAY_SIZE(msm8960_gsbi_configs));
@@ -1679,12 +1696,36 @@ static struct msm_ssbi_platform_data msm8960_ssbi_pm8921_pdata __devinitdata = {
 	},
 };
 
-static void ethernet_init(void)
+static int ethernet_init(void)
 {
 	int ret;
 	ret = gpio_request(KS8851_IRQ_GPIO, "ks8851_irq");
-	if (ret)
+	if (ret) {
 		pr_err("ks8851 gpio_request failed: %d\n", ret);
+		goto fail;
+	}
+
+	ret = gpio_request(KS8851_RST_GPIO, "ks8851_rst");
+	if (ret) {
+		pr_err("ks8851 gpio_request failed: %d\n", ret);
+		goto fail_rst;
+	}
+
+	ret = gpio_request(FPGA_CS_GPIO, "fpga_cs");
+	if (ret) {
+		pr_err("ks8851 gpio_request failed: %d\n", ret);
+		goto fail_cs;
+	}
+
+	gpio_direction_output(FPGA_CS_GPIO, 1);
+	gpio_direction_output(KS8851_RST_GPIO, 1);
+	return 0;
+fail_cs:
+	gpio_free(KS8851_RST_GPIO);
+fail_rst:
+	gpio_free(KS8851_IRQ_GPIO);
+fail:
+	return ret;
 }
 
 #ifdef CONFIG_PM
