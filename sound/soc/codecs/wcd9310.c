@@ -298,7 +298,7 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 	/*RX stuff */
 	SND_SOC_DAPM_OUTPUT("EAR"),
 
-	SND_SOC_DAPM_PGA_E("EAR PA", TABLA_A_RX_EAR_EN, 3, 0, NULL, 0,
+	SND_SOC_DAPM_PGA_E("EAR PA", TABLA_A_RX_EAR_EN, 4, 0, NULL, 0,
 		tabla_codec_enable_pamp_gain, SND_SOC_DAPM_POST_PMU |
 			SND_SOC_DAPM_PRE_PMD),
 
@@ -746,6 +746,8 @@ static int tabla_codec_probe(struct snd_soc_codec *codec)
 	snd_soc_update_bits(codec, TABLA_A_MICB_CFILT_1_CTL, 0x00, 0x00);
 	snd_soc_update_bits(codec, TABLA_A_MICB_CFILT_2_CTL, 0x00, 0x00);
 	snd_soc_update_bits(codec, TABLA_A_MICB_CFILT_3_CTL, 0x00, 0x00);
+
+	snd_soc_update_bits(codec, TABLA_A_CDC_CONN_CLSG_CTL, 0x30, 0x10);
 
 	snd_soc_add_controls(codec, tabla_snd_controls,
 		ARRAY_SIZE(tabla_snd_controls));
