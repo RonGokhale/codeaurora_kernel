@@ -146,6 +146,10 @@ struct mipi_panel_info {
 	char mdp_trigger;
 	char dma_trigger;
 	uint32 dsi_pclk_rate;
+	/* Pad width */
+	uint32 xres_pad;
+	/* Pad height */
+	uint32 yres_pad;
 };
 
 struct msm_panel_info {

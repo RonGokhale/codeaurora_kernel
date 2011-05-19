@@ -302,6 +302,7 @@ static void mipi_dsi_calibration(void)
 	uint32 data;
 
 	MIPI_OUTP(MIPI_DSI_BASE + 0xf4, 0x0000ff11); /* cal_ctrl */
+	MIPI_OUTP(MIPI_DSI_BASE + 0xf8, 0x00a105a1); /* cal_hw_ctrl */
 	MIPI_OUTP(MIPI_DSI_BASE + 0xf0, 0x01); /* cal_hw_trigger */
 
 	while (1) {
@@ -311,8 +312,9 @@ static void mipi_dsi_calibration(void)
 
 		udelay(10);
 	}
-#endif
+#else
 	MIPI_OUTP(MIPI_DSI_BASE + 0xf8, 0x00a105a1); /* cal_hw_ctrl */
+#endif
 }
 
 struct dsiphy_pll_divider_config {
@@ -344,14 +346,14 @@ struct dsi_clk_mnd_table {
 static struct dsiphy_pll_divider_config pll_divider_config;
 
 static const struct dsi_clk_mnd_table mnd_table[] = {
-	{ 1, 2, 8, 1, 1, 0, 1,  2, 0},
-	{ 1, 3, 8, 1, 1, 0, 1,  3, 2},
-	{ 2, 2, 4, 1, 1, 0, 1,  2, 0},
-	{ 2, 3, 4, 1, 1, 0, 1,  3, 2},
-	{ 3, 2, 1, 3, 8, 4, 3, 16, 7},
+	{ 1, 2, 8, 1, 1, 0, 1,  2, 1},
+	{ 1, 3, 8, 1, 1, 0, 1,  3, 1},
+	{ 2, 2, 4, 1, 1, 0, 1,  2, 1},
+	{ 2, 3, 4, 1, 1, 0, 1,  3, 1},
+	{ 3, 2, 1, 3, 8, 4, 3, 16, 8},
 	{ 3, 3, 1, 3, 8, 4, 1,  8, 4},
-	{ 4, 2, 2, 1, 1, 0, 1,  2, 0},
-	{ 4, 3, 2, 1, 1, 0, 1,  3, 2},
+	{ 4, 2, 2, 1, 1, 0, 1,  2, 1},
+	{ 4, 3, 2, 1, 1, 0, 1,  3, 1},
 };
 
 int mipi_dsi_phy_pll_config(u32 clk_rate)
@@ -715,6 +717,9 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	struct mipi_panel_info *mipi;
 	u32 hbp, hfp, vbp, vfp, hspw, vspw, width, height;
 	u32 ystride, bpp, data;
+#ifndef CONFIG_FB_MSM_MDP303
+	u32 dummy_xres, dummy_yres;
+#endif
 
 	mfd = platform_get_drvdata(pdev);
 	fbi = mfd->fbi;
@@ -766,13 +771,18 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	mipi  = &mfd->panel_info.mipi;
 	if (mfd->panel_info.type == MIPI_VIDEO_PANEL) {
 #ifndef CONFIG_FB_MSM_MDP303
+		dummy_xres = mfd->panel_info.mipi.xres_pad;
+		dummy_yres = mfd->panel_info.mipi.yres_pad;
+
 		MIPI_OUTP(MIPI_DSI_BASE + 0x20,
-			((hspw + hbp + width) << 16 | (hspw + hbp)));
+			((hspw + hbp + width + dummy_xres) << 16 |
+			(hspw + hbp)));
 		MIPI_OUTP(MIPI_DSI_BASE + 0x24,
-			((vspw + vbp + height) << 16 | (vspw + vbp)));
+			((vspw + vbp + height + dummy_yres) << 16 |
+			(vspw + vbp)));
 		MIPI_OUTP(MIPI_DSI_BASE + 0x28,
-			(vspw + vbp + height + vfp - 1) << 16 |
-				(hspw + hbp + width + hfp - 1));
+			(vspw + vbp + height + dummy_yres + vfp - 1) << 16 |
+				(hspw + hbp + width + dummy_xres + hfp - 1));
 #else
 	/* DSI_LAN_SWAP_CTRL */
 		MIPI_OUTP(MIPI_DSI_BASE + 0x00ac, mipi->dlane_swap);
@@ -1043,6 +1053,9 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 #ifndef CONFIG_FB_MSM_MDP303
 	if (mfd->panel_info.type == MIPI_VIDEO_PANEL) {
+		h_period += mfd->panel_info.mipi.xres_pad;
+		v_period += mfd->panel_info.mipi.yres_pad;
+
 		if (lanes > 0) {
 			pll_divider_config.clk_rate =
 			((h_period * v_period * (mipi->frame_rate) * bpp * 8)
