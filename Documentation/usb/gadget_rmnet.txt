@@ -22,13 +22,46 @@ and one of the functionality to be tethered networking which is being
 exposed over QMI using RmNet protocol. This usb gadget has one bulk-in,
 one bulk-out and one interrupt-in endpoint.
 
+Design:
+=======
+RmNet function driver design follows two approaches:
+
+Approach 1:
+-----------
+Single function driver is used to communicate with
+Modem(both for data and control). Most of the initial
+MSM targets are following this approach.
+
+The main disadvantage with this approach is there are
+multiple RmNet drivers for any change in DATA and Control
+Layer. There is no re-use in the code.
+
+Approach 2:
+-----------
+RmNet driver is divided into 3 components
+
+1. USB:
+This component has the functionality to deal with composite layer.
+Allocates Interfaces, Endpoints, listens to connect/disconnect
+interrupts and gives connect/disconnect notifications to DATA and
+CONTROL modules.
+
+2. Data:
+This component talks to modem to transfer IP data. Usually DATA
+and CONTROL go over same channel. However, to achieve higher
+data rates new transport channel for DATA may be used.
+
+3. Control:
+This component talks to modem to transfer rmnet control data.
+
 Software description
 ====================
-
-The RmNet uses two function drivers which uses one interface respectively
+The RmNet suports following data and control transports:
 as follows:
 	1. SMD Interface
 	2. SDIO Interface
+	3. BAM Interface
+	4. SMD Control Interface
 
 SMD interface uses the Shared memory for the RmNet driver to communicate
 with the MSM modem processor.
@@ -105,6 +138,25 @@ rmnet_control_tx_tlet	-	Control transfer data reception and transmission
 rmnet_data_rx_tlet
 rmnet_data_tx_tlet	-	Data transfer data reception and transmission handler
 
+
+SMD control interface
+----------------------
+This function driver implements exchnage of control informtion with
+modem over SMD. Uses smd_read/write commands to read or write rmnet
+ctrl packets. Exposes a call back function to usb component to write
+control packet and at the same time call a call back usb component
+callback to send data to usb host.
+
+Data structures and Interfaces are very similar to control interfaces
+explained in "SMD Interface"
+
+BAM MUX interface
+------------------
+BAM Mux interface is very similar to SDIO MUX interface. However there
+are differences in the way BAM and SDIO operate but all of the details
+are masked by MUX Driver.
+
+Refer to the SDIO interfaces for more information on data structures
 
 SDIO Interface:
 ---------------
