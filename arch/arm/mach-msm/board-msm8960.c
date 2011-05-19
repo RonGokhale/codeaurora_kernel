@@ -1796,13 +1796,21 @@ static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 };
 #endif /* CONFIG_I2C */
 
-static void register_i2c_devices(void)
+static void __init register_i2c_devices(void)
 {
 #ifdef CONFIG_I2C
 	u8 mach_mask = 0;
 	int i;
 
-	mach_mask = I2C_RUMI;
+	/* Build the matching 'supported_machs' bitmask */
+	if (machine_is_msm8960_cdp())
+		mach_mask = I2C_SURF;
+	else if (machine_is_msm8960_rumi3())
+		mach_mask = I2C_RUMI;
+	else if (machine_is_msm8960_sim())
+		mach_mask = I2C_SIM;
+	else
+		pr_err("unmatched machine ID in register_i2c_devices\n");
 
 	/* Run the array and install devices as appropriate */
 	for (i = 0; i < ARRAY_SIZE(msm8960_i2c_devices); ++i) {
@@ -1917,11 +1925,13 @@ static void __init msm8960_cdp_init(void)
 	msm8960_device_ssbi_pm8921.dev.platform_data =
 				&msm8960_ssbi_pm8921_pdata;
 	pm8921_platform_data.num_regulators = msm_pm8921_regulator_pdata_len;
+	msm8960_i2c_init();
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	pm8921_gpio_mpp_init();
 	platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
 	msm8960_init_mmc();
 	msm_acpu_clock_init(&msm8960_acpu_clock_data);
+	register_i2c_devices();
 }
 
 MACHINE_START(MSM8960_SIM, "QCT MSM8960 SIMULATOR")
