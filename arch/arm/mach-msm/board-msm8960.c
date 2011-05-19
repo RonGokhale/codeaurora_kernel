@@ -454,6 +454,7 @@ static struct msm_gpiomux_config msm8960_cyts_configs[] __initdata = {
 
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x110C000
 #define MSM_PMEM_ADSP_SIZE         0x3800000
+#define MSM_PMEM_SIZE 0x1800000 /* 24 Mbytes */
 
 #ifdef CONFIG_KERNEL_PMEM_EBI_REGION
 static unsigned pmem_kernel_ebi1_size = MSM_PMEM_KERNEL_EBI1_SIZE;
@@ -466,6 +467,14 @@ early_param("pmem_kernel_ebi1_size", pmem_kernel_ebi1_size_setup);
 #endif
 
 #ifdef CONFIG_ANDROID_PMEM
+static unsigned pmem_size = MSM_PMEM_SIZE;
+static int __init pmem_size_setup(char *p)
+{
+	pmem_size = memparse(p, NULL);
+	return 0;
+}
+early_param("pmem_size", pmem_size_setup);
+
 static unsigned pmem_adsp_size = MSM_PMEM_ADSP_SIZE;
 
 static int __init pmem_adsp_size_setup(char *p)
@@ -477,6 +486,19 @@ early_param("pmem_adsp_size", pmem_adsp_size_setup);
 #endif
 
 #ifdef CONFIG_ANDROID_PMEM
+static struct android_pmem_platform_data android_pmem_pdata = {
+	.name = "pmem",
+	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
+	.cached = 1,
+	.memory_type = MEMTYPE_EBI1,
+};
+
+static struct platform_device android_pmem_device = {
+	.name = "android_pmem",
+	.id = 0,
+	.dev = {.platform_data = &android_pmem_pdata},
+};
+
 static struct android_pmem_platform_data android_pmem_adsp_pdata = {
 	.name = "pmem_adsp",
 	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
@@ -505,6 +527,7 @@ static void __init size_pmem_devices(void)
 {
 #ifdef CONFIG_ANDROID_PMEM
 	android_pmem_adsp_pdata.size = pmem_adsp_size;
+	android_pmem_pdata.size = pmem_size;
 #endif
 }
 
@@ -517,6 +540,7 @@ static void __init reserve_pmem_memory(void)
 {
 #ifdef CONFIG_ANDROID_PMEM
 	reserve_memory_for(&android_pmem_adsp_pdata);
+	reserve_memory_for(&android_pmem_pdata);
 	msm8960_reserve_table[MEMTYPE_EBI1].size += pmem_kernel_ebi1_size;
 #endif
 }
@@ -1420,6 +1444,7 @@ static struct platform_device *common_devices[] __initdata = {
 	&fish_battery_device,
 #endif
 #ifdef CONFIG_ANDROID_PMEM
+	&android_pmem_device,
 	&android_pmem_adsp_device,
 #endif
 	&msm_fb_device,
