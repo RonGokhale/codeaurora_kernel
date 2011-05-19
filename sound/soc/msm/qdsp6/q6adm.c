@@ -268,13 +268,14 @@ int adm_route_session(int port_id, uint session_id, int set)
 	pr_debug("%s: port %x session %x set %x\n", __func__,
 		port_id, session_id, set);
 
-	if (port_id >= AFE_MAX_PORTS) {
+	index = afe_get_port_index(port_id);
+
+	if (index >= AFE_MAX_PORTS) {
 		pr_err("%s port idi[%d] out of limit[%d]\n", __func__,
 						port_id, AFE_MAX_PORTS);
 		return -ENODEV;
 	}
 
-	index = afe_get_port_index(port_id);
 	if (set) {
 		set_bit(session_id, &this_adm.sessions[index]);
 		rc = adm_cmd_map(port_id, session_id); /* not thread safe */
