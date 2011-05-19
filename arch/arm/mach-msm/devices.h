@@ -170,4 +170,5 @@ void __init msm_camera_register_device(void *, uint32_t, void *);
 extern struct platform_device msm_device_touchscreen;
 
 extern struct pil_device peripheral_dsps;
+extern struct platform_device led_pdev;
 #endif
