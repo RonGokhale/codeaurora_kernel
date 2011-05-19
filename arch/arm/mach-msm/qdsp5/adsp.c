@@ -554,14 +554,14 @@ int msm_adsp_write(struct msm_adsp_module *module, unsigned dsp_queue_addr,
 {
 	int rc, retries = 0;
 #ifdef CONFIG_DEBUG_FS
-	uint32_t *ptr;
+	uint16_t *ptr;
 	int ii;
 
 	if (wdump > 0) {
 		ptr = cmd_buf;
 		pr_info("A->D:%x\n", module->id);
 		pr_info("adsp: %x %d\n", dsp_queue_addr, cmd_size);
-		for (ii = 0; ii < cmd_size/4; ii++)
+		for (ii = 0; ii < cmd_size/2; ii++)
 			pr_info("%x ", ptr[ii]);
 		pr_info("\n");
 	}
@@ -859,7 +859,7 @@ static int adsp_rtos_read_ctrl_word_cmd_tast_to_h_v(
 	unsigned msg_id;
 	unsigned msg_length;
 #ifdef CONFIG_DEBUG_FS
-	uint32_t *ptr;
+	uint16_t *ptr;
 	int ii;
 #endif /* CONFIG_DEBUG_FS */
 	void (*func)(void *, size_t);
@@ -907,7 +907,7 @@ static int adsp_rtos_read_ctrl_word_cmd_tast_to_h_v(
 		ptr = read_event_addr;
 		pr_info("D->A\n");
 		pr_info("m_id = %x id = %x\n", module->id, msg_id);
-		for (ii = 0; ii < msg_length/4; ii++)
+		for (ii = 0; ii < msg_length/2; ii++)
 			pr_info("%x ", ptr[ii]);
 		pr_info("\n");
 	}
