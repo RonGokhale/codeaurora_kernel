@@ -1919,7 +1919,8 @@ static void ask_reading_mailbox(struct sdio_al_device *sdio_al_dev)
  */
 static void start_timer(struct sdio_al_device *sdio_al_dev)
 {
-	if (sdio_al_dev->poll_delay_msec) {
+	if ((sdio_al_dev->poll_delay_msec)  &&
+		(sdio_al_dev->state == CARD_INSERTED)) {
 		sdio_al_dev->timer.expires = jiffies +
 			msecs_to_jiffies(sdio_al_dev->poll_delay_msec);
 		add_timer(&sdio_al_dev->timer);
@@ -1931,7 +1932,8 @@ static void start_timer(struct sdio_al_device *sdio_al_dev)
  */
 static void restart_timer(struct sdio_al_device *sdio_al_dev)
 {
-	if (sdio_al_dev->poll_delay_msec) {
+	if ((sdio_al_dev->poll_delay_msec) &&
+		(sdio_al_dev->state == CARD_INSERTED)) {
 		ulong expires =	jiffies +
 			msecs_to_jiffies(sdio_al_dev->poll_delay_msec);
 		mod_timer(&sdio_al_dev->timer, expires);
@@ -2100,6 +2102,11 @@ static void sdio_al_timer_handler(unsigned long data)
 	if (sdio_al_dev == NULL) {
 		pr_err(MODULE_NAME ": NULL sdio_al_dev for data %lu\n",
 				 data);
+		return;
+	}
+	if (sdio_al_dev->state != CARD_INSERTED) {
+		pr_err(MODULE_NAME ": sdio_al_dev is in invalid state %d\n",
+				 sdio_al_dev->state);
 		return;
 	}
 	pr_debug(MODULE_NAME " Timer Expired\n");
