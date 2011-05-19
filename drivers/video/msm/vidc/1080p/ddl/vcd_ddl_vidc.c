@@ -25,7 +25,6 @@
 void ddl_vidc_core_init(struct ddl_context *ddl_context)
 {
 	struct vidc_1080P_pix_cache_config pixel_cache_config;
-	u32 mem_type = PMEM_MEMTYPE;
 
 	vidc_1080p_do_sw_reset(VIDC_1080P_RESET_IN_SEQ_FIRST_STAGE);
 	msleep(DDL_SW_RESET_SLEEP);
@@ -60,8 +59,7 @@ void ddl_vidc_core_init(struct ddl_context *ddl_context)
 		vidc_1080p_encode_frame_start_ch1;
 	vidc_1080p_release_sw_reset();
 	ddl_context->pix_cache_enable = DDL_PIX_CACHE_ENABLE;
-	if (mem_type == PMEM_MEMTYPE_SMI &&
-		ddl_context->pix_cache_enable) {
+	if (ddl_context->pix_cache_enable) {
 		vidc_pix_cache_sw_reset();
 		pixel_cache_config.cache_enable = true;
 		pixel_cache_config.prefetch_en = true;
