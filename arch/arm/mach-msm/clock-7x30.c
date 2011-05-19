@@ -2440,6 +2440,7 @@ static struct branch_clk lpa_core_clk = {
 static DEFINE_CLK_PCOM(adsp_clk, ADSP_CLK, 0);
 static DEFINE_CLK_PCOM(codec_ssbi_clk,	CODEC_SSBI_CLK, 0);
 static DEFINE_CLK_PCOM(ebi1_clk, EBI1_CLK, CLK_MIN);
+static DEFINE_CLK_PCOM(ebi1_fixed_clk, EBI1_FIXED_CLK, CLK_MIN);
 static DEFINE_CLK_PCOM(ecodec_clk, ECODEC_CLK, 0);
 static DEFINE_CLK_PCOM(gp_clk, GP_CLK, 0);
 static DEFINE_CLK_PCOM(uart3_clk, UART3_CLK, CLKFLAG_AUTO_OFF);
@@ -2526,23 +2527,13 @@ static DEFINE_CLK_PCOM(p_axi_rotator_clk, AXI_ROTATOR_CLK, 0);
 static DEFINE_CLK_PCOM(p_rotator_imem_clk, ROTATOR_IMEM_CLK, CLKFLAG_AUTO_OFF);
 static DEFINE_CLK_PCOM(p_rotator_p_clk, ROTATOR_P_CLK, CLKFLAG_AUTO_OFF);
 
-static struct pcom_clk pbus_clk = {
-	.id = P_PBUS_CLK,
-	.c = {
-		.ops = &clk_ops_pcom_div2,
-		.flags = CLKFLAG_MIN,
-		.dbg_name = "pbus_clk",
-		CLK_INIT(pbus_clk.c),
-	},
-};
-
-static DEFINE_CLK_VOTER(ebi_dtv_clk, &pbus_clk.c);
-static DEFINE_CLK_VOTER(ebi_kgsl_clk, &pbus_clk.c);
-static DEFINE_CLK_VOTER(ebi_lcdc_clk, &pbus_clk.c);
-static DEFINE_CLK_VOTER(ebi_mddi_clk, &pbus_clk.c);
-static DEFINE_CLK_VOTER(ebi_tv_clk, &pbus_clk.c);
-static DEFINE_CLK_VOTER(ebi_vcd_clk, &pbus_clk.c);
-static DEFINE_CLK_VOTER(ebi_vfe_clk, &pbus_clk.c);
+static DEFINE_CLK_VOTER(ebi_dtv_clk, &ebi1_fixed_clk.c);
+static DEFINE_CLK_VOTER(ebi_kgsl_clk, &ebi1_fixed_clk.c);
+static DEFINE_CLK_VOTER(ebi_lcdc_clk, &ebi1_fixed_clk.c);
+static DEFINE_CLK_VOTER(ebi_mddi_clk, &ebi1_fixed_clk.c);
+static DEFINE_CLK_VOTER(ebi_tv_clk, &ebi1_fixed_clk.c);
+static DEFINE_CLK_VOTER(ebi_vcd_clk, &ebi1_fixed_clk.c);
+static DEFINE_CLK_VOTER(ebi_vfe_clk, &ebi1_fixed_clk.c);
 
 /*
  * SoC-specific functions required by clock-local driver
@@ -2790,12 +2781,12 @@ static struct clk_local_ownership {
 	{ CLK_LOOKUP("adsp_clk",	adsp_clk.c,	NULL) },
 	{ CLK_LOOKUP("codec_ssbi_clk",	codec_ssbi_clk.c,	NULL) },
 	{ CLK_LOOKUP("ebi1_clk",	ebi1_clk.c,	NULL) },
+	{ CLK_LOOKUP("ebi1_fixed_clk",	ebi1_fixed_clk.c,	NULL) },
 	{ CLK_LOOKUP("ecodec_clk",	ecodec_clk.c,	NULL) },
 	{ CLK_LOOKUP("gp_clk",		gp_clk.c,	NULL) },
 	{ CLK_LOOKUP("uart_clk",	uart3_clk.c,	"msm_serial.2") },
 	{ CLK_LOOKUP("usb_phy_clk",	usb_phy_clk.c,	NULL) },
 	{ CLK_LOOKUP("vdc_clk",		vdc_clk.c,	NULL) },
-	{ CLK_LOOKUP("pbus_clk",	pbus_clk.c,	NULL) },
 
 	/* Voters */
 	{ CLK_LOOKUP("ebi1_dtv_clk",	ebi_dtv_clk.c,	NULL) },

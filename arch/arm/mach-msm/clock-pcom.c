@@ -32,7 +32,7 @@ static int pc_clk_enable(struct clk *clk)
 	int id = to_pcom_clk(clk)->id;
 
 	/* Ignore clocks that are always on */
-	if (id == P_EBI1_CLK || id == P_PBUS_CLK)
+	if (id == P_EBI1_CLK || id == P_EBI1_FIXED_CLK)
 		return 0;
 
 	rc = msm_proc_comm(PCOM_CLKCTL_RPC_ENABLE, &id, NULL);
@@ -47,7 +47,7 @@ static void pc_clk_disable(struct clk *clk)
 	int id = to_pcom_clk(clk)->id;
 
 	/* Ignore clocks that are always on */
-	if (id == P_EBI1_CLK || id == P_PBUS_CLK)
+	if (id == P_EBI1_CLK || id == P_EBI1_FIXED_CLK)
 		return;
 
 	msm_proc_comm(PCOM_CLKCTL_RPC_DISABLE, &id, NULL);
@@ -174,35 +174,6 @@ struct clk_ops clk_ops_pcom = {
 	.set_max_rate = pc_clk_set_max_rate,
 	.set_flags = pc_clk_set_flags,
 	.get_rate = pc_clk_get_rate,
-	.is_enabled = pc_clk_is_enabled,
-	.round_rate = pc_clk_round_rate,
-	.is_local = pc_clk_is_local,
-};
-
-static int pc_clk_set_rate2(struct clk *clk, unsigned rate)
-{
-	return pc_clk_set_rate(clk, rate / 2);
-}
-
-static int pc_clk_set_min_rate2(struct clk *clk, unsigned rate)
-{
-	return pc_clk_set_min_rate(clk, rate / 2);
-}
-
-static unsigned pc_clk_get_rate2(struct clk *clk)
-{
-	return pc_clk_get_rate(clk) * 2;
-}
-
-struct clk_ops clk_ops_pcom_div2 = {
-	.enable = pc_clk_enable,
-	.disable = pc_clk_disable,
-	.auto_off = pc_clk_disable,
-	.reset = pc_reset,
-	.set_rate = pc_clk_set_rate2,
-	.set_min_rate = pc_clk_set_min_rate2,
-	.set_flags = pc_clk_set_flags,
-	.get_rate = pc_clk_get_rate2,
 	.is_enabled = pc_clk_is_enabled,
 	.round_rate = pc_clk_round_rate,
 	.is_local = pc_clk_is_local,
