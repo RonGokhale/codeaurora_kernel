@@ -956,7 +956,7 @@ struct platform_device msm_rotator_device = {
 #define MIPI_DSI_HW_BASE        0x04700000
 #define MDP_HW_BASE             0x05100000
 
-static struct resource msm_mipi_dsi_resources[] = {
+static struct resource msm_mipi_dsi1_resources[] = {
 	{
 		.name   = "mipi_dsi",
 		.start  = MIPI_DSI_HW_BASE,
@@ -970,11 +970,11 @@ static struct resource msm_mipi_dsi_resources[] = {
 	},
 };
 
-static struct platform_device msm_mipi_dsi_device = {
+struct platform_device msm_mipi_dsi1_device = {
 	.name   = "mipi_dsi",
 	.id     = 0,
-	.num_resources  = ARRAY_SIZE(msm_mipi_dsi_resources),
-	.resource       = msm_mipi_dsi_resources,
+	.num_resources  = ARRAY_SIZE(msm_mipi_dsi1_resources),
+	.resource       = msm_mipi_dsi1_resources,
 };
 
 static struct resource msm_mdp_resources[] = {
@@ -1015,7 +1015,7 @@ void __init msm_fb_register_device(char *name, void *data)
 	if (!strncmp(name, "mdp", 3))
 		msm_register_device(&msm_mdp_device, data);
 	else if (!strncmp(name, "mipi_dsi", 8))
-		msm_register_device(&msm_mipi_dsi_device, data);
+		msm_register_device(&msm_mipi_dsi1_device, data);
 	else
 		printk(KERN_ERR "%s: unknown device! %s\n", __func__, name);
 }

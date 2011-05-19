@@ -20,6 +20,7 @@
 #include <linux/msm_ssbi.h>
 #include <linux/regulator/gpio-regulator.h>
 #include <linux/mfd/pm8xxx/pm8921.h>
+#include <linux/regulator/consumer.h>
 #include <linux/spi/spi.h>
 #include <linux/bootmem.h>
 #ifdef CONFIG_ANDROID_PMEM
@@ -167,6 +168,14 @@ static void __init pm8921_gpio_mpp_init(void)
 #define FPGA_CS_GPIO		14
 #define KS8851_RST_GPIO		89
 #define KS8851_IRQ_GPIO		90
+
+/* Macros assume PMIC GPIOs and MPPs start at 1 */
+#define PM8921_GPIO_BASE		NR_GPIO_IRQS
+#define PM8921_GPIO_PM_TO_SYS(pm_gpio)	(pm_gpio - 1 + PM8921_GPIO_BASE)
+#define PM8921_MPP_BASE			(PM8921_GPIO_BASE + PM8921_NR_GPIOS)
+#define PM8921_MPP_PM_TO_SYS(pm_gpio)	(pm_gpio - 1 + PM8921_MPP_BASE)
+#define PM8921_IRQ_BASE			(NR_MSM_IRQS + NR_GPIO_IRQS)
+#define PM8921_MPP_IRQ_BASE		(PM8921_IRQ_BASE + NR_GPIO_IRQS)
 
 static struct gpiomux_setting gsbi1 = {
 	.func = GPIOMUX_FUNC_1,
@@ -568,8 +577,35 @@ static void __init msm8960_reserve(void)
 	msm_reserve();
 }
 
-#define MSM_FB_SIZE 0x600000
-#define MDP_VSYNC_GPIO 28
+#ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
+/* prim = 608 x 1024 x 4(bpp) x 3(pages) */
+#define MSM_FB_PRIM_BUF_SIZE 0x720000
+#else
+/* prim = 608 x 1024 x 4(bpp) x 2(pages) */
+#define MSM_FB_PRIM_BUF_SIZE 0x4C0000
+#endif
+
+#ifdef CONFIG_FB_MSM_MIPI_DSI
+/* 960 x 540 x 3 x 2 */
+#define MIPI_DSI_WRITEBACK_SIZE 0x300000
+#else
+#define MIPI_DSI_WRITEBACK_SIZE 0
+#endif
+
+#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
+/* hdmi = 1920 x 1088 x 2(bpp) x 1(page) */
+#define MSM_FB_EXT_BUF_SIZE 0x3FC000
+#elif defined(CONFIG_FB_MSM_TVOUT)
+/* tvout = 720 x 576 x 2(bpp) x 2(pages) */
+#define MSM_FB_EXT_BUF_SIZE 0x195000
+#else /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
+#define MSM_FB_EXT_BUF_SIZE 0
+#endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
+
+#define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE +\
+				MIPI_DSI_WRITEBACK_SIZE, 4096)
+
+#define MDP_VSYNC_GPIO 0
 
 static struct resource msm_fb_resources[] = {
 	{
@@ -584,23 +620,186 @@ static struct platform_device msm_fb_device = {
 	.resource          = msm_fb_resources,
 };
 
+static bool dsi_power_on;
+
 static int mipi_dsi_panel_power(int on)
 {
-	pr_debug("%s: state : %d\n", __func__, on);
+	static struct regulator *reg_l8, *reg_l23, *reg_l2;
+	static int gpio24, gpio43;
+	int rc;
+
+	struct pm_gpio gpio43_param = {
+		.direction = PM_GPIO_DIR_OUT,
+		.output_buffer = PM_GPIO_OUT_BUF_CMOS,
+		.output_value = 0,
+		.pull = PM_GPIO_PULL_NO,
+		.vin_sel = 2,
+		.out_strength = PM_GPIO_STRENGTH_HIGH,
+		.function = PM_GPIO_FUNC_PAIRED,
+		.inv_int_pol = 0,
+		.disable_pin = 0,
+	};
+
+	struct pm_gpio gpio24_param = {
+		.direction = PM_GPIO_DIR_OUT,
+		.output_buffer = PM_GPIO_OUT_BUF_CMOS,
+		.output_value = 1,
+		.pull = PM_GPIO_PULL_NO,
+		.vin_sel = 2,
+		.out_strength = PM_GPIO_STRENGTH_HIGH,
+		.function = PM_GPIO_FUNC_NORMAL,
+		.inv_int_pol = 0,
+		.disable_pin = 0,
+	};
+
+	pr_info("%s: state : %d\n", __func__, on);
+
+	if (!dsi_power_on) {
+
+		reg_l8 = regulator_get(&msm_mipi_dsi1_device.dev,
+				"dsi_vdc");
+		if (IS_ERR(reg_l8)) {
+			pr_err("could not get 8921_l8, rc = %ld\n",
+				PTR_ERR(reg_l8));
+			return -ENODEV;
+		}
+
+		reg_l23 = regulator_get(&msm_mipi_dsi1_device.dev,
+				"dsi_vddio");
+		if (IS_ERR(reg_l23)) {
+			pr_err("could not get 8921_l23, rc = %ld\n",
+				PTR_ERR(reg_l23));
+			return -ENODEV;
+		}
+
+		reg_l2 = regulator_get(&msm_mipi_dsi1_device.dev,
+				"dsi_vdda");
+		if (IS_ERR(reg_l2)) {
+			pr_err("could not get 8921_l2, rc = %ld\n",
+				PTR_ERR(reg_l2));
+			return -ENODEV;
+		}
+
+		rc = regulator_set_voltage(reg_l8, 2800000, 3000000);
+		if (rc) {
+			pr_err("set_voltage l8 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+		rc = regulator_set_voltage(reg_l23, 1800000, 1800000);
+		if (rc) {
+			pr_err("set_voltage l23 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+		rc = regulator_set_voltage(reg_l2, 1200000, 1200000);
+		if (rc) {
+			pr_err("set_voltage l2 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+
+		gpio43 = PM8921_GPIO_PM_TO_SYS(43);
+		rc = gpio_request(gpio43, "disp_rst_n");
+		if (rc) {
+			pr_err("request gpio 43 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+
+		gpio24 = PM8921_GPIO_PM_TO_SYS(24);
+		rc = gpio_request(gpio24, "disp_backlight");
+		if (rc) {
+			pr_err("request gpio 24 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+		dsi_power_on = true;
+	}
+
+	if (on) {
+		rc = regulator_set_optimum_mode(reg_l8, 100000);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l8 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+		rc = regulator_set_optimum_mode(reg_l23, 100000);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l23 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+		rc = regulator_set_optimum_mode(reg_l2, 100000);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l2 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+		rc = regulator_enable(reg_l8);
+		if (rc) {
+			pr_err("enable l8 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+		rc = regulator_enable(reg_l23);
+		if (rc) {
+			pr_err("enable l8 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+		rc = regulator_enable(reg_l2);
+		if (rc) {
+			pr_err("enable l2 failed, rc=%d\n", rc);
+			return -ENODEV;
+		}
+
+		gpio43_param.pull = PM_GPIO_PULL_NO;
+		rc = pm8xxx_gpio_config(gpio43, &gpio43_param);
+		if (rc) {
+			pr_err("gpio_config 43 failed (1), rc=%d\n", rc);
+			return -EINVAL;
+		}
+		gpio43_param.pull = PM_GPIO_PULL_UP_30;
+		rc = pm8xxx_gpio_config(gpio43, &gpio43_param);
+		if (rc) {
+			pr_err("gpio_config 43 failed (2), rc=%d\n", rc);
+			return -EINVAL;
+		}
+		gpio43_param.pull = PM_GPIO_PULL_NO;
+		rc = pm8xxx_gpio_config(gpio43, &gpio43_param);
+		if (rc) {
+			pr_err("gpio_config 43 failed (3), rc=%d\n", rc);
+			return -EINVAL;
+		}
+		gpio43_param.pull = PM_GPIO_PULL_UP_30;
+		rc = pm8xxx_gpio_config(gpio43, &gpio43_param);
+		if (rc) {
+			pr_err("gpio_config 43 failed (4), rc=%d\n", rc);
+			return -EINVAL;
+		}
+
+		rc = pm8xxx_gpio_config(gpio24, &gpio24_param);
+		if (rc) {
+			pr_err("gpio_config 24 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+
+		gpio_set_value_cansleep(gpio43, 1);
+	} else {
+		rc = regulator_set_optimum_mode(reg_l8, 100);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l8 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+		rc = regulator_set_optimum_mode(reg_l23, 100);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l23 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+		rc = regulator_set_optimum_mode(reg_l2, 100);
+		if (rc < 0) {
+			pr_err("set_optimum_mode l2 failed, rc=%d\n", rc);
+			return -EINVAL;
+		}
+		gpio_set_value_cansleep(gpio43, 0);
+	}
 	return 0;
 }
+
 static struct mipi_dsi_platform_data mipi_dsi_pdata = {
 	.vsync_gpio = MDP_VSYNC_GPIO,
 	.dsi_power_save = mipi_dsi_panel_power,
-};
-
-
-int mdp_core_clk_rate_table[] = {
-	59080000,
-	59080000,
-	85330000,
-	200000000,
-	200000000,
 };
 
 #ifdef CONFIG_MSM_BUS_SCALING
@@ -730,9 +929,17 @@ static struct msm_bus_scale_pdata mdp_bus_scale_pdata = {
 
 #endif
 
+int mdp_core_clk_rate_table[] = {
+	85330000,
+	85330000,
+	128000000,
+	200000000,
+	200000000,
+};
+
 static struct msm_panel_common_pdata mdp_pdata = {
 	.gpio = MDP_VSYNC_GPIO,
-	.mdp_core_clk_rate = 59080000,
+	.mdp_core_clk_rate = 85330000,
 	.mdp_core_clk_table = mdp_core_clk_rate_table,
 	.num_mdp_clk = ARRAY_SIZE(mdp_core_clk_rate_table),
 #ifdef CONFIG_MSM_BUS_SCALING
@@ -747,6 +954,11 @@ static struct platform_device mipi_dsi_renesas_panel_device = {
 
 static struct platform_device mipi_dsi_simulator_panel_device = {
 	.name = "mipi_simulator",
+	.id = 0,
+};
+
+static struct platform_device mipi_dsi_toshiba_panel_device = {
+	.name = "mipi_toshiba",
 	.id = 0,
 };
 
@@ -1515,6 +1727,7 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&msm_kgsl_2d0,
 	&msm_kgsl_2d1,
 #endif
+	&mipi_dsi_toshiba_panel_device,
 };
 
 static void __init msm8960_i2c_init(void)
@@ -2005,6 +2218,7 @@ static void __init msm8960_cdp_init(void)
 	msm8960_init_mmc();
 	msm_acpu_clock_init(&msm8960_acpu_clock_data);
 	register_i2c_devices();
+	msm_fb_add_devices();
 }
 
 MACHINE_START(MSM8960_SIM, "QCT MSM8960 SIMULATOR")

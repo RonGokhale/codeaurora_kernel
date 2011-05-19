@@ -151,6 +151,8 @@ extern struct platform_device msm_kgsl_2d0;
 extern struct platform_device msm_kgsl_2d1;
 #endif
 
+extern struct platform_device msm_mipi_dsi1_device;
+
 void __init msm_fb_register_device(char *name, void *data);
 void __init msm_camera_register_device(void *, uint32_t, void *);
 extern struct platform_device msm_device_touchscreen;
