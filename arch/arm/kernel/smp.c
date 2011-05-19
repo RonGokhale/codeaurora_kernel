@@ -583,6 +583,11 @@ asmlinkage void __exception_irq_entry do_IPI(int ipinr, struct pt_regs *regs)
 
 void smp_send_reschedule(int cpu)
 {
+
+	if (unlikely(cpu_is_offline(cpu))) {
+		WARN_ON(1);
+		return;
+	}
 	smp_cross_call(cpumask_of(cpu), IPI_RESCHEDULE);
 }
 
