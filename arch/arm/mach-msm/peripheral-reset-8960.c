@@ -95,6 +95,7 @@
 #define RIVA_PLL_M_VAL			(MSM_CLK_CTL_BASE + 0x31A8)
 #define RIVA_PLL_N_VAL			(MSM_CLK_CTL_BASE + 0x31Ac)
 #define RIVA_PLL_CONFIG			(MSM_CLK_CTL_BASE + 0x31B4)
+#define RIVA_PLL_STATUS			(MSM_CLK_CTL_BASE + 0x31B8)
 
 #define RIVA_PMU_ROOT_CLK_SEL		(msm_riva_base + 0xC8)
 #define RIVA_PMU_ROOT_CLK_SEL_3		BIT(2)
@@ -379,8 +380,9 @@ static int reset_riva_untrusted(void)
 	reg |= PLL_MODE_OUTCTRL;
 	writel(reg, RIVA_PLL_MODE);
 
-	/* TODO: Poll RIVA_PLL_STATUS */
-	msleep(20);
+	/* Wait for PLL to settle */
+	while (!readl_relaxed(RIVA_PLL_STATUS))
+		cpu_relax();
 
 	/* Configure cCPU for 240 MHz */
 	reg = readl(RIVA_PMU_CLK_ROOT3);
