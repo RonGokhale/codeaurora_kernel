@@ -61,6 +61,7 @@ struct mmc_platform_data {
 	void (*sdio_lpm_gpio_setup)(struct device *, unsigned int);
 	unsigned int (*status)(struct device *);
         unsigned int status_irq;
+	unsigned int status_gpio;
         struct embedded_sdio_data *embedded_sdio;
         unsigned int sdiowakeup_irq;
 	int (*register_status_notify)(void (*callback)(int card_present, void *dev_id), void *dev_id);

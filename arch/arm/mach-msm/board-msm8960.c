@@ -968,6 +968,11 @@ static struct mmc_platform_data msm8960_sdc3_data = {
 	.wpswitch_gpio	= PM8921_GPIO_PM_TO_SYS(16),
 	.sdcc_v4_sup	= true,
 	.vreg_data	= &mmc_slot_vreg_data[SDCC3],
+#ifdef CONFIG_MMC_MSM_CARD_HW_DETECTION
+	.status_gpio	= PM8921_GPIO_PM_TO_SYS(26),
+	.status_irq	= PM8921_GPIO_IRQ(PM8921_IRQ_BASE, 26),
+	.irq_flags	= IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+#endif
 };
 #endif
 
