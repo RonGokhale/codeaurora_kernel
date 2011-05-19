@@ -2667,6 +2667,7 @@ static void __init msm_device_i2c_init(void)
 
 static struct msm_panel_common_pdata mdp_pdata = {
 	.gpio = 97,
+	.mdp_rev = MDP_REV_303,
 };
 
 #define GPIO_LCDC_BRDG_PD	128
