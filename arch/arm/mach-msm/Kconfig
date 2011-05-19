@@ -1151,6 +1151,13 @@ config MSM8X60_RTAC
 	  Enable support for rtac in qdsp6v2. This enables calibration during
 	  audio operation
 
+config MSM7X27A_AUDIO
+	bool "MSM7X27A audio support"
+	depends on ARCH_MSM7X27A && MSM_ADSP
+	default n
+	help
+	  Enable support for 7x27a. This provides audio functionality.
+
 config MSM_VREG_SWITCH_INVERTED
 	bool "Reverse vreg switch polarity"
 	default n
