@@ -1,6 +1,6 @@
 #
 # Automatically generated make config: don't edit
-# Linux/arm 2.6.38.2 Kernel Configuration
+# Linux/arm 2.6.38.6 Kernel Configuration
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -147,6 +147,8 @@ CONFIG_HAVE_KRETPROBES=y
 CONFIG_HAVE_REGS_AND_STACK_ACCESS_API=y
 CONFIG_HAVE_CLK=y
 CONFIG_HAVE_DMA_API_DEBUG=y
+CONFIG_HAVE_HW_BREAKPOINT=y
+CONFIG_HAVE_HW_BRKPT_RESERVED_RW_ACCESS=y
 
 #
 # GCOV-based kernel profiling
