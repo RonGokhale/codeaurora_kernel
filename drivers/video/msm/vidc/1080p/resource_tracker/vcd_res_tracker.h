@@ -42,7 +42,6 @@
 
 #define RESTRK_1080P_MIN_PERF_LEVEL RESTRK_1080P_VGA_PERF_LEVEL
 #define RESTRK_1080P_MAX_PERF_LEVEL RESTRK_1080P_1080P_PERF_LEVEL
-
 struct res_trk_context {
 	struct device *device;
 	u32 irq_num;
@@ -60,6 +59,8 @@ struct res_trk_context {
 	uint32_t     pcl;
 #endif
 	u32 core_type;
+	u8 *base_addr;
+	phys_addr_t device_addr;
 };
 
 #if DEBUG

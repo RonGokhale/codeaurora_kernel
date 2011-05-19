@@ -20,6 +20,7 @@
 #include <mach/clk.h>
 #include <mach/msm_reqs.h>
 #include <linux/interrupt.h>
+#include <asm/sizes.h>
 #include "vidc.h"
 #include "vcd_res_tracker.h"
 #include "vidc_init.h"
@@ -30,6 +31,7 @@ static unsigned int vidc_clk_table[3] = {
 static struct res_trk_context resource_context;
 
 #define VIDC_FW	"vidc_1080p.fw"
+#define VIDC_FW_SIZE SZ_1M
 
 unsigned char *vidc_video_codec_fw;
 u32 vidc_video_codec_fw_size;
@@ -429,6 +431,7 @@ bail_out:
 
 void res_trk_init(struct device *device, u32 irq)
 {
+	u32 memorytype = PMEM_MEMTYPE;
 	if (resource_context.device || resource_context.irq_num ||
 		!device) {
 		VCDRES_MSG_ERROR("%s() Resource Tracker Init error\n",
@@ -443,9 +446,30 @@ void res_trk_init(struct device *device, u32 irq)
 			(struct msm_bus_scale_pdata *)device->platform_data;
 #endif
 		resource_context.core_type = VCD_CORE_1080P;
+		if (memorytype == PMEM_MEMTYPE_EBI1) {
+			resource_context.base_addr =
+				kmalloc(VIDC_FW_SIZE, GFP_KERNEL);
+			if (resource_context.base_addr)
+				resource_context.device_addr = (phys_addr_t)
+				virt_to_phys((void *)
+					resource_context.base_addr);
+		}
 	}
 }
 
 u32 res_trk_get_core_type(void){
 	return resource_context.core_type;
+}
+
+u32 res_trk_get_firmware_addr(struct res_trk_firmware_addr *firm_addr)
+{
+	int status = -1;
+	if (firm_addr && resource_context.base_addr &&
+		resource_context.device_addr) {
+		firm_addr->base_addr = resource_context.base_addr;
+		firm_addr->device_addr = resource_context.device_addr;
+		firm_addr->buf_size = VIDC_FW_SIZE;
+		status = 0;
+	}
+	return status;
 }

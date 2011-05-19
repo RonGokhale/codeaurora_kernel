@@ -13,6 +13,7 @@
 
 #include "vcd_ddl.h"
 #include "vcd_ddl_metadata.h"
+#include "vcd_res_tracker_api.h"
 
 static unsigned int first_time;
 
@@ -20,8 +21,9 @@ u32 ddl_device_init(struct ddl_init_config *ddl_init_config,
 	void *client_data)
 {
 	struct ddl_context *ddl_context;
-	u32 status = VCD_S_SUCCESS;
-	void *ptr;
+	struct res_trk_firmware_addr firmware_addr;
+	u32 status = VCD_S_SUCCESS, memorytype = PMEM_MEMTYPE;
+	void *ptr = NULL;
 	DDL_MSG_HIGH("ddl_device_init");
 
 	if ((!ddl_init_config) || (!ddl_init_config->ddl_callback) ||
@@ -59,8 +61,29 @@ u32 ddl_device_init(struct ddl_init_config *ddl_init_config,
 	ddl_client_transact(DDL_INIT_CLIENTS, NULL);
 	ddl_context->fw_memory_size =
 		DDL_FW_INST_GLOBAL_CONTEXT_SPACE_SIZE;
-	ptr = ddl_pmem_alloc(&ddl_context->dram_base_a,
-		ddl_context->fw_memory_size, DDL_KILO_BYTE(128));
+	if (memorytype == PMEM_MEMTYPE_SMI) {
+		ptr = ddl_pmem_alloc(&ddl_context->dram_base_a,
+			ddl_context->fw_memory_size, DDL_KILO_BYTE(128));
+	} else {
+		if (!res_trk_get_firmware_addr(&firmware_addr) &&
+		   firmware_addr.buf_size >= ddl_context->fw_memory_size) {
+			if (DDL_ADDR_IS_ALIGNED(firmware_addr.device_addr,
+				DDL_KILO_BYTE(128))) {
+				ptr = (void *) firmware_addr.base_addr;
+				ddl_context->dram_base_a.physical_base_addr =
+				ddl_context->dram_base_a.align_physical_addr =
+					(u8 *)firmware_addr.device_addr;
+				ddl_context->dram_base_a.align_virtual_addr  =
+				ddl_context->dram_base_a.virtual_base_addr =
+					firmware_addr.base_addr;
+				ddl_context->dram_base_a.buffer_size =
+					ddl_context->fw_memory_size;
+			} else {
+				DDL_MSG_ERROR("firmware base not aligned %p",
+					(void *)firmware_addr.device_addr);
+			}
+		}
+	}
 	if (!ptr) {
 		DDL_MSG_ERROR("Memory Aocation Failed for FW Base");
 		status = VCD_ERR_ALLOC_FAIL;
@@ -86,6 +109,10 @@ u32 ddl_device_init(struct ddl_init_config *ddl_init_config,
 		DDL_MSG_ERROR("ddl_dev_init:fw_init_failed");
 		status = VCD_ERR_ALLOC_FAIL;
 	}
+	if (!status && memorytype == PMEM_MEMTYPE_EBI1)
+		clean_caches((unsigned long)firmware_addr.base_addr,
+		firmware_addr.buf_size,	firmware_addr.device_addr);
+
 	if (!status) {
 		ddl_context->cmd_state = DDL_CMD_DMA_INIT;
 		ddl_vidc_core_init(ddl_context);
