@@ -92,6 +92,7 @@ struct msm_rotator_dev {
 	void __iomem *io_base;
 	int irq;
 	struct msm_rotator_img_info *img_info[MAX_SESSIONS];
+	struct clk *core_clk;
 	struct clk *pclk;
 	struct clk *axi_clk;
 	int rot_clk_state;
@@ -197,8 +198,12 @@ static void msm_rotator_imem_clk_work_f(struct work_struct *work)
 /* enable clocks needed by rotator block */
 static void enable_rot_clks(void)
 {
-	clk_enable(msm_rotator_dev->pclk);
-	clk_enable(msm_rotator_dev->axi_clk);
+	if (msm_rotator_dev->core_clk != NULL)
+		clk_enable(msm_rotator_dev->core_clk);
+	if (msm_rotator_dev->pclk != NULL)
+		clk_enable(msm_rotator_dev->pclk);
+	if (msm_rotator_dev->axi_clk != NULL)
+		clk_enable(msm_rotator_dev->axi_clk);
 	if (msm_rotator_dev->regulator)
 		regulator_enable(msm_rotator_dev->regulator);
 }
@@ -208,8 +213,12 @@ static void disable_rot_clks(void)
 {
 	if (msm_rotator_dev->regulator)
 		regulator_disable(msm_rotator_dev->regulator);
-	clk_disable(msm_rotator_dev->pclk);
-	clk_disable(msm_rotator_dev->axi_clk);
+	if (msm_rotator_dev->core_clk != NULL)
+		clk_disable(msm_rotator_dev->core_clk);
+	if (msm_rotator_dev->pclk != NULL)
+		clk_disable(msm_rotator_dev->pclk);
+	if (msm_rotator_dev->axi_clk != NULL)
+		clk_disable(msm_rotator_dev->axi_clk);
 }
 
 static void msm_rotator_rot_clk_work_f(struct work_struct *work)
@@ -1158,6 +1167,11 @@ static int __devinit msm_rotator_probe(struct platform_device *pdev)
 			  msm_rotator_imem_clk_work_f);
 	msm_rotator_dev->imem_clk = NULL;
 	msm_rotator_dev->pdev = pdev;
+
+	msm_rotator_dev->core_clk = NULL;
+	msm_rotator_dev->pclk = NULL;
+	msm_rotator_dev->axi_clk = NULL;
+
 	for (i = 0; i < number_of_clks; i++) {
 		if (pdata->rotator_clks[i].clk_type == ROTATOR_IMEM_CLK) {
 			msm_rotator_dev->imem_clk =
@@ -1188,6 +1202,23 @@ static int __devinit msm_rotator_probe(struct platform_device *pdev)
 
 			if (pdata->rotator_clks[i].clk_rate)
 				clk_set_min_rate(msm_rotator_dev->pclk,
+					pdata->rotator_clks[i].clk_rate);
+		}
+
+		if (pdata->rotator_clks[i].clk_type == ROTATOR_CORE_CLK) {
+			msm_rotator_dev->core_clk =
+			clk_get(&msm_rotator_dev->pdev->dev,
+				pdata->rotator_clks[i].clk_name);
+			if (IS_ERR(msm_rotator_dev->core_clk)) {
+				rc = PTR_ERR(msm_rotator_dev->core_clk);
+				msm_rotator_dev->core_clk = NULL;
+				printk(KERN_ERR "%s: cannot get core clk "
+					"rc=%d\n", DRIVER_NAME, rc);
+			goto error_core_clk;
+			}
+
+			if (pdata->rotator_clks[i].clk_rate)
+				clk_set_min_rate(msm_rotator_dev->core_clk,
 					pdata->rotator_clks[i].clk_rate);
 		}
 
@@ -1318,6 +1349,8 @@ error_get_resource:
 		regulator_put(msm_rotator_dev->regulator);
 	clk_put(msm_rotator_dev->axi_clk);
 error_axi_clk:
+	clk_put(msm_rotator_dev->core_clk);
+error_core_clk:
 	clk_put(msm_rotator_dev->pclk);
 error_pclk:
 	if (msm_rotator_dev->imem_clk)
@@ -1347,10 +1380,12 @@ static int __devexit msm_rotator_remove(struct platform_device *plat_dev)
 	}
 	if (msm_rotator_dev->rot_clk_state == CLK_EN)
 		disable_rot_clks();
+	clk_put(msm_rotator_dev->core_clk);
 	clk_put(msm_rotator_dev->pclk);
 	clk_put(msm_rotator_dev->axi_clk);
 	if (msm_rotator_dev->regulator)
 		regulator_put(msm_rotator_dev->regulator);
+	msm_rotator_dev->core_clk = NULL;
 	msm_rotator_dev->pclk = NULL;
 	msm_rotator_dev->axi_clk = NULL;
 	mutex_destroy(&msm_rotator_dev->imem_lock);
