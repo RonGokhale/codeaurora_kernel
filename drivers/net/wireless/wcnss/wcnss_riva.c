@@ -13,13 +13,19 @@
 #include <linux/slab.h>
 #include <linux/err.h>
 #include <linux/io.h>
+#include <linux/gpio.h>
+#include <linux/delay.h>
 #include <linux/regulator/consumer.h>
+#include <linux/mfd/pm8xxx/pm8921.h>
+#include <linux/mfd/pm8xxx/gpio.h>
 #include <mach/msm_xo.h>
 #include <mach/msm_iomap.h>
 
 #include "wcnss_riva.h"
 
 static void __iomem *msm_riva_base;
+static struct msm_xo_voter *wlan_clock;
+static const char *id = "WLAN";
 
 #define MSM_RIVA_PHYS                     0x03204000
 #define RIVA_PMU_CFG                      (msm_riva_base + 0x28)
@@ -29,35 +35,51 @@ static void __iomem *msm_riva_base;
 #define RIVA_PMU_CFG_IRIS_XO_CFG_STS      BIT(6) /* 1: in progress, 0: done */
 
 #define RIVA_PMU_CFG_IRIS_XO_MODE         0x6
-#define RIVA_PMU_CFG_IRIS_XO_MODE_48      (2 << 1)
+#define RIVA_PMU_CFG_IRIS_XO_MODE_48      (3 << 1)
 
-#define VREG_NOT_CONFIGURED         0x0000
+#define VREG_NULL_CONFIG            0x0000
 #define VREG_GET_REGULATOR_MASK     0x0001
 #define VREG_SET_VOLTAGE_MASK       0x0002
 #define VREG_PIN_CONTROL_MASK       0x0004
-#define VREG_ENABLE_MASK            0x0008
+#define VREG_OPTIMUM_MODE_MASK      0x0008
+#define VREG_ENABLE_MASK            0x0010
 
-static struct vregs_info {
+struct vregs_info {
 	const char * const name;
 	int state;
 	const int nominal_min;
 	const int low_power_min;
 	const int max_voltage;
 	const bool is_pin_control;
+	const int uA_load;
 	struct regulator *regulator;
-} vregs[] = {
-	{"8921_lvs1", VREG_NOT_CONFIGURED, 1800000, 0, 1800000, 0, NULL},
-	{"8921_lvs2", VREG_NOT_CONFIGURED, 1200000, 0, 1200000, 0, NULL},
-	{"8921_s2",   VREG_NOT_CONFIGURED, 1300000, 0, 1300000, 0, NULL},
-	{"8921_l10",  VREG_NOT_CONFIGURED, 2900000, 0, 2900000, 0, NULL},
 };
 
-static struct msm_xo_voter *wlan_clock;
-static const char *id = "WLAN";
+static struct vregs_info iris_vregs[] = {
+	/* VDD_I/O - Iris Digital I/O */
+	{"8921_lvs1", VREG_NULL_CONFIG, 0000000, 0, 0000000, 0, 0,      NULL},
+	/* VDD_XO - Iris XO */
+	{"8921_l4",   VREG_NULL_CONFIG, 1800000, 0, 1800000, 0, 0,      NULL},
+	/* VDD_RF/A - Iris RF/A (BT, FM, WLAN), Riva WLAN ADC & DAC */
+	{"8921_s2",   VREG_NULL_CONFIG, 1300000, 0, 1300000, 0, 0,      NULL},
+	/* VDD_PA - Iris PAs (BT, FM, WLAN)  */
+	{"8921_l10",  VREG_NULL_CONFIG, 2900000, 0, 2900000, 0, 0,      NULL},
+	/* VDD_DIG - Iris digital */
+	{"8921_lvs2", VREG_NULL_CONFIG, 0000000, 0, 0000000, 0, 0,      NULL},
+};
+
+static struct vregs_info riva_vregs[] = {
+	/* VddMx - Riva memory */
+	{"8921_l24",  VREG_NULL_CONFIG, 1050000, 0, 1050000, 0, 0,      NULL},
+	/* VddCx - Riva digital */
+	{"8921_s3",   VREG_NULL_CONFIG, 1050000, 0, 1050000, 0, 0,      NULL},
+	/* VddPx - Riva WLAN DAC */
+	{"8921_s4",   VREG_NULL_CONFIG, 1800000, 0, 1800000, 0, 0,      NULL},
+};
 
 static int configure_iris_xo(bool use_48mhz_xo, int on)
 {
-	u32 reg;
+	u32 reg = 0;
 	int rc = 0;
 
 	if (on) {
@@ -68,6 +90,7 @@ static int configure_iris_xo(bool use_48mhz_xo, int on)
 		}
 
 		/* Enable IRIS XO */
+		writel_relaxed(0, RIVA_PMU_CFG);
 		reg = readl_relaxed(RIVA_PMU_CFG);
 		reg |= RIVA_PMU_CFG_GC_BUS_MUX_SEL_TOP |
 				RIVA_PMU_CFG_IRIS_XO_EN;
@@ -120,6 +143,9 @@ static int configure_iris_xo(bool use_48mhz_xo, int on)
 		}
 	}
 
+	/* Add some delay for XO to settle */
+	msleep(20);
+
 	return rc;
 
 msm_xo_vote_fail:
@@ -129,118 +155,185 @@ fail:
 	return rc;
 }
 
-
-static void wcnss_wlan_vregs_off(void)
+/* Helper routine to turn off all WCNSS vregs e.g. IRIS, Riva */
+static void wcnss_vregs_off(struct vregs_info regulators[], uint size)
 {
 	int i, rc = 0;
 
-	for (i = 0; i < ARRAY_SIZE(vregs); i++) {
-		if (vregs[i].state == VREG_NOT_CONFIGURED)
+	/* Regulators need to be turned off in the reverse order */
+	for (i = (size-1); i >= 0; i--) {
+		if (regulators[i].state == VREG_NULL_CONFIG)
 			continue;
 
+		/* Remove PWM mode */
+		if (regulators[i].state & VREG_OPTIMUM_MODE_MASK) {
+			rc = regulator_set_optimum_mode(
+					regulators[i].regulator, 0);
+			if (rc)
+				pr_err("regulator_set_optimum_mode(%s) failed (%d)\n",
+						regulators[i].name, rc);
+		}
+
 		/* Remove pin control */
-		if (vregs[i].state & VREG_PIN_CONTROL_MASK) {
-			rc = regulator_set_mode(vregs[i].regulator,
+		if (regulators[i].state & VREG_PIN_CONTROL_MASK) {
+			rc = regulator_set_mode(regulators[i].regulator,
 					REGULATOR_MODE_NORMAL);
 			if (rc)
 				pr_err("regulator_set_mode(%s) failed (%d)\n",
-						vregs[i].name, rc);
+						regulators[i].name, rc);
 		}
 
 		/* Set voltage to lowest level */
-		if (vregs[i].state & VREG_SET_VOLTAGE_MASK) {
-			rc = regulator_set_voltage(vregs[i].regulator,
-					vregs[i].low_power_min,
-					vregs[i].max_voltage);
+		if (regulators[i].state & VREG_SET_VOLTAGE_MASK) {
+			rc = regulator_set_voltage(regulators[i].regulator,
+					regulators[i].low_power_min,
+					regulators[i].max_voltage);
 			if (rc)
 				pr_err("regulator_set_voltage(%s) failed (%d)\n",
-						vregs[i].name, rc);
+						regulators[i].name, rc);
 		}
 
 		/* Disable regulator */
-		if (vregs[i].state & VREG_ENABLE_MASK) {
-			rc = regulator_disable(vregs[i].regulator);
+		if (regulators[i].state & VREG_ENABLE_MASK) {
+			rc = regulator_disable(regulators[i].regulator);
 			if (rc < 0)
 				pr_err("vreg %s disable failed (%d)\n",
-						vregs[i].name, rc);
+						regulators[i].name, rc);
 		}
 
 		/* Free the regulator source */
-		if (vregs[i].state & VREG_GET_REGULATOR_MASK)
-			regulator_put(vregs[i].regulator);
+		if (regulators[i].state & VREG_GET_REGULATOR_MASK)
+			regulator_put(regulators[i].regulator);
 
-		vregs[i].state = VREG_NOT_CONFIGURED;
+		regulators[i].state = VREG_NULL_CONFIG;
 	}
+}
+
+/* Common helper routine to turn on all WCNSS vregs e.g. IRIS, Riva */
+static int wcnss_vregs_on(struct device *dev,
+		struct vregs_info regulators[], uint size)
+{
+	int i, rc = 0;
+
+	for (i = 0; i < size; i++) {
+			/* Get regulator source */
+		regulators[i].regulator =
+			regulator_get(dev, regulators[i].name);
+		if (IS_ERR(regulators[i].regulator)) {
+			rc = PTR_ERR(regulators[i].regulator);
+				pr_err("regulator get of %s failed (%d)\n",
+					regulators[i].name, rc);
+				goto fail;
+		}
+		regulators[i].state |= VREG_GET_REGULATOR_MASK;
+
+		/* Set voltage to nominal. Exclude swtiches e.g. LVS */
+		if (regulators[i].nominal_min || regulators[i].max_voltage) {
+			rc = regulator_set_voltage(regulators[i].regulator,
+					regulators[i].nominal_min,
+					regulators[i].max_voltage);
+			if (rc) {
+				pr_err("regulator_set_voltage(%s) failed (%d)\n",
+						regulators[i].name, rc);
+				goto fail;
+			}
+			regulators[i].state |= VREG_SET_VOLTAGE_MASK;
+		}
+
+		/* Vote for pin control */
+		if (regulators[i].is_pin_control) {
+			rc = regulator_set_mode(regulators[i].regulator,
+						REGULATOR_MODE_IDLE);
+			regulators[i].state |= VREG_PIN_CONTROL_MASK;
+		}
+
+		/* Vote for PWM/PFM mode if needed */
+		if (regulators[i].uA_load) {
+			rc = regulator_set_optimum_mode(regulators[i].regulator,
+					regulators[i].uA_load);
+			if (rc) {
+				pr_err("regulator_set_optimum_mode(%s) failed (%d)\n",
+						regulators[i].name, rc);
+				goto fail;
+			}
+			regulators[i].state |= VREG_OPTIMUM_MODE_MASK;
+		}
+
+		/* Enable the regulator */
+		rc = regulator_enable(regulators[i].regulator);
+		if (rc) {
+			pr_err("vreg %s enable failed (%d)\n",
+				regulators[i].name, rc);
+			goto fail;
+		}
+		regulators[i].state |= VREG_ENABLE_MASK;
+	}
+
+	return rc;
+
+fail:
+	wcnss_vregs_off(regulators, size);
+	return rc;
+
+}
+
+static void wcnss_iris_vregs_off(void)
+{
+	wcnss_vregs_off(iris_vregs, ARRAY_SIZE(iris_vregs));
+}
+
+static int wcnss_iris_vregs_on(struct device *dev)
+{
+	return wcnss_vregs_on(dev, iris_vregs, ARRAY_SIZE(iris_vregs));
+}
+
+static void wcnss_riva_vregs_off(void)
+{
+	wcnss_vregs_off(riva_vregs, ARRAY_SIZE(riva_vregs));
+}
+
+static int wcnss_riva_vregs_on(struct device *dev)
+{
+	return wcnss_vregs_on(dev, riva_vregs, ARRAY_SIZE(riva_vregs));
 }
 
 int wcnss_wlan_power(struct device *dev,
 		struct wcnss_wlan_config *cfg,
 		enum wcnss_opcode on)
 {
-	int i = 0;
 	int rc = 0;
 
-	/* WLAN regulator settings */
 	if (on) {
-		for (i = 0; i < ARRAY_SIZE(vregs); i++) {
-			/* Get regulator source */
-			vregs[i].regulator = regulator_get(dev, vregs[i].name);
-			if (IS_ERR(vregs[i].regulator)) {
-				rc = PTR_ERR(vregs[i].regulator);
-				pr_err("regulator get of %s failed (%d)\n",
-						vregs[i].name, rc);
-				goto fail;
-			}
-			vregs[i].state |= VREG_GET_REGULATOR_MASK;
+		/* RIVA regulator settings */
+		rc = wcnss_riva_vregs_on(dev);
+		if (rc)
+			goto fail_riva_on;
 
-			/* Set voltage to nominal level */
-			rc = regulator_set_voltage(vregs[i].regulator,
-					vregs[i].nominal_min,
-					vregs[i].max_voltage);
-			if (rc) {
-				pr_err("regulator_set_voltage(%s) failed (%d)\n",
-						vregs[i].name, rc);
-				goto fail;
-			}
-			vregs[i].state |= VREG_SET_VOLTAGE_MASK;
+		/* IRIS regulator settings */
+		rc = wcnss_iris_vregs_on(dev);
+		if (rc)
+			goto fail_iris_on;
 
-			/* Vote for pin control (if needed) */
-			if (vregs[i].is_pin_control) {
-				rc = regulator_set_mode(vregs[i].regulator,
-						REGULATOR_MODE_IDLE);
-				vregs[i].state |= VREG_PIN_CONTROL_MASK;
-			} else {
-				rc = regulator_set_mode(vregs[i].regulator,
-						REGULATOR_MODE_NORMAL);
-			}
-			if (rc) {
-				pr_err("regulator_set_mode(%s) failed (%d)\n",
-						vregs[i].name, rc);
-				goto fail;
-			}
+		/* Configure IRIS XO */
+		rc = configure_iris_xo(cfg->use_48mhz_xo, WCNSS_WLAN_SWITCH_ON);
+		if (rc)
+			goto fail_iris_xo;
 
-			/* Enable the regulator */
-			rc = regulator_enable(vregs[i].regulator);
-			if (rc < 0) {
-				pr_err("vreg %s enable failed (%d)\n",
-						vregs[i].name, rc);
-				goto fail;
-			}
-			vregs[i].state |= VREG_ENABLE_MASK;
-		}
 	} else {
-		wcnss_wlan_vregs_off();
+		configure_iris_xo(cfg->use_48mhz_xo, WCNSS_WLAN_SWITCH_OFF);
+		wcnss_iris_vregs_off();
+		wcnss_riva_vregs_off();
 	}
-
-	/* Configure IRIS XO */
-	rc = configure_iris_xo(cfg->use_48mhz_xo, on);
-	if (rc && on)
-		goto fail;
 
 	return rc;
 
-fail:
-	wcnss_wlan_vregs_off();
+fail_iris_xo:
+	wcnss_iris_vregs_off();
+
+fail_iris_on:
+	wcnss_riva_vregs_off();
+
+fail_riva_on:
 	return rc;
 }
 EXPORT_SYMBOL(wcnss_wlan_power);
