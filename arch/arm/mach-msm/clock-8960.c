@@ -3944,6 +3944,7 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("gfx3d_clk",		gfx3d_clk.c,		NULL),
 	CLK_LOOKUP("ijpeg_axi_clk",	ijpeg_axi_clk.c,	NULL),
 	CLK_LOOKUP("imem_axi_clk",	imem_axi_clk.c,		NULL),
+	CLK_LOOKUP("ijpeg_clk",         ijpeg_clk.c,            NULL),
 	CLK_LOOKUP("jpegd_clk",		jpegd_clk.c,		NULL),
 	CLK_LOOKUP("mdp_clk",		mdp_clk.c,		NULL),
 	CLK_LOOKUP("mdp_vsync_clk",	mdp_vsync_clk.c,	NULL),
