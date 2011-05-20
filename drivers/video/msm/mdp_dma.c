@@ -203,6 +203,13 @@ static void mdp_dma2_update_lcd(struct msm_fb_data_type *mfd)
 		pdata->set_rect(iBuf->dma_x, iBuf->dma_y, iBuf->dma_w,
 				iBuf->dma_h);
 	}
+#else
+	if (mfd->panel_info.type == MIPI_CMD_PANEL) {
+		/* dma_p = 0, dma_s = 1 */
+		 MDP_OUTP(MDP_BASE + 0xF1000, 0x10);
+		 /* enable dsi trigger on dma_p */
+		 MDP_OUTP(MDP_BASE + 0xF1004, 0x01);
+	}
 #endif
 
 	/* dma2 config register */

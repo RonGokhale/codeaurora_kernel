@@ -38,6 +38,7 @@
 #ifdef CONFIG_FB_MSM_MDP40
 #include "mdp4.h"
 #endif
+#include "mipi_dsi.h"
 
 uint32 mdp4_extn_disp;
 
@@ -133,6 +134,7 @@ static struct early_suspend early_suspend;
 
 static u32 mdp_irq;
 
+static uint32 mdp_prim_panel_type = NO_PANEL;
 #ifndef CONFIG_FB_MSM_MDP22
 DEFINE_MUTEX(mdp_lut_push_sem);
 static int mdp_lut_i;
@@ -500,6 +502,15 @@ void mdp_pipe_kickoff(uint32 term, struct msm_fb_data_type *mfd)
 		outpdw(MDP_BASE + 0x000c, 0x0);	/* start DMA */
 #else
 		outpdw(MDP_BASE + 0x0044, 0x0);	/* start DMA */
+
+#ifdef CONFIG_FB_MSM_MDP303
+
+#ifdef CONFIG_FB_MSM_MIPI_DSI
+		mipi_dsi_cmd_mdp_sw_trigger();
+#endif
+
+#endif
+
 #endif
 #endif
 #ifdef CONFIG_FB_MSM_MDP40
@@ -824,6 +835,14 @@ irqreturn_t mdp_isr(int irq, void *ptr)
 			mdp_pipe_ctrl(MDP_DMA2_BLOCK, MDP_BLOCK_POWER_OFF,
 				      TRUE);
 			complete(&dma->comp);
+#else
+			if (mdp_prim_panel_type == MIPI_CMD_PANEL) {
+				dma = &dma2_data;
+				dma->busy = FALSE;
+				mdp_pipe_ctrl(MDP_DMA2_BLOCK,
+					MDP_BLOCK_POWER_OFF, TRUE);
+				complete(&dma->comp);
+			}
 #endif
 		}
 		/* PPP Complete */
@@ -1319,6 +1338,7 @@ static int mdp_probe(struct platform_device *pdev)
 	pdata->off = mdp_off;
 	pdata->next = pdev;
 
+	mdp_prim_panel_type = mfd->panel.type;
 	switch (mfd->panel.type) {
 	case EXT_MDDI_PANEL:
 	case MDDI_PANEL:
