@@ -186,6 +186,17 @@ static struct snd_soc_dsp_link fe_media = {
 	},
 };
 
+static int slimbus_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
+			struct snd_pcm_hw_params *params)
+{
+	struct snd_interval *rate = hw_param_interval(params,
+	SNDRV_PCM_HW_PARAM_RATE);
+
+	pr_debug("%s()\n", __func__);
+	rate->min = rate->max = 48000;
+
+	return 0;
+}
 /* Digital audio interface glue - connects codec <---> CPU */
 static struct snd_soc_dai_link msm8960_dai[] = {
 	/* FrontEnd DAI Links */
@@ -236,6 +247,7 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.no_pcm = 1,
 		.be_id = MSM_BACKEND_DAI_PRI_I2S_RX,
 		.init = &msm8960_audrx_init,
+		.be_hw_params_fixup = slimbus_be_hw_params_fixup,
 	},
 	{
 		.name = LPASS_BE_PRI_I2S_TX,
@@ -245,7 +257,8 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.codec_name     = "tabla_codec",
 		.codec_dai_name	= "tabla_tx1",
 		.no_pcm = 1,
-		.be_id = MSM_BACKEND_DAI_PRI_I2S_TX
+		.be_id = MSM_BACKEND_DAI_PRI_I2S_TX,
+		.be_hw_params_fixup = slimbus_be_hw_params_fixup,
 	},
 };
 
