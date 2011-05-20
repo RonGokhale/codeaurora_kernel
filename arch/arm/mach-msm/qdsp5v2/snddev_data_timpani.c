@@ -889,6 +889,80 @@ static struct platform_device msm_snddev_mi2s_stereo_rx_device = {
 	.dev = { .platform_data = &snddev_mi2s_stereo_rx_data },
 };
 
+static struct adie_codec_action_unit auxpga_lb_lo_actions[] =
+	LB_AUXPGA_LO_STEREO;
+
+static struct adie_codec_hwsetting_entry auxpga_lb_lo_settings[] = {
+	{
+		.freq_plan = 48000,
+		.osr = 256,
+		.actions = auxpga_lb_lo_actions,
+		.action_sz = ARRAY_SIZE(auxpga_lb_lo_actions),
+	},
+};
+
+static struct adie_codec_dev_profile auxpga_lb_lo_profile = {
+	.path_type = ADIE_CODEC_LB,
+	.settings = auxpga_lb_lo_settings,
+	.setting_sz = ARRAY_SIZE(auxpga_lb_lo_settings),
+};
+
+static struct snddev_icodec_data snddev_auxpga_lb_lo_data = {
+	.capability = SNDDEV_CAP_LB,
+	.name = "auxpga_loopback_lo",
+	.copp_id = 0,
+	.acdb_id = PSEUDO_ACDB_ID,
+	.profile = &auxpga_lb_lo_profile,
+	.channel_mode = 2,
+	.default_sample_rate = 48000,
+	.pamp_on = msm_snddev_poweramp_on,
+	.pamp_off = msm_snddev_poweramp_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_ANALOG,
+};
+
+static struct platform_device msm_auxpga_lb_lo_device = {
+	.name = "snddev_icodec",
+	.id = 27,
+	.dev = { .platform_data = &snddev_auxpga_lb_lo_data },
+};
+
+static struct adie_codec_action_unit auxpga_lb_hs_actions[] =
+	LB_AUXPGA_HPH_AB_CPLS_STEREO;
+
+static struct adie_codec_hwsetting_entry auxpga_lb_hs_settings[] = {
+	{
+		.freq_plan = 48000,
+		.osr = 256,
+		.actions = auxpga_lb_hs_actions,
+		.action_sz = ARRAY_SIZE(auxpga_lb_hs_actions),
+	},
+};
+
+static struct adie_codec_dev_profile auxpga_lb_hs_profile = {
+	.path_type = ADIE_CODEC_LB,
+	.settings = auxpga_lb_hs_settings,
+	.setting_sz = ARRAY_SIZE(auxpga_lb_hs_settings),
+};
+
+static struct snddev_icodec_data snddev_auxpga_lb_hs_data = {
+	.capability = SNDDEV_CAP_LB,
+	.name = "auxpga_loopback_hs",
+	.copp_id = 0,
+	.acdb_id = PSEUDO_ACDB_ID,
+	.profile = &auxpga_lb_hs_profile,
+	.channel_mode = 2,
+	.default_sample_rate = 48000,
+	.voltage_on = msm_snddev_hsed_voltage_on,
+	.voltage_off = msm_snddev_hsed_voltage_off,
+	.dev_vol_type = SNDDEV_DEV_VOL_ANALOG,
+};
+
+static struct platform_device msm_auxpga_lb_hs_device = {
+	.name = "snddev_icodec",
+	.id = 25,
+	.dev = { .platform_data = &snddev_auxpga_lb_hs_data },
+};
+
 static struct platform_device *snd_devices_ffa[] __initdata = {
 	&msm_iearpiece_ffa_device,
 	&msm_imic_ffa_device,
@@ -913,6 +987,8 @@ static struct platform_device *snd_devices_ffa[] __initdata = {
 	&msm_spk_idual_mic_broadside_device,
 	&msm_idual_mic_broadside_device,
 	&msm_snddev_mi2s_stereo_rx_device,
+	&msm_auxpga_lb_hs_device,
+	&msm_auxpga_lb_lo_device,
 };
 
 void __ref msm_snddev_init_timpani(void)
