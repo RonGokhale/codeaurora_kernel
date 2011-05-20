@@ -49,6 +49,8 @@
 #define L_VAL_SCPLL_CAL_MAX	0x1C /* = 1512 MHz with 27MHz source */
 
 #define MAX_VDD_SC		1250000 /* uV */
+#define MAX_VDD_MEM		1250000 /* uV */
+#define MAX_VDD_DIG		1200000 /* uV */
 #define MAX_AXI			 310500 /* KHz */
 #define SCPLL_LOW_VDD_FMAX	 594000 /* KHz */
 #define SCPLL_LOW_VDD		1000000 /* uV */
@@ -496,8 +498,8 @@ static int increase_vdd(int cpu, unsigned int vdd_sc, unsigned int vdd_mem,
 
 	/* Increase vdd_mem active-set before vdd_dig and vdd_sc.
 	 * vdd_mem should be >= both vdd_sc and vdd_dig. */
-	rc = rpm_vreg_set_voltage(RPM_VREG_ID_PM8058_S0,
-				  rpm_vreg_voter[cpu], vdd_mem, 0);
+	rc = rpm_vreg_set_voltage(RPM_VREG_ID_PM8058_S0, rpm_vreg_voter[cpu],
+				  vdd_mem, MAX_VDD_MEM, 0);
 	if (rc) {
 		pr_err("%s: vdd_mem (cpu%d) increase failed (%d)\n",
 			__func__, cpu, rc);
@@ -505,8 +507,8 @@ static int increase_vdd(int cpu, unsigned int vdd_sc, unsigned int vdd_mem,
 	}
 
 	/* Increase vdd_dig active-set vote. */
-	rc = rpm_vreg_set_voltage(RPM_VREG_ID_PM8058_S1,
-				  rpm_vreg_voter[cpu], vdd_dig, 0);
+	rc = rpm_vreg_set_voltage(RPM_VREG_ID_PM8058_S1, rpm_vreg_voter[cpu],
+				  vdd_dig, MAX_VDD_DIG, 0);
 	if (rc) {
 		pr_err("%s: vdd_dig (cpu%d) increase failed (%d)\n",
 			__func__, cpu, rc);
@@ -551,8 +553,8 @@ static void decrease_vdd(int cpu, unsigned int vdd_sc, unsigned int vdd_mem,
 	}
 
 	/* Decrease vdd_dig active-set vote. */
-	ret = rpm_vreg_set_voltage(RPM_VREG_ID_PM8058_S1,
-				   rpm_vreg_voter[cpu], vdd_dig, 0);
+	ret = rpm_vreg_set_voltage(RPM_VREG_ID_PM8058_S1, rpm_vreg_voter[cpu],
+				   vdd_dig, MAX_VDD_DIG, 0);
 	if (ret) {
 		pr_err("%s: vdd_dig (cpu%d) decrease failed (%d)\n",
 			__func__, cpu, ret);
@@ -561,8 +563,8 @@ static void decrease_vdd(int cpu, unsigned int vdd_sc, unsigned int vdd_mem,
 
 	/* Decrease vdd_mem active-set after vdd_dig and vdd_sc.
 	 * vdd_mem should be >= both vdd_sc and vdd_dig. */
-	ret = rpm_vreg_set_voltage(RPM_VREG_ID_PM8058_S0,
-				   rpm_vreg_voter[cpu], vdd_mem, 0);
+	ret = rpm_vreg_set_voltage(RPM_VREG_ID_PM8058_S0, rpm_vreg_voter[cpu],
+				   vdd_mem, MAX_VDD_MEM, 0);
 	if (ret) {
 		pr_err("%s: vdd_mem (cpu%d) decrease failed (%d)\n",
 			__func__, cpu, ret);

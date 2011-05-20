@@ -179,6 +179,7 @@ enum rpm_vreg_voter {
  * @vreg: ID for regulator
  * @voter: ID for the voter
  * @min_uV: minimum acceptable voltage (in uV) that is voted for
+ * @max_uV: maximum acceptable voltage (in uV) that is voted for
  * @sleep_also: 0 for active set only, non-0 for active set and sleep set
  *
  * Returns 0 on success or errno.
@@ -195,7 +196,7 @@ enum rpm_vreg_voter {
  * specified in their private data.
  */
 int rpm_vreg_set_voltage(enum rpm_vreg_id vreg_id, enum rpm_vreg_voter voter,
-			 int min_uV, int sleep_also);
+			 int min_uV, int max_uV, int sleep_also);
 
 /**
  * rpm_vreg_set_frequency - sets the frequency of a switching regulator
