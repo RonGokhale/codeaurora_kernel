@@ -160,6 +160,7 @@ VREG_CONSUMERS(LVS5) = {
 };
 VREG_CONSUMERS(LVS6) = {
 	REGULATOR_SUPPLY("8921_lvs6",		NULL),
+	REGULATOR_SUPPLY("vdd_io",		"spi0.0"),
 };
 VREG_CONSUMERS(LVS7) = {
 	REGULATOR_SUPPLY("8921_lvs7",		NULL),
@@ -179,6 +180,7 @@ VREG_CONSUMERS(EXT_5V) = {
 };
 VREG_CONSUMERS(EXT_L2) = {
 	REGULATOR_SUPPLY("ext_l2",		NULL),
+	REGULATOR_SUPPLY("vdd_phy",		"spi0.0"),
 };
 
 #define PM8921_VREG_INIT(_id, _min_uV, _max_uV, _modes, _ops, _apply_uV, \
