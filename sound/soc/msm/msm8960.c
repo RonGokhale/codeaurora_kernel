@@ -10,6 +10,7 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/clk.h>
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
 #include <linux/mfd/pm8xxx/pm8921.h>
@@ -32,6 +33,9 @@
 
 static int msm8960_spk_control;
 static int msm8960_pamp_on;
+
+static struct clk *codec_clk;
+static int clk_users;
 
 static void codec_poweramp_on(void)
 {
@@ -207,6 +211,38 @@ static int slimbus_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 
 	return 0;
 }
+
+static int msm8960_startup(struct snd_pcm_substream *substream)
+{
+	if (clk_users++)
+		return 0;
+
+	codec_clk = clk_get(NULL, "i2s_spkr_osr_clk");
+	if (codec_clk) {
+		clk_set_rate(codec_clk, 12288000);
+		clk_enable(codec_clk);
+	} else {
+		pr_err("%s: Error setting Tabla MCLK\n", __func__);
+		clk_users--;
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static void msm8960_shutdown(struct snd_pcm_substream *substream)
+{
+	clk_users--;
+	if (!clk_users) {
+		clk_set_rate(codec_clk, 0);
+		clk_disable(codec_clk);
+	}
+}
+
+static struct snd_soc_ops msm8960_be_ops = {
+	.startup = msm8960_startup,
+	.shutdown = msm8960_shutdown,
+};
+
 /* Digital audio interface glue - connects codec <---> CPU */
 static struct snd_soc_dai_link msm8960_dai[] = {
 	/* FrontEnd DAI Links */
@@ -258,6 +294,7 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.be_id = MSM_BACKEND_DAI_PRI_I2S_RX,
 		.init = &msm8960_audrx_init,
 		.be_hw_params_fixup = slimbus_be_hw_params_fixup,
+		.ops = &msm8960_be_ops,
 	},
 	{
 		.name = LPASS_BE_PRI_I2S_TX,
@@ -269,6 +306,7 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.no_pcm = 1,
 		.be_id = MSM_BACKEND_DAI_PRI_I2S_TX,
 		.be_hw_params_fixup = slimbus_be_hw_params_fixup,
+		.ops = &msm8960_be_ops,
 	},
 };
 
