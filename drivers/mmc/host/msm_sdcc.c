@@ -2019,16 +2019,37 @@ static const struct mmc_host_ops msmsdcc_ops = {
 #endif
 };
 
+static unsigned int
+msmsdcc_slot_status(struct msmsdcc_host *host)
+{
+	int status;
+	unsigned int gpio_no = host->plat->status_gpio;
+
+	status = gpio_request(gpio_no, "SD_HW_Detect");
+	if (status) {
+		pr_err("%s: %s: Failed to request GPIO %d\n",
+			mmc_hostname(host->mmc), __func__, gpio_no);
+	} else {
+		status = gpio_direction_input(gpio_no);
+		if (!status)
+			status = !gpio_get_value_cansleep(gpio_no);
+		gpio_free(gpio_no);
+	}
+	return status;
+}
+
 static void
 msmsdcc_check_status(unsigned long data)
 {
 	struct msmsdcc_host *host = (struct msmsdcc_host *)data;
 	unsigned int status;
 
-	if (!host->plat->status) {
-		mmc_detect_change(host->mmc, 0);
-	} else {
-		status = host->plat->status(mmc_dev(host->mmc));
+	if (host->plat->status || host->plat->status_gpio) {
+		if (host->plat->status)
+			status = host->plat->status(mmc_dev(host->mmc));
+		else
+			status = msmsdcc_slot_status(host);
+
 		host->eject = !status;
 		if (status ^ host->oldstat) {
 			pr_info("%s: Slot status change detected (%d -> %d)\n",
@@ -2036,6 +2057,8 @@ msmsdcc_check_status(unsigned long data)
 			mmc_detect_change(host->mmc, 0);
 		}
 		host->oldstat = status;
+	} else {
+		mmc_detect_change(host->mmc, 0);
 	}
 }
 
@@ -2923,8 +2946,11 @@ msmsdcc_probe(struct platform_device *pdev)
 	 * Setup card detect change
 	 */
 
-	if (plat->status) {
-		host->oldstat = plat->status(mmc_dev(host->mmc));
+	if (plat->status || plat->status_gpio) {
+		if (plat->status)
+			host->oldstat = plat->status(mmc_dev(host->mmc));
+		else
+			host->oldstat = msmsdcc_slot_status(host);
 		host->eject = !host->oldstat;
 	}
 
