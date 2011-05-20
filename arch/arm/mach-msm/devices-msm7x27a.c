@@ -18,6 +18,7 @@
 #include <mach/msm_iomap.h>
 #include <mach/board.h>
 #include <mach/dma.h>
+#include <mach/dal_axi.h>
 #include <asm/mach/flash.h>
 #include <asm/mach/mmc.h>
 #include <mach/usbdiag.h>
@@ -520,13 +521,17 @@ static struct kgsl_device_platform_data kgsl_3d0_pdata = {
 	.pwr_data = {
 		.pwrlevel = {
 			{
-				.gpu_freq = 0,
+				.gpu_freq = 245760000,
 				.bus_freq = 200000000,
+			},
+			{
+				.gpu_freq = 133330000,
+				.bus_freq = 0,
 			},
 		},
 		.init_level = 0,
-		.num_levels = 1,
-		.set_grp_async = NULL,
+		.num_levels = 2,
+		.set_grp_async = set_grp_xbar_async,
 		.idle_timeout = HZ/5,
 		.nap_allowed = false,
 	},
