@@ -209,6 +209,26 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
+/*
+ * LPA Needs only RX BE DAI links.
+ * Hence define seperate BE list for lpa
+ */
+
+static const char *lpa_mm_be[] = {
+	LPASS_BE_SLIMBUS_0_RX,
+};
+
+static struct snd_soc_dsp_link lpa_fe_media = {
+	.supported_be = lpa_mm_be,
+	.num_be = ARRAY_SIZE(lpa_mm_be),
+	.fe_playback_channels = 2,
+	.fe_capture_channels = 1,
+	.trigger = {
+		SND_SOC_DSP_TRIGGER_POST,
+		SND_SOC_DSP_TRIGGER_POST
+	},
+};
+
 static const char *mm_be[] = {
 	LPASS_BE_SLIMBUS_0_RX,
 	LPASS_BE_SLIMBUS_0_TX,
@@ -307,6 +327,15 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.dynamic = 1,
 		.dsp_link = &fe_media,
 		.be_id = MSM_FRONTEND_DAI_VOIP,
+	},
+	{
+		.name = "MSM8960 LPA",
+		.stream_name = "LPA",
+		.cpu_dai_name	= "MultiMedia3",
+		.platform_name  = "msm-pcm-lpa",
+		.dynamic = 1,
+		.dsp_link = &lpa_fe_media,
+		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA3,
 	},
 	/* Backend DAI Links */
 	{
