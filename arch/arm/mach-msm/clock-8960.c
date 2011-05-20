@@ -30,6 +30,7 @@
 #include "clock-local.h"
 #include "clock-rpm.h"
 #include "clock-voter.h"
+#include "clock-dss-8960.h"
 
 #define REG(off)	(MSM_CLK_CTL_BASE + (off))
 #define REG_MM(off)	(MSM_MMSS_CLK_CTL_BASE + (off))
@@ -228,6 +229,7 @@
 #define pll8_to_mm_mux		2
 #define pll0_to_mm_mux		3
 #define gnd_to_mm_mux		4
+#define hdmi_pll_to_mm_mux	3
 #define cxo_to_xo_mux		0
 #define pxo_to_xo_mux		1
 #define gnd_to_xo_mux		3
@@ -420,12 +422,6 @@ static struct pll_vote_clk pll8_clk = {
 /*
  * SoC-specific functions required by clock-local driver
  */
-/* Unlike other clocks, the TV rate is adjusted through PLL
- * re-programming. It is also routed through an MND divider. */
-static void set_rate_tv(struct rcg_clk *clk, struct clk_freq_tbl *nf)
-{
-	/* TODO: Reprogram the HDMI PHY PLL? */
-}
 
 /* Update the sys_vdd voltage given a level. */
 int soc_update_sys_vdd(enum sys_vdd_level level)
@@ -2754,7 +2750,43 @@ static struct rcg_clk rot_clk = {
 	},
 };
 
-#define F_TV(f, s, p_r, d, m, n, v) \
+static int hdmi_pll_clk_enable(struct clk *clk)
+{
+	int ret;
+	unsigned long flags;
+	spin_lock_irqsave(&local_clock_reg_lock, flags);
+	ret = hdmi_pll_enable();
+	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
+	return ret;
+}
+
+static void hdmi_pll_clk_disable(struct clk *clk)
+{
+	unsigned long flags;
+	spin_lock_irqsave(&local_clock_reg_lock, flags);
+	hdmi_pll_disable();
+	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
+}
+
+static unsigned hdmi_pll_clk_get_rate(struct clk *clk)
+{
+	return hdmi_pll_get_rate();
+}
+
+static struct clk_ops clk_ops_hdmi_pll = {
+	.enable = hdmi_pll_clk_enable,
+	.disable = hdmi_pll_clk_disable,
+	.get_rate = hdmi_pll_clk_get_rate,
+	.is_local = local_clk_is_local,
+};
+
+static struct clk hdmi_pll_clk = {
+	.dbg_name = "hdmi_pll_clk",
+	.ops = &clk_ops_hdmi_pll,
+	CLK_INIT(hdmi_pll_clk),
+};
+
+#define F_TV_GND(f, s, p_r, d, m, n, v) \
 	{ \
 		.freq_hz = f, \
 		.src_clk = &s##_clk.c, \
@@ -2763,13 +2795,40 @@ static struct rcg_clk rot_clk = {
 		.ctl_val = CC(6, n), \
 		.mnd_en_mask = BIT(5) * !!(n), \
 		.sys_vdd = v, \
-		.extra_freq_data = p_r, \
+	}
+#define F_TV(f, s, p_r, d, m, n, v) \
+	{ \
+		.freq_hz = f, \
+		.src_clk = &s##_clk, \
+		.md_val = MD8(8, m, 0, n), \
+		.ns_val = NS_MM(23, 16, n, m, 15, 14, d, 2, 0, s##_to_mm_mux), \
+		.ctl_val = CC(6, n), \
+		.mnd_en_mask = BIT(5) * !!(n), \
+		.sys_vdd = v, \
+		.extra_freq_data = (void *)p_r, \
 	}
 /* Switching TV freqs requires PLL reconfiguration. */
 static struct clk_freq_tbl clk_tbl_tv[] = {
-	/* TODO */
+	F_TV_GND(    0,      gnd,          0, 1, 0, 0, NONE),
+	F_TV( 25200000, hdmi_pll,   25200000, 1, 0, 0, LOW),
+	F_TV( 27000000, hdmi_pll,   27000000, 1, 0, 0, LOW),
+	F_TV( 27030000, hdmi_pll,   27030000, 1, 0, 0, LOW),
+	F_TV( 74250000, hdmi_pll,   74250000, 1, 0, 0, NOMINAL),
+	F_TV(148500000, hdmi_pll,  148500000, 1, 0, 0, NOMINAL),
 	F_END
 };
+
+/*
+ * Unlike other clocks, the TV rate is adjusted through PLL
+ * re-programming. It is also routed through an MND divider.
+ */
+void set_rate_tv(struct rcg_clk *clk, struct clk_freq_tbl *nf)
+{
+	unsigned long pll_rate = (unsigned long)nf->extra_freq_data;
+	if (pll_rate)
+		hdmi_pll_set_rate(pll_rate);
+	set_rate_mnd(clk, nf);
+}
 
 static struct rcg_clk tv_src_clk = {
 	.ns_reg = TV_NS_REG,
@@ -2798,7 +2857,7 @@ static struct branch_clk tv_enc_clk = {
 		.reset_reg = SW_RESET_CORE_REG,
 		.reset_mask = BIT(0),
 		.halt_reg = DBG_BUS_VEC_D_REG,
-		.halt_bit = 8,
+		.halt_bit = 9,
 	},
 	.parent = &tv_src_clk.c,
 	.c = {
@@ -2813,7 +2872,7 @@ static struct branch_clk tv_dac_clk = {
 		.ctl_reg = TV_CC_REG,
 		.en_mask = BIT(10),
 		.halt_reg = DBG_BUS_VEC_D_REG,
-		.halt_bit = 9,
+		.halt_bit = 10,
 	},
 	.parent = &tv_src_clk.c,
 	.c = {
@@ -2830,7 +2889,7 @@ static struct branch_clk mdp_tv_clk = {
 		.reset_reg = SW_RESET_CORE_REG,
 		.reset_mask = BIT(4),
 		.halt_reg = DBG_BUS_VEC_D_REG,
-		.halt_bit = 11,
+		.halt_bit = 12,
 	},
 	.parent = &tv_src_clk.c,
 	.c = {
@@ -2847,7 +2906,7 @@ static struct branch_clk hdmi_tv_clk = {
 		.reset_reg = SW_RESET_CORE_REG,
 		.reset_mask = BIT(1),
 		.halt_reg = DBG_BUS_VEC_D_REG,
-		.halt_bit = 10,
+		.halt_bit = 11,
 	},
 	.parent = &tv_src_clk.c,
 	.c = {
