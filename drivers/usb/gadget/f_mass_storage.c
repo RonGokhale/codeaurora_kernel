@@ -1558,8 +1558,7 @@ static int do_prevent_allow(struct fsg_common *common)
 		curlun->sense_data = SS_INVALID_FIELD_IN_CDB;
 		return -EINVAL;
 	}
-
-	if (curlun->prevent_medium_removal && !prevent)
+	if (!curlun->nofua && curlun->prevent_medium_removal && !prevent)
 		fsg_lun_fsync_sub(curlun);
 	curlun->prevent_medium_removal = prevent;
 	return 0;
@@ -2896,6 +2895,7 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 		curlun->cdrom = !!lcfg->cdrom;
 		curlun->ro = lcfg->cdrom || lcfg->ro;
 		curlun->removable = lcfg->removable;
+		curlun->nofua = lcfg->nofua;
 		curlun->dev.release = fsg_lun_release;
 
 #ifdef CONFIG_USB_ANDROID_MASS_STORAGE
@@ -3225,7 +3225,7 @@ static int fsg_bind_config(struct usb_composite_dev *cdev,
 	return rc;
 }
 
-static inline int __deprecated __maybe_unused
+static inline int __maybe_unused
 fsg_add(struct usb_composite_dev *cdev, struct usb_configuration *c,
 	struct fsg_common *common)
 {
@@ -3343,8 +3343,10 @@ static int fsg_probe(struct platform_device *pdev)
 	if (nluns > FSG_MAX_LUNS)
 		nluns = FSG_MAX_LUNS;
 	fsg_cfg.nluns = nluns;
-	for (i = 0; i < nluns; i++)
+	for (i = 0; i < nluns; i++) {
 		fsg_cfg.luns[i].removable = 1;
+		fsg_cfg.luns[i].nofua = 1;
+	}
 
 	fsg_cfg.vendor_name = pdata->vendor;
 	fsg_cfg.product_name = pdata->product;
