@@ -154,13 +154,15 @@ struct msm_vpe_phy_info {
 	uint32_t frame_id;
 };
 
-struct msm_camera_csid_lut_params {
-	uint8_t vc;
-	uint8_t dt;
+struct msm_camera_csid_vc_cfg {
 	uint8_t cid;
-	uint8_t rdi_en;
-	uint8_t ispif_en;
+	uint8_t dt;
 	uint8_t decode_format;
+};
+
+struct msm_camera_csid_lut_params {
+	uint8_t num_cid;
+	struct msm_camera_csid_vc_cfg *vc_cfg;
 };
 
 struct msm_camera_csid_params {
@@ -180,6 +182,7 @@ struct msm_camera_csiphy_params {
 #define VFE31_OUTPUT_MODE_P (0x1 << 3)
 #define VFE31_OUTPUT_MODE_T (0x1 << 4)
 
+#define CSI_EMBED_DATA 0x12
 #define CSI_RAW8    0x2A
 #define CSI_RAW10   0x2B
 #define CSI_RAW12   0x2C
