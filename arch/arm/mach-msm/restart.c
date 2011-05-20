@@ -60,10 +60,10 @@ static struct notifier_block panic_blk = {
 static void set_dload_mode(int on)
 {
 	if (dload_mode_addr) {
-		writel(on ? 0xE47B337D : 0, dload_mode_addr);
-		writel(on ? 0xCE14091A : 0,
+		__raw_writel(on ? 0xE47B337D : 0, dload_mode_addr);
+		__raw_writel(on ? 0xCE14091A : 0,
 		       dload_mode_addr + sizeof(unsigned int));
-		dmb();
+		dsb();
 	}
 }
 
@@ -123,7 +123,7 @@ static void msm_power_off(void)
 #endif
 	pm8058_reset_pwr_off(0);
 	pm8901_reset_pwr_off(0);
-	writel(0, PSHOLD_CTL_SU);
+	__raw_writel(0, PSHOLD_CTL_SU);
 	mdelay(10000);
 	printk(KERN_ERR "Powering off has failed\n");
 	return;
@@ -151,28 +151,28 @@ void arch_reset(char mode, const char *cmd)
 
 	if (cmd != NULL) {
 		if (!strncmp(cmd, "bootloader", 10)) {
-			writel(0x77665500, restart_reason);
+			__raw_writel(0x77665500, restart_reason);
 		} else if (!strncmp(cmd, "recovery", 8)) {
-			writel(0x77665502, restart_reason);
+			__raw_writel(0x77665502, restart_reason);
 		} else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
 			code = simple_strtoul(cmd + 4, NULL, 16) & 0xff;
-			writel(0x6f656d00 | code, restart_reason);
+			__raw_writel(0x6f656d00 | code, restart_reason);
 		} else {
-			writel(0x77665501, restart_reason);
+			__raw_writel(0x77665501, restart_reason);
 		}
 	}
 
-	writel(0, WDT0_EN);
-	writel(0, PSHOLD_CTL_SU); /* Actually reset the chip */
+	__raw_writel(0, WDT0_EN);
+	dsb();
+	__raw_writel(0, PSHOLD_CTL_SU); /* Actually reset the chip */
 	mdelay(5000);
 
 	printk(KERN_NOTICE "PS_HOLD didn't work, falling back to watchdog\n");
 
-	writel(5*0x31F3, WDT0_BARK_TIME);
-	writel(0x31F3, WDT0_BITE_TIME);
-	writel(3, WDT0_EN);
-	dmb();
+	__raw_writel(5*0x31F3, WDT0_BARK_TIME);
+	__raw_writel(0x31F3, WDT0_BITE_TIME);
+	__raw_writel(3, WDT0_EN);
 	secure_writel(3, MSM_TCSR_BASE + TCSR_WDT_CFG);
 
 	mdelay(10000);
