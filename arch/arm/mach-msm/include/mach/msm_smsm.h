@@ -83,6 +83,10 @@ extern uint32_t SMSM_NUM_HOSTS;
 
 #define SMSM_A2_POWER_CONTROL  0x00000002
 
+#define SMSM_WLAN_TX_RINGS_EMPTY 0x00000200
+#define SMSM_WLAN_TX_ENABLE	0x00000400
+
+
 void *smem_alloc(unsigned id, unsigned size);
 void *smem_get_entry(unsigned id, unsigned *size);
 int smsm_change_state(uint32_t smsm_entry,
