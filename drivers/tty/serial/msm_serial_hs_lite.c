@@ -532,6 +532,16 @@ static int msm_hsl_startup(struct uart_port *port)
 	snprintf(msm_hsl_port->name, sizeof(msm_hsl_port->name),
 		 "msm_serial_hsl%d", port->line);
 
+	if (!(is_console(port)) || (!port->cons) ||
+		(port->cons && (!(port->cons->flags & CON_ENABLED)))) {
+		ret = clk_set_rate(msm_hsl_port->clk, 1843200);
+		if (ret) {
+			pr_err("%s():uart_clk set rate to 1843200 failed\n",
+								__func__);
+			return ret;
+		}
+	}
+
 #ifndef CONFIG_PM_RUNTIME
 	msm_hsl_init_clock(port);
 #endif
@@ -596,6 +606,7 @@ static int msm_hsl_startup(struct uart_port *port)
 static void msm_hsl_shutdown(struct uart_port *port)
 {
 	struct msm_hsl_port *msm_hsl_port = UART_TO_MSM(port);
+	int ret;
 
 	clk_en(port, 1);
 
@@ -609,6 +620,16 @@ static void msm_hsl_shutdown(struct uart_port *port)
 #ifndef CONFIG_PM_RUNTIME
 	msm_hsl_deinit_clock(port);
 #endif
+	if (!(is_console(port)) || (!port->cons) ||
+		(port->cons && (!(port->cons->flags & CON_ENABLED)))) {
+		ret = clk_set_rate(msm_hsl_port->clk, 0);
+		if (ret) {
+			pr_err("%s():uart_clk set rate to 0 failed\n",
+								__func__);
+			return;
+		}
+	}
+
 	pm_runtime_put_sync(port->dev);
 }
 
