@@ -99,7 +99,7 @@ struct mddi_panel_info {
 
 /* DSI PHY configuration */
 struct mipi_dsi_phy_ctrl {
-	uint32 regulator[4];
+	uint32 regulator[5];
 	uint32 timing[12];
 	uint32 ctrl[4];
 	uint32 strength[4];
