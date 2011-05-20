@@ -5571,9 +5571,7 @@ static struct platform_device *devices[] __initdata = {
 	&msm_bt_power_device,
 #endif
 	&msm_kgsl_3d0,
-#ifdef CONFIG_MSM_KGSL_2D
 	&msm_kgsl_2d0,
-#endif
 #ifdef CONFIG_MT9T013
 	&msm_camera_sensor_mt9t013,
 #endif

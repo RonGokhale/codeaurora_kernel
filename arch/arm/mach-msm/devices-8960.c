@@ -1399,7 +1399,6 @@ static struct msm_bus_scale_pdata grp3d_bus_scale_pdata = {
 	.name = "grp3d",
 };
 
-#ifdef CONFIG_MSM_KGSL_2D
 static struct msm_bus_vectors grp2d0_init_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE0,
@@ -1470,7 +1469,6 @@ struct msm_bus_scale_pdata grp2d1_bus_scale_pdata = {
 	.name = "grp2d1",
 };
 #endif
-#endif
 
 static struct resource kgsl_3d0_resources[] = {
 	{
@@ -1537,7 +1535,6 @@ struct platform_device msm_kgsl_3d0 = {
 	},
 };
 
-#ifdef CONFIG_MSM_KGSL_2D
 static struct resource kgsl_2d0_resources[] = {
 	{
 		.name = KGSL_2D0_REG_MEMORY,
@@ -1652,7 +1649,6 @@ struct platform_device msm_kgsl_2d1 = {
 		.platform_data = &kgsl_2d1_pdata,
 	},
 };
-#endif
 
 #ifdef CONFIG_MSM_GEMINI
 static struct resource msm_gemini_resources[] = {
