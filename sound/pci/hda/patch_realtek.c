@@ -1376,6 +1376,12 @@ static void alc_auto_setup_eapd(struct hda_codec *codec, bool on)
 	case 0x10ec0269:
 	case 0x10ec0270:
 	case 0x10ec0272:
+		/* delay de-assert of eapd to allow biasing of amp
+		 inputs to settle avoiding an audible 'pop'
+		 */
+		if (codec->subsystem_id == 0x144dc0a7)
+			msleep(25);
+		/* fall through */
 	case 0x10ec0660:
 	case 0x10ec0662:
 	case 0x10ec0663:
