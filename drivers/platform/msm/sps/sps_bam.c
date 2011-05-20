@@ -764,7 +764,7 @@ int sps_bam_pipe_connect(struct sps_pipe *bam_pipe,
 	/* Insure that the BAM is enabled */
 	if ((dev->state & BAM_STATE_ENABLED) == 0)
 		if (sps_bam_enable(dev))
-			goto exit_err;
+			goto exit_init_err;
 
 	/* Check pipe allocation */
 	if (dev->pipes[pipe_index] != BAM_PIPE_UNASSIGNED) {
@@ -829,9 +829,10 @@ int sps_bam_pipe_connect(struct sps_pipe *bam_pipe,
 	bam_pipe->state |= BAM_STATE_INIT;
 	result = 0;
 exit_err:
-	if (result) {
+	if (result)
 		bam_pipe_exit(dev->base, pipe_index, dev->props.ee);
-
+exit_init_err:
+	if (result) {
 		/* Clear the client pipe state */
 		pipe_clear(bam_pipe);
 	}
