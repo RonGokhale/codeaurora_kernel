@@ -88,7 +88,18 @@
 #define CSID_TG_DT_n_CFG_2_ADDR                     0xB0
 #define CSID_TG_DT_n_CFG_3_ADDR                     0xD8
 
-/* ISPIF registers */
+/* Regulator Voltage and Current */
+
+#define CAM_VDIG_MINUV                    1200000
+#define CAM_VDIG_MAXUV                    1200000
+#define CAM_VANA_MINUV                    2800000
+#define CAM_VANA_MAXUV                    2850000
+#define CAM_CSI_VDD_MINUV                  1200000
+#define CAM_CSI_VDD_MAXUV                  1200000
+
+#define CAM_VDIG_LOAD_UA                  105000
+#define CAM_VANA_LOAD_UA                  85600
+#define CAM_CSI_LOAD_UA                    20000
 
 static struct clk *camio_cam_clk;
 static struct clk *camio_vfe_clk;
@@ -112,9 +123,10 @@ static struct clk *camio_vpe_pclk;
 static struct regulator *fs_vfe;
 static struct regulator *fs_ijpeg;
 static struct regulator *fs_vpe;
-static struct regulator *ldo11;
-static struct regulator *lvs5;
-static struct regulator *ldo12;
+static struct regulator *cam_vana;
+static struct regulator *cam_vio;
+static struct regulator *cam_vdig;
+static struct regulator *mipi_csi_vdd;
 
 static struct msm_camera_io_ext camio_ext;
 static struct msm_camera_io_clk camio_clk;
@@ -332,94 +344,176 @@ void msm_io_memcpy(void __iomem *dest_addr, void __iomem *src_addr, u32 len)
 	msm_io_dump(dest_addr, len);
 }
 
-static void msm_camera_vreg_enable(void)
+static int msm_camera_vreg_enable(struct platform_device *pdev)
 {
-	ldo11 = regulator_get(NULL, "8058_l11");
-	if (IS_ERR(ldo11)) {
-		CDBG("%s: VREG LDO11 get failed\n", __func__);
-		ldo11 = NULL;
-		return;
+	if (mipi_csi_vdd == NULL) {
+		mipi_csi_vdd = regulator_get(&pdev->dev, "mipi_csi_vdd");
+		if (IS_ERR(mipi_csi_vdd)) {
+			CDBG("%s: VREG MIPI CSI VDD get failed\n", __func__);
+			mipi_csi_vdd = NULL;
+			return -ENODEV;
+		}
+		if (regulator_set_voltage(mipi_csi_vdd, CAM_CSI_VDD_MINUV,
+			CAM_CSI_VDD_MAXUV)) {
+			CDBG("%s: VREG MIPI CSI VDD set voltage failed\n",
+				__func__);
+			goto mipi_csi_vdd_put;
+		}
+		if (regulator_set_optimum_mode(mipi_csi_vdd,
+			CAM_CSI_LOAD_UA) < 0) {
+			CDBG("%s: VREG MIPI CSI set optimum mode failed\n",
+				__func__);
+			goto mipi_csi_vdd_release;
+		}
+		if (regulator_enable(mipi_csi_vdd)) {
+			CDBG("%s: VREG MIPI CSI VDD enable failed\n",
+				__func__);
+			goto mipi_csi_vdd_disable;
+		}
 	}
-	if (regulator_set_voltage(ldo11, 2850000, 2850000)) {
-		CDBG("%s: VREG LDO11 set voltage failed\n",  __func__);
-		goto ldo11_disable;
+	if (cam_vana == NULL) {
+		cam_vana = regulator_get(&pdev->dev, "cam_vana");
+		if (IS_ERR(cam_vana)) {
+			CDBG("%s: VREG CAM VANA get failed\n", __func__);
+			cam_vana = NULL;
+			goto mipi_csi_vdd_disable;
+		}
+		if (regulator_set_voltage(cam_vana, CAM_VANA_MINUV,
+			CAM_VANA_MAXUV)) {
+			CDBG("%s: VREG CAM VANA set voltage failed\n",
+				__func__);
+			goto cam_vana_put;
+		}
+		if (regulator_set_optimum_mode(cam_vana,
+			CAM_VANA_LOAD_UA) < 0) {
+			CDBG("%s: VREG CAM VANA set optimum mode failed\n",
+				__func__);
+			goto cam_vana_release;
+		}
+		if (regulator_enable(cam_vana)) {
+			CDBG("%s: VREG CAM VANA enable failed\n", __func__);
+			goto cam_vana_disable;
+		}
 	}
-	if (regulator_enable(ldo11)) {
-		CDBG("%s: VREG LDO11 enable failed\n", __func__);
-		goto ldo11_put;
+	if (cam_vio == NULL) {
+		cam_vio = regulator_get(&pdev->dev, "cam_vio");
+		if (IS_ERR(cam_vio)) {
+			CDBG("%s: VREG VIO get failed\n", __func__);
+			cam_vio = NULL;
+			goto cam_vana_disable;
+		}
+		if (regulator_enable(cam_vio)) {
+			CDBG("%s: VREG VIO enable failed\n", __func__);
+			goto cam_vio_put;
+		}
 	}
+	if (cam_vdig == NULL) {
+		cam_vdig = regulator_get(&pdev->dev, "cam_vdig");
+		if (IS_ERR(cam_vdig)) {
+			CDBG("%s: VREG CAM VDIG get failed\n", __func__);
+			cam_vdig = NULL;
+			goto cam_vio_disable;
+		}
+		if (regulator_set_voltage(cam_vdig, CAM_VDIG_MINUV,
+			CAM_VDIG_MAXUV)) {
+			CDBG("%s: VREG CAM VDIG set voltage failed\n",
+				__func__);
+			goto cam_vdig_put;
+		}
+		if (regulator_set_optimum_mode(cam_vdig,
+			CAM_VDIG_LOAD_UA) < 0) {
+			CDBG("%s: VREG CAM VDIG set optimum mode failed\n",
+				__func__);
+			goto cam_vdig_release;
+		}
+		if (regulator_enable(cam_vdig)) {
+			CDBG("%s: VREG CAM VDIG enable failed\n", __func__);
+			goto cam_vdig_disable;
+		}
+	}
+	if (fs_vfe == NULL) {
+		fs_vfe = regulator_get(&pdev->dev, "fs_vfe");
+		if (IS_ERR(fs_vfe)) {
+			CDBG("%s: Regulator FS_VFE get failed %ld\n", __func__,
+				PTR_ERR(fs_vfe));
+			fs_vfe = NULL;
+		} else if (regulator_enable(fs_vfe)) {
+			CDBG("%s: Regulator FS_VFE enable failed\n", __func__);
+			regulator_put(fs_vfe);
+		}
+	}
+	return 0;
 
-	lvs5 = regulator_get(NULL, "8058_lvs5");
-	if (IS_ERR(lvs5)) {
-		CDBG("%s: VREG LVS5 get failed\n", __func__);
-		lvs5 = NULL;
-		goto ldo11_disable;
-	}
-	if (regulator_enable(lvs5)) {
-		CDBG("%s: VREG LVS5 enable failed\n", __func__);
-		goto lvs5_put;
-	}
 
-	ldo12 = regulator_get(NULL, "8058_l12");
-	if (IS_ERR(ldo12)) {
-		CDBG("%s: VREG LDO12 get failed\n", __func__);
-		ldo12 = NULL;
-		goto lvs5_disable;
-	}
-	if (regulator_set_voltage(ldo12, 1200000, 1200000)) {
-		CDBG("%s: VREG LDO25 set voltage failed\n",  __func__);
-		goto ldo12_disable;
-	}
-	if (regulator_enable(ldo12)) {
-		CDBG("%s: VREG LDO12 enable failed\n", __func__);
-		goto ldo12_put;
-	}
+cam_vdig_disable:
+	regulator_set_optimum_mode(cam_vdig, 0);
+cam_vdig_release:
+	regulator_set_voltage(cam_vdig, 0, CAM_VDIG_MAXUV);
+	regulator_disable(cam_vdig);
+cam_vdig_put:
+	regulator_put(cam_vdig);
+	cam_vdig = NULL;
+cam_vio_disable:
+	regulator_disable(cam_vio);
+cam_vio_put:
+	regulator_put(cam_vio);
+	cam_vio = NULL;
+cam_vana_disable:
+	regulator_set_optimum_mode(cam_vana, 0);
+cam_vana_release:
+	regulator_set_voltage(cam_vana, 0, CAM_VANA_MAXUV);
+	regulator_disable(cam_vana);
+cam_vana_put:
+	regulator_put(cam_vana);
+	cam_vana = NULL;
+mipi_csi_vdd_disable:
+	regulator_set_optimum_mode(mipi_csi_vdd, 0);
+mipi_csi_vdd_release:
+	regulator_set_voltage(mipi_csi_vdd, 0, CAM_CSI_VDD_MAXUV);
+	regulator_disable(mipi_csi_vdd);
 
-	fs_vfe = regulator_get(NULL, "fs_vfe");
-	if (IS_ERR(fs_vfe)) {
-		CDBG("%s: Regulator FS_VFE get failed %ld\n", __func__,
-			PTR_ERR(fs_vfe));
-		fs_vfe = NULL;
-	} else if (regulator_enable(fs_vfe)) {
-		CDBG("%s: Regulator FS_VFE enable failed\n", __func__);
-		regulator_put(fs_vfe);
-	}
-	return;
-
-ldo12_disable:
-	regulator_disable(ldo12);
-ldo12_put:
-	regulator_put(ldo12);
-lvs5_disable:
-	regulator_disable(lvs5);
-lvs5_put:
-	regulator_put(lvs5);
-ldo11_disable:
-	regulator_disable(ldo11);
-ldo11_put:
-	regulator_put(ldo11);
+mipi_csi_vdd_put:
+	regulator_put(mipi_csi_vdd);
+	mipi_csi_vdd = NULL;
+	return -ENODEV;
 }
 
 static void msm_camera_vreg_disable(void)
 {
-	if (ldo11) {
-		regulator_disable(ldo11);
-		regulator_put(ldo11);
+	if (mipi_csi_vdd) {
+		regulator_set_voltage(mipi_csi_vdd, 0, CAM_CSI_VDD_MAXUV);
+		regulator_set_optimum_mode(mipi_csi_vdd, 0);
+		regulator_disable(mipi_csi_vdd);
+		regulator_put(mipi_csi_vdd);
+		mipi_csi_vdd = NULL;
 	}
 
-	if (lvs5) {
-		regulator_disable(lvs5);
-		regulator_put(lvs5);
+	if (cam_vana) {
+		regulator_set_voltage(cam_vana, 0, CAM_VANA_MAXUV);
+		regulator_set_optimum_mode(cam_vana, 0);
+		regulator_disable(cam_vana);
+		regulator_put(cam_vana);
+		cam_vana = NULL;
 	}
 
-	if (ldo12) {
-		regulator_disable(ldo12);
-		regulator_put(ldo12);
+	if (cam_vio) {
+		regulator_disable(cam_vio);
+		regulator_put(cam_vio);
+		cam_vio = NULL;
+	}
+
+	if (cam_vdig) {
+		regulator_set_voltage(cam_vdig, 0, CAM_VDIG_MAXUV);
+		regulator_set_optimum_mode(cam_vdig, 0);
+		regulator_disable(cam_vdig);
+		regulator_put(cam_vdig);
+		cam_vdig = NULL;
 	}
 
 	if (fs_vfe) {
 		regulator_disable(fs_vfe);
 		regulator_put(fs_vfe);
+		fs_vfe = NULL;
 	}
 }
 
@@ -988,7 +1082,7 @@ int msm_camio_sensor_clk_on(struct platform_device *pdev)
 	camio_ext = camdev->ioext;
 	camio_clk = camdev->ioclk;
 
-	msm_camera_vreg_enable();
+	msm_camera_vreg_enable(pdev);
 	msleep(20);
 	rc = camdev->camera_gpio_on();
 	if (rc < 0)
@@ -1022,7 +1116,7 @@ int msm_camio_probe_on(struct platform_device *pdev)
 	rc = camdev->camera_gpio_on();
 	if (rc < 0)
 		return rc;
-	msm_camera_vreg_enable();
+	msm_camera_vreg_enable(pdev);
 	return msm_camio_clk_enable(CAMIO_CAM_MCLK_CLK);
 }
 
