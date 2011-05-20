@@ -57,6 +57,8 @@ struct tabla {
 	u8 irq_masks_cache[TABLA_NUM_IRQ_REGS];
 	u8 irq_level[TABLA_NUM_IRQ_REGS];
 
+	int reset_gpio;
+
 	int (*read_dev)(struct tabla *tabla, unsigned short reg,
 			int bytes, void *dest, bool interface_reg);
 	int (*write_dev)(struct tabla *tabla, unsigned short reg,

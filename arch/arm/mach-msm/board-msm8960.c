@@ -786,6 +786,7 @@ static struct tabla_pdata tabla_platform_data = {
 	.irq = VCODEC_IRQ,
 	.irq_base = TABLA_INTERRUPT_BASE,
 	.num_irqs = NR_TABLA_IRQS,
+	.reset_gpio = PM8921_GPIO_PM_TO_SYS(34),
 };
 
 static struct slim_device msm_slim_tabla = {
