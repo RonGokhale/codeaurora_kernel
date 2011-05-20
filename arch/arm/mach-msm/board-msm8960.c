@@ -1765,6 +1765,9 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&msm_kgsl_2d1,
 #endif
 	&mipi_dsi_toshiba_panel_device,
+#ifdef CONFIG_MSM_GEMINI
+	&msm8960_gemini_device,
+#endif
 };
 
 static void __init msm8960_i2c_init(void)
