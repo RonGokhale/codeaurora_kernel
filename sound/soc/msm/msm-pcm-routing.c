@@ -26,6 +26,7 @@
 #include <sound/q6adm.h>
 
 #include "msm-pcm-routing.h"
+#include "qdsp6/q6voice.h"
 
 struct audio_mixer_data {
 	u32 port_id; /* AFE port ID for Rx, FE DAI ID for TX */
@@ -68,6 +69,12 @@ static struct audio_mixer_data audio_mixers[AUDIO_MIXER_MAX] = {
 	{HDMI_RX, 0, SNDRV_PCM_STREAM_PLAYBACK},
 	/* AUDIO_MIXER_MM_UL1 */
 	{MSM_FRONTEND_DAI_MULTIMEDIA1, 0, SNDRV_PCM_STREAM_CAPTURE},
+};
+static struct voice_mixer_data voice_mixers[VOICE_MIXER_MAX] = {
+	/* VOICE_MIXER_PRI_I2S_RX */
+	{VOICE_PRI_I2S_RX, 0, SNDRV_PCM_STREAM_PLAYBACK},
+	/* VOICE_MIXER_MM_UL1 */
+	{VOICE_PRI_I2S_TX, 0, SNDRV_PCM_STREAM_CAPTURE},
 };
 
 void msm_pcm_routing_reg_phy_stream(int fedai_id, int dspst_id, int stream_type)
@@ -192,6 +199,80 @@ static int msm_routing_put_audio_mixer(struct snd_kcontrol *kcontrol,
 	return 1;
 }
 
+static void msm_pcm_routing_process_voice(u16 reg, u16 val, int set)
+{
+
+	u32 port_map_id;
+
+	pr_debug("%s: reg %x val %x set %x\n", __func__, reg, val, set);
+
+	port_map_id = voice_mixers[reg].port_id;
+
+	if (set)
+		set_bit(val, &voice_mixers[reg].dai_sessions);
+	else
+		clear_bit(val, &voice_mixers[reg].dai_sessions);
+
+	if (voice_mixers[reg].mixer_type == SNDRV_PCM_STREAM_PLAYBACK) {
+		voc_set_route_flag(RX_PATH, set);
+		if (set) {
+			voc_set_rxtx_port(bedai_port_map[port_map_id], DEV_RX);
+
+			if (voc_get_route_flag(RX_PATH) &&
+						voc_get_route_flag(TX_PATH))
+				voc_enable_cvp();
+		} else {
+			voc_disable_cvp();
+		}
+	} else {
+		voc_set_route_flag(TX_PATH, set);
+		if (set) {
+			voc_set_rxtx_port(bedai_port_map[port_map_id], DEV_TX);
+
+			if (voc_get_route_flag(RX_PATH) &&
+						voc_get_route_flag(TX_PATH))
+				voc_enable_cvp();
+		} else {
+			voc_disable_cvp();
+		}
+	}
+}
+
+static int msm_routing_get_voice_mixer(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+	(struct soc_mixer_control *)kcontrol->private_value;
+
+	if (test_bit(mc->shift, &voice_mixers[mc->reg].dai_sessions))
+		ucontrol->value.integer.value[0] = 1;
+	else
+		ucontrol->value.integer.value[0] = 0;
+
+	pr_debug("%s: reg %x shift %x val %ld\n", __func__, mc->reg, mc->shift,
+			ucontrol->value.integer.value[0]);
+
+	return 0;
+}
+
+static int msm_routing_put_voice_mixer(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_dapm_widget *widget = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+
+	if (ucontrol->value.integer.value[0]) {
+		msm_pcm_routing_process_voice(mc->reg, mc->shift, 1);
+		snd_soc_dapm_mixer_update_power(widget, kcontrol, 1);
+	} else {
+		msm_pcm_routing_process_voice(mc->reg, mc->shift, 0);
+		snd_soc_dapm_mixer_update_power(widget, kcontrol, 0);
+	}
+
+	return 1;
+}
+
 static const struct snd_kcontrol_new pri_rx_mixer_controls[] = {
 	SOC_SINGLE_EXT("MultiMedia1", AUDIO_MIXER_PRI_I2S_RX ,
 	MSM_FRONTEND_DAI_MULTIMEDIA1, 1, 0, msm_routing_get_audio_mixer,
@@ -216,6 +297,18 @@ static const struct snd_kcontrol_new mmul1_mixer_controls[] = {
 	msm_routing_put_audio_mixer),
 };
 
+static const struct snd_kcontrol_new pri_rx_voice_mixer_controls[] = {
+	SOC_SINGLE_EXT("CSVoice", VOICE_MIXER_PRI_I2S_RX,
+	MSM_FRONTEND_DAI_CS_VOICE, 1, 0, msm_routing_get_voice_mixer,
+	msm_routing_put_voice_mixer),
+};
+
+static const struct snd_kcontrol_new pri_tx_voice_mixer_controls[] = {
+	SOC_SINGLE_EXT("PRI_TX_Voice", VOICE_MIXER_MM_UL1,
+	MSM_BACKEND_DAI_PRI_I2S_TX, 1, 0, msm_routing_get_voice_mixer,
+	msm_routing_put_voice_mixer),
+};
+
 static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	/* Frontend AIF */
 	/* Widget name equals to Front-End DAI name<Need confirmation>,
@@ -224,6 +317,8 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	SND_SOC_DAPM_AIF_IN("MM_DL1", "MultiMedia1 Playback", 0, 0, 0, 0),
 	SND_SOC_DAPM_AIF_IN("MM_DL2", "MultiMedia2 Playback", 0, 0, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("MM_UL1", "MultiMedia1 Capture", 0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_IN("CS-VOICE_DL1", "CS-VOICE Playback", 0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("CS-VOICE_UL1", "CS-VOICE Capture", 0, 0, 0, 0),
 	/* Backend AIF */
 	/* Stream name equals to backend dai link stream name
 	 */
@@ -237,6 +332,13 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	hdmi_mixer_controls, ARRAY_SIZE(hdmi_mixer_controls)),
 	SND_SOC_DAPM_MIXER("MultiMedia1 Mixer", SND_SOC_NOPM, 0, 0,
 	mmul1_mixer_controls, ARRAY_SIZE(mmul1_mixer_controls)),
+	/* Voice Mixer */
+	SND_SOC_DAPM_MIXER("PRI_RX_Voice Mixer",
+				SND_SOC_NOPM, 0, 0, pri_rx_voice_mixer_controls,
+				ARRAY_SIZE(pri_rx_voice_mixer_controls)),
+	SND_SOC_DAPM_MIXER("Voice_Tx Mixer",
+				SND_SOC_NOPM, 0, 0, pri_tx_voice_mixer_controls,
+				ARRAY_SIZE(pri_tx_voice_mixer_controls)),
 };
 
 static const struct snd_soc_dapm_route intercon[] = {
@@ -248,6 +350,10 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"PRI_I2S_RX", NULL, "PRI_RX Audio Mixer"},
 	{"MultiMedia1 Mixer", "PRI_TX", "PRI_I2S_TX"},
 	{"MM_UL1", NULL, "MultiMedia1 Mixer"},
+	{"PRI_RX_Voice Mixer", "CSVoice", "CS-VOICE_DL1"},
+	{"PRI_I2S_RX", NULL, "PRI_RX_Voice Mixer"},
+	{"Voice_Tx Mixer", "PRI_TX_Voice", "PRI_I2S_TX"},
+	{"CS-VOICE_UL1", NULL, "Voice_Tx Mixer"},
 };
 
 static struct snd_pcm_ops msm_routing_pcm_ops = {};
