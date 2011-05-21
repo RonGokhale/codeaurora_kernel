@@ -571,13 +571,6 @@ static int adreno_start(struct kgsl_device *device, unsigned int init_ram)
 	adreno_regwrite(device, REG_MH_ARBITER_CONFIG,
 				ADRENO_CFG_MHARB);
 
-	if (!adreno_is_a220(adreno_dev)) {
-		adreno_regwrite(device,
-			 REG_MH_CLNT_INTF_CTRL_CONFIG1, 0x00030f27);
-		adreno_regwrite(device,
-			 REG_MH_CLNT_INTF_CTRL_CONFIG2, 0x00472747);
-	}
-
 	/* Remove 1k boundary check in z470 to avoid GPU hang.
 	   Notice that, this solution won't work if both EBI and SMI are used */
 	if (adreno_is_a220(adreno_dev)) {
@@ -698,7 +691,8 @@ adreno_recover_hang(struct kgsl_device *device)
 				KGSL_DEVICE_MEMSTORE_OFFSET(soptimestamp));
 	kgsl_sharedmem_readl(&device->memstore, &eoptimestamp,
 				KGSL_DEVICE_MEMSTORE_OFFSET(eoptimestamp));
-	rmb();
+	/* Make sure memory is synchronized before restarting the GPU */
+	mb();
 	KGSL_CTXT_ERR(device,
 		"Context that caused a GPU hang: %x\n", bad_context);
 	/* restart device */
@@ -727,6 +721,7 @@ adreno_recover_hang(struct kgsl_device *device)
 			KGSL_DEVICE_MEMSTORE_OFFSET(ts_cmp_enable),
 			enable_ts);
 	}
+	/* Make sure all writes are posted before the GPU reads them */
 	wmb();
 	/* Mark the invalid context so no more commands are accepted from
 	 * that context */
