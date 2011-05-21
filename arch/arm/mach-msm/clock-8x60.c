@@ -512,8 +512,8 @@ int soc_update_sys_vdd(enum sys_vdd_level level)
 		[HIGH]    = 1200000,
 	};
 
-	return rpm_vreg_set_voltage(RPM_VREG_ID_PM8058_S1,
-				    RPM_VREG_VOTER3, vdd_uv[level], 1);
+	return rpm_vreg_set_voltage(RPM_VREG_ID_PM8058_S1, RPM_VREG_VOTER3,
+				    vdd_uv[level], vdd_uv[HIGH], 1);
 }
 
 /* Enable/disable a power rail associated with a clock. */

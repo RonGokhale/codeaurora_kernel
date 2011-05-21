@@ -1987,8 +1987,8 @@ static int pmic8058_xoadc_rpm_vreg_config(int on)
 {
 	int rc;
 
-	rc = rpm_vreg_set_voltage(RPM_VREG_ID_PM8058_L18,
-				RPM_VREG_VOTER3, (on ? 2200000 : 0), 0);
+	rc = rpm_vreg_set_voltage(RPM_VREG_ID_PM8058_L18, RPM_VREG_VOTER3,
+			(on ? 2200000 : 0), 2200000, 0);
 
 	return rc;
 }
