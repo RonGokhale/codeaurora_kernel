@@ -66,6 +66,7 @@ struct msm_camera_device_platform_data {
 	void (*camera_gpio_off)(void);
 	struct msm_camera_io_ext ioext;
 	struct msm_camera_io_clk ioclk;
+	uint8_t csid_core;
 };
 enum msm_camera_csi_data_format {
 	CSI_8BIT,

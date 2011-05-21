@@ -342,6 +342,12 @@ static struct gpiomux_setting cam_active_3_cfg = {
 	.pull = GPIOMUX_PULL_UP,
 };
 
+static struct gpiomux_setting cam_active_4_cfg = {
+	.func = GPIOMUX_FUNC_2,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
 static struct msm_gpiomux_config msm8960_cam_configs[] __initdata = {
 	{
 		.gpio = 2,
@@ -360,7 +366,7 @@ static struct msm_gpiomux_config msm8960_cam_configs[] __initdata = {
 	{
 		.gpio = 4,
 		.settings = {
-			[GPIOMUX_ACTIVE]    = &cam_active_2_cfg,
+			[GPIOMUX_ACTIVE]    = &cam_active_4_cfg,
 			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
 		},
 	},
@@ -1770,6 +1776,9 @@ static struct platform_device *cdp_devices[] __initdata = {
 #ifdef CONFIG_IMX074
 	&msm8960_camera_sensor_imx074,
 #endif
+#ifdef CONFIG_OV2720
+	&msm8960_camera_sensor_ov2720,
+#endif
 };
 
 static void __init msm8960_i2c_init(void)
@@ -2106,6 +2115,11 @@ static struct i2c_board_info msm_camera_boardinfo[] __initdata = {
 #ifdef CONFIG_IMX074
 	{
 	I2C_BOARD_INFO("imx074", 0x1A),
+	},
+#endif
+#ifdef CONFIG_OV2720
+	{
+	I2C_BOARD_INFO("ov2720", 0x6C),
 	},
 #endif
 };

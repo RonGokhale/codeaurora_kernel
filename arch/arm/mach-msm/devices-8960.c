@@ -818,6 +818,7 @@ struct platform_device msm8960_device_qup_i2c_gsbi3 = {
 #ifdef CONFIG_MSM_CAMERA
 
 static int msm_cam_gpio_tbl[] = {
+	4, /*CAMIF_MCLK*/
 	5, /*CAMIF_MCLK*/
 	20, /*CAMIF_I2C_DATA*/
 	21, /*CAMIF_I2C_CLK*/
@@ -867,7 +868,7 @@ static void config_camera_off_gpios(void)
 	config_gpio_table(0);
 }
 
-struct msm_camera_device_platform_data msm_camera_device_data = {
+struct msm_camera_device_platform_data msm_camera_csi0_device_data = {
 	.camera_gpio_on  = config_camera_on_gpios,
 	.camera_gpio_off = config_camera_off_gpios,
 	.ioext.csiphy = 0x04800000,
@@ -881,6 +882,24 @@ struct msm_camera_device_platform_data msm_camera_device_data = {
 	.ioext.ispifirq = ISPIF_IRQ,
 	.ioclk.mclk_clk_rate = 24000000,
 	.ioclk.vfe_clk_rate  = 228570000,
+	.csid_core = 0,
+};
+
+struct msm_camera_device_platform_data msm_camera_csi1_device_data = {
+	.camera_gpio_on  = config_camera_on_gpios,
+	.camera_gpio_off = config_camera_off_gpios,
+	.ioext.csiphy = 0x04800400,
+	.ioext.csisz  = 0x00000400,
+	.ioext.csiirq = CSI_1_IRQ,
+	.ioext.csiphyphy = 0x04801000,
+	.ioext.csiphysz = 0x00000400,
+	.ioext.csiphyirq = CSIPHY_2LN_IRQ,
+	.ioext.ispifphy = 0x04800800,
+	.ioext.ispifsz = 0x00000400,
+	.ioext.ispifirq = ISPIF_IRQ,
+	.ioclk.mclk_clk_rate = 24000000,
+	.ioclk.vfe_clk_rate  = 228570000,
+	.csid_core = 1,
 };
 
 struct resource msm_camera_resources[] = {
@@ -910,7 +929,7 @@ static struct msm_camera_sensor_info msm_camera_sensor_imx074_data = {
 	.sensor_pwd	= 85,
 	.vcm_pwd	= 0,
 	.vcm_enable	= 1,
-	.pdata	= &msm_camera_device_data,
+	.pdata	= &msm_camera_csi0_device_data,
 	.resource	= msm_camera_resources,
 	.num_resources	= ARRAY_SIZE(msm_camera_resources),
 	.flash_data	= &flash_imx074,
@@ -922,6 +941,31 @@ struct platform_device msm8960_camera_sensor_imx074 = {
 	.name	= "msm_camera_imx074",
 	.dev	= {
 		.platform_data = &msm_camera_sensor_imx074_data,
+	},
+};
+#endif
+#ifdef CONFIG_OV2720
+static struct msm_camera_sensor_flash_data flash_ov2720 = {
+	.flash_type	= MSM_CAMERA_FLASH_LED,
+};
+
+static struct msm_camera_sensor_info msm_camera_sensor_ov2720_data = {
+	.sensor_name	= "ov2720",
+	.sensor_reset	= 76,
+	.sensor_pwd	= 85,
+	.vcm_pwd	= 0,
+	.vcm_enable	= 1,
+	.pdata	= &msm_camera_csi1_device_data,
+	.resource	= msm_camera_resources,
+	.num_resources	= ARRAY_SIZE(msm_camera_resources),
+	.flash_data	= &flash_ov2720,
+	.csi_if	= 1
+};
+
+struct platform_device msm8960_camera_sensor_ov2720 = {
+	.name	= "msm_camera_ov2720",
+	.dev	= {
+		.platform_data = &msm_camera_sensor_ov2720_data,
 	},
 };
 #endif
