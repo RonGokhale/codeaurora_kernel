@@ -25,6 +25,7 @@
 #include <mach/msm_iomap.h>
 #include <mach/restart.h>
 #include <mach/scm-io.h>
+#include <asm/mach-types.h>
 
 #define TCSR_WDT_CFG 0x30
 
@@ -164,11 +165,12 @@ void arch_reset(char mode, const char *cmd)
 	}
 
 	__raw_writel(0, WDT0_EN);
-	dsb();
-	__raw_writel(0, PSHOLD_CTL_SU); /* Actually reset the chip */
-	mdelay(5000);
-
-	printk(KERN_NOTICE "PS_HOLD didn't work, falling back to watchdog\n");
+	if (!(machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa())) {
+		dsb();
+		__raw_writel(0, PSHOLD_CTL_SU); /* Actually reset the chip */
+		mdelay(5000);
+		pr_notice("PS_HOLD didn't work, falling back to watchdog\n");
+	}
 
 	__raw_writel(5*0x31F3, WDT0_BARK_TIME);
 	__raw_writel(0x31F3, WDT0_BITE_TIME);
