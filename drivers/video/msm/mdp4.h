@@ -51,6 +51,12 @@ extern uint32 mdp4_extn_disp;
 #define MDP4_RGB_BASE 0x40000
 #define MDP4_RGB_OFF 0x10000
 
+enum mdp4_overlay_status {
+	MDP4_OVERLAY_TYPE_UNSET,
+	MDP4_OVERLAY_TYPE_SET,
+	MDP4_OVERLAY_TYPE_MAX
+};
+
 enum {		/* display */
 	PRIMARY_INTF_SEL,
 	SECONDARY_INTF_SEL,
@@ -490,4 +496,6 @@ void mdp_hw_cursor_init(void);
 
 int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req);
 void mdp4_overlay_resource_release(void);
+void mdp4_overlay_status_write(enum mdp4_overlay_status type, bool val);
+bool mdp4_overlay_status_read(enum mdp4_overlay_status type);
 #endif /* MDP_H */
