@@ -1641,6 +1641,13 @@ static int tavarua_fops_open(struct file *file)
 		printk(KERN_ERR "%s: failed config gpio & pmic\n", __func__);
 		goto open_err_setup;
 	}
+	if (radio->pdata->config_i2s_gpio != NULL) {
+		retval = radio->pdata->config_i2s_gpio(FM_I2S_ON);
+		if (retval) {
+			printk(KERN_ERR "%s: failed config gpio\n", __func__);
+			goto config_i2s_err;
+		}
+	}
 	/* enable irq */
 	retval = tavarua_request_irq(radio);
 	if (retval < 0) {
@@ -1799,6 +1806,9 @@ open_err_all:
 							&value, 1, value);
 	tavarua_disable_irq(radio);
 open_err_req_irq:
+	if (radio->pdata->config_i2s_gpio != NULL)
+		radio->pdata->config_i2s_gpio(FM_I2S_OFF);
+config_i2s_err:
 	radio->pdata->fm_shutdown(radio->pdata);
 open_err_setup:
 	radio->handle_irq = 1;
@@ -1941,6 +1951,8 @@ static int tavarua_fops_release(struct file *file)
 	FMDBG("%s, Calling fm_shutdown\n", __func__);
 	/* teardown gpio and pmic */
 	radio->pdata->fm_shutdown(radio->pdata);
+	if (radio->pdata->config_i2s_gpio != NULL)
+		radio->pdata->config_i2s_gpio(FM_I2S_OFF);
 	radio->handle_irq = 1;
 	radio->users = 0;
 	radio->marimba->mod_id = SLAVE_ID_BAHAMA;
