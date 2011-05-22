@@ -516,6 +516,14 @@ static void sdio_al_debugfs_cleanup(void)
 }
 #endif
 
+static void sdio_al_get_into_err_state(struct sdio_al_device *sdio_al_dev)
+{
+	sdio_al_dev->is_err = true;
+	sdio_al->debug.debug_data_on = 0;
+	sdio_al->debug.debug_lpm_on = 0;
+	sdio_al_print_info();
+}
+
 void sdio_al_register_lpm_cb(void *device_handle,
 				       int(*lpm_callback)(void *, int))
 {
@@ -773,8 +781,7 @@ static int read_mailbox(struct sdio_al_device *sdio_al_dev, int from_isr)
 		pr_err(MODULE_NAME ":Fail to read Mailbox for card %d,"
 				    " goto error state\n",
 		       sdio_al_dev->card->host->index);
-		sdio_al_dev->is_err = true;
-		sdio_al_print_info();
+		sdio_al_get_into_err_state(sdio_al_dev);
 		/* Stop the timer to stop reading the mailbox */
 		sdio_al_dev->poll_delay_msec = 0;
 		goto exit_err;
@@ -1046,8 +1053,7 @@ static void boot_worker(struct work_struct *work)
 				"for card %d ret=%d\n",
 				sdio_al_dev->card->host->index,
 				ret);
-				sdio_al_dev->is_err = true;
-				sdio_al_print_info();
+				sdio_al_get_into_err_state(sdio_al_dev);
 			}
 			goto done;
 		}
@@ -1056,8 +1062,7 @@ static void boot_worker(struct work_struct *work)
 	}
 	pr_err(MODULE_NAME ":Timeout waiting for user_irq for card %d\n",
 	       sdio_al_dev->card->host->index);
-	sdio_al_dev->is_err = true;
-	sdio_al_print_info();
+	sdio_al_get_into_err_state(sdio_al_dev);
 
 done:
 	pr_debug(MODULE_NAME ":Boot Worker for card %d Exit!\n",
@@ -1526,8 +1531,7 @@ static int read_sdioc_software_header(struct sdio_al_device *sdio_al_dev,
 	return 0;
 
 exit_err:
-	sdio_al_dev->is_err = true;
-	sdio_al_print_info();
+	sdio_al_get_into_err_state(sdio_al_dev);
 	memset(header, 0, sizeof(*header));
 
 	return -EIO;
@@ -2042,11 +2046,10 @@ static int sdio_al_wake_up(struct sdio_al_device *sdio_al_dev,
 
 	return ret;
 error_exit:
-	sdio_al_dev->is_err = true;
 	sdio_al_vote_for_sleep(sdio_al_dev, 1);
 	msmsdcc_set_pwrsave(sdio_al_dev->card->host, 1);
 	WARN_ON(ret);
-	sdio_al_print_info();
+	sdio_al_get_into_err_state(sdio_al_dev);
 	return ret;
 }
 
