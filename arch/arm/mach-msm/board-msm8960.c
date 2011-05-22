@@ -1767,6 +1767,9 @@ static struct platform_device *cdp_devices[] __initdata = {
 #ifdef CONFIG_MSM_GEMINI
 	&msm8960_gemini_device,
 #endif
+#ifdef CONFIG_IMX074
+	&msm8960_camera_sensor_imx074,
+#endif
 };
 
 static void __init msm8960_i2c_init(void)
@@ -2100,6 +2103,11 @@ struct i2c_registry {
 
 #ifdef CONFIG_MSM_CAMERA
 static struct i2c_board_info msm_camera_boardinfo[] __initdata = {
+#ifdef CONFIG_IMX074
+	{
+	I2C_BOARD_INFO("imx074", 0x1A),
+	},
+#endif
 };
 #endif
 
