@@ -72,7 +72,7 @@
 #define RIVA_PMU_CFG			(msm_riva_base + 0x28)
 #define RIVA_PMU_CFG_WARM_BOOT		BIT(0)
 #define RIVA_PMU_CFG_IRIS_XO_MODE	0x6
-#define RIVA_PMU_CFG_IRIS_XO_MODE_48	(2 << 1)
+#define RIVA_PMU_CFG_IRIS_XO_MODE_48	(3 << 1)
 
 #define RIVA_PMU_OVRD_VAL		(msm_riva_base + 0x30)
 #define RIVA_PMU_OVRD_VAL_CCPU_RESET	BIT(0)
@@ -366,7 +366,7 @@ static int reset_riva_untrusted(void)
 		writel(0x40000C00 | 50, RIVA_PLL_L_VAL);
 	writel(0, RIVA_PLL_M_VAL);
 	writel(1, RIVA_PLL_N_VAL);
-	writel(0x01485227, RIVA_PLL_CONFIG);
+	writel_relaxed(0x01495227, RIVA_PLL_CONFIG);
 
 	reg = readl(RIVA_PLL_MODE);
 	reg &= ~(PLL_MODE_REF_XO_SEL);
@@ -385,8 +385,7 @@ static int reset_riva_untrusted(void)
 	writel(reg, RIVA_PLL_MODE);
 
 	/* Wait for PLL to settle */
-	while (!readl_relaxed(RIVA_PLL_STATUS))
-		cpu_relax();
+	usleep_range(50, 100);
 
 	/* Configure cCPU for 240 MHz */
 	reg = readl(RIVA_PMU_CLK_ROOT3);
