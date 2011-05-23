@@ -477,6 +477,7 @@ static void ieee80211_scan_state_decision(struct ieee80211_local *local,
 	unsigned long min_beacon_int = 0;
 	struct ieee80211_sub_if_data *sdata;
 	struct ieee80211_channel *next_chan;
+	enum mac80211_scan_state next_scan_state;
 
 	/*
 	 * check if at least one STA interface is associated,
@@ -509,16 +510,17 @@ static void ieee80211_scan_state_decision(struct ieee80211_local *local,
 	next_chan = local->scan_req->channels[local->scan_channel_idx];
 
 	if (ieee80211_cfg_on_oper_channel(local)) {
-		/* We're currently on operating channel. */
-		if (next_chan == local->oper_channel)
-			/* We don't need to move off of operating channel. */
-			local->next_scan_state = SCAN_SET_CHANNEL;
+		/*
+		 * We're on the operating channel currently; let's
+		 * leave that channel now to scan another one unless
+		 * there is pending traffic and the scan request is
+		 * marked to abort when this happens.
+		 */
+		if (associated && !tx_empty &&
+		    (local->scan_req->flags & CFG80211_SCAN_FLAG_TX_ABORT))
+			next_scan_state = SCAN_ABORT;
 		else
-			/*
-			 * We do need to leave operating channel, as next
-			 * scan is somewhere else.
-			 */
-			local->next_scan_state = SCAN_LEAVE_OPER_CHANNEL;
+			next_scan_state = SCAN_LEAVE_OPER_CHANNEL;
 	} else {
 		/*
 		 * we're currently scanning a different channel, let's
@@ -547,12 +549,25 @@ static void ieee80211_scan_state_decision(struct ieee80211_local *local,
 				usecs_to_jiffies(min_beacon_int * 1024) *
 				local->hw.conf.listen_interval);
 
-		if (associated && ( !tx_empty || bad_latency ||
-		    listen_int_exceeded))
-			local->next_scan_state = SCAN_ENTER_OPER_CHANNEL;
+
+		if (associated && !tx_empty) {
+			if (unlikely(local->scan_req->flags &
+				CFG80211_SCAN_FLAG_TX_ABORT)) {
+				/*
+				 * Scan request is marked to abort when there
+				 * is outbound traffic.  Mark state to return
+				 * the operating channel and then abort.  This
+				 * happens as soon as possible.
+				 */
+				next_scan_state = SCAN_ENTER_OPER_CHANNEL_ABORT;
+			} else
+				next_scan_state = SCAN_ENTER_OPER_CHANNEL;
+		} else if (associated && (bad_latency || listen_int_exceeded))
+			next_scan_state = SCAN_ENTER_OPER_CHANNEL;
 		else
-			local->next_scan_state = SCAN_SET_CHANNEL;
+			next_scan_state = SCAN_SET_CHANNEL;
 	}
+	local->next_scan_state = next_scan_state;
 
 	*next_delay = 0;
 }
@@ -596,8 +611,13 @@ static void ieee80211_scan_state_enter_oper_channel(struct ieee80211_local *loca
 	 */
 	ieee80211_offchannel_return(local, true, false);
 
-	*next_delay = HZ / 5;
-	local->next_scan_state = SCAN_DECISION;
+	if (local->next_scan_state == SCAN_ENTER_OPER_CHANNEL) {
+		*next_delay = HZ / 5;
+		local->next_scan_state = SCAN_DECISION;
+	} else {
+		*next_delay = 0;
+		local->next_scan_state = SCAN_ABORT;
+	}
 }
 
 static void ieee80211_scan_state_set_channel(struct ieee80211_local *local,
@@ -743,8 +763,12 @@ void ieee80211_scan_work(struct work_struct *work)
 			ieee80211_scan_state_leave_oper_channel(local, &next_delay);
 			break;
 		case SCAN_ENTER_OPER_CHANNEL:
+		case SCAN_ENTER_OPER_CHANNEL_ABORT:
 			ieee80211_scan_state_enter_oper_channel(local, &next_delay);
 			break;
+		case SCAN_ABORT:
+			aborted = true;
+			goto out_complete;
 		}
 	} while (next_delay == 0);
 
