@@ -1420,6 +1420,7 @@ static int mdp_probe(struct platform_device *pdev)
 		pdata->off = mdp_dsi_video_off;
 		mfd->hw_refresh = TRUE;
 		mfd->dma_fnc = mdp_dsi_video_update;
+		mfd->do_histogram = mdp_do_histogram;
 		if (mfd->panel_info.pdest == DISPLAY_1)
 			mfd->dma = &dma2_data;
 		else {
@@ -1449,6 +1450,7 @@ static int mdp_probe(struct platform_device *pdev)
 		mdp4_display_intf_sel(if_no, DSI_CMD_INTF);
 #else
 		mfd->dma_fnc = mdp_dma2_update;
+		mfd->do_histogram = mdp_do_histogram;
 		if (mfd->panel_info.pdest == DISPLAY_1)
 			mfd->dma = &dma2_data;
 		else {
