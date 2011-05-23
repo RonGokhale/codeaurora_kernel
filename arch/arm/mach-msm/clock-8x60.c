@@ -1755,6 +1755,7 @@ static struct branch_clk ce2_p_clk = {
 		.halt_bit = 0,
 		.test_vector = TEST_PER_LS(0x93),
 	},
+	.parent = &pxo_clk.c,
 	.c = {
 		.dbg_name = "ce2_p_clk",
 		.ops = &clk_ops_branch,
