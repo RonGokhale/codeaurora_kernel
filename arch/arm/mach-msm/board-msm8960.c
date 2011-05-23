@@ -1704,6 +1704,7 @@ static struct platform_device *common_devices[] __initdata = {
 	&android_pmem_adsp_device,
 #endif
 	&msm_fb_device,
+	&msm_device_vidc
 };
 
 static struct platform_device *sim_devices[] __initdata = {
