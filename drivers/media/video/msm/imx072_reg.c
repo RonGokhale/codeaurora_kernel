@@ -98,7 +98,7 @@ struct imx072_i2c_reg_conf imx072_snap_settings[] = {
 };
 
 struct imx072_i2c_reg_conf imx072_recommend_settings[] = {
-	{0x0307, 0x1B},
+	{0x0307, 0x12},
 	{0x302B, 0x4B},
 	{0x0101, 0x03},
 	{0x300A, 0x80},
