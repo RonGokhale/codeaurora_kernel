@@ -63,8 +63,8 @@ enum {
 	GPIO_EXPANDER_IRQ_BASE	= NR_MSM_IRQS + NR_GPIO_IRQS,
 	GPIO_EXPANDER_GPIO_BASE	= NR_MSM_GPIOS,
 	/* SURF expander */
-	GPIO_SURF_EXPANDER_BASE	= GPIO_EXPANDER_GPIO_BASE,
-	GPIO_BT_SYS_REST_EN	= GPIO_SURF_EXPANDER_BASE,
+	GPIO_CORE_EXPANDER_BASE	= GPIO_EXPANDER_GPIO_BASE,
+	GPIO_BT_SYS_REST_EN	= GPIO_CORE_EXPANDER_BASE,
 	GPIO_WLAN_EXT_POR_N,
 	GPIO_DISPLAY_PWR_EN,
 	GPIO_BACKLIGHT_EN,
@@ -77,11 +77,11 @@ enum {
 	GPIO_SPI_MISO,
 	GPIO_SPI_CLK,
 	GPIO_SPI_CS0_N,
-	GPIO_SURF_EXPANDER_IO13,
-	GPIO_SURF_EXPANDER_IO14,
-	GPIO_SURF_EXPANDER_IO15,
+	GPIO_CORE_EXPANDER_IO13,
+	GPIO_CORE_EXPANDER_IO14,
+	GPIO_CORE_EXPANDER_IO15,
 	/* Camera expander */
-	GPIO_CAM_EXPANDER_BASE	= GPIO_SURF_EXPANDER_BASE + 16,
+	GPIO_CAM_EXPANDER_BASE	= GPIO_CORE_EXPANDER_BASE + 16,
 	GPIO_CAM_GP_STROBE_READY	= GPIO_CAM_EXPANDER_BASE,
 	GPIO_CAM_GP_AFBUSY,
 	GPIO_CAM_GP_CAM_PWDN,
@@ -90,36 +90,17 @@ enum {
 	GPIO_CAM_GP_STROBE_CE,
 	GPIO_CAM_GP_LED_EN1,
 	GPIO_CAM_GP_LED_EN2,
-	/* FFA expander */
-	GPIO_FFA_EXPANDER_BASE	= GPIO_CAM_EXPANDER_BASE + 8,
-	GPIO_FFA_BT_SYS_REST_EN	= GPIO_FFA_EXPANDER_BASE,
-	GPIO_FFA_WLAN_EXT_POR_N,
-	GPIO_FFA_LCD_PWR_EN_N,
-	GPIO_FFA_GPIO_EXP_03,
-	GPIO_FFA_ALTIMETER_XCLR_N,
-	GPIO_FFA_GPIO_EXP_05,
-	GPIO_FFA_GPIO_EXP_06,
-	GPIO_FFA_GPIO_EXP_07,
-	GPIO_FFA_5V_BOOST_EN,
-	GPIO_FFA_EXPANDER_IO09,
-	GPIO_FFA_EXPANDER_IO10,
-	GPIO_FFA_EXPANDER_IO11,
-	GPIO_FFA_EXPANDER_IO12,
-	GPIO_FFA_EXPANDER_IO13,
-	GPIO_FFA_EXPANDER_IO14,
-	GPIO_FFA_EXPANDER_IO15,
 };
 
 #if defined(CONFIG_GPIO_SX150X)
 enum {
-	SX150X_SURF,
+	SX150X_CORE,
 	SX150X_CAM,
-	SX150X_FFA,
 };
 
 static struct sx150x_platform_data sx150x_data[] __initdata = {
-	[SX150X_SURF]	= {
-		.gpio_base		= GPIO_SURF_EXPANDER_BASE,
+	[SX150X_CORE]	= {
+		.gpio_base		= GPIO_CORE_EXPANDER_BASE,
 		.oscio_is_gpo		= false,
 		.io_pullup_ena		= 0,
 		.io_pulldn_ena		= 0,
@@ -128,14 +109,6 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 	},
 	[SX150X_CAM]	= {
 		.gpio_base		= GPIO_CAM_EXPANDER_BASE,
-		.oscio_is_gpo		= false,
-		.io_pullup_ena		= 0,
-		.io_pulldn_ena		= 0,
-		.io_open_drain_ena	= 0,
-		.irq_summary		= -1,
-	},
-	[SX150X_FFA]	= {
-		.gpio_base		= GPIO_FFA_EXPANDER_BASE,
 		.oscio_is_gpo		= false,
 		.io_pullup_ena		= 0,
 		.io_pulldn_ena		= 0,
@@ -666,41 +639,24 @@ static unsigned int msm_bahama_setup_power(void)
 		       __func__, rc);
 		goto vreg_fail;
 	}
-	if (machine_is_msm7x27a_surf()) {
-		/*setup Bahama_sys_reset_n*/
-		rc = gpio_request(GPIO_BT_SYS_REST_EN, "bahama sys_rst_n");
-		if (rc < 0) {
-			pr_err("%s: gpio_request %d = %d\n", __func__,
-				GPIO_BT_SYS_REST_EN, rc);
-			goto vreg_fail;
-		}
-		rc = gpio_direction_output(GPIO_BT_SYS_REST_EN, 1);
-		if (rc < 0) {
-			pr_err("%s: gpio_direction_output %d = %d\n", __func__,
-				GPIO_BT_SYS_REST_EN, rc);
-			goto gpio_fail;
-		}
-	} else if (machine_is_msm7x27a_ffa()) {
-		rc = gpio_request(GPIO_FFA_BT_SYS_REST_EN, "bahama sys_rst_n");
-		if (rc < 0) {
-			pr_err("%s: gpio_request %d = %d\n", __func__,
-				GPIO_FFA_BT_SYS_REST_EN, rc);
-			goto vreg_fail;
-		}
-		rc = gpio_direction_output(GPIO_FFA_BT_SYS_REST_EN, 1);
-		if (rc < 0) {
-			pr_err("%s: gpio_direction_output %d = %d\n", __func__,
-				GPIO_FFA_BT_SYS_REST_EN, rc);
-			goto gpio_fail;
-		}
+
+	/*setup Bahama_sys_reset_n*/
+	rc = gpio_request(GPIO_BT_SYS_REST_EN, "bahama sys_rst_n");
+	if (rc < 0) {
+		pr_err("%s: gpio_request %d = %d\n", __func__,
+			GPIO_BT_SYS_REST_EN, rc);
+		goto vreg_fail;
+	}
+	rc = gpio_direction_output(GPIO_BT_SYS_REST_EN, 1);
+	if (rc < 0) {
+		pr_err("%s: gpio_direction_output %d = %d\n", __func__,
+			GPIO_BT_SYS_REST_EN, rc);
+		goto gpio_fail;
 	}
 	return rc;
 
 gpio_fail:
-	if (machine_is_msm7x27a_surf())
-		gpio_free(GPIO_BT_SYS_REST_EN);
-	else if (machine_is_msm7x27a_ffa())
-		gpio_free(GPIO_FFA_BT_SYS_REST_EN);
+	gpio_free(GPIO_BT_SYS_REST_EN);
 vreg_fail:
 	vreg_put(vreg_s3);
 	return rc;
@@ -896,22 +852,16 @@ static struct marimba_platform_data marimba_pdata = {
 #endif
 
 #if defined(CONFIG_I2C) && defined(CONFIG_GPIO_SX150X)
-static struct i2c_board_info surf_core_exp_i2c_info[] __initdata = {
+static struct i2c_board_info core_exp_i2c_info[] __initdata = {
 	{
 		I2C_BOARD_INFO("sx1509q", 0x3e),
-		.platform_data =  &sx150x_data[SX150X_SURF],
+		.platform_data =  &sx150x_data[SX150X_CORE],
 	},
 };
 static struct i2c_board_info cam_exp_i2c_info[] __initdata = {
 	{
 		I2C_BOARD_INFO("sx1508q", 0x22),
 		.platform_data	= &sx150x_data[SX150X_CAM],
-	},
-};
-static struct i2c_board_info ffa_core_exp_i2c_info[] __initdata = {
-	{
-		I2C_BOARD_INFO("sx1509q", 0x3e),
-		.platform_data =  &sx150x_data[SX150X_FFA],
 	},
 };
 #endif
@@ -929,30 +879,17 @@ static void __init register_i2c_devices(void)
 {
 
 	i2c_register_board_info(MSM_GSBI0_QUP_I2C_BUS_ID,
-			cam_exp_i2c_info,
-			ARRAY_SIZE(cam_exp_i2c_info));
+				cam_exp_i2c_info,
+				ARRAY_SIZE(cam_exp_i2c_info));
 
-	if (machine_is_msm7x27a_surf()) {
-		i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
-				surf_core_exp_i2c_info,
-				ARRAY_SIZE(surf_core_exp_i2c_info));
+	i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
+				core_exp_i2c_info,
+				ARRAY_SIZE(core_exp_i2c_info));
 #if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
-		i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
+	i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
 				bahama_devices,
 				ARRAY_SIZE(bahama_devices));
 #endif
-
-	} else if (machine_is_msm7x27a_ffa()) {
-		i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
-				ffa_core_exp_i2c_info,
-				ARRAY_SIZE(ffa_core_exp_i2c_info));
-#if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
-		i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
-				bahama_devices,
-				ARRAY_SIZE(bahama_devices));
-#endif
-	}
-
 }
 #endif
 
@@ -1156,10 +1093,7 @@ static int  msm_hsusb_vbus_init(int on)
 	int rc = 0;
 	unsigned gpio;
 
-	if (machine_is_msm7x27a_surf())
-		gpio = GPIO_HOST_VBUS_EN;
-	else
-		gpio = GPIO_FFA_5V_BOOST_EN;
+	gpio = GPIO_HOST_VBUS_EN;
 	if (on) {
 		rc = gpio_request(gpio, "i2c_host_vbus_en");
 		if (rc < 0) {
@@ -1177,10 +1111,7 @@ static void msm_hsusb_vbus_power(unsigned phy_info, int on)
 {
 	unsigned gpio;
 
-	if (machine_is_msm7x27a_surf())
-		gpio = GPIO_HOST_VBUS_EN;
-	else
-		gpio = GPIO_FFA_5V_BOOST_EN;
+	gpio = GPIO_HOST_VBUS_EN;
 
 	gpio_set_value_cansleep(gpio, !!on);
 }
@@ -2720,48 +2651,37 @@ static int mipi_dsi_panel_power(int on)
 		if (pmapp_disp_backlight_set_brightness(100))
 			pr_err("display backlight set brightness failed\n");
 
-		if (machine_is_msm7x27a_surf()) {
-			rc = gpio_request(GPIO_DISPLAY_PWR_EN, "gpio_disp_pwr");
-			if (rc < 0) {
-				pr_err("failed to request gpio_disp_pwr\n");
-				return rc;
-			}
+		rc = gpio_request(GPIO_DISPLAY_PWR_EN, "gpio_disp_pwr");
+		if (rc < 0) {
+			pr_err("failed to request gpio_disp_pwr\n");
+			return rc;
+		}
 
-			if (gpio_request(GPIO_BACKLIGHT_EN, "gpio_bkl_en")) {
+		rc = gpio_direction_output(GPIO_DISPLAY_PWR_EN, 1);
+		if (rc < 0) {
+			pr_err("failed to enable display pwr\n");
+			goto fail_gpio1;
+		}
+
+		if (machine_is_msm7x27a_surf()) {
+			rc = gpio_request(GPIO_BACKLIGHT_EN, "gpio_bkl_en");
+			if (rc < 0) {
 				pr_err("failed to request gpio_bkl_en\n");
 				goto fail_gpio1;
 			}
 
-			if (gpio_direction_output(GPIO_DISPLAY_PWR_EN, 1)) {
-				pr_err("failed to enable display pwr\n");
-				goto fail_gpio2;
-			}
-
-			if (gpio_direction_output(GPIO_BACKLIGHT_EN, 1)) {
+			rc = gpio_direction_output(GPIO_BACKLIGHT_EN, 1);
+			if (rc < 0) {
 				pr_err("failed to enable backlight\n");
 				goto fail_gpio2;
-			}
-		} else {
-			rc = gpio_request(GPIO_FFA_LCD_PWR_EN_N,
-				"gpio_disp_pwr");
-			if (rc < 0) {
-				pr_err("failed to request lcd pwr\n");
-				return rc;
-			}
-			if (gpio_direction_output(GPIO_FFA_LCD_PWR_EN_N, 1)) {
-				pr_err("failed to enable lcd pwr\n");
-				gpio_free(GPIO_FFA_LCD_PWR_EN_N);
-				return rc;
 			}
 		}
 		dsi_gpio_initialized = 1;
 	}
 
+		gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN, on);
 		if (machine_is_msm7x27a_surf()) {
-			gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN, on);
 			gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, on);
-		} else {
-			gpio_set_value_cansleep(GPIO_FFA_LCD_PWR_EN_N, on);
 		}
 
 		if (on) {
