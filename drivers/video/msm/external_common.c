@@ -978,9 +978,10 @@ int hdmi_common_read_edid(void)
 	uint32 cea_extension_ver = 0;
 	uint32 num_og_cea_blocks  = 0;
 	uint32 ieee_reg_id = 0;
+	uint32 i = 1;
 	char vendor_id[5];
 	/* EDID_BLOCK_SIZE[0x80] Each page size in the EDID ROM */
-	uint8 edid_buf[0x80 * 2];
+	uint8 edid_buf[0x80 * 4];
 
 	memset(&external_common_state->disp_mode_list, 0,
 		sizeof(external_common_state->disp_mode_list));
@@ -1002,6 +1003,8 @@ int hdmi_common_read_edid(void)
 	/* EDID_CEA_EXTENSION_FLAG[0x7E] - CEC extension byte */
 	num_og_cea_blocks = edid_buf[0x7E];
 
+	DEV_DBG("[JSR] (%s): No. of CEA blocks is  [%u]\n", __func__,
+		num_og_cea_blocks);
 	/* Find out any CEA extension blocks following block 0 */
 	switch (num_og_cea_blocks) {
 	case 0: /* No CEA extension */
@@ -1029,6 +1032,31 @@ int hdmi_common_read_edid(void)
 			hdmi_edid_extract_speaker_allocation_data(
 				edid_buf+0x80);
 			hdmi_edid_extract_audio_data_blocks(edid_buf+0x80);
+		}
+		break;
+	case 2:
+	case 3:
+	case 4:
+		for (i = 1; i <= num_og_cea_blocks; i++) {
+			if (!(i % 2)) {
+					status = hdmi_common_read_edid_block(i,
+								edid_buf+0x00);
+					if (status) {
+						DEV_ERR("%s: ddc read block(%d)"
+						"failed: %d\n", __func__, i,
+							status);
+						goto error;
+					}
+			} else {
+				status = hdmi_common_read_edid_block(i,
+							edid_buf+0x80);
+				if (status) {
+					DEV_ERR("%s: ddc read block(%d)"
+					"failed:%d\n", __func__, i,
+						status);
+					goto error;
+				}
+			}
 		}
 		break;
 	default:
