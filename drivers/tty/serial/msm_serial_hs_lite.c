@@ -620,6 +620,8 @@ static void msm_hsl_shutdown(struct uart_port *port)
 #ifndef CONFIG_PM_RUNTIME
 	msm_hsl_deinit_clock(port);
 #endif
+
+	pm_runtime_put_sync(port->dev);
 	if (!(is_console(port)) || (!port->cons) ||
 		(port->cons && (!(port->cons->flags & CON_ENABLED)))) {
 		ret = clk_set_rate(msm_hsl_port->clk, 0);
@@ -629,8 +631,6 @@ static void msm_hsl_shutdown(struct uart_port *port)
 			return;
 		}
 	}
-
-	pm_runtime_put_sync(port->dev);
 }
 
 static void msm_hsl_set_termios(struct uart_port *port,
@@ -819,23 +819,6 @@ static int msm_hsl_verify_port(struct uart_port *port,
 	return 0;
 }
 
-static void msm_hsl_power(struct uart_port *port, unsigned int state,
-			  unsigned int oldstate)
-{
-#ifndef CONFIG_SERIAL_MSM_HSL_CLOCK_CONTROL
-	switch (state) {
-	case 0:
-		clk_en(port, 1);
-		break;
-	case 3:
-		clk_en(port, 0);
-		break;
-	default:
-		printk(KERN_ERR "msm_serial_hsl: Unknown PM state %d\n", state);
-	}
-#endif
-}
-
 static struct uart_ops msm_hsl_uart_pops = {
 	.tx_empty = msm_hsl_tx_empty,
 	.set_mctrl = msm_hsl_set_mctrl,
@@ -853,7 +836,6 @@ static struct uart_ops msm_hsl_uart_pops = {
 	.request_port = msm_hsl_request_port,
 	.config_port = msm_hsl_config_port,
 	.verify_port = msm_hsl_verify_port,
-	.pm = msm_hsl_power,
 };
 
 static struct msm_hsl_port msm_hsl_uart_ports[] = {
