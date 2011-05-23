@@ -501,7 +501,6 @@ static struct msm_bus_scale_pdata grp3d_bus_scale_pdata = {
 	.name = "grp3d",
 };
 
-#ifdef CONFIG_MSM_KGSL_2D
 static struct msm_bus_vectors grp2d0_init_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE0,
@@ -571,7 +570,6 @@ static struct msm_bus_scale_pdata grp2d1_bus_scale_pdata = {
 	ARRAY_SIZE(grp2d1_bus_scale_usecases),
 	.name = "grp2d1",
 };
-#endif
 #endif
 
 #ifdef CONFIG_HW_RANDOM_MSM
@@ -659,7 +657,6 @@ struct platform_device msm_kgsl_3d0 = {
 	},
 };
 
-#ifdef CONFIG_MSM_KGSL_2D
 static struct resource kgsl_2d0_resources[] = {
 	{
 		.name = KGSL_2D0_REG_MEMORY,
@@ -790,7 +787,6 @@ void __init msm8x60_check_2d_hardware(void)
 		kgsl_2d1_pdata.clk.name.clk = NULL;
 	}
 }
-#endif
 
 /* Use GSBI3 QUP for /dev/i2c-0 */
 struct platform_device msm_gsbi3_qup_i2c_device = {

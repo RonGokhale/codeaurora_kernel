@@ -1118,7 +1118,6 @@ struct platform_device msm_kgsl_3d0 = {
 	},
 };
 
-#ifdef CONFIG_MSM_KGSL_2D
 static struct resource kgsl_2d0_resources[] = {
 	{
 		.name = KGSL_2D0_REG_MEMORY,
@@ -1166,5 +1165,4 @@ struct platform_device msm_kgsl_2d0 = {
 		.platform_data = &kgsl_2d0_pdata,
 	},
 };
-#endif
 

@@ -146,10 +146,8 @@ extern struct clk_lookup msm_clocks_8960_dummy[];
 extern unsigned msm_num_clocks_8960_dummy;
 
 extern struct platform_device msm_kgsl_3d0;
-#ifdef CONFIG_MSM_KGSL_2D
 extern struct platform_device msm_kgsl_2d0;
 extern struct platform_device msm_kgsl_2d1;
-#endif
 
 extern struct platform_device msm_mipi_dsi1_device;
 

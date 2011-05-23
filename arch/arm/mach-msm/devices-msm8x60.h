@@ -63,9 +63,7 @@ extern struct platform_device msm_device_rng;
 #endif
 
 void __init msm8x60_init_irq(void);
-#ifdef CONFIG_MSM_KGSL_2D
 void __init msm8x60_check_2d_hardware(void);
-#endif
 
 #ifdef CONFIG_MSM_DSPS
 extern struct platform_device msm_dsps_device;

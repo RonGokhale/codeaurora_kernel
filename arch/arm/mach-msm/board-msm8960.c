@@ -1735,10 +1735,8 @@ static struct platform_device *sim_devices[] __initdata = {
 
 static struct platform_device *rumi3_devices[] __initdata = {
 	&msm_kgsl_3d0,
-#ifdef CONFIG_MSM_KGSL_2D
 	&msm_kgsl_2d0,
 	&msm_kgsl_2d1,
-#endif
 	&mipi_dsi_renesas_panel_device,
 #ifdef CONFIG_MSM_GEMINI
 	&msm8960_gemini_device,
