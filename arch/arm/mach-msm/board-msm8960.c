@@ -1016,8 +1016,7 @@ static struct tabla_pdata tabla_platform_data = {
 		.name = "tabla-slave",
 		.e_addr = {0, 0, 0x10, 0, 0x17, 2},
 	},
-	/* TODO find correct irq number */
-	.irq = VCODEC_IRQ,
+	.irq = MSM_GPIO_TO_INT(62),
 	.irq_base = TABLA_INTERRUPT_BASE,
 	.num_irqs = NR_TABLA_IRQS,
 	.reset_gpio = PM8921_GPIO_PM_TO_SYS(34),
