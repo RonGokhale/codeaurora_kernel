@@ -406,6 +406,16 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 	mfd->panel_info = pdata->panel_info;
 	pinfo = &mfd->panel_info;
 
+	if (mdp_rev == MDP_REV_303 &&
+		mipi_dsi_pdata->get_lane_config) {
+		if (mipi_dsi_pdata->get_lane_config() != 2) {
+			pr_info("Changing to DSI Single Mode Configuration\n");
+#ifdef CONFIG_FB_MSM_MDP303
+			update_lane_config(pinfo);
+#endif
+		}
+	}
+
 	if (mfd->index == 0)
 		mfd->fb_imgType = MSMFB_DEFAULT_TYPE;
 	else

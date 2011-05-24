@@ -51,6 +51,7 @@
 #include "devices-msm7x2xa.h"
 #include "pm.h"
 #include <mach/rpc_server_handset.h>
+#include <mach/socinfo.h>
 
 #define PMEM_KERNEL_EBI1_SIZE	0x3A000
 #define MSM_PMEM_AUDIO_SIZE	0x5B000
@@ -2614,6 +2615,24 @@ static unsigned mipi_dsi_gpio[] = {
 		GPIO_CFG_2MA),       /* LCDC_BRDG_RESET_N */
 };
 
+enum {
+	DSI_SINGLE_LANE = 1,
+	DSI_TWO_LANES,
+};
+
+static int msm_fb_get_lane_config(void)
+{
+	int rc = DSI_TWO_LANES;
+
+	if (cpu_is_msm7x25a()) {
+		rc = DSI_SINGLE_LANE;
+		pr_info("DSI Single Lane\n");
+	} else {
+		pr_info("DSI Two Lanes\n");
+	}
+	return rc;
+}
+
 static int msm_fb_dsi_client_reset(void)
 {
 	int rc = 0;
@@ -2763,6 +2782,7 @@ static struct mipi_dsi_platform_data mipi_dsi_pdata = {
 	.vsync_gpio = MDP_303_VSYNC_GPIO,
 	.dsi_power_save   = mipi_dsi_panel_power,
 	.dsi_client_reset = msm_fb_dsi_client_reset,
+	.get_lane_config = msm_fb_get_lane_config,
 };
 #endif
 

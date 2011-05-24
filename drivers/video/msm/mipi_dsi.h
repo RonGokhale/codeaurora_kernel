@@ -289,4 +289,8 @@ int mipi_dsi_clk_div_config(uint8 bpp, uint8 lanes,
 void mipi_dsi_clk_init(struct device *dev);
 void mipi_dsi_clk_deinit(struct device *dev);
 
+#ifdef CONFIG_FB_MSM_MDP303
+void update_lane_config(struct msm_panel_info *pinfo);
+#endif
+
 #endif /* MIPI_DSI_H */
