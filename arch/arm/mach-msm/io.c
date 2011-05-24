@@ -198,6 +198,9 @@ static struct map_desc msm8960_io_desc[] __initdata = {
 		.length =   MSM_SHARED_RAM_SIZE,
 		.type =     MT_DEVICE,
 	},
+#ifdef CONFIG_MSM_DEBUG_UART
+	MSM_DEVICE(DEBUG_UART),
+#endif
 };
 
 void __init msm_map_msm8960_io(void)
