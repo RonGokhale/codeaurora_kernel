@@ -296,8 +296,6 @@ static int shutdown_trusted(int id)
 	struct pas_shutdown_req request;
 	struct pas_shutdown_resp resp = {0};
 
-	remove_modem_proxy_votes_now();
-
 	request.proc = id;
 	ret = scm_call(SCM_SVC_PIL, PAS_SHUTDOWN_CMD, &request, sizeof(request),
 			&resp, sizeof(resp));
@@ -347,6 +345,7 @@ static int shutdown_modem_untrusted(void)
 
 static int shutdown_modem_trusted(void)
 {
+	remove_modem_proxy_votes_now();
 	return shutdown_trusted(PAS_MODEM);
 }
 
