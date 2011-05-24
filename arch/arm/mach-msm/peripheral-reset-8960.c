@@ -111,6 +111,10 @@
 #define RIVA_PMU_CLK_ROOT3_SRC1_SEL		0xE000
 #define RIVA_PMU_CLK_ROOT3_SRC1_SEL_RIVA	(1 << 13)
 
+#define PPSS_RESET			(MSM_CLK_CTL_BASE + 0x2594)
+#define PPSS_PROC_CLK_CTL		(MSM_CLK_CTL_BASE + 0x2588)
+#define PPSS_HCLK_CTL			(MSM_CLK_CTL_BASE + 0x2580)
+
 struct q6_data {
 	const unsigned strap_tcm_base;
 	const unsigned strap_ahb_upper;
@@ -439,6 +443,29 @@ static int shutdown_riva_untrusted(void)
 	return 0;
 }
 
+static int init_image_dsps_untrusted(const u8 *metadata, size_t size)
+{
+	/* Bring memory and bus interface out of reset */
+	writel_relaxed(0x2, PPSS_RESET);
+	writel_relaxed(0x10, PPSS_HCLK_CTL);
+	return 0;
+}
+
+static int reset_dsps_untrusted(void)
+{
+	writel_relaxed(0x10, PPSS_PROC_CLK_CTL);
+	/* Bring DSPS out of reset */
+	writel_relaxed(0x0, PPSS_RESET);
+	return 0;
+}
+
+static int shutdown_dsps_untrusted(void)
+{
+	writel_relaxed(0x2, PPSS_RESET);
+	writel_relaxed(0x0, PPSS_PROC_CLK_CTL);
+	return 0;
+}
+
 static struct pil_reset_ops pil_modem_fw_q6_ops = {
 	.init_image = init_image_modem_fw_q6_untrusted,
 	.verify_blob = verify_blob,
@@ -467,6 +494,12 @@ static struct pil_reset_ops pil_riva_ops = {
 	.shutdown = shutdown_riva_untrusted,
 };
 
+struct pil_reset_ops pil_dsps_ops = {
+	.init_image = init_image_dsps_untrusted,
+	.verify_blob = verify_blob,
+	.auth_and_reset = reset_dsps_untrusted,
+	.shutdown = shutdown_dsps_untrusted,
+};
 
 static struct pil_device peripherals[] = {
 	{
@@ -502,6 +535,14 @@ static struct pil_device peripherals[] = {
 			.id = -1,
 		},
 		.ops = &pil_riva_ops,
+	},
+	{
+		.name = "dsps",
+		.pdev = {
+			.name = "pil_dsps",
+			.id = -1,
+		},
+		.ops = &pil_dsps_ops,
 	},
 };
 
