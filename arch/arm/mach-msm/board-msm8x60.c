@@ -2145,6 +2145,10 @@ struct resource msm_camera_resources[] = {
 	},
 };
 #ifdef CONFIG_MT9E013
+static struct msm_camera_sensor_platform_info mt9e013_sensor_8660_info = {
+	.mount_angle = 0
+};
+
 static struct msm_camera_sensor_flash_data flash_mt9e013 = {
 	.flash_type			= MSM_CAMERA_FLASH_LED,
 	.flash_src			= &msm_flash_src
@@ -2161,6 +2165,7 @@ static struct msm_camera_sensor_info msm_camera_sensor_mt9e013_data = {
 		.num_resources	= ARRAY_SIZE(msm_camera_resources),
 		.flash_data		= &flash_mt9e013,
 		.strobe_flash_data	= &strobe_flash_xenon,
+		.sensor_platform_info = &mt9e013_sensor_8660_info,
 		.csi_if			= 1
 };
 struct platform_device msm_camera_sensor_mt9e013 = {

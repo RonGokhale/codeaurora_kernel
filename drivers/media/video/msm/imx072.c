@@ -960,7 +960,7 @@ static int imx072_sensor_probe(const struct msm_camera_sensor_info *info,
 	s->s_init = imx072_sensor_open_init;
 	s->s_release = imx072_sensor_release;
 	s->s_config  = imx072_sensor_config;
-	s->s_mount_angle = 0;
+	s->s_mount_angle = info->sensor_platform_info->mount_angle;
 
 	gpio_set_value_cansleep(info->sensor_reset, 0);
 	imx072_probe_init_done(info);

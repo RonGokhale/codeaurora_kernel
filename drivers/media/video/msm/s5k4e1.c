@@ -468,22 +468,12 @@ static int32_t s5k4e1_sensor_setting(int update_type, int rt)
 				s5k4e1_regs.reg_pll_p_size);
 		CSI_CONFIG = 0;
 	} else if (update_type == UPDATE_PERIODIC) {
-		if (rt == RES_PREVIEW) {
+		if (rt == RES_PREVIEW)
 			s5k4e1_i2c_write_b_table(s5k4e1_regs.reg_prev,
 					s5k4e1_regs.reg_prev_size);
-		} else {
-			s5k4e1_reset_sensor();
-			msleep(20);
-			s5k4e1_i2c_write_b_table(s5k4e1_regs.reg_mipi,
-					s5k4e1_regs.reg_mipi_size);
-			s5k4e1_i2c_write_b_table(s5k4e1_regs.rec_settings,
-					s5k4e1_regs.rec_size);
-			s5k4e1_i2c_write_b_table(s5k4e1_regs.reg_pll_s,
-					s5k4e1_regs.reg_pll_s_size);
-			msleep(20);
+		else
 			s5k4e1_i2c_write_b_table(s5k4e1_regs.reg_snap,
 					s5k4e1_regs.reg_snap_size);
-		}
 		msleep(20);
 		if (!CSI_CONFIG) {
 			msm_camio_vfe_clk_rate_set(192000000);
@@ -1020,6 +1010,7 @@ static int s5k4e1_sensor_probe(const struct msm_camera_sensor_info *info,
 	s->s_init = s5k4e1_sensor_open_init;
 	s->s_release = s5k4e1_sensor_release;
 	s->s_config  = s5k4e1_sensor_config;
+	s->s_mount_angle = info->sensor_platform_info->mount_angle;
 	gpio_set_value_cansleep(info->sensor_reset, 0);
 	s5k4e1_probe_init_done(info);
 
