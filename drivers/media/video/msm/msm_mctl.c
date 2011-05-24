@@ -92,7 +92,10 @@ static int msm_vidbuf_setup(struct videobuf_queue *vq, unsigned int *count,
 							unsigned int *size)
 {
 	/* get the video device */
-	struct msm_cam_v4l2_device *pcam = vq->priv_data;
+	struct msm_cam_v4l2_dev_inst *pcam_inst = vq->priv_data;
+	struct msm_cam_v4l2_device *pcam = NULL;
+
+	pcam = pcam_inst->pcam;
 
 	D("%s\n", __func__);
 	if (!pcam || !count || !size) {
@@ -100,15 +103,17 @@ static int msm_vidbuf_setup(struct videobuf_queue *vq, unsigned int *count,
 		return -EINVAL;
 	}
 
-	/* at least we should provide 3 buffers to VFE and 1 in buffer queue*/
-	if (*count <= VFE_OUT1_BUF)
-		*count = VFE_OUT1_BUF + 1;
-
 	/* we support only NV21 format for any input mediabus format */
-	D("%s width = %d\n", __func__, pcam->vid_fmt.fmt.pix.width);
-	D("%s height = %d\n", __func__, pcam->vid_fmt.fmt.pix.height);
-	*size = pcam->vid_fmt.fmt.pix.width *
-		pcam->vid_fmt.fmt.pix.height * 3/2;
+	D("%s, inst=0x%x,idx=%d, width = %d\n", __func__,
+		(u32)pcam_inst, pcam_inst->my_index,
+		pcam_inst->vid_fmt.fmt.pix.width);
+	D("%s, inst=0x%x,idx=%d, height = %d\n", __func__,
+		(u32)pcam_inst, pcam_inst->my_index,
+		pcam_inst->vid_fmt.fmt.pix.height);
+	*size = pcam_inst->vid_fmt.fmt.pix.width *
+		pcam_inst->vid_fmt.fmt.pix.height * 3/2;
+	D("%s, inst=0x%x,idx=%d, size = %d\n", __func__,
+		(u32)pcam_inst, pcam_inst->my_index, *size);
 	/* if the total mem size is bigger than available memory,
 	 * reduce the count*/
 	while ((*size) * (*count) > MAX_VIDEO_MEM * 1024 * 1024)
@@ -119,9 +124,8 @@ static int msm_vidbuf_setup(struct videobuf_queue *vq, unsigned int *count,
 		D("%s error : out of memory input\n", __func__);
 		return -ENOMEM;
 	}
-
-	D("count=%d, size=%d\n", *count, *size);
-
+	D("%s:inst=0x%x,idx=%d,count=%d, size=%d\n", __func__,
+		(u32)pcam_inst, pcam_inst->my_index, *count, *size);
 	return 0;
 }
 
@@ -133,6 +137,7 @@ static int msm_vidbuf_prepare(struct videobuf_queue *vq,
 {
 	int rc = 0;
 	/*struct msm_cam_v4l2_device *pcam = vq->priv_data;*/
+	struct msm_cam_v4l2_dev_inst *pcam_inst = NULL;
 	struct msm_cam_v4l2_device *pcam = NULL;
 	struct msm_frame_buffer *buf = NULL;
 
@@ -141,7 +146,8 @@ static int msm_vidbuf_prepare(struct videobuf_queue *vq,
 		D("%s error : input is NULL\n", __func__);
 		return -EINVAL;
 	}
-	pcam = vq->priv_data;
+	pcam_inst = vq->priv_data;
+	pcam = pcam_inst->pcam;
 	buf = container_of(vb, struct msm_frame_buffer, vidbuf);
 
 	if (!pcam || !buf) {
@@ -154,8 +160,8 @@ static int msm_vidbuf_prepare(struct videobuf_queue *vq,
 
 	/* by this time vid_fmt should be already set */
 	/* return error if it is not */
-	if ((pcam->vid_fmt.fmt.pix.width == 0) ||
-		(pcam->vid_fmt.fmt.pix.height == 0)) {
+	if ((pcam_inst->vid_fmt.fmt.pix.width == 0) ||
+		(pcam_inst->vid_fmt.fmt.pix.height == 0)) {
 		D("%s error : pcam vid_fmt is not set\n", __func__);
 		return -EINVAL;
 	}
@@ -165,24 +171,24 @@ static int msm_vidbuf_prepare(struct videobuf_queue *vq,
 	D("buf->pxlcode=%d, pcam->sensor_pxlcode=%d, vb->width=%d,"
 		"pcam->vid_fmt.fmt.pix.width = %d, vb->height = %d,"
 		"pcam->vid_fmt.fmt.pix.height=%d, vb->field=%d, field=%d\n",
-		buf->pxlcode, pcam->sensor_pxlcode, vb->width,
-		pcam->vid_fmt.fmt.pix.width, vb->height,
-		pcam->vid_fmt.fmt.pix.height, vb->field, field);
+		buf->pxlcode, pcam_inst->sensor_pxlcode, vb->width,
+		pcam_inst->vid_fmt.fmt.pix.width, vb->height,
+		pcam_inst->vid_fmt.fmt.pix.height, vb->field, field);
 
-	if (buf->pxlcode != pcam->sensor_pxlcode ||
-		vb->width   != pcam->vid_fmt.fmt.pix.width ||
-		vb->height	!= pcam->vid_fmt.fmt.pix.height ||
+	if (buf->pxlcode != pcam_inst->sensor_pxlcode ||
+		vb->width   != pcam_inst->vid_fmt.fmt.pix.width ||
+		vb->height	!= pcam_inst->vid_fmt.fmt.pix.height ||
 		vb->field   != field) {
-		buf->pxlcode  = pcam->sensor_pxlcode;
-		vb->width = pcam->vid_fmt.fmt.pix.width;
-		vb->height  = pcam->vid_fmt.fmt.pix.height;
+		buf->pxlcode  = pcam_inst->sensor_pxlcode;
+		vb->width = pcam_inst->vid_fmt.fmt.pix.width;
+		vb->height  = pcam_inst->vid_fmt.fmt.pix.height;
 		vb->field = field;
 		vb->state = VIDEOBUF_NEEDS_INIT;
 		D("VIDEOBUF_NEEDS_INIT\n");
 	}
 
 	/* For us, output will always be in NV21 format at least for now */
-	vb->size = pcam->vid_fmt.fmt.pix.width * vb->height * 3/2;
+	vb->size = pcam_inst->vid_fmt.fmt.pix.width * vb->height * 3/2;
 
 	D("vb->size=%lu, vb->bsize=%u, vb->baddr=0x%x\n",
 		vb->size, vb->bsize, (uint32_t)vb->baddr);
@@ -224,6 +230,7 @@ static void msm_vidbuf_queue(struct videobuf_queue *vq,
 				struct videobuf_buffer *vb)
 {
 	/*struct msm_cam_v4l2_device *pcam = vq->priv_data;*/
+	struct msm_cam_v4l2_dev_inst *pcam_inst = NULL;
 	struct msm_cam_v4l2_device *pcam = NULL;
 	unsigned long phyaddr = 0;
 	int rc;
@@ -233,7 +240,8 @@ static void msm_vidbuf_queue(struct videobuf_queue *vq,
 		D("%s error : input is NULL\n", __func__);
 		return ;
 	}
-	pcam = vq->priv_data;
+	pcam_inst = vq->priv_data;
+	pcam = pcam_inst->pcam;
 	if (!pcam) {
 		D("%s error : pcam is NULL\n", __func__);
 		return;
@@ -251,7 +259,7 @@ static void msm_vidbuf_queue(struct videobuf_queue *vq,
 		phyaddr = (unsigned long) videobuf_to_pmem_contig(vb);
 
 		D("%s buffer type is %d\n", __func__, mem->buffer_type);
-		frame.path = mem->buffer_type;
+		frame.path = pcam_inst->path;
 		frame.buffer = 0;
 		frame.y_off = mem->y_off;
 		frame.cbcr_off = mem->cbcr_off;
@@ -269,7 +277,8 @@ static void msm_vidbuf_queue(struct videobuf_queue *vq,
 static void msm_vidbuf_release(struct videobuf_queue *vq,
 				struct videobuf_buffer *vb)
 {
-	struct msm_cam_v4l2_device *pcam = vq->priv_data;
+	struct msm_cam_v4l2_dev_inst *pcam_inst = vq->priv_data;
+	struct msm_cam_v4l2_device *pcam = pcam_inst->pcam;
 	struct msm_frame_buffer *buf = container_of(vb, struct msm_frame_buffer,
 									vidbuf);
 
@@ -313,13 +322,13 @@ static struct videobuf_queue_ops msm_vidbuf_ops = {
 
 
 /* prepare a video buffer queue for a vl42 device*/
-static int msm_vidbuf_init(struct msm_cam_v4l2_device *pcam,
+static int msm_vidbuf_init(struct msm_cam_v4l2_dev_inst *pcam_inst,
 						   struct videobuf_queue *q)
 {
 	int rc = 0;
 	struct resource *res;
 	struct platform_device *pdev = NULL;
-
+	struct msm_cam_v4l2_device *pcam = pcam_inst->pcam;
 	D("%s\n", __func__);
 	if (!pcam || !q) {
 		D("%s error : input is NULL\n", __func__);
@@ -331,38 +340,39 @@ static int msm_vidbuf_init(struct msm_cam_v4l2_device *pcam,
 		D("%s error : pdev is NULL\n", __func__);
 		return -EINVAL;
 	}
+	if (pcam->use_count == 1) {
+		/* first check if we have resources */
+		res = platform_get_resource(pdev, IORESOURCE_DMA, 0);
+		if (res) {
+			D("res->start = 0x%x\n", (u32)res->start);
+			D("res->size = 0x%x\n", (u32)resource_size(res));
+			D("res->end = 0x%x\n", (u32)res->end);
+			rc = dma_declare_coherent_memory(&pdev->dev, res->start,
+				res->start,
+				resource_size(res),
+				DMA_MEMORY_MAP |
+				DMA_MEMORY_EXCLUSIVE);
+			if (!rc) {
+				D("%s: Unable to declare coherent memory.\n",
+				 __func__);
+				rc = -ENXIO;
+				return rc;
+			}
 
-	/* first check if we have resources */
-	res = platform_get_resource(pdev, IORESOURCE_DMA, 0);
-	if (res) {
-		D("res->start = 0x%x\n", (u32)res->start);
-		D("res->size = 0x%x\n", (u32)resource_size(res));
-		D("res->end = 0x%x\n", (u32)res->end);
-		rc = dma_declare_coherent_memory(&pdev->dev, res->start,
-			res->start,
-			resource_size(res),
-			DMA_MEMORY_MAP |
-			DMA_MEMORY_EXCLUSIVE);
-		if (!rc) {
-			D("%s: Unable to declare coherent memory.\n", __func__);
-			rc = -ENXIO;
-			return rc;
+			/*pcam->memsize = resource_size(res);*/
+			D("%s: found DMA capable resource\n", __func__);
+		} else {
+			D("%s: no DMA capable resource\n", __func__);
+			return -ENOMEM;
 		}
-
-		/*pcam->memsize = resource_size(res);*/
-		D("%s: found DMA capable resource\n", __func__);
-	} else {
-		D("%s: no DMA capable resource\n", __func__);
-		return -ENOMEM;
 	}
-
-	spin_lock_init(&pcam->vb_irqlock);
+	spin_lock_init(&pcam_inst->vb_irqlock);
 
 	videobuf_queue_pmem_contig_init(q, &msm_vidbuf_ops, &pdev->dev,
-		&pcam->vb_irqlock,
+		&pcam_inst->vb_irqlock,
 		V4L2_BUF_TYPE_VIDEO_CAPTURE,
 		V4L2_FIELD_NONE,
-		sizeof(struct msm_frame_buffer), pcam, NULL);
+		sizeof(struct msm_frame_buffer), pcam_inst, NULL);
 
 
 	return 0;
@@ -658,8 +668,6 @@ int msm_mctl_init_user_formats(struct msm_cam_v4l2_device *pcam)
 
 	/* set the default pxlcode, in any case, it will be set through
 	 * setfmt */
-	pcam->sensor_pxlcode = pcam->usr_fmts[0].pxlcode;
-
 	return 0;
 }
 
@@ -689,5 +697,69 @@ int msm_mctl_init_module(struct msm_cam_v4l2_device *pcam)
 	v4l2_subdev_init(&(pmctl->mctl_sdev), &mctl_subdev_ops);
 	v4l2_set_subdevdata(&(pmctl->mctl_sdev), pmctl);
 
+	return 0;
+}
+static int msm_mctl_out_type_to_inst_index(struct msm_cam_v4l2_device *pcam,
+					int out_type)
+{
+	switch (out_type) {
+	case VFE_MSG_OUTPUT_P:
+		return pcam->dev_inst_map
+			[MSM_V4L2_EXT_CAPTURE_MODE_PREVIEW]->my_index;
+	case VFE_MSG_OUTPUT_V:
+		return pcam->dev_inst_map
+			[MSM_V4L2_EXT_CAPTURE_MODE_VIDEO]->my_index;
+	case VFE_MSG_OUTPUT_S:
+		return pcam->dev_inst_map
+			[MSM_V4L2_EXT_CAPTURE_MODE_MAIN]->my_index;
+	case VFE_MSG_OUTPUT_T:
+		return pcam->dev_inst_map
+			[MSM_V4L2_EXT_CAPTURE_MODE_THUMBNAIL]->my_index;
+	default:
+		return 0;
+	}
+	return 0;
+}
+
+int msm_mctl_buf_done(struct msm_cam_media_controller *pmctl,
+			int msg_type, uint32_t y_phy)
+{
+	struct videobuf_queue *q;
+	struct videobuf_buffer *buf = NULL;
+	uint32_t buf_phyaddr = 0;
+	int i, idx;
+	unsigned long flags = 0;
+
+	idx = msm_mctl_out_type_to_inst_index(pmctl->sync.pcam_sync, msg_type);
+	q = &(pmctl->sync.pcam_sync->dev_inst[idx]->vid_bufq);
+
+	D("q=0x%x\n", (u32)q);
+
+	/* find the videobuf which is done */
+	for (i = 0; i < VIDEO_MAX_FRAME; i++) {
+		if (NULL == q->bufs[i])
+			continue;
+		buf = q->bufs[i];
+		buf_phyaddr = videobuf_to_pmem_contig(buf);
+		D("buf_phyaddr=0x%x\n", (u32)buf_phyaddr);
+		D("data->phy.y_phy=0x%x\n",
+				y_phy);
+		D("buf = 0x%x\n", (u32)buf);
+		if (buf_phyaddr == y_phy) {
+			/* signal that buffer is done */
+			/* get the buf lock first */
+			spin_lock_irqsave(q->irqlock, flags);
+			buf->state = VIDEOBUF_DONE;
+			D("queuedequeue video_buffer 0x%x,"
+				"phyaddr = 0x%x\n",
+				(u32)buf, y_phy);
+
+			do_gettimeofday(&buf->ts);
+			buf->field_count++;
+			wake_up(&buf->done);
+			spin_unlock_irqrestore(q->irqlock, flags);
+			break;
+		}
+	}
 	return 0;
 }

@@ -3025,6 +3025,10 @@ static void vfe31_process_zsl_frame(uint32_t ping_pong)
 
 static void vfe31_process_output_path_irq_1(uint32_t ping_pong)
 {
+
+#ifdef CONFIG_MSM_CAMERA_V4L2
+	uint32_t pyaddr_ping, pcbcraddr_ping, pyaddr_pong, pcbcraddr_pong;
+#endif
 	CDBG("%s, operation_mode = %d, cap_cnt = %d\n", __func__,
 		vfe31_ctrl->operation_mode, vfe31_ctrl->vfe_capture_count);
 
@@ -3046,13 +3050,54 @@ static void vfe31_process_output_path_irq_1(uint32_t ping_pong)
 	} else {
 		vfe31_ctrl->outpath.out1.frame_drop_cnt++;
 		pr_info("path_irq_1 - no free buffer!\n");
+#ifdef CONFIG_MSM_CAMERA_V4L2
+		pr_info("Swapping ping and pong\n");
+
+		/*get addresses*/
+		/* Y channel */
+		pyaddr_ping = vfe31_get_ch_ping_addr(
+			vfe31_ctrl->outpath.out1.ch0);
+		/* Chroma channel */
+		pcbcraddr_ping = vfe31_get_ch_ping_addr(
+			vfe31_ctrl->outpath.out1.ch1);
+		/* Y channel */
+		pyaddr_pong = vfe31_get_ch_pong_addr(
+			vfe31_ctrl->outpath.out1.ch0);
+		/* Chroma channel */
+		pcbcraddr_pong = vfe31_get_ch_pong_addr(
+			vfe31_ctrl->outpath.out1.ch1);
+
+		CDBG("ping = 0x%p, pong = 0x%p\n", (void *)pyaddr_ping,
+			(void *)pyaddr_pong);
+		CDBG("ping_cbcr = 0x%p, pong_cbcr = 0x%p\n",
+			(void *)pcbcraddr_ping, (void *)pcbcraddr_pong);
+
+		/*put addresses*/
+		/* SWAP y channel*/
+		vfe31_put_ch_ping_addr(vfe31_ctrl->outpath.out1.ch0,
+			pyaddr_pong);
+		vfe31_put_ch_pong_addr(vfe31_ctrl->outpath.out1.ch0,
+			pyaddr_ping);
+		/* SWAP chroma channel*/
+		vfe31_put_ch_ping_addr(vfe31_ctrl->outpath.out1.ch1,
+			pcbcraddr_pong);
+		vfe31_put_ch_pong_addr(vfe31_ctrl->outpath.out1.ch1,
+			pcbcraddr_ping);
+		CDBG("after swap: ping = 0x%p, pong = 0x%p\n",
+			(void *)pyaddr_pong, (void *)pyaddr_ping);
+#endif
 	}
+
 }
 
 static void vfe31_process_output_path_irq_2(uint32_t ping_pong)
 {
 	uint32_t pyaddr, pcbcraddr;
 	struct vfe31_free_buf *free_buf = NULL;
+
+#ifdef CONFIG_MSM_CAMERA_V4L2
+	uint32_t pyaddr_ping, pcbcraddr_ping, pyaddr_pong, pcbcraddr_pong;
+#endif
 	/* we render frames in the following conditions:
 	1. Continuous mode and the free buffer is avaialable.
 	*/
@@ -3091,6 +3136,43 @@ static void vfe31_process_output_path_irq_2(uint32_t ping_pong)
 	} else {
 		vfe31_ctrl->outpath.out2.frame_drop_cnt++;
 		pr_warning("path_irq_2 - no free buffer!\n");
+
+#ifdef CONFIG_MSM_CAMERA_V4L2
+		pr_info("Swapping ping and pong\n");
+
+		/*get addresses*/
+		/* Y channel */
+		pyaddr_ping = vfe31_get_ch_ping_addr(
+			vfe31_ctrl->outpath.out2.ch0);
+		/* Chroma channel */
+		pcbcraddr_ping = vfe31_get_ch_ping_addr(
+			vfe31_ctrl->outpath.out2.ch1);
+		/* Y channel */
+		pyaddr_pong = vfe31_get_ch_pong_addr(
+			vfe31_ctrl->outpath.out2.ch0);
+		/* Chroma channel */
+		pcbcraddr_pong = vfe31_get_ch_pong_addr(
+			vfe31_ctrl->outpath.out2.ch1);
+
+		CDBG("ping = 0x%p, pong = 0x%p\n", (void *)pyaddr_ping,
+			(void *)pyaddr_pong);
+		CDBG("ping_cbcr = 0x%p, pong_cbcr = 0x%p\n",
+			(void *)pcbcraddr_ping, (void *)pcbcraddr_pong);
+
+		/*put addresses*/
+		/* SWAP y channel*/
+		vfe31_put_ch_ping_addr(vfe31_ctrl->outpath.out2.ch0,
+			pyaddr_pong);
+		vfe31_put_ch_pong_addr(vfe31_ctrl->outpath.out2.ch0,
+			pyaddr_ping);
+		/* SWAP chroma channel*/
+		vfe31_put_ch_ping_addr(vfe31_ctrl->outpath.out2.ch1,
+			pcbcraddr_pong);
+		vfe31_put_ch_pong_addr(vfe31_ctrl->outpath.out2.ch1,
+			pcbcraddr_ping);
+		CDBG("after swap: ping = 0x%p, pong = 0x%p\n",
+			(void *)pyaddr_pong, (void *)pyaddr_ping);
+#endif
 	}
 }
 

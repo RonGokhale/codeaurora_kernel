@@ -299,10 +299,11 @@ uint8_t msm_pmem_region_lookup_2(struct hlist_head *ptype,
 	return rc;
 }
 
-uint8_t msm_pmem_region_lookup_3(struct msm_cam_v4l2_device *pcam,
+uint8_t msm_pmem_region_lookup_3(struct msm_cam_v4l2_device *pcam, int idx,
 						struct msm_pmem_region *reg,
 						uint8_t start_index,
-						uint8_t stop_index)
+						uint8_t stop_index,
+						int mem_type)
 {
 	struct videobuf_contig_pmem *mem;
 	int i;
@@ -311,8 +312,8 @@ uint8_t msm_pmem_region_lookup_3(struct msm_cam_v4l2_device *pcam,
 	mutex_lock(&hlist_mut);
 
 	for (i = start_index; i < stop_index ; i++) {
-		if ((pcam->vid_bufq).bufs[i] != NULL) {
-			mem = ((pcam->vid_bufq).bufs[i])->priv;
+		if ((pcam->dev_inst[idx]->vid_bufq).bufs[i] != NULL) {
+			mem = ((pcam->dev_inst[idx]->vid_bufq).bufs[i])->priv;
 			reg->paddr = mem->phyaddr;
 			D("%s paddr for buf number %d is 0x%p\n", __func__, i,
 							(void *)reg->paddr);
@@ -321,12 +322,10 @@ uint8_t msm_pmem_region_lookup_3(struct msm_cam_v4l2_device *pcam,
 			reg->info.len = mem->size;
 
 			reg->info.vaddr =
-				(void *)(((pcam->vid_bufq).bufs[i])->baddr);
+				(void *)(((pcam->dev_inst[idx]->vid_bufq)
+							.bufs[i])->baddr);
 
-			if (i >= 0 && i <= 3)
-				reg->info.type = MSM_PMEM_PREVIEW;
-			else if (i >= 4 && i <= 7)
-				reg->info.type = MSM_PMEM_VIDEO;
+			reg->info.type = mem_type;
 
 			reg->info.offset = 0;
 			reg->info.y_off = mem->y_off;
