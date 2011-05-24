@@ -632,12 +632,6 @@ static struct msm_gpiomux_config msm8x60_ebi2_configs[] __initdata = {
 		},
 	},
 	{
-		.gpio      = 92,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &ps_hold,
-		},
-	},
-	{
 		.gpio      = 123,
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &ebi2_a_d,
@@ -1655,6 +1649,13 @@ static struct msm_gpiomux_config msm8x60_common_configs[] __initdata = {
 		.settings = {
 			[GPIOMUX_ACTIVE]    = &mdm2ap_status_active_cfg,
 			[GPIOMUX_SUSPENDED] = &mdm2ap_status_suspend_cfg,
+		},
+	},
+	/* PS_HOLD */
+	{
+		.gpio      = 92,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &ps_hold,
 		},
 	},
 };
