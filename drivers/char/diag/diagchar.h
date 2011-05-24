@@ -1,30 +1,13 @@
 /* Copyright (c) 2008-2011, Code Aurora Forum. All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *     * Neither the name of Code Aurora Forum, Inc. nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
- * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
- * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
- * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #ifndef DIAGCHAR_H
@@ -42,6 +25,7 @@
 #define USB_MAX_OUT_BUF 4096
 #define IN_BUF_SIZE		16384
 #define MAX_IN_BUF_SIZE	32768
+#define MAX_SYNC_OBJ_NAME_SIZE	32
 /* Size of the buffer used for deframing a packet
   reveived from the PC tool*/
 #define HDLC_MAX 4096
@@ -54,12 +38,17 @@
 #define QDSP_DATA  		2
 #define APPS_DATA  		3
 #define SDIO_DATA		4
+#define MODEM_PROC		0
+#define APPS_PROC		1
+#define QDSP_PROC		2
+#define RIVA_PROC		3
 #define MSG_MASK_SIZE 8000
 #define LOG_MASK_SIZE 8000
 #define EVENT_MASK_SIZE 1000
 #define PKT_SIZE 4096
 #define MAX_EQUIP_ID 12
-/* This is the maximum number of pkt registrations supported at initialization*/
+
+/* Maximum number of pkt reg supported at initialization*/
 extern unsigned int diag_max_registration;
 extern unsigned int diag_threshold_registration;
 
@@ -76,6 +65,27 @@ struct diag_master_table {
 	uint16_t cmd_code_lo;
 	uint16_t cmd_code_hi;
 	int process_id;
+	smd_channel_t *ch_id;
+};
+
+struct bindpkt_params_per_process {
+	/* Name of the synchronization object associated with this proc */
+	char sync_obj_name[MAX_SYNC_OBJ_NAME_SIZE];
+	uint32_t count;	/* Number of entries in this bind */
+	struct bindpkt_params *params; /* first bind params */
+};
+
+struct bindpkt_params {
+	uint16_t cmd_code;
+	uint16_t subsys_id;
+	uint16_t cmd_code_lo;
+	uint16_t cmd_code_hi;
+	/* For Central Routing, used to store Processor number */
+	uint16_t proc_id;
+	uint32_t event_id;
+	uint32_t log_code;
+	/* For Central Routing, used to store SMD channel pointer */
+	uint32_t client_id;
 };
 
 struct diag_write_device {
@@ -139,12 +149,16 @@ struct diagchar_dev {
 	/* State for diag forwarding */
 	unsigned char *buf_in_1;
 	unsigned char *buf_in_2;
+	unsigned char *buf_in_cntl;
 	unsigned char *buf_in_qdsp_1;
 	unsigned char *buf_in_qdsp_2;
+	unsigned char *buf_in_qdsp_cntl;
 	unsigned char *usb_buf_out;
 	unsigned char *apps_rsp_buf;
 	smd_channel_t *ch;
+	smd_channel_t *ch_cntl;
 	smd_channel_t *chqdsp;
+	smd_channel_t *chqdsp_cntl;
 	int in_busy_1;
 	int in_busy_2;
 	int in_busy_qdsp_1;
@@ -162,7 +176,9 @@ struct diagchar_dev {
 	struct workqueue_struct *diag_wq;
 	struct work_struct diag_drain_work;
 	struct work_struct diag_read_smd_work;
+	struct work_struct diag_read_smd_cntl_work;
 	struct work_struct diag_read_smd_qdsp_work;
+	struct work_struct diag_read_smd_qdsp_cntl_work;
 	uint8_t *msg_masks;
 	uint8_t *log_masks;
 	int log_masks_length;

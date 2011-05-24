@@ -8,7 +8,6 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
  */
 
 #include <linux/slab.h>
@@ -40,11 +39,11 @@ void __diag_sdio_send_req(void)
 
 		if (r > IN_BUF_SIZE) {
 			if (r < MAX_IN_BUF_SIZE) {
-				printk(KERN_ALERT "\n diag: SDIO sending"
+				pr_err("diag: SDIO sending"
 					  " in packets more than %d bytes", r);
 				buf = krealloc(buf, r, GFP_KERNEL);
 			} else {
-				printk(KERN_ALERT "\n diag: SDIO sending"
+				pr_err("diag: SDIO sending"
 			  " in packets more than %d bytes", MAX_IN_BUF_SIZE);
 				return;
 			}
