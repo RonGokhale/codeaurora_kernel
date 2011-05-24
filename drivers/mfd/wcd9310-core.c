@@ -39,7 +39,7 @@ static int tabla_read(struct tabla *tabla, unsigned short reg,
 		dev_err(tabla->dev, "Tabla read failed\n");
 		return ret;
 	} else
-		dev_info(tabla->dev, "Read 0x%02x from R%d(0x%x)\n",
+		dev_dbg(tabla->dev, "Read 0x%02x from R%d(0x%x)\n",
 			 *buf, reg, reg);
 
 	return 0;
@@ -70,7 +70,7 @@ static int tabla_write(struct tabla *tabla, unsigned short reg,
 		return -EINVAL;
 	}
 
-	dev_info(tabla->dev, "Write %02x to R%d(0x%x)\n",
+	dev_dbg(tabla->dev, "Write %02x to R%d(0x%x)\n",
 		 *buf, reg, reg);
 
 	return tabla->write_dev(tabla, reg, bytes, src, interface_reg);
