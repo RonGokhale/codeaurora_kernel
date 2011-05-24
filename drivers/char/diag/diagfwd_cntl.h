@@ -31,7 +31,8 @@ struct diag_ctrl_msg {
 
 void diagfwd_cntl_init(void);
 void diagfwd_cntl_exit(void);
-void __diag_smd_cntl_send_req(int);
 void diag_read_smd_cntl_work_fn(struct work_struct *);
 void diag_read_smd_qdsp_cntl_work_fn(struct work_struct *);
+void diag_read_smd_wcnss_cntl_work_fn(struct work_struct *);
+
 #endif

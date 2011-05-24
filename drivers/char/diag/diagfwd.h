@@ -21,6 +21,7 @@ void diagfwd_exit(void);
 void diag_process_hdlc(void *data, unsigned len);
 void __diag_smd_send_req(void);
 void __diag_smd_qdsp_send_req(void);
+void __diag_smd_wcnss_send_req(void);
 void diag_usb_legacy_notifier(void *, unsigned, struct diag_request *);
 long diagchar_ioctl(struct file *, unsigned int, unsigned long);
 int diag_device_write(void *, int, struct diag_request *);

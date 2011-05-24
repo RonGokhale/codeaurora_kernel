@@ -38,10 +38,11 @@
 #define QDSP_DATA  		2
 #define APPS_DATA  		3
 #define SDIO_DATA		4
+#define WCNSS_DATA		5
 #define MODEM_PROC		0
 #define APPS_PROC		1
 #define QDSP_PROC		2
-#define RIVA_PROC		3
+#define WCNSS_PROC		3
 #define MSG_MASK_SIZE 8000
 #define LOG_MASK_SIZE 8000
 #define EVENT_MASK_SIZE 1000
@@ -153,16 +154,21 @@ struct diagchar_dev {
 	unsigned char *buf_in_qdsp_1;
 	unsigned char *buf_in_qdsp_2;
 	unsigned char *buf_in_qdsp_cntl;
+	unsigned char *buf_in_wcnss;
+	unsigned char *buf_in_wcnss_cntl;
 	unsigned char *usb_buf_out;
 	unsigned char *apps_rsp_buf;
 	smd_channel_t *ch;
 	smd_channel_t *ch_cntl;
 	smd_channel_t *chqdsp;
 	smd_channel_t *chqdsp_cntl;
+	smd_channel_t *ch_wcnss;
+	smd_channel_t *ch_wcnss_cntl;
 	int in_busy_1;
 	int in_busy_2;
 	int in_busy_qdsp_1;
 	int in_busy_qdsp_2;
+	int in_busy_wcnss;
 	int read_len_legacy;
 	unsigned char *hdlc_buf;
 	unsigned hdlc_count;
@@ -179,6 +185,8 @@ struct diagchar_dev {
 	struct work_struct diag_read_smd_cntl_work;
 	struct work_struct diag_read_smd_qdsp_work;
 	struct work_struct diag_read_smd_qdsp_cntl_work;
+	struct work_struct diag_read_smd_wcnss_work;
+	struct work_struct diag_read_smd_wcnss_cntl_work;
 	uint8_t *msg_masks;
 	uint8_t *log_masks;
 	int log_masks_length;
@@ -192,6 +200,7 @@ struct diagchar_dev {
 	struct diag_request *write_ptr_svc;
 	struct diag_request *write_ptr_qdsp_1;
 	struct diag_request *write_ptr_qdsp_2;
+	struct diag_request *write_ptr_wcnss;
 	int logging_mode;
 	int logging_process_id;
 #ifdef CONFIG_DIAG_SDIO_PIPE

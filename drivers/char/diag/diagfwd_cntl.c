@@ -19,7 +19,7 @@
 
 #define HDR_SIZ 8
 
-void __diag_smd_cntl_send_req(int proc_num)
+static void diag_smd_cntl_send_req(int proc_num)
 {
 	int data_len = 0, type = -1, count_bytes = 0, j, r;
 	struct bindpkt_params_per_process *pkt_params =
@@ -36,6 +36,9 @@ void __diag_smd_cntl_send_req(int proc_num)
 	} else if (proc_num == QDSP_PROC) {
 		buf = driver->buf_in_qdsp_cntl;
 		smd_ch = driver->chqdsp_cntl;
+	} else if (proc_num == WCNSS_PROC) {
+		buf = driver->buf_in_wcnss_cntl;
+		smd_ch = driver->ch_wcnss_cntl;
 	}
 
 	if (!smd_ch || !buf)
@@ -74,6 +77,9 @@ void __diag_smd_cntl_send_req(int proc_num)
 					else if (proc_num == QDSP_PROC)
 						temp->client_id =
 						 (uint32_t)(driver->chqdsp);
+					else if (proc_num == WCNSS_PROC)
+						temp->client_id =
+						 (uint32_t)(driver->ch_wcnss);
 					temp->proc_id = proc_num;
 					temp->cmd_code_lo = range->cmd_code_lo;
 					temp->cmd_code_hi = range->cmd_code_hi;
@@ -94,12 +100,17 @@ void __diag_smd_cntl_send_req(int proc_num)
 
 void diag_read_smd_cntl_work_fn(struct work_struct *work)
 {
-	__diag_smd_cntl_send_req(MODEM_PROC);
+	diag_smd_cntl_send_req(MODEM_PROC);
 }
 
 void diag_read_smd_qdsp_cntl_work_fn(struct work_struct *work)
 {
-	__diag_smd_cntl_send_req(QDSP_PROC);
+	diag_smd_cntl_send_req(QDSP_PROC);
+}
+
+void diag_read_smd_wcnss_cntl_work_fn(struct work_struct *work)
+{
+	diag_smd_cntl_send_req(WCNSS_PROC);
 }
 
 static void diag_smd_cntl_notify(void *ctxt, unsigned event)
@@ -114,19 +125,28 @@ static void diag_smd_qdsp_cntl_notify(void *ctxt, unsigned event)
 }
 #endif
 
+static void diag_smd_wcnss_cntl_notify(void *ctxt, unsigned event)
+{
+	queue_work(driver->diag_wq, &(driver->diag_read_smd_wcnss_cntl_work));
+}
+
 static int diag_smd_cntl_probe(struct platform_device *pdev)
 {
 	int r = 0;
 
 	/* open control ports only on 8960 */
 	if (chk_config_get_id() == AO8960_TOOLS_ID) {
-		if (pdev->id == 0)
+		if (pdev->id == SMD_APPS_MODEM)
 			r = smd_open("DIAG_CNTL", &driver->ch_cntl, driver,
 							diag_smd_cntl_notify);
-		if (pdev->id == 1)
+		if (pdev->id == SMD_APPS_QDSP)
 			r = smd_named_open_on_edge("DIAG_CNTL", SMD_APPS_QDSP
 				, &driver->chqdsp_cntl, driver,
 					 diag_smd_qdsp_cntl_notify);
+		if (pdev->id == SMD_APPS_WCNSS)
+			r = smd_named_open_on_edge("APPS_RIVA_CTRL",
+				SMD_APPS_WCNSS, &driver->ch_wcnss_cntl,
+					driver, diag_smd_wcnss_cntl_notify);
 		pr_debug("diag: open CNTL port, ID = %d,r = %d\n", pdev->id, r);
 	}
 	return 0;
@@ -159,6 +179,16 @@ static struct platform_driver msm_smd_ch1_cntl_driver = {
 		   },
 };
 
+static struct platform_driver diag_smd_lite_cntl_driver = {
+
+	.probe = diag_smd_cntl_probe,
+	.driver = {
+			.name = "APPS_RIVA_CTRL",
+			.owner = THIS_MODULE,
+			.pm   = &diagfwd_cntl_dev_pm_ops,
+		   },
+};
+
 void diagfwd_cntl_init(void)
 {
 	if (driver->buf_in_cntl == NULL) {
@@ -171,23 +201,34 @@ void diagfwd_cntl_init(void)
 		if (driver->buf_in_qdsp_cntl == NULL)
 			goto err;
 	}
+	if (driver->buf_in_wcnss_cntl == NULL) {
+		driver->buf_in_wcnss_cntl = kzalloc(IN_BUF_SIZE, GFP_KERNEL);
+		if (driver->buf_in_wcnss_cntl == NULL)
+			goto err;
+	}
 	platform_driver_register(&msm_smd_ch1_cntl_driver);
+	platform_driver_register(&diag_smd_lite_cntl_driver);
 
 	return;
 err:
 		pr_err("diag: Could not initialize diag buffers");
 		kfree(driver->buf_in_cntl);
 		kfree(driver->buf_in_qdsp_cntl);
+		kfree(driver->buf_in_wcnss_cntl);
 }
 
 void diagfwd_cntl_exit(void)
 {
 	smd_close(driver->ch_cntl);
 	smd_close(driver->chqdsp_cntl);
+	smd_close(driver->ch_wcnss_cntl);
 	driver->ch_cntl = 0;
 	driver->chqdsp_cntl = 0;
+	driver->ch_wcnss_cntl = 0;
 	platform_driver_unregister(&msm_smd_ch1_cntl_driver);
+	platform_driver_unregister(&diag_smd_lite_cntl_driver);
 
 	kfree(driver->buf_in_cntl);
 	kfree(driver->buf_in_qdsp_cntl);
+	kfree(driver->buf_in_wcnss_cntl);
 }

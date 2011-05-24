@@ -124,6 +124,11 @@ void diag_read_smd_qdsp_work_fn(struct work_struct *work)
 	__diag_smd_qdsp_send_req();
 }
 
+void diag_read_smd_wcnss_work_fn(struct work_struct *work)
+{
+	__diag_smd_wcnss_send_req();
+}
+
 static int diagchar_open(struct inode *inode, struct file *file)
 {
 	int i = 0;
@@ -876,6 +881,10 @@ static int __init diagchar_init(void)
 			   diag_read_smd_qdsp_work_fn);
 		INIT_WORK(&(driver->diag_read_smd_qdsp_cntl_work),
 			   diag_read_smd_qdsp_cntl_work_fn);
+		INIT_WORK(&(driver->diag_read_smd_wcnss_work),
+			diag_read_smd_wcnss_work_fn);
+		INIT_WORK(&(driver->diag_read_smd_wcnss_cntl_work),
+			diag_read_smd_wcnss_cntl_work_fn);
 		diagfwd_init();
 		diagfwd_cntl_init();
 		diag_sdio_fn(INIT);
