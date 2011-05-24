@@ -13,6 +13,7 @@
 #include <linux/clk.h>
 #include "msm_fb.h"
 #include "mipi_dsi.h"
+#include "hdmi_msm.h"
 #include <mach/msm_iomap.h>
 
 /* multimedia sub system clock control */
@@ -469,3 +470,144 @@ void mipi_dsi_phy_ctrl(int on)
 		MIPI_OUTP(MIPI_DSI_BASE + 0x0118, 0);
 	}
 }
+
+#ifdef CONFIG_FB_MSM_HDMI_COMMON
+#define SW_RESET BIT(2)
+void hdmi_phy_reset(void)
+{
+	unsigned int phy_reset_polarity = 0x0;
+	unsigned int val = HDMI_INP_ND(0x2D4);
+
+	phy_reset_polarity = val >> 3 & 0x1;
+
+	if (phy_reset_polarity == 0)
+		HDMI_OUTP(0x2D4, val | SW_RESET);
+	else
+		HDMI_OUTP(0x2D4, val & (~SW_RESET));
+
+	msleep(100);
+
+	if (phy_reset_polarity == 0)
+		HDMI_OUTP(0x2D4, val & (~SW_RESET));
+	else
+		HDMI_OUTP(0x2D4, val | SW_RESET);
+}
+
+void hdmi_msm_init_phy(int video_format)
+{
+	uint32 offset;
+	/* De-serializer delay D/C for non-lbk mode
+	 * PHY REG0 = (DESER_SEL(0) | DESER_DEL_CTRL(3)
+	 * | AMUX_OUT_SEL(0))
+	 */
+	HDMI_OUTP_ND(0x0300, 0x0C); /*0b00001100*/
+
+	if (video_format == HDMI_VFRMT_720x480p60_16_9) {
+		/* PHY REG1 = DTEST_MUX_SEL(5) | PLL_GAIN_SEL(0)
+		 * | OUTVOL_SWING_CTRL(3)
+		 */
+		HDMI_OUTP_ND(0x0304, 0x53); /*0b01010011*/
+	} else {
+		/* If the freq. is less than 120MHz, use low gain 0
+		 * for board with termination
+		 * PHY REG1 = DTEST_MUX_SEL(5) | PLL_GAIN_SEL(0)
+		 * | OUTVOL_SWING_CTRL(4)
+		 */
+		HDMI_OUTP_ND(0x0304, 0x54); /*0b01010100*/
+	}
+
+	/* No matter what, start from the power down mode
+	 * PHY REG2 = PD_PWRGEN | PD_PLL | PD_DRIVE_4 | PD_DRIVE_3
+	 * | PD_DRIVE_2 | PD_DRIVE_1 | PD_DESER
+	 */
+	HDMI_OUTP_ND(0x0308, 0x7F); /*0b01111111*/
+
+	/* Turn PowerGen on
+	 * PHY REG2 = PD_PLL | PD_DRIVE_4 | PD_DRIVE_3
+	 * | PD_DRIVE_2 | PD_DRIVE_1 | PD_DESER
+	 */
+	HDMI_OUTP_ND(0x0308, 0x3F); /*0b00111111*/
+
+	/* Turn PLL power on
+	 * PHY REG2 = PD_DRIVE_4 | PD_DRIVE_3
+	 * | PD_DRIVE_2 | PD_DRIVE_1 | PD_DESER
+	 */
+	HDMI_OUTP_ND(0x0308, 0x1F); /*0b00011111*/
+
+	/* Write to HIGH after PLL power down de-assert
+	 * PHY REG3 = PLL_ENABLE
+	 */
+	HDMI_OUTP_ND(0x030C, 0x01);
+	/* ASIC power on; PHY REG9 = 0 */
+	HDMI_OUTP_ND(0x0324, 0x00);
+	/* Enable PLL lock detect, PLL lock det will go high after lock
+	 * Enable the re-time logic
+	 * PHY REG12 = PLL_LOCK_DETECT_EN | RETIMING_ENABLE
+	 */
+	HDMI_OUTP_ND(0x0330, 0x03); /*0b00000011*/
+
+	/* Drivers are on
+	 * PHY REG2 = PD_DESER
+	 */
+	HDMI_OUTP_ND(0x0308, 0x01); /*0b00000001*/
+	/* If the RX detector is needed
+	 * PHY REG2 = RCV_SENSE_EN | PD_DESER
+	 */
+	HDMI_OUTP_ND(0x0308, 0x81); /*0b10000001*/
+
+	offset = 0x0310;
+	while (offset <= 0x032C) {
+		HDMI_OUTP(offset, 0x0);
+		offset += 0x4;
+	}
+
+	/* If we want to use lock enable based on counting
+	 * PHY REG12 = FORCE_LOCK | PLL_LOCK_DETECT_EN | RETIMING_ENABLE
+	 */
+	HDMI_OUTP_ND(0x0330, 0x13); /*0b00010011*/
+}
+
+void hdmi_msm_powerdown_phy(void)
+{
+	/* Disable PLL */
+	HDMI_OUTP_ND(0x030C, 0x00);
+	/* Power down PHY */
+	HDMI_OUTP_ND(0x0308, 0x7F); /*0b01111111*/
+}
+
+void hdmi_frame_ctrl_cfg(const struct hdmi_disp_mode_timing_type *timing)
+{
+	/*  0x02C8 HDMI_FRAME_CTRL
+	 *  31 INTERLACED_EN   Interlaced or progressive enable bit
+	 *    0: Frame in progressive
+	 *    1: Frame is interlaced
+	 *  29 HSYNC_HDMI_POL  HSYNC polarity fed to HDMI core
+	 *     0: Active Hi Hsync, detect the rising edge of hsync
+	 *     1: Active lo Hsync, Detect the falling edge of Hsync
+	 *  28 VSYNC_HDMI_POL  VSYNC polarity fed to HDMI core
+	 *     0: Active Hi Vsync, detect the rising edge of vsync
+	 *     1: Active Lo Vsync, Detect the falling edge of Vsync
+	 *  12 RGB_MUX_SEL     ALPHA mdp4 input is RGB, mdp4 input is BGR
+	 */
+	HDMI_OUTP(0x02C8,
+		  ((timing->interlaced << 31) & 0x80000000)
+		| ((timing->active_low_h << 29) & 0x20000000)
+		| ((timing->active_low_v << 28) & 0x10000000)
+		| (1 << 12));
+}
+
+void hdmi_msm_phy_status_poll(void)
+{
+	unsigned int phy_ready;
+	phy_ready = 0x1 & HDMI_INP_ND(0x33c);
+	if (phy_ready) {
+		pr_debug("HDMI Phy Status bit is set and ready\n");
+	} else {
+		pr_debug("HDMI Phy Status bit is not set,"
+			"waiting for ready status\n");
+		do {
+			phy_ready = 0x1 & HDMI_INP_ND(0x33c);
+		} while (!phy_ready);
+	}
+}
+#endif

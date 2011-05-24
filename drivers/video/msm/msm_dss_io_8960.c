@@ -13,7 +13,36 @@
 #include <linux/clk.h>
 #include "msm_fb.h"
 #include "mipi_dsi.h"
+#include "hdmi_msm.h"
 #include <mach/msm_iomap.h>
+
+/* HDMI PHY macros */
+#define HDMI_PHY_REG_0                   (0x00000400)
+#define HDMI_PHY_REG_1                   (0x00000404)
+#define HDMI_PHY_REG_2                   (0x00000408)
+#define HDMI_PHY_REG_3                   (0x0000040c)
+#define HDMI_PHY_REG_4                   (0x00000410)
+#define HDMI_PHY_REG_5                   (0x00000414)
+#define HDMI_PHY_REG_6                   (0x00000418)
+#define HDMI_PHY_REG_7                   (0x0000041c)
+#define HDMI_PHY_REG_8                   (0x00000420)
+#define HDMI_PHY_REG_9                   (0x00000424)
+#define HDMI_PHY_REG_10                  (0x00000428)
+#define HDMI_PHY_REG_11                  (0x0000042c)
+#define HDMI_PHY_REG_12                  (0x00000430)
+#define HDMI_PHY_REG_BIST_CFG            (0x00000434)
+#define HDMI_PHY_DEBUG_BUS_SEL           (0x00000438)
+#define HDMI_PHY_REG_MISC0               (0x0000043c)
+#define HDMI_PHY_REG_13                  (0x00000440)
+#define HDMI_PHY_REG_14                  (0x00000444)
+#define HDMI_PHY_REG_15                  (0x00000448)
+#define HDMI_PHY_CTRL			         (0x000002D4)
+
+/* HDMI PHY/PLL bit field macros */
+#define HDMI_PHY_PLL_STATUS0             (0x00000598)
+#define SW_RESET BIT(2)
+#define SW_RESET_PLL BIT(0)
+#define PWRDN_B BIT(7)
 
 /* multimedia sub system clock control */
 char *mmss_cc_base = MSM_MMSS_CLK_CTL_BASE;
@@ -570,3 +599,117 @@ void mipi_dsi_phy_ctrl(int on)
 		MIPI_OUTP(MIPI_DSI_BASE + 0x0118, 0);
 	}
 }
+
+#ifdef CONFIG_FB_MSM_HDMI_COMMON
+void hdmi_phy_reset(void)
+{
+	unsigned int phy_reset_polarity = 0x0;
+	unsigned int pll_reset_polarity = 0x0;
+
+	unsigned int val = HDMI_INP_ND(HDMI_PHY_CTRL);
+
+	phy_reset_polarity = val >> 3 & 0x1;
+	pll_reset_polarity = val >> 1 & 0x1;
+
+	if (phy_reset_polarity == 0)
+		HDMI_OUTP(HDMI_PHY_CTRL, val | SW_RESET);
+	else
+		HDMI_OUTP(HDMI_PHY_CTRL, val & (~SW_RESET));
+
+	if (pll_reset_polarity == 0)
+		HDMI_OUTP(HDMI_PHY_CTRL, val | SW_RESET_PLL);
+	else
+		HDMI_OUTP(HDMI_PHY_CTRL, val & (~SW_RESET_PLL));
+
+	msleep(100);
+
+	if (phy_reset_polarity == 0)
+		HDMI_OUTP(HDMI_PHY_CTRL, val & (~SW_RESET));
+	else
+		HDMI_OUTP(HDMI_PHY_CTRL, val | SW_RESET);
+
+	if (pll_reset_polarity == 0)
+		HDMI_OUTP(HDMI_PHY_CTRL, val & (~SW_RESET_PLL));
+	else
+		HDMI_OUTP(HDMI_PHY_CTRL, val | SW_RESET_PLL);
+}
+
+void hdmi_msm_init_phy(int video_format)
+{
+	uint32 offset;
+	pr_err("Video format is : %u\n", video_format);
+
+	HDMI_OUTP(HDMI_PHY_REG_0, 0x1B);
+	HDMI_OUTP(HDMI_PHY_REG_1, 0xf2);
+	HDMI_OUTP(HDMI_PHY_REG_2, 0x7F);
+	HDMI_OUTP(HDMI_PHY_REG_2, 0x3F);
+	HDMI_OUTP(HDMI_PHY_REG_2, 0x1F);
+
+	offset = HDMI_PHY_REG_4;
+	while (offset <= HDMI_PHY_REG_11) {
+		HDMI_OUTP(offset, 0x0);
+		offset += 0x4;
+	}
+
+	HDMI_OUTP(HDMI_PHY_REG_12, HDMI_INP(HDMI_PHY_REG_12) | PWRDN_B);
+	msleep(100);
+
+	HDMI_OUTP(HDMI_PHY_REG_3, 0x20);
+	HDMI_OUTP(HDMI_PHY_REG_12, 0x81);
+	HDMI_OUTP(HDMI_PHY_REG_2, 0x81);
+}
+
+void hdmi_msm_powerdown_phy(void)
+{
+	/* Power down PHY */
+	HDMI_OUTP_ND(HDMI_PHY_REG_2, 0x7F); /*0b01111111*/
+}
+
+void hdmi_frame_ctrl_cfg(const struct hdmi_disp_mode_timing_type *timing)
+{
+	/*  0x02C8 HDMI_FRAME_CTRL
+	 *  31 INTERLACED_EN   Interlaced or progressive enable bit
+	 *    0: Frame in progressive
+	 *    1: Frame is interlaced
+	 *  29 HSYNC_HDMI_POL  HSYNC polarity fed to HDMI core
+	 *     0: Active Hi Hsync, detect the rising edge of hsync
+	 *     1: Active lo Hsync, Detect the falling edge of Hsync
+	 *  28 VSYNC_HDMI_POL  VSYNC polarity fed to HDMI core
+	 *     0: Active Hi Vsync, detect the rising edge of vsync
+	 *     1: Active Lo Vsync, Detect the falling edge of Vsync
+	 *  12 RGB_MUX_SEL     ALPHA mdp4 input is RGB, mdp4 input is BGR
+	 */
+	HDMI_OUTP(0x02C8,
+		  ((timing->interlaced << 31) & 0x80000000)
+		| ((timing->active_low_h << 29) & 0x20000000)
+		| ((timing->active_low_v << 28) & 0x10000000));
+}
+
+void hdmi_msm_phy_status_poll(void)
+{
+	unsigned int lock_det, phy_ready;
+	lock_det = 0x1 & HDMI_INP_ND(HDMI_PHY_PLL_STATUS0);
+	if (lock_det) {
+		pr_debug("HDMI Phy PLL Lock Detect Bit is set\n");
+	} else {
+		pr_debug("HDMI Phy Lock Detect Bit is not set,"
+			 "waiting for lock detection\n");
+		do {
+			lock_det = 0x1 & \
+				HDMI_INP_ND(HDMI_PHY_PLL_STATUS0);
+		} while (!lock_det);
+	}
+
+	phy_ready = 0x1 & HDMI_INP_ND(HDMI_PHY_REG_15);
+	if (phy_ready) {
+		pr_debug("HDMI Phy Status bit is set and ready\n");
+	} else {
+		pr_debug("HDMI Phy Status bit is not set,"
+			"waiting for ready status\n");
+		do {
+			phy_ready = 0x1 & HDMI_INP_ND(HDMI_PHY_REG_15);
+		} while (!phy_ready);
+	}
+}
+
+#endif
