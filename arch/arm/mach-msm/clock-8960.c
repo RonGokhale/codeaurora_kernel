@@ -68,7 +68,6 @@
 #define BB_MMC_PLL2_N_VAL_REG			REG(0x316C)
 #define PLLTEST_PAD_CFG_REG			REG(0x2FA4)
 #define PMEM_ACLK_CTL_REG			REG(0x25A0)
-#define PPSS_HCLK_CTL_REG			REG(0x2580)
 #define PRNG_CLK_NS_REG				REG(0x2E80)
 #define RINGOSC_NS_REG				REG(0x2DC0)
 #define RINGOSC_STATUS_REG			REG(0x2DCC)
@@ -1998,23 +1997,6 @@ static struct branch_clk gsbi12_p_clk = {
 	},
 };
 
-static struct branch_clk ppss_p_clk = {
-	.b = {
-		.en_reg = PPSS_HCLK_CTL_REG,
-		.en_mask = BIT(4),
-		.halt_reg = CLK_HALT_DFAB_STATE_REG,
-		.halt_check = HALT,
-		.halt_bit = 19,
-		.test_vector = TEST_PER_LS(0x2B),
-	},
-	.c = {
-		.dbg_name = "ppss_p_clk",
-		.ops = &clk_ops_branch,
-		.flags = CLKFLAG_AUTO_OFF,
-		CLK_INIT(ppss_p_clk.c),
-	},
-};
-
 static struct branch_clk tsif_p_clk = {
 	.b = {
 		.en_reg = TSIF_HCLK_CTL_REG,
@@ -3905,7 +3887,6 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("gsbi_pclk",		gsbi10_p_clk.c,		NULL),
 	CLK_LOOKUP("gsbi_pclk",		gsbi11_p_clk.c,		NULL),
 	CLK_LOOKUP("gsbi_pclk",		gsbi12_p_clk.c,		NULL),
-	CLK_LOOKUP("ppss_pclk",		ppss_p_clk.c,		NULL),
 	CLK_LOOKUP("tsif_pclk",		tsif_p_clk.c,		NULL),
 	CLK_LOOKUP("usb_fs_pclk",	usb_fs1_p_clk.c,	NULL),
 	CLK_LOOKUP("usb_fs_pclk",	usb_fs2_p_clk.c,	NULL),

@@ -1395,7 +1395,6 @@ struct clk_lookup msm_clocks_8960_dummy[] = {
 	CLK_DUMMY("gsbi_pclk",		GSBI11_P_CLK,		NULL, OFF),
 	CLK_DUMMY("gsbi_pclk",		GSBI12_P_CLK,		NULL, OFF),
 	CLK_DUMMY("gsbi_pclk",		GSBI12_P_CLK,		NULL, OFF),
-	CLK_DUMMY("ppss_pclk",		PPSS_P_CLK,		NULL, OFF),
 	CLK_DUMMY("tsif_pclk",		TSIF_P_CLK,		NULL, OFF),
 	CLK_DUMMY("usb_fs_pclk",	USB_FS1_P_CLK,		NULL, OFF),
 	CLK_DUMMY("usb_fs_pclk",	USB_FS2_P_CLK,		NULL, OFF),
