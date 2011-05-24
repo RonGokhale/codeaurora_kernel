@@ -135,6 +135,8 @@ struct mxt_data {
 	u16                  msg_proc_addr;
 	u8                   message_size;
 
+	u16                  min_x_val;
+	u16                  min_y_val;
 	u16                  max_x_val;
 	u16                  max_y_val;
 
@@ -1904,6 +1906,17 @@ static int __devinit mxt_probe(struct i2c_client *client,
 
 	mxt->read_fail_counter = 0;
 	mxt->message_counter   = 0;
+
+	if (pdata->min_x)
+		mxt->min_x_val = pdata->min_x;
+	else
+		mxt->min_x_val = 0;
+
+	if (pdata->min_y)
+		mxt->min_y_val = pdata->min_y;
+	else
+		mxt->min_y_val = 0;
+
 	mxt->max_x_val         = pdata->max_x;
 	mxt->max_y_val         = pdata->max_y;
 
@@ -1973,16 +1986,20 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	set_bit(BTN_TOUCH, input->keybit);
 
 	/* Single touch */
-	input_set_abs_params(input, ABS_X, 0, mxt->max_x_val, 0, 0);
-	input_set_abs_params(input, ABS_Y, 0, mxt->max_y_val, 0, 0);
+	input_set_abs_params(input, ABS_X, mxt->min_x_val,
+				mxt->max_x_val, 0, 0);
+	input_set_abs_params(input, ABS_Y, mxt->min_y_val,
+				mxt->max_y_val, 0, 0);
 	input_set_abs_params(input, ABS_PRESSURE, 0, MXT_MAX_REPORTED_PRESSURE,
 			     0, 0);
 	input_set_abs_params(input, ABS_TOOL_WIDTH, 0, MXT_MAX_REPORTED_WIDTH,
 			     0, 0);
 
 	/* Multitouch */
-	input_set_abs_params(input, ABS_MT_POSITION_X, 0, mxt->max_x_val, 0, 0);
-	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, mxt->max_y_val, 0, 0);
+	input_set_abs_params(input, ABS_MT_POSITION_X, mxt->min_x_val,
+				mxt->max_x_val, 0, 0);
+	input_set_abs_params(input, ABS_MT_POSITION_Y, mxt->min_y_val,
+				mxt->max_y_val, 0, 0);
 	input_set_abs_params(input, ABS_MT_TOUCH_MAJOR, 0, MXT_MAX_TOUCH_SIZE,
 			     0, 0);
 	input_set_abs_params(input, ABS_MT_TRACKING_ID, 0, MXT_MAX_NUM_TOUCHES,
