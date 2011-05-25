@@ -14,4 +14,6 @@
 
 #define MSM_GSBI0_QUP_I2C_BUS_ID	0
 #define MSM_GSBI1_QUP_I2C_BUS_ID	1
+
+void __init msm_common_io_init(void);
 #endif
