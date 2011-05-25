@@ -2296,7 +2296,7 @@ static struct msm_camera_sensor_platform_info ov9726_sensor_7627a_info = {
 };
 
 static struct msm_camera_sensor_flash_data flash_ov9726 = {
-	.flash_type             = MSM_CAMERA_FLASH_LED,
+	.flash_type             = MSM_CAMERA_FLASH_NONE,
 	.flash_src              = &msm_flash_src
 };
 
