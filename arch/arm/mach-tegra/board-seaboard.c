@@ -776,10 +776,8 @@ static void __init arthur_i2c_register_devices(void)
 	i2c_register_board_info(4, &nct1008_device, 1);
 }
 
-static void __init seaboard_common_init(void)
+static void __init __seaboard_common_init(void)
 {
-	seaboard_pinmux_init();
-
 	tegra_clk_init_from_table(seaboard_clk_init_table);
 
 	/* Power up WLAN */
@@ -818,6 +816,18 @@ static void __init tegra_set_clock_readskew(const char *clk_name, int skew)
 
 	tegra_sdmmc_tap_delay(c, skew);
 	clk_put(c);
+}
+
+static void __init seaboard_common_init(void)
+{
+	seaboard_pinmux_init();
+	__seaboard_common_init();
+}
+
+static void __init aebl_common_init(void)
+{
+	aebl_pinmux_init();
+	__seaboard_common_init();
 }
 
 static struct tegra_suspend_platform_data seaboard_suspend = {
@@ -917,7 +927,7 @@ static void __init tegra_aebl_init(void)
 	tegra_ehci2_device.dev.platform_data = &tegra_ehci_pdata[1];
 	tegra_ehci3_device.dev.platform_data = &tegra_ehci_pdata[2];
 
-	seaboard_common_init();
+	aebl_common_init();
 	aebl_emc_init();
 
 	aebl_i2c_register_devices();

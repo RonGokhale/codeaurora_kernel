@@ -220,7 +220,8 @@ static struct tegra_gpio_table gpio_table[] = {
 	{ .gpio = TEGRA_GPIO_WP_STATUS,		.enable = true },
 };
 
-void __init seaboard_pinmux_init(void)
+static void __init board_pinmux_init(struct tegra_pingroup_config *config,
+		int len)
 {
 	/*
 	 * PINGROUP_SPIC contains two pins:
@@ -239,7 +240,7 @@ void __init seaboard_pinmux_init(void)
 	gpio_request(TEGRA_GPIO_WM8903_IRQ, "wm8903");
 	gpio_direction_input(TEGRA_GPIO_WM8903_IRQ);
 
-	tegra_pinmux_config_table(seaboard_pinmux, ARRAY_SIZE(seaboard_pinmux));
+	tegra_pinmux_config_table(config, len);
 
 	tegra_drive_pinmux_config_table(seaboard_drive_pinmux,
 					ARRAY_SIZE(seaboard_drive_pinmux));
@@ -254,4 +255,23 @@ void __init seaboard_pinmux_init(void)
 	gpio_request(TEGRA_GPIO_BT_RESET, "bt_nreset_gpio");
 	gpio_direction_output(TEGRA_GPIO_BT_RESET, 0);
 	gpio_export(TEGRA_GPIO_BT_RESET, false);
+}
+
+void __init seaboard_pinmux_init(void)
+{
+	board_pinmux_init(seaboard_pinmux, ARRAY_SIZE(seaboard_pinmux));
+}
+
+void __init aebl_pinmux_init(void)
+{
+	int i, len = ARRAY_SIZE(seaboard_pinmux);
+
+	/* patch seaboard's pinmux table for aebl */
+	for (i = 0; i < len; i++)
+		if (seaboard_pinmux[i].pingroup == TEGRA_PINGROUP_CDEV2) {
+			seaboard_pinmux[i].func = TEGRA_MUX_OSC;
+			break;
+		}
+
+	board_pinmux_init(seaboard_pinmux, len);
 }
