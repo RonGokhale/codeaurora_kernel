@@ -38,6 +38,7 @@ struct audio_mixer_data {
 
 enum {
 	AUDIO_MIXER_PRI_I2S_RX = 0,
+	AUDIO_MIXER_SLIMBUS_0_RX,
 	AUDIO_MIXER_HDMI_RX,
 	AUDIO_MIXER_MM_UL1,
 	AUDIO_MIXER_MAX,
@@ -51,6 +52,8 @@ enum {
 static int bedai_port_map[MSM_BACKEND_DAI_MAX] = {
 	PRIMARY_I2S_RX,
 	PRIMARY_I2S_TX,
+	SLIMBUS_0_RX,
+	SLIMBUS_0_TX,
 	HDMI_RX,
 };
 
@@ -65,7 +68,9 @@ static int fe_dai_map[MSM_FRONTEND_DAI_MAX][2] = {
 static struct audio_mixer_data audio_mixers[AUDIO_MIXER_MAX] = {
 	/* AUDIO_MIXER_PRI_I2S_RX */
 	{PRIMARY_I2S_RX, 0, SNDRV_PCM_STREAM_PLAYBACK},
-	/* AUDIO_MIXER_PRI_I2S_TX */
+	/* AUDIO_MIXER_SLIMBUS_0_RX */
+	{SLIMBUS_0_RX, 0, SNDRV_PCM_STREAM_PLAYBACK},
+	/* AUDIO_MIXER_HDMI_RX */
 	{HDMI_RX, 0, SNDRV_PCM_STREAM_PLAYBACK},
 	/* AUDIO_MIXER_MM_UL1 */
 	{MSM_FRONTEND_DAI_MULTIMEDIA1, 0, SNDRV_PCM_STREAM_CAPTURE},
@@ -273,11 +278,20 @@ static int msm_routing_put_voice_mixer(struct snd_kcontrol *kcontrol,
 	return 1;
 }
 
-static const struct snd_kcontrol_new pri_rx_mixer_controls[] = {
+static const struct snd_kcontrol_new pri_i2s_rx_mixer_controls[] = {
 	SOC_SINGLE_EXT("MultiMedia1", AUDIO_MIXER_PRI_I2S_RX ,
 	MSM_FRONTEND_DAI_MULTIMEDIA1, 1, 0, msm_routing_get_audio_mixer,
 	msm_routing_put_audio_mixer),
 	SOC_SINGLE_EXT("MultiMedia2", AUDIO_MIXER_PRI_I2S_RX,
+	MSM_FRONTEND_DAI_MULTIMEDIA2, 1, 0, msm_routing_get_audio_mixer,
+	msm_routing_put_audio_mixer),
+};
+
+static const struct snd_kcontrol_new slimbus_rx_mixer_controls[] = {
+	SOC_SINGLE_EXT("MultiMedia1", AUDIO_MIXER_SLIMBUS_0_RX ,
+	MSM_FRONTEND_DAI_MULTIMEDIA1, 1, 0, msm_routing_get_audio_mixer,
+	msm_routing_put_audio_mixer),
+	SOC_SINGLE_EXT("MultiMedia2", AUDIO_MIXER_SLIMBUS_0_RX,
 	MSM_FRONTEND_DAI_MULTIMEDIA2, 1, 0, msm_routing_get_audio_mixer,
 	msm_routing_put_audio_mixer),
 };
@@ -294,6 +308,9 @@ static const struct snd_kcontrol_new hdmi_mixer_controls[] = {
 static const struct snd_kcontrol_new mmul1_mixer_controls[] = {
 	SOC_SINGLE_EXT("PRI_TX", AUDIO_MIXER_MM_UL1,
 	MSM_BACKEND_DAI_PRI_I2S_TX, 1, 0, msm_routing_get_audio_mixer,
+	msm_routing_put_audio_mixer),
+	SOC_SINGLE_EXT("SLIM_0_TX", AUDIO_MIXER_MM_UL1,
+	MSM_BACKEND_DAI_SLIMBUS_0_TX, 1, 0, msm_routing_get_audio_mixer,
 	msm_routing_put_audio_mixer),
 };
 
@@ -334,11 +351,15 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	/* Stream name equals to backend dai link stream name
 	 */
 	SND_SOC_DAPM_AIF_OUT("PRI_I2S_RX", "Primary I2S Playback", 0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("SLIMBUS_0_RX", "Slimbus Playback", 0, 0, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("HDMI", "HDMI Playback", 0, 0, 0 , 0),
 	SND_SOC_DAPM_AIF_IN("PRI_I2S_TX", "Primary I2S Capture", 0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_IN("SLIMBUS_0_TX", "Slimbus Capture", 0, 0, 0, 0),
 	/* Mixer definitions */
 	SND_SOC_DAPM_MIXER("PRI_RX Audio Mixer", SND_SOC_NOPM, 0, 0,
-	pri_rx_mixer_controls, ARRAY_SIZE(pri_rx_mixer_controls)),
+	pri_i2s_rx_mixer_controls, ARRAY_SIZE(pri_i2s_rx_mixer_controls)),
+	SND_SOC_DAPM_MIXER("SLIMBUS_0_RX Audio Mixer", SND_SOC_NOPM, 0, 0,
+	slimbus_rx_mixer_controls, ARRAY_SIZE(slimbus_rx_mixer_controls)),
 	SND_SOC_DAPM_MIXER("HDMI Mixer", SND_SOC_NOPM, 0, 0,
 	hdmi_mixer_controls, ARRAY_SIZE(hdmi_mixer_controls)),
 	SND_SOC_DAPM_MIXER("MultiMedia1 Mixer", SND_SOC_NOPM, 0, 0,
@@ -358,11 +379,18 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 static const struct snd_soc_dapm_route intercon[] = {
 	{"PRI_RX Audio Mixer", "MultiMedia1", "MM_DL1"},
 	{"PRI_RX Audio Mixer", "MultiMedia2", "MM_DL2"},
+	{"PRI_I2S_RX", NULL, "PRI_RX Audio Mixer"},
+
+	{"SLIMBUS_0_RX Audio Mixer", "MultiMedia1", "MM_DL1"},
+	{"SLIMBUS_0_RX Audio Mixer", "MultiMedia2", "MM_DL2"},
+	{"SLIMBUS_0_RX", NULL, "SLIMBUS_0_RX Audio Mixer"},
+
 	{"HDMI Mixer", "MultiMedia1", "MM_DL1"},
 	{"HDMI Mixer", "MultiMedia2", "MM_DL2"},
 	{"HDMI", NULL, "HDMI Mixer"},
-	{"PRI_I2S_RX", NULL, "PRI_RX Audio Mixer"},
+
 	{"MultiMedia1 Mixer", "PRI_TX", "PRI_I2S_TX"},
+	{"MultiMedia1 Mixer", "SLIM_0_TX", "SLIMBUS_0_TX"},
 	{"MM_UL1", NULL, "MultiMedia1 Mixer"},
 	{"PRI_RX_Voice Mixer", "CSVoice", "CS-VOICE_DL1"},
 	{"PRI_RX_Voice Mixer", "Voip", "VOIP_DL"},

@@ -74,6 +74,7 @@ int tabla_bulk_write(struct tabla *tabla, unsigned short reg,
 			int count, u8 *buf);
 int tabla_irq_init(struct tabla *tabla);
 void tabla_irq_exit(struct tabla *tabla);
+int tabla_get_logical_addresses(u8 *pgd_la, u8 *inf_la);
 
 static inline int tabla_request_irq(struct tabla *tabla, int irq,
 				     irq_handler_t handler, const char *name,

@@ -89,6 +89,18 @@ int tabla_reg_write(struct tabla *tabla, unsigned short reg,
 }
 EXPORT_SYMBOL_GPL(tabla_reg_write);
 
+static u8 tabla_pgd_la;
+static u8 tabla_inf_la;
+
+int tabla_get_logical_addresses(u8 *pgd_la, u8 *inf_la)
+{
+	*pgd_la = tabla_pgd_la;
+	*inf_la = tabla_inf_la;
+	return 0;
+
+}
+EXPORT_SYMBOL_GPL(tabla_get_logical_addresses);
+
 int tabla_interface_reg_read(struct tabla *tabla, unsigned short reg)
 {
 	u8 val;
@@ -350,6 +362,7 @@ static int tabla_slim_probe(struct slim_device *slim)
 	tabla->write_dev = tabla_slim_write_device;
 	tabla->irq = pdata->irq;
 	tabla->irq_base = pdata->irq_base;
+	tabla_pgd_la = tabla->slim->laddr;
 
 	if (pdata->num_irqs < TABLA_NUM_IRQS) {
 		pr_err("%s: Error, not enough interrupt lines allocated\n",
@@ -375,6 +388,7 @@ static int tabla_slim_probe(struct slim_device *slim)
 		pr_err("fail to get slimbus slave logical address %d\n", ret);
 		goto err_reset;
 	}
+	tabla_inf_la = tabla->slim_slave->laddr;
 
 	ret = tabla_device_init(tabla, tabla->irq);
 	if (ret) {
