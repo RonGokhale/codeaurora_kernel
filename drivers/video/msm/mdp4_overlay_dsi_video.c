@@ -269,63 +269,6 @@ int mdp4_dsi_video_off(struct platform_device *pdev)
 	return ret;
 }
 
-/*
- * mdp4_primary_vsync_dsi_video: called from isr
- */
-void mdp4_primary_vsync_dsi_video(void)
-{
-	complete_all(&dsi_pipe->comp);
-}
-
-/*
- * mdp4_overlay1_done_dsi: called from isr
- */
-void mdp4_overlay0_done_dsi_video()
-{
-	complete(&dsi_pipe->comp);
-}
-
-
-void mdp4_dsi_video_overlay(struct msm_fb_data_type *mfd)
-{
-	struct fb_info *fbi = mfd->fbi;
-	uint8 *buf;
-	int bpp;
-	unsigned long flag;
-	struct mdp4_overlay_pipe *pipe;
-
-	if (!mfd->panel_power_on)
-		return;
-
-	/* no need to power on cmd block since it's dsi mode */
-	bpp = fbi->var.bits_per_pixel / 8;
-	buf = (uint8 *) fbi->fix.smem_start;
-	buf += fbi->var.xoffset * bpp +
-		fbi->var.yoffset * fbi->fix.line_length;
-
-	mutex_lock(&mfd->dma->ov_mutex);
-
-	pipe = dsi_pipe;
-	pipe->srcp0_addr = (uint32) buf;
-	mdp4_overlay_rgb_setup(pipe);
-	mdp4_overlay_reg_flush(pipe, 1); /* rgb0 and mixer0 */
-
-	/* enable irq */
-	spin_lock_irqsave(&mdp_spin_lock, flag);
-	mdp_enable_irq(MDP_OVERLAY0_TERM);
-	INIT_COMPLETION(dsi_pipe->comp);
-	mfd->dma->waiting = TRUE;
-	outp32(MDP_INTR_CLEAR, INTR_OVERLAY0_DONE);
-	mdp_intr_mask |= INTR_OVERLAY0_DONE;
-	outp32(MDP_INTR_ENABLE, mdp_intr_mask);
-	spin_unlock_irqrestore(&mdp_spin_lock, flag);
-	wait_for_completion_killable(&dsi_pipe->comp);
-	mdp_disable_irq(MDP_OVERLAY0_TERM);
-
-	mdp4_stat.kickoff_dsi++;
-	mdp4_overlay_resource_release();
-	mutex_unlock(&mfd->dma->ov_mutex);
-}
 void mdp4_overlay_dsi_video_wait4vsync(struct msm_fb_data_type *mfd)
 {
 	unsigned long flag;
@@ -352,4 +295,48 @@ void mdp4_overlay_dsi_video_vsync_push(struct msm_fb_data_type *mfd,
 		return;
 
 	mdp4_overlay_dsi_video_wait4vsync(mfd);
+}
+
+/*
+ * mdp4_primary_vsync_dsi_video: called from isr
+ */
+void mdp4_primary_vsync_dsi_video(void)
+{
+	complete_all(&dsi_pipe->comp);
+}
+
+/*
+ * mdp4_overlay1_done_dsi: called from isr
+ */
+void mdp4_overlay0_done_dsi_video()
+{
+	complete(&dsi_pipe->comp);
+}
+
+
+void mdp4_dsi_video_overlay(struct msm_fb_data_type *mfd)
+{
+	struct fb_info *fbi = mfd->fbi;
+	uint8 *buf;
+	int bpp;
+	struct mdp4_overlay_pipe *pipe;
+
+	if (!mfd->panel_power_on)
+		return;
+
+	/* no need to power on cmd block since it's dsi video mode */
+	bpp = fbi->var.bits_per_pixel / 8;
+	buf = (uint8 *) fbi->fix.smem_start;
+	buf += fbi->var.xoffset * bpp +
+		fbi->var.yoffset * fbi->fix.line_length;
+
+	mutex_lock(&mfd->dma->ov_mutex);
+
+	pipe = dsi_pipe;
+	pipe->srcp0_addr = (uint32) buf;
+	mdp4_overlay_rgb_setup(pipe);
+	mdp4_overlay_dsi_video_vsync_push(mfd, pipe);
+	mdp4_stat.kickoff_dsi++;
+	mdp4_overlay_resource_release();
+	mutex_unlock(&mfd->dma->ov_mutex);
 }
