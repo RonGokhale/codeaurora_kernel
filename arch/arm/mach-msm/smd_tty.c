@@ -59,10 +59,24 @@ struct smd_tty_info {
 
 static char *smd_ch_name[] = {
 	[0] = "DS",
+	[1] = "APPS_FM",
+	[2] = "APPS_RIVA_BT_ACL",
+	[3] = "APPS_RIVA_BT_CMD",
 	[7] = "DATA1",
 	[21] = "DATA21",
 	[27] = "GPSNMEA",
 	[36] = "LOOPBACK",
+};
+
+static uint32_t smd_ch_edge[] = {
+	[0] = SMD_APPS_MODEM,
+	[1] = SMD_APPS_WCNSS,
+	[2] = SMD_APPS_WCNSS,
+	[3] = SMD_APPS_WCNSS,
+	[7] = SMD_APPS_MODEM,
+	[21] = SMD_APPS_MODEM,
+	[27] = SMD_APPS_MODEM,
+	[36] = SMD_APPS_MODEM,
 };
 
 
@@ -184,6 +198,7 @@ static int smd_tty_open(struct tty_struct *tty, struct file *f)
 	int res = 0;
 	int n = tty->index;
 	struct smd_tty_info *info;
+	char *peripheral = NULL;
 
 
 	if (!smd_ch_name[n])
@@ -195,46 +210,54 @@ static int smd_tty_open(struct tty_struct *tty, struct file *f)
 	tty->driver_data = info;
 
 	if (info->open_count++ == 0) {
-		info->pil = pil_get("modem");
-		if (IS_ERR(info->pil)) {
-			res = PTR_ERR(info->pil);
-			goto out;
-		}
+		if (smd_ch_edge[n] == SMD_APPS_MODEM)
+			peripheral = "modem";
 
-		/* Wait for the modem SMSM to be inited for the SMD
-		 * Loopback channel to be allocated at the modem. Since
-		 * the wait need to be done atmost once, using msleep
-		 * doesn't degrade the performance.
-		 */
-		if (n == 36) {
-			if (!is_modem_smsm_inited())
-				msleep(5000);
-			smsm_change_state(SMSM_APPS_STATE,
-				0, SMSM_SMD_LOOPBACK);
-			msleep(100);
-		}
-
-
-		/*
-		 * Wait for a channel to be allocated so we know
-		 * the modem is ready enough.
-		 */
-		if (smd_tty_modem_wait) {
-			res = wait_for_completion_interruptible_timeout(
-				&info->ch_allocated,
-				msecs_to_jiffies(smd_tty_modem_wait * 1000));
-
-			if (res == 0) {
-				pr_err("Timed out waiting for SMD channel\n");
-				res = -ETIMEDOUT;
-				goto release_pil;
-			} else if (res < 0) {
-				pr_err("Error waiting for SMD channel: %d\n",
-					res);
-				goto release_pil;
+		if (peripheral) {
+			info->pil = pil_get("modem");
+			if (IS_ERR(info->pil)) {
+				res = PTR_ERR(info->pil);
+				goto out;
 			}
 
-			res = 0;
+			/* Wait for the modem SMSM to be inited for the SMD
+			 * Loopback channel to be allocated at the modem. Since
+			 * the wait need to be done atmost once, using msleep
+			 * doesn't degrade the performance.
+			 */
+			if (n == 36) {
+				if (!is_modem_smsm_inited())
+					msleep(5000);
+				smsm_change_state(SMSM_APPS_STATE,
+					0, SMSM_SMD_LOOPBACK);
+				msleep(100);
+			}
+
+
+			/*
+			 * Wait for a channel to be allocated so we know
+			 * the modem is ready enough.
+			 */
+			if (smd_tty_modem_wait) {
+				res = wait_for_completion_interruptible_timeout(
+					&info->ch_allocated,
+					msecs_to_jiffies(smd_tty_modem_wait *
+									1000));
+
+				if (res == 0) {
+					pr_err("Timed out waiting for SMD"
+								" channel\n");
+					res = -ETIMEDOUT;
+					goto release_pil;
+				} else if (res < 0) {
+					pr_err("Error waiting for SMD channel:"
+									" %d\n",
+						res);
+					goto release_pil;
+				}
+
+				res = 0;
+			}
 		}
 
 
@@ -244,8 +267,10 @@ static int smd_tty_open(struct tty_struct *tty, struct file *f)
 		wake_lock_init(&info->wake_lock, WAKE_LOCK_SUSPEND,
 				smd_ch_name[n]);
 		if (!info->ch) {
-			res = smd_open(smd_ch_name[n], &info->ch, info,
-				       smd_tty_notify);
+			res = smd_named_open_on_edge(smd_ch_name[n],
+							smd_ch_edge[n],
+							&info->ch, info,
+							smd_tty_notify);
 		}
 	}
 
@@ -382,6 +407,15 @@ static int smd_tty_dummy_probe(struct platform_device *pdev)
 	if (!strncmp(pdev->name, smd_ch_name[0],
 				strnlen(smd_ch_name[0], SMD_MAX_CH_NAME_LEN)))
 		complete_all(&smd_tty[0].ch_allocated);
+	else if (!strncmp(pdev->name, smd_ch_name[1],
+				strnlen(smd_ch_name[1], SMD_MAX_CH_NAME_LEN)))
+		complete_all(&smd_tty[1].ch_allocated);
+	else if (!strncmp(pdev->name, smd_ch_name[2],
+				strnlen(smd_ch_name[2], SMD_MAX_CH_NAME_LEN)))
+		complete_all(&smd_tty[2].ch_allocated);
+	else if (!strncmp(pdev->name, smd_ch_name[3],
+				strnlen(smd_ch_name[3], SMD_MAX_CH_NAME_LEN)))
+		complete_all(&smd_tty[3].ch_allocated);
 	else if (!strncmp(pdev->name, smd_ch_name[7],
 				strnlen(smd_ch_name[7], SMD_MAX_CH_NAME_LEN)))
 		complete_all(&smd_tty[7].ch_allocated);
@@ -429,12 +463,18 @@ static int __init smd_tty_init(void)
 
 	/* this should be dynamic */
 	tty_register_device(smd_tty_driver, 0, 0);
+	tty_register_device(smd_tty_driver, 1, 0);
+	tty_register_device(smd_tty_driver, 2, 0);
+	tty_register_device(smd_tty_driver, 3, 0);
 	tty_register_device(smd_tty_driver, 7, 0);
 	tty_register_device(smd_tty_driver, 21, 0);
 	tty_register_device(smd_tty_driver, 27, 0);
 	tty_register_device(smd_tty_driver, 36, 0);
 
 	init_completion(&smd_tty[0].ch_allocated);
+	init_completion(&smd_tty[1].ch_allocated);
+	init_completion(&smd_tty[2].ch_allocated);
+	init_completion(&smd_tty[3].ch_allocated);
 	init_completion(&smd_tty[7].ch_allocated);
 	init_completion(&smd_tty[21].ch_allocated);
 	init_completion(&smd_tty[27].ch_allocated);
@@ -447,13 +487,34 @@ static int __init smd_tty_init(void)
 	ret = platform_driver_register(&smd_tty[0].driver);
 	if (ret)
 		goto out;
+	smd_tty[1].driver.probe = smd_tty_dummy_probe;
+	smd_tty[1].driver.driver.name = smd_ch_name[1];
+	smd_tty[1].driver.driver.owner = THIS_MODULE;
+	spin_lock_init(&smd_tty[1].reset_lock);
+	ret = platform_driver_register(&smd_tty[1].driver);
+	if (ret)
+		goto unreg0;
+	smd_tty[2].driver.probe = smd_tty_dummy_probe;
+	smd_tty[2].driver.driver.name = smd_ch_name[2];
+	smd_tty[2].driver.driver.owner = THIS_MODULE;
+	spin_lock_init(&smd_tty[2].reset_lock);
+	ret = platform_driver_register(&smd_tty[2].driver);
+	if (ret)
+		goto unreg1;
+	smd_tty[3].driver.probe = smd_tty_dummy_probe;
+	smd_tty[3].driver.driver.name = smd_ch_name[3];
+	smd_tty[3].driver.driver.owner = THIS_MODULE;
+	spin_lock_init(&smd_tty[3].reset_lock);
+	ret = platform_driver_register(&smd_tty[3].driver);
+	if (ret)
+		goto unreg2;
 	smd_tty[7].driver.probe = smd_tty_dummy_probe;
 	smd_tty[7].driver.driver.name = smd_ch_name[7];
 	smd_tty[7].driver.driver.owner = THIS_MODULE;
 	spin_lock_init(&smd_tty[7].reset_lock);
 	ret = platform_driver_register(&smd_tty[7].driver);
 	if (ret)
-		goto unreg0;
+		goto unreg3;
 	smd_tty[21].driver.probe = smd_tty_dummy_probe;
 	smd_tty[21].driver.driver.name = smd_ch_name[21];
 	smd_tty[21].driver.driver.owner = THIS_MODULE;
@@ -484,10 +545,19 @@ unreg21:
 	platform_driver_unregister(&smd_tty[21].driver);
 unreg7:
 	platform_driver_unregister(&smd_tty[7].driver);
+unreg3:
+	platform_driver_unregister(&smd_tty[3].driver);
+unreg2:
+	platform_driver_unregister(&smd_tty[2].driver);
+unreg1:
+	platform_driver_unregister(&smd_tty[1].driver);
 unreg0:
 	platform_driver_unregister(&smd_tty[0].driver);
 out:
 	tty_unregister_device(smd_tty_driver, 0);
+	tty_unregister_device(smd_tty_driver, 1);
+	tty_unregister_device(smd_tty_driver, 2);
+	tty_unregister_device(smd_tty_driver, 3);
 	tty_unregister_device(smd_tty_driver, 7);
 	tty_unregister_device(smd_tty_driver, 21);
 	tty_unregister_device(smd_tty_driver, 27);
