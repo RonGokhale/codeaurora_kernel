@@ -1539,6 +1539,46 @@ struct clk_lookup msm_clocks_8960_dummy[] = {
 
 unsigned msm_num_clocks_8960_dummy = ARRAY_SIZE(msm_clocks_8960_dummy);
 
+#define LPASS_SLIMBUS_PHYS	0x28080000
+#define LPASS_SLIMBUS_BAM_PHYS	0x28084000
+/* Board info for the slimbus slave device */
+static struct resource slimbus_res[] = {
+	{
+		.start	= LPASS_SLIMBUS_PHYS,
+		.end	= LPASS_SLIMBUS_PHYS + 8191,
+		.flags	= IORESOURCE_MEM,
+		.name	= "slimbus_physical",
+	},
+	{
+		.start	= LPASS_SLIMBUS_BAM_PHYS,
+		.end	= LPASS_SLIMBUS_BAM_PHYS + 8191,
+		.flags	= IORESOURCE_MEM,
+		.name	= "slimbus_bam_physical",
+	},
+	{
+		.start	= SLIMBUS0_CORE_EE1_IRQ,
+		.end	= SLIMBUS0_CORE_EE1_IRQ,
+		.flags	= IORESOURCE_IRQ,
+		.name	= "slimbus_irq",
+	},
+	{
+		.start	= SLIMBUS0_BAM_EE1_IRQ,
+		.end	= SLIMBUS0_BAM_EE1_IRQ,
+		.flags	= IORESOURCE_IRQ,
+		.name	= "slimbus_bam_irq",
+	},
+};
+
+struct platform_device msm_slim_ctrl = {
+	.name	= "msm_slim_ctrl",
+	.id	= 1,
+	.num_resources	= ARRAY_SIZE(slimbus_res),
+	.resource	= slimbus_res,
+	.dev            = {
+		.coherent_dma_mask      = 0xffffffffULL,
+	},
+};
+
 #ifdef CONFIG_MSM_BUS_SCALING
 static struct msm_bus_vectors grp3d_init_vectors[] = {
 	{

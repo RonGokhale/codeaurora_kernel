@@ -85,6 +85,7 @@ extern struct platform_device msm_gsbi8_qup_i2c_device;
 extern struct platform_device msm_gsbi9_qup_i2c_device;
 extern struct platform_device msm_gsbi12_qup_i2c_device;
 
+extern struct platform_device msm_slim_ctrl;
 extern struct platform_device msm_device_sps;
 extern struct platform_device msm_device_bam_dmux;
 extern struct platform_device msm_device_smd;

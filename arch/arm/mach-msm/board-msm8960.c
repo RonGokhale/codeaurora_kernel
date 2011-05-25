@@ -22,6 +22,7 @@
 #include <linux/mfd/pm8xxx/pm8921.h>
 #include <linux/regulator/consumer.h>
 #include <linux/spi/spi.h>
+#include <linux/slimbus/slimbus.h>
 #include <linux/bootmem.h>
 #ifdef CONFIG_ANDROID_PMEM
 #include <linux/android_pmem.h>
@@ -219,6 +220,12 @@ static struct gpiomux_setting gpio_eth_config = {
 	.func = GPIOMUX_FUNC_GPIO,
 };
 
+static struct gpiomux_setting slimbus = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_KEEPER,
+};
+
 struct msm_gpiomux_config msm8960_gpiomux_configs[NR_GPIO_IRQS] = {
 	{
 		.gpio = KS8851_IRQ_GPIO,
@@ -323,6 +330,21 @@ static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
 		.gpio      = 74,	/* GSBI10 I2C QUP SCL */
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &gsbi10,
+		},
+	},
+};
+
+static struct msm_gpiomux_config msm8960_slimbus_config[] __initdata = {
+	{
+		.gpio	= 60,		/* slimbus data */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &slimbus,
+		},
+	},
+	{
+		.gpio	= 61,		/* slimbus clk */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &slimbus,
 		},
 	},
 };
@@ -1047,16 +1069,17 @@ static struct slim_device msm_slim_tabla = {
 		.platform_data = &tabla_platform_data,
 	},
 };
+#endif
 
 static struct slim_boardinfo msm_slim_devices[] = {
+#ifdef CONFIG_WCD9310_CODEC
 	{
 		.bus_num = 1,
 		.slim_slave = &msm_slim_tabla,
 	},
+#endif
 	/* add more slimbus slaves as needed */
 };
-
-#endif
 
 static int __init gpiomux_init(void)
 {
@@ -1079,6 +1102,9 @@ static int __init gpiomux_init(void)
 
 	msm_gpiomux_install(msm8960_cyts_configs,
 			ARRAY_SIZE(msm8960_cyts_configs));
+
+	msm_gpiomux_install(msm8960_slimbus_config,
+			ARRAY_SIZE(msm8960_slimbus_config));
 
 	msm_gpiomux_install(msm8960_audio_codec_configs,
 			ARRAY_SIZE(msm8960_audio_codec_configs));
@@ -1723,6 +1749,7 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm8960_device_qup_i2c_gsbi3,
 	&msm8960_device_qup_i2c_gsbi4,
 	&msm8960_device_qup_i2c_gsbi10,
+	&msm_slim_ctrl,
 	&msm_device_wcnss_wlan,
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
@@ -2244,11 +2271,8 @@ static void __init msm8960_sim_init(void)
 				msm_pm_data);
 #endif
 #endif
-
-#ifdef CONFIG_WCD9310_CODEC
 	slim_register_board_info(msm_slim_devices,
 		ARRAY_SIZE(msm_slim_devices));
-#endif
 }
 
 static void __init msm8960_rumi3_init(void)
@@ -2278,10 +2302,8 @@ static void __init msm8960_rumi3_init(void)
 	register_i2c_devices();
 	msm_fb_add_devices();
 
-#ifdef CONFIG_WCD9310_CODEC
 	slim_register_board_info(msm_slim_devices,
 		ARRAY_SIZE(msm_slim_devices));
-#endif
 }
 
 static void __init msm8960_cdp_init(void)
@@ -2309,6 +2331,8 @@ static void __init msm8960_cdp_init(void)
 	msm_acpu_clock_init(&msm8960_acpu_clock_data);
 	register_i2c_devices();
 	msm_fb_add_devices();
+	slim_register_board_info(msm_slim_devices,
+		ARRAY_SIZE(msm_slim_devices));
 }
 
 MACHINE_START(MSM8960_SIM, "QCT MSM8960 SIMULATOR")
