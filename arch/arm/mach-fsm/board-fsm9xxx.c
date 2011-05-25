@@ -526,6 +526,8 @@ static struct msm_gpio grfc_config_data[] = {
 			GPIO_CFG_PULL_DOWN, GPIO_CFG_4MA), "GPIO_GRFC_28"},
 	{ GPIO_CFG(GPIO_GRFC_29, 7, GPIO_CFG_OUTPUT,
 			GPIO_CFG_PULL_DOWN, GPIO_CFG_4MA), "GPIO_GRFC_29"},
+	{ GPIO_CFG(39, 1, GPIO_CFG_OUTPUT,
+		GPIO_CFG_NO_PULL, GPIO_CFG_2MA), "PP2S_EXT_SYNC" },
 };
 
 static int __init grfc_init(void)
