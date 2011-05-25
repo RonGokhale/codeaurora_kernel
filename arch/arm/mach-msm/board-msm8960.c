@@ -1435,6 +1435,10 @@ static struct usb_diag_platform_data usb_diag_pdata = {
 
 static struct usb_gadget_fserial_platform_data fserial_pdata = {
 	.no_ports	= 2,
+	.transport	= {
+		USB_GADGET_FSERIAL_TRANSPORT_SMD,
+		USB_GADGET_FSERIAL_TRANSPORT_TTY,
+	},
 };
 
 static char *usb_functions_rndis[] = {
