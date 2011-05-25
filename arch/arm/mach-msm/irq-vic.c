@@ -127,7 +127,7 @@ module_param_named(debug_mask, msm_irq_debug_mask, int,
 #define VIC_VECTPRIORITY(n) VIC_REG(0x0200+((n) * 4))
 #define VIC_VECTADDR(n)     VIC_REG(0x0400+((n) * 4))
 
-#if defined(CONFIG_ARCH_MSM7X30)
+#if defined(CONFIG_ARCH_MSM7X30) || defined(CONFIG_ARCH_FSM9XXX)
 #define VIC_NUM_REGS	    4
 #else
 #define VIC_NUM_REGS	    2
@@ -163,6 +163,7 @@ static struct {
 static uint32_t msm_irq_idle_disable[VIC_NUM_REGS];
 
 #define SMSM_FAKE_IRQ (0xff)
+#if !defined(CONFIG_ARCH_FSM9XXX)
 static uint8_t msm_irq_to_smsm[NR_IRQS] = {
 #if !defined(CONFIG_ARCH_MSM7X27A)
 	[INT_MDDI_EXT] = 1,
@@ -222,6 +223,17 @@ static uint8_t msm_irq_to_smsm[NR_IRQS] = {
 	[INT_SIRC_1] = SMSM_FAKE_IRQ,
 #endif
 };
+# else /* CONFIG_ARCH_FSM9XXX */
+static uint8_t msm_irq_to_smsm[NR_IRQS] = {
+	[INT_UART1] = 11,
+	[INT_A9_M2A_0] = SMSM_FAKE_IRQ,
+	[INT_A9_M2A_1] = SMSM_FAKE_IRQ,
+	[INT_A9_M2A_5] = SMSM_FAKE_IRQ,
+	[INT_GP_TIMER_EXP] = SMSM_FAKE_IRQ,
+	[INT_DEBUG_TIMER_EXP] = SMSM_FAKE_IRQ,
+	[INT_SIRC_0] = 10,
+};
+#endif /* CONFIG_ARCH_FSM9XXX */
 
 static inline void msm_irq_write_all_regs(void __iomem *base, unsigned int val)
 {
@@ -420,8 +432,11 @@ int msm_irq_enter_sleep2(bool modem_wake, int from_idle)
 		pending[i] &= msm_irq_shadow_reg[i].int_en[!from_idle];
 	}
 
-	/* Clear INT_A9_M2A_5 since requesting sleep triggers it */
-	pending[0] &= ~(1U << INT_A9_M2A_5);
+	/*
+	 * Clear INT_A9_M2A_5 since requesting sleep triggers it.
+	 * In some arch e.g. FSM9XXX, INT_A9_M2A_5 may not be in the first set.
+	 */
+	pending[INT_A9_M2A_5 / 32] &= ~(1U << (INT_A9_M2A_5 % 32));
 
 	for (i = 0; i < VIC_NUM_REGS; i++) {
 		if (pending[i]) {
@@ -447,7 +462,8 @@ int msm_irq_enter_sleep2(bool modem_wake, int from_idle)
 
 	if (modem_wake) {
 		msm_irq_set_type(INT_A9_M2A_6, IRQF_TRIGGER_RISING);
-		writel(1U << INT_A9_M2A_6, VIC_INT_ENSET0);
+		__raw_writel(1U << (INT_A9_M2A_6 % 32),
+			VIC_INT_TO_REG_ADDR(VIC_INT_ENSET0, INT_A9_M2A_6));
 	} else {
 		for (i = 0; i < VIC_NUM_REGS; i++)
 			writel(msm_irq_shadow_reg[i].int_en[1],
