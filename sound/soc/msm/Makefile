@@ -68,3 +68,7 @@ obj-$(CONFIG_SND_SOC_QDSP6) += snd-soc-qdsp6.o
 
 snd-soc-msm8960-objs := msm8960.o
 obj-$(CONFIG_SND_SOC_MSM8960) += snd-soc-msm8960.o
+
+# Generic MSM drivers
+snd-soc-hostless-pcm-objs := msm-pcm-hostless.o
+obj-$(CONFIG_SND_SOC_MSM_HOSTLESS_PCM) += snd-soc-hostless-pcm.o

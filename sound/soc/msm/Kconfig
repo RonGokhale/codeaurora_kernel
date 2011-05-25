@@ -68,6 +68,8 @@ config SND_SOC_MSM8X60
 	 audio sessions. The kcontols also does sesion management for
 	 voice calls
 
+config SND_SOC_MSM_HOSTLESS_PCM
+	tristate
 
 config SND_SOC_MSM8660_PCM
 	tristate
