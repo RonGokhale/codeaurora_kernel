@@ -301,10 +301,19 @@ static const struct snd_kcontrol_new pri_rx_voice_mixer_controls[] = {
 	SOC_SINGLE_EXT("CSVoice", VOICE_MIXER_PRI_I2S_RX,
 	MSM_FRONTEND_DAI_CS_VOICE, 1, 0, msm_routing_get_voice_mixer,
 	msm_routing_put_voice_mixer),
+	SOC_SINGLE_EXT("Voip", VOICE_MIXER_PRI_I2S_RX ,
+	MSM_FRONTEND_DAI_VOIP, 1, 0, msm_routing_get_voice_mixer,
+	msm_routing_put_voice_mixer),
 };
 
 static const struct snd_kcontrol_new pri_tx_voice_mixer_controls[] = {
 	SOC_SINGLE_EXT("PRI_TX_Voice", VOICE_MIXER_MM_UL1,
+	MSM_BACKEND_DAI_PRI_I2S_TX, 1, 0, msm_routing_get_voice_mixer,
+	msm_routing_put_voice_mixer),
+};
+
+static const struct snd_kcontrol_new pri_tx_voip_mixer_controls[] = {
+	SOC_SINGLE_EXT("PRI_TX_Voip", VOICE_MIXER_MM_UL1,
 	MSM_BACKEND_DAI_PRI_I2S_TX, 1, 0, msm_routing_get_voice_mixer,
 	msm_routing_put_voice_mixer),
 };
@@ -316,9 +325,11 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	 */
 	SND_SOC_DAPM_AIF_IN("MM_DL1", "MultiMedia1 Playback", 0, 0, 0, 0),
 	SND_SOC_DAPM_AIF_IN("MM_DL2", "MultiMedia2 Playback", 0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_IN("VOIP_DL", "VoIP Playback", 0, 0, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("MM_UL1", "MultiMedia1 Capture", 0, 0, 0, 0),
 	SND_SOC_DAPM_AIF_IN("CS-VOICE_DL1", "CS-VOICE Playback", 0, 0, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("CS-VOICE_UL1", "CS-VOICE Capture", 0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("VOIP_UL", "VoIP Capture", 0, 0, 0, 0),
 	/* Backend AIF */
 	/* Stream name equals to backend dai link stream name
 	 */
@@ -339,6 +350,9 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	SND_SOC_DAPM_MIXER("Voice_Tx Mixer",
 				SND_SOC_NOPM, 0, 0, pri_tx_voice_mixer_controls,
 				ARRAY_SIZE(pri_tx_voice_mixer_controls)),
+	SND_SOC_DAPM_MIXER("Voip_Tx Mixer",
+				SND_SOC_NOPM, 0, 0, pri_tx_voip_mixer_controls,
+				ARRAY_SIZE(pri_tx_voip_mixer_controls)),
 };
 
 static const struct snd_soc_dapm_route intercon[] = {
@@ -351,9 +365,12 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"MultiMedia1 Mixer", "PRI_TX", "PRI_I2S_TX"},
 	{"MM_UL1", NULL, "MultiMedia1 Mixer"},
 	{"PRI_RX_Voice Mixer", "CSVoice", "CS-VOICE_DL1"},
+	{"PRI_RX_Voice Mixer", "Voip", "VOIP_DL"},
 	{"PRI_I2S_RX", NULL, "PRI_RX_Voice Mixer"},
 	{"Voice_Tx Mixer", "PRI_TX_Voice", "PRI_I2S_TX"},
 	{"CS-VOICE_UL1", NULL, "Voice_Tx Mixer"},
+	{"Voip_Tx Mixer", "PRI_TX_Voip", "PRI_I2S_TX"},
+	{"VOIP_UL", NULL, "Voip_Tx Mixer"},
 };
 
 static struct snd_pcm_ops msm_routing_pcm_ops = {};
