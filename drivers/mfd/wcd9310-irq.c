@@ -9,6 +9,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+#include <linux/bitops.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/irq.h>
@@ -16,6 +17,9 @@
 #include <linux/mfd/wcd9310/core.h>
 #include <linux/mfd/wcd9310/registers.h>
 #include <linux/interrupt.h>
+
+#define BYTE_BIT_MASK(nr)		(1UL << ((nr) % BITS_PER_BYTE))
+#define BIT_BYTE(nr)			((nr) / BITS_PER_BYTE)
 
 struct tabla_irq {
 	bool level;
@@ -25,6 +29,11 @@ static struct tabla_irq tabla_irqs[TABLA_NUM_IRQS] = {
 	[0] = { .level = 1},
 /* All other tabla interrupts are edge triggered */
 };
+
+static inline int irq_to_tabla_irq(struct tabla *tabla, int irq)
+{
+	return irq - tabla->irq_base;
+}
 
 static void tabla_irq_lock(struct irq_data *data)
 {
@@ -54,13 +63,16 @@ static void tabla_irq_sync_unlock(struct irq_data *data)
 static void tabla_irq_enable(struct irq_data *data)
 {
 	struct tabla *tabla = irq_data_get_irq_chip_data(data);
-	tabla->irq_masks_cur[data->irq] &= ~(1 << (data->irq % 8));
+	int tabla_irq = irq_to_tabla_irq(tabla, data->irq);
+	tabla->irq_masks_cur[BIT_BYTE(tabla_irq)] &=
+		~(BYTE_BIT_MASK(tabla_irq));
 }
 
 static void tabla_irq_disable(struct irq_data *data)
 {
 	struct tabla *tabla = irq_data_get_irq_chip_data(data);
-	tabla->irq_masks_cur[data->irq] |= (1 << (data->irq % 8));
+	int tabla_irq = irq_to_tabla_irq(tabla, data->irq);
+	tabla->irq_masks_cur[BIT_BYTE(tabla_irq)] |= BYTE_BIT_MASK(tabla_irq);
 }
 
 static struct irq_chip tabla_irq_chip = {
@@ -93,21 +105,12 @@ static irqreturn_t tabla_irq_thread(int irq, void *data)
 	 * handler function
 	 */
 	for (i = 0; i < TABLA_NUM_IRQS; i++) {
-		if (status[i%8] & (1 << (i%8))) {
+		if (status[BIT_BYTE(i)] & BYTE_BIT_MASK(i)) {
 			handle_nested_irq(tabla->irq_base + i);
-			tabla_reg_write(tabla, TABLA_A_INTR_CLEAR0 + (i/8),
-				i%8);
+			tabla_reg_write(tabla, TABLA_A_INTR_CLEAR0 +
+				BIT_BYTE(i), BYTE_BIT_MASK(i));
 			break;
 		}
-	}
-
-	/* Ack any unmasked IRQs */
-	ret = tabla_bulk_write(tabla, TABLA_A_INTR_SET0,
-				TABLA_NUM_IRQ_REGS, status);
-	if (ret < 0) {
-		dev_err(tabla->dev, "Failed to read interrupt status: %d\n",
-			ret);
-		return IRQ_NONE;
 	}
 
 	return IRQ_HANDLED;
@@ -150,14 +153,15 @@ int tabla_irq_init(struct tabla *tabla)
 		/* ARM needs us to explicitly flag the IRQ as valid
 		 * and will set them noprobe when we do so. */
 #ifdef CONFIG_ARM
-		irq_set_status_flags(cur_irq, IRQF_VALID);
+		set_irq_flags(cur_irq, IRQF_VALID);
 #else
 		set_irq_noprobe(cur_irq);
 #endif
 
-		tabla->irq_masks_cur[i/8] |= 1 << i;
-		tabla->irq_masks_cache[i/8] |= 1 << i;
-		tabla->irq_level[i/8] |= tabla_irqs[i].level << (i%8);
+		tabla->irq_masks_cur[BIT_BYTE(i)] |= BYTE_BIT_MASK(i);
+		tabla->irq_masks_cache[BIT_BYTE(i)] |= BYTE_BIT_MASK(i);
+		tabla->irq_level[BIT_BYTE(i)] |= tabla_irqs[i].level <<
+			(i % BITS_PER_BYTE);
 	}
 	for (i = 0; i < TABLA_NUM_IRQ_REGS; i++) {
 		/* Initialize interrupt mask and level registers */

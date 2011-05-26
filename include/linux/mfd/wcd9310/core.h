@@ -92,5 +92,17 @@ static inline void tabla_free_irq(struct tabla *tabla, int irq, void *data)
 		return;
 	free_irq(tabla->irq_base + irq, data);
 }
+static inline void tabla_enable_irq(struct tabla *tabla, int irq)
+{
+	if (!tabla->irq_base)
+		return;
+	enable_irq(tabla->irq_base + irq);
+}
+static inline void tabla_disable_irq(struct tabla *tabla, int irq)
+{
+	if (!tabla->irq_base)
+		return;
+	disable_irq(tabla->irq_base + irq);
+}
 
 #endif
