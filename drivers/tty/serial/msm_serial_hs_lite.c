@@ -100,6 +100,13 @@ static int clk_en(struct uart_port *port, int enable)
 	int ret = 0;
 
 	if (enable) {
+		/* Set up the MREG/NREG/DREG/MNDREG */
+		ret = clk_set_rate(msm_hsl_port->clk, 1843200);
+		if (ret) {
+			printk(KERN_WARNING "Error setting UART clock rate\n");
+			return ret;
+		}
+
 		ret = clk_enable(msm_hsl_port->clk);
 		if (ret)
 			goto err;
@@ -1081,12 +1088,6 @@ static int __init msm_serial_hsl_probe(struct platform_device *pdev)
 		return PTR_ERR(msm_hsl_port->pclk);
 	}
 
-	/* Set up the MREG/NREG/DREG/MNDREG */
-	ret = clk_set_rate(msm_hsl_port->clk, 1843200);
-	if (ret) {
-		printk(KERN_WARNING "Error setting clock rate on UART\n");
-		return ret;
-	}
 
 	uart_resource = platform_get_resource_byname(pdev,
 						     IORESOURCE_MEM,
