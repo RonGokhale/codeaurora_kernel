@@ -314,6 +314,7 @@ static void tabla_device_exit(struct tabla *tabla)
 	tabla_free_reset(tabla);
 	mutex_destroy(&tabla->io_lock);
 	mutex_destroy(&tabla->xfer_lock);
+	slim_remove_device(tabla->slim_slave);
 	kfree(tabla);
 }
 
@@ -386,17 +387,19 @@ static int tabla_slim_probe(struct slim_device *slim)
 			&tabla->slim_slave->laddr);
 	if (ret) {
 		pr_err("fail to get slimbus slave logical address %d\n", ret);
-		goto err_reset;
+		goto err_slim_add;
 	}
 	tabla_inf_la = tabla->slim_slave->laddr;
 
 	ret = tabla_device_init(tabla, tabla->irq);
 	if (ret) {
 		pr_err("%s: error, initializing device failed\n", __func__);
-		goto err_reset;
+		goto err_slim_add;
 	}
 	return ret;
 
+err_slim_add:
+	slim_remove_device(tabla->slim_slave);
 err_reset:
 	tabla_free_reset(tabla);
 err_tabla:
@@ -414,6 +417,7 @@ static int tabla_slim_remove(struct slim_device *pdev)
 }
 static const struct slim_device_id slimtest_id[] = {
 	{"tabla-slim", 0},
+	{}
 };
 static struct slim_driver tabla_slim_driver = {
 	.driver = {
