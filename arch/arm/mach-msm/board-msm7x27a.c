@@ -3060,6 +3060,11 @@ static void __init msm7x2x_init(void)
 			ARRAY_SIZE(i2c_camera_devices));
 	platform_device_register(&kp_pdev);
 	platform_device_register(&hs_pdev);
+
+#ifdef CONFIG_MSM_RPC_VIBRATOR
+	if (machine_is_msm7x27a_ffa())
+		msm_init_pmic_vibrator();
+#endif
 }
 
 static void __init msm7x2x_init_early(void)
