@@ -19,11 +19,11 @@
 
 enum {
 	TABLA_IRQ_SLIMBUS = 0,
+	TABLA_IRQ_MBHC_REMOVAL,
+	TABLA_IRQ_MBHC_SHORT_TERM,
 	TABLA_IRQ_MBHC_PRESS,
 	TABLA_IRQ_MBHC_RELEASE,
 	TABLA_IRQ_MBHC_POTENTIAL,
-	TABLA_IRQ_MBHC_SHORT_TERM,
-	TABLA_IRQ_MBHC_REMOVAL,
 	TABLA_IRQ_MBHC_INSERTION,
 	TABLA_IRQ_BG_PRECHARGE,
 	TABLA_IRQ_PA1_STARTUP,
@@ -102,7 +102,7 @@ static inline void tabla_disable_irq(struct tabla *tabla, int irq)
 {
 	if (!tabla->irq_base)
 		return;
-	disable_irq(tabla->irq_base + irq);
+	disable_irq_nosync(tabla->irq_base + irq);
 }
 
 #endif

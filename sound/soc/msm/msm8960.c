@@ -45,7 +45,8 @@ struct tabla_mbhc_calibration tabla_cal = {
 	.mic_current = TABLA_PID_MIC_5_UA,
 	.mic_pid = 100,
 	.hph_current = TABLA_PID_MIC_5_UA,
-	.shutdown_plug_removal = 10,
+	.setup_plug_removal_delay = 1000000,
+	.shutdown_plug_removal = 100000,
 };
 
 static struct clk *codec_clk;

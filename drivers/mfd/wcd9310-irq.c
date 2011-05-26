@@ -106,9 +106,16 @@ static irqreturn_t tabla_irq_thread(int irq, void *data)
 	 */
 	for (i = 0; i < TABLA_NUM_IRQS; i++) {
 		if (status[BIT_BYTE(i)] & BYTE_BIT_MASK(i)) {
-			handle_nested_irq(tabla->irq_base + i);
-			tabla_reg_write(tabla, TABLA_A_INTR_CLEAR0 +
-				BIT_BYTE(i), BYTE_BIT_MASK(i));
+			if ((i <= TABLA_IRQ_MBHC_INSERTION) &&
+				(i >= TABLA_IRQ_MBHC_REMOVAL)) {
+				tabla_reg_write(tabla, TABLA_A_INTR_CLEAR0 +
+					BIT_BYTE(i), BYTE_BIT_MASK(i));
+				handle_nested_irq(tabla->irq_base + i);
+			} else {
+				handle_nested_irq(tabla->irq_base + i);
+				tabla_reg_write(tabla, TABLA_A_INTR_CLEAR0 +
+					BIT_BYTE(i), BYTE_BIT_MASK(i));
+			}
 			break;
 		}
 	}
