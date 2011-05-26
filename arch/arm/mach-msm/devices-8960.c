@@ -1072,6 +1072,16 @@ struct platform_device msm_stub_codec = {
 	.id	= -1,
 };
 
+struct platform_device msm_voice = {
+	.name	= "msm-pcm-voice",
+	.id	= -1,
+};
+
+struct platform_device msm_voip = {
+	.name	= "msm-voip-dsp",
+	.id	= -1,
+};
+
 #define FS(_id, _name) (&(struct platform_device){ \
 	.name	= "footswitch-msm8x60", \
 	.id	= (_id), \

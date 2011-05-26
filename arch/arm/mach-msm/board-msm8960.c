@@ -1790,6 +1790,8 @@ static struct platform_device *sim_devices[] __initdata = {
 	&msm_cpudai1,
 	&msm_cpu_fe,
 	&msm_stub_codec,
+	&msm_voice,
+	&msm_voip,
 };
 
 static struct platform_device *rumi3_devices[] __initdata = {
@@ -1832,6 +1834,8 @@ static struct platform_device *cdp_devices[] __initdata = {
 #ifdef CONFIG_OV2720
 	&msm8960_camera_sensor_ov2720,
 #endif
+	&msm_voice,
+	&msm_voip
 };
 
 static void __init msm8960_i2c_init(void)
