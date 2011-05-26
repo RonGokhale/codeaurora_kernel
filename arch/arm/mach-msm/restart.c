@@ -22,10 +22,12 @@
 #include <linux/mfd/pmic8058.h>
 #include <linux/mfd/pmic8901.h>
 
+#include <asm/mach-types.h>
+
 #include <mach/msm_iomap.h>
 #include <mach/restart.h>
 #include <mach/scm-io.h>
-#include <asm/mach-types.h>
+#include <mach/socinfo.h>
 
 #define TCSR_WDT_CFG 0x30
 
@@ -109,8 +111,10 @@ static void msm_power_off(void)
 #ifdef CONFIG_MSM_DLOAD_MODE
 	set_dload_mode(0);
 #endif
-	pm8058_reset_pwr_off(0);
-	pm8901_reset_pwr_off(0);
+	if (cpu_is_msm8x60()) {
+		pm8058_reset_pwr_off(0);
+		pm8901_reset_pwr_off(0);
+	}
 	__raw_writel(0, PSHOLD_CTL_SU);
 	mdelay(10000);
 	printk(KERN_ERR "Powering off has failed\n");
@@ -139,7 +143,8 @@ void arch_reset(char mode, const char *cmd)
 
 	printk(KERN_NOTICE "Going down for restart now\n");
 
-	pm8058_reset_pwr_off(1);
+	if (cpu_is_msm8x60())
+		pm8058_reset_pwr_off(1);
 
 	if (cmd != NULL) {
 		if (!strncmp(cmd, "bootloader", 10)) {
@@ -163,6 +168,7 @@ void arch_reset(char mode, const char *cmd)
 		pr_notice("PS_HOLD didn't work, falling back to watchdog\n");
 	}
 
+	__raw_writel(1, WDT0_RST);
 	__raw_writel(5*0x31F3, WDT0_BARK_TIME);
 	__raw_writel(0x31F3, WDT0_BITE_TIME);
 	__raw_writel(3, WDT0_EN);
