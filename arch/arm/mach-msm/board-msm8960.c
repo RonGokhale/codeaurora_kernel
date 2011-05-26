@@ -357,6 +357,55 @@ static struct msm_gpiomux_config msm8960_audio_codec_configs[] __initdata = {
 		},
 	},
 };
+static struct gpiomux_setting wcnss_5wire_suspend_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv  = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting wcnss_5wire_active_cfg = {
+	.func = GPIOMUX_FUNC_1,
+	.drv  = GPIOMUX_DRV_6MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct msm_gpiomux_config wcnss_5wire_interface[] = {
+	{
+		.gpio = 84,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &wcnss_5wire_active_cfg,
+			[GPIOMUX_SUSPENDED] = &wcnss_5wire_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 85,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &wcnss_5wire_active_cfg,
+			[GPIOMUX_SUSPENDED] = &wcnss_5wire_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 86,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &wcnss_5wire_active_cfg,
+			[GPIOMUX_SUSPENDED] = &wcnss_5wire_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 87,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &wcnss_5wire_active_cfg,
+			[GPIOMUX_SUSPENDED] = &wcnss_5wire_suspend_cfg,
+		},
+	},
+	{
+		.gpio = 88,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &wcnss_5wire_active_cfg,
+			[GPIOMUX_SUSPENDED] = &wcnss_5wire_suspend_cfg,
+		},
+	},
+};
 
 static struct gpiomux_setting cam_suspend_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
@@ -1108,6 +1157,9 @@ static int __init gpiomux_init(void)
 
 	msm_gpiomux_install(msm8960_audio_codec_configs,
 			ARRAY_SIZE(msm8960_audio_codec_configs));
+
+	msm_gpiomux_install(wcnss_5wire_interface,
+			ARRAY_SIZE(wcnss_5wire_interface));
 
 	return 0;
 }
@@ -2052,6 +2104,29 @@ static struct msm_ssbi_platform_data msm8960_ssbi_pm8921_pdata __devinitdata = {
 	},
 };
 
+static void msm8960_wcnss_init(void)
+{
+	int i, ret, j;
+
+	for (i = 0; i < ARRAY_SIZE(wcnss_5wire_interface); i++) {
+		ret = gpio_request(wcnss_5wire_interface[i].gpio,
+				"wcnss_5_wire");
+		if (ret) {
+			pr_err("wcnss_5_wire gpio %d failed: %d\n",
+				wcnss_5wire_interface[i].gpio, ret);
+			goto fail;
+		}
+	}
+
+	pr_info("%s: Iris 5-wire gpios configured\n", __func__);
+
+	return;
+
+fail:
+	for (j = 0; j < i; j++)
+		gpio_free(wcnss_5wire_interface[j].gpio);
+}
+
 static int ethernet_init(void)
 {
 	int ret;
@@ -2334,6 +2409,7 @@ static void __init msm8960_cdp_init(void)
 	msm8960_init_mmc();
 	msm_acpu_clock_init(&msm8960_acpu_clock_data);
 	register_i2c_devices();
+	msm8960_wcnss_init();
 	msm_fb_add_devices();
 	slim_register_board_info(msm_slim_devices,
 		ARRAY_SIZE(msm_slim_devices));

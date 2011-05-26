@@ -110,6 +110,9 @@ wcnss_wlan_ctrl_probe(struct platform_device *pdev)
 {
 	if (penv)
 		penv->smd_channel_ready = 1;
+
+	pr_info("%s: SMD ctrl channel up\n", __func__);
+
 	return 0;
 }
 
@@ -118,6 +121,9 @@ wcnss_wlan_ctrl_remove(struct platform_device *pdev)
 {
 	if (penv)
 		penv->smd_channel_ready = 0;
+
+	pr_info("%s: SMD ctrl channel down\n", __func__);
+
 	return 0;
 }
 
@@ -217,7 +223,7 @@ wcnss_wlan_probe(struct platform_device *pdev)
 
 	/* update the WCNSS configuration from NV if present */
 	ret = request_firmware(&nv, WCNSS_NV_NAME, &pdev->dev);
-	if (ret) {
+	if (!ret) {
 		/* firmware is read-only so make a NUL-terminated copy */
 		nvp = kmalloc(nv->size+1, GFP_KERNEL);
 		if (nvp) {
@@ -235,7 +241,7 @@ wcnss_wlan_probe(struct platform_device *pdev)
 
 	/* power up the WCNSS */
 	ret = wcnss_wlan_power(&pdev->dev, &penv->wlan_config,
-						WCNSS_WLAN_SWITCH_ON);
+					WCNSS_WLAN_SWITCH_ON);
 	if (ret) {
 		dev_err(&pdev->dev, "WCNSS Power-up failed.\n");
 		goto fail_power;
@@ -271,7 +277,7 @@ fail_res:
 		pil_put(penv->pil);
 fail_pil:
 	wcnss_wlan_power(&pdev->dev, &penv->wlan_config,
-						WCNSS_WLAN_SWITCH_OFF);
+				WCNSS_WLAN_SWITCH_OFF);
 fail_power:
 	kfree(penv);
 	penv = NULL;
@@ -305,26 +311,24 @@ static int __init wcnss_wlan_init(void)
 	platform_driver_register(&wcnss_wlan_driver);
 	platform_driver_register(&wcnss_wlan_ctrl_driver);
 
-	printk(KERN_INFO "%s Driver V%s Loaded Successfully\n",
-	       DEVICE, VERSION);
-
 	return 0;
 }
 
 static void __exit wcnss_wlan_exit(void)
 {
-	platform_driver_unregister(&wcnss_wlan_ctrl_driver);
-	platform_driver_unregister(&wcnss_wlan_driver);
-
 	if (penv) {
 		if (penv->pil)
 			pil_put(penv->pil);
+
+		wcnss_wlan_power(&penv->pdev->dev, &penv->wlan_config,
+					WCNSS_WLAN_SWITCH_OFF);
+
 		kfree(penv);
 		penv = NULL;
 	}
 
-	printk(KERN_INFO "%s Driver Unloaded Successfully\n",
-	       DEVICE);
+	platform_driver_unregister(&wcnss_wlan_ctrl_driver);
+	platform_driver_unregister(&wcnss_wlan_driver);
 }
 
 module_init(wcnss_wlan_init);
