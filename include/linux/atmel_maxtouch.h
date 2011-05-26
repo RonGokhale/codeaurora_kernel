@@ -302,6 +302,10 @@ struct mxt_platform_data {
 	u8    numtouch;	/* Number of touches to report	*/
 	int   (*init_platform_hw)(struct i2c_client *client);
 	int   (*exit_platform_hw)(struct i2c_client *client);
+	int   display_res_x;
+	int   display_res_y;
+	int   min_x;
+	int   min_y;
 	int   max_x;    /* The default reported X range   */  
 	int   max_y;    /* The default reported Y range   */
 	u8    (*valid_interrupt) (void);
