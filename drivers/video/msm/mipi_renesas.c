@@ -1156,6 +1156,19 @@ static int __devinit mipi_renesas_lcd_probe(struct platform_device *pdev)
 	return 0;
 }
 
+static void mipi_renesas_set_backlight(struct msm_fb_data_type *mfd)
+{
+	int ret = -EPERM;
+	int bl_level;
+
+	bl_level = mfd->bl_level;
+
+	if (mipi_renesas_pdata && mipi_renesas_pdata->pmic_backlight)
+		ret = mipi_renesas_pdata->pmic_backlight(bl_level);
+	else
+		pr_err("%s(): Backlight level set failed", __func__);
+}
+
 static struct platform_driver this_driver = {
 	.probe  = mipi_renesas_lcd_probe,
 	.driver = {
@@ -1166,6 +1179,7 @@ static struct platform_driver this_driver = {
 static struct msm_fb_panel_data renesas_panel_data = {
 	.on		= mipi_renesas_lcd_on,
 	.off	= mipi_renesas_lcd_off,
+	.set_backlight = mipi_renesas_set_backlight,
 };
 
 static int ch_used[3];

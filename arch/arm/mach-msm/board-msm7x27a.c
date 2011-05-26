@@ -1764,10 +1764,29 @@ static struct platform_device msm_fb_device = {
 	}
 };
 
+static int mipi_renesas_set_bl(int level)
+{
+	int ret;
+
+	ret = pmapp_disp_backlight_set_brightness(level);
+
+	if (ret)
+		pr_err("%s: can't set lcd backlight!\n", __func__);
+
+	return ret;
+}
+
+static struct msm_panel_common_pdata mipi_renesas_pdata = {
+	.pmic_backlight = mipi_renesas_set_bl,
+};
+
 #ifdef CONFIG_FB_MSM_MIPI_DSI
 static struct platform_device mipi_dsi_renesas_panel_device = {
 	.name = "mipi_renesas",
 	.id = 0,
+	.dev    = {
+		.platform_data = &mipi_renesas_pdata,
+	}
 };
 #endif
 
