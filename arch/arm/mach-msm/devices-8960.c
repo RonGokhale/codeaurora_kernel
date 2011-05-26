@@ -726,7 +726,7 @@ struct platform_device msm_device_bam_dmux = {
 
 struct resource msm_dmov_resource[] = {
 	{
-		.start = ADM_0_SCSS_0_IRQ,
+		.start = ADM_0_SCSS_1_IRQ,
 		.end = (resource_size_t)MSM_DMOV_BASE,
 		.flags = IORESOURCE_IRQ,
 	},
