@@ -21,7 +21,9 @@
 #include <sound/soc-dapm.h>
 #include <sound/soc-dsp.h>
 #include <sound/pcm.h>
+#include <sound/jack.h>
 #include "msm-pcm-routing.h"
+#include <../codecs/wcd9310.h>
 
 /* 8960 machine driver */
 
@@ -36,10 +38,22 @@
 static int msm8960_spk_control;
 static int msm8960_pamp_on;
 
+struct tabla_mbhc_calibration tabla_cal = {
+	.bias = TABLA_MICBIAS2,
+	.tldoh = 100,
+	.bg_fast_settle = 100,
+	.mic_current = TABLA_PID_MIC_5_UA,
+	.mic_pid = 100,
+	.hph_current = TABLA_PID_MIC_5_UA,
+	.shutdown_plug_removal = 10,
+};
+
 static struct clk *codec_clk;
 static int clk_users;
 
 static int msm8960_headset_gpios_configured;
+
+static struct snd_soc_jack hs_jack;
 
 static void codec_poweramp_on(void)
 {
@@ -183,6 +197,14 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_add_routes(dapm, audio_map, ARRAY_SIZE(audio_map));
 
 	snd_soc_dapm_sync(dapm);
+
+	err = snd_soc_jack_new(codec, "Headset Jack",
+				SND_JACK_HEADSET, &hs_jack);
+	if (err) {
+		pr_err("failed to create new jack\n");
+		return err;
+	}
+	tabla_hs_detect(codec, &hs_jack, &tabla_cal);
 
 	return 0;
 }
