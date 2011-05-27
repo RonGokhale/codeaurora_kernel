@@ -22,7 +22,9 @@
 #include <linux/delay.h>
 #include "wcd9310.h"
 
-static const DECLARE_TLV_DB_SCALE(pga_tlv, -8400, 28, 0);
+static const DECLARE_TLV_DB_SCALE(digital_gain, 0, 1, 0);
+static const DECLARE_TLV_DB_SCALE(line_gain, 0, 7, 1);
+static const DECLARE_TLV_DB_SCALE(analog_gain, 0, 25, 1);
 
 enum tabla_bandgap_type {
 	TABLA_BANDGAP_OFF = 0,
@@ -81,22 +83,27 @@ static int tabla_codec_enable_charge_pump(struct snd_soc_dapm_widget *w,
 }
 
 static const struct snd_kcontrol_new tabla_snd_controls[] = {
-	SOC_SINGLE_TLV("LINEOUT1 Volume", TABLA_A_RX_LINE_1_GAIN, 0, 127, 0,
-		pga_tlv),
-	SOC_SINGLE_TLV("LINEOUT3 Volume", TABLA_A_RX_LINE_3_GAIN, 0, 127, 0,
-		pga_tlv),
-	SOC_SINGLE_TLV("HPHL Volume", TABLA_A_RX_HPH_L_GAIN, 0, 127, 0,
-		pga_tlv),
-	SOC_SINGLE_TLV("HPHR Volume", TABLA_A_RX_HPH_R_GAIN, 0, 127, 0,
-		pga_tlv),
+	SOC_SINGLE_TLV("LINEOUT1 Volume", TABLA_A_RX_LINE_1_GAIN, 0, 12, 1,
+		line_gain),
+	SOC_SINGLE_TLV("LINEOUT3 Volume", TABLA_A_RX_LINE_3_GAIN, 0, 12, 1,
+		line_gain),
+	SOC_SINGLE_TLV("HPHL Volume", TABLA_A_RX_HPH_L_GAIN, 0, 12, 1,
+		line_gain),
+	SOC_SINGLE_TLV("HPHR Volume", TABLA_A_RX_HPH_R_GAIN, 0, 12, 1,
+		line_gain),
 
-	SOC_SINGLE_TLV("SLIM RX1 Digital Volume",
-		TABLA_A_CDC_RX1_VOL_CTL_B2_CTL, 4, 127, 0, pga_tlv),
-	SOC_SINGLE_TLV("SLIM TX5 Digital Volume", TABLA_A_TX_1_2_EN, 0, 127, 0,
-		pga_tlv),
-	SOC_SINGLE_TLV("SLIM TX6 Digital Volume", TABLA_A_TX_1_2_EN, 4, 127, 0,
-		pga_tlv),
-	/* TODO make the gain follow the correct scale */
+	SOC_SINGLE_TLV("RX1 Digital Volume", TABLA_A_CDC_RX1_VOL_CTL_B2_CTL, 0,
+		100, 0, digital_gain),
+	SOC_SINGLE_TLV("RX2 Digital Volume", TABLA_A_CDC_RX2_VOL_CTL_B2_CTL, 0,
+		100, 0, digital_gain),
+
+	SOC_SINGLE_TLV("DEC5 Volume", TABLA_A_CDC_TX5_VOL_CTL_GAIN, 0, 100, 0,
+		digital_gain),
+	SOC_SINGLE_TLV("DEC6 Volume", TABLA_A_CDC_TX6_VOL_CTL_GAIN, 0, 100, 0,
+		digital_gain),
+
+	SOC_SINGLE_TLV("ADC1 Volume", TABLA_A_TX_1_2_EN, 1, 3, 0, analog_gain),
+	SOC_SINGLE_TLV("ADC2 Volume", TABLA_A_TX_1_2_EN, 5, 3, 0, analog_gain),
 
 	SOC_SINGLE("MICBIAS1 CAPLESS Switch", TABLA_A_MICB_1_CTL, 4, 1, 1),
 };
