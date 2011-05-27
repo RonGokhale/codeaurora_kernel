@@ -79,6 +79,7 @@ struct mmc_platform_data {
 	unsigned int wpswitch_gpio;
 	unsigned char wpswitch_polarity;
 	struct msm_mmc_slot_reg_data *vreg_data;
+	int is_sdio_al_client;
 };
 
 #endif
