@@ -20,13 +20,15 @@
 #include <linux/cpufreq.h>
 #include <linux/cpu.h>
 #include <linux/regulator/consumer.h>
-#include <asm/mach-types.h>
 
+#include <asm/mach-types.h>
 #include <asm/cpu.h>
 
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
 #include <mach/rpm-regulator.h>
+#include <mach/msm_bus.h>
+#include <mach/msm_bus_board.h>
 
 #include "acpuclock.h"
 
@@ -144,6 +146,7 @@ struct l2_level {
 	struct core_speed	speed;
 	unsigned int		vdd_dig;
 	unsigned int		vdd_mem;
+	unsigned int		bw_level;
 };
 
 struct acpu_level {
@@ -161,34 +164,71 @@ static struct clock_state {
 	uint32_t		vdd_switch_time_us;
 } drv_state;
 
+/* Instantaneous bandwidth requests in MB/s. */
+#define BW_MBPS(_bw) \
+	{ \
+		.vectors = (struct msm_bus_vectors[]){ \
+			{\
+				.src = MSM_BUS_MASTER_AMPSS_M0, \
+				.dst = MSM_BUS_SLAVE_EBI_CH0, \
+				.ib = (_bw) * 1000000UL, \
+				.ab = (_bw) *  100000UL, \
+			}, \
+			{ \
+				.src = MSM_BUS_MASTER_AMPSS_M1, \
+				.dst = MSM_BUS_SLAVE_EBI_CH0, \
+				.ib = (_bw) * 1000000UL, \
+				.ab = (_bw) *  100000UL, \
+			}, \
+		}, \
+		.num_paths = 2, \
+	}
+static struct msm_bus_paths bw_level_tbl[] = {
+	[0] =  BW_MBPS(616), /* At least  77 MHz on bus. */
+	[1] = BW_MBPS(1024), /* At least 128 MHz on bus. */
+	[2] = BW_MBPS(1536), /* At least 192 MHz on bus. */
+	[3] = BW_MBPS(2048), /* At least 256 MHz on bus. */
+	[4] = BW_MBPS(3080), /* At least 385 MHz on bus. */
+	[5] = BW_MBPS(3968), /* At least 496 MHz on bus. */
+};
+
+static struct msm_bus_scale_pdata bus_client_pdata = {
+	.usecase = bw_level_tbl,
+	.num_usecases = ARRAY_SIZE(bw_level_tbl),
+	.active_only = 1,
+	.name = "acpuclock",
+};
+
+static uint32_t bus_perf_client;
+
 /* TODO: Update vdd_dig and vdd_mem when voltage data is available. */
 #define L2(x) (&l2_freq_tbl[(x)])
 static struct l2_level l2_freq_tbl[] = {
-	[0]  = { {STBY_KHZ, QSB,   0, 0, 0x00 }, 1050000, 1050000 },
-	[1]  = { {  384000, PLL_8, 0, 2, 0x00 }, 1050000, 1050000 },
-	[2]  = { {  432000, HFPLL, 2, 0, 0x20 }, 1050000, 1050000 },
-	[3]  = { {  486000, HFPLL, 2, 0, 0x24 }, 1050000, 1050000 },
-	[4]  = { {  594000, HFPLL, 1, 0, 0x16 }, 1050000, 1050000 },
-	[5]  = { {  648000, HFPLL, 1, 0, 0x18 }, 1050000, 1050000 },
-	[6]  = { {  702000, HFPLL, 1, 0, 0x1A }, 1050000, 1050000 },
-	[7]  = { {  756000, HFPLL, 1, 0, 0x1C }, 1150000, 1150000 },
-	[8]  = { {  810000, HFPLL, 1, 0, 0x1E }, 1150000, 1150000 },
-	[9]  = { {  864000, HFPLL, 1, 0, 0x20 }, 1150000, 1150000 },
-	[10] = { {  918000, HFPLL, 1, 0, 0x22 }, 1150000, 1150000 },
-	[11] = { {  972000, HFPLL, 1, 0, 0x24 }, 1150000, 1150000 },
-	[12] = { { 1026000, HFPLL, 1, 0, 0x26 }, 1150000, 1150000 },
-	[13] = { { 1080000, HFPLL, 1, 0, 0x28 }, 1150000, 1150000 },
-	[14] = { { 1134000, HFPLL, 1, 0, 0x2A }, 1150000, 1150000 },
-	[15] = { { 1188000, HFPLL, 1, 0, 0x2C }, 1150000, 1150000 },
-	[16] = { { 1242000, HFPLL, 1, 0, 0x2E }, 1150000, 1150000 },
-	[17] = { { 1296000, HFPLL, 1, 0, 0x30 }, 1150000, 1150000 },
-	[18] = { { 1350000, HFPLL, 1, 0, 0x32 }, 1150000, 1150000 },
-	[19] = { { 1404000, HFPLL, 1, 0, 0x34 }, 1150000, 1150000 },
-	[20] = { { 1458000, HFPLL, 1, 0, 0x36 }, 1150000, 1150000 },
-	[21] = { { 1512000, HFPLL, 1, 0, 0x38 }, 1150000, 1150000 },
-	[22] = { { 1566000, HFPLL, 1, 0, 0x3A }, 1150000, 1150000 },
-	[23] = { { 1620000, HFPLL, 1, 0, 0x3C }, 1150000, 1150000 },
-	[24] = { { 1674000, HFPLL, 1, 0, 0x3E }, 1150000, 1150000 },
+	[0]  = { {STBY_KHZ, QSB,   0, 0, 0x00 }, 1050000, 1050000, 0 },
+	[1]  = { {  384000, PLL_8, 0, 2, 0x00 }, 1050000, 1050000, 0 },
+	[2]  = { {  432000, HFPLL, 2, 0, 0x20 }, 1050000, 1050000, 1 },
+	[3]  = { {  486000, HFPLL, 2, 0, 0x24 }, 1050000, 1050000, 1 },
+	[4]  = { {  594000, HFPLL, 1, 0, 0x16 }, 1050000, 1050000, 2 },
+	[5]  = { {  648000, HFPLL, 1, 0, 0x18 }, 1050000, 1050000, 2 },
+	[6]  = { {  702000, HFPLL, 1, 0, 0x1A }, 1050000, 1050000, 2 },
+	[7]  = { {  756000, HFPLL, 1, 0, 0x1C }, 1150000, 1150000, 3 },
+	[8]  = { {  810000, HFPLL, 1, 0, 0x1E }, 1150000, 1150000, 3 },
+	[9]  = { {  864000, HFPLL, 1, 0, 0x20 }, 1150000, 1150000, 3 },
+	[10] = { {  918000, HFPLL, 1, 0, 0x22 }, 1150000, 1150000, 3 },
+	[11] = { {  972000, HFPLL, 1, 0, 0x24 }, 1150000, 1150000, 3 },
+	[12] = { { 1026000, HFPLL, 1, 0, 0x26 }, 1150000, 1150000, 3 },
+	[13] = { { 1080000, HFPLL, 1, 0, 0x28 }, 1150000, 1150000, 4 },
+	[14] = { { 1134000, HFPLL, 1, 0, 0x2A }, 1150000, 1150000, 4 },
+	[15] = { { 1188000, HFPLL, 1, 0, 0x2C }, 1150000, 1150000, 4 },
+	[16] = { { 1242000, HFPLL, 1, 0, 0x2E }, 1150000, 1150000, 4 },
+	[17] = { { 1296000, HFPLL, 1, 0, 0x30 }, 1150000, 1150000, 4 },
+	[18] = { { 1350000, HFPLL, 1, 0, 0x32 }, 1150000, 1150000, 4 },
+	[19] = { { 1404000, HFPLL, 1, 0, 0x34 }, 1150000, 1150000, 4 },
+	[20] = { { 1458000, HFPLL, 1, 0, 0x36 }, 1150000, 1150000, 5 },
+	[21] = { { 1512000, HFPLL, 1, 0, 0x38 }, 1150000, 1150000, 5 },
+	[22] = { { 1566000, HFPLL, 1, 0, 0x3A }, 1150000, 1150000, 5 },
+	[23] = { { 1620000, HFPLL, 1, 0, 0x3C }, 1150000, 1150000, 5 },
+	[24] = { { 1674000, HFPLL, 1, 0, 0x3E }, 1150000, 1150000, 5 },
 };
 
 /* TODO: Update core voltages when data is available. */
@@ -361,23 +401,40 @@ static void hfpll_set_rate(enum scalables id, struct core_speed *tgt_s)
 }
 
 /* Return the L2 speed that should be applied. */
-static struct core_speed *compute_l2_speed(unsigned int voting_cpu,
-					   struct l2_level *l2_level)
+static struct l2_level *compute_l2_level(unsigned int voting_cpu,
+					 struct l2_level *vote_l)
 {
-	static struct core_speed *l2_vote[NR_CPUS];
-	struct core_speed *new_s, *vote_s = &l2_level->speed;
+	static struct l2_level *l2_vote[NR_CPUS];
+	struct l2_level *new_l;
 	int cpu;
 
 	/* Bounds check. */
-	BUG_ON(l2_level >= (l2_freq_tbl + ARRAY_SIZE(l2_freq_tbl)));
+	BUG_ON(vote_l >= (l2_freq_tbl + ARRAY_SIZE(l2_freq_tbl)));
 
 	/* Find max L2 speed vote. */
-	l2_vote[voting_cpu] = vote_s;
-	new_s = &l2_freq_tbl->speed;
+	l2_vote[voting_cpu] = vote_l;
+	new_l = l2_freq_tbl;
 	for_each_present_cpu(cpu)
-		new_s = max(new_s, l2_vote[cpu]);
+		new_l = max(new_l, l2_vote[cpu]);
 
-	return new_s;
+	return new_l;
+}
+
+/* Update the bus bandwidth request. */
+static void set_bus_bw(unsigned int bw)
+{
+	int ret;
+
+	/* Bounds check. */
+	if (bw >= ARRAY_SIZE(bw_level_tbl)) {
+		pr_err("%s: invalid bandwidth request (%d)\n", __func__, bw);
+		return;
+	}
+
+	/* Update bandwidth if request has changed. This may sleep. */
+	ret = msm_bus_scale_client_update_request(bus_perf_client, bw);
+	if (ret)
+		pr_err("%s: bandwidth request failed (%d)\n", __func__, ret);
 }
 
 /* Set the CPU or L2 clock speed. */
@@ -590,7 +647,8 @@ static unsigned int calculate_vdd_core(struct acpu_level *tgt)
 /* Set the CPU's clock rate and adjust the L2 rate, if appropriate. */
 int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 {
-	struct core_speed *strt_acpu_s, *tgt_acpu_s, *tgt_l2_s;
+	struct core_speed *strt_acpu_s, *tgt_acpu_s;
+	struct l2_level *tgt_l2_l;
 	struct acpu_level *tgt;
 	unsigned int vdd_mem, vdd_dig, vdd_core;
 	unsigned long flags;
@@ -645,13 +703,16 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 
 	/* Update the L2 vote and apply the rate change. */
 	spin_lock_irqsave(&drv_state.l2_lock, flags);
-	tgt_l2_s = compute_l2_speed(cpu, tgt->l2_level);
-	set_speed(L2, tgt_l2_s, reason);
+	tgt_l2_l = compute_l2_level(cpu, tgt->l2_level);
+	set_speed(L2, &tgt_l2_l->speed, reason);
 	spin_unlock_irqrestore(&drv_state.l2_lock, flags);
 
 	/* Nothing else to do for power collapse or SWFI. */
 	if (reason == SETRATE_PC || reason == SETRATE_SWFI)
 		goto out;
+
+	/* Update bus bandwith request. */
+	set_bus_bw(tgt_l2_l->bw_level);
 
 	/* Drop VDD levels if we can. */
 	decrease_vdd(cpu, vdd_core, vdd_mem, vdd_dig, reason);
@@ -791,6 +852,16 @@ void __cpuinit acpuclock_secondary_init(void)
 	warm_boot = true;
 }
 
+/* Register with bus driver. */
+static void __init bus_init(void)
+{
+	bus_perf_client = msm_bus_scale_register_client(&bus_client_pdata);
+	if (!bus_perf_client) {
+		pr_err("%s: unable to register bus client\n", __func__);
+		BUG();
+	}
+}
+
 #ifdef CONFIG_CPU_FREQ_MSM
 static struct cpufreq_frequency_table freq_table[NR_CPUS][30];
 
@@ -864,6 +935,7 @@ void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 	drv_state.acpu_switch_time_us = clkdata->acpu_switch_time_us;
 	drv_state.vdd_switch_time_us = clkdata->vdd_switch_time_us;
 	regulator_init();
+	bus_init();
 	cpufreq_table_init();
 	register_hotcpu_notifier(&acpuclock_cpu_notifier);
 }
