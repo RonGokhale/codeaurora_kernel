@@ -1436,6 +1436,16 @@ static struct usb_diag_platform_data usb_diag_pdata = {
 static struct usb_gadget_fserial_platform_data fserial_pdata = {
 	.no_ports	= 2,
 };
+
+static char *usb_functions_rndis[] = {
+	"rndis",
+};
+
+static char *usb_functions_rndis_adb[] = {
+	"rndis",
+	"adb",
+};
+
 static char *usb_functions_default[] = {
 	"diag",
 	"modem",
@@ -1452,6 +1462,9 @@ static char *usb_functions_default_adb[] = {
 };
 
 static char *usb_functions_all[] = {
+#ifdef CONFIG_USB_ANDROID_RNDIS
+	"rndis",
+#endif
 	"diag",
 	"adb",
 	"modem",
@@ -1469,6 +1482,16 @@ struct android_usb_product usb_products[] = {
 		.product_id	= 0x9017,
 		.num_functions	= ARRAY_SIZE(usb_functions_default),
 		.functions	= usb_functions_default,
+	},
+	{
+		.product_id	= 0xf00e,
+		.num_functions	= ARRAY_SIZE(usb_functions_rndis),
+		.functions	= usb_functions_rndis,
+	},
+	{
+		.product_id	= 0x9024,
+		.num_functions	= ARRAY_SIZE(usb_functions_rndis_adb),
+		.functions	= usb_functions_rndis_adb,
 	},
 };
 
@@ -1515,6 +1538,39 @@ struct platform_device usb_mass_storage_device = {
 	.platform_data = &mass_storage_pdata,
 	},
 };
+
+static struct usb_ether_platform_data rndis_pdata = {
+	/* ethaddr is filled by board_serialno_setup */
+	.vendorID	= 0x05C6,
+	.vendorDescr	= "Qualcomm Incorporated",
+};
+
+static struct platform_device rndis_device = {
+	.name	= "rndis",
+	.id	= -1,
+	.dev	= {
+		.platform_data = &rndis_pdata,
+	},
+};
+
+static int __init board_serialno_setup(char *serialno)
+{
+	int i;
+	char *src = serialno;
+
+	/* create a fake MAC address from our serial number.
+	 * first byte is 0x02 to signify locally administered.
+	 */
+	rndis_pdata.ethaddr[0] = 0x02;
+	for (i = 0; *src; i++) {
+		/* XOR the USB serial across the remaining bytes */
+		rndis_pdata.ethaddr[i % (ETH_ALEN - 1) + 1] ^= *src++;
+	}
+
+	android_usb_pdata.serial_number = serialno;
+	return 1;
+}
+__setup("androidboot.serialno=", board_serialno_setup);
 
 static uint8_t spm_wfi_cmd_sequence[] __initdata = {
 			0x03, 0x0B, 0x0f,
@@ -1865,6 +1921,7 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&usb_diag_device,
 	&usb_mass_storage_device,
 	&usb_gadget_fserial_device,
+	&rndis_device,
 	&msm_pcm,
 	&msm_pcm_routing,
 	&msm_cpudai0,
