@@ -143,18 +143,6 @@ static void rpm_clk_auto_off(struct clk *clk)
 	/* Not supported */
 }
 
-static int rpm_clk_reset(struct clk *clk, enum clk_reset_action action)
-{
-	/* Not supported. */
-	return -EPERM;
-}
-
-static int rpm_clk_set_rate(struct clk *clk, unsigned rate)
-{
-	/* Not supported. */
-	return -EPERM;
-}
-
 static int rpm_clk_set_min_rate(struct clk *clk, unsigned rate)
 {
 	unsigned long flags;
@@ -210,18 +198,6 @@ out:
 	return rc;
 }
 
-static int rpm_clk_set_max_rate(struct clk *clk, unsigned rate)
-{
-	/* Not supported. */
-	return -EPERM;
-}
-
-static int rpm_clk_set_flags(struct clk *clk, unsigned flags)
-{
-	/* Not supported. */
-	return -EPERM;
-}
-
 static unsigned rpm_clk_get_rate(struct clk *clk)
 {
 	unsigned id = to_rpm_clk(clk)->id;
@@ -254,11 +230,7 @@ struct clk_ops clk_ops_rpm = {
 	.enable = rpm_clk_enable,
 	.disable = rpm_clk_disable,
 	.auto_off = rpm_clk_auto_off,
-	.reset = rpm_clk_reset,
-	.set_rate = rpm_clk_set_rate,
 	.set_min_rate = rpm_clk_set_min_rate,
-	.set_max_rate = rpm_clk_set_max_rate,
-	.set_flags = rpm_clk_set_flags,
 	.get_rate = rpm_clk_get_rate,
 	.is_enabled = rpm_clk_is_enabled,
 	.round_rate = rpm_clk_round_rate,
