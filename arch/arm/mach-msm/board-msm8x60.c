@@ -6777,7 +6777,7 @@ static void __init msm8x60_init_buses(void)
 	if (machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa()) {
 		/* Setting protocol code to 0x60 for dual UART/I2C in GSBI9 */
 		gsbi_mem = ioremap_nocache(MSM_GSBI9_PHYS, 4);
-		writel(GSBI_DUAL_MODE_CODE, gsbi_mem);
+		writel_relaxed(GSBI_DUAL_MODE_CODE, gsbi_mem);
 		iounmap(gsbi_mem);
 		msm_gsbi9_qup_i2c_pdata.use_gsbi_shared_mode = 1;
 	}
