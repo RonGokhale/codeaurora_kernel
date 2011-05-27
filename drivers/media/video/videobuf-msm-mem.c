@@ -25,8 +25,10 @@
 #include <linux/sched.h>
 #include <linux/io.h>
 #include <linux/android_pmem.h>
+#include <linux/memory_alloc.h>
 #include <media/videobuf-msm-mem.h>
 #include <media/msm_camera.h>
+#include <mach/memory.h>
 
 #define MAGIC_PMEM 0x0733ac64
 #define MAGIC_CHECK(is, should)               \
@@ -44,25 +46,14 @@
 static int32_t msm_mem_allocate(const size_t size)
 {
 	int32_t phyaddr;
-#ifdef CONFIG_ANDROID_PMEM
-	phyaddr = pmem_kalloc(size,
-			PMEM_MEMTYPE_EBI1 | PMEM_ALIGNMENT_4K);
-#else
-	/*TO DO: USE SMMU CALLS*/
-	phyaddr = 0;
-#endif
+	phyaddr = allocate_contiguous_ebi_nomap(size, SZ_4K);
 	return phyaddr;
 }
 
 static int32_t msm_mem_free(const int32_t phyaddr)
 {
-	int32_t rc;
-#ifdef CONFIG_ANDROID_PMEM
-	rc = pmem_kfree(phyaddr);
-#else
-	/*TO DO: USE SMMU CALLS*/
-	rc = -1;
-#endif
+	int32_t rc = 0;
+	free_contiguous_memory_by_paddr(phyaddr);
 	return rc;
 }
 
@@ -217,7 +208,7 @@ static int videobuf_pmem_contig_user_get(struct videobuf_contig_pmem *mem,
 		goto out_up;
 	}
 
-	D("pmem_kalloc data physical addr  0x%x virtual addr %p (size %ld)\n",
+	D("memory aloc data physical addr  0x%x virtual addr %p (size %ld)\n",
 		mem->phyaddr, mem->vaddr, mem->size);
 
 	/* Try to remap memory */
@@ -319,15 +310,15 @@ static int __videobuf_iolock(struct videobuf_queue *q,
 			return -ENOMEM;
 		}
 
-		D("pmem_kalloc physical addr 0x%x virtual addr %p (size %ld)\n",
+		D("physical addr 0x%x virtual addr %p (size %ld)\n",
 				mem->phyaddr, mem->vaddr, mem->size);
 
 		if (!mem->vaddr) {
-			D("pmem_kalloc %ld failed\n", mem->size);
+			D("ioremap %ld failed\n", mem->size);
 			return -ENOMEM;
 		}
 
-		D("pmem_kalloc data is at %p (%ld)\n",
+		D("kernel vaddr data is at %p (%ld)\n",
 				mem->vaddr, mem->size);
 		break;
 	case V4L2_MEMORY_OVERLAY:
@@ -389,7 +380,7 @@ static int __videobuf_mmap_mapper(struct videobuf_queue *q,
 		goto error;
 	}
 
-	D("pmem_kalloc data physical addr 0x%x virtual addr %p (size %ld)\n",
+	D("data physical addr 0x%x virtual addr %p (size %ld)\n",
 					mem->phyaddr, mem->vaddr, mem->size);
 
 	/* Try to remap memory */
