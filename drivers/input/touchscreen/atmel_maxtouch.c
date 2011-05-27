@@ -49,7 +49,7 @@
 
 #define DRIVER_VERSION "0.91a_mod"
 
-static int debug = DEBUG_TRACE;
+static int debug = DEBUG_INFO;
 static int comms = 0;
 module_param(debug, int, 0644);
 module_param(comms, int, 0644);
@@ -1088,7 +1088,7 @@ int process_message(u8 *message, u8 object, struct mxt_data *mxt)
 		}
 		if (status & MXT_MSGB_T6_CAL) {
 			/* Calibration in action, no need to react */
-			dev_info(&client->dev,
+			dev_dbg(&client->dev,
 				"maXTouch calibration in progress\n");
 		}
 		if (status & MXT_MSGB_T6_SIGERR) {
@@ -1113,12 +1113,12 @@ int process_message(u8 *message, u8 object, struct mxt_data *mxt)
 		}
 		if (status & MXT_MSGB_T6_RESET) {
 			/* Chip has reseted, no need to react. */
-			dev_info(&client->dev,
+			dev_dbg(&client->dev,
 				"maXTouch chip reset\n");
 		}
 		if (status == 0) {
 			/* Chip status back to normal. */
-			dev_info(&client->dev,
+			dev_dbg(&client->dev,
 				"maXTouch status normal\n");
 			error_cond = 0;
 		}
@@ -1500,7 +1500,7 @@ static int __devinit mxt_identify(struct i2c_client *client,
 		mxt->device_info.minor,
 		mxt->device_info.build
 	);
-	dev_info(
+	dev_dbg(
 		&client->dev,
 		"Atmel maXTouch Configuration "
 		"[X: %d] x [Y: %d]\n",
