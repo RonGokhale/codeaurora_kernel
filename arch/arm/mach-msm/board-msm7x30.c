@@ -381,6 +381,7 @@ static int cyttsp_platform_resume(struct i2c_client *client)
 }
 
 static struct cyttsp_platform_data cyttsp_data = {
+	.fw_fname = "cyttsp_7630_fluid.hex",
 	.panel_maxx = 479,
 	.panel_maxy = 799,
 	.disp_maxx = 469,
