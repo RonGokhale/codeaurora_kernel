@@ -2894,13 +2894,20 @@ static u8 atmel_ts_valid_interrupt(void)
 	return !atmel_ts_read_chg();
 }
 
+#define ATMEL_X_OFFSET 13
+#define ATMEL_Y_OFFSET 0
+
 static struct mxt_platform_data atmel_ts_pdata = {
-	.numtouch = 10,
+	.numtouch = 4,
 	.init_platform_hw = atmel_ts_platform_init,
 	.exit_platform_hw = atmel_ts_platform_exit,
 	.power_on = atmel_ts_power_on,
-	.max_x = 506,
-	.max_y = 864,
+	.display_res_x = 480,
+	.display_res_y = 864,
+	.min_x = ATMEL_X_OFFSET,
+	.max_x = (505 - ATMEL_X_OFFSET),
+	.min_y = ATMEL_Y_OFFSET,
+	.max_y = (863 - ATMEL_Y_OFFSET),
 	.valid_interrupt = atmel_ts_valid_interrupt,
 	.read_chg = atmel_ts_read_chg,
 };
