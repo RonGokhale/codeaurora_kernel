@@ -2962,33 +2962,7 @@ static struct attribute_group tma300_properties_attr_group = {
 
 static struct kobject *properties_kobj;
 
-static struct cyttsp_platform_data cyttsp_fluid_pdata;
-static void cyttsp_set_params(void)
-{
 
-	uint32_t version;
-	version = socinfo_get_platform_version();
-	version = SOCINFO_VERSION_MAJOR(version);
-
-	if (version < 3) {
-		cyttsp_fluid_pdata.panel_maxx = 539;
-		cyttsp_fluid_pdata.panel_maxy = 994;
-		cyttsp_fluid_pdata.disp_minx = 30;
-		cyttsp_fluid_pdata.disp_maxx = 509;
-		cyttsp_fluid_pdata.disp_miny = 60;
-		cyttsp_fluid_pdata.disp_maxy = 859;
-		cyttsp_fluid_pdata.correct_fw_ver = 4;
-	} else {
-		cyttsp_fluid_pdata.panel_maxx = 550;
-		cyttsp_fluid_pdata.panel_maxy = 1013;
-		cyttsp_fluid_pdata.disp_minx = 35;
-		cyttsp_fluid_pdata.disp_maxx = 515;
-		cyttsp_fluid_pdata.disp_miny = 69;
-		cyttsp_fluid_pdata.disp_maxy = 869;
-		cyttsp_fluid_pdata.correct_fw_ver = 5;
-	}
-
-}
 
 #define FLUID_CYTTSP_TS_GPIO_IRQ	61
 static int cyttsp_fluid_platform_init(struct i2c_client *client)
@@ -3115,6 +3089,30 @@ static struct cyttsp_platform_data cyttsp_fluid_pdata = {
 	.resume = cyttsp_fluid_platform_resume,
 	.init = cyttsp_fluid_platform_init,
 };
+
+static void cyttsp_set_params(void)
+{
+	if (SOCINFO_VERSION_MAJOR(socinfo_get_platform_version()) < 3) {
+		cyttsp_fluid_pdata.fw_fname = "cyttsp_8660_fluid_p2.hex";
+		cyttsp_fluid_pdata.panel_maxx = 539;
+		cyttsp_fluid_pdata.panel_maxy = 994;
+		cyttsp_fluid_pdata.disp_minx = 30;
+		cyttsp_fluid_pdata.disp_maxx = 509;
+		cyttsp_fluid_pdata.disp_miny = 60;
+		cyttsp_fluid_pdata.disp_maxy = 859;
+		cyttsp_fluid_pdata.correct_fw_ver = 4;
+	} else {
+		cyttsp_fluid_pdata.fw_fname = "cyttsp_8660_fluid_p3.hex";
+		cyttsp_fluid_pdata.panel_maxx = 550;
+		cyttsp_fluid_pdata.panel_maxy = 1013;
+		cyttsp_fluid_pdata.disp_minx = 35;
+		cyttsp_fluid_pdata.disp_maxx = 515;
+		cyttsp_fluid_pdata.disp_miny = 69;
+		cyttsp_fluid_pdata.disp_maxy = 869;
+		cyttsp_fluid_pdata.correct_fw_ver = 5;
+	}
+
+}
 
 static struct i2c_board_info cyttsp_fluid_info[] __initdata = {
 	{
