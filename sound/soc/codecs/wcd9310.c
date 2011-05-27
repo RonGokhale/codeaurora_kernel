@@ -128,6 +128,12 @@ static const char *sb_tx6_mux_text[] = {
 		"DEC6"
 };
 
+static const char const *sb_tx7_to_tx10_mux_text[] = {
+	"ZERO", "RMIX1", "RMIX2", "RMIX3", "RMIX4", "RMIX5", "RMIX6", "RMIX7",
+		"DEC1", "DEC2", "DEC3", "DEC4", "DEC5", "DEC6", "DEC7", "DEC8",
+		"DEC9", "DEC10"
+};
+
 static const char *dec1_mux_text[] = {
 	"ZERO", "DMIC1", "ADC6",
 };
@@ -138,6 +144,10 @@ static const char *dec5_mux_text[] = {
 
 static const char *dec6_mux_text[] = {
 	"ZERO", "DMIC6", "ADC1",
+};
+
+static const char const *dec7_mux_text[] = {
+	"ZERO", "DMIC1", "DMIC6", "ADC1", "ADC6", "ANC1_FB", "ANC2_FB",
 };
 
 static const char *iir1_inp1_text[] = {
@@ -166,8 +176,16 @@ static const struct soc_enum sb_tx5_mux_enum =
 static const struct soc_enum sb_tx6_mux_enum =
 	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_SB_B6_CTL, 0, 9, sb_tx6_mux_text);
 
+static const struct soc_enum sb_tx7_mux_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_SB_B7_CTL, 0, 18,
+			sb_tx7_to_tx10_mux_text);
+
+static const struct soc_enum sb_tx8_mux_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_SB_B8_CTL, 0, 18,
+			sb_tx7_to_tx10_mux_text);
+
 static const struct soc_enum sb_tx1_mux_enum =
-	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_SB_B7_CTL, 0, 9, sb_tx1_mux_text);
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_SB_B1_CTL, 0, 9, sb_tx1_mux_text);
 
 static const struct soc_enum dec1_mux_enum =
 	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_B1_CTL, 0, 3, dec1_mux_text);
@@ -177,6 +195,9 @@ static const struct soc_enum dec5_mux_enum =
 
 static const struct soc_enum dec6_mux_enum =
 	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_B2_CTL, 2, 3, dec6_mux_text);
+
+static const struct soc_enum dec7_mux_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_B2_CTL, 4, 7, dec7_mux_text);
 
 static const struct soc_enum iir1_inp1_mux_enum =
 	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_EQ1_B1_CTL, 0, 18, iir1_inp1_text);
@@ -202,6 +223,12 @@ static const struct snd_kcontrol_new sb_tx5_mux =
 static const struct snd_kcontrol_new sb_tx6_mux =
 	SOC_DAPM_ENUM("SLIM TX6 MUX Mux", sb_tx6_mux_enum);
 
+static const struct snd_kcontrol_new sb_tx7_mux =
+	SOC_DAPM_ENUM("SLIM TX7 MUX Mux", sb_tx7_mux_enum);
+
+static const struct snd_kcontrol_new sb_tx8_mux =
+	SOC_DAPM_ENUM("SLIM TX8 MUX Mux", sb_tx8_mux_enum);
+
 static const struct snd_kcontrol_new sb_tx1_mux =
 	SOC_DAPM_ENUM("SLIM TX1 MUX Mux", sb_tx1_mux_enum);
 
@@ -213,6 +240,9 @@ static const struct snd_kcontrol_new dec5_mux =
 
 static const struct snd_kcontrol_new dec6_mux =
 	SOC_DAPM_ENUM("DEC6 MUX Mux", dec6_mux_enum);
+
+static const struct snd_kcontrol_new dec7_mux =
+	SOC_DAPM_ENUM("DEC7 MUX Mux", dec7_mux_enum);
 
 static const struct snd_kcontrol_new iir1_inp1_mux =
 	SOC_DAPM_ENUM("IIR1 INP1 Mux", iir1_inp1_mux_enum);
@@ -239,7 +269,7 @@ static int tabla_codec_enable_adc1(struct snd_soc_dapm_widget *w,
 
 	pr_debug("%s %d\n", __func__, event);
 	switch (event) {
-	case SND_SOC_DAPM_PRE_PMU:
+	case SND_SOC_DAPM_POST_PMU:
 		snd_soc_update_bits(codec, TABLA_A_TX_1_2_TEST_CTL, 0x80, 0x80);
 		usleep_range(1000, 1000);
 		snd_soc_update_bits(codec, TABLA_A_TX_1_2_TEST_CTL, 0x80, 0x00);
@@ -256,10 +286,10 @@ static int tabla_codec_enable_adc2(struct snd_soc_dapm_widget *w,
 
 	pr_debug("%s %d\n", __func__, event);
 	switch (event) {
-	case SND_SOC_DAPM_PRE_PMU:
-		snd_soc_update_bits(codec, TABLA_A_TX_1_2_TEST_CTL, 0x08, 0x08);
+	case SND_SOC_DAPM_POST_PMU:
+		snd_soc_update_bits(codec, TABLA_A_TX_1_2_TEST_CTL, 0x40, 0x40);
 		usleep_range(1000, 1000);
-		snd_soc_update_bits(codec, TABLA_A_TX_1_2_TEST_CTL, 0x08, 0x00);
+		snd_soc_update_bits(codec, TABLA_A_TX_1_2_TEST_CTL, 0x40, 0x00);
 		usleep_range(1000, 1000);
 		break;
 	}
@@ -368,6 +398,25 @@ static int tabla_codec_enable_micbias2(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+
+static int tabla_codec_enable_dec_clock(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+
+	pr_debug("%s %d\n", __func__, event);
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_OTHR_CTL, 0x4, 0x4);
+		break;
+	case SND_SOC_DAPM_POST_PMD:
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_OTHR_CTL, 0x4, 0x0);
+		break;
+	}
+	return 0;
+}
+
+
 static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 	/*RX stuff */
 	SND_SOC_DAPM_OUTPUT("EAR"),
@@ -432,42 +481,62 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 		tabla_codec_enable_micbias1, SND_SOC_DAPM_PRE_PMU |
 		SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_ADC_E("ADC1", NULL, TABLA_A_TX_1_2_EN, 7, 0,
-		tabla_codec_enable_adc1, SND_SOC_DAPM_PRE_PMU),
+		tabla_codec_enable_adc1, SND_SOC_DAPM_POST_PMU),
 
 	SND_SOC_DAPM_ADC_E("ADC BLOCK", NULL, TABLA_A_CDC_CLK_OTHR_CTL, 1, 0,
 		tabla_codec_enable_adc_block, SND_SOC_DAPM_PRE_PMU |
 		SND_SOC_DAPM_POST_PMD),
 
-	SND_SOC_DAPM_MUX("DEC6 MUX", TABLA_A_CDC_CLK_OTHR_CTL, 2, 0, &dec6_mux),
-	SND_SOC_DAPM_MUX("SLIM TX6 MUX", TABLA_A_TX_1_2_EN, 7, 0, &sb_tx6_mux),
-	SND_SOC_DAPM_AIF_OUT("SLIM TX6", "AIF1 Capture", NULL,
-		TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL, 5, 0),
+	SND_SOC_DAPM_MUX_E("DEC1 MUX", TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL, 0, 0,
+		&dec1_mux, tabla_codec_enable_dec_clock,
+		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+
+	SND_SOC_DAPM_MUX_E("DEC5 MUX", TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL, 4, 0,
+		&dec5_mux, tabla_codec_enable_dec_clock,
+		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+
+	SND_SOC_DAPM_MUX_E("DEC6 MUX", TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL, 5, 0,
+		&dec6_mux, tabla_codec_enable_dec_clock,
+		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+
+	SND_SOC_DAPM_MUX_E("DEC7 MUX", TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL, 6, 0,
+		&dec7_mux, tabla_codec_enable_dec_clock,
+		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 
 	SND_SOC_DAPM_INPUT("AMIC2"),
 	SND_SOC_DAPM_MICBIAS_E("MIC BIAS2", TABLA_A_MICB_2_CTL, 7, 0,
 		tabla_codec_enable_micbias2, SND_SOC_DAPM_PRE_PMU |
 		SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_ADC_E("ADC2", NULL, TABLA_A_TX_1_2_EN, 3, 0,
-		tabla_codec_enable_adc2, SND_SOC_DAPM_PRE_PMU),
+		tabla_codec_enable_adc2, SND_SOC_DAPM_POST_PMU),
 
-	SND_SOC_DAPM_MUX("DEC5 MUX", TABLA_A_CDC_CLK_OTHR_CTL, 2, 0, &dec5_mux),
-	SND_SOC_DAPM_MUX("SLIM TX5 MUX", TABLA_A_TX_1_2_EN, 3, 0, &sb_tx5_mux),
-	SND_SOC_DAPM_AIF_OUT("SLIM TX5", "AIF1 Capture", NULL,
-		TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL, 4, 0),
+	SND_SOC_DAPM_MUX("SLIM TX1 MUX", SND_SOC_NOPM, 0, 0, &sb_tx1_mux),
+	SND_SOC_DAPM_AIF_OUT("SLIM TX1", "AIF1 Capture", NULL, SND_SOC_NOPM,
+			0, 0),
+
+	SND_SOC_DAPM_MUX("SLIM TX5 MUX", SND_SOC_NOPM, 0, 0, &sb_tx5_mux),
+	SND_SOC_DAPM_AIF_OUT("SLIM TX5", "AIF1 Capture", NULL, SND_SOC_NOPM,
+			4, 0),
+
+	SND_SOC_DAPM_MUX("SLIM TX6 MUX", SND_SOC_NOPM, 0, 0, &sb_tx6_mux),
+	SND_SOC_DAPM_AIF_OUT("SLIM TX6", "AIF1 Capture", NULL, SND_SOC_NOPM,
+			5, 0),
+
+	SND_SOC_DAPM_MUX("SLIM TX7 MUX", SND_SOC_NOPM, 0, 0, &sb_tx7_mux),
+	SND_SOC_DAPM_AIF_OUT("SLIM TX7", "AIF1 Capture", NULL, SND_SOC_NOPM,
+			0, 0),
+
+	SND_SOC_DAPM_MUX("SLIM TX8 MUX", SND_SOC_NOPM, 0, 0, &sb_tx8_mux),
+	SND_SOC_DAPM_AIF_OUT("SLIM TX8", "AIF1 Capture", NULL, SND_SOC_NOPM,
+			0, 0),
 
 	/* Digital Mic */
 	SND_SOC_DAPM_INPUT("DMIC OUT"),
 	SND_SOC_DAPM_MIC("DMIC1", &tabla_codec_enable_dmic1),
-	SND_SOC_DAPM_MUX("DEC1 MUX", SND_SOC_NOPM, 0, 0, &dec1_mux),
-	SND_SOC_DAPM_MUX("SLIM TX1 MUX", SND_SOC_NOPM, 0, 0, &sb_tx1_mux),
-	SND_SOC_DAPM_AIF_OUT("SLIM TX1", "AIF1 Capture", NULL,
-		TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL, 0, 0),
-
 
 	/* Sidetone */
 	SND_SOC_DAPM_MUX("IIR1 INP1 MUX", SND_SOC_NOPM, 0, 0, &iir1_inp1_mux),
 	SND_SOC_DAPM_PGA("IIR1", TABLA_A_CDC_CLK_SD_CTL, 0, 0, NULL, 0),
-
 };
 
 static const struct snd_soc_dapm_route audio_map[] = {
@@ -477,10 +546,20 @@ static const struct snd_soc_dapm_route audio_map[] = {
 
 	{"SLIM TX1", NULL, "SLIM TX1 MUX"},
 	{"SLIM TX1 MUX", "DEC1", "DEC1 MUX"},
+
 	{"SLIM TX5", NULL, "SLIM TX5 MUX"},
 	{"SLIM TX5 MUX", "DEC5", "DEC5 MUX"},
+
 	{"SLIM TX6", NULL, "SLIM TX6 MUX"},
 	{"SLIM TX6 MUX", "DEC6", "DEC6 MUX"},
+
+	{"SLIM TX7", NULL, "SLIM TX7 MUX"},
+	{"SLIM TX7 MUX", "DEC5", "DEC5 MUX"},
+	{"SLIM TX7 MUX", "DEC6", "DEC6 MUX"},
+
+	{"SLIM TX8", NULL, "SLIM TX8 MUX"},
+	{"SLIM TX8 MUX", "DEC5", "DEC5 MUX"},
+	{"SLIM TX8 MUX", "DEC6", "DEC6 MUX"},
 
 	/* Earpiece (RX MIX1) */
 	{"EAR", NULL, "EAR PA"},
