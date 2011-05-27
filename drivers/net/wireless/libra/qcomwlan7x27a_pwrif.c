@@ -44,7 +44,7 @@ static struct wlan_vreg_info vreg_info[] = {
 	{"msme1", 1800, 2, 0, NULL},
 	{"wlan_tcx0", 1800, 53, 0, NULL},
 	{"wlan4", 1200, 57, 0, NULL},
-	{"wlan2", 1300, 45, 0, NULL},
+	{"wlan2", 1350, 45, 0, NULL},
 	{"wlan3", 1200, 51, 0, NULL} };
 
 int chip_power_qrf6285(bool on)
