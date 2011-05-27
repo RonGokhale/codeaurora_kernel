@@ -533,8 +533,7 @@ static int msm_hsl_startup(struct uart_port *port)
 {
 	struct msm_hsl_port *msm_hsl_port = UART_TO_MSM(port);
 	struct platform_device *pdev = to_platform_device(port->dev);
-	const struct msm_serial_hslite_platform_data *pdata =
-					pdev->dev.platform_data;
+	struct msm_serial_hslite_platform_data *pdata = pdev->dev.platform_data;
 	unsigned int data, rfr_level;
 	int ret;
 	unsigned long flags;
@@ -636,8 +635,7 @@ static void msm_hsl_shutdown(struct uart_port *port)
 {
 	struct msm_hsl_port *msm_hsl_port = UART_TO_MSM(port);
 	struct platform_device *pdev = to_platform_device(port->dev);
-	const struct msm_serial_hslite_platform_data *pdata =
-					pdev->dev.platform_data;
+	struct msm_serial_hslite_platform_data *pdata = pdev->dev.platform_data;
 
 	clk_en(port, 1);
 
@@ -1050,7 +1048,7 @@ static struct uart_driver msm_hsl_uart_driver = {
 	.cons = MSM_HSL_CONSOLE,
 };
 
-static int msm_serial_hsl_probe(struct platform_device *pdev)
+static int __init msm_serial_hsl_probe(struct platform_device *pdev)
 {
 	struct msm_hsl_port *msm_hsl_port;
 	struct resource *uart_resource;
@@ -1117,18 +1115,10 @@ static int msm_serial_hsl_probe(struct platform_device *pdev)
 static int __devexit msm_serial_hsl_remove(struct platform_device *pdev)
 {
 	struct msm_hsl_port *msm_hsl_port = platform_get_drvdata(pdev);
-	struct uart_port *port;
 
-	port = get_port_from_line(pdev->id);
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 
-	device_set_wakeup_capable(&pdev->dev, 0);
-	platform_set_drvdata(pdev, NULL);
-	uart_remove_one_port(&msm_hsl_uart_driver, port);
-
-	clk_put(msm_hsl_port->pclk);
-	clk_set_rate(msm_hsl_port->clk, 0);
 	clk_put(msm_hsl_port->clk);
 
 	return 0;
@@ -1205,7 +1195,6 @@ static struct dev_pm_ops msm_hsl_dev_pm_ops = {
 };
 
 static struct platform_driver msm_hsl_platform_driver = {
-	.probe	= msm_serial_hsl_probe,
 	.remove = msm_serial_hsl_remove,
 	.driver = {
 		.name = "msm_serial_hsl",
@@ -1214,7 +1203,7 @@ static struct platform_driver msm_hsl_platform_driver = {
 	},
 };
 
-static int msm_serial_hsl_init(void)
+static int __init msm_serial_hsl_init(void)
 {
 	int ret;
 
@@ -1222,7 +1211,8 @@ static int msm_serial_hsl_init(void)
 	if (unlikely(ret))
 		return ret;
 
-	ret = platform_driver_register(&msm_hsl_platform_driver);
+	ret = platform_driver_probe(&msm_hsl_platform_driver,
+				    msm_serial_hsl_probe);
 	if (unlikely(ret))
 		uart_unregister_driver(&msm_hsl_uart_driver);
 
@@ -1231,7 +1221,7 @@ static int msm_serial_hsl_init(void)
 	return ret;
 }
 
-static void msm_serial_hsl_exit(void)
+static void __exit msm_serial_hsl_exit(void)
 {
 #ifdef CONFIG_SERIAL_MSM_HSL_CONSOLE
 	unregister_console(&msm_hsl_console);
