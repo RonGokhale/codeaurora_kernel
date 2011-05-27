@@ -44,6 +44,7 @@
 
 #define L2CAP_TX_WIN_MAX_ENHANCED	0x3f
 #define L2CAP_TX_WIN_MAX_EXTENDED	0x3fff
+#define L2CAP_LE_DEFAULT_MTU		23
 
 #define L2CAP_CONN_TIMEOUT	(40000) /* 40 seconds */
 #define L2CAP_INFO_TIMEOUT	(4000)  /*  4 seconds */
@@ -103,6 +104,8 @@ struct l2cap_conninfo {
 #define L2CAP_MOVE_CHAN_RSP		0x0f
 #define L2CAP_MOVE_CHAN_CFM		0x10
 #define L2CAP_MOVE_CHAN_CFM_RSP	0x11
+#define L2CAP_CONN_PARAM_UPDATE_REQ	0x12
+#define L2CAP_CONN_PARAM_UPDATE_RSP	0x13
 
 /* L2CAP feature mask */
 #define L2CAP_FEAT_FLOWCTL	0x00000001
@@ -205,6 +208,9 @@ struct l2cap_conn_rsp {
 #define L2CAP_CID_SIGNALING	0x0001
 #define L2CAP_CID_CONN_LESS	0x0002
 #define L2CAP_CID_A2MP      0x0003
+#define L2CAP_CID_LE_DATA	0x0004
+#define L2CAP_CID_LE_SIGNALING	0x0005
+#define L2CAP_CID_SMP		0x0006
 #define L2CAP_CID_DYN_START	0x0040
 #define L2CAP_CID_DYN_END	0xffff
 
@@ -398,11 +404,25 @@ struct l2cap_logical_link_work {
 #define L2CAP_IR_SUCCESS    0x0000
 #define L2CAP_IR_NOTSUPP    0x0001
 
+struct l2cap_conn_param_update_req {
+	__le16      min;
+	__le16      max;
+	__le16      latency;
+	__le16      to_multiplier;
+} __packed;
+
+struct l2cap_conn_param_update_rsp {
+	__le16      result;
+} __packed;
+
+/* Connection Parameters result */
+#define L2CAP_CONN_PARAM_ACCEPTED	0x0000
+#define L2CAP_CONN_PARAM_REJECTED	0x0001
+
 /* ----- L2CAP connections ----- */
 struct l2cap_chan_list {
 	struct sock	*head;
 	rwlock_t	lock;
-	long		num;
 };
 
 struct l2cap_conn {
@@ -426,10 +446,18 @@ struct l2cap_conn {
 
 	struct sk_buff *rx_skb;
 	__u32		rx_len;
-	__u8		rx_ident;
 	__u8		tx_ident;
 
 	__u8		disc_reason;
+
+	__u8		preq[7]; /* SMP Pairing Request */
+	__u8		prsp[7]; /* SMP Pairing Response */
+	__u8		prnd[16]; /* SMP Pairing Random */
+	__u8		pcnf[16]; /* SMP Pairing Confirm */
+	__u8		tk[16]; /* SMP Temporary Key */
+	__u8		smp_key_size;
+
+	struct timer_list security_timer;
 
 	struct l2cap_chan_list chan_list;
 };
@@ -625,7 +653,47 @@ struct l2cap_pinfo {
 				(pi)->tx_win_max + 1 - (y) + (x))
 #define __next_seq(x, pi) ((x + 1) & ((pi)->tx_win_max))
 
-void l2cap_load(void);
+extern int disable_ertm;
+extern const struct proto_ops l2cap_sock_ops;
+extern struct bt_sock_list l2cap_sk_list;
+
+int l2cap_init_sockets(void);
+void l2cap_cleanup_sockets(void);
+
+u8 l2cap_get_ident(struct l2cap_conn *conn);
+void l2cap_send_cmd(struct l2cap_conn *conn, u8 ident, u8 code, u16 len, void *data);
+int l2cap_build_conf_req(struct sock *sk, void *data);
+int __l2cap_wait_ack(struct sock *sk);
+
+struct sk_buff *l2cap_create_connless_pdu(struct sock *sk, struct msghdr *msg, size_t len);
+struct sk_buff *l2cap_create_basic_pdu(struct sock *sk, struct msghdr *msg, size_t len);
+struct sk_buff *l2cap_create_iframe_pdu(struct sock *sk, struct msghdr *msg,
+				size_t len, u16 sdulen, int reseg);
+int l2cap_segment_sdu(struct sock *sk, struct sk_buff_head* seg_queue,
+			struct msghdr *msg, size_t len, int reseg);
+int l2cap_resegment_queue(struct sock *sk, struct sk_buff_head *queue);
+void l2cap_do_send(struct sock *sk, struct sk_buff *skb);
+void l2cap_streaming_send(struct sock *sk);
+int l2cap_ertm_send(struct sock *sk);
+int l2cap_strm_tx(struct sock *sk, struct sk_buff_head *skbs);
+int l2cap_ertm_tx(struct sock *sk, struct bt_l2cap_control *control,
+			struct sk_buff_head *skbs, u8 event);
+
+void l2cap_sock_set_timer(struct sock *sk, long timeout);
+void l2cap_sock_clear_timer(struct sock *sk);
+void __l2cap_sock_close(struct sock *sk, int reason);
+void l2cap_sock_kill(struct sock *sk);
+void l2cap_sock_init(struct sock *sk, struct sock *parent);
+struct sock *l2cap_sock_alloc(struct net *net, struct socket *sock,
+							int proto, gfp_t prio);
+void l2cap_send_disconn_req(struct l2cap_conn *conn, struct sock *sk, int err);
+void l2cap_chan_del(struct sock *sk, int err);
+int l2cap_do_connect(struct sock *sk);
+int l2cap_data_channel(struct sock *sk, struct sk_buff *skb);
+void l2cap_amp_move_init(struct sock *sk);
+void l2cap_ertm_destruct(struct sock *sk);
+void l2cap_ertm_shutdown(struct sock *sk);
+void l2cap_ertm_recv_done(struct sock *sk);
 
 void l2cap_fixed_channel_config(struct sock *sk, struct l2cap_options *opt,
 				u16 cid, u16 mps);
