@@ -602,6 +602,7 @@ static u32 ddl_decoder_frame_run_callback(struct ddl_client_context *ddl)
 		if (rsl_chg) {
 			DDL_MSG_ERROR("DEC_RECONFIG_NOT_SUPPORTED");
 			ddl_client_fatal_cb(ddl);
+			ret_status = true;
 		} else {
 			if ((VCD_FRAME_FLAG_EOS &
 				ddl->input_frame.vcd_frm.flags)) {
