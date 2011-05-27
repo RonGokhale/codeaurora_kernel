@@ -38,8 +38,8 @@
 #define MSG_OUTPUT2   7
 #define MSG_STATS_AF  8
 #define MSG_STATS_WE  9
-#define MSG_OUTPUT_S  10
-#define MSG_OUTPUT_T  11
+#define MSG_OUTPUT_S  23
+#define MSG_OUTPUT_T  22
 #define MSG_SOF       15
 
 #define VFE_ADSP_EVENT 0xFFFF
