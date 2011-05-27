@@ -452,6 +452,12 @@ config MACH_MSM8960_MTP
 	help
 	  Support for the Qualcomm MSM8960 MTP device.
 
+config MACH_MSM8960_FLUID
+	depends on ARCH_MSM8960
+	bool "MSM8960 FLUID"
+	help
+	  Support for the Qualcomm MSM8960 FLUID device.
+
 config MACH_MSM8X60_QT
 	depends on ARCH_MSM8X60
 	default n
