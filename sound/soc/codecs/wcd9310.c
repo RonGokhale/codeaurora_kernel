@@ -15,6 +15,7 @@
 #include <linux/platform_device.h>
 #include <linux/mfd/wcd9310/core.h>
 #include <linux/mfd/wcd9310/registers.h>
+#include <sound/jack.h>
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include <sound/tlv.h>
@@ -33,6 +34,11 @@ struct tabla_priv { /* member undecided */
 	u32 ref_cnt;
 	enum tabla_bandgap_type bandgap_type;
 	bool clock_active;
+	bool config_mode_active;
+
+	struct tabla_mbhc_calibration *calibration;
+
+	struct snd_soc_jack *jack;
 };
 
 static int tabla_codec_enable_charge_pump(struct snd_soc_dapm_widget *w,
@@ -788,6 +794,184 @@ static struct snd_soc_dai_driver tabla_dai[] = {
 	},
 };
 
+static int tabla_codec_enable_config_mode(struct snd_soc_codec *codec,
+	int enable)
+{
+	struct tabla_priv *tabla = snd_soc_codec_get_drvdata(codec);
+
+	if (enable) {
+		snd_soc_update_bits(codec, TABLA_A_CONFIG_MODE_FREQ, 0x10, 0);
+		snd_soc_write(codec, TABLA_A_BIAS_CONFIG_MODE_BG_CTL, 0x17);
+		usleep_range(5, 5);
+		snd_soc_update_bits(codec, TABLA_A_CONFIG_MODE_FREQ, 0x80,
+			0x80);
+		snd_soc_update_bits(codec, TABLA_A_CONFIG_MODE_TEST, 0x80,
+			0x80);
+		usleep_range(10, 10);
+		snd_soc_update_bits(codec, TABLA_A_CONFIG_MODE_TEST, 0x80, 0);
+		usleep_range(20, 20);
+		snd_soc_update_bits(codec, TABLA_A_CLK_BUFF_EN1, 0x80, 0x80);
+	} else {
+		snd_soc_update_bits(codec, TABLA_A_BIAS_CONFIG_MODE_BG_CTL, 0x1,
+			0);
+		snd_soc_update_bits(codec, TABLA_A_CONFIG_MODE_FREQ, 0x80, 0);
+	}
+	tabla->config_mode_active = enable ? true : false;
+
+	return 0;
+}
+
+static int tabla_codec_enable_hs_detect(struct snd_soc_codec *codec,
+		int insertion)
+{
+	struct tabla_priv *tabla = snd_soc_codec_get_drvdata(codec);
+	struct tabla_mbhc_calibration *calibration = tabla->calibration;
+	int central_bias_enabled = 0;
+	int micbias_int_reg, micbias_ctl_reg, micbias_mbhc_reg;
+
+	if (!calibration) {
+		pr_err("Error, no tabla calibration\n");
+		return -EINVAL;
+	}
+
+	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_INT_CTL, 0x1, 0);
+
+	if (insertion)
+		snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_INT_CTL, 0x2, 0);
+	else
+		snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_INT_CTL, 0x2, 0x2);
+
+	if (snd_soc_read(codec, TABLA_A_CDC_MBHC_B1_CTL) & 0x4) {
+		if (!(tabla->clock_active || tabla->config_mode_active)) {
+			tabla_codec_enable_config_mode(codec, 1);
+			snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_B1_CTL,
+				0x04, 0);
+			usleep_range(calibration->shutdown_plug_removal,
+				calibration->shutdown_plug_removal);
+			tabla_codec_enable_config_mode(codec, 0);
+		} else
+			snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_B1_CTL,
+				0x04, 0);
+	}
+
+	snd_soc_update_bits(codec, TABLA_A_MBHC_HPH, 0xC,
+		calibration->hph_current << 2);
+
+	snd_soc_update_bits(codec, TABLA_A_MBHC_HPH, 0x13, 0x13);
+
+	switch (calibration->bias) {
+	case TABLA_MICBIAS1:
+		micbias_mbhc_reg = TABLA_A_MICB_1_MBHC;
+		micbias_int_reg = TABLA_A_MICB_1_INT_RBIAS;
+		micbias_ctl_reg = TABLA_A_MICB_1_CTL;
+		break;
+	case TABLA_MICBIAS2:
+		micbias_mbhc_reg = TABLA_A_MICB_2_MBHC;
+		micbias_int_reg = TABLA_A_MICB_2_INT_RBIAS;
+		micbias_ctl_reg = TABLA_A_MICB_2_CTL;
+		break;
+	case TABLA_MICBIAS3:
+		micbias_mbhc_reg = TABLA_A_MICB_3_MBHC;
+		micbias_int_reg = TABLA_A_MICB_3_INT_RBIAS;
+		micbias_ctl_reg = TABLA_A_MICB_3_CTL;
+		break;
+	case TABLA_MICBIAS4:
+		micbias_mbhc_reg = TABLA_A_MICB_4_MBHC;
+		micbias_int_reg = TABLA_A_MICB_4_INT_RBIAS;
+		micbias_ctl_reg = TABLA_A_MICB_4_CTL;
+		break;
+	default:
+		pr_err("Error, invalid mic bias line\n");
+		return -EINVAL;
+	}
+	snd_soc_update_bits(codec, micbias_int_reg, 0x80, 0);
+	snd_soc_update_bits(codec, micbias_ctl_reg, 0x1, 0);
+
+	/* If central bandgap disabled */
+	if (!(snd_soc_read(codec, TABLA_A_PIN_CTL_OE1) & 1)) {
+		snd_soc_update_bits(codec, TABLA_A_PIN_CTL_OE1, 0x3, 0x3);
+		usleep_range(calibration->bg_fast_settle,
+			calibration->bg_fast_settle);
+		central_bias_enabled = 1;
+	}
+
+	/* If LDO_H disabled */
+	if (snd_soc_read(codec, TABLA_A_PIN_CTL_OE0) & 0x80) {
+		snd_soc_update_bits(codec, TABLA_A_PIN_CTL_OE0, 0x10, 0);
+		snd_soc_update_bits(codec, TABLA_A_PIN_CTL_OE0, 0x80, 0x80);
+		usleep_range(calibration->tldoh, calibration->tldoh);
+		snd_soc_update_bits(codec, TABLA_A_PIN_CTL_OE0, 0x80, 0);
+
+		if (central_bias_enabled)
+			snd_soc_update_bits(codec, TABLA_A_PIN_CTL_OE1, 0x1, 0);
+	}
+	snd_soc_update_bits(codec, micbias_mbhc_reg, 0x60,
+		calibration->mic_current << 5);
+	snd_soc_update_bits(codec, micbias_mbhc_reg, 0x80, 0x80);
+	usleep_range(calibration->mic_pid, calibration->mic_pid);
+	snd_soc_update_bits(codec, micbias_mbhc_reg, 0x10, 0x10);
+
+	snd_soc_update_bits(codec, TABLA_A_MICB_4_MBHC, 0x3, calibration->bias);
+
+	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_INT_CTL, 0x1, 0x1);
+	tabla_enable_irq(codec->control_data, TABLA_IRQ_MBHC_INSERTION);
+	return 0;
+}
+
+int tabla_hs_detect(struct snd_soc_codec *codec, struct snd_soc_jack *jack,
+	struct tabla_mbhc_calibration *calibration)
+{
+	struct tabla_priv *tabla = snd_soc_codec_get_drvdata(codec);
+	tabla->jack = jack;
+	tabla->calibration = calibration;
+
+	return tabla_codec_enable_hs_detect(codec, 1);
+}
+EXPORT_SYMBOL_GPL(tabla_hs_detect);
+
+static irqreturn_t tabla_hs_insert_irq(int irq, void *data)
+{
+	struct tabla_priv *priv = data;
+	struct snd_soc_codec *codec = priv->codec;
+	int report = 0;
+
+	if (priv->jack) {
+		if (!(snd_soc_read(codec, TABLA_A_CDC_MBHC_INT_CTL) & 0x40)) {
+			report = SND_JACK_HEADSET;
+			/* TODO distinguish between headset and headphone */
+			snd_soc_jack_report(priv->jack, report,
+				SND_JACK_HEADSET);
+		}
+	}
+	/* TODO Go into headset removal detection mode */
+
+	return IRQ_HANDLED;
+}
+static irqreturn_t tabla_hs_remove_irq(int irq, void *data)
+{
+	struct tabla_priv *priv = data;
+	struct snd_soc_codec *codec = priv->codec;
+
+	if (priv->jack) {
+		snd_soc_jack_report(priv->jack, 0,
+			SND_JACK_HEADSET);
+	}
+
+	/* Go into headset detection mode */
+	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_B1_CTL, 0x4, 0);
+
+	if (!priv->calibration) {
+		pr_err("Error, no tabla MBHC calibration\n");
+		return IRQ_NONE;
+	}
+	usleep_range(priv->calibration->shutdown_plug_removal,
+		priv->calibration->shutdown_plug_removal);
+
+	tabla_codec_enable_hs_detect(codec, 1);
+
+	return IRQ_HANDLED;
+}
+
 static int tabla_codec_probe(struct snd_soc_codec *codec)
 {
 	struct tabla *control;
@@ -810,6 +994,7 @@ static int tabla_codec_probe(struct snd_soc_codec *codec)
 	tabla->ref_cnt = 0;
 	tabla->bandgap_type = TABLA_BANDGAP_OFF;
 	tabla->clock_active = false;
+	tabla->config_mode_active = false;
 	tabla->codec = codec;
 
 	/* Initialize gain registers to use register gain */
@@ -850,11 +1035,36 @@ static int tabla_codec_probe(struct snd_soc_codec *codec)
 	snd_soc_dapm_add_routes(dapm, audio_map, ARRAY_SIZE(audio_map));
 	snd_soc_dapm_sync(dapm);
 
+	ret = tabla_request_irq(codec->control_data, TABLA_IRQ_MBHC_INSERTION,
+		tabla_hs_insert_irq, "Headset insert detect", tabla);
+	if (ret) {
+		pr_err("%s: Failed to request irq %d\n", __func__,
+			TABLA_IRQ_MBHC_INSERTION);
+		goto err_insert_irq;
+	}
+	ret = tabla_request_irq(codec->control_data, TABLA_IRQ_MBHC_REMOVAL,
+		tabla_hs_remove_irq, "Headset remove detect", tabla);
+	if (ret) {
+		pr_err("%s: Failed to request irq %d\n", __func__,
+			TABLA_IRQ_MBHC_REMOVAL);
+		goto err_remove_irq;
+	}
+	tabla_disable_irq(codec->control_data, TABLA_IRQ_MBHC_INSERTION);
+	tabla_disable_irq(codec->control_data, TABLA_IRQ_MBHC_REMOVAL);
+
+	return ret;
+
+err_remove_irq:
+	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_INSERTION, tabla);
+err_insert_irq:
+	kfree(tabla);
 	return ret;
 }
 static int tabla_codec_remove(struct snd_soc_codec *codec)
 {
 	struct tabla_priv *tabla = snd_soc_codec_get_drvdata(codec);
+	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_REMOVAL, tabla);
+	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_INSERTION, tabla);
 	kfree(tabla);
 	return 0;
 }
