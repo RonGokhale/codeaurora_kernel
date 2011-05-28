@@ -124,6 +124,7 @@ enum {
 #define HCI_PAIRING_TIMEOUT	(60000)	/* 60 seconds */
 #define HCI_IDLE_TIMEOUT	(6000)	/* 6 seconds */
 #define HCI_INIT_TIMEOUT	(10000)	/* 10 seconds */
+#define HCI_CMD_TIMEOUT		(1000)	/* 1 seconds */
 
 /* HCI data types */
 #define HCI_COMMAND_PKT		0x01
@@ -177,6 +178,8 @@ enum {
 #define SCO_LINK	0x00
 #define ACL_LINK	0x01
 #define ESCO_LINK	0x02
+/* Low Energy links do not have defined link type. Use invented one */
+#define LE_LINK		0x80
 
 /* LMP features */
 #define LMP_3SLOT	0x01
@@ -255,6 +258,8 @@ enum {
 #define HCI_BLOCK_BASED_FLOW_CTL_MODE	0x01
 
 /* -----  HCI Commands ---- */
+#define HCI_OP_NOP			0x0000
+
 #define HCI_OP_INQUIRY			0x0401
 struct hci_cp_inquiry {
 	__u8     lap[3];
@@ -426,6 +431,29 @@ struct hci_cp_io_capability_reply {
 	__u8     capability;
 	__u8     oob_data;
 	__u8     authentication;
+} __packed;
+
+#define HCI_OP_USER_CONFIRM_REPLY		0x042c
+struct hci_cp_user_confirm_reply {
+	bdaddr_t bdaddr;
+} __packed;
+struct hci_rp_user_confirm_reply {
+	__u8     status;
+	bdaddr_t bdaddr;
+} __packed;
+
+#define HCI_OP_USER_CONFIRM_NEG_REPLY	0x042d
+
+#define HCI_OP_REMOTE_OOB_DATA_REPLY	0x0430
+struct hci_cp_remote_oob_data_reply {
+	bdaddr_t bdaddr;
+	__u8     hash[16];
+	__u8     randomizer[16];
+} __packed;
+
+#define HCI_OP_REMOTE_OOB_DATA_NEG_REPLY	0x0433
+struct hci_cp_remote_oob_data_neg_reply {
+	bdaddr_t bdaddr;
 } __packed;
 
 #define HCI_OP_IO_CAPABILITY_NEG_REPLY	0x0434
@@ -611,15 +639,17 @@ struct hci_cp_delete_stored_link_key {
 	__u8     delete_all;
 } __packed;
 
+#define HCI_MAX_NAME_LENGTH		248
+
 #define HCI_OP_WRITE_LOCAL_NAME		0x0c13
 struct hci_cp_write_local_name {
-	__u8     name[248];
+	__u8     name[HCI_MAX_NAME_LENGTH];
 } __packed;
 
 #define HCI_OP_READ_LOCAL_NAME		0x0c14
 struct hci_rp_read_local_name {
 	__u8     status;
-	__u8     name[248];
+	__u8     name[HCI_MAX_NAME_LENGTH];
 } __packed;
 
 #define HCI_OP_WRITE_CA_TIMEOUT		0x0c16
@@ -676,6 +706,14 @@ struct hci_cp_host_buffer_size {
 
 #define HCI_OP_WRITE_INQUIRY_MODE	0x0c45
 
+#define HCI_MAX_EIR_LENGTH		240
+
+#define HCI_OP_WRITE_EIR		0x0c52
+struct hci_cp_write_eir {
+	uint8_t		fec;
+	uint8_t		data[HCI_MAX_EIR_LENGTH];
+} __packed;
+
 #define HCI_OP_READ_SSP_MODE		0x0c55
 struct hci_rp_read_ssp_mode {
 	__u8     status;
@@ -685,6 +723,13 @@ struct hci_rp_read_ssp_mode {
 #define HCI_OP_WRITE_SSP_MODE		0x0c56
 struct hci_cp_write_ssp_mode {
 	__u8     mode;
+} __packed;
+
+#define HCI_OP_READ_LOCAL_OOB_DATA		0x0c57
+struct hci_rp_read_local_oob_data {
+	__u8     status;
+	__u8     hash[16];
+	__u8     randomizer[16];
 } __packed;
 
 #define HCI_OP_READ_INQ_RSP_TX_POWER	0x0c58
@@ -850,6 +895,75 @@ struct hci_rp_write_remote_amp_assoc {
 	__u8     phy_handle;
 } __packed;
 
+#define HCI_OP_LE_SET_EVENT_MASK	0x2001
+struct hci_cp_le_set_event_mask {
+	__u8     mask[8];
+} __packed;
+
+#define HCI_OP_LE_READ_BUFFER_SIZE	0x2002
+struct hci_rp_le_read_buffer_size {
+	__u8     status;
+	__le16   le_mtu;
+	__u8     le_max_pkt;
+} __packed;
+
+#define HCI_OP_LE_SET_SCAN_ENABLE	0x200c
+
+#define HCI_OP_LE_CREATE_CONN		0x200d
+struct hci_cp_le_create_conn {
+	__le16   scan_interval;
+	__le16   scan_window;
+	__u8     filter_policy;
+	__u8     peer_addr_type;
+	bdaddr_t peer_addr;
+	__u8     own_address_type;
+	__le16   conn_interval_min;
+	__le16   conn_interval_max;
+	__le16   conn_latency;
+	__le16   supervision_timeout;
+	__le16   min_ce_len;
+	__le16   max_ce_len;
+} __packed;
+
+#define HCI_OP_LE_CREATE_CONN_CANCEL	0x200e
+
+#define HCI_OP_LE_CONN_UPDATE		0x2013
+struct hci_cp_le_conn_update {
+	__le16   handle;
+	__le16   conn_interval_min;
+	__le16   conn_interval_max;
+	__le16   conn_latency;
+	__le16   supervision_timeout;
+	__le16   min_ce_len;
+	__le16   max_ce_len;
+} __packed;
+
+#define HCI_OP_LE_START_ENC		0x2019
+struct hci_cp_le_start_enc {
+	__le16	handle;
+	__u8	rand[8];
+	__le16	ediv;
+	__u8	ltk[16];
+} __packed;
+
+#define HCI_OP_LE_LTK_REPLY		0x201a
+struct hci_cp_le_ltk_reply {
+	__le16	handle;
+	__u8	ltk[16];
+} __packed;
+struct hci_rp_le_ltk_reply {
+	__u8	status;
+	__le16	handle;
+} __packed;
+
+#define HCI_OP_LE_LTK_NEG_REPLY		0x201b
+struct hci_cp_le_ltk_neg_reply {
+	__le16	handle;
+} __packed;
+struct hci_rp_le_ltk_neg_reply {
+	__u8	status;
+	__le16	handle;
+} __packed;
 
 /* ---- HCI Events ---- */
 #define HCI_EV_INQUIRY_COMPLETE		0x01
@@ -897,7 +1011,7 @@ struct hci_ev_auth_complete {
 struct hci_ev_remote_name {
 	__u8     status;
 	bdaddr_t bdaddr;
-	__u8     name[248];
+	__u8     name[HCI_MAX_NAME_LENGTH];
 } __packed;
 
 #define HCI_EV_ENCRYPT_CHANGE		0x08
@@ -1099,6 +1213,17 @@ struct hci_ev_io_capa_reply {
 	__u8     authentication;
 } __packed;
 
+#define HCI_EV_USER_CONFIRM_REQUEST	0x33
+struct hci_ev_user_confirm_req {
+	bdaddr_t	bdaddr;
+	__le32		passkey;
+} __packed;
+
+#define HCI_EV_REMOTE_OOB_DATA_REQUEST	0x35
+struct hci_ev_remote_oob_data_request {
+	bdaddr_t bdaddr;
+} __packed;
+
 #define HCI_EV_SIMPLE_PAIR_COMPLETE	0x36
 struct hci_ev_simple_pair_complete {
 	__u8     status;
@@ -1109,6 +1234,50 @@ struct hci_ev_simple_pair_complete {
 struct hci_ev_remote_host_features {
 	bdaddr_t bdaddr;
 	__u8     features[8];
+} __packed;
+
+#define HCI_EV_LE_META			0x3e
+struct hci_ev_le_meta {
+	__u8     subevent;
+} __packed;
+
+/* Low energy meta events */
+#define HCI_EV_LE_CONN_COMPLETE		0x01
+struct hci_ev_le_conn_complete {
+	__u8     status;
+	__le16   handle;
+	__u8     role;
+	__u8     bdaddr_type;
+	bdaddr_t bdaddr;
+	__le16   interval;
+	__le16   latency;
+	__le16   supervision_timeout;
+	__u8     clk_accurancy;
+} __packed;
+
+#define ADV_IND		0x00
+#define ADV_DIRECT_IND	0x01
+#define ADV_SCAN_IND	0x02
+#define ADV_NONCONN_IND	0x03
+#define ADV_SCAN_RSP	0x04
+
+#define ADDR_LE_DEV_PUBLIC	0x00
+#define ADDR_LE_DEV_RANDOM	0x01
+
+#define HCI_EV_LE_ADVERTISING_REPORT	0x02
+struct hci_ev_le_advertising_info {
+	__u8	 evt_type;
+	__u8	 bdaddr_type;
+	bdaddr_t bdaddr;
+	__u8	 length;
+	__u8	 data[0];
+} __packed;
+
+#define HCI_EV_LE_LTK_REQ		0x05
+struct hci_ev_le_ltk_req {
+	__le16	handle;
+	__u8	random[8];
+	__le16	ediv;
 } __packed;
 
 #define HCI_EV_PHYS_LINK_COMPLETE	0x40
