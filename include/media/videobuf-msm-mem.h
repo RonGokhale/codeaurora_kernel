@@ -47,6 +47,7 @@ struct videobuf_contig_pmem {
 	uint32_t y_off;
 	uint32_t cbcr_off;
 	int buffer_type;
+	struct file *file;
 };
 
 void videobuf_queue_pmem_contig_init(struct videobuf_queue *q,

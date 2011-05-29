@@ -153,6 +153,7 @@ static const struct vm_operations_struct videobuf_vm_ops = {
  */
 static void videobuf_pmem_contig_user_put(struct videobuf_contig_pmem *mem)
 {
+	put_pmem_file(mem->file);
 	mem->is_userptr = 0;
 	mem->phyaddr = 0;
 	mem->size = 0;
@@ -171,74 +172,32 @@ static void videobuf_pmem_contig_user_put(struct videobuf_contig_pmem *mem)
 static int videobuf_pmem_contig_user_get(struct videobuf_contig_pmem *mem,
 					struct videobuf_buffer *vb)
 {
-	struct mm_struct *mm = current->mm;
-	struct vm_area_struct *vma;
-	unsigned int offset;
-	int ret;
-	unsigned long size;
+	unsigned long kvstart;
+	unsigned long len;
+	int rc;
 
-	offset = vb->baddr & ~PAGE_MASK;
-	mem->size = PAGE_ALIGN(vb->size + offset);
-	mem->is_userptr = 0;
-	ret = -EINVAL;
-
-	down_read(&mm->mmap_sem);
-
-	vma = find_vma(mm, vb->baddr);
-	D("vma = 0x%x\n", (u32)vma);
-	if (!vma)
-		goto out_up;
-
-	D("vma->vm_end = 0x%x\n", (u32)vma->vm_end);
-
-	if ((vb->baddr + mem->size) > vma->vm_end)
-		goto out_up;
-
-	mem->phyaddr = msm_mem_allocate(mem->size);
-
-	if (IS_ERR((void *)mem->phyaddr)) {
-		D("%s : pmem memory allocation failed\n", __func__);
-		goto out_up;
+	mem->size = PAGE_ALIGN(vb->size);
+	rc = get_pmem_file(vb->baddr, (unsigned long *)&mem->phyaddr,
+					&kvstart, &len, &mem->file);
+	if (rc < 0) {
+		pr_err("%s: get_pmem_file fd %lu error %d\n",
+					__func__, vb->baddr,
+							rc);
+		return rc;
 	}
+	mem->phyaddr += vb->boff;
+	mem->y_off = 0;
+	mem->cbcr_off = (vb->size)*2/3;
 
 	mem->vaddr = ioremap(mem->phyaddr, mem->size);
 	if (!mem->vaddr) {
-		D("%s: ioremap failed\n", __func__);
-		msm_mem_free(mem->phyaddr);
-		goto out_up;
+		pr_err("%s: ioremap failed\n", __func__);
+		put_pmem_file(mem->file);
+		return -ENOMEM;
 	}
 
-	D("memory aloc data physical addr  0x%x virtual addr %p (size %ld)\n",
-		mem->phyaddr, mem->vaddr, mem->size);
-
-	/* Try to remap memory */
-	size = vma->vm_end - vma->vm_start;
-	size = (size < mem->size) ? size : mem->size;
-
-	ret = remap_pfn_range(vma, vma->vm_start,
-		mem->phyaddr >> PAGE_SHIFT,
-		size, vma->vm_page_prot);
-	if (ret) {
-		D("mmap: remap failed with error %d. ", ret);
-		iounmap(mem->vaddr);
-		ret = msm_mem_free(mem->phyaddr);
-		if (ret < 0)
-			printk(KERN_ERR "%s: Invalid memory location\n",
-								__func__);
-		else {
-			mem->vaddr = NULL;
-			mem->phyaddr = 0;
-		}
-		goto out_up;
-	}
-
-	if (!ret)
-		mem->is_userptr = 1;
-
-out_up:
-	up_read(&current->mm->mmap_sem);
-
-	return ret;
+	mem->is_userptr = 1;
+	return rc;
 }
 
 static struct videobuf_buffer *__videobuf_alloc(size_t size)
@@ -269,6 +228,7 @@ static int __videobuf_iolock(struct videobuf_queue *q,
 				struct videobuf_buffer *vb,
 				struct v4l2_framebuffer *fbuf)
 {
+	int rc = 0;
 	struct videobuf_contig_pmem *mem = vb->priv;
 
 	BUG_ON(!mem);
@@ -281,53 +241,22 @@ static int __videobuf_iolock(struct videobuf_queue *q,
 		/* All handling should be done by __videobuf_mmap_mapper() */
 		if (!mem->vaddr) {
 			D("memory is not alloced/mmapped.\n");
-			return -EINVAL;
+			rc = -EINVAL;
 		}
 		break;
 	case V4L2_MEMORY_USERPTR:
 		D("%s memory method USERPTR\n", __func__);
 
 		/* handle pointer from user space */
-		if (vb->baddr)
-			return videobuf_pmem_contig_user_get(mem, vb);
-
-		/* allocate memory for the read() method */
-		mem->size = PAGE_ALIGN(vb->size);
-		/* need to check this one for userptr, may not work */
-		mem->phyaddr = msm_mem_allocate(mem->size);
-
-		if (IS_ERR((void *)mem->phyaddr)) {
-			D("%s : pmem memory allocation failed\n", __func__);
-			return -ENOMEM;
-		} else
-			D("%s : physical address : 0x%x\n", __func__,
-							mem->phyaddr);
-
-		mem->vaddr = ioremap(mem->phyaddr, mem->size);
-		if (!mem->vaddr) {
-			D("%s: ioremap failed\n", __func__);
-			msm_mem_free(mem->phyaddr);
-			return -ENOMEM;
-		}
-
-		D("physical addr 0x%x virtual addr %p (size %ld)\n",
-				mem->phyaddr, mem->vaddr, mem->size);
-
-		if (!mem->vaddr) {
-			D("ioremap %ld failed\n", mem->size);
-			return -ENOMEM;
-		}
-
-		D("kernel vaddr data is at %p (%ld)\n",
-				mem->vaddr, mem->size);
+		rc = videobuf_pmem_contig_user_get(mem, vb);
 		break;
 	case V4L2_MEMORY_OVERLAY:
 	default:
-		D("%s memory method OVERLAY/unknown\n", __func__);
-		return -EINVAL;
+		pr_err("%s memory method OVERLAY/unknown\n", __func__);
+		rc = -EINVAL;
 	}
 
-	return 0;
+	return rc;
 }
 
 static int __videobuf_mmap_mapper(struct videobuf_queue *q,
@@ -461,7 +390,6 @@ EXPORT_SYMBOL_GPL(videobuf_to_pmem_contig);
 int videobuf_pmem_contig_free(struct videobuf_queue *q,
 				struct videobuf_buffer *buf)
 {
-	int rc = 0;
 	struct videobuf_contig_pmem *mem = buf->priv;
 
 	/* mmapped memory can't be freed here, otherwise mmapped region
@@ -482,23 +410,10 @@ int videobuf_pmem_contig_free(struct videobuf_queue *q,
 	if (buf->baddr) {
 		videobuf_pmem_contig_user_put(mem);
 		return 0;
+	} else {
+		/* don't support read() method */
+		return -EINVAL;
 	}
-
-	/* read() method */
-	D("%s: Freed memory 0x%p\n", __func__,
-					(void *)mem->vaddr);
-	iounmap(mem->vaddr);
-
-	rc = msm_mem_free(mem->phyaddr);
-	if (rc < 0)
-		printk(KERN_ERR "%s: Invalid memory location\n", __func__);
-	else {
-		mem->vaddr = NULL;
-		mem->phyaddr = 0;
-		D("%s: Freed memory\n", __func__);
-	}
-
-	return rc;
 }
 EXPORT_SYMBOL_GPL(videobuf_pmem_contig_free);
 
