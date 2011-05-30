@@ -40,7 +40,7 @@ struct wlan_vreg_info {
 
 
 static struct wlan_vreg_info vreg_info[] = {
-	{"wlan", 3050, 15, 0, NULL},
+	{"bt", 3050, 56, 0, NULL},
 	{"msme1", 1800, 2, 0, NULL},
 	{"wlan_tcx0", 1800, 53, 0, NULL},
 	{"wlan4", 1200, 57, 0, NULL},
