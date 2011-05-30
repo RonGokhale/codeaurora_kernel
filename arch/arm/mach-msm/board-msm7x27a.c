@@ -1167,6 +1167,20 @@ static int msm_hsusb_ldo_enable(int enable)
 	return vreg_disable(vreg_3p3);
 }
 
+#ifndef CONFIG_USB_EHCI_MSM_72K
+static int msm_hsusb_pmic_notif_init(void (*callback)(int online), int init)
+{
+	int ret = 0;
+
+	if (init)
+		ret = msm_pm_app_rpc_init(callback);
+	else
+		msm_pm_app_rpc_deinit(callback);
+
+	return ret;
+}
+#endif
+
 static struct msm_otg_platform_data msm_otg_pdata = {
 #ifndef CONFIG_USB_EHCI_MSM_72K
 	.pmic_vbus_notif_init	 = msm_hsusb_pmic_notif_init,
