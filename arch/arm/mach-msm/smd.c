@@ -224,6 +224,22 @@ static inline void smd_write_intr(unsigned int val,
 	__raw_writel(val, addr);
 }
 
+#ifdef CONFIG_WCNSS
+static inline void wakeup_v1_riva(void)
+{
+	/*
+	 * workaround hack for RIVA v1 hardware bug
+	 * trigger GPIO 40 to wake up RIVA from power collaspe
+	 * not to be sent to customers
+	 */
+	__raw_writel(0x0, MSM_TLMM_BASE + 0x1284);
+	__raw_writel(0x2, MSM_TLMM_BASE + 0x1284);
+	/* end workaround */
+}
+#else
+static inline void wakeup_v1_riva(void) {}
+#endif
+
 static void notify_other_smsm(uint32_t smsm_entry, uint32_t notify_mask)
 {
 	/* older protocol don't use smsm_intr_mask,
@@ -252,8 +268,10 @@ static void notify_other_smsm(uint32_t smsm_entry, uint32_t notify_mask)
 
 	if (smsm_info.intr_mask &&
 	    (__raw_readl(SMSM_INTR_MASK_ADDR(smsm_entry, SMSM_WCNSS))
-				& notify_mask))
+				& notify_mask)) {
+		wakeup_v1_riva();
 		MSM_TRIG_A2WCNSS_SMSM_INT;
+	}
 
 	schedule_work(&smsm_cb_work);
 }
@@ -275,6 +293,7 @@ static inline void notify_dsps_smd(void)
 
 static inline void notify_wcnss_smd(void)
 {
+	wakeup_v1_riva();
 	MSM_TRIG_A2WCNSS_SMD_INT;
 }
 
