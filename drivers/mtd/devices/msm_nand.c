@@ -6746,15 +6746,15 @@ int msm_nand_scan(struct mtd_info *mtd, int maxchips)
 		|    (5 << 27)  /* 5 address cycles */
 		|    (0 << 30)  /* Do not read status before data */
 		|    (1 << 31)  /* Send read cmd */
-		/* 0 spare bytes for 16 bit nand or 1 spare bytes for 8 bit */
-		| ((wide_bus) ? (0 << 23) : (1 << 23));
+		/* 0 spare bytes for 16 bit nand or 1/2 spare bytes for 8 bit */
+		| (wide_bus ? 0 << 23 : (enable_bch_ecc ? 2 << 23 : 1 << 23));
 
 	chip->CFG1 = (0 <<  0)  /* Enable ecc */
 		|    (7 <<  2)  /* 8 recovery cycles */
 		|    (0 <<  5)  /* Allow CS deassertion */
 		/* Bad block marker location */
-		|  ((mtd_writesize - ((enable_bch_ecc ? (wide_bus ? 532 : 531)
-		: 528) * ((mtd_writesize >> 9) - 1)) + 1) <<  6)
+		|  ((mtd_writesize - ((enable_bch_ecc ? 532 : 528) * (
+					(mtd_writesize >> 9) - 1)) + 1) <<  6)
 		|    (0 << 16)  /* Bad block in user data area */
 		|    (2 << 17)  /* 6 cycle tWB/tRB */
 		| ((wide_bus) ? CFG1_WIDE_FLASH : 0); /* Wide flash bit */
