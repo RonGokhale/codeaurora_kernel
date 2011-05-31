@@ -42,6 +42,13 @@
 		} \
 	} while (0);
 
+#define IS_MASTER_VALID(mas) \
+	(((mas >= MSM_BUS_MASTER_FIRST) && (mas <= MSM_BUS_MASTER_LAST)) \
+	 ? 1 : 0)
+
+#define IS_SLAVE_VALID(slv) \
+	(((slv >= MSM_BUS_SLAVE_FIRST) && (slv <= MSM_BUS_SLAVE_LAST)) ? 1 : 0)
+
 static DEFINE_MUTEX(msm_bus_lock);
 
 /**
@@ -415,14 +422,20 @@ uint32_t msm_bus_scale_register_client(struct msm_bus_scale_pdata *pdata)
 		MSM_BUS_ERR("Can't register client!\n"
 				"Num of fabrics up: %d\n",
 				nfab);
-		goto err;
+		return 0;
+	}
+
+	if ((!pdata) || (pdata->usecase->num_paths == 0) || IS_ERR(pdata)) {
+		MSM_BUS_ERR("Cannot register client with null data\n");
+		return 0;
 	}
 
 	client = kzalloc(sizeof(struct msm_bus_client), GFP_KERNEL);
 	if (!client) {
 		MSM_BUS_ERR("Error allocating client\n");
-		goto err;
+		return 0;
 	}
+
 	mutex_lock(&msm_bus_lock);
 	client->pdata = pdata;
 	client->curr = -1;
@@ -437,6 +450,19 @@ uint32_t msm_bus_scale_register_client(struct msm_bus_scale_pdata *pdata)
 			MSM_BUS_ERR("Invalid Pnode ptr!\n");
 			continue;
 		}
+
+		if (!IS_MASTER_VALID(pdata->usecase->vectors[i].src)) {
+			MSM_BUS_ERR("Invalid Master ID %d in request!\n",
+				pdata->usecase->vectors[i].src);
+			goto err;
+		}
+
+		if (!IS_SLAVE_VALID(pdata->usecase->vectors[i].dst)) {
+			MSM_BUS_ERR("Invalid Slave ID %d in request!\n",
+				pdata->usecase->vectors[i].dst);
+			goto err;
+		}
+
 		src = msm_bus_board_get_iid(pdata->usecase->vectors[i].src);
 		dest = msm_bus_board_get_iid(pdata->usecase->vectors[i].dst);
 		srcfab = msm_bus_get_fabric_device(GET_FABID(src));
@@ -445,9 +471,6 @@ uint32_t msm_bus_scale_register_client(struct msm_bus_scale_pdata *pdata)
 		bus_for_each_dev(&msm_bus_type, NULL, NULL, clearvisitedflag);
 		if (pnode[i] < 0) {
 			MSM_BUS_ERR("Cannot register client now! Try again!\n");
-			kfree(client->src_pnode);
-			kfree(client);
-			mutex_unlock(&msm_bus_lock);
 			goto err;
 		}
 	}
@@ -458,6 +481,9 @@ uint32_t msm_bus_scale_register_client(struct msm_bus_scale_pdata *pdata)
 		pdata->usecase->num_paths);
 	return (uint32_t)(client);
 err:
+	kfree(client->src_pnode);
+	kfree(client);
+	mutex_unlock(&msm_bus_lock);
 	return 0;
 }
 EXPORT_SYMBOL(msm_bus_scale_register_client);
@@ -491,6 +517,14 @@ int msm_bus_scale_client_update_request(uint32_t cl, unsigned index)
 
 	curr = client->curr;
 	pdata = client->pdata;
+
+	if ((index < 0) || (index > pdata->num_usecases)) {
+		MSM_BUS_ERR("Client %u passed invalid index: %d\n",
+			(uint32_t)client, index);
+		ret = -ENXIO;
+		goto err;
+	}
+
 	MSM_BUS_DBG("cl: %u index: %d curr: %d"
 			" num_paths: %d\n", cl, index, client->curr,
 			client->pdata->usecase->num_paths);
