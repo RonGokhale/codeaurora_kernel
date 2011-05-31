@@ -25,6 +25,7 @@
 #include <linux/suspend.h>
 #include <linux/delay.h>
 #include <linux/debugfs.h>
+#include <linux/seq_file.h>
 #include <linux/uaccess.h>
 #include <linux/regulator/consumer.h>
 #include <linux/regulator/driver.h>
@@ -2740,6 +2741,53 @@ static int reg_debug_optimum_mode_set(void *data, u64 val)
 DEFINE_SIMPLE_ATTRIBUTE(reg_optimum_mode_fops, reg_debug_mode_get,
 			reg_debug_optimum_mode_set, "%llu\n");
 
+static int reg_debug_consumers_show(struct seq_file *m, void *v)
+{
+	struct regulator_dev *rdev = m->private;
+	struct regulator *reg;
+	char *supply_name;
+
+	if (!rdev) {
+		pr_err("regulator device missing");
+		return -EINVAL;
+	}
+
+	mutex_lock(&rdev->mutex);
+
+	/* Print a header if there are consumers. */
+	if (rdev->open_count)
+		seq_printf(m, "Device-Supply                    "
+			"EN    Min_uV   Max_uV  load_uA\n");
+
+	list_for_each_entry(reg, &rdev->consumer_list, list) {
+		if (reg->supply_name)
+			supply_name = reg->supply_name;
+		else
+			supply_name = "(null)-(null)";
+
+		seq_printf(m, "%-32s %c   %8d %8d %8d\n", supply_name,
+			(reg->enabled ? 'Y' : 'N'), reg->min_uV, reg->max_uV,
+			reg->uA_load);
+	}
+
+	mutex_unlock(&rdev->mutex);
+
+	return 0;
+}
+
+static int reg_debug_consumers_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, reg_debug_consumers_show, inode->i_private);
+}
+
+static const struct file_operations reg_consumers_fops = {
+	.owner		= THIS_MODULE,
+	.open		= reg_debug_consumers_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 static void rdev_init_debugfs(struct regulator_dev *rdev)
 {
 	struct dentry *err_ptr = NULL;
@@ -2764,6 +2812,8 @@ static void rdev_init_debugfs(struct regulator_dev *rdev)
 			   &rdev->use_count);
 	debugfs_create_u32("open_count", 0444, rdev->debugfs,
 			   &rdev->open_count);
+	debugfs_create_file("consumers", 0444, rdev->debugfs, rdev,
+			    &reg_consumers_fops);
 
 	reg = regulator_get(NULL, rdev->desc->name);
 	if (IS_ERR(reg) || reg == NULL) {
