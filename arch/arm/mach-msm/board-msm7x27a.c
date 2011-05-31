@@ -2827,7 +2827,7 @@ static void __init msm7x27a_init_ebi2(void)
 }
 
 #define ATMEL_TS_I2C_NAME "maXTouch"
-static struct vreg *vreg_l2;
+static struct vreg *vreg_l12;
 static struct vreg *vreg_s3;
 
 #define ATMEL_TS_GPIO_IRQ 82
@@ -2836,7 +2836,7 @@ static int atmel_ts_power_on(bool on)
 {
 	int rc;
 
-	rc = on ? vreg_enable(vreg_l2) : vreg_disable(vreg_l2);
+	rc = on ? vreg_enable(vreg_l12) : vreg_disable(vreg_l12);
 	if (rc) {
 		pr_err("%s: vreg %sable failed (%d)\n",
 		       __func__, on ? "en" : "dis", rc);
@@ -2847,7 +2847,7 @@ static int atmel_ts_power_on(bool on)
 	if (rc) {
 		pr_err("%s: vreg %sable failed (%d) for S3\n",
 		       __func__, on ? "en" : "dis", rc);
-		!on ? vreg_enable(vreg_l2) : vreg_disable(vreg_l2);
+		!on ? vreg_enable(vreg_l12) : vreg_disable(vreg_l12);
 		return rc;
 	}
 	/* vreg stabilization delay */
@@ -2859,13 +2859,13 @@ static int atmel_ts_platform_init(struct i2c_client *client)
 {
 	int rc;
 
-	vreg_l2 = vreg_get(NULL, "rfrx2");
-	if (IS_ERR(vreg_l2)) {
+	vreg_l12 = vreg_get(NULL, "gp2");
+	if (IS_ERR(vreg_l12)) {
 		pr_err("%s: vreg_get for L2 failed\n", __func__);
-		return PTR_ERR(vreg_l2);
+		return PTR_ERR(vreg_l12);
 	}
 
-	rc = vreg_set_level(vreg_l2, 2850);
+	rc = vreg_set_level(vreg_l12, 2850);
 	if (rc) {
 		pr_err("%s: vreg set level failed (%d) for l2\n",
 		       __func__, rc);
@@ -2920,7 +2920,7 @@ ts_gpio_tlmm_unconfig:
 vreg_put_s3:
 	vreg_put(vreg_s3);
 vreg_put_l2:
-	vreg_put(vreg_l2);
+	vreg_put(vreg_l12);
 	return rc;
 }
 
@@ -2932,8 +2932,8 @@ static int atmel_ts_platform_exit(struct i2c_client *client)
 				GPIO_CFG_2MA), GPIO_CFG_DISABLE);
 	vreg_disable(vreg_s3);
 	vreg_put(vreg_s3);
-	vreg_disable(vreg_l2);
-	vreg_put(vreg_l2);
+	vreg_disable(vreg_l12);
+	vreg_put(vreg_l12);
 	return 0;
 }
 
