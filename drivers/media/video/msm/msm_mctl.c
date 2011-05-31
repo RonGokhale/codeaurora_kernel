@@ -460,14 +460,17 @@ static int msm_mctl_notify(struct msm_cam_media_controller *p_mctl,
 {
 	int rc = -EINVAL;
 	struct msm_ispif_params ispif_params;
-
+	struct msm_camera_sensor_info *sinfo =
+			p_mctl->plat_dev->dev.platform_data;
+	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
+	uint8_t csid_core = camdev->csid_core;
 	switch (notification) {
 	case NOTIFY_CID_CHANGE:
 		/* reconfig the ISPIF*/
 		if (p_mctl->ispif_fns->ispif_config) {
 			ispif_params.intftype = PIX0;
 			ispif_params.cid_mask = 0x0001;
-			ispif_params.csid = 0x01;
+			ispif_params.csid = csid_core;
 
 			rc = p_mctl->ispif_fns->ispif_config(&ispif_params, 1);
 			if (rc < 0)
@@ -705,6 +708,7 @@ int msm_mctl_init_module(struct msm_cam_v4l2_device *pcam)
 	pmctl->mctl_vidbuf_init = msm_vidbuf_init;
 	pmctl->mctl_release = msm_mctl_release;
 
+	pmctl->plat_dev = pcam->pdev;
 	/* init sub device*/
 	v4l2_subdev_init(&(pmctl->mctl_sdev), &mctl_subdev_ops);
 	v4l2_set_subdevdata(&(pmctl->mctl_sdev), pmctl);

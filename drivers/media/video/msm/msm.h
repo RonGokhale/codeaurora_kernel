@@ -183,6 +183,7 @@ struct msm_cam_media_controller {
 	/*mandatory*/
 	struct v4l2_subdev *sensor_sdev; /* sensor sub device */
 	struct v4l2_subdev mctl_sdev;   /*  media control sub device */
+	struct platform_device *plat_dev;
 	/*optional*/
 	struct msm_isp_ops *isp_sdev;    /* isp sub device : camif/VFE */
 	struct v4l2_subdev *vpe_sdev;    /* vpe sub device : VPE */

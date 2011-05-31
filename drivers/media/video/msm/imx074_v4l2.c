@@ -862,6 +862,8 @@ static int32_t imx074_sensor_setting(int update_type, int rt)
 				imx074_csiphy_params.lane_cnt = 4;
 				imx074_csiphy_params.settle_cnt = 0x1B;
 				rc = msm_camio_csid_config(&imx074_csid_params);
+				v4l2_subdev_notify(imx074_ctrl->sensor_dev,
+						NOTIFY_CID_CHANGE, NULL);
 				dsb();
 				rc = msm_camio_csiphy_config
 					(&imx074_csiphy_params);
@@ -1120,12 +1122,6 @@ int imx074_sensor_open_init(const struct msm_camera_sensor_info *data)
 	int32_t rc = 0;
 	CDBG("%s: %d\n", __func__, __LINE__);
 	CDBG("Calling imx074_sensor_open_init\n");
-	imx074_ctrl = kzalloc(sizeof(struct imx074_ctrl_t), GFP_KERNEL);
-	if (!imx074_ctrl) {
-		CDBG("imx074_init failed!\n");
-		rc = -ENOMEM;
-		goto init_done;
-	}
 	imx074_ctrl->fps_divider = 1 * 0x00000400;
 	imx074_ctrl->pict_fps_divider = 1 * 0x00000400;
 	imx074_ctrl->fps = 30 * Q8;

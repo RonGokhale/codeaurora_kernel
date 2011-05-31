@@ -1196,10 +1196,6 @@ int msm_camio_csid_cid_lut(struct msm_camera_csid_lut_params *csid_lut_params)
 int msm_camio_csid_config(struct msm_camera_csid_params *csid_params)
 {
 	int rc = 0;
-	struct msm_ispif_params ispif_params;
-	struct msm_camera_sensor_info *sinfo = camio_dev->dev.platform_data;
-	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
-	uint8_t csid_core = camdev->csid_core;
 	uint32_t val = 0;
 	val = csid_params->lane_cnt - 1;
 	val |= csid_params->lane_assign << 2;
@@ -1215,13 +1211,6 @@ int msm_camio_csid_config(struct msm_camera_csid_params *csid_params)
 
 	msm_io_w(0xFFFFFFFF, csidbase + CSID_IRQ_MASK_ADDR);
 	msm_io_w(0xFFFFFFFF, csidbase + CSID_IRQ_CLEAR_CMD_ADDR);
-
-	ispif_params.intftype = PIX0;
-	ispif_params.cid_mask = 0x0001;
-	ispif_params.csid = csid_core;
-
-	msm_ispif_config(&ispif_params, 1);
-	msm_ispif_start_intf_transfer(&ispif_params);
 
 	msleep(20);
 	return rc;
