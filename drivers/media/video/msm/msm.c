@@ -1154,28 +1154,30 @@ static int msm_close(struct file *f)
 	types of buffers (mmap or userptr - it doesn't matter) */
 	rc = videobuf_mmap_free(&pcam_inst->vid_bufq);
 	if (rc  < 0)
-		D("%s: unable to free buffers\n", __func__);
+		pr_err("%s: unable to free buffers\n", __func__);
 
 	kfree(pcam_inst);
 	f->private_data = NULL;
 
-	if (!pcam->mctl.mctl_release) {
-		D("%s: media contoller has no release\n", __func__);
-		return -ENODEV;
-	}
-	/* Now we really have to release the camera */
-	D("%s: call mctl_open\n", __func__);
-	rc = pcam->mctl.mctl_release(&(pcam->mctl));
+	if (pcam->use_count == 0) {
+		if (pcam->mctl.mctl_release) {
+			rc = pcam->mctl.mctl_release(&(pcam->mctl));
+			if (rc < 0)
+				pr_err("mctl_release fails %d\n", rc);
+		}
 
-	v4l2_device_unregister_subdev(&pcam->mctl.isp_sdev->sd);
+		v4l2_device_unregister_subdev(&pcam->mctl.isp_sdev->sd);
 
-	rc = msm_cam_server_close_session(&g_server_dev, pcam);
-	rc = msm_send_close_server();
-	if (rc < 0) {
-		D("%s failed\n", __func__);
-		return rc;
+		rc = msm_cam_server_close_session(&g_server_dev, pcam);
+		if (rc < 0)
+			pr_err("msm_cam_server_close_session fails %d\n", rc);
+
+		rc = msm_send_close_server();
+		if (rc < 0)
+			pr_err("msm_send_close_server failed %d\n", rc);
+
+		dma_release_declared_memory(&pcam->pdev->dev);
 	}
-	dma_release_declared_memory(&pcam->pdev->dev);
 	mutex_unlock(&pcam->vid_lock);
 	return rc;
 }
