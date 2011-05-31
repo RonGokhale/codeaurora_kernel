@@ -56,6 +56,7 @@
 #define GSBIn_UART_APPS_NS_REG(n)		REG(0x29D4+(0x20*((n)-1)))
 #define LPASS_XO_SRC_CLK_CTL_REG		REG(0x2EC0)
 #define PDM_CLK_NS_REG				REG(0x2CC0)
+#define BB_PLL_ENA_Q6_SW_REG			REG(0x3500)
 #define BB_PLL_ENA_SC0_REG			REG(0x34C0)
 #define BB_PLL0_STATUS_REG			REG(0x30D8)
 #define BB_PLL5_STATUS_REG			REG(0x30F8)
@@ -160,11 +161,6 @@
 #define MDP_NS_REG				REG_MM(0x00D0)
 #define MISC_CC_REG				REG_MM(0x0058)
 #define MISC_CC2_REG				REG_MM(0x005C)
-#define MM_PLL0_CONFIG_REG			REG_MM(0x0310)
-#define MM_PLL0_L_VAL_REG			REG_MM(0x0304)
-#define MM_PLL0_M_VAL_REG			REG_MM(0x0308)
-#define MM_PLL0_MODE_REG			REG_MM(0x0300)
-#define MM_PLL0_N_VAL_REG			REG_MM(0x030C)
 #define MM_PLL1_MODE_REG			REG_MM(0x031C)
 #define ROT_CC_REG				REG_MM(0x00E0)
 #define ROT_NS_REG				REG_MM(0x00E8)
@@ -202,7 +198,6 @@
 #define LCC_PCM_MD_REG				REG_LPA(0x0058)
 #define LCC_PCM_NS_REG				REG_LPA(0x0054)
 #define LCC_PCM_STATUS_REG			REG_LPA(0x005C)
-#define LCC_PLL0_MODE_REG			REG_LPA(0x0000)
 #define LCC_PLL0_STATUS_REG			REG_LPA(0x0018)
 #define LCC_PRI_PLL_CLK_CTL_REG			REG_LPA(0x00C4)
 #define LCC_PXO_SRC_CLK_CTL_REG			REG_LPA(0x00B4)
@@ -3950,11 +3945,11 @@ static void __init rmwreg(uint32_t val, void *reg, uint32_t mask)
 
 static void __init reg_init(void)
 {
-	/* Enable PLL4 */
-	writel_relaxed(0x4, LCC_PLL0_MODE_REG);
-	udelay(10);
-	writel_relaxed(0x6, LCC_PLL0_MODE_REG);
-	writel_relaxed(0x7, LCC_PLL0_MODE_REG);
+	/* TODO: Remove once LPASS starts voting */
+	u32 reg;
+	reg = readl_relaxed(BB_PLL_ENA_Q6_SW_REG);
+	reg |= BIT(4);
+	writel_relaxed(reg, BB_PLL_ENA_Q6_SW_REG);
 
 	/* Setup LPASS toplevel muxes */
 	writel_relaxed(0x15, LPASS_XO_SRC_CLK_CTL_REG); /* Select PXO */
@@ -4038,11 +4033,6 @@ static void __init reg_init(void)
 	rmwreg(0x2, DSI2_BYTE_NS_REG, 0x7);
 }
 
-static int dummy_pll_clk_enable(struct clk *clk)
-{
-	return 0;
-}
-
 static int wr_pll_clk_enable(struct clk *clk)
 {
 	u32 mode;
@@ -4098,7 +4088,6 @@ void __init msm_clk_soc_init(void)
 	if (machine_is_msm8960_rumi3())
 		return;
 
-	clk_ops_pll_vote.enable = dummy_pll_clk_enable;
 	clk_ops_pll.enable = wr_pll_clk_enable;
 
 	/* Initialize clock registers. */
