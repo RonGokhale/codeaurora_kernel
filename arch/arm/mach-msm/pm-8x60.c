@@ -88,9 +88,16 @@ void __init msm_pm_set_rpm_wakeup_irq(unsigned int irq)
 	rpm_cpu0_wakeup_irq = irq;
 }
 
-#define MSM_PM_MODE_ATTR_SUSPEND_ENABLED "suspend_enabled"
-#define MSM_PM_MODE_ATTR_IDLE_ENABLED "idle_enabled"
-#define MSM_PM_MODE_ATTR_NR (2)
+enum {
+	MSM_PM_MODE_ATTR_SUSPEND,
+	MSM_PM_MODE_ATTR_IDLE,
+	MSM_PM_MODE_ATTR_NR,
+};
+
+static char *msm_pm_mode_attr_labels[MSM_PM_MODE_ATTR_NR] = {
+	[MSM_PM_MODE_ATTR_SUSPEND] = "suspend_enabled",
+	[MSM_PM_MODE_ATTR_IDLE] = "idle_enabled",
+};
 
 struct msm_pm_kobj_attribute {
 	unsigned int cpu;
@@ -138,12 +145,12 @@ static ssize_t msm_pm_mode_attr_show(
 		mode = &msm_pm_modes[MSM_PM_MODE(cpu, i)];
 
 		if (!strcmp(attr->attr.name,
-			MSM_PM_MODE_ATTR_SUSPEND_ENABLED)) {
+			msm_pm_mode_attr_labels[MSM_PM_MODE_ATTR_SUSPEND])) {
 			u32 arg = mode->suspend_enabled;
 			kp.arg = &arg;
 			ret = param_get_ulong(buf, &kp);
 		} else if (!strcmp(attr->attr.name,
-			MSM_PM_MODE_ATTR_IDLE_ENABLED)) {
+			msm_pm_mode_attr_labels[MSM_PM_MODE_ATTR_IDLE])) {
 			u32 arg = mode->idle_enabled;
 			kp.arg = &arg;
 			ret = param_get_ulong(buf, &kp);
@@ -184,11 +191,11 @@ static ssize_t msm_pm_mode_attr_store(struct kobject *kobj,
 		mode = &msm_pm_modes[MSM_PM_MODE(cpu, i)];
 
 		if (!strcmp(attr->attr.name,
-			MSM_PM_MODE_ATTR_SUSPEND_ENABLED)) {
+			msm_pm_mode_attr_labels[MSM_PM_MODE_ATTR_SUSPEND])) {
 			kp.arg = &mode->suspend_enabled;
 			ret = param_set_byte(buf, &kp);
 		} else if (!strcmp(attr->attr.name,
-			MSM_PM_MODE_ATTR_IDLE_ENABLED)) {
+			msm_pm_mode_attr_labels[MSM_PM_MODE_ATTR_IDLE])) {
 			kp.arg = &mode->idle_enabled;
 			ret = param_set_byte(buf, &kp);
 		}
@@ -208,7 +215,7 @@ static int __init msm_pm_mode_sysfs_add_cpu(
 	char cpu_name[8];
 	struct kobject *cpu_kobj;
 	struct msm_pm_sysfs_sleep_mode *mode;
-	int i, k;
+	int i, j, k;
 	int ret;
 
 	snprintf(cpu_name, sizeof(cpu_name), "cpu%u", cpu);
@@ -220,7 +227,10 @@ static int __init msm_pm_mode_sysfs_add_cpu(
 	}
 
 	for (i = 0; i < MSM_PM_SLEEP_MODE_NR; i++) {
-		if (!msm_pm_modes[MSM_PM_MODE(cpu, i)].supported)
+		int idx = MSM_PM_MODE(cpu, i);
+
+		if ((!msm_pm_modes[idx].suspend_supported)
+			&& (!msm_pm_modes[idx].idle_supported))
 			continue;
 
 		mode = kzalloc(sizeof(*mode), GFP_KERNEL);
@@ -239,18 +249,22 @@ static int __init msm_pm_mode_sysfs_add_cpu(
 			goto mode_sysfs_add_cpu_exit;
 		}
 
-		mode->kas[0].ka.attr.name = MSM_PM_MODE_ATTR_SUSPEND_ENABLED;
-		mode->kas[1].ka.attr.name = MSM_PM_MODE_ATTR_IDLE_ENABLED;
-
-		for (k = 0; k < MSM_PM_MODE_ATTR_NR; k++) {
-			mode->kas[k].cpu = cpu;
-			mode->kas[k].ka.attr.mode = 0644;
-			mode->kas[k].ka.show = msm_pm_mode_attr_show;
-			mode->kas[k].ka.store = msm_pm_mode_attr_store;
-
-			mode->attrs[k] = &mode->kas[k].ka.attr;
+		for (k = 0, j = 0; k < MSM_PM_MODE_ATTR_NR; k++) {
+			if ((k == MSM_PM_MODE_ATTR_IDLE) &&
+				!msm_pm_modes[idx].idle_supported)
+				continue;
+			if ((k == MSM_PM_MODE_ATTR_SUSPEND) &&
+			     !msm_pm_modes[idx].suspend_supported)
+				continue;
+			mode->kas[j].cpu = cpu;
+			mode->kas[j].ka.attr.mode = 0644;
+			mode->kas[j].ka.show = msm_pm_mode_attr_show;
+			mode->kas[j].ka.store = msm_pm_mode_attr_store;
+			mode->kas[j].ka.attr.name = msm_pm_mode_attr_labels[k];
+			mode->attrs[j] = &mode->kas[j].ka.attr;
+			j++;
 		}
-		mode->attrs[MSM_PM_MODE_ATTR_NR] = NULL;
+		mode->attrs[j] = NULL;
 
 		mode->attr_group.attrs = mode->attrs;
 		ret = sysfs_create_group(mode->kobj, &mode->attr_group);
@@ -746,9 +760,13 @@ int msm_pm_idle_prepare(struct cpuidle_device *dev)
 		enum msm_pm_sleep_mode mode;
 		bool allow;
 		struct msm_rpmrs_limits *rs_limits = NULL;
+		int idx;
 
 		mode = (enum msm_pm_sleep_mode) state->driver_data;
-		allow = msm_pm_modes[MSM_PM_MODE(dev->cpu, mode)].idle_enabled;
+		idx = MSM_PM_MODE(dev->cpu, mode);
+
+		allow = msm_pm_modes[idx].idle_enabled &&
+				msm_pm_modes[idx].idle_supported;
 
 		switch (mode) {
 		case MSM_PM_SLEEP_MODE_POWER_COLLAPSE:
@@ -929,7 +947,7 @@ static int msm_pm_enter(suspend_state_t state)
 		struct msm_pm_platform_data *mode;
 
 		mode = &msm_pm_modes[MSM_PM_MODE(0, i)];
-		allow[i] = mode->supported && mode->suspend_enabled;
+		allow[i] = mode->suspend_supported && mode->suspend_enabled;
 	}
 
 	if (allow[MSM_PM_SLEEP_MODE_POWER_COLLAPSE]) {
@@ -1039,7 +1057,7 @@ void platform_cpu_die(unsigned int cpu)
 		struct msm_pm_platform_data *mode;
 
 		mode = &msm_pm_modes[MSM_PM_MODE(cpu, i)];
-		allow[i] = mode->supported && mode->suspend_enabled;
+		allow[i] = mode->suspend_supported && mode->suspend_enabled;
 	}
 
 	if (MSM_PM_DEBUG_HOTPLUG & msm_pm_debug_mask)
