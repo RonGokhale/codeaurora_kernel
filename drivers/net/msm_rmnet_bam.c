@@ -605,7 +605,7 @@ static int __init rmnet_init(void)
 
 	for (n = 0; n < RMNET_DEVICE_COUNT; n++) {
 		dev = alloc_netdev(sizeof(struct rmnet_private),
-				   "rmnet_bam%d", rmnet_setup);
+				   "rmnet%d", rmnet_setup);
 
 		if (!dev)
 			return -ENOMEM;
