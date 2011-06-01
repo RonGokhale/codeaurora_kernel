@@ -169,6 +169,10 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 			driver->in_busy_qdsp_2 = 0;
 			queue_work(driver->diag_wq, &(driver->
 						diag_read_smd_qdsp_work));
+		}  else if (proc_num == WCNSS_DATA) {
+			driver->in_busy_wcnss = 0;
+			queue_work(driver->diag_wq, &(driver->
+				diag_read_smd_wcnss_work));
 		}
 		err = -1;
 	}
@@ -198,6 +202,9 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 		} else if (proc_num == QDSP_DATA) {
 			write_ptr->buf = buf;
 			err = usb_diag_write(driver->legacy_ch, write_ptr);
+		} else if (proc_num == WCNSS_DATA) {
+			write_ptr->buf = buf;
+			err = usb_diag_write(driver->legacy_ch, write_ptr);
 		}
 #ifdef CONFIG_DIAG_SDIO_PIPE
 		else if (proc_num == SDIO_DATA) {
@@ -213,6 +220,39 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 	}
 #endif /* DIAG OVER USB */
     return err;
+}
+
+void __diag_smd_wcnss_send_req(void)
+{
+	void *buf = driver->buf_in_wcnss;
+	int *in_busy_wcnss_ptr = &(driver->in_busy_wcnss);
+	struct diag_request *write_ptr_wcnss = driver->write_ptr_wcnss;
+
+	if (driver->ch_wcnss && buf) {
+		int r = smd_read_avail(driver->ch_wcnss);
+		if (r > IN_BUF_SIZE) {
+			if (r < MAX_IN_BUF_SIZE) {
+				pr_err("diag: wcnss packets > %d bytes", r);
+				buf = krealloc(buf, r, GFP_KERNEL);
+			} else {
+				pr_err("diag: wcnss pkt > %d", MAX_IN_BUF_SIZE);
+				return;
+			}
+		}
+		if (r > 0) {
+			if (!buf) {
+				pr_err("Out of diagmem for wcnss\n");
+			} else {
+				APPEND_DEBUG('i');
+				smd_read(driver->ch_wcnss, buf, r);
+				APPEND_DEBUG('j');
+				write_ptr_wcnss->length = r;
+				*in_busy_wcnss_ptr = 1;
+				diag_device_write(buf, WCNSS_DATA,
+					 write_ptr_wcnss);
+			}
+		}
+	}
 }
 
 void __diag_smd_qdsp_send_req(void)
@@ -895,10 +935,12 @@ int diagfwd_connect(void)
 	driver->in_busy_2 = 0;
 	driver->in_busy_qdsp_1 = 0;
 	driver->in_busy_qdsp_2 = 0;
+	driver->in_busy_wcnss = 0;
 
 	/* Poll SMD channels to check for data*/
 	queue_work(driver->diag_wq, &(driver->diag_read_smd_work));
 	queue_work(driver->diag_wq, &(driver->diag_read_smd_qdsp_work));
+	queue_work(driver->diag_wq, &(driver->diag_read_smd_wcnss_work));
 	/* Poll USB channel to check for data*/
 	queue_work(driver->diag_wq, &(driver->diag_read_work));
 #ifdef CONFIG_DIAG_SDIO_PIPE
@@ -920,6 +962,7 @@ int diagfwd_disconnect(void)
 	driver->in_busy_2 = 1;
 	driver->in_busy_qdsp_1 = 1;
 	driver->in_busy_qdsp_2 = 1;
+	driver->in_busy_wcnss = 1;
 	driver->debug_flag = 1;
 	usb_diag_free_req(driver->legacy_ch);
 #ifdef CONFIG_DIAG_SDIO_PIPE
@@ -952,6 +995,11 @@ int diagfwd_write_complete(struct diag_request *diag_write_ptr)
 		driver->in_busy_qdsp_2 = 0;
 		APPEND_DEBUG('P');
 		queue_work(driver->diag_wq, &(driver->diag_read_smd_qdsp_work));
+	} else if (buf == (void *)driver->buf_in_wcnss) {
+		driver->in_busy_wcnss = 0;
+		APPEND_DEBUG('R');
+		queue_work(driver->diag_wq,
+			 &(driver->diag_read_smd_wcnss_work));
 	}
 #ifdef CONFIG_DIAG_SDIO_PIPE
 	else if (buf == (void *)driver->buf_in_sdio)
@@ -1064,20 +1112,28 @@ static void diag_smd_qdsp_notify(void *ctxt, unsigned event)
 }
 #endif
 
+static void diag_smd_wcnss_notify(void *ctxt, unsigned event)
+{
+	queue_work(driver->diag_wq, &(driver->diag_read_smd_wcnss_work));
+}
+
 static int diag_smd_probe(struct platform_device *pdev)
 {
 	int r = 0;
 
-	if (pdev->id == 0)
+	if (pdev->id == SMD_APPS_MODEM)
 		r = smd_open("DIAG", &driver->ch, driver, diag_smd_notify);
 #if defined(CONFIG_MSM_N_WAY_SMD)
-	if (pdev->id == 1)
+	if (pdev->id == SMD_APPS_QDSP)
 		r = smd_named_open_on_edge("DIAG", SMD_APPS_QDSP
 			, &driver->chqdsp, driver, diag_smd_qdsp_notify);
 #endif
+	if (pdev->id == SMD_APPS_WCNSS)
+		r = smd_named_open_on_edge("APPS_RIVA_DATA", SMD_APPS_WCNSS
+			, &driver->ch_wcnss, driver, diag_smd_wcnss_notify);
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
-	pr_debug("diag: opened SMD port, Id = %d, r = %d\n", pdev->id, r);
+	pr_debug("diag: open SMD port, Id = %d, r = %d\n", pdev->id, r);
 
 	return 0;
 }
@@ -1109,26 +1165,45 @@ static struct platform_driver msm_smd_ch1_driver = {
 		   },
 };
 
+static struct platform_driver diag_smd_lite_driver = {
+
+	.probe = diag_smd_probe,
+	.driver = {
+		   .name = "APPS_RIVA_DATA",
+		   .owner = THIS_MODULE,
+		   .pm   = &diagfwd_dev_pm_ops,
+		   },
+};
+
 void diagfwd_init(void)
 {
 	diag_debug_buf_idx = 0;
 	driver->read_len_legacy = 0;
-	if (driver->buf_in_1 == NULL)
+	if (driver->buf_in_1 == NULL) {
 		driver->buf_in_1 = kzalloc(IN_BUF_SIZE, GFP_KERNEL);
 		if (driver->buf_in_1 == NULL)
 			goto err;
-	if (driver->buf_in_2 == NULL)
+	}
+	if (driver->buf_in_2 == NULL) {
 		driver->buf_in_2 = kzalloc(IN_BUF_SIZE, GFP_KERNEL);
 		if (driver->buf_in_2 == NULL)
 			goto err;
-	if (driver->buf_in_qdsp_1 == NULL)
+	}
+	if (driver->buf_in_qdsp_1 == NULL) {
 		driver->buf_in_qdsp_1 = kzalloc(IN_BUF_SIZE, GFP_KERNEL);
 		if (driver->buf_in_qdsp_1 == NULL)
 			goto err;
-	if (driver->buf_in_qdsp_2 == NULL)
+	}
+	if (driver->buf_in_qdsp_2 == NULL) {
 		driver->buf_in_qdsp_2 = kzalloc(IN_BUF_SIZE, GFP_KERNEL);
 		if (driver->buf_in_qdsp_2 == NULL)
 			goto err;
+	}
+	if (driver->buf_in_wcnss == NULL) {
+		driver->buf_in_wcnss = kzalloc(IN_BUF_SIZE, GFP_KERNEL);
+		if (driver->buf_in_wcnss == NULL)
+			goto err;
+	}
 	if (driver->usb_buf_out  == NULL &&
 	     (driver->usb_buf_out = kzalloc(USB_MAX_OUT_BUF,
 					 GFP_KERNEL)) == NULL)
@@ -1167,39 +1242,51 @@ void diagfwd_init(void)
 		      sizeof(struct diag_master_table),
 		       GFP_KERNEL)) == NULL)
 		goto err;
-	if (driver->write_ptr_1 == NULL)
+	if (driver->write_ptr_1 == NULL) {
 		driver->write_ptr_1 = kzalloc(
 			sizeof(struct diag_request), GFP_KERNEL);
 		if (driver->write_ptr_1 == NULL)
 			goto err;
-	if (driver->write_ptr_2 == NULL)
+	}
+	if (driver->write_ptr_2 == NULL) {
 		driver->write_ptr_2 = kzalloc(
 			sizeof(struct diag_request), GFP_KERNEL);
 		if (driver->write_ptr_2 == NULL)
 			goto err;
-	if (driver->write_ptr_qdsp_1 == NULL)
+	}
+	if (driver->write_ptr_qdsp_1 == NULL) {
 		driver->write_ptr_qdsp_1 = kzalloc(
 			sizeof(struct diag_request), GFP_KERNEL);
 		if (driver->write_ptr_qdsp_1 == NULL)
 			goto err;
-	if (driver->write_ptr_qdsp_2 == NULL)
+	}
+	if (driver->write_ptr_qdsp_2 == NULL) {
 		driver->write_ptr_qdsp_2 = kzalloc(
 			sizeof(struct diag_request), GFP_KERNEL);
 		if (driver->write_ptr_qdsp_2 == NULL)
 			goto err;
-	if (driver->usb_read_ptr == NULL)
+	}
+	if (driver->write_ptr_wcnss == NULL) {
+		driver->write_ptr_wcnss = kzalloc(
+			sizeof(struct diag_request), GFP_KERNEL);
+		if (driver->write_ptr_wcnss == NULL)
+			goto err;
+	}
+	if (driver->usb_read_ptr == NULL) {
 		driver->usb_read_ptr = kzalloc(
 			sizeof(struct diag_request), GFP_KERNEL);
 		if (driver->usb_read_ptr == NULL)
 			goto err;
+	}
 	if (driver->pkt_buf == NULL &&
 	     (driver->pkt_buf = kzalloc(PKT_SIZE,
 			 GFP_KERNEL)) == NULL)
 		goto err;
-	if (driver->apps_rsp_buf == NULL)
+	if (driver->apps_rsp_buf == NULL) {
 			driver->apps_rsp_buf = kzalloc(500, GFP_KERNEL);
 		if (driver->apps_rsp_buf == NULL)
 			goto err;
+	}
 	driver->diag_wq = create_singlethread_workqueue("diag_wq");
 #ifdef CONFIG_DIAG_OVER_USB
 	INIT_WORK(&(driver->diag_proc_hdlc_work), diag_process_hdlc_fn);
@@ -1212,6 +1299,7 @@ void diagfwd_init(void)
 	}
 #endif
 	platform_driver_register(&msm_smd_ch1_driver);
+	platform_driver_register(&diag_smd_lite_driver);
 
 	return;
 err:
@@ -1220,6 +1308,7 @@ err:
 		kfree(driver->buf_in_2);
 		kfree(driver->buf_in_qdsp_1);
 		kfree(driver->buf_in_qdsp_2);
+		kfree(driver->buf_in_wcnss);
 		kfree(driver->usb_buf_out);
 		kfree(driver->hdlc_buf);
 		kfree(driver->msg_masks);
@@ -1234,6 +1323,7 @@ err:
 		kfree(driver->write_ptr_2);
 		kfree(driver->write_ptr_qdsp_1);
 		kfree(driver->write_ptr_qdsp_2);
+		kfree(driver->write_ptr_wcnss);
 		kfree(driver->usb_read_ptr);
 		kfree(driver->apps_rsp_buf);
 		if (driver->diag_wq)
@@ -1244,18 +1334,22 @@ void diagfwd_exit(void)
 {
 	smd_close(driver->ch);
 	smd_close(driver->chqdsp);
+	smd_close(driver->ch_wcnss);
 	driver->ch = 0;		/* SMD can make this NULL */
 	driver->chqdsp = 0;
+	driver->ch_wcnss = 0;
 #ifdef CONFIG_DIAG_OVER_USB
 	if (driver->usb_connected)
 		usb_diag_free_req(driver->legacy_ch);
 	usb_diag_close(driver->legacy_ch);
 #endif
 	platform_driver_unregister(&msm_smd_ch1_driver);
+	platform_driver_unregister(&diag_smd_lite_driver);
 	kfree(driver->buf_in_1);
 	kfree(driver->buf_in_2);
 	kfree(driver->buf_in_qdsp_1);
 	kfree(driver->buf_in_qdsp_2);
+	kfree(driver->buf_in_wcnss);
 	kfree(driver->usb_buf_out);
 	kfree(driver->hdlc_buf);
 	kfree(driver->msg_masks);
@@ -1270,6 +1364,7 @@ void diagfwd_exit(void)
 	kfree(driver->write_ptr_2);
 	kfree(driver->write_ptr_qdsp_1);
 	kfree(driver->write_ptr_qdsp_2);
+	kfree(driver->write_ptr_wcnss);
 	kfree(driver->usb_read_ptr);
 	kfree(driver->apps_rsp_buf);
 	destroy_workqueue(driver->diag_wq);
