@@ -432,8 +432,6 @@ static void set_rate_tv(struct clk_local *clk, struct clk_freq_tbl *nf)
 int soc_update_sys_vdd(enum sys_vdd_level level)
 {
 	/* TODO: set voltage via pmic driver */
-	if (level == HIGH)
-		return -EINVAL;
 	return 0;
 }
 
@@ -4148,8 +4146,7 @@ static int wr_pll_clk_enable(struct clk *clk)
 /* Local clock driver initialization. */
 void __init msm_clk_soc_init(void)
 {
-	/* TODO: Make HIGH */
-	local_vote_sys_vdd(NOMINAL);
+	local_vote_sys_vdd(HIGH);
 
 	if (machine_is_msm8960_rumi3())
 		return;
@@ -4182,7 +4179,6 @@ void __init msm_clk_soc_init(void)
 
 static int msm_clk_soc_late_init(void)
 {
-	/* TODO: Make HIGH */
-	return local_unvote_sys_vdd(NOMINAL);
+	return local_unvote_sys_vdd(HIGH);
 }
 late_initcall(msm_clk_soc_late_init);
