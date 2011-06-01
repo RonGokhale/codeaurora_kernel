@@ -439,10 +439,10 @@ static int acpuclk_set_vdd_level(int vdd)
 	uint32_t current_vdd;
 
 	/*
-	 * NOTE: v1.0 of 7x27a chip doesn't have working
+	 * NOTE: v1.0 of 7x27a/7x25a chip doesn't have working
 	 * VDD switching support.
 	 */
-	if (cpu_is_msm7x27a())
+	if (cpu_is_msm7x27a() || cpu_is_msm7x25a())
 		return 0;
 
 	current_vdd = readl_relaxed(A11S_VDD_SVS_PLEVEL_ADDR) & 0x07;
@@ -992,8 +992,7 @@ void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 	BUG_ON(IS_ERR(drv_state.ebi1_clk));
 
 	mutex_init(&drv_state.lock);
-	if (cpu_is_msm7x27() || cpu_is_msm7x27a())
-		shared_pll_control_init();
+	shared_pll_control_init();
 	drv_state.acpu_switch_time_us = clkdata->acpu_switch_time_us;
 	drv_state.max_speed_delta_khz = clkdata->max_speed_delta_khz;
 	drv_state.vdd_switch_time_us = clkdata->vdd_switch_time_us;
