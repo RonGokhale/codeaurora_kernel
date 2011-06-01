@@ -25,6 +25,7 @@
 #include <mach/usbdiag.h>
 #include <mach/usb_gadget_fserial.h>
 #include <mach/rpc_hsusb.h>
+#include <mach/socinfo.h>
 
 #include "devices.h"
 #include "devices-msm7x2xa.h"
@@ -580,6 +581,16 @@ struct platform_device msm_kgsl_3d0 = {
 		.platform_data = &kgsl_3d0_pdata,
 	},
 };
+
+void __init msm7x25a_kgsl_3d0_init(void)
+{
+	if (cpu_is_msm7x25a()) {
+		kgsl_3d0_pdata.pwr_data.pwrlevel[0].gpu_freq = 133330000;
+		kgsl_3d0_pdata.pwr_data.pwrlevel[0].bus_freq = 200000000;
+		kgsl_3d0_pdata.pwr_data.pwrlevel[1].gpu_freq = 96000000;
+		kgsl_3d0_pdata.pwr_data.pwrlevel[1].bus_freq = 0;
+	}
+}
 
 static void __init msm_register_device(struct platform_device *pdev, void *data)
 {

@@ -3118,6 +3118,8 @@ static void __init msm7x2x_init(void)
 	if (machine_is_msm7x27a_ffa())
 		msm_init_pmic_vibrator();
 #endif
+	/*7x25a kgsl initializations*/
+	msm7x25a_kgsl_3d0_init();
 }
 
 static void __init msm7x2x_init_early(void)
