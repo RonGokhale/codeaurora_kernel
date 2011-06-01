@@ -362,6 +362,9 @@ static void __init cpufreq_table_init(void)
 static void pll_enable(void __iomem *addr, unsigned on)
 {
 	if (on) {
+		writel_relaxed(2, addr);
+		dsb();
+		udelay(5);
 		writel_relaxed(6, addr);
 		dsb();
 		udelay(50);
