@@ -343,7 +343,6 @@ static int lcdc_toshiba_panel_on(struct platform_device *pdev)
 
 static int lcdc_toshiba_panel_off(struct platform_device *pdev)
 {
-/*
 	if (toshiba_state.disp_powered_up && toshiba_state.display_on) {
 		toshiba_spi_write(0x01, 0x06, 1);
 		toshiba_spi_write(0x00, 0x02, 1);
@@ -363,28 +362,23 @@ static int lcdc_toshiba_panel_off(struct platform_device *pdev)
 		toshiba_state.display_on = FALSE;
 		toshiba_state.disp_initialized = FALSE;
 	}
-*/
+
 	return 0;
 }
 
 static void lcdc_toshiba_set_backlight(struct msm_fb_data_type *mfd)
 {
-	return;
-/*
+	int ret;
 	int bl_level;
-	int ret = -EPERM;
-	int i = 0;
 
 	bl_level = mfd->bl_level;
-	while (i++ < 3) {
-		ret = pmic_set_led_intensity(LED_LCD, bl_level);
-		if (ret == 0)
-			return;
-		msleep(10);
-	}
-	printk(KERN_WARNING "%s: can't set lcd backlight!\n",
-				__func__);
-*/
+
+	if (lcdc_toshiba_pdata && lcdc_toshiba_pdata->pmic_backlight)
+		ret = lcdc_toshiba_pdata->pmic_backlight(bl_level);
+	else
+		pr_err("%s(): Backlight level set failed", __func__);
+
+	return;
 }
 
 static int __devinit toshiba_probe(struct platform_device *pdev)

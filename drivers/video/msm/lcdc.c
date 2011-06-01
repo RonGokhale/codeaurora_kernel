@@ -76,8 +76,10 @@ static int lcdc_off(struct platform_device *pdev)
 		ret = lcdc_pdata->lcdc_gpio_config(0);
 
 #ifndef CONFIG_MSM_BUS_SCALING
-	if (mfd->ebi1_clk)
-		clk_disable(mfd->ebi1_clk);
+	if (mdp_rev != MDP_REV_303) {
+		if (mfd->ebi1_clk)
+			clk_disable(mfd->ebi1_clk);
+	}
 #else
 	mdp_bus_scale_update_request(0);
 #endif
@@ -113,13 +115,12 @@ static int lcdc_on(struct platform_device *pdev)
 		pm_qos_rate = 65000;
 #endif
 
-#ifndef CONFIG_FB_MSM_MDP303
-	if (mfd->ebi1_clk) {
-		clk_set_rate(mfd->ebi1_clk, pm_qos_rate * 1000);
-		clk_enable(mfd->ebi1_clk);
+	if (mdp_rev != MDP_REV_303) {
+		if (mfd->ebi1_clk) {
+			clk_set_rate(mfd->ebi1_clk, pm_qos_rate * 1000);
+			clk_enable(mfd->ebi1_clk);
+		}
 	}
-#endif
-
 #endif
 	mfd = platform_get_drvdata(pdev);
 
