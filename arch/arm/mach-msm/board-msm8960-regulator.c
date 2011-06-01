@@ -85,6 +85,8 @@ VREG_CONSUMERS(L15) = {
 };
 VREG_CONSUMERS(L16) = {
 	REGULATOR_SUPPLY("8921_l16",		NULL),
+	REGULATOR_SUPPLY("cam_vaf",		"msm_camera_imx074.0"),
+	REGULATOR_SUPPLY("cam_vaf",		"msm_camera_ov2720.0"),
 };
 VREG_CONSUMERS(L17) = {
 	REGULATOR_SUPPLY("8921_l17",		NULL),
