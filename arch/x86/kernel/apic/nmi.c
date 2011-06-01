@@ -26,11 +26,13 @@
 #include <linux/kernel_stat.h>
 #include <linux/kdebug.h>
 #include <linux/smp.h>
+#include <linux/sched.h>
 
 #include <asm/i8259.h>
 #include <asm/io_apic.h>
 #include <asm/proto.h>
 #include <asm/timer.h>
+#include <asm/topology.h>
 
 #include <asm/mce.h>
 
@@ -430,6 +432,15 @@ nmi_watchdog_tick(struct pt_regs *regs, unsigned reason)
 	/* Could check oops_in_progress here too, but it's safer not to */
 	if (mce_in_progress())
 		touched = 1;
+
+	/*
+	 * On a Hyper-Threaded system, the perf counter will continue to
+	 * tick if a sibling is unhalted. This could cause a false
+	 * lockup to be detected.
+	 */
+	if (smt_capable() && (nmi_watchdog == NMI_LOCAL_APIC))
+		if (idle_cpu(cpu) && !tsk_is_polling(idle_task(cpu)))
+			touched = 1;
 
 	/* if the none of the timers isn't firing, this cpu isn't doing much */
 	if (!touched && __get_cpu_var(last_irq_sum) == sum) {
