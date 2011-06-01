@@ -200,6 +200,8 @@ void x86_pci_root_bus_res_quirks(struct pci_bus *b);
 #define mc_capable()	((boot_cpu_data.x86_max_cores > 1) && \
 			(cpumask_weight(cpu_core_mask(0)) != nr_cpu_ids))
 #define smt_capable()			(smp_num_siblings > 1)
+#else
+#define smt_capable()	(0)
 #endif
 
 #ifdef CONFIG_NUMA
