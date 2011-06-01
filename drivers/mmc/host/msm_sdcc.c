@@ -1856,8 +1856,16 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		}
 		spin_unlock_irqrestore(&host->lock, flags);
 
-		clock = msmsdcc_get_sup_clk_rate(host, ios->clock);
+		/*
+		 * For DDR50 mode, controller needs clock rate to be
+		 * double than what is required on the SD card CLK pin.
+		 */
+		if (ios->timing == MMC_TIMING_UHS_DDR50)
+			clock = (ios->clock * 2);
+		else
+			clock = ios->clock;
 
+		clock = msmsdcc_get_sup_clk_rate(host, clock);
 		if (clock != host->clk_rate) {
 			rc = clk_set_rate(host->clk, clock);
 			if (rc < 0)
@@ -1884,7 +1892,19 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		clk |= MCI_CLK_PWRSAVE;
 
 	clk |= MCI_CLK_FLOWENA;
-	clk |= MCI_CLK_SELECTIN; /* feedback clock */
+	/*
+	 * Select the controller timing mode according
+	 * to current bus speed mode
+	 */
+	if (ios->timing == MMC_TIMING_UHS_SDR104)
+		clk |= (4 << 14);
+	else if (ios->timing == MMC_TIMING_UHS_DDR50)
+		clk |= (3 << 14);
+	else
+		clk |= (2 << 14); /* feedback clock */
+
+	/* Select free running MCLK as input clock of cm_dll_sdc4 */
+	clk |= (2 << 23);
 
 	if (host->io_pad_pwr_switch)
 		clk |= IO_PAD_PWR_SWITCH;
