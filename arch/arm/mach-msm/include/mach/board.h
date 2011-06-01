@@ -297,6 +297,7 @@ struct mipi_dsi_platform_data {
 	int fpga_config_addr;
 #endif
 	int (*dsi_client_reset)(void);
+	int (*get_lane_config)(void);
 	int target_type;
 };
 
