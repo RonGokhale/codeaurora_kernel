@@ -1653,9 +1653,11 @@ static void lcdc_toshiba_gpio_init(void)
 			pr_err("failed to request gpio_bkl_en\n");
 			goto fail_gpio;
 		}
+		pmapp_disp_backlight_init();
 		lcdc_gpio_initialized = 1;
-		return;
 	}
+	return;
+
 fail_gpio:
 	lcdc_gpio_initialized = 0;
 }
@@ -1688,9 +1690,6 @@ static void lcdc_toshiba_config_gpios(int enable)
 
 static int msm_fb_lcdc_power_save(int on)
 {
-	/* struct vreg *vreg[ARRAY_SIZE(msm_fb_lcdc_vreg)]; */
-	int rc = 0;
-
 	/* Doing the init of the LCDC GPIOs very late as they are from
 		an I2C-controlled IO Expander */
 	lcdc_toshiba_gpio_init();
@@ -1700,11 +1699,21 @@ static int msm_fb_lcdc_power_save(int on)
 		gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, on);
 	}
 
-	pmapp_disp_backlight_init();
-	rc = pmapp_disp_backlight_set_brightness(100);
-
 	return 0;
 }
+
+
+static int lcdc_toshiba_set_bl(int level)
+{
+	int ret;
+
+	ret = pmapp_disp_backlight_set_brightness(level);
+	if (ret)
+		pr_err("%s: can't set lcd backlight!\n", __func__);
+
+	return ret;
+}
+
 
 static struct lcdc_platform_data lcdc_pdata = {
 	.lcdc_gpio_config = msm_fb_lcdc_config,
@@ -1720,6 +1729,7 @@ static int lcd_panel_spi_gpio_num[] = {
 
 static struct msm_panel_common_pdata lcdc_toshiba_panel_data = {
 	.panel_config_gpio = lcdc_toshiba_config_gpios,
+	.pmic_backlight = lcdc_toshiba_set_bl,
 	.gpio_num	  = lcd_panel_spi_gpio_num,
 };
 
@@ -1765,6 +1775,7 @@ static struct platform_device msm_fb_device = {
 	}
 };
 
+#ifdef CONFIG_FB_MSM_MIPI_DSI
 static int mipi_renesas_set_bl(int level)
 {
 	int ret;
@@ -1781,7 +1792,7 @@ static struct msm_panel_common_pdata mipi_renesas_pdata = {
 	.pmic_backlight = mipi_renesas_set_bl,
 };
 
-#ifdef CONFIG_FB_MSM_MIPI_DSI
+
 static struct platform_device mipi_dsi_renesas_panel_device = {
 	.name = "mipi_renesas",
 	.id = 0,
