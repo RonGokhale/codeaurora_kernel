@@ -42,11 +42,11 @@
 
 #define DEVICE_NAME "smdpkt"
 
+# define NUM_SMD_PKT_PORTS 5
+
 #if defined(CONFIG_ARCH_FSM9XXX)
-# define NUM_SMD_PKT_PORTS 3
 # define MAX_BUF_SIZE ((64*1024) - 20)
 #else
-# define NUM_SMD_PKT_PORTS 5
 # define MAX_BUF_SIZE 2048
 #endif
 
@@ -403,20 +403,16 @@ static void ch_notify(void *priv, unsigned event)
 }
 
 static char *smd_pkt_dev_name[] = {
-#if !defined(CONFIG_ARCH_FSM9XXX)
 	"smdcntl0",
 	"smdcntl1",
-#endif
 	"smdcntl2",
 	"smd22",
 	"smd_pkt_loopback",
 };
 
 static char *smd_ch_name[] = {
-#if !defined(CONFIG_ARCH_FSM9XXX)
 	"DATA5_CNTL",
 	"DATA6_CNTL",
-#endif
 	"DATA7_CNTL",
 	"DATA22",
 	"LOOPBACK",
@@ -445,19 +441,14 @@ int smd_pkt_open(struct inode *inode, struct file *file)
 
 	file->private_data = smd_pkt_devp;
 
-	if (!strcmp(smd_ch_name[smd_pkt_devp->i], "DATA22")) {
-		edge = SMD_APPS_QDSP;
-		pil_idx = 1;
-	} else if (!strcmp(smd_ch_name[smd_pkt_devp->i], "DATA7_CNTL")) {
-		edge = SMD_APPS_QDSP;
-		pil_idx = 1;
-	} else if (!strcmp(smd_ch_name[smd_pkt_devp->i], "LOOPBACK")) {
-		edge = SMD_APPS_QDSP;
-		pil_idx = 1;
-	} else {
-		edge = SMD_APPS_MODEM;
-		pil_idx = 0;
-	}
+#if defined(CONFIG_ARCH_FSM9XXX)
+	edge = SMD_APPS_QDSP;
+	pil_idx = 1;
+#else
+	edge = SMD_APPS_MODEM;
+	pil_idx = 0;
+
+#endif
 
 	mutex_lock(&smd_pkt_devp->ch_lock);
 	if (smd_pkt_devp->ch == 0) {
