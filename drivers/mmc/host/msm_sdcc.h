@@ -61,6 +61,7 @@
 #define MCI_CSPM_MCIABORT	(1 << 13)
 #define MCI_CSPM_CCSENABLE	(1 << 14)
 #define MCI_CSPM_CCSDISABLE	(1 << 15)
+#define MCI_CSPM_AUTO_CMD19	(1 << 16)
 
 
 #define MMCIRESPCMD		0x010
@@ -105,6 +106,7 @@
 #define MCI_ATACMDCOMPL		(1 << 24)
 #define MCI_SDIOINTROPE		(1 << 25)
 #define MCI_CCSTIMEOUT		(1 << 26)
+#define MCI_AUTOCMD19TIMEOUT	(1 << 30)
 
 #define MMCICLEAR		0x038
 #define MCI_CMDCRCFAILCLR	(1 << 0)
@@ -160,10 +162,21 @@
 #define MCI_ATACMDCOMPLMASK	(1 << 24)
 #define MCI_SDIOINTOPERMASK	(1 << 25)
 #define MCI_CCSTIMEOUTMASK	(1 << 26)
+#define MCI_AUTOCMD19TIMEOUTMASK (1 << 30)
 
 #define MMCIMASK1		0x040
 #define MMCIFIFOCNT		0x044
 #define MCICCSTIMER		0x058
+#define MCI_DLL_CONFIG		0x060
+#define MCI_DLL_EN		(1 << 16)
+#define MCI_CDR_EN		(1 << 17)
+#define MCI_CK_OUT_EN		(1 << 18)
+#define MCI_CDR_EXT_EN		(1 << 19)
+#define MCI_DLL_PDN		(1 << 29)
+#define MCI_DLL_RST		(1 << 30)
+
+#define MCI_DLL_STATUS		0x068
+#define MCI_DLL_LOCK		(1 << 7)
 
 #define MMCIFIFO		0x080 /* to 0x0bc */
 
@@ -172,7 +185,8 @@
 #define MCI_IRQENABLE	\
 	(MCI_CMDCRCFAILMASK|MCI_DATACRCFAILMASK|MCI_CMDTIMEOUTMASK|	\
 	MCI_DATATIMEOUTMASK|MCI_TXUNDERRUNMASK|MCI_RXOVERRUNMASK|	\
-	MCI_CMDRESPENDMASK|MCI_CMDSENTMASK|MCI_DATAENDMASK|MCI_PROGDONEMASK)
+	MCI_CMDRESPENDMASK|MCI_CMDSENTMASK|MCI_DATAENDMASK|		\
+	MCI_PROGDONEMASK|MCI_AUTOCMD19TIMEOUTMASK)
 
 #define MCI_IRQ_PIO 	\
 	(MCI_RXDATAAVLBLMASK | MCI_TXDATAAVLBLMASK | 	\
@@ -329,6 +343,8 @@ struct msmsdcc_host {
 	unsigned int sdcc_irq_disabled;
 	struct timer_list req_tout_timer;
 	bool io_pad_pwr_switch;
+	bool cmd19_tuning_in_progress;
+	bool tuning_needed;
 	bool sdio_gpio_lpm;
 };
 

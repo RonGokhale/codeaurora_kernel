@@ -41,6 +41,8 @@
 #include <linux/wakelock.h>
 #include <linux/gpio.h>
 #include <linux/regulator/consumer.h>
+#include <linux/slab.h>
+#include <linux/mmc/mmc.h>
 
 #include <asm/cacheflush.h>
 #include <asm/div64.h>
@@ -92,6 +94,16 @@ static struct mmc_command dummy52cmd = {
 	.flags = MMC_RSP_PRESENT,
 	.data = NULL,
 	.mrq = &dummy52mrq,
+};
+/*
+ * An array holding the Tuning pattern to compare with when
+ * executing a tuning cycle.
+ */
+static const u32 cmd19_tuning_block[16] = {
+	0x00FF0FFF, 0xCCC3CCFF, 0xFFCC3CC3, 0xEFFEFFFE,
+	0xDDFFDFFF, 0xFBFFFBFF, 0xFF7FFFBF, 0xEFBDF777,
+	0xF0FFF0FF, 0x3CCCFC0F, 0xCFCC33CC, 0xEEFFEFFF,
+	0xFDFFFDFF, 0xFFBFFFDF, 0xFFF7FFBB, 0xDE7B7FF7
 };
 
 #define VERBOSE_COMMAND_TIMEOUTS	0
@@ -595,6 +607,8 @@ static inline void msmsdcc_sps_complete_tlet(unsigned long data) { }
 static inline void msmsdcc_sps_exit_curr_xfer(struct msmsdcc_host *host) { }
 #endif /* CONFIG_MMC_MSM_SPS_SUPPORT */
 
+static void msmsdcc_enable_cdr_cm_sdc4_dll(struct msmsdcc_host *host);
+
 static void
 msmsdcc_dma_complete_func(struct msm_dmov_cmd *cmd,
 			  unsigned int result,
@@ -851,6 +865,13 @@ msmsdcc_start_command_deferred(struct msmsdcc_host *host,
 	     ((cmd->opcode == 24) || (cmd->opcode == 25))) ||
 	      (cmd->opcode == 53))
 		*c |= MCI_CSPM_DATCMD;
+
+	/* Check if AUTO CMD19 is required or not? */
+	if (((cmd->opcode == 17) || (cmd->opcode == 18)) &&
+		host->tuning_needed) {
+		msmsdcc_enable_cdr_cm_sdc4_dll(host);
+		*c |= MCI_CSPM_AUTO_CMD19;
+	}
 
 	if (host->prog_scan && (cmd->opcode == 12)) {
 		*c |= MCI_CPSM_PROGENA;
@@ -1224,12 +1245,13 @@ static void msmsdcc_do_cmdirq(struct msmsdcc_host *host, uint32_t status)
 	cmd->resp[2] = readl_relaxed(host->base + MMCIRESPONSE2);
 	cmd->resp[3] = readl_relaxed(host->base + MMCIRESPONSE3);
 
-	if (status & MCI_CMDTIMEOUT) {
+	if (status & (MCI_CMDTIMEOUT | MCI_AUTOCMD19TIMEOUT)) {
 #if VERBOSE_COMMAND_TIMEOUTS
 		pr_err("%s: Command timeout\n", mmc_hostname(host->mmc));
 #endif
 		cmd->error = -ETIMEDOUT;
-	} else if (status & MCI_CMDCRCFAIL && cmd->flags & MMC_RSP_CRC) {
+	} else if ((status & MCI_CMDCRCFAIL && cmd->flags & MMC_RSP_CRC) &&
+			!host->cmd19_tuning_in_progress) {
 		pr_err("%s: Command CRC error\n", mmc_hostname(host->mmc));
 		cmd->error = -EILSEQ;
 	}
@@ -1371,7 +1393,8 @@ msmsdcc_irq(int irq, void *dev_id)
 		 */
 		cmd = host->curr.cmd;
 		if ((status & (MCI_CMDSENT | MCI_CMDRESPEND | MCI_CMDCRCFAIL |
-			      MCI_CMDTIMEOUT | MCI_PROGDONE)) && cmd) {
+			MCI_CMDTIMEOUT | MCI_PROGDONE |
+			MCI_AUTOCMD19TIMEOUT)) && host->curr.cmd) {
 			msmsdcc_do_cmdirq(host, status);
 		}
 
@@ -1897,16 +1920,21 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		clk |= MCI_CLK_PWRSAVE;
 
 	clk |= MCI_CLK_FLOWENA;
+
+	host->tuning_needed = 0;
 	/*
 	 * Select the controller timing mode according
 	 * to current bus speed mode
 	 */
-	if (ios->timing == MMC_TIMING_UHS_SDR104)
+	if ((ios->timing == MMC_TIMING_UHS_SDR104) ||
+		(ios->timing == MMC_TIMING_UHS_SDR50)) {
 		clk |= (4 << 14);
-	else if (ios->timing == MMC_TIMING_UHS_DDR50)
+		host->tuning_needed = 1;
+	} else if (ios->timing == MMC_TIMING_UHS_DDR50) {
 		clk |= (3 << 14);
-	else
+	} else {
 		clk |= (2 << 14); /* feedback clock */
+	}
 
 	/* Select free running MCLK as input clock of cm_dll_sdc4 */
 	clk |= (2 << 23);
@@ -2204,6 +2232,272 @@ out:
 	return err;
 }
 
+static int msmsdcc_config_cm_sdc4_dll_phase(struct msmsdcc_host *host,
+						u8 phase);
+/* Initialize the DLL (Programmable Delay Line ) */
+static int msmsdcc_init_cm_sdc4_dll(struct msmsdcc_host *host)
+{
+	int rc = 0;
+	u32 wait_timeout;
+
+	/* Write 0 to DLL_PDN bit of MCI_DLL_CONFIG register */
+	writel_relaxed((readl_relaxed(host->base + MCI_DLL_CONFIG)
+			& ~MCI_DLL_PDN), host->base + MCI_DLL_CONFIG);
+
+	/* Write 1 to DLL_RST bit of MCI_DLL_CONFIG register */
+	writel_relaxed((readl_relaxed(host->base + MCI_DLL_CONFIG)
+			| MCI_DLL_RST), host->base + MCI_DLL_CONFIG);
+
+	msmsdcc_delay(host);
+
+	/* Write 0 to DLL_RST bit of MCI_DLL_CONFIG register */
+	writel_relaxed((readl_relaxed(host->base + MCI_DLL_CONFIG)
+			& ~MCI_DLL_RST), host->base + MCI_DLL_CONFIG);
+
+	/* Initialize the phase to 0 */
+	rc = msmsdcc_config_cm_sdc4_dll_phase(host, 0);
+	if (rc)
+		goto out;
+
+	wait_timeout = 1000;
+	/* Wait until DLL_LOCK bit of MCI_DLL_STATUS register becomes '1' */
+	while (!(readl_relaxed(host->base + MCI_DLL_STATUS) & MCI_DLL_LOCK)) {
+		/* max. wait for 1 sec for LOCK bit to be set */
+		if (--wait_timeout == 0) {
+			pr_err("%s: %s: DLL failed to lock at phase: %d",
+				mmc_hostname(host->mmc), __func__, 0);
+			rc = -1;
+			goto out;
+		}
+		/* wait for 1ms */
+		usleep_range(1000, 1500);
+	}
+out:
+	return rc;
+}
+
+/*
+ * Enable a CDR circuit in CM_SDC4_DLL block to enable automatic
+ * calibration sequence. This function should be called before
+ * enabling AUTO_CMD19 bit in MCI_CMD register for block read
+ * commands (CMD17/CMD18).
+ */
+static void msmsdcc_enable_cdr_cm_sdc4_dll(struct msmsdcc_host *host)
+{
+	/* Set CDR_EN bit to 1. */
+	writel_relaxed((readl_relaxed(host->base + MCI_DLL_CONFIG) |
+			MCI_CDR_EN), host->base + MCI_DLL_CONFIG);
+
+	/* Set CDR_EXT_EN bit to 0. */
+	writel_relaxed((readl_relaxed(host->base + MCI_DLL_CONFIG)
+			& ~MCI_CDR_EXT_EN), host->base + MCI_DLL_CONFIG);
+
+	/* Set CK_OUT_EN bit to 0. */
+	writel_relaxed((readl_relaxed(host->base + MCI_DLL_CONFIG)
+			& ~MCI_CK_OUT_EN), host->base + MCI_DLL_CONFIG);
+
+	/* Wait until CK_OUT_EN bit of MCI_DLL_CONFIG register becomes '0' */
+	while (readl_relaxed(host->base + MCI_DLL_CONFIG) & MCI_CK_OUT_EN)
+		;
+
+	/* Set CK_OUT_EN bit of MCI_DLL_CONFIG register to 1. */
+	writel_relaxed((readl_relaxed(host->base + MCI_DLL_CONFIG)
+			| MCI_CK_OUT_EN), host->base + MCI_DLL_CONFIG);
+
+	/* Wait until CK_OUT_EN bit of MCI_DLL_CONFIG register is 1. */
+	while (!(readl_relaxed(host->base + MCI_DLL_CONFIG) & MCI_CK_OUT_EN))
+		;
+}
+
+static int msmsdcc_config_cm_sdc4_dll_phase(struct msmsdcc_host *host,
+						u8 phase)
+{
+	int rc = 0;
+	u32 mclk_freq = 0;
+	u32 wait_timeout;
+
+	/* Set CDR_EN bit to 0. */
+	writel_relaxed((readl_relaxed(host->base + MCI_DLL_CONFIG)
+			& ~MCI_CDR_EN), host->base + MCI_DLL_CONFIG);
+
+	/* Set CDR_EXT_EN bit to 1. */
+	writel_relaxed((readl_relaxed(host->base + MCI_DLL_CONFIG)
+			| MCI_CDR_EXT_EN), host->base + MCI_DLL_CONFIG);
+
+	/* Program the MCLK value to MCLK_FREQ bit field */
+	if (host->clk_rate <= 112000000)
+		mclk_freq = 0;
+	else if (host->clk_rate <= 125000000)
+		mclk_freq = 1;
+	else if (host->clk_rate <= 137000000)
+		mclk_freq = 2;
+	else if (host->clk_rate <= 150000000)
+		mclk_freq = 3;
+	else if (host->clk_rate <= 162000000)
+		mclk_freq = 4;
+	else if (host->clk_rate <= 175000000)
+		mclk_freq = 5;
+	else if (host->clk_rate <= 187000000)
+		mclk_freq = 6;
+	else if (host->clk_rate <= 200000000)
+		mclk_freq = 7;
+
+	writel_relaxed(((readl_relaxed(host->base + MCI_DLL_CONFIG)
+			& ~(7 << 24)) | (mclk_freq << 24)),
+			host->base + MCI_DLL_CONFIG);
+
+	/* Set CK_OUT_EN bit to 0. */
+	writel_relaxed((readl_relaxed(host->base + MCI_DLL_CONFIG)
+		& ~MCI_CK_OUT_EN), host->base + MCI_DLL_CONFIG);
+
+	/* Set DLL_EN bit to 1. */
+	writel_relaxed((readl_relaxed(host->base + MCI_DLL_CONFIG)
+			| MCI_DLL_EN), host->base + MCI_DLL_CONFIG);
+
+	wait_timeout = 1000;
+	/* Wait until CK_OUT_EN bit of MCI_DLL_CONFIG register becomes '0' */
+	while (readl_relaxed(host->base + MCI_DLL_CONFIG) & MCI_CK_OUT_EN) {
+		/* max. wait for 1 sec for LOCK bit for be set */
+		if (--wait_timeout == 0) {
+			pr_err("%s: %s: Failed to set DLL phase: %d, CK_OUT_EN bit is not 0",
+				mmc_hostname(host->mmc), __func__, phase);
+			rc = -1;
+			goto out;
+		}
+		/* wait for 1ms */
+		usleep_range(1000, 1500);
+	}
+
+	/*
+	 * Write the selected DLL clock output phase (0 ... 15)
+	 * to CDR_SELEXT bit field of MCI_DLL_CONFIG register.
+	 */
+	writel_relaxed(((readl_relaxed(host->base + MCI_DLL_CONFIG)
+			& ~(0xF << 20)) | (phase << 20)),
+			host->base + MCI_DLL_CONFIG);
+
+	/* Set CK_OUT_EN bit of MCI_DLL_CONFIG register to 1. */
+	writel_relaxed((readl_relaxed(host->base + MCI_DLL_CONFIG)
+			| MCI_CK_OUT_EN), host->base + MCI_DLL_CONFIG);
+
+	wait_timeout = 1000;
+	/* Wait until CK_OUT_EN bit of MCI_DLL_CONFIG register becomes '1' */
+	while (!(readl_relaxed(host->base + MCI_DLL_CONFIG) & MCI_CK_OUT_EN)) {
+		/* max. wait for 1 sec for LOCK bit for be set */
+		if (--wait_timeout == 0) {
+			pr_err("%s: %s: Failed to set DLL phase: %d, CK_OUT_EN bit is not 1",
+				mmc_hostname(host->mmc), __func__, phase);
+			rc = -1;
+			goto out;
+		}
+		/* wait for 1ms */
+		usleep_range(1000, 1500);
+	}
+out:
+	return rc;
+}
+
+static int msmsdcc_execute_tuning(struct mmc_host *mmc)
+{
+	struct msmsdcc_host *host = mmc_priv(mmc);
+	u8 phase;
+	u8 *data_buf;
+	u8 tuned_phases[16], tuned_phase_cnt = 0;
+	int rc = 0;
+
+	/* Tuning is only required for SDR50 & SDR104 modes */
+	if (!host->tuning_needed) {
+		rc = 0;
+		goto out;
+	}
+
+	host->cmd19_tuning_in_progress = 1;
+	/*
+	 * Make sure that clock is always enabled when DLL
+	 * tuning is in progress. Keeping PWRSAVE ON may
+	 * turn off the clock. So let's disable the PWRSAVE
+	 * here and re-enable it once tuning is completed.
+	 */
+	writel_relaxed((readl_relaxed(host->base + MMCICLOCK)
+			& ~MCI_CLK_PWRSAVE), host->base + MMCICLOCK);
+	/* first of all reset the tuning block */
+	rc = msmsdcc_init_cm_sdc4_dll(host);
+	if (rc)
+		goto out;
+
+	data_buf = kmalloc(64, GFP_KERNEL);
+	if (!data_buf) {
+		rc = -ENOMEM;
+		goto out;
+	}
+
+	phase = 0;
+	do {
+		struct mmc_command cmd = {0};
+		struct mmc_data data = {0};
+		struct mmc_request mrq = {
+			.cmd = &cmd,
+			.data = &data
+		};
+		struct scatterlist sg;
+
+		/* set the phase in delay line hw block */
+		rc = msmsdcc_config_cm_sdc4_dll_phase(host, phase);
+		if (rc)
+			goto kfree;
+
+		cmd.opcode = MMC_SEND_TUNING_BLOCK;
+		cmd.flags = MMC_RSP_R1 | MMC_CMD_ADTC;
+
+		data.blksz = 64;
+		data.blocks = 1;
+		data.flags = MMC_DATA_READ;
+		data.timeout_ns = 1000 * 1000 * 1000; /* 1 sec */
+
+		data.sg = &sg;
+		data.sg_len = 1;
+		sg_init_one(&sg, data_buf, 64);
+		memset(data_buf, 0, 64);
+		mmc_wait_for_req(mmc, &mrq);
+
+		if (!cmd.error && !data.error &&
+			!memcmp(data_buf, cmd19_tuning_block, 64)) {
+			/* tuning is successful with this tuning point */
+			tuned_phases[tuned_phase_cnt++] = phase;
+		}
+	} while (++phase < 16);
+
+	kfree(data_buf);
+
+	if (tuned_phase_cnt) {
+		tuned_phase_cnt--;
+		tuned_phase_cnt = (tuned_phase_cnt * 3) / 4;
+		phase = tuned_phases[tuned_phase_cnt];
+		/*
+		 * Finally set the selected phase in delay
+		 * line hw block.
+		 */
+		rc = msmsdcc_config_cm_sdc4_dll_phase(host, phase);
+		if (rc)
+			goto out;
+	} else {
+		/* tuning failed */
+		rc = -EAGAIN;
+		pr_err("%s: %s: no tuning point found",
+			mmc_hostname(mmc), __func__);
+	}
+	goto out;
+
+kfree:
+	kfree(data_buf);
+out:
+	/* re-enable PWESAVE */
+	writel_relaxed((readl_relaxed(host->base + MMCICLOCK) |
+			MCI_CLK_PWRSAVE), host->base + MMCICLOCK);
+	host->cmd19_tuning_in_progress = 0;
+	return rc;
+}
+
 static const struct mmc_host_ops msmsdcc_ops = {
 	.enable		= msmsdcc_enable,
 	.disable	= msmsdcc_disable,
@@ -2214,6 +2508,7 @@ static const struct mmc_host_ops msmsdcc_ops = {
 	.enable_sdio_irq = msmsdcc_enable_sdio_irq,
 #endif
 	.start_signal_voltage_switch = msmsdcc_start_signal_voltage_switch,
+	.execute_tuning = msmsdcc_execute_tuning
 };
 
 static unsigned int
