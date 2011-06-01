@@ -77,8 +77,8 @@ static int __init mipi_video_toshiba_wsvga_pt_init(void)
 	pinfo.mipi.hfp_power_stop = FALSE;
 	pinfo.mipi.hbp_power_stop = FALSE;
 	pinfo.mipi.hsa_power_stop = FALSE;
-	pinfo.mipi.eof_bllp_power_stop = TRUE;
-	pinfo.mipi.bllp_power_stop = TRUE;
+	pinfo.mipi.eof_bllp_power_stop = FALSE;
+	pinfo.mipi.bllp_power_stop = FALSE;
 	pinfo.mipi.traffic_mode = DSI_NON_BURST_SYNCH_EVENT;
 	pinfo.mipi.dst_format = DSI_VIDEO_DST_FORMAT_RGB888;
 	pinfo.mipi.vc = 0;
