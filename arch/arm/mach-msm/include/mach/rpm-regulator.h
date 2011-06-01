@@ -123,6 +123,8 @@ enum rpm_vreg_id {
 	RPM_VREG_ID_PM8901_LVS2,
 	RPM_VREG_ID_PM8901_LVS3,
 	RPM_VREG_ID_PM8901_MVS0,
+	RPM_VREG_ID_PM8921_S3,
+	RPM_VREG_ID_PM8921_L24,
 	RPM_VREG_ID_MAX,
 };
 
@@ -174,6 +176,8 @@ enum rpm_vreg_voter {
 	RPM_VREG_VOTER_COUNT,
 };
 
+/* rpm_vreg_*() APIs are currently only supported for MSM8X60. */
+#ifdef CONFIG_ARCH_MSM8X60
 /**
  * rpm_vreg_set_voltage - vote for a min_uV value of specified regualtor
  * @vreg: ID for regulator
@@ -206,5 +210,17 @@ int rpm_vreg_set_voltage(enum rpm_vreg_id vreg_id, enum rpm_vreg_voter voter,
  * Returns 0 on success or errno.
  */
 int rpm_vreg_set_frequency(enum rpm_vreg_id vreg_id, enum rpm_vreg_freq freq);
-
+#else
+static inline int rpm_vreg_set_voltage(enum rpm_vreg_id vreg_id,
+				       enum rpm_vreg_voter voter,
+				       int min_uV, int max_uV, int sleep_also)
+{
+	return 0;
+}
+static inline int rpm_vreg_set_frequency(enum rpm_vreg_id vreg_id,
+					 enum rpm_vreg_freq freq)
+{
+	return 0;
+}
+#endif
 #endif
