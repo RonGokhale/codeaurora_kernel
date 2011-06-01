@@ -1494,16 +1494,17 @@ struct clk_local prng_clk = {
 		.sys_vdd = v, \
 	}
 static struct clk_freq_tbl clk_tbl_sdc[] = {
-	F_SDC(       0, gnd,   1, 0,   0, NONE),
-	F_SDC(  144000, pxo,   3, 2, 125, LOW),
-	F_SDC(  400000, pll8,  4, 1, 240, LOW),
-	F_SDC(16000000, pll8,  4, 1,   6, LOW),
-	F_SDC(17070000, pll8,  1, 2,  45, LOW),
-	F_SDC(20210000, pll8,  1, 1,  19, LOW),
-	F_SDC(24000000, pll8,  4, 1,   4, LOW),
-	F_SDC(48000000, pll8,  4, 1,   2, NOMINAL),
-	F_SDC(64000000, pll8,  3, 1,   2, NOMINAL),
-	F_SDC(96000000, pll8,  4, 0,   0, NOMINAL),
+	F_SDC(        0, gnd,   1, 0,   0, NONE),
+	F_SDC(   144000, pxo,   3, 2, 125, LOW),
+	F_SDC(   400000, pll8,  4, 1, 240, LOW),
+	F_SDC( 16000000, pll8,  4, 1,   6, LOW),
+	F_SDC( 17070000, pll8,  1, 2,  45, LOW),
+	F_SDC( 20210000, pll8,  1, 1,  19, LOW),
+	F_SDC( 24000000, pll8,  4, 1,   4, LOW),
+	F_SDC( 48000000, pll8,  4, 1,   2, NOMINAL),
+	F_SDC( 64000000, pll8,  3, 1,   2, NOMINAL),
+	F_SDC( 96000000, pll8,  4, 0,   0, NOMINAL),
+	F_SDC(192000000, pll8,  2, 0,   0, NOMINAL),
 	F_END
 };
 
