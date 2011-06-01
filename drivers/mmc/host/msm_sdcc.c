@@ -1886,12 +1886,13 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	clk |= MCI_CLK_FLOWENA;
 	clk |= MCI_CLK_SELECTIN; /* feedback clock */
 
+	if (host->io_pad_pwr_switch)
+		clk |= IO_PAD_PWR_SWITCH;
+
 	if (host->plat->translate_vdd && !host->sdio_gpio_lpm)
 		pwr |= host->plat->translate_vdd(mmc_dev(mmc), ios->vdd);
 	else if (!host->plat->translate_vdd && !host->sdio_gpio_lpm)
 		pwr |= msmsdcc_setup_vreg(host, !!ios->vdd);
-
-	msmsdcc_tune_vdd_pad_level(host, 2950000);
 
 	switch (ios->power_mode) {
 	case MMC_POWER_OFF:
@@ -2091,6 +2092,93 @@ static int msmsdcc_disable(struct mmc_host *mmc, int lazy)
 #define msmsdcc_disable NULL
 #endif
 
+static int msmsdcc_start_signal_voltage_switch(struct mmc_host *mmc,
+						struct mmc_ios *ios)
+{
+	struct msmsdcc_host *host = mmc_priv(mmc);
+	unsigned long flags;
+	int err = 0;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	if (ios->signal_voltage == MMC_SIGNAL_VOLTAGE_330) {
+		/* Change voltage level of VDDPX to high voltage */
+		if (msmsdcc_tune_vdd_pad_level(host, 2950000)) {
+			pr_err("%s: %s: failed to change vddp level to %d",
+				mmc_hostname(mmc), __func__, 2950000);
+		}
+		goto out;
+	} else if (ios->signal_voltage != MMC_SIGNAL_VOLTAGE_180) {
+		/* invalid selection. don't do anything */
+		goto out;
+	}
+
+	/*
+	 * If we are here means voltage switch from high voltage to
+	 * low voltage is required
+	 */
+
+	/*
+	 * Poll on MCIDATIN_3_0 and MCICMDIN bits of MCI_TEST_INPUT
+	 * register until they become all zeros.
+	 */
+	if (readl_relaxed(host->base + MCI_TEST_INPUT) & (0xF << 1)) {
+		err = -EAGAIN;
+		pr_err("%s: %s: MCIDATIN_3_0 is still not all zeros",
+			mmc_hostname(mmc), __func__);
+		goto out;
+	}
+
+	/* Stop SD CLK output. */
+	writel_relaxed((readl_relaxed(host->base + MMCICLOCK) |
+			MCI_CLK_PWRSAVE), host->base + MMCICLOCK);
+
+	/*
+	 * Switch VDDPX from high voltage to low voltage
+	 * to change the VDD of the SD IO pads.
+	 */
+	if (msmsdcc_tune_vdd_pad_level(host, 1850000)) {
+		pr_err("%s: %s: failed to change vddp level to %d",
+			mmc_hostname(mmc), __func__, 1850000);
+		goto out;
+	}
+
+	writel_relaxed((readl_relaxed(host->base + MMCICLOCK) |
+			IO_PAD_PWR_SWITCH), host->base + MMCICLOCK);
+	host->io_pad_pwr_switch = 1;
+	spin_unlock_irqrestore(&host->lock, flags);
+
+	/* Wait 5 ms for the voltage regulater in the card to become stable. */
+	usleep_range(5000, 5500);
+
+	spin_lock_irqsave(&host->lock, flags);
+	/* Start SD CLK output. */
+	writel_relaxed((readl_relaxed(host->base + MMCICLOCK)
+			& ~MCI_CLK_PWRSAVE), host->base + MMCICLOCK);
+	spin_unlock_irqrestore(&host->lock, flags);
+
+	/*
+	 * If MCIDATIN_3_0 and MCICMDIN bits of MCI_TEST_INPUT register
+	 * don't become all ones within 1 ms then a Voltage Switch
+	 * sequence has failed and a power cycle to the card is required.
+	 * Otherwise Voltage Switch sequence is completed successfully.
+	 */
+	usleep_range(1000, 1500);
+
+	spin_lock_irqsave(&host->lock, flags);
+	if ((readl_relaxed(host->base + MCI_TEST_INPUT) & (0xF << 1))
+				!= (0xF << 1)) {
+		pr_err("%s: %s: MCIDATIN_3_0 are still not all ones",
+			mmc_hostname(mmc), __func__);
+		err = -EAGAIN;
+		goto out;
+	}
+
+out:
+	spin_unlock_irqrestore(&host->lock, flags);
+	return err;
+}
+
 static const struct mmc_host_ops msmsdcc_ops = {
 	.enable		= msmsdcc_enable,
 	.disable	= msmsdcc_disable,
@@ -2100,6 +2188,7 @@ static const struct mmc_host_ops msmsdcc_ops = {
 #ifdef CONFIG_MMC_MSM_SDIO_SUPPORT
 	.enable_sdio_irq = msmsdcc_enable_sdio_irq,
 #endif
+	.start_signal_voltage_switch = msmsdcc_start_signal_voltage_switch,
 };
 
 static unsigned int
@@ -2935,6 +3024,15 @@ msmsdcc_probe(struct platform_device *pdev)
 	mmc->caps |= plat->mmc_bus_width;
 
 	mmc->caps |= MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED;
+	mmc->caps |= plat->uhs_caps;
+	/*
+	 * XPC controls the maximum current in the default speed mode of SDXC
+	 * card. XPC=0 means 100mA (max.) but speed class is not supported.
+	 * XPC=1 means 150mA (max.) and speed class is supported.
+	 */
+	if (plat->xpc_cap)
+		mmc->caps |= (MMC_CAP_SET_XPC_330 | MMC_CAP_SET_XPC_300 |
+				MMC_CAP_SET_XPC_180);
 
 	if (plat->nonremovable)
 		mmc->caps |= MMC_CAP_NONREMOVABLE;

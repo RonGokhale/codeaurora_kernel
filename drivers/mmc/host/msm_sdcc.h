@@ -47,6 +47,7 @@
 #define MCI_CLK_FLOWENA		(1 << 12)
 #define MCI_CLK_INVERTOUT	(1 << 13)
 #define MCI_CLK_SELECTIN	(1 << 15)
+#define IO_PAD_PWR_SWITCH	(1 << 21)
 
 #define MMCIARGUMENT		0x008
 #define MMCICOMMAND		0x00c
@@ -165,6 +166,8 @@
 #define MCICCSTIMER		0x058
 
 #define MMCIFIFO		0x080 /* to 0x0bc */
+
+#define MCI_TEST_INPUT		0x0D4
 
 #define MCI_IRQENABLE	\
 	(MCI_CMDCRCFAILMASK|MCI_DATACRCFAILMASK|MCI_CMDTIMEOUTMASK|	\
@@ -325,6 +328,7 @@ struct msmsdcc_host {
 
 	unsigned int sdcc_irq_disabled;
 	struct timer_list req_tout_timer;
+	bool io_pad_pwr_switch;
 	bool sdio_gpio_lpm;
 };
 
