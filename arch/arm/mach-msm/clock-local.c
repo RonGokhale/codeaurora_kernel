@@ -11,6 +11,8 @@
  *
  */
 
+#define pr_fmt(fmt) "%s: " fmt, __func__
+
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/err.h>
@@ -322,14 +324,12 @@ int local_unvote_sys_vdd(unsigned level)
 		return -EINVAL;
 
 	spin_lock_irqsave(&sys_vdd_vote_lock, flags);
-	if (local_sys_vdd_votes[level])
-		local_sys_vdd_votes[level]--;
-	else {
-		pr_warning("%s: Reference counts are incorrect for level %d!\n",
-			__func__, level);
-		goto out;
-	}
 
+	if (WARN(!local_sys_vdd_votes[level],
+		"Reference counts are incorrect for level %d!\n", level))
+		goto out;
+
+	local_sys_vdd_votes[level]--;
 	rc = local_update_sys_vdd();
 	if (rc)
 		local_sys_vdd_votes[level]++;
@@ -379,10 +379,7 @@ static void __branch_clk_enable_reg(const struct branch *clk, const char *name)
 		for (count = HALT_CHECK_MAX_LOOPS; branch_clk_is_halted(clk)
 					&& count > 0; count--)
 			udelay(1);
-		if (count == 0)
-			pr_warning("%s: %s status stuck at 'off' (bit %d "
-				   "of 0x%p).\n", __func__, name,
-				   clk->halt_bit, clk->halt_reg);
+		WARN(count == 0, "%s status stuck at 'off'", name);
 	}
 }
 
@@ -452,10 +449,7 @@ static u32 __branch_clk_disable_reg(const struct branch *clk, const char *name)
 		for (count = HALT_CHECK_MAX_LOOPS; !branch_clk_is_halted(clk)
 					&& count > 0; count--)
 			udelay(1);
-		if (count == 0)
-			pr_warning("%s: %s status stuck at 'on' (bit %d "
-				   "of 0x%p).\n", __func__, name,
-				   clk->halt_bit, clk->halt_reg);
+		WARN(count == 0, "%s status stuck at 'on'", name);
 	}
 
 	return reg_val;
