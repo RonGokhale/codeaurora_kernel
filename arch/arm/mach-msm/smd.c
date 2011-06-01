@@ -151,6 +151,7 @@ static inline void smd_write_intr(unsigned int val,
 			(smd_write_intr(1 << 8, MSM_GCC_BASE + 0x8))
 #define MSM_TRIG_A2DSPS_SMD_INT
 #define MSM_TRIG_A2WCNSS_SMD_INT
+#define MSM_TRIG_A2WCNSS_SMSM_INT
 #elif defined(CONFIG_ARCH_MSM8X60)
 #define MSM_TRIG_A2M_SMD_INT     \
 			(smd_write_intr(1 << 3, MSM_GCC_BASE + 0x8))
@@ -163,6 +164,7 @@ static inline void smd_write_intr(unsigned int val,
 #define MSM_TRIG_A2DSPS_SMD_INT  \
 			(smd_write_intr(1, MSM_SIC_NON_SECURE_BASE + 0x4080))
 #define MSM_TRIG_A2WCNSS_SMD_INT
+#define MSM_TRIG_A2WCNSS_SMSM_INT
 #elif defined(CONFIG_ARCH_MSM8960)
 #define MSM_TRIG_A2M_SMD_INT     \
 			(smd_write_intr(1 << 3, MSM_APCS_GCC_BASE + 0x8))
@@ -176,6 +178,8 @@ static inline void smd_write_intr(unsigned int val,
 			(smd_write_intr(1, MSM_SIC_NON_SECURE_BASE + 0x4080))
 #define MSM_TRIG_A2WCNSS_SMD_INT  \
 			(smd_write_intr(1 << 25, MSM_APCS_GCC_BASE + 0x8))
+#define MSM_TRIG_A2WCNSS_SMSM_INT  \
+			(smd_write_intr(1 << 23, MSM_APCS_GCC_BASE + 0x8))
 #else
 #define MSM_TRIG_A2M_SMD_INT     \
 			(smd_write_intr(1, MSM_CSR_BASE + 0x400 + (0) * 4))
@@ -187,6 +191,7 @@ static inline void smd_write_intr(unsigned int val,
 			(smd_write_intr(1, MSM_CSR_BASE + 0x400 + (8) * 4))
 #define MSM_TRIG_A2DSPS_SMD_INT
 #define MSM_TRIG_A2WCNSS_SMD_INT
+#define MSM_TRIG_A2WCNSS_SMSM_INT
 #endif
 
 #define SMD_LOOPBACK_CID 100
@@ -231,6 +236,12 @@ static void notify_other_smsm(uint32_t smsm_entry, uint32_t notify_mask)
 #endif
 		MSM_TRIG_A2Q6_SMSM_INT;
 	}
+
+	if (smsm_info.intr_mask &&
+	    (__raw_readl(SMSM_INTR_MASK_ADDR(smsm_entry, SMSM_WCNSS))
+				& notify_mask))
+		MSM_TRIG_A2WCNSS_SMSM_INT;
+
 	schedule_work(&smsm_cb_work);
 }
 
@@ -2225,6 +2236,23 @@ int smd_core_init(void)
 	if (r < 0)
 		pr_err("smd_core_init: "
 		       "enable_irq_wake failed for INT_WCNSS_A11\n");
+
+	r = request_irq(INT_WCNSS_A11_SMSM, smsm_irq_handler,
+			flags, "smsm_dev", smsm_irq_handler);
+	if (r < 0) {
+		free_irq(INT_A9_M2A_0, 0);
+		free_irq(INT_A9_M2A_5, 0);
+		free_irq(INT_ADSP_A11, smd_dsp_irq_handler);
+		free_irq(INT_ADSP_A11_SMSM, smsm_irq_handler);
+		free_irq(INT_DSPS_A11, smd_dsps_irq_handler);
+		free_irq(INT_WCNSS_A11, smd_wcnss_irq_handler);
+		return r;
+	}
+
+	r = enable_irq_wake(INT_WCNSS_A11_SMSM);
+	if (r < 0)
+		pr_err("smd_core_init: "
+		       "enable_irq_wake failed for INT_WCNSS_A11_SMSM\n");
 #endif
 
 	/* we may have missed a signal while booting -- fake
