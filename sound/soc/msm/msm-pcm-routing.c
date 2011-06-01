@@ -433,6 +433,10 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 		0, 0, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("SLIM0_UL_HL", "SLIMBUS0_HOSTLESS Capture",
 		0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_IN("INTFM_DL_HL", "INT_FM_HOSTLESS Playback",
+		0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("INTFM_UL_HL", "INT_FM_HOSTLESS Capture",
+		0, 0, 0, 0),
 	/* Backend AIF */
 	/* Stream name equals to backend dai link stream name
 	 */
@@ -536,6 +540,8 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"VOIP_UL", NULL, "Voip_Tx Mixer"},
 	{"SLIMBUS_0_RX", NULL, "SLIM0_DL_HL"},
 	{"SLIM0_UL_HL", NULL, "SLIMBUS_0_TX"},
+	{"INT_FM_RX", NULL, "INTFM_DL_HL"},
+	{"INTFM_UL_HL", NULL, "INT_FM_TX"},
 };
 
 static struct snd_pcm_ops msm_routing_pcm_ops = {};
