@@ -1875,7 +1875,8 @@ static struct platform_device *common_devices[] __initdata = {
 	&android_pmem_adsp_device,
 #endif
 	&msm_fb_device,
-	&msm_device_vidc
+	&msm_device_vidc,
+	&msm_device_bam_dmux,
 };
 
 static struct platform_device *sim_devices[] __initdata = {
@@ -1895,7 +1896,6 @@ static struct platform_device *sim_devices[] __initdata = {
 	&msm_bus_sys_fpb,
 	&msm_bus_cpss_fpb,
 #endif
-	&msm_device_bam_dmux,
 	&msm_pcm,
 	&msm_pcm_routing,
 	&msm_cpudai0,
@@ -1914,7 +1914,6 @@ static struct platform_device *rumi3_devices[] __initdata = {
 #ifdef CONFIG_MSM_GEMINI
 	&msm8960_gemini_device,
 #endif
-	&msm_device_bam_dmux,
 };
 
 static struct platform_device *cdp_devices[] __initdata = {
