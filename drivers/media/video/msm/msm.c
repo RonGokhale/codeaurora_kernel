@@ -1076,18 +1076,16 @@ static int msm_open(struct file *f)
 		}
 		pcam->mctl.sync.pcam_sync = pcam;
 
+		/* Register isp subdev */
+		rc = v4l2_device_register_subdev(&pcam->v4l2_dev,
+					&pcam->mctl.isp_sdev->sd);
+		if (rc < 0) {
+			mutex_unlock(&pcam->vid_lock);
+			D("%s: v4l2_device_register_subdev failed rc = %d\n",
+				__func__, rc);
+			return rc;
+		}
 	}
-	/* Register isp subdev */
-	rc = v4l2_device_register_subdev(&pcam->v4l2_dev,
-				&pcam->mctl.isp_sdev->sd);
-	if (rc < 0) {
-		mutex_unlock(&pcam->vid_lock);
-		D("%s: v4l2_device_register_subdev failed rc = %d\n",
-			__func__, rc);
-		return rc;
-	}
-
-	pcam->mctl.sync.pcam_sync = pcam;
 
 	/* Initialize the video queue */
 	rc = pcam->mctl.mctl_vidbuf_init(pcam_inst, &pcam_inst->vid_bufq);
