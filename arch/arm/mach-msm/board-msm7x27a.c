@@ -1624,41 +1624,81 @@ static int msm_fb_lcdc_config(int on)
 	return rc;
 }
 
+static const char * const msm_fb_lcdc_vreg[] = {
+		"gp2",
+		"msme1",
+};
+
+static const int msm_fb_lcdc_vreg_mV[] = {
+	2850,
+	1800,
+};
+
+struct vreg *lcdc_vreg[ARRAY_SIZE(msm_fb_lcdc_vreg)];
+
 static uint32_t lcdc_gpio_initialized;
 
 static void lcdc_toshiba_gpio_init(void)
 {
+	int i, rc = 0;
 	if (!lcdc_gpio_initialized) {
 		if (gpio_request(GPIO_SPI_CLK, "spi_clk")) {
 			pr_err("failed to request gpio spi_clk\n");
-			goto fail_gpio;
+			return;
 		}
 		if (gpio_request(GPIO_SPI_CS0_N, "spi_cs")) {
 			pr_err("failed to request gpio spi_cs0_N\n");
-			goto fail_gpio;
+			goto fail_gpio6;
 		}
 		if (gpio_request(GPIO_SPI_MOSI, "spi_mosi")) {
 			pr_err("failed to request gpio spi_mosi\n");
-			goto fail_gpio;
+			goto fail_gpio5;
 		}
 		if (gpio_request(GPIO_SPI_MISO, "spi_miso")) {
 			pr_err("failed to request gpio spi_miso\n");
-			goto fail_gpio;
+			goto fail_gpio4;
 		}
 		if (gpio_request(GPIO_DISPLAY_PWR_EN, "gpio_disp_pwr")) {
 			pr_err("failed to request gpio_disp_pwr\n");
-			goto fail_gpio;
+			goto fail_gpio3;
 		}
 		if (gpio_request(GPIO_BACKLIGHT_EN, "gpio_bkl_en")) {
 			pr_err("failed to request gpio_bkl_en\n");
-			goto fail_gpio;
+			goto fail_gpio2;
 		}
 		pmapp_disp_backlight_init();
+
+		for (i = 0; i < ARRAY_SIZE(msm_fb_lcdc_vreg); i++) {
+			lcdc_vreg[i] = vreg_get(0, msm_fb_lcdc_vreg[i]);
+
+			rc = vreg_set_level(lcdc_vreg[i],
+						msm_fb_lcdc_vreg_mV[i]);
+
+			if (rc < 0) {
+				pr_err("%s: set regulator level failed "
+					"with :(%d)\n", __func__, rc);
+				goto fail_gpio1;
+			}
+		}
 		lcdc_gpio_initialized = 1;
 	}
 	return;
 
-fail_gpio:
+fail_gpio1:
+	for (; i > 0; i--)
+			vreg_put(lcdc_vreg[i - 1]);
+
+	gpio_free(GPIO_BACKLIGHT_EN);
+fail_gpio2:
+	gpio_free(GPIO_DISPLAY_PWR_EN);
+fail_gpio3:
+	gpio_free(GPIO_SPI_MISO);
+fail_gpio4:
+	gpio_free(GPIO_SPI_MOSI);
+fail_gpio5:
+	gpio_free(GPIO_SPI_CS0_N);
+fail_gpio6:
+	gpio_free(GPIO_SPI_CLK);
 	lcdc_gpio_initialized = 0;
 }
 
@@ -1690,6 +1730,7 @@ static void lcdc_toshiba_config_gpios(int enable)
 
 static int msm_fb_lcdc_power_save(int on)
 {
+	int i, rc = 0;
 	/* Doing the init of the LCDC GPIOs very late as they are from
 		an I2C-controlled IO Expander */
 	lcdc_toshiba_gpio_init();
@@ -1697,9 +1738,43 @@ static int msm_fb_lcdc_power_save(int on)
 	if (lcdc_gpio_initialized) {
 		gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN, on);
 		gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, on);
+
+		for (i = 0; i < ARRAY_SIZE(msm_fb_lcdc_vreg); i++) {
+			if (on) {
+				rc = vreg_enable(lcdc_vreg[i]);
+
+				if (rc) {
+					printk(KERN_ERR "vreg_enable: %s vreg"
+						"operation failed\n",
+						msm_fb_lcdc_vreg[i]);
+						goto lcdc_vreg_fail;
+				}
+			} else {
+				rc = vreg_disable(lcdc_vreg[i]);
+
+				if (rc) {
+					printk(KERN_ERR "vreg_disable: %s vreg "
+						"operation failed\n",
+						msm_fb_lcdc_vreg[i]);
+					goto lcdc_vreg_fail;
+				}
+			}
+		}
 	}
 
-	return 0;
+	return rc;
+
+lcdc_vreg_fail:
+	if (on) {
+		for (; i > 0; i--)
+			vreg_disable(lcdc_vreg[i - 1]);
+	} else {
+		for (; i > 0; i--)
+			vreg_enable(lcdc_vreg[i - 1]);
+	}
+
+return rc;
+
 }
 
 
@@ -2699,19 +2774,29 @@ gpio_error:
 	return rc;
 }
 
+static const char * const msm_fb_dsi_vreg[] = {
+	"gp2",
+	"msme1",
+	"mddi"
+};
+
+static const int msm_fb_dsi_vreg_mV[] = {
+	2850,
+	1800,
+	1200
+};
+
+static struct vreg *dsi_vreg[ARRAY_SIZE(msm_fb_dsi_vreg)];
 static int dsi_gpio_initialized;
 
 static int mipi_dsi_panel_power(int on)
 {
-	int rc = 0;
+	int i, rc = 0;
 	uint32_t lcdc_reset_cfg;
 
 	/* I2C-controlled GPIO Expander -init of the GPIOs very late */
 	if (!dsi_gpio_initialized) {
 		pmapp_disp_backlight_init();
-
-		if (pmapp_disp_backlight_set_brightness(100))
-			pr_err("display backlight set brightness failed\n");
 
 		rc = gpio_request(GPIO_DISPLAY_PWR_EN, "gpio_disp_pwr");
 		if (rc < 0) {
@@ -2736,6 +2821,25 @@ static int mipi_dsi_panel_power(int on)
 			if (rc < 0) {
 				pr_err("failed to enable backlight\n");
 				goto fail_gpio2;
+			}
+		}
+
+		for (i = 0; i < ARRAY_SIZE(msm_fb_dsi_vreg); i++) {
+			dsi_vreg[i] = vreg_get(0, msm_fb_dsi_vreg[i]);
+
+			if (IS_ERR(dsi_vreg[i])) {
+				pr_err("%s: vreg get failed with : (%ld)\n",
+					__func__, PTR_ERR(dsi_vreg[i]));
+				goto fail_gpio2;
+			}
+
+			rc = vreg_set_level(dsi_vreg[i],
+				msm_fb_dsi_vreg_mV[i]);
+
+			if (rc < 0) {
+				pr_err("%s: set regulator level failed "
+					"with :(%d)\n",	__func__, rc);
+				goto vreg_fail1;
 			}
 		}
 		dsi_gpio_initialized = 1;
@@ -2776,13 +2880,52 @@ static int mipi_dsi_panel_power(int on)
 				pr_err("backlight set brightness failed\n");
 		}
 
+		/*Configure vreg lines */
+		for (i = 0; i < ARRAY_SIZE(msm_fb_dsi_vreg); i++) {
+			if (on) {
+				rc = vreg_enable(dsi_vreg[i]);
+
+				if (rc) {
+					printk(KERN_ERR "vreg_enable: %s vreg"
+						"operation failed\n",
+						msm_fb_dsi_vreg[i]);
+
+					goto vreg_fail2;
+				}
+			} else {
+				rc = vreg_disable(dsi_vreg[i]);
+
+				if (rc) {
+					printk(KERN_ERR "vreg_disable: %s vreg "
+						"operation failed\n",
+						msm_fb_dsi_vreg[i]);
+					goto vreg_fail2;
+				}
+			}
+		}
+
 	return rc;
+
+vreg_fail2:
+	if (on) {
+		for (; i > 0; i--)
+			vreg_disable(dsi_vreg[i - 1]);
+	} else {
+		for (; i > 0; i--)
+			vreg_enable(dsi_vreg[i - 1]);
+	}
+
+	return rc;
+
+vreg_fail1:
+	for (; i > 0; i--)
+		vreg_put(dsi_vreg[i - 1]);
 
 fail_gpio2:
 	gpio_free(GPIO_BACKLIGHT_EN);
 fail_gpio1:
 	gpio_free(GPIO_DISPLAY_PWR_EN);
-
+	dsi_gpio_initialized = 0;
 	return rc;
 }
 
