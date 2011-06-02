@@ -311,6 +311,7 @@ int smsm_check_for_modem_crash(void)
 	}
 	return 0;
 }
+EXPORT_SYMBOL(smsm_check_for_modem_crash);
 
 /* the spinlock is used to synchronize between the
  * irq handler and code that mutates the channel
@@ -905,6 +906,7 @@ void smd_sleep_exit(void)
 		tasklet_schedule(&smd_fake_irq_tasklet);
 	}
 }
+EXPORT_SYMBOL(smd_sleep_exit);
 
 static int smd_is_packet(struct smd_alloc_elm *alloc_elm)
 {
@@ -1595,6 +1597,7 @@ void *smem_alloc(unsigned id, unsigned size)
 {
 	return smem_find(id, size);
 }
+EXPORT_SYMBOL(smem_alloc);
 
 #define SMEM_SPINLOCK_SMEM_ALLOC       "S:3"
 static remote_spinlock_t remote_spinlock;
@@ -1666,6 +1669,7 @@ void *smem_get_entry(unsigned id, unsigned *size)
 
 	return 0;
 }
+EXPORT_SYMBOL(smem_get_entry);
 
 void *smem_find(unsigned id, unsigned size_in)
 {
@@ -1685,6 +1689,7 @@ void *smem_find(unsigned id, unsigned size_in)
 
 	return ptr;
 }
+EXPORT_SYMBOL(smem_find);
 
 static int smsm_cb_init(void)
 {
@@ -1910,6 +1915,7 @@ int smsm_change_intr_mask(uint32_t smsm_entry,
 
 	return 0;
 }
+EXPORT_SYMBOL(smsm_change_intr_mask);
 
 int smsm_get_intr_mask(uint32_t smsm_entry, uint32_t *intr_mask)
 {
@@ -1927,6 +1933,7 @@ int smsm_get_intr_mask(uint32_t smsm_entry, uint32_t *intr_mask)
 	*intr_mask = __raw_readl(SMSM_INTR_MASK_ADDR(smsm_entry, SMSM_APPS));
 	return 0;
 }
+EXPORT_SYMBOL(smsm_get_intr_mask);
 
 int smsm_change_state(uint32_t smsm_entry,
 		      uint32_t clear_mask, uint32_t set_mask)
@@ -1956,6 +1963,7 @@ int smsm_change_state(uint32_t smsm_entry,
 
 	return 0;
 }
+EXPORT_SYMBOL(smsm_change_state);
 
 uint32_t smsm_get_state(uint32_t smsm_entry)
 {
@@ -1977,6 +1985,7 @@ uint32_t smsm_get_state(uint32_t smsm_entry)
 
 	return rv;
 }
+EXPORT_SYMBOL(smsm_get_state);
 
 /**
  * Performs SMSM callback client notifiction.
