@@ -1,15 +1,12 @@
-
 /*
- *  Qualcomm's Bluetooth Software In-Band Sleep UART protocol
- *
  *  HCI_SMD (HCI Shared Memory Driver) is Qualcomm's Shared memory driver
- *  for the HCI protocol.
+ *  for the BT HCI protocol.
  *
- *  Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+ *  Copyright (c) 2000-2001, 2011 Code Aurora Forum. All rights reserved.
+ *  Copyright (C) 2002-2003  Maxim Krasnyansky <maxk@qualcomm.com>
+ *  Copyright (C) 2004-2006  Marcel Holtmann <marcel@holtmann.org>
  *
- *  Acknowledgements:
- *  This file is based on hci_vhci.c, which was...
- *  written by Maxim Krasnyansky and Marcel Holtmann.
+ *  This file is based on drivers/bluetooth/hci_vhci.c
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2
@@ -19,11 +16,6 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
  */
 
 #include <linux/module.h>
@@ -47,7 +39,6 @@
 #include <net/bluetooth/hci_core.h>
 #include <mach/msm_smd.h>
 
-#define VERSION "1.0"
 #define BT_CMD 1
 #define BT_DATA 2
 
@@ -295,7 +286,6 @@ static void __exit hci_smd_exit(void)
 module_init(hci_smd_init);
 module_exit(hci_smd_exit);
 
-MODULE_AUTHOR("Ankur Nandwani <ankurn@codeaurora.org>");
+MODULE_AUTHOR("Ankur Nandwani <ankurn@codeaurora.org>")
 MODULE_DESCRIPTION("Bluetooth SMD driver ver " VERSION);
-MODULE_VERSION(VERSION);
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
