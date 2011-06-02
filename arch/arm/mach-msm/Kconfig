@@ -106,6 +106,7 @@ config ARCH_MSM8X60
 	select ARCH_INLINE_WRITE_UNLOCK
 	select ARCH_INLINE_WRITE_UNLOCK_BH
 	select ARCH_INLINE_WRITE_UNLOCK_IRQRESTORE
+	select CPU_HAS_L2_PMU
 
 config ARCH_MSM8960
 	bool "MSM8960"
@@ -122,6 +123,7 @@ config ARCH_MSM8960
 	select MSM_QDSP6_APR
 	select MSM_PIL
 	select MSM_AUDIO_QDSP6 if SND_SOC
+	select CPU_HAS_L2_PMU
 
 config ARCH_FSM9XXX
 	bool "FSM9XXX"
@@ -706,6 +708,11 @@ config MSM_SUSPEND_STATS_FIRST_BUCKET
 	  histogram.  This is for collecting statistics on suspend.
 
 endif # MSM_IDLE_STATS
+
+config CPU_HAS_L2_PMU
+	bool "L2CC PMU Support"
+	help
+	 Select this if the L2 cache controller has a Performance Monitoring Unit.
 
 config MSM_JTAG_V7
 	depends on CPU_V7
