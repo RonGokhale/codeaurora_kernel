@@ -20,6 +20,7 @@
 #include <asm/domain.h>
 #include <asm/pgtable.h>
 #include <asm/tlbflush.h>
+#include <linux/module.h>
 
 #define DOMAIN_MANAGER_BITS (0xAAAAAAAA)
 
@@ -302,6 +303,7 @@ void emulate_domain_manager_set(u32 domain)
 
 	spin_unlock_irqrestore(&edm_lock, flags);
 }
+EXPORT_SYMBOL_GPL(emulate_domain_manager_set);
 
 /*
  * Switch thread context.  Restore original contents.
@@ -321,6 +323,7 @@ void emulate_domain_manager_switch_mm(unsigned long pgd_phys,
 
 	spin_unlock_irqrestore(&edm_lock, flags);
 }
+EXPORT_SYMBOL_GPL(emulate_domain_manager_switch_mm);
 
 /*
  * Kernel data_abort hook
@@ -329,6 +332,7 @@ int emulate_domain_manager_data_abort(u32 dfsr, u32 dfar)
 {
 	return __emulate_domain_manager_abort(dfsr, dfar, 1);
 }
+EXPORT_SYMBOL_GPL(emulate_domain_manager_data_abort);
 
 /*
  * Kernel prefetch_abort hook
@@ -337,5 +341,5 @@ int emulate_domain_manager_prefetch_abort(u32 ifsr, u32 ifar)
 {
 	return __emulate_domain_manager_abort(ifsr, ifar, 0);
 }
-
+EXPORT_SYMBOL_GPL(emulate_domain_manager_prefetch_abort);
 
