@@ -2450,6 +2450,10 @@ static struct pm8921_charger_platform_data pm8921_chg_pdata __devinitdata = {
 	.term_current	= 100,
 };
 
+static struct pm8xxx_misc_platform_data pm8xxx_misc_pdata = {
+	.priority		= 0,
+};
+
 static struct pm8921_platform_data pm8921_platform_data __devinitdata = {
 	.irq_pdata		= &pm8xxx_irq_pdata,
 	.gpio_pdata		= &pm8xxx_gpio_pdata,
@@ -2457,6 +2461,7 @@ static struct pm8921_platform_data pm8921_platform_data __devinitdata = {
 	.rtc_pdata              = &pm8xxx_rtc_pdata,
 	.pwrkey_pdata		= &pm8xxx_pwrkey_pdata,
 	.keypad_pdata		= &keypad_data,
+	.misc_pdata		= &pm8xxx_misc_pdata,
 	.regulator_pdatas	= msm_pm8921_regulator_pdata,
 	.charger_pdata		= &pm8921_chg_pdata,
 };
