@@ -750,13 +750,13 @@ static DEVICE_ATTR(illuminance0_integration_time, S_IRUGO | S_IWUSR,
 static DEVICE_ATTR(illuminance0_integration_time_available, S_IRUGO,
 		taos_als_time_available_show, NULL);
 
-static DEVICE_ATTR(illuminance0_calibbias, S_IRUGO | S_IWUSR,
+static DEVICE_ATTR(als_trim, S_IRUGO | S_IWUSR,
 		taos_als_trim_show, taos_als_trim_store);
 
 static DEVICE_ATTR(illuminance0_input_target, S_IRUGO | S_IWUSR,
 		taos_als_cal_target_show, taos_als_cal_target_store);
 
-static DEVICE_ATTR(illuminance0_input, S_IRUGO, taos_lux_show, NULL);
+static DEVICE_ATTR(lux, S_IRUGO, taos_lux_show, NULL);
 static DEVICE_ATTR(illuminance0_calibrate, S_IWUSR, NULL, taos_do_calibrate);
 static DEVICE_ATTR(illuminance0_lux_table, S_IRUGO | S_IWUSR,
 		taos_luxtable_show, taos_luxtable_store);
@@ -768,9 +768,9 @@ static struct attribute *sysfs_attrs_ctrl[] = {
 	&dev_attr_illuminance0_calibscale_available.attr,
 	&dev_attr_illuminance0_integration_time.attr,	/* I time*/
 	&dev_attr_illuminance0_integration_time_available.attr,
-	&dev_attr_illuminance0_calibbias.attr,			/* trim  */
+	&dev_attr_als_trim.attr,			/* trim  */
 	&dev_attr_illuminance0_input_target.attr,
-	&dev_attr_illuminance0_input.attr,
+	&dev_attr_lux.attr,
 	&dev_attr_illuminance0_calibrate.attr,
 	&dev_attr_illuminance0_lux_table.attr,
 	NULL
