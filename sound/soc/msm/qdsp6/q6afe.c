@@ -250,9 +250,14 @@ int afe_loopback(u16 enable, u16 rx_port, u16 tx_port)
 	struct afe_loopback_command lb_cmd;
 	int ret = 0;
 	if (this_afe.apr == NULL) {
-		pr_err("%s:AFE is not opened\n", __func__);
-		ret = -1;
-		goto done;
+		this_afe.apr = apr_register("ADSP", "AFE", afe_callback,
+					0xFFFFFFFF, &this_afe);
+		pr_info("%s: Register AFE\n", __func__);
+		if (this_afe.apr == NULL) {
+			pr_err("%s: Unable to register AFE\n", __func__);
+			ret = -ENODEV;
+			return ret;
+		}
 	}
 	lb_cmd.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 						APR_HDR_LEN(20), APR_PKT_VER);
