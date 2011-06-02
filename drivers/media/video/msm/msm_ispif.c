@@ -130,6 +130,7 @@ int msm_ispif_init(struct platform_device *pdev)
 	if (rc < 0)
 		goto ispif_irq_fail;
 
+	msm_ispif_reset();
 	return 0;
 
 ispif_irq_fail:
