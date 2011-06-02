@@ -1226,7 +1226,9 @@ static int msm_charger_suspend(struct device *dev)
 	 * we wont be charging in the suspend sequence, act as if the
 	 * battery is removed - this will stop the resume delayed work
 	 */
+	mutex_lock(&msm_chg.status_lock);
 	handle_battery_removed();
+	mutex_unlock(&msm_chg.status_lock);
 	return 0;
 }
 
@@ -1240,7 +1242,9 @@ static int msm_charger_resume(struct device *dev)
 				&msm_chg.update_heartbeat_work,
 			      round_jiffies_relative(msecs_to_jiffies
 						     (msm_chg.update_time)));
+	mutex_lock(&msm_chg.status_lock);
 	handle_battery_inserted();
+	mutex_unlock(&msm_chg.status_lock);
 	return 0;
 }
 
