@@ -278,6 +278,16 @@ static ssize_t hdmi_common_wta_hpd(struct device *dev,
 
 	return ret;
 }
+
+static ssize_t hdmi_common_rda_hdcp_present(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = snprintf(buf, PAGE_SIZE, "%d\n",
+		external_common_state->present_hdcp);
+	DEV_DBG("%s: '%d'\n", __func__,
+			external_common_state->present_hdcp);
+	return ret;
+}
 #endif
 #ifdef CONFIG_FB_MSM_HDMI_3D
 static ssize_t hdmi_3d_rda_format_3d(struct device *dev,
@@ -385,6 +395,7 @@ static DEVICE_ATTR(edid_modes, S_IRUGO, hdmi_common_rda_edid_modes, NULL);
 static DEVICE_ATTR(hpd, S_IRUGO | S_IWUGO, hdmi_common_rda_hpd,
 	hdmi_common_wta_hpd);
 static DEVICE_ATTR(hdcp, S_IRUGO, hdmi_common_rda_hdcp, NULL);
+static DEVICE_ATTR(hdcp_present, S_IRUGO, hdmi_common_rda_hdcp_present, NULL);
 #endif
 #ifdef CONFIG_FB_MSM_HDMI_3D
 static DEVICE_ATTR(format_3d, S_IRUGO | S_IWUGO, hdmi_3d_rda_format_3d,
@@ -399,6 +410,7 @@ static struct attribute *external_common_fs_attrs[] = {
 	&dev_attr_edid_modes.attr,
 	&dev_attr_hdcp.attr,
 	&dev_attr_hpd.attr,
+	&dev_attr_hdcp_present.attr,
 #endif
 #ifdef CONFIG_FB_MSM_HDMI_3D
 	&dev_attr_format_3d.attr,
