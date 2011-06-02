@@ -40,7 +40,7 @@ extern struct platform_device msm_device_uart_dm1;
 extern struct platform_device msm_device_uart_dm2;
 extern struct platform_device msm_device_uart_dm3;
 extern struct platform_device msm_device_uart_dm12;
-extern struct platform_device msm_device_uart_gsbi9;
+extern struct platform_device *msm_device_uart_gsbi9;
 
 extern struct platform_device msm8960_device_uart_gsbi2;
 extern struct platform_device msm8960_device_uart_gsbi5;
@@ -178,6 +178,7 @@ extern struct platform_device msm_footswitch;
 
 void __init msm_fb_register_device(char *name, void *data);
 void __init msm_camera_register_device(void *, uint32_t, void *);
+struct platform_device *msm_add_gsbi9_uart(void);
 extern struct platform_device msm_device_touchscreen;
 
 extern struct pil_device peripheral_dsps;

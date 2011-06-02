@@ -36,6 +36,7 @@
 #include <asm/clkdev.h>
 #include <mach/usbdiag.h>
 #include <mach/usb_gadget_fserial.h>
+#include <mach/msm_serial_hs_lite.h>
 #include <mach/msm_bus.h>
 #include <mach/msm_bus_board.h>
 #include <mach/socinfo.h>
@@ -289,6 +290,12 @@ struct platform_device msm_device_uart_dm12 = {
 };
 
 #ifdef CONFIG_MSM_GSBI9_UART
+static struct msm_serial_hslite_platform_data uart_gsbi9_pdata = {
+	.config_gpio	= 1,
+	.uart_tx_gpio	= 67,
+	.uart_rx_gpio	= 66,
+};
+
 static struct resource msm_uart_gsbi9_resources[] = {
        {
 		.start	= MSM_UART9DM_PHYS,
@@ -309,13 +316,15 @@ static struct resource msm_uart_gsbi9_resources[] = {
 		.flags	= IORESOURCE_MEM,
 	},
 };
-
-struct platform_device msm_device_uart_gsbi9 = {
-	.name	= "msm_serial_hsl",
-	.id	= 1,
-	.num_resources	= ARRAY_SIZE(msm_uart_gsbi9_resources),
-	.resource	= msm_uart_gsbi9_resources,
-};
+struct platform_device *msm_device_uart_gsbi9;
+struct platform_device *msm_add_gsbi9_uart(void)
+{
+	return platform_device_register_resndata(NULL, "msm_serial_hsl",
+					1, msm_uart_gsbi9_resources,
+					ARRAY_SIZE(msm_uart_gsbi9_resources),
+					&uart_gsbi9_pdata,
+					sizeof(uart_gsbi9_pdata));
+}
 #endif
 
 static struct resource gsbi3_qup_i2c_resources[] = {
