@@ -8492,7 +8492,7 @@ static struct msm_bus_vectors mdp_sd_ebi_vectors[] = {
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 388800000,
-		.ib = 486000000,
+		.ib = 486000000 * 2,
 	},
 };
 static struct msm_bus_vectors mdp_vga_vectors[] = {
@@ -8507,7 +8507,7 @@ static struct msm_bus_vectors mdp_vga_vectors[] = {
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 458092800,
-		.ib = 572616000,
+		.ib = 572616000 * 2,
 	},
 };
 static struct msm_bus_vectors mdp_720p_vectors[] = {
@@ -8523,7 +8523,7 @@ static struct msm_bus_vectors mdp_720p_vectors[] = {
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 	       .ab = 471744000,
-	       .ib = 589680000,
+	       .ib = 589680000 * 2,
 	},
 };
 
@@ -8540,7 +8540,7 @@ static struct msm_bus_vectors mdp_1080p_vectors[] = {
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 575424000,
-		.ib = 719280000,
+		.ib = 719280000 * 2,
 	},
 };
 
@@ -8594,7 +8594,7 @@ static struct msm_bus_vectors mdp_sd_ebi_vectors[] = {
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 216000000,
-		.ib = 270000000,
+		.ib = 270000000 * 2,
 	},
 };
 static struct msm_bus_vectors mdp_vga_vectors[] = {
@@ -8609,7 +8609,7 @@ static struct msm_bus_vectors mdp_vga_vectors[] = {
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 216000000,
-		.ib = 270000000,
+		.ib = 270000000 * 2,
 	},
 };
 
@@ -8626,7 +8626,7 @@ static struct msm_bus_vectors mdp_720p_vectors[] = {
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 230400000,
-		.ib = 288000000,
+		.ib = 288000000 * 2,
 	},
 };
 
@@ -8643,7 +8643,7 @@ static struct msm_bus_vectors mdp_1080p_vectors[] = {
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 334080000,
-		.ib = 417600000,
+		.ib = 417600000 * 2,
 	},
 };
 
