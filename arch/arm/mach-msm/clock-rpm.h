@@ -30,33 +30,21 @@
 #ifndef __ARCH_ARM_MACH_MSM_CLOCK_RPM_H
 #define __ARCH_ARM_MACH_MSM_CLOCK_RPM_H
 
-/* RPM Clock IDs */
-enum {
-	R_AFAB_CLK,
-	R_AFAB_A_CLK,
-	R_CFPB_CLK,
-	R_CFPB_A_CLK,
-	R_DFAB_CLK,
-	R_DFAB_A_CLK,
-	R_EBI1_CLK,
-	R_EBI1_A_CLK,
-	R_MMFAB_CLK,
-	R_MMFAB_A_CLK,
-	R_MMFPB_CLK,
-	R_MMFPB_A_CLK,
-	R_SFAB_CLK,
-	R_SFAB_A_CLK,
-	R_SFPB_CLK,
-	R_SFPB_A_CLK,
-	R_SMI_CLK,
-	R_SMI_A_CLK,
-};
+#include <mach/rpm.h>
 
 struct clk_ops;
 extern struct clk_ops clk_ops_rpm;
 
 struct rpm_clk {
-	unsigned id;
+	const int rpm_clk_id;
+	const int rpm_status_id;
+	const bool active_only;
+	unsigned last_set_khz;
+	/* 0 if active_only. Otherwise, same as last_set_khz. */
+	unsigned last_set_sleep_khz;
+	bool enabled;
+
+	struct rpm_clk *peer;
 	struct clk c;
 };
 
@@ -65,15 +53,30 @@ static inline struct rpm_clk *to_rpm_clk(struct clk *clk)
 	return container_of(clk, struct rpm_clk, c);
 }
 
-#define DEFINE_CLK_RPM(clk_name, clk_id) \
-	struct rpm_clk clk_name = { \
-		.id = R_##clk_id, \
+#define DEFINE_CLK_RPM(name, active, r_id) \
+	static struct rpm_clk active; \
+	static struct rpm_clk name = { \
+		.rpm_clk_id = MSM_RPM_ID_##r_id##_CLK, \
+		.rpm_status_id = MSM_RPM_STATUS_ID_##r_id##_CLK, \
+		.peer = &active, \
 		.c = { \
 			.ops = &clk_ops_rpm, \
 			.flags = CLK_MIN, \
-			.dbg_name = #clk_id, \
-			CLK_INIT(clk_name.c), \
+			.dbg_name = #name, \
+			CLK_INIT(name.c), \
 		}, \
-	}
+	}; \
+	static struct rpm_clk active = { \
+		.rpm_clk_id = MSM_RPM_ID_##r_id##_CLK, \
+		.rpm_status_id = MSM_RPM_STATUS_ID_##r_id##_CLK, \
+		.peer = &name, \
+		.active_only = true, \
+		.c = { \
+			.ops = &clk_ops_rpm, \
+			.flags = CLK_MIN, \
+			.dbg_name = #active, \
+			CLK_INIT(active.c), \
+		}, \
+	};
 
 #endif

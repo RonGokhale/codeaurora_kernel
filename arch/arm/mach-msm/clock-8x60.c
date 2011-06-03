@@ -3538,24 +3538,15 @@ struct clk_local pcm_clk = {
 	},
 };
 
-static DEFINE_CLK_RPM(afab_clk, AFAB_CLK);
-static DEFINE_CLK_RPM(afab_a_clk, AFAB_A_CLK);
-static DEFINE_CLK_RPM(cfpb_clk, CFPB_CLK);
-static DEFINE_CLK_RPM(cfpb_a_clk, CFPB_A_CLK);
-static DEFINE_CLK_RPM(dfab_clk, DFAB_CLK);
-static DEFINE_CLK_RPM(dfab_a_clk, DFAB_A_CLK);
-static DEFINE_CLK_RPM(ebi1_clk, EBI1_CLK);
-static DEFINE_CLK_RPM(ebi1_a_clk, EBI1_A_CLK);
-static DEFINE_CLK_RPM(mmfab_clk, MMFAB_CLK);
-static DEFINE_CLK_RPM(mmfab_a_clk, MMFAB_A_CLK);
-static DEFINE_CLK_RPM(mmfpb_clk, MMFPB_CLK);
-static DEFINE_CLK_RPM(mmfpb_a_clk, MMFPB_A_CLK);
-static DEFINE_CLK_RPM(sfab_clk, SFAB_CLK);
-static DEFINE_CLK_RPM(sfab_a_clk, SFAB_A_CLK);
-static DEFINE_CLK_RPM(sfpb_clk, SFPB_CLK);
-static DEFINE_CLK_RPM(sfpb_a_clk, SFPB_A_CLK);
-static DEFINE_CLK_RPM(smi_clk, SMI_CLK);
-static DEFINE_CLK_RPM(smi_a_clk, SMI_A_CLK);
+DEFINE_CLK_RPM(afab_clk, afab_a_clk, APPS_FABRIC);
+DEFINE_CLK_RPM(cfpb_clk, cfpb_a_clk, CFPB);
+DEFINE_CLK_RPM(dfab_clk, dfab_a_clk, DAYTONA_FABRIC);
+DEFINE_CLK_RPM(ebi1_clk, ebi1_a_clk, EBI1);
+DEFINE_CLK_RPM(mmfab_clk, mmfab_a_clk, MM_FABRIC);
+DEFINE_CLK_RPM(mmfpb_clk, mmfpb_a_clk, MMFPB);
+DEFINE_CLK_RPM(sfab_clk, sfab_a_clk, SYSTEM_FABRIC);
+DEFINE_CLK_RPM(sfpb_clk, sfpb_a_clk, SFPB);
+DEFINE_CLK_RPM(smi_clk, smi_a_clk, SMI);
 
 static DEFINE_CLK_VOTER(dfab_dsps_clk, &dfab_clk.c);
 static DEFINE_CLK_VOTER(dfab_usb_hs_clk, &dfab_clk.c);
