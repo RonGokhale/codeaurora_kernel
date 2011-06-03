@@ -1088,38 +1088,25 @@ static int __init board_serialno_setup(char *serialno)
 __setup("androidboot.serialno=", board_serialno_setup);
 
 #ifdef CONFIG_USB_EHCI_MSM_72K
-static int  msm_hsusb_vbus_init(int on)
+static void msm_hsusb_vbus_power(unsigned phy_info, int on)
 {
 	int rc = 0;
 	unsigned gpio;
 
 	gpio = GPIO_HOST_VBUS_EN;
-	if (on) {
-		rc = gpio_request(gpio, "i2c_host_vbus_en");
-		if (rc < 0) {
-			pr_err("failed to request %d GPIO\n", gpio);
-			return rc;
-		}
-		gpio_direction_output(gpio, 1);
-	} else {
-		gpio_free(gpio);
+
+	rc = gpio_request(gpio, "i2c_host_vbus_en");
+	if (rc < 0) {
+		pr_err("failed to request %d GPIO\n", gpio);
+		return;
 	}
-
-	return rc;
-}
-static void msm_hsusb_vbus_power(unsigned phy_info, int on)
-{
-	unsigned gpio;
-
-	gpio = GPIO_HOST_VBUS_EN;
-
+	gpio_direction_output(gpio, !!on);
 	gpio_set_value_cansleep(gpio, !!on);
+	gpio_free(gpio);
 }
 
 static struct msm_usb_host_platform_data msm_usb_host_pdata = {
 	.phy_info       = (USB_PHY_INTEGRATED | USB_PHY_MODEL_45NM),
-	.vbus_init	= msm_hsusb_vbus_init,
-	.vbus_power     = msm_hsusb_vbus_power,
 };
 
 static void __init msm7x2x_init_host(void)
