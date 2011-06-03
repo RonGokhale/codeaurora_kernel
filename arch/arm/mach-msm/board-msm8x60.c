@@ -6750,7 +6750,7 @@ static void __init msm8x60_init_uart12dm(void)
 	writew(1, fpga_mem + 0xEA);
 	/* FPGA_GPIO_CONFIG_118 */
 	writew(1, fpga_mem + 0xEC);
-	dsb();
+	mb();
 	iounmap(fpga_mem);
 #endif
 }
@@ -6765,7 +6765,7 @@ static void __init msm8x60_init_buses(void)
 	/* Setting protocol code to 0x60 for dual UART/I2C in GSBI12 */
 	writel_relaxed(0x6 << 4, gsbi_mem);
 	/* Ensure protocol code is written before proceeding further */
-	dsb();
+	mb();
 	iounmap(gsbi_mem);
 
 	msm_gsbi3_qup_i2c_device.dev.platform_data = &msm_gsbi3_qup_i2c_pdata;

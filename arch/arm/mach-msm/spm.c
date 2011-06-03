@@ -171,7 +171,7 @@ int msm_spm_set_low_power_mode(unsigned int mode, bool notify_rpm)
 	msm_spm_flush_shadow(dev, MSM_SPM_REG_SAW_SPM_PMIC_CTL);
 	msm_spm_flush_shadow(dev, MSM_SPM_REG_SAW_SLP_RST_EN);
 	/* Ensure that the registers are written before returning */
-	dsb();
+	mb();
 
 	dev->low_power_mode = mode;
 	dev->notify_rpm = notify_rpm;
@@ -260,7 +260,7 @@ void msm_spm_reinit(void)
 		msm_spm_flush_shadow(dev, i);
 
 	/* Ensure that the registers are written before returning */
-	dsb();
+	mb();
 }
 
 void msm_spm_allow_x_cpu_set_vdd(bool allowed)
@@ -292,7 +292,7 @@ int __init msm_spm_init(struct msm_spm_platform_data *data, int nr_devs)
 			msm_spm_flush_shadow(dev, i);
 
 		/* Ensure that the registers are written before returning */
-		dsb();
+		mb();
 
 		dev->low_power_mode = MSM_SPM_MODE_CLOCK_GATING;
 		dev->notify_rpm = false;

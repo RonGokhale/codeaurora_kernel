@@ -301,7 +301,7 @@ static void writel_cp15_l2ind(uint32_t regval, uint32_t addr)
 	if (machine_is_msm8960_rumi3())
 		return;
 
-	dsb();
+	mb();
 	asm volatile ("mcr     p15, 3, %[l2cpsler], c15, c0, 6\n\t"
 		      "mcr     p15, 3, %[l2cpdr],   c15, c0, 7\n\t"
 			:
@@ -352,14 +352,14 @@ static void hfpll_enable(struct scalable *sc)
 	 * H/W requires a 5us delay between disabling the bypass and
 	 * de-asserting the reset. Delay 10us just to be safe.
 	 */
-	dsb();
+	mb();
 	udelay(10);
 
 	/* De-assert active-low PLL reset. */
 	writel_relaxed(0x6, sc->hfpll_base + HFPLL_MODE);
 
 	/* Wait for PLL to lock. */
-	dsb();
+	mb();
 	udelay(60);
 
 	/* Enable PLL output. */

@@ -207,7 +207,7 @@ static void acpuclk_set_src(const struct clkctl_acpu_speed *s)
 	writel_relaxed(reg_clksel, SCSS_CLK_SEL_ADDR);
 
 	/* Make sure switch to new source is complete. */
-	dsb();
+	mb();
 }
 
 int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)

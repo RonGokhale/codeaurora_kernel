@@ -75,7 +75,7 @@ static void send_q6_nmi(void)
 	q6_wakeup_intr = ioremap_nocache(Q6SS_SOFT_INTR_WAKEUP, 8);
 	writel_relaxed(0x2000, q6_wakeup_intr);
 	iounmap(q6_wakeup_intr);
-	dsb();
+	mb();
 
 	/* Q6 requires atleast 5ms to dump caches etc.*/
 	usleep(5000);

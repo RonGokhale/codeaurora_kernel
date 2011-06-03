@@ -161,7 +161,7 @@ static int init_image_dsps_untrusted(const u8 *metadata, size_t size)
 	dsps_start = ehdr->e_entry;
 	/* Bring memory and bus interface out of reset */
 	__raw_writel(0x2, PPSS_RESET);
-	dsb();
+	mb();
 	return 0;
 }
 
@@ -280,7 +280,7 @@ static int reset_modem_untrusted(void)
 	__raw_writel(modem_start | 0x1, MARM_BOOT_CONTROL);
 
 	/* Wait for vector table to be setup */
-	dsb();
+	mb();
 
 	/* Bring modem out of reset */
 	__raw_writel(0x0, MARM_RESET);
@@ -324,13 +324,13 @@ static int shutdown_modem_untrusted(void)
 
 	/* Put modem into reset */
 	__raw_writel(0x1, MARM_RESET);
-	dsb();
+	mb();
 
 	/* Put modem AHB0,1,2 clocks into reset */
 	__raw_writel(BIT(0) | BIT(1), MAHB0_SFAB_PORT_RESET);
 	__raw_writel(BIT(7), MAHB1_CLK_CTL);
 	__raw_writel(BIT(7), MAHB2_CLK_CTL);
-	dsb();
+	mb();
 
 	/*
 	 * Disable all of the marm_clk branches, cxo sourced marm branches,
@@ -424,7 +424,7 @@ static int reset_q6_untrusted(void)
 	__raw_writel(reg, LCC_Q6_FUNC);
 
 	/* Wait for clocks to be enabled */
-	dsb();
+	mb();
 	/* Program boot address */
 	__raw_writel((q6_start >> 12) & 0xFFFFF, QDSP6SS_RST_EVB);
 
@@ -434,7 +434,7 @@ static int reset_q6_untrusted(void)
 			QDSP6SS_STRAP_AHB);
 
 	/* Wait for addresses to be programmed before starting Q6 */
-	dsb();
+	mb();
 
 	/* Start Q6 instruction execution */
 	reg &= ~STOP_CORE;

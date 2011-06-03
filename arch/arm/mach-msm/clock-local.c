@@ -182,7 +182,7 @@ void set_rate_mnd_banked(struct clk_local *clk, struct clk_freq_tbl *nf)
 		 * Wait at least 6 cycles of slowest bank's clock
 		 * for the glitch-free MUX to fully switch sources.
 		 */
-		dsb();
+		mb();
 		udelay(1);
 
 		/* Disable old bank's MN counter. */
@@ -251,7 +251,7 @@ void set_rate_div_banked(struct clk_local *clk, struct clk_freq_tbl *nf)
 		 * Wait at least 6 cycles of slowest bank's clock
 		 * for the glitch-free MUX to fully switch sources.
 		 */
-		dsb();
+		mb();
 		udelay(1);
 
 		/* Program old bank to a low-power source and divider. */
@@ -365,7 +365,7 @@ static void __branch_clk_enable_reg(const struct branch *clk, const char *name)
 	 * registers.  It's also needed in the udelay() case to ensure
 	 * the delay starts after the branch enable.
 	 */
-	dsb();
+	mb();
 
 	/* Wait for clock to enable before returning. */
 	if (clk->halt_check == DELAY)
@@ -436,7 +436,7 @@ static u32 __branch_clk_disable_reg(const struct branch *clk, const char *name)
 	 * registers.  It's also needed in the udelay() case to ensure
 	 * the delay starts after the branch disable.
 	 */
-	dsb();
+	mb();
 
 	/* Wait for clock to disable before continuing. */
 	if (clk->halt_check == DELAY || clk->halt_check == ENABLE_VOTED
@@ -815,7 +815,7 @@ static int pll_clk_enable(struct clk *clk)
 	 * H/W requires a 5us delay between disabling the bypass and
 	 * de-asserting the reset. Delay 10us just to be safe.
 	 */
-	dsb();
+	mb();
 	udelay(10);
 
 	/* De-assert active-low PLL reset. */
@@ -823,7 +823,7 @@ static int pll_clk_enable(struct clk *clk)
 	writel_relaxed(mode, pll->mode_reg);
 
 	/* Wait until PLL is locked. */
-	dsb();
+	mb();
 	udelay(50);
 
 	/* Enable PLL output. */
@@ -980,7 +980,7 @@ int branch_reset(struct branch *clk, enum clk_reset_action action)
 	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
 
 	/* Make sure write is issued before returning. */
-	dsb();
+	mb();
 
 	return ret;
 }

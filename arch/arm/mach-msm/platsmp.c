@@ -82,7 +82,7 @@ static void release_secondary(void)
 
 				writel_relaxed(0x080, base_ptr+0x04);
 			}
-			dsb();
+			mb();
 			iounmap(base_ptr);
 		}
 	} else {
@@ -92,7 +92,7 @@ static void release_secondary(void)
 			dmb();
 			writel_relaxed(0x0, base_ptr+0xD80);
 			writel_relaxed(0x3, base_ptr+0xE64);
-			dsb();
+			mb();
 			iounmap(base_ptr);
 		}
 	}
@@ -129,7 +129,7 @@ int boot_secondary(unsigned int cpu, struct task_struct *idle)
 	dmac_flush_range((void *)&pen_release,
 			 (void *)(&pen_release + sizeof(pen_release)));
 	__asm__("sev");
-	dsb();
+	mb();
 
 	/* Use smp_cross_call() to send a soft interrupt to wake up
 	 * the other core.

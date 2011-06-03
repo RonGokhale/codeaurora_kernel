@@ -112,7 +112,7 @@ static inline void msm_mpm_send_interrupt(void)
 	__raw_writel(msm_mpm_dev_data.mpm_apps_ipc_val,
 			msm_mpm_dev_data.mpm_apps_ipc_reg);
 	/* Ensure the write is complete before returning. */
-	dsb();
+	mb();
 }
 
 static irqreturn_t msm_mpm_irq(int irq, void *dev_id)
@@ -148,7 +148,7 @@ static void msm_mpm_set(bool wakeset)
 	/* Ensure that the set operation is complete before sending the
 	 * interrupt
 	 */
-	dsb();
+	mb();
 	msm_mpm_send_interrupt();
 }
 
@@ -162,7 +162,7 @@ static void msm_mpm_clear(void)
 	}
 
 	/* Ensure the clear is complete before sending the interrupt */
-	dsb();
+	mb();
 	msm_mpm_send_interrupt();
 }
 

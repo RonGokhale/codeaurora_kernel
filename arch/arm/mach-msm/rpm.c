@@ -174,7 +174,7 @@ static int msm_rpm_process_ack_interrupt(void)
 			MSM_RPM_CTRL_ACK_SEL_0, MSM_RPM_SEL_MASK_SIZE);
 		msm_rpm_write(MSM_RPM_PAGE_CTRL, MSM_RPM_CTRL_ACK_CTX_0, 0);
 		/* Ensure the write is complete before return */
-		dsb();
+		mb();
 
 		return 1;
 	}
@@ -195,7 +195,7 @@ static int msm_rpm_process_ack_interrupt(void)
 			MSM_RPM_CTRL_ACK_SEL_0, MSM_RPM_SEL_MASK_SIZE);
 		msm_rpm_write(MSM_RPM_PAGE_CTRL, MSM_RPM_CTRL_ACK_CTX_0, 0);
 		/* Ensure the write is complete before return */
-		dsb();
+		mb();
 
 		if (msm_rpm_request->done)
 			complete_all(msm_rpm_request->done);
@@ -288,7 +288,7 @@ static int msm_rpm_set_exclusive(int ctx,
 	msm_rpm_write(MSM_RPM_PAGE_CTRL, MSM_RPM_CTRL_REQ_CTX_0, ctx_mask);
 
 	/* Ensure RPM data is written before sending the interrupt */
-	dsb();
+	mb();
 	msm_rpm_send_req_interrupt();
 
 	spin_unlock(&msm_rpm_irq_lock);
@@ -348,7 +348,7 @@ static int msm_rpm_set_exclusive_noirq(int ctx,
 	msm_rpm_write(MSM_RPM_PAGE_CTRL, MSM_RPM_CTRL_REQ_CTX_0, ctx_mask);
 
 	/* Ensure RPM data is written before sending the interrupt */
-	dsb();
+	mb();
 	msm_rpm_send_req_interrupt();
 
 	msm_rpm_busy_wait_for_request_completion(false);

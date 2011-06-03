@@ -114,10 +114,10 @@ int lpa_if_start(struct lpa_if *lpa_if)
 
 	dai_start_hdmi(lpa_if->dma_ch);
 
-	dsb();
+	mb();
 
 	hdmi_audio_enable(1, HDMI_AUDIO_FIFO_WATER_MARK);
-	dsb();
+	mb();
 	return 0;
 }
 
@@ -137,7 +137,7 @@ int lpa_if_config(struct lpa_if *lpa_if)
 
 	register_dma_irq_handler(lpa_if->dma_ch, lpa_if_irq, (void *)lpa_if);
 
-	dsb();
+	mb();
 	pr_debug("lpa_if 0x%08x  buf_vir 0x%08x   buf_phys 0x%08x  "
 		"config %u\n", (u32)lpa_if, (u32) (lpa_if->buffer),
 		lpa_if->buffer_phys, lpa_if->config);
@@ -296,7 +296,7 @@ static ssize_t lpa_if_write(struct file *file, const char __user *buf,
 			goto end;
 		}
 
-		dsb();
+		mb();
 		buf += xfer;
 		count -= xfer;
 		ab->used = 1;

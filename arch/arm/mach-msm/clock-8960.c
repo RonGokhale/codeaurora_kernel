@@ -3545,7 +3545,7 @@ static int measure_clk_set_parent(struct clk *clk, struct clk *parent)
 		ret = -EPERM;
 	}
 	/* Make sure test vector is set before starting measurements. */
-	dsb();
+	mb();
 
 	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
 
@@ -3940,7 +3940,7 @@ static void reg_init(void)
 	clk_set_rate(&gfx3d_clk.c, 27000000);
 	clk_enable(&gfx3d_clk.c);
 	writel_relaxed(BIT(12), SW_RESET_CORE_REG);
-	dsb();
+	mb();
 	udelay(5);
 	writel_relaxed(0, SW_RESET_CORE_REG);
 	/* Make sure reset is de-asserted before clock is disabled. */
@@ -3980,7 +3980,7 @@ static int wr_pll_clk_enable(struct clk *clk)
 	 * H/W requires a 5us delay between disabling the bypass and
 	 * de-asserting the reset. Delay 10us just to be safe.
 	 */
-	dsb();
+	mb();
 	udelay(10);
 
 	/* Disable PLL bypass mode. */
@@ -3988,7 +3988,7 @@ static int wr_pll_clk_enable(struct clk *clk)
 	writel_relaxed(mode, pll->mode_reg);
 
 	/* Wait until PLL is locked. */
-	dsb();
+	mb();
 	udelay(60);
 
 	/* Enable PLL output. */

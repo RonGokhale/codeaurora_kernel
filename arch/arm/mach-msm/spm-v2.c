@@ -156,7 +156,7 @@ void msm_spm_drv_flush_seq_entry(struct msm_spm_driver_data *dev)
 			+ msm_spm_reg_offsets[MSM_SPM_REG_SAW2_SEQ_ENTRY]
 			+ 4 * i);
 	}
-	dsb();
+	mb();
 }
 
 int msm_spm_drv_write_seq_data(struct msm_spm_driver_data *dev,
@@ -237,7 +237,7 @@ int msm_spm_drv_set_vdd(struct msm_spm_driver_data *dev, unsigned int vlevel)
 	msm_spm_drv_set_vctl(dev, vlevel);
 	msm_spm_drv_flush_shadow(dev, MSM_SPM_REG_SAW2_VCTL);
 	msm_spm_drv_flush_shadow(dev, MSM_SPM_REG_SAW2_PMIC_DATA_0);
-	dsb();
+	mb();
 
 	/* Wait for PMIC state to return to idle or until timeout */
 	timeout_us = dev->vctl_timeout_us;
@@ -293,13 +293,13 @@ int __init msm_spm_drv_init(struct msm_spm_driver_data *dev,
 	/* barrier to ensure write completes before we update shadow
 	 * registers
 	 */
-	dsb();
+	mb();
 
 	for (i = 0; i < MSM_SPM_REG_NR_INITIALIZE; i++)
 		msm_spm_drv_load_shadow(dev, i);
 
 	/* barrier to ensure read completes before we proceed further*/
-	dsb();
+	mb();
 
 	num_spm_entry = msm_spm_drv_get_num_spm_entry(dev);
 

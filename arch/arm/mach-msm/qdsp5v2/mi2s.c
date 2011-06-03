@@ -630,7 +630,7 @@ error:
 	mi2s_release(mi2s, HDMI);
 
 	mutex_unlock(&mi2s->mutex_lock);
-	dsb();
+	mb();
 	return ret_val;
 }
 EXPORT_SYMBOL(mi2s_set_hdmi_output_path);
@@ -724,7 +724,7 @@ bool mi2s_set_hdmi_input_path(uint8_t channels, uint8_t size,
 	mi2s_release(mi2s, HDMI);
 
 	mutex_unlock(&mi2s->mutex_lock);
-	dsb();
+	mb();
 	return ret_val;
 }
 EXPORT_SYMBOL(mi2s_set_hdmi_input_path);
@@ -758,7 +758,7 @@ bool mi2s_set_codec_output_path(uint8_t channels, uint8_t size)
 	mi2s_release(mi2s, CODEC_TX);
 
 	mutex_unlock(&mi2s->mutex_lock);
-	dsb();
+	mb();
 	return ret_val;
 }
 EXPORT_SYMBOL(mi2s_set_codec_output_path);
@@ -792,7 +792,7 @@ bool mi2s_set_codec_input_path(uint8_t channels, uint8_t size)
 	mi2s_release(mi2s, CODEC_RX);
 
 	mutex_unlock(&mi2s->mutex_lock);
-	dsb();
+	mb();
 	return ret_val;
 }
 EXPORT_SYMBOL(mi2s_set_codec_input_path);

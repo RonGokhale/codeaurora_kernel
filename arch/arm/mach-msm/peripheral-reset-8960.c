@@ -211,7 +211,7 @@ static int reset_q6_untrusted(struct q6_data *q6)
 		writel_relaxed(0x10, MSS_S_HCLK_CTL);
 		writel_relaxed(0x10, MSS_SLP_CLK_CTL);
 		/* Wait for clocks to enable */
-		dsb();
+		mb();
 		udelay(10);
 
 		/* Enable JTAG clocks */
@@ -220,7 +220,7 @@ static int reset_q6_untrusted(struct q6_data *q6)
 
 		/* De-assert MSS reset */
 		writel_relaxed(0x0,  MSS_RESET);
-		dsb();
+		mb();
 		udelay(10);
 
 		/* Enable MSS */
@@ -264,7 +264,7 @@ static int reset_q6_untrusted(struct q6_data *q6)
 	writel_relaxed(reg, q6->reg_base + QDSP6SS_RESET);
 
 	/* Wait 8 AHB cycles for Q6 to be fully reset (AHB = 1.5Mhz) */
-	dsb();
+	mb();
 	usleep_range(20, 30);
 
 	/* Turn on Q6 memories */
@@ -289,7 +289,7 @@ static int reset_q6_untrusted(struct q6_data *q6)
 	 * Re-enable auto-gating of AXIS_ACLK at lease one AXI clock cycle
 	 * after resets are de-asserted.
 	 */
-	dsb();
+	mb();
 	usleep_range(1, 10);
 	reg = readl_relaxed(q6->reg_base + QDSP6SS_CGC_OVERRIDE);
 	reg &= ~Q6SS_AXIS_ACLK_EN;

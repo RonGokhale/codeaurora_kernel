@@ -57,7 +57,7 @@ static void sirc_irq_mask(unsigned int irq)
 	mask = 1 << (irq - FIRST_SIRC_IRQ);
 	writel(mask, sirc_regs.int_enable_clear);
 	int_enable &= ~mask;
-	dsb();
+	mb();
 	return;
 }
 
@@ -69,7 +69,7 @@ static void sirc_irq_unmask(unsigned int irq)
 
 	mask = 1 << (irq - FIRST_SIRC_IRQ);
 	writel(mask, sirc_regs.int_enable_set);
-	dsb();
+	mb();
 	int_enable |= mask;
 	return;
 }
@@ -80,7 +80,7 @@ static void sirc_irq_ack(unsigned int irq)
 
 	mask = 1 << (irq - FIRST_SIRC_IRQ);
 	writel(mask, sirc_regs.int_clear);
-	dsb();
+	mb();
 	return;
 }
 
@@ -123,7 +123,7 @@ static int sirc_irq_set_type(unsigned int irq, unsigned int flow_type)
 	}
 
 	writel(val, sirc_regs.int_type);
-	dsb();
+	mb();
 
 	return 0;
 }
@@ -142,7 +142,7 @@ void sirc_fiq_select(int irq, bool enable)
 	else
 		val &= ~mask;
 	writel(val, SPSS_SIRC_INT_SELECT);
-	dsb();
+	mb();
 	local_irq_restore(flags);
 }
 #endif
@@ -183,7 +183,7 @@ void msm_sirc_enter_sleep(void)
 	save_type     = readl(sirc_regs.int_type);
 	save_polarity = readl(sirc_regs.int_polarity);
 	writel(wake_enable, sirc_regs.int_enable);
-	dsb();
+	mb();
 	return;
 }
 
@@ -192,7 +192,7 @@ void msm_sirc_exit_sleep(void)
 	writel(save_type, sirc_regs.int_type);
 	writel(save_polarity, sirc_regs.int_polarity);
 	writel(int_enable, sirc_regs.int_enable);
-	dsb();
+	mb();
 	return;
 }
 

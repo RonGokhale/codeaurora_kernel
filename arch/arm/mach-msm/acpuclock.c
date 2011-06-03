@@ -379,10 +379,10 @@ static void pll_enable(void __iomem *addr, unsigned on)
 {
 	if (on) {
 		writel_relaxed(2, addr);
-		dsb();
+		mb();
 		udelay(5);
 		writel_relaxed(6, addr);
-		dsb();
+		mb();
 		udelay(50);
 		writel_relaxed(7, addr);
 	} else {
@@ -475,7 +475,7 @@ static int acpuclk_set_vdd_level(int vdd)
 	       current_vdd, vdd);
 
 	writel_relaxed((1 << 7) | (vdd << 3), A11S_VDD_SVS_PLEVEL_ADDR);
-	dsb();
+	mb();
 	udelay(drv_state.vdd_switch_time_us);
 	if ((readl_relaxed(A11S_VDD_SVS_PLEVEL_ADDR) & 0x7) != vdd) {
 		pr_err("VDD set failed\n");
@@ -662,7 +662,7 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 		drv_state.current_speed = cur_s;
 		/* Re-adjust lpj for the new clock speed. */
 		loops_per_jiffy = cur_s->lpj;
-		dsb();
+		mb();
 		udelay(drv_state.acpu_switch_time_us);
 	}
 
