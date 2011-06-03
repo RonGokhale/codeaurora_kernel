@@ -154,5 +154,4 @@ static inline void msm_charger_unregister_vbus_sn(void (*callback)(int))
 {
 }
 #endif
-
 #endif /* __MSM_CHARGER_H__ */
