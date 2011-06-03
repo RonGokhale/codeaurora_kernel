@@ -20,6 +20,7 @@
 #include <linux/mfd/wcd9310/registers.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
+#include <linux/debugfs.h>
 #include <sound/soc.h>
 
 #define TABLA_REGISTER_START_OFFSET 0x800
@@ -318,6 +319,108 @@ static void tabla_device_exit(struct tabla *tabla)
 	kfree(tabla);
 }
 
+
+#ifdef CONFIG_DEBUG_FS
+struct tabla *debugTabla;
+
+static struct dentry *debugfs_tabla_dent;
+static struct dentry *debugfs_peek;
+static struct dentry *debugfs_poke;
+
+static unsigned char read_data;
+
+static int codec_debug_open(struct inode *inode, struct file *file)
+{
+	file->private_data = inode->i_private;
+	return 0;
+}
+
+static int get_parameters(char *buf, long int *param1, int num_of_par)
+{
+	char *token;
+	int base, cnt;
+
+	token = strsep(&buf, " ");
+
+	for (cnt = 0; cnt < num_of_par; cnt++) {
+		if (token != NULL) {
+			if ((token[1] == 'x') || (token[1] == 'X'))
+				base = 16;
+			else
+				base = 10;
+
+			if (strict_strtoul(token, base, &param1[cnt]) != 0)
+				return -EINVAL;
+
+			token = strsep(&buf, " ");
+		} else
+			return -EINVAL;
+	}
+	return 0;
+}
+
+static ssize_t codec_debug_read(struct file *file, char __user *ubuf,
+				size_t count, loff_t *ppos)
+{
+	char lbuf[8];
+
+	snprintf(lbuf, sizeof(lbuf), "0x%x\n", read_data);
+	return simple_read_from_buffer(ubuf, count, ppos, lbuf,
+		strnlen(lbuf, 7));
+}
+
+
+static ssize_t codec_debug_write(struct file *filp,
+	const char __user *ubuf, size_t cnt, loff_t *ppos)
+{
+	char *access_str = filp->private_data;
+	char lbuf[32];
+	int rc;
+	long int param[5];
+
+	if (cnt > sizeof(lbuf) - 1)
+		return -EINVAL;
+
+	rc = copy_from_user(lbuf, ubuf, cnt);
+	if (rc)
+		return -EFAULT;
+
+	lbuf[cnt] = '\0';
+
+	if (!strncmp(access_str, "poke", 6)) {
+		/* write */
+		rc = get_parameters(lbuf, param, 2);
+		if ((param[0] <= 0x3FF) && (param[1] <= 0xFF) &&
+			(rc == 0))
+			tabla_interface_reg_write(debugTabla, param[0],
+				param[1]);
+		else
+			rc = -EINVAL;
+	} else if (!strncmp(access_str, "peek", 6)) {
+		/* read */
+		rc = get_parameters(lbuf, param, 1);
+		if ((param[0] <= 0x3FF) && (rc == 0))
+			read_data = tabla_interface_reg_read(debugTabla,
+				param[0]);
+		else
+			rc = -EINVAL;
+	}
+
+	if (rc == 0)
+		rc = cnt;
+	else
+		pr_err("%s: rc = %d\n", __func__, rc);
+
+	return rc;
+}
+
+static const struct file_operations codec_debug_ops = {
+	.open = codec_debug_open,
+	.write = codec_debug_write,
+	.read = codec_debug_read
+};
+#endif
+
 static int tabla_slim_probe(struct slim_device *slim)
 {
 	struct tabla *tabla;
@@ -396,6 +499,24 @@ static int tabla_slim_probe(struct slim_device *slim)
 		pr_err("%s: error, initializing device failed\n", __func__);
 		goto err_slim_add;
 	}
+
+#ifdef CONFIG_DEBUG_FS
+	debugTabla = tabla;
+
+	debugfs_tabla_dent = debugfs_create_dir
+		("wcd9310_slimbus_interface_device", 0);
+	if (!IS_ERR(debugfs_tabla_dent)) {
+		debugfs_peek = debugfs_create_file("peek",
+		S_IFREG | S_IRUGO, debugfs_tabla_dent,
+		(void *) "peek", &codec_debug_ops);
+
+		debugfs_poke = debugfs_create_file("poke",
+		S_IFREG | S_IRUGO, debugfs_tabla_dent,
+		(void *) "poke", &codec_debug_ops);
+	}
+#endif
+
+
 	return ret;
 
 err_slim_add:
@@ -410,6 +531,13 @@ err:
 static int tabla_slim_remove(struct slim_device *pdev)
 {
 	struct tabla *tabla;
+
+#ifdef CONFIG_DEBUG_FS
+	debugfs_remove(debugfs_peek);
+	debugfs_remove(debugfs_poke);
+	debugfs_remove(debugfs_tabla_dent);
+#endif
+
 	tabla = slim_get_devicedata(pdev);
 	tabla_device_exit(tabla);
 
