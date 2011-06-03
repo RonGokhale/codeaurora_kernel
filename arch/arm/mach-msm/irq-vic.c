@@ -74,7 +74,7 @@ module_param_named(debug_mask, msm_irq_debug_mask, int,
 #define VIC_INT_POLARITY3   VIC_REG(0x005C)  /* 1: NEG, 0: POS */
 #define VIC_NO_PEND_VAL     VIC_REG(0x0060)
 
-#if defined(CONFIG_ARCH_MSM_SCORPION)
+#if defined(CONFIG_ARCH_MSM_SCORPION) && !defined(CONFIG_MSM_SMP)
 #define VIC_NO_PEND_VAL_FIQ VIC_REG(0x0064)
 #define VIC_INT_MASTEREN    VIC_REG(0x0068)  /* 1: IRQ, 2: FIQ     */
 #define VIC_CONFIG          VIC_REG(0x006C)  /* 1: USE SC VIC */
@@ -108,7 +108,7 @@ module_param_named(debug_mask, msm_irq_debug_mask, int,
 #define VIC_IRQ_VEC_PEND_RD VIC_REG(0x00D4)  /* pending vector addr */
 #define VIC_IRQ_VEC_WR      VIC_REG(0x00D8)
 
-#if defined(CONFIG_ARCH_MSM_SCORPION)
+#if defined(CONFIG_ARCH_MSM_SCORPION) && !defined(CONFIG_MSM_SMP)
 #define VIC_FIQ_VEC_RD      VIC_REG(0x00DC)
 #define VIC_FIQ_VEC_PEND_RD VIC_REG(0x00E0)
 #define VIC_FIQ_VEC_WR      VIC_REG(0x00E4)

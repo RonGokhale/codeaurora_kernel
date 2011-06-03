@@ -30,7 +30,7 @@ struct sirc_cascade_regs {
 
 void msm_init_sirc(void);
 
-#if defined(CONFIG_ARCH_MSM_SCORPION)
+#if defined(CONFIG_ARCH_MSM_SCORPION) && !defined(CONFIG_MSM_SMP)
 
 #include <mach/msm_iomap.h>
 

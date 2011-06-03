@@ -1,4 +1,4 @@
-obj-y += io.o dma.o memory.o
+obj-y += io.o dma.o memory.o timer.o
 obj-y += clock.o clock-voter.o clock-dummy.o
 obj-y += modem_notifier.o
 obj-$(CONFIG_CPU_FREQ_MSM) += cpufreq.o
@@ -14,16 +14,13 @@ ifndef CONFIG_ARCH_MSM8X60
 	endif
 endif
 
-obj-$(CONFIG_ARCH_MSM_ARM11) += acpuclock.o timer.o
-obj-$(CONFIG_ARCH_MSM_SCORPION) += timer.o
+obj-$(CONFIG_ARCH_MSM_ARM11) += acpuclock.o
 obj-$(CONFIG_ARCH_MSM_SCORPION) += pmu.o
-obj-$(CONFIG_ARCH_MSM_SCORPIONMP) += timer.o
-obj-$(CONFIG_ARCH_MSM_CORTEX_A5) += timer.o acpuclock.o
-ifndef CONFIG_ARCH_MSM8960
-obj-$(CONFIG_ARCH_MSM_SCORPIONMP) += pmu.o
-endif
+obj-$(CONFIG_ARCH_MSM_CORTEX_A5) += acpuclock.o
 
+ifndef CONFIG_MSM_SMP
 obj-$(CONFIG_ARCH_MSM_SCORPION) += msm_fault_handlers.o
+endif
 
 obj-$(CONFIG_MSM_VIC) += irq-vic.o
 
@@ -215,8 +212,7 @@ obj-$(CONFIG_ARCH_MSM7X30) += gpiomux-7x30.o gpiomux-v1.o gpiomux.o
 obj-$(CONFIG_ARCH_QSD8X50) += gpiomux-8x50.o gpiomux-v1.o gpiomux.o
 obj-$(CONFIG_ARCH_MSM8X60) += gpiomux-8x60.o gpiomux-v2.o gpiomux.o
 obj-$(CONFIG_ARCH_MSM8960) += gpiomux-v2.o gpiomux.o
-obj-$(CONFIG_ARCH_MSM_SCORPION) += pmu.o
-obj-$(CONFIG_ARCH_MSM_SCORPIONMP) += pmu.o
+
 ifdef CONFIG_MSM_V2_TLMM
 obj-y	+= gpio-v2.o
 else

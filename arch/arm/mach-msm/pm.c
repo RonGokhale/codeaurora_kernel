@@ -3,7 +3,7 @@
  * MSM Power Management Routines
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2008-2011, Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -871,7 +871,7 @@ static int __init msm_pm_init(void)
 		return -ENODEV;
 	}
 
-#if defined(CONFIG_ARCH_MSM_SCORPION)
+#if defined(CONFIG_ARCH_MSM_SCORPION) && !defined(CONFIG_MSM_SMP)
 	/* The bootloader is responsible for initializing many of Scorpion's
 	 * coprocessor registers for things like cache timing. The state of
 	 * these coprocessor registers is lost on reset, so part of the
