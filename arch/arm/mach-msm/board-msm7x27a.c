@@ -1895,7 +1895,7 @@ static void __init msm7x27a_init_mmc(void)
 	/* eMMC slot */
 #ifdef CONFIG_MMC_MSM_SDC3_SUPPORT
 	sdcc_vreg_data[2].vreg_data = vreg_emmc;
-	sdcc_vreg_data[2].level = 1800;
+	sdcc_vreg_data[2].level = 3000;
 	msm_add_sdcc(3, &sdc3_plat_data);
 #endif
 	/* Not Used */
