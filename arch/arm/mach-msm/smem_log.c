@@ -59,7 +59,8 @@ do { \
 #define D(x...) do {} while (0)
 #endif
 
-#if defined(CONFIG_ARCH_MSM7X30) || defined(CONFIG_ARCH_MSM8X60)
+#if defined(CONFIG_ARCH_MSM7X30) || defined(CONFIG_ARCH_MSM8X60) \
+	|| defined(CONFIG_ARCH_FSM9XXX)
 #define TIMESTAMP_ADDR (MSM_TMR_BASE + 0x08)
 #else
 #define TIMESTAMP_ADDR (MSM_TMR_BASE + 0x04)
