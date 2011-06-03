@@ -123,6 +123,7 @@ static void sdio_mux_write_data(struct work_struct *work);
 static DEFINE_MUTEX(sdio_mux_lock);
 static DECLARE_WORK(work_sdio_mux_read, sdio_mux_read_data);
 static DECLARE_WORK(work_sdio_mux_write, sdio_mux_write_data);
+static DECLARE_DELAYED_WORK(delayed_work_sdio_mux_write, sdio_mux_write_data);
 
 static struct workqueue_struct *sdio_mux_read_workqueue;
 static struct workqueue_struct *sdio_mux_write_workqueue;
@@ -416,7 +417,7 @@ static void sdio_mux_write_data(struct work_struct *work)
 			spin_unlock_irqrestore(&sdio_ch[i].lock, flags);
 			DBG("%s: writing for ch %d\n", __func__, i);
 			rc = sdio_mux_write(skb);
-			if (rc == -EAGAIN) {
+			if (rc == -EAGAIN || rc == -ENOMEM) {
 				reschedule = 1;
 			} else if (!rc) {
 				spin_lock_irqsave(&sdio_ch[i].lock, flags);
@@ -428,9 +429,10 @@ static void sdio_mux_write_data(struct work_struct *work)
 			spin_unlock_irqrestore(&sdio_ch[i].lock, flags);
 	}
 
-	/* probably should use delayed work */
 	if (reschedule)
-		queue_work(sdio_mux_write_workqueue, &work_sdio_mux_write);
+		queue_delayed_work(sdio_mux_write_workqueue,
+					&delayed_work_sdio_mux_write,
+					msecs_to_jiffies(250));
 }
 
 int msm_sdio_dmux_write(uint32_t id, struct sk_buff *skb)
