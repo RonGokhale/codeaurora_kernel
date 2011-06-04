@@ -57,6 +57,8 @@ module_param(comms, int, 0644);
 MODULE_PARM_DESC(debug, "Activate debugging output");
 MODULE_PARM_DESC(comms, "Select communications mode");
 
+#define T7_DATA_SIZE 3
+
 /* Device Info descriptor */
 /* Parsed from maXTouch "Id information" inside device */
 struct mxt_device_info {
@@ -172,6 +174,8 @@ struct mxt_data {
 #if defined(CONFIG_HAS_EARLYSUSPEND)
 	struct early_suspend		early_suspend;
 #endif
+	u8 t7_data[T7_DATA_SIZE];
+	bool is_suspended;
 };
 /*default value, enough to read versioning*/
 #define CONFIG_DATA_SIZE	6
@@ -1750,7 +1754,9 @@ err_object_table_alloc:
 static int mxt_suspend(struct device *dev)
 {
 	struct mxt_data *mxt = dev_get_drvdata(dev);
-	int error;
+	int error, i;
+	u8 t7_deepsl_data[T7_DATA_SIZE];
+	u16 t7_addr;
 
 	if (device_may_wakeup(dev)) {
 		enable_irq_wake(mxt->irq);
@@ -1761,17 +1767,37 @@ static int mxt_suspend(struct device *dev)
 
 	cancel_delayed_work_sync(&mxt->dwork);
 
+	for (i = 0; i < T7_DATA_SIZE; i++)
+		t7_deepsl_data[i] = 0;
+
+	t7_addr = MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt);
+	/* save current power state values */
+	error = mxt_read_block(mxt->client, t7_addr,
+			ARRAY_SIZE(mxt->t7_data), mxt->t7_data);
+	if (error < 0)
+		goto err_enable_irq;
+
+	/* configure deep sleep mode */
+	error = mxt_write_block(mxt->client, t7_addr,
+			ARRAY_SIZE(t7_deepsl_data), t7_deepsl_data);
+	if (error < 0)
+		goto err_enable_irq;
+
 	/* power off the device */
 	if (mxt->power_on) {
 		error = mxt->power_on(false);
 		if (error) {
 			dev_err(dev, "power off failed");
-			goto err_pwr_off;
+			goto err_write_block;
 		}
 	}
+	mxt->is_suspended = true;
 	return 0;
 
-err_pwr_off:
+err_write_block:
+	mxt_write_block(mxt->client, t7_addr,
+			ARRAY_SIZE(mxt->t7_data), mxt->t7_data);
+err_enable_irq:
 	enable_irq(mxt->irq);
 	return error;
 }
@@ -1780,11 +1806,15 @@ static int mxt_resume(struct device *dev)
 {
 	struct mxt_data *mxt = dev_get_drvdata(dev);
 	int error;
+	u16 t7_addr;
 
 	if (device_may_wakeup(dev)) {
 		disable_irq_wake(mxt->irq);
 		return 0;
 	}
+
+	if (!mxt->is_suspended)
+		return 0;
 
 	/* power on the device */
 	if (mxt->power_on) {
@@ -1795,9 +1825,22 @@ static int mxt_resume(struct device *dev)
 		}
 	}
 
+	t7_addr = MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt);
+	/* restore the old power state values */
+	error = mxt_write_block(mxt->client, t7_addr,
+			ARRAY_SIZE(mxt->t7_data), mxt->t7_data);
+	if (error < 0)
+		goto err_write_block;
+
 	enable_irq(mxt->irq);
 
+	mxt->is_suspended = false;
 	return 0;
+
+err_write_block:
+	if (mxt->power_on)
+		mxt->power_on(false);
+	return error;
 }
 
 #if defined(CONFIG_HAS_EARLYSUSPEND)
@@ -1904,6 +1947,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		printk(KERN_INFO "Platform OK: pdata = 0x%08x\n",
 		       (unsigned int) pdata);
 
+	mxt->is_suspended = false;
 	mxt->read_fail_counter = 0;
 	mxt->message_counter   = 0;
 
