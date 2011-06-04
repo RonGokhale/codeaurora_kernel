@@ -218,7 +218,6 @@ static inline struct pll_vote_clk *to_pll_vote_clk(struct clk *clk)
  * struct pll_clk - phase locked loop
  * @rate: output rate
  * @mode_reg: enable register
- * @status_reg: status register
  * @parent: clock source
  * @c: clk
  */
@@ -226,7 +225,6 @@ struct pll_clk {
 	unsigned long rate;
 
 	void __iomem *const mode_reg;
-	void __iomem *const status_reg;
 
 	struct clk *parent;
 	struct clk c;

@@ -147,15 +147,12 @@
 #define PIXEL_MD_REG				REG_MM(0x00D8)
 #define PIXEL_NS_REG				REG_MM(0x00DC)
 #define MM_PLL0_MODE_REG			REG_MM(0x0300)
-#define MM_PLL0_STATUS_REG			REG_MM(0x0318)
 #define MM_PLL1_MODE_REG			REG_MM(0x031C)
-#define MM_PLL1_STATUS_REG			REG_MM(0x0334)
 #define MM_PLL2_CONFIG_REG			REG_MM(0x0348)
 #define MM_PLL2_L_VAL_REG			REG_MM(0x033C)
 #define MM_PLL2_M_VAL_REG			REG_MM(0x0340)
 #define MM_PLL2_MODE_REG			REG_MM(0x0338)
 #define MM_PLL2_N_VAL_REG			REG_MM(0x0344)
-#define MM_PLL2_STATUS_REG			REG_MM(0x0350)
 #define ROT_CC_REG				REG_MM(0x00E0)
 #define ROT_NS_REG				REG_MM(0x00E8)
 #define SAXI_EN_REG				REG_MM(0x0030)
@@ -196,7 +193,6 @@
 #define LCC_PLL0_M_VAL_REG			REG_LPA(0x0008)
 #define LCC_PLL0_MODE_REG			REG_LPA(0x0000)
 #define LCC_PLL0_N_VAL_REG			REG_LPA(0x000C)
-#define LCC_PLL0_STATUS_REG			REG_LPA(0x0018)
 #define LCC_PRI_PLL_CLK_CTL_REG			REG_LPA(0x00C4)
 #define LCC_SPARE_I2S_MIC_MD_REG		REG_LPA(0x007C)
 #define LCC_SPARE_I2S_MIC_NS_REG		REG_LPA(0x0078)
@@ -386,7 +382,6 @@ static struct pll_vote_clk pll8_clk = {
 static struct pll_clk pll2_clk = {
 	.rate = 800000000,
 	.mode_reg = MM_PLL1_MODE_REG,
-	.status_reg = MM_PLL1_STATUS_REG,
 	.parent = &pxo_clk.c,
 	.c = {
 		.dbg_name = "pll2_clk",
@@ -398,7 +393,6 @@ static struct pll_clk pll2_clk = {
 static struct pll_clk pll3_clk = {
 	.rate = 0, /* TODO: Detect rate dynamically */
 	.mode_reg = MM_PLL2_MODE_REG,
-	.status_reg = MM_PLL2_STATUS_REG,
 	.parent = &pxo_clk.c,
 	.c = {
 		.dbg_name = "pll3_clk",

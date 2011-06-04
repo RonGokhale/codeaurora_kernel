@@ -162,9 +162,7 @@
 #define MM_PLL0_M_VAL_REG			REG_MM(0x0308)
 #define MM_PLL0_MODE_REG			REG_MM(0x0300)
 #define MM_PLL0_N_VAL_REG			REG_MM(0x030C)
-#define MM_PLL0_STATUS_REG			REG_MM(0x0318)
 #define MM_PLL1_MODE_REG			REG_MM(0x031C)
-#define MM_PLL1_STATUS_REG			REG_MM(0x0334)
 #define ROT_CC_REG				REG_MM(0x00E0)
 #define ROT_NS_REG				REG_MM(0x00E8)
 #define SAXI_EN_REG				REG_MM(0x0030)
@@ -384,7 +382,6 @@ static struct fixed_clk cxo_clk = {
 static struct pll_clk pll2_clk = {
 	.rate = 800000000,
 	.mode_reg = MM_PLL1_MODE_REG,
-	.status_reg = MM_PLL1_STATUS_REG,
 	.parent = &pxo_clk.c,
 	.c = {
 		.dbg_name = "pll2_clk",
@@ -4142,10 +4139,6 @@ static int wr_pll_clk_enable(struct clk *clk)
 	/* Enable PLL output. */
 	mode |= BIT(0);
 	writel_relaxed(mode, pll->mode_reg);
-
-	/* Wait until PLL is enabled. */
-	while (!readl_relaxed(pll->status_reg))
-		cpu_relax();
 
 	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
 	return 0;
