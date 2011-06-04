@@ -52,6 +52,8 @@
 #define MSM_HDMI_SAMPLE_RATE_MAX		7
 #define MSM_HDMI_SAMPLE_RATE_FORCE_32BIT	0x7FFFFFFF
 
+struct workqueue_struct *hdmi_work_queue;
+
 struct hdmi_msm_state_type {
 	boolean panel_power_on;
 	boolean hpd_initialized;
@@ -67,6 +69,7 @@ struct hdmi_msm_state_type {
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 	boolean hdcp_activating;
+	boolean reauth ;
 	struct work_struct hdcp_reauth_work, hdcp_work;
 	struct completion hdcp_success_done;
 	struct timer_list hdcp_timer;
@@ -84,7 +87,10 @@ struct hdmi_msm_state_type {
 };
 
 static struct hdmi_msm_state_type *hdmi_msm_state;
+
 static DEFINE_MUTEX(hdmi_msm_state_mutex);
+
+static void hdmi_msm_hdcp_enable(void);
 
 uint32 hdmi_msm_get_io_base(void)
 {
@@ -255,6 +261,7 @@ static void hdmi_msm_hpd_off(void);
 static void hdmi_msm_hpd_state_work(struct work_struct *work)
 {
 	boolean hpd_state;
+	char *envp[2];
 
 	if (!hdmi_msm_state || !hdmi_msm_state->hpd_initialized || !HDMI_BASE) {
 		DEV_DBG("%s: ignored, probe failed\n", __func__);
@@ -313,12 +320,21 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 		hdmi_msm_state->hpd_cable_chg_detected = FALSE;
 		mutex_unlock(&hdmi_msm_state_mutex);
 		if (hpd_state) {
-			/* Build EDID table */
-			hdmi_msm_turn_on();
 			hdmi_msm_read_edid();
+#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
+			hdmi_msm_state->reauth = FALSE ;
+#endif
+			/* Build EDID table */
+			envp[0] = "HDCP_STATE=FAIL";
+			envp[1] = NULL;
+			DEV_INFO("HDMI HPD: QDSP OFF\n");
+			kobject_uevent_env(external_common_state->uevent_kobj,
+				KOBJ_CHANGE, envp);
+			hdmi_msm_turn_on();
 			DEV_INFO("HDMI HPD: sense CONNECTED: send ONLINE\n");
 			kobject_uevent(external_common_state->uevent_kobj,
 				KOBJ_ONLINE);
+			hdmi_msm_hdcp_enable();
 		} else {
 			DEV_INFO("HDMI HPD: sense DISCONNECTED: send OFFLINE\n"
 				);
@@ -352,8 +368,8 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 }
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
+static int full_auth_proc_done;
 static void hdcp_deauthenticate(void);
-static void hdmi_msm_hdcp_enable(void);
 static void hdmi_msm_hdcp_reauth_work(struct work_struct *work)
 {
 #ifdef CONFIG_SUSPEND
@@ -393,9 +409,10 @@ static void hdmi_msm_hdcp_work(struct work_struct *work)
 
 	/* Only re-enable if cable still connected */
 	mutex_lock(&external_common_state_hpd_mutex);
-	if (external_common_state->hpd_state) {
+	if (external_common_state->hpd_state && !full_auth_proc_done) {
 		mutex_unlock(&external_common_state_hpd_mutex);
-		hdmi_msm_hdcp_enable();
+		hdmi_msm_state->reauth = TRUE;
+		hdmi_msm_turn_on();
 	} else
 		mutex_unlock(&external_common_state_hpd_mutex);
 }
@@ -409,6 +426,7 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 	uint32 audio_int_val;
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 	uint32 hdcp_int_val;
+	char *envp[2];
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 	static uint32 fifo_urun_int_occurred;
 	static uint32 sample_drop_int_occurred;
@@ -516,7 +534,7 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 		/* AUTH_SUCCESS_INT */
 		HDMI_OUTP(0x0118, (hdcp_int_val | (1 << 1)) & ~(1 << 0));
 		DEV_INFO("HDCP: AUTH_SUCCESS_INT received\n");
-		complete(&hdmi_msm_state->hdcp_success_done);
+		complete_all(&hdmi_msm_state->hdcp_success_done);
 		return IRQ_HANDLED;
 	}
 	/*    [4] AUTH_FAIL_INT		[R]	HDCP Authentication Lost
@@ -534,7 +552,14 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 			& ~((1 << 6) | (1 << 4)));
 		DEV_INFO("HDCP: AUTH_FAIL_INT received, LINK0_STATUS=0x%08x\n",
 			HDMI_INP_ND(0x011C));
-		schedule_work(&hdmi_msm_state->hdcp_reauth_work);
+		if (full_auth_proc_done) {
+			envp[0] = "HDCP_STATE=FAIL";
+			envp[1] = NULL;
+			DEV_INFO("HDMI HPD:QDSP OFF\n");
+			kobject_uevent_env(external_common_state->uevent_kobj,
+			KOBJ_CHANGE, envp);
+		}
+		queue_work(hdmi_work_queue, &hdmi_msm_state->hdcp_reauth_work);
 		return IRQ_HANDLED;
 	}
 	/*    [8] DDC_XFER_REQ_INT	[R]	HDCP DDC Transfer Request
@@ -593,13 +618,11 @@ static int check_hdmi_features(void)
 	return 0;
 }
 
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 static boolean hdmi_msm_has_hdcp(void)
 {
 	/* RAW_FEAT_CONFIG_ROW0_LSB, HDCP_DISABLE */
 	return (inpdw(QFPROM_BASE + 0x0238) & 0x00400000) ? FALSE : TRUE;
 }
-#endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 
 static boolean hdmi_msm_is_power_on(void)
 {
@@ -607,7 +630,6 @@ static boolean hdmi_msm_is_power_on(void)
 	return (HDMI_INP_ND(0x0000) & 0x00000001) ? TRUE : FALSE;
 }
 
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_DVI_SUPPORT
 /* 1.2.1.2.1 DVI Operation
  * HDMI compliance requires the HDMI core to support DVI as well. The
  * HDMI core also supports DVI. In DVI operation there are no preambles
@@ -620,28 +642,25 @@ static boolean hdmi_msm_is_dvi_mode(void)
 	/* HDMI_CTRL, HDMI_DVI_SEL */
 	return (HDMI_INP_ND(0x0000) & 0x00000002) ? FALSE : TRUE;
 }
-#endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_DVI_SUPPORT */
 
 static void hdmi_msm_set_mode(boolean power_on)
 {
 	uint32 reg_val = 0;
-
 	if (power_on) {
 		/* ENABLE */
 		reg_val |= 0x00000001; /* Enable the block */
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_DVI_SUPPORT
-		/* HDMI_DVI_SEL */
-		reg_val |= 0x00000002;
-		/* HDMI_CTRL */
-		HDMI_OUTP(0x0000, reg_val);
-		/* HDMI_DVI_SEL */
-		reg_val &= ~0x00000002;
-#else /* CONFIG_FB_MSM_HDMI_MSM_PANEL_DVI_SUPPORT */
-		reg_val |= 0x00000002;
-#endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_DVI_SUPPORT */
-	} else {
+		if (external_common_state->hdmi_sink == 0) {
+			/* HDMI_DVI_SEL */
+			reg_val |= 0x00000002;
+			/* HDMI_CTRL */
+			HDMI_OUTP(0x0000, reg_val);
+			/* HDMI_DVI_SEL */
+			reg_val &= ~0x00000002;
+		} else
+			reg_val |= 0x00000002;
+	} else
 		reg_val = 0x00000002;
-	}
+
 	/* HDMI_CTRL */
 	HDMI_OUTP(0x0000, reg_val);
 	DEV_DBG("HDMI Core: %s\n", power_on ? "Enable" : "Disable");
@@ -829,8 +848,10 @@ again:
 	 *    RW1 = 0x1 (read)
 	 *    START1 = 0x1 (insert START bit)
 	 *    STOP1 = 0x1 (insert STOP bit)
-	 *    CNT1 = data_len   (0xN (write N bytes of data)) */
-	HDMI_OUTP_ND(0x022C, (1 << 13) | (data_len << 16));
+	 *    CNT1 = data_len   (0xN (write N bytes of data))
+	 *    Byte count for second transition (excluding the first
+	 *    Byte which is usually the address) */
+	HDMI_OUTP_ND(0x022C, (1 << 13) | ((data_len-1) << 16));
 
 	/* Trigger the I2C transfer */
 	/* 0x020C HDMI_DDC_CTRL
@@ -1132,18 +1153,284 @@ error:
 	return status;
 }
 
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
+static int hdmi_msm_ddc_read_edid_seg(uint32 dev_addr, uint32 offset,
+	uint8 *data_buf, uint32 data_len, uint32 request_len, int retry,
+	const char *what)
+{
+	uint32 reg_val, ndx;
+	int status = 0;
+	uint32 time_out_count;
+	int log_retry_fail = retry != 1;
+	int seg_addr = 0x60, seg_num = 0x01;
+
+	if (NULL == data_buf) {
+		status = -EINVAL;
+		DEV_ERR("%s: invalid input paramter\n", __func__);
+		goto error;
+	}
+
+again:
+	status = hdmi_msm_ddc_clear_irq(what);
+	if (status)
+		goto error;
+
+	/* Ensure Device Address has LSB set to 0 to indicate Slave addr read */
+	dev_addr &= 0xFE;
+
+	/* 0x0238 HDMI_DDC_DATA
+	   [31] INDEX_WRITE WRITE ONLY. To write index field, set this bit to
+		1 while writing HDMI_DDC_DATA.
+	   [23:16] INDEX Use to set index into DDC buffer for next read or
+		current write, or to read index of current read or next write.
+		Writable only when INDEX_WRITE=1.
+	   [15:8] DATA Use to fill or read the DDC buffer
+	   [0] DATA_RW Select whether buffer access will be a read or write.
+		For writes, address auto-increments on write to HDMI_DDC_DATA.
+		For reads, address autoincrements on reads to HDMI_DDC_DATA.
+		* 0: Write
+		* 1: Read */
+
+	/* 1. Write to HDMI_I2C_DATA with the following fields set in order to
+	 *    handle portion #1
+	 *    DATA_RW = 0x0 (write)
+	 *    DATA = linkAddress (primary link address and writing)
+	 *    INDEX = 0x0 (initial offset into buffer)
+	 *    INDEX_WRITE = 0x1 (setting initial offset) */
+	HDMI_OUTP_ND(0x0238, (0x1UL << 31) | (seg_addr << 8));
+
+	/* 2. Write to HDMI_I2C_DATA with the following fields set in order to
+	 *    handle portion #2
+	 *    DATA_RW = 0x0 (write)
+	 *    DATA = offsetAddress
+	 *    INDEX = 0x0
+	 *    INDEX_WRITE = 0x0 (auto-increment by hardware) */
+	HDMI_OUTP_ND(0x0238, seg_num << 8);
+
+	/* 3. Write to HDMI_I2C_DATA with the following fields set in order to
+	 *    handle portion #3
+	 *    DATA_RW = 0x0 (write)
+	 *    DATA = linkAddress + 1 (primary link address 0x74 and reading)
+	 *    INDEX = 0x0
+	 *    INDEX_WRITE = 0x0 (auto-increment by hardware) */
+	HDMI_OUTP_ND(0x0238, dev_addr << 8);
+	HDMI_OUTP_ND(0x0238, offset << 8);
+	HDMI_OUTP_ND(0x0238, (dev_addr | 1) << 8);
+
+	/* Data setup is complete, now setup the transaction characteristics */
+
+	/* 0x0228 HDMI_DDC_TRANS0
+	   [23:16] CNT0 Byte count for first transaction (excluding the first
+		byte, which is usually the address).
+	   [13] STOP0 Determines whether a stop bit will be sent after the first
+		transaction
+		* 0: NO STOP
+		* 1: STOP
+	   [12] START0 Determines whether a start bit will be sent before the
+		first transaction
+		* 0: NO START
+		* 1: START
+	   [8] STOP_ON_NACK0 Determines whether the current transfer will stop
+		if a NACK is received during the first transaction (current
+		transaction always stops).
+		* 0: STOP CURRENT TRANSACTION, GO TO NEXT TRANSACTION
+		* 1: STOP ALL TRANSACTIONS, SEND STOP BIT
+	   [0] RW0 Read/write indicator for first transaction - set to 0 for
+		write, 1 for read. This bit only controls HDMI_DDC behaviour -
+		the R/W bit in the transaction is programmed into the DDC buffer
+		as the LSB of the address byte.
+		* 0: WRITE
+		* 1: READ */
+
+	/* 4. Write to HDMI_I2C_TRANSACTION0 with the following fields set in
+	      order to handle characteristics of portion #1 and portion #2
+	 *    RW0 = 0x0 (write)
+	 *    START0 = 0x1 (insert START bit)
+	 *    STOP0 = 0x0 (do NOT insert STOP bit)
+	 *    CNT0 = 0x1 (single byte transaction excluding address) */
+	HDMI_OUTP_ND(0x0228, (1 << 12) | (1 << 16));
+
+	/* 0x022C HDMI_DDC_TRANS1
+	  [23:16] CNT1 Byte count for second transaction (excluding the first
+		byte, which is usually the address).
+	  [13] STOP1 Determines whether a stop bit will be sent after the second
+		transaction
+		* 0: NO STOP
+		* 1: STOP
+	  [12] START1 Determines whether a start bit will be sent before the
+		second transaction
+		* 0: NO START
+		* 1: START
+	  [8] STOP_ON_NACK1 Determines whether the current transfer will stop if
+		a NACK is received during the second transaction (current
+		transaction always stops).
+		* 0: STOP CURRENT TRANSACTION, GO TO NEXT TRANSACTION
+		* 1: STOP ALL TRANSACTIONS, SEND STOP BIT
+	  [0] RW1 Read/write indicator for second transaction - set to 0 for
+		write, 1 for read. This bit only controls HDMI_DDC behaviour -
+		the R/W bit in the transaction is programmed into the DDC buffer
+		as the LSB of the address byte.
+		* 0: WRITE
+		* 1: READ */
+
+	/* 5. Write to HDMI_I2C_TRANSACTION1 with the following fields set in
+	      order to handle characteristics of portion #3
+	 *    RW1 = 0x1 (read)
+	 *    START1 = 0x1 (insert START bit)
+	 *    STOP1 = 0x1 (insert STOP bit)
+	 *    CNT1 = data_len   (it's 128 (0x80) for a blk read) */
+	HDMI_OUTP_ND(0x022C, (1 << 12) | (1 << 16));
+
+	/* 0x022C HDMI_DDC_TRANS2
+	  [23:16] CNT1 Byte count for second transaction (excluding the first
+		byte, which is usually the address).
+	  [13] STOP1 Determines whether a stop bit will be sent after the second
+		transaction
+		* 0: NO STOP
+		* 1: STOP
+	  [12] START1 Determines whether a start bit will be sent before the
+		second transaction
+		* 0: NO START
+		* 1: START
+	  [8] STOP_ON_NACK1 Determines whether the current transfer will stop if
+		a NACK is received during the second transaction (current
+		transaction always stops).
+		* 0: STOP CURRENT TRANSACTION, GO TO NEXT TRANSACTION
+		* 1: STOP ALL TRANSACTIONS, SEND STOP BIT
+	  [0] RW1 Read/write indicator for second transaction - set to 0 for
+		write, 1 for read. This bit only controls HDMI_DDC behaviour -
+		the R/W bit in the transaction is programmed into the DDC buffer
+		as the LSB of the address byte.
+		* 0: WRITE
+		* 1: READ */
+
+	/* 5. Write to HDMI_I2C_TRANSACTION1 with the following fields set in
+	      order to handle characteristics of portion #3
+	 *    RW1 = 0x1 (read)
+	 *    START1 = 0x1 (insert START bit)
+	 *    STOP1 = 0x1 (insert STOP bit)
+	 *    CNT1 = data_len   (it's 128 (0x80) for a blk read) */
+	HDMI_OUTP_ND(0x0230, 1 | (1 << 12) | (1 << 13) | (request_len << 16));
+
+	/* Trigger the I2C transfer */
+	/* 0x020C HDMI_DDC_CTRL
+	   [21:20] TRANSACTION_CNT
+		Number of transactions to be done in current transfer.
+		* 0x0: transaction0 only
+		* 0x1: transaction0, transaction1
+		* 0x2: transaction0, transaction1, transaction2
+		* 0x3: transaction0, transaction1, transaction2, transaction3
+	   [3] SW_STATUS_RESET
+		Write 1 to reset HDMI_DDC_SW_STATUS flags, will reset SW_DONE,
+		ABORTED, TIMEOUT, SW_INTERRUPTED, BUFFER_OVERFLOW,
+		STOPPED_ON_NACK, NACK0, NACK1, NACK2, NACK3
+	   [2] SEND_RESET Set to 1 to send reset sequence (9 clocks with no
+		data) at start of transfer.  This sequence is sent after GO is
+		written to 1, before the first transaction only.
+	   [1] SOFT_RESET Write 1 to reset DDC controller
+	   [0] GO WRITE ONLY. Write 1 to start DDC transfer. */
+
+	/* 6. Write to HDMI_I2C_CONTROL to kick off the hardware.
+	 *    Note that NOTHING has been transmitted on the DDC lines up to this
+	 *    point.
+	 *    TRANSACTION_CNT = 0x2 (execute transaction0 followed by
+	 *    transaction1)
+	 *    GO = 0x1 (kicks off hardware) */
+	INIT_COMPLETION(hdmi_msm_state->ddc_sw_done);
+	HDMI_OUTP_ND(0x020C, (1 << 0) | (2 << 20));
+
+	time_out_count = wait_for_completion_interruptible_timeout(
+		&hdmi_msm_state->ddc_sw_done, HZ/2);
+	HDMI_OUTP_ND(0x0214, 0x2);
+	if (!time_out_count) {
+		if (retry-- > 0) {
+			DEV_INFO("%s: failed timout, retry=%d\n", __func__,
+				retry);
+			goto again;
+		}
+		status = -ETIMEDOUT;
+		DEV_ERR("%s: timedout(7), DDC SW Status=%08x, HW "
+			"Status=%08x, Int Ctrl=%08x\n", __func__,
+			HDMI_INP(0x0218), HDMI_INP(0x021C), HDMI_INP(0x0214));
+		goto error;
+	}
+
+	/* Read DDC status */
+	reg_val = HDMI_INP_ND(0x0218);
+	reg_val &= 0x00001000 | 0x00002000 | 0x00004000 | 0x00008000;
+
+	/* Check if any NACK occurred */
+	if (reg_val) {
+		HDMI_OUTP_ND(0x020C, BIT(3)); /* SW_STATUS_RESET */
+		if (retry == 1)
+			HDMI_OUTP_ND(0x020C, BIT(1)); /* SOFT_RESET */
+		if (retry-- > 0) {
+			DEV_DBG("%s(%s): failed NACK=0x%08x, retry=%d, "
+				"dev-addr=0x%02x, offset=0x%02x, "
+				"length=%d\n", __func__, what,
+				reg_val, retry, dev_addr,
+				offset, data_len);
+			goto again;
+		}
+		status = -EIO;
+		if (log_retry_fail)
+			DEV_ERR("%s(%s): failed NACK=0x%08x, dev-addr=0x%02x, "
+				"offset=0x%02x, length=%d\n", __func__, what,
+				reg_val, dev_addr, offset, data_len);
+		goto error;
+	}
+
+	/* 0x0238 HDMI_DDC_DATA
+	   [31] INDEX_WRITE WRITE ONLY. To write index field, set this bit to 1
+		while writing HDMI_DDC_DATA.
+	   [23:16] INDEX Use to set index into DDC buffer for next read or
+		current write, or to read index of current read or next write.
+		Writable only when INDEX_WRITE=1.
+	   [15:8] DATA Use to fill or read the DDC buffer
+	   [0] DATA_RW Select whether buffer access will be a read or write.
+		For writes, address auto-increments on write to HDMI_DDC_DATA.
+		For reads, address autoincrements on reads to HDMI_DDC_DATA.
+		* 0: Write
+		* 1: Read */
+
+	/* 8. ALL data is now available and waiting in the DDC buffer.
+	 *    Read HDMI_I2C_DATA with the following fields set
+	 *    RW = 0x1 (read)
+	 *    DATA = BCAPS (this is field where data is pulled from)
+	 *    INDEX = 0x3 (where the data has been placed in buffer by hardware)
+	 *    INDEX_WRITE = 0x1 (explicitly define offset) */
+	/* Write this data to DDC buffer */
+	HDMI_OUTP_ND(0x0238, 0x1 | (3 << 16) | (1 << 31));
+
+	/* Discard first byte */
+	HDMI_INP_ND(0x0238);
+	for (ndx = 0; ndx < data_len; ++ndx) {
+		reg_val = HDMI_INP_ND(0x0238);
+		data_buf[ndx] = (uint8) ((reg_val & 0x0000FF00) >> 8);
+	}
+
+	DEV_DBG("%s[%s] success\n", __func__, what);
+
+error:
+	return status;
+}
+
+
 static int hdmi_msm_ddc_read(uint32 dev_addr, uint32 offset, uint8 *data_buf,
-	uint32 data_len, int retry, const char *what)
+	uint32 data_len, int retry, const char *what, boolean no_align)
 {
 	int ret = hdmi_msm_ddc_read_retry(dev_addr, offset, data_buf, data_len,
 		data_len, retry, what);
 	if (!ret)
 		return 0;
-	return hdmi_msm_ddc_read_retry(dev_addr, offset, data_buf, data_len,
-		32 * ((data_len + 31) / 32), retry, what);
+	if (no_align) {
+		return hdmi_msm_ddc_read_retry(dev_addr, offset, data_buf,
+			data_len, data_len, retry, what);
+	} else {
+		return hdmi_msm_ddc_read_retry(dev_addr, offset, data_buf,
+			data_len, 32 * ((data_len + 31) / 32), retry, what);
+	}
 }
-#endif
+
 
 static int hdmi_msm_read_edid_block(int block, uint8 *edid_buf)
 {
@@ -1154,9 +1441,16 @@ static int hdmi_msm_read_edid_block(int block, uint8 *edid_buf)
 		DEV_DBG("EDID: reading block(%d) with block-size=%d\n",
 			block, block_size);
 		for (i = 0; i < 0x80; i += block_size) {
-			rc = hdmi_msm_ddc_read_retry(0xA0, block*0x80 + i,
-				edid_buf+i, block_size, block_size, 1,
-				"EDID");
+			/*Read EDID twice with 32bit alighnment too */
+			if (block < 2) {
+				rc = hdmi_msm_ddc_read(0xA0, block*0x80 + i,
+					edid_buf+i, block_size, 1,
+					"EDID", FALSE);
+			} else {
+				rc = hdmi_msm_ddc_read_edid_seg(0xA0,
+				block*0x80 + i, edid_buf+i, block_size,
+				block_size, 1, "EDID");
+			}
 			if (rc)
 				break;
 		}
@@ -1278,7 +1572,7 @@ static void hdcp_deauthenticate(void)
 	  [8] ENCRYPTION_ENABLE
 	  [0] ENABLE */
 	/* encryption_enable = 0 | hdcp block enable = 1 */
-	HDMI_OUTP(0x0110, 0x1);
+	HDMI_OUTP(0x0110, 0x0);
 
 	if (hdcp_link_status & 0x00000004)
 		hdcp_auth_info((hdcp_link_status & 0x000000F0) >> 4);
@@ -1287,16 +1581,13 @@ static void hdcp_deauthenticate(void)
 static int hdcp_authentication_part1(void)
 {
 	int ret = 0;
+	boolean is_match;
 	uint32 timeout_count;
-
 	uint8 bcaps;
-
 	uint8 aksv[5];
 	uint32 qfprom_aksv_0, qfprom_aksv_1, link0_aksv_0, link0_aksv_1;
-
 	uint8 bksv[5];
 	uint32 link0_bksv_0, link0_bksv_1;
-
 	uint8 an[8];
 	uint32 link0_an_0, link0_an_1;
 
@@ -1339,7 +1630,7 @@ static int hdcp_authentication_part1(void)
 	msm_hdmi_init_ddc();
 
 	/* Read Bksv 5 bytes at 0x00 in HDCP port */
-	ret = hdmi_msm_ddc_read(0x74, 0x00, bksv, 5, 5, "Bksv");
+	ret = hdmi_msm_ddc_read(0x74, 0x00, bksv, 5, 5, "Bksv", TRUE);
 	if (ret) {
 		DEV_ERR("%s(%d): Read BKSV failed", __func__, __LINE__);
 		goto error;
@@ -1361,7 +1652,7 @@ static int hdcp_authentication_part1(void)
 	DEV_DBG("HDCP: BKSV=%02x%08x\n", link0_bksv_1, link0_bksv_0);
 
 	/* read Bcaps at 0x40 in HDCP Port */
-	ret = hdmi_msm_ddc_read(0x74, 0x40, &bcaps, 1, 5, "Bcaps");
+	ret = hdmi_msm_ddc_read(0x74, 0x40, &bcaps, 1, 5, "Bcaps", TRUE);
 	if (ret) {
 		DEV_ERR("%s(%d): Read Bcaps failed", __func__, __LINE__);
 		goto error;
@@ -1416,7 +1707,7 @@ static int hdcp_authentication_part1(void)
 	timeout_count = 100;
 	while (((HDMI_INP_ND(0x011C) & (0x3 << 8)) != (0x3 << 8))
 			&& timeout_count--)
-		msleep(10);
+		msleep(20);
 	if (!timeout_count) {
 		ret = -ETIMEDOUT;
 		DEV_ERR("%s(%d): timedout, An0=%d, An1=%d\n",
@@ -1493,7 +1784,7 @@ static int hdcp_authentication_part1(void)
 	DEV_DBG("HDCP: Link0-BKSV=%02x%08x\n", link0_bksv_1, link0_bksv_0);
 
 	/* Reading R0' 2 bytes at offset 0x08 */
-	ret = hdmi_msm_ddc_read(0x74, 0x00, buf, 16, 5, "RO'");
+	ret = hdmi_msm_ddc_read(0x74, 0x08, buf, 2, 5, "RO'", TRUE);
 	if (ret) {
 		DEV_ERR("%s(%d): Read RO's failed", __func__, __LINE__);
 		goto error;
@@ -1501,17 +1792,21 @@ static int hdcp_authentication_part1(void)
 
 	/* 0x013C HDCP_RCVPORT_DATA2_0
 	     [15:0] LINK0_RI */
-	HDMI_OUTP(0x013C, (((uint32)buf[9]) << 8) | buf[8]);
-	DEV_DBG("HDCP: R0'=%02x%02x\n", buf[9], buf[8]);
+	HDMI_OUTP(0x013C, (((uint32)buf[1]) << 8) | buf[0]);
+	DEV_DBG("HDCP: R0'=%02x%02x\n", buf[1], buf[0]);
 
+	INIT_COMPLETION(hdmi_msm_state->hdcp_success_done);
 	timeout_count = wait_for_completion_interruptible_timeout(
-		&hdmi_msm_state->hdcp_success_done, HZ/2);
+		&hdmi_msm_state->hdcp_success_done, HZ*2);
+
 	if (!timeout_count) {
 		ret = -ETIMEDOUT;
+		is_match = HDMI_INP(0x011C) & BIT(12);
 		DEV_ERR("%s(%d): timedout, Link0=<%s>\n", __func__, __LINE__,
-			(HDMI_INP(0x011C) & BIT(12)) ? "RI_MATCH"
-			: "RI_MISMATCH");
-		goto error;
+			is_match ? "RI_MATCH"
+			: "No RI Match INTR in time");
+		if (!is_match)
+			goto error;
 	}
 
 	/* 0x011C HDCP_LINK0_STATUS
@@ -1528,29 +1823,87 @@ static int hdcp_authentication_part1(void)
 
 	DEV_INFO("HDCP: authentication part I, successful\n");
 	return 0;
-
 error:
 	return ret;
 }
 
-static int hdmi_msm_transfer_v_h(int h)
+static int hdmi_msm_transfer_v_h(void)
 {
 	/* Read V'.HO 4 Byte at offset 0x20 */
 	char what[20];
 	int ret;
 	uint8 buf[4];
 
-	snprintf(what, sizeof(what), "V' H%d", h);
-	ret = hdmi_msm_ddc_read(0x74, 0x20 + 4*h, buf, 4, 5, what);
+	snprintf(what, sizeof(what), "V' H0");
+	ret = hdmi_msm_ddc_read(0x74, 0x20, buf, 4, 5, what, TRUE);
 	if (ret) {
 		DEV_ERR("%s: Read %s failed", __func__, what);
 		return ret;
 	}
+	DEV_DBG("buf[0]= %x , buf[1] = %x , buf[2] = %x , buf[3] = %x\n ",
+			buf[0] , buf[1] , buf[2] , buf[3]);
 
 	/* 0x0154 HDCP_RCVPORT_DATA7
 	   [31:0] V_HO */
-	HDMI_OUTP(0x0154 + 4*h,
+	HDMI_OUTP(0x0154 ,
 		(buf[3] << 24 | buf[2] << 16 | buf[1] << 8 | buf[0]));
+
+	snprintf(what, sizeof(what), "V' H1");
+	ret = hdmi_msm_ddc_read(0x74, 0x24, buf, 4, 5, what, TRUE);
+	if (ret) {
+		DEV_ERR("%s: Read %s failed", __func__, what);
+		return ret;
+	}
+	DEV_DBG("buf[0]= %x , buf[1] = %x , buf[2] = %x , buf[3] = %x\n ",
+			buf[0] , buf[1] , buf[2] , buf[3]);
+
+	/* 0x0158 HDCP_RCVPORT_ DATA8
+	   [31:0] V_H1 */
+	HDMI_OUTP(0x0158,
+		(buf[3] << 24 | buf[2] << 16 | buf[1] << 8 | buf[0]));
+
+
+	snprintf(what, sizeof(what), "V' H2");
+	ret = hdmi_msm_ddc_read(0x74, 0x28, buf, 4, 5, what, TRUE);
+	if (ret) {
+		DEV_ERR("%s: Read %s failed", __func__, what);
+		return ret;
+	}
+	DEV_DBG("buf[0]= %x , buf[1] = %x , buf[2] = %x , buf[3] = %x\n ",
+			buf[0] , buf[1] , buf[2] , buf[3]);
+
+	/* 0x015c HDCP_RCVPORT_DATA9
+	   [31:0] V_H2 */
+	HDMI_OUTP(0x015c ,
+		(buf[3] << 24 | buf[2] << 16 | buf[1] << 8 | buf[0]));
+
+	snprintf(what, sizeof(what), "V' H3");
+	ret = hdmi_msm_ddc_read(0x74, 0x2c, buf, 4, 5, what, TRUE);
+	if (ret) {
+		DEV_ERR("%s: Read %s failed", __func__, what);
+		return ret;
+	}
+	DEV_DBG("buf[0]= %x , buf[1] = %x , buf[2] = %x , buf[3] = %x\n ",
+			buf[0] , buf[1] , buf[2] , buf[3]);
+
+	/* 0x0160 HDCP_RCVPORT_DATA10
+	   [31:0] V_H3 */
+	HDMI_OUTP(0x0160,
+		(buf[3] << 24 | buf[2] << 16 | buf[1] << 8 | buf[0]));
+
+	snprintf(what, sizeof(what), "V' H4");
+	ret = hdmi_msm_ddc_read(0x74, 0x30, buf, 4, 5, what, TRUE);
+	if (ret) {
+		DEV_ERR("%s: Read %s failed", __func__, what);
+		return ret;
+	}
+	DEV_DBG("buf[0]= %x , buf[1] = %x , buf[2] = %x , buf[3] = %x\n ",
+			buf[0] , buf[1] , buf[2] , buf[3]);
+	/* 0x0164 HDCP_RCVPORT_DATA11
+	   [31:0] V_H4 */
+	HDMI_OUTP(0x0164,
+		(buf[3] << 24 | buf[2] << 16 | buf[1] << 8 | buf[0]));
+
 	return 0;
 }
 
@@ -1567,6 +1920,9 @@ static int hdcp_authentication_part2(void)
 	static uint8 buf[0xFF];
 	static uint8 kvs_fifo[5 * 127];
 
+	int max_devs_exceeded = 0;
+	int max_cascade_exceeded = 0;
+
 	memset(buf, 0, sizeof(buf));
 	memset(kvs_fifo, 0, sizeof(kvs_fifo));
 
@@ -1575,7 +1931,8 @@ static int hdcp_authentication_part2(void)
 	do {
 		timeout_count--;
 		/* read bcaps 1 Byte at offset 0x40 */
-		ret = hdmi_msm_ddc_read(0x74, 0x40, &bcaps, 1, 5, "Bcaps");
+		ret = hdmi_msm_ddc_read(0x74, 0x40, &bcaps, 1, 1,
+						"Bcaps", FALSE);
 		if (ret) {
 			DEV_ERR("%s(%d): Read Bcaps failed", __func__,
 				__LINE__);
@@ -1590,7 +1947,8 @@ static int hdcp_authentication_part2(void)
 	}
 
 	/* read bstatus 2 bytes at offset 0x41 */
-	ret = hdmi_msm_ddc_read(0x74, 0x41, buf, 2, 5, "Bstatus");
+
+	ret = hdmi_msm_ddc_read(0x74, 0x41, buf, 2, 5, "Bstatus", FALSE);
 	if (ret) {
 		DEV_ERR("%s(%d): Read Bstatus failed", __func__, __LINE__);
 		goto error;
@@ -1613,6 +1971,32 @@ static int hdcp_authentication_part2(void)
 		goto error;
 	}
 
+	/*
+	 * HDCP Compliance 1B-05:
+	 * Check if no. of devices connected to repeater
+	 * exceed max_devices_connected from bit 7 of Bstatus.
+	 */
+	max_devs_exceeded = (bstatus & 0x80) >> 7;
+	if (max_devs_exceeded == 0x01) {
+		DEV_ERR("%s: Number of devs connected to repeater "
+			"exceeds max_devs\n", __func__);
+		ret = -EINVAL;
+		goto hdcp_error;
+	}
+
+	/*
+	 * HDCP Compliance 1B-06:
+	 * Check if no. of cascade connected to repeater
+	 * exceed max_cascade_connected from bit 11 of Bstatus.
+	 */
+	max_cascade_exceeded = (bstatus & 0x800) >> 11;
+	if (max_cascade_exceeded == 0x01) {
+		DEV_ERR("%s: Number of cascade connected to repeater "
+			"exceeds max_cascade\n", __func__);
+		ret = -EINVAL;
+		goto hdcp_error;
+	}
+
 	/* Read KSV FIFO over DDC
 	 * Key Slection vector FIFO
 	 * Used to pull downstream KSVs from HDCP Repeaters.
@@ -1622,17 +2006,16 @@ static int hdcp_authentication_part2(void)
 	 *   HDCP Repeaters (REPEATER == 0). */
 	ksv_bytes = 5 * down_stream_devices;
 	/* Reading KSV FIFO / KSV FIFO */
-	ret = hdmi_msm_ddc_read(0x74, 0x43, kvs_fifo, ksv_bytes, 5, "KSV FIFO");
+	ret = hdmi_msm_ddc_read(0x74, 0x43, kvs_fifo, ksv_bytes, 5,
+							"KSV FIFO", TRUE);
 	if (ret) {
 		DEV_ERR("%s(%d): Read KSV FIFO failed", __func__, __LINE__);
 		goto error;
 	}
 
-	for (i = 0; i <= 4; ++i) {
-		ret = hdmi_msm_transfer_v_h(i);
-		if (ret)
-			goto error;
-	}
+	ret = hdmi_msm_transfer_v_h();
+	if (ret)
+		goto error;
 
 	/* Next: Write KSV FIFO to HDCP_SHA_DATA.
 	 * This is done 1 byte at time starting with the LSB.
@@ -1660,7 +2043,7 @@ static int hdcp_authentication_part2(void)
 	/* Now wait for HDCP_SHA_COMP_DONE */
 	timeout_count = 100;
 	while ((0x10 != (HDMI_INP_ND(0x0240) & 0x10)) && timeout_count--)
-		msleep(10);
+		msleep(20);
 	if (!timeout_count) {
 		ret = -ETIMEDOUT;
 		DEV_ERR("%s(%d): timedout", __func__, __LINE__);
@@ -1672,7 +2055,7 @@ static int hdcp_authentication_part2(void)
 	timeout_count = 100;
 	while (((HDMI_INP_ND(0x011C) & (1 << 20)) != (1 << 20))
 			&& timeout_count--)
-		msleep(10);
+		msleep(20);
 	if (!timeout_count) {
 		ret = -ETIMEDOUT;
 		DEV_ERR("%s(%d): timedout", __func__, __LINE__);
@@ -1683,6 +2066,11 @@ static int hdcp_authentication_part2(void)
 
 error:
 	return ret;
+
+hdcp_error:
+	hdcp_deauthenticate();
+	return ret;
+
 }
 
 static int hdcp_authentication_part3(uint32 found_repeater)
@@ -1717,6 +2105,7 @@ static void hdmi_msm_hdcp_enable(void)
 	int ret = 0;
 	uint8 bcaps;
 	uint32 found_repeater = 0x0;
+	char *envp[2];
 
 	if (!hdmi_msm_has_hdcp())
 		return;
@@ -1725,6 +2114,7 @@ static void hdmi_msm_hdcp_enable(void)
 	hdmi_msm_state->hdcp_activating = TRUE;
 	mutex_unlock(&hdmi_msm_state_mutex);
 
+	fill_black_screen();
 	/* PART I Authentication*/
 	ret = hdcp_authentication_part1();
 	if (ret)
@@ -1732,7 +2122,7 @@ static void hdmi_msm_hdcp_enable(void)
 
 	/* PART II Authentication*/
 	/* read Bcaps at 0x40 in HDCP Port */
-	ret = hdmi_msm_ddc_read(0x74, 0x40, &bcaps, 1, 5, "Bcaps");
+	ret = hdmi_msm_ddc_read(0x74, 0x40, &bcaps, 1, 5, "Bcaps", FALSE);
 	if (ret) {
 		DEV_ERR("%s(%d): Read Bcaps failed\n", __func__, __LINE__);
 		goto error;
@@ -1754,11 +2144,20 @@ static void hdmi_msm_hdcp_enable(void)
 	if (ret)
 		goto error;
 
+	unfill_black_screen();
+
 	external_common_state->hdcp_active = TRUE;
 	mutex_lock(&hdmi_msm_state_mutex);
 	hdmi_msm_state->hdcp_activating = FALSE;
 	mutex_unlock(&hdmi_msm_state_mutex);
 
+	if (!hdmi_msm_is_dvi_mode()) {
+		DEV_INFO("HDMI HPD: sense : send HDCP_PASS\n");
+		envp[0] = "HDCP_STATE=PASS";
+		envp[1] = NULL;
+		kobject_uevent_env(external_common_state->uevent_kobj,
+			KOBJ_CHANGE, envp);
+	}
 	return;
 
 error:
@@ -1766,8 +2165,11 @@ error:
 	hdmi_msm_state->hdcp_activating = FALSE;
 	mutex_unlock(&hdmi_msm_state_mutex);
 	if (hdmi_msm_state->panel_power_on)
-		schedule_work(&hdmi_msm_state->hdcp_reauth_work);
+		queue_work(hdmi_work_queue, &hdmi_msm_state->hdcp_reauth_work);
 }
+
+#else
+	static inline void hdmi_msm_hdcp_enable(void) { return ; }
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 
 static void hdmi_msm_init_phy(int video_format)
@@ -2236,7 +2638,8 @@ static void hdmi_msm_en_gc_packet(boolean av_mute_is_requested)
 
 static void hdmi_msm_en_isrc_packet(boolean isrc_is_continued)
 {
-	static char isrc_psuedo_data[] = "ISRC1:0123456789isrc2=ABCDEFGHIJ";
+	static const char isrc_psuedo_data[] =
+					"ISRC1:0123456789isrc2=ABCDEFGHIJ";
 	const uint32 * isrc_data = (const uint32 *) isrc_psuedo_data;
 
 	/* ISRC_STATUS =0b010 | ISRC_CONTINUE | ISRC_VALID */
@@ -2647,7 +3050,8 @@ static void hdmi_msm_turn_on(void)
 	HDMI_OUTP(0x0208, 0x0001001B);
 
 	hdmi_msm_video_setup(external_common_state->video_resolution);
-	hdmi_msm_audio_setup();
+	if (!hdmi_msm_is_dvi_mode())
+		hdmi_msm_audio_setup();
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 	hdmi_msm_avi_info_frame();
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
@@ -2668,20 +3072,23 @@ static void hdmi_msm_turn_on(void)
 	HDMI_OUTP(0x0254, 4 | (external_common_state->hpd_state ? 0 : 2));
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
-	hdmi_msm_hdcp_enable();
+	if (hdmi_msm_state->reauth) {
+		hdmi_msm_hdcp_enable();
+		hdmi_msm_state->reauth = FALSE ;
+	}
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 	DEV_INFO("HDMI Core: Initialized\n");
 }
 
 static void hdmi_msm_hpd_state_timer(unsigned long data)
 {
-	schedule_work(&hdmi_msm_state->hpd_state_work);
+	queue_work(hdmi_work_queue, &hdmi_msm_state->hpd_state_work);
 }
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 static void hdmi_msm_hdcp_timer(unsigned long data)
 {
-	schedule_work(&hdmi_msm_state->hdcp_work);
+	queue_work(hdmi_work_queue, &hdmi_msm_state->hdcp_work);
 }
 #endif
 
@@ -2839,14 +3246,9 @@ static int hdmi_msm_power_on(struct platform_device *pdev)
 
 	hdmi_msm_dump_regs("HDMI-ON: ");
 
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_DVI_SUPPORT
-	DEV_DBG("power=%s, DVI=%s\n",
-		hdmi_msm_is_power_on() ? "ON" : "OFF",
+	DEV_INFO("power=%s DVI= %s\n",
+		hdmi_msm_is_power_on() ? "ON" : "OFF" ,
 		hdmi_msm_is_dvi_mode() ? "ON" : "OFF");
-#else /* CONFIG_FB_MSM_HDMI_MSM_PANEL_DVI_SUPPORT */
-	DEV_DBG("power=%s\n", hdmi_msm_is_power_on() ? "ON" : "OFF");
-#endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_DVI_SUPPORT */
-
 	return 0;
 }
 
@@ -3026,7 +3428,12 @@ static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 	if (rc)
 		goto error;
 
-	schedule_work(&hdmi_msm_state->hpd_read_work);
+	if (hdmi_msm_has_hdcp())
+		external_common_state->present_hdcp = TRUE;
+	else
+		external_common_state->present_hdcp = FALSE;
+
+	queue_work(hdmi_work_queue, &hdmi_msm_state->hpd_read_work);
 	return 0;
 
 error:
@@ -3199,6 +3606,12 @@ static int __init hdmi_msm_init(void)
 #ifdef CONFIG_FB_MSM_HDMI_3D
 	external_common_state->switch_3d = hdmi_msm_switch_3d;
 #endif
+
+	/*
+	 * Create your work queue
+	 * allocs and returns ptr
+	*/
+	hdmi_work_queue = create_workqueue("hdmi_hdcp");
 	external_common_state->hpd_feature = hdmi_msm_hpd_feature;
 
 	rc = platform_driver_register(&this_driver);
