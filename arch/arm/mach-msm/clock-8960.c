@@ -4135,6 +4135,10 @@ static int wr_pll_clk_enable(struct clk *clk)
 	mode |= BIT(1);
 	writel_relaxed(mode, pll->mode_reg);
 
+	/* Wait until PLL is locked. */
+	dsb();
+	udelay(60);
+
 	/* Enable PLL output. */
 	mode |= BIT(0);
 	writel_relaxed(mode, pll->mode_reg);
