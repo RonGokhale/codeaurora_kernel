@@ -473,7 +473,12 @@ static void msmsdcc_sps_complete_tlet(unsigned long data)
 	else
 		sps_pipe_handle = host->sps.cons.pipe_handle;
 	mrq = host->curr.mrq;
-	BUG_ON(!mrq);
+
+	if (!mrq) {
+		spin_unlock_irqrestore(&host->lock, flags);
+		return;
+	}
+
 	pr_debug("%s: %s: sps event_id=%d\n",
 		mmc_hostname(host->mmc), __func__,
 		notify->event_id);
