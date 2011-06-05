@@ -186,6 +186,7 @@ obj-$(CONFIG_ARCH_MSM8960) += clock-local.o clock-8960.o clock-rpm.o
 obj-$(CONFIG_ARCH_MSM8960) += board-msm8960.o devices-8960.o footswitch-8x60.o
 obj-$(CONFIG_ARCH_MSM8960) += board-msm8960-regulator.o acpuclock-8960.o
 obj-$(CONFIG_ARCH_MSM8960) += saw-regulator.o rpm-regulator-8960.o
+obj-$(CONFIG_ARCH_MSM8960) += bms-batterydata.o
 
 obj-$(CONFIG_MACH_SAPPHIRE) += board-sapphire.o board-sapphire-gpio.o
 obj-$(CONFIG_MACH_SAPPHIRE) += board-sapphire-keypad.o board-sapphire-panel.o

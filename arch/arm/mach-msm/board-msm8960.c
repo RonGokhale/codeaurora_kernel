@@ -2567,6 +2567,14 @@ static struct pm8xxx_misc_platform_data pm8xxx_misc_pdata = {
 	.priority		= 0,
 };
 
+static struct pm8921_bms_platform_data pm8921_bms_pdata __devinitdata = {
+	.r_sense		= 10,
+	.i_test			= 2500,
+	.v_failure		= 3000,
+	.calib_delay_ms		= 600000,
+	.batt_data		= &palladium_1500_data,
+};
+
 static struct pm8921_platform_data pm8921_platform_data __devinitdata = {
 	.irq_pdata		= &pm8xxx_irq_pdata,
 	.gpio_pdata		= &pm8xxx_gpio_pdata,
@@ -2577,6 +2585,7 @@ static struct pm8921_platform_data pm8921_platform_data __devinitdata = {
 	.misc_pdata		= &pm8xxx_misc_pdata,
 	.regulator_pdatas	= msm_pm8921_regulator_pdata,
 	.charger_pdata		= &pm8921_chg_pdata,
+	.bms_pdata		= &pm8921_bms_pdata,
 };
 
 static struct msm_ssbi_platform_data msm8960_ssbi_pm8921_pdata __devinitdata = {
