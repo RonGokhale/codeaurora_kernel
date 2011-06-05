@@ -89,7 +89,11 @@ static struct hdmi_msm_state_type *hdmi_msm_state;
 static DEFINE_MUTEX(hdmi_msm_state_mutex);
 static DEFINE_MUTEX(hdcp_auth_state_mutex);
 
+#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 static void hdmi_msm_hdcp_enable(void);
+#else
+static inline void hdmi_msm_hdcp_enable(void) {}
+#endif
 
 uint32 hdmi_msm_get_io_base(void)
 {
@@ -2286,8 +2290,6 @@ error:
 			    &hdmi_msm_state->hdcp_reauth_work);
 	}
 }
-#else
-	static inline void hdmi_msm_hdcp_enable(void) { return ; }
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 
 static void hdmi_msm_init_phy(int video_format)
