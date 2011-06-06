@@ -18,6 +18,7 @@
 #include <linux/gpio.h>
 #include <asm/clkdev.h>
 #include <linux/msm_kgsl.h>
+#include <linux/android_pmem.h>
 #include <mach/irqs-8960.h>
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
@@ -406,7 +407,7 @@ static struct msm_bus_paths vidc_bus_client_config[] = {
 	},
 };
 
-static struct msm_bus_scale_pdata vidc_bus_client_pdata = {
+static struct msm_bus_scale_pdata vidc_bus_client_data = {
 	vidc_bus_client_config,
 	ARRAY_SIZE(vidc_bus_client_config),
 	.name = "vidc",
@@ -429,16 +430,21 @@ static struct resource msm_device_vidc_resources[] = {
 	},
 };
 
+struct msm_vidc_platform_data vidc_platform_data = {
+#ifdef CONFIG_MSM_BUS_SCALING
+	.vidc_bus_client_pdata = &vidc_bus_client_data,
+#endif
+	.memtype = PMEM_MEMTYPE_EBI1
+};
+
 struct platform_device msm_device_vidc = {
 	.name = "msm_vidc",
 	.id = 0,
 	.num_resources = ARRAY_SIZE(msm_device_vidc_resources),
 	.resource = msm_device_vidc_resources,
-#ifdef CONFIG_MSM_BUS_SCALING
 	.dev = {
-		.platform_data	= &vidc_bus_client_pdata,
+		.platform_data	= &vidc_platform_data,
 	},
-#endif
 };
 
 #define MSM_WCNSS_PHYS	0x03000000

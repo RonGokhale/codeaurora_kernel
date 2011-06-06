@@ -35,6 +35,8 @@
 #include <mach/msm_bus.h>
 #include <mach/msm_bus_board.h>
 #endif
+#include <mach/board.h>
+#include <mach/msm_memtypes.h>
 
 #define RESTRK_1080P_VGA_PERF_LEVEL    VCD_MIN_PERF_LEVEL
 #define RESTRK_1080P_720P_PERF_LEVEL   108000
@@ -54,6 +56,8 @@ struct res_trk_context {
 	unsigned int clock_enabled;
 	unsigned int perf_level;
 	struct regulator *footswitch;
+	struct msm_vidc_platform_data *vidc_platform_data;
+	int memtype;
 #ifdef CONFIG_MSM_BUS_SCALING
 	struct msm_bus_scale_pdata *vidc_bus_client_pdata;
 	uint32_t     pcl;
