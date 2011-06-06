@@ -753,7 +753,7 @@ static int pll_vote_clk_enable(struct clk *clk)
 	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
 
 	/* Wait until PLL is enabled */
-	while ((readl_relaxed(pll->status_reg) & pll->status_mask) == 0)
+	while ((readl_relaxed(pll->status_reg) & BIT(16)) == 0)
 		cpu_relax();
 
 	return 0;
@@ -787,7 +787,7 @@ static struct clk *pll_vote_clk_get_parent(struct clk *clk)
 static int pll_vote_clk_is_enabled(struct clk *clk)
 {
 	struct pll_vote_clk *pll = to_pll_vote_clk(clk);
-	return !!(readl_relaxed(pll->status_reg) & pll->status_mask);
+	return !!(readl_relaxed(pll->status_reg) & BIT(16));
 }
 
 struct clk_ops clk_ops_pll_vote = {

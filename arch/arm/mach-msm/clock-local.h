@@ -187,7 +187,6 @@ static inline unsigned fixed_clk_get_rate(struct clk *clk)
  * @en_reg: enable register
  * @en_mask: ORed with @en_reg to enable the clock
  * @status_reg: status register
- * @status_mask: ANDed with @status_reg to test if the PLL is enabled
  * @parent: clock source
  * @c: clk
  */
@@ -198,7 +197,6 @@ struct pll_vote_clk {
 	const u32 en_mask;
 
 	void __iomem *const status_reg;
-	const u32 status_mask;
 
 	struct clk *parent;
 	struct clk c;
