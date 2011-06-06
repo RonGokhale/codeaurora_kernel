@@ -251,6 +251,38 @@ static struct snd_soc_dsp_link fe_media = {
 	},
 };
 
+static const char *slimbus0_hl_be[] = {
+	LPASS_BE_SLIMBUS_0_RX,
+	LPASS_BE_SLIMBUS_0_TX,
+};
+
+static struct snd_soc_dsp_link slimbus0_hl_media = {
+	.supported_be = slimbus0_hl_be,
+	.num_be = ARRAY_SIZE(slimbus0_hl_be),
+	.fe_playback_channels = 2,
+	.fe_capture_channels = 2,
+	.trigger = {
+		SND_SOC_DSP_TRIGGER_POST,
+		SND_SOC_DSP_TRIGGER_POST
+	},
+};
+
+static const char *int_fm_hl_be[] = {
+	LPASS_BE_INT_FM_RX,
+	LPASS_BE_INT_FM_TX,
+};
+
+static struct snd_soc_dsp_link int_fm_hl_media = {
+	.supported_be = int_fm_hl_be,
+	.num_be = ARRAY_SIZE(int_fm_hl_be),
+	.fe_playback_channels = 2,
+	.fe_capture_channels = 2,
+	.trigger = {
+		SND_SOC_DSP_TRIGGER_POST,
+		SND_SOC_DSP_TRIGGER_POST
+	},
+};
+
 static int slimbus_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 			struct snd_pcm_hw_params *params)
 {
@@ -341,6 +373,27 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.dynamic = 1,
 		.dsp_link = &lpa_fe_media,
 		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA3,
+	},
+	/* Hostless PMC purpose */
+	{
+		.name = "SLIMBUS_0 Hostless",
+		.stream_name = "SLIMBUS_0 Hostless",
+		.cpu_dai_name	= "SLIMBUS0_HOSTLESS",
+		.platform_name  = "msm-pcm-hostless",
+		.dynamic = 1,
+		.dsp_link = &slimbus0_hl_media,
+		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
+		/* .be_id = do not care */
+	},
+	{
+		.name = "INT_FM Hostless",
+		.stream_name = "INT_FM Hostless",
+		.cpu_dai_name	= "INT_FM_HOSTLESS",
+		.platform_name  = "msm-pcm-hostless",
+		.dynamic = 1,
+		.dsp_link = &int_fm_hl_media,
+		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
+		/* .be_id = do not care */
 	},
 	/* Backend DAI Links */
 	{
