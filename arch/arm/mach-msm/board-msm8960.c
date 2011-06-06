@@ -2034,6 +2034,7 @@ static struct platform_device *sim_devices[] __initdata = {
 	&msm_stub_codec,
 	&msm_voice,
 	&msm_voip,
+	&msm_lpa_pcm,
 
 #if defined(CONFIG_CRYPTO_DEV_QCRYPTO) || \
 		defined(CONFIG_CRYPTO_DEV_QCRYPTO_MODULE)
@@ -2088,7 +2089,8 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&msm8960_camera_sensor_ov2720,
 #endif
 	&msm_voice,
-	&msm_voip
+	&msm_voip,
+	&msm_lpa_pcm,
 };
 
 static void __init msm8960_i2c_init(void)

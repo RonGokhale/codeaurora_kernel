@@ -121,6 +121,7 @@ extern struct platform_device msm_cpu_fe;
 extern struct platform_device msm_stub_codec;
 extern struct platform_device msm_voice;
 extern struct platform_device msm_voip;
+extern struct platform_device msm_lpa_pcm;
 
 extern struct platform_device *msm_footswitch_devices[];
 extern unsigned msm_num_footswitch_devices;
