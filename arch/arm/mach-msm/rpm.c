@@ -33,21 +33,6 @@
  * Data type and structure definitions
  *****************************************************************************/
 
-enum {
-	MSM_RPM_CTRL_VERSION_MAJOR,
-	MSM_RPM_CTRL_VERSION_MINOR,
-	MSM_RPM_CTRL_VERSION_BUILD,
-
-	MSM_RPM_CTRL_REQ_CTX_0,
-	MSM_RPM_CTRL_REQ_CTX_7 = MSM_RPM_CTRL_REQ_CTX_0 + 7,
-	MSM_RPM_CTRL_REQ_SEL_0,
-	MSM_RPM_CTRL_REQ_SEL_7 = MSM_RPM_CTRL_REQ_SEL_0 + 7,
-	MSM_RPM_CTRL_ACK_CTX_0,
-	MSM_RPM_CTRL_ACK_CTX_7 = MSM_RPM_CTRL_ACK_CTX_0 + 7,
-	MSM_RPM_CTRL_ACK_SEL_0,
-	MSM_RPM_CTRL_ACK_SEL_7 = MSM_RPM_CTRL_ACK_SEL_0 + 7,
-};
-
 struct msm_rpm_request {
 	struct msm_rpm_iv_pair *req;
 	int count;
