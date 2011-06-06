@@ -64,8 +64,6 @@
 #define BB_PLL8_STATUS_REG			REG(0x3158)
 #define BB_PLL8_CONFIG_REG			REG(0x3154)
 #define BB_PLL8_TEST_CTL_REG			REG(0x3150)
-#define BB_MMC_PLL2_M_VAL_REG			REG(0x3168)
-#define BB_MMC_PLL2_N_VAL_REG			REG(0x316C)
 #define PLLTEST_PAD_CFG_REG			REG(0x2FA4)
 #define PMEM_ACLK_CTL_REG			REG(0x25A0)
 #define PRNG_CLK_NS_REG				REG(0x2E80)
@@ -165,13 +163,8 @@
 #define MM_PLL0_MODE_REG			REG_MM(0x0300)
 #define MM_PLL0_N_VAL_REG			REG_MM(0x030C)
 #define MM_PLL0_STATUS_REG			REG_MM(0x0318)
-#define MM_PLL1_CONFIG_REG			REG_MM(0x032C)
-#define MM_PLL1_L_VAL_REG			REG_MM(0x0320)
-#define MM_PLL1_M_VAL_REG			REG_MM(0x0324)
 #define MM_PLL1_MODE_REG			REG_MM(0x031C)
-#define MM_PLL1_N_VAL_REG			REG_MM(0x0328)
 #define MM_PLL1_STATUS_REG			REG_MM(0x0334)
-#define MM_PLL1_TEST_CTL_REG			REG_MM(0x0330)
 #define ROT_CC_REG				REG_MM(0x00E0)
 #define ROT_NS_REG				REG_MM(0x00E8)
 #define SAXI_EN_REG				REG_MM(0x0030)
@@ -208,11 +201,7 @@
 #define LCC_PCM_MD_REG				REG_LPA(0x0058)
 #define LCC_PCM_NS_REG				REG_LPA(0x0054)
 #define LCC_PCM_STATUS_REG			REG_LPA(0x005C)
-#define LCC_PLL0_CONFIG_REG			REG_LPA(0x0014)
-#define LCC_PLL0_L_VAL_REG			REG_LPA(0x0004)
-#define LCC_PLL0_M_VAL_REG			REG_LPA(0x0008)
 #define LCC_PLL0_MODE_REG			REG_LPA(0x0000)
-#define LCC_PLL0_N_VAL_REG			REG_LPA(0x000C)
 #define LCC_PLL0_STATUS_REG			REG_LPA(0x0018)
 #define LCC_PRI_PLL_CLK_CTL_REG			REG_LPA(0x00C4)
 #define LCC_PXO_SRC_CLK_CTL_REG			REG_LPA(0x00B4)
@@ -4030,23 +4019,6 @@ static void rmwreg(uint32_t val, void *reg, uint32_t mask)
 
 static void reg_init(void)
 {
-	/* Set MM_PLL1 (PLL2) @ 800 MHz but leave it off. */
-	writel_relaxed(0, MM_PLL1_MODE_REG); /* PXO */
-	writel_relaxed(0x31000 | 29, MM_PLL1_L_VAL_REG);
-	writel_relaxed(17, MM_PLL1_M_VAL_REG);
-	writel_relaxed(27, MM_PLL1_N_VAL_REG);
-	writel_relaxed(0xC20000, MM_PLL1_CONFIG_REG); /* Enable MN, misc */
-	writel_relaxed(0x1000, MM_PLL1_TEST_CTL_REG); /* Enable aux output */
-
-	/* Set PLL4 @ 393.216 MHz */
-	writel_relaxed(0, LCC_PLL0_MODE_REG);
-	writel_relaxed(14, LCC_PLL0_L_VAL_REG);
-	writel_relaxed(634, LCC_PLL0_M_VAL_REG);
-	writel_relaxed(1125, LCC_PLL0_N_VAL_REG);
-	writel_relaxed(0xC00000, LCC_PLL0_CONFIG_REG); /* Fractional, main */
-	rmwreg(0, BB_MMC_PLL2_M_VAL_REG, 0x3FFFF);
-	rmwreg(0x3400000, BB_MMC_PLL2_N_VAL_REG, 0x3FFFF);
-
 	/* Enable PLL4 */
 	writel_relaxed(0x4, LCC_PLL0_MODE_REG);
 	udelay(10);
