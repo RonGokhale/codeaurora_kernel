@@ -126,10 +126,31 @@ static void
 msmsdcc_start_command(struct msmsdcc_host *host, struct mmc_command *cmd,
 		      u32 c);
 
+#ifdef CONFIG_MMC_MSM_SPS_SUPPORT
 static int msmsdcc_sps_reset_ep(struct msmsdcc_host *host,
 				struct msmsdcc_sps_ep_conn_data *ep);
 static int msmsdcc_sps_restore_ep(struct msmsdcc_host *host,
 				struct msmsdcc_sps_ep_conn_data *ep);
+#else
+static inline int msmsdcc_sps_init_ep_conn(struct msmsdcc_host *host,
+				struct msmsdcc_sps_ep_conn_data *ep,
+				bool is_producer) { return 0; }
+static inline void msmsdcc_sps_exit_ep_conn(struct msmsdcc_host *host,
+				struct msmsdcc_sps_ep_conn_data *ep) { }
+static inline int msmsdcc_sps_reset_ep(struct msmsdcc_host *host,
+				struct msmsdcc_sps_ep_conn_data *ep)
+{
+	return 0;
+}
+static inline int msmsdcc_sps_restore_ep(struct msmsdcc_host *host,
+				struct msmsdcc_sps_ep_conn_data *ep)
+{
+	return 0;
+}
+static inline int msmsdcc_sps_init(struct msmsdcc_host *host) { return 0; }
+static inline void msmsdcc_sps_exit(struct msmsdcc_host *host) {}
+#endif /* CONFIG_MMC_MSM_SPS_SUPPORT */
+
 /**
  * Apply soft reset
  *
@@ -2569,24 +2590,6 @@ static void msmsdcc_sps_exit(struct msmsdcc_host *host)
 	sps_deregister_bam_device(host->sps.bam_handle);
 	iounmap(host->bam_base);
 }
-#else
-static inline int msmsdcc_sps_init_ep_conn(struct msmsdcc_host *host,
-				struct msmsdcc_sps_ep_conn_data *ep,
-				bool is_producer) { return 0; }
-static inline void msmsdcc_sps_exit_ep_conn(struct msmsdcc_host *host,
-				struct msmsdcc_sps_ep_conn_data *ep) { }
-static inline int msmsdcc_sps_reset_ep(struct msmsdcc_host *host,
-				struct msmsdcc_sps_ep_conn_data *ep)
-{
-	return 0;
-}
-static inline int msmsdcc_sps_restore_ep(struct msmsdcc_host *host,
-				struct msmsdcc_sps_ep_conn_data *ep)
-{
-	return 0;
-}
-static inline int msmsdcc_sps_init(struct msmsdcc_host *host) { return 0; }
-static inline void msmsdcc_sps_exit(struct msmsdcc_host *host) {}
 #endif /* CONFIG_MMC_MSM_SPS_SUPPORT */
 
 static ssize_t
