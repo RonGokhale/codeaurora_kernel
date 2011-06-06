@@ -45,8 +45,7 @@
 #define SFAB_LPASS_Q6_ACLK_CTL	(MSM_CLK_CTL_BASE + 0x23A0)
 #define MSS_Q6FW_JTAG_CLK_CTL	(MSM_CLK_CTL_BASE + 0x2C6C)
 #define MSS_Q6SW_JTAG_CLK_CTL	(MSM_CLK_CTL_BASE + 0x2C68)
-#define MMS_MODEM_RESET		(MSM_CLK_CTL_BASE + 0x2C48)
-#define MMS_RESET		(MSM_CLK_CTL_BASE + 0x2C64)
+#define MSS_RESET		(MSM_CLK_CTL_BASE + 0x2C64)
 
 #define Q6SS_SS_ARES		BIT(0)
 #define Q6SS_CORE_ARES		BIT(1)
@@ -219,9 +218,8 @@ static int reset_q6_untrusted(struct q6_data *q6)
 		/* TODO: Remove if/when Q6 software enables them? */
 		writel_relaxed(0x10, q6->jtag_clk_reg);
 
-		/* De-assert MSS resets */
-		writel_relaxed(0x0,  MMS_MODEM_RESET);
-		writel_relaxed(0x0,  MMS_RESET);
+		/* De-assert MSS reset */
+		writel_relaxed(0x0,  MSS_RESET);
 		dsb();
 		udelay(10);
 
@@ -331,6 +329,10 @@ static int shutdown_q6_untrusted(struct q6_data *q6)
 
 	/* Turn off Q6 memories */
 	writel_relaxed(Q6SS_CLAMP_IO, q6->reg_base + QDSP6SS_PWR_CTL);
+
+	/* Put Modem Subsystem back into reset when shutting down FWQ6 */
+	if (q6 == &q6_modem_fw)
+		writel_relaxed(0x1, MSS_RESET);
 
 	if (q6->vreg_enabled) {
 		regulator_disable(q6->vreg);

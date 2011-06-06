@@ -51,6 +51,8 @@
 #define MARM_CLK_FS			(MSM_CLK_CTL_BASE + 0x2BD0)
 #define MAHB2_CLK_FS			(MSM_CLK_CTL_BASE + 0x2C24)
 #define PLL_ENA_MARM			(MSM_CLK_CTL_BASE + 0x3500)
+#define PLL8_STATUS			(MSM_CLK_CTL_BASE + 0x3158)
+#define CLK_HALT_MSS_SMPSS_MISC_STATE	(MSM_CLK_CTL_BASE + 0x2FDC)
 
 #define LCC_Q6_FUNC			(MSM_LPASS_CLK_CTL_BASE + 0x001C)
 #define QDSP6SS_RST_EVB			(msm_lpass_qdsp6ss_base + 0x0000)
@@ -59,6 +61,7 @@
 
 #define PPSS_RESET			(MSM_CLK_CTL_BASE + 0x2594)
 #define PPSS_PROC_CLK_CTL		(MSM_CLK_CTL_BASE + 0x2588)
+#define CLK_HALT_DFAB_STATE		(MSM_CLK_CTL_BASE + 0x2FC8)
 
 #define PAS_MODEM	0
 #define PAS_Q6		1
@@ -157,7 +160,8 @@ static int init_image_dsps_untrusted(const u8 *metadata, size_t size)
 	struct elf32_hdr *ehdr = (struct elf32_hdr *)metadata;
 	dsps_start = ehdr->e_entry;
 	/* Bring memory and bus interface out of reset */
-	writel(0x2, PPSS_RESET);
+	__raw_writel(0x2, PPSS_RESET);
+	dsb();
 	return 0;
 }
 
@@ -212,67 +216,74 @@ static int reset_modem_untrusted(void)
 	make_modem_proxy_votes();
 
 	/* Put modem AHB0,1,2 clocks into reset */
-	writel(BIT(0) | BIT(1), MAHB0_SFAB_PORT_RESET);
-	writel(BIT(7), MAHB1_CLK_CTL);
-	writel(BIT(7), MAHB2_CLK_CTL);
+	__raw_writel(BIT(0) | BIT(1), MAHB0_SFAB_PORT_RESET);
+	__raw_writel(BIT(7), MAHB1_CLK_CTL);
+	__raw_writel(BIT(7), MAHB2_CLK_CTL);
 
 	/* Vote for pll8 on behalf of the modem */
-	reg = readl(PLL_ENA_MARM);
+	reg = __raw_readl(PLL_ENA_MARM);
 	reg |= BIT(8);
-	writel(reg, PLL_ENA_MARM);
+	__raw_writel(reg, PLL_ENA_MARM);
+
+	/* Wait for PLL8 to enable */
+	while (!(__raw_readl(PLL8_STATUS) & BIT(16)))
+		cpu_relax();
 
 	/* Set MAHB1 divider to Div-5 to run MAHB1,2 and sfab at 79.8 Mhz*/
-	writel(0x4, MAHB1_NS);
+	__raw_writel(0x4, MAHB1_NS);
 
 	/* Vote for modem AHB1 and 2 clocks to be on on behalf of the modem */
-	reg = readl(MARM_CLK_BRANCH_ENA_VOTE);
+	reg = __raw_readl(MARM_CLK_BRANCH_ENA_VOTE);
 	reg |= BIT(0) | BIT(1);
-	writel(reg, MARM_CLK_BRANCH_ENA_VOTE);
+	__raw_writel(reg, MARM_CLK_BRANCH_ENA_VOTE);
 
 	/* Source marm_clk off of PLL8 */
-	reg = readl(MARM_CLK_SRC_CTL);
+	reg = __raw_readl(MARM_CLK_SRC_CTL);
 	if ((reg & 0x1) == 0) {
-		writel(0x3, MARM_CLK_SRC1_NS);
+		__raw_writel(0x3, MARM_CLK_SRC1_NS);
 		reg |= 0x1;
 	} else {
-		writel(0x3, MARM_CLK_SRC0_NS);
+		__raw_writel(0x3, MARM_CLK_SRC0_NS);
 		reg &= ~0x1;
 	}
-	writel(reg | 0x2, MARM_CLK_SRC_CTL);
+	__raw_writel(reg | 0x2, MARM_CLK_SRC_CTL);
 
 	/*
 	 * Force core on and periph on signals to remain active during halt
 	 * for marm_clk and mahb2_clk
 	 */
-	writel(0x6F, MARM_CLK_FS);
-	writel(0x6F, MAHB2_CLK_FS);
+	__raw_writel(0x6F, MARM_CLK_FS);
+	__raw_writel(0x6F, MAHB2_CLK_FS);
 
 	/*
 	 * Enable all of the marm_clk branches, cxo sourced marm branches,
 	 * and sleep clock branches
 	 */
-	writel(0x10, MARM_CLK_CTL);
-	writel(0x10, MAHB0_CLK_CTL);
-	writel(0x10, SFAB_MSS_S_HCLK_CTL);
-	writel(0x10, MSS_MODEM_CXO_CLK_CTL);
-	writel(0x10, MSS_SLP_CLK_CTL);
-	writel(0x10, MSS_MARM_SYS_REF_CLK_CTL);
-
-	/* Take MAHB0,1,2 clocks out of reset */
-	writel(0x0, MAHB2_CLK_CTL);
-	writel(0x0, MAHB1_CLK_CTL);
-	writel(0x0, MAHB0_SFAB_PORT_RESET);
+	__raw_writel(0x10, MARM_CLK_CTL);
+	__raw_writel(0x10, MAHB0_CLK_CTL);
+	__raw_writel(0x10, SFAB_MSS_S_HCLK_CTL);
+	__raw_writel(0x10, MSS_MODEM_CXO_CLK_CTL);
+	__raw_writel(0x10, MSS_SLP_CLK_CTL);
+	__raw_writel(0x10, MSS_MARM_SYS_REF_CLK_CTL);
 
 	/* Wait for above clocks to be turned on */
-	mb();
+	while (__raw_readl(CLK_HALT_MSS_SMPSS_MISC_STATE) & (BIT(7) | BIT(8) |
+				BIT(9) | BIT(10) | BIT(4) | BIT(6)))
+		cpu_relax();
+
+	/* Take MAHB0,1,2 clocks out of reset */
+	__raw_writel(0x0, MAHB2_CLK_CTL);
+	__raw_writel(0x0, MAHB1_CLK_CTL);
+	__raw_writel(0x0, MAHB0_SFAB_PORT_RESET);
+
 	/* Setup exception vector table base address */
-	writel(modem_start | 0x1, MARM_BOOT_CONTROL);
+	__raw_writel(modem_start | 0x1, MARM_BOOT_CONTROL);
 
 	/* Wait for vector table to be setup */
-	mb();
+	dsb();
 
 	/* Bring modem out of reset */
-	writel(0x0, MARM_RESET);
+	__raw_writel(0x0, MARM_RESET);
 
 	return 0;
 }
@@ -312,34 +323,36 @@ static int shutdown_modem_untrusted(void)
 	remove_modem_proxy_votes_now();
 
 	/* Put modem into reset */
-	writel(0x1, MARM_RESET);
+	__raw_writel(0x1, MARM_RESET);
+	dsb();
 
 	/* Put modem AHB0,1,2 clocks into reset */
-	writel(BIT(0) | BIT(1), MAHB0_SFAB_PORT_RESET);
-	writel(BIT(7), MAHB1_CLK_CTL);
-	writel(BIT(7), MAHB2_CLK_CTL);
+	__raw_writel(BIT(0) | BIT(1), MAHB0_SFAB_PORT_RESET);
+	__raw_writel(BIT(7), MAHB1_CLK_CTL);
+	__raw_writel(BIT(7), MAHB2_CLK_CTL);
+	dsb();
 
 	/*
 	 * Disable all of the marm_clk branches, cxo sourced marm branches,
 	 * and sleep clock branches
 	 */
-	writel(0x0, MARM_CLK_CTL);
-	writel(0x0, MAHB0_CLK_CTL);
-	writel(0x0, SFAB_MSS_S_HCLK_CTL);
-	writel(0x0, MSS_MODEM_CXO_CLK_CTL);
-	writel(0x0, MSS_SLP_CLK_CTL);
-	writel(0x0, MSS_MARM_SYS_REF_CLK_CTL);
+	__raw_writel(0x0, MARM_CLK_CTL);
+	__raw_writel(0x0, MAHB0_CLK_CTL);
+	__raw_writel(0x0, SFAB_MSS_S_HCLK_CTL);
+	__raw_writel(0x0, MSS_MODEM_CXO_CLK_CTL);
+	__raw_writel(0x0, MSS_SLP_CLK_CTL);
+	__raw_writel(0x0, MSS_MARM_SYS_REF_CLK_CTL);
 
 	/* Disable marm_clk */
-	reg = readl(MARM_CLK_SRC_CTL);
+	reg = __raw_readl(MARM_CLK_SRC_CTL);
 	reg &= ~0x2;
-	writel(reg, MARM_CLK_SRC_CTL);
+	__raw_writel(reg, MARM_CLK_SRC_CTL);
 
 	/* Clear modem's votes for ahb clocks */
-	writel(0x0, MARM_CLK_BRANCH_ENA_VOTE);
+	__raw_writel(0x0, MARM_CLK_BRANCH_ENA_VOTE);
 
 	/* Clear modem's votes for PLLs */
-	writel(0x0, PLL_ENA_MARM);
+	__raw_writel(0x0, PLL_ENA_MARM);
 	return 0;
 }
 
@@ -391,11 +404,11 @@ static int reset_q6_untrusted(void)
 		goto err;
 
 	/* Put Q6 into reset */
-	reg = readl(LCC_Q6_FUNC);
+	reg = __raw_readl(LCC_Q6_FUNC);
 	reg |= Q6SS_SS_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES | STOP_CORE |
 		CORE_ARES;
 	reg &= ~CORE_GFM4_CLK_EN;
-	writel(reg, LCC_Q6_FUNC);
+	__raw_writel(reg, LCC_Q6_FUNC);
 
 	/* Wait 8 AHB cycles for Q6 to be fully reset (AHB = 1.5Mhz) */
 	usleep_range(20, 30);
@@ -403,27 +416,29 @@ static int reset_q6_untrusted(void)
 	/* Turn on Q6 memory */
 	reg |= CORE_GFM4_CLK_EN | CORE_L1_MEM_CORE_EN | CORE_TCM_MEM_CORE_EN |
 		CORE_TCM_MEM_PERPH_EN;
-	writel(reg, LCC_Q6_FUNC);
+	__raw_writel(reg, LCC_Q6_FUNC);
 
 	/* Turn on Q6 core clocks and take core out of reset */
 	reg &= ~(CLAMP_IO | Q6SS_SS_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES |
 			CORE_ARES);
-	writel(reg, LCC_Q6_FUNC);
+	__raw_writel(reg, LCC_Q6_FUNC);
 
 	/* Wait for clocks to be enabled */
-	mb();
+	dsb();
 	/* Program boot address */
-	writel((q6_start >> 12) & 0xFFFFF, QDSP6SS_RST_EVB);
+	__raw_writel((q6_start >> 12) & 0xFFFFF, QDSP6SS_RST_EVB);
 
-	writel(Q6_STRAP_TCM_CONFIG | Q6_STRAP_TCM_BASE, QDSP6SS_STRAP_TCM);
-	writel(Q6_STRAP_AHB_UPPER | Q6_STRAP_AHB_LOWER, QDSP6SS_STRAP_AHB);
+	__raw_writel(Q6_STRAP_TCM_CONFIG | Q6_STRAP_TCM_BASE,
+			QDSP6SS_STRAP_TCM);
+	__raw_writel(Q6_STRAP_AHB_UPPER | Q6_STRAP_AHB_LOWER,
+			QDSP6SS_STRAP_AHB);
 
 	/* Wait for addresses to be programmed before starting Q6 */
-	mb();
+	dsb();
 
 	/* Start Q6 instruction execution */
 	reg &= ~STOP_CORE;
-	writel(reg, LCC_Q6_FUNC);
+	__raw_writel(reg, LCC_Q6_FUNC);
 
 	return 0;
 
@@ -446,12 +461,12 @@ static int shutdown_q6_untrusted(void)
 {
 	u32 reg;
 
-	reg = readl(LCC_Q6_FUNC);
+	reg = __raw_readl(LCC_Q6_FUNC);
 	/* Halt clocks and turn off memory */
 	reg &= ~(CORE_L1_MEM_CORE_EN | CORE_TCM_MEM_CORE_EN |
 		CORE_TCM_MEM_PERPH_EN);
 	reg |= CLAMP_IO | CORE_GFM4_CLK_EN;
-	writel(reg, LCC_Q6_FUNC);
+	__raw_writel(reg, LCC_Q6_FUNC);
 	return 0;
 }
 
@@ -462,9 +477,12 @@ static int shutdown_q6_trusted(void)
 
 static int reset_dsps_untrusted(void)
 {
-	writel(0x10, PPSS_PROC_CLK_CTL);
+	__raw_writel(0x10, PPSS_PROC_CLK_CTL);
+	while (__raw_readl(CLK_HALT_DFAB_STATE) & BIT(18))
+		cpu_relax();
+
 	/* Bring DSPS out of reset */
-	writel(0x0, PPSS_RESET);
+	__raw_writel(0x0, PPSS_RESET);
 	return 0;
 }
 
@@ -480,8 +498,8 @@ static int shutdown_dsps_trusted(void)
 
 static int shutdown_dsps_untrusted(void)
 {
-	writel(0x2, PPSS_RESET);
-	writel(0x0, PPSS_PROC_CLK_CTL);
+	__raw_writel(0x2, PPSS_RESET);
+	__raw_writel(0x0, PPSS_PROC_CLK_CTL);
 	return 0;
 }
 
