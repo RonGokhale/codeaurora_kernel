@@ -31,6 +31,7 @@
 #include <mach/board.h>
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
+#include <linux/gpio.h>
 
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION("0.2");
@@ -123,6 +124,8 @@ enum {
 
 #define QUP_MAX_CLK_STATE_RETRIES	300
 
+static char const * const i2c_rsrcs[] = {"i2c_clk", "i2c_sda"};
+
 struct qup_i2c_dev {
 	struct device                *dev;
 	void __iomem                 *base;		/* virtual */
@@ -153,6 +156,7 @@ struct qup_i2c_dev {
 	struct timer_list            pwr_timer;
 	struct mutex                 mlock;
 	void                         *complete;
+	int                          i2c_gpios[ARRAY_SIZE(i2c_rsrcs)];
 };
 
 #ifdef DEBUG
@@ -339,6 +343,43 @@ qup_i2c_poll_state(struct qup_i2c_dev *dev, uint32_t state)
 			udelay(100);
 	}
 	return -ETIMEDOUT;
+}
+
+static inline int qup_i2c_request_gpios(struct qup_i2c_dev *dev)
+{
+	int i;
+	int result = 0;
+
+	for (i = 0; i < ARRAY_SIZE(i2c_rsrcs); ++i) {
+		if (dev->i2c_gpios[i] >= 0) {
+			result = gpio_request(dev->i2c_gpios[i], i2c_rsrcs[i]);
+			if (result) {
+				dev_err(dev->dev,
+					"gpio_request for pin %d failed\
+					with error %d\n", dev->i2c_gpios[i],
+					result);
+				goto error;
+			}
+		}
+	}
+	return 0;
+
+error:
+	for (; --i >= 0;) {
+		if (dev->i2c_gpios[i] >= 0)
+			gpio_free(dev->i2c_gpios[i]);
+	}
+	return result;
+}
+
+static inline void qup_i2c_free_gpios(struct qup_i2c_dev *dev)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(i2c_rsrcs); ++i) {
+		if (dev->i2c_gpios[i] >= 0)
+			gpio_free(dev->i2c_gpios[i]);
+	}
 }
 
 #ifdef DEBUG
@@ -894,10 +935,11 @@ static int __devinit
 qup_i2c_probe(struct platform_device *pdev)
 {
 	struct qup_i2c_dev	*dev;
-	struct resource         *qup_mem, *gsbi_mem, *qup_io, *gsbi_io;
+	struct resource         *qup_mem, *gsbi_mem, *qup_io, *gsbi_io, *res;
 	struct resource		*in_irq, *out_irq, *err_irq;
 	struct clk         *clk, *pclk;
 	int ret = 0;
+	int i;
 	struct msm_i2c_platform_data *pdata;
 	const char *qup_apps_clk_name = "qup_clk";
 
@@ -1023,6 +1065,16 @@ qup_i2c_probe(struct platform_device *pdev)
 		}
 	}
 
+	for (i = 0; i < ARRAY_SIZE(i2c_rsrcs); ++i) {
+		res = platform_get_resource_byname(pdev, IORESOURCE_IO,
+						   i2c_rsrcs[i]);
+		dev->i2c_gpios[i] = res ? res->start : -1;
+	}
+
+	ret = qup_i2c_request_gpios(dev);
+	if (ret)
+		goto err_request_gpio_failed;
+
 	platform_set_drvdata(pdev, dev);
 
 	dev->one_bit_t = USEC_PER_SEC/pdata->clk_freq;
@@ -1105,8 +1157,10 @@ qup_i2c_probe(struct platform_device *pdev)
 
 
 err_request_irq_failed:
+	qup_i2c_free_gpios(dev);
 	if (dev->gsbi)
 		iounmap(dev->gsbi);
+err_request_gpio_failed:
 err_gsbi_failed:
 	iounmap(dev->base);
 err_ioremap_failed:
@@ -1147,6 +1201,7 @@ qup_i2c_remove(struct platform_device *pdev)
 	clk_put(dev->clk);
 	if (dev->pclk)
 		clk_put(dev->pclk);
+	qup_i2c_free_gpios(dev);
 	if (dev->gsbi)
 		iounmap(dev->gsbi);
 	iounmap(dev->base);
@@ -1178,6 +1233,7 @@ static int qup_i2c_suspend(struct device *device)
 	del_timer_sync(&dev->pwr_timer);
 	if (dev->clk_state != 0)
 		qup_i2c_pwr_mgmt(dev, 0);
+	qup_i2c_free_gpios(dev);
 	return 0;
 }
 
@@ -1185,6 +1241,7 @@ static int qup_i2c_resume(struct device *device)
 {
 	struct platform_device *pdev = to_platform_device(device);
 	struct qup_i2c_dev *dev = platform_get_drvdata(pdev);
+	BUG_ON(qup_i2c_request_gpios(dev) != 0);
 	dev->suspended = 0;
 	return 0;
 }
