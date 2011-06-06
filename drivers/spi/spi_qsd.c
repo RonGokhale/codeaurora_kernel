@@ -515,7 +515,7 @@ static irqreturn_t msm_spi_qup_irq(int irq, void *dev_id)
 		 * Ensure service flag was cleared before further
 		 * processing of interrupt.
 		 */
-		dsb();
+		mb();
 		ret |= msm_spi_input_irq(irq, dev_id);
 	}
 
@@ -526,7 +526,7 @@ static irqreturn_t msm_spi_qup_irq(int irq, void *dev_id)
 		 * Ensure service flag was cleared before further
 		 * processing of interrupt.
 		 */
-		dsb();
+		mb();
 		ret |= msm_spi_output_irq(irq, dev_id);
 	}
 
@@ -1092,7 +1092,7 @@ static inline void msm_spi_ack_transfer(struct msm_spi *dd)
 		       SPI_OP_MAX_OUTPUT_DONE_FLAG,
 		       dd->base + SPI_OPERATIONAL);
 	/* Ensure done flag was cleared before proceeding further */
-	dsb();
+	mb();
 }
 
 static irqreturn_t msm_spi_input_irq(int irq, void *dev_id)
@@ -1234,7 +1234,7 @@ static irqreturn_t msm_spi_error_irq(int irq, void *dev_id)
 	msm_spi_clear_error_flags(dd);
 	msm_spi_ack_clk_err(dd);
 	/* Ensure clearing of QUP_ERROR_FLAGS was completed */
-	dsb();
+	mb();
 	return IRQ_HANDLED;
 }
 
@@ -1851,7 +1851,7 @@ static int msm_spi_setup(struct spi_device *spi)
 	writel_relaxed(spi_config, dd->base + SPI_CONFIG);
 
 	/* Ensure previous write completed before disabling the clocks */
-	dsb();
+	mb();
 	clk_disable(dd->clk);
 	clk_disable(dd->pclk);
 
@@ -1868,7 +1868,7 @@ static int debugfs_iomem_x32_set(void *data, u64 val)
 {
 	writel_relaxed(val, data);
 	/* Ensure the previous write completed. */
-	dsb();
+	mb();
 	return 0;
 }
 
@@ -1876,7 +1876,7 @@ static int debugfs_iomem_x32_get(void *data, u64 *val)
 {
 	*val = readl_relaxed(data);
 	/* Ensure the previous read completed. */
-	dsb();
+	mb();
 	return 0;
 }
 

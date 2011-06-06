@@ -127,7 +127,7 @@ static irqreturn_t ts_interrupt(int irq, void *dev_id)
 	/* Data has been read, OK to clear the data flag */
 	writel_relaxed(TSSC_CTL_STATE, TSSC_REG(CTL));
 	/* barrier: Write to complete before the next sample */
-	dsb();
+	mb();
 	/* Valid samples are indicated by the sample number in the status
 	 * register being the number of expected samples and the number of
 	 * samples collected being zero (this check is due to ADC contention).

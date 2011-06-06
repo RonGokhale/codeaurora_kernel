@@ -340,7 +340,7 @@ static irqreturn_t msm_slim_interrupt(int irq, void *d)
 		 * Guarantee that interrupt clear bit write goes through before
 		 * signalling completion/exiting ISR
 		 */
-		dsb();
+		mb();
 		if (dev->wr_comp)
 			complete(dev->wr_comp);
 	}
@@ -368,7 +368,7 @@ static irqreturn_t msm_slim_interrupt(int irq, void *d)
 			 * Guarantee that CLR bit write goes through before
 			 * queuing work
 			 */
-			dsb();
+			mb();
 			queue_work(sat->wq, &sat->wd);
 		} else if (mt == SLIM_MSG_MT_CORE &&
 			mc == SLIM_MSG_MC_REPORT_PRESENT) {
@@ -387,7 +387,7 @@ static irqreturn_t msm_slim_interrupt(int irq, void *d)
 				 * Guarantee that CLR bit write goes through
 				 * before queuing work
 				 */
-				dsb();
+				mb();
 				queue_work(sat->wq, &sat->wd);
 			} else {
 				msm_slim_rx_enqueue(dev, rx_buf, len);
@@ -397,7 +397,7 @@ static irqreturn_t msm_slim_interrupt(int irq, void *d)
 				 * Guarantee that CLR bit write goes through
 				 * before signalling completion
 				 */
-				dsb();
+				mb();
 				complete(&dev->rx_msgq_notify);
 			}
 		} else if (mc == SLIM_MSG_MC_REPLY_INFORMATION ||
@@ -409,7 +409,7 @@ static irqreturn_t msm_slim_interrupt(int irq, void *d)
 			 * Guarantee that CLR bit write goes through
 			 * before signalling completion
 			 */
-			dsb();
+			mb();
 			complete(&dev->rx_msgq_notify);
 		} else {
 			dev_err(dev->dev, "Unexpected MC,%x MT:%x, len:%d",
@@ -422,7 +422,7 @@ static irqreturn_t msm_slim_interrupt(int irq, void *d)
 			 * Guarantee that CLR bit write goes through
 			 * before exiting
 			 */
-			dsb();
+			mb();
 		}
 	}
 	if (stat & MGR_INT_RECFG_DONE) {
@@ -431,7 +431,7 @@ static irqreturn_t msm_slim_interrupt(int irq, void *d)
 		 * Guarantee that CLR bit write goes through
 		 * before exiting ISR
 		 */
-		dsb();
+		mb();
 		complete(&dev->reconf);
 	}
 	pstat = readl_relaxed(dev->base + PGD_PORT_INT_ST_EEn + (16 * dev->ee));
@@ -464,7 +464,7 @@ static irqreturn_t msm_slim_interrupt(int irq, void *d)
 		 * Guarantee that port interrupt bit(s) clearing writes go
 		 * through before exiting ISR
 		 */
-		dsb();
+		mb();
 	}
 
 	return IRQ_HANDLED;
@@ -545,7 +545,7 @@ static void msm_hw_set_port(struct msm_slim_ctrl *dev, u8 pn)
 	writel_relaxed((int_port | 1 << pn) , dev->base + PGD_PORT_INT_EN_EEn +
 			(dev->ee * 16));
 	/* Make sure that port registers are updated before returning */
-	dsb();
+	mb();
 }
 
 static int msm_slim_connect_pipe_port(struct msm_slim_ctrl *dev, u8 pn)
@@ -619,7 +619,7 @@ static int msm_send_msg_buf(struct slim_controller *ctrl, u32 *buf, u8 len)
 		writel_relaxed(buf[i], dev->base + MGR_TX_MSG + (i * 4));
 	}
 	/* Guarantee that message is sent before returning */
-	dsb();
+	mb();
 	return 0;
 }
 
@@ -1586,7 +1586,7 @@ static int __devinit msm_slim_probe(struct platform_device *pdev)
 	 * clocking the bus and enabling framer first will ensure that other
 	 * devices can report presence when they are enabled
 	 */
-	dsb();
+	mb();
 
 	/* Enable RX msg Q */
 	if (dev->use_rx_msgqs)
@@ -1598,27 +1598,27 @@ static int __devinit msm_slim_probe(struct platform_device *pdev)
 	 * Make sure that manager-enable is written through before interface
 	 * device is enabled
 	 */
-	dsb();
+	mb();
 	writel_relaxed(1, dev->base + INTF_CFG);
 	/*
 	 * Make sure that interface-enable is written through before enabling
 	 * ported generic device inside MSM manager
 	 */
-	dsb();
+	mb();
 	writel_relaxed(1, dev->base + PGD_CFG);
 	writel_relaxed(0x3F<<17, dev->base + (PGD_OWN_EEn + (4 * dev->ee)));
 	/*
 	 * Make sure that ported generic device is enabled and port-EE settings
 	 * are written through before finally enabling the component
 	 */
-	dsb();
+	mb();
 
 	writel_relaxed(1, dev->base + COMP_CFG);
 	/*
 	 * Make sure that all writes have gone through before exiting this
 	 * function
 	 */
-	dsb();
+	mb();
 	dev_dbg(dev->dev, "MSM SB controller is up!\n");
 	return 0;
 

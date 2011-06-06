@@ -864,10 +864,10 @@ static int32_t imx074_sensor_setting(int update_type, int rt)
 				rc = msm_camio_csid_config(&imx074_csid_params);
 				v4l2_subdev_notify(imx074_ctrl->sensor_dev,
 						NOTIFY_CID_CHANGE, NULL);
-				dsb();
+				mb();
 				rc = msm_camio_csiphy_config
 					(&imx074_csiphy_params);
-				dsb();
+				mb();
 				/*imx074_delay_msecs_stdby*/
 				msleep(imx074_delay_msecs_stream);
 				config_csi = 1;
