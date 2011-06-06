@@ -20,6 +20,10 @@
 #include <linux/list.h>
 #include <mach/msm_iomap.h>
 
+#if defined(CONFIG_ARCH_FSM9XXX)
+#include <mach/dma-fsm9xxx.h>
+#endif
+
 struct msm_dmov_errdata {
 	uint32_t flush[6];
 };
@@ -61,6 +65,8 @@ unsigned int msm_dmov_build_crci_mask(int n, ...);
 #define DMOV_SD_MASTER 1
 #define DMOV_SD_AARM 1
 #define DMOV_SD_MASTER_ADDR(off, ch) DMOV_ADDR(off, ch, DMOV_SD_MASTER)
+#elif defined(CONFIG_ARCH_FSM9XXX)
+/* defined in dma-fsm9xxx.h */
 #else
 #define DMOV_SD_SIZE 0x400
 #define DMOV_SD_AARM 3
@@ -207,6 +213,9 @@ unsigned int msm_dmov_build_crci_mask(int n, ...);
 
 #define DMOV_SDC5_CHAN         13
 #define DMOV_SDC5_CRCI         0
+
+#elif defined(CONFIG_ARCH_FSM9XXX)
+/* defined in dma-fsm9xxx.h */
 
 #else
 #define DMOV_GP_CHAN          4
