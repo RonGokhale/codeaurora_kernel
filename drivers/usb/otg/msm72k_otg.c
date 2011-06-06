@@ -2487,7 +2487,9 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 	if (!dev->pdata->vbus_power) {
 		ret = -ENODEV;
 		goto free_dev;
-	}
+	} else
+		dev->pdata->vbus_power(USB_PHY_INTEGRATED, 0);
+
 #endif
 
 
