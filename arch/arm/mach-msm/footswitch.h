@@ -35,6 +35,7 @@ enum fs_ids {
 	FS_GFX3D,
 	FS_IJPEG,
 	FS_MDP,
+	FS_MFC,
 	FS_ROT,
 	FS_VED,
 	FS_VFE,

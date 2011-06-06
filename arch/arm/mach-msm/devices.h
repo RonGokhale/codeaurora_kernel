@@ -169,6 +169,8 @@ extern struct platform_device msm_mipi_dsi1_device;
 extern struct clk_lookup msm_clocks_fsm9xxx[];
 extern unsigned msm_num_clocks_fsm9xxx;
 
+extern struct platform_device msm_footswitch;
+
 void __init msm_fb_register_device(char *name, void *data);
 void __init msm_camera_register_device(void *, uint32_t, void *);
 extern struct platform_device msm_device_touchscreen;

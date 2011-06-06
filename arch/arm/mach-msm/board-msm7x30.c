@@ -7261,7 +7261,8 @@ static void __init msm7x30_init(void)
 		android_usb_pdata.products = fusion_usb_products;
 	}
 #endif
-
+	platform_add_devices(msm_footswitch_devices,
+			     msm_num_footswitch_devices);
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 #ifdef CONFIG_USB_EHCI_MSM_72K
 	msm_add_host(0, &msm_usb_host_pdata);

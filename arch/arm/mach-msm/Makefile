@@ -10,6 +10,7 @@ ifndef CONFIG_ARCH_MSM8X60
 	obj-$(CONFIG_MSM_PROC_COMM) += clock-pcom.o internal_power_rail.o
 	obj-$(CONFIG_MSM_PROC_COMM) += vreg.o mpp.o
 	ifdef CONFIG_MSM_PROC_COMM
+		obj-$(CONFIG_REGULATOR) += footswitch-pcom.o
 		obj-$(CONFIG_DEBUG_FS) += pmic_debugfs.o
 	endif
 endif
