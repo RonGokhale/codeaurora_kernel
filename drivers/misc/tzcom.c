@@ -12,6 +12,9 @@
  * GNU General Public License for more details.
  */
 
+#define KMSG_COMPONENT "TZCOM"
+#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
+
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/module.h>
@@ -32,11 +35,7 @@
 
 #define TZCOM_DEV "tzcom"
 
-#define TZCOM_MAGIC 0x545Ad434F /* "TZCO" */
-
 #define TZSCHEDULER_CMD_ID 1 /* CMD id of the trustzone scheduler */
-
-#define MAX_SERVICES 32 /* Max services that can be registered at a time */
 
 #undef PDEBUG
 #define PDEBUG(fmt, args...) pr_debug("%s(%i, %s): " fmt "\n", \
@@ -152,9 +151,9 @@ static int __tzcom_is_svc_unique(struct tzcom_data_t *data,
 	return unique;
 }
 
-static int tzcom_register_service(struct tzcom_data_t *data, void *argp)
+static int tzcom_register_service(struct tzcom_data_t *data, void __user *argp)
 {
-	int ret = 0;
+	int ret;
 	unsigned long flags;
 	struct tzcom_register_svc_op_req rcvd_svc;
 	struct tzcom_registered_svc_list *new_entry;
@@ -182,8 +181,7 @@ static int tzcom_register_service(struct tzcom_data_t *data, void *argp)
 		return ret;
 	}
 
-	new_entry = kmalloc(sizeof(struct tzcom_registered_svc_list),
-			GFP_KERNEL);
+	new_entry = kmalloc(sizeof(*new_entry), GFP_KERNEL);
 	if (!new_entry) {
 		pr_err("%s: kmalloc failed\n", __func__);
 		return -ENOMEM;
@@ -200,7 +198,8 @@ static int tzcom_register_service(struct tzcom_data_t *data, void *argp)
 	return ret;
 }
 
-static int tzcom_unregister_service(struct tzcom_data_t *data, void *argp)
+static int tzcom_unregister_service(struct tzcom_data_t *data,
+		void __user *argp)
 {
 	int ret = 0;
 	unsigned long flags;
@@ -266,7 +265,7 @@ static int tzcom_unregister_service(struct tzcom_data_t *data, void *argp)
  *      _________________________________________________________
  *                              OUTPUT SHARED BUFFER
  */
-static int tzcom_send_cmd(struct tzcom_data_t *data, void *argp)
+static int tzcom_send_cmd(struct tzcom_data_t *data, void __user *argp)
 {
 	int ret = 0;
 	unsigned long flags;
@@ -306,7 +305,7 @@ static int tzcom_send_cmd(struct tzcom_data_t *data, void *argp)
 
 	reqd_len_sb_in = req.cmd_len + req.resp_len;
 	if (reqd_len_sb_in > sb_in_length) {
-		PDEBUG("Not enough memory to fit cmd_buf and"
+		PDEBUG("Not enough memory to fit cmd_buf and "
 				"resp_buf. Required: %u, Available: %u",
 				reqd_len_sb_in, sb_in_length);
 		return -ENOMEM;
@@ -343,7 +342,7 @@ static int tzcom_send_cmd(struct tzcom_data_t *data, void *argp)
 		next_callback = (struct tzcom_callback *)sb_out_virt;
 
 		mutex_lock(&sb_out_lock);
-		reqd_len_sb_out = sizeof(struct tzcom_callback)
+		reqd_len_sb_out = sizeof(*next_callback)
 					+ next_callback->sb_out_cb_data_len;
 		if (reqd_len_sb_out > sb_out_length) {
 			PDEBUG("Not enough memory to"
@@ -355,7 +354,7 @@ static int tzcom_send_cmd(struct tzcom_data_t *data, void *argp)
 		}
 
 		/* Assumption is cb_data_off is sizeof(tzcom_callback) */
-		new_entry_len = sizeof(struct tzcom_callback_list)
+		new_entry_len = sizeof(*new_entry)
 					+ next_callback->sb_out_cb_data_len;
 		new_entry = kmalloc(new_entry_len, GFP_KERNEL);
 		if (!new_entry) {
@@ -478,7 +477,7 @@ static int __tzcom_copy_cmd(struct tzcom_data_t *data,
 			PDEBUG("Found matching entry");
 			found = 1;
 			if (cb->sb_out_cb_data_len <= req->req_len) {
-				PDEBUG("copying cmd buffer %p to req"
+				PDEBUG("copying cmd buffer %p to req "
 					"buffer %p, length: %u",
 					(u8 *)cb + cb->sb_out_cb_data_off,
 					req->req_buf, cb->sb_out_cb_data_len);
@@ -509,7 +508,7 @@ static int __tzcom_copy_cmd(struct tzcom_data_t *data,
 	return ret;
 }
 
-static int tzcom_read_next_cmd(struct tzcom_data_t *data, void *argp)
+static int tzcom_read_next_cmd(struct tzcom_data_t *data, void __user *argp)
 {
 	int ret = 0;
 	struct tzcom_next_cmd_op_req req;
@@ -521,8 +520,7 @@ static int tzcom_read_next_cmd(struct tzcom_data_t *data, void *argp)
 		return ret;
 	}
 
-	if (req.instance_id >= MAX_SERVICES ||
-			req.instance_id > atomic_read(&svc_instance_ctr)) {
+	if (req.instance_id > atomic_read(&svc_instance_ctr)) {
 		PDEBUG("Invalid instance_id for the request");
 		return -EINVAL;
 	}
@@ -561,11 +559,11 @@ static int tzcom_read_next_cmd(struct tzcom_data_t *data, void *argp)
 		PDEBUG("copy_to_user failed");
 		return ret;
 	}
-	PDEBUG("copy_to_user is done! ");
+	PDEBUG("copy_to_user is done.");
 	return ret;
 }
 
-static int tzcom_cont_cmd(struct tzcom_data_t *data, void *argp)
+static int tzcom_cont_cmd(struct tzcom_data_t *data, void __user *argp)
 {
 	int ret = 0;
 	struct tzcom_cont_cmd_op_req req;
@@ -580,7 +578,7 @@ static int tzcom_cont_cmd(struct tzcom_data_t *data, void *argp)
 	 * can call continue cmd
 	 */
 	if (data->handled_cmd_svc_instance_id != req.instance_id) {
-		PDEBUG("Only the service instance that handled the last"
+		PDEBUG("Only the service instance that handled the last "
 				"callback can continue cmd. "
 				"Expected: %u, Received: %u",
 				data->handled_cmd_svc_instance_id,
@@ -604,7 +602,7 @@ static long tzcom_ioctl(struct file *file, unsigned cmd,
 {
 	int ret = 0;
 	struct tzcom_data_t *tzcom_data = file->private_data;
-	void *argp = (void __user *) arg;
+	void __user *argp = (void __user *) arg;
 	PDEBUG("enter tzcom_ioctl()");
 	switch (cmd) {
 	case TZCOM_IOCTL_REGISTER_SERVICE_REQ: {
@@ -646,13 +644,14 @@ static long tzcom_ioctl(struct file *file, unsigned cmd,
 		break;
 	}
 	default:
-	return -EINVAL;
+		return -EINVAL;
 	}
 	return ret;
 }
 
 static int tzcom_open(struct inode *inode, struct file *file)
 {
+	long pil_error;
 	struct tz_pr_init_sb_req_s sb_out_init_req;
 	struct tz_pr_init_sb_rsp_s sb_out_init_rsp;
 	void *rsp_addr_virt;
@@ -665,8 +664,9 @@ static int tzcom_open(struct inode *inode, struct file *file)
 		pil = pil_get("playrdy");
 		if (IS_ERR(pil)) {
 			PERR("Playready PIL image load failed");
+			pil_error = PTR_ERR(pil);
 			pil = NULL;
-			return PTR_ERR(pil);
+			return pil_error;
 		}
 		PDEBUG("playrdy image loaded successfully");
 	}
@@ -731,7 +731,7 @@ static int tzcom_open(struct inode *inode, struct file *file)
 		return -EPERM;
 	}
 
-	tzcom_data = kmalloc(sizeof(struct tzcom_data_t), GFP_KERNEL);
+	tzcom_data = kmalloc(sizeof(*tzcom_data), GFP_KERNEL);
 	if (!tzcom_data) {
 		PERR("kmalloc failed");
 		return -ENOMEM;
@@ -783,10 +783,9 @@ static const struct file_operations tzcom_fops = {
 		.release = tzcom_release
 };
 
-
-static int tzcom_init(void)
+static int __init tzcom_init(void)
 {
-	int rc = 0;
+	int rc;
 	struct device *class_dev;
 
 	PDEBUG("Hello tzcom");
@@ -881,7 +880,7 @@ unregister_chrdev_region:
 	return rc;
 }
 
-static void tzcom_exit(void)
+static void __exit tzcom_exit(void)
 {
 	PDEBUG("Goodbye tzcom");
 	if (sb_in_virt)
