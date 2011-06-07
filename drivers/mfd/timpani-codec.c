@@ -2965,7 +2965,7 @@ static int timpani_adie_codec_enable_anc(struct adie_codec_path *rx_path_ptr,
 		goto error;
 	}
 	if (enable) {
-		if (!calibration_writes | !calibration_writes->writes) {
+		if (!calibration_writes || !calibration_writes->writes) {
 			pr_err("%s: No ANC calibration data\n", __func__);
 			rc = -EPERM;
 			goto error;
