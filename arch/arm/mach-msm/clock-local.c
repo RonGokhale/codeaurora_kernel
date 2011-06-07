@@ -822,13 +822,13 @@ static int pll_clk_enable(struct clk *clk)
 	mode |= BIT(2);
 	writel_relaxed(mode, pll->mode_reg);
 
+	/* Wait until PLL is locked. */
+	dsb();
+	udelay(50);
+
 	/* Enable PLL output. */
 	mode |= BIT(0);
 	writel_relaxed(mode, pll->mode_reg);
-
-	/* Wait until PLL is enabled. */
-	while (!readl_relaxed(pll->status_reg))
-		cpu_relax();
 
 	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
 	return 0;
@@ -863,16 +863,9 @@ static struct clk *pll_clk_get_parent(struct clk *clk)
 	return pll->parent;
 }
 
-static int pll_clk_is_enabled(struct clk *clk)
-{
-	struct pll_clk *pll = to_pll_clk(clk);
-	return !!(readl_relaxed(pll->status_reg));
-}
-
 struct clk_ops clk_ops_pll = {
 	.enable = pll_clk_enable,
 	.disable = pll_clk_disable,
-	.is_enabled = pll_clk_is_enabled,
 	.get_rate = pll_clk_get_rate,
 	.get_parent = pll_clk_get_parent,
 	.is_local = local_clk_is_local,
