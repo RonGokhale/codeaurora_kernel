@@ -794,7 +794,8 @@ static inline int msm_spi_wait_valid(struct msm_spi *dd)
 	timeout = jiffies + msecs_to_jiffies(delay * SPI_DEFAULT_TIMEOUT);
 	while (!msm_spi_is_valid_state(dd)) {
 		if (time_after(jiffies, timeout)) {
-			dd->cur_msg->status = -EIO;
+			if (dd->cur_msg)
+				dd->cur_msg->status = -EIO;
 			dev_err(dd->dev, "%s: SPI operational state not valid"
 				"\n", __func__);
 			return -1;
