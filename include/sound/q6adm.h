@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -27,10 +27,18 @@
  */
 #ifndef __Q6_ADM_H__
 #define __Q6_ADM_H__
+#include <sound/q6afe.h>
 
 #define ADM_PATH_PLAYBACK 0x1
 #define ADM_PATH_LIVE_REC 0x2
 #define ADM_PATH_NONLIVE_REC 0x3
+
+/* multiple copp per stream. */
+struct route_payload {
+	unsigned short copp_ids[AFE_MAX_PORTS];
+	unsigned short num_copps;
+	unsigned int session_id;
+};
 
 int adm_open_mixer(int port_id, int path, int rate, int channel_mode,
 	int topology);
@@ -47,8 +55,8 @@ int adm_memory_unmap_regions(uint32_t *buf_add, uint32_t *bufsz,
 
 int adm_close(int port);
 
-int adm_matrix_map(int session_id, int path, int num_copps, int *port_id);
-int adm_route_mcopp(int session_id, void *route, int path, int route_flag);
+int adm_matrix_map(int session_id, int path, int num_copps,
+				unsigned short *port_id, int copp_id);
 
 #ifdef CONFIG_MSM8X60_RTAC
 int adm_get_copp_id(int port_id);
