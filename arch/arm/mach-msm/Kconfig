@@ -80,6 +80,7 @@ config ARCH_MSM8X60
 	select MSM_SECURE_IO
 	select MSM_DALRPC
 	select MSM_QDSP6_APR
+	select MSM_NATIVE_RESTART
 	select ARCH_INLINE_SPIN_TRYLOCK
 	select ARCH_INLINE_SPIN_TRYLOCK_BH
 	select ARCH_INLINE_SPIN_LOCK
@@ -128,6 +129,7 @@ config ARCH_MSM8960
 	select CPU_HAS_L2_PMU
 	select MSM_SPM_V2
 	select MSM_L2_SPM
+	select MSM_NATIVE_RESTART
 
 config ARCH_FSM9XXX
 	bool "FSM9XXX"
@@ -1454,6 +1456,9 @@ config FSM9XXX_TLMM
 	bool
 
 config MSM_SECURE_IO
+	bool
+
+config MSM_NATIVE_RESTART
 	bool
 
 config MSM_BUS_SCALING
