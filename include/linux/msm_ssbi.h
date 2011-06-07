@@ -26,6 +26,7 @@ enum msm_ssbi_controller_type {
 	MSM_SBI_CTRL_SSBI = 0,
 	MSM_SBI_CTRL_SSBI2,
 	MSM_SBI_CTRL_PMIC_ARBITER,
+	FSM_SBI_CTRL_SSBI,
 };
 
 struct msm_ssbi_platform_data {
