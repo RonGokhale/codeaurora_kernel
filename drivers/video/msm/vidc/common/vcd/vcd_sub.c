@@ -21,8 +21,10 @@
 
 static int vcd_pmem_alloc(size_t sz, u8 **kernel_vaddr, u8 **phy_addr)
 {
+	u32 memtype;
+	memtype = res_trk_get_mem_type();
 	*phy_addr =
-	    (u8 *) pmem_kalloc(sz, PMEM_MEMTYPE | PMEM_ALIGNMENT_4K);
+	    (u8 *) pmem_kalloc(sz, memtype | PMEM_ALIGNMENT_4K);
 
 	if (!IS_ERR((void *)*phy_addr)) {
 

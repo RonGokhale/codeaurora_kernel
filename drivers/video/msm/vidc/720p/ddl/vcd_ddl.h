@@ -218,6 +218,7 @@ union ddl_codec_data {
 };
 
 struct ddl_context {
+	int memtype;
 	u8 *core_virtual_base_addr;
 	void (*ddl_callback) (u32 event, u32 status, void *payload, size_t sz,
 			      u32 *ddl_handle, void *const client_data);

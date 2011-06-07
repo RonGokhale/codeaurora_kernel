@@ -434,7 +434,6 @@ bail_out:
 
 void res_trk_init(struct device *device, u32 irq)
 {
-	u32 memorytype = PMEM_MEMTYPE;
 	if (resource_context.device || resource_context.irq_num ||
 		!device) {
 		VCDRES_MSG_ERROR("%s() Resource Tracker Init error\n",
@@ -458,7 +457,7 @@ void res_trk_init(struct device *device, u32 irq)
 			resource_context.memtype = -1;
 		}
 		resource_context.core_type = VCD_CORE_1080P;
-		if (memorytype == PMEM_MEMTYPE_EBI1) {
+		if (resource_context.memtype == PMEM_MEMTYPE_EBI1) {
 			resource_context.base_addr =
 				kmalloc(VIDC_FW_SIZE, GFP_KERNEL);
 			if (resource_context.base_addr)
