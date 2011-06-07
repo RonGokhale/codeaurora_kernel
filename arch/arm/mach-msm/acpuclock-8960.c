@@ -53,7 +53,6 @@
 #define HFPLL_M_VAL		0x0C
 #define HFPLL_N_VAL		0x10
 #define HFPLL_DROOP_CTL		0x14
-#define HFPLL_STATUS		0x1C
 
 /* CP15 L2 indirect addresses. */
 #define L2CPMR_IADDR		0x500
@@ -282,19 +281,12 @@ static void hfpll_enable(enum scalables id)
 	/* De-assert active-low PLL reset. */
 	writel_relaxed(0x6, hf_pll_base[id] + HFPLL_MODE);
 
+	/* Wait for PLL to lock. */
+	dsb();
+	udelay(60);
+
 	/* Enable PLL output. */
 	writel_relaxed(0x7, hf_pll_base[id] + HFPLL_MODE);
-
-	/*
-	 * TODO: HFPLL status bits are not emulated on RUMI3 or SIM.
-	 * Remove this check if/when they are.
-	 */
-	if (machine_is_msm8960_sim() || machine_is_msm8960_rumi3())
-		return;
-
-	/* Wait until PLL is enabled. */
-	while (!readl_relaxed(hf_pll_base[id] + HFPLL_STATUS))
-		cpu_relax();
 }
 
 /* Disable a HFPLL for power-savings or while its being reprogrammed. */
