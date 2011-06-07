@@ -86,12 +86,6 @@ static int clk_en(struct uart_port *port, int enable)
 	int ret = 0;
 
 	if (enable) {
-		/* Set up the MREG/NREG/DREG/MNDREG */
-		ret = clk_set_rate(msm_hsl_port->clk, 1843200);
-		if (ret) {
-			printk(KERN_WARNING "Error setting UART clock rate\n");
-			return ret;
-		}
 
 		ret = clk_enable(msm_hsl_port->clk);
 		if (ret)
@@ -822,15 +816,27 @@ static int msm_hsl_verify_port(struct uart_port *port,
 static void msm_hsl_power(struct uart_port *port, unsigned int state,
 			  unsigned int oldstate)
 {
+	int ret;
+	struct msm_hsl_port *msm_hsl_port = UART_TO_MSM(port);
+
 	switch (state) {
 	case 0:
+		ret = clk_set_rate(msm_hsl_port->clk, 1843200);
+		if (ret)
+			pr_err("%s(): Error setting UART clock rate\n",
+								__func__);
 		clk_en(port, 1);
 		break;
 	case 3:
 		clk_en(port, 0);
+		ret = clk_set_rate(msm_hsl_port->clk, 0);
+		if (ret)
+			pr_err("%s(): Error setting UART clock rate to zero.\n",
+								__func__);
 		break;
 	default:
-		printk(KERN_ERR "msm_serial_hsl: Unknown PM state %d\n", state);
+		pr_err("%s(): msm_serial_hsl: Unknown PM state %d\n",
+							__func__, state);
 	}
 }
 
