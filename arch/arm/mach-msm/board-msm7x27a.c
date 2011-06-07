@@ -1880,6 +1880,12 @@ static void __init msm7x27a_init_mmc(void)
 		return;
 	}
 
+	/* eMMC slot */
+#ifdef CONFIG_MMC_MSM_SDC3_SUPPORT
+	sdcc_vreg_data[2].vreg_data = vreg_emmc;
+	sdcc_vreg_data[2].level = 3000;
+	msm_add_sdcc(3, &sdc3_plat_data);
+#endif
 	/* Micro-SD slot */
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
 	sdcc_vreg_data[0].vreg_data = vreg_mmc;
@@ -1891,12 +1897,6 @@ static void __init msm7x27a_init_mmc(void)
 	sdcc_vreg_data[1].vreg_data = vreg_mmc;
 	sdcc_vreg_data[1].level = 2850;
 	msm_add_sdcc(2, &sdc2_plat_data);
-#endif
-	/* eMMC slot */
-#ifdef CONFIG_MMC_MSM_SDC3_SUPPORT
-	sdcc_vreg_data[2].vreg_data = vreg_emmc;
-	sdcc_vreg_data[2].level = 3000;
-	msm_add_sdcc(3, &sdc3_plat_data);
 #endif
 	/* Not Used */
 #if (defined(CONFIG_MMC_MSM_SDC4_SUPPORT)\
