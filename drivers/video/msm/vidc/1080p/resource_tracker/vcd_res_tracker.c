@@ -19,6 +19,7 @@
 #include <mach/internal_power_rail.h>
 #include <mach/clk.h>
 #include <mach/msm_reqs.h>
+#include <mach/msm_memtypes.h>
 #include <linux/interrupt.h>
 #include <asm/sizes.h>
 #include "vidc.h"
@@ -457,7 +458,7 @@ void res_trk_init(struct device *device, u32 irq)
 			resource_context.memtype = -1;
 		}
 		resource_context.core_type = VCD_CORE_1080P;
-		if (resource_context.memtype == PMEM_MEMTYPE_EBI1) {
+		if (resource_context.memtype == MEMTYPE_EBI1) {
 			resource_context.base_addr =
 				kmalloc(VIDC_FW_SIZE, GFP_KERNEL);
 			if (resource_context.base_addr)

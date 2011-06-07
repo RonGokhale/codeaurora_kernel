@@ -10,7 +10,7 @@
  * GNU General Public License for more details.
  *
  */
-
+#include <mach/msm_memtypes.h>
 #include "vcd_ddl.h"
 #include "vcd_ddl_metadata.h"
 #include "vcd_res_tracker_api.h"
@@ -66,7 +66,7 @@ u32 ddl_device_init(struct ddl_init_config *ddl_init_config,
 	ddl_client_transact(DDL_INIT_CLIENTS, NULL);
 	ddl_context->fw_memory_size =
 		DDL_FW_INST_GLOBAL_CONTEXT_SPACE_SIZE;
-	if (ddl_context->memtype == PMEM_MEMTYPE_SMI) {
+	if (ddl_context->memtype == MEMTYPE_SMI_KERNEL) {
 		ptr = ddl_pmem_alloc(&ddl_context->dram_base_a,
 			ddl_context->fw_memory_size, DDL_KILO_BYTE(128));
 	} else {
@@ -114,7 +114,7 @@ u32 ddl_device_init(struct ddl_init_config *ddl_init_config,
 		DDL_MSG_ERROR("ddl_dev_init:fw_init_failed");
 		status = VCD_ERR_ALLOC_FAIL;
 	}
-	if (!status && ddl_context->memtype == PMEM_MEMTYPE_EBI1)
+	if (!status && ddl_context->memtype == MEMTYPE_EBI1)
 		clean_caches((unsigned long)firmware_addr.base_addr,
 		firmware_addr.buf_size,	firmware_addr.device_addr);
 

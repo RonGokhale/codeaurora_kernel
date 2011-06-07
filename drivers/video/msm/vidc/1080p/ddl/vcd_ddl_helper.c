@@ -10,7 +10,7 @@
  * GNU General Public License for more details.
  *
  */
-
+#include <mach/msm_memtypes.h>
 #include "vcd_ddl.h"
 #include "vcd_ddl_shared_mem.h"
 
@@ -327,7 +327,7 @@ u32 ddl_decoder_dpb_init(struct ddl_client_context *ddl)
 
 void ddl_release_context_buffers(struct ddl_context *ddl_context)
 {
-	if (ddl_context->memtype == PMEM_MEMTYPE_SMI) {
+	if (ddl_context->memtype == MEMTYPE_SMI_KERNEL) {
 		ddl_pmem_free(&ddl_context->dram_base_a);
 		ddl_pmem_free(&ddl_context->dram_base_b);
 	}

@@ -10,6 +10,7 @@
  * GNU General Public License for more details.
  *
  */
+#include <linux/memory_alloc.h>
 #include "vcd_ddl_utils.h"
 #include "vcd_ddl.h"
 
@@ -37,10 +38,14 @@ void *ddl_pmem_alloc(struct ddl_buf_addr *addr, size_t sz, u32 alignment)
 	u32 alloc_size, offset = 0;
 	struct ddl_context *ddl_context;
 	DBG_PMEM("\n%s() IN: Requested alloc size(%u)", __func__, (u32)sz);
+	if (!addr) {
+		DDL_MSG_ERROR("\n%s() Invalid Parameters", __func__);
+		return NULL;
+	}
 	ddl_context = ddl_get_context();
 	alloc_size = (sz + alignment);
-	addr->physical_base_addr = (u8 *) pmem_kalloc(alloc_size,
-		ddl_context->memtype | PMEM_ALIGNMENT_4K);
+	addr->physical_base_addr = (u8 *) allocate_contiguous_memory_nomap(
+				alloc_size, ddl_context->memtype, SZ_4K);
 	if (!addr->physical_base_addr) {
 		DDL_MSG_ERROR("%s() : pmem alloc failed (%d)\n", __func__,
 			alloc_size);
@@ -53,6 +58,9 @@ void *ddl_pmem_alloc(struct ddl_buf_addr *addr, size_t sz, u32 alignment)
 	if (!addr->virtual_base_addr) {
 		DDL_MSG_ERROR("%s() : ioremap failed, virtual(%x)\n", __func__,
 			(u32)addr->virtual_base_addr);
+		free_contiguous_memory_by_paddr(
+			(unsigned long) addr->physical_base_addr);
+		addr->physical_base_addr = NULL;
 		return NULL;
 	}
 	DDL_MSG_LOW("%s() : pmem alloc virtual base addr/sz 0x%x / %d\n",\
@@ -78,11 +86,9 @@ void ddl_pmem_free(struct ddl_buf_addr *addr)
 		addr->buffer_size);
 	if (addr->virtual_base_addr)
 		iounmap((void *)addr->virtual_base_addr);
-	if ((addr->physical_base_addr) &&
-		pmem_kfree((s32) addr->physical_base_addr)) {
-		DDL_MSG_LOW("\n %s(): Error in Freeing Physical Address %p",\
-			__func__, addr->physical_base_addr);
-	}
+	if (addr->physical_base_addr)
+		free_contiguous_memory_by_paddr(
+			(unsigned long) addr->physical_base_addr);
 	DBG_PMEM("\n%s() OUT: phy_addr(%p) vir_addr(%p) size(%u)",
 		__func__, addr->physical_base_addr, addr->virtual_base_addr,
 		addr->buffer_size);
