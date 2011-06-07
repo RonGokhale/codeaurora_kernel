@@ -154,7 +154,8 @@ u8 arch_get_debug_arch(void)
 static int debug_arch_supported(void)
 {
 	u8 arch = get_debug_arch();
-	return arch >= ARM_DEBUG_ARCH_V6 && arch <= ARM_DEBUG_ARCH_V7_ECP14;
+	return (arch >= ARM_DEBUG_ARCH_V6 && arch <= ARM_DEBUG_ARCH_V7_ECP14)
+		|| (arch == ARM_DEBUG_ARCH_V7_1_ECP14);
 }
 
 /* Determine number of BRP register available. */
@@ -255,6 +256,7 @@ static int enable_monitor_mode(void)
 		ARM_DBG_WRITE(c1, 0, (dscr | ARM_DSCR_MDBGEN));
 		break;
 	case ARM_DEBUG_ARCH_V7_ECP14:
+	case ARM_DEBUG_ARCH_V7_1_ECP14:
 		ARM_DBG_WRITE(c2, 2, (dscr | ARM_DSCR_MDBGEN));
 		break;
 	default:
@@ -863,15 +865,19 @@ static void reset_ctrl_regs(void *info)
 	 * later on.
 	 */
 	if (debug_arch >= ARM_DEBUG_ARCH_V7_ECP14) {
-		/*
-		 * Ensure sticky power-down is clear (i.e. debug logic is
-		 * powered up).
-		 */
-		asm volatile("mrc p14, 0, %0, c1, c5, 4" : "=r" (dbg_power));
-		if ((dbg_power & 0x1) == 0) {
-			pr_warning("CPU %d debug is powered down!\n", cpu);
-			cpumask_or(cpumask, cpumask, cpumask_of(cpu));
-			return;
+		if (debug_arch != ARM_DEBUG_ARCH_V7_1_ECP14) {
+			/*
+			* Ensure sticky power-down is clear (i.e. debug logic is
+			* powered up).
+			*/
+			asm volatile("mrc p14, 0, %0, c1, c5, 4" : "=r"
+				 (dbg_power));
+			if ((dbg_power & 0x1) == 0) {
+				pr_warning("CPU %d debug is powered down!\n",
+					 cpu);
+				cpumask_or(cpumask, cpumask, cpumask_of(cpu));
+				return;
+			}
 		}
 
 		/*
