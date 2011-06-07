@@ -2289,6 +2289,15 @@ static struct pm8xxx_keypad_platform_data keypad_data_sim = {
 	.keymap_data            = &keymap_data_sim,
 };
 
+static struct pm8921_charger_platform_data pm8921_chg_pdata __devinitdata = {
+	.safety_time	= 180,
+	.update_time	= 1,
+	.max_voltage	= 4200,
+	.min_voltage	= 3200,
+	.resume_voltage	= 4100,
+	.term_current	= 100,
+};
+
 static struct pm8921_platform_data pm8921_platform_data __devinitdata = {
 	.irq_pdata		= &pm8xxx_irq_pdata,
 	.gpio_pdata		= &pm8xxx_gpio_pdata,
@@ -2297,6 +2306,7 @@ static struct pm8921_platform_data pm8921_platform_data __devinitdata = {
 	.pwrkey_pdata		= &pm8xxx_pwrkey_pdata,
 	.keypad_pdata		= &keypad_data,
 	.regulator_pdatas	= msm_pm8921_regulator_pdata,
+	.charger_pdata		= &pm8921_chg_pdata,
 };
 
 static struct msm_ssbi_platform_data msm8960_ssbi_pm8921_pdata __devinitdata = {
