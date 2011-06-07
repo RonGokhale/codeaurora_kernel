@@ -1121,6 +1121,11 @@ struct platform_device msm_lpa_pcm = {
 	.id     = -1,
 };
 
+struct platform_device msm_pcm_hostless = {
+	.name	= "msm-pcm-hostless",
+	.id	= -1,
+};
+
 #define FS(_id, _name) (&(struct platform_device){ \
 	.name	= "footswitch-msm8x60", \
 	.id	= (_id), \

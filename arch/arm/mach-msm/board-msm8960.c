@@ -2602,6 +2602,7 @@ static struct platform_device *cdp_devices[] __initdata = {
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
 	&hdmi_msm_device,
 #endif
+	&msm_pcm_hostless,
 };
 
 static void __init msm8960_i2c_init(void)
