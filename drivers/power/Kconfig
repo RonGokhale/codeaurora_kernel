@@ -214,11 +214,10 @@ config BATTERY_MSM
 
 config BATTERY_MSM8X60
 	tristate "MSM8X60 battery"
-	depends on (MACH_MSM8X60_SURF|| MACH_MSM8X60_FFA || MACH_TYPE_MSM8X60_FUSION || MACH_MSM8X60_FUSN_FFA)
 	help
-	  MSM8660 SURF has dual charging paths to charge the battery.
+	  Some MSM boards have dual charging paths to charge the battery.
 	  Say Y to enable support for the battery charging in
-	  Qualcomm MSM8X60 surf.
+	  such devices.
 
 config PM8058_CHARGER
 	tristate "pmic8058 charger"
@@ -294,5 +293,11 @@ config BQ27520_TEST_ENABLE
 	default n
 	help
 	  Say Y here to enable Test sysfs Interface for BQ27520 Drivers.
+
+config PM8921_CHARGER
+	tristate "PM8921 Charger driver"
+	depends on MFD_PM8921_CORE
+	help
+	  Say Y here to enable support for pm8921 chip charger subdevice
 
 endif # POWER_SUPPLY
