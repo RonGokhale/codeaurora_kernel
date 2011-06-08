@@ -17472,10 +17472,6 @@ static struct hda_verb alc662_init_verbs[] = {
 	{0x22, AC_VERB_SET_AMP_GAIN_MUTE, AMP_IN_UNMUTE(0)},
 	{0x23, AC_VERB_SET_AMP_GAIN_MUTE, AMP_IN_UNMUTE(0)},
 
-	/* always trun on EAPD */
-	{0x14, AC_VERB_SET_EAPD_BTLENABLE, 2},
-	{0x15, AC_VERB_SET_EAPD_BTLENABLE, 2},
-
 	{ }
 };
 
@@ -18996,6 +18992,37 @@ static void alc272_fixup_mario(struct hda_codec *codec,
 		       "hda_codec: failed to override amp caps for NID 0x2\n");
 }
 
+#ifdef CONFIG_SND_HDA_POWER_SAVE
+static int alc272_alex_suspend(struct hda_codec *codec, pm_message_t state)
+{
+	struct alc_spec *spec = codec->spec;
+
+	set_eapd(codec, 0x14, 0);
+	set_eapd(codec, 0x15, 0);
+	msleep(300);
+
+	alc_shutup(codec);
+	if (spec && spec->power_hook)
+		spec->power_hook(codec);
+	return 0;
+}
+#endif /* CONFIG_SND_HDA_POWER_SAVE */
+#ifdef SND_HDA_NEEDS_RESUME
+static int alc272_alex_resume(struct hda_codec *codec)
+{
+	codec->patch_ops.init(codec);
+	snd_hda_codec_resume_amp(codec);
+	snd_hda_codec_resume_cache(codec);
+	if (codec->patch_ops.check_power_status)
+		codec->patch_ops.check_power_status(codec, 0x01);
+
+	msleep(25);
+	set_eapd(codec, 0x14, 1);
+	set_eapd(codec, 0x15, 1);
+	return 0;
+}
+#endif /* SND_HDA_NEEDS_RESUME */
+
 static void alc272_fixup_alex(struct hda_codec *codec,
 			       const struct alc_fixup *fix, int pre_init) {
 	if (snd_hda_override_amp_caps(codec, 0x2, HDA_OUTPUT,
@@ -19005,6 +19032,12 @@ static void alc272_fixup_alex(struct hda_codec *codec,
 				      (0 << AC_AMPCAP_MUTE_SHIFT)))
 		printk(KERN_WARNING
 		       "hda_codec: failed to override amp caps for NID 0x2\n");
+#ifdef CONFIG_SND_HDA_POWER_SAVE
+	codec->patch_ops.suspend = alc272_alex_suspend;
+#endif
+#ifdef SND_HDA_NEEDS_RESUME
+	codec->patch_ops.resume = alc272_alex_resume;
+#endif
 }
 
 enum {
@@ -19048,7 +19081,6 @@ static const struct alc_model_fixup alc662_fixup_models[] = {
 	{.id = ALC272_FIXUP_ALEX, .name = "alex"},
 	{}
 };
-
 
 static int patch_alc662(struct hda_codec *codec)
 {
