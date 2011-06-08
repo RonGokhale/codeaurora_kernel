@@ -185,9 +185,10 @@ void __init msm_clock_init(struct clk_lookup *clock_tbl, size_t num_clocks)
 	msm_num_clocks = num_clocks;
 }
 
-/* The bootloader and/or AMSS may have left various clocks enabled.
- * Disable any clocks that belong to us (CLKFLAG_AUTO_OFF) but have
- * not been explicitly enabled by a clk_enable() call.
+/*
+ * The bootloader and/or AMSS may have left various clocks enabled.
+ * Disable any clocks that have not been explicitly enabled by a
+ * clk_enable() call and don't have the CLKFLAG_SKIP_AUTO_OFF flag.
  */
 static int __init clock_late_init(void)
 {
@@ -200,9 +201,9 @@ static int __init clock_late_init(void)
 		struct clk *clk = msm_clocks[n].clk;
 
 		clock_debug_add(clk);
-		if (clk->flags & CLKFLAG_AUTO_OFF) {
+		if (!(clk->flags & CLKFLAG_SKIP_AUTO_OFF)) {
 			spin_lock_irqsave(&clk->lock, flags);
-			if (!clk->count) {
+			if (!clk->count && clk->ops->auto_off) {
 				count++;
 				clk->ops->auto_off(clk);
 			}
