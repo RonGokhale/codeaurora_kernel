@@ -1043,14 +1043,6 @@ static struct msm_bus_paths mdp_bus_scale_usecases[] = {
 		mdp_init_vectors,
 	},
 	{
-		ARRAY_SIZE(mdp_sd_smi_vectors),
-		mdp_sd_smi_vectors,
-	},
-	{
-		ARRAY_SIZE(mdp_sd_ebi_vectors),
-		mdp_sd_ebi_vectors,
-	},
-	{
 		ARRAY_SIZE(mdp_vga_vectors),
 		mdp_vga_vectors,
 	},
@@ -2566,13 +2558,11 @@ static struct platform_device *sim_devices[] __initdata = {
 	&usb_gadget_fserial_device,
 	&msm_device_vidc,
 	&mipi_dsi_simulator_panel_device,
-#ifdef CONFIG_MSM_BUS_SCALING
 	&msm_bus_apps_fabric,
 	&msm_bus_sys_fabric,
 	&msm_bus_mm_fabric,
 	&msm_bus_sys_fpb,
 	&msm_bus_cpss_fpb,
-#endif
 	&msm_pcm,
 	&msm_pcm_routing,
 	&msm_cpudai0,
@@ -2653,6 +2643,11 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&hdmi_msm_device,
 #endif
 	&msm_pcm_hostless,
+	&msm_bus_apps_fabric,
+	&msm_bus_sys_fabric,
+	&msm_bus_mm_fabric,
+	&msm_bus_sys_fpb,
+	&msm_bus_cpss_fpb,
 };
 
 static void __init msm8960_i2c_init(void)
@@ -3276,6 +3271,7 @@ static void __init msm8960_cdp_init(void)
 	msm8960_i2c_init();
 	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
 	msm_spm_l2_init(msm_spm_l2_data);
+	msm8960_init_buses();
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	pm8921_gpio_mpp_init();
 	platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
