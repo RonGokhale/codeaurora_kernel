@@ -1839,7 +1839,7 @@ __acquires(mEp->lock)
 			if ((mEp->type == USB_ENDPOINT_XFER_CONTROL) &&
 				mReq->req.length)
 				mEpTemp = &_udc->ep0in;
-			mReq->req.complete(&mEp->ep, &mReq->req);
+			mReq->req.complete(&mEpTemp->ep, &mReq->req);
 			spin_lock(mEp->lock);
 		}
 	}
