@@ -302,6 +302,8 @@ static void bam_mux_write_done(struct work_struct *work)
 	struct sk_buff *skb;
 	struct bam_mux_hdr *hdr;
 
+	free_tx_descriptor(NULL);
+
 	skb = __skb_dequeue(&bam_mux_write_done_pool);
 	hdr = (struct bam_mux_hdr *)skb->data;
 	DBG_INC_WRITE_CNT(skb->data_len);
@@ -515,9 +517,9 @@ static void bam_mux_tx_notify(struct sps_event_notify *notify)
 						pkt->len,
 						DMA_TO_DEVICE);
 			kfree(pkt->skb);
+			queue_work(bam_mux_workqueue, &work_free_tx_descriptor);
 		}
 		kfree(pkt);
-		queue_work(bam_mux_workqueue, &work_free_tx_descriptor);
 		break;
 	default:
 		pr_err("%s: recieved unexpected event id %d\n", __func__,
