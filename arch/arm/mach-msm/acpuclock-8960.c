@@ -53,7 +53,6 @@
 #define HFPLL_M_VAL		0x0C
 #define HFPLL_N_VAL		0x10
 #define HFPLL_DROOP_CTL		0x14
-#define HFPLL_STATUS		0x1C
 
 /* CP15 L2 indirect addresses. */
 #define L2CPMR_IADDR		0x500
@@ -149,10 +148,10 @@ static struct acpu_level acpu_freq_tbl[] = {
 	{ 1, {  594000, HFPLL, 1, 0, 0x16 }, L2(4)  },
 	{ 1, {  648000, HFPLL, 1, 0, 0x18 }, L2(5)  },
 	{ 1, {  702000, HFPLL, 1, 0, 0x1A }, L2(6)  },
-	{ 0, {  756000, HFPLL, 1, 0, 0x1C }, L2(7)  },
-	{ 0, {  810000, HFPLL, 1, 0, 0x1E }, L2(8)  },
-	{ 0, {  864000, HFPLL, 1, 0, 0x20 }, L2(9)  },
-	{ 0, {  918000, HFPLL, 1, 0, 0x22 }, L2(10) },
+	{ 1, {  756000, HFPLL, 1, 0, 0x1C }, L2(7)  },
+	{ 1, {  810000, HFPLL, 1, 0, 0x1E }, L2(8)  },
+	{ 1, {  864000, HFPLL, 1, 0, 0x20 }, L2(9)  },
+	{ 1, {  918000, HFPLL, 1, 0, 0x22 }, L2(10) },
 	{ 0, { 0 } }
 };
 
@@ -282,19 +281,12 @@ static void hfpll_enable(enum scalables id)
 	/* De-assert active-low PLL reset. */
 	writel_relaxed(0x6, hf_pll_base[id] + HFPLL_MODE);
 
+	/* Wait for PLL to lock. */
+	dsb();
+	udelay(60);
+
 	/* Enable PLL output. */
 	writel_relaxed(0x7, hf_pll_base[id] + HFPLL_MODE);
-
-	/*
-	 * TODO: HFPLL status bits are not emulated on RUMI3 or SIM.
-	 * Remove this check if/when they are.
-	 */
-	if (machine_is_msm8960_sim() || machine_is_msm8960_rumi3())
-		return;
-
-	/* Wait until PLL is enabled. */
-	while (!readl_relaxed(hf_pll_base[id] + HFPLL_STATUS))
-		cpu_relax();
 }
 
 /* Disable a HFPLL for power-savings or while its being reprogrammed. */
@@ -489,7 +481,7 @@ static void __init init_clock_sources(enum scalables id)
 	uint32_t pri_src, regval;
 	static struct core_speed speed[] = {
 		[INIT_QSB_ID] =   { STBY_KHZ, QSB,   0, 0, 0x00 },
-		[INIT_HFPLL_ID] = { 702000,   HFPLL, 1, 0, 0x1A },
+		[INIT_HFPLL_ID] = { 918000,   HFPLL, 1, 0, 0x22 },
 	};
 
 	/*
