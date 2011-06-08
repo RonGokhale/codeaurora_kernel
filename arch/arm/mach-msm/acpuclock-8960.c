@@ -10,6 +10,8 @@
  * GNU General Public License for more details.
  */
 
+#define pr_fmt(fmt) "%s: " fmt, __func__
+
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/io.h>
@@ -76,12 +78,9 @@ enum scalables {
 };
 
 enum vregs {
-	VREG_CPU0_CORE,
-	VREG_CPU1_CORE,
-	VREG_CPU0_MEM,
-	VREG_CPU1_MEM,
-	VREG_CPU0_DIG,
-	VREG_CPU1_DIG,
+	VREG_CORE,
+	VREG_MEM,
+	VREG_DIG,
 	NUM_VREG
 };
 
@@ -92,46 +91,6 @@ struct vreg {
 	const int rpm_vreg_id;
 	struct regulator *reg;
 	unsigned int cur_vdd;
-};
-
-static struct vreg regulators[] = {
-	[VREG_CPU0_CORE] = { "krait0",     1150000 },
-	[VREG_CPU1_CORE] = { "krait1",     1150000 },
-	[VREG_CPU0_MEM]  = { "krait0_mem", 1150000,
-			     RPM_VREG_VOTER1, RPM_VREG_ID_PM8921_L24 },
-	[VREG_CPU1_MEM]  = { "krait1_mem", 1150000,
-			     RPM_VREG_VOTER2, RPM_VREG_ID_PM8921_L24 },
-	[VREG_CPU0_DIG]  = { "krait0_dig", 1150000,
-			     RPM_VREG_VOTER1, RPM_VREG_ID_PM8921_S3 },
-	[VREG_CPU1_DIG]  = { "krait1_dig", 1150000,
-			     RPM_VREG_VOTER2, RPM_VREG_ID_PM8921_S3 },
-};
-
-static struct vreg_id {
-	enum vregs core;
-	enum vregs mem;
-	enum vregs dig;
-} vreg_ids[] = {
-	[CPU0] = {VREG_CPU0_CORE, VREG_CPU0_MEM, VREG_CPU0_DIG},
-	[CPU1] = {VREG_CPU1_CORE, VREG_CPU1_MEM, VREG_CPU1_DIG},
-};
-
-static const void * __iomem const hf_pll_base[] = {
-	[CPU0]	= MSM_HFPLL_BASE + 0x200,
-	[CPU1]	= MSM_HFPLL_BASE + 0x300,
-	[L2]	= MSM_HFPLL_BASE + 0x400,
-};
-
-static const uint32_t l2cpmr_iaddr[NUM_SCALABLES] = {
-	[CPU0] = L2CPUCPMR_IADDR,
-	[CPU1] = L2CPUCPMR_IADDR,
-	[L2]   = L2CPMR_IADDR,
-};
-
-static const void * __iomem const aux_clk_sel[NUM_SCALABLES] = {
-	[CPU0] = MSM_ACC0_BASE + 0x014,
-	[CPU1] = MSM_ACC1_BASE + 0x014,
-	[L2]   = MSM_APCS_GCC_BASE  + 0x028,
 };
 
 struct core_speed {
@@ -156,13 +115,49 @@ struct acpu_level {
 	unsigned int		vdd_core;
 };
 
-static struct clock_state {
-	struct core_speed	*current_speed[NUM_SCALABLES];
-	spinlock_t		l2_lock;
-	struct mutex		lock;
-	uint32_t		acpu_switch_time_us;
-	uint32_t		vdd_switch_time_us;
-} drv_state;
+struct scalable {
+	void * __iomem const hfpll_base;
+	void * __iomem const aux_clk_sel;
+	const uint32_t l2cpmr_iaddr;
+	struct core_speed *current_speed;
+	struct l2_level *l2_vote;
+	struct vreg vreg[NUM_VREG];
+};
+
+static struct scalable scalable[] = {
+	[CPU0] = {
+			.hfpll_base      = MSM_HFPLL_BASE + 0x200,
+			.aux_clk_sel     = MSM_ACC0_BASE  + 0x014,
+			.l2cpmr_iaddr    = L2CPUCPMR_IADDR,
+			.vreg[VREG_CORE] = { "krait0",     1150000 },
+			.vreg[VREG_MEM]  = { "krait0_mem", 1150000,
+					     RPM_VREG_VOTER1,
+					     RPM_VREG_ID_PM8921_L24 },
+			.vreg[VREG_DIG]  = { "krait0_dig", 1150000,
+					     RPM_VREG_VOTER1,
+					     RPM_VREG_ID_PM8921_S3 },
+		},
+	[CPU1] = {
+			.hfpll_base      = MSM_HFPLL_BASE + 0x300,
+			.aux_clk_sel     = MSM_ACC1_BASE  + 0x014,
+			.l2cpmr_iaddr    = L2CPUCPMR_IADDR,
+			.vreg[VREG_CORE] = { "krait1",     1150000 },
+			.vreg[VREG_MEM]  = { "krait0_mem", 1150000,
+					     RPM_VREG_VOTER2,
+					     RPM_VREG_ID_PM8921_L24 },
+			.vreg[VREG_DIG]  = { "krait0_dig", 1150000,
+					     RPM_VREG_VOTER2,
+					     RPM_VREG_ID_PM8921_S3 },
+		},
+	[L2] = {
+			.hfpll_base   = MSM_HFPLL_BASE    + 0x400,
+			.aux_clk_sel  = MSM_APCS_GCC_BASE + 0x028,
+			.l2cpmr_iaddr = L2CPMR_IADDR,
+		},
+};
+
+struct mutex driver_lock;
+static spinlock_t l2_lock;
 
 /* Instantaneous bandwidth requests in MB/s. */
 #define BW_MBPS(_bw) \
@@ -203,6 +198,7 @@ static uint32_t bus_perf_client;
 
 /* TODO: Update vdd_dig and vdd_mem when voltage data is available. */
 #define L2(x) (&l2_freq_tbl[(x)])
+#define L2_BOOT_IDX 10
 static struct l2_level l2_freq_tbl[] = {
 	[0]  = { {STBY_KHZ, QSB,   0, 0, 0x00 }, 1050000, 1050000, 0 },
 	[1]  = { {  384000, PLL_8, 0, 2, 0x00 }, 1050000, 1050000, 0 },
@@ -232,6 +228,7 @@ static struct l2_level l2_freq_tbl[] = {
 };
 
 /* TODO: Update core voltages when data is available. */
+#define CPU_BOOT_IDX 10
 static struct acpu_level acpu_freq_tbl[] = {
 	{ 0, {STBY_KHZ, QSB,   0, 0, 0x00 }, L2(1),  1050000 },
 	{ 1, {  384000, PLL_8, 0, 2, 0x00 }, L2(1),  1050000 },
@@ -249,12 +246,12 @@ static struct acpu_level acpu_freq_tbl[] = {
 
 unsigned long acpuclk_get_rate(int cpu)
 {
-	return drv_state.current_speed[cpu]->khz;
+	return scalable[cpu].current_speed->khz;
 }
 
 uint32_t acpuclk_get_switch_time(void)
 {
-	return drv_state.acpu_switch_time_us;
+	return 0;
 }
 
 unsigned long acpuclk_power_collapse(void)
@@ -310,58 +307,44 @@ static void writel_cp15_l2ind(uint32_t regval, uint32_t addr)
 			: "cc"
 	);
 	isb();
-	BUG_ON(readl_cp15_l2ind(addr) != regval);
 }
 
 /* Get the selected source on primary MUX. */
-static int get_pri_clk_src(enum scalables id)
+static int get_pri_clk_src(struct scalable *sc)
 {
 	uint32_t regval = 0;
 
-	BUG_ON(id >= NUM_SCALABLES);
-	BUG_ON(id != smp_processor_id() && id != L2);
-
-	regval = readl_cp15_l2ind(l2cpmr_iaddr[id]);
+	regval = readl_cp15_l2ind(sc->l2cpmr_iaddr);
 	return regval & 0x3;
 }
 
 /* Set the selected source on primary MUX. */
-static void set_pri_clk_src(enum scalables id, uint32_t pri_src_sel)
+static void set_pri_clk_src(struct scalable *sc, uint32_t pri_src_sel)
 {
 	uint32_t regval;
 
-	BUG_ON(id >= NUM_SCALABLES);
-	BUG_ON(id != smp_processor_id() && id != L2);
-	BUG_ON(pri_src_sel > 3);
-
-	regval = readl_cp15_l2ind(l2cpmr_iaddr[id]);
+	regval = readl_cp15_l2ind(sc->l2cpmr_iaddr);
 	regval &= ~0x3;
 	regval |= (pri_src_sel & 0x3);
-	writel_cp15_l2ind(regval, l2cpmr_iaddr[id]);
+	writel_cp15_l2ind(regval, sc->l2cpmr_iaddr);
 }
 
 /* Set the selected source on secondary MUX. */
-static void set_sec_clk_src(enum scalables id, uint32_t sec_src_sel)
+static void set_sec_clk_src(struct scalable *sc, uint32_t sec_src_sel)
 {
 	uint32_t regval;
 
-	BUG_ON(id >= NUM_SCALABLES);
-	BUG_ON(id != smp_processor_id() && id != L2);
-	BUG_ON(sec_src_sel > 3);
-
-	regval = readl_cp15_l2ind(l2cpmr_iaddr[id]);
+	regval = readl_cp15_l2ind(sc->l2cpmr_iaddr);
 	regval &= ~(0x3 << 2);
 	regval |= ((sec_src_sel & 0x3) << 2);
-	writel_cp15_l2ind(regval, l2cpmr_iaddr[id]);
+	writel_cp15_l2ind(regval, sc->l2cpmr_iaddr);
 }
 
 /* Enable an already-configured HFPLL. */
-static void hfpll_enable(enum scalables id)
+static void hfpll_enable(struct scalable *sc)
 {
-	BUG_ON(id >= NUM_SCALABLES);
-
 	/* Disable PLL bypass mode. */
-	writel_relaxed(0x2, hf_pll_base[id] + HFPLL_MODE);
+	writel_relaxed(0x2, sc->hfpll_base + HFPLL_MODE);
 
 	/*
 	 * H/W requires a 5us delay between disabling the bypass and
@@ -371,40 +354,36 @@ static void hfpll_enable(enum scalables id)
 	udelay(10);
 
 	/* De-assert active-low PLL reset. */
-	writel_relaxed(0x6, hf_pll_base[id] + HFPLL_MODE);
+	writel_relaxed(0x6, sc->hfpll_base + HFPLL_MODE);
 
 	/* Wait for PLL to lock. */
 	dsb();
 	udelay(60);
 
 	/* Enable PLL output. */
-	writel_relaxed(0x7, hf_pll_base[id] + HFPLL_MODE);
+	writel_relaxed(0x7, sc->hfpll_base + HFPLL_MODE);
 }
 
 /* Disable a HFPLL for power-savings or while its being reprogrammed. */
-static void hfpll_disable(enum scalables id)
+static void hfpll_disable(struct scalable *sc)
 {
-	BUG_ON(id >= NUM_SCALABLES);
-
 	/*
 	 * Disable the PLL output, disable test mode, enable
 	 * the bypass mode, and assert the reset.
 	 */
-	writel_relaxed(0, hf_pll_base[id] + HFPLL_MODE);
+	writel_relaxed(0, sc->hfpll_base + HFPLL_MODE);
 }
 
 /* Program the HFPLL rate. Assumes HFPLL is already disabled. */
-static void hfpll_set_rate(enum scalables id, struct core_speed *tgt_s)
+static void hfpll_set_rate(struct scalable *sc, struct core_speed *tgt_s)
 {
-	BUG_ON(id >= NUM_SCALABLES);
-	writel_relaxed(tgt_s->pll_l_val, hf_pll_base[id] + HFPLL_L_VAL);
+	writel_relaxed(tgt_s->pll_l_val, sc->hfpll_base + HFPLL_L_VAL);
 }
 
 /* Return the L2 speed that should be applied. */
-static struct l2_level *compute_l2_level(unsigned int voting_cpu,
+static struct l2_level *compute_l2_level(struct scalable *sc,
 					 struct l2_level *vote_l)
 {
-	static struct l2_level *l2_vote[NR_CPUS];
 	struct l2_level *new_l;
 	int cpu;
 
@@ -412,10 +391,10 @@ static struct l2_level *compute_l2_level(unsigned int voting_cpu,
 	BUG_ON(vote_l >= (l2_freq_tbl + ARRAY_SIZE(l2_freq_tbl)));
 
 	/* Find max L2 speed vote. */
-	l2_vote[voting_cpu] = vote_l;
+	sc->l2_vote = vote_l;
 	new_l = l2_freq_tbl;
 	for_each_present_cpu(cpu)
-		new_l = max(new_l, l2_vote[cpu]);
+		new_l = max(new_l, scalable[cpu].l2_vote);
 
 	return new_l;
 }
@@ -427,23 +406,21 @@ static void set_bus_bw(unsigned int bw)
 
 	/* Bounds check. */
 	if (bw >= ARRAY_SIZE(bw_level_tbl)) {
-		pr_err("%s: invalid bandwidth request (%d)\n", __func__, bw);
+		pr_err("invalid bandwidth request (%d)\n", bw);
 		return;
 	}
 
 	/* Update bandwidth if request has changed. This may sleep. */
 	ret = msm_bus_scale_client_update_request(bus_perf_client, bw);
 	if (ret)
-		pr_err("%s: bandwidth request failed (%d)\n", __func__, ret);
+		pr_err("bandwidth request failed (%d)\n", ret);
 }
 
 /* Set the CPU or L2 clock speed. */
-static void set_speed(enum scalables id, struct core_speed *tgt_s,
+static void set_speed(struct scalable *sc, struct core_speed *tgt_s,
 		      enum setrate_reason reason)
 {
-	struct core_speed *strt_s = drv_state.current_speed[id];
-
-	BUG_ON(id >= NUM_SCALABLES);
+	struct core_speed *strt_s = sc->current_speed;
 
 	if (tgt_s == strt_s)
 		return;
@@ -454,16 +431,16 @@ static void set_speed(enum scalables id, struct core_speed *tgt_s,
 		 * TODO: If using QSB here requires elevating voltages,
 		 * consider using PLL8 instead.
 		 */
-		set_sec_clk_src(id, SEC_SRC_SEL_QSB);
-		set_pri_clk_src(id, PRI_SRC_SEL_SEC_SRC);
+		set_sec_clk_src(sc, SEC_SRC_SEL_QSB);
+		set_pri_clk_src(sc, PRI_SRC_SEL_SEC_SRC);
 
 		/* Program CPU HFPLL. */
-		hfpll_disable(id);
-		hfpll_set_rate(id, tgt_s);
-		hfpll_enable(id);
+		hfpll_disable(sc);
+		hfpll_set_rate(sc, tgt_s);
+		hfpll_enable(sc);
 
 		/* Move CPU to HFPLL source. */
-		set_pri_clk_src(id, tgt_s->pri_src_sel);
+		set_pri_clk_src(sc, tgt_s->pri_src_sel);
 	} else if (strt_s->src == HFPLL && tgt_s->src != HFPLL) {
 		/* TODO: Enable source. */
 		/*
@@ -473,70 +450,67 @@ static void set_speed(enum scalables id, struct core_speed *tgt_s,
 		 * Just turn off the PLL- since the CPU is down already, halting
 		 * its clock should be safe.
 		 */
-		if (reason != SETRATE_HOTPLUG || id == L2) {
-			set_sec_clk_src(id, tgt_s->sec_src_sel);
-			set_pri_clk_src(id, tgt_s->pri_src_sel);
+		if (reason != SETRATE_HOTPLUG || sc == &scalable[L2]) {
+			set_sec_clk_src(sc, tgt_s->sec_src_sel);
+			set_pri_clk_src(sc, tgt_s->pri_src_sel);
 		}
-		hfpll_disable(id);
+		hfpll_disable(sc);
 	} else if (strt_s->src != HFPLL && tgt_s->src == HFPLL) {
-		hfpll_set_rate(id, tgt_s);
-		hfpll_enable(id);
+		hfpll_set_rate(sc, tgt_s);
+		hfpll_enable(sc);
 		/*
 		 * If responding to CPU_UP_PREPARE, we can't change CP15
 		 * registers for the CPU that's coming up since we're not
 		 * running on that CPU.  That's okay though, since the MUX
 		 * source was not changed on the way down, either.
 		 */
-		if (reason != SETRATE_HOTPLUG || id == L2)
-			set_pri_clk_src(id, tgt_s->pri_src_sel);
-		/* TODO: Disable source. */
-	} else if (strt_s->src != HFPLL && tgt_s->src != HFPLL) {
-		/* TODO: Enable source. */
-		if (reason != SETRATE_HOTPLUG || id == L2)
-			set_sec_clk_src(id, tgt_s->sec_src_sel);
+		if (reason != SETRATE_HOTPLUG || sc == &scalable[L2])
+			set_pri_clk_src(sc, tgt_s->pri_src_sel);
 		/* TODO: Disable source. */
 	} else {
-		BUG();
+		/* TODO: Enable source. */
+		if (reason != SETRATE_HOTPLUG || sc == &scalable[L2])
+			set_sec_clk_src(sc, tgt_s->sec_src_sel);
+		/* TODO: Disable source. */
 	}
 
-	drv_state.current_speed[id] = tgt_s;
+	sc->current_speed = tgt_s;
 }
 
 /* Apply any per-cpu voltage increases. */
 static int increase_vdd(int cpu, unsigned int vdd_core, unsigned int vdd_mem,
 			unsigned int vdd_dig, enum setrate_reason reason)
 {
+	struct scalable *sc = &scalable[cpu];
 	int rc;
 
 	/*
 	 * Increase vdd_mem active-set before vdd_dig and vdd_core.
 	 * vdd_mem should be >= both vdd_core and vdd_dig.
 	 */
-	if (vdd_mem > regulators[vreg_ids[cpu].mem].cur_vdd) {
-		rc = rpm_vreg_set_voltage(
-			regulators[vreg_ids[cpu].mem].rpm_vreg_id,
-			regulators[vreg_ids[cpu].mem].rpm_vreg_voter, vdd_mem,
-			regulators[vreg_ids[cpu].mem].max_vdd, 0);
+	if (vdd_mem > sc->vreg[VREG_MEM].cur_vdd) {
+		rc = rpm_vreg_set_voltage(sc->vreg[VREG_MEM].rpm_vreg_id,
+				sc->vreg[VREG_MEM].rpm_vreg_voter, vdd_mem,
+				sc->vreg[VREG_MEM].max_vdd, 0);
 		if (rc) {
 			pr_err("%s: vdd_mem (cpu%d) increase failed (%d)\n",
 				__func__, cpu, rc);
 			return rc;
 		}
-		regulators[vreg_ids[cpu].mem].cur_vdd = vdd_mem;
+		 sc->vreg[VREG_MEM].cur_vdd = vdd_mem;
 	}
 
 	/* Increase vdd_dig active-set vote. */
-	if (vdd_dig > regulators[vreg_ids[cpu].dig].cur_vdd) {
-		rc = rpm_vreg_set_voltage(
-			regulators[vreg_ids[cpu].dig].rpm_vreg_id,
-			regulators[vreg_ids[cpu].dig].rpm_vreg_voter, vdd_dig,
-			regulators[vreg_ids[cpu].dig].max_vdd, 0);
+	if (vdd_dig > sc->vreg[VREG_DIG].cur_vdd) {
+		rc = rpm_vreg_set_voltage(sc->vreg[VREG_DIG].rpm_vreg_id,
+				sc->vreg[VREG_DIG].rpm_vreg_voter, vdd_dig,
+				sc->vreg[VREG_DIG].max_vdd, 0);
 		if (rc) {
 			pr_err("%s: vdd_dig (cpu%d) increase failed (%d)\n",
 				__func__, cpu, rc);
 			return rc;
 		}
-		regulators[vreg_ids[cpu].dig].cur_vdd = vdd_dig;
+		sc->vreg[VREG_DIG].cur_vdd = vdd_dig;
 	}
 
 	/*
@@ -545,16 +519,16 @@ static int increase_vdd(int cpu, unsigned int vdd_core, unsigned int vdd_mem,
 	 * because we don't know what CPU we are running on at this point, but
 	 * the CPU regulator API requires we call it from the affected CPU.
 	 */
-	if (vdd_core > regulators[vreg_ids[cpu].core].cur_vdd
+	if (vdd_core > sc->vreg[VREG_CORE].cur_vdd
 						&& reason != SETRATE_HOTPLUG) {
-		rc = regulator_set_voltage(regulators[vreg_ids[cpu].core].reg,
-			      vdd_core, regulators[vreg_ids[cpu].core].max_vdd);
+		rc = regulator_set_voltage(sc->vreg[VREG_CORE].reg, vdd_core,
+					   sc->vreg[VREG_CORE].max_vdd);
 		if (rc) {
 			pr_err("%s: vdd_core (cpu%d) increase failed (%d)\n",
 				__func__, cpu, rc);
 			return rc;
 		}
-		regulators[vreg_ids[cpu].core].cur_vdd = vdd_core;
+		sc->vreg[VREG_CORE].cur_vdd = vdd_core;
 	}
 
 	return rc;
@@ -564,6 +538,7 @@ static int increase_vdd(int cpu, unsigned int vdd_core, unsigned int vdd_mem,
 static void decrease_vdd(int cpu, unsigned int vdd_core, unsigned int vdd_mem,
 			 unsigned int vdd_dig, enum setrate_reason reason)
 {
+	struct scalable *sc = &scalable[cpu];
 	int ret;
 
 	/*
@@ -571,47 +546,45 @@ static void decrease_vdd(int cpu, unsigned int vdd_core, unsigned int vdd_mem,
 	 * that's being affected. Don't do this in the hotplug remove path,
 	 * where the rail is off and we're executing on the other CPU.
 	 */
-	if (vdd_core < regulators[vreg_ids[cpu].core].cur_vdd
+	if (vdd_core < sc->vreg[VREG_CORE].cur_vdd
 					&& reason != SETRATE_HOTPLUG) {
-		ret = regulator_set_voltage(regulators[vreg_ids[cpu].core].reg,
-			      vdd_core, regulators[vreg_ids[cpu].core].max_vdd);
+		ret = regulator_set_voltage(sc->vreg[VREG_CORE].reg, vdd_core,
+					    sc->vreg[VREG_CORE].max_vdd);
 		if (ret) {
 			pr_err("%s: vdd_core (cpu%d) decrease failed (%d)\n",
 			       __func__, cpu, ret);
 			return;
 		}
-		regulators[vreg_ids[cpu].core].cur_vdd = vdd_core;
+		sc->vreg[VREG_CORE].cur_vdd = vdd_core;
 	}
 
 	/* Decrease vdd_dig active-set vote. */
-	if (vdd_dig < regulators[vreg_ids[cpu].dig].cur_vdd) {
-		ret = rpm_vreg_set_voltage(
-			regulators[vreg_ids[cpu].dig].rpm_vreg_id,
-			regulators[vreg_ids[cpu].dig].rpm_vreg_voter, vdd_dig,
-			regulators[vreg_ids[cpu].dig].max_vdd, 0);
+	if (vdd_dig < sc->vreg[VREG_DIG].cur_vdd) {
+		ret = rpm_vreg_set_voltage(sc->vreg[VREG_DIG].rpm_vreg_id,
+				sc->vreg[VREG_DIG].rpm_vreg_voter, vdd_dig,
+				sc->vreg[VREG_DIG].max_vdd, 0);
 		if (ret) {
 			pr_err("%s: vdd_dig (cpu%d) decrease failed (%d)\n",
 				__func__, cpu, ret);
 			return;
 		}
-		regulators[vreg_ids[cpu].dig].cur_vdd = vdd_dig;
+		sc->vreg[VREG_DIG].cur_vdd = vdd_dig;
 	}
 
 	/*
 	 * Decrease vdd_mem active-set after vdd_dig and vdd_core.
 	 * vdd_mem should be >= both vdd_core and vdd_dig.
 	 */
-	if (vdd_mem < regulators[vreg_ids[cpu].mem].cur_vdd) {
-		ret = rpm_vreg_set_voltage(
-			regulators[vreg_ids[cpu].mem].rpm_vreg_id,
-			regulators[vreg_ids[cpu].mem].rpm_vreg_voter, vdd_mem,
-			regulators[vreg_ids[cpu].mem].max_vdd, 0);
+	if (vdd_mem < sc->vreg[VREG_MEM].cur_vdd) {
+		ret = rpm_vreg_set_voltage(sc->vreg[VREG_MEM].rpm_vreg_id,
+				sc->vreg[VREG_MEM].rpm_vreg_voter, vdd_mem,
+				sc->vreg[VREG_MEM].max_vdd, 0);
 		if (ret) {
 			pr_err("%s: vdd_mem (cpu%d) decrease failed (%d)\n",
 				__func__, cpu, ret);
 			return;
 		}
-		regulators[vreg_ids[cpu].mem].cur_vdd = vdd_mem;
+		 sc->vreg[VREG_MEM].cur_vdd = vdd_mem;
 	}
 }
 
@@ -654,17 +627,15 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 	unsigned long flags;
 	int rc = 0;
 
-	BUG_ON(cpu >= 2);
-
 	if (cpu > num_possible_cpus()) {
 		rc = -EINVAL;
 		goto out;
 	}
 
 	if (reason == SETRATE_CPUFREQ || reason == SETRATE_HOTPLUG)
-		mutex_lock(&drv_state.lock);
+		mutex_lock(&driver_lock);
 
-	strt_acpu_s = drv_state.current_speed[cpu];
+	strt_acpu_s = scalable[cpu].current_speed;
 
 	/* Return early if rate didn't change. */
 	if (rate == strt_acpu_s->khz)
@@ -688,8 +659,7 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 	vdd_core = calculate_vdd_core(tgt);
 
 	/* Increase VDD levels if needed. */
-	if ((reason == SETRATE_CPUFREQ || reason == SETRATE_HOTPLUG
-	  || reason == SETRATE_INIT)) {
+	if (reason == SETRATE_CPUFREQ || reason == SETRATE_HOTPLUG) {
 		rc = increase_vdd(cpu, vdd_core, vdd_mem, vdd_dig, reason);
 		if (rc)
 			goto out;
@@ -699,13 +669,18 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 		cpu, strt_acpu_s->khz, tgt_acpu_s->khz);
 
 	/* Set the CPU speed. */
-	set_speed(cpu, tgt_acpu_s, reason);
+	set_speed(&scalable[cpu], tgt_acpu_s, reason);
 
-	/* Update the L2 vote and apply the rate change. */
-	spin_lock_irqsave(&drv_state.l2_lock, flags);
-	tgt_l2_l = compute_l2_level(cpu, tgt->l2_level);
-	set_speed(L2, &tgt_l2_l->speed, reason);
-	spin_unlock_irqrestore(&drv_state.l2_lock, flags);
+	/*
+	 * Update the L2 vote and apply the rate change. A spinlock is
+	 * necessary to ensure L2 rate is calulated and set atomically,
+	 * even if acpuclk_set_rate() is called from an atomic context
+	 * and the driver_lock mutex is not acquired.
+	 */
+	spin_lock_irqsave(&l2_lock, flags);
+	tgt_l2_l = compute_l2_level(&scalable[cpu], tgt->l2_level);
+	set_speed(&scalable[L2], &tgt_l2_l->speed, reason);
+	spin_unlock_irqrestore(&l2_lock, flags);
 
 	/* Nothing else to do for power collapse or SWFI. */
 	if (reason == SETRATE_PC || reason == SETRATE_SWFI)
@@ -721,117 +696,103 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 
 out:
 	if (reason == SETRATE_CPUFREQ || reason == SETRATE_HOTPLUG)
-		mutex_unlock(&drv_state.lock);
+		mutex_unlock(&driver_lock);
 	return rc;
 }
 
 /* Initialize a HFPLL at a given rate and enable it. */
-static void __init hfpll_init(enum scalables id, struct core_speed *tgt_s)
+static void __init hfpll_init(struct scalable *sc, struct core_speed *tgt_s)
 {
-	BUG_ON(id >= NUM_SCALABLES);
-
 	dprintk("Initializing HFPLL%d\n", id);
 
 	/* Disable the PLL for re-programming. */
-	hfpll_disable(id);
+	hfpll_disable(sc);
 
 	/* Configure PLL parameters for integer mode. */
-	writel_relaxed(0x7845C665, hf_pll_base[id] + HFPLL_CONFIG_CTL);
-	writel_relaxed(0, hf_pll_base[id] + HFPLL_M_VAL);
-	writel_relaxed(1, hf_pll_base[id] + HFPLL_N_VAL);
+	writel_relaxed(0x7845C665, sc->hfpll_base + HFPLL_CONFIG_CTL);
+	writel_relaxed(0, sc->hfpll_base + HFPLL_M_VAL);
+	writel_relaxed(1, sc->hfpll_base + HFPLL_N_VAL);
 
 	/* Set up droop controller. TODO: Enable droop controller. */
-	writel_relaxed(0x0100C000, hf_pll_base[id] + HFPLL_DROOP_CTL);
+	writel_relaxed(0x0100C000, sc->hfpll_base + HFPLL_DROOP_CTL);
 
 	/* Set an initial rate and enable the PLL. */
-	hfpll_set_rate(id, tgt_s);
-	hfpll_enable(id);
+	hfpll_set_rate(sc, tgt_s);
+	hfpll_enable(sc);
 }
 
 /* Voltage regulator initialization. */
 static void __init regulator_init(void)
 {
-	int reg_id, ret;
+	int cpu, ret;
+	struct scalable *sc;
 
-	for (reg_id = VREG_CPU0_CORE; reg_id < NUM_VREG; reg_id++) {
-		/*
-		 * Skip RPM-contolled regulators which require no
-		 * initialization.
-		 */
-		if (regulators[reg_id].rpm_vreg_voter)
-			continue;
-
-		regulators[reg_id].reg = regulator_get(NULL,
-				regulators[reg_id].name);
-		if (IS_ERR(regulators[reg_id].reg)) {
-			pr_err("%s: regulator_get(%s) failed (%ld)\n", __func__,
-			       regulators[reg_id].name,
-			       PTR_ERR(regulators[reg_id].reg));
+	for_each_possible_cpu(cpu) {
+		sc = &scalable[cpu];
+		sc->vreg[VREG_CORE].reg = regulator_get(NULL,
+					  sc->vreg[VREG_CORE].name);
+		if (IS_ERR(sc->vreg[VREG_CORE].reg)) {
+			pr_err("regulator_get(%s) failed (%ld)\n",
+			       sc->vreg[VREG_CORE].name,
+			       PTR_ERR(sc->vreg[VREG_CORE].reg));
 			BUG();
 		}
 
-		ret = regulator_set_voltage(regulators[reg_id].reg,
-				regulators[reg_id].max_vdd,
-				regulators[reg_id].max_vdd);
+		ret = regulator_set_voltage(sc->vreg[VREG_CORE].reg,
+					    sc->vreg[VREG_CORE].max_vdd,
+					    sc->vreg[VREG_CORE].max_vdd);
 		if (ret)
-			pr_err("%s: regulator_set_voltage(%s) failed (%d)\n",
-			       __func__, regulators[reg_id].name, ret);
+			pr_err("regulator_set_voltage(%s) failed"
+			       " (%d)\n", sc->vreg[VREG_CORE].name, ret);
 
-		ret = regulator_enable(regulators[reg_id].reg);
+		ret = regulator_enable(sc->vreg[VREG_CORE].reg);
 		if (ret)
-			pr_err("%s: regulator_enable(%s) failed (%d)\n",
-			       __func__, regulators[reg_id].name, ret);
+			pr_err("regulator_enable(%s) failed (%d)\n",
+			       sc->vreg[VREG_CORE].name, ret);
 	}
 }
 
 #define INIT_QSB_ID	0
 #define INIT_HFPLL_ID	1
 /* Set initial rate for a given core. */
-static void __init init_clock_sources(enum scalables id)
+static void __init init_clock_sources(struct scalable *sc,
+				      struct core_speed *tgt_s)
 {
-	struct core_speed *temp_s, *tgt_s;
 	uint32_t pri_src, regval;
-	static struct core_speed speed[] = {
-		[INIT_QSB_ID] =   { STBY_KHZ, QSB,   0, 0, 0x00 },
-		[INIT_HFPLL_ID] = { 918000,   HFPLL, 1, 0, 0x22 },
-	};
 
 	/*
 	 * If the HFPLL is in use, program AUX source for QSB, switch to it,
 	 * re-initialize the HFPLL, and switch back to the HFPLL. Otherwise,
 	 * the HFPLL is not in use, so we can switch directly to it.
 	 */
-	tgt_s = &speed[INIT_HFPLL_ID];
-	pri_src = get_pri_clk_src(id);
+	pri_src = get_pri_clk_src(scalable);
 	if (pri_src == PRI_SRC_SEL_HFPLL || pri_src == PRI_SRC_SEL_HFPLL_DIV2) {
-		temp_s = &speed[INIT_QSB_ID];
-		set_sec_clk_src(id, temp_s->sec_src_sel);
-		set_pri_clk_src(id, temp_s->pri_src_sel);
+		set_sec_clk_src(sc, SEC_SRC_SEL_QSB);
+		set_pri_clk_src(sc, PRI_SRC_SEL_SEC_SRC);
 	}
-	hfpll_init(id, tgt_s);
+	hfpll_init(sc, tgt_s);
 
 	/*
 	 * Set PRI_SRC_SEL_HFPLL_DIV2 divider to div-2 and disable
 	 * auto-gating of secondary clock source.
 	 */
-	regval = readl_cp15_l2ind(l2cpmr_iaddr[id]);
+	regval = readl_cp15_l2ind(sc->l2cpmr_iaddr);
 	regval &= ~(0x3 << 6);
 	regval |= BIT(4);
-	writel_cp15_l2ind(regval, l2cpmr_iaddr[id]);
+	writel_cp15_l2ind(regval, sc->l2cpmr_iaddr);
 
 	/* Select PLL8 as AUX source input to the secondary MUX. */
-	writel_relaxed(0x3, aux_clk_sel[id]);
+	writel_relaxed(0x3, sc->aux_clk_sel);
 
-	set_pri_clk_src(id, tgt_s->pri_src_sel);
-	drv_state.current_speed[id] = tgt_s;
+	set_pri_clk_src(sc, tgt_s->pri_src_sel);
+	sc->current_speed = tgt_s;
 }
 
 /* Perform CPU0-specific setup. */
 int __init msm_acpu_clock_early_init(void)
 {
-	BUG_ON(smp_processor_id() != 0);
-	init_clock_sources(L2);
-	init_clock_sources(CPU0);
+	init_clock_sources(&scalable[L2],   &l2_freq_tbl[L2_BOOT_IDX].speed);
+	init_clock_sources(&scalable[CPU0], &acpu_freq_tbl[CPU_BOOT_IDX].speed);
 
 	return 0;
 }
@@ -842,11 +803,10 @@ void __cpuinit acpuclock_secondary_init(void)
 {
 	static bool warm_boot;
 
-	BUG_ON(smp_processor_id() == 0);
 	if (warm_boot)
 		return;
 
-	init_clock_sources(CPU1);
+	init_clock_sources(&scalable[CPU1], &acpu_freq_tbl[CPU_BOOT_IDX].speed);
 
 	/* Secondary CPU has booted, don't repeat for subsequent warm boots. */
 	warm_boot = true;
@@ -857,7 +817,7 @@ static void __init bus_init(void)
 {
 	bus_perf_client = msm_bus_scale_register_client(&bus_client_pdata);
 	if (!bus_perf_client) {
-		pr_err("%s: unable to register bus client\n", __func__);
+		pr_err("unable to register bus client\n");
 		BUG();
 	}
 }
@@ -898,7 +858,6 @@ static void __init cpufreq_table_init(void)
 static void __init cpufreq_table_init(void) {}
 #endif
 
-
 #define HOT_UNPLUG_KHZ STBY_KHZ
 static int __cpuinit acpuclock_cpu_callback(struct notifier_block *nfb,
 					    unsigned long action, void *hcpu)
@@ -931,9 +890,7 @@ static struct notifier_block __cpuinitdata acpuclock_cpu_notifier = {
 
 void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 {
-	mutex_init(&drv_state.lock);
-	drv_state.acpu_switch_time_us = clkdata->acpu_switch_time_us;
-	drv_state.vdd_switch_time_us = clkdata->vdd_switch_time_us;
+	mutex_init(&driver_lock);
 	regulator_init();
 	bus_init();
 	cpufreq_table_init();
