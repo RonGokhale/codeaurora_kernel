@@ -67,7 +67,7 @@ static int msm_isp_enqueue(struct msm_cam_media_controller *pmctl,
 		/* 0 - msg from aDSP, 1 - event from mARM */
 		isp_event->isp_data.isp_msg.type   = data->evt_msg.type;
 		isp_event->isp_data.isp_msg.msg_id = data->evt_msg.msg_id;
-		isp_event->isp_data.isp_msg.len	= data->evt_msg.len;
+		isp_event->isp_data.isp_msg.len	= 0;
 
 		D("%s: qtype %d length %d msd_id %d\n", __func__,
 					qtype,
@@ -87,17 +87,30 @@ static int msm_isp_enqueue(struct msm_cam_media_controller *pmctl,
 								__func__);
 				isp_event->isp_data.isp_msg.len = 0;
 			} else {
-				memcpy((void *)isp_event->isp_data.isp_msg.data,
-						&stats,
-						sizeof(struct msm_stats_buf));
-				isp_event->isp_data.isp_msg.len =
+				struct msm_stats_buf *stats_buf =
+					kmalloc(sizeof(struct msm_stats_buf),
+								GFP_ATOMIC);
+				if (!stats_buf) {
+					pr_err("%s: out of memory.\n",
+								__func__);
+					return -ENOMEM;
+				}
+
+				*stats_buf = stats;
+				isp_event->isp_data.isp_msg.len	=
 						sizeof(struct msm_stats_buf);
+				isp_event->isp_data.isp_msg.data = stats_buf;
 			}
 
 		} else if ((data->evt_msg.len > 0) &&
-			(data->evt_msg.len <= 48) && /* only 48 bytes */
-			(data->type == VFE_MSG_GENERAL)) {
-			memcpy((void *)isp_event->isp_data.isp_msg.data,
+				(data->type == VFE_MSG_GENERAL)) {
+			isp_event->isp_data.isp_msg.data =
+					kmalloc(data->evt_msg.len, GFP_ATOMIC);
+			if (!isp_event->isp_data.isp_msg.data) {
+				pr_err("%s: out of memory.\n", __func__);
+				return -ENOMEM;
+			}
+			memcpy(isp_event->isp_data.isp_msg.data,
 						data->evt_msg.data,
 						data->evt_msg.len);
 		} else if (data->type == VFE_MSG_OUTPUT_P ||

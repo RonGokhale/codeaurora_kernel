@@ -1330,15 +1330,15 @@ static long msm_ioctl_server(struct file *fp, unsigned int cmd,
 
 		k_isp_event = (struct msm_isp_stats_event_ctrl *)ev.u.data;
 		if (ev.type == V4L2_EVENT_PRIVATE_START+MSM_CAM_RESP_V4L2 &&
-			u_isp_event->isp_data.ctrl.length > 0) {
+				k_isp_event->isp_data.ctrl.length > 0) {
 			void *k_ctrl_value = k_isp_event->isp_data.ctrl.value;
 			if (copy_to_user(u_ctrl_value, k_ctrl_value,
 				u_isp_event->isp_data.ctrl.length)) {
 				rc = -EINVAL;
 				break;
 			}
-			k_isp_event->isp_data.ctrl.value = u_ctrl_value;
 		}
+		k_isp_event->isp_data.ctrl.value = u_ctrl_value;
 
 		if (copy_to_user((void __user *)arg, &ev,
 				sizeof(struct v4l2_event))) {
@@ -1446,7 +1446,7 @@ static long msm_ioctl_config(struct file *fp, unsigned int cmd,
 		break;
 
 	case VIDIOC_DQEVENT: {
-		void __user *u_ctrl_value = NULL;
+		void __user *u_msg_value = NULL;
 		struct msm_isp_stats_event_ctrl *u_isp_event;
 		struct msm_isp_stats_event_ctrl *k_isp_event;
 
@@ -1456,7 +1456,7 @@ static long msm_ioctl_config(struct file *fp, unsigned int cmd,
 				sizeof(struct v4l2_event)))
 			break;
 		u_isp_event = (struct msm_isp_stats_event_ctrl *)ev.u.data;
-		u_ctrl_value = u_isp_event->isp_data.ctrl.value;
+		u_msg_value = u_isp_event->isp_data.isp_msg.data;
 
 		rc = v4l2_event_dequeue(
 		&config_cam->config_stat_event_queue.eventHandle,
@@ -1467,16 +1467,18 @@ static long msm_ioctl_config(struct file *fp, unsigned int cmd,
 		}
 
 		k_isp_event = (struct msm_isp_stats_event_ctrl *)ev.u.data;
-		if (ev.type == V4L2_EVENT_PRIVATE_START+MSM_CAM_RESP_V4L2 &&
-			u_isp_event->isp_data.ctrl.length > 0) {
-			void *k_ctrl_value = k_isp_event->isp_data.ctrl.value;
-			if (copy_to_user(u_ctrl_value, k_ctrl_value,
-				u_isp_event->isp_data.ctrl.length)) {
+		if (ev.type ==
+			V4L2_EVENT_PRIVATE_START+MSM_CAM_RESP_STAT_EVT_MSG &&
+			k_isp_event->isp_data.isp_msg.len > 0) {
+			void *k_msg_value = k_isp_event->isp_data.isp_msg.data;
+			if (copy_to_user(u_msg_value, k_msg_value,
+				k_isp_event->isp_data.isp_msg.len)) {
 				rc = -EINVAL;
 				break;
 			}
-			k_isp_event->isp_data.ctrl.value = u_ctrl_value;
+			kfree(k_msg_value);
 		}
+		k_isp_event->isp_data.isp_msg.data = u_msg_value;
 
 		if (copy_to_user((void __user *)arg, &ev,
 				sizeof(struct v4l2_event))) {
