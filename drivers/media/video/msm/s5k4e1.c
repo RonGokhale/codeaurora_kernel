@@ -18,10 +18,10 @@
 #include <linux/miscdevice.h>
 #include <linux/slab.h>
 #include <linux/gpio.h>
+#include <linux/bitops.h>
 #include <mach/camera.h>
 #include <media/msm_camera.h>
 #include "s5k4e1.h"
-
 
 /* 16bit address - 8 bit context register structure */
 #define Q8	0x00000100
@@ -42,6 +42,8 @@
 #define S5K4E1_REG_SNAP_FRAME_LEN_2	16
 #define  S5K4E1_REG_SNAP_LINE_LEN_1	17
 #define S5K4E1_REG_SNAP_LINE_LEN_2	18
+#define MSB                             1
+#define LSB                             0
 
 struct s5k4e1_work_t {
 	struct work_struct work;
@@ -316,7 +318,58 @@ static int32_t s5k4e1_set_fps(struct fps_cfg   *fps)
 	return rc;
 }
 
+static inline uint8_t s5k4e1_byte(uint16_t word, uint8_t offset)
+{
+	return word >> (offset * BITS_PER_BYTE);
+}
+
 static int32_t s5k4e1_write_exp_gain(uint16_t gain, uint32_t line)
+{
+	uint16_t max_legal_gain = 0x0200;
+	int32_t rc = 0;
+	static uint32_t fl_lines;
+
+	if (gain > max_legal_gain) {
+		pr_debug("Max legal gain Line:%d\n", __LINE__);
+		gain = max_legal_gain;
+	}
+	/* Analogue Gain */
+	s5k4e1_i2c_write_b_sensor(0x0204, s5k4e1_byte(gain, MSB));
+	s5k4e1_i2c_write_b_sensor(0x0205, s5k4e1_byte(gain, LSB));
+
+	if (line > (prev_frame_length_lines - 4)) {
+		fl_lines = line+4;
+		s5k4e1_group_hold_on();
+		s5k4e1_i2c_write_b_sensor(0x0340, s5k4e1_byte(fl_lines, MSB));
+		s5k4e1_i2c_write_b_sensor(0x0341, s5k4e1_byte(fl_lines, LSB));
+		/* Coarse Integration Time */
+		s5k4e1_i2c_write_b_sensor(0x0202, s5k4e1_byte(line, MSB));
+		s5k4e1_i2c_write_b_sensor(0x0203, s5k4e1_byte(line, LSB));
+		s5k4e1_group_hold_off();
+	} else if (line < (fl_lines - 4)) {
+		fl_lines = line+4;
+		if (fl_lines < prev_frame_length_lines)
+			fl_lines = prev_frame_length_lines;
+
+		s5k4e1_group_hold_on();
+		/* Coarse Integration Time */
+		s5k4e1_i2c_write_b_sensor(0x0202, s5k4e1_byte(line, MSB));
+		s5k4e1_i2c_write_b_sensor(0x0203, s5k4e1_byte(line, LSB));
+		s5k4e1_i2c_write_b_sensor(0x0340, s5k4e1_byte(fl_lines, MSB));
+		s5k4e1_i2c_write_b_sensor(0x0341, s5k4e1_byte(fl_lines, LSB));
+		s5k4e1_group_hold_off();
+	} else {
+		fl_lines = line+4;
+		s5k4e1_group_hold_on();
+		/* Coarse Integration Time */
+		s5k4e1_i2c_write_b_sensor(0x0202, s5k4e1_byte(line, MSB));
+		s5k4e1_i2c_write_b_sensor(0x0203, s5k4e1_byte(line, LSB));
+		s5k4e1_group_hold_off();
+	}
+	return rc;
+}
+
+static int32_t s5k4e1_set_pict_exp_gain(uint16_t gain, uint32_t line)
 {
 	uint16_t max_legal_gain = 0x0200;
 	uint16_t min_ll_pck = 0x0AB2;
@@ -333,18 +386,12 @@ static int32_t s5k4e1_write_exp_gain(uint16_t gain, uint32_t line)
 	}
 
 	pr_debug("s5k4e1_write_exp_gain : gain = %d line = %d\n", gain, line);
-	if (s5k4e1_ctrl->sensormode == SENSOR_PREVIEW_MODE) {
-		line = (uint32_t) (line * s5k4e1_ctrl->fps_divider);
-		fl_lines = prev_frame_length_lines;
-		ll_pck = prev_line_length_pck;
-	} else {
-		line = (uint32_t) (line * s5k4e1_ctrl->pict_fps_divider);
-		fl_lines = snap_frame_length_lines;
-		ll_pck = snap_line_length_pck;
-	}
+	line = (uint32_t) (line * s5k4e1_ctrl->pict_fps_divider);
+	fl_lines = snap_frame_length_lines;
+	ll_pck = snap_line_length_pck;
 
 	if (fl_lines < (line / 0x400))
-		ll_ratio = (line / (fl_lines - 8));
+		ll_ratio = (line / (fl_lines - 4));
 	else
 		ll_ratio = 0x400;
 
@@ -363,7 +410,6 @@ static int32_t s5k4e1_write_exp_gain(uint16_t gain, uint32_t line)
 	ll_pck_lsb = (uint8_t) (ll_pck & 0x00FF);
 
 	s5k4e1_group_hold_on();
-
 	s5k4e1_i2c_write_b_sensor(0x0204, gain_msb); /* Analogue Gain */
 	s5k4e1_i2c_write_b_sensor(0x0205, gain_lsb);
 
@@ -375,14 +421,6 @@ static int32_t s5k4e1_write_exp_gain(uint16_t gain, uint32_t line)
 	s5k4e1_i2c_write_b_sensor(0x0203, intg_time_lsb);
 	s5k4e1_group_hold_off();
 
-	return rc;
-}
-
-static int32_t s5k4e1_set_pict_exp_gain(uint16_t gain, uint32_t line)
-{
-	int32_t rc = 0;
-
-	rc = s5k4e1_write_exp_gain(gain, line);
 	return rc;
 }
 
