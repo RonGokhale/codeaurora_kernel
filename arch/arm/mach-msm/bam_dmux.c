@@ -148,7 +148,8 @@ static DEFINE_MUTEX(bam_mux_lock);
 static DECLARE_WORK(work_bam_write_done, bam_mux_write_done);
 static DECLARE_WORK(work_free_tx_descriptor, free_tx_descriptor);
 
-static struct workqueue_struct *bam_mux_workqueue;
+static struct workqueue_struct *bam_mux_rx_workqueue;
+static struct workqueue_struct *bam_mux_tx_workqueue;
 
 #define bam_ch_is_open(x)						\
 	(bam_ch[(x)].status == (BAM_CH_LOCAL_OPEN | BAM_CH_REMOTE_OPEN))
@@ -511,13 +512,14 @@ static void bam_mux_tx_notify(struct sps_event_notify *notify)
 						pkt->skb->len,
 						DMA_TO_DEVICE);
 			__skb_queue_tail(&bam_mux_write_done_pool, pkt->skb);
-			queue_work(bam_mux_workqueue, &work_bam_write_done);
+			queue_work(bam_mux_tx_workqueue, &work_bam_write_done);
 		} else {
 			dma_unmap_single(NULL, pkt->dma_address,
 						pkt->len,
 						DMA_TO_DEVICE);
 			kfree(pkt->skb);
-			queue_work(bam_mux_workqueue, &work_free_tx_descriptor);
+			queue_work(bam_mux_tx_workqueue,
+					&work_free_tx_descriptor);
 		}
 		kfree(pkt);
 		break;
@@ -539,7 +541,7 @@ static void bam_mux_rx_notify(struct sps_event_notify *notify)
 	case SPS_EVENT_EOT:
 		dma_unmap_single(NULL, info->dma_address,
 				BUFFER_SIZE, DMA_FROM_DEVICE);
-		queue_work(bam_mux_workqueue, &info->work);
+		queue_work(bam_mux_rx_workqueue, &info->work);
 		break;
 	default:
 		pr_err("%s: recieved unexpected event id %d\n", __func__,
@@ -756,9 +758,15 @@ static int bam_dmux_probe(struct platform_device *pdev)
 	if (bam_mux_initialized)
 		return 0;
 
-	bam_mux_workqueue = create_singlethread_workqueue("bam_dmux");
-	if (!bam_mux_workqueue)
+	bam_mux_rx_workqueue = create_singlethread_workqueue("bam_dmux_rx");
+	if (!bam_mux_rx_workqueue)
 		return -ENOMEM;
+
+	bam_mux_tx_workqueue = create_singlethread_workqueue("bam_dmux_tx");
+	if (!bam_mux_tx_workqueue) {
+		destroy_workqueue(bam_mux_rx_workqueue);
+		return -ENOMEM;
+	}
 
 	skb_queue_head_init(&bam_mux_write_done_pool);
 	spin_lock_init(&bam_mux_write_lock);
