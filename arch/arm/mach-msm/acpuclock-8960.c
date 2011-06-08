@@ -19,12 +19,14 @@
 #include <linux/errno.h>
 #include <linux/cpufreq.h>
 #include <linux/cpu.h>
+#include <linux/regulator/consumer.h>
 #include <asm/mach-types.h>
 
 #include <asm/cpu.h>
 
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
+#include <mach/rpm-regulator.h>
 
 #include "acpuclock.h"
 
@@ -60,11 +62,56 @@
 
 #define STBY_KHZ		1
 
+#define HFPLL_NOMINAL_VDD	1050000
+#define HFPLL_LOW_VDD		1050000
+#define HFPLL_LOW_VDD_PLL_L_MAX	0x28
+
 enum scalables {
 	CPU0 = 0,
 	CPU1,
 	L2,
 	NUM_SCALABLES
+};
+
+enum vregs {
+	VREG_CPU0_CORE,
+	VREG_CPU1_CORE,
+	VREG_CPU0_MEM,
+	VREG_CPU1_MEM,
+	VREG_CPU0_DIG,
+	VREG_CPU1_DIG,
+	NUM_VREG
+};
+
+struct vreg {
+	const char name[15];
+	const unsigned int max_vdd;
+	const int rpm_vreg_voter;
+	const int rpm_vreg_id;
+	struct regulator *reg;
+	unsigned int cur_vdd;
+};
+
+static struct vreg regulators[] = {
+	[VREG_CPU0_CORE] = { "krait0",     1150000 },
+	[VREG_CPU1_CORE] = { "krait1",     1150000 },
+	[VREG_CPU0_MEM]  = { "krait0_mem", 1150000,
+			     RPM_VREG_VOTER1, RPM_VREG_ID_PM8921_L24 },
+	[VREG_CPU1_MEM]  = { "krait1_mem", 1150000,
+			     RPM_VREG_VOTER2, RPM_VREG_ID_PM8921_L24 },
+	[VREG_CPU0_DIG]  = { "krait0_dig", 1150000,
+			     RPM_VREG_VOTER1, RPM_VREG_ID_PM8921_S3 },
+	[VREG_CPU1_DIG]  = { "krait1_dig", 1150000,
+			     RPM_VREG_VOTER2, RPM_VREG_ID_PM8921_S3 },
+};
+
+static struct vreg_id {
+	enum vregs core;
+	enum vregs mem;
+	enum vregs dig;
+} vreg_ids[] = {
+	[CPU0] = {VREG_CPU0_CORE, VREG_CPU0_MEM, VREG_CPU0_DIG},
+	[CPU1] = {VREG_CPU1_CORE, VREG_CPU1_MEM, VREG_CPU1_DIG},
 };
 
 static const void * __iomem const hf_pll_base[] = {
@@ -95,12 +142,15 @@ struct core_speed {
 
 struct l2_level {
 	struct core_speed	speed;
+	unsigned int		vdd_dig;
+	unsigned int		vdd_mem;
 };
 
 struct acpu_level {
 	unsigned int		use_for_scaling;
 	struct core_speed	speed;
 	struct l2_level		*l2_level;
+	unsigned int		vdd_core;
 };
 
 static struct clock_state {
@@ -111,47 +161,49 @@ static struct clock_state {
 	uint32_t		vdd_switch_time_us;
 } drv_state;
 
+/* TODO: Update vdd_dig and vdd_mem when voltage data is available. */
 #define L2(x) (&l2_freq_tbl[(x)])
 static struct l2_level l2_freq_tbl[] = {
-	[0]  = { {STBY_KHZ, QSB,   0, 0, 0x00 } },
-	[1]  = { {  384000, PLL_8, 0, 2, 0x00 } },
-	[2]  = { {  432000, HFPLL, 2, 0, 0x20 } },
-	[3]  = { {  486000, HFPLL, 2, 0, 0x24 } },
-	[4]  = { {  594000, HFPLL, 1, 0, 0x16 } },
-	[5]  = { {  648000, HFPLL, 1, 0, 0x18 } },
-	[6]  = { {  702000, HFPLL, 1, 0, 0x1A } },
-	[7]  = { {  756000, HFPLL, 1, 0, 0x1C } },
-	[8]  = { {  810000, HFPLL, 1, 0, 0x1E } },
-	[9]  = { {  864000, HFPLL, 1, 0, 0x20 } },
-	[10] = { {  918000, HFPLL, 1, 0, 0x22 } },
-	[11] = { {  972000, HFPLL, 1, 0, 0x24 } },
-	[12] = { { 1026000, HFPLL, 1, 0, 0x26 } },
-	[13] = { { 1080000, HFPLL, 1, 0, 0x28 } },
-	[14] = { { 1134000, HFPLL, 1, 0, 0x2A } },
-	[15] = { { 1188000, HFPLL, 1, 0, 0x2C } },
-	[16] = { { 1242000, HFPLL, 1, 0, 0x2E } },
-	[17] = { { 1296000, HFPLL, 1, 0, 0x30 } },
-	[18] = { { 1350000, HFPLL, 1, 0, 0x32 } },
-	[19] = { { 1404000, HFPLL, 1, 0, 0x34 } },
-	[20] = { { 1458000, HFPLL, 1, 0, 0x36 } },
-	[21] = { { 1512000, HFPLL, 1, 0, 0x38 } },
-	[22] = { { 1566000, HFPLL, 1, 0, 0x3A } },
-	[23] = { { 1620000, HFPLL, 1, 0, 0x3C } },
-	[24] = { { 1674000, HFPLL, 1, 0, 0x3E } },
+	[0]  = { {STBY_KHZ, QSB,   0, 0, 0x00 }, 1050000, 1050000 },
+	[1]  = { {  384000, PLL_8, 0, 2, 0x00 }, 1050000, 1050000 },
+	[2]  = { {  432000, HFPLL, 2, 0, 0x20 }, 1050000, 1050000 },
+	[3]  = { {  486000, HFPLL, 2, 0, 0x24 }, 1050000, 1050000 },
+	[4]  = { {  594000, HFPLL, 1, 0, 0x16 }, 1050000, 1050000 },
+	[5]  = { {  648000, HFPLL, 1, 0, 0x18 }, 1050000, 1050000 },
+	[6]  = { {  702000, HFPLL, 1, 0, 0x1A }, 1050000, 1050000 },
+	[7]  = { {  756000, HFPLL, 1, 0, 0x1C }, 1150000, 1150000 },
+	[8]  = { {  810000, HFPLL, 1, 0, 0x1E }, 1150000, 1150000 },
+	[9]  = { {  864000, HFPLL, 1, 0, 0x20 }, 1150000, 1150000 },
+	[10] = { {  918000, HFPLL, 1, 0, 0x22 }, 1150000, 1150000 },
+	[11] = { {  972000, HFPLL, 1, 0, 0x24 }, 1150000, 1150000 },
+	[12] = { { 1026000, HFPLL, 1, 0, 0x26 }, 1150000, 1150000 },
+	[13] = { { 1080000, HFPLL, 1, 0, 0x28 }, 1150000, 1150000 },
+	[14] = { { 1134000, HFPLL, 1, 0, 0x2A }, 1150000, 1150000 },
+	[15] = { { 1188000, HFPLL, 1, 0, 0x2C }, 1150000, 1150000 },
+	[16] = { { 1242000, HFPLL, 1, 0, 0x2E }, 1150000, 1150000 },
+	[17] = { { 1296000, HFPLL, 1, 0, 0x30 }, 1150000, 1150000 },
+	[18] = { { 1350000, HFPLL, 1, 0, 0x32 }, 1150000, 1150000 },
+	[19] = { { 1404000, HFPLL, 1, 0, 0x34 }, 1150000, 1150000 },
+	[20] = { { 1458000, HFPLL, 1, 0, 0x36 }, 1150000, 1150000 },
+	[21] = { { 1512000, HFPLL, 1, 0, 0x38 }, 1150000, 1150000 },
+	[22] = { { 1566000, HFPLL, 1, 0, 0x3A }, 1150000, 1150000 },
+	[23] = { { 1620000, HFPLL, 1, 0, 0x3C }, 1150000, 1150000 },
+	[24] = { { 1674000, HFPLL, 1, 0, 0x3E }, 1150000, 1150000 },
 };
 
+/* TODO: Update core voltages when data is available. */
 static struct acpu_level acpu_freq_tbl[] = {
-	{ 0, {STBY_KHZ, QSB,   0, 0, 0x00 }, L2(1)  },
-	{ 1, {  384000, PLL_8, 0, 2, 0x00 }, L2(1)  },
-	{ 1, {  432000, HFPLL, 2, 0, 0x20 }, L2(2)  },
-	{ 1, {  486000, HFPLL, 2, 0, 0x24 }, L2(3)  },
-	{ 1, {  594000, HFPLL, 1, 0, 0x16 }, L2(4)  },
-	{ 1, {  648000, HFPLL, 1, 0, 0x18 }, L2(5)  },
-	{ 1, {  702000, HFPLL, 1, 0, 0x1A }, L2(6)  },
-	{ 1, {  756000, HFPLL, 1, 0, 0x1C }, L2(7)  },
-	{ 1, {  810000, HFPLL, 1, 0, 0x1E }, L2(8)  },
-	{ 1, {  864000, HFPLL, 1, 0, 0x20 }, L2(9)  },
-	{ 1, {  918000, HFPLL, 1, 0, 0x22 }, L2(10) },
+	{ 0, {STBY_KHZ, QSB,   0, 0, 0x00 }, L2(1),  1050000 },
+	{ 1, {  384000, PLL_8, 0, 2, 0x00 }, L2(1),  1050000 },
+	{ 1, {  432000, HFPLL, 2, 0, 0x20 }, L2(2),  1050000 },
+	{ 1, {  486000, HFPLL, 2, 0, 0x24 }, L2(3),  1050000 },
+	{ 1, {  594000, HFPLL, 1, 0, 0x16 }, L2(4),  1050000 },
+	{ 1, {  648000, HFPLL, 1, 0, 0x18 }, L2(5),  1050000 },
+	{ 1, {  702000, HFPLL, 1, 0, 0x1A }, L2(6),  1050000 },
+	{ 1, {  756000, HFPLL, 1, 0, 0x1C }, L2(7),  1150000 },
+	{ 1, {  810000, HFPLL, 1, 0, 0x1E }, L2(8),  1150000 },
+	{ 1, {  864000, HFPLL, 1, 0, 0x20 }, L2(9),  1150000 },
+	{ 1, {  918000, HFPLL, 1, 0, 0x22 }, L2(10), 1150000 },
 	{ 0, { 0 } }
 };
 
@@ -341,6 +393,10 @@ static void set_speed(enum scalables id, struct core_speed *tgt_s,
 
 	if (strt_s->src == HFPLL && tgt_s->src == HFPLL) {
 		/* Move CPU to QSB source. */
+		/*
+		 * TODO: If using QSB here requires elevating voltages,
+		 * consider using PLL8 instead.
+		 */
 		set_sec_clk_src(id, SEC_SRC_SEL_QSB);
 		set_pri_clk_src(id, PRI_SRC_SEL_SEC_SRC);
 
@@ -389,11 +445,154 @@ static void set_speed(enum scalables id, struct core_speed *tgt_s,
 	drv_state.current_speed[id] = tgt_s;
 }
 
+/* Apply any per-cpu voltage increases. */
+static int increase_vdd(int cpu, unsigned int vdd_core, unsigned int vdd_mem,
+			unsigned int vdd_dig, enum setrate_reason reason)
+{
+	int rc;
+
+	/*
+	 * Increase vdd_mem active-set before vdd_dig and vdd_core.
+	 * vdd_mem should be >= both vdd_core and vdd_dig.
+	 */
+	if (vdd_mem > regulators[vreg_ids[cpu].mem].cur_vdd) {
+		rc = rpm_vreg_set_voltage(
+			regulators[vreg_ids[cpu].mem].rpm_vreg_id,
+			regulators[vreg_ids[cpu].mem].rpm_vreg_voter, vdd_mem,
+			regulators[vreg_ids[cpu].mem].max_vdd, 0);
+		if (rc) {
+			pr_err("%s: vdd_mem (cpu%d) increase failed (%d)\n",
+				__func__, cpu, rc);
+			return rc;
+		}
+		regulators[vreg_ids[cpu].mem].cur_vdd = vdd_mem;
+	}
+
+	/* Increase vdd_dig active-set vote. */
+	if (vdd_dig > regulators[vreg_ids[cpu].dig].cur_vdd) {
+		rc = rpm_vreg_set_voltage(
+			regulators[vreg_ids[cpu].dig].rpm_vreg_id,
+			regulators[vreg_ids[cpu].dig].rpm_vreg_voter, vdd_dig,
+			regulators[vreg_ids[cpu].dig].max_vdd, 0);
+		if (rc) {
+			pr_err("%s: vdd_dig (cpu%d) increase failed (%d)\n",
+				__func__, cpu, rc);
+			return rc;
+		}
+		regulators[vreg_ids[cpu].dig].cur_vdd = vdd_dig;
+	}
+
+	/*
+	 * Update per-CPU core voltage. Don't do this for the hotplug path for
+	 * which it should already be correct. Attempting to set it is bad
+	 * because we don't know what CPU we are running on at this point, but
+	 * the CPU regulator API requires we call it from the affected CPU.
+	 */
+	if (vdd_core > regulators[vreg_ids[cpu].core].cur_vdd
+						&& reason != SETRATE_HOTPLUG) {
+		rc = regulator_set_voltage(regulators[vreg_ids[cpu].core].reg,
+			      vdd_core, regulators[vreg_ids[cpu].core].max_vdd);
+		if (rc) {
+			pr_err("%s: vdd_core (cpu%d) increase failed (%d)\n",
+				__func__, cpu, rc);
+			return rc;
+		}
+		regulators[vreg_ids[cpu].core].cur_vdd = vdd_core;
+	}
+
+	return rc;
+}
+
+/* Apply any per-cpu voltage decreases. */
+static void decrease_vdd(int cpu, unsigned int vdd_core, unsigned int vdd_mem,
+			 unsigned int vdd_dig, enum setrate_reason reason)
+{
+	int ret;
+
+	/*
+	 * Update per-CPU core voltage. This must be called on the CPU
+	 * that's being affected. Don't do this in the hotplug remove path,
+	 * where the rail is off and we're executing on the other CPU.
+	 */
+	if (vdd_core < regulators[vreg_ids[cpu].core].cur_vdd
+					&& reason != SETRATE_HOTPLUG) {
+		ret = regulator_set_voltage(regulators[vreg_ids[cpu].core].reg,
+			      vdd_core, regulators[vreg_ids[cpu].core].max_vdd);
+		if (ret) {
+			pr_err("%s: vdd_core (cpu%d) decrease failed (%d)\n",
+			       __func__, cpu, ret);
+			return;
+		}
+		regulators[vreg_ids[cpu].core].cur_vdd = vdd_core;
+	}
+
+	/* Decrease vdd_dig active-set vote. */
+	if (vdd_dig < regulators[vreg_ids[cpu].dig].cur_vdd) {
+		ret = rpm_vreg_set_voltage(
+			regulators[vreg_ids[cpu].dig].rpm_vreg_id,
+			regulators[vreg_ids[cpu].dig].rpm_vreg_voter, vdd_dig,
+			regulators[vreg_ids[cpu].dig].max_vdd, 0);
+		if (ret) {
+			pr_err("%s: vdd_dig (cpu%d) decrease failed (%d)\n",
+				__func__, cpu, ret);
+			return;
+		}
+		regulators[vreg_ids[cpu].dig].cur_vdd = vdd_dig;
+	}
+
+	/*
+	 * Decrease vdd_mem active-set after vdd_dig and vdd_core.
+	 * vdd_mem should be >= both vdd_core and vdd_dig.
+	 */
+	if (vdd_mem < regulators[vreg_ids[cpu].mem].cur_vdd) {
+		ret = rpm_vreg_set_voltage(
+			regulators[vreg_ids[cpu].mem].rpm_vreg_id,
+			regulators[vreg_ids[cpu].mem].rpm_vreg_voter, vdd_mem,
+			regulators[vreg_ids[cpu].mem].max_vdd, 0);
+		if (ret) {
+			pr_err("%s: vdd_mem (cpu%d) decrease failed (%d)\n",
+				__func__, cpu, ret);
+			return;
+		}
+		regulators[vreg_ids[cpu].mem].cur_vdd = vdd_mem;
+	}
+}
+
+static unsigned int calculate_vdd_mem(struct acpu_level *tgt)
+{
+	return max(tgt->vdd_core, tgt->l2_level->vdd_mem);
+}
+
+static unsigned int calculate_vdd_dig(struct acpu_level *tgt)
+{
+	unsigned int pll_vdd_dig;
+
+	if (tgt->l2_level->speed.pll_l_val > HFPLL_LOW_VDD_PLL_L_MAX)
+		pll_vdd_dig = HFPLL_NOMINAL_VDD;
+	else
+		pll_vdd_dig = HFPLL_LOW_VDD;
+
+	return max(tgt->l2_level->vdd_dig, pll_vdd_dig);
+}
+
+static unsigned int calculate_vdd_core(struct acpu_level *tgt)
+{
+	unsigned int pll_vdd_core;
+
+	if (tgt->speed.pll_l_val > HFPLL_LOW_VDD_PLL_L_MAX)
+		pll_vdd_core = HFPLL_NOMINAL_VDD;
+	else
+		pll_vdd_core = HFPLL_LOW_VDD;
+
+	return max(tgt->vdd_core, pll_vdd_core);
+}
+
 /* Set the CPU's clock rate and adjust the L2 rate, if appropriate. */
 int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 {
 	struct core_speed *strt_acpu_s, *tgt_acpu_s, *tgt_l2_s;
 	struct acpu_level *tgt;
+	unsigned int vdd_mem, vdd_dig, vdd_core;
 	unsigned long flags;
 	int rc = 0;
 
@@ -425,6 +624,19 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 		goto out;
 	}
 
+	/* Calculate voltage requirements for the current CPU. */
+	vdd_mem  = calculate_vdd_mem(tgt);
+	vdd_dig  = calculate_vdd_dig(tgt);
+	vdd_core = calculate_vdd_core(tgt);
+
+	/* Increase VDD levels if needed. */
+	if ((reason == SETRATE_CPUFREQ || reason == SETRATE_HOTPLUG
+	  || reason == SETRATE_INIT)) {
+		rc = increase_vdd(cpu, vdd_core, vdd_mem, vdd_dig, reason);
+		if (rc)
+			goto out;
+	}
+
 	dprintk("Switching from ACPU%d rate %u KHz -> %u KHz\n",
 		cpu, strt_acpu_s->khz, tgt_acpu_s->khz);
 
@@ -440,6 +652,9 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 	/* Nothing else to do for power collapse or SWFI. */
 	if (reason == SETRATE_PC || reason == SETRATE_SWFI)
 		goto out;
+
+	/* Drop VDD levels if we can. */
+	decrease_vdd(cpu, vdd_core, vdd_mem, vdd_dig, reason);
 
 	dprintk("ACPU%d speed change complete\n", cpu);
 
@@ -470,6 +685,42 @@ static void __init hfpll_init(enum scalables id, struct core_speed *tgt_s)
 	/* Set an initial rate and enable the PLL. */
 	hfpll_set_rate(id, tgt_s);
 	hfpll_enable(id);
+}
+
+/* Voltage regulator initialization. */
+static void __init regulator_init(void)
+{
+	int reg_id, ret;
+
+	for (reg_id = VREG_CPU0_CORE; reg_id < NUM_VREG; reg_id++) {
+		/*
+		 * Skip RPM-contolled regulators which require no
+		 * initialization.
+		 */
+		if (regulators[reg_id].rpm_vreg_voter)
+			continue;
+
+		regulators[reg_id].reg = regulator_get(NULL,
+				regulators[reg_id].name);
+		if (IS_ERR(regulators[reg_id].reg)) {
+			pr_err("%s: regulator_get(%s) failed (%ld)\n", __func__,
+			       regulators[reg_id].name,
+			       PTR_ERR(regulators[reg_id].reg));
+			BUG();
+		}
+
+		ret = regulator_set_voltage(regulators[reg_id].reg,
+				regulators[reg_id].max_vdd,
+				regulators[reg_id].max_vdd);
+		if (ret)
+			pr_err("%s: regulator_set_voltage(%s) failed (%d)\n",
+			       __func__, regulators[reg_id].name, ret);
+
+		ret = regulator_enable(regulators[reg_id].reg);
+		if (ret)
+			pr_err("%s: regulator_enable(%s) failed (%d)\n",
+			       __func__, regulators[reg_id].name, ret);
+	}
 }
 
 #define INIT_QSB_ID	0
@@ -612,6 +863,7 @@ void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 	mutex_init(&drv_state.lock);
 	drv_state.acpu_switch_time_us = clkdata->acpu_switch_time_us;
 	drv_state.vdd_switch_time_us = clkdata->vdd_switch_time_us;
+	regulator_init();
 	cpufreq_table_init();
 	register_hotcpu_notifier(&acpuclock_cpu_notifier);
 }
