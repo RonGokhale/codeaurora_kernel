@@ -2175,11 +2175,28 @@ static struct msm_camera_sensor_flash_src msm_flash_src = {
 };
 #endif
 
+static struct vreg *vreg_gp1;
 static struct vreg *vreg_gp2;
 static struct vreg *vreg_gp3;
 static void msm_camera_vreg_config(int vreg_en)
 {
 	int rc;
+
+	if (vreg_gp1 == NULL) {
+		vreg_gp1 = vreg_get(NULL, "msme1");
+		if (IS_ERR(vreg_gp1)) {
+			pr_err("%s: vreg_get(%s) failed (%ld)\n",
+				__func__, "msme1", PTR_ERR(vreg_gp1));
+			return;
+		}
+
+		rc = vreg_set_level(vreg_gp1, 1800);
+		if (rc) {
+			pr_err("%s: GP1 set_level failed (%d)\n",
+				__func__, rc);
+			return;
+		}
+	}
 
 	if (vreg_gp2 == NULL) {
 		vreg_gp2 = vreg_get(NULL, "gp2");
@@ -2212,6 +2229,13 @@ static void msm_camera_vreg_config(int vreg_en)
 	}
 
 	if (vreg_en) {
+		rc = vreg_enable(vreg_gp1);
+		if (rc) {
+			pr_err("%s: GP1 enable failed (%d)\n",
+				__func__, rc);
+			return;
+		}
+
 		rc = vreg_enable(vreg_gp2);
 		if (rc) {
 			pr_err("%s: GP2 enable failed (%d)\n",
@@ -2224,6 +2248,11 @@ static void msm_camera_vreg_config(int vreg_en)
 				__func__, rc);
 		}
 	} else {
+		rc = vreg_disable(vreg_gp1);
+		if (rc)
+			pr_err("%s: GP1 disable failed (%d)\n",
+				__func__, rc);
+
 		rc = vreg_disable(vreg_gp2);
 		if (rc) {
 			pr_err("%s: GP2 disable failed (%d)\n",
