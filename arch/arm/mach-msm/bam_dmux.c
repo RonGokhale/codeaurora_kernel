@@ -125,8 +125,6 @@ static struct sps_mem_buffer rx_desc_mem_buf;
 static struct sps_register_event tx_register_event;
 static struct sps_register_event rx_register_event;
 
-static spinlock_t bam_mux_write_lock;
-
 static struct bam_ch_info bam_ch[BAM_DMUX_NUM_CHANNELS];
 static int bam_mux_initialized;
 
@@ -341,7 +339,6 @@ int msm_bam_dmux_write(uint32_t id, struct sk_buff *skb)
 	}
 	spin_unlock_irqrestore(&bam_ch[id].lock, flags);
 
-	spin_lock_irqsave(&bam_mux_write_lock, flags);
 	/* if skb do not have any tailroom for padding,
 	   copy the skb into a new expanded skb */
 	if ((skb->len & 0x3) && (skb_tailroom(skb) < (4 - (skb->len & 0x3)))) {
@@ -350,8 +347,7 @@ int msm_bam_dmux_write(uint32_t id, struct sk_buff *skb)
 					  4 - (skb->len & 0x3), GFP_ATOMIC);
 		if (new_skb == NULL) {
 			pr_err("%s: cannot allocate skb\n", __func__);
-			rc = -ENOMEM;
-			goto write_done;
+			return -ENOMEM;
 		}
 		dev_kfree_skb_any(skb);
 		skb = new_skb;
@@ -381,8 +377,7 @@ int msm_bam_dmux_write(uint32_t id, struct sk_buff *skb)
 		pr_err("%s: mem alloc for tx_pkt_info failed\n", __func__);
 		if (new_skb)
 			dev_kfree_skb_any(new_skb);
-		rc = -ENOMEM;
-		goto write_done;
+		return -ENOMEM;
 	}
 
 	dma_address = dma_map_single(NULL, skb->data, skb->len,
@@ -392,20 +387,14 @@ int msm_bam_dmux_write(uint32_t id, struct sk_buff *skb)
 		if (new_skb)
 			dev_kfree_skb_any(new_skb);
 		kfree(pkt);
-		rc = -ENOMEM;
-		goto write_done;
+		return -ENOMEM;
 	}
 	pkt->skb = skb;
 	pkt->dma_address = dma_address;
 	pkt->is_cmd = 0;
 	INIT_WORK(&pkt->work, bam_mux_write_done);
-	spin_unlock_irqrestore(&bam_mux_write_lock, flags);
 	rc = sps_transfer_one(bam_tx_pipe, dma_address, skb->len,
 				pkt, SPS_IOVEC_FLAG_INT | SPS_IOVEC_FLAG_EOT);
-	return rc;
-
-write_done:
-	spin_unlock_irqrestore(&bam_mux_write_lock, flags);
 	return rc;
 }
 
@@ -768,8 +757,6 @@ static int bam_dmux_probe(struct platform_device *pdev)
 		destroy_workqueue(bam_mux_rx_workqueue);
 		return -ENOMEM;
 	}
-
-	spin_lock_init(&bam_mux_write_lock);
 
 	for (rc = 0; rc < BAM_DMUX_NUM_CHANNELS; ++rc)
 		spin_lock_init(&bam_ch[rc].lock);
