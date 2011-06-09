@@ -57,7 +57,7 @@ struct clk_freq_tbl {
 	struct clk	*src_clk;
 	const uint32_t	md_val;
 	const uint32_t	ns_val;
-	const uint32_t	cc_val;
+	const uint32_t	ctl_val;
 	uint32_t	mnd_en_mask;
 	const unsigned	sys_vdd;
 	void		*const extra_freq_data;
@@ -85,7 +85,7 @@ struct bank_masks {
 	.src_clk = sc, \
 	.md_val = m_v, \
 	.ns_val = n_v, \
-	.cc_val = c_v, \
+	.ctl_val = c_v, \
 	.mnd_en_mask = m_m, \
 	.sys_vdd = v, \
 	.extra_freq_data = e, \
@@ -99,8 +99,8 @@ struct bank_masks {
 
 /**
  * struct branch - branch on/off
- * @en_reg: enable register
- * @en_mask: ORed with @en_reg to enable the clock
+ * @ctl_reg: clock control register
+ * @en_mask: ORed with @ctl_reg to enable the clock
  * @halt_reg: halt register
  * @halt_check: type of halt check to perform
  * @halt_bit: ANDed with @halt_reg to test for clock halted
@@ -108,7 +108,7 @@ struct bank_masks {
  * @reset_mask: ORed with @reset_reg to reset the clock domain
  */
 struct branch {
-	void __iomem *const en_reg;
+	void __iomem *const ctl_reg;
 	const u32 en_mask;
 
 	void __iomem *const halt_reg;
@@ -131,7 +131,7 @@ struct rcg_clk {
 
 	const uint32_t	root_en_mask;
 	uint32_t	ns_mask;
-	const uint32_t	cc_mask;
+	const uint32_t	ctl_mask;
 	struct bank_masks *const bank_masks;
 
 	void   (*set_rate)(struct rcg_clk *, struct clk_freq_tbl *);

@@ -298,7 +298,7 @@ static struct clk_freq_tbl clk_tbl_axi[] = {
 /* For global clocks to be on we must have GLBL_ROOT_ENA set */
 static struct rcg_clk glbl_root_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(29),
 		.halt_check = NOCHECK,
 	},
@@ -316,7 +316,7 @@ static struct rcg_clk glbl_root_clk = {
 /* AXI bridge clocks. */
 static struct branch_clk axi_li_apps_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(2),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -332,7 +332,7 @@ static struct branch_clk axi_li_apps_clk = {
 
 static struct branch_clk axi_li_adsp_a_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(14),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -348,7 +348,7 @@ static struct branch_clk axi_li_adsp_a_clk = {
 
 static struct branch_clk axi_li_jpeg_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(19),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -364,7 +364,7 @@ static struct branch_clk axi_li_jpeg_clk = {
 
 static struct branch_clk axi_li_vfe_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(23),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -380,7 +380,7 @@ static struct branch_clk axi_li_vfe_clk = {
 
 static struct branch_clk axi_mdp_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(29),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -396,7 +396,7 @@ static struct branch_clk axi_mdp_clk = {
 
 static struct branch_clk axi_li_vg_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(3),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -412,7 +412,7 @@ static struct branch_clk axi_li_vg_clk = {
 
 static struct branch_clk axi_grp_2d_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(21),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -428,7 +428,7 @@ static struct branch_clk axi_grp_2d_clk = {
 
 static struct branch_clk axi_li_grp_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(22),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -444,7 +444,7 @@ static struct branch_clk axi_li_grp_clk = {
 
 static struct branch_clk axi_mfc_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(20),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -460,7 +460,7 @@ static struct branch_clk axi_mfc_clk = {
 
 static struct branch_clk axi_rotator_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(22),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -477,7 +477,7 @@ static struct branch_clk axi_rotator_clk = {
 
 static struct branch_clk axi_vpe_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(21),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -494,7 +494,7 @@ static struct branch_clk axi_vpe_clk = {
 /* Peripheral bus clocks. */
 static struct branch_clk adm_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(5),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -511,7 +511,7 @@ static struct branch_clk adm_clk = {
 
 static struct branch_clk adm_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(15),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -527,7 +527,7 @@ static struct branch_clk adm_p_clk = {
 
 static struct branch_clk ce_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(6),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -544,7 +544,7 @@ static struct branch_clk ce_clk = {
 
 static struct branch_clk camif_pad_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(9),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -561,7 +561,7 @@ static struct branch_clk camif_pad_p_clk = {
 
 static struct branch_clk csi0_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(30),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -578,7 +578,7 @@ static struct branch_clk csi0_p_clk = {
 
 static struct branch_clk emdh_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(3),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -595,7 +595,7 @@ static struct branch_clk emdh_p_clk = {
 
 static struct branch_clk grp_2d_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(24),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -612,7 +612,7 @@ static struct branch_clk grp_2d_p_clk = {
 
 static struct branch_clk grp_3d_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(17),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -629,7 +629,7 @@ static struct branch_clk grp_3d_p_clk = {
 
 static struct branch_clk jpeg_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(24),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -646,7 +646,7 @@ static struct branch_clk jpeg_p_clk = {
 
 static struct branch_clk lpa_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(7),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -663,7 +663,7 @@ static struct branch_clk lpa_p_clk = {
 
 static struct branch_clk mdp_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(6),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -680,7 +680,7 @@ static struct branch_clk mdp_p_clk = {
 
 static struct branch_clk mfc_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(26),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -697,7 +697,7 @@ static struct branch_clk mfc_p_clk = {
 
 static struct branch_clk pmdh_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(4),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -714,7 +714,7 @@ static struct branch_clk pmdh_p_clk = {
 
 static struct branch_clk rotator_imem_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(23),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -731,7 +731,7 @@ static struct branch_clk rotator_imem_clk = {
 
 static struct branch_clk rotator_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(25),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -748,7 +748,7 @@ static struct branch_clk rotator_p_clk = {
 
 static struct branch_clk sdc1_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(7),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -765,7 +765,7 @@ static struct branch_clk sdc1_p_clk = {
 
 static struct branch_clk sdc2_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(8),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -782,7 +782,7 @@ static struct branch_clk sdc2_p_clk = {
 
 static struct branch_clk sdc3_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(27),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -799,7 +799,7 @@ static struct branch_clk sdc3_p_clk = {
 
 static struct branch_clk sdc4_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(28),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -816,7 +816,7 @@ static struct branch_clk sdc4_p_clk = {
 
 static struct branch_clk spi_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(10),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -833,7 +833,7 @@ static struct branch_clk spi_p_clk = {
 
 static struct branch_clk tsif_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(18),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -850,7 +850,7 @@ static struct branch_clk tsif_p_clk = {
 
 static struct branch_clk uart1dm_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(17),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -866,7 +866,7 @@ static struct branch_clk uart1dm_p_clk = {
 
 static struct branch_clk uart2dm_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(26),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -882,7 +882,7 @@ static struct branch_clk uart2dm_p_clk = {
 
 static struct branch_clk usb_hs2_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(8),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -899,7 +899,7 @@ static struct branch_clk usb_hs2_p_clk = {
 
 static struct branch_clk usb_hs3_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(9),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -916,7 +916,7 @@ static struct branch_clk usb_hs3_p_clk = {
 
 static struct branch_clk usb_hs_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(25),
 		.halt_reg = GLBL_CLK_STATE_REG,
 		.halt_check = HALT_VOTED,
@@ -933,7 +933,7 @@ static struct branch_clk usb_hs_p_clk = {
 
 static struct branch_clk vfe_p_clk = {
 	.b = {
-		.en_reg = GLBL_CLK_ENA_2_SC_REG,
+		.ctl_reg = GLBL_CLK_ENA_2_SC_REG,
 		.en_mask = BIT(27),
 		.halt_reg = GLBL_CLK_STATE_2_REG,
 		.halt_check = HALT_VOTED,
@@ -958,7 +958,7 @@ static struct clk_freq_tbl clk_tbl_csi[] = {
 
 static struct rcg_clk csi0_clk = {
 	.b = {
-		.en_reg = CSI_NS_REG,
+		.ctl_reg = CSI_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 17,
@@ -985,7 +985,7 @@ static struct clk_freq_tbl clk_tbl_tcxo[] = {
 
 static struct rcg_clk i2c_clk = {
 	.b = {
-		.en_reg = I2C_NS_REG,
+		.ctl_reg = I2C_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEA_REG,
 		.halt_bit = 15,
@@ -1004,7 +1004,7 @@ static struct rcg_clk i2c_clk = {
 
 static struct rcg_clk i2c_2_clk = {
 	.b = {
-		.en_reg = I2C_2_NS_REG,
+		.ctl_reg = I2C_2_NS_REG,
 		.en_mask = BIT(0),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 2,
@@ -1023,7 +1023,7 @@ static struct rcg_clk i2c_2_clk = {
 
 static struct rcg_clk qup_i2c_clk = {
 	.b = {
-		.en_reg = QUP_I2C_NS_REG,
+		.ctl_reg = QUP_I2C_NS_REG,
 		.en_mask = BIT(0),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 31,
@@ -1042,7 +1042,7 @@ static struct rcg_clk qup_i2c_clk = {
 
 static struct rcg_clk uart1_clk = {
 	.b = {
-		.en_reg = UART_NS_REG,
+		.ctl_reg = UART_NS_REG,
 		.en_mask = BIT(5),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 7,
@@ -1061,7 +1061,7 @@ static struct rcg_clk uart1_clk = {
 
 static struct rcg_clk uart2_clk = {
 	.b = {
-		.en_reg = UART2_NS_REG,
+		.ctl_reg = UART2_NS_REG,
 		.en_mask = BIT(5),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 5,
@@ -1096,7 +1096,7 @@ static struct clk_freq_tbl clk_tbl_uartdm[] = {
 
 static struct rcg_clk uart1dm_clk = {
 	.b = {
-		.en_reg = UART1DM_NS_REG,
+		.ctl_reg = UART1DM_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 6,
@@ -1118,7 +1118,7 @@ static struct rcg_clk uart1dm_clk = {
 
 static struct rcg_clk uart2dm_clk = {
 	.b = {
-		.en_reg = UART2DM_NS_REG,
+		.ctl_reg = UART2DM_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 23,
@@ -1153,7 +1153,7 @@ static struct clk_freq_tbl clk_tbl_mdh[] = {
 
 static struct rcg_clk emdh_clk = {
 	.b = {
-		.en_reg = EMDH_NS_REG,
+		.ctl_reg = EMDH_NS_REG,
 		.halt_check = DELAY,
 		.reset_mask = P_EMDH_CLK,
 	},
@@ -1174,7 +1174,7 @@ static struct rcg_clk emdh_clk = {
 
 static struct rcg_clk pmdh_clk = {
 	.b = {
-		.en_reg = PMDH_NS_REG,
+		.ctl_reg = PMDH_NS_REG,
 		.halt_check = DELAY,
 		.reset_mask = P_PMDH_CLK,
 	},
@@ -1217,7 +1217,7 @@ static struct clk_freq_tbl clk_tbl_grp[] = {
 
 static struct rcg_clk grp_2d_clk = {
 	.b = {
-		.en_reg = GRP_2D_NS_REG,
+		.ctl_reg = GRP_2D_NS_REG,
 		.en_mask = BIT(7),
 		.halt_reg = CLK_HALT_STATEA_REG,
 		.halt_bit = 31,
@@ -1240,7 +1240,7 @@ static struct rcg_clk grp_2d_clk = {
 static struct rcg_clk grp_3d_src_clk = {
 	.ns_reg = GRP_NS_REG,
 	.b = {
-		.en_reg = GRP_NS_REG,
+		.ctl_reg = GRP_NS_REG,
 		.halt_check = NOCHECK,
 	},
 	.root_en_mask = BIT(11),
@@ -1258,7 +1258,7 @@ static struct rcg_clk grp_3d_src_clk = {
 
 static struct branch_clk grp_3d_clk = {
 	.b = {
-		.en_reg = GRP_NS_REG,
+		.ctl_reg = GRP_NS_REG,
 		.en_mask = BIT(7),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 18,
@@ -1274,7 +1274,7 @@ static struct branch_clk grp_3d_clk = {
 
 static struct branch_clk imem_clk = {
 	.b = {
-		.en_reg = GRP_NS_REG,
+		.ctl_reg = GRP_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 19,
@@ -1302,7 +1302,7 @@ static struct clk_freq_tbl clk_tbl_sdc1_3[] = {
 
 static struct rcg_clk sdc1_clk = {
 	.b = {
-		.en_reg = SDCn_NS_REG(1),
+		.ctl_reg = SDCn_NS_REG(1),
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEA_REG,
 		.halt_bit = 1,
@@ -1324,7 +1324,7 @@ static struct rcg_clk sdc1_clk = {
 
 static struct rcg_clk sdc3_clk = {
 	.b = {
-		.en_reg = SDCn_NS_REG(3),
+		.ctl_reg = SDCn_NS_REG(3),
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 24,
@@ -1358,7 +1358,7 @@ static struct clk_freq_tbl clk_tbl_sdc2_4[] = {
 
 static struct rcg_clk sdc2_clk = {
 	.b = {
-		.en_reg = SDCn_NS_REG(2),
+		.ctl_reg = SDCn_NS_REG(2),
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEA_REG,
 		.halt_bit = 0,
@@ -1380,7 +1380,7 @@ static struct rcg_clk sdc2_clk = {
 
 static struct rcg_clk sdc4_clk = {
 	.b = {
-		.en_reg = SDCn_NS_REG(4),
+		.ctl_reg = SDCn_NS_REG(4),
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 25,
@@ -1415,7 +1415,7 @@ static struct clk_freq_tbl clk_tbl_mdp_core[] = {
 
 static struct rcg_clk mdp_clk = {
 	.b = {
-		.en_reg = MDP_NS_REG,
+		.ctl_reg = MDP_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 16,
@@ -1447,7 +1447,7 @@ static struct clk_freq_tbl clk_tbl_mdp_lcdc[] = {
 
 static struct rcg_clk mdp_lcdc_pclk_clk = {
 	.b = {
-		.en_reg = MDP_LCDC_NS_REG,
+		.ctl_reg = MDP_LCDC_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 28,
@@ -1469,7 +1469,7 @@ static struct rcg_clk mdp_lcdc_pclk_clk = {
 
 static struct branch_clk mdp_lcdc_pad_pclk_clk = {
 	.b = {
-		.en_reg = MDP_LCDC_NS_REG,
+		.ctl_reg = MDP_LCDC_NS_REG,
 		.en_mask = BIT(12),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 29,
@@ -1491,7 +1491,7 @@ static struct clk_freq_tbl clk_tbl_mdp_vsync[] = {
 
 static struct rcg_clk mdp_vsync_clk = {
 	.b = {
-		.en_reg = MDP_VSYNC_REG,
+		.ctl_reg = MDP_VSYNC_REG,
 		.en_mask = BIT(0),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 30,
@@ -1518,7 +1518,7 @@ static struct clk_freq_tbl clk_tbl_mi2s_codec[] = {
 
 static struct rcg_clk mi2s_codec_rx_m_clk = {
 	.b = {
-		.en_reg = MI2S_RX_NS_REG,
+		.ctl_reg = MI2S_RX_NS_REG,
 		.en_mask = BIT(12),
 		.halt_reg = CLK_HALT_STATEA_REG,
 		.halt_bit = 12,
@@ -1540,7 +1540,7 @@ static struct rcg_clk mi2s_codec_rx_m_clk = {
 
 static struct branch_clk mi2s_codec_rx_s_clk = {
 	.b = {
-		.en_reg = MI2S_RX_NS_REG,
+		.ctl_reg = MI2S_RX_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEA_REG,
 		.halt_bit = 13,
@@ -1556,7 +1556,7 @@ static struct branch_clk mi2s_codec_rx_s_clk = {
 
 static struct rcg_clk mi2s_codec_tx_m_clk = {
 	.b = {
-		.en_reg = MI2S_TX_NS_REG,
+		.ctl_reg = MI2S_TX_NS_REG,
 		.en_mask = BIT(12),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 8,
@@ -1578,7 +1578,7 @@ static struct rcg_clk mi2s_codec_tx_m_clk = {
 
 static struct branch_clk mi2s_codec_tx_s_clk = {
 	.b = {
-		.en_reg = MI2S_TX_NS_REG,
+		.ctl_reg = MI2S_TX_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEA_REG,
 		.halt_bit = 11,
@@ -1600,7 +1600,7 @@ static struct clk_freq_tbl clk_tbl_mi2s[] = {
 
 static struct rcg_clk mi2s_m_clk = {
 	.b = {
-		.en_reg = MI2S_NS_REG,
+		.ctl_reg = MI2S_NS_REG,
 		.en_mask = BIT(12),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 4,
@@ -1622,7 +1622,7 @@ static struct rcg_clk mi2s_m_clk = {
 
 static struct branch_clk mi2s_s_clk = {
 	.b = {
-		.en_reg = MI2S_NS_REG,
+		.ctl_reg = MI2S_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 3,
@@ -1644,7 +1644,7 @@ static struct clk_freq_tbl clk_tbl_midi[] = {
 
 static struct rcg_clk midi_clk = {
 	.b = {
-		.en_reg = MIDI_NS_REG,
+		.ctl_reg = MIDI_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 1,
@@ -1688,7 +1688,7 @@ static struct clk_freq_tbl clk_tbl_sdac[] = {
 
 static struct rcg_clk sdac_clk = {
 	.b = {
-		.en_reg = SDAC_NS_REG,
+		.ctl_reg = SDAC_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEA_REG,
 		.halt_bit = 2,
@@ -1710,7 +1710,7 @@ static struct rcg_clk sdac_clk = {
 
 static struct branch_clk sdac_m_clk = {
 	.b = {
-		.en_reg = SDAC_NS_REG,
+		.ctl_reg = SDAC_NS_REG,
 		.en_mask = BIT(12),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 17,
@@ -1734,7 +1734,7 @@ static struct clk_freq_tbl clk_tbl_tv[] = {
 static struct rcg_clk tv_clk = {
 	.ns_reg = TV_NS_REG,
 	.b = {
-		.en_reg = TV_NS_REG,
+		.ctl_reg = TV_NS_REG,
 		.halt_check = NOCHECK,
 	},
 	.md_reg = TV_NS_REG - 4,
@@ -1752,7 +1752,7 @@ static struct rcg_clk tv_clk = {
 
 static struct branch_clk hdmi_clk = {
 	.b = {
-		.en_reg = HDMI_NS_REG,
+		.ctl_reg = HDMI_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 7,
@@ -1768,7 +1768,7 @@ static struct branch_clk hdmi_clk = {
 
 static struct branch_clk tv_dac_clk = {
 	.b = {
-		.en_reg = TV_NS_REG,
+		.ctl_reg = TV_NS_REG,
 		.en_mask = BIT(12),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 27,
@@ -1784,7 +1784,7 @@ static struct branch_clk tv_dac_clk = {
 
 static struct branch_clk tv_enc_clk = {
 	.b = {
-		.en_reg = TV_NS_REG,
+		.ctl_reg = TV_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 10,
@@ -1801,7 +1801,7 @@ static struct branch_clk tv_enc_clk = {
 /* Hacking root & branch into one param. */
 static struct branch_clk tsif_ref_clk = {
 	.b = {
-		.en_reg = TSIF_NS_REG,
+		.ctl_reg = TSIF_NS_REG,
 		.en_mask = BIT(9)|BIT(11),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 11,
@@ -1824,7 +1824,7 @@ static struct clk_freq_tbl clk_tbl_usb[] = {
 static struct rcg_clk usb_hs_src_clk = {
 	.ns_reg = USBH_NS_REG,
 	.b = {
-		.en_reg = USBH_NS_REG,
+		.ctl_reg = USBH_NS_REG,
 		.halt_check = NOCHECK,
 	},
 	.md_reg = USBH_NS_REG - 4,
@@ -1843,7 +1843,7 @@ static struct rcg_clk usb_hs_src_clk = {
 
 static struct branch_clk usb_hs_clk = {
 	.b = {
-		.en_reg = USBH_NS_REG,
+		.ctl_reg = USBH_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 26,
@@ -1858,7 +1858,7 @@ static struct branch_clk usb_hs_clk = {
 
 static struct branch_clk usb_hs_core_clk = {
 	.b = {
-		.en_reg = USBH_NS_REG,
+		.ctl_reg = USBH_NS_REG,
 		.en_mask = BIT(13),
 		.halt_reg = CLK_HALT_STATEA_REG,
 		.halt_bit = 27,
@@ -1874,7 +1874,7 @@ static struct branch_clk usb_hs_core_clk = {
 
 static struct branch_clk usb_hs2_clk = {
 	.b = {
-		.en_reg = USBH2_NS_REG,
+		.ctl_reg = USBH2_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 3,
@@ -1890,7 +1890,7 @@ static struct branch_clk usb_hs2_clk = {
 
 static struct branch_clk usb_hs2_core_clk = {
 	.b = {
-		.en_reg = USBH2_NS_REG,
+		.ctl_reg = USBH2_NS_REG,
 		.en_mask = BIT(4),
 		.halt_reg = CLK_HALT_STATEA_REG,
 		.halt_bit = 28,
@@ -1906,7 +1906,7 @@ static struct branch_clk usb_hs2_core_clk = {
 
 static struct branch_clk usb_hs3_clk = {
 	.b = {
-		.en_reg = USBH3_NS_REG,
+		.ctl_reg = USBH3_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 2,
@@ -1922,7 +1922,7 @@ static struct branch_clk usb_hs3_clk = {
 
 static struct branch_clk usb_hs3_core_clk = {
 	.b = {
-		.en_reg = USBH3_NS_REG,
+		.ctl_reg = USBH3_NS_REG,
 		.en_mask = BIT(4),
 		.halt_reg = CLK_HALT_STATEA_REG,
 		.halt_bit = 29,
@@ -1955,7 +1955,7 @@ static struct clk_freq_tbl clk_tbl_vfe_jpeg[] = {
 
 static struct rcg_clk jpeg_clk = {
 	.b = {
-		.en_reg = JPEG_NS_REG,
+		.ctl_reg = JPEG_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 1,
@@ -1978,7 +1978,7 @@ static struct rcg_clk jpeg_clk = {
 
 static struct rcg_clk vfe_clk = {
 	.b = {
-		.en_reg = CAM_VFE_NS_REG,
+		.ctl_reg = CAM_VFE_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEB_REG,
 		.halt_bit = 0,
@@ -2001,7 +2001,7 @@ static struct rcg_clk vfe_clk = {
 
 static struct branch_clk vfe_mdc_clk = {
 	.b = {
-		.en_reg = CAM_VFE_NS_REG,
+		.ctl_reg = CAM_VFE_NS_REG,
 		.en_mask = BIT(11),
 		.halt_reg = CLK_HALT_STATEA_REG,
 		.halt_bit = 9,
@@ -2017,7 +2017,7 @@ static struct branch_clk vfe_mdc_clk = {
 
 static struct branch_clk vfe_camif_clk = {
 	.b = {
-		.en_reg = CAM_VFE_NS_REG,
+		.ctl_reg = CAM_VFE_NS_REG,
 		.en_mask = BIT(15),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 13,
@@ -2033,7 +2033,7 @@ static struct branch_clk vfe_camif_clk = {
 
 static struct branch_clk csi0_vfe_clk = {
 	.b = {
-		.en_reg = CSI_NS_REG,
+		.ctl_reg = CSI_NS_REG,
 		.en_mask = BIT(15),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 16,
@@ -2063,7 +2063,7 @@ static struct clk_freq_tbl clk_tbl_cam[] = {
 
 static struct rcg_clk cam_m_clk = {
 	.b = {
-		.en_reg = CAM_NS_REG,
+		.ctl_reg = CAM_NS_REG,
 		.halt_check = DELAY,
 		.reset_mask = P_CAM_M_CLK,
 	},
@@ -2094,7 +2094,7 @@ static struct clk_freq_tbl clk_tbl_vpe[] = {
 
 static struct rcg_clk vpe_clk = {
 	.b = {
-		.en_reg = VPE_NS_REG,
+		.ctl_reg = VPE_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 10,
@@ -2130,7 +2130,7 @@ static struct clk_freq_tbl clk_tbl_mfc[] = {
 
 static struct rcg_clk mfc_clk = {
 	.b = {
-		.en_reg = MFC_NS_REG,
+		.ctl_reg = MFC_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 12,
@@ -2153,7 +2153,7 @@ static struct rcg_clk mfc_clk = {
 
 static struct branch_clk mfc_div2_clk = {
 	.b = {
-		.en_reg = MFC_NS_REG,
+		.ctl_reg = MFC_NS_REG,
 		.en_mask = BIT(15),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 11,
@@ -2176,7 +2176,7 @@ static struct clk_freq_tbl clk_tbl_spi[] = {
 
 static struct rcg_clk spi_clk = {
 	.b = {
-		.en_reg = SPI_NS_REG,
+		.ctl_reg = SPI_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 0,
@@ -2206,7 +2206,7 @@ static struct clk_freq_tbl clk_tbl_lpa_codec[] = {
 
 static struct rcg_clk lpa_codec_clk = {
 	.b = {
-		.en_reg = LPA_NS_REG,
+		.ctl_reg = LPA_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 6,
@@ -2231,7 +2231,7 @@ static struct clk_freq_tbl clk_tbl_mdc[] = {
 
 static struct rcg_clk mdc_clk = {
 	.b = {
-		.en_reg = MDC_NS_REG,
+		.ctl_reg = MDC_NS_REG,
 		.en_mask = BIT(9),
 		.halt_reg = CLK_HALT_STATEA_REG,
 		.halt_bit = 10,
@@ -2251,7 +2251,7 @@ static struct rcg_clk mdc_clk = {
 
 static struct branch_clk lpa_core_clk = {
 	.b = {
-		.en_reg = LPA_NS_REG,
+		.ctl_reg = LPA_NS_REG,
 		.en_mask = BIT(5),
 		.halt_reg = CLK_HALT_STATEC_REG,
 		.halt_bit = 5,

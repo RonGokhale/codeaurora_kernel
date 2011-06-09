@@ -58,7 +58,7 @@ static DEFINE_SPINLOCK(sys_vdd_vote_lock);
 /* For clocks with MND dividers. */
 void set_rate_mnd(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 {
-	uint32_t ns_reg_val, cc_reg_val;
+	uint32_t ns_reg_val, ctl_reg_val;
 
 	/* Assert MND reset. */
 	ns_reg_val = readl_relaxed(clk->ns_reg);
@@ -69,11 +69,11 @@ void set_rate_mnd(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 	writel_relaxed(nf->md_val, clk->md_reg);
 
 	/* If the clock has a separate CC register, program it. */
-	if (clk->ns_reg != clk->b.en_reg) {
-		cc_reg_val = readl_relaxed(clk->b.en_reg);
-		cc_reg_val &= ~(clk->cc_mask);
-		cc_reg_val |= nf->cc_val;
-		writel_relaxed(cc_reg_val, clk->b.en_reg);
+	if (clk->ns_reg != clk->b.ctl_reg) {
+		ctl_reg_val = readl_relaxed(clk->b.ctl_reg);
+		ctl_reg_val &= ~(clk->ctl_mask);
+		ctl_reg_val |= nf->ctl_val;
+		writel_relaxed(ctl_reg_val, clk->b.ctl_reg);
 	}
 
 	/* Deassert MND reset. */
@@ -93,24 +93,24 @@ void set_rate_nop(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 
 void set_rate_mnd_8(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 {
-	uint32_t cc_reg_val;
+	uint32_t ctl_reg_val;
 
 	/* Assert MND reset. */
-	cc_reg_val = readl_relaxed(clk->b.en_reg);
-	cc_reg_val |= BIT(8);
-	writel_relaxed(cc_reg_val, clk->b.en_reg);
+	ctl_reg_val = readl_relaxed(clk->b.ctl_reg);
+	ctl_reg_val |= BIT(8);
+	writel_relaxed(ctl_reg_val, clk->b.ctl_reg);
 
 	/* Program M and D values. */
 	writel_relaxed(nf->md_val, clk->md_reg);
 
 	/* Program MN counter Enable and Mode. */
-	cc_reg_val &= ~(clk->cc_mask);
-	cc_reg_val |= nf->cc_val;
-	writel_relaxed(cc_reg_val, clk->b.en_reg);
+	ctl_reg_val &= ~(clk->ctl_mask);
+	ctl_reg_val |= nf->ctl_val;
+	writel_relaxed(ctl_reg_val, clk->b.ctl_reg);
 
 	/* Deassert MND reset. */
-	cc_reg_val &= ~BIT(8);
-	writel_relaxed(cc_reg_val, clk->b.en_reg);
+	ctl_reg_val &= ~BIT(8);
+	writel_relaxed(ctl_reg_val, clk->b.ctl_reg);
 }
 
 void set_rate_mnd_banked(struct rcg_clk *clk, struct clk_freq_tbl *nf)
@@ -118,7 +118,7 @@ void set_rate_mnd_banked(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 	struct bank_masks *banks = clk->bank_masks;
 	const struct bank_mask_info *new_bank_masks;
 	const struct bank_mask_info *old_bank_masks;
-	uint32_t ns_reg_val, cc_reg_val;
+	uint32_t ns_reg_val, ctl_reg_val;
 	uint32_t bank_sel;
 
 	/*
@@ -126,8 +126,8 @@ void set_rate_mnd_banked(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 	 * off, program the active bank since bank switching won't work if
 	 * both banks aren't running.
 	 */
-	cc_reg_val = readl_relaxed(clk->b.en_reg);
-	bank_sel = !!(cc_reg_val & banks->bank_sel_mask);
+	ctl_reg_val = readl_relaxed(clk->b.ctl_reg);
+	bank_sel = !!(ctl_reg_val & banks->bank_sel_mask);
 	 /* If clock isn't running, don't switch banks. */
 	bank_sel ^= (!clk->enabled || clk->current_freq->freq_hz == 0);
 	if (bank_sel == 0) {
@@ -159,13 +159,13 @@ void set_rate_mnd_banked(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 
 	/* Enable counter only if clock is enabled. */
 	if (clk->enabled)
-		cc_reg_val |= new_bank_masks->mnd_en_mask;
+		ctl_reg_val |= new_bank_masks->mnd_en_mask;
 	else
-		cc_reg_val &= ~(new_bank_masks->mnd_en_mask);
+		ctl_reg_val &= ~(new_bank_masks->mnd_en_mask);
 
-	cc_reg_val &= ~(new_bank_masks->mode_mask);
-	cc_reg_val |= (nf->cc_val & new_bank_masks->mode_mask);
-	writel_relaxed(cc_reg_val, clk->b.en_reg);
+	ctl_reg_val &= ~(new_bank_masks->mode_mask);
+	ctl_reg_val |= (nf->ctl_val & new_bank_masks->mode_mask);
+	writel_relaxed(ctl_reg_val, clk->b.ctl_reg);
 
 	/* Deassert bank MND reset. */
 	ns_reg_val &= ~(new_bank_masks->rst_mask);
@@ -176,8 +176,8 @@ void set_rate_mnd_banked(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 	 * no switch is necessary since we programmed the active bank.
 	 */
 	if (clk->enabled && clk->current_freq->freq_hz) {
-		cc_reg_val ^= banks->bank_sel_mask;
-		writel_relaxed(cc_reg_val, clk->b.en_reg);
+		ctl_reg_val ^= banks->bank_sel_mask;
+		writel_relaxed(ctl_reg_val, clk->b.ctl_reg);
 		/*
 		 * Wait at least 6 cycles of slowest bank's clock
 		 * for the glitch-free MUX to fully switch sources.
@@ -186,8 +186,8 @@ void set_rate_mnd_banked(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 		udelay(1);
 
 		/* Disable old bank's MN counter. */
-		cc_reg_val &= ~(old_bank_masks->mnd_en_mask);
-		writel_relaxed(cc_reg_val, clk->b.en_reg);
+		ctl_reg_val &= ~(old_bank_masks->mnd_en_mask);
+		writel_relaxed(ctl_reg_val, clk->b.ctl_reg);
 
 		/* Program old bank to a low-power source and divider. */
 		ns_reg_val &= ~(old_bank_masks->ns_mask);
@@ -354,9 +354,9 @@ static void __branch_clk_enable_reg(const struct branch *clk, const char *name)
 	u32 reg_val;
 
 	if (clk->en_mask) {
-		reg_val = readl_relaxed(clk->en_reg);
+		reg_val = readl_relaxed(clk->ctl_reg);
 		reg_val |= clk->en_mask;
-		writel_relaxed(reg_val, clk->en_reg);
+		writel_relaxed(reg_val, clk->ctl_reg);
 	}
 
 	/*
@@ -387,7 +387,7 @@ static void __branch_clk_enable_reg(const struct branch *clk, const char *name)
 static void __local_clk_enable_reg(struct rcg_clk *clk)
 {
 	u32 reg_val;
-	void __iomem *const reg = clk->b.en_reg;
+	void __iomem *const reg = clk->b.ctl_reg;
 
 	WARN(clk->current_freq == &local_dummy_freq,
 		"Attempting to enable %s before setting its rate. "
@@ -424,10 +424,10 @@ static u32 __branch_clk_disable_reg(const struct branch *clk, const char *name)
 {
 	u32 reg_val;
 
-	reg_val = readl_relaxed(clk->en_reg);
+	reg_val = readl_relaxed(clk->ctl_reg);
 	if (clk->en_mask) {
 		reg_val &= ~(clk->en_mask);
-		writel_relaxed(reg_val, clk->en_reg);
+		writel_relaxed(reg_val, clk->ctl_reg);
 	}
 
 	/*
@@ -458,7 +458,7 @@ static u32 __branch_clk_disable_reg(const struct branch *clk, const char *name)
 /* Perform any register operations required to disable the generator. */
 static void __local_clk_disable_reg(struct rcg_clk *clk)
 {
-	void __iomem *const reg = clk->b.en_reg;
+	void __iomem *const reg = clk->b.ctl_reg;
 	uint32_t reg_val;
 
 	reg_val = __branch_clk_disable_reg(&clk->b, clk->c.dbg_name);
