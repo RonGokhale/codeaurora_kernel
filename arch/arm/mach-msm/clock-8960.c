@@ -1379,6 +1379,7 @@ static struct branch_clk usb_phy0_clk = {
 		.ns_reg = USB_FSn_XCVR_FS_CLK_NS_REG(n), \
 		.b = { \
 			.en_reg = USB_FSn_XCVR_FS_CLK_NS_REG(n), \
+			.halt_check = NOCHECK, \
 		}, \
 		.md_reg = USB_FSn_XCVR_FS_CLK_MD_REG(n), \
 		.root_en_mask = BIT(11), \
