@@ -3225,6 +3225,8 @@ static struct platform_device hs_pdev = {
 		.platform_data = &hs_platform_data,
 	},
 };
+
+#define LED_GPIO_PDM		96
 #define UART1DM_RX_GPIO		45
 static void __init msm7x2x_init(void)
 {
@@ -3283,6 +3285,15 @@ static void __init msm7x2x_init(void)
 			ARRAY_SIZE(i2c_camera_devices));
 	platform_device_register(&kp_pdev);
 	platform_device_register(&hs_pdev);
+
+	/* configure it as a pdm function*/
+	if (gpio_tlmm_config(GPIO_CFG(LED_GPIO_PDM, 3,
+				GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL,
+				GPIO_CFG_8MA), GPIO_CFG_ENABLE))
+		pr_err("%s: gpio_tlmm_config for %d failed\n",
+			__func__, LED_GPIO_PDM);
+	else
+		platform_device_register(&led_pdev);
 
 #ifdef CONFIG_MSM_RPC_VIBRATOR
 	if (machine_is_msm7x27a_ffa())

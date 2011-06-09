@@ -642,3 +642,30 @@ void __init msm_common_io_init(void)
 	msm7x27x_cache_init();
 }
 
+#define PERPH_WEB_BLOCK_ADDR (0xA9D00040)
+#define PDM0_CTL_OFFSET (0x04)
+#define SIZE_8B (0x08)
+
+static struct resource resources_led[] = {
+	{
+		.start	= PERPH_WEB_BLOCK_ADDR,
+		.end	= PERPH_WEB_BLOCK_ADDR + (SIZE_8B) - 1,
+		.name	= "led-gpio-pdm",
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
+static struct led_info msm_kpbl_pdm_led_pdata = {
+	.name = "keyboard-backlight",
+};
+
+struct platform_device led_pdev = {
+	.name	= "leds-msm-pdm",
+	/* use pdev id to represent pdm id */
+	.id	= 0,
+	.num_resources	= ARRAY_SIZE(resources_led),
+	.resource	= resources_led,
+	.dev	= {
+		.platform_data	= &msm_kpbl_pdm_led_pdata,
+	},
+};
