@@ -13,12 +13,15 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/platform_device.h>
+#include <linux/printk.h>
+#include <linux/ratelimit.h>
 #include <linux/mfd/wcd9310/core.h>
 #include <linux/mfd/wcd9310/registers.h>
 #include <sound/jack.h>
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include <sound/tlv.h>
+#include <linux/bitops.h>
 #include <linux/delay.h>
 #include "wcd9310.h"
 
@@ -1290,12 +1293,42 @@ static irqreturn_t tabla_hs_remove_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static unsigned long slimbus_value;
+
+static irqreturn_t tabla_slimbus_irq(int irq, void *data)
+{
+	struct tabla_priv *priv = data;
+	struct snd_soc_codec *codec = priv->codec;
+	int i, j;
+	u8 val;
+
+	for (i = 0; i < TABLA_SLIM_NUM_PORT_REG; i++) {
+		slimbus_value = tabla_interface_reg_read(codec->control_data,
+			TABLA_SLIM_PGD_PORT_INT_STATUS0 + i);
+		for_each_set_bit(j, &slimbus_value, BITS_PER_BYTE) {
+			val = tabla_interface_reg_read(codec->control_data,
+				TABLA_SLIM_PGD_PORT_INT_SOURCE0 + i*8 + j);
+			if (val & 0x1)
+				pr_err_ratelimited("overflow error on port %x,"
+					" value %x\n", i*8 + j, val);
+			if (val & 0x2)
+				pr_err_ratelimited("underflow error on port %x,"
+					" value %x\n", i*8 + j, val);
+		}
+		tabla_interface_reg_write(codec->control_data,
+			TABLA_SLIM_PGD_PORT_INT_CLR0 + i, 0xFF);
+	}
+
+	return IRQ_HANDLED;
+}
+
 static int tabla_codec_probe(struct snd_soc_codec *codec)
 {
 	struct tabla *control;
 	struct tabla_priv *tabla;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
 	int ret = 0;
+	int i;
 	int tx_channel;
 
 	codec->control_data = dev_get_drvdata(codec->dev->parent);
@@ -1385,8 +1418,22 @@ static int tabla_codec_probe(struct snd_soc_codec *codec)
 	}
 	tabla_disable_irq(codec->control_data, TABLA_IRQ_MBHC_POTENTIAL);
 
+	ret = tabla_request_irq(codec->control_data, TABLA_IRQ_SLIMBUS,
+		tabla_slimbus_irq, "SLIMBUS Slave", tabla);
+	if (ret) {
+		pr_err("%s: Failed to request irq %d\n", __func__,
+			TABLA_IRQ_SLIMBUS);
+		goto err_slimbus_irq;
+	}
+
+	for (i = 0; i < TABLA_SLIM_NUM_PORT_REG; i++)
+		tabla_interface_reg_write(codec->control_data,
+			TABLA_SLIM_PGD_PORT_INT_EN0 + i, 0xFF);
+
 	return ret;
 
+err_slimbus_irq:
+	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_POTENTIAL, tabla);
 err_potential_irq:
 	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_REMOVAL, tabla);
 err_remove_irq:
@@ -1398,6 +1445,7 @@ err_insert_irq:
 static int tabla_codec_remove(struct snd_soc_codec *codec)
 {
 	struct tabla_priv *tabla = snd_soc_codec_get_drvdata(codec);
+	tabla_free_irq(codec->control_data, TABLA_IRQ_SLIMBUS, tabla);
 	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_POTENTIAL, tabla);
 	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_REMOVAL, tabla);
 	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_INSERTION, tabla);

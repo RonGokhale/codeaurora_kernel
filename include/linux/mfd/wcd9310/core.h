@@ -17,6 +17,8 @@
 
 #define TABLA_NUM_IRQ_REGS 3
 
+#define TABLA_SLIM_NUM_PORT_REG 3
+
 enum {
 	TABLA_IRQ_SLIMBUS = 0,
 	TABLA_IRQ_MBHC_REMOVAL,
@@ -67,6 +69,9 @@ struct tabla {
 
 int tabla_reg_read(struct tabla *tabla, unsigned short reg);
 int tabla_reg_write(struct tabla *tabla, unsigned short reg,
+		u8 val);
+int tabla_interface_reg_read(struct tabla *tabla, unsigned short reg);
+int tabla_interface_reg_write(struct tabla *tabla, unsigned short reg,
 		u8 val);
 int tabla_bulk_read(struct tabla *tabla, unsigned short reg,
 			int count, u8 *buf);
