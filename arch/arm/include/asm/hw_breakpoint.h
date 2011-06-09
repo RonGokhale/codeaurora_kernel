@@ -50,7 +50,6 @@ static inline void decode_ctrl_reg(u32 reg,
 #define ARM_DEBUG_ARCH_V6_1	2
 #define ARM_DEBUG_ARCH_V7_ECP14	3
 #define ARM_DEBUG_ARCH_V7_MM	4
-#define ARM_DEBUG_ARCH_V7_1_ECP14 5
 
 /* Breakpoint */
 #define ARM_BREAKPOINT_EXECUTE	0
