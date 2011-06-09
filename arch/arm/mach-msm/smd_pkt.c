@@ -604,7 +604,7 @@ int smd_pkt_open(struct inode *inode, struct file *file)
 			peripheral = "q6";
 
 		if (peripheral) {
-			smd_pkt_devp->pil = pil_get("modem");
+			smd_pkt_devp->pil = pil_get(peripheral);
 			if (IS_ERR(smd_pkt_devp->pil)) {
 				r = PTR_ERR(smd_pkt_devp->pil);
 				goto out;
