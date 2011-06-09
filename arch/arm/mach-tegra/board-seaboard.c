@@ -672,6 +672,7 @@ static void __init tegra_kaen_init(void)
 	/* setting skew makes WIFI stable when sdmmc1 runs 48MHz. */
 	tegra_set_clock_readskew("sdmmc1", 8);
 
+	kaen_pinmux_fixup();
 	seaboard_common_init();
 
 	seaboard_i2c_init();

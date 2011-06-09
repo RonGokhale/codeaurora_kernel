@@ -320,3 +320,12 @@ void __init ventana_pinmux_init(void)
 	seaboard_common_pinmux_init();
 }
 
+void __init kaen_pinmux_fixup(void)
+{
+	const struct tegra_pingroup_config pingroup_CDEV2_MUX_OSC[] = {
+		{TEGRA_PINGROUP_CDEV2, TEGRA_MUX_OSC,
+		 TEGRA_PUPD_NORMAL, TEGRA_TRI_NORMAL}
+	};
+	tegra_pinmux_config_table(pingroup_CDEV2_MUX_OSC,
+				  ARRAY_SIZE(pingroup_CDEV2_MUX_OSC));
+}

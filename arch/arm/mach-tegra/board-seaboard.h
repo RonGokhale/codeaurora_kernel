@@ -63,4 +63,6 @@
 void seaboard_pinmux_init(void);
 int seaboard_power_init(void);
 
+void kaen_pinmux_fixup(void);
+
 #endif
