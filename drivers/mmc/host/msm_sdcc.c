@@ -878,11 +878,8 @@ msmsdcc_irq(int irq, void *dev_id)
 			host->mmc->ops->set_ios(host->mmc, &host->mmc->ios);
 			spin_lock(&host->lock);
 			if (host->plat->cfg_mpm_sdiowakeup &&
-				(host->mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ) &&
-				!host->sdio_irq_disabled) {
-				host->sdio_irq_disabled = 1;
+				(host->mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ))
 				wake_lock(&host->sdio_wlock);
-			}
 			/* only ansyc interrupt can come when clocks are off */
 			writel(MCI_SDIOINTMASK, host->base + MMCICLEAR);
 		}
@@ -2022,8 +2019,8 @@ msmsdcc_runtime_suspend(struct device *dev)
 
 			if (mmc->card && (mmc->card->type == MMC_TYPE_SDIO) &&
 				(mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ)) {
-				host->sdio_irq_disabled = 0;
 				if (host->plat->sdiowakeup_irq) {
+					host->sdio_irq_disabled = 0;
 					enable_irq_wake(
 						host->plat->sdiowakeup_irq);
 					enable_irq(host->plat->sdiowakeup_irq);
@@ -2032,6 +2029,8 @@ msmsdcc_runtime_suspend(struct device *dev)
 		}
 		host->sdcc_suspending = 0;
 		mmc->suspend_task = NULL;
+		if (rc && wake_lock_active(&host->sdio_suspend_wlock))
+			wake_unlock(&host->sdio_suspend_wlock);
 	}
 	return rc;
 }
@@ -2042,7 +2041,6 @@ msmsdcc_runtime_resume(struct device *dev)
 	struct mmc_host *mmc = dev_get_drvdata(dev);
 	struct msmsdcc_host *host = mmc_priv(mmc);
 	unsigned long flags;
-	int release_lock = 0;
 
 	if (mmc) {
 		mmc->ios.clock = host->clk_rate;
@@ -2060,10 +2058,8 @@ msmsdcc_runtime_resume(struct device *dev)
 						host->plat->sdiowakeup_irq);
 					disable_irq_wake(
 						host->plat->sdiowakeup_irq);
+					host->sdio_irq_disabled = 1;
 				}
-				host->sdio_irq_disabled = 1;
-		} else {
-			release_lock = 1;
 		}
 
 		spin_unlock_irqrestore(&host->lock, flags);
@@ -2074,9 +2070,9 @@ msmsdcc_runtime_resume(struct device *dev)
 		 * After resuming the host wait for sometime so that
 		 * the SDIO work will be processed.
 		 */
-		if ((mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ) && release_lock)
-			wake_lock_timeout(&host->sdio_wlock, 1);
-
+		if ((mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ) &&
+				wake_lock_active(&host->sdio_wlock))
+				wake_lock_timeout(&host->sdio_wlock, 1);
 		 wake_unlock(&host->sdio_suspend_wlock);
 	}
 	return 0;
