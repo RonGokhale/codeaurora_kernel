@@ -56,7 +56,7 @@ static DEFINE_SPINLOCK(sys_vdd_vote_lock);
  */
 
 /* For clocks with MND dividers. */
-void set_rate_mnd(struct clk_local *clk, struct clk_freq_tbl *nf)
+void set_rate_mnd(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 {
 	uint32_t ns_reg_val, cc_reg_val;
 
@@ -81,7 +81,7 @@ void set_rate_mnd(struct clk_local *clk, struct clk_freq_tbl *nf)
 	writel_relaxed(ns_reg_val, clk->ns_reg);
 }
 
-void set_rate_nop(struct clk_local *clk, struct clk_freq_tbl *nf)
+void set_rate_nop(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 {
 	/*
 	 * Nothing to do for fixed-rate or integer-divider clocks. Any settings
@@ -91,7 +91,7 @@ void set_rate_nop(struct clk_local *clk, struct clk_freq_tbl *nf)
 	 */
 }
 
-void set_rate_mnd_8(struct clk_local *clk, struct clk_freq_tbl *nf)
+void set_rate_mnd_8(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 {
 	uint32_t cc_reg_val;
 
@@ -113,7 +113,7 @@ void set_rate_mnd_8(struct clk_local *clk, struct clk_freq_tbl *nf)
 	writel_relaxed(cc_reg_val, clk->b.en_reg);
 }
 
-void set_rate_mnd_banked(struct clk_local *clk, struct clk_freq_tbl *nf)
+void set_rate_mnd_banked(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 {
 	struct bank_masks *banks = clk->bank_masks;
 	const struct bank_mask_info *new_bank_masks;
@@ -205,7 +205,7 @@ void set_rate_mnd_banked(struct clk_local *clk, struct clk_freq_tbl *nf)
 	clk->ns_mask = new_bank_masks->ns_mask;
 }
 
-void set_rate_div_banked(struct clk_local *clk, struct clk_freq_tbl *nf)
+void set_rate_div_banked(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 {
 	struct bank_masks *banks = clk->bank_masks;
 	const struct bank_mask_info *new_bank_masks;
@@ -384,7 +384,7 @@ static void __branch_clk_enable_reg(const struct branch *clk, const char *name)
 }
 
 /* Perform any register operations required to enable the clock. */
-static void __local_clk_enable_reg(struct clk_local *clk)
+static void __local_clk_enable_reg(struct rcg_clk *clk)
 {
 	u32 reg_val;
 	void __iomem *const reg = clk->b.en_reg;
@@ -456,7 +456,7 @@ static u32 __branch_clk_disable_reg(const struct branch *clk, const char *name)
 }
 
 /* Perform any register operations required to disable the generator. */
-static void __local_clk_disable_reg(struct clk_local *clk)
+static void __local_clk_disable_reg(struct rcg_clk *clk)
 {
 	void __iomem *const reg = clk->b.en_reg;
 	uint32_t reg_val;
@@ -484,7 +484,7 @@ static void __local_clk_disable_reg(struct clk_local *clk)
 	}
 }
 
-static int _local_clk_enable(struct clk_local *clk)
+static int _local_clk_enable(struct rcg_clk *clk)
 {
 	unsigned long flags;
 	int rc;
@@ -504,7 +504,7 @@ static int _local_clk_enable(struct clk_local *clk)
 	return rc;
 }
 
-static void _local_clk_disable(struct clk_local *clk)
+static void _local_clk_disable(struct rcg_clk *clk)
 {
 	unsigned long flags;
 
@@ -519,7 +519,7 @@ static void _local_clk_disable(struct clk_local *clk)
 int local_clk_enable(struct clk *c)
 {
 	int rc;
-	struct clk_local *clk = to_local(c);
+	struct rcg_clk *clk = to_rcg_clk(c);
 
 	rc = local_vote_sys_vdd(clk->current_freq->sys_vdd);
 	if (rc)
@@ -543,7 +543,7 @@ err_vdd:
 /* Disable a clock and any related power rail. */
 void local_clk_disable(struct clk *c)
 {
-	struct clk_local *clk = to_local(c);
+	struct rcg_clk *clk = to_rcg_clk(c);
 
 	_local_clk_disable(clk);
 	clk_disable(clk->depends);
@@ -553,7 +553,7 @@ void local_clk_disable(struct clk *c)
 /* Turn off a clock at boot, without checking refcounts or disabling depends. */
 void local_clk_auto_off(struct clk *c)
 {
-	_local_clk_disable(to_local(c));
+	_local_clk_disable(to_rcg_clk(c));
 }
 
 /*
@@ -561,7 +561,7 @@ void local_clk_auto_off(struct clk *c)
  */
 
 /* Set a clock's frequency. */
-static int _local_clk_set_rate(struct clk_local *clk, struct clk_freq_tbl *nf)
+static int _local_clk_set_rate(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 {
 	struct clk_freq_tbl *cf;
 	int rc = 0;
@@ -644,7 +644,7 @@ unlock:
 /* Set a clock to an exact rate. */
 int local_clk_set_rate(struct clk *c, unsigned rate)
 {
-	struct clk_local *clk = to_local(c);
+	struct rcg_clk *clk = to_rcg_clk(c);
 	struct clk_freq_tbl *nf;
 
 	for (nf = clk->freq_tbl; nf->freq_hz != FREQ_END
@@ -660,7 +660,7 @@ int local_clk_set_rate(struct clk *c, unsigned rate)
 /* Set a clock to a rate greater than some minimum. */
 int local_clk_set_min_rate(struct clk *c, unsigned rate)
 {
-	struct clk_local *clk = to_local(c);
+	struct rcg_clk *clk = to_rcg_clk(c);
 	struct clk_freq_tbl *nf;
 
 	for (nf = clk->freq_tbl; nf->freq_hz != FREQ_END
@@ -682,7 +682,7 @@ int local_clk_set_max_rate(struct clk *clk, unsigned rate)
 /* Get the currently-set rate of a clock in Hz. */
 unsigned local_clk_get_rate(struct clk *c)
 {
-	struct clk_local *clk = to_local(c);
+	struct rcg_clk *clk = to_rcg_clk(c);
 	unsigned long flags;
 	unsigned ret = 0;
 
@@ -703,13 +703,13 @@ unsigned local_clk_get_rate(struct clk *c)
 /* Check if a clock is currently enabled. */
 int local_clk_is_enabled(struct clk *clk)
 {
-	return to_local(clk)->enabled;
+	return to_rcg_clk(clk)->enabled;
 }
 
 /* Return a supported rate that's at least the specified rate. */
 long local_clk_round_rate(struct clk *c, unsigned rate)
 {
-	struct clk_local *clk = to_local(c);
+	struct rcg_clk *clk = to_rcg_clk(c);
 	struct clk_freq_tbl *f;
 
 	for (f = clk->freq_tbl; f->freq_hz != FREQ_END; f++)
@@ -727,7 +727,7 @@ bool local_clk_is_local(struct clk *clk)
 /* Return the nth supported frequency for a given clock. */
 int local_clk_list_rate(struct clk *c, unsigned n)
 {
-	struct clk_local *clk = to_local(c);
+	struct rcg_clk *clk = to_rcg_clk(c);
 
 	if (!clk->freq_tbl || clk->freq_tbl->freq_hz == FREQ_END)
 		return -ENXIO;
@@ -737,7 +737,7 @@ int local_clk_list_rate(struct clk *c, unsigned n)
 
 struct clk *local_clk_get_parent(struct clk *clk)
 {
-	return to_local(clk)->current_freq->src_clk;
+	return to_rcg_clk(clk)->current_freq->src_clk;
 }
 
 static int pll_vote_clk_enable(struct clk *clk)

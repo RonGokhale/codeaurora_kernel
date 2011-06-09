@@ -124,7 +124,7 @@ int branch_reset(struct branch *clk, enum clk_reset_action action);
 /*
  * Generic clock-definition struct and macros
  */
-struct clk_local {
+struct rcg_clk {
 	bool		enabled;
 	void		*const ns_reg;
 	void		*const md_reg;
@@ -134,7 +134,7 @@ struct clk_local {
 	const uint32_t	cc_mask;
 	struct bank_masks *const bank_masks;
 
-	void   (*set_rate)(struct clk_local *, struct clk_freq_tbl *);
+	void   (*set_rate)(struct rcg_clk *, struct clk_freq_tbl *);
 	struct clk_freq_tbl *const freq_tbl;
 	struct clk_freq_tbl *current_freq;
 
@@ -143,9 +143,9 @@ struct clk_local {
 	struct clk	c;
 };
 
-static inline struct clk_local *to_local(struct clk *clk)
+static inline struct rcg_clk *to_rcg_clk(struct clk *clk)
 {
-	return container_of(clk, struct clk_local, c);
+	return container_of(clk, struct rcg_clk, c);
 }
 
 /*
@@ -300,11 +300,11 @@ int soc_clk_set_flags(struct clk *clk, unsigned flags);
 /*
  * Generic set-rate implementations
  */
-void set_rate_mnd(struct clk_local *clk, struct clk_freq_tbl *nf);
-void set_rate_nop(struct clk_local *clk, struct clk_freq_tbl *nf);
-void set_rate_mnd_8(struct clk_local *clk, struct clk_freq_tbl *nf);
-void set_rate_mnd_banked(struct clk_local *clk, struct clk_freq_tbl *nf);
-void set_rate_div_banked(struct clk_local *clk, struct clk_freq_tbl *nf);
+void set_rate_mnd(struct rcg_clk *clk, struct clk_freq_tbl *nf);
+void set_rate_nop(struct rcg_clk *clk, struct clk_freq_tbl *nf);
+void set_rate_mnd_8(struct rcg_clk *clk, struct clk_freq_tbl *nf);
+void set_rate_mnd_banked(struct rcg_clk *clk, struct clk_freq_tbl *nf);
+void set_rate_div_banked(struct rcg_clk *clk, struct clk_freq_tbl *nf);
 
 #endif /* __ARCH_ARM_MACH_MSM_CLOCK_LOCAL_H */
 

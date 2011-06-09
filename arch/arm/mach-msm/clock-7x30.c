@@ -296,7 +296,7 @@ static struct clk_freq_tbl clk_tbl_axi[] = {
 };
 
 /* For global clocks to be on we must have GLBL_ROOT_ENA set */
-static struct clk_local glbl_root_clk = {
+static struct rcg_clk glbl_root_clk = {
 	.b = {
 		.en_reg = GLBL_CLK_ENA_SC_REG,
 		.en_mask = BIT(29),
@@ -956,7 +956,7 @@ static struct clk_freq_tbl clk_tbl_csi[] = {
 	F_END,
 };
 
-static struct clk_local csi0_clk = {
+static struct rcg_clk csi0_clk = {
 	.b = {
 		.en_reg = CSI_NS_REG,
 		.en_mask = BIT(9),
@@ -983,7 +983,7 @@ static struct clk_freq_tbl clk_tbl_tcxo[] = {
 	F_END,
 };
 
-static struct clk_local i2c_clk = {
+static struct rcg_clk i2c_clk = {
 	.b = {
 		.en_reg = I2C_NS_REG,
 		.en_mask = BIT(9),
@@ -1002,7 +1002,7 @@ static struct clk_local i2c_clk = {
 	},
 };
 
-static struct clk_local i2c_2_clk = {
+static struct rcg_clk i2c_2_clk = {
 	.b = {
 		.en_reg = I2C_2_NS_REG,
 		.en_mask = BIT(0),
@@ -1021,7 +1021,7 @@ static struct clk_local i2c_2_clk = {
 	},
 };
 
-static struct clk_local qup_i2c_clk = {
+static struct rcg_clk qup_i2c_clk = {
 	.b = {
 		.en_reg = QUP_I2C_NS_REG,
 		.en_mask = BIT(0),
@@ -1040,7 +1040,7 @@ static struct clk_local qup_i2c_clk = {
 	},
 };
 
-static struct clk_local uart1_clk = {
+static struct rcg_clk uart1_clk = {
 	.b = {
 		.en_reg = UART_NS_REG,
 		.en_mask = BIT(5),
@@ -1059,7 +1059,7 @@ static struct clk_local uart1_clk = {
 	},
 };
 
-static struct clk_local uart2_clk = {
+static struct rcg_clk uart2_clk = {
 	.b = {
 		.en_reg = UART2_NS_REG,
 		.en_mask = BIT(5),
@@ -1094,7 +1094,7 @@ static struct clk_freq_tbl clk_tbl_uartdm[] = {
 	F_END,
 };
 
-static struct clk_local uart1dm_clk = {
+static struct rcg_clk uart1dm_clk = {
 	.b = {
 		.en_reg = UART1DM_NS_REG,
 		.en_mask = BIT(9),
@@ -1116,7 +1116,7 @@ static struct clk_local uart1dm_clk = {
 	},
 };
 
-static struct clk_local uart2dm_clk = {
+static struct rcg_clk uart2dm_clk = {
 	.b = {
 		.en_reg = UART2DM_NS_REG,
 		.en_mask = BIT(9),
@@ -1151,7 +1151,7 @@ static struct clk_freq_tbl clk_tbl_mdh[] = {
 	F_END,
 };
 
-static struct clk_local emdh_clk = {
+static struct rcg_clk emdh_clk = {
 	.b = {
 		.en_reg = EMDH_NS_REG,
 		.halt_check = DELAY,
@@ -1172,7 +1172,7 @@ static struct clk_local emdh_clk = {
 	},
 };
 
-static struct clk_local pmdh_clk = {
+static struct rcg_clk pmdh_clk = {
 	.b = {
 		.en_reg = PMDH_NS_REG,
 		.halt_check = DELAY,
@@ -1215,7 +1215,7 @@ static struct clk_freq_tbl clk_tbl_grp[] = {
 	F_END,
 };
 
-static struct clk_local grp_2d_clk = {
+static struct rcg_clk grp_2d_clk = {
 	.b = {
 		.en_reg = GRP_2D_NS_REG,
 		.en_mask = BIT(7),
@@ -1237,7 +1237,7 @@ static struct clk_local grp_2d_clk = {
 	},
 };
 
-static struct clk_local grp_3d_src_clk = {
+static struct rcg_clk grp_3d_src_clk = {
 	.ns_reg = GRP_NS_REG,
 	.b = {
 		.en_reg = GRP_NS_REG,
@@ -1300,7 +1300,7 @@ static struct clk_freq_tbl clk_tbl_sdc1_3[] = {
 	F_END,
 };
 
-static struct clk_local sdc1_clk = {
+static struct rcg_clk sdc1_clk = {
 	.b = {
 		.en_reg = SDCn_NS_REG(1),
 		.en_mask = BIT(9),
@@ -1322,7 +1322,7 @@ static struct clk_local sdc1_clk = {
 	},
 };
 
-static struct clk_local sdc3_clk = {
+static struct rcg_clk sdc3_clk = {
 	.b = {
 		.en_reg = SDCn_NS_REG(3),
 		.en_mask = BIT(9),
@@ -1356,7 +1356,7 @@ static struct clk_freq_tbl clk_tbl_sdc2_4[] = {
 	F_END,
 };
 
-static struct clk_local sdc2_clk = {
+static struct rcg_clk sdc2_clk = {
 	.b = {
 		.en_reg = SDCn_NS_REG(2),
 		.en_mask = BIT(9),
@@ -1378,7 +1378,7 @@ static struct clk_local sdc2_clk = {
 	},
 };
 
-static struct clk_local sdc4_clk = {
+static struct rcg_clk sdc4_clk = {
 	.b = {
 		.en_reg = SDCn_NS_REG(4),
 		.en_mask = BIT(9),
@@ -1413,7 +1413,7 @@ static struct clk_freq_tbl clk_tbl_mdp_core[] = {
 	F_END,
 };
 
-static struct clk_local mdp_clk = {
+static struct rcg_clk mdp_clk = {
 	.b = {
 		.en_reg = MDP_NS_REG,
 		.en_mask = BIT(9),
@@ -1445,7 +1445,7 @@ static struct clk_freq_tbl clk_tbl_mdp_lcdc[] = {
 	F_END,
 };
 
-static struct clk_local mdp_lcdc_pclk_clk = {
+static struct rcg_clk mdp_lcdc_pclk_clk = {
 	.b = {
 		.en_reg = MDP_LCDC_NS_REG,
 		.en_mask = BIT(9),
@@ -1489,7 +1489,7 @@ static struct clk_freq_tbl clk_tbl_mdp_vsync[] = {
 	F_END,
 };
 
-static struct clk_local mdp_vsync_clk = {
+static struct rcg_clk mdp_vsync_clk = {
 	.b = {
 		.en_reg = MDP_VSYNC_REG,
 		.en_mask = BIT(0),
@@ -1516,7 +1516,7 @@ static struct clk_freq_tbl clk_tbl_mi2s_codec[] = {
 	F_END,
 };
 
-static struct clk_local mi2s_codec_rx_m_clk = {
+static struct rcg_clk mi2s_codec_rx_m_clk = {
 	.b = {
 		.en_reg = MI2S_RX_NS_REG,
 		.en_mask = BIT(12),
@@ -1554,7 +1554,7 @@ static struct branch_clk mi2s_codec_rx_s_clk = {
 	},
 };
 
-static struct clk_local mi2s_codec_tx_m_clk = {
+static struct rcg_clk mi2s_codec_tx_m_clk = {
 	.b = {
 		.en_reg = MI2S_TX_NS_REG,
 		.en_mask = BIT(12),
@@ -1598,7 +1598,7 @@ static struct clk_freq_tbl clk_tbl_mi2s[] = {
 	F_END,
 };
 
-static struct clk_local mi2s_m_clk = {
+static struct rcg_clk mi2s_m_clk = {
 	.b = {
 		.en_reg = MI2S_NS_REG,
 		.en_mask = BIT(12),
@@ -1642,7 +1642,7 @@ static struct clk_freq_tbl clk_tbl_midi[] = {
 	F_END,
 };
 
-static struct clk_local midi_clk = {
+static struct rcg_clk midi_clk = {
 	.b = {
 		.en_reg = MIDI_NS_REG,
 		.en_mask = BIT(9),
@@ -1686,7 +1686,7 @@ static struct clk_freq_tbl clk_tbl_sdac[] = {
 	F_END,
 };
 
-static struct clk_local sdac_clk = {
+static struct rcg_clk sdac_clk = {
 	.b = {
 		.en_reg = SDAC_NS_REG,
 		.en_mask = BIT(9),
@@ -1731,7 +1731,7 @@ static struct clk_freq_tbl clk_tbl_tv[] = {
 	F_END,
 };
 
-static struct clk_local tv_clk = {
+static struct rcg_clk tv_clk = {
 	.ns_reg = TV_NS_REG,
 	.b = {
 		.en_reg = TV_NS_REG,
@@ -1821,7 +1821,7 @@ static struct clk_freq_tbl clk_tbl_usb[] = {
 	F_END,
 };
 
-static struct clk_local usb_hs_src_clk = {
+static struct rcg_clk usb_hs_src_clk = {
 	.ns_reg = USBH_NS_REG,
 	.b = {
 		.en_reg = USBH_NS_REG,
@@ -1953,7 +1953,7 @@ static struct clk_freq_tbl clk_tbl_vfe_jpeg[] = {
 	F_END,
 };
 
-static struct clk_local jpeg_clk = {
+static struct rcg_clk jpeg_clk = {
 	.b = {
 		.en_reg = JPEG_NS_REG,
 		.en_mask = BIT(9),
@@ -1976,7 +1976,7 @@ static struct clk_local jpeg_clk = {
 	},
 };
 
-static struct clk_local vfe_clk = {
+static struct rcg_clk vfe_clk = {
 	.b = {
 		.en_reg = CAM_VFE_NS_REG,
 		.en_mask = BIT(9),
@@ -2061,7 +2061,7 @@ static struct clk_freq_tbl clk_tbl_cam[] = {
 	F_END,
 };
 
-static struct clk_local cam_m_clk = {
+static struct rcg_clk cam_m_clk = {
 	.b = {
 		.en_reg = CAM_NS_REG,
 		.halt_check = DELAY,
@@ -2092,7 +2092,7 @@ static struct clk_freq_tbl clk_tbl_vpe[] = {
 	F_END,
 };
 
-static struct clk_local vpe_clk = {
+static struct rcg_clk vpe_clk = {
 	.b = {
 		.en_reg = VPE_NS_REG,
 		.en_mask = BIT(9),
@@ -2128,7 +2128,7 @@ static struct clk_freq_tbl clk_tbl_mfc[] = {
 	F_END,
 };
 
-static struct clk_local mfc_clk = {
+static struct rcg_clk mfc_clk = {
 	.b = {
 		.en_reg = MFC_NS_REG,
 		.en_mask = BIT(9),
@@ -2174,7 +2174,7 @@ static struct clk_freq_tbl clk_tbl_spi[] = {
 	F_END,
 };
 
-static struct clk_local spi_clk = {
+static struct rcg_clk spi_clk = {
 	.b = {
 		.en_reg = SPI_NS_REG,
 		.en_mask = BIT(9),
@@ -2204,7 +2204,7 @@ static struct clk_freq_tbl clk_tbl_lpa_codec[] = {
 	F_END,
 };
 
-static struct clk_local lpa_codec_clk = {
+static struct rcg_clk lpa_codec_clk = {
 	.b = {
 		.en_reg = LPA_NS_REG,
 		.en_mask = BIT(9),
@@ -2229,7 +2229,7 @@ static struct clk_freq_tbl clk_tbl_mdc[] = {
 	F_END
 };
 
-static struct clk_local mdc_clk = {
+static struct rcg_clk mdc_clk = {
 	.b = {
 		.en_reg = MDC_NS_REG,
 		.en_mask = BIT(9),
@@ -2692,7 +2692,7 @@ int soc_clk_set_flags(struct clk *clk, unsigned clk_flags)
 static int msm7x30_clk_reset(struct clk *clk, enum clk_reset_action action)
 {
 	/* reset_mask is actually a proc_comm id */
-	unsigned id = to_local(clk)->b.reset_mask;
+	unsigned id = to_rcg_clk(clk)->b.reset_mask;
 	return pc_clk_reset(id, action);
 }
 
