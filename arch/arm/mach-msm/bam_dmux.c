@@ -98,6 +98,7 @@ struct tx_pkt_info {
 	dma_addr_t dma_address;
 	char is_cmd;
 	uint32_t len;
+	struct work_struct work;
 };
 
 struct rx_pkt_info {
@@ -105,8 +106,6 @@ struct rx_pkt_info {
 	dma_addr_t dma_address;
 	struct work_struct work;
 };
-
-static struct sk_buff_head bam_mux_write_done_pool;
 
 #define A2_NUM_PIPES		6
 #define A2_SUMMING_THRESHOLD	4096
@@ -145,7 +144,6 @@ static void handle_bam_mux_cmd(struct work_struct *work);
 static void free_tx_descriptor(struct work_struct *work);
 
 static DEFINE_MUTEX(bam_mux_lock);
-static DECLARE_WORK(work_bam_write_done, bam_mux_write_done);
 static DECLARE_WORK(work_free_tx_descriptor, free_tx_descriptor);
 
 static struct workqueue_struct *bam_mux_rx_workqueue;
@@ -302,10 +300,13 @@ static void bam_mux_write_done(struct work_struct *work)
 {
 	struct sk_buff *skb;
 	struct bam_mux_hdr *hdr;
+	struct tx_pkt_info *info;
 
 	free_tx_descriptor(NULL);
 
-	skb = __skb_dequeue(&bam_mux_write_done_pool);
+	info = container_of(work, struct tx_pkt_info, work);
+	skb = info->skb;
+	kfree(info);
 	hdr = (struct bam_mux_hdr *)skb->data;
 	DBG_INC_WRITE_CNT(skb->data_len);
 	if (bam_ch[hdr->ch_id].write_done)
@@ -397,6 +398,7 @@ int msm_bam_dmux_write(uint32_t id, struct sk_buff *skb)
 	pkt->skb = skb;
 	pkt->dma_address = dma_address;
 	pkt->is_cmd = 0;
+	INIT_WORK(&pkt->work, bam_mux_write_done);
 	spin_unlock_irqrestore(&bam_mux_write_lock, flags);
 	rc = sps_transfer_one(bam_tx_pipe, dma_address, skb->len,
 				pkt, SPS_IOVEC_FLAG_INT | SPS_IOVEC_FLAG_EOT);
@@ -511,17 +513,16 @@ static void bam_mux_tx_notify(struct sps_event_notify *notify)
 			dma_unmap_single(NULL, pkt->dma_address,
 						pkt->skb->len,
 						DMA_TO_DEVICE);
-			__skb_queue_tail(&bam_mux_write_done_pool, pkt->skb);
-			queue_work(bam_mux_tx_workqueue, &work_bam_write_done);
+			queue_work(bam_mux_tx_workqueue, &pkt->work);
 		} else {
 			dma_unmap_single(NULL, pkt->dma_address,
 						pkt->len,
 						DMA_TO_DEVICE);
 			kfree(pkt->skb);
+			kfree(pkt);
 			queue_work(bam_mux_tx_workqueue,
 					&work_free_tx_descriptor);
 		}
-		kfree(pkt);
 		break;
 	default:
 		pr_err("%s: recieved unexpected event id %d\n", __func__,
@@ -768,7 +769,6 @@ static int bam_dmux_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	skb_queue_head_init(&bam_mux_write_done_pool);
 	spin_lock_init(&bam_mux_write_lock);
 
 	for (rc = 0; rc < BAM_DMUX_NUM_CHANNELS; ++rc)
