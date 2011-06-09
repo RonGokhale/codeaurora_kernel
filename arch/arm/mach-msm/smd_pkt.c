@@ -37,7 +37,7 @@
 
 #include "smd_private.h"
 
-#define NUM_SMD_PKT_PORTS 11
+#define NUM_SMD_PKT_PORTS 12
 #define DEVICE_NAME "smdpkt"
 
 struct smd_pkt_dev {
@@ -496,6 +496,7 @@ static char *smd_pkt_dev_name[] = {
 	"smdcntl7",
 	"smd22",
 	"smd_sns_dsps",
+	"apr_apps_user",
 	"smd_pkt_loopback",
 };
 
@@ -510,6 +511,7 @@ static char *smd_ch_name[] = {
 	"DATA14_CNTL",
 	"DATA22",
 	"SENSOR",
+	"apr_apps_user",
 	"LOOPBACK",
 };
 
@@ -524,6 +526,7 @@ static uint32_t smd_ch_edge[] = {
 	SMD_APPS_MODEM,
 	SMD_APPS_MODEM,
 	SMD_APPS_DSPS,
+	SMD_APPS_QDSP,
 	SMD_APPS_MODEM,
 };
 
