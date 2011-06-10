@@ -77,6 +77,9 @@ module_param(appsbark, int, 0);
 static int print_all_stacks = 1;
 module_param(print_all_stacks, int,  S_IRUGO | S_IWUSR);
 
+/* Area for context dump in secure mode */
+static void *scm_regsave;
+
 static void pet_watchdog_work(struct work_struct *work);
 static void init_watchdog_work(struct work_struct *work);
 static DECLARE_DELAYED_WORK(dogwork_struct, pet_watchdog_work);
@@ -252,7 +255,6 @@ static irqreturn_t wdog_bark_handler(int irq, void *dev_id)
 static void init_watchdog_work(struct work_struct *work)
 {
 	int ret;
-	void *regsave;
 	struct {
 		unsigned addr;
 		int len;
@@ -271,10 +273,10 @@ static void init_watchdog_work(struct work_struct *work)
 
 #ifdef CONFIG_MSM_SCM
 	if (!appsbark) {
-		regsave = (void *)__get_free_page(GFP_KERNEL);
+		scm_regsave = (void *)__get_free_page(GFP_KERNEL);
 
-		if (regsave) {
-			cmd_buf.addr = __pa(regsave);
+		if (scm_regsave) {
+			cmd_buf.addr = __pa(scm_regsave);
 			cmd_buf.len  = PAGE_SIZE;
 
 			ret = scm_call(SCM_SVC_UTIL, SCM_SET_REGSAVE_CMD,
