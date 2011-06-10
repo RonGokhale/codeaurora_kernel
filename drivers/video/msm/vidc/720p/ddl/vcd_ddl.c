@@ -14,6 +14,7 @@
 #include "vidc_type.h"
 #include "vcd_ddl_utils.h"
 #include "vcd_ddl_metadata.h"
+#include "vcd_res_tracker_api.h"
 
 u32 ddl_device_init(struct ddl_init_config *ddl_init_config,
 		    void *client_data)
@@ -43,7 +44,11 @@ u32 ddl_device_init(struct ddl_init_config *ddl_init_config,
 	DDL_MEMSET(ddl_context, 0, sizeof(struct ddl_context));
 
 	DDL_BUSY(ddl_context);
-
+	ddl_context->memtype = res_trk_get_mem_type();
+	if (ddl_context->memtype == -1) {
+		VIDC_LOGERR_STRING("ddl_dev_init:Invalid Memtype");
+		return VCD_ERR_ILLEGAL_PARM;
+	}
 	ddl_context->ddl_callback = ddl_init_config->ddl_callback;
 	ddl_context->interrupt_clr = ddl_init_config->interrupt_clr;
 	ddl_context->core_virtual_base_addr =

@@ -18,6 +18,7 @@
 #include <linux/msm_rotator.h>
 #include <linux/dma-mapping.h>
 #include <linux/msm_kgsl.h>
+#include <linux/android_pmem.h>
 #include <mach/irqs.h>
 #include <mach/msm_iomap.h>
 #include <mach/dma.h>
@@ -774,11 +775,18 @@ static struct resource msm_vidc_720p_resources[] = {
 	},
 };
 
+struct msm_vidc_platform_data vidc_platform_data = {
+	.memtype = PMEM_MEMTYPE_EBI1
+};
+
 struct platform_device msm_device_vidc_720p = {
 	.name = "msm_vidc",
 	.id = 0,
 	.num_resources = ARRAY_SIZE(msm_vidc_720p_resources),
 	.resource = msm_vidc_720p_resources,
+	.dev = {
+		.platform_data	= &vidc_platform_data,
+	},
 };
 
 #if defined(CONFIG_FB_MSM_MDP40)

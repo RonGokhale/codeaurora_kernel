@@ -31,6 +31,7 @@
 #include "vcd_ddl_internal_property.h"
 
 struct ddl_init_config {
+	int memtype;
 	u8 *core_virtual_base_addr;
 	void (*interrupt_clr) (void);
 	void (*ddl_callback) (u32 event, u32 status, void *payload, size_t sz,

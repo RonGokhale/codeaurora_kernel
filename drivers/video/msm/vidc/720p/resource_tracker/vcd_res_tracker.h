@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -28,7 +28,7 @@
  */
 #ifndef _VIDEO_720P_RESOURCE_TRACKER_H_
 #define _VIDEO_720P_RESOURCE_TRACKER_H_
-
+#include <mach/board.h>
 #include "vcd_res_tracker_api.h"
 
 #define VCD_RESTRK_MIN_PERF_LEVEL 37900
@@ -47,7 +47,9 @@ struct res_trk_context {
 	unsigned long hclk_rate;
 	unsigned int clock_enabled;
 	unsigned int rail_enabled;
+	struct msm_vidc_platform_data *vidc_platform_data;
 	u32 core_type;
+	int memtype;
 };
 
 #if DEBUG

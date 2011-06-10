@@ -266,10 +266,13 @@ u32 res_trk_power_up(void)
 	VCDRES_MSG_LOW("clk_regime_rail_enable");
 	VCDRES_MSG_LOW("clk_regime_sel_rail_control");
 #ifdef CONFIG_MSM_BUS_SCALING
-	resource_context.pcl = msm_bus_scale_register_client(
-		resource_context.vidc_bus_client_pdata);
-	VCDRES_MSG_LOW("%s(), resource_context.pcl = %x", __func__,
-		 resource_context.pcl);
+	resource_context.pcl = 0;
+	if (resource_context.vidc_bus_client_pdata) {
+		resource_context.pcl = msm_bus_scale_register_client(
+			resource_context.vidc_bus_client_pdata);
+		VCDRES_MSG_LOW("%s(), resource_context.pcl = %x", __func__,
+			 resource_context.pcl);
+	}
 	if (resource_context.pcl == 0) {
 		dev_err(resource_context.device,
 			"register bus client returned NULL\n");
@@ -431,7 +434,6 @@ bail_out:
 
 void res_trk_init(struct device *device, u32 irq)
 {
-	u32 memorytype = PMEM_MEMTYPE;
 	if (resource_context.device || resource_context.irq_num ||
 		!device) {
 		VCDRES_MSG_ERROR("%s() Resource Tracker Init error\n",
@@ -441,12 +443,21 @@ void res_trk_init(struct device *device, u32 irq)
 		mutex_init(&resource_context.lock);
 		resource_context.device = device;
 		resource_context.irq_num = irq;
+		resource_context.vidc_platform_data =
+			(struct msm_vidc_platform_data *) device->platform_data;
+		if (resource_context.vidc_platform_data) {
+			resource_context.memtype =
+			resource_context.vidc_platform_data->memtype;
 #ifdef CONFIG_MSM_BUS_SCALING
-		resource_context.vidc_bus_client_pdata =
-			(struct msm_bus_scale_pdata *)device->platform_data;
+			resource_context.vidc_bus_client_pdata =
+			resource_context.vidc_platform_data->
+				vidc_bus_client_pdata;
 #endif
+		} else {
+			resource_context.memtype = -1;
+		}
 		resource_context.core_type = VCD_CORE_1080P;
-		if (memorytype == PMEM_MEMTYPE_EBI1) {
+		if (resource_context.memtype == PMEM_MEMTYPE_EBI1) {
 			resource_context.base_addr =
 				kmalloc(VIDC_FW_SIZE, GFP_KERNEL);
 			if (resource_context.base_addr)
@@ -472,4 +483,8 @@ u32 res_trk_get_firmware_addr(struct res_trk_firmware_addr *firm_addr)
 		status = 0;
 	}
 	return status;
+}
+
+u32 res_trk_get_mem_type(void){
+	return resource_context.memtype;
 }

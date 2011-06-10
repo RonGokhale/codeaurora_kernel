@@ -22,7 +22,7 @@ u32 ddl_device_init(struct ddl_init_config *ddl_init_config,
 {
 	struct ddl_context *ddl_context;
 	struct res_trk_firmware_addr firmware_addr;
-	u32 status = VCD_S_SUCCESS, memorytype = PMEM_MEMTYPE;
+	u32 status = VCD_S_SUCCESS;
 	void *ptr = NULL;
 	DDL_MSG_HIGH("ddl_device_init");
 
@@ -42,6 +42,11 @@ u32 ddl_device_init(struct ddl_init_config *ddl_init_config,
 	}
 	memset(ddl_context, 0, sizeof(struct ddl_context));
 	DDL_BUSY(ddl_context);
+	ddl_context->memtype = res_trk_get_mem_type();
+	if (ddl_context->memtype == -1) {
+		DDL_MSG_ERROR("ddl_dev_init:Illegal memtype");
+		return VCD_ERR_ILLEGAL_PARM;
+	}
 	ddl_context->ddl_callback = ddl_init_config->ddl_callback;
 	if (ddl_init_config->interrupt_clr)
 		ddl_context->interrupt_clr =
@@ -61,7 +66,7 @@ u32 ddl_device_init(struct ddl_init_config *ddl_init_config,
 	ddl_client_transact(DDL_INIT_CLIENTS, NULL);
 	ddl_context->fw_memory_size =
 		DDL_FW_INST_GLOBAL_CONTEXT_SPACE_SIZE;
-	if (memorytype == PMEM_MEMTYPE_SMI) {
+	if (ddl_context->memtype == PMEM_MEMTYPE_SMI) {
 		ptr = ddl_pmem_alloc(&ddl_context->dram_base_a,
 			ddl_context->fw_memory_size, DDL_KILO_BYTE(128));
 	} else {
@@ -109,7 +114,7 @@ u32 ddl_device_init(struct ddl_init_config *ddl_init_config,
 		DDL_MSG_ERROR("ddl_dev_init:fw_init_failed");
 		status = VCD_ERR_ALLOC_FAIL;
 	}
-	if (!status && memorytype == PMEM_MEMTYPE_EBI1)
+	if (!status && ddl_context->memtype == PMEM_MEMTYPE_EBI1)
 		clean_caches((unsigned long)firmware_addr.base_addr,
 		firmware_addr.buf_size,	firmware_addr.device_addr);
 

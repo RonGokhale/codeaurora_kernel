@@ -90,6 +90,7 @@ struct ddl_property_capability{
 	u32 ddl_time_out_in_ms;
 };
 struct ddl_init_config{
+	int memtype;
 	u8 *core_virtual_base_addr;
 	void (*interrupt_clr) (void);
 	void (*ddl_callback) (u32 event, u32 status, void *payload, size_t sz,

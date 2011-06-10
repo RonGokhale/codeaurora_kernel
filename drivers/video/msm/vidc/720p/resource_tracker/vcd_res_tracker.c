@@ -711,8 +711,20 @@ void res_trk_init(struct device *device, u32 irq)
 	resource_context.device = device;
 	resource_context.irq_num = irq;
 	resource_context.core_type = VCD_CORE_720P;
+	resource_context.vidc_platform_data =
+		(struct msm_vidc_platform_data *) device->platform_data;
+	if (resource_context.vidc_platform_data) {
+		resource_context.memtype =
+		resource_context.vidc_platform_data->memtype;
+	} else {
+		resource_context.memtype = -1;
+	}
 }
 
 u32 res_trk_get_core_type(void){
 	return resource_context.core_type;
+}
+
+u32 res_trk_get_mem_type(void){
+	return resource_context.memtype;
 }

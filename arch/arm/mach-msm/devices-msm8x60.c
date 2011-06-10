@@ -42,10 +42,12 @@
 #ifdef CONFIG_MSM_DSPS
 #include <mach/msm_dsps.h>
 #endif
+#include <linux/android_pmem.h>
 #include <linux/gpio.h>
 #include <linux/delay.h>
 #include <mach/mdm.h>
 #include <mach/rpm.h>
+#include <mach/board.h>
 #include "rpm_stats.h"
 #include "mpm.h"
 
@@ -1983,7 +1985,7 @@ static struct msm_bus_paths vidc_bus_client_config[] = {
 	},
 };
 
-static struct msm_bus_scale_pdata vidc_bus_client_pdata = {
+static struct msm_bus_scale_pdata vidc_bus_client_data = {
 	vidc_bus_client_config,
 	ARRAY_SIZE(vidc_bus_client_config),
 	.name = "vidc",
@@ -2007,16 +2009,21 @@ static struct resource msm_device_vidc_resources[] = {
 	},
 };
 
+struct msm_vidc_platform_data vidc_platform_data = {
+#ifdef CONFIG_MSM_BUS_SCALING
+	.vidc_bus_client_pdata = &vidc_bus_client_data,
+#endif
+	.memtype = PMEM_MEMTYPE_SMI
+};
+
 struct platform_device msm_device_vidc = {
 	.name = "msm_vidc",
 	.id = 0,
 	.num_resources = ARRAY_SIZE(msm_device_vidc_resources),
 	.resource = msm_device_vidc_resources,
-#ifdef CONFIG_MSM_BUS_SCALING
 	.dev = {
-		.platform_data	= &vidc_bus_client_pdata,
+		.platform_data	= &vidc_platform_data,
 	},
-#endif
 };
 
 #if defined(CONFIG_MSM_RPM_STATS_LOG)

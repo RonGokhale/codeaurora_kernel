@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -42,5 +42,5 @@ u32 res_trk_set_perf_level(u32 req_perf_lvl, u32 *pn_set_perf_lvl,
 u32 res_trk_get_curr_perf_level(u32 *pn_perf_lvl);
 u32 res_trk_download_firmware(void);
 u32 res_trk_get_core_type(void);
-
+u32 res_trk_get_mem_type(void);
 #endif
