@@ -40,9 +40,8 @@ static const char *id = "WLAN";
 #define VREG_NULL_CONFIG            0x0000
 #define VREG_GET_REGULATOR_MASK     0x0001
 #define VREG_SET_VOLTAGE_MASK       0x0002
-#define VREG_PIN_CONTROL_MASK       0x0004
-#define VREG_OPTIMUM_MODE_MASK      0x0008
-#define VREG_ENABLE_MASK            0x0010
+#define VREG_OPTIMUM_MODE_MASK      0x0004
+#define VREG_ENABLE_MASK            0x0008
 
 struct vregs_info {
 	const char * const name;
@@ -50,31 +49,22 @@ struct vregs_info {
 	const int nominal_min;
 	const int low_power_min;
 	const int max_voltage;
-	const bool is_pin_control;
 	const int uA_load;
 	struct regulator *regulator;
 };
 
 static struct vregs_info iris_vregs[] = {
-	/* VDD_I/O - Iris Digital I/O */
-	{"8921_lvs1", VREG_NULL_CONFIG, 0000000, 0, 0000000, 0, 0,      NULL},
-	/* VDD_XO - Iris XO */
-	{"8921_l4",   VREG_NULL_CONFIG, 1800000, 0, 1800000, 0, 0,      NULL},
-	/* VDD_RF/A - Iris RF/A (BT, FM, WLAN), Riva WLAN ADC & DAC */
-	{"8921_s2",   VREG_NULL_CONFIG, 1300000, 0, 1300000, 0, 0,      NULL},
-	/* VDD_PA - Iris PAs (BT, FM, WLAN)  */
-	{"8921_l10",  VREG_NULL_CONFIG, 2900000, 0, 2900000, 0, 0,      NULL},
-	/* VDD_DIG - Iris digital */
-	{"8921_lvs2", VREG_NULL_CONFIG, 0000000, 0, 0000000, 0, 0,      NULL},
+	{"iris_vddio",  VREG_NULL_CONFIG, 0000000, 0, 0000000, 0,      NULL},
+	{"iris_vddxo",  VREG_NULL_CONFIG, 1800000, 0, 1800000, 10000,  NULL},
+	{"iris_vddrfa", VREG_NULL_CONFIG, 1300000, 0, 1300000, 100000, NULL},
+	{"iris_vddpa",  VREG_NULL_CONFIG, 2900000, 0, 2900000, 515000, NULL},
+	{"iris_vdddig", VREG_NULL_CONFIG, 0000000, 0, 0000000, 0,      NULL},
 };
 
 static struct vregs_info riva_vregs[] = {
-	/* VddMx - Riva memory */
-	{"8921_l24",  VREG_NULL_CONFIG, 1050000, 0, 1050000, 0, 0,      NULL},
-	/* VddCx - Riva digital */
-	{"8921_s3",   VREG_NULL_CONFIG, 1050000, 0, 1050000, 0, 0,      NULL},
-	/* VddPx - Riva WLAN DAC */
-	{"8921_s4",   VREG_NULL_CONFIG, 1800000, 0, 1800000, 0, 0,      NULL},
+	{"riva_vddmx",  VREG_NULL_CONFIG, 1050000, 0, 1150000, 0,      NULL},
+	{"riva_vddcx",  VREG_NULL_CONFIG, 1050000, 0, 1150000, 0,      NULL},
+	{"riva_vddpx",  VREG_NULL_CONFIG, 1800000, 0, 1800000, 0,      NULL},
 };
 
 static int configure_iris_xo(bool use_48mhz_xo, int on)
@@ -169,17 +159,8 @@ static void wcnss_vregs_off(struct vregs_info regulators[], uint size)
 		if (regulators[i].state & VREG_OPTIMUM_MODE_MASK) {
 			rc = regulator_set_optimum_mode(
 					regulators[i].regulator, 0);
-			if (rc)
+			if (rc < 0)
 				pr_err("regulator_set_optimum_mode(%s) failed (%d)\n",
-						regulators[i].name, rc);
-		}
-
-		/* Remove pin control */
-		if (regulators[i].state & VREG_PIN_CONTROL_MASK) {
-			rc = regulator_set_mode(regulators[i].regulator,
-					REGULATOR_MODE_NORMAL);
-			if (rc)
-				pr_err("regulator_set_mode(%s) failed (%d)\n",
 						regulators[i].name, rc);
 		}
 
@@ -240,18 +221,11 @@ static int wcnss_vregs_on(struct device *dev,
 			regulators[i].state |= VREG_SET_VOLTAGE_MASK;
 		}
 
-		/* Vote for pin control */
-		if (regulators[i].is_pin_control) {
-			rc = regulator_set_mode(regulators[i].regulator,
-						REGULATOR_MODE_IDLE);
-			regulators[i].state |= VREG_PIN_CONTROL_MASK;
-		}
-
 		/* Vote for PWM/PFM mode if needed */
 		if (regulators[i].uA_load) {
 			rc = regulator_set_optimum_mode(regulators[i].regulator,
 					regulators[i].uA_load);
-			if (rc) {
+			if (rc < 0) {
 				pr_err("regulator_set_optimum_mode(%s) failed (%d)\n",
 						regulators[i].name, rc);
 				goto fail;
