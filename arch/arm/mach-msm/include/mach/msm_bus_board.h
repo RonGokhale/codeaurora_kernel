@@ -98,57 +98,6 @@ int msm_bus_board_get_iid(int id);
 #define IS_SLAVE(id) ((NODE_ID(id)) >= SLAVE_ID_KEY ? 1 : 0)
 
 /*
- * The following macros are used for various operations on commit data.
- * Commit data is an array of 32 bit integers. The size of arrays is unique
- * to the fabric. Commit arrays are allocated at run-time based on the number
- * of masters, slaves and tiered-slaves registered.
- */
-
-#define CREATE_BW_TIER_PAIR(type, bw) \
-	((((type) == MSM_BUS_BW_TIER1 ? 1 : 0) << 15) | ((bw) & 0x7FFF))
-
-#define MSM_BUS_GET_BW(val) ((val) & 0x7FFF)
-
-#define MSM_BUS_GET_BW_INFO(val, type, bw) \
-	do { \
-		(type) = MSM_BUS_GET_BW_TYPE(val); \
-		(bw) = MSM_BUS_GET_BW(val);	\
-	} while (0)
-
-#define ROUNDED_BW_VAL_FROM_BYTES(bw) \
-	((((bw) >> 17) + 1) & 0x8000 ? 0x7FFF : (((bw) >> 17) + 1))
-
-#define BW_VAL_FROM_BYTES(bw) \
-	((((bw) >> 17) & 0x8000) ? 0x7FFF : ((bw) >> 17))
-
-#define MSM_BUS_BW_VAL_FROM_BYTES(bw) \
-	((((bw) & 0x1FFFF) && (((bw) >> 17) == 0)) ? \
-	 ROUNDED_BW_VAL_FROM_BYTES(bw) : BW_VAL_FROM_BYTES(bw))
-
-#define MSM_BUS_CREATE_BW_TIER_PAIR_BYTES(type, bw) \
-	((((type) == MSM_BUS_BW_TIER1 ? 1 : 0) << 15) | \
-	 (MSM_BUS_BW_VAL_FROM_BYTES(bw)))
-
-#define MSM_BUS_GET_BW_BYTES(val) \
-	(((val) & 0x7FFF) << 17)
-
-#define MSM_BUS_GET_BW_INFO_BYTES (val, type, bw) \
-	do { \
-		(type) = MSM_BUS_GET_BW_TYPE(val); \
-		(bw) = MSM_BUS_GET_BW_BYTES(val); \
-	} while (0)
-
-#define FAB_MAX_BW_BYTES(width, clk) ((uint32_t)(width) * (uint32_t)(clk))
-#define FAB_BW_128K(bw) ((uint16_t)((bw) >> 17))
-#define BW_TO_CLK_FREQ_HZ(width, bw) ((unsigned long)((bw) / (width)))
-/* 8 bytes per clock @ 133 MHz */
-#define SYSFAB_MAX_BW_BYTES FAB_MAX_BW_BYTES(8, 133000000)
-/* 16 bytes per clock @ 166 MHz */
-#define MMFAB_MAX_BW_BYTES FAB_MAX_BW_BYTES(16, 166000000)
-/* 8 bytes per clock @ 266 MHz */
-#define APPSFAB_MAX_BW_BYTES FAB_MAX_BW_BYTES(8, 266000000)
-
-/*
  * The following macros are used to format the data for port halt
  * and unhalt requests.
  */

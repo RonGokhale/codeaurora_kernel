@@ -16,7 +16,6 @@
 #include <linux/mutex.h>
 #include <linux/radix-tree.h>
 #include <linux/clk.h>
-#include <mach/msm_bus_board.h>
 #include <mach/msm_bus.h>
 #include "msm_bus_core.h"
 
@@ -30,6 +29,7 @@
 #define SEL_FAB_CLK 1
 #define SEL_SLAVE_CLK 0
 
+#define BW_TO_CLK_FREQ_HZ(width, bw) ((unsigned long)((bw) / (width)))
 #define IS_MASTER_VALID(mas) \
 	(((mas >= MSM_BUS_MASTER_FIRST) && (mas <= MSM_BUS_MASTER_LAST)) \
 	 ? 1 : 0)
@@ -267,21 +267,21 @@ static int getpath(int src, int dest)
  * frequencies is calculated at each node on the path. Commit data to be sent
  * to RPM for each master and slave is also calculated here.
  */
-static int update_path(int curr, int pnode, unsigned req_clk, unsigned req_bw,
-		unsigned curr_clk, unsigned curr_bw, unsigned int ctx,
-		unsigned int cl_active_flag)
+static int update_path(int curr, int pnode, unsigned long req_clk, unsigned
+	long req_bw, unsigned long curr_clk, unsigned long curr_bw,
+	unsigned int ctx, unsigned int cl_active_flag)
 {
 	int index, ret = 0;
 	struct msm_bus_inode_info *info;
 	int next_pnode;
-	int add_bw = req_bw - curr_bw;
+	long int add_bw = req_bw - curr_bw;
 	unsigned bwsum = 0;
 	unsigned req_clk_hz, curr_clk_hz, bwsum_hz;
 	int *master_tiers;
 	struct msm_bus_fabric_device *fabdev = msm_bus_get_fabric_device
 		(GET_FABID(curr));
 
-	MSM_BUS_DBG("args: %d %d %d %u %u %u %u %u\n",
+	MSM_BUS_DBG("args: %d %d %d %lu %lu %lu %lu %u\n",
 		curr, GET_NODE(pnode), GET_INDEX(pnode), req_clk, req_bw,
 		curr_clk, curr_bw, ctx);
 	index = GET_INDEX(pnode);
@@ -359,8 +359,8 @@ static int update_path(int curr, int pnode, unsigned req_clk, unsigned req_bw,
 		req_clk_hz = BW_TO_CLK_FREQ_HZ(hop->node_info->buswidth,
 			req_clk);
 		bwsum_hz = BW_TO_CLK_FREQ_HZ(hop->node_info->buswidth,
-			MSM_BUS_GET_BW_BYTES(bwsum));
-		MSM_BUS_DBG("Calling update-clks: curr_hz: %u, req_hz: %u,"
+			bwsum);
+		MSM_BUS_DBG("Calling update-clks: curr_hz: %lu, req_hz: %lu,"
 			" bw_hz %u\n", curr_clk, req_clk, bwsum_hz);
 		ret = fabdev->algo->update_clks(fabdev, hop, index,
 			curr_clk_hz, req_clk_hz, bwsum_hz, SEL_FAB_CLK,
@@ -494,8 +494,8 @@ int msm_bus_scale_client_update_request(uint32_t cl, unsigned index)
 {
 	int i, ret = 0;
 	struct msm_bus_scale_pdata *pdata;
-	unsigned int req_clk, req_bw, curr_clk, curr_bw;
 	int pnode, src, curr, ctx;
+	unsigned long req_clk, req_bw, curr_clk, curr_bw;
 	struct msm_bus_client *client = (struct msm_bus_client *)cl;
 	if (IS_ERR(client)) {
 		MSM_BUS_ERR("msm_bus_scale_client update req error %d\n",
@@ -527,16 +527,14 @@ int msm_bus_scale_client_update_request(uint32_t cl, unsigned index)
 			vectors[i].src);
 		pnode = client->src_pnode[i];
 		req_clk = client->pdata->usecase[index].vectors[i].ib;
-		req_bw = MSM_BUS_BW_VAL_FROM_BYTES(client->pdata->
-				usecase[index].vectors[i].ab);
+		req_bw = client->pdata->usecase[index].vectors[i].ab;
 		if (curr < 0) {
 			curr_clk = 0;
 			curr_bw = 0;
 		} else {
 			curr_clk = client->pdata->usecase[curr].vectors[i].ib;
-			curr_bw = MSM_BUS_BW_VAL_FROM_BYTES(client->pdata->
-					usecase[curr].vectors[i].ab);
-			MSM_BUS_DBG("ab: %d ib: %d\n", curr_bw, curr_clk);
+			curr_bw = client->pdata->usecase[curr].vectors[i].ab;
+			MSM_BUS_DBG("ab: %lu ib: %lu\n", curr_bw, curr_clk);
 		}
 
 		if (!pdata->active_only) {
