@@ -40,21 +40,23 @@ static struct gpiomux_setting spi_suspended_cs_config = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
-static struct gpiomux_setting gsbi3 = {
+/* This I2C active configuration applies to GSBI3 and GSBI4 */
+static struct gpiomux_setting i2c_active = {
 	.func = GPIOMUX_FUNC_1,
 	.drv = GPIOMUX_DRV_8MA,
 	.pull = GPIOMUX_PULL_NONE,
 };
 
-static struct gpiomux_setting gsbi4 = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting gsbi7 = {
+static struct gpiomux_setting i2c_active_gsbi7 = {
 	.func = GPIOMUX_FUNC_1,
 	.drv = GPIOMUX_DRV_12MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+/* This I2C suspended configuration applies to GSBI3, GSBI4 and GSBI7 */
+static struct gpiomux_setting i2c_suspended_config = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_NONE,
 };
 
@@ -553,37 +555,43 @@ static struct msm_gpiomux_config msm8x60_gsbi_configs[] __initdata = {
 	{
 		.gpio      = 43,
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi3,
+			[GPIOMUX_SUSPENDED] = &i2c_suspended_config,
+			[GPIOMUX_ACTIVE]    = &i2c_active,
 		},
 	},
 	{
 		.gpio      = 44,
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi3,
+			[GPIOMUX_SUSPENDED] = &i2c_suspended_config,
+			[GPIOMUX_ACTIVE]    = &i2c_active,
 		},
 	},
 	{
 		.gpio      = 47,
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi4,
+			[GPIOMUX_SUSPENDED] = &i2c_suspended_config,
+			[GPIOMUX_ACTIVE]    = &i2c_active,
 		},
 	},
 	{
 		.gpio      = 48,
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi4,
+			[GPIOMUX_SUSPENDED] = &i2c_suspended_config,
+			[GPIOMUX_ACTIVE]    = &i2c_active,
 		},
 	},
 	{
 		.gpio      = 59,
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi7,
+			[GPIOMUX_SUSPENDED] = &i2c_suspended_config,
+			[GPIOMUX_ACTIVE]    = &i2c_active_gsbi7,
 		},
 	},
 	{
 		.gpio      = 60,
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi7,
+			[GPIOMUX_SUSPENDED] = &i2c_suspended_config,
+			[GPIOMUX_ACTIVE]    = &i2c_active_gsbi7,
 		},
 	},
 	{
