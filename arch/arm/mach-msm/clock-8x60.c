@@ -3767,6 +3767,24 @@ void __init msm_clk_soc_init(void)
 
 static int msm_clk_soc_late_init(void)
 {
-	return local_unvote_sys_vdd(HIGH);
+	int rc;
+
+	/* Vote for MMFPB to be at least 64MHz when an Apps CPU is active. */
+	struct clk *mmfpb_a_clk = clk_get(NULL, "mmfpb_a_clk");
+	if (WARN(IS_ERR(mmfpb_a_clk), "mmfpb_a_clk not found (%ld)\n",
+			PTR_ERR(mmfpb_a_clk)))
+		return PTR_ERR(mmfpb_a_clk);
+	rc = clk_set_min_rate(mmfpb_a_clk, 64000000);
+	if (WARN(rc, "mmfpb_a_clk rate was not set (%d)\n", rc))
+		return rc;
+	rc = clk_enable(mmfpb_a_clk);
+	if (WARN(rc, "mmfpb_a_clk not enabled (%d)\n", rc))
+		return rc;
+
+	/* Remove temporary vote for HIGH vdd_dig. */
+	rc = local_unvote_sys_vdd(HIGH);
+	WARN(rc, "local_unvote_sys_vdd(HIGH) failed (%d)\n", rc);
+
+	return rc;
 }
 late_initcall(msm_clk_soc_late_init);
