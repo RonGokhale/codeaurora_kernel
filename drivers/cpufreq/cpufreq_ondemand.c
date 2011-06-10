@@ -112,6 +112,8 @@ static struct workqueue_struct	*kondemand_wq;
 
 static struct workqueue_struct *input_wq;
 
+static DEFINE_PER_CPU(struct work_struct, dbs_refresh_work);
+
 static struct dbs_tuners {
 	unsigned int sampling_rate;
 	unsigned int up_threshold;
@@ -746,11 +748,12 @@ static void dbs_refresh_callback(struct work_struct *unused)
 {
 	struct cpufreq_policy *policy;
 	struct cpu_dbs_info_s *this_dbs_info;
+	unsigned int cpu = smp_processor_id();
 
-	if (lock_policy_rwsem_write(0) < 0)
+	if (lock_policy_rwsem_write(cpu) < 0)
 		return;
 
-	this_dbs_info = &per_cpu(od_cpu_dbs_info, 0);
+	this_dbs_info = &per_cpu(od_cpu_dbs_info, cpu);
 	policy = this_dbs_info->cur_policy;
 
 	if (policy->cur < policy->max) {
@@ -758,18 +761,20 @@ static void dbs_refresh_callback(struct work_struct *unused)
 
 		__cpufreq_driver_target(policy, policy->max,
 					CPUFREQ_RELATION_L);
-		this_dbs_info->prev_cpu_idle = get_cpu_idle_time(0,
+		this_dbs_info->prev_cpu_idle = get_cpu_idle_time(cpu,
 				&this_dbs_info->prev_cpu_wall);
 	}
-	unlock_policy_rwsem_write(0);
+	unlock_policy_rwsem_write(cpu);
 }
-
-static DECLARE_WORK(dbs_refresh_work, dbs_refresh_callback);
 
 static void dbs_input_event(struct input_handle *handle, unsigned int type,
 		unsigned int code, int value)
 {
-	queue_work_on(0, input_wq, &dbs_refresh_work);
+	int i;
+
+	for_each_online_cpu(i) {
+		queue_work_on(i, input_wq, &per_cpu(dbs_refresh_work, i));
+	}
 }
 
 static int dbs_input_connect(struct input_handler *handler,
@@ -930,6 +935,7 @@ static int __init cpufreq_gov_dbs_init(void)
 	int err;
 	cputime64_t wall;
 	u64 idle_time;
+	unsigned int i;
 	int cpu = get_cpu();
 
 	idle_time = get_cpu_idle_time_us(cpu, &wall);
@@ -961,6 +967,9 @@ static int __init cpufreq_gov_dbs_init(void)
 		printk(KERN_ERR "Failed to create iewq workqueue\n");
 		destroy_workqueue(kondemand_wq);
 		return -EFAULT;
+	}
+	for_each_possible_cpu(i) {
+		INIT_WORK(&per_cpu(dbs_refresh_work, i), dbs_refresh_callback);
 	}
 	err = cpufreq_register_governor(&cpufreq_gov_ondemand);
 	if (err) {
