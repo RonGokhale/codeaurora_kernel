@@ -110,6 +110,8 @@ static DEFINE_MUTEX(dbs_mutex);
 
 static struct workqueue_struct	*kondemand_wq;
 
+static struct workqueue_struct *input_wq;
+
 static struct dbs_tuners {
 	unsigned int sampling_rate;
 	unsigned int up_threshold;
@@ -767,7 +769,7 @@ static DECLARE_WORK(dbs_refresh_work, dbs_refresh_callback);
 static void dbs_input_event(struct input_handle *handle, unsigned int type,
 		unsigned int code, int value)
 {
-	schedule_work_on(0, &dbs_refresh_work);
+	queue_work_on(0, input_wq, &dbs_refresh_work);
 }
 
 static int dbs_input_connect(struct input_handler *handler,
@@ -954,9 +956,17 @@ static int __init cpufreq_gov_dbs_init(void)
 		printk(KERN_ERR "Creation of kondemand failed\n");
 		return -EFAULT;
 	}
-	err = cpufreq_register_governor(&cpufreq_gov_ondemand);
-	if (err)
+	input_wq = create_workqueue("iewq");
+	if (!input_wq) {
+		printk(KERN_ERR "Failed to create iewq workqueue\n");
 		destroy_workqueue(kondemand_wq);
+		return -EFAULT;
+	}
+	err = cpufreq_register_governor(&cpufreq_gov_ondemand);
+	if (err) {
+		destroy_workqueue(kondemand_wq);
+		destroy_workqueue(input_wq);
+	}
 
 	return err;
 }
@@ -965,6 +975,7 @@ static void __exit cpufreq_gov_dbs_exit(void)
 {
 	cpufreq_unregister_governor(&cpufreq_gov_ondemand);
 	destroy_workqueue(kondemand_wq);
+	destroy_workqueue(input_wq);
 }
 
 
