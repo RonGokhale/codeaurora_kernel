@@ -4024,6 +4024,15 @@ void __init msm_clk_soc_init(void)
 	clk_set_rate(&usb_fs1_src_clk.c, 60000000);
 	clk_set_rate(&usb_fs2_src_clk.c, 60000000);
 
+	/*
+	 * The halt status bits for PDM and TSSC may be incorrect at boot.
+	 * Toggle these clocks on and off to refresh them.
+	 */
+	local_clk_enable(&pdm_clk.c);
+	local_clk_disable(&pdm_clk.c);
+	local_clk_enable(&tssc_clk.c);
+	local_clk_disable(&tssc_clk.c);
+
 	if (machine_is_msm8960_sim()) {
 		clk_set_rate(&sdc1_clk.c, 48000000);
 		clk_enable(&sdc1_clk.c);
