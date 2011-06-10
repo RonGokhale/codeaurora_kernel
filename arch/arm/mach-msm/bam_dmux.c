@@ -98,9 +98,14 @@ struct tx_pkt_info {
 	dma_addr_t dma_address;
 	char is_cmd;
 	uint32_t len;
+	struct work_struct work;
 };
 
-static struct sk_buff_head bam_mux_write_done_pool;
+struct rx_pkt_info {
+	struct sk_buff *skb;
+	dma_addr_t dma_address;
+	struct work_struct work;
+};
 
 #define A2_NUM_PIPES		6
 #define A2_SUMMING_THRESHOLD	4096
@@ -108,6 +113,7 @@ static struct sk_buff_head bam_mux_write_done_pool;
 #define A2_PHYS_BASE		0x124C2000
 #define A2_PHYS_SIZE		0x2000
 #define BUFFER_SIZE		2048
+#define NUM_BUFFERS		32
 static struct delayed_work bam_init_work;
 static struct sps_bam_props a2_props;
 static struct sps_pipe *bam_tx_pipe;
@@ -118,8 +124,6 @@ static struct sps_mem_buffer tx_desc_mem_buf;
 static struct sps_mem_buffer rx_desc_mem_buf;
 static struct sps_register_event tx_register_event;
 static struct sps_register_event rx_register_event;
-
-static spinlock_t bam_mux_write_lock;
 
 static struct bam_ch_info bam_ch[BAM_DMUX_NUM_CHANNELS];
 static int bam_mux_initialized;
@@ -133,19 +137,15 @@ struct bam_mux_hdr {
 	uint16_t pkt_len;
 };
 
-static struct sk_buff *rx_skb;
-static dma_addr_t rx_skb_dma_addr;
-
 static void bam_mux_write_done(struct work_struct *work);
 static void handle_bam_mux_cmd(struct work_struct *work);
 static void free_tx_descriptor(struct work_struct *work);
 
 static DEFINE_MUTEX(bam_mux_lock);
-static DECLARE_WORK(work_bam_write_done, bam_mux_write_done);
-static DECLARE_WORK(work_bam_handle_cmd, handle_bam_mux_cmd);
 static DECLARE_WORK(work_free_tx_descriptor, free_tx_descriptor);
 
-static struct workqueue_struct *bam_mux_workqueue;
+static struct workqueue_struct *bam_mux_rx_workqueue;
+static struct workqueue_struct *bam_mux_tx_workqueue;
 
 #define bam_ch_is_open(x)						\
 	(bam_ch[(x)].status == (BAM_CH_LOCAL_OPEN | BAM_CH_REMOTE_OPEN))
@@ -159,17 +159,25 @@ static struct workqueue_struct *bam_mux_workqueue;
 static void queue_rx(void)
 {
 	void *ptr;
-	rx_skb = __dev_alloc_skb(BUFFER_SIZE, GFP_KERNEL);
-	ptr = skb_put(rx_skb, BUFFER_SIZE);
+	struct rx_pkt_info *info;
+
+	info = kmalloc(sizeof(struct rx_pkt_info), GFP_KERNEL);
+	if (!info)
+		return; /*need better way to handle this */
+
+	INIT_WORK(&info->work, handle_bam_mux_cmd);
+
+	info->skb = __dev_alloc_skb(BUFFER_SIZE, GFP_KERNEL);
+	ptr = skb_put(info->skb, BUFFER_SIZE);
 	/* need a way to handle error case */
-	rx_skb_dma_addr = dma_map_single(NULL, ptr, BUFFER_SIZE,
+	info->dma_address = dma_map_single(NULL, ptr, BUFFER_SIZE,
 						DMA_FROM_DEVICE);
-	sps_transfer_one(bam_rx_pipe, rx_skb_dma_addr,
-				BUFFER_SIZE, NULL,
+	sps_transfer_one(bam_rx_pipe, info->dma_address,
+				BUFFER_SIZE, info,
 				SPS_IOVEC_FLAG_INT | SPS_IOVEC_FLAG_EOT);
 }
 
-static void bam_mux_process_data(void)
+static void bam_mux_process_data(struct sk_buff *rx_skb)
 {
 	unsigned long flags;
 	struct bam_mux_hdr *rx_hdr;
@@ -196,9 +204,15 @@ static void handle_bam_mux_cmd(struct work_struct *work)
 	unsigned long flags;
 	struct bam_mux_hdr *rx_hdr;
 	struct sps_iovec iov;
+	struct rx_pkt_info *info;
+	struct sk_buff *rx_skb;
 
 	/* mark consumed descriptor as free */
 	sps_get_iovec(bam_rx_pipe, &iov);
+
+	info = container_of(work, struct rx_pkt_info, work);
+	rx_skb = info->skb;
+	kfree(info);
 
 	rx_hdr = (struct bam_mux_hdr *)rx_skb->data;
 
@@ -218,7 +232,7 @@ static void handle_bam_mux_cmd(struct work_struct *work)
 	switch (rx_hdr->cmd) {
 	case BAM_MUX_HDR_CMD_DATA:
 		DBG_INC_READ_CNT(rx_hdr->pkt_len);
-		bam_mux_process_data();
+		bam_mux_process_data(rx_skb);
 		break;
 	case BAM_MUX_HDR_CMD_OPEN:
 		spin_lock_irqsave(&bam_ch[rx_hdr->ch_id].lock, flags);
@@ -284,8 +298,13 @@ static void bam_mux_write_done(struct work_struct *work)
 {
 	struct sk_buff *skb;
 	struct bam_mux_hdr *hdr;
+	struct tx_pkt_info *info;
 
-	skb = __skb_dequeue(&bam_mux_write_done_pool);
+	free_tx_descriptor(NULL);
+
+	info = container_of(work, struct tx_pkt_info, work);
+	skb = info->skb;
+	kfree(info);
 	hdr = (struct bam_mux_hdr *)skb->data;
 	DBG_INC_WRITE_CNT(skb->data_len);
 	if (bam_ch[hdr->ch_id].write_done)
@@ -320,7 +339,6 @@ int msm_bam_dmux_write(uint32_t id, struct sk_buff *skb)
 	}
 	spin_unlock_irqrestore(&bam_ch[id].lock, flags);
 
-	spin_lock_irqsave(&bam_mux_write_lock, flags);
 	/* if skb do not have any tailroom for padding,
 	   copy the skb into a new expanded skb */
 	if ((skb->len & 0x3) && (skb_tailroom(skb) < (4 - (skb->len & 0x3)))) {
@@ -329,8 +347,7 @@ int msm_bam_dmux_write(uint32_t id, struct sk_buff *skb)
 					  4 - (skb->len & 0x3), GFP_ATOMIC);
 		if (new_skb == NULL) {
 			pr_err("%s: cannot allocate skb\n", __func__);
-			rc = -ENOMEM;
-			goto write_done;
+			return -ENOMEM;
 		}
 		dev_kfree_skb_any(skb);
 		skb = new_skb;
@@ -360,8 +377,7 @@ int msm_bam_dmux_write(uint32_t id, struct sk_buff *skb)
 		pr_err("%s: mem alloc for tx_pkt_info failed\n", __func__);
 		if (new_skb)
 			dev_kfree_skb_any(new_skb);
-		rc = -ENOMEM;
-		goto write_done;
+		return -ENOMEM;
 	}
 
 	dma_address = dma_map_single(NULL, skb->data, skb->len,
@@ -371,19 +387,14 @@ int msm_bam_dmux_write(uint32_t id, struct sk_buff *skb)
 		if (new_skb)
 			dev_kfree_skb_any(new_skb);
 		kfree(pkt);
-		rc = -ENOMEM;
-		goto write_done;
+		return -ENOMEM;
 	}
 	pkt->skb = skb;
 	pkt->dma_address = dma_address;
 	pkt->is_cmd = 0;
-	spin_unlock_irqrestore(&bam_mux_write_lock, flags);
+	INIT_WORK(&pkt->work, bam_mux_write_done);
 	rc = sps_transfer_one(bam_tx_pipe, dma_address, skb->len,
 				pkt, SPS_IOVEC_FLAG_INT | SPS_IOVEC_FLAG_EOT);
-	return rc;
-
-write_done:
-	spin_unlock_irqrestore(&bam_mux_write_lock, flags);
 	return rc;
 }
 
@@ -491,16 +502,16 @@ static void bam_mux_tx_notify(struct sps_event_notify *notify)
 			dma_unmap_single(NULL, pkt->dma_address,
 						pkt->skb->len,
 						DMA_TO_DEVICE);
-			__skb_queue_tail(&bam_mux_write_done_pool, pkt->skb);
-			queue_work(bam_mux_workqueue, &work_bam_write_done);
+			queue_work(bam_mux_tx_workqueue, &pkt->work);
 		} else {
 			dma_unmap_single(NULL, pkt->dma_address,
 						pkt->len,
 						DMA_TO_DEVICE);
 			kfree(pkt->skb);
+			kfree(pkt);
+			queue_work(bam_mux_tx_workqueue,
+					&work_free_tx_descriptor);
 		}
-		kfree(pkt);
-		queue_work(bam_mux_workqueue, &work_free_tx_descriptor);
 		break;
 	default:
 		pr_err("%s: recieved unexpected event id %d\n", __func__,
@@ -510,13 +521,17 @@ static void bam_mux_tx_notify(struct sps_event_notify *notify)
 
 static void bam_mux_rx_notify(struct sps_event_notify *notify)
 {
+	struct rx_pkt_info *info;
+
 	DBG("%s: event %d notified\n", __func__, notify->event_id);
+
+	info = (struct rx_pkt_info *)(notify->data.transfer.user);
 
 	switch (notify->event_id) {
 	case SPS_EVENT_EOT:
-		dma_unmap_single(NULL, rx_skb_dma_addr,
+		dma_unmap_single(NULL, info->dma_address,
 				BUFFER_SIZE, DMA_FROM_DEVICE);
-		queue_work(bam_mux_workqueue, &work_bam_handle_cmd);
+		queue_work(bam_mux_rx_workqueue, &info->work);
 		break;
 	default:
 		pr_err("%s: recieved unexpected event id %d\n", __func__,
@@ -579,6 +594,7 @@ static void bam_init(struct work_struct *work)
 	dma_addr_t dma_addr;
 	int ret;
 	void *a2_virt_addr;
+	int i;
 
 	/* init BAM */
 	a2_virt_addr = ioremap_nocache(A2_PHYS_BASE, A2_PHYS_SIZE);
@@ -699,7 +715,8 @@ static void bam_init(struct work_struct *work)
 	}
 
 	bam_mux_initialized = 1;
-	queue_rx();
+	for (i = 0; i < NUM_BUFFERS; ++i)
+		queue_rx();
 	return;
 
 rx_event_reg_failed:
@@ -731,12 +748,15 @@ static int bam_dmux_probe(struct platform_device *pdev)
 	if (bam_mux_initialized)
 		return 0;
 
-	bam_mux_workqueue = create_singlethread_workqueue("bam_dmux");
-	if (!bam_mux_workqueue)
+	bam_mux_rx_workqueue = create_singlethread_workqueue("bam_dmux_rx");
+	if (!bam_mux_rx_workqueue)
 		return -ENOMEM;
 
-	skb_queue_head_init(&bam_mux_write_done_pool);
-	spin_lock_init(&bam_mux_write_lock);
+	bam_mux_tx_workqueue = create_singlethread_workqueue("bam_dmux_tx");
+	if (!bam_mux_tx_workqueue) {
+		destroy_workqueue(bam_mux_rx_workqueue);
+		return -ENOMEM;
+	}
 
 	for (rc = 0; rc < BAM_DMUX_NUM_CHANNELS; ++rc)
 		spin_lock_init(&bam_ch[rc].lock);
