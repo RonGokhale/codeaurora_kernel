@@ -132,6 +132,7 @@ void diag_read_smd_wcnss_work_fn(struct work_struct *work)
 static int diagchar_open(struct inode *inode, struct file *file)
 {
 	int i = 0;
+	void *temp;
 
 	if (!strncmp(current->comm, "ATFWD-daemon", 12))
 		return -ENOMEM;
@@ -150,12 +151,20 @@ static int diagchar_open(struct inode *inode, struct file *file)
 		} else {
 			if (i < threshold_client_limit) {
 				driver->num_clients++;
-				driver->client_map = krealloc(driver->client_map
+				temp = krealloc(driver->client_map
 					, (driver->num_clients) * sizeof(struct
 						 diag_client_map), GFP_KERNEL);
-				driver->data_ready = krealloc(driver->data_ready
+				if (!temp)
+					goto fail;
+				else
+					driver->client_map = temp;
+				temp = krealloc(driver->data_ready
 					, (driver->num_clients) * sizeof(int),
 							GFP_KERNEL);
+				if (!temp)
+					goto fail;
+				else
+					driver->data_ready = temp;
 				driver->client_map[i].pid = current->tgid;
 				strncpy(driver->client_map[i].name,
 					current->comm, 20);
@@ -188,6 +197,12 @@ static int diagchar_open(struct inode *inode, struct file *file)
 		mutex_unlock(&driver->diagchar_mutex);
 		return 0;
 	}
+	return -ENOMEM;
+
+fail:
+	mutex_unlock(&driver->diagchar_mutex);
+	driver->num_clients--;
+	pr_alert("diag: Insufficient memory for new client");
 	return -ENOMEM;
 }
 
@@ -248,6 +263,7 @@ long diagchar_ioctl(struct file *filp,
 {
 	int i, j, count_entries = 0, temp;
 	int success = -1;
+	void *temp_buf;
 
 	if (iocmd == DIAG_IOCTL_COMMAND_REG) {
 		struct bindpkt_params_per_process *pkt_params =
@@ -271,9 +287,17 @@ long diagchar_ioctl(struct file *filp,
 			if (diag_max_registration > diag_threshold_registration)
 				diag_max_registration =
 						 diag_threshold_registration;
-			driver->table = krealloc(driver->table,
+			temp_buf = krealloc(driver->table,
 					 diag_max_registration*sizeof(struct
 					 diag_master_table), GFP_KERNEL);
+			if (!temp_buf) {
+				diag_max_registration -= pkt_params->count -
+							 count_entries;
+				pr_alert("diag: Insufficient memory for reg.");
+				return 0;
+			} else {
+				driver->table = temp_buf;
+			}
 			for (j = i; j < diag_max_registration; j++) {
 				diag_fill_reg_table(j, pkt_params->params,
 						&success, &count_entries);
