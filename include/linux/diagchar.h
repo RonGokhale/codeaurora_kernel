@@ -38,6 +38,7 @@
 /* Machine ID and corresponding PC Tools IDs */
 #define APQ8060_MACHINE_ID	86
 #define AO8960_MACHINE_ID	87
+#define MSM8660_MACHINE_ID	71
 #define APQ8060_TOOLS_ID	4062
 #define AO8960_TOOLS_ID		4064
 

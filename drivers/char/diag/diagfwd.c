@@ -75,6 +75,7 @@ int chk_config_get_id()
 {
 	switch (socinfo_get_id()) {
 	case APQ8060_MACHINE_ID:
+	case MSM8660_MACHINE_ID:
 		return APQ8060_TOOLS_ID;
 	case AO8960_MACHINE_ID:
 		return AO8960_TOOLS_ID;
@@ -803,7 +804,7 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 		return 0;
 	}
 	 /* Check for ID for NO MODEM present */
-	else if (!(driver->ch) && chk_config_get_id()) {
+	else if (!(driver->ch)) {
 		/* Respond to polling for Apps only DIAG */
 		if ((*buf == 0x4b) && (*(buf+1) == 0x32) &&
 							 (*(buf+2) == 0x03)) {
@@ -886,7 +887,7 @@ void diag_process_hdlc(void *data, unsigned len)
 		type = 0;
 	}
 	/* implies this packet is NOT meant for apps */
-	if (!(driver->ch) && type == 1 && chk_config_get_id()) {
+	if (!(driver->ch) && type == 1) {
 		if (chk_config_get_id() == AO8960_TOOLS_ID) {
 			diag_send_error_rsp(hdlc.dest_idx);
 		} else { /* APQ 8060, Let Q6 respond */
