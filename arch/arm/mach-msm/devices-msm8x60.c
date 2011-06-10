@@ -332,6 +332,18 @@ static struct resource gsbi3_qup_i2c_resources[] = {
 		.end	= GSBI3_QUP_IRQ,
 		.flags	= IORESOURCE_IRQ,
 	},
+	{
+		.name	= "i2c_clk",
+		.start	= 44,
+		.end	= 44,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "i2c_sda",
+		.start	= 43,
+		.end	= 43,
+		.flags	= IORESOURCE_IO,
+	},
 };
 
 static struct resource gsbi4_qup_i2c_resources[] = {
@@ -373,6 +385,18 @@ static struct resource gsbi7_qup_i2c_resources[] = {
 		.start	= GSBI7_QUP_IRQ,
 		.end	= GSBI7_QUP_IRQ,
 		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name	= "i2c_clk",
+		.start	= 60,
+		.end	= 60,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "i2c_sda",
+		.start	= 59,
+		.end	= 59,
+		.flags	= IORESOURCE_IO,
 	},
 };
 
