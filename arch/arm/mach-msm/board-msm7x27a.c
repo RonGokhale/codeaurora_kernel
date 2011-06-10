@@ -3021,7 +3021,7 @@ static int atmel_ts_power_on(bool on)
 		return rc;
 	}
 	/* vreg stabilization delay */
-	usleep_range(10000, 10000);
+	msleep(50);
 	return 0;
 }
 
