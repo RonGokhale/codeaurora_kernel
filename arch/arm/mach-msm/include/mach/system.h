@@ -17,7 +17,7 @@
 
 void arch_idle(void);
 
-#ifdef CONFIG_ARCH_MSM8X60
+#ifdef CONFIG_MSM_NATIVE_RESTART
 void arch_reset(char mode, const char *cmd);
 #else
 static inline void arch_reset(char mode, const char *cmd)
