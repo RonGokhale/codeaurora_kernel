@@ -68,15 +68,22 @@ static int msm_spm_dev_set_low_power_mode(struct msm_spm_device *dev,
 {
 	uint32_t i;
 	uint32_t start_addr = 0;
+	int ret = -EINVAL;
 
-	for (i = 0; i < dev->num_modes; i++) {
-		if ((dev->modes[i].mode == mode) &&
-			(dev->modes[i].notify_rpm == notify_rpm)) {
-			start_addr = dev->modes[i].start_addr;
-			break;
+	if (mode == MSM_SPM_MODE_DISABLED) {
+		ret = msm_spm_drv_set_spm_enable(&dev->reg_data, false);
+	} else if (!msm_spm_drv_set_spm_enable(&dev->reg_data, true)) {
+		for (i = 0; i < dev->num_modes; i++) {
+			if ((dev->modes[i].mode == mode) &&
+				(dev->modes[i].notify_rpm == notify_rpm)) {
+				start_addr = dev->modes[i].start_addr;
+				break;
+			}
 		}
+		ret = msm_spm_drv_set_low_power_mode(&dev->reg_data,
+					start_addr);
 	}
-	return msm_spm_drv_set_low_power_mode(&dev->reg_data, start_addr);
+	return ret;
 }
 
 static int __init msm_spm_dev_init(struct msm_spm_device *dev,
@@ -144,3 +151,18 @@ int __init msm_spm_init(struct msm_spm_platform_data *data, int nr_devs)
 
 	return ret;
 }
+
+#if defined(CONFIG_MSM_L2_SPM)
+static struct msm_spm_device msm_spm_l2_device;
+
+int msm_spm_l2_set_low_power_mode(unsigned int mode, bool notify_rpm)
+{
+	return msm_spm_dev_set_low_power_mode(
+			&msm_spm_l2_device, mode, notify_rpm);
+}
+
+int __init msm_spm_l2_init(struct msm_spm_platform_data *data)
+{
+	return msm_spm_dev_init(&msm_spm_l2_device, data);
+}
+#endif

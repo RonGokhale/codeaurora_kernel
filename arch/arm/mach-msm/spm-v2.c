@@ -73,9 +73,8 @@ static inline void msm_spm_drv_set_vctl(struct msm_spm_driver_data *dev,
 static void msm_spm_drv_flush_shadow(struct msm_spm_driver_data *dev,
 		unsigned int reg_index)
 {
-	if (dev->reg_shadow[reg_index])
-		__raw_writel(dev->reg_shadow[reg_index],
-			dev->reg_base_addr + msm_spm_reg_offsets[reg_index]);
+	__raw_writel(dev->reg_shadow[reg_index],
+		dev->reg_base_addr + msm_spm_reg_offsets[reg_index]);
 }
 
 static void msm_spm_drv_load_shadow(struct msm_spm_driver_data *dev,
@@ -119,16 +118,28 @@ static inline void msm_spm_drv_set_start_addr(
 	dev->reg_shadow[MSM_SPM_REG_SAW2_SPM_CTL] |= addr;
 }
 
-static inline void msm_spm_drv_set_spm_enable(
-		struct msm_spm_driver_data *dev, int enable)
-{
-	enable &= 0x01;
-	dev->reg_shadow[MSM_SPM_REG_SAW2_SPM_CTL] |= enable;
-}
 
 /******************************************************************************
  * Public functions
  *****************************************************************************/
+inline int msm_spm_drv_set_spm_enable(
+		struct msm_spm_driver_data *dev, bool enable)
+{
+	uint32_t value = enable ? 0x01 : 0x00;
+
+	if (!dev)
+		return -EINVAL;
+
+	if ((dev->reg_shadow[MSM_SPM_REG_SAW2_SPM_CTL] & 0x01) ^ value) {
+
+		dev->reg_shadow[MSM_SPM_REG_SAW2_SPM_CTL] &= ~0x1;
+		dev->reg_shadow[MSM_SPM_REG_SAW2_SPM_CTL] |= value;
+
+		msm_spm_drv_flush_shadow(dev, MSM_SPM_REG_SAW2_SPM_CTL);
+		wmb();
+	}
+	return 0;
+}
 void msm_spm_drv_flush_seq_entry(struct msm_spm_driver_data *dev)
 {
 	int i;

@@ -1754,12 +1754,12 @@ static int __init board_serialno_setup(char *serialno)
 __setup("androidboot.serialno=", board_serialno_setup);
 
 static uint8_t spm_wfi_cmd_sequence[] __initdata = {
-			0x03, 0x0B, 0x0f,
+			0x03, 0x0f,
 };
 
 static uint8_t spm_power_collapse_without_rpm[] __initdata = {
 			0x00, 0x24, 0x54, 0x10,
-			0x09, 0x03, 0x01, 0x0B,
+			0x09, 0x03, 0x01,
 			0x10, 0x54, 0x30, 0x0C,
 			0x24, 0x30, 0x0f,
 };
@@ -1793,14 +1793,16 @@ static struct msm_spm_platform_data msm_spm_data[] __initdata = {
 	[0] = {
 		.reg_base_addr = MSM_SAW0_BASE,
 		.reg_init_values[MSM_SPM_REG_SAW2_SECURE] = 0x00,
+		.reg_init_values[MSM_SPM_REG_SAW2_CFG] = 0x1F,
+		.reg_init_values[MSM_SPM_REG_SAW2_VCTL] = 0x9C,
 #if defined(CONFIG_MSM_AVS_HW)
 		.reg_init_values[MSM_SPM_REG_SAW2_AVS_CTL] = 0x00,
 		.reg_init_values[MSM_SPM_REG_SAW2_AVS_HYSTERESIS] = 0x00,
 #endif
 		.reg_init_values[MSM_SPM_REG_SAW2_SPM_CTL] = 0x01,
 		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DLY] = 0x02020202,
-		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_0] = 0x00A000AE,
-		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_1] = 0x00A00020,
+		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_0] = 0x0060009C,
+		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_1] = 0x0000001C,
 		.vctl_timeout_us = 50,
 		.num_modes = ARRAY_SIZE(msm_spm_seq_list),
 		.modes = msm_spm_seq_list,
@@ -1808,26 +1810,68 @@ static struct msm_spm_platform_data msm_spm_data[] __initdata = {
 	[1] = {
 		.reg_base_addr = MSM_SAW1_BASE,
 		.reg_init_values[MSM_SPM_REG_SAW2_SECURE] = 0x00,
+		.reg_init_values[MSM_SPM_REG_SAW2_CFG] = 0x1F,
+		.reg_init_values[MSM_SPM_REG_SAW2_VCTL] = 0x9C,
 #if defined(CONFIG_MSM_AVS_HW)
 		.reg_init_values[MSM_SPM_REG_SAW2_AVS_CTL] = 0x00,
 		.reg_init_values[MSM_SPM_REG_SAW2_AVS_HYSTERESIS] = 0x00,
 #endif
 		.reg_init_values[MSM_SPM_REG_SAW2_SPM_CTL] = 0x01,
 		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DLY] = 0x02020202,
-		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_0] = 0x00A000AE,
-		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_1] = 0x00A00020,
+		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_0] = 0x0060009C,
+		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_1] = 0x0000001C,
 		.vctl_timeout_us = 50,
 		.num_modes = ARRAY_SIZE(msm_spm_seq_list),
 		.modes = msm_spm_seq_list,
 	},
+};
+
+static uint8_t l2_spm_wfi_cmd_sequence[] __initdata = {
+			0x00, 0x20, 0x30, 0x20,
+			0x00, 0x0f,
+};
+
+static uint8_t l2_spm_gdhs_cmd_sequence[] __initdata = {
+			0x00, 0x20, 0x34, 0x64,
+			0x48, 0x03, 0x48, 0x07,
+			0x48, 0x20, 0x50, 0x64,
+			0x04, 0x34, 0x50, 0x0f,
+};
+static uint8_t l2_spm_power_off_cmd_sequence[] __initdata = {
+			0x00, 0x10, 0x34, 0x64,
+			0x48, 0x07, 0x48, 0x10,
+			0x50, 0x64, 0x04, 0x34,
+			0x50, 0x0F,
+};
+
+static struct msm_spm_seq_entry msm_spm_l2_seq_list[] __initdata = {
+	[0] = {
+		.mode = MSM_SPM_L2_MODE_RETENTION,
+		.notify_rpm = false,
+		.cmd = l2_spm_wfi_cmd_sequence,
+	},
+	[1] = {
+		.mode = MSM_SPM_L2_MODE_GDHS,
+		.notify_rpm = false,
+		.cmd = l2_spm_gdhs_cmd_sequence,
+	},
 	[2] = {
+		.mode = MSM_SPM_L2_MODE_POWER_COLLAPSE,
+		.notify_rpm = true,
+		.cmd = l2_spm_power_off_cmd_sequence,
+	},
+};
+
+static struct msm_spm_platform_data msm_spm_l2_data[] __initdata = {
+	[0] = {
 		.reg_base_addr = MSM_SAW_L2_BASE,
 		.reg_init_values[MSM_SPM_REG_SAW2_SECURE] = 0x00,
 		.reg_init_values[MSM_SPM_REG_SAW2_SPM_CTL] = 0x00,
 		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DLY] = 0x02020202,
 		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_0] = 0x00A000AE,
 		.reg_init_values[MSM_SPM_REG_SAW2_PMIC_DATA_1] = 0x00A00020,
-		.modes = NULL,
+		.modes = msm_spm_l2_seq_list,
+		.num_modes = ARRAY_SIZE(msm_spm_l2_seq_list),
 	},
 };
 
@@ -2599,6 +2643,7 @@ static void __init msm8960_sim_init(void)
 	ethernet_init();
 	msm8960_i2c_init();
 	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
+	msm_spm_l2_init(msm_spm_l2_data);
 	msm8960_init_buses();
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	pm8921_gpio_mpp_init();
