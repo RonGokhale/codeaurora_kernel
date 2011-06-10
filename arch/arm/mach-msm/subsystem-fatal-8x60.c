@@ -79,6 +79,8 @@ static void send_q6_nmi(void)
 
 	/* Q6 requires atleast 5ms to dump caches etc.*/
 	usleep(5000);
+
+	pr_info("subsystem-fatal-8x60: Q6 NMI was sent.\n");
 }
 
 int subsys_q6_shutdown(void)
