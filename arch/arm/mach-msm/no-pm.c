@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -29,3 +29,16 @@ void msm_pm_set_platform_data(struct msm_pm_platform_data *data, int count)
 
 void msm_pm_set_max_sleep_time(int64_t max_sleep_time_ns) { }
 EXPORT_SYMBOL(msm_pm_set_max_sleep_time);
+
+int platform_cpu_disable(unsigned int cpu)
+{
+	return -ENOSYS;
+}
+
+int platform_cpu_kill(unsigned int cpu)
+{
+	return -ENOSYS;
+}
+
+void platform_cpu_die(unsigned int cpu)
+{ }
