@@ -25,6 +25,7 @@
 
 #include <mach/msm_iomap.h>
 #include <mach/clk.h>
+#include <mach/rpm-regulator.h>
 
 #include "clock-local.h"
 #include "clock-rpm.h"
@@ -430,8 +431,14 @@ static void set_rate_tv(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 /* Update the sys_vdd voltage given a level. */
 int soc_update_sys_vdd(enum sys_vdd_level level)
 {
-	/* TODO: set voltage via pmic driver */
-	return 0;
+	static const int vdd_uv[] = {
+		[NONE...LOW] =  945000,
+		[NOMINAL] = 1050000,
+		[HIGH]    = 1150000,
+	};
+
+	return rpm_vreg_set_voltage(RPM_VREG_ID_PM8921_S3, RPM_VREG_VOTER3,
+				    vdd_uv[level], vdd_uv[HIGH], 1);
 }
 
 /* Enable/disable a power rail associated with a clock. */
