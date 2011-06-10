@@ -207,7 +207,7 @@ static struct smsm_state_info *smsm_states;
 static inline void smd_write_intr(unsigned int val,
 				const void __iomem *addr)
 {
-	dsb();
+	wmb();
 	__raw_writel(val, addr);
 }
 
@@ -1770,8 +1770,7 @@ static int smsm_init(void)
 	if (i)
 		return i;
 
-
-	dsb();
+	wmb();
 	return 0;
 }
 
@@ -1801,7 +1800,7 @@ void smsm_reset_modem_cont(void)
 	state = __raw_readl(SMSM_STATE_ADDR(SMSM_APPS_STATE)) \
 						& ~SMSM_MODEM_WAIT;
 	__raw_writel(state, SMSM_STATE_ADDR(SMSM_APPS_STATE));
-	dsb();
+	wmb();
 	spin_unlock_irqrestore(&smem_lock, flags);
 }
 EXPORT_SYMBOL(smsm_reset_modem_cont);
@@ -1910,7 +1909,7 @@ int smsm_change_intr_mask(uint32_t smsm_entry,
 	new_mask = (old_mask & ~clear_mask) | set_mask;
 	__raw_writel(new_mask, SMSM_INTR_MASK_ADDR(smsm_entry, SMSM_APPS));
 
-	dsb();
+	wmb();
 	spin_unlock_irqrestore(&smem_lock, flags);
 
 	return 0;
@@ -1980,7 +1979,6 @@ uint32_t smsm_get_state(uint32_t smsm_entry)
 		pr_err("smsm_get_state <SM NO STATE>\n");
 	} else {
 		rv = __raw_readl(SMSM_STATE_ADDR(smsm_entry));
-		dsb();
 	}
 
 	return rv;

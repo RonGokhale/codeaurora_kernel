@@ -29,7 +29,7 @@
 static inline void notify_other_proc_comm(void)
 {
 	/* Make sure the write completes before interrupt */
-	dsb();
+	wmb();
 #if defined(CONFIG_ARCH_MSM7X30)
 	__raw_writel(1 << 6, MSM_GCC_BASE + 0x8);
 #elif defined(CONFIG_ARCH_MSM8X60)
