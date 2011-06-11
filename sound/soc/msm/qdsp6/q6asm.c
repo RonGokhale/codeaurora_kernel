@@ -26,6 +26,8 @@
 #include <linux/slab.h>
 #include <linux/msm_audio.h>
 #include <linux/android_pmem.h>
+#include <linux/memory_alloc.h>
+#include <mach/memory.h>
 #include <mach/debug_mm.h>
 #include <mach/peripheral-loader.h>
 #include <mach/qdsp6v2/rtac.h>
@@ -128,7 +130,8 @@ int q6asm_audio_client_buf_free(unsigned int dir,
 					   (void *)port->buf[cnt].phys,
 					   (void *)&port->buf[cnt].phys, cnt);
 				iounmap(port->buf[cnt].data);
-				pmem_kfree(port->buf[cnt].phys);
+				free_contiguous_memory_by_paddr(
+					port->buf[cnt].phys);
 
 				port->buf[cnt].data = NULL;
 				port->buf[cnt].phys = 0;
@@ -339,9 +342,9 @@ int q6asm_audio_client_buf_alloc(unsigned int dir,
 		while (cnt < bufcnt) {
 			if (bufsz > 0) {
 				if (!buf[cnt].data) {
-					buf[cnt].phys = pmem_kalloc(bufsz,
-							PMEM_MEMTYPE_EBI1|
-							PMEM_ALIGNMENT_4K);
+					buf[cnt].phys =
+					allocate_contiguous_ebi_nomap(bufsz,
+						SZ_4K);
 					if (!buf[cnt].phys) {
 						pr_err("%s:Buf alloc failed "
 						" size=%d\n", __func__,
