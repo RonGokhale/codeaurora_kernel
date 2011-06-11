@@ -139,10 +139,8 @@ struct bam_mux_hdr {
 
 static void bam_mux_write_done(struct work_struct *work);
 static void handle_bam_mux_cmd(struct work_struct *work);
-static void free_tx_descriptor(struct work_struct *work);
 
 static DEFINE_MUTEX(bam_mux_lock);
-static DECLARE_WORK(work_free_tx_descriptor, free_tx_descriptor);
 
 static struct workqueue_struct *bam_mux_rx_workqueue;
 static struct workqueue_struct *bam_mux_tx_workqueue;
@@ -203,12 +201,8 @@ static void handle_bam_mux_cmd(struct work_struct *work)
 {
 	unsigned long flags;
 	struct bam_mux_hdr *rx_hdr;
-	struct sps_iovec iov;
 	struct rx_pkt_info *info;
 	struct sk_buff *rx_skb;
-
-	/* mark consumed descriptor as free */
-	sps_get_iovec(bam_rx_pipe, &iov);
 
 	info = container_of(work, struct rx_pkt_info, work);
 	rx_skb = info->skb;
@@ -299,8 +293,6 @@ static void bam_mux_write_done(struct work_struct *work)
 	struct sk_buff *skb;
 	struct bam_mux_hdr *hdr;
 	struct tx_pkt_info *info;
-
-	free_tx_descriptor(NULL);
 
 	info = container_of(work, struct tx_pkt_info, work);
 	skb = info->skb;
@@ -482,13 +474,6 @@ int msm_bam_dmux_close(uint32_t id)
 	return rc;
 }
 
-static void free_tx_descriptor(struct work_struct *work)
-{
-	struct sps_iovec iov;
-
-	/* mark consumed descriptor as free */
-	sps_get_iovec(bam_tx_pipe, &iov);
-}
 static void bam_mux_tx_notify(struct sps_event_notify *notify)
 {
 	struct tx_pkt_info *pkt;
@@ -509,8 +494,6 @@ static void bam_mux_tx_notify(struct sps_event_notify *notify)
 						DMA_TO_DEVICE);
 			kfree(pkt->skb);
 			kfree(pkt);
-			queue_work(bam_mux_tx_workqueue,
-					&work_free_tx_descriptor);
 		}
 		break;
 	default:
@@ -633,8 +616,7 @@ static void bam_init(struct work_struct *work)
 	tx_connection.destination = h;
 	tx_connection.dest_pipe_index = 4;
 	tx_connection.mode = SPS_MODE_DEST;
-	tx_connection.options = SPS_O_AUTO_ENABLE | SPS_O_EOT |
-					SPS_O_ACK_TRANSFERS;
+	tx_connection.options = SPS_O_AUTO_ENABLE | SPS_O_EOT;
 	tx_desc_mem_buf.size = 0x800; /* 2k */
 	tx_desc_mem_buf.base = dma_alloc_coherent(NULL, tx_desc_mem_buf.size,
 							&dma_addr, 0);
@@ -671,8 +653,7 @@ static void bam_init(struct work_struct *work)
 	rx_connection.destination = SPS_DEV_HANDLE_MEM;
 	rx_connection.dest_pipe_index = 1;
 	rx_connection.mode = SPS_MODE_SRC;
-	rx_connection.options = SPS_O_AUTO_ENABLE | SPS_O_EOT |
-					SPS_O_ACK_TRANSFERS;
+	rx_connection.options = SPS_O_AUTO_ENABLE | SPS_O_EOT;
 	rx_desc_mem_buf.size = 0x800; /* 2k */
 	rx_desc_mem_buf.base = dma_alloc_coherent(NULL, rx_desc_mem_buf.size,
 							&dma_addr, 0);
