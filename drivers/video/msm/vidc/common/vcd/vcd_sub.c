@@ -16,24 +16,30 @@
 #include "vidc_type.h"
 #include "vcd.h"
 #include "vdec_internal.h"
+#include <linux/memory_alloc.h>
 
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 
 static int vcd_pmem_alloc(size_t sz, u8 **kernel_vaddr, u8 **phy_addr)
 {
 	u32 memtype;
+
+	if (!kernel_vaddr || !phy_addr) {
+		pr_err("\n%s: Invalid parameters", __func__);
+		return -ENOMEM;
+	}
 	memtype = res_trk_get_mem_type();
-	*phy_addr =
-	    (u8 *) pmem_kalloc(sz, memtype | PMEM_ALIGNMENT_4K);
-
-	if (!IS_ERR((void *)*phy_addr)) {
-
+	*phy_addr = (u8 *) allocate_contiguous_memory_nomap(sz,
+					memtype, SZ_4K);
+	if (!*phy_addr) {
 		*kernel_vaddr = ioremap((unsigned long)*phy_addr, sz);
 
 		if (!*kernel_vaddr) {
 			pr_err("%s: could not ioremap in kernel pmem buffers\n",
 			       __func__);
-			pmem_kfree((s32) *phy_addr);
+			free_contiguous_memory_by_paddr(
+				(unsigned long) *phy_addr);
+			*phy_addr = NULL;
 			return -ENOMEM;
 		}
 		pr_debug("write buf: phy addr 0x%08x kernel addr 0x%08x\n",
@@ -49,8 +55,12 @@ static int vcd_pmem_alloc(size_t sz, u8 **kernel_vaddr, u8 **phy_addr)
 
 static int vcd_pmem_free(u8 *kernel_vaddr, u8 *phy_addr)
 {
-	iounmap((void *)kernel_vaddr);
-	pmem_kfree((s32) phy_addr);
+	if (kernel_vaddr)
+		iounmap((void *)kernel_vaddr);
+	if (phy_addr)
+		free_contiguous_memory_by_paddr((unsigned long)phy_addr);
+	kernel_vaddr = NULL;
+	phy_addr = NULL;
 	return 0;
 }
 

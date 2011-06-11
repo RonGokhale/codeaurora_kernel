@@ -26,7 +26,7 @@
 #include <mach/msm_sps.h>
 #include <mach/rpm.h>
 #include <mach/msm_bus_board.h>
-
+#include <mach/msm_memtypes.h>
 #include "clock.h"
 #include "devices.h"
 #include "devices-msm8x60.h"
@@ -434,7 +434,7 @@ struct msm_vidc_platform_data vidc_platform_data = {
 #ifdef CONFIG_MSM_BUS_SCALING
 	.vidc_bus_client_pdata = &vidc_bus_client_data,
 #endif
-	.memtype = PMEM_MEMTYPE_EBI1
+	.memtype = MEMTYPE_EBI1
 };
 
 struct platform_device msm_device_vidc = {

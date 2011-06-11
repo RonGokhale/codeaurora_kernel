@@ -10,7 +10,7 @@
  * GNU General Public License for more details.
  *
  */
-
+#include <linux/memory_alloc.h>
 #include "vidc_type.h"
 #include "vcd_ddl_utils.h"
 
@@ -86,8 +86,15 @@ void ddl_pmem_free(struct ddl_buf_addr *buff_addr)
 void ddl_pmem_alloc(struct ddl_buf_addr *buff_addr, size_t sz, u32 align)
 {
 	u32 guard_bytes, align_mask;
-	s32 physical_addr;
+	u32 physical_addr;
 	u32 align_offset;
+	u32 alloc_size;
+	struct ddl_context *ddl_context;
+
+	if (!buff_addr) {
+		ERR("\n%s() Invalid Parameters", __func__);
+		return;
+	}
 
 	DBG_PMEM("\n%s() IN: Requested alloc size(%u)", __func__, (u32)sz);
 
@@ -101,16 +108,19 @@ void ddl_pmem_alloc(struct ddl_buf_addr *buff_addr, size_t sz, u32 align)
 		guard_bytes = DDL_TILE_BUF_ALIGN_GUARD_BYTES;
 		align_mask = DDL_TILE_BUF_ALIGN_MASK;
 	}
+	ddl_context = ddl_get_context();
+	alloc_size = sz + guard_bytes;
 
-	physical_addr = pmem_kalloc((sz + guard_bytes),
-				      PMEM_MEMTYPE_EBI1 | PMEM_ALIGNMENT_4K);
-	buff_addr->physical_base_addr = (u32 *)physical_addr;
+	physical_addr = (u32)
+		allocate_contiguous_memory_nomap(alloc_size,
+					ddl_context->memtype, SZ_4K);
 
-	if (IS_ERR((void *)physical_addr)) {
-		pr_err("%s(): could not allocte in kernel pmem buffers\n",
+	if (!physical_addr) {
+		pr_err("%s(): could not allocate kernel pmem buffers\n",
 		       __func__);
 		goto bailout;
 	}
+	buff_addr->physical_base_addr = (u32 *) physical_addr;
 
 	buff_addr->virtual_base_addr =
 	    (u32 *) ioremap((unsigned long)physical_addr,
@@ -119,7 +129,8 @@ void ddl_pmem_alloc(struct ddl_buf_addr *buff_addr, size_t sz, u32 align)
 
 		pr_err("%s: could not ioremap in kernel pmem buffers\n",
 		       __func__);
-		pmem_kfree(physical_addr);
+			free_contiguous_memory_by_paddr(
+				(unsigned long) physical_addr);
 		goto bailout;
 	}
 	memset(buff_addr->virtual_base_addr, 0 , sz + guard_bytes);
@@ -158,13 +169,9 @@ void ddl_pmem_free(struct ddl_buf_addr *buff_addr)
 
 	if (buff_addr->virtual_base_addr)
 		iounmap((void *)buff_addr->virtual_base_addr);
-
-	if ((buff_addr->physical_base_addr) &&
-		pmem_kfree((s32) buff_addr->physical_base_addr)) {
-		ERR("\n %s(): Error in Freeing ddl_pmem_free "
-		"Physical Address %p", __func__,
-		buff_addr->physical_base_addr);
-	}
+	if (buff_addr->physical_base_addr)
+		free_contiguous_memory_by_paddr(
+			(unsigned long) buff_addr->physical_base_addr);
 	DBG_PMEM("\n%s() OUT: phy_addr(%p) ker_addr(%p) size(%u)", __func__,
 		buff_addr->physical_base_addr, buff_addr->virtual_base_addr,
 		buff_addr->buffer_size);

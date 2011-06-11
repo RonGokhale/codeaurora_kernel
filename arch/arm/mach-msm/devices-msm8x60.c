@@ -39,6 +39,7 @@
 #include <mach/msm_bus.h>
 #include <mach/msm_bus_board.h>
 #include <mach/socinfo.h>
+#include <mach/msm_memtypes.h>
 #ifdef CONFIG_MSM_DSPS
 #include <mach/msm_dsps.h>
 #endif
@@ -2013,7 +2014,7 @@ struct msm_vidc_platform_data vidc_platform_data = {
 #ifdef CONFIG_MSM_BUS_SCALING
 	.vidc_bus_client_pdata = &vidc_bus_client_data,
 #endif
-	.memtype = PMEM_MEMTYPE_SMI
+	.memtype = MEMTYPE_SMI_KERNEL
 };
 
 struct platform_device msm_device_vidc = {

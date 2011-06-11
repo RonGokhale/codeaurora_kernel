@@ -39,6 +39,7 @@
 #include <mach/usb_gadget_fserial.h>
 #include <mach/rpc_hsusb.h>
 #include <mach/dal_axi.h>
+#include <mach/msm_memtypes.h>
 
 /* EBI THERMAL DRIVER */
 static struct resource msm_ebi0_thermal_resources[] = {
@@ -776,7 +777,7 @@ static struct resource msm_vidc_720p_resources[] = {
 };
 
 struct msm_vidc_platform_data vidc_platform_data = {
-	.memtype = PMEM_MEMTYPE_EBI1
+	.memtype = MEMTYPE_EBI0
 };
 
 struct platform_device msm_device_vidc_720p = {
