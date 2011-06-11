@@ -41,7 +41,7 @@
 #include "modem_notifier.h"
 
 #if defined(CONFIG_ARCH_QSD8X50) || defined(CONFIG_ARCH_MSM8X60) \
-	|| defined(CONFIG_ARCH_MSM8960)
+	|| defined(CONFIG_ARCH_MSM8960) || defined(CONFIG_ARCH_FSM9XXX)
 #define CONFIG_QDSP6 1
 #endif
 
@@ -180,6 +180,18 @@ static inline void smd_write_intr(unsigned int val,
 			(smd_write_intr(1 << 25, MSM_APCS_GCC_BASE + 0x8))
 #define MSM_TRIG_A2WCNSS_SMSM_INT  \
 			(smd_write_intr(1 << 23, MSM_APCS_GCC_BASE + 0x8))
+#elif defined(CONFIG_ARCH_FSM9XXX)
+#define MSM_TRIG_A2Q6_SMD_INT	\
+			(smd_write_intr(1 << 10, MSM_GCC_BASE + 0x8))
+#define MSM_TRIG_A2Q6_SMSM_INT	\
+			(smd_write_intr(1 << 10, MSM_GCC_BASE + 0x8))
+#define MSM_TRIG_A2M_SMD_INT	\
+			(smd_write_intr(1 << 0, MSM_GCC_BASE + 0x8))
+#define MSM_TRIG_A2M_SMSM_INT	\
+			(smd_write_intr(1 << 5, MSM_GCC_BASE + 0x8))
+#define MSM_TRIG_A2DSPS_SMD_INT
+#define MSM_TRIG_A2WCNSS_SMD_INT
+#define MSM_TRIG_A2WCNSS_SMSM_INT
 #else
 #define MSM_TRIG_A2M_SMD_INT     \
 			(smd_write_intr(1, MSM_CSR_BASE + 0x400 + (0) * 4))
@@ -917,6 +929,10 @@ static int smd_is_packet(struct smd_alloc_elm *alloc_elm)
 
 	/* for cases where xfer type is 0 */
 	if (!strncmp(alloc_elm->name, "DAL", 3))
+		return 0;
+
+	/* for cases where xfer type is 0 */
+	if (!strncmp(alloc_elm->name, "RPCCALL_QDSP", 12))
 		return 0;
 
 	if (alloc_elm->cid > 4 || alloc_elm->cid == 1)
