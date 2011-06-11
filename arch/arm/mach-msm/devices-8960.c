@@ -1068,6 +1068,26 @@ struct platform_device msm_cpudai1 = {
 	.id	= 0x4001,
 };
 
+struct platform_device msm_cpudai_bt_rx = {
+	.name   = "msm-dai-q6",
+	.id     = 0x3000,
+};
+
+struct platform_device msm_cpudai_bt_tx = {
+	.name   = "msm-dai-q6",
+	.id     = 0x3001,
+};
+
+struct platform_device msm_cpudai_fm_rx = {
+	.name   = "msm-dai-q6",
+	.id     = 0x3004,
+};
+
+struct platform_device msm_cpudai_fm_tx = {
+	.name   = "msm-dai-q6",
+	.id     = 0x3005,
+};
+
 struct platform_device msm_cpu_fe = {
 	.name	= "msm-dai-fe",
 	.id	= -1,
@@ -1075,7 +1095,7 @@ struct platform_device msm_cpu_fe = {
 
 struct platform_device msm_stub_codec = {
 	.name	= "msm-stub-codec",
-	.id	= -1,
+	.id	= 1,
 };
 
 struct platform_device msm_voice = {
