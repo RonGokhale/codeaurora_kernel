@@ -315,8 +315,8 @@ static int msm_serial_loopback_enable_set(void *data, u64 val)
 		msm_hs_write(uport, UARTDM_MR2_ADDR, ret);
 		spin_unlock_irqrestore(&uport->lock, flags);
 	}
-	/* Calling CLOCK API. Hence dsb() requires here. */
-	dsb();
+	/* Calling CLOCK API. Hence mb() requires here. */
+	mb();
 	clk_disable(msm_uport->clk);
 	if (msm_uport->pclk)
 		clk_disable(msm_uport->pclk);
@@ -558,7 +558,7 @@ static void msm_hs_set_bps_locked(struct uart_port *uport,
 	 * clk_set_rate which updates MND Values. Hence
 	 * dsb requires here.
 	 */
-	dsb();
+	mb();
 	if (bps > 460800) {
 		uport->uartclk = bps * 16;
 	} else {
@@ -730,7 +730,7 @@ static void msm_hs_set_termios(struct uart_port *uport,
 		 * previous writel are completed. Hence
 		 * dsb requires here.
 		 */
-		dsb();
+		mb();
 		/* do discard flush */
 		msm_dmov_stop_cmd(msm_uport->dma_rx_channel,
 				  &msm_uport->rx.xfer, 0);
@@ -738,7 +738,7 @@ static void msm_hs_set_termios(struct uart_port *uport,
 
 	msm_hs_write(uport, UARTDM_IMR_ADDR, msm_uport->imr_reg);
 	/* calling other hardware component here clk_disable API. */
-	dsb();
+	mb();
 	clk_disable(msm_uport->clk);
 	spin_unlock_irqrestore(&uport->lock, flags);
 }
@@ -797,8 +797,8 @@ static void msm_hs_stop_rx_locked(struct uart_port *uport)
 	data &= ~UARTDM_RX_DM_EN_BMSK;
 	msm_hs_write(uport, UARTDM_DMEN_ADDR, data);
 
-	/* calling DMOV or CLOCK API. Hence dsb() */
-	dsb();
+	/* calling DMOV or CLOCK API. Hence mb() */
+	mb();
 	/* Disable the receiver */
 	if (msm_uport->rx.flush == FLUSH_NONE) {
 		wake_lock(&msm_uport->rx.wake_lock);
@@ -866,8 +866,8 @@ static void msm_hs_submit_tx_locked(struct uart_port *uport)
 	/* Disable the tx_ready interrupt */
 	msm_uport->imr_reg &= ~UARTDM_ISR_TX_READY_BMSK;
 	msm_hs_write(uport, UARTDM_IMR_ADDR, msm_uport->imr_reg);
-	/* Calling next DMOV API. Hence dsb() here. */
-	dsb();
+	/* Calling next DMOV API. Hence mb() here. */
+	mb();
 
 	dma_sync_single_for_device(uport->dev, tx->mapped_cmd_ptr_ptr,
 				   sizeof(u32 *), DMA_TO_DEVICE);
@@ -891,8 +891,8 @@ static void msm_hs_start_rx_locked(struct uart_port *uport)
 	msm_hs_write(uport, UARTDM_CR_ADDR, STALE_EVENT_ENABLE);
 	msm_uport->imr_reg |= UARTDM_ISR_RXLEV_BMSK;
 	msm_hs_write(uport, UARTDM_IMR_ADDR, msm_uport->imr_reg);
-	/* Calling next DMOV API. Hence dsb() here. */
-	dsb();
+	/* Calling next DMOV API. Hence mb() here. */
+	mb();
 
 	msm_uport->rx.flush = FLUSH_NONE;
 	msm_dmov_enqueue_cmd(msm_uport->dma_rx_channel, &msm_uport->rx.xfer);
@@ -1024,7 +1024,7 @@ static void msm_serial_hs_rx_tlet(unsigned long tlet_ptr)
 	 * Complete device writel before invalidating Rx buffer
 	 * and using the same.
 	 */
-	dsb();
+	mb();
 
 	/* order the read of rx.buffer */
 	dma_coherent_post_ops();
@@ -1111,8 +1111,8 @@ static void msm_serial_hs_tx_tlet(unsigned long tlet_ptr)
 
 	msm_uport->imr_reg |= UARTDM_ISR_TX_READY_BMSK;
 	msm_hs_write(&(msm_uport->uport), UARTDM_IMR_ADDR, msm_uport->imr_reg);
-	/* Calling clk API. Hence dsb() requires. */
-	dsb();
+	/* Calling clk API. Hence mb() requires. */
+	mb();
 
 	clk_disable(msm_uport->clk);
 	spin_unlock_irqrestore(&(msm_uport->uport.lock), flags);
@@ -1186,8 +1186,8 @@ void msm_hs_set_mctrl_locked(struct uart_port *uport,
 		data |= UARTDM_MR1_RX_RDY_CTL_BMSK;
 		msm_hs_write(uport, UARTDM_MR1_ADDR, data);
 	}
-	/* Calling CLOCK API. Hence dsb() requires. */
-	dsb();
+	/* Calling CLOCK API. Hence mb() requires. */
+	mb();
 	clk_disable(msm_uport->clk);
 }
 
@@ -1212,8 +1212,8 @@ static void msm_hs_enable_ms_locked(struct uart_port *uport)
 	/* Enable DELTA_CTS Interrupt */
 	msm_uport->imr_reg |= UARTDM_ISR_DELTA_CTS_BMSK;
 	msm_hs_write(uport, UARTDM_IMR_ADDR, msm_uport->imr_reg);
-	/* Calling CLOCK API. Hence dsb() requires here. */
-	dsb();
+	/* Calling CLOCK API. Hence mb() requires here. */
+	mb();
 
 	clk_disable(msm_uport->clk);
 
@@ -1233,8 +1233,8 @@ static void msm_hs_break_ctl(struct uart_port *uport, int ctl)
 	spin_lock_irqsave(&uport->lock, flags);
 	clk_enable(msm_uport->clk);
 	msm_hs_write(uport, UARTDM_CR_ADDR, ctl ? START_BREAK : STOP_BREAK);
-	/* Calling CLOCK API. Hence dsb() requires here. */
-	dsb();
+	/* Calling CLOCK API. Hence mb() requires here. */
+	mb();
 	clk_disable(msm_uport->clk);
 	spin_unlock_irqrestore(&uport->lock, flags);
 }
@@ -1265,8 +1265,8 @@ static void msm_hs_handle_delta_cts_locked(struct uart_port *uport)
 
 	/* clear interrupt */
 	msm_hs_write(uport, UARTDM_CR_ADDR, RESET_CTS);
-	/* Calling CLOCK API. Hence dsb() requires here. */
-	dsb();
+	/* Calling CLOCK API. Hence mb() requires here. */
+	mb();
 	uport->icount.cts++;
 
 	clk_disable(msm_uport->clk);
@@ -1306,9 +1306,9 @@ static int msm_hs_check_clock_off_locked(struct uart_port *uport)
 		msm_hs_write(uport, UARTDM_CR_ADDR, FORCE_STALE_EVENT);
 		/*
 		 * Before returning make sure that device writel completed.
-		 * Hence dsb() requires here.
+		 * Hence mb() requires here.
 		 */
-		dsb();
+		mb();
 		return 0;  /* RXSTALE flush not complete - retry */
 	case CLK_REQ_OFF_RXSTALE_ISSUED:
 	case CLK_REQ_OFF_FLUSH_ISSUED:
@@ -1374,8 +1374,8 @@ static irqreturn_t msm_hs_isr(int irq, void *dev)
 		wake_lock(&rx->wake_lock);  /* hold wakelock while rx dma */
 		msm_uport->imr_reg &= ~UARTDM_ISR_RXLEV_BMSK;
 		msm_hs_write(uport, UARTDM_IMR_ADDR, msm_uport->imr_reg);
-		/* Complete device write for IMR. Hence dsb() requires. */
-		dsb();
+		/* Complete device write for IMR. Hence mb() requires. */
+		mb();
 	}
 	/* Stale rx interrupt */
 	if (isr_status & UARTDM_ISR_RXSTALE_BMSK) {
@@ -1383,9 +1383,9 @@ static irqreturn_t msm_hs_isr(int irq, void *dev)
 		msm_hs_write(uport, UARTDM_CR_ADDR, RESET_STALE_INT);
 		/*
 		 * Complete device write before calling DMOV API. Hence
-		 * dsb() requires here.
+		 * mb() requires here.
 		 */
-		dsb();
+		mb();
 
 		if (msm_uport->clk_req_off_state == CLK_REQ_OFF_RXSTALE_ISSUED)
 			msm_uport->clk_req_off_state =
@@ -1408,9 +1408,9 @@ static irqreturn_t msm_hs_isr(int irq, void *dev)
 		}
 		/*
 		 * Complete both writes before starting new TX.
-		 * Hence dsb() requires here.
+		 * Hence mb() requires here.
 		 */
-		dsb();
+		mb();
 		/* Complete DMA TX transactions and submit new transactions */
 		tx_buf->tail = (tx_buf->tail + tx->tx_count) & ~UART_XMIT_SIZE;
 
@@ -1429,9 +1429,9 @@ static irqreturn_t msm_hs_isr(int irq, void *dev)
 		msm_hs_write(uport, UARTDM_IMR_ADDR, msm_uport->imr_reg);
 		/*
 		 * Complete device write before starting clock_off request.
-		 * Hence dsb() requires here.
+		 * Hence mb() requires here.
 		 */
-		dsb();
+		mb();
 		if (!msm_hs_check_clock_off_locked(uport))
 			hrtimer_start(&msm_uport->clk_off_timer,
 				      msm_uport->clk_off_delay,
@@ -1460,9 +1460,9 @@ void msm_hs_request_clock_off(struct uart_port *uport) {
 		msm_hs_write(uport, UARTDM_IMR_ADDR, msm_uport->imr_reg);
 		/*
 		 * Complete device write before retuning back.
-		 * Hence dsb() requires here.
+		 * Hence mb() requires here.
 		 */
-		dsb();
+		mb();
 	}
 	spin_unlock_irqrestore(&uport->lock, flags);
 }
@@ -1493,8 +1493,8 @@ static void msm_hs_request_clock_on_locked(struct uart_port *uport) {
 			data = msm_hs_read(uport, UARTDM_DMEN_ADDR);
 			data |= UARTDM_RX_DM_EN_BMSK;
 			msm_hs_write(uport, UARTDM_DMEN_ADDR, data);
-			/* Complete above device write. Hence dsb() here. */
-			dsb();
+			/* Complete above device write. Hence mb() here. */
+			mb();
 		}
 		hrtimer_try_to_cancel(&msm_uport->clk_off_timer);
 		if (msm_uport->rx.flush == FLUSH_SHUTDOWN)
@@ -1643,9 +1643,9 @@ static int msm_hs_startup(struct uart_port *uport)
 	msm_hs_write(uport, UARTDM_TFWR_ADDR, 0);  /* TXLEV on empty TX fifo */
 	/*
 	 * Complete all device write related configuration before
-	 * queuing RX request. Hence dsb() requires here.
+	 * queuing RX request. Hence mb() requires here.
 	 */
-	dsb();
+	mb();
 
 	if (use_low_power_wakeup(msm_uport)) {
 		ret = set_irq_wake(msm_uport->wakeup.irq, 1);
@@ -1902,9 +1902,9 @@ static int __init msm_hs_probe(struct platform_device *pdev)
 	/*
 	 * Enable Command register protection before going ahead as this hw
 	 * configuration makes sure that issued cmd to CR register gets complete
-	 * before next issued cmd start. Hence dsb() requires here.
+	 * before next issued cmd start. Hence mb() requires here.
 	 */
-	dsb();
+	mb();
 
 	msm_uport->clk_state = MSM_HS_CLK_PORT_OFF;
 	hrtimer_init(&msm_uport->clk_off_timer, CLOCK_MONOTONIC,
@@ -1984,9 +1984,9 @@ static void msm_hs_shutdown(struct uart_port *uport)
 	msm_hs_write(uport, UARTDM_IMR_ADDR, msm_uport->imr_reg);
 	/*
 	 * Complete all device write before actually disabling uartclk.
-	 * Hence dsb() requires here.
+	 * Hence mb() requires here.
 	 */
-	dsb();
+	mb();
 
 	clk_disable(msm_uport->clk);  /* to balance local clk_enable() */
 	if (msm_uport->clk_state != MSM_HS_CLK_OFF) {

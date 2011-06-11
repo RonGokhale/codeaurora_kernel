@@ -187,7 +187,7 @@ qup_i2c_interrupt(int irq, void *devid)
 		if (dev->num_irqs == 1) {
 			writel_relaxed(QUP_RESET_STATE, dev->base+QUP_STATE);
 			/* Ensure that state is written before ISR exits */
-			dsb();
+			mb();
 		}
 		return IRQ_HANDLED;
 	}
@@ -200,7 +200,7 @@ qup_i2c_interrupt(int irq, void *devid)
 		if (dev->num_irqs == 1) {
 			writel_relaxed(QUP_RESET_STATE, dev->base+QUP_STATE);
 			/* Ensure that state is written before ISR exits */
-			dsb();
+			mb();
 		}
 		goto intr_done;
 	}
@@ -215,7 +215,7 @@ qup_i2c_interrupt(int irq, void *devid)
 			/* Ensure that error flags are cleared before ISR
 			 * exits
 			 */
-			dsb();
+			mb();
 		}
 		goto intr_done;
 	}
@@ -226,7 +226,7 @@ qup_i2c_interrupt(int irq, void *devid)
 	if (op_flgs & QUP_OUT_SVC_FLAG) {
 		writel_relaxed(QUP_OUT_SVC_FLAG, dev->base + QUP_OPERATIONAL);
 		/* Ensure that service flag is acknowledged before ISR exits */
-		dsb();
+		mb();
 	}
 	if (dev->msg->flags == I2C_M_RD) {
 		if ((op_flgs & QUP_MX_INPUT_DONE) ||
@@ -236,7 +236,7 @@ qup_i2c_interrupt(int irq, void *devid)
 			/* Ensure that service flag is acknowledged before ISR
 			 * exits
 			 */
-			dsb();
+			mb();
 		} else
 			return IRQ_HANDLED;
 	}
@@ -609,12 +609,12 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		if (dev->gsbi) {
 			writel_relaxed(0x2 << 4, dev->gsbi);
 			/* GSBI memory is not in the same 1K region as other
-			 * QUP registers. dsb() here ensures that the GSBI
+			 * QUP registers. mb() here ensures that the GSBI
 			 * register is updated in correct order and that the
 			 * write has gone through before programming QUP core
 			 * registers
 			 */
-			dsb();
+			mb();
 		}
 
 		fs_div = ((dev->pdata->src_clk_rate
@@ -711,7 +711,7 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		 * registers. Ensure that clock control is written before
 		 * programming other QUP registers
 		 */
-		dsb();
+		mb();
 
 		do {
 			int idx = 0;
@@ -787,7 +787,7 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 				/* Make sure that the write has gone through
 				 * before returning from the function
 				 */
-				dsb();
+				mb();
 				ret = -ETIMEDOUT;
 				goto out_err;
 			}

@@ -453,7 +453,7 @@ void msm_camio_vfe_blk_reset(void)
 	val = readl_relaxed(appbase + 0x00000208);
 	val &= ~0x1;
 	writel_relaxed(val, appbase + 0x00000208);
-	dsb();
+	mb();
 	usleep_range(10000, 11000);
 	return;
 }

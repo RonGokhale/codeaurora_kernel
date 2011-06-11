@@ -719,7 +719,7 @@ static int msm_otg_suspend(struct msm_otg *dev)
 
 	writel(readl(USB_USBCMD) | ASYNC_INTR_CTRL | ULPI_STP_CTRL, USB_USBCMD);
 	/* Ensure that above operation is completed before turning off clocks */
-	dsb();
+	mb();
 
 	if (dev->hs_pclk)
 		clk_disable(dev->hs_pclk);
@@ -1480,7 +1480,7 @@ reset_link:
 	writel(0x0, USB_AHB_BURST);
 	writel(0x00, USB_AHB_MODE);
 	/* Ensure that RESET operation is completed before turning off clock */
-	dsb();
+	mb();
 
 	clk_disable(dev->hs_clk);
 
@@ -2676,7 +2676,7 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 	writel(readl(USB_USBSTS), USB_USBSTS);
 	writel(0, USB_USBINTR);
 	/* Ensure that above STOREs are completed before enabling interrupts */
-	dsb();
+	mb();
 
 	ret = request_irq(dev->irq, msm_otg_irq, IRQF_SHARED,
 					"msm_otg", dev);

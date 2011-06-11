@@ -92,7 +92,7 @@ static void setup_next_sample(struct msm_ts *ts)
 	       TSSC_CTL_MODE_MASTER | TSSC_CTL_ENABLE);
 	tssc_writel(ts, tmp, TSSC_CTL);
 	/* barrier: Make sure the write completes before the next sample */
-	dsb();
+	mb();
 }
 
 static struct ts_virt_key *find_virt_key(struct msm_ts *ts,
