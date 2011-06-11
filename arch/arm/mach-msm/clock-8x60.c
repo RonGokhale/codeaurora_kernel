@@ -3120,6 +3120,10 @@ static DEFINE_CLK_VOTER(dfab_sdc3_clk, &dfab_clk.c);
 static DEFINE_CLK_VOTER(dfab_sdc4_clk, &dfab_clk.c);
 static DEFINE_CLK_VOTER(dfab_sdc5_clk, &dfab_clk.c);
 
+static DEFINE_CLK_VOTER(ebi1_msmbus_clk, &ebi1_clk.c);
+static DEFINE_CLK_VOTER(ebi1_adm0_clk,   &ebi1_clk.c);
+static DEFINE_CLK_VOTER(ebi1_adm1_clk,   &ebi1_clk.c);
+
 #ifdef CONFIG_DEBUG_FS
 struct measure_sel {
 	u32 test_vector;
@@ -3615,6 +3619,10 @@ struct clk_lookup msm_clocks_8x60[] = {
 	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc3_clk.c, "msm_sdcc.3"),
 	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc4_clk.c, "msm_sdcc.4"),
 	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc5_clk.c, "msm_sdcc.5"),
+
+	CLK_LOOKUP("ebi1_msmbus_clk",	ebi1_msmbus_clk.c, NULL),
+	CLK_LOOKUP("ebi1_clk",		ebi1_adm0_clk.c, "msm_dmov.0"),
+	CLK_LOOKUP("ebi1_clk",		ebi1_adm1_clk.c, "msm_dmov.1"),
 };
 unsigned msm_num_clocks_8x60 = ARRAY_SIZE(msm_clocks_8x60);
 
