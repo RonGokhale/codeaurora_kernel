@@ -47,6 +47,7 @@
 #include <mach/usbdiag.h>
 #include <mach/socinfo.h>
 #include <mach/usb_gadget_fserial.h>
+#include <linux/platform_data/usb_rmnet.h>
 #include <mach/rpm.h>
 #include <mach/gpio.h>
 #include <mach/msm_bus_board.h>
@@ -1634,6 +1635,7 @@ static char *usb_functions_default[] = {
 	"diag",
 	"modem",
 	"nmea",
+	"rmnet0",
 	"usb_mass_storage",
 };
 
@@ -1642,6 +1644,7 @@ static char *usb_functions_default_adb[] = {
 	"adb",
 	"modem",
 	"nmea",
+	"rmnet0",
 	"usb_mass_storage",
 };
 
@@ -1653,17 +1656,18 @@ static char *usb_functions_all[] = {
 	"adb",
 	"modem",
 	"nmea",
+	"rmnet0",
 	"usb_mass_storage",
 };
 
 struct android_usb_product usb_products[] = {
 	{
-		.product_id	= 0x9018,
+		.product_id	= 0x9025,
 		.num_functions	= ARRAY_SIZE(usb_functions_default_adb),
 		.functions	= usb_functions_default_adb,
 	},
 	{
-		.product_id	= 0x9017,
+		.product_id	= 0x9026,
 		.num_functions	= ARRAY_SIZE(usb_functions_default),
 		.functions	= usb_functions_default,
 	},
@@ -1681,7 +1685,7 @@ struct android_usb_product usb_products[] = {
 
 static struct android_usb_platform_data android_usb_pdata = {
 	.vendor_id	= 0x05C6,
-	.product_id	= 0x9018,
+	.product_id	= 0x9026,
 	.version	= 0x0100,
 	.product_name		= "Qualcomm HSUSB Device",
 	.manufacturer_name	= "Qualcomm Incorporated",
@@ -1755,6 +1759,18 @@ static int __init board_serialno_setup(char *serialno)
 	return 1;
 }
 __setup("androidboot.serialno=", board_serialno_setup);
+
+static struct usb_rmnet_pdata usb_rmnet_pdata = {
+	.num_instances = 1,
+};
+
+struct platform_device usb_rmnet = {
+	.name = "usb_rmnet",
+	.id = -1,
+	.dev = {
+		.platform_data = &usb_rmnet_pdata,
+	},
+};
 
 static uint8_t spm_wfi_cmd_sequence[] __initdata = {
 			0x03, 0x0f,
@@ -2171,6 +2187,7 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&usb_diag_device,
 	&usb_mass_storage_device,
 	&usb_gadget_fserial_device,
+	&usb_rmnet,
 	&rndis_device,
 	&msm_pcm,
 	&msm_pcm_routing,
