@@ -1452,7 +1452,12 @@ static struct mmc_platform_data sdc1_plat_data = {
 
 #ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
 static struct mmc_platform_data sdc2_plat_data = {
-	.ocr_mask	= MMC_VDD_28_29,
+	/*
+	 * SDC2 supports only 1.8V, claim for 2.85V range is just
+	 * for allowing buggy cards who advertise 2.8V even though
+	 * they can operate at 1.8V supply.
+	 */
+	.ocr_mask	= MMC_VDD_28_29 | MMC_VDD_165_195,
 	.translate_vdd  = msm_sdcc_setup_power,
 	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
 #ifdef CONFIG_MMC_MSM_SDIO_SUPPORT
