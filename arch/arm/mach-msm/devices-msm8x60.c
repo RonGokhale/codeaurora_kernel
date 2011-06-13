@@ -42,6 +42,7 @@
 #include <asm/clkdev.h>
 #include <mach/usbdiag.h>
 #include <mach/usb_gadget_fserial.h>
+#include <mach/msm_serial_hs_lite.h>
 #include <mach/msm_bus.h>
 #include <mach/msm_bus_board.h>
 #include <mach/socinfo.h>
@@ -300,6 +301,12 @@ struct platform_device msm_device_uart_dm12 = {
 };
 
 #ifdef CONFIG_MSM_GSBI9_UART
+static struct msm_serial_hslite_platform_data uart_gsbi9_pdata = {
+	.config_gpio	= 1,
+	.uart_tx_gpio	= 67,
+	.uart_rx_gpio	= 66,
+};
+
 static struct resource msm_uart_gsbi9_resources[] = {
        {
 		.start	= MSM_UART9DM_PHYS,
@@ -321,12 +328,37 @@ static struct resource msm_uart_gsbi9_resources[] = {
 	},
 };
 
-struct platform_device msm_device_uart_gsbi9 = {
-	.name	= "msm_serial_hsl",
-	.id	= 1,
-	.num_resources	= ARRAY_SIZE(msm_uart_gsbi9_resources),
-	.resource	= msm_uart_gsbi9_resources,
-};
+struct platform_device *msm_device_uart_gsbi9;
+struct platform_device *msm_add_gsbi9_uart(void)
+{
+	int ret = -ENOMEM;
+	struct platform_device *pdev;
+
+	pdev = platform_device_alloc("msm_serial_hsl", 1);
+	if (!pdev)
+		goto fail;
+
+	ret = platform_device_add_resources(pdev,
+				msm_uart_gsbi9_resources,
+				ARRAY_SIZE(msm_uart_gsbi9_resources));
+	if (ret)
+		goto fail;
+
+	ret = platform_device_add_data(pdev, &uart_gsbi9_pdata,
+						sizeof(uart_gsbi9_pdata));
+	if (ret)
+		goto fail;
+
+	ret = platform_device_add(pdev);
+	if (ret)
+		goto fail;
+
+	return pdev;
+fail:
+	pr_err("%s(): Error creating device\n", __func__);
+	platform_device_put(pdev);
+	return ERR_PTR(ret);
+}
 #endif
 
 static struct resource gsbi3_qup_i2c_resources[] = {
