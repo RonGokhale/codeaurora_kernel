@@ -77,5 +77,7 @@ int afe_validate_port(u16 port_id);
 int afe_get_port_index(u16 port_id);
 int afe_start_pseudo_port(u16 port_id);
 int afe_stop_pseudo_port(u16 port_id);
-
+int afe_port_start_nowait(u16 port_id, union afe_port_config *afe_config,
+	u32 rate);
+int afe_port_stop_nowait(int port_id);
 #endif /* __Q6AFE_H__ */

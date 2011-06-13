@@ -153,6 +153,7 @@ int afe_get_port_index(u16 port_id)
 	default: return -EINVAL;
 	}
 }
+
 int afe_sizeof_cfg_cmd(u16 port_id)
 {
 	int ret_size;
@@ -180,6 +181,91 @@ int afe_sizeof_cfg_cmd(u16 port_id)
 	}
 	return ret_size;
 }
+
+int afe_port_start_nowait(u16 port_id, union afe_port_config *afe_config,
+	u32 rate) /* This function is no blocking */
+{
+	struct afe_port_start_command start;
+	struct afe_audioif_config_command config;
+	int ret;
+
+	if (!afe_config) {
+		pr_err("%s: Error, no configuration data\n", __func__);
+		ret = -EINVAL;
+		return ret;
+	}
+
+	pr_info("%s: %d %d\n", __func__, port_id, rate);
+
+	if (this_afe.apr == NULL) {
+		this_afe.apr = apr_register("ADSP", "AFE", afe_callback,
+					0xFFFFFFFF, &this_afe);
+		pr_info("%s: Register AFE\n", __func__);
+		if (this_afe.apr == NULL) {
+			pr_err("%s: Unable to register AFE\n", __func__);
+			ret = -ENODEV;
+			return ret;
+		}
+	}
+
+	config.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	config.hdr.pkt_size = afe_sizeof_cfg_cmd(port_id);
+	config.hdr.src_port = 0;
+	config.hdr.dest_port = 0;
+	config.hdr.token = 0;
+	config.hdr.opcode = AFE_PORT_AUDIO_IF_CONFIG;
+
+	if (afe_validate_port(port_id) < 0) {
+
+		pr_err("%s: Failed : Invalid Port id = %d\n", __func__,
+				port_id);
+		ret = -EINVAL;
+		goto fail_cmd;
+	}
+
+	config.port_id = port_id;
+	config.port = *afe_config;
+
+	ret = apr_send_pkt(this_afe.apr, (uint32_t *) &config);
+	if (ret < 0) {
+		pr_err("%s: AFE enable for port %d failed\n", __func__,
+				port_id);
+		ret = -EINVAL;
+		goto fail_cmd;
+	}
+
+	start.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	start.hdr.pkt_size = sizeof(start);
+	start.hdr.src_port = 0;
+	start.hdr.dest_port = 0;
+	start.hdr.token = 0;
+	start.hdr.opcode = AFE_PORT_CMD_START;
+	start.port_id = port_id;
+	start.gain = 0x2000;
+	start.sample_rate = rate;
+
+	ret = apr_send_pkt(this_afe.apr, (uint32_t *) &start);
+
+	if (IS_ERR_VALUE(ret)) {
+		pr_err("%s: AFE enable for port %d failed\n", __func__,
+				port_id);
+		ret = -EINVAL;
+		goto fail_cmd;
+	}
+
+	if (this_afe.task != current)
+		this_afe.task = current;
+
+	pr_debug("task_name = %s pid = %d\n",
+	this_afe.task->comm, this_afe.task->pid);
+	return 0;
+
+fail_cmd:
+	return ret;
+}
+
 int afe_open(u16 port_id, union afe_port_config *afe_config, int rate)
 {
 	struct afe_port_start_command start;
@@ -663,6 +749,42 @@ int afe_sidetone(u16 tx_port_id, u16 rx_port_id, u16 enable, uint16_t gain)
 	return 0;
 fail_cmd:
 	return ret;
+}
+
+int afe_port_stop_nowait(int port_id)
+{
+	struct afe_port_stop_command stop;
+	int ret = 0;
+
+	if (this_afe.apr == NULL) {
+		pr_err("AFE is already closed\n");
+		ret = -EINVAL;
+		goto fail_cmd;
+	}
+	pr_info("%s: port_id=%d\n", __func__, port_id);
+	stop.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	stop.hdr.pkt_size = sizeof(stop);
+	stop.hdr.src_port = 0;
+	stop.hdr.dest_port = 0;
+	stop.hdr.token = 0;
+	stop.hdr.opcode = AFE_PORT_CMD_STOP;
+	stop.port_id = port_id;
+	stop.reserved = 0;
+
+	ret = apr_send_pkt(this_afe.apr, (uint32_t *) &stop);
+
+	if (ret == -ENETRESET) {
+		pr_info("%s: Need to reset, calling APR deregister", __func__);
+		return apr_deregister(this_afe.apr);
+	} else if (IS_ERR_VALUE(ret)) {
+		pr_err("%s: AFE close failed\n", __func__);
+		ret = -EINVAL;
+	}
+
+fail_cmd:
+	return ret;
+
 }
 
 int afe_close(int port_id)
