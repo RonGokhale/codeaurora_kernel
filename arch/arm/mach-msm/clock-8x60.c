@@ -232,6 +232,7 @@
 #define TEST_TYPE_MM_LS		3
 #define TEST_TYPE_MM_HS		4
 #define TEST_TYPE_LPA		5
+#define TEST_TYPE_SC		6
 #define TEST_TYPE_SHIFT		24
 #define TEST_CLK_SEL_MASK	BM(23, 0)
 #define TEST_VECTOR(s, t)	(((t) << TEST_TYPE_SHIFT) | BVAL(23, 0, (s)))
@@ -240,6 +241,7 @@
 #define TEST_MM_LS(s)		TEST_VECTOR((s), TEST_TYPE_MM_LS)
 #define TEST_MM_HS(s)		TEST_VECTOR((s), TEST_TYPE_MM_HS)
 #define TEST_LPA(s)		TEST_VECTOR((s), TEST_TYPE_LPA)
+#define TEST_SC(s)		TEST_VECTOR((s), TEST_TYPE_SC)
 
 struct pll_rate {
 	const uint32_t	l_val;
@@ -3124,6 +3126,10 @@ static DEFINE_CLK_VOTER(ebi1_msmbus_clk, &ebi1_clk.c);
 static DEFINE_CLK_VOTER(ebi1_adm0_clk,   &ebi1_clk.c);
 static DEFINE_CLK_VOTER(ebi1_adm1_clk,   &ebi1_clk.c);
 
+static DEFINE_CLK_MEASURE(sc0_m_clk);
+static DEFINE_CLK_MEASURE(sc1_m_clk);
+static DEFINE_CLK_MEASURE(l2_m_clk);
+
 #ifdef CONFIG_DEBUG_FS
 struct measure_sel {
 	u32 test_vector;
@@ -3269,6 +3275,10 @@ static struct measure_sel measure_mux[] = {
 	{ TEST_LPA(0x12), &spare_i2s_spkr_osr_clk.c },
 	{ TEST_LPA(0x13), &spare_i2s_spkr_bit_clk.c },
 	{ TEST_LPA(0x14), &pcm_clk.c },
+
+	{ TEST_SC(0x40), &sc0_m_clk },
+	{ TEST_SC(0x41), &sc1_m_clk },
+	{ TEST_SC(0x42), &l2_m_clk },
 };
 
 static struct measure_sel *find_measure_sel(struct clk *clk)
@@ -3281,11 +3291,12 @@ static struct measure_sel *find_measure_sel(struct clk *clk)
 	return NULL;
 }
 
-static int measure_clk_set_parent(struct clk *clk, struct clk *parent)
+static int measure_clk_set_parent(struct clk *c, struct clk *parent)
 {
 	int ret = 0;
 	u32 clk_sel;
 	struct measure_sel *p;
+	struct measure_clk *clk = to_measure_clk(c);
 	unsigned long flags;
 
 	if (!parent)
@@ -3297,8 +3308,13 @@ static int measure_clk_set_parent(struct clk *clk, struct clk *parent)
 
 	spin_lock_irqsave(&local_clock_reg_lock, flags);
 
-	/* Program the test vector. */
+	/*
+	 * Program the test vector, measurement period (sample_ticks)
+	 * and scaling factor (multiplier).
+	 */
 	clk_sel = p->test_vector & TEST_CLK_SEL_MASK;
+	clk->sample_ticks = 0x10000;
+	clk->multiplier = 1;
 	switch (p->test_vector >> TEST_TYPE_SHIFT) {
 	case TEST_TYPE_PER_LS:
 		writel_relaxed(0x4030D00|BVAL(7, 0, clk_sel), CLK_TEST_REG);
@@ -3318,6 +3334,11 @@ static int measure_clk_set_parent(struct clk *clk, struct clk *parent)
 		writel_relaxed(0x4030D98, CLK_TEST_REG);
 		writel_relaxed(BVAL(6, 1, clk_sel)|BIT(0),
 				LCC_CLK_LS_DEBUG_CFG_REG);
+		break;
+	case TEST_TYPE_SC:
+		writel_relaxed(0x5020000|BVAL(16, 10, clk_sel), CLK_TEST_REG);
+		clk->sample_ticks = 0x4000;
+		clk->multiplier = 2;
 		break;
 	default:
 		ret = -EPERM;
@@ -3355,11 +3376,12 @@ static u32 run_measurement(unsigned ticks)
 
 /* Perform a hardware rate measurement for a given clock.
    FOR DEBUG USE ONLY: Measurements take ~15 ms! */
-static unsigned measure_clk_get_rate(struct clk *clk)
+static unsigned measure_clk_get_rate(struct clk *c)
 {
 	unsigned long flags;
 	u32 pdm_reg_backup, ringosc_reg_backup;
 	u64 raw_count_short, raw_count_full;
+	struct measure_clk *clk = to_measure_clk(c);
 	unsigned ret;
 
 	spin_lock_irqsave(&local_clock_reg_lock, flags);
@@ -3380,7 +3402,7 @@ static unsigned measure_clk_get_rate(struct clk *clk)
 	/* Run a short measurement. (~1 ms) */
 	raw_count_short = run_measurement(0x1000);
 	/* Run a full measurement. (~14 ms) */
-	raw_count_full = run_measurement(0x10000);
+	raw_count_full = run_measurement(clk->sample_ticks);
 
 	writel_relaxed(ringosc_reg_backup, RINGOSC_NS_REG);
 	writel_relaxed(pdm_reg_backup, PDM_CLK_NS_REG);
@@ -3391,8 +3413,8 @@ static unsigned measure_clk_get_rate(struct clk *clk)
 	else {
 		/* Compute rate in Hz. */
 		raw_count_full = ((raw_count_full * 10) + 15) * 4800000;
-		do_div(raw_count_full, ((0x10000 * 10) + 35));
-		ret = raw_count_full;
+		do_div(raw_count_full, ((clk->sample_ticks * 10) + 35));
+		ret = (raw_count_full * clk->multiplier);
 	}
 
 	/* Route dbg_hs_clk to PLLTEST.  300mV single-ended amplitude. */
@@ -3419,17 +3441,20 @@ static struct clk_ops measure_clk_ops = {
 	.is_local = local_clk_is_local,
 };
 
-static struct clk measure_clk = {
-	.dbg_name = "measure_clk",
-	.ops = &measure_clk_ops,
-	CLK_INIT(measure_clk),
+static struct measure_clk measure_clk = {
+	.c = {
+		.dbg_name = "measure_clk",
+		.ops = &measure_clk_ops,
+		CLK_INIT(measure_clk.c),
+	},
+	.multiplier = 1,
 };
 
 struct clk_lookup msm_clocks_8x60[] = {
 	CLK_LOOKUP("cxo",		cxo_clk.c,	NULL),
 	CLK_LOOKUP("pll4",		pll4_clk.c,	NULL),
 	CLK_LOOKUP("pll4",		pll4_clk.c,	"peripheral-reset"),
-	CLK_LOOKUP("measure",		measure_clk,	"debug"),
+	CLK_LOOKUP("measure",		measure_clk.c,	"debug"),
 
 	CLK_LOOKUP("afab_clk",		afab_clk.c,	NULL),
 	CLK_LOOKUP("afab_a_clk",	afab_a_clk.c,	NULL),
@@ -3623,6 +3648,10 @@ struct clk_lookup msm_clocks_8x60[] = {
 	CLK_LOOKUP("ebi1_msmbus_clk",	ebi1_msmbus_clk.c, NULL),
 	CLK_LOOKUP("ebi1_clk",		ebi1_adm0_clk.c, "msm_dmov.0"),
 	CLK_LOOKUP("ebi1_clk",		ebi1_adm1_clk.c, "msm_dmov.1"),
+
+	CLK_LOOKUP("sc0_mclk",		sc0_m_clk, NULL),
+	CLK_LOOKUP("sc1_mclk",		sc1_m_clk, NULL),
+	CLK_LOOKUP("l2_mclk",		l2_m_clk,  NULL),
 };
 unsigned msm_num_clocks_8x60 = ARRAY_SIZE(msm_clocks_8x60);
 

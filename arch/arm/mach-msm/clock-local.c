@@ -884,6 +884,10 @@ struct fixed_clk gnd_clk = {
 	},
 };
 
+struct clk_ops clk_ops_measure = {
+	.is_local = local_clk_is_local,
+};
+
 int branch_clk_enable(struct clk *clk)
 {
 	int rc;
