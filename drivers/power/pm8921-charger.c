@@ -1227,7 +1227,6 @@ static int get_fsm_status(void *data, u64 * val)
 {
 	u8 temp;
 
-	free_irqs(the_chip);
 	temp = pm_chg_get_fsm_state(the_chip);
 	*val = temp;
 	return 0;
