@@ -252,6 +252,7 @@ static struct lun *dev_to_lun(struct device *dev)
 
 /* Number of buffers for CBW, DATA and CSW */
 #ifdef CONFIG_USB_CSW_HACK
+static int csw_hack_sent;
 #define NUM_BUFFERS	4
 #else
 #define NUM_BUFFERS	2
@@ -919,7 +920,6 @@ static int do_write(struct fsg_dev *fsg)
 	int			rc;
 
 #ifdef CONFIG_USB_CSW_HACK
-	int			csw_hack_sent = 0;
 	int			i;
 #endif
 	if (curlun->ro) {
@@ -2540,9 +2540,10 @@ static int fsg_main_thread(void *fsg_)
 		 * need to skip sending status once again if it is a
 		 * write scsi command.
 		 */
-		if (fsg->cmnd[0] == SC_WRITE_6  || fsg->cmnd[0] == SC_WRITE_10
-					|| fsg->cmnd[0] == SC_WRITE_12)
+		if (csw_hack_sent) {
+			csw_hack_sent = 0;
 			continue;
+		}
 #endif
 		if (send_status(fsg))
 			continue;
