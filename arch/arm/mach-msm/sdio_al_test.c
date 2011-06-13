@@ -1373,6 +1373,7 @@ static void worker(struct work_struct *work)
 		break;
 	case SDIO_TEST_HOST_SENDER_NO_LP:
 		sender_no_loopback_test(test_ch);
+		break;
 	case SDIO_TEST_LPM_RANDOM:
 		lpm_continuous_rand_test(test_ch);
 		break;
@@ -1640,19 +1641,22 @@ static int test_start(void)
 
 		if ((tch->test_type == SDIO_TEST_LPM_HOST_WAKER) ||
 		    (tch->test_type == SDIO_TEST_LPM_CLIENT_WAKER) ||
-		    (tch->test_type == SDIO_TEST_LPM_RANDOM))
+		    (tch->test_type == SDIO_TEST_LPM_RANDOM)) {
 			sdio_al_register_lpm_cb(tch->sdio_al_device,
 					 sdio_test_wakeup_callback);
 
-		if (tch->timer_interval_ms > 0) {
-			pr_info(TEST_MODULE_NAME ": %s - init timer, ms=%d\n",
-				__func__, tch->timer_interval_ms);
-			init_timer(&tch->timer);
-			tch->timer.data = (unsigned long)tch;
-			tch->timer.function = sdio_test_lpm_timer_handler;
-			tch->timer.expires = jiffies +
-			    msecs_to_jiffies(tch->timer_interval_ms);
-			add_timer(&tch->timer);
+			if (tch->timer_interval_ms > 0) {
+				pr_info(TEST_MODULE_NAME ": %s - init timer, "
+							 "ms=%d\n",
+					__func__, tch->timer_interval_ms);
+				init_timer(&tch->timer);
+				tch->timer.data = (unsigned long)tch;
+				tch->timer.function =
+					sdio_test_lpm_timer_handler;
+				tch->timer.expires = jiffies +
+				    msecs_to_jiffies(tch->timer_interval_ms);
+				add_timer(&tch->timer);
+			}
 		}
 	}
 
@@ -1706,6 +1710,7 @@ static int set_params_loopback_9k(struct test_channel *tch)
 	tch->packet_length = 512;
 	if (tch->ch_id == SDIO_RPC)
 		tch->packet_length = 128;
+	tch->timer_interval_ms = 0;
 
 	return 0;
 }
@@ -1727,6 +1732,9 @@ static int set_params_a2_perf(struct test_channel *tch)
 
 	tch->config_msg.num_packets = 10000;
 	tch->config_msg.num_iterations = 1;
+
+	tch->timer_interval_ms = 0;
+
 	return 0;
 }
 
@@ -1737,6 +1745,8 @@ static int set_params_smem_test(struct test_channel *tch)
 		return -EINVAL;
 	}
 	tch->is_used = 1;
+	tch->timer_interval_ms = 0;
+
 	return 0;
 }
 
@@ -1810,6 +1820,7 @@ static int set_params_8k_sender_no_lp(struct test_channel *tch)
 	tch->packet_length = 512;
 	if (tch->ch_id == SDIO_RPC)
 		tch->packet_length = 128;
+	tch->timer_interval_ms = 0;
 
 	return 0;
 }
