@@ -1090,7 +1090,7 @@ void __cpuinit local_timer_setup(struct clock_event_device *evt)
 
 	local_clock_event = evt;
 
-	/* gic_clear_spi_pending(clock->irq.irq); */
+	gic_clear_spi_pending(clock->irq.irq);
 	gic_enable_ppi(clock->irq.irq);
 
 	clockevents_register_device(evt);
