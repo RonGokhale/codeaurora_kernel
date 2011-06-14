@@ -33,6 +33,7 @@
 #include <linux/workqueue.h>
 #include <linux/bitops.h>
 #include <linux/termios.h>
+#include <linux/debugfs.h>
 
 #include <mach/msm_smd.h>
 #include <linux/usb/cdc.h>
@@ -117,6 +118,16 @@ struct rmnet_dev {
 	struct workqueue_struct *wq;
 	struct work_struct connect_work;
 	struct work_struct disconnect_work;
+
+	unsigned long	dpkts_to_host;
+	unsigned long	dpkts_from_modem;
+	unsigned long	dpkts_from_host;
+	unsigned long	dpkts_to_modem;
+
+	unsigned long	cpkts_to_host;
+	unsigned long	cpkts_from_modem;
+	unsigned long	cpkts_from_host;
+	unsigned long	cpkts_to_modem;
 };
 
 static struct usb_interface_descriptor rmnet_interface_desc = {
@@ -396,6 +407,7 @@ static void rmnet_control_tx_tlet(unsigned long arg)
 		qmi_resp->len = smd_read(dev->smd_ctl.ch, qmi_resp->buf, sz);
 
 		spin_lock_irqsave(&dev->lock, flags);
+		dev->cpkts_from_modem++;
 		list_add_tail(&qmi_resp->list, &dev->qmi_resp_q);
 		spin_unlock_irqrestore(&dev->lock, flags);
 
@@ -428,6 +440,7 @@ static void rmnet_control_rx_tlet(unsigned long arg)
 		}
 
 		list_del(&qmi_req->list);
+		dev->cpkts_from_host++;
 		spin_unlock_irqrestore(&dev->lock, flags);
 		ret = smd_write(dev->smd_ctl.ch, qmi_req->buf, qmi_req->len);
 		spin_lock_irqsave(&dev->lock, flags);
@@ -435,7 +448,7 @@ static void rmnet_control_rx_tlet(unsigned long arg)
 			ERROR(cdev, "rmnet control smd write failed\n");
 			break;
 		}
-
+		dev->cpkts_to_modem++;
 		list_add_tail(&qmi_req->list, &dev->qmi_req_pool);
 	}
 	spin_unlock_irqrestore(&dev->lock, flags);
@@ -454,6 +467,7 @@ static void rmnet_command_complete(struct usb_ep *ep, struct usb_request *req)
 	}
 
 	spin_lock(&dev->lock);
+	dev->cpkts_from_host++;
 	/* no pending control rx packet */
 	if (!atomic_read(&dev->smd_ctl.rx_pkt)) {
 		if (smd_write_avail(dev->smd_ctl.ch) < req->actual) {
@@ -465,6 +479,9 @@ static void rmnet_command_complete(struct usb_ep *ep, struct usb_request *req)
 		/* This should never happen */
 		if (ret != req->actual)
 			ERROR(cdev, "rmnet control smd write failed\n");
+		spin_lock(&dev->lock);
+		dev->cpkts_to_modem++;
+		spin_unlock(&dev->lock);
 		return;
 	}
 queue_req:
@@ -481,6 +498,14 @@ queue_req:
 	qmi_req->len = req->actual;
 	spin_lock(&dev->lock);
 	list_add_tail(&qmi_req->list, &dev->qmi_req_q);
+	spin_unlock(&dev->lock);
+}
+static void rmnet_txcommand_complete(struct usb_ep *ep, struct usb_request *req)
+{
+	struct rmnet_dev *dev = req->context;
+
+	spin_lock(&dev->lock);
+	dev->cpkts_to_host++;
 	spin_unlock(&dev->lock);
 }
 
@@ -541,6 +566,8 @@ rmnet_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 			if (schedule)
 				tasklet_schedule(&dev->smd_ctl.tx_tlet);
 			spin_unlock(&dev->lock);
+			req->complete = rmnet_txcommand_complete;
+			req->context = dev;
 		}
 		break;
 	case ((USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE) << 8)
@@ -645,6 +672,9 @@ static void rmnet_data_tx_tlet(unsigned long arg)
 			spin_unlock_irqrestore(&dev->lock, flags);
 			break;
 		}
+		spin_lock_irqsave(&dev->lock, flags);
+		dev->dpkts_from_modem++;
+		spin_unlock_irqrestore(&dev->lock, flags);
 	}
 
 }
@@ -679,6 +709,7 @@ static void rmnet_data_rx_tlet(unsigned long arg)
 			ERROR(cdev, "rmnet SMD data write failed\n");
 			break;
 		}
+		dev->dpkts_to_modem++;
 		list_add_tail(&req->list, &dev->rx_idle);
 	}
 	spin_unlock_irqrestore(&dev->lock, flags);
@@ -722,6 +753,7 @@ static void rmnet_complete_epout(struct usb_ep *ep, struct usb_request *req)
 	}
 
 	spin_lock(&dev->lock);
+	dev->dpkts_from_host++;
 	if (!atomic_read(&dev->smd_data.rx_pkt)) {
 		if (smd_write_avail(dev->smd_data.ch) < req->actual) {
 			atomic_set(&dev->smd_data.rx_pkt, req->actual);
@@ -734,6 +766,7 @@ static void rmnet_complete_epout(struct usb_ep *ep, struct usb_request *req)
 			ERROR(cdev, "rmnet data smd write failed\n");
 		/* Restart Rx */
 		spin_lock(&dev->lock);
+		dev->dpkts_to_modem++;
 		list_add_tail(&req->list, &dev->rx_idle);
 		spin_unlock(&dev->lock);
 		rmnet_start_rx(dev);
@@ -767,7 +800,7 @@ static void rmnet_complete_epin(struct usb_ep *ep, struct usb_request *req)
 		if (list_empty(&dev->tx_idle))
 			schedule = 1;
 		list_add_tail(&req->list, &dev->tx_idle);
-
+		dev->dpkts_to_host++;
 		if (schedule)
 			tasklet_schedule(&dev->smd_data.tx_tlet);
 		spin_unlock(&dev->lock);
@@ -923,6 +956,15 @@ static void rmnet_free_buf(struct rmnet_dev *dev)
 	struct usb_request *req;
 	struct list_head *act, *tmp;
 
+	dev->dpkts_to_host = 0;
+	dev->dpkts_from_modem = 0;
+	dev->dpkts_from_host = 0;
+	dev->dpkts_to_modem = 0;
+
+	dev->cpkts_to_host = 0;
+	dev->cpkts_from_modem = 0;
+	dev->cpkts_from_host = 0;
+	dev->cpkts_to_modem = 0;
 	/* free all usb requests in tx pool */
 	list_for_each_safe(act, tmp, &dev->tx_idle) {
 		req = list_entry(act, struct usb_request, list);
@@ -1064,6 +1106,127 @@ free_buf:
 	return ret;
 }
 
+#if defined(CONFIG_DEBUG_FS)
+static ssize_t debug_read_stats(struct file *file, char __user *ubuf,
+		size_t count, loff_t *ppos)
+{
+	struct rmnet_dev *dev = file->private_data;
+	struct rmnet_smd_info smd_ctl_info = dev->smd_ctl;
+	struct rmnet_smd_info smd_data_info = dev->smd_data;
+	char *buf;
+	unsigned long flags;
+	int ret;
+
+	buf = kzalloc(sizeof(char) * 512, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	spin_lock_irqsave(&dev->lock, flags);
+	ret = scnprintf(buf, 512,
+			"smd_control_ch_opened: %lu\n"
+			"smd_data_ch_opened: %lu\n"
+			"usb online : %d\n"
+			"dpkts_from_modem: %lu\n"
+			"dpkts_to_host: %lu\n"
+			"pending_dpkts_to_host: %lu\n"
+			"dpkts_from_host: %lu\n"
+			"dpkts_to_modem: %lu\n"
+			"pending_dpkts_to_modem: %lu\n"
+			"cpkts_from_modem: %lu\n"
+			"cpkts_to_host: %lu\n"
+			"pending_cpkts_to_host: %lu\n"
+			"cpkts_from_host: %lu\n"
+			"cpkts_to_modem: %lu\n"
+			"pending_cpkts_to_modem: %lu\n"
+			"smd_read_avail_ctrl: %d\n"
+			"smd_write_avail_ctrl: %d\n"
+			"smd_read_avail_data: %d\n"
+			"smd_write_avail_data: %d\n",
+			smd_ctl_info.flags, smd_data_info.flags,
+			atomic_read(&dev->online),
+			dev->dpkts_from_modem, dev->dpkts_to_host,
+			(dev->dpkts_from_modem - dev->dpkts_to_host),
+			dev->dpkts_from_host, dev->dpkts_to_modem,
+			(dev->dpkts_from_host - dev->dpkts_to_modem),
+			dev->cpkts_from_modem, dev->cpkts_to_host,
+			(dev->cpkts_from_modem - dev->cpkts_to_host),
+			dev->cpkts_from_host, dev->cpkts_to_modem,
+			(dev->cpkts_from_host - dev->cpkts_to_modem),
+			smd_read_avail(dev->smd_ctl.ch),
+			smd_write_avail(dev->smd_ctl.ch),
+			smd_read_avail(dev->smd_data.ch),
+			smd_write_avail(dev->smd_data.ch));
+
+	spin_unlock_irqrestore(&dev->lock, flags);
+
+	ret = simple_read_from_buffer(ubuf, count, ppos, buf, ret);
+
+	kfree(buf);
+
+	return ret;
+}
+
+static ssize_t debug_reset_stats(struct file *file, const char __user *buf,
+				size_t count, loff_t *ppos)
+{
+	struct rmnet_dev *dev = file->private_data;
+	unsigned long flags;
+
+	spin_lock_irqsave(&dev->lock, flags);
+
+	dev->dpkts_to_host = 0;
+	dev->dpkts_from_modem = 0;
+	dev->dpkts_from_host = 0;
+	dev->dpkts_to_modem = 0;
+
+	dev->cpkts_to_host = 0;
+	dev->cpkts_from_modem = 0;
+	dev->cpkts_from_host = 0;
+	dev->cpkts_to_modem = 0;
+
+	spin_unlock_irqrestore(&dev->lock, flags);
+
+	return count;
+}
+
+static int debug_open(struct inode *inode, struct file *file)
+{
+	file->private_data = inode->i_private;
+
+	return 0;
+}
+
+const struct file_operations rmnet_debug_stats_ops = {
+	.open = debug_open,
+	.read = debug_read_stats,
+	.write = debug_reset_stats,
+};
+
+struct dentry *dent;
+struct dentry *dent_status;
+
+static void usb_debugfs_init(struct rmnet_dev *dev)
+{
+
+	dent = debugfs_create_dir("usb_rmnet", 0);
+	if (IS_ERR(dent))
+		return;
+
+	dent_status = debugfs_create_file("status", 0444, dent, dev,
+			&rmnet_debug_stats_ops);
+
+	if (!dent_status) {
+		debugfs_remove(dent);
+		dent = NULL;
+		return;
+	}
+
+	return;
+}
+#else
+static void usb_debugfs_init(struct rmnet_dev *dev) {}
+#endif
+
 static void
 rmnet_unbind(struct usb_configuration *c, struct usb_function *f)
 {
@@ -1079,6 +1242,7 @@ rmnet_unbind(struct usb_configuration *c, struct usb_function *f)
 	dev->epout = dev->epin = dev->epnotify = NULL; /* release endpoints */
 
 	destroy_workqueue(dev->wq);
+	debugfs_remove_recursive(dent);
 	kfree(dev);
 
 }
@@ -1140,6 +1304,8 @@ int rmnet_function_add(struct usb_configuration *c)
 	ret = usb_add_function(c, &dev->function);
 	if (ret)
 		goto free_wq;
+
+	usb_debugfs_init(dev);
 
 	return 0;
 
