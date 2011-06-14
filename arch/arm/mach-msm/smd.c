@@ -1174,8 +1174,8 @@ static int smd_alloc_channel(struct smd_alloc_elm *alloc_elm)
 		ch->read_from_cb = smd_stream_read;
 	}
 
-	memcpy(ch->name, alloc_elm->name, 20);
-	ch->name[19] = 0;
+	memcpy(ch->name, alloc_elm->name, SMD_MAX_CH_NAME_LEN);
+	ch->name[SMD_MAX_CH_NAME_LEN-1] = 0;
 
 	ch->pdev.name = ch->name;
 	ch->pdev.id = ch->type;
