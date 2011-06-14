@@ -179,6 +179,7 @@ static struct vfe31_cmd_type vfe31_cmd[] = {
 		{V31_STEREOCAM},
 		{V31_LA_SETUP},
 /*110*/	{V31_XBAR_CFG, V31_XBAR_CFG_LEN, V31_XBAR_CFG_OFF},
+/*111*/	{V31_EZTUNE_CFG, V31_EZTUNE_CFG_LEN, V31_EZTUNE_CFG_OFF},
 };
 
 uint32_t vfe31_AXI_WM_CFG[] = {
