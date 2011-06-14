@@ -23,6 +23,7 @@
 struct afe_ctl {
 	void *apr;
 	atomic_t state;
+	atomic_t status;
 	wait_queue_head_t wait;
 	struct task_struct *task;
 };
@@ -32,6 +33,8 @@ static struct afe_ctl this_afe;
 #define TIMEOUT_MS 1000
 #define Q6AFE_MAX_VOLUME 0x3FFF
 
+#define SIZEOF_CFG_CMD(y) \
+		(sizeof(struct apr_hdr) + sizeof(u16) + (sizeof(struct y)))
 
 static int32_t afe_callback(struct apr_client_data *data, void *priv)
 {
@@ -53,6 +56,12 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 		payload = data->payload;
 		pr_debug("%s: cmd = 0x%x status = 0x%x\n", __func__,
 					payload[0], payload[1]);
+		/* payload[1] contains the error status for response */
+		if (payload[1] != 0) {
+			atomic_set(&this_afe.status, -1);
+			pr_err("%s: cmd = 0x%x returned error = 0x%x\n",
+					__func__, payload[0], payload[1]);
+		}
 		if (data->opcode == APR_BASIC_RSP_RESULT) {
 			switch (payload[0]) {
 			case AFE_PORT_AUDIO_IF_CONFIG:
@@ -144,7 +153,33 @@ int afe_get_port_index(u16 port_id)
 	default: return -EINVAL;
 	}
 }
-
+int afe_sizeof_cfg_cmd(u16 port_id)
+{
+	int ret_size;
+	switch (port_id) {
+	case PRIMARY_I2S_RX:
+	case PRIMARY_I2S_TX:
+	case SECONDARY_I2S_RX:
+	case SECONDARY_I2S_TX:
+	case MI2S_RX:
+	case MI2S_TX:
+		ret_size = SIZEOF_CFG_CMD(afe_port_mi2s_cfg);
+		break;
+	case HDMI_RX:
+		ret_size = SIZEOF_CFG_CMD(afe_port_hdmi_cfg);
+		break;
+	case SLIMBUS_0_RX:
+	case SLIMBUS_0_TX:
+		ret_size = SIZEOF_CFG_CMD(afe_port_slimbus_cfg);
+		break;
+	case PCM_RX:
+	case PCM_TX:
+	default:
+		ret_size = SIZEOF_CFG_CMD(afe_port_pcm_cfg);
+		break;
+	}
+	return ret_size;
+}
 int afe_open(u16 port_id, union afe_port_config *afe_config, int rate)
 {
 	struct afe_port_start_command start;
@@ -172,7 +207,7 @@ int afe_open(u16 port_id, union afe_port_config *afe_config, int rate)
 
 	config.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
-	config.hdr.pkt_size = sizeof(config);
+	config.hdr.pkt_size = afe_sizeof_cfg_cmd(port_id);
 	config.hdr.src_port = 0;
 	config.hdr.dest_port = 0;
 	config.hdr.token = 0;
@@ -190,6 +225,7 @@ int afe_open(u16 port_id, union afe_port_config *afe_config, int rate)
 	config.port = *afe_config;
 
 	atomic_set(&this_afe.state, 1);
+	atomic_set(&this_afe.status, 0);
 	ret = apr_send_pkt(this_afe.apr, (uint32_t *) &config);
 	if (ret < 0) {
 		pr_err("%s: AFE enable for port %d failed\n", __func__,
@@ -206,7 +242,11 @@ int afe_open(u16 port_id, union afe_port_config *afe_config, int rate)
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
-
+	if (atomic_read(&this_afe.status) != 0) {
+		pr_err("%s: config cmd failed\n", __func__);
+		ret = -EINVAL;
+		goto fail_cmd;
+	}
 	start.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	start.hdr.pkt_size = sizeof(start);
@@ -676,6 +716,7 @@ static int __init afe_init(void)
 {
 	init_waitqueue_head(&this_afe.wait);
 	atomic_set(&this_afe.state, 0);
+	atomic_set(&this_afe.status, 0);
 	this_afe.apr = NULL;
 #ifdef CONFIG_DEBUG_FS
 	debugfs_afelb = debugfs_create_file("afe_loopback",
