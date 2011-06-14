@@ -2273,7 +2273,6 @@ static DEFINE_CLK_PCOM(ecodec_clk, ECODEC_CLK, CLKFLAG_SKIP_AUTO_OFF);
 static DEFINE_CLK_PCOM(gp_clk, GP_CLK, CLKFLAG_SKIP_AUTO_OFF);
 static DEFINE_CLK_PCOM(uart3_clk, UART3_CLK, 0);
 static DEFINE_CLK_PCOM(usb_phy_clk, USB_PHY_CLK, CLKFLAG_MIN);
-static DEFINE_CLK_PCOM(vdc_clk, VDC_CLK, CLKFLAG_SKIP_AUTO_OFF);
 
 static DEFINE_CLK_PCOM(p_grp_2d_clk, GRP_2D_CLK, CLKFLAG_SKIP_AUTO_OFF);
 static DEFINE_CLK_PCOM(p_grp_2d_p_clk, GRP_2D_P_CLK, CLKFLAG_SKIP_AUTO_OFF);
@@ -2767,7 +2766,6 @@ static struct clk_local_ownership {
 	{ CLK_LOOKUP("gp_clk",		gp_clk.c,	NULL) },
 	{ CLK_LOOKUP("uart_clk",	uart3_clk.c,	"msm_serial.2") },
 	{ CLK_LOOKUP("usb_phy_clk",	usb_phy_clk.c,	NULL) },
-	{ CLK_LOOKUP("vdc_clk",		vdc_clk.c,	NULL) },
 
 	/* Voters */
 	{ CLK_LOOKUP("ebi1_dtv_clk",	ebi_dtv_clk.c,	NULL) },
