@@ -304,10 +304,13 @@ static int32_t imx072_set_fps(struct fps_cfg   *fps)
 
 static int32_t imx072_write_exp_gain(uint16_t gain, uint32_t line)
 {
-	uint32_t fl_lines;
+	uint32_t fl_lines = 0;
 	uint8_t offset;
 	int32_t rc = 0;
-	fl_lines = prev_frame_length_lines;
+	if (imx072_ctrl->curr_res == imx072_ctrl->prev_res)
+		fl_lines = prev_frame_length_lines;
+	else if (imx072_ctrl->curr_res == imx072_ctrl->pict_res)
+		fl_lines = snap_frame_length_lines;
 	line = (line * imx072_ctrl->fps_divider) / Q10;
 	offset = IMX072_OFFSET;
 	if (line > (fl_lines - offset))
@@ -429,8 +432,16 @@ static int32_t imx072_mode_init(int mode, struct sensor_init_cfg init_info)
 			conf[IMX072_LINE_LENGTH_PCK_HI].wdata << 8 |
 			imx072_regs.conf_array[imx072_ctrl->prev_res].
 			conf[IMX072_LINE_LENGTH_PCK_LO].wdata;
-		snap_frame_length_lines = prev_frame_length_lines;
-		snap_line_length_pck = prev_line_length_pck;
+		snap_frame_length_lines =
+			imx072_regs.conf_array[imx072_ctrl->pict_res].
+			conf[IMX072_FRAME_LENGTH_LINES_HI].wdata << 8 |
+			imx072_regs.conf_array[imx072_ctrl->pict_res].
+			conf[IMX072_FRAME_LENGTH_LINES_LO].wdata;
+		snap_line_length_pck =
+			imx072_regs.conf_array[imx072_ctrl->pict_res].
+			conf[IMX072_LINE_LENGTH_PCK_HI].wdata << 8 |
+			imx072_regs.conf_array[imx072_ctrl->pict_res].
+			conf[IMX072_LINE_LENGTH_PCK_LO].wdata;
 
 		rc = imx072_sensor_setting(REG_INIT,
 			imx072_ctrl->prev_res);
