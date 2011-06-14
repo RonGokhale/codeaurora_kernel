@@ -283,8 +283,8 @@ static void msm8960_shutdown(struct snd_pcm_substream *substream)
 {
 	clk_users--;
 	if (!clk_users) {
-		clk_set_rate(codec_clk, 0);
 		clk_disable(codec_clk);
+		clk_put(codec_clk);
 	}
 }
 
