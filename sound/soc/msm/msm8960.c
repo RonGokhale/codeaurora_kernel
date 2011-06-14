@@ -355,6 +355,7 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.dynamic = 1,
 		.dsp_link = &fe_media,
 		.be_id = MSM_FRONTEND_DAI_CS_VOICE,
+		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
 	},
 	{
 		.name = "MSM VoIP",
