@@ -725,7 +725,14 @@ static int bluetooth_power(int on)
 {
 	int pin, rc = 0;
 	const char *id = "BTPW";
+	int cid = 0;
 
+	cid = adie_get_detected_connectivity_type();
+	if (cid != BAHAMA_ID) {
+		pr_err("%s: unexpected adie connectivity type: %d\n",
+					__func__, cid);
+		return -ENODEV;
+	}
 	if (on) {
 		/*setup power for BT SOC*/
 		rc = bluetooth_switch_regulators(on);
