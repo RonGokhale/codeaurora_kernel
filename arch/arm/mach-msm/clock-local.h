@@ -50,6 +50,16 @@
 #define DELAY		5	/* No bit to check, just delay */
 
 /*
+ * Clock Definition Macros
+ */
+#define DEFINE_CLK_MEASURE(name) \
+	struct clk name = { \
+		.ops = &clk_ops_measure, \
+		.dbg_name = #name, \
+		CLK_INIT(name), \
+	}; \
+
+/*
  * Generic frequency-definition structs and macros
  */
 struct clk_freq_tbl {
@@ -260,6 +270,25 @@ int branch_clk_set_parent(struct clk *clk, struct clk *parent);
 int branch_clk_is_enabled(struct clk *clk);
 void branch_clk_auto_off(struct clk *clk);
 int branch_clk_reset(struct clk *c, enum clk_reset_action action);
+
+/**
+ * struct measure_clk - for rate measurement debug use
+ * @sample_ticks: sample period in reference clock ticks
+ * @multiplier: measurement scale-up factor
+ * @c: clk
+*/
+struct measure_clk {
+	u64 sample_ticks;
+	u32 multiplier;
+	struct clk c;
+};
+
+extern struct clk_ops clk_ops_measure;
+
+static inline struct measure_clk *to_measure_clk(struct clk *clk)
+{
+	return container_of(clk, struct measure_clk, c);
+}
 
 /*
  * Variables from clock-local driver
