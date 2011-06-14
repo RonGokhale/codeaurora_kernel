@@ -161,7 +161,7 @@ static int hci_smd_send_frame(struct sk_buff *skb)
 		len = smd_write(hs.event_channel, skb->data, skb->len);
 		if (len < skb->len) {
 			BT_ERR("Failed to write Command %d", len);
-			return;
+			return -ENODEV;
 		}
 		break;
 	case HCI_ACLDATA_PKT:
@@ -169,7 +169,7 @@ static int hci_smd_send_frame(struct sk_buff *skb)
 		len = smd_write(hs.data_channel, skb->data, skb->len);
 		if (len < skb->len) {
 			BT_ERR("Failed to write Data %d", len);
-			return;
+			return -ENODEV;
 		}
 		break;
 	default:
