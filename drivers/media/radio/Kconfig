@@ -480,7 +480,7 @@ config RADIO_IRIS
 
 config RADIO_IRIS_TRANSPORT
         tristate "Qualcomm IRIS Transport"
-        depends on VIDEO_V4L2
+        depends on RADIO_IRIS
         default n
         ---help---
           Say Y here if you want to use the Qualcomm FM chip (IRIS).
