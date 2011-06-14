@@ -70,6 +70,10 @@
 #include "pm.h"
 #include "cpuidle.h"
 
+static struct platform_device msm_fm_platform_init = {
+	.name = "iris_fm",
+	.id   = -1,
+};
 
 struct pm8xxx_gpio_init {
 	unsigned			gpio;
@@ -2234,6 +2238,7 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm_fb_device,
 	&msm_device_vidc,
 	&msm_device_bam_dmux,
+	&msm_fm_platform_init,
 };
 
 static struct platform_device *sim_devices[] __initdata = {
