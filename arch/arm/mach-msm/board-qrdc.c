@@ -78,6 +78,7 @@
 #include "timer.h"
 #include "gpiomux.h"
 #include "gpiomux-8x60.h"
+#include "rpm_resources.h"
 
 #define MSM_SHARED_RAM_PHYS 0x40000000
 
@@ -296,6 +297,63 @@ static struct msm_cpuidle_state msm_cstates[] __initdata = {
 
 	{1, 1, "C1", "STANDALONE_POWER_COLLAPSE",
 		MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE},
+};
+
+static struct msm_rpmrs_level msm_rpmrs_levels[] __initdata = {
+	{
+		MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT,
+		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
+		true,
+		1, 8000, 100000, 1,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE,
+		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
+		true,
+		1500, 5000, 60100000, 3000,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
+		false,
+		1800, 5000, 60350000, 3500,
+	},
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(OFF, ACTIVE, MAX, ACTIVE),
+		false,
+		3800, 4500, 65350000, 5500,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(ON, HSFS_OPEN, MAX, ACTIVE),
+		false,
+		2800, 2500, 66850000, 4800,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, MAX, ACTIVE),
+		false,
+		4800, 2000, 71850000, 6800,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, ACTIVE, RET_HIGH),
+		false,
+		6800, 500, 75850000, 8800,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, RET_HIGH, RET_LOW),
+		false,
+		7800, 0, 76350000, 9800,
+	},
 };
 
 #if defined(CONFIG_USB_GADGET_MSM_72K) || defined(CONFIG_USB_EHCI_MSM_72K)
@@ -4234,6 +4292,8 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 #ifdef CONFIG_MSM_RPM
 	BUG_ON(msm_rpm_init(&msm_rpm_data));
 #endif
+	BUG_ON(msm_rpmrs_levels_init(msm_rpmrs_levels,
+				ARRAY_SIZE(msm_rpmrs_levels)));
 	if (msm_xo_init())
 		pr_err("Failed to initialize XO votes\n");
 

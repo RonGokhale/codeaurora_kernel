@@ -41,35 +41,8 @@ module_param_named(
 	debug_mask, msm_rpmrs_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP
 );
 
-/******************************************************************************
- * Resource Definitions
- *****************************************************************************/
-
-enum {
-	MSM_RPMRS_PXO_OFF = 0,
-	MSM_RPMRS_PXO_ON = 1,
-};
-
-enum {
-	MSM_RPMRS_L2_CACHE_HSFS_OPEN = 0,
-	MSM_RPMRS_L2_CACHE_GDHS = 1,
-	MSM_RPMRS_L2_CACHE_RETENTION = 2,
-	MSM_RPMRS_L2_CACHE_ACTIVE = 3,
-};
-
-enum {
-	MSM_RPMRS_VDD_MEM_RET_LOW = 500,
-	MSM_RPMRS_VDD_MEM_RET_HIGH = 750,
-	MSM_RPMRS_VDD_MEM_ACTIVE = 1000,
-	MSM_RPMRS_VDD_MEM_MAX = 1250,
-};
-
-enum {
-	MSM_RPMRS_VDD_DIG_RET_LOW = 500,
-	MSM_RPMRS_VDD_DIG_RET_HIGH = 750,
-	MSM_RPMRS_VDD_DIG_ACTIVE = 1000,
-	MSM_RPMRS_VDD_DIG_MAX = 1250,
-};
+static struct msm_rpmrs_level *msm_rpmrs_levels;
+static int msm_rpmrs_level_count;
 
 static bool msm_rpmrs_pxo_beyond_limits(struct msm_rpmrs_limits *limits);
 static void msm_rpmrs_aggregate_pxo(struct msm_rpmrs_limits *limits);
@@ -186,88 +159,6 @@ struct msm_rpmrs_resource_sysfs {
 	struct attribute *attrs[2];
 	struct msm_rpmrs_kboj_attribute kas;
 };
-
-/******************************************************************************
- * Power Level Definitions
- *****************************************************************************/
-
-#define MSM_RPMRS_LIMITS(_pxo, _l2, _vdd_upper_b, _vdd) { \
-	MSM_RPMRS_PXO_##_pxo, \
-	MSM_RPMRS_L2_CACHE_##_l2, \
-	MSM_RPMRS_VDD_MEM_##_vdd_upper_b, \
-	MSM_RPMRS_VDD_MEM_##_vdd, \
-	MSM_RPMRS_VDD_DIG_##_vdd_upper_b, \
-	MSM_RPMRS_VDD_DIG_##_vdd, \
-	{0}, {0}, \
-}
-
-struct msm_rpmrs_level {
-	enum msm_pm_sleep_mode sleep_mode;
-	struct msm_rpmrs_limits rs_limits;
-	bool available;
-	uint32_t latency_us;
-	uint32_t steady_state_power;
-	uint32_t energy_overhead;
-	uint32_t time_overhead_us;
-};
-
-static struct msm_rpmrs_level msm_rpmrs_levels[] = {
-	{
-		MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT,
-		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
-		true,
-		1, 8000, 100000, 1,
-	},
-
-	{
-		MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE,
-		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
-		true,
-		1500, 5000, 60100000, 3000,
-	},
-
-	{
-		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
-		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
-		false,
-		1800, 5000, 60350000, 3500,
-	},
-	{
-		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
-		MSM_RPMRS_LIMITS(OFF, ACTIVE, MAX, ACTIVE),
-		false,
-		3800, 4500, 65350000, 5500,
-	},
-
-	{
-		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
-		MSM_RPMRS_LIMITS(ON, HSFS_OPEN, MAX, ACTIVE),
-		false,
-		2800, 2500, 66850000, 4800,
-	},
-
-	{
-		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
-		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, MAX, ACTIVE),
-		false,
-		4800, 2000, 71850000, 6800,
-	},
-
-	{
-		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
-		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, ACTIVE, RET_HIGH),
-		false,
-		6800, 500, 75850000, 8800,
-	},
-
-	{
-		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
-		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, RET_HIGH, RET_LOW),
-		false,
-		7800, 0, 76350000, 9800,
-	},
-};
-
 
 /******************************************************************************
  * Resource Specific Functions
@@ -522,7 +413,7 @@ static void msm_rpmrs_update_levels(void)
 {
 	int i, k;
 
-	for (i = 0; i < ARRAY_SIZE(msm_rpmrs_levels); i++) {
+	for (i = 0; i < msm_rpmrs_level_count; i++) {
 		struct msm_rpmrs_level *level = &msm_rpmrs_levels[i];
 
 		if (level->sleep_mode != MSM_PM_SLEEP_MODE_POWER_COLLAPSE)
@@ -926,7 +817,7 @@ struct msm_rpmrs_limits *msm_rpmrs_lowest_limits(
 		gpio_detectable = msm_mpm_gpio_irqs_detectable(from_idle);
 	}
 
-	for (i = 0; i < ARRAY_SIZE(msm_rpmrs_levels); i++) {
+	for (i = 0; i < msm_rpmrs_level_count; i++) {
 		struct msm_rpmrs_level *level = &msm_rpmrs_levels[i];
 		uint32_t power;
 
@@ -1027,10 +918,24 @@ static struct notifier_block __refdata rpmrs_cpu_notifier = {
 };
 #endif
 
+int __init msm_rpmrs_levels_init(struct msm_rpmrs_level *levels, int size)
+{
+	msm_rpmrs_levels = kzalloc(sizeof(struct msm_rpmrs_level) * size,
+			GFP_KERNEL);
+	if (!msm_rpmrs_levels)
+		return -ENOMEM;
+	msm_rpmrs_level_count = size;
+	memcpy(msm_rpmrs_levels, levels, size * sizeof(struct msm_rpmrs_level));
+
+	return 0;
+}
+
 static int __init msm_rpmrs_init(void)
 {
 	struct msm_rpm_iv_pair req;
 	int rc;
+
+	BUG_ON(!msm_rpmrs_levels);
 
 #ifdef CONFIG_ARCH_MSM8X60
 	req.id = MSM_RPMRS_ID_APPS_L2_CACHE_CTL;

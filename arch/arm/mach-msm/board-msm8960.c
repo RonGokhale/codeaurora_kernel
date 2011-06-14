@@ -73,6 +73,7 @@
 #include "board-msm8960.h"
 #include "pm.h"
 #include "cpuidle.h"
+#include "rpm_resources.h"
 
 static struct platform_device msm_fm_platform_init = {
 	.name = "iris_fm",
@@ -1998,6 +1999,7 @@ static struct msm_spm_seq_entry msm_spm_l2_seq_list[] __initdata = {
 	},
 };
 
+
 static struct msm_spm_platform_data msm_spm_l2_data[] __initdata = {
 	[0] = {
 		.reg_base_addr = MSM_SAW_L2_BASE,
@@ -2689,6 +2691,64 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 	},
 };
 
+static struct msm_rpmrs_level msm_rpmrs_levels[] __initdata = {
+	{
+		MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT,
+		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
+		true,
+		1, 8000, 100000, 1,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE,
+		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
+		true,
+		1500, 5000, 60100000, 3000,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(ON, GDHS, MAX, ACTIVE),
+		false,
+		1800, 5000, 60350000, 3500,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(ON, HSFS_OPEN, MAX, ACTIVE),
+		false,
+		2800, 2500, 65350000, 4800,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(OFF, GDHS, MAX, ACTIVE),
+		false,
+		3800, 4500, 67850000, 5500,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, MAX, ACTIVE),
+		false,
+		4800, 2000, 71850000, 6800,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, ACTIVE, RET_HIGH),
+		false,
+		6800, 500, 75850000, 8800,
+	},
+
+	{
+		MSM_PM_SLEEP_MODE_POWER_COLLAPSE,
+		MSM_RPMRS_LIMITS(OFF, HSFS_OPEN, RET_HIGH, RET_LOW),
+		false,
+		7800, 0, 76350000, 9800,
+	},
+};
+
 #ifdef CONFIG_I2C
 #define I2C_SURF 1
 #define I2C_FFA  (1 << 1)
@@ -2791,6 +2851,8 @@ static void __init msm8960_sim_init(void)
 		pr_err("socinfo_init() failed!\n");
 
 	BUG_ON(msm_rpm_init(&msm_rpm_data));
+	BUG_ON(msm_rpmrs_levels_init(msm_rpmrs_levels,
+				ARRAY_SIZE(msm_rpmrs_levels)));
 	msm_clock_init(msm_clocks_8960, msm_num_clocks_8960);
 	msm8960_device_ssbi_pm8921.dev.platform_data =
 				&msm8960_ssbi_pm8921_pdata;
@@ -2835,6 +2897,8 @@ static void __init msm8960_rumi3_init(void)
 		pr_err("socinfo_init() failed!\n");
 
 	BUG_ON(msm_rpm_init(&msm_rpm_data));
+	BUG_ON(msm_rpmrs_levels_init(msm_rpmrs_levels,
+				ARRAY_SIZE(msm_rpmrs_levels)));
 	msm_clock_init(msm_clocks_8960_dummy, msm_num_clocks_8960_dummy);
 	gpiomux_init();
 	ethernet_init();
@@ -2868,6 +2932,8 @@ static void __init msm8960_cdp_init(void)
 		pr_err("socinfo_init() failed!\n");
 
 	BUG_ON(msm_rpm_init(&msm_rpm_data));
+	BUG_ON(msm_rpmrs_levels_init(msm_rpmrs_levels,
+				ARRAY_SIZE(msm_rpmrs_levels)));
 	msm_clock_init(msm_clocks_8960, msm_num_clocks_8960);
 	msm_device_otg.dev.platform_data = &msm_otg_pdata;
 	msm_device_gadget_peripheral.dev.parent = &msm_device_otg.dev;

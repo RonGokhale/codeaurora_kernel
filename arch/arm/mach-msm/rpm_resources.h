@@ -46,6 +46,52 @@ struct msm_rpmrs_limits {
 	uint32_t power[NR_CPUS];
 };
 
+enum {
+	MSM_RPMRS_PXO_OFF = 0,
+	MSM_RPMRS_PXO_ON = 1,
+};
+
+enum {
+	MSM_RPMRS_L2_CACHE_HSFS_OPEN = 0,
+	MSM_RPMRS_L2_CACHE_GDHS = 1,
+	MSM_RPMRS_L2_CACHE_RETENTION = 2,
+	MSM_RPMRS_L2_CACHE_ACTIVE = 3,
+};
+
+enum {
+	MSM_RPMRS_VDD_MEM_RET_LOW = 500,
+	MSM_RPMRS_VDD_MEM_RET_HIGH = 750,
+	MSM_RPMRS_VDD_MEM_ACTIVE = 1000,
+	MSM_RPMRS_VDD_MEM_MAX = 1250,
+};
+
+enum {
+	MSM_RPMRS_VDD_DIG_RET_LOW = 500,
+	MSM_RPMRS_VDD_DIG_RET_HIGH = 750,
+	MSM_RPMRS_VDD_DIG_ACTIVE = 1000,
+	MSM_RPMRS_VDD_DIG_MAX = 1250,
+};
+
+#define MSM_RPMRS_LIMITS(_pxo, _l2, _vdd_upper_b, _vdd) { \
+	MSM_RPMRS_PXO_##_pxo, \
+	MSM_RPMRS_L2_CACHE_##_l2, \
+	MSM_RPMRS_VDD_MEM_##_vdd_upper_b, \
+	MSM_RPMRS_VDD_MEM_##_vdd, \
+	MSM_RPMRS_VDD_DIG_##_vdd_upper_b, \
+	MSM_RPMRS_VDD_DIG_##_vdd, \
+	{0}, {0}, \
+}
+
+struct msm_rpmrs_level {
+	enum msm_pm_sleep_mode sleep_mode;
+	struct msm_rpmrs_limits rs_limits;
+	bool available;
+	uint32_t latency_us;
+	uint32_t steady_state_power;
+	uint32_t energy_overhead;
+	uint32_t time_overhead_us;
+};
+
 int msm_rpmrs_set(int ctx, struct msm_rpm_iv_pair *req, int count);
 int msm_rpmrs_set_noirq(int ctx, struct msm_rpm_iv_pair *req, int count);
 
@@ -88,5 +134,7 @@ int msm_rpmrs_enter_sleep(uint32_t sclk_count, struct msm_rpmrs_limits *limits,
 		bool from_idle, bool notify_rpm);
 void msm_rpmrs_exit_sleep(struct msm_rpmrs_limits *limits,
 		bool from_idle, bool notify_rpm);
+
+int msm_rpmrs_levels_init(struct msm_rpmrs_level *levels, int size);
 
 #endif /* __ARCH_ARM_MACH_MSM_RPM_RESOURCES_H */
