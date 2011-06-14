@@ -23,6 +23,7 @@
 #include <linux/semaphore.h>
 #include <linux/spinlock.h>
 #include <linux/fb.h>
+#include <linux/msm_mdp.h>
 #include <asm/system.h>
 #include <asm/mach-types.h>
 #include <mach/hardware.h>
@@ -34,6 +35,8 @@
 
 static int first_pixel_start_x;
 static int first_pixel_start_y;
+
+static int writeback_offset;
 
 static struct mdp4_overlay_pipe *dsi_pipe;
 
@@ -119,6 +122,9 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 			printk(KERN_INFO "%s: format2type failed\n", __func__);
 
 		dsi_pipe = pipe; /* keep it */
+
+		writeback_offset = mdp4_overlay_writeback_setup(
+						fbi, pipe, buf, bpp);
 	} else {
 		pipe = dsi_pipe;
 	}
@@ -138,6 +144,7 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 	pipe->src_x = 0;
 	pipe->srcp0_addr = (uint32) buf;
 	pipe->srcp0_ystride = fbi->fix.line_length;
+	pipe->bpp = bpp;
 
 	pipe->dst_h = fbi->var.yres;
 	pipe->dst_w = fbi->var.xres;
@@ -268,6 +275,61 @@ int mdp4_dsi_video_off(struct platform_device *pdev)
 
 	return ret;
 }
+
+#ifdef CONFIG_FB_MSM_OVERLAY_WRITEBACK
+int mdp4_dsi_video_overlay_blt_offset(struct msm_fb_data_type *mfd,
+					struct msmfb_overlay_blt *req)
+{
+	req->offset = writeback_offset;
+	req->width = dsi_pipe->src_width;
+	req->height = dsi_pipe->src_height;
+	req->bpp = dsi_pipe->bpp;
+
+	return sizeof(*req);
+}
+
+void mdp4_dsi_video_overlay_blt(struct msm_fb_data_type *mfd,
+					struct msmfb_overlay_blt *req)
+{
+	unsigned long flag;
+	int change = 0;
+
+	spin_lock_irqsave(&mdp_spin_lock, flag);
+	if (req->enable && dsi_pipe->blt_addr == 0) {
+		dsi_pipe->blt_addr = dsi_pipe->blt_base;
+		change++;
+	} else if (req->enable == 0 && dsi_pipe->blt_addr) {
+		dsi_pipe->blt_addr = 0;
+		change++;
+	}
+	pr_debug("%s: blt_addr=%x\n", __func__, (int)dsi_pipe->blt_addr);
+	dsi_pipe->blt_cnt = 0;
+	spin_unlock_irqrestore(&mdp_spin_lock, flag);
+
+	if (!change)
+		return;
+
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+	/*
+	 * it does not work by turnning dsi video timing enerator off
+	 * and configure new changes and tune it back on like LCDC.
+	 */
+	mdp4_overlayproc_cfg(dsi_pipe);
+	mdp4_overlay_dmap_xy(dsi_pipe);
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+}
+#else
+int mdp4_dsi_video_overlay_blt_offset(struct msm_fb_data_type *mfd,
+					struct msmfb_overlay_blt *req)
+{
+	return 0;
+}
+void mdp4_dsi_video_overlay_blt(struct msm_fb_data_type *mfd,
+					struct msmfb_overlay_blt *req)
+{
+	return;
+}
+#endif
 
 void mdp4_overlay_dsi_video_wait4vsync(struct msm_fb_data_type *mfd)
 {
