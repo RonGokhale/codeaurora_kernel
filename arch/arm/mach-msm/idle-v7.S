@@ -70,7 +70,7 @@ ENTRY(msm_pm_collapse)
 	mrc     p15, 0, r1, c1, c0, 0 /* MMU control */
 	mrc     p15, 0, r2, c2, c0, 0 /* TTBR0 */
 	mrc     p15, 0, r3, c3, c0, 0 /* dacr */
-#if !defined(CONFIG_ARCH_MSM8960) && !defined(CONFIG_ARCH_MSM7X27A)
+#ifdef CONFIG_ARCH_MSM_SCORPION
 	/* This instruction is not valid for non scorpion processors */
 	mrc     p15, 3, r4, c15, c0, 3 /* L2CR1 is the L2 cache control reg 1 */
 #endif
@@ -87,7 +87,7 @@ ENTRY(msm_pm_collapse)
 	mrc     p15, 7, r2, c15, c0, 6 /* AVSDSCR is the Adaptive Voltage
 	                                * Scaling Delay Synthesizer Control
 					* Register */
-#ifndef CONFIG_ARCH_MSM8960
+#ifndef CONFIG_ARCH_MSM_KRAIT
 	mrc     p15, 7, r3, c15, c1, 0 /* TSCSR is the Temperature Status and
 	                                * Control Register
 					*/
@@ -163,7 +163,7 @@ ENTRY(msm_pm_collapse_exit)
 
 #ifdef CONFIG_MSM_CPU_AVS
 	ldmdb   r1!, {r2-r4}
-#ifndef CONFIG_ARCH_MSM8960
+#ifndef CONFIG_ARCH_MSM_KRAIT
 	mcr     p15, 7, r4, c15, c1, 0 /* TSCSR */
 #endif
 	mcr     p15, 7, r3, c15, c0, 6 /* AVSDSCR */
@@ -172,7 +172,7 @@ ENTRY(msm_pm_collapse_exit)
 	ldmdb   r1!, {r2-r11}
 	mcr     p15, 0, r4, c3, c0, 0 /* dacr */
 	mcr     p15, 0, r3, c2, c0, 0 /* TTBR0 */
-#if !defined(CONFIG_ARCH_MSM8960) && !defined(CONFIG_ARCH_MSM7X27A)
+#ifdef CONFIG_ARCH_MSM_SCORPION
 	/* This instruction is not valid for non scorpion processors */
 	mcr     p15, 3, r5, c15, c0, 3 /* L2CR1 */
 #endif
