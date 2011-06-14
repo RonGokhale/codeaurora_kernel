@@ -379,15 +379,20 @@ static struct tty_operations smd_tty_ops = {
 
 static int smd_tty_dummy_probe(struct platform_device *pdev)
 {
-	if (!strcmp(pdev->name, smd_ch_name[0]))
+	if (!strncmp(pdev->name, smd_ch_name[0],
+				strnlen(smd_ch_name[0], SMD_MAX_CH_NAME_LEN)))
 		complete_all(&smd_tty[0].ch_allocated);
-	else if (!strcmp(pdev->name, smd_ch_name[7]))
+	else if (!strncmp(pdev->name, smd_ch_name[7],
+				strnlen(smd_ch_name[7], SMD_MAX_CH_NAME_LEN)))
 		complete_all(&smd_tty[7].ch_allocated);
-	else if (!strcmp(pdev->name, smd_ch_name[21]))
+	else if (!strncmp(pdev->name, smd_ch_name[21],
+				strnlen(smd_ch_name[21], SMD_MAX_CH_NAME_LEN)))
 		complete_all(&smd_tty[21].ch_allocated);
-	else if (!strcmp(pdev->name, smd_ch_name[27]))
+	else if (!strncmp(pdev->name, smd_ch_name[27],
+				strnlen(smd_ch_name[27], SMD_MAX_CH_NAME_LEN)))
 		complete_all(&smd_tty[27].ch_allocated);
-	else if (!strcmp(pdev->name, "LOOPBACK_TTY"))
+	else if (!strncmp(pdev->name, "LOOPBACK_TTY",
+				strnlen("LOOPBACK_TTY", SMD_MAX_CH_NAME_LEN)))
 		complete_all(&smd_tty[36].ch_allocated);
 
 	return 0;
