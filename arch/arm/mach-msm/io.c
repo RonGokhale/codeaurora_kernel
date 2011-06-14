@@ -152,6 +152,7 @@ static struct map_desc msm8x60_io_desc[] __initdata = {
 	MSM_DEVICE(LPASS_CLK_CTL),
 	MSM_DEVICE(TCSR),
 	MSM_DEVICE(IMEM),
+	MSM_DEVICE(HDMI),
 #ifdef CONFIG_MSM_DEBUG_UART
 	MSM_DEVICE(DEBUG_UART),
 #endif
@@ -193,6 +194,7 @@ static struct map_desc msm8960_io_desc[] __initdata = {
 	MSM_DEVICE(APCS_GCC),
 	MSM_DEVICE(TCSR),
 	MSM_DEVICE(IMEM),
+	MSM_DEVICE(HDMI),
 	{
 		.virtual =  (unsigned long) MSM_SHARED_RAM_BASE,
 		.length =   MSM_SHARED_RAM_SIZE,

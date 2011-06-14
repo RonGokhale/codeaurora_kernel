@@ -134,4 +134,8 @@
 #endif
 #endif
 
+#define MSM_HDMI_BASE		IOMEM(0xFA800000)
+#define MSM_HDMI_PHYS		0x04A00000
+#define MSM_HDMI_SIZE		SZ_4K
+
 #endif
