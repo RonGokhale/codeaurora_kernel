@@ -1405,6 +1405,20 @@ static int msm_otg_phy_reset(struct msm_otg *dev)
 		pr_err("%s: usb hs clk deassert failed\n", __func__);
 		return -1;
 	}
+	/* Observing ulpi timeouts as part of PHY calibration. On resetting
+	 * the HW link explicity by setting the RESET bit in the USBCMD
+	 * register before PHY calibration fixes the ulpi timeout issue.
+	 * This workaround is required for unicorn target
+	 */
+	writel_relaxed(USBCMD_RESET, USB_USBCMD);
+	timeout = jiffies + USB_LINK_RESET_TIMEOUT;
+	do {
+		if (time_after(jiffies, timeout)) {
+			pr_err("msm_otg: usb link reset timeout\n");
+			break;
+		}
+		usleep_range(1000, 1200);
+	} while (readl_relaxed(USB_USBCMD) & USBCMD_RESET);
 
 	/* select ULPI phy */
 	temp = (readl(USB_PORTSC) & ~PORTSC_PTS);
