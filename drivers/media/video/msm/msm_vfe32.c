@@ -1832,7 +1832,7 @@ static void vfe32_process_reg_update_irq(void)
 			}
 		}
 		vfe32_ctrl->req_start_video_rec =  FALSE;
-		if (vpe_ctrl->dis_en) {
+		if (vpe_ctrl && vpe_ctrl->dis_en) {
 			old_val = msm_io_r(
 				vfe32_ctrl->vfebase + VFE_MODULE_CFG);
 			old_val |= RS_CS_ENABLE_MASK;
@@ -1861,6 +1861,7 @@ static void vfe32_process_reg_update_irq(void)
 			}
 		}
 		vfe32_ctrl->req_stop_video_rec =  FALSE;
+		vfe32_send_msg_no_payload(MSG_ID_STOP_REC_ACK);
 
 		/*disable rs& cs when stop recording. */
 		old_val = msm_io_r(vfe32_ctrl->vfebase + VFE_MODULE_CFG);
