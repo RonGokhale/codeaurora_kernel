@@ -96,6 +96,10 @@ static struct voice_mixer_data voice_mixers[VOICE_MIXER_MAX] = {
 	{VOICE_PRI_I2S_TX, 0, SNDRV_PCM_STREAM_CAPTURE},
 	/* VOICE_MIXER_SLIMBUS_0_TX */
 	{VOICE_SLIMBUS_0_TX, 0, SNDRV_PCM_STREAM_CAPTURE},
+	/* VOICE_MIXER_INT_BT_SCO_RX */
+	{VOICE_INT_BT_SCO_RX, 0, SNDRV_PCM_STREAM_PLAYBACK},
+	/* VOICE_MIXER_INT_BT_SCO_TX */
+	{VOICE_INT_BT_SCO_TX, 0, SNDRV_PCM_STREAM_CAPTURE}
 };
 
 void msm_pcm_routing_reg_phy_stream(int fedai_id, int dspst_id, int stream_type)
@@ -353,10 +357,10 @@ static const struct snd_kcontrol_new mmul1_mixer_controls[] = {
 	SOC_SINGLE_EXT("SLIM_0_TX", AUDIO_MIXER_MM_UL1,
 	MSM_BACKEND_DAI_SLIMBUS_0_TX, 1, 0, msm_routing_get_audio_mixer,
 	msm_routing_put_audio_mixer),
-	SOC_SINGLE_EXT("Int BT-SCO TX", AUDIO_MIXER_MM_UL1,
+	SOC_SINGLE_EXT("INTERNAL_BT_SCO_TX", AUDIO_MIXER_MM_UL1,
 	MSM_BACKEND_DAI_INT_BT_SCO_TX, 1, 0, msm_routing_get_audio_mixer,
 	msm_routing_put_audio_mixer),
-	SOC_SINGLE_EXT("Int FM TX", AUDIO_MIXER_MM_UL1,
+	SOC_SINGLE_EXT("INTERNAL_FM_TX", AUDIO_MIXER_MM_UL1,
 	MSM_BACKEND_DAI_INT_FM_TX, 1, 0, msm_routing_get_audio_mixer,
 	msm_routing_put_audio_mixer),
 };
@@ -379,12 +383,24 @@ static const struct snd_kcontrol_new slimbus_rx_voice_mixer_controls[] = {
 	msm_routing_put_voice_mixer),
 };
 
+static const struct snd_kcontrol_new bt_sco_rx_voice_mixer_controls[] = {
+	SOC_SINGLE_EXT("CSVoice", VOICE_MIXER_INT_BT_SCO_RX,
+	MSM_FRONTEND_DAI_CS_VOICE, 1, 0, msm_routing_get_voice_mixer,
+	msm_routing_put_voice_mixer),
+	SOC_SINGLE_EXT("Voip", VOICE_MIXER_INT_BT_SCO_RX ,
+	MSM_FRONTEND_DAI_VOIP, 1, 0, msm_routing_get_voice_mixer,
+	msm_routing_put_voice_mixer),
+};
+
 static const struct snd_kcontrol_new tx_voice_mixer_controls[] = {
 	SOC_SINGLE_EXT("PRI_TX_Voice", VOICE_MIXER_PRI_I2S_TX,
 	MSM_BACKEND_DAI_PRI_I2S_TX, 1, 0, msm_routing_get_voice_mixer,
 	msm_routing_put_voice_mixer),
 	SOC_SINGLE_EXT("SLIM_0_TX_Voice", VOICE_MIXER_SLIMBUS_0_TX,
 	MSM_BACKEND_DAI_SLIMBUS_0_TX, 1, 0, msm_routing_get_voice_mixer,
+	msm_routing_put_voice_mixer),
+	SOC_SINGLE_EXT("INTERNAL_BT_SCO_TX_Voice", VOICE_MIXER_INT_BT_SCO_TX,
+	MSM_BACKEND_DAI_INT_BT_SCO_TX, 1, 0, msm_routing_get_voice_mixer,
 	msm_routing_put_voice_mixer),
 };
 
@@ -394,6 +410,9 @@ static const struct snd_kcontrol_new tx_voip_mixer_controls[] = {
 	msm_routing_put_voice_mixer),
 	SOC_SINGLE_EXT("SLIM_0_TX_Voip", VOICE_MIXER_SLIMBUS_0_TX,
 	MSM_BACKEND_DAI_SLIMBUS_0_TX, 1, 0, msm_routing_get_voice_mixer,
+	msm_routing_put_voice_mixer),
+	SOC_SINGLE_EXT("INTERNAL_BT_SCO_TX_Voip", VOICE_MIXER_INT_BT_SCO_TX,
+	MSM_BACKEND_DAI_INT_BT_SCO_TX, 1, 0, msm_routing_get_voice_mixer,
 	msm_routing_put_voice_mixer),
 };
 
@@ -418,11 +437,14 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	SND_SOC_DAPM_AIF_OUT("HDMI", "HDMI Playback", 0, 0, 0 , 0),
 	SND_SOC_DAPM_AIF_IN("PRI_I2S_TX", "Primary I2S Capture", 0, 0, 0, 0),
 	SND_SOC_DAPM_AIF_IN("SLIMBUS_0_TX", "Slimbus Capture", 0, 0, 0, 0),
-	SND_SOC_DAPM_AIF_OUT("INT_BT_SCO_RX", "Int BT-SCO Playback",
+	SND_SOC_DAPM_AIF_OUT("INT_BT_SCO_RX", "Internal BT-SCO Playback",
 				0, 0, 0 , 0),
-	SND_SOC_DAPM_AIF_IN("INT_BT_SCO_TX", "Int BT-SCO Capture", 0, 0, 0, 0),
-	SND_SOC_DAPM_AIF_OUT("INT_FM_RX", "Int FM Playback", 0, 0, 0 , 0),
-	SND_SOC_DAPM_AIF_IN("INT_FM_TX", "Int FM Capture", 0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_IN("INT_BT_SCO_TX", "Internal BT-SCO Capture",
+				0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("INT_FM_RX", "Internal FM Playback",
+				0, 0, 0 , 0),
+	SND_SOC_DAPM_AIF_IN("INT_FM_TX", "Internal FM Capture",
+				0, 0, 0, 0),
 
 	/* Mixer definitions */
 	SND_SOC_DAPM_MIXER("PRI_RX Audio Mixer", SND_SOC_NOPM, 0, 0,
@@ -441,15 +463,19 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 				SND_SOC_NOPM, 0, 0,
 				slimbus_rx_voice_mixer_controls,
 				ARRAY_SIZE(slimbus_rx_voice_mixer_controls)),
+	SND_SOC_DAPM_MIXER("INTERNAL_BT_SCO_RX_Voice Mixer",
+				SND_SOC_NOPM, 0, 0,
+				bt_sco_rx_voice_mixer_controls,
+				ARRAY_SIZE(bt_sco_rx_voice_mixer_controls)),
 	SND_SOC_DAPM_MIXER("Voice_Tx Mixer",
 				SND_SOC_NOPM, 0, 0, tx_voice_mixer_controls,
 				ARRAY_SIZE(tx_voice_mixer_controls)),
 	SND_SOC_DAPM_MIXER("Voip_Tx Mixer",
 				SND_SOC_NOPM, 0, 0, tx_voip_mixer_controls,
 				ARRAY_SIZE(tx_voip_mixer_controls)),
-	SND_SOC_DAPM_MIXER("Int BT-SCO RX Audio Mixer", SND_SOC_NOPM, 0, 0,
+	SND_SOC_DAPM_MIXER("INTERNAL_BT_SCO_RX Audio Mixer", SND_SOC_NOPM, 0, 0,
 	int_bt_sco_rx_mixer_controls, ARRAY_SIZE(int_bt_sco_rx_mixer_controls)),
-	SND_SOC_DAPM_MIXER("Int FM RX Audio Mixer", SND_SOC_NOPM, 0, 0,
+	SND_SOC_DAPM_MIXER("INTERNAL_FM_RX Audio Mixer", SND_SOC_NOPM, 0, 0,
 	int_fm_rx_mixer_controls, ARRAY_SIZE(int_fm_rx_mixer_controls)),
 };
 
@@ -471,16 +497,16 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"MultiMedia1 Mixer", "PRI_TX", "PRI_I2S_TX"},
 	{"MultiMedia1 Mixer", "SLIM_0_TX", "SLIMBUS_0_TX"},
 
-	{"Int BT-SCO RX Audio Mixer", "MultiMedia1", "MM_DL1"},
-	{"Int BT-SCO RX Audio Mixer", "MultiMedia2", "MM_DL2"},
-	{"INT_BT_SCO_RX", NULL, "Int BT-SCO RX Audio Mixer"},
+	{"INTERNAL_BT_SCO_RX Audio Mixer", "MultiMedia1", "MM_DL1"},
+	{"INTERNAL_BT_SCO_RX Audio Mixer", "MultiMedia2", "MM_DL2"},
+	{"INT_BT_SCO_RX", NULL, "INTERNAL_BT_SCO_RX Audio Mixer"},
 
-	{"Int FM RX Audio Mixer", "MultiMedia1", "MM_DL1"},
-	{"Int FM RX Audio Mixer", "MultiMedia2", "MM_DL2"},
-	{"INT_FM_RX", NULL, "Int FM RX Audio Mixer"},
+	{"INTERNAL_FM_RX Audio Mixer", "MultiMedia1", "MM_DL1"},
+	{"INTERNAL_FM_RX Audio Mixer", "MultiMedia2", "MM_DL2"},
+	{"INT_FM_RX", NULL, "INTERNAL_FM_RX Audio Mixer"},
 
-	{"MultiMedia1 Mixer", "Int BT-SCO TX", "INT_BT_SCO_TX"},
-	{"MultiMedia1 Mixer", "Int FM TX", "INT_FM_TX"},
+	{"MultiMedia1 Mixer", "INTERNAL_BT_SCO_TX", "INT_BT_SCO_TX"},
+	{"MultiMedia1 Mixer", "INTERNAL_FM_TX", "INT_FM_TX"},
 	{"MM_UL1", NULL, "MultiMedia1 Mixer"},
 
 	{"PRI_RX_Voice Mixer", "CSVoice", "CS-VOICE_DL1"},
@@ -491,12 +517,18 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"SLIM_0_RX_Voice Mixer", "Voip", "VOIP_DL"},
 	{"SLIMBUS_0_RX", NULL, "SLIM_0_RX_Voice Mixer"},
 
+	{"INTERNAL_BT_SCO_RX_Voice Mixer", "CSVoice", "CS-VOICE_DL1"},
+	{"INTERNAL_BT_SCO_RX_Voice Mixer", "Voip", "VOIP_DL"},
+	{"INT_BT_SCO_RX", NULL, "INTERNAL_BT_SCO_RX_Voice Mixer"},
+
 	{"Voice_Tx Mixer", "PRI_TX_Voice", "PRI_I2S_TX"},
 	{"Voice_Tx Mixer", "SLIM_0_TX_Voice", "SLIMBUS_0_TX"},
+	{"Voice_Tx Mixer", "INTERNAL_BT_SCO_TX_Voice", "INT_BT_SCO_TX"},
 	{"CS-VOICE_UL1", NULL, "Voice_Tx Mixer"},
 
 	{"Voip_Tx Mixer", "PRI_TX_Voip", "PRI_I2S_TX"},
 	{"Voip_Tx Mixer", "SLIM_0_TX_Voip", "SLIMBUS_0_TX"},
+	{"Voip_Tx Mixer", "INTERNAL_BT_SCO_TX_Voip", "INT_BT_SCO_TX"},
 	{"VOIP_UL", NULL, "Voip_Tx Mixer"},
 };
 
