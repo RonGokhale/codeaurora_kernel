@@ -104,7 +104,7 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 		.oscio_is_gpo		= false,
 		.io_pullup_ena		= 0,
 		.io_pulldn_ena		= 0,
-		.io_open_drain_ena	= 0,
+		.io_open_drain_ena	= 0xfef8,
 		.irq_summary		= -1,
 	},
 	[SX150X_CAM]	= {
@@ -112,7 +112,7 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 		.oscio_is_gpo		= false,
 		.io_pullup_ena		= 0,
 		.io_pulldn_ena		= 0,
-		.io_open_drain_ena	= 0,
+		.io_open_drain_ena	= 0xef,
 		.irq_summary		= -1,
 	},
 };
@@ -862,7 +862,6 @@ static struct marimba_platform_data marimba_pdata = {
 static struct i2c_board_info core_exp_i2c_info[] __initdata = {
 	{
 		I2C_BOARD_INFO("sx1509q", 0x3e),
-		.platform_data =  &sx150x_data[SX150X_CORE],
 	},
 };
 static struct i2c_board_info cam_exp_i2c_info[] __initdata = {
@@ -888,6 +887,12 @@ static void __init register_i2c_devices(void)
 	i2c_register_board_info(MSM_GSBI0_QUP_I2C_BUS_ID,
 				cam_exp_i2c_info,
 				ARRAY_SIZE(cam_exp_i2c_info));
+
+	if (machine_is_msm7x27a_surf())
+		sx150x_data[SX150X_CORE].io_open_drain_ena = 0xe0f0;
+
+	core_exp_i2c_info[0].platform_data =
+			&sx150x_data[SX150X_CORE];
 
 	i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
 				core_exp_i2c_info,
