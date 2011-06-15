@@ -196,7 +196,8 @@ static struct regulator_consumer_supply pm8058_vreg_supply[PM8058_VREG_MAX] = {
 	[PM8058_VREG_ID_LVS0] = REGULATOR_SUPPLY("8058_lvs0", NULL),
 };
 
-#define PM8058_VREG_INIT(_id, _min_uV, _max_uV, _modes, _ops, _apply_uV) \
+#define PM8058_VREG_INIT(_id, _min_uV, _max_uV, _modes, _ops, _apply_uV, \
+			_always_on) \
 	[_id] = { \
 		.constraints = { \
 			.valid_modes_mask = _modes, \
@@ -204,7 +205,7 @@ static struct regulator_consumer_supply pm8058_vreg_supply[PM8058_VREG_MAX] = {
 			.min_uV = _min_uV, \
 			.max_uV = _max_uV, \
 			.apply_uV = _apply_uV, \
-			.always_on = 1, \
+			.always_on = _always_on, \
 		}, \
 		.num_consumer_supplies = 1, \
 		.consumer_supplies = &pm8058_vreg_supply[_id], \
@@ -214,17 +215,17 @@ static struct regulator_consumer_supply pm8058_vreg_supply[PM8058_VREG_MAX] = {
 	PM8058_VREG_INIT(_id, _min_uV, _max_uV, REGULATOR_MODE_NORMAL | \
 			REGULATOR_MODE_IDLE | REGULATOR_MODE_STANDBY, \
 			REGULATOR_CHANGE_VOLTAGE | REGULATOR_CHANGE_STATUS | \
-			REGULATOR_CHANGE_MODE, 1)
+			REGULATOR_CHANGE_MODE, 1, 1)
 
 #define PM8058_VREG_INIT_SMPS(_id, _min_uV, _max_uV) \
 	PM8058_VREG_INIT(_id, _min_uV, _max_uV, REGULATOR_MODE_NORMAL | \
 			REGULATOR_MODE_IDLE | REGULATOR_MODE_STANDBY, \
 			REGULATOR_CHANGE_VOLTAGE | REGULATOR_CHANGE_STATUS | \
-			REGULATOR_CHANGE_MODE, 1)
+			REGULATOR_CHANGE_MODE, 1, 1)
 
 #define PM8058_VREG_INIT_LVS(_id, _min_uV, _max_uV) \
-	PM8058_VREG_INIT(_id, _min_uV, _min_uV, REGULATOR_MODE_NORMAL, \
-			REGULATOR_CHANGE_STATUS, 0)
+	PM8058_VREG_INIT(_id, _min_uV, _max_uV, REGULATOR_MODE_NORMAL, \
+			REGULATOR_CHANGE_STATUS, 0, 0)
 
 static struct regulator_init_data pm8058_vreg_init[PM8058_VREG_MAX] = {
 	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L3, 1800000, 1800000),
