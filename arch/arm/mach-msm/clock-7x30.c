@@ -2366,6 +2366,7 @@ static DEFINE_CLK_VOTER(ebi_mddi_clk, &ebi1_fixed_clk.c);
 static DEFINE_CLK_VOTER(ebi_tv_clk, &ebi1_fixed_clk.c);
 static DEFINE_CLK_VOTER(ebi_vcd_clk, &ebi1_fixed_clk.c);
 static DEFINE_CLK_VOTER(ebi_vfe_clk, &ebi1_fixed_clk.c);
+static DEFINE_CLK_VOTER(ebi_adm_clk, &ebi1_fixed_clk.c);
 
 /*
  * SoC-specific functions required by clock-local driver
@@ -2775,6 +2776,7 @@ static struct clk_local_ownership {
 	{ CLK_LOOKUP("ebi1_tv_clk",	ebi_tv_clk.c,	NULL) },
 	{ CLK_LOOKUP("ebi1_vcd_clk",	ebi_vcd_clk.c,	NULL) },
 	{ CLK_LOOKUP("ebi1_vfe_clk",	ebi_vfe_clk.c,	NULL) },
+	{ CLK_LOOKUP("ebi1_clk",	ebi_adm_clk.c,	"msm_dmov") },
 
 	/*
 	 * This is a many-to-one mapping because we don't know how the remote
