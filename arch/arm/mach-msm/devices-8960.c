@@ -856,7 +856,6 @@ struct platform_device msm8960_device_qup_i2c_gsbi10 = {
 #ifdef CONFIG_MSM_CAMERA
 
 static int msm_cam_gpio_tbl[] = {
-	4, /*CAMIF_MCLK*/
 	5, /*CAMIF_MCLK*/
 	20, /*CAMIF_I2C_DATA*/
 	21, /*CAMIF_I2C_CLK*/
