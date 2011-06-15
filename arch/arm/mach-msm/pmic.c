@@ -115,6 +115,23 @@
 #define SPKR_BYPASS_EN_PROC 93
 #define HP_SPKR_AUX_IN_EN_PROC 94
 #define XO_CORE_FORCE_ENABLE 96
+#define GPIO_SET_CURRENT_SOURCE_PULLS_PROC 97
+#define GPIO_SET_GPIO_DIRECTION_INPUT_PROC 98
+#define GPIO_SET_EXT_PIN_CONFIG_PROC 99
+#define GPIO_SET_GPIO_CONFIG_PROC 100
+#define GPIO_CONFIG_DIGITAL_OUTPUT_PROC 101
+#define GPIO_GET_GPIO_DIRECTION_PROC 102
+#define GPIO_SET_SLEEP_CLK_CONFIG_PROC 103
+#define GPIO_CONFIG_DIGITAL_INPUT_PROC 104
+#define GPIO_SET_OUTPUT_BUFFER_CONFIGURATION_PROC 105
+#define GPIO_SET_PROC 106
+#define GPIO_CONFIG_MODE_SELECTION_PROC 107
+#define GPIO_SET_INVERSION_CONFIGURATION_PROC 108
+#define GPIO_SET_GPIO_DIRECTION_OUTPUT_PROC 109
+#define GPIO_SET_SOURCE_CONFIGURATION_PROC 110
+#define GPIO_GET_PROC 111
+#define GPIO_SET_VOLTAGE_SOURCE_PROC 112
+#define GPIO_SET_OUTPUT_BUFFER_DRIVE_STRENGTH_PROC 113
 
 /* rpc related */
 #define PMIC_RPC_TIMEOUT (5*HZ)
@@ -1215,3 +1232,55 @@ int pmic_xo_core_force_enable(uint enable)
 	return pmic_rpc_set_only(enable, 0, 0, 0, 1, XO_CORE_FORCE_ENABLE);
 }
 EXPORT_SYMBOL(pmic_xo_core_force_enable);
+
+int pmic_gpio_direction_input(unsigned gpio)
+{
+	return pmic_rpc_set_only(gpio, 0, 0, 0, 1,
+			GPIO_SET_GPIO_DIRECTION_INPUT_PROC);
+}
+EXPORT_SYMBOL(pmic_gpio_direction_input);
+
+int pmic_gpio_direction_output(unsigned gpio)
+{
+	return pmic_rpc_set_only(gpio, 0, 0, 0, 1,
+			GPIO_SET_GPIO_DIRECTION_OUTPUT_PROC);
+}
+EXPORT_SYMBOL(pmic_gpio_direction_output);
+
+int pmic_gpio_set_value(unsigned gpio, int value)
+{
+	return pmic_rpc_set_only(gpio, value, 0, 0, 2, GPIO_SET_PROC);
+}
+EXPORT_SYMBOL(pmic_gpio_set_value);
+
+int pmic_gpio_get_value(unsigned gpio)
+{
+	uint value;
+	int ret;
+
+	ret = pmic_rpc_set_get(gpio, &value, sizeof(value), GPIO_GET_PROC);
+	if (ret < 0)
+		return ret;
+	return value ? 1 : 0;
+}
+EXPORT_SYMBOL(pmic_gpio_get_value);
+
+int pmic_gpio_get_direction(unsigned gpio)
+{
+	enum pmic_direction_mode dir;
+	int ret;
+
+	ret = pmic_rpc_set_get(gpio, &dir, sizeof(dir),
+			GPIO_GET_GPIO_DIRECTION_PROC);
+	if (ret < 0)
+		return ret;
+	return dir;
+}
+EXPORT_SYMBOL(pmic_gpio_get_direction);
+
+int pmic_gpio_config(struct pm8xxx_gpio_rpc_cfg *param)
+{
+	return pmic_rpc_set_struct(0, 0, (uint *)param, sizeof(*param),
+			GPIO_SET_GPIO_CONFIG_PROC);
+}
+EXPORT_SYMBOL(pmic_gpio_config);
