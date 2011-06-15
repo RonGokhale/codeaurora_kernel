@@ -214,6 +214,7 @@ config BATTERY_MSM
 
 config BATTERY_MSM8X60
 	tristate "MSM8X60 battery"
+	select PMIC8058_BATTALARM
 	help
 	  Some MSM boards have dual charging paths to charge the battery.
 	  Say Y to enable support for the battery charging in

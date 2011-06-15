@@ -53,6 +53,7 @@ enum msm_hardware_charger_event {
 	CHG_BATT_INSERTED,
 	CHG_BATT_REMOVED,
 	CHG_BATT_STATUS_CHANGE,
+	CHG_BATT_NEEDS_RECHARGING,
 };
 
 /**
@@ -91,6 +92,7 @@ struct msm_battery_gauge {
 	int (*is_battery_id_valid) (void);
 	int (*get_battery_status)(void);
 	int (*get_batt_remaining_capacity) (void);
+	int (*monitor_for_recharging) (void);
 };
 /**
  * struct msm_charger_platform_data
@@ -98,8 +100,6 @@ struct msm_battery_gauge {
  * @update_time: how often the userland be updated of the charging progress
  * @max_voltage: the max voltage the battery should be charged upto
  * @min_voltage: the voltage where charging method switches from trickle to fast
- * @resume_voltage: the voltage to wait for before resume charging after the
- *			battery has been fully charged
  * @get_batt_capacity_percent: a board specific function to return battery
  *			capacity. Can be null - a default one will be used
  */
@@ -108,7 +108,6 @@ struct msm_charger_platform_data {
 	unsigned int update_time;
 	unsigned int max_voltage;
 	unsigned int min_voltage;
-	unsigned int resume_voltage;
 	unsigned int (*get_batt_capacity_percent) (void);
 };
 
@@ -155,5 +154,4 @@ static inline void msm_charger_unregister_vbus_sn(void (*callback)(int))
 {
 }
 #endif
-
 #endif /* __MSM_CHARGER_H__ */
