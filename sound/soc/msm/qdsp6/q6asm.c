@@ -30,6 +30,7 @@
 #include <mach/memory.h>
 #include <mach/debug_mm.h>
 #include <mach/peripheral-loader.h>
+#include <mach/qdsp6v2/audio_acdb.h>
 #include <mach/qdsp6v2/rtac.h>
 #include <sound/apr_audio.h>
 #include <sound/q6asm.h>
@@ -822,7 +823,10 @@ int q6asm_open_read(struct audio_client *ac,
 	open.hdr.opcode = ASM_STREAM_CMD_OPEN_READ;
 	/* Stream prio : High, provide meta info with encoded frames */
 	open.src_endpoint = ASM_END_POINT_DEVICE_MATRIX;
-	open.pre_proc_top = DEFAULT_POPP_TOPOLOGY;
+
+	open.pre_proc_top = get_asm_topology();
+	if (open.pre_proc_top == 0)
+		open.pre_proc_top = DEFAULT_POPP_TOPOLOGY;
 
 	switch (format) {
 	case FORMAT_LINEAR_PCM:
@@ -886,7 +890,10 @@ int q6asm_open_write(struct audio_client *ac, uint32_t format)
 	/* source endpoint : matrix */
 	open.sink_endpoint = ASM_END_POINT_DEVICE_MATRIX;
 	open.stream_handle = 0x00;
-	open.post_proc_top = DEFAULT_POPP_TOPOLOGY;
+
+	open.post_proc_top = get_asm_topology();
+	if (open.post_proc_top == 0)
+		open.post_proc_top = DEFAULT_POPP_TOPOLOGY;
 
 	switch (format) {
 	case FORMAT_LINEAR_PCM:
@@ -944,7 +951,10 @@ int q6asm_open_read_write(struct audio_client *ac,
 	open.uMode = BUFFER_META_ENABLE | STREAM_PRIORITY_NORMAL |
 				 SR_CM_NOTIFY_ENABLE;
 	/* source endpoint : matrix */
-	open.post_proc_top = DEFAULT_POPP_TOPOLOGY;
+	open.post_proc_top = get_asm_topology();
+	if (open.post_proc_top == 0)
+		open.post_proc_top = DEFAULT_POPP_TOPOLOGY;
+
 	switch (wr_format) {
 	case FORMAT_LINEAR_PCM:
 		open.write_format = LINEAR_PCM;
