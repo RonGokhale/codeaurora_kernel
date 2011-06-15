@@ -896,7 +896,7 @@ CONFIG_BT_HIDP=y
 #
 # Bluetooth device drivers
 #
-# CONFIG_BT_HCISMD is not set
+CONFIG_BT_HCISMD=m
 # CONFIG_BT_HCIBTUSB is not set
 # CONFIG_BT_HCIBTSDIO is not set
 # CONFIG_BT_HCIUART is not set
