@@ -497,6 +497,7 @@ struct cyttsp_platform_data {
 	int irq_gpio;
 	struct cyttsp_regulator *regulator_info;
 	u8 num_regulators;
+	const char *fw_fname;
 #ifdef CY_USE_I2C_DRIVER
 	s32 (*init)(struct i2c_client *client);
 	s32 (*resume)(struct i2c_client *client);
