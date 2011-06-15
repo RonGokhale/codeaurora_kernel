@@ -1848,6 +1848,90 @@ static inline unsigned int msmsdcc_get_max_sup_clk_rate(
 		return host->plat->msmsdcc_fmax;
 }
 
+static int msmsdcc_setup_gpio(struct msmsdcc_host *host, bool enable)
+{
+	struct msm_mmc_gpio_data *curr;
+	int i, rc = 0;
+
+	curr = host->plat->pin_data->gpio_data;
+	for (i = 0; i < curr->size; i++) {
+		if (enable) {
+			if (curr->gpio[i].is_always_on &&
+				curr->gpio[i].is_enabled)
+				continue;
+			rc = gpio_request(curr->gpio[i].no,
+						curr->gpio[i].name);
+			if (rc) {
+				pr_err("%s: gpio_request(%d, %s) failed %d\n",
+					mmc_hostname(host->mmc),
+					curr->gpio[i].no,
+					curr->gpio[i].name, rc);
+				goto free_gpios;
+			}
+			curr->gpio[i].is_enabled = true;
+		} else {
+			if (curr->gpio[i].is_always_on)
+				continue;
+			gpio_free(curr->gpio[i].no);
+			curr->gpio[i].is_enabled = false;
+		}
+	}
+	goto out;
+
+free_gpios:
+	for (; i >= 0; i--) {
+		gpio_free(curr->gpio[i].no);
+		curr->gpio[i].is_enabled = false;
+	}
+out:
+	return rc;
+}
+
+static int msmsdcc_setup_pad(struct msmsdcc_host *host, bool enable)
+{
+	struct msm_mmc_pad_data *curr;
+	int i;
+
+	curr = host->plat->pin_data->pad_data;
+	for (i = 0; i < curr->drv->size; i++) {
+		if (enable)
+			msm_tlmm_set_hdrive(curr->drv->on[i].no,
+				curr->drv->on[i].val);
+		else
+			msm_tlmm_set_hdrive(curr->drv->off[i].no,
+				curr->drv->off[i].val);
+	}
+
+	for (i = 0; i < curr->pull->size; i++) {
+		if (enable)
+			msm_tlmm_set_hdrive(curr->pull->on[i].no,
+				curr->pull->on[i].val);
+		else
+			msm_tlmm_set_hdrive(curr->pull->off[i].no,
+				curr->pull->off[i].val);
+	}
+
+	return 0;
+}
+
+static u32 msmsdcc_setup_pins(struct msmsdcc_host *host, bool enable)
+{
+	int rc = 0;
+
+	if (!host->plat->pin_data || host->plat->pin_data->cfg_sts == enable)
+		return 0;
+
+	if (host->plat->pin_data->is_gpio)
+		rc = msmsdcc_setup_gpio(host, enable);
+	else
+		rc = msmsdcc_setup_pad(host, enable);
+
+	if (!rc)
+		host->plat->pin_data->cfg_sts = enable;
+
+	return rc;
+}
+
 static void
 msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
@@ -1957,6 +2041,7 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 			disable_irq(host->core_irqres->start);
 			host->sdcc_irq_disabled = 1;
 		}
+		msmsdcc_setup_pins(host, false);
 		break;
 	case MMC_POWER_UP:
 		pwr |= MCI_PWR_UP;
@@ -1967,6 +2052,7 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 			enable_irq(host->core_irqres->start);
 			host->sdcc_irq_disabled = 0;
 		}
+		msmsdcc_setup_pins(host, true);
 		break;
 	case MMC_POWER_ON:
 		htc_pwrsink_set(PWRSINK_SDCARD, 100);

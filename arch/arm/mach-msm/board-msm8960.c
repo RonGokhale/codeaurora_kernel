@@ -1415,6 +1415,98 @@ static struct msm_mmc_slot_reg_data mmc_slot_vreg_data[MAX_SDCC_CONTROLLER] = {
 	}
 };
 
+/* SDC1 pad data */
+static struct msm_mmc_pad_drv sdc1_pad_drv_on_cfg[] = {
+	{TLMM_HDRV_SDC1_CLK, GPIO_CFG_16MA},
+	{TLMM_HDRV_SDC1_CMD, GPIO_CFG_10MA},
+	{TLMM_HDRV_SDC1_DATA, GPIO_CFG_10MA}
+};
+
+static struct msm_mmc_pad_drv sdc1_pad_drv_off_cfg[] = {
+	{TLMM_HDRV_SDC1_CLK, GPIO_CFG_2MA},
+	{TLMM_HDRV_SDC1_CMD, GPIO_CFG_2MA},
+	{TLMM_HDRV_SDC1_DATA, GPIO_CFG_2MA}
+};
+
+static struct msm_mmc_pad_pull sdc1_pad_pull_on_cfg[] = {
+	{TLMM_PULL_SDC1_CMD, GPIO_CFG_PULL_UP},
+	{TLMM_PULL_SDC1_DATA, GPIO_CFG_PULL_UP}
+};
+
+static struct msm_mmc_pad_pull sdc1_pad_pull_off_cfg[] = {
+	{TLMM_PULL_SDC1_CMD, GPIO_CFG_PULL_DOWN},
+	{TLMM_PULL_SDC1_DATA, GPIO_CFG_PULL_DOWN}
+};
+
+/* SDC3 pad data */
+static struct msm_mmc_pad_drv sdc3_pad_drv_on_cfg[] = {
+	{TLMM_HDRV_SDC3_CLK, GPIO_CFG_8MA},
+	{TLMM_HDRV_SDC3_CMD, GPIO_CFG_8MA},
+	{TLMM_HDRV_SDC3_DATA, GPIO_CFG_8MA}
+};
+
+static struct msm_mmc_pad_drv sdc3_pad_drv_off_cfg[] = {
+	{TLMM_HDRV_SDC3_CLK, GPIO_CFG_2MA},
+	{TLMM_HDRV_SDC3_CMD, GPIO_CFG_2MA},
+	{TLMM_HDRV_SDC3_DATA, GPIO_CFG_2MA}
+};
+
+static struct msm_mmc_pad_pull sdc3_pad_pull_on_cfg[] = {
+	{TLMM_PULL_SDC3_CMD, GPIO_CFG_PULL_UP},
+	{TLMM_PULL_SDC3_DATA, GPIO_CFG_PULL_UP}
+};
+
+static struct msm_mmc_pad_pull sdc3_pad_pull_off_cfg[] = {
+	{TLMM_PULL_SDC3_CMD, GPIO_CFG_PULL_DOWN},
+	{TLMM_PULL_SDC3_DATA, GPIO_CFG_PULL_DOWN}
+};
+
+struct msm_mmc_pad_pull_data mmc_pad_pull_data[MAX_SDCC_CONTROLLER] = {
+	[SDCC1] = {
+		.on = sdc1_pad_pull_on_cfg,
+		.off = sdc1_pad_pull_off_cfg,
+		.size = ARRAY_SIZE(sdc1_pad_pull_on_cfg)
+	},
+	[SDCC3] = {
+		.on = sdc3_pad_pull_on_cfg,
+		.off = sdc3_pad_pull_off_cfg,
+		.size = ARRAY_SIZE(sdc3_pad_pull_on_cfg)
+	},
+};
+
+struct msm_mmc_pad_drv_data mmc_pad_drv_data[MAX_SDCC_CONTROLLER] = {
+	[SDCC1] = {
+		.on = sdc1_pad_drv_on_cfg,
+		.off = sdc1_pad_drv_off_cfg,
+		.size = ARRAY_SIZE(sdc1_pad_drv_on_cfg)
+	},
+	[SDCC3] = {
+		.on = sdc3_pad_drv_on_cfg,
+		.off = sdc3_pad_drv_off_cfg,
+		.size = ARRAY_SIZE(sdc3_pad_drv_on_cfg)
+	},
+};
+
+struct msm_mmc_pad_data mmc_pad_data[MAX_SDCC_CONTROLLER] = {
+	[SDCC1] = {
+		.pull = &mmc_pad_pull_data[SDCC1],
+		.drv = &mmc_pad_drv_data[SDCC1]
+	},
+	[SDCC3] = {
+		.pull = &mmc_pad_pull_data[SDCC3],
+		.drv = &mmc_pad_drv_data[SDCC3]
+	},
+};
+
+struct msm_mmc_pin_data mmc_slot_pin_data[MAX_SDCC_CONTROLLER] = {
+	[SDCC1] = {
+		.pad_data = &mmc_pad_data[SDCC1],
+	},
+	[SDCC3] = {
+		.pad_data = &mmc_pad_data[SDCC3],
+	},
+};
+
 static unsigned int sdc1_sup_clk_rates[] = {
 	400000, 24000000, 48000000
 };
@@ -1436,6 +1528,7 @@ static struct mmc_platform_data msm8960_sdc1_data = {
 	.nonremovable	= 1,
 	.sdcc_v4_sup	= true,
 	.vreg_data	= &mmc_slot_vreg_data[SDCC1],
+	.pin_data	= &mmc_slot_pin_data[SDCC1]
 };
 #endif
 
@@ -1448,6 +1541,7 @@ static struct mmc_platform_data msm8960_sdc3_data = {
 	.wpswitch_gpio	= PM8921_GPIO_PM_TO_SYS(16),
 	.sdcc_v4_sup	= true,
 	.vreg_data	= &mmc_slot_vreg_data[SDCC3],
+	.pin_data	= &mmc_slot_pin_data[SDCC3],
 #ifdef CONFIG_MMC_MSM_CARD_HW_DETECTION
 	.status_gpio	= PM8921_GPIO_PM_TO_SYS(26),
 	.status_irq	= PM8921_GPIO_IRQ(PM8921_IRQ_BASE, 26),
@@ -1461,18 +1555,6 @@ static struct mmc_platform_data msm8960_sdc3_data = {
 
 static void __init msm8960_init_mmc(void)
 {
-	msm_tlmm_set_hdrive(TLMM_HDRV_SDC1_CLK, GPIO_CFG_16MA);
-	msm_tlmm_set_hdrive(TLMM_HDRV_SDC1_CMD, GPIO_CFG_10MA);
-	msm_tlmm_set_hdrive(TLMM_HDRV_SDC1_DATA, GPIO_CFG_10MA);
-	msm_tlmm_set_pull(TLMM_PULL_SDC1_CMD, GPIO_CFG_PULL_UP);
-	msm_tlmm_set_pull(TLMM_PULL_SDC1_DATA, GPIO_CFG_PULL_UP);
-
-	msm_tlmm_set_hdrive(TLMM_HDRV_SDC3_CLK, GPIO_CFG_8MA);
-	msm_tlmm_set_hdrive(TLMM_HDRV_SDC3_CMD, GPIO_CFG_8MA);
-	msm_tlmm_set_hdrive(TLMM_HDRV_SDC3_DATA, GPIO_CFG_8MA);
-	msm_tlmm_set_pull(TLMM_PULL_SDC3_CMD, GPIO_CFG_PULL_UP);
-	msm_tlmm_set_pull(TLMM_PULL_SDC3_DATA, GPIO_CFG_PULL_UP);
-
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
 	/* SDC1 : eMMC card connected */
 	msm_add_sdcc(1, &msm8960_sdc1_data);
