@@ -96,6 +96,7 @@ struct ov9726_ctrl_t {
 	unsigned short imgaddr;
 };
 static struct ov9726_ctrl_t *ov9726_ctrl;
+static int8_t config_not_set = 1;
 static DECLARE_WAIT_QUEUE_HEAD(ov9726_wait_queue);
 DEFINE_MUTEX(ov9726_mut);
 
@@ -420,7 +421,6 @@ static int32_t initialize_ov9726_registers(void)
 static int32_t ov9726_video_config(int mode)
 {
 	int32_t rc = 0;
-	static int8_t config_not_set = 1;
 
 	ov9726_ctrl->sensormode = mode;
 
@@ -439,6 +439,7 @@ static int32_t ov9726_video_config(int mode)
 
 		rc = msm_camio_csi_config(&ov9726_csi_params);
 		rc = initialize_ov9726_registers();
+		config_not_set = 0;
 	}
 	return rc;
 }
@@ -539,6 +540,7 @@ int ov9726_sensor_open_init(const struct msm_camera_sensor_info *data)
 	ov9726_ctrl->prev_res = FULL_SIZE;
 	ov9726_ctrl->pict_res = FULL_SIZE;
 	ov9726_ctrl->curr_res = INVALID_SIZE;
+	config_not_set = 1;
 	if (data)
 		ov9726_ctrl->sensordata = data;
 	/* enable mclk first */
