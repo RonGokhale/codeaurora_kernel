@@ -20,6 +20,8 @@
 
 typedef struct smd_channel smd_channel_t;
 
+#define SMD_MAX_CH_NAME_LEN 20 /* includes null char at end */
+
 /* warning: notify() may be called before open returns */
 int smd_open(const char *name, smd_channel_t **ch, void *priv,
 	     void (*notify)(void *priv, unsigned event));
