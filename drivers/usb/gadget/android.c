@@ -537,12 +537,34 @@ void update_dev_desc(struct android_dev *dev)
 	}
 }
 
-void android_enable_function(struct usb_function *f, int enable)
+
+static char *sysfs_allowed[] = {
+	"rndis",
+	"mtp",
+	"adb",
+};
+
+static int is_sysfschange_allowed(struct usb_function *f)
+{
+	char **functions = sysfs_allowed;
+	int count = ARRAY_SIZE(sysfs_allowed);
+	int i;
+
+	for (i = 0; i < count; i++) {
+		if (!strncmp(f->name, functions[i], 32))
+			return 1;
+	}
+	return 0;
+}
+
+int android_enable_function(struct usb_function *f, int enable)
 {
 	struct android_dev *dev = _android_dev;
 	int disable = !enable;
 	int product_id;
 
+	if (!is_sysfschange_allowed(f))
+		return -EINVAL;
 	if (!!f->disabled != disable) {
 		usb_function_set_enabled(f, !disable);
 
@@ -581,6 +603,7 @@ void android_enable_function(struct usb_function *f, int enable)
 			dev->cdev->desc.idProduct = device_desc.idProduct;
 		usb_composite_force_reset(dev->cdev);
 	}
+	return 0;
 }
 
 #ifdef CONFIG_DEBUG_FS
