@@ -50,10 +50,16 @@ struct audproc_buffer_data {
 	uint32_t	phys_addr[NUM_AUDPROC_BUFFERS];
 };
 
+
 uint32_t get_voice_rx_topology(void);
 uint32_t get_voice_tx_topology(void);
 uint32_t get_adm_topology(void);
 uint32_t get_asm_topology(void);
+void get_all_voice_cal(struct acdb_cal_block *cal_block);
+void get_all_cvp_cal(struct acdb_cal_block *cal_block);
+void get_all_vocproc_cal(struct acdb_cal_block *cal_block);
+void get_all_vocstrm_cal(struct acdb_cal_block *cal_block);
+void get_all_vocvol_cal(struct acdb_cal_block *cal_block);
 void get_anc_cal(struct acdb_cal_block *cal_block);
 void get_audproc_buffer_data(struct audproc_buffer_data *cal_buffers);
 void get_audproc_cal(int32_t path, struct acdb_cal_block *cal_block);

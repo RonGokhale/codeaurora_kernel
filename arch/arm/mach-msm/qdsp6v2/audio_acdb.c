@@ -54,9 +54,14 @@ struct acdb_data {
 	struct acdb_cal_block	vocproc_cal[MAX_NETWORKS];
 	struct acdb_cal_block	vocstrm_cal[MAX_NETWORKS];
 	struct acdb_cal_block	vocvol_cal[MAX_NETWORKS];
+	/* size of cal block tables above*/
 	uint32_t		vocproc_cal_size;
 	uint32_t		vocstrm_cal_size;
 	uint32_t		vocvol_cal_size;
+	/* Total size of cal data for all networks */
+	uint32_t		vocproc_total_cal_size;
+	uint32_t		vocstrm_total_cal_size;
+	uint32_t		vocvol_total_cal_size;
 
 	/* Sidetone Cal */
 	struct sidetone_cal	sidetone_cal;
@@ -111,6 +116,44 @@ uint32_t get_asm_topology(void)
 void store_asm_topology(uint32_t topology)
 {
 	acdb_data.asm_topology = topology;
+}
+
+void get_all_voice_cal(struct acdb_cal_block *cal_block)
+{
+	cal_block->cal_kvaddr = acdb_data.vocproc_cal[0].cal_kvaddr;
+	cal_block->cal_paddr = acdb_data.vocproc_cal[0].cal_paddr;
+	cal_block->cal_size = acdb_data.vocproc_total_cal_size +
+				acdb_data.vocstrm_total_cal_size +
+				acdb_data.vocvol_total_cal_size;
+}
+
+void get_all_cvp_cal(struct acdb_cal_block *cal_block)
+{
+	cal_block->cal_kvaddr = acdb_data.vocproc_cal[0].cal_kvaddr;
+	cal_block->cal_paddr = acdb_data.vocproc_cal[0].cal_paddr;
+	cal_block->cal_size = acdb_data.vocproc_total_cal_size +
+				acdb_data.vocvol_total_cal_size;
+}
+
+void get_all_vocproc_cal(struct acdb_cal_block *cal_block)
+{
+	cal_block->cal_kvaddr = acdb_data.vocproc_cal[0].cal_kvaddr;
+	cal_block->cal_paddr = acdb_data.vocproc_cal[0].cal_paddr;
+	cal_block->cal_size = acdb_data.vocproc_total_cal_size;
+}
+
+void get_all_vocstrm_cal(struct acdb_cal_block *cal_block)
+{
+	cal_block->cal_kvaddr = acdb_data.vocstrm_cal[0].cal_kvaddr;
+	cal_block->cal_paddr = acdb_data.vocstrm_cal[0].cal_paddr;
+	cal_block->cal_size = acdb_data.vocstrm_total_cal_size;
+}
+
+void get_all_vocvol_cal(struct acdb_cal_block *cal_block)
+{
+	cal_block->cal_kvaddr = acdb_data.vocvol_cal[0].cal_kvaddr;
+	cal_block->cal_paddr = acdb_data.vocvol_cal[0].cal_paddr;
+	cal_block->cal_size = acdb_data.vocvol_total_cal_size;
 }
 
 void get_anc_cal(struct acdb_cal_block *cal_block)
@@ -358,6 +401,7 @@ void store_vocproc_cal(int32_t len, struct cal_block *cal_blocks)
 
 	mutex_lock(&acdb_data.acdb_mutex);
 
+	acdb_data.vocproc_total_cal_size = 0;
 	for (i = 0; i < len; i++) {
 		if (cal_blocks[i].cal_offset > acdb_data.pmem_len) {
 			pr_err("%s: offset %d is > pmem_len %ld\n",
@@ -365,6 +409,8 @@ void store_vocproc_cal(int32_t len, struct cal_block *cal_blocks)
 				acdb_data.pmem_len);
 			acdb_data.vocproc_cal[i].cal_size = 0;
 		} else {
+			acdb_data.vocproc_total_cal_size +=
+				cal_blocks[i].cal_size;
 			acdb_data.vocproc_cal[i].cal_size =
 				cal_blocks[i].cal_size;
 			acdb_data.vocproc_cal[i].cal_paddr =
@@ -413,6 +459,7 @@ void store_vocstrm_cal(int32_t len, struct cal_block *cal_blocks)
 
 	mutex_lock(&acdb_data.acdb_mutex);
 
+	acdb_data.vocstrm_total_cal_size = 0;
 	for (i = 0; i < len; i++) {
 		if (cal_blocks[i].cal_offset > acdb_data.pmem_len) {
 			pr_err("%s: offset %d is > pmem_len %ld\n",
@@ -420,6 +467,8 @@ void store_vocstrm_cal(int32_t len, struct cal_block *cal_blocks)
 				acdb_data.pmem_len);
 			acdb_data.vocstrm_cal[i].cal_size = 0;
 		} else {
+			acdb_data.vocstrm_total_cal_size +=
+				cal_blocks[i].cal_size;
 			acdb_data.vocstrm_cal[i].cal_size =
 				cal_blocks[i].cal_size;
 			acdb_data.vocstrm_cal[i].cal_paddr =
@@ -468,6 +517,7 @@ void store_vocvol_cal(int32_t len, struct cal_block *cal_blocks)
 
 	mutex_lock(&acdb_data.acdb_mutex);
 
+	acdb_data.vocvol_total_cal_size = 0;
 	for (i = 0; i < len; i++) {
 		if (cal_blocks[i].cal_offset > acdb_data.pmem_len) {
 			pr_err("%s: offset %d is > pmem_len %ld\n",
@@ -475,6 +525,8 @@ void store_vocvol_cal(int32_t len, struct cal_block *cal_blocks)
 				acdb_data.pmem_len);
 			acdb_data.vocvol_cal[i].cal_size = 0;
 		} else {
+			acdb_data.vocvol_total_cal_size +=
+				cal_blocks[i].cal_size;
 			acdb_data.vocvol_cal[i].cal_size =
 				cal_blocks[i].cal_size;
 			acdb_data.vocvol_cal[i].cal_paddr =
