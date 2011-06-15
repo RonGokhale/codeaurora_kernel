@@ -513,12 +513,14 @@ static int msm_otg_suspend(struct msm_otg *motg)
 	struct otg_transceiver *otg = &motg->otg;
 	struct usb_bus *bus = otg->host;
 	struct msm_otg_platform_data *pdata = motg->pdata;
-	int cnt = 0;
+	int cnt = 0, val;
+	bool host_bus_suspend;
 
 	if (atomic_read(&motg->in_lpm))
 		return 0;
 
 	disable_irq(motg->irq);
+	host_bus_suspend = otg->host && !test_bit(ID, &motg->inputs);
 	/*
 	 * Chipidea 45-nm PHY suspend sequence:
 	 *
@@ -541,6 +543,17 @@ static int msm_otg_suspend(struct msm_otg *motg)
 		if (pdata->otg_control == OTG_PHY_CONTROL)
 			ulpi_write(otg, 0x01, 0x30);
 		ulpi_write(otg, 0x08, 0x09);
+	}
+
+	/*
+	 * Turn off the OTG comparators, if depends on PMIC for
+	 * VBUS and ID notifications.
+	 */
+	if (motg->caps & ALLOW_PHY_COMP_DISABLE) {
+		val = ulpi_read(otg, ULPI_PWR_CLK_MNG_REG);
+		val |= OTG_COMP_DISABLE;
+		ulpi_write(otg, val, ULPI_PWR_CLK_MNG_REG);
+		motg->lpm_flags |= PHY_OTG_COMP_DISABLED;
 	}
 
 	/*
@@ -572,9 +585,11 @@ static int msm_otg_suspend(struct msm_otg *motg)
 	 */
 	writel(readl(USB_USBCMD) | ASYNC_INTR_CTRL | ULPI_STP_CTRL, USB_USBCMD);
 
-	if (motg->pdata->phy_type == SNPS_28NM_INTEGRATED_PHY &&
-			motg->pdata->otg_control == OTG_PMIC_CONTROL)
-		writel(readl(USB_PHY_CTRL) | PHY_RETEN, USB_PHY_CTRL);
+	if (motg->caps & ALLOW_PHY_RETENTION && !host_bus_suspend) {
+		writel_relaxed(readl_relaxed(USB_PHY_CTRL) & ~PHY_RETEN,
+				USB_PHY_CTRL);
+		motg->lpm_flags |= PHY_RETENTIONED;
+	}
 
 	/* Ensure that above operation is completed before turning off clocks */
 	mb();
@@ -585,14 +600,19 @@ static int msm_otg_suspend(struct msm_otg *motg)
 	if (!IS_ERR(motg->pclk_src))
 		clk_disable(motg->pclk_src);
 
-	if (motg->pdata->phy_type == SNPS_28NM_INTEGRATED_PHY &&
-			motg->pdata->otg_control == OTG_PMIC_CONTROL) {
+	if (motg->caps & ALLOW_PHY_POWER_COLLAPSE && !host_bus_suspend) {
 		msm_hsusb_ldo_enable(motg, 0);
-		msm_hsusb_config_vddcx(0);
+		motg->lpm_flags |= PHY_PWR_COLLAPSED;
 	}
 
-	if (device_may_wakeup(otg->dev))
+	if (motg->lpm_flags & PHY_RETENTIONED)
+		msm_hsusb_config_vddcx(0);
+
+	if (device_may_wakeup(otg->dev)) {
 		enable_irq_wake(motg->irq);
+		if (motg->pdata->pmic_id_irq)
+			enable_irq_wake(motg->pdata->pmic_id_irq);
+	}
 	if (bus)
 		clear_bit(HCD_FLAG_HW_ACCESSIBLE, &(bus_to_hcd(bus))->flags);
 
@@ -623,11 +643,16 @@ static int msm_otg_resume(struct msm_otg *motg)
 	if (motg->core_clk)
 		clk_enable(motg->core_clk);
 
-	if (motg->pdata->phy_type == SNPS_28NM_INTEGRATED_PHY &&
-			motg->pdata->otg_control == OTG_PMIC_CONTROL) {
+	if (motg->lpm_flags & PHY_PWR_COLLAPSED) {
 		msm_hsusb_ldo_enable(motg, 1);
+		motg->lpm_flags &= ~PHY_PWR_COLLAPSED;
+	}
+
+	if (motg->lpm_flags & PHY_RETENTIONED) {
 		msm_hsusb_config_vddcx(1);
-		writel(readl(USB_PHY_CTRL) & ~PHY_RETEN, USB_PHY_CTRL);
+		writel_relaxed(readl_relaxed(USB_PHY_CTRL) | PHY_RETEN,
+				USB_PHY_CTRL);
+		motg->lpm_flags &= ~PHY_RETENTIONED;
 	}
 
 	temp = readl(USB_USBCMD);
@@ -662,8 +687,18 @@ static int msm_otg_resume(struct msm_otg *motg)
 	}
 
 skip_phy_resume:
-	if (device_may_wakeup(otg->dev))
+	/* Turn on the OTG comparators on resume */
+	if (motg->lpm_flags & PHY_OTG_COMP_DISABLED) {
+		temp = ulpi_read(otg, ULPI_PWR_CLK_MNG_REG);
+		temp &= ~OTG_COMP_DISABLE;
+		ulpi_write(otg, temp, ULPI_PWR_CLK_MNG_REG);
+		motg->lpm_flags &= ~PHY_OTG_COMP_DISABLED;
+	}
+	if (device_may_wakeup(otg->dev)) {
 		disable_irq_wake(motg->irq);
+		if (motg->pdata->pmic_id_irq)
+			disable_irq_wake(motg->pdata->pmic_id_irq);
+	}
 	if (bus)
 		set_bit(HCD_FLAG_HW_ACCESSIBLE, &(bus_to_hcd(bus))->flags);
 
@@ -1564,7 +1599,7 @@ static irqreturn_t msm_pmic_id_irq(int irq, void *data)
 {
 	struct msm_otg *motg = data;
 
-	if (atomic_read(&motg->in_lpm))
+	if (atomic_read(&motg->in_lpm) && !motg->async_int)
 		msm_otg_irq(motg->irq, motg);
 
 	return IRQ_HANDLED;
@@ -1853,13 +1888,20 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 		goto free_irq;
 	}
 
-	if (motg->pdata->pmic_id_irq) {
-		ret = request_irq(motg->pdata->pmic_id_irq, msm_pmic_id_irq,
-					IRQF_TRIGGER_RISING |
-					IRQF_TRIGGER_FALLING,
-					"msm_otg", motg);
-		if (ret) {
-			dev_err(&pdev->dev, "request irq failed for PMIC ID\n");
+	if (motg->pdata->otg_control == OTG_PMIC_CONTROL) {
+		if (motg->pdata->pmic_id_irq) {
+			ret = request_irq(motg->pdata->pmic_id_irq,
+						msm_pmic_id_irq,
+						IRQF_TRIGGER_RISING |
+						IRQF_TRIGGER_FALLING,
+						"msm_otg", motg);
+			if (ret) {
+				dev_err(&pdev->dev, "request irq failed for PMIC ID\n");
+				goto remove_otg;
+			}
+		} else {
+			ret = -ENODEV;
+			dev_err(&pdev->dev, "PMIC IRQ for ID notifications doesn't exist\n");
 			goto remove_otg;
 		}
 	}
@@ -1878,6 +1920,13 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 
 	if (motg->pdata->otg_control == OTG_PMIC_CONTROL)
 		pm8921_charger_register_vbus_sn(&msm_otg_set_vbus_state);
+
+	if (motg->pdata->phy_type == SNPS_28NM_INTEGRATED_PHY &&
+			motg->pdata->otg_control == OTG_PMIC_CONTROL &&
+			motg->pdata->pmic_id_irq)
+		motg->caps = ALLOW_PHY_POWER_COLLAPSE |
+				ALLOW_PHY_RETENTION |
+				ALLOW_PHY_COMP_DISABLE;
 
 	wake_lock(&motg->wlock);
 	pm_runtime_set_active(&pdev->dev);
