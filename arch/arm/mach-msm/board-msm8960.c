@@ -1550,7 +1550,8 @@ static struct mmc_platform_data msm8960_sdc3_data = {
 #endif
 	.xpc_cap	= 1,
 	.uhs_caps	= (MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 |
-				MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_DDR50)
+			MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_DDR50 |
+			MMC_CAP_MAX_CURRENT_600)
 };
 #endif
 
