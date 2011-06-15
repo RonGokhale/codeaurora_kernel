@@ -656,6 +656,11 @@ static void __init tegra_wario_init(void)
 	debug_uart_platform_data[0].mapbase = TEGRA_UARTB_BASE;
 	debug_uart_platform_data[0].irq = INT_UARTB;
 
+	/* Enable RF for 3G modem */
+	tegra_gpio_enable(TEGRA_GPIO_W_DISABLE);
+	gpio_request(TEGRA_GPIO_W_DISABLE, "w_disable");
+	gpio_direction_output(TEGRA_GPIO_W_DISABLE, 1);
+
 	tegra_gpio_enable(TEGRA_GPIO_BATT_DETECT);
 	bq20z75_pdata.battery_detect = TEGRA_GPIO_BATT_DETECT;
 	/* battery present is low */
