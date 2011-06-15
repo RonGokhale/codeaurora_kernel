@@ -32,7 +32,7 @@
 #include <mach/msm_smd.h>
 
 struct radio_data {
-	struct hci_dev *hdev;
+	struct radio_hci_dev *hdev;
 	void *data;
 };
 
@@ -41,7 +41,7 @@ struct smd_channel *fm_channel;
 
 static void radio_hci_smd_notify_event(void *, unsigned int);
 
-static int radio_hci_smd_open(struct hci_dev *hdev)
+static int radio_hci_smd_open(struct radio_hci_dev *hdev)
 {
 	int rc;
 
@@ -62,14 +62,14 @@ static int radio_hci_smd_open(struct hci_dev *hdev)
 }
 
 
-static int radio_hci_smd_close(struct hci_dev *hdev)
+static int radio_hci_smd_close(struct radio_hci_dev *hdev)
 {
 
 	return smd_close(fm_channel);
 }
 
 
-static int radio_hci_smd_recv_frame(struct hci_dev *hdev)
+static int radio_hci_smd_recv_frame(struct radio_hci_dev *hdev)
 {
 	int len;
 	struct sk_buff *skb;
@@ -114,7 +114,7 @@ static int radio_hci_smd_recv_frame(struct hci_dev *hdev)
 
 static int radio_hci_smd_send_frame(struct sk_buff *skb)
 {
-	struct hci_dev *hdev = (struct hci_dev *)skb->dev;
+	struct radio_hci_dev *hdev = (struct radio_hci_dev *)skb->dev;
 	int rc;
 
 	if (!hdev) {
@@ -134,7 +134,7 @@ static int radio_hci_smd_send_frame(struct sk_buff *skb)
 
 static void radio_hci_smd_notify_event(void *data, unsigned int event)
 {
-	struct hci_dev *hdev = ((struct radio_data *)data)->hdev;
+	struct radio_hci_dev *hdev = ((struct radio_data *)data)->hdev;
 
 	if (!hdev) {
 		FMDERR("Frame for unknown HCI device (hdev=NULL)");
@@ -159,10 +159,10 @@ static void radio_hci_smd_notify_event(void *data, unsigned int event)
 
 static int radio_hci_smd_register_dev(struct radio_data *hs_radio)
 {
-	struct hci_dev *hdev;
+	struct radio_hci_dev *hdev;
 	int len;
 
-	len = sizeof(struct hci_dev);
+	len = sizeof(struct radio_hci_dev);
 	hdev = kmalloc(len, GFP_KERNEL);
 	if (!hdev) {
 		FMDERR("Error in allocating memory\n");

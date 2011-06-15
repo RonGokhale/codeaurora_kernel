@@ -63,7 +63,7 @@ struct iris_device {
 	wait_queue_head_t event_queue;
 	wait_queue_head_t read_queue;
 
-	struct hci_dev *fm_hdev;
+	struct radio_hci_dev *fm_hdev;
 
 	struct v4l2_capability *g_cap;
 	struct v4l2_control *g_ctl;
@@ -84,6 +84,8 @@ struct iris_device {
 	struct hci_fm_dbg_param_rsp st_dbg_param;
 	struct hci_ev_srch_list_compl srch_st_result;
 };
+
+static struct video_device *priv_videodev;
 
 static struct v4l2_queryctrl iris_v4l2_queryctrl[] = {
 	{
@@ -316,7 +318,7 @@ static void iris_q_event(struct iris_device *radio,
 
 static int hci_send_frame(struct sk_buff *skb)
 {
-	struct hci_dev *hdev = (struct hci_dev *) skb->dev;
+	struct radio_hci_dev *hdev = (struct radio_hci_dev *) skb->dev;
 
 	if (!hdev) {
 		kfree_skb(skb);
@@ -331,7 +333,7 @@ static int hci_send_frame(struct sk_buff *skb)
 
 static void radio_hci_cmd_task(unsigned long arg)
 {
-	struct hci_dev *hdev = (struct hci_dev *) arg;
+	struct radio_hci_dev *hdev = (struct radio_hci_dev *) arg;
 	struct sk_buff *skb;
 	if (!(atomic_read(&hdev->cmd_cnt))
 		&& time_after(jiffies, hdev->cmd_last_tx + HZ)) {
@@ -357,7 +359,7 @@ static void radio_hci_cmd_task(unsigned long arg)
 
 static void radio_hci_rx_task(unsigned long arg)
 {
-	struct hci_dev *hdev = (struct hci_dev *) arg;
+	struct radio_hci_dev *hdev = (struct radio_hci_dev *) arg;
 	struct sk_buff *skb;
 
 	read_lock(&hci_task_lock);
@@ -368,44 +370,63 @@ static void radio_hci_rx_task(unsigned long arg)
 	read_unlock(&hci_task_lock);
 }
 
-int radio_hci_register_dev(struct hci_dev *hdev)
+int radio_hci_register_dev(struct radio_hci_dev *hdev)
 {
 	struct iris_device *radio = video_get_drvdata(video_get_dev());
-	struct hci_dev *dev;
 
 	if (!hdev->open || !hdev->close || !hdev->destruct)
 		return -EINVAL;
 
-	dev = hdev;
-	dev->flags = 0;
+	if (!radio) {
+		FMDERR("radio iris device is null");
+		return -EINVAL;
+	}
 
-	tasklet_init(&dev->cmd_task, radio_hci_cmd_task, (unsigned long)
+	hdev->flags = 0;
+
+	tasklet_init(&hdev->cmd_task, radio_hci_cmd_task, (unsigned long)
 		hdev);
-	tasklet_init(&dev->rx_task, radio_hci_rx_task, (unsigned long)
+	tasklet_init(&hdev->rx_task, radio_hci_rx_task, (unsigned long)
 		hdev);
 
-	skb_queue_head_init(&dev->rx_q);
-	skb_queue_head_init(&dev->cmd_q);
-	skb_queue_head_init(&dev->raw_q);
+	skb_queue_head_init(&hdev->rx_q);
+	skb_queue_head_init(&hdev->cmd_q);
+	skb_queue_head_init(&hdev->raw_q);
 
-	radio->fm_hdev = dev;
+	radio->fm_hdev = kzalloc(sizeof(struct radio_hci_dev), GFP_KERNEL);
+	if (!radio->fm_hdev) {
+		FMDERR(": Could not allocate radio->fm_hdev\n");
+		return -ENOMEM;
+	}
+	memcpy(radio->fm_hdev, hdev, sizeof(struct radio_hci_dev));
 
 	return 0;
 }
+EXPORT_SYMBOL(radio_hci_register_dev);
 
-int radio_hci_unregister_dev(struct hci_dev *hdev)
+int radio_hci_unregister_dev(struct radio_hci_dev *hdev)
 {
+	struct iris_device *radio = video_get_drvdata(video_get_dev());
+	if (!radio) {
+		FMDERR("radio iris device is null");
+		return -EINVAL;
+	}
+
 	tasklet_kill(&hdev->rx_task);
 	tasklet_kill(&hdev->cmd_task);
 	skb_queue_purge(&hdev->rx_q);
 	skb_queue_purge(&hdev->cmd_q);
 	skb_queue_purge(&hdev->raw_q);
+	kfree(radio->fm_hdev);
+	kfree(radio->videodev);
+
 	return 0;
 }
+EXPORT_SYMBOL(radio_hci_unregister_dev);
 
 int radio_hci_recv_frame(struct sk_buff *skb)
 {
-	struct hci_dev *hdev = (struct hci_dev *) skb->dev;
+	struct radio_hci_dev *hdev = (struct radio_hci_dev *) skb->dev;
 	if (!hdev) {
 		FMDERR("%s hdev is null while receiving frame", hdev->name);
 		kfree_skb(skb);
@@ -419,8 +440,9 @@ int radio_hci_recv_frame(struct sk_buff *skb)
 
 	return 0;
 }
+EXPORT_SYMBOL(radio_hci_recv_frame);
 
-int radio_hci_send_cmd(struct hci_dev *hdev, __u16 opcode, __u32 plen,
+int radio_hci_send_cmd(struct radio_hci_dev *hdev, __u16 opcode, __u32 plen,
 		void *param)
 {
 	int len = RADIO_HCI_COMMAND_HDR_SIZE + plen;
@@ -435,7 +457,6 @@ int radio_hci_send_cmd(struct hci_dev *hdev, __u16 opcode, __u32 plen,
 
 	hdr = (struct radio_hci_command_hdr *) skb_put(skb,
 		RADIO_HCI_COMMAND_HDR_SIZE);
-	hdr->protocol_byte = RADIO_HCI_COMMAND_PKT;
 	hdr->opcode = cpu_to_le16(opcode);
 	hdr->plen   = plen;
 
@@ -448,8 +469,10 @@ int radio_hci_send_cmd(struct hci_dev *hdev, __u16 opcode, __u32 plen,
 	tasklet_schedule(&hdev->cmd_task);
 	return 0;
 }
+EXPORT_SYMBOL(radio_hci_send_cmd);
 
-static void hci_fm_enable_recv_req(struct hci_dev *hdev, unsigned long param)
+static void hci_fm_enable_recv_req(struct radio_hci_dev *hdev,
+	unsigned long param)
 {
 	__u16 opcode = 0;
 
@@ -458,7 +481,8 @@ static void hci_fm_enable_recv_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, 0, NULL);
 }
 
-static void hci_fm_disable_recv_req(struct hci_dev *hdev, unsigned long param)
+static void hci_fm_disable_recv_req(struct radio_hci_dev *hdev,
+	unsigned long param)
 {
 	__u16 opcode = 0;
 
@@ -467,7 +491,8 @@ static void hci_fm_disable_recv_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, 0, NULL);
 }
 
-static void hci_get_fm_recv_conf_req(struct hci_dev *hdev, unsigned long param)
+static void hci_get_fm_recv_conf_req(struct radio_hci_dev *hdev,
+	unsigned long param)
 {
 	__u16 opcode = 0;
 
@@ -476,7 +501,8 @@ static void hci_get_fm_recv_conf_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, 0, NULL);
 }
 
-static void hci_set_fm_recv_conf_req(struct hci_dev *hdev, unsigned long param)
+static void hci_set_fm_recv_conf_req(struct radio_hci_dev *hdev,
+	unsigned long param)
 {
 	__u16 opcode = 0;
 
@@ -489,7 +515,7 @@ static void hci_set_fm_recv_conf_req(struct hci_dev *hdev, unsigned long param)
 		recv_conf_req);
 }
 
-static void hci_fm_get_station_param_req(struct hci_dev *hdev,
+static void hci_fm_get_station_param_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -499,7 +525,7 @@ static void hci_fm_get_station_param_req(struct hci_dev *hdev,
 	radio_hci_send_cmd(hdev, opcode, 0, NULL);
 }
 
-static void hci_set_fm_mute_mode_req(struct hci_dev *hdev,
+static void hci_set_fm_mute_mode_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -512,7 +538,7 @@ static void hci_set_fm_mute_mode_req(struct hci_dev *hdev,
 		mute_mode_req);
 }
 
-static void hci_set_fm_stereo_mode_req(struct hci_dev *hdev,
+static void hci_set_fm_stereo_mode_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -524,7 +550,8 @@ static void hci_set_fm_stereo_mode_req(struct hci_dev *hdev,
 		stereo_mode_req);
 }
 
-static void hci_fm_set_antenna_req(struct hci_dev *hdev, unsigned long param)
+static void hci_fm_set_antenna_req(struct radio_hci_dev *hdev,
+	unsigned long param)
 {
 	__u16 opcode = 0;
 
@@ -535,7 +562,7 @@ static void hci_fm_set_antenna_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, sizeof(antenna), &antenna);
 }
 
-static void hci_fm_set_sig_threshold_req(struct hci_dev *hdev,
+static void hci_fm_set_sig_threshold_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -548,7 +575,7 @@ static void hci_fm_set_sig_threshold_req(struct hci_dev *hdev,
 		&sig_threshold);
 }
 
-static void hci_fm_get_sig_threshold_req(struct hci_dev *hdev,
+static void hci_fm_get_sig_threshold_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -558,7 +585,7 @@ static void hci_fm_get_sig_threshold_req(struct hci_dev *hdev,
 	radio_hci_send_cmd(hdev, opcode, 0, NULL);
 }
 
-static void hci_fm_get_program_service_req(struct hci_dev *hdev,
+static void hci_fm_get_program_service_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -568,7 +595,7 @@ static void hci_fm_get_program_service_req(struct hci_dev *hdev,
 	radio_hci_send_cmd(hdev, opcode, 0, NULL);
 }
 
-static void hci_fm_get_radio_text_req(struct hci_dev *hdev,
+static void hci_fm_get_radio_text_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -578,7 +605,8 @@ static void hci_fm_get_radio_text_req(struct hci_dev *hdev,
 	radio_hci_send_cmd(hdev, opcode, 0, NULL);
 }
 
-static void hci_fm_get_af_list_req(struct hci_dev *hdev, unsigned long param)
+static void hci_fm_get_af_list_req(struct radio_hci_dev *hdev,
+	unsigned long param)
 {
 	__u16 opcode = 0;
 
@@ -587,7 +615,7 @@ static void hci_fm_get_af_list_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, 0, NULL);
 }
 
-static void hci_fm_search_stations_req(struct hci_dev *hdev,
+static void hci_fm_search_stations_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -600,7 +628,7 @@ static void hci_fm_search_stations_req(struct hci_dev *hdev,
 		srch_stations);
 }
 
-static void hci_fm_srch_rds_stations_req(struct hci_dev *hdev,
+static void hci_fm_srch_rds_stations_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -613,7 +641,7 @@ static void hci_fm_srch_rds_stations_req(struct hci_dev *hdev,
 		srch_stations);
 }
 
-static void hci_fm_srch_station_list_req(struct hci_dev *hdev,
+static void hci_fm_srch_station_list_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -625,7 +653,7 @@ static void hci_fm_srch_station_list_req(struct hci_dev *hdev,
 	radio_hci_send_cmd(hdev, opcode, sizeof((*srch_list)), srch_list);
 }
 
-static void hci_fm_cancel_search_req(struct hci_dev *hdev,
+static void hci_fm_cancel_search_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -635,7 +663,7 @@ static void hci_fm_cancel_search_req(struct hci_dev *hdev,
 	radio_hci_send_cmd(hdev, opcode, 0, NULL);
 }
 
-static void hci_fm_rds_grp_req(struct hci_dev *hdev, unsigned long param)
+static void hci_fm_rds_grp_req(struct radio_hci_dev *hdev, unsigned long param)
 {
 	__u16 opcode = 0;
 	struct hci_fm_rds_grp_req *rds_grp = (struct hci_fm_rds_grp_req *)
@@ -646,7 +674,7 @@ static void hci_fm_rds_grp_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, sizeof((*rds_grp)), rds_grp);
 }
 
-static void hci_fm_rds_grp_process_req(struct hci_dev *hdev,
+static void hci_fm_rds_grp_process_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -659,7 +687,8 @@ static void hci_fm_rds_grp_process_req(struct hci_dev *hdev,
 		&fm_grps_process);
 }
 
-static void hci_fm_tune_station_req(struct hci_dev *hdev, unsigned long param)
+static void hci_fm_tune_station_req(struct radio_hci_dev *hdev,
+	unsigned long param)
 {
 	__u16 opcode = 0;
 
@@ -670,7 +699,8 @@ static void hci_fm_tune_station_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, sizeof(tune_freq), &tune_freq);
 }
 
-static void hci_def_data_read_req(struct hci_dev *hdev, unsigned long param)
+static void hci_def_data_read_req(struct radio_hci_dev *hdev,
+	unsigned long param)
 {
 	__u16 opcode = 0;
 	struct hci_fm_def_data_rd_req *def_data_rd =
@@ -681,7 +711,8 @@ static void hci_def_data_read_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, sizeof((*def_data_rd)), def_data_rd);
 }
 
-static void hci_def_data_write_req(struct hci_dev *hdev, unsigned long param)
+static void hci_def_data_write_req(struct radio_hci_dev *hdev,
+	unsigned long param)
 {
 	__u16 opcode = 0;
 	struct hci_fm_def_data_wr_req *def_data_wr =
@@ -692,7 +723,7 @@ static void hci_def_data_write_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, sizeof((*def_data_wr)), def_data_wr);
 }
 
-static void hci_fm_reset_req(struct hci_dev *hdev, unsigned long param)
+static void hci_fm_reset_req(struct radio_hci_dev *hdev, unsigned long param)
 {
 	__u16 opcode = 0;
 
@@ -701,7 +732,7 @@ static void hci_fm_reset_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, 0, NULL);
 }
 
-static void hci_fm_get_feature_lists_req(struct hci_dev *hdev,
+static void hci_fm_get_feature_lists_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -711,7 +742,7 @@ static void hci_fm_get_feature_lists_req(struct hci_dev *hdev,
 	radio_hci_send_cmd(hdev, opcode, 0, NULL);
 }
 
-static void hci_fm_do_calibration_req(struct hci_dev *hdev,
+static void hci_fm_do_calibration_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -723,7 +754,7 @@ static void hci_fm_do_calibration_req(struct hci_dev *hdev,
 	radio_hci_send_cmd(hdev, opcode, sizeof(mode), &mode);
 }
 
-static void hci_read_grp_counters_req(struct hci_dev *hdev,
+static void hci_read_grp_counters_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -736,7 +767,7 @@ static void hci_read_grp_counters_req(struct hci_dev *hdev,
 		&reset_counters);
 }
 
-static void hci_peek_data_req(struct hci_dev *hdev, unsigned long param)
+static void hci_peek_data_req(struct radio_hci_dev *hdev, unsigned long param)
 {
 	__u16 opcode = 0;
 	struct hci_fm_peek_req *peek_data = (struct hci_fm_peek_req *) param;
@@ -746,7 +777,7 @@ static void hci_peek_data_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, sizeof((*peek_data)), peek_data);
 }
 
-static void hci_poke_data_req(struct hci_dev *hdev, unsigned long param)
+static void hci_poke_data_req(struct radio_hci_dev *hdev, unsigned long param)
 {
 	__u16 opcode = 0;
 	struct hci_fm_poke_req *poke_data = (struct hci_fm_poke_req *) param;
@@ -756,7 +787,8 @@ static void hci_poke_data_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, sizeof((*poke_data)), poke_data);
 }
 
-static void hci_ssbi_peek_reg_req(struct hci_dev *hdev, unsigned long param)
+static void hci_ssbi_peek_reg_req(struct radio_hci_dev *hdev,
+	unsigned long param)
 {
 	__u16 opcode = 0;
 	struct hci_fm_ssbi_req *ssbi_peek = (struct hci_fm_ssbi_req *) param;
@@ -766,7 +798,8 @@ static void hci_ssbi_peek_reg_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, sizeof((*ssbi_peek)), ssbi_peek);
 }
 
-static void hci_ssbi_poke_reg_req(struct hci_dev *hdev, unsigned long param)
+static void hci_ssbi_poke_reg_req(struct radio_hci_dev *hdev,
+	unsigned long param)
 {
 	__u16 opcode = 0;
 	struct hci_fm_ssbi_req *ssbi_poke = (struct hci_fm_ssbi_req *) param;
@@ -776,7 +809,7 @@ static void hci_ssbi_poke_reg_req(struct hci_dev *hdev, unsigned long param)
 	radio_hci_send_cmd(hdev, opcode, sizeof((*ssbi_poke)), ssbi_poke);
 }
 
-static void hci_fm_get_station_dbg_param_req(struct hci_dev *hdev,
+static void hci_fm_get_station_dbg_param_req(struct radio_hci_dev *hdev,
 		unsigned long param)
 {
 	__u16 opcode = 0;
@@ -810,8 +843,9 @@ static int radio_hci_err(__u16 code)
 	}
 }
 
-static int __radio_hci_request(struct hci_dev *hdev,
-		void (*req)(struct	hci_dev *hdev, unsigned long param),
+static int __radio_hci_request(struct radio_hci_dev *hdev,
+		void (*req)(struct	radio_hci_dev *hdev,
+			unsigned long param),
 			unsigned long param, __u32 timeout)
 {
 	DECLARE_WAITQUEUE(wait, current);
@@ -851,8 +885,9 @@ static int __radio_hci_request(struct hci_dev *hdev,
 	return err;
 }
 
-static inline int radio_hci_request(struct hci_dev *hdev, void (*req)(struct
-		hci_dev * hdev, unsigned long param),
+static inline int radio_hci_request(struct radio_hci_dev *hdev,
+		void (*req)(struct
+		radio_hci_dev * hdev, unsigned long param),
 		unsigned long param, __u32 timeout)
 {
 	int ret = 0;
@@ -865,7 +900,7 @@ static inline int radio_hci_request(struct hci_dev *hdev, void (*req)(struct
 }
 
 static int hci_set_fm_recv_conf(void __user *arg,
-		struct hci_dev *hdev)
+		struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -880,7 +915,7 @@ static int hci_set_fm_recv_conf(void __user *arg,
 	return ret;
 }
 
-static int hci_fm_tune_station(void __user *arg, struct hci_dev *hdev)
+static int hci_fm_tune_station(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -895,7 +930,7 @@ static int hci_fm_tune_station(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-static int hci_set_fm_mute_mode(void __user *arg, struct hci_dev *hdev)
+static int hci_set_fm_mute_mode(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -910,7 +945,7 @@ static int hci_set_fm_mute_mode(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-static int hci_set_fm_stereo_mode(void __user *arg, struct hci_dev *hdev)
+static int hci_set_fm_stereo_mode(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -925,7 +960,7 @@ static int hci_set_fm_stereo_mode(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-static int hci_fm_set_antenna(void __user *arg, struct hci_dev *hdev)
+static int hci_fm_set_antenna(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -940,7 +975,8 @@ static int hci_fm_set_antenna(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-static int hci_fm_set_signal_threshold(void __user *arg, struct hci_dev *hdev)
+static int hci_fm_set_signal_threshold(void __user *arg,
+	struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -955,7 +991,7 @@ static int hci_fm_set_signal_threshold(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-static int hci_fm_search_stations(void __user *arg, struct hci_dev *hdev)
+static int hci_fm_search_stations(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -970,7 +1006,8 @@ static int hci_fm_search_stations(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-static int hci_fm_search_rds_stations(void __user *arg, struct hci_dev *hdev)
+static int hci_fm_search_rds_stations(void __user *arg,
+	struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -985,7 +1022,8 @@ static int hci_fm_search_rds_stations(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-static int hci_fm_search_station_list(void __user *arg, struct hci_dev *hdev)
+static int hci_fm_search_station_list(void __user *arg,
+	struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -1000,7 +1038,7 @@ static int hci_fm_search_station_list(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-static int hci_fm_rds_grp(void __user *arg, struct hci_dev *hdev)
+static int hci_fm_rds_grp(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -1015,7 +1053,7 @@ static int hci_fm_rds_grp(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-static int hci_fm_rds_grps_process(void __user *arg, struct hci_dev *hdev)
+static int hci_fm_rds_grps_process(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -1030,7 +1068,7 @@ static int hci_fm_rds_grps_process(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-int hci_def_data_read(void __user *arg, struct hci_dev *hdev)
+int hci_def_data_read(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -1045,7 +1083,7 @@ int hci_def_data_read(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-int hci_def_data_write(void __user *arg, struct hci_dev *hdev)
+int hci_def_data_write(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -1060,7 +1098,7 @@ int hci_def_data_write(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-int hci_fm_do_calibration(void __user *arg, struct hci_dev *hdev)
+int hci_fm_do_calibration(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -1075,7 +1113,7 @@ int hci_fm_do_calibration(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-int hci_read_grp_counters(void __user *arg, struct hci_dev *hdev)
+int hci_read_grp_counters(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -1090,7 +1128,7 @@ int hci_read_grp_counters(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-int hci_peek_data(void __user *arg, struct hci_dev *hdev)
+int hci_peek_data(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -1105,7 +1143,7 @@ int hci_peek_data(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-int hci_poke_data(void __user *arg, struct hci_dev *hdev)
+int hci_poke_data(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -1120,7 +1158,7 @@ int hci_poke_data(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-int hci_ssbi_peek_reg(void __user *arg, struct hci_dev *hdev)
+int hci_ssbi_peek_reg(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -1135,7 +1173,7 @@ int hci_ssbi_peek_reg(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-int hci_ssbi_poke_reg(void __user *arg, struct hci_dev *hdev)
+int hci_ssbi_poke_reg(void __user *arg, struct radio_hci_dev *hdev)
 {
 	__u8 __user *ptr = arg;
 	int ret = 0;
@@ -1150,7 +1188,7 @@ int hci_ssbi_poke_reg(void __user *arg, struct hci_dev *hdev)
 	return ret;
 }
 
-static int hci_cmd(unsigned int cmd, struct hci_dev *hdev)
+static int hci_cmd(unsigned int cmd, struct radio_hci_dev *hdev)
 {
 	int ret = 0;
 	unsigned long arg = 0;
@@ -1229,7 +1267,7 @@ static int hci_cmd(unsigned int cmd, struct hci_dev *hdev)
 	return ret;
 }
 
-static void radio_hci_req_complete(struct hci_dev *hdev, int result)
+static void radio_hci_req_complete(struct radio_hci_dev *hdev, int result)
 {
 	if (hdev->req_status == HCI_REQ_PEND) {
 		hdev->req_result = result;
@@ -1238,7 +1276,7 @@ static void radio_hci_req_complete(struct hci_dev *hdev, int result)
 	}
 }
 
-static void radio_hci_status_complete(struct hci_dev *hdev, int result)
+static void radio_hci_status_complete(struct radio_hci_dev *hdev, int result)
 {
 	if (hdev->req_status == HCI_REQ_PEND) {
 		hdev->req_result = result;
@@ -1247,7 +1285,7 @@ static void radio_hci_status_complete(struct hci_dev *hdev, int result)
 	}
 }
 
-static void hci_cc_rsp(struct hci_dev *hdev, struct sk_buff *skb)
+static void hci_cc_rsp(struct radio_hci_dev *hdev, struct sk_buff *skb)
 {
 	__u8 status = *((__u8 *) skb->data);
 
@@ -1257,7 +1295,8 @@ static void hci_cc_rsp(struct hci_dev *hdev, struct sk_buff *skb)
 	radio_hci_req_complete(hdev, status);
 }
 
-static void hci_cc_fm_disable_rsp(struct hci_dev *hdev, struct sk_buff *skb)
+static void hci_cc_fm_disable_rsp(struct radio_hci_dev *hdev,
+	struct sk_buff *skb)
 {
 	__u8 status = *((__u8 *) skb->data);
 	struct iris_device *radio = video_get_drvdata(video_get_dev());
@@ -1270,7 +1309,7 @@ static void hci_cc_fm_disable_rsp(struct hci_dev *hdev, struct sk_buff *skb)
 	radio_hci_req_complete(hdev, status);
 }
 
-static void hci_cc_conf_rsp(struct hci_dev *hdev, struct sk_buff *skb)
+static void hci_cc_conf_rsp(struct radio_hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_fm_conf_rsp  *rsp = (void *)skb->data;
 
@@ -1280,7 +1319,8 @@ static void hci_cc_conf_rsp(struct hci_dev *hdev, struct sk_buff *skb)
 	radio_hci_req_complete(hdev, rsp->status);
 }
 
-static void hci_cc_fm_enable_rsp(struct hci_dev *hdev, struct sk_buff *skb)
+static void hci_cc_fm_enable_rsp(struct radio_hci_dev *hdev,
+	struct sk_buff *skb)
 {
 	struct hci_fm_conf_rsp  *rsp = (void *)skb->data;
 
@@ -1290,7 +1330,7 @@ static void hci_cc_fm_enable_rsp(struct hci_dev *hdev, struct sk_buff *skb)
 	radio_hci_req_complete(hdev, rsp->status);
 }
 
-static void hci_cc_sig_threshold_rsp(struct hci_dev *hdev,
+static void hci_cc_sig_threshold_rsp(struct radio_hci_dev *hdev,
 		struct sk_buff *skb)
 {
 	struct hci_fm_sig_threshold_rsp  *rsp = (void *)skb->data;
@@ -1304,7 +1344,7 @@ static void hci_cc_sig_threshold_rsp(struct hci_dev *hdev,
 	radio_hci_req_complete(hdev, rsp->status);
 }
 
-static void hci_cc_station_rsp(struct hci_dev *hdev, struct sk_buff *skb)
+static void hci_cc_station_rsp(struct radio_hci_dev *hdev, struct sk_buff *skb)
 {
 	struct iris_device *radio = video_get_drvdata(video_get_dev());
 	struct hci_fm_station_rsp *rsp = (void *)skb->data;
@@ -1316,7 +1356,7 @@ static void hci_cc_station_rsp(struct hci_dev *hdev, struct sk_buff *skb)
 	radio_hci_req_complete(hdev, radio->fm_st_rsp.status);
 }
 
-static void hci_cc_prg_srv_rsp(struct hci_dev *hdev, struct sk_buff *skb)
+static void hci_cc_prg_srv_rsp(struct radio_hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_fm_prgm_srv_rsp  *rsp = (void *)skb->data;
 
@@ -1326,7 +1366,7 @@ static void hci_cc_prg_srv_rsp(struct hci_dev *hdev, struct sk_buff *skb)
 	radio_hci_req_complete(hdev, rsp->status);
 }
 
-static void hci_cc_rd_txt_rsp(struct hci_dev *hdev, struct sk_buff *skb)
+static void hci_cc_rd_txt_rsp(struct radio_hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_fm_radio_txt_rsp  *rsp = (void *)skb->data;
 
@@ -1336,7 +1376,7 @@ static void hci_cc_rd_txt_rsp(struct hci_dev *hdev, struct sk_buff *skb)
 	radio_hci_req_complete(hdev, rsp->status);
 }
 
-static void hci_cc_af_list_rsp(struct hci_dev *hdev, struct sk_buff *skb)
+static void hci_cc_af_list_rsp(struct radio_hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_fm_af_list_rsp  *rsp = (void *)skb->data;
 
@@ -1346,7 +1386,7 @@ static void hci_cc_af_list_rsp(struct hci_dev *hdev, struct sk_buff *skb)
 	radio_hci_req_complete(hdev, rsp->status);
 }
 
-static void hci_cc_data_rd_rsp(struct hci_dev *hdev, struct sk_buff *skb)
+static void hci_cc_data_rd_rsp(struct radio_hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_fm_data_rd_rsp  *rsp = (void *)skb->data;
 
@@ -1356,7 +1396,8 @@ static void hci_cc_data_rd_rsp(struct hci_dev *hdev, struct sk_buff *skb)
 	radio_hci_req_complete(hdev, rsp->status);
 }
 
-static void hci_cc_feature_list_rsp(struct hci_dev *hdev, struct sk_buff *skb)
+static void hci_cc_feature_list_rsp(struct radio_hci_dev *hdev,
+	struct sk_buff *skb)
 {
 	struct hci_fm_feature_list_rsp  *rsp = (void *)skb->data;
 	struct iris_device *radio = video_get_drvdata(video_get_dev());
@@ -1370,7 +1411,8 @@ static void hci_cc_feature_list_rsp(struct hci_dev *hdev, struct sk_buff *skb)
 	radio_hci_req_complete(hdev, rsp->status);
 }
 
-static void hci_cc_dbg_param_rsp(struct hci_dev *hdev, struct sk_buff *skb)
+static void hci_cc_dbg_param_rsp(struct radio_hci_dev *hdev,
+	struct sk_buff *skb)
 {
 	struct iris_device *radio = video_get_drvdata(video_get_dev());
 	struct hci_fm_dbg_param_rsp *rsp = (void *)skb->data;
@@ -1382,7 +1424,7 @@ static void hci_cc_dbg_param_rsp(struct hci_dev *hdev, struct sk_buff *skb)
 	radio_hci_req_complete(hdev, radio->st_dbg_param.status);
 }
 
-static inline void hci_cmd_complete_event(struct hci_dev *hdev,
+static inline void hci_cmd_complete_event(struct radio_hci_dev *hdev,
 		struct sk_buff *skb)
 {
 	struct hci_ev_cmd_complete *cmd_compl_ev = (void *) skb->data;
@@ -1467,7 +1509,7 @@ static inline void hci_cmd_complete_event(struct hci_dev *hdev,
 	}
 }
 
-static inline void hci_cmd_status_event(struct hci_dev *hdev,
+static inline void hci_cmd_status_event(struct radio_hci_dev *hdev,
 		struct sk_buff *skb)
 {
 	struct hci_ev_cmd_status *ev = (void *) skb->data;
@@ -1480,7 +1522,7 @@ static inline void hci_cmd_status_event(struct hci_dev *hdev,
 	}
 }
 
-static inline void hci_ev_tune_status(struct hci_dev *hdev,
+static inline void hci_ev_tune_status(struct radio_hci_dev *hdev,
 		struct sk_buff *skb)
 {
 	struct hci_ev_tune_status *ev = (void *) skb->data;
@@ -1488,7 +1530,7 @@ static inline void hci_ev_tune_status(struct hci_dev *hdev,
 	radio->fm_st_rsp.station_rsp = *ev;
 }
 
-static inline void hci_ev_tune_compl(struct hci_dev *hdev,
+static inline void hci_ev_tune_compl(struct radio_hci_dev *hdev,
 		struct sk_buff *skb)
 {
 	int i;
@@ -1516,14 +1558,14 @@ static inline void hci_ev_tune_compl(struct hci_dev *hdev,
 	}
 }
 
-static inline void hci_ev_search_compl(struct hci_dev *hdev,
+static inline void hci_ev_search_compl(struct radio_hci_dev *hdev,
 		struct sk_buff *skb)
 {
 	struct iris_device *radio = video_get_drvdata(video_get_dev());
 	iris_q_event(radio, IRIS_EVT_SEEK_COMPLETE);
 }
 
-static inline void hci_ev_srch_st_list_compl(struct hci_dev *hdev,
+static inline void hci_ev_srch_st_list_compl(struct radio_hci_dev *hdev,
 		struct sk_buff *skb)
 {
 	struct iris_device *radio = video_get_drvdata(video_get_dev());
@@ -1531,14 +1573,14 @@ static inline void hci_ev_srch_st_list_compl(struct hci_dev *hdev,
 	radio->srch_st_result = *ev;
 }
 
-static inline void hci_ev_search_next(struct hci_dev *hdev,
+static inline void hci_ev_search_next(struct radio_hci_dev *hdev,
 		struct sk_buff *skb)
 {
 	struct iris_device *radio = video_get_drvdata(video_get_dev());
 	iris_q_event(radio, IRIS_EVT_SCAN_NEXT);
 }
 
-static inline void hci_ev_stereo_status(struct hci_dev *hdev,
+static inline void hci_ev_stereo_status(struct radio_hci_dev *hdev,
 		struct sk_buff *skb)
 {
 	struct iris_device *radio = video_get_drvdata(video_get_dev());
@@ -1549,7 +1591,7 @@ static inline void hci_ev_stereo_status(struct hci_dev *hdev,
 		iris_q_event(radio, IRIS_EVT_MONO);
 }
 
-void radio_hci_event_packet(struct hci_dev *hdev, struct sk_buff *skb)
+void radio_hci_event_packet(struct radio_hci_dev *hdev, struct sk_buff *skb)
 {
 	struct radio_hci_event_hdr *hdr = (void *) skb->data;
 	__u8 event = hdr->evt;
@@ -2117,7 +2159,13 @@ static const struct v4l2_ioctl_ops iris_ioctl_ops = {
 	.vidioc_s_ext_ctrls           = iris_vidioc_s_ext_ctrls,
 };
 
+static const struct v4l2_file_operations iris_fops = {
+	.owner = THIS_MODULE,
+	.unlocked_ioctl	= video_ioctl2,
+};
+
 static struct video_device iris_viddev_template = {
+	.fops                   = &iris_fops,
 	.ioctl_ops              = &iris_ioctl_ops,
 	.name                   = DRIVER_NAME,
 	.release                = video_device_release,
@@ -2125,7 +2173,7 @@ static struct video_device iris_viddev_template = {
 
 static struct video_device *video_get_dev(void)
 {
-	return &iris_viddev_template;
+	return priv_videodev;
 }
 
 static int  __init iris_probe(struct platform_device *pdev)
@@ -2134,6 +2182,11 @@ static int  __init iris_probe(struct platform_device *pdev)
 	int retval;
 	int radio_nr = -1;
 	int i;
+
+	if (!pdev) {
+		FMDERR("platform device pdev is null\n");
+		return -EINVAL;
+	}
 
 	radio = kzalloc(sizeof(struct iris_device), GFP_KERNEL);
 	if (!radio) {
@@ -2176,11 +2229,6 @@ static int  __init iris_probe(struct platform_device *pdev)
 		}
 	}
 
-	radio->xfr_in_progress = 0;
-	radio->xfr_bytes_left = 0;
-	for (i = 0; i < IRIS_XFR_MAX; i++)
-		radio->pending_xfrs[i] = 0;
-
 	mutex_init(&radio->lock);
 	init_completion(&radio->sync_xfr_start);
 	radio->tune_req = 0;
@@ -2197,6 +2245,15 @@ static int  __init iris_probe(struct platform_device *pdev)
 			kfifo_free(&radio->data_buf[i]);
 		kfree(radio);
 		return retval;
+	}	else {
+		priv_videodev = kzalloc(sizeof(struct video_device),
+			GFP_KERNEL);
+		if (!priv_videodev) {
+			FMDERR(": Could not allocate priv_videodev\n");
+			return -ENOMEM;
+		}
+		memcpy(priv_videodev, radio->videodev,
+			sizeof(struct video_device));
 	}
 	return 0;
 }
