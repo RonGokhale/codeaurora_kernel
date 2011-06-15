@@ -1376,7 +1376,7 @@ config MSM_SCM
 
 config MSM_SUBSYSTEM_RESTART
 	bool "MSM Subsystem Restart Driver"
-	depends on ARCH_MSM8X60
+	depends on (ARCH_MSM8X60 || ARCH_MSM8960)
 	default n
 	help
 	  This option enables the MSM subsystem restart driver, which provides
