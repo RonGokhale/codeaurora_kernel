@@ -59,6 +59,7 @@ struct audio {
 	uint16_t volume;
 };
 
+
 static struct audio fm_audio;
 static int fm_audio_enable(struct audio *audio)
 {
@@ -100,8 +101,10 @@ static void fm_audio_listner(u32 evt_id, union auddev_evt_data *evt_payload,
 
 		if (audio->enabled &&
 			audio->fm_dest &&
-			audio->fm_source && !audio->running) {
+			audio->fm_source) {
 
+			afe_loopback_gain(audio->fm_src_copp_id,
+						audio->volume);
 			afe_loopback(FM_ENABLE, audio->fm_dst_copp_id,
 						audio->fm_src_copp_id);
 			audio->running = 1;
@@ -114,7 +117,7 @@ static void fm_audio_listner(u32 evt_id, union auddev_evt_data *evt_payload,
 		else
 			audio->fm_dest = 0;
 		if (audio->running
-			&& (!audio->fm_dest && !audio->fm_source)) {
+			&& (!audio->fm_dest || !audio->fm_source)) {
 			afe_loopback(FM_DISABLE, audio->fm_dst_copp_id,
 						audio->fm_src_copp_id);
 			audio->running = 0;
