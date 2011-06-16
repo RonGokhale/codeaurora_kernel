@@ -1033,12 +1033,12 @@ static int msm_open(struct file *f)
 	/* if no instance is available, return error */
 	if (i == MSM_DEV_INST_MAX) {
 		mutex_unlock(&pcam->vid_lock);
-	return rc;
+		return rc;
 	}
 	pcam_inst = kzalloc(sizeof(struct msm_cam_v4l2_dev_inst), GFP_KERNEL);
 	if (!pcam_inst) {
 		mutex_unlock(&pcam->vid_lock);
-	return rc;
+		return rc;
 	}
 	pcam_inst->sensor_pxlcode = pcam->usr_fmts[0].pxlcode;
 	pcam_inst->my_index = i;
@@ -1153,7 +1153,7 @@ static int msm_close(struct file *f)
 	rc = videobuf_mmap_free(&pcam_inst->vid_bufq);
 	if (rc  < 0)
 		pr_err("%s: unable to free buffers\n", __func__);
-
+	pcam->dev_inst[pcam_inst->my_index] = NULL;
 	kfree(pcam_inst);
 	f->private_data = NULL;
 
