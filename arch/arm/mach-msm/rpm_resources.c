@@ -20,7 +20,8 @@
 #include <linux/proc_fs.h>
 #include <linux/spinlock.h>
 #include <mach/rpm.h>
-
+#include <mach/msm_iomap.h>
+#include <linux/io.h>
 #include "mpm.h"
 #include "rpm_resources.h"
 
@@ -80,6 +81,12 @@ static void msm_rpmrs_aggregate_vdd_dig(struct msm_rpmrs_limits *limits);
 static void msm_rpmrs_restore_vdd_dig(void);
 static void msm_rpmrs_aggregate_rpm_cpu(struct msm_rpmrs_limits *limits);
 static void msm_rpmrs_restore_rpm_cpu(void);
+
+#ifdef CONFIG_MSM_L2_SPM
+static  void *msm_rpmrs_l2_counter_addr;
+static  int msm_rpmrs_l2_reset_count;
+#define L2_PC_COUNTER_ADDR 0x660
+#endif
 
 #define MSM_RPMRS_MAX_RS_REGISTER_COUNT 2
 
@@ -988,3 +995,14 @@ static int __init msm_rpmrs_early_init(void)
 	return 0;
 }
 early_initcall(msm_rpmrs_early_init);
+
+#ifdef CONFIG_MSM_L2_SPM
+static int __init msm_rpmrs_l2_counter_init(void)
+{
+	msm_rpmrs_l2_counter_addr = MSM_IMEM_BASE + L2_PC_COUNTER_ADDR;
+	writel_relaxed(msm_rpmrs_l2_reset_count, msm_rpmrs_l2_counter_addr);
+	mb();
+	return 0;
+}
+early_initcall(msm_rpmrs_l2_counter_init);
+#endif
