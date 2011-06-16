@@ -49,7 +49,6 @@ struct radio_hci_command_hdr {
 } __packed;
 
 struct radio_hci_event_hdr {
-	__u8    protocol_byte;
 	__u8	evt;
 	__u8	plen;
 } __packed;
@@ -99,14 +98,6 @@ int radio_hci_recv_frame(struct sk_buff *skb);
 int radio_hci_send_cmd(struct radio_hci_dev *hdev, __u16 opcode, __u32 plen,
 	void *param);
 void radio_hci_event_packet(struct radio_hci_dev *hdev, struct sk_buff *skb);
-int hci_def_data_read(void __user *arg, struct radio_hci_dev *hdev);
-int hci_def_data_write(void __user *arg, struct radio_hci_dev *hdev);
-int hci_fm_do_calibration(void __user *arg, struct radio_hci_dev *hdev);
-int hci_read_grp_counters(void __user *arg, struct radio_hci_dev *hdev);
-int hci_peek_data(void __user *arg, struct radio_hci_dev *hdev);
-int hci_poke_data(void __user *arg, struct radio_hci_dev *hdev);
-int hci_ssbi_peek_reg(void __user *arg, struct radio_hci_dev *hdev);
-int hci_ssbi_poke_reg(void __user *arg, struct radio_hci_dev *hdev);
 
 /* Opcode OCF */
 /* HCI recv control commands opcode */
@@ -556,5 +547,16 @@ enum search_t {
 /* control options */
 #define CTRL_ON			(1)
 #define CTRL_OFF		(0)
+
+int hci_def_data_read(struct hci_fm_def_data_rd_req *arg,
+	struct radio_hci_dev *hdev);
+int hci_def_data_write(struct hci_fm_def_data_wr_req *arg,
+	struct radio_hci_dev *hdev);
+int hci_fm_do_calibration(__u8 *arg, struct radio_hci_dev *hdev);
+int hci_fm_do_calibration(__u8 *arg, struct radio_hci_dev *hdev);
+int hci_peek_data(struct hci_fm_peek_req *arg, struct radio_hci_dev *hdev);
+int hci_poke_data(struct hci_fm_poke_req *arg, struct radio_hci_dev *hdev);
+int hci_poke_data(struct hci_fm_poke_req *arg, struct radio_hci_dev *hdev);
+int hci_poke_data(struct hci_fm_poke_req *arg, struct radio_hci_dev *hdev);
 
 #endif /* __RADIO_HCI_CORE_H */
