@@ -29,7 +29,9 @@ static int n_ports;
 static char *rmnet_ctrl_names[] = { "DATA40_CNTL" };
 static struct workqueue_struct *grmnet_ctrl_wq;
 
+#define SMD_CH_MAX_LEN	20
 #define CH_OPENED	0
+#define CH_READY	1
 struct smd_ch_info {
 	struct smd_channel	*ch;
 	char			*name;
@@ -61,6 +63,7 @@ struct rmnet_ctrl_port {
 
 static struct rmnet_ctrl_ports {
 	struct rmnet_ctrl_port *port;
+	struct platform_driver pdrv;
 } ports[NR_PORTS];
 
 
@@ -236,6 +239,9 @@ static void grmnet_ctrl_smd_connect_w(struct work_struct *w)
 
 	pr_debug("%s:\n", __func__);
 
+	if (!test_bit(CH_READY, &c->flags))
+		return;
+
 	ret = smd_open(c->name, &c->ch, port, grmnet_ctrl_smd_notify);
 	if (ret) {
 		pr_err("%s: Unable to open smd ch:%s err:%d\n",
@@ -304,9 +310,63 @@ void gsmd_ctrl_disconnect(struct grmnet *gr, u8 port_num)
 	if (test_bit(CH_OPENED, &c->flags)) {
 		/* this should send the dtr zero */
 		smd_close(c->ch);
-		c->flags = 0;
+		clear_bit(CH_OPENED, &c->flags);
 	}
 }
+
+#define SMD_CH_MAX_LEN	20
+static int grmnet_ctrl_smd_ch_probe(struct platform_device *pdev)
+{
+	struct rmnet_ctrl_port	*port;
+	struct smd_ch_info	*c;
+	int			i;
+	unsigned long		flags;
+
+	pr_debug("%s: name:%s\n", __func__, pdev->name);
+
+	for (i = 0; i < n_ports; i++) {
+		port = ports[i].port;
+		c = &port->ctrl_ch;
+
+		if (!strncmp(c->name, pdev->name, SMD_CH_MAX_LEN)) {
+			set_bit(CH_READY, &c->flags);
+
+			/* if usb is online, try opening smd_ch */
+			spin_lock_irqsave(&port->port_lock, flags);
+			if (port->port_usb)
+				queue_work(grmnet_ctrl_wq, &port->connect_w);
+			spin_unlock_irqrestore(&port->port_lock, flags);
+
+			break;
+		}
+	}
+
+	return 0;
+}
+
+static int grmnet_ctrl_smd_ch_remove(struct platform_device *pdev)
+{
+	struct rmnet_ctrl_port	*port;
+	struct smd_ch_info	*c;
+	int			i;
+
+	pr_debug("%s: name:%s\n", __func__, pdev->name);
+
+	for (i = 0; i < n_ports; i++) {
+		port = ports[i].port;
+		c = &port->ctrl_ch;
+
+		if (!strncmp(c->name, pdev->name, SMD_CH_MAX_LEN)) {
+			clear_bit(CH_READY, &c->flags);
+			clear_bit(CH_OPENED, &c->flags);
+			smd_close(c->ch);
+			break;
+		}
+	}
+
+	return 0;
+}
+
 
 static void grmnet_ctrl_smd_port_free(int portno)
 {
@@ -320,6 +380,7 @@ static int grmnet_ctrl_smd_port_alloc(int portno)
 {
 	struct rmnet_ctrl_port	*port;
 	struct smd_ch_info	*c;
+	struct platform_driver	*pdrv;
 
 	port = kzalloc(sizeof(struct rmnet_ctrl_port), GFP_KERNEL);
 	if (!port)
@@ -339,6 +400,14 @@ static int grmnet_ctrl_smd_port_alloc(int portno)
 	INIT_WORK(&c->write_w, grmnet_ctrl_smd_write_w);
 
 	ports[portno].port = port;
+
+	pdrv = &ports[portno].pdrv;
+	pdrv->probe = grmnet_ctrl_smd_ch_probe;
+	pdrv->remove = grmnet_ctrl_smd_ch_remove;
+	pdrv->driver.name = c->name;
+	pdrv->driver.owner = THIS_MODULE;
+
+	platform_driver_register(pdrv);
 
 	pr_debug("%s: port:%p portno:%d\n", __func__, port, portno);
 

@@ -253,16 +253,16 @@ static int gport_connect(struct f_rmnet *dev)
 	pr_debug("%s:dev:%p portno:%d\n",
 			__func__, dev, dev->port_num);
 
-	ret = gbam_connect(&dev->port, dev->port_num);
+	ret = gsmd_ctrl_connect(&dev->port, dev->port_num);
 	if (ret) {
-		pr_err("%s: gbam_connect failed: err:%d\n",
+		pr_err("%s: gsmd_ctrl_connect failed: err:%d\n",
 				__func__, ret);
 		return ret;
 	}
 
-	ret = gsmd_ctrl_connect(&dev->port, dev->port_num);
+	ret = gbam_connect(&dev->port, dev->port_num);
 	if (ret) {
-		pr_err("%s: gsmd_ctrl_connect failed: err:%d\n",
+		pr_err("%s: gbam_connect failed: err:%d\n",
 				__func__, ret);
 		return ret;
 	}
