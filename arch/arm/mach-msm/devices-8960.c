@@ -50,6 +50,8 @@
 #define MSM_GSBI8_PHYS		0x1A000000
 #define MSM_GSBI9_PHYS		0x1A100000
 #define MSM_GSBI10_PHYS		0x1A200000
+#define MSM_GSBI11_PHYS		0x12440000
+#define MSM_GSBI12_PHYS		0x12480000
 
 #define MSM_UART2DM_PHYS	(MSM_GSBI2_PHYS + 0x40000)
 #define MSM_UART5DM_PHYS	(MSM_GSBI5_PHYS + 0x40000)
@@ -65,6 +67,8 @@
 #define MSM_GSBI8_QUP_PHYS	(MSM_GSBI8_PHYS + 0x80000)
 #define MSM_GSBI9_QUP_PHYS	(MSM_GSBI9_PHYS + 0x80000)
 #define MSM_GSBI10_QUP_PHYS	(MSM_GSBI10_PHYS + 0x80000)
+#define MSM_GSBI11_QUP_PHYS	(MSM_GSBI11_PHYS + 0x20000)
+#define MSM_GSBI12_QUP_PHYS	(MSM_GSBI12_PHYS + 0x20000)
 #define MSM_QUP_SIZE		SZ_4K
 
 #define MSM_PMIC1_SSBI_CMD_PHYS	0x00500000
@@ -851,6 +855,34 @@ struct platform_device msm8960_device_qup_i2c_gsbi10 = {
 	.id		= 10,
 	.num_resources	= ARRAY_SIZE(resources_qup_i2c_gsbi10),
 	.resource	= resources_qup_i2c_gsbi10,
+};
+
+static struct resource resources_qup_i2c_gsbi12[] = {
+	{
+		.name	= "gsbi_qup_i2c_addr",
+		.start	= MSM_GSBI12_PHYS,
+		.end	= MSM_GSBI12_PHYS + MSM_QUP_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "qup_phys_addr",
+		.start	= MSM_GSBI12_QUP_PHYS,
+		.end	= MSM_GSBI12_QUP_PHYS + 4 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "qup_err_intr",
+		.start	= GSBI12_QUP_IRQ,
+		.end	= GSBI12_QUP_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm8960_device_qup_i2c_gsbi12 = {
+	.name		= "qup_i2c",
+	.id		= 12,
+	.num_resources	= ARRAY_SIZE(resources_qup_i2c_gsbi12),
+	.resource	= resources_qup_i2c_gsbi12,
 };
 
 #ifdef CONFIG_MSM_CAMERA
