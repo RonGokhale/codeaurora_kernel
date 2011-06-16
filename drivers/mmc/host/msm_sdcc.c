@@ -1493,9 +1493,8 @@ msmsdcc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	struct msmsdcc_host *host = mmc_priv(mmc);
 	unsigned long		flags;
 
-	WARN_ON(host->curr.mrq != NULL);
-
-        WARN_ON(host->pwr == 0);
+	WARN(host->curr.mrq, "Request in progress\n");
+	WARN(!host->pwr, "SDCC power is turned off\n");
 
 	spin_lock_irqsave(&host->lock, flags);
 	/*
@@ -1508,6 +1507,9 @@ msmsdcc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		mmc->ops->set_ios(host->mmc, &host->mmc->ios);
 		spin_lock(&host->lock);
 	}
+
+	WARN(!host->clks_on, "SDCC clocks are turned off\n");
+	WARN(host->sdcc_irq_disabled, "SDCC IRQ is disabled\n");
 
 	if (host->eject) {
 		if (mrq->data && !(mrq->data->flags & MMC_DATA_READ)) {
@@ -2091,7 +2093,6 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 				writel_relaxed(MCI_SDIOINTMASK,
 						host->base + MMCIMASK0);
 				mb();
-				WARN_ON(host->sdcc_irq_disabled);
 				if (host->plat->cfg_mpm_sdiowakeup &&
 					(mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ))
 					host->plat->cfg_mpm_sdiowakeup(
