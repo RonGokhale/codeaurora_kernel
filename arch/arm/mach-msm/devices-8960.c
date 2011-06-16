@@ -34,6 +34,10 @@
 #ifdef CONFIG_MSM_MPM
 #include "mpm.h"
 #endif
+#ifdef CONFIG_MSM_DSPS
+#include <mach/msm_dsps.h>
+#endif
+
 
 /* Address of GSBI blocks */
 #define MSM_GSBI1_PHYS		0x16000000
@@ -2048,3 +2052,46 @@ struct platform_device msm_bus_cpss_fpb = {
 	.id    = MSM_BUS_FAB_CPSS_FPB,
 };
 #endif
+
+/* Sensors DSPS platform data */
+#ifdef CONFIG_MSM_DSPS
+
+#define PPSS_REG_PHYS_BASE	0x12080000
+
+static struct dsps_clk_info dsps_clks[] = {};
+static struct dsps_regulator_info dsps_regs[] = {};
+
+/*
+ * Note: GPIOs field is	intialized in run-time at the function
+ * msm8960_init_dsps().
+ */
+
+struct msm_dsps_platform_data msm_dsps_pdata = {
+	.clks = dsps_clks,
+	.clks_num = ARRAY_SIZE(dsps_clks),
+	.gpios = NULL,
+	.gpios_num = 0,
+	.regs = dsps_regs,
+	.regs_num = ARRAY_SIZE(dsps_regs),
+	.dsps_pwr_ctl_en = 1,
+	.signature = DSPS_SIGNATURE,
+};
+
+static struct resource msm_dsps_resources[] = {
+	{
+		.start = PPSS_REG_PHYS_BASE,
+		.end   = PPSS_REG_PHYS_BASE + SZ_8K - 1,
+		.name  = "ppss_reg",
+		.flags = IORESOURCE_MEM,
+	},
+};
+
+struct platform_device msm_dsps_device = {
+	.name          = "msm_dsps",
+	.id            = 0,
+	.num_resources = ARRAY_SIZE(msm_dsps_resources),
+	.resource      = msm_dsps_resources,
+	.dev.platform_data = &msm_dsps_pdata,
+};
+
+#endif /* CONFIG_MSM_DSPS */

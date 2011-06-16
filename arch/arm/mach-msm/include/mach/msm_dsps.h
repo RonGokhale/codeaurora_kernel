@@ -89,6 +89,8 @@ struct dsps_regulator_info {
  * @gpios_num - number of gpios.
  * @regs - array of regulators.
  * @regs_num - number of regulators.
+ * @dsps_pwr_ctl_en - to enable DSPS to do power control if set 1
+ *  otherwise the apps will do power control
  * @signature - signature for validity check.
  */
 struct msm_dsps_platform_data {
@@ -99,6 +101,7 @@ struct msm_dsps_platform_data {
 	int gpios_num;
 	struct dsps_regulator_info *regs;
 	int regs_num;
+	int dsps_pwr_ctl_en;
 	u32 signature;
 };
 

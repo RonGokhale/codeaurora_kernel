@@ -53,6 +53,10 @@
 #include <mach/msm_bus_board.h>
 #include <mach/msm_memtypes.h>
 #include <mach/dma.h>
+#ifdef CONFIG_MSM_DSPS
+#include <mach/msm_dsps.h>
+#include "peripheral-loader.h"
+#endif
 
 #ifdef CONFIG_WCD9310_CODEC
 #include <linux/slimbus/slimbus.h>
@@ -2716,6 +2720,27 @@ static struct i2c_board_info msm_camera_boardinfo[] __initdata = {
 };
 #endif
 
+/* Sensors DSPS platform data */
+#ifdef CONFIG_MSM_DSPS
+#define DSPS_PIL_GENERIC_NAME		"dsps"
+#endif /* CONFIG_MSM_DSPS */
+
+static void __init msm8960_init_dsps(void)
+{
+#ifdef CONFIG_MSM_DSPS
+	struct msm_dsps_platform_data *pdata =
+		msm_dsps_device.dev.platform_data;
+	peripheral_dsps.name = DSPS_PIL_GENERIC_NAME;
+	pdata->pil_name = DSPS_PIL_GENERIC_NAME;
+	pdata->gpios = NULL;
+	pdata->gpios_num = 0;
+
+	msm_pil_add_device(&peripheral_dsps);
+
+	platform_device_register(&msm_dsps_device);
+#endif /* CONFIG_MSM_DSPS */
+}
+
 static struct i2c_registry msm8960_i2c_devices[] __initdata = {
 #ifdef CONFIG_MSM_CAMERA
 	{
@@ -2868,6 +2893,7 @@ static void __init msm8960_cdp_init(void)
 	msm_fb_add_devices();
 	slim_register_board_info(msm_slim_devices,
 		ARRAY_SIZE(msm_slim_devices));
+	msm8960_init_dsps();
 	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
 	msm_pm_set_rpm_wakeup_irq(RPM_APCC_CPU0_WAKE_UP_IRQ);
 	msm_cpuidle_set_states(msm_cstates, ARRAY_SIZE(msm_cstates),

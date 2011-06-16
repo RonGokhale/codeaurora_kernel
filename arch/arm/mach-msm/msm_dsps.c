@@ -36,7 +36,7 @@
 #include <mach/msm_dsps.h>
 
 #define DRV_NAME	"msm_dsps"
-#define DRV_VERSION	"1.03"
+#define DRV_VERSION	"2.00"
 
 #define PPSS_PAUSE_REG	0x1804
 
@@ -364,8 +364,10 @@ static long dsps_ioctl(struct file *file,
 		dsps_resume();
 		break;
 	case DSPS_IOCTL_OFF:
-		dsps_suspend();
-		ret = dsps_power_off_handler();
+		if (!drv->pdata->dsps_pwr_ctl_en) {
+			dsps_suspend();
+			ret = dsps_power_off_handler();
+		}
 		break;
 	case DSPS_IOCTL_READ_SLOW_TIMER:
 		val = dsps_read_slow_timer();
@@ -569,11 +571,13 @@ static int dsps_release(struct inode *inode, struct file *file)
 	drv->ref_count--;
 
 	if (drv->ref_count == 0) {
-		dsps_suspend();
+		if (!drv->pdata->dsps_pwr_ctl_en) {
+			dsps_suspend();
 
-		dsps_unload();
+			dsps_unload();
 
-		dsps_power_off_handler();
+			dsps_power_off_handler();
+		}
 	}
 
 	return 0;
