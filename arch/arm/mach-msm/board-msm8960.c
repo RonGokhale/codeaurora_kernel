@@ -55,10 +55,7 @@
 #include <mach/msm_bus_board.h>
 #include <mach/msm_memtypes.h>
 #include <mach/dma.h>
-#ifdef CONFIG_MSM_DSPS
 #include <mach/msm_dsps.h>
-#include "peripheral-loader.h"
-#endif
 #include <mach/msm_xo.h>
 
 #ifdef CONFIG_WCD9310_CODEC
@@ -3125,12 +3122,9 @@ static void __init msm8960_init_dsps(void)
 #ifdef CONFIG_MSM_DSPS
 	struct msm_dsps_platform_data *pdata =
 		msm_dsps_device.dev.platform_data;
-	peripheral_dsps.name = DSPS_PIL_GENERIC_NAME;
 	pdata->pil_name = DSPS_PIL_GENERIC_NAME;
 	pdata->gpios = NULL;
 	pdata->gpios_num = 0;
-
-	msm_pil_add_device(&peripheral_dsps);
 
 	platform_device_register(&msm_dsps_device);
 #endif /* CONFIG_MSM_DSPS */
