@@ -36,6 +36,8 @@
 #define D(fmt, args...) do {} while (0)
 #endif
 
+#define MSM_V4L2_SWFI_LATENCY 3
+
 #define MAX_VIDEO_MEM 16
 /* VFE required buffer number for streaming */
 #define VFE_OUT1_BUF 3
@@ -597,6 +599,12 @@ static int msm_mctl_open(struct msm_cam_media_controller *p_mctl,
 			goto msm_open_done;
 		}
 
+		pm_qos_add_request(&p_mctl->pm_qos_req_list,
+					PM_QOS_CPU_DMA_LATENCY,
+					PM_QOS_DEFAULT_VALUE);
+		pm_qos_update_request(&p_mctl->pm_qos_req_list,
+					MSM_V4L2_SWFI_LATENCY);
+
 		sync->apps_id = apps_id;
 		sync->opencnt++;
 	}
@@ -620,13 +628,15 @@ static int msm_mctl_release(struct msm_cam_media_controller *p_mctl)
 		p_mctl->sync.sctrl.s_release();
 
 	rc = msm_camio_sensor_clk_off(sync->pdev);
-	if (rc < 0) {
+	if (rc < 0)
 		pr_err("%s: msm_camio_sensor_clk_off failed:%d\n",
 			 __func__, rc);
-		return rc;
-	}
 
-	return 0;
+	pm_qos_update_request(&p_mctl->pm_qos_req_list,
+				PM_QOS_DEFAULT_VALUE);
+	pm_qos_remove_request(&p_mctl->pm_qos_req_list);
+
+	return rc;
 }
 
 int msm_mctl_init_user_formats(struct msm_cam_v4l2_device *pcam)
