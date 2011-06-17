@@ -82,13 +82,19 @@ enum qcedev_cipher_alg_enum {
 * @QCEDEV_AES_MODE_CBC:		CBC
 * @QCEDEV_AES_MODE_ECB:		ECB
 * @QCEDEV_AES_MODE_CTR:		CTR
+* @QCEDEV_AES_MODE_XTS:		XTS
+* @QCEDEV_AES_MODE_CCM:		CCM
+* @QCEDEV_DES_MODE_CBC:		CBC
+* @QCEDEV_DES_MODE_ECB:		ECB
 */
 enum qcedev_cipher_mode_enum {
 	QCEDEV_AES_MODE_CBC	= 0,
 	QCEDEV_AES_MODE_ECB	= 1,
 	QCEDEV_AES_MODE_CTR	= 2,
-	QCEDEV_DES_MODE_CBC	= 3,
-	QCEDEV_DES_MODE_ECB	= 4,
+	QCEDEV_AES_MODE_XTS	= 3,
+	QCEDEV_AES_MODE_CCM	= 4,
+	QCEDEV_DES_MODE_CBC	= 5,
+	QCEDEV_DES_MODE_ECB	= 6,
 	QCEDEV_AES_DES_MODE_LAST
 };
 
@@ -98,12 +104,14 @@ enum qcedev_cipher_mode_enum {
 * @QCEDEV_ALG_SHA256:		Digest returned: 32 bytes (256 bit)
 * @QCEDEV_ALG_SHA1_HMAC:	HMAC returned 20 bytes (160 bits)
 * @QCEDEV_ALG_SHA256_HMAC:	HMAC returned 32 bytes (256 bit)
+* @QCEDEV_ALG_AES_CMAC:		Configurable MAC size
 */
 enum qcedev_sha_alg_enum {
 	QCEDEV_ALG_SHA1		= 0,
 	QCEDEV_ALG_SHA256	= 1,
 	QCEDEV_ALG_SHA1_HMAC	= 2,
 	QCEDEV_ALG_SHA256_HMAC	= 3,
+	QCEDEV_ALG_AES_CMAC	= 4,
 	QCEDEV_ALG_SHA_ALG_LAST
 };
 
@@ -133,7 +141,7 @@ struct	qcedev_vbuf_info {
 };
 
 struct	qcedev_sha_ctxt{
-	uint32_t		auth_data[2];
+	uint32_t		auth_data[4];
 	uint8_t			digest[QCEDEV_MAX_SHA_DIGEST];
 	uint32_t		diglen;
 	uint8_t			trailing_buf[64];

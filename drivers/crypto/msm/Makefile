@@ -1,3 +1,7 @@
 obj-$(CONFIG_CRYPTO_DEV_QCEDEV) += qcedev.o
-obj-$(CONFIG_CRYPTO_DEV_QCE) += qce.o
+ifeq ($(CONFIG_CRYPTO_DEV_QCE40), y)
+	obj-$(CONFIG_CRYPTO_DEV_QCE) += qce40.o
+else
+	obj-$(CONFIG_CRYPTO_DEV_QCE) += qce.o
+endif
 obj-$(CONFIG_CRYPTO_DEV_QCRYPTO) += qcrypto.o

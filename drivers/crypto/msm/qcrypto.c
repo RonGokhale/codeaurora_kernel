@@ -239,7 +239,7 @@ static uint8_t _std_init_vector_sha256_uint8[] = {
 
 struct qcrypto_sha_ctx {
 	enum qce_hash_alg_enum  alg;
-	uint32_t		byte_count[2];
+	uint32_t		byte_count[4];
 	uint8_t			digest[SHA_MAX_DIGEST_SIZE];
 	uint32_t		diglen;
 	uint8_t			*tmp_tbuf;
@@ -594,12 +594,15 @@ static int _qcrypto_setkey_aes(struct crypto_ablkcipher *cipher, const u8 *key,
 {
 	struct crypto_tfm *tfm = crypto_ablkcipher_tfm(cipher);
 	struct qcrypto_cipher_ctx *ctx = crypto_tfm_ctx(tfm);
+	struct crypto_priv *cp = ctx->cp;
 
 	switch (len) {
 	case AES_KEYSIZE_128:
-	case AES_KEYSIZE_192:
 	case AES_KEYSIZE_256:
 		break;
+	case AES_KEYSIZE_192:
+		if (cp->ce_support.aes_key_192)
+			break;
 	default:
 		crypto_ablkcipher_set_flags(cipher, CRYPTO_TFM_RES_BAD_KEY_LEN);
 		return -EINVAL;
@@ -725,6 +728,8 @@ static void _qce_ahash_complete(void *cookie, unsigned char *digest,
 	if (authdata) {
 		sha_ctx->byte_count[0] = auth32[0];
 		sha_ctx->byte_count[1] = auth32[1];
+		sha_ctx->byte_count[2] = auth32[2];
+		sha_ctx->byte_count[3] = auth32[3];
 	}
 	areq->src = rctx->src;
 	areq->nbytes = rctx->nbytes;
@@ -907,6 +912,8 @@ again:
 			sreq.src = req->src;
 			sreq.auth_data[0] = sha_ctx->byte_count[0];
 			sreq.auth_data[1] = sha_ctx->byte_count[1];
+			sreq.auth_data[2] = sha_ctx->byte_count[2];
+			sreq.auth_data[3] = sha_ctx->byte_count[3];
 			sreq.first_blk = sha_ctx->first_blk;
 			sreq.last_blk = sha_ctx->last_blk;
 			sreq.size = req->nbytes;
@@ -1650,6 +1657,8 @@ static int _sha_init(struct qcrypto_sha_ctx *ctx)
 	ctx->last_blk = 0;
 	ctx->byte_count[0] = 0;
 	ctx->byte_count[1] = 0;
+	ctx->byte_count[2] = 0;
+	ctx->byte_count[3] = 0;
 	ctx->trailing_buf_len = 0;
 
 	return 0;
@@ -2902,4 +2911,4 @@ module_exit(_qcrypto_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm Crypto driver");
-MODULE_VERSION("1.13");
+MODULE_VERSION("1.14");
