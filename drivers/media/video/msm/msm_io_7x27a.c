@@ -38,6 +38,7 @@
 #define	MIPI_PHY_D1_CONTROL		0x00000020
 #define	MIPI_PHY_D2_CONTROL		0x0000002C
 #define	MIPI_PHY_D3_CONTROL		0x00000030
+#define	MIPI_PWR_CNTL			0x00000054
 
 /*
  * MIPI_PROTOCOL_CONTROL register bits to enable/disable the features of
@@ -132,6 +133,9 @@
 #define MSM_AXI_QOS_SNAPSHOT 200000
 #define MSM_AXI_QOS_RECORDING 200000
 
+#define MIPI_PWR_CNTL_ENA	0x07
+#define MIPI_PWR_CNTL_DIS	0x0
+
 static struct clk *camio_cam_clk;
 static struct clk *camio_vfe_clk;
 static struct clk *camio_csi_src_clk;
@@ -187,11 +191,11 @@ int msm_camio_clk_enable(enum msm_camio_clk_type clktype)
 		msm_camio_clk_rate_set_2(clk, camio_clk.vfe_clk_rate);
 		break;
 	case CAMIO_CSI0_VFE_CLK:
-		clk = clk_get(NULL, "csi_vfe_clk");
+		clk = clk_get(&camio_dev->dev, "csi_vfe_clk");
 		camio_csi0_vfe_clk = clk;
 		break;
 	case CAMIO_CSI1_VFE_CLK:
-		clk = clk_get(&camio_dev->dev, "csi_vfe_clk");
+		clk = clk_get(NULL, "csi_vfe_clk");
 		camio_csi1_vfe_clk = clk;
 		break;
 	case CAMIO_CSI_SRC_CLK:
@@ -199,20 +203,20 @@ int msm_camio_clk_enable(enum msm_camio_clk_type clktype)
 		camio_csi_src_clk = clk;
 		break;
 	case CAMIO_CSI0_CLK:
-		clk = clk_get(NULL, "csi_clk");
+		clk = clk_get(&camio_dev->dev, "csi_clk");
 		camio_csi0_clk = clk;
 		msm_camio_clk_rate_set_2(clk, 400000000);
 		break;
 	case CAMIO_CSI1_CLK:
-		clk = clk_get(&camio_dev->dev, "csi_clk");
+		clk = clk_get(NULL, "csi_clk");
 		camio_csi1_clk = clk;
 		break;
 	case CAMIO_CSI0_PCLK:
-		clk = clk_get(NULL, "csi_pclk");
+		clk = clk_get(&camio_dev->dev, "csi_pclk");
 		camio_csi0_pclk = clk;
 		break;
 	case CAMIO_CSI1_PCLK:
-		clk = clk_get(&camio_dev->dev, "csi_pclk");
+		clk = clk_get(NULL, "csi_pclk");
 		camio_csi1_pclk = clk;
 		break;
 	default:
@@ -467,6 +471,9 @@ int msm_camio_probe_on(struct platform_device *pdev)
 	camio_ext = camdev->ioext;
 	camio_clk = camdev->ioclk;
 
+	msm_camio_clk_enable(CAMIO_CSI0_PCLK);
+	msm_camio_clk_enable(CAMIO_CSI1_PCLK);
+
 	rc = camdev->camera_gpio_on();
 	if (rc < 0)
 		return rc;
@@ -478,6 +485,17 @@ int msm_camio_probe_off(struct platform_device *pdev)
 	const struct msm_camera_sensor_info *sinfo = pdev->dev.platform_data;
 	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
 	camdev->camera_gpio_off();
+
+	csibase = ioremap(camdev->ioext.csiphy, camdev->ioext.csisz);
+	if (!csibase) {
+		pr_err("ioremap failed for CSIBASE\n");
+		goto ioremap_fail;
+	}
+	msm_io_w(MIPI_PWR_CNTL_DIS, csibase + MIPI_PWR_CNTL);
+	iounmap(csibase);
+ioremap_fail:
+	msm_camio_clk_disable(CAMIO_CSI0_PCLK);
+	msm_camio_clk_disable(CAMIO_CSI1_PCLK);
 	return msm_camio_clk_disable(CAMIO_CAM_MCLK_CLK);
 }
 
