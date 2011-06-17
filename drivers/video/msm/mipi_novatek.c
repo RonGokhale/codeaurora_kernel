@@ -212,7 +212,6 @@ static int mipi_novatek_lcd_on(struct platform_device *pdev)
 
 	mipi  = &mfd->panel_info.mipi;
 
-	mutex_lock(&mfd->dma->ov_mutex);
 	if (mipi->mode == DSI_VIDEO_MODE) {
 		mipi_dsi_cmds_tx(mfd, &novatek_tx_buf, novatek_video_on_cmds,
 			ARRAY_SIZE(novatek_video_on_cmds));
@@ -224,7 +223,6 @@ static int mipi_novatek_lcd_on(struct platform_device *pdev)
 
 		mipi_novatek_manufacture_id(mfd);
 	}
-	mutex_unlock(&mfd->dma->ov_mutex);
 
 	return 0;
 }
@@ -240,10 +238,8 @@ static int mipi_novatek_lcd_off(struct platform_device *pdev)
 	if (mfd->key != MFD_KEY)
 		return -EINVAL;
 
-	mutex_lock(&mfd->dma->ov_mutex);
 	mipi_dsi_cmds_tx(mfd, &novatek_tx_buf, novatek_display_off_cmds,
 			ARRAY_SIZE(novatek_display_off_cmds));
-	mutex_unlock(&mfd->dma->ov_mutex);
 
 	return 0;
 }

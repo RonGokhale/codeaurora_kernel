@@ -69,11 +69,29 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	mfd = platform_get_drvdata(pdev);
 	pinfo = &mfd->panel_info;
 
-#ifndef CONFIG_FB_MSM_MDP303
-	mdp4_overlay_dsi_state_set(ST_DSI_SUSPEND);
-#endif
+	if (mdp_rev >= MDP_REV_41)
+		mutex_lock(&mfd->dma->ov_mutex);
+	else
+		down(&mfd->dma->mutex);
 
-	/* change to DSI_CMD_MODE since it needed to
+	mdp4_overlay_dsi_state_set(ST_DSI_SUSPEND);
+
+	/*
+	 * Description: dsi clock is need to perform shutdown.
+	 * mdp4_dsi_cmd_dma_busy_wait() will enable dsi clock if disabled.
+	 * also, wait until dma (overlay and dmap) finish.
+	 */
+	if (mfd->panel_info.type == MIPI_CMD_PANEL) {
+		if (mdp_rev >= MDP_REV_41) {
+			mdp4_dsi_cmd_dma_busy_wait(mfd);
+			mdp4_dsi_blt_dmap_busy_wait(mfd);
+		} else {
+			mdp3_dsi_cmd_dma_busy_wait(mfd);
+		}
+	}
+
+	/*
+	 * Desctiption: change to DSI_CMD_MODE since it needed to
 	 * tx DCS dsiplay off comamnd to panel
 	 */
 	mipi_dsi_op_mode_config(DSI_CMD_MODE);
@@ -88,18 +106,6 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	}
 
 	ret = panel_next_off(pdev);
-
-#ifndef CONFIG_FB_MSM_MDP303
-	mutex_lock(&mfd->dma->ov_mutex);
-
-	/* make sure mdp dma is not running */
-	if (mfd->panel_info.type == MIPI_CMD_PANEL)
-		mdp4_dsi_cmd_dma_busy_wait(mfd);
-#else
-		down(&mfd->dma->mutex);
-		/* make sure mdp dma is not running */
-		mdp3_dsi_cmd_dma_busy_wait(mfd);
-#endif
 
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(0);
