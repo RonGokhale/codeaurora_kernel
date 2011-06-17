@@ -507,7 +507,8 @@ struct msm_stats_buf {
 #define MSM_V4L2_PID_EXP_METERING           (V4L2_CID_PRIVATE_BASE+5)
 #define MSM_V4L2_PID_ISO                    (V4L2_CID_PRIVATE_BASE+6)
 #define MSM_V4L2_PID_CAM_MODE		    (V4L2_CID_PRIVATE_BASE+7)
-#define MSM_V4L2_PID_MAX		     MSM_V4L2_PID_CAM_MODE
+#define MSM_V4L2_PID_LUMA_ADAPTATION	    (V4L2_CID_PRIVATE_BASE+8)
+#define MSM_V4L2_PID_MAX		     MSM_V4L2_PID_LUMA_ADAPTATION
 
 /* camera operation mode for video recording - two frame output queues */
 #define MSM_V4L2_CAM_OP_DEFAULT         0
