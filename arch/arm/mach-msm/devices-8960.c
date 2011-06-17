@@ -73,8 +73,8 @@
 
 static struct resource resources_otg[] = {
 	{
-		.start	= MSM_HSUSB_PHYS,
-		.end	= MSM_HSUSB_PHYS + MSM_HSUSB_SIZE,
+		.start	= MSM8960_HSUSB_PHYS,
+		.end	= MSM8960_HSUSB_PHYS + MSM8960_HSUSB_SIZE,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
@@ -96,8 +96,8 @@ struct platform_device msm_device_otg = {
 
 static struct resource resources_hsusb[] = {
 	{
-		.start	= MSM_HSUSB_PHYS,
-		.end	= MSM_HSUSB_PHYS + MSM_HSUSB_SIZE,
+		.start	= MSM8960_HSUSB_PHYS,
+		.end	= MSM8960_HSUSB_PHYS + MSM8960_HSUSB_SIZE,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
@@ -119,8 +119,8 @@ struct platform_device msm_device_gadget_peripheral = {
 
 static struct resource resources_hsusb_host[] = {
 	{
-		.start  = MSM_HSUSB_PHYS,
-		.end    = MSM_HSUSB_PHYS + MSM_HSUSB_SIZE - 1,
+		.start  = MSM8960_HSUSB_PHYS,
+		.end    = MSM8960_HSUSB_PHYS + MSM8960_HSUSB_SIZE - 1,
 		.flags  = IORESOURCE_MEM,
 	},
 	{
