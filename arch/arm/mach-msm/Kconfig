@@ -134,6 +134,15 @@ config ARCH_MSM8960
 	select MSM_NATIVE_RESTART
 	select MSM_DSPS
 
+config ARCH_APQ8064
+	bool "APQ8064"
+	select ARCH_MSM_KRAITMP
+	select MACH_APQ8064_SIM
+	select MSM_V2_TLMM
+	select ARM_GIC
+	select CPU_V7
+	select MSM_SCM if SMP
+
 config ARCH_FSM9XXX
 	bool "FSM9XXX"
 	select ARCH_MSM_SCORPION
@@ -502,6 +511,12 @@ config MACH_MSM8X60_QT
 	help
 	  Support for the Qualcomm MSM8x60 QT board.
 
+config MACH_APQ8064_SIM
+	depends on ARCH_APQ8064
+	bool "APQ8064 Simulator"
+	help
+	  Support for the Qualcomm APQ8064 simulator.
+
 config MACH_FSM9XXX_SURF
 	depends on ARCH_FSM9XXX
 	depends on !MSM_STACKED_MEMORY
@@ -524,6 +539,7 @@ config MSM_STACKED_MEMORY
 
 config PHYS_OFFSET
 	hex
+	default "0x80200000" if ARCH_APQ8064
 	default "0x80200000" if ARCH_MSM8960
 	default "0x10000000" if ARCH_FSM9XXX
 	default "0x00200000" if !MSM_STACKED_MEMORY
