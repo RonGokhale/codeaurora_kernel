@@ -801,6 +801,7 @@ enum VFE32_MESSAGE_ID {
 	MSG_ID_CAMIF_ERROR,
 	MSG_ID_BUS_OVERFLOW,
 	MSG_ID_SOF_ACK,
+	MSG_ID_STOP_REC_ACK,
 };
 
 struct vfe_msg_stats {
