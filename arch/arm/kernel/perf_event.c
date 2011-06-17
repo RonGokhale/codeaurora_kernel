@@ -627,7 +627,9 @@ static struct pmu pmu = {
 #include "perf_event_v6.c"
 #include "perf_event_v7.c"
 #include "perf_event_msm.c"
+#include "perf_event_msm_l2.c"
 #include "perf_event_msm_krait.c"
+#include "perf_event_msm_krait_l2.c"
 
 static int __init
 init_hw_perf_events(void)
@@ -673,10 +675,12 @@ init_hw_perf_events(void)
 			break;
 		case 0x02D0:    /* 8x60 */
 			armpmu = armv7_scorpionmp_pmu_init();
+			scorpionmp_l2_pmu_init();
 			break;
 		case 0x0490:    /* 8960 sim */
 		case 0x04D0:    /* 8960 */
 			armpmu = armv7_krait_pmu_init();
+			krait_l2_pmu_init();
 			break;
 		}
 	}
