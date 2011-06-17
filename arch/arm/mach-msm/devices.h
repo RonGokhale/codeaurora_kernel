@@ -53,6 +53,8 @@ extern struct platform_device msm8960_gemini_device;
 extern struct platform_device msm8960_camera_sensor_imx074;
 extern struct platform_device msm8960_camera_sensor_ov2720;
 
+extern struct platform_device apq8064_device_uart_gsbi3;
+
 extern struct platform_device msm_device_sdc1;
 extern struct platform_device msm_device_sdc2;
 extern struct platform_device msm_device_sdc3;
@@ -161,6 +163,9 @@ extern struct clk_lookup msm_clocks_8960[];
 extern unsigned msm_num_clocks_8960;
 extern struct clk_lookup msm_clocks_8960_dummy[];
 extern unsigned msm_num_clocks_8960_dummy;
+
+extern struct clk_lookup msm_clocks_8064_dummy[];
+extern unsigned msm_num_clocks_8064_dummy;
 
 extern struct platform_device msm_kgsl_3d0;
 extern struct platform_device msm_kgsl_2d0;
