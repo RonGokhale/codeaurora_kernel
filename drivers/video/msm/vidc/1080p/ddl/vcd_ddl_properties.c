@@ -329,7 +329,7 @@ static u32 ddl_set_dec_property(struct ddl_client_context *ddl,
 			DDL_CLIENT_WAIT_FOR_INITCODEC) ||
 			DDLCLIENT_STATE_IS(ddl, DDL_CLIENT_WAIT_FOR_DPB) ||
 			DDLCLIENT_STATE_IS(ddl, DDL_CLIENT_OPEN))) {
-			phys_addr = mv_buff->physical_addr;
+			phys_addr = mv_buff->dev_addr;
 			virt_addr = mv_buff->kernel_virtual_addr;
 			buffer_size = mv_buff->size/mv_buff->count;
 
@@ -846,13 +846,13 @@ static u32 ddl_set_enc_property(struct ddl_client_context *ddl,
 		if (property_hdr->sz == sizeof(struct
 			vcd_property_enc_recon_buffer)) {
 			encoder->hw_bufs.dpb_y[index].align_physical_addr =
-				recon_buffers->physical_addr;
+				recon_buffers->dev_addr;
 			encoder->hw_bufs.dpb_y[index].align_virtual_addr =
 				recon_buffers->kernel_virtual_addr;
 			encoder->hw_bufs.dpb_y[index].buffer_size =
 				recon_buffers->buffer_size;
 			encoder->hw_bufs.dpb_c[index].align_physical_addr =
-			recon_buffers->physical_addr + ddl_get_yuv_buf_size(
+			recon_buffers->dev_addr + ddl_get_yuv_buf_size(
 				encoder->frame_size.width, encoder->frame_size.
 				height, DDL_YUV_BUF_TYPE_TILE);
 			encoder->hw_bufs.dpb_c[index].align_virtual_addr =
