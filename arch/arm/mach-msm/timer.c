@@ -1061,6 +1061,7 @@ static void __init msm_timer_init(void)
 
 void __cpuinit local_timer_setup(struct clock_event_device *evt)
 {
+	unsigned long flags;
 	static bool first_boot = true;
 	struct msm_clock *clock = &msm_clocks[MSM_GLOBAL_TIMER];
 
@@ -1090,7 +1091,9 @@ void __cpuinit local_timer_setup(struct clock_event_device *evt)
 
 	__get_cpu_var(local_clock_event) = evt;
 
+	local_irq_save(flags);
 	gic_clear_spi_pending(clock->irq.irq);
+	local_irq_restore(flags);
 	gic_enable_ppi(clock->irq.irq);
 
 	clockevents_register_device(evt);
