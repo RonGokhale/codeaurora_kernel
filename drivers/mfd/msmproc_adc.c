@@ -35,26 +35,6 @@ static const struct pm8921_adc_map_pt adcmap_batttherm[] = {
 	{364,	 80}
 };
 
-static const struct pm8921_adc_map_pt adcmap_msmtherm[] = {
-	{2150,	-30},
-	{2107,	-20},
-	{2037,	-10},
-	{1929,	  0},
-	{1776,	 10},
-	{1579,	 20},
-	{1467,	 25},
-	{1349,	 30},
-	{1108,	 40},
-	{878,	 50},
-	{677,	 60},
-	{513,	 70},
-	{385,	 80},
-	{287,	 90},
-	{215,	100},
-	{186,	110},
-	{107,	120}
-};
-
 static const struct pm8921_adc_map_pt adcmap_ntcg_104ef_104fb[] = {
 	{696483,	-40960},
 	{649148,	-39936},
@@ -276,13 +256,15 @@ int32_t pm8921_adc_scale_default(int32_t adc_code,
 		struct pm8921_adc_chan_result *adc_chan_result)
 {
 	bool negative_rawfromoffset = 0;
-	int32_t rawfromoffset = (adc_code - PM8921_ADC_CODE_SCALE)
-						/PM8921_ADC_SLOPE;
+	int32_t rawfromoffset = 0;
 
 	if (!chan_properties || !chan_properties->offset_gain_numerator ||
 		!chan_properties->offset_gain_denominator || !adc_properties
 		|| !adc_chan_result)
 		return -EINVAL;
+
+	rawfromoffset = adc_code -
+			chan_properties->adc_graph[ADC_CALIB_ABSOLUTE].offset;
 
 	adc_chan_result->adc_code = adc_code;
 	if (rawfromoffset < 0) {
@@ -297,11 +279,13 @@ int32_t pm8921_adc_scale_default(int32_t adc_code,
 	if (rawfromoffset >= 1 << adc_properties->bitresolution)
 		rawfromoffset = (1 << adc_properties->bitresolution) - 1;
 
-	adc_chan_result->measurement = (int64_t)rawfromoffset*
+	adc_chan_result->measurement = (int64_t)rawfromoffset *
+		chan_properties->adc_graph[ADC_CALIB_ABSOLUTE].dx *
 				chan_properties->offset_gain_denominator;
 
 	/* do_div only perform positive integer division! */
 	do_div(adc_chan_result->measurement,
+		chan_properties->adc_graph[ADC_CALIB_ABSOLUTE].dy *
 				chan_properties->offset_gain_numerator);
 
 	if (negative_rawfromoffset)
@@ -339,34 +323,12 @@ int32_t pm8921_adc_scale_batt_therm(int32_t adc_code,
 }
 EXPORT_SYMBOL_GPL(pm8921_adc_scale_batt_therm);
 
-int32_t pm8921_adc_scale_msm_therm(int32_t adc_code,
-		const struct pm8921_adc_properties *adc_properties,
-		const struct pm8921_adc_chan_properties *chan_properties,
-		struct pm8921_adc_chan_result *adc_chan_result)
-{
-	int rc;
-	rc = pm8921_adc_scale_default(adc_code, adc_properties, chan_properties,
-			adc_chan_result);
-	if (rc < 0) {
-		pr_debug("PM8921 ADC scale default error with %d\n", rc);
-		return rc;
-	}
-	/* convert mV ---> degC using the table */
-	return pm8921_adc_map_linear(
-			adcmap_msmtherm,
-			sizeof(adcmap_msmtherm)/sizeof(adcmap_msmtherm[0]),
-			adc_chan_result->physical,
-			&adc_chan_result->physical);
-}
-EXPORT_SYMBOL_GPL(pm8921_adc_scale_msm_therm);
-
 int32_t pm8921_adc_scale_pmic_therm(int32_t adc_code,
 		const struct pm8921_adc_properties *adc_properties,
 		const struct pm8921_adc_chan_properties *chan_properties,
 		struct pm8921_adc_chan_result *adc_chan_result)
 {
-	/* 2mV/K */
-	int32_t rawfromoffset = adc_code - chan_properties->adc_graph->offset;
+	int32_t rawfromoffset;
 
 	if (!chan_properties || !chan_properties->offset_gain_numerator ||
 		!chan_properties->offset_gain_denominator || !adc_properties
@@ -374,16 +336,19 @@ int32_t pm8921_adc_scale_pmic_therm(int32_t adc_code,
 		return -EINVAL;
 
 	adc_chan_result->adc_code = adc_code;
+	rawfromoffset = adc_code -
+			chan_properties->adc_graph[ADC_CALIB_ABSOLUTE].offset;
 	if (rawfromoffset > 0) {
 		if (rawfromoffset >= 1 << adc_properties->bitresolution)
 			rawfromoffset = (1 << adc_properties->bitresolution)
 									- 1;
+		/* 2mV/K */
 		adc_chan_result->measurement = (int64_t)rawfromoffset*
-			chan_properties->adc_graph->dx*
+			chan_properties->adc_graph[ADC_CALIB_ABSOLUTE].dx *
 			chan_properties->offset_gain_denominator * 1000;
 
 		do_div(adc_chan_result->measurement,
-			chan_properties->adc_graph->dy *
+			chan_properties->adc_graph[ADC_CALIB_ABSOLUTE].dy *
 			chan_properties->offset_gain_numerator*2);
 	} else {
 		adc_chan_result->measurement = 0;
@@ -466,7 +431,8 @@ int32_t pm8921_adc_scale_xtern_chgr_cur(int32_t adc_code,
 		const struct pm8921_adc_chan_properties *chan_properties,
 		struct pm8921_adc_chan_result *adc_chan_result)
 {
-	int32_t rawfromoffset = adc_code - chan_properties->adc_graph->offset;
+	int32_t rawfromoffset = (adc_code - PM8921_ADC_CODE_SCALE)
+						/PM8921_ADC_SLOPE;
 
 	if (!chan_properties || !chan_properties->offset_gain_numerator ||
 		!chan_properties->offset_gain_denominator || !adc_properties
@@ -479,10 +445,8 @@ int32_t pm8921_adc_scale_xtern_chgr_cur(int32_t adc_code,
 			rawfromoffset = (1 << adc_properties->bitresolution)
 									- 1;
 		adc_chan_result->measurement = ((int64_t)rawfromoffset * 5)*
-				chan_properties->adc_graph->dx*
 				chan_properties->offset_gain_denominator;
 		do_div(adc_chan_result->measurement,
-					chan_properties->adc_graph->dy*
 					chan_properties->offset_gain_numerator);
 	} else {
 		adc_chan_result->measurement = 0;
