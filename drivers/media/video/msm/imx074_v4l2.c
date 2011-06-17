@@ -1363,8 +1363,6 @@ static int imx074_sensor_release(void)
 	usleep_range(5000, 6000);
 	gpio_direction_input(imx074_ctrl->sensordata->sensor_reset);
 	gpio_free(imx074_ctrl->sensordata->sensor_reset);
-	kfree(imx074_ctrl);
-	imx074_ctrl = NULL;
 	CDBG("imx074_release completed\n");
 	mutex_unlock(&imx074_mut);
 
