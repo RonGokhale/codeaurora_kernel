@@ -1964,15 +1964,15 @@ static struct msm_spm_platform_data msm_spm_data[] __initdata = {
 };
 
 static uint8_t l2_spm_wfi_cmd_sequence[] __initdata = {
-			0x00, 0x20, 0x30, 0x20,
+			0x00, 0x20, 0x03, 0x20,
 			0x00, 0x0f,
 };
 
 static uint8_t l2_spm_gdhs_cmd_sequence[] __initdata = {
 			0x00, 0x20, 0x34, 0x64,
-			0x48, 0x03, 0x48, 0x07,
-			0x48, 0x20, 0x50, 0x64,
-			0x04, 0x34, 0x50, 0x0f,
+			0x48, 0x07, 0x48, 0x20,
+			0x50, 0x64, 0x04, 0x34,
+			0x50, 0x0f,
 };
 static uint8_t l2_spm_power_off_cmd_sequence[] __initdata = {
 			0x00, 0x10, 0x34, 0x64,
@@ -1989,7 +1989,7 @@ static struct msm_spm_seq_entry msm_spm_l2_seq_list[] __initdata = {
 	},
 	[1] = {
 		.mode = MSM_SPM_L2_MODE_GDHS,
-		.notify_rpm = false,
+		.notify_rpm = true,
 		.cmd = l2_spm_gdhs_cmd_sequence,
 	},
 	[2] = {
