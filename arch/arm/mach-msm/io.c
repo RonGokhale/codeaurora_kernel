@@ -213,6 +213,25 @@ void __init msm_map_msm8960_io(void)
 }
 #endif /* CONFIG_ARCH_MSM8960 */
 
+#ifdef CONFIG_ARCH_APQ8064
+static struct map_desc apq8064_io_desc[] __initdata = {
+	MSM_CHIP_DEVICE(QGIC_DIST, APQ8064),
+	MSM_CHIP_DEVICE(QGIC_CPU, APQ8064),
+	MSM_CHIP_DEVICE(TMR, APQ8064),
+	MSM_CHIP_DEVICE(TMR0, APQ8064),
+	{
+		.virtual =  (unsigned long) MSM_SHARED_RAM_BASE,
+		.length =   MSM_SHARED_RAM_SIZE,
+		.type =     MT_DEVICE,
+	},
+};
+
+void __init msm_map_apq8064_io(void)
+{
+	msm_map_io(apq8064_io_desc, ARRAY_SIZE(apq8064_io_desc));
+}
+#endif /* CONFIG_ARCH_APQ8064 */
+
 #ifdef CONFIG_ARCH_MSM7X30
 static struct map_desc msm7x30_io_desc[] __initdata = {
 	MSM_DEVICE(VIC),
