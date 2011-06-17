@@ -77,7 +77,7 @@ struct smsm_interrupt_info {
   uint32_t aArm_wakeup_reason;
 };
 #elif !defined(CONFIG_MSM_SMD)
-static inline void *smem_alloc(unsigned id, unsigned size)
+void *smem_alloc(unsigned id, unsigned size)
 {
 	return NULL;
 }
