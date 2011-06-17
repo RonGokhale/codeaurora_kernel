@@ -3288,6 +3288,13 @@ static void __init msm7x2x_init(void)
 #if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
 	bt_power_init();
 #endif
+	if (cpu_is_msm7x25a()) {
+		atmel_ts_pdata.min_x = 0;
+		atmel_ts_pdata.max_x = 480;
+		atmel_ts_pdata.min_y = 0;
+		atmel_ts_pdata.max_y = 320;
+	}
+
 	i2c_register_board_info(MSM_GSBI1_QUP_I2C_BUS_ID,
 		atmel_ts_i2c_info,
 		ARRAY_SIZE(atmel_ts_i2c_info));
