@@ -104,7 +104,8 @@ enum msm_bus_8660_slave_ports_type {
 static uint32_t master_iids[NMASTERS];
 static uint32_t slave_iids[NSLAVES];
 
-static int ampss_m0_mports[] = {MSM_BUS_MASTER_PORT_SMPSS_M1,};
+static int ampss_m0_mports[] = {MSM_BUS_MASTER_PORT_SMPSS_M0,};
+static int ampss_m1_mports[] = {MSM_BUS_MASTER_PORT_SMPSS_M1,};
 static int mmss_mport_apps_fab[] = {MSM_BUS_MMSS_MASTER_PORT_APPS_FAB,};
 static int system_mport_appss_fab[] = {MSM_BUS_SYSTEM_MASTER_PORT_APPSS_FAB,};
 
@@ -126,8 +127,8 @@ static struct msm_bus_node_info apps_fabric_info[] = {
 	},
 	{
 		.id = MSM_BUS_MASTER_AMPSS_M1,
-		.masterp = ampss_m0_mports,
-		.num_mports = ARRAY_SIZE(ampss_m0_mports),
+		.masterp = ampss_m1_mports,
+		.num_mports = ARRAY_SIZE(ampss_m1_mports),
 		.tier = tier2,
 		.num_tiers = ARRAY_SIZE(tier2),
 	},
