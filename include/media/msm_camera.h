@@ -496,7 +496,9 @@ struct msm_stats_buf {
 /* extendedmode for the thumb nail image in VIDIOC_S_PARM */
 #define MSM_V4L2_EXT_CAPTURE_MODE_THUMBNAIL \
 	(MSM_V4L2_EXT_CAPTURE_MODE_DEFAULT+4)
-#define MSM_V4L2_EXT_CAPTURE_MODE_MAX (MSM_V4L2_EXT_CAPTURE_MODE_DEFAULT+5)
+#define MSM_V4L2_EXT_CAPTURE_MODE_RAW \
+	(MSM_V4L2_EXT_CAPTURE_MODE_DEFAULT+5)
+#define MSM_V4L2_EXT_CAPTURE_MODE_MAX (MSM_V4L2_EXT_CAPTURE_MODE_DEFAULT+6)
 
 
 #define MSM_V4L2_PID_MOTION_ISO              V4L2_CID_PRIVATE_BASE
@@ -524,6 +526,8 @@ struct msm_stats_buf {
 #define MSM_V4L2_CAM_OP_CAPTURE         (MSM_V4L2_CAM_OP_DEFAULT+3)
 /* camera operation mode for zsl shapshot - three output queues */
 #define MSM_V4L2_CAM_OP_ZSL             (MSM_V4L2_CAM_OP_DEFAULT+4)
+/* camera operation mode for raw snapshot - one frame output queue */
+#define MSM_V4L2_CAM_OP_RAW             (MSM_V4L2_CAM_OP_DEFAULT+5)
 
 #define MSM_V4L2_VID_CAP_TYPE	0
 #define MSM_V4L2_STREAM_ON	1

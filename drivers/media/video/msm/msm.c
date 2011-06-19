@@ -239,6 +239,15 @@ static int msm_server_set_fmt(struct msm_cam_v4l2_device *pcam, int idx,
 	if (pfmt->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
 		D("%s, Attention! Wrong buf-type %d\n", __func__, pfmt->type);
 
+	for (i = 0; i < pcam->num_fmts; i++)
+		if (pcam->usr_fmts[i].fourcc == pix->pixelformat)
+			break;
+	if (i == pcam->num_fmts) {
+		pr_err("%s: User requested pixelformat %x not supported\n",
+						__func__, pix->pixelformat);
+		return -EINVAL;
+	}
+
 	ctrlcmd.type       = MSM_V4L2_VID_CAP_TYPE;
 	ctrlcmd.length     = MSM_V4L2_DIMENSION_SIZE;
 	ctrlcmd.value      = (void *)pfmt->fmt.pix.priv;
@@ -248,19 +257,13 @@ static int msm_server_set_fmt(struct msm_cam_v4l2_device *pcam, int idx,
 	rc = msm_server_control(&g_server_dev, &ctrlcmd);
 
 	if (rc >= 0) {
-
-		for (i = 0; i < pcam->num_fmts; i++)
-			if (pcam->usr_fmts[i].fourcc == pix->pixelformat)
-				break;
-
 		pcam->dev_inst[idx]->vid_fmt.fmt.pix.width    = pix->width;
 		pcam->dev_inst[idx]->vid_fmt.fmt.pix.height   = pix->height;
 		pcam->dev_inst[idx]->vid_fmt.fmt.pix.field    = pix->field;
-		pcam->dev_inst[idx]->vid_fmt.fmt.pix.pixelformat
-					= pcam->usr_fmts[i].fourcc;
-		pcam->dev_inst[idx]->vid_fmt.fmt.pix.bytesperline
-					= (pix->width *
-				pcam->usr_fmts[i].bitsperpxl) / 8;
+		pcam->dev_inst[idx]->vid_fmt.fmt.pix.pixelformat =
+							pix->pixelformat;
+		pcam->dev_inst[idx]->vid_fmt.fmt.pix.bytesperline =
+							pix->bytesperline;
 		pcam->dev_inst[idx]->vid_bufq.field   = pix->field;
 		pcam->dev_inst[idx]->sensor_pxlcode
 					= pcam->usr_fmts[i].pxlcode;
@@ -750,26 +753,37 @@ static int msm_camera_v4l2_s_fmt_cap(struct file *f, void *pctx,
 							GFP_KERNEL);
 
 	if (!pfmt->fmt.pix.priv) {
-		D("%s could not allocate memory\n", __func__);
+		pr_err("%s could not allocate memory\n", __func__);
 		return -ENOMEM;
 	}
 	D("%s Copying priv data:n", __func__);
 	if (copy_from_user((void *)pfmt->fmt.pix.priv, uptr,
-					MSM_V4L2_DIMENSION_SIZE))
+					MSM_V4L2_DIMENSION_SIZE)) {
+		pr_err("%s: copy_from_user failed.\n", __func__);
+		kfree((void *)pfmt->fmt.pix.priv);
 		return -EINVAL;
-
+	}
 	D("%s Done Copying priv data\n", __func__);
 
-	/*mutex_lock(&pcam->dev_inst[0]->vid_bufq.vb_lock);*/
 	mutex_lock(&pcam->vid_lock);
 
 	rc = msm_server_set_fmt(pcam, pcam_inst->my_index, pfmt);
-	D("%s rc = %d\n", __func__, rc);
-	if (rc < 0)
-		D("msm_isp_set_fmt Error\n");
+	if (rc < 0) {
+		pr_err("%s: msm_server_set_fmt Error: %d\n",
+				__func__, rc);
+		goto done;
+	}
 
-	/*unlock:*/
-	/*mutex_unlock(&pcam->dev_inst[0]->vid_bufq.vb_lock);*/
+	if (copy_to_user(uptr, (const void *)pfmt->fmt.pix.priv,
+					MSM_V4L2_DIMENSION_SIZE)) {
+		pr_err("%s: copy_to_user failed\n", __func__);
+		rc = -EINVAL;
+	}
+
+done:
+	kfree((void *)pfmt->fmt.pix.priv);
+	pfmt->fmt.pix.priv = (__u32)uptr;
+
 	mutex_unlock(&pcam->vid_lock);
 
 	return rc;

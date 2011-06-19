@@ -255,8 +255,10 @@ static int __videobuf_mmap_mapper(struct videobuf_queue *q,
 
 	/* create mapping + update buffer list */
 	map = kzalloc(sizeof(struct videobuf_mapping), GFP_KERNEL);
-	if (!map)
+	if (!map) {
+		pr_err("%s: kzalloc failed.\n", __func__);
 		return -ENOMEM;
+	}
 
 	buf->map = map;
 	map->q = q;
@@ -281,7 +283,7 @@ static int __videobuf_mmap_mapper(struct videobuf_queue *q,
 	mem->phyaddr = msm_mem_allocate(mem->size);
 
 	if (IS_ERR((void *)mem->phyaddr)) {
-		D("%s : pmem memory allocation failed\n", __func__);
+		pr_err("%s : pmem memory allocation failed\n", __func__);
 		goto error;
 	}
 
