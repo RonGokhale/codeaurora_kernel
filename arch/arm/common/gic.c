@@ -437,6 +437,8 @@ static void __init gic_dist_init(struct gic_chip_data *gic,
 		set_irq_flags(i, IRQF_VALID | IRQF_PROBE);
 	}
 
+	gic->max_irq = gic_irqs;
+
 	writel(1, base + GIC_DIST_CTRL);
 	mb();
 }
