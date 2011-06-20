@@ -1028,11 +1028,6 @@ again:
 				sreq.alg = QCE_HASH_SHA256_HMAC;
 				sreq.authkey = &sha_ctx->authkey[0];
 				break;
-			case QCE_HASH_AES_CMAC:
-				sreq.alg = QCE_HASH_AES_CMAC;
-				sreq.authkey = &sha_ctx->authkey[0];
-				sreq.authklen = sha_ctx->authkey_in_len;
-				break;
 			default:
 				break;
 			};
@@ -2550,44 +2545,6 @@ static int _sha256_hmac_digest(struct ahash_request *req)
 	return _sha_digest(req);
 }
 
-static int _cmac_setkey(struct crypto_ahash *tfm, const u8 *key,
-							unsigned int len)
-{
-	struct qcrypto_sha_ctx *sha_ctx = crypto_tfm_ctx(&tfm->base);
-
-	memcpy(&sha_ctx->authkey[0], key, len);
-	sha_ctx->authkey_in_len = len;
-
-	return 0;
-}
-
-static int _cmac_digest(struct ahash_request *req)
-{
-	struct qcrypto_sha_ctx *sha_ctx = crypto_tfm_ctx(req->base.tfm);
-
-	sha_ctx->alg = QCE_HASH_AES_CMAC;
-	return _sha_digest(req);
-}
-
-static int _cmac_final(struct ahash_request *req)
-{
-	return 0;
-}
-
-static int _cmac_update(struct ahash_request *req)
-{
-	return _sha_digest(req);
-}
-
-static int _cmac_init(struct ahash_request *req)
-{
-	struct qcrypto_sha_ctx *sha_ctx = crypto_tfm_ctx(req->base.tfm);
-
-	sha_ctx->alg = QCE_HASH_AES_CMAC;
-	return 0;
-}
-
-
 static struct ahash_alg _qcrypto_ahash_algos[] = {
 	{
 		.init		=	_sha1_init,
@@ -2700,32 +2657,6 @@ static struct ahash_alg _qcrypto_sha_hmac_algos[] = {
 				.cra_init	 = _qcrypto_ahash_hmac_cra_init,
 				.cra_exit	 = _qcrypto_ahash_cra_exit,
 			},
-		},
-	},
-};
-
-static struct ahash_alg _qcrypto_cmac_algo = {
-	.init		=	_cmac_init,
-	.update		=	_cmac_update,
-	.final		=	_cmac_final,
-	.digest		=	_cmac_digest,
-	.setkey		=	_cmac_setkey,
-	.halg		= {
-		.digestsize	= 16,
-		.base	= {
-			.cra_name	 = "cmac(aes)",
-			.cra_driver_name = "qcrypto-cmac",
-			.cra_priority	 = 300,
-			.cra_flags	 = CRYPTO_ALG_TYPE_AHASH |
-						 CRYPTO_ALG_ASYNC,
-			.cra_blocksize	 = SHA1_BLOCK_SIZE,
-			.cra_ctxsize	 =
-					sizeof(struct qcrypto_sha_ctx),
-			.cra_alignmask	 = 0,
-			.cra_type	 = &crypto_ahash_type,
-			.cra_module	 = THIS_MODULE,
-			.cra_init	 = _qcrypto_ahash_cra_init,
-			.cra_exit	 = _qcrypto_ahash_cra_exit,
 		},
 	},
 };
@@ -3230,32 +3161,6 @@ static int  _qcrypto_probe(struct platform_device *pdev)
 		}
 	}
 
-	/*
-	 * Register crypto hash (cmac) algorithms if the
-	 * device supports it
-	 */
-	if (cp->ce_support.cmac) {
-		struct qcrypto_alg *q_alg = NULL;
-
-		q_alg = _qcrypto_sha_alg_alloc(cp, &_qcrypto_cmac_algo);
-
-		if (IS_ERR(q_alg)) {
-			rc = PTR_ERR(q_alg);
-			goto err;
-		}
-
-		rc = crypto_register_ahash(&q_alg->sha_alg);
-		if (rc) {
-			dev_err(&pdev->dev, "%s alg registration failed\n",
-				q_alg->sha_alg.halg.base.cra_driver_name);
-			kfree(q_alg);
-		} else {
-			list_add_tail(&q_alg->entry, &cp->alg_list);
-			dev_info(&pdev->dev, "%s\n",
-				q_alg->sha_alg.halg.base.cra_driver_name);
-		}
-	}
-
 	return 0;
 err:
 	_qcrypto_remove(pdev);
@@ -3366,4 +3271,4 @@ module_exit(_qcrypto_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm Crypto driver");
-MODULE_VERSION("1.17");
+MODULE_VERSION("1.18");
