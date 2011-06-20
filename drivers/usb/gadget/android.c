@@ -466,6 +466,9 @@ static void android_set_default_product(int pid)
 			break;
 	}
 	android_set_function_mask(up);
+	device_desc.idProduct = __constant_cpu_to_le16(pid);
+	if (dev->cdev)
+		dev->cdev->desc.idProduct = device_desc.idProduct;
 }
 
 /**

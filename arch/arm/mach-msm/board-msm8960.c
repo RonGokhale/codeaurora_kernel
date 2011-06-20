@@ -1780,14 +1780,14 @@ static char *usb_functions_all[] = {
 
 struct android_usb_product usb_products[] = {
 	{
-		.product_id	= 0x9025,
-		.num_functions	= ARRAY_SIZE(usb_functions_default_adb),
-		.functions	= usb_functions_default_adb,
-	},
-	{
 		.product_id	= 0x9026,
 		.num_functions	= ARRAY_SIZE(usb_functions_default),
 		.functions	= usb_functions_default,
+	},
+	{
+		.product_id	= 0x9025,
+		.num_functions	= ARRAY_SIZE(usb_functions_default_adb),
+		.functions	= usb_functions_default_adb,
 	},
 	{
 		.product_id	= 0xf00e,
@@ -2322,12 +2322,12 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&msm_device_otg,
 	&msm_device_gadget_peripheral,
 	&msm_device_hsusb_host,
-	&android_usb_device,
 	&usb_diag_device,
 	&usb_mass_storage_device,
 	&usb_gadget_fserial_device,
 	&usb_rmnet,
 	&rndis_device,
+	&android_usb_device,
 	&msm_pcm,
 	&msm_pcm_routing,
 	&msm_cpudai0,
