@@ -380,6 +380,8 @@ struct sdio_channel {
 	int poll_delay_msec;
 	int is_packet_mode;
 
+	struct peer_sdioc_channel_config ch_config;
+
 	/* Channel Info */
 	int num;
 
@@ -723,7 +725,7 @@ static int read_mailbox(struct sdio_al_device *sdio_al_dev, int from_isr)
 	u32 new_write_avail = 0;
 	u32 old_write_avail = 0;
 	u32 any_read_avail = 0;
-	u32 any_no_write_avail = 0;
+	u32 any_write_pending = 0;
 	int i;
 	u32 rx_notify_bitmask = 0;
 	u32 tx_notify_bitmask = 0;
@@ -841,11 +843,12 @@ static int read_mailbox(struct sdio_al_device *sdio_al_dev, int from_isr)
 		/* There is not enough write avail for this channel.
 		   We need to keep reading mailbox to wait for the appropriate
 		   write avail and cannot sleep */
-		any_no_write_avail |= (new_write_avail <= ch->min_write_avail);
+		any_write_pending |=
+			(new_write_avail < ch->ch_config.max_tx_threshold);
 	}
 
 	if ((rx_notify_bitmask == 0) && (tx_notify_bitmask == 0) &&
-	    !any_read_avail && !any_no_write_avail) {
+	    !any_read_avail && !any_write_pending) {
 		DATA_DEBUG(MODULE_NAME ":Nothing to Notify for card %d\n",
 			   sdio_al_dev->card->host->index);
 	} else {
@@ -1574,6 +1577,8 @@ static int read_sdioc_channel_config(struct sdio_channel *ch)
 	}
 
 	ch_config = &sw_mailbox->ch_config[ch->num];
+	memcpy(&ch->ch_config, ch_config,
+		sizeof(struct peer_sdioc_channel_config));
 
 	if (!ch_config->is_ready) {
 		pr_info(MODULE_NAME ":sw mailbox channel not ready.\n");
