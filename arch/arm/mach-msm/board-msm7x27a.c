@@ -2873,9 +2873,12 @@ static int mipi_dsi_panel_power(int on)
 		dsi_gpio_initialized = 1;
 	}
 
-		gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN, on);
 		if (machine_is_msm7x27a_surf()) {
+			gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN, on);
 			gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, on);
+		} else if (machine_is_msm7x27a_ffa()) {
+			/* This line drives an active low pin on the FFA */
+			gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN, !on);
 		}
 
 		if (on) {
