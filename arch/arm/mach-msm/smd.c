@@ -732,6 +732,7 @@ static void smd_state_change(struct smd_channel *ch,
 		    ch->send->state == SMD_SS_CLOSED) {
 			ch->recv->tail = 0;
 			ch->send->head = 0;
+			ch->send->fBLOCKREADINTR = 0;
 			ch_set_state(ch, SMD_SS_OPENING);
 		}
 		break;
