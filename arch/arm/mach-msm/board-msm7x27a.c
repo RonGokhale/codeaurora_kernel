@@ -1201,6 +1201,10 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 };
 #endif
 
+static struct msm_hsusb_gadget_platform_data msm_gadget_pdata = {
+	.is_phy_status_timer_on = 1,
+};
+
 static struct resource smc91x_resources[] = {
 	[0] = {
 		.start = 0x90000300,
@@ -3278,6 +3282,8 @@ static void __init msm7x2x_init(void)
 		[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].latency;
 		msm_device_otg.dev.platform_data = &msm_otg_pdata;
 #endif
+		msm_device_gadget_peripheral.dev.platform_data =
+							&msm_gadget_pdata;
 		msm7x27a_cfg_smsc911x();
 		platform_add_devices(surf_ffa_devices,
 				ARRAY_SIZE(surf_ffa_devices));
