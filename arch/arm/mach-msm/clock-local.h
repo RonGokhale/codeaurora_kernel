@@ -275,11 +275,13 @@ int branch_clk_reset(struct clk *c, enum clk_reset_action action);
  * struct measure_clk - for rate measurement debug use
  * @sample_ticks: sample period in reference clock ticks
  * @multiplier: measurement scale-up factor
+ * @divider: measurement scale-down factor
  * @c: clk
 */
 struct measure_clk {
 	u64 sample_ticks;
 	u32 multiplier;
+	u32 divider;
 	struct clk c;
 };
 

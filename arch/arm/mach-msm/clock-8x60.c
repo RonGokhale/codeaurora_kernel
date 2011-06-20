@@ -233,6 +233,7 @@
 #define TEST_TYPE_MM_HS		4
 #define TEST_TYPE_LPA		5
 #define TEST_TYPE_SC		6
+#define TEST_TYPE_MM_HS2X	7
 #define TEST_TYPE_SHIFT		24
 #define TEST_CLK_SEL_MASK	BM(23, 0)
 #define TEST_VECTOR(s, t)	(((t) << TEST_TYPE_SHIFT) | BVAL(23, 0, (s)))
@@ -242,6 +243,7 @@
 #define TEST_MM_HS(s)		TEST_VECTOR((s), TEST_TYPE_MM_HS)
 #define TEST_LPA(s)		TEST_VECTOR((s), TEST_TYPE_LPA)
 #define TEST_SC(s)		TEST_VECTOR((s), TEST_TYPE_SC)
+#define TEST_MM_HS2X(s)		TEST_VECTOR((s), TEST_TYPE_MM_HS2X)
 
 struct pll_rate {
 	const uint32_t	l_val;
@@ -3149,8 +3151,12 @@ static struct measure_sel measure_mux[] = {
 	{ TEST_PER_LS(0x19), &sdc4_clk.c },
 	{ TEST_PER_LS(0x1A), &sdc5_p_clk.c },
 	{ TEST_PER_LS(0x1B), &sdc5_clk.c },
+	{ TEST_PER_LS(0x25), &dfab_clk.c },
+	{ TEST_PER_LS(0x25), &dfab_a_clk.c },
 	{ TEST_PER_LS(0x26), &pmem_clk.c },
 	{ TEST_PER_LS(0x2B), &ppss_p_clk.c },
+	{ TEST_PER_LS(0x33), &cfpb_clk.c },
+	{ TEST_PER_LS(0x33), &cfpb_a_clk.c },
 	{ TEST_PER_LS(0x3D), &gsbi1_p_clk.c },
 	{ TEST_PER_LS(0x3E), &gsbi1_uart_clk.c },
 	{ TEST_PER_LS(0x3F), &gsbi1_qup_clk.c },
@@ -3187,6 +3193,8 @@ static struct measure_sel measure_mux[] = {
 	{ TEST_PER_LS(0x69), &gsbi12_p_clk.c },
 	{ TEST_PER_LS(0x6A), &gsbi12_uart_clk.c },
 	{ TEST_PER_LS(0x6C), &gsbi12_qup_clk.c },
+	{ TEST_PER_LS(0x78), &sfpb_clk.c },
+	{ TEST_PER_LS(0x78), &sfpb_a_clk.c },
 	{ TEST_PER_LS(0x7A), &pmic_ssbi2_clk.c },
 	{ TEST_PER_LS(0x7B), &pmic_arb0_p_clk.c },
 	{ TEST_PER_LS(0x7C), &pmic_arb1_p_clk.c },
@@ -3207,8 +3215,14 @@ static struct measure_sel measure_mux[] = {
 	{ TEST_PER_LS(0x93), &ce2_p_clk.c },
 	{ TEST_PER_LS(0x94), &tssc_clk.c },
 
+	{ TEST_PER_HS(0x07), &afab_clk.c },
+	{ TEST_PER_HS(0x07), &afab_a_clk.c },
+	{ TEST_PER_HS(0x18), &sfab_clk.c },
+	{ TEST_PER_HS(0x18), &sfab_a_clk.c },
 	{ TEST_PER_HS(0x2A), &adm0_clk.c },
 	{ TEST_PER_HS(0x2B), &adm1_clk.c },
+	{ TEST_PER_HS(0x34), &ebi1_clk.c },
+	{ TEST_PER_HS(0x34), &ebi1_a_clk.c },
 
 	{ TEST_MM_LS(0x00), &dsi_byte_clk.c },
 	{ TEST_MM_LS(0x01), &pixel_lcdc_clk.c },
@@ -3239,6 +3253,8 @@ static struct measure_sel measure_mux[] = {
 	{ TEST_MM_LS(0x21), &tv_dac_clk.c },
 	{ TEST_MM_LS(0x22), &tv_enc_clk.c },
 	{ TEST_MM_LS(0x23), &dsi_esc_clk.c },
+	{ TEST_MM_LS(0x25), &mmfpb_clk.c },
+	{ TEST_MM_LS(0x25), &mmfpb_a_clk.c },
 
 	{ TEST_MM_HS(0x00), &csi0_clk.c },
 	{ TEST_MM_HS(0x01), &csi1_clk.c },
@@ -3251,6 +3267,8 @@ static struct measure_sel measure_mux[] = {
 	{ TEST_MM_HS(0x09), &gfx3d_clk.c },
 	{ TEST_MM_HS(0x0A), &jpegd_clk.c },
 	{ TEST_MM_HS(0x0B), &vcodec_clk.c },
+	{ TEST_MM_HS(0x0F), &mmfab_clk.c },
+	{ TEST_MM_HS(0x0F), &mmfab_a_clk.c },
 	{ TEST_MM_HS(0x11), &gmem_axi_clk.c },
 	{ TEST_MM_HS(0x12), &ijpeg_axi_clk.c },
 	{ TEST_MM_HS(0x13), &imem_axi_clk.c },
@@ -3263,6 +3281,9 @@ static struct measure_sel measure_mux[] = {
 	{ TEST_MM_HS(0x1C), &vpe_clk.c },
 	{ TEST_MM_HS(0x1E), &hdmi_tv_clk.c },
 	{ TEST_MM_HS(0x1F), &mdp_tv_clk.c },
+
+	{ TEST_MM_HS2X(0x24), &smi_clk.c },
+	{ TEST_MM_HS2X(0x24), &smi_a_clk.c },
 
 	{ TEST_LPA(0x0A), &mi2s_osr_clk.c },
 	{ TEST_LPA(0x0B), &mi2s_bit_clk.c },
@@ -3310,11 +3331,12 @@ static int measure_clk_set_parent(struct clk *c, struct clk *parent)
 
 	/*
 	 * Program the test vector, measurement period (sample_ticks)
-	 * and scaling factor (multiplier).
+	 * and scaling factors (multiplier, divider).
 	 */
 	clk_sel = p->test_vector & TEST_CLK_SEL_MASK;
 	clk->sample_ticks = 0x10000;
 	clk->multiplier = 1;
+	clk->divider = 1;
 	switch (p->test_vector >> TEST_TYPE_SHIFT) {
 	case TEST_TYPE_PER_LS:
 		writel_relaxed(0x4030D00|BVAL(7, 0, clk_sel), CLK_TEST_REG);
@@ -3326,6 +3348,8 @@ static int measure_clk_set_parent(struct clk *c, struct clk *parent)
 		writel_relaxed(0x4030D97, CLK_TEST_REG);
 		writel_relaxed(BVAL(6, 1, clk_sel)|BIT(0), DBG_CFG_REG_LS_REG);
 		break;
+	case TEST_TYPE_MM_HS2X:
+		clk->divider = 2;
 	case TEST_TYPE_MM_HS:
 		writel_relaxed(0x402B800, CLK_TEST_REG);
 		writel_relaxed(BVAL(6, 1, clk_sel)|BIT(0), DBG_CFG_REG_HS_REG);
@@ -3413,7 +3437,8 @@ static unsigned measure_clk_get_rate(struct clk *c)
 	else {
 		/* Compute rate in Hz. */
 		raw_count_full = ((raw_count_full * 10) + 15) * 4800000;
-		do_div(raw_count_full, ((clk->sample_ticks * 10) + 35));
+		do_div(raw_count_full,
+		       (((clk->sample_ticks * 10) + 35) * clk->divider));
 		ret = (raw_count_full * clk->multiplier);
 	}
 
@@ -3448,6 +3473,7 @@ static struct measure_clk measure_clk = {
 		CLK_INIT(measure_clk.c),
 	},
 	.multiplier = 1,
+	.divider = 1,
 };
 
 struct clk_lookup msm_clocks_8x60[] = {
