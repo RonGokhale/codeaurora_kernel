@@ -857,7 +857,7 @@ struct msm_bus_fabric_registration msm_bus_sys_fpb_pdata = {
 	ARRAY_SIZE(sys_fpb_fabric_info),
 	.ahb = 1,
 	.fabclk = "sfpb_clk",
-	.fabclk = "sfpb_a_clk",
+	.a_fabclk = "sfpb_a_clk",
 	.nmasters = 0,
 	.nslaves = 0,
 	.ntieredslaves = 0,
