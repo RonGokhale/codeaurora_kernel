@@ -22,6 +22,7 @@
 #include <linux/cpu.h>
 #include <mach/rpm.h>
 #include <mach/msm_iomap.h>
+#include <asm/mach-types.h>
 #include <linux/io.h>
 #include "mpm.h"
 #include "rpm_resources.h"
@@ -937,27 +938,31 @@ static int __init msm_rpmrs_init(void)
 
 	BUG_ON(!msm_rpmrs_levels);
 
-#ifdef CONFIG_ARCH_MSM8X60
-	req.id = MSM_RPMRS_ID_APPS_L2_CACHE_CTL;
-	req.value = 1;
+	if (machine_is_msm8x60_surf() || machine_is_msm8x60_ffa() ||
+		machine_is_msm8x60_fluid() || machine_is_msm8x60_fusion() ||
+		machine_is_msm8x60_fusn_ffa()) {
 
-	rc = msm_rpm_set(MSM_RPM_CTX_SET_0, &req, 1);
-	if (rc) {
-		pr_err("%s: failed to request L2 cache: %d\n",
+		req.id = MSM_RPMRS_ID_APPS_L2_CACHE_CTL;
+		req.value = 1;
+
+		rc = msm_rpm_set(MSM_RPM_CTX_SET_0, &req, 1);
+		if (rc) {
+			pr_err("%s: failed to request L2 cache: %d\n",
 				__func__, rc);
-		goto init_exit;
-	}
+			goto init_exit;
+		}
 
-	req.id = MSM_RPMRS_ID_APPS_L2_CACHE_CTL;
-	req.value = 0;
+		req.id = MSM_RPMRS_ID_APPS_L2_CACHE_CTL;
+		req.value = 0;
 
-	rc = msm_rpmrs_set(MSM_RPM_CTX_SET_SLEEP, &req, 1);
-	if (rc) {
-		pr_err("%s: failed to initialize L2 cache for sleep: "
+		rc = msm_rpmrs_set(MSM_RPM_CTX_SET_SLEEP, &req, 1);
+		if (rc) {
+			pr_err("%s: failed to initialize L2 cache for sleep: "
 				"%d\n", __func__, rc);
-		goto init_exit;
+			goto init_exit;
+		}
 	}
-#endif
+
 	req.id = MSM_RPMRS_ID_RPM_CTL;
 	req.value = 0;
 
