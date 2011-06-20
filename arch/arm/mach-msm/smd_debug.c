@@ -199,8 +199,8 @@ static int dump_ch(char *buf, int max, int n,
 	return scnprintf(
 		buf, max,
 		"ch%02d:"
-		" %8s(%04d/%04d) %c%c%c%c%c%c%c <->"
-		" %8s(%04d/%04d) %c%c%c%c%c%c%c : %5x\n", n,
+		" %8s(%04d/%04d) %c%c%c%c%c%c%c%c <->"
+		" %8s(%04d/%04d) %c%c%c%c%c%c%c%c : %5x\n", n,
 		chstate(s->state), s->tail, s->head,
 		s->fDSR ? 'D' : 'd',
 		s->fCTS ? 'C' : 'c',
@@ -209,6 +209,7 @@ static int dump_ch(char *buf, int max, int n,
 		s->fHEAD ? 'W' : 'w',
 		s->fTAIL ? 'R' : 'r',
 		s->fSTATE ? 'S' : 's',
+		s->fBLOCKREADINTR ? 'B' : 'b',
 		chstate(r->state), r->tail, r->head,
 		r->fDSR ? 'D' : 'd',
 		r->fCTS ? 'R' : 'r',
@@ -217,6 +218,7 @@ static int dump_ch(char *buf, int max, int n,
 		r->fHEAD ? 'W' : 'w',
 		r->fTAIL ? 'R' : 'r',
 		r->fSTATE ? 'S' : 's',
+		s->fBLOCKREADINTR ? 'B' : 'b',
 		size
 		);
 }
