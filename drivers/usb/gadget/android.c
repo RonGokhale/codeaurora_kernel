@@ -226,6 +226,10 @@ static int __ref android_bind_config(struct usb_configuration *c)
 	if (should_bind_functions(dev)) {
 		bind_functions(dev);
 		android_set_default_product(dev->product_id);
+	} else {
+		/* Defer enumeration until all functions are bounded */
+		if (c->cdev && c->cdev->gadget)
+			usb_gadget_disconnect(c->cdev->gadget);
 	}
 
 	return 0;
@@ -408,7 +412,11 @@ void android_register_function(struct android_usb_function *f)
 	if (dev && should_bind_functions(dev)) {
 		bind_functions(dev);
 		android_set_default_product(dev->product_id);
+		/* All function are bounded. Enable enumeration */
+		if (dev->cdev && dev->cdev->gadget)
+			usb_gadget_connect(dev->cdev->gadget);
 	}
+
 }
 
 /**
