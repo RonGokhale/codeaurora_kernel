@@ -267,6 +267,28 @@ static int ulpi_write(struct usb_info *ui, unsigned val, unsigned reg)
 	return 0;
 }
 
+static void msm_hsusb_set_speed(struct usb_info *ui)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&ui->lock, flags);
+	switch (readl(USB_PORTSC) & PORTSC_PSPD_MASK) {
+	case PORTSC_PSPD_FS:
+		dev_dbg(&ui->pdev->dev, "portchange USB_SPEED_FULL\n");
+		ui->gadget.speed = USB_SPEED_FULL;
+		break;
+	case PORTSC_PSPD_LS:
+		dev_dbg(&ui->pdev->dev, "portchange USB_SPEED_LOW\n");
+		ui->gadget.speed = USB_SPEED_LOW;
+		break;
+	case PORTSC_PSPD_HS:
+		dev_dbg(&ui->pdev->dev, "portchange USB_SPEED_HIGH\n");
+		ui->gadget.speed = USB_SPEED_HIGH;
+		break;
+	}
+	spin_unlock_irqrestore(&ui->lock, flags);
+}
+
 static void msm_hsusb_set_state(enum usb_device_state state)
 {
 	unsigned long flags;
@@ -935,6 +957,18 @@ static void handle_setup(struct usb_info *ui)
 			atomic_set(&ui->configured, !!ctl.wValue);
 			msm_hsusb_set_state(USB_STATE_CONFIGURED);
 		} else if (ctl.bRequest == USB_REQ_SET_ADDRESS) {
+			/*
+			 * Gadget speed should be set when PCI interrupt
+			 * occurs. But sometimes, PCI interrupt is not
+			 * occuring after reset. Hence update the gadget
+			 * speed here.
+			 */
+			if (ui->gadget.speed == USB_SPEED_UNKNOWN) {
+				dev_info(&ui->pdev->dev,
+					"PCI intr missed"
+					"set speed explictly\n");
+				msm_hsusb_set_speed(ui);
+			}
 			msm_hsusb_set_state(USB_STATE_ADDRESS);
 
 			/* write address delayed (will take effect
@@ -1145,26 +1179,7 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 		return IRQ_HANDLED;
 
 	if (n & STS_PCI) {
-		switch (readl(USB_PORTSC) & PORTSC_PSPD_MASK) {
-		case PORTSC_PSPD_FS:
-			dev_info(&ui->pdev->dev, "portchange USB_SPEED_FULL\n");
-			spin_lock_irqsave(&ui->lock, flags);
-			ui->gadget.speed = USB_SPEED_FULL;
-			spin_unlock_irqrestore(&ui->lock, flags);
-			break;
-		case PORTSC_PSPD_LS:
-			dev_info(&ui->pdev->dev, "portchange USB_SPEED_LOW\n");
-			spin_lock_irqsave(&ui->lock, flags);
-			ui->gadget.speed = USB_SPEED_LOW;
-			spin_unlock_irqrestore(&ui->lock, flags);
-			break;
-		case PORTSC_PSPD_HS:
-			dev_info(&ui->pdev->dev, "portchange USB_SPEED_HIGH\n");
-			spin_lock_irqsave(&ui->lock, flags);
-			ui->gadget.speed = USB_SPEED_HIGH;
-			spin_unlock_irqrestore(&ui->lock, flags);
-			break;
-		}
+		msm_hsusb_set_speed(ui);
 		if (atomic_read(&ui->configured)) {
 			wake_lock(&ui->wlock);
 
