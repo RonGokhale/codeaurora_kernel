@@ -342,7 +342,10 @@ int adm_open_mixer(int port_id, int path, int rate,
 		open.mode = path;
 		open.endpoint_id1 = port_id;
 		open.endpoint_id2 = 0xFFFF;
-		open.topology_id  = topology;
+
+		open.topology_id = get_adm_topology();
+		if (open.topology_id  == 0)
+			open.topology_id = topology;
 
 		open.channel_config = channel_mode & 0x00FF;
 		open.rate  = rate;
@@ -433,7 +436,10 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology)
 		open.mode = path;
 		open.endpoint_id1 = port_id;
 		open.endpoint_id2 = 0xFFFF;
-		open.topology_id  = topology;
+
+		open.topology_id = get_adm_topology();
+		if (open.topology_id  == 0)
+			open.topology_id = topology;
 
 		open.channel_config = channel_mode & 0x00FF;
 		open.rate  = rate;

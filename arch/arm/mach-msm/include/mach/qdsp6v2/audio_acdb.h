@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -50,6 +50,11 @@ struct audproc_buffer_data {
 	uint32_t	phys_addr[NUM_AUDPROC_BUFFERS];
 };
 
+uint32_t get_voice_rx_topology(void);
+uint32_t get_voice_tx_topology(void);
+uint32_t get_adm_topology(void);
+uint32_t get_asm_topology(void);
+void get_anc_cal(struct acdb_cal_block *cal_block);
 void get_audproc_buffer_data(struct audproc_buffer_data *cal_buffers);
 void get_audproc_cal(int32_t path, struct acdb_cal_block *cal_block);
 void get_audstrm_cal(int32_t path, struct acdb_cal_block *cal_block);
@@ -58,6 +63,5 @@ void get_vocproc_cal(struct acdb_cal_data *cal_data);
 void get_vocstrm_cal(struct acdb_cal_data *cal_data);
 void get_vocvol_cal(struct acdb_cal_data *cal_data);
 void get_sidetone_cal(struct sidetone_cal *cal_data);
-void get_anc_cal(struct acdb_cal_block *cal_block);
 
 #endif

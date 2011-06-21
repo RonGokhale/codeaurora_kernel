@@ -16,6 +16,7 @@
 #include <linux/uaccess.h>
 #include <linux/wait.h>
 #include <linux/mutex.h>
+#include <mach/qdsp6v2/audio_acdb.h>
 #include "sound/apr_audio.h"
 #include "sound/q6afe.h"
 #include "q6voice.h"
@@ -1006,9 +1007,17 @@ static int voice_send_set_device_cmd(struct voice_data *v)
 	cvp_setdev_cmd.hdr.token = 0;
 	cvp_setdev_cmd.hdr.opcode = VSS_IVOCPROC_CMD_SET_DEVICE;
 
+	/* Use default topology if invalid value in ACDB */
 	cvp_setdev_cmd.cvp_set_device.tx_topology_id =
+				get_voice_tx_topology();
+	if (cvp_setdev_cmd.cvp_set_device.tx_topology_id == 0)
+		cvp_setdev_cmd.cvp_set_device.tx_topology_id =
 				VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS;
+
 	cvp_setdev_cmd.cvp_set_device.rx_topology_id =
+				get_voice_rx_topology();
+	if (cvp_setdev_cmd.cvp_set_device.rx_topology_id == 0)
+		cvp_setdev_cmd.cvp_set_device.rx_topology_id =
 				VSS_IVOCPROC_TOPOLOGY_ID_RX_DEFAULT;
 	cvp_setdev_cmd.cvp_set_device.tx_port_id = v->dev_tx.port_id;
 	cvp_setdev_cmd.cvp_set_device.rx_port_id = v->dev_rx.port_id;
@@ -1116,10 +1125,20 @@ static int voice_setup_vocproc(struct voice_data *v)
 	cvp_session_cmd.hdr.token = 0;
 	cvp_session_cmd.hdr.opcode =
 			VSS_IVOCPROC_CMD_CREATE_FULL_CONTROL_SESSION;
+
+	/* Use default topology if invalid value in ACDB */
 	cvp_session_cmd.cvp_session.tx_topology_id =
+				get_voice_tx_topology();
+	if (cvp_session_cmd.cvp_session.tx_topology_id == 0)
+		cvp_session_cmd.cvp_session.tx_topology_id =
 			VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS;
+
 	cvp_session_cmd.cvp_session.rx_topology_id =
+				get_voice_rx_topology();
+	if (cvp_session_cmd.cvp_session.rx_topology_id == 0)
+		cvp_session_cmd.cvp_session.rx_topology_id =
 			VSS_IVOCPROC_TOPOLOGY_ID_RX_DEFAULT;
+
 	cvp_session_cmd.cvp_session.direction = 2; /*tx and rx*/
 	cvp_session_cmd.cvp_session.network_id = VSS_NETWORK_ID_DEFAULT;
 	cvp_session_cmd.cvp_session.tx_port_id = v->dev_tx.port_id;

@@ -1364,13 +1364,22 @@ static int voice_set_device(struct voice_data *v)
 		goto fail;
 	}
 
-	if (dev_tx_info->channel_mode > 1)
-		cvp_setdev_cmd.cvp_set_device.tx_topology_id =
-			VSS_IVOCPROC_TOPOLOGY_ID_TX_DM_FLUENCE;
-	else
-		cvp_setdev_cmd.cvp_set_device.tx_topology_id =
-			VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS;
+	cvp_setdev_cmd.cvp_set_device.tx_topology_id =
+				get_voice_tx_topology();
+	if (cvp_setdev_cmd.cvp_set_device.tx_topology_id == 0) {
+		if (dev_tx_info->channel_mode > 1)
+			cvp_setdev_cmd.cvp_set_device.tx_topology_id =
+				VSS_IVOCPROC_TOPOLOGY_ID_TX_DM_FLUENCE;
+		else
+			cvp_setdev_cmd.cvp_set_device.tx_topology_id =
+				VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS;
+	}
+
+	/* Use default topology if invalid value in ACDB */
 	cvp_setdev_cmd.cvp_set_device.rx_topology_id =
+				get_voice_rx_topology();
+	if (cvp_setdev_cmd.cvp_set_device.rx_topology_id == 0)
+		cvp_setdev_cmd.cvp_set_device.rx_topology_id =
 			VSS_IVOCPROC_TOPOLOGY_ID_RX_DEFAULT;
 	cvp_setdev_cmd.cvp_set_device.tx_port_id = v->dev_tx.dev_port_id;
 	cvp_setdev_cmd.cvp_set_device.rx_port_id = v->dev_rx.dev_port_id;
@@ -1484,14 +1493,24 @@ static int voice_setup_modem_voice(struct voice_data *v)
 		goto fail;
 	}
 
-	if (dev_tx_info->channel_mode > 1)
-		cvp_session_cmd.cvp_session.tx_topology_id =
-			VSS_IVOCPROC_TOPOLOGY_ID_TX_DM_FLUENCE;
-	else
-		cvp_session_cmd.cvp_session.tx_topology_id =
-			VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS;
+	/* Use default topology if invalid value in ACDB */
+	cvp_session_cmd.cvp_session.tx_topology_id =
+				get_voice_tx_topology();
+	if (cvp_session_cmd.cvp_session.tx_topology_id == 0) {
+		if (dev_tx_info->channel_mode > 1)
+			cvp_session_cmd.cvp_session.tx_topology_id =
+				VSS_IVOCPROC_TOPOLOGY_ID_TX_DM_FLUENCE;
+		else
+			cvp_session_cmd.cvp_session.tx_topology_id =
+				VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS;
+	}
+
 	cvp_session_cmd.cvp_session.rx_topology_id =
+				get_voice_rx_topology();
+	if (cvp_session_cmd.cvp_session.rx_topology_id == 0)
+		cvp_session_cmd.cvp_session.rx_topology_id =
 			VSS_IVOCPROC_TOPOLOGY_ID_RX_DEFAULT;
+
 	cvp_session_cmd.cvp_session.direction = 2; /*tx and rx*/
 	cvp_session_cmd.cvp_session.network_id = VSS_NETWORK_ID_DEFAULT;
 	cvp_session_cmd.cvp_session.tx_port_id = v->dev_tx.dev_port_id;

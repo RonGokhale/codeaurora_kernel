@@ -42,11 +42,15 @@ struct acdb_data {
 	struct acdb_cal_block	anc_cal;
 
 	/* AudProc Cal */
+	uint32_t		adm_topology;
+	uint32_t		asm_topology;
 	struct acdb_cal_block	audproc_cal[MAX_AUDPROC_TYPES];
 	struct acdb_cal_block	audstrm_cal[MAX_AUDPROC_TYPES];
 	struct acdb_cal_block	audvol_cal[MAX_AUDPROC_TYPES];
 
 	/* VocProc Cal */
+	uint32_t                voice_rx_topology;
+	uint32_t                voice_tx_topology;
 	struct acdb_cal_block	vocproc_cal[MAX_NETWORKS];
 	struct acdb_cal_block	vocstrm_cal[MAX_NETWORKS];
 	struct acdb_cal_block	vocvol_cal[MAX_NETWORKS];
@@ -68,6 +72,46 @@ struct acdb_data {
 
 static struct acdb_data		acdb_data;
 static atomic_t usage_count;
+
+uint32_t get_voice_rx_topology(void)
+{
+	return acdb_data.voice_rx_topology;
+}
+
+void store_voice_rx_topology(uint32_t topology)
+{
+	acdb_data.voice_rx_topology = topology;
+}
+
+uint32_t get_voice_tx_topology(void)
+{
+	return acdb_data.voice_tx_topology;
+}
+
+void store_voice_tx_topology(uint32_t topology)
+{
+	acdb_data.voice_tx_topology = topology;
+}
+
+uint32_t get_adm_topology(void)
+{
+	return acdb_data.adm_topology;
+}
+
+void store_adm_topology(uint32_t topology)
+{
+	acdb_data.adm_topology = topology;
+}
+
+uint32_t get_asm_topology(void)
+{
+	return acdb_data.asm_topology;
+}
+
+void store_asm_topology(uint32_t topology)
+{
+	acdb_data.asm_topology = topology;
+}
 
 void get_anc_cal(struct acdb_cal_block *cal_block)
 {
@@ -568,6 +612,7 @@ static long acdb_ioctl(struct file *f,
 	s32			result = 0;
 	s32			audproc_path;
 	s32			size;
+	u32			topology;
 	struct cal_block	data[MAX_NETWORKS];
 	pr_debug("%s\n", __func__);
 
@@ -581,10 +626,12 @@ static long acdb_ioctl(struct file *f,
 		}
 
 		if (copy_from_user(&acdb_data.pmem_fd, (void *)arg,
-					sizeof(acdb_data.pmem_fd)))
+					sizeof(acdb_data.pmem_fd))) {
+			pr_err("%s: fail to copy pmem handle!\n", __func__);
 			result = -EFAULT;
-		else
+		} else {
 			result = register_pmem();
+		}
 		mutex_unlock(&acdb_data.acdb_mutex);
 		goto done;
 
@@ -593,6 +640,38 @@ static long acdb_ioctl(struct file *f,
 		mutex_lock(&acdb_data.acdb_mutex);
 		deregister_pmem();
 		mutex_unlock(&acdb_data.acdb_mutex);
+		goto done;
+	case AUDIO_SET_VOICE_RX_TOPOLOGY:
+		if (copy_from_user(&topology, (void *)arg,
+				sizeof(topology))) {
+			pr_err("%s: fail to copy topology!\n", __func__);
+			result = -EFAULT;
+		}
+		store_voice_rx_topology(topology);
+		goto done;
+	case AUDIO_SET_VOICE_TX_TOPOLOGY:
+		if (copy_from_user(&topology, (void *)arg,
+				sizeof(topology))) {
+			pr_err("%s: fail to copy topology!\n", __func__);
+			result = -EFAULT;
+		}
+		store_voice_tx_topology(topology);
+		goto done;
+	case AUDIO_SET_ADM_TOPOLOGY:
+		if (copy_from_user(&topology, (void *)arg,
+				sizeof(topology))) {
+			pr_err("%s: fail to copy topology!\n", __func__);
+			result = -EFAULT;
+		}
+		store_adm_topology(topology);
+		goto done;
+	case AUDIO_SET_ASM_TOPOLOGY:
+		if (copy_from_user(&topology, (void *)arg,
+				sizeof(topology))) {
+			pr_err("%s: fail to copy topology!\n", __func__);
+			result = -EFAULT;
+		}
+		store_asm_topology(topology);
 		goto done;
 	}
 
