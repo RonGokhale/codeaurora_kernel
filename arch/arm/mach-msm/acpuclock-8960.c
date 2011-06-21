@@ -329,6 +329,9 @@ static void set_pri_clk_src(struct scalable *sc, uint32_t pri_src_sel)
 	regval &= ~0x3;
 	regval |= (pri_src_sel & 0x3);
 	writel_cp15_l2ind(regval, sc->l2cpmr_iaddr);
+	/* Wait for switch to complete. */
+	mb();
+	udelay(1);
 }
 
 /* Set the selected source on secondary MUX. */
@@ -340,6 +343,9 @@ static void set_sec_clk_src(struct scalable *sc, uint32_t sec_src_sel)
 	regval &= ~(0x3 << 2);
 	regval |= ((sec_src_sel & 0x3) << 2);
 	writel_cp15_l2ind(regval, sc->l2cpmr_iaddr);
+	/* Wait for switch to complete. */
+	mb();
+	udelay(1);
 }
 
 /* Enable an already-configured HFPLL. */
