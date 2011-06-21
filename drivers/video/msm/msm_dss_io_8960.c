@@ -494,8 +494,6 @@ void mipi_dsi_phy_init(int panel_ndx, struct msm_panel_info const *panel_info,
 		wmb();
 		off += 4;
 	}
-	clk_enable(dsi_byte_div_clk);
-	clk_enable(dsi_esc_clk);
 
 	if (target_type == 1)
 		mipi_dsi_configure_serdes();
@@ -519,6 +517,8 @@ void mipi_dsi_clk_enable(void)
 	if (clk_set_rate(dsi_esc_clk, 2) < 0) /* divided by 2 */
 		pr_err("%s: dsi_esc_clk - "
 			"clk_set_rate failed\n", __func__);
+	clk_enable(dsi_byte_div_clk);
+	clk_enable(dsi_esc_clk);
 	mipi_dsi_pclk_ctrl(&dsi_pclk, 1);
 	mipi_dsi_clk_ctrl(&dsicore_clk, 1);
 	mipi_dsi_ahb_en();

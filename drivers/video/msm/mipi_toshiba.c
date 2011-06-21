@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2008-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -172,13 +172,13 @@ static struct dsi_cmd_desc toshiba_display_on_cmds[] = {
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 0, sizeof(set_add_mode), set_add_mode},
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 0, sizeof(set_pixel_format),
 		set_pixel_format},
-	{DTYPE_DCS_WRITE, 1, 0, 0, 10, sizeof(exit_sleep), exit_sleep},
+	{DTYPE_DCS_WRITE, 1, 0, 0, 120, sizeof(exit_sleep), exit_sleep},
 	{DTYPE_DCS_WRITE, 1, 0, 0, 50, sizeof(display_on), display_on}
 };
 #endif
 
 static struct dsi_cmd_desc toshiba_display_off_cmds[] = {
-	{DTYPE_DCS_WRITE, 1, 0, 0, 10, sizeof(display_off), display_off},
+	{DTYPE_DCS_WRITE, 1, 0, 0, 50, sizeof(display_off), display_off},
 	{DTYPE_DCS_WRITE, 1, 0, 0, 120, sizeof(enter_sleep), enter_sleep}
 };
 
