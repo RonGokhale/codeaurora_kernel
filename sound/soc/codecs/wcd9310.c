@@ -623,7 +623,7 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 			0, 0),
 
 	/* Digital Mic */
-	SND_SOC_DAPM_INPUT("DMIC OUT"),
+	SND_SOC_DAPM_INPUT("DMIC1 IN"),
 	SND_SOC_DAPM_MIC("DMIC1", &tabla_codec_enable_dmic1),
 
 	/* Sidetone */
@@ -646,6 +646,8 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"SLIM TX6 MUX", "DEC6", "DEC6 MUX"},
 
 	{"SLIM TX7", NULL, "SLIM TX7 MUX"},
+	{"SLIM TX7 MUX", "DEC1", "DEC1 MUX"},
+	{"SLIM TX7 MUX", "DEC7", "DEC7 MUX"},
 	{"SLIM TX7 MUX", "DEC5", "DEC5 MUX"},
 	{"SLIM TX7 MUX", "DEC6", "DEC6 MUX"},
 
@@ -696,7 +698,10 @@ static const struct snd_soc_dapm_route audio_map[] = {
 
 	/* Digital Mic */
 	{"DEC1 MUX", "DMIC1", "DMIC1"},
-	{"DMIC1", NULL, "DMIC OUT"},
+	{"DEC7 MUX", "DMIC1", "DMIC1"},
+	{"DMIC1", NULL, "MIC BIAS1"},
+	{"MIC BIAS1", NULL, "DMIC1 IN"},
+
 
 	/* Sidetone (IIR1) */
 	{"RX1 MIX1 INP1", "IIR1", "IIR1"},
@@ -1376,10 +1381,15 @@ static int tabla_codec_probe(struct snd_soc_codec *codec)
 	for (tx_channel = 0; tx_channel < 6; tx_channel++) {
 		snd_soc_update_bits(codec,
 			TABLA_A_CDC_CONN_TX_SB_B1_CTL + tx_channel, 0x30, 0x20);
+		snd_soc_update_bits(codec,
+			TABLA_A_CDC_TX1_MUX_CTL + tx_channel, 0x8, 0x0);
+
 	}
 	for (tx_channel = 6; tx_channel < 10; tx_channel++) {
 		snd_soc_update_bits(codec,
 			TABLA_A_CDC_CONN_TX_SB_B1_CTL + tx_channel, 0x60, 0x40);
+		snd_soc_update_bits(codec,
+			TABLA_A_CDC_TX1_MUX_CTL + tx_channel, 0x8, 0x0);
 	}
 	snd_soc_write(codec, TABLA_A_CDC_CONN_RX_SB_B1_CTL, 0xAA);
 	snd_soc_write(codec, TABLA_A_CDC_CONN_RX_SB_B2_CTL, 0xAA);
