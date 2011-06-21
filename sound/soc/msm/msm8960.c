@@ -371,7 +371,7 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 	/* Backend BT/FM DAI Links */
 	{
 		.name = LPASS_BE_INT_BT_SCO_RX,
-		.stream_name = "Int BT-SCO Playback",
+		.stream_name = "Internal BT-SCO Playback",
 		.cpu_dai_name = "msm-dai-q6.12288",
 		.platform_name = "msm-pcm-routing",
 		.codec_name = "msm-stub-codec.1",
@@ -381,7 +381,7 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 	},
 	{
 		.name = LPASS_BE_INT_BT_SCO_TX,
-		.stream_name = "Int BT-SCO Capture",
+		.stream_name = "Internal BT-SCO Capture",
 		.cpu_dai_name = "msm-dai-q6.12289",
 		.platform_name = "msm-pcm-routing",
 		.codec_name = "msm-stub-codec.1",
@@ -391,7 +391,7 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 	},
 	{
 		.name = LPASS_BE_INT_FM_RX,
-		.stream_name = "Int FM Playback",
+		.stream_name = "Internal FM Playback",
 		.cpu_dai_name = "msm-dai-q6.12292",
 		.platform_name = "msm-pcm-routing",
 		.codec_name = "msm-stub-codec.1",
@@ -402,7 +402,7 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 	},
 	{
 		.name = LPASS_BE_INT_FM_TX,
-		.stream_name = "Int FM Capture",
+		.stream_name = "Internal FM Capture",
 		.cpu_dai_name = "msm-dai-q6.12293",
 		.platform_name = "msm-pcm-routing",
 		.codec_name = "msm-stub-codec.1",
