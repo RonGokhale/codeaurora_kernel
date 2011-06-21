@@ -188,14 +188,6 @@ static int videobuf_pmem_contig_user_get(struct videobuf_contig_pmem *mem,
 	mem->phyaddr += vb->boff;
 	mem->y_off = 0;
 	mem->cbcr_off = (vb->size)*2/3;
-
-	mem->vaddr = ioremap(mem->phyaddr, mem->size);
-	if (!mem->vaddr) {
-		pr_err("%s: ioremap failed\n", __func__);
-		put_pmem_file(mem->file);
-		return -ENOMEM;
-	}
-
 	mem->is_userptr = 1;
 	return rc;
 }
