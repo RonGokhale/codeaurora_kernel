@@ -2305,10 +2305,10 @@ static ssize_t tma340_vkeys_show(struct kobject *kobj,
 			struct kobj_attribute *attr, char *buf)
 {
 	return snprintf(buf, 200,
-	__stringify(EV_KEY) ":" __stringify(KEY_BACK) ":90:1057:97:120"
-	":" __stringify(EV_KEY) ":" __stringify(KEY_MENU) ":220:1057:97:120"
-	":" __stringify(EV_KEY) ":" __stringify(KEY_HOME) ":370:1057:97:120"
-	":" __stringify(EV_KEY) ":" __stringify(KEY_SEARCH) ":520:1057:97:120"
+	__stringify(EV_KEY) ":" __stringify(KEY_BACK) ":73:1120:97:97"
+	":" __stringify(EV_KEY) ":" __stringify(KEY_MENU) ":230:1120:97:97"
+	":" __stringify(EV_KEY) ":" __stringify(KEY_HOME) ":389:1120:97:97"
+	":" __stringify(EV_KEY) ":" __stringify(KEY_SEARCH) ":544:1120:97:97"
 	"\n");
 }
 
