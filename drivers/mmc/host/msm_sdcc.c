@@ -2236,8 +2236,6 @@ static int msmsdcc_start_signal_voltage_switch(struct mmc_host *mmc,
 	unsigned long flags;
 	int err = 0;
 
-	spin_lock_irqsave(&host->lock, flags);
-
 	if (ios->signal_voltage == MMC_SIGNAL_VOLTAGE_330) {
 		/* Change voltage level of VDDPX to high voltage */
 		if (msmsdcc_tune_vdd_pad_level(host, 2950000)) {
@@ -2250,6 +2248,7 @@ static int msmsdcc_start_signal_voltage_switch(struct mmc_host *mmc,
 		goto out;
 	}
 
+	spin_lock_irqsave(&host->lock, flags);
 	/*
 	 * If we are here means voltage switch from high voltage to
 	 * low voltage is required
@@ -2263,12 +2262,14 @@ static int msmsdcc_start_signal_voltage_switch(struct mmc_host *mmc,
 		err = -EAGAIN;
 		pr_err("%s: %s: MCIDATIN_3_0 is still not all zeros",
 			mmc_hostname(mmc), __func__);
-		goto out;
+		goto out_unlock;
 	}
 
 	/* Stop SD CLK output. */
 	writel_relaxed((readl_relaxed(host->base + MMCICLOCK) |
 			MCI_CLK_PWRSAVE), host->base + MMCICLOCK);
+
+	spin_unlock_irqrestore(&host->lock, flags);
 
 	/*
 	 * Switch VDDPX from high voltage to low voltage
@@ -2280,6 +2281,7 @@ static int msmsdcc_start_signal_voltage_switch(struct mmc_host *mmc,
 		goto out;
 	}
 
+	spin_lock_irqsave(&host->lock, flags);
 	writel_relaxed((readl_relaxed(host->base + MMCICLOCK) |
 			IO_PAD_PWR_SWITCH), host->base + MMCICLOCK);
 	host->io_pad_pwr_switch = 1;
@@ -2308,11 +2310,12 @@ static int msmsdcc_start_signal_voltage_switch(struct mmc_host *mmc,
 		pr_err("%s: %s: MCIDATIN_3_0 are still not all ones",
 			mmc_hostname(mmc), __func__);
 		err = -EAGAIN;
-		goto out;
+		goto out_unlock;
 	}
 
-out:
+out_unlock:
 	spin_unlock_irqrestore(&host->lock, flags);
+out:
 	return err;
 }
 
