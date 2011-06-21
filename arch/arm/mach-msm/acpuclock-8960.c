@@ -31,6 +31,7 @@
 #include <mach/rpm-regulator.h>
 #include <mach/msm_bus.h>
 #include <mach/msm_bus_board.h>
+#include <mach/socinfo.h>
 
 #include "acpuclock.h"
 
@@ -316,7 +317,7 @@ static void writel_cp15_l2ind(uint32_t regval, uint32_t addr)
 /* Get the selected source on primary MUX. */
 static int get_pri_clk_src(struct scalable *sc)
 {
-	uint32_t regval = 0;
+	uint32_t regval;
 
 	regval = readl_cp15_l2ind(sc->l2cpmr_iaddr);
 	return regval & 0x3;
@@ -334,6 +335,15 @@ static void set_pri_clk_src(struct scalable *sc, uint32_t pri_src_sel)
 	/* Wait for switch to complete. */
 	mb();
 	udelay(1);
+}
+
+/* Get the selected source on secondary MUX. */
+static int get_sec_clk_src(struct scalable *sc)
+{
+	uint32_t regval;
+
+	regval = readl_cp15_l2ind(sc->l2cpmr_iaddr);
+	return (regval >> 2) & 0x3;
 }
 
 /* Set the selected source on secondary MUX. */
@@ -879,9 +889,28 @@ static int __cpuinit acpuclock_cpu_callback(struct notifier_block *nfb,
 					    unsigned long action, void *hcpu)
 {
 	static int prev_khz[NR_CPUS];
+	static int prev_pri_src[NR_CPUS];
+	static int prev_sec_src[NR_CPUS];
 	int cpu = (int)hcpu;
+	uint32_t soc_platform_version = socinfo_get_platform_version();
 
 	switch (action) {
+	case CPU_DYING:
+	case CPU_DYING_FROZEN:
+		/*
+		 * 8960 HW versions < 2.1 must set their primary and secondary
+		 * mux source selections to QSB before L2 power collapse and
+		 * restore it after.
+		 */
+		if (SOCINFO_VERSION_MAJOR(soc_platform_version) < 2 ||
+		   (SOCINFO_VERSION_MAJOR(soc_platform_version) == 2 &&
+		    SOCINFO_VERSION_MINOR(soc_platform_version) < 1)) {
+			prev_sec_src[cpu] = get_sec_clk_src(&scalable[cpu]);
+			prev_pri_src[cpu] = get_pri_clk_src(&scalable[cpu]);
+			set_sec_clk_src(&scalable[cpu], SEC_SRC_SEL_QSB);
+			set_pri_clk_src(&scalable[cpu], PRI_SRC_SEL_SEC_SRC);
+		}
+		break;
 	case CPU_DEAD:
 	case CPU_DEAD_FROZEN:
 		prev_khz[cpu] = acpuclk_get_rate(cpu);
@@ -895,6 +924,15 @@ static int __cpuinit acpuclock_cpu_callback(struct notifier_block *nfb,
 		if (WARN_ON(!prev_khz[cpu]))
 			prev_khz[cpu] = acpu_freq_tbl->speed.khz;
 		acpuclk_set_rate(cpu, prev_khz[cpu], SETRATE_HOTPLUG);
+		break;
+	case CPU_STARTING:
+	case CPU_STARTING_FROZEN:
+		if (SOCINFO_VERSION_MAJOR(soc_platform_version) < 2 ||
+		   (SOCINFO_VERSION_MAJOR(soc_platform_version) == 2 &&
+		    SOCINFO_VERSION_MINOR(soc_platform_version) < 1)) {
+			set_sec_clk_src(&scalable[cpu], prev_sec_src[cpu]);
+			set_pri_clk_src(&scalable[cpu], prev_pri_src[cpu]);
+		}
 		break;
 	default:
 		break;
