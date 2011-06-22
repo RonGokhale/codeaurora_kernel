@@ -421,6 +421,85 @@ static int tabla_codec_enable_dec_clock(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static int tabla_codec_reset_interpolator_1(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x1,
+			0x1);
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x1,
+			0x0);
+		break;
+	}
+	return 0;
+}
+
+static int tabla_codec_reset_interpolator_2(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x2,
+			0x2);
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x2,
+			0x0);
+		break;
+	}
+	return 0;
+}
+
+static int tabla_codec_reset_interpolator_3(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x4,
+			0x4);
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x4,
+			0x0);
+		break;
+	}
+	return 0;
+}
+
+static int tabla_codec_reset_interpolator_4(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x8,
+			0x8);
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x8,
+			0x0);
+		break;
+	}
+	return 0;
+}
+
+static int tabla_codec_reset_interpolator_5(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x10,
+			0x10);
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x10,
+			0x0);
+		break;
+	}
+	return 0;
+}
 
 static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 	/*RX stuff */
@@ -437,8 +516,9 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 		tabla_codec_enable_charge_pump, SND_SOC_DAPM_POST_PMU |
 			SND_SOC_DAPM_PRE_PMD),
 	SND_SOC_DAPM_PGA("RX BIAS", TABLA_A_RX_COM_BIAS, 7, 0, NULL, 0),
-	SND_SOC_DAPM_MUX("RX1 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 0, 0,
-		&rx_mix1_inp1_mux),
+	SND_SOC_DAPM_MUX_E("RX1 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 0, 0,
+		&rx_mix1_inp1_mux, tabla_codec_reset_interpolator_1,
+		SND_SOC_DAPM_PRE_PMU),
 	SND_SOC_DAPM_AIF_IN("SLIM RX1", "AIF1 Playback", 0,
 		TABLA_A_CDC_RX1_B6_CTL, 5, 0),
 
@@ -446,8 +526,9 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 	SND_SOC_DAPM_PGA_E("RX2 CP", SND_SOC_NOPM, 0, 0, NULL, 0,
 		tabla_codec_enable_charge_pump, SND_SOC_DAPM_POST_PMU |
 			SND_SOC_DAPM_PRE_PMD),
-	SND_SOC_DAPM_MUX("RX2 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 1, 0,
-		&rx2_mix1_inp1_mux),
+	SND_SOC_DAPM_MUX_E("RX2 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 1, 0,
+		&rx2_mix1_inp1_mux, tabla_codec_reset_interpolator_2,
+		SND_SOC_DAPM_PRE_PMU),
 	SND_SOC_DAPM_AIF_IN("SLIM RX2", "AIF1 Playback", 0,
 		TABLA_A_CDC_RX2_B6_CTL, 5, 0),
 
@@ -467,18 +548,21 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 
 	SND_SOC_DAPM_SWITCH("LINEOUT1 DAC", TABLA_A_RX_LINE_1_DAC_CTL, 7, 0,
 		&lineout1_switch),
-	SND_SOC_DAPM_MUX("RX3 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 2, 0,
-		&rx3_mix1_inp1_mux),
+	SND_SOC_DAPM_MUX_E("RX3 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 2, 0,
+		&rx3_mix1_inp1_mux, tabla_codec_reset_interpolator_3,
+		SND_SOC_DAPM_PRE_PMU),
 
 	SND_SOC_DAPM_PGA_E("LINEOUT3", TABLA_A_RX_LINE_CNP_EN, 2, 0, NULL, 0,
 		tabla_codec_delay_40ms, SND_SOC_DAPM_PRE_PMU),
 
 	SND_SOC_DAPM_SWITCH("LINEOUT3 DAC", TABLA_A_RX_LINE_3_DAC_CTL, 7, 0,
 		&lineout3_switch),
-	SND_SOC_DAPM_MUX("RX4 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 3, 0,
-		&rx4_mix1_inp1_mux),
-	SND_SOC_DAPM_MUX("RX5 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 4, 0,
-		&rx5_mix1_inp1_mux),
+	SND_SOC_DAPM_MUX_E("RX4 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 3, 0,
+		&rx4_mix1_inp1_mux, tabla_codec_reset_interpolator_4,
+		SND_SOC_DAPM_PRE_PMU),
+	SND_SOC_DAPM_MUX_E("RX5 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 4, 0,
+		&rx5_mix1_inp1_mux, tabla_codec_reset_interpolator_5,
+		SND_SOC_DAPM_PRE_PMU),
 
 	/* TX */
 	SND_SOC_DAPM_INPUT("AMIC1"),
