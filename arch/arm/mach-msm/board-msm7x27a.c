@@ -112,7 +112,7 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 		.oscio_is_gpo		= false,
 		.io_pullup_ena		= 0,
 		.io_pulldn_ena		= 0,
-		.io_open_drain_ena	= 0xef,
+		.io_open_drain_ena	= 0x23,
 		.irq_summary		= -1,
 	},
 };
