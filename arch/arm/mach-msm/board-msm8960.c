@@ -444,12 +444,6 @@ static struct gpiomux_setting cam_active_3_cfg = {
 	.pull = GPIOMUX_PULL_UP,
 };
 
-static struct gpiomux_setting cam_active_4_cfg = {
-	.func = GPIOMUX_FUNC_2,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
 static struct msm_gpiomux_config msm8960_cam_configs[] __initdata = {
 	{
 		.gpio = 2,
@@ -468,7 +462,7 @@ static struct msm_gpiomux_config msm8960_cam_configs[] __initdata = {
 	{
 		.gpio = 4,
 		.settings = {
-			[GPIOMUX_ACTIVE]    = &cam_active_4_cfg,
+			[GPIOMUX_ACTIVE]    = &cam_active_1_cfg,
 			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
 		},
 	},
