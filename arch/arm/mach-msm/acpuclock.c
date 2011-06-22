@@ -819,7 +819,7 @@ static void __init acpu_freq_tbl_fixup(void)
 	pr_info("L val: PLL0: %d, PLL1: %d, PLL2: %d\n",
 			(int)pll0_l, (int)pll1_l, (int)pll2_l);
 
-	if (cpu_is_msm7x27a()) {
+	if (!cpu_is_msm7x27() && !cpu_is_msm7x25a()) {
 		do {
 			pll4_l = readl_relaxed(PLL4_L_VAL) &
 				soc_pll[ACPU_PLL_4].l_val_mask;
