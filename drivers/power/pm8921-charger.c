@@ -78,6 +78,30 @@
 #define CHG_TTRIM		0x35C
 #define CHG_COMP_OVR		0x20A
 
+enum chg_fsm_state {
+	FSM_STATE_OFF_0 = 0,
+	FSM_STATE_BATFETDET_START_12 = 12,
+	FSM_STATE_BATFETDET_END_16 = 16,
+	FSM_STATE_ON_CHG_HIGHI_1 = 1,
+	FSM_STATE_ATC_2A = 2,
+	FSM_STATE_ATC_2B = 18,
+	FSM_STATE_ON_BAT_3 = 3,
+	FSM_STATE_ATC_FAIL_4 = 4 ,
+	FSM_STATE_DELAY_5 = 5,
+	FSM_STATE_ON_CHG_AND_BAT_6 = 6,
+	FSM_STATE_FAST_CHG_7 = 7,
+	FSM_STATE_TRKL_CHG_8 = 8,
+	FSM_STATE_CHG_FAIL_9 = 9,
+	FSM_STATE_EOC_10 = 10,
+	FSM_STATE_ON_CHG_VREGOK_11 = 11,
+	FSM_STATE_ATC_PAUSE_13 = 13,
+	FSM_STATE_FAST_CHG_PAUSE_14 = 14,
+	FSM_STATE_TRKL_CHG_PAUSE_15 = 15,
+	FSM_STATE_START_BOOT = 20,
+	FSM_STATE_FLCB_VREGOK = 21,
+	FSM_STATE_FLCB = 22,
+};
+
 enum pmic_chg_interrupts {
 	USBIN_VALID_IRQ = 0,
 	USBIN_OV_IRQ,
@@ -111,6 +135,11 @@ enum pmic_chg_interrupts {
 	DCIN_OV_IRQ,
 	DCIN_UV_IRQ,
 	PM_CHG_MAX_INTS,
+};
+
+struct bms_notify {
+	int			is_charging;
+	struct	work_struct	work;
 };
 
 /**
@@ -149,6 +178,7 @@ struct pm8921_chg_chip {
 	struct power_supply	dc_psy;
 	struct power_supply	batt_psy;
 	struct dentry		*dent;
+	struct bms_notify	bms_notify;
 	DECLARE_BITMAP(enabled_irqs, PM_CHG_MAX_INTS);
 };
 
@@ -420,6 +450,29 @@ static int is_dc_chg_plugged_in(struct pm8921_chg_chip *chip)
 	uv = pm_chg_get_rt_status(chip, DCIN_UV_IRQ);
 
 	return pres && !ov && !uv;
+}
+
+static int is_battery_charging(int fsm_state)
+{
+	switch (fsm_state) {
+	case FSM_STATE_ATC_2A:
+	case FSM_STATE_ATC_2B:
+	case FSM_STATE_ON_CHG_AND_BAT_6:
+	case FSM_STATE_FAST_CHG_7:
+	case FSM_STATE_TRKL_CHG_8:
+		return 1;
+	}
+	return 0;
+}
+
+static void bms_notify(struct work_struct *work)
+{
+	struct bms_notify *n = container_of(work, struct bms_notify, work);
+
+	if (n->is_charging)
+		pm8921_bms_charging_began();
+	else
+		pm8921_bms_charging_end();
 }
 
 static enum power_supply_property pm_power_props[] = {
@@ -800,11 +853,20 @@ static irqreturn_t chgfail_irq_handler(int irq, void *data)
 static irqreturn_t chgstate_irq_handler(int irq, void *data)
 {
 	struct pm8921_chg_chip *chip = data;
+	int new_is_charging = 0, fsm_state;
 
 	pr_debug("state_changed_to=%d\n", pm_chg_get_fsm_state(data));
 	power_supply_changed(&chip->batt_psy);
 	power_supply_changed(&chip->usb_psy);
 	power_supply_changed(&chip->dc_psy);
+
+	fsm_state = pm_chg_get_fsm_state(chip);
+	new_is_charging = is_battery_charging(fsm_state);
+
+	if (chip->bms_notify.is_charging ^ new_is_charging) {
+		chip->bms_notify.is_charging = new_is_charging;
+		schedule_work(&(chip->bms_notify.work));
+	}
 	return IRQ_HANDLED;
 }
 
@@ -980,6 +1042,7 @@ static void free_irqs(struct pm8921_chg_chip *chip)
 static void __devinit determine_initial_state(struct pm8921_chg_chip *chip)
 {
 	unsigned long flags;
+	int fsm_state;
 
 	chip->dc_present = !!is_dc_chg_plugged_in(chip);
 	chip->usb_present = !!is_usb_chg_plugged_in(chip);
@@ -999,11 +1062,17 @@ static void __devinit determine_initial_state(struct pm8921_chg_chip *chip)
 	}
 	spin_unlock_irqrestore(&vbus_lock, flags);
 
+	fsm_state = pm_chg_get_fsm_state(chip);
+	if (is_battery_charging(fsm_state)) {
+		chip->bms_notify.is_charging = 1;
+		pm8921_bms_charging_began();
+	}
+
 	pr_debug("usb = %d, dc = %d  batt = %d state=%d\n",
 			chip->usb_present,
 			chip->dc_present,
 			get_prop_batt_present(chip),
-			pm_chg_get_fsm_state(chip));
+			fsm_state);
 }
 
 struct pm_chg_irq_init_data {
@@ -1424,6 +1493,7 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	the_chip = chip;
 	create_debugfs_entries(chip);
 
+	INIT_WORK(&chip->bms_notify.work, bms_notify);
 	/* determine what state the charger is in */
 	determine_initial_state(chip);
 
