@@ -35,6 +35,7 @@
 /* Header files */
 #include <linux/i2c.h>
 #include <linux/videodev2.h>
+#include <linux/pm_qos_params.h>
 #include <media/v4l2-dev.h>
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-device.h>
@@ -190,6 +191,8 @@ struct msm_cam_media_controller {
 	struct v4l2_subdev *flash_sdev;    /* vpe sub device : VPE */
 	struct msm_cam_config_dev *config_device;
 	struct msm_ispif_fns *ispif_fns;
+
+	struct pm_qos_request_list pm_qos_req_list;
 };
 
 /* abstract camera device represents a VFE and connected sensor */
