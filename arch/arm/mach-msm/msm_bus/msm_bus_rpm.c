@@ -24,6 +24,7 @@
 struct commit_data {
 	uint16_t *bwsum;
 	uint16_t *arb;
+	unsigned long *actarb;
 };
 
 
@@ -132,6 +133,18 @@ int allocate_commit_data(struct msm_bus_fabric_registration *fab_pdata,
 		kfree(*cd);
 		return -ENOMEM;
 	}
+	(*cd)->actarb = kzalloc(((sizeof(unsigned long *)) *
+		(fab_pdata->ntieredslaves * fab_pdata->nmasters) + 1),
+		GFP_KERNEL);
+	if (!(*cd)->actarb) {
+		MSM_FAB_DBG("Couldn't alloc memory for"
+				" slaves\n");
+		kfree((*cd)->bwsum);
+		kfree((*cd)->arb);
+		kfree(*cd);
+		return -ENOMEM;
+	}
+
 	return 0;
 }
 
@@ -141,6 +154,7 @@ void free_commit_data(void *cdata)
 
 	kfree(cd->bwsum);
 	kfree(cd->arb);
+	kfree(cd->actarb);
 	kfree(cd);
 }
 
@@ -163,10 +177,6 @@ struct msm_rpm_iv_pair *allocate_rpm_data(struct msm_bus_fabric_registration
 #define BWMASK 0x7FFF
 #define TIERMASK 0x8000
 #define GET_TIER(n) (((n) & TIERMASK) >> 15)
-#define FORMAT_BW(x) \
-	((x < 0) ? \
-	-(msm_bus_get_bw_bytes(msm_bus_create_bw_tier_pair_bytes(0, -(x)))) : \
-	(msm_bus_get_bw_bytes(msm_bus_create_bw_tier_pair_bytes(0, x))))
 
 void msm_bus_rpm_update_bw(struct msm_bus_inode_info *hop,
 	struct msm_bus_inode_info *info,
@@ -177,7 +187,6 @@ void msm_bus_rpm_update_bw(struct msm_bus_inode_info *hop,
 	int index, i, j;
 	struct commit_data *sel_cd = (struct commit_data *)sel_cdata;
 
-	add_bw = FORMAT_BW(add_bw);
 	for (i = 0; i < hop->node_info->num_tiers; i++) {
 		for (j = 0; j < info->node_info->num_mports; j++) {
 
@@ -191,8 +200,7 @@ void msm_bus_rpm_update_bw(struct msm_bus_inode_info *hop,
 			/* If there is tier, calculate arb for commit */
 			if (hop->node_info->tier) {
 				uint16_t tier;
-				unsigned long tieredbw = msm_bus_get_bw_bytes(
-					sel_cd->arb[index]);
+				unsigned long tieredbw = sel_cd->actarb[index];
 				if (GET_TIER(sel_cd->arb[index]))
 					tier = MSM_BUS_BW_TIER1;
 				else if (master_tiers)
@@ -210,9 +218,10 @@ void msm_bus_rpm_update_bw(struct msm_bus_inode_info *hop,
 				if (!tieredbw)
 					tier = MSM_BUS_BW_TIER2;
 				/* Update Arb for fab,get HW Mport from enum */
-				sel_cd->arb[index] = (uint16_t)
-				msm_bus_create_bw_tier_pair_bytes(tier,
+				sel_cd->arb[index] =
+					msm_bus_create_bw_tier_pair_bytes(tier,
 					tieredbw);
+				sel_cd->actarb[index] = tieredbw;
 				MSM_BUS_DBG("tier:%d mport: %d tiered_bw:%ld "
 				"bwsum: %ld\n", hop_tier, info->node_info->
 				masterp[i], tieredbw, *hop->link_info.sel_bw);
