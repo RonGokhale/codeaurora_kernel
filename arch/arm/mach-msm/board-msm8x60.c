@@ -6321,7 +6321,7 @@ static u8 read_bahama_ver(void)
 		printk(KERN_ERR
 			 "%s: version read failed: %d\n",
 			__func__, rc);
-			return rc;
+			return VER_UNSUPPORTED;
 	} else {
 		printk(KERN_INFO
 		"%s: version read got: 0x%x\n",
