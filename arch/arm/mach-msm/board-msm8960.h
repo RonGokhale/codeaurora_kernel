@@ -38,4 +38,5 @@ extern struct gpio_regulator_platform_data
 extern struct regulator_init_data msm_saw_regulator_pdata_s5;
 extern struct regulator_init_data msm_saw_regulator_pdata_s6;
 
+extern struct pm8921_bms_battery_data  palladium_1500_data;
 #endif
