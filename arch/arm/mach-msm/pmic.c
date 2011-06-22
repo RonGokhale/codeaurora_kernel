@@ -125,6 +125,7 @@
 #define PMIC_RPC_VER_2_1	0x00020001
 #define PMIC_RPC_VER_3_1	0x00030001
 #define PMIC_RPC_VER_5_1	0x00050001
+#define PMIC_RPC_VER_6_1	0x00060001
 
 /* error bit flags defined by modem side */
 #define PM_ERR_FLAG__PAR1_OUT_OF_RANGE		(0x0001)
@@ -163,6 +164,7 @@ static struct pmic_ctrl pmic_ctrl = {
 
 /* Add newer versions at the top of array */
 static const unsigned int rpc_vers[] = {
+	PMIC_RPC_VER_6_1,
 	PMIC_RPC_VER_5_1,
 	PMIC_RPC_VER_3_1,
 	PMIC_RPC_VER_2_1,
