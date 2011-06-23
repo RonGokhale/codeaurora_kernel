@@ -2841,13 +2841,13 @@ static int mipi_dsi_panel_power(int on)
 			return rc;
 		}
 
-		rc = gpio_direction_output(GPIO_DISPLAY_PWR_EN, 1);
-		if (rc < 0) {
-			pr_err("failed to enable display pwr\n");
-			goto fail_gpio1;
-		}
-
 		if (machine_is_msm7x27a_surf()) {
+			rc = gpio_direction_output(GPIO_DISPLAY_PWR_EN, 1);
+			if (rc < 0) {
+				pr_err("failed to enable display pwr\n");
+				goto fail_gpio1;
+			}
+
 			rc = gpio_request(GPIO_BACKLIGHT_EN, "gpio_bkl_en");
 			if (rc < 0) {
 				pr_err("failed to request gpio_bkl_en\n");
@@ -2886,8 +2886,21 @@ static int mipi_dsi_panel_power(int on)
 			gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN, on);
 			gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, on);
 		} else if (machine_is_msm7x27a_ffa()) {
-			/* This line drives an active low pin on the FFA */
-			gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN, !on);
+			if (on) {
+				/* This line drives an active low pin on FFA */
+				rc = gpio_direction_output(GPIO_DISPLAY_PWR_EN,
+					!on);
+				if (rc < 0)
+					pr_err("failed to set direction for "
+						"display pwr\n");
+			} else {
+				gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN,
+					!on);
+				rc = gpio_direction_input(GPIO_DISPLAY_PWR_EN);
+				if (rc < 0)
+					pr_err("failed to set direction for "
+						"display pwr\n");
+			}
 		}
 
 		if (on) {
