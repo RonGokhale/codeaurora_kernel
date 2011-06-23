@@ -3195,7 +3195,7 @@ static struct measure_sel measure_mux[] = {
 	{ TEST_PER_LS(0x7D), &prng_clk.c },
 	{ TEST_PER_LS(0x7F), &rpm_msg_ram_p_clk.c },
 	{ TEST_PER_LS(0x80), &adm0_p_clk.c },
-	{ TEST_PER_LS(0x80), &adm1_p_clk.c },
+	{ TEST_PER_LS(0x81), &adm1_p_clk.c },
 	{ TEST_PER_LS(0x84), &usb_hs1_p_clk.c },
 	{ TEST_PER_LS(0x85), &usb_hs1_xcvr_clk.c },
 	{ TEST_PER_LS(0x89), &usb_fs1_p_clk.c },
