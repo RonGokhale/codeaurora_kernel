@@ -63,10 +63,10 @@ do {							\
 struct diag_master_table {
 	uint16_t cmd_code;
 	uint16_t subsys_id;
+	uint32_t client_id;
 	uint16_t cmd_code_lo;
 	uint16_t cmd_code_hi;
 	int process_id;
-	smd_channel_t *ch_id;
 };
 
 struct bindpkt_params_per_process {

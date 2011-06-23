@@ -263,10 +263,10 @@ void diag_fill_reg_table(int j, struct bindpkt_params *params,
 	driver->table[j].cmd_code_hi = params->cmd_code_hi;
 	if (params->proc_id == APPS_PROC) {
 		driver->table[j].process_id = current->tgid;
-		driver->table[j].ch_id = NULL;
+		driver->table[j].client_id = APPS_PROC;
 	} else {
 		driver->table[j].process_id = NON_APPS_PROC;
-		driver->table[j].ch_id = (smd_channel_t *)params->client_id;
+		driver->table[j].client_id = params->client_id;
 	}
 	(*count_entries)++;
 }
@@ -281,15 +281,17 @@ long diagchar_ioctl(struct file *filp,
 	if (iocmd == DIAG_IOCTL_COMMAND_REG) {
 		struct bindpkt_params_per_process *pkt_params =
 			 (struct bindpkt_params_per_process *) ioarg;
-
+		mutex_lock(&driver->diagchar_mutex);
 		for (i = 0; i < diag_max_registration; i++) {
 			if (driver->table[i].process_id == 0) {
 				diag_fill_reg_table(i, pkt_params->params,
 						&success, &count_entries);
-				if (pkt_params->count > count_entries)
+				if (pkt_params->count > count_entries) {
 					pkt_params->params++;
-				else
+				} else {
+					mutex_unlock(&driver->diagchar_mutex);
 					return success;
+				}
 			}
 		}
 		if (i < diag_threshold_registration) {
@@ -307,6 +309,7 @@ long diagchar_ioctl(struct file *filp,
 				diag_max_registration -= pkt_params->count -
 							 count_entries;
 				pr_alert("diag: Insufficient memory for reg.");
+				mutex_unlock(&driver->diagchar_mutex);
 				return 0;
 			} else {
 				driver->table = temp_buf;
@@ -314,15 +317,18 @@ long diagchar_ioctl(struct file *filp,
 			for (j = i; j < diag_max_registration; j++) {
 				diag_fill_reg_table(j, pkt_params->params,
 						&success, &count_entries);
-				if (pkt_params->count > count_entries)
+				if (pkt_params->count > count_entries) {
 					pkt_params->params++;
-				else
+				} else {
+					mutex_unlock(&driver->diagchar_mutex);
 					return success;
+				}
 			}
-		} else
+		} else {
+			mutex_unlock(&driver->diagchar_mutex);
 			pr_err("Max size reached, Pkt Registration failed for"
 						" Process %d", current->tgid);
-
+		}
 		success = 0;
 	} else if (iocmd == DIAG_IOCTL_GET_DELAYED_RSP_ID) {
 		struct diagpkt_delay_params *delay_params =
@@ -948,7 +954,7 @@ static int __init diagchar_init(void)
 		goto fail;
 	}
 
-	printk(KERN_INFO "diagchar initialized\n");
+	pr_info("diagchar initialized now");
 	return 0;
 
 fail:
