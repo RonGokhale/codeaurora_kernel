@@ -3305,33 +3305,34 @@ static struct kobject *properties_kobj;
 
 
 
-#define FLUID_CYTTSP_TS_GPIO_IRQ	61
-static int cyttsp_fluid_platform_init(struct i2c_client *client)
+#define CYTTSP_TS_GPIO_IRQ	61
+static int cyttsp_platform_init(struct i2c_client *client)
 {
 	int rc = -EINVAL;
-	struct regulator *pm8058_l5, *pm8058_s3;
+	struct regulator *pm8058_l5 = NULL, *pm8058_s3;
 
-	pm8058_l5 = regulator_get(NULL, "8058_l5");
-	if (IS_ERR(pm8058_l5)) {
-		pr_err("%s: regulator get of 8058_l5 failed (%ld)\n",
-			__func__, PTR_ERR(pm8058_l5));
-		rc = PTR_ERR(pm8058_l5);
-		return rc;
-	}
-	rc = regulator_set_voltage(pm8058_l5, 2850000, 2850000);
-	if (rc) {
-		pr_err("%s: regulator_set_voltage of 8058_l5 failed(%d)\n",
-			__func__, rc);
-		goto reg_l5_put;
-	}
+	if (machine_is_msm8x60_fluid()) {
+		pm8058_l5 = regulator_get(NULL, "8058_l5");
+		if (IS_ERR(pm8058_l5)) {
+			pr_err("%s: regulator get of 8058_l5 failed (%ld)\n",
+				__func__, PTR_ERR(pm8058_l5));
+			rc = PTR_ERR(pm8058_l5);
+			return rc;
+		}
+		rc = regulator_set_voltage(pm8058_l5, 2850000, 2850000);
+		if (rc) {
+			pr_err("%s: regulator_set_voltage of 8058_l5 failed(%d)\n",
+				__func__, rc);
+			goto reg_l5_put;
+		}
 
-	rc = regulator_enable(pm8058_l5);
-	if (rc) {
-		pr_err("%s: regulator_enable of 8058_l5 failed(%d)\n",
-			__func__, rc);
-		goto reg_l5_put;
+		rc = regulator_enable(pm8058_l5);
+		if (rc) {
+			pr_err("%s: regulator_enable of 8058_l5 failed(%d)\n",
+				__func__, rc);
+			goto reg_l5_put;
+		}
 	}
-
 	/* vote for s3 to enable i2c communication lines */
 	pm8058_s3 = regulator_get(NULL, "8058_s3");
 	if (IS_ERR(pm8058_s3)) {
@@ -3366,24 +3367,25 @@ static int cyttsp_fluid_platform_init(struct i2c_client *client)
 	}
 
 	/* configure touchscreen interrupt gpio */
-	rc = gpio_request(FLUID_CYTTSP_TS_GPIO_IRQ, "cyttsp_irq_gpio");
+	rc = gpio_request(CYTTSP_TS_GPIO_IRQ, "cyttsp_irq_gpio");
 	if (rc) {
 		pr_err("%s: unable to request gpio %d\n",
-			__func__, FLUID_CYTTSP_TS_GPIO_IRQ);
+			__func__, CYTTSP_TS_GPIO_IRQ);
 		goto reg_s3_disable;
 	}
 
 	/* virtual keys */
-	tma300_vkeys_attr.attr.name = "virtualkeys.cyttsp-i2c";
-	properties_kobj = kobject_create_and_add("board_properties",
-				NULL);
-	if (properties_kobj)
-		rc = sysfs_create_group(properties_kobj,
-			&tma300_properties_attr_group);
-	if (!properties_kobj || rc)
-		pr_err("%s: failed to create board_properties\n",
-				__func__);
-
+	if (machine_is_msm8x60_fluid()) {
+		tma300_vkeys_attr.attr.name = "virtualkeys.cyttsp-i2c";
+		properties_kobj = kobject_create_and_add("board_properties",
+					NULL);
+		if (properties_kobj)
+			rc = sysfs_create_group(properties_kobj,
+				&tma300_properties_attr_group);
+		if (!properties_kobj || rc)
+			pr_err("%s: failed to create board_properties\n",
+					__func__);
+	}
 	return CY_OK;
 
 reg_s3_disable:
@@ -3391,13 +3393,15 @@ reg_s3_disable:
 reg_s3_put:
 	regulator_put(pm8058_s3);
 reg_l5_disable:
-	regulator_disable(pm8058_l5);
+	if (machine_is_msm8x60_fluid())
+		regulator_disable(pm8058_l5);
 reg_l5_put:
-	regulator_put(pm8058_l5);
+	if (machine_is_msm8x60_fluid())
+		regulator_put(pm8058_l5);
 	return rc;
 }
 
-static int cyttsp_fluid_platform_resume(struct i2c_client *client)
+static int cyttsp_platform_resume(struct i2c_client *client)
 {
 	/* add any special code to strobe a wakeup pin or chip reset */
 	msleep(10);
@@ -3432,10 +3436,48 @@ static struct cyttsp_platform_data cyttsp_fluid_pdata = {
 	 * scanning/processing refresh interval for Operating mode
 	 */
 	.lp_intrvl = CY_LP_INTRVL_DFLT,
-	.resume = cyttsp_fluid_platform_resume,
-	.init = cyttsp_fluid_platform_init,
+	.resume = cyttsp_platform_resume,
+	.init = cyttsp_platform_init,
 };
 
+static struct cyttsp_platform_data cyttsp_tmg240_pdata = {
+	.panel_maxx = 1083,
+	.panel_maxy = 659,
+	.disp_minx = 30,
+	.disp_maxx = 1053,
+	.disp_miny = 30,
+	.disp_maxy = 629,
+	.correct_fw_ver = 8,
+	.fw_fname = "cyttsp_8660_ffa.hex",
+	.flags = 0x00,
+	.gen = CY_GEN2,	/* or */
+	.use_st = CY_USE_ST,
+	.use_mt = CY_USE_MT,
+	.use_hndshk = CY_SEND_HNDSHK,
+	.use_trk_id = CY_USE_TRACKING_ID,
+	.use_sleep = CY_USE_SLEEP,
+	.use_gestures = CY_USE_GESTURES,
+	/* activate up to 4 groups
+	 * and set active distance
+	 */
+	.gest_set = CY_GEST_GRP1 | CY_GEST_GRP2 |
+				CY_GEST_GRP3 | CY_GEST_GRP4 |
+				CY_ACT_DIST,
+	/* change act_intrvl to customize the Active power state
+	 * scanning/processing refresh interval for Operating mode
+	 */
+	.act_intrvl = CY_ACT_INTRVL_DFLT,
+	/* change tch_tmout to customize the touch timeout for the
+	 * Active power state for Operating mode
+	 */
+	.tch_tmout = CY_TCH_TMOUT_DFLT,
+	/* change lp_intrvl to customize the Low Power power state
+	 * scanning/processing refresh interval for Operating mode
+	 */
+	.lp_intrvl = CY_LP_INTRVL_DFLT,
+	.resume = cyttsp_platform_resume,
+	.init = cyttsp_platform_init,
+};
 static void cyttsp_set_params(void)
 {
 	if (SOCINFO_VERSION_MAJOR(socinfo_get_platform_version()) < 3) {
@@ -3465,7 +3507,17 @@ static struct i2c_board_info cyttsp_fluid_info[] __initdata = {
 		I2C_BOARD_INFO(CY_I2C_NAME, 0x24),
 		.platform_data = &cyttsp_fluid_pdata,
 #ifndef CY_USE_TIMER
-		.irq = MSM_GPIO_TO_INT(FLUID_CYTTSP_TS_GPIO_IRQ),
+		.irq = MSM_GPIO_TO_INT(CYTTSP_TS_GPIO_IRQ),
+#endif /* CY_USE_TIMER */
+	},
+};
+
+static struct i2c_board_info cyttsp_ffa_info[] __initdata = {
+	{
+		I2C_BOARD_INFO(CY_I2C_NAME, 0x3b),
+		.platform_data = &cyttsp_tmg240_pdata,
+#ifndef CY_USE_TIMER
+		.irq = MSM_GPIO_TO_INT(CYTTSP_TS_GPIO_IRQ),
 #endif /* CY_USE_TIMER */
 	},
 };
@@ -6960,6 +7012,12 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 		MSM_GSBI3_QUP_I2C_BUS_ID,
 		cyttsp_fluid_info,
 		ARRAY_SIZE(cyttsp_fluid_info),
+	},
+	{
+		I2C_FFA | I2C_SURF,
+		MSM_GSBI3_QUP_I2C_BUS_ID,
+		cyttsp_ffa_info,
+		ARRAY_SIZE(cyttsp_ffa_info),
 	},
 #endif
 #ifdef CONFIG_MSM_CAMERA

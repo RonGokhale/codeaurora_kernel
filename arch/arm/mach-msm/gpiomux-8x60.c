@@ -342,6 +342,12 @@ static struct gpiomux_setting mdm2ap_sync_suspend_cfg = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
+static struct gpiomux_setting tm_active = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_UP,
+};
+
 static struct gpiomux_setting tm_suspended = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
@@ -961,6 +967,7 @@ static struct msm_gpiomux_config msm8x60_tmg200_configs[] __initdata = {
 	{
 		.gpio = 61,
 		.settings = {
+			[GPIOMUX_ACTIVE] = &tm_active,
 			[GPIOMUX_SUSPENDED] = &tm_suspended,
 		},
 	},
