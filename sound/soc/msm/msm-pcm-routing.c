@@ -24,6 +24,7 @@
 #include <sound/initval.h>
 #include <sound/control.h>
 #include <sound/q6adm.h>
+#include <sound/q6afe.h>
 
 #include "msm-pcm-routing.h"
 #include "qdsp6/q6voice.h"
@@ -44,6 +45,11 @@ enum {
 	AUDIO_MIXER_INT_BT_SCO_RX,
 	AUDIO_MIXER_INT_FM_RX,
 	AUDIO_MIXER_MAX,
+};
+
+enum {
+	AUDIO_PORT_MIXER_SLIM_0_RX = 0,
+	AUDIO_PORT_MIXER_MAX,
 };
 
 /* Tx mixer session is stored based on BE DAI ID
@@ -100,6 +106,14 @@ static struct voice_mixer_data voice_mixers[VOICE_MIXER_MAX] = {
 	{VOICE_INT_BT_SCO_RX, 0, SNDRV_PCM_STREAM_PLAYBACK},
 	/* VOICE_MIXER_INT_BT_SCO_TX */
 	{VOICE_INT_BT_SCO_TX, 0, SNDRV_PCM_STREAM_CAPTURE}
+};
+
+/* Reuse audio_mixer_data struct but ignore mixer type field
+ * unless there is use case for RX -> TX
+ */
+static struct audio_mixer_data audio_port_mixers[AUDIO_PORT_MIXER_MAX] = {
+	/* AUDIO_PORT_MIXER_SLIM_0_RX */
+	{SLIMBUS_0_RX, 0, SNDRV_PCM_STREAM_PLAYBACK},
 };
 
 void msm_pcm_routing_reg_phy_stream(int fedai_id, int dspst_id, int stream_type)
@@ -299,6 +313,47 @@ static int msm_routing_put_voice_mixer(struct snd_kcontrol *kcontrol,
 	return 1;
 }
 
+static int msm_routing_get_port_mixer(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+	(struct soc_mixer_control *)kcontrol->private_value;
+
+	if (test_bit(mc->shift, &audio_port_mixers[mc->reg].dai_sessions))
+		ucontrol->value.integer.value[0] = 1;
+	else
+		ucontrol->value.integer.value[0] = 0;
+
+	pr_debug("%s: reg %x shift %x val %ld\n", __func__, mc->reg, mc->shift,
+	ucontrol->value.integer.value[0]);
+
+	return 0;
+}
+
+static int msm_routing_put_port_mixer(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+
+	pr_debug("%s: reg %x shift %x val %ld\n", __func__, mc->reg,
+		mc->shift, ucontrol->value.integer.value[0]);
+
+	if (ucontrol->value.integer.value[0]) {
+		afe_loopback(1, audio_port_mixers[mc->reg].port_id,
+			     bedai_port_map[mc->shift]);
+		set_bit(mc->shift,
+		&audio_port_mixers[mc->reg].dai_sessions);
+	} else {
+		afe_loopback(0, audio_port_mixers[mc->reg].port_id,
+			     bedai_port_map[mc->shift]);
+		clear_bit(mc->shift,
+		&audio_port_mixers[mc->reg].dai_sessions);
+	}
+
+	return 1;
+}
+
 static const struct snd_kcontrol_new pri_i2s_rx_mixer_controls[] = {
 	SOC_SINGLE_EXT("MultiMedia1", AUDIO_MIXER_PRI_I2S_RX ,
 	MSM_FRONTEND_DAI_MULTIMEDIA1, 1, 0, msm_routing_get_audio_mixer,
@@ -416,6 +471,15 @@ static const struct snd_kcontrol_new tx_voip_mixer_controls[] = {
 	msm_routing_put_voice_mixer),
 };
 
+static const struct snd_kcontrol_new sbus_0_rx_port_mixer_controls[] = {
+	SOC_SINGLE_EXT("INTERNAL_FM_TX", AUDIO_PORT_MIXER_SLIM_0_RX,
+	MSM_BACKEND_DAI_INT_FM_TX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),
+	SOC_SINGLE_EXT("SLIM_0_TX", AUDIO_PORT_MIXER_SLIM_0_RX,
+	MSM_BACKEND_DAI_SLIMBUS_0_TX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),
+};
+
 static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	/* Frontend AIF */
 	/* Widget name equals to Front-End DAI name<Need confirmation>,
@@ -429,6 +493,14 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	SND_SOC_DAPM_AIF_IN("CS-VOICE_DL1", "CS-VOICE Playback", 0, 0, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("CS-VOICE_UL1", "CS-VOICE Capture", 0, 0, 0, 0),
 	SND_SOC_DAPM_AIF_OUT("VOIP_UL", "VoIP Capture", 0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_IN("SLIM0_DL_HL", "SLIMBUS0_HOSTLESS Playback",
+		0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("SLIM0_UL_HL", "SLIMBUS0_HOSTLESS Capture",
+		0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_IN("INTFM_DL_HL", "INT_FM_HOSTLESS Playback",
+		0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("INTFM_UL_HL", "INT_FM_HOSTLESS Capture",
+		0, 0, 0, 0),
 	/* Backend AIF */
 	/* Stream name equals to backend dai link stream name
 	 */
@@ -477,6 +549,9 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	int_bt_sco_rx_mixer_controls, ARRAY_SIZE(int_bt_sco_rx_mixer_controls)),
 	SND_SOC_DAPM_MIXER("INTERNAL_FM_RX Audio Mixer", SND_SOC_NOPM, 0, 0,
 	int_fm_rx_mixer_controls, ARRAY_SIZE(int_fm_rx_mixer_controls)),
+	SND_SOC_DAPM_MIXER("SLIMBUS_0_RX Port Mixer",
+	SND_SOC_NOPM, 0, 0, sbus_0_rx_port_mixer_controls,
+	ARRAY_SIZE(sbus_0_rx_port_mixer_controls)),
 };
 
 static const struct snd_soc_dapm_route intercon[] = {
@@ -525,11 +600,17 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"Voice_Tx Mixer", "SLIM_0_TX_Voice", "SLIMBUS_0_TX"},
 	{"Voice_Tx Mixer", "INTERNAL_BT_SCO_TX_Voice", "INT_BT_SCO_TX"},
 	{"CS-VOICE_UL1", NULL, "Voice_Tx Mixer"},
-
 	{"Voip_Tx Mixer", "PRI_TX_Voip", "PRI_I2S_TX"},
 	{"Voip_Tx Mixer", "SLIM_0_TX_Voip", "SLIMBUS_0_TX"},
 	{"Voip_Tx Mixer", "INTERNAL_BT_SCO_TX_Voip", "INT_BT_SCO_TX"},
 	{"VOIP_UL", NULL, "Voip_Tx Mixer"},
+	{"SLIMBUS_0_RX", NULL, "SLIM0_DL_HL"},
+	{"SLIM0_UL_HL", NULL, "SLIMBUS_0_TX"},
+	{"INT_FM_RX", NULL, "INTFM_DL_HL"},
+	{"INTFM_UL_HL", NULL, "INT_FM_TX"},
+	{"SLIMBUS_0_RX Port Mixer", "INTERNAL_FM_TX", "INT_FM_TX"},
+	{"SLIMBUS_0_RX Port Mixer", "SLIM_0_TX", "SLIMBUS_0_TX"},
+	{"SLIMBUS_0_RX", NULL, "SLIMBUS_0_RX Port Mixer"},
 };
 
 static struct snd_pcm_ops msm_routing_pcm_ops = {};
