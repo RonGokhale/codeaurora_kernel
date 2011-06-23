@@ -117,6 +117,7 @@ extern struct platform_device msm_pcm;
 extern struct platform_device msm_pcm_routing;
 extern struct platform_device msm_cpudai0;
 extern struct platform_device msm_cpudai1;
+extern struct platform_device msm_cpudai_hdmi_rx;
 extern struct platform_device msm_cpudai_bt_rx;
 extern struct platform_device msm_cpudai_bt_tx;
 extern struct platform_device msm_cpudai_fm_rx;
