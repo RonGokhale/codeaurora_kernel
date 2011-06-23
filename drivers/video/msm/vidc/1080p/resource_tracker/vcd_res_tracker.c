@@ -21,6 +21,7 @@
 #include <mach/msm_reqs.h>
 #include <mach/msm_memtypes.h>
 #include <linux/interrupt.h>
+#include <linux/memory_alloc.h>
 #include <asm/sizes.h>
 #include "vidc.h"
 #include "vcd_res_tracker.h"
@@ -466,12 +467,22 @@ void res_trk_init(struct device *device, u32 irq)
 		}
 		resource_context.core_type = VCD_CORE_1080P;
 		if (resource_context.memtype == MEMTYPE_EBI1) {
-			resource_context.base_addr =
-				kmalloc(VIDC_FW_SIZE, GFP_KERNEL);
-			if (resource_context.base_addr)
-				resource_context.device_addr = (phys_addr_t)
-				virt_to_phys((void *)
-					resource_context.base_addr);
+			resource_context.device_addr =
+			(phys_addr_t)
+			allocate_contiguous_memory_nomap(VIDC_FW_SIZE,
+					resource_context.memtype, SZ_4K);
+			if (resource_context.device_addr) {
+				resource_context.base_addr = (u8 *)
+				ioremap((unsigned long)
+				resource_context.device_addr, VIDC_FW_SIZE);
+				if (!resource_context.base_addr) {
+					free_contiguous_memory_by_paddr(
+					(unsigned long)
+					resource_context.device_addr);
+					resource_context.device_addr =
+						(phys_addr_t)NULL;
+				}
+			}
 		}
 	}
 }
