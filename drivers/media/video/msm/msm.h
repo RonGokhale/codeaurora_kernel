@@ -46,7 +46,7 @@
 #include <media/videobuf-msm-mem.h>
 #include <mach/camera.h>
 
-#define MSM_V4L2_DIMENSION_SIZE 24
+#define MSM_V4L2_DIMENSION_SIZE 96
 
 #define ERR_USER_COPY(to) pr_err("%s(%d): copy %s user\n", \
 				__func__, __LINE__, ((to) ? "to" : "from"))
