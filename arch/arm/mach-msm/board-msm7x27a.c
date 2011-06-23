@@ -2569,13 +2569,6 @@ static void msm7x27a_cfg_uart2dm_serial(void)
 static void msm7x27a_cfg_uart2dm_serial(void) { }
 #endif
 
-static struct msm_acpu_clock_platform_data msm7x2x_clock_data = {
-	.acpu_switch_time_us = 50,
-	.max_speed_delta_khz = 400000,
-	.vdd_switch_time_us = 62,
-	.max_axi_khz = 200000,
-};
-
 static struct platform_device *rumi_sim_devices[] __initdata = {
 	&msm_device_dmov,
 	&msm_device_smd,
@@ -3271,12 +3264,6 @@ static struct platform_device hs_pdev = {
 #define UART1DM_RX_GPIO		45
 static void __init msm7x2x_init(void)
 {
-	if (socinfo_init() < 0)
-		printk(KERN_ERR "%s: socinfo_init() failed!\n",
-		       __func__);
-
-	msm_clock_init(msm_clocks_7x27a, msm_num_clocks_7x27a);
-	msm_acpu_clock_init(&msm7x2x_clock_data);
 
 	/* Common functions for SURF/FFA/RUMI3 */
 	msm_device_i2c_init();
@@ -3357,6 +3344,7 @@ static void __init msm7x2x_init(void)
 
 static void __init msm7x2x_init_early(void)
 {
+	msm7x2x_misc_init();
 	msm_msm7x2x_allocate_memory_regions();
 }
 

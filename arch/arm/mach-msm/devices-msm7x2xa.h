@@ -18,4 +18,5 @@
 void __init msm_common_io_init(void);
 void __init msm_init_pmic_vibrator(void);
 void __init msm7x25a_kgsl_3d0_init(void);
+int __init msm7x2x_misc_init(void);
 #endif
