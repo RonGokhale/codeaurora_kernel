@@ -40,6 +40,7 @@ struct tabla_mbhc_calibration {
 	enum tabla_pid_current mic_current;
 	int mic_pid;
 	enum tabla_pid_current hph_current;
+	int setup_plug_removal_delay;
 	int shutdown_plug_removal;
 };
 

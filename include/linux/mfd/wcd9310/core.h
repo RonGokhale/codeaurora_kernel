@@ -17,13 +17,15 @@
 
 #define TABLA_NUM_IRQ_REGS 3
 
+#define TABLA_SLIM_NUM_PORT_REG 3
+
 enum {
 	TABLA_IRQ_SLIMBUS = 0,
+	TABLA_IRQ_MBHC_REMOVAL,
+	TABLA_IRQ_MBHC_SHORT_TERM,
 	TABLA_IRQ_MBHC_PRESS,
 	TABLA_IRQ_MBHC_RELEASE,
 	TABLA_IRQ_MBHC_POTENTIAL,
-	TABLA_IRQ_MBHC_SHORT_TERM,
-	TABLA_IRQ_MBHC_REMOVAL,
 	TABLA_IRQ_MBHC_INSERTION,
 	TABLA_IRQ_BG_PRECHARGE,
 	TABLA_IRQ_PA1_STARTUP,
@@ -68,6 +70,9 @@ struct tabla {
 int tabla_reg_read(struct tabla *tabla, unsigned short reg);
 int tabla_reg_write(struct tabla *tabla, unsigned short reg,
 		u8 val);
+int tabla_interface_reg_read(struct tabla *tabla, unsigned short reg);
+int tabla_interface_reg_write(struct tabla *tabla, unsigned short reg,
+		u8 val);
 int tabla_bulk_read(struct tabla *tabla, unsigned short reg,
 			int count, u8 *buf);
 int tabla_bulk_write(struct tabla *tabla, unsigned short reg,
@@ -102,7 +107,7 @@ static inline void tabla_disable_irq(struct tabla *tabla, int irq)
 {
 	if (!tabla->irq_base)
 		return;
-	disable_irq(tabla->irq_base + irq);
+	disable_irq_nosync(tabla->irq_base + irq);
 }
 
 #endif

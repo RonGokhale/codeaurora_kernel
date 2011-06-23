@@ -1002,4 +1002,12 @@
 #define TABLA_A_CDC_MBHC_DEBUG_CTL__POR			(0x00000000)
 #define TABLA_A_CDC_MBHC_SPARE			(0x000003DF)
 #define TABLA_A_CDC_MBHC_SPARE__POR			(0x00000000)
+
+
+/* SLIMBUS Slave Registers */
+#define TABLA_SLIM_PGD_PORT_INT_EN0                     (0x30)
+#define TABLA_SLIM_PGD_PORT_INT_STATUS0                 (0x34)
+#define TABLA_SLIM_PGD_PORT_INT_CLR0                    (0x38)
+#define TABLA_SLIM_PGD_PORT_INT_SOURCE0			(0x60)
+
 #endif
