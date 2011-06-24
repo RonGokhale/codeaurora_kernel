@@ -1200,6 +1200,7 @@ struct platform_device msm_kgsl_2d0 = {
 struct platform_device *msm_footswitch_devices[] = {
 	FS(FS_GFX2D0, "fs_gfx2d0"),
 	FS(FS_GFX3D,  "fs_gfx3d"),
+	FS(FS_MDP,    "fs_mdp"),
 	FS(FS_MFC,    "fs_mfc"),
 	FS(FS_VFE,    "fs_vfe"),
 	FS(FS_VPE,    "fs_vpe"),
