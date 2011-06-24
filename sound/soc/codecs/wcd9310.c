@@ -337,13 +337,46 @@ static int tabla_codec_enable_pamp_gain(struct snd_soc_dapm_widget *w,
 	}
 	return 0;
 }
-static int tabla_codec_delay_40ms(struct snd_soc_dapm_widget *w,
+
+static int tabla_codec_enable_lineout(struct snd_soc_dapm_widget *w,
 		struct snd_kcontrol *kcontrol, int event)
 {
+	struct snd_soc_codec *codec = w->codec;
+	u16 lineout_gain_reg;
+
 	pr_debug("%s %d\n", __func__, event);
+
+	switch (w->shift) {
+	case 0:
+		lineout_gain_reg = TABLA_A_RX_LINE_1_GAIN;
+		break;
+	case 1:
+		lineout_gain_reg = TABLA_A_RX_LINE_2_GAIN;
+		break;
+	case 2:
+		lineout_gain_reg = TABLA_A_RX_LINE_3_GAIN;
+		break;
+	case 3:
+		lineout_gain_reg = TABLA_A_RX_LINE_4_GAIN;
+		break;
+	case 4:
+		lineout_gain_reg = TABLA_A_RX_LINE_5_GAIN;
+		break;
+	default:
+		pr_err("%s: Error, incorrect lineout register value\n",
+			__func__);
+		return -EINVAL;
+	}
+
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
-		usleep_range(40, 40);
+		snd_soc_update_bits(codec, lineout_gain_reg, 0x40, 0x40);
+		break;
+	case SND_SOC_DAPM_POST_PMU:
+		usleep_range(40000, 40000);
+		break;
+	case SND_SOC_DAPM_POST_PMD:
+		snd_soc_update_bits(codec, lineout_gain_reg, 0x40, 0x00);
 		break;
 	}
 	return 0;
@@ -547,8 +580,9 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 
 	/* Speaker */
 	SND_SOC_DAPM_OUTPUT("LINEOUT"),
-	SND_SOC_DAPM_PGA("LINEOUT1", TABLA_A_RX_LINE_CNP_EN, 0, 0, NULL, 0),
-
+	SND_SOC_DAPM_PGA_E("LINEOUT1", TABLA_A_RX_LINE_CNP_EN, 0, 0, NULL, 0,
+		tabla_codec_enable_lineout, SND_SOC_DAPM_PRE_PMU |
+		SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_SWITCH("LINEOUT1 DAC", TABLA_A_RX_LINE_1_DAC_CTL, 7, 0,
 		&lineout1_switch),
 	SND_SOC_DAPM_MUX_E("RX3 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 2, 0,
@@ -556,8 +590,8 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 		SND_SOC_DAPM_PRE_PMU),
 
 	SND_SOC_DAPM_PGA_E("LINEOUT3", TABLA_A_RX_LINE_CNP_EN, 2, 0, NULL, 0,
-		tabla_codec_delay_40ms, SND_SOC_DAPM_PRE_PMU),
-
+		tabla_codec_enable_lineout, SND_SOC_DAPM_PRE_PMU |
+		SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_SWITCH("LINEOUT3 DAC", TABLA_A_RX_LINE_3_DAC_CTL, 7, 0,
 		&lineout3_switch),
 	SND_SOC_DAPM_MUX_E("RX4 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 3, 0,
