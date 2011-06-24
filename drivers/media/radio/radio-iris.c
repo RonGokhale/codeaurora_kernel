@@ -383,9 +383,6 @@ int radio_hci_register_dev(struct radio_hci_dev *hdev)
 		return -EINVAL;
 	}
 
-	if (!hdev->open || !hdev->close || !hdev->destruct)
-		return -EINVAL;
-
 	hdev->flags = 0;
 
 	tasklet_init(&hdev->cmd_task, radio_hci_cmd_task, (unsigned long)
