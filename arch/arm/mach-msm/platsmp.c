@@ -19,6 +19,7 @@
 #include <asm/cputype.h>
 #include <asm/mach-types.h>
 
+#include <mach/socinfo.h>
 #include <mach/smp.h>
 #include <mach/hardware.h>
 #include <mach/msm_iomap.h>
@@ -30,12 +31,6 @@
 #define SECONDARY_CPU_WAIT_MS 10
 
 int pen_release = -1;
-
-static inline int get_core_count(void)
-{
-	/* 1 + the PART[1:0] field of MIDR */
-	return ((read_cpuid_id() >> 4) & 3) + 1;
-}
 
 /* Initialize the present map (cpu_set(i, cpu_present_map)). */
 void __init platform_smp_prepare_cpus(unsigned int max_cpus)
