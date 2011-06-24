@@ -1325,7 +1325,7 @@ static struct platform_device msm_auxpga_lp_hs_device = {
 
 #ifdef CONFIG_MSM8X60_FTM_AUDIO_DEVICES
 static struct adie_codec_action_unit ftm_headset_mono_rx_actions[] =
-	HEADSET_AB_CPLS_48000_OSR_256;
+	HPH_PRI_AB_CPLS_MONO;
 
 static struct adie_codec_hwsetting_entry ftm_headset_mono_rx_settings[] = {
 	{
