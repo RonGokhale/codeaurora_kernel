@@ -28,7 +28,6 @@
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/debugfs.h>
-#include <mach/internal_power_rail.h>
 #include <mach/clk.h>
 #include <linux/pm_runtime.h>
 

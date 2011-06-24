@@ -2403,8 +2403,6 @@ int soc_set_pwr_rail(struct clk *clk, int enable)
 		pwr_id = PWR_RAIL_ROTATOR_CLK;
 	else if (clk == &mdp_clk.c)
 		pwr_id = PWR_RAIL_MDP_CLK;
-	else if (clk == &mfc_clk.c)
-		pwr_id = PWR_RAIL_MFC_CLK;
 	else if (clk == &vfe_clk.c)
 		pwr_id = PWR_RAIL_VFE_CLK;
 	else if (clk == &vpe_clk.c)
