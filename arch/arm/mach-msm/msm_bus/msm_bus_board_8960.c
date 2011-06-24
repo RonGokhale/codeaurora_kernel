@@ -147,7 +147,7 @@ static struct msm_bus_node_info apps_fabric_info[] = {
 		.tier = tiered_slave_ebi,
 		.num_tiers = ARRAY_SIZE(tiered_slave_ebi),
 		.buswidth = 8,
-		.slaveclk = "ebi1_clk",
+		.slaveclk = "ebi1_msmbus_clk",
 		.a_slaveclk = "ebi1_a_clk",
 	},
 	{

@@ -3351,6 +3351,13 @@ static DEFINE_CLK_VOTER(dfab_sdc4_clk, &dfab_clk.c);
 static DEFINE_CLK_VOTER(dfab_sdc5_clk, &dfab_clk.c);
 static DEFINE_CLK_VOTER(dfab_sps_clk, &dfab_clk.c);
 
+static DEFINE_CLK_VOTER(ebi1_msmbus_clk, &ebi1_clk.c);
+/*
+ * TODO: replace dummy_clk below with ebi1_clk.c once the
+ * bus driver starts voting on ebi1 rates.
+ */
+static DEFINE_CLK_VOTER(ebi1_adm_clk,    &dummy_clk);
+
 #ifdef CONFIG_DEBUG_FS
 struct measure_sel {
 	u32 test_vector;
@@ -3879,6 +3886,9 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc4_clk.c, "msm_sdcc.4"),
 	CLK_LOOKUP("dfab_sdc_clk",	dfab_sdc5_clk.c, "msm_sdcc.5"),
 	CLK_LOOKUP("dfab_clk",		dfab_sps_clk.c,	NULL /* sps */),
+
+	CLK_LOOKUP("ebi1_msmbus_clk",	ebi1_msmbus_clk.c, NULL),
+	CLK_LOOKUP("ebi1_clk",		ebi1_adm_clk.c, "msm_dmov"),
 };
 
 unsigned msm_num_clocks_8960 = ARRAY_SIZE(msm_clocks_8960);
