@@ -486,8 +486,18 @@ void diag_send_data(struct diag_master_table entry, unsigned char *buf,
 		diag_update_pkt_buffer(buf);
 		diag_update_sleeping_process(entry.process_id);
 	} else {
-		if (entry.ch_id && (len > 0))
-			smd_write(entry.ch_id, buf, len);
+		if (len > 0) {
+			if (entry.client_id == MODEM_PROC && driver->ch)
+				smd_write(driver->ch, buf, len);
+			else if (entry.client_id == QDSP_PROC &&
+							 driver->chqdsp)
+				smd_write(driver->chqdsp, buf, len);
+			else if (entry.client_id == WCNSS_PROC &&
+							 driver->ch_wcnss)
+				smd_write(driver->ch_wcnss, buf, len);
+			else
+				pr_alert("diag: incorrect channel");
+		}
 	}
 }
 

@@ -71,15 +71,7 @@ static void diag_smd_cntl_send_req(int proc_num)
 				for (j = 0; j < pkt_params->count; j++) {
 					temp->cmd_code = msg->cmd_code;
 					temp->subsys_id = msg->subsysid;
-					if (proc_num == MODEM_PROC)
-						temp->client_id =
-							 (uint32_t)(driver->ch);
-					else if (proc_num == QDSP_PROC)
-						temp->client_id =
-						 (uint32_t)(driver->chqdsp);
-					else if (proc_num == WCNSS_PROC)
-						temp->client_id =
-						 (uint32_t)(driver->ch_wcnss);
+					temp->client_id = proc_num;
 					temp->proc_id = proc_num;
 					temp->cmd_code_lo = range->cmd_code_lo;
 					temp->cmd_code_hi = range->cmd_code_hi;
