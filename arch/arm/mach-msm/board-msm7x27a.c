@@ -2753,7 +2753,7 @@ static int msm_fb_get_lane_config(void)
 {
 	int rc = DSI_TWO_LANES;
 
-	if (cpu_is_msm7x25a()) {
+	if (cpu_is_msm7x25a() || cpu_is_msm7x25aa()) {
 		rc = DSI_SINGLE_LANE;
 		pr_info("DSI Single Lane\n");
 	} else {
@@ -3321,7 +3321,7 @@ static void __init msm7x2x_init(void)
 #if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
 	bt_power_init();
 #endif
-	if (cpu_is_msm7x25a()) {
+	if (cpu_is_msm7x25a() || cpu_is_msm7x25aa()) {
 		atmel_ts_pdata.min_x = 0;
 		atmel_ts_pdata.max_x = 480;
 		atmel_ts_pdata.min_y = 0;
