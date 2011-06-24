@@ -3343,9 +3343,8 @@ static void msm_vfe_sync(struct msm_vfe_resp *vdata,
 		else {
 			if (sync->frame_q.len <= 100 &&
 				sync->event_q.len <= 100) {
-				if (atomic_read(&qcmd->on_heap))
-					atomic_add(1, &qcmd->on_heap);
 				msm_enqueue(&sync->frame_q, &qcmd->list_frame);
+				return;
 			} else {
 				pr_err("%s, Error Queue limit exceeded "
 					"f_q = %d, e_q = %d\n",	__func__,
