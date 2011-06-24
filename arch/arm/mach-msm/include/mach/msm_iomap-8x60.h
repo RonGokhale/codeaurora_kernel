@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2008-2011, Code Aurora Forum. All rights reserved.
  * Author: Brian Swetland <swetland@google.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -129,6 +129,10 @@
 #define MSM_IMEM_BASE		IOMEM(0xFA702000)
 #define MSM_IMEM_PHYS		0x2A05F000
 #define MSM_IMEM_SIZE		SZ_4K
+
+#define MSM_HDMI_BASE		IOMEM(0xFA800000)
+#define MSM_HDMI_PHYS		0x04A00000
+#define MSM_HDMI_SIZE		SZ_4K
 
 #ifdef CONFIG_MSM_DEBUG_UART
 
