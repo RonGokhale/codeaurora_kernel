@@ -102,6 +102,7 @@ VREG_CONSUMERS(L22) = {
 VREG_CONSUMERS(L23) = {
 	REGULATOR_SUPPLY("8921_l23",		NULL),
 	REGULATOR_SUPPLY("dsi_vddio",	"mipi_dsi.1"),
+	REGULATOR_SUPPLY("hdmi_avdd",	"hdmi_msm.0"),
 };
 VREG_CONSUMERS(L24) = {
 	REGULATOR_SUPPLY("8921_l24",		NULL),
@@ -142,6 +143,7 @@ VREG_CONSUMERS(S4) = {
 	REGULATOR_SUPPLY("8921_s4",		NULL),
 	REGULATOR_SUPPLY("sdc_vccq",		"msm_sdcc.1"),
 	REGULATOR_SUPPLY("riva_vddpx",		"wcnss_wlan.0"),
+	REGULATOR_SUPPLY("hdmi_vcc",		"hdmi_msm.0"),
 };
 VREG_CONSUMERS(S5) = {
 	REGULATOR_SUPPLY("8921_s5",		NULL),
@@ -191,6 +193,7 @@ VREG_CONSUMERS(USB_OTG) = {
 };
 VREG_CONSUMERS(HDMI_MVS) = {
 	REGULATOR_SUPPLY("8921_hdmi_mvs",	NULL),
+	REGULATOR_SUPPLY("hdmi_mvs",	"hdmi_msm.0"),
 };
 VREG_CONSUMERS(NCP) = {
 	REGULATOR_SUPPLY("8921_ncp",		NULL),
