@@ -1443,6 +1443,8 @@ static inline void hci_ev_tune_status(struct radio_hci_dev *hdev,
 
 	memcpy(&radio->fm_st_rsp.station_rsp, skb_pull(skb, len), len);
 
+	iris_q_event(radio, IRIS_EVT_TUNE_SUCC);
+
 	for (i = 0; i < IRIS_BUF_MAX; i++) {
 		if (i >= IRIS_BUF_RT_RDS)
 			kfifo_reset(&radio->data_buf[i]);
