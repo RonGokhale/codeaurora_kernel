@@ -452,7 +452,7 @@ struct platform_device msm_device_vidc = {
 };
 
 #define MSM_WCNSS_PHYS	0x03000000
-#define MSM_WCNSS_SIZE	0x01000000
+#define MSM_WCNSS_SIZE	0x280000
 
 static struct resource resources_wcnss_wlan[] = {
 	{
