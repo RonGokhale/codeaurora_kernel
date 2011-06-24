@@ -43,6 +43,7 @@
 /* HCI timeouts */
 #define RADIO_HCI_TIMEOUT	(10000)	/* 10 seconds */
 
+#define TUNE_PARAM 16
 struct radio_hci_command_hdr {
 	__le16	opcode;		/* OCF & OGF */
 	__u8	plen;
@@ -284,6 +285,7 @@ struct hci_fm_ssbi_req {
 #define HCI_REQ_STATUS    3
 
 struct hci_ev_tune_status {
+	__u8    sub_event;
 	__le32  station_freq;
 	__u8    serv_avble;
 	__u8    rssi;
@@ -350,12 +352,7 @@ struct hci_ev_srch_list_compl {
 /* ----- HCI Event Response ----- */
 struct hci_fm_conf_rsp {
 	__u8    status;
-	__u8    emphasis;
-	__u8    ch_spacing;
-	__u8    rds_std;
-	__u8    hlsi;
-	__le32   band_low_limit;
-	__le32   band_high_limit;
+	struct hci_fm_recv_conf_req recv_conf_rsp;
 } __packed;
 
 struct hci_fm_sig_threshold_rsp {
@@ -364,7 +361,6 @@ struct hci_fm_sig_threshold_rsp {
 } __packed;
 
 struct hci_fm_station_rsp {
-	__u8    status;
 	struct hci_ev_tune_status station_rsp;
 } __packed;
 
