@@ -37,14 +37,19 @@
 #include <linux/types.h>
 #include <linux/input.h>
 
+enum context {
+	DUAL_CTX,
+	ACTIVE_CTX,
+	NUM_CTX
+};
+
 struct msm_bus_fabric_registration {
 	unsigned int id;
 	char *name;
 	struct msm_bus_node_info *info;
 	unsigned int len;
 	int ahb;
-	const char *fabclk;
-	const char *a_fabclk;
+	const char *fabclk[NUM_CTX];
 	unsigned int offset;
 	unsigned int haltid;
 	unsigned int rpm_enabled;
