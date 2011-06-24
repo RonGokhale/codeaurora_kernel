@@ -104,15 +104,14 @@ static int mipi_dsi_off(struct platform_device *pdev)
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(0);
 #endif
+	/* disbale dsi engine */
+	MIPI_OUTP(MIPI_DSI_BASE + 0x0000, 0);
+
+	mipi_dsi_phy_ctrl(0);
 
 	local_bh_disable();
 	mipi_dsi_clk_disable();
 	local_bh_enable();
-
-	mipi_dsi_phy_ctrl(0);
-
-	/* disbale dsi engine */
-	MIPI_OUTP(MIPI_DSI_BASE + 0x0000, 0);
 
 	if (mipi_dsi_pdata && mipi_dsi_pdata->dsi_power_save)
 		mipi_dsi_pdata->dsi_power_save(0);
@@ -146,13 +145,6 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	var = &fbi->var;
 	pinfo = &mfd->panel_info;
 
-#ifndef CONFIG_FB_MSM_MDP303
-	mdp4_overlay_dsi_state_set(ST_DSI_RESUME);
-#else
-	MIPI_OUTP(MIPI_DSI_BASE + 0x114, 1);
-	MIPI_OUTP(MIPI_DSI_BASE + 0x114, 0);
-#endif
-
 	if (mipi_dsi_pdata && mipi_dsi_pdata->dsi_power_save)
 		mipi_dsi_pdata->dsi_power_save(1);
 
@@ -162,6 +154,13 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	local_bh_disable();
 	mipi_dsi_clk_enable();
 	local_bh_enable();
+
+#ifndef CONFIG_FB_MSM_MDP303
+	mdp4_overlay_dsi_state_set(ST_DSI_RESUME);
+#endif
+
+	MIPI_OUTP(MIPI_DSI_BASE + 0x114, 1);
+	MIPI_OUTP(MIPI_DSI_BASE + 0x114, 0);
 
 	hbp = var->left_margin;
 	hfp = var->right_margin;
