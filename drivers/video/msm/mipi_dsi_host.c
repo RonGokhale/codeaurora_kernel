@@ -63,7 +63,7 @@ void mipi_dsi_enable_irq(void)
 
 	spin_lock_irqsave(&dsi_lock, flags);
 	if (dsi_irq_enabled) {
-		printk(KERN_ERR "%s: IRQ aleady enabled\n", __func__);
+		pr_debug("%s: IRQ aleady enabled\n", __func__);
 		spin_unlock_irqrestore(&dsi_lock, flags);
 		return;
 	}
@@ -78,7 +78,7 @@ void mipi_dsi_disable_irq(void)
 
 	spin_lock_irqsave(&dsi_lock, flags);
 	if (dsi_irq_enabled == 0) {
-		printk(KERN_ERR "%s: IRQ already disabled\n", __func__);
+		pr_debug("%s: IRQ already disabled\n", __func__);
 		spin_unlock_irqrestore(&dsi_lock, flags);
 		return;
 	}
@@ -96,7 +96,7 @@ void mipi_dsi_disable_irq(void)
 {
 	spin_lock(&dsi_lock);
 	if (dsi_irq_enabled == 0) {
-		printk(KERN_ERR "%s: IRQ cannot be disabled\n", __func__);
+		pr_debug("%s: IRQ cannot be disabled\n", __func__);
 		return;
 	}
 
