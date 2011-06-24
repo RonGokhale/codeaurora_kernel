@@ -1010,6 +1010,7 @@ static struct msm_rotator_platform_data rotator_pdata = {
 	.number_of_clocks = ARRAY_SIZE(rotator_clocks),
 	.hardware_version_number = 0x1000303,
 	.rotator_clks = rotator_clocks,
+	.regulator_name = "fs_rot",
 };
 
 struct platform_device msm_rotator_device = {
@@ -1202,6 +1203,7 @@ struct platform_device *msm_footswitch_devices[] = {
 	FS(FS_GFX3D,  "fs_gfx3d"),
 	FS(FS_MDP,    "fs_mdp"),
 	FS(FS_MFC,    "fs_mfc"),
+	FS(FS_ROT,    "fs_rot"),
 	FS(FS_VFE,    "fs_vfe"),
 	FS(FS_VPE,    "fs_vpe"),
 };

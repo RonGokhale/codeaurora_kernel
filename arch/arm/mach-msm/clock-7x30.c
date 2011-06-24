@@ -2397,14 +2397,8 @@ out:
 /* Enable/disable a power rail associated with a clock. */
 int soc_set_pwr_rail(struct clk *clk, int enable)
 {
-	int pwr_id = 0;
-
-	if (clk == &axi_rotator_clk.c)
-		pwr_id = PWR_RAIL_ROTATOR_CLK;
-	else
-		return 0;
-
-	return internal_pwr_rail_ctl_auto(pwr_id, enable);
+	/* Not supported. */
+	return 0;
 }
 
 #ifdef CONFIG_DEBUG_FS

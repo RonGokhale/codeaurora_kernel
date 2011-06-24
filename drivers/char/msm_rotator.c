@@ -199,27 +199,27 @@ static void msm_rotator_imem_clk_work_f(struct work_struct *work)
 /* enable clocks needed by rotator block */
 static void enable_rot_clks(void)
 {
+	if (msm_rotator_dev->regulator)
+		regulator_enable(msm_rotator_dev->regulator);
 	if (msm_rotator_dev->core_clk != NULL)
 		clk_enable(msm_rotator_dev->core_clk);
 	if (msm_rotator_dev->pclk != NULL)
 		clk_enable(msm_rotator_dev->pclk);
 	if (msm_rotator_dev->axi_clk != NULL)
 		clk_enable(msm_rotator_dev->axi_clk);
-	if (msm_rotator_dev->regulator)
-		regulator_enable(msm_rotator_dev->regulator);
 }
 
 /* disable clocks needed by rotator block */
 static void disable_rot_clks(void)
 {
-	if (msm_rotator_dev->regulator)
-		regulator_disable(msm_rotator_dev->regulator);
 	if (msm_rotator_dev->core_clk != NULL)
 		clk_disable(msm_rotator_dev->core_clk);
 	if (msm_rotator_dev->pclk != NULL)
 		clk_disable(msm_rotator_dev->pclk);
 	if (msm_rotator_dev->axi_clk != NULL)
 		clk_disable(msm_rotator_dev->axi_clk);
+	if (msm_rotator_dev->regulator)
+		regulator_disable(msm_rotator_dev->regulator);
 }
 
 static void msm_rotator_rot_clk_work_f(struct work_struct *work)
