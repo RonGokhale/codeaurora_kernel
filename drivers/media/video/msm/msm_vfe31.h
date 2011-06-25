@@ -313,6 +313,7 @@ enum  vfe_recording_state {
 #define V31_STEREOCAM             108
 #define V31_LA_SETUP              109
 #define V31_XBAR_CFG              110
+#define V31_EZTUNE_CFG            111
 
 #define V31_CAMIF_OFF             0x000001E4
 #define V31_CAMIF_LEN             32
@@ -418,6 +419,9 @@ enum  vfe_recording_state {
 
 #define V31_XBAR_CFG_OFF 0x00000040
 #define V31_XBAR_CFG_LEN 8
+
+#define V31_EZTUNE_CFG_OFF 0x00000010
+#define V31_EZTUNE_CFG_LEN 4
 
 #define V31_ASF_OFF 0x000004A0
 #define V31_ASF_LEN 48
