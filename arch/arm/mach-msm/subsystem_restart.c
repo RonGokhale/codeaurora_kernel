@@ -73,6 +73,19 @@ static struct subsys_soc_restart_order *restart_orders_8x60[] = {
 	&restart_orders_8x60_one,
 };
 
+/* MSM 8960 restart ordering info */
+static const char * const order_8960[] = {"modem", "lpass"};
+
+static struct subsys_soc_restart_order restart_orders_8960_one = {
+	.subsystem_list = order_8960,
+	.count = ARRAY_SIZE(order_8960),
+	.subsys_ptrs = {[ARRAY_SIZE(order_8960)] = NULL}
+	};
+
+static struct subsys_soc_restart_order *restart_orders_8960[] = {
+	&restart_orders_8960_one,
+};
+
 /* These will be assigned to one of the sets above after
  * runtime SoC identification.
  */
@@ -391,6 +404,11 @@ static int __init ssr_init_soc_restart_orders(void)
 	if (cpu_is_msm8x60()) {
 		restart_orders = restart_orders_8x60;
 		n_restart_orders = ARRAY_SIZE(restart_orders_8x60);
+	}
+
+	if (cpu_is_msm8960()) {
+		restart_orders = restart_orders_8960;
+		n_restart_orders = ARRAY_SIZE(restart_orders_8960);
 	}
 
 	if (restart_orders == NULL || n_restart_orders < 1) {
