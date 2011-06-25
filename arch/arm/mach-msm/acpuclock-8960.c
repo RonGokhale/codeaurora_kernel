@@ -70,6 +70,8 @@
 #define HFPLL_LOW_VDD		1050000
 #define HFPLL_LOW_VDD_PLL_L_MAX	0x28
 
+#define SECCLKAGD		BIT(4)
+
 enum scalables {
 	CPU0 = 0,
 	CPU1,
@@ -339,13 +341,23 @@ static void set_sec_clk_src(struct scalable *sc, uint32_t sec_src_sel)
 {
 	uint32_t regval;
 
+	/* Disable secondary source clock gating during switch. */
 	regval = readl_cp15_l2ind(sc->l2cpmr_iaddr);
+	regval |= SECCLKAGD;
+	writel_cp15_l2ind(regval, sc->l2cpmr_iaddr);
+
+	/* Program the MUX. */
 	regval &= ~(0x3 << 2);
 	regval |= ((sec_src_sel & 0x3) << 2);
 	writel_cp15_l2ind(regval, sc->l2cpmr_iaddr);
+
 	/* Wait for switch to complete. */
 	mb();
 	udelay(1);
+
+	/* Re-enable secondary source clock gating. */
+	regval &= ~SECCLKAGD;
+	writel_cp15_l2ind(regval, sc->l2cpmr_iaddr);
 }
 
 /* Enable an already-configured HFPLL. */
@@ -780,13 +792,9 @@ static void __init init_clock_sources(struct scalable *sc,
 	}
 	hfpll_init(sc, tgt_s);
 
-	/*
-	 * Set PRI_SRC_SEL_HFPLL_DIV2 divider to div-2 and disable
-	 * auto-gating of secondary clock source.
-	 */
+	/* Set PRI_SRC_SEL_HFPLL_DIV2 divider to div-2. */
 	regval = readl_cp15_l2ind(sc->l2cpmr_iaddr);
 	regval &= ~(0x3 << 6);
-	regval |= BIT(4);
 	writel_cp15_l2ind(regval, sc->l2cpmr_iaddr);
 
 	/* Select PLL8 as AUX source input to the secondary MUX. */
