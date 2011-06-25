@@ -960,7 +960,13 @@ static struct msm_i2c_platform_data msm_gsbi1_qup_i2c_pdata = {
 #ifdef CONFIG_ARCH_MSM7X27A
 #define MSM_PMEM_MDP_SIZE       0x1DD1000
 #define MSM_PMEM_ADSP_SIZE      0x1000000
-#define MSM_FB_SIZE             0x195000
+
+#ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
+#define MSM_FB_SIZE		0x260000
+#else
+#define MSM_FB_SIZE		0x195000
+#endif
+
 #endif
 
 static char *usb_functions_default[] = {
