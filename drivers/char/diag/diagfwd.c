@@ -38,10 +38,6 @@
 #include "diagfwd_sdio.h"
 #endif
 
-MODULE_DESCRIPTION("Diag Char Driver");
-MODULE_LICENSE("GPL v2");
-MODULE_VERSION("1.0");
-
 int diag_debug_buf_idx;
 unsigned char diag_debug_buf[1024];
 static unsigned int buf_tbl_size = 8; /*Number of entries in table of buffers */
