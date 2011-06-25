@@ -121,6 +121,9 @@ struct qce_device {
 	uint32_t ce_out_ignore_size;
 
 	int ce_out_dst_desc_index;
+	int ce_in_dst_desc_index;
+
+	int ce_out_src_desc_index;
 	int ce_in_src_desc_index;
 
 	enum qce_chan_st_enum chan_ce_in_state;		/* chan ce_in state */
@@ -910,12 +913,45 @@ static int _ablk_cipher_use_pmem_complete(struct qce_device *pce_dev)
 	return 0;
 };
 
+static int qce_split_and_insert_dm_desc(struct dmov_desc *pdesc,
+			unsigned int plen, unsigned int paddr, int *index)
+{
+	while (plen > 0x8000) {
+		pdesc->len = 0x8000;
+		if (paddr > 0) {
+			pdesc->addr = paddr;
+			paddr += 0x8000;
+		}
+		plen -= pdesc->len;
+		if (plen > 0) {
+			*index = (*index) + 1;
+			if ((*index) >= QCE_MAX_NUM_DESC)
+				return -ENOMEM;
+			pdesc++;
+		}
+	}
+	if ((plen > 0) && (plen <= 0x8000)) {
+		pdesc->len = plen;
+		if (paddr > 0)
+			pdesc->addr = paddr;
+	}
+
+	return 0;
+}
+
 static int _chain_sg_buffer_in(struct qce_device *pce_dev,
 		struct scatterlist *sg, unsigned int nbytes)
 {
 	unsigned int len;
 	unsigned int dlen;
 	struct dmov_desc *pdesc;
+
+	pdesc = pce_dev->ce_in_dst_desc + pce_dev->ce_in_dst_desc_index;
+	if (nbytes > 0x8000)
+		qce_split_and_insert_dm_desc(pdesc, nbytes, 0,
+				&pce_dev->ce_in_dst_desc_index);
+	else
+		pdesc->len = nbytes;
 
 	pdesc = pce_dev->ce_in_src_desc + pce_dev->ce_in_src_desc_index;
 	/*
@@ -929,8 +965,16 @@ static int _chain_sg_buffer_in(struct qce_device *pce_dev,
 		if (dlen == 0) {
 			pdesc->addr  = sg_dma_address(sg);
 			pdesc->len = len;
+			if (pdesc->len > 0x8000)
+				qce_split_and_insert_dm_desc(pdesc, pdesc->len,
+						sg_dma_address(sg),
+						&pce_dev->ce_in_src_desc_index);
 		} else if (sg_dma_address(sg) == (pdesc->addr + dlen)) {
 			pdesc->len  = dlen + len;
+			if (pdesc->len > 0x8000)
+				qce_split_and_insert_dm_desc(pdesc, pdesc->len,
+						sg_dma_address(sg),
+						&pce_dev->ce_in_src_desc_index);
 		} else {
 			pce_dev->ce_in_src_desc_index++;
 			if (pce_dev->ce_in_src_desc_index >= QCE_MAX_NUM_DESC)
@@ -938,6 +982,10 @@ static int _chain_sg_buffer_in(struct qce_device *pce_dev,
 			pdesc++;
 			pdesc->len = len;
 			pdesc->addr = sg_dma_address(sg);
+			if (pdesc->len > 0x8000)
+				qce_split_and_insert_dm_desc(pdesc, pdesc->len,
+						sg_dma_address(sg),
+						&pce_dev->ce_in_src_desc_index);
 		}
 		if (nbytes > 0)
 			sg = sg_next(sg);
@@ -966,6 +1014,9 @@ static int _chain_pm_buffer_in(struct qce_device *pce_dev,
 		pdesc->len = nbytes;
 		pdesc->addr = pmem;
 	}
+	pdesc = pce_dev->ce_in_dst_desc + pce_dev->ce_in_dst_desc_index;
+	pdesc->len += nbytes;
+
 	return 0;
 }
 
@@ -974,6 +1025,7 @@ static void _chain_buffer_in_init(struct qce_device *pce_dev)
 	struct dmov_desc *pdesc;
 
 	pce_dev->ce_in_src_desc_index = 0;
+	pce_dev->ce_in_dst_desc_index = 0;
 	pdesc = pce_dev->ce_in_src_desc;
 	pdesc->len = 0;
 }
@@ -985,8 +1037,8 @@ static void _ce_in_final(struct qce_device *pce_dev, unsigned total)
 
 	pdesc = pce_dev->ce_in_src_desc + pce_dev->ce_in_src_desc_index;
 	pdesc->len |= ADM_DESC_LAST;
-	pdesc = pce_dev->ce_in_dst_desc;
-	pdesc->len = ADM_DESC_LAST | total;
+	pdesc = pce_dev->ce_in_dst_desc + pce_dev->ce_in_dst_desc_index;
+	pdesc->len |= ADM_DESC_LAST;
 
 	pcmd = (dmov_sg *) pce_dev->cmd_list_ce_in;
 	pcmd->cmd |= CMD_LC;
@@ -998,15 +1050,18 @@ static void _ce_in_dump(struct qce_device *pce_dev)
 	int i;
 	struct dmov_desc *pdesc;
 
-	dev_info(pce_dev->pdev, "_ce_in_dump\n");
+	dev_info(pce_dev->pdev, "_ce_in_dump: src\n");
 	for (i = 0; i <= pce_dev->ce_in_src_desc_index; i++) {
 		pdesc = pce_dev->ce_in_src_desc + i;
 		dev_info(pce_dev->pdev, "%x , %x\n", pdesc->addr,
 				pdesc->len);
 	}
-	pdesc = pce_dev->ce_in_dst_desc;
-	dev_info(pce_dev->pdev, "dst - %x , %x\n", pdesc->addr,
+	dev_info(pce_dev->pdev, "_ce_in_dump: dst\n");
+	for (i = 0; i <= pce_dev->ce_in_dst_desc_index; i++) {
+		pdesc = pce_dev->ce_in_dst_desc + i;
+		dev_info(pce_dev->pdev, "%x , %x\n", pdesc->addr,
 				pdesc->len);
+	}
 };
 
 static void _ce_out_dump(struct qce_device *pce_dev)
@@ -1014,15 +1069,19 @@ static void _ce_out_dump(struct qce_device *pce_dev)
 	int i;
 	struct dmov_desc *pdesc;
 
-	dev_info(pce_dev->pdev, "_ce_out_dump\n");
+	dev_info(pce_dev->pdev, "_ce_out_dump: src\n");
+	for (i = 0; i <= pce_dev->ce_out_src_desc_index; i++) {
+		pdesc = pce_dev->ce_out_src_desc + i;
+		dev_info(pce_dev->pdev, "%x , %x\n", pdesc->addr,
+				pdesc->len);
+	}
+
+	dev_info(pce_dev->pdev, "_ce_out_dump: dst\n");
 	for (i = 0; i <= pce_dev->ce_out_dst_desc_index; i++) {
 		pdesc = pce_dev->ce_out_dst_desc + i;
 		dev_info(pce_dev->pdev, "%x , %x\n", pdesc->addr,
 				pdesc->len);
 	}
-	pdesc = pce_dev->ce_out_src_desc;
-	dev_info(pce_dev->pdev, "src - %x , %x\n", pdesc->addr,
-				pdesc->len);
 };
 
 #else
@@ -1044,6 +1103,13 @@ static int _chain_sg_buffer_out(struct qce_device *pce_dev,
 	unsigned int dlen;
 	struct dmov_desc *pdesc;
 
+	pdesc = pce_dev->ce_out_src_desc + pce_dev->ce_out_src_desc_index;
+	if (nbytes > 0x8000)
+		qce_split_and_insert_dm_desc(pdesc, nbytes, 0,
+				&pce_dev->ce_out_src_desc_index);
+	else
+		pdesc->len = nbytes;
+
 	pdesc = pce_dev->ce_out_dst_desc + pce_dev->ce_out_dst_desc_index;
 	/*
 	 * Two consective chunks may be handled by the old
@@ -1056,8 +1122,17 @@ static int _chain_sg_buffer_out(struct qce_device *pce_dev,
 		if (dlen == 0) {
 			pdesc->addr  = sg_dma_address(sg);
 			pdesc->len = len;
+			if (pdesc->len > 0x8000)
+				qce_split_and_insert_dm_desc(pdesc, pdesc->len,
+					sg_dma_address(sg),
+					&pce_dev->ce_out_dst_desc_index);
 		} else if (sg_dma_address(sg) == (pdesc->addr + dlen)) {
 			pdesc->len  = dlen + len;
+			if (pdesc->len > 0x8000)
+				qce_split_and_insert_dm_desc(pdesc, pdesc->len,
+					sg_dma_address(sg),
+					&pce_dev->ce_out_dst_desc_index);
+
 		} else {
 			pce_dev->ce_out_dst_desc_index++;
 			if (pce_dev->ce_out_dst_desc_index >= QCE_MAX_NUM_DESC)
@@ -1065,6 +1140,11 @@ static int _chain_sg_buffer_out(struct qce_device *pce_dev,
 			pdesc++;
 			pdesc->len = len;
 			pdesc->addr = sg_dma_address(sg);
+			if (pdesc->len > 0x8000)
+				qce_split_and_insert_dm_desc(pdesc, pdesc->len,
+					sg_dma_address(sg),
+					&pce_dev->ce_out_dst_desc_index);
+
 		}
 		if (nbytes > 0)
 			sg = sg_next(sg);
@@ -1094,6 +1174,9 @@ static int _chain_pm_buffer_out(struct qce_device *pce_dev,
 		pdesc->len = nbytes;
 		pdesc->addr = pmem;
 	}
+	pdesc = pce_dev->ce_out_src_desc + pce_dev->ce_out_src_desc_index;
+	pdesc->len += nbytes;
+
 	return 0;
 };
 
@@ -1102,6 +1185,7 @@ static void _chain_buffer_out_init(struct qce_device *pce_dev)
 	struct dmov_desc *pdesc;
 
 	pce_dev->ce_out_dst_desc_index = 0;
+	pce_dev->ce_out_src_desc_index = 0;
 	pdesc = pce_dev->ce_out_dst_desc;
 	pdesc->len = 0;
 };
@@ -1113,8 +1197,8 @@ static void _ce_out_final(struct qce_device *pce_dev, unsigned total)
 
 	pdesc = pce_dev->ce_out_dst_desc + pce_dev->ce_out_dst_desc_index;
 	pdesc->len |= ADM_DESC_LAST;
-	pdesc = pce_dev->ce_out_src_desc;
-	pdesc->len = ADM_DESC_LAST | total;
+	pdesc = pce_dev->ce_out_src_desc + pce_dev->ce_out_src_desc_index;
+	pdesc->len |= ADM_DESC_LAST;
 	pcmd = (dmov_sg *) pce_dev->cmd_list_ce_out;
 	pcmd->cmd |= CMD_LC;
 };
@@ -1287,6 +1371,7 @@ static int _setup_cmd_template(struct qce_device *pce_dev)
 	dmov_sg *pcmd;
 	struct dmov_desc *pdesc;
 	unsigned char *vaddr;
+	int i = 0;
 
 	/* Divide up the 4K coherent memory */
 
@@ -1299,10 +1384,11 @@ static int _setup_cmd_template(struct qce_device *pce_dev)
 	vaddr = vaddr + (sizeof(struct dmov_desc) * QCE_MAX_NUM_DESC);
 
 	/* 2. ce_in channel 1st command dst descriptor, 1 entry */
+	vaddr = (unsigned char *) ALIGN(((unsigned int)vaddr), 16);
 	pce_dev->ce_in_dst_desc = (struct dmov_desc *) vaddr;
 	pce_dev->phy_ce_in_dst_desc = pce_dev->coh_pmem +
 			 (vaddr - pce_dev->coh_vmem);
-	vaddr = vaddr + sizeof(struct dmov_desc) ;
+	vaddr = vaddr + (sizeof(struct dmov_desc) * QCE_MAX_NUM_DESC);
 
 	/* 3. ce_in channel command list of one scatter gather command */
 	pce_dev->cmd_list_ce_in = vaddr;
@@ -1323,12 +1409,14 @@ static int _setup_cmd_template(struct qce_device *pce_dev)
 	vaddr = vaddr + sizeof(dmov_sg);
 
 	/* 6. ce_out channel command src descriptors, 1 entry */
+	vaddr = (unsigned char *) ALIGN(((unsigned int)vaddr), 16);
 	pce_dev->ce_out_src_desc = (struct dmov_desc *) vaddr;
 	pce_dev->phy_ce_out_src_desc = pce_dev->coh_pmem
 			 + (vaddr - pce_dev->coh_vmem);
-	vaddr = vaddr + sizeof(struct dmov_desc) ;
+	vaddr = vaddr + (sizeof(struct dmov_desc) * QCE_MAX_NUM_DESC);
 
 	/* 7. ce_out channel command dst descriptors, 128 entries.  */
+	vaddr = (unsigned char *) ALIGN(((unsigned int)vaddr), 16);
 	pce_dev->ce_out_dst_desc = (struct dmov_desc *) vaddr;
 	pce_dev->phy_ce_out_dst_desc = pce_dev->coh_pmem
 			 + (vaddr - pce_dev->coh_vmem);
@@ -1343,13 +1431,14 @@ static int _setup_cmd_template(struct qce_device *pce_dev)
 	vaddr = vaddr + 2 * ADM_CE_BLOCK_SIZE;
 
 	/* 9. ce_in channel command pointer list.	 */
+	vaddr = (unsigned char *) ALIGN(((unsigned int) vaddr), 8);
 	pce_dev->cmd_pointer_list_ce_in = (unsigned int *) vaddr;
 	pce_dev->phy_cmd_pointer_list_ce_in = pce_dev->coh_pmem +
 			(vaddr - pce_dev->coh_vmem);
 	vaddr = vaddr + sizeof(unsigned char *);
-	vaddr = (unsigned char *) ALIGN(((unsigned int) vaddr), 8);
 
 	/* 10. ce_ou channel command pointer list. */
+	vaddr = (unsigned char *) ALIGN(((unsigned int) vaddr), 8);
 	pce_dev->cmd_pointer_list_ce_out = (unsigned int *) vaddr;
 	pce_dev->phy_cmd_pointer_list_ce_out =  pce_dev->coh_pmem +
 			(vaddr - pce_dev->coh_vmem);
@@ -1376,8 +1465,11 @@ static int _setup_cmd_template(struct qce_device *pce_dev)
 	pcmd->src_dscr = (unsigned) pce_dev->phy_ce_in_src_desc;
 
 	pdesc = pce_dev->ce_in_dst_desc;
-	pdesc->addr = (CRYPTO_DATA_SHADOW0 + pce_dev->phy_iobase);
-	pdesc->len = 0 | ADM_DESC_LAST;	/* to be filled in each operation */
+	for (i = 0; i < QCE_MAX_NUM_DESC; i++) {
+		pdesc->addr = (CRYPTO_DATA_SHADOW0 + pce_dev->phy_iobase);
+		pdesc->len = 0; /* to be filled in each operation */
+		pdesc++;
+	}
 	pcmd->dst_dscr = (unsigned) pce_dev->phy_ce_in_dst_desc;
 	pcmd->_reserved = LI_SG_CMD | SRC_INDEX_SG_CMD(0) |
 						DST_INDEX_SG_CMD(0);
@@ -1406,8 +1498,11 @@ static int _setup_cmd_template(struct qce_device *pce_dev)
 			CMD_SRC_CRCI(pce_dev->crci_out) | CMD_MODE_SG;
 
 	pdesc = pce_dev->ce_out_src_desc;
-	pdesc->addr = (CRYPTO_DATA_SHADOW0 + pce_dev->phy_iobase);
-	pdesc->len = 0;  /* to be filled in each operation */
+	for (i = 0; i < QCE_MAX_NUM_DESC; i++) {
+		pdesc->addr = (CRYPTO_DATA_SHADOW0 + pce_dev->phy_iobase);
+		pdesc->len = 0;  /* to be filled in each operation */
+		pdesc++;
+	}
 	pcmd->src_dscr = (unsigned) pce_dev->phy_ce_out_src_desc;
 
 	pdesc = pce_dev->ce_out_dst_desc;
@@ -1821,7 +1916,7 @@ void *qce_open(struct platform_device *pdev, int *rc)
 	pce_dev->crci_out = resource->start;
 
 	pce_dev->coh_vmem = dma_alloc_coherent(pce_dev->pdev,
-			PAGE_SIZE, &pce_dev->coh_pmem, GFP_KERNEL);
+			2*PAGE_SIZE, &pce_dev->coh_pmem, GFP_KERNEL);
 
 	if (pce_dev->coh_vmem == NULL) {
 		*rc = -ENOMEM;
@@ -1903,7 +1998,7 @@ int qce_close(void *handle)
 		iounmap(pce_dev->iobase);
 
 	if (pce_dev->coh_vmem)
-		dma_free_coherent(pce_dev->pdev, PAGE_SIZE, pce_dev->coh_vmem,
+		dma_free_coherent(pce_dev->pdev, 2*PAGE_SIZE, pce_dev->coh_vmem,
 						pce_dev->coh_pmem);
 	clk_disable(pce_dev->ce_clk);
 	clk_disable(pce_dev->ce_core_clk);
@@ -1940,4 +2035,4 @@ EXPORT_SYMBOL(qce_hw_support);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Crypto Engine driver");
-MODULE_VERSION("2.02");
+MODULE_VERSION("2.03");
