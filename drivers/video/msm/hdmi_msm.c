@@ -13,7 +13,6 @@
 
 /* #define DEBUG */
 #define DEV_DBG_PREFIX "HDMI: "
-/* #define PORT_DEBUG */
 /* #define REG_DUMP */
 
 #include <linux/types.h>
@@ -22,12 +21,10 @@
 #include <linux/mutex.h>
 #include <mach/msm_hdmi_audio.h>
 #include <mach/clk.h>
+#include <mach/msm_iomap.h>
 
 #include "msm_fb.h"
-#include "external_common.h"
-
-#define QFPROM_BASE		((uint32)hdmi_msm_state->qfprom_io)
-#define HDMI_BASE		((uint32)hdmi_msm_state->hdmi_io)
+#include "hdmi_msm.h"
 
 /* Supported HDMI Audio channels */
 #define MSM_HDMI_AUDIO_CHANNEL_2		0
@@ -49,42 +46,7 @@
 #define MSM_HDMI_SAMPLE_RATE_FORCE_32BIT	0x7FFFFFFF
 
 struct workqueue_struct *hdmi_work_queue;
-
-struct hdmi_msm_state_type {
-	boolean panel_power_on;
-	boolean hpd_initialized;
-#ifdef CONFIG_SUSPEND
-	boolean pm_suspended;
-#endif
-	int hpd_stable;
-	boolean hpd_prev_state;
-	boolean hpd_cable_chg_detected;
-	boolean full_auth_done;
-	boolean hpd_during_auth;
-	struct work_struct hpd_state_work, hpd_read_work;
-	struct timer_list hpd_state_timer;
-	struct completion ddc_sw_done;
-
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
-	boolean hdcp_activating;
-	boolean reauth ;
-	struct work_struct hdcp_reauth_work, hdcp_work;
-	struct completion hdcp_success_done;
-	struct timer_list hdcp_timer;
-#endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
-
-	int irq;
-	struct msm_hdmi_platform_data *pd;
-	struct clk *hdmi_app_clk;
-	struct clk *hdmi_m_pclk;
-	struct clk *hdmi_s_pclk;
-	void __iomem *qfprom_io;
-	void __iomem *hdmi_io;
-
-	struct external_common_state_type common;
-};
-
-static struct hdmi_msm_state_type *hdmi_msm_state;
+struct hdmi_msm_state_type *hdmi_msm_state;
 
 static DEFINE_MUTEX(hdmi_msm_state_mutex);
 static DEFINE_MUTEX(hdcp_auth_state_mutex);
@@ -97,7 +59,7 @@ static inline void hdmi_msm_hdcp_enable(void) {}
 
 uint32 hdmi_msm_get_io_base(void)
 {
-	return hdmi_msm_state ? HDMI_BASE : (uint32)NULL;
+	return (uint32)MSM_HDMI_BASE;
 }
 EXPORT_SYMBOL(hdmi_msm_get_io_base);
 
@@ -122,10 +84,10 @@ static void hdmi_msm_setup_video_mode_lut(void)
 	HDMI_SETUP_LUT(1920x1080p24_16_9);
 	HDMI_SETUP_LUT(1920x1080p25_16_9);
 	HDMI_SETUP_LUT(1920x1080p30_16_9);
-};
+}
 
 #ifdef PORT_DEBUG
-static const char *hdmi_msm_name(uint32 offset)
+const char *hdmi_msm_name(uint32 offset)
 {
 	switch (offset) {
 	case 0x0000: return "CTRL";
@@ -227,33 +189,23 @@ static const char *hdmi_msm_name(uint32 offset)
 	}
 }
 
-static void __hdmi_outp(uint32 offset, uint32 value)
+void hdmi_outp(uint32 offset, uint32 value)
 {
 	uint32 in_val;
 
-	outpdw(HDMI_BASE+offset, value);
-	in_val = inpdw(HDMI_BASE+offset);
+	outpdw(MSM_HDMI_BASE+offset, value);
+	in_val = inpdw(MSM_HDMI_BASE+offset);
 	DEV_DBG("HDMI[%04x] => %08x [%08x] %s\n",
 		offset, value, in_val, hdmi_msm_name(offset));
 }
 
-static uint32 __hdmi_inp(uint32 offset)
+uint32 hdmi_inp(uint32 offset)
 {
-	uint32 value = inpdw(HDMI_BASE+offset);
+	uint32 value = inpdw(MSM_HDMI_BASE+offset);
 	DEV_DBG("HDMI[%04x] <= %08x %s\n",
 		offset, value, hdmi_msm_name(offset));
 	return value;
 }
-
-#define HDMI_OUTP_ND(offset, value)	outpdw(HDMI_BASE+(offset), (value))
-#define HDMI_OUTP(offset, value)	__hdmi_outp((offset), (value))
-#define HDMI_INP_ND(offset)		inpdw(HDMI_BASE+(offset))
-#define HDMI_INP(offset)		__hdmi_inp((offset))
-#else /* DEBUG */
-#define HDMI_OUTP_ND(offset, value)	outpdw(HDMI_BASE+(offset), (value))
-#define HDMI_OUTP(offset, value)	outpdw(HDMI_BASE+(offset), (value))
-#define HDMI_INP_ND(offset)		inpdw(HDMI_BASE+(offset))
-#define HDMI_INP(offset)		inpdw(HDMI_BASE+(offset))
 #endif /* DEBUG */
 
 static void hdmi_msm_turn_on(void);
@@ -266,7 +218,8 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 	boolean hpd_state;
 	char *envp[2];
 
-	if (!hdmi_msm_state || !hdmi_msm_state->hpd_initialized || !HDMI_BASE) {
+	if (!hdmi_msm_state || !hdmi_msm_state->hpd_initialized ||
+		!MSM_HDMI_BASE) {
 		DEV_DBG("%s: ignored, probe failed\n", __func__);
 		return;
 	}
@@ -443,7 +396,8 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 	static uint32 sample_drop_int_occurred;
 	const uint32 occurrence_limit = 5;
 
-	if (!hdmi_msm_state || !hdmi_msm_state->hpd_initialized || !HDMI_BASE) {
+	if (!hdmi_msm_state || !hdmi_msm_state->hpd_initialized ||
+		!MSM_HDMI_BASE) {
 		DEV_DBG("ISR ignored, probe failed\n");
 		return IRQ_HANDLED;
 	}
@@ -2301,84 +2255,6 @@ error:
 }
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 
-static void hdmi_msm_init_phy(int video_format)
-{
-	/* De-serializer delay D/C for non-lbk mode */
-	/* PHY REG0 = (DESER_SEL(0) | DESER_DEL_CTRL(3) | AMUX_OUT_SEL(0)) */
-	HDMI_OUTP_ND(0x0300, 0x0C); /*0b00001100*/
-
-	if (video_format == HDMI_VFRMT_720x480p60_16_9) {
-		/* PHY REG1 = DTEST_MUX_SEL(5) | PLL_GAIN_SEL(0)
-			    | OUTVOL_SWING_CTRL(3) */
-		HDMI_OUTP_ND(0x0304, 0x53); /*0b01010011*/
-	} else {
-		/* If the freq. is less than 120MHz, use low gain 0 for board
-		   with termination */
-		/* PHY REG1 = DTEST_MUX_SEL(5) | PLL_GAIN_SEL(0)
-			    | OUTVOL_SWING_CTRL(4) */
-		HDMI_OUTP_ND(0x0304, 0x54); /*0b01010100*/
-	}
-
-	/* No matter what, start from the power down mode */
-	/* PHY REG2 = PD_PWRGEN | PD_PLL | PD_DRIVE_4 | PD_DRIVE_3
-		    | PD_DRIVE_2 | PD_DRIVE_1 | PD_DESER */
-	HDMI_OUTP_ND(0x0308, 0x7F); /*0b01111111*/
-
-	/* Turn PowerGen on */
-	/* PHY REG2 =             PD_PLL | PD_DRIVE_4 | PD_DRIVE_3
-		    | PD_DRIVE_2 | PD_DRIVE_1 | PD_DESER */
-	HDMI_OUTP_ND(0x0308, 0x3F); /*0b00111111*/
-
-	/* Turn PLL power on */
-	/* PHY REG2 =                      PD_DRIVE_4 | PD_DRIVE_3
-		    | PD_DRIVE_2 | PD_DRIVE_1 | PD_DESER */
-	HDMI_OUTP_ND(0x0308, 0x1F); /*0b00011111*/
-
-	/* Write to HIGH after PLL power down de-assert */
-	/* PHY REG3 = PLL_ENABLE */
-	HDMI_OUTP_ND(0x030C, 0x01);
-	/* ASIC power on */
-	/* PHY REG9 = 0 */
-	HDMI_OUTP_ND(0x0324, 0x00);
-	/* Enable PLL lock detect, PLL lock det will go high after lock
-	   Enable the re-time logic */
-	/* PHY REG12 = PLL_LOCK_DETECT_EN | RETIMING_ENABLE */
-	HDMI_OUTP_ND(0x0330, 0x03); /*0b00000011*/
-
-	/* Drivers are on */
-	/* PHY REG2 = PD_DESER */
-	HDMI_OUTP_ND(0x0308, 0x01); /*0b00000001*/
-	/* If the RX detector is needed */
-	/* PHY REG2 = RCV_SENSE_EN | PD_DESER */
-	HDMI_OUTP_ND(0x0308, 0x81); /*0b10000001*/
-
-	/* PHY REG4 = 0 */
-	HDMI_OUTP_ND(0x0310, 0x00);
-	/* PHY REG5 = 0 */
-	HDMI_OUTP_ND(0x0314, 0x00);
-	/* PHY REG6 = 0 */
-	HDMI_OUTP_ND(0x0318, 0x00);
-	/* PHY REG7 = 0 */
-	HDMI_OUTP_ND(0x031C, 0x00);
-	/* PHY REG8 = 0 */
-	HDMI_OUTP_ND(0x0320, 0x00);
-	/* PHY REG10 = 0 */
-	HDMI_OUTP_ND(0x0328, 0x00);
-	/* PHY REG11 = 0 */
-	HDMI_OUTP_ND(0x032C, 0x00);
-	/* If we want to use lock enable based on counting */
-	/* PHY REG12 = FORCE_LOCK | PLL_LOCK_DETECT_EN | RETIMING_ENABLE */
-	HDMI_OUTP_ND(0x0330, 0x13); /*0b00010011*/
-}
-
-static void hdmi_msm_powerdown_phy(void)
-{
-	/* Disable PLL */
-	HDMI_OUTP_ND(0x030C, 0x00);
-	/* Power down PHY */
-	HDMI_OUTP_ND(0x0308, 0x7F); /*0b01111111*/
-}
-
 static void hdmi_msm_video_setup(int video_format)
 {
 	uint32 total_v   = 0;
@@ -2442,22 +2318,7 @@ static void hdmi_msm_video_setup(int video_format)
 		HDMI_OUTP(0x02BC, 0);
 	}
 
-	/* 0x02C8 HDMI_FRAME_CTRL
-	   31 INTERLACED_EN   Interlaced or progressive enable bit
-	      0: Frame in progressive
-	      1: Frame is interlaced
-	   29 HSYNC_HDMI_POL  HSYNC polarity fed to HDMI core
-	      0: Active Hi Hsync, detect the rising edge of hsync
-	      1: Active lo Hsync, Detect the falling edge of Hsync
-	   28 VSYNC_HDMI_POL  VSYNC polarity fed to HDMI core
-	      0: Active Hi Vsync, detect the rising edge of vsync
-	      1: Active Lo Vsync, Detect the falling edge of Vsync
-	   12 RGB_MUX_SEL     ALPHA mdp4 input is RGB, mdp4 input is BGR */
-	HDMI_OUTP(0x02C8,
-		  ((timing->interlaced << 31) & 0x80000000)
-		| ((timing->active_low_h << 29) & 0x20000000)
-		| ((timing->active_low_v << 28) & 0x10000000)
-		| (1 << 12));
+	hdmi_frame_ctrl_cfg(timing);
 }
 
 struct hdmi_msm_audio_acr {
@@ -2621,8 +2482,8 @@ static void hdmi_msm_outpdw_chk(uint32 offset, uint32 data)
 	HDMI_OUTP(offset, data);
 #endif
 	do {
-		outpdw(HDMI_BASE+offset, data);
-		check = inpdw(HDMI_BASE+offset);
+		outpdw(MSM_HDMI_BASE+offset, data);
+		check = inpdw(MSM_HDMI_BASE+offset);
 	} while (check != data && i++ < 10);
 
 	if (check != data)
@@ -2633,8 +2494,8 @@ static void hdmi_msm_outpdw_chk(uint32 offset, uint32 data)
 static void hdmi_msm_rmw32or(uint32 offset, uint32 data)
 {
 	uint32 reg_data;
-	reg_data = inpdw(HDMI_BASE+offset);
-	reg_data = inpdw(HDMI_BASE+offset);
+	reg_data = inpdw(MSM_HDMI_BASE+offset);
+	reg_data = inpdw(MSM_HDMI_BASE+offset);
 	hdmi_msm_outpdw_chk(offset, reg_data | data);
 }
 
@@ -3313,17 +3174,25 @@ static void hdmi_msm_dump_regs(const char *prefex)
 {
 #ifdef REG_DUMP
 	print_hex_dump(KERN_INFO, prefix, DUMP_PREFIX_OFFSET, 32, 4,
-		(void *)HDMI_BASE, 0x0334, false);
+		(void *)MSM_HDMI_BASE, 0x0334, false);
 #endif
 }
 
 static int hdmi_msm_hpd_on(bool trigger_handler)
 {
+	static int phy_reset_done;
+
 	hdmi_msm_clk(1);
 	hdmi_msm_state->pd->core_power(1, 1);
 	hdmi_msm_state->pd->enable_5v(1);
 	hdmi_msm_dump_regs("HDMI-INIT: ");
 	hdmi_msm_set_mode(FALSE);
+
+	if (!phy_reset_done) {
+		hdmi_phy_reset();
+		phy_reset_done = 1;
+	}
+
 	hdmi_msm_init_phy(external_common_state->video_resolution);
 	/* HDMI_USEC_REFTIMER[0x0208] */
 	HDMI_OUTP(0x0208, 0x0001001B);
@@ -3369,7 +3238,7 @@ static int hdmi_msm_power_on(struct platform_device *pdev)
 	struct msm_fb_data_type *mfd = platform_get_drvdata(pdev);
 	bool changed;
 
-	if (!hdmi_msm_state || !hdmi_msm_state->hdmi_app_clk || !HDMI_BASE)
+	if (!hdmi_msm_state || !hdmi_msm_state->hdmi_app_clk || !MSM_HDMI_BASE)
 		return -ENODEV;
 #ifdef CONFIG_SUSPEND
 	mutex_lock(&hdmi_msm_state_mutex);
@@ -3511,7 +3380,7 @@ static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 		} while (0)
 
 		IO_REMAP(hdmi_msm_state->qfprom_io, "hdmi_msm_qfprom_addr");
-		IO_REMAP(hdmi_msm_state->hdmi_io, "hdmi_msm_hdmi_addr");
+		hdmi_msm_state->hdmi_io = MSM_HDMI_BASE;
 		GET_IRQ(hdmi_msm_state->irq, "hdmi_msm_irq");
 
 		hdmi_msm_state->pd = pdev->dev.platform_data;
