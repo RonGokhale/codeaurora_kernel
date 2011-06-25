@@ -38,6 +38,7 @@
 #include "smd_private.h"
 
 #define NUM_SMD_PKT_PORTS 12
+#define LOOPBACK_INX (NUM_SMD_PKT_PORTS - 1)
 #define DEVICE_NAME "smdpkt"
 
 struct smd_pkt_dev {
@@ -480,7 +481,9 @@ static void ch_notify(void *priv, unsigned event)
 
 		/* put port into reset state */
 		clean_and_signal(smd_pkt_devp);
-		schedule_delayed_work(&loopback_work, msecs_to_jiffies(1000));
+		if (smd_pkt_devp->i == LOOPBACK_INX)
+			schedule_delayed_work(&loopback_work,
+					msecs_to_jiffies(1000));
 		break;
 	}
 }
@@ -546,8 +549,10 @@ static int smd_pkt_dummy_probe(struct platform_device *pdev)
 static uint32_t is_modem_smsm_inited(void)
 {
 	uint32_t modem_state;
+	uint32_t ready_state = (SMSM_INIT | SMSM_SMDINIT);
+
 	modem_state = smsm_get_state(SMSM_MODEM_STATE);
-	return modem_state & SMSM_INIT;
+	return (modem_state & ready_state) == ready_state;
 }
 
 int smd_pkt_open(struct inode *inode, struct file *file)
