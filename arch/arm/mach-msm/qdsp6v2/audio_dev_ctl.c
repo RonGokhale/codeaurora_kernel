@@ -271,7 +271,12 @@ void msm_snddev_register(struct msm_snddev_info *dev_info)
 	mutex_lock(&session_lock);
 	if (audio_dev_ctrl.num_dev < AUDIO_DEV_CTL_MAX_DEV) {
 		audio_dev_ctrl.devs[audio_dev_ctrl.num_dev] = dev_info;
-		dev_info->dev_volume = 50; /* 50% */
+		/* roughly 0 DB for digital gain
+		 * If default gain is not desirable, it is expected that
+		 * application sets desired gain before activating sound
+		 * device
+		 */
+		dev_info->dev_volume = 75;
 		dev_info->sessions = 0x0;
 		dev_info->usage_count = 0;
 		audio_dev_ctrl.num_dev++;
