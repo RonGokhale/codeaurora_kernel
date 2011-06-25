@@ -446,12 +446,6 @@ int soc_set_pwr_rail(struct clk *clk, int enable)
 	return 0;
 }
 
-/* Implementation for clk_set_flags(). */
-int soc_clk_set_flags(struct clk *clk, unsigned flags)
-{
-	return -EPERM;
-}
-
 static int soc_clk_reset(struct clk *clk, enum clk_reset_action action)
 {
 	return branch_reset(&to_rcg_clk(clk)->b, action);
@@ -469,7 +463,6 @@ static struct clk_ops soc_clk_ops_8960 = {
 	.is_enabled = local_clk_is_enabled,
 	.round_rate = local_clk_round_rate,
 	.reset = soc_clk_reset,
-	.set_flags = soc_clk_set_flags,
 	.is_local = local_clk_is_local,
 	.get_parent = local_clk_get_parent,
 };
@@ -480,7 +473,6 @@ static struct clk_ops clk_ops_branch = {
 	.auto_off = branch_clk_auto_off,
 	.is_enabled = branch_clk_is_enabled,
 	.reset = branch_clk_reset,
-	.set_flags = soc_clk_set_flags,
 	.is_local = local_clk_is_local,
 	.get_parent = branch_clk_get_parent,
 	.set_parent = branch_clk_set_parent,
