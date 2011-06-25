@@ -20,10 +20,6 @@
 void arch_idle(void)
 { }
 
-void msm_cpuidle_set_states(struct msm_cpuidle_state *states,
-	int nr_states, struct msm_pm_platform_data *pm_data)
-{ }
-
 void msm_pm_set_platform_data(struct msm_pm_platform_data *data, int count)
 { }
 
