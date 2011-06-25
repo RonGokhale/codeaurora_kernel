@@ -108,19 +108,14 @@ static void videobuf_vm_close(struct vm_area_struct *vma)
 				/* vfree is not atomic - can't be
 				 called with IRQ's disabled
 				 */
-				D("buf[%d] freeing virtual %p\n",
-					i, mem->vaddr);
 				D("buf[%d] freeing physical %d\n",
 					i, mem->phyaddr);
 
-				/* free the virtual and physical memory */
-				iounmap(mem->vaddr);
 				rc = msm_mem_free(mem->phyaddr);
 				if (rc < 0)
 					D("%s: Invalid memory location\n",
 								__func__);
 				else {
-					mem->vaddr = NULL;
 					mem->phyaddr = 0;
 				}
 			}
@@ -231,10 +226,6 @@ static int __videobuf_iolock(struct videobuf_queue *q,
 		D("%s memory method MMAP\n", __func__);
 
 		/* All handling should be done by __videobuf_mmap_mapper() */
-		if (!mem->vaddr) {
-			D("memory is not alloced/mmapped.\n");
-			rc = -EINVAL;
-		}
 		break;
 	case V4L2_MEMORY_USERPTR:
 		D("%s memory method USERPTR\n", __func__);
@@ -294,16 +285,6 @@ static int __videobuf_mmap_mapper(struct videobuf_queue *q,
 		goto error;
 	}
 
-	mem->vaddr = ioremap(mem->phyaddr, mem->size);
-	if (!mem->vaddr) {
-		D("%s: ioremap failed\n", __func__);
-		msm_mem_free(mem->phyaddr);
-		goto error;
-	}
-
-	D("data physical addr 0x%x virtual addr %p (size %ld)\n",
-					mem->phyaddr, mem->vaddr, mem->size);
-
 	/* Try to remap memory */
 	size = vma->vm_end - vma->vm_start;
 	size = (size < mem->size) ? size : mem->size;
@@ -313,14 +294,12 @@ static int __videobuf_mmap_mapper(struct videobuf_queue *q,
 		mem->phyaddr >> PAGE_SHIFT,
 		size, vma->vm_page_prot);
 	if (retval) {
-		D("mmap: remap failed with error %d. ", retval);
-		iounmap(mem->vaddr);
+		pr_err("mmap: remap failed with error %d. ", retval);
 		retval = msm_mem_free(mem->phyaddr);
 		if (retval < 0)
 			printk(KERN_ERR "%s: Invalid memory location\n",
 								__func__);
 		else {
-			mem->vaddr = NULL;
 			mem->phyaddr = 0;
 		}
 		goto error;
