@@ -123,7 +123,6 @@
 #define PM8921_ADC_BTM_INTERVAL_SEL			5
 #define PM8921_ADC_BTM_DECIMATION_SEL			5
 #define PM8921_ADC_MUL					10
-#define PM8921_ADC_VREF_VDD				1800
 #define PM8921_ADC_CONV_TIME_MIN			2000
 #define PM8921_ADC_CONV_TIME_MAX			2100
 
@@ -131,7 +130,6 @@ struct pm8921_adc {
 	struct device				*dev;
 	struct pm8921_adc_properties		*adc_prop;
 	int					adc_irq;
-	int					adc_num;
 	struct mutex				adc_lock;
 	struct mutex				btm_lock;
 	uint32_t				adc_num_channel;
@@ -163,7 +161,6 @@ static struct pm8921_adc *pmic_adc;
 
 static struct pm8921_adc_scale_fn adc_scale_fn[] = {
 	[ADC_SCALE_DEFAULT] = {pm8921_adc_scale_default},
-	[ADC_SCALE_MSM_THERM] = {pm8921_adc_scale_msm_therm},
 	[ADC_SCALE_BATT_THERM] = {pm8921_adc_scale_batt_therm},
 	[ADC_SCALE_PMIC_THERM] = {pm8921_adc_scale_pmic_therm},
 	[ADC_SCALE_XTERN_CHGR_CUR] = {pm8921_adc_scale_xtern_chgr_cur},
@@ -176,12 +173,11 @@ static int32_t pm8921_adc_arb_cntrl(uint32_t arb_cntrl)
 {
 	struct pm8921_adc *adc_pmic = pmic_adc;
 	int i, rc;
-	u8 data_arb_cntrl;
-
-	data_arb_cntrl = PM8921_ADC_ARB_USRP_CNTRL1_REQ;
+	u8 data_arb_cntrl = 0;
 
 	if (arb_cntrl)
-		data_arb_cntrl |= PM8921_ADC_ARB_USRP_CNTRL1_EN_ARB;
+		data_arb_cntrl |= (PM8921_ADC_ARB_USRP_CNTRL1_REQ |
+				PM8921_ADC_ARB_USRP_CNTRL1_EN_ARB);
 
 	/* Write twice to the CNTRL register for the arbiter settings
 	   to take into effect */
@@ -197,12 +193,12 @@ static int32_t pm8921_adc_arb_cntrl(uint32_t arb_cntrl)
 	return 0;
 }
 
-static uint32_t pm8921_adc_read_reg(uint32_t reg, u8 data)
+static uint32_t pm8921_adc_read_reg(uint32_t reg, u8 *data)
 {
 	struct pm8921_adc *adc_pmic = pmic_adc;
 	int rc;
 
-	rc = pm8xxx_readb(adc_pmic->dev->parent, reg, &data);
+	rc = pm8xxx_readb(adc_pmic->dev->parent, reg, data);
 	if (rc < 0) {
 		pr_err("PM8921 adc read reg %d failed with %d\n", reg, rc);
 		return rc;
@@ -239,20 +235,6 @@ static int32_t pm8921_adc_configure(
 			return rc;
 	}
 
-	rc = pm8921_adc_write_reg(PM8921_ADC_ARB_USRP_CNTRL1,
-				PM8921_ADC_ARB_USRP_CNTRL1_EN_ARB);
-	if (rc < 0)
-		return rc;
-
-	rc = pm8921_adc_read_reg(PM8921_ADC_ARB_USRP_AMUX_CNTRL,
-						data_amux_chan);
-	if (rc < 0)
-		return rc;
-
-	data_amux_chan &= (PM8921_ADC_ARB_USRP_AMUX_CNTRL_SEL0 |
-			PM8921_ADC_ARB_USRP_AMUX_CNTRL_SEL1 |
-			PM8921_ADC_ARB_USRP_AMUX_CNTRL_SEL2 |
-			PM8921_ADC_ARB_USRP_AMUX_CNTRL_SEL3);
 	data_amux_chan |= chan_prop->amux_channel << PM8921_ADC_AMUX_SEL;
 
 	if (chan_prop->amux_mpp_channel)
@@ -275,7 +257,8 @@ static int32_t pm8921_adc_configure(
 	if (rc < 0)
 		return rc;
 
-	rc = pm8921_adc_read_reg(PM8921_ADC_ARB_USRP_DIG_PARAM, data_dig_param);
+	rc = pm8921_adc_read_reg(PM8921_ADC_ARB_USRP_DIG_PARAM,
+							&data_dig_param);
 	if (rc < 0)
 		return rc;
 
@@ -435,6 +418,7 @@ static uint32_t pm8921_adc_calib_device(void)
 	conv.amux_channel = CHANNEL_125V;
 	conv.decimation = ADC_DECIMATION_TYPE2;
 	conv.amux_ip_rsv = AMUX_RSV1;
+	conv.amux_mpp_channel = PREMUX_MPP_SCALE_0;
 	pm8921_adc_calib_first_adc = true;
 	rc = pm8921_adc_configure(&conv);
 	if (rc) {
@@ -442,13 +426,16 @@ static uint32_t pm8921_adc_calib_device(void)
 		goto calib_fail;
 	}
 
-	while (((pm8921_adc_read_reg(PM8921_ADC_ARB_USRP_CNTRL1,
-		data_arb_usrp_cntrl1)) & (PM8921_ADC_ARB_USRP_CNTRL1_EOC
-		| PM8921_ADC_ARB_USRP_CNTRL1_REQ)) ==
-				(PM8921_ADC_ARB_USRP_CNTRL1_EOC)) {
+	while (data_arb_usrp_cntrl1 != (PM8921_ADC_ARB_USRP_CNTRL1_EOC |
+					PM8921_ADC_ARB_USRP_CNTRL1_EN_ARB)) {
+		rc = pm8921_adc_read_reg(PM8921_ADC_ARB_USRP_CNTRL1,
+					&data_arb_usrp_cntrl1);
+		if (rc < 0)
+			return rc;
 		usleep_range(PM8921_ADC_CONV_TIME_MIN,
 					PM8921_ADC_CONV_TIME_MAX);
 	}
+	data_arb_usrp_cntrl1 = 0;
 
 	rc = pm8921_adc_read_adc_code(&calib_read_1);
 	if (rc) {
@@ -461,6 +448,7 @@ static uint32_t pm8921_adc_calib_device(void)
 	conv.amux_channel = CHANNEL_625MV;
 	conv.decimation = ADC_DECIMATION_TYPE2;
 	conv.amux_ip_rsv = AMUX_RSV1;
+	conv.amux_mpp_channel = PREMUX_MPP_SCALE_0;
 	pm8921_adc_calib_first_adc = true;
 	rc = pm8921_adc_configure(&conv);
 	if (rc) {
@@ -468,13 +456,16 @@ static uint32_t pm8921_adc_calib_device(void)
 		goto calib_fail;
 	}
 
-	while (((pm8921_adc_read_reg(PM8921_ADC_ARB_USRP_CNTRL1,
-		data_arb_usrp_cntrl1)) & (PM8921_ADC_ARB_USRP_CNTRL1_EOC
-		| PM8921_ADC_ARB_USRP_CNTRL1_REQ)) ==
-				(PM8921_ADC_ARB_USRP_CNTRL1_EOC)) {
+	while (data_arb_usrp_cntrl1 != (PM8921_ADC_ARB_USRP_CNTRL1_EOC |
+					PM8921_ADC_ARB_USRP_CNTRL1_EN_ARB)) {
+		rc = pm8921_adc_read_reg(PM8921_ADC_ARB_USRP_CNTRL1,
+					&data_arb_usrp_cntrl1);
+		if (rc < 0)
+			return rc;
 		usleep_range(PM8921_ADC_CONV_TIME_MIN,
 					PM8921_ADC_CONV_TIME_MAX);
 	}
+	data_arb_usrp_cntrl1 = 0;
 
 	rc = pm8921_adc_read_adc_code(&calib_read_2);
 	if (rc) {
@@ -496,10 +487,17 @@ static uint32_t pm8921_adc_calib_device(void)
 					(calib_read_1 - calib_read_2);
 	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_ABSOLUTE].dx
 						= PM8921_CHANNEL_ADC_625_MV;
+	rc = pm8921_adc_arb_cntrl(0);
+	if (rc < 0) {
+		pr_err("%s: Configuring ADC Arbiter disable"
+					"failed\n", __func__);
+		return rc;
+	}
 	/* Ratiometric Calibration */
 	conv.amux_channel = CHANNEL_MUXOFF;
 	conv.decimation = ADC_DECIMATION_TYPE2;
-	conv.amux_ip_rsv = AMUX_RSV4;
+	conv.amux_ip_rsv = AMUX_RSV5;
+	conv.amux_mpp_channel = PREMUX_MPP_SCALE_0;
 	pm8921_adc_calib_first_adc = true;
 	rc = pm8921_adc_configure(&conv);
 	if (rc) {
@@ -507,13 +505,16 @@ static uint32_t pm8921_adc_calib_device(void)
 		goto calib_fail;
 	}
 
-	while (((pm8921_adc_read_reg(PM8921_ADC_ARB_USRP_CNTRL1,
-		data_arb_usrp_cntrl1)) & (PM8921_ADC_ARB_USRP_CNTRL1_EOC
-		| PM8921_ADC_ARB_USRP_CNTRL1_REQ)) ==
-				(PM8921_ADC_ARB_USRP_CNTRL1_EOC)) {
+	while (data_arb_usrp_cntrl1 != (PM8921_ADC_ARB_USRP_CNTRL1_EOC |
+					PM8921_ADC_ARB_USRP_CNTRL1_EN_ARB)) {
+		rc = pm8921_adc_read_reg(PM8921_ADC_ARB_USRP_CNTRL1,
+					&data_arb_usrp_cntrl1);
+		if (rc < 0)
+			return rc;
 		usleep_range(PM8921_ADC_CONV_TIME_MIN,
 					PM8921_ADC_CONV_TIME_MAX);
 	}
+	data_arb_usrp_cntrl1 = 0;
 
 	rc = pm8921_adc_read_adc_code(&calib_read_1);
 	if (rc) {
@@ -525,7 +526,8 @@ static uint32_t pm8921_adc_calib_device(void)
 
 	conv.amux_channel = CHANNEL_MUXOFF;
 	conv.decimation = ADC_DECIMATION_TYPE2;
-	conv.amux_ip_rsv = AMUX_RSV5;
+	conv.amux_ip_rsv = AMUX_RSV4;
+	conv.amux_mpp_channel = PREMUX_MPP_SCALE_0;
 	pm8921_adc_calib_first_adc = true;
 	rc = pm8921_adc_configure(&conv);
 	if (rc) {
@@ -533,13 +535,16 @@ static uint32_t pm8921_adc_calib_device(void)
 		goto calib_fail;
 	}
 
-	while (((pm8921_adc_read_reg(PM8921_ADC_ARB_USRP_CNTRL1,
-		data_arb_usrp_cntrl1)) & (PM8921_ADC_ARB_USRP_CNTRL1_EOC
-		| PM8921_ADC_ARB_USRP_CNTRL1_REQ)) ==
-				(PM8921_ADC_ARB_USRP_CNTRL1_EOC)) {
+	while (data_arb_usrp_cntrl1 != (PM8921_ADC_ARB_USRP_CNTRL1_EOC |
+					PM8921_ADC_ARB_USRP_CNTRL1_EN_ARB)) {
+		rc = pm8921_adc_read_reg(PM8921_ADC_ARB_USRP_CNTRL1,
+					&data_arb_usrp_cntrl1);
+		if (rc < 0)
+			return rc;
 		usleep_range(PM8921_ADC_CONV_TIME_MIN,
 					PM8921_ADC_CONV_TIME_MAX);
 	}
+	data_arb_usrp_cntrl1 = 0;
 
 	rc = pm8921_adc_read_adc_code(&calib_read_2);
 	if (rc) {
@@ -550,16 +555,17 @@ static uint32_t pm8921_adc_calib_device(void)
 	pm8921_adc_calib_first_adc = false;
 
 	slope_adc = (((calib_read_1 - calib_read_2) << PM8921_ADC_MUL)/
-				PM8921_ADC_VREF_VDD); /* 1.8V */
+				adc_pmic->adc_prop->adc_vdd_reference);
 	offset_adc = calib_read_2 -
-			((slope_adc * PM8921_ADC_VREF_VDD) >> PM8921_ADC_MUL);
+			((slope_adc * adc_pmic->adc_prop->adc_vdd_reference)
+							>> PM8921_ADC_MUL);
 
 	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_RATIOMETRIC].offset
 								= offset_adc;
 	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_RATIOMETRIC].dy =
 					(calib_read_1 - calib_read_2);
 	adc_pmic->conv->chan_prop->adc_graph[ADC_CALIB_RATIOMETRIC].dx =
-							PM8921_ADC_VREF_VDD;
+					adc_pmic->adc_prop->adc_vdd_reference;
 calib_fail:
 	rc = pm8921_adc_arb_cntrl(0);
 	if (rc < 0) {
@@ -791,7 +797,7 @@ uint32_t pm8921_adc_btm_end(void)
 }
 EXPORT_SYMBOL_GPL(pm8921_adc_btm_end);
 
-static int set_adc_channel(void *data, u64 val)
+static int get_adc(void *data, u64 *val)
 {
 	struct pm8921_adc_chan_result result;
 	int i = (int)data;
@@ -801,10 +807,10 @@ static int set_adc_channel(void *data, u64 val)
 
 	pr_info("ADC value raw:%x physical:%lld\n",
 			result.adc_code, result.physical);
-
+	*val = result.physical;
 	return 0;
 }
-DEFINE_SIMPLE_ATTRIBUTE(reg_fops, NULL, set_adc_channel, "%llu\n");
+DEFINE_SIMPLE_ATTRIBUTE(reg_fops, get_adc, NULL, "%llu\n");
 
 #ifdef CONFIG_DEBUG_FS
 static void create_debugfs_entries(void)
@@ -816,12 +822,32 @@ static void create_debugfs_entries(void)
 		return;
 	}
 
-	debugfs_create_file("CHANNEL_VBAT", 0644, pmic_adc->dent,
+	debugfs_create_file("vbat", 0644, pmic_adc->dent,
 			    (void *)CHANNEL_VBAT, &reg_fops);
-	debugfs_create_file("CHANNEL_625MV", 0644, pmic_adc->dent,
+	debugfs_create_file("625mv", 0644, pmic_adc->dent,
 			    (void *)CHANNEL_625MV, &reg_fops);
-	debugfs_create_file("CHANNEL_125V", 0644, pmic_adc->dent,
+	debugfs_create_file("125v", 0644, pmic_adc->dent,
 			    (void *)CHANNEL_125V, &reg_fops);
+	debugfs_create_file("die_temp", 0644, pmic_adc->dent,
+			    (void *)CHANNEL_DIE_TEMP, &reg_fops);
+	debugfs_create_file("vcoin", 0644, pmic_adc->dent,
+			    (void *)CHANNEL_VCOIN, &reg_fops);
+	debugfs_create_file("dc_in", 0644, pmic_adc->dent,
+			    (void *)CHANNEL_DCIN, &reg_fops);
+	debugfs_create_file("vph_pwr", 0644, pmic_adc->dent,
+			    (void *)CHANNEL_VPH_PWR, &reg_fops);
+	debugfs_create_file("usb_in", 0644, pmic_adc->dent,
+			    (void *)CHANNEL_USBIN, &reg_fops);
+	debugfs_create_file("batt_therm", 0644, pmic_adc->dent,
+			    (void *)CHANNEL_BATT_THERM, &reg_fops);
+	debugfs_create_file("batt_id", 0644, pmic_adc->dent,
+			    (void *)CHANNEL_BATT_ID, &reg_fops);
+	debugfs_create_file("chg_temp", 0644, pmic_adc->dent,
+			    (void *)CHANNEL_CHG_TEMP, &reg_fops);
+	debugfs_create_file("charger_current", 0644, pmic_adc->dent,
+			    (void *)CHANNEL_ICHG, &reg_fops);
+	debugfs_create_file("ibat", 0644, pmic_adc->dent,
+			    (void *)CHANNEL_IBAT, &reg_fops);
 }
 #else
 static inline void create_debugfs_entries(void)
@@ -891,7 +917,6 @@ static int __devinit pm8921_adc_probe(struct platform_device *pdev)
 
 	adc_pmic->dev = &pdev->dev;
 	adc_pmic->adc_prop = pdata->adc_prop;
-	adc_pmic->adc_num = pdata->adc_num;
 	adc_pmic->conv = adc_amux_prop;
 	adc_pmic->conv->chan_prop = adc_pmic_chanprop;
 
