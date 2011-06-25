@@ -170,9 +170,16 @@ static struct vfe32_cmd_type vfe32_cmd[] = {
 					V32_LINEARIZATION_OFF1},
 		{V32_DEMOSAICV3},
 /*105*/	{V32_DEMOSAICV3_ABCC_CFG},
-		{V32_DEMOSAICV3_DBCC_CFG},
-		{V32_DEMOSAICV3_DBPC_CFG},
+		{V32_DEMOSAICV3_DBCC_CFG, V32_DEMOSAICV3_DBCC_LEN,
+			V32_DEMOSAICV3_DBCC_OFF},
+		{V32_DEMOSAICV3_DBPC_CFG, V32_DEMOSAICV3_DBPC_LEN1,
+			V32_DEMOSAICV3_DBPC_OFF1},
 		{V32_DEMOSAICV3_ABF_CFG},
+		{V32_DEMOSAICV3_ABCC_UPDATE},
+	{V32_DEMOSAICV3_DBCC_UPDATE, V32_DEMOSAICV3_DBCC_LEN,
+		V32_DEMOSAICV3_DBCC_OFF},
+	{V32_DEMOSAICV3_DBPC_UPDATE, V32_DEMOSAICV3_DBPC_LEN1,
+		V32_DEMOSAICV3_DBPC_OFF1},
 };
 
 uint32_t vfe32_AXI_WM_CFG[] = {
@@ -295,6 +302,9 @@ static const char * const vfe32_general_cmd[] = {
 	"DEMOSAICV3_DBCC_CFG",
 	"DEMOSAICV3_DBPC_CFG",
 	"DEMOSAICV3_ABF_CFG", /* 108 */
+	"DEMOSAICV3_ABCC_UPDATE",
+	"DEMOSAICV3_DBCC_UPDATE",
+	"DEMOSAICV3_DBPC_UPDATE",
 };
 
 static void vfe_addr_convert(struct msm_vfe_phy_info *pinfo,
@@ -1585,9 +1595,63 @@ static int vfe32_proc_general(struct msm_vfe32_cmd *cmd)
 		break;
 
 	case V32_DEMOSAICV3_ABCC_CFG:
-	case V32_DEMOSAICV3_DBCC_CFG:
-	case V32_DEMOSAICV3_DBPC_CFG:
 		rc = -EFAULT;
+		break;
+
+	case V32_DEMOSAICV3_DBCC_CFG:
+	case V32_DEMOSAICV3_DBCC_UPDATE:
+		cmdp = kmalloc(cmd->length, GFP_ATOMIC);
+		if (!cmdp) {
+			rc = -ENOMEM;
+			goto proc_general_done;
+		}
+		if (copy_from_user(cmdp,
+			(void __user *)(cmd->value),
+			cmd->length)) {
+			rc = -EFAULT;
+			goto proc_general_done;
+		}
+		cmdp_local = cmdp;
+		new_val = *cmdp_local;
+
+		old_val = msm_io_r(vfe32_ctrl->vfebase + V32_DEMOSAICV3_0_OFF);
+		old_val &= DBCC_MASK;
+
+		new_val = new_val | old_val;
+		*cmdp_local = new_val;
+		msm_io_memcpy(vfe32_ctrl->vfebase + V32_DEMOSAICV3_0_OFF,
+					cmdp_local, 4);
+		cmdp_local += 1;
+		msm_io_memcpy(vfe32_ctrl->vfebase + vfe32_cmd[cmd->id].offset,
+			cmdp_local, (vfe32_cmd[cmd->id].length));
+		break;
+
+	case V32_DEMOSAICV3_DBPC_CFG:
+	case V32_DEMOSAICV3_DBPC_UPDATE:
+		cmdp = kmalloc(cmd->length, GFP_ATOMIC);
+		if (!cmdp) {
+			rc = -ENOMEM;
+			goto proc_general_done;
+		}
+		if (copy_from_user(cmdp,
+			(void __user *)(cmd->value),
+			cmd->length)) {
+			rc = -EFAULT;
+			goto proc_general_done;
+		}
+		cmdp_local = cmdp;
+		new_val = *cmdp_local;
+
+		old_val = msm_io_r(vfe32_ctrl->vfebase + V32_DEMOSAICV3_0_OFF);
+		old_val &= DBPC_MASK;
+
+		new_val = new_val | old_val;
+		*cmdp_local = new_val;
+		msm_io_memcpy(vfe32_ctrl->vfebase + V32_DEMOSAICV3_0_OFF,
+					cmdp_local, 4);
+		cmdp_local += 1;
+		msm_io_memcpy(vfe32_ctrl->vfebase + vfe32_cmd[cmd->id].offset,
+			cmdp_local, (vfe32_cmd[cmd->id].length));
 		break;
 
 	case V32_RGB_G_CFG: {
