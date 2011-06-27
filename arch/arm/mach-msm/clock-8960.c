@@ -3952,7 +3952,7 @@ unsigned msm_num_clocks_8960 = ARRAY_SIZE(msm_clocks_8960);
  */
 
 /* Read, modify, then write-back a register. */
-static void rmwreg(uint32_t val, void *reg, uint32_t mask)
+static void __init rmwreg(uint32_t val, void *reg, uint32_t mask)
 {
 	uint32_t regval = readl_relaxed(reg);
 	regval &= ~mask;
@@ -3960,7 +3960,7 @@ static void rmwreg(uint32_t val, void *reg, uint32_t mask)
 	writel_relaxed(regval, reg);
 }
 
-static void reg_init(void)
+static void __init reg_init(void)
 {
 	/* Enable PLL4 */
 	writel_relaxed(0x4, LCC_PLL0_MODE_REG);
@@ -4134,7 +4134,7 @@ void __init msm_clk_soc_init(void)
 	}
 }
 
-static int msm_clk_soc_late_init(void)
+static int __init msm_clk_soc_late_init(void)
 {
 	return local_unvote_sys_vdd(HIGH);
 }

@@ -2874,7 +2874,7 @@ static struct clk_local_ownership {
 struct clk_lookup msm_clocks_7x30[ARRAY_SIZE(ownership_map)];
 unsigned msm_num_clocks_7x30 = ARRAY_SIZE(msm_clocks_7x30);
 
-static void set_clock_ownership(void)
+static void __init set_clock_ownership(void)
 {
 	unsigned i;
 	struct clk_lookup *lk;

@@ -3672,7 +3672,7 @@ unsigned msm_num_clocks_8x60 = ARRAY_SIZE(msm_clocks_8x60);
  */
 
 /* Read, modify, then write-back a register. */
-static void rmwreg(uint32_t val, void *reg, uint32_t mask)
+static void __init rmwreg(uint32_t val, void *reg, uint32_t mask)
 {
 	uint32_t regval = readl_relaxed(reg);
 	regval &= ~mask;
@@ -3680,7 +3680,7 @@ static void rmwreg(uint32_t val, void *reg, uint32_t mask)
 	writel_relaxed(regval, reg);
 }
 
-static void reg_init(void)
+static void __init reg_init(void)
 {
 	/* Setup MM_PLL2 (PLL3), but turn it off. Rate set by set_rate_tv(). */
 	rmwreg(0, MM_PLL2_MODE_REG, BIT(0)); /* Disable output */
@@ -3802,7 +3802,7 @@ void __init msm_clk_soc_init(void)
 	local_clk_disable(&tssc_clk.c);
 }
 
-static int msm_clk_soc_late_init(void)
+static int __init msm_clk_soc_late_init(void)
 {
 	int rc;
 
