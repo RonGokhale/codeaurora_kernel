@@ -2000,16 +2000,28 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		}
 		spin_unlock_irqrestore(&host->lock, flags);
 
+		clock = msmsdcc_get_sup_clk_rate(host, ios->clock);
 		/*
 		 * For DDR50 mode, controller needs clock rate to be
 		 * double than what is required on the SD card CLK pin.
 		 */
-		if (ios->timing == MMC_TIMING_UHS_DDR50)
-			clock = (ios->clock * 2);
-		else
-			clock = ios->clock;
+		if (ios->timing == MMC_TIMING_UHS_DDR50) {
+			/*
+			 * Make sure that we don't double the clock if
+			 * doubled clock rate is already set
+			 */
+			if (!host->ddr_doubled_clk_rate ||
+				(host->ddr_doubled_clk_rate &&
+				(host->ddr_doubled_clk_rate != ios->clock))) {
+				host->ddr_doubled_clk_rate =
+					msmsdcc_get_sup_clk_rate(
+						host, (ios->clock * 2));
+				clock = host->ddr_doubled_clk_rate;
+			}
+		} else {
+			host->ddr_doubled_clk_rate = 0;
+		}
 
-		clock = msmsdcc_get_sup_clk_rate(host, clock);
 		if (clock != host->clk_rate) {
 			rc = clk_set_rate(host->clk, clock);
 			if (rc < 0)
