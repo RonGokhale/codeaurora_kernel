@@ -104,7 +104,6 @@ enum pmic_chg_interrupts {
 	COARSE_DET_LOW_IRQ,
 	VDD_LOOP_IRQ,
 	VREG_OV_IRQ,
-	VBAT_IRQ,
 	VBATDET_IRQ,
 	BATFET_IRQ,
 	PSI_IRQ,
@@ -906,12 +905,6 @@ static irqreturn_t vreg_ov_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t vbat_irq_handler(int irq, void *data)
-{
-	pr_debug("fsm_state=%d\n", pm_chg_get_fsm_state(data));
-	return IRQ_HANDLED;
-}
-
 static irqreturn_t vbatdet_irq_handler(int irq, void *data)
 {
 	pr_debug("fsm_state=%d\n", pm_chg_get_fsm_state(data));
@@ -1056,7 +1049,6 @@ struct pm_chg_irq_init_data chg_irq_data[] = {
 						coarse_det_low_irq_handler),
 	CHG_IRQ(VDD_LOOP_IRQ, IRQF_TRIGGER_RISING, vdd_loop_irq_handler),
 	CHG_IRQ(VREG_OV_IRQ, IRQF_TRIGGER_RISING, vreg_ov_irq_handler),
-	CHG_IRQ(VBAT_IRQ, IRQF_TRIGGER_RISING, vbat_irq_handler),
 	CHG_IRQ(VBATDET_IRQ, IRQF_TRIGGER_RISING, vbatdet_irq_handler),
 	CHG_IRQ(BATFET_IRQ, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 						batfet_irq_handler),
