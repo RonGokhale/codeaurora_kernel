@@ -3455,7 +3455,7 @@ static struct measure_clk measure_clk = {
 	.divider = 1,
 };
 
-struct clk_lookup msm_clocks_8x60[] = {
+static struct clk_lookup msm_clocks_8x60[] = {
 	CLK_LOOKUP("cxo",		cxo_clk.c,	NULL),
 	CLK_LOOKUP("pll4",		pll4_clk.c,	NULL),
 	CLK_LOOKUP("pll4",		pll4_clk.c,	"peripheral-reset"),
@@ -3658,7 +3658,6 @@ struct clk_lookup msm_clocks_8x60[] = {
 	CLK_LOOKUP("sc1_mclk",		sc1_m_clk, NULL),
 	CLK_LOOKUP("l2_mclk",		l2_m_clk,  NULL),
 };
-unsigned msm_num_clocks_8x60 = ARRAY_SIZE(msm_clocks_8x60);
 
 /*
  * Miscellaneous clock register initializations
@@ -3760,7 +3759,7 @@ static void __init reg_init(void)
 }
 
 /* Local clock driver initialization. */
-void __init msm_clk_soc_init(void)
+void __init msm8660_clock_init(void)
 {
 	xo_pxo = msm_xo_get(MSM_XO_PXO, "clock-8x60");
 	if (IS_ERR(xo_pxo)) {
@@ -3793,6 +3792,8 @@ void __init msm_clk_soc_init(void)
 	local_clk_disable(&pdm_clk.c);
 	local_clk_enable(&tssc_clk.c);
 	local_clk_disable(&tssc_clk.c);
+
+	msm_clock_init(msm_clocks_8x60, ARRAY_SIZE(msm_clocks_8x60));
 }
 
 static int __init msm_clk_soc_late_init(void)

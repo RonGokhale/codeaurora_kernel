@@ -3347,7 +3347,7 @@ static void __init msm8960_sim_init(void)
 	BUG_ON(msm_rpmrs_levels_init(msm_rpmrs_levels,
 				ARRAY_SIZE(msm_rpmrs_levels)));
 	regulator_suppress_info_printing();
-	msm_clock_init(msm_clocks_8960, msm_num_clocks_8960);
+	msm8960_clock_init();
 	msm8960_device_ssbi_pm8921.dev.platform_data =
 				&msm8960_ssbi_pm8921_pdata;
 	pm8921_platform_data.num_regulators = msm_pm8921_regulator_pdata_len;
@@ -3394,7 +3394,7 @@ static void __init msm8960_rumi3_init(void)
 	BUG_ON(msm_rpmrs_levels_init(msm_rpmrs_levels,
 				ARRAY_SIZE(msm_rpmrs_levels)));
 	regulator_suppress_info_printing();
-	msm_clock_init(msm_clocks_8960_dummy, msm_num_clocks_8960_dummy);
+	msm8960_clock_init_dummy();
 	gpiomux_init();
 	ethernet_init();
 	msm8960_device_ssbi_pm8921.dev.platform_data =
@@ -3432,7 +3432,7 @@ static void __init msm8960_cdp_init(void)
 	regulator_suppress_info_printing();
 	if (msm_xo_init())
 		pr_err("Failed to initialize XO votes\n");
-	msm_clock_init(msm_clocks_8960, msm_num_clocks_8960);
+	msm8960_clock_init();
 	msm_device_otg.dev.platform_data = &msm_otg_pdata;
 	msm_device_gadget_peripheral.dev.parent = &msm_device_otg.dev;
 	msm_device_hsusb_host.dev.parent = &msm_device_otg.dev;

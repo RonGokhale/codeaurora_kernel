@@ -369,7 +369,6 @@ void __init msm_map_apq8064_io(void);
 void __init msm_map_msm7x30_io(void);
 void __init msm_map_fsm9xxx_io(void);
 void __init msm_init_irq(void);
-void __init msm_clock_init(struct clk_lookup *clock_tbl, size_t num_clocks);
 void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *);
 
 struct mmc_platform_data;

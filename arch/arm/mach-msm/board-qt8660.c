@@ -5526,7 +5526,7 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	/* Initialize regulators needed for clock_init. */
 	platform_add_devices(early_regulators, ARRAY_SIZE(early_regulators));
 
-	msm_clock_init(msm_clocks_8x60, msm_num_clocks_8x60);
+	msm8660_clock_init();
 
 	/* Buses need to be initialized before early-device registration
 	 * to get the platform data for fabrics.

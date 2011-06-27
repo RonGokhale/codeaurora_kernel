@@ -32,6 +32,7 @@
 #include "clock-rpm.h"
 #include "clock-voter.h"
 #include "clock-dss-8960.h"
+#include "devices.h"
 
 #define REG(off)	(MSM_CLK_CTL_BASE + (off))
 #define REG_MM(off)	(MSM_MMSS_CLK_CTL_BASE + (off))
@@ -3718,7 +3719,7 @@ static struct clk measure_clk = {
 	CLK_INIT(measure_clk),
 };
 
-struct clk_lookup msm_clocks_8960[] = {
+static struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("cxo",		cxo_clk.c,		NULL),
 	CLK_LOOKUP("pll2",		pll2_clk.c,		NULL),
 	CLK_LOOKUP("pll8",		pll8_clk.c,		NULL),
@@ -3928,8 +3929,6 @@ struct clk_lookup msm_clocks_8960[] = {
 	CLK_LOOKUP("ebi1_clk",		ebi1_adm_clk.c, "msm_dmov"),
 };
 
-unsigned msm_num_clocks_8960 = ARRAY_SIZE(msm_clocks_8960);
-
 /*
  * Miscellaneous clock register initializations
  */
@@ -4068,9 +4067,14 @@ static int wr_pll_clk_enable(struct clk *clk)
 	return 0;
 }
 
+void __init msm8960_clock_init_dummy(void)
+{
+	local_vote_sys_vdd(HIGH);
+	msm_clock_init(msm_clocks_8960_dummy, msm_num_clocks_8960_dummy);
+}
 
 /* Local clock driver initialization. */
-void __init msm_clk_soc_init(void)
+void __init msm8960_clock_init(void)
 {
 	xo_pxo = msm_xo_get(MSM_XO_PXO, "clock-8960");
 	if (IS_ERR(xo_pxo)) {
@@ -4084,9 +4088,6 @@ void __init msm_clk_soc_init(void)
 	}
 
 	local_vote_sys_vdd(HIGH);
-
-	if (machine_is_msm8960_rumi3())
-		return;
 
 	clk_ops_pll.enable = wr_pll_clk_enable;
 
@@ -4120,6 +4121,8 @@ void __init msm_clk_soc_init(void)
 		clk_enable(&sdc3_clk.c);
 		clk_enable(&sdc3_p_clk.c);
 	}
+
+	msm_clock_init(msm_clocks_8960, ARRAY_SIZE(msm_clocks_8960));
 }
 
 static int __init msm_clk_soc_late_init(void)

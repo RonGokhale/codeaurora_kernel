@@ -171,9 +171,6 @@ void __init msm_clock_init(struct clk_lookup *clock_tbl, size_t num_clocks)
 {
 	unsigned n;
 
-	/* Do SoC-speficic clock init operations. */
-	msm_clk_soc_init();
-
 	for (n = 0; n < num_clocks; n++) {
 		struct clk *clk = clock_tbl[n].clk;
 		struct clk *parent = clk_get_parent(clk);

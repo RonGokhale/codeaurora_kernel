@@ -2855,8 +2855,7 @@ static struct clk_local_ownership {
 		O(GLBL), BIT(8), &dummy_clk },
 };
 
-struct clk_lookup msm_clocks_7x30[ARRAY_SIZE(ownership_map)];
-unsigned msm_num_clocks_7x30 = ARRAY_SIZE(msm_clocks_7x30);
+static struct clk_lookup msm_clocks_7x30[ARRAY_SIZE(ownership_map)];
 
 static void __init set_clock_ownership(void)
 {
@@ -2920,7 +2919,7 @@ static const struct reg_init {
 };
 
 /* Local clock driver initialization. */
-void __init msm_clk_soc_init(void)
+void __init msm7x30_clock_init(void)
 {
 	int i;
 	uint32_t val;
@@ -2956,6 +2955,8 @@ void __init msm_clk_soc_init(void)
 	clk_set_rate(&lpa_codec_clk.c, 1);
 	/* Sync the GRP2D clock to AXI */
 	clk_set_rate(&grp_2d_clk.c, 1);
+
+	msm_clock_init(msm_clocks_7x30, ARRAY_SIZE(msm_clocks_7x30));
 }
 
 /*
