@@ -15,6 +15,8 @@
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/mfd/wcd9310/core.h>
+#include <linux/bitops.h>
+#include <linux/slab.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/soc.h>
@@ -22,219 +24,148 @@
 #include <sound/q6afe.h>
 #include <sound/q6adm.h>
 
+enum {
+	STATUS_PORT_STARTED, /* track if AFE port has started */
+	STATUS_MAX
+};
+
+struct msm_dai_q6_dai_data {
+	DECLARE_BITMAP(status_mask, STATUS_MAX);
+	u32 rate;
+	u32 channels;
+	union afe_port_config port_config;
+};
+
 static int msm_dai_q6_cdc_hw_params(struct snd_pcm_hw_params *params,
 				    struct snd_soc_dai *dai, int stream)
 {
-	union afe_port_config port_config;
-	int sample_rate, channels;
-	int rc;
+	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
 
-	channels = params_channels(params);
-	switch (channels) {
+	dai_data->channels = params_channels(params);
+	switch (dai_data->channels) {
 	case 2:
-		port_config.mi2s.channel = MSM_AFE_STEREO;
+		dai_data->port_config.mi2s.channel = MSM_AFE_STEREO;
 		break;
 	case 1:
+		dai_data->port_config.mi2s.channel = MSM_AFE_MONO;
+		break;
 	default:
-		port_config.mi2s.channel = MSM_AFE_MONO;
+		return -EINVAL;
 		break;
 	}
-	sample_rate = params_rate(params);
+	dai_data->rate = params_rate(params);
 
 	dev_dbg(dai->dev, " channel %d sample rate %d entered\n",
-	channels, sample_rate);
+	dai_data->channels, dai_data->rate);
 
-	port_config.mi2s.bitwidth = 16; /* Q6 only supports 16 as now */
-	port_config.mi2s.line = 1;
-	port_config.mi2s.ws = 1; /* I2S master mode for now */
-
-	rc = afe_open(dai->id, &port_config, sample_rate);
-
-	if (IS_ERR_VALUE(rc)) {
-		dev_err(dai->dev, "fail to open AFE port\n");
-		goto failed_cmd;
-	}
-	if (stream == SNDRV_PCM_STREAM_PLAYBACK)
-		rc = adm_open_mixer(dai->id, ADM_PATH_PLAYBACK, sample_rate,
-		channels, DEFAULT_COPP_TOPOLOGY);
-	else
-		rc = adm_open_mixer(dai->id, ADM_PATH_LIVE_REC, sample_rate,
-		channels, DEFAULT_COPP_TOPOLOGY);
-
-	if (IS_ERR_VALUE(rc)) {
-		dev_err(dai->dev, "fail to open AFE port\n");
-		goto failed_cmd;
-	}
+	/* Q6 only supports 16 as now */
+	dai_data->port_config.mi2s.bitwidth = 16;
+	dai_data->port_config.mi2s.line = 1;
+	dai_data->port_config.mi2s.ws = 1; /* I2S master mode for now */
 
 	return 0;
-
-failed_cmd:
-	return rc;
 }
 
 static int msm_dai_q6_hdmi_hw_params(struct snd_pcm_hw_params *params,
 	struct snd_soc_dai *dai)
 {
-	union afe_port_config port_config;
-	int sample_rate;
-	int rc;
+	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
 
 	dev_dbg(dai->dev, "%s start HDMI port\n", __func__);
 
-	switch (params_channels(params)) {
+	dai_data->channels = params_channels(params);
+	switch (dai_data->channels) {
 	case 2:
-		port_config.hdmi.channel_mode = 0; /* Put in macro */
+		dai_data->port_config.hdmi.channel_mode = 0; /* Put in macro */
 		break;
 	default:
 		return -EINVAL;
 		break;
 	}
 
-	port_config.hdmi.bitwidth = 16; /* Q6 only supports 16 as now */
-	port_config.hdmi.data_type = 0;
-	sample_rate = params_rate(params);
-
-	rc = afe_open(dai->id, &port_config, sample_rate);
-
-	if (IS_ERR_VALUE(rc)) {
-		dev_err(dai->dev, "fail to open AFE port\n");
-		goto failed_cmd;
-	}
-
-	rc = adm_open_mixer(dai->id, ADM_PATH_PLAYBACK,
-		sample_rate, 2, DEFAULT_COPP_TOPOLOGY);
-
-	if (IS_ERR_VALUE(rc)) {
-		dev_err(dai->dev, "fail to open AFE port\n");
-		afe_close(dai->id);
-		goto failed_cmd;
-	}
+	/* Q6 only supports 16 as now */
+	dai_data->port_config.hdmi.bitwidth = 16;
+	dai_data->port_config.hdmi.data_type = 0;
+	dai_data->rate = params_rate(params);
 
 	return 0;
-
-failed_cmd:
-	return rc;
 }
 
 static int msm_dai_q6_slim_bus_hw_params(struct snd_pcm_hw_params *params,
 				    struct snd_soc_dai *dai, int stream)
 {
-	union afe_port_config port_config;
-	int sample_rate, channels;
+	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
 	u8 pgd_la, inf_la;
-	int rc;
 
-	channels = params_channels(params);
-	sample_rate = params_rate(params);
-	tabla_get_logical_addresses(&pgd_la, &inf_la);
+	memset(dai_data->port_config.slimbus.slave_port_mapping, 0,
+		sizeof(dai_data->port_config.slimbus.slave_port_mapping));
 
-	port_config.slimbus.slimbus_dev_id =  AFE_SLIMBUS_DEVICE_1;
-	port_config.slimbus.slave_dev_pgd_la = pgd_la;
-	port_config.slimbus.slave_dev_intfdev_la = inf_la;
-	port_config.slimbus.bit_width = 16; /* Q6 only supports 16 as now */
-	port_config.slimbus.data_format = 0;
-	port_config.slimbus.num_channels = channels;
-
-	memset(port_config.slimbus.slave_port_mapping, 0,
-			sizeof(port_config.slimbus.slave_port_mapping));
-
-	switch (channels) {
+	dai_data->channels = params_channels(params);
+	switch (dai_data->channels) {
 	case 2:
 		if (dai->id == SLIMBUS_0_RX) {
-			port_config.slimbus.slave_port_mapping[0] = 1;
-			port_config.slimbus.slave_port_mapping[1] = 2;
+			dai_data->port_config.slimbus.slave_port_mapping[0] = 1;
+			dai_data->port_config.slimbus.slave_port_mapping[1] = 2;
 		} else {
-			port_config.slimbus.slave_port_mapping[0] = 7;
-			port_config.slimbus.slave_port_mapping[1] = 8;
+			dai_data->port_config.slimbus.slave_port_mapping[0] = 7;
+			dai_data->port_config.slimbus.slave_port_mapping[1] = 8;
 		}
 		break;
 	case 1:
-	default:
 		if (dai->id == SLIMBUS_0_RX)
-			port_config.slimbus.slave_port_mapping[0] = 1;
+			dai_data->port_config.slimbus.slave_port_mapping[0] = 1;
 		else
-			port_config.slimbus.slave_port_mapping[0] = 7;
-
+			dai_data->port_config.slimbus.slave_port_mapping[0] = 7;
+		break;
+	default:
+		return -EINVAL;
 		break;
 	}
+	dai_data->rate = params_rate(params);
+	tabla_get_logical_addresses(&pgd_la, &inf_la);
 
-	port_config.slimbus.reserved = 0;
+	dai_data->port_config.slimbus.slimbus_dev_id =  AFE_SLIMBUS_DEVICE_1;
+	dai_data->port_config.slimbus.slave_dev_pgd_la = pgd_la;
+	dai_data->port_config.slimbus.slave_dev_intfdev_la = inf_la;
+	/* Q6 only supports 16 as now */
+	dai_data->port_config.slimbus.bit_width = 16;
+	dai_data->port_config.slimbus.data_format = 0;
+	dai_data->port_config.slimbus.num_channels = dai_data->channels;
+	dai_data->port_config.slimbus.reserved = 0;
 
 	dev_dbg(dai->dev, "slimbus_dev_id  %hu  slave_dev_pgd_la 0x%hx\n"
 		"slave_dev_intfdev_la 0x%hx   bit_width %hu   data_format %hu\n"
 		"num_channel %hu  slave_port_mapping[0]  %hu\n"
 		"slave_port_mapping[1]  %hu slave_port_mapping[2]  %hu\n"
-		"sample_rate %d\n", port_config.slimbus.slimbus_dev_id,
-		port_config.slimbus.slave_dev_pgd_la,
-		port_config.slimbus.slave_dev_intfdev_la,
-		port_config.slimbus.bit_width, port_config.slimbus.data_format,
-		port_config.slimbus.num_channels,
-		port_config.slimbus.slave_port_mapping[0],
-		port_config.slimbus.slave_port_mapping[1],
-		port_config.slimbus.slave_port_mapping[2],
-		sample_rate);
-
-	rc = afe_open(dai->id, &port_config, sample_rate);
-
-	if (IS_ERR_VALUE(rc)) {
-		dev_err(dai->dev, "fail to open AFE port\n");
-		goto failed_cmd;
-	}
-	if (stream == SNDRV_PCM_STREAM_PLAYBACK)
-		rc = adm_open_mixer(dai->id, ADM_PATH_PLAYBACK, sample_rate,
-		channels, DEFAULT_COPP_TOPOLOGY);
-	else
-		rc = adm_open_mixer(dai->id, ADM_PATH_LIVE_REC, sample_rate,
-		channels, DEFAULT_COPP_TOPOLOGY);
-
-	if (IS_ERR_VALUE(rc)) {
-		dev_err(dai->dev, "fail to open AFE port\n");
-		goto failed_cmd;
-	}
+		"sample_rate %d\n",
+		dai_data->port_config.slimbus.slimbus_dev_id,
+		dai_data->port_config.slimbus.slave_dev_pgd_la,
+		dai_data->port_config.slimbus.slave_dev_intfdev_la,
+		dai_data->port_config.slimbus.bit_width,
+		dai_data->port_config.slimbus.data_format,
+		dai_data->port_config.slimbus.num_channels,
+		dai_data->port_config.slimbus.slave_port_mapping[0],
+		dai_data->port_config.slimbus.slave_port_mapping[1],
+		dai_data->port_config.slimbus.slave_port_mapping[2],
+		dai_data->rate);
 
 	return 0;
-
-failed_cmd:
-	return rc;
 }
 
 static int msm_dai_q6_bt_fm_hw_params(struct snd_pcm_hw_params *params,
 				struct snd_soc_dai *dai, int stream)
 {
-	union afe_port_config port_config;
-	int sample_rate, channels;
-	int rc;
+	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
 
-	channels = params_channels(params);
-	sample_rate = params_rate(params);
+	dai_data->channels = params_channels(params);
+	dai_data->rate = params_rate(params);
 
 	dev_dbg(dai->dev, "channels %d sample rate %d entered\n",
-		channels, sample_rate);
+		dai_data->channels, dai_data->rate);
 
-	memset(&port_config, 0, sizeof(port_config));
-	rc = afe_open(dai->id, &port_config, sample_rate);
+	memset(&dai_data->port_config, 0, sizeof(dai_data->port_config));
 
-	if (IS_ERR_VALUE(rc)) {
-		dev_err(dai->dev, "fail to open AFE port\n");
-		goto failed_cmd;
-	}
-
-	if (stream == SNDRV_PCM_STREAM_PLAYBACK)
-		rc = adm_open_mixer(dai->id, 1, sample_rate,
-			channels, DEFAULT_COPP_TOPOLOGY);
-	else
-		rc = adm_open_mixer(dai->id, 2, sample_rate,
-			channels, DEFAULT_COPP_TOPOLOGY);
-
-	if (IS_ERR_VALUE(rc)) {
-		dev_err(dai->dev, "fail to open ADM\n");
-		afe_close(dai->id);
-		goto failed_cmd;
-	}
 	return 0;
-
-failed_cmd:
-	return rc;
 }
 
 /* Current implementation assumes hw_param is called once
@@ -279,6 +210,7 @@ static int msm_dai_q6_hw_params(struct snd_pcm_substream *substream,
 static int msm_dai_q6_hw_free(struct snd_pcm_substream *substream,
 				 struct snd_soc_dai *dai)
 {
+	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
 	int rc;
 
 	rc = adm_close(dai->id);
@@ -286,26 +218,132 @@ static int msm_dai_q6_hw_free(struct snd_pcm_substream *substream,
 	if (IS_ERR_VALUE(rc))
 		dev_err(dai->dev, "fail to close ADM COPP\n");
 
-	rc = afe_close(dai->id);
-
-	if (IS_ERR_VALUE(rc))
-		dev_err(dai->dev, "fail to close AFE port\n");
+	if (test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
+		rc = afe_close(dai->id); /* can block */
+		if (IS_ERR_VALUE(rc))
+			dev_err(dai->dev, "fail to close AFE port\n");
+		clear_bit(STATUS_PORT_STARTED, dai_data->status_mask);
+	}
 
 	return rc;
 };
 
+static int msm_dai_q6_prepare(struct snd_pcm_substream *substream,
+		struct snd_soc_dai *dai)
+{
+	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
+	int rc = 0;
+
+	if (test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
+		/* if AFE port is already started, this means
+		 * application wishes to restore hardware to
+		 * fresh state. This logic anticipates prepare is not
+		 * called right after TRIGGER_START before Q6 AFE
+		 * has enough time to respond to port start command.
+		 */
+		rc = afe_close(dai->id); /* can block */
+		if (IS_ERR_VALUE(rc))
+			dev_err(dai->dev, "fail to close AFE port\n");
+		clear_bit(STATUS_PORT_STARTED, dai_data->status_mask);
+	} else {
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+			rc = adm_open_mixer(dai->id, 1, dai_data->rate,
+				dai_data->channels, DEFAULT_COPP_TOPOLOGY);
+		else
+			rc = adm_open_mixer(dai->id, 2, dai_data->rate,
+				dai_data->channels, DEFAULT_COPP_TOPOLOGY);
+		if (IS_ERR_VALUE(rc))
+			dev_err(dai->dev, "fail to open ADM\n");
+	}
+
+	return rc;
+
+}
+
+static int msm_dai_q6_trigger(struct snd_pcm_substream *substream, int cmd,
+		struct snd_soc_dai *dai)
+{
+	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
+	int rc = 0;
+
+	/* Start/stop port without waiting for Q6 AFE response. Need to have
+	 * native q6 AFE driver propagates AFE response in order to handle
+	 * port start/stop command error properly if error does arise.
+	 */
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		if (!test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
+			afe_port_start_nowait(dai->id, &dai_data->port_config,
+				dai_data->rate);
+			set_bit(STATUS_PORT_STARTED,
+				dai_data->status_mask);
+		}
+		break;
+
+	case SNDRV_PCM_TRIGGER_STOP:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		if (test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
+			afe_port_stop_nowait(dai->id);
+			clear_bit(STATUS_PORT_STARTED,
+				dai_data->status_mask);
+		}
+		break;
+
+	default:
+		rc = -EINVAL;
+	}
+
+	return rc;
+}
+
+static int msm_dai_q6_dai_probe(struct snd_soc_dai *dai)
+{
+	struct msm_dai_q6_dai_data *dai_data;
+	int rc = 0;
+
+	dai_data = kzalloc(sizeof(struct msm_dai_q6_dai_data),
+		GFP_KERNEL);
+
+	if (!dai_data) {
+		dev_err(dai->dev, "DAI-%d: fail to allocate dai data\n",
+		dai->id);
+		rc = -ENOMEM;
+	} else
+		dev_set_drvdata(dai->dev, dai_data);
+
+	return rc;
+}
+
+static int msm_dai_q6_dai_remove(struct snd_soc_dai *dai)
+{
+	struct msm_dai_q6_dai_data *dai_data;
+	int rc;
+
+	dai_data = dev_get_drvdata(dai->dev);
+
+	/* If AFE port is still up, close it */
+	if (test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
+		rc = afe_close(dai->id); /* can block */
+		if (IS_ERR_VALUE(rc))
+			dev_err(dai->dev, "fail to close AFE port\n");
+	}
+	kfree(dai_data);
+	snd_soc_unregister_dai(dai->dev);
+
+	return 0;
+}
+
 static struct snd_soc_dai_ops msm_dai_q6_ops = {
-	/* AFE port are not generic port. There is no run-time
-	 * assignment of generic port
-	 * startup and shutdown are not necessary
-	 * trigger is called in interrupt context
-	 * afe_open and adm_start can put process to sleep
-	 * workaround is to put afe_open and adm start in
-	 * hw_params
+	/*
 	 * DSP only handles 16-bit and support only I2S
 	 * master mode for now. leave set_fmt function
 	 * unimplemented for now.
 	 */
+	.prepare	= msm_dai_q6_prepare,
+	.trigger	= msm_dai_q6_trigger,
 	.hw_params	= msm_dai_q6_hw_params,
 	.hw_free	= msm_dai_q6_hw_free,
 };
@@ -321,6 +359,8 @@ static struct snd_soc_dai_driver msm_dai_q6_i2s_rx_dai = {
 		.rate_max =	48000,
 	},
 	.ops = &msm_dai_q6_ops,
+	.probe = msm_dai_q6_dai_probe,
+	.remove = msm_dai_q6_dai_remove,
 };
 
 static struct snd_soc_dai_driver msm_dai_q6_i2s_tx_dai = {
@@ -334,6 +374,8 @@ static struct snd_soc_dai_driver msm_dai_q6_i2s_tx_dai = {
 		.rate_max =	48000,
 	},
 	.ops = &msm_dai_q6_ops,
+	.probe = msm_dai_q6_dai_probe,
+	.remove = msm_dai_q6_dai_remove,
 };
 
 static struct snd_soc_dai_driver msm_dai_q6_hdmi_rx_dai = {
@@ -346,6 +388,8 @@ static struct snd_soc_dai_driver msm_dai_q6_hdmi_rx_dai = {
 		.rate_min =	48000,
 	},
 	.ops = &msm_dai_q6_ops,
+	.probe = msm_dai_q6_dai_probe,
+	.remove = msm_dai_q6_dai_remove,
 };
 
 static struct snd_soc_dai_driver msm_dai_q6_slimbus_rx_dai = {
@@ -359,6 +403,8 @@ static struct snd_soc_dai_driver msm_dai_q6_slimbus_rx_dai = {
 		.rate_max =	48000,
 	},
 	.ops = &msm_dai_q6_ops,
+	.probe = msm_dai_q6_dai_probe,
+	.remove = msm_dai_q6_dai_remove,
 };
 
 static struct snd_soc_dai_driver msm_dai_q6_slimbus_tx_dai = {
@@ -372,6 +418,8 @@ static struct snd_soc_dai_driver msm_dai_q6_slimbus_tx_dai = {
 		.rate_max =	48000,
 	},
 	.ops = &msm_dai_q6_ops,
+	.probe = msm_dai_q6_dai_probe,
+	.remove = msm_dai_q6_dai_remove,
 };
 
 static struct snd_soc_dai_driver msm_dai_q6_bt_sco_rx_dai = {
@@ -384,6 +432,8 @@ static struct snd_soc_dai_driver msm_dai_q6_bt_sco_rx_dai = {
 		.rate_min = 8000,
 	},
 	.ops = &msm_dai_q6_ops,
+	.probe = msm_dai_q6_dai_probe,
+	.remove = msm_dai_q6_dai_remove,
 };
 
 static struct snd_soc_dai_driver msm_dai_q6_bt_sco_tx_dai = {
@@ -396,6 +446,8 @@ static struct snd_soc_dai_driver msm_dai_q6_bt_sco_tx_dai = {
 		.rate_min = 8000,
 	},
 	.ops = &msm_dai_q6_ops,
+	.probe = msm_dai_q6_dai_probe,
+	.remove = msm_dai_q6_dai_remove,
 };
 
 static struct snd_soc_dai_driver msm_dai_q6_fm_rx_dai = {
@@ -409,6 +461,8 @@ static struct snd_soc_dai_driver msm_dai_q6_fm_rx_dai = {
 		.rate_min = 8000,
 	},
 	.ops = &msm_dai_q6_ops,
+	.probe = msm_dai_q6_dai_probe,
+	.remove = msm_dai_q6_dai_remove,
 };
 
 static struct snd_soc_dai_driver msm_dai_q6_fm_tx_dai = {
@@ -422,6 +476,8 @@ static struct snd_soc_dai_driver msm_dai_q6_fm_tx_dai = {
 		.rate_min = 8000,
 	},
 	.ops = &msm_dai_q6_ops,
+	.probe = msm_dai_q6_dai_probe,
+	.remove = msm_dai_q6_dai_remove,
 };
 
 /* To do: change to register DAIs as batch */
