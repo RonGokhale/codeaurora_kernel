@@ -36,9 +36,13 @@
 #include <mach/peripheral-loader.h>
 
 #include "smd_private.h"
-
+#ifdef CONFIG_ARCH_FSM9XXX
+#define NUM_SMD_PKT_PORTS 4
+#else
 #define NUM_SMD_PKT_PORTS 12
 #define LOOPBACK_INX (NUM_SMD_PKT_PORTS - 1)
+#endif
+
 #define DEVICE_NAME "smdpkt"
 
 struct smd_pkt_dev {
@@ -488,6 +492,28 @@ static void ch_notify(void *priv, unsigned event)
 	}
 }
 
+#ifdef CONFIG_ARCH_FSM9XXX
+static char *smd_pkt_dev_name[] = {
+	"smdcntl1",
+	"smdcntl2",
+	"smd22",
+	"smd_pkt_loopback",
+};
+
+static char *smd_ch_name[] = {
+	"DATA6_CNTL",
+	"DATA7_CNTL",
+	"DATA22",
+	"LOOPBACK",
+};
+
+static uint32_t smd_ch_edge[] = {
+	SMD_APPS_QDSP,
+	SMD_APPS_QDSP,
+	SMD_APPS_QDSP,
+	SMD_APPS_QDSP
+};
+#else
 static char *smd_pkt_dev_name[] = {
 	"smdcntl0",
 	"smdcntl1",
@@ -532,6 +558,7 @@ static uint32_t smd_ch_edge[] = {
 	SMD_APPS_QDSP,
 	SMD_APPS_MODEM,
 };
+#endif
 
 static int smd_pkt_dummy_probe(struct platform_device *pdev)
 {
@@ -573,6 +600,8 @@ int smd_pkt_open(struct inode *inode, struct file *file)
 
 		if (smd_ch_edge[smd_pkt_devp->i] == SMD_APPS_MODEM)
 			peripheral = "modem";
+		else if (smd_ch_edge[smd_pkt_devp->i] == SMD_APPS_QDSP)
+			peripheral = "q6";
 
 		if (peripheral) {
 			smd_pkt_devp->pil = pil_get("modem");
