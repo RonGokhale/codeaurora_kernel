@@ -2820,13 +2820,11 @@ gpio_error:
 static const char * const msm_fb_dsi_vreg[] = {
 	"gp2",
 	"msme1",
-	"mddi"
 };
 
 static const int msm_fb_dsi_vreg_mV[] = {
 	2850,
 	1800,
-	1200
 };
 
 static struct vreg *dsi_vreg[ARRAY_SIZE(msm_fb_dsi_vreg)];
