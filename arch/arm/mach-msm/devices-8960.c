@@ -2039,7 +2039,7 @@ struct msm_rpm_map_data rpm_map_data[] __initdata = {
 
 };
 unsigned int rpm_map_data_size = ARRAY_SIZE(rpm_map_data);
-#ifdef CONFIG_MSM_BUS_SCALING
+
 struct platform_device msm_bus_sys_fabric = {
 	.name  = "msm_bus_fabric",
 	.id    =  MSM_BUS_FAB_SYSTEM,
@@ -2060,7 +2060,6 @@ struct platform_device msm_bus_cpss_fpb = {
 	.name  = "msm_bus_fabric",
 	.id    = MSM_BUS_FAB_CPSS_FPB,
 };
-#endif
 
 /* Sensors DSPS platform data */
 #ifdef CONFIG_MSM_DSPS
