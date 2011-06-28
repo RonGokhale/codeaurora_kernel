@@ -2401,10 +2401,6 @@ int soc_set_pwr_rail(struct clk *clk, int enable)
 
 	if (clk == &axi_rotator_clk.c)
 		pwr_id = PWR_RAIL_ROTATOR_CLK;
-	else if (clk == &grp_2d_clk.c)
-		pwr_id = PWR_RAIL_GRP_2D_CLK;
-	else if (clk == &grp_3d_clk.c)
-		pwr_id = PWR_RAIL_GRP_CLK;
 	else if (clk == &mdp_clk.c)
 		pwr_id = PWR_RAIL_MDP_CLK;
 	else if (clk == &mfc_clk.c)
