@@ -180,7 +180,8 @@
 #define LVS_ENABLE_MASK			0x80
 #define LVS_ENABLE			0x80
 #define LVS_PULL_DOWN_ENABLE_MASK	0x40
-#define LVS_PULL_DOWN_ENABLE		0x40
+#define LVS_PULL_DOWN_ENABLE		0x00
+#define LVS_PULL_DOWN_DISABLE		0x40
 
 #define LVS_PIN_CTRL_MASK		0x0F
 #define LVS_PIN_CTRL_EN0		0x08
@@ -1615,8 +1616,9 @@ static int pm8058_init_lvs(struct pm8058_chip *chip, struct pm8058_vreg *vreg)
 
 	/* Set pull down enable based on platform data. */
 	rc = pm8058_vreg_write(chip, vreg->ctrl_addr,
-		     (vreg->pdata->pull_down_enable ? LVS_PULL_DOWN_ENABLE : 0),
-		     LVS_PULL_DOWN_ENABLE_MASK, &vreg->ctrl_reg);
+		(vreg->pdata->pull_down_enable
+			? LVS_PULL_DOWN_ENABLE : LVS_PULL_DOWN_DISABLE),
+		LVS_PULL_DOWN_ENABLE_MASK, &vreg->ctrl_reg);
 	return rc;
 }
 
