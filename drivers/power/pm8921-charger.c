@@ -17,6 +17,7 @@
 #include <linux/platform_device.h>
 #include <linux/errno.h>
 #include <linux/mfd/pm8xxx/pm8921-charger.h>
+#include <linux/mfd/pm8xxx/pm8921-bms.h>
 #include <linux/mfd/pm8xxx/core.h>
 #include <linux/interrupt.h>
 #include <linux/power_supply.h>
@@ -468,8 +469,7 @@ static int get_prop_battery_mvolts(struct pm8921_chg_chip *chip)
 
 static int get_prop_batt_capacity(struct pm8921_chg_chip *chip)
 {
-	/* TODO BMS api */
-	return 70;
+	return pm8921_bms_get_percent_charge();
 }
 
 static int get_prop_batt_health(struct pm8921_chg_chip *chip)
