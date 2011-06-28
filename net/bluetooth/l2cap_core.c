@@ -58,6 +58,7 @@
 #include <net/bluetooth/amp.h>
 
 int disable_ertm;
+int enable_reconfig;
 
 static u32 l2cap_feat_mask = L2CAP_FEAT_FIXED_CHAN;
 static u8 l2cap_fixed_chan[8] = { L2CAP_FC_L2CAP | L2CAP_FC_A2MP, };
@@ -1288,7 +1289,8 @@ void l2cap_do_send(struct sock *sk, struct sk_buff *skb)
 
 	BT_DBG("sk %p, skb %p len %d", sk, skb, skb->len);
 
-	if (pi->ampcon && (pi->amp_move_state == L2CAP_AMP_STATE_STABLE)) {
+	if (pi->ampcon && (pi->amp_move_state == L2CAP_AMP_STATE_STABLE ||
+			pi->amp_move_state == L2CAP_AMP_STATE_WAIT_PREPARE)) {
 		BT_DBG("Sending on AMP connection %p %p",
 			pi->ampcon, pi->ampchan);
 		if (pi->ampchan)
@@ -1327,7 +1329,8 @@ int l2cap_ertm_send(struct sock *sk)
 	if (pi->conn_state & L2CAP_CONN_REMOTE_BUSY)
 		return 0;
 
-	if (pi->amp_move_state != L2CAP_AMP_STATE_STABLE)
+	if (pi->amp_move_state != L2CAP_AMP_STATE_STABLE &&
+			pi->amp_move_state != L2CAP_AMP_STATE_WAIT_PREPARE)
 		return 0;
 
 	while (sk->sk_send_head && (pi->unacked_frames < pi->remote_tx_win) &&
@@ -1403,7 +1406,8 @@ int l2cap_strm_tx(struct sock *sk, struct sk_buff_head *skbs)
 	if (sk->sk_state != BT_CONNECTED)
 		return -ENOTCONN;
 
-	if (pi->amp_move_state != L2CAP_AMP_STATE_STABLE)
+	if (pi->amp_move_state != L2CAP_AMP_STATE_STABLE &&
+			pi->amp_move_state != L2CAP_AMP_STATE_WAIT_PREPARE)
 		return 0;
 
 	skb_queue_splice_tail_init(skbs, TX_QUEUE(sk));
@@ -1801,6 +1805,7 @@ static void l2cap_ertm_send_sframe(struct sock *sk,
 	pi = l2cap_pi(sk);
 
 	if (pi->amp_move_state != L2CAP_AMP_STATE_STABLE &&
+		pi->amp_move_state != L2CAP_AMP_STATE_WAIT_PREPARE &&
 		pi->amp_move_state != L2CAP_AMP_STATE_RESEGMENT) {
 		BT_DBG("AMP error - attempted S-Frame send during AMP move");
 		return;
@@ -4405,7 +4410,8 @@ static inline int l2cap_move_channel_req(struct l2cap_conn *conn,
 		goto send_move_response;
 	}
 
-	if ((pi->amp_move_state != L2CAP_AMP_STATE_STABLE ||
+	if (((pi->amp_move_state != L2CAP_AMP_STATE_STABLE &&
+		pi->amp_move_state != L2CAP_AMP_STATE_WAIT_PREPARE) ||
 		pi->amp_move_role != L2CAP_AMP_MOVE_NONE) &&
 		bacmp(conn->src, conn->dst) > 0) {
 		result = L2CAP_MOVE_CHAN_REFUSED_COLLISION;
@@ -5282,7 +5288,8 @@ static void l2cap_ertm_resend(struct sock *sk)
 	if (pi->conn_state & L2CAP_CONN_REMOTE_BUSY)
 		return;
 
-	if (pi->amp_move_state != L2CAP_AMP_STATE_STABLE)
+	if (pi->amp_move_state != L2CAP_AMP_STATE_STABLE &&
+			pi->amp_move_state != L2CAP_AMP_STATE_WAIT_PREPARE)
 		return;
 
 	while (pi->retrans_list.head != L2CAP_SEQ_LIST_CLEAR) {
@@ -5864,7 +5871,9 @@ static int l2cap_ertm_rx_state_recv(struct sock *sk,
 
 			if (pi->conn_state & L2CAP_CONN_REJ_ACT)
 				pi->conn_state &= ~L2CAP_CONN_REJ_ACT;
-			else if (pi->amp_move_state == L2CAP_AMP_STATE_STABLE) {
+			else if (pi->amp_move_state == L2CAP_AMP_STATE_STABLE ||
+				pi->amp_move_state ==
+						L2CAP_AMP_STATE_WAIT_PREPARE) {
 				control->final = 0;
 				l2cap_ertm_retransmit_all(sk, control);
 			}
@@ -6239,9 +6248,10 @@ static void l2cap_amp_move_success(struct sock *sk)
 		/* Send reconfigure request */
 		if (pi->mode == L2CAP_MODE_ERTM) {
 			pi->reconf_state = L2CAP_RECONF_INT;
-			err = l2cap_amp_move_reconf(sk);
+			if (enable_reconfig)
+				err = l2cap_amp_move_reconf(sk);
 
-			if (err) {
+			if (err || !enable_reconfig) {
 				pi->reconf_state = L2CAP_RECONF_NONE;
 				l2cap_ertm_tx(sk, NULL, NULL,
 						L2CAP_ERTM_EVENT_EXPLICIT_POLL);
@@ -6401,20 +6411,16 @@ static int l2cap_ertm_rx(struct sock *sk, struct bt_l2cap_control *control,
 	return err;
 }
 
-void l2cap_fixed_channel_config(struct sock *sk, struct l2cap_options *opt,
-				u16 cid, u16 mps)
+void l2cap_fixed_channel_config(struct sock *sk, struct l2cap_options *opt)
 {
 	lock_sock(sk);
 
 	l2cap_pi(sk)->fixed_channel = 1;
 
-	l2cap_pi(sk)->dcid = cid;
-	l2cap_pi(sk)->scid = cid;
-
 	l2cap_pi(sk)->imtu = opt->imtu;
 	l2cap_pi(sk)->omtu = opt->omtu;
-	l2cap_pi(sk)->remote_mps = mps;
-	l2cap_pi(sk)->mps = mps;
+	l2cap_pi(sk)->remote_mps = opt->omtu;
+	l2cap_pi(sk)->mps = opt->omtu;
 	l2cap_pi(sk)->flush_to = opt->flush_to;
 	l2cap_pi(sk)->mode = opt->mode;
 	l2cap_pi(sk)->fcs = opt->fcs;
@@ -7105,3 +7111,6 @@ void l2cap_exit(void)
 
 module_param(disable_ertm, bool, 0644);
 MODULE_PARM_DESC(disable_ertm, "Disable enhanced retransmission mode");
+
+module_param(enable_reconfig, bool, 0644);
+MODULE_PARM_DESC(enable_reconfig, "Enable reconfig after initiating AMP move");
