@@ -751,11 +751,14 @@ static int tabla_readable(unsigned int reg)
 
 static int tabla_volatile(unsigned int reg)
 {
-	switch (reg) {
-	default:
-		break;
-	}
-	return 1;
+	/* Registers lower than 0x100 are top level registers which can be
+	 * written by the Tabla core driver.
+	 */
+
+	if ((reg >= TABLA_A_CDC_MBHC_EN_CTL) || (reg < 0x100))
+		return 1;
+
+	return 0;
 }
 
 #define TABLA_FORMATS (SNDRV_PCM_FMTBIT_S16_LE)
