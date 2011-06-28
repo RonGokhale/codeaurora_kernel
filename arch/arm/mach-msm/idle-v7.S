@@ -45,15 +45,6 @@ ENTRY(msm_arch_idle)
 	ldmfd   sp!, {lr}
 	bx	lr
 
-#ifdef CONFIG_ARCH_7X27A
-ENTRY(l2_outer_sync)
-	/* L2 Outer_sync operation for 7x27A targets */
-	mov r0, #1
-	ldr r3, =L2CC_CACHE_SYNC
-	str r0,[r3]
-	bx lr
-#endif
-
 ENTRY(msm_pm_collapse)
 #if defined(CONFIG_MSM_FIQ_SUPPORT)
 	cpsid   f
@@ -111,10 +102,6 @@ ENTRY(msm_pm_collapse)
 
 	dsb
 
-#ifdef CONFIG_ARCH_7X27A
-	/* L2 Outer_sync operation for 7x27A targets */
-	bl l2_outer_sync
-#endif
 	wfi
 
 	mcr     p15, 0, r1, c1, c0, 0    /* restore d/i cache  */
@@ -208,11 +195,6 @@ msm_pm_pa_to_va:
 	mcr     p15, 0, r3, c7, c5, 6   /* BPIALL */
 	dsb
 
-#ifdef CONFIG_ARCH_7X27A
-	/* L2 Outer_sync operation for 7x27A targets */
-	bl l2_outer_sync
-#endif
-
 	isb
 	stmfd   sp!, {lr}
 	bl      v7_flush_kern_cache_all
@@ -267,9 +249,4 @@ saved_state_end:
 
 msm_pm_boot_vector:
 	.space  4 * NR_CPUS
-
-#ifdef CONFIG_ARCH_7X27A
-/*L2X0 controller CACHE_SYNC reg virtual address for 7x27A */
-L2CC_CACHE_SYNC DCD 0xFA006730
-#endif
 
