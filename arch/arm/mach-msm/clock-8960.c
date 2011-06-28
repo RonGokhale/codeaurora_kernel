@@ -413,7 +413,7 @@ static struct pll_vote_clk pll8_clk = {
  */
 
 /* Update the sys_vdd voltage given a level. */
-int soc_update_sys_vdd(enum sys_vdd_level level)
+static int msm8960_update_sys_vdd(enum sys_vdd_level level)
 {
 	static const int vdd_uv[] = {
 		[NONE...LOW] =  945000,
@@ -4069,6 +4069,7 @@ static int wr_pll_clk_enable(struct clk *clk)
 
 void __init msm8960_clock_init_dummy(void)
 {
+	soc_update_sys_vdd = msm8960_update_sys_vdd;
 	local_vote_sys_vdd(HIGH);
 	msm_clock_init(msm_clocks_8960_dummy, msm_num_clocks_8960_dummy);
 }
@@ -4087,6 +4088,7 @@ void __init msm8960_clock_init(void)
 		BUG();
 	}
 
+	soc_update_sys_vdd = msm8960_update_sys_vdd;
 	local_vote_sys_vdd(HIGH);
 
 	clk_ops_pll.enable = wr_pll_clk_enable;

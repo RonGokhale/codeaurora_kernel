@@ -264,6 +264,8 @@ void set_rate_div_banked(struct rcg_clk *clk, struct clk_freq_tbl *nf)
 	clk->ns_mask = new_bank_masks->ns_mask;
 }
 
+int (*soc_update_sys_vdd)(enum sys_vdd_level level);
+
 /*
  * SYS_VDD voting functions
  */
