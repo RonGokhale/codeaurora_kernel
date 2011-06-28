@@ -18,6 +18,7 @@
 #include <linux/errno.h>
 #include <linux/mfd/pm8xxx/pm8921-charger.h>
 #include <linux/mfd/pm8xxx/pm8921-bms.h>
+#include <linux/mfd/pm8921-adc.h>
 #include <linux/mfd/pm8xxx/core.h>
 #include <linux/interrupt.h>
 #include <linux/power_supply.h>
@@ -26,7 +27,6 @@
 #include <linux/workqueue.h>
 #include <linux/debugfs.h>
 #include <linux/slab.h>
-#include <linux/msm_adc.h>
 
 #include <mach/msm_xo.h>
 #include <mach/msm_hsusb.h>
@@ -174,6 +174,7 @@ struct pm8921_chg_chip {
 	unsigned int		resume_voltage;
 	unsigned int		term_current;
 	unsigned int		rev;
+	unsigned int		vbat_channel;
 	struct power_supply	usb_psy;
 	struct power_supply	dc_psy;
 	struct power_supply	batt_psy;
@@ -522,8 +523,18 @@ static enum power_supply_property msm_batt_power_props[] = {
 
 static int get_prop_battery_mvolts(struct pm8921_chg_chip *chip)
 {
-	/* TODO invoke the adc api */
-	return 3800;
+	int rc;
+	struct pm8921_adc_chan_result result;
+
+	rc = pm8921_adc_read(chip->vbat_channel, &result);
+	if (rc) {
+		pr_err("error reading adc channel = %d, rc = %d\n",
+					chip->vbat_channel, rc);
+		return rc;
+	}
+	pr_debug("mvolts phy = %lld meas = 0x%llx", result.physical,
+						result.measurement);
+	return (int)result.physical;
 }
 
 static int get_prop_batt_capacity(struct pm8921_chg_chip *chip)
@@ -1436,6 +1447,7 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	chip->resume_voltage = pdata->resume_voltage;
 	chip->term_current = pdata->term_current;
 	chip->rev = pdata->charger_cdata.rev;
+	chip->vbat_channel = pdata->charger_cdata.vbat_channel;
 
 	rc = pm8921_chg_hw_init(chip);
 	if (rc) {
