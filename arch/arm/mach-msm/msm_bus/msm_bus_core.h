@@ -81,29 +81,24 @@ struct msm_bus_node_info {
 	int *tier;
 	int num_tiers;
 	int ahb;
-	const char *slaveclk;
-	const char *a_slaveclk;
+	const char *slaveclk[NUM_CTX];
 	const char *memclk;
 	unsigned int buswidth;
 };
 
 struct path_node {
-	unsigned long clk;
-	unsigned long a_clk;
-	unsigned long bw;
-	unsigned long a_bw;
+	unsigned long clk[NUM_CTX];
+	unsigned long bw[NUM_CTX];
 	unsigned long *sel_clk;
 	unsigned long *sel_bw;
 	int next;
 };
 
 struct msm_bus_link_info {
-	unsigned long clk;
-	unsigned long a_clk;
+	unsigned long clk[NUM_CTX];
 	unsigned long *sel_clk;
 	unsigned long memclk;
-	long  bw;
-	long a_bw;
+	long bw[NUM_CTX];
 	long *sel_bw;
 	int *tier;
 	int num_tiers;
@@ -117,14 +112,8 @@ struct msm_bus_inode_info {
 	int num_pnodes;
 	struct path_node *pnode;
 	int commit_index;
-	struct clk *nodeclk;
-	struct clk *a_nodeclk;
+	struct clk *nodeclk[NUM_CTX];
 	struct clk *memclk;
-};
-
-struct commit_data {
-	uint16_t *bwsum;
-	uint16_t *arb;
 };
 
 struct msm_bus_fabric_device {
@@ -142,7 +131,7 @@ struct msm_bus_fab_algorithm {
 	int (*update_clks)(struct msm_bus_fabric_device *fabdev,
 		struct msm_bus_inode_info *pme, int index,
 		unsigned long curr_clk, unsigned long req_clk,
-		unsigned long bwsum, int flag, int context,
+		unsigned long bwsum, int flag, int ctx,
 		unsigned int cl_active_flag);
 	int (*port_halt)(struct msm_bus_fabric_device *fabdev, int portid);
 	int (*port_unhalt)(struct msm_bus_fabric_device *fabdev, int portid);
@@ -155,7 +144,7 @@ struct msm_bus_fab_algorithm {
 	struct list_head *(*get_gw_list)(struct msm_bus_fabric_device *fabdev);
 	void (*update_bw)(struct msm_bus_fabric_device *fabdev, struct
 		msm_bus_inode_info * hop, struct msm_bus_inode_info *info,
-		int add_bw, int *master_tiers, int context);
+		long int add_bw, int *master_tiers, int ctx);
 };
 
 /**
@@ -180,10 +169,26 @@ void msm_bus_fabric_device_unregister(struct msm_bus_fabric_device *fabric);
 struct msm_bus_fabric_device *msm_bus_get_fabric_device(int fabid);
 int msm_bus_get_num_fab(void);
 
+int allocate_commit_data(struct msm_bus_fabric_registration *fab_pdata,
+	void **cdata);
+struct msm_rpm_iv_pair *allocate_rpm_data(struct msm_bus_fabric_registration
+	*fab_pdata);
+int msm_bus_rpm_commit(struct msm_bus_fabric_registration
+	*fab_pdata, int ctx, struct msm_rpm_iv_pair *rpm_data,
+	void *cdata);
+void free_commit_data(void *cdata);
+void msm_bus_rpm_update_bw(struct msm_bus_inode_info *hop,
+	struct msm_bus_inode_info *info,
+	struct msm_bus_fabric_registration *fab_pdata,
+	void *sel_cdata, int *master_tiers,
+	long int add_bw);
+void msm_bus_rpm_fill_cdata_buffer(int *curr, char *buf, const int max_size,
+	void *cdata, int nmasters, int nslaves, int ntslaves);
+
 #if defined(CONFIG_DEBUG_FS) && defined(CONFIG_MSM_BUS_SCALING)
 void msm_bus_dbg_client_data(struct msm_bus_scale_pdata *pdata, int index,
 	uint32_t cl);
-void msm_bus_dbg_commit_data(const char *fabname, struct commit_data *cdata,
+void msm_bus_dbg_commit_data(const char *fabname, void *cdata,
 	int nmasters, int nslaves, int ntslaves, int op);
 #else
 static inline void msm_bus_dbg_client_data(struct msm_bus_scale_pdata *pdata,
@@ -191,7 +196,7 @@ static inline void msm_bus_dbg_client_data(struct msm_bus_scale_pdata *pdata,
 {
 }
 static inline void msm_bus_dbg_commit_data(const char *fabname,
-	struct commit_data *cdata, int nmasters, int nslaves, int ntslaves,
+	void *cdata, int nmasters, int nslaves, int ntslaves,
 	int op)
 {
 }

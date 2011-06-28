@@ -22,36 +22,13 @@
 #include <mach/rpm.h>
 #include "msm_bus_core.h"
 
-#define BWMASK 0x7FFF
-#define TIERMASK 0x8000
-#define GET_TIER(n) (((n) & TIERMASK) >> 15)
-#define RPM_SHIFT_VAL 16
-#define RPM_SHIFT(n) ((n) << RPM_SHIFT_VAL)
 #define GET_RATE(clk, nports) \
 	((clk % nports) ? ((clk + nports - 1) / nports) : (clk / nports))
-
-#define SELECT_CDATA(flag, x) \
-	((flag) ? (x->a_cdata) : (x->cdata));
-
-#define SELECT_CLK_VAL(flag, x) \
-	do { \
-		if (flag) \
-			x.sel_clk = &x.a_clk; \
-		else \
-			x.sel_clk = &x.clk; \
-	} while (0);
-
-#define SELECT_CLK(flag, x) \
-	((flag) ? (x.a_nodeclk) : (x.nodeclk));
-
-#define SELECT_CLK_PTR(flag, x) \
-	((flag) ? (x->a_nodeclk) : (x->nodeclk));
 
 struct msm_bus_fabric {
 	struct msm_bus_fabric_device fabdev;
 	int ahb;
-	struct commit_data *cdata;
-	struct commit_data *a_cdata;
+	void *cdata[NUM_CTX];
 	int dirty;
 	struct radix_tree_root fab_tree;
 	int num_nodes;
@@ -63,6 +40,7 @@ struct msm_bus_fabric {
 };
 #define to_msm_bus_fabric(d) container_of(d, \
 	struct msm_bus_fabric, d)
+
 /**
  * msm_bus_fabric_add_node() - Add a node to the fabric structure
  * @fabric: Fabric device to which the node should be added
@@ -80,11 +58,12 @@ static int msm_bus_fabric_add_node(struct msm_bus_fabric *fabric,
 	status = radix_tree_insert(&fabric->fab_tree, info->node_info->priv_id,
 			info);
 
-	if (info->node_info->slaveclk) {
-		info->nodeclk = clk_get(NULL, info->node_info->slaveclk);
-		if (IS_ERR(info->nodeclk)) {
+	if (info->node_info->slaveclk[DUAL_CTX]) {
+		info->nodeclk[DUAL_CTX] = clk_get(NULL,
+			info->node_info->slaveclk[DUAL_CTX]);
+		if (IS_ERR(info->nodeclk[DUAL_CTX])) {
 			MSM_BUS_ERR("Could not get clock for %s\n",
-				info->node_info->slaveclk);
+				info->node_info->slaveclk[DUAL_CTX]);
 			status = -EINVAL;
 			goto out;
 		}
@@ -131,54 +110,46 @@ static int msm_bus_fabric_add_fab(struct msm_bus_fabric *fabric,
  */
 static int register_fabric_info(struct msm_bus_fabric *fabric)
 {
-	int i, ret = 0, err = 0, count;
+	int i, ret = 0, err = 0;
 
 	MSM_FAB_DBG("id:%d pdata-id: %d len: %d\n", fabric->fabdev.id,
 		fabric->pdata->id, fabric->pdata->len);
 
 	for (i = 0; i < fabric->pdata->len; i++) {
 		struct msm_bus_inode_info *info;
+		int ctx;
+
 		info = kzalloc(sizeof(struct msm_bus_inode_info), GFP_KERNEL);
 		info->node_info = fabric->pdata->info + i;
 		info->commit_index = -1;
 		info->num_pnodes = -1;
-		if (info->node_info->slaveclk) {
-			info->nodeclk = clk_get(NULL, info->node_info->
-					slaveclk);
-			if (IS_ERR(info->nodeclk)) {
-				MSM_BUS_ERR("Could not get clock for %s\n",
-					info->node_info->slaveclk);
-				err = -EINVAL;
+
+		for (ctx = 0; ctx < NUM_CTX; ctx++) {
+			if (info->node_info->slaveclk[ctx]) {
+				info->nodeclk[ctx] = clk_get(NULL,
+						info->node_info->slaveclk[ctx]);
+				if (IS_ERR(info->nodeclk[ctx])) {
+					MSM_BUS_ERR("Couldn't get clk %s\n",
+						info->node_info->slaveclk[ctx]);
+					err = -EINVAL;
+				}
+				err = clk_enable(info->nodeclk[ctx]);
+				if (err)
+					MSM_BUS_ERR("Couldn't enable clk %s\n",
+						info->node_info->slaveclk[ctx]);
 			}
-			err = clk_enable(info->nodeclk);
-			if (err)
-				MSM_BUS_ERR("Could not enable clock %s\n",
-				info->node_info->slaveclk);
-		}
-		if (info->node_info->a_slaveclk) {
-			info->a_nodeclk = clk_get(NULL, info->node_info->
-					a_slaveclk);
-			if (IS_ERR(info->a_nodeclk)) {
-				MSM_BUS_ERR("Could not get clock for %s\n",
-					info->node_info->a_slaveclk);
-				err = -EINVAL;
-			}
-			err = clk_enable(info->a_nodeclk);
-			if (err)
-				MSM_BUS_ERR("Could not enable clock %s\n",
-				info->node_info->a_slaveclk);
 		}
 		if (info->node_info->memclk) {
 			info->memclk = clk_get(NULL,
 					info->node_info->memclk);
 			if (IS_ERR(info->memclk)) {
-				MSM_BUS_ERR("Could not get clock for %s\n",
-					info->node_info->slaveclk);
+				MSM_BUS_ERR("Couldn't get clk %s\n",
+					info->node_info->memclk);
 				err = -EINVAL;
 			}
 			err = clk_enable(info->memclk);
 			if (err)
-				MSM_BUS_ERR("Could not enable clock %s\n",
+				MSM_BUS_ERR("Couldn't enable clk %s\n",
 				info->node_info->memclk);
 		}
 
@@ -192,11 +163,7 @@ static int register_fabric_info(struct msm_bus_fabric *fabric)
 		}
 	}
 
-	count = ((fabric->pdata->nmasters * fabric->pdata->ntieredslaves)
-		+ (fabric->pdata->nslaves) + 1)/2;
-
-	fabric->rpm_data = kmalloc((sizeof(struct msm_rpm_iv_pair) * count),
-		GFP_KERNEL);
+	fabric->rpm_data = allocate_rpm_data(fabric->pdata);
 
 	MSM_FAB_DBG("Fabric: %d nmasters: %d nslaves: %d\n"
 		" ntieredslaves: %d, rpm_enabled: %d\n",
@@ -213,96 +180,6 @@ error:
 }
 
 /**
- * msm_bus_fabric_rpm_commit() - Commit the arbitration data to RPM
- * @fabric: Fabric for which the data should be committed
- * */
-static int msm_bus_fabric_rpm_commit(struct msm_bus_fabric_device *fabdev,
-	int active_ctx)
-
-{
-	int i, j, offset = 0, status = 0, count, index = 0;
-	struct msm_bus_fabric *fabric = to_msm_bus_fabric(fabdev);
-	struct msm_rpm_iv_pair *rpm_data = fabric->rpm_data;
-	struct commit_data *cdata;
-	/*
-	 * count is the number of 2-byte words required to commit the
-	 * data to rpm. This is calculated by the following formula.
-	 * Commit data is split into two arrays:
-	 * 1. arb[nmasters * ntieredslaves]
-	 * 2. bwsum[nslaves]
-	 */
-	if (!fabric->dirty) {
-		MSM_FAB_DBG("Not committing as fabric not dirty\n");
-		return status;
-	}
-	count = ((fabric->pdata->nmasters * fabric->pdata->ntieredslaves)
-		+ (fabric->pdata->nslaves) + 1)/2;
-
-	offset = fabric->pdata->offset;
-
-	cdata = SELECT_CDATA(active_ctx, fabric);
-	/*
-	 * Copy bwsum to rpm data
-	 * Since bwsum is uint16, the values need to be adjusted to
-	 * be copied to value field of rpm-data, which is 32 bits.
-	 */
-	for (i = 0; i < fabric->pdata->nslaves; i += 2) {
-		rpm_data[index].id = offset + index;
-		rpm_data[index].value = RPM_SHIFT(*(cdata->bwsum + i + 1)) |
-			*(cdata->bwsum + i);
-		index++;
-	}
-	/* Account for odd number of slaves */
-	if (fabric->pdata->nslaves & 1) {
-		rpm_data[index].id = offset + index;
-		rpm_data[index].value = *(cdata->arb);
-		rpm_data[index].value = RPM_SHIFT(rpm_data[index].value) |
-			*(cdata->bwsum + i);
-		index++;
-		i = 1;
-	} else
-		i = 0;
-
-	/* Copy arb values to rpm data */
-	for (; i < (fabric->pdata->ntieredslaves * fabric->pdata->nmasters);
-		i += 2) {
-		rpm_data[index].id = offset + index;
-		rpm_data[index].value = RPM_SHIFT(*(cdata->arb + i + 1)) |
-			*(cdata->arb + i);
-		index++;
-	}
-
-	MSM_FAB_DBG("rpm data for fab: %d\n", fabric->fabdev.id);
-	for (i = 0; i < count; i++)
-		MSM_FAB_DBG("%d %x\n", rpm_data[i].id, rpm_data[i].value);
-
-	MSM_FAB_DBG("Commit Data: Fab: %d BWSum:\n", fabric->fabdev.id);
-	for (i = 0; i < fabric->pdata->nslaves; i++)
-		MSM_FAB_DBG("fab_slaves:0x%x\n", cdata->bwsum[i]);
-	MSM_FAB_DBG("Commit Data: Fab: %d Arb:\n", fabric->fabdev.id);
-	for (i = 0; i < fabric->pdata->ntieredslaves; i++) {
-		MSM_FAB_DBG("tiered-slave: %d\n", i);
-		for (j = 0; j < fabric->pdata->nmasters; j++)
-			MSM_FAB_DBG(" 0x%x\n",
-			cdata->arb[(i * fabric->pdata->nmasters) + j]);
-	}
-
-	MSM_FAB_DBG("calling msm_rpm_set:  %d\n", status);
-	msm_bus_dbg_commit_data(fabric->fabdev.name, cdata, fabric->pdata->
-		nmasters, fabric->pdata->nslaves, fabric->pdata->ntieredslaves,
-		MSM_BUS_DBG_OP);
-	if (fabric->pdata->rpm_enabled) {
-		if (active_ctx)
-			status = msm_rpm_set(MSM_RPM_CTX_SET_0, rpm_data,
-				count);
-	}
-
-	MSM_FAB_DBG("msm_rpm_set returned: %d\n", status);
-	fabric->dirty = false;
-	return status;
-}
-
-/**
  * msm_bus_fabric_update_clks() - Set the clocks for fabrics and slaves
  * @fabric: Fabric for which the clocks need to be updated
  * @slave: The node for which the clocks need to be updated
@@ -316,7 +193,7 @@ static int msm_bus_fabric_rpm_commit(struct msm_bus_fabric_device *fabdev,
 static int msm_bus_fabric_update_clks(struct msm_bus_fabric_device *fabdev,
 		struct msm_bus_inode_info *slave, int index,
 		unsigned long curr_clk_hz, unsigned long req_clk_hz,
-		unsigned long bwsum_hz, int clk_flag, int context,
+		unsigned long bwsum_hz, int clk_flag, int ctx,
 		unsigned int cl_active_flag)
 {
 	int i, status = 0;
@@ -329,7 +206,7 @@ static int msm_bus_fabric_update_clks(struct msm_bus_fabric_device *fabdev,
 	for (i = 0; i <= slave->num_pnodes; i++) {
 		if (i == index && (req_clk_hz < curr_clk_hz))
 			continue;
-		SELECT_CLK_VAL(context, slave->pnode[i]);
+		slave->pnode[i].sel_clk = &slave->pnode[i].clk[ctx];
 		max_pclk = max(max_pclk, *slave->pnode[i].sel_clk);
 	}
 
@@ -344,7 +221,7 @@ static int msm_bus_fabric_update_clks(struct msm_bus_fabric_device *fabdev,
 			info = fabgw->info;
 			if (!info)
 				continue;
-			SELECT_CLK_VAL(context, info->link_info);
+			info->link_info.sel_clk = &info->link_info.clk[ctx];
 			max_pclk = max(max_pclk, *info->link_info.sel_clk);
 		}
 		MSM_FAB_DBG("max_pclk from gateways: %lu\n", max_pclk);
@@ -359,16 +236,17 @@ static int msm_bus_fabric_update_clks(struct msm_bus_fabric_device *fabdev,
 				fabric->pdata->info[i].priv_id);
 			if (!info)
 				continue;
-			SELECT_CLK_VAL(context, info->link_info);
+			info->link_info.sel_clk = &info->link_info.clk[ctx];
 			max_pclk = max(max_pclk, *info->link_info.sel_clk);
 		}
 
 
 		MSM_FAB_DBG("max_pclk from slaves & gws: %lu\n", max_pclk);
-		SELECT_CLK_VAL(context, fabric->info.link_info);
+		fabric->info.link_info.sel_clk =
+			&fabric->info.link_info.clk[ctx];
 		pclk = fabric->info.link_info.sel_clk;
 	} else {
-		SELECT_CLK_VAL(context, slave->link_info);
+		slave->link_info.sel_clk = &slave->link_info.clk[ctx];
 		pclk = slave->link_info.sel_clk;
 	}
 
@@ -379,21 +257,21 @@ static int msm_bus_fabric_update_clks(struct msm_bus_fabric_device *fabdev,
 		goto skip_set_clks;
 
 	if (clk_flag) {
-		select_clk = SELECT_CLK(context, fabric->info);
+		select_clk = fabric->info.nodeclk[ctx];
 		/**
 		 * Send a clock request only when the client requests in active
-		 * context and the a_clock rate is selected  OR the
+		 * context and the ACTIVE_CTX clock rate is selected OR the
 		 * client request is in normal context and normal clock rate
 		 * is selected.
 		 */
-		if (select_clk && (!(context ^ cl_active_flag))) {
+		if (select_clk && (!((ctx == ACTIVE_CTX) ^ cl_active_flag))) {
 			MSM_BUS_DBG("clks: id: %d set-clk: %lu bwsum_hz:%lu\n",
 			fabric->fabdev.id, *pclk, bwsum_hz);
 			status = clk_set_min_rate(select_clk, *pclk);
 		}
 	} else {
-		select_clk = SELECT_CLK_PTR(context, slave);
-		if (select_clk && (!(context ^ cl_active_flag))) {
+		select_clk = slave->nodeclk[ctx];
+		if (select_clk && (!((ctx == ACTIVE_CTX) ^ cl_active_flag))) {
 			rate = GET_RATE(*pclk, slave->node_info->num_sports);
 			status = clk_set_min_rate(select_clk, rate);
 			MSM_BUS_DBG("AXI_clks: id: %d set-clk: %lu "
@@ -401,7 +279,7 @@ static int msm_bus_fabric_update_clks(struct msm_bus_fabric_device *fabdev,
 			bwsum_hz);
 		}
 		if (!status && slave->memclk &&
-			(!(context ^ cl_active_flag))) {
+			(!((ctx == ACTIVE_CTX) ^ cl_active_flag))) {
 			rate = GET_RATE(*slave->link_info.sel_clk,
 				slave->node_info->num_sports);
 			status = clk_set_min_rate(slave->memclk, rate);
@@ -413,13 +291,12 @@ skip_set_clks:
 
 void msm_bus_fabric_update_bw(struct msm_bus_fabric_device *fabdev,
 	struct msm_bus_inode_info *hop, struct msm_bus_inode_info *info,
-	int add_bw, int *master_tiers, int context)
+	long int add_bw, int *master_tiers, int ctx)
 {
 	struct msm_bus_fabric *fabric = to_msm_bus_fabric(fabdev);
-	int index, i, j;
-	struct commit_data *sel_cdata;
+	void *sel_cdata;
 
-	sel_cdata = SELECT_CDATA(context, fabric);
+	sel_cdata = fabric->cdata[ctx];
 
 	/* If it's an ahb fabric, don't calculate arb values */
 	if (fabric->ahb) {
@@ -431,56 +308,33 @@ void msm_bus_fabric_update_bw(struct msm_bus_fabric_device *fabdev,
 		return;
 	}
 
-	for (i = 0; i < hop->node_info->num_tiers; i++) {
-		for (j = 0; j < info->node_info->num_mports; j++) {
-			uint16_t hop_tier;
-			if (!hop->node_info->tier)
-				hop_tier = MSM_BUS_BW_TIER2 - 1;
-			else
-				hop_tier = hop->node_info->tier[i] - 1;
-			index = ((hop_tier * fabric->pdata->nmasters) +
-				(info->node_info->masterp[j]));
-			/* If there is tier, calculate arb for commit */
-			if (hop->node_info->tier) {
-				uint16_t tier;
-				uint16_t tieredbw = (sel_cdata->arb[index]
-					& BWMASK);
-				if (GET_TIER(sel_cdata->arb[index]))
-					tier = MSM_BUS_BW_TIER1;
-				else if (master_tiers)
-					/*
-					 * By default master is only in the
-					 * tier specified by default.
-					 * To change the default tier, client
-					 * needs to explicitly request for a
-					 * different supported tier */
-					tier = master_tiers[0];
-				else
-					tier = MSM_BUS_BW_TIER2;
-				tieredbw += add_bw/info->node_info->num_mports;
-				/* If bw is 0, update tier to default */
-				if (!tieredbw)
-					tier = MSM_BUS_BW_TIER2;
-				/* Update Arb for fab,get HW Mport from enum */
-				sel_cdata->arb[index] = (uint16_t)
-				CREATE_BW_TIER_PAIR(tier, tieredbw);
-				MSM_BUS_DBG("tier:%d mport: %d tiered_bw:%d "
-				"bwsum: %ld\n", hop_tier, info->node_info->
-				masterp[i], tieredbw, *hop->link_info.sel_bw);
-			}
-		}
+	msm_bus_rpm_update_bw(hop, info, fabric->pdata, sel_cdata,
+		master_tiers, add_bw);
+	fabric->dirty = true;
+}
+
+/**
+ * msm_bus_fabric_rpm_commit() - Commit the arbitration data to RPM
+ * @fabric: Fabric for which the data should be committed
+ * */
+static int msm_bus_fabric_rpm_commit(struct msm_bus_fabric_device *fabdev,
+	int ctx)
+
+{
+	int status = 0;
+	struct msm_bus_fabric *fabric = to_msm_bus_fabric(fabdev);
+	void *cdata;
+
+	if (!fabric->dirty) {
+		MSM_FAB_DBG("Not committing as fabric not dirty\n");
+		return 0;
 	}
 
-	/* Update bwsum for slaves on fabric */
-	for (i = 0; i < hop->node_info->num_sports; i++) {
-		sel_cdata->bwsum[hop->node_info->slavep[i]]
-			= (uint16_t)(*hop->link_info.sel_bw/hop->node_info->
-				num_sports);
-		MSM_BUS_DBG("slavep:%d, link_bw: %ld\n",
-			hop->node_info->slavep[i], (*hop->link_info.sel_bw/
-			hop->node_info->num_sports));
-	}
-	fabric->dirty = true;
+	cdata = fabric->cdata[ctx];
+	status = msm_bus_rpm_commit(fabric->pdata, ctx,
+		fabric->rpm_data, cdata);
+	fabric->dirty = false;
+	return status;
 }
 
 /**
@@ -641,42 +495,9 @@ static struct msm_bus_fab_algorithm msm_bus_algo = {
 	.get_gw_list = msm_bus_fabric_get_gw_list,
 };
 
-/**
- * allocate_commit_data() - Allocate the data for commit array in the
- * format specified by RPM
- * @fabric: Fabric device for which commit data is allocated
- */
-static int allocate_commit_data(struct msm_bus_fabric *fabric,
-	struct commit_data **cdata)
-{
-	*cdata = kzalloc(sizeof(struct commit_data), GFP_KERNEL);
-	if (!*cdata) {
-		MSM_FAB_DBG("Couldn't alloc mem for cdata\n");
-		return -ENOMEM;
-	}
-	(*cdata)->bwsum = kzalloc((sizeof(uint16_t) * fabric->pdata->nslaves),
-			GFP_KERNEL);
-	if (!(*cdata)->bwsum) {
-		MSM_FAB_DBG("Couldn't alloc mem for slaves\n");
-		kfree(*cdata);
-		return -ENOMEM;
-	}
-	(*cdata)->arb = kzalloc(((sizeof(uint16_t *)) *
-		(fabric->pdata->ntieredslaves * fabric->pdata->nmasters) + 1),
-		GFP_KERNEL);
-	if (!(*cdata)->arb) {
-		MSM_FAB_DBG("Couldn't alloc memory for"
-				" slaves\n");
-		kfree((*cdata)->bwsum);
-		kfree(*cdata);
-		return -ENOMEM;
-	}
-	return 0;
-}
-
 static int msm_bus_fabric_probe(struct platform_device *pdev)
 {
-	int ret = 0;
+	int ctx, ret = 0;
 	struct msm_bus_fabric *fabric;
 	struct msm_bus_fabric_registration *pdata;
 
@@ -701,10 +522,10 @@ static int msm_bus_fabric_probe(struct platform_device *pdev)
 	}
 	fabric->info.node_info->priv_id = fabric->fabdev.id;
 	fabric->info.num_pnodes = -1;
-	fabric->info.link_info.clk = 0;
-	fabric->info.link_info.bw = 0;
-	fabric->info.link_info.a_clk = 0;
-	fabric->info.link_info.a_bw = 0;
+	fabric->info.link_info.clk[DUAL_CTX] = 0;
+	fabric->info.link_info.bw[DUAL_CTX] = 0;
+	fabric->info.link_info.clk[ACTIVE_CTX] = 0;
+	fabric->info.link_info.bw[ACTIVE_CTX] = 0;
 
 	fabric->fabdev.id = pdev->id;
 	pdata = (struct msm_bus_fabric_registration *)pdev->dev.platform_data;
@@ -714,35 +535,22 @@ static int msm_bus_fabric_probe(struct platform_device *pdev)
 	fabric->pdata = pdata;
 	msm_bus_board_assign_iids(fabric->pdata, fabric->fabdev.id);
 
-	if (pdata->fabclk) {
-		fabric->info.nodeclk = clk_get(NULL, pdata->fabclk);
-		if (IS_ERR(fabric->info.nodeclk)) {
-			MSM_BUS_ERR("Could not get clock for %s\n",
-				pdata->fabclk);
-			ret = -EINVAL;
-			goto err;
-		}
-		ret = clk_enable(fabric->info.nodeclk);
-		if (ret) {
-			MSM_BUS_ERR("Could not enable clock %s\n",
-				pdata->fabclk);
-			goto err;
-		}
-	}
-
-	if (pdata->a_fabclk) {
-		fabric->info.a_nodeclk = clk_get(NULL, pdata->a_fabclk);
-		if (IS_ERR(fabric->info.a_nodeclk)) {
-			MSM_BUS_ERR("Could not get clock for %s\n",
-				pdata->a_fabclk);
-			ret = -EINVAL;
-			goto err;
-		}
-		ret = clk_enable(fabric->info.a_nodeclk);
-		if (ret) {
-			MSM_BUS_ERR("Could not enable clock %s\n",
-			pdata->a_fabclk);
-			goto err;
+	for (ctx = 0; ctx < NUM_CTX; ctx++) {
+		if (pdata->fabclk[ctx]) {
+			fabric->info.nodeclk[ctx] = clk_get(NULL,
+							pdata->fabclk[ctx]);
+			if (IS_ERR(fabric->info.nodeclk[ctx])) {
+				MSM_BUS_ERR("Couldn't get clock %s\n",
+					pdata->fabclk[ctx]);
+				ret = -EINVAL;
+				goto err;
+			}
+			ret = clk_enable(fabric->info.nodeclk[ctx]);
+			if (ret) {
+				MSM_BUS_ERR("Couldn't enable clock %s\n",
+					pdata->fabclk[ctx]);
+				goto err;
+			}
 		}
 	}
 
@@ -755,18 +563,15 @@ static int msm_bus_fabric_probe(struct platform_device *pdev)
 	}
 	if (!fabric->ahb) {
 		/* Allocate memory for commit data */
-		ret = allocate_commit_data(fabric, &fabric->cdata);
-		if (ret) {
-			MSM_BUS_ERR("Failed to alloc commit data for fab: %d,"
-				"ret = %d\n", fabric->fabdev.id, ret);
-			goto err;
-		}
-		/* Allocate memory for active-only commit data */
-		ret = allocate_commit_data(fabric, &fabric->a_cdata);
-		if (ret) {
-			MSM_BUS_ERR("Failed to alloc commit data for fab: %d,"
-				"ret = %d\n", fabric->fabdev.id, ret);
-			goto err;
+		for (ctx = 0; ctx < NUM_CTX; ctx++) {
+			ret = allocate_commit_data(fabric->pdata, &fabric->
+				cdata[ctx]);
+			if (ret) {
+				MSM_BUS_ERR("Failed to alloc commit data for "
+					"fab: %d, ret = %d\n",
+					fabric->fabdev.id, ret);
+				goto err;
+			}
 		}
 	}
 	/*
@@ -804,13 +609,10 @@ static int msm_bus_fabric_remove(struct platform_device *pdev)
 		fabric->pdata->nslaves; i++)
 		radix_tree_delete(&fabric->fab_tree, i);
 	if (!fabric->ahb) {
-		kfree(fabric->cdata->bwsum);
-		kfree(fabric->cdata->arb);
-		kfree(fabric->cdata);
-		kfree(fabric->a_cdata->bwsum);
-		kfree(fabric->a_cdata->arb);
-		kfree(fabric->a_cdata);
+		free_commit_data(fabric->cdata[DUAL_CTX]);
+		free_commit_data(fabric->cdata[ACTIVE_CTX]);
 	}
+
 	kfree(fabric->info.node_info);
 	kfree(fabric->rpm_data);
 	kfree(fabric);

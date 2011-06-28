@@ -516,10 +516,10 @@ static void msm_bus_dbg_free_fabric(const char *fabname)
 }
 
 static int msm_bus_dbg_fill_fab_buffer(const char *fabname,
-	struct commit_data *cdata, int nmasters, int nslaves,
+	void *cdata, int nmasters, int nslaves,
 	int ntslaves)
 {
-	int i, j, c;
+	int i;
 	char *buf = NULL;
 	struct msm_bus_fab_list *fablist = NULL;
 	ktime_t ts;
@@ -546,17 +546,9 @@ static int msm_bus_dbg_fill_fab_buffer(const char *fabname,
 	ts = ktime_get();
 	i += scnprintf(buf + i, MAX_BUFF_SIZE - i, "\n%d.%d\n",
 		ts.tv.sec, ts.tv.nsec);
-	i += scnprintf(buf + i, MAX_BUFF_SIZE - i, "BWSum:\n");
-	for (c = 0; c < nslaves; c++)
-		i += scnprintf(buf + i, MAX_BUFF_SIZE - i, "0x%x\t",
-			cdata->bwsum[c]);
-	i += scnprintf(buf + i, MAX_BUFF_SIZE - i, "\nArb:");
-	for (c = 0; c < ntslaves; c++) {
-		i += scnprintf(buf + i, MAX_BUFF_SIZE - i, "\nTSlave %d:\n", c);
-		for (j = 0; j < nmasters; j++)
-			i += scnprintf(buf + i, MAX_BUFF_SIZE - i, " 0x%x\t",
-				cdata->arb[(c * nmasters) + j]);
-	}
+
+	msm_bus_rpm_fill_cdata_buffer(&i, buf + i, MAX_BUFF_SIZE, cdata,
+		nmasters, nslaves, ntslaves);
 	i += scnprintf(buf + i, MAX_BUFF_SIZE - i, "\n");
 	mutex_lock(&msm_bus_dbg_fablist_lock);
 	fablist->size = i;
@@ -603,7 +595,7 @@ EXPORT_SYMBOL(msm_bus_dbg_client_data);
  * @ntslaves: Number of tiered slaves attached to fabric
  * @op: Operation to be performed
  */
-void msm_bus_dbg_commit_data(const char *fabname, struct commit_data *cdata,
+void msm_bus_dbg_commit_data(const char *fabname, void *cdata,
 	int nmasters, int nslaves, int ntslaves, int op)
 {
 	struct dentry *file = NULL;
