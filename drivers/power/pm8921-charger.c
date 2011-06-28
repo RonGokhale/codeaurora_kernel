@@ -158,7 +158,6 @@ struct bms_notify {
  * @resume_voltage:		the voltage at which the battery should resume
  *				charging
  * @term_current:		The charging based term current
- * @rev:			pmic revision
  *
  */
 struct pm8921_chg_chip {
@@ -173,7 +172,6 @@ struct pm8921_chg_chip {
 	unsigned int		min_voltage;
 	unsigned int		resume_voltage;
 	unsigned int		term_current;
-	unsigned int		rev;
 	unsigned int		vbat_channel;
 	struct power_supply	usb_psy;
 	struct power_supply	dc_psy;
@@ -1270,8 +1268,8 @@ static int __devinit pm8921_chg_hw_init(struct pm8921_chg_chip *chip)
 		return rc;
 	}
 
-	/* Workarounds for die 1.1 */
-	if (chip->rev && 0xF == 2) {
+	/* Workarounds for die 1.1 and 1.0 */
+	if (pm8xxx_get_revision(chip->dev->parent) < PM8XXX_REVISION_8921_2p0) {
 		pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST2, 0xF1);
 		pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, 0x8C);
 		pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, 0xCE);
@@ -1446,7 +1444,6 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	chip->min_voltage = pdata->min_voltage;
 	chip->resume_voltage = pdata->resume_voltage;
 	chip->term_current = pdata->term_current;
-	chip->rev = pdata->charger_cdata.rev;
 	chip->vbat_channel = pdata->charger_cdata.vbat_channel;
 
 	rc = pm8921_chg_hw_init(chip);

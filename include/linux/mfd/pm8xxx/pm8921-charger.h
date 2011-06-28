@@ -18,7 +18,6 @@
 #define PM8921_CHARGER_DEV_NAME	"pm8921-charger"
 
 struct pm8xxx_charger_core_data {
-	u32		rev;
 	unsigned int	vbat_channel;
 };
 
