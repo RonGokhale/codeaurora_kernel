@@ -46,7 +46,7 @@ void __init platform_smp_prepare_cpus(unsigned int max_cpus)
 		cpu_set(i, cpu_present_map);
 }
 
-void smp_init_cpus(void)
+void __init smp_init_cpus(void)
 {
 	unsigned int i, ncores = get_core_count();
 
@@ -54,7 +54,7 @@ void smp_init_cpus(void)
 		cpu_set(i, cpu_possible_map);
 }
 
-static void release_secondary(unsigned int cpu)
+static void __cpuinit release_secondary(unsigned int cpu)
 {
 	void *base_ptr;
 
@@ -104,7 +104,7 @@ static void release_secondary(unsigned int cpu)
    as well as when a CPU is coming out of shutdown induced by echo 0 >
    /sys/devices/.../cpuX.
 */
-int boot_secondary(unsigned int cpu, struct task_struct *idle)
+int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
 	static int cold_boot_done;
 	int cnt = 0;
@@ -152,7 +152,7 @@ int boot_secondary(unsigned int cpu, struct task_struct *idle)
 /* Initialization routine for secondary CPUs after they are brought out of
  * reset.
 */
-void platform_secondary_init(unsigned int cpu)
+void __cpuinit platform_secondary_init(unsigned int cpu)
 {
 	pr_debug("CPU%u: Booted secondary processor\n", cpu);
 
