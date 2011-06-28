@@ -68,5 +68,5 @@ static void __exit msm_show_resume_irq_exit(void)
 	sysdev_class_unregister(&msm_show_resume_irq_sysclass);
 }
 
-module_init(msm_show_resume_irq_init);
+core_initcall(msm_show_resume_irq_init);
 module_exit(msm_show_resume_irq_exit);
