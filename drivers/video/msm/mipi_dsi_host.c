@@ -878,34 +878,14 @@ static struct dsi_cmd_desc dsi_tear_off_cmd = {
 
 void mipi_dsi_set_tear_on(struct msm_fb_data_type *mfd)
 {
-	if (mdp_rev >= MDP_REV_41)
-		mutex_lock(&mfd->dma->ov_mutex);
-	else
-		down(&mfd->dma->mutex);
-
 	mipi_dsi_buf_init(&dsi_tx_buf);
 	mipi_dsi_cmds_tx(mfd, &dsi_tx_buf, &dsi_tear_on_cmd, 1);
-
-	if (mdp_rev >= MDP_REV_41)
-		mutex_unlock(&mfd->dma->ov_mutex);
-	else
-		up(&mfd->dma->mutex);
 }
 
 void mipi_dsi_set_tear_off(struct msm_fb_data_type *mfd)
 {
-	if (mdp_rev >= MDP_REV_41)
-		mutex_lock(&mfd->dma->ov_mutex);
-	else
-		down(&mfd->dma->mutex);
-
 	mipi_dsi_buf_init(&dsi_tx_buf);
 	mipi_dsi_cmds_tx(mfd, &dsi_tx_buf, &dsi_tear_off_cmd, 1);
-
-	if (mdp_rev >= MDP_REV_41)
-		mutex_unlock(&mfd->dma->ov_mutex);
-	else
-		up(&mfd->dma->mutex);
 }
 
 int mipi_dsi_cmd_reg_tx(uint32 data)
