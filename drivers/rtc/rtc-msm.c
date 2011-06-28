@@ -451,12 +451,19 @@ static void process_cb_request(void *buffer)
 
 		getnstimeofday(&ts);
 		if (atomic_read(&suspend_state.state)) {
-			int64_t now, sleep;
-			now = msm_timer_get_sclk_time(NULL);
+			int64_t now, sleep, sclk_max;
+			now = msm_timer_get_sclk_time(&sclk_max);
 
 			if (now && suspend_state.tick_at_suspend) {
-				sleep = now -
-					suspend_state.tick_at_suspend;
+				if (now < suspend_state.tick_at_suspend) {
+					sleep = sclk_max -
+						suspend_state.tick_at_suspend
+						+ now;
+				} else {
+					sleep = now -
+						suspend_state.tick_at_suspend;
+				}
+
 				timespec_add_ns(&ts, sleep);
 			} else
 				pr_err("%s: Invalid ticks from SCLK"
