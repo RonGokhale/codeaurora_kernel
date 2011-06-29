@@ -33,9 +33,6 @@
 #define BAM_STATE_MTI      (1UL << 5)
 #define BAM_STATE_REMOTE   (1UL << 6)
 
-/* BAM identifier used in log messages */
-#define BAM_ID(dev)       ((dev)->props.phys_addr)
-
 /* Mask for valid hardware descriptor flags */
 #define BAM_IOVEC_FLAG_MASK   \
 	(SPS_IOVEC_FLAG_INT | SPS_IOVEC_FLAG_EOT | SPS_IOVEC_FLAG_EOB)
@@ -140,7 +137,8 @@ static irqreturn_t bam_isr(int irq, void *ctxt)
 							  dev->props.ee,
 							  mask);
 
-		SPS_DBG("sps:bam_isr:source=0x%x.mask=0x%x.", source, mask);
+		SPS_DBG("sps:bam_isr:bam=0x%x;source=0x%x;mask=0x%x.",
+				BAM_ID(dev), source, mask);
 
 		/* Mask any non-local source */
 		source &= dev->pipe_active_mask;
@@ -253,7 +251,7 @@ int sps_bam_enable(struct sps_bam *dev)
 		 * must use MTI. Thus, force EE index to a non-zero value to
 		 * insure that EE zero globals can't be modified.
 		 */
-		SPS_ERR("bam: EE for satellite BAM must be set to non-zero");
+		SPS_ERR("sps: EE for satellite BAM must be set to non-zero");
 		return SPS_ERROR;
 	}
 
@@ -1571,7 +1569,8 @@ static void pipe_handler(struct sps_bam *dev, struct sps_pipe *pipe)
 	pipe_index = pipe->pipe_index;
 	status = bam_pipe_get_and_clear_irq_status(dev->base, pipe_index);
 
-	SPS_DBG("sps:pipe_handler.pipe %d.status=0x%x.", pipe_index, status);
+	SPS_DBG("sps:pipe_handler.bam 0x%x.pipe %d.status=0x%x.",
+			BAM_ID(dev), pipe_index, status);
 
 	/* Check for enabled interrupt sources */
 	status &= pipe->irq_mask;
@@ -1656,9 +1655,9 @@ int sps_bam_pipe_get_event(struct sps_bam *dev,
 	/* Pull an event off the synchronous event queue */
 	if (list_empty(&pipe->sys.events_q)) {
 		event_queue = NULL;
-		SPS_DBG("sps:events_q is empty.");
+		SPS_DBG("sps:events_q of bam 0x%x is empty.", BAM_ID(dev));
 	} else {
-		SPS_DBG("sps:events_q is not empty.");
+		SPS_DBG("sps:events_q of bam 0x%x is not empty.", BAM_ID(dev));
 		event_queue =
 		list_first_entry(&pipe->sys.events_q, struct sps_q_event,
 				 list);

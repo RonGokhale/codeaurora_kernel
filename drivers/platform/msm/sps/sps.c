@@ -24,7 +24,8 @@
 #include <linux/io.h>		/* ioremap() */
 #include <linux/clk.h>		/* clk_enable() */
 #include <linux/platform_device.h>	/* platform_get_resource_byname() */
-
+#include <linux/debugfs.h>
+#include <linux/uaccess.h>
 #include <mach/msm_sps.h>	/* msm_sps_platform_data */
 
 #include "sps_bam.h"
@@ -78,6 +79,138 @@ struct sps_drv {
 static struct sps_drv *sps;
 
 static void sps_device_de_init(void);
+
+#ifdef CONFIG_DEBUG_FS
+static int sps_debugfs_enabled;
+static char *debugfs_buf;
+static int debugfs_buf_size;
+static int debugfs_buf_used;
+static int wraparound;
+
+/* record debug info for debugfs */
+void sps_debugfs_record(const char *msg)
+{
+	if (sps_debugfs_enabled) {
+		if (debugfs_buf_used + MAX_MSG_LEN >= debugfs_buf_size) {
+			debugfs_buf_used = 0;
+			wraparound = true;
+		}
+		debugfs_buf_used += scnprintf(debugfs_buf + debugfs_buf_used,
+				debugfs_buf_size - debugfs_buf_used, msg);
+
+		if (wraparound)
+			scnprintf(debugfs_buf + debugfs_buf_used,
+					debugfs_buf_size - debugfs_buf_used,
+					"\n**** end line of sps log ****\n\n");
+	}
+}
+
+/* read the recorded debug info to userspace */
+static ssize_t sps_read_info(struct file *file, char __user *ubuf,
+		size_t count, loff_t *ppos)
+{
+	int ret;
+	int size;
+
+	if (wraparound)
+		size = debugfs_buf_size - MAX_MSG_LEN;
+	else
+		size = debugfs_buf_used;
+
+	ret = simple_read_from_buffer(ubuf, count, ppos,
+			debugfs_buf, size);
+
+	return ret;
+}
+
+/*
+ * set the buffer size (in KB) for debug info
+ * if input is 0, then stop recording debug info into buffer
+ */
+static ssize_t sps_set_info(struct file *file, const char __user *buf,
+				 size_t count, loff_t *ppos)
+{
+	unsigned long missing;
+	static char str[5];
+	int i, buf_size_kb = 0;
+
+	memset(str, 0, sizeof(str));
+	missing = copy_from_user(str, buf, sizeof(str));
+	if (missing)
+		return -EFAULT;
+
+	for (i = 0; i < sizeof(str) && (str[i] >= '0') && (str[i] <= '9'); ++i)
+		buf_size_kb = (buf_size_kb * 10) + (str[i] - '0');
+
+	pr_info("sps:debugfs buffer size is %dKB\n", buf_size_kb);
+
+	if (sps_debugfs_enabled && (buf_size_kb == 0)) {
+		sps_debugfs_enabled = false;
+		kfree(debugfs_buf);
+		debugfs_buf = NULL;
+		debugfs_buf_used = 0;
+		debugfs_buf_size = 0;
+		wraparound = false;
+	} else if (!sps_debugfs_enabled && (buf_size_kb > 0)) {
+		debugfs_buf_size = buf_size_kb * SZ_1K;
+
+		debugfs_buf = kzalloc(sizeof(char) * debugfs_buf_size,
+				GFP_KERNEL);
+		if (!debugfs_buf) {
+			debugfs_buf_size = 0;
+			pr_err("sps:fail to allocate memory for debug_fs.\n");
+			return -ENOMEM;
+		}
+
+		sps_debugfs_enabled = true;
+		debugfs_buf_used = 0;
+		wraparound = false;
+	} else if (sps_debugfs_enabled && (buf_size_kb > 0))
+		pr_info("sps:should disable debugfs before change "
+				"buffer size.\n");
+
+	return sps_debugfs_enabled;
+}
+
+const struct file_operations sps_info_ops = {
+	.read = sps_read_info,
+	.write = sps_set_info,
+};
+
+struct dentry *dent;
+struct dentry *dfile;
+static void sps_debugfs_init(void)
+{
+	sps_debugfs_enabled = false;
+	debugfs_buf_size = 0;
+	debugfs_buf_used = 0;
+	wraparound = false;
+
+	dent = debugfs_create_dir("sps", 0);
+	if (IS_ERR(dent)) {
+		pr_err("sps:fail to create the folder for debug_fs.\n");
+		return;
+	}
+
+	dfile = debugfs_create_file("info", 0444, dent, 0,
+			&sps_info_ops);
+	if (!dfile || IS_ERR(dfile)) {
+		pr_err("sps:fail to create the file for debug_fs.\n");
+		debugfs_remove(dent);
+		return;
+	}
+}
+
+static void sps_debugfs_exit(void)
+{
+	if (dfile)
+		debugfs_remove(dfile);
+	if (dent)
+		debugfs_remove(dent);
+	kfree(debugfs_buf);
+	debugfs_buf = NULL;
+}
+#endif
 
 /**
  * Initialize SPS device
@@ -382,11 +515,6 @@ int sps_connect(struct sps_pipe *h, struct sps_connect *connect)
 		return -EAGAIN;
 	}
 
-	SPS_DBG("sps_connect: src 0x%x dest 0x%x mode %s",
-		       connect->source,
-		       connect->destination,
-		       connect->mode == SPS_MODE_SRC ? "SRC" : "DEST");
-
 	mutex_lock(&sps->lock);
 	/*
 	 * Must lock the BAM device at the top level function, so must
@@ -403,6 +531,12 @@ int sps_connect(struct sps_pipe *h, struct sps_connect *connect)
 		result = SPS_ERROR;
 		goto exit_err;
 	}
+
+	SPS_DBG("sps_connect: bam 0x%x src 0x%x dest 0x%x mode %s",
+			BAM_ID(bam),
+			connect->source,
+			connect->destination,
+			connect->mode == SPS_MODE_SRC ? "SRC" : "DEST");
 
 	/* Allocate resources for the specified connection */
 	pipe->connect = *connect;
@@ -456,14 +590,15 @@ int sps_disconnect(struct sps_pipe *h)
 	if (pipe == NULL)
 		return SPS_ERROR;
 
-	SPS_DBG("sps_disconnect: src 0x%x dest 0x%x mode %s",
-		       pipe->connect.source,
-		       pipe->connect.destination,
-		       pipe->connect.mode == SPS_MODE_SRC ? "SRC" : "DEST");
-
 	bam = sps_bam_lock(pipe);
 	if (bam == NULL)
 		return SPS_ERROR;
+
+	SPS_DBG("sps_disconnect: bam 0x%x src 0x%x dest 0x%x mode %s",
+			BAM_ID(bam),
+			pipe->connect.source,
+			pipe->connect.destination,
+			pipe->connect.mode == SPS_MODE_SRC ? "SRC" : "DEST");
 
 	result = SPS_ERROR;
 	/* Cross-check client with map table */
@@ -1322,6 +1457,10 @@ static int __init sps_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_DEBUG_FS
+	sps_debugfs_init();
+#endif
+
 	SPS_DBG("%s.", __func__);
 
 	/* Allocate the SPS driver state struct */
@@ -1349,6 +1488,10 @@ static void __exit sps_exit(void)
 		kfree(sps);
 		sps = NULL;
 	}
+
+#ifdef CONFIG_DEBUG_FS
+	sps_debugfs_exit();
+#endif
 }
 
 arch_initcall(sps_init);

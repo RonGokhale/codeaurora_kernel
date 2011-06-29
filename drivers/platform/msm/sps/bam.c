@@ -284,7 +284,8 @@ enum bam_nonsecure_reset {
 static inline u32 bam_read_reg(void *base, u32 offset)
 {
 	u32 val = ioread32(base + offset);
-	pr_debug("bam: read reg 0x%x r_val 0x%x.\n", offset, val);
+	SPS_DBG("sps:bam 0x%x(va) read reg 0x%x r_val 0x%x.\n",
+			(u32) base, offset, val);
 	return val;
 }
 
@@ -303,8 +304,8 @@ static inline u32 bam_read_reg_field(void *base, u32 offset, const u32 mask)
 	u32 val = ioread32(base + offset);
 	val &= mask;		/* clear other bits */
 	val >>= shift;
-	pr_debug("bam: read reg 0x%x mask 0x%x r_val 0x%x.\n",
-		offset, mask, val);
+	SPS_DBG("sps:bam 0x%x(va) read reg 0x%x mask 0x%x r_val 0x%x.\n",
+			(u32) base, offset, mask, val);
 	return val;
 }
 
@@ -320,7 +321,8 @@ static inline u32 bam_read_reg_field(void *base, u32 offset, const u32 mask)
 static inline void bam_write_reg(void *base, u32 offset, u32 val)
 {
 	iowrite32(val, base + offset);
-	pr_debug("bam: write reg 0x%x w_val 0x%x.\n", offset, val);
+	SPS_DBG("sps:bam 0x%x(va) write reg 0x%x w_val 0x%x.\n",
+			(u32) base, offset, val);
 }
 
 /**
@@ -341,7 +343,8 @@ static inline void bam_write_reg_field(void *base, u32 offset,
 	tmp &= ~mask;		/* clear written bits */
 	val = tmp | (val << shift);
 	iowrite32(val, base + offset);
-	pr_debug("bam: write reg 0x%x w_val 0x%x.\n", offset, val);
+	SPS_DBG("sps:bam 0x%x(va) write reg 0x%x w_val 0x%x.\n",
+			(u32) base, offset, val);
 }
 
 /**
@@ -359,14 +362,17 @@ int bam_init(void *base, u32 ee,
 	ver = bam_read_reg_field(base, REVISION, BAM_REVISION);
 
 	if ((ver < BAM_MIN_VERSION) || (ver > BAM_MAX_VERSION)) {
-		pr_err("bam:Invalid BAM REVISION 0x%x.\n", ver);
+		SPS_ERR("sps:bam 0x%x(va) Invalid BAM REVISION 0x%x.\n",
+				(u32) base, ver);
 		return -ENODEV;
 	} else
-		pr_info("bam:BAM REVISION is 0x%x.\n", ver);
+		SPS_INFO("sps:REVISION of BAM 0x%x is 0x%x.\n",
+				(u32) base, ver);
 
 	if (summing_threshold == 0) {
 		summing_threshold = 4;
-		pr_err("bam:summing_threshold is zero , use default 4.\n");
+		SPS_ERR("sps:bam 0x%x(va) summing_threshold is zero , "
+				"use default 4.\n", (u32) base);
 	}
 
 	bam_write_reg_field(base, CTRL, BAM_SW_RST, 1);
@@ -448,8 +454,8 @@ int bam_security_init(void *base, u32 ee, u32 vmid, u32 pipe_mask)
 	version = bam_read_reg_field(base, REVISION, BAM_REVISION);
 	num_pipes = bam_read_reg_field(base, NUM_PIPES, BAM_NUM_PIPES);
 	if (version < 3 || version > 0x1F) {
-		pr_err("bam:Security is not supported for this BAM version 0x%x.\n",
-				version);
+		SPS_ERR("sps:bam 0x%x(va) security is not supported for this"
+			"BAM version 0x%x.\n", (u32) base, version);
 		return -ENODEV;
 	}
 
@@ -491,7 +497,8 @@ int bam_check(void *base, u32 *version, u32 *num_pipes)
 
 	/* Check BAM version */
 	if ((ver < BAM_MIN_VERSION) || (ver > BAM_MAX_VERSION)) {
-		pr_err("bam:Invalid BAM version 0x%x.\n", ver);
+		SPS_ERR("sps:bam 0x%x(va) Invalid BAM version 0x%x.\n",
+				(u32) base, ver);
 		return -ENODEV;
 	}
 
@@ -562,7 +569,8 @@ int bam_pipe_init(void *base, u32 pipe,	struct bam_pipe_parameters *param,
 
 		bam_write_reg(base, P_EVNT_DEST_ADDR(pipe), peer_dest_addr);
 
-		pr_debug("bam:Bam=0x%x.Pipe=%d.peer_bam=0x%x.peer_pipe=%d.\n",
+		SPS_DBG("sps:bam=0x%x(va).pipe=%d.peer_bam=0x%x."
+			"peer_pipe=%d.\n",
 			(u32) base, pipe,
 			(u32) param->peer_phys_addr,
 			param->peer_pipe);

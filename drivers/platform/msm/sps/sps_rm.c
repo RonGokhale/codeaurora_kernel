@@ -205,7 +205,8 @@ static int sps_rm_assign(struct sps_pipe *pipe,
 	}
 	pipe->map = map;
 
-	SPS_DBG("sps:sps_rm_assign.pipe_index=%d\n", pipe->pipe_index);
+	SPS_DBG("sps:sps_rm_assign.bam 0x%x.pipe_index=%d\n",
+			BAM_ID(pipe->bam), pipe->pipe_index);
 
 	/* Copy parameters to client connect state */
 	pipe->connect.src_pipe_index = map->src.pipe_index;
