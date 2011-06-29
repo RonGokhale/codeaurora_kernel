@@ -28,6 +28,7 @@ config ARCH_MSM7X27
 	select CPU_V7 if MSM_SOC_REV_A
 	select MSM_REMOTE_SPINLOCK_SWP if MSM_SOC_REV_NONE
 	select MSM_GPIOMUX
+	select REGULATOR
 
 config ARCH_MSM7X30
 	bool "MSM7x30"
