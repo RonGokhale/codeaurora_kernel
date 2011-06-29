@@ -13,7 +13,7 @@
 #include <linux/firmware.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
-#include <mach/internal_power_rail.h>
+#include <linux/regulator/consumer.h>
 #include <mach/clk.h>
 #include <mach/msm_reqs.h>
 #include <linux/interrupt.h>
@@ -132,13 +132,6 @@ static u32 res_trk_disable_videocore(void)
 	}
 	msleep(20);
 
-	rc = internal_pwr_rail_ctl(PWR_RAIL_MFC_CLK, 0);
-	if (rc) {
-		VCDRES_MSG_ERROR("\n clk_reset failed %d\n", rc);
-		mutex_unlock(&resource_context.lock);
-		return false;
-	}
-
 	clk_disable(resource_context.pclk);
 	clk_disable(resource_context.hclk);
 	clk_disable(resource_context.hclk_div2);
@@ -146,6 +139,13 @@ static u32 res_trk_disable_videocore(void)
 	clk_put(resource_context.hclk_div2);
 	clk_put(resource_context.hclk);
 	clk_put(resource_context.pclk);
+
+	rc = regulator_disable(resource_context.regulator);
+	if (rc) {
+		VCDRES_MSG_ERROR("\n regulator disable failed %d\n", rc);
+		mutex_unlock(&resource_context.lock);
+		return false;
+	}
 
 	resource_context.hclk_div2 = NULL;
 	resource_context.hclk = NULL;
@@ -278,16 +278,15 @@ static u32 res_trk_enable_videocore(void)
 	mutex_lock(&resource_context.lock);
 	if (!resource_context.rail_enabled) {
 		int rc = -1;
-		rc = internal_pwr_rail_mode(PWR_RAIL_MFC_CLK,
-			PWR_RAIL_CTL_MANUAL);
+
+		rc = regulator_enable(resource_context.regulator);
 		if (rc) {
-			VCDRES_MSG_ERROR("%s(): internal_pwr_rail_mode \
-					failed %d\n", __func__, rc);
-			mutex_unlock(&resource_context.lock);
-			return false;
+			VCDRES_MSG_ERROR("%s(): regulator_enable failed %d\n",
+							 __func__, rc);
+			goto bail_out;
 		}
-		VCDRES_MSG_LOW("%s(): internal_pwr_rail_mode Success %d\n",
-			__func__, rc);
+		VCDRES_MSG_LOW("%s(): regulator enable Success %d\n",
+							__func__, rc);
 
 		resource_context.pclk = clk_get(resource_context.device,
 			"mfc_pclk");
@@ -295,7 +294,7 @@ static u32 res_trk_enable_videocore(void)
 		if (IS_ERR(resource_context.pclk)) {
 			VCDRES_MSG_ERROR("%s(): mfc_pclk get failed\n"
 							 , __func__);
-			goto bail_out;
+			goto disable_regulator;
 		}
 
 		resource_context.hclk = clk_get(resource_context.device,
@@ -339,16 +338,6 @@ static u32 res_trk_enable_videocore(void)
 			goto disable_hclk_pclk;
 		}
 
-		rc = internal_pwr_rail_ctl(PWR_RAIL_MFC_CLK, 1);
-		if (rc) {
-			VCDRES_MSG_ERROR("\n internal_pwr_rail_ctl failed %d\n"
-							 , rc);
-			goto disable_and_release_all_clks;
-		}
-		VCDRES_MSG_LOW("%s(): internal_pwr_rail_ctl Success %d\n"
-					   , __func__, rc);
-		msleep(20);
-
 		rc = clk_reset(resource_context.pclk, CLK_RESET_DEASSERT);
 		if (rc) {
 			VCDRES_MSG_ERROR("\n clk_reset failed %d\n", rc);
@@ -380,6 +369,8 @@ release_hclk_pclk:
 release_pclk:
 	clk_put(resource_context.pclk);
 	resource_context.pclk = NULL;
+disable_regulator:
+	regulator_disable(resource_context.regulator);
 bail_out:
 	mutex_unlock(&resource_context.lock);
 	return false;
@@ -711,6 +702,7 @@ void res_trk_init(struct device *device, u32 irq)
 	resource_context.device = device;
 	resource_context.irq_num = irq;
 	resource_context.core_type = VCD_CORE_720P;
+	resource_context.regulator = regulator_get(NULL, "fs_mfc");
 	resource_context.vidc_platform_data =
 		(struct msm_vidc_platform_data *) device->platform_data;
 	if (resource_context.vidc_platform_data) {

@@ -15,6 +15,7 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/pm_qos_params.h>
+#include <linux/regulator/consumer.h>
 #include <mach/gpio.h>
 #include <mach/board.h>
 #include <mach/camera.h>
@@ -121,6 +122,8 @@ static struct vreg *vreg_gp2;
 static struct vreg *vreg_lvsw1;
 static struct vreg *vreg_gp6;
 static struct vreg *vreg_gp16;
+static struct regulator *fs_vfe;
+static struct regulator *fs_vpe;
 static struct msm_camera_io_ext camio_ext;
 static struct msm_camera_io_clk camio_clk;
 static struct resource *camifpadio, *csiio;
@@ -275,6 +278,17 @@ static void msm_camera_vreg_enable(struct platform_device *pdev)
 			goto gp16_put;
 		}
 	}
+
+	fs_vfe = regulator_get(NULL, "fs_vfe");
+	if (IS_ERR(fs_vfe)) {
+		pr_err("%s: Regulator FS_VFE get failed %ld\n", __func__,
+			PTR_ERR(fs_vfe));
+		fs_vfe = NULL;
+	} else if (regulator_enable(fs_vfe)) {
+		pr_err("%s: Regulator FS_VFE enable failed\n", __func__);
+		regulator_put(fs_vfe);
+	}
+
 	return;
 
 gp16_put:
@@ -318,6 +332,10 @@ static void msm_camera_vreg_disable(void)
 		vreg_disable(vreg_gp16);
 		vreg_put(vreg_gp16);
 		vreg_gp16 = NULL;
+	}
+	if (fs_vfe) {
+		regulator_disable(fs_vfe);
+		regulator_put(fs_vfe);
 	}
 }
 
@@ -517,11 +535,27 @@ int msm_camio_jpeg_clk_enable(void)
 int msm_camio_vpe_clk_disable(void)
 {
 	msm_camio_clk_disable(CAMIO_VPE_CLK);
+
+	if (fs_vpe) {
+		regulator_disable(fs_vpe);
+		regulator_put(fs_vpe);
+	}
+
 	return 0;
 }
 
 int msm_camio_vpe_clk_enable(uint32_t clk_rate)
 {
+	fs_vpe = regulator_get(NULL, "fs_vpe");
+	if (IS_ERR(fs_vpe)) {
+		pr_err("%s: Regulator FS_VPE get failed %ld\n", __func__,
+			PTR_ERR(fs_vpe));
+		fs_vpe = NULL;
+	} else if (regulator_enable(fs_vpe)) {
+		pr_err("%s: Regulator FS_VPE enable failed\n", __func__);
+		regulator_put(fs_vpe);
+	}
+
 	vpe_clk_rate = clk_rate;
 	msm_camio_clk_enable(CAMIO_VPE_CLK);
 	return 0;
