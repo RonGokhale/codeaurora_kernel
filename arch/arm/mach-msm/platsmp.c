@@ -54,9 +54,11 @@ void smp_init_cpus(void)
 		cpu_set(i, cpu_possible_map);
 }
 
-static void release_secondary(void)
+static void release_secondary(unsigned int cpu)
 {
 	void *base_ptr;
+
+	BUG_ON(cpu >= get_core_count());
 
 	/* KraitMP or ScorpionMP ? */
 	if ((read_cpuid_id() & 0xFF0) >> 4 != 0x2D) {
@@ -66,7 +68,7 @@ static void release_secondary(void)
 			    machine_is_msm8960_rumi3()) {
 				writel_relaxed(0x10, base_ptr+0x04);
 				writel_relaxed(0x80, base_ptr+0x04);
-			} else {
+			} else if (get_core_count() == 2) {
 				writel_relaxed(0x109, base_ptr+0x04);
 				writel_relaxed(0x101, base_ptr+0x04);
 				ndelay(300);
@@ -118,7 +120,7 @@ int boot_secondary(unsigned int cpu, struct task_struct *idle)
 					virt_to_phys(msm_secondary_startup),
 					SCM_FLAG_COLDBOOT_CPU1);
 		if (ret == 0)
-			release_secondary();
+			release_secondary(cpu);
 		else
 			printk(KERN_DEBUG "Failed to set secondary core boot "
 					  "address\n");

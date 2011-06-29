@@ -144,8 +144,8 @@ struct platform_device msm_device_hsusb_host = {
 
 static struct resource resources_uart_gsbi2[] = {
 	{
-		.start	= GSBI2_UARTDM_IRQ,
-		.end	= GSBI2_UARTDM_IRQ,
+		.start	= MSM8960_GSBI2_UARTDM_IRQ,
+		.end	= MSM8960_GSBI2_UARTDM_IRQ,
 		.flags	= IORESOURCE_IRQ,
 	},
 	{
@@ -930,7 +930,7 @@ struct msm_camera_device_platform_data msm_camera_csi1_device_data = {
 	.ioext.csiirq = CSI_1_IRQ,
 	.ioext.csiphyphy = 0x04801000,
 	.ioext.csiphysz = 0x00000400,
-	.ioext.csiphyirq = CSIPHY_2LN_IRQ,
+	.ioext.csiphyirq = MSM8960_CSIPHY_2LN_IRQ,
 	.ioext.ispifphy = 0x04800800,
 	.ioext.ispifsz = 0x00000400,
 	.ioext.ispifirq = ISPIF_IRQ,
@@ -1038,8 +1038,8 @@ static struct resource resources_qup_spi_gsbi1[] = {
 	},
 	{
 		.name   = "spi_irq_in",
-		.start  = GSBI1_QUP_IRQ,
-		.end    = GSBI1_QUP_IRQ,
+		.start  = MSM8960_GSBI1_QUP_IRQ,
+		.end    = MSM8960_GSBI1_QUP_IRQ,
 		.flags  = IORESOURCE_IRQ,
 	},
 };
