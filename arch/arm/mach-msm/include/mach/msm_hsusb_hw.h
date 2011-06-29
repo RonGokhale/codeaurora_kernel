@@ -161,12 +161,12 @@ struct ept_queue_item {
 #define CTRL_RXT_EP_TYPE_SHIFT 2
 
 #define ULPI_CONFIG_REG		0x31
-#if defined(CONFIG_ARCH_MSM7X30) || defined(CONFIG_ARCH_MSM8X60)
-#define ULPI_DIGOUT_CTRL	0X36
-#define ULPI_CDR_AUTORESET	(1 << 1)
-#else
+#if defined(CONFIG_ARCH_MSM7X27) || defined(CONFIG_ARCH_QSD8X50)
 #define ULPI_DIGOUT_CTRL	0X31
 #define ULPI_CDR_AUTORESET	(1 << 5)
+#else
+#define ULPI_DIGOUT_CTRL	0X36
+#define ULPI_CDR_AUTORESET	(1 << 1)
 #endif
 #define ULPI_SE1_GATE		(1 << 2)
 #define ULPI_CONFIG_REG1	0x30
