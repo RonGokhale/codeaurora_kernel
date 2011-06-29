@@ -3302,6 +3302,8 @@ static void __init msm7x2x_init(void)
 		msm_device_gadget_peripheral.dev.platform_data =
 							&msm_gadget_pdata;
 		msm7x27a_cfg_smsc911x();
+		platform_add_devices(msm_footswitch_devices,
+			     msm_num_footswitch_devices);
 		platform_add_devices(surf_ffa_devices,
 				ARRAY_SIZE(surf_ffa_devices));
 		msm_fb_add_devices();
