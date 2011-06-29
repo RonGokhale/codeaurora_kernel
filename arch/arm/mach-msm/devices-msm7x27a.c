@@ -618,30 +618,6 @@ void __init msm_fb_register_device(char *name, void *data)
 		printk(KERN_ERR "%s: unknown device! %s\n", __func__, name);
 }
 
-#ifdef CONFIG_CACHE_L2X0
-static int __init msm7x27x_cache_init(void)
-{
-	int aux_ctrl = 0;
-
-	/* Way Size 010(0x2) 32KB */
-	aux_ctrl = (0x1 << L2X0_AUX_CTRL_SHARE_OVERRIDE_SHIFT) | \
-		   (0x2 << L2X0_AUX_CTRL_WAY_SIZE_SHIFT) | \
-		   (0x1 << L2X0_AUX_CTRL_EVNT_MON_BUS_EN_SHIFT);
-
-	l2x0_init(MSM_L2CC_BASE, aux_ctrl, L2X0_AUX_CTRL_MASK);
-
-	return 0;
-}
-#else
-static int __init msm_cache_init(void){ return 0; }
-#endif
-
-void __init msm_common_io_init(void)
-{
-	msm_map_common_io();
-	msm7x27x_cache_init();
-}
-
 #define PERPH_WEB_BLOCK_ADDR (0xA9D00040)
 #define PDM0_CTL_OFFSET (0x04)
 #define SIZE_8B (0x08)
@@ -669,3 +645,27 @@ struct platform_device led_pdev = {
 		.platform_data	= &msm_kpbl_pdm_led_pdata,
 	},
 };
+
+#ifdef CONFIG_CACHE_L2X0
+static int __init msm7x27x_cache_init(void)
+{
+	int aux_ctrl = 0;
+
+	/* Way Size 010(0x2) 32KB */
+	aux_ctrl = (0x1 << L2X0_AUX_CTRL_SHARE_OVERRIDE_SHIFT) | \
+		   (0x2 << L2X0_AUX_CTRL_WAY_SIZE_SHIFT) | \
+		   (0x1 << L2X0_AUX_CTRL_EVNT_MON_BUS_EN_SHIFT);
+
+	l2x0_init(MSM_L2CC_BASE, aux_ctrl, L2X0_AUX_CTRL_MASK);
+
+	return 0;
+}
+#else
+static int __init msm_cache_init(void){ return 0; }
+#endif
+
+void __init msm_common_io_init(void)
+{
+	msm_map_common_io();
+	msm7x27x_cache_init();
+}
