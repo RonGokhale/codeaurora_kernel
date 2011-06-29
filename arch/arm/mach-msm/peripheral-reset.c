@@ -461,11 +461,22 @@ static int shutdown_q6_untrusted(void)
 {
 	u32 reg;
 
+	/* Put Q6 into reset */
 	reg = __raw_readl(LCC_Q6_FUNC);
-	/* Halt clocks and turn off memory */
+	reg |= Q6SS_SS_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES | STOP_CORE |
+		CORE_ARES;
+	reg &= ~CORE_GFM4_CLK_EN;
+	__raw_writel(reg, LCC_Q6_FUNC);
+
+	/* Wait 8 AHB cycles for Q6 to be fully reset (AHB = 1.5Mhz) */
+	usleep_range(20, 30);
+
+	/* Turn off Q6 memory */
 	reg &= ~(CORE_L1_MEM_CORE_EN | CORE_TCM_MEM_CORE_EN |
 		CORE_TCM_MEM_PERPH_EN);
-	reg |= CLAMP_IO | CORE_GFM4_CLK_EN;
+	__raw_writel(reg, LCC_Q6_FUNC);
+
+	reg |= CLAMP_IO;
 	__raw_writel(reg, LCC_Q6_FUNC);
 	return 0;
 }
