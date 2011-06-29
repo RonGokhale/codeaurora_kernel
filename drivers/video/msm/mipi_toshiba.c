@@ -193,10 +193,8 @@ static int mipi_toshiba_lcd_on(struct platform_device *pdev)
 	if (mfd->key != MFD_KEY)
 		return -EINVAL;
 
-	mutex_lock(&mfd->dma->ov_mutex);
 	mipi_dsi_cmds_tx(mfd, &toshiba_tx_buf, toshiba_display_on_cmds,
 			ARRAY_SIZE(toshiba_display_on_cmds));
-	mutex_unlock(&mfd->dma->ov_mutex);
 
 	return 0;
 }
@@ -212,10 +210,8 @@ static int mipi_toshiba_lcd_off(struct platform_device *pdev)
 	if (mfd->key != MFD_KEY)
 		return -EINVAL;
 
-	mutex_lock(&mfd->dma->ov_mutex);
 	mipi_dsi_cmds_tx(mfd, &toshiba_tx_buf, toshiba_display_off_cmds,
 			ARRAY_SIZE(toshiba_display_off_cmds));
-	mutex_unlock(&mfd->dma->ov_mutex);
 
 	return 0;
 }
