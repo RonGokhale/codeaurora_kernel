@@ -30,6 +30,8 @@
 #include <linux/cyttsp.h>
 #include <linux/dma-mapping.h>
 #include <linux/platform_data/qcom_crypto_device.h>
+#include <linux/leds.h>
+#include <linux/leds-pm8xxx.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -2867,6 +2869,18 @@ static struct pm8921_bms_platform_data pm8921_bms_pdata __devinitdata = {
 	.batt_data		= &palladium_1500_data,
 };
 
+static struct led_info pm8921_led_info[] = {
+	[0] = {
+		.name		= "led:drv1",
+		.flags		= PM8XXX_ID_LED_1,
+	},
+};
+
+static struct led_platform_data pm8xxx_leds_pdata = {
+	.num_leds = ARRAY_SIZE(pm8921_led_info),
+	.leds = pm8921_led_info,
+};
+
 static struct pm8921_platform_data pm8921_platform_data __devinitdata = {
 	.irq_pdata		= &pm8xxx_irq_pdata,
 	.gpio_pdata		= &pm8xxx_gpio_pdata,
@@ -2879,6 +2893,7 @@ static struct pm8921_platform_data pm8921_platform_data __devinitdata = {
 	.charger_pdata		= &pm8921_chg_pdata,
 	.bms_pdata		= &pm8921_bms_pdata,
 	.adc_pdata		= &pm8921_adc_pdata,
+	.leds_pdata		= &pm8xxx_leds_pdata,
 };
 
 static struct msm_ssbi_platform_data msm8960_ssbi_pm8921_pdata __devinitdata = {
