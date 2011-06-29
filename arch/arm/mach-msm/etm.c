@@ -933,14 +933,14 @@ static int __init etm_init(void)
 
 	alloc_b = alloc_percpu(typeof(*alloc_b));
 	if (!alloc_b)
-		return -ENOMEM;
+		goto err1;
 
 	for_each_possible_cpu(cpu)
 		*per_cpu_ptr(alloc_b, cpu) = &buf[cpu];
 
 	cpu_restore = alloc_percpu(int);
 	if (!cpu_restore)
-		return -ENOMEM;
+		goto err2;
 
 	for_each_possible_cpu(cpu)
 		*per_cpu_ptr(cpu_restore, cpu) = 0;
@@ -957,6 +957,12 @@ static int __init etm_init(void)
 		enable_trace();
 
 	return 0;
+
+err2:
+	free_percpu(alloc_b);
+err1:
+	misc_deregister(&etm_dev);
+	return -ENOMEM;
 }
 
 static void __exit etm_exit(void)
@@ -966,6 +972,7 @@ static void __exit etm_exit(void)
 	wake_lock_destroy(&etm_wake_lock);
 	free_percpu(cpu_restore);
 	free_percpu(alloc_b);
+	misc_deregister(&etm_dev);
 }
 
 module_init(etm_init);
