@@ -999,6 +999,7 @@ struct vfe32_frame_extra {
 #define VFE_DMI_CFG                     0x00000598
 #define VFE_DMI_ADDR                    0x0000059C
 #define VFE_DMI_DATA_LO                 0x000005A4
+#define VFE_BUS_IO_FORMAT_CFG		0x000006F8
 #define VFE_PIXEL_IF_CFG                0x000006FC
 
 struct vfe_stats_control {

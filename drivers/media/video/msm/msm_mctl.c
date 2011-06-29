@@ -38,9 +38,7 @@
 
 #define MSM_V4L2_SWFI_LATENCY 3
 
-#define MAX_VIDEO_MEM 16
 /* VFE required buffer number for streaming */
-#define VFE_OUT1_BUF 3
 static struct msm_isp_color_fmt msm_isp_formats[] = {
 	{
 	.name	   = "NV21YUV",
@@ -55,14 +53,46 @@ static struct msm_isp_color_fmt msm_isp_formats[] = {
 	.depth	  = 8,
 	.bitsperpxl = 8,
 	.fourcc	 = V4L2_PIX_FMT_NV21,
-	.pxlcode	= V4L2_MBUS_FMT_SBGGR8_1X8, /* Bayer sensor */
+	.pxlcode	= V4L2_MBUS_FMT_SBGGR10_1X10, /* Bayer sensor */
 	.colorspace = V4L2_COLORSPACE_JPEG,
 	},
+	{
+	.name	   = "RAWBAYER",
+	.depth	  = 10,
+	.bitsperpxl = 10,
+	.fourcc	 = V4L2_PIX_FMT_SBGGR10,
+	.pxlcode	= V4L2_MBUS_FMT_SBGGR10_1X10, /* Bayer sensor */
+	.colorspace = V4L2_COLORSPACE_JPEG,
+	},
+
 };
 /* master controller instance counter
 static atomic_t mctl_instance = ATOMIC_INIT(0);
 */
 
+static int buffer_size(int width, int height, int pixelformat)
+{
+	int size;
+
+	switch (pixelformat) {
+	case V4L2_PIX_FMT_NV21:
+	case V4L2_PIX_FMT_NV12:
+		size = width * height * 3/2;
+		break;
+	case V4L2_PIX_FMT_SBGGR10:
+	case V4L2_PIX_FMT_SGBRG10:
+	case V4L2_PIX_FMT_SGRBG10:
+	case V4L2_PIX_FMT_SRGGB10:
+		size = width * height;
+		break;
+	default:
+		pr_err("%s: pixelformat %d not supported.\n",
+			__func__, pixelformat);
+		size = -EINVAL;
+	}
+
+	return size;
+}
 /*
  *  Videobuf operations
  */
@@ -101,31 +131,19 @@ static int msm_vidbuf_setup(struct videobuf_queue *vq, unsigned int *count,
 
 	D("%s\n", __func__);
 	if (!pcam || !count || !size) {
-		D("%s error : invalid input\n", __func__);
+		pr_err("%s error : invalid input\n", __func__);
 		return -EINVAL;
 	}
 
-	/* we support only NV21 format for any input mediabus format */
 	D("%s, inst=0x%x,idx=%d, width = %d\n", __func__,
 		(u32)pcam_inst, pcam_inst->my_index,
 		pcam_inst->vid_fmt.fmt.pix.width);
 	D("%s, inst=0x%x,idx=%d, height = %d\n", __func__,
 		(u32)pcam_inst, pcam_inst->my_index,
 		pcam_inst->vid_fmt.fmt.pix.height);
-	*size = pcam_inst->vid_fmt.fmt.pix.width *
-		pcam_inst->vid_fmt.fmt.pix.height * 3/2;
-	D("%s, inst=0x%x,idx=%d, size = %d\n", __func__,
-		(u32)pcam_inst, pcam_inst->my_index, *size);
-	/* if the total mem size is bigger than available memory,
-	 * reduce the count*/
-	while ((*size) * (*count) > MAX_VIDEO_MEM * 1024 * 1024)
-		(*count)--;
-
-	/* if there are not buffers for VFE then fail*/
-	if (*count < VFE_OUT1_BUF + 1) {
-		D("%s error : out of memory input\n", __func__);
-		return -ENOMEM;
-	}
+	*size = buffer_size(pcam_inst->vid_fmt.fmt.pix.width,
+				pcam_inst->vid_fmt.fmt.pix.height,
+				pcam_inst->vid_fmt.fmt.pix.pixelformat);
 	D("%s:inst=0x%x,idx=%d,count=%d, size=%d\n", __func__,
 		(u32)pcam_inst, pcam_inst->my_index, *count, *size);
 	return 0;
@@ -145,7 +163,7 @@ static int msm_vidbuf_prepare(struct videobuf_queue *vq,
 
 	D("%s\n", __func__);
 	if (!vb || !vq) {
-		D("%s error : input is NULL\n", __func__);
+		pr_err("%s error : input is NULL\n", __func__);
 		return -EINVAL;
 	}
 	pcam_inst = vq->priv_data;
@@ -153,7 +171,7 @@ static int msm_vidbuf_prepare(struct videobuf_queue *vq,
 	buf = container_of(vb, struct msm_frame_buffer, vidbuf);
 
 	if (!pcam || !buf) {
-		D("%s error : pointer is NULL\n", __func__);
+		pr_err("%s error : pointer is NULL\n", __func__);
 		return -EINVAL;
 	}
 
@@ -164,7 +182,7 @@ static int msm_vidbuf_prepare(struct videobuf_queue *vq,
 	/* return error if it is not */
 	if ((pcam_inst->vid_fmt.fmt.pix.width == 0) ||
 		(pcam_inst->vid_fmt.fmt.pix.height == 0)) {
-		D("%s error : pcam vid_fmt is not set\n", __func__);
+		pr_err("%s error : pcam vid_fmt is not set\n", __func__);
 		return -EINVAL;
 	}
 
@@ -189,14 +207,14 @@ static int msm_vidbuf_prepare(struct videobuf_queue *vq,
 		D("VIDEOBUF_NEEDS_INIT\n");
 	}
 
-	/* For us, output will always be in NV21 format at least for now */
-	vb->size = pcam_inst->vid_fmt.fmt.pix.width * vb->height * 3/2;
+	vb->size = buffer_size(pcam_inst->vid_fmt.fmt.pix.width, vb->height,
+				pcam_inst->vid_fmt.fmt.pix.pixelformat);
 
 	D("vb->size=%lu, vb->bsize=%u, vb->baddr=0x%x\n",
 		vb->size, vb->bsize, (uint32_t)vb->baddr);
 
 	if (0 != vb->baddr && vb->bsize < vb->size) {
-		D("Something wrong vb->size=%lu, vb->bsize=%u,\
+		pr_err("Something wrong vb->size=%lu, vb->bsize=%u,\
 					vb->baddr=0x%x\n",
 					vb->size, vb->bsize,
 					(uint32_t)vb->baddr);
@@ -643,29 +661,27 @@ int msm_mctl_init_user_formats(struct msm_cam_v4l2_device *pcam)
 {
 	struct v4l2_subdev *sd = &pcam->sensor_sdev;
 	enum v4l2_mbus_pixelcode pxlcode;
+	int numfmt_sensor = 0;
 	int numfmt = 0;
 	int rc = 0;
 	int i, j;
 
 	D("%s\n", __func__);
-	while (!v4l2_subdev_call(sd, video, enum_mbus_fmt, numfmt, &pxlcode))
-		numfmt++;
+	while (!v4l2_subdev_call(sd, video, enum_mbus_fmt, numfmt_sensor,
+								&pxlcode))
+		numfmt_sensor++;
 
-	D("%s, numfmt = %d\n", __func__, numfmt);
-	if (!numfmt)
+	D("%s, numfmt_sensor = %d\n", __func__, numfmt_sensor);
+	if (!numfmt_sensor)
 		return -ENXIO;
 
-	pcam->usr_fmts =
-		vmalloc(numfmt * sizeof(struct msm_isp_color_fmt));
+	pcam->usr_fmts = vmalloc(numfmt_sensor * ARRAY_SIZE(msm_isp_formats) *
+				sizeof(struct msm_isp_color_fmt));
 	if (!pcam->usr_fmts)
 		return -ENOMEM;
 
-	pcam->num_fmts = numfmt;
-
-	D("Found %d supported formats.\n", pcam->num_fmts);
-
 	/* from sensor to ISP.. fill the data structure */
-	for (i = 0; i < numfmt; i++) {
+	for (i = 0; i < numfmt_sensor; i++) {
 		rc = v4l2_subdev_call(sd, video, enum_mbus_fmt, i, &pxlcode);
 		D("rc is  %d\n", rc);
 		if (rc < 0) {
@@ -676,21 +692,25 @@ int msm_mctl_init_user_formats(struct msm_cam_v4l2_device *pcam)
 		for (j = 0; j < ARRAY_SIZE(msm_isp_formats); j++) {
 			/* find the corresponding format */
 			if (pxlcode == msm_isp_formats[j].pxlcode) {
-				pcam->usr_fmts[i] = msm_isp_formats[j];
+				pcam->usr_fmts[numfmt] = msm_isp_formats[j];
 				D("pcam->usr_fmts=0x%x\n", (u32)pcam->usr_fmts);
 				D("format pxlcode 0x%x (0x%x) found\n",
-					  pcam->usr_fmts[i].pxlcode,
-					  pcam->usr_fmts[i].fourcc);
-				break;
+					  pcam->usr_fmts[numfmt].pxlcode,
+					  pcam->usr_fmts[numfmt].fourcc);
+				numfmt++;
 			}
-		}
-		if (j == ARRAY_SIZE(msm_isp_formats)) {
-			D("format pxlcode 0x%x not found\n", pxlcode);
-			vfree(pcam->usr_fmts);
-			return -EINVAL;
 		}
 	}
 
+	pcam->num_fmts = numfmt;
+
+	if (numfmt == 0) {
+		pr_err("%s: No supported formats.\n", __func__);
+		vfree(pcam->usr_fmts);
+		return -EINVAL;
+	}
+
+	D("Found %d supported formats.\n", pcam->num_fmts);
 	/* set the default pxlcode, in any case, it will be set through
 	 * setfmt */
 	return 0;

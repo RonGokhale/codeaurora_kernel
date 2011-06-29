@@ -1397,7 +1397,7 @@ probe_fail:
 
 static struct imx074_format imx074_subdev_info[] = {
 	{
-	.code   = V4L2_MBUS_FMT_YUYV8_2X8,
+	.code   = V4L2_MBUS_FMT_SBGGR10_1X10,
 	.colorspace = V4L2_COLORSPACE_JPEG,
 	.fmt    = 1,
 	.order    = 0,

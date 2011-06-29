@@ -964,7 +964,7 @@ static void vfe32_start_common(void)
 	msm_io_w(VFE_IMASK_WHILE_STOPPING_1,
 		vfe32_ctrl->vfebase + VFE_IRQ_MASK_1);
 
-	msm_io_dump(vfe32_ctrl->vfebase, 0x600);
+	msm_io_dump(vfe32_ctrl->vfebase, 0x740);
 
 	/* Ensure the write order while writing
 	to the command register using the barrier */
@@ -1028,7 +1028,7 @@ static int vfe32_capture(uint32_t num_frames_capture)
 	}
 	/* capture command is valid for both idle and active state. */
 	vfe32_ctrl->outpath.out1.capture_cnt = num_frames_capture;
-	if (vfe32_ctrl->operation_mode == 1) {
+	if (vfe32_ctrl->operation_mode == VFE_MODE_OF_OPERATION_SNAPSHOT) {
 		vfe32_ctrl->outpath.out0.capture_cnt =
 			num_frames_capture;
 	}
@@ -1036,7 +1036,7 @@ static int vfe32_capture(uint32_t num_frames_capture)
 	irq_comp_mask	=
 		msm_io_r(vfe32_ctrl->vfebase + VFE_IRQ_COMP_MASK);
 
-	if (vfe32_ctrl->operation_mode == 1) {
+	if (vfe32_ctrl->operation_mode == VFE_MODE_OF_OPERATION_SNAPSHOT) {
 		if (vfe32_ctrl->outpath.output_mode & VFE32_OUTPUT_MODE_PT) {
 			irq_comp_mask |= (0x1 << vfe32_ctrl->outpath.out0.ch0 |
 					0x1 << vfe32_ctrl->outpath.out0.ch1);
@@ -1059,12 +1059,13 @@ static int vfe32_capture(uint32_t num_frames_capture)
 				vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out1.ch1]);
 		}
 	} else {  /* this is raw snapshot mode. */
-		CDBG("config the comp imask for raw snapshot mode.\n");
 		if (vfe32_ctrl->outpath.output_mode & VFE32_OUTPUT_MODE_S) {
 			irq_comp_mask |=
 			(0x1 << (vfe32_ctrl->outpath.out1.ch0 + 8));
 			msm_io_w(1, vfe32_ctrl->vfebase +
 				vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out1.ch0]);
+			msm_io_w(0x1000, vfe32_ctrl->vfebase +
+					VFE_BUS_IO_FORMAT_CFG);
 		}
 	}
 	msm_io_w(irq_comp_mask, vfe32_ctrl->vfebase + VFE_IRQ_COMP_MASK);
@@ -1081,7 +1082,8 @@ static int vfe32_start(void)
 {
 	uint32_t irq_comp_mask = 0;
 	/* start command now is only good for continuous mode. */
-	if (vfe32_ctrl->operation_mode & 1)
+	if ((vfe32_ctrl->operation_mode != VFE_MODE_OF_OPERATION_CONTINUOUS) &&
+		(vfe32_ctrl->operation_mode != VFE_MODE_OF_OPERATION_VIDEO))
 		return 0;
 	irq_comp_mask	=
 		msm_io_r(vfe32_ctrl->vfebase + VFE_IRQ_COMP_MASK);
@@ -1883,7 +1885,8 @@ static void vfe32_process_reg_update_irq(void)
 				&vfe32_ctrl->update_ack_lock, flags);
 		}
 	}
-	if (vfe32_ctrl->operation_mode & 1) {  /* in snapshot mode */
+	if (vfe32_ctrl->operation_mode ==
+		VFE_MODE_OF_OPERATION_SNAPSHOT) {  /* in snapshot mode */
 		/* later we need to add check for live snapshot mode. */
 		vfe32_ctrl->vfe_capture_count--;
 		/* if last frame to be captured: */
@@ -1979,7 +1982,10 @@ static void vfe32_process_reset_irq(void)
 static void vfe32_process_camif_sof_irq(void)
 {
 	uint32_t  temp;
-	if (vfe32_ctrl->operation_mode == 3) {  /* in raw snapshot mode */
+
+	/* in raw snapshot mode */
+	if (vfe32_ctrl->operation_mode ==
+		VFE_MODE_OF_OPERATION_RAW_SNAPSHOT) {
 		if (vfe32_ctrl->start_ack_pending) {
 			vfe32_send_msg_no_payload(MSG_ID_START_ACK);
 			vfe32_ctrl->start_ack_pending = FALSE;
@@ -2121,7 +2127,10 @@ static void vfe32_process_output_path_irq_0(void)
 	free buffer.
 	*/
 	out_bool =
-		((vfe32_ctrl->operation_mode & 1) &&
+		((vfe32_ctrl->operation_mode ==
+		VFE_MODE_OF_OPERATION_SNAPSHOT ||
+		vfe32_ctrl->operation_mode ==
+		VFE_MODE_OF_OPERATION_RAW_SNAPSHOT) &&
 		(vfe32_ctrl->vfe_capture_count <= 1)) ||
 		(vfe32_ctrl->outpath.out0.free_buf.available);
 	if (out_bool) {
@@ -2151,7 +2160,8 @@ static void vfe32_process_output_path_irq_0(void)
 
 			vfe32_ctrl->outpath.out0.free_buf.available = 0;
 		}
-		if (vfe32_ctrl->operation_mode & 1) {
+		if (vfe32_ctrl->operation_mode ==
+			VFE_MODE_OF_OPERATION_SNAPSHOT) {
 			/* will add message for multi-shot. */
 			vfe32_ctrl->outpath.out0.capture_cnt--;
 			vfe_send_outmsg(MSG_ID_OUTPUT_T, pyaddr,
@@ -2220,7 +2230,10 @@ static void vfe32_process_output_path_irq_1(void)
 	free buffer.
 	*/
 	out_bool =
-		((vfe32_ctrl->operation_mode & 1) &&
+		((vfe32_ctrl->operation_mode ==
+			VFE_MODE_OF_OPERATION_SNAPSHOT ||
+			vfe32_ctrl->operation_mode ==
+			VFE_MODE_OF_OPERATION_RAW_SNAPSHOT) &&
 		 (vfe32_ctrl->vfe_capture_count <= 1)) ||
 		(vfe32_ctrl->outpath.out1.free_buf.available);
 	if (out_bool) {
@@ -2249,7 +2262,10 @@ static void vfe32_process_output_path_irq_1(void)
 			vfe32_ctrl->outpath.out1.free_buf.cbcr_off);
 			vfe32_ctrl->outpath.out1.free_buf.available = 0;
 		}
-		if (vfe32_ctrl->operation_mode & 1) {
+		if (vfe32_ctrl->operation_mode ==
+			VFE_MODE_OF_OPERATION_SNAPSHOT ||
+			vfe32_ctrl->operation_mode ==
+			VFE_MODE_OF_OPERATION_RAW_SNAPSHOT) {
 			vfe32_ctrl->outpath.out1.capture_cnt--;
 			vfe_send_outmsg(MSG_ID_OUTPUT_S, pyaddr,
 				pcbcraddr);
@@ -2311,7 +2327,8 @@ static void vfe32_process_output_path_irq_2(void)
 	free buffer.
 	*/
 	out_bool =
-		((vfe32_ctrl->operation_mode & 1) &&
+		((vfe32_ctrl->operation_mode ==
+			VFE_MODE_OF_OPERATION_SNAPSHOT) &&
 		(vfe32_ctrl->vfe_capture_count <= 1)) ||
 		(vfe32_ctrl->outpath.out2.free_buf.available);
 
@@ -2635,7 +2652,10 @@ static void vfe32_do_tasklet(unsigned long data)
 			}
 			/* in snapshot mode if done then send
 			snapshot done message */
-			if (vfe32_ctrl->operation_mode & 1) {
+			if (vfe32_ctrl->operation_mode ==
+				VFE_MODE_OF_OPERATION_SNAPSHOT ||
+				vfe32_ctrl->operation_mode ==
+				VFE_MODE_OF_OPERATION_RAW_SNAPSHOT) {
 				if ((vfe32_ctrl->outpath.out0.capture_cnt == 0)
 						&& (vfe32_ctrl->outpath.out1.
 						capture_cnt == 0)) {
@@ -2960,7 +2980,7 @@ static long msm_vfe_subdev_ioctl(struct v4l2_subdev *sd,
 
 		CDBG("CMD_FRAME_BUF_RELEASE b->path = %d\n", b->path);
 
-		if (b->path & OUTPUT_TYPE_P) {
+		if ((b->path & OUTPUT_TYPE_P) || (b->path & OUTPUT_TYPE_T)) {
 			CDBG("CMD_FRAME_BUF_RELEASE got free buffer\n");
 			fbuf = &vfe32_ctrl->outpath.out0.free_buf;
 		} else if (b->path & OUTPUT_TYPE_S) {
