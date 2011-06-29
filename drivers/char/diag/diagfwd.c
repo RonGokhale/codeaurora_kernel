@@ -37,6 +37,8 @@
 #ifdef CONFIG_DIAG_SDIO_PIPE
 #include "diagfwd_sdio.h"
 #endif
+#define MODE_CMD	41
+#define RESET_ID	2
 
 int diag_debug_buf_idx;
 unsigned char diag_debug_buf[1024];
@@ -474,11 +476,10 @@ void diag_update_sleeping_process(int process_id)
 }
 
 void diag_send_data(struct diag_master_table entry, unsigned char *buf,
-							 int len, int i)
+					 int len, int type)
 {
-	pr_debug("diag: send data case %d", i);
 	driver->pkt_length = len;
-	if (entry.process_id != NON_APPS_PROC) {
+	if (entry.process_id != NON_APPS_PROC && type != MODEM_DATA) {
 		diag_update_pkt_buffer(buf);
 		diag_update_sleeping_process(entry.process_id);
 	} else {
@@ -503,6 +504,7 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 	int subsys_id, ssid_first, ssid_last, ssid_range;
 	int packet_type = 1, i, cmd_code;
 	unsigned char *temp = buf;
+	int data_type;
 #if defined(CONFIG_DIAG_OVER_USB)
 	int payload_length;
 	unsigned char *ptr;
@@ -515,6 +517,12 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 	temp++;
 	subsys_cmd_code = *(uint16_t *)temp;
 	temp += 2;
+	data_type = APPS_DATA;
+	/* Dont send any command other than mode reset */
+	if (cpu_is_msm8960() && cmd_code == MODE_CMD) {
+		if (subsys_id != RESET_ID)
+			data_type = MODEM_DATA;
+	}
 
 	pr_debug("diag: %d %d %d", cmd_code, subsys_id, subsys_cmd_code);
 	for (i = 0; i < diag_max_registration; i++) {
@@ -523,8 +531,8 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 			if (entry.cmd_code == cmd_code && entry.subsys_id ==
 				 subsys_id && entry.cmd_code_lo <=
 							 subsys_cmd_code &&
-				  entry.cmd_code_hi >= subsys_cmd_code){
-				diag_send_data(entry, buf, len, 1);
+				  entry.cmd_code_hi >= subsys_cmd_code) {
+				diag_send_data(entry, buf, len, data_type);
 				packet_type = 0;
 			} else if (entry.cmd_code == 255
 				  && cmd_code == 75) {
@@ -533,8 +541,9 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 				   entry.cmd_code_lo <=
 					subsys_cmd_code &&
 					 entry.cmd_code_hi >=
-					subsys_cmd_code){
-					diag_send_data(entry, buf, len, 2);
+					subsys_cmd_code) {
+					diag_send_data(entry, buf, len,
+								 data_type);
 					packet_type = 0;
 				}
 			} else if (entry.cmd_code == 255 &&
@@ -542,14 +551,14 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 				if (entry.cmd_code_lo <=
 						 cmd_code &&
 						 entry.
-						cmd_code_hi >= cmd_code){
-					diag_send_data(entry, buf, len, 3);
+						cmd_code_hi >= cmd_code) {
+					diag_send_data(entry, buf, len,
+								 data_type);
 					packet_type = 0;
 				}
 			}
 		}
 	}
-
 	/* set event mask */
 	if (*buf == 0x82) {
 		buf += 4;
