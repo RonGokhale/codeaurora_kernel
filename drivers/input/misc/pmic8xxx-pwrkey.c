@@ -19,8 +19,6 @@
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
 #include <linux/log2.h>
-#include <linux/spinlock.h>
-#include <linux/timer.h>
 
 #include <linux/mfd/pm8xxx/core.h>
 #include <linux/input/pmic8xxx-pwrkey.h>
@@ -32,54 +30,20 @@
 /**
  * struct pmic8xxx_pwrkey - pmic8xxx pwrkey information
  * @key_press_irq: key press irq number
- * @timer: timer for end key simulation
- * @key_pressed: flag to keep track for power key reporting
  * @pdata: platform data
- * @lock:  protect key press update and end key simulation
  */
 struct pmic8xxx_pwrkey {
 	struct input_dev *pwr;
 	int key_press_irq;
-	struct timer_list timer;
-	bool key_pressed;
 	const struct pm8xxx_pwrkey_platform_data *pdata;
-	spinlock_t lock;
 };
-
-static void pmic8xxx_pwrkey_timer(unsigned long handle)
-{
-	unsigned long flags;
-	struct pmic8xxx_pwrkey *pwrkey = (struct pmic8xxx_pwrkey *)handle;
-
-	spin_lock_irqsave(&pwrkey->lock, flags);
-	pwrkey->key_pressed = true;
-
-	input_report_key(pwrkey->pwr, KEY_POWER, 1);
-	input_sync(pwrkey->pwr);
-	spin_unlock_irqrestore(&pwrkey->lock, flags);
-}
 
 static irqreturn_t pwrkey_press_irq(int irq, void *_pwrkey)
 {
 	struct pmic8xxx_pwrkey *pwrkey = _pwrkey;
-	const struct pm8xxx_pwrkey_platform_data *pdata = pwrkey->pdata;
-	unsigned long flags;
 
-	/* no pwrkey time duration, means no screen lock key simulation */
-	if (!pwrkey->pdata->pwrkey_time_ms) {
-		input_report_key(pwrkey->pwr, KEY_POWER, 1);
-		input_sync(pwrkey->pwr);
-		return IRQ_HANDLED;
-	}
-
-	spin_lock_irqsave(&pwrkey->lock, flags);
-
-	input_report_key(pwrkey->pwr, KEY_SCREENLOCK, 1);
+	input_report_key(pwrkey->pwr, KEY_POWER, 1);
 	input_sync(pwrkey->pwr);
-
-	mod_timer(&pwrkey->timer, jiffies +
-			 msecs_to_jiffies(pdata->pwrkey_time_ms));
-	spin_unlock_irqrestore(&pwrkey->lock, flags);
 
 	return IRQ_HANDLED;
 }
@@ -87,28 +51,9 @@ static irqreturn_t pwrkey_press_irq(int irq, void *_pwrkey)
 static irqreturn_t pwrkey_release_irq(int irq, void *_pwrkey)
 {
 	struct pmic8xxx_pwrkey *pwrkey = _pwrkey;
-	unsigned long flags;
 
-	/* no pwrkey time, means no delay in pwr key reporting */
-	if (!pwrkey->pdata->pwrkey_time_ms) {
-		input_report_key(pwrkey->pwr, KEY_POWER, 0);
-		input_sync(pwrkey->pwr);
-		return IRQ_HANDLED;
-	}
-
-	del_timer_sync(&pwrkey->timer);
-	spin_lock_irqsave(&pwrkey->lock, flags);
-
-	if (pwrkey->key_pressed) {
-		pwrkey->key_pressed = false;
-		input_report_key(pwrkey->pwr, KEY_POWER, 0);
-		input_sync(pwrkey->pwr);
-	}
-
-	input_report_key(pwrkey->pwr, KEY_SCREENLOCK, 0);
+	input_report_key(pwrkey->pwr, KEY_POWER, 0);
 	input_sync(pwrkey->pwr);
-
-	spin_unlock_irqrestore(&pwrkey->lock, flags);
 
 	return IRQ_HANDLED;
 }
@@ -162,12 +107,6 @@ static int __devinit pmic8xxx_pwrkey_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	if (pdata->pwrkey_time_ms &&
-	     (pdata->pwrkey_time_ms < 500 || pdata->pwrkey_time_ms > 1000)) {
-		dev_err(&pdev->dev, "invalid power key time supplied\n");
-		return -EINVAL;
-	}
-
 	pwrkey = kzalloc(sizeof(*pwrkey), GFP_KERNEL);
 	if (!pwrkey)
 		return -ENOMEM;
@@ -182,7 +121,6 @@ static int __devinit pmic8xxx_pwrkey_probe(struct platform_device *pdev)
 	}
 
 	input_set_capability(pwr, EV_KEY, KEY_POWER);
-	input_set_capability(pwr, EV_KEY, KEY_SCREENLOCK);
 
 	pwr->name = "pmic8xxx_pwrkey";
 	pwr->phys = "pmic8xxx_pwrkey/input0";
@@ -209,11 +147,6 @@ static int __devinit pmic8xxx_pwrkey_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed writing PON_CNTL_1 err=%d\n", err);
 		goto free_input_dev;
 	}
-
-	setup_timer(&pwrkey->timer, pmic8xxx_pwrkey_timer,
-				 (unsigned long) pwrkey);
-
-	spin_lock_init(&pwrkey->lock);
 
 	err = input_register_device(pwr);
 	if (err) {
@@ -270,7 +203,6 @@ static int __devexit pmic8xxx_pwrkey_remove(struct platform_device *pdev)
 
 	free_irq(key_press_irq, pwrkey);
 	free_irq(key_release_irq, pwrkey);
-	del_timer_sync(&pwrkey->timer);
 	input_unregister_device(pwrkey->pwr);
 	platform_set_drvdata(pdev, NULL);
 	kfree(pwrkey);
