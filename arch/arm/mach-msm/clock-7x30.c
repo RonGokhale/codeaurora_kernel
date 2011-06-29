@@ -25,7 +25,6 @@
 
 #include <mach/msm_iomap.h>
 #include <mach/clk.h>
-#include <mach/internal_power_rail.h>
 
 #include "clock.h"
 #include "clock-local.h"
@@ -2392,13 +2391,6 @@ int soc_update_sys_vdd(enum sys_vdd_level level)
 	}
 out:
 	return rc;
-}
-
-/* Enable/disable a power rail associated with a clock. */
-int soc_set_pwr_rail(struct clk *clk, int enable)
-{
-	/* Not supported. */
-	return 0;
 }
 
 #ifdef CONFIG_DEBUG_FS

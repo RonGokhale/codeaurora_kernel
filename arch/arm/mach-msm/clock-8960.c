@@ -436,12 +436,6 @@ int soc_update_sys_vdd(enum sys_vdd_level level)
 				    vdd_uv[level], vdd_uv[HIGH], 1);
 }
 
-/* Enable/disable a power rail associated with a clock. */
-int soc_set_pwr_rail(struct clk *clk, int enable)
-{
-	return 0;
-}
-
 static int soc_clk_reset(struct clk *clk, enum clk_reset_action action)
 {
 	return branch_reset(&to_rcg_clk(clk)->b, action);

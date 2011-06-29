@@ -487,21 +487,13 @@ static void __local_clk_disable_reg(struct rcg_clk *clk)
 static int _local_clk_enable(struct rcg_clk *clk)
 {
 	unsigned long flags;
-	int rc;
 
 	spin_lock_irqsave(&local_clock_reg_lock, flags);
 	__local_clk_enable_reg(clk);
 	clk->enabled = true;
-	/*
-	 * With remote rail control, the remote processor might modify
-	 * the clock control register when the rail is enabled/disabled.
-	 * Enable the rail inside the reg_lock to protect against this.
-	 */
-	rc = soc_set_pwr_rail(&clk->c, 1);
-	if (rc)
-		__local_clk_disable_reg(clk);
 	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
-	return rc;
+
+	return 0;
 }
 
 static void _local_clk_disable(struct rcg_clk *clk)
@@ -509,7 +501,6 @@ static void _local_clk_disable(struct rcg_clk *clk)
 	unsigned long flags;
 
 	spin_lock_irqsave(&local_clock_reg_lock, flags);
-	soc_set_pwr_rail(&clk->c, 0);
 	__local_clk_disable_reg(clk);
 	clk->enabled = false;
 	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
@@ -890,24 +881,15 @@ struct clk_ops clk_ops_measure = {
 
 int branch_clk_enable(struct clk *clk)
 {
-	int rc;
 	unsigned long flags;
 	struct branch_clk *branch = to_branch_clk(clk);
 
 	spin_lock_irqsave(&local_clock_reg_lock, flags);
 	__branch_clk_enable_reg(&branch->b, branch->c.dbg_name);
-	/*
-	 * With remote rail control, the remote processor might modify
-	 * the clock control register when the rail is enabled/disabled.
-	 * Enable the rail inside the reg_lock to protect against this.
-	 */
-	rc = soc_set_pwr_rail(clk, 1);
-	if (rc)
-		__branch_clk_disable_reg(&branch->b, branch->c.dbg_name);
-	else
-		branch->enabled = true;
+	branch->enabled = true;
 	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
-	return rc;
+
+	return 0;
 }
 
 void branch_clk_disable(struct clk *clk)
@@ -916,7 +898,6 @@ void branch_clk_disable(struct clk *clk)
 	struct branch_clk *branch = to_branch_clk(clk);
 
 	spin_lock_irqsave(&local_clock_reg_lock, flags);
-	soc_set_pwr_rail(clk, 0);
 	__branch_clk_disable_reg(&branch->b, branch->c.dbg_name);
 	branch->enabled = false;
 	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
