@@ -425,6 +425,13 @@ int msm_bam_dmux_open(uint32_t id, void *priv,
 		kfree(hdr);
 		goto open_done;
 	}
+	if (!bam_ch_is_remote_open(id)) {
+		DBG("%s: Remote not open; ch: %d\n", __func__, id);
+		spin_unlock_irqrestore(&bam_ch[id].lock, flags);
+		kfree(hdr);
+		rc = -ENODEV;
+		goto open_done;
+	}
 
 	bam_ch[id].receive_cb = receive_cb;
 	bam_ch[id].write_done = write_done;
