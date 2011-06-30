@@ -221,6 +221,9 @@ struct smb137b_data {
 };
 
 static unsigned int disabled;
+static DEFINE_MUTEX(init_lock);
+static unsigned int init_otg_power;
+
 enum charger_stat {
 	SMB137B_ABSENT,
 	SMB137B_PRESENT,
@@ -586,6 +589,41 @@ out:
 					SMB137B_CHG_PERIOD);
 }
 
+static void __smb137b_otg_power(int on)
+{
+	int ret;
+
+	if (on) {
+		ret = smb137b_write_reg(usb_smb137b_chg->client,
+					PIN_CTRL_REG, PIN_CTRL_REG_CHG_OFF);
+		if (ret) {
+			pr_err("%s turning off charging in pin_ctrl err=%d\n",
+								__func__, ret);
+			/*
+			 * don't change the command register if charging in
+			 * pin control cannot be turned off
+			 */
+			return;
+		}
+
+		ret = smb137b_write_reg(usb_smb137b_chg->client,
+			COMMAND_A_REG, COMMAND_A_REG_OTG_MODE);
+		if (ret)
+			pr_err("%s failed turning on OTG mode ret=%d\n",
+								__func__, ret);
+	} else {
+		ret = smb137b_write_reg(usb_smb137b_chg->client,
+			COMMAND_A_REG, COMMAND_A_REG_DEFAULT);
+		if (ret)
+			pr_err("%s failed turning off OTG mode ret=%d\n",
+								__func__, ret);
+		ret = smb137b_write_reg(usb_smb137b_chg->client,
+				PIN_CTRL_REG, PIN_CTRL_REG_DEFAULT);
+		if (ret)
+			pr_err("%s failed writing to pn_ctrl ret=%d\n",
+								__func__, ret);
+	}
+}
 static int __devinit smb137b_probe(struct i2c_client *client,
 				    const struct i2c_device_id *id)
 {
@@ -698,7 +736,12 @@ static int __devinit smb137b_probe(struct i2c_client *client,
 
 	device_init_wakeup(&client->dev, 1);
 
+	mutex_lock(&init_lock);
 	usb_smb137b_chg = smb137b_chg;
+	if (init_otg_power)
+		__smb137b_otg_power(init_otg_power);
+	mutex_unlock(&init_lock);
+
 	smb137b_create_debugfs_entries(smb137b_chg);
 	dev_dbg(&client->dev,
 		"%s OK device_id = %x chg_state=%d\n", __func__,
@@ -719,39 +762,17 @@ out:
 
 void smb137b_otg_power(int on)
 {
-	int ret;
-
 	pr_debug("%s Enter on=%d\n", __func__, on);
-	if (on) {
-		ret = smb137b_write_reg(usb_smb137b_chg->client,
-					PIN_CTRL_REG, PIN_CTRL_REG_CHG_OFF);
-		if (ret) {
-			pr_err("%s turning off charging in pin_ctrl err=%d\n",
-								__func__, ret);
-			/*
-			 * dont change the command register if we cant
-			 * overwrite pin control
-			 */
-			return;
-		}
 
-		ret = smb137b_write_reg(usb_smb137b_chg->client,
-			COMMAND_A_REG, COMMAND_A_REG_OTG_MODE);
-		if (ret)
-			pr_err("%s failed turning on OTG mode ret=%d\n",
-								__func__, ret);
-	} else {
-		ret = smb137b_write_reg(usb_smb137b_chg->client,
-			COMMAND_A_REG, COMMAND_A_REG_DEFAULT);
-		if (ret)
-			pr_err("%s failed turning off OTG mode ret=%d\n",
-								__func__, ret);
-		ret = smb137b_write_reg(usb_smb137b_chg->client,
-				PIN_CTRL_REG, PIN_CTRL_REG_DEFAULT);
-		if (ret)
-			pr_err("%s failed writing to pn_ctrl ret=%d\n",
-								__func__, ret);
+	mutex_lock(&init_lock);
+	if (!usb_smb137b_chg) {
+		init_otg_power = !!on;
+		pr_warning("%s called when not initialized\n", __func__);
+		mutex_unlock(&init_lock);
+		return;
 	}
+	__smb137b_otg_power(on);
+	mutex_unlock(&init_lock);
 }
 
 static int __devexit smb137b_remove(struct i2c_client *client)
