@@ -1419,7 +1419,7 @@ static int msm_adc_probe(struct platform_device *pdev)
 	msm_adc_drv = msm_adc;
 	msm_adc->pdev = pdev;
 
-	if (pdata->target_hw == MSM_8x60) {
+	if (pdata->target_hw == MSM_8x60 || pdata->target_hw == FSM_9xxx) {
 		rc = msm_adc_init_hwmon(pdev, msm_adc);
 		if (rc) {
 			dev_err(&pdev->dev, "msm_adc_dev_init failed\n");
