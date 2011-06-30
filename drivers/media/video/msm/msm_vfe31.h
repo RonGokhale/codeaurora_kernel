@@ -1107,6 +1107,7 @@ struct vfe31_ctrl_type {
 	int8_t xbar_update_pending;
 	uint32_t xbar_cfg[2];
 	spinlock_t xbar_lock;
+	uint32_t while_stopping_mask;
 };
 
 #define statsAeNum      0
