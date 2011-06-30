@@ -238,6 +238,13 @@ static int pm_chg_auto_enable(struct pm8921_chg_chip *chip, int enable)
 				enable ? CHG_EN_BIT : 0);
 }
 
+#define CHG_CHARGE_DIS_BIT	BIT(1)
+static int pm_chg_charge_dis(struct pm8921_chg_chip *chip, int disable)
+{
+	return pm_chg_masked_write(chip, CHG_CNTRL, CHG_CHARGE_DIS_BIT,
+				disable ? CHG_CHARGE_DIS_BIT : 0);
+}
+
 #define PM8921_CHG_V_MIN_MV	3240
 #define PM8921_CHG_V_STEP_MV	20
 #define PM8921_CHG_VDDMAX_MAX	4500
@@ -948,12 +955,10 @@ static int set_disable_status_param(const char *val, struct kernel_param *kp)
 		pr_err("error setting value %d\n", ret);
 		return ret;
 	}
-
+	pr_info("factory set disable param to %d\n", charging_disabled);
 	if (chip) {
-		if (charging_disabled)
-			pm_chg_auto_enable(chip, 0);
-		else
-			pm_chg_auto_enable(chip, 1);
+		pm_chg_auto_enable(chip, !charging_disabled);
+		pm_chg_charge_dis(chip, charging_disabled);
 	}
 	return 0;
 }
@@ -1193,10 +1198,15 @@ static int __devinit pm8921_chg_hw_init(struct pm8921_chg_chip *chip)
 		pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, 0xD8);
 	}
 
+	rc = pm_chg_charge_dis(chip, charging_disabled);
+	if (rc) {
+		pr_err("Failed to disable CHG_CHARGE_DIS bit rc=%d\n", rc);
+		return rc;
+	}
+
 	rc = pm_chg_auto_enable(chip, !charging_disabled);
 	if (rc) {
-		pr_err("Failed to %s charging rc=%d\n",
-				charging_disabled ? "disable" : "enable", rc);
+		pr_err("Failed to enable charging rc=%d\n", rc);
 		return rc;
 	}
 
