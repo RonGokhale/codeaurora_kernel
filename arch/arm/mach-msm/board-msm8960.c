@@ -2377,6 +2377,7 @@ static struct cyttsp_platform_data cyttsp_pdata = {
 	.use_trk_id = CY_USE_TRACKING_ID,
 	.use_sleep = CY_USE_SLEEP,
 	.use_gestures = CY_USE_GESTURES,
+	.fw_fname = "cyttsp_8960_cdp.hex",
 	/* activate up to 4 groups
 	 * and set active distance
 	 */
