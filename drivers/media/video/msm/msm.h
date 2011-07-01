@@ -219,7 +219,7 @@ struct msm_isp_buf_info {
 	unsigned long buffer;
 	int fd;
 };
-#define MSM_DEV_INST_MAX                    8
+#define MSM_DEV_INST_MAX                    16
 struct msm_cam_v4l2_dev_inst {
 	struct videobuf_queue vid_bufq;
 	spinlock_t vb_irqlock;

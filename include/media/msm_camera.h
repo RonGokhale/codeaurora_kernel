@@ -230,6 +230,34 @@ struct msm_isp_stats_event_ctrl {
 #define MSM_CAM_RESP_V4L2         4
 #define MSM_CAM_RESP_MAX          5
 
+/* driver event types */
+#define MSM_CAM_EVT_HISTOGRAM_NOTIFY	(V4L2_EVENT_PRIVATE_START+1)
+#define MSM_CAM_EVT_STREAMING_NOTIFY	(V4L2_EVENT_PRIVATE_START+2)
+#define MSM_CAM_EVT_ASYNC_CMD_NOTIFY	(V4L2_EVENT_PRIVATE_START+3)
+#define MSM_CAM_EVT_CNT_MAX						3
+
+struct msm_event_histogram {
+	int32_t fd;
+	uint32_t size;
+	uint32_t offset;
+};
+struct msm_event_async_cmd_status {
+	uint32_t cmd;
+	int32_t status;
+};
+struct msm_event_streaming_status {
+	uint32_t ext_mode;
+	int32_t	streamon;
+	int32_t status;
+};
+struct msm_event_payload {
+	uint32_t type;
+	union {
+		struct msm_event_histogram hist;
+		struct msm_event_async_cmd_status cmd_status;
+		struct msm_event_streaming_status stream_status;
+	};
+};
 /* this one is used to send ctrl/status up to config thread */
 struct msm_stats_event_ctrl {
 	/* 0 - ctrl_cmd from control thread,
@@ -508,13 +536,15 @@ struct msm_stats_buf {
 #define MSM_V4L2_PID_PREP_SNAPSHOT          (V4L2_CID_PRIVATE_BASE+4)
 #define MSM_V4L2_PID_EXP_METERING           (V4L2_CID_PRIVATE_BASE+5)
 #define MSM_V4L2_PID_ISO                    (V4L2_CID_PRIVATE_BASE+6)
-#define MSM_V4L2_PID_CAM_MODE		    (V4L2_CID_PRIVATE_BASE+7)
+#define MSM_V4L2_PID_CAM_MODE               (V4L2_CID_PRIVATE_BASE+7)
 #define MSM_V4L2_PID_LUMA_ADAPTATION	    (V4L2_CID_PRIVATE_BASE+8)
-#define MSM_V4L2_PID_BEST_SHOT		    (V4L2_CID_PRIVATE_BASE+9)
-#define MSM_V4L2_PID_FOCUS_MODE		    (V4L2_CID_PRIVATE_BASE+10)
-#define MSM_V4L2_PID_BL_DETECTION	    (V4L2_CID_PRIVATE_BASE+11)
-#define MSM_V4L2_PID_SNOW_DETECTION	    (V4L2_CID_PRIVATE_BASE+12)
-#define MSM_V4L2_PID_MAX		     MSM_V4L2_PID_SNOW_DETECTION
+#define MSM_V4L2_PID_BEST_SHOT              (V4L2_CID_PRIVATE_BASE+9)
+#define MSM_V4L2_PID_FOCUS_MODE	            (V4L2_CID_PRIVATE_BASE+10)
+#define MSM_V4L2_PID_BL_DETECTION           (V4L2_CID_PRIVATE_BASE+11)
+#define MSM_V4L2_PID_SNOW_DETECTION         (V4L2_CID_PRIVATE_BASE+12)
+#define MSM_V4L2_PID_CTRL_CMD               (V4L2_CID_PRIVATE_BASE+13)
+#define MSM_V4L2_PID_EVT_SUB_INFO           (V4L2_CID_PRIVATE_BASE+14)
+#define MSM_V4L2_PID_MAX                    MSM_V4L2_PID_EVT_SUB_INFO
 
 /* camera operation mode for video recording - two frame output queues */
 #define MSM_V4L2_CAM_OP_DEFAULT         0
@@ -530,20 +560,22 @@ struct msm_stats_buf {
 #define MSM_V4L2_CAM_OP_RAW             (MSM_V4L2_CAM_OP_DEFAULT+5)
 
 #define MSM_V4L2_VID_CAP_TYPE	0
-#define MSM_V4L2_STREAM_ON	1
-#define MSM_V4L2_STREAM_OFF	2
-#define MSM_V4L2_SNAPSHOT	3
-#define MSM_V4L2_QUERY_CTRL	4
-#define MSM_V4L2_GET_CTRL	5
-#define MSM_V4L2_SET_CTRL	6
-#define MSM_V4L2_QUERY		7
-#define MSM_V4L2_GET_CROP	8
-#define MSM_V4L2_SET_CROP	9
-#define MSM_V4L2_OPEN		10
-#define MSM_V4L2_CLOSE		11
-#define MSM_V4L2_MAX		12
+#define MSM_V4L2_STREAM_ON		1
+#define MSM_V4L2_STREAM_OFF		2
+#define MSM_V4L2_SNAPSHOT		3
+#define MSM_V4L2_QUERY_CTRL		4
+#define MSM_V4L2_GET_CTRL		5
+#define MSM_V4L2_SET_CTRL		6
+#define MSM_V4L2_QUERY			7
+#define MSM_V4L2_GET_CROP		8
+#define MSM_V4L2_SET_CROP		9
+#define MSM_V4L2_OPEN			10
+#define MSM_V4L2_CLOSE			11
+#define MSM_V4L2_SET_CTRL_CMD	12
+#define MSM_V4L2_EVT_SUB_MASK	13
+#define MSM_V4L2_MAX			14
+#define V4L2_CAMERA_EXIT		43
 
-#define V4L2_CAMERA_EXIT 	43
 struct crop_info {
 	void *info;
 	int len;
