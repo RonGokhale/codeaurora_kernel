@@ -287,4 +287,11 @@ config CRYPTO_DEV_QCEDEV
 	  To compile this driver as a module, choose M here: the
 	  module will be called qcedev.
 
+config CRYPTO_DEV_OTA_CRYPTO
+	tristate "OTA Crypto module"
+	help
+          This driver supports Qualcomm OTA Crypto in the FSM9xxx.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ota_crypto.
+
 endif # CRYPTO_HW
