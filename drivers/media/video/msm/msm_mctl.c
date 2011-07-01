@@ -41,11 +41,27 @@
 /* VFE required buffer number for streaming */
 static struct msm_isp_color_fmt msm_isp_formats[] = {
 	{
+	.name	   = "NV12YUV",
+	.depth	  = 12,
+	.bitsperpxl = 8,
+	.fourcc	 = V4L2_PIX_FMT_NV12,
+	.pxlcode	= V4L2_MBUS_FMT_YUYV8_2X8, /* YUV sensor */
+	.colorspace = V4L2_COLORSPACE_JPEG,
+	},
+	{
 	.name	   = "NV21YUV",
 	.depth	  = 12,
 	.bitsperpxl = 8,
 	.fourcc	 = V4L2_PIX_FMT_NV21,
 	.pxlcode	= V4L2_MBUS_FMT_YUYV8_2X8, /* YUV sensor */
+	.colorspace = V4L2_COLORSPACE_JPEG,
+	},
+	{
+	.name	   = "NV12BAYER",
+	.depth	  = 8,
+	.bitsperpxl = 8,
+	.fourcc	 = V4L2_PIX_FMT_NV12,
+	.pxlcode	= V4L2_MBUS_FMT_SBGGR10_1X10, /* Bayer sensor */
 	.colorspace = V4L2_COLORSPACE_JPEG,
 	},
 	{
