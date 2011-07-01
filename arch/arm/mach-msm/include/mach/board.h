@@ -178,6 +178,8 @@ struct msm_camera_sensor_info {
 	char *eeprom_data;
 };
 
+int __init msm_get_cam_resources(struct msm_camera_sensor_info *);
+
 struct clk;
 
 struct snd_endpoint {

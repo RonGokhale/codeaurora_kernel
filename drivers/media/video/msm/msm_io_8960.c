@@ -134,10 +134,11 @@ static struct regulator *cam_vdig;
 static struct regulator *cam_vaf;
 static struct regulator *mipi_csi_vdd;
 
-static struct msm_camera_io_ext camio_ext;
 static struct msm_camera_io_clk camio_clk;
 static struct platform_device *camio_dev;
 static struct resource *csidio, *csiphyio;
+static struct resource *csid_mem, *csiphy_mem;
+static struct resource *csid_irq, *csiphy_irq;
 void __iomem *csidbase, *csiphybase;
 
 static struct msm_bus_vectors cam_init_vectors[] = {
@@ -1045,46 +1046,74 @@ int msm_camio_enable(struct platform_device *pdev)
 	struct msm_camera_sensor_info *sinfo = pdev->dev.platform_data;
 	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
 	uint8_t csid_core = camdev->csid_core;
+	char csid[] = "csid0";
+	char csiphy[] = "csiphy0";
+	if (csid_core < 0 || csid_core > 2)
+		return -ENODEV;
+
+	csid[4] = '0' + csid_core;
+	csiphy[6] = '0' + csid_core;
+
 	camio_dev = pdev;
-	camio_ext = camdev->ioext;
 	camio_clk = camdev->ioclk;
 
 	rc = msm_camio_enable_all_clks(csid_core);
 	if (rc < 0)
 		return rc;
 
-	csidio = request_mem_region(camio_ext.csiphy,
-		camio_ext.csisz, pdev->name);
+	csid_mem = platform_get_resource_byname(pdev, IORESOURCE_MEM, csid);
+	if (!csid_mem) {
+		pr_err("%s: no mem resource?\n", __func__);
+		return -ENODEV;
+	}
+	csid_irq = platform_get_resource_byname(pdev, IORESOURCE_IRQ, csid);
+	if (!csid_irq) {
+		pr_err("%s: no irq resource?\n", __func__);
+		return -ENODEV;
+	}
+	csiphy_mem = platform_get_resource_byname(pdev, IORESOURCE_MEM, csiphy);
+	if (!csiphy_mem) {
+		pr_err("%s: no mem resource?\n", __func__);
+		return -ENODEV;
+	}
+	csiphy_irq = platform_get_resource_byname(pdev, IORESOURCE_IRQ, csiphy);
+	if (!csiphy_irq) {
+		pr_err("%s: no irq resource?\n", __func__);
+		return -ENODEV;
+	}
+
+	csidio = request_mem_region(csid_mem->start,
+		resource_size(csid_mem), pdev->name);
 	if (!csidio) {
 		rc = -EBUSY;
 		goto common_fail;
 	}
-	csidbase = ioremap(camio_ext.csiphy,
-		camio_ext.csisz);
+	csidbase = ioremap(csid_mem->start,
+		resource_size(csid_mem));
 	if (!csidbase) {
 		rc = -ENOMEM;
 		goto csi_busy;
 	}
 #if DBG_CSID
-	rc = request_irq(camio_ext.csiirq, msm_io_csi_irq,
+	rc = request_irq(csid_irq->start, msm_io_csi_irq,
 		IRQF_TRIGGER_RISING, "csid", 0);
 	if (rc < 0)
 		goto csi_irq_fail;
 #endif
-	csiphyio = request_mem_region(camio_ext.csiphyphy,
-		camio_ext.csiphysz, pdev->name);
+	csiphyio = request_mem_region(csiphy_mem->start,
+		resource_size(csiphy_mem), pdev->name);
 	if (!csidio) {
 		rc = -EBUSY;
 		goto csi_irq_fail;
 	}
-	csiphybase = ioremap(camio_ext.csiphyphy,
-		camio_ext.csiphysz);
+	csiphybase = ioremap(csiphy_mem->start,
+		resource_size(csiphy_mem));
 	if (!csiphybase) {
 		rc = -ENOMEM;
 		goto csiphy_busy;
 	}
 #if DBG_CSIPHY
-	rc = request_irq(camio_ext.csiphyirq , msm_io_csiphy_irq,
+	rc = request_irq(csiphy_irq->start, msm_io_csiphy_irq,
 		IRQF_TRIGGER_RISING, "csiphy", 0);
 	if (rc < 0)
 		goto csiphy_irq_fail;
@@ -1097,11 +1126,11 @@ int msm_camio_enable(struct platform_device *pdev)
 csiphy_irq_fail:
 	iounmap(csiphybase);
 csiphy_busy:
-	release_mem_region(camio_ext.csiphyphy, camio_ext.csiphysz);
+	release_mem_region(csiphy_mem->start, resource_size(csiphy_mem));
 csi_irq_fail:
 	iounmap(csidbase);
 csi_busy:
-	release_mem_region(camio_ext.csiphy, camio_ext.csisz);
+	release_mem_region(csid_mem->start, resource_size(csid_mem));
 common_fail:
 	msm_camio_disable_all_clks(csid_core);
 	msm_camera_vreg_disable();
@@ -1115,16 +1144,16 @@ void msm_camio_disable(struct platform_device *pdev)
 	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
 	uint8_t csid_core = camdev->csid_core;
 #if DBG_CSIPHY
-	free_irq(camio_ext.csiphy, 0);
+	free_irq(csiphy_irq->start, 0);
 #endif
 	iounmap(csiphybase);
-	release_mem_region(camio_ext.csiphyphy, camio_ext.csiphysz);
+	release_mem_region(csiphy_mem->start, resource_size(csiphy_mem));
 
 #if DBG_CSID
-	free_irq(camio_ext.csiirq, 0);
+	free_irq(csid_irq, 0);
 #endif
 	iounmap(csidbase);
-	release_mem_region(camio_ext.csiphy, camio_ext.csisz);
+	release_mem_region(csid_mem->start, resource_size(csid_mem));
 
 	msm_camio_disable_all_clks(csid_core);
 	msm_ispif_release(pdev);
@@ -1136,7 +1165,6 @@ int msm_camio_sensor_clk_on(struct platform_device *pdev)
 	struct msm_camera_sensor_info *sinfo = pdev->dev.platform_data;
 	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
 	camio_dev = pdev;
-	camio_ext = camdev->ioext;
 	camio_clk = camdev->ioclk;
 
 	msm_camera_vreg_enable(pdev);
@@ -1167,7 +1195,6 @@ int msm_camio_probe_on(struct platform_device *pdev)
 	struct msm_camera_sensor_info *sinfo = pdev->dev.platform_data;
 	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
 	camio_dev = pdev;
-	camio_ext = camdev->ioext;
 	camio_clk = camdev->ioclk;
 
 	rc = camdev->camera_gpio_on();
