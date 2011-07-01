@@ -55,6 +55,7 @@ static void mdp_dma2_update_lcd(struct msm_fb_data_type *mfd)
 {
 	MDPIBUF *iBuf = &mfd->ibuf;
 	int mddi_dest = FALSE;
+	int cmd_mode = FALSE;
 	uint32 outBpp = iBuf->bpp;
 	uint32 dma2_cfg_reg;
 	uint8 *src;
@@ -136,6 +137,7 @@ static void mdp_dma2_update_lcd(struct msm_fb_data_type *mfd)
 		}
 #ifdef CONFIG_FB_MSM_MDP303
 	} else if (mfd->panel_info.type == MIPI_CMD_PANEL) {
+		cmd_mode = TRUE;
 		dma2_cfg_reg |= DMA_OUT_SEL_DSI_CMD;
 #endif
 	} else {
@@ -164,7 +166,12 @@ static void mdp_dma2_update_lcd(struct msm_fb_data_type *mfd)
 	MDP_OUTP(MDP_CMD_DEBUG_ACCESS_BASE + 0x0188, src);
 	MDP_OUTP(MDP_CMD_DEBUG_ACCESS_BASE + 0x018C, ystride);
 #else
-	MDP_OUTP(MDP_BASE + 0x90004, (iBuf->dma_h << 16 | iBuf->dma_w));
+	if (cmd_mode)
+		MDP_OUTP(MDP_BASE + 0x90004,
+			(mfd->panel_info.yres << 16 | mfd->panel_info.xres));
+	else
+		MDP_OUTP(MDP_BASE + 0x90004, (iBuf->dma_h << 16 | iBuf->dma_w));
+
 	MDP_OUTP(MDP_BASE + 0x90008, src);
 	MDP_OUTP(MDP_BASE + 0x9000c, ystride);
 #endif
