@@ -991,7 +991,8 @@ static void __init msm_sched_clock_init(void)
 {
 	struct msm_clock *clock = &msm_clocks[MSM_GLOBAL_TIMER];
 
-	init_sched_clock(&cd, msm_update_sched_clock, 32, clock->freq);
+	init_sched_clock(&cd, msm_update_sched_clock, 32 - clock->shift,
+			 clock->freq);
 }
 static void __init msm_timer_init(void)
 {
