@@ -1385,7 +1385,9 @@ static int msm_open_server(struct inode *inode, struct file *fp)
 		return rc;
 	}
 	g_server_dev.use_count++;
-	msm_queue_init(&g_server_dev.ctrl_q, "control");
+	if (g_server_dev.use_count == 1)
+		msm_queue_init(&g_server_dev.ctrl_q, "control");
+
 	return rc;
 }
 

@@ -322,7 +322,7 @@ static struct msm_camera_csi_params ov2720_csi_params = {
 
 static struct v4l2_subdev_info ov2720_subdev_info[] = {
 	{
-	.code   = V4L2_MBUS_FMT_YUYV8_2X8,
+	.code   = V4L2_MBUS_FMT_SBGGR10_1X10,
 	.colorspace = V4L2_COLORSPACE_JPEG,
 	.fmt    = 1,
 	.order    = 0,
