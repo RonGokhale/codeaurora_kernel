@@ -749,6 +749,17 @@ static int msm_cam_gpio_tbl[] = {
 	21, /*CAMIF_I2C_CLK*/
 };
 
+#define VFE_CAMIF_TIMER1_GPIO 2
+#define VFE_CAMIF_TIMER2_GPIO 3
+#define VFE_CAMIF_TIMER3_GPIO_INT 4
+struct msm_camera_sensor_strobe_flash_data strobe_flash_xenon = {
+	.flash_trigger = VFE_CAMIF_TIMER2_GPIO,
+	.flash_charge = VFE_CAMIF_TIMER1_GPIO,
+	.flash_charge_done = VFE_CAMIF_TIMER3_GPIO_INT,
+	.flash_recharge_duration = 50000,
+	.irq = MSM_GPIO_TO_INT(VFE_CAMIF_TIMER3_GPIO_INT),
+};
+
 #ifdef CONFIG_IMX074
 static struct msm_camera_sensor_platform_info sensor_board_info = {
 	.mount_angle = 0
@@ -822,6 +833,7 @@ static struct msm_camera_sensor_info msm_camera_sensor_imx074_data = {
 	.vcm_enable	= 1,
 	.pdata	= &msm_camera_csi0_device_data,
 	.flash_data	= &flash_imx074,
+	.strobe_flash_data = &strobe_flash_xenon,
 	.sensor_platform_info = &sensor_board_info,
 	.csi_if	= 1
 };

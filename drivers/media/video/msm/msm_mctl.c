@@ -555,6 +555,17 @@ static int msm_mctl_cmd(struct msm_cam_media_controller *p_mctl,
 			rc = p_mctl->sync.sctrl.s_config(argp);
 			break;
 
+	case MSM_CAM_IOCTL_FLASH_CTRL: {
+		struct flash_ctrl_data flash_info;
+		if (copy_from_user(&flash_info, argp, sizeof(flash_info))) {
+			ERR_COPY_FROM_USER();
+			rc = -EFAULT;
+		} else {
+			rc = msm_flash_ctrl(p_mctl->sync.sdata, &flash_info);
+		}
+		break;
+	}
+
 			/* ISFIF config*/
 
 	default:
