@@ -204,6 +204,8 @@ enum {
 #define CHANNEL_ADC_625_REF	0xf
 #define CHANNEL_ADC_1250_REF	0x10
 #define CHANNEL_ADC_325_REF	0x11
+#define CHANNEL_ADC_FSM_THERM	0x12
+#define CHANNEL_ADC_PA_THERM	0x13
 
 enum {
 	CALIB_STARTED,
@@ -267,6 +269,7 @@ struct msm_adc_platform_data {
 enum hw_type {
 	MSM_7x30,
 	MSM_8x60,
+	FSM_9xxx,
 };
 
 enum epm_gpio_config {
