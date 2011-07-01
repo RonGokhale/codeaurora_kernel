@@ -16,7 +16,7 @@
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <linux/msm_kgsl.h>
-
+#include <linux/regulator/machine.h>
 #include <linux/dma-mapping.h>
 #include <asm/clkdev.h>
 #include <mach/irqs.h>
@@ -26,6 +26,7 @@
 
 #include "devices.h"
 #include "gpio_hw.h"
+#include "footswitch.h"
 
 #include <asm/mach/flash.h>
 
@@ -833,3 +834,24 @@ struct platform_device msm_kgsl_3d0 = {
 		.platform_data = &kgsl_3d0_pdata,
 	},
 };
+
+#define FS(_id, _name) (&(struct platform_device){ \
+	.name   = "footswitch-pcom", \
+	.id     = (_id), \
+	.dev    = { \
+		.platform_data = &(struct regulator_init_data){ \
+			.constraints = { \
+				.valid_modes_mask = REGULATOR_MODE_NORMAL, \
+				.valid_ops_mask   = REGULATOR_CHANGE_STATUS, \
+			}, \
+			.num_consumer_supplies = 1, \
+			.consumer_supplies = \
+				&(struct regulator_consumer_supply) \
+				REGULATOR_SUPPLY((_name), NULL), \
+		} \
+	}, \
+})
+struct platform_device *msm_footswitch_devices[] = {
+	FS(FS_GFX3D,  "fs_gfx3d"),
+};
+unsigned msm_num_footswitch_devices = ARRAY_SIZE(msm_footswitch_devices);

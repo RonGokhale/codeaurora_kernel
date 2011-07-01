@@ -14,6 +14,7 @@
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
 #include <linux/msm_kgsl.h>
+#include <linux/regulator/machine.h>
 #include <mach/irqs.h>
 #include <mach/msm_iomap.h>
 #include <mach/board.h>
@@ -29,6 +30,7 @@
 
 #include "devices.h"
 #include "devices-msm7x2xa.h"
+#include "footswitch.h"
 
 /* Address of GSBI blocks */
 #define MSM_GSBI0_PHYS		0xA1200000
@@ -669,3 +671,24 @@ void __init msm_common_io_init(void)
 	msm_map_common_io();
 	msm7x27x_cache_init();
 }
+
+#define FS(_id, _name) (&(struct platform_device){ \
+	.name   = "footswitch-pcom", \
+	.id     = (_id), \
+	.dev    = { \
+		.platform_data = &(struct regulator_init_data){ \
+			.constraints = { \
+				.valid_modes_mask = REGULATOR_MODE_NORMAL, \
+				.valid_ops_mask   = REGULATOR_CHANGE_STATUS, \
+			}, \
+			.num_consumer_supplies = 1, \
+			.consumer_supplies = \
+				&(struct regulator_consumer_supply) \
+				REGULATOR_SUPPLY((_name), NULL), \
+		} \
+	}, \
+})
+struct platform_device *msm_footswitch_devices[] = {
+	FS(FS_GFX3D,  "fs_gfx3d"),
+};
+unsigned msm_num_footswitch_devices = ARRAY_SIZE(msm_footswitch_devices);

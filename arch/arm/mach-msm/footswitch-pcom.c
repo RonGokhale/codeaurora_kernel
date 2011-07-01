@@ -47,8 +47,8 @@
  * @core_clk: Clock with name core_clk_name
  * @set_clk: Clock with name set_clk_name
  * @abh_clk: Clock with name ahb_clk_name
- * @core_clk_init_rate: Rate to use for set_clk to if one has not yet been set
- * @is_core_rate_set: Flag set if the core clock's rate has been set
+ * @set_clk_init_rate: Rate to use for set_clk to if one has not yet been set
+ * @is_rate_set: Flag set if the core clock's rate has been set
  */
 struct footswitch {
 	struct regulator_dev			*rdev;
@@ -63,8 +63,8 @@ struct footswitch {
 	struct clk				*core_clk;
 	struct clk				*set_clk;
 	struct clk				*ahb_clk;
-	const int				core_clk_init_rate;
-	bool					is_core_rate_set;
+	const int				set_clk_init_rate;
+	bool					is_rate_set;
 };
 
 static inline int set_rail_mode(int pcom_id, int mode)
@@ -91,19 +91,9 @@ static inline int set_rail_state(int pcom_id, int state)
 
 static int enable_clocks(struct footswitch *fs)
 {
-	if (fs->set_clk_name) {
-		fs->is_core_rate_set = !!(clk_get_rate(fs->core_clk));
-		if (!fs->is_core_rate_set) {
-			int rc = clk_set_rate(fs->core_clk,
-					      fs->core_clk_init_rate);
-			if (rc) {
-				pr_err("Failed to set %s rate to %d Hz.\n",
-					fs->core_clk_name,
-					fs->core_clk_init_rate);
-				return rc;
-			}
-		}
-	}
+	fs->is_rate_set = !!(clk_get_rate(fs->set_clk));
+	if (!fs->is_rate_set)
+		clk_set_rate(fs->set_clk, fs->set_clk_init_rate);
 	clk_enable(fs->core_clk);
 
 	if (fs->ahb_clk)
@@ -180,37 +170,49 @@ static struct regulator_ops footswitch_ops = {
 		.pcom_id = _pcom_id, \
 		.core_clk_name = _core_clk, \
 		.set_clk_name = _set_clk, \
-		.core_clk_init_rate = _rate, \
+		.set_clk_init_rate = _rate, \
 		.ahb_clk_name = _ahb_clk, \
 	}
 static struct footswitch footswitches[] = {
 	FOOTSWITCH(FS_GFX3D,  PCOM_FS_GRP,     "fs_gfx3d",
-		   "grp_src_clk", "grp_clk",    24576000, "grp_pclk"),
+		   "grp_clk", "grp_src_clk", 24576000, "grp_pclk"),
 	FOOTSWITCH(FS_GFX2D0, PCOM_FS_GRP_2D,  "fs_gfx2d0",
-		   "grp_2d_clk",  "grp_2d_clk", 24576000, "grp_2d_pclk"),
+		   "grp_2d_clk",       NULL, 24576000, "grp_2d_pclk"),
 	FOOTSWITCH(FS_MDP,    PCOM_FS_MDP,     "fs_mdp",
-		   "mdp_clk",     "mdp_clk",    24576000, "mdp_pclk"),
+		   "mdp_clk",          NULL, 24576000, "mdp_pclk"),
 	FOOTSWITCH(FS_MFC,    PCOM_FS_MFC,     "fs_mfc",
-		   "mfc_clk",     "mfc_clk",    24576000, "mfc_pclk"),
+		   "mfc_clk",          NULL, 24576000, "mfc_pclk"),
 	FOOTSWITCH(FS_ROT,    PCOM_FS_ROTATOR, "fs_rot",
-		   "rotator_clk",  NULL,               0, "rotator_pclk"),
+		   "rotator_clk",      NULL,        0, "rotator_pclk"),
 	FOOTSWITCH(FS_VFE,    PCOM_FS_VFE,     "fs_vfe",
-		   "vfe_clk",     "vfe_clk",    24576000, "vfe_pclk"),
+		   "vfe_clk",          NULL, 24576000, "vfe_pclk"),
 	FOOTSWITCH(FS_VPE,    PCOM_FS_VPE,     "fs_vpe",
-		   "vpe_clk",     "vpe_clk",    24576000, NULL),
+		   "vpe_clk",          NULL, 24576000, NULL),
 };
 
 static int get_clocks(struct footswitch *fs)
 {
 	int rc;
 
+	/*
+	 * Some SoCs may not have a separate rate-settable clock.
+	 * If one can't be found, try to use the core clock for
+	 * rate-setting instead.
+	 */
 	if (fs->set_clk_name) {
 		fs->set_clk = clk_get(NULL, fs->set_clk_name);
 		if (IS_ERR(fs->set_clk)) {
-			pr_err("clk_get(%s) failed\n", fs->set_clk_name);
-			rc = PTR_ERR(fs->set_clk);
-			goto err_set_clk;
+			fs->set_clk = clk_get(NULL, fs->core_clk_name);
+			fs->set_clk_name = fs->core_clk_name;
 		}
+	} else {
+		fs->set_clk = clk_get(NULL, fs->core_clk_name);
+		fs->set_clk_name = fs->core_clk_name;
+	}
+	if (IS_ERR(fs->set_clk)) {
+		pr_err("clk_get(%s) failed\n", fs->set_clk_name);
+		rc = PTR_ERR(fs->set_clk);
+		goto err_set_clk;
 	}
 
 	fs->core_clk = clk_get(NULL, fs->core_clk_name);
