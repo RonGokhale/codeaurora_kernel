@@ -1126,22 +1126,6 @@ struct platform_device msm_pcm_hostless = {
 	.id	= -1,
 };
 
-#define FS(_id, _name) (&(struct platform_device){ \
-	.name	= "footswitch-msm8x60", \
-	.id	= (_id), \
-	.dev	= { \
-		.platform_data = &(struct regulator_init_data){ \
-			.constraints = { \
-				.valid_modes_mask = REGULATOR_MODE_NORMAL, \
-				.valid_ops_mask   = REGULATOR_CHANGE_STATUS, \
-			}, \
-			.num_consumer_supplies = 1, \
-			.consumer_supplies = \
-				&(struct regulator_consumer_supply) \
-				REGULATOR_SUPPLY((_name), NULL), \
-		} \
-	}, \
-})
 struct platform_device *msm_footswitch_devices[] = {
 };
 unsigned msm_num_footswitch_devices = ARRAY_SIZE(msm_footswitch_devices);
