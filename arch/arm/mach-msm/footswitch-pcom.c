@@ -312,11 +312,12 @@ static int __init footswitch_init(void)
 	int ret;
 
 	/*
-	 * Put all footswitches in manual mode (ie. not controlled along
+	 * Enable all footswitches in manual mode (ie. not controlled along
 	 * with pcom clocks).
 	 */
 	for (fs = footswitches; fs < footswitches + ARRAY_SIZE(footswitches);
 	     fs++) {
+		set_rail_state(fs->pcom_id, PCOM_CLKCTL_RPC_RAIL_ENABLE);
 		ret = set_rail_mode(fs->pcom_id, PCOM_RAIL_MODE_MANUAL);
 		if (!ret)
 			fs->is_manual = 1;
