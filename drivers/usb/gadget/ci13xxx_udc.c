@@ -1235,7 +1235,7 @@ static ssize_t show_registers(struct device *dev,
 {
 	struct ci13xxx *udc = container_of(dev, struct ci13xxx, gadget.dev);
 	unsigned long flags;
-	u32 dump[512];
+	u32 *dump;
 	unsigned i, k, n = 0;
 
 	dbg_trace("[%s] %p\n", __func__, buf);
@@ -1243,9 +1243,12 @@ static ssize_t show_registers(struct device *dev,
 		dev_err(dev, "[%s] EINVAL\n", __func__);
 		return 0;
 	}
+	dump = kmalloc(2048, GFP_KERNEL);
+	if (dump == NULL)
+		return -ENOMEM;
 
 	spin_lock_irqsave(udc->lock, flags);
-	k = hw_register_read(dump, sizeof(dump)/sizeof(u32));
+	k = hw_register_read(dump, 512);
 	spin_unlock_irqrestore(udc->lock, flags);
 
 	for (i = 0; i < k; i++) {
@@ -1253,7 +1256,7 @@ static ssize_t show_registers(struct device *dev,
 			       "reg[0x%04X] = 0x%08X\n",
 			       i * (unsigned)sizeof(u32), dump[i]);
 	}
-
+	kfree(dump);
 	return n;
 }
 
