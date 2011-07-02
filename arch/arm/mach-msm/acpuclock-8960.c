@@ -125,6 +125,7 @@ struct scalable {
 	struct core_speed *current_speed;
 	struct l2_level *l2_vote;
 	struct vreg vreg[NUM_VREG];
+	bool first_set_call;
 };
 
 static struct scalable scalable[] = {
@@ -668,7 +669,7 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 	strt_acpu_s = scalable[cpu].current_speed;
 
 	/* Return early if rate didn't change. */
-	if (rate == strt_acpu_s->khz)
+	if (rate == strt_acpu_s->khz && scalable[cpu].first_set_call == false)
 		goto out;
 
 	/* Find target frequency. */
@@ -722,6 +723,7 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 	/* Drop VDD levels if we can. */
 	decrease_vdd(cpu, vdd_core, vdd_mem, vdd_dig, reason);
 
+	scalable[cpu].first_set_call = false;
 	dprintk("ACPU%d speed change complete\n", cpu);
 
 out:
@@ -812,6 +814,12 @@ static void __init init_clock_sources(struct scalable *sc,
 
 	set_pri_clk_src(sc, tgt_s->pri_src_sel);
 	sc->current_speed = tgt_s;
+
+	/*
+	 * Set this flag so that the first call to acpuclk_set_rate() can drop
+	 * voltages and set initial bus bandwidth requests.
+	 */
+	sc->first_set_call = true;
 }
 
 /* Perform CPU0-specific setup. */
@@ -819,6 +827,7 @@ int __init msm_acpu_clock_early_init(void)
 {
 	init_clock_sources(&scalable[L2],   &l2_freq_tbl[L2_BOOT_IDX].speed);
 	init_clock_sources(&scalable[CPU0], &acpu_freq_tbl[CPU_BOOT_IDX].speed);
+	scalable[CPU0].l2_vote = &l2_freq_tbl[L2_BOOT_IDX];
 
 	return 0;
 }
@@ -833,6 +842,7 @@ void __cpuinit acpuclock_secondary_init(void)
 		return;
 
 	init_clock_sources(&scalable[CPU1], &acpu_freq_tbl[CPU_BOOT_IDX].speed);
+	scalable[CPU1].l2_vote = &l2_freq_tbl[L2_BOOT_IDX];
 
 	/* Secondary CPU has booted, don't repeat for subsequent warm boots. */
 	warm_boot = true;
