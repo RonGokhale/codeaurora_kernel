@@ -29,6 +29,7 @@
 #define AUDIO_LPA_H
 
 #include <linux/earlysuspend.h>
+#include <linux/wakelock.h>
 
 #define ADRV_STATUS_OBUF_GIVEN 0x00000001
 #define ADRV_STATUS_IBUF_GIVEN 0x00000002
@@ -97,6 +98,7 @@ struct audio {
 	struct audlpa_suspend_ctl suspend_ctl;
 #endif
 
+	struct wake_lock wakelock;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *dentry;
 #endif
