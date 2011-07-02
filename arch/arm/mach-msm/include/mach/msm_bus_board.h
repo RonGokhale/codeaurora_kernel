@@ -53,9 +53,9 @@ struct msm_bus_fabric_registration {
 	unsigned int offset;
 	unsigned int haltid;
 	unsigned int rpm_enabled;
-	unsigned int nmasters;
-	unsigned int nslaves;
-	unsigned int ntieredslaves;
+	const unsigned int nmasters;
+	const unsigned int nslaves;
+	const unsigned int ntieredslaves;
 };
 
 enum msm_bus_bw_tier_type {

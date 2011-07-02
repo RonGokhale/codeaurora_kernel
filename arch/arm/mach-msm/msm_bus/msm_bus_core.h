@@ -104,6 +104,13 @@ struct msm_bus_link_info {
 	int num_tiers;
 };
 
+struct nodeclk {
+	struct clk *clk;
+	unsigned long rate;
+	bool dirty;
+	bool enable;
+};
+
 struct msm_bus_inode_info {
 	struct msm_bus_node_info *node_info;
 	unsigned long max_bw;
@@ -112,8 +119,8 @@ struct msm_bus_inode_info {
 	int num_pnodes;
 	struct path_node *pnode;
 	int commit_index;
-	struct clk *nodeclk[NUM_CTX];
-	struct clk *memclk;
+	struct nodeclk nodeclk[NUM_CTX];
+	struct nodeclk memclk;
 };
 
 struct msm_bus_fabric_device {
