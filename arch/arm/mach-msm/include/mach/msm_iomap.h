@@ -73,6 +73,7 @@
 #define MSM_SHARED_RAM_SIZE	SZ_2M
 
 #include "msm_iomap-8960.h"
+#include "msm_iomap-8064.h"
 
 #else
 /* Legacy single-target iomap */
