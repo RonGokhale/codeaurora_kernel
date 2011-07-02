@@ -549,10 +549,7 @@ static int z180_start(struct kgsl_device *device, unsigned int init_ram)
 	device->requested_state = KGSL_STATE_NONE;
 	KGSL_PWR_WARN(device, "state -> INIT, device %d\n", device->id);
 
-	/* Enable the power rail before the clocks. */
-	kgsl_pwrctrl_pwrrail(device, KGSL_PWRFLAGS_POWER_ON);
-	kgsl_pwrctrl_clk(device, KGSL_PWRFLAGS_CLK_ON);
-	kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_AXI_ON);
+	kgsl_pwrctrl_enable(device);
 
 	/* Set up MH arbiter.  MH offsets are considered to be dword
 	 * based, therefore no down shift. */
@@ -575,8 +572,7 @@ static int z180_start(struct kgsl_device *device, unsigned int init_ram)
 
 error_clk_off:
 	z180_regwrite(device, (ADDR_VGC_IRQENABLE >> 2), 0);
-	kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_AXI_OFF);
-	kgsl_pwrctrl_clk(device, KGSL_PWRFLAGS_CLK_OFF);
+	kgsl_pwrctrl_disable(device);
 	return status;
 }
 
@@ -590,9 +586,8 @@ static int z180_stop(struct kgsl_device *device)
 
 	/* Disable the clocks before the power rail. */
 	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_IRQ_OFF);
-	kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_AXI_OFF);
-	kgsl_pwrctrl_clk(device, KGSL_PWRFLAGS_CLK_OFF);
-	kgsl_pwrctrl_pwrrail(device, KGSL_PWRFLAGS_POWER_OFF);
+
+	kgsl_pwrctrl_disable(device);
 
 	return 0;
 }
@@ -879,7 +874,7 @@ static int z180_wait(struct kgsl_device *device,
 	return status;
 }
 
-static int
+static void
 z180_drawctxt_destroy(struct kgsl_device *device,
 			  struct kgsl_context *context)
 {
@@ -892,8 +887,6 @@ z180_drawctxt_destroy(struct kgsl_device *device,
 		device->mmu.hwpagetable = device->mmu.defaultpagetable;
 		kgsl_setstate(device, KGSL_MMUFLAGS_PTUPDATE);
 	}
-
-	return 0;
 }
 
 static void z180_power_stats(struct kgsl_device *device,
