@@ -558,15 +558,14 @@ static struct pil_device peripherals[] = {
 		},
 		.ops = &pil_riva_ops,
 	},
-};
-
-struct pil_device peripheral_dsps = {
-	.name = "dsps",
-	.pdev = {
-		.name = "pil_dsps",
-		.id = -1,
+	{
+		.name = "dsps",
+		.pdev = {
+			.name = "pil_dsps",
+			.id = -1,
+		},
+		.ops = &pil_dsps_ops,
 	},
-	.ops = &pil_dsps_ops,
 };
 
 static int __init msm_peripheral_reset_init(void)

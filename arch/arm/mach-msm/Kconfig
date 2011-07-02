@@ -132,7 +132,6 @@ config ARCH_MSM8960
 	select MSM_SPM_V2
 	select MSM_L2_SPM
 	select MSM_NATIVE_RESTART
-	select MSM_PIL
 	select MSM_DSPS
 
 config ARCH_FSM9XXX
