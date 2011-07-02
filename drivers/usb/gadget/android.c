@@ -310,6 +310,28 @@ static int get_product_id(struct android_dev *dev)
 	return dev->product_id;
 }
 
+static int is_msc_only_comp(int pid)
+{
+	struct android_dev *dev = _android_dev;
+	struct android_usb_product *up = dev->products;
+	int count;
+	char **functions;
+	int index;
+
+	for (index = 0; index < dev->num_products; index++, up++) {
+		if (pid == up->product_id)
+			break;
+	}
+
+	count = up->num_functions;
+	functions = up->functions;
+
+	if (count == 1 && !strncmp(*functions, "usb_mass_storage", 32))
+		return true;
+	else
+		return false;
+}
+
 static int __devinit android_bind(struct usb_composite_dev *cdev)
 {
 	struct android_dev *dev = _android_dev;
@@ -344,6 +366,16 @@ static int __devinit android_bind(struct usb_composite_dev *cdev)
 
 	if (!usb_gadget_set_selfpowered(gadget))
 		android_config_driver.bmAttributes |= USB_CONFIG_ATT_SELFPOWER;
+	/*
+	 * Supporting remote wakeup for mass storage only function
+	 * doesn't make sense, since there is no notifications that
+	 * that can be sent from mass storage during suspend.
+	 */
+	if (gadget->ops->wakeup && !is_msc_only_comp((dev->product_id)))
+		android_config_driver.bmAttributes |= USB_CONFIG_ATT_WAKEUP;
+	else
+		android_config_driver.bmAttributes &= ~USB_CONFIG_ATT_WAKEUP;
+
 
 	/* register our configuration */
 	ret = usb_add_config(cdev, &android_config_driver, android_bind_config);
@@ -572,6 +604,7 @@ int android_enable_function(struct usb_function *f, int enable)
 {
 	struct android_dev *dev = _android_dev;
 	int disable = !enable;
+	struct usb_gadget	*gadget = dev->cdev->gadget;
 	int product_id;
 
 	if (!is_sysfschange_allowed(f))
@@ -609,6 +642,15 @@ int android_enable_function(struct usb_function *f, int enable)
 #endif
 
 		product_id = get_product_id(dev);
+
+		if (gadget && gadget->ops->wakeup &&
+				!is_msc_only_comp((product_id)))
+			android_config_driver.bmAttributes |=
+				USB_CONFIG_ATT_WAKEUP;
+		else
+			android_config_driver.bmAttributes &=
+				~USB_CONFIG_ATT_WAKEUP;
+
 		device_desc.idProduct = __constant_cpu_to_le16(product_id);
 		if (dev->cdev)
 			dev->cdev->desc.idProduct = device_desc.idProduct;
