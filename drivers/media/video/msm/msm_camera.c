@@ -3714,6 +3714,9 @@ static int __msm_open(struct msm_cam_device *pmsm, const char *const apps_id,
 		msm_camvpe_fn_init(&sync->vpefn, sync);
 
 		spin_lock_init(&sync->abort_pict_lock);
+		spin_lock_init(&pp_prev_spinlock);
+		spin_lock_init(&pp_stereocam_spinlock);
+		spin_lock_init(&st_frame_spinlock);
 		if (rc >= 0) {
 			msm_region_init(sync);
 			if (sync->vpefn.vpe_reg)
