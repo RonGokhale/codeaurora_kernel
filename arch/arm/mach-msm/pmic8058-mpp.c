@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -118,6 +118,10 @@ static int __devinit pm8058_mpp_probe(struct platform_device *pdev)
 	pm8058_mpp_chip.chip.start = pdata->gpio_base;
 	pm8058_mpp_chip.chip.end = pdata->gpio_base + PM8058_MPPS - 1;
 	rc = register_gpio_chip(&pm8058_mpp_chip.chip);
+	if (!rc) {
+		if (pdata->init)
+			ret = pdata->init();
+	}
 	pr_info("%s: register_gpio_chip(): rc=%d\n", __func__, rc);
 
 	return rc;
@@ -209,7 +213,12 @@ static int __devinit pm8058_mpp_probe(struct platform_device *pdev)
 	pm8058_mpp_chip.dev = &pdev->dev;
 	pm8058_mpp_chip.base = pdata->gpio_base;
 	ret = gpiochip_add(&pm8058_mpp_chip);
-	pr_info("%s: gpiochip_add(): rc=%d\n", __func__, ret);
+	if (!ret) {
+		if (pdata->init)
+			ret = pdata->init();
+	}
+
+	pr_info("%s: gpiochip_add(): ret=%d\n", __func__, ret);
 	return ret;
 }
 
