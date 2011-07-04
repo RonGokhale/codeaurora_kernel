@@ -652,7 +652,7 @@ static void cyttspfw_flash_start(struct cyttsp *ts, const u8 *data,
 				int data_len, u8 *buf, bool force)
 {
 	int rc;
-	u8 ttspver_hi = 0, ttspver_lo = 0;
+	u8 ttspver_hi = 0, ttspver_lo = 0, fw_upgrade = 0;
 	u8 appid_hi = 0, appid_lo = 0;
 	u8 appver_hi = 0, appver_lo = 0;
 	u8 cid_0 = 0, cid_1 = 0, cid_2 = 0;
@@ -699,24 +699,36 @@ static void cyttspfw_flash_start(struct cyttsp *ts, const u8 *data,
 				g_bl_data.appver_hi, g_bl_data.appver_lo);
 	pr_info("New firmware: %d.%d.%d", appid_lo, appver_hi, appver_lo);
 
-	if (force || ttspver_hi != g_bl_data.ttspver_hi ||
-			ttspver_lo != g_bl_data.ttspver_lo ||
-			appid_hi != g_bl_data.appid_hi ||
-			appid_lo != g_bl_data.appid_lo ||
-			appver_hi != g_bl_data.appver_hi ||
-			appver_lo != g_bl_data.appver_lo ||
-			cid_0 != g_bl_data.cid_0 ||
-			cid_1 != g_bl_data.cid_1 ||
-			cid_2 != g_bl_data.cid_2) {
-		pr_info("%s: firmware upgrade started\n", __func__);
-		/* flash the firmware */
+	if (force)
+		fw_upgrade = 1;
+	else
+		if ((appid_hi == g_bl_data.appid_hi) &&
+			(appid_lo == g_bl_data.appid_lo)) {
+			if (appver_hi > g_bl_data.appver_hi) {
+				fw_upgrade = 1;
+			} else if ((appver_hi == g_bl_data.appver_hi) &&
+					 (appver_lo > g_bl_data.appver_lo)) {
+					fw_upgrade = 1;
+				} else {
+					fw_upgrade = 0;
+					pr_info("%s: Firmware version "
+					"lesser/equal to existing firmware, "
+					"upgrade not needed\n", __func__);
+				}
+		} else {
+			fw_upgrade = 0;
+			pr_info("%s: Firware versions do not match, "
+						"cannot upgrade\n", __func__);
+		}
+
+	if (fw_upgrade) {
+		pr_info("%s: Starting firmware upgrade\n", __func__);
 		rc = cyttspfw_flash_firmware(ts, data, data_len);
 		if (rc < 0)
 			pr_err("%s: firmware upgrade failed\n", __func__);
 		else
 			pr_info("%s: firmware upgrade success\n", __func__);
-	} else
-		pr_info("%s: no firmware upgrade needed\n", __func__);
+	}
 
 	/* enter bootloader idle mode */
 	cyttsp_soft_reset(ts);
