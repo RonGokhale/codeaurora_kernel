@@ -115,13 +115,13 @@ static void voter_clk_disable(struct clk *clk)
 	 * Decrease the rate if this clock was the only one voting for
 	 * the highest rate.
 	 */
+	v->enabled = false;
 	new_rate = voter_clk_aggregate_rate(parent);
 	cur_rate = max(new_rate, v->rate);
 
 	if (new_rate < cur_rate)
 		clk_set_min_rate(parent, new_rate);
 
-	v->enabled = false;
 	spin_unlock_irqrestore(&voter_clk_lock, flags);
 }
 
