@@ -204,11 +204,11 @@ static struct pm8058_charger pm8058_chg;
 static struct msm_hardware_charger usb_hw_chg;
 
 
-static int msm_battery_gague_alarm_notify(struct notifier_block *nb,
+static int msm_battery_gauge_alarm_notify(struct notifier_block *nb,
 					  unsigned long status, void *unused);
 
 static struct notifier_block alarm_notifier = {
-	.notifier_call = msm_battery_gague_alarm_notify,
+	.notifier_call = msm_battery_gauge_alarm_notify,
 };
 
 static int resume_mv = AUTO_CHARGING_RESUME_MV;
@@ -1744,7 +1744,7 @@ static int pm8058_get_battery_mvolts(void)
 	return 0;
 }
 
-static int msm_battery_gague_alarm_notify(struct notifier_block *nb,
+static int msm_battery_gauge_alarm_notify(struct notifier_block *nb,
 		unsigned long status, void *unused)
 {
 	int rc;
