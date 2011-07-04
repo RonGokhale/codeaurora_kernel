@@ -21,6 +21,7 @@
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <linux/debugfs.h>
+#include <linux/regulator/consumer.h>
 #include <sound/soc.h>
 
 #define TABLA_REGISTER_START_OFFSET 0x800
@@ -275,6 +276,68 @@ static void tabla_free_reset(struct tabla *tabla)
 	}
 }
 
+struct tabla_regulator {
+	const char *name;
+	int min_uV;
+	int max_uV;
+	int optimum_uA;
+	struct regulator *regulator;
+};
+
+
+/*
+ *	format : TABLA_<POWER_SUPPLY_PIN_NAME>_CUR_MAX
+ *
+ *	<POWER_SUPPLY_PIN_NAME> from Tabla objective spec
+*/
+
+#define  TABLA_CDC_VDDA_CP_CUR_MAX	500000
+#define  TABLA_CDC_VDDA_RX_CUR_MAX	20000
+#define  TABLA_CDC_VDDA_TX_CUR_MAX	20000
+#define  TABLA_VDDIO_CDC_CUR_MAX	5000
+
+#define  TABLA_VDDD_CDC_D_CUR_MAX	5000
+#define  TABLA_VDDD_CDC_A_CUR_MAX	5000
+
+static struct tabla_regulator tabla_regulators[] = {
+	{
+		.name = "CDC_VDD_CP",
+		.min_uV = 1800000,
+		.max_uV = 1800000,
+		.optimum_uA = TABLA_CDC_VDDA_CP_CUR_MAX,
+	},
+	{
+		.name = "CDC_VDDA_RX",
+		.min_uV = 1800000,
+		.max_uV = 1800000,
+		.optimum_uA = TABLA_CDC_VDDA_RX_CUR_MAX,
+	},
+	{
+		.name = "CDC_VDDA_TX",
+		.min_uV = 1800000,
+		.max_uV = 1800000,
+		.optimum_uA = TABLA_CDC_VDDA_TX_CUR_MAX,
+	},
+	{
+		.name = "VDDIO_CDC",
+		.min_uV = 1800000,
+		.max_uV = 1800000,
+		.optimum_uA = TABLA_VDDIO_CDC_CUR_MAX,
+	},
+	{
+		.name = "VDDD_CDC_D",
+		.min_uV = 1225000,
+		.max_uV = 1225000,
+		.optimum_uA = TABLA_VDDD_CDC_D_CUR_MAX,
+	},
+	{
+		.name = "CDC_VDDA_A_1P2V",
+		.min_uV = 1225000,
+		.max_uV = 1225000,
+		.optimum_uA = TABLA_VDDD_CDC_A_CUR_MAX,
+	},
+};
+
 static int tabla_device_init(struct tabla *tabla, int irq)
 {
 	int ret;
@@ -421,6 +484,87 @@ static const struct file_operations codec_debug_ops = {
 };
 #endif
 
+static int tabla_enable_supplies(struct tabla *tabla)
+{
+	int ret;
+	int i;
+
+	tabla->supplies = kzalloc(sizeof(struct regulator_bulk_data) *
+				   ARRAY_SIZE(tabla_regulators),
+				   GFP_KERNEL);
+	if (!tabla->supplies) {
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(tabla_regulators); i++)
+		tabla->supplies[i].supply = tabla_regulators[i].name;
+
+	ret = regulator_bulk_get(tabla->dev, ARRAY_SIZE(tabla_regulators),
+				 tabla->supplies);
+	if (ret != 0) {
+		dev_err(tabla->dev, "Failed to get supplies: err = %d\n", ret);
+		goto err_supplies;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(tabla_regulators); i++) {
+		ret = regulator_set_voltage(tabla->supplies[i].consumer,
+			tabla_regulators[i].min_uV, tabla_regulators[i].max_uV);
+		if (ret) {
+			pr_err("%s: Setting regulator voltage failed for "
+				"regulator %s err = %d\n", __func__,
+				tabla->supplies[i].supply, ret);
+			goto err_get;
+		}
+
+		ret = regulator_set_optimum_mode(tabla->supplies[i].consumer,
+			tabla_regulators[i].optimum_uA);
+		if (ret < 0) {
+			pr_err("%s: Setting regulator optimum mode failed for "
+				"regulator %s err = %d\n", __func__,
+				tabla->supplies[i].supply, ret);
+			goto err_get;
+		}
+	}
+
+	ret = regulator_bulk_enable(ARRAY_SIZE(tabla_regulators),
+				    tabla->supplies);
+	if (ret != 0) {
+		dev_err(tabla->dev, "Failed to enable supplies: err = %d\n",
+				ret);
+		goto err_configure;
+	}
+	return ret;
+
+err_configure:
+	for (i = 0; i < ARRAY_SIZE(tabla_regulators); i++) {
+		regulator_set_voltage(tabla->supplies[i].consumer, 0,
+			tabla_regulators[i].max_uV);
+		regulator_set_optimum_mode(tabla->supplies[i].consumer, 0);
+	}
+err_get:
+	regulator_bulk_free(ARRAY_SIZE(tabla_regulators), tabla->supplies);
+err_supplies:
+	kfree(tabla->supplies);
+err:
+	return ret;
+}
+
+static void tabla_disable_supplies(struct tabla *tabla)
+{
+	int i;
+
+	regulator_bulk_disable(ARRAY_SIZE(tabla_regulators),
+				    tabla->supplies);
+	for (i = 0; i < ARRAY_SIZE(tabla_regulators); i++) {
+		regulator_set_voltage(tabla->supplies[i].consumer, 0,
+			tabla_regulators[i].max_uV);
+		regulator_set_optimum_mode(tabla->supplies[i].consumer, 0);
+	}
+	regulator_bulk_free(ARRAY_SIZE(tabla_regulators), tabla->supplies);
+	kfree(tabla->supplies);
+}
+
 static int tabla_slim_probe(struct slim_device *slim)
 {
 	struct tabla *tabla;
@@ -449,11 +593,19 @@ static int tabla_slim_probe(struct slim_device *slim)
 	tabla->slim = slim;
 	slim_set_clientdata(slim, tabla);
 	tabla->reset_gpio = pdata->reset_gpio;
+	tabla->dev = &slim->dev;
+
+	ret = tabla_enable_supplies(tabla);
+	if (ret) {
+		pr_info("%s: Fail to enable Tabla supplies\n", __func__);
+		goto err_tabla;
+	}
+	usleep_range(5, 5);
 
 	ret = tabla_reset(tabla);
 	if (ret) {
 		pr_err("%s: Resetting Tabla failed\n", __func__);
-		goto err_tabla;
+		goto err_supplies;
 	}
 
 	ret = slim_get_logical_addr(tabla->slim, tabla->slim->e_addr,
@@ -473,8 +625,6 @@ static int tabla_slim_probe(struct slim_device *slim)
 			__func__);
 		goto err_reset;
 	}
-
-	tabla->dev = &slim->dev;
 
 	tabla->slim_slave = &pdata->slimbus_slave_device;
 
@@ -523,6 +673,8 @@ err_slim_add:
 	slim_remove_device(tabla->slim_slave);
 err_reset:
 	tabla_free_reset(tabla);
+err_supplies:
+	tabla_disable_supplies(tabla);
 err_tabla:
 	kfree(tabla);
 err:
@@ -540,6 +692,8 @@ static int tabla_slim_remove(struct slim_device *pdev)
 
 	tabla = slim_get_devicedata(pdev);
 	tabla_device_exit(tabla);
+	tabla_disable_supplies(tabla);
+	kfree(tabla);
 
 	return 0;
 }
