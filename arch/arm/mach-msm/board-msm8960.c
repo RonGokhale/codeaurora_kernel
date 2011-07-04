@@ -2683,7 +2683,6 @@ static struct pm8xxx_pwrkey_platform_data pm8xxx_pwrkey_pdata = {
 	.pull_up		= 1,
 	.kpd_trigger_delay_us	= 970,
 	.wakeup			= 1,
-	.pwrkey_time_ms		= 500,
 };
 
 static const unsigned int keymap[] = {

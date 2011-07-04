@@ -18,16 +18,12 @@
 /**
  * struct pm8xxx_pwrkey_platform_data - platform data for pwrkey driver
  * @pull up:  power on register control for pull up/down configuration
- * @pwrkey_time_ms: time after which power key event should be generated, if
- *                  key is released before then end key is reported.
- *                  Supply zero for only power key reporting.
  * @kpd_trigger_delay_us: time delay for power key state change interrupt
  *                  trigger.
  * @wakeup: configure power key as wakeup source
  */
 struct pm8xxx_pwrkey_platform_data  {
 	bool pull_up;
-	u16  pwrkey_time_ms;
 	u32  kpd_trigger_delay_us;
 	u32  wakeup;
 };
