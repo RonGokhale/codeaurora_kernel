@@ -316,6 +316,10 @@ struct platform_device msm_device_uart_dm2 = {
 };
 
 #define MSM_NAND_PHYS		0xA0A00000
+#define MSM_NANDC01_PHYS	0xA0A40000
+#define MSM_NANDC10_PHYS	0xA0A80000
+#define MSM_NANDC11_PHYS	0xA0AC0000
+#define EBI2_REG_BASE		0xA0D00000
 static struct resource resources_nand[] = {
 	[0] = {
 		.name   = "msm_nand_dmac",
@@ -327,6 +331,30 @@ static struct resource resources_nand[] = {
 		.name   = "msm_nand_phys",
 		.start  = MSM_NAND_PHYS,
 		.end    = MSM_NAND_PHYS + 0x7FF,
+		.flags  = IORESOURCE_MEM,
+	},
+	[2] = {
+		.name   = "msm_nandc01_phys",
+		.start  = MSM_NANDC01_PHYS,
+		.end    = MSM_NANDC01_PHYS + 0x7FF,
+		.flags  = IORESOURCE_MEM,
+	},
+	[3] = {
+		.name   = "msm_nandc10_phys",
+		.start  = MSM_NANDC10_PHYS,
+		.end    = MSM_NANDC10_PHYS + 0x7FF,
+		.flags  = IORESOURCE_MEM,
+	},
+	[4] = {
+		.name   = "msm_nandc11_phys",
+		.start  = MSM_NANDC11_PHYS,
+		.end    = MSM_NANDC11_PHYS + 0x7FF,
+		.flags  = IORESOURCE_MEM,
+	},
+	[5] = {
+		.name   = "ebi2_reg_base",
+		.start  = EBI2_REG_BASE,
+		.end    = EBI2_REG_BASE + 0x60,
 		.flags  = IORESOURCE_MEM,
 	},
 };
