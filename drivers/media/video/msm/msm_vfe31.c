@@ -944,7 +944,6 @@ static void vfe31_reset_internal_variables(void)
 	vfe31_ctrl->output2Period  = 31;
 	vfe31_ctrl->vfeFrameSkipCount   = 0;
 	vfe31_ctrl->vfeFrameSkipPeriod  = 31;
-	vfe31_ctrl->rolloff_update = false;
 
 	/* Stats control variables. */
 	memset(&(vfe31_ctrl->afStatsControl), 0,
@@ -1822,7 +1821,6 @@ static int vfe31_proc_general(struct msm_vfe31_cmd *cmd)
 		msm_io_memcpy(vfe31_ctrl->vfebase + vfe31_cmd[cmd->id].offset,
 		cmdp_local, 16);
 		cmdp_local += 4;
-		vfe31_ctrl->rolloff_update = true;
 		vfe31_program_dmi_cfg(ROLLOFF_RAM);
 		/* for loop for extrcting init table. */
 		for (i = 0 ; i < (VFE31_ROLL_OFF_INIT_TABLE_SIZE * 2) ; i++) {
@@ -2788,19 +2786,12 @@ static void vfe31_process_output_path_irq_0(uint32_t ping_pong)
 	uint32_t pyaddr_ping, pcbcraddr_ping, pyaddr_pong, pcbcraddr_pong;
 #endif
 	struct vfe31_free_buf *free_buf = NULL;
-	uint8_t skip_frame = false;
 	/* we render frames in the following conditions:
 	1. Continuous mode and the free buffer is avaialable.
 	*/
-	if ((VFE_MODE_OF_OPERATION_ZSL == vfe31_ctrl->operation_mode) &&
-		(vfe31_ctrl->rolloff_update == true)) {
-		vfe31_ctrl->rolloff_update = false;
-		skip_frame = true;
-	} else {
-		free_buf = vfe31_get_free_buf(&vfe31_ctrl->outpath.out0);
-	}
+	free_buf = vfe31_get_free_buf(&vfe31_ctrl->outpath.out0);
 
-	if (!skip_frame && free_buf) {
+	if (free_buf) {
 		/* Y channel */
 		pyaddr = vfe31_get_ch_addr(ping_pong,
 			vfe31_ctrl->outpath.out0.ch0);
