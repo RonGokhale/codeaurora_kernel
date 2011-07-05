@@ -53,6 +53,7 @@ struct msm_hsl_port {
 	unsigned int		*uart_csr_code;
 	unsigned int            *gsbi_mapbase;
 	unsigned int            *mapped_gsbi;
+	int			is_uartdm;
 	unsigned int            old_snap_state;
 };
 
@@ -71,13 +72,9 @@ static inline unsigned int msm_hsl_read(struct uart_port *port,
 	return ioread32(port->membase + off);
 }
 
-static unsigned int msm_serial_hsl_has_gsbi(void)
+static unsigned int msm_serial_hsl_has_gsbi(struct uart_port *port)
 {
-#if defined(CONFIG_ARCH_MSM8X60) || defined(CONFIG_ARCH_MSM8960)
-	return 1;
-#else
-	return 0;
-#endif
+	return UART_TO_MSM(port)->is_uartdm;
 }
 
 static int clk_en(struct uart_port *port, int enable)
@@ -512,7 +509,7 @@ static int msm_hsl_startup(struct uart_port *port)
 	if (!(is_console(port)) || (!port->cons) ||
 		(port->cons && (!(port->cons->flags & CON_ENABLED)))) {
 
-		if (msm_serial_hsl_has_gsbi())
+		if (msm_serial_hsl_has_gsbi(port))
 			if ((ioread32(msm_hsl_port->mapped_gsbi +
 				GSBI_CONTROL_ADDR) & GSBI_PROTOCOL_I2C_UART)
 					!= GSBI_PROTOCOL_I2C_UART)
@@ -727,7 +724,7 @@ static void msm_hsl_release_port(struct uart_port *port)
 	iounmap(port->membase);
 	port->membase = NULL;
 
-	if (msm_serial_hsl_has_gsbi()) {
+	if (msm_serial_hsl_has_gsbi(port)) {
 		iowrite32(GSBI_PROTOCOL_IDLE, msm_hsl_port->mapped_gsbi +
 			  GSBI_CONTROL_ADDR);
 		gsbi_resource = platform_get_resource_byname(pdev,
@@ -768,7 +765,7 @@ static int msm_hsl_request_port(struct uart_port *port)
 		return -EBUSY;
 	}
 
-	if (msm_serial_hsl_has_gsbi()) {
+	if (msm_serial_hsl_has_gsbi(port)) {
 		gsbi_resource = platform_get_resource_byname(pdev,
 							     IORESOURCE_MEM,
 							     "gsbi_resource");
@@ -796,7 +793,7 @@ static void msm_hsl_config_port(struct uart_port *port, int flags)
 		if (msm_hsl_request_port(port))
 			return;
 	}
-	if (msm_serial_hsl_has_gsbi())
+	if (msm_serial_hsl_has_gsbi(port))
 		if ((ioread32(msm_hsl_port->mapped_gsbi + GSBI_CONTROL_ADDR) &
 			GSBI_PROTOCOL_I2C_UART) != GSBI_PROTOCOL_I2C_UART)
 			iowrite32(GSBI_PROTOCOL_I2C_UART,
@@ -1043,16 +1040,15 @@ static int __init msm_serial_hsl_probe(struct platform_device *pdev)
 	port->dev = &pdev->dev;
 	msm_hsl_port = UART_TO_MSM(port);
 
-	if (msm_serial_hsl_has_gsbi()) {
-		gsbi_resource =
-			platform_get_resource_byname(pdev,
+	gsbi_resource =	platform_get_resource_byname(pdev,
 						     IORESOURCE_MEM,
 						     "gsbi_resource");
-		if (unlikely(!gsbi_resource))
-			return -ENXIO;
+	if (gsbi_resource) {
+		msm_hsl_port->is_uartdm = 1;
 		msm_hsl_port->clk = clk_get(&pdev->dev, "gsbi_uart_clk");
 		msm_hsl_port->pclk = clk_get(&pdev->dev, "gsbi_pclk");
 	} else {
+		msm_hsl_port->is_uartdm = 0;
 		msm_hsl_port->clk = clk_get(&pdev->dev, "uartdm_clk");
 		msm_hsl_port->pclk = NULL;
 	}

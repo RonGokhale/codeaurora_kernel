@@ -32,6 +32,7 @@
 
 #include <linux/init.h>
 
+#include <asm/mach-types.h>
 /*
  * SOC version type with major number in the upper 16 bits and minor
  * number in the lower 16 bits.  For example:
@@ -153,6 +154,11 @@ static inline int cpu_is_msm8960(void)
 
 	BUG_ON(cpu == MSM_CPU_UNKNOWN);
 	return cpu == MSM_CPU_8960;
+}
+
+static inline int cpu_is_apq8064(void)
+{
+	return machine_is_apq8064_sim();
 }
 
 static inline int cpu_is_fsm9xxx(void)
