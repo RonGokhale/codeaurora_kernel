@@ -90,25 +90,25 @@ static void smsm_state_cb(void *data, uint32_t old_state, uint32_t new_state)
 	}
 }
 
-static int modem_shutdown(void)
+static int modem_shutdown(const struct subsys_data *subsys)
 {
 	/* TODO: Call into PIL to shutdown the modem */
 	return 0;
 }
 
-static int modem_powerup(void)
+static int modem_powerup(const struct subsys_data *subsys)
 {
 	/* TODO: Call into PIL to powerup the modem */
 	return 0;
 }
 
-void modem_crash_shutdown(struct subsys_data *subsys)
+void modem_crash_shutdown(const struct subsys_data *subsys)
 {
 	crash_shutdown = 1;
 	smsm_reset_modem(SMSM_RESET);
 }
 
-int modem_ramdump(int enable)
+int modem_ramdump(int enable, const struct subsys_data *subsys)
 {
 	return 0;
 }
