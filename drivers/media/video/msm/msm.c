@@ -21,8 +21,6 @@
 #include "msm.h"
 
 
-#define MSM_V4L2_PROC_NAME		 "msm_v4l2"
-
 #define MSM_MAX_CAMERA_SENSORS 5
 
 #ifdef CONFIG_MSM_CAMERA_DEBUG
@@ -1549,17 +1547,6 @@ static int msm_open_config(struct inode *inode, struct file *fp)
 	return rc;
 }
 
-#ifdef CONFIG_PROC_FS
-static int msm_camera_v4l2_read_proc(char *pbuf, char **start, off_t offset,
-			   int count, int *eof, void *data)
-{
-	int len = 0;
-
-	*eof = 1;
-	return len;
-}
-#endif
-
 static struct v4l2_file_operations g_msm_fops = {
 	.owner   = THIS_MODULE,
 	.open	= msm_open,
@@ -1778,13 +1765,6 @@ static int msm_cam_dev_init(struct msm_cam_v4l2_device *pcam)
 	/* yyan: no global - each sensor will create a new vidoe node! */
 	/* g_pmsm_camera_v4l2_dev = pmsm_camera_v4l2_dev; */
 	/* g_pmsm_camera_v4l2_dev->pvdev = pvdev; */
-
-
-#ifdef CONFIG_PROC_FS
-	create_proc_read_entry(MSM_V4L2_PROC_NAME,
-				   0, NULL, msm_camera_v4l2_read_proc, NULL);
-#endif
-
 
 	return rc ;
 
