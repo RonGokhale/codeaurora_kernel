@@ -218,7 +218,7 @@ static int dump_ch(char *buf, int max, int n,
 		r->fHEAD ? 'W' : 'w',
 		r->fTAIL ? 'R' : 'r',
 		r->fSTATE ? 'S' : 's',
-		s->fBLOCKREADINTR ? 'B' : 'b',
+		r->fBLOCKREADINTR ? 'B' : 'b',
 		size
 		);
 }
