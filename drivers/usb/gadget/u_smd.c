@@ -697,6 +697,7 @@ void gsmd_disconnect(struct gserial *gser, u8 portno)
 	gsmd_free_requests(gser->out, &port->read_pool);
 	gsmd_free_requests(gser->out, &port->read_queue);
 	gsmd_free_requests(gser->in, &port->write_pool);
+	port->n_read = 0;
 	spin_unlock_irqrestore(&port->port_lock, flags);
 
 	if (!test_bit(CH_OPENED, &port->pi->flags))
@@ -773,9 +774,11 @@ static ssize_t debug_read_stats(struct file *file, char __user *ubuf,
 				"nbytes_tolaptop: %lu\n"
 				"nbytes_tomodem:  %lu\n"
 				"cbits_to_modem:  %u\n"
-				"cbits_to_laptop: %u\n",
+				"cbits_to_laptop: %u\n"
+				"n_read: %u\n",
 				i, port->nbytes_tolaptop, port->nbytes_tomodem,
-				port->cbits_to_modem, port->cbits_to_laptop);
+				port->cbits_to_modem, port->cbits_to_laptop,
+				port->n_read);
 		spin_unlock_irqrestore(&port->port_lock, flags);
 	}
 
