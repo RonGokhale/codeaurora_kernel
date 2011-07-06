@@ -344,11 +344,11 @@ static struct vreg vregs[] = {
 	((id == RPM_VREG_ID_PM8921_L24) || (id == RPM_VREG_ID_PM8921_S3))
 
 const char *pin_func_label[] = {
-	[RPM_VREG_PIN_FN_NONE]			= "none",
+	[RPM_VREG_PIN_FN_DONT_CARE]		= "don't care",
 	[RPM_VREG_PIN_FN_ENABLE]		= "on/off",
 	[RPM_VREG_PIN_FN_MODE]			= "HPM/LPM",
 	[RPM_VREG_PIN_FN_SLEEP_B]		= "sleep_b",
-	[RPM_VREG_PIN_FN_MANUAL]		= "manual",
+	[RPM_VREG_PIN_FN_NONE]			= "none",
 };
 
 const char *force_mode_label[] = {
@@ -1488,8 +1488,10 @@ rpm_vreg_init_regulator(const struct rpm_regulator_init_data *pdata,
 		SET_PART(vreg, freq_clk_src, 0);
 		SET_PART(vreg, comp_mode, 0);
 		SET_PART(vreg, hpm, 0);
-		SET_PART(vreg, pf, RPM_VREG_PIN_FN_NONE);
-		SET_PART(vreg, pc, RPM_VREG_PIN_CTRL_NONE);
+		if (!vreg->is_enabled_pc) {
+			SET_PART(vreg, pf, RPM_VREG_PIN_FN_NONE);
+			SET_PART(vreg, pc, RPM_VREG_PIN_CTRL_NONE);
+		}
 	} else {
 		/* Pin control regulator */
 		if ((pdata->pin_ctrl & RPM_VREG_PIN_CTRL_ALL)
@@ -1510,7 +1512,7 @@ rpm_vreg_init_regulator(const struct rpm_regulator_init_data *pdata,
 		/* Allow pf=sleep_b to be specified by platform data. */
 		if (vreg->pdata.pin_fn == RPM_VREG_PIN_FN_SLEEP_B)
 			pin_fn = RPM_VREG_PIN_FN_SLEEP_B;
-		SET_PART(vreg, pf, RPM_VREG_PIN_FN_NONE);
+		SET_PART(vreg, pf, pin_fn);
 		SET_PART(vreg, pc, RPM_VREG_PIN_CTRL_NONE);
 	}
 
