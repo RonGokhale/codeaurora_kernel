@@ -124,6 +124,13 @@
 /* For BPC bit 1 and 2 are set to zero and other's 1 */
 #define ABF_MASK 0xFFFFFFF9
 
+
+/* For DBPC bit 0 is set to zero and other's 1 */
+#define DBPC_MASK 0xFFFFFFFE
+
+/* For DBPC bit 1 is set to zero and other's 1 */
+#define DBCC_MASK 0xFFFFFFFD
+
 /* For MCE enable bit 28 set to zero and other's 1 */
 #define MCE_EN_MASK 0xEFFFFFFF
 
@@ -285,6 +292,10 @@ enum  VFE_STATE {
 #define V32_DEMOSAICV3_DBCC_CFG       106
 #define V32_DEMOSAICV3_DBPC_CFG       107
 #define V32_DEMOSAICV3_ABF_CFG        108
+#define V32_DEMOSAICV3_ABCC_UPDATE    109
+#define V32_DEMOSAICV3_DBCC_UPDATE    110
+#define V32_DEMOSAICV3_DBPC_UPDATE    111
+
 
 #define V32_CLF_CFG               118
 #define V32_CLF_UPDATE            119
@@ -412,7 +423,7 @@ enum  VFE_STATE {
 #define V32_DEMOSAICV3_DBPC_LEN2 16
 
 #define V32_DEMOSAICV3_DBCC_OFF 0x0000060C
-#define V32_DEMOSAICV3_DBCC_LEN 32
+#define V32_DEMOSAICV3_DBCC_LEN 16
 
 #define V32_DEMOSAICV3_ABF_OFF 0x0000029C
 #define V32_DEMOSAICV3_ABF_LEN
