@@ -21,6 +21,7 @@
 #include <linux/i2c.h>
 #include <linux/dma-mapping.h>
 #include <linux/dmapool.h>
+#include <linux/regulator/pm8058-xo.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -377,6 +378,39 @@ static struct xoadc_platform_data xoadc_pdata = {
 };
 #endif
 
+static struct regulator_consumer_supply pm8058_xo_supply[PM8058_XO_ID_MAX] = {
+	[PM8058_XO_ID_A0] = REGULATOR_SUPPLY("8058_xo_a0", NULL),
+	[PM8058_XO_ID_A1] = REGULATOR_SUPPLY("8058_xo_a1", NULL),
+};
+
+#define PM8058_XO_INIT(_id, _modes, _ops, _always_on) \
+	[_id] = { \
+		.init_data = { \
+			.constraints = { \
+				.valid_modes_mask = _modes, \
+				.valid_ops_mask = _ops, \
+				.always_on = _always_on, \
+			}, \
+			.num_consumer_supplies = 1, \
+			.consumer_supplies = &pm8058_xo_supply[_id], \
+		}, \
+	}
+
+#define PM8058_XO_INIT_AX(_id) \
+	PM8058_XO_INIT(_id, REGULATOR_MODE_NORMAL, REGULATOR_CHANGE_STATUS, 0)
+
+static struct pm8058_xo_pdata pm8058_xo_init_pdata[PM8058_XO_ID_MAX] = {
+	PM8058_XO_INIT_AX(PM8058_XO_ID_A0),
+	PM8058_XO_INIT_AX(PM8058_XO_ID_A1),
+};
+
+#define PM8058_XO(_id) { \
+	.name = PM8058_XO_BUFFER_DEV_NAME, \
+	.id = _id, \
+	.platform_data = &pm8058_xo_init_pdata[_id], \
+	.data_size = sizeof(pm8058_xo_init_pdata[_id]), \
+}
+
 /* Put sub devices with fixed location first in sub_devices array */
 static struct mfd_cell pm8058_subdevs[] = {
 	{	.name = "pm8058-mpp",
@@ -410,6 +444,8 @@ static struct mfd_cell pm8058_subdevs[] = {
 	{	.name = "pm8058-fsm9xxx",
 		.id = -1,
 	},
+	PM8058_XO(PM8058_XO_ID_A0),
+	PM8058_XO(PM8058_XO_ID_A1),
 };
 
 static struct pm8058_platform_data pm8058_fsm9xxx_data = {
