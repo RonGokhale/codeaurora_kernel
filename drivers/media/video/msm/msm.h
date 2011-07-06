@@ -369,8 +369,6 @@ uint8_t msm_pmem_region_lookup_2(struct hlist_head *ptype,
 					uint8_t maxcount);
 uint8_t msm_pmem_region_lookup_3(struct msm_cam_v4l2_device *pcam, int idx,
 						struct msm_pmem_region *reg,
-						uint8_t start_index,
-						uint8_t stop_index,
 						int mem_type);
 unsigned long msm_pmem_stats_vtop_lookup(
 				struct msm_sync *sync,
