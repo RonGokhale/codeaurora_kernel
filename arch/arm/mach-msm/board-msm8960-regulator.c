@@ -28,9 +28,9 @@ VREG_CONSUMERS(L1) = {
 };
 VREG_CONSUMERS(L2) = {
 	REGULATOR_SUPPLY("8921_l2",		NULL),
-	REGULATOR_SUPPLY("dsi_vdda", "mipi_dsi.1"),
-	REGULATOR_SUPPLY("mipi_csi_vdd",		"msm_camera_imx074.0"),
-	REGULATOR_SUPPLY("mipi_csi_vdd",		"msm_camera_ov2720.0"),
+	REGULATOR_SUPPLY("dsi_vdda",		"mipi_dsi.1"),
+	REGULATOR_SUPPLY("mipi_csi_vdd",	"msm_camera_imx074.0"),
+	REGULATOR_SUPPLY("mipi_csi_vdd",	"msm_camera_ov2720.0"),
 };
 VREG_CONSUMERS(L3) = {
 	REGULATOR_SUPPLY("8921_l3",		NULL),
@@ -55,7 +55,7 @@ VREG_CONSUMERS(L7) = {
 };
 VREG_CONSUMERS(L8) = {
 	REGULATOR_SUPPLY("8921_l8",		NULL),
-	REGULATOR_SUPPLY("dsi_vdc",	"mipi_dsi.1"),
+	REGULATOR_SUPPLY("dsi_vdc",		"mipi_dsi.1"),
 };
 VREG_CONSUMERS(L9) = {
 	REGULATOR_SUPPLY("8921_l9",		NULL),
@@ -101,8 +101,8 @@ VREG_CONSUMERS(L22) = {
 };
 VREG_CONSUMERS(L23) = {
 	REGULATOR_SUPPLY("8921_l23",		NULL),
-	REGULATOR_SUPPLY("dsi_vddio",	"mipi_dsi.1"),
-	REGULATOR_SUPPLY("hdmi_avdd",	"hdmi_msm.0"),
+	REGULATOR_SUPPLY("dsi_vddio",		"mipi_dsi.1"),
+	REGULATOR_SUPPLY("hdmi_avdd",		"hdmi_msm.0"),
 };
 VREG_CONSUMERS(L24) = {
 	REGULATOR_SUPPLY("8921_l24",		NULL),
@@ -199,7 +199,7 @@ VREG_CONSUMERS(USB_OTG) = {
 };
 VREG_CONSUMERS(HDMI_MVS) = {
 	REGULATOR_SUPPLY("8921_hdmi_mvs",	NULL),
-	REGULATOR_SUPPLY("hdmi_mvs",	"hdmi_msm.0"),
+	REGULATOR_SUPPLY("hdmi_mvs",		"hdmi_msm.0"),
 };
 VREG_CONSUMERS(NCP) = {
 	REGULATOR_SUPPLY("8921_ncp",		NULL),
@@ -289,8 +289,8 @@ VREG_CONSUMERS(EXT_L2) = {
 				.always_on	= _always_on, \
 			}, \
 			.num_consumer_supplies	= \
-					ARRAY_SIZE(vreg_consumers_##_id), \
-			.consumer_supplies	= vreg_consumers_##_id, \
+					ARRAY_SIZE(vreg_consumers_##_id##_PC), \
+			.consumer_supplies	= vreg_consumers_##_id##_PC, \
 			.supply_regulator  = _supply_regulator, \
 		}, \
 		.id	  = PM8921_VREG_ID_##_id##_PC, \
