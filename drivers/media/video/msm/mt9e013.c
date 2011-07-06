@@ -533,7 +533,6 @@ static int32_t mt9e013_sensor_setting(int update_type, int rt)
 		cam_debug_init();
 		CSI_CONFIG = 0;
 	} else if (update_type == UPDATE_PERIODIC) {
-			msleep(100);
 		if (rt == QTR_SIZE) {
 			mt9e013_i2c_write_w_table(mt9e013_regs.reg_pll,
 				mt9e013_regs.reg_pll_size);
