@@ -704,6 +704,7 @@ void pm8921_bms_charging_began(void)
 
 	start_percent = calculate_state_of_charge(the_chip,
 					batt_temp, last_chargecycles);
+	pr_debug("start_percent = %u%%\n", start_percent);
 }
 EXPORT_SYMBOL_GPL(pm8921_bms_charging_began);
 
@@ -721,6 +722,11 @@ void pm8921_bms_charging_end(void)
 			last_charge_increase = last_charge_increase % 100;
 		}
 	}
+	pr_debug("end_percent = %u%% last_charge_increase = %d"
+			"last_chargecycles = %d\n",
+			end_percent,
+			last_charge_increase,
+			last_chargecycles);
 }
 EXPORT_SYMBOL_GPL(pm8921_bms_charging_end);
 
