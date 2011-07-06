@@ -96,6 +96,7 @@ static struct kgsl_yamato_device yamato_device = {
 		.mutex = __MUTEX_INITIALIZER(yamato_device.dev.mutex),
 		.state = KGSL_STATE_INIT,
 		.active_cnt = 0,
+		.context_idr = IDR_INIT(context_idr),
 	},
 	.gmemspace = {
 		.gpu_base = 0,
