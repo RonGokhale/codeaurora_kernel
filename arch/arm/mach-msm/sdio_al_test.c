@@ -1751,6 +1751,7 @@ static int set_params_a2_perf(struct test_channel *tch)
 
 	tch->config_msg.num_packets = 10000;
 	tch->config_msg.num_iterations = 1;
+	tch->random_packet_size = 0;
 
 	tch->timer_interval_ms = 0;
 
