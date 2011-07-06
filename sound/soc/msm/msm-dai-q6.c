@@ -207,8 +207,8 @@ static int msm_dai_q6_hw_params(struct snd_pcm_substream *substream,
 	return rc;
 }
 
-static int msm_dai_q6_hw_free(struct snd_pcm_substream *substream,
-				 struct snd_soc_dai *dai)
+static void msm_dai_q6_shutdown(struct snd_pcm_substream *substream,
+				struct snd_soc_dai *dai)
 {
 	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
 	int rc;
@@ -224,8 +224,6 @@ static int msm_dai_q6_hw_free(struct snd_pcm_substream *substream,
 			dev_err(dai->dev, "fail to close AFE port\n");
 		clear_bit(STATUS_PORT_STARTED, dai_data->status_mask);
 	}
-
-	return rc;
 };
 
 static int msm_dai_q6_prepare(struct snd_pcm_substream *substream,
@@ -345,7 +343,7 @@ static struct snd_soc_dai_ops msm_dai_q6_ops = {
 	.prepare	= msm_dai_q6_prepare,
 	.trigger	= msm_dai_q6_trigger,
 	.hw_params	= msm_dai_q6_hw_params,
-	.hw_free	= msm_dai_q6_hw_free,
+	.shutdown	= msm_dai_q6_shutdown,
 };
 
 static struct snd_soc_dai_driver msm_dai_q6_i2s_rx_dai = {
