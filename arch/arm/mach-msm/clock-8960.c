@@ -26,6 +26,7 @@
 #include <mach/msm_iomap.h>
 #include <mach/clk.h>
 #include <mach/rpm-regulator.h>
+#include <mach/msm_xo.h>
 
 #include "clock-local.h"
 #include "clock-rpm.h"
@@ -320,19 +321,16 @@ struct pll_rate {
  * Clock Descriptions
  */
 
+static struct msm_xo_voter *xo_pxo, *xo_cxo;
+
 static int pxo_clk_enable(struct clk *clk)
 {
-	return 0;
-	/* TODO:
 	return msm_xo_mode_vote(xo_pxo, MSM_XO_MODE_ON);
-	*/
 }
 
 static void pxo_clk_disable(struct clk *clk)
 {
-	/* TODO:
 	 msm_xo_mode_vote(xo_pxo, MSM_XO_MODE_OFF);
-	*/
 }
 
 static struct clk_ops clk_ops_pxo = {
@@ -353,17 +351,12 @@ static struct fixed_clk pxo_clk = {
 
 static int cxo_clk_enable(struct clk *clk)
 {
-	return 0;
-	/* TODO:
 	return msm_xo_mode_vote(xo_cxo, MSM_XO_MODE_ON);
-	*/
 }
 
 static void cxo_clk_disable(struct clk *clk)
 {
-	/* TODO:
 	msm_xo_mode_vote(xo_cxo, MSM_XO_MODE_OFF);
-	*/
 }
 
 static struct clk_ops clk_ops_cxo = {
@@ -3731,6 +3724,7 @@ static struct clk measure_clk = {
 };
 
 struct clk_lookup msm_clocks_8960[] = {
+	CLK_LOOKUP("cxo",		cxo_clk.c,		NULL),
 	CLK_LOOKUP("pll2",		pll2_clk.c,		NULL),
 	CLK_LOOKUP("pll8",		pll8_clk.c,		NULL),
 	CLK_LOOKUP("pll4",		pll4_clk.c,		NULL),
@@ -4088,6 +4082,17 @@ static int wr_pll_clk_enable(struct clk *clk)
 /* Local clock driver initialization. */
 void __init msm_clk_soc_init(void)
 {
+	xo_pxo = msm_xo_get(MSM_XO_PXO, "clock-8960");
+	if (IS_ERR(xo_pxo)) {
+		pr_err("%s: msm_xo_get(PXO) failed.\n", __func__);
+		BUG();
+	}
+	xo_cxo = msm_xo_get(MSM_XO_TCXO_D0, "clock-8960");
+	if (IS_ERR(xo_cxo)) {
+		pr_err("%s: msm_xo_get(CXO) failed.\n", __func__);
+		BUG();
+	}
+
 	local_vote_sys_vdd(HIGH);
 
 	if (machine_is_msm8960_rumi3())
