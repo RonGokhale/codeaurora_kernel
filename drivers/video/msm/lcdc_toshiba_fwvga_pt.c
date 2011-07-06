@@ -22,10 +22,6 @@
 #include <mach/pmic.h>
 #include "msm_fb.h"
 
-#ifdef CONFIG_FB_MSM_TRY_MDDI_CATCH_LCDC_PRISM
-#include "mddihosti.h"
-#endif
-
 static int spi_cs0_N;
 static int spi_sclk;
 static int spi_mosi;
@@ -103,6 +99,7 @@ static void toshiba_disp_on(void)
 		toshiba_spi_write(0x01, 0x01, 0);
 		toshiba_spi_write(0x40, 0x10, 1);
 
+#ifdef TOSHIBA_FWVGA_FULL_INIT
 		udelay(500);
 		toshiba_spi_write(0x01, 0x06, 0);
 		toshiba_spi_write(0x00, 0x00, 1);
@@ -130,7 +127,7 @@ static void toshiba_disp_on(void)
 		udelay(500);
 		toshiba_spi_write(0x00, 0x09, 0);
 		toshiba_spi_write(0x00, 0x0c, 1);
-
+#endif
 		udelay(500);
 		toshiba_spi_write(0x00, 0x0c, 0);
 		toshiba_spi_write(0x40, 0x10, 1);
@@ -167,6 +164,7 @@ static void toshiba_disp_on(void)
 		toshiba_spi_write(0x00, 0x28, 0);
 		toshiba_spi_write(0x76, 0x0c, 1);
 
+#ifdef TOSHIBA_FWVGA_FULL_INIT
 		udelay(500);
 		toshiba_spi_write(0x03, 0x00, 0);
 		toshiba_spi_write(0x00, 0x00, 1);
@@ -287,6 +285,7 @@ static void toshiba_disp_on(void)
 		toshiba_spi_write(0x03, 0x29, 0);
 		toshiba_spi_write(0x00, 0x02, 1);
 
+#endif
 		udelay(500);
 		toshiba_spi_write(0x01, 0x00, 0);
 		toshiba_spi_write(0x36, 0x3c, 1);
