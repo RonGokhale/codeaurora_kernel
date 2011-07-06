@@ -32,7 +32,7 @@
 #include "spsi.h"
 #include "sps_core.h"
 
-#define DRV_NAME "sps"
+#define SPS_DRV_NAME "msm_sps"	/* must match the platform_device name */
 
 /**
  *  SPS Driver state struct
@@ -1350,16 +1350,16 @@ static int __devinit msm_sps_probe(struct platform_device *pdev)
 		return -ENODEV;
 
 	/* Create Device */
-	sps->dev_class = class_create(THIS_MODULE, DRV_NAME);
+	sps->dev_class = class_create(THIS_MODULE, SPS_DRV_NAME);
 
-	ret = alloc_chrdev_region(&sps->dev_num, 0, 1, DRV_NAME);
+	ret = alloc_chrdev_region(&sps->dev_num, 0, 1, SPS_DRV_NAME);
 	if (ret) {
 		SPS_ERR("sps:alloc_chrdev_region err.");
 		goto alloc_chrdev_region_err;
 	}
 
-	sps->dev = device_create(sps->dev_class, NULL, sps->dev_num,	sps,
-				  DRV_NAME);
+	sps->dev = device_create(sps->dev_class, NULL, sps->dev_num, sps,
+				SPS_DRV_NAME);
 	if (IS_ERR(sps->dev)) {
 		SPS_ERR("sps:device_create err.");
 		goto device_create_err;
@@ -1444,7 +1444,7 @@ static int __devexit msm_sps_remove(struct platform_device *pdev)
 static struct platform_driver msm_sps_driver = {
 	.probe          = msm_sps_probe,
 	.driver		= {
-		.name	= "msm_sps", /* must match the platform_device name */
+		.name	= SPS_DRV_NAME,
 		.owner	= THIS_MODULE,
 	},
 	.remove		= __exit_p(msm_sps_remove),
