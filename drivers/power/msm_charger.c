@@ -515,7 +515,12 @@ static void handle_charging_done(struct msm_hardware_charger_priv *priv)
 		dev_info(msm_chg.dev, "%s: stopping safety timer work\n",
 				__func__);
 		cancel_delayed_work(&msm_chg.teoc_work);
-		msm_batt_gauge->monitor_for_recharging();
+
+		if (msm_batt_gauge && msm_batt_gauge->monitor_for_recharging)
+			msm_batt_gauge->monitor_for_recharging();
+		else
+			dev_err(msm_chg.dev,
+			      "%s: no batt gauge recharge monitor\n", __func__);
 	}
 }
 
