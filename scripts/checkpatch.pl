@@ -1210,6 +1210,28 @@ sub process {
 
 	sanitise_line_reset();
 	my $line;
+	# Before sanitizing the rawlines, collapse any header-continuation
+	# lines into a single line so they can be parsed meaningfully.
+	my $end_of_hdrs = 0;
+	foreach my $rawline (@rawlines) {
+		if ($rawline=~/^\s*$/) {
+			last;
+		} else {
+			$end_of_hdrs++;
+		}
+	}
+	my @continuation_hdrs;
+	foreach my $n (0 .. $end_of_hdrs) {
+		if ($rawlines[$n]=~/^\s+/) {
+			push @continuation_hdrs, $n;
+		}
+	}
+	while (my $n = pop @continuation_hdrs) {
+		$line = splice @rawlines, $n, 1;
+		$line=~s/^\s+/ /;
+		$rawlines[$n - 1] .= $line;
+	}
+
 	foreach my $rawline (@rawlines) {
 		$linenr++;
 		$line = $rawline;
