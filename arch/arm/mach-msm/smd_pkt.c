@@ -88,13 +88,10 @@ module_param_named(debug_mask, msm_smd_pkt_debug_mask,
 #ifdef DEBUG
 #define D_DUMP_BUFFER(prestr, cnt, buf) \
 do { \
-	if (msm_smd_pkt_debug_mask) { \
-		int i; \
-		printk(KERN_ERR "%s", prestr); \
-		for (i = 0; i < cnt; i++) \
-			printk(KERN_ERR "%.2x", buf[i]); \
-		printk(KERN_ERR "\n"); \
-	} \
+	if (msm_smd_pkt_debug_mask) \
+		print_hex_dump(KERN_DEBUG, prestr, \
+				DUMP_PREFIX_NONE, 16, 1, \
+				buf, cnt, 1); \
 } while (0)
 #else
 #define D_DUMP_BUFFER(prestr, cnt, buf) do {} while (0)
