@@ -64,6 +64,7 @@ unsigned long paddr_s_y;
 unsigned long paddr_s_cbcr;
 unsigned long paddr_t_y;
 unsigned long paddr_t_cbcr;
+static uint32_t op_mode;
 
 static void vfe_7x_convert(struct msm_vfe_phy_info *pinfo,
 		enum vfe_resp_msg type,
@@ -174,6 +175,10 @@ static void vfe_7x_ops(void *driver_data, unsigned id, size_t len,
 			break;
 		case MSG_OUTPUT1:
 		case MSG_OUTPUT2:
+			if (op_mode & SNAPSHOT_MASK_MODE) {
+				resp->vfe_free(data);
+				return;
+			}
 			rp->type = VFE_MSG_OUTPUT_P;
 			vfe_7x_convert(&(rp->phy), VFE_MSG_OUTPUT_P,
 				rp->evt_msg.data, &(rp->extdata),
@@ -416,7 +421,7 @@ static int vfe_7x_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 
 	struct vfe_stats_ack sack;
 	struct axidata *axid;
-	uint32_t i, op_mode;
+	uint32_t i;
 	uint32_t *_mode;
 
 	struct vfe_stats_we_cfg *scfg = NULL;
