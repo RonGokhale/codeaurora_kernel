@@ -745,8 +745,8 @@ static void __init hfpll_init(struct scalable *sc, struct core_speed *tgt_s)
 	writel_relaxed(0, sc->hfpll_base + HFPLL_M_VAL);
 	writel_relaxed(1, sc->hfpll_base + HFPLL_N_VAL);
 
-	/* Set up droop controller. TODO: Enable droop controller. */
-	writel_relaxed(0x0100C000, sc->hfpll_base + HFPLL_DROOP_CTL);
+	/* Program droop controller. */
+	writel_relaxed(0x0108C000, sc->hfpll_base + HFPLL_DROOP_CTL);
 
 	/* Set an initial rate and enable the PLL. */
 	hfpll_set_rate(sc, tgt_s);
