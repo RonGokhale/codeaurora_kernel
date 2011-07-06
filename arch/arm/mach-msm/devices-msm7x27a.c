@@ -676,6 +676,24 @@ struct platform_device led_pdev = {
 	},
 };
 
+static struct msm_acpu_clock_platform_data msm7x2x_clock_data = {
+	.acpu_switch_time_us = 50,
+	.max_speed_delta_khz = 400000,
+	.vdd_switch_time_us = 62,
+	.max_axi_khz = 200000,
+};
+
+int __init msm7x2x_misc_init(void)
+{
+	if (socinfo_init() < 0)
+		pr_err("%s: socinfo_init() failed!\n", __func__);
+
+	msm_clock_init(msm_clocks_7x27a, msm_num_clocks_7x27a);
+	msm_acpu_clock_init(&msm7x2x_clock_data);
+
+	return 0;
+}
+
 #ifdef CONFIG_CACHE_L2X0
 static int __init msm7x27x_cache_init(void)
 {
