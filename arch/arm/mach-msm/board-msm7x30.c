@@ -5195,10 +5195,11 @@ static int bahama_bt(int on)
 
 	bahama_version = read_bahama_ver();
 
-	if (bahama_version == VER_UNSUPPORTED) {
+	if (((int)bahama_version) < 0 ||
+		bahama_version == VER_UNSUPPORTED) {
 		dev_err(&msm_bt_power_device.dev,
-			"%s: unsupported version\n",
-			__func__);
+			"%s: i2c failure or unsupported version: %d\n",
+			__func__, bahama_version);
 		return -EIO;
 	}
 
