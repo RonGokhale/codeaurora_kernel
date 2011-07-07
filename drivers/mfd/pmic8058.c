@@ -375,8 +375,6 @@ int pm8058_reset_pwr_off(int reset)
 	if (pmic_chip == NULL)
 		return -ENODEV;
 
-	mutex_lock(&pmic_chip->pm_lock);
-
 	/* Set regulator L22 to 1.225V in high power mode. */
 	rc = ssbi_read(pmic_chip->dev, SSBI_REG_ADDR_L22_CTRL, &ctrl, 1);
 	if (rc) {
@@ -435,8 +433,6 @@ get_out2:
 	}
 
 get_out:
-	mutex_unlock(&pmic_chip->pm_lock);
-
 	return rc;
 }
 EXPORT_SYMBOL(pm8058_reset_pwr_off);
