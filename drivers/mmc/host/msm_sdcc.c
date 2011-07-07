@@ -934,14 +934,18 @@ msmsdcc_irq(int irq, void *dev_id)
 			if (status & (MCI_PROGDONE | MCI_CMDCRCFAIL |
 					  MCI_CMDTIMEOUT)) {
 				if (status & MCI_CMDTIMEOUT)
-					pr_debug("%s: dummy CMD52 timeout\n",
+					pr_err("%s: dummy CMD52 timeout\n",
 						mmc_hostname(host->mmc));
 				if (status & MCI_CMDCRCFAIL)
-					pr_debug("%s: dummy CMD52 CRC failed\n",
+					pr_err("%s: dummy CMD52 CRC failed\n",
 						mmc_hostname(host->mmc));
 				host->dummy_52_state = DUMMY_52_STATE_NONE;
 				host->curr.cmd = NULL;
-				msmsdcc_request_start(host, host->curr.mrq);
+				if (host->curr.mrq)
+					msmsdcc_request_start(host,
+							      host->curr.mrq);
+				else
+					complete(&host->dummy_52_comp);
 				spin_unlock(&host->lock);
 				return IRQ_HANDLED;
 			}
@@ -1939,6 +1943,9 @@ msmsdcc_probe(struct platform_device *pdev)
 	setup_timer(&host->req_tout_timer, msmsdcc_req_tout_timer_hdlr,
 			(unsigned long)host);
 
+	if (plat->dummy52_required)
+		init_completion(&host->dummy_52_comp);
+
 	mmc_add_host(mmc);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -2098,6 +2105,21 @@ int msmsdcc_sdio_al_lpm(struct mmc_host *mmc, bool enable)
 			enable ? "En" : "Dis");
 
 	if (enable) {
+		if (host->plat->dummy52_required && host->dummy_52_needed) {
+			BUG_ON(host->curr.mrq);
+
+			host->dummy_52_state = DUMMY_52_STATE_SENT;
+			host->dummy_52_needed = 0;
+			msmsdcc_start_command(host, &dummy52cmd,
+					      MCI_CPSM_PROGENA);
+
+			spin_unlock_irqrestore(&host->lock, flags);
+			wait_for_completion(&host->dummy_52_comp);
+			spin_lock_irqsave(&host->lock, flags);
+			pr_debug("Dummy CMD52 before LPM sent for card %d\n",
+				 mmc->index);
+		}
+
 		if (!host->sdcc_irq_disabled) {
 			writel_relaxed(0, host->base + MMCIMASK0);
 			disable_irq(host->irqres->start);
