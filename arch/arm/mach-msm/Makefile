@@ -10,7 +10,9 @@ ifndef CONFIG_ARCH_MSM8X60
 	obj-$(CONFIG_MSM_PROC_COMM) += clock-pcom.o
 	obj-$(CONFIG_MSM_PROC_COMM) += vreg.o mpp.o
 	ifdef CONFIG_MSM_PROC_COMM
+ifndef CONFIG_ARCH_FSM9XXX
 		obj-$(CONFIG_REGULATOR) += footswitch-pcom.o
+endif
 		obj-$(CONFIG_DEBUG_FS) += pmic_debugfs.o
 	endif
 endif
@@ -56,6 +58,7 @@ obj-$(CONFIG_ARCH_MSM8X60) += peripheral-reset.o
 obj-$(CONFIG_ARCH_MSM8960) += peripheral-reset-8960.o
 endif
 obj-$(CONFIG_ARCH_QSD8X50) += sirc.o
+obj-$(CONFIG_ARCH_FSM9XXX) += sirc-fsm9xxx.o
 obj-$(CONFIG_MSM_FIQ_SUPPORT) += fiq_glue.o
 obj-$(CONFIG_MACH_TROUT) += board-trout-rfkill.o
 obj-$(CONFIG_MSM_SDIO_AL) += sdio_al.o
@@ -159,6 +162,11 @@ ifdef CONFIG_CPU_IDLE
 	obj-$(CONFIG_ARCH_MSM8X60) += cpuidle.o
 endif
 
+obj-$(CONFIG_ARCH_FSM9XXX) += devices-fsm9xxx.o
+obj-$(CONFIG_ARCH_FSM9XXX) += clock-fsm9xxx.o clock-local.o acpuclock-fsm9xxx.o
+obj-$(CONFIG_ARCH_FSM9XXX) += dfe-fsm9xxx.o rfic-fsm9xxx.o
+obj-$(CONFIG_ARCH_FSM9XXX) += restart-fsm9xxx.o
+
 obj-$(CONFIG_MSM_WATCHDOG) += msm_watchdog.o
 obj-$(CONFIG_MACH_MSM8X60_RUMI3) += board-msm8x60.o
 obj-$(CONFIG_MACH_MSM8X60_SIM) += board-msm8x60.o
@@ -200,6 +208,8 @@ obj-$(CONFIG_MACH_SAPPHIRE) += board-sapphire-keypad.o board-sapphire-panel.o
 obj-$(CONFIG_MACH_SAPPHIRE) += board-sapphire-mmc.o board-sapphire-wifi.o
 obj-$(CONFIG_MACH_SAPPHIRE) += board-sapphire-rfkill.o msm_vibrator.o
 
+obj-$(CONFIG_ARCH_FSM9XXX) += board-fsm9xxx.o
+
 obj-$(CONFIG_TROUT_BATTCHG) += htc_battery.o
 
 obj-$(CONFIG_HTC_PWRSINK) += htc_pwrsink.o
@@ -226,11 +236,16 @@ obj-$(CONFIG_ARCH_QSD8X50) += gpiomux-8x50.o gpiomux-v1.o gpiomux.o
 obj-$(CONFIG_ARCH_MSM8X60) += gpiomux-8x60.o gpiomux-v2.o gpiomux.o
 obj-$(CONFIG_ARCH_MSM8960) += gpiomux-v2.o gpiomux.o
 
+ifdef CONFIG_FSM9XXX_TLMM
+obj-y   += gpio-fsm9xxx.o
+else
 ifdef CONFIG_MSM_V2_TLMM
 obj-y	+= gpio-v2.o
 else
 obj-y	+= gpio.o
 endif
+endif
+
 obj-$(CONFIG_MSM_SLEEP_STATS) += msm_rq_stats.o idle_stats.o
 obj-$(CONFIG_MSM_SHOW_RESUME_IRQ) += msm_show_resume_irq.o
 obj-$(CONFIG_BT_MSM_PINTEST)  += btpintest.o
