@@ -31,7 +31,7 @@
 #include "msm_ispif.h"
 
 #ifdef CONFIG_MSM_CAMERA_DEBUG
-#define D(fmt, args...) printk(KERN_DEBUG "msm_mctl: " fmt, ##args)
+#define D(fmt, args...) pr_debug("msm_mctl: " fmt, ##args)
 #else
 #define D(fmt, args...) do {} while (0)
 #endif
@@ -273,13 +273,13 @@ static void msm_vidbuf_queue(struct videobuf_queue *vq,
 
 	D("%s\n", __func__);
 	if (!vb || !vq) {
-		D("%s error : input is NULL\n", __func__);
+		pr_err("%s error : input is NULL\n", __func__);
 		return ;
 	}
 	pcam_inst = vq->priv_data;
 	pcam = pcam_inst->pcam;
 	if (!pcam) {
-		D("%s error : pcam is NULL\n", __func__);
+		pr_err("%s error : pcam is NULL\n", __func__);
 		return;
 	}
 	D("%s (vb=0x%p) 0x%08lx %d\n", __func__, vb, vb->baddr, vb->bsize);
@@ -320,7 +320,7 @@ static void msm_vidbuf_release(struct videobuf_queue *vq,
 
 	D("%s\n", __func__);
 	if (!pcam || !vb || !vq) {
-		D("%s error : input is NULL\n", __func__);
+		pr_err("%s error : input is NULL\n", __func__);
 		return ;
 	}
 #ifdef DEBUG
@@ -367,13 +367,13 @@ static int msm_vidbuf_init(struct msm_cam_v4l2_dev_inst *pcam_inst,
 	struct msm_cam_v4l2_device *pcam = pcam_inst->pcam;
 	D("%s\n", __func__);
 	if (!pcam || !q) {
-		D("%s error : input is NULL\n", __func__);
+		pr_err("%s error : input is NULL\n", __func__);
 		return -EINVAL;
 	} else
 		pdev = pcam->mctl.sync.pdev;
 
 	if (!pdev) {
-		D("%s error : pdev is NULL\n", __func__);
+		pr_err("%s error : pdev is NULL\n", __func__);
 		return -EINVAL;
 	}
 	if (pcam->use_count == 1) {
@@ -389,7 +389,7 @@ static int msm_vidbuf_init(struct msm_cam_v4l2_dev_inst *pcam_inst,
 				DMA_MEMORY_MAP |
 				DMA_MEMORY_EXCLUSIVE);
 			if (!rc) {
-				D("%s: Unable to declare coherent memory.\n",
+				pr_err("%s: Unable to declare coherent memory.\n",
 				 __func__);
 				rc = -ENXIO;
 				return rc;
@@ -398,7 +398,7 @@ static int msm_vidbuf_init(struct msm_cam_v4l2_dev_inst *pcam_inst,
 			/*pcam->memsize = resource_size(res);*/
 			D("%s: found DMA capable resource\n", __func__);
 		} else {
-			D("%s: no DMA capable resource\n", __func__);
+			pr_err("%s: no DMA capable resource\n", __func__);
 			return -ENOMEM;
 		}
 	}
@@ -427,7 +427,7 @@ static long mctl_subdev_ioctl(struct v4l2_subdev *sd,
 {
 	struct msm_cam_media_controller *pmctl = NULL;
 	if (!sd) {
-		D("%s: param is NULL", __func__);
+		pr_err("%s: param is NULL", __func__);
 		return -EINVAL;
 	} else
 		pmctl = (struct msm_cam_media_controller *)
@@ -539,7 +539,7 @@ static int msm_mctl_cmd(struct msm_cam_media_controller *p_mctl,
 	int rc = -EINVAL;
 	void __user *argp = (void __user *)arg;
 	if (!p_mctl) {
-		D("%s: param is NULL", __func__);
+		pr_err("%s: param is NULL", __func__);
 		return -EINVAL;
 	}
 	D("%s start cmd = %d\n", __func__, _IOC_NR(cmd));
@@ -571,7 +571,7 @@ static int msm_sync_init(struct msm_sync *sync,
 {
 	int rc = 0;
 	if (!sync) {
-		D("%s: param is NULL", __func__);
+		pr_err("%s: param is NULL", __func__);
 		return -EINVAL;
 	}
 
@@ -594,7 +594,7 @@ static int msm_mctl_open(struct msm_cam_media_controller *p_mctl,
 	struct msm_sync *sync = NULL;
 	D("%s\n", __func__);
 	if (!p_mctl) {
-		D("%s: param is NULL", __func__);
+		pr_err("%s: param is NULL", __func__);
 		return -EINVAL;
 	}
 
@@ -739,7 +739,7 @@ int msm_mctl_init_module(struct msm_cam_v4l2_device *pcam)
 	struct msm_cam_media_controller *pmctl = NULL;
 	D("%s\n", __func__);
 	if (!pcam) {
-		D("%s: param is NULL", __func__);
+		pr_err("%s: param is NULL", __func__);
 		return -EINVAL;
 	} else
 		pmctl = &pcam->mctl;
