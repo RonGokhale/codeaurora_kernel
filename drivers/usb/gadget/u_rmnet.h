@@ -45,6 +45,10 @@ struct grmnet {
 	int (*send_cpkt_request)(struct grmnet *g,
 				u8 port_num,
 				struct rmnet_ctrl_pkt *pkt);
+
+	void (*send_cbits_tomodem)(struct grmnet *g,
+				u8 port_num,
+				int cbits);
 };
 
 #ifdef CONFIG_USB_ANDROID_RMNET_BAM

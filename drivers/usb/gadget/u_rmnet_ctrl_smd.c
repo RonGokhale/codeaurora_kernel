@@ -47,6 +47,7 @@ struct smd_ch_info {
 
 	struct rmnet_ctrl_port	*port;
 
+	int			cbits_tomodem;
 	/* stats */
 	unsigned long		to_modem;
 	unsigned long		to_host;
@@ -92,6 +93,7 @@ static void rmnet_ctrl_pkt_free(struct rmnet_ctrl_pkt *pkt)
 	kfree(pkt->buf);
 	kfree(pkt);
 }
+
 /*--------------------------------------------- */
 
 /*---------------control/smd channel functions---------------- */
@@ -203,10 +205,76 @@ grmnet_ctrl_smd_send_cpkt_tomodem(struct grmnet *gr, u8 portno,
 	return 0;
 }
 
+#define ACM_CTRL_DTR		0x01
+static void
+gsmd_ctrl_send_cbits_tomodem(struct grmnet *gr, u8 portno, int cbits)
+{
+	struct rmnet_ctrl_port	*port;
+	struct smd_ch_info	*c;
+	int			set_bits = 0;
+	int			clear_bits = 0;
+	int			temp = 0;
+
+	if (portno >= n_ports) {
+		pr_err("%s: Invalid portno#%d\n", __func__, portno);
+		return;
+	}
+
+	if (!gr) {
+		pr_err("%s: grmnet is null\n", __func__);
+		return;
+	}
+
+	port = ports[portno].port;
+	cbits = cbits & ACM_CTRL_DTR;
+	c = &port->ctrl_ch;
+
+	/* host driver will only send DTR, but to have generic
+	 * set and clear bit implementation using two separate
+	 * checks
+	 */
+	if (cbits & ACM_CTRL_DTR)
+		set_bits |= TIOCM_DTR;
+	else
+		clear_bits |= TIOCM_DTR;
+
+	temp |= set_bits;
+	temp &= ~clear_bits;
+
+	if (temp == c->cbits_tomodem)
+		return;
+
+	c->cbits_tomodem = temp;
+
+	if (!test_bit(CH_OPENED, &c->flags))
+		return;
+
+	pr_debug("%s: ctrl_tomodem:%d ctrl_bits:%d setbits:%d clearbits:%d\n",
+			__func__, temp, cbits, set_bits, clear_bits);
+
+	smd_tiocmset(c->ch, set_bits, clear_bits);
+}
+
+static char *get_smd_event(unsigned event)
+{
+	switch (event) {
+	case SMD_EVENT_DATA:
+		return "DATA";
+	case SMD_EVENT_OPEN:
+		return "OPEN";
+	case SMD_EVENT_CLOSE:
+		return "CLOSE";
+	}
+
+	return "UNDEFINED";
+}
+
 static void grmnet_ctrl_smd_notify(void *p, unsigned event)
 {
 	struct rmnet_ctrl_port	*port = p;
 	struct smd_ch_info	*c = &port->ctrl_ch;
+
+	pr_debug("%s: EVENT_(%s)\n", __func__, get_smd_event(event));
 
 	switch (event) {
 	case SMD_EVENT_DATA:
@@ -214,10 +282,6 @@ static void grmnet_ctrl_smd_notify(void *p, unsigned event)
 			queue_work(grmnet_ctrl_wq, &c->read_w);
 		if (smd_write_avail(c->ch))
 			queue_work(grmnet_ctrl_wq, &c->write_w);
-
-		pr_debug("%s: EVENT_DATA: read_avail:%d write_avail:%d",
-				__func__, smd_read_avail(c->ch),
-				smd_write_avail(c->ch));
 		break;
 	case SMD_EVENT_OPEN:
 		set_bit(CH_OPENED, &c->flags);
@@ -235,6 +299,7 @@ static void grmnet_ctrl_smd_connect_w(struct work_struct *w)
 	struct rmnet_ctrl_port *port =
 			container_of(w, struct rmnet_ctrl_port, connect_w);
 	struct smd_ch_info *c = &port->ctrl_ch;
+	unsigned long flags;
 	int ret;
 
 	pr_debug("%s:\n", __func__);
@@ -248,6 +313,11 @@ static void grmnet_ctrl_smd_connect_w(struct work_struct *w)
 				__func__, c->name, ret);
 		return;
 	}
+
+	spin_lock_irqsave(&port->port_lock, flags);
+	if (port->port_usb)
+		smd_tiocmset(c->ch, c->cbits_tomodem, ~c->cbits_tomodem);
+	spin_unlock_irqrestore(&port->port_lock, flags);
 }
 
 int gsmd_ctrl_connect(struct grmnet *gr, int port_num)
@@ -274,6 +344,7 @@ int gsmd_ctrl_connect(struct grmnet *gr, int port_num)
 	spin_lock_irqsave(&port->port_lock, flags);
 	port->port_usb = gr;
 	gr->send_cpkt_request = grmnet_ctrl_smd_send_cpkt_tomodem;
+	gr->send_cbits_tomodem = gsmd_ctrl_send_cbits_tomodem;
 	spin_unlock_irqrestore(&port->port_lock, flags);
 
 	queue_work(grmnet_ctrl_wq, &port->connect_w);
@@ -305,6 +376,8 @@ void gsmd_ctrl_disconnect(struct grmnet *gr, u8 port_num)
 	spin_lock_irqsave(&port->port_lock, flags);
 	port->port_usb = 0;
 	gr->send_cpkt_request = 0;
+	gr->send_cbits_tomodem = 0;
+	c->cbits_tomodem = 0;
 	spin_unlock_irqrestore(&port->port_lock, flags);
 
 	if (test_bit(CH_OPENED, &c->flags)) {

@@ -547,7 +547,12 @@ frmnet_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 		break;
 	case ((USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE) << 8)
 			| USB_CDC_REQ_SET_CONTROL_LINE_STATE:
+		if (dev->port.send_cbits_tomodem)
+			dev->port.send_cbits_tomodem(&dev->port,
+							dev->port_num,
+							w_value);
 		ret = 0;
+
 		break;
 	default:
 
