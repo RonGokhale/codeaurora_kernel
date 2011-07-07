@@ -145,6 +145,7 @@
 #define RS_CS_ENABLE_MASK 0x00000300   /* bit 8,9  */
 #define CLF_ENABLE_MASK 0x00002000     /* bit 13 */
 #define IHIST_ENABLE_MASK 0x00010000   /* bit 16 */
+#define STATS_ENABLE_MASK 0x000903E0   /* bit 19,16,9,8,7,6,5*/
 
 #define VFE_REG_UPDATE_TRIGGER           1
 #define VFE_PM_BUF_MAX_CNT_MASK          0xFF
@@ -295,7 +296,7 @@ enum  VFE_STATE {
 #define V32_DEMOSAICV3_ABCC_UPDATE    109
 #define V32_DEMOSAICV3_DBCC_UPDATE    110
 #define V32_DEMOSAICV3_DBPC_UPDATE    111
-
+#define V32_EZTUNE_CFG            112
 
 #define V32_CLF_CFG               118
 #define V32_CLF_UPDATE            119
@@ -428,6 +429,9 @@ enum  VFE_STATE {
 
 #define V32_DEMOSAICV3_ABF_OFF 0x0000029C
 #define V32_DEMOSAICV3_ABF_LEN
+
+#define V32_EZTUNE_CFG_OFF 0x00000010
+#define V32_EZTUNE_CFG_LEN 4
 
 struct vfe_cmd_hw_version {
 	uint32_t minorVersion;

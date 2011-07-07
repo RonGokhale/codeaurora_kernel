@@ -2031,6 +2031,28 @@ static int vfe31_proc_general(struct msm_vfe31_cmd *cmd)
 		vfe31_sync_timer_start(cmdp);
 		break;
 
+	case V31_EZTUNE_CFG: {
+		cmdp = kmalloc(cmd->length, GFP_ATOMIC);
+		if (!cmdp) {
+			rc = -ENOMEM;
+			goto proc_general_done;
+		}
+		if (copy_from_user(cmdp,
+			(void __user *)(cmd->value),
+			cmd->length)) {
+			rc = -EFAULT;
+			goto proc_general_done;
+		}
+		*cmdp &= ~STATS_ENABLE_MASK;
+		old_val = msm_io_r(vfe31_ctrl->vfebase + VFE_MODULE_CFG);
+		old_val &= STATS_ENABLE_MASK;
+		*cmdp |= old_val;
+
+		msm_io_memcpy(vfe31_ctrl->vfebase + vfe31_cmd[cmd->id].offset,
+			cmdp, (vfe31_cmd[cmd->id].length));
+		}
+		break;
+
 	default: {
 		if (cmd->length != vfe31_cmd[cmd->id].length)
 			return -EINVAL;

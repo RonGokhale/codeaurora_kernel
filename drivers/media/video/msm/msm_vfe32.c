@@ -303,6 +303,7 @@ static const char * const vfe32_general_cmd[] = {
 	"DEMOSAICV3_ABCC_UPDATE",
 	"DEMOSAICV3_DBCC_UPDATE",
 	"DEMOSAICV3_DBPC_UPDATE",
+	"EZTUNE_CFG",
 };
 
 static void vfe_addr_convert(struct msm_vfe_phy_info *pinfo,
@@ -1851,6 +1852,28 @@ static int vfe32_proc_general(struct msm_vfe32_cmd *cmd)
 			goto proc_general_done;
 		}
 		vfe32_sync_timer_start(cmdp);
+		break;
+
+	case V32_EZTUNE_CFG: {
+		cmdp = kmalloc(cmd->length, GFP_ATOMIC);
+		if (!cmdp) {
+			rc = -ENOMEM;
+			goto proc_general_done;
+		}
+		if (copy_from_user(cmdp,
+			(void __user *)(cmd->value),
+			cmd->length)) {
+			rc = -EFAULT;
+			goto proc_general_done;
+		}
+		*cmdp &= ~STATS_ENABLE_MASK;
+		old_val = msm_io_r(vfe32_ctrl->vfebase + VFE_MODULE_CFG);
+		old_val &= STATS_ENABLE_MASK;
+		*cmdp |= old_val;
+
+		msm_io_memcpy(vfe32_ctrl->vfebase + vfe32_cmd[cmd->id].offset,
+			cmdp, (vfe32_cmd[cmd->id].length));
+		}
 		break;
 
 	default: {

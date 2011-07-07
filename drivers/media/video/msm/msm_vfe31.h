@@ -161,7 +161,7 @@
 #define RS_ENABLE_MASK 0x00000100      /* bit 8  */
 #define CS_ENABLE_MASK 0x00000200      /* bit 9  */
 #define RS_CS_ENABLE_MASK 0x00000300   /* bit 8,9  */
-
+#define STATS_ENABLE_MASK 0x000483E0   /* bit 18,15,9,8,7,6,5*/
 
 #define VFE_REG_UPDATE_TRIGGER           1
 #define VFE_PM_BUF_MAX_CNT_MASK          0xFF
