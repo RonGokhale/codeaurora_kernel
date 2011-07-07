@@ -143,25 +143,19 @@ void __iomem *csidbase, *csiphybase;
 static struct msm_bus_vectors cam_init_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_VFE,
-		.dst = MSM_BUS_SLAVE_SMI,
-		.ab  = 0,
-		.ib  = 0,
-	},
-	{
-		.src = MSM_BUS_MASTER_VFE,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 0,
 		.ib  = 0,
 	},
 	{
 		.src = MSM_BUS_MASTER_VPE,
-		.dst = MSM_BUS_SLAVE_SMI,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 0,
 		.ib  = 0,
 	},
 	{
 		.src = MSM_BUS_MASTER_JPEG_ENC,
-		.dst = MSM_BUS_SLAVE_SMI,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 0,
 		.ib  = 0,
 	},
@@ -170,25 +164,19 @@ static struct msm_bus_vectors cam_init_vectors[] = {
 static struct msm_bus_vectors cam_preview_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_VFE,
-		.dst = MSM_BUS_SLAVE_SMI,
-		.ab  = 1521190000,
-		.ib  = 1521190000,
-	},
-	{
-		.src = MSM_BUS_MASTER_VFE,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 1521190000,
 		.ib  = 1521190000,
 	},
 	{
 		.src = MSM_BUS_MASTER_VPE,
-		.dst = MSM_BUS_SLAVE_SMI,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 0,
 		.ib  = 0,
 	},
 	{
 		.src = MSM_BUS_MASTER_JPEG_ENC,
-		.dst = MSM_BUS_SLAVE_SMI,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 0,
 		.ib  = 0,
 	},
@@ -197,25 +185,19 @@ static struct msm_bus_vectors cam_preview_vectors[] = {
 static struct msm_bus_vectors cam_video_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_VFE,
-		.dst = MSM_BUS_SLAVE_SMI,
-		.ab  = 1521190000,
-		.ib  = 1521190000,
-	},
-	{
-		.src = MSM_BUS_MASTER_VFE,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 1521190000,
 		.ib  = 1521190000,
 	},
 	{
 		.src = MSM_BUS_MASTER_VPE,
-		.dst = MSM_BUS_SLAVE_SMI,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 1521190000,
 		.ib  = 1521190000,
 	},
 	{
 		.src = MSM_BUS_MASTER_JPEG_ENC,
-		.dst = MSM_BUS_SLAVE_SMI,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 0,
 		.ib  = 0,
 	},
@@ -224,25 +206,19 @@ static struct msm_bus_vectors cam_video_vectors[] = {
 static struct msm_bus_vectors cam_snapshot_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_VFE,
-		.dst = MSM_BUS_SLAVE_SMI,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 1521190000,
 		.ib  = 1521190000,
 	},
 	{
-		.src = MSM_BUS_MASTER_VFE,
+		.src = MSM_BUS_MASTER_VPE,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 0,
 		.ib  = 0,
 	},
 	{
-		.src = MSM_BUS_MASTER_VPE,
-		.dst = MSM_BUS_SLAVE_SMI,
-		.ab  = 0,
-		.ib  = 0,
-	},
-	{
 		.src = MSM_BUS_MASTER_JPEG_ENC,
-		.dst = MSM_BUS_SLAVE_SMI,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab  = 1521190000,
 		.ib  = 1521190000,
 	},
