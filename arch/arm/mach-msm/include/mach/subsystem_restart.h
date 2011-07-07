@@ -44,10 +44,10 @@ enum {
 
 struct subsys_data {
 	const char *name;
-	int (*shutdown) (const char * const);
-	int (*powerup) (const char * const);
-	void (*crash_shutdown) (const char * const);
-	int (*ramdump) (int, const char * const);
+	int (*shutdown) (const struct subsys_data *);
+	int (*powerup) (const struct subsys_data *);
+	void (*crash_shutdown) (const struct subsys_data *);
+	int (*ramdump) (int, const struct subsys_data *);
 
 	/* Internal use only */
 	struct list_head list;
