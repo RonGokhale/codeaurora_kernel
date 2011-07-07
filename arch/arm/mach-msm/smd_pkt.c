@@ -40,8 +40,9 @@
 #define NUM_SMD_PKT_PORTS 4
 #else
 #define NUM_SMD_PKT_PORTS 12
-#define LOOPBACK_INX (NUM_SMD_PKT_PORTS - 1)
 #endif
+
+#define LOOPBACK_INX (NUM_SMD_PKT_PORTS - 1)
 
 #define DEVICE_NAME "smdpkt"
 
