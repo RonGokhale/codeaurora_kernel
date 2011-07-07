@@ -851,11 +851,18 @@ void __cpuinit acpuclock_secondary_init(void)
 /* Register with bus driver. */
 static void __init bus_init(void)
 {
+	int ret;
+
 	bus_perf_client = msm_bus_scale_register_client(&bus_client_pdata);
 	if (!bus_perf_client) {
 		pr_err("unable to register bus client\n");
 		BUG();
 	}
+
+	ret = msm_bus_scale_client_update_request(bus_perf_client,
+		(ARRAY_SIZE(bw_level_tbl)-1));
+	if (ret)
+		pr_err("initial bandwidth request failed (%d)\n", ret);
 }
 
 #ifdef CONFIG_CPU_FREQ_MSM
