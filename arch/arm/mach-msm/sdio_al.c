@@ -416,6 +416,10 @@ struct sdio_channel {
 	u32 signature;
 
 	struct sdio_al_device *sdio_al_dev;
+
+	int last_any_read_avail;
+	int last_read_avail;
+	int last_old_read_avail;
 };
 
 
@@ -701,6 +705,47 @@ static int is_user_irq_enabled(int func_num)
 	return 0;
 }
 
+static void sdio_al_sleep(struct sdio_al_device *sdio_al_dev,
+			  struct mmc_host *host)
+{
+	int i;
+
+	/* Go to sleep */
+	LPM_DEBUG(MODULE_NAME  ":Inactivity timer expired."
+		" Going to sleep\n");
+	/* Stop mailbox timer */
+	sdio_al_dev->poll_delay_msec = 0;
+	del_timer_sync(&sdio_al_dev->timer);
+	/* Make sure we get interrupt for non-packet-mode right away */
+	for (i = 0; i < SDIO_AL_MAX_CHANNELS; i++) {
+		struct sdio_channel *ch = &sdio_al_dev->channel[i];
+		if ((!ch->is_valid) || (!ch->is_open))
+			continue;
+		if (ch->is_packet_mode == false) {
+			ch->read_threshold = 1;
+			set_pipe_threshold(sdio_al_dev,
+					   ch->rx_pipe_index,
+					   ch->read_threshold);
+		}
+	}
+	/* Mark HOST_OK_TOSLEEP */
+	sdio_al_dev->is_ok_to_sleep = 1;
+	write_lpm_info(sdio_al_dev);
+
+	/* Clock rate is required to enable the clock and set its rate.
+	 * Hence, save the clock rate before disabling it */
+	sdio_al_dev->clock = host->ios.clock;
+	/* Disable clocks here */
+	host->ios.clock = 0;
+	msmsdcc_lpm_enable(host);
+	pr_info(MODULE_NAME ":Finished sleep sequence for card %d. "
+			    "Sleep now.\n",
+		sdio_al_dev->card->host->index);
+	/* Release wakelock */
+	wake_unlock(&sdio_al_dev->wake_lock);
+}
+
+
 /**
  *  Read SDIO-Client Mailbox from Function#1.thresh_pipe
  *
@@ -803,6 +848,9 @@ static int read_mailbox(struct sdio_al_device *sdio_al_dev, int from_isr)
 			continue;
 		}
 		any_read_avail |= read_avail | old_read_avail;
+		ch->last_any_read_avail = any_read_avail;
+		ch->last_read_avail = read_avail;
+		ch->last_old_read_avail = old_read_avail;
 
 		if (ch->is_packet_mode)
 			new_packet_size = check_pending_rx_packet(ch, eot_pipe);
@@ -847,19 +895,6 @@ static int read_mailbox(struct sdio_al_device *sdio_al_dev, int from_isr)
 			(new_write_avail < ch->ch_config.max_tx_threshold);
 	}
 
-	if ((rx_notify_bitmask == 0) && (tx_notify_bitmask == 0) &&
-	    !any_read_avail && !any_write_pending) {
-		DATA_DEBUG(MODULE_NAME ":Nothing to Notify for card %d\n",
-			   sdio_al_dev->card->host->index);
-	} else {
-		DATA_DEBUG(MODULE_NAME ":Notify bitmask for card %d "
-				       "rx=0x%x, tx=0x%x.\n",
-			sdio_al_dev->card->host->index, rx_notify_bitmask,
-			   tx_notify_bitmask);
-		/* Restart inactivity timer if any activity on the channel */
-		restart_inactive_time(sdio_al_dev);
-	}
-
 	for (i = 0; i < SDIO_AL_MAX_CHANNELS; i++) {
 		struct sdio_channel *ch = &sdio_al_dev->channel[i];
 
@@ -875,53 +910,19 @@ static int read_mailbox(struct sdio_al_device *sdio_al_dev, int from_isr)
 					   SDIO_EVENT_DATA_WRITE_AVAIL);
 	}
 
-	/* Enable/Disable of Interrupts */
-	for (i = 0; i < SDIO_AL_MAX_CHANNELS; i++) {   /* TODO - maya */
-		struct sdio_channel *ch = &sdio_al_dev->channel[i];
-		u32 pipe_thresh_intr_disabled = 0;
-
-		if ((!ch->is_valid) || (!ch->is_open))
-			continue;
-
-
-		pipe_thresh_intr_disabled = thresh_intr_mask &
-			(1<<ch->tx_pipe_index);
-	}
-
-	if (is_inactive_time_expired(sdio_al_dev)) {
-		/* Go to sleep */
-		LPM_DEBUG(MODULE_NAME  ":Inactivity timer expired."
-			" Going to sleep\n");
-		/* Stop mailbox timer */
-		sdio_al_dev->poll_delay_msec = 0;
-		del_timer_sync(&sdio_al_dev->timer);
-		/* Make sure we get interrupt for non-packet-mode right away */
-		for (i = 0; i < SDIO_AL_MAX_CHANNELS; i++) {
-			struct sdio_channel *ch = &sdio_al_dev->channel[i];
-			if ((!ch->is_valid) || (!ch->is_open))
-				continue;
-			if (ch->is_packet_mode == false) {
-				ch->read_threshold = 1;
-				set_pipe_threshold(sdio_al_dev,
-						   ch->rx_pipe_index,
-						   ch->read_threshold);
-			}
-		}
-		/* Mark HOST_OK_TOSLEEP */
-		sdio_al_dev->is_ok_to_sleep = 1;
-		write_lpm_info(sdio_al_dev);
-
-		/* Clock rate is required to enable the clock and set its rate.
-		 * Hence, save the clock rate before disabling it */
-		sdio_al_dev->clock = host->ios.clock;
-		/* Disable clocks here */
-		host->ios.clock = 0;
-		host->ops->set_ios(host, &host->ios);
-		pr_info(MODULE_NAME ":Finished sleep sequence for card %d. "
-				    "Sleep now.\n",
-			sdio_al_dev->card->host->index);
-		/* Release wakelock */
-		wake_unlock(&sdio_al_dev->wake_lock);
+	if ((rx_notify_bitmask == 0) && (tx_notify_bitmask == 0) &&
+	    !any_read_avail && !any_write_pending) {
+		DATA_DEBUG(MODULE_NAME ":Nothing to Notify for card %d\n",
+			   sdio_al_dev->card->host->index);
+		if (is_inactive_time_expired(sdio_al_dev))
+			sdio_al_sleep(sdio_al_dev, host);
+	} else {
+		DATA_DEBUG(MODULE_NAME ":Notify bitmask for card %d "
+				       "rx=0x%x, tx=0x%x.\n",
+			sdio_al_dev->card->host->index, rx_notify_bitmask,
+			   tx_notify_bitmask);
+		/* Restart inactivity timer if any activity on the channel */
+		restart_inactive_time(sdio_al_dev);
 	}
 
 	pr_debug(MODULE_NAME ":end %s.\n", __func__);
@@ -1989,7 +1990,7 @@ static int sdio_al_wake_up(struct sdio_al_device *sdio_al_dev,
 		 sdio_al_dev->card->host->index);
 	/* Enable the clock and set its rate */
 	host->ios.clock = sdio_al_dev->clock;
-	host->ops->set_ios(host, &host->ios);
+	msmsdcc_lpm_disable(host);
 	msmsdcc_set_pwrsave(sdio_al_dev->card->host, 0);
 	/* Poll the GPIO */
 	time_to_wait = jiffies + msecs_to_jiffies(100);
@@ -2447,6 +2448,17 @@ int sdio_read(struct sdio_channel *ch, void *data, int len)
 		SDIO_AL_ERR(__func__);
 		return -ENODEV;
 	}
+
+	/* lpm policy says we can't go to sleep when we have pending rx data,
+	   so either we had rx interrupt and woken up, or we never went to
+	   sleep */
+	if (sdio_al_dev->is_ok_to_sleep)
+		pr_err(MODULE_NAME ":%s: called when is_ok_to_sleep is set "
+		       "for ch %s, len=%d, last_any_read_avail=%d,"
+		       "last_read_avail=%d, last_old_read_avail=%d",
+		       __func__, ch->name, len, ch->last_any_read_avail,
+		       ch->last_read_avail, ch->last_old_read_avail);
+	BUG_ON(sdio_al_dev->is_ok_to_sleep);
 
 	if (!ch->is_open) {
 		pr_info(MODULE_NAME ":reading from closed channel %s\n",
@@ -2974,115 +2986,10 @@ static void sdio_al_sdio_remove(struct sdio_func *func)
 	pr_debug(MODULE_NAME ":sdio_al_sdio_remove was called");
 }
 
-static int sdio_al_sdio_suspend(struct device *dev)
-{
-	struct sdio_func *func = dev_to_sdio_func(dev);
-	int ret = 0;
-	struct sdio_al_device *sdio_al_dev = NULL;
-	int i;
-
-	/* Find the sdio_al_device of this function */
-	for (i = 0; i < MAX_NUM_OF_SDIO_DEVICES; ++i) {
-		if (sdio_al->devices[i] == NULL)
-			continue;
-		if (sdio_al->devices[i]->card == func->card) {
-			sdio_al_dev = sdio_al->devices[i];
-			break;
-		}
-	}
-	if (sdio_al_dev == NULL) {
-		pr_err(MODULE_NAME ": NULL sdio_al_dev for card %d\n",
-				 func->card->host->index);
-		return -EIO;
-	}
-
-	LPM_DEBUG(MODULE_NAME ":sdio_al_sdio_suspend for func %d\n",
-		func->num);
-
-	if (sdio_al_dev->is_err) {
-		SDIO_AL_ERR(__func__);
-		return -ENODEV;
-	}
-
-	sdio_claim_host(sdio_al_dev->card->sdio_func[0]);
-
-	if (sdio_al_dev->is_suspended) {
-		pr_debug(MODULE_NAME ":already in suspend state\n");
-		sdio_release_host(sdio_al_dev->card->sdio_func[0]);
-		return 0;
-	}
-
-	ret = sdio_set_host_pm_flags(func, MMC_PM_KEEP_POWER);
-
-	if (ret) {
-		pr_err(MODULE_NAME ":Host doesn't support the keep "
-				   "power capability\n");
-		sdio_release_host(sdio_al_dev->card->sdio_func[0]);
-		return ret;
-	}
-
-	/* Check if we can get into suspend */
-	if (!sdio_al_dev->is_ok_to_sleep) {
-		pr_err(MODULE_NAME ":Cannot suspend due to pending data\n");
-		sdio_release_host(sdio_al_dev->card->sdio_func[0]);
-		return -EBUSY;
-	}
-
-	sdio_al_dev->is_suspended = 1;
-
-	sdio_release_host(sdio_al_dev->card->sdio_func[0]);
-
-	return 0;
-}
-
-static int sdio_al_sdio_resume(struct device *dev)
-{
-	struct sdio_func *func = dev_to_sdio_func(dev);
-	struct sdio_al_device *sdio_al_dev = NULL;
-	int i;
-
-	/* Find the sdio_al_device of this function */
-	for (i = 0; i < MAX_NUM_OF_SDIO_DEVICES; ++i) {
-		if (sdio_al->devices[i] == NULL)
-			continue;
-		if (sdio_al->devices[i]->card == func->card) {
-			sdio_al_dev = sdio_al->devices[i];
-			break;
-		}
-	}
-	if (sdio_al_dev == NULL) {
-		pr_err(MODULE_NAME ": NULL sdio_al_dev for card %d\n",
-				 func->card->host->index);
-		return -EIO;
-	}
-
-	LPM_DEBUG(MODULE_NAME ":sdio_al_sdio_resume for func %d\n",
-		func->num);
-
-	sdio_claim_host(sdio_al_dev->card->sdio_func[0]);
-
-	if (!sdio_al_dev->is_suspended) {
-		pr_debug(MODULE_NAME ":already in resume state\n");
-		sdio_release_host(sdio_al_dev->card->sdio_func[0]);
-		return 0;
-	}
-
-	sdio_al_dev->is_suspended = 0;
-
-	sdio_release_host(sdio_al_dev->card->sdio_func[0]);
-
-	return 0;
-}
-
 static struct sdio_device_id sdio_al_sdioid[] = {
     {.class = 0, .vendor = 0x70, .device = 0x2460},
     {.class = 0, .vendor = 0x70, .device = 0x0460},
     {}
-};
-
-static const struct dev_pm_ops sdio_al_sdio_pm_ops = {
-    .suspend = sdio_al_sdio_suspend,
-    .resume = sdio_al_sdio_resume,
 };
 
 static struct sdio_driver sdio_al_sdiofn_driver = {
@@ -3090,7 +2997,6 @@ static struct sdio_driver sdio_al_sdiofn_driver = {
     .id_table  = sdio_al_sdioid,
     .probe     = sdio_al_sdio_probe,
     .remove    = sdio_al_sdio_remove,
-    .drv.pm    = &sdio_al_sdio_pm_ops,
 };
 
 /**
