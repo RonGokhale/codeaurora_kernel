@@ -41,6 +41,7 @@
 #include <mach/socinfo.h>
 #include <mach/msm_memtypes.h>
 #include <mach/msm_tsif.h>
+#include <mach/scm-io.h>
 #ifdef CONFIG_MSM_DSPS
 #include <mach/msm_dsps.h>
 #endif
@@ -1747,21 +1748,12 @@ static void tsif_release(struct device *dev)
 
 static void tsif_init1(struct msm_tsif_platform_data *data)
 {
-	void __iomem *mux;
 	int val;
 
-	mux = ioremap(TCSR_BASE_PHYS, PAGE_SIZE);
-	if (!mux) {
-		pr_err("tsif: bad mux addr\n");
-		return;
-	}
-	mux += TCSR_ADM_0_A_CRCI_MUX_SEL;
-
 	/* configure mux to use correct tsif instance */
-	val = ioread32(mux);
+	val = secure_readl(MSM_TCSR_BASE + TCSR_ADM_0_A_CRCI_MUX_SEL);
 	val |= 0x80000000;
-	iowrite32(val, mux);
-	iounmap(mux);
+	secure_writel(val, MSM_TCSR_BASE + TCSR_ADM_0_A_CRCI_MUX_SEL);
 }
 
 struct msm_tsif_platform_data tsif1_platform_data = {
@@ -1792,21 +1784,12 @@ struct resource tsif1_resources[] = {
 
 static void tsif_init0(struct msm_tsif_platform_data *data)
 {
-	void __iomem *mux;
 	int val;
 
-	mux = ioremap(TCSR_BASE_PHYS, PAGE_SIZE);
-	if (!mux) {
-		pr_err("tsif: bad mux addr\n");
-		return;
-	}
-	mux += TCSR_ADM_0_A_CRCI_MUX_SEL;
-
 	/* configure mux to use correct tsif instance */
-	val = ioread32(mux);
+	val = secure_readl(MSM_TCSR_BASE + TCSR_ADM_0_A_CRCI_MUX_SEL);
 	val &= 0x7FFFFFFF;
-	iowrite32(val, mux);
-	iounmap(mux);
+	secure_writel(val, MSM_TCSR_BASE + TCSR_ADM_0_A_CRCI_MUX_SEL);
 }
 
 struct msm_tsif_platform_data tsif0_platform_data = {
