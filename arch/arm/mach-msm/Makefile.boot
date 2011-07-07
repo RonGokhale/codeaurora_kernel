@@ -39,3 +39,6 @@ endif
 
 # MSM8960
    zreladdr-$(CONFIG_ARCH_MSM8960)	:= 0x80208000
+
+# APQ8064
+   zreladdr-$(CONFIG_ARCH_APQ8064)	:= 0x80208000
