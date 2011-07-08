@@ -454,6 +454,8 @@ static int start_cipher_req(struct qcedev_control *podev)
 				goto unsupported;
 			}
 		}
+	} else {
+		creq.op = QCE_REQ_ABLK_CIPHER;
 	}
 
 	creq.qce_cb = qcedev_cipher_req_cb;
@@ -2087,7 +2089,7 @@ static void qcedev_exit(void)
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Qualcomm DEV Crypto driver");
-MODULE_VERSION("1.19");
+MODULE_VERSION("1.20");
 
 module_init(qcedev_init);
 module_exit(qcedev_exit);
