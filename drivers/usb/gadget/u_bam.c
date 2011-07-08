@@ -293,28 +293,6 @@ static void gbam_data_write_tobam(struct work_struct *w)
 }
 /*-------------------------------------------------------------*/
 
-static int
-gbam_rx_submit(struct usb_ep *ep, struct usb_request *req, gfp_t f)
-{
-	struct sk_buff		*skb;
-	int			ret;
-
-	skb = alloc_skb(rx_req_size + BAM_MUX_HDR, f);
-	if (!skb)
-		return -ENOMEM;
-
-	skb_reserve(skb, BAM_MUX_HDR);
-	req->buf = skb->data;
-	req->length = rx_req_size;
-	req->context = skb;
-
-	ret = usb_ep_queue(ep, req, f);
-	if (ret)
-		return ret;
-
-	return 0;
-}
-
 static void gbam_epin_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct gbam_port	*port = ep->driver_data;
@@ -396,11 +374,30 @@ gbam_epout_complete(struct usb_ep *ep, struct usb_request *req)
 	}
 	spin_unlock(&port->port_lock);
 
-	status = gbam_rx_submit(ep, req, GFP_ATOMIC);
-	if (status) {
-		pr_err("%s: data rx enqueue err %d\n",
-				__func__, status);
+	skb = alloc_skb(rx_req_size + BAM_MUX_HDR, GFP_ATOMIC);
+	if (!skb) {
+		spin_lock(&port->port_lock);
 		list_add_tail(&req->list, &d->rx_idle);
+		spin_unlock(&port->port_lock);
+		return;
+	}
+	skb_reserve(skb, BAM_MUX_HDR);
+
+	req->buf = skb->data;
+	req->length = rx_req_size;
+	req->context = skb;
+
+	status = usb_ep_queue(ep, req, GFP_ATOMIC);
+	if (status) {
+		dev_kfree_skb_any(skb);
+
+		if (printk_ratelimit())
+			pr_err("%s: data rx enqueue err %d\n",
+					__func__, status);
+
+		spin_lock(&port->port_lock);
+		list_add_tail(&req->list, &d->rx_idle);
+		spin_unlock(&port->port_lock);
 	}
 }
 
@@ -410,9 +407,8 @@ static void gbam_start_rx(struct gbam_port *port)
 	struct bam_ch_info		*d;
 	struct usb_ep			*ep;
 	unsigned long			flags;
-	struct list_head		*act;
-	struct list_head		*tmp;
 	int				ret;
+	struct sk_buff			*skb;
 
 	spin_lock_irqsave(&port->port_lock, flags);
 	if (!port->port_usb) {
@@ -422,17 +418,33 @@ static void gbam_start_rx(struct gbam_port *port)
 
 	d = &port->data_ch;
 	ep = port->port_usb->out;
-	list_for_each_safe(act, tmp, &d->rx_idle) {
-		req = list_entry(act, struct usb_request, list);
+
+	while (port->port_usb && !list_empty(&d->rx_idle)) {
+		req = list_first_entry(&d->rx_idle, struct usb_request, list);
+
+		skb = alloc_skb(rx_req_size + BAM_MUX_HDR, GFP_ATOMIC);
+		if (!skb)
+			break;
+		skb_reserve(skb, BAM_MUX_HDR);
+
 		list_del(&req->list);
+		req->buf = skb->data;
+		req->length = rx_req_size;
+		req->context = skb;
 
 		spin_unlock_irqrestore(&port->port_lock, flags);
-		ret = gbam_rx_submit(ep, req, GFP_ATOMIC);
+		ret = usb_ep_queue(ep, req, GFP_ATOMIC);
 		spin_lock_irqsave(&port->port_lock, flags);
 		if (ret) {
+			dev_kfree_skb_any(skb);
+
 			if (printk_ratelimit())
 				pr_err("%s: rx queue failed\n", __func__);
-			list_add(&req->list, &d->rx_idle);
+
+			if (port->port_usb)
+				list_add(&req->list, &d->rx_idle);
+			else
+				usb_ep_free_request(ep, req);
 			break;
 		}
 	}
@@ -695,10 +707,7 @@ void gbam_disconnect(struct grmnet *gr, u8 port_num)
 
 	/* disable endpoints */
 	usb_ep_disable(gr->out);
-	gr->out->driver_data = 0;
-
 	usb_ep_disable(gr->in);
-	gr->in->driver_data = 0;
 
 	if (atomic_read(&d->opened))
 		msm_bam_dmux_close(d->id);
