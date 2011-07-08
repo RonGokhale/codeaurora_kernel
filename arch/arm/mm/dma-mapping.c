@@ -36,7 +36,7 @@
 
 static u64 get_coherent_dma_mask(struct device *dev)
 {
-	u64 mask = ISA_DMA_THRESHOLD;
+	u64 mask = (u64)arm_dma_limit;
 
 	if (dev) {
 		mask = dev->coherent_dma_mask;
@@ -50,10 +50,10 @@ static u64 get_coherent_dma_mask(struct device *dev)
 			return 0;
 		}
 
-		if ((~mask) & ISA_DMA_THRESHOLD) {
+		if ((~mask) & (u64)arm_dma_limit) {
 			dev_warn(dev, "coherent DMA mask %#llx is smaller "
 				 "than system GFP_DMA mask %#llx\n",
-				 mask, (unsigned long long)ISA_DMA_THRESHOLD);
+				 mask, (u64)arm_dma_limit);
 			return 0;
 		}
 	}
@@ -918,6 +918,26 @@ EXPORT_SYMBOL(dma_sync_sg_for_device);
  * during bus mastering, then you would pass 0x00ffffff as the mask
  * to this function.
  */
+int dma_supported(struct device *dev, u64 mask)
+{
+	if (mask < (u64)arm_dma_limit)
+		return 0;
+	return 1;
+}
+EXPORT_SYMBOL(dma_supported);
+
+int dma_set_mask(struct device *dev, u64 dma_mask)
+{
+	if (!dev->dma_mask || !dma_supported(dev, dma_mask))
+		return -EIO;
+
+#ifndef CONFIG_DMABOUNCE
+	*dev->dma_mask = dma_mask;
+#endif
+
+	return 0;
+}
+EXPORT_SYMBOL(dma_set_mask);
 
 #define PREALLOC_DMA_DEBUG_ENTRIES	4096
 

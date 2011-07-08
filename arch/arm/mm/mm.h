@@ -22,6 +22,7 @@ struct map_desc;
 
 #ifdef CONFIG_ZONE_DMA
 extern phys_addr_t arm_dma_limit;
+extern u32 arm_dma_limit;
 #else
 #define arm_dma_limit ((u32)~0)
 #endif
