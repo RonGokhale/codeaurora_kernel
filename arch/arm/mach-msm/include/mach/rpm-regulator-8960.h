@@ -29,24 +29,26 @@
 
 /**
  * enum rpm_vreg_pin_fn - RPM regulator pin function choices
- * %RPM_VREG_PIN_FN_NONE:	do not use pin control
+ * %RPM_VREG_PIN_FN_DONT_CARE:	do not care about pin control state of the
+ *				regulator; allow another master processor to
+ *				specify pin control
  * %RPM_VREG_PIN_FN_ENABLE:	pin control switches between disable and enable
  * %RPM_VREG_PIN_FN_MODE:	pin control switches between LPM and HPM
  * %RPM_VREG_PIN_FN_SLEEP_B:	regulator is forced into LPM when sleep_b signal
  *				is asserted
- * %RPM_VREG_PIN_FN_MANUAL:	do not use pin control and do not let another
- *				master request pin control
+ * %RPM_VREG_PIN_FN_NONE:	do not use pin control for the regulator and do
+ *				not allow another master to request pin control
  *
  * The pin function specified in platform data corresponds to the active state
  * pin function value.  Pin function will be NONE until a consumer requests
  * pin control to be enabled.
  */
 enum rpm_vreg_pin_fn {
-	RPM_VREG_PIN_FN_NONE,
+	RPM_VREG_PIN_FN_DONT_CARE,
 	RPM_VREG_PIN_FN_ENABLE,
 	RPM_VREG_PIN_FN_MODE,
 	RPM_VREG_PIN_FN_SLEEP_B,
-	RPM_VREG_PIN_FN_MANUAL,
+	RPM_VREG_PIN_FN_NONE,
 };
 
 /**

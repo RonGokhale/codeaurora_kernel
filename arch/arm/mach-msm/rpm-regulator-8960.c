@@ -236,7 +236,8 @@ struct vreg {
 		.hpm_min_load	 = RPM_VREG_##_hpm_min_load##_HPM_MIN_LOAD, \
 		.type		 = REGULATOR_TYPE_LDO, \
 		.set_points	 = &_ranges##_set_points, \
-		.part = &ldo_parts, \
+		.part		 = &ldo_parts, \
+		.id		 = RPM_VREG_ID_PM8921_##_id, \
 	}
 
 #define SMPS(_id, _ranges, _hpm_min_load) \
@@ -248,7 +249,8 @@ struct vreg {
 		.hpm_min_load	 = RPM_VREG_##_hpm_min_load##_HPM_MIN_LOAD, \
 		.type		 = REGULATOR_TYPE_SMPS, \
 		.set_points	 = &_ranges##_set_points, \
-		.part = &smps_parts, \
+		.part		 = &smps_parts, \
+		.id		 = RPM_VREG_ID_PM8921_##_id, \
 	}
 
 #define LVS(_id) \
@@ -258,7 +260,8 @@ struct vreg {
 			[1] = { .id = -1, }, \
 		}, \
 		.type		 = REGULATOR_TYPE_VS, \
-		.part = &switch_parts, \
+		.part		 = &switch_parts, \
+		.id		 = RPM_VREG_ID_PM8921_##_id, \
 	}
 
 #define MVS(_vreg_id, _rpm_id) \
@@ -268,7 +271,8 @@ struct vreg {
 			[1] = { .id = -1, }, \
 		}, \
 		.type		 = REGULATOR_TYPE_VS, \
-		.part = &switch_parts, \
+		.part		 = &switch_parts, \
+		.id		 = RPM_VREG_ID_PM8921_##_vreg_id, \
 	}
 
 #define NCP(_id) \
@@ -279,7 +283,8 @@ struct vreg {
 		}, \
 		.type		 = REGULATOR_TYPE_NCP, \
 		.set_points	 = &ncp_set_points, \
-		.part = &ncp_parts, \
+		.part		 = &ncp_parts, \
+		.id		 = RPM_VREG_ID_PM8921_##_id, \
 	}
 
 static struct vreg vregs[] = {
@@ -339,11 +344,11 @@ static struct vreg vregs[] = {
 	((id == RPM_VREG_ID_PM8921_L24) || (id == RPM_VREG_ID_PM8921_S3))
 
 const char *pin_func_label[] = {
-	[RPM_VREG_PIN_FN_NONE]			= "none",
+	[RPM_VREG_PIN_FN_DONT_CARE]		= "don't care",
 	[RPM_VREG_PIN_FN_ENABLE]		= "on/off",
 	[RPM_VREG_PIN_FN_MODE]			= "HPM/LPM",
 	[RPM_VREG_PIN_FN_SLEEP_B]		= "sleep_b",
-	[RPM_VREG_PIN_FN_MANUAL]		= "manual",
+	[RPM_VREG_PIN_FN_NONE]			= "none",
 };
 
 const char *force_mode_label[] = {
@@ -1483,8 +1488,10 @@ rpm_vreg_init_regulator(const struct rpm_regulator_init_data *pdata,
 		SET_PART(vreg, freq_clk_src, 0);
 		SET_PART(vreg, comp_mode, 0);
 		SET_PART(vreg, hpm, 0);
-		SET_PART(vreg, pf, RPM_VREG_PIN_FN_NONE);
-		SET_PART(vreg, pc, RPM_VREG_PIN_CTRL_NONE);
+		if (!vreg->is_enabled_pc) {
+			SET_PART(vreg, pf, RPM_VREG_PIN_FN_NONE);
+			SET_PART(vreg, pc, RPM_VREG_PIN_CTRL_NONE);
+		}
 	} else {
 		/* Pin control regulator */
 		if ((pdata->pin_ctrl & RPM_VREG_PIN_CTRL_ALL)
@@ -1505,7 +1512,7 @@ rpm_vreg_init_regulator(const struct rpm_regulator_init_data *pdata,
 		/* Allow pf=sleep_b to be specified by platform data. */
 		if (vreg->pdata.pin_fn == RPM_VREG_PIN_FN_SLEEP_B)
 			pin_fn = RPM_VREG_PIN_FN_SLEEP_B;
-		SET_PART(vreg, pf, RPM_VREG_PIN_FN_NONE);
+		SET_PART(vreg, pf, pin_fn);
 		SET_PART(vreg, pc, RPM_VREG_PIN_CTRL_NONE);
 	}
 
