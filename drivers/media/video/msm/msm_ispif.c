@@ -71,8 +71,8 @@
 #define MAX_CID 15
 DEFINE_MUTEX(msm_ispif_mut);
 
-static struct msm_camera_io_ext camio_ext;
-static struct platform_device *camio_dev;
+static struct resource *ispif_mem;
+static struct resource *ispif_irq;
 static struct resource *ispifio;
 void __iomem *ispifbase;
 static uint32_t global_intf_cmd_mask = 0xFFFFFFFF;
@@ -98,26 +98,33 @@ static irqreturn_t msm_io_ispif_irq(int irq_num, void *data)
 int msm_ispif_init(struct platform_device *pdev)
 {
 	int rc = 0;
-	struct msm_camera_sensor_info *sinfo = pdev->dev.platform_data;
-	struct msm_camera_device_platform_data *camdev;
 	struct msm_ispif_fns ispif_fns;
-	if (sinfo == NULL)
-		return -EINVAL;
-	camdev = sinfo->pdata;
-	camio_dev = pdev;
-	camio_ext = camdev->ioext;
-	ispifio  = request_mem_region(camio_ext.ispifphy,
-		camio_ext.ispifsz, pdev->name);
+
+	ispif_mem = platform_get_resource_byname(pdev,
+					IORESOURCE_MEM, "ispif");
+	if (!ispif_mem) {
+		pr_err("%s: no mem resource?\n", __func__);
+		return -ENODEV;
+	}
+	ispif_irq = platform_get_resource_byname(pdev,
+					IORESOURCE_IRQ, "ispif");
+	if (!ispif_irq) {
+		pr_err("%s: no irq resource?\n", __func__);
+		return -ENODEV;
+	}
+
+	ispifio  = request_mem_region(ispif_mem->start,
+		resource_size(ispif_mem), pdev->name);
 	if (!ispifio)
 		return -EBUSY;
-	ispifbase = ioremap(camio_ext.ispifphy,
-		camio_ext.ispifsz);
+	ispifbase = ioremap(ispif_mem->start,
+		resource_size(ispif_mem));
 	if (!ispifbase) {
 		rc = -ENOMEM;
 		goto ispif_no_mem;
 	}
 #if DBG_ISPIF
-	rc = request_irq(camio_ext.ispifirq , msm_io_ispif_irq,
+	rc = request_irq(ispif_irq->start, msm_io_ispif_irq,
 		IRQF_TRIGGER_RISING, "ispif", 0);
 	if (rc < 0)
 		goto ispif_irq_fail;
@@ -136,22 +143,18 @@ int msm_ispif_init(struct platform_device *pdev)
 ispif_irq_fail:
 	iounmap(ispifbase);
 ispif_no_mem:
-	release_mem_region(camio_ext.ispifphy, camio_ext.ispifsz);
+	release_mem_region(ispif_mem->start, resource_size(ispif_mem));
 	return rc;
 }
 
 void msm_ispif_release(struct platform_device *pdev)
 {
-	struct msm_camera_sensor_info *sinfo = pdev->dev.platform_data;
-	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
-	camio_dev = pdev;
-	camio_ext = camdev->ioext;
 	CDBG("%s, free_irq\n", __func__);
 #if DBG_ISPIF
-	free_irq(camio_ext.ispifirq, 0);
+	free_irq(ispif_irq->start, 0);
 #endif
 	iounmap(ispifbase);
-	release_mem_region(camio_ext.ispifphy, camio_ext.ispifsz);
+	release_mem_region(ispif_mem->start, resource_size(ispif_mem));
 }
 
 void msm_ispif_intf_reset(uint8_t intftype)

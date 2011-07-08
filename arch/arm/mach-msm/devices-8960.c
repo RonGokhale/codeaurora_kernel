@@ -854,158 +854,91 @@ struct platform_device msm8960_device_qup_i2c_gsbi10 = {
 };
 
 #ifdef CONFIG_MSM_CAMERA
-
-static int msm_cam_gpio_tbl[] = {
-	5, /*CAMIF_MCLK*/
-	20, /*CAMIF_I2C_DATA*/
-	21, /*CAMIF_I2C_CLK*/
-};
-
-#ifdef CONFIG_IMX074
-static struct msm_camera_sensor_platform_info sensor_board_info = {
-	.mount_angle = 0
-};
-#endif
-
-static int config_gpio_table(int gpio_en)
-{
-	int rc = 0, i = 0;
-	if (gpio_en) {
-		for (i = 0; i < ARRAY_SIZE(msm_cam_gpio_tbl); i++) {
-			rc = gpio_request(msm_cam_gpio_tbl[i], "CAM_GPIO");
-			if (unlikely(rc < 0)) {
-				pr_err("%s not able to get gpio\n", __func__);
-				for (i--; i >= 0; i--)
-					gpio_free(msm_cam_gpio_tbl[i]);
-					break;
-			}
-		}
-	} else {
-		for (i = 0; i < ARRAY_SIZE(msm_cam_gpio_tbl); i++)
-			gpio_free(msm_cam_gpio_tbl[i]);
-	}
-	return rc;
-}
-
-static int config_camera_on_gpios(void)
-{
-	int rc = 0;
-
-	rc = config_gpio_table(1);
-	if (rc < 0) {
-		printk(KERN_ERR "%s: CAMSENSOR gpio table request"
-			"failed\n", __func__);
-		return rc;
-	}
-	return rc;
-}
-
-static void config_camera_off_gpios(void)
-{
-	config_gpio_table(0);
-}
-
-struct msm_camera_device_platform_data msm_camera_csi0_device_data = {
-	.camera_gpio_on  = config_camera_on_gpios,
-	.camera_gpio_off = config_camera_off_gpios,
-	.ioext.csiphy = 0x04800000,
-	.ioext.csisz  = 0x00000400,
-	.ioext.csiirq = CSI_0_IRQ,
-	.ioext.csiphyphy = 0x04800C00,
-	.ioext.csiphysz = 0x00000400,
-	.ioext.csiphyirq = CSIPHY_4LN_IRQ,
-	.ioext.ispifphy = 0x04800800,
-	.ioext.ispifsz = 0x00000400,
-	.ioext.ispifirq = ISPIF_IRQ,
-	.ioclk.mclk_clk_rate = 24000000,
-	.ioclk.vfe_clk_rate  = 228570000,
-	.csid_core = 0,
-};
-
-struct msm_camera_device_platform_data msm_camera_csi1_device_data = {
-	.camera_gpio_on  = config_camera_on_gpios,
-	.camera_gpio_off = config_camera_off_gpios,
-	.ioext.csiphy = 0x04800400,
-	.ioext.csisz  = 0x00000400,
-	.ioext.csiirq = CSI_1_IRQ,
-	.ioext.csiphyphy = 0x04801000,
-	.ioext.csiphysz = 0x00000400,
-	.ioext.csiphyirq = MSM8960_CSIPHY_2LN_IRQ,
-	.ioext.ispifphy = 0x04800800,
-	.ioext.ispifsz = 0x00000400,
-	.ioext.ispifirq = ISPIF_IRQ,
-	.ioclk.mclk_clk_rate = 24000000,
-	.ioclk.vfe_clk_rate  = 228570000,
-	.csid_core = 1,
-};
-
 struct resource msm_camera_resources[] = {
 	{
+		.name	= "vfe",
 		.start	= 0x04500000,
 		.end	= 0x04500000 + SZ_1M - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
+		.name	= "vfe",
 		.start	= VFE_IRQ,
 		.end	= VFE_IRQ,
 		.flags	= IORESOURCE_IRQ,
 	},
 	{
+		.name	= "vid_buf",
 		.flags	= IORESOURCE_DMA,
-	}
-};
-
-#ifdef CONFIG_IMX074
-static struct msm_camera_sensor_flash_data flash_imx074 = {
-	.flash_type	= MSM_CAMERA_FLASH_LED,
-};
-
-static struct msm_camera_sensor_info msm_camera_sensor_imx074_data = {
-	.sensor_name	= "imx074",
-	.sensor_reset	= 107,
-	.sensor_pwd	= 85,
-	.vcm_pwd	= 0,
-	.vcm_enable	= 1,
-	.pdata	= &msm_camera_csi0_device_data,
-	.resource	= msm_camera_resources,
-	.num_resources	= ARRAY_SIZE(msm_camera_resources),
-	.flash_data	= &flash_imx074,
-	.sensor_platform_info = &sensor_board_info,
-	.csi_if	= 1
-};
-
-struct platform_device msm8960_camera_sensor_imx074 = {
-	.name	= "msm_camera_imx074",
-	.dev	= {
-		.platform_data = &msm_camera_sensor_imx074_data,
+	},
+	{
+		.name	= "ispif",
+		.start	= 0x04800800,
+		.end	= 0x04800800 + SZ_1K - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "ispif",
+		.start	= ISPIF_IRQ,
+		.end	= ISPIF_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name	= "csid0",
+		.start	= 0x04800000,
+		.end	= 0x04800000 + SZ_1K - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "csid0",
+		.start	= CSI_0_IRQ,
+		.end	= CSI_0_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name	= "csiphy0",
+		.start	= 0x04800C00,
+		.end	= 0x04800C00 + SZ_1K - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "csiphy0",
+		.start	= CSIPHY_4LN_IRQ,
+		.end	= CSIPHY_4LN_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name	= "csid1",
+		.start	= 0x04800400,
+		.end	= 0x04800400 + SZ_1K - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "csid1",
+		.start	= CSI_1_IRQ,
+		.end	= CSI_1_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name	= "csiphy1",
+		.start	= 0x04801000,
+		.end	= 0x04801000 + SZ_1K - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "csiphy1",
+		.start	= MSM8960_CSIPHY_2LN_IRQ,
+		.end	= MSM8960_CSIPHY_2LN_IRQ,
+		.flags	= IORESOURCE_IRQ,
 	},
 };
-#endif
-#ifdef CONFIG_OV2720
-static struct msm_camera_sensor_flash_data flash_ov2720 = {
-	.flash_type	= MSM_CAMERA_FLASH_LED,
-};
 
-static struct msm_camera_sensor_info msm_camera_sensor_ov2720_data = {
-	.sensor_name	= "ov2720",
-	.sensor_reset	= 76,
-	.sensor_pwd	= 85,
-	.vcm_pwd	= 0,
-	.vcm_enable	= 1,
-	.pdata	= &msm_camera_csi1_device_data,
-	.resource	= msm_camera_resources,
-	.num_resources	= ARRAY_SIZE(msm_camera_resources),
-	.flash_data	= &flash_ov2720,
-	.csi_if	= 1
-};
-
-struct platform_device msm8960_camera_sensor_ov2720 = {
-	.name	= "msm_camera_ov2720",
-	.dev	= {
-		.platform_data = &msm_camera_sensor_ov2720_data,
-	},
-};
-#endif
+int __init msm_get_cam_resources(struct msm_camera_sensor_info *s_info)
+{
+	s_info->resource = msm_camera_resources;
+	s_info->num_resources = ARRAY_SIZE(msm_camera_resources);
+	return 0;
+}
 #endif
 
 static struct resource resources_ssbi_pm8921[] = {

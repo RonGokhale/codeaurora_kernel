@@ -723,6 +723,138 @@ static void __init msm8960_reserve(void)
 	msm_reserve();
 }
 
+#ifdef CONFIG_MSM_CAMERA
+
+static int msm_cam_gpio_tbl[] = {
+	5, /*CAMIF_MCLK*/
+	20, /*CAMIF_I2C_DATA*/
+	21, /*CAMIF_I2C_CLK*/
+};
+
+#ifdef CONFIG_IMX074
+static struct msm_camera_sensor_platform_info sensor_board_info = {
+	.mount_angle = 0
+};
+#endif
+
+static int config_gpio_table(int gpio_en)
+{
+	int rc = 0, i = 0;
+	if (gpio_en) {
+		for (i = 0; i < ARRAY_SIZE(msm_cam_gpio_tbl); i++) {
+			rc = gpio_request(msm_cam_gpio_tbl[i], "CAM_GPIO");
+			if (rc < 0) {
+				pr_err("%s not able to get gpio\n", __func__);
+				for (i--; i >= 0; i--)
+					gpio_free(msm_cam_gpio_tbl[i]);
+					break;
+			}
+		}
+	} else {
+		for (i = 0; i < ARRAY_SIZE(msm_cam_gpio_tbl); i++)
+			gpio_free(msm_cam_gpio_tbl[i]);
+	}
+	return rc;
+}
+
+static int config_camera_on_gpios(void)
+{
+	int rc = 0;
+
+	rc = config_gpio_table(1);
+	if (rc < 0) {
+		printk(KERN_ERR "%s: CAMSENSOR gpio table request"
+			"failed\n", __func__);
+		return rc;
+	}
+	return rc;
+}
+
+static void config_camera_off_gpios(void)
+{
+	config_gpio_table(0);
+}
+
+struct msm_camera_device_platform_data msm_camera_csi0_device_data = {
+	.camera_gpio_on  = config_camera_on_gpios,
+	.camera_gpio_off = config_camera_off_gpios,
+	.ioclk.mclk_clk_rate = 24000000,
+	.ioclk.vfe_clk_rate  = 228570000,
+	.csid_core = 0,
+};
+
+struct msm_camera_device_platform_data msm_camera_csi1_device_data = {
+	.camera_gpio_on  = config_camera_on_gpios,
+	.camera_gpio_off = config_camera_off_gpios,
+	.ioclk.mclk_clk_rate = 24000000,
+	.ioclk.vfe_clk_rate  = 228570000,
+	.csid_core = 1,
+};
+
+#ifdef CONFIG_IMX074
+static struct msm_camera_sensor_flash_data flash_imx074 = {
+	.flash_type	= MSM_CAMERA_FLASH_LED,
+};
+
+static struct msm_camera_sensor_info msm_camera_sensor_imx074_data = {
+	.sensor_name	= "imx074",
+	.sensor_reset	= 107,
+	.sensor_pwd	= 85,
+	.vcm_pwd	= 0,
+	.vcm_enable	= 1,
+	.pdata	= &msm_camera_csi0_device_data,
+	.flash_data	= &flash_imx074,
+	.sensor_platform_info = &sensor_board_info,
+	.csi_if	= 1
+};
+
+struct platform_device msm8960_camera_sensor_imx074 = {
+	.name	= "msm_camera_imx074",
+	.dev	= {
+		.platform_data = &msm_camera_sensor_imx074_data,
+	},
+};
+#endif
+#ifdef CONFIG_OV2720
+static struct msm_camera_sensor_flash_data flash_ov2720 = {
+	.flash_type	= MSM_CAMERA_FLASH_LED,
+};
+
+static struct msm_camera_sensor_info msm_camera_sensor_ov2720_data = {
+	.sensor_name	= "ov2720",
+	.sensor_reset	= 76,
+	.sensor_pwd	= 85,
+	.vcm_pwd	= 0,
+	.vcm_enable	= 1,
+	.pdata	= &msm_camera_csi1_device_data,
+	.flash_data	= &flash_ov2720,
+	.csi_if	= 1
+};
+
+struct platform_device msm8960_camera_sensor_ov2720 = {
+	.name	= "msm_camera_ov2720",
+	.dev	= {
+		.platform_data = &msm_camera_sensor_ov2720_data,
+	},
+};
+#endif
+static void __init msm8960_init_cam(void)
+{
+	int i;
+	struct platform_device *cam_dev[] = {
+		&msm8960_camera_sensor_imx074,
+		&msm8960_camera_sensor_ov2720,
+	};
+
+	for (i = 0; i < ARRAY_SIZE(cam_dev); i++) {
+		struct msm_camera_sensor_info *s_info;
+		s_info = cam_dev[i]->dev.platform_data;
+		msm_get_cam_resources(s_info);
+		platform_device_register(cam_dev[i]);
+	}
+}
+#endif
+
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 /* prim = 608 x 1024 x 4(bpp) x 3(pages) */
 #define MSM_FB_PRIM_BUF_SIZE 0x720000
@@ -2630,12 +2762,6 @@ static struct platform_device *cdp_devices[] __initdata = {
 #ifdef CONFIG_MSM_GEMINI
 	&msm8960_gemini_device,
 #endif
-#ifdef CONFIG_IMX074
-	&msm8960_camera_sensor_imx074,
-#endif
-#ifdef CONFIG_OV2720
-	&msm8960_camera_sensor_ov2720,
-#endif
 	&msm_voice,
 	&msm_voip,
 	&msm_lpa_pcm,
@@ -3284,6 +3410,7 @@ static void __init msm8960_cdp_init(void)
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	pm8921_gpio_mpp_init();
 	platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
+	msm8960_init_cam();
 	msm8960_init_mmc();
 	msm_acpu_clock_init(&msm8960_acpu_clock_data);
 	register_i2c_devices();
