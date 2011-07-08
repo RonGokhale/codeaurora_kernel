@@ -1217,9 +1217,12 @@ static void hci_cc_fm_disable_rsp(struct radio_hci_dev *hdev,
 	struct sk_buff *skb)
 {
 	__u8 status = *((__u8 *) skb->data);
+	struct iris_device *radio = video_get_drvdata(video_get_dev());
 
 	if (status)
 		return;
+
+	iris_q_event(radio, IRIS_EVT_RADIO_READY);
 
 	radio_hci_req_complete(hdev, status);
 }
