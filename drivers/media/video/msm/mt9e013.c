@@ -51,8 +51,8 @@
 #define MT9E013_TOTAL_STEPS_NEAR_TO_FAR    32
 
 uint16_t mt9e013_step_position_table[MT9E013_TOTAL_STEPS_NEAR_TO_FAR+1];
-uint16_t mt9e013_nl_region_boundary1 = 3;
-uint16_t mt9e013_nl_region_code_per_step1 = 30;
+uint16_t mt9e013_nl_region_boundary1;
+uint16_t mt9e013_nl_region_code_per_step1;
 uint16_t mt9e013_l_region_code_per_step = 4;
 uint16_t mt9e013_damping_threshold = 10;
 uint16_t mt9e013_sw_damping_time_wait = 1;
