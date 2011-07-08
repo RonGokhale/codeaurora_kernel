@@ -1660,8 +1660,9 @@ static int vfe32_proc_general(struct msm_vfe32_cmd *cmd)
 		}
 		msm_io_memcpy(vfe32_ctrl->vfebase + V32_DEMOSAICV3_0_OFF,
 			cmdp, V32_DEMOSAICV3_0_LEN);
+		cmdp += 1;
 		msm_io_memcpy(vfe32_ctrl->vfebase + V32_DEMOSAICV3_1_OFF,
-			cmdp+V32_DEMOSAICV3_0_LEN, V32_DEMOSAICV3_1_LEN);
+			cmdp, V32_DEMOSAICV3_1_LEN);
 		break;
 
 	case V32_DEMOSAICV3_ABCC_CFG:
