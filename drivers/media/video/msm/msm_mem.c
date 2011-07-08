@@ -31,7 +31,7 @@
 #include "msm_vfe31.h"
 
 #ifdef CONFIG_MSM_CAMERA_DEBUG
-#define D(fmt, args...) printk(KERN_DEBUG "msm_isp: " fmt, ##args)
+#define D(fmt, args...) pr_debug("msm_isp: " fmt, ##args)
 #else
 #define D(fmt, args...) do {} while (0)
 #endif
@@ -278,7 +278,7 @@ uint8_t msm_pmem_region_lookup_2(struct hlist_head *ptype,
 	regptr = reg;
 	mutex_lock(&hlist_mut);
 	hlist_for_each_entry_safe(region, node, n, ptype, list) {
-		D(KERN_ERR "Mio: info.type=%d, pmem_type = %d,"
+		D("Mio: info.type=%d, pmem_type = %d,"
 						"info.active = %d\n",
 		region->info.type, pmem_type, region->info.active);
 

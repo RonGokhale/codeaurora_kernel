@@ -29,7 +29,7 @@
 #include "msm.h"
 
 #ifdef CONFIG_MSM_CAMERA_DEBUG
-#define D(fmt, args...) printk(KERN_DEBUG "msm_isp: " fmt, ##args)
+#define D(fmt, args...) pr_debug("msm_isp: " fmt, ##args)
 #else
 #define D(fmt, args...) do {} while (0)
 #endif
@@ -50,7 +50,7 @@ static int msm_isp_enqueue(struct msm_cam_media_controller *pmctl,
 	struct msm_isp_stats_event_ctrl *isp_event;
 	isp_event = (struct msm_isp_stats_event_ctrl *)v4l2_evt.u.data;
 	if (!data) {
-		D("%s !!!!data = 0x%p\n", __func__, data);
+		pr_err("%s !!!!data = 0x%p\n", __func__, data);
 		return -EINVAL;
 	}
 
@@ -232,7 +232,7 @@ static int msm_isp_open(struct v4l2_subdev *sd, struct msm_sync *sync)
 	int rc = 0;
 	D("%s\n", __func__);
 	if (!sync) {
-		D("%s: param is NULL", __func__);
+		pr_err("%s: param is NULL", __func__);
 		return -EINVAL;
 	}
 
