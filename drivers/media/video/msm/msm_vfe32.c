@@ -172,14 +172,12 @@ static struct vfe32_cmd_type vfe32_cmd[] = {
 /*105*/	{V32_DEMOSAICV3_ABCC_CFG},
 		{V32_DEMOSAICV3_DBCC_CFG, V32_DEMOSAICV3_DBCC_LEN,
 			V32_DEMOSAICV3_DBCC_OFF},
-		{V32_DEMOSAICV3_DBPC_CFG, V32_DEMOSAICV3_DBPC_LEN1,
-			V32_DEMOSAICV3_DBPC_OFF1},
+		{V32_DEMOSAICV3_DBPC_CFG},
 		{V32_DEMOSAICV3_ABF_CFG},
 		{V32_DEMOSAICV3_ABCC_UPDATE},
-	{V32_DEMOSAICV3_DBCC_UPDATE, V32_DEMOSAICV3_DBCC_LEN,
-		V32_DEMOSAICV3_DBCC_OFF},
-	{V32_DEMOSAICV3_DBPC_UPDATE, V32_DEMOSAICV3_DBPC_LEN1,
-		V32_DEMOSAICV3_DBPC_OFF1},
+		{V32_DEMOSAICV3_DBCC_UPDATE, V32_DEMOSAICV3_DBCC_LEN,
+			V32_DEMOSAICV3_DBCC_OFF},
+		{V32_DEMOSAICV3_DBPC_UPDATE},
 };
 
 uint32_t vfe32_AXI_WM_CFG[] = {
@@ -1718,11 +1716,25 @@ static int vfe32_proc_general(struct msm_vfe32_cmd *cmd)
 
 		new_val = new_val | old_val;
 		*cmdp_local = new_val;
-		msm_io_memcpy(vfe32_ctrl->vfebase + V32_DEMOSAICV3_0_OFF,
-					cmdp_local, 4);
+		msm_io_memcpy(vfe32_ctrl->vfebase +
+			V32_DEMOSAICV3_0_OFF,
+			cmdp_local, V32_DEMOSAICV3_LEN);
 		cmdp_local += 1;
-		msm_io_memcpy(vfe32_ctrl->vfebase + vfe32_cmd[cmd->id].offset,
-			cmdp_local, (vfe32_cmd[cmd->id].length));
+		msm_io_memcpy(vfe32_ctrl->vfebase +
+			V32_DEMOSAICV3_DBPC_CFG_OFF,
+			cmdp_local, V32_DEMOSAICV3_DBPC_LEN);
+		cmdp_local += 1;
+		msm_io_memcpy(vfe32_ctrl->vfebase +
+			V32_DEMOSAICV3_DBPC_CFG_OFF0,
+			cmdp_local, V32_DEMOSAICV3_DBPC_LEN);
+		cmdp_local += 1;
+		msm_io_memcpy(vfe32_ctrl->vfebase +
+			V32_DEMOSAICV3_DBPC_CFG_OFF1,
+			cmdp_local, V32_DEMOSAICV3_DBPC_LEN);
+		cmdp_local += 1;
+		msm_io_memcpy(vfe32_ctrl->vfebase +
+			V32_DEMOSAICV3_DBPC_CFG_OFF2,
+			cmdp_local, V32_DEMOSAICV3_DBPC_LEN);
 		break;
 
 	case V32_RGB_G_CFG: {
