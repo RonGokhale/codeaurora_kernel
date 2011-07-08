@@ -846,15 +846,7 @@ static void __init fsm9xxx_map_io(void)
 	msm_clock_init(msm_clocks_fsm9xxx, msm_num_clocks_fsm9xxx);
 }
 
-MACHINE_START(FSM9XXX_SURF, "QCT FSM9XXX SURF")
-	.boot_params = PHYS_OFFSET + 0x100,
-	.map_io = fsm9xxx_map_io,
-	.init_irq = fsm9xxx_init_irq,
-	.init_machine = fsm9xxx_init,
-	.timer = &msm_timer,
-MACHINE_END
-
-MACHINE_START(FSM9XXX_FFA, "QCT FSM9XXX FFA")
+MACHINE_START(FSM9XXX_SURF, "QCT FSM9XXX")
 	.boot_params = PHYS_OFFSET + 0x100,
 	.map_io = fsm9xxx_map_io,
 	.init_irq = fsm9xxx_init_irq,
