@@ -301,44 +301,39 @@ uint8_t msm_pmem_region_lookup_2(struct hlist_head *ptype,
 
 uint8_t msm_pmem_region_lookup_3(struct msm_cam_v4l2_device *pcam, int idx,
 						struct msm_pmem_region *reg,
-						uint8_t start_index,
-						uint8_t stop_index,
 						int mem_type)
 {
 	struct videobuf_contig_pmem *mem;
-	int i;
 	uint8_t rc = 0;
+	struct videobuf_queue *q = &pcam->dev_inst[idx]->vid_bufq;
+	struct videobuf_buffer *buf = NULL;
 
-	mutex_lock(&hlist_mut);
+	videobuf_queue_lock(q);
+	list_for_each_entry(buf, &q->stream, stream) {
+		mem = buf->priv;
+		reg->paddr = mem->phyaddr;
+		D("%s paddr for buf %d is 0x%p\n", __func__,
+						buf->i,
+						(void *)reg->paddr);
+		reg->len = sizeof(struct msm_pmem_info);
+		reg->file = NULL;
+		reg->info.len = mem->size;
 
-	for (i = start_index; i < stop_index ; i++) {
-		if ((pcam->dev_inst[idx]->vid_bufq).bufs[i] != NULL) {
-			mem = ((pcam->dev_inst[idx]->vid_bufq).bufs[i])->priv;
-			reg->paddr = mem->phyaddr;
-			D("%s paddr for buf number %d is 0x%p\n", __func__, i,
-							(void *)reg->paddr);
-			reg->len = sizeof(struct msm_pmem_info);
-			reg->file = NULL;
-			reg->info.len = mem->size;
+		reg->info.vaddr =
+			(void *)(buf->baddr);
 
-			reg->info.vaddr =
-				(void *)(((pcam->dev_inst[idx]->vid_bufq)
-							.bufs[i])->baddr);
+		reg->info.type = mem_type;
 
-			reg->info.type = mem_type;
-
-			reg->info.offset = 0;
-			reg->info.y_off = mem->y_off;
-			reg->info.cbcr_off = PAD_TO_WORD(mem->cbcr_off);
-			D("%s y_off = %d, cbcr_off = %d\n", __func__,
-				reg->info.y_off, reg->info.cbcr_off);
-			rc += 1;
-			reg++;
-		}
+		reg->info.offset = 0;
+		reg->info.y_off = mem->y_off;
+		reg->info.cbcr_off = PAD_TO_WORD(mem->cbcr_off);
+		D("%s y_off = %d, cbcr_off = %d\n", __func__,
+			reg->info.y_off, reg->info.cbcr_off);
+		rc += 1;
+		reg++;
 	}
+	videobuf_queue_unlock(q);
 
-	mutex_unlock(&hlist_mut);
-	D("%s returning rc= %d\n", __func__, rc);
 	return rc;
 }
 

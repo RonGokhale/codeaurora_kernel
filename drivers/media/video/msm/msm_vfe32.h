@@ -875,15 +875,15 @@ struct vfe32_cmd_type {
 };
 
 struct vfe32_free_buf {
-	spinlock_t f_lock;
-	uint8_t available;
+	struct list_head node;
 	uint32_t paddr;
 	uint32_t y_off;
 	uint32_t cbcr_off;
 };
 
 struct vfe32_output_ch {
-	struct vfe32_free_buf free_buf;
+	struct list_head free_buf_queue;
+	spinlock_t free_buf_lock;
 	uint16_t output_fmt;
 	int8_t ch0;
 	int8_t ch1;

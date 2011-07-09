@@ -470,9 +470,7 @@ static int msm_frame_axi_cfg(struct v4l2_subdev *sd,
 		pmem_type = MSM_PMEM_PREVIEW;
 		axi_data.bufnum2 =
 			msm_pmem_region_lookup_3(sync->pcam_sync, idx,
-				&region[0], 0,
-			sync->pcam_sync->dev_inst[idx]->buf_count,
-			pmem_type);
+				&region[0], pmem_type);
 		if (!axi_data.bufnum2) {
 			pr_err("%s %d: pmem region 3 lookup error\n",
 				__func__, __LINE__);
@@ -492,9 +490,7 @@ static int msm_frame_axi_cfg(struct v4l2_subdev *sd,
 		pmem_type = MSM_PMEM_PREVIEW;
 		axi_data.bufnum1 =
 			msm_pmem_region_lookup_3(sync->pcam_sync, idx,
-				&region[0], 0,
-		sync->pcam_sync->dev_inst[idx]->buf_count,
-		pmem_type);
+				&region[0], pmem_type);
 		D("%s bufnum1 = %d\n", __func__, axi_data.bufnum1);
 		if (!axi_data.bufnum1) {
 			pr_err("%s %d: pmem region lookup error\n",
@@ -509,9 +505,7 @@ static int msm_frame_axi_cfg(struct v4l2_subdev *sd,
 			pmem_type = MSM_PMEM_VIDEO;
 			axi_data.bufnum2 =
 			msm_pmem_region_lookup_3(sync->pcam_sync, idx,
-				&region[axi_data.bufnum1],
-			0, sync->pcam_sync->dev_inst[idx]->buf_count,
-			pmem_type);
+				&region[axi_data.bufnum1], pmem_type);
 		D("%s bufnum2 = %d\n", __func__, axi_data.bufnum2);
 		if (!axi_data.bufnum2) {
 			pr_err("%s %d: pmem region lookup error\n",
@@ -531,9 +525,7 @@ static int msm_frame_axi_cfg(struct v4l2_subdev *sd,
 		pmem_type = MSM_PMEM_THUMBNAIL;
 		axi_data.bufnum1 =
 			msm_pmem_region_lookup_3(sync->pcam_sync, idx,
-				&region[0],
-			0, sync->pcam_sync->dev_inst[idx]->buf_count,
-			pmem_type);
+				&region[0], pmem_type);
 		if (!axi_data.bufnum1) {
 			pr_err("%s %d: pmem region lookup error\n",
 				__func__, __LINE__);
@@ -549,9 +541,7 @@ static int msm_frame_axi_cfg(struct v4l2_subdev *sd,
 		pmem_type = MSM_PMEM_MAINIMG;
 		axi_data.bufnum2 =
 		msm_pmem_region_lookup_3(sync->pcam_sync, idx,
-				&region[axi_data.bufnum1],
-		0, sync->pcam_sync->dev_inst[idx]->buf_count,
-		pmem_type);
+				&region[axi_data.bufnum1], pmem_type);
 		if (!axi_data.bufnum2) {
 			pr_err("%s %d: pmem region lookup error\n",
 				__func__, __LINE__);
@@ -569,9 +559,7 @@ static int msm_frame_axi_cfg(struct v4l2_subdev *sd,
 		pmem_type = MSM_PMEM_RAW_MAINIMG;
 		axi_data.bufnum2 =
 			msm_pmem_region_lookup_3(sync->pcam_sync, idx,
-				&region[0],
-		0, sync->pcam_sync->dev_inst[idx]->buf_count,
-		pmem_type);
+				&region[0], pmem_type);
 		if (!axi_data.bufnum2) {
 			pr_err("%s %d: pmem region lookup error\n",
 				__func__, __LINE__);
