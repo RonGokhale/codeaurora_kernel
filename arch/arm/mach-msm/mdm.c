@@ -284,14 +284,13 @@ static int charm_debugfs_init(void)
 static int gsbi9_uart_notifier_cb(struct notifier_block *this,
 					unsigned long code, void *_cmd)
 {
-	struct clk *uart_clk;
-
 	switch (code) {
 	case SUBSYS_AFTER_SHUTDOWN:
-		uart_clk = clk_get(&msm_device_uart_gsbi9.dev, "gsbi_uart_clk");
-		clk_set_rate(uart_clk, 0);
-		clk_set_rate(uart_clk, 1843200);
-		clk_put(uart_clk);
+		platform_device_unregister(msm_device_uart_gsbi9);
+		msm_device_uart_gsbi9 = msm_add_gsbi9_uart();
+		if (IS_ERR(msm_device_uart_gsbi9))
+			pr_err("%s(): Failed to create uart gsbi9 device\n",
+								__func__);
 	default:
 		break;
 	}

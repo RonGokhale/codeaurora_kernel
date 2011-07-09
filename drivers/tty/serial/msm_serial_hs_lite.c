@@ -498,7 +498,8 @@ static int msm_hsl_startup(struct uart_port *port)
 {
 	struct msm_hsl_port *msm_hsl_port = UART_TO_MSM(port);
 	struct platform_device *pdev = to_platform_device(port->dev);
-	struct msm_serial_hslite_platform_data *pdata = pdev->dev.platform_data;
+	const struct msm_serial_hslite_platform_data *pdata =
+					pdev->dev.platform_data;
 	unsigned int data, rfr_level;
 	int ret;
 	unsigned long flags;
@@ -600,7 +601,8 @@ static void msm_hsl_shutdown(struct uart_port *port)
 {
 	struct msm_hsl_port *msm_hsl_port = UART_TO_MSM(port);
 	struct platform_device *pdev = to_platform_device(port->dev);
-	struct msm_serial_hslite_platform_data *pdata = pdev->dev.platform_data;
+	const struct msm_serial_hslite_platform_data *pdata =
+					pdev->dev.platform_data;
 
 	clk_en(port, 1);
 
@@ -1023,7 +1025,7 @@ static struct uart_driver msm_hsl_uart_driver = {
 	.cons = MSM_HSL_CONSOLE,
 };
 
-static int __init msm_serial_hsl_probe(struct platform_device *pdev)
+static int __devinit msm_serial_hsl_probe(struct platform_device *pdev)
 {
 	struct msm_hsl_port *msm_hsl_port;
 	struct resource *uart_resource;
@@ -1089,10 +1091,17 @@ static int __init msm_serial_hsl_probe(struct platform_device *pdev)
 static int __devexit msm_serial_hsl_remove(struct platform_device *pdev)
 {
 	struct msm_hsl_port *msm_hsl_port = platform_get_drvdata(pdev);
+	struct uart_port *port;
 
+	port = get_port_from_line(pdev->id);
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 
+	device_set_wakeup_capable(&pdev->dev, 0);
+	platform_set_drvdata(pdev, NULL);
+	uart_remove_one_port(&msm_hsl_uart_driver, port);
+
+	clk_put(msm_hsl_port->pclk);
 	clk_put(msm_hsl_port->clk);
 
 	return 0;
@@ -1169,7 +1178,8 @@ static struct dev_pm_ops msm_hsl_dev_pm_ops = {
 };
 
 static struct platform_driver msm_hsl_platform_driver = {
-	.remove = msm_serial_hsl_remove,
+	.probe = msm_serial_hsl_probe,
+	.remove = __devexit_p(msm_serial_hsl_remove),
 	.driver = {
 		.name = "msm_serial_hsl",
 		.owner = THIS_MODULE,
@@ -1185,8 +1195,7 @@ static int __init msm_serial_hsl_init(void)
 	if (unlikely(ret))
 		return ret;
 
-	ret = platform_driver_probe(&msm_hsl_platform_driver,
-				    msm_serial_hsl_probe);
+	ret = platform_driver_register(&msm_hsl_platform_driver);
 	if (unlikely(ret))
 		uart_unregister_driver(&msm_hsl_uart_driver);
 

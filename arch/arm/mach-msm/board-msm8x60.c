@@ -3502,13 +3502,6 @@ static struct msm_serial_hs_platform_data msm_uart_dm1_pdata = {
 };
 #endif
 
-#ifdef CONFIG_MSM_GSBI9_UART
-static struct msm_serial_hslite_platform_data msm_uart_gsbi9_pdata = {
-	.config_gpio	= 1,
-	.uart_tx_gpio	= 67,
-	.uart_rx_gpio	= 66,
-};
-#endif
 
 #if defined(CONFIG_GPIO_SX150X) || defined(CONFIG_GPIO_SX150X_MODULE)
 
@@ -7318,9 +7311,10 @@ static void __init msm8x60_init_buses(void)
 #endif
 #ifdef CONFIG_MSM_GSBI9_UART
 	if (machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa()) {
-		msm_device_uart_gsbi9.dev.platform_data =
-					&msm_uart_gsbi9_pdata;
-		platform_device_register(&msm_device_uart_gsbi9);
+		msm_device_uart_gsbi9 = msm_add_gsbi9_uart();
+		if (IS_ERR(msm_device_uart_gsbi9))
+			pr_err("%s(): Failed to create uart gsbi9 device\n",
+								__func__);
 	}
 #endif
 
