@@ -80,8 +80,6 @@ struct audio {
 	uint32_t out_channel_mode;
 	uint32_t out_bits; /* bits per sample (used by PCM decoder) */
 
-	/* data allocated for various buffers */
-	char *data;
 	int32_t phys; /* physical address of write buffer */
 
 	uint32_t drv_status;
