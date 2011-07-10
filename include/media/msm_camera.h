@@ -544,7 +544,8 @@ struct msm_stats_buf {
 #define MSM_V4L2_PID_SNOW_DETECTION         (V4L2_CID_PRIVATE_BASE+12)
 #define MSM_V4L2_PID_CTRL_CMD               (V4L2_CID_PRIVATE_BASE+13)
 #define MSM_V4L2_PID_EVT_SUB_INFO           (V4L2_CID_PRIVATE_BASE+14)
-#define MSM_V4L2_PID_MAX                    MSM_V4L2_PID_EVT_SUB_INFO
+#define MSM_V4L2_PID_STROBE_FLASH	    (V4L2_CID_PRIVATE_BASE+15)
+#define MSM_V4L2_PID_MAX                    MSM_V4L2_PID_STROBE_FLASH
 
 /* camera operation mode for video recording - two frame output queues */
 #define MSM_V4L2_CAM_OP_DEFAULT         0
