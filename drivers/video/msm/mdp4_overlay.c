@@ -1399,8 +1399,8 @@ int mdp4_overlay_req_check(uint32 id, uint32 z_order, uint32 mixer)
 	return -EPERM;
 }
 
-static int mdp4_overlay_validate_lcdc_downscale(struct mdp_overlay *req,
-	struct msm_fb_data_type *mfd, uint32 perf_level)
+static int mdp4_overlay_validate_downscale(struct mdp_overlay *req,
+	struct msm_fb_data_type *mfd, uint32 perf_level, uint32 pclk_rate)
 {
 	__u32 panel_clk_khz, mdp_clk_khz;
 	__u32 num_hsync_pix_clks, mdp_clks_per_hsync, src_wh;
@@ -1416,7 +1416,7 @@ static int mdp4_overlay_validate_lcdc_downscale(struct mdp_overlay *req,
 		req->dst_rect.h);
 
 
-	panel_clk_khz = mfd->panel_info.clk_rate/1000;
+	panel_clk_khz = pclk_rate/1000;
 	mdp_clk_hz = mdp_perf_level2clk_rate(perf_level);
 
 	if (!mdp_clk_hz) {
@@ -1865,10 +1865,20 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 
 	perf_level = mdp4_overlay_get_perf_level(req);
 
-	if ((mfd->panel_info.type == LCDC_PANEL) && (req->src_rect.h >
+	if ((mfd->panel_info.type == LCDC_PANEL) &&
+	    (req->src_rect.h >
 		req->dst_rect.h || req->src_rect.w > req->dst_rect.w)) {
-		if (mdp4_overlay_validate_lcdc_downscale(req, mfd,
-			perf_level)) {
+		if (mdp4_overlay_validate_downscale(req, mfd,
+			perf_level, mfd->panel_info.clk_rate)) {
+			mutex_unlock(&mfd->dma->ov_mutex);
+			return -ERANGE;
+		}
+	}
+	if ((mfd->panel_info.type == MIPI_VIDEO_PANEL) &&
+	    (req->src_rect.h >
+		req->dst_rect.h || req->src_rect.w > req->dst_rect.w)) {
+		if (mdp4_overlay_validate_downscale(req, mfd,
+			perf_level, (&mfd->panel_info.mipi)->dsi_pclk_rate)) {
 			mutex_unlock(&mfd->dma->ov_mutex);
 			return -ERANGE;
 		}

@@ -825,17 +825,17 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 	if (mfd->panel_info.type == MIPI_VIDEO_PANEL) {
 		if (lanes > 0) {
-			pll_divider_config.clk_rate =
+			mfd->panel_info.clk_rate =
 			((h_period * v_period * (mipi->frame_rate) * bpp * 8)
 			   / lanes);
 		} else {
 			pr_err("%s: forcing mipi_dsi lanes to 1\n", __func__);
-			pll_divider_config.clk_rate =
+			mfd->panel_info.clk_rate =
 				(h_period * v_period
 					 * (mipi->frame_rate) * bpp * 8);
 		}
-	} else
-		pll_divider_config.clk_rate = mfd->panel_info.clk_rate;
+	}
+	pll_divider_config.clk_rate = mfd->panel_info.clk_rate;
 
 	rc = mipi_dsi_clk_div_config(bpp, lanes, &dsi_pclk_rate);
 	if (rc)
