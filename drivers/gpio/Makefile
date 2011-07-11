@@ -45,3 +45,4 @@ obj-$(CONFIG_GPIO_ML_IOH)	+= ml_ioh_gpio.o
 obj-$(CONFIG_MPP_PMIC8901)      += pmic8901-mpp.o
 obj-$(CONFIG_GPIO_PM8XXX)	+= pm8xxx-gpio.o
 obj-$(CONFIG_GPIO_PM8XXX_MPP) 	+= pm8xxx-mpp.o
+obj-$(CONFIG_GPIO_PM8XXX_RPC)	+= gpio-pm8xxx-rpc.o
