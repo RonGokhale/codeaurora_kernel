@@ -81,8 +81,32 @@
 #define SSBI_REG_ADDR_PON_CNTL_5 0x7B
 #define PM8058_HARD_RESET_EN_MASK 0x08
 
-/* Regulator L22 control register */
+/* Regulator control registers for shutdown/reset */
+#define SSBI_REG_ADDR_S0_CTRL		0x004
+#define SSBI_REG_ADDR_S1_CTRL		0x005
+#define SSBI_REG_ADDR_S3_CTRL		0x111
+#define SSBI_REG_ADDR_L21_CTRL		0x120
 #define SSBI_REG_ADDR_L22_CTRL		0x121
+
+#define REGULATOR_ENABLE_MASK		0x80
+#define REGULATOR_ENABLE		0x80
+#define REGULATOR_DISABLE		0x00
+#define REGULATOR_PULL_DOWN_MASK	0x40
+#define REGULATOR_PULL_DOWN_EN		0x40
+#define REGULATOR_PULL_DOWN_DIS		0x00
+
+/* Buck test2 registers for shutdown/reset */
+#define SSBI_REG_ADDR_S0_TEST		0x084
+#define SSBI_REG_ADDR_S1_TEST		0x085
+#define SSBI_REG_ADDR_S3_TEST		0x11A
+
+#define REGULATOR_BANK_WRITE		0x80
+#define REGULATOR_BANK_MASK		0x70
+#define REGULATOR_BANK_SHIFT		4
+#define REGULATOR_BANK_SEL(n)		((n) << REGULATOR_BANK_SHIFT)
+
+/* Test2 register bank 7 */
+#define SMPS_ADVANCED_MODE		0x02
 
 /* SLEEP CNTL register */
 #define SSBI_REG_ADDR_SLEEP_CNTL	0x02B
@@ -376,11 +400,59 @@ int pm8058_reset_pwr_off(int reset)
 	u8		pon;
 	u8		ctrl;
 	u8		smpl;
+	u8		bank;
+	u16		smps2disable[][2] = {
+		/* test, ctrl */
+		{ SSBI_REG_ADDR_S0_TEST, SSBI_REG_ADDR_S0_CTRL },
+		{ SSBI_REG_ADDR_S1_TEST, SSBI_REG_ADDR_S1_CTRL },
+		{ SSBI_REG_ADDR_S3_TEST, SSBI_REG_ADDR_S3_CTRL },
+	};
+	int		i;
 
 	if (pmic_chip == NULL)
 		return -ENODEV;
 
 	mutex_lock(&pmic_chip->pm_lock);
+
+	/* Disable these SMPS regulators in local control register and
+	   set pull down */
+	for (i = 0; i < ARRAY_SIZE(smps2disable); i++) {
+		bank = REGULATOR_BANK_SEL(7);
+		rc = ssbi_write(pmic_chip->dev, smps2disable[i][0], &bank, 1);
+		if (rc) {
+			pr_err("%s: FAIL ssbi_write(0x%x): rc=%d\n",
+			       __func__, smps2disable[i][0], rc);
+			goto get_out3;
+		}
+
+		rc = ssbi_read(pmic_chip->dev, smps2disable[i][0], &ctrl, 1);
+		if (rc) {
+			pr_err("%s: FAIL pm8058_read(0x%x): rc=%d\n",
+			       __func__, smps2disable[i][0], rc);
+			goto get_out3;
+		}
+
+		if (ctrl & SMPS_ADVANCED_MODE) {
+			ctrl &= ~SMPS_ADVANCED_MODE;
+			ctrl |= REGULATOR_BANK_WRITE;
+			rc = ssbi_write(pmic_chip->dev, smps2disable[i][0],
+					&ctrl, 1);
+			if (rc) {
+				pr_err("%s: FAIL ssbi_write(0x%x): rc=%d\n",
+				       __func__, smps2disable[i][0], rc);
+				goto get_out3;
+			}
+		}
+
+		pm8058_masked_write(smps2disable[i][1],
+			REGULATOR_DISABLE | REGULATOR_PULL_DOWN_EN,
+			REGULATOR_ENABLE_MASK | REGULATOR_PULL_DOWN_MASK);
+	}
+
+	/* Disable LDO21 regulator and set pull down */
+	pm8058_masked_write(SSBI_REG_ADDR_L21_CTRL,
+		REGULATOR_DISABLE | REGULATOR_PULL_DOWN_EN,
+		REGULATOR_ENABLE_MASK | REGULATOR_PULL_DOWN_MASK);
 
 	/* Set regulator L22 to 1.225V in high power mode. */
 	rc = ssbi_read(pmic_chip->dev, SSBI_REG_ADDR_L22_CTRL, &ctrl, 1);
