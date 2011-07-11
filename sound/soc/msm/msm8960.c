@@ -167,10 +167,22 @@ static int msm8960_spkramp_event(struct snd_soc_dapm_widget *w,
 
 static const struct snd_soc_dapm_widget msm8960_dapm_widgets[] = {
 	SND_SOC_DAPM_SPK("Ext Spk", msm8960_spkramp_event),
+	SND_SOC_DAPM_MIC("Handset Mic", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic1", NULL),
 };
 
 static const struct snd_soc_dapm_route audio_map[] = {
+	/* Speaker path */
 	{"Ext Spk", NULL, "LINEOUT"},
+
+	/* Microphone path */
+	{"AMIC1", NULL, "MIC BIAS1 Internal"},
+	{"DMIC1 IN", NULL, "MIC BIAS1 External"},
+	{"AMIC2", NULL, "MIC BIAS2 External"},
+	{"MIC BIAS1 Internal", NULL, "Handset Mic"},
+	{"MIC BIAS1 External", NULL, "Digital Mic1"},
+	{"MIC BIAS2 External", NULL, "Headset Mic"},
 };
 
 static const char *spk_function[] = {"Off", "On"};
@@ -236,8 +248,6 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 
 	pr_debug("%s()\n", __func__);
 
-	snd_soc_dapm_enable_pin(dapm, "Ext Spk");
-
 	err = snd_soc_add_controls(codec, tabla_msm8960_controls,
 				ARRAY_SIZE(tabla_msm8960_controls));
 	if (err < 0)
@@ -247,6 +257,8 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 				ARRAY_SIZE(msm8960_dapm_widgets));
 
 	snd_soc_dapm_add_routes(dapm, audio_map, ARRAY_SIZE(audio_map));
+
+	snd_soc_dapm_enable_pin(dapm, "Ext Spk");
 
 	snd_soc_dapm_sync(dapm);
 
