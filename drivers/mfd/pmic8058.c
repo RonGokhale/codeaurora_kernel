@@ -204,8 +204,6 @@ static int pm8058_masked_write(u16 addr, u8 val, u8 mask)
 	if (pmic_chip == NULL)
 		return -ENODEV;
 
-	mutex_lock(&pmic_chip->pm_lock);
-
 	rc = ssbi_read(pmic_chip->dev, addr, &reg, 1);
 	if (rc) {
 		pr_err("%s: ssbi_read(0x%03X) failed: rc=%d\n", __func__, addr,
@@ -221,8 +219,6 @@ static int pm8058_masked_write(u16 addr, u8 val, u8 mask)
 		pr_err("%s: ssbi_write(0x%03X)=0x%02X failed: rc=%d\n",
 			__func__, addr, reg, rc);
 done:
-	mutex_unlock(&pmic_chip->pm_lock);
-
 	return rc;
 }
 
@@ -412,8 +408,6 @@ int pm8058_reset_pwr_off(int reset)
 	if (pmic_chip == NULL)
 		return -ENODEV;
 
-	mutex_lock(&pmic_chip->pm_lock);
-
 	/* Disable these SMPS regulators in local control register and
 	   set pull down */
 	for (i = 0; i < ARRAY_SIZE(smps2disable); i++) {
@@ -512,8 +506,6 @@ get_out2:
 	}
 
 get_out:
-	mutex_unlock(&pmic_chip->pm_lock);
-
 	return rc;
 }
 EXPORT_SYMBOL(pm8058_reset_pwr_off);
