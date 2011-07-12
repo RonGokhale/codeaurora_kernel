@@ -349,6 +349,8 @@ struct platform_device qfec_device = {
 
 #if defined(CONFIG_QFP_FUSE)
 
+char fuse_regulator_name[] = "8058_lvs0";
+
 struct resource qfp_fuse_resources[] = {
 	{
 		.start = (uint32_t) MSM_QFP_FUSE_BASE,
@@ -360,6 +362,7 @@ struct resource qfp_fuse_resources[] = {
 struct platform_device fsm_qfp_fuse_device = {
 	.name           = "qfp_fuse_driver",
 	.id             = 0,
+	.dev = {.platform_data = fuse_regulator_name},
 	.num_resources  = ARRAY_SIZE(qfp_fuse_resources),
 	.resource       = qfp_fuse_resources,
 };
