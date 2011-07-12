@@ -190,7 +190,7 @@ static void remove_modem_proxy_votes(unsigned long data)
 {
 	msm_xo_mode_vote(pxo, MSM_XO_MODE_OFF);
 }
-DEFINE_TIMER(modem_timer, remove_modem_proxy_votes, 0, 0);
+static DEFINE_TIMER(modem_timer, remove_modem_proxy_votes, 0, 0);
 
 static void make_modem_proxy_votes(void)
 {
@@ -320,8 +320,6 @@ static int shutdown_modem_untrusted(void)
 {
 	u32 reg;
 
-	remove_modem_proxy_votes_now();
-
 	/* Put modem into reset */
 	__raw_writel(0x1, MARM_RESET);
 	mb();
@@ -353,13 +351,23 @@ static int shutdown_modem_untrusted(void)
 
 	/* Clear modem's votes for PLLs */
 	__raw_writel(0x0, PLL_ENA_MARM);
+
+	remove_modem_proxy_votes_now();
+
 	return 0;
 }
 
 static int shutdown_modem_trusted(void)
 {
+	int ret;
+
+	ret = shutdown_trusted(PAS_MODEM);
+	if (ret)
+		return ret;
+
 	remove_modem_proxy_votes_now();
-	return shutdown_trusted(PAS_MODEM);
+
+	return 0;
 }
 
 #define LV_EN 			BIT(27)
