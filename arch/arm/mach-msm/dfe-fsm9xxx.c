@@ -35,8 +35,8 @@
 #define HH_REG_IOADDR(offset)		((uint8_t *) MSM_HH_BASE + (offset))
 #define HH_MAKE_OFFSET(blk, adr)	(((blk)&0x1F)<<15|((adr)&0x1FFF)<<2)
 
-#define HH_REG_SCPN_IREQ_MASK		HH_REG_IOADDR(HH_MAKE_OFFSET(5, 12))
-#define HH_REG_SCPN_IREQ_FLAG		HH_REG_IOADDR(HH_MAKE_OFFSET(5, 13))
+#define HH_REG_SCPN_IREQ_MASK		HH_REG_IOADDR(HH_MAKE_OFFSET(5, 0x12))
+#define HH_REG_SCPN_IREQ_FLAG		HH_REG_IOADDR(HH_MAKE_OFFSET(5, 0x13))
 
 /*
  * Device private information per device node
