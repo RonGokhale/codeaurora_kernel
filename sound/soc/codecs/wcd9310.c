@@ -439,11 +439,11 @@ static int tabla_codec_enable_micbias(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
 		snd_soc_update_bits(codec, micb_cfilt_reg, 0x80, 0x80);
-		if (!strnstr(w->name, internal_text, 20))
+		if (strnstr(w->name, internal_text, 20))
 			snd_soc_update_bits(codec, micb_int_reg, 0xE0, 0xE0);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
-		if (!strnstr(w->name, internal_text, 20))
+		if (strnstr(w->name, internal_text, 20))
 			snd_soc_update_bits(codec, micb_int_reg, 0x80, 0x00);
 		snd_soc_update_bits(codec, micb_cfilt_reg, 0x80, 0);
 		break;
