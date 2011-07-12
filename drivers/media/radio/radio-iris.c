@@ -660,7 +660,7 @@ static int hci_fm_cancel_search_req(struct radio_hci_dev *hdev,
 {
 	__u16 opcode = 0;
 
-	opcode = hci_opcode_pack(HCI_OGF_FM_COMMON_CTRL_CMD_REQ,
+	opcode = hci_opcode_pack(HCI_OGF_FM_RECV_CTRL_CMD_REQ,
 		HCI_OCF_FM_CANCEL_SEARCH);
 	return radio_hci_send_cmd(hdev, opcode, 0, NULL);
 }
