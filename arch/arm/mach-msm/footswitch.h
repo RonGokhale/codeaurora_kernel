@@ -29,6 +29,8 @@
 #ifndef __MSM_FOOTSWITCH__
 #define __MSM_FOOTSWITCH__
 
+#include <linux/regulator/machine.h>
+
 enum fs_ids {
 	FS_GFX2D0 = 0,
 	FS_GFX2D1,
