@@ -1658,11 +1658,13 @@ static int vfe32_proc_general(struct msm_vfe32_cmd *cmd)
 			rc = -EFAULT;
 			goto proc_general_done;
 		}
+		cmdp_local = cmdp;
+
 		msm_io_memcpy(vfe32_ctrl->vfebase + V32_DEMOSAICV3_0_OFF,
-			cmdp, V32_DEMOSAICV3_0_LEN);
-		cmdp += 1;
+			cmdp_local, V32_DEMOSAICV3_0_LEN);
+		cmdp_local += 1;
 		msm_io_memcpy(vfe32_ctrl->vfebase + V32_DEMOSAICV3_1_OFF,
-			cmdp, V32_DEMOSAICV3_1_LEN);
+			cmdp_local, V32_DEMOSAICV3_1_LEN);
 		break;
 
 	case V32_DEMOSAICV3_ABCC_CFG:
