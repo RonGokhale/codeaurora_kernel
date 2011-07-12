@@ -54,6 +54,17 @@
 #define ADRENO_DEFAULT_PWRSCALE_POLICY  NULL
 #endif
 
+#define KGSL_CP_INT_MASK \
+	(CP_INT_CNTL__SW_INT_MASK | \
+	CP_INT_CNTL__T0_PACKET_IN_IB_MASK | \
+	CP_INT_CNTL__OPCODE_ERROR_MASK | \
+	CP_INT_CNTL__PROTECTED_MODE_ERROR_MASK | \
+	CP_INT_CNTL__RESERVED_BIT_ERROR_MASK | \
+	CP_INT_CNTL__IB_ERROR_MASK | \
+	CP_INT_CNTL__IB2_INT_MASK | \
+	CP_INT_CNTL__IB1_INT_MASK | \
+	CP_INT_CNTL__RB_INT_MASK)
+
 enum adreno_gpurev {
 	ADRENO_REV_UNKNOWN = 0,
 	ADRENO_REV_A200 = 200,
@@ -82,12 +93,6 @@ void adreno_regread(struct kgsl_device *device, unsigned int offsetwords,
 				unsigned int *value);
 void adreno_regwrite(struct kgsl_device *device, unsigned int offsetwords,
 				unsigned int value);
-void adreno_regread_isr(struct kgsl_device *device,
-			     unsigned int offsetwords,
-			     unsigned int *value);
-void adreno_regwrite_isr(struct kgsl_device *device,
-			      unsigned int offsetwords,
-			      unsigned int value);
 
 uint8_t *kgsl_sharedmem_convertaddr(struct kgsl_device *device,
 	unsigned int pt_base, unsigned int gpuaddr, unsigned int *size);

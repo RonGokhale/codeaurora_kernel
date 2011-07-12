@@ -33,7 +33,7 @@
 #define DRIVER_VERSION_MAJOR   3
 #define DRIVER_VERSION_MINOR   1
 
-#define GSL_RBBM_INT_MASK \
+#define KGSL_RBBM_INT_MASK \
 	 (RBBM_INT_CNTL__RDERR_INT_MASK |  \
 	  RBBM_INT_CNTL__DISPLAY_UPDATE_INT_MASK)
 
@@ -157,11 +157,11 @@ static void adreno_rbbm_intrcallback(struct kgsl_device *device)
 	unsigned int status = 0;
 	unsigned int rderr = 0;
 
-	adreno_regread_isr(device, REG_RBBM_INT_STATUS, &status);
+	adreno_regread(device, REG_RBBM_INT_STATUS, &status);
 
 	if (status & RBBM_INT_CNTL__RDERR_INT_MASK) {
 		union rbbm_read_error_u rerr;
-		adreno_regread_isr(device, REG_RBBM_READ_ERROR, &rderr);
+		adreno_regread(device, REG_RBBM_READ_ERROR, &rderr);
 		rerr.val = rderr;
 		if (rerr.f.read_address == REG_CP_INT_STATUS &&
 			rerr.f.read_error &&
@@ -180,8 +180,8 @@ static void adreno_rbbm_intrcallback(struct kgsl_device *device)
 			"bad bits in REG_CP_INT_STATUS %08x\n", status);
 	}
 
-	status &= GSL_RBBM_INT_MASK;
-	adreno_regwrite_isr(device, REG_RBBM_INT_ACK, status);
+	status &= KGSL_RBBM_INT_MASK;
+	adreno_regwrite(device, REG_RBBM_INT_ACK, status);
 }
 
 irqreturn_t adreno_isr(int irq, void *data)
@@ -196,7 +196,7 @@ irqreturn_t adreno_isr(int irq, void *data)
 	BUG_ON(device->regspace.sizebytes == 0);
 	BUG_ON(device->regspace.mmio_virt_base == 0);
 
-	adreno_regread_isr(device, REG_MASTER_INT_SIGNAL, &status);
+	adreno_regread(device, REG_MASTER_INT_SIGNAL, &status);
 
 	if (status & MASTER_INT_SIGNAL__MH_INT_STAT) {
 		kgsl_mh_intrcallback(device);
@@ -585,9 +585,10 @@ static int adreno_start(struct kgsl_device *device, unsigned int init_ram)
 
 	adreno_regwrite(device, REG_RBBM_DEBUG, 0x00080000);
 
-	adreno_regwrite(device, REG_RBBM_INT_CNTL, GSL_RBBM_INT_MASK);
+	/* Make sure interrupts are disabled */
 
-	/* make sure SQ interrupts are disabled */
+	adreno_regwrite(device, REG_RBBM_INT_CNTL, 0);
+	adreno_regwrite(device, REG_CP_INT_CNTL, 0);
 	adreno_regwrite(device, REG_SQ_INT_CNTL, 0);
 
 	if (adreno_is_a220(adreno_dev))
@@ -596,7 +597,7 @@ static int adreno_start(struct kgsl_device *device, unsigned int init_ram)
 		adreno_dev->gmemspace.sizebytes = SZ_256K;
 	adreno_gmeminit(adreno_dev);
 
-	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_IRQ_ON);
+	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_ON);
 
 	status = adreno_ringbuffer_start(&adreno_dev->ringbuffer, init_ram);
 	if (status != 0)
@@ -606,7 +607,7 @@ static int adreno_start(struct kgsl_device *device, unsigned int init_ram)
 	return status;
 
 error_irq_off:
-	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_IRQ_OFF);
+	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 error_clk_off:
 	kgsl_pwrctrl_disable(device);
 	kgsl_mmu_stop(device);
@@ -617,8 +618,9 @@ error_clk_off:
 static int adreno_stop(struct kgsl_device *device)
 {
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
+
+	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 	del_timer(&device->idle_timer);
-	adreno_regwrite(device, REG_RBBM_INT_CNTL, 0);
 
 	adreno_dev->drawctxt_active = NULL;
 
@@ -627,9 +629,6 @@ static int adreno_stop(struct kgsl_device *device)
 	adreno_gmemclose(device);
 
 	kgsl_mmu_stop(device);
-
-	/* Disable the clocks before the power rail. */
-	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_IRQ_OFF);
 
 	/* Power down the device */
 	kgsl_pwrctrl_disable(device);
@@ -1004,41 +1003,32 @@ uint8_t *kgsl_sharedmem_convertaddr(struct kgsl_device *device,
 	return result;
 }
 
-static void _adreno_regread(struct kgsl_device *device,
-			    unsigned int offsetwords,
-			    unsigned int *value)
+void adreno_regread(struct kgsl_device *device, unsigned int offsetwords,
+				unsigned int *value)
 {
 	unsigned int *reg;
 	BUG_ON(offsetwords*sizeof(uint32_t) >= device->regspace.sizebytes);
 	reg = (unsigned int *)(device->regspace.mmio_virt_base
 				+ (offsetwords << 2));
+
+	if (!in_interrupt())
+		kgsl_pre_hwaccess(device);
+
 	/*ensure this read finishes before the next one.
 	 * i.e. act like normal readl() */
 	*value = __raw_readl(reg);
 	rmb();
 }
 
-void adreno_regread(struct kgsl_device *device, unsigned int offsetwords,
-				unsigned int *value)
-{
-	kgsl_pre_hwaccess(device);
-	_adreno_regread(device, offsetwords, value);
-}
-
-void adreno_regread_isr(struct kgsl_device *device,
-			     unsigned int offsetwords,
-			     unsigned int *value)
-{
-	_adreno_regread(device, offsetwords, value);
-}
-
-static void _adreno_regwrite(struct kgsl_device *device,
-			     unsigned int offsetwords,
-			     unsigned int value)
+void adreno_regwrite(struct kgsl_device *device, unsigned int offsetwords,
+				unsigned int value)
 {
 	unsigned int *reg;
 
 	BUG_ON(offsetwords*sizeof(uint32_t) >= device->regspace.sizebytes);
+
+	if (!in_interrupt())
+		kgsl_pre_hwaccess(device);
 
 	kgsl_cffdump_regwrite(device->id, offsetwords << 2, value);
 	reg = (unsigned int *)(device->regspace.mmio_virt_base
@@ -1048,20 +1038,6 @@ static void _adreno_regwrite(struct kgsl_device *device,
 	 * i.e. act like normal writel() */
 	wmb();
 	__raw_writel(value, reg);
-}
-
-void adreno_regwrite(struct kgsl_device *device, unsigned int offsetwords,
-				unsigned int value)
-{
-	kgsl_pre_hwaccess(device);
-	_adreno_regwrite(device, offsetwords, value);
-}
-
-void adreno_regwrite_isr(struct kgsl_device *device,
-			      unsigned int offsetwords,
-			      unsigned int value)
-{
-	_adreno_regwrite(device, offsetwords, value);
 }
 
 static int kgsl_check_interrupt_timestamp(struct kgsl_device *device,
@@ -1276,12 +1252,25 @@ static void adreno_power_stats(struct kgsl_device *device,
 		REG_PERF_MODE_CNT | REG_PERF_STATE_ENABLE);
 }
 
+void adreno_irqctrl(struct kgsl_device *device, int state)
+{
+	/* Enable GPU and GPUMMU interrupts */
+
+	if (state) {
+		adreno_regwrite(device, REG_RBBM_INT_CNTL, KGSL_RBBM_INT_MASK);
+		adreno_regwrite(device, REG_CP_INT_CNTL, KGSL_CP_INT_MASK);
+		adreno_regwrite(device, MH_INTERRUPT_MASK, KGSL_MMU_INT_MASK);
+	} else {
+		adreno_regwrite(device, REG_RBBM_INT_CNTL, 0);
+		adreno_regwrite(device, REG_CP_INT_CNTL, 0);
+		adreno_regwrite(device, MH_INTERRUPT_MASK, 0);
+	}
+}
+
 static const struct kgsl_functable adreno_functable = {
 	/* Mandatory functions */
 	.regread = adreno_regread,
 	.regwrite = adreno_regwrite,
-	.regread_isr = adreno_regread_isr,
-	.regwrite_isr = adreno_regwrite_isr,
 	.idle = adreno_idle,
 	.isidle = adreno_isidle,
 	.suspend_context = adreno_suspend_context,
@@ -1295,6 +1284,7 @@ static const struct kgsl_functable adreno_functable = {
 	.setup_pt = adreno_setup_pt,
 	.cleanup_pt = adreno_cleanup_pt,
 	.power_stats = adreno_power_stats,
+	.irqctrl = adreno_irqctrl,
 	/* Optional functions */
 	.setstate = adreno_setstate,
 	.drawctxt_create = adreno_drawctxt_create,
