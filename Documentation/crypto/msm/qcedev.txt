@@ -4,10 +4,12 @@ Introduction:
 This driver provides IOCTLS for user space application to access crypto
 engine hardware for the qcedev crypto services. The driver supports the
 following crypto algorithms
-- AES-128, AES-192, AES-256 (ECB, CBC and CTR mode)
-- SHA1
-- SHA256
-
+- AES-128, AES-256 (ECB, CBC and CTR mode)
+- AES-192, (ECB, CBC and CTR mode)
+  (support exists on platform supporting CE 3.x hardware)
+- SHA1/SHA256
+- AES-128, AES-256 (XTS), AES CMAC, SHA1/SHA256 HMAC
+  (support exists on platform supporting CE 4.x hardware)
 
 Hardware description:
 =====================
@@ -34,15 +36,16 @@ The following IOCTLS are available to the user space application(s)-
     QCEDEV_IOCTL_ENC_REQ is for encrypting data.
     QCEDEV_IOCTL_DEC_REQ is for decrypting data.
 
-  Hashing IOCTLs
-  ---------------
+  Hashing/HMAC IOCTLs
+  -------------------
 
-    QCEDEV_IOCTL_SHA_INIT_REQ is for initializing a hash request.
-    QCEDEV_IOCTL_SHA_UPDATE_REQ is for updating hash.
-    QCEDEV_IOCTL_SHA_FINAL_REQ is for ending the hash request.
-    QCEDEV_IOCTL_GET_SHA_REQ is for retrieving the hash for data
-	of known size.
-
+    QCEDEV_IOCTL_SHA_INIT_REQ is for initializing a hash/hmac request.
+    QCEDEV_IOCTL_SHA_UPDATE_REQ is for updating hash/hmac.
+    QCEDEV_IOCTL_SHA_FINAL_REQ is for ending the hash/mac request.
+    QCEDEV_IOCTL_GET_SHA_REQ is for retrieving the hash/hmac for data
+	packet of known size.
+    QCEDEV_IOCTL_GET_CMAC_REQ is for retrieving the MAC (using AES CMAC
+	algorithm) for data packet of known size.
 
 The requests are synchronous. The driver will put the process to
 sleep, waiting for the completion of the requests using wait_for_completion().
@@ -58,12 +61,15 @@ allocated buffers.
 
 NOTE:  Using memory allocated via PMEM is supported only for in place
        operations where source and destination buffers point to the same
-       location. Support for different source and destination buffers will be
-       provided in the future.
+       location. Support for different source and destination buffers
+       is not supported currently.
+       Furthermore, when using PMEM, and in AES CTR mode, when issuing an
+       encryption or decryption request, a non-zero byteoffset is not
+       supported.
 
 The design of the driver is to allow multiple open, and multiple requests
 to be issued from application(s). Therefore, the driver will internally queue
-the requests, and serialize the requests to the low level qce driver.
+the requests, and serialize the requests to the low level qce (or qce40) driver.
 
 On an IOCTL request from an application, if there is no outstanding
 request, a the driver will issue a "qce" request, otherwise,
@@ -138,14 +144,16 @@ The following IOCTLS are available to the user space application(s)-
 		enum qcedev_oper_enum		op;
 	};
 
-  Hashing IOCTLs
-  ---------------
+  Hashing/HMAC IOCTLs
+  -------------------
 
-    QCEDEV_IOCTL_SHA_INIT_REQ is for initializing a hash request.
-    QCEDEV_IOCTL_SHA_UPDATE_REQ is for updating hash.
-    QCEDEV_IOCTL_SHA_FINAL_REQ is for ending the hash request.
-    QCEDEV_IOCTL_GET_SHA_REQ is for retrivieng the hash for data
-	of known size.
+    QCEDEV_IOCTL_SHA_INIT_REQ is for initializing a hash/hmac request.
+    QCEDEV_IOCTL_SHA_UPDATE_REQ is for updating hash/hmac.
+    QCEDEV_IOCTL_SHA_FINAL_REQ is for ending the hash/mac request.
+    QCEDEV_IOCTL_GET_SHA_REQ is for retrieving the hash/hmac for data
+	packet of known size.
+    QCEDEV_IOCTL_GET_CMAC_REQ is for retrieving the MAC (using AES CMAC
+	algorithm) for data packet of known size.
 
 	The caller of the IOCTL passes a pointer to the structure shown
 	below, as the second parameter.
@@ -156,6 +164,8 @@ The following IOCTLS are available to the user space application(s)-
 		uint32_t			data_len;
 		uint8_t				digest[QCEDEV_MAX_SHA_DIGEST];
 		uint32_t			diglen;
+		uint8_t				*authkey;
+		uint32_t			authklen;
 		enum qcedev_sha_alg_enum	alg;
 		struct qcedev_sha_ctxt		ctxt;
 	};
@@ -196,10 +206,6 @@ To do:
   (1) Add support for handling > 32KB for ciphering functionality when
   - operation is not an "in place" operation (source != destination).
     (when using PMEM allocated memory)
-
- In the future we will provide a layer that exposes the kernel crypto APIs
- to user space, which will allow both user space app and kernel space app to
- access the CE hardware accelerator.ator.
 
 Limitations:
 ============

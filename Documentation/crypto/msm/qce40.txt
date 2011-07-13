@@ -1,14 +1,21 @@
 Introduction:
 =============
 
-The Qualcomm crypto engine (qce) driver is a module that
+The Qualcomm crypto engine (qce40) driver is a module that
 provides common services for accessing the Qualcomm crypto device.
-Currently, the two main clients of qce are
+Currently, the two main clients of qce40 are
 -qcrypto driver (module provided for accessing CE HW by kernel space apps)
 -qcedev driver (module provided for accessing CE HW by user space apps)
+This module provides the same interface to the clients as does qce.c and is
+based off qce.c.  Following are the updates from qce.c
+- Add support for AES XTS mode
+- Add support for CMAC mode
+- Add support for AES CCM mode
+- Add support for  SHA1/SHA256 HMAC
+- Read HASH/MAC information directly from CE hardware registers instead of
+  using datamover.
 
-
-The crypto engine (qce) driver is a client to the DMA driver for the Qualcomm
+The crypto engine (qce40) module is a client to the DMA driver for the Qualcomm
 DMA device - Application Data Mover (ADM). ADM is used to provide the DMA
 transfer capability between Qualcomm crypto device hardware and DDR memory
 for crypto operations.
@@ -23,7 +30,7 @@ for crypto operations.
 					  |
 					  +-->|
 					      |
-					      | *qce   <----> Qualcomm
+					      | *qce40   <----> Qualcomm
 					      | driver        ADM driver <---> ADM HW
 					  +-->|			|		|
 					  |			|		|
@@ -75,7 +82,7 @@ Qualcomm Crypto HW device family provides a series of algorithms implemented
 in the device hardware.
 
 Crypto 2 hardware provides hashing - SHA-1, SHA-256, ciphering - DES, 3DES, AES
-algorithms, and concurrent operations of hashing, and ciphering.
+algorithms, and concurrent operations of hashing and ciphering.
 
 In addition to those functions provided by Crypto 2 HW, Crypto 3 HW provides
 fast AES algorithms.
@@ -92,9 +99,9 @@ The crypto device is defined as a platform device. The driver is
 independent of the platform. The driver supports multiple instances of
 crypto HW.
 All the platform specific parameters are defined in the board init
-file, eg. arch/arm/mach-msm/board-msm7x30.c for MSM7x30.
+file, eg. arch/arm/mach-msm/board-msm8960.c for MSM8960.
 
-The qce driver provide the common services of HW crypto
+The qce40 driver provide the common services of HW crypto
 access to the two drivers as listed above (qcedev, qcrypto. It sets up
 the crypto HW device for the operation, then it requests ADM driver for
 the DMA of the crypto operation.
@@ -105,16 +112,12 @@ channel) are involved in an operation.
 The setting up of the command lists and the procedure of the operation
 of the crypto device are described in the following sections.
 
-The command list for the first DMA channel is set up as follows:
+The command lists contains a single command. For the first DMA channel it
+is set up as follows:
 
-  1st command of the list is for the DMA transfer from DDR memory to the
+  The command  is for the DMA transfer from DDR memory to the
   crypto device to input data to crypto device. The dst crci of the command
   is set for crci-in for this crypto device.
-
-  2nd command is for the DMA tansfer is from crypto device to DDR memory for
-  the authentication result. The src crci is set as crci-hash-done of the
-  crypto device. If authentication is not required in the operation,
-  the 2nd command is not used.
 
 The command list for the second DMA channel is set up as follows:
 
@@ -135,11 +138,20 @@ not required. Only steps (a) to (c) are performed.
 At the completion of the DMA operation (for (c) and (d)) ADM driver
 invokes the callback registered to the DMA driver. This signifies the end of
 the DMA operation(s). The driver reads the status and other information from
-the CE hardware register and then invokes the callback to the qce driver client.
-This signal the completion and the results of the DMA along with the status of
-the CE hardware to the qce driver client. This completes a crypto operation.
+the CE hardware register.  For HASH functions (SHA1/SHA256, HMAC, CMAC and
+CCM) were the MAC/HASH information is read off hardware registers.
 
-In the qce driver initialization, memory for the two command lists, descriptor
+[ NOTE: This is different from what is done in the qce module that support
+CE3.x hardware.  In CE4.0 there is not CRCI_HASH and hence we cannot rely
+on the data mover to populate the HMAC/SHA information.  This information
+is acquired fromte h ahrdware by reading directly from some registers that
+hold this information ]
+
+The driver than nvokes the callback to the qce driver client.
+This signal the completion and the results of the DMA along with the status of
+the CE hardware to the qce40 driver client. This completes a crypto operation.
+
+In the qce40 driver initialization, memory for the two command lists, descriptor
 lists for each crypto device are allocated out of coherent memory, using Linux
 DMA API. The driver pre-configures most of the two ADM command lists
 in the initialization. During each crypto operation, minimal set up is required.
@@ -196,14 +208,15 @@ The following services are provided by the qce driver -
   by the crypto engine hardware.
 
   qce_ablk_cipher_req() provides ciphering service to the client.
-  qce_process_sha_req() provide hashing service to the client.
-  qce_aead_req() provide aead service to the client.
+  qce_process_sha_req() provides hashing service to the client.
+  qce_aead_req() provides aead service to the client.
+
 
 Module parameters:
 ==================
 
 The following module parameters are defined in the board init file.
--CE hardware nase register address
+-CE hardware base register address
 -Data mover channel used for transfer to/from CE hardware
 These parameters differ in each platform.
 
