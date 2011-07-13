@@ -30,6 +30,7 @@
 #include "clock.h"
 #include "devices.h"
 #include "devices-msm8x60.h"
+#include "footswitch.h"
 
 #ifdef CONFIG_MSM_MPM
 #include "mpm.h"
