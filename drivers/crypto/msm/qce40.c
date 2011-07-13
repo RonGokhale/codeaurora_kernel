@@ -973,7 +973,7 @@ static int _chain_sg_buffer_in(struct qce_device *pce_dev,
 			pdesc->len  = dlen + len;
 			if (pdesc->len > 0x8000)
 				qce_split_and_insert_dm_desc(pdesc, pdesc->len,
-						sg_dma_address(sg),
+						pdesc->addr,
 						&pce_dev->ce_in_src_desc_index);
 		} else {
 			pce_dev->ce_in_src_desc_index++;
@@ -1130,7 +1130,7 @@ static int _chain_sg_buffer_out(struct qce_device *pce_dev,
 			pdesc->len  = dlen + len;
 			if (pdesc->len > 0x8000)
 				qce_split_and_insert_dm_desc(pdesc, pdesc->len,
-					sg_dma_address(sg),
+					pdesc->addr,
 					&pce_dev->ce_out_dst_desc_index);
 
 		} else {
@@ -2035,4 +2035,4 @@ EXPORT_SYMBOL(qce_hw_support);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Mona Hossain <mhossain@codeaurora.org>");
 MODULE_DESCRIPTION("Crypto Engine driver");
-MODULE_VERSION("2.03");
+MODULE_VERSION("2.04");
