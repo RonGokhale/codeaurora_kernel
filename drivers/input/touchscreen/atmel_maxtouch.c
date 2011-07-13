@@ -1765,7 +1765,7 @@ static int mxt_suspend(struct device *dev)
 
 	disable_irq(mxt->irq);
 
-	cancel_delayed_work_sync(&mxt->dwork);
+	flush_delayed_work_sync(&mxt->dwork);
 
 	for (i = 0; i < T7_DATA_SIZE; i++)
 		t7_deepsl_data[i] = 0;
@@ -1835,6 +1835,11 @@ static int mxt_resume(struct device *dev)
 	enable_irq(mxt->irq);
 
 	mxt->is_suspended = false;
+
+	/* Make sure we just didn't miss a interrupt. */
+	if (mxt->read_chg() == 0)
+		schedule_delayed_work(&mxt->dwork, 0);
+
 	return 0;
 
 err_write_block:
