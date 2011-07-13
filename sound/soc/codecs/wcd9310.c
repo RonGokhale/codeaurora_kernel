@@ -39,6 +39,7 @@ struct tabla_priv { /* member undecided */
 	struct snd_soc_codec *codec;
 	u32 ref_cnt;
 	u32 adc_count;
+	u32 dec_count;
 	enum tabla_bandgap_type bandgap_type;
 	bool clock_active;
 	bool config_mode_active;
@@ -452,18 +453,48 @@ static int tabla_codec_enable_micbias(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
-static int tabla_codec_enable_dec_clock(struct snd_soc_dapm_widget *w,
+static void tabla_codec_enable_dec_clock(struct snd_soc_codec *codec,
+	int enable)
+{
+	struct tabla_priv *tabla = snd_soc_codec_get_drvdata(codec);
+
+	if (enable) {
+		tabla->dec_count++;
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_OTHR_CTL, 0x4, 0x4);
+	} else {
+		tabla->dec_count--;
+		if (!tabla->dec_count)
+			snd_soc_update_bits(codec, TABLA_A_CDC_CLK_OTHR_CTL,
+				0x4, 0x0);
+	}
+}
+
+static int tabla_codec_enable_dec(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *kcontrol, int event)
 {
 	struct snd_soc_codec *codec = w->codec;
+	u16 dec_reset_reg;
 
 	pr_debug("%s %d\n", __func__, event);
+
+	if (w->reg == TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL)
+		dec_reset_reg = TABLA_A_CDC_CLK_TX_RESET_B1_CTL;
+	else if (w->reg == TABLA_A_CDC_CLK_TX_CLK_EN_B2_CTL)
+		dec_reset_reg = TABLA_A_CDC_CLK_TX_RESET_B2_CTL;
+	else {
+		pr_err("%s: Error, incorrect dec\n", __func__);
+		return -EINVAL;
+	}
+
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
-		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_OTHR_CTL, 0x4, 0x4);
+		tabla_codec_enable_dec_clock(codec, 1);
+		snd_soc_update_bits(codec, dec_reset_reg, 1 << w->shift,
+			1 << w->shift);
+		snd_soc_update_bits(codec, dec_reset_reg, 1 << w->shift, 0x0);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
-		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_OTHR_CTL, 0x4, 0x0);
+		tabla_codec_enable_dec_clock(codec, 0);
 		break;
 	}
 	return 0;
@@ -626,20 +657,20 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 		SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
 
 	SND_SOC_DAPM_MUX_E("DEC1 MUX", TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL, 0, 0,
-		&dec1_mux, tabla_codec_enable_dec_clock,
-		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+		&dec1_mux, tabla_codec_enable_dec, SND_SOC_DAPM_PRE_PMU |
+		SND_SOC_DAPM_POST_PMD),
 
 	SND_SOC_DAPM_MUX_E("DEC5 MUX", TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL, 4, 0,
-		&dec5_mux, tabla_codec_enable_dec_clock,
-		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+		&dec5_mux, tabla_codec_enable_dec, SND_SOC_DAPM_PRE_PMU |
+		SND_SOC_DAPM_POST_PMD),
 
 	SND_SOC_DAPM_MUX_E("DEC6 MUX", TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL, 5, 0,
-		&dec6_mux, tabla_codec_enable_dec_clock,
-		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+		&dec6_mux, tabla_codec_enable_dec, SND_SOC_DAPM_PRE_PMU |
+		SND_SOC_DAPM_POST_PMD),
 
 	SND_SOC_DAPM_MUX_E("DEC7 MUX", TABLA_A_CDC_CLK_TX_CLK_EN_B1_CTL, 6, 0,
-		&dec7_mux, tabla_codec_enable_dec_clock,
-		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+		&dec7_mux, tabla_codec_enable_dec, SND_SOC_DAPM_PRE_PMU |
+		SND_SOC_DAPM_POST_PMD),
 
 	SND_SOC_DAPM_INPUT("AMIC2"),
 	SND_SOC_DAPM_MICBIAS_E("MIC BIAS2 External", TABLA_A_MICB_2_CTL, 7, 0,
