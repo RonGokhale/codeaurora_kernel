@@ -19,6 +19,7 @@
 
 struct pm8xxx_charger_core_data {
 	u32		rev;
+	unsigned int	vbat_channel;
 };
 
 /**
