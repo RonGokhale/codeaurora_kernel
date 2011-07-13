@@ -1634,10 +1634,12 @@ static int vfe32_proc_general(struct msm_vfe32_cmd *cmd)
 			rc = -EFAULT;
 			goto proc_general_done;
 		}
+		cmdp_local = cmdp;
 		msm_io_memcpy(vfe32_ctrl->vfebase + V32_LINEARIZATION_OFF1,
-				cmdp, V32_LINEARIZATION_LEN1);
+				cmdp_local, V32_LINEARIZATION_LEN1);
+		cmdp_local += 4;
 		msm_io_memcpy(vfe32_ctrl->vfebase + V32_LINEARIZATION_OFF2,
-						cmdp+V32_LINEARIZATION_LEN1,
+						cmdp_local,
 						V32_LINEARIZATION_LEN2);
 		break;
 
