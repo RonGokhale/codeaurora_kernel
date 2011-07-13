@@ -324,8 +324,7 @@ struct clk *local_clk_get_parent(struct clk *c);
 /*
  * Required SoC-specific functions, implemented for every supported SoC
  */
-int soc_update_sys_vdd(enum sys_vdd_level level);
-int soc_clk_set_flags(struct clk *clk, unsigned flags);
+extern int (*soc_update_sys_vdd)(enum sys_vdd_level level);
 
 /*
  * Generic set-rate implementations

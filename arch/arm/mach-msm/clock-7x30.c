@@ -2372,7 +2372,7 @@ static DEFINE_CLK_VOTER(ebi_adm_clk, &ebi1_fixed_clk.c);
  */
 
 /* Update the sys_vdd voltage given a level. */
-int soc_update_sys_vdd(enum sys_vdd_level level)
+static int msm7x30_update_sys_vdd(enum sys_vdd_level level)
 {
 	int rc, target_mv;
 	static const int mv[NUM_SYS_VDD_LEVELS] = {
@@ -2927,6 +2927,8 @@ void __init msm7x30_clock_init(void)
 	cache_ownership();
 	print_ownership();
 	set_clock_ownership();
+
+	soc_update_sys_vdd = msm7x30_update_sys_vdd;
 
 	/* When we have no local clock control, the rest of the code in this
 	 * function is a NOP since writes to shadow regions that we don't own

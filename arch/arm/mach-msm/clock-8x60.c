@@ -499,7 +499,7 @@ static void set_rate_tv(struct rcg_clk *clk, struct clk_freq_tbl *nf)
  */
 
 /* Update the sys_vdd voltage given a level. */
-int soc_update_sys_vdd(enum sys_vdd_level level)
+static int msm8660_update_sys_vdd(enum sys_vdd_level level)
 {
 	static const int vdd_uv[] = {
 		[NONE]    =  500000,
@@ -3761,6 +3761,7 @@ static void __init reg_init(void)
 /* Local clock driver initialization. */
 void __init msm8660_clock_init(void)
 {
+	soc_update_sys_vdd = msm8660_update_sys_vdd;
 	xo_pxo = msm_xo_get(MSM_XO_PXO, "clock-8x60");
 	if (IS_ERR(xo_pxo)) {
 		pr_err("%s: msm_xo_get(PXO) failed.\n", __func__);
