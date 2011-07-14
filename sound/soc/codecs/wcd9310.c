@@ -44,10 +44,12 @@ struct tabla_priv { /* member undecided */
 	bool clock_active;
 	bool config_mode_active;
 	bool mbhc_polling_active;
+	int buttons_pressed;
 
 	struct tabla_mbhc_calibration *calibration;
 
-	struct snd_soc_jack *jack;
+	struct snd_soc_jack *headset_jack;
+	struct snd_soc_jack *button_jack;
 };
 
 static int tabla_codec_enable_charge_pump(struct snd_soc_dapm_widget *w,
@@ -92,8 +94,20 @@ static int tabla_codec_enable_charge_pump(struct snd_soc_dapm_widget *w,
 static const struct snd_kcontrol_new tabla_snd_controls[] = {
 	SOC_SINGLE_TLV("LINEOUT1 Volume", TABLA_A_RX_LINE_1_GAIN, 0, 12, 1,
 		line_gain),
+	SOC_SINGLE_TLV("LINEOUT2 Volume", TABLA_A_RX_LINE_2_GAIN, 0, 12, 1,
+		line_gain),
 	SOC_SINGLE_TLV("LINEOUT3 Volume", TABLA_A_RX_LINE_3_GAIN, 0, 12, 1,
 		line_gain),
+	SOC_SINGLE_TLV("LINEOUT4 Volume", TABLA_A_RX_LINE_4_GAIN, 0, 12, 1,
+		line_gain),
+
+	SOC_SINGLE("RX1 CHAIN INVERT Switch", TABLA_A_CDC_RX1_B6_CTL, 4, 1, 0),
+	SOC_SINGLE("RX2 CHAIN INVERT Switch", TABLA_A_CDC_RX2_B6_CTL, 4, 1, 0),
+	SOC_SINGLE("RX3 CHAIN INVERT Switch", TABLA_A_CDC_RX3_B6_CTL, 4, 1, 0),
+	SOC_SINGLE("RX4 CHAIN INVERT Switch", TABLA_A_CDC_RX4_B6_CTL, 4, 1, 0),
+	SOC_SINGLE("RX5 CHAIN INVERT Switch", TABLA_A_CDC_RX5_B6_CTL, 4, 1, 0),
+	SOC_SINGLE("RX6 CHAIN INVERT Switch", TABLA_A_CDC_RX6_B6_CTL, 4, 1, 0),
+
 	SOC_SINGLE_TLV("HPHL Volume", TABLA_A_RX_HPH_L_GAIN, 0, 12, 1,
 		line_gain),
 	SOC_SINGLE_TLV("HPHR Volume", TABLA_A_RX_HPH_R_GAIN, 0, 12, 1,
@@ -171,11 +185,26 @@ static const struct soc_enum rx2_mix1_inp1_chain_enum =
 static const struct soc_enum rx3_mix1_inp1_chain_enum =
 	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_RX3_B1_CTL, 0, 12, rx_mix1_text);
 
+static const struct soc_enum rx3_mix1_inp2_chain_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_RX3_B1_CTL, 4, 12, rx_mix1_text);
+
 static const struct soc_enum rx4_mix1_inp1_chain_enum =
 	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_RX4_B1_CTL, 0, 12, rx_mix1_text);
 
+static const struct soc_enum rx4_mix1_inp2_chain_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_RX4_B1_CTL, 4, 12, rx_mix1_text);
+
 static const struct soc_enum rx5_mix1_inp1_chain_enum =
 	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_RX5_B1_CTL, 0, 12, rx_mix1_text);
+
+static const struct soc_enum rx5_mix1_inp2_chain_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_RX5_B1_CTL, 4, 12, rx_mix1_text);
+
+static const struct soc_enum rx6_mix1_inp1_chain_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_RX6_B1_CTL, 0, 12, rx_mix1_text);
+
+static const struct soc_enum rx6_mix1_inp2_chain_enum =
+	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_RX6_B1_CTL, 4, 12, rx_mix1_text);
 
 static const struct soc_enum sb_tx5_mux_enum =
 	SOC_ENUM_SINGLE(TABLA_A_CDC_CONN_TX_SB_B5_CTL, 0, 9, sb_tx5_mux_text);
@@ -218,11 +247,26 @@ static const struct snd_kcontrol_new rx2_mix1_inp1_mux =
 static const struct snd_kcontrol_new rx3_mix1_inp1_mux =
 	SOC_DAPM_ENUM("RX3 MIX1 INP1 Mux", rx3_mix1_inp1_chain_enum);
 
+static const struct snd_kcontrol_new rx3_mix1_inp2_mux =
+	SOC_DAPM_ENUM("RX3 MIX1 INP2 Mux", rx3_mix1_inp2_chain_enum);
+
 static const struct snd_kcontrol_new rx4_mix1_inp1_mux =
 	SOC_DAPM_ENUM("RX4 MIX1 INP1 Mux", rx4_mix1_inp1_chain_enum);
 
+static const struct snd_kcontrol_new rx4_mix1_inp2_mux =
+	SOC_DAPM_ENUM("RX4 MIX1 INP2 Mux", rx4_mix1_inp2_chain_enum);
+
 static const struct snd_kcontrol_new rx5_mix1_inp1_mux =
 	SOC_DAPM_ENUM("RX5 MIX1 INP1 Mux", rx5_mix1_inp1_chain_enum);
+
+static const struct snd_kcontrol_new rx5_mix1_inp2_mux =
+	SOC_DAPM_ENUM("RX5 MIX1 INP2 Mux", rx5_mix1_inp2_chain_enum);
+
+static const struct snd_kcontrol_new rx6_mix1_inp1_mux =
+	SOC_DAPM_ENUM("RX6 MIX1 INP1 Mux", rx6_mix1_inp1_chain_enum);
+
+static const struct snd_kcontrol_new rx6_mix1_inp2_mux =
+	SOC_DAPM_ENUM("RX6 MIX1 INP2 Mux", rx6_mix1_inp2_chain_enum);
 
 static const struct snd_kcontrol_new sb_tx5_mux =
 	SOC_DAPM_ENUM("SLIM TX5 MUX Mux", sb_tx5_mux_enum);
@@ -266,8 +310,15 @@ static const struct snd_kcontrol_new hphr_switch =
 static const struct snd_kcontrol_new lineout1_switch =
 	SOC_DAPM_SINGLE("Switch", TABLA_A_RX_LINE_1_DAC_CTL, 6, 1, 0);
 
+static const struct snd_kcontrol_new lineout2_switch =
+	SOC_DAPM_SINGLE("Switch", TABLA_A_RX_LINE_2_DAC_CTL, 6, 1, 0);
+
 static const struct snd_kcontrol_new lineout3_switch =
 	SOC_DAPM_SINGLE("Switch", TABLA_A_RX_LINE_3_DAC_CTL, 6, 1, 0);
+
+static const struct snd_kcontrol_new lineout4_switch =
+	SOC_DAPM_SINGLE("Switch", TABLA_A_RX_LINE_4_DAC_CTL, 6, 1, 0);
+
 
 static void tabla_codec_enable_adc_block(struct snd_soc_codec *codec,
 	int enable)
@@ -500,81 +551,17 @@ static int tabla_codec_enable_dec(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
-static int tabla_codec_reset_interpolator_1(struct snd_soc_dapm_widget *w,
+static int tabla_codec_reset_interpolator(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *kcontrol, int event)
 {
 	struct snd_soc_codec *codec = w->codec;
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
-		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x1,
-			0x1);
-		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x1,
-			0x0);
-		break;
-	}
-	return 0;
-}
-
-static int tabla_codec_reset_interpolator_2(struct snd_soc_dapm_widget *w,
-	struct snd_kcontrol *kcontrol, int event)
-{
-	struct snd_soc_codec *codec = w->codec;
-
-	switch (event) {
-	case SND_SOC_DAPM_PRE_PMU:
-		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x2,
-			0x2);
-		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x2,
-			0x0);
-		break;
-	}
-	return 0;
-}
-
-static int tabla_codec_reset_interpolator_3(struct snd_soc_dapm_widget *w,
-	struct snd_kcontrol *kcontrol, int event)
-{
-	struct snd_soc_codec *codec = w->codec;
-
-	switch (event) {
-	case SND_SOC_DAPM_PRE_PMU:
-		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x4,
-			0x4);
-		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x4,
-			0x0);
-		break;
-	}
-	return 0;
-}
-
-static int tabla_codec_reset_interpolator_4(struct snd_soc_dapm_widget *w,
-	struct snd_kcontrol *kcontrol, int event)
-{
-	struct snd_soc_codec *codec = w->codec;
-
-	switch (event) {
-	case SND_SOC_DAPM_PRE_PMU:
-		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x8,
-			0x8);
-		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x8,
-			0x0);
-		break;
-	}
-	return 0;
-}
-
-static int tabla_codec_reset_interpolator_5(struct snd_soc_dapm_widget *w,
-	struct snd_kcontrol *kcontrol, int event)
-{
-	struct snd_soc_codec *codec = w->codec;
-
-	switch (event) {
-	case SND_SOC_DAPM_PRE_PMU:
-		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x10,
-			0x10);
-		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL, 0x10,
-			0x0);
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL,
+			1 << w->shift, 1 << w->shift);
+		snd_soc_update_bits(codec, TABLA_A_CDC_CLK_RX_RESET_CTL,
+			1 << w->shift, 0x0);
 		break;
 	}
 	return 0;
@@ -596,7 +583,7 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 			SND_SOC_DAPM_PRE_PMD),
 	SND_SOC_DAPM_PGA("RX BIAS", TABLA_A_RX_COM_BIAS, 7, 0, NULL, 0),
 	SND_SOC_DAPM_MUX_E("RX1 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 0, 0,
-		&rx_mix1_inp1_mux, tabla_codec_reset_interpolator_1,
+		&rx_mix1_inp1_mux, tabla_codec_reset_interpolator,
 		SND_SOC_DAPM_PRE_PMU),
 	SND_SOC_DAPM_AIF_IN("SLIM RX1", "AIF1 Playback", 0,
 		TABLA_A_CDC_RX1_B6_CTL, 5, 0),
@@ -606,7 +593,7 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 		tabla_codec_enable_charge_pump, SND_SOC_DAPM_POST_PMU |
 			SND_SOC_DAPM_PRE_PMD),
 	SND_SOC_DAPM_MUX_E("RX2 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 1, 0,
-		&rx2_mix1_inp1_mux, tabla_codec_reset_interpolator_2,
+		&rx2_mix1_inp1_mux, tabla_codec_reset_interpolator,
 		SND_SOC_DAPM_PRE_PMU),
 	SND_SOC_DAPM_AIF_IN("SLIM RX2", "AIF1 Playback", 0,
 		TABLA_A_CDC_RX2_B6_CTL, 5, 0),
@@ -623,26 +610,54 @@ static const struct snd_soc_dapm_widget tabla_dapm_widgets[] = {
 
 	/* Speaker */
 	SND_SOC_DAPM_OUTPUT("LINEOUT"),
+
 	SND_SOC_DAPM_PGA_E("LINEOUT1", TABLA_A_RX_LINE_CNP_EN, 0, 0, NULL, 0,
 		tabla_codec_enable_lineout, SND_SOC_DAPM_PRE_PMU |
 		SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_SWITCH("LINEOUT1 DAC", TABLA_A_RX_LINE_1_DAC_CTL, 7, 0,
-		&lineout1_switch),
-	SND_SOC_DAPM_MUX_E("RX3 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 2, 0,
-		&rx3_mix1_inp1_mux, tabla_codec_reset_interpolator_3,
-		SND_SOC_DAPM_PRE_PMU),
-
+	SND_SOC_DAPM_PGA_E("LINEOUT2", TABLA_A_RX_LINE_CNP_EN, 1, 0, NULL, 0,
+		tabla_codec_enable_lineout, SND_SOC_DAPM_PRE_PMU |
+		SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_PGA_E("LINEOUT3", TABLA_A_RX_LINE_CNP_EN, 2, 0, NULL, 0,
 		tabla_codec_enable_lineout, SND_SOC_DAPM_PRE_PMU |
 		SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
+	SND_SOC_DAPM_PGA_E("LINEOUT4", TABLA_A_RX_LINE_CNP_EN, 3, 0, NULL, 0,
+		tabla_codec_enable_lineout, SND_SOC_DAPM_PRE_PMU |
+		SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
+
+	SND_SOC_DAPM_SWITCH("LINEOUT1 DAC", TABLA_A_RX_LINE_1_DAC_CTL, 7, 0,
+		&lineout1_switch),
+	SND_SOC_DAPM_SWITCH("LINEOUT2 DAC", TABLA_A_RX_LINE_2_DAC_CTL, 7, 0,
+		&lineout2_switch),
 	SND_SOC_DAPM_SWITCH("LINEOUT3 DAC", TABLA_A_RX_LINE_3_DAC_CTL, 7, 0,
 		&lineout3_switch),
-	SND_SOC_DAPM_MUX_E("RX4 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 3, 0,
-		&rx4_mix1_inp1_mux, tabla_codec_reset_interpolator_4,
-		SND_SOC_DAPM_PRE_PMU),
-	SND_SOC_DAPM_MUX_E("RX5 MIX1 INP1", TABLA_A_CDC_CLK_RX_B1_CTL, 4, 0,
-		&rx5_mix1_inp1_mux, tabla_codec_reset_interpolator_5,
-		SND_SOC_DAPM_PRE_PMU),
+	SND_SOC_DAPM_SWITCH("LINEOUT4 DAC", TABLA_A_RX_LINE_4_DAC_CTL, 7, 0,
+		&lineout4_switch),
+
+	SND_SOC_DAPM_PGA_E("RX3 MIX1", TABLA_A_CDC_CLK_RX_B1_CTL, 2, 0, NULL, 0,
+		tabla_codec_reset_interpolator, SND_SOC_DAPM_PRE_PMU),
+	SND_SOC_DAPM_PGA_E("RX4 MIX1", TABLA_A_CDC_CLK_RX_B1_CTL, 3, 0, NULL, 0,
+		tabla_codec_reset_interpolator, SND_SOC_DAPM_PRE_PMU),
+	SND_SOC_DAPM_PGA_E("RX5 MIX1", TABLA_A_CDC_CLK_RX_B1_CTL, 4, 0, NULL, 0,
+		tabla_codec_reset_interpolator, SND_SOC_DAPM_PRE_PMU),
+	SND_SOC_DAPM_PGA_E("RX6 MIX1", TABLA_A_CDC_CLK_RX_B1_CTL, 5, 0, NULL, 0,
+		tabla_codec_reset_interpolator, SND_SOC_DAPM_PRE_PMU),
+
+	SND_SOC_DAPM_MUX("RX3 MIX1 INP1", SND_SOC_NOPM, 0, 0,
+		&rx3_mix1_inp1_mux),
+	SND_SOC_DAPM_MUX("RX3 MIX1 INP2", SND_SOC_NOPM, 0, 0,
+		&rx3_mix1_inp2_mux),
+	SND_SOC_DAPM_MUX("RX4 MIX1 INP1", SND_SOC_NOPM, 0, 0,
+		&rx4_mix1_inp1_mux),
+	SND_SOC_DAPM_MUX("RX4 MIX1 INP2", SND_SOC_NOPM, 0, 0,
+		&rx4_mix1_inp2_mux),
+	SND_SOC_DAPM_MUX("RX5 MIX1 INP1", SND_SOC_NOPM, 0, 0,
+		&rx5_mix1_inp1_mux),
+	SND_SOC_DAPM_MUX("RX5 MIX1 INP2", SND_SOC_NOPM, 0, 0,
+		&rx5_mix1_inp2_mux),
+	SND_SOC_DAPM_MUX("RX6 MIX1 INP1", SND_SOC_NOPM, 0, 0,
+		&rx6_mix1_inp1_mux),
+	SND_SOC_DAPM_MUX("RX6 MIX1 INP2", SND_SOC_NOPM, 0, 0,
+		&rx6_mix1_inp2_mux),
 
 	/* TX */
 	SND_SOC_DAPM_INPUT("AMIC1"),
@@ -761,17 +776,46 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX2 CP", NULL, "RX2 MIX1 INP1"},
 	{"RX2 MIX1 INP1", "RX2", "RX BIAS"},
 
-	/* Speaker (RX MIX3 and RX MIX4) */
 	{"LINEOUT", NULL, "LINEOUT1"},
-	{"LINEOUT1", NULL, "LINEOUT1 DAC"},
-	{"LINEOUT1 DAC", "Switch", "RX3 MIX1 INP1"},
-	{"RX3 MIX1 INP1", "RX1", "RX BIAS"},
-
+	{"LINEOUT", NULL, "LINEOUT2"},
 	{"LINEOUT", NULL, "LINEOUT3"},
+	{"LINEOUT", NULL, "LINEOUT4"},
+
+	{"LINEOUT1", NULL, "LINEOUT1 DAC"},
+	{"LINEOUT2", NULL, "LINEOUT2 DAC"},
 	{"LINEOUT3", NULL, "LINEOUT3 DAC"},
-	{"LINEOUT3 DAC", "Switch", "RX5 MIX1 INP1"},
+	{"LINEOUT4", NULL, "LINEOUT4 DAC"},
+
+	{"LINEOUT1 DAC", "Switch", "RX3 MIX1"},
+	{"LINEOUT2 DAC", "Switch", "RX4 MIX1"},
+	{"LINEOUT3 DAC", "Switch", "RX5 MIX1"},
+	{"LINEOUT4 DAC", "Switch", "RX6 MIX1"},
+
+	{"RX3 MIX1", NULL, "RX3 MIX1 INP1"},
+	{"RX3 MIX1", NULL, "RX3 MIX1 INP2"},
+	{"RX4 MIX1", NULL, "RX4 MIX1 INP1"},
+	{"RX4 MIX1", NULL, "RX4 MIX1 INP2"},
+	{"RX5 MIX1", NULL, "RX5 MIX1 INP1"},
+	{"RX5 MIX1", NULL, "RX5 MIX1 INP2"},
+	{"RX6 MIX1", NULL, "RX6 MIX1 INP1"},
+	{"RX6 MIX1", NULL, "RX6 MIX1 INP2"},
+
+	{"RX3 MIX1 INP1", "RX1", "RX BIAS"},
+	{"RX3 MIX1 INP1", "RX2", "RX BIAS"},
+	{"RX3 MIX1 INP2", "RX1", "RX BIAS"},
+	{"RX3 MIX1 INP2", "RX2", "RX BIAS"},
+	{"RX4 MIX1 INP1", "RX1", "RX BIAS"},
 	{"RX4 MIX1 INP1", "RX2", "RX BIAS"},
+	{"RX4 MIX1 INP2", "RX1", "RX BIAS"},
+	{"RX4 MIX1 INP2", "RX2", "RX BIAS"},
+	{"RX5 MIX1 INP1", "RX1", "RX BIAS"},
 	{"RX5 MIX1 INP1", "RX2", "RX BIAS"},
+	{"RX5 MIX1 INP2", "RX1", "RX BIAS"},
+	{"RX5 MIX1 INP2", "RX2", "RX BIAS"},
+	{"RX6 MIX1 INP1", "RX1", "RX BIAS"},
+	{"RX6 MIX1 INP1", "RX2", "RX BIAS"},
+	{"RX6 MIX1 INP2", "RX1", "RX BIAS"},
+	{"RX6 MIX1 INP2", "RX2", "RX BIAS"},
 
 	/* Handset TX */
 	{"DEC5 MUX", "ADC2", "ADC2"},
@@ -976,6 +1020,43 @@ static void tabla_codec_disable_clock_block(struct snd_soc_codec *codec)
 	tabla->clock_active = false;
 }
 
+static void tabla_codec_start_hs_polling(struct snd_soc_codec *codec)
+{
+	snd_soc_write(codec, TABLA_A_MBHC_SCALING_MUX_1, 0x84);
+	tabla_enable_irq(codec->control_data, TABLA_IRQ_MBHC_POTENTIAL);
+	tabla_enable_irq(codec->control_data, TABLA_IRQ_MBHC_REMOVAL);
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_EN_CTL, 0x1);
+	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0x8, 0x0);
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_EN_CTL, 0x1);
+}
+
+static void tabla_codec_calibrate_hs_polling(struct snd_soc_codec *codec)
+{
+	/* TODO store register values in calibration */
+
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_VOLT_B10_CTL, 0xFF);
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_VOLT_B9_CTL, 0x00);
+
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_VOLT_B4_CTL, 0x08);
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_VOLT_B3_CTL, 0xEE);
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_VOLT_B2_CTL, 0xFC);
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_VOLT_B1_CTL, 0xCE);
+
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_TIMER_B1_CTL, 3);
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_TIMER_B2_CTL, 9);
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_TIMER_B3_CTL, 30);
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_TIMER_B6_CTL, 120);
+	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_TIMER_B1_CTL, 0x78, 0x58);
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_B2_CTL, 11);
+}
+
+static void tabla_codec_pause_hs_polling(struct snd_soc_codec *codec)
+{
+	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0x8, 0x8);
+	tabla_disable_irq(codec->control_data, TABLA_IRQ_MBHC_REMOVAL);
+	tabla_disable_irq(codec->control_data, TABLA_IRQ_MBHC_POTENTIAL);
+}
+
 static int tabla_startup(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
@@ -1000,8 +1081,11 @@ static int tabla_startup(struct snd_pcm_substream *substream,
 	}
 
 	if (tabla->mbhc_polling_active && (tabla->ref_cnt == 1)) {
+		tabla_codec_pause_hs_polling(codec);
 		tabla_codec_enable_bandgap(codec, TABLA_BANDGAP_AUDIO_MODE);
 		tabla_codec_enable_clock_block(codec, 0);
+		tabla_codec_calibrate_hs_polling(codec);
+		tabla_codec_start_hs_polling(codec);
 	}
 
 	return ret;
@@ -1029,11 +1113,14 @@ static void tabla_shutdown(struct snd_pcm_substream *substream,
 
 	if (tabla->mbhc_polling_active) {
 		if (!tabla->ref_cnt) {
+			tabla_codec_pause_hs_polling(codec);
 			tabla_codec_enable_bandgap(codec,
 				TABLA_BANDGAP_MBHC_MODE);
 			snd_soc_update_bits(codec, TABLA_A_RX_COM_BIAS, 0x80,
 				0x80);
 			tabla_codec_enable_clock_block(codec, 1);
+			tabla_codec_calibrate_hs_polling(codec);
+			tabla_codec_start_hs_polling(codec);
 		}
 		snd_soc_update_bits(codec, TABLA_A_CLK_BUFF_EN1, 0x05, 0x01);
 	}
@@ -1115,15 +1202,43 @@ static struct snd_soc_dai_driver tabla_dai[] = {
 	},
 };
 
-static void tabla_codec_setup_hs_polling(struct snd_soc_codec *codec)
+static short tabla_codec_measure_micbias_voltage(struct snd_soc_codec *codec,
+	int dce)
+{
+	u8 bias_msb, bias_lsb;
+	short bias_value;
+
+	if (dce) {
+		bias_msb = snd_soc_read(codec, TABLA_A_CDC_MBHC_B5_STATUS);
+		bias_lsb = snd_soc_read(codec, TABLA_A_CDC_MBHC_B4_STATUS);
+	} else {
+		snd_soc_write(codec, TABLA_A_CDC_MBHC_EN_CTL, 0x2);
+		snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0x8, 0x0);
+		msleep(100);
+		snd_soc_write(codec, TABLA_A_CDC_MBHC_EN_CTL, 0x2);
+		bias_msb = snd_soc_read(codec, TABLA_A_CDC_MBHC_B3_STATUS);
+		bias_lsb = snd_soc_read(codec, TABLA_A_CDC_MBHC_B2_STATUS);
+	}
+
+	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0x8, 0x8);
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_EN_CTL, 0x0);
+
+	bias_value = (bias_msb << 8) | bias_lsb;
+	pr_debug("read microphone bias value %x\n", bias_value);
+	return bias_value;
+}
+
+static int tabla_codec_setup_hs_polling(struct snd_soc_codec *codec)
 {
 	struct tabla_priv *tabla = snd_soc_codec_get_drvdata(codec);
 	struct tabla_mbhc_calibration *calibration = tabla->calibration;
-	int micbias_ctl_reg, micbias_cfilt_val_reg, micbias_cfilt_ctl_reg;
+	int micbias_ctl_reg, micbias_cfilt_val_reg, micbias_cfilt_ctl_reg,
+		micbias_mbhc_reg;
+	short bias_value, threshold_no_mic;
 
 	if (!calibration) {
 		pr_err("Error, no tabla calibration\n");
-		return;
+		return -ENODEV;
 	}
 
 	tabla->mbhc_polling_active = true;
@@ -1136,12 +1251,6 @@ static void tabla_codec_setup_hs_polling(struct snd_soc_codec *codec)
 
 	snd_soc_update_bits(codec, TABLA_A_CLK_BUFF_EN1, 0x05, 0x01);
 
-	/* TODO store register values in calibration */
-	snd_soc_write(codec, TABLA_A_CDC_MBHC_VOLT_B4_CTL, 0x09);
-	snd_soc_write(codec, TABLA_A_CDC_MBHC_VOLT_B3_CTL, 0xEE);
-	snd_soc_write(codec, TABLA_A_CDC_MBHC_VOLT_B2_CTL, 0xFC);
-	snd_soc_write(codec, TABLA_A_CDC_MBHC_VOLT_B1_CTL, 0xCE);
-
 	snd_soc_update_bits(codec, TABLA_A_LDO_H_MODE_1, 0x0F, 0x0D);
 	snd_soc_update_bits(codec, TABLA_A_TX_COM_BIAS, 0xE0, 0xE0);
 
@@ -1153,58 +1262,66 @@ static void tabla_codec_setup_hs_polling(struct snd_soc_codec *codec)
 		micbias_ctl_reg = TABLA_A_MICB_1_CTL;
 		micbias_cfilt_ctl_reg = TABLA_A_MICB_CFILT_1_CTL;
 		micbias_cfilt_val_reg = TABLA_A_MICB_CFILT_1_VAL;
+		micbias_mbhc_reg = TABLA_A_MICB_1_MBHC;
 		break;
 	case TABLA_MICBIAS2:
 		micbias_ctl_reg = TABLA_A_MICB_2_CTL;
 		micbias_cfilt_ctl_reg = TABLA_A_MICB_CFILT_2_CTL;
 		micbias_cfilt_val_reg = TABLA_A_MICB_CFILT_2_VAL;
+		micbias_mbhc_reg = TABLA_A_MICB_2_MBHC;
 		break;
 	case TABLA_MICBIAS3:
 		micbias_ctl_reg = TABLA_A_MICB_3_CTL;
 		micbias_cfilt_ctl_reg = TABLA_A_MICB_CFILT_3_CTL;
 		micbias_cfilt_val_reg = TABLA_A_MICB_CFILT_3_VAL;
+		micbias_mbhc_reg = TABLA_A_MICB_3_MBHC;
 		break;
 	case TABLA_MICBIAS4:
 		pr_err("%s: Error, microphone bias 4 not supported\n",
 			__func__);
-		return;
+		return -EINVAL;
 	default:
 		pr_err("Error, invalid mic bias line\n");
-		return;
+		return -EINVAL;
 	}
 	snd_soc_write(codec, micbias_cfilt_ctl_reg, 0x40);
 
-	snd_soc_write(codec, micbias_ctl_reg, 0x36);
+	snd_soc_update_bits(codec, micbias_ctl_reg, 0x1F, 0x16);
+	snd_soc_update_bits(codec, micbias_ctl_reg, 0x60,
+		calibration->bias << 5);
 
 	snd_soc_write(codec, micbias_cfilt_val_reg, 0x68);
 
 	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0x2, 0x2);
-	snd_soc_write(codec, TABLA_A_MBHC_SCALING_MUX_1, 0x4);
+	snd_soc_write(codec, TABLA_A_MBHC_SCALING_MUX_1, 0x84);
 
 	snd_soc_update_bits(codec, TABLA_A_TX_7_MBHC_EN, 0x80, 0x80);
 	snd_soc_update_bits(codec, TABLA_A_TX_7_MBHC_EN, 0x1F, 0x1C);
 	snd_soc_update_bits(codec, TABLA_A_TX_7_MBHC_TEST_CTL, 0x40, 0x40);
 
 	snd_soc_update_bits(codec, TABLA_A_TX_7_MBHC_EN, 0x80, 0x00);
-	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0x80, 0x80);
-	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0x80, 0x00);
+	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0x8, 0x8);
+	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0x8, 0x00);
 
-	snd_soc_write(codec, TABLA_A_CDC_MBHC_TIMER_B1_CTL, 3);
-	snd_soc_write(codec, TABLA_A_CDC_MBHC_TIMER_B2_CTL, 9);
-	snd_soc_write(codec, TABLA_A_CDC_MBHC_TIMER_B3_CTL, 30);
-	snd_soc_write(codec, TABLA_A_CDC_MBHC_TIMER_B6_CTL, 120);
-	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_TIMER_B1_CTL, 0x78, 0x58);
-	snd_soc_write(codec, TABLA_A_CDC_MBHC_B2_CTL, 11);
-
-	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_B1_CTL, 0x4, 0x4);
+	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_B1_CTL, 0x6, 0x6);
 	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0x8, 0x8);
 
-	tabla_enable_irq(codec->control_data, TABLA_IRQ_MBHC_POTENTIAL);
-	tabla_enable_irq(codec->control_data, TABLA_IRQ_MBHC_REMOVAL);
-	snd_soc_write(codec, TABLA_A_CDC_MBHC_EN_CTL, 0x1);
-	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0x8, 0x0);
-	snd_soc_write(codec, TABLA_A_CDC_MBHC_EN_CTL, 0x1);
-	/* TODO check if we need to maintain the other register bits */
+	snd_soc_update_bits(codec, micbias_mbhc_reg, 0x10, 0x00);
+	snd_soc_update_bits(codec, TABLA_A_MBHC_HPH, 0x13, 0x01);
+
+	tabla_codec_calibrate_hs_polling(codec);
+
+	bias_value = tabla_codec_measure_micbias_voltage(codec, 0);
+
+	threshold_no_mic = 0xF7F6;
+
+	if (bias_value < threshold_no_mic) {
+		pr_debug("headphone detected, micbias %x\n", bias_value);
+		return 0;
+	} else {
+		pr_debug("headset detected, micbias %x\n", bias_value);
+		return 1;
+	}
 }
 
 static int tabla_codec_enable_hs_detect(struct snd_soc_codec *codec,
@@ -1231,13 +1348,13 @@ static int tabla_codec_enable_hs_detect(struct snd_soc_codec *codec,
 		if (!(tabla->clock_active)) {
 			tabla_codec_enable_config_mode(codec, 1);
 			snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_B1_CTL,
-				0x04, 0);
+				0x06, 0);
 			usleep_range(calibration->shutdown_plug_removal,
 				calibration->shutdown_plug_removal);
 			tabla_codec_enable_config_mode(codec, 0);
 		} else
 			snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_B1_CTL,
-				0x04, 0);
+				0x06, 0);
 	}
 
 	snd_soc_update_bits(codec, TABLA_A_MBHC_HPH, 0xC,
@@ -1304,7 +1421,8 @@ static int tabla_codec_enable_hs_detect(struct snd_soc_codec *codec,
 	return 0;
 }
 
-int tabla_hs_detect(struct snd_soc_codec *codec, struct snd_soc_jack *jack,
+int tabla_hs_detect(struct snd_soc_codec *codec,
+	struct snd_soc_jack *headset_jack, struct snd_soc_jack *button_jack,
 	struct tabla_mbhc_calibration *calibration)
 {
 	struct tabla_priv *tabla;
@@ -1313,44 +1431,102 @@ int tabla_hs_detect(struct snd_soc_codec *codec, struct snd_soc_jack *jack,
 		return -EINVAL;
 	}
 	tabla = snd_soc_codec_get_drvdata(codec);
-	tabla->jack = jack;
+	tabla->headset_jack = headset_jack;
+	tabla->button_jack = button_jack;
 	tabla->calibration = calibration;
 
 	return tabla_codec_enable_hs_detect(codec, 1);
 }
 EXPORT_SYMBOL_GPL(tabla_hs_detect);
 
-static irqreturn_t tabla_dummy_handler(int irq, void *data)
+static irqreturn_t tabla_dce_handler(int irq, void *data)
 {
 	struct tabla_priv *priv = data;
 	struct snd_soc_codec *codec = priv->codec;
-	snd_soc_write(codec, TABLA_A_CDC_MBHC_EN_CTL, 0x1);
+
+	tabla_disable_irq(codec->control_data, TABLA_IRQ_MBHC_REMOVAL);
+	tabla_disable_irq(codec->control_data, TABLA_IRQ_MBHC_POTENTIAL);
+
+	pr_debug("%s: Button pressed\n", __func__);
+	if (priv->button_jack)
+		snd_soc_jack_report(priv->button_jack, SND_JACK_BTN_0,
+			SND_JACK_BTN_0);
+
+	priv->buttons_pressed |= SND_JACK_BTN_0;
+	snd_soc_write(codec, TABLA_A_CDC_MBHC_VOLT_B4_CTL,
+		0x09);
+	usleep_range(100000, 100000);
+
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t tabla_hs_insert_irq(int irq, void *data)
+static irqreturn_t tabla_release_handler(int irq, void *data)
 {
 	struct tabla_priv *priv = data;
 	struct snd_soc_codec *codec = priv->codec;
+	if (priv->buttons_pressed & SND_JACK_BTN_0) {
+		pr_debug("%s: Button released\n", __func__);
+		if (priv->button_jack)
+			snd_soc_jack_report(priv->button_jack, 0,
+				SND_JACK_BTN_0);
 
-	tabla_disable_irq(codec->control_data, TABLA_IRQ_MBHC_INSERTION);
-
-	if (priv->jack) {
-		pr_debug("reporting insertion %d\n", SND_JACK_HEADSET);
-		snd_soc_jack_report(priv->jack, SND_JACK_HEADSET,
-			SND_JACK_HEADSET);
+		priv->buttons_pressed &= ~SND_JACK_BTN_0;
+		snd_soc_write(codec, TABLA_A_CDC_MBHC_VOLT_B4_CTL,
+			0x08);
+		tabla_codec_start_hs_polling(codec);
 	}
-	usleep_range(priv->calibration->setup_plug_removal_delay,
-		priv->calibration->setup_plug_removal_delay);
-
-	tabla_codec_setup_hs_polling(codec);
 
 	return IRQ_HANDLED;
+}
+
+static void tabla_codec_shutdown_hs_removal_detect(struct snd_soc_codec *codec)
+{
+	struct tabla_priv *tabla = snd_soc_codec_get_drvdata(codec);
+	struct tabla_mbhc_calibration *calibration = tabla->calibration;
+	int micbias_mbhc_reg;
+
+	if (!tabla->ref_cnt && !tabla->mbhc_polling_active)
+		tabla_codec_enable_config_mode(codec, 1);
+
+	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0x2, 0x2);
+	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_B1_CTL, 0x6, 0x0);
+	snd_soc_update_bits(codec, TABLA_A_MBHC_HPH, 0x13, 0x0);
+
+	switch (calibration->bias) {
+	case TABLA_MICBIAS1:
+		micbias_mbhc_reg = TABLA_A_MICB_1_MBHC;
+		break;
+	case TABLA_MICBIAS2:
+		micbias_mbhc_reg = TABLA_A_MICB_2_MBHC;
+		break;
+	case TABLA_MICBIAS3:
+		micbias_mbhc_reg = TABLA_A_MICB_3_MBHC;
+		break;
+	case TABLA_MICBIAS4:
+		micbias_mbhc_reg = TABLA_A_MICB_4_MBHC;
+		break;
+	default:
+		pr_err("Error, invalid mic bias line\n");
+		return;
+	}
+	snd_soc_update_bits(codec, micbias_mbhc_reg, 0x80, 0x00);
+	snd_soc_update_bits(codec, micbias_mbhc_reg, 0x10, 0x00);
+	usleep_range(calibration->shutdown_plug_removal,
+		calibration->shutdown_plug_removal);
+
+	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0xA, 0x8);
+	if (!tabla->ref_cnt && !tabla->mbhc_polling_active)
+		tabla_codec_enable_config_mode(codec, 0);
+
+	snd_soc_write(codec, TABLA_A_MBHC_SCALING_MUX_1, 0x00);
 }
 
 static void tabla_codec_shutdown_hs_polling(struct snd_soc_codec *codec)
 {
 	struct tabla_priv *tabla = snd_soc_codec_get_drvdata(codec);
+
+	tabla_codec_shutdown_hs_removal_detect(codec);
+
 	if (!tabla->ref_cnt) {
 		snd_soc_update_bits(codec, TABLA_A_TX_COM_BIAS, 0xE0, 0x00);
 		tabla_codec_enable_bandgap(codec, TABLA_BANDGAP_AUDIO_MODE);
@@ -1358,6 +1534,52 @@ static void tabla_codec_shutdown_hs_polling(struct snd_soc_codec *codec)
 	}
 
 	tabla->mbhc_polling_active = false;
+}
+
+static irqreturn_t tabla_hs_insert_irq(int irq, void *data)
+{
+	struct tabla_priv *priv = data;
+	struct snd_soc_codec *codec = priv->codec;
+	int microphone_present;
+
+	tabla_disable_irq(codec->control_data, TABLA_IRQ_MBHC_INSERTION);
+
+	usleep_range(priv->calibration->setup_plug_removal_delay,
+		priv->calibration->setup_plug_removal_delay);
+
+	if (snd_soc_read(codec, TABLA_A_CDC_MBHC_INT_CTL) & 0x02) {
+		if (priv->headset_jack) {
+			pr_debug("%s: Reporting removal\n", __func__);
+			snd_soc_jack_report(priv->headset_jack, 0,
+				SND_JACK_HEADSET);
+		}
+		tabla_codec_shutdown_hs_removal_detect(codec);
+		tabla_codec_enable_hs_detect(codec, 1);
+		return IRQ_HANDLED;
+	}
+
+	microphone_present = tabla_codec_setup_hs_polling(codec);
+
+	if (microphone_present == 0) {
+		if (priv->headset_jack) {
+			pr_debug("%s: Reporting insertion %d\n", __func__,
+				SND_JACK_HEADPHONE);
+			snd_soc_jack_report(priv->headset_jack,
+				SND_JACK_HEADPHONE, SND_JACK_HEADSET);
+		}
+		tabla_codec_shutdown_hs_polling(codec);
+		tabla_codec_enable_hs_detect(codec, 0);
+	} else if (microphone_present == 1) {
+		if (priv->headset_jack) {
+			pr_debug("%s: Reporting insertion %d\n", __func__,
+				SND_JACK_HEADSET);
+			snd_soc_jack_report(priv->headset_jack,
+				SND_JACK_HEADSET, SND_JACK_HEADSET);
+		}
+		tabla_codec_start_hs_polling(codec);
+	}
+
+	return IRQ_HANDLED;
 }
 
 static irqreturn_t tabla_hs_remove_irq(int irq, void *data)
@@ -1371,9 +1593,9 @@ static irqreturn_t tabla_hs_remove_irq(int irq, void *data)
 	usleep_range(priv->calibration->shutdown_plug_removal,
 		priv->calibration->shutdown_plug_removal);
 
-	if (priv->jack) {
-		pr_debug("reporting removal\n");
-		snd_soc_jack_report(priv->jack, 0, SND_JACK_HEADSET);
+	if (priv->headset_jack) {
+		pr_debug("%s: Reporting removal\n", __func__);
+		snd_soc_jack_report(priv->headset_jack, 0, SND_JACK_HEADSET);
 	}
 	tabla_codec_shutdown_hs_polling(codec);
 
@@ -1504,13 +1726,21 @@ static int tabla_codec_probe(struct snd_soc_codec *codec)
 	tabla_disable_irq(codec->control_data, TABLA_IRQ_MBHC_REMOVAL);
 
 	ret = tabla_request_irq(codec->control_data, TABLA_IRQ_MBHC_POTENTIAL,
-		tabla_dummy_handler, "DC Estimation detect", tabla);
+		tabla_dce_handler, "DC Estimation detect", tabla);
 	if (ret) {
 		pr_err("%s: Failed to request irq %d\n", __func__,
 			TABLA_IRQ_MBHC_POTENTIAL);
 		goto err_potential_irq;
 	}
 	tabla_disable_irq(codec->control_data, TABLA_IRQ_MBHC_POTENTIAL);
+
+	ret = tabla_request_irq(codec->control_data, TABLA_IRQ_MBHC_RELEASE,
+		tabla_release_handler, "Button Release detect", tabla);
+	if (ret) {
+		pr_err("%s: Failed to request irq %d\n", __func__,
+			TABLA_IRQ_MBHC_RELEASE);
+		goto err_release_irq;
+	}
 
 	ret = tabla_request_irq(codec->control_data, TABLA_IRQ_SLIMBUS,
 		tabla_slimbus_irq, "SLIMBUS Slave", tabla);
@@ -1527,6 +1757,8 @@ static int tabla_codec_probe(struct snd_soc_codec *codec)
 	return ret;
 
 err_slimbus_irq:
+	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_RELEASE, tabla);
+err_release_irq:
 	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_POTENTIAL, tabla);
 err_potential_irq:
 	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_REMOVAL, tabla);
@@ -1540,6 +1772,7 @@ static int tabla_codec_remove(struct snd_soc_codec *codec)
 {
 	struct tabla_priv *tabla = snd_soc_codec_get_drvdata(codec);
 	tabla_free_irq(codec->control_data, TABLA_IRQ_SLIMBUS, tabla);
+	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_RELEASE, tabla);
 	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_POTENTIAL, tabla);
 	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_REMOVAL, tabla);
 	tabla_free_irq(codec->control_data, TABLA_IRQ_MBHC_INSERTION, tabla);
