@@ -556,10 +556,10 @@ static long audqcelp_in_ioctl(struct file *file,
 			break;
 		}
 		/* Allow only single frame */
-		if (cfg.buffer_size != (FRAME_SIZE - 8))
-			rc = -EINVAL;
-		else
-			audio->buffer_size = cfg.buffer_size;
+                if (cfg.buffer_size != (FRAME_SIZE - 8))
+                        rc = -EINVAL;
+                else
+                        audio->buffer_size = cfg.buffer_size;
 		break;
 	}
 	case AUDIO_GET_STREAM_CONFIG: {
