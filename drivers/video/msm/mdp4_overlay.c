@@ -1987,6 +1987,12 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 			if (mfd->panel_power_on)
 				if (mdp4_dsi_overlay_blt_stop(mfd) == 0)
 					mdp4_dsi_cmd_overlay_restore();
+		}  else if (ctrl->panel_mode & MDP4_PANEL_DSI_VIDEO) {
+			flags = pipe->flags;
+			pipe->flags &= ~MDP_OV_PLAY_NOWAIT;
+			mdp4_overlay_reg_flush(pipe, 1);
+			mdp4_overlay_dsi_video_vsync_push(mfd, pipe);
+			pipe->flags = flags;
 		}
 #else
 		if (ctrl->panel_mode & MDP4_PANEL_MDDI) {
@@ -2000,6 +2006,7 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 		else if (ctrl->panel_mode & MDP4_PANEL_LCDC) {
 			flags = pipe->flags;
 			pipe->flags &= ~MDP_OV_PLAY_NOWAIT;
+			mdp4_overlay_reg_flush(pipe, 1);
 			mdp4_overlay_lcdc_vsync_push(mfd, pipe);
 			pipe->flags = flags;
 		}
