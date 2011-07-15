@@ -76,7 +76,7 @@ static void set_dload_mode(int on)
 		writel(on ? 0xE47B337D : 0, dload_mode_addr);
 		writel(on ? 0xCE14091A : 0,
 		       dload_mode_addr + sizeof(unsigned int));
-		dmb();
+		mb();
 	}
 }
 
