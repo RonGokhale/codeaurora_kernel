@@ -465,6 +465,7 @@ static void process_cb_request(void *buffer)
 				}
 
 				timespec_add_ns(&ts, sleep);
+				suspend_state.tick_at_suspend = now;
 			} else
 				pr_err("%s: Invalid ticks from SCLK"
 					"now=%lld tick_at_suspend=%lld",
@@ -720,6 +721,7 @@ msmrtc_suspend(struct platform_device *dev, pm_message_t state)
 		if (diff <= 0) {
 			msmrtc_alarmtimer_expired(1 , rtc_pdata);
 			msm_pm_set_max_sleep_time(0);
+			atomic_inc(&suspend_state.state);
 			return 0;
 		}
 		msm_pm_set_max_sleep_time((int64_t)
