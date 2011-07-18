@@ -209,6 +209,7 @@ struct mmc_host {
 #define MMC_CAP_MAX_CURRENT_400	(1 << 27)	/* Host max current limit is 400mA */
 #define MMC_CAP_MAX_CURRENT_600	(1 << 28)	/* Host max current limit is 600mA */
 #define MMC_CAP_MAX_CURRENT_800	(1 << 29)	/* Host max current limit is 800mA */
+#define MMC_CAP_CMD23		(1 << 30)	/* CMD23 supported. */
 
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 
@@ -380,6 +381,11 @@ static inline int mmc_regulator_set_ocr(struct mmc_host *mmc,
 	return 0;
 }
 #endif
+
+static inline int mmc_host_cmd23(struct mmc_host *host)
+{
+	return host->caps & MMC_CAP_CMD23;
+}
 
 int mmc_card_awake(struct mmc_host *host);
 int mmc_card_sleep(struct mmc_host *host);
