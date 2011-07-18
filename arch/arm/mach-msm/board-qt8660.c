@@ -63,6 +63,7 @@
 #include <mach/socinfo.h>
 #include <mach/rpm.h>
 #include <mach/rpm-regulator.h>
+#include <mach/gpiomux.h>
 #ifdef CONFIG_USB_ANDROID
 #include <linux/usb/android_composite.h>
 #endif
@@ -77,7 +78,6 @@
 #include "spm.h"
 #include "rpm_log.h"
 #include "timer.h"
-#include "gpiomux.h"
 #include "gpiomux-8x60.h"
 #include "rpm_resources.h"
 
