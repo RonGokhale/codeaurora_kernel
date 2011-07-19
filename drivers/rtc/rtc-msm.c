@@ -163,6 +163,12 @@ int64_t msmrtc_get_tickatsuspend(void)
 }
 EXPORT_SYMBOL(msmrtc_get_tickatsuspend);
 
+void msmrtc_set_tickatsuspend(int64_t now)
+{
+	suspend_state.tick_at_suspend = now;
+}
+EXPORT_SYMBOL(msmrtc_set_tickatsuspend);
+
 static int msmrtc_tod_proc_args(struct msm_rpc_client *client, void *buff,
 							void *data)
 {
@@ -421,13 +427,22 @@ static void process_cb_request(void *buffer)
 
 		getnstimeofday(&ts);
 		if (atomic_read(&suspend_state.state)) {
-			int64_t now, sleep;
+			int64_t now, sleep, sclk_max;
 
-			now = msm_timer_get_sclk_time(NULL);
+			now = msm_timer_get_sclk_time(&sclk_max);
+
 			if (now && suspend_state.tick_at_suspend) {
-				sleep = now -
-					suspend_state.tick_at_suspend;
+				if (now < suspend_state.tick_at_suspend) {
+					sleep = sclk_max -
+						suspend_state.tick_at_suspend
+									+ now;
+				} else {
+					sleep = now -
+						suspend_state.tick_at_suspend;
+				}
+
 				timespec_add_ns(&ts, sleep);
+				suspend_state.tick_at_suspend = now;
 			} else
 				pr_err("%s: Invalid ticks from SCLK"
 					"now=%lld tick_at_suspend=%lld",
@@ -659,6 +674,7 @@ msmrtc_suspend(struct platform_device *dev, pm_message_t state)
 		if (diff <= 0) {
 			msmrtc_alarmtimer_expired(1);
 			msm_pm_set_max_sleep_time(0);
+			atomic_inc(&suspend_state.state);
 			return 0;
 		}
 		msm_pm_set_max_sleep_time((int64_t) ((int64_t) diff * NSEC_PER_SEC));
