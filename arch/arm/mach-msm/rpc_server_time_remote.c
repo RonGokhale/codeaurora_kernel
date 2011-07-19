@@ -133,6 +133,7 @@ static int handle_rpc_call(struct msm_rpc_server *server,
 				}
 
 				timespec_add_ns(&ts, sleep);
+				msmrtc_set_tickatsuspend(now);
 			} else
 				pr_err("%s: Invalid ticks from SCLK"
 					"now=%lld tick_at_suspend=%lld",

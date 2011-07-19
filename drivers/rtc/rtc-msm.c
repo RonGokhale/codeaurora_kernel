@@ -161,6 +161,12 @@ int64_t msmrtc_get_tickatsuspend(void)
 }
 EXPORT_SYMBOL(msmrtc_get_tickatsuspend);
 
+void msmrtc_set_tickatsuspend(int64_t now)
+{
+	suspend_state.tick_at_suspend = now;
+}
+EXPORT_SYMBOL(msmrtc_set_tickatsuspend);
+
 static int msmrtc_tod_proc_args(struct msm_rpc_client *client, void *buff,
 							void *data)
 {
