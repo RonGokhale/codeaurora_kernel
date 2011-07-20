@@ -121,6 +121,8 @@ static uint32_t sdio_cmux_inited;
 static uint32_t abort_tx;
 static DEFINE_MUTEX(modem_reset_lock);
 
+static DEFINE_MUTEX(probe_lock);
+
 enum {
 	MSM_SDIO_CMUX_DEBUG = 1U << 0,
 	MSM_SDIO_CMUX_DUMP_BUFFER = 1U << 1,
@@ -770,6 +772,7 @@ static int sdio_cmux_probe(struct platform_device *pdev)
 {
 	int i, r;
 
+	mutex_lock(&probe_lock);
 	D("%s Begins\n", __func__);
 	if (sdio_cmux_inited) {
 		mutex_lock(&modem_reset_lock);
@@ -782,6 +785,7 @@ static int sdio_cmux_probe(struct platform_device *pdev)
 		}
 		abort_tx = 0;
 		mutex_unlock(&modem_reset_lock);
+		mutex_unlock(&probe_lock);
 		return 0;
 	}
 
@@ -814,6 +818,7 @@ static int sdio_cmux_probe(struct platform_device *pdev)
 	platform_device_register(&sdio_ctl_dev);
 	sdio_cmux_inited = 1;
 	D("SDIO Control MUX Driver Initialized.\n");
+	mutex_unlock(&probe_lock);
 	return 0;
 
 error2:
@@ -821,6 +826,7 @@ error2:
 error1:
 	destroy_workqueue(sdio_cmux_wq);
 error0:
+	mutex_unlock(&probe_lock);
 	return r;
 }
 
