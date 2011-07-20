@@ -60,11 +60,15 @@
 #define MXT_PROCG_NOISE		22
 #define MXT_PROCI_ONETOUCH	24
 #define MXT_PROCI_TWOTOUCH	27
-#define MXT_SPT_COMMSCONFIG	18	/* firmware ver 21 over */
+#define MXT_PROCI_GRIP		40
+#define MXT_PROCI_PALM		41
+#define MXT_SPT_COMMSCONFIG	18
 #define MXT_SPT_GPIOPWM		19
 #define MXT_SPT_SELFTEST	25
 #define MXT_SPT_CTECONFIG	28
-#define MXT_SPT_USERDATA	38	/* firmware ver 21 over */
+#define MXT_SPT_USERDATA	38
+#define MXT_SPT_DIGITIZER	43
+#define MXT_SPT_MESSAGECOUNT	44
 
 /* MXT_GEN_COMMAND field */
 #define MXT_COMMAND_RESET	0
@@ -115,7 +119,7 @@
 #define MXT_TOUCH_XEDGEDIST	27
 #define MXT_TOUCH_YEDGECTRL	28
 #define MXT_TOUCH_YEDGEDIST	29
-#define MXT_TOUCH_JUMPLIMIT	30	/* firmware ver 22 over */
+#define MXT_TOUCH_JUMPLIMIT	30
 
 /* MXT_PROCI_GRIPFACE field */
 #define MXT_GRIPFACE_CTRL	0
@@ -157,7 +161,7 @@
 #define MXT_CTE_MODE		2
 #define MXT_CTE_IDLEGCAFDEPTH	3
 #define MXT_CTE_ACTVGCAFDEPTH	4
-#define MXT_CTE_VOLTAGE		5	/* firmware ver 21 over */
+#define MXT_CTE_VOLTAGE		5
 
 #define MXT_VOLTAGE_DEFAULT	2700000
 #define MXT_VOLTAGE_STEP	10000
@@ -192,9 +196,12 @@
 #define MXT_PRESS		(1 << 6)
 #define MXT_DETECT		(1 << 7)
 
+/* Touch orient bits */
+#define MXT_XY_SWITCH		(1 << 0)
+#define MXT_X_INVERT		(1 << 1)
+#define MXT_Y_INVERT		(1 << 2)
+
 /* Touchscreen absolute values */
-#define MXT_MAX_XC		0x3ff
-#define MXT_MAX_YC		0x3ff
 #define MXT_MAX_AREA		0xff
 
 #define MXT_MAX_FINGER		10
@@ -242,6 +249,8 @@ struct mxt_data {
 	struct mxt_info info;
 	struct mxt_finger finger[MXT_MAX_FINGER];
 	unsigned int irq;
+	unsigned int max_x;
+	unsigned int max_y;
 };
 
 static bool mxt_object_readable(unsigned int type)
@@ -258,6 +267,8 @@ static bool mxt_object_readable(unsigned int type)
 	case MXT_PROCG_NOISE:
 	case MXT_PROCI_ONETOUCH:
 	case MXT_PROCI_TWOTOUCH:
+	case MXT_PROCI_GRIP:
+	case MXT_PROCI_PALM:
 	case MXT_SPT_COMMSCONFIG:
 	case MXT_SPT_GPIOPWM:
 	case MXT_SPT_SELFTEST:
@@ -282,6 +293,8 @@ static bool mxt_object_writable(unsigned int type)
 	case MXT_PROCG_NOISE:
 	case MXT_PROCI_ONETOUCH:
 	case MXT_PROCI_TWOTOUCH:
+	case MXT_PROCI_GRIP:
+	case MXT_PROCI_PALM:
 	case MXT_SPT_GPIOPWM:
 	case MXT_SPT_SELFTEST:
 	case MXT_SPT_CTECONFIG:
@@ -541,8 +554,13 @@ static void mxt_input_touchevent(struct mxt_data *data,
 	if (!(status & (MXT_PRESS | MXT_MOVE)))
 		return;
 
-	x = (message->message[1] << 2) | ((message->message[3] & ~0x3f) >> 6);
-	y = (message->message[2] << 2) | ((message->message[3] & ~0xf3) >> 2);
+	x = (message->message[1] << 4) | ((message->message[3] >> 4) & 0xf);
+	y = (message->message[2] << 4) | ((message->message[3] & 0xf));
+	if (data->max_x < 1024)
+		x = x >> 2;
+	if (data->max_y < 1024)
+		y = y >> 2;
+
 	area = message->message[4];
 
 	dev_dbg(dev, "[%d] %s x: %d, y: %d, area: %d\n", id,
@@ -686,7 +704,7 @@ static void mxt_handle_pdata(struct mxt_data *data)
 			MXT_TOUCH_YRANGE_MSB, (pdata->y_size - 1) >> 8);
 
 	/* Set touchscreen voltage */
-	if (data->info.version >= MXT_VER_21 && pdata->voltage) {
+	if (pdata->voltage) {
 		if (pdata->voltage < MXT_VOLTAGE_DEFAULT) {
 			voltage = (MXT_VOLTAGE_DEFAULT - pdata->voltage) /
 				MXT_VOLTAGE_STEP;
@@ -796,10 +814,6 @@ static int mxt_initialize(struct mxt_data *data)
 	if (error)
 		return error;
 
-	error = mxt_make_highchg(data);
-	if (error)
-		return error;
-
 	mxt_handle_pdata(data);
 
 	/* Backup to memory */
@@ -835,6 +849,20 @@ static int mxt_initialize(struct mxt_data *data)
 			info->object_num);
 
 	return 0;
+}
+
+static void mxt_calc_resolution(struct mxt_data *data)
+{
+	unsigned int max_x = data->pdata->x_size - 1;
+	unsigned int max_y = data->pdata->y_size - 1;
+
+	if (data->pdata->orient & MXT_XY_SWITCH) {
+		data->max_x = max_y;
+		data->max_y = max_x;
+	} else {
+		data->max_x = max_x;
+		data->max_y = max_y;
+	}
 }
 
 static ssize_t mxt_object_show(struct device *dev,
@@ -951,18 +979,7 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 					const char *buf, size_t count)
 {
 	struct mxt_data *data = dev_get_drvdata(dev);
-	unsigned int version;
 	int error;
-
-	if (sscanf(buf, "%u", &version) != 1) {
-		dev_err(dev, "Invalid values\n");
-		return -EINVAL;
-	}
-
-	if (data->info.version < MXT_VER_21 || version < MXT_VER_21) {
-		dev_err(dev, "FW update supported starting with version 21\n");
-		return -EINVAL;
-	}
 
 	disable_irq(data->irq);
 
@@ -983,6 +1000,10 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 	}
 
 	enable_irq(data->irq);
+
+	error = mxt_make_highchg(data);
+	if (error)
+		return error;
 
 	return count;
 }
@@ -1055,31 +1076,32 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	input_dev->open = mxt_input_open;
 	input_dev->close = mxt_input_close;
 
+	data->client = client;
+	data->input_dev = input_dev;
+	data->pdata = pdata;
+	data->irq = client->irq;
+
+	mxt_calc_resolution(data);
+
 	__set_bit(EV_ABS, input_dev->evbit);
 	__set_bit(EV_KEY, input_dev->evbit);
 	__set_bit(BTN_TOUCH, input_dev->keybit);
 
 	/* For single touch */
 	input_set_abs_params(input_dev, ABS_X,
-			     0, MXT_MAX_XC, 0, 0);
+			     0, data->max_x, 0, 0);
 	input_set_abs_params(input_dev, ABS_Y,
-			     0, MXT_MAX_YC, 0, 0);
+			     0, data->max_y, 0, 0);
 
 	/* For multi touch */
 	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR,
 			     0, MXT_MAX_AREA, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_X,
-			     0, MXT_MAX_XC, 0, 0);
+			     0, data->max_x, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_Y,
-			     0, MXT_MAX_YC, 0, 0);
+			     0, data->max_y, 0, 0);
 
 	input_set_drvdata(input_dev, data);
-
-	data->client = client;
-	data->input_dev = input_dev;
-	data->pdata = pdata;
-	data->irq = client->irq;
-
 	i2c_set_clientdata(client, data);
 
 	error = mxt_initialize(data);
@@ -1092,6 +1114,10 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		dev_err(&client->dev, "Failed to register interrupt\n");
 		goto err_free_object;
 	}
+
+	error = mxt_make_highchg(data);
+	if (error)
+		goto err_free_irq;
 
 	error = input_register_device(input_dev);
 	if (error)
