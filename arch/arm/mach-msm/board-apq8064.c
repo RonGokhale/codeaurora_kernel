@@ -14,6 +14,7 @@
 #include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/irq.h>
+#include <linux/msm_ssbi.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
@@ -71,10 +72,26 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm_device_dmov,
 	&apq8064_device_uart_gsbi3,
 	&apq8064_device_qup_spi_gsbi5,
+	&apq8064_device_ssbi_pmic1,
+	&apq8064_device_ssbi_pmic2,
 };
 
 static struct msm_spi_platform_data apq8064_qup_spi_gsbi5_pdata = {
 	.max_clock_speed = 26000000,
+};
+
+static struct msm_ssbi_platform_data apq8064_ssbi_pm8921_pdata __devinitdata = {
+	.controller_type = MSM_SBI_CTRL_PMIC_ARBITER,
+	.slave	= {
+		.name			= "pm8921-core",
+	},
+};
+
+static struct msm_ssbi_platform_data apq8064_ssbi_pm8821_pdata __devinitdata = {
+	.controller_type = MSM_SBI_CTRL_PMIC_ARBITER,
+	.slave	= {
+		.name			= "pm8821-core",
+	},
 };
 
 static void __init apq8064_common_init(void)
@@ -83,8 +100,13 @@ static void __init apq8064_common_init(void)
 		pr_err("socinfo_init() failed!\n");
 	msm_clock_init(msm_clocks_8064_dummy, msm_num_clocks_8064_dummy);
 	gpiomux_init();
+
 	apq8064_device_qup_spi_gsbi5.dev.platform_data =
 						&apq8064_qup_spi_gsbi5_pdata;
+	apq8064_device_ssbi_pmic1.dev.platform_data =
+				&apq8064_ssbi_pm8921_pdata;
+	apq8064_device_ssbi_pmic2.dev.platform_data =
+				&apq8064_ssbi_pm8821_pdata;
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 }
 

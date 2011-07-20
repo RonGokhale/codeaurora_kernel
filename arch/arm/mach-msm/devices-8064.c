@@ -39,6 +39,10 @@
 #define MSM_GSBI7_QUP_PHYS	(MSM_GSBI7_PHYS + 0x80000)
 #define MSM_QUP_SIZE		SZ_4K
 
+/* Address of SSBI CMD */
+#define MSM_PMIC1_SSBI_CMD_PHYS	0x00500000
+#define MSM_PMIC2_SSBI_CMD_PHYS	0x00C00000
+#define MSM_PMIC_SSBI_SIZE	SZ_4K
 
 static struct resource msm_dmov_resource[] = {
 	{
@@ -108,6 +112,36 @@ struct platform_device apq8064_device_qup_spi_gsbi5 = {
 	.id		= 0,
 	.num_resources	= ARRAY_SIZE(resources_qup_spi_gsbi5),
 	.resource	= resources_qup_spi_gsbi5,
+};
+
+static struct resource resources_ssbi_pmic1[] = {
+	{
+		.start  = MSM_PMIC1_SSBI_CMD_PHYS,
+		.end    = MSM_PMIC1_SSBI_CMD_PHYS + MSM_PMIC_SSBI_SIZE - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+};
+
+struct platform_device apq8064_device_ssbi_pmic1 = {
+	.name           = "msm_ssbi",
+	.id             = 0,
+	.resource       = resources_ssbi_pmic1,
+	.num_resources  = ARRAY_SIZE(resources_ssbi_pmic1),
+};
+
+static struct resource resources_ssbi_pmic2[] = {
+	{
+		.start  = MSM_PMIC2_SSBI_CMD_PHYS,
+		.end    = MSM_PMIC2_SSBI_CMD_PHYS + MSM_PMIC_SSBI_SIZE - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+};
+
+struct platform_device apq8064_device_ssbi_pmic2 = {
+	.name           = "msm_ssbi",
+	.id             = 1,
+	.resource       = resources_ssbi_pmic2,
+	.num_resources  = ARRAY_SIZE(resources_ssbi_pmic2),
 };
 
 struct clk_lookup msm_clocks_8064_dummy[] = {
