@@ -1049,6 +1049,7 @@ static int __devinit msm_charger_probe(struct platform_device *pdev)
 
 static int __devexit msm_charger_remove(struct platform_device *pdev)
 {
+	wake_lock_destroy(&msm_chg.wl);
 	mutex_destroy(&msm_chg.status_lock);
 	power_supply_unregister(&msm_psy_batt);
 	return 0;
@@ -1116,7 +1117,6 @@ int msm_charger_register(struct msm_hardware_charger *hw_chg)
 	return 0;
 
 out:
-	wake_lock_destroy(&msm_chg.wl);
 	kfree(priv);
 	return rc;
 }
@@ -1149,7 +1149,6 @@ int msm_charger_unregister(struct msm_hardware_charger *hw_chg)
 	mutex_lock(&msm_chg.msm_hardware_chargers_lock);
 	list_del(&priv->list);
 	mutex_unlock(&msm_chg.msm_hardware_chargers_lock);
-	wake_lock_destroy(&msm_chg.wl);
 	power_supply_unregister(&priv->psy);
 	kfree(priv);
 	return 0;
