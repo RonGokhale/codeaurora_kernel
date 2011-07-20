@@ -614,7 +614,7 @@ static int pmem_get_region(int id)
 	atomic_inc(&pmem[id].allocation_cnt);
 	if (!pmem[id].vbase) {
 		DLOG("PMEMDEBUG: mapping for %s", pmem[id].name);
-		if (pmem[id].vbase && pmem[id].mem_request)
+		if (pmem[id].mem_request)
 				pmem[id].mem_request(pmem[id].region_data);
 		ioremap_pmem(id);
 
@@ -623,6 +623,8 @@ static int pmem_get_region(int id)
 	if (pmem[id].vbase)
 		return 0;
 	else {
+		if (pmem[id].mem_release)
+			pmem[id].mem_release(pmem[id].region_data);
 		atomic_dec(&pmem[id].allocation_cnt);
 		return 1;
 	}
