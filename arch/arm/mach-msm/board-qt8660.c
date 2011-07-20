@@ -2509,6 +2509,7 @@ static struct matrix_keypad_platform_data qt_keypad_data = {
 	.wakeup			= 1,
 	.active_low		= 1,
 	.no_autorepeat		= 1,
+	.qt_check		= 1,
 };
 
 static struct platform_device qt_keypad_device = {
