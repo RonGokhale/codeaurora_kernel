@@ -6388,6 +6388,11 @@ static unsigned int msm7x30_sdcc_slot_status(struct device *dev)
 }
 #endif
 
+static void msm_sdcc_sdio_lpm_gpio(struct device *dv, unsigned int active)
+{
+	pr_debug("%s not implemented\n", __func__);
+}
+
 static int msm_sdcc_get_wpswitch(struct device *dv)
 {
 	void __iomem *wp_addr = 0;
@@ -6451,10 +6456,14 @@ static struct mmc_platform_data msm7x30_sdc1_data = {
 static struct mmc_platform_data msm7x30_sdc2_data = {
 	.ocr_mask	= MMC_VDD_165_195 | MMC_VDD_27_28,
 	.translate_vdd	= msm_sdcc_setup_power,
+	.sdio_lpm_gpio_setup = msm_sdcc_sdio_lpm_gpio,
 #ifdef CONFIG_MMC_MSM_SDC2_8_BIT_SUPPORT
 	.mmc_bus_width  = MMC_CAP_8_BIT_DATA,
 #else
 	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
+#endif
+#ifdef CONFIG_MMC_MSM_SDIO_SUPPORT
+	.sdiowakeup_irq = MSM_GPIO_TO_INT(68),
 #endif
 #ifdef CONFIG_MMC_MSM_SDC2_DUMMY52_REQUIRED
 	.dummy52_required = 1,
@@ -6463,6 +6472,9 @@ static struct mmc_platform_data msm7x30_sdc2_data = {
 	.msmsdcc_fmid	= 24576000,
 	.msmsdcc_fmax	= 49152000,
 	.nonremovable	= 1,
+#ifdef CONFIG_MSM_SDIO_AL
+	.is_sdio_al_client = 1,
+#endif
 };
 #endif
 
