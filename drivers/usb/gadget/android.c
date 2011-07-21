@@ -607,6 +607,9 @@ int android_enable_function(struct usb_function *f, int enable)
 	struct usb_gadget	*gadget = dev->cdev->gadget;
 	int product_id;
 
+	pr_info_ratelimited("%s: %s %s\n",
+		__func__, enable ? "enable" : "disable", f->name);
+
 	if (!is_sysfschange_allowed(f))
 		return -EINVAL;
 	if (!!f->disabled != disable) {
