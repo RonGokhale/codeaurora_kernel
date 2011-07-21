@@ -334,8 +334,6 @@ config FB_MSM_LCDC_TOSHIBA_FWVGA_PT_PANEL
 	  Support for LCDC Toshiba FWVGA PT (480x864) panel. This
 	  configuration has to be selected to support the Toshiba
 	  FWVGA (480x864) portrait panel.
-	  .
-	  .
 
 config FB_MSM_LCDC_SHARP_WVGA_PT_PANEL
 	depends on FB_MSM_LCDC_HW
@@ -350,18 +348,13 @@ config FB_MSM_LCDC_AUO_WVGA_PANEL
 	select FB_MSM_LCDC_AUO_WVGA
 	---help---
 	  Support for LCDC AUO WVGA(480x800) panel
-	  .
-	  .
-	  .
+
 config FB_MSM_LCDC_SAMSUNG_OLED_PT_PANEL
 	depends on FB_MSM_LCDC_HW
 	bool "LCDC Samsung OLED PT Panel"
 	select FB_MSM_LCDC_SAMSUNG_OLED_PT
 	---help---
 	  Support for LCDC Samsung OLED PT (480x800) panel
-	  .
-	  .
-	  .
 
 config FB_MSM_TRY_MDDI_CATCH_LCDC_PRISM
 	depends on FB_MSM_LCDC_HW
@@ -404,9 +397,6 @@ config FB_MSM_LCDC_PANEL_AUTO_DETECT
 	select FB_MSM_LCDC_SAMSUNG_OLED_PT
 	---help---
 	  Support for LCDC panel auto detect
-	  .
-	  .
-	  .
 
 config FB_MSM_MDDI_PRISM_WVGA
 	bool "MDDI Prism WVGA Panel"
@@ -569,8 +559,6 @@ config FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 	---help---
 	  Support for HDCP mode for MSM HDMI 1080p Panel
 	  Choose to enable HDCP
-	  .
-	  .
 
 choice
 	depends on  (FB_MSM_MDP22 || FB_MSM_MDP31 || FB_MSM_MDP40)
@@ -583,9 +571,6 @@ config FB_MSM_TVOUT_NTSC_M
         select FB_MSM_EXT_INTERFACE_COMMON
 	---help---
 	  Support for NTSC M region (North American and Korea)
-          .
-          .
-          .
 
 config FB_MSM_TVOUT_NTSC_J
 	bool "NTSC J"
@@ -593,9 +578,6 @@ config FB_MSM_TVOUT_NTSC_J
         select FB_MSM_EXT_INTERFACE_COMMON
 	---help---
 	  Support for NTSC J region (Japan)
-          .
-          .
-          .
 
 config FB_MSM_TVOUT_PAL_BDGHIN
 	bool "PAL BDGHIN"
@@ -603,9 +585,6 @@ config FB_MSM_TVOUT_PAL_BDGHIN
         select FB_MSM_EXT_INTERFACE_COMMON
 	---help---
 	  Support for PAL BDGHIN region (Non-argentina PAL-N)
-          .
-          .
-          .
 
 config FB_MSM_TVOUT_PAL_M
 	bool "PAL M"
@@ -613,9 +592,6 @@ config FB_MSM_TVOUT_PAL_M
         select FB_MSM_EXT_INTERFACE_COMMON
 	---help---
 	  Support for PAL M region
-          .
-          .
-          .
 
 config FB_MSM_TVOUT_PAL_N
 	bool "PAL N"
@@ -623,9 +599,6 @@ config FB_MSM_TVOUT_PAL_N
         select FB_MSM_EXT_INTERFACE_COMMON
 	---help---
 	  Support for PAL N region (Argentina PAL-N)
-          .
-          .
-          .
 
 config FB_MSM_TVOUT_NONE
 	bool "NONE"
