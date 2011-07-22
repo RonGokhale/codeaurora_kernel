@@ -1433,9 +1433,12 @@ static int msm_otg_phy_reset(struct msm_otg *dev)
 	temp = (readl(USB_PORTSC) & ~PORTSC_PTS);
 	writel(temp | PORTSC_PTS_ULPI, USB_PORTSC);
 
-	rc = msm_otg_phy_caliberate(dev);
-	if (rc)
-		return rc;
+	if (atomic_read(&dev->chg_type) !=
+				USB_CHG_TYPE__WALLCHARGER) {
+		rc = msm_otg_phy_caliberate(dev);
+		if (rc)
+			return rc;
+	}
 
 	/* TBD: There are two link resets. One is below and other one
 	 * is done immediately after this function. See if we can
