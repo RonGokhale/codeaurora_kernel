@@ -1505,6 +1505,7 @@ reset_link:
 		mode = USBMODE_SDIS | USBMODE_HOST;
 	writel(mode, USB_USBMODE);
 
+	writel_relaxed((readl_relaxed(USB_OTGSC) | OTGSC_IDPU), USB_OTGSC);
 	if (dev->otg.gadget) {
 		enable_sess_valid(dev);
 		/* Due to the above 100ms delay, interrupts from PHY are
