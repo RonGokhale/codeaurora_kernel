@@ -549,7 +549,7 @@ config VIDEO_VIVI
 	depends on VIDEO_DEV && VIDEO_V4L2 && !SPARC32 && !SPARC64
 	depends on FRAMEBUFFER_CONSOLE || STI_CONSOLE
 	select FONT_8x16
-	select VIDEOBUF_VMALLOC
+	select VIDEOBUF2_VMALLOC
 	default n
 	---help---
 	  Enables a virtual video driver. This device shows a color bar
@@ -1014,8 +1014,7 @@ if V4L_MEM2MEM_DRIVERS
 config VIDEO_MEM2MEM_TESTDEV
 	tristate "Virtual test device for mem2mem framework"
 	depends on VIDEO_DEV && VIDEO_V4L2
-	depends on BROKEN
-	select VIDEOBUF_VMALLOC
+	select VIDEOBUF2_VMALLOC
 	select V4L2_MEM2MEM_DEV
 	default n
 	---help---
