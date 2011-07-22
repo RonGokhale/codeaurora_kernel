@@ -40,6 +40,7 @@
 #include <linux/platform_device.h>
 #include <linux/uaccess.h>
 #include <linux/debugfs.h>
+#include <linux/ratelimit.h>
 
 #include <asm/byteorder.h>
 
@@ -73,50 +74,50 @@ module_param_named(debug_mask, smd_rpcrouter_debug_mask,
 #if defined(CONFIG_MSM_ONCRPCROUTER_DEBUG)
 #define D(x...) do { \
 if (smd_rpcrouter_debug_mask & RTR_DBG) \
-	pr_info(x); \
+	pr_info_ratelimited(x); \
 } while (0)
 
 #define RR(x...) do { \
 if (smd_rpcrouter_debug_mask & R2R_MSG) \
-	pr_info("[RR] "x); \
+	pr_info_ratelimited("[RR] "x); \
 } while (0)
 
 #define RAW(x...) do { \
 if (smd_rpcrouter_debug_mask & R2R_RAW) \
-	pr_info("[RAW] "x); \
+	pr_info_ratelimited("[RAW] "x); \
 } while (0)
 
 #define RAW_HDR(x...) do { \
 if (smd_rpcrouter_debug_mask & R2R_RAW_HDR) \
-	pr_info("[HDR] "x); \
+	pr_info_ratelimited("[HDR] "x); \
 } while (0)
 
 #define RAW_PMR(x...) do { \
 if (smd_rpcrouter_debug_mask & RAW_PMR) \
-	pr_info("[PMR] "x); \
+	pr_info_ratelimited("[PMR] "x); \
 } while (0)
 
 #define RAW_PMR_NOMASK(x...) do { \
-	pr_info("[PMR] "x); \
+	pr_info_ratelimited("[PMR] "x); \
 } while (0)
 
 #define RAW_PMW(x...) do { \
 if (smd_rpcrouter_debug_mask & RAW_PMW) \
-	pr_info"[PMW] "x); \
+	pr_info_ratelimited("[PMW] "x); \
 } while (0)
 
 #define RAW_PMW_NOMASK(x...) do { \
-	pr_info("[PMW] "x); \
+	pr_info_ratelimited("[PMW] "x); \
 } while (0)
 
 #define IO(x...) do { \
 if (smd_rpcrouter_debug_mask & RPC_MSG) \
-	pr_info("[RPC] "x); \
+	pr_info_ratelimited("[RPC] "x); \
 } while (0)
 
 #define NTFY(x...) do { \
 if (smd_rpcrouter_debug_mask & NTFY_MSG) \
-	pr_info("[NOTIFY] "x); \
+	pr_info_ratelimited("[NOTIFY] "x); \
 } while (0)
 #else
 #define D(x...) do { } while (0)
