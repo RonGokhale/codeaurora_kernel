@@ -22,6 +22,7 @@
 #include <sound/soc-dsp.h>
 #include <sound/pcm.h>
 #include <sound/jack.h>
+#include <asm/mach-types.h>
 #include "msm-pcm-routing.h"
 #include <../codecs/wcd9310.h>
 
@@ -173,27 +174,64 @@ static const struct snd_soc_dapm_widget msm8960_dapm_widgets[] = {
 	SND_SOC_DAPM_MIC("Digital Mic1", NULL),
 	SND_SOC_DAPM_MIC("ANCRight Headset Mic", NULL),
 	SND_SOC_DAPM_MIC("ANCLeft Headset Mic", NULL),
+
+	/* Digital Mic1. Front Bottom left Digital Mic on Fluid and MTP. */
+	SND_SOC_DAPM_MIC("Digital Mic1", NULL),
+
+	/* Digital Mic2. Front Bottom right Digital Mic on Fluid and MTP. */
+	SND_SOC_DAPM_MIC("Digital Mic2", NULL),
+
+	/* Digital Mic4. Back Top Digital Mic on Fluid. */
+	SND_SOC_DAPM_MIC("Digital Mic4", NULL),
 };
 
-static const struct snd_soc_dapm_route audio_map[] = {
+static const struct snd_soc_dapm_route common_audio_map[] = {
 	/* Speaker path */
 	{"Ext Spk", NULL, "LINEOUT"},
 
 	/* Microphone path */
-	{"AMIC1", NULL, "MIC BIAS1 Internal"},
-	{"MIC BIAS1 Internal", NULL, "Handset Mic"},
+	{"AMIC1", NULL, "MIC BIAS1 Internal1"},
+	{"MIC BIAS1 Internal1", NULL, "Handset Mic"},
 
 	{"AMIC2", NULL, "MIC BIAS2 External"},
 	{"MIC BIAS2 External", NULL, "Headset Mic"},
 
+	/**
+	 * Digital Mic1. Front Bottom left Digital Mic on Fluid and MTP.
+	 * Conncted to DMIC2 Input on Tabla codec.
+	 */
+	{"DMIC2", NULL, "MIC BIAS1 External"},
+	{"MIC BIAS1 External", NULL, "Digital Mic1"},
+
+	/**
+	 * Digital Mic2. Front Bottom right Digital Mic on Fluid and MTP.
+	 * Conncted to DMIC1 Input on Tabla codec.
+	 */
+	{"DMIC1", NULL, "MIC BIAS1 External"},
+	{"MIC BIAS1 External", NULL, "Digital Mic2"},
+
+	/**
+	 * Digital Mic4. Back top Digital Mic on Fluid.
+	 * Conncted to DMIC3 Input on Tabla codec.
+	 */
+	{"DMIC3", NULL, "MIC BIAS3 External"},
+	{"MIC BIAS3 External", NULL, "Digital Mic4"},
+};
+
+static const struct snd_soc_dapm_route cdp_audio_map[] = {
 	{"AMIC3", NULL, "MIC BIAS3 External"},
 	{"MIC BIAS3 External", NULL, "ANCRight Headset Mic"},
 
 	{"AMIC4", NULL, "MIC BIAS4 External"},
 	{"MIC BIAS4 External", NULL, "ANCLeft Headset Mic"},
+};
 
-	{"DMIC1 IN", NULL, "MIC BIAS1 External"},
-	{"MIC BIAS1 External", NULL, "Digital Mic1"},
+static const struct snd_soc_dapm_route fluid_audio_map[] = {
+	{"AMIC3", NULL, "MIC BIAS3 Internal1"},
+	{"MIC BIAS3 Internal1", NULL, "ANCRight Headset Mic"},
+
+	{"AMIC4", NULL, "MIC BIAS1 Internal2"},
+	{"MIC BIAS1 Internal2", NULL, "ANCLeft Headset Mic"},
 };
 
 static const char *spk_function[] = {"Off", "On"};
@@ -267,7 +305,18 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_new_controls(dapm, msm8960_dapm_widgets,
 				ARRAY_SIZE(msm8960_dapm_widgets));
 
-	snd_soc_dapm_add_routes(dapm, audio_map, ARRAY_SIZE(audio_map));
+	snd_soc_dapm_add_routes(dapm, common_audio_map,
+		ARRAY_SIZE(common_audio_map));
+
+	if (machine_is_msm8960_cdp())
+		snd_soc_dapm_add_routes(dapm, cdp_audio_map,
+			ARRAY_SIZE(cdp_audio_map));
+	else if (machine_is_msm8960_mtp())
+		snd_soc_dapm_add_routes(dapm, cdp_audio_map,
+			ARRAY_SIZE(cdp_audio_map));
+	else if (machine_is_msm8960_fluid())
+		snd_soc_dapm_add_routes(dapm, fluid_audio_map,
+			ARRAY_SIZE(fluid_audio_map));
 
 	snd_soc_dapm_enable_pin(dapm, "Ext Spk");
 
