@@ -488,7 +488,14 @@ int vb2_reqbufs(struct vb2_queue *q, struct v4l2_requestbuffers *req)
 		return -EINVAL;
 	}
 
-	if (req->count == 0 || q->num_buffers != 0) {
+	/*
+	 * If the same number of buffers and memory access method is requested
+	 * then return immediately.
+	 */
+	if (q->memory == req->memory && req->count == q->num_buffers)
+		return 0;
+
+	if (req->count == 0 || q->num_buffers != 0 || q->memory != req->memory) {
 		/*
 		 * We already have buffers allocated, so first check if they
 		 * are not in use and can be freed.
@@ -501,6 +508,13 @@ int vb2_reqbufs(struct vb2_queue *q, struct v4l2_requestbuffers *req)
 		ret = __vb2_queue_free(q);
 		if (ret != 0)
 			return ret;
+
+		/*
+		 * In case of REQBUFS(0) return immediately without calling
+		 * driver's queue_setup() callback and allocating resources.
+		 */
+		if (req->count == 0)
+			return 0;
 	}
 
 	/*
