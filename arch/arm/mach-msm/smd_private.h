@@ -158,6 +158,8 @@ extern uint32_t SMSM_NUM_HOSTS;
 #define SMSM_WKUP_REASON_ALARM	0x00000010
 #define SMSM_WKUP_REASON_RESET	0x00000020
 
+#define SMSM_VENDOR             0x00020000
+
 void *smem_alloc(unsigned id, unsigned size);
 void *smem_get_entry(unsigned id, unsigned *size);
 int smsm_change_state(uint32_t smsm_entry,
