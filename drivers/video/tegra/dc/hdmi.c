@@ -61,6 +61,8 @@ struct tegra_dc_hdmi_data {
 	bool				hpd_pending;
 
 	bool				dvi;
+
+	unsigned			audio_freq;
 };
 
 /* table of electrical settings, must be in acending order. */
@@ -559,6 +561,7 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 	hdmi->suspended = false;
 	hdmi->hpd_pending = false;
 	spin_lock_init(&hdmi->suspend_lock);
+	hdmi->audio_freq = 44100;
 
 	dc->out->depth = 24;
 
@@ -703,6 +706,7 @@ int tegra_dc_hdmi_set_audio_sample_rate(unsigned audio_freq)
 		ret = tegra_dc_hdmi_setup_audio(dc, audio_freq);
 		if (ret)
 			return ret;
+		hdmi->audio_freq = audio_freq;
 	}
 
 	return 0;
@@ -939,7 +943,7 @@ static void tegra_dc_hdmi_enable(struct tegra_dc *dc)
 			  HDMI_NV_PDISP_SOR_REFCLK);
 
 	if (!hdmi->dvi) {
-		err = tegra_dc_hdmi_setup_audio(dc, 44100);
+		err = tegra_dc_hdmi_setup_audio(dc, hdmi->audio_freq);
 
 		if (err < 0)
 			hdmi->dvi = true;
