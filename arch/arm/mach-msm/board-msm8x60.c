@@ -1515,15 +1515,39 @@ static char *usb_functions_mtp_adb[] = {
 	"adb",
 };
 
+static char *usb_functions_mtp_diag[] = {
+	"mtp",
+	"diag",
+};
+
+static char *usb_functions_mtp_diag_adb[] = {
+	"mtp",
+	"diag",
+	"adb",
+};
+
+static char *charm_usb_mtp_functions[] = {
+	"mtp",
+	"diag",
+	"diag_mdm",
+};
+
+static char *charm_usb_mtp_functions_adb[] = {
+	"mtp",
+	"diag",
+	"diag_mdm",
+	"adb",
+};
+
 static char *usb_functions_all[] = {
 #ifdef CONFIG_USB_ANDROID_RNDIS
 	"rndis",
 #endif
-#ifdef CONFIG_USB_ANDROID_DIAG
-	"diag",
-#endif
 #ifdef CONFIG_USB_ANDROID_MTP
 	"mtp",
+#endif
+#ifdef CONFIG_USB_ANDROID_DIAG
+	"diag",
 #endif
 	"adb",
 #ifdef CONFIG_USB_F_SERIAL
@@ -1543,12 +1567,12 @@ static char *svlte2_usb_functions_all[] = {
 #ifdef CONFIG_USB_ANDROID_RNDIS
 	"rndis",
 #endif
+#ifdef CONFIG_USB_ANDROID_MTP
+	"mtp",
+#endif
 #ifdef CONFIG_USB_ANDROID_DIAG
 	"diag",
 	"diag_mdm",
-#endif
-#ifdef CONFIG_USB_ANDROID_MTP
-	"mtp",
 #endif
 	"adb",
 #ifdef CONFIG_USB_F_SERIAL
@@ -1569,12 +1593,12 @@ static char *charm_usb_functions_all[] = {
 #ifdef CONFIG_USB_ANDROID_RNDIS
 	"rndis",
 #endif
+#ifdef CONFIG_USB_ANDROID_MTP
+	"mtp",
+#endif
 #ifdef CONFIG_USB_ANDROID_DIAG
 	"diag",
 	"diag_mdm",
-#endif
-#ifdef CONFIG_USB_ANDROID_MTP
-	"mtp",
 #endif
 	"adb",
 #ifdef CONFIG_USB_F_SERIAL
@@ -1622,6 +1646,16 @@ static struct android_usb_product usb_products[] = {
 		.num_functions	= ARRAY_SIZE(usb_functions_mtp_adb),
 		.functions	= usb_functions_mtp_adb,
 	},
+	{
+		.product_id     = 0x901B,
+		.num_functions  = ARRAY_SIZE(usb_functions_mtp_diag),
+		.functions      = usb_functions_mtp_diag,
+	},
+	{
+		.product_id     = 0x903A,
+		.num_functions  = ARRAY_SIZE(usb_functions_mtp_diag_adb),
+		.functions      = usb_functions_mtp_diag_adb,
+	},
 };
 
 static struct android_usb_product svlte2_usb_products[] = {
@@ -1654,6 +1688,16 @@ static struct android_usb_product svlte2_usb_products[] = {
 		.product_id	= 0x9039,
 		.num_functions	= ARRAY_SIZE(usb_functions_mtp_adb),
 		.functions	= usb_functions_mtp_adb,
+	},
+	{
+		.product_id     = 0x9040,
+		.num_functions  = ARRAY_SIZE(charm_usb_mtp_functions),
+		.functions      = charm_usb_mtp_functions,
+	},
+	{
+		.product_id     = 0x903F,
+		.num_functions  = ARRAY_SIZE(charm_usb_mtp_functions_adb),
+		.functions      = charm_usb_mtp_functions_adb,
 	},
 	{
 		.product_id	= 0x903C,
@@ -1698,6 +1742,17 @@ static struct android_usb_product charm_usb_products[] = {
 		.num_functions	= ARRAY_SIZE(usb_functions_mtp_adb),
 		.functions	= usb_functions_mtp_adb,
 	},
+	{
+		.product_id     = 0x9040,
+		.num_functions  = ARRAY_SIZE(charm_usb_mtp_functions),
+		.functions      = charm_usb_mtp_functions,
+	},
+	{
+		.product_id     = 0x903F,
+		.num_functions  = ARRAY_SIZE(charm_usb_mtp_functions_adb),
+		.functions      = charm_usb_mtp_functions_adb,
+	},
+
 	/* below acm functions are same for charm or svlte2 */
 	{
 		.product_id	= 0x903C,
