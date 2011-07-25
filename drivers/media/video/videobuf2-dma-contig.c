@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2010 Samsung Electronics
  *
- * Author: Pawel Osciak <p.osciak@samsung.com>
+ * Author: Pawel Osciak <pawel@osciak.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -46,7 +46,7 @@ static void *vb2_dma_contig_alloc(void *alloc_ctx, unsigned long size)
 					GFP_KERNEL);
 	if (!buf->vaddr) {
 		dev_err(conf->dev, "dma_alloc_coherent of size %ld failed\n",
-			buf->size);
+			size);
 		kfree(buf);
 		return ERR_PTR(-ENOMEM);
 	}
@@ -78,7 +78,7 @@ static void *vb2_dma_contig_cookie(void *buf_priv)
 {
 	struct vb2_dc_buf *buf = buf_priv;
 
-	return (void *)buf->paddr;
+	return &buf->paddr;
 }
 
 static void *vb2_dma_contig_vaddr(void *buf_priv)
@@ -181,5 +181,5 @@ void vb2_dma_contig_cleanup_ctx(void *alloc_ctx)
 EXPORT_SYMBOL_GPL(vb2_dma_contig_cleanup_ctx);
 
 MODULE_DESCRIPTION("DMA-contig memory handling routines for videobuf2");
-MODULE_AUTHOR("Pawel Osciak");
+MODULE_AUTHOR("Pawel Osciak <pawel@osciak.com>");
 MODULE_LICENSE("GPL");

@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2010 Samsung Electronics
  *
- * Author: Pawel Osciak <p.osciak@samsung.com>
+ * Author: Pawel Osciak <pawel@osciak.com>
  *	   Marek Szyprowski <m.szyprowski@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -37,6 +37,9 @@ module_param(debug, int, 0644);
 #define call_qop(q, op, args...)					\
 	(((q)->ops->op) ? ((q)->ops->op(args)) : 0)
 
+#define V4L2_BUFFER_STATE_FLAGS	(V4L2_BUF_FLAG_MAPPED | V4L2_BUF_FLAG_QUEUED | \
+				 V4L2_BUF_FLAG_DONE | V4L2_BUF_FLAG_ERROR)
+
 /**
  * __vb2_buf_mem_alloc() - allocate video memory for the given buffer
  */
@@ -51,7 +54,7 @@ static int __vb2_buf_mem_alloc(struct vb2_buffer *vb,
 	for (plane = 0; plane < vb->num_planes; ++plane) {
 		mem_priv = call_memop(q, plane, alloc, q->alloc_ctx[plane],
 					plane_sizes[plane]);
-		if (!mem_priv)
+		if (IS_ERR_OR_NULL(mem_priv))
 			goto free;
 
 		/* Associate allocator private data with this plane */
@@ -227,7 +230,7 @@ static void __vb2_free_mem(struct vb2_queue *q)
  * and return the queue to an uninitialized state. Might be called even if the
  * queue has already been freed.
  */
-static int __vb2_queue_free(struct vb2_queue *q)
+static void __vb2_queue_free(struct vb2_queue *q)
 {
 	unsigned int buffer;
 
@@ -251,8 +254,6 @@ static int __vb2_queue_free(struct vb2_queue *q)
 
 	q->num_buffers = 0;
 	q->memory = 0;
-
-	return 0;
 }
 
 /**
@@ -286,7 +287,7 @@ static int __fill_v4l2_buffer(struct vb2_buffer *vb, struct v4l2_buffer *b)
 	struct vb2_queue *q = vb->vb2_queue;
 	int ret = 0;
 
-	/* Copy back data such as timestamp, input, etc. */
+	/* Copy back data such as timestamp, flags, input, etc. */
 	memcpy(b, &vb->v4l2_buf, offsetof(struct v4l2_buffer, m));
 	b->input = vb->v4l2_buf.input;
 	b->reserved = vb->v4l2_buf.reserved;
@@ -315,7 +316,10 @@ static int __fill_v4l2_buffer(struct vb2_buffer *vb, struct v4l2_buffer *b)
 			b->m.userptr = vb->v4l2_planes[0].m.userptr;
 	}
 
-	b->flags = 0;
+	/*
+	 * Clear any buffer state related flags.
+	 */
+	b->flags &= ~V4L2_BUFFER_STATE_FLAGS;
 
 	switch (vb->state) {
 	case VB2_BUF_STATE_QUEUED:
@@ -505,9 +509,7 @@ int vb2_reqbufs(struct vb2_queue *q, struct v4l2_requestbuffers *req)
 			return -EBUSY;
 		}
 
-		ret = __vb2_queue_free(q);
-		if (ret != 0)
-			return ret;
+		__vb2_queue_free(q);
 
 		/*
 		 * In case of REQBUFS(0) return immediately without calling
@@ -523,6 +525,7 @@ int vb2_reqbufs(struct vb2_queue *q, struct v4l2_requestbuffers *req)
 	num_buffers = min_t(unsigned int, req->count, VIDEO_MAX_FRAME);
 	memset(plane_sizes, 0, sizeof(plane_sizes));
 	memset(q->alloc_ctx, 0, sizeof(q->alloc_ctx));
+	q->memory = req->memory;
 
 	/*
 	 * Ask the driver how many buffers and planes per buffer it requires.
@@ -563,8 +566,6 @@ int vb2_reqbufs(struct vb2_queue *q, struct v4l2_requestbuffers *req)
 		 */
 		ret = num_buffers;
 	}
-
-	q->memory = req->memory;
 
 	/*
 	 * Return the number of successfully allocated buffers
@@ -719,6 +720,8 @@ static int __fill_vb2_buffer(struct vb2_buffer *vb, struct v4l2_buffer *b,
 
 	vb->v4l2_buf.field = b->field;
 	vb->v4l2_buf.timestamp = b->timestamp;
+	vb->v4l2_buf.input = b->input;
+	vb->v4l2_buf.flags = b->flags & ~V4L2_BUFFER_STATE_FLAGS;
 
 	return 0;
 }
@@ -1115,6 +1118,7 @@ EXPORT_SYMBOL_GPL(vb2_dqbuf);
 int vb2_streamon(struct vb2_queue *q, enum v4l2_buf_type type)
 {
 	struct vb2_buffer *vb;
+	int ret;
 
 	if (q->fileio) {
 		dprintk(1, "streamon: file io in progress\n");
@@ -1142,12 +1146,16 @@ int vb2_streamon(struct vb2_queue *q, enum v4l2_buf_type type)
 		}
 	}
 
-	q->streaming = 1;
-
 	/*
 	 * Let driver notice that streaming state has been enabled.
 	 */
-	call_qop(q, start_streaming, q);
+	ret = call_qop(q, start_streaming, q);
+	if (ret) {
+		dprintk(1, "streamon: driver refused to start streaming\n");
+		return ret;
+	}
+
+	q->streaming = 1;
 
 	/*
 	 * If any buffers were queued before streamon,
@@ -1368,18 +1376,18 @@ unsigned int vb2_poll(struct vb2_queue *q, struct file *file, poll_table *wait)
 	struct vb2_buffer *vb = NULL;
 
 	/*
-	 * Start file io emulator if streaming api has not been used yet.
+	 * Start file I/O emulator only if streaming API has not been used yet.
 	 */
 	if (q->num_buffers == 0 && q->fileio == NULL) {
 		if (!V4L2_TYPE_IS_OUTPUT(q->type) && (q->io_modes & VB2_READ)) {
 			ret = __vb2_init_fileio(q, 1);
 			if (ret)
-				return ret;
+				return POLLERR;
 		}
 		if (V4L2_TYPE_IS_OUTPUT(q->type) && (q->io_modes & VB2_WRITE)) {
 			ret = __vb2_init_fileio(q, 0);
 			if (ret)
-				return ret;
+				return POLLERR;
 			/*
 			 * Write to OUTPUT queue can be done immediately.
 			 */
@@ -1814,5 +1822,5 @@ size_t vb2_write(struct vb2_queue *q, char __user *data, size_t count,
 EXPORT_SYMBOL_GPL(vb2_write);
 
 MODULE_DESCRIPTION("Driver helper framework for Video for Linux 2");
-MODULE_AUTHOR("Pawel Osciak, Marek Szyprowski");
+MODULE_AUTHOR("Pawel Osciak <pawel@osciak.com>, Marek Szyprowski");
 MODULE_LICENSE("GPL");
