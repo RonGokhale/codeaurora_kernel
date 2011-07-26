@@ -4792,7 +4792,7 @@ static struct mddi_platform_data mddi_pdata = {
 int mdp_core_clk_rate_table[] = {
 	122880000,
 	122880000,
-	122880000,
+	192000000,
 	192000000,
 };
 
