@@ -25,6 +25,7 @@
 #include <linux/mfd/core.h>
 #include <linux/mfd/pmic8058.h>
 #include <linux/platform_device.h>
+#include <linux/sysdev.h>
 
 /* PMIC8058 Revision */
 #define SSBI_REG_REV			0x002  /* PMIC4 revision */
@@ -745,14 +746,12 @@ static int __devexit pm8058_remove(struct i2c_client *client)
 }
 
 #ifdef CONFIG_PM
-static int pm8058_suspend(struct device *dev)
-{
-	struct i2c_client *client;
-	struct	pm8058_chip *chip;
-	int	i, irq;
+static int pm8058_suspend(struct sys_device *dev,
+					pm_message_t state)
 
-	client = to_i2c_client(dev);
-	chip = i2c_get_clientdata(client);
+{
+	struct pm8058_chip *chip = pmic_chip;
+	int	i, irq;
 
 	for (i = 0; i < MAX_PM_IRQ; i++) {
 		if (chip->config[i] && !chip->wake_enable[i]) {
@@ -772,19 +771,15 @@ static int pm8058_suspend(struct device *dev)
 	return 0;
 }
 
-static int pm8058_resume(struct device *dev)
+static int pm8058_resume(struct sys_device *dev)
 {
-	struct i2c_client *client;
-	struct	pm8058_chip *chip;
+	struct pm8058_chip *chip = pmic_chip;
 	int	i, irq;
-
-	client = to_i2c_client(dev);
-	chip = i2c_get_clientdata(client);
 
 	for (i = 0; i < MAX_PM_IRQ; i++) {
 		if (chip->config[i] && !chip->wake_enable[i]) {
 			if (!((chip->config[i] & PM8058_IRQF_MASK_ALL)
-			      == PM8058_IRQF_MASK_ALL)) {
+				== PM8058_IRQF_MASK_ALL)) {
 				irq = i + chip->pdata.irq_base;
 				pm8058_irq_bus_lock(irq);
 				pm8058_irq_unmask(irq);
@@ -809,14 +804,8 @@ static const struct i2c_device_id pm8058_ids[] = {
 };
 MODULE_DEVICE_TABLE(i2c, pm8058_ids);
 
-static struct dev_pm_ops pm8058_pm = {
-	.suspend = pm8058_suspend,
-	.resume = pm8058_resume,
-};
-
 static struct i2c_driver pm8058_driver = {
 	.driver.name	= "pm8058-core",
-	.driver.pm      = &pm8058_pm,
 	.id_table	= pm8058_ids,
 	.probe		= pm8058_probe,
 	.remove		= __devexit_p(pm8058_remove),
@@ -830,12 +819,36 @@ static int __init pm8058_init(void)
 	return rc;
 }
 
+static struct sysdev_class pm8058_sysdev_class = {
+	.name		= "pm8058",
+	.suspend	= pm8058_suspend,
+	.resume		= pm8058_resume,
+};
+
+static struct sys_device pm8058_sys_device = {
+	.id	= 0,
+	.cls	= &pm8058_sysdev_class,
+};
+
+static int __init pm8058_late_init(void)
+{
+	int rc;
+
+	rc = sysdev_class_register(&pm8058_sysdev_class);
+	rc |= sysdev_register(&pm8058_sys_device);
+	if (rc)
+		pr_err("%s: could not set up sysdev: %d\n", __func__, rc);
+
+	return rc;
+}
+
 static void __exit pm8058_exit(void)
 {
 	i2c_del_driver(&pm8058_driver);
 }
 
 arch_initcall(pm8058_init);
+late_initcall(pm8058_late_init);
 module_exit(pm8058_exit);
 
 MODULE_LICENSE("GPL v2");
