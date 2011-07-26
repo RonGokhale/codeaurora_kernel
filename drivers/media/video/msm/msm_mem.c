@@ -26,6 +26,7 @@
 #include <media/v4l2-device.h>
 
 #include <linux/android_pmem.h>
+#include <mach/msm_subsystem_map.h>
 
 #include "msm.h"
 #include "msm_vfe31.h"
@@ -128,6 +129,7 @@ static int msm_pmem_table_add(struct hlist_head *ptype,
 {
 	struct file *file;
 	unsigned long paddr;
+	unsigned int flags;
 #ifdef CONFIG_ANDROID_PMEM
 	unsigned long kvstart;
 	int rc;
@@ -167,8 +169,17 @@ static int msm_pmem_table_add(struct hlist_head *ptype,
 		return -ENOMEM;
 
 	INIT_HLIST_NODE(&region->list);
-
-	region->paddr = paddr;
+	flags = MSM_SUBSYSTEM_MAP_IOVA;
+	region->subsys_id = MSM_SUBSYSTEM_CAMERA;
+	region->msm_buffer = msm_subsystem_map_buffer(paddr, len,
+					flags, &(region->subsys_id), 1);
+	if (IS_ERR((void *)region->msm_buffer)) {
+		pr_err("%s: msm_subsystem_map_buffer failed\n", __func__);
+		kfree(region);
+		put_pmem_file(file);
+		return PTR_ERR((void *)region->msm_buffer);
+	}
+	region->paddr = region->msm_buffer->iova[0];
 	region->len = len;
 	region->file = file;
 	memcpy(&region->info, info, sizeof(region->info));
@@ -221,6 +232,11 @@ static int __msm_pmem_table_del(struct hlist_head *ptype,
 			if (pinfo->type == region->info.type &&
 				pinfo->vaddr == region->info.vaddr &&
 				pinfo->fd == region->info.fd) {
+				if (msm_subsystem_unmap_buffer
+					(region->msm_buffer) < 0)
+					pr_err(
+					"%s: unmapped stat memory\n",
+					__func__);
 				hlist_del(node);
 #ifdef CONFIG_ANDROID_PMEM
 				put_pmem_file(region->file);
@@ -303,37 +319,39 @@ uint8_t msm_pmem_region_lookup_3(struct msm_cam_v4l2_device *pcam, int idx,
 						struct msm_pmem_region *reg,
 						int mem_type)
 {
-	struct videobuf_contig_pmem *mem;
+	struct videobuf2_contig_pmem *mem;
+	struct vb2_queue *q = &pcam->dev_inst[idx]->vid_bufq;
+	int i;
 	uint8_t rc = 0;
-	struct videobuf_queue *q = &pcam->dev_inst[idx]->vid_bufq;
-	struct videobuf_buffer *buf = NULL;
 
-	videobuf_queue_lock(q);
-	list_for_each_entry(buf, &q->stream, stream) {
-		mem = buf->priv;
-		reg->paddr = mem->phyaddr;
-		D("%s paddr for buf %d is 0x%p\n", __func__,
-						buf->i,
-						(void *)reg->paddr);
-		reg->len = sizeof(struct msm_pmem_info);
-		reg->file = NULL;
-		reg->info.len = mem->size;
-
-		reg->info.vaddr =
-			(void *)(buf->baddr);
-
-		reg->info.type = mem_type;
-
-		reg->info.offset = 0;
-		reg->info.y_off = mem->y_off;
-		reg->info.cbcr_off = PAD_TO_WORD(mem->cbcr_off);
-		D("%s y_off = %d, cbcr_off = %d\n", __func__,
+	mutex_lock(&hlist_mut);
+	for (i = 0; i < pcam->dev_inst[idx]->buf_count ; i++) {
+		if (q->bufs[i] != NULL) {
+			mem = vb2_plane_cookie(q->bufs[i], 0);
+			if (!mem) {
+				pr_err("%s mem is null. Return ", __func__);
+				continue;
+			}
+			reg->paddr = mem->msm_buffer->iova[0];
+			D("%s paddr for buf %d is 0x%p\n", __func__,
+							i,
+							(void *)reg->paddr);
+			reg->len = sizeof(struct msm_pmem_info);
+			reg->file = NULL;
+			reg->info.len = mem->size;
+			reg->info.vaddr = vb2_plane_vaddr(q->bufs[i], 0);
+			reg->info.type = mem_type;
+			reg->info.offset = 0;
+			reg->info.y_off = mem->y_off;
+			reg->info.cbcr_off = PAD_TO_WORD(mem->cbcr_off);
+			D("%s y_off = %d, cbcr_off = %d\n", __func__,
 			reg->info.y_off, reg->info.cbcr_off);
-		rc += 1;
-		reg++;
+			rc += 1;
+			reg++;
+		}
 	}
-	videobuf_queue_unlock(q);
-
+	mutex_unlock(&hlist_mut);
+	D("%s returning rc= %d\n", __func__, rc);
 	return rc;
 }
 

@@ -296,7 +296,9 @@ enum  VFE_STATE {
 #define V32_DEMOSAICV3_ABCC_UPDATE    109
 #define V32_DEMOSAICV3_DBCC_UPDATE    110
 #define V32_DEMOSAICV3_DBPC_UPDATE    111
-#define V32_EZTUNE_CFG            112
+#define V32_XBAR_CFG              112
+#define V32_EZTUNE_CFG            113
+#define V32_ZSL                   114
 
 #define V32_CLF_CFG               118
 #define V32_CLF_UPDATE            119
@@ -895,6 +897,9 @@ struct vfe32_output_ch {
 	int8_t ch2;
 	uint32_t  capture_cnt;
 	uint32_t  frame_drop_cnt;
+	struct msm_free_buf ping;
+	struct msm_free_buf pong;
+	struct msm_free_buf free_buf;
 };
 
 /* no error irq in mask 0 */
@@ -1018,6 +1023,12 @@ struct vfe32_frame_extra {
 #define VFE_BUS_IO_FORMAT_CFG		0x000006F8
 #define VFE_PIXEL_IF_CFG                0x000006FC
 
+#define VFE32_OUTPUT_MODE_PT (0x1 << 0)
+#define VFE32_OUTPUT_MODE_S (0x1 << 1)
+#define VFE32_OUTPUT_MODE_V (0x1 << 2)
+#define VFE32_OUTPUT_MODE_P (0x1 << 3)
+#define VFE32_OUTPUT_MODE_T (0x1 << 4)
+
 struct vfe_stats_control {
 	uint8_t  ackPending;
 	uint32_t nextFrameAddrBuf;
@@ -1082,6 +1093,7 @@ struct vfe32_ctrl_type {
 
 	/* v4l2 subdev */
 	struct v4l2_subdev *subdev;
+	spinlock_t  sd_notify_lock;
 };
 
 #define statsAeNum      0

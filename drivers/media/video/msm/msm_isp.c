@@ -119,7 +119,7 @@ static int msm_isp_enqueue(struct msm_cam_media_controller *pmctl,
 			data->type == VFE_MSG_OUTPUT_S ||
 			data->type == VFE_MSG_OUTPUT_T) {
 			msm_mctl_buf_done(pmctl, data->type,
-					(u32)data->phy.y_phy);
+				(u32)data->phy.y_phy, data->evt_msg.frame_id);
 		}
 		break;
 	default:
@@ -171,6 +171,11 @@ static int msm_isp_notify(struct v4l2_subdev *sd, void *arg)
 	struct msm_sync *sync =
 		(struct msm_sync *)v4l2_get_subdev_hostdata(sd);
 	struct msm_vfe_resp *vdata = (struct msm_vfe_resp *)arg;
+	struct msm_free_buf free_buf;
+	struct msm_camvfe_params vfe_params;
+	struct msm_vfe_cfg_cmd cfgcmd;
+	struct msm_cam_v4l2_device *pcam = sync->pcam_sync;
+	int vfe_id = vdata->evt_msg.msg_id;
 
 	if (!sync) {
 		pr_err("%s: no context in dsp callback.\n", __func__);
@@ -212,13 +217,61 @@ static int msm_isp_notify(struct v4l2_subdev *sd, void *arg)
 		D("%s: qtype %d, general msg, enqueue event_q.\n",
 					__func__, vdata->type);
 		break;
+	case VFE_MSG_V32_START:
+	case VFE_MSG_V32_START_RECORDING:
+		D("%s Got V32_START_*: Getting ping addr id = %d",
+						__func__, vfe_id);
+		msm_mctl_reserve_free_buf(&pcam->mctl, vfe_id, &free_buf);
+		cfgcmd.cmd_type = CMD_CONFIG_PING_ADDR;
+		cfgcmd.value = &vfe_id;
+		vfe_params.vfe_cfg = &cfgcmd;
+		vfe_params.data = (void *)&free_buf;
+		rc = v4l2_subdev_call(sd, core, ioctl, 0, &vfe_params);
+		msm_mctl_reserve_free_buf(&pcam->mctl, vfe_id, &free_buf);
+		cfgcmd.cmd_type = CMD_CONFIG_PONG_ADDR;
+		cfgcmd.value = &vfe_id;
+		vfe_params.vfe_cfg = &cfgcmd;
+		vfe_params.data = (void *)&free_buf;
+		rc = v4l2_subdev_call(sd, core, ioctl, 0, &vfe_params);
+		break;
+	case VFE_MSG_V32_CAPTURE:
+		D("%s Got V32_CAPTURE: getting buffer for id = %d",
+						__func__, vfe_id);
+		msm_mctl_reserve_free_buf(&pcam->mctl, vfe_id, &free_buf);
+		cfgcmd.cmd_type = CMD_CONFIG_PING_ADDR;
+		cfgcmd.value = &vfe_id;
+		vfe_params.vfe_cfg = &cfgcmd;
+		vfe_params.data = (void *)&free_buf;
+		rc = v4l2_subdev_call(sd, core, ioctl, 0, &vfe_params);
+		/* Write the same buffer into PONG */
+		cfgcmd.cmd_type = CMD_CONFIG_PONG_ADDR;
+		cfgcmd.value = &vfe_id;
+		vfe_params.vfe_cfg = &cfgcmd;
+		vfe_params.data = (void *)&free_buf;
+		rc = v4l2_subdev_call(sd, core, ioctl, 0, &vfe_params);
+		break;
+	case VFE_MSG_OUTPUT_IRQ:
+		D("%s Got OUTPUT_IRQ: Getting free buf id = %d",
+						__func__, vfe_id);
+		msm_mctl_reserve_free_buf(&pcam->mctl, vfe_id, &free_buf);
+		cfgcmd.cmd_type = CMD_CONFIG_FREE_BUF_ADDR;
+		cfgcmd.value = &vfe_id;
+		vfe_params.vfe_cfg = &cfgcmd;
+		vfe_params.data = (void *)&free_buf;
+		rc = v4l2_subdev_call(sd, core, ioctl, 0, &vfe_params);
+		break;
 	default:
 		D("%s: qtype %d not handled\n", __func__, vdata->type);
 		/* fall through, send to config. */
 	}
-
-	D("%s: msm_enqueue event_q\n", __func__);
-	rc = msm_isp_enqueue(&sync->pcam_sync->mctl, vdata, MSM_CAM_Q_VFE_MSG);
+	if (vdata->type != VFE_MSG_V32_START &&
+		vdata->type != VFE_MSG_V32_START_RECORDING &&
+		vdata->type != VFE_MSG_V32_CAPTURE &&
+		vdata->type != VFE_MSG_OUTPUT_IRQ) {
+		D("%s: msm_enqueue event_q\n", __func__);
+		rc = msm_isp_enqueue(&sync->pcam_sync->mctl,
+					vdata, MSM_CAM_Q_VFE_MSG);
+	}
 
 	msm_isp_sync_free(vdata);
 
@@ -549,6 +602,57 @@ static int msm_frame_axi_cfg(struct v4l2_subdev *sd,
 		}
 		break;
 
+	case CMD_AXI_CFG_ZSL:
+		pcam_inst =
+		pcam->dev_inst_map[MSM_V4L2_EXT_CAPTURE_MODE_PREVIEW];
+		if (!pcam_inst)
+			return -EINVAL;
+		idx = pcam_inst->my_index;
+		pmem_type = MSM_PMEM_PREVIEW;
+		axi_data.bufnum1 =
+			msm_pmem_region_lookup_3(sync->pcam_sync, idx,
+				&region[0], pmem_type);
+		D("%s bufnum1 = %d\n", __func__, axi_data.bufnum1);
+		if (!axi_data.bufnum1) {
+			pr_err("%s %d: pmem region lookup error\n",
+				__func__, __LINE__);
+			return -EINVAL;
+		}
+
+		pcam_inst
+		= pcam->dev_inst_map[MSM_V4L2_EXT_CAPTURE_MODE_THUMBNAIL];
+		if (!pcam_inst)
+			return -EINVAL;
+		idx = pcam_inst->my_index;
+		pmem_type = MSM_PMEM_THUMBNAIL;
+		axi_data.bufnum2 =
+			msm_pmem_region_lookup_3(sync->pcam_sync, idx,
+				&region[axi_data.bufnum1], pmem_type);
+		D("%s bufnum2 = %d\n", __func__, axi_data.bufnum2);
+		if (!axi_data.bufnum2) {
+			pr_err("%s %d: pmem region lookup error\n",
+				__func__, __LINE__);
+			return -EINVAL;
+		}
+
+		pcam_inst
+		= pcam->dev_inst_map[MSM_V4L2_EXT_CAPTURE_MODE_MAIN];
+		if (!pcam_inst)
+			return -EINVAL;
+		idx = pcam_inst->my_index;
+		pmem_type = MSM_PMEM_MAINIMG;
+		axi_data.bufnum3 =
+			msm_pmem_region_lookup_3(sync->pcam_sync, idx,
+				&region[axi_data.bufnum1+axi_data.bufnum2],
+								pmem_type);
+		D("%s bufnum3 = %d\n", __func__, axi_data.bufnum3);
+		if (!axi_data.bufnum3) {
+			pr_err("%s %d: pmem region lookup error\n",
+				__func__, __LINE__);
+			return -EINVAL;
+		}
+		break;
+
 	case CMD_RAW_PICT_AXI_CFG:
 		pcam_inst
 		= pcam->dev_inst_map[MSM_V4L2_EXT_CAPTURE_MODE_MAIN];
@@ -605,6 +709,7 @@ static int msm_axi_config(struct v4l2_subdev *sd,
 	case CMD_AXI_CFG_VIDEO:
 	case CMD_AXI_CFG_PREVIEW:
 	case CMD_AXI_CFG_SNAP:
+	case CMD_AXI_CFG_ZSL:
 	case CMD_RAW_PICT_AXI_CFG:
 		return msm_frame_axi_cfg(sd, sync, &cfgcmd);
 	case CMD_AXI_CFG_VPE:

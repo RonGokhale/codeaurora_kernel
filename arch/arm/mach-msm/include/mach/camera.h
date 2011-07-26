@@ -23,6 +23,7 @@
 
 #include <mach/board.h>
 #include <media/msm_camera.h>
+#include <mach/msm_subsystem_map.h>
 
 #define CONFIG_MSM_CAMERA_DEBUG
 #ifdef CONFIG_MSM_CAMERA_DEBUG
@@ -81,6 +82,10 @@ enum vfe_resp_msg {
 	VFE_MSG_SYNC_TIMER1,
 	VFE_MSG_SYNC_TIMER2,
 	VFE_MSG_COMMON,
+	VFE_MSG_V32_START,
+	VFE_MSG_V32_START_RECORDING,
+	VFE_MSG_V32_CAPTURE,
+	VFE_MSG_OUTPUT_IRQ,
 };
 
 enum vpe_resp_msg {
@@ -191,9 +196,6 @@ struct msm_camera_csiphy_params {
 #define CSI_DECODE_6BIT 0
 #define CSI_DECODE_8BIT 1
 #define CSI_DECODE_10BIT 2
-#define VFE32_OUTPUT_MODE_PT (0x1 << 0)
-#define VFE32_OUTPUT_MODE_S (0x1 << 1)
-#define VFE32_OUTPUT_MODE_V (0x1 << 2)
 
 struct msm_vfe_phy_info {
 	uint32_t sbuf_phy;
@@ -450,6 +452,8 @@ struct msm_pmem_region {
 	unsigned long len;
 	struct file *file;
 	struct msm_pmem_info info;
+	struct msm_mapped_buffer *msm_buffer;
+	int subsys_id;
 };
 
 struct axidata {
