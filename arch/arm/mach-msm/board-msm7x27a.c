@@ -218,7 +218,7 @@ static int config_i2s(int mode)
 	int pin, rc = 0;
 
 	if (mode == FM_I2S_ON) {
-		if (machine_is_msm7x27a_surf())
+		if (machine_is_msm7x27a_surf() || machine_is_msm7625a_surf())
 			config_pcm_i2s_mode(0);
 		pr_err("%s mode = FM_I2S_ON", __func__);
 		for (pin = 0; pin < ARRAY_SIZE(fm_i2s_config_power_on);
@@ -250,7 +250,7 @@ static int config_pcm(int mode)
 	int pin, rc = 0;
 
 	if (mode == BT_PCM_ON) {
-		if (machine_is_msm7x27a_surf())
+		if (machine_is_msm7x27a_surf() || machine_is_msm7625a_surf())
 			config_pcm_i2s_mode(1);
 		pr_err("%s mode =BT_PCM_ON", __func__);
 		for (pin = 0; pin < ARRAY_SIZE(bt_config_pcm_on);
@@ -1002,7 +1002,7 @@ static void __init register_i2c_devices(void)
 				cam_exp_i2c_info,
 				ARRAY_SIZE(cam_exp_i2c_info));
 
-	if (machine_is_msm7x27a_surf())
+	if (machine_is_msm7x27a_surf() || machine_is_msm7625a_surf())
 		sx150x_data[SX150X_CORE].io_open_drain_ena = 0xe0f0;
 
 	core_exp_i2c_info[0].platform_data =
@@ -1902,7 +1902,7 @@ static int msm_fb_detect_panel(const char *name)
 {
 	int ret = -EPERM;
 
-	if (machine_is_msm7x27a_surf()) {
+	if (machine_is_msm7x27a_surf() || machine_is_msm7625a_surf()) {
 		if (!strncmp(name, "lcdc_toshiba_fwvga_pt", 21))
 			ret = 0;
 	} else {
@@ -2341,7 +2341,7 @@ static int config_camera_on_gpios_rear(void)
 {
 	int rc = 0;
 
-	if (machine_is_msm7x27a_ffa())
+	if (machine_is_msm7x27a_ffa() || machine_is_msm7625a_ffa())
 		msm_camera_vreg_config(1);
 
 	rc = config_gpio_table(camera_on_gpio_table,
@@ -2357,7 +2357,7 @@ static int config_camera_on_gpios_rear(void)
 
 static void config_camera_off_gpios_rear(void)
 {
-	if (machine_is_msm7x27a_ffa())
+	if (machine_is_msm7x27a_ffa() || machine_is_msm7625a_ffa())
 		msm_camera_vreg_config(0);
 
 	config_gpio_table(camera_off_gpio_table,
@@ -2368,7 +2368,7 @@ static int config_camera_on_gpios_front(void)
 {
 	int rc = 0;
 
-	if (machine_is_msm7x27a_ffa())
+	if (machine_is_msm7x27a_ffa() || machine_is_msm7625a_ffa())
 		msm_camera_vreg_config(1);
 
 	rc = config_gpio_table(camera_on_gpio_table,
@@ -2384,7 +2384,7 @@ static int config_camera_on_gpios_front(void)
 
 static void config_camera_off_gpios_front(void)
 {
-	if (machine_is_msm7x27a_ffa())
+	if (machine_is_msm7x27a_ffa() || machine_is_msm7625a_ffa())
 		msm_camera_vreg_config(0);
 
 	config_gpio_table(camera_off_gpio_table,
@@ -2775,7 +2775,7 @@ static int msm_fb_get_lane_config(void)
 {
 	int rc = DSI_TWO_LANES;
 
-	if (cpu_is_msm7x25a() || cpu_is_msm7x25aa()) {
+	if (machine_is_msm7625a_surf() || machine_is_msm7625a_ffa()) {
 		rc = DSI_SINGLE_LANE;
 		pr_info("DSI Single Lane\n");
 	} else {
@@ -2817,7 +2817,7 @@ static int msm_fb_dsi_client_reset(void)
 	gpio_set_value_cansleep(GPIO_LCDC_BRDG_PD, 0);
 
 	if (!rc) {
-		if (machine_is_msm7x27a_surf()) {
+		if (machine_is_msm7x27a_surf() || machine_is_msm7625a_surf()) {
 			lcdc_reset_ptr = ioremap_nocache(LCDC_RESET_PHYS,
 				sizeof(uint32_t));
 
@@ -2861,7 +2861,7 @@ static int mipi_dsi_panel_power(int on)
 			return rc;
 		}
 
-		if (machine_is_msm7x27a_surf()) {
+		if (machine_is_msm7x27a_surf() || machine_is_msm7625a_surf()) {
 			rc = gpio_direction_output(GPIO_DISPLAY_PWR_EN, 1);
 			if (rc < 0) {
 				pr_err("failed to enable display pwr\n");
@@ -2898,10 +2898,11 @@ static int mipi_dsi_panel_power(int on)
 		dsi_gpio_initialized = 1;
 	}
 
-	if (machine_is_msm7x27a_surf()) {
+	if (machine_is_msm7x27a_surf() || machine_is_msm7625a_surf()) {
 		gpio_set_value_cansleep(GPIO_DISPLAY_PWR_EN, on);
 		gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, on);
-	} else if (machine_is_msm7x27a_ffa()) {
+	} else if (machine_is_msm7x27a_ffa() ||
+			 machine_is_msm7625a_ffa()) {
 		if (on) {
 			/* This line drives an active low pin on FFA */
 			rc = gpio_direction_output(GPIO_DISPLAY_PWR_EN, !on);
@@ -2920,7 +2921,8 @@ static int mipi_dsi_panel_power(int on)
 	if (on) {
 		gpio_set_value_cansleep(GPIO_LCDC_BRDG_PD, 0);
 
-		if (machine_is_msm7x27a_surf()) {
+		if (machine_is_msm7x27a_surf() ||
+				 machine_is_msm7625a_surf()) {
 			lcdc_reset_cfg = readl_relaxed(lcdc_reset_ptr);
 			rmb();
 			lcdc_reset_cfg &= ~1;
@@ -2995,7 +2997,8 @@ static void __init msm7x27a_init_ebi2(void)
 		return;
 
 	ebi2_cfg = readl(ebi2_cfg_ptr);
-	if (machine_is_msm7x27a_rumi3() || machine_is_msm7x27a_surf())
+	if (machine_is_msm7x27a_rumi3() || machine_is_msm7x27a_surf() ||
+			machine_is_msm7625a_surf())
 		ebi2_cfg |= (1 << 4); /* CS2 */
 
 	writel(ebi2_cfg, ebi2_cfg_ptr);
@@ -3008,7 +3011,7 @@ static void __init msm7x27a_init_ebi2(void)
 		return;
 
 	ebi2_cfg = readl(ebi2_cfg_ptr);
-	if (machine_is_msm7x27a_surf())
+	if (machine_is_msm7x27a_surf() || machine_is_msm7625a_surf())
 		ebi2_cfg |= (1 << 31);
 
 	writel(ebi2_cfg, ebi2_cfg_ptr);
@@ -3302,7 +3305,7 @@ static void __init msm7x2x_init(void)
 #if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
 	bt_power_init();
 #endif
-	if (cpu_is_msm7x25a() || cpu_is_msm7x25aa()) {
+	if (machine_is_msm7625a_surf() || machine_is_msm7625a_ffa()) {
 		atmel_ts_pdata.min_x = 0;
 		atmel_ts_pdata.max_x = 480;
 		atmel_ts_pdata.min_y = 0;
@@ -3332,7 +3335,7 @@ static void __init msm7x2x_init(void)
 		platform_device_register(&led_pdev);
 
 #ifdef CONFIG_MSM_RPC_VIBRATOR
-	if (machine_is_msm7x27a_ffa())
+	if (machine_is_msm7x27a_ffa() || machine_is_msm7625a_ffa())
 		msm_init_pmic_vibrator();
 #endif
 	/*7x25a kgsl initializations*/
@@ -3369,5 +3372,23 @@ MACHINE_START(MSM7X27A_FFA, "QCT MSM7x27a FFA")
 	.init_irq	= msm_init_irq,
 	.init_machine	= msm7x2x_init,
 	.timer		= &msm_timer,
+	.init_early     = msm7x2x_init_early,
+MACHINE_END
+MACHINE_START(MSM7625A_SURF, "QCT MSM7625a SURF")
+	.boot_params    = PHYS_OFFSET + 0x100,
+	.map_io         = msm_common_io_init,
+	.reserve        = msm7x27a_reserve,
+	.init_irq       = msm_init_irq,
+	.init_machine   = msm7x2x_init,
+	.timer          = &msm_timer,
+	.init_early     = msm7x2x_init_early,
+MACHINE_END
+MACHINE_START(MSM7625A_FFA, "QCT MSM7625a FFA")
+	.boot_params    = PHYS_OFFSET + 0x100,
+	.map_io         = msm_common_io_init,
+	.reserve        = msm7x27a_reserve,
+	.init_irq       = msm_init_irq,
+	.init_machine   = msm7x2x_init,
+	.timer          = &msm_timer,
 	.init_early     = msm7x2x_init_early,
 MACHINE_END
