@@ -329,9 +329,8 @@ done:
 static int voice_create_mvm_cvs_session(struct voice_data *v)
 {
 	int ret = 0;
-	struct mvm_create_passive_ctl_session_cmd mvm_session_cmd;
+	struct mvm_create_ctl_session_cmd mvm_session_cmd;
 	struct cvs_create_passive_ctl_session_cmd cvs_session_cmd;
-	struct mvm_create_full_ctl_session_cmd mvm_full_ctl_cmd;
 	struct cvs_create_full_ctl_session_cmd cvs_full_ctl_cmd;
 	struct mvm_attach_stream_cmd attach_stream_cmd;
 	void *apr_mvm = voice_get_apr_mvm(v);
@@ -364,6 +363,8 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 			pr_debug("%s: Creating MVM passive ctrl\n", __func__);
 			mvm_session_cmd.hdr.opcode =
 				VSS_IMVM_CMD_CREATE_PASSIVE_CONTROL_SESSION;
+			strncpy(mvm_session_cmd.mvm_session.name,
+				"default modem voice", SESSION_NAME_LEN);
 
 			v->mvm_state = CMD_STATUS_FAIL;
 
@@ -381,27 +382,27 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 				goto fail;
 			}
 		} else {
-			mvm_full_ctl_cmd.hdr.hdr_field =
+			mvm_session_cmd.hdr.hdr_field =
 				APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 					APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
-			mvm_full_ctl_cmd.hdr.pkt_size =
+			mvm_session_cmd.hdr.pkt_size =
 				APR_PKT_SIZE(APR_HDR_SIZE,
-				       sizeof(mvm_full_ctl_cmd) - APR_HDR_SIZE);
+				       sizeof(mvm_session_cmd) - APR_HDR_SIZE);
 			pr_debug("Send mvm create session pkt size = %d\n",
-				mvm_full_ctl_cmd.hdr.pkt_size);
-			mvm_full_ctl_cmd.hdr.src_port = 0;
-			mvm_full_ctl_cmd.hdr.dest_port = 0;
-			mvm_full_ctl_cmd.hdr.token = 0;
+				mvm_session_cmd.hdr.pkt_size);
+			mvm_session_cmd.hdr.src_port = 0;
+			mvm_session_cmd.hdr.dest_port = 0;
+			mvm_session_cmd.hdr.token = 0;
 			pr_debug("%s: Creating MVM full ctrl\n", __func__);
-			mvm_full_ctl_cmd.hdr.opcode =
+			mvm_session_cmd.hdr.opcode =
 				VSS_IMVM_CMD_CREATE_FULL_CONTROL_SESSION;
-			strcpy(mvm_full_ctl_cmd.mvm_session.name,
-			       "default voip");
+			strncpy(mvm_session_cmd.mvm_session.name,
+				"default voip", SESSION_NAME_LEN);
 
 			v->mvm_state = CMD_STATUS_FAIL;
 
 			ret = apr_send_pkt(apr_mvm,
-					   (uint32_t *) &mvm_full_ctl_cmd);
+					   (uint32_t *) &mvm_session_cmd);
 			if (ret < 0) {
 				pr_err("Error sending MVM_FULL_CTL_SESSION\n");
 				goto fail;
@@ -436,7 +437,8 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 		cvs_session_cmd.hdr.token = 0;
 		cvs_session_cmd.hdr.opcode =
 				VSS_ISTREAM_CMD_CREATE_PASSIVE_CONTROL_SESSION;
-		strcpy(cvs_session_cmd.cvs_session.name, "default modem voice");
+		strncpy(cvs_session_cmd.cvs_session.name,
+			"default modem voice", SESSION_NAME_LEN);
 
 		v->cvs_state = CMD_STATUS_FAIL;
 
@@ -481,8 +483,8 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 							v->mvs_info.media_type;
 			cvs_full_ctl_cmd.cvs_session.network_id =
 						       v->mvs_info.network_type;
-			strcpy(cvs_full_ctl_cmd.cvs_session.name,
-			       "default voip");
+			strncpy(cvs_full_ctl_cmd.cvs_session.name,
+				"default voip", SESSION_NAME_LEN);
 
 			v->cvs_state = CMD_STATUS_FAIL;
 
