@@ -32,10 +32,14 @@
 #define SCM_SVC_PIL			0x2
 #define SCM_SVC_UTIL			0x3
 #define SCM_SVC_TZ                      0x4
+#define SCM_SVC_IO                      0x5
 #define SCM_SVC_TZSCHEDULER             0xFC
 
 extern int scm_call(u32 svc_id, u32 cmd_id, const void *cmd_buf, size_t cmd_len,
 		void *resp_buf, size_t resp_len);
+
+extern u32 scm_call_atomic1(u32 svc, u32 cmd, u32 arg1);
+extern u32 scm_call_atomic2(u32 svc, u32 cmd, u32 arg1, u32 arg2);
 
 #define SCM_VERSION(major, minor) (((major) << 16) | ((minor) & 0xFF))
 
