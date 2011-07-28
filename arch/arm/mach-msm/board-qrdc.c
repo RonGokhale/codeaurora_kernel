@@ -992,14 +992,28 @@ static struct resource msm_fb_resources[] = {
 	}
 };
 
+#define PANEL_NAME_MAX_LEN	30
+#define LCDC_QRDC_PANEL_NAME	"lcdc_qrdc"
+#define HDMI_PANEL_NAME	"hdmi_msm"
+#define TVOUT_PANEL_NAME	"tvout_msm"
+
 static int msm_fb_detect_panel(const char *name)
 {
-#ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
-	if (!strcmp(name, "hdmi_msm"))
+	if (!strncmp(name, LCDC_QRDC_PANEL_NAME,
+			strnlen(LCDC_QRDC_PANEL_NAME,
+				PANEL_NAME_MAX_LEN)))
 		return 0;
-#endif
-	if (!strcmp(name, "lcdc_qrdc"))
+
+	if (!strncmp(name, HDMI_PANEL_NAME,
+			strnlen(HDMI_PANEL_NAME,
+				PANEL_NAME_MAX_LEN)))
 		return 0;
+
+	if (!strncmp(name, TVOUT_PANEL_NAME,
+			strnlen(TVOUT_PANEL_NAME,
+				PANEL_NAME_MAX_LEN)))
+		return 0;
+
 	pr_warning("%s: not supported '%s'", __func__, name);
 	return -ENODEV;
 }
