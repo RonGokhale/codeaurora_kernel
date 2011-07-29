@@ -889,83 +889,97 @@ void hci_conn_enter_sniff_mode(struct hci_conn *conn)
 	}
 }
 
-struct hci_chan *hci_chan_accept(__u8 id, bdaddr_t *dst)
+struct hci_chan *hci_chan_accept(struct hci_conn *conn,
+			struct hci_ext_fs *tx_fs, struct hci_ext_fs *rx_fs)
 {
-	struct hci_dev *hdev;
-	struct hci_conn *hcon;
 	struct hci_chan *chan;
-	struct hci_cp_create_logical_link cp = {0,
-			1, 1, 0xFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
-			1, 1, 0xFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
+	struct hci_cp_create_logical_link cp;
 
-	hdev = hci_dev_get(id);
-	if (!hdev)
-		return NULL;
-
-	BT_DBG("hdev %s", hdev->name);
-
-	hcon = hci_conn_hash_lookup_ba(hdev, ACL_LINK, dst);
-	if (!hcon)
-		return NULL;
-
-	chan = hci_chan_list_lookup_id(hdev, hcon->handle);
-	if (chan) {
-		BT_DBG("chan %p refcnt %d", chan, atomic_read(&chan->refcnt));
-		hci_chan_hold(chan);
-		return chan;
-	}
-
-	chan = hci_chan_add(hdev);
+	chan = hci_chan_add(conn->hdev);
 	if (!chan)
 		return NULL;
 
 	chan->state = BT_CONNECT;
-	chan->conn = hcon;
-	hci_conn_hold(chan->conn);
+	chan->conn = conn;
+	chan->tx_fs = *tx_fs;
+	chan->rx_fs = *rx_fs;
 	cp.phy_handle = chan->conn->handle;
-	hci_send_cmd(hdev, HCI_OP_ACCEPT_LOGICAL_LINK, sizeof(cp), &cp);
+	cp.tx_fs.id = chan->tx_fs.id;
+	cp.tx_fs.type = chan->tx_fs.type;
+	cp.tx_fs.max_sdu = cpu_to_le16(chan->tx_fs.max_sdu);
+	cp.tx_fs.sdu_arr_time = cpu_to_le32(chan->tx_fs.sdu_arr_time);
+	cp.tx_fs.acc_latency = cpu_to_le32(chan->tx_fs.acc_latency);
+	cp.tx_fs.flush_to = cpu_to_le32(chan->tx_fs.flush_to);
+	cp.rx_fs.id = chan->rx_fs.id;
+	cp.rx_fs.type = chan->rx_fs.type;
+	cp.rx_fs.max_sdu = cpu_to_le16(chan->rx_fs.max_sdu);
+	cp.rx_fs.sdu_arr_time = cpu_to_le32(chan->rx_fs.sdu_arr_time);
+	cp.rx_fs.acc_latency = cpu_to_le32(chan->rx_fs.acc_latency);
+	cp.rx_fs.flush_to = cpu_to_le32(chan->rx_fs.flush_to);
+	hci_conn_hold(chan->conn);
+	hci_send_cmd(conn->hdev, HCI_OP_ACCEPT_LOGICAL_LINK, sizeof(cp), &cp);
 	return chan;
 }
 EXPORT_SYMBOL(hci_chan_accept);
 
-struct hci_chan *hci_chan_create(__u8 id, bdaddr_t *dst)
+struct hci_chan *hci_chan_create(struct hci_conn *conn,
+			struct hci_ext_fs *tx_fs, struct hci_ext_fs *rx_fs)
 {
-	struct hci_dev *hdev;
-	struct hci_conn *hcon;
 	struct hci_chan *chan;
-	struct hci_cp_create_logical_link cp = {0,
-			1, 1, 0xFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
-			1, 1, 0xFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
+	struct hci_cp_create_logical_link cp;
 
-	hdev = hci_dev_get(id);
-	if (!hdev)
-		return NULL;
-
-	BT_DBG("hdev %s", hdev->name);
-
-	hcon = hci_conn_hash_lookup_ba(hdev, ACL_LINK, dst);
-	if (!hcon)
-		return NULL;
-
-	chan = hci_chan_list_lookup_id(hdev, hcon->handle);
-	if (chan) {
-		BT_DBG("chan %p refcnt %d", chan, atomic_read(&chan->refcnt));
-		hci_chan_hold(chan);
-		return chan;
-	}
-
-	chan = hci_chan_add(hdev);
+	chan = hci_chan_add(conn->hdev);
 	if (!chan)
 		return NULL;
 
 	chan->state = BT_CONNECT;
-	chan->conn = hcon;
-	hci_conn_hold(chan->conn);
+	chan->conn = conn;
+	chan->tx_fs = *tx_fs;
+	chan->rx_fs = *rx_fs;
 	cp.phy_handle = chan->conn->handle;
-	hci_send_cmd(hdev, HCI_OP_CREATE_LOGICAL_LINK, sizeof(cp), &cp);
+	cp.tx_fs.id = chan->tx_fs.id;
+	cp.tx_fs.type = chan->tx_fs.type;
+	cp.tx_fs.max_sdu = cpu_to_le16(chan->tx_fs.max_sdu);
+	cp.tx_fs.sdu_arr_time = cpu_to_le32(chan->tx_fs.sdu_arr_time);
+	cp.tx_fs.acc_latency = cpu_to_le32(chan->tx_fs.acc_latency);
+	cp.tx_fs.flush_to = cpu_to_le32(chan->tx_fs.flush_to);
+	cp.rx_fs.id = chan->rx_fs.id;
+	cp.rx_fs.type = chan->rx_fs.type;
+	cp.rx_fs.max_sdu = cpu_to_le16(chan->rx_fs.max_sdu);
+	cp.rx_fs.sdu_arr_time = cpu_to_le32(chan->rx_fs.sdu_arr_time);
+	cp.rx_fs.acc_latency = cpu_to_le32(chan->rx_fs.acc_latency);
+	cp.rx_fs.flush_to = cpu_to_le32(chan->rx_fs.flush_to);
+	hci_conn_hold(chan->conn);
+	hci_send_cmd(conn->hdev, HCI_OP_CREATE_LOGICAL_LINK, sizeof(cp), &cp);
 	return chan;
 }
 EXPORT_SYMBOL(hci_chan_create);
+
+void hci_chan_modify(struct hci_chan *chan,
+			struct hci_ext_fs *tx_fs, struct hci_ext_fs *rx_fs)
+{
+	struct hci_cp_flow_spec_modify cp;
+
+	chan->tx_fs = *tx_fs;
+	chan->rx_fs = *rx_fs;
+	cp.log_handle = cpu_to_le16(chan->ll_handle);
+	cp.tx_fs.id = tx_fs->id;
+	cp.tx_fs.type = tx_fs->type;
+	cp.tx_fs.max_sdu = cpu_to_le16(tx_fs->max_sdu);
+	cp.tx_fs.sdu_arr_time = cpu_to_le32(tx_fs->sdu_arr_time);
+	cp.tx_fs.acc_latency = cpu_to_le32(tx_fs->acc_latency);
+	cp.tx_fs.flush_to = cpu_to_le32(tx_fs->flush_to);
+	cp.rx_fs.id = rx_fs->id;
+	cp.rx_fs.type = rx_fs->type;
+	cp.rx_fs.max_sdu = cpu_to_le16(rx_fs->max_sdu);
+	cp.rx_fs.sdu_arr_time = cpu_to_le32(rx_fs->sdu_arr_time);
+	cp.rx_fs.acc_latency = cpu_to_le32(rx_fs->acc_latency);
+	cp.rx_fs.flush_to = cpu_to_le32(rx_fs->flush_to);
+	hci_conn_hold(chan->conn);
+	hci_send_cmd(chan->conn->hdev, HCI_OP_FLOW_SPEC_MODIFY, sizeof(cp),
+									&cp);
+}
+EXPORT_SYMBOL(hci_chan_modify);
 
 /* Drop all connection on the device */
 void hci_conn_hash_flush(struct hci_dev *hdev)

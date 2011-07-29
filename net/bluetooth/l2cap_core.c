@@ -46,6 +46,7 @@
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
 #include <linux/crc16.h>
+#include <linux/math64.h>
 #include <net/sock.h>
 
 #include <asm/system.h>
@@ -86,6 +87,7 @@ static struct sk_buff *l2cap_build_cmd(struct l2cap_conn *conn,
 				u8 code, u8 ident, u16 dlen, void *data);
 static int l2cap_answer_move_poll(struct sock *sk);
 static int l2cap_create_cfm(struct hci_chan *chan, u8 status);
+static int l2cap_deaggregate(struct hci_chan *chan, struct l2cap_pinfo *pi);
 static void l2cap_chan_ready(struct sock *sk);
 static void l2cap_conn_del(struct hci_conn *hcon, int err);
 
@@ -546,8 +548,12 @@ void l2cap_chan_del(struct sock *sk, int err)
 	if (l2cap_pi(sk)->ampcon) {
 		l2cap_pi(sk)->ampcon->l2cap_data = NULL;
 		l2cap_pi(sk)->ampcon = NULL;
-		if (l2cap_pi(sk)->ampchan)
+		if (l2cap_pi(sk)->ampchan) {
 			hci_chan_put(l2cap_pi(sk)->ampchan);
+			if (atomic_read(&l2cap_pi(sk)->ampchan->refcnt))
+				l2cap_deaggregate(l2cap_pi(sk)->ampchan,
+							l2cap_pi(sk));
+		}
 		l2cap_pi(sk)->ampchan = NULL;
 		l2cap_pi(sk)->amp_id = 0;
 	}
@@ -3005,6 +3011,134 @@ static void l2cap_setup_txwin(struct l2cap_pinfo *pi)
 	}
 }
 
+static void l2cap_aggregate_fs(struct hci_ext_fs *cur,
+		struct hci_ext_fs *new,
+		struct hci_ext_fs *agg)
+{
+	*agg = *cur;
+	if ((cur->max_sdu != 0xFFFF) && (cur->sdu_arr_time != 0xFFFFFFFF)) {
+		/* current flow spec has known rate */
+		if ((new->max_sdu == 0xFFFF) ||
+				(new->sdu_arr_time == 0xFFFFFFFF)) {
+			/* new fs has unknown rate, so aggregate is unknown */
+			agg->max_sdu = 0xFFFF;
+			agg->sdu_arr_time = 0xFFFFFFFF;
+		} else {
+			/* new fs has known rate, so aggregate is known */
+			u64 cur_rate;
+			u64 new_rate;
+			cur_rate = cur->max_sdu * 1000000ULL;
+			if (cur->sdu_arr_time)
+				cur_rate = div_u64(cur_rate, cur->sdu_arr_time);
+			new_rate = new->max_sdu * 1000000ULL;
+			if (new->sdu_arr_time)
+				new_rate = div_u64(new_rate, new->sdu_arr_time);
+			cur_rate = cur_rate + new_rate;
+			agg->sdu_arr_time = div64_u64(agg->max_sdu * 1000000ULL,
+				cur_rate);
+		}
+	}
+}
+
+static int l2cap_aggregate(struct hci_chan *chan, struct l2cap_pinfo *pi)
+{
+	struct hci_ext_fs tx_fs;
+	struct hci_ext_fs rx_fs;
+
+	BT_DBG("chan %p", chan);
+
+	if (((chan->tx_fs.max_sdu == 0xFFFF) ||
+			(chan->tx_fs.sdu_arr_time == 0xFFFFFFFF)) &&
+			((chan->rx_fs.max_sdu == 0xFFFF) ||
+			(chan->rx_fs.sdu_arr_time == 0xFFFFFFFF)))
+		return 0;
+
+	l2cap_aggregate_fs(&chan->tx_fs,
+				(struct hci_ext_fs *) &pi->local_fs, &tx_fs);
+	l2cap_aggregate_fs(&chan->rx_fs,
+				(struct hci_ext_fs *) &pi->remote_fs, &rx_fs);
+	hci_chan_modify(chan, &tx_fs, &rx_fs);
+	return 1;
+}
+
+static void l2cap_deaggregate_fs(struct hci_ext_fs *cur,
+		struct hci_ext_fs *old,
+		struct hci_ext_fs *agg)
+{
+	*agg = *cur;
+	if ((cur->max_sdu != 0xFFFF) && (cur->sdu_arr_time != 0xFFFFFFFF)) {
+		u64 cur_rate;
+		u64 old_rate;
+		cur_rate = cur->max_sdu * 1000000ULL;
+		if (cur->sdu_arr_time)
+			cur_rate = div_u64(cur_rate, cur->sdu_arr_time);
+		old_rate = old->max_sdu * 1000000ULL;
+		if (old->sdu_arr_time)
+			old_rate = div_u64(old_rate, old->sdu_arr_time);
+		cur_rate = cur_rate - old_rate;
+		agg->sdu_arr_time = div64_u64(agg->max_sdu * 1000000ULL,
+								cur_rate);
+	}
+}
+
+static int l2cap_deaggregate(struct hci_chan *chan, struct l2cap_pinfo *pi)
+{
+	struct hci_ext_fs tx_fs;
+	struct hci_ext_fs rx_fs;
+
+	BT_DBG("chan %p", chan);
+
+	if (((chan->tx_fs.max_sdu == 0xFFFF) ||
+			(chan->tx_fs.sdu_arr_time == 0xFFFFFFFF)) &&
+			((chan->rx_fs.max_sdu == 0xFFFF) ||
+			(chan->rx_fs.sdu_arr_time == 0xFFFFFFFF)))
+		return 0;
+
+	l2cap_deaggregate_fs(&chan->tx_fs,
+				(struct hci_ext_fs *) &pi->local_fs, &tx_fs);
+	l2cap_deaggregate_fs(&chan->rx_fs,
+				(struct hci_ext_fs *) &pi->remote_fs, &rx_fs);
+	hci_chan_modify(chan, &tx_fs, &rx_fs);
+	return 1;
+}
+
+static struct hci_chan *l2cap_chan_admit(u8 amp_id, struct l2cap_pinfo *pi)
+{
+	struct hci_dev *hdev;
+	struct hci_conn *hcon;
+	struct hci_chan *chan;
+
+	hdev = hci_dev_get(A2MP_HCI_ID(amp_id));
+	if (!hdev)
+		return NULL;
+
+	BT_DBG("hdev %s", hdev->name);
+
+	hcon = hci_conn_hash_lookup_ba(hdev, ACL_LINK, pi->conn->dst);
+	if (!hcon)
+		return NULL;
+
+	chan = hci_chan_list_lookup_id(hdev, hcon->handle);
+	if (chan) {
+		l2cap_aggregate(chan, pi);
+		hci_chan_hold(chan);
+		return chan;
+	}
+
+	if (bt_sk(pi)->parent) {
+		/* Incoming connection */
+		chan = hci_chan_accept(hcon,
+					(struct hci_ext_fs *) &pi->local_fs,
+					(struct hci_ext_fs *) &pi->remote_fs);
+	} else {
+		/* Outgoing connection */
+		chan = hci_chan_create(hcon,
+					(struct hci_ext_fs *) &pi->local_fs,
+					(struct hci_ext_fs *) &pi->remote_fs);
+	}
+	return chan;
+}
+
 int l2cap_build_conf_req(struct sock *sk, void *data)
 {
 	struct l2cap_pinfo *pi = l2cap_pi(sk);
@@ -3069,6 +3203,14 @@ done:
 			pi->extended_control) {
 			l2cap_add_conf_opt(&ptr, L2CAP_CONF_EXT_WINDOW, 2,
 					pi->tx_win);
+		}
+
+		if (pi->amp_id) {
+			/* default best effort extended flow spec */
+			struct l2cap_conf_ext_fs fs = {1, 1, 0xFFFF,
+					0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
+			l2cap_add_conf_opt(&ptr, L2CAP_CONF_EXT_FS,
+				sizeof(fs), (unsigned long) &fs);
 		}
 
 		if (!(pi->conn->feat_mask & L2CAP_FEAT_FCS))
@@ -3188,6 +3330,7 @@ static int l2cap_parse_conf_req(struct sock *sk, void *data)
 	int type, hint, olen;
 	unsigned long val;
 	struct l2cap_conf_rfc rfc = { .mode = L2CAP_MODE_BASIC };
+	struct l2cap_conf_ext_fs fs;
 	u16 mtu = L2CAP_DEFAULT_MTU;
 	u16 result = L2CAP_CONF_SUCCESS;
 
@@ -3206,10 +3349,15 @@ static int l2cap_parse_conf_req(struct sock *sk, void *data)
 
 		case L2CAP_CONF_FLUSH_TO:
 			pi->flush_to = val;
-			pi->remote_conf.flush_to = val;
+			if (pi->conf_state & L2CAP_CONF_LOCKSTEP)
+				result = L2CAP_CONF_UNACCEPT;
+			else
+				pi->remote_conf.flush_to = val;
 			break;
 
 		case L2CAP_CONF_QOS:
+			if (pi->conf_state & L2CAP_CONF_LOCKSTEP)
+				result = L2CAP_CONF_UNACCEPT;
 			break;
 
 		case L2CAP_CONF_RFC:
@@ -3221,6 +3369,33 @@ static int l2cap_parse_conf_req(struct sock *sk, void *data)
 			if (val == L2CAP_FCS_NONE)
 				pi->conf_state |= L2CAP_CONF_NO_FCS_RECV;
 			pi->remote_conf.fcs = val;
+			break;
+
+		case L2CAP_CONF_EXT_FS:
+			if (olen == sizeof(fs)) {
+				pi->conf_state |= L2CAP_CONF_EFS_RECV;
+				if (!(pi->conf_state & L2CAP_CONF_LOCKSTEP)) {
+					result = L2CAP_CONF_UNACCEPT;
+					break;
+				}
+				memcpy(&fs, (void *) val, olen);
+				if (fs.type != L2CAP_SERVICE_BEST_EFFORT) {
+					result = L2CAP_CONF_FLOW_SPEC_REJECT;
+					break;
+				}
+				pi->remote_conf.flush_to =
+						le32_to_cpu(fs.flush_to);
+				pi->remote_fs.id = fs.id;
+				pi->remote_fs.type = fs.type;
+				pi->remote_fs.max_sdu =
+						le16_to_cpu(fs.max_sdu);
+				pi->remote_fs.sdu_arr_time =
+						le32_to_cpu(fs.sdu_arr_time);
+				pi->remote_fs.acc_latency =
+						le32_to_cpu(fs.acc_latency);
+				pi->remote_fs.flush_to =
+						le32_to_cpu(fs.flush_to);
+			}
 			break;
 
 		case L2CAP_CONF_EXT_WINDOW:
@@ -3271,6 +3446,10 @@ done:
 	}
 
 
+	if ((pi->conf_state & L2CAP_CONF_LOCKSTEP) &&
+			!(pi->conf_state & L2CAP_CONF_EFS_RECV))
+		return -ECONNREFUSED;
+
 	if (result == L2CAP_CONF_SUCCESS) {
 		/* Configure output options and let the other side know
 		 * which ones we don't like. */
@@ -3309,6 +3488,10 @@ done:
 			l2cap_add_conf_opt(&ptr, L2CAP_CONF_RFC,
 					sizeof(rfc), (unsigned long) &rfc);
 
+			if (pi->conf_state & L2CAP_CONF_LOCKSTEP)
+				l2cap_add_conf_opt(&ptr, L2CAP_CONF_EXT_FS,
+					sizeof(fs), (unsigned long) &fs);
+
 			break;
 
 		case L2CAP_MODE_STREAMING:
@@ -3335,22 +3518,10 @@ done:
 
 			if (pi->conf_state & L2CAP_CONF_LOCKSTEP_PEND &&
 					pi->amp_id) {
+				struct hci_chan *chan;
 				/* Trigger logical link creation only on AMP */
 
-				struct hci_chan *chan;
-				u8 amp_id = A2MP_HCI_ID(pi->amp_id);
-				BT_DBG("Set up logical link");
-
-				if (bt_sk(sk)->parent) {
-					/* Incoming connection */
-					chan = hci_chan_accept(amp_id,
-								pi->conn->dst);
-				} else {
-					/* Outgoing connection */
-					chan = hci_chan_create(amp_id,
-								pi->conn->dst);
-				}
-
+				chan = l2cap_chan_admit(pi->amp_id, pi);
 				if (!chan)
 					return -ECONNREFUSED;
 
@@ -3640,6 +3811,33 @@ done:
 	case L2CAP_MODE_STREAMING:
 		pi->mps    = le16_to_cpu(rfc.max_pdu_size);
 	}
+}
+
+static void l2cap_conf_ext_fs_get(struct sock *sk, void *rsp, int len)
+{
+	struct l2cap_pinfo *pi = l2cap_pi(sk);
+	int type, olen;
+	unsigned long val;
+	struct l2cap_conf_ext_fs fs;
+
+	BT_DBG("sk %p, rsp %p, len %d", sk, rsp, len);
+
+	while (len >= L2CAP_CONF_OPT_SIZE) {
+		len -= l2cap_get_conf_opt(&rsp, &type, &olen, &val);
+		if ((type == L2CAP_CONF_EXT_FS) &&
+				(olen == sizeof(struct l2cap_conf_ext_fs))) {
+			memcpy(&fs, (void *)val, olen);
+			pi->local_fs.id = fs.id;
+			pi->local_fs.type = fs.type;
+			pi->local_fs.max_sdu = le16_to_cpu(fs.max_sdu);
+			pi->local_fs.sdu_arr_time =
+						le32_to_cpu(fs.sdu_arr_time);
+			pi->local_fs.acc_latency = le32_to_cpu(fs.acc_latency);
+			pi->local_fs.flush_to = le32_to_cpu(fs.flush_to);
+			break;
+		}
+	}
+
 }
 
 static int l2cap_finish_amp_move(struct sock *sk)
@@ -4146,7 +4344,7 @@ static inline int l2cap_config_rsp(struct l2cap_conn *conn, struct l2cap_cmd_hdr
 
 		pi->conf_state |= L2CAP_CONF_LOCKSTEP_PEND;
 
-		/* Check Extended Flow Specification */
+		l2cap_conf_ext_fs_get(sk, rsp->data, len);
 
 		if (pi->amp_id && pi->conf_state & L2CAP_CONF_PEND_SENT) {
 			struct hci_chan *chan;
@@ -4154,18 +4352,7 @@ static inline int l2cap_config_rsp(struct l2cap_conn *conn, struct l2cap_cmd_hdr
 			/* Already sent a 'pending' response, so set up
 			 * the logical link now
 			 */
-			BT_DBG("Set up logical link");
-
-			if (bt_sk(sk)->parent) {
-				/* Incoming connection */
-				chan = hci_chan_accept(A2MP_HCI_ID(pi->amp_id),
-								pi->conn->dst);
-			} else {
-				/* Outgoing connection */
-				chan = hci_chan_create(A2MP_HCI_ID(pi->amp_id),
-								pi->conn->dst);
-			}
-
+			chan = l2cap_chan_admit(pi->amp_id, pi);
 			if (!chan) {
 				l2cap_send_disconn_req(pi->conn, sk,
 							ECONNRESET);
@@ -4676,6 +4863,8 @@ static inline int l2cap_move_channel_rsp(struct l2cap_conn *conn,
 			}
 		} else if (pi->amp_move_state ==
 				L2CAP_AMP_STATE_WAIT_MOVE_RSP) {
+			struct l2cap_conf_ext_fs default_fs = {1, 1, 0xFFFF,
+					0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
 			struct hci_chan *chan;
 			/* Moving to AMP */
 			if (result == L2CAP_MOVE_CHAN_SUCCESS) {
@@ -4691,8 +4880,9 @@ static inline int l2cap_move_channel_rsp(struct l2cap_conn *conn,
 				pi->amp_move_state =
 					L2CAP_AMP_STATE_WAIT_LOGICAL_COMPLETE;
 			}
-			chan = hci_chan_create(A2MP_HCI_ID(pi->amp_move_id),
-						pi->conn->dst);
+			pi->remote_fs = default_fs;
+			pi->local_fs = default_fs;
+			chan = l2cap_chan_admit(pi->amp_move_id, pi);
 			if (!chan) {
 				/* Logical link not available */
 				l2cap_send_move_chan_cfm(conn, pi, pi->scid,
@@ -4799,10 +4989,13 @@ static inline int l2cap_move_channel_confirm(struct l2cap_conn *conn,
 		l2cap_pi(sk)->amp_move_state = L2CAP_AMP_STATE_STABLE;
 		if (result == L2CAP_MOVE_CHAN_CONFIRMED) {
 			l2cap_pi(sk)->amp_id = l2cap_pi(sk)->amp_move_id;
-			if (!l2cap_pi(sk)->amp_id) {
+			if ((!l2cap_pi(sk)->amp_id) &&
+						(l2cap_pi(sk)->ampchan)) {
 				/* Have moved off of AMP, free the channel */
-				if (l2cap_pi(sk)->ampchan)
-					hci_chan_put(l2cap_pi(sk)->ampchan);
+				hci_chan_put(l2cap_pi(sk)->ampchan);
+				if (atomic_read(&l2cap_pi(sk)->ampchan->refcnt))
+					l2cap_deaggregate(l2cap_pi(sk)->ampchan,
+								l2cap_pi(sk));
 				l2cap_pi(sk)->ampchan = NULL;
 				l2cap_pi(sk)->ampcon = NULL;
 			}
@@ -4857,8 +5050,12 @@ static inline int l2cap_move_channel_confirm_rsp(struct l2cap_conn *conn,
 		if (!l2cap_pi(sk)->amp_id) {
 			/* Have moved off of AMP, free the channel */
 			l2cap_pi(sk)->ampcon = NULL;
-			if (l2cap_pi(sk)->ampchan)
+			if (l2cap_pi(sk)->ampchan) {
 				hci_chan_put(l2cap_pi(sk)->ampchan);
+				if (atomic_read(&l2cap_pi(sk)->ampchan->refcnt))
+					l2cap_deaggregate(l2cap_pi(sk)->ampchan,
+								l2cap_pi(sk));
+			}
 			l2cap_pi(sk)->ampchan = NULL;
 		}
 
@@ -4990,7 +5187,11 @@ void l2cap_amp_physical_complete(int result, u8 local_id, u8 remote_id,
 	} else if (result == L2CAP_MOVE_CHAN_SUCCESS &&
 		pi->amp_move_role == L2CAP_AMP_MOVE_RESPONDER) {
 		struct hci_chan *chan;
-		chan = hci_chan_accept(A2MP_HCI_ID(local_id), pi->conn->dst);
+		struct l2cap_conf_ext_fs default_fs = {1, 1, 0xFFFF,
+				0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
+		pi->remote_fs = default_fs;
+		pi->local_fs = default_fs;
+		chan = l2cap_chan_admit(local_id, pi);
 		if (chan) {
 			if (chan->state == BT_CONNECTED) {
 				/* Logical link is ready to go */
@@ -5196,6 +5397,16 @@ static int l2cap_create_cfm(struct hci_chan *chan, u8 status)
 		return -ENOMEM;
 	}
 
+	return 0;
+}
+
+int l2cap_modify_cfm(struct hci_chan *chan, u8 status)
+{
+	struct l2cap_conn *conn = chan->conn->l2cap_data;
+
+	BT_DBG("chan %p conn %p status %d", chan, conn, status);
+
+	/* TODO: if failed status restore previous fs */
 	return 0;
 }
 
@@ -7281,7 +7492,8 @@ static struct hci_proto l2cap_hci_proto = {
 	.disconn_cfm	= l2cap_disconn_cfm,
 	.security_cfm	= l2cap_security_cfm,
 	.recv_acldata	= l2cap_recv_acldata,
-	.create_cfm		= l2cap_create_cfm,
+	.create_cfm	= l2cap_create_cfm,
+	.modify_cfm	= l2cap_modify_cfm,
 	.destroy_cfm	= l2cap_destroy_cfm,
 };
 
