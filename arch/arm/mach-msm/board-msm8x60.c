@@ -1414,10 +1414,25 @@ static char *charm_usb_functions_default_adb[] = {
 
 static char *usb_functions_rndis[] = {
 	"rndis",
+	"diag",
 };
 
 static char *usb_functions_rndis_adb[] = {
 	"rndis",
+	"diag",
+	"adb",
+};
+
+static char *charm_usb_functions_rndis[] = {
+	"rndis",
+	"diag",
+	"diag_mdm",
+};
+
+static char *charm_usb_functions_rndis_adb[] = {
+	"rndis",
+	"diag",
+	"diag_mdm",
 	"adb",
 };
 
@@ -1518,12 +1533,12 @@ static struct android_usb_product usb_products[] = {
 		.functions	= usb_functions_default_adb,
 	},
 	{
-		.product_id	= 0xf00e,
+		.product_id	= 0x902c,
 		.num_functions	= ARRAY_SIZE(usb_functions_rndis),
 		.functions	= usb_functions_rndis,
 	},
 	{
-		.product_id	= 0x9024,
+		.product_id	= 0x902d,
 		.num_functions	= ARRAY_SIZE(usb_functions_rndis_adb),
 		.functions	= usb_functions_rndis_adb,
 	},
@@ -1551,14 +1566,14 @@ static struct android_usb_product svlte2_usb_products[] = {
 		.functions	= svlte2_usb_functions_default_adb,
 	},
 	{
-		.product_id	= 0xf00e,
-		.num_functions	= ARRAY_SIZE(usb_functions_rndis),
-		.functions	= usb_functions_rndis,
+		.product_id	= 0x9041,
+		.num_functions	= ARRAY_SIZE(charm_usb_functions_rndis),
+		.functions	= charm_usb_functions_rndis,
 	},
 	{
-		.product_id	= 0x9024,
-		.num_functions	= ARRAY_SIZE(usb_functions_rndis_adb),
-		.functions	= usb_functions_rndis_adb,
+		.product_id	= 0x9042,
+		.num_functions	= ARRAY_SIZE(charm_usb_functions_rndis_adb),
+		.functions	= charm_usb_functions_rndis_adb,
 	},
 	{
 		.product_id	= 0xF003,
@@ -1594,14 +1609,14 @@ static struct android_usb_product charm_usb_products[] = {
 		.functions	= charm_usb_functions_default_adb,
 	},
 	{
-		.product_id	= 0xf00e,
-		.num_functions	= ARRAY_SIZE(usb_functions_rndis),
-		.functions	= usb_functions_rndis,
+		.product_id	= 0x9041,
+		.num_functions	= ARRAY_SIZE(charm_usb_functions_rndis),
+		.functions	= charm_usb_functions_rndis,
 	},
 	{
-		.product_id	= 0x9024,
-		.num_functions	= ARRAY_SIZE(usb_functions_rndis_adb),
-		.functions	= usb_functions_rndis_adb,
+		.product_id	= 0x9042,
+		.num_functions	= ARRAY_SIZE(charm_usb_functions_rndis_adb),
+		.functions	= charm_usb_functions_rndis_adb,
 	},
 	{
 		.product_id	= 0xF003,
