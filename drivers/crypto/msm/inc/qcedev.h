@@ -140,17 +140,6 @@ struct	qcedev_vbuf_info {
 	struct buf_info	dst[QCEDEV_MAX_BUFFERS];
 };
 
-struct	qcedev_sha_ctxt{
-	uint32_t		auth_data[4];
-	uint8_t			digest[QCEDEV_MAX_SHA_DIGEST];
-	uint32_t		diglen;
-	uint8_t			trailing_buf[64];
-	uint32_t		trailing_buf_len;
-	uint8_t			first_blk;
-	uint8_t			last_blk;
-	uint8_t			authkey[QCEDEV_MAX_SHA_BLOCK_SIZE];
-};
-
 /**
 * struct qcedev_pmem_info - Stores PMEM buffer information
 * @fd_src:			Handle to /dev/adsp_pmem used to allocate
@@ -245,7 +234,6 @@ struct	qcedev_cipher_op_req {
 * @authkey (IN):		Pointer to authentication key for HMAC
 * @authklen (IN):		Size of the authentication key
 * @alg (IN):			Secure Hash algorithm
-* @ctxt (Reserved):		RESERVED: User should not modify this data.
 */
 struct	qcedev_sha_op_req {
 	struct buf_info			data[QCEDEV_MAX_BUFFERS];
@@ -256,7 +244,6 @@ struct	qcedev_sha_op_req {
 	uint8_t				*authkey;
 	uint32_t			authklen;
 	enum qcedev_sha_alg_enum	alg;
-	struct qcedev_sha_ctxt		ctxt;
 };
 
 
