@@ -19,6 +19,7 @@
 #include <mach/irqs-8064.h>
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
+#include <mach/usbdiag.h>
 #include "clock.h"
 #include "devices.h"
 
@@ -43,6 +44,11 @@
 #define MSM_PMIC1_SSBI_CMD_PHYS	0x00500000
 #define MSM_PMIC2_SSBI_CMD_PHYS	0x00C00000
 #define MSM_PMIC_SSBI_SIZE	SZ_4K
+
+/* Address of HS USBOTG1 */
+#define MSM_HSUSB_PHYS		0x12500000
+#define MSM_HSUSB_SIZE		SZ_4K
+
 
 static struct resource msm_dmov_resource[] = {
 	{
@@ -142,6 +148,64 @@ struct platform_device apq8064_device_ssbi_pmic2 = {
 	.id             = 1,
 	.resource       = resources_ssbi_pmic2,
 	.num_resources  = ARRAY_SIZE(resources_ssbi_pmic2),
+};
+
+static struct resource resources_otg[] = {
+	{
+		.start	= MSM_HSUSB_PHYS,
+		.end	= MSM_HSUSB_PHYS + MSM_HSUSB_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= USB1_HS_IRQ,
+		.end	= USB1_HS_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm_device_otg = {
+	.name		= "msm_otg",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(resources_otg),
+	.resource	= resources_otg,
+	.dev		= {
+		.coherent_dma_mask	= 0xffffffff,
+	},
+};
+
+static struct resource resources_hsusb[] = {
+	{
+		.start	= MSM_HSUSB_PHYS,
+		.end	= MSM_HSUSB_PHYS + MSM_HSUSB_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= USB1_HS_IRQ,
+		.end	= USB1_HS_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm_device_gadget_peripheral = {
+	.name		= "msm_hsusb",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(resources_hsusb),
+	.resource	= resources_hsusb,
+	.dev		= {
+		.coherent_dma_mask	= 0xffffffff,
+	},
+};
+
+static struct usb_diag_platform_data usb_diag_pdata = {
+	.ch_name = DIAG_LEGACY,
+};
+
+struct platform_device usb_diag_device = {
+	.name	= "usb_diag",
+	.id	= 0,
+	.dev	= {
+		.platform_data = &usb_diag_pdata,
+	},
 };
 
 struct clk_lookup msm_clocks_8064_dummy[] = {
