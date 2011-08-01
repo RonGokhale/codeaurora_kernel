@@ -21,9 +21,9 @@
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
 #include <mach/socinfo.h>
+#include <mach/msm_spi.h>
 #include "timer.h"
 #include "devices.h"
-#include <mach/msm_spi.h>
 #include <mach/gpio.h>
 #include <mach/gpiomux.h>
 
@@ -69,7 +69,12 @@ static void __init apq8064_init_irq(void)
 
 static struct platform_device *common_devices[] __initdata = {
 	&msm_device_dmov,
-	&apq8064_device_uart_gsbi3
+	&apq8064_device_uart_gsbi3,
+	&apq8064_device_qup_spi_gsbi5,
+};
+
+static struct msm_spi_platform_data apq8064_qup_spi_gsbi5_pdata = {
+	.max_clock_speed = 26000000,
 };
 
 static void __init apq8064_common_init(void)
@@ -78,6 +83,8 @@ static void __init apq8064_common_init(void)
 		pr_err("socinfo_init() failed!\n");
 	msm_clock_init(msm_clocks_8064_dummy, msm_num_clocks_8064_dummy);
 	gpiomux_init();
+	apq8064_device_qup_spi_gsbi5.dev.platform_data =
+						&apq8064_qup_spi_gsbi5_pdata;
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 }
 
