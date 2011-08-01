@@ -90,6 +90,7 @@ static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
         { "uartb",      "pll_p",        216000000,      true},
         { "uartd",      "pll_p",        216000000,      true},
 	{ "pwm",        "clk_m",        12000000,       false},
+	{ "blink",      "clk_32k",      32768,          true},
 	{ NULL,		NULL,		0,		0},
 };
 
@@ -505,18 +506,9 @@ static void __init seaboard_i2c_init(void)
 
 static void __init seaboard_common_init(void)
 {
-	struct clk *clk;
-
 	seaboard_pinmux_init();
 
 	tegra_clk_init_from_table(seaboard_clk_init_table);
-
-	/* Enable 32kHz clock for WLAN */
-	clk = clk_get_sys(NULL, "blink");
-	if (IS_ERR(clk))
-		WARN_ON(1);
-	else
-		clk_enable(clk);
 
 	/* Power up WLAN */
 	gpio_request(TEGRA_GPIO_PK6, "wlan_pwr_rst");
