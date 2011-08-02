@@ -99,22 +99,14 @@ static struct pm8921_bms_chip *the_chip;
 #define DEFAULT_CHARGE_CYCLES		0
 
 static int last_rbatt = -EINVAL;
-static int last_fcc = -EINVAL;
-static int last_unusable_charge = -EINVAL;
 static int last_ocv_uv = -EINVAL;
-static int last_remaining_charge = -EINVAL;
-static int last_coulumb_counter = -EINVAL;
 static int last_soc = -EINVAL;
 
 static int last_chargecycles = DEFAULT_CHARGE_CYCLES;
 static int last_charge_increase;
 
 module_param(last_rbatt, int, 0644);
-module_param(last_fcc, int, 0644);
-module_param(last_unusable_charge, int, 0644);
 module_param(last_ocv_uv, int, 0644);
-module_param(last_remaining_charge, int, 0644);
-module_param(last_coulumb_counter, int, 0644);
 module_param(last_chargecycles, int, 0644);
 module_param(last_charge_increase, int, 0644);
 
@@ -210,6 +202,40 @@ static int pm_bms_read_output_data(struct pm8921_bms_chip *chip, int type,
 #define CONV_READING(a)		(((a) * (int)V_PER_BIT_MUL_FACTOR)\
 				/V_PER_BIT_DIV_FACTOR)
 
+#define CC_RESOLUTION_N_V1	1085069
+#define CC_RESOLUTION_D_V1	100000
+#define CC_RESOLUTION_N_V2	868056
+#define CC_RESOLUTION_D_V2	10000
+static s64 cc_to_microvolt_v1(s64 cc)
+{
+	return div_s64(cc * CC_RESOLUTION_N_V1, CC_RESOLUTION_D_V1);
+}
+
+static s64 cc_to_microvolt_v2(s64 cc)
+{
+	return div_s64(cc * CC_RESOLUTION_N_V2, CC_RESOLUTION_D_V2);
+}
+
+static s64 cc_to_microvolt(struct pm8921_bms_chip *chip, s64 cc)
+{
+	/*
+	 * resolution (the value of a single bit) was changed after revision 2.0
+	 * for more accurate readings
+	 */
+	return (chip->revision < PM8XXX_REVISION_8901_2p0) ?
+				cc_to_microvolt_v1((s64)cc) :
+				cc_to_microvolt_v2((s64)cc);
+}
+
+#define CC_READING_TICKS	55
+#define SLEEP_CLK_HZ		32768
+#define SECONDS_PER_HOUR	3600
+static s64 ccmicrovolt_to_uvh(s64 cc_uv)
+{
+	return div_s64(cc_uv * CC_READING_TICKS,
+			SLEEP_CLK_HZ * SECONDS_PER_HOUR);
+}
+
 /* returns the signed value read from the hardware */
 static int read_cc(struct pm8921_bms_chip *chip, int *result)
 {
@@ -271,7 +297,7 @@ static int read_vsense_for_rbatt(struct pm8921_bms_chip *chip, uint *result)
 		pr_err("fail to read VSENSE_FOR_RBATT rc = %d\n", rc);
 		return rc;
 	}
-	*result = CONV_READING(reading);
+	*result = cc_to_microvolt(chip, reading);
 	pr_debug("raw = %04x vsense_for_r_microV = %u\n", reading, *result);
 	return 0;
 }
@@ -301,7 +327,7 @@ static int read_vsense_avg(struct pm8921_bms_chip *chip, int *result)
 		pr_err("fail to read VSENSE_AVG rc = %d\n", rc);
 		return rc;
 	}
-	*result = CONV_READING(reading);
+	*result = cc_to_microvolt(chip, reading);
 	pr_debug("read = %04x vsense = %d\n", reading, *result);
 	return 0;
 }
@@ -605,54 +631,13 @@ static int calculate_pc(struct pm8921_bms_chip *chip, int ocv_uv, int batt_temp,
 	return pc;
 }
 
-#define CC_RESOLUTION_N_V1	1085069
-#define CC_RESOLUTION_D_V1	100000
-#define CC_RESOLUTION_N_V2	868056
-#define CC_RESOLUTION_D_V2	10000
-static s64 cc_to_microvolt_v1(s64 cc)
-{
-	return div_s64(cc * CC_RESOLUTION_N_V1, CC_RESOLUTION_D_V1);
-}
-
-static s64 cc_to_microvolt_v2(s64 cc)
-{
-	return div_s64(cc * CC_RESOLUTION_N_V2, CC_RESOLUTION_D_V2);
-}
-
-static s64 cc_to_microvolt(struct pm8921_bms_chip *chip, s64 cc)
-{
-	/*
-	 * resolution (the value of a single bit) was changed after revision 2.0
-	 * for more accurate readings
-	 */
-	return (chip->revision < PM8XXX_REVISION_8901_2p0) ?
-				cc_to_microvolt_v1((s64)cc) :
-				cc_to_microvolt_v2((s64)cc);
-}
-
-#define CC_READING_TICKS	55
-#define SLEEP_CLK_HZ		32768
-#define SECONDS_PER_HOUR	3600
-static s64 ccmicrovolt_to_uvh(s64 cc_uv)
-{
-	return div_s64(cc_uv * CC_READING_TICKS,
-			SLEEP_CLK_HZ * SECONDS_PER_HOUR);
-}
-
 static void calculate_cc_mah(struct pm8921_bms_chip *chip, int64_t *val,
-			int *coulumb_counter, int *update_userspace)
+			int *coulumb_counter)
 {
 	int rc;
 	int64_t cc_voltage_uv, cc_uvh, cc_mah;
 
 	rc = read_cc(the_chip, coulumb_counter);
-	if (rc) {
-		*coulumb_counter = (last_coulumb_counter < 0) ?
-			DEFAULT_COULUMB_COUNTER : last_coulumb_counter;
-		pr_debug("couldn't read coulumb counter err = %d assuming %d\n",
-							rc, *coulumb_counter);
-		*update_userspace = 0;
-	}
 	cc_voltage_uv = (int64_t)*coulumb_counter;
 	cc_voltage_uv = cc_to_microvolt(chip, cc_voltage_uv);
 	pr_debug("cc_voltage_uv = %lld microvolts\n", cc_voltage_uv);
@@ -699,11 +684,6 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 	pr_debug("rbatt = %umilliOhms", rbatt);
 
 	fcc = calculate_fcc(chip, batt_temp, chargecycles);
-	if (fcc < -EINVAL) {
-		fcc = (last_fcc < 0) ? chip->fcc : last_fcc;
-		pr_debug("failed to read fcc assuming %d\n", fcc);
-		update_userspace = 0;
-	}
 	pr_debug("FCC = %umAh", fcc);
 
 	/* calculate unusable charge */
@@ -711,14 +691,8 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 						+ (chip->v_failure * 1000);
 	pc_unusable = calculate_pc(chip, voltage_unusable_uv,
 						batt_temp, chargecycles);
-	if (pc_unusable < 0) {
-		unusable_charge = (last_unusable_charge < 0) ?
-			DEFAULT_UNUSABLE_CHARGE_MAH : last_unusable_charge;
-		pr_debug("unusable_charge failed assuming %d\n",
-							unusable_charge);
-	} else {
-		unusable_charge = (fcc * pc_unusable) / 100;
-	}
+
+	unusable_charge = (fcc * pc_unusable) / 100;
 	pr_debug("UUC = %umAh at temp = %d, fcc = %umAh"
 			"unusable_voltage = %umicroVolts pc_unusable = %d\n",
 			unusable_charge, batt_temp, fcc,
@@ -738,20 +712,12 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 		update_userspace = 0;
 	}
 	pc = calculate_pc(chip, ocv, batt_temp, chargecycles);
-	if (pc < 0) {
-		remaining_charge = (last_remaining_charge < 0) ?
-			DEFAULT_REMAINING_CHARGE_MAH : last_remaining_charge;
-		pr_debug("calculate remaining charge failed assuming %d\n",
-				remaining_charge);
-		update_userspace = 0;
-	} else {
-		remaining_charge = (fcc * pc) / 100;
-	}
+	remaining_charge = (fcc * pc) / 100;
 	pr_debug("RC = %umAh ocv = %d pc = %d\n",
 			remaining_charge, ocv, pc);
 
 	/* calculate cc milli_volt_hour */
-	calculate_cc_mah(chip, &cc_mah, &coulumb_counter, &update_userspace);
+	calculate_cc_mah(chip, &cc_mah, &coulumb_counter);
 	pr_debug("cc_mah = %lldmAh cc = %d\n", cc_mah, coulumb_counter);
 
 	/* calculate remaining usable charge */
@@ -773,11 +739,7 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 
 	if (update_userspace) {
 		last_rbatt = rbatt;
-		last_fcc = fcc;
-		last_unusable_charge = unusable_charge;
 		last_ocv_uv = ocv;
-		last_remaining_charge = remaining_charge;
-		last_coulumb_counter = coulumb_counter;
 		last_soc = soc;
 	}
 	return soc;
@@ -792,6 +754,24 @@ int pm8921_bms_get_vsense_avg(int *result)
 	return -EINVAL;
 }
 EXPORT_SYMBOL(pm8921_bms_get_vsense_avg);
+
+int pm8921_bms_get_battery_current(int *result)
+{
+	if (!the_chip) {
+		pr_err("called before initialization\n");
+		return -EINVAL;
+	}
+	if (the_chip->r_sense == 0) {
+		pr_err("r_sense is zero\n");
+		return -EINVAL;
+	}
+
+	read_vsense_avg(the_chip, result);
+	pr_debug("vsense=%d\n", *result);
+	*result = *result / the_chip->r_sense;
+	return 0;
+}
+EXPORT_SYMBOL(pm8921_bms_get_battery_current);
 
 int pm8921_bms_get_percent_charge(void)
 {
@@ -1096,7 +1076,7 @@ static int get_reading(void *data, u64 * val)
 	}
 	return ret;
 }
-DEFINE_SIMPLE_ATTRIBUTE(reading_fops, get_reading, NULL, "%llu\n");
+DEFINE_SIMPLE_ATTRIBUTE(reading_fops, get_reading, NULL, "%lld\n");
 
 static int get_rt_status(void *data, u64 * val)
 {
