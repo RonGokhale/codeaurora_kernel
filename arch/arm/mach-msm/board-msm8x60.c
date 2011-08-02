@@ -5003,6 +5003,11 @@ struct platform_device msm_device_sdio_al = {
 
 #endif /* CONFIG_MSM_SDIO_AL */
 
+static struct platform_device msm_rpm_device = {
+	.name = "msm_rpm",
+	.id = -1,
+};
+
 static struct platform_device *charm_devices[] __initdata = {
 	&msm_charm_modem,
 #ifdef CONFIG_USB_ANDROID
@@ -5208,6 +5213,7 @@ static struct platform_device *surf_devices[] __initdata = {
 #endif
 
 	&msm_tsens_device,
+	&msm_rpm_device,
 
 };
 
