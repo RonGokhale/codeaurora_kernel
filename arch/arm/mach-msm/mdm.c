@@ -30,6 +30,7 @@
 #include <linux/completion.h>
 #include <linux/workqueue.h>
 #include <linux/clk.h>
+#include <linux/mfd/pmic8058.h>
 #include <asm/mach-types.h>
 #include <asm/uaccess.h>
 #include <mach/mdm.h>
@@ -230,6 +231,8 @@ static DECLARE_WORK(charm_status_work, charm_status_fn);
 static void charm_fatal_fn(struct work_struct *work)
 {
 	pr_info("Reseting the charm due to an errfatal\n");
+	if (get_restart_level() == RESET_SOC)
+		pm8058_stay_on();
 	subsystem_restart("external_modem");
 }
 
