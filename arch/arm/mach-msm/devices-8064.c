@@ -208,7 +208,7 @@ struct platform_device apq8064_usb_diag_device = {
 	},
 };
 
-struct clk_lookup msm_clocks_8064_dummy[] = {
+static struct clk_lookup msm_clocks_8064_dummy[] = {
 	CLK_DUMMY("pll2",		PLL2,		NULL, 0),
 	CLK_DUMMY("pll8",		PLL8,		NULL, 0),
 	CLK_DUMMY("pll4",		PLL4,		NULL, 0),
@@ -398,4 +398,7 @@ struct clk_lookup msm_clocks_8064_dummy[] = {
 	CLK_DUMMY("dma_bam_pclk",	DMA_BAM_P_CLK,		NULL, 0),
 };
 
-unsigned msm_num_clocks_8064_dummy = ARRAY_SIZE(msm_clocks_8064_dummy);
+struct clock_init_data apq8064_dummy_clock_init_data __initdata = {
+	.table = msm_clocks_8064_dummy,
+	.size = ARRAY_SIZE(msm_clocks_8064_dummy),
+};
