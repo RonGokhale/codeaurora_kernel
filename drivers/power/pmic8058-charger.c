@@ -579,6 +579,49 @@ static int get_fsm_status(void *data, u64 * val)
 	return 0;
 }
 
+static int pm_chg_disable(int value)
+{
+	u8 temp;
+	int ret;
+
+	ret = pm8058_read(pm8058_chg.pm_chip, PM8058_CHG_CNTRL, &temp, 1);
+	if (ret)
+		return ret;
+	if (value)
+		temp |= BIT(CHG_CHARGE_DIS);
+	else
+		temp &= ~BIT(CHG_CHARGE_DIS);
+
+	return pm8058_write(pm8058_chg.pm_chip, PM8058_CHG_CNTRL, &temp, 1);
+}
+
+static void pm8058_start_system_current(struct msm_hardware_charger *hw_chg,
+								int max_current)
+{
+	int ret = 0;
+
+	if (pm8058_chg.disabled)
+		return;
+
+	ret = pm_chg_imaxsel_set(max_current);
+	ret |= pm_chg_enum_done_enable(1);
+	ret |= pm_chg_disable(0);
+	if (ret)
+		pr_err("%s: failed to turn on system power err=%d",
+							__func__, ret);
+}
+
+static void pm8058_stop_system_current(struct msm_hardware_charger *hw_chg)
+{
+	int ret = 0;
+
+	ret = pm_chg_enum_done_enable(0);
+	ret |= pm_chg_disable(1);
+	if (ret)
+		pr_err("%s: failed to turn off system power err=%d",
+							__func__, ret);
+}
+
 static int __pm8058_start_charging(int chg_current, int termination_current,
 				   int time)
 {
@@ -884,6 +927,7 @@ static irqreturn_t pm8058_chg_auto_chgdone_handler(int irq, void *dev_id)
 {
 	dev_info(pm8058_chg.dev, "%s waiting a sec to confirm\n",
 		__func__);
+	pm8058_chg_disable_irq(AUTO_CHGDONE_IRQ);
 	pm8058_chg_disable_irq(VBATDET_IRQ);
 	if (!delayed_work_pending(&pm8058_chg.chg_done_check_work)) {
 		schedule_delayed_work(&pm8058_chg.chg_done_check_work,
@@ -1135,7 +1179,7 @@ static int __devinit request_irqs(struct platform_device *pdev)
 	} else {
 		ret = request_threaded_irq(res->start, NULL,
 				  pm8058_chg_auto_chgdone_handler,
-				  IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+				  IRQF_TRIGGER_RISING,
 				  res->name, NULL);
 		if (ret < 0) {
 			dev_err(pm8058_chg.dev, "%s:couldnt request %d %d\n",
@@ -1362,6 +1406,16 @@ static int pm8058_stop_charging(struct msm_hardware_charger *hw_chg)
 	int ret;
 
 	dev_info(pm8058_chg.dev, "%s stopping charging\n", __func__);
+
+	/* disable the irqs enabled while charging */
+	pm8058_chg_disable_irq(AUTO_CHGFAIL_IRQ);
+	pm8058_chg_disable_irq(CHGHOT_IRQ);
+	pm8058_chg_disable_irq(AUTO_CHGDONE_IRQ);
+	pm8058_chg_disable_irq(FASTCHG_IRQ);
+	pm8058_chg_disable_irq(CHG_END_IRQ);
+	pm8058_chg_disable_irq(VBATDET_IRQ);
+	pm8058_chg_disable_irq(VBATDET_LOW_IRQ);
+
 	cancel_delayed_work_sync(&pm8058_chg.veoc_begin_work);
 	cancel_delayed_work_sync(&pm8058_chg.check_vbat_low_work);
 	cancel_delayed_work_sync(&pm8058_chg.chg_done_check_work);
@@ -1379,14 +1433,6 @@ static int pm8058_stop_charging(struct msm_hardware_charger *hw_chg)
 	pm8058_chg.waiting_for_veoc = 0;
 	pm8058_chg.waiting_for_topoff = 0;
 
-	/* disable the irqs enabled while charging */
-	pm8058_chg_disable_irq(AUTO_CHGFAIL_IRQ);
-	pm8058_chg_disable_irq(CHGHOT_IRQ);
-	pm8058_chg_disable_irq(AUTO_CHGDONE_IRQ);
-	pm8058_chg_disable_irq(FASTCHG_IRQ);
-	pm8058_chg_disable_irq(CHG_END_IRQ);
-	pm8058_chg_disable_irq(VBATDET_IRQ);
-	pm8058_chg_disable_irq(VBATDET_LOW_IRQ);
 	if (pm8058_chg.voter)
 		msm_xo_mode_vote(pm8058_chg.voter, MSM_XO_MODE_OFF);
 
@@ -1623,12 +1669,14 @@ static void remove_debugfs_entries(void)
 }
 
 static struct msm_hardware_charger usb_hw_chg = {
-	.type = CHG_TYPE_USB,
-	.rating = 1,
-	.name = "pm8058-usb",
-	.start_charging = pm8058_start_charging,
-	.stop_charging = pm8058_stop_charging,
-	.charging_switched = pm8058_charging_switched,
+	.type			= CHG_TYPE_USB,
+	.rating			= 1,
+	.name			= "pm8058-usb",
+	.start_charging		= pm8058_start_charging,
+	.stop_charging		= pm8058_stop_charging,
+	.charging_switched	= pm8058_charging_switched,
+	.start_system_current	= pm8058_start_system_current,
+	.stop_system_current	= pm8058_stop_system_current,
 };
 
 static int batt_read_adc(int channel, int *mv_reading)
