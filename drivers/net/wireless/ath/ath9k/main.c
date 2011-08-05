@@ -296,6 +296,7 @@ int ath_set_channel(struct ath_softc *sc, struct ieee80211_hw *hw,
 	ath9k_cmn_update_txpow(ah, sc->curtxpow,
 			       sc->config.txpowlimit, &sc->curtxpow);
 	ath9k_hw_set_interrupts(ah, ah->imask);
+	ath9k_hw_enable_interrupts(ah);
 
 	if (!(sc->sc_flags & (SC_OP_OFFCHANNEL))) {
 		if (sc->sc_flags & SC_OP_BEACONS)
@@ -924,6 +925,7 @@ void ath_radio_enable(struct ath_softc *sc, struct ieee80211_hw *hw)
 
 	/* Re-Enable  interrupts */
 	ath9k_hw_set_interrupts(ah, ah->imask);
+	ath9k_hw_enable_interrupts(ah);
 
 	/* Enable LED */
 	ath9k_hw_cfg_output(ah, ah->led_pin,
@@ -1030,6 +1032,7 @@ int ath_reset(struct ath_softc *sc, bool retry_tx)
 		ath_set_beacon(sc);	/* restart beacons */
 
 	ath9k_hw_set_interrupts(ah, ah->imask);
+	ath9k_hw_enable_interrupts(ah);
 
 	if (retry_tx) {
 		int i;
@@ -1142,6 +1145,7 @@ static int ath9k_start(struct ieee80211_hw *hw)
 	/* Disable BMISS interrupt when we're not associated */
 	ah->imask &= ~(ATH9K_INT_SWBA | ATH9K_INT_BMISS);
 	ath9k_hw_set_interrupts(ah, ah->imask);
+	ath9k_hw_enable_interrupts(ah);
 
 	ieee80211_wake_queues(hw);
 
