@@ -419,8 +419,8 @@ static int cy8c_ts_suspend(struct device *dev)
 		enable_irq_wake(ts->pen_irq);
 	} else {
 
-		rc = cancel_delayed_work_sync(&ts->work);
 		disable_irq_nosync(ts->pen_irq);
+		rc = cancel_delayed_work_sync(&ts->work);
 
 		if (rc) {
 			/* missed the worker, write to STATUS_REG to
