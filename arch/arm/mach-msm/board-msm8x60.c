@@ -5522,7 +5522,7 @@ static int pm8058_gpios_init(void)
 #if defined(CONFIG_PMIC8058_OTHC) || defined(CONFIG_PMIC8058_OTHC_MODULE)
 	/* Line_in only for 8660 ffa & surf */
 	if (machine_is_msm8x60_ffa() || machine_is_msm8x60_surf() ||
-		machine_is_msm8x60_fusion() ||
+		machine_is_msm8x60_fusion() || machine_is_msm8x60_dragon() ||
 		machine_is_msm8x60_fusn_ffa()) {
 		rc = pm8058_gpio_config(line_in_gpio_cfg.gpio,
 				&line_in_gpio_cfg.cfg);
@@ -7091,6 +7091,7 @@ static struct i2c_board_info msm_marimba_board_info[] = {
 #define I2C_RUMI (1 << 2)
 #define I2C_SIM  (1 << 3)
 #define I2C_FLUID (1 << 4)
+#define I2C_DRAGON (1 << 5)
 
 struct i2c_registry {
 	u8                     machs;
@@ -7102,7 +7103,7 @@ struct i2c_registry {
 static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 #ifdef CONFIG_PMIC8058
 	{
-		I2C_SURF | I2C_FFA | I2C_FLUID,
+		I2C_SURF | I2C_FFA | I2C_FLUID | I2C_DRAGON,
 		MSM_SSBI1_I2C_BUS_ID,
 		pm8058_boardinfo,
 		ARRAY_SIZE(pm8058_boardinfo),
@@ -7110,7 +7111,7 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 #endif
 #ifdef CONFIG_PMIC8901
 	{
-		I2C_SURF | I2C_FFA | I2C_FLUID,
+		I2C_SURF | I2C_FFA | I2C_FLUID | I2C_DRAGON,
 		MSM_SSBI2_I2C_BUS_ID,
 		pm8901_boardinfo,
 		ARRAY_SIZE(pm8901_boardinfo),
@@ -7118,13 +7119,13 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 #endif
 #if defined(CONFIG_GPIO_SX150X) || defined(CONFIG_GPIO_SX150X_MODULE)
 	{
-		I2C_SURF | I2C_FFA,
+		I2C_SURF | I2C_FFA | I2C_DRAGON,
 		MSM_GSBI8_QUP_I2C_BUS_ID,
 		core_expander_i2c_info,
 		ARRAY_SIZE(core_expander_i2c_info),
 	},
 	{
-		I2C_SURF | I2C_FFA,
+		I2C_SURF | I2C_FFA | I2C_DRAGON,
 		MSM_GSBI8_QUP_I2C_BUS_ID,
 		docking_expander_i2c_info,
 		ARRAY_SIZE(docking_expander_i2c_info),
@@ -7136,7 +7137,7 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 		ARRAY_SIZE(surf_expanders_i2c_info),
 	},
 	{
-		I2C_SURF | I2C_FFA,
+		I2C_SURF | I2C_FFA | I2C_DRAGON,
 		MSM_GSBI3_QUP_I2C_BUS_ID,
 		fha_expanders_i2c_info,
 		ARRAY_SIZE(fha_expanders_i2c_info),
@@ -7157,14 +7158,14 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 #if defined(CONFIG_TOUCHDISC_VTD518_SHINETSU) || \
 		defined(CONFIG_TOUCHDISC_VTD518_SHINETSU_MODULE)
 	{
-		I2C_SURF | I2C_FFA | I2C_FLUID,
+		I2C_SURF | I2C_FFA | I2C_FLUID | I2C_DRAGON,
 		MSM_GSBI3_QUP_I2C_BUS_ID,
 		msm_i2c_gsbi3_tdisc_info,
 		ARRAY_SIZE(msm_i2c_gsbi3_tdisc_info),
 	},
 #endif
 	{
-		I2C_SURF | I2C_FFA | I2C_FLUID,
+		I2C_SURF | I2C_FFA | I2C_FLUID | I2C_DRAGON,
 		MSM_GSBI3_QUP_I2C_BUS_ID,
 		cy8ctmg200_board_info,
 		ARRAY_SIZE(cy8ctmg200_board_info),
@@ -7186,7 +7187,7 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 #endif
 #ifdef CONFIG_MSM_CAMERA
     {
-		I2C_SURF | I2C_FFA | I2C_FLUID,
+		I2C_SURF | I2C_FFA | I2C_FLUID | I2C_DRAGON,
 		MSM_GSBI4_QUP_I2C_BUS_ID,
 		msm_camera_boardinfo,
 		ARRAY_SIZE(msm_camera_boardinfo),
@@ -7250,7 +7251,8 @@ static void fixup_i2c_configs(void)
 	if (machine_is_msm8x60_surf() || machine_is_msm8x60_fusion())
 		sx150x_data[SX150X_CORE].irq_summary =
 			PM8058_GPIO_IRQ(PM8058_IRQ_BASE, UI_INT2_N);
-	else if (machine_is_msm8x60_ffa() || machine_is_msm8x60_fusn_ffa())
+	else if (machine_is_msm8x60_ffa() || machine_is_msm8x60_fusn_ffa() ||
+		machine_is_msm8x60_dragon())
 		sx150x_data[SX150X_CORE].irq_summary =
 			PM8058_GPIO_IRQ(PM8058_IRQ_BASE, UI_INT1_N);
 	else if (machine_is_msm8x60_fluid())
@@ -7286,6 +7288,8 @@ static void register_i2c_devices(void)
 		mach_mask = I2C_SIM;
 	else if (machine_is_msm8x60_fluid())
 		mach_mask = I2C_FLUID;
+	else if (machine_is_msm8x60_dragon())
+		mach_mask = I2C_DRAGON;
 	else
 		pr_err("unmatched machine ID in register_i2c_devices\n");
 
@@ -7485,7 +7489,8 @@ static void __init msm8x60_init_ebi2(void)
 		ebi2_cfg = readl_relaxed(ebi2_cfg_ptr);
 
 		if (machine_is_msm8x60_surf() || machine_is_msm8x60_ffa() ||
-			machine_is_msm8x60_fluid())
+			machine_is_msm8x60_fluid() ||
+			machine_is_msm8x60_dragon())
 			ebi2_cfg |= (1 << 4) | (1 << 5); /* CS2, CS3 */
 		else if (machine_is_msm8x60_sim())
 			ebi2_cfg |= (1 << 4); /* CS2 */
@@ -7497,7 +7502,7 @@ static void __init msm8x60_init_ebi2(void)
 	}
 
 	if (machine_is_msm8x60_surf() || machine_is_msm8x60_ffa() ||
-	    machine_is_msm8x60_fluid()) {
+	    machine_is_msm8x60_fluid() || machine_is_msm8x60_dragon()) {
 		ebi2_cfg_ptr = ioremap_nocache(0x1a110000, SZ_4K);
 		if (ebi2_cfg_ptr != 0) {
 			/* EBI2_XMEM_CFG:PWRSAVE_MODE off */
@@ -10063,7 +10068,7 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 
 	if (machine_is_msm8x60_surf() || machine_is_msm8x60_ffa() ||
 	    machine_is_msm8x60_fluid() || machine_is_msm8x60_fusion() ||
-	    machine_is_msm8x60_fusn_ffa()) {
+	    machine_is_msm8x60_fusn_ffa() || machine_is_msm8x60_dragon()) {
 		msm8x60_cfg_smsc911x();
 		if (SOCINFO_VERSION_MAJOR(socinfo_get_version()) != 1)
 			platform_add_devices(msm_footswitch_devices,
@@ -10095,12 +10100,13 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 				     ARRAY_SIZE(rumi_sim_devices));
 	}
 #if defined(CONFIG_USB_PEHCI_HCD) || defined(CONFIG_USB_PEHCI_HCD_MODULE)
-	if (machine_is_msm8x60_surf() || machine_is_msm8x60_ffa())
+	if (machine_is_msm8x60_surf() || machine_is_msm8x60_ffa() ||
+		machine_is_msm8x60_dragon())
 		msm8x60_cfg_isp1763();
 #endif
 #ifdef CONFIG_BATTERY_MSM8X60
 	if (machine_is_msm8x60_surf() || machine_is_msm8x60_ffa() ||
-		machine_is_msm8x60_fusion() ||
+		machine_is_msm8x60_fusion() || machine_is_msm8x60_dragon() ||
 		machine_is_msm8x60_fusn_ffa() || machine_is_msm8x60_fluid())
 		platform_device_register(&msm_charger_device);
 #endif
@@ -10190,7 +10196,8 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 			= sizeof(pm8058_flash_leds_data);
 	}
 
-	if (machine_is_msm8x60_ffa() || machine_is_msm8x60_fusn_ffa()) {
+	if (machine_is_msm8x60_ffa() || machine_is_msm8x60_fusn_ffa() ||
+		machine_is_msm8x60_dragon()) {
 		pm8058_platform_data.sub_devices[PM8058_SUBDEV_VIB].
 					platform_data = &pmic_vib_pdata;
 		pm8058_platform_data.sub_devices[PM8058_SUBDEV_VIB].
