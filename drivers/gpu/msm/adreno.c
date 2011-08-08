@@ -118,6 +118,30 @@ static struct adreno_device device_3d0 = {
 	.pm4_fw = NULL,
 };
 
+/*
+ * This is the master list of all GPU cores that are supported by this
+ * driver.
+ */
+
+#define ANY_ID (~0)
+
+static const struct {
+	enum adreno_gpurev gpurev;
+	unsigned int core, major, minor;
+	const char *pm4fw;
+	const char *pfpfw;
+	struct adreno_gpudev *gpudev;
+} adreno_gpulist[] = {
+	{ ADRENO_REV_A200, 0, 2, ANY_ID,
+		"yamato_pm4.fw", "yamato_pfp.fw", &adreno_a2xx_gpudev },
+	{ ADRENO_REV_A205, 0, 1, 0,
+		"yamato_pm4.fw", "yamato_pfp.fw", &adreno_a2xx_gpudev },
+	{ ADRENO_REV_A220, 2, 1, ANY_ID,
+		"leia_pm4_470.fw", "leia_pfp_470.fw", &adreno_a2xx_gpudev },
+	{ ADRENO_REV_A225, 2, 2, ANY_ID,
+		"a225_pm4.fw", "a225_pfp.fw", &adreno_a2xx_gpudev },
+};
+
 static void adreno_gmeminit(struct adreno_device *adreno_dev)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
@@ -243,23 +267,23 @@ static void adreno_setstate(struct kgsl_device *device, uint32_t flags)
 	if (adreno_dev->drawctxt_active) {
 		if (flags & KGSL_MMUFLAGS_PTUPDATE) {
 			/* wait for graphics pipe to be idle */
-			*cmds++ = pm4_type3_packet(PM4_WAIT_FOR_IDLE, 1);
+			*cmds++ = cp_type3_packet(CP_WAIT_FOR_IDLE, 1);
 			*cmds++ = 0x00000000;
 
 			/* set page table base */
-			*cmds++ = pm4_type0_packet(MH_MMU_PT_BASE, 1);
+			*cmds++ = cp_type0_packet(MH_MMU_PT_BASE, 1);
 			*cmds++ = device->mmu.hwpagetable->base.gpuaddr;
 			sizedwords += 4;
 		}
 
 		if (flags & KGSL_MMUFLAGS_TLBFLUSH) {
 			if (!(flags & KGSL_MMUFLAGS_PTUPDATE)) {
-				*cmds++ = pm4_type3_packet(PM4_WAIT_FOR_IDLE,
+				*cmds++ = cp_type3_packet(CP_WAIT_FOR_IDLE,
 								1);
 				*cmds++ = 0x00000000;
 				sizedwords += 2;
 			}
-			*cmds++ = pm4_type0_packet(MH_MMU_INVALIDATE, 1);
+			*cmds++ = cp_type0_packet(MH_MMU_INVALIDATE, 1);
 			*cmds++ = mh_mmu_invalidate;
 			sizedwords += 2;
 		}
@@ -278,20 +302,20 @@ static void adreno_setstate(struct kgsl_device *device, uint32_t flags)
 			* VGT DMA request fifo and prevent any further
 			* vertex/bin updates from occurring until the wait
 			* has finished. */
-			*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
+			*cmds++ = cp_type3_packet(CP_SET_CONSTANT, 2);
 			*cmds++ = (0x4 << 16) |
 				(REG_PA_SU_SC_MODE_CNTL - 0x2000);
 			*cmds++ = 0;	  /* disable faceness generation */
-			*cmds++ = pm4_type3_packet(PM4_SET_BIN_BASE_OFFSET, 1);
+			*cmds++ = cp_type3_packet(CP_SET_BIN_BASE_OFFSET, 1);
 			*cmds++ = device->mmu.dummyspace.gpuaddr;
-			*cmds++ = pm4_type3_packet(PM4_DRAW_INDX_BIN, 6);
+			*cmds++ = cp_type3_packet(CP_DRAW_INDX_BIN, 6);
 			*cmds++ = 0;	  /* viz query info */
 			*cmds++ = 0x0003C004; /* draw indicator */
 			*cmds++ = 0;	  /* bin base */
 			*cmds++ = 3;	  /* bin size */
 			*cmds++ = device->mmu.dummyspace.gpuaddr; /* dma base */
 			*cmds++ = 6;	  /* dma size */
-			*cmds++ = pm4_type3_packet(PM4_DRAW_INDX_BIN, 6);
+			*cmds++ = cp_type3_packet(CP_DRAW_INDX_BIN, 6);
 			*cmds++ = 0;	  /* viz query info */
 			*cmds++ = 0x0003C004; /* draw indicator */
 			*cmds++ = 0;	  /* bin base */
@@ -299,13 +323,13 @@ static void adreno_setstate(struct kgsl_device *device, uint32_t flags)
 			/* dma base */
 			*cmds++ = device->mmu.dummyspace.gpuaddr;
 			*cmds++ = 6;	  /* dma size */
-			*cmds++ = pm4_type3_packet(PM4_WAIT_FOR_IDLE, 1);
+			*cmds++ = cp_type3_packet(CP_WAIT_FOR_IDLE, 1);
 			*cmds++ = 0x00000000;
 			sizedwords += 21;
 		}
 
 		if (flags & (KGSL_MMUFLAGS_PTUPDATE | KGSL_MMUFLAGS_TLBFLUSH)) {
-			*cmds++ = pm4_type3_packet(PM4_INVALIDATE_STATE, 1);
+			*cmds++ = cp_type3_packet(CP_INVALIDATE_STATE, 1);
 			*cmds++ = 0x7fff; /* invalidate all base pointers */
 			sizedwords += 2;
 		}
@@ -353,31 +377,14 @@ adreno_getchipid(struct kgsl_device *device)
 	return chipid;
 }
 
-/* all chipid fields are 8 bits wide so 256 won't occur in a real chipid */
-#define DONT_CARE 256
-static const struct {
-	unsigned int core;
-	unsigned int major;
-	unsigned int minor;
-	enum adreno_gpurev gpurev;
-} gpurev_table[] = {
-	/* major and minor may be DONT_CARE, but core must not be */
-	{0, 2, DONT_CARE, ADRENO_REV_A200},
-	{0, 1, 0, ADRENO_REV_A205},
-	{2, 1, DONT_CARE, ADRENO_REV_A220},
-	{2, 2, DONT_CARE, ADRENO_REV_A225},
-};
-
 static inline bool _rev_match(unsigned int id, unsigned int entry)
 {
-	return (entry == DONT_CARE || entry == id);
+	return (entry == ANY_ID || entry == id);
 }
-#undef DONT_CARE
 
 static void
 adreno_identify_gpu(struct adreno_device *adreno_dev)
 {
-	enum adreno_gpurev gpurev = ADRENO_REV_UNKNOWN;
 	unsigned int i, core, major, minor;
 
 	adreno_dev->chip_id = adreno_getchipid(&adreno_dev->dev);
@@ -386,17 +393,23 @@ adreno_identify_gpu(struct adreno_device *adreno_dev)
 	major = (adreno_dev->chip_id >> 16) & 0xff;
 	minor = (adreno_dev->chip_id >> 8) & 0xff;
 
-	for (i = 0; i < ARRAY_SIZE(gpurev_table); i++) {
-		if (core == gpurev_table[i].core &&
-		    _rev_match(major, gpurev_table[i].major) &&
-		    _rev_match(minor, gpurev_table[i].minor)) {
-			gpurev = gpurev_table[i].gpurev;
+	for (i = 0; i < ARRAY_SIZE(adreno_gpulist); i++) {
+		if (core == adreno_gpulist[i].core &&
+		    _rev_match(major, adreno_gpulist[i].major) &&
+		    _rev_match(minor, adreno_gpulist[i].minor)) {
 			break;
 		}
 	}
 
-	adreno_dev->gpurev = gpurev;
-	adreno_dev->gpudev = &adreno_a2xx_gpudev;
+	if (i == ARRAY_SIZE(adreno_gpulist)) {
+		adreno_dev->gpurev = ADRENO_REV_UNKNOWN;
+		return;
+	}
+
+	adreno_dev->gpurev = adreno_gpulist[i].gpurev;
+	adreno_dev->gpudev = adreno_gpulist[i].gpudev;
+	adreno_dev->pfp_fwfile = adreno_gpulist[i].pfpfw;
+	adreno_dev->pm4_fwfile = adreno_gpulist[i].pm4fw;
 }
 
 static int __devinit
@@ -466,6 +479,12 @@ static int adreno_start(struct kgsl_device *device, unsigned int init_ram)
 
 	/* Identify the specific GPU */
 	adreno_identify_gpu(adreno_dev);
+
+	if (adreno_dev->gpurev == ADRENO_REV_UNKNOWN) {
+		KGSL_DRV_ERR(device, "Unknown chip ID %x\n",
+			adreno_dev->chip_id);
+		goto error_clk_off;
+	}
 
 	if (adreno_is_a20x(adreno_dev)) {
 		/*
@@ -1013,7 +1032,7 @@ static int kgsl_check_interrupt_timestamp(struct kgsl_device *device,
 			/* submit a dummy packet so that even if all
 			* commands upto timestamp get executed we will still
 			* get an interrupt */
-			cmds[0] = pm4_type3_packet(PM4_NOP, 1);
+			cmds[0] = cp_type3_packet(CP_NOP, 1);
 			cmds[1] = 0;
 			adreno_ringbuffer_issuecmds(device, 0, &cmds[0], 2);
 		}
