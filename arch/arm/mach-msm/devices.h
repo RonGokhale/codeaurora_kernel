@@ -76,6 +76,13 @@ extern struct platform_device usb_diag_mdm_device;
 extern struct platform_device usb_gadget_fserial_device;
 extern struct platform_device usb_gadget_facm_device;
 
+extern struct platform_device msm8960_device_otg;
+extern struct platform_device msm8960_device_gadget_peripheral;
+
+extern struct platform_device apq8064_device_otg;
+extern struct platform_device apq8064_usb_diag_device;
+extern struct platform_device apq8064_device_gadget_peripheral;
+
 extern struct platform_device msm_device_i2c;
 
 extern struct platform_device msm_device_i2c_2;

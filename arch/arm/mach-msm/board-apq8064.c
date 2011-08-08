@@ -122,10 +122,10 @@ static struct platform_device *common_devices[] __initdata = {
 	&apq8064_device_qup_spi_gsbi5,
 	&apq8064_device_ssbi_pmic1,
 	&apq8064_device_ssbi_pmic2,
-	&msm_device_otg,
-	&msm_device_gadget_peripheral,
+	&apq8064_device_otg,
+	&apq8064_device_gadget_peripheral,
 	&android_usb_device,
-	&usb_diag_device,
+	&apq8064_usb_diag_device,
 };
 
 static struct msm_spi_platform_data apq8064_qup_spi_gsbi5_pdata = {
@@ -159,8 +159,8 @@ static void __init apq8064_common_init(void)
 				&apq8064_ssbi_pm8921_pdata;
 	apq8064_device_ssbi_pmic2.dev.platform_data =
 				&apq8064_ssbi_pm8821_pdata;
-	msm_device_otg.dev.platform_data = &msm_otg_pdata;
-	msm_device_gadget_peripheral.dev.parent = &msm_device_otg.dev;
+	apq8064_device_otg.dev.platform_data = &msm_otg_pdata;
+	apq8064_device_gadget_peripheral.dev.parent = &apq8064_device_otg.dev;
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 }
 
