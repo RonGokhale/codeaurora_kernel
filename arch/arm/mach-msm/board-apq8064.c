@@ -21,6 +21,8 @@
 
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
+#include <linux/usb/msm_hsusb.h>
+#include <linux/usb/android_composite.h>
 #include <mach/socinfo.h>
 #include <mach/msm_spi.h>
 #include "timer.h"
@@ -68,12 +70,62 @@ static void __init apq8064_init_irq(void)
 	}
 }
 
+static struct msm_otg_platform_data msm_otg_pdata = {
+	.mode			= USB_PERIPHERAL,
+	.otg_control		= OTG_PHY_CONTROL,
+	.phy_type		= SNPS_28NM_INTEGRATED_PHY,
+	.pclk_src_name		= "dfab_usb_hs_clk",
+};
+
+static char *usb_functions_default_adb[] = {
+	"diag",
+	"adb",
+};
+
+static char *usb_functions_all[] = {
+	"diag",
+	"adb",
+};
+
+static struct android_usb_product usb_products[] = {
+	{
+		.product_id	= 0x901D,
+		.num_functions	= ARRAY_SIZE(usb_functions_default_adb),
+		.functions	= usb_functions_default_adb,
+	},
+};
+
+static struct android_usb_platform_data android_usb_pdata = {
+	.vendor_id	= 0x05C6,
+	.product_id	= 0x901D,
+	.version	= 0x0100,
+	.product_name		= "Qualcomm HSUSB Device",
+	.manufacturer_name	= "Qualcomm Incorporated",
+	.num_products = ARRAY_SIZE(usb_products),
+	.products = usb_products,
+	.num_functions = ARRAY_SIZE(usb_functions_all),
+	.functions = usb_functions_all,
+	.serial_number = "1234567890ABCDEF",
+};
+
+static struct platform_device android_usb_device = {
+	.name	= "android_usb",
+	.id	= -1,
+	.dev	= {
+		.platform_data = &android_usb_pdata,
+	},
+};
+
 static struct platform_device *common_devices[] __initdata = {
 	&msm_device_dmov,
 	&apq8064_device_uart_gsbi3,
 	&apq8064_device_qup_spi_gsbi5,
 	&apq8064_device_ssbi_pmic1,
 	&apq8064_device_ssbi_pmic2,
+	&msm_device_otg,
+	&msm_device_gadget_peripheral,
+	&android_usb_device,
+	&usb_diag_device,
 };
 
 static struct msm_spi_platform_data apq8064_qup_spi_gsbi5_pdata = {
@@ -107,6 +159,8 @@ static void __init apq8064_common_init(void)
 				&apq8064_ssbi_pm8921_pdata;
 	apq8064_device_ssbi_pmic2.dev.platform_data =
 				&apq8064_ssbi_pm8821_pdata;
+	msm_device_otg.dev.platform_data = &msm_otg_pdata;
+	msm_device_gadget_peripheral.dev.parent = &msm_device_otg.dev;
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 }
 
