@@ -448,6 +448,11 @@ static struct marimba_fm_platform_data marimba_fm_pdata = {
 	.config_i2s_gpio = msm_bahama_setup_pcm_i2s,
 };
 
+static struct platform_device msm_wlan_ar6000_pm_device = {
+	.name           = "wlan_ar6000_pm_dev",
+	.id             = -1,
+};
+
 #if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
 
 static struct platform_device msm_bt_power_device = {
@@ -2674,6 +2679,7 @@ static struct platform_device *surf_ffa_devices[] __initdata = {
 	&asoc_msm_pcm,
 	&asoc_msm_dai0,
 	&asoc_msm_dai1,
+	&msm_wlan_ar6000_pm_device,
 };
 
 static unsigned pmem_kernel_ebi1_size = PMEM_KERNEL_EBI1_SIZE;
