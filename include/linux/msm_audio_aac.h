@@ -1,6 +1,6 @@
 /* arch/arm/mach-msm/include/mach/msm_audio_aac.h
  *
- * Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -36,6 +36,7 @@
 #define	AUDIO_AAC_FORMAT_RAW		0x0000
 #define	AUDIO_AAC_FORMAT_PSUEDO_RAW	0x0001
 #define AUDIO_AAC_FORMAT_LOAS		0x0002
+#define AUDIO_AAC_FORMAT_ADIF		0x0003
 
 #define AUDIO_AAC_OBJECT_LC            	0x0002
 #define AUDIO_AAC_OBJECT_LTP		0x0004
