@@ -1080,10 +1080,17 @@ static struct resource resources_sdc1[] = {
 	},
 #else
 	{
+		.name	= "sdcc_dma_chnl",
 		.start	= DMOV_SDC1_CHAN,
 		.end	= DMOV_SDC1_CHAN,
 		.flags	= IORESOURCE_DMA,
 	},
+	{
+		.name	= "sdcc_dma_crci",
+		.start	= DMOV_SDC1_CRCI,
+		.end	= DMOV_SDC1_CRCI,
+		.flags	= IORESOURCE_DMA,
+	}
 #endif /* CONFIG_MMC_MSM_SPS_SUPPORT */
 };
 
@@ -1119,10 +1126,17 @@ static struct resource resources_sdc2[] = {
 	},
 #else
 	{
+		.name	= "sdcc_dma_chnl",
 		.start	= DMOV_SDC2_CHAN,
 		.end	= DMOV_SDC2_CHAN,
 		.flags	= IORESOURCE_DMA,
 	},
+	{
+		.name	= "sdcc_dma_crci",
+		.start	= DMOV_SDC2_CRCI,
+		.end	= DMOV_SDC2_CRCI,
+		.flags	= IORESOURCE_DMA,
+	}
 #endif /* CONFIG_MMC_MSM_SPS_SUPPORT */
 };
 
@@ -1158,8 +1172,15 @@ static struct resource resources_sdc3[] = {
 	},
 #else
 	{
+		.name	= "sdcc_dma_chnl",
 		.start	= DMOV_SDC3_CHAN,
 		.end	= DMOV_SDC3_CHAN,
+		.flags	= IORESOURCE_DMA,
+	},
+	{
+		.name	= "sdcc_dma_crci",
+		.start	= DMOV_SDC3_CRCI,
+		.end	= DMOV_SDC3_CRCI,
 		.flags	= IORESOURCE_DMA,
 	},
 #endif /* CONFIG_MMC_MSM_SPS_SUPPORT */
@@ -1197,8 +1218,15 @@ static struct resource resources_sdc4[] = {
 	},
 #else
 	{
+		.name	= "sdcc_dma_chnl",
 		.start	= DMOV_SDC4_CHAN,
 		.end	= DMOV_SDC4_CHAN,
+		.flags	= IORESOURCE_DMA,
+	},
+	{
+		.name	= "sdcc_dma_crci",
+		.start	= DMOV_SDC4_CRCI,
+		.end	= DMOV_SDC4_CRCI,
 		.flags	= IORESOURCE_DMA,
 	},
 #endif /* CONFIG_MMC_MSM_SPS_SUPPORT */
@@ -1236,8 +1264,15 @@ static struct resource resources_sdc5[] = {
 	},
 #else
 	{
+		.name	= "sdcc_dma_chnl",
 		.start	= DMOV_SDC5_CHAN,
 		.end	= DMOV_SDC5_CHAN,
+		.flags	= IORESOURCE_DMA,
+	},
+	{
+		.name	= "sdcc_dma_crci",
+		.start	= DMOV_SDC5_CRCI,
+		.end	= DMOV_SDC5_CRCI,
 		.flags	= IORESOURCE_DMA,
 	},
 #endif /* CONFIG_MMC_MSM_SPS_SUPPORT */
