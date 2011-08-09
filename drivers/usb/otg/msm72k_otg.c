@@ -669,10 +669,17 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	 *
 	 * For simplicity, LPM is not allowed in bus suspend.
 	 */
+#ifndef CONFIG_USB_MSM_STANDARD_ACA
+	/*
+	 * RID_A and IdGnd states are only possible with standard ACA.  We can
+	 * exit from low power mode with !BSV or IdGnd interrupt.  Hence LPM
+	 * is allowed.
+	 */
 	if ((test_bit(ID, &dev->inputs) && test_bit(B_SESS_VLD, &dev->inputs) &&
 			chg_type != USB_CHG_TYPE__WALLCHARGER) ||
 			test_bit(ID_A, &dev->inputs))
 		goto out;
+#endif
 	/* Disable ID_abc interrupts else it causes spurious interrupt */
 	disable_idabc(dev);
 #endif
@@ -893,6 +900,8 @@ static int msm_otg_set_suspend(struct otg_transceiver *xceiv, int suspend)
 		switch (state) {
 #ifndef CONFIG_MSM_OTG_ENABLE_A_WAIT_BCON_TIMEOUT
 		case OTG_STATE_A_WAIT_BCON:
+			if (test_bit(ID_A, &dev->inputs))
+				msm_otg_set_power(xceiv, USB_IDCHG_MIN - 100);
 			msm_otg_put_suspend(dev);
 			break;
 #endif
@@ -2179,6 +2188,16 @@ static void msm_otg_id_func(unsigned long _dev)
 {
 	struct msm_otg	*dev = (struct msm_otg *) _dev;
 	u8		phy_ints;
+
+#ifdef CONFIG_USB_MSM_STANDARD_ACA
+	/*
+	 * When standard ACA is attached RID_A and RID_GND states are only
+	 * possible.  RID_A-->RID_GND transition generates IdGnd interrupt
+	 * from PHY.  Hence polling is disabled.
+	 */
+	if (test_bit(ID_A, &dev->inputs))
+		goto out;
+#endif
 
 	if (atomic_read(&dev->in_lpm))
 		msm_otg_set_suspend(&dev->otg, 0);
