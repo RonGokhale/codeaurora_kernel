@@ -256,11 +256,13 @@ static struct gpiomux_setting cdc_mclk = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
+#ifdef CONFIG_KS8851
 static struct gpiomux_setting gpio_eth_config = {
 	.pull = GPIOMUX_PULL_NONE,
 	.drv = GPIOMUX_DRV_8MA,
 	.func = GPIOMUX_FUNC_GPIO,
 };
+#endif
 
 static struct gpiomux_setting slimbus = {
 	.func = GPIOMUX_FUNC_1,
@@ -269,6 +271,7 @@ static struct gpiomux_setting slimbus = {
 };
 
 struct msm_gpiomux_config msm8960_gpiomux_configs[NR_GPIO_IRQS] = {
+#ifdef CONFIG_KS8851
 	{
 		.gpio = KS8851_IRQ_GPIO,
 		.settings = {
@@ -287,6 +290,7 @@ struct msm_gpiomux_config msm8960_gpiomux_configs[NR_GPIO_IRQS] = {
 			[GPIOMUX_SUSPENDED] = &gpio_eth_config,
 		}
 	},
+#endif
 };
 
 static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
@@ -3291,6 +3295,7 @@ fail:
 		gpio_free(wcnss_5wire_interface[j].gpio);
 }
 
+#ifdef CONFIG_KS8851
 static int ethernet_init(void)
 {
 	int ret;
@@ -3322,6 +3327,12 @@ fail_rst:
 fail:
 	return ret;
 }
+#else
+static int ethernet_init(void)
+{
+	return 0;
+}
+#endif
 
 static struct msm_cpuidle_state msm_cstates[] __initdata = {
 	{0, 0, "C0", "WFI",
