@@ -9759,6 +9759,21 @@ static struct msm_rpm_platform_data msm_rpm_data = {
 };
 #endif
 
+void msm_fusion_setup_pinctrl(void)
+{
+	struct msm_xo_voter *a1;
+
+	if (socinfo_get_platform_subtype() == 0x3) {
+		/*
+		 * Vote for the A1 clock to be in pin control mode before
+		* the external images are loaded.
+		*/
+		a1 = msm_xo_get(MSM_XO_TCXO_A1, "mdm");
+		BUG_ON(!a1);
+		msm_xo_mode_vote(a1, MSM_XO_MODE_PIN_CTRL);
+	}
+}
+
 struct msm_board_data {
 	struct msm_gpiomux_configs *gpiomux_cfgs;
 };
@@ -10050,6 +10065,9 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	}
 
 	msm8x60_multi_sdio_init();
+
+	if (machine_is_msm8x60_charm_surf() || machine_is_msm8x60_charm_ffa())
+		msm_fusion_setup_pinctrl();
 }
 
 static void __init msm8x60_rumi3_init(void)
