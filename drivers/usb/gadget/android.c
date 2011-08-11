@@ -2,7 +2,7 @@
  * Gadget Driver for Android
  *
  * Copyright (C) 2008 Google, Inc.
- * Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
  * Author: Mike Lockwood <lockwood@android.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -583,8 +583,12 @@ void update_dev_desc(struct android_dev *dev)
 
 static char *sysfs_allowed[] = {
 	"rndis",
-	"mtp",
 	"adb",
+#ifdef CONFIG_USB_ANDROID_MTP
+	"mtp",
+	"diag",
+	"diag_mdm",
+#endif
 };
 
 static int is_sysfschange_allowed(struct usb_function *f)
@@ -600,6 +604,7 @@ static int is_sysfschange_allowed(struct usb_function *f)
 	return 0;
 }
 
+#define MAXSTRG_LEN 32
 int android_enable_function(struct usb_function *f, int enable)
 {
 	struct android_dev *dev = _android_dev;
@@ -612,6 +617,33 @@ int android_enable_function(struct usb_function *f, int enable)
 
 	if (!is_sysfschange_allowed(f))
 		return -EINVAL;
+
+	if (!strncmp(f->name, "diag", MAXSTRG_LEN) ||
+			!strncmp(f->name, "diag_mdm", MAXSTRG_LEN)) {
+		struct usb_function *func;
+		list_for_each_entry(func,
+				&android_config_driver.functions, list) {
+			if (!strncmp(func->name, "mtp", MAXSTRG_LEN)) {
+				if (func->disabled)
+					return -EINVAL;
+				else
+					break;
+			}
+		}
+		list_for_each_entry(func,
+				&android_config_driver.functions, list) {
+			if (!strncmp(func->name, "diag", MAXSTRG_LEN) ||
+				!strncmp(func->name, "diag_mdm", MAXSTRG_LEN)) {
+				if (strncmp(func->name, f->name, MAXSTRG_LEN) &&
+						(!!f->disabled != disable)) {
+					usb_function_set_enabled(func,
+								!disable);
+					break;
+				}
+			}
+		}
+	}
+
 	if (!!f->disabled != disable) {
 		usb_function_set_enabled(f, !disable);
 
