@@ -333,6 +333,18 @@ end:
 
 void ion_free(struct ion_client *client, struct ion_handle *handle)
 {
+	bool valid_handle;
+
+	BUG_ON(client != handle->client);
+
+	mutex_lock(&client->lock);
+	valid_handle = ion_handle_validate(client, handle);
+	mutex_unlock(&client->lock);
+
+	if (!valid_handle) {
+		WARN("%s: invalid handle passed to free.\n", __func__);
+		return;
+	}
 	ion_handle_put(handle);
 }
 
@@ -376,8 +388,6 @@ int ion_phys(struct ion_client *client, struct ion_handle *handle,
 
 	mutex_lock(&client->lock);
 	if (!ion_handle_validate(client, handle)) {
-		pr_err("%s: invalid handle passed to map_kernel.\n",
-		       __func__);
 		mutex_unlock(&client->lock);
 		return -EINVAL;
 	}
@@ -502,6 +512,16 @@ void ion_unmap_dma(struct ion_client *client, struct ion_handle *handle)
 struct ion_buffer *ion_share(struct ion_client *client,
 				 struct ion_handle *handle)
 {
+	bool valid_handle;
+
+	mutex_lock(&client->lock);
+	valid_handle = ion_handle_validate(client, handle);
+	mutex_unlock(&client->lock);
+	if (!valid_handle) {
+		WARN("%s: invalid handle passed to share.\n", __func__);
+		return ERR_PTR(-EINVAL);
+	}
+
 	/* don't not take an extra refernce here, the burden is on the caller
 	 * to make sure the buffer doesn't go away while it's passing it
 	 * to another client -- ion_free should not be called on this handle
@@ -596,6 +616,29 @@ static const struct file_operations debug_client_fops = {
 	.release = single_release,
 };
 
+static struct ion_client *ion_client_lookup(struct ion_device *dev,
+					    struct task_struct *task)
+{
+	struct rb_node *n = dev->user_clients.rb_node;
+	struct ion_client *client;
+
+	mutex_lock(&dev->lock);
+	while (n) {
+		client = rb_entry(n, struct ion_client, node);
+		if (task == client->task) {
+			ion_client_get(client);
+			mutex_unlock(&dev->lock);
+			return client;
+		} else if (task < client->task) {
+			n = n->rb_left;
+		} else if (task > client->task) {
+			n = n->rb_right;
+		}
+	}
+	mutex_unlock(&dev->lock);
+	return NULL;
+}
+
 struct ion_client *ion_client_create(struct ion_device *dev,
 				     unsigned int heap_mask,
 				     const char *name)
@@ -606,18 +649,11 @@ struct ion_client *ion_client_create(struct ion_device *dev,
 	struct rb_node *parent = NULL;
 	struct ion_client *entry;
 	char debug_name[64];
+	pid_t pid;
 
-	client = kzalloc(sizeof(struct ion_client), GFP_KERNEL);
-	if (!client)
-		return ERR_PTR(-ENOMEM);
-	client->dev = dev;
-	client->handles = RB_ROOT;
-	mutex_init(&client->lock);
-	client->name = name;
-	client->heap_mask = heap_mask;
 	get_task_struct(current->group_leader);
 	task_lock(current->group_leader);
-	client->pid = task_pid_nr(current->group_leader);
+	pid = task_pid_nr(current->group_leader);
 	/* don't bother to store task struct for kernel threads,
 	   they can't be killed anyway */
 	if (current->group_leader->flags & PF_KTHREAD) {
@@ -627,7 +663,30 @@ struct ion_client *ion_client_create(struct ion_device *dev,
 		task = current->group_leader;
 	}
 	task_unlock(current->group_leader);
+
+	/* if this isn't a kernel thread, see if a client already
+	   exists */
+	if (task) {
+		client = ion_client_lookup(dev, task);
+		if (!IS_ERR_OR_NULL(client)) {
+			put_task_struct(current->group_leader);
+			return client;
+		}
+	}
+
+	client = kzalloc(sizeof(struct ion_client), GFP_KERNEL);
+	if (!client) {
+		put_task_struct(current->group_leader);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	client->dev = dev;
+	client->handles = RB_ROOT;
+	mutex_init(&client->lock);
+	client->name = name;
+	client->heap_mask = heap_mask;
 	client->task = task;
+	client->pid = pid;
 	kref_init(&client->ref);
 
 	mutex_lock(&dev->lock);
@@ -668,8 +727,9 @@ struct ion_client *ion_client_create(struct ion_device *dev,
 	return client;
 }
 
-void ion_client_destroy(struct ion_client *client)
+static void _ion_client_destroy(struct kref *kref)
 {
+	struct ion_client *client = container_of(kref, struct ion_client, ref);
 	struct ion_device *dev = client->dev;
 	struct rb_node *n;
 
@@ -692,35 +752,6 @@ void ion_client_destroy(struct ion_client *client)
 	kfree(client);
 }
 
-static struct ion_client *ion_client_lookup(struct ion_device *dev,
-					    struct task_struct *task)
-{
-	struct rb_node *n = dev->user_clients.rb_node;
-	struct ion_client *client;
-
-	mutex_lock(&dev->lock);
-	while (n) {
-		client = rb_entry(n, struct ion_client, node);
-		if (task == client->task) {
-			ion_client_get(client);
-			mutex_unlock(&dev->lock);
-			return client;
-		} else if (task < client->task) {
-			n = n->rb_left;
-		} else if (task > client->task) {
-			n = n->rb_right;
-		}
-	}
-	mutex_unlock(&dev->lock);
-	return NULL;
-}
-
-static void _ion_client_destroy(struct kref *kref)
-{
-	struct ion_client *client = container_of(kref, struct ion_client, ref);
-	ion_client_destroy(client);
-}
-
 static void ion_client_get(struct ion_client *client)
 {
 	kref_get(&client->ref);
@@ -729,6 +760,11 @@ static void ion_client_get(struct ion_client *client)
 static int ion_client_put(struct ion_client *client)
 {
 	return kref_put(&client->ref, _ion_client_destroy);
+}
+
+void ion_client_destroy(struct ion_client *client)
+{
+	ion_client_put(client);
 }
 
 static int ion_share_release(struct inode *inode, struct file* file)
@@ -997,13 +1033,9 @@ static int ion_open(struct inode *inode, struct file *file)
 	struct ion_client *client;
 
 	pr_debug("%s: %d\n", __func__, __LINE__);
-	client = ion_client_lookup(dev, current->group_leader);
-	if (IS_ERR_OR_NULL(client)) {
-		/* XXX: consider replacing "user" with cmdline */
-		client = ion_client_create(dev, -1, "user");
-		if (IS_ERR_OR_NULL(client))
-			return PTR_ERR(client);
-	}
+	client = ion_client_create(dev, -1, "user");
+	if (IS_ERR_OR_NULL(client))
+		return PTR_ERR(client);
 	file->private_data = client;
 
 	return 0;
