@@ -6456,14 +6456,10 @@ static struct mmc_platform_data msm7x30_sdc1_data = {
 static struct mmc_platform_data msm7x30_sdc2_data = {
 	.ocr_mask	= MMC_VDD_165_195 | MMC_VDD_27_28,
 	.translate_vdd	= msm_sdcc_setup_power,
-	.sdio_lpm_gpio_setup = msm_sdcc_sdio_lpm_gpio,
 #ifdef CONFIG_MMC_MSM_SDC2_8_BIT_SUPPORT
 	.mmc_bus_width  = MMC_CAP_8_BIT_DATA,
 #else
 	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
-#endif
-#ifdef CONFIG_MMC_MSM_SDIO_SUPPORT
-	.sdiowakeup_irq = MSM_GPIO_TO_INT(68),
 #endif
 #ifdef CONFIG_MMC_MSM_SDC2_DUMMY52_REQUIRED
 	.dummy52_required = 1,
@@ -6472,9 +6468,6 @@ static struct mmc_platform_data msm7x30_sdc2_data = {
 	.msmsdcc_fmid	= 24576000,
 	.msmsdcc_fmax	= 49152000,
 	.nonremovable	= 1,
-#ifdef CONFIG_MSM_SDIO_AL
-	.is_sdio_al_client = 1,
-#endif
 };
 #endif
 
@@ -6572,6 +6565,16 @@ static void __init msm7x30_init_mmc(void)
 #ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
 	if (machine_is_msm8x55_svlte_surf())
 		msm7x30_sdc2_data.msmsdcc_fmax =  24576000;
+	if (machine_is_msm8x55_svlte_surf() ||
+			machine_is_msm8x55_svlte_ffa()) {
+		msm7x30_sdc2_data.sdio_lpm_gpio_setup = msm_sdcc_sdio_lpm_gpio;
+#ifdef CONFIG_MMC_MSM_SDIO_SUPPORT
+		msm7x30_sdc2_data.sdiowakeup_irq = MSM_GPIO_TO_INT(68);
+#ifdef CONFIG_MSM_SDIO_AL
+		msm7x30_sdc2_data.is_sdio_al_client = 1;
+#endif
+#endif
+	}
 	sdcc_vreg_data[1].vreg_data = vreg_s3;
 	sdcc_vreg_data[1].level = 1800;
 	msm_add_sdcc(2, &msm7x30_sdc2_data);
