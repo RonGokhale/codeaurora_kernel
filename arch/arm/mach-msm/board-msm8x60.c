@@ -2796,11 +2796,11 @@ static void __init msm8x60_init_dsps(void)
 /* SMI PMEM Region, as the video core will use offset address */
 /* from the Firmware base */
 #define PMEM_KERNEL_SMI_BASE  (MSM_SMI_BASE)
-#define PMEM_KERNEL_SMI_SIZE  0x300000
+#define PMEM_KERNEL_SMI_SIZE  0x600000
 /* User space SMI PMEM Region for video core*/
 /* used for encoder, decoder input & output buffers  */
 #define MSM_PMEM_SMIPOOL_BASE (PMEM_KERNEL_SMI_BASE + PMEM_KERNEL_SMI_SIZE)
-#define MSM_PMEM_SMIPOOL_SIZE 0x3D00000
+#define MSM_PMEM_SMIPOOL_SIZE 0x3A00000
 
 static unsigned fb_size = MSM_FB_SIZE;
 static int __init fb_size_setup(char *p)
@@ -9264,8 +9264,8 @@ int mdp_core_clk_rate_table[] = {
 #else
 int mdp_core_clk_rate_table[] = {
 	59080000,
-	59080000,
 	85330000,
+	128000000,
 	200000000,
 };
 #endif
