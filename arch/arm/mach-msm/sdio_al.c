@@ -3250,6 +3250,8 @@ static void sdio_al_print_info(void)
 					    &is_ok_to_sleep,
 					    SDIOC_SW_MAILBOX_ADDR+offset,
 					    sizeof(int));
+		if (sdio_al_verify_dev(sdio_al_dev, __func__))
+			return;
 		sdio_release_host(sdio_al_dev->card->sdio_func[0]);
 
 		if (ret)
@@ -3281,6 +3283,8 @@ static void sdio_al_print_info(void)
 		sdio_claim_host(func1);
 		ret = sdio_memcpy_fromio(func1, hw_mailbox,
 			HW_MAILBOX_ADDR, sizeof(*hw_mailbox));
+		if (sdio_al_verify_dev(sdio_al_dev, __func__))
+			return;
 		sdio_release_host(func1);
 
 		if (ret) {
