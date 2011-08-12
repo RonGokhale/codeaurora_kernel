@@ -64,6 +64,7 @@
 #define VDEC_S_ENOTIMPL	(VDEC_S_BASE + 12)
 /* Command is not implemented by the driver.  */
 #define VDEC_S_BUSY	(VDEC_S_BASE + 13)
+#define VDEC_S_INPUT_BITSTREAM_ERR (VDEC_S_BASE + 14)
 
 #define VDEC_INTF_VER	1
 #define VDEC_MSG_BASE	0x0000000
@@ -85,6 +86,7 @@
 #define VDEC_MSG_EVT_CONFIG_CHANGED	(VDEC_MSG_BASE + 13)
 #define VDEC_MSG_EVT_HW_ERROR	(VDEC_MSG_BASE + 14)
 #define VDEC_MSG_EVT_INFO_CONFIG_CHANGED	(VDEC_MSG_BASE + 15)
+#define VDEC_MSG_EVT_INFO_FIELD_DROPPED	(VDEC_MSG_BASE + 16)
 
 /*Buffer flags bits masks.*/
 #define VDEC_BUFFERFLAG_EOS	0x00000001
