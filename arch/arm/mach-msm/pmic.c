@@ -297,14 +297,14 @@ static int pmic_rpc_req_reply(struct pmic_buf *tbuf, struct pmic_buf *rbuf,
 
 	if ((pm->endpoint == NULL) || IS_ERR(pm->endpoint)) {
 		pm->endpoint = msm_rpc_connect_compatible(PMIC_RPC_PROG,
-					PMIC_RPC_VER_3_1, 0);
+					PMIC_RPC_VER_3_1, MSM_RPC_UNINTERRUPTIBLE);
 		if (IS_ERR(pm->endpoint)) {
 			pm->endpoint = msm_rpc_connect_compatible(PMIC_RPC_PROG,
-						PMIC_RPC_VER_2_1, 0);
+					PMIC_RPC_VER_2_1, MSM_RPC_UNINTERRUPTIBLE);
 			if (IS_ERR(pm->endpoint)) {
 				pm->endpoint = msm_rpc_connect_compatible(
 						PMIC_RPC_PROG,
-						PMIC_RPC_VER_1_1, 0);
+						PMIC_RPC_VER_1_1, MSM_RPC_UNINTERRUPTIBLE);
 			}
 		}
 
