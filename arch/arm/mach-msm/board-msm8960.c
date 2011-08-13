@@ -214,10 +214,17 @@ enum {
 };
 #endif
 
-static struct gpiomux_setting gsbi1 = {
+/* The SPI configurations apply to GSBI 1*/
+static struct gpiomux_setting spi_active = {
 	.func = GPIOMUX_FUNC_1,
 	.drv = GPIOMUX_DRV_8MA,
 	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting spi_suspended_config = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_DOWN,
 };
 
 static struct gpiomux_setting gsbi3 = {
@@ -256,11 +263,13 @@ static struct gpiomux_setting cdc_mclk = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
+#ifdef CONFIG_KS8851
 static struct gpiomux_setting gpio_eth_config = {
 	.pull = GPIOMUX_PULL_NONE,
 	.drv = GPIOMUX_DRV_8MA,
 	.func = GPIOMUX_FUNC_GPIO,
 };
+#endif
 
 static struct gpiomux_setting slimbus = {
 	.func = GPIOMUX_FUNC_1,
@@ -269,6 +278,7 @@ static struct gpiomux_setting slimbus = {
 };
 
 struct msm_gpiomux_config msm8960_gpiomux_configs[NR_GPIO_IRQS] = {
+#ifdef CONFIG_KS8851
 	{
 		.gpio = KS8851_IRQ_GPIO,
 		.settings = {
@@ -287,31 +297,36 @@ struct msm_gpiomux_config msm8960_gpiomux_configs[NR_GPIO_IRQS] = {
 			[GPIOMUX_SUSPENDED] = &gpio_eth_config,
 		}
 	},
+#endif
 };
 
 static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
 	{
 		.gpio      = 6,		/* GSBI1 QUP SPI_DATA_MOSI */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi1,
+			[GPIOMUX_SUSPENDED] = &spi_suspended_config,
+			[GPIOMUX_ACTIVE] = &spi_active,
 		},
 	},
 	{
 		.gpio      = 7,		/* GSBI1 QUP SPI_DATA_MISO */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi1,
+			[GPIOMUX_SUSPENDED] = &spi_suspended_config,
+			[GPIOMUX_ACTIVE] = &spi_active,
 		},
 	},
 	{
 		.gpio      = 8,		/* GSBI1 QUP SPI_CS_N */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi1,
+			[GPIOMUX_SUSPENDED] = &spi_suspended_config,
+			[GPIOMUX_ACTIVE] = &spi_active,
 		},
 	},
 	{
 		.gpio      = 9,		/* GSBI1 QUP SPI_CLK */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi1,
+			[GPIOMUX_SUSPENDED] = &spi_suspended_config,
+			[GPIOMUX_ACTIVE] = &spi_active,
 		},
 	},
 	{
@@ -3291,6 +3306,7 @@ fail:
 		gpio_free(wcnss_5wire_interface[j].gpio);
 }
 
+#ifdef CONFIG_KS8851
 static int ethernet_init(void)
 {
 	int ret;
@@ -3322,6 +3338,12 @@ fail_rst:
 fail:
 	return ret;
 }
+#else
+static int ethernet_init(void)
+{
+	return 0;
+}
+#endif
 
 static struct msm_cpuidle_state msm_cstates[] __initdata = {
 	{0, 0, "C0", "WFI",
@@ -3570,8 +3592,6 @@ static void __init msm8960_sim_init(void)
 	msm8960_device_ssbi_pm8921.dev.platform_data =
 				&msm8960_ssbi_pm8921_pdata;
 	pm8921_platform_data.num_regulators = msm_pm8921_regulator_pdata_len;
-	msm8960_device_qup_spi_gsbi1.dev.platform_data =
-				&msm8960_qup_spi_gsbi1_pdata;
 
 	/* Simulator supports a QWERTY keypad */
 	pm8921_platform_data.keypad_pdata = &keypad_data_sim;
