@@ -469,7 +469,7 @@ static int __init msm_mpm_init(void)
 	int rc;
 
 	bitmap_set(msm_mpm_gpio_irqs_mask, NR_MSM_IRQS,
-			MSM_MPM_NR_APPS_IRQS - 1);
+			NR_GPIO_IRQS);
 
 	rc = request_irq(irq, msm_mpm_irq,
 			IRQF_TRIGGER_RISING, "mpm_drv", msm_mpm_irq);
