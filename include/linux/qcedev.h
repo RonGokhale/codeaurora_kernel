@@ -57,11 +57,11 @@
 *				user. Key already set by an external processor.
 */
 enum qcedev_oper_enum {
-  QCEDEV_OPER_DEC		= 0,
-  QCEDEV_OPER_ENC		= 1,
-  QCEDEV_OPER_DEC_NO_KEY	= 2,
-  QCEDEV_OPER_ENC_NO_KEY	= 3,
-  QCEDEV_OPER_LAST
+	QCEDEV_OPER_DEC		= 0,
+	QCEDEV_OPER_ENC		= 1,
+	QCEDEV_OPER_DEC_NO_KEY	= 2,
+	QCEDEV_OPER_ENC_NO_KEY	= 3,
+	QCEDEV_OPER_LAST
 };
 
 /**
@@ -123,7 +123,7 @@ enum qcedev_sha_alg_enum {
 * @len:				Size of the buffer
 */
 struct	buf_info {
-	union{
+	union {
 		uint32_t	offset;
 		uint8_t		*vaddr;
 	};
@@ -151,7 +151,7 @@ struct	qcedev_vbuf_info {
 * @pmem_src_offset:		The offset from input/src buffer
 *				(allocated by PMEM)
 */
-struct	qcedev_pmem_info{
+struct	qcedev_pmem_info {
 	int		fd_src;
 	struct buf_info	src[QCEDEV_MAX_BUFFERS];
 	int		fd_dst;
@@ -207,7 +207,7 @@ struct	qcedev_pmem_info{
 */
 struct	qcedev_cipher_op_req {
 	uint8_t				use_pmem;
-	union{
+	union {
 		struct qcedev_pmem_info	pmem;
 		struct qcedev_vbuf_info	vbuf;
 	};
