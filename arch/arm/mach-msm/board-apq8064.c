@@ -159,7 +159,6 @@ static struct platform_device android_usb_device = {
 };
 
 static struct platform_device *common_devices[] __initdata = {
-	&apq8064_device_dmov,
 	&apq8064_device_uart_gsbi3,
 	&apq8064_device_qup_i2c_gsbi4,
 	&apq8064_device_qup_spi_gsbi5,
@@ -169,6 +168,10 @@ static struct platform_device *common_devices[] __initdata = {
 	&apq8064_device_gadget_peripheral,
 	&android_usb_device,
 	&apq8064_usb_diag_device,
+};
+
+static struct platform_device *sim_devices[] __initdata = {
+	&apq8064_device_dmov,
 };
 
 static struct msm_spi_platform_data apq8064_qup_spi_gsbi5_pdata = {
@@ -232,6 +235,12 @@ static void __init apq8064_common_init(void)
 static void __init apq8064_sim_init(void)
 {
 	apq8064_common_init();
+	platform_add_devices(sim_devices, ARRAY_SIZE(sim_devices));
+}
+
+static void __init apq8064_rumi3_init(void)
+{
+	apq8064_common_init();
 }
 
 MACHINE_START(APQ8064_SIM, "QCT APQ8064 SIMULATOR")
@@ -239,5 +248,12 @@ MACHINE_START(APQ8064_SIM, "QCT APQ8064 SIMULATOR")
 	.init_irq = apq8064_init_irq,
 	.timer = &msm_timer,
 	.init_machine = apq8064_sim_init,
+MACHINE_END
+
+MACHINE_START(APQ8064_RUMI3, "QCT APQ8064 RUMI3")
+	.map_io = apq8064_map_io,
+	.init_irq = apq8064_init_irq,
+	.timer = &msm_timer,
+	.init_machine = apq8064_rumi3_init,
 MACHINE_END
 
