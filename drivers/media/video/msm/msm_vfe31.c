@@ -514,7 +514,7 @@ static void vfe31_stop(void)
 	/* now enable only halt_irq & reset_irq */
 	msm_io_w(0xf0000000,          /* this is for async timer. */
 		vfe31_ctrl->vfebase + VFE_IRQ_MASK_0);
-	msm_io_w(VFE_IMASK_WHILE_STOPPING_1,
+	msm_io_w(VFE_IMASK_AXI_HALT,
 		vfe31_ctrl->vfebase + VFE_IRQ_MASK_1);
 
 	/* then apply axi halt command. */
@@ -2366,33 +2366,6 @@ vfe31_config_done:
 	return rc;
 }
 
-static inline void vfe31_read_irq_status(struct vfe31_irq_status *out)
-{
-	uint32_t *temp;
-	memset(out, 0, sizeof(struct vfe31_irq_status));
-	temp = (uint32_t *)(vfe31_ctrl->vfebase + VFE_IRQ_STATUS_0);
-	out->vfeIrqStatus0 = msm_io_r_mb(temp);
-
-	temp = (uint32_t *)(vfe31_ctrl->vfebase + VFE_IRQ_STATUS_1);
-	out->vfeIrqStatus1 = msm_io_r_mb(temp);
-
-	temp = (uint32_t *)(vfe31_ctrl->vfebase + VFE_CAMIF_STATUS);
-	out->camifStatus = msm_io_r(temp);
-	CDBG("camifStatus  = 0x%x\n", out->camifStatus);
-
-	temp = (uint32_t *)(vfe31_ctrl->vfebase + VFE_BUS_PING_PONG_STATUS);
-	out->vfePingPongStatus = msm_io_r_mb(temp);
-
-	/* clear the pending interrupt of the same kind.*/
-	msm_io_w(out->vfeIrqStatus0, vfe31_ctrl->vfebase + VFE_IRQ_CLEAR_0);
-	msm_io_w(out->vfeIrqStatus1, vfe31_ctrl->vfebase + VFE_IRQ_CLEAR_1);
-
-	/* Ensure the write order while writing
-	to the command register using the barrier */
-	msm_io_w_mb(1, vfe31_ctrl->vfebase + VFE_IRQ_CMD);
-
-}
-
 static void vfe31_send_msg_no_payload(enum VFE31_MESSAGE_ID id)
 {
 	struct vfe_message msg;
@@ -2543,9 +2516,8 @@ static void vfe31_set_default_reg_values(void)
 
 static void vfe31_process_reset_irq(void)
 {
-
 	atomic_set(&vfe31_ctrl->vstate, 0);
-
+	vfe31_ctrl->while_stopping_mask = VFE_IMASK_WHILE_STOPPING_1;
 	if (atomic_read(&vfe31_ctrl->stop_ack_pending)) {
 		/* this is from the stop command. */
 		atomic_set(&vfe31_ctrl->stop_ack_pending, 0);
@@ -2567,7 +2539,7 @@ static void vfe31_process_axi_halt_irq(void)
 	to the command register using the barrier */
 	msm_io_w_mb(AXI_HALT_CLEAR,
 		vfe31_ctrl->vfebase + VFE_AXI_CMD);
-
+	vfe31_ctrl->while_stopping_mask = VFE_IMASK_RESET;
 
 	/* disable all interrupts.  */
 	msm_io_w(VFE_DISABLE_ALL_IRQS,
@@ -2593,8 +2565,10 @@ static void vfe31_process_axi_halt_irq(void)
 
 	/* Ensure the write order while writing
 	to the command register using the barrier */
+	CDBG("%s: about to reset vfe...\n", __func__);
 	msm_io_w_mb(VFE_RESET_UPON_STOP_CMD,
 		vfe31_ctrl->vfebase + VFE_GLOBAL_RESET);
+
 }
 
 static void vfe31_process_camif_sof_irq(void)
@@ -3347,11 +3321,37 @@ static irqreturn_t vfe31_parse_irq(int irq_num, void *data)
 	unsigned long flags;
 	struct vfe31_irq_status irq;
 	struct vfe31_isr_queue_cmd *qcmd;
-	uint32_t temp;
-
+	uint32_t *val;
 	CDBG("vfe_parse_irq\n");
+	memset(&irq, 0, sizeof(struct vfe31_irq_status));
 
-	vfe31_read_irq_status(&irq);
+	val = (uint32_t *)(vfe31_ctrl->vfebase + VFE_IRQ_STATUS_0);
+	irq.vfeIrqStatus0 = msm_io_r(val);
+
+	val = (uint32_t *)(vfe31_ctrl->vfebase + VFE_IRQ_STATUS_1);
+	irq.vfeIrqStatus1 = msm_io_r(val);
+
+	if (irq.vfeIrqStatus1 & VFE_IMASK_AXI_HALT) {
+		msm_io_w(VFE_IMASK_RESET, vfe31_ctrl->vfebase + VFE_IRQ_MASK_1);
+
+		msm_io_w_mb(AXI_HALT_CLEAR,
+			vfe31_ctrl->vfebase + VFE_AXI_CMD);
+	}
+
+	val = (uint32_t *)(vfe31_ctrl->vfebase + VFE_CAMIF_STATUS);
+	irq.camifStatus = msm_io_r(val);
+	CDBG("camifStatus  = 0x%x\n", irq.camifStatus);
+
+	val = (uint32_t *)(vfe31_ctrl->vfebase + VFE_BUS_PING_PONG_STATUS);
+	irq.vfePingPongStatus = msm_io_r(val);
+
+	/* clear the pending interrupt of the same kind.*/
+	msm_io_w(irq.vfeIrqStatus0, vfe31_ctrl->vfebase + VFE_IRQ_CLEAR_0);
+	msm_io_w(irq.vfeIrqStatus1, vfe31_ctrl->vfebase + VFE_IRQ_CLEAR_1);
+
+	/* Ensure the write order while writing
+	to the command register using the barrier */
+	msm_io_w_mb(1, vfe31_ctrl->vfebase + VFE_IRQ_CMD);
 
 	if ((irq.vfeIrqStatus0 == 0) && (irq.vfeIrqStatus1 == 0)) {
 		CDBG("vfe_parse_irq: vfeIrqStatus0 & 1 are both 0!\n");
@@ -3367,17 +3367,7 @@ static irqreturn_t vfe31_parse_irq(int irq_num, void *data)
 
 	if (atomic_read(&vfe31_ctrl->stop_ack_pending)) {
 		irq.vfeIrqStatus0 &= VFE_IMASK_WHILE_STOPPING_0;
-		irq.vfeIrqStatus1 &= VFE_IMASK_WHILE_STOPPING_1;
-
-		if (irq.vfeIrqStatus1 & VFE_IMASK_AXI_HALT) {
-			msm_io_w_mb(AXI_HALT_CLEAR,
-				vfe31_ctrl->vfebase + VFE_AXI_CMD);
-
-			temp = msm_io_r(vfe31_ctrl->vfebase + VFE_IRQ_MASK_1);
-			temp &= MASK_AXI_HALT_IRQ;
-			/* mask the axi_halt_irq*/
-			msm_io_w(temp, vfe31_ctrl->vfebase + VFE_IRQ_MASK_1);
-		}
+		irq.vfeIrqStatus1 &= vfe31_ctrl->while_stopping_mask;
 	}
 
 	CDBG("vfe_parse_irq: Irq_status0 = 0x%x, Irq_status1 = 0x%x.\n",
