@@ -237,6 +237,221 @@ struct platform_device apq8064_usb_diag_device = {
 	},
 };
 
+#define MSM_SDC1_BASE         0x12400000
+#define MSM_SDC1_DML_BASE     (MSM_SDC1_BASE + 0x800)
+#define MSM_SDC1_BAM_BASE     (MSM_SDC1_BASE + 0x2000)
+#define MSM_SDC2_BASE         0x12140000
+#define MSM_SDC2_DML_BASE     (MSM_SDC2_BASE + 0x800)
+#define MSM_SDC2_BAM_BASE     (MSM_SDC2_BASE + 0x2000)
+#define MSM_SDC3_BASE         0x12180000
+#define MSM_SDC3_DML_BASE     (MSM_SDC3_BASE + 0x800)
+#define MSM_SDC3_BAM_BASE     (MSM_SDC3_BASE + 0x2000)
+#define MSM_SDC4_BASE         0x121C0000
+#define MSM_SDC4_DML_BASE     (MSM_SDC4_BASE + 0x800)
+#define MSM_SDC4_BAM_BASE     (MSM_SDC4_BASE + 0x2000)
+
+static struct resource resources_sdc1[] = {
+	{
+		.name	= "core_mem",
+		.flags	= IORESOURCE_MEM,
+		.start	= MSM_SDC1_BASE,
+		.end	= MSM_SDC1_DML_BASE - 1,
+	},
+	{
+		.name	= "core_irq",
+		.flags	= IORESOURCE_IRQ,
+		.start	= SDC1_IRQ_0,
+		.end	= SDC1_IRQ_0
+	},
+#ifdef CONFIG_MMC_MSM_SPS_SUPPORT
+	{
+		.name   = "sdcc_dml_addr",
+		.start	= MSM_SDC1_DML_BASE,
+		.end	= MSM_SDC1_BAM_BASE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name   = "sdcc_bam_addr",
+		.start	= MSM_SDC1_BAM_BASE,
+		.end	= MSM_SDC1_BAM_BASE + (2 * SZ_4K) - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name   = "sdcc_bam_irq",
+		.start	= SDC1_BAM_IRQ,
+		.end	= SDC1_BAM_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+#endif
+};
+
+static struct resource resources_sdc2[] = {
+	{
+		.name	= "core_mem",
+		.flags	= IORESOURCE_MEM,
+		.start	= MSM_SDC2_BASE,
+		.end	= MSM_SDC2_DML_BASE - 1,
+	},
+	{
+		.name	= "core_irq",
+		.flags	= IORESOURCE_IRQ,
+		.start	= SDC2_IRQ_0,
+		.end	= SDC2_IRQ_0
+	},
+#ifdef CONFIG_MMC_MSM_SPS_SUPPORT
+	{
+		.name   = "sdcc_dml_addr",
+		.start	= MSM_SDC2_DML_BASE,
+		.end	= MSM_SDC2_BAM_BASE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name   = "sdcc_bam_addr",
+		.start	= MSM_SDC2_BAM_BASE,
+		.end	= MSM_SDC2_BAM_BASE + (2 * SZ_4K) - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name   = "sdcc_bam_irq",
+		.start	= SDC2_BAM_IRQ,
+		.end	= SDC2_BAM_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+#endif
+};
+
+static struct resource resources_sdc3[] = {
+	{
+		.name	= "core_mem",
+		.flags	= IORESOURCE_MEM,
+		.start	= MSM_SDC3_BASE,
+		.end	= MSM_SDC3_DML_BASE - 1,
+	},
+	{
+		.name	= "core_irq",
+		.flags	= IORESOURCE_IRQ,
+		.start	= SDC3_IRQ_0,
+		.end	= SDC3_IRQ_0
+	},
+#ifdef CONFIG_MMC_MSM_SPS_SUPPORT
+	{
+		.name   = "sdcc_dml_addr",
+		.start	= MSM_SDC3_DML_BASE,
+		.end	= MSM_SDC3_BAM_BASE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name   = "sdcc_bam_addr",
+		.start	= MSM_SDC3_BAM_BASE,
+		.end	= MSM_SDC3_BAM_BASE + (2 * SZ_4K) - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name   = "sdcc_bam_irq",
+		.start	= SDC3_BAM_IRQ,
+		.end	= SDC3_BAM_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+#endif
+};
+
+static struct resource resources_sdc4[] = {
+	{
+		.name	= "core_mem",
+		.flags	= IORESOURCE_MEM,
+		.start	= MSM_SDC4_BASE,
+		.end	= MSM_SDC4_DML_BASE - 1,
+	},
+	{
+		.name	= "core_irq",
+		.flags	= IORESOURCE_IRQ,
+		.start	= SDC4_IRQ_0,
+		.end	= SDC4_IRQ_0
+	},
+#ifdef CONFIG_MMC_MSM_SPS_SUPPORT
+	{
+		.name   = "sdcc_dml_addr",
+		.start	= MSM_SDC4_DML_BASE,
+		.end	= MSM_SDC4_BAM_BASE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name   = "sdcc_bam_addr",
+		.start	= MSM_SDC4_BAM_BASE,
+		.end	= MSM_SDC4_BAM_BASE + (2 * SZ_4K) - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name   = "sdcc_bam_irq",
+		.start	= SDC4_BAM_IRQ,
+		.end	= SDC4_BAM_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+#endif
+};
+
+struct platform_device apq8064_device_sdc1 = {
+	.name		= "msm_sdcc",
+	.id		= 1,
+	.num_resources	= ARRAY_SIZE(resources_sdc1),
+	.resource	= resources_sdc1,
+	.dev		= {
+		.coherent_dma_mask	= 0xffffffff,
+	},
+};
+
+struct platform_device apq8064_device_sdc2 = {
+	.name		= "msm_sdcc",
+	.id		= 2,
+	.num_resources	= ARRAY_SIZE(resources_sdc2),
+	.resource	= resources_sdc2,
+	.dev		= {
+		.coherent_dma_mask	= 0xffffffff,
+	},
+};
+
+struct platform_device apq8064_device_sdc3 = {
+	.name		= "msm_sdcc",
+	.id		= 3,
+	.num_resources	= ARRAY_SIZE(resources_sdc3),
+	.resource	= resources_sdc3,
+	.dev		= {
+		.coherent_dma_mask	= 0xffffffff,
+	},
+};
+
+struct platform_device apq8064_device_sdc4 = {
+	.name		= "msm_sdcc",
+	.id		= 4,
+	.num_resources	= ARRAY_SIZE(resources_sdc4),
+	.resource	= resources_sdc4,
+	.dev		= {
+		.coherent_dma_mask	= 0xffffffff,
+	},
+};
+
+static struct platform_device *apq8064_sdcc_devices[] __initdata = {
+	&apq8064_device_sdc1,
+	&apq8064_device_sdc2,
+	&apq8064_device_sdc3,
+	&apq8064_device_sdc4,
+};
+
+int __init apq8064_add_sdcc(unsigned int controller,
+				struct mmc_platform_data *plat)
+{
+	struct platform_device	*pdev;
+
+	if (!plat)
+		return 0;
+	if (controller < 1 || controller > 4)
+		return -EINVAL;
+
+	pdev = apq8064_sdcc_devices[controller-1];
+	pdev->dev.platform_data = plat;
+	return platform_device_register(pdev);
+}
+
 static struct clk_lookup msm_clocks_8064_dummy[] = {
 	CLK_DUMMY("pll2",		PLL2,		NULL, 0),
 	CLK_DUMMY("pll8",		PLL8,		NULL, 0),
