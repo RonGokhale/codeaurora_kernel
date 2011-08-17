@@ -1038,7 +1038,7 @@ static struct acpuclk_data acpuclk_8960_data = {
 	.wait_for_irq_khz = STBY_KHZ,
 };
 
-int __init acpuclk_8960_init(struct acpuclk_platform_data *data)
+static int __init acpuclk_8960_init(struct acpuclk_soc_data *soc_data)
 {
 	if (cpu_is_msm8960()) {
 		scalable = scalable_8960;
@@ -1068,3 +1068,7 @@ int __init acpuclk_8960_init(struct acpuclk_platform_data *data)
 
 	return 0;
 }
+
+struct acpuclk_soc_data acpuclk_8960_soc_data __initdata = {
+	.init = acpuclk_8960_init,
+};
