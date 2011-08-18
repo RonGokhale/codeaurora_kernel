@@ -3503,6 +3503,7 @@ static struct cyttsp_platform_data cyttsp_tmg240_pdata = {
 	.lp_intrvl = CY_LP_INTRVL_DFLT,
 	.resume = cyttsp_platform_resume,
 	.init = cyttsp_platform_init,
+	.disable_ghost_det = true,
 };
 static void cyttsp_set_params(void)
 {
