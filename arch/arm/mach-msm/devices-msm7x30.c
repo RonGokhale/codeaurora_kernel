@@ -1142,12 +1142,12 @@ static struct kgsl_device_platform_data kgsl_3d0_pdata = {
 	},
 	.clk = {
 		.name = {
-			.clk = "grp_clk",
-			.pclk = "grp_pclk",
+			.clk = "core_clk",
+			.pclk = "iface_clk",
 		},
 	},
 	.imem_clk_name = {
-		.clk = "imem_clk",
+		.clk = "mem_clk",
 		.pclk = NULL,
 	},
 };
@@ -1194,8 +1194,8 @@ static struct kgsl_device_platform_data kgsl_2d0_pdata = {
 	},
 	.clk = {
 		.name = {
-			.clk = "grp_2d_clk",
-			.pclk = "grp_2d_pclk",
+			.clk = "core_clk",
+			.pclk = "iface_clk",
 		},
 	},
 };
