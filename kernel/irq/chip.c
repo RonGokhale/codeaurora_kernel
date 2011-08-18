@@ -391,7 +391,7 @@ static inline void mask_ack_irq(struct irq_desc *desc)
 	desc->status |= IRQ_MASKED;
 }
 
-static inline void mask_irq(struct irq_desc *desc)
+void mask_irq(struct irq_desc *desc)
 {
 	if (desc->irq_data.chip->irq_mask) {
 		desc->irq_data.chip->irq_mask(&desc->irq_data);
@@ -517,8 +517,22 @@ handle_level_irq(unsigned int irq, struct irq_desc *desc)
 	 * keep it masked and get out of here
 	 */
 	action = desc->action;
-	if (unlikely(!action || (desc->status & IRQ_DISABLED)))
+	if (unlikely(!action))
 		goto out_unlock;
+
+	if (desc->status & IRQ_DISABLED) {
+		/*
+		 * Hardware which has no wakeup source configuration facility,
+		 * needs its wakeup interrupts unmasked and triggered to cause
+		 * a wakeup. Since the interrupt will be masked, mark it pending
+		 * if it were suspended so that suspend will be aborted later.
+		 */
+		if ((desc->status & IRQ_SUSPENDED) &&
+			(desc->status & IRQ_WAKEUP) &&
+			desc->irq_data.chip->flags & IRQCHIP_MASK_ON_SUSPEND)
+			desc->status |= IRQ_PENDING;
+		goto out_unlock;
+	}
 
 	desc->status |= IRQ_INPROGRESS;
 	raw_spin_unlock(&desc->lock);
