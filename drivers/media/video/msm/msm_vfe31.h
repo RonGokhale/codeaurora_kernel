@@ -1085,6 +1085,10 @@ struct vfe31_ctrl_type {
 	struct msm_camera_sensor_info *s_info;
 	struct vfe_message vMsgHold_Snap;
 	struct vfe_message vMsgHold_Thumb;
+	int8_t xbar_update_pending;
+	uint32_t xbar_cfg[2];
+	spinlock_t xbar_lock;
+	uint32_t while_stopping_mask;
 };
 
 #define statsAeNum      0
