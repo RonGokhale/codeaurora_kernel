@@ -2676,7 +2676,6 @@ static struct platform_device *surf_ffa_devices[] __initdata = {
 #ifdef CONFIG_BT
 	&msm_bt_power_device,
 #endif
-	&msm_wlan_ar6000_pm_device,
 	&asoc_msm_pcm,
 	&asoc_msm_dai0,
 	&asoc_msm_dai1,
@@ -3318,12 +3317,20 @@ static struct platform_device hs_pdev = {
 
 #define LED_GPIO_PDM		96
 #define UART1DM_RX_GPIO		45
+
+static int __init msm7x27a_init_ar6000pm(void)
+{
+	return platform_device_register(&msm_wlan_ar6000_pm_device);
+}
+
 static void __init msm7x2x_init(void)
 {
 	msm7x2x_misc_init();
 
 	/* Common functions for SURF/FFA/RUMI3 */
 	msm_device_i2c_init();
+	/* Ensure ar6000pm device is registered before MMC/SDC */
+	msm7x27a_init_ar6000pm();
 	msm7x27a_init_mmc();
 	msm7x27a_init_ebi2();
 	msm7x27a_cfg_uart2dm_serial();
