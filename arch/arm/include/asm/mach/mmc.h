@@ -141,6 +141,7 @@ struct mmc_platform_data {
 	unsigned int *sup_clk_table;
 	unsigned char sup_clk_cnt;
 	struct msm_mmc_pin_data *pin_data;
+	bool disable_bam;
 };
 
 #endif
