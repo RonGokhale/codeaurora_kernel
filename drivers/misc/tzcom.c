@@ -410,21 +410,10 @@ static int tzcom_send_cmd(struct tzcom_data_t *data, void __user *argp)
 	mutex_lock(&sb_in_lock);
 	resp.sb_in_rsp_addr = sb_in_virt + cmd.sb_in_cmd_len;
 	resp.sb_in_rsp_len = req.resp_len;
+	memcpy(req.resp_buf, resp.sb_in_rsp_addr, resp.sb_in_rsp_len);
+	/* Zero out memory for security purpose */
+	memset(sb_in_virt, 0, reqd_len_sb_in);
 	mutex_unlock(&sb_in_lock);
-
-	/* Cmd is done now. Copy the response from SB in to user */
-	if (req.resp_len >= resp.sb_in_rsp_len) {
-		PDEBUG("Before memcpy resp_buf");
-		mutex_lock(&sb_in_lock);
-		memcpy(req.resp_buf, resp.sb_in_rsp_addr, resp.sb_in_rsp_len);
-		mutex_unlock(&sb_in_lock);
-	} else {
-		PDEBUG("Provided response buffer is smaller"
-				" than required. Required: %u,"
-				" Provided: %u",
-				resp.sb_in_rsp_len, req.resp_len);
-		ret = -ENOMEM;
-	}
 
 	PDEBUG("sending cmd_req.rsp "
 			"size: %u, ptr: 0x%p", req.resp_len,
@@ -693,28 +682,22 @@ static int tzcom_open(struct inode *inode, struct file *file)
 			"sb_in_cmd_len: %u }",
 			cmd.cmd_type, cmd.sb_in_cmd_addr, cmd.sb_in_cmd_len);
 
-	resp.cmd_status = 0;
-	resp.sb_in_rsp_addr = (u8 *)cmd.sb_in_cmd_addr + cmd.sb_in_cmd_len;
-	resp.sb_in_rsp_len = sizeof(sb_out_init_rsp);
-	PDEBUG("tzcom_response before scm { cmd_status: %u, "
-			"sb_in_rsp_addr: %p, sb_in_rsp_len: %u }",
-			resp.cmd_status, resp.sb_in_rsp_addr,
-			resp.sb_in_rsp_len);
+	resp.cmd_status = TZ_SCHED_STATUS_INCOMPLETE;
 
 	PDEBUG("Before scm_call for sb_init");
 	tzcom_scm_call(&cmd, sizeof(cmd), &resp, sizeof(resp));
 	PDEBUG("After scm_call for sb_init");
-	PDEBUG("tzcom_response after scm { cmd_status: %u, "
-			"sb_in_rsp_addr: %p, sb_in_rsp_len: %u }",
-			resp.cmd_status, resp.sb_in_rsp_addr,
-			resp.sb_in_rsp_len);
-
-	if (resp.sb_in_rsp_addr) {
+	PDEBUG("tzcom_response after scm cmd_status: %u", resp.cmd_status);
+	if (resp.cmd_status == TZ_SCHED_STATUS_COMPLETE) {
+		resp.sb_in_rsp_addr = (u8 *)cmd.sb_in_cmd_addr +
+				cmd.sb_in_cmd_len;
+		resp.sb_in_rsp_len = sizeof(sb_out_init_rsp);
+		PDEBUG("tzcom_response sb_in_rsp_addr: %p, sb_in_rsp_len: %u",
+				resp.sb_in_rsp_addr, resp.sb_in_rsp_len);
 		rsp_addr_virt = tzcom_phys_to_virt((unsigned long)
 				resp.sb_in_rsp_addr);
 		PDEBUG("Received response phys: %p, virt: %p",
-				resp.sb_in_rsp_addr,
-				rsp_addr_virt);
+				resp.sb_in_rsp_addr, rsp_addr_virt);
 		memcpy(&sb_out_init_rsp, rsp_addr_virt, resp.sb_in_rsp_len);
 	} else {
 		PERR("Error with SB initialization");
