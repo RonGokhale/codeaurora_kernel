@@ -42,6 +42,8 @@
 
 #define MAX_VOC_PKT_SIZE 322
 
+#define SESSION_NAME_LEN 20
+
 struct voice_header {
 	uint32_t id;
 	uint32_t data_len;
@@ -110,8 +112,8 @@ enum {
 #define VSS_ICOMMON_CMD_SET_VOICE_TIMING		0x000111E0
 /* Set the voice timing parameters. */
 
-struct vss_imvm_cmd_create_full_control_session_t {
-	char name[20];
+struct vss_imvm_cmd_create_control_session_t {
+	char name[SESSION_NAME_LEN];
 	/*
 	 * A variable-sized stream name.
 	 *
@@ -194,13 +196,9 @@ struct mvm_detach_vocproc_cmd {
 	struct vss_istream_cmd_detach_vocproc_t mvm_detach_cvp_handle;
 } __attribute__((packed));
 
-struct mvm_create_passive_ctl_session_cmd {
+struct mvm_create_ctl_session_cmd {
 	struct apr_hdr hdr;
-} __attribute__((packed));
-
-struct mvm_create_full_ctl_session_cmd {
-	struct apr_hdr hdr;
-	struct vss_imvm_cmd_create_full_control_session_t mvm_session;
+	struct vss_imvm_cmd_create_control_session_t mvm_session;
 } __packed;
 
 struct mvm_set_tty_mode_cmd {
@@ -282,7 +280,7 @@ struct mvm_set_voice_timing_cmd {
 /* Stop the in-call music delivery on the Tx voice path. */
 
 struct vss_istream_cmd_create_passive_control_session_t {
-	char name[20];
+	char name[SESSION_NAME_LEN];
 	/**<
 	* A variable-sized stream name.
 	*
@@ -325,7 +323,7 @@ struct vss_istream_cmd_create_full_control_session_t {
 	/* Rx vocoder type. (Refer to VSS_MEDIA_ID_XXX). */
 	uint32_t network_id;
 	/* Network ID. (Refer to VSS_NETWORK_ID_XXX). */
-	char name[20];
+	char name[SESSION_NAME_LEN];
 	/*
 	 * A variable-sized stream name.
 	 *
