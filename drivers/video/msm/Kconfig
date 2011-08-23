@@ -156,6 +156,10 @@ config FB_MSM_MIPI_DSI_RENESAS
 	select FB_MSM_MIPI_DSI
 	default n
 
+config FB_MSM_MIPI_DSI_TRULY
+	bool
+	select FB_MSM_MIPI_DSI
+
 config FB_MSM_MIPI_DSI_SIMULATOR
 	bool
 	select FB_MSM_MIPI_DSI
@@ -274,6 +278,19 @@ config FB_MSM_MIPI_RENESAS_CMD_FWVGA_PT
 	select FB_MSM_MIPI_DSI_RENESAS
 	default n
 
+config FB_MSM_MIPI_CHIMEI_WXGA
+	bool "LVDS Chimei WXGA Panel using Toshiba MIPI DSI-to-LVDS bridge."
+	select FB_MSM_MIPI_DSI_TC358764_DSI2LVDS
+	---help---
+	  Support for Chimei WXGA (1366x768) panel.
+	  The panel is using a serial LVDS input.
+	  The panel is connected to the host
+	  via Toshiba DSI-to-LVDS bridge.
+
+config FB_MSM_MIPI_TRULY_VIDEO_WVGA_PT
+	bool
+	select FB_MSM_MIPI_DSI_TRULY
+
 config FB_MSM_MIPI_SIMULATOR_VIDEO
 	bool
 	select FB_MSM_MIPI_DSI_SIMULATOR
@@ -378,6 +395,10 @@ config FB_MSM_MIPI_PANEL_DETECT
 	select FB_MSM_MIPI_TOSHIBA_VIDEO_WSVGA_PT
 	select FB_MSM_LCDC_AUTO_DETECT
 	select FB_MSM_MIPI_RENESAS_VIDEO_FWVGA_PT
+	select FB_MSM_MIPI_RENESAS_CMD_FWVGA_PT
+	select FB_MSM_MIPI_TRULY_VIDEO_WVGA_PT
+	select FB_MSM_MIPI_NOVATEK_VIDEO_QHD_PT
+	select FB_MSM_MIPI_NOVATEK_CMD_QHD_PT
 	select FB_MSM_MIPI_SIMULATOR_VIDEO
 	select FB_MSM_LCDC_SAMSUNG_WSVGA
 	select FB_MSM_LCDC_AUO_WVGA
@@ -451,6 +472,14 @@ config FB_MSM_MIPI_RENESAS_VIDEO_FWVGA_PT_PANEL
 config FB_MSM_MIPI_RENESAS_CMD_FWVGA_PT_PANEL
 	bool "MIPI Renesas Command FWVGA PT Panel"
 	select FB_MSM_MIPI_RENESAS_CMD_FWVGA_PT
+
+config FB_MSM_MIPI_CHIMEI_WXGA_PANEL
+	bool "MIPI Chimei WXGA PT Panel"
+	select FB_MSM_MIPI_CHIMEI_WXGA
+
+config FB_MSM_MIPI_TRULY_VIDEO_WVGA_PT_PANEL
+	bool "MIPI Truly Video WVGA PT Panel"
+	select FB_MSM_MIPI_TRULY_VIDEO_WVGA_PT
 
 config FB_MSM_MIPI_SIMULATOR_VIDEO_PANEL
 	bool "MIPI Simulator Video Panel"
