@@ -209,6 +209,7 @@ config ARCH_QSD8X50A
 config ARCH_MSM7X27A
 	bool
 	select MSM_DALRPC
+	select MSM_PROC_COMM_REGULATOR
 
 config  MSM_VIC
 	bool

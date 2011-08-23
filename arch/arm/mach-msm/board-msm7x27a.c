@@ -48,6 +48,7 @@
 #include <linux/atmel_maxtouch.h>
 #include "devices.h"
 #include "timer.h"
+#include "board-msm7x27a-regulator.h"
 #include "devices-msm7x2xa.h"
 #include "pm.h"
 #include <mach/rpc_server_handset.h>
@@ -3308,6 +3309,14 @@ static struct platform_device hs_pdev = {
 	},
 };
 
+static struct platform_device msm_proccomm_regulator_dev = {
+	.name   = PROCCOMM_REGULATOR_DEV_NAME,
+	.id     = -1,
+	.dev    = {
+		.platform_data = &msm7x27a_proccomm_regulator_data
+	}
+};
+
 #define LED_GPIO_PDM		96
 #define UART1DM_RX_GPIO		45
 
@@ -3316,9 +3325,20 @@ static int __init msm7x27a_init_ar6000pm(void)
 	return platform_device_register(&msm_wlan_ar6000_pm_device);
 }
 
+static void __init msm7x27a_init_regulators(void)
+{
+	int rc = platform_device_register(&msm_proccomm_regulator_dev);
+	if (rc)
+		pr_err("%s: could not register regulator device: %d\n",
+				__func__, rc);
+}
+
 static void __init msm7x2x_init(void)
 {
 	msm7x2x_misc_init();
+
+	/* Initialize regulators first so that other devices can use them */
+	msm7x27a_init_regulators();
 
 	/* Common functions for SURF/FFA/RUMI3 */
 	msm_device_i2c_init();
