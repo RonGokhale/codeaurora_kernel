@@ -2786,8 +2786,8 @@ static void __init msm8x60_init_dsps(void)
 
 
 #ifdef CONFIG_FB_MSM_OVERLAY_WRITEBACK
-/* 960 x 540 x 3 x 2 */
-#define MSM_FB_WRITEBACK_SIZE 0x300000
+/* width x height x 3 bpp x 2 frame buffer */
+#define MSM_FB_WRITEBACK_SIZE (1024 * 600 * 3 * 2)
 #else
 #define MSM_FB_WRITEBACK_SIZE 0
 #endif
@@ -4940,7 +4940,7 @@ static struct sdio_al_platform_data sdio_al_pdata = {
 	.config_mdm2ap_status = configure_mdm2ap_status,
 	.get_mdm2ap_status = get_mdm2ap_status,
 	.allow_sdioc_version_major_2 = 0,
-	.peer_sdioc_version_minor = 0x0101,
+	.peer_sdioc_version_minor = 0x0202,
 	.peer_sdioc_version_major = 0x0004,
 	.peer_sdioc_boot_version_minor = 0x0001,
 	.peer_sdioc_boot_version_major = 0x0003
@@ -9759,6 +9759,21 @@ static struct msm_rpm_platform_data msm_rpm_data = {
 };
 #endif
 
+void msm_fusion_setup_pinctrl(void)
+{
+	struct msm_xo_voter *a1;
+
+	if (socinfo_get_platform_subtype() == 0x3) {
+		/*
+		 * Vote for the A1 clock to be in pin control mode before
+		* the external images are loaded.
+		*/
+		a1 = msm_xo_get(MSM_XO_TCXO_A1, "mdm");
+		BUG_ON(!a1);
+		msm_xo_mode_vote(a1, MSM_XO_MODE_PIN_CTRL);
+	}
+}
+
 struct msm_board_data {
 	struct msm_gpiomux_configs *gpiomux_cfgs;
 };
@@ -10050,6 +10065,9 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	}
 
 	msm8x60_multi_sdio_init();
+
+	if (machine_is_msm8x60_charm_surf() || machine_is_msm8x60_charm_ffa())
+		msm_fusion_setup_pinctrl();
 }
 
 static void __init msm8x60_rumi3_init(void)
