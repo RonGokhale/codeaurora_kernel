@@ -3672,7 +3672,7 @@ static int tmg200_power(int vreg_on)
 				__func__, vreg_on ? "enable" : "disable", rc);
 
 	/* wait for vregs to stabilize */
-	msleep(20);
+	msleep(100);
 
 	return rc;
 }
