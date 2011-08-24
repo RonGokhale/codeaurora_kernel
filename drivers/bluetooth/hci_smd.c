@@ -72,13 +72,13 @@ static void hci_smd_recv_data(unsigned long arg)
 	len = smd_read_avail(hsmd->data_channel);
 
 	while (len > 0) {
-		skb = bt_skb_alloc(len, GFP_KERNEL);
+		skb = bt_skb_alloc(len, GFP_ATOMIC);
 		if (!skb) {
 			BT_ERR("Error in allocating  socket buffer\n");
 			return;
 		}
 
-		buf = kmalloc(len, GFP_KERNEL);
+		buf = kmalloc(len, GFP_ATOMIC);
 		if (!buf)  {
 			BT_ERR("Error in allocating  buffer\n");
 			kfree_skb(skb);
@@ -123,11 +123,11 @@ static void hci_smd_recv_event(unsigned long arg)
 	}
 
 	while (len > 0) {
-		skb = bt_skb_alloc(len, GFP_KERNEL);
+		skb = bt_skb_alloc(len, GFP_ATOMIC);
 		if (!skb)
 			return;
 
-		buf = kmalloc(len, GFP_KERNEL);
+		buf = kmalloc(len, GFP_ATOMIC);
 		if (!buf) {
 			kfree_skb(skb);
 			return;
