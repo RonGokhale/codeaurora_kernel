@@ -6681,6 +6681,11 @@ static struct mfd_cell pm8058_subdevs[] = {
 	},
 };
 
+static struct pmic8058_charger_data pmic8058_charger_dragon = {
+		.max_source_current = 1800,
+		.charger_type = CHG_TYPE_AC,
+};
+
 static struct mfd_cell pm8058_charger_sub_dev = {
 		.name = "pm8058-charger",
 		.id = -1,
@@ -10610,6 +10615,12 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	if (machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa())
 		platform_add_devices(charm_devices, ARRAY_SIZE(charm_devices));
 
+	if (machine_is_msm8x60_dragon()) {
+		pm8058_charger_sub_dev.platform_data
+			= &pmic8058_charger_dragon;
+		pm8058_charger_sub_dev.data_size
+			= sizeof(pmic8058_charger_dragon);
+	}
 	if (!machine_is_msm8x60_fluid())
 		pm8058_platform_data.charger_sub_device
 			= &pm8058_charger_sub_dev;
