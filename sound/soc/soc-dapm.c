@@ -1542,7 +1542,8 @@ int snd_soc_dapm_mux_update_power(struct snd_soc_dapm_widget *widget,
 
 	if (found) {
 		dapm_power_widgets(widget->dapm, SND_SOC_DAPM_STREAM_NOP);
-		soc_dsp_runtime_update(widget);
+		if (widget->platform)
+			soc_dsp_runtime_update(widget);
 	}
 
 	return 0;
@@ -1574,7 +1575,8 @@ int snd_soc_dapm_mixer_update_power(struct snd_soc_dapm_widget *widget,
 
 	if (found) {
 		dapm_power_widgets(widget->dapm, SND_SOC_DAPM_STREAM_NOP);
-		soc_dsp_runtime_update(widget);
+		if (widget->platform)
+			soc_dsp_runtime_update(widget);
 	}
 
 	return 0;
