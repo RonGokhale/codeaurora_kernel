@@ -28,16 +28,38 @@ struct pm8xxx_charger_core_data {
  * @safety_time:	max charging time in minutes
  * @ttrkl_time:		max trckl charging time in minutes
  * @update_time:	how often the userland be updated of the charging
- * @max_voltage:	the max voltage the battery should be charged up to
- * @min_voltage:	the voltage where charging method switches from trickle
- *			to fast. This is also the minimum voltage the system
- *			operates at
- * @resume_voltage:	the voltage to wait for before resume charging after the
- *			battery has been fully charged
- * @term_current:	the charger current at which EOC happens
+ * @max_voltage:	the max voltage (mV) the battery should be charged up to
+ * @min_voltage:	the voltage (mV) where charging method switches from
+ *			trickle to fast. This is also the minimum voltage the
+ *			system operates at
+ * @resume_voltage:	the voltage (mV) to wait for before resume charging
+ *			after the battery has been fully charged
+ * @term_current:	the charger current (mA) at which EOC happens
+ * @cool_temp:		the temperature (degC) at which the battery is
+ *			considered cool charging current and voltage is reduced
+ * @warm_temp:		the temperature (degC) at which the battery is
+ *			considered warm charging current and voltage is reduced
+ * @temp_check_period:	The polling interval in seconds to check battery
+ *			temeperature if it has gone to cool or warm temperature
+ *			area
+ * @max_bat_chg_current:	Max charge current of the battery in mA
+ *				Usually 70% of full charge capacity
+ * @cool_bat_chg_current:	chg current (mA) when the battery is cool
+ * @warm_bat_chg_current:	chg current (mA)  when the battery is warm
+ * @cool_bat_voltage:		chg voltage (mV) when the battery is cool
+ * @warm_bat_voltage:		chg voltage (mV) when the battery is warm
  * @get_batt_capacity_percent:
  *			a board specific function to return battery
  *			capacity. If null - a default one will be used
+ * @trkl_voltage:	the trkl voltage in (mV) below which hw controlled
+ *			 trkl charging happens with linear charger
+ * @weak_voltage:	the weak voltage (mV) below which hw controlled
+ *			trkl charging happens with switching mode charger
+ * @trkl_current:	the trkl current in (mA) to use for trkl charging phase
+ * @weak_current:	the weak current in (mA) to use for weak charging phase
+ * @vin_min:		the input voltage regulation point (mV) - if the
+ *			voltage falls below this, the charger reduces charge
+ *			current or stop charging temporarily
  *
  */
 struct pm8921_charger_platform_data {
@@ -49,9 +71,22 @@ struct pm8921_charger_platform_data {
 	unsigned int			min_voltage;
 	unsigned int			resume_voltage;
 	unsigned int			term_current;
+	unsigned int			cool_temp;
+	unsigned int			warm_temp;
+	unsigned int			temp_check_period;
+	unsigned int			max_bat_chg_current;
+	unsigned int			cool_bat_chg_current;
+	unsigned int			warm_bat_chg_current;
+	unsigned int			cool_bat_voltage;
+	unsigned int			warm_bat_voltage;
 	unsigned int			(*get_batt_capacity_percent) (void);
 	int64_t				batt_id_min;
 	int64_t				batt_id_max;
+	int				trkl_voltage;
+	int				weak_voltage;
+	int				trkl_current;
+	int				weak_current;
+	int				vin_min;
 };
 
 enum pm8921_charger_source {
@@ -112,6 +147,12 @@ int pm8921_set_max_battery_charge_current(int ma);
 int pm8921_disable_source_current(bool disable);
 
 /**
+ * pm8921_regulate_input_voltage -
+ * @voltage: voltage in millivolts to regulate
+ *		allowable values are from 4300mV to 6500mV
+ */
+int pm8921_regulate_input_voltage(int voltage);
+/**
  * pm8921_is_battery_charging -
  * @source: when the battery is charging the source is updated to reflect which
  *		charger, usb or dc, is charging the battery.
@@ -157,6 +198,10 @@ static inline int pm8921_set_max_battery_charge_current(int ma)
 	return -ENXIO;
 }
 static inline int pm8921_disable_source_current(bool disable)
+{
+	return -ENXIO;
+}
+static inline int pm8921_regulate_input_voltage(int voltage)
 {
 	return -ENXIO;
 }
