@@ -79,6 +79,7 @@
 #include "timer.h"
 #include "gpiomux-8x60.h"
 #include "rpm_resources.h"
+#include "acpuclock.h"
 
 #define MSM_SHARED_RAM_PHYS 0x40000000
 
@@ -159,7 +160,8 @@ static struct msm_spm_platform_data msm_spm_data[] __initdata = {
 	},
 };
 
-static struct msm_acpu_clock_platform_data msm8x60_acpu_clock_data = {
+static struct acpuclk_platform_data msm8x60_acpuclk_data __initdata = {
+	.init = acpuclk_8x60_init,
 };
 
 /*
@@ -4429,7 +4431,7 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	 */
 	msm8x60_init_buses();
 	platform_add_devices(early_devices, ARRAY_SIZE(early_devices));
-	msm_acpu_clock_init(&msm8x60_acpu_clock_data);
+	acpuclk_init(&msm8x60_acpuclk_data);
 
 	msm8x60_init_ebi2();
 	msm8x60_init_tlmm();
