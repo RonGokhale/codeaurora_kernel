@@ -21,6 +21,7 @@
 #include <linux/mfd/pm8xxx/irq.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/sysdev.h>
 
 /* PMIC8xxx IRQ */
 
@@ -55,6 +56,7 @@ struct pm_irq_chip {
 	unsigned int		num_irqs;
 	unsigned int		num_blocks;
 	unsigned int		num_masters;
+	struct sys_device	sys_dev;
 	u8			config[0];
 };
 
@@ -305,6 +307,30 @@ static struct irq_chip pm8xxx_irq_chip = {
 	.flags		= IRQCHIP_MASK_ON_SUSPEND,
 };
 
+static int pm8xxx_show_resume_irq(struct sys_device *dev)
+{
+	u8	block, bits;
+	int i;
+	struct pm_irq_chip *chip = container_of(dev,
+					struct pm_irq_chip, sys_dev);
+
+	for (i = 0; i < chip->num_irqs; i++) {
+		block = i / 8;
+
+		if (!pm8xxx_read_block_irq(chip, block, &bits)) {
+			if (bits & (1 << (i & 0x7)))
+				pr_warning("%s:%d triggered\n",
+				__func__, i + chip->irq_base);
+		}
+	}
+	return 0;
+}
+
+static struct sysdev_class pm8xxx_irq_class = {
+	.name	= "pm8xxx_irq",
+	.resume	= pm8xxx_show_resume_irq,
+};
+
 /**
  * pm8xxx_get_irq_stat - get the status of the irq line
  * @chip: pointer to identify a pmic irq controller
@@ -399,7 +425,7 @@ struct pm_irq_chip *  __devinit pm8xxx_irq_init(struct device *dev,
 #ifdef CONFIG_ARM
 		set_irq_flags(chip->irq_base + pmirq, IRQF_VALID);
 #else
-		irq_set_noprobe(chip->irq_base + pmirq);
+		set_irq_noprobe(chip->irq_base + pmirq);
 #endif
 	}
 
@@ -407,11 +433,33 @@ struct pm_irq_chip *  __devinit pm8xxx_irq_init(struct device *dev,
 				"pm8xxx_usr_irq", chip);
 	if (rc) {
 		pr_err("failed to request_irq for %d rc=%d\n", devirq, rc);
-		return ERR_PTR(rc);
+		goto err;
 	}
 	set_irq_wake(devirq, 1);
 
+	chip->sys_dev.id = 0;
+	chip->sys_dev.cls = &pm8xxx_irq_class;
+	rc = sysdev_register(&chip->sys_dev);
+	if (rc) {
+		pr_err("failed to register sysdev rc=%d\n", rc);
+		goto err;
+	}
+
 	return chip;
+
+err:
+	for (pmirq = 0; pmirq < chip->num_irqs; pmirq++) {
+		set_irq_chip(chip->irq_base + pmirq, NULL);
+		set_irq_chip_data(chip->irq_base + pmirq, NULL);
+		set_irq_handler(chip->irq_base + pmirq, NULL);
+#ifdef CONFIG_ARM
+		set_irq_flags(chip->irq_base + pmirq, 0);
+#else
+		set_irq_probe(chip->irq_base + pmirq);
+#endif
+	}
+	kfree(chip);
+	return ERR_PTR(rc);
 }
 
 int __devexit pm8xxx_irq_exit(struct pm_irq_chip *chip)
@@ -420,3 +468,15 @@ int __devexit pm8xxx_irq_exit(struct pm_irq_chip *chip)
 	kfree(chip);
 	return 0;
 }
+
+static int __init pm8xxx_irq_init_sysdevclass(void)
+{
+	return sysdev_class_register(&pm8xxx_irq_class);
+}
+
+static void __exit pm8xxx_irq_exit_sysdevclass(void)
+{
+	sysdev_class_unregister(&pm8xxx_irq_class);
+}
+core_initcall(pm8xxx_irq_init_sysdevclass);
+module_exit(pm8xxx_irq_exit_sysdevclass);
