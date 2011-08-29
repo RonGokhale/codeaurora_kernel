@@ -3439,8 +3439,6 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 		.suspend_supported = 1,
 		.idle_enabled = 0,
 		.suspend_enabled = 0,
-		.latency = 4000,
-		.residency = 13000,
 	},
 
 	[MSM_PM_MODE(0, MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE)] = {
@@ -3448,8 +3446,6 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 		.suspend_supported = 1,
 		.idle_enabled = 0,
 		.suspend_enabled = 0,
-		.latency = 500,
-		.residency = 6000,
 	},
 
 	[MSM_PM_MODE(0, MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT)] = {
@@ -3457,8 +3453,6 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 		.suspend_supported = 1,
 		.idle_enabled = 1,
 		.suspend_enabled = 1,
-		.latency = 2,
-		.residency = 0,
 	},
 
 	[MSM_PM_MODE(1, MSM_PM_SLEEP_MODE_POWER_COLLAPSE)] = {
@@ -3466,8 +3460,6 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 		.suspend_supported = 1,
 		.idle_enabled = 0,
 		.suspend_enabled = 0,
-		.latency = 600,
-		.residency = 7200,
 	},
 
 	[MSM_PM_MODE(1, MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE)] = {
@@ -3475,8 +3467,6 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 		.suspend_supported = 1,
 		.idle_enabled = 0,
 		.suspend_enabled = 0,
-		.latency = 500,
-		.residency = 6000,
 	},
 
 	[MSM_PM_MODE(1, MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT)] = {
@@ -3484,8 +3474,6 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR * 2] = {
 		.suspend_supported = 0,
 		.idle_enabled = 1,
 		.suspend_enabled = 0,
-		.latency = 2,
-		.residency = 0,
 	},
 };
 
