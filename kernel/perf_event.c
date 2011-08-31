@@ -1605,7 +1605,7 @@ void __perf_event_task_sched_in(struct task_struct *task)
 
 	for_each_task_context_nr(ctxn) {
 		ctx = task->perf_event_ctxp[ctxn];
-		if (likely(!ctx))
+		if (likely(!ctx || !ctx->nr_events))
 			continue;
 
 		perf_event_context_sched_in(ctx);
