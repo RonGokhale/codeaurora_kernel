@@ -810,7 +810,11 @@ static void __init __seaboard_common_init(void)
 
 	/* Power up WLAN */
 	gpio_request(TEGRA_GPIO_PK6, "wlan_pwr_rst");
-	gpio_direction_output(TEGRA_GPIO_PK6, 1);
+
+	/* NB: needed by mwl8797 A0 silicon */
+	gpio_direction_output(TEGRA_GPIO_PK6, 0);
+	mdelay(10);
+	gpio_set_value(TEGRA_GPIO_PK6, 1);
 
 	tegra_sdhci_device1.dev.platform_data = &sdhci_pdata1;
 	tegra_sdhci_device3.dev.platform_data = &sdhci_pdata3;
