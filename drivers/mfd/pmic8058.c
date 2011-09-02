@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -25,6 +25,7 @@
 #include <linux/mfd/core.h>
 #include <linux/mfd/pmic8058.h>
 #include <linux/platform_device.h>
+#include <linux/sysdev.h>
 
 /* PMIC8058 Revision */
 #define SSBI_REG_REV			0x002  /* PMIC4 revision */
@@ -83,12 +84,13 @@ struct pm8058_chip {
 	int	pm_max_masters;
 
 	u8	config[MAX_PM_IRQ];
+	u8	bus_unlock_config[MAX_PM_IRQ];
 	u8	wake_enable[MAX_PM_IRQ];
 	u16	count_wakeable;
 
 	u8	revision;
 
-	spinlock_t	pm_lock;
+	struct mutex	pm_lock;
 };
 
 static struct pm8058_chip *pmic_chip;
@@ -145,7 +147,6 @@ int pm8058_irq_get_rt_status(struct pm8058_chip *chip, int irq)
 {
 	int     rc;
 	u8      block, bits, bit;
-	unsigned long   irqsave;
 
 	if (chip == NULL || irq < chip->pdata.irq_base ||
 			irq >= chip->pdata.irq_base + MAX_PM_IRQ)
@@ -156,7 +157,7 @@ int pm8058_irq_get_rt_status(struct pm8058_chip *chip, int irq)
 	block = irq / 8;
 	bit = irq % 8;
 
-	spin_lock_irqsave(&chip->pm_lock, irqsave);
+	mutex_lock(&chip->pm_lock);
 
 	rc = ssbi_write(chip->dev, SSBI_REG_ADDR_IRQ_BLK_SEL, &block, 1);
 	if (rc) {
@@ -175,7 +176,7 @@ int pm8058_irq_get_rt_status(struct pm8058_chip *chip, int irq)
 	rc = (bits & (1 << bit)) ? 1 : 0;
 
 bail_out:
-	spin_unlock_irqrestore(&chip->pm_lock, irqsave);
+	mutex_unlock(&chip->pm_lock);
 
 	return rc;
 }
@@ -205,14 +206,13 @@ int pm8058_misc_control(struct pm8058_chip *chip, int mask, int flag)
 {
 	int		rc;
 	u8		misc;
-	unsigned long	irqsave;
 
 	if (chip == NULL)
 		chip = pmic_chip;	/* for calls from non child */
 	if (chip == NULL)
 		return -ENODEV;
 
-	spin_lock_irqsave(&chip->pm_lock, irqsave);
+	mutex_lock(&chip->pm_lock);
 
 	rc = ssbi_read(chip->dev, SSBI_REG_ADDR_MISC, &misc, 1);
 	if (rc) {
@@ -232,7 +232,7 @@ int pm8058_misc_control(struct pm8058_chip *chip, int mask, int flag)
 	}
 
 get_out:
-	spin_unlock_irqrestore(&chip->pm_lock, irqsave);
+	mutex_unlock(&chip->pm_lock);
 
 	return rc;
 }
@@ -242,12 +242,11 @@ int pm8058_reset_pwr_off(int reset)
 {
 	int		rc;
 	u8		pon;
-	unsigned long	irqsave;
 
 	if (pmic_chip == NULL)
 		return -ENODEV;
 
-	spin_lock_irqsave(&pmic_chip->pm_lock, irqsave);
+	mutex_lock(&pmic_chip->pm_lock);
 
 	rc = ssbi_read(pmic_chip->dev, SSBI_REG_ADDR_PON_CNTL_1, &pon, 1);
 	if (rc) {
@@ -267,7 +266,7 @@ int pm8058_reset_pwr_off(int reset)
 	}
 
 get_out:
-	spin_unlock_irqrestore(&pmic_chip->pm_lock, irqsave);
+	mutex_lock(&pmic_chip->pm_lock);
 
 	return rc;
 }
@@ -316,7 +315,7 @@ static void pm8058_irq_mask(unsigned int irq)
 
 	config = PM8058_IRQF_WRITE | chip->config[irq] |
 		PM8058_IRQF_MASK_FE | PM8058_IRQF_MASK_RE;
-	pm8058_config_irq(chip, &block, &config);
+	chip->bus_unlock_config[irq] = config;
 }
 
 static void pm8058_irq_unmask(unsigned int irq)
@@ -343,7 +342,7 @@ static void pm8058_irq_unmask(unsigned int irq)
 	}
 
 	config = PM8058_IRQF_WRITE | chip->config[irq];
-	pm8058_config_irq(chip, &block, &config);
+	chip->bus_unlock_config[irq] = config;
 }
 
 static void pm8058_irq_ack(unsigned int irq)
@@ -358,7 +357,7 @@ static void pm8058_irq_ack(unsigned int irq)
 	/* Keep the mask */
 	if (!(chip->irqs_allowed[block] & (1 << (irq % 8))))
 		config |= PM8058_IRQF_MASK_FE | PM8058_IRQF_MASK_RE;
-	pm8058_config_irq(chip, &block, &config);
+	chip->bus_unlock_config[irq] = config;
 }
 
 static int pm8058_irq_set_type(unsigned int irq, unsigned int flow_type)
@@ -396,7 +395,8 @@ static int pm8058_irq_set_type(unsigned int irq, unsigned int flow_type)
 	}
 
 	config = PM8058_IRQF_WRITE | chip->config[irq] | PM8058_IRQF_CLR;
-	return pm8058_config_irq(chip, &block, &config);
+	chip->bus_unlock_config[irq] = config;
+	return 0;
 }
 
 static int pm8058_irq_set_wake(unsigned int irq, unsigned int on)
@@ -417,6 +417,32 @@ static int pm8058_irq_set_wake(unsigned int irq, unsigned int on)
 	}
 
 	return 0;
+}
+
+static void pm8058_irq_bus_lock(unsigned int irq)
+{
+	u8	block;
+	struct	pm8058_chip *chip = get_irq_data(irq);
+
+	irq -= chip->pdata.irq_base;
+	block = irq / 8;
+	chip->bus_unlock_config[irq] = 0;
+
+	mutex_lock(&chip->pm_lock);
+}
+
+static void pm8058_irq_bus_sync_unlock(unsigned int irq)
+{
+	u8	block, config;
+	struct	pm8058_chip *chip = get_irq_data(irq);
+
+	irq -= chip->pdata.irq_base;
+	block = irq / 8;
+	config = chip->bus_unlock_config[irq];
+	/* dont waste cpu cycles if we dont have data to write */
+	if (config)
+		pm8058_config_irq(chip, &block, &config);
+	mutex_unlock(&chip->pm_lock);
 }
 
 static inline int
@@ -479,9 +505,8 @@ static irqreturn_t pm8058_isr_thread(int irq_requested, void *data)
 	u8	blocks[MAX_PM_MASTERS];
 	int	masters = 0, irq, handled = 0, spurious = 0;
 	u16     irqs_to_handle[MAX_PM_IRQ];
-	unsigned long	irqsave;
 
-	spin_lock_irqsave(&chip->pm_lock, irqsave);
+	mutex_lock(&chip->pm_lock);
 
 	/* Read root for masters */
 	if (pm8058_read_root(chip, &root))
@@ -550,7 +575,7 @@ static irqreturn_t pm8058_isr_thread(int irq_requested, void *data)
 				} else {
 					/* Clear and mask wrong one */
 					config = PM8058_IRQF_W_C_M |
-						(k < PM8058_IRQF_BITS_SHIFT);
+						(k << PM8058_IRQF_BITS_SHIFT);
 
 					pm8058_config_irq(chip,
 							  &block, &config);
@@ -570,10 +595,18 @@ static irqreturn_t pm8058_isr_thread(int irq_requested, void *data)
 
 bail_out:
 
-	spin_unlock_irqrestore(&chip->pm_lock, irqsave);
+	mutex_unlock(&chip->pm_lock);
 
 	for (i = 0; i < handled; i++)
-		generic_handle_irq(irqs_to_handle[i]);
+		handle_nested_irq(irqs_to_handle[i]);
+
+	for (i = 0; i < handled; i++) {
+		irqs_to_handle[i] -= chip->pdata.irq_base;
+		block  = irqs_to_handle[i] / 8 ;
+		config = PM8058_IRQF_WRITE | chip->config[irqs_to_handle[i]]
+				| PM8058_IRQF_CLR;
+		pm8058_config_irq(chip, &block, &config);
+	}
 
 	if (spurious) {
 		if (!pm8058_can_print())
@@ -602,6 +635,8 @@ static struct irq_chip pm8058_irq_chip = {
 	.unmask    = pm8058_irq_unmask,
 	.set_type  = pm8058_irq_set_type,
 	.set_wake  = pm8058_irq_set_wake,
+	.bus_lock  = pm8058_irq_bus_lock,
+	.bus_sync_unlock  = pm8058_irq_bus_sync_unlock,
 };
 
 static int pm8058_probe(struct i2c_client *client,
@@ -644,6 +679,7 @@ static int pm8058_probe(struct i2c_client *client,
 	(void) memcpy((void *)&chip->pdata, (const void *)pdata,
 		      sizeof(chip->pdata));
 
+	mutex_init(&chip->pm_lock);
 	set_irq_data(chip->dev->irq, (void *)chip);
 	set_irq_wake(chip->dev->irq, 1);
 
@@ -654,14 +690,14 @@ static int pm8058_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, chip);
 
 	pmic_chip = chip;
-	spin_lock_init(&chip->pm_lock);
 
 	/* Register for all reserved IRQs */
 	for (i = pdata->irq_base; i < (pdata->irq_base + MAX_PM_IRQ); i++) {
 		set_irq_chip(i, &pm8058_irq_chip);
+		set_irq_data(i, (void *)chip);
 		set_irq_handler(i, handle_edge_irq);
 		set_irq_flags(i, IRQF_VALID);
-		set_irq_data(i, (void *)chip);
+		set_irq_nested_thread(i, 1);
 	}
 
 	/* Add sub devices with the chip parameter as driver data */
@@ -681,7 +717,7 @@ static int pm8058_probe(struct i2c_client *client,
 	}
 
 	rc = request_threaded_irq(chip->dev->irq, NULL, pm8058_isr_thread,
-			IRQF_ONESHOT | IRQF_DISABLED | IRQF_TRIGGER_LOW,
+			IRQF_ONESHOT | IRQF_DISABLED | pdata->irq_trigger_flags,
 			"pm8058-irq", chip);
 	if (rc < 0)
 		pr_err("%s: could not request irq %d: %d\n", __func__,
@@ -700,7 +736,7 @@ static int __devexit pm8058_remove(struct i2c_client *client)
 			set_irq_wake(chip->dev->irq, 0);
 			free_irq(chip->dev->irq, chip);
 		}
-
+		mutex_destroy(&chip->pm_lock);
 		chip->dev = NULL;
 
 		kfree(chip);
@@ -710,24 +746,23 @@ static int __devexit pm8058_remove(struct i2c_client *client)
 }
 
 #ifdef CONFIG_PM
-static int pm8058_suspend(struct device *dev)
-{
-	struct i2c_client *client;
-	struct	pm8058_chip *chip;
-	int	i;
-	unsigned long	irqsave;
+static int pm8058_suspend(struct sys_device *dev,
+					pm_message_t state)
 
-	client = to_i2c_client(dev);
-	chip = i2c_get_clientdata(client);
+{
+	struct pm8058_chip *chip = pmic_chip;
+	int	i, irq;
 
 	for (i = 0; i < MAX_PM_IRQ; i++) {
-		spin_lock_irqsave(&chip->pm_lock, irqsave);
 		if (chip->config[i] && !chip->wake_enable[i]) {
 			if (!((chip->config[i] & PM8058_IRQF_MASK_ALL)
-			      == PM8058_IRQF_MASK_ALL))
-				pm8058_irq_mask(i + chip->pdata.irq_base);
+			      == PM8058_IRQF_MASK_ALL)) {
+				irq = i + chip->pdata.irq_base;
+				pm8058_irq_bus_lock(irq);
+				pm8058_irq_mask(irq);
+				pm8058_irq_bus_sync_unlock(irq);
+			}
 		}
-		spin_unlock_irqrestore(&chip->pm_lock, irqsave);
 	}
 
 	if (!chip->count_wakeable)
@@ -736,24 +771,21 @@ static int pm8058_suspend(struct device *dev)
 	return 0;
 }
 
-static int pm8058_resume(struct device *dev)
+static int pm8058_resume(struct sys_device *dev)
 {
-	struct i2c_client *client;
-	struct	pm8058_chip *chip;
-	int	i;
-	unsigned long	irqsave;
-
-	client = to_i2c_client(dev);
-	chip = i2c_get_clientdata(client);
+	struct pm8058_chip *chip = pmic_chip;
+	int	i, irq;
 
 	for (i = 0; i < MAX_PM_IRQ; i++) {
-		spin_lock_irqsave(&chip->pm_lock, irqsave);
 		if (chip->config[i] && !chip->wake_enable[i]) {
 			if (!((chip->config[i] & PM8058_IRQF_MASK_ALL)
-			      == PM8058_IRQF_MASK_ALL))
-				pm8058_irq_unmask(i + chip->pdata.irq_base);
+				== PM8058_IRQF_MASK_ALL)) {
+				irq = i + chip->pdata.irq_base;
+				pm8058_irq_bus_lock(irq);
+				pm8058_irq_unmask(irq);
+				pm8058_irq_bus_sync_unlock(irq);
+			}
 		}
-		spin_unlock_irqrestore(&chip->pm_lock, irqsave);
 	}
 
 	if (!chip->count_wakeable)
@@ -772,14 +804,8 @@ static const struct i2c_device_id pm8058_ids[] = {
 };
 MODULE_DEVICE_TABLE(i2c, pm8058_ids);
 
-static struct dev_pm_ops pm8058_pm = {
-	.suspend = pm8058_suspend,
-	.resume = pm8058_resume,
-};
-
 static struct i2c_driver pm8058_driver = {
 	.driver.name	= "pm8058-core",
-	.driver.pm      = &pm8058_pm,
 	.id_table	= pm8058_ids,
 	.probe		= pm8058_probe,
 	.remove		= __devexit_p(pm8058_remove),
@@ -793,12 +819,36 @@ static int __init pm8058_init(void)
 	return rc;
 }
 
+static struct sysdev_class pm8058_sysdev_class = {
+	.name		= "pm8058",
+	.suspend	= pm8058_suspend,
+	.resume		= pm8058_resume,
+};
+
+static struct sys_device pm8058_sys_device = {
+	.id	= 0,
+	.cls	= &pm8058_sysdev_class,
+};
+
+static int __init pm8058_late_init(void)
+{
+	int rc;
+
+	rc = sysdev_class_register(&pm8058_sysdev_class);
+	rc |= sysdev_register(&pm8058_sys_device);
+	if (rc)
+		pr_err("%s: could not set up sysdev: %d\n", __func__, rc);
+
+	return rc;
+}
+
 static void __exit pm8058_exit(void)
 {
 	i2c_del_driver(&pm8058_driver);
 }
 
 arch_initcall(pm8058_init);
+late_initcall(pm8058_late_init);
 module_exit(pm8058_exit);
 
 MODULE_LICENSE("GPL v2");
