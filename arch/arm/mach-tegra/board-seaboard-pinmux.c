@@ -203,6 +203,7 @@ static struct tegra_gpio_table common_gpio_table[] = {
 	{ .gpio = TEGRA_GPIO_MXT_RST,		.enable = true },
 	{ .gpio = TEGRA_GPIO_MXT_IRQ,		.enable = true },
 	{ .gpio = TEGRA_GPIO_MPU3050_IRQ,	.enable = true },
+	{ .gpio = TEGRA_GPIO_DISABLE_CHARGER,	.enable = true },
 };
 
 static void __init update_pinmux(struct tegra_pingroup_config *newtbl, int size)
