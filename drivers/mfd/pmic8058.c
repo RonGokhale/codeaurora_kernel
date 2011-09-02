@@ -792,6 +792,12 @@ static void pm8058_irq_unmask(unsigned int irq)
 	irq_bit = irq % 8;
 
 	old_irqs_allowed = chip->irqs_allowed[block];
+	if (old_irqs_allowed & (1 << irq_bit)) {
+		pr_debug("%s: no need to enable an already enabled irq=%d\n",
+					__func__, irq + chip->pdata.irq_base);
+		return;
+	}
+
 	chip->irqs_allowed[block] |= 1 << irq_bit;
 	if (!old_irqs_allowed) {
 		master = block / 8;
@@ -1059,10 +1065,8 @@ bail_out:
 
 	mutex_unlock(&chip->pm_lock);
 
-	for (i = 0; i < handled; i++)
-		handle_nested_irq(irqs_to_handle[i]);
-
 	for (i = 0; i < handled; i++) {
+		handle_nested_irq(irqs_to_handle[i]);
 		irqs_to_handle[i] -= chip->pdata.irq_base;
 		block  = irqs_to_handle[i] / 8 ;
 		config = PM8058_IRQF_WRITE | chip->config[irqs_to_handle[i]]
