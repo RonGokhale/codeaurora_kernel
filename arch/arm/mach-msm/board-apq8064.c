@@ -167,8 +167,6 @@ static struct platform_device android_usb_device = {
 static struct platform_device *common_devices[] __initdata = {
 	&apq8064_device_qup_i2c_gsbi4,
 	&apq8064_device_qup_spi_gsbi5,
-	&apq8064_device_ssbi_pmic1,
-	&apq8064_device_ssbi_pmic2,
 	&apq8064_device_otg,
 	&apq8064_device_gadget_peripheral,
 	&android_usb_device,
@@ -178,6 +176,8 @@ static struct platform_device *common_devices[] __initdata = {
 static struct platform_device *sim_devices[] __initdata = {
 	&apq8064_device_dmov,
 	&apq8064_device_uart_gsbi3,
+	&apq8064_device_ssbi_pmic1,
+	&apq8064_device_ssbi_pmic2,
 };
 
 static struct platform_device *rumi3_devices[] __initdata = {
