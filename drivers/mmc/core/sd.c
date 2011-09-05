@@ -458,9 +458,10 @@ static int sd_select_driver_type(struct mmc_card *card, u8 *status)
 	return 0;
 }
 
-static unsigned int sd_get_bus_speed_mode(struct mmc_card *card)
+static int sd_set_bus_speed_mode(struct mmc_card *card, u8 *status)
 {
-	unsigned int bus_speed = 0;
+	unsigned int bus_speed = 0, timing = 0;
+	int err;
 
 	/*
 	 * If the host doesn't support any of the UHS-I modes, fallback on
@@ -473,50 +474,30 @@ static unsigned int sd_get_bus_speed_mode(struct mmc_card *card)
 	if ((card->host->caps & MMC_CAP_UHS_SDR104) &&
 	    (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_SDR104)) {
 			bus_speed = UHS_SDR104_BUS_SPEED;
+			timing = MMC_TIMING_UHS_SDR104;
+			card->sw_caps.uhs_max_dtr = UHS_SDR104_MAX_DTR;
 	} else if ((card->host->caps & MMC_CAP_UHS_DDR50) &&
 		   (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_DDR50)) {
 			bus_speed = UHS_DDR50_BUS_SPEED;
+			timing = MMC_TIMING_UHS_DDR50;
+			card->sw_caps.uhs_max_dtr = UHS_DDR50_MAX_DTR;
 	} else if ((card->host->caps & (MMC_CAP_UHS_SDR104 |
 		    MMC_CAP_UHS_SDR50)) && (card->sw_caps.sd3_bus_mode &
 		    SD_MODE_UHS_SDR50)) {
 			bus_speed = UHS_SDR50_BUS_SPEED;
+			timing = MMC_TIMING_UHS_SDR50;
+			card->sw_caps.uhs_max_dtr = UHS_SDR50_MAX_DTR;
 	} else if ((card->host->caps & (MMC_CAP_UHS_SDR104 |
 		    MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR25)) &&
 		   (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_SDR25)) {
 			bus_speed = UHS_SDR25_BUS_SPEED;
+			timing = MMC_TIMING_UHS_SDR25;
+			card->sw_caps.uhs_max_dtr = UHS_SDR25_MAX_DTR;
 	} else if ((card->host->caps & (MMC_CAP_UHS_SDR104 |
 		    MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR25 |
 		    MMC_CAP_UHS_SDR12)) && (card->sw_caps.sd3_bus_mode &
 		    SD_MODE_UHS_SDR12)) {
 			bus_speed = UHS_SDR12_BUS_SPEED;
-	}
-
-	return bus_speed;
-}
-
-static int sd_set_bus_speed_mode(struct mmc_card *card, u8 *status)
-{
-	unsigned int bus_speed = 0, timing = 0;
-	int err;
-
-	bus_speed = sd_get_bus_speed_mode(card);
-
-	if (!bus_speed)
-		return 0;
-
-	if (bus_speed == UHS_SDR104_BUS_SPEED) {
-			timing = MMC_TIMING_UHS_SDR104;
-			card->sw_caps.uhs_max_dtr = UHS_SDR104_MAX_DTR;
-	} else if (bus_speed == UHS_DDR50_BUS_SPEED) {
-			timing = MMC_TIMING_UHS_DDR50;
-			card->sw_caps.uhs_max_dtr = UHS_DDR50_MAX_DTR;
-	} else if (bus_speed == UHS_SDR50_BUS_SPEED) {
-			timing = MMC_TIMING_UHS_SDR50;
-			card->sw_caps.uhs_max_dtr = UHS_SDR50_MAX_DTR;
-	} else if (bus_speed == UHS_SDR25_BUS_SPEED) {
-			timing = MMC_TIMING_UHS_SDR25;
-			card->sw_caps.uhs_max_dtr = UHS_SDR25_MAX_DTR;
-	} else if (bus_speed == UHS_SDR12_BUS_SPEED) {
 			timing = MMC_TIMING_UHS_SDR12;
 			card->sw_caps.uhs_max_dtr = UHS_SDR12_MAX_DTR;
 	}
@@ -540,7 +521,6 @@ static int sd_set_bus_speed_mode(struct mmc_card *card, u8 *status)
 static int sd_set_current_limit(struct mmc_card *card, u8 *status)
 {
 	int current_limit = 0;
-	unsigned int bus_speed = sd_get_bus_speed_mode(card);
 	int err;
 
 	/*
@@ -548,9 +528,9 @@ static int sd_set_current_limit(struct mmc_card *card, u8 *status)
 	 * bus speed modes. For other bus speed modes, we set the default
 	 * current limit of 200mA.
 	 */
-	if ((bus_speed == UHS_SDR50_BUS_SPEED) ||
-	    (bus_speed == UHS_SDR104_BUS_SPEED) ||
-	    (bus_speed == UHS_DDR50_BUS_SPEED)) {
+	if ((card->sd_bus_speed == UHS_SDR50_BUS_SPEED) ||
+	    (card->sd_bus_speed == UHS_SDR104_BUS_SPEED) ||
+	    (card->sd_bus_speed == UHS_DDR50_BUS_SPEED)) {
 		if (card->host->caps & MMC_CAP_MAX_CURRENT_800) {
 			if (card->sw_caps.sd3_curr_limit & SD_MAX_CURRENT_800)
 				current_limit = SD_SET_CURRENT_LIMIT_800;
