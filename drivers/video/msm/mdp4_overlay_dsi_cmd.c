@@ -160,16 +160,7 @@ void mdp4_overlay_update_dsi_cmd(struct msm_fb_data_type *mfd)
 
 		dsi_pipe = pipe; /* keep it */
 
-		/*
-		 * configure dsi stream id
-		 * dma_p = 0, dma_s = 1
-		 */
-		MDP_OUTP(MDP_BASE + 0x000a0, 0x10);
-		/* enable dsi trigger on dma_p */
-		MDP_OUTP(MDP_BASE + 0x000a4, 0x01);
-
 		writeback_offset = mdp4_writeback_offset();
-
 		if (writeback_offset > 0) {
 			pipe->blt_base = (ulong)fbi->fix.smem_start;
 			pipe->blt_base += writeback_offset;
@@ -179,6 +170,13 @@ void mdp4_overlay_update_dsi_cmd(struct msm_fb_data_type *mfd)
 	} else {
 		pipe = dsi_pipe;
 	}
+	/*
+	 * configure dsi stream id
+	 * dma_p = 0, dma_s = 1
+	 */
+	MDP_OUTP(MDP_BASE + 0x000a0, 0x10);
+	/* disable dsi trigger */
+	MDP_OUTP(MDP_BASE + 0x000a4, 0x00);
 
 	/* whole screen for base layer */
 	src = (uint8 *) iBuf->buf;
@@ -471,7 +469,7 @@ void mdp4_dma_p_done_dsi(struct mdp_dma_data *dma)
 	outpdw(MDP_BASE + 0x000c, 0x0);
 	wmb();
 	/* trigger dsi cmd engine */
-	mipi_dsi_cmd_mdp_sw_trigger();
+	mipi_dsi_cmd_mdp_start();
 
 	mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_OFF, TRUE);
 }
@@ -533,7 +531,7 @@ void mdp4_overlay0_done_dsi_cmd(struct mdp_dma_data *dma)
 	outpdw(MDP_BASE + 0x000c, 0x0);
 	wmb();
 	/* trigger dsi cmd engine */
-	mipi_dsi_cmd_mdp_sw_trigger();
+	mipi_dsi_cmd_mdp_start();
 	mdp_disable_irq_nosync(MDP_OVERLAY0_TERM);
 }
 
@@ -648,6 +646,11 @@ void mdp4_dsi_cmd_overlay_kickoff(struct msm_fb_data_type *mfd,
 	/* change mdp clk */
 	mdp4_set_perf_level();
 
+	mipi_dsi_mdp_busy_wait(mfd);
+
+	if (dsi_pipe->blt_addr == 0)
+		mipi_dsi_cmd_mdp_start();
+
 	mdp4_overlay_dsi_state_set(ST_DSI_PLAYING);
 
 	spin_lock_irqsave(&mdp_spin_lock, flag);
@@ -660,12 +663,6 @@ void mdp4_dsi_cmd_overlay_kickoff(struct msm_fb_data_type *mfd,
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
 	/* start OVERLAY pipe */
 	mdp_pipe_kickoff(MDP_OVERLAY0_TERM, mfd);
-	wmb();
-
-	if (dsi_pipe->blt_addr == 0) {
-		/* trigger dsi cmd engine */
-		mipi_dsi_cmd_mdp_sw_trigger();
-	}
 }
 
 void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
