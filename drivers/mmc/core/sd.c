@@ -458,9 +458,9 @@ static int sd_select_driver_type(struct mmc_card *card, u8 *status)
 	return 0;
 }
 
-static int sd_get_bus_speed_mode(struct mmc_card *card)
+static unsigned int sd_get_bus_speed_mode(struct mmc_card *card)
 {
-	int bus_speed = 0;
+	unsigned int bus_speed = 0;
 
 	/*
 	 * If the host doesn't support any of the UHS-I modes, fallback on
@@ -468,7 +468,7 @@ static int sd_get_bus_speed_mode(struct mmc_card *card)
 	 */
 	if (!(card->host->caps & (MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 |
 	    MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR104 | MMC_CAP_UHS_DDR50)))
-		return -EINVAL;
+		return 0;
 
 	if ((card->host->caps & MMC_CAP_UHS_SDR104) &&
 	    (card->sw_caps.sd3_bus_mode & SD_MODE_UHS_SDR104)) {
@@ -496,10 +496,13 @@ static int sd_get_bus_speed_mode(struct mmc_card *card)
 
 static int sd_set_bus_speed_mode(struct mmc_card *card, u8 *status)
 {
-	int err, bus_speed;
-	unsigned int timing = 0;
+	unsigned int bus_speed = 0, timing = 0;
+	int err;
 
 	bus_speed = sd_get_bus_speed_mode(card);
+
+	if (!bus_speed)
+		return 0;
 
 	if (bus_speed == UHS_SDR104_BUS_SPEED) {
 			timing = MMC_TIMING_UHS_SDR104;
@@ -516,8 +519,6 @@ static int sd_set_bus_speed_mode(struct mmc_card *card, u8 *status)
 	} else if (bus_speed == UHS_SDR12_BUS_SPEED) {
 			timing = MMC_TIMING_UHS_SDR12;
 			card->sw_caps.uhs_max_dtr = UHS_SDR12_MAX_DTR;
-	} else {
-		return -EINVAL;
 	}
 
 	card->sd_bus_speed = bus_speed;
