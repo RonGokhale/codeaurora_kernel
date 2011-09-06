@@ -114,6 +114,24 @@ struct irq_data {
 #endif
 };
 
+/*
+ * irq_chip specific flags
+ *
+ * IRQCHIP_SET_TYPE_MASKED:	Mask before calling chip.irq_set_type()
+ * IRQCHIP_EOI_IF_HANDLED:	Only issue irq_eoi() when irq was handled
+ * IRQCHIP_MASK_ON_SUSPEND:	Mask non wake irqs in the suspend path,
+ *				mark wakeup level interrupts pending
+ *				if suspended and triggered
+ * IRQCHIP_ONOFFLINE_ENABLED:	Only call irq_on/off_line callbacks
+ *				when irq enabled
+ */
+enum {
+	IRQCHIP_SET_TYPE_MASKED		= (1 <<  0),
+	IRQCHIP_EOI_IF_HANDLED		= (1 <<  1),
+	IRQCHIP_MASK_ON_SUSPEND		= (1 <<  2),
+	IRQCHIP_ONOFFLINE_ENABLED	= (1 <<  3),
+};
+
 /**
  * struct irq_chip - hardware interrupt chip descriptor
  *
@@ -197,6 +215,8 @@ struct irq_chip {
 
 	void		(*irq_bus_lock)(struct irq_data *data);
 	void		(*irq_bus_sync_unlock)(struct irq_data *data);
+
+	unsigned long	flags;
 
 	/* Currently used only by UML, might disappear one day.*/
 #ifdef CONFIG_IRQ_RELEASE_METHOD

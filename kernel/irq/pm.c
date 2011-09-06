@@ -71,13 +71,28 @@ int check_wakeup_irqs(void)
 	struct irq_desc *desc;
 	int irq;
 
-	for_each_irq_desc(irq, desc)
-		if ((desc->status & IRQ_WAKEUP) &&
-		    (desc->status & IRQ_PENDING)) {
-			pr_info("Wakeup IRQ %d %s pending, suspend aborted\n",
-				irq, desc->name ? desc->name : "");
-			return -EBUSY;
+	for_each_irq_desc(irq, desc) {
+		if ((desc->status & IRQ_WAKEUP)) {
+			if (desc->status & IRQ_PENDING) {
+				pr_info("Wakeup IRQ %d %s pending,"
+					" suspend aborted\n",
+					irq, desc->name ? desc->name : "");
+				return -EBUSY;
+			    }
+			continue;
 		}
+		/*
+		 * Check the non wakeup interrupts whether they need
+		 * to be masked before finally going into suspend
+		 * state. That's for hardware which has no wakeup
+		 * source configuration facility. The chip
+		 * implementation indicates that with
+		 * IRQCHIP_MASK_ON_SUSPEND.
+		 */
+		if ((desc->status & IRQ_SUSPENDED) &&
+			desc->irq_data.chip->flags & IRQCHIP_MASK_ON_SUSPEND)
+			mask_irq(desc);
+	}
 
 	return 0;
 }
