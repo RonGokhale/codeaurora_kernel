@@ -16,6 +16,8 @@
 #define TABLA_MAX_REGISTER (TABLA_NUM_REGISTERS-1)
 #define TABLA_CACHE_SIZE TABLA_NUM_REGISTERS
 
+#define TABLA_REG_VAL(reg, val)		{reg, 0, val}
+
 extern const u8 tabla_reg_readable[TABLA_CACHE_SIZE];
 extern const u8 tabla_reg_defaults[TABLA_CACHE_SIZE];
 
@@ -44,6 +46,12 @@ struct tabla_mbhc_calibration {
 	int shutdown_plug_removal;
 };
 
+struct tabla_reg_mask_val {
+	u16	reg;
+	u8	mask;
+	u8	val;
+};
+
 extern int tabla_hs_detect(struct snd_soc_codec *codec,
 	struct snd_soc_jack *headset_jack, struct snd_soc_jack *button_jack,
 	struct tabla_mbhc_calibration *calibration);
@@ -52,3 +60,5 @@ struct anc_header {
 	u32 reserved[3];
 	u32 num_anc_slots;
 };
+
+extern int tabla_mclk_enable(struct snd_soc_codec *codec, int mclk_enable);
