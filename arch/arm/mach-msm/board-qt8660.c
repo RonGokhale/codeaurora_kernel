@@ -3870,6 +3870,9 @@ static void __init msm8x60_map_io(void)
 	msm_shared_ram_phys = MSM_SHARED_RAM_PHYS;
 	msm_map_msm8x60_io();
 	msm8x60_allocate_memory_regions();
+	if (socinfo_init() < 0)
+		printk(KERN_ERR "%s: socinfo_init() failed!\n",
+		       __func__);
 }
 
 static void __init msm8x60_init_tlmm(void)
@@ -5481,9 +5484,6 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	if (msm_xo_init())
 		pr_err("Failed to initialize XO votes\n");
 
-	if (socinfo_init() < 0)
-		printk(KERN_ERR "%s: socinfo_init() failed!\n",
-		       __func__);
 	msm8x60_check_2d_hardware();
 
 	/* Change SPM handling of core 1 if PMM 8160 is present. */
