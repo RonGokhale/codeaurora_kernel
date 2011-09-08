@@ -777,7 +777,12 @@ static phys_addr_t lowmem_limit __initdata = 0;
 static void __init sanity_check_meminfo(void)
 {
 	int i, j, highmem = 0;
+#if (defined CONFIG_HIGHMEM) && (defined CONFIG_FIX_MOVABLE_ZONE)
+	void *v_movable_start = __va(movable_reserved_start);
 
+	if (vmalloc_min > v_movable_start)
+		vmalloc_min = v_movable_start - SECTION_SIZE;
+#endif
 	lowmem_limit = __pa(vmalloc_min - 1) + 1;
 	memblock_set_current_limit(lowmem_limit);
 
