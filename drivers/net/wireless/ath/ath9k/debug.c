@@ -446,6 +446,110 @@ static const struct file_operations fops_interrupt = {
 	.llseek = default_llseek,
 };
 
+static const char *channel_type_str(enum nl80211_channel_type t)
+{
+	switch (t) {
+	case NL80211_CHAN_NO_HT:
+		return "no ht";
+	case NL80211_CHAN_HT20:
+		return "ht20";
+	case NL80211_CHAN_HT40MINUS:
+		return "ht40-";
+	case NL80211_CHAN_HT40PLUS:
+		return "ht40+";
+	default:
+		return "???";
+	}
+}
+
+static ssize_t read_file_wiphy(struct file *file, char __user *user_buf,
+			       size_t count, loff_t *ppos)
+{
+	struct ath_softc *sc = file->private_data;
+	struct ieee80211_channel *chan = sc->hw->conf.channel;
+	struct ieee80211_conf *conf = &(sc->hw->conf);
+	char buf[512];
+	unsigned int len = 0;
+	u8 addr[ETH_ALEN];
+	u32 tmp;
+
+	len += snprintf(buf + len, sizeof(buf) - len,
+			"%s (chan=%d  center-freq: %d MHz  channel-type: %d (%s))\n",
+			wiphy_name(sc->hw->wiphy),
+			ieee80211_frequency_to_channel(chan->center_freq),
+			chan->center_freq,
+			conf->channel_type,
+			channel_type_str(conf->channel_type));
+
+	ath9k_ps_wakeup(sc);
+	put_unaligned_le32(REG_READ_D(sc->sc_ah, AR_STA_ID0), addr);
+	put_unaligned_le16(REG_READ_D(sc->sc_ah, AR_STA_ID1) & 0xffff, addr + 4);
+	len += snprintf(buf + len, sizeof(buf) - len,
+			"addr: %pM\n", addr);
+	put_unaligned_le32(REG_READ_D(sc->sc_ah, AR_BSSMSKL), addr);
+	put_unaligned_le16(REG_READ_D(sc->sc_ah, AR_BSSMSKU) & 0xffff, addr + 4);
+	len += snprintf(buf + len, sizeof(buf) - len,
+			"addrmask: %pM\n", addr);
+	ath9k_ps_wakeup(sc);
+	tmp = ath9k_hw_getrxfilter(sc->sc_ah);
+	ath9k_ps_restore(sc);
+	len += snprintf(buf + len, sizeof(buf) - len,
+			"rfilt: 0x%x", tmp);
+	if (tmp & ATH9K_RX_FILTER_UCAST)
+		len += snprintf(buf + len, sizeof(buf) - len, " UCAST");
+	if (tmp & ATH9K_RX_FILTER_MCAST)
+		len += snprintf(buf + len, sizeof(buf) - len, " MCAST");
+	if (tmp & ATH9K_RX_FILTER_BCAST)
+		len += snprintf(buf + len, sizeof(buf) - len, " BCAST");
+	if (tmp & ATH9K_RX_FILTER_CONTROL)
+		len += snprintf(buf + len, sizeof(buf) - len, " CONTROL");
+	if (tmp & ATH9K_RX_FILTER_BEACON)
+		len += snprintf(buf + len, sizeof(buf) - len, " BEACON");
+	if (tmp & ATH9K_RX_FILTER_PROM)
+		len += snprintf(buf + len, sizeof(buf) - len, " PROM");
+	if (tmp & ATH9K_RX_FILTER_PROBEREQ)
+		len += snprintf(buf + len, sizeof(buf) - len, " PROBEREQ");
+	if (tmp & ATH9K_RX_FILTER_PHYERR)
+		len += snprintf(buf + len, sizeof(buf) - len, " PHYERR");
+	if (tmp & ATH9K_RX_FILTER_MYBEACON)
+		len += snprintf(buf + len, sizeof(buf) - len, " MYBEACON");
+	if (tmp & ATH9K_RX_FILTER_COMP_BAR)
+		len += snprintf(buf + len, sizeof(buf) - len, " COMP_BAR");
+	if (tmp & ATH9K_RX_FILTER_PSPOLL)
+		len += snprintf(buf + len, sizeof(buf) - len, " PSPOLL");
+	if (tmp & ATH9K_RX_FILTER_PHYRADAR)
+		len += snprintf(buf + len, sizeof(buf) - len, " PHYRADAR");
+	if (tmp & ATH9K_RX_FILTER_MCAST_BCAST_ALL)
+		len += snprintf(buf + len, sizeof(buf) - len, " MCAST_BCAST_ALL");
+
+	len += snprintf(buf + len, sizeof(buf) - len,
+		       "\n\nReset causes:\n"
+		       "  baseband hang: %d\n"
+		       "  baseband watchdog: %d\n"
+		       "  fatal hardware error interrupt: %d\n"
+		       "  tx hardware error: %d\n"
+		       "  tx path hang: %d\n"
+		       "  pll rx hang: %d\n",
+		       sc->debug.stats.reset[RESET_TYPE_BB_HANG],
+		       sc->debug.stats.reset[RESET_TYPE_BB_WATCHDOG],
+		       sc->debug.stats.reset[RESET_TYPE_FATAL_INT],
+		       sc->debug.stats.reset[RESET_TYPE_TX_ERROR],
+		       sc->debug.stats.reset[RESET_TYPE_TX_HANG],
+		       sc->debug.stats.reset[RESET_TYPE_PLL_HANG]);
+
+	if (len > sizeof(buf))
+		len = sizeof(buf);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations fops_wiphy = {
+	.read = read_file_wiphy,
+	.open = ath9k_debugfs_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 #define PR_QNUM(_n) sc->tx.txq_map[_n]->axq_qnum
 #define PR(str, elem)							\
 	do {								\
@@ -889,6 +993,7 @@ static ssize_t read_file_recv(struct file *file, char __user *user_buf,
 	if (buf == NULL)
 		return -ENOMEM;
 
+	ath9k_ps_wakeup(sc);
 	len += snprintf(buf + len, size - len,
 			"%22s : %10u\n", "CRC ERR",
 			sc->debug.stats.rxstats.crc_err);
