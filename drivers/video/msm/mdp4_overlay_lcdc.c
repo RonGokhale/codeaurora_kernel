@@ -258,6 +258,11 @@ int mdp_lcdc_on(struct platform_device *pdev)
 int mdp_lcdc_off(struct platform_device *pdev)
 {
 	int ret = 0;
+	struct msm_fb_data_type *mfd;
+
+	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
+
+	mutex_lock(&mfd->dma->ov_mutex);
 
 	/* MDP cmd block enable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
@@ -268,6 +273,8 @@ int mdp_lcdc_off(struct platform_device *pdev)
 
 	mdp_histogram_ctrl(FALSE);
 	ret = panel_next_off(pdev);
+
+	mutex_unlock(&mfd->dma->ov_mutex);
 
 	/* delay to make sure the last frame finishes */
 	msleep(16);
@@ -343,6 +350,12 @@ static void mdp4_overlay_lcdc_wait4event(struct msm_fb_data_type *mfd,
 					int intr_done)
 {
 	unsigned long flag;
+	unsigned int data;
+
+	data = inpdw(MDP_BASE + LCDC_BASE);
+	data &= 0x01;
+	if (data == 0)	/* timing generator disabled */
+		return;
 
 	spin_lock_irqsave(&mdp_spin_lock, flag);
 	INIT_COMPLETION(lcdc_comp);
