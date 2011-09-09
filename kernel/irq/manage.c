@@ -956,6 +956,11 @@ static struct irqaction *__free_irq(unsigned int irq, void *dev_id)
 			desc->irq_data.chip->irq_shutdown(&desc->irq_data);
 		else
 			desc->irq_data.chip->irq_disable(&desc->irq_data);
+		/* Explicitly mask the interrupt */
+		if (desc->irq_data.chip->irq_mask)
+			desc->irq_data.chip->irq_mask(&desc->irq_data);
+		else if (desc->irq_data.chip->irq_mask_ack)
+			desc->irq_data.chip->irq_mask_ack(&desc->irq_data);
 	}
 
 #ifdef CONFIG_SMP
