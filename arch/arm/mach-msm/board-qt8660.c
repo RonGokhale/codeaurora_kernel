@@ -1552,22 +1552,40 @@ static struct msm_i2c_ssbi_platform_data msm_ssbi3_pdata = {
 #endif
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
-/* prim = 1376 x 768 x 4(bpp) x 3(pages) */
-#define MSM_FB_PRIM_BUF_SIZE 0xC18000
+#define MSM_FB_PRIM_BUF_SIZE (1376 * 768 * 4 * 3) /* 4 bpp x 3 pages */
 #else
-/* prim = 1376 x 768 x 4(bpp) x 2(pages) */
-#define MSM_FB_PRIM_BUF_SIZE 0x810000
+#define MSM_FB_PRIM_BUF_SIZE (1376 * 768 * 4 * 2) /* 4 bpp x 2 pages */
 #endif
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
-/* prim = 1376 x 768 x 4(bpp) x 2(pages)
- * hdmi = 1920 x 1080 x 2(bpp) x 1(page)
- * Note: must be multiple of 4096 */
-#define MSM_FB_SIZE \
-	roundup(MSM_FB_PRIM_BUF_SIZE + 0x3F4800 + MSM_FB_DSUB_PMEM_ADDER, 4096)
-#else /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
-#define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE + MSM_FB_DSUB_PMEM_ADDER, 4096)
-#endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
+#define MSM_FB_EXT_BUF_SIZE  (1920 * 1080 * 2 * 1) /* 2 bpp x 1 page */
+#elif defined(CONFIG_FB_MSM_TVOUT)
+#define MSM_FB_EXT_BUF_SIZE  (720 * 576 * 2 * 2) /* 2 bpp x 2 pages */
+#else
+#define MSM_FB_EXT_BUFT_SIZE	0
+#endif
+
+#ifdef CONFIG_FB_MSM_OVERLAY_WRITEBACK
+/* width x height x 3 bpp x 2 frame buffer */
+#define MSM_FB_WRITEBACK_SIZE (1376 * 768 * 3 * 2)
+#define MSM_FB_WRITEBACK_OFFSET  \
+		(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE)
+#else
+#define MSM_FB_WRITEBACK_SIZE   0
+#define MSM_FB_WRITEBACK_OFFSET	0
+#endif
+
+
+/* Note: must be multiple of 4096 */
+#define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE + \
+				MSM_FB_WRITEBACK_SIZE + \
+				MSM_FB_DSUB_PMEM_ADDER, 4096)
+
+static int writeback_offset(void)
+{
+	return MSM_FB_WRITEBACK_OFFSET;
+}
+
 #define MSM_PMEM_SF_SIZE 0x4000000 /* 64 Mbytes */
 
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x600000
@@ -5198,6 +5216,7 @@ static struct msm_panel_common_pdata mdp_pdata = {
 	.mdp_bus_scale_table = &mdp_bus_scale_pdata,
 #endif
 	.mdp_rev = MDP_REV_41,
+	.writeback_offset = writeback_offset,
 };
 
 static void __init msm_fb_add_devices(void)
