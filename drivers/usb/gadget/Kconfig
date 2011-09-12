@@ -988,6 +988,12 @@ config USB_CSW_HACK
 	 This csw hack feature is for increasing the performance of the mass
 	 storage
 
+config USB_MSC_PROFILING
+	bool "USB MSC performance profiling"
+	depends on USB_ANDROID_MASS_STORAGE
+	help
+	  If you say Y here, support will be added for collecting
+	  performance numbers at the Mass storage level.
 
 config USB_ANDROID_MTP
 	boolean "Android MTP function"
