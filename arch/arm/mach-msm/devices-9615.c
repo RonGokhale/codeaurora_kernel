@@ -20,7 +20,60 @@
 #include <mach/msm_iomap.h>
 #include <mach/irqs.h>
 #include <mach/socinfo.h>
+#include <asm/hardware/cache-l2x0.h>
 #include "devices.h"
+
+#define MSM_GSBI4_PHYS		0x16300000
+#define MSM_UART4DM_PHYS	(MSM_GSBI4_PHYS + 0x40000)
+
+static struct resource resources_uart_gsbi4[] = {
+	{
+		.start	= GSBI4_UARTDM_IRQ,
+		.end	= GSBI4_UARTDM_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.start	= MSM_UART4DM_PHYS,
+		.end	= MSM_UART4DM_PHYS + PAGE_SIZE - 1,
+		.name	= "uartdm_resource",
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= MSM_GSBI4_PHYS,
+		.end	= MSM_GSBI4_PHYS + PAGE_SIZE - 1,
+		.name	= "gsbi_resource",
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
+struct platform_device msm9615_device_uart_gsbi4 = {
+	.name	= "msm_serial_hsl",
+	.id	= 0,
+	.num_resources	= ARRAY_SIZE(resources_uart_gsbi4),
+	.resource	= resources_uart_gsbi4,
+};
+
+#ifdef CONFIG_CACHE_L2X0
+static int __init l2x0_cache_init(void)
+{
+	int aux_ctrl = 0;
+
+	/* Way Size 010(0x2) 32KB */
+	aux_ctrl = (0x1 << L2X0_AUX_CTRL_SHARE_OVERRIDE_SHIFT) | \
+		   (0x2 << L2X0_AUX_CTRL_WAY_SIZE_SHIFT) | \
+		   (0x1 << L2X0_AUX_CTRL_EVNT_MON_BUS_EN_SHIFT);
+
+	/* L2 Latency setting required by hardware. Default is 0x20
+	   which is no good.
+	 */
+	writel_relaxed(0x220, MSM_L2CC_BASE + L2X0_DATA_LATENCY_CTRL);
+	l2x0_init(MSM_L2CC_BASE, aux_ctrl, L2X0_AUX_CTRL_MASK);
+
+	return 0;
+}
+#else
+static int __init l2x0_cache_init(void){ return 0; }
+#endif
 
 void __init msm9615_device_init(void)
 {
@@ -33,6 +86,7 @@ void __init msm9615_device_init(void)
 void __init msm9615_map_io(void)
 {
 	msm_map_msm9615_io();
+	l2x0_cache_init();
 }
 
 void __init msm9615_init_irq(void)
