@@ -57,6 +57,7 @@
 #define MSG_MASK_SIZE 8000
 #define LOG_MASK_SIZE 8000
 #define EVENT_MASK_SIZE 1000
+#define USER_SPACE_DATA 8000
 #define PKT_SIZE 4096
 #define MAX_EQUIP_ID 12
 /* This is the maximum number of pkt registrations supported at initialization*/
@@ -142,6 +143,7 @@ struct diagchar_dev {
 	unsigned char *buf_in_qdsp_2;
 	unsigned char *usb_buf_out;
 	unsigned char *apps_rsp_buf;
+	unsigned char *user_space_data;
 	smd_channel_t *ch;
 	smd_channel_t *chqdsp;
 	int in_busy_1;
