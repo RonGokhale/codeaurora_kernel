@@ -623,6 +623,9 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 
 static const char *lpa_mm_be[] = {
 	LPASS_BE_SLIMBUS_0_RX,
+	LPASS_BE_HDMI,
+	LPASS_BE_INT_BT_SCO_RX,
+	LPASS_BE_INT_FM_RX,
 };
 
 static struct snd_soc_dsp_link lpa_fe_media = {
