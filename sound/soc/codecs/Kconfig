@@ -21,6 +21,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_AD73311
 	select SND_SOC_ADAU1373 if I2C
 	select SND_SOC_ADAU1761 if SND_SOC_I2C_AND_SPI
+	select SND_SOC_ADAU1781 if SND_SOC_I2C_AND_SPI
 	select SND_SOC_ADAV80X if SND_SOC_I2C_AND_SPI
 	select SND_SOC_ADAU1701 if I2C
 	select SND_SOC_ADS117X
@@ -199,6 +200,10 @@ config SND_SOC_ADAU17X1
 	tristate
 
 config SND_SOC_ADAU1761
+	select SND_SOC_ADAU17X1
+	tristate
+
+config SND_SOC_ADAU1781
 	select SND_SOC_ADAU17X1
 	tristate
 
