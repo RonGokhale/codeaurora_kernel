@@ -470,6 +470,7 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
+
 /*
  * LPA Needs only RX BE DAI links.
  * Hence define seperate BE list for lpa
@@ -498,6 +499,8 @@ static const char *mm_be[] = {
 	LPASS_BE_INT_BT_SCO_TX,
 	LPASS_BE_INT_FM_RX,
 	LPASS_BE_INT_FM_TX,
+	LPASS_BE_AFE_PCM_TX,
+	LPASS_BE_AFE_PCM_RX,
 };
 
 static struct snd_soc_dsp_link fe_media = {
@@ -703,6 +706,22 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
 		/* .be_id = do not care */
 	},
+	{
+		.name = "MSM AFE-PCM RX",
+		.stream_name = "AFE-PROXY RX",
+		.cpu_dai_name = "msm-dai-q6.241",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-rx",
+		.platform_name  = "msm-pcm-afe",
+	},
+	{
+		.name = "MSM AFE-PCM TX",
+		.stream_name = "AFE-PROXY TX",
+		.cpu_dai_name = "msm-dai-q6.240",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-tx",
+		.platform_name  = "msm-pcm-afe",
+	},
 	/* Backend DAI Links */
 	{
 		.name = LPASS_BE_SLIMBUS_0_RX,
@@ -787,6 +806,29 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.no_codec = 1,
 		.be_id = MSM_BACKEND_DAI_HDMI_RX,
 		.be_hw_params_fixup = msm8960_be_hw_params_fixup,
+	},
+	/* Backend AFE DAI Links */
+	{
+		.name = LPASS_BE_AFE_PCM_RX,
+		.stream_name = "AFE Playback",
+		.cpu_dai_name = "msm-dai-q6.224",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-rx",
+		.no_codec = 1,
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_AFE_PCM_RX,
+	},
+	{
+		.name = LPASS_BE_AFE_PCM_TX,
+		.stream_name = "AFE Capture",
+		.cpu_dai_name = "msm-dai-q6.225",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-tx",
+		.no_codec = 1,
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_AFE_PCM_TX,
 	},
 };
 
