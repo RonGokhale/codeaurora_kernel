@@ -2042,6 +2042,8 @@ struct clk_lookup msm_clocks_8x60[] = {
 	CLK_8X60("sdc_clk",		SDC3_CLK, "msm_sdcc.3", OFF),
 	CLK_8X60("sdc_clk",		SDC4_CLK, "msm_sdcc.4", OFF),
 	CLK_8X60("sdc_clk",		SDC5_CLK, "msm_sdcc.5", OFF),
+	CLK_8X60("ebi2_2x_clk",		EBI2_2X_CLK,		NULL, OFF),
+	CLK_8X60("ebi2_clk",		EBI2_CLK,		NULL, OFF),
 	CLK_8X60("tsif_ref_clk",	TSIF_REF_CLK,		NULL, OFF),
 	CLK_8X60("tssc_clk",		TSSC_CLK,		NULL, OFF),
 	CLK_8X60("usb_hs_clk",		USB_HS1_XCVR_CLK,	NULL, OFF),
