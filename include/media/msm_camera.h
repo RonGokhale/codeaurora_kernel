@@ -170,6 +170,9 @@
 #define MSM_CAM_IOCTL_SET_MEM_MAP_INFO \
 	_IOR(MSM_CAM_IOCTL_MAGIC, 42, struct msm_mem_map_info *)
 
+#define MSM_CAM_IOCTL_ACTUATOR_IO_CFG \
+	_IOW(MSM_CAM_IOCTL_MAGIC, 43, struct msm_actuator_cfg_data *)
+
 #define MSM_CAMERA_LED_OFF  0
 #define MSM_CAMERA_LED_LOW  1
 #define MSM_CAMERA_LED_HIGH 2
@@ -666,7 +669,9 @@ struct msm_snapshot_pp_status {
 #define CFG_GET_CALIB_DATA		31
 #define CFG_GET_OUTPUT_INFO		32
 #define CFG_GET_EEPROM_DATA		33
-#define CFG_MAX			34
+#define CFG_SET_ACTUATOR_INFO		34
+#define CFG_GET_ACTUATOR_INFO		35
+#define CFG_MAX			36
 
 
 #define MOVE_NEAR	0
@@ -828,6 +833,38 @@ struct sensor_cfg_data {
 		struct sensor_calib_data calib_info;
 		struct sensor_output_info_t output_info;
 		struct sensor_eeprom_data_t eeprom_data;
+	} cfg;
+};
+
+struct msm_actuator_move_params_t {
+	int8_t dir;
+	int32_t num_steps;
+};
+
+struct msm_actuator_set_info_t {
+	uint32_t total_steps;
+	uint16_t gross_steps;
+	uint16_t fine_steps;
+};
+
+struct msm_actuator_get_info_t {
+	uint32_t focal_length_num;
+	uint32_t focal_length_den;
+	uint32_t f_number_num;
+	uint32_t f_number_den;
+	uint32_t f_pix_num;
+	uint32_t f_pix_den;
+	uint32_t total_f_dist_num;
+	uint32_t total_f_dist_den;
+};
+
+struct msm_actuator_cfg_data {
+	int cfgtype;
+	uint8_t is_af_supported;
+	union {
+		struct msm_actuator_move_params_t move;
+		struct msm_actuator_set_info_t set_info;
+		struct msm_actuator_get_info_t get_info;
 	} cfg;
 };
 
