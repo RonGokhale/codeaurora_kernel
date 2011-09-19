@@ -52,6 +52,7 @@
 #include <linux/i2c/isa1200.h>
 #include <linux/dma-mapping.h>
 #include <linux/i2c/bq27520.h>
+#include <linux/clk.h>
 
 #ifdef CONFIG_ANDROID_PMEM
 #include <linux/android_pmem.h>
@@ -7460,6 +7461,15 @@ static void __init msm8x60_init_ebi2(void)
 	uint32_t ebi2_cfg;
 	void *ebi2_cfg_ptr;
 
+	struct clk *mem_clk = clk_get_sys("msm_ebi2", "ebi2_clk");
+	if (IS_ERR(mem_clk)) {
+		pr_err("%s: clk_get_sys(%s,%s), failed", __func__,
+		       "msm_ebi2", "ebi2_clk");
+		return;
+	}
+	clk_enable(mem_clk);
+	clk_put(mem_clk);
+
 	ebi2_cfg_ptr = ioremap_nocache(0x1a100000, sizeof(uint32_t));
 	if (ebi2_cfg_ptr != 0) {
 		ebi2_cfg = readl(ebi2_cfg_ptr);
@@ -10008,9 +10018,15 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	if (!machine_is_msm8x60_rumi3() && !machine_is_msm8x60_sim())
 		msm_acpu_clock_init(&msm8x60_acpu_clock_data);
 
-	/* No EBI2 on 8660 charm targets */
-	if (!machine_is_msm8x60_charm_surf() && !machine_is_msm8x60_charm_ffa())
+	/*
+	 * Enable EBI2 only for boards which make use of it. Leave
+	 * it disabled for all others for additional power savings.
+	 */
+	if (machine_is_msm8x60_surf()  || machine_is_msm8x60_ffa() ||
+	    machine_is_msm8x60_rumi3() || machine_is_msm8x60_sim() ||
+	    machine_is_msm8x60_fluid())
 		msm8x60_init_ebi2();
+
 	msm8x60_init_tlmm();
 	msm8x60_init_gpiomux(board_data->gpiomux_cfgs);
 	msm8x60_init_uart12dm();
