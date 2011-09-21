@@ -16,6 +16,7 @@
 #include <linux/irq.h>
 #include <linux/io.h>
 #include <linux/dma-mapping.h>
+#include <linux/msm_tsens.h>
 #include <asm/hardware/gic.h>
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
@@ -244,6 +245,21 @@ struct platform_device msm_device_gadget_peripheral = {
 	.resource	= resources_hsusb,
 	.dev		= {
 		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+};
+
+static struct tsens_platform_data msm_tsens_pdata = {
+	.slope			= 910,
+	.tsens_factor		= 1000,
+	.hw_type		= MSM_9615,
+	.tsens_num_sensor	= 5,
+};
+
+struct platform_device	msm9615_device_tsens = {
+	.name		= "tsens8960-tm",
+	.id		= -1,
+	.dev		= {
+			.platform_data = &msm_tsens_pdata,
 	},
 };
 
