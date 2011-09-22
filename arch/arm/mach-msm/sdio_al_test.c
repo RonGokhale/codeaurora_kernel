@@ -3024,7 +3024,6 @@ static int lpm_test_main_task(void *ptr)
 	if (test_dev->open_channels_counter_to_recv != 0 ||
 	    test_dev->open_channels_counter_to_send != 0) {
 		test_ch->test_completed = 1;
-		test_ch->next_index_in_sent_msg_per_chan = 0;
 		return 0;
 	} else {
 		test_ctx->number_of_active_devices--;
@@ -3060,9 +3059,6 @@ static int lpm_test_main_task(void *ptr)
 				test_ctx->max_number_of_devices);
 			test_dev->final_result_per_dev = 0; /* FAILED */
 		}
-
-		test_dev->next_avail_entry_in_array = 0;
-		test_ch->next_index_in_sent_msg_per_chan = 0;
 
 		check_test_completion();
 
@@ -3147,8 +3143,7 @@ static void lpm_continuous_rand_test(struct test_channel *test_ch)
 		       "thread", __func__);
 	}
 
-	while (test_ch->next_index_in_sent_msg_per_chan <=
-	       test_ch->config_msg.num_packets - 1) {
+	while (1) {
 
 		struct lpm_msg msg;
 		u32 ret = 0;
@@ -3205,6 +3200,14 @@ static void lpm_continuous_rand_test(struct test_channel *test_ch)
 					      next_index_in_sent_msg_per_chan);
 
 			test_ch->next_index_in_sent_msg_per_chan++;
+
+			if (test_ch->next_index_in_sent_msg_per_chan ==
+			    test_ch->config_msg.num_packets) {
+				spin_unlock_irqrestore(
+				    &test_dev->lpm_array_lock,
+				    test_dev->lpm_array_lock_flags);
+				break;
+			}
 
 			spin_unlock_irqrestore(&test_dev->lpm_array_lock,
 					       test_dev->lpm_array_lock_flags);
@@ -4853,6 +4856,7 @@ static int sdio_test_find_dev(struct test_channel *tch)
 			LPM_ARRAY_SIZE;
 		test_dev->modem_result_per_dev = 1;
 		tch->modem_result_per_chan = 0;
+		test_dev->next_avail_entry_in_array = 0;
 
 		spin_lock_init(&test_dev->
 			       lpm_array_lock);
@@ -4984,6 +4988,7 @@ static int test_start(void)
 
 		/* in case there are values left from previous tests */
 		tch->notify_counter_per_chan = 0;
+		tch->next_index_in_sent_msg_per_chan = 0;
 
 		memset(tch->buf, 0x00, tch->buf_size);
 		tch->test_result = TEST_NO_RESULT;
