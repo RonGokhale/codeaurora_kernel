@@ -67,6 +67,7 @@ MODULE_PARM_DESC(quirks, "Add/modify USB HID quirks by specifying "
  * Input submission and I/O error handler.
  */
 static DEFINE_MUTEX(hid_open_mut);
+static struct workqueue_struct *reset_worker;
 static struct workqueue_struct *resumption_waker;
 
 static void hid_io_error(struct hid_device *hid);
@@ -176,7 +177,7 @@ static void hid_io_error(struct hid_device *hid)
 
 		/* Retries failed, so do a port reset */
 		if (!test_and_set_bit(HID_RESET_PENDING, &usbhid->iofl)) {
-			schedule_work(&usbhid->reset_work);
+			queue_work(reset_worker, &usbhid->reset_work);
 			goto done;
 		}
 	}
@@ -262,7 +263,7 @@ static void hid_irq_in(struct urb *urb)
 		usbhid_mark_busy(usbhid);
 		clear_bit(HID_IN_RUNNING, &usbhid->iofl);
 		set_bit(HID_CLEAR_HALT, &usbhid->iofl);
-		schedule_work(&usbhid->reset_work);
+		queue_work(reset_worker, &usbhid->reset_work);
 		return;
 	case -ECONNRESET:	/* unlink */
 	case -ENOENT:
@@ -1384,7 +1385,7 @@ static int hid_resume(struct usb_interface *intf)
 
 	if (test_bit(HID_CLEAR_HALT, &usbhid->iofl) ||
 	    test_bit(HID_RESET_PENDING, &usbhid->iofl))
-		schedule_work(&usbhid->reset_work);
+		queue_work(reset_worker, &usbhid->reset_work);
 	usbhid->retry_delay = 0;
 	status = hid_start_in(hid);
 	if (status < 0)
@@ -1455,9 +1456,12 @@ static int __init hid_init(void)
 {
 	int retval = -ENOMEM;
 
+	reset_worker = create_singlethread_workqueue("k_usbhid_reset");
+	if (!reset_worker)
+		goto no_queue;
 	resumption_waker = create_freezeable_workqueue("usbhid_resumer");
 	if (!resumption_waker)
-		goto no_queue;
+		goto resume_worker_fail;
 	retval = hid_register_driver(&hid_usb_driver);
 	if (retval)
 		goto hid_register_fail;
@@ -1481,6 +1485,8 @@ usbhid_quirks_init_fail:
 	hid_unregister_driver(&hid_usb_driver);
 hid_register_fail:
 	destroy_workqueue(resumption_waker);
+resume_worker_fail:
+	destroy_workqueue(reset_worker);
 no_queue:
 	return retval;
 }
@@ -1491,6 +1497,7 @@ static void __exit hid_exit(void)
 	hiddev_exit();
 	usbhid_quirks_exit();
 	hid_unregister_driver(&hid_usb_driver);
+	destroy_workqueue(reset_worker);
 	destroy_workqueue(resumption_waker);
 }
 
