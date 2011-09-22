@@ -35,6 +35,7 @@
 /* Subsystem restart: QDSP6 data, functions */
 static void lpass_fatal_fn(struct work_struct *);
 static DECLARE_WORK(lpass_fatal_work, lpass_fatal_fn);
+void __iomem *q6_wakeup_intr;
 struct lpass_ssr {
 	void *lpass_ramdump_dev;
 } lpass_ssr;
@@ -51,23 +52,17 @@ static void send_q6_nmi(void)
 {
 	/* Send NMI to QDSP6 via an SCM call. */
 	uint32_t cmd = 0x1;
-	void __iomem *q6_wakeup_intr;
 
 	scm_call(SCM_SVC_UTIL, SCM_Q6_NMI_CMD,
 	&cmd, sizeof(cmd), NULL, 0);
 
 	/* Wakeup the Q6 */
-	q6_wakeup_intr = ioremap_nocache(Q6SS_SOFT_INTR_WAKEUP, 8);
-	if (!q6_wakeup_intr) {
-		pr_err("%s: Unable to ioremap\n", __func__);
-		return;
-	}
-	writel_relaxed(0x01, q6_wakeup_intr);
-	iounmap(q6_wakeup_intr);
+	if (q6_wakeup_intr)
+		writel_relaxed(0x01, q6_wakeup_intr);
 	mb();
 
 	/* Q6 requires worstcase 100ms to dump caches etc.*/
-	msleep(100);
+	mdelay(100);
 	pr_debug("%s: Q6 NMI was sent.\n", __func__);
 }
 
@@ -147,6 +142,10 @@ static int __init lpass_fatal_init(void)
 				__func__, ret);
 		goto out;
 	}
+	q6_wakeup_intr = ioremap_nocache(Q6SS_SOFT_INTR_WAKEUP, 8);
+	if (!q6_wakeup_intr)
+		pr_err("%s: Unable to request q6 wakeup interrupt\n", __func__);
+
 	lpass_ssr_8960.lpass_ramdump_dev = create_ramdump_device("lpass");
 
 	if (!lpass_ssr_8960.lpass_ramdump_dev) {
@@ -162,6 +161,7 @@ out:
 
 static void __exit lpass_fatal_exit(void)
 {
+	iounmap(q6_wakeup_intr);
 	free_irq(LPASS_Q6SS_WDOG_EXPIRED, NULL);
 }
 
