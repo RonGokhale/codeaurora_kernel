@@ -29,6 +29,7 @@
 #include <linux/clk.h>
 #include <linux/power/bq20z75.h>
 #include <linux/rfkill-gpio.h>
+#include <linux/platform_data/tegra_usb.h>
 
 #include <sound/wm8903.h>
 
@@ -41,6 +42,7 @@
 #include <mach/pinmux-t2.h>
 #include <mach/system.h>
 #include <mach/clk.h>
+#include <mach/usb_phy.h>
 
 #include <asm/cacheflush.h>
 #include <asm/mach-types.h>
@@ -447,8 +449,33 @@ static struct i2c_board_info __initdata cyapa_device = {
 	.flags		= I2C_CLIENT_WAKE,
 };
 
+static struct tegra_utmip_config usb1_phy_config = {
+	.hssync_start_delay = 0,
+	.idle_wait_delay = 17,
+	.elastic_limit = 16,
+	.term_range_adj = 6,
+	.xcvr_setup = 15,
+	.xcvr_lsfslew = 2,
+	.xcvr_lsrslew = 2,
+	.vbus_gpio = TEGRA_GPIO_USB1,
+};
+
+static struct tegra_utmip_config usb3_phy_config = {
+	.hssync_start_delay = 0,
+	.idle_wait_delay = 17,
+	.elastic_limit = 16,
+	.term_range_adj = 6,
+	.xcvr_setup = 8,
+	.xcvr_lsfslew = 2,
+	.xcvr_lsrslew = 2,
+	.vbus_gpio = TEGRA_GPIO_USB3,
+	.shared_pin_vbus_en_oc = true,
+};
+
+
 static int seaboard_ehci_init(void)
 {
+	struct tegra_ehci_platform_data *pdata;
 	int gpio_status;
 
 	gpio_status = gpio_request(TEGRA_GPIO_USB1, "VBUS_USB1");
@@ -463,6 +490,12 @@ static int seaboard_ehci_init(void)
 		WARN_ON(1);
 	}
 	gpio_set_value(TEGRA_GPIO_USB1, 1);
+
+	pdata = tegra_ehci1_device.dev.platform_data;
+	pdata->phy_config = &usb1_phy_config;
+
+	pdata = tegra_ehci3_device.dev.platform_data;
+	pdata->phy_config = &usb3_phy_config;
 
 	platform_device_register(&tegra_ehci1_device);
 	platform_device_register(&tegra_ehci3_device);
