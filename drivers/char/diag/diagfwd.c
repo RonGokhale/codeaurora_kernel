@@ -178,6 +178,13 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 			queue_work(driver->diag_wq, &(driver->
 						diag_read_smd_qdsp_work));
 		}
+#ifdef CONFIG_DIAG_SDIO_PIPE
+		else if (proc_num == SDIO_DATA) {
+			driver->in_busy_sdio = 0;
+			queue_work(driver->diag_sdio_wq,
+				&(driver->diag_read_sdio_work));
+		}
+#endif
 		err = -1;
 	}
 #ifdef CONFIG_DIAG_OVER_USB
@@ -1134,6 +1141,10 @@ void diagfwd_init(void)
 	if (driver->hdlc_buf == NULL
 	    && (driver->hdlc_buf = kzalloc(HDLC_MAX, GFP_KERNEL)) == NULL)
 		goto err;
+	if (driver->user_space_data == NULL)
+		driver->user_space_data = kzalloc(USER_SPACE_DATA, GFP_KERNEL);
+		if (driver->user_space_data == NULL)
+			goto err;
 	if (driver->msg_masks == NULL
 	    && (driver->msg_masks = kzalloc(MSG_MASK_SIZE,
 					     GFP_KERNEL)) == NULL)

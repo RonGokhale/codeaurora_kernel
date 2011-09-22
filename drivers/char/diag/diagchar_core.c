@@ -346,6 +346,9 @@ static int diagchar_ioctl(struct inode *inode, struct file *filp,
 			driver->in_busy_2 = 1;
 			driver->in_busy_qdsp_1 = 1;
 			driver->in_busy_qdsp_2 = 1;
+#ifdef CONFIG_DIAG_SDIO_PIPE
+			driver->in_busy_sdio = 1;
+#endif
 		} else if (temp == NO_LOGGING_MODE && driver->logging_mode
 							== MEMORY_DEVICE_MODE) {
 			driver->in_busy_1 = 0;
@@ -359,6 +362,13 @@ static int diagchar_ioctl(struct inode *inode, struct file *filp,
 			if (driver->chqdsp)
 				queue_work(driver->diag_wq,
 					&(driver->diag_read_smd_qdsp_work));
+#ifdef CONFIG_DIAG_SDIO_PIPE
+			driver->in_busy_sdio = 0;
+			/* Poll SDIO channel to check for data */
+			if (driver->sdio_ch)
+				queue_work(driver->diag_sdio_wq,
+					&(driver->diag_read_sdio_work));
+#endif
 		}
 #ifdef CONFIG_DIAG_OVER_USB
 		else if (temp == USB_MODE && driver->logging_mode
@@ -381,6 +391,13 @@ static int diagchar_ioctl(struct inode *inode, struct file *filp,
 			if (driver->chqdsp)
 				queue_work(driver->diag_wq,
 					&(driver->diag_read_smd_qdsp_work));
+#ifdef CONFIG_DIAG_SDIO_PIPE
+			driver->in_busy_sdio = 0;
+			/* Poll SDIO channel to check for data */
+			if (driver->sdio_ch)
+				queue_work(driver->diag_sdio_wq,
+					&(driver->diag_read_sdio_work));
+#endif
 		} else if (temp == MEMORY_DEVICE_MODE && driver->logging_mode
 								== USB_MODE)
 			diagfwd_connect();
@@ -504,6 +521,20 @@ drop:
 			driver->in_busy_qdsp_2 = 0;
 		}
 
+#ifdef CONFIG_DIAG_SDIO_PIPE
+		/* copy 9K data over SDIO */
+		if (driver->in_busy_sdio == 1) {
+			num_data++;
+			/*Copy the length of data being passed*/
+			COPY_USER_SPACE_OR_EXIT(buf+ret,
+				 (driver->write_ptr_mdm->length), 4);
+			/*Copy the actual data being passed*/
+			COPY_USER_SPACE_OR_EXIT(buf+ret,
+					*(driver->buf_in_sdio),
+					 driver->write_ptr_mdm->length);
+			driver->in_busy_sdio = 0;
+		}
+#endif
 		/* copy number of data fields */
 		COPY_USER_SPACE_OR_EXIT(buf+4, num_data, 4);
 		ret -= 4;
@@ -514,6 +545,11 @@ drop:
 		if (driver->chqdsp)
 			queue_work(driver->diag_wq,
 					 &(driver->diag_read_smd_qdsp_work));
+#ifdef CONFIG_DIAG_SDIO_PIPE
+		if (driver->sdio_ch)
+			queue_work(driver->diag_sdio_wq,
+					   &(driver->diag_read_sdio_work));
+#endif
 		APPEND_DEBUG('n');
 		goto exit;
 	} else if (driver->data_ready[index] & MEMORY_DEVICE_LOG_TYPE) {
@@ -599,17 +635,32 @@ static int diagchar_write(struct file *file, const char __user *buf,
 	payload_size = count - 4;
 
 	if (pkt_type == MEMORY_DEVICE_LOG_TYPE) {
-		if (!mask_request_validate((unsigned char *)buf)) {
-			printk(KERN_ALERT "mask request Invalid ..cannot send to modem \n");
+		err = copy_from_user(driver->user_space_data, buf + 4,
+							  payload_size);
+		if (!mask_request_validate(driver->user_space_data)) {
+			pr_alert("diag: mask request Invalid\n");
 			return -EFAULT;
 		}
-		buf = buf + 4;
 #ifdef DIAG_DEBUG
-		printk(KERN_INFO "\n I got the masks: %d\n", payload_size);
+		pr_info("diag: masks: %d\n", payload_size);
 		for (i = 0; i < payload_size; i++)
-			printk(KERN_DEBUG "\t %x", *(((unsigned char *)buf)+i));
+			pr_debug("\t %x", *((driver->user_space_data)+i));
 #endif
-		diag_process_hdlc((void *)buf, payload_size);
+#ifdef CONFIG_DIAG_SDIO_PIPE
+		/* send masks to 9k too */
+		if (driver->sdio_ch) {
+			wait_event_interruptible(driver->wait_q,
+				 (sdio_write_avail(driver->sdio_ch) >=
+					 payload_size));
+			if (driver->sdio_ch && (payload_size > 0)) {
+				sdio_write(driver->sdio_ch, (void *)
+				   (driver->user_space_data), payload_size);
+			}
+		}
+#endif
+		/* send masks to modem now */
+		diag_process_hdlc((void *)(driver->user_space_data),
+						   payload_size);
 		return 0;
 	}
 
@@ -754,11 +805,11 @@ int mask_request_validate(unsigned char mask_buf[])
 	uint8_t subsys_id;
 	uint16_t ss_cmd;
 
-	packet_id = mask_buf[4];
+	packet_id = mask_buf[0];
 
 	if (packet_id == 0x4B) {
-		subsys_id = mask_buf[5];
-		ss_cmd = *(uint16_t *)(mask_buf + 6);
+		subsys_id = mask_buf[1];
+		ss_cmd = *(uint16_t *)(mask_buf + 2);
 		/* Packets with SSID which are allowed */
 		switch (subsys_id) {
 		case 0x04: /* DIAG_SUBSYS_WCDMA */
