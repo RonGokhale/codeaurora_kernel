@@ -1,0 +1,19 @@
+source "drivers/media/video/tegra/avp/Kconfig"
+
+config TEGRA_CAMERA
+        bool "Enable support for tegra camera/isp hardware"
+        depends on ARCH_TEGRA
+        default y
+        help
+          Enables support for the Tegra camera interface
+
+          If unsure, say Y
+
+config TEGRA_MEDIASERVER
+	bool "Tegra Media Server support"
+	depends on ARCH_TEGRA && TEGRA_RPC && TEGRA_NVMAP && TEGRA_AVP
+	help
+	  Enables support for the multiple OpenMAX clients.  Exports the
+	  interface on the device node /dev/tegra_mediaserver.
+
+	  If unsure, say Y

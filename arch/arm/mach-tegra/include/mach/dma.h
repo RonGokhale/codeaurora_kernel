@@ -56,10 +56,14 @@ struct tegra_dma_channel;
 #define TEGRA_DMA_REQ_SEL_OWR			25
 #define TEGRA_DMA_REQ_SEL_INVALID		31
 
+#define TEGRA_DMA_MAX_TRANSFER_SIZE		0x10000
+
 enum tegra_dma_mode {
 	TEGRA_DMA_SHARED = 1,
-	TEGRA_DMA_MODE_CONTINOUS = 2,
-	TEGRA_DMA_MODE_ONESHOT = 4,
+	TEGRA_DMA_MODE_CONTINUOUS = 2,
+	TEGRA_DMA_MODE_CONTINUOUS_DOUBLE = TEGRA_DMA_MODE_CONTINUOUS,
+	TEGRA_DMA_MODE_CONTINUOUS_SINGLE = 4,
+	TEGRA_DMA_MODE_ONESHOT = 8,
 };
 
 enum tegra_dma_req_error {
@@ -138,17 +142,24 @@ int tegra_dma_enqueue_req(struct tegra_dma_channel *ch,
 	struct tegra_dma_req *req);
 int tegra_dma_dequeue_req(struct tegra_dma_channel *ch,
 	struct tegra_dma_req *req);
-void tegra_dma_dequeue(struct tegra_dma_channel *ch);
 void tegra_dma_flush(struct tegra_dma_channel *ch);
 
 bool tegra_dma_is_req_inflight(struct tegra_dma_channel *ch,
 	struct tegra_dma_req *req);
 bool tegra_dma_is_empty(struct tegra_dma_channel *ch);
+bool tegra_dma_is_stopped(struct tegra_dma_channel *ch);
 
 struct tegra_dma_channel *tegra_dma_allocate_channel(int mode);
 void tegra_dma_free_channel(struct tegra_dma_channel *ch);
+int tegra_dma_cancel(struct tegra_dma_channel *ch);
 
 int __init tegra_dma_init(void);
+
+#else /* !defined(CONFIG_TEGRA_SYSTEM_DMA) */
+static inline int tegra_dma_init(void)
+{
+	return 0;
+}
 
 #endif
 
