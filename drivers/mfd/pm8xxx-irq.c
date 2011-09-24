@@ -429,13 +429,17 @@ struct pm_irq_chip *  __devinit pm8xxx_irq_init(struct device *dev,
 #endif
 	}
 
-	rc = request_irq(devirq, pm8xxx_irq_handler, pdata->irq_trigger_flag,
+	if (devirq != 0) {
+		rc = request_irq(devirq, pm8xxx_irq_handler,
+				pdata->irq_trigger_flag,
 				"pm8xxx_usr_irq", chip);
-	if (rc) {
-		pr_err("failed to request_irq for %d rc=%d\n", devirq, rc);
-		goto err;
+		if (rc) {
+			pr_err("failed to request_irq for %d rc=%d\n",
+								devirq, rc);
+			goto err;
+		}
+		set_irq_wake(devirq, 1);
 	}
-	set_irq_wake(devirq, 1);
 
 	chip->sys_dev.id = 0;
 	chip->sys_dev.cls = &pm8xxx_irq_class;
