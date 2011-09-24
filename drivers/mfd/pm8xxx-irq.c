@@ -441,7 +441,7 @@ struct pm_irq_chip *  __devinit pm8xxx_irq_init(struct device *dev,
 		set_irq_wake(devirq, 1);
 	}
 
-	chip->sys_dev.id = 0;
+	chip->sys_dev.id = pdata->dev_id;
 	chip->sys_dev.cls = &pm8xxx_irq_class;
 	rc = sysdev_register(&chip->sys_dev);
 	if (rc) {
