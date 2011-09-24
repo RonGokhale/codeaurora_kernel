@@ -452,6 +452,7 @@ apq8064_pm8921_irq_pdata __devinitdata = {
 	.irq_base		= PM8921_IRQ_BASE,
 	.devirq			= PM8921_USR_IRQ_N,
 	.irq_trigger_flag	= IRQF_TRIGGER_HIGH,
+	.dev_id			= 0,
 };
 
 static struct pm8921_platform_data
@@ -467,6 +468,7 @@ apq8064_pm8821_irq_pdata __devinitdata = {
 	.irq_base		= PM8821_IRQ_BASE,
 	.devirq			= PM8821_USR_IRQ_N,
 	.irq_trigger_flag	= IRQF_TRIGGER_HIGH,
+	.dev_id			= 1,
 };
 
 static struct pm8xxx_mpp_platform_data
