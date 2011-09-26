@@ -187,7 +187,13 @@ static struct rt6_info ip6_blk_hole_entry_template = {
 /* allocate dst with ip6_dst_ops */
 static inline struct rt6_info *ip6_dst_alloc(struct dst_ops *ops)
 {
-	return (struct rt6_info *)dst_alloc(ops);
+	struct rt6_info *rt = dst_alloc(ops);
+
+	if (rt != NULL)
+		memset(&rt->rt6i_table, 0,
+			sizeof(*rt) - sizeof(struct dst_entry));
+
+	return rt;
 }
 
 static void ip6_dst_destroy(struct dst_entry *dst)
