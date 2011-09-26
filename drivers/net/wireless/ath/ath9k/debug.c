@@ -1528,10 +1528,10 @@ int ath9k_init_debug(struct ath_hw *ah)
 			    &ah->config.cwm_ignore_extcca);
 	debugfs_create_file("regdump", S_IRUSR | S_IRGRP | S_IROTH,
 			    sc->debug.debugfs_phy, sc, &fops_regdump);
-	debugfs_create_file("dump_nfcal", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_dump_nfcal);
-	debugfs_create_file("samples", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_samps);
+	debugfs_create_file("dump_nfcal", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_dump_nfcal);
+	debugfs_create_file("samples", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_samps);
 
 	debugfs_create_u32("gpio_mask", S_IRUSR | S_IWUSR,
 			   sc->debug.debugfs_phy, &sc->sc_ah->gpio_mask);
