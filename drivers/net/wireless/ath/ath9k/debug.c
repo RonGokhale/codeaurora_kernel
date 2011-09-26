@@ -1144,20 +1144,20 @@ int ath9k_init_debug(struct ath_hw *ah)
 	debugfs_create_file("debug", S_IRUSR | S_IWUSR, sc->debug.debugfs_phy,
 			    sc, &fops_debug);
 #endif
-	debugfs_create_file("dma", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_dma);
-	debugfs_create_file("interrupt", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_interrupt);
+	debugfs_create_file("dma", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_dma);
+	debugfs_create_file("interrupt", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_interrupt);
 	debugfs_create_file("wiphy", S_IRUSR | S_IWUSR, sc->debug.debugfs_phy,
 			    sc, &fops_wiphy);
-	debugfs_create_file("xmit", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_xmit);
-	debugfs_create_file("stations", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_stations);
-	debugfs_create_file("misc", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_misc);
-	debugfs_create_file("recv", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_recv);
+	debugfs_create_file("xmit", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_xmit);
+	debugfs_create_file("stations", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_stations);
+	debugfs_create_file("misc", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_misc);
+	debugfs_create_file("recv", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_recv);
 	debugfs_create_file("rx_chainmask", S_IRUSR | S_IWUSR,
 			    sc->debug.debugfs_phy, sc, &fops_rx_chainmask);
 	debugfs_create_file("tx_chainmask", S_IRUSR | S_IWUSR,
@@ -1169,8 +1169,8 @@ int ath9k_init_debug(struct ath_hw *ah)
 	debugfs_create_bool("ignore_extcca", S_IRUSR | S_IWUSR,
 			    sc->debug.debugfs_phy,
 			    &ah->config.cwm_ignore_extcca);
-	debugfs_create_file("regdump", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_regdump);
+	debugfs_create_file("regdump", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_regdump);
 
 	debugfs_create_u32("gpio_mask", S_IRUSR | S_IWUSR,
 			   sc->debug.debugfs_phy, &sc->sc_ah->gpio_mask);
