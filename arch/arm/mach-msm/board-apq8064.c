@@ -343,13 +343,13 @@ static struct platform_device *common_devices[] __initdata = {
 	&apq8064_device_gadget_peripheral,
 	&android_usb_device,
 	&apq8064_usb_diag_device,
+	&apq8064_device_ssbi_pmic1,
+	&apq8064_device_ssbi_pmic2,
 };
 
 static struct platform_device *sim_devices[] __initdata = {
 	&apq8064_device_dmov,
 	&apq8064_device_uart_gsbi3,
-	&apq8064_device_ssbi_pmic1,
-	&apq8064_device_ssbi_pmic2,
 	&msm_device_sps_apq8064,
 };
 
@@ -452,6 +452,7 @@ apq8064_pm8921_irq_pdata __devinitdata = {
 	.irq_base		= PM8921_IRQ_BASE,
 	.devirq			= PM8921_USR_IRQ_N,
 	.irq_trigger_flag	= IRQF_TRIGGER_HIGH,
+	.dev_id			= 0,
 };
 
 static struct pm8921_platform_data
@@ -467,6 +468,7 @@ apq8064_pm8821_irq_pdata __devinitdata = {
 	.irq_base		= PM8821_IRQ_BASE,
 	.devirq			= PM8821_USR_IRQ_N,
 	.irq_trigger_flag	= IRQF_TRIGGER_HIGH,
+	.dev_id			= 1,
 };
 
 static struct pm8xxx_mpp_platform_data
@@ -575,6 +577,8 @@ static void __init apq8064_sim_init(void)
 
 static void __init apq8064_rumi3_init(void)
 {
+	apq8064_pm8921_irq_pdata.devirq = 0;
+	apq8064_pm8821_irq_pdata.devirq = 0;
 	apq8064_common_init();
 	ethernet_init();
 	platform_add_devices(rumi3_devices, ARRAY_SIZE(rumi3_devices));
