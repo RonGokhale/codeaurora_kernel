@@ -15,9 +15,11 @@
 #include <linux/platform_device.h>
 #include <linux/irq.h>
 #include <linux/io.h>
+#include <linux/dma-mapping.h>
 #include <asm/hardware/gic.h>
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
+#include <mach/msm_hsusb.h>
 #include <mach/irqs.h>
 #include <mach/socinfo.h>
 #include <asm/hardware/cache-l2x0.h>
@@ -181,6 +183,52 @@ struct platform_device msm_device_sps = {
 	.num_resources	= ARRAY_SIZE(resources_sps),
 	.resource	= resources_sps,
 	.dev.platform_data = &msm_sps_pdata,
+};
+
+static struct resource resources_otg[] = {
+	{
+		.start	= MSM9615_HSUSB_PHYS,
+		.end	= MSM9615_HSUSB_PHYS + MSM9615_HSUSB_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= USB1_HS_IRQ,
+		.end	= USB1_HS_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm_device_otg = {
+	.name		= "msm_otg",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(resources_otg),
+	.resource	= resources_otg,
+	.dev		= {
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+};
+
+static struct resource resources_hsusb[] = {
+	{
+		.start	= MSM9615_HSUSB_PHYS,
+		.end	= MSM9615_HSUSB_PHYS + MSM9615_HSUSB_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.start	= USB1_HS_IRQ,
+		.end	= USB1_HS_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm_device_gadget_peripheral = {
+	.name		= "msm_hsusb",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(resources_hsusb),
+	.resource	= resources_hsusb,
+	.dev		= {
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
 };
 
 #ifdef CONFIG_CACHE_L2X0
