@@ -687,8 +687,7 @@ int android_enable_function(struct usb_function *f, int enable)
 				~USB_CONFIG_ATT_WAKEUP;
 
 		device_desc.idProduct = __constant_cpu_to_le16(product_id);
-		if (dev->cdev)
-			dev->cdev->desc.idProduct = device_desc.idProduct;
+		dev->cdev->desc.idProduct = device_desc.idProduct;
 		usb_composite_force_reset(dev->cdev);
 	}
 	return 0;
