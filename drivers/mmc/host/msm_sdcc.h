@@ -280,6 +280,7 @@ struct msmsdcc_host {
 
 	unsigned int sdcc_irq_disabled;
 	struct timer_list req_tout_timer;
+	unsigned long reg_write_delay;
 	bool sdio_gpio_lpm;
 	bool irq_wake_enabled;
 };
