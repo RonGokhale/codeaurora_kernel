@@ -37,20 +37,25 @@
 #include <linux/types.h>
 #include <linux/input.h>
 
+enum context {
+	DUAL_CTX,
+	ACTIVE_CTX,
+	NUM_CTX
+};
+
 struct msm_bus_fabric_registration {
 	unsigned int id;
 	char *name;
 	struct msm_bus_node_info *info;
 	unsigned int len;
 	int ahb;
-	const char *fabclk;
-	const char *a_fabclk;
+	const char *fabclk[NUM_CTX];
 	unsigned int offset;
 	unsigned int haltid;
 	unsigned int rpm_enabled;
-	unsigned int nmasters;
-	unsigned int nslaves;
-	unsigned int ntieredslaves;
+	const unsigned int nmasters;
+	const unsigned int nslaves;
+	const unsigned int ntieredslaves;
 };
 
 enum msm_bus_bw_tier_type {
@@ -91,58 +96,6 @@ int msm_bus_board_get_iid(int id);
 
 #define NODE_ID(id) ((id) & (FABRIC_ID_KEY - 1))
 #define IS_SLAVE(id) ((NODE_ID(id)) >= SLAVE_ID_KEY ? 1 : 0)
-
-/*
- * The following macros are used for various operations on commit data.
- * Commit data is an array of 32 bit integers. The size of arrays is unique
- * to the fabric. Commit arrays are allocated at run-time based on the number
- * of masters, slaves and tiered-slaves registered.
- */
-
-#define CREATE_BW_TIER_PAIR(type, bw) \
-	((((type) == MSM_BUS_BW_TIER1 ? 1 : 0) << 15) | ((bw) & 0x7FFF))
-
-#define MSM_BUS_GET_BW(val) ((val) & 0x7FFF)
-
-#define MSM_BUS_GET_BW_INFO(val, type, bw) \
-  do {	\
-	(type) = MSM_BUS_GET_BW_TYPE(val); \
-	(bw) = MSM_BUS_GET_BW(val);	\
-	} while (0)
-
-#define ROUNDED_BW_VAL_FROM_BYTES(bw) \
-	((((bw) >> 17) + 1) & 0x8000 ? 0x7FFF : (((bw) >> 17) + 1))
-
-#define BW_VAL_FROM_BYTES(bw) \
-	((((bw) >> 17) & 0x8000) ? 0x7FFF : ((bw) >> 17))
-
-#define MSM_BUS_BW_VAL_FROM_BYTES(bw) \
-	((((bw) & 0x1FFFF) && (((bw) >> 17) == 0)) ? \
-	 ROUNDED_BW_VAL_FROM_BYTES(bw) : BW_VAL_FROM_BYTES(bw))
-
-#define MSM_BUS_CREATE_BW_TIER_PAIR_BYTES(type, bw) \
-	((((type) == MSM_BUS_BW_TIER1 ? 1 : 0) << 15) | \
-	 (MSM_BUS_BW_VAL_FROM_BYTES(bw)))
-
-#define MSM_BUS_GET_BW_BYTES(val) \
-	(((val) & 0x7FFF) << 17)
-
-#define MSM_BUS_GET_BW_INFO_BYTES (val, type, bw) \
-  do {	\
-	(type) = MSM_BUS_GET_BW_TYPE(val); \
-	(bw) = MSM_BUS_GET_BW_BYTES(val); \
-	} while (0)
-
-#define FAB_MAX_BW_BYTES(width, clk) ((uint32_t)(width) * (uint32_t)(clk))
-#define FAB_BW_128K(bw) ((uint16_t)((bw) >> 17))
-#define BW_TO_CLK_FREQ_HZ(width, bw) ((unsigned long)\
-		DIV_ROUND_UP((bw), (width)))
-/* 8 bytes per clock @ 133 MHz */
-#define SYSFAB_MAX_BW_BYTES FAB_MAX_BW_BYTES(8, 133000000)
-/* 16 bytes per clock @ 166 MHz */
-#define MMFAB_MAX_BW_BYTES FAB_MAX_BW_BYTES(16, 166000000)
-/* 8 bytes per clock @ 266 MHz */
-#define APPSFAB_MAX_BW_BYTES FAB_MAX_BW_BYTES(8, 266000000)
 
 /*
  * The following macros are used to format the data for port halt
@@ -197,6 +150,7 @@ enum msm_bus_fabric_type {
 };
 
 enum msm_bus_fabric_master_type {
+	MSM_BUS_MASTER_FIRST = 1,
 	MSM_BUS_MASTER_AMPSS_M0 = 1,
 	MSM_BUS_MASTER_AMPSS_M1,
 	MSM_BUS_APPSS_MASTER_FAB_MMSS,
@@ -204,8 +158,8 @@ enum msm_bus_fabric_master_type {
 
 	MSM_BUS_SYSTEM_MASTER_FAB_APPSS,
 	MSM_BUS_MASTER_SPS,
-	MSM_BUS_MASTER_ADM0_PORT0,
-	MSM_BUS_MASTER_ADM0_PORT1,
+	MSM_BUS_MASTER_ADM_PORT0,
+	MSM_BUS_MASTER_ADM_PORT1,
 	MSM_BUS_SYSTEM_MASTER_ADM1_PORT0,
 	MSM_BUS_MASTER_ADM1_PORT1,
 	MSM_BUS_MASTER_LPASS_PROC,
@@ -238,6 +192,15 @@ enum msm_bus_fabric_master_type {
 	MSM_BUS_MASTER_SPDM,
 	MSM_BUS_MASTER_RPM,
 
+	MSM_BUS_MASTER_MSS,
+	MSM_BUS_MASTER_RIVA,
+	MSM_BUS_SYSTEM_MASTER_UNUSED_6,
+	MSM_BUS_MASTER_MSS_SW_PROC,
+	MSM_BUS_MASTER_MSS_FW_PROC,
+	MSM_BUS_MMSS_MASTER_UNUSED_2,
+
+	MSM_BUS_MASTER_LAST = MSM_BUS_MMSS_MASTER_UNUSED_2,
+
 	MSM_BUS_SYSTEM_FPB_MASTER_SYSTEM =
 		MSM_BUS_SYSTEM_MASTER_SYSTEM_FPB,
 	MSM_BUS_CPSS_FPB_MASTER_SYSTEM =
@@ -245,7 +208,9 @@ enum msm_bus_fabric_master_type {
 };
 
 enum msm_bus_fabric_slave_type {
+	MSM_BUS_SLAVE_FIRST = SLAVE_ID_KEY,
 	MSM_BUS_SLAVE_EBI_CH0 = SLAVE_ID_KEY,
+	MSM_BUS_SLAVE_EBI_CH1,
 	MSM_BUS_SLAVE_AMPSS_L2,
 	MSM_BUS_APPSS_SLAVE_FAB_MMSS,
 	MSM_BUS_APPSS_SLAVE_FAB_SYSTEM,
@@ -259,14 +224,11 @@ enum msm_bus_fabric_slave_type {
 	MSM_BUS_SYSTEM_SLAVE_CPSS_FPB,
 	MSM_BUS_SYSTEM_SLAVE_SYSTEM_FPB,
 	MSM_BUS_SYSTEM_SLAVE_MMSS_FPB,
+	MSM_BUS_SLAVE_CORESIGHT,
+	MSM_BUS_SLAVE_RIVA,
 
 	MSM_BUS_SLAVE_SMI,
 	MSM_BUS_MMSS_SLAVE_FAB_APPS,
-	/*
-	 * APPS_1: This port is added for V2, and is absent on V1.
-	 * This port is not connected on V2, but is needed in
-	 * the topology.
-	 * */
 	MSM_BUS_MMSS_SLAVE_FAB_APPS_1,
 	MSM_BUS_SLAVE_MM_IMEM,
 
@@ -319,6 +281,8 @@ enum msm_bus_fabric_slave_type {
 	MSM_BUS_SLAVE_MSM_DIMEM,
 	MSM_BUS_SLAVE_MSM_TCSR,
 	MSM_BUS_SLAVE_MSM_PRNG,
+	MSM_BUS_SLAVE_LAST = MSM_BUS_SLAVE_MSM_PRNG,
+
 	MSM_BUS_SYSTEM_FPB_SLAVE_SYSTEM =
 		MSM_BUS_SYSTEM_SLAVE_SYSTEM_FPB,
 	MSM_BUS_CPSS_FPB_SLAVE_SYSTEM =
