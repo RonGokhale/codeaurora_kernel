@@ -105,7 +105,7 @@ static ssize_t show_run_queue_avg(struct kobject *kobj,
 	rq_info.rq_avg = 0;
 	spin_unlock_irqrestore(&rq_lock, flags);
 
-	return sprintf(buf, "%d.%d\n", val/10, val%10);
+	return snprintf(buf, PAGE_SIZE, "%d.%d\n", val/10, val%10);
 }
 
 static ssize_t show_run_queue_poll_ms(struct kobject *kobj,
@@ -115,7 +115,7 @@ static ssize_t show_run_queue_poll_ms(struct kobject *kobj,
 	unsigned long flags = 0;
 
 	spin_lock_irqsave(&rq_lock, flags);
-	ret = sprintf(buf, "%u\n", rq_info.rq_poll_ms);
+	ret = snprintf(buf, PAGE_SIZE, "%u\n", rq_info.rq_poll_ms);
 	spin_unlock_irqrestore(&rq_lock, flags);
 
 	return ret;
@@ -149,7 +149,7 @@ static ssize_t store_run_queue_poll_ms(struct kobject *kobj,
 static ssize_t show_def_timer_ms(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%u\n", rq_info.def_interval);
+	return snprintf(buf, PAGE_SIZE, "%u\n", rq_info.def_interval);
 }
 
 static ssize_t store_def_timer_ms(struct kobject *kobj,
@@ -244,7 +244,7 @@ static int init_rq_attribs(void)
 		return err;
 
 rel:
-	for (i = 0; i < attr_count - 1 ; i++)
+	for (i = 0; attribs && i < attr_count - 1 ; i++)
 		kfree(attribs[i]);
 	kfree(attribs);
 	kfree(rq_info.attr_group);
