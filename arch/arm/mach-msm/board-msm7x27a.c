@@ -124,6 +124,7 @@ static struct sx150x_platform_data sx150x_data[] __initdata = {
 	/* FM Platform power and shutdown routines */
 #define FPGA_MSM_CNTRL_REG2 0x90008010
 
+#if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
 static void config_pcm_i2s_mode(int mode)
 {
 	void __iomem *cfg_ptr;
@@ -150,7 +151,6 @@ static void config_pcm_i2s_mode(int mode)
 	}
 	iounmap(cfg_ptr);
 }
-
 static unsigned fm_i2s_config_power_on[] = {
 	/*FM_I2S_SD*/
 	GPIO_CFG(68, 1, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
@@ -179,6 +179,7 @@ static unsigned bt_config_power_on[] = {
 	/*TX*/
 	GPIO_CFG(46, 2, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
 };
+
 static unsigned bt_config_pcm_on[] = {
 	/*PCM_DOUT*/
 	GPIO_CFG(68, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
@@ -189,6 +190,7 @@ static unsigned bt_config_pcm_on[] = {
 	/*PCM_CLK*/
 	GPIO_CFG(71, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
 };
+
 static unsigned bt_config_power_off[] = {
 	/*RFR*/
 	GPIO_CFG(43, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
@@ -199,6 +201,7 @@ static unsigned bt_config_power_off[] = {
 	/*TX*/
 	GPIO_CFG(46, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
 };
+
 static unsigned bt_config_pcm_off[] = {
 	/*PCM_DOUT*/
 	GPIO_CFG(68, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
@@ -209,7 +212,6 @@ static unsigned bt_config_pcm_off[] = {
 	/*PCM_CLK*/
 	GPIO_CFG(71, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
 };
-
 
 static int config_i2s(int mode)
 {
@@ -242,6 +244,7 @@ static int config_i2s(int mode)
 	}
 	return rc;
 }
+
 static int config_pcm(int mode)
 {
 	int pin, rc = 0;
@@ -437,7 +440,14 @@ static void fm_radio_shutdown(struct marimba_fm_platform_data *pdata)
 	if (rc)
 		pr_err("%s: bt_set_gpio = %d", __func__, rc);
 }
+#endif
 
+static struct platform_device msm_wlan_ar6000_pm_device = {
+	.name           = "wlan_ar6000_pm_dev",
+	.id             = -1,
+};
+
+#if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
 static struct marimba_fm_platform_data marimba_fm_pdata = {
 	.fm_setup = fm_radio_setup,
 	.fm_shutdown = fm_radio_shutdown,
@@ -448,13 +458,6 @@ static struct marimba_fm_platform_data marimba_fm_pdata = {
 	.is_fm_soc_i2s_master = true,
 	.config_i2s_gpio = msm_bahama_setup_pcm_i2s,
 };
-
-static struct platform_device msm_wlan_ar6000_pm_device = {
-	.name           = "wlan_ar6000_pm_dev",
-	.id             = -1,
-};
-
-#if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
 
 static struct platform_device msm_bt_power_device = {
 	.name = "bt_power",
