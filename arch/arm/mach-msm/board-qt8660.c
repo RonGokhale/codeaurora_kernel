@@ -934,7 +934,6 @@ static int msm_cam_gpio_tbl[] = {
 	32,/*CAMIF_MCLK*/
 	47,/*CAMIF_I2C_DATA*/
 	48,/*CAMIF_I2C_CLK*/
-	105,/*STANDBY*/
 };
 
 enum msm_cam_stat{
@@ -964,20 +963,6 @@ static int config_gpio_table(enum msm_cam_stat stat)
 	return rc;
 }
 
-#ifdef CONFIG_MT9D113
-static int config_camera_on_gpios(void)
-{
-	int rc = 0;
-	rc = config_gpio_table(MSM_CAM_ON);
-	if (rc < 0) {
-		printk(KERN_ERR "%s: CAMSENSOR gpio table request"
-		"failed\n", __func__);
-		return rc;
-	}
-	msm_camera_add_clk_alias();
-	return rc;
-}
-#else
 static int config_camera_on_gpios(void)
 {
 	int rc = 0;
@@ -989,13 +974,15 @@ static int config_camera_on_gpios(void)
 	}
 	return rc;
 }
-#endif
 
 static void config_camera_off_gpios(void)
 {
 	config_gpio_table(MSM_CAM_OFF);
 }
 
+#ifdef CONFIG_MT9D113
+static void msm_camera_add_clk_alias(void);
+#endif
 static int config_camera_on_gpios_web_cam(void)
 {
 	int rc = 0;
@@ -1015,6 +1002,9 @@ static int config_camera_on_gpios_web_cam(void)
 		return rc;
 	}
 	gpio_direction_output(GPIO_WEB_CAMIF_STANDBY, 0);
+#ifdef CONFIG_MT9D113
+	msm_camera_add_clk_alias();
+#endif
 	return rc;
 }
 
@@ -1035,18 +1025,6 @@ static struct msm_camera_device_platform_data msm_camera_device_data = {
 	.ioclk.mclk_clk_rate = 24000000,
 	.ioclk.vfe_clk_rate  = 228570000,
 };
-
-#ifdef CONFIG_MT9D113
-static struct msm_camera_device_platform_data msm_camera_device_front_cam = {
-	.camera_gpio_on  = config_camera_on_gpios,
-	.camera_gpio_off = config_camera_off_gpios,
-	.ioext.csiphy = 0x04900000,
-	.ioext.csisz  = 0x00000400,
-	.ioext.csiirq = CSI_1_IRQ,
-	.ioclk.mclk_clk_rate = 24000000,
-	.ioclk.vfe_clk_rate  = 228570000,
-};
-#endif
 
 #ifdef CONFIG_WEBCAM_OV7692
 static struct msm_camera_device_platform_data msm_camera_device_data_web_cam = {
@@ -1146,7 +1124,7 @@ static struct msm_camera_sensor_info msm_camera_sensor_mt9d113_data = {
 	.sensor_pwd     = 105,
 	.vcm_pwd        = 1,
 	.vcm_enable     = 0,
-	.pdata          = &msm_camera_device_front_cam,
+	.pdata          = &msm_camera_device_data_web_cam,
 	.resource       = msm_camera_resources,
 	.num_resources  = ARRAY_SIZE(msm_camera_resources),
 	.flash_data     = &flash_mt9d113,
@@ -1154,7 +1132,7 @@ static struct msm_camera_sensor_info msm_camera_sensor_mt9d113_data = {
 };
 
 static struct platform_device msm_camera_sensor_mt9d113 = {
-	.name       = "msm_camera_mt9d113",
+	.name       = "msm_cam_mt9d113",
 	.dev        = {
 		.platform_data = &msm_camera_sensor_mt9d113_data,
 	},
