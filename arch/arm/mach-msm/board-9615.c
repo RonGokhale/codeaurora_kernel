@@ -398,6 +398,7 @@ static struct platform_device *common_devices[] = {
 	&rndis_device,
 	&android_usb_device,
 	&msm9615_device_tsens,
+	&msm_device_nand,
 };
 
 static int __init gpiomux_init(void)
