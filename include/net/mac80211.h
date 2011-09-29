@@ -344,6 +344,9 @@ struct ieee80211_bss_conf {
  * @IEEE80211_TX_INTFL_TKIP_MIC_FAILURE: Marks this packet to be used for TKIP
  *	testing. It will be sent out with incorrect Michael MIC key to allow
  *	TKIP countermeasures to be tested.
+ * @IEEE80211_TX_CTL_USE_MINRATE: This frame will be sent at lowest rate.
+ *	This flag is used to send nullfunc frame at minimum rate when
+ *	the nullfunc is used for connection monitoring purpose.
  *
  * Note: If you have to add new flags to the enumeration, then don't
  *	 forget to update %IEEE80211_TX_TEMPORARY_FLAGS when necessary.
@@ -374,6 +377,7 @@ enum mac80211_tx_control_flags {
 	IEEE80211_TX_CTL_STBC			= BIT(23) | BIT(24),
 	IEEE80211_TX_CTL_TX_OFFCHAN		= BIT(25),
 	IEEE80211_TX_INTFL_TKIP_MIC_FAILURE	= BIT(26),
+	IEEE80211_TX_CTL_USE_MINRATE		= BIT(28),
 };
 
 #define IEEE80211_TX_CTL_STBC_SHIFT		23
