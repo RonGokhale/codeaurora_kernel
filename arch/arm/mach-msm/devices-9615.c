@@ -18,6 +18,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/msm_tsens.h>
 #include <asm/hardware/gic.h>
+#include <asm/mach/flash.h>
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
 #include <mach/msm_hsusb.h>
@@ -260,6 +261,37 @@ struct platform_device	msm9615_device_tsens = {
 	.id		= -1,
 	.dev		= {
 			.platform_data = &msm_tsens_pdata,
+	},
+};
+
+#define MSM_NAND_PHYS		0x1B400000
+static struct resource resources_nand[] = {
+	[0] = {
+		.name   = "msm_nand_dmac",
+		.start	= DMOV_NAND_CHAN,
+		.end	= DMOV_NAND_CHAN,
+		.flags	= IORESOURCE_DMA,
+	},
+	[1] = {
+		.name   = "msm_nand_phys",
+		.start  = MSM_NAND_PHYS,
+		.end    = MSM_NAND_PHYS + 0x7FF,
+		.flags  = IORESOURCE_MEM,
+	},
+};
+
+struct flash_platform_data msm_nand_data = {
+	.parts		= NULL,
+	.nr_parts	= 0,
+};
+
+struct platform_device msm_device_nand = {
+	.name		= "msm_nand",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(resources_nand),
+	.resource	= resources_nand,
+	.dev		= {
+		.platform_data	= &msm_nand_data,
 	},
 };
 
