@@ -16,6 +16,7 @@
 #include <linux/gpio.h>
 #include <linux/irq.h>
 #include <linux/io.h>
+#include <linux/msm_ssbi.h>
 #include <linux/mfd/pmic8058.h>
 
 #include <linux/pmic8058-pwrkey.h>
@@ -2437,6 +2438,9 @@ static struct platform_device *qt_devices[] __initdata = {
 #ifdef CONFIG_SERIAL_MSM_HS
 	&msm_device_uart_dm1,
 #endif
+#ifdef CONFIG_MSM_SSBI
+	&msm_device_ssbi_pmic1,
+#endif
 #ifdef CONFIG_I2C_SSBI
 	&msm_device_ssbi1,
 	&msm_device_ssbi2,
@@ -3187,6 +3191,7 @@ static struct mfd_cell pm8058_subdevs[] = {
 
 static struct pm8058_platform_data pm8058_platform_data = {
 	.irq_base = PM8058_IRQ_BASE,
+	.irq = MSM_GPIO_TO_INT(PM8058_GPIO_INT),
 
 	.num_subdevs = ARRAY_SIZE(pm8058_subdevs),
 	.sub_devices = pm8058_subdevs,
@@ -3200,6 +3205,16 @@ static struct i2c_board_info pm8058_boardinfo[] __initdata = {
 		.platform_data = &pm8058_platform_data,
 	},
 };
+
+#ifdef CONFIG_MSM_SSBI
+static struct msm_ssbi_platform_data msm8x60_ssbi_pm8058_pdata __devinitdata = {
+	.controller_type = MSM_SBI_CTRL_PMIC_ARBITER,
+	.slave	= {
+		.name			= "pm8058-core",
+		.platform_data		= &pm8058_platform_data,
+	},
+};
+#endif
 #endif /* CONFIG_PMIC8058 */
 
 #define PM_GPIO_CDC_RST_N 20
@@ -3835,6 +3850,11 @@ static void __init msm8x60_init_buses(void)
 	msm_device_ssbi1.dev.platform_data = &msm_ssbi1_pdata;
 	msm_device_ssbi2.dev.platform_data = &msm_ssbi2_pdata;
 	msm_device_ssbi3.dev.platform_data = &msm_ssbi3_pdata;
+#endif
+
+#ifdef CONFIG_MSM_SSBI
+	msm_device_ssbi_pmic1.dev.platform_data =
+				&msm8x60_ssbi_pm8058_pdata;
 #endif
 
 #if defined(CONFIG_USB_GADGET_MSM_72K) || defined(CONFIG_USB_EHCI_HCD)
