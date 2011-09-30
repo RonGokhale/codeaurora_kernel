@@ -530,22 +530,11 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 		goto err_put_clock;
 	}
 
-	/* TODO: support non-hotplug */
-	if (request_irq(gpio_to_irq(dc->out->hotplug_gpio), tegra_dc_hdmi_irq,
-			IRQF_DISABLED | IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-			dev_name(&dc->ndev->dev), dc)) {
-		dev_err(&dc->ndev->dev, "hdmi: request_irq %d failed\n",
-			gpio_to_irq(dc->out->hotplug_gpio));
-		err = -EBUSY;
-		goto err_put_clock;
-	}
-	enable_irq_wake(gpio_to_irq(dc->out->hotplug_gpio));
-
 	hdmi->edid = tegra_edid_create(dc->out->dcc_bus);
 	if (IS_ERR_OR_NULL(hdmi->edid)) {
 		dev_err(&dc->ndev->dev, "hdmi: can't create edid\n");
 		err = PTR_ERR(hdmi->edid);
-		goto err_free_irq;
+		goto err_put_clock;
 	}
 
 	INIT_WORK(&hdmi->hpd_debounce_edge_wq, tegra_dc_hdmi_hpd_debounce_edge);
@@ -571,11 +560,29 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 	if (!dc->out->max_pclk_khz || dc->out->max_pclk_khz > 165000)
 		dc->out->max_pclk_khz = 165000;
 
+	INIT_WORK(&hdmi->hpd_debounce_edge_wq, tegra_dc_hdmi_hpd_debounce_edge);
+
+	/* TODO: support non-hotplug */
+	if (request_irq(gpio_to_irq(dc->out->hotplug_gpio), tegra_dc_hdmi_irq,
+			IRQF_DISABLED | IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+			dev_name(&dc->ndev->dev), dc)) {
+		dev_err(&dc->ndev->dev, "hdmi: request_irq %d failed\n",
+			gpio_to_irq(dc->out->hotplug_gpio));
+		err = -EBUSY;
+		goto err_edid_destroy;
+	}
+	enable_irq_wake(gpio_to_irq(dc->out->hotplug_gpio));
+
+	INIT_DELAYED_WORK(&hdmi->hpd_debounce_stable_wq,
+		tegra_dc_hdmi_detect_worker);
+
 	return 0;
 
 err_free_irq:
 	disable_irq_wake(gpio_to_irq(dc->out->hotplug_gpio));
 	free_irq(gpio_to_irq(dc->out->hotplug_gpio), dc);
+err_edid_destroy:
+	tegra_edid_destroy(hdmi->edid);
 err_put_clock:
 	if (!IS_ERR_OR_NULL(disp2_clk))
 		clk_put(disp2_clk);
