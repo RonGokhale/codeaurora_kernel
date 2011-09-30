@@ -15,11 +15,11 @@
  *
  */
 #include <linux/interrupt.h>
-#include <linux/i2c.h>
 #include <linux/bitops.h>
 #include <linux/slab.h>
 #include <linux/ratelimit.h>
 #include <linux/kthread.h>
+#include <linux/msm_ssbi.h>
 #include <linux/mfd/core.h>
 #include <linux/mfd/pmic8058.h>
 #include <linux/platform_device.h>
@@ -27,6 +27,7 @@
 #include <linux/slab.h>
 #include <linux/debugfs.h>
 #include <linux/sysdev.h>
+#include <linux/gpio.h>
 
 /* PMIC8058 Revision */
 #define SSBI_REG_REV			0x002  /* PMIC4 revision */
@@ -142,8 +143,7 @@
 
 struct pm8058_chip {
 	struct pm8058_platform_data	pdata;
-
-	struct i2c_client		*dev;
+	struct device		*dev;
 
 	u8	irqs_allowed[MAX_PM_BLOCKS];
 	u8	blocks_allowed[MAX_PM_MASTERS];
@@ -184,33 +184,15 @@ static inline int pm8058_can_print(void)
 }
 
 static inline int
-ssbi_write(struct i2c_client *client, u16 addr, const u8 *buf, size_t len)
+ssbi_read(struct device *dev, u16 addr, u8 *buf, size_t len)
 {
-	int	rc;
-	struct	i2c_msg msg = {
-		.addr           = addr,
-		.flags          = 0x0,
-		.buf            = (u8 *)buf,
-		.len            = len,
-	};
-
-	rc = i2c_transfer(client->adapter, &msg, 1);
-	return (rc == 1) ? 0 : rc;
+	return msm_ssbi_read(dev->parent, addr, buf, len);
 }
 
 static inline int
-ssbi_read(struct i2c_client *client, u16 addr, u8 *buf, size_t len)
+ssbi_write(struct device *dev, u16 addr, u8 *buf, size_t len)
 {
-	int	rc;
-	struct	i2c_msg msg = {
-		.addr           = addr,
-		.flags          = I2C_M_RD,
-		.buf            = buf,
-		.len            = len,
-	};
-
-	rc = i2c_transfer(client->adapter, &msg, 1);
-	return (rc == 1) ? 0 : rc;
+	return msm_ssbi_write(dev->parent, addr, buf, len);
 }
 
 static int pm8058_masked_write(u16 addr, u8 val, u8 mask)
@@ -1282,14 +1264,13 @@ static struct irq_chip pm8058_irq_chip = {
 	.bus_sync_unlock  = pm8058_irq_bus_sync_unlock,
 };
 
-static int pm8058_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int __devinit pm8058_probe(struct platform_device *pdev)
 {
 	int	i, rc;
-	struct	pm8058_platform_data *pdata = client->dev.platform_data;
+	struct	pm8058_platform_data *pdata = pdev->dev.platform_data;
 	struct	pm8058_chip *chip;
 
-	if (pdata == NULL || !client->irq) {
+	if (pdata == NULL || !gpio_is_valid(pdata->irq)) {
 		pr_err("%s: No platform_data or IRQ.\n", __func__);
 		return -ENODEV;
 	}
@@ -1299,18 +1280,13 @@ static int pm8058_probe(struct i2c_client *client,
 		return -ENODEV;
 	}
 
-	if (i2c_check_functionality(client->adapter, I2C_FUNC_I2C) == 0) {
-		pr_err("%s: i2c_check_functionality failed.\n", __func__);
-		return -ENODEV;
-	}
-
 	chip = kzalloc(sizeof *chip, GFP_KERNEL);
 	if (chip == NULL) {
 		pr_err("%s: kzalloc() failed.\n", __func__);
 		return -ENOMEM;
 	}
 
-	chip->dev = client;
+	chip->dev = &pdev->dev;
 
 	/* Read PMIC chip revision */
 	rc = ssbi_read(chip->dev, SSBI_REG_REV, &chip->revision, 1);
@@ -1323,14 +1299,14 @@ static int pm8058_probe(struct i2c_client *client,
 		      sizeof(chip->pdata));
 
 	mutex_init(&chip->pm_lock);
-	set_irq_data(chip->dev->irq, (void *)chip);
-	set_irq_wake(chip->dev->irq, 1);
+	set_irq_data(pdata->irq, (void *)chip);
+	set_irq_wake(pdata->irq, 1);
 
 	chip->pm_max_irq = 0;
 	chip->pm_max_blocks = 0;
 	chip->pm_max_masters = 0;
 
-	i2c_set_clientdata(client, chip);
+	platform_set_drvdata(pdev, chip);
 
 	pmic_chip = chip;
 
@@ -1346,13 +1322,13 @@ static int pm8058_probe(struct i2c_client *client,
 	/* Add sub devices with the chip parameter as driver data */
 	for (i = 0; i < pdata->num_subdevs; i++)
 		pdata->sub_devices[i].driver_data = chip;
-	rc = mfd_add_devices(&chip->dev->dev, 0, pdata->sub_devices,
+	rc = mfd_add_devices(chip->dev, 0, pdata->sub_devices,
 			     pdata->num_subdevs, NULL, 0);
 
 	/* Add charger sub device with the chip parameter as driver data */
 	if (pdata->charger_sub_device) {
 		pdata->charger_sub_device->driver_data = chip;
-		rc = mfd_add_devices(&chip->dev->dev, 0,
+		rc = mfd_add_devices(chip->dev, 0,
 					pdata->charger_sub_device,
 					1, NULL, 0);
 	}
@@ -1367,12 +1343,12 @@ static int pm8058_probe(struct i2c_client *client,
 		}
 	}
 
-	rc = request_threaded_irq(chip->dev->irq, NULL, pm8058_isr_thread,
+	rc = request_threaded_irq(pdata->irq, NULL, pm8058_isr_thread,
 			IRQF_ONESHOT | IRQF_DISABLED | pdata->irq_trigger_flags,
 			"pm8058-irq", chip);
 	if (rc < 0)
 		pr_err("%s: could not request irq %d: %d\n", __func__,
-				chip->dev->irq, rc);
+				pdata->irq, rc);
 
 	rc = pmic8058_dbg_probe(chip);
 	if (rc < 0)
@@ -1386,15 +1362,15 @@ static int pm8058_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int __devexit pm8058_remove(struct i2c_client *client)
+static int __devexit pm8058_remove(struct platform_device *pdev)
 {
 	struct	pm8058_chip *chip;
 
-	chip = i2c_get_clientdata(client);
+	chip = platform_get_drvdata(pdev);
 	if (chip) {
 		if (chip->pm_max_irq) {
-			set_irq_wake(chip->dev->irq, 0);
-			free_irq(chip->dev->irq, chip);
+			set_irq_wake(chip->pdata.irq, 0);
+			free_irq(chip->pdata.irq, chip);
 		}
 		mutex_destroy(&chip->pm_lock);
 		chip->dev = NULL;
@@ -1428,7 +1404,7 @@ static int pm8058_suspend(struct sys_device *dev,
 	}
 
 	if (!chip->count_wakeable)
-		disable_irq(chip->dev->irq);
+		disable_irq(chip->pdata.irq);
 
 	return 0;
 }
@@ -1469,7 +1445,7 @@ static int pm8058_resume(struct sys_device *dev)
 	}
 
 	if (!chip->count_wakeable)
-		enable_irq(chip->dev->irq);
+		enable_irq(chip->pdata.irq);
 
 	return 0;
 }
@@ -1478,26 +1454,6 @@ static int pm8058_resume(struct sys_device *dev)
 #define	pm8058_resume		NULL
 #endif
 
-static const struct i2c_device_id pm8058_ids[] = {
-	{ "pm8058-core", 0 },
-	{ },
-};
-MODULE_DEVICE_TABLE(i2c, pm8058_ids);
-
-static struct i2c_driver pm8058_driver = {
-	.driver.name	= "pm8058-core",
-	.id_table	= pm8058_ids,
-	.probe		= pm8058_probe,
-	.remove		= __devexit_p(pm8058_remove),
-};
-
-static int __init pm8058_init(void)
-{
-	int rc = i2c_add_driver(&pm8058_driver);
-	pr_notice("%s: i2c_add_driver: rc = %d\n", __func__, rc);
-
-	return rc;
-}
 
 static struct sysdev_class pm8058_sysdev_class = {
 	.name		= "pm8058",
@@ -1522,13 +1478,27 @@ static int __init pm8058_late_init(void)
 	return rc;
 }
 
+late_initcall(pm8058_late_init);
+
+static struct platform_driver pm8058_driver = {
+	.probe		= pm8058_probe,
+	.remove		= __devexit_p(pm8058_remove),
+	.driver		= {
+		.name	= "pm8058-core",
+		.owner	= THIS_MODULE,
+	},
+};
+
+static int __init pm8058_init(void)
+{
+	return platform_driver_register(&pm8058_driver);
+}
+arch_initcall(pm8058_init);
+
 static void __exit pm8058_exit(void)
 {
-	i2c_del_driver(&pm8058_driver);
+	platform_driver_unregister(&pm8058_driver);
 }
-
-arch_initcall(pm8058_init);
-late_initcall(pm8058_late_init);
 module_exit(pm8058_exit);
 
 MODULE_LICENSE("GPL v2");
