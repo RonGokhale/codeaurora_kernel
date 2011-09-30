@@ -584,6 +584,9 @@ void update_dev_desc(struct android_dev *dev)
 static char *sysfs_allowed[] = {
 	"rndis",
 	"adb",
+#ifdef CONFIG_USB_ANDROID_CCID
+	"ccid",
+#endif
 #ifdef CONFIG_USB_ANDROID_MTP
 	"mtp",
 	"diag",
@@ -673,6 +676,10 @@ int android_enable_function(struct usb_function *f, int enable)
 
 #ifdef CONFIG_USB_ANDROID_MTP
 		if (!strcmp(f->name, "mtp"))
+			android_config_functions(f, enable);
+#endif
+#ifdef CONFIG_USB_ANDROID_CCID
+		if (!strncmp(f->name, "ccid", 4))
 			android_config_functions(f, enable);
 #endif
 

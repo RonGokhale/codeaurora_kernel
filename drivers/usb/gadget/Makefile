@@ -87,4 +87,5 @@ obj-$(CONFIG_USB_ANDROID_RMNET_SDIO)   += f_rmnet_sdio.o
 obj-$(CONFIG_USB_ANDROID_RMNET_SMD_SDIO)   += f_rmnet_smd_sdio.o
 obj-$(CONFIG_USB_ANDROID_RMNET_BAM)	+= f_rmnet.o u_bam.o
 obj-$(CONFIG_USB_ANDROID_RMNET_CTRL_SMD) += f_rmnet.o u_rmnet_ctrl_smd.o
+obj-$(CONFIG_USB_ANDROID_CCID) += f_ccid.o
 
