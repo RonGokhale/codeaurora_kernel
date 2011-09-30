@@ -674,6 +674,7 @@ static int __devinit pmic8901_dbg_probe(struct pm8901_chip *chip)
 	struct pm8901_dbg_device *dbgdev;
 	struct dentry *dent;
 	struct dentry *temp;
+	int rc;
 
 	if (chip == NULL) {
 		pr_err("%s: no parent data passed in.\n", __func__);
@@ -686,8 +687,6 @@ static int __devinit pmic8901_dbg_probe(struct pm8901_chip *chip)
 		return -ENOMEM;
 	}
 
-	mutex_init(&dbgdev->dbg_mutex);
-
 	dbgdev->pm_chip = chip;
 	dbgdev->addr = -1;
 
@@ -695,7 +694,8 @@ static int __devinit pmic8901_dbg_probe(struct pm8901_chip *chip)
 	if (dent == NULL || IS_ERR(dent)) {
 		pr_err("%s: ERR debugfs_create_dir: dent=0x%X\n",
 					__func__, (unsigned)dent);
-		return -ENOMEM;
+		rc = PTR_ERR(dent);
+		goto dir_error;
 	}
 
 	temp = debugfs_create_file("addr", S_IRUSR | S_IWUSR, dent,
@@ -703,6 +703,7 @@ static int __devinit pmic8901_dbg_probe(struct pm8901_chip *chip)
 	if (temp == NULL || IS_ERR(temp)) {
 		pr_err("%s: ERR debugfs_create_file: dent=0x%X\n",
 					__func__, (unsigned)temp);
+		rc = PTR_ERR(temp);
 		goto debug_error;
 	}
 
@@ -711,8 +712,11 @@ static int __devinit pmic8901_dbg_probe(struct pm8901_chip *chip)
 	if (temp == NULL || IS_ERR(temp)) {
 		pr_err("%s: ERR debugfs_create_file: dent=0x%X\n",
 					__func__, (unsigned)temp);
+		rc = PTR_ERR(temp);
 		goto debug_error;
 	}
+
+	mutex_init(&dbgdev->dbg_mutex);
 
 	dbgdev->dent = dent;
 
@@ -722,13 +726,17 @@ static int __devinit pmic8901_dbg_probe(struct pm8901_chip *chip)
 
 debug_error:
 	debugfs_remove_recursive(dent);
-	return -ENOMEM;
+dir_error:
+	kfree(dbgdev);
+
+	return rc;
 }
 
 static int __devexit pmic8901_dbg_remove(void)
 {
 	if (pmic_dbg_device) {
 		debugfs_remove_recursive(pmic_dbg_device->dent);
+		mutex_destroy(&pmic_dbg_device->dbg_mutex);
 		kfree(pmic_dbg_device);
 	}
 	return 0;
