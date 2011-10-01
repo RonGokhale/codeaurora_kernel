@@ -337,7 +337,7 @@ static void mdp4_lcdc_blt_dmap_update(struct mdp4_overlay_pipe *pipe)
 }
 
 /*
- * mdp4_overlay_dsi_video_wait4event:
+ * mdp4_overlay_lcdc_wait4event:
  * INTR_DMA_P_DONE and INTR_PRIMARY_VSYNC event only
  * no INTR_OVERLAY0_DONE event allowed.
  */
@@ -386,10 +386,20 @@ static void mdp4_overlay_lcdc_dma_busy_wait(struct msm_fb_data_type *mfd)
 	pr_debug("%s: done pid=%d\n", __func__, current->pid);
 }
 
+void mdp4_overlay_lcdc_set_perf(struct msm_fb_data_type *mfd)
+{
+	mdp4_overlay_lcdc_wait4event(mfd, INTR_DMA_P_DONE);
+	/* change mdp clk while mdp is idle */
+	mdp4_set_perf_level();
+}
+
 void mdp4_overlay_lcdc_vsync_push(struct msm_fb_data_type *mfd,
 			struct mdp4_overlay_pipe *pipe)
 {
 	unsigned long flag;
+
+	if (pipe->flags & MDP_OV_PLAY_NOWAIT)
+		return;
 
 	if (lcdc_pipe->blt_addr) {
 		mdp4_overlay_lcdc_dma_busy_wait(mfd);
@@ -407,13 +417,10 @@ void mdp4_overlay_lcdc_vsync_push(struct msm_fb_data_type *mfd,
 		spin_unlock_irqrestore(&mdp_spin_lock, flag);
 		outpdw(MDP_BASE + 0x0004, 0); /* kickoff overlay engine */
 		mb();
+		mdp4_overlay_lcdc_wait4event(mfd, INTR_DMA_P_DONE);
+	} else {
+		mdp4_overlay_lcdc_wait4event(mfd, INTR_PRIMARY_VSYNC);
 	}
-	if (pipe->flags & MDP_OV_PLAY_NOWAIT)
-		return;
-	mdp4_overlay_lcdc_wait4event(mfd, INTR_DMA_P_DONE);
-
-	/* change mdp clk while mdp is idle` */
-	mdp4_set_perf_level();
 }
 
 /*
