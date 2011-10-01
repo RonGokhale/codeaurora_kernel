@@ -29,18 +29,17 @@
 #include <asm/entry-macro-multi.S>
 
 /*
- * Interrupt handling.  Preserves r7, r8, r9
+ * Interrupt handling.
  */
 	.macro	irq_handler
 #ifdef CONFIG_MULTI_IRQ_HANDLER
-	ldr	r5, =handle_arch_irq
+	ldr	r1, =handle_arch_irq
 	mov	r0, sp
-	ldr	r5, [r5]
 	adr	lr, BSYM(9997f)
-	teq	r5, #0
-	movne	pc, r5
-#endif
+	ldr	pc, [r1]
+#else
 	arch_irq_handler_default
+#endif
 9997:
 	.endm
 
