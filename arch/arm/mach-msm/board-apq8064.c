@@ -129,11 +129,13 @@ static struct msm_mmc_pad_drv sdc1_pad_drv_off_cfg[] = {
 };
 
 static struct msm_mmc_pad_pull sdc1_pad_pull_on_cfg[] = {
+	{TLMM_PULL_SDC1_CLK, GPIO_CFG_NO_PULL},
 	{TLMM_PULL_SDC1_CMD, GPIO_CFG_PULL_UP},
 	{TLMM_PULL_SDC1_DATA, GPIO_CFG_PULL_UP}
 };
 
 static struct msm_mmc_pad_pull sdc1_pad_pull_off_cfg[] = {
+	{TLMM_PULL_SDC1_CLK, GPIO_CFG_NO_PULL},
 	{TLMM_PULL_SDC1_CMD, GPIO_CFG_PULL_DOWN},
 	{TLMM_PULL_SDC1_DATA, GPIO_CFG_PULL_DOWN}
 };
@@ -152,11 +154,13 @@ static struct msm_mmc_pad_drv sdc3_pad_drv_off_cfg[] = {
 };
 
 static struct msm_mmc_pad_pull sdc3_pad_pull_on_cfg[] = {
+	{TLMM_PULL_SDC3_CLK, GPIO_CFG_NO_PULL},
 	{TLMM_PULL_SDC3_CMD, GPIO_CFG_PULL_UP},
 	{TLMM_PULL_SDC3_DATA, GPIO_CFG_PULL_UP}
 };
 
 static struct msm_mmc_pad_pull sdc3_pad_pull_off_cfg[] = {
+	{TLMM_PULL_SDC3_CLK, GPIO_CFG_NO_PULL},
 	{TLMM_PULL_SDC3_CMD, GPIO_CFG_PULL_DOWN},
 	{TLMM_PULL_SDC3_DATA, GPIO_CFG_PULL_DOWN}
 };
@@ -214,7 +218,11 @@ static unsigned int sdc1_sup_clk_rates[] = {
 
 static struct mmc_platform_data sdc1_data = {
 	.ocr_mask       = MMC_VDD_27_28 | MMC_VDD_28_29,
+#ifdef CONFIG_MMC_MSM_SDC1_8_BIT_SUPPORT
+	.mmc_bus_width  = MMC_CAP_8_BIT_DATA,
+#else
 	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
+#endif
 	.sup_clk_table	= sdc1_sup_clk_rates,
 	.sup_clk_cnt	= ARRAY_SIZE(sdc1_sup_clk_rates),
 	.pin_data	= &mmc_slot_pin_data[SDCC1],
