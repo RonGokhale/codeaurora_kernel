@@ -300,6 +300,121 @@ struct platform_device msm_device_smd = {
 	.id		= -1,
 };
 
+
+#define MSM_SDC1_BASE         0x12180000
+#define MSM_SDC1_DML_BASE     (MSM_SDC1_BASE + 0x800)
+#define MSM_SDC1_BAM_BASE     (MSM_SDC1_BASE + 0x2000)
+#define MSM_SDC2_BASE         0x12140000
+#define MSM_SDC2_DML_BASE     (MSM_SDC2_BASE + 0x800)
+#define MSM_SDC2_BAM_BASE     (MSM_SDC2_BASE + 0x2000)
+
+static struct resource resources_sdc1[] = {
+	{
+		.name   = "core_mem",
+		.flags  = IORESOURCE_MEM,
+		.start  = MSM_SDC1_BASE,
+		.end    = MSM_SDC1_DML_BASE - 1,
+	},
+	{
+		.name   = "core_irq",
+		.flags  = IORESOURCE_IRQ,
+		.start  = SDC1_IRQ_0,
+		.end    = SDC1_IRQ_0
+	},
+#ifdef CONFIG_MMC_MSM_SPS_SUPPORT
+	{
+		.name   = "sdcc_dml_addr",
+		.start  = MSM_SDC1_DML_BASE,
+		.end    = MSM_SDC1_BAM_BASE - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.name   = "sdcc_bam_addr",
+		.start  = MSM_SDC1_BAM_BASE,
+		.end    = MSM_SDC1_BAM_BASE + (2 * SZ_4K) - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.name   = "sdcc_bam_irq",
+		.start  = SDC1_BAM_IRQ,
+		.end    = SDC1_BAM_IRQ,
+		.flags  = IORESOURCE_IRQ,
+	},
+#endif
+};
+
+static struct resource resources_sdc2[] = {
+	{
+		.name   = "core_mem",
+		.flags  = IORESOURCE_MEM,
+		.start  = MSM_SDC2_BASE,
+		.end    = MSM_SDC2_DML_BASE - 1,
+	},
+	{
+		.name   = "core_irq",
+		.flags  = IORESOURCE_IRQ,
+		.start  = SDC2_IRQ_0,
+		.end    = SDC2_IRQ_0
+	},
+#ifdef CONFIG_MMC_MSM_SPS_SUPPORT
+	{
+		.name   = "sdcc_dml_addr",
+		.start  = MSM_SDC2_DML_BASE,
+		.end    = MSM_SDC2_BAM_BASE - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.name   = "sdcc_bam_addr",
+		.start  = MSM_SDC2_BAM_BASE,
+		.end    = MSM_SDC2_BAM_BASE + (2 * SZ_4K) - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.name   = "sdcc_bam_irq",
+		.start  = SDC2_BAM_IRQ,
+		.end    = SDC2_BAM_IRQ,
+		.flags  = IORESOURCE_IRQ,
+	},
+#endif
+};
+
+struct platform_device msm_device_sdc1 = {
+	.name           = "msm_sdcc",
+	.id             = 1,
+	.num_resources  = ARRAY_SIZE(resources_sdc1),
+	.resource       = resources_sdc1,
+	.dev            = {
+		.coherent_dma_mask      = 0xffffffff,
+	},
+};
+
+struct platform_device msm_device_sdc2 = {
+	.name           = "msm_sdcc",
+	.id             = 2,
+	.num_resources  = ARRAY_SIZE(resources_sdc2),
+	.resource       = resources_sdc2,
+	.dev            = {
+		.coherent_dma_mask      = 0xffffffff,
+	},
+};
+
+static struct platform_device *msm_sdcc_devices[] __initdata = {
+	&msm_device_sdc1,
+	&msm_device_sdc2,
+};
+
+int __init msm_add_sdcc(unsigned int controller, struct mmc_platform_data *plat)
+{
+	struct platform_device  *pdev;
+
+	if (controller < 1 || controller > 2)
+		return -EINVAL;
+
+	pdev = msm_sdcc_devices[controller - 1];
+	pdev->dev.platform_data = plat;
+	return platform_device_register(pdev);
+}
+
 #ifdef CONFIG_CACHE_L2X0
 static int __init l2x0_cache_init(void)
 {
