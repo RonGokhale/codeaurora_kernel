@@ -1458,6 +1458,19 @@ static char *usb_functions_accessory_adb[] = {
 };
 #endif
 
+static char *charm_usb_ccid_functions[] = {
+	"diag",
+	"diag_mdm",
+	"ccid",
+};
+
+static char *charm_usb_ccid_functions_adb[] = {
+	"diag",
+	"diag_mdm",
+	"adb",
+	"ccid",
+};
+
 static char *usb_functions_all[] = {
 #ifdef CONFIG_USB_ANDROID_RNDIS
 	"rndis",
@@ -1500,6 +1513,9 @@ static char *svlte2_usb_functions_all[] = {
 	"mtp",
 #endif
 	"adb",
+#ifdef CONFIG_USB_ANDROID_CCID
+	"ccid",
+#endif
 #ifdef CONFIG_USB_F_SERIAL
 	"modem",
 	"nmea",
@@ -1529,6 +1545,9 @@ static char *charm_usb_functions_all[] = {
 	"mtp",
 #endif
 	"adb",
+#ifdef CONFIG_USB_ANDROID_CCID
+	"ccid",
+#endif
 #ifdef CONFIG_USB_F_SERIAL
 	"modem",
 	"nmea",
@@ -1645,6 +1664,16 @@ static struct android_usb_product svlte2_usb_products[] = {
 		.functions	= usb_functions_accessory_adb,
 	},
 #endif
+	{
+		.product_id	= 0x9045,
+		.num_functions	= ARRAY_SIZE(charm_usb_ccid_functions),
+		.functions	= charm_usb_ccid_functions,
+	},
+	{
+		.product_id	= 0x9044,
+		.num_functions	= ARRAY_SIZE(charm_usb_ccid_functions_adb),
+		.functions	= charm_usb_ccid_functions_adb,
+	},
 };
 
 static struct android_usb_product charm_usb_products[] = {
@@ -1703,6 +1732,16 @@ static struct android_usb_product charm_usb_products[] = {
 		.functions	= usb_functions_accessory_adb,
 	},
 #endif
+	{
+		.product_id	= 0x9045,
+		.num_functions	= ARRAY_SIZE(charm_usb_ccid_functions),
+		.functions	= charm_usb_ccid_functions,
+	},
+	{
+		.product_id	= 0x9044,
+		.num_functions	= ARRAY_SIZE(charm_usb_ccid_functions_adb),
+		.functions	= charm_usb_ccid_functions_adb,
+	},
 };
 
 static struct usb_mass_storage_platform_data mass_storage_pdata = {

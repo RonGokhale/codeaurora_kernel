@@ -517,6 +517,9 @@ static char *sysfs_allowed[] = {
 	"mtp",
 	"adb",
 	"accessory",
+#ifdef CONFIG_USB_ANDROID_CCID
+	"ccid",
+#endif
 };
 
 static int is_sysfschange_allowed(struct usb_function *f)
@@ -567,6 +570,10 @@ int android_enable_function(struct usb_function *f, int enable)
 #endif
 #ifdef CONFIG_USB_ANDROID_ACCESSORY
 		if (!strncmp(f->name, "accessory", 32))
+			android_config_functions(f, enable);
+#endif
+#ifdef CONFIG_USB_ANDROID_CCID
+		if (!strncmp(f->name, "ccid", 4))
 			android_config_functions(f, enable);
 #endif
 

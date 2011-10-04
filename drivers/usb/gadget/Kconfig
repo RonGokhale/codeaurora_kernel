@@ -941,6 +941,13 @@ config USB_ANDROID_ACCESSORY
 	help
 	  Provides Android USB Accessory support for android gadget driver.
 
+config USB_ANDROID_CCID
+	boolean "Android gadget Smart Card Reader function"
+	depends on USB_ANDROID
+	help
+	  Exposes Character device interface to userspace for bulk and
+	  control.
+
 config USB_ANDROID_RMNET
 	boolean "RmNet function driver"
 	depends on USB_ANDROID
