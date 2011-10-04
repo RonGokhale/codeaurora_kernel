@@ -109,6 +109,7 @@ struct ci13xxx_udc_driver {
 #define CI13XXX_PULLUP_ON_VBUS		BIT(2)
 #define CI13XXX_DISABLE_STREAMING	BIT(3)
 #define CI13XXX_ZERO_ITC		BIT(4)
+#define CI13XXX_SELF_POWERED		BIT(5)
 
 #define CI13XXX_CONTROLLER_RESET_EVENT		0
 	void	(*notify_event) (struct ci13xxx *udc, unsigned event);
@@ -133,6 +134,7 @@ struct ci13xxx {
 	u8                         suspended;  /* suspended by the host */
 	u8                         configured;  /* is device configured */
 	u8                         test_mode;  /* the selected test mode */
+	u8			   self_powered; /* claim as self powered */
 
 	struct usb_gadget_driver  *driver;     /* 3rd party gadget driver */
 	struct ci13xxx_udc_driver *udc_driver; /* device controller driver */
