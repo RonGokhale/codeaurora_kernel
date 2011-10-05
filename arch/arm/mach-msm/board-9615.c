@@ -347,6 +347,7 @@ static struct platform_device *common_devices[] = {
 	&android_usb_device,
 	&msm9615_device_tsens,
 	&msm_device_nand,
+	&msm_rpm_device,
 };
 
 #if (defined(CONFIG_MMC_MSM_SDC1_SUPPORT)\
