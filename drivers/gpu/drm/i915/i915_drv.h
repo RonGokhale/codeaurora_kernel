@@ -38,10 +38,6 @@
 #include <drm/intel-gtt.h>
 #include <linux/backlight.h>
 
-#ifdef CONFIG_DRM_I915_DIRECT_BACKLIGHT
-#include <linux/backlight.h>
-#endif
-
 /* General customization:
  */
 
@@ -742,10 +738,6 @@ typedef struct drm_i915_private {
 	struct drm_property *force_audio_property;
 
 	atomic_t forcewake_count;
-#ifdef CONFIG_DRM_I915_DIRECT_BACKLIGHT
-	/* direct backlight interface */
-	struct backlight_device *backlight;
-#endif
 } drm_i915_private_t;
 
 enum i915_cache_level {
@@ -1305,15 +1297,6 @@ extern void intel_unregister_dsm_handler(void);
 static inline void intel_register_dsm_handler(void) { return; }
 static inline void intel_unregister_dsm_handler(void) { return; }
 #endif /* CONFIG_ACPI */
-
-#ifdef CONFIG_DRM_I915_DIRECT_BACKLIGHT
-/* i915_backlight.c */
-extern void i915_backlight_init(struct drm_device *dev);
-extern void i915_backlight_exit(struct drm_device *dev);
-#else
-extern inline void i915_backlight_init(struct drm_device *dev) { return; }
-extern inline void i915_backlight_exit(struct drm_device *dev) { return; }
-#endif
 
 /* modesetting */
 extern void intel_modeset_init(struct drm_device *dev);
