@@ -16,7 +16,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/usb/msm_hsusb_hw.h>
 #include <linux/usb/ulpi.h>
-
+#include <linux/usb/msm_hsusb.h>
 #include "ci13xxx_udc.c"
 
 #define MSM_USB_BASE	(udc->regs)
@@ -59,6 +59,7 @@ static int ci13xxx_msm_probe(struct platform_device *pdev)
 	void __iomem *regs;
 	int irq;
 	int ret;
+	struct msm_hsusb_gadget_platform_data *pdata;
 
 	dev_dbg(&pdev->dev, "ci13xxx_msm_probe\n");
 
@@ -79,6 +80,10 @@ static int ci13xxx_msm_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "udc_probe failed\n");
 		goto iounmap;
 	}
+
+	pdata = pdev->dev.platform_data;
+	if (pdata && pdata->self_powered)
+		ci13xxx_msm_udc_driver.flags |= CI13XXX_SELF_POWERED;
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {

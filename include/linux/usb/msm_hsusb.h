@@ -128,6 +128,15 @@ enum usb_chg_type {
 };
 
 /**
+ * struct msm_hsusb_gadget_platform_data - platform device data
+ *              for ci13xxx_udc driver.
+ * @self_powered: devices doesn't depend on usb bus power for it's operation.
+ */
+struct msm_hsusb_gadget_platform_data {
+	int self_powered;
+};
+
+/**
  * struct msm_otg_platform_data - platform device data
  *              for msm72k_otg driver.
  * @phy_init_seq: PHY configuration sequence. val, reg pairs
