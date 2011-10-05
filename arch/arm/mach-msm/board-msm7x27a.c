@@ -3342,9 +3342,6 @@ static void __init msm7x2x_init(void)
 
 	/* Common functions for SURF/FFA/RUMI3 */
 	msm_device_i2c_init();
-	/* Ensure ar6000pm device is registered before MMC/SDC */
-	msm7x27a_init_ar6000pm();
-	msm7x27a_init_mmc();
 	msm7x27a_init_ebi2();
 	msm7x27a_cfg_uart2dm_serial();
 #ifdef CONFIG_SERIAL_MSM_HS
@@ -3371,6 +3368,11 @@ static void __init msm7x2x_init(void)
 		platform_add_devices(surf_ffa_devices,
 				ARRAY_SIZE(surf_ffa_devices));
 		msm_fb_add_devices();
+		/* Ensure ar6000pm device is registered before MMC/SDC */
+		msm7x27a_init_ar6000pm();
+#ifdef CONFIG_MMC_MSM
+		msm7x27a_init_mmc();
+#endif
 #ifdef CONFIG_USB_EHCI_MSM_72K
 		msm7x2x_init_host();
 #endif
