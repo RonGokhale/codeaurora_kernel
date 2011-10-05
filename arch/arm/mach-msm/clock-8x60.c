@@ -136,6 +136,7 @@
 #define JPEGD_CC_REG				REG_MM(0x00A4)
 #define JPEGD_NS_REG				REG_MM(0x00AC)
 #define MAXI_EN_REG				REG_MM(0x0018)
+#define MAXI_EN2_REG				REG_MM(0x0020)
 #define MAXI_EN3_REG				REG_MM(0x002C)
 #define MDP_CC_REG				REG_MM(0x00C0)
 #define MDP_MD0_REG				REG_MM(0x00C4)
@@ -1437,7 +1438,7 @@ static struct bank_masks bdiv_info_rot = {
 		.ns_mask =	BM(29, 26) | BM(21, 19),
 	},
 };
-#define CLK_ROT(id) \
+#define CLK_ROT(id, par) \
 	[L_##id##_CLK] = { \
 		.type = BASIC, \
 		.ns_reg = ROT_NS_REG, \
@@ -1452,7 +1453,7 @@ static struct bank_masks bdiv_info_rot = {
 		.set_rate = set_rate_div_banked, \
 		.freq_tbl = clk_tbl_rot, \
 		.bank_masks = &bdiv_info_rot, \
-		.parent = L_NONE_CLK, \
+		.parent = L_##par##_CLK, \
 		.test_vector = TEST_MM_HS(0x1B), \
 		.current_freq = &local_dummy_freq, \
 	}
@@ -1573,7 +1574,7 @@ static struct clk_freq_tbl clk_tbl_vcodec[] = {
 };
 
 /* VPE */
-#define CLK_VPE(id) \
+#define CLK_VPE(id, par) \
 	[L_##id##_CLK] = { \
 		.type = BASIC, \
 		.ns_reg = VPE_NS_REG, \
@@ -1588,7 +1589,7 @@ static struct clk_freq_tbl clk_tbl_vcodec[] = {
 		.ns_mask = (BM(15, 12) | BM(2, 0)), \
 		.set_rate = set_rate_nop, \
 		.freq_tbl = clk_tbl_vpe, \
-		.parent = L_NONE_CLK, \
+		.parent = L_##par##_CLK, \
 		.test_vector = TEST_MM_HS(0x1C), \
 		.current_freq = &local_dummy_freq, \
 	}
@@ -2014,7 +2015,7 @@ struct clk_local soc_clk_local_tbl[] = {
 	CLK_SLAVE(PIXEL_LCDC, PIXEL_CC_REG, BIT(8), NULL, 0,
 		DBG_BUS_VEC_C_REG, HALT, 21, PIXEL_MDP, TEST_MM_LS(0x01)),
 
-	CLK_ROT(ROT),
+	CLK_ROT(ROT, ROT_AXI),
 
 	CLK_TV(TV_SRC),
 	CLK_SLAVE(TV_ENC,  TV_CC_REG,  BIT(8), SW_RESET_CORE_REG, BIT(0),
@@ -2031,7 +2032,7 @@ struct clk_local soc_clk_local_tbl[] = {
 
 	CLK_VCODEC(VCODEC, VCODEC_AXI),
 
-	CLK_VPE(VPE),
+	CLK_VPE(VPE, VPE_AXI),
 
 	CLK_VFE(VFE, VFE_AXI),
 	CLK_SLAVE(CSI0_VFE, VFE_CC_REG, BIT(12), SW_RESET_CORE_REG, BIT(24),
@@ -2054,8 +2055,10 @@ struct clk_local soc_clk_local_tbl[] = {
 		BIT(4)|BIT(5), DBG_BUS_VEC_E_REG, HALT, 3, TEST_MM_HS(0x17)),
 	CLK_NORATE(VFE_AXI,   MAXI_EN_REG, BIT(18), SW_RESET_AXI_REG, BIT(9),
 		DBG_BUS_VEC_E_REG, HALT, 0, TEST_MM_HS(0x18)),
-	CLK_RESET(ROT_AXI,    SW_RESET_AXI_REG, BIT(6)),
-	CLK_RESET(VPE_AXI,    SW_RESET_AXI_REG, BIT(15)),
+	CLK_NORATE(ROT_AXI, MAXI_EN2_REG, BIT(24), SW_RESET_AXI_REG, BIT(6),
+		DBG_BUS_VEC_E_REG, HALT, 2, TEST_MM_HS(0x16)),
+	CLK_NORATE(VPE_AXI, MAXI_EN2_REG, BIT(26), SW_RESET_AXI_REG, BIT(15),
+		DBG_BUS_VEC_E_REG, HALT, 1, TEST_MM_HS(0x19)),
 
 	/* AHB Interfaces */
 	CLK_NORATE(AMP_P,    AHB_EN_REG, BIT(24), NULL, 0,
@@ -2489,7 +2492,7 @@ static void reg_init(void)
 	 * support it. Also set FORCE_CORE_ON bits, and any sleep and wake-up
 	 * delays to safe values. */
 	rmwreg(0x100207F9, MAXI_EN_REG,  0x1803FFFF);
-	/* MAXI_EN2_REG is owned by the RPM.  Don't touch it. */
+	rmwreg(0x7027FCFF, MAXI_EN2_REG, 0x7A3FFFFF);
 	writel(0x3FE7FCFF, MAXI_EN3_REG);
 	writel(0x000001D8, SAXI_EN_REG);
 
