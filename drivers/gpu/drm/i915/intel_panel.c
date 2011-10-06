@@ -161,6 +161,12 @@ static u32 i915_read_blc_pwm_ctl(struct drm_i915_private *dev_priv)
 	return val;
 }
 
+static u32 intel_panel_get_default_backlight_period(struct drm_device *dev)
+{
+	/* The default number of clock cycles in one backlight PWM period. */
+	return 0x1000;
+}
+
 u32 intel_panel_get_max_backlight(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -168,11 +174,19 @@ u32 intel_panel_get_max_backlight(struct drm_device *dev)
 
 	max = i915_read_blc_pwm_ctl(dev_priv);
 	if (max == 0) {
-		/* XXX add code here to query mode clock or hardware clock
-		 * and program max PWM appropriately.
+		/* If no max backlight was found, use the default PWM period as
+		 * the max backlight value.
 		 */
-		printk_once(KERN_WARNING "fixme: max PWM is zero.\n");
-		return 1;
+		max = intel_panel_get_default_backlight_period(dev);
+		if (HAS_PCH_SPLIT(dev_priv->dev)) {
+			u32 val = max << BLC_PWM_PCH_FREQ_SHIFT;
+			I915_WRITE(BLC_PWM_PCH_CTL2, val);
+		} else {
+			u32 val = max << BACKLIGHT_MODULATION_FREQ_SHIFT;
+			I915_WRITE(BLC_PWM_CTL, val);
+		}
+
+		return max;
 	}
 
 	if (HAS_PCH_SPLIT(dev)) {
