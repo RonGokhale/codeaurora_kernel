@@ -133,27 +133,32 @@ static u32 i915_read_blc_pwm_ctl(struct drm_i915_private *dev_priv)
 {
 	u32 val;
 
-	/* Restore the CTL value if it lost, e.g. GPU reset */
-
+	/* Restore the CTL value if it was lost, e.g. GPU reset */
+	/* Use the default PWM max if none is available. */
 	if (HAS_PCH_SPLIT(dev_priv->dev)) {
 		val = I915_READ(BLC_PWM_PCH_CTL2);
-		if (dev_priv->saveBLC_PWM_CTL2 == 0) {
+		if (dev_priv->saveBLC_PWM_CTL2 == 0 && val == 0)
+			dev_priv->saveBLC_PWM_CTL2 =
+				i915_max_backlight << BLC_PWM_PCH_FREQ_SHIFT;
+		else if (dev_priv->saveBLC_PWM_CTL2 == 0)
 			dev_priv->saveBLC_PWM_CTL2 = val;
-		} else if (val == 0) {
+		if (val == 0) {
 			I915_WRITE(BLC_PWM_PCH_CTL2,
-				   dev_priv->saveBLC_PWM_CTL);
-			val = dev_priv->saveBLC_PWM_CTL;
+				   dev_priv->saveBLC_PWM_CTL2);
+			val = dev_priv->saveBLC_PWM_CTL2;
 		}
 	} else {
 		val = I915_READ(BLC_PWM_CTL);
-		if (dev_priv->saveBLC_PWM_CTL == 0) {
+		if (dev_priv->saveBLC_PWM_CTL == 0 && val == 0) {
+			dev_priv->saveBLC_PWM_CTL = i915_max_backlight
+				<< BACKLIGHT_MODULATION_FREQ_SHIFT;
+		} else if (dev_priv->saveBLC_PWM_CTL == 0) {
 			dev_priv->saveBLC_PWM_CTL = val;
 			dev_priv->saveBLC_PWM_CTL2 = I915_READ(BLC_PWM_CTL2);
-		} else if (val == 0) {
-			I915_WRITE(BLC_PWM_CTL,
-				   dev_priv->saveBLC_PWM_CTL);
-			I915_WRITE(BLC_PWM_CTL2,
-				   dev_priv->saveBLC_PWM_CTL2);
+		}
+		if (val == 0) {
+			I915_WRITE(BLC_PWM_CTL, dev_priv->saveBLC_PWM_CTL);
+			I915_WRITE(BLC_PWM_CTL2, dev_priv->saveBLC_PWM_CTL2);
 			val = dev_priv->saveBLC_PWM_CTL;
 		}
 	}

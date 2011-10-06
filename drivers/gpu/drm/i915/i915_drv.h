@@ -999,6 +999,7 @@ extern unsigned int i915_panel_use_ssc;
 extern int i915_vbt_sdvo_panel_type;
 extern unsigned int i915_enable_rc6;
 extern unsigned int i915_enable_fbc;
+extern unsigned int i915_max_backlight;
 
 extern int i915_suspend(struct drm_device *dev, pm_message_t state);
 extern int i915_resume(struct drm_device *dev);
