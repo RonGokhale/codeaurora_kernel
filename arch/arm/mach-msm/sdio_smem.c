@@ -30,6 +30,7 @@ static struct workqueue_struct *workq;
 static DECLARE_WORK(work_read, sdio_smem_read);
 static DECLARE_WAIT_QUEUE_HEAD(waitq);
 static int bytes_avail;
+static int sdio_ch_opened;
 
 static void sdio_smem_release(struct device *dev)
 {
@@ -44,22 +45,26 @@ static void sdio_smem_read(struct work_struct *work)
 	int read_avail;
 	char *data = client.buf;
 
+	if (!sdio_ch_opened)
+		return;
+
 	read_avail = sdio_read_avail(channel);
 	if (read_avail > bytes_avail ||
 		read_avail < 0) {
 		pr_err("Error: read_avail=%d bytes_avail=%d\n",
 			read_avail, bytes_avail);
-		client.cb_func(SDIO_SMEM_EVENT_READ_ERR);
-		return;
+		goto read_err;
 	}
+
+	if (read_avail == 0)
+		return;
 
 	err = sdio_read(channel,
 			&data[client.size - bytes_avail],
 			read_avail);
-	if (err < 0) {
+	if (err) {
 		pr_err("sdio_read error (%d)", err);
-		client.cb_func(SDIO_SMEM_EVENT_READ_ERR);
-		return;
+		goto read_err;
 	}
 
 	bytes_avail -= read_avail;
@@ -72,6 +77,13 @@ static void sdio_smem_read(struct work_struct *work)
 	}
 	if (err)
 		pr_err("error (%d) on callback\n", err);
+
+	return;
+
+read_err:
+	if (sdio_ch_opened)
+		client.cb_func(SDIO_SMEM_EVENT_READ_ERR);
+	return;
 }
 
 static void sdio_smem_notify(void *priv, unsigned event)
@@ -98,8 +110,10 @@ int sdio_smem_register_client(void)
 	if (!workq)
 		return -ENOMEM;
 
+	sdio_ch_opened = 1;
 	err = sdio_open("SDIO_SMEM", &channel, NULL, sdio_smem_notify);
-	if (err < 0) {
+	if (err) {
+		sdio_ch_opened = 0;
 		pr_err("sdio_open error (%d)\n", err);
 		destroy_workqueue(workq);
 		return err;
@@ -110,12 +124,22 @@ int sdio_smem_register_client(void)
 
 int sdio_smem_unregister_client(void)
 {
+	int err = 0;
+
+	sdio_ch_opened = 0;
+	err = sdio_close(channel);
+	if (err) {
+		pr_err("sdio_close error (%d)\n", err);
+		return err;
+	}
+	pr_debug("SDIO SMEM channel closed\n");
+	flush_workqueue(workq);
 	destroy_workqueue(workq);
 	bytes_avail = 0;
 	client.buf = NULL;
 	client.cb_func = NULL;
 	client.size = 0;
-	pr_debug("SDIO SMEM channel closed\n");
+
 	return 0;
 }
 
@@ -132,6 +156,7 @@ static int sdio_smem_remove(struct platform_device *pdev)
 {
 	platform_device_unregister(&client.plat_dev);
 	memset(&client, 0, sizeof(client));
+	sdio_ch_opened = 0;
 	return 0;
 }
 static struct platform_driver sdio_smem_drv = {
