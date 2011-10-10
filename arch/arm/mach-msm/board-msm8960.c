@@ -999,10 +999,19 @@ static void __init locate_unstable_memory(void)
 		msm8960_reserve_info.bank_size);
 }
 
+static void __init place_movable_zone(void)
+{
+	movable_reserved_start = msm8960_reserve_info.low_unstable_address;
+	movable_reserved_size = msm8960_reserve_info.max_unstable_size;
+	pr_info("movable zone start %lx size %lx\n",
+		movable_reserved_start, movable_reserved_size);
+}
+
 static void __init msm8960_reserve(void)
 {
 	reserve_info = &msm8960_reserve_info;
 	locate_unstable_memory();
+	place_movable_zone();
 	msm_reserve();
 }
 
