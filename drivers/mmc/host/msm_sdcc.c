@@ -312,9 +312,7 @@ static inline unsigned int msmsdcc_get_min_sup_clk_rate(
 static inline void msmsdcc_delay(struct msmsdcc_host *host)
 {
 	mb();
-	udelay(1 + ((3 * USEC_PER_SEC) /
-		(host->clk_rate ? host->clk_rate :
-			msmsdcc_get_min_sup_clk_rate(host))));
+	udelay(host->reg_write_delay);
 }
 
 static inline void
@@ -1320,6 +1318,9 @@ msmsdcc_irq(int irq, void *dev_id)
 				wake_lock(&host->sdio_wlock);
 			/* only ansyc interrupt can come when clocks are off */
 			writel_relaxed(MCI_SDIOINTMASK, host->base + MMCICLEAR);
+			if (host->clk_rate <=
+					msmsdcc_get_min_sup_clk_rate(host))
+				msmsdcc_delay(host);
 		}
 
 		status = readl_relaxed(host->base + MMCISTATUS);
@@ -1333,7 +1334,10 @@ msmsdcc_irq(int irq, void *dev_id)
 #endif
 		status &= readl_relaxed(host->base + MMCIMASK0);
 		writel_relaxed(status, host->base + MMCICLEAR);
-		mb();
+		/* Allow clear to take effect*/
+		if (host->clk_rate <=
+				msmsdcc_get_min_sup_clk_rate(host))
+			msmsdcc_delay(host);
 #if IRQ_DEBUG
 		msmsdcc_print_status(host, "irq0-p", status);
 #endif
@@ -1997,6 +2001,10 @@ msmsdcc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 				pr_debug("%s: failed to set clk rate %u\n",
 						mmc_hostname(mmc), clock);
 			host->clk_rate = clock;
+			host->reg_write_delay =
+				(1 + ((3 * USEC_PER_SEC) /
+				      (host->clk_rate ? host->clk_rate :
+				       msmsdcc_get_min_sup_clk_rate(host))));
 		}
 		/*
 		 * give atleast 2 MCLK cycles delay for clocks
@@ -3444,6 +3452,15 @@ msmsdcc_probe(struct platform_device *pdev)
 		goto clk_put;
 
 	host->clk_rate = clk_get_rate(host->clk);
+	if (!host->clk_rate)
+		dev_err(&pdev->dev, "Failed to read MCLK\n");
+	/*
+	 * Set the register write delay according to min. clock frequency
+	 * supported and update later when the host->clk_rate changes.
+	 */
+	host->reg_write_delay =
+		(1 + ((3 * USEC_PER_SEC) /
+		      msmsdcc_get_min_sup_clk_rate(host)));
 
 	host->clks_on = 1;
 
