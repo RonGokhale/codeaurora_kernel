@@ -721,9 +721,10 @@ static int ath6kl_sdio_suspend(struct ath6kl *ar)
 
 	flags = sdio_get_host_pm_caps(func);
 
-	if (!(flags & MMC_PM_KEEP_POWER))
+	if (!(flags & MMC_PM_KEEP_POWER)) {
 		/* as host doesn't support keep power we need to bail out */
 		return -EINVAL;
+	}
 
 	ret = sdio_set_host_pm_flags(func, MMC_PM_KEEP_POWER);
 	if (ret) {
