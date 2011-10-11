@@ -377,4 +377,6 @@ extern void intel_fb_output_poll_changed(struct drm_device *dev);
 extern void intel_fb_restore_mode(struct drm_device *dev);
 
 extern void intel_init_clock_gating(struct drm_device *dev);
+extern void intel_cpt_verify_modeset(struct drm_device *dev, int pipe);
+
 #endif /* __INTEL_DRV_H__ */
