@@ -28,7 +28,6 @@
 #include <linux/interrupt.h>
 #include <linux/spinlock.h>
 #include <linux/debugfs.h>
-
 #include <crypto/ctr.h>
 #include <crypto/des.h>
 #include <crypto/aes.h>
@@ -38,8 +37,7 @@
 #include <crypto/aead.h>
 #include <crypto/authenc.h>
 #include <crypto/scatterwalk.h>
-
-#include "inc/qce.h"
+#include "qce.h"
 
 #define MAX_CRYPTO_DEVICE 3
 #define DEBUG_MAX_FNAME  16
