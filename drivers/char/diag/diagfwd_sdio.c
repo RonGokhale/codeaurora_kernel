@@ -125,8 +125,13 @@ int diagfwd_read_complete_sdio(void)
 void diag_read_mdm_work_fn(struct work_struct *work)
 {
 	if (driver->sdio_ch) {
-		wait_event_interruptible(driver->wait_q, (sdio_write_avail
-				(driver->sdio_ch) >= driver->read_len_mdm));
+		wait_event_interruptible(driver->wait_q, ((sdio_write_avail
+			(driver->sdio_ch) >= driver->read_len_mdm) ||
+				 !(driver->sdio_ch)));
+		if (!(driver->sdio_ch)) {
+			pr_alert("diag: sdio channel not valid");
+			return;
+		}
 		if (driver->sdio_ch && driver->usb_buf_mdm_out &&
 						 (driver->read_len_mdm > 0))
 			sdio_write(driver->sdio_ch, driver->usb_buf_mdm_out,
@@ -167,15 +172,10 @@ static int diag_sdio_probe(struct platform_device *pdev)
 
 static int diag_sdio_remove(struct platform_device *pdev)
 {
-	queue_work(driver->diag_sdio_wq, &(driver->diag_remove_sdio_work));
-	return 0;
-}
-
-static void diag_remove_sdio_work_fn(struct work_struct *work)
-{
 	pr_debug("\n diag: sdio remove called");
-	/*Disable SDIO channel to prevent further read/write */
+	/* Disable SDIO channel to prevent further read/write */
 	driver->sdio_ch = NULL;
+	return 0;
 }
 
 static int diagfwd_sdio_runtime_suspend(struct device *dev)
@@ -239,7 +239,6 @@ void diagfwd_sdio_init(void)
 	INIT_WORK(&(driver->diag_read_mdm_work), diag_read_mdm_work_fn);
 #endif
 	INIT_WORK(&(driver->diag_read_sdio_work), diag_read_sdio_work_fn);
-	INIT_WORK(&(driver->diag_remove_sdio_work), diag_remove_sdio_work_fn);
 	ret = platform_driver_register(&msm_sdio_ch_driver);
 	if (ret)
 		printk(KERN_INFO "DIAG could not register SDIO device");
