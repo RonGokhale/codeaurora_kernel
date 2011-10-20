@@ -5,6 +5,8 @@
  * ELF register definitions..
  */
 
+#include <linux/thread_info.h>
+
 #include <asm/ptrace.h>
 #include <asm/user.h>
 #include <asm/auxvec.h>
@@ -155,7 +157,12 @@ do {						\
 #define elf_check_arch(x)			\
 	((x)->e_machine == EM_X86_64)
 
-#define compat_elf_check_arch(x)	elf_check_arch_ia32(x)
+#define compat_elf_check_arch(x)		\
+	(elf_check_arch_ia32(x) || (x)->e_machine == EM_X86_64)
+
+#if __USER32_DS != __USER_DS
+# error "The following code assumes __USER32_DS == __USER_DS"
+#endif
 
 static inline void elf_common_init(struct thread_struct *t,
 				   struct pt_regs *regs, const u16 ds)
@@ -178,8 +185,9 @@ static inline void elf_common_init(struct thread_struct *t,
 void start_thread_ia32(struct pt_regs *regs, u32 new_ip, u32 new_sp);
 #define compat_start_thread start_thread_ia32
 
-void set_personality_ia32(void);
-#define COMPAT_SET_PERSONALITY(ex) set_personality_ia32()
+void set_personality_ia32(bool);
+#define COMPAT_SET_PERSONALITY(ex)			\
+	set_personality_ia32((ex).e_machine == EM_X86_64)
 
 #define COMPAT_ELF_PLATFORM			("i686")
 
@@ -286,7 +294,7 @@ do {									\
 #define VDSO_HIGH_BASE		0xffffe000U /* CONFIG_COMPAT_VDSO address */
 
 /* 1GB for 64bit, 8MB for 32bit */
-#define STACK_RND_MASK (test_thread_flag(TIF_IA32) ? 0x7ff : 0x3fffff)
+#define STACK_RND_MASK (test_thread_flag(TIF_ADDR32) ? 0x7ff : 0x3fffff)
 
 #define ARCH_DLINFO							\
 do {									\
@@ -295,9 +303,20 @@ do {									\
 			    (unsigned long)current->mm->context.vdso);	\
 } while (0)
 
+#define ARCH_DLINFO_X32							\
+do {									\
+	if (vdso_enabled)						\
+		NEW_AUX_ENT(AT_SYSINFO_EHDR,				\
+			    (unsigned long)current->mm->context.vdso);	\
+} while (0)
+
 #define AT_SYSINFO		32
 
-#define COMPAT_ARCH_DLINFO	ARCH_DLINFO_IA32(sysctl_vsyscall32)
+#define COMPAT_ARCH_DLINFO						\
+if (test_thread_flag(TIF_X32))						\
+	ARCH_DLINFO_X32;						\
+else									\
+	ARCH_DLINFO_IA32(sysctl_vsyscall32)
 
 #define COMPAT_ELF_ET_DYN_BASE	(TASK_UNMAPPED_BASE + 0x1000000)
 

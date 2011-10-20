@@ -15,6 +15,9 @@
 
 #include <linux/sched.h>
 #include <linux/err.h>
+#ifdef CONFIG_X86_X32_ABI
+#include <asm/unistd.h>
+#endif
 
 extern const unsigned long sys_call_table[];
 
@@ -25,13 +28,21 @@ extern const unsigned long sys_call_table[];
  */
 static inline int syscall_get_nr(struct task_struct *task, struct pt_regs *regs)
 {
-	return regs->orig_ax;
+	return regs->orig_ax
+#ifdef CONFIG_X86_X32_ABI
+	       & ~__X32_SYSCALL_BIT
+#endif
+		;
 }
 
 static inline void syscall_rollback(struct task_struct *task,
 				    struct pt_regs *regs)
 {
-	regs->ax = regs->orig_ax;
+	regs->ax = regs->orig_ax
+#ifdef CONFIG_X86_X32_ABI
+		  & ~__X32_SYSCALL_BIT
+#endif
+		;
 }
 
 static inline long syscall_get_error(struct task_struct *task,

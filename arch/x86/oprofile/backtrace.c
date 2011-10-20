@@ -105,7 +105,7 @@ x86_backtrace_32(struct pt_regs * const regs, unsigned int depth)
 	struct stack_frame_ia32 *head;
 
 	/* User process is 32-bit */
-	if (!current || !test_thread_flag(TIF_IA32))
+	if (!current || !test_thread_flag(TIF_ADDR32))
 		return 0;
 
 	head = (struct stack_frame_ia32 *) regs->bp;

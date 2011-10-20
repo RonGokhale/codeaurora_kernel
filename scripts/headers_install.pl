@@ -39,6 +39,7 @@ foreach my $file (@files) {
 		$line =~ s/(^|\s)(inline)\b/$1__$2__/g;
 		$line =~ s/(^|\s)(asm)\b(\s|[(]|$)/$1__$2__$3/g;
 		$line =~ s/(^|\s|[(])(volatile)\b(\s|[(]|$)/$1__$2__$3/g;
+		$line =~ s/__NR_64_/__NR_/g;
 		printf {$out} "%s", $line;
 	}
 	close $out;

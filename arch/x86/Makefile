@@ -157,7 +157,7 @@ all: bzImage
 # KBUILD_IMAGE specify target image being built
 KBUILD_IMAGE := $(boot)/bzImage
 
-bzImage: vmlinux
+bzImage: vmlinux arch/x86/include/generated/asm/unistd_x32.h
 ifeq ($(CONFIG_X86_DECODER_SELFTEST),y)
 	$(Q)$(MAKE) $(build)=arch/x86/tools posttest
 endif
@@ -175,6 +175,11 @@ install:
 PHONY += vdso_install
 vdso_install:
 	$(Q)$(MAKE) $(build)=arch/x86/vdso $@
+
+arch/x86/include/generated/asm/unistd_x32.h: arch/x86/include/asm/unistd_64.h
+	sed -e "s/_NR_x32_/_NR_/g" \
+	    -e "s/_ASM_X86_UNISTD_64_H/_ASM_X86_UNISTD_X32_H/g" \
+	    $^ | grep -v "__NR_64_" > $@
 
 archclean:
 	$(Q)rm -rf $(objtree)/arch/i386

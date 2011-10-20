@@ -481,7 +481,9 @@ ENTRY(system_call_after_swapgs)
 	testl $_TIF_WORK_SYSCALL_ENTRY,TI_flags(%rcx)
 	jnz tracesys
 system_call_fastpath:
-	cmpq $__NR_syscall_max,%rax
+	/* Clear the __X32_SYSCALL_BIT bit.  */
+	andl $~__X32_SYSCALL_BIT,%eax
+	cmpl $__NR_syscall_max,%eax
 	ja badsys
 	movq %r10,%rcx
 	call *sys_call_table(,%rax,8)  # XXX:	 rip relative
@@ -597,7 +599,9 @@ tracesys:
 	 */
 	LOAD_ARGS ARGOFFSET, 1
 	RESTORE_REST
-	cmpq $__NR_syscall_max,%rax
+	/* Clear the __X32_SYSCALL_BIT bit.  */
+	andl $~__X32_SYSCALL_BIT,%eax
+	cmpl $__NR_syscall_max,%eax
 	ja   int_ret_from_sys_call	/* RAX(%rsp) set to -ENOSYS above */
 	movq %r10,%rcx	/* fixup for C */
 	call *sys_call_table(,%rax,8)
@@ -738,6 +742,40 @@ ENTRY(stub_rt_sigreturn)
 	jmp int_ret_from_sys_call
 	CFI_ENDPROC
 END(stub_rt_sigreturn)
+
+#ifdef CONFIG_X86_X32_ABI
+	PTREGSCALL stub_x32_sigaltstack, sys32_sigaltstack, %rdx
+
+ENTRY(stub_x32_execve)
+	CFI_STARTPROC
+	addq $8, %rsp
+	PARTIAL_FRAME 0
+	SAVE_REST
+	FIXUP_TOP_OF_STACK %r11
+	movq %rsp, %rcx
+	call sys32_execve
+	RESTORE_TOP_OF_STACK %r11
+	movq %rax,RAX(%rsp)
+	RESTORE_REST
+	jmp int_ret_from_sys_call
+	CFI_ENDPROC
+END(stub_x32_execve)
+
+ENTRY(stub_x32_rt_sigreturn)
+	CFI_STARTPROC
+	addq $8, %rsp
+	PARTIAL_FRAME 0
+	SAVE_REST
+	movq %rsp,%rdi
+	FIXUP_TOP_OF_STACK %r11
+	call sys32_x32_rt_sigreturn
+	movq %rax,RAX(%rsp) # fixme, this could be done at the higher layer
+	RESTORE_REST
+	jmp int_ret_from_sys_call
+	CFI_ENDPROC
+END(stub_x32_rt_sigreturn)
+
+#endif
 
 /*
  * Build the entry stubs and pointer table with some assembler magic.

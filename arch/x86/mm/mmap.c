@@ -60,7 +60,7 @@ static int mmap_is_ia32(void)
 	return 1;
 #endif
 #ifdef CONFIG_IA32_EMULATION
-	if (test_thread_flag(TIF_IA32))
+	if (test_thread_flag(TIF_ADDR32))
 		return 1;
 #endif
 	return 0;

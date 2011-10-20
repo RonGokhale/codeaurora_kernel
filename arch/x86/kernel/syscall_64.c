@@ -8,11 +8,20 @@
 #define __NO_STUBS
 
 #define __SYSCALL(nr, sym) extern asmlinkage void sym(void) ;
+#ifdef CONFIG_X86_X32_ABI
+# define __X32_SYSCALL(nr, sym) __SYSCALL(nr, sym)
+#endif
 #undef _ASM_X86_UNISTD_64_H
 #include <asm/unistd_64.h>
 
 #undef __SYSCALL
 #define __SYSCALL(nr, sym) [nr] = sym,
+#undef __X32_SYSCALL
+#ifdef CONFIG_X86_X32_ABI
+# define __X32_SYSCALL(nr, sym) __SYSCALL(nr, sym)
+#else
+# define __X32_SYSCALL(nr, sym) __SYSCALL(nr, sys_ni_syscall)
+#endif
 #undef _ASM_X86_UNISTD_64_H
 
 typedef void (*sys_call_ptr_t)(void);

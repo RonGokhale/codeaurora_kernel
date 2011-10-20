@@ -42,6 +42,14 @@
 
 void signal_fault(struct pt_regs *regs, void __user *frame, char *where);
 
+/* We use the standard 64-bit versions of these for the x32 variants */
+int
+restore_sigcontext(struct pt_regs *regs, struct sigcontext __user *sc,
+		   unsigned long *pax);
+int
+setup_sigcontext(struct sigcontext __user *sc, void __user *fpstate,
+		 struct pt_regs *regs, unsigned long mask);
+
 int copy_siginfo_to_user32(compat_siginfo_t __user *to, siginfo_t *from)
 {
 	int err = 0;

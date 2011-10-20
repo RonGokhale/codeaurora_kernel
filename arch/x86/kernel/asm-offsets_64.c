@@ -2,10 +2,12 @@
 
 #define __NO_STUBS 1
 #undef __SYSCALL
+#undef __X32_SYSCALL
 #undef _ASM_X86_UNISTD_64_H
 #define __SYSCALL(nr, sym) [nr] = 1,
+#define __X32_SYSCALL(nr, sym) __SYSCALL(nr, sym)
 static char syscalls[] = {
-#include <asm/unistd.h>
+#include <asm/unistd_64.h>
 };
 
 int main(void)

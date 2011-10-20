@@ -12,4 +12,8 @@ typedef unsigned short umode_t;
 
 #endif /* __ASSEMBLY__ */
 
+#ifndef __KERNEL_NATIVE_LONG_TYPE
+#define __KERNEL_NATIVE_LONG_TYPE long
+#endif
+
 #endif /* _ASM_GENERIC_TYPES_H */
