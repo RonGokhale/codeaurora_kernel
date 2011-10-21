@@ -553,6 +553,7 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 		case ASM_STREAM_CMD_FLUSH:
 		case ASM_SESSION_CMD_RUN:
 		case ASM_SESSION_CMD_REGISTER_FOR_TX_OVERFLOW_EVENTS:
+		case ASM_STREAM_CMD_FLUSH_READBUFS:
 		pr_debug("%s:Payload = [0x%x]\n", __func__, payload[0]);
 		if (token != ac->session) {
 			pr_err("%s:Invalid session[%d] rxed expected[%d]",
@@ -677,6 +678,14 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 			atomic_set(&ac->time_flag, 0);
 			wake_up(&ac->time_wait);
 		}
+		break;
+	case ASM_DATA_EVENT_SR_CM_CHANGE_NOTIFY:
+	case ASM_DATA_EVENT_ENC_SR_CM_NOTIFY:
+		pr_debug("%s: ASM_DATA_EVENT_SR_CM_CHANGE_NOTIFY, "
+				"payload[0] = %d, payload[1] = %d, "
+				"payload[2] = %d, payload[3] = %d\n", __func__,
+				payload[0], payload[1], payload[2],
+				payload[3]);
 		break;
 	}
 	if (ac->cb)
@@ -1112,7 +1121,8 @@ int q6asm_enc_cfg_blk_pcm(struct audio_client *ac,
 
 	int rc = 0;
 
-	pr_debug("%s: Session %d\n", __func__, ac->session);
+	pr_debug("%s: Session %d, rate = %d, channels = %d\n", __func__,
+			 ac->session, rate, channels);
 
 	q6asm_add_hdr(ac, &enc_cfg.hdr, sizeof(enc_cfg), TRUE);
 
@@ -1173,6 +1183,44 @@ int q6asm_enable_sbrps(struct audio_client *ac,
 			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
 	if (!rc) {
 		pr_err("timeout opcode[0x%x] ", sbrps.hdr.opcode);
+		goto fail_cmd;
+	}
+	return 0;
+fail_cmd:
+	return -EINVAL;
+}
+
+int q6asm_cfg_dual_mono_aac(struct audio_client *ac,
+			uint16_t sce_left, uint16_t sce_right)
+{
+	struct asm_stream_cmd_encdec_dualmono dual_mono;
+
+	int rc = 0;
+
+	pr_debug("%s: Session %d, sce_left = %d, sce_right = %d\n",
+			 __func__, ac->session, sce_left, sce_right);
+
+	q6asm_add_hdr(ac, &dual_mono.hdr, sizeof(dual_mono), TRUE);
+
+	dual_mono.hdr.opcode = ASM_STREAM_CMD_SET_ENCDEC_PARAM;
+	dual_mono.param_id = ASM_CONFIGURE_DUAL_MONO;
+	dual_mono.param_size = sizeof(struct asm_dual_mono);
+	dual_mono.channel_map.sce_left = sce_left;
+	dual_mono.channel_map.sce_right = sce_right;
+
+	rc = apr_send_pkt(ac->apr, (uint32_t *) &dual_mono);
+	if (rc < 0) {
+		pr_err("%s:Command opcode[0x%x]paramid[0x%x] failed\n",
+				__func__, ASM_STREAM_CMD_SET_ENCDEC_PARAM,
+				ASM_CONFIGURE_DUAL_MONO);
+		rc = -EINVAL;
+		goto fail_cmd;
+	}
+	rc = wait_event_timeout(ac->cmd_wait,
+			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("%s:timeout opcode[0x%x]\n", __func__,
+						dual_mono.hdr.opcode);
 		goto fail_cmd;
 	}
 	return 0;
@@ -2436,6 +2484,11 @@ int q6asm_cmd(struct audio_client *ac, int cmd)
 	case CMD_FLUSH:
 		pr_debug("%s:CMD_FLUSH\n", __func__);
 		hdr.opcode = ASM_STREAM_CMD_FLUSH;
+		state = &ac->cmd_state;
+		break;
+	case CMD_OUT_FLUSH:
+		pr_debug("%s:CMD_OUT_FLUSH\n", __func__);
+		hdr.opcode = ASM_STREAM_CMD_FLUSH_READBUFS;
 		state = &ac->cmd_state;
 		break;
 	case CMD_EOS:

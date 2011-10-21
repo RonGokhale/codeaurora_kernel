@@ -41,6 +41,7 @@
 #define NON_TUNNEL_MODE 0x0001
 #define AUDAAC_EOS_SET  0x00000001
 
+#define AUDIO_AAC_DUAL_MONO_INVALID -1
 /* Default number of pre-allocated event packets */
 #define AUDAAC_EVENT_NUM 10
 
@@ -422,6 +423,17 @@ static int audaac_flush(struct q6audio *audio)
 	return 0;
 }
 
+static int audaac_outport_flush(struct q6audio *audio)
+{
+	int rc;
+
+	rc = q6asm_cmd(audio->ac, CMD_OUT_FLUSH);
+	if (rc < 0)
+		pr_err("%s: output port flush cmd failed rc=%d\n", __func__,
+			rc);
+	return rc;
+}
+
 static void audaac_async_read(struct q6audio *audio,
 		struct audaac_buffer_node *buf_node)
 {
@@ -566,6 +578,7 @@ static void q6_audaac_cb(uint32_t opcode, uint32_t token,
 		uint32_t *payload, void *priv)
 {
 	struct q6audio *audio = (struct q6audio *)priv;
+	union msm_audio_event_payload e_payload;
 
 	switch (opcode) {
 	case ASM_DATA_EVENT_WRITE_DONE:
@@ -603,6 +616,23 @@ static void q6_audaac_cb(uint32_t opcode, uint32_t token,
 	case ASM_STREAM_CMD_SET_ENCDEC_PARAM:
 		pr_debug("%s:payload0[%x] payloa1d[%x]opcode= 0x%x\n",
 			 __func__, payload[0], payload[1], opcode);
+		break;
+
+	case ASM_DATA_EVENT_SR_CM_CHANGE_NOTIFY:
+		pr_debug("%s: ASM_DATA_EVENT_SR_CM_CHANGE_NOTIFY, "
+				"payload[0]-sr = %d, payload[1]-chl = %d, "
+				"payload[2] = %d, payload[3] = %d\n", __func__,
+				payload[0], payload[1], payload[2],
+				payload[3]);
+		pr_debug("%s: ASM_DATA_EVENT_SR_CM_CHANGE_NOTIFY, "
+				"sr(prev) = %d, chl(prev) = %d,",
+				__func__, audio->pcm_cfg.sample_rate,
+				audio->pcm_cfg.channel_count);
+		audio->pcm_cfg.sample_rate = payload[0];
+		audio->pcm_cfg.channel_count = payload[1] & 0xFFFF;
+		e_payload.stream_info.chan_info = audio->pcm_cfg.channel_count;
+		e_payload.stream_info.sample_rate = audio->pcm_cfg.sample_rate;
+		audaac_post_event(audio, AUDIO_EVENT_STREAM_INFO, e_payload);
 		break;
 	default:
 		pr_debug("%s:Unhandled event = 0x%8x\n", __func__, opcode);
@@ -1217,10 +1247,10 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		rc = q6asm_enable_sbrps(audio->ac, sbr_ps);
 		if (rc < 0)
 			pr_err("sbr-ps enable failed\n");
-		if (audio->aac_config.sbr_on_flag)
-			aac_cfg.aot = AAC_ENC_MODE_AAC_P;
-		else if (audio->aac_config.sbr_ps_on_flag)
+		if (audio->aac_config.sbr_ps_on_flag)
 			aac_cfg.aot = AAC_ENC_MODE_EAAC_P;
+		else if (audio->aac_config.sbr_on_flag)
+			aac_cfg.aot = AAC_ENC_MODE_AAC_P;
 		else
 			aac_cfg.aot = AAC_ENC_MODE_AAC_LC;
 
@@ -1231,7 +1261,9 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		case AUDIO_AAC_FORMAT_LOAS:
 			aac_cfg.format = 0x01;
 			break;
-		/* ADIF, use it as RAW */
+		case AUDIO_AAC_FORMAT_ADIF:
+			aac_cfg.format = 0x02;
+			break;
 		default:
 		case AUDIO_AAC_FORMAT_RAW:
 			aac_cfg.format = 0x03;
@@ -1329,6 +1361,15 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		audio->eos_rsp = 0;
 		break;
 	}
+	case AUDIO_OUTPORT_FLUSH: {
+		pr_debug("AUDIO_OUTPORT_FLUSH\n");
+		rc = audaac_outport_flush(audio);
+		if (rc < 0) {
+			pr_err("%s: AUDIO_OUTPORT_FLUSH failed\n", __func__);
+			rc = -EINTR;
+		}
+		break;
+	}
 	case AUDIO_REGISTER_PMEM: {
 		struct msm_audio_pmem_info info;
 		pr_debug("AUDIO_REGISTER_PMEM\n");
@@ -1360,6 +1401,49 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				 sizeof(struct msm_audio_aac_config))) {
 			rc = -EFAULT;
 			break;
+		} else {
+			uint16_t sce_left = 1, sce_right = 2;
+			struct msm_audio_aac_config *aac_config =
+					&audio->aac_config;
+			if ((aac_config->dual_mono_mode <
+				AUDIO_AAC_DUAL_MONO_PL_PR) ||
+				(aac_config->dual_mono_mode >
+				AUDIO_AAC_DUAL_MONO_PL_SR)) {
+				pr_err("%s:AUDIO_SET_AAC_CONFIG: Invalid"
+					"dual_mono mode =%d\n", __func__,
+					aac_config->dual_mono_mode);
+			} else {
+				/* convert the data from user into sce_left
+				 * and sce_right based on the definitions
+				 */
+				pr_debug("%s: AUDIO_SET_AAC_CONFIG: modify"
+					 "dual_mono mode =%d\n", __func__,
+					 aac_config->dual_mono_mode);
+				switch (aac_config->dual_mono_mode) {
+				case AUDIO_AAC_DUAL_MONO_PL_PR:
+					sce_left = 1;
+					sce_right = 1;
+					break;
+				case AUDIO_AAC_DUAL_MONO_SL_SR:
+					sce_left = 2;
+					sce_right = 2;
+					break;
+				case AUDIO_AAC_DUAL_MONO_SL_PR:
+					sce_left = 2;
+					sce_right = 1;
+					break;
+				case AUDIO_AAC_DUAL_MONO_PL_SR:
+				default:
+					sce_left = 1;
+					sce_right = 2;
+					break;
+				}
+				rc = q6asm_cfg_dual_mono_aac(audio->ac,
+							sce_left, sce_right);
+				if (rc < 0)
+					pr_err("%s: asm cmd dualmono failed"
+						" rc=%d\n", __func__, rc);
+			}
 		}
 		break;
 	}
@@ -1514,6 +1598,7 @@ static int audio_open(struct inode *inode, struct file *file)
 	audio->pcm_cfg.buffer_count = PCM_BUF_COUNT;
 	audio->pcm_cfg.sample_rate = 48000;
 	audio->pcm_cfg.channel_count = 2;
+	audio->aac_config.dual_mono_mode = AUDIO_AAC_DUAL_MONO_INVALID;
 
 	audio->ac = q6asm_audio_client_alloc((app_cb) q6_audaac_cb,
 					     (void *)audio);

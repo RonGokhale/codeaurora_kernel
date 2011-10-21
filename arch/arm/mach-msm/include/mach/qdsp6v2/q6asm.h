@@ -61,6 +61,7 @@
 #define CMD_FLUSH          0x0002
 #define CMD_EOS            0x0003
 #define CMD_CLOSE          0x0004
+#define CMD_OUT_FLUSH      0x0005
 
 /* bit 0:1 represents priority of stream */
 #define STREAM_PRIORITY_NORMAL	0x0000
@@ -69,6 +70,9 @@
 
 /* bit 4 represents META enable of encoded data buffer */
 #define BUFFER_META_ENABLE	0x0010
+
+/* Enable Sample_Rate/Channel_Mode notification event from Decoder */
+#define SR_CM_NOTIFY_ENABLE	0x0004
 
 #define ASYNC_IO_MODE	0x0002
 #define SYNC_IO_MODE	0x0001
@@ -209,7 +213,10 @@ int q6asm_enc_cfg_blk_pcm(struct audio_client *ac,
 			uint32_t rate, uint32_t channels);
 
 int q6asm_enable_sbrps(struct audio_client *ac,
-			uint32_t sbr_ps);
+	uint32_t sbr_ps);
+
+int q6asm_cfg_dual_mono_aac(struct audio_client *ac,
+	uint16_t sce_left, uint16_t sce_right);
 
 int q6asm_enc_cfg_blk_qcelp(struct audio_client *ac, uint32_t frames_per_buf,
 		uint16_t min_rate, uint16_t max_rate,
