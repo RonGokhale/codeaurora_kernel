@@ -311,6 +311,11 @@ static struct platform_device seaboard_audio_device = {
 	},
 };
 
+static struct platform_device spdif_dit_device = {
+	.name   = "spdif-dit",
+	.id     = -1,
+};
+
 static struct platform_device *seaboard_devices[] __initdata = {
 	&debug_uart,
 	&tegra_uartc_device,
@@ -324,6 +329,8 @@ static struct platform_device *seaboard_devices[] __initdata = {
 	&tegra_das_device,
 	&tegra_pcm_device,
 	&seaboard_audio_device,
+	&tegra_spdif_device,
+	&spdif_dit_device,
 	&bt_rfkill_device,
 };
 
