@@ -869,6 +869,16 @@ int sysctl_protected_symlinks __read_mostly = 0;
 int sysctl_protected_hardlinks __read_mostly = 0;
 
 /**
+ * nameidata_get_total_link_count - Used by security/chromiumos/lsm.c to check
+ * whether a mount point includes traversing symlinks.
+ */
+int nameidata_get_total_link_count(struct nameidata *nd)
+{
+	return nd->total_link_count;
+}
+EXPORT_SYMBOL(nameidata_get_total_link_count);
+
+/**
  * may_follow_link - Check symlink following for unsafe situations
  * @nd: nameidata pathwalk data
  *
