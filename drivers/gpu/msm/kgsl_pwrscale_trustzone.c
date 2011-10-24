@@ -26,11 +26,14 @@
 struct tz_priv {
 	int governor;
 	unsigned int no_switch_cnt;
+	unsigned int skip_cnt;
 };
 
 #define SWITCH_OFF		200
 #define TZ_UPDATE_ID		0x01404000
 #define TZ_RESET_ID		0x01403000
+#define SWITCH_OFF_RESET_TH	40
+#define SKIP_COUNTER		500
 
 #ifdef CONFIG_MSM_SECURE_IO
 /* Trap into the TrustZone, and call funcs there. */
@@ -140,11 +143,20 @@ static void tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 
 	/* If the GPU has stayed in turbo mode for a while, *
 	 * stop writing out values. */
-	if (pwr->active_pwrlevel)
+	if (pwr->active_pwrlevel == 0) {
+		if (priv->no_switch_cnt > SWITCH_OFF) {
+			priv->skip_cnt++;
+			if (priv->skip_cnt > SKIP_COUNTER) {
+				priv->no_switch_cnt -= SWITCH_OFF_RESET_TH;
+				priv->skip_cnt = 0;
+			}
+			return;
+		}
+		priv->no_switch_cnt++;
+	} else {
 		priv->no_switch_cnt = 0;
-	else if (priv->no_switch_cnt > SWITCH_OFF)
-		return;
-	priv->no_switch_cnt++;
+	}
+
 	val = __secure_tz_entry(TZ_UPDATE_ID,
 				stats.total_time - stats.busy_time);
 	if (val)
