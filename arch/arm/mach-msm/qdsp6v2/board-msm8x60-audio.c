@@ -452,7 +452,7 @@ static struct platform_device msm_iearpiece_device = {
 };
 
 static struct adie_codec_action_unit imic_48KHz_osr256_actions[] =
-	AMIC_PRI_MONO_8000_OSR_256;
+	AMIC_PRI_MONO_OSR_256;
 
 static struct adie_codec_hwsetting_entry imic_settings[] = {
 	{
@@ -590,7 +590,7 @@ static struct platform_device msm_ispkr_stereo_device = {
 };
 
 static struct adie_codec_action_unit idmic_mono_48KHz_osr256_actions[] =
-	DMIC1_PRI_MONO_8000_OSR_256;
+	DMIC1_PRI_MONO_OSR_256;
 
 static struct adie_codec_hwsetting_entry idmic_mono_settings[] = {
 	{
@@ -723,7 +723,7 @@ static struct platform_device msm_spkr_dual_mic_endfire_device = {
 };
 
 static struct adie_codec_action_unit dual_mic_broadside_8osr256_actions[] =
-	HS_DMIC2_STEREO_8000_OSR_256;
+	HS_DMIC2_STEREO_OSR_256;
 
 static struct adie_codec_hwsetting_entry dual_mic_broadside_settings[] = {
 	{
@@ -915,7 +915,7 @@ struct platform_device msm_bt_sco_mic_device = {
 };
 
 static struct adie_codec_action_unit itty_mono_tx_actions[] =
-	TTY_HEADSET_MONO_TX_8000_OSR_256;
+	TTY_HEADSET_MONO_TX_OSR_256;
 
 static struct adie_codec_hwsetting_entry itty_mono_tx_settings[] = {
 	{
