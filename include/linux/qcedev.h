@@ -75,22 +75,36 @@ enum qcedev_cipher_alg_enum {
 * @QCEDEV_AES_MODE_CBC:		CBC
 * @QCEDEV_AES_MODE_ECB:		ECB
 * @QCEDEV_AES_MODE_CTR:		CTR
+* @QCEDEV_AES_MODE_XTS:		XTS
+* @QCEDEV_AES_MODE_CCM:		CCM
+* @QCEDEV_DES_MODE_CBC:		CBC
+* @QCEDEV_DES_MODE_ECB:		ECB
 */
 enum qcedev_cipher_mode_enum {
 	QCEDEV_AES_MODE_CBC	= 0,
 	QCEDEV_AES_MODE_ECB	= 1,
 	QCEDEV_AES_MODE_CTR	= 2,
-	QCEDEV_AES_MODE_LAST
+	QCEDEV_AES_MODE_XTS	= 3,
+	QCEDEV_AES_MODE_CCM	= 4,
+	QCEDEV_DES_MODE_CBC	= 5,
+	QCEDEV_DES_MODE_ECB	= 6,
+	QCEDEV_AES_DES_MODE_LAST
 };
 
 /**
 *enum qcedev_sha_alg_enum : Secure Hashing Algorithm
-* @QCEDEV_ALG_SHA1:		Digest returned 20 bytes (160 bits)
-* @QCEDEV_ALG_SHA256:		Digest returned 32 bytes (256 bit)
+* @QCEDEV_ALG_SHA1:		Digest returned: 20 bytes (160 bits)
+* @QCEDEV_ALG_SHA256:		Digest returned: 32 bytes (256 bit)
+* @QCEDEV_ALG_SHA1_HMAC:	HMAC returned 20 bytes (160 bits)
+* @QCEDEV_ALG_SHA256_HMAC:	HMAC returned 32 bytes (256 bit)
+* @QCEDEV_ALG_AES_CMAC:		Configurable MAC size
 */
 enum qcedev_sha_alg_enum {
 	QCEDEV_ALG_SHA1		= 0,
 	QCEDEV_ALG_SHA256	= 1,
+	QCEDEV_ALG_SHA1_HMAC	= 2,
+	QCEDEV_ALG_SHA256_HMAC	= 3,
+	QCEDEV_ALG_AES_CMAC	= 4,
 	QCEDEV_ALG_SHA_ALG_LAST
 };
 
@@ -187,8 +201,8 @@ struct	qcedev_pmem_info{
 * by adding the  offsets to the kernel virtual addr.
 */
 struct	qcedev_cipher_op_req {
-	bool				use_pmem;
-	union{
+	uint8_t				use_pmem;
+	union {
 		struct qcedev_pmem_info	pmem;
 		struct qcedev_vbuf_info	vbuf;
 	};

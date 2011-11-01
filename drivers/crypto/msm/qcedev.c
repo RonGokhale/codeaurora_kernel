@@ -33,9 +33,9 @@
 #include <linux/debugfs.h>
 #include <linux/scatterlist.h>
 #include <linux/crypto.h>
-#include "inc/qcedev.h"
+#include <linux/qcedev.h>
 
-#include "inc/qce.h"
+#include "qce.h"
 
 #define CACHE_LINE_SIZE 32
 #define CE_SHA_BLOCK_SIZE SHA256_BLOCK_SIZE
