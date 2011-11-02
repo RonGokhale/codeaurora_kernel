@@ -99,6 +99,7 @@ static int nouveau_nv40_backlight_init(struct drm_connector *connector)
 		return 0;
 
 	memset(&props, 0, sizeof(struct backlight_properties));
+	props.type = BACKLIGHT_RAW;
 	props.max_brightness = 31;
 	bd = backlight_device_register("nv_backlight", &connector->kdev, dev,
 				       &nv40_bl_ops, &props);
@@ -123,6 +124,7 @@ static int nouveau_nv50_backlight_init(struct drm_connector *connector)
 		return 0;
 
 	memset(&props, 0, sizeof(struct backlight_properties));
+	props.type = BACKLIGHT_RAW;
 	props.max_brightness = 1025;
 	bd = backlight_device_register("nv_backlight", &connector->kdev, dev,
 				       &nv50_bl_ops, &props);

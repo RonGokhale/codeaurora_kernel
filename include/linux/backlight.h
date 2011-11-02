@@ -32,6 +32,12 @@ enum backlight_update_reason {
 	BACKLIGHT_UPDATE_SYSFS,
 };
 
+enum backlight_type {
+	BACKLIGHT_RAW,
+	BACKLIGHT_PLATFORM,
+	BACKLIGHT_FIRMWARE,
+};
+
 struct backlight_device;
 struct fb_info;
 
@@ -62,6 +68,8 @@ struct backlight_properties {
 	/* FB Blanking active? (values as for power) */
 	/* Due to be removed, please use (state & BL_CORE_FBBLANK) */
 	int fb_blank;
+	/* Backlight type */
+	enum backlight_type type;
 	/* Flags used to signal drivers of state changes */
 	/* Upper 4 bits are reserved for driver internal use */
 	unsigned int state;
