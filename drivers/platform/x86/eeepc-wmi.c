@@ -518,6 +518,7 @@ static int eeepc_wmi_backlight_init(struct eeepc_wmi *eeepc)
 
 	memset(&props, 0, sizeof(struct backlight_properties));
 	props.max_brightness = 15;
+	props.type = BACKLIGHT_PLATFORM;
 	bd = backlight_device_register(EEEPC_WMI_FILE,
 				       &eeepc->platform_device->dev, eeepc,
 				       &eeepc_wmi_bl_ops, &props);

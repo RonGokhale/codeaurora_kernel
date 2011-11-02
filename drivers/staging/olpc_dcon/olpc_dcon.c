@@ -716,6 +716,7 @@ static int dcon_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	}
 	else {
 		dcon_bl_dev->props.max_brightness = 15;
+		dcon_bl_dev->props.type = BACKLIGHT_RAW;
 		dcon_bl_dev->props.power = FB_BLANK_UNBLANK;
 		dcon_bl_dev->props.brightness = dcon_get_backlight();
 
