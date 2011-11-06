@@ -1,70 +1,35 @@
-#ifndef _CYAPA_H
-#define _CYAPA_H
+/*
+ * Cypress APA I2C Touchpad Driver
+ *
+ * Author: Dudley Du <dudl@cypress.com>
+ *
+ * Copyright (C) 2011 Cypress Semiconductor, Inc.
+ * Copyright (C) 2011 Google, Inc.
+ *
+ * This program is free software; you can redistribute  it and/or modify it
+ * under  the terms of  the GNU General  Public License as published by the
+ * Free Software Foundation;  either version 2 of the  License, or (at your
+ * option) any later version.
+ */
+
+#ifndef __LINUX_I2C_CYAPA_H
+#define __LINUX_I2C_CYAPA_H
 
 #include <linux/types.h>
 #include <linux/ioctl.h>
 
-#define CYAPA_I2C_NAME  "cypress_i2c_apa"
+#define CYAPA_I2C_NAME  "cyapa"
 #define CYAPA_MISC_NAME  "cyapa"
-
-/* Active power state scanning/processing refresh interval time. unit: ms. */
-#define CYAPA_POLLING_INTERVAL_TIME_ACTIVE  0x00
-/* Low power state scanning/processing refresh interval time. unit: ms. */
-#define CYAPA_POLLING_INTERVAL_TIME_LOWPOWER 0x10
-/* Touch timeout for active power state. unit: ms. */
-#define CYAPA_ACTIVE_TOUCH_TIMEOUT  0xFF
-
-/* Max report rate limited for Cypress Trackpad. */
-#define CYAPA_NO_LIMITED_REPORT_RATE  0
-#define CYAPA_REPORT_RATE  (CYAPA_NO_LIMITED_REPORT_RATE)
-#define CYAPA_POLLING_REPORTRATE_DEFAULT 60
-
-/* trackpad device */
-enum cyapa_work_mode {
-	CYAPA_STREAM_MODE = 0x00,
-	CYAPA_BOOTLOAD_MODE = 0x01,
-};
 
 /* APA trackpad firmware generation */
 enum cyapa_gen {
-	CYAPA_GEN1 = 0x01,   /* only one finger supported. */
+	CYAPA_GEN1 = 0x01,  /* only one finger supported. */
 	CYAPA_GEN2 = 0x02,  /* max five fingers supported. */
-	CYAPA_GEN3 = 0x03,  /* support MT-protocol with tracking ID. */
+	CYAPA_GEN3 = 0x03,  /* support MT-protocol B with tracking ID. */
 };
 
 /*
- * APA trackpad power states.
- * Used in register 0x00, bit3-2, PowerMode field.
- */
-enum cyapa_powerstate {
-	CYAPA_PWR_ACTIVE = 0x01,
-	CYAPA_PWR_LIGHT_SLEEP = 0x02,
-	CYAPA_PWR_MEDIUM_SLEEP = 0x03,
-	CYAPA_PWR_DEEP_SLEEP = 0x04,
-};
-
-struct cyapa_platform_data {
-	__u32 flag;   /* reserved for future use. */
-	enum cyapa_gen gen;  /* trackpad firmware generation. */
-	enum cyapa_powerstate power_state;
-
-	/* active mode, polling refresh interval; ms */
-	__u8 polling_interval_time_active;
-	/* low power mode, polling refresh interval; ms */
-	__u8 polling_interval_time_lowpower;
-	__u8 active_touch_timeout;  /* active touch timeout; ms */
-	char *name;  /* device name of Cypress I2C trackpad. */
-	/* the gpio id used for interrupt to notify host data is ready. */
-	__s16 irq_gpio;
-	__u32 report_rate;  /* max limitation of data report rate. */
-
-	int (*wakeup)(void);
-	int (*init)(void);
-};
-
-
-/*
- * Data structures for /dev/cyapa device ioclt read/write.
+ * Data structures for /dev/cyapa device ioctl read/write.
  */
 struct cyapa_misc_ioctl_data {
 	__u8 *buf;  /* pointer to a buffer for read/write data. */
@@ -143,4 +108,4 @@ struct cyapa_trackpad_run_mode {
 #define CYAPA_GET_TRACKPAD_RUN_MODE CYAPA_IOC_R(0x40, 2)
 #define CYAYA_SEND_MODE_SWITCH_CMD CYAPA_IOC(0x50)
 
-#endif  /* #ifndef _CYAPA_H */
+#endif  /* __LINUX_I2C_CYAPA_H */

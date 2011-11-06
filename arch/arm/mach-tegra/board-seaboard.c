@@ -26,10 +26,10 @@
 #include <linux/gpio_keys.h>
 #include <linux/i2c-tegra.h>
 #include <linux/i2c/atmel_mxt_ts.h>
+#include <linux/i2c/cyapa.h>
 #include <linux/clk.h>
 #include <linux/power/bq20z75.h>
 #include <linux/rfkill-gpio.h>
-#include <linux/cyapa.h>
 #include <linux/platform_data/tegra_usb.h>
 #include <linux/memblock.h>
 
@@ -94,22 +94,11 @@ static __initdata struct tegra_clk_init_table seaboard_clk_init_table[] = {
 	{ "spdif_out",  "pll_a_out0",   11289600,       false},
 	{ "vi_sensor",  "pll_m",        24000000,       false},
 	{ "uartb",      "pll_p",        216000000,      false},
+	{ "uartc",      "pll_c",        600000000,      false},
 	{ "uartd",      "pll_p",        216000000,      false},
 	{ "pwm",        "clk_m",        12000000,       false},
 	{ "blink",      "clk_32k",      32768,          true},
 	{ NULL,		NULL,		0,		0},
-};
-
-static struct cyapa_platform_data cyapa_i2c_platform_data = {
-	.flag				= 0,
-	.gen				= CYAPA_GEN2,
-	.power_state			= CYAPA_PWR_ACTIVE,
-	.polling_interval_time_active	= CYAPA_POLLING_INTERVAL_TIME_ACTIVE,
-	.polling_interval_time_lowpower	= CYAPA_POLLING_INTERVAL_TIME_LOWPOWER,
-	.active_touch_timeout		= CYAPA_ACTIVE_TOUCH_TIMEOUT,
-	.name				= CYAPA_I2C_NAME,
-	.irq_gpio			= TEGRA_GPIO_CYTP_INT,
-	.report_rate			= CYAPA_REPORT_RATE,
 };
 
 static struct tegra_i2c_platform_data seaboard_i2c1_platform_data = {
@@ -574,9 +563,8 @@ static __initdata struct tegra_pingroup_config mxt_pinmux_config[] = {
 };
 
 static struct i2c_board_info __initdata cyapa_device = {
-	I2C_BOARD_INFO("cypress_i2c_apa", 0x67),
+	I2C_BOARD_INFO(CYAPA_I2C_NAME, 0x67),
 	.irq		= TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_CYTP_INT),
-	.platform_data	= &cyapa_i2c_platform_data,
 };
 
 static struct tegra_utmip_config usb1_phy_config = {
@@ -1165,7 +1153,7 @@ void __init tegra_common_reserve(void)
 	 * and 0 for fb2_size.
 	 */
 	fb_size = round_up((1368 * 910 * 4 * 2), PAGE_SIZE);
-	tegra_reserve(SZ_128M, fb_size, 0);
+	tegra_reserve(256 * 1024 * 1024, fb_size, 0);
 }
 
 static const char *seaboard_dt_board_compat[] = {
