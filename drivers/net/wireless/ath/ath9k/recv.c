@@ -942,22 +942,11 @@ static void ath9k_process_rssi(struct ath_common *common,
 	struct ath_softc *sc = hw->priv;
 	struct ath_hw *ah = common->ah;
 	int last_rssi;
-	__le16 fc;
 
-	if ((ah->opmode != NL80211_IFTYPE_STATION) &&
-	    (ah->opmode != NL80211_IFTYPE_ADHOC))
+	if (!rx_stats->is_mybeacon ||
+	    ((ah->opmode != NL80211_IFTYPE_STATION) &&
+	     (ah->opmode != NL80211_IFTYPE_ADHOC)))
 		return;
-
-	fc = hdr->frame_control;
-	if (!ieee80211_is_beacon(fc) ||
-	    compare_ether_addr(hdr->addr3, common->curbssid)) {
-		/* TODO:  This doesn't work well if you have stations
-		 * associated to two different APs because curbssid
-		 * is just the last AP that any of the stations associated
-		 * with.
-		 */
-		return;
-	}
 
 	if (rx_stats->rs_rssi != ATH9K_RSSI_BAD && !rx_stats->rs_moreaggr)
 		ATH_RSSI_LPF(sc->last_rssi, rx_stats->rs_rssi);
@@ -985,6 +974,8 @@ static int ath9k_rx_skb_preprocess(struct ath_common *common,
 				   struct ieee80211_rx_status *rx_status,
 				   bool *decrypt_error)
 {
+	struct ath_hw *ah = common->ah;
+
 	memset(rx_status, 0, sizeof(struct ieee80211_rx_status));
 
 	/*
@@ -1005,7 +996,7 @@ static int ath9k_rx_skb_preprocess(struct ath_common *common,
 
 	rx_status->band = hw->conf.channel->band;
 	rx_status->freq = hw->conf.channel->center_freq;
-	rx_status->signal = ATH_DEFAULT_NOISE_FLOOR + rx_stats->rs_rssi;
+	rx_status->signal = ah->noise + rx_stats->rs_rssi;
 	rx_status->antenna = rx_stats->rs_antenna;
 	rx_status->flag |= RX_FLAG_MACTIME_MPDU;
 
@@ -1750,6 +1741,11 @@ int ath_rx_tasklet(struct ath_softc *sc, int flush, bool hp)
 
 		hdr = (struct ieee80211_hdr *) (hdr_skb->data + rx_status_len);
 		rxs = IEEE80211_SKB_RXCB(hdr_skb);
+		if (ieee80211_is_beacon(hdr->frame_control) &&
+		    !compare_ether_addr(hdr->addr3, common->curbssid))
+			rs.is_mybeacon = true;
+		else
+			rs.is_mybeacon = false;
 
 		ath_debug_stat_rx(sc, &rs);
 
@@ -1865,7 +1861,7 @@ int ath_rx_tasklet(struct ath_softc *sc, int flush, bool hp)
 			ath_rx_ps(sc, skb);
 		spin_unlock_irqrestore(&sc->sc_pm_lock, flags);
 
-		if (ah->caps.hw_caps & ATH9K_HW_CAP_ANT_DIV_COMB)
+		if ((ah->caps.hw_caps & ATH9K_HW_CAP_ANT_DIV_COMB) && sc->ant_rx)
 			ath_ant_comb_scan(sc, &rs);
 
 		ieee80211_rx(hw, skb);

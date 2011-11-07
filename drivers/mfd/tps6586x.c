@@ -27,6 +27,10 @@
 #include <linux/mfd/core.h>
 #include <linux/mfd/tps6586x.h>
 
+#define TPS6586X_SUPPLYENE	0x14
+#define EXITSLREQ_BIT		BIT(1) /* Exit sleep mode request */
+#define SLEEP_MODE_BIT		BIT(3) /* Sleep mode */
+
 /* GPIO control registers */
 #define TPS6586X_GPIOSET1	0x5d
 #define TPS6586X_GPIOSET2	0x5e
@@ -250,6 +254,28 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(tps6586x_update);
+
+static struct i2c_client *tps6586x_i2c_client = NULL;
+int tps6586x_power_off(void)
+{
+	struct device *dev = NULL;
+	int ret = -EINVAL;
+
+	if (!tps6586x_i2c_client)
+		return ret;
+
+	dev = &tps6586x_i2c_client->dev;
+
+	ret = tps6586x_clr_bits(dev, TPS6586X_SUPPLYENE, EXITSLREQ_BIT);
+	if (ret)
+		return ret;
+
+	ret = tps6586x_set_bits(dev, TPS6586X_SUPPLYENE, SLEEP_MODE_BIT);
+	if (ret)
+		return ret;
+
+	return 0;
+}
 
 static int tps6586x_gpio_get(struct gpio_chip *gc, unsigned offset)
 {
@@ -525,6 +551,8 @@ static int __devinit tps6586x_i2c_probe(struct i2c_client *client,
 		goto err_add_devs;
 	}
 
+	tps6586x_i2c_client = client;
+
 	return 0;
 
 err_add_devs:
@@ -569,6 +597,24 @@ static const struct i2c_device_id tps6586x_id_table[] = {
 };
 MODULE_DEVICE_TABLE(i2c, tps6586x_id_table);
 
+#ifdef CONFIG_PM
+static int tps6586x_suspend(struct i2c_client *client, pm_message_t mesg)
+{
+	if (client->irq)
+		disable_irq(client->irq);
+
+	return 0;
+}
+
+static int tps6586x_resume(struct i2c_client *client)
+{
+	if (client->irq)
+		enable_irq(client->irq);
+
+	return 0;
+}
+#endif
+
 static struct i2c_driver tps6586x_driver = {
 	.driver	= {
 		.name	= "tps6586x",
@@ -577,6 +623,10 @@ static struct i2c_driver tps6586x_driver = {
 	.probe		= tps6586x_i2c_probe,
 	.remove		= __devexit_p(tps6586x_i2c_remove),
 	.id_table	= tps6586x_id_table,
+#ifdef CONFIG_PM
+	.suspend	= tps6586x_suspend,
+	.resume		= tps6586x_resume,
+#endif
 };
 
 static int __init tps6586x_init(void)

@@ -459,8 +459,8 @@ static int tegra_drive_pinmux_set_pull_up(enum tegra_drive_pingroup pg,
 	spin_lock_irqsave(&mux_lock, flags);
 
 	reg = pg_readl(drive_pingroups[pg].reg);
-	reg &= ~(0x1f << 12);
-	reg |= pull_up << 12;
+	reg &= ~(0x1f << 20);
+	reg |= pull_up << 20;
 	pg_writel(reg, drive_pingroups[pg].reg);
 
 	spin_unlock_irqrestore(&mux_lock, flags);
@@ -663,6 +663,11 @@ void tegra_pinmux_config_pullupdown_table(const struct tegra_pingroup_config *co
 					pupd_name(pupd), err);
 		}
 	}
+}
+
+void tegra_init_pinmux(void)
+{
+	tegra2_init_pinmux();
 }
 
 #ifdef	CONFIG_DEBUG_FS

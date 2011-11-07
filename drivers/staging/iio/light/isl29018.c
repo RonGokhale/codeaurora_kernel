@@ -51,12 +51,17 @@
 
 #define ISL29018_REG_ADD_DATA_LSB	0x02
 #define ISL29018_REG_ADD_DATA_MSB	0x03
-#define ISL29018_MAX_REGS		ISL29018_REG_ADD_DATA_MSB
+#define ISL29018_MAX_REGS		(ISL29018_REG_ADD_DATA_MSB+1)
+
+#define ISL29018_REG_TEST		0x08
+#define ISL29018_TEST_SHIFT		0
+#define ISL29018_TEST_MASK		(0xFF << ISL29018_TEST_SHIFT)
 
 struct isl29018_chip {
 	struct iio_dev		*indio_dev;
 	struct i2c_client	*client;
 	struct mutex		lock;
+	unsigned int		lux_scale;
 	unsigned int		range;
 	unsigned int		adc_bit;
 	int			prox_scheme;
@@ -66,22 +71,27 @@ struct isl29018_chip {
 static int isl29018_write_data(struct i2c_client *client, u8 reg,
 			u8 val, u8 mask, u8 shift)
 {
-	u8 regval;
-	int ret = 0;
+	u8 regval = val;
+	int ret;
 	struct isl29018_chip *chip = i2c_get_clientdata(client);
 
-	regval = chip->reg_cache[reg];
-	regval &= ~mask;
-	regval |= val << shift;
+	/* don't cache or mask REG_TEST */
+	if (reg < ISL29018_MAX_REGS) {
+		regval = chip->reg_cache[reg];
+		regval &= ~mask;
+		regval |= val << shift;
+	}
 
 	ret = i2c_smbus_write_byte_data(client, reg, regval);
-	if (ret) {
+	if (ret)
 		dev_err(&client->dev, "Write to device fails status %x\n", ret);
-		return ret;
+	else {
+		/* don't update cache on err */
+		if (reg < ISL29018_MAX_REGS)
+			chip->reg_cache[reg] = regval;
 	}
-	chip->reg_cache[reg] = regval;
 
-	return 0;
+	return ret;
 }
 
 static int isl29018_set_range(struct i2c_client *client, unsigned long range,
@@ -166,7 +176,7 @@ static int isl29018_read_lux(struct i2c_client *client, int *lux)
 	if (lux_data < 0)
 		return lux_data;
 
-	*lux = (lux_data * chip->range) >> chip->adc_bit;
+	*lux = (lux_data * chip->range * chip->lux_scale) >> chip->adc_bit;
 
 	return 0;
 }
@@ -264,6 +274,34 @@ static ssize_t get_sensor_data(struct device *dev, char *buf, int mode)
 }
 
 /* Sysfs interface */
+/* lux_scale */
+static ssize_t show_lux_scale(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct isl29018_chip *chip = indio_dev->dev_data;
+
+	return sprintf(buf, "%d\n", chip->lux_scale);
+}
+
+static ssize_t store_lux_scale(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct isl29018_chip *chip = indio_dev->dev_data;
+	unsigned long lval;
+
+	lval = simple_strtoul(buf, NULL, 10);
+	if (lval == 0)
+		return -EINVAL;
+
+	mutex_lock(&chip->lock);
+	chip->lux_scale = lval;
+	mutex_unlock(&chip->lock);
+
+	return count;
+}
+
 /* range */
 static ssize_t show_range(struct device *dev,
 			struct device_attribute *attr, char *buf)
@@ -412,6 +450,8 @@ static IIO_DEVICE_ATTR(proximity_on_chip_ambient_infrared_supression,
 					show_prox_infrared_supression,
 					store_prox_infrared_supression, 0);
 static IIO_DEVICE_ATTR(illuminance0_input, S_IRUGO, show_lux, NULL, 0);
+static IIO_DEVICE_ATTR(illuminance0_calibscale, S_IRUGO | S_IWUSR,
+					show_lux_scale, store_lux_scale, 0);
 static IIO_DEVICE_ATTR(intensity_infrared_raw, S_IRUGO, show_ir, NULL, 0);
 static IIO_DEVICE_ATTR(proximity_raw, S_IRUGO, show_proxim_ir, NULL, 0);
 
@@ -424,6 +464,7 @@ static struct attribute *isl29018_attributes[] = {
 	ISL29018_CONST_ATTR(adc_resolution_available),
 	ISL29018_DEV_ATTR(proximity_on_chip_ambient_infrared_supression),
 	ISL29018_DEV_ATTR(illuminance0_input),
+	ISL29018_DEV_ATTR(illuminance0_calibscale),
 	ISL29018_DEV_ATTR(intensity_infrared_raw),
 	ISL29018_DEV_ATTR(proximity_raw),
 	NULL
@@ -441,6 +482,48 @@ static int isl29018_chip_init(struct i2c_client *client)
 	unsigned int new_range;
 
 	memset(chip->reg_cache, 0, sizeof(chip->reg_cache));
+
+	/* Code added per Intersil Application Note 1534:
+	 *     When VDD sinks to approximately 1.8V or below, some of
+	 * the part's registers may change their state. When VDD
+	 * recovers to 2.25V (or greater), the part may thus be in an
+	 * unknown mode of operation. The user can return the part to
+	 * a known mode of operation either by (a) setting VDD = 0V for
+	 * 1 second or more and then powering back up with a slew rate
+	 * of 0.5V/ms or greater, or (b) via I2C disable all ALS/PROX
+	 * conversions, clear the test registers, and then rewrite all
+	 * registers to the desired values.
+	 * ...
+	 * FOR ISL29011, ISL29018, ISL29021, ISL29023
+	 * 1. Write 0x00 to register 0x08 (TEST)
+	 * 2. Write 0x00 to register 0x00 (CMD1)
+	 * 3. Rewrite all registers to the desired values
+	 *
+	 * ISL29018 Data Sheet (FN6619.1, Feb 11, 2010) essentially says
+	 * the same thing EXCEPT the data sheet asks for a 1ms delay after
+	 * writing the CMD1 register.
+	 */
+	status = isl29018_write_data(client, ISL29018_REG_TEST, 0,
+				ISL29018_TEST_MASK, ISL29018_TEST_SHIFT);
+	if (status < 0) {
+		dev_err(&client->dev, "Failed to clear isl29018 TEST reg."
+					"(%d)\n", status);
+		return status;
+	}
+
+	/* See Intersil AN1534 comments above.
+	 * "Operating Mode" (COMMAND1) register is reprogrammed when
+	 * data is read from the device.
+	 */
+	status = isl29018_write_data(client, ISL29018_REG_ADD_COMMAND1, 0,
+				0xff, 0);
+	if (status < 0) {
+		dev_err(&client->dev, "Failed to clear isl29018 CMD1 reg."
+					"(%d)\n", status);
+		return status;
+	}
+
+	msleep(1);	/* per data sheet, page 10 */
 
 	/* set defaults */
 	status = isl29018_set_range(client, chip->range, &new_range);
@@ -478,6 +561,7 @@ static int __devinit isl29018_probe(struct i2c_client *client,
 
 	mutex_init(&chip->lock);
 
+	chip->lux_scale = 1;
 	chip->range = 1000;
 	chip->adc_bit = 16;
 

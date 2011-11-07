@@ -37,6 +37,7 @@
 #include <linux/io.h>
 #include <linux/reboot.h>
 #include <linux/bcd.h>
+#include <linux/debugfs.h>
 
 #include <asm/setup.h>
 #include <asm/efi.h>
@@ -76,6 +77,19 @@ static int __init setup_add_efi_memmap(char *arg)
 }
 early_param("add_efi_memmap", setup_add_efi_memmap);
 
+static int __init efi_debugfs_setup(void)
+{
+	static u64 efi_smbios_base;
+
+	efi_smbios_base = (u64) efi.smbios;
+
+	if (efi_smbios_base)
+		debugfs_create_u64("efi_smbios_base", 0444, NULL,
+							&efi_smbios_base);
+
+	return 0;
+}
+late_initcall(efi_debugfs_setup);
 
 static efi_status_t virt_efi_get_time(efi_time_t *tm, efi_time_cap_t *tc)
 {
@@ -499,7 +513,7 @@ void __init efi_init(void)
 	if (add_efi_memmap)
 		do_add_efi_memmap();
 
-#ifdef CONFIG_X86_32
+#if defined(CONFIG_X86_32) && !defined(CONFIG_EFI64)
 	x86_platform.get_wallclock = efi_get_time;
 	x86_platform.set_wallclock = efi_set_rtc_mmss;
 #endif
@@ -550,6 +564,7 @@ static void __init runtime_code_page_mkexec(void)
  */
 void __init efi_enter_virtual_mode(void)
 {
+#if !defined(CONFIG_EFI64)
 	efi_memory_desc_t *md, *prev_md = NULL;
 	efi_status_t status;
 	unsigned long size;
@@ -671,9 +686,10 @@ void __init efi_enter_virtual_mode(void)
 	efi.set_virtual_address_map = NULL;
 	if (__supported_pte_mask & _PAGE_NX)
 		runtime_code_page_mkexec();
+	kfree(new_memmap);
+#endif  /* CONFIG_EFI64 */
 	early_iounmap(memmap.map, memmap.nr_map * memmap.desc_size);
 	memmap.map = NULL;
-	kfree(new_memmap);
 }
 
 /*

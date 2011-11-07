@@ -686,6 +686,10 @@ enum {
  *	about us leaving the channel and stop all associated STA interfaces
  * @SCAN_ENTER_OPER_CHANNEL: Enter the operating channel again, notify the
  *	AP about us being back and restart all associated STA interfaces
+ * @SCAN_ABORT: Abnormally terminate the scan operation, set only when
+ *	on the operating channel
+ * @SCAN_ENTER_OPER_CHANNEL_ABORT: Return to the operating channel then
+ *	terminate the scan operation
  */
 enum mac80211_scan_state {
 	SCAN_DECISION,
@@ -693,6 +697,8 @@ enum mac80211_scan_state {
 	SCAN_SEND_PROBE,
 	SCAN_LEAVE_OPER_CHANNEL,
 	SCAN_ENTER_OPER_CHANNEL,
+	SCAN_ABORT,
+	SCAN_ENTER_OPER_CHANNEL_ABORT,
 };
 
 struct ieee80211_local {
@@ -1350,10 +1356,12 @@ int ieee80211_build_preq_ies(struct ieee80211_local *local, u8 *buffer,
 struct sk_buff *ieee80211_build_probe_req(struct ieee80211_sub_if_data *sdata,
 					  u8 *dst,
 					  const u8 *ssid, size_t ssid_len,
-					  const u8 *ie, size_t ie_len);
+					  const u8 *ie, size_t ie_len,
+					  bool directed);
 void ieee80211_send_probe_req(struct ieee80211_sub_if_data *sdata, u8 *dst,
 			      const u8 *ssid, size_t ssid_len,
-			      const u8 *ie, size_t ie_len);
+			      const u8 *ie, size_t ie_len,
+			      bool directed);
 
 void ieee80211_sta_def_wmm_params(struct ieee80211_sub_if_data *sdata,
 				  const size_t supp_rates_len,

@@ -165,7 +165,7 @@ static void ath_update_survey_nf(struct ath_softc *sc, int channel)
 
 	if (chan->noisefloor) {
 		survey->filled |= SURVEY_INFO_NOISE_DBM;
-		survey->noise = chan->noisefloor;
+		survey->noise = ath9k_hw_getchan_noise(ah, chan);
 	}
 }
 
@@ -303,6 +303,21 @@ int ath_set_channel(struct ath_softc *sc, struct ieee80211_hw *hw,
 		ieee80211_queue_delayed_work(sc->hw, &sc->tx_complete_work, 0);
 		ieee80211_queue_delayed_work(sc->hw, &sc->hw_pll_work, HZ/2);
 		ath_start_ani(common);
+	}
+
+	if (sc->ant_rx != 3) {
+		struct ath_hw_antcomb_conf div_ant_conf;
+		u8 lna_conf;
+
+		ath9k_hw_antdiv_comb_conf_get(ah, &div_ant_conf);
+		if (sc->ant_rx == 1)
+			lna_conf = ATH_ANT_DIV_COMB_LNA1;
+		else
+			lna_conf = ATH_ANT_DIV_COMB_LNA2;
+		div_ant_conf.main_lna_conf = lna_conf;
+		div_ant_conf.alt_lna_conf = lna_conf;
+
+		ath9k_hw_antdiv_comb_conf_set(ah, &div_ant_conf);
 	}
 
  ps_restore:
@@ -543,6 +558,7 @@ set_timer:
 	* The interval must be the shortest necessary to satisfy ANI,
 	* short calibration and long calibration.
 	*/
+	ath9k_debug_samp_bb_mac(sc);
 	cal_interval = ATH_LONG_CALINTERVAL;
 	if (sc->sc_ah->config.enable_ani)
 		cal_interval = min(cal_interval,
@@ -973,6 +989,7 @@ int ath_reset(struct ath_softc *sc, bool retry_tx)
 
 	sc->hw_busy_count = 0;
 
+	ath9k_debug_samp_bb_mac(sc);
 	/* Stop ANI */
 	del_timer_sync(&common->ani.timer);
 
@@ -1663,6 +1680,7 @@ static int ath9k_config(struct ieee80211_hw *hw, u32 changed)
 
 	if (changed & IEEE80211_CONF_CHANGE_CHANNEL) {
 		struct ieee80211_channel *curchan = hw->conf.channel;
+		struct ath9k_channel old_chan;
 		int pos = curchan->hw_value;
 		int old_pos = -1;
 		unsigned long flags;
@@ -1679,13 +1697,23 @@ static int ath9k_config(struct ieee80211_hw *hw, u32 changed)
 			"Set channel: %d MHz type: %d\n",
 			curchan->center_freq, conf->channel_type);
 
-		ath9k_cmn_update_ichannel(&sc->sc_ah->channels[pos],
-					  curchan, conf->channel_type);
-
 		/* update survey stats for the old channel before switching */
 		spin_lock_irqsave(&common->cc_lock, flags);
 		ath_update_survey_stats(sc);
 		spin_unlock_irqrestore(&common->cc_lock, flags);
+
+		/*
+		 * Preserve the current channel values, before updating
+		 * the same channel
+		 */
+		if (old_pos == pos) {
+			memcpy(&old_chan, &sc->sc_ah->channels[pos],
+				sizeof(struct ath9k_channel));
+			ah->curchan = &old_chan;
+		}
+
+		ath9k_cmn_update_ichannel(&sc->sc_ah->channels[pos],
+					  curchan, conf->channel_type);
 
 		/*
 		 * If the operating channel changes, change the survey in-use flags
@@ -2377,6 +2405,61 @@ skip:
 	return sc->beacon.tx_last;
 }
 
+static u32 fill_chainmask(u32 cap, u32 new)
+{
+	u32 filled = 0;
+	int i;
+
+	for (i = 0; cap && new; i++, cap >>= 1) {
+		if (!(cap & BIT(0)))
+			continue;
+
+		if (new & BIT(0))
+			filled |= BIT(i);
+
+		new >>= 1;
+	}
+
+	return filled;
+}
+
+static int ath9k_set_antenna(struct ieee80211_hw *hw, u32 tx_ant, u32 rx_ant)
+{
+	struct ath_softc *sc = hw->priv;
+	struct ath_hw *ah = sc->sc_ah;
+
+	if (!rx_ant || !tx_ant)
+		return -EINVAL;
+
+	sc->ant_rx = rx_ant;
+	sc->ant_tx = tx_ant;
+
+	if (ah->caps.rx_chainmask == 1)
+		return 0;
+	/*
+	 * AR9100 runs into calibration issues if not all rx chains are enabled
+	 */
+	if (AR_SREV_9100(ah))
+		ah->rxchainmask = 0x7;
+	else
+		ah->rxchainmask = fill_chainmask(ah->caps.rx_chainmask, rx_ant);
+
+	ah->txchainmask = fill_chainmask(ah->caps.tx_chainmask, tx_ant);
+	ath9k_reload_chainmask_settings(sc);
+
+	return 0;
+}
+
+static int ath9k_get_antenna(struct ieee80211_hw *hw, u32 *tx_ant, u32 *rx_ant)
+{
+	struct ath_softc *sc = hw->priv;
+	struct ath_hw *ah = sc->sc_ah;
+
+	*tx_ant = sc->ant_tx;
+	*rx_ant = sc->ant_rx;
+	return 0;
+}
+
 struct ieee80211_ops ath9k_ops = {
 	.tx 		    = ath9k_tx,
 	.start 		    = ath9k_start,
@@ -2402,4 +2485,6 @@ struct ieee80211_ops ath9k_ops = {
 	.flush		    = ath9k_flush,
 	.tx_frames_pending  = ath9k_tx_frames_pending,
 	.tx_last_beacon = ath9k_tx_last_beacon,
+	.set_antenna        = ath9k_set_antenna,
+	.get_antenna        = ath9k_get_antenna,
 };

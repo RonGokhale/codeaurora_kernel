@@ -43,6 +43,7 @@ parameter is applicable:
 	AVR32	AVR32 architecture is enabled.
 	AX25	Appropriate AX.25 support is enabled.
 	BLACKFIN Blackfin architecture is enabled.
+	DM	Device mapper support is enabled.
 	DRM	Direct Rendering Management support is enabled.
 	DYNAMIC_DEBUG Build in debug messages and enable them at runtime
 	EDD	BIOS Enhanced Disk Drive Services (EDD) is enabled
@@ -565,6 +566,12 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			a memory unit (amount[KMG]). See also
 			Documentation/kdump/kdump.txt for an example.
 
+	cros_shared_mem=[ARM]
+			Format: <hex integer>
+			Base address of the ChromeOS shared memory window,
+			aligned at megabyte boundary, window size is fixed at
+			1 megabyte.
+
 	cs89x0_dma=	[HW,NET]
 			Format: <dma>
 
@@ -647,6 +654,11 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 	disable_timer_pin_1 [X86]
 			Disable PIN 1 of APIC timer
 			Can be useful to work around chipset bugs.
+
+	dm=		[DM] Allows early creation of a device-mapper device.
+			See Documentation/device-mapper/boot.txt.
+
+	dmasound=	[HW,OSS] Sound subsystem buffers
 
 	dma_debug=off	If the kernel is compiled with DMA_API_DEBUG support,
 			this option disables the debugging code at boot.
@@ -1088,6 +1100,10 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 
 	js=		[HW,JOY] Analog joystick
 			See Documentation/input/joystick.txt.
+
+	kcrashmem=nn[KMG]@aa[KMG]	When using kcrashmem support
+			(CONFIG_PRESERVED_RAM) this specifies the memory region
+			to use. nn is the size and aa is the address.
 
 	keepinitrd	[HW,ARM]
 

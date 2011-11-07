@@ -1376,6 +1376,12 @@ static void alc_auto_setup_eapd(struct hda_codec *codec, bool on)
 	case 0x10ec0269:
 	case 0x10ec0270:
 	case 0x10ec0272:
+		/* delay de-assert of eapd to allow biasing of amp
+		 inputs to settle avoiding an audible 'pop'
+		 */
+		if (codec->subsystem_id == 0x144dc0a7)
+			msleep(25);
+		/* fall through */
 	case 0x10ec0660:
 	case 0x10ec0662:
 	case 0x10ec0663:
@@ -14293,6 +14299,8 @@ static const struct snd_kcontrol_new alc269vb_laptop_mixer[] = {
 static const struct snd_kcontrol_new alc269_asus_mixer[] = {
 	HDA_CODEC_VOLUME("Master Playback Volume", 0x02, 0x0, HDA_OUTPUT),
 	HDA_CODEC_MUTE("Master Playback Switch", 0x0c, 0x0, HDA_INPUT),
+	HDA_CODEC_MUTE("Speaker Playback Switch", 0x14, 0x0, HDA_OUTPUT),
+	HDA_CODEC_MUTE("Headphone Playback Switch", 0x21, 0x0, HDA_OUTPUT),
 	{ } /* end */
 };
 
@@ -19459,12 +19467,24 @@ static void alc272_fixup_mario(struct hda_codec *codec,
 		       "hda_codec: failed to override amp caps for NID 0x2\n");
 }
 
+static void alc272_fixup_alex(struct hda_codec *codec,
+			       const struct alc_fixup *fix, int pre_init) {
+	if (snd_hda_override_amp_caps(codec, 0x2, HDA_OUTPUT,
+				      (0x3c << AC_AMPCAP_OFFSET_SHIFT) |
+				      (0x3c << AC_AMPCAP_NUM_STEPS_SHIFT) |
+				      (0x03 << AC_AMPCAP_STEP_SIZE_SHIFT) |
+				      (0 << AC_AMPCAP_MUTE_SHIFT)))
+		printk(KERN_WARNING
+		       "hda_codec: failed to override amp caps for NID 0x2\n");
+}
+
 enum {
 	ALC662_FIXUP_ASPIRE,
 	ALC662_FIXUP_IDEAPAD,
 	ALC272_FIXUP_MARIO,
 	ALC662_FIXUP_CZC_P10T,
 	ALC662_FIXUP_SKU_IGNORE,
+	ALC272_FIXUP_ALEX,
 };
 
 static const struct alc_fixup alc662_fixups[] = {
@@ -19497,6 +19517,10 @@ static const struct alc_fixup alc662_fixups[] = {
 		.type = ALC_FIXUP_SKU,
 		.v.sku = ALC_FIXUP_SKU_IGNORE,
 	},
+	[ALC272_FIXUP_ALEX] = {
+		.type = ALC_FIXUP_FUNC,
+		.v.func = alc272_fixup_alex,
+	}
 };
 
 static const struct snd_pci_quirk alc662_fixup_tbl[] = {
@@ -19512,6 +19536,7 @@ static const struct snd_pci_quirk alc662_fixup_tbl[] = {
 
 static const struct alc_model_fixup alc662_fixup_models[] = {
 	{.id = ALC272_FIXUP_MARIO, .name = "mario"},
+	{.id = ALC272_FIXUP_ALEX, .name = "alex"},
 	{}
 };
 

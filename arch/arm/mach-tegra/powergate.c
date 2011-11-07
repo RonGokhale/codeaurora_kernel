@@ -124,9 +124,32 @@ int tegra_powergate_remove_clamping(int id)
 }
 
 /* Must be called with clk disabled, and returns with clk enabled */
+static int tegra_powergate_reset_module(struct clk *clk)
+{
+	int ret;
+
+	tegra_periph_reset_assert(clk);
+
+	udelay(10);
+
+	ret = clk_enable(clk);
+	if (ret)
+		return ret;
+
+	udelay(10);
+
+	tegra_periph_reset_deassert(clk);
+
+	return 0;
+}
+
+/* Must be called with clk disabled, and returns with clk enabled */
 int tegra_powergate_sequence_power_up(int id, struct clk *clk)
 {
 	int ret;
+
+	if (tegra_powergate_is_powered(id))
+		return tegra_powergate_reset_module(clk);
 
 	tegra_periph_reset_assert(clk);
 
@@ -197,14 +220,13 @@ static const struct file_operations powergate_fops = {
 static int __init powergate_debugfs_init(void)
 {
 	struct dentry *d;
-	int err = -ENOMEM;
 
 	d = debugfs_create_file("powergate", S_IRUGO, NULL, NULL,
 		&powergate_fops);
 	if (!d)
 		return -ENOMEM;
 
-	return err;
+	return 0;
 }
 
 late_initcall(powergate_debugfs_init);

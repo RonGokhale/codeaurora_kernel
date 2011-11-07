@@ -11,6 +11,7 @@
 #include <linux/vmalloc.h>
 #include <linux/blkdev.h>
 #include <linux/namei.h>
+#include <linux/mount.h>
 #include <linux/ctype.h>
 #include <linux/string.h>
 #include <linux/slab.h>
@@ -451,6 +452,63 @@ static int upgrade_mode(struct dm_dev_internal *dd, fmode_t new_mode,
 	return 0;
 }
 
+static int match_dev_by_uuid(struct device *dev, void *data)
+{
+	u8 *uuid = data;
+	struct hd_struct *part = dev_to_part(dev);
+
+	if (!part->info)
+		goto no_match;
+
+	if (memcmp(uuid, part->info->uuid, sizeof(part->info->uuid)))
+		goto no_match;
+
+	return 1;
+no_match:
+	return 0;
+}
+
+/* Duplicated from /init/do_mounts.c. */
+static dev_t devt_from_partuuid(const char *uuid_str)
+{
+	dev_t res = 0;
+	struct device *dev = NULL;
+	struct gendisk *disk;
+	struct hd_struct *part;
+	u8 uuid[16];
+	int offset = 0;
+	char unreached;
+
+	if (strlen(uuid_str) < 36)
+		goto done;
+	part_pack_uuid(uuid_str, uuid);
+	if (uuid_str[36] && sscanf(uuid_str + 36, "/PARTNROFF=%d%c", &offset,
+	                           &unreached) != 1)
+		goto done;
+
+	dev = class_find_device(&block_class, NULL, uuid, &match_dev_by_uuid);
+	if (!dev)
+		goto done;
+
+	res = dev->devt;
+
+	if (!offset)
+		goto no_offset;
+
+	res = 0;
+	disk = part_to_disk(dev_to_part(dev));
+	part = disk_get_part(disk, dev_to_part(dev)->partno + offset);
+	if (part) {
+		res = part_devt(part);
+		put_device(part_to_dev(part));
+	}
+
+no_offset:
+	put_device(dev);
+done:
+	return res;
+}
+
 /*
  * Add a device to the list, or just increment the usage count if
  * it's already present.
@@ -470,6 +528,8 @@ static int __table_get_device(struct dm_table *t, struct dm_target *ti,
 		dev = MKDEV(major, minor);
 		if (MAJOR(dev) != major || MINOR(dev) != minor)
 			return -EOVERFLOW;
+	} else if (!strncmp(path, "PARTUUID=", 9)) {
+		dev = devt_from_partuuid(path + 9);
 	} else {
 		/* convert the path to a device */
 		struct block_device *bdev = lookup_bdev(path);
@@ -1195,6 +1255,30 @@ static void dm_table_set_integrity(struct dm_table *t)
 		       dm_device_name(t->md));
 }
 
+static int device_nonrot(struct dm_target *ti, struct dm_dev *dev,
+			       sector_t start, sector_t len, void *data)
+{
+	struct request_queue *q = bdev_get_queue(dev->bdev);
+
+	return q && blk_queue_nonrot(q);
+}
+
+static bool dm_table_all_nonrot(struct dm_table *t)
+{
+	unsigned i = 0;
+
+	/* Ensure that all underlying device are non rotational. */
+	while (i < dm_table_get_num_targets(t)) {
+		struct dm_target *ti = dm_table_get_target(t, i++);
+
+		if (!ti->type->iterate_devices ||
+		    !ti->type->iterate_devices(ti, device_nonrot, NULL))
+			return false;
+	}
+
+	return true;
+}
+
 void dm_table_set_restrictions(struct dm_table *t, struct request_queue *q,
 			       struct queue_limits *limits)
 {
@@ -1207,6 +1291,10 @@ void dm_table_set_restrictions(struct dm_table *t, struct request_queue *q,
 		queue_flag_clear_unlocked(QUEUE_FLAG_DISCARD, q);
 	else
 		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
+	if (!dm_table_all_nonrot(t))
+		queue_flag_clear_unlocked(QUEUE_FLAG_NONROT, q);
+	else
+		queue_flag_set_unlocked(QUEUE_FLAG_NONROT, q);
 
 	dm_table_set_integrity(t);
 

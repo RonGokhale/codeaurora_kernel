@@ -2,6 +2,10 @@
 # Security configuration
 #
 
+# Make seccomp filter Kconfig switch below available
+config HAVE_SECCOMP_FILTER
+       bool
+
 menu "Security options"
 
 config KEYS
@@ -81,6 +85,20 @@ config SECURITY_DMESG_RESTRICT
 	  unless the dmesg_restrict sysctl is explicitly set to (1).
 
 	  If you are unsure how to answer this question, answer N.
+
+config SECCOMP_FILTER
+	bool "Enable seccomp-based system call filtering"
+	select SECCOMP
+	select BTREE
+	depends on HAVE_SECCOMP_FILTER && EXPERIMENTAL
+	help
+	  This kernel feature expands CONFIG_SECCOMP to allow computing
+	  in environments with reduced kernel access dictated by the
+	  application itself through prctl calls.  If
+	  CONFIG_FTRACE_SYSCALLS and PERF_EVENTS are available, then
+	  system call argument-based filtering predicates may be used.
+
+	  See Documentation/prctl/seccomp_filter.txt for more detail.
 
 config SECURITY
 	bool "Enable different security models"
@@ -185,6 +203,7 @@ source security/selinux/Kconfig
 source security/smack/Kconfig
 source security/tomoyo/Kconfig
 source security/apparmor/Kconfig
+source security/chromiumos/Kconfig
 
 source security/integrity/ima/Kconfig
 
@@ -194,6 +213,7 @@ choice
 	default DEFAULT_SECURITY_SMACK if SECURITY_SMACK
 	default DEFAULT_SECURITY_TOMOYO if SECURITY_TOMOYO
 	default DEFAULT_SECURITY_APPARMOR if SECURITY_APPARMOR
+	default DEFAULT_SECURITY_CHROMIUMOS if SECURITY_CHROMIUMOS
 	default DEFAULT_SECURITY_DAC
 
 	help
@@ -212,6 +232,9 @@ choice
 	config DEFAULT_SECURITY_APPARMOR
 		bool "AppArmor" if SECURITY_APPARMOR=y
 
+	config DEFAULT_SECURITY_CHROMIUMOS
+		bool "Chromium OS" if SECURITY_CHROMIUMOS=y
+
 	config DEFAULT_SECURITY_DAC
 		bool "Unix Discretionary Access Controls"
 
@@ -223,6 +246,7 @@ config DEFAULT_SECURITY
 	default "smack" if DEFAULT_SECURITY_SMACK
 	default "tomoyo" if DEFAULT_SECURITY_TOMOYO
 	default "apparmor" if DEFAULT_SECURITY_APPARMOR
+	default "chromiumos" if DEFAULT_SECURITY_CHROMIUMOS
 	default "" if DEFAULT_SECURITY_DAC
 
 endmenu

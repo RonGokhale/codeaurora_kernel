@@ -16,6 +16,7 @@ config ARM
 	select HAVE_FTRACE_MCOUNT_RECORD if (!XIP_KERNEL)
 	select HAVE_DYNAMIC_FTRACE if (!XIP_KERNEL)
 	select HAVE_FUNCTION_GRAPH_TRACER if (!THUMB2_KERNEL)
+	select HAVE_SECCOMP_FILTER
 	select HAVE_GENERIC_DMA_COHERENT
 	select HAVE_KERNEL_GZIP
 	select HAVE_KERNEL_LZO
@@ -182,6 +183,9 @@ config FIQ
 
 config ARCH_MTD_XIP
 	bool
+
+config ARCH_PROVIDES_UDELAY
+  bool
 
 config VECTORS_BASE
 	hex
@@ -591,8 +595,8 @@ config ARCH_TEGRA
 	select GENERIC_GPIO
 	select HAVE_CLK
 	select HAVE_SCHED_CLOCK
-	select ARCH_HAS_BARRIERS if CACHE_L2X0
 	select ARCH_HAS_CPUFREQ
+	select ARCH_PROVIDES_UDELAY
 	help
 	  This enables support for NVIDIA Tegra based systems (Tegra APX,
 	  Tegra 6xx and Tegra 2 series).

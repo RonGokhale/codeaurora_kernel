@@ -2,16 +2,20 @@
  * linux/kernel/seccomp.c
  *
  * Copyright 2004-2005  Andrea Arcangeli <andrea@cpushare.com>
+ * Copyright (C) 2011 The Chromium OS Authors <chromium-os-dev@chromium.org>
  *
  * This defines a simple but solid secure-computing mode.
  */
 
 #include <linux/seccomp.h>
 #include <linux/sched.h>
+#include <linux/slab.h>
 #include <linux/compat.h>
+#include <linux/unistd.h>
+#include <linux/ftrace_event.h>
 
+#define SECCOMP_MAX_FILTER_LENGTH MAX_FILTER_STR_VAL
 /* #define SECCOMP_DEBUG 1 */
-#define NR_SECCOMP_MODES 1
 
 /*
  * Secure computing mode 1 allows only read/write/exit/sigreturn.
@@ -32,10 +36,9 @@ static int mode1_syscalls_32[] = {
 
 void __secure_computing(int this_syscall)
 {
-	int mode = current->seccomp.mode;
 	int * syscall;
 
-	switch (mode) {
+	switch (current->seccomp.mode) {
 	case 1:
 		syscall = mode1_syscalls;
 #ifdef CONFIG_COMPAT
@@ -47,6 +50,14 @@ void __secure_computing(int this_syscall)
 				return;
 		} while (*++syscall);
 		break;
+#ifdef CONFIG_SECCOMP_FILTER
+	case 13:
+		if (!seccomp_test_filters(this_syscall))
+			return;
+
+		seccomp_filter_log_failure(this_syscall);
+		break;
+#endif
 	default:
 		BUG();
 	}
@@ -64,23 +75,27 @@ long prctl_get_seccomp(void)
 
 long prctl_set_seccomp(unsigned long seccomp_mode)
 {
-	long ret;
+	long ret = 0;
 
-	/* can set it only once to be even more secure */
-	ret = -EPERM;
-	if (unlikely(current->seccomp.mode))
-		goto out;
-
-	ret = -EINVAL;
-	if (seccomp_mode && seccomp_mode <= NR_SECCOMP_MODES) {
-		current->seccomp.mode = seccomp_mode;
-		set_thread_flag(TIF_SECCOMP);
+	switch (seccomp_mode) {
+	case 1:
 #ifdef TIF_NOTSC
 		disable_TSC();
 #endif
-		ret = 0;
+		break;
+#ifdef CONFIG_SECCOMP_FILTER
+	case 13:
+		ret = seccomp_enable_filters();
+		break;
+#endif
+	default:
+		ret = -EINVAL;
 	}
 
- out:
+	if (!ret && !current->seccomp.mode) {
+		current->seccomp.mode = seccomp_mode;
+		set_thread_flag(TIF_SECCOMP);
+	}
+
 	return ret;
 }

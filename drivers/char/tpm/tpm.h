@@ -56,6 +56,11 @@ extern ssize_t tpm_show_owned(struct device *, struct device_attribute *attr,
 				char *);
 extern ssize_t tpm_show_temp_deactivated(struct device *,
 					 struct device_attribute *attr, char *);
+extern ssize_t tpm_s3power_get(struct device *,
+			       struct device_attribute *attr, char *);
+extern ssize_t tpm_s3power_set(struct device *dev,
+			       struct device_attribute *attr,
+			       const char *buf, size_t count);
 
 struct tpm_chip;
 
@@ -98,6 +103,10 @@ struct tpm_chip {
 	u8 *data_buffer;
 	atomic_t data_pending;
 	struct mutex buffer_mutex;
+
+	int needs_resume;
+	unsigned long resume_time;
+	struct mutex resume_mutex;
 
 	struct timer_list user_read_timer;	/* user needs to claim result */
 	struct work_struct work;
@@ -274,7 +283,7 @@ ssize_t	tpm_getcap(struct device *, __be32, cap_t *, const char *);
 
 extern void tpm_get_timeouts(struct tpm_chip *);
 extern void tpm_gen_interrupt(struct tpm_chip *);
-extern void tpm_continue_selftest(struct tpm_chip *);
+extern int tpm_continue_selftest(struct tpm_chip *);
 extern unsigned long tpm_calc_ordinal_duration(struct tpm_chip *, u32);
 extern struct tpm_chip* tpm_register_hardware(struct device *,
 				 const struct tpm_vendor_specific *);

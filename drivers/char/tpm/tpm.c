@@ -25,6 +25,7 @@
 
 #include <linux/poll.h>
 #include <linux/slab.h>
+#include <linux/jiffies.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 
@@ -347,6 +348,38 @@ static void timeout_work(struct work_struct *work)
 	mutex_unlock(&chip->buffer_mutex);
 }
 
+static void needs_resume(struct tpm_chip *chip)
+{
+	mutex_lock(&chip->resume_mutex);
+	chip->resume_time = jiffies;
+	chip->needs_resume = 1;
+	mutex_unlock(&chip->resume_mutex);
+}
+
+/* The maximum time in milliseconds that the TPM self test will take to
+ * complete.  TODO(semenzato): 1s should be plenty for all TPMs, but how can we
+ * ensure it?
+ */
+#define TPM_SELF_TEST_DURATION_MSEC 1000
+
+static void resume_if_needed(struct tpm_chip *chip)
+{
+	mutex_lock(&chip->resume_mutex);
+	if (chip->needs_resume) {
+		/* If it's been TPM_SELF_TEST_DURATION_MSEC msec since resume,
+		 * then selftest has completed and we don't need to wait.
+		 */
+		if (jiffies - chip->resume_time <
+		    msecs_to_jiffies(TPM_SELF_TEST_DURATION_MSEC)) {
+			dev_info(chip->dev, "waiting for TPM self test");
+			tpm_continue_selftest(chip);
+		}
+		chip->needs_resume = 0;
+		dev_info(chip->dev, "TPM delayed resume completed");
+	}
+	mutex_unlock(&chip->resume_mutex);
+}
+
 /*
  * Returns max number of jiffies to wait
  */
@@ -465,6 +498,8 @@ static ssize_t transmit_cmd(struct tpm_chip *chip, struct tpm_cmd_t *cmd,
 			    int len, const char *desc)
 {
 	int err;
+
+	resume_if_needed(chip);
 
 	len = tpm_transmit(chip,(u8 *) cmd, len);
 	if (len <  0)
@@ -598,7 +633,7 @@ duration:
 }
 EXPORT_SYMBOL_GPL(tpm_get_timeouts);
 
-void tpm_continue_selftest(struct tpm_chip *chip)
+int tpm_continue_selftest(struct tpm_chip *chip)
 {
 	u8 data[] = {
 		0, 193,			/* TPM_TAG_RQU_COMMAND */
@@ -606,7 +641,7 @@ void tpm_continue_selftest(struct tpm_chip *chip)
 		0, 0, 0, 83,		/* TPM_ORD_GetCapability */
 	};
 
-	tpm_transmit(chip, data, sizeof(data));
+	return tpm_transmit(chip, data, sizeof(data)) == sizeof(data);
 }
 EXPORT_SYMBOL_GPL(tpm_continue_selftest);
 
@@ -903,7 +938,7 @@ ssize_t tpm_show_caps(struct device *dev, struct device_attribute *attr,
 		       be32_to_cpu(cap.manufacturer_id));
 
 	rc = tpm_getcap(dev, CAP_VERSION_1_1, &cap,
-		        "attempting to determine the 1.1 version");
+			"attempting to determine the 1.1 version");
 	if (rc)
 		return 0;
 	str += sprintf(str,
@@ -951,6 +986,29 @@ ssize_t tpm_store_cancel(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 EXPORT_SYMBOL_GPL(tpm_store_cancel);
+
+static int tpm_s3power = 0;
+
+/*
+ * Tell the kernel whether or not to save the TPM state at suspend, depending
+ * on whether the TPM stays powered on or is powered off.
+ */
+ssize_t tpm_s3power_set(struct device *dev, struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	return sscanf(buf, "%d", &tpm_s3power) == 1 ? count : -EINVAL;
+}
+EXPORT_SYMBOL_GPL(tpm_s3power_set);
+
+/*
+ * Read the value of tpm_s3power.  See tpm_s3power_set.
+ */
+ssize_t tpm_s3power_get(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	return sprintf(buf, "%d", tpm_s3power);
+}
+EXPORT_SYMBOL_GPL(tpm_s3power_get);
 
 /*
  * Device file system interface to the TPM
@@ -1026,6 +1084,8 @@ ssize_t tpm_write(struct file *file, const char __user *buf,
 	while (atomic_read(&chip->data_pending) != 0)
 		msleep(TPM_TIMEOUT);
 
+	resume_if_needed(chip);
+
 	mutex_lock(&chip->buffer_mutex);
 
 	if (in_size > TPM_BUFSIZE)
@@ -1060,6 +1120,7 @@ ssize_t tpm_read(struct file *file, char __user *buf,
 	del_singleshot_timer_sync(&chip->user_read_timer);
 	flush_work_sync(&chip->work);
 	ret_size = atomic_read(&chip->data_pending);
+	/* TODO(wad): atomic_set should come AFTER the buffer is copied. */
 	atomic_set(&chip->data_pending, 0);
 	if (ret_size > 0) {	/* relay data */
 		if (size < ret_size)
@@ -1125,6 +1186,9 @@ int tpm_pm_suspend(struct device *dev, pm_message_t pm_state)
 	if (chip == NULL)
 		return -ENODEV;
 
+	if (tpm_s3power)
+		return 0;
+
 	/* for buggy tpm, flush pcrs with extend to selected dummy */
 	if (tpm_suspend_pcr) {
 		cmd.header.in = pcrextend_header;
@@ -1154,6 +1218,7 @@ int tpm_pm_resume(struct device *dev)
 	if (chip == NULL)
 		return -ENODEV;
 
+	needs_resume(chip);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(tpm_pm_resume);
@@ -1210,6 +1275,7 @@ struct tpm_chip *tpm_register_hardware(struct device *dev,
 
 	mutex_init(&chip->buffer_mutex);
 	mutex_init(&chip->tpm_mutex);
+	mutex_init(&chip->resume_mutex);
 	INIT_LIST_HEAD(&chip->list);
 
 	INIT_WORK(&chip->work, timeout_work);

@@ -161,6 +161,13 @@
  * @NL80211_CMD_SET_BEACON: set the beacon on an access point interface
  *	using the %NL80211_ATTR_BEACON_INTERVAL, %NL80211_ATTR_DTIM_PERIOD,
  *	%NL80211_ATTR_BEACON_HEAD and %NL80211_ATTR_BEACON_TAIL attributes.
+ *	Following attributes are provided for drivers that generate full Beacon
+ *	and Probe Response frames internally: %NL80211_ATTR_SSID,
+ *	%NL80211_ATTR_HIDDEN_SSID, %NL80211_ATTR_CIPHERS_PAIRWISE,
+ *	%NL80211_ATTR_CIPHER_GROUP, %NL80211_ATTR_WPA_VERSIONS,
+ *	%NL80211_ATTR_AKM_SUITES, %NL80211_ATTR_PRIVACY,
+ *	%NL80211_ATTR_AUTH_TYPE, %NL80211_ATTR_IE, %NL80211_ATTR_IE_PROBE_RESP,
+ *	%NL80211_ATTR_IE_ASSOC_RESP.
  * @NL80211_CMD_NEW_BEACON: add a new beacon to an access point interface,
  *	parameters are like for %NL80211_CMD_SET_BEACON.
  * @NL80211_CMD_DEL_BEACON: remove the beacon, stop sending it
@@ -483,6 +490,9 @@
  *	more background information, see
  *	http://wireless.kernel.org/en/users/Documentation/WoWLAN.
  *
+ * @NL80211_CMD_PMKSA_CANDIDATE: This is used as an event to inform userspace
+ *	of PMKSA caching dandidates.
+ *
  * @NL80211_CMD_MAX: highest used command number
  * @__NL80211_CMD_AFTER_LAST: internal use
  */
@@ -604,6 +614,8 @@ enum nl80211_commands {
 	NL80211_CMD_STOP_SCHED_SCAN,
 	NL80211_CMD_SCHED_SCAN_RESULTS,
 	NL80211_CMD_SCHED_SCAN_STOPPED,
+
+	NL80211_CMD_PMKSA_CANDIDATE,
 
 	/* add new commands above here */
 
@@ -827,18 +839,20 @@ enum nl80211_commands {
  * @NL80211_ATTR_STATUS_CODE: StatusCode for the %NL80211_CMD_CONNECT
  *	event (u16)
  * @NL80211_ATTR_PRIVACY: Flag attribute, used with connect(), indicating
- *	that protected APs should be used.
+ *	that protected APs should be used. This is also used with NEW_BEACON to
+ *	indicate that the BSS is to use protection.
  *
- * @NL80211_ATTR_CIPHERS_PAIRWISE: Used with CONNECT and ASSOCIATE to
- *	indicate which unicast key ciphers will be used with the connection
+ * @NL80211_ATTR_CIPHERS_PAIRWISE: Used with CONNECT, ASSOCIATE, and NEW_BEACON
+ *	to indicate which unicast key ciphers will be used with the connection
  *	(an array of u32).
- * @NL80211_ATTR_CIPHER_GROUP: Used with CONNECT and ASSOCIATE to indicate
- *	which group key cipher will be used with the connection (a u32).
- * @NL80211_ATTR_WPA_VERSIONS: Used with CONNECT and ASSOCIATE to indicate
- *	which WPA version(s) the AP we want to associate with is using
+ * @NL80211_ATTR_CIPHER_GROUP: Used with CONNECT, ASSOCIATE, and NEW_BEACON to
+ *	indicate which group key cipher will be used with the connection (a
+ *	u32).
+ * @NL80211_ATTR_WPA_VERSIONS: Used with CONNECT, ASSOCIATE, and NEW_BEACON to
+ *	indicate which WPA version(s) the AP we want to associate with is using
  *	(a u32 with flags from &enum nl80211_wpa_versions).
- * @NL80211_ATTR_AKM_SUITES: Used with CONNECT and ASSOCIATE to indicate
- *	which key management algorithm(s) to use (an array of u32).
+ * @NL80211_ATTR_AKM_SUITES: Used with CONNECT, ASSOCIATE, and NEW_BEACON to
+ *	indicate which key management algorithm(s) to use (an array of u32).
  *
  * @NL80211_ATTR_REQ_IE: (Re)association request information elements as
  *	sent out by the card, for ROAM and successful CONNECT events.
@@ -952,6 +966,8 @@ enum nl80211_commands {
  * @NL80211_ATTR_WIPHY_ANTENNA_AVAIL_RX: Bitmap of antennas which are available
  *	for configuration as RX antennas via the above parameters.
  *
+ * @NL80211_ATTR_SCAN_FLAGS: scan request control flags (u32)
+ *
  * @NL80211_ATTR_MCAST_RATE: Multicast tx rate (in 100 kbps) for IBSS
  *
  * @NL80211_ATTR_OFFCHANNEL_TX_OK: For management frame TX, the frame may be
@@ -995,6 +1011,26 @@ enum nl80211_commands {
  *	%NL80211_ATTR_SUPPORTED_IFTYPES) containing the interface types that
  *	are managed in software: interfaces of these types aren't subject to
  *	any restrictions in their number or combinations.
+ *
+ * @NL80211_ATTR_HIDDEN_SSID: indicates whether SSID is to be hidden from Beacon
+ *	and Probe Response (when response to wildcard Probe Request); see
+ *	&enum nl80211_hidden_ssid, represented as a u32
+ *
+ * @NL80211_ATTR_IE_PROBE_RESP: Information element(s) for Probe Response frame.
+ *	This is used with %NL80211_CMD_NEW_BEACON and %NL80211_CMD_SET_BEACON to
+ *	provide extra IEs (e.g., WPS/P2P IE) into Probe Response frames when the
+ *	driver (or firmware) replies to Probe Request frames.
+ * @NL80211_ATTR_IE_ASSOC_RESP: Information element(s) for (Re)Association
+ *	Response frames. This is used with %NL80211_CMD_NEW_BEACON and
+ *	%NL80211_CMD_SET_BEACON to provide extra IEs (e.g., WPS/P2P IE) into
+ *	(Re)Association Response frames when the driver (or firmware) replies to
+ *	(Re)Association Request frames.
+ *
+ * @NL80211_ATTR_ROAM_SUPPORT: Indicates whether the firmware is capable of
+ *	roaming to another AP in the same ESS if the signal lever is low.
+ *
+ * @NL80211_ATTR_PMKSA_CANDIDATE: Nested attribute containing the PMKSA caching
+ *	candidate information, see &enum nl80211_pmksa_candidate_attr.
  *
  * @NL80211_ATTR_MAX: highest attribute number currently defined
  * @__NL80211_ATTR_AFTER_LAST: internal use
@@ -1183,6 +1219,8 @@ enum nl80211_attrs {
 	NL80211_ATTR_WIPHY_ANTENNA_AVAIL_TX,
 	NL80211_ATTR_WIPHY_ANTENNA_AVAIL_RX,
 
+	NL80211_ATTR_SCAN_FLAGS,
+
 	NL80211_ATTR_SUPPORT_MESH_AUTH,
 	NL80211_ATTR_STA_PLINK_STATE,
 
@@ -1193,6 +1231,15 @@ enum nl80211_attrs {
 
 	NL80211_ATTR_INTERFACE_COMBINATIONS,
 	NL80211_ATTR_SOFTWARE_IFTYPES,
+
+	NL80211_ATTR_HIDDEN_SSID,
+
+	NL80211_ATTR_IE_PROBE_RESP,
+	NL80211_ATTR_IE_ASSOC_RESP,
+
+	NL80211_ATTR_ROAM_SUPPORT,
+
+	NL80211_ATTR_PMKSA_CANDIDATE,
 
 	/* add attributes here, update the policy in nl80211.c */
 
@@ -2177,6 +2224,18 @@ enum nl80211_tx_power_setting {
 };
 
 /**
+ * enum nl80211_scan_flags -  scan request control flags
+ *
+ * Scan request control flags are used to control the handling
+ * of NL80211_CMD_TRIGGER_SCAN, requests.
+ *
+ * @NL80211_SCAN_FLAG_TX_ABORT: abort scan if tx collides
+ */
+enum nl80211_scan_flags {
+	NL80211_SCAN_FLAG_TX_ABORT	= 1<<0,
+};
+
+/**
  * enum nl80211_wowlan_packet_pattern_attr - WoWLAN packet pattern attribute
  * @__NL80211_WOWLAN_PKTPAT_INVALID: invalid number for nested attribute
  * @NL80211_WOWLAN_PKTPAT_PATTERN: the pattern, values where the mask has
@@ -2359,6 +2418,45 @@ enum nl80211_plink_state {
 	/* keep last */
 	NUM_NL80211_PLINK_STATES,
 	MAX_NL80211_PLINK_STATES = NUM_NL80211_PLINK_STATES - 1
+};
+
+
+/**
+ * enum nl80211_hidden_ssid - values for %NL80211_ATTR_HIDDEN_SSID
+ * @NL80211_HIDDEN_SSID_NOT_IN_USE: do not hide SSID (i.e., broadcast it in
+ *	Beacon frames)
+ * @NL80211_HIDDEN_SSID_ZERO_LEN: hide SSID by using zero-length SSID element
+ *	in Beacon frames
+ * @NL80211_HIDDEN_SSID_ZERO_CONTENTS: hide SSID by using correct length of SSID
+ *	element in Beacon frames but zero out each byte in the SSID
+ */
+enum nl80211_hidden_ssid {
+	NL80211_HIDDEN_SSID_NOT_IN_USE,
+	NL80211_HIDDEN_SSID_ZERO_LEN,
+	NL80211_HIDDEN_SSID_ZERO_CONTENTS
+};
+
+/**
+ * enum nl80211_pmksa_candidate_attr - attributes for PMKSA caching candidates
+ * @__NL80211_PMKSA_CANDIDATE_INVALID: invalid number for nested attributes
+ * @NL80211_PMKSA_CANDIDATE_INDEX: candidate index (u32; the smaller, the higher
+ *	priority)
+ * @NL80211_PMKSA_CANDIDATE_BSSID: candidate BSSID (6 octets)
+ * @NL80211_PMKSA_CANDIDATE_PREAUTH: RSN pre-authentication supported (flag)
+ * @NUM_NL80211_PMKSA_CANDIDATE: number of PMKSA caching candidate attributes
+ *	(internal)
+ * @MAX_NL80211_PMKSA_CANDIDATE: highest PMKSA caching candidate attribute
+ *	(internal)
+ */
+enum nl80211_pmksa_candidate_attr {
+	__NL80211_PMKSA_CANDIDATE_INVALID,
+	NL80211_PMKSA_CANDIDATE_INDEX,
+	NL80211_PMKSA_CANDIDATE_BSSID,
+	NL80211_PMKSA_CANDIDATE_PREAUTH,
+
+	/* keep last */
+	NUM_NL80211_PMKSA_CANDIDATE,
+	MAX_NL80211_PMKSA_CANDIDATE = NUM_NL80211_PMKSA_CANDIDATE - 1
 };
 
 #endif /* __LINUX_NL80211_H */

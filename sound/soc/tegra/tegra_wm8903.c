@@ -32,6 +32,7 @@
 
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/gpio.h>
 
@@ -62,6 +63,8 @@ struct tegra_wm8903 {
 	struct tegra_asoc_utils_data util_data;
 	struct tegra_wm8903_platform_data *pdata;
 	int gpio_requested;
+	struct regulator *vdd_dmic; /* IS_ERR() -> no digital mic. */
+	bool vdd_dmic_enabled;
 };
 
 static int tegra_wm8903_hw_params(struct snd_pcm_substream *substream,
@@ -188,10 +191,39 @@ static int tegra_wm8903_event_hp(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static int wm8903_event_dmic(struct snd_soc_dapm_widget *w,
+			     struct snd_kcontrol *k, int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+	struct snd_soc_card *card = codec->card;
+	struct tegra_wm8903 *machine = snd_soc_card_get_drvdata(card);
+	bool new_enabled;
+	int ret;
+
+	if (IS_ERR(machine->vdd_dmic))
+	    return 0;
+
+	new_enabled = !!SND_SOC_DAPM_EVENT_ON(event);
+	if (machine->vdd_dmic_enabled == new_enabled)
+	    return 0;
+
+	if (new_enabled)
+	    ret = regulator_enable(machine->vdd_dmic);
+	else
+	    ret = regulator_disable(machine->vdd_dmic);
+
+	if (!ret)
+	    machine->vdd_dmic_enabled = new_enabled;
+
+	return ret;
+}
+
+
 static const struct snd_soc_dapm_widget tegra_wm8903_dapm_widgets[] = {
 	SND_SOC_DAPM_SPK("Int Spk", tegra_wm8903_event_int_spk),
 	SND_SOC_DAPM_HP("Headphone Jack", tegra_wm8903_event_hp),
 	SND_SOC_DAPM_MIC("Mic Jack", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic", wm8903_event_dmic),
 };
 
 static const struct snd_soc_dapm_route harmony_audio_map[] = {
@@ -214,6 +246,7 @@ static const struct snd_soc_dapm_route seaboard_audio_map[] = {
 	{"Int Spk", NULL, "LON"},
 	{"Mic Bias", NULL, "Mic Jack"},
 	{"IN1R", NULL, "Mic Bias"},
+	{"DMICDAT", NULL, "Digital Mic"},
 };
 
 static const struct snd_soc_dapm_route kaen_audio_map[] = {
@@ -225,6 +258,7 @@ static const struct snd_soc_dapm_route kaen_audio_map[] = {
 	{"Int Spk", NULL, "LON"},
 	{"Mic Bias", NULL, "Mic Jack"},
 	{"IN2R", NULL, "Mic Bias"},
+	{"DMICDAT", NULL, "Digital Mic"},
 };
 
 static const struct snd_soc_dapm_route aebl_audio_map[] = {
@@ -234,11 +268,141 @@ static const struct snd_soc_dapm_route aebl_audio_map[] = {
 	{"Int Spk", NULL, "LINEOUTL"},
 	{"Mic Bias", NULL, "Mic Jack"},
 	{"IN1R", NULL, "Mic Bias"},
+	{"DMICDAT", NULL, "Digital Mic"},
 };
 
 static const struct snd_kcontrol_new tegra_wm8903_controls[] = {
 	SOC_DAPM_PIN_SWITCH("Int Spk"),
 };
+
+/* tegra_wm8903_disconnect_pins
+ *
+ *   Disconnect pins which are not actually connected.
+ *
+ *   This implementation is easy to reason about, easy to maintain,
+ *   and very easy to extend.
+ *
+ *   Unless specifically connected on a board, each pin will be marked
+ *   as disconnected.
+ *
+ *   Add a New Machine
+ *
+ *      Add new machine by adding elements to the MACHINES macro.
+ *
+ *   Add a new Pin:
+ *
+ *      Insert the pin name into the 'wm8903_connected_pins' array.
+ *      See 'Connect a Pin' to connect the pin.
+ *
+ *   Connect a Pin:
+ *
+ *      To connect a pin on a particular machine, use the CONNECT()
+ *      macro.
+ *
+ *  Note: There is one distasteful artifact in this system, which I
+ *        believe is acceptable due to the other advantages (listed
+ *        above) of this implementation.  Notably, the expansion of
+ *        'MACHINES' in the assignment to 'disconnect' below looks
+ *        like syntactically incorrect code.
+ */
+static void tegra_wm8903_disconnect_pins(struct snd_soc_card *card,
+					 struct snd_soc_dapm_context *dapm)
+{
+#define MACHINES                                \
+	M(aebl)                                 \
+	M(asymptote)                            \
+	M(harmony)                              \
+	M(kaen)                                 \
+	M(seaboard)                             \
+	M(ventana)
+
+#define M(_x) mn_##_x,
+	enum machine_names {
+		MACHINES
+		N_MACHINES
+	};
+#undef M
+	static const struct wm8903_connected_pins {
+		const char *name;
+		bool connected[N_MACHINES];
+	} pins[] = {
+#define CONNECT(_machine) .connected[mn_##_machine] = true
+		{
+			.name = "IN1L",
+			CONNECT(harmony),
+			CONNECT(ventana),
+		},
+		{
+			.name = "IN1R",
+			CONNECT(seaboard),
+			CONNECT(aebl),
+		},
+		{
+			.name = "IN2L",
+		},
+		{
+			.name = "IN2R",
+			CONNECT(kaen),
+		},
+		{
+			.name = "IN3L",
+		},
+		{
+			.name = "IN3R",
+		},
+		{
+			.name = "LON",
+			CONNECT(harmony),
+			CONNECT(ventana),
+			CONNECT(seaboard),
+			CONNECT(kaen),
+			CONNECT(asymptote),
+		},
+		{
+			.name = "RON",
+			CONNECT(harmony),
+			CONNECT(ventana),
+			CONNECT(seaboard),
+			CONNECT(kaen),
+			CONNECT(asymptote),
+		},
+		{
+			.name = "ROP",
+			CONNECT(harmony),
+			CONNECT(ventana),
+			CONNECT(seaboard),
+			CONNECT(kaen),
+			CONNECT(asymptote),
+		},
+		{
+			.name = "LOP",
+			CONNECT(harmony),
+			CONNECT(ventana),
+			CONNECT(seaboard),
+			CONNECT(kaen),
+			CONNECT(asymptote),
+		},
+		{
+			.name = "LINEOUTR",
+			CONNECT(aebl),
+		},
+		{
+			.name = "LINEOUTL",
+			CONNECT(aebl),
+		},
+#undef CONNECT
+	};
+	unsigned i;
+
+	/* FIXME: Calculate automatically based on DAPM routes? */
+	for (i = 0; i < ARRAY_SIZE(pins); ++i) {
+#define M(_x) || (machine_is_##_x() && !pins[i].connected[mn_##_x])
+		const bool disconnect = false MACHINES;
+		if (disconnect)
+			snd_soc_dapm_nc_pin(dapm, pins[i].name);
+#undef M
+	}
+}
 
 static int tegra_wm8903_init(struct snd_soc_pcm_runtime *rtd)
 {
@@ -297,6 +461,7 @@ static int tegra_wm8903_init(struct snd_soc_pcm_runtime *rtd)
 
 	if (gpio_is_valid(pdata->gpio_hp_det)) {
 		tegra_wm8903_hp_jack_gpio.gpio = pdata->gpio_hp_det;
+		tegra_wm8903_hp_jack_gpio.invert = pdata->gpio_hp_invert;
 		snd_soc_jack_new(codec, "Headphone Jack", SND_JACK_HEADPHONE,
 				&tegra_wm8903_hp_jack);
 		snd_soc_jack_add_pins(&tegra_wm8903_hp_jack,
@@ -318,27 +483,7 @@ static int tegra_wm8903_init(struct snd_soc_pcm_runtime *rtd)
 
 	snd_soc_dapm_force_enable_pin(dapm, "Mic Bias");
 
-	/* FIXME: Calculate automatically based on DAPM routes? */
-	if (!machine_is_harmony() && !machine_is_ventana())
-		snd_soc_dapm_nc_pin(dapm, "IN1L");
-	if (!machine_is_seaboard() && !machine_is_aebl())
-		snd_soc_dapm_nc_pin(dapm, "IN1R");
-	snd_soc_dapm_nc_pin(dapm, "IN2L");
-	if (!machine_is_kaen())
-		snd_soc_dapm_nc_pin(dapm, "IN2R");
-	snd_soc_dapm_nc_pin(dapm, "IN3L");
-	snd_soc_dapm_nc_pin(dapm, "IN3R");
-
-	if (machine_is_aebl()) {
-		snd_soc_dapm_nc_pin(dapm, "LON");
-		snd_soc_dapm_nc_pin(dapm, "RON");
-		snd_soc_dapm_nc_pin(dapm, "ROP");
-		snd_soc_dapm_nc_pin(dapm, "LOP");
-	} else {
-		snd_soc_dapm_nc_pin(dapm, "LINEOUTR");
-		snd_soc_dapm_nc_pin(dapm, "LINEOUTL");
-	}
-
+	tegra_wm8903_disconnect_pins(card, dapm);
 	snd_soc_dapm_sync(dapm);
 
 	return 0;
@@ -391,6 +536,13 @@ static __devinit int tegra_wm8903_driver_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_free_machine;
 
+	machine->vdd_dmic = regulator_get(&pdev->dev, "vdd_dmic");
+	if (IS_ERR(machine->vdd_dmic)) {
+		dev_info(&pdev->dev,
+			 "Unable to locate 'vdd_dmic', error %ld\n",
+			 PTR_ERR(machine->vdd_dmic));
+	}
+
 	card->dev = &pdev->dev;
 	platform_set_drvdata(pdev, card);
 	snd_soc_card_set_drvdata(card, machine);
@@ -398,13 +550,14 @@ static __devinit int tegra_wm8903_driver_probe(struct platform_device *pdev)
 	if (machine_is_harmony() || machine_is_ventana()) {
 		card->dapm_routes = harmony_audio_map;
 		card->num_dapm_routes = ARRAY_SIZE(harmony_audio_map);
-	} else if (machine_is_seaboard()) {
+	} else if (machine_is_seaboard() || machine_is_asymptote()) {
 		card->dapm_routes = seaboard_audio_map;
 		card->num_dapm_routes = ARRAY_SIZE(seaboard_audio_map);
 	} else if (machine_is_kaen()) {
 		card->dapm_routes = kaen_audio_map;
 		card->num_dapm_routes = ARRAY_SIZE(kaen_audio_map);
 	} else {
+		BUG_ON(!machine_is_aebl());
 		card->dapm_routes = aebl_audio_map;
 		card->num_dapm_routes = ARRAY_SIZE(aebl_audio_map);
 	}
@@ -419,9 +572,12 @@ static __devinit int tegra_wm8903_driver_probe(struct platform_device *pdev)
 	return 0;
 
 err_fini_utils:
+	if (!IS_ERR(machine->vdd_dmic))
+		regulator_put(machine->vdd_dmic);
 	tegra_asoc_utils_fini(&machine->util_data);
 err_free_machine:
 	kfree(machine);
+	dev_err(&pdev->dev, "Failed to probe wm8903 (%d)\n", ret);
 	return ret;
 }
 
@@ -446,6 +602,9 @@ static int __devexit tegra_wm8903_driver_remove(struct platform_device *pdev)
 	machine->gpio_requested = 0;
 
 	snd_soc_unregister_card(card);
+
+	if (!IS_ERR(machine->vdd_dmic))
+		regulator_put(machine->vdd_dmic);
 
 	tegra_asoc_utils_fini(&machine->util_data);
 
