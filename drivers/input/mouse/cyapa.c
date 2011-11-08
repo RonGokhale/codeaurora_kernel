@@ -393,12 +393,11 @@ static void cyapa_bl_disable_irq(struct cyapa *cyapa)
 }
 
 /*
- * cyapa_i2c_reg_read_block - read a block of data from trackpad registers
- *      using i2c protocol.
- * @cyapa - private data structure of trackpad driver.
- * @reg - register at which to start reading.
- * @length - length of block to read, in bytes.
- * @values - buffer to store values read from register block.
+ * cyapa_i2c_reg_read_block - read a block of data from device i2c registers
+ * @cyapa  - private data structure of driver
+ * @reg    - register at which to start reading
+ * @length - length of block to read, in bytes
+ * @values - buffer to store values read from registers
  *
  * Returns negative errno, else number of bytes read.
  *
@@ -411,21 +410,20 @@ static ssize_t cyapa_i2c_reg_read_block(struct cyapa *cyapa, u8 reg, size_t len,
 	ssize_t ret;
 
 	ret = i2c_smbus_read_i2c_block_data(cyapa->client, reg, len, values);
-	if (ret > 0) {
-		dev_dbg(dev, "read block reg: 0x%02x length: %d\n", reg, len);
+	dev_dbg(dev, "i2c read block reg: 0x%02x len: %d ret: %d\n",
+		reg, len, ret);
+	if (ret > 0)
 		cyapa_dump_data(cyapa, ret, values);
-	}
 
 	return ret;
 }
 
 /*
- * cyapa_i2c_reg_write_block - write a block of data to trackpad registers
- *      using i2c protocol.
- * @cyapa - private data structure of trackpad driver.
- * @reg - register at which to start writing.
- * @length - length of block to write, in bytes.
- * @values - buffer to write to register block.
+ * cyapa_i2c_reg_write_block - write a block of data to device i2c registers
+ * @cyapa  - private data structure of driver
+ * @reg    - register at which to start writing
+ * @length - length of block to write, in bytes
+ * @values - buffer to write to i2c registers
  *
  * Returns negative errno, else number of bytes written.
  *
@@ -437,21 +435,20 @@ static ssize_t cyapa_i2c_reg_write_block(struct cyapa *cyapa, u8 reg,
 	struct device *dev = &cyapa->client->dev;
 	ssize_t ret;
 
-	dev_dbg(dev, "write block reg: 0x%02x length: %d\n", reg, len);
+	ret = i2c_smbus_write_i2c_block_data(cyapa->client, reg, len, values);
+	dev_dbg(dev, "i2c write block reg: 0x%02x len: %d ret: %d\n",
+		reg, len, ret);
 	cyapa_dump_data(cyapa, len, values);
 
-	ret = i2c_smbus_write_i2c_block_data(cyapa->client, reg, len, values);
 	return (ret == 0) ? len : ret;
 }
 
 /*
- * cyapa_smbus_reg_read_block - read a block data from trackpad
- *      i2c register map.
- * @cyapa  - private data structure of the trackpad driver.
- * @cmd    - the properly encoded smbus command.
- * @length - length of the block to be read in bytes.
- * @values - pointer to the buffer that used to store register block
- *           values read.
+ * cyapa_smbus_read_block - perform smbus block read command
+ * @cyapa  - private data structure of the driver
+ * @cmd    - the properly encoded smbus command
+ * @length - expected length of smbus command result
+ * @values - buffer to store smbus command result
  *
  * Returns negative errno, else the number of bytes written.
  *
@@ -459,8 +456,8 @@ static ssize_t cyapa_i2c_reg_write_block(struct cyapa *cyapa, u8 reg,
  * In trackpad device, the memory block allocated for I2C register map
  * is 256 bytes, so the max read block for I2C bus is 256 bytes.
  */
-static ssize_t cyapa_smbus_reg_read_block(struct cyapa *cyapa, u8 cmd,
-					  size_t len, u8 *values)
+static ssize_t cyapa_smbus_read_block(struct cyapa *cyapa, u8 cmd, size_t len,
+				      u8 *values)
 {
 	ssize_t ret;
 	u8 index;
@@ -479,6 +476,7 @@ static ssize_t cyapa_smbus_reg_read_block(struct cyapa *cyapa, u8 cmd,
 		goto out;
 	}
 
+	ret = 0;
 	for (index = 0; index * I2C_SMBUS_BLOCK_MAX < len; index++) {
 		smbus_cmd = SMBUS_ENCODE_IDX(cmd, index);
 		smbus_cmd = SMBUS_ENCODE_RW(smbus_cmd, SMBUS_READ);
@@ -489,21 +487,19 @@ static ssize_t cyapa_smbus_reg_read_block(struct cyapa *cyapa, u8 cmd,
 	}
 
 out:
-	if (ret > 0) {
-		dev_dbg(dev, "read block cmd: 0x%02x length: %d\n",
-			smbus_cmd, len);
+	dev_dbg(dev, "smbus read block cmd: 0x%02x len: %d ret: %d\n",
+		cmd, len, ret);
+	if (ret > 0)
 		cyapa_dump_data(cyapa, len, values);
-	}
 	return (ret > 0) ? len : ret;
 }
 
 /*
- * cyapa_smbus_reg_write_block - write a block data to trackpad
- *      i2c register map.
- * @cyapa  - private data structure of the trackpad driver.
- * @cmd    - the properly encoded smbus command.
- * @length - length of the block to be written in bytes.
- * @values - pointer to the block data buffur that will be written.
+ * cyapa_smbus_write_block - perform smbus block write command
+ * @cyapa  - private data structure of the driver
+ * @cmd    - the properly encoded smbus command
+ * @length - length of data block to send with command
+ * @values - buffer of data to send with command
  *
  * Returns negative errno, else the number of bytes written.
  *
@@ -511,8 +507,8 @@ out:
  * In trackpad device, the memory block allocated for I2C register map
  * is 256 bytes, so the max write block for I2C bus is 256 bytes.
  */
-static ssize_t cyapa_smbus_reg_write_block(struct cyapa *cyapa, u8 cmd,
-					   size_t len, u8 *values)
+static ssize_t cyapa_smbus_write_block(struct cyapa *cyapa, u8 cmd, size_t len,
+				       u8 *values)
 {
 	ssize_t ret;
 	u8 length;
@@ -525,9 +521,6 @@ static ssize_t cyapa_smbus_reg_write_block(struct cyapa *cyapa, u8 cmd,
 	if (!(SMBUS_BYTE_BLOCK_CMD_MASK & cmd))
 		return -EINVAL;
 
-	dev_dbg(dev, "write block cmd: 0x%02x length: %d\n", cmd, len);
-	cyapa_dump_data(cyapa, len, (void *)values);
-
 	if (SMBUS_GROUP_BLOCK_CMD_MASK & cmd) {
 		/* write specific block registers command. */
 		smbus_cmd = SMBUS_ENCODE_RW(cmd, SMBUS_WRITE);
@@ -536,6 +529,7 @@ static ssize_t cyapa_smbus_reg_write_block(struct cyapa *cyapa, u8 cmd,
 		goto out;
 	}
 
+	ret = 0;
 	for (index = 0; index * I2C_SMBUS_BLOCK_MAX < len; index++) {
 		smbus_cmd = SMBUS_ENCODE_IDX(cmd, index);
 		smbus_cmd = SMBUS_ENCODE_RW(smbus_cmd, SMBUS_WRITE);
@@ -550,31 +544,48 @@ static ssize_t cyapa_smbus_reg_write_block(struct cyapa *cyapa, u8 cmd,
 	}
 
 out:
+	dev_dbg(dev, "smbus write block cmd: 0x%02x len: %d ret: %d\n",
+		cmd, len, ret);
+	cyapa_dump_data(cyapa, len, values);
 	return (ret == 0) ? len : ret;
 }
 
 static s32 cyapa_read_byte(struct cyapa *cyapa, u8 cmd_idx)
 {
+	struct device *dev = &cyapa->client->dev;
+	int ret;
 	u8 cmd;
+
 	if (cyapa->smbus && cyapa->touchpad_protocol == CYTP_SMBUS) {
 		cmd = cyapa_smbus_cmds[cmd_idx].cmd;
 		cmd = SMBUS_ENCODE_RW(cmd, SMBUS_READ);
 	} else {
 		cmd = cyapa_i2c_cmds[cmd_idx].cmd;
 	}
-	return i2c_smbus_read_byte_data(cyapa->client, cmd);
+	ret = i2c_smbus_read_byte_data(cyapa->client, cmd);
+	dev_dbg(dev, "read byte [0x%02x] = 0x%02x  ret: %d\n",
+		cmd, ret, ret);
+
+	return ret;
 }
 
 static s32 cyapa_write_byte(struct cyapa *cyapa, u8 cmd_idx, u8 value)
 {
+	struct device *dev = &cyapa->client->dev;
+	int ret;
 	u8 cmd;
+
 	if (cyapa->smbus && cyapa->touchpad_protocol == CYTP_SMBUS) {
 		cmd = cyapa_smbus_cmds[cmd_idx].cmd;
 		cmd = SMBUS_ENCODE_RW(cmd, SMBUS_WRITE);
 	} else {
 		cmd = cyapa_i2c_cmds[cmd_idx].cmd;
 	}
-	return i2c_smbus_write_byte_data(cyapa->client, cmd, value);
+	ret = i2c_smbus_write_byte_data(cyapa->client, cmd, value);
+	dev_dbg(dev, "write byte [0x%02x] = 0x%02x  ret: %d\n",
+		cmd, value, ret);
+
+	return ret;
 }
 
 static ssize_t cyapa_read_block(struct cyapa *cyapa, u8 cmd_idx, u8 *values)
@@ -585,7 +596,7 @@ static ssize_t cyapa_read_block(struct cyapa *cyapa, u8 cmd_idx, u8 *values)
 	if (cyapa->smbus && cyapa->touchpad_protocol == CYTP_SMBUS) {
 		cmd = cyapa_smbus_cmds[cmd_idx].cmd;
 		len = cyapa_smbus_cmds[cmd_idx].len;
-		return cyapa_smbus_reg_read_block(cyapa, cmd, len, values);
+		return cyapa_smbus_read_block(cyapa, cmd, len, values);
 	} else {
 		cmd = cyapa_i2c_cmds[cmd_idx].cmd;
 		len = cyapa_i2c_cmds[cmd_idx].len;
@@ -601,7 +612,7 @@ static ssize_t cyapa_write_block(struct cyapa *cyapa, u8 cmd_idx, u8 *values)
 	if (cyapa->smbus && cyapa->touchpad_protocol == CYTP_SMBUS) {
 		cmd = cyapa_smbus_cmds[cmd_idx].cmd;
 		len = cyapa_smbus_cmds[cmd_idx].len;
-		return cyapa_smbus_reg_write_block(cyapa, cmd, len, values);
+		return cyapa_smbus_write_block(cyapa, cmd, len, values);
 	} else {
 		cmd = cyapa_i2c_cmds[cmd_idx].cmd;
 		len = cyapa_i2c_cmds[cmd_idx].len;
