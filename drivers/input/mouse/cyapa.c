@@ -52,7 +52,7 @@
 /* report data start reg offset address. */
 #define DATA_REG_START_OFFSET  0x0000
 
-#define BL_HEAD_CMD_STATUS_OFFSET 0x00
+#define BL_HEAD_OFFSET 0x00
 #define BL_DATA_OFFSET 0x10
 
 /*
@@ -221,7 +221,6 @@ struct cyapa {
 	int irq;
 	u8 adapter_func;
 	bool smbus;
-	bool touchpad_protocol;
 
 	/* read from query data region. */
 	char product_id[16];
@@ -322,11 +321,11 @@ static const struct cyapa_cmd_len cyapa_i2c_cmds[] = {
 	{REG_OFFSET_CONTROL_BASE, 0},
 	{REG_OFFSET_COMMAND_BASE, 0},
 	{REG_OFFSET_QUERY_BASE, QUERY_DATA_SIZE},
-	{BL_HEAD_CMD_STATUS_OFFSET, 3},
-	{BL_HEAD_CMD_STATUS_OFFSET, 16},
-	{BL_HEAD_CMD_STATUS_OFFSET, 16},
+	{BL_HEAD_OFFSET, 3},
+	{BL_HEAD_OFFSET, 16},
+	{BL_HEAD_OFFSET, 16},
 	{BL_DATA_OFFSET, 16},
-	{BL_HEAD_CMD_STATUS_OFFSET, 32},
+	{BL_HEAD_OFFSET, 32},
 	{REG_OFFSET_QUERY_BASE, PRODUCT_ID_SIZE},
 	{REG_OFFSET_DATA_BASE, 32}
 };
@@ -500,7 +499,7 @@ static s32 cyapa_read_byte(struct cyapa *cyapa, u8 cmd_idx)
 	int ret;
 	u8 cmd;
 
-	if (cyapa->smbus && cyapa->touchpad_protocol == CYTP_SMBUS) {
+	if (cyapa->smbus) {
 		cmd = cyapa_smbus_cmds[cmd_idx].cmd;
 		cmd = SMBUS_ENCODE_RW(cmd, SMBUS_READ);
 	} else {
@@ -519,7 +518,7 @@ static s32 cyapa_write_byte(struct cyapa *cyapa, u8 cmd_idx, u8 value)
 	int ret;
 	u8 cmd;
 
-	if (cyapa->smbus && cyapa->touchpad_protocol == CYTP_SMBUS) {
+	if (cyapa->smbus) {
 		cmd = cyapa_smbus_cmds[cmd_idx].cmd;
 		cmd = SMBUS_ENCODE_RW(cmd, SMBUS_WRITE);
 	} else {
@@ -537,7 +536,7 @@ static ssize_t cyapa_read_block(struct cyapa *cyapa, u8 cmd_idx, u8 *values)
 	u8 cmd;
 	size_t len;
 
-	if (cyapa->smbus && cyapa->touchpad_protocol == CYTP_SMBUS) {
+	if (cyapa->smbus) {
 		cmd = cyapa_smbus_cmds[cmd_idx].cmd;
 		len = cyapa_smbus_cmds[cmd_idx].len;
 		return cyapa_smbus_read_block(cyapa, cmd, len, values);
@@ -739,8 +738,8 @@ int cyapa_get_trackpad_run_mode(struct cyapa *cyapa,
 	do {
 		/* get trackpad status. */
 		if (cyapa->in_bootloader)
-			ret = cyapa_read_block(cyapa, CYAPA_CMD_BL_HEAD,
-					       status);
+			ret = cyapa_i2c_reg_read_block(cyapa, BL_HEAD_OFFSET,
+						       BL_HEAD_BYTES, status);
 		else
 			ret = cyapa_read_block(cyapa, CYAPA_CMD_BLK_HEAD,
 					       status);
@@ -750,10 +749,8 @@ int cyapa_get_trackpad_run_mode(struct cyapa *cyapa,
 			 * wait for a moment.
 			 * if this is an smbus adapter, try the other protocol.
 			 */
-			if (cyapa->smbus) {
-				cyapa->touchpad_protocol =
-					!cyapa->touchpad_protocol;
-			}
+			if (cyapa->smbus)
+				cyapa->in_bootloader = !cyapa->in_bootloader;
 			msleep(300);
 			continue;
 		}
@@ -873,8 +870,6 @@ static int cyapa_send_mode_switch_cmd(struct cyapa *cyapa,
 		/* update firmware working mode state in driver. */
 		spin_lock_irqsave(&cyapa->miscdev_spinlock, flags);
 		cyapa->in_bootloader = false;
-		if (cyapa->smbus)
-			cyapa->touchpad_protocol = CYTP_SMBUS;
 		spin_unlock_irqrestore(&cyapa->miscdev_spinlock, flags);
 
 		/* reconfig and update firmware information. */
@@ -893,7 +888,6 @@ static int cyapa_send_mode_switch_cmd(struct cyapa *cyapa,
 	if (run_mode->rev_cmd != CYAPA_CMD_IDLE_TO_APP) {
 		spin_lock_irqsave(&cyapa->miscdev_spinlock, flags);
 		cyapa->in_bootloader = true;
-		cyapa->touchpad_protocol = CYTP_I2C;
 		spin_unlock_irqrestore(&cyapa->miscdev_spinlock, flags);
 	}
 
@@ -1438,8 +1432,6 @@ static int cyapa_check_exit_bootloader(struct cyapa *cyapa)
 
 			/* wait firmware ready. */
 			msleep(300);
-			if (cyapa->smbus)
-				cyapa->touchpad_protocol = CYTP_SMBUS;
 			continue;
 		}
 	} while (tries--);
