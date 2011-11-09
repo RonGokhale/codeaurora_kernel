@@ -223,12 +223,12 @@ struct cyapa {
 	int physical_size_y;
 };
 
-static const u8 bl_switch_active[] = { 0x00, 0xFF, 0x38, 0x00, 0x01, 0x02,
-		0x03, 0x04, 0x05, 0x06, 0x07 };
-static const u8 bl_switch_idle[] = { 0x00, 0xFF, 0x3B, 0x00, 0x01, 0x02, 0x03,
+static const u8 bl_activate[] = { 0x00, 0xFF, 0x38, 0x00, 0x01, 0x02, 0x03,
 		0x04, 0x05, 0x06, 0x07 };
-static const u8 bl_app_launch[] = { 0x00, 0xFF, 0xA5, 0x00, 0x01, 0x02, 0x03,
+static const u8 bl_deactivate[] = { 0x00, 0xFF, 0x3B, 0x00, 0x01, 0x02, 0x03,
 		0x04, 0x05, 0x06, 0x07 };
+static const u8 bl_exit[] = { 0x00, 0xFF, 0xA5, 0x00, 0x01, 0x02, 0x03, 0x04,
+		0x05, 0x06, 0x07 };
 
 /* global pointer to trackpad touch data structure. */
 static struct cyapa *global_cyapa;
@@ -508,6 +508,64 @@ static ssize_t cyapa_read_block(struct cyapa *cyapa, u8 cmd_idx, u8 *values)
 	}
 }
 
+static int cyapa_bl_activate(struct cyapa *cyapa)
+{
+	int ret;
+
+	ret = cyapa_i2c_reg_write_block(cyapa, 0, sizeof(bl_activate),
+					bl_activate);
+	if (ret < 0)
+		return ret;
+	if (ret != sizeof(bl_activate))
+		return -EIO;
+
+	/* wait for bootloader to switch to active state */
+	msleep(300);
+	return 0;
+}
+
+static int cyapa_bl_deactivate(struct cyapa *cyapa)
+{
+	int ret;
+
+	ret = cyapa_i2c_reg_write_block(cyapa, 0, sizeof(bl_deactivate),
+					bl_deactivate);
+	if (ret < 0)
+		return ret;
+	if (ret != sizeof(bl_deactivate))
+		return -EIO;
+
+	/* wait for bootloader to switch to idle state */
+	msleep(300);
+	return 0;
+}
+
+static int cyapa_bl_exit(struct cyapa *cyapa)
+{
+	int ret;
+
+	ret = cyapa_i2c_reg_write_block(cyapa, 0, sizeof(bl_exit), bl_exit);
+	if (ret < 0)
+		return ret;
+	if (ret != sizeof(bl_exit))
+		return -EIO;
+
+	/*
+	 * Wait for bootloader to exit, and operation mode to start.
+	 * On every boot this takes at least 300 ms.
+	 *
+	 * Note:
+	 * In addition to the 300ms wait, when a device boots for the first
+	 * time after being updated to new firmware, it must first calibrate
+	 * its sensors.
+	 * This sensor calibration takes about 2 seconds to complete.
+	 * This additional waiting is in cyapa_reconfig()
+	 * TODO(djkurtz): refactor this wait
+	 */
+	msleep(300);
+	return 0;
+}
+
 /*
  **************************************************************
  * misc cyapa device for trackpad firmware update,
@@ -783,58 +841,33 @@ static int cyapa_send_mode_switch_cmd(struct cyapa *cyapa,
 		break;
 
 	case CYAPA_CMD_IDLE_TO_ACTIVE:
-		/* send switch to active command. */
-		ret = cyapa_i2c_reg_write_block(cyapa, 0,
-						sizeof(bl_switch_active),
-						bl_switch_active);
-		if (ret != sizeof(bl_switch_active)) {
-			dev_err(dev, "idle to active cmd failed, %d\n", ret);
-			return -EIO;
+		ret = cyapa_bl_activate(cyapa);
+		if (ret) {
+			dev_err(dev, "activate bootloader failed: %d\n", ret);
+			return ret;
 		}
 		break;
 
 	case CYAPA_CMD_ACTIVE_TO_IDLE:
-		/* send switch to idle command.*/
-		ret = cyapa_i2c_reg_write_block(cyapa, 0,
-						sizeof(bl_switch_idle),
-						bl_switch_idle);
-		if (ret != sizeof(bl_switch_idle)) {
-			dev_err(dev, "active to idle cmd failed, %d\n", ret);
-			return -EIO;
+		ret = cyapa_bl_deactivate(cyapa);
+		if (ret) {
+			dev_err(dev, "deactivate bootloader failed: %d\n", ret);
+			return ret;
 		}
 		break;
 
 	case CYAPA_CMD_IDLE_TO_APP:
-		/* send command switch operational mode.*/
-		ret = cyapa_i2c_reg_write_block(cyapa, 0,
-						sizeof(bl_app_launch),
-						bl_app_launch);
-		if (ret != sizeof(bl_app_launch)) {
-			dev_err(dev, "idle to app cmd failed, %d\n", ret);
-			return -EIO;
+		ret = cyapa_bl_exit(cyapa);
+		if (ret) {
+			dev_err(dev, "exit bootloader failed, %d\n", ret);
+			return ret;
 		}
 
-		/*
-		 * wait firmware completely launched its application,
-		 * during this time, all read/write operations should
-		 * be disabled.
-		 *
-		 * NOTES:
-		 * When trackpad boots for the first time after being
-		 * updating to new firmware, it must first calibrate
-		 * its sensors.
-		 * This sensor calibration takes about 2 seconds to complete.
-		 * This calibration is ONLY required for the first
-		 * post-firmware-update boot.
-		 *
-		 * On all boots the driver waits 300 ms after switching to
-		 * operational mode.
-		 * For the first post-firmware-update boot,
-		 * additional waiting is done in cyapa_reconfig().
-		 */
-		msleep(300);
-
 		/* update firmware working mode state in driver. */
+		/*
+		 * TODO(djkurtz): This should only happen if we confirm that
+		 * we really are in operation mode now.
+		 */
 		mutex_lock(&cyapa->bl_mutex);
 		cyapa->in_bootloader = false;
 		mutex_unlock(&cyapa->bl_mutex);
@@ -1334,7 +1367,6 @@ static int cyapa_create_input_dev(struct cyapa *cyapa)
 
 static int cyapa_check_exit_bootloader(struct cyapa *cyapa)
 {
-	int ret;
 	int tries = 15;
 	struct cyapa_trackpad_run_mode run_mode;
 
@@ -1355,29 +1387,16 @@ static int cyapa_check_exit_bootloader(struct cyapa *cyapa)
 		if ((run_mode.run_mode == CYAPA_BOOTLOADER_MODE) &&
 			(run_mode.bootloader_state ==
 				CYAPA_BOOTLOADER_ACTIVE_STATE)) {
-			/* bootloader active state. */
-			ret = cyapa_i2c_reg_write_block(cyapa, 0,
-				sizeof(bl_switch_idle), bl_switch_idle);
-
-			if (ret != sizeof(bl_switch_idle))
-				continue;
-
-			/* wait bootloader switching to idle state. */
-			msleep(300);
+			cyapa_bl_deactivate(cyapa);
+			/* TODO(djkurtz): Just continue on error? Or abort? */
 			continue;
 		}
 
 		if ((run_mode.run_mode == CYAPA_BOOTLOADER_MODE) &&
 			(run_mode.bootloader_state ==
 				CYAPA_BOOTLOADER_IDLE_STATE)) {
-			/* send command switch to operational mode. */
-			ret = cyapa_i2c_reg_write_block(cyapa, 0,
-				sizeof(bl_app_launch), bl_app_launch);
-			if (ret != sizeof(bl_app_launch))
-				continue;
-
-			/* wait firmware ready. */
-			msleep(300);
+			cyapa_bl_exit(cyapa);
+			/* TODO(djkurtz): Just continue on error? Or abort? */
 			continue;
 		}
 	} while (tries--);
