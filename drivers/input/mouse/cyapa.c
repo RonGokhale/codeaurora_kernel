@@ -1480,8 +1480,6 @@ static void cyapa_probe_detect_work_handler(struct work_struct *work)
 		goto out_probe_err;
 	}
 
-	enable_irq_wake(cyapa->irq);
-
 	/*
 	 * reconfig trackpad depending on platform setting.
 	 *
@@ -1654,6 +1652,9 @@ static int cyapa_suspend(struct device *dev)
 	if (ret < 0)
 		dev_err(dev, "suspend trackpad device failed, %d\n", ret);
 
+	if (device_may_wakeup(dev))
+		enable_irq_wake(cyapa->irq);
+
 	return ret;
 }
 
@@ -1671,6 +1672,9 @@ static int cyapa_resume(struct device *dev)
 	 */
 	if (!cyapa)
 		return 0;
+
+	if (device_may_wakeup(dev))
+		disable_irq_wake(cyapa->irq);
 
 	ret = cyapa_resume_detect(cyapa);
 	if (ret < 0) {
