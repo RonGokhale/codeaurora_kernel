@@ -34,6 +34,7 @@ struct tegra_utmip_config {
 	u8 xcvr_effect;
 	u8 vbus_gpio;
 	bool shared_pin_vbus_en_oc;
+	bool initialized;
 };
 
 struct tegra_ulpi_config {
