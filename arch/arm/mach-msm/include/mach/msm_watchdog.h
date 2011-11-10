@@ -15,8 +15,10 @@
 
 #ifdef CONFIG_MSM_WATCHDOG
 void pet_watchdog(void);
+void ratelimited_pet_watchdog(void);
 #else
 static inline void pet_watchdog(void) { }
+static inline void ratelimited_pet_watchdog(void) { }
 #endif
 
 #endif
