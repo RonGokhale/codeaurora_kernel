@@ -18,6 +18,7 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/gpio.h>
+#include <linux/delay.h>
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
 
@@ -32,8 +33,19 @@ static u32 tegra_sdhci_readl(struct sdhci_host *host, int reg)
 	u32 val;
 
 	if (unlikely(reg == SDHCI_PRESENT_STATE)) {
+		int loops = 10;
 		/* Use wp_gpio here instead? */
 		val = readl(host->ioaddr + reg);
+
+		/* In some cases, when coming back from resume, it takes
+		 * a while for CARD_PRESENT to settle. Since this isn't on
+		 * critical path, give it a while to show up in case it's
+		 * not seen on first read.
+		 */
+		while (!(val & SDHCI_CARD_PRESENT) && loops--) {
+			mdelay(10);
+			val = readl(host->ioaddr + reg);
+		}
 		return val | SDHCI_WRITE_PROTECT;
 	}
 
