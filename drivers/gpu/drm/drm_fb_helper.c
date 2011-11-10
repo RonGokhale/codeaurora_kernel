@@ -224,11 +224,6 @@ bool drm_fb_helper_restore_fbdev_mode(struct drm_fb_helper *fb_helper)
 	int i, ret;
 	for (i = 0; i < fb_helper->crtc_count; i++) {
 		struct drm_mode_set *mode_set = &fb_helper->crtc_info[i].mode_set;
-		struct drm_crtc *crtc = mode_set->crtc;
-
-		if (!crtc->enabled)
-			continue;
-
 		ret = drm_crtc_helper_set_config(mode_set);
 		if (ret)
 			error = true;
@@ -259,15 +254,8 @@ bool drm_fb_helper_force_kernel_mode(void)
 int drm_fb_helper_panic(struct notifier_block *n, unsigned long ununsed,
 			void *panic_str)
 {
-	/*
-	 * It's a waste of time and effort to switch back to text console
-	 * if the kernel should reboot before panic messages can be seen.
-	 */
-	if (panic_timeout >= 0) {
-		DRM_ERROR("panic occurred, switching back to text console\n");
-		drm_fb_helper_force_kernel_mode();
-	}
-	return 0;
+	printk(KERN_ERR "panic occurred, switching back to text console\n");
+	return drm_fb_helper_force_kernel_mode();
 }
 EXPORT_SYMBOL(drm_fb_helper_panic);
 
