@@ -873,6 +873,8 @@ void tegra_usb_phy_utmi_vbus_init(struct tegra_utmip_config *utmi_config,
 		goto vbus_gpio_init_exit;
 	}
 
+	utmi_config->initialized = true;
+
 	if (!utmi_config->shared_pin_vbus_en_oc)
 		gpio_set_value(utmi_config->vbus_gpio, 1);
 
@@ -885,13 +887,17 @@ vbus_gpio_init_exit:
 
 void tegra_usb_phy_vbus_on(struct tegra_usb_phy *phy)
 {
-	if (phy_is_utmi(phy))
+	struct tegra_utmip_config *config = phy->config;
+
+	if (phy_is_utmi(phy) && config->initialized)
 		utmi_phy_vbus_on(phy);
 }
 
 void tegra_usb_phy_vbus_off(struct tegra_usb_phy *phy)
 {
-	if (phy_is_utmi(phy))
+	struct tegra_utmip_config *config = phy->config;
+
+	if (phy_is_utmi(phy) && config->initialized)
 		utmi_phy_vbus_off(phy);
 }
 
