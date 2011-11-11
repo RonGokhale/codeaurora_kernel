@@ -590,6 +590,10 @@ static struct tegra_utmip_config usb3_phy_config = {
 	.shared_pin_vbus_en_oc = true,
 };
 
+static struct tegra_ulpi_config ulpi_phy_config = {
+	.reset_gpio = TEGRA_GPIO_PV1,
+	.clk = "cdev2",
+};
 
 static int seaboard_ehci_init(void)
 {
@@ -613,11 +617,16 @@ static int seaboard_ehci_init(void)
 	pdata->keep_clock_in_bus_suspend = 1;
 	pdata->phy_config = &usb1_phy_config;
 
+	pdata = tegra_ehci2_device.dev.platform_data;
+	pdata->keep_clock_in_bus_suspend = 1;
+	pdata->phy_config = &ulpi_phy_config;
+
 	pdata = tegra_ehci3_device.dev.platform_data;
 	pdata->keep_clock_in_bus_suspend = 1;
 	pdata->phy_config = &usb3_phy_config;
 
 	platform_device_register(&tegra_ehci1_device);
+	platform_device_register(&tegra_ehci2_device);
 	platform_device_register(&tegra_ehci3_device);
 
 	return 0;
