@@ -67,6 +67,7 @@ struct cyapa_trackpad_run_mode {
 	 */
 	__u8 rev_cmd;
 };
+
 #define CYAPA_OPERATIONAL_MODE 0x00
 #define CYAPA_BOOTLOADER_MODE  0x01
 #define CYAPA_BOOTLOADER_IDLE_STATE  0x00
@@ -74,10 +75,12 @@ struct cyapa_trackpad_run_mode {
 #define CYAPA_BOOTLOADER_INVALID_STATE 0xff
 
 /* trackpad run mode switch command. */
-#define CYAPA_CMD_APP_TO_IDLE	0x10
-#define CYAPA_CMD_IDLE_TO_ACTIVE	0x20
-#define CYAPA_CMD_ACTIVE_TO_IDLE	0x30
-#define CYAPA_CMD_IDLE_TO_APP	0x40
+enum cyapa_bl_cmd {
+	CYAPA_CMD_APP_TO_IDLE = 0x10,
+	CYAPA_CMD_IDLE_TO_ACTIVE = 0x20,
+	CYAPA_CMD_ACTIVE_TO_IDLE = 0x30,
+	CYAPA_CMD_IDLE_TO_APP = 0x40,
+};
 
 /*
  * Macro codes for misc device ioctl functions.
