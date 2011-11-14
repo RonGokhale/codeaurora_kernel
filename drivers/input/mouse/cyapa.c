@@ -394,7 +394,7 @@ static ssize_t cyapa_i2c_reg_read_block(struct cyapa *cyapa, u8 reg, size_t len,
  * @length - length of block to write, in bytes
  * @values - buffer to write to i2c registers
  *
- * Returns negative errno, else number of bytes written.
+ * Returns 0 on success, else negative errno on failure.
  *
  * Note: The trackpad register block is 256 bytes.
  */
@@ -409,7 +409,7 @@ static ssize_t cyapa_i2c_reg_write_block(struct cyapa *cyapa, u8 reg,
 		reg, len, ret);
 	cyapa_dump_data(cyapa, len, values);
 
-	return (ret == 0) ? len : ret;
+	return ret;
 }
 
 /*
@@ -648,8 +648,6 @@ static int cyapa_bl_activate(struct cyapa *cyapa)
 					bl_activate);
 	if (ret < 0)
 		return ret;
-	if (ret != sizeof(bl_activate))
-		return -EIO;
 
 	/* wait for bootloader to switch to active state */
 	msleep(300);
@@ -690,8 +688,6 @@ static int cyapa_bl_exit(struct cyapa *cyapa)
 	ret = cyapa_i2c_reg_write_block(cyapa, 0, sizeof(bl_exit), bl_exit);
 	if (ret < 0)
 		return ret;
-	if (ret != sizeof(bl_exit))
-		return -EIO;
 
 	/*
 	 * Wait for bootloader to exit, and operation mode to start.
@@ -883,7 +879,8 @@ static ssize_t cyapa_misc_write(struct file *file, const char __user *usr_buf,
 					(int)count,
 					reg_buf);
 
-	*offset = (ret < 0) ? reg_offset : (reg_offset + ret);
+	if (!ret)
+		*offset += count;
 
 	return ret;
 }
