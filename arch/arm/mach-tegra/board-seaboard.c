@@ -1147,6 +1147,33 @@ void __init tegra_ventana_init(void)
 	seaboard_i2c_init();
 }
 
+/*
+ * reserve memory for RAMOOPS if configured.
+ */
+#if defined(CONFIG_CHROMEOS_RAMOOPS_RAM_START) && \
+	defined(CONFIG_CHROMEOS_RAMOOPS_RAM_SIZE)
+void __init ramoops_reserve(void)
+{
+	unsigned long size = CONFIG_CHROMEOS_RAMOOPS_RAM_SIZE;
+	unsigned long start = CONFIG_CHROMEOS_RAMOOPS_RAM_START;
+
+	/* If necessary, lower start and raise size to align to 1M. */
+	start = round_down(start, SZ_1M);
+	size += CONFIG_CHROMEOS_RAMOOPS_RAM_START - start;
+	size = round_up(size, SZ_1M);
+
+	if (memblock_remove(start, size)) {
+		pr_err("Failed to remove ramoops %08lx@%08lx from memory\n",
+			size, start);
+	} else {
+		pr_info("Ramoops:                %08lx - %08lx\n",
+			start, start + size - 1);
+	}
+}
+#else
+#define ramoops_reserve()
+#endif
+
 void __init tegra_common_reserve(void)
 {
 	unsigned long fb_size;
@@ -1164,6 +1191,8 @@ void __init tegra_common_reserve(void)
 	 */
 	fb_size = round_up((1368 * 910 * 4 * 2), PAGE_SIZE);
 	tegra_reserve(256 * 1024 * 1024, fb_size, 0);
+
+	ramoops_reserve();
 }
 
 static const char *seaboard_dt_board_compat[] = {
