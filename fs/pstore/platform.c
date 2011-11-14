@@ -122,7 +122,7 @@ static void pstore_dump(struct kmsg_dumper *dumper,
 		memcpy(dst, s1 + s1_start, l1_cpy);
 		memcpy(dst + l1_cpy, s2 + s2_start, l2_cpy);
 
-		ret = psinfo->write(PSTORE_TYPE_DMESG, &id, part,
+		ret = psinfo->write(PSTORE_TYPE_DMESG, reason, &id, part,
 				   hsize + l1_cpy + l2_cpy, psinfo);
 		if (ret == 0 && reason == KMSG_DUMP_OOPS && pstore_is_mounted())
 			pstore_new_entry = 1;
@@ -245,7 +245,8 @@ static void pstore_timefunc(unsigned long dummy)
  * Call platform driver to write a record to the
  * persistent store.
  */
-int pstore_write(enum pstore_type_id type, char *buf, size_t size)
+int pstore_write(enum pstore_type_id type, enum kmsg_dump_reason reason,
+		 char *buf, size_t size)
 {
 	u64		id;
 	int		ret;
@@ -259,10 +260,10 @@ int pstore_write(enum pstore_type_id type, char *buf, size_t size)
 
 	spin_lock_irqsave(&psinfo->buf_lock, flags);
 	memcpy(psinfo->buf, buf, size);
-	ret = psinfo->write(type, &id, 0, size, psinfo);
+	ret = psinfo->write(type, reason, &id, 0, size, psinfo);
 	spin_unlock_irqrestore(&psinfo->buf_lock, flags);
 	if (ret == 0 && pstore_is_mounted())
-		pstore_mkfile(PSTORE_TYPE_DMESG, psinfo->name, id, buf,
+		pstore_mkfile(type, psinfo->name, id, buf,
 			      size, CURRENT_TIME, psinfo);
 
 	return 0;
