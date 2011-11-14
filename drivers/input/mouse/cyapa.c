@@ -1469,7 +1469,7 @@ err_free_device:
 	return ret;
 }
 
-static void cyapa_probe_detect_work_handler(struct work_struct *work)
+static void cyapa_detect_work(struct work_struct *work)
 {
 	struct cyapa *cyapa = container_of(work, struct cyapa, detect_work);
 	struct device *dev = &cyapa->client->dev;
@@ -1481,40 +1481,16 @@ static void cyapa_probe_detect_work_handler(struct work_struct *work)
 		return;
 	}
 
-	/* create an input_dev instance for device. */
-	ret = cyapa_create_input_dev(cyapa);
-	if (ret)
-		dev_err(dev, "create input_dev instance failed, %d\n", ret);
-}
-
-static void cyapa_resume_detect_work_handler(struct work_struct *work)
-{
-	struct cyapa *cyapa = container_of(work, struct cyapa, detect_work);
-	struct device *dev = &cyapa->client->dev;
-	int ret;
-
-	ret = cyapa_check_is_operational(cyapa);
-	if (ret) {
-		dev_err(dev, "device is not operational, %d\n", ret);
-		return;
+	if (!cyapa->input) {
+		ret = cyapa_create_input_dev(cyapa);
+		if (ret)
+			dev_err(dev, "create input_dev instance failed, %d\n",
+				ret);
+	} else {
+		ret = cyapa_set_power_mode(cyapa, PWR_MODE_FULL_ACTIVE);
+		if (ret)
+			dev_warn(dev, "resume active power failed, %d\n", ret);
 	}
-
-	ret =  cyapa_set_power_mode(cyapa, PWR_MODE_FULL_ACTIVE);
-	if (ret)
-		dev_warn(dev, "resume active power failed, %d\n", ret);
-}
-
-static int cyapa_resume_detect(struct cyapa *cyapa)
-{
-	/*
-	 * Maybe trackpad device is not connected,
-	 * or firmware is doing sensor calibration,
-	 * it will take max 2 seconds to be completed.
-	 * So use work queue to wait for it ready
-	 * to avoid block system booting or resuming.
-	 */
-	INIT_WORK(&cyapa->detect_work, cyapa_resume_detect_work_handler);
-	return queue_work(cyapa->detect_wq, &cyapa->detect_work);
 }
 
 static int __devinit cyapa_probe(struct i2c_client *client,
@@ -1580,7 +1556,7 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 		goto err_irq_free;
 	}
 
-	INIT_WORK(&cyapa->detect_work, cyapa_probe_detect_work_handler);
+	INIT_WORK(&cyapa->detect_work, cyapa_detect_work);
 	ret = queue_work(cyapa->detect_wq, &cyapa->detect_work);
 	if (ret < 0) {
 		dev_err(dev, "device detect failed, %d\n", ret);
@@ -1668,9 +1644,10 @@ static int cyapa_resume(struct device *dev)
 	if (device_may_wakeup(dev))
 		disable_irq_wake(cyapa->irq);
 
-	ret = cyapa_resume_detect(cyapa);
+	PREPARE_WORK(&cyapa->detect_work, cyapa_detect_work);
+	ret = queue_work(cyapa->detect_wq, &cyapa->detect_work);
 	if (ret < 0) {
-		dev_err(dev, "trackpad detect failed, %d\n", ret);
+		dev_err(dev, "queue detect work failed, %d\n", ret);
 		return ret;
 	}
 
