@@ -243,10 +243,6 @@ static const u8 bl_exit[] = { 0x00, 0xFF, 0xA5, 0x00, 0x01, 0x02, 0x03, 0x04,
 /* global pointer to trackpad touch data structure. */
 static struct cyapa *global_cyapa;
 
-static int cyapa_get_query_data(struct cyapa *cyapa);
-static int cyapa_reconfig(struct cyapa *cyapa, int boot);
-static int cyapa_create_input_dev(struct cyapa *cyapa);
-
 struct cyapa_cmd_len {
 	unsigned char cmd;
 	unsigned char len;
@@ -681,6 +677,19 @@ static int cyapa_bl_deactivate(struct cyapa *cyapa)
 	return 0;
 }
 
+/*
+ * Exit bootloader
+ *
+ * Send bl_exit command, then wait 300 ms to let device transition to
+ * operational mode.  If this is the first time the device's firmware is
+ * running, it can take up to 2 seconds to calibrate its sensors.  So, poll
+ * the device's new state for up to 2 seconds.
+ *
+ * Returns:
+ *   -EIO    failure while reading from device
+ *   -EAGAIN device is stuck in bootloader, b/c it has invalid firmware
+ *   0       device is supported and in operational mode
+ */
 static int cyapa_bl_exit(struct cyapa *cyapa)
 {
 	int ret;
@@ -705,6 +714,152 @@ static int cyapa_bl_exit(struct cyapa *cyapa)
 	if (cyapa->state != CYAPA_STATE_OP)
 		return -EAGAIN;
 
+	return 0;
+}
+
+static int cyapa_set_power_mode(struct cyapa *cyapa, u8 power_mode)
+{
+	int ret;
+	u8 power;
+	int tries = 3;
+
+	power = cyapa_read_byte(cyapa, CYAPA_CMD_POWER_MODE);
+	power &= ~OP_POWER_MODE_MASK;
+	power |= ((power_mode << OP_POWER_MODE_SHIFT) & OP_POWER_MODE_MASK);
+	do {
+		ret = cyapa_write_byte(cyapa, CYAPA_CMD_POWER_MODE, power);
+		/* sleep at least 10 ms. */
+		usleep_range(SET_POWER_MODE_DELAY, 2 * SET_POWER_MODE_DELAY);
+	} while ((ret != 0) && (tries-- > 0));
+
+	return ret;
+}
+
+static int cyapa_get_query_data(struct cyapa *cyapa)
+{
+	u8 query_data[QUERY_DATA_SIZE];
+	int ret;
+
+	mutex_lock(&cyapa->state_mutex);
+	if (cyapa->state != CYAPA_STATE_OP) {
+		mutex_unlock(&cyapa->state_mutex);
+		return -EBUSY;
+	}
+	ret = cyapa_read_block(cyapa, CYAPA_CMD_GROUP_QUERY, query_data);
+	mutex_unlock(&cyapa->state_mutex);
+	if (ret < 0)
+		return ret;
+	if (ret != QUERY_DATA_SIZE)
+		return -EIO;
+
+	cyapa->product_id[0] = query_data[0];
+	cyapa->product_id[1] = query_data[1];
+	cyapa->product_id[2] = query_data[2];
+	cyapa->product_id[3] = query_data[3];
+	cyapa->product_id[4] = query_data[4];
+	cyapa->product_id[5] = '-';
+	cyapa->product_id[6] = query_data[5];
+	cyapa->product_id[7] = query_data[6];
+	cyapa->product_id[8] = query_data[7];
+	cyapa->product_id[9] = query_data[8];
+	cyapa->product_id[10] = query_data[9];
+	cyapa->product_id[11] = query_data[10];
+	cyapa->product_id[12] = '-';
+	cyapa->product_id[13] = query_data[11];
+	cyapa->product_id[14] = query_data[12];
+	cyapa->product_id[15] = '\0';
+
+	cyapa->fw_maj_ver = query_data[15];
+	cyapa->fw_min_ver = query_data[16];
+	cyapa->hw_maj_ver = query_data[17];
+	cyapa->hw_min_ver = query_data[18];
+
+	cyapa->gen = query_data[20] & 0x0F;
+
+	cyapa->max_abs_x = ((query_data[21] & 0xF0) << 4) | query_data[22];
+	cyapa->max_abs_y = ((query_data[21] & 0x0F) << 8) | query_data[23];
+
+	cyapa->physical_size_x =
+		((query_data[24] & 0xF0) << 4) | query_data[25];
+	cyapa->physical_size_y =
+		((query_data[24] & 0x0F) << 8) | query_data[26];
+
+	return 0;
+}
+
+/*
+ * determine if device firmware supports protocol generation 3
+ *
+ * Returns:
+ *   -EBUSY  no device or in bootloader
+ *   -EIO    failure while reading from device
+ *   -EINVAL protocol is not GEN3, or product_id doesn't start with "CYTRA"
+ *   0       protocol is GEN3
+ */
+static int cyapa_reconfig(struct cyapa *cyapa, int boot)
+{
+	struct device *dev = &cyapa->client->dev;
+	const char unique_str[] = "CYTRA";
+	int ret;
+
+	ret = cyapa_get_query_data(cyapa);
+	if (ret < 0)
+		return ret;
+
+	/* only support trackpad firmware gen3 or later protocol. */
+	if (cyapa->gen != CYAPA_GEN3 || memcmp(cyapa->product_id, unique_str,
+					       sizeof(unique_str)-1)) {
+		dev_err(dev, "unsupported firmware protocol version (%d) or "
+			"product ID (%s).\n", cyapa->gen, cyapa->product_id);
+		return -EINVAL;
+	}
+
+	/* outuput device information only at boot */
+	if (!boot)
+		return 0;
+
+	/* keep multiline output from be separated in dmesg. */
+	dev_info(dev,
+		 "Cypress APA Trackpad Information:\n" \
+		 "    Product ID:  %s\n" \
+		 "    Protocol Generation:  %d\n" \
+		 "    Firmware Version:  %d.%d\n" \
+		 "    Hardware Version:  %d.%d\n" \
+		 "    Max ABS X,Y:   %d,%d\n" \
+		 "    Physical Size X,Y:   %d,%d\n",
+		 cyapa->product_id,
+		 cyapa->gen,
+		 cyapa->fw_maj_ver, cyapa->fw_min_ver,
+		 cyapa->hw_maj_ver, cyapa->hw_min_ver,
+		 cyapa->max_abs_x, cyapa->max_abs_y,
+		 cyapa->physical_size_x, cyapa->physical_size_y);
+
+	return 0;
+}
+
+static int cyapa_check_exit_bootloader(struct cyapa *cyapa)
+{
+	int ret;
+
+	ret = cyapa_poll_state(cyapa, 2000);
+	if (ret < 0)
+		return ret;
+	switch (cyapa->state) {
+	case CYAPA_STATE_BL_ACTIVE:
+		ret = cyapa_bl_deactivate(cyapa);
+		if (ret)
+			return ret;
+	/* Fallthrough state */
+	case CYAPA_STATE_BL_IDLE:
+		ret = cyapa_bl_exit(cyapa);
+		if (ret)
+			return ret;
+	/* Fallthrough state */
+	case CYAPA_STATE_OP:
+		return 0;
+	default:
+		return -EIO;
+	}
 	return 0;
 }
 
@@ -1145,108 +1300,6 @@ static const struct attribute_group cyapa_sysfs_group = {
  **************************************************************
 */
 
-static int cyapa_get_query_data(struct cyapa *cyapa)
-{
-	u8 query_data[QUERY_DATA_SIZE];
-	int ret;
-
-	mutex_lock(&cyapa->state_mutex);
-	if (cyapa->state != CYAPA_STATE_OP) {
-		mutex_unlock(&cyapa->state_mutex);
-		return -EBUSY;
-	}
-	ret = cyapa_read_block(cyapa, CYAPA_CMD_GROUP_QUERY, query_data);
-	mutex_unlock(&cyapa->state_mutex);
-	if (ret < 0)
-		return ret;
-	if (ret != QUERY_DATA_SIZE)
-		return -EIO;
-
-	cyapa->product_id[0] = query_data[0];
-	cyapa->product_id[1] = query_data[1];
-	cyapa->product_id[2] = query_data[2];
-	cyapa->product_id[3] = query_data[3];
-	cyapa->product_id[4] = query_data[4];
-	cyapa->product_id[5] = '-';
-	cyapa->product_id[6] = query_data[5];
-	cyapa->product_id[7] = query_data[6];
-	cyapa->product_id[8] = query_data[7];
-	cyapa->product_id[9] = query_data[8];
-	cyapa->product_id[10] = query_data[9];
-	cyapa->product_id[11] = query_data[10];
-	cyapa->product_id[12] = '-';
-	cyapa->product_id[13] = query_data[11];
-	cyapa->product_id[14] = query_data[12];
-	cyapa->product_id[15] = '\0';
-
-	cyapa->fw_maj_ver = query_data[15];
-	cyapa->fw_min_ver = query_data[16];
-	cyapa->hw_maj_ver = query_data[17];
-	cyapa->hw_min_ver = query_data[18];
-
-	cyapa->gen = query_data[20] & 0x0F;
-
-	cyapa->max_abs_x = ((query_data[21] & 0xF0) << 4) | query_data[22];
-	cyapa->max_abs_y = ((query_data[21] & 0x0F) << 8) | query_data[23];
-
-	cyapa->physical_size_x =
-		((query_data[24] & 0xF0) << 4) | query_data[25];
-	cyapa->physical_size_y =
-		((query_data[24] & 0x0F) << 8) | query_data[26];
-
-	return 0;
-}
-
-/*
- * determine if device firmware supports protocol generation 3
- *
- * Returns:
- *   -EBUSY  no device or in bootloader
- *   -EIO    failure while reading from device
- *   -EINVAL protocol is not GEN3, or product_id doesn't start with "CYTRA"
- *   0       protocol is GEN3
- */
-static int cyapa_reconfig(struct cyapa *cyapa, int boot)
-{
-	struct device *dev = &cyapa->client->dev;
-	const char unique_str[] = "CYTRA";
-	int ret;
-
-	ret = cyapa_get_query_data(cyapa);
-	if (ret < 0)
-		return ret;
-
-	/* only support trackpad firmware gen3 or later protocol. */
-	if (cyapa->gen != CYAPA_GEN3 || memcmp(cyapa->product_id, unique_str,
-					       sizeof(unique_str)-1)) {
-		dev_err(dev, "unsupported firmware protocol version (%d) or "
-			"product ID (%s).\n", cyapa->gen, cyapa->product_id);
-		return -EINVAL;
-	}
-
-	/* outuput device information only at boot */
-	if (!boot)
-		return 0;
-
-	/* keep multiline output from be separated in dmesg. */
-	dev_info(dev,
-		 "Cypress APA Trackpad Information:\n" \
-		 "    Product ID:  %s\n" \
-		 "    Protocol Generation:  %d\n" \
-		 "    Firmware Version:  %d.%d\n" \
-		 "    Hardware Version:  %d.%d\n" \
-		 "    Max ABS X,Y:   %d,%d\n" \
-		 "    Physical Size X,Y:   %d,%d\n",
-		 cyapa->product_id,
-		 cyapa->gen,
-		 cyapa->fw_maj_ver, cyapa->fw_min_ver,
-		 cyapa->hw_maj_ver, cyapa->hw_min_ver,
-		 cyapa->max_abs_x, cyapa->max_abs_y,
-		 cyapa->physical_size_x, cyapa->physical_size_y);
-
-	return 0;
-}
-
 static irqreturn_t cyapa_irq(int irq, void *dev_id)
 {
 	struct cyapa *cyapa = dev_id;
@@ -1403,50 +1456,6 @@ static int cyapa_create_input_dev(struct cyapa *cyapa)
 		dev_err(dev, "input device register failed, %d\n", ret);
 		input_free_device(input);
 	}
-
-	return ret;
-}
-
-static int cyapa_check_exit_bootloader(struct cyapa *cyapa)
-{
-	int ret;
-
-	ret = cyapa_poll_state(cyapa, 2000);
-	if (ret < 0)
-		return ret;
-	switch (cyapa->state) {
-	case CYAPA_STATE_BL_ACTIVE:
-		ret = cyapa_bl_deactivate(cyapa);
-		if (ret)
-			return ret;
-	/* Fallthrough state */
-	case CYAPA_STATE_BL_IDLE:
-		ret = cyapa_bl_exit(cyapa);
-		if (ret)
-			return ret;
-	/* Fallthrough state */
-	case CYAPA_STATE_OP:
-		return 0;
-	default:
-		return -EIO;
-	}
-	return 0;
-}
-
-static int cyapa_set_power_mode(struct cyapa *cyapa, u8 power_mode)
-{
-	int ret;
-	u8 power;
-	int tries = 3;
-
-	power = cyapa_read_byte(cyapa, CYAPA_CMD_POWER_MODE);
-	power &= ~OP_POWER_MODE_MASK;
-	power |= ((power_mode << OP_POWER_MODE_SHIFT) & OP_POWER_MODE_MASK);
-	do {
-		ret = cyapa_write_byte(cyapa, CYAPA_CMD_POWER_MODE, power);
-		/* sleep at least 10 ms. */
-		usleep_range(SET_POWER_MODE_DELAY, 2 * SET_POWER_MODE_DELAY);
-	} while ((ret != 0) && (tries-- > 0));
 
 	return ret;
 }
