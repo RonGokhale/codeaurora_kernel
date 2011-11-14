@@ -195,30 +195,30 @@ EXPORT_SYMBOL_GPL(pstore_register);
 void pstore_get_records(int quiet)
 {
 	struct pstore_info *psi = psinfo;
+	char			*buf = NULL;
 	ssize_t			size;
 	u64			id;
 	enum pstore_type_id	type;
 	struct timespec		time;
 	int			failed = 0, rc;
-	unsigned long		flags;
 
 	if (!psi)
 		return;
 
-	spin_lock_irqsave(&psinfo->buf_lock, flags);
 	rc = psi->open(psi);
 	if (rc)
 		goto out;
 
-	while ((size = psi->read(&id, &type, &time, psi)) > 0) {
-		rc = pstore_mkfile(type, psi->name, id, psi->buf, (size_t)size,
+	while ((size = psi->read(&id, &type, &time, &buf, psi)) > 0) {
+		rc = pstore_mkfile(type, psi->name, id, buf, (size_t)size,
 				  time, psi);
+		kfree(buf);
+		buf = NULL;
 		if (rc && (rc != -EEXIST || !quiet))
 			failed++;
 	}
 	psi->close(psi);
 out:
-	spin_unlock_irqrestore(&psinfo->buf_lock, flags);
 
 	if (failed)
 		printk(KERN_WARNING "pstore: failed to load %d record(s) from '%s'\n",
@@ -259,10 +259,10 @@ int pstore_write(enum pstore_type_id type, char *buf, size_t size)
 	spin_lock_irqsave(&psinfo->buf_lock, flags);
 	memcpy(psinfo->buf, buf, size);
 	ret = psinfo->write(type, &id, 0, size, psinfo);
-	if (ret == 0 && pstore_is_mounted())
-		pstore_mkfile(PSTORE_TYPE_DMESG, psinfo->name, id, psinfo->buf,
-			      size, CURRENT_TIME, psinfo);
 	spin_unlock_irqrestore(&psinfo->buf_lock, flags);
+	if (ret == 0 && pstore_is_mounted())
+		pstore_mkfile(PSTORE_TYPE_DMESG, psinfo->name, id, buf,
+			      size, CURRENT_TIME, psinfo);
 
 	return 0;
 }
