@@ -1325,7 +1325,7 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 	}
 	ret = cyapa_read_block(cyapa, CYAPA_CMD_GROUP_DATA, (u8 *)&data);
 	mutex_unlock(&cyapa->state_mutex);
-	if (ret < 0 || ret != sizeof(data))
+	if (ret != sizeof(data))
 		return IRQ_HANDLED;
 
 	if ((data.device_status & OP_STATUS_SRC) != OP_STATUS_SRC ||
