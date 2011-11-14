@@ -14578,6 +14578,14 @@ static void alc269vb_laptop_dmic_setup(struct hda_codec *codec)
 	spec->auto_mic = 1;
 }
 
+static void alc271_acer_setup(struct hda_codec *codec)
+{
+	struct alc_spec *spec = codec->spec;
+	alc269vb_laptop_dmic_setup(codec);
+	/* re-configure automute mode to amp */
+	spec->automute_mode = ALC_AUTOMUTE_AMP;
+}
+
 /*
  * generic initialization of ADC, input mixers and output mixers
  */
@@ -15201,7 +15209,7 @@ static const struct alc_config_preset alc269_presets[] = {
 		.input_mux = &alc269_capture_source,
 		.dig_out_nid = ALC880_DIGOUT_NID,
 		.unsol_event = alc_sku_unsol_event,
-		.setup = alc269vb_laptop_dmic_setup,
+		.setup = alc271_acer_setup,
 		.init_hook = alc_inithook,
 	},
 };
