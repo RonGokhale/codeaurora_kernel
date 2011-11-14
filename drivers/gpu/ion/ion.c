@@ -1025,6 +1025,9 @@ static void ion_vma_close(struct vm_area_struct *vma)
 	mutex_lock(&buffer->lock);
 	buffer->umap_cnt--;
 	mutex_unlock(&buffer->lock);
+
+	if (buffer->heap->ops->unmap_user)
+		buffer->heap->ops->unmap_user(buffer->heap, buffer);
 }
 
 static struct vm_operations_struct ion_vm_ops = {
