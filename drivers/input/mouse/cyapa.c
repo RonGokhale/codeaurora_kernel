@@ -1398,7 +1398,7 @@ static int cyapa_create_input_dev(struct cyapa *cyapa)
 
 	input = cyapa->input = input_allocate_device();
 	if (!cyapa->input) {
-		dev_err(dev, "Allocate memory for input device failed\n");
+		dev_err(dev, "allocate memory for input device failed\n");
 		return -ENOMEM;
 	}
 
@@ -1429,8 +1429,10 @@ static int cyapa_create_input_dev(struct cyapa *cyapa)
 	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, cyapa->max_abs_y, 0, 0);
 	input_set_abs_params(input, ABS_MT_PRESSURE, 0, 255, 0, 0);
 	ret = input_mt_init_slots(input, CYAPA_MAX_MT_SLOTS);
-	if (ret < 0)
-		return ret;
+	if (ret < 0) {
+		dev_err(dev, "allocate memory for MT slots failed, %d\n", ret);
+		goto err_free_device;
+	}
 
 	if (cyapa->physical_size_x && cyapa->physical_size_y) {
 		input_abs_set_res(input, ABS_X,
@@ -1457,63 +1459,32 @@ static int cyapa_create_input_dev(struct cyapa *cyapa)
 	ret = input_register_device(cyapa->input);
 	if (ret) {
 		dev_err(dev, "input device register failed, %d\n", ret);
-		input_free_device(input);
+		goto err_free_device;
 	}
 
+	return 0;
+
+err_free_device:
+	input_free_device(input);
 	return ret;
 }
 
 static void cyapa_probe_detect_work_handler(struct work_struct *work)
 {
 	struct cyapa *cyapa = container_of(work, struct cyapa, detect_work);
-	struct i2c_client *client = cyapa->client;
 	struct device *dev = &cyapa->client->dev;
 	int ret;
 
 	ret = cyapa_check_is_operational(cyapa);
 	if (ret) {
 		dev_err(dev, "device is not operational, %d\n", ret);
-		goto out_probe_err;
+		return;
 	}
 
-	cyapa->irq = client->irq;
-	irq_set_irq_type(cyapa->irq, IRQF_TRIGGER_FALLING);
-	ret = request_threaded_irq(cyapa->irq,
-				   NULL,
-				   cyapa_irq,
-				   0,
-				   CYAPA_I2C_NAME,
-				   cyapa);
-	if (ret) {
-		dev_err(dev, "IRQ request failed: %d\n, ", ret);
-		goto out_probe_err;
-	}
-
-	/* create an input_dev instance for trackpad device. */
-	if (cyapa_create_input_dev(cyapa)) {
-		free_irq(cyapa->irq, cyapa);
-		dev_err(dev, "create input_dev instance failed.\n");
-		goto out_probe_err;
-	}
-
-	i2c_set_clientdata(client, cyapa);
-
-	if (sysfs_create_group(&client->dev.kobj, &cyapa_sysfs_group))
-		dev_warn(dev, "error creating sysfs entries.\n");
-
-	return;
-
-out_probe_err:
-	/* release previous allocated input_dev instances. */
-	if (cyapa->input) {
-		if (cyapa->input->mt)
-			input_mt_destroy_slots(cyapa->input);
-		input_free_device(cyapa->input);
-		cyapa->input = NULL;
-	}
-
-	kfree(cyapa);
-	global_cyapa = NULL;
+	/* create an input_dev instance for device. */
+	ret = cyapa_create_input_dev(cyapa);
+	if (ret)
+		dev_err(dev, "create input_dev instance failed, %d\n", ret);
 }
 
 static void cyapa_resume_detect_work_handler(struct work_struct *work)
@@ -1568,16 +1539,35 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 
 	cyapa->gen = CYAPA_GEN3;
 	cyapa->client = client;
-	global_cyapa = cyapa;
+	i2c_set_clientdata(client, cyapa);
+
 	cyapa->adapter_func = adapter_func;
 	/* i2c isn't supported, set smbus */
 	if (cyapa->adapter_func == CYAPA_ADAPTER_FUNC_SMBUS)
 		cyapa->smbus = true;
 	cyapa->state = CYAPA_STATE_UNKNOWN;
+
+	global_cyapa = cyapa;
 	mutex_init(&cyapa->state_mutex);
 	cyapa->misc_open_count = 0;
 	spin_lock_init(&cyapa->miscdev_spinlock);
 	mutex_init(&cyapa->misc_mutex);
+
+	cyapa->irq = client->irq;
+	irq_set_irq_type(cyapa->irq, IRQF_TRIGGER_FALLING);
+	ret = request_threaded_irq(cyapa->irq,
+				   NULL,
+				   cyapa_irq,
+				   0,
+				   CYAPA_I2C_NAME,
+				   cyapa);
+	if (ret) {
+		dev_err(dev, "IRQ request failed: %d\n, ", ret);
+		goto err_mem_free;
+	}
+
+	if (sysfs_create_group(&client->dev.kobj, &cyapa_sysfs_group))
+		dev_warn(dev, "error creating sysfs entries.\n");
 
 	/*
 	 * At boot it can take up to 2 seconds for firmware to complete sensor
@@ -1587,7 +1577,7 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 	if (!cyapa->detect_wq) {
 		ret = -ENOMEM;
 		dev_err(dev, "create detect workqueue failed\n");
-		goto err_mem_free;
+		goto err_irq_free;
 	}
 
 	INIT_WORK(&cyapa->detect_work, cyapa_probe_detect_work_handler);
@@ -1601,6 +1591,8 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 
 err_wq_free:
 	destroy_workqueue(cyapa->detect_wq);
+err_irq_free:
+	free_irq(cyapa->irq, cyapa);
 err_mem_free:
 	kfree(cyapa);
 	global_cyapa = NULL;
