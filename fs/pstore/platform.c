@@ -206,7 +206,6 @@ void pstore_get_records(int quiet)
 	if (!psi)
 		return;
 
-	mutex_lock(&psi->read_mutex);
 	rc = psi->open(psi);
 	if (rc)
 		goto out;
@@ -221,7 +220,6 @@ void pstore_get_records(int quiet)
 	}
 	psi->close(psi);
 out:
-	mutex_unlock(&psi->read_mutex);
 
 	if (failed)
 		printk(KERN_WARNING "pstore: failed to load %d record(s) from '%s'\n",
@@ -262,10 +260,10 @@ int pstore_write(enum pstore_type_id type, char *buf, size_t size)
 	spin_lock_irqsave(&psinfo->buf_lock, flags);
 	memcpy(psinfo->buf, buf, size);
 	ret = psinfo->write(type, &id, 0, size, psinfo);
-	if (ret == 0 && pstore_is_mounted())
-		pstore_mkfile(PSTORE_TYPE_DMESG, psinfo->name, id, psinfo->buf,
-			      size, CURRENT_TIME, psinfo);
 	spin_unlock_irqrestore(&psinfo->buf_lock, flags);
+	if (ret == 0 && pstore_is_mounted())
+		pstore_mkfile(PSTORE_TYPE_DMESG, psinfo->name, id, buf,
+			      size, CURRENT_TIME, psinfo);
 
 	return 0;
 }
