@@ -1603,19 +1603,14 @@ static int cyapa_suspend(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct cyapa *cyapa = i2c_get_clientdata(client);
 
-	/*
-	 * When cyapa driver probing failed and haven't been removed,
-	 * then when system do suspending, the value of cyapa is NULL.
-	 * e.g.: this situation will happen when system booted
-	 * without trackpad connected.
-	 */
-	if (!cyapa)
+	/* Wait for detection to complete before allowing suspend. */
+	flush_workqueue(cyapa->detect_wq);
+
+	/* only change power state or enable wakeup if device is operational */
+	if (cyapa->state != CYAPA_STATE_OP)
 		return 0;
 
-	if (cyapa->detect_wq)
-		flush_workqueue(cyapa->detect_wq);
-
-	/* set trackpad device to light sleep mode. */
+	/* set trackpad device to light sleep mode. Just ignore any errors */
 	ret = cyapa_set_power_mode(cyapa, PWR_MODE_LIGHT_SLEEP);
 	if (ret < 0)
 		dev_err(dev, "suspend trackpad device failed, %d\n", ret);
@@ -1623,7 +1618,7 @@ static int cyapa_suspend(struct device *dev)
 	if (device_may_wakeup(dev))
 		enable_irq_wake(cyapa->irq);
 
-	return ret;
+	return 0;
 }
 
 static int cyapa_resume(struct device *dev)
@@ -1631,15 +1626,6 @@ static int cyapa_resume(struct device *dev)
 	int ret;
 	struct i2c_client *client = to_i2c_client(dev);
 	struct cyapa *cyapa = i2c_get_clientdata(client);
-
-	/*
-	 * When cyapa driver probing failed and haven't been removed,
-	 * then when system do suspending, the value of cyapa is NULL.
-	 * e.g.: this situation will happen when system booted
-	 * without trackpad connected.
-	 */
-	if (!cyapa)
-		return 0;
 
 	if (device_may_wakeup(dev))
 		disable_irq_wake(cyapa->irq);
