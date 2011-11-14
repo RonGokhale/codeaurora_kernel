@@ -64,13 +64,15 @@ static int msm_voice_path_get(struct snd_kcontrol *kcontrol,
 static int msm_voice_path_put(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
+	struct q_min_max_rate temp = {0, 0};
 	voc_path = ucontrol->value.integer.value[0];
 	pr_debug("%s:Setting vcoder path -> %d\n", __func__, voc_path);
 
 	voice_set_voc_path_full(voc_path);
 	/* MVS_AMR_MODE_UNDEF = 17 */
 	voice_config_vocoder(VSS_MEDIA_ID_PCM_NB, MVS_AMR_MODE_UNDEF,
-				VSS_NETWORK_ID_VOIP_NB, 0);
+				VSS_NETWORK_ID_VOIP_NB, 0, temp);
+	/* since PCM_NB doesnt require min_max_rate */
 	return 0;
 }
 
