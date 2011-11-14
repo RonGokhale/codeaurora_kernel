@@ -30,6 +30,7 @@
 #include <linux/power/bq20z75.h>
 #include <linux/rfkill-gpio.h>
 #include <linux/platform_data/tegra_usb.h>
+#include <linux/memblock.h>
 
 #include <sound/wm8903.h>
 
@@ -704,6 +705,32 @@ static void __init tegra_wario_init(void)
 	seaboard_i2c_init();
 }
 
+/*
+ * reserve memory for RAMOOPS if configured.
+ */
+#if defined(CONFIG_CHROMEOS_RAMOOPS_RAM_START) && \
+	defined(CONFIG_CHROMEOS_RAMOOPS_RAM_SIZE)
+void __init ramoops_reserve(void)
+{
+	unsigned long size = CONFIG_CHROMEOS_RAMOOPS_RAM_SIZE;
+	unsigned long start = CONFIG_CHROMEOS_RAMOOPS_RAM_START;
+
+	/* If necessary, lower start and raise size to align to 1M. */
+	start = round_down(start, SZ_1M);
+	size += CONFIG_CHROMEOS_RAMOOPS_RAM_START - start;
+	size = round_up(size, SZ_1M);
+
+	if (memblock_remove(start, size)) {
+		pr_err("Failed to remove ramoops %08lx@%08lx from memory\n",
+			size, start);
+	} else {
+		pr_info("Ramoops:                %08lx - %08lx\n",
+			start, start + size - 1);
+	}
+}
+#else
+#define ramoops_reserve()
+#endif
 
 MACHINE_START(SEABOARD, "seaboard")
 	.atag_offset    = 0x100,
