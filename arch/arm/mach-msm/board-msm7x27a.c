@@ -3345,6 +3345,13 @@ static struct platform_device hs_pdev = {
 	},
 };
 
+static void __init msm7627a_rumi3_init(void)
+{
+	msm7x27a_init_ebi2();
+	platform_add_devices(rumi_sim_devices,
+			ARRAY_SIZE(rumi_sim_devices));
+}
+
 #define LED_GPIO_PDM		96
 #define UART1DM_RX_GPIO		45
 
@@ -3366,16 +3373,11 @@ static void __init msm7x2x_init(void)
 	msm_device_uart_dm1.dev.platform_data = &msm_uart_dm1_pdata;
 #endif
 
-	if (machine_is_msm7x27a_rumi3()) {
-		platform_add_devices(rumi_sim_devices,
-				ARRAY_SIZE(rumi_sim_devices));
-	}
-	if (machine_is_msm7x27a_surf() || machine_is_msm7x27a_ffa()) {
 #ifdef CONFIG_USB_MSM_OTG_72K
-		msm_otg_pdata.swfi_latency =
-			msm7x27a_pm_data
+	msm_otg_pdata.swfi_latency =
+		msm7x27a_pm_data
 		[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].latency;
-		msm_device_otg.dev.platform_data = &msm_otg_pdata;
+	msm_device_otg.dev.platform_data = &msm_otg_pdata;
 #endif
 		msm_device_gadget_peripheral.dev.platform_data =
 							&msm_gadget_pdata;
@@ -3391,9 +3393,8 @@ static void __init msm7x2x_init(void)
 		msm7x27a_init_mmc();
 #endif
 #ifdef CONFIG_USB_EHCI_MSM_72K
-		msm7x2x_init_host();
+	msm7x2x_init_host();
 #endif
-	}
 
 	msm_pm_set_platform_data(msm7x27a_pm_data,
 				ARRAY_SIZE(msm7x27a_pm_data));
@@ -3448,7 +3449,7 @@ MACHINE_START(MSM7X27A_RUMI3, "QCT MSM7x27a RUMI3")
 	.map_io		= msm_common_io_init,
 	.reserve	= msm7x27a_reserve,
 	.init_irq	= msm_init_irq,
-	.init_machine	= msm7x2x_init,
+	.init_machine	= msm7627a_rumi3_init,
 	.timer		= &msm_timer,
 	.init_early     = msm7x2x_init_early,
 MACHINE_END
