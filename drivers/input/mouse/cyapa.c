@@ -590,7 +590,8 @@ static int cyapa_get_state(struct cyapa *cyapa)
  *
  * Returns:
  *   0 when the device eventually responds with a valid non-busy state.
- *   < 0 if the device never responds within the timeout
+ *   -ETIMEDOUT if device never responds (too many -EAGAIN)
+ *   < 0    other errors
  */
 static int cyapa_poll_state(struct cyapa *cyapa, unsigned int timeout)
 {
@@ -602,7 +603,7 @@ static int cyapa_poll_state(struct cyapa *cyapa, unsigned int timeout)
 		msleep(300);
 		ret = cyapa_get_state(cyapa);
 	}
-	return ret;
+	return (ret == -EAGAIN || ret == -ETIMEDOUT) ? -ETIMEDOUT : ret;
 }
 
 /*
@@ -1476,8 +1477,11 @@ static void cyapa_detect_work(struct work_struct *work)
 	int ret;
 
 	ret = cyapa_check_is_operational(cyapa);
-	if (ret) {
-		dev_err(dev, "device is not operational, %d\n", ret);
+	if (ret == -ETIMEDOUT) {
+		dev_err(dev, "no device detected, %d\n", ret);
+		return;
+	} else if (ret) {
+		dev_err(dev, "device detected, but not operational, %d\n", ret);
 		return;
 	}
 
