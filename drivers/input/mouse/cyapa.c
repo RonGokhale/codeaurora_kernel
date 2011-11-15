@@ -788,35 +788,23 @@ static int cyapa_get_query_data(struct cyapa *cyapa)
 }
 
 /*
- * determine if device firmware supports protocol generation 3
+ * Check if device is operational.
+ *
+ * An operational device is responding, has exited bootloader, and has
+ * firmware supported by this driver.
  *
  * Returns:
  *   -EBUSY  no device or in bootloader
  *   -EIO    failure while reading from device
- *   -EINVAL protocol is not GEN3, or product_id doesn't start with "CYTRA"
- *   0       protocol is GEN3
+ *   -EAGAIN device is still in bootloader
+ *           if ->state = CYAPA_STATE_BL_IDLE, device has invalid firmware
+ *   -EINVAL device is in operational mode, but not supported by this driver
+ *   0       device is supported
  */
-static int cyapa_reconfig(struct cyapa *cyapa)
+static int cyapa_check_is_operational(struct cyapa *cyapa)
 {
 	struct device *dev = &cyapa->client->dev;
 	const char unique_str[] = "CYTRA";
-	int ret;
-
-	ret = cyapa_get_query_data(cyapa);
-	if (ret < 0)
-		return ret;
-
-	/* only support trackpad firmware gen3 or later protocol. */
-	if (cyapa->gen != CYAPA_GEN3 || memcmp(cyapa->product_id, unique_str,
-					       sizeof(unique_str)-1)) {
-		dev_err(dev, "unsupported firmware protocol version (%d) or "
-			"product ID (%s).\n", cyapa->gen, cyapa->product_id);
-		return -EINVAL;
-	}
-}
-
-static int cyapa_check_exit_bootloader(struct cyapa *cyapa)
-{
 	int ret;
 
 	ret = cyapa_poll_state(cyapa, 2000);
@@ -827,14 +815,35 @@ static int cyapa_check_exit_bootloader(struct cyapa *cyapa)
 		ret = cyapa_bl_deactivate(cyapa);
 		if (ret)
 			return ret;
+
 	/* Fallthrough state */
 	case CYAPA_STATE_BL_IDLE:
 		ret = cyapa_bl_exit(cyapa);
 		if (ret)
 			return ret;
+
 	/* Fallthrough state */
 	case CYAPA_STATE_OP:
+		ret = cyapa_get_query_data(cyapa);
+		if (ret < 0)
+			return ret;
+
+		/* only support firmware protocol gen3 */
+		if (cyapa->gen != CYAPA_GEN3) {
+			dev_err(dev, "unsupported protocol version (%d)",
+				cyapa->gen);
+			return -EINVAL;
+		}
+
+		/* only support product ID starting with CYTRA */
+		if (memcmp(cyapa->product_id, unique_str,
+			   sizeof(unique_str) - 1)) {
+			dev_err(dev, "unsupported product ID (%s)\n",
+				cyapa->product_id);
+			return -EINVAL;
+		}
 		return 0;
+
 	default:
 		return -EIO;
 	}
@@ -1048,7 +1057,9 @@ static int cyapa_send_bl_cmd(struct cyapa *cyapa, enum cyapa_bl_cmd cmd)
 		if (ret)
 			dev_err(dev, "exit bootloader failed, %d\n", ret);
 
-		cyapa_reconfig(cyapa);
+		ret = cyapa_check_is_operational(cyapa);
+		if (ret)
+			dev_err(dev, "device is not operational, %d\n", ret);
 		break;
 
 	default:
@@ -1459,9 +1470,9 @@ static void cyapa_probe_detect_work_handler(struct work_struct *work)
 	struct device *dev = &cyapa->client->dev;
 	int ret;
 
-	ret = cyapa_check_exit_bootloader(cyapa);
+	ret = cyapa_check_is_operational(cyapa);
 	if (ret) {
-		dev_err(dev, "failed to exit bootloader, %d\n", ret);
+		dev_err(dev, "device is not operational, %d\n", ret);
 		goto out_probe_err;
 	}
 
@@ -1477,8 +1488,6 @@ static void cyapa_probe_detect_work_handler(struct work_struct *work)
 		dev_err(dev, "IRQ request failed: %d\n, ", ret);
 		goto out_probe_err;
 	}
-
-	cyapa_reconfig(cyapa);
 
 	/* create an input_dev instance for trackpad device. */
 	if (cyapa_create_input_dev(cyapa)) {
@@ -1513,15 +1522,15 @@ static void cyapa_resume_detect_work_handler(struct work_struct *work)
 	struct device *dev = &cyapa->client->dev;
 	int ret;
 
-	ret = cyapa_check_exit_bootloader(cyapa);
-	if (ret)
-		dev_err(dev, "failed to detect device on resume, %d\n", ret);
-
-	if (cyapa->state == CYAPA_STATE_OP) {
-		ret =  cyapa_set_power_mode(cyapa, PWR_MODE_FULL_ACTIVE);
-		if (ret)
-			dev_warn(dev, "resume active power failed, %d\n", ret);
+	ret = cyapa_check_is_operational(cyapa);
+	if (ret) {
+		dev_err(dev, "device is not operational, %d\n", ret);
+		return;
 	}
+
+	ret =  cyapa_set_power_mode(cyapa, PWR_MODE_FULL_ACTIVE);
+	if (ret)
+		dev_warn(dev, "resume active power failed, %d\n", ret);
 }
 
 static int cyapa_resume_detect(struct cyapa *cyapa)
