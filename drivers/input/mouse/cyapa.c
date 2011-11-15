@@ -796,7 +796,7 @@ static int cyapa_get_query_data(struct cyapa *cyapa)
  *   -EINVAL protocol is not GEN3, or product_id doesn't start with "CYTRA"
  *   0       protocol is GEN3
  */
-static int cyapa_reconfig(struct cyapa *cyapa, int boot)
+static int cyapa_reconfig(struct cyapa *cyapa)
 {
 	struct device *dev = &cyapa->client->dev;
 	const char unique_str[] = "CYTRA";
@@ -813,28 +813,6 @@ static int cyapa_reconfig(struct cyapa *cyapa, int boot)
 			"product ID (%s).\n", cyapa->gen, cyapa->product_id);
 		return -EINVAL;
 	}
-
-	/* outuput device information only at boot */
-	if (!boot)
-		return 0;
-
-	/* keep multiline output from be separated in dmesg. */
-	dev_info(dev,
-		 "Cypress APA Trackpad Information:\n" \
-		 "    Product ID:  %s\n" \
-		 "    Protocol Generation:  %d\n" \
-		 "    Firmware Version:  %d.%d\n" \
-		 "    Hardware Version:  %d.%d\n" \
-		 "    Max ABS X,Y:   %d,%d\n" \
-		 "    Physical Size X,Y:   %d,%d\n",
-		 cyapa->product_id,
-		 cyapa->gen,
-		 cyapa->fw_maj_ver, cyapa->fw_min_ver,
-		 cyapa->hw_maj_ver, cyapa->hw_min_ver,
-		 cyapa->max_abs_x, cyapa->max_abs_y,
-		 cyapa->physical_size_x, cyapa->physical_size_y);
-
-	return 0;
 }
 
 static int cyapa_check_exit_bootloader(struct cyapa *cyapa)
@@ -1070,8 +1048,7 @@ static int cyapa_send_bl_cmd(struct cyapa *cyapa, enum cyapa_bl_cmd cmd)
 		if (ret)
 			dev_err(dev, "exit bootloader failed, %d\n", ret);
 
-		/* reconfig and update firmware information. */
-		cyapa_reconfig(cyapa, 0);
+		cyapa_reconfig(cyapa);
 		break;
 
 	default:
@@ -1391,7 +1368,22 @@ static int cyapa_create_input_dev(struct cyapa *cyapa)
 {
 	struct device *dev = &cyapa->client->dev;
 	int ret;
-	struct input_dev *input = NULL;
+	struct input_dev *input;
+
+	dev_info(dev,
+		 "Cypress APA Trackpad Information:\n" \
+		 "    Product ID:  %s\n" \
+		 "    Protocol Generation:  %d\n" \
+		 "    Firmware Version:  %d.%d\n" \
+		 "    Hardware Version:  %d.%d\n" \
+		 "    Max ABS X,Y:   %d,%d\n" \
+		 "    Physical Size X,Y:   %d,%d\n",
+		 cyapa->product_id,
+		 cyapa->gen,
+		 cyapa->fw_maj_ver, cyapa->fw_min_ver,
+		 cyapa->hw_maj_ver, cyapa->hw_min_ver,
+		 cyapa->max_abs_x, cyapa->max_abs_y,
+		 cyapa->physical_size_x, cyapa->physical_size_y);
 
 	input = cyapa->input = input_allocate_device();
 	if (!cyapa->input) {
@@ -1486,14 +1478,7 @@ static void cyapa_probe_detect_work_handler(struct work_struct *work)
 		goto out_probe_err;
 	}
 
-	/*
-	 * reconfig trackpad depending on platform setting.
-	 *
-	 * always pass through after reconfig returned to given a chance
-	 * that user can update trackpad firmware through cyapa interface
-	 * when current firmware protocol is not supported.
-	 */
-	cyapa_reconfig(cyapa, true);
+	cyapa_reconfig(cyapa);
 
 	/* create an input_dev instance for trackpad device. */
 	if (cyapa_create_input_dev(cyapa)) {
