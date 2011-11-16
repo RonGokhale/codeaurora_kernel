@@ -30,7 +30,7 @@
 #include <mach/msm_iomap.h>
 #include <mach/scm-io.h>
 #include <mach/scm.h>
-#include "msm_watchdog.h"
+#include <mach/msm_watchdog.h>
 
 #define TCSR_WDT_CFG 0x30
 
@@ -43,6 +43,7 @@
 #define PET_DELAY 3000
 static unsigned long delay_time;
 static unsigned long long last_pet;
+static unsigned long forced_pets;
 
 /*
  * On the kernel command line specify
@@ -191,6 +192,30 @@ void pet_watchdog(void)
 {
 	__raw_writel(1, WDT0_RST);
 	last_pet = sched_clock();
+
+	forced_pets = 0;
+}
+
+static void force_pet_watchdog(void)
+{
+	__raw_writel(1, WDT0_RST);
+	last_pet = sched_clock();
+
+	forced_pets++;
+}
+
+void ratelimited_pet_watchdog(void)
+{
+	if (smp_processor_id())
+		return;
+
+	if ((sched_clock() - last_pet) / 1000000 > PET_DELAY) {
+		force_pet_watchdog();
+		if (forced_pets == 20) {
+			pr_err("Watchdog force pet 20 times in a row!\n");
+			BUG();
+		}
+	}
 }
 
 static void pet_watchdog_work(struct work_struct *work)
