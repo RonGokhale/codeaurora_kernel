@@ -1600,7 +1600,7 @@ static int __devexit cyapa_remove(struct i2c_client *client)
 	return 0;
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int cyapa_suspend(struct device *dev)
 {
 	int ret;
@@ -1643,12 +1643,9 @@ static int cyapa_resume(struct device *dev)
 
 	return 0;
 }
-
-static const struct dev_pm_ops cyapa_pm_ops = {
-	.suspend = cyapa_suspend,
-	.resume = cyapa_resume,
-};
 #endif
+
+static SIMPLE_DEV_PM_OPS(cyapa_pm_ops, cyapa_suspend, cyapa_resume);
 
 static const struct i2c_device_id cyapa_id_table[] = {
 	{ CYAPA_I2C_NAME, 0 },
@@ -1660,9 +1657,7 @@ static struct i2c_driver cyapa_driver = {
 	.driver = {
 		.name = CYAPA_I2C_NAME,
 		.owner = THIS_MODULE,
-#ifdef CONFIG_PM
 		.pm = &cyapa_pm_ops,
-#endif
 	},
 
 	.probe = cyapa_probe,
