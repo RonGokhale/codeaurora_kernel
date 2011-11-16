@@ -168,11 +168,6 @@ config MSM_CAMERA_FLASH
 	---help---
 	  Enable support for LED flash for msm camera
 
-config MSM_CAMERA_SENSOR
-	bool "Qualcomm MSM camera sensor support"
-	depends on MSM_CAMERA
-	default y
-
 config MSM_GEMINI
 	tristate "Qualcomm MSM Gemini Jpeg Engine support"
 	depends on MSM_CAMERA && (ARCH_MSM7X30 || ARCH_MSM8X60 || ARCH_MSM8960)

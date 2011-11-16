@@ -10,7 +10,6 @@ else
 endif
 obj-$(CONFIG_MSM_CAMERA) += msm_axi_qos.o
 obj-$(CONFIG_MSM_CAMERA_FLASH) += flash.o
-obj-$(CONFIG_MSM_CAMERA_SENSOR) += msm_sensor.o
 obj-$(CONFIG_ARCH_MSM_ARM11) += msm_vfe7x.o msm_io7x.o
 obj-$(CONFIG_ARCH_MSM7X27A) += msm_vfe7x27a.o msm_io_7x27a.o
 obj-$(CONFIG_ARCH_MSM7X30) += msm_vfe31.o msm_io_vfe31.o msm_vpe1.o
