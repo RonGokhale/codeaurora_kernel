@@ -1025,7 +1025,7 @@ static ssize_t cyapa_misc_write(struct file *file, const char __user *usr_buf,
 	if (!ret)
 		*offset += count;
 
-	return ret;
+	return ret ? ret : count;
 }
 
 static int cyapa_send_bl_cmd(struct cyapa *cyapa, enum cyapa_bl_cmd cmd)
