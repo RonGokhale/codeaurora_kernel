@@ -939,6 +939,8 @@ static void __init tegra_seaboard_init(void)
  */
 static void gpio_machine_restart(char mode, const char *cmd)
 {
+	tegra_pm_flush_console();
+
 	/* Disable interrupts first */
 	local_irq_disable();
 	local_fiq_disable();
@@ -950,9 +952,13 @@ static void gpio_machine_restart(char mode, const char *cmd)
 	flush_cache_all();
 
 	/* Reboot by resetting CPU and TPM via GPIO */
-	printk(KERN_INFO "restart: issuing GPIO reset\n");
 	gpio_set_value(TEGRA_GPIO_RESET, 0);
 
+	/*
+	 * printk should still work with interrupts disabled, but since we've
+	 * already flushed this isn't guaranteed to actually make it out.  We'll
+	 * print it anyway just in case.
+	 */
 	printk(KERN_INFO "restart: trying legacy reboot\n");
 	legacy_arm_pm_restart(mode, cmd);
 }
