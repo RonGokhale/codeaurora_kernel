@@ -129,7 +129,7 @@ static void __init tegra_init_power(void)
 
 static bool console_flushed;
 
-static void tegra_pm_flush_console(void)
+void tegra_pm_flush_console(void)
 {
 	if (console_flushed)
 		return;
