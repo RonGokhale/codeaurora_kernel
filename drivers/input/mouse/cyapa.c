@@ -1231,38 +1231,35 @@ static void __exit cyapa_misc_exit(void)
  * below routines export interfaces to sysfs file system.
  * so user can get firmware/driver/hardware information using cat command.
  * e.g.: use below command to get firmware version
- *      cat /sys/devices/platfrom/tegra-i2c.0/i2c-0/0-0067/firmware_version
+ *      cat /sys/bus/i2c/drivers/cyapa/0-0067/firmware_version
  *******************************************************************
  */
-ssize_t cyapa_show_fm_ver(struct device *dev,
-		struct device_attribute *attr, char *buf)
+static ssize_t cyapa_show_fm_ver(struct device *dev,
+				 struct device_attribute *attr, char *buf)
 {
-	struct i2c_client *client = to_i2c_client(dev);
-	struct cyapa *cyapa = i2c_get_clientdata(client);
+	struct cyapa *cyapa = dev_get_drvdata(dev);
 	return sprintf(buf, "%d.%d\n", cyapa->fw_maj_ver, cyapa->fw_min_ver);
 }
 
-ssize_t cyapa_show_hw_ver(struct device *dev,
-		struct device_attribute *attr, char *buf)
+static ssize_t cyapa_show_hw_ver(struct device *dev,
+				 struct device_attribute *attr, char *buf)
 {
-	struct i2c_client *client = to_i2c_client(dev);
-	struct cyapa *cyapa = i2c_get_clientdata(client);
+	struct cyapa *cyapa = dev_get_drvdata(dev);
 	return sprintf(buf, "%d.%d\n", cyapa->hw_maj_ver, cyapa->hw_min_ver);
 }
 
-ssize_t cyapa_show_product_id(struct device *dev,
-		struct device_attribute *attr, char *buf)
+static ssize_t cyapa_show_product_id(struct device *dev,
+				     struct device_attribute *attr, char *buf)
 {
-	struct i2c_client *client = to_i2c_client(dev);
-	struct cyapa *cyapa = i2c_get_clientdata(client);
+	struct cyapa *cyapa = dev_get_drvdata(dev);
 	return sprintf(buf, "%s\n", cyapa->product_id);
 }
 
-ssize_t cyapa_show_protocol_version(struct device *dev,
-		struct device_attribute *attr, char *buf)
+static ssize_t cyapa_show_protocol_version(struct device *dev,
+					   struct device_attribute *attr,
+					   char *buf)
 {
-	struct i2c_client *client = to_i2c_client(dev);
-	struct cyapa *cyapa = i2c_get_clientdata(client);
+	struct cyapa *cyapa = dev_get_drvdata(dev);
 	return sprintf(buf, "%d\n", cyapa->gen);
 }
 
