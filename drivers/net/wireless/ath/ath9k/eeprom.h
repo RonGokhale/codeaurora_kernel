@@ -648,6 +648,7 @@ struct ath9k_country_entry {
 struct eeprom_ops {
 	int (*check_eeprom)(struct ath_hw *hw);
 	u32 (*get_eeprom)(struct ath_hw *hw, enum eeprom_param param);
+	u32 (*dump_eep_power)(struct ath_hw *hw, u8 *buf, u32 len, u32 size);
 	bool (*fill_eeprom)(struct ath_hw *hw);
 	int (*get_eeprom_ver)(struct ath_hw *hw);
 	int (*get_eeprom_rev)(struct ath_hw *hw);
