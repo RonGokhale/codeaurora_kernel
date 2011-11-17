@@ -10076,6 +10076,10 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 		pwrkey_pdata.pwrkey_time_ms = 0;
 	}
 
+	/* fluid uses isa1200, so disable pmic vib */
+	if (machine_is_msm8x60_fluid())
+		pmic_vib_pdata.level_mV = 0;
+
 #ifdef CONFIG_USB_ANDROID
 	if (machine_is_msm8x60_charm_surf() ||
 			machine_is_msm8x60_charm_ffa()) {
