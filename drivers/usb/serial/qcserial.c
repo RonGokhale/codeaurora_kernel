@@ -23,7 +23,6 @@
 #define DRIVER_DESC "Qualcomm USB Serial driver"
 
 static int debug;
-static bool export_non_qmi = true;
 
 #define USB_DEVICE_DRVINFO(vid,pid,data) \
 	USB_DEVICE(vid,pid), .driver_info = data
@@ -38,6 +37,7 @@ static const struct usb_device_id id_table[] = {
 	{USB_DEVICE_DRVINFO(0x05c6, 0x9212, GOBI2K)},	/* Acer Gobi Modem Device */
 	{USB_DEVICE_DRVINFO(0x03f0, 0x1f1d, GOBI2K)},	/* HP un2400 Gobi Modem Device */
 	{USB_DEVICE_DRVINFO(0x03f0, 0x201d, GOBI2K)},	/* HP un2400 Gobi QDL Device */
+	{USB_DEVICE_DRVINFO(0x03f0, 0x371d, GOBI2K)},	/* HP un2430 Mobile Broadband Module */
 	{USB_DEVICE_DRVINFO(0x04da, 0x250d, GOBI2K)},	/* Panasonic Gobi Modem device */
 	{USB_DEVICE_DRVINFO(0x04da, 0x250c, GOBI2K)},	/* Panasonic Gobi QDL device */
 	{USB_DEVICE_DRVINFO(0x413c, 0x8172, GOBI2K)},	/* Dell Gobi Modem device */
@@ -67,6 +67,8 @@ static const struct usb_device_id id_table[] = {
 	{USB_DEVICE_DRVINFO(0x1f45, 0x0001, GOBI2K)},	/* Unknown Gobi QDL device */
 	{USB_DEVICE_DRVINFO(0x413c, 0x8185, GOBI2K)},	/* Dell Gobi 2000 QDL device (N0218, VU936) */
 	{USB_DEVICE_DRVINFO(0x413c, 0x8186, GOBI2K)},	/* Dell Gobi 2000 Modem device (N0218, VU936) */
+	{USB_DEVICE_DRVINFO(0x05c6, 0x9208, GOBI2K)},	/* Generic Gobi 2000 QDL device */
+	{USB_DEVICE_DRVINFO(0x05c6, 0x920b, GOBI2K)},	/* Generic Gobi 2000 Modem device */
 	{USB_DEVICE_DRVINFO(0x05c6, 0x9224, GOBI2K)},	/* Sony Gobi 2000 QDL device (N0279, VU730) */
 	{USB_DEVICE_DRVINFO(0x05c6, 0x9225, GOBI2K)},	/* Sony Gobi 2000 Modem device (N0279, VU730) */
 	{USB_DEVICE_DRVINFO(0x05c6, 0x9244, GOBI2K)},	/* Samsung Gobi 2000 QDL device (VL176) */
@@ -92,12 +94,11 @@ static const struct usb_device_id id_table[] = {
 	{USB_DEVICE_DRVINFO(0x1199, 0x9008, GOBI2K)},	/* Sierra Wireless Gobi 2000 Modem device (VT773) */
 	{USB_DEVICE_DRVINFO(0x1199, 0x9009, GOBI2K)},	/* Sierra Wireless Gobi 2000 Modem device (VT773) */
 	{USB_DEVICE_DRVINFO(0x1199, 0x900a, GOBI2K)},	/* Sierra Wireless Gobi 2000 Modem device (VT773) */
+	{USB_DEVICE_DRVINFO(0x1199, 0x9011, GOBI2K)},   /* Sierra Wireless Gobi 2000 Modem device (MC8305) */
 	{USB_DEVICE_DRVINFO(0x16d8, 0x8001, GOBI2K)},	/* CMDTech Gobi 2000 QDL device (VU922) */
 	{USB_DEVICE_DRVINFO(0x16d8, 0x8002, GOBI2K)},	/* CMDTech Gobi 2000 Modem device (VU922) */
 	{USB_DEVICE_DRVINFO(0x05c6, 0x9204, GOBI2K)},	/* Gobi 2000 QDL device */
 	{USB_DEVICE_DRVINFO(0x05c6, 0x9205, GOBI2K)},	/* Gobi 2000 Modem device */
-	{USB_DEVICE_DRVINFO(0x05c6, 0x9208, GOBI2K)},	/* Gobi 2000 QDL device */
-	{USB_DEVICE_DRVINFO(0x05c6, 0x920B, GOBI2K)},	/* Gobi 2000 Modem device */
 
 	{USB_DEVICE_DRVINFO(0x05c6, 0x920c, GOBI3K)},	/* Gobi 3000 QDL */
 	{USB_DEVICE_DRVINFO(0x05c6, 0x920d, GOBI3K)},	/* Gobi 3000 Composite */
@@ -105,6 +106,7 @@ static const struct usb_device_id id_table[] = {
 	{USB_DEVICE_DRVINFO(0x1410, 0xa021, GOBI3K)},	/* Novatel Gobi 3000 Composite */
 	{USB_DEVICE_DRVINFO(0x413c, 0x8193, GOBI3K)},	/* Dell Gobi 3000 QDL */
 	{USB_DEVICE_DRVINFO(0x413c, 0x8194, GOBI3K)},	/* Dell Gobi 3000 Composite */
+	{USB_DEVICE_DRVINFO(0x1199, 0x9013, GOBI3K)},	/* Sierra Wireless Gobi 3000 Modem device (MC8355) */
 	{USB_DEVICE_DRVINFO(0x12D1, 0x14F0, GOBI3K)},	/* Sony Gobi 3000 QDL */
 	{USB_DEVICE_DRVINFO(0x12D1, 0x14F1, GOBI3K)},	/* Sony Gobi 3000 Composite */
 	{ }				/* Terminating entry */
@@ -143,14 +145,18 @@ static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
 
 	spin_lock_init(&data->susp_lock);
 
-	if (nintf == 1) {
+	usb_enable_autosuspend(serial->dev);
+
+	switch (nintf) {
+	case 1:
 		/* QDL mode */
 		/* Gobi 2000 has a single altsetting, older ones have two */
 		if (serial->interface->num_altsetting == 2)
 			intf = &serial->interface->altsetting[1];
 		else if (serial->interface->num_altsetting > 2) {
-			printk(KERN_INFO "too many altsettings: %u", serial->interface->num_altsetting);
-			return -ENODEV;
+			dev_err(&serial->dev->dev,
+				"too many altsettings: %u", serial->interface->num_altsetting);
+			break;
 		}
 
 		if (intf->desc.bNumEndpoints == 2 &&
@@ -160,7 +166,7 @@ static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
 
 			if (serial->interface->num_altsetting == 1) {
 				retval = 0; /* Success */
-				goto out;
+				break;
 			}
 
 			retval = usb_set_interface(serial->dev, ifnum, 1);
@@ -172,7 +178,10 @@ static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
 				kfree(data);
 			}
 		}
-	} else {
+		break;
+
+	case 3:
+	case 4:
 		/* Composite mode */
 		/* ifnum == 0 is a broadband network adapter */
 		if (ifnum == 1) {
@@ -190,11 +199,8 @@ static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
 				retval = -ENODEV;
 				kfree(data);
 			}
-		} else if (ifnum == 2
-			    || (id->driver_info == GOBI3K && ifnum == 3)
-			    || (export_non_qmi && ifnum != 0)) {
+		} else if (ifnum == 2) {
 			dbg("Modem port found");
-			dbg("Exporting interface %d", ifnum);
 			retval = usb_set_interface(serial->dev, ifnum, 0);
 			if (retval < 0) {
 				dev_err(&serial->dev->dev,
@@ -219,12 +225,15 @@ static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
 				kfree(data);
 			}
 		}
+		break;
+
+	default:
 		dev_err(&serial->dev->dev,
 			"unknown number of interfaces: %d\n", nintf);
 		kfree(data);
 		retval = -ENODEV;
 	}
-out:
+
 	/* Set serial->private if not returning -ENODEV */
 	if (retval != -ENODEV)
 		usb_set_serial_data(serial, data);
@@ -271,8 +280,6 @@ static int __init qcinit(void)
 {
 	int retval;
 
-	printk(KERN_INFO "qcserial: loaded");
-
 	retval = usb_serial_register(&qcdevice);
 	if (retval)
 		return retval;
@@ -301,5 +308,3 @@ MODULE_LICENSE("GPL v2");
 
 module_param(debug, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(debug, "Debug enabled or not");
-module_param(export_non_qmi, bool, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(export_non_qmi, "Export all non-QMI interfaces");
