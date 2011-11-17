@@ -40,7 +40,7 @@
 #define WDT0_BITE_TIME	(MSM_TMR0_BASE + 0x5C)
 
 /* Watchdog pet interval in ms */
-#define PET_DELAY 3000
+#define PET_DELAY 10000
 static unsigned long delay_time;
 static unsigned long long last_pet;
 static unsigned long forced_pets;
@@ -325,8 +325,8 @@ static int __init init_watchdog(void)
 	delay_time = msecs_to_jiffies(PET_DELAY);
 
 	/* 32768 ticks = 1 second */
-	__raw_writel(32768*4, WDT0_BARK_TIME);
-	__raw_writel(32768*5, WDT0_BITE_TIME);
+	__raw_writel(32768*11, WDT0_BARK_TIME);
+	__raw_writel(32768*12, WDT0_BITE_TIME);
 
 	ret = register_pm_notifier(&msm_watchdog_power_notifier);
 	if (ret) {
