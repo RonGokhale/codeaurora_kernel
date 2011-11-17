@@ -36,7 +36,7 @@
 #include <linux/usb/usbnet.h>
 #include <linux/slab.h>
 
-#define DRIVER_VERSION "26-Sep-2011"
+#define DRIVER_VERSION "08-Nov-2011"
 #define DRIVER_NAME "asix"
 
 /* ASIX AX8817X based USB 2.0 Ethernet Devices */
@@ -163,7 +163,7 @@
 #define MARVELL_CTRL_TXDELAY	0x0002
 #define MARVELL_CTRL_RXDELAY	0x0080
 
-#define	PHY_MODE_RTL8211CL	0x0004
+#define	PHY_MODE_RTL8211CL	0x000C
 
 /* This structure cannot exceed sizeof(unsigned long [5]) AKA 20 bytes */
 struct asix_data {
@@ -319,12 +319,11 @@ static int asix_rx_fixup(struct usbnet *dev, struct sk_buff *skb)
 	skb_pull(skb, 4);
 
 	while (skb->len > 0) {
-		if ((short)(header & 0x0000ffff) !=
-		    ~((short)((header & 0xffff0000) >> 16))) {
+		if ((header & 0x07ff) != ((~header >> 16) & 0x07ff))
 			netdev_err(dev->net, "asix_rx_fixup() Bad Header Length\n");
-		}
+
 		/* get the packet length */
-		size = (u16) (header & 0x0000ffff);
+		size = (u16) (header & 0x000007ff);
 
 		if ((skb->len) - ((size + 1) & 0xfffe) == 0) {
 			u8 alignment = (unsigned long)skb->data & 0x3;
@@ -653,9 +652,17 @@ static u32 asix_get_phyid(struct usbnet *dev)
 {
 	int phy_reg;
 	u32 phy_id;
+	int i;
 
-	phy_reg = asix_mdio_read(dev->net, dev->mii.phy_id, MII_PHYSID1);
-	if (phy_reg < 0)
+	/* Poll for the rare case the FW or phy isn't ready yet.  */
+	for (i = 0; i < 100; i++) {
+		phy_reg = asix_mdio_read(dev->net, dev->mii.phy_id, MII_PHYSID1);
+		if (phy_reg != 0 && phy_reg != 0xFFFF)
+			break;
+		mdelay(1);
+	}
+
+	if (phy_reg <= 0 || phy_reg == 0xFFFF)
 		return 0;
 
 	phy_id = (phy_reg & 0xffff) << 16;
@@ -870,7 +877,7 @@ static const struct net_device_ops ax88172_netdev_ops = {
 	.ndo_set_mac_address 	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_do_ioctl		= asix_ioctl,
-	.ndo_set_multicast_list = ax88172_set_multicast,
+	.ndo_set_rx_mode	= ax88172_set_multicast,
 };
 
 static int ax88172_bind(struct usbnet *dev, struct usb_interface *intf)
@@ -967,7 +974,6 @@ static int ax88772_link_reset(struct usbnet *dev)
 
 static int ax88772_reset(struct usbnet *dev)
 {
-
 	int ret, embd_phy;
 	u16 rx_ctl;
 
@@ -1072,12 +1078,12 @@ static const struct net_device_ops ax88772_netdev_ops = {
 	.ndo_set_mac_address 	= asix_set_mac_address,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_do_ioctl		= asix_ioctl,
-	.ndo_set_multicast_list = asix_set_multicast,
+	.ndo_set_rx_mode        = asix_set_multicast,
 };
 
 static int ax88772_bind(struct usbnet *dev, struct usb_interface *intf)
 {
-	int ret;
+	int ret, embd_phy;
 	struct asix_data *data = (struct asix_data *)&dev->data;
 	u8 buf[ETH_ALEN];
 	u32 phyid;
@@ -1102,15 +1108,35 @@ static int ax88772_bind(struct usbnet *dev, struct usb_interface *intf)
 	dev->mii.reg_num_mask = 0x1f;
 	dev->mii.phy_id = asix_get_phy_addr(dev);
 
-	phyid = asix_get_phyid(dev);
-	dbg("PHYID=0x%08x", phyid);
-
 	dev->net->netdev_ops = &ax88772_netdev_ops;
 	dev->net->ethtool_ops = &ax88772_ethtool_ops;
 
-	ret = ax88772_reset(dev);
+	embd_phy = ((dev->mii.phy_id & 0x1f) == 0x10 ? 1 : 0);
+
+	/* Reset the PHY to normal operation mode */
+	ret = asix_write_cmd(dev, AX_CMD_SW_PHY_SELECT, embd_phy, 0, 0, NULL);
+	if (ret < 0) {
+		dbg("Select PHY #1 failed: %d", ret);
+		return ret;
+	}
+
+	ret = asix_sw_reset(dev, AX_SWRESET_IPPD | AX_SWRESET_PRL);
 	if (ret < 0)
 		return ret;
+
+	msleep(150);
+
+	ret = asix_sw_reset(dev, AX_SWRESET_CLEAR);
+	if (ret < 0)
+		return ret;
+
+	msleep(150);
+
+	ret = asix_sw_reset(dev, embd_phy ? AX_SWRESET_IPRL : AX_SWRESET_PRTE);
+
+	/* Read PHYID register *AFTER* the PHY was reset properly */
+	phyid = asix_get_phyid(dev);
+	dbg("PHYID=0x%08x", phyid);
 
 	/* Asix framing packs multiple eth frames into a 2K usb bulk transfer */
 	if (dev->driver_info->flags & FLAG_FRAMING_AX) {
@@ -1222,6 +1248,7 @@ static int ax88178_reset(struct usbnet *dev)
 	__le16 eeprom;
 	u8 status;
 	int gpio0 = 0;
+	u32 phyid;
 
 	asix_read_cmd(dev, AX_CMD_READ_GPIOS, 0, 0, 1, &status);
 	dbg("GPIO Status: 0x%04x", status);
@@ -1237,12 +1264,13 @@ static int ax88178_reset(struct usbnet *dev)
 		data->ledmode = 0;
 		gpio0 = 1;
 	} else {
-		data->phymode = le16_to_cpu(eeprom) & 7;
+		data->phymode = le16_to_cpu(eeprom) & 0x7F;
 		data->ledmode = le16_to_cpu(eeprom) >> 8;
 		gpio0 = (le16_to_cpu(eeprom) & 0x80) ? 0 : 1;
 	}
 	dbg("GPIO0: %d, PhyMode: %d", gpio0, data->phymode);
 
+	/* Power up external GigaPHY through AX88178 GPIO pin */
 	asix_write_gpio(dev, AX_GPIO_RSE | AX_GPIO_GPO_1 | AX_GPIO_GPO1EN, 40);
 	if ((le16_to_cpu(eeprom) >> 8) != 1) {
 		asix_write_gpio(dev, 0x003c, 30);
@@ -1253,6 +1281,13 @@ static int ax88178_reset(struct usbnet *dev)
 		asix_write_gpio(dev, AX_GPIO_GPO1EN, 30);
 		asix_write_gpio(dev, AX_GPIO_GPO1EN | AX_GPIO_GPO_1, 30);
 	}
+
+	/* Read PHYID register *AFTER* powering up PHY */
+	phyid = asix_get_phyid(dev);
+	dbg("PHYID=0x%08x", phyid);
+
+	/* Set AX88178 to enable MII/GMII/RGMII interface for external PHY */
+	asix_write_cmd(dev, AX_CMD_SW_PHY_SELECT, 0, 0, 0, NULL);
 
 	asix_sw_reset(dev, 0);
 	msleep(150);
@@ -1389,7 +1424,7 @@ static const struct net_device_ops ax88178_netdev_ops = {
 	.ndo_tx_timeout		= usbnet_tx_timeout,
 	.ndo_set_mac_address 	= asix_set_mac_address,
 	.ndo_validate_addr	= eth_validate_addr,
-	.ndo_set_multicast_list = asix_set_multicast,
+	.ndo_set_rx_mode	= asix_set_multicast,
 	.ndo_do_ioctl 		= asix_ioctl,
 	.ndo_change_mtu 	= ax88178_change_mtu,
 };
@@ -1398,7 +1433,6 @@ static int ax88178_bind(struct usbnet *dev, struct usb_interface *intf)
 {
 	int ret;
 	u8 buf[ETH_ALEN];
-	u32 phyid;
 	struct asix_data *data = (struct asix_data *)&dev->data;
 
 	data->eeprom_len = AX88772_EEPROM_LEN;
@@ -1425,12 +1459,12 @@ static int ax88178_bind(struct usbnet *dev, struct usb_interface *intf)
 	dev->net->netdev_ops = &ax88178_netdev_ops;
 	dev->net->ethtool_ops = &ax88178_ethtool_ops;
 
-	phyid = asix_get_phyid(dev);
-	dbg("PHYID=0x%08x", phyid);
+	/* Blink LEDS so users know driver saw dongle */
+	asix_sw_reset(dev, 0);
+	msleep(150);
 
-	ret = ax88178_reset(dev);
-	if (ret < 0)
-		return ret;
+	asix_sw_reset(dev, AX_SWRESET_PRL | AX_SWRESET_IPPD);
+	msleep(150);
 
 	/* Asix framing packs multiple eth frames into a 2K usb bulk transfer */
 	if (dev->driver_info->flags & FLAG_FRAMING_AX) {
