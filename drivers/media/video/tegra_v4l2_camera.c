@@ -248,8 +248,8 @@ struct tegra_buffer {
 };
 
 struct tegra_camera_dev {
-	struct nvhost_device		*ndev;
 	struct soc_camera_host		soc_host;
+	struct nvhost_device		*ndev;
 	struct soc_camera_device	*icd;
 	struct tegra_camera_platform_data *pdata;
 
@@ -1324,8 +1324,7 @@ exit:
 static int __devexit tegra_camera_remove(struct nvhost_device *ndev)
 {
 	struct soc_camera_host *soc_host = to_soc_camera_host(&ndev->dev);
-	struct tegra_camera_dev *pcdev = container_of(soc_host,
-					struct tegra_camera_dev, soc_host);
+	struct tegra_camera_dev *pcdev = nvhost_get_drvdata(ndev);
 	struct resource *res;
 
 	res = nvhost_get_resource_byname(ndev, IORESOURCE_MEM, "regs");
@@ -1350,9 +1349,7 @@ static int __devexit tegra_camera_remove(struct nvhost_device *ndev)
 #ifdef CONFIG_PM
 static int tegra_camera_suspend(struct nvhost_device *ndev, pm_message_t state)
 {
-	struct soc_camera_host *soc_host = to_soc_camera_host(&ndev->dev);
-	struct tegra_camera_dev *pcdev = container_of(soc_host,
-					struct tegra_camera_dev, soc_host);
+	struct tegra_camera_dev *pcdev = nvhost_get_drvdata(ndev);
 
 	mutex_lock(&pcdev->work_mutex);
 
@@ -1375,9 +1372,7 @@ static int tegra_camera_suspend(struct nvhost_device *ndev, pm_message_t state)
 
 static int tegra_camera_resume(struct nvhost_device *ndev)
 {
-	struct soc_camera_host *soc_host = to_soc_camera_host(&ndev->dev);
-	struct tegra_camera_dev *pcdev = container_of(soc_host,
-					struct tegra_camera_dev, soc_host);
+	struct tegra_camera_dev *pcdev = nvhost_get_drvdata(ndev);
 
 	/* We only need to do something if a camera sensor is attached. */
 	if (pcdev->icd) {
