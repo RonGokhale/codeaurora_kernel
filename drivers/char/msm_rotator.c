@@ -282,6 +282,7 @@ static int get_bpp(int format)
 	case MDP_Y_CRCB_H2V2:
 	case MDP_Y_CB_CR_H2V2:
 	case MDP_Y_CR_CB_H2V2:
+	case MDP_Y_CR_CB_GH2V2:
 	case MDP_Y_CRCB_H2V2_TILE:
 	case MDP_Y_CBCR_H2V2_TILE:
 		return 1;
@@ -360,6 +361,12 @@ static int msm_rotator_get_plane_sizes(uint32_t format,	uint32_t w, uint32_t h,
 		p->plane_size[0] = w * h;
 		p->plane_size[1] = (w / 2) * (h / 2);
 		p->plane_size[2] = (w / 2) * (h / 2);
+		break;
+	case MDP_Y_CR_CB_GH2V2:
+		p->num_planes = 3;
+		p->plane_size[0] = ALIGN(w, 16) * h;
+		p->plane_size[1] = ALIGN(w / 2, 16) * (h / 2);
+		p->plane_size[2] = ALIGN(w / 2, 16) * (h / 2);
 		break;
 	default:
 		return -EINVAL;
@@ -458,6 +465,7 @@ static int msm_rotator_ycxcx_h2v2(struct msm_rotator_img_info *info,
 	case MDP_Y_CRCB_H2V2_TILE:
 		is_tile = 1;
 	case MDP_Y_CR_CB_H2V2:
+	case MDP_Y_CR_CB_GH2V2:
 	case MDP_Y_CRCB_H2V2:
 		dst_format = MDP_Y_CRCB_H2V2;
 		break;
@@ -485,12 +493,20 @@ static int msm_rotator_ycxcx_h2v2(struct msm_rotator_img_info *info,
 		  MSM_ROTATOR_OUTP1_ADDR);
 
 	if (new_session) {
-		if (in_chroma2_paddr) { /* is planar */
+		if (in_chroma2_paddr) {
+			if (info->src.format == MDP_Y_CR_CB_GH2V2) {
+				iowrite32(ALIGN(info->src.width, 16) |
+					ALIGN((info->src.width / 2), 16) << 16,
+					MSM_ROTATOR_SRC_YSTRIDE1);
+				iowrite32(ALIGN((info->src.width / 2), 16),
+					MSM_ROTATOR_SRC_YSTRIDE2);
+			} else {
 			iowrite32(info->src.width |
 					(info->src.width / 2) << 16,
 					MSM_ROTATOR_SRC_YSTRIDE1);
 			iowrite32((info->src.width / 2),
 					MSM_ROTATOR_SRC_YSTRIDE2);
+			}
 		} else {
 			iowrite32(info->src.width |
 					info->src.width << 16,
@@ -945,6 +961,7 @@ static int msm_rotator_do_rotate(unsigned long arg)
 	case MDP_Y_CRCB_H2V2:
 	case MDP_Y_CB_CR_H2V2:
 	case MDP_Y_CR_CB_H2V2:
+	case MDP_Y_CR_CB_GH2V2:
 	case MDP_Y_CRCB_H2V2_TILE:
 	case MDP_Y_CBCR_H2V2_TILE:
 		rc = msm_rotator_ycxcx_h2v2(msm_rotator_dev->img_info[s],
@@ -1056,6 +1073,7 @@ static int msm_rotator_start(unsigned long arg, int pid)
 	case MDP_Y_CRCB_H2V2:
 	case MDP_Y_CB_CR_H2V2:
 	case MDP_Y_CR_CB_H2V2:
+	case MDP_Y_CR_CB_GH2V2:
 	case MDP_Y_CBCR_H2V1:
 	case MDP_Y_CRCB_H2V1:
 	case MDP_YCRYCB_H2V1:
