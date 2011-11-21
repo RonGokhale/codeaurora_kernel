@@ -1001,6 +1001,7 @@ static void __init tegra_kaen_init(void)
 	kaen_i2c_register_devices();
 	seaboard_i2c_init();
 
+	kaen_sensors_init();
 	legacy_arm_pm_restart = arm_pm_restart;
 	arm_pm_restart = gpio_machine_restart;
 }
