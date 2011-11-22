@@ -473,8 +473,8 @@ static void ath9k_hw_set_4k_power_per_rate_table(struct ath_hw *ah,
 
 	int i;
 	u16 twiceMinEdgePower;
-	u16 twiceMaxEdgePower = MAX_RATE_POWER;
-	u16 scaledPower = 0, minCtlPower;
+	u16 twiceMaxEdgePower;
+	u16 scaledPower = 0, minCtlPower, maxRegAllowedPower;
 	u16 numCtlModes;
 	const u16 *pCtlMode;
 	u16 ctlMode, freq;
@@ -542,9 +542,7 @@ static void ath9k_hw_set_4k_power_per_rate_table(struct ath_hw *ah,
 		else
 			freq = centers.ctl_center;
 
-		if (ah->eep_ops->get_eeprom_ver(ah) == 14 &&
-		    ah->eep_ops->get_eeprom_rev(ah) <= 2)
-			twiceMaxEdgePower = MAX_RATE_POWER;
+		twiceMaxEdgePower = MAX_RATE_POWER;
 
 		for (i = 0; (i < AR5416_EEP4K_NUM_CTLS) &&
 			     pEepData->ctlIndex[i]; i++) {
