@@ -285,7 +285,6 @@ static int get_bpp(int format)
 	case MDP_Y_CRCB_H2V2:
 	case MDP_Y_CB_CR_H2V2:
 	case MDP_Y_CR_CB_H2V2:
-	case MDP_Y_CR_CB_GH2V2:
 	case MDP_Y_CRCB_H2V2_TILE:
 	case MDP_Y_CBCR_H2V2_TILE:
 		return 1;
@@ -507,9 +506,8 @@ static int msm_rotator_ycxcx_h2v2(struct msm_rotator_img_info *info,
 				iowrite32(info->src.width |
 					(info->src.width / 2) << 16,
 					MSM_ROTATOR_SRC_YSTRIDE1);
-				iowrite32((info->src.width / 2),
+			iowrite32((info->src.width / 2),
 					MSM_ROTATOR_SRC_YSTRIDE2);
-			}
 		} else {
 			iowrite32(info->src.width |
 					info->src.width << 16,
@@ -534,6 +532,22 @@ static int msm_rotator_ycxcx_h2v2(struct msm_rotator_img_info *info,
 			  (ROTATIONS_TO_BITMASK(info->rotations) << 9) |
 			  1 << 8,      		/* ROT_EN */
 			  MSM_ROTATOR_SUB_BLOCK_CFG);
+		iowrite32(0 << 29 | 		/* frame format 0 = linear */
+			  (use_imem ? 0 : 1) << 22 | /* tile size */
+			  (is_planar ? 1 : 2) << 19 | /* fetch planes */
+			  0 << 18 | 		/* unpack align */
+			  1 << 17 | 		/* unpack tight */
+			  1 << 13 | 		/* unpack count 0=1 component */
+			  (bpp-1) << 9  |	/* src Bpp 0=1 byte ... */
+			  0 << 8  | 		/* has alpha */
+			  0 << 6  | 		/* alpha bits 3=8bits */
+			  3 << 4  | 		/* R/Cr bits 1=5 2=6 3=8 */
+			  3 << 2  | 		/* B/Cb bits 1=5 2=6 3=8 */
+			  3 << 0,   		/* G/Y  bits 1=5 2=6 3=8 */
+			  MSM_ROTATOR_SRC_FORMAT);
+	}
+	return 0;
+}
 
 		iowrite32((is_tile ? 2 : 0) << 29 |  /* frame format */
 			  (use_imem ? 0 : 1) << 22 | /* tile size */
@@ -1081,7 +1095,6 @@ static int msm_rotator_start(unsigned long arg, int pid)
 	case MDP_Y_CRCB_H2V2:
 	case MDP_Y_CB_CR_H2V2:
 	case MDP_Y_CR_CB_H2V2:
-	case MDP_Y_CR_CB_GH2V2:
 	case MDP_Y_CBCR_H2V1:
 	case MDP_Y_CRCB_H2V1:
 	case MDP_YCRYCB_H2V1:
