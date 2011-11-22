@@ -146,6 +146,7 @@ struct tegra_i2c_dev {
 	u8 *msg_buf;
 	size_t msg_buf_remaining;
 	int msg_read;
+	struct i2c_msg *msg;
 	bool is_suspended;
 	int bus_count;
 	const struct tegra_pingroup_config *last_mux;
@@ -460,7 +461,25 @@ static irqreturn_t tegra_i2c_isr(int irq, void *dev_id)
 	}
 
 	if (status & I2C_INT_PACKET_XFER_COMPLETE) {
-		BUG_ON(i2c_dev->msg_buf_remaining);
+		if (i2c_dev->msg_buf_remaining) {
+			int i;
+			dev_warn(i2c_dev->dev,
+				 "interrupt status says complete but %d "\
+				 "bytes remains in msg\n",
+				 i2c_dev->msg_buf_remaining);
+			dev_warn(i2c_dev->dev, "operation: %s len: %d\n",
+				 i2c_dev->msg_read ? "read" : "write",
+				 i2c_dev->msg->len);
+			pr_warn("msg:");
+			for (i = 0; i < i2c_dev->msg->len; i++) {
+				pr_cont(" %02x", i2c_dev->msg->buf[i]);
+				if (!((i+1) % 20)) {
+					pr_cont("\n");
+					pr_warn("");
+				}
+			}
+			WARN_ON(1);
+		}
 		complete(&i2c_dev->msg_complete);
 	}
 
@@ -495,6 +514,7 @@ static int tegra_i2c_xfer_msg(struct tegra_i2c_bus *i2c_bus,
 
 	i2c_dev->msg_buf = msg->buf;
 	i2c_dev->msg_buf_remaining = msg->len;
+	i2c_dev->msg = msg;
 	i2c_dev->msg_err = I2C_ERR_NONE;
 	i2c_dev->msg_read = (msg->flags & I2C_M_RD);
 	INIT_COMPLETION(i2c_dev->msg_complete);
