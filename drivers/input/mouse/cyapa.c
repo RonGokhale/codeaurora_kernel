@@ -171,12 +171,12 @@ struct cyapa_touch {
 	u8 x;  /* low 8 bits of x position value. */
 	u8 y;  /* low 8 bits of y position value. */
 	u8 pressure;
-	/* id range is 0 - 15.  It is incremented with every new touch. */
+	/* id range is 1 - 15.  It is incremented with every new touch. */
 	u8 id;
 } __packed;
 
-/* The touch.id is used as the MT slot id, thus max MT slot is 16 */
-#define CYAPA_MAX_MT_SLOTS  16
+/* The touch.id is used as the MT slot id, thus max MT slot is 15 */
+#define CYAPA_MAX_MT_SLOTS  15
 
 /* CYAPA reports up to 5 touches per packet. */
 #define CYAPA_MAX_TOUCHES  5
@@ -1324,7 +1324,8 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 	num_fingers = (data.finger_btn >> 4) & 0x0F;
 	for (i = 0; i < num_fingers; i++) {
 		const struct cyapa_touch *touch = &data.touches[i];
-		int slot = touch->id;
+		/* Note: touch->id range is 1 to 15; slots are 0 to 14. */
+		int slot = touch->id - 1;
 
 		mask |= (1 << slot);
 		input_mt_slot(input, slot);
