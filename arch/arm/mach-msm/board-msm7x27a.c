@@ -3025,7 +3025,7 @@ static int mipi_dsi_panel_power(int on)
 			gpio_set_value_cansleep(GPIO_LCDC_BRDG_RESET_N,	1);
 		}
 
-		if (pmapp_disp_backlight_set_brightness(0))
+		if (pmapp_disp_backlight_set_brightness(100))
 			pr_err("backlight set brightness failed\n");
 
 	} else {
