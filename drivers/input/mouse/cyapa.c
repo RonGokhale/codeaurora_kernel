@@ -338,6 +338,8 @@ static const struct cyapa_cmd_len cyapa_smbus_cmds[] = {
 	{CYAPA_SMBUS_BLK_HEAD, 16},
 };
 
+static void cyapa_detect(struct cyapa *cyapa);
+
 #define BYTE_PER_LINE  8
 void cyapa_dump_data(struct cyapa *cyapa, size_t length, const u8 *data)
 {
@@ -1462,9 +1464,8 @@ err_free_device:
 	return ret;
 }
 
-static void cyapa_detect_work(struct work_struct *work)
+static void cyapa_detect(struct cyapa *cyapa)
 {
-	struct cyapa *cyapa = container_of(work, struct cyapa, detect_work);
 	struct device *dev = &cyapa->client->dev;
 	int ret;
 
@@ -1487,6 +1488,12 @@ static void cyapa_detect_work(struct work_struct *work)
 		if (ret)
 			dev_warn(dev, "resume active power failed, %d\n", ret);
 	}
+}
+
+static void cyapa_detect_work(struct work_struct *work)
+{
+	struct cyapa *cyapa = container_of(work, struct cyapa, detect_work);
+	cyapa_detect(cyapa);
 }
 
 static int __devinit cyapa_probe(struct i2c_client *client,
