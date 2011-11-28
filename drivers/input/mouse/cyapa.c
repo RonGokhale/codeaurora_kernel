@@ -117,7 +117,7 @@
 #define BL_KEY2 0xC1
 #define BL_KEY3 0xC2
 
-#define BL_HEAD_BYTES  16  /* bytes of bootloader head registers. */
+#define BL_STATUS_SIZE  3  /* length of bootloader status registers */
 #define BLK_HEAD_BYTES 32
 
 /* Macro for register map group offset. */
@@ -157,7 +157,6 @@ enum cyapa_state {
 	CYAPA_STATE_BL_ACTIVE,
 	CYAPA_STATE_BL_BUSY,
 	CYAPA_STATE_NO_DEVICE,
-	CYAPA_STATE_UNKNOWN,
 };
 
 
@@ -522,7 +521,6 @@ static ssize_t cyapa_read_block(struct cyapa *cyapa, u8 cmd_idx, u8 *values)
  *   BOOTLOADER_ACTIVE
  *   BOOTLOADER_BUSY
  *   NO_DEVICE
- *   UNKNOWN
  *
  * Returns:
  *   0 on success, and sets cyapa->state
@@ -530,21 +528,22 @@ static ssize_t cyapa_read_block(struct cyapa *cyapa, u8 cmd_idx, u8 *values)
  */
 static int cyapa_get_state(struct cyapa *cyapa)
 {
+	struct device *dev = &cyapa->client->dev;
 	int ret;
-	u8 status[BL_HEAD_BYTES];
+	u8 status[BL_STATUS_SIZE];
 
 	mutex_lock(&cyapa->state_mutex);
 	cyapa->state = CYAPA_STATE_NO_DEVICE;
 
 	/*
-	 * Get trackpad status by reading 16 register starting from 0.
+	 * Get trackpad status by reading 3 registers starting from 0.
 	 * If the device is in the bootloader, this will be BL_HEAD.
 	 * If the device is in operation mode, this will be the DATA regs.
 	 *
 	 * Note: on SMBus, this may be slow.
 	 * TODO(djkurtz): make it fast on SMBus!
 	 */
-	ret = cyapa_i2c_reg_read_block(cyapa, BL_HEAD_OFFSET, BL_HEAD_BYTES,
+	ret = cyapa_i2c_reg_read_block(cyapa, BL_HEAD_OFFSET, BL_STATUS_SIZE,
 				       status);
 
 	/*
@@ -552,27 +551,27 @@ static int cyapa_get_state(struct cyapa *cyapa)
 	 * -ETIMEDOUT.  In this case, try again using the smbus equivalent
 	 * command.  This should return a BL_HEAD indicating CYAPA_STATE_OP.
 	 */
-	if (cyapa->smbus && ret == -ETIMEDOUT)
-		ret = cyapa_read_block(cyapa, CYAPA_CMD_BL_HEAD, status);
+	if (cyapa->smbus && ret == -ETIMEDOUT) {
+		dev_dbg(dev, "smbus: probing with BL_STATUS command\n");
+		ret = cyapa_read_block(cyapa, CYAPA_CMD_BL_STATUS, status);
+	}
 
-	if (ret != BL_HEAD_BYTES) {
+	if (ret != BL_STATUS_SIZE) {
 		mutex_unlock(&cyapa->state_mutex);
 		return (ret < 0) ? ret : -EAGAIN;
 	}
 
-	if ((status[REG_OP_STATUS] & OP_STATUS_DEV) == CYAPA_DEV_NORMAL &&
-			(status[REG_OP_DATA1] & OP_DATA_VALID)) {
+	if ((status[REG_OP_STATUS] & OP_STATUS_DEV) == CYAPA_DEV_NORMAL) {
+		dev_dbg(dev, "device state: operational mode\n");
 		cyapa->state = CYAPA_STATE_OP;
-	} else if ((status[REG_BL_STATUS] & BL_STATUS_RUNNING) == 0 ||
-			status[REG_BL_KEY1] != BL_KEY1 ||
-			status[REG_BL_KEY2] != BL_KEY2 ||
-			status[REG_BL_KEY3] != BL_KEY3) {
-		cyapa->state = CYAPA_STATE_UNKNOWN;
 	} else if (status[REG_BL_STATUS] & BL_STATUS_BUSY) {
+		dev_dbg(dev, "device state: bootloader busy\n");
 		cyapa->state = CYAPA_STATE_BL_BUSY;
 	} else if (status[REG_BL_ERROR] & BL_ERROR_BOOTLOADING) {
+		dev_dbg(dev, "device state: bootloader active\n");
 		cyapa->state = CYAPA_STATE_BL_ACTIVE;
 	} else {
+		dev_dbg(dev, "device state: bootloader idle\n");
 		cyapa->state = CYAPA_STATE_BL_IDLE;
 	}
 
@@ -621,7 +620,7 @@ static int cyapa_reset(struct cyapa *cyapa)
 	int ret;
 
 	mutex_lock(&cyapa->state_mutex);
-	cyapa->state = CYAPA_STATE_UNKNOWN;
+	cyapa->state = CYAPA_STATE_NO_DEVICE;
 	ret = cyapa_write_byte(cyapa, CYAPA_CMD_SOFT_RESET, 0x01);
 	mutex_unlock(&cyapa->state_mutex);
 
@@ -1518,7 +1517,7 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 	/* i2c isn't supported, set smbus */
 	if (cyapa->adapter_func == CYAPA_ADAPTER_FUNC_SMBUS)
 		cyapa->smbus = true;
-	cyapa->state = CYAPA_STATE_UNKNOWN;
+	cyapa->state = CYAPA_STATE_NO_DEVICE;
 
 	global_cyapa = cyapa;
 	mutex_init(&cyapa->state_mutex);
