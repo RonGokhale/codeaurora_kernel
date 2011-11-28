@@ -1350,15 +1350,6 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int cyapa_open(struct input_dev *input)
-{
-	return 0;
-}
-
-static void cyapa_close(struct input_dev *input)
-{
-}
-
 static u8 cyapa_check_adapter_functionality(struct i2c_client *client)
 {
 	u8 ret = CYAPA_ADAPTER_FUNC_NONE;
@@ -1399,15 +1390,13 @@ static int cyapa_create_input_dev(struct cyapa *cyapa)
 		return -ENOMEM;
 	}
 
-	input->name = "cyapa_trackpad";
+	input->name = cyapa->client->name;
 	input->phys = cyapa->client->adapter->name;
 	input->id.bustype = BUS_I2C;
 	input->id.version = 1;
 	input->id.product = 0;  /* means any product in eventcomm. */
 	input->dev.parent = &cyapa->client->dev;
 
-	input->open = cyapa_open;
-	input->close = cyapa_close;
 	input_set_drvdata(input, cyapa);
 
 	__set_bit(EV_ABS, input->evbit);
