@@ -716,11 +716,19 @@ static int cyapa_bl_exit(struct cyapa *cyapa)
 	return 0;
 }
 
+/*
+ * Set device power mode
+ *
+ * Device power mode can only be set when device is in operational mode.
+ */
 static int cyapa_set_power_mode(struct cyapa *cyapa, u8 power_mode)
 {
 	int ret;
 	u8 power;
 	int tries = 3;
+
+	if (cyapa->state != CYAPA_STATE_OP)
+		return 0;
 
 	power = cyapa_read_byte(cyapa, CYAPA_CMD_POWER_MODE);
 	power &= ~OP_POWER_MODE_MASK;
@@ -1589,20 +1597,15 @@ static int __devexit cyapa_remove(struct i2c_client *client)
 static int cyapa_suspend(struct device *dev)
 {
 	int ret;
-	struct i2c_client *client = to_i2c_client(dev);
-	struct cyapa *cyapa = i2c_get_clientdata(client);
+	struct cyapa *cyapa = dev_get_drvdata(dev);
 
 	/* Wait for detection to complete before allowing suspend. */
 	flush_workqueue(cyapa->detect_wq);
 
-	/* only change power state or enable wakeup if device is operational */
-	if (cyapa->state != CYAPA_STATE_OP)
-		return 0;
-
 	/* set trackpad device to light sleep mode. Just ignore any errors */
 	ret = cyapa_set_power_mode(cyapa, PWR_MODE_LIGHT_SLEEP);
 	if (ret < 0)
-		dev_err(dev, "suspend trackpad device failed, %d\n", ret);
+		dev_err(dev, "set power mode failed, %d\n", ret);
 
 	if (device_may_wakeup(dev))
 		enable_irq_wake(cyapa->irq);
@@ -1613,8 +1616,7 @@ static int cyapa_suspend(struct device *dev)
 static int cyapa_resume(struct device *dev)
 {
 	int ret;
-	struct i2c_client *client = to_i2c_client(dev);
-	struct cyapa *cyapa = i2c_get_clientdata(client);
+	struct cyapa *cyapa = dev_get_drvdata(dev);
 
 	if (device_may_wakeup(dev))
 		disable_irq_wake(cyapa->irq);
