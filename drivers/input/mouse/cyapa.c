@@ -597,11 +597,11 @@ static int cyapa_get_state(struct cyapa *cyapa)
 static int cyapa_poll_state(struct cyapa *cyapa, unsigned int timeout)
 {
 	int ret;
-	int tries = timeout / 300;
+	int tries = timeout / 100;
 
 	ret = cyapa_get_state(cyapa);
 	while ((ret || cyapa->state >= CYAPA_STATE_BL_BUSY) && tries--) {
-		msleep(300);
+		msleep(100);
 		ret = cyapa_get_state(cyapa);
 	}
 	return (ret == -EAGAIN || ret == -ETIMEDOUT) ? -ETIMEDOUT : ret;
@@ -610,15 +610,16 @@ static int cyapa_poll_state(struct cyapa *cyapa, unsigned int timeout)
 /*
  * Enter bootloader by soft resetting the device.
  *
- * After reset, device should enter bootloader idle state within 300 msec.
  * If device is already in the bootloader, the function just returns.
+ * Otherwise, reset the device; after reset, device enters bootloader idle
+ * state immediately.
  *
  * Also, if device was unregister device from input core.  Device will
  * re-register after it is detected following resumption of operational mode.
  *
  * Returns:
  *   0 on success
- *   -EAGAIN  device accepted command, but did reset into bootloader idle state
+ *   -EAGAIN  device was reset, but is not now in bootloader idle state
  *   < 0 if the device never responds within the timeout
  */
 static int cyapa_bl_enter(struct cyapa *cyapa)
@@ -642,7 +643,6 @@ static int cyapa_bl_enter(struct cyapa *cyapa)
 		cyapa->input = NULL;
 	}
 
-	msleep(300);
 	ret = cyapa_get_state(cyapa);
 	if (ret < 0)
 		return ret;
@@ -660,9 +660,9 @@ static int cyapa_bl_activate(struct cyapa *cyapa)
 	if (ret < 0)
 		return ret;
 
-	/* wait for bootloader to switch to active state */
-	msleep(300);
-	ret = cyapa_get_state(cyapa);
+	/* Wait for bootloader to activate; takes between 2 and 12 seconds */
+	msleep(2000);
+	ret = cyapa_poll_state(cyapa, 10000);
 	if (ret < 0)
 		return ret;
 	if (cyapa->state != CYAPA_STATE_BL_ACTIVE)
@@ -680,9 +680,9 @@ static int cyapa_bl_deactivate(struct cyapa *cyapa)
 	if (ret < 0)
 		return ret;
 
-	/* wait for bootloader to switch to idle state */
-	msleep(300);
-	ret = cyapa_get_state(cyapa);
+	/* wait for bootloader to switch to idle state; should take < 100ms */
+	msleep(100);
+	ret = cyapa_poll_state(cyapa, 500);
 	if (ret < 0)
 		return ret;
 	if (cyapa->state != CYAPA_STATE_BL_IDLE)
@@ -713,13 +713,13 @@ static int cyapa_bl_exit(struct cyapa *cyapa)
 
 	/*
 	 * Wait for bootloader to exit, and operation mode to start.
-	 * On every boot this takes at least 300 ms.
+	 * Normally, this takes at least 50 ms.
 	 */
-	msleep(300);
+	usleep_range(50000, 100000);
 	/*
-	 * In addition to the 300ms wait, when a device boots for the first
-	 * time after being updated to new firmware, it must first calibrate
-	 * its sensors, which can take up to 2 seconds.
+	 * In addition, when a device boots for the first time after being
+	 * updated to new firmware, it must first calibrate its sensors, which
+	 * can take up to an additional 2 seconds.
 	 */
 	ret = cyapa_poll_state(cyapa, 2000);
 	if (ret < 0)
