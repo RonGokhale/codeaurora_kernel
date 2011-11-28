@@ -608,26 +608,39 @@ static int cyapa_poll_state(struct cyapa *cyapa, unsigned int timeout)
 }
 
 /*
- * Reset the device.
+ * Enter bootloader by soft resetting the device.
  *
- * Resetting the device should return in to bootloader mode within 300 msec.
+ * After reset, device should enter bootloader idle state within 300 msec.
+ * If device is already in the bootloader, the function just returns.
+ *
+ * Also, if device was unregister device from input core.  Device will
+ * re-register after it is detected following resumption of operational mode.
  *
  * Returns:
  *   0 on success
- *   -EAGAIN  device accepted command, but
+ *   -EAGAIN  device accepted command, but did reset into bootloader idle state
  *   < 0 if the device never responds within the timeout
  */
-static int cyapa_reset(struct cyapa *cyapa)
+static int cyapa_bl_enter(struct cyapa *cyapa)
 {
 	int ret;
 
 	mutex_lock(&cyapa->state_mutex);
+	if (cyapa->state != CYAPA_STATE_OP) {
+		mutex_unlock(&cyapa->state_mutex);
+		return 0;
+	}
 	cyapa->state = CYAPA_STATE_NO_DEVICE;
 	ret = cyapa_write_byte(cyapa, CYAPA_CMD_SOFT_RESET, 0x01);
 	mutex_unlock(&cyapa->state_mutex);
 
 	if (ret < 0)
 		return -EIO;
+
+	if (cyapa->input) {
+		input_unregister_device(cyapa->input);
+		cyapa->input = NULL;
+	}
 
 	msleep(300);
 	ret = cyapa_get_state(cyapa);
@@ -1042,32 +1055,25 @@ static int cyapa_send_bl_cmd(struct cyapa *cyapa, enum cyapa_bl_cmd cmd)
 
 	switch (cmd) {
 	case CYAPA_CMD_APP_TO_IDLE:
-		/* do reset operation to switch to bootloader idle mode. */
-		ret = cyapa_reset(cyapa);
+		ret = cyapa_bl_enter(cyapa);
 		if (ret < 0)
-			dev_err(dev, "firmware reset cmd failed, %d\n", ret);
+			dev_err(dev, "enter bootloader failed, %d\n", ret);
 		break;
 
 	case CYAPA_CMD_IDLE_TO_ACTIVE:
 		ret = cyapa_bl_activate(cyapa);
 		if (ret)
-			dev_err(dev, "activate bootloader failed: %d\n", ret);
+			dev_err(dev, "activate bootloader failed, %d\n", ret);
 		break;
 
 	case CYAPA_CMD_ACTIVE_TO_IDLE:
 		ret = cyapa_bl_deactivate(cyapa);
 		if (ret)
-			dev_err(dev, "deactivate bootloader failed: %d\n", ret);
+			dev_err(dev, "deactivate bootloader failed, %d\n", ret);
 		break;
 
 	case CYAPA_CMD_IDLE_TO_APP:
-		ret = cyapa_bl_exit(cyapa);
-		if (ret)
-			dev_err(dev, "exit bootloader failed, %d\n", ret);
-
-		ret = cyapa_check_is_operational(cyapa);
-		if (ret)
-			dev_err(dev, "device is not operational, %d\n", ret);
+		cyapa_detect(cyapa);
 		break;
 
 	default:
