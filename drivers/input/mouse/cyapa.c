@@ -665,8 +665,6 @@ static int cyapa_bl_deactivate(struct cyapa *cyapa)
 					bl_deactivate);
 	if (ret < 0)
 		return ret;
-	if (ret != sizeof(bl_deactivate))
-		return -EIO;
 
 	/* wait for bootloader to switch to idle state */
 	msleep(300);
