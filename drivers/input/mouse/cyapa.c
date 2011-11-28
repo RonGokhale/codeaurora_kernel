@@ -16,6 +16,7 @@
 
 
 #include <linux/delay.h>
+#include <linux/firmware.h>
 #include <linux/gpio.h>
 #include <linux/i2c.h>
 #include <linux/i2c/cyapa.h>
@@ -336,6 +337,21 @@ static const struct cyapa_cmd_len cyapa_smbus_cmds[] = {
 	{CYAPA_SMBUS_BLK_PRODUCT_ID, PRODUCT_ID_SIZE},
 	{CYAPA_SMBUS_BLK_HEAD, 16},
 };
+
+#define CYAPA_FW_NAME		"cyapa.bin"
+#define CYAPA_FW_BLOCK_SIZE	64
+#define CYAPA_FW_HDR_START	0x0780
+#define CYAPA_FW_HDR_BLOCK_COUNT  2
+#define CYAPA_FW_HDR_BLOCK_START  (CYAPA_FW_HDR_START / CYAPA_FW_BLOCK_SIZE)
+#define CYAPA_FW_HDR_SIZE	(CYAPA_FW_HDR_BLOCK_COUNT * \
+				 CYAPA_FW_BLOCK_SIZE)
+#define CYAPA_FW_DATA_START	0x0800
+#define CYAPA_FW_DATA_BLOCK_COUNT  480
+#define CYAPA_FW_DATA_BLOCK_START  (CYAPA_FW_DATA_START / CYAPA_FW_BLOCK_SIZE)
+#define CYAPA_FW_DATA_SIZE	(CYAPA_FW_DATA_BLOCK_COUNT * \
+				 CYAPA_FW_BLOCK_SIZE)
+#define CYAPA_FW_SIZE		(CYAPA_FW_HDR_SIZE + CYAPA_FW_DATA_SIZE)
+#define CYAPA_CMD_LEN		16
 
 static void cyapa_detect(struct cyapa *cyapa);
 
@@ -862,6 +878,212 @@ static int cyapa_check_is_operational(struct cyapa *cyapa)
 	return 0;
 }
 
+
+static u16 cyapa_csum(const u8 *buf, size_t count)
+{
+	int i;
+	u16 csum = 0;
+
+	for (i = 0; i < count; i++)
+		csum += buf[i];
+
+	return csum;
+}
+
+/*
+ * Write a |len| byte long buffer |buf| to the device, by chopping it up into a
+ * sequence of smaller |CYAPA_CMD_LEN|-length write commands.
+ *
+ * The data bytes for a write command are prepended with the 1-byte offset
+ * of the data relative to the start of |buf|.
+ */
+static int cyapa_write_buffer(struct cyapa *cyapa, const u8 *buf, size_t len)
+{
+	int ret;
+	size_t i;
+	unsigned char cmd[CYAPA_CMD_LEN + 1];
+	size_t cmd_len;
+
+	for (i = 0; i < len; i += CYAPA_CMD_LEN) {
+		const u8 *payload = &buf[i];
+		cmd_len = (len - i >= CYAPA_CMD_LEN) ? CYAPA_CMD_LEN : len - i;
+		cmd[0] = i;
+		memcpy(&cmd[1], payload, cmd_len);
+
+		ret = cyapa_i2c_reg_write_block(cyapa, 0, cmd_len + 1, cmd);
+		if (ret < 0)
+			return ret;
+	}
+	return 0;
+}
+
+
+/*
+ * A firmware block write command writes 64 bytes of data to a single flash
+ * page in the device.  The 78-byte block write command has the format:
+ *   <0xFF> <CMD> <Key> <Start> <Data> <Data-Checksum> <CMD Checksum>
+ *
+ *  <0xFF>  - every command starts with 0xFF
+ *  <CMD>   - the write command value is 0x39
+ *  <Key>   - write commands include an 8-byte key: { 00 01 02 03 04 05 06 07 }
+ *  <Block> - Memory Block number (address / 64) (16-bit, big-endian)
+ *  <Data>  - 64 bytes of firmware image data
+ *  <Data Checksum> - sum of 64 <Data> bytes, modulo 0xFF
+ *  <CMD Checksum> - sum of 77 bytes, from 0xFF to <Data Checksum>
+ *
+ * Each write command is split into 5 i2c write transactions of up to 16 bytes.
+ * Each transaction starts with an i2c register offset: (00, 10, 20, 30, 40).
+ */
+static int cyapa_write_fw_block(struct cyapa *cyapa, u16 block, const u8 *data)
+{
+	int ret;
+	u8 cmd[78];
+	u8 status[BL_STATUS_SIZE];
+	int tries = 3;
+
+	/* set write command and security key bytes. */
+	cmd[0] = 0xFF;
+	cmd[1] = 0x39;
+	cmd[2] = 0x00;
+	cmd[3] = 0x01;
+	cmd[4] = 0x02;
+	cmd[5] = 0x03;
+	cmd[6] = 0x04;
+	cmd[7] = 0x05;
+	cmd[8] = 0x06;
+	cmd[9] = 0x07;
+	cmd[10] = block >> 8;
+	cmd[11] = block;
+	memcpy(&cmd[12], data, CYAPA_FW_BLOCK_SIZE);
+	cmd[76] = cyapa_csum(data, CYAPA_FW_BLOCK_SIZE);
+	cmd[77] = cyapa_csum(cmd, sizeof(cmd) - 1);
+
+	ret = cyapa_write_buffer(cyapa, cmd, sizeof(cmd));
+	if (ret)
+		return ret;
+
+	/* wait for write to finish */
+	do {
+		usleep_range(10000, 20000);
+
+		/* check block write command result status. */
+		ret = cyapa_i2c_reg_read_block(cyapa, BL_HEAD_OFFSET,
+					       BL_STATUS_SIZE, status);
+		if (ret != BL_STATUS_SIZE)
+			return (ret < 0) ? ret : -EIO;
+		ret = (status[1] == 0x10 && status[2] == 0x20) ? 0 : -EIO;
+	} while (--tries && ret);
+
+	return ret;
+}
+
+
+/*
+ * Verify the integrity of a CYAPA firmware image file.
+ *
+ * The firmware image file is 30848 bytes, composed of 482 64-byte blocks.
+ *
+ * The first 2 blocks are the firmware header.
+ * The next 480 blocks are the firmware image.
+ *
+ * The first two bytes of the header hold the header checksum, computed by
+ * summing the other 126 bytes of the header.
+ * The last two bytes of the header hold the firmware image checksum, computed
+ * by summing the 30720 bytes of the image modulo 0xFFFF.
+ *
+ * Both checksums are stored little-endian.
+ */
+static int cyapa_check_fw(struct cyapa *cyapa, const struct firmware *fw)
+{
+	struct device *dev = &cyapa->client->dev;
+	u16 csum;
+	u16 csum_expected;
+
+	/* Firmware must match exact 30848 bytes = 482 64-byte blocks. */
+	if (fw->size != CYAPA_FW_SIZE) {
+		dev_err(dev, "invalid firmware size = %u, expected %u.\n",
+			fw->size, CYAPA_FW_SIZE);
+		return -EINVAL;
+	}
+
+	/* Verify header block */
+	csum_expected = (fw->data[0] << 8) | fw->data[1];
+	csum = cyapa_csum(&fw->data[2], CYAPA_FW_HDR_SIZE - 2);
+	if (csum != csum_expected) {
+		dev_err(dev, "invalid firmware header checksum = %04x, "
+			     "expected: %04x\n", csum, csum_expected);
+		return -EINVAL;
+	}
+
+	/* Verify firmware image */
+	csum_expected = (fw->data[CYAPA_FW_HDR_SIZE - 2] << 8) |
+			 fw->data[CYAPA_FW_HDR_SIZE - 1];
+	csum = cyapa_csum(&fw->data[CYAPA_FW_HDR_SIZE], CYAPA_FW_DATA_SIZE);
+	if (csum != csum_expected) {
+		dev_err(dev, "invalid firmware checksum = %04x, "
+			     "expected: %04x\n", csum, csum_expected);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int cyapa_firmware(struct cyapa *cyapa)
+{
+	struct device *dev = &cyapa->client->dev;
+	int ret;
+	const struct firmware *fw;
+	const char *fw_name = CYAPA_FW_NAME;
+	int i;
+
+	ret = request_firmware(&fw, CYAPA_FW_NAME, dev);
+	if (ret) {
+		dev_err(dev, "Could not load firmware from %s, %d\n",
+			  fw_name, ret);
+		return ret;
+	}
+
+	ret = cyapa_check_fw(cyapa, fw);
+	if (ret) {
+		dev_err(dev, "Invalid CYAPA firmware image: %s\n", fw_name);
+		goto done;
+	}
+
+	ret = cyapa_bl_enter(cyapa);
+	if (ret)
+		goto err_detect;
+
+	ret = cyapa_bl_activate(cyapa);
+	if (ret)
+		goto err_detect;
+
+	/* First write data, starting at byte 128  of fw->data */
+	for (i = 0; i < CYAPA_FW_DATA_BLOCK_COUNT; i++) {
+		size_t block = CYAPA_FW_DATA_BLOCK_START + i;
+		size_t addr = (i + CYAPA_FW_HDR_BLOCK_COUNT) *
+				CYAPA_FW_BLOCK_SIZE;
+		const u8 *data = &fw->data[addr];
+		ret = cyapa_write_fw_block(cyapa, block, data);
+		if (ret)
+			goto err_detect;
+	}
+
+	/* Then write checksum */
+	for (i = 0; i < CYAPA_FW_HDR_BLOCK_COUNT; i++) {
+		size_t block = CYAPA_FW_HDR_BLOCK_START + i;
+		size_t addr = i * CYAPA_FW_BLOCK_SIZE;
+		const u8 *data = &fw->data[addr];
+		ret = cyapa_write_fw_block(cyapa, block, data);
+		if (ret)
+			goto err_detect;
+	}
+
+err_detect:
+	cyapa_detect(cyapa);
+
+done:
+	release_firmware(fw);
+	return ret;
+}
 /*
  **************************************************************
  * misc cyapa device for trackpad firmware update,
@@ -1267,16 +1489,35 @@ static ssize_t cyapa_show_protocol_version(struct device *dev,
 	return sprintf(buf, "%d\n", cyapa->gen);
 }
 
+static ssize_t cyapa_update_fw_store(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *buf, size_t count)
+{
+	struct cyapa *cyapa = dev_get_drvdata(dev);
+	int ret;
+
+	ret = cyapa_firmware(cyapa);
+	if (ret)
+		dev_err(dev, "firmware update failed, %d\n", ret);
+	else
+		dev_dbg(dev, "firmware update succeeded\n");
+
+	return ret ? ret : count;
+}
+
+
 static DEVICE_ATTR(firmware_version, S_IRUGO, cyapa_show_fm_ver, NULL);
 static DEVICE_ATTR(hardware_version, S_IRUGO, cyapa_show_hw_ver, NULL);
 static DEVICE_ATTR(product_id, S_IRUGO, cyapa_show_product_id, NULL);
 static DEVICE_ATTR(protocol_version, S_IRUGO, cyapa_show_protocol_version, NULL);
+static DEVICE_ATTR(update_fw, S_IWUSR, NULL, cyapa_update_fw_store);
 
 static struct attribute *cyapa_sysfs_entries[] = {
 	&dev_attr_firmware_version.attr,
 	&dev_attr_hardware_version.attr,
 	&dev_attr_product_id.attr,
 	&dev_attr_protocol_version.attr,
+	&dev_attr_update_fw.attr,
 	NULL,
 };
 
