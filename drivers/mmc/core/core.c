@@ -107,7 +107,7 @@ void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 			cmd->retries = 0;
 	}
 
-	if (err && cmd->retries) {
+	if (err && cmd->retries && !mmc_card_removed(host->card)) {
 		pr_debug("%s: req failed (CMD%u): %d, retrying...\n",
 			mmc_hostname(host), cmd->opcode, err);
 
@@ -241,6 +241,10 @@ void mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
 
 	mrq->done_data = &complete;
 	mrq->done = mmc_wait_done;
+	if (mmc_card_removed(host->card)) {
+		mrq->cmd->error = -ENOMEDIUM;
+		return;
+	}
 
 	mmc_start_request(host, mrq);
 
@@ -1226,6 +1230,7 @@ void mmc_detect_change(struct mmc_host *host, unsigned long delay)
 	spin_unlock_irqrestore(&host->lock, flags);
 #endif
 
+	host->detect_change = 1;
 	mmc_schedule_delayed_work(&host->detect, delay);
 }
 
@@ -1627,6 +1632,43 @@ static int mmc_rescan_try_freq(struct mmc_host *host, unsigned freq)
 	return -EIO;
 }
 
+int _mmc_detect_card_removed(struct mmc_host *host)
+{
+	int ret;
+
+	if ((host->caps & MMC_CAP_NONREMOVABLE) || !host->bus_ops->alive)
+		return 0;
+
+	if (!host->card || mmc_card_removed(host->card))
+		return 1;
+
+	ret = host->bus_ops->alive(host);
+	if (ret) {
+		mmc_card_set_removed(host->card);
+		pr_debug("%s: card remove detected\n", mmc_hostname(host));
+	}
+
+	return ret;
+}
+
+int mmc_detect_card_removed(struct mmc_host *host)
+{
+	struct mmc_card *card = host->card;
+
+	WARN_ON(!host->claimed);
+	/*
+	 * The card will be considered unchanged unless we have been asked to
+	 * detect a change or host requires polling to provide card detection.
+	 */
+	if (card && !host->detect_change && !(host->caps & MMC_CAP_NEEDS_POLL))
+		return mmc_card_removed(card);
+
+	host->detect_change = 0;
+
+	return _mmc_detect_card_removed(host);
+}
+EXPORT_SYMBOL(mmc_detect_card_removed);
+
 void mmc_rescan(struct work_struct *work)
 {
 	struct mmc_host *host =
@@ -1651,6 +1693,8 @@ void mmc_rescan(struct work_struct *work)
 		if (host->bus_dead)
 			extend_wakelock = 1;
 	}
+
+	host->detect_change = 0;
 
 	/*
 	 * Let mmc_bus_put() free the bus/bus_ops if we've found that
