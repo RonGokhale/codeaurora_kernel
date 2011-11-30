@@ -34,6 +34,8 @@ struct pid_namespace {
 	int hide_pid;
 #ifdef CONFIG_SECURITY_YAMA
 	int ptrace_scope;
+	int protected_sticky_symlinks;
+	int protected_nonaccess_hardlinks;
 #endif
 };
 
