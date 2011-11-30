@@ -259,5 +259,6 @@ u32 ath_regd_get_band_ctl(struct ath_regulatory *reg,
 int ath_reg_notifier_apply(struct wiphy *wiphy,
 			   struct regulatory_request *request,
 			   struct ath_regulatory *reg);
+int ath_regd_init_from_eeprom(struct ath_regulatory *reg);
 
 #endif
