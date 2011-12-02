@@ -57,10 +57,10 @@ module_param_named(powersave, i915_powersave, int, 0600);
 MODULE_PARM_DESC(powersave,
 		"Enable powersavings, fbc, downclocking, etc. (default: true)");
 
-unsigned int i915_semaphores __read_mostly = 0;
+unsigned int i915_semaphores __read_mostly = 1;
 module_param_named(semaphores, i915_semaphores, int, 0600);
 MODULE_PARM_DESC(semaphores,
-		"Use semaphores for inter-ring sync (default: false)");
+		"Use semaphores for inter-ring sync (default: true)");
 
 unsigned int i915_enable_rc6 __read_mostly = 0;
 module_param_named(i915_enable_rc6, i915_enable_rc6, int, 0600);
