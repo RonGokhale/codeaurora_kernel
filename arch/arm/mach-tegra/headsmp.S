@@ -34,7 +34,49 @@
  *	 Initial secondary processor boot vector; jumps to kernel's
  *	 secondary_startup routine
  */
+
+/* returns the ID of the current processor */
+	.macro  cpu_id, rd
+		mrc     p15, 0, \rd, c0, c0, 5
+		and     \rd, \rd, #0xF
+	.endm
+
+	.macro mov32, reg, val
+		movw    \reg, #:lower16:\val
+		movt    \reg, #:upper16:\val
+	.endm
+
+
 ENTRY(tegra_secondary_startup)
+	/*
+	 * This whole block of code came from the ChromiumOS 2.6.38
+	 * tree and seems to fix problems bringing up the 2nd processor.
+	 * See __invalidate_cpu_state() in the old cortex-a9.S.
+	 *
+	 * TODO: Figure out exactly what of this is needed and why, then
+	 * figure out the best way to fit this into the current codebase.
+	 */
+        clrex
+	mov     r0, #0
+	mcr     p15, 0, r0, c1, c0, 1   @ disable SMP, prefetch, broadcast
+	isb
+	mcr     p15, 0, r0, c7, c5, 0   @ invalidate BTAC, i-cache
+	mcr     p15, 0, r0, c7, c5, 6   @ invalidate branch pred array
+	mcr     p15, 0, r0, c8, c7, 0   @ invalidate unified TLB
+	dsb
+	isb
+	cpu_id  r0
+	cmp     r0, #0
+	mov32   r1, (TEGRA_ARM_PERIF_BASE + 0xC)
+	movne   r0, r0, lsl #2
+	movne   r2, #0xf
+	movne   r2, r2, lsl r0
+	strne   r2, [r1]                @ invalidate SCU tags for CPU
+	dsb
+	mov     r0, #0x1800
+	mcr     p15, 0, r0, c1, c0, 0   @ enable branch prediction, i-cache
+	isb
+
 	bl	tegra_invalidate_l1
 	bl	tegra_enable_coresite
 	b	secondary_startup
