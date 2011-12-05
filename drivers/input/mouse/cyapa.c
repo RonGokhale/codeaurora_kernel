@@ -207,7 +207,6 @@ struct cyapa {
 	struct mutex misc_mutex;
 	int misc_open_count;
 
-	struct mutex state_mutex;  /* synchronize access to device state */
 	enum cyapa_state state;
 
 	struct i2c_client	*client;
@@ -534,7 +533,6 @@ static int cyapa_get_state(struct cyapa *cyapa)
 	int ret;
 	u8 status[BL_STATUS_SIZE];
 
-	mutex_lock(&cyapa->state_mutex);
 	cyapa->state = CYAPA_STATE_NO_DEVICE;
 
 	/*
@@ -558,10 +556,8 @@ static int cyapa_get_state(struct cyapa *cyapa)
 		ret = cyapa_read_block(cyapa, CYAPA_CMD_BL_STATUS, status);
 	}
 
-	if (ret != BL_STATUS_SIZE) {
-		mutex_unlock(&cyapa->state_mutex);
+	if (ret != BL_STATUS_SIZE)
 		return (ret < 0) ? ret : -EAGAIN;
-	}
 
 	if ((status[REG_OP_STATUS] & OP_STATUS_DEV) == CYAPA_DEV_NORMAL) {
 		dev_dbg(dev, "device state: operational mode\n");
@@ -577,7 +573,6 @@ static int cyapa_get_state(struct cyapa *cyapa)
 		cyapa->state = CYAPA_STATE_BL_IDLE;
 	}
 
-	mutex_unlock(&cyapa->state_mutex);
 	return 0;
 }
 /*
@@ -626,22 +621,20 @@ static int cyapa_bl_enter(struct cyapa *cyapa)
 {
 	int ret;
 
-	mutex_lock(&cyapa->state_mutex);
-	if (cyapa->state != CYAPA_STATE_OP) {
-		mutex_unlock(&cyapa->state_mutex);
-		return 0;
-	}
-	cyapa->state = CYAPA_STATE_NO_DEVICE;
-	ret = cyapa_write_byte(cyapa, CYAPA_CMD_SOFT_RESET, 0x01);
-	mutex_unlock(&cyapa->state_mutex);
-
-	if (ret < 0)
-		return -EIO;
-
 	if (cyapa->input) {
+		disable_irq(cyapa->irq);
 		input_unregister_device(cyapa->input);
 		cyapa->input = NULL;
 	}
+
+	if (cyapa->state != CYAPA_STATE_OP)
+		return 0;
+
+	cyapa->state = CYAPA_STATE_NO_DEVICE;
+	ret = cyapa_write_byte(cyapa, CYAPA_CMD_SOFT_RESET, 0x01);
+
+	if (ret < 0)
+		return -EIO;
 
 	ret = cyapa_get_state(cyapa);
 	if (ret < 0)
@@ -761,13 +754,10 @@ static int cyapa_get_query_data(struct cyapa *cyapa)
 	u8 query_data[QUERY_DATA_SIZE];
 	int ret;
 
-	mutex_lock(&cyapa->state_mutex);
-	if (cyapa->state != CYAPA_STATE_OP) {
-		mutex_unlock(&cyapa->state_mutex);
+	if (cyapa->state != CYAPA_STATE_OP)
 		return -EBUSY;
-	}
+
 	ret = cyapa_read_block(cyapa, CYAPA_CMD_GROUP_QUERY, query_data);
-	mutex_unlock(&cyapa->state_mutex);
 	if (ret < 0)
 		return ret;
 	if (ret != QUERY_DATA_SIZE)
@@ -1310,20 +1300,15 @@ static irqreturn_t cyapa_irq(int irq, void *dev_id)
 	unsigned int mask;
 
 	/*
-	 * Don't read input while already in or switching to bootloader.
-	 * Note in particular:
-	 *   1) the mutex avoids a race between the irq thread and entering
-	 *       bootloader.
-	 *   2) there is always a spurious irq request when entering bootloader
-	 *      that must be ignored.
+	 * Don't read input if input device has not been configured.
+	 * This check check solves a race during probe() between irq_request()
+	 * and irq_disable(), since there is no way to request an irq that is
+	 * initially disabled.
 	 */
-	mutex_lock(&cyapa->state_mutex);
-	if (cyapa->state != CYAPA_STATE_OP) {
-		mutex_unlock(&cyapa->state_mutex);
+	if (!input)
 		return IRQ_HANDLED;
-	}
+
 	ret = cyapa_read_block(cyapa, CYAPA_CMD_GROUP_DATA, (u8 *)&data);
-	mutex_unlock(&cyapa->state_mutex);
 	if (ret != sizeof(data))
 		return IRQ_HANDLED;
 
@@ -1400,7 +1385,7 @@ static int cyapa_create_input_dev(struct cyapa *cyapa)
 		 cyapa->physical_size_x, cyapa->physical_size_y);
 
 	input = cyapa->input = input_allocate_device();
-	if (!cyapa->input) {
+	if (!input) {
 		dev_err(dev, "allocate memory for input device failed\n");
 		return -ENOMEM;
 	}
@@ -1457,16 +1442,18 @@ static int cyapa_create_input_dev(struct cyapa *cyapa)
 	__set_bit(BTN_LEFT, input->keybit);
 
 	/* Register the device in input subsystem */
-	ret = input_register_device(cyapa->input);
+	ret = input_register_device(input);
 	if (ret) {
 		dev_err(dev, "input device register failed, %d\n", ret);
 		goto err_free_device;
 	}
 
+	enable_irq(cyapa->irq);
 	return 0;
 
 err_free_device:
 	input_free_device(input);
+	cyapa->input = NULL;
 	return ret;
 }
 
@@ -1533,23 +1520,28 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 	cyapa->state = CYAPA_STATE_NO_DEVICE;
 
 	global_cyapa = cyapa;
-	mutex_init(&cyapa->state_mutex);
 	cyapa->misc_open_count = 0;
 	spin_lock_init(&cyapa->miscdev_spinlock);
 	mutex_init(&cyapa->misc_mutex);
 
+	/*
+	 * Note: There is no way to request an irq that is initially disabled.
+	 * Thus, there is a little race here, which is resolved in cyapa_irq()
+	 * by checking that cyapa->input has been allocated, which happens
+	 * in cyapa_detect(), before creating input events.
+	 */
 	cyapa->irq = client->irq;
-	irq_set_irq_type(cyapa->irq, IRQF_TRIGGER_FALLING);
 	ret = request_threaded_irq(cyapa->irq,
 				   NULL,
 				   cyapa_irq,
-				   0,
+				   IRQF_TRIGGER_FALLING,
 				   CYAPA_I2C_NAME,
 				   cyapa);
 	if (ret) {
 		dev_err(dev, "IRQ request failed: %d\n, ", ret);
 		goto err_mem_free;
 	}
+	disable_irq(cyapa->irq);
 
 	if (sysfs_create_group(&client->dev.kobj, &cyapa_sysfs_group))
 		dev_warn(dev, "error creating sysfs entries.\n");
@@ -1591,7 +1583,6 @@ static int __devexit cyapa_remove(struct i2c_client *client)
 
 	sysfs_remove_group(&client->dev.kobj, &cyapa_sysfs_group);
 
-	disable_irq_wake(cyapa->irq);
 	free_irq(cyapa->irq, cyapa);
 
 	if (cyapa->input)
