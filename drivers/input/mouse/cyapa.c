@@ -636,6 +636,7 @@ static int cyapa_bl_enter(struct cyapa *cyapa)
 	if (ret < 0)
 		return -EIO;
 
+	usleep_range(25000, 50000);
 	ret = cyapa_get_state(cyapa);
 	if (ret < 0)
 		return ret;
