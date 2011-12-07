@@ -284,27 +284,9 @@ static int ath9k_reg_notifier(struct wiphy *wiphy,
 {
 	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
 	struct ath_softc *sc = hw->priv;
-	struct ath_hw *ah = sc->sc_ah;
-	struct ath_regulatory *reg = ath9k_hw_regulatory(ah);
-	int ret;
+	struct ath_regulatory *reg = ath9k_hw_regulatory(sc->sc_ah);
 
-	ret = ath_reg_notifier_apply(wiphy, request, reg);
-
-	if (!ath_is_world_regd(reg) ||
-	    (request->initiator != NL80211_REGDOM_SET_BY_COUNTRY_IE))
-		return ret;
-
-	/* Set tx power */
-	if (ah->curchan)
-		hw->conf.power_level = ah->curchan->chan->max_power;
-
-	sc->config.txpowlimit = 2 * hw->conf.power_level;
-	ath9k_ps_wakeup(sc);
-	ath9k_cmn_update_txpow(ah, sc->curtxpow, sc->config.txpowlimit,
-			       &sc->curtxpow);
-	ath9k_ps_restore(sc);
-
-	return ret;
+	return ath_reg_notifier_apply(wiphy, request, reg);
 }
 
 /*
