@@ -344,23 +344,10 @@ static void ath_reg_apply_world_flags(struct wiphy *wiphy,
 	}
 }
 
-static struct country_code_to_enum_rd*
-ath_regd_find_country_by_name(char *country_name)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(allCountries); i++) {
-		if (!memcmp(allCountries[i].isoName, country_name, 2))
-			return &allCountries[i];
-	}
-	return NULL;
-}
-
 int ath_reg_notifier_apply(struct wiphy *wiphy,
 			   struct regulatory_request *request,
 			   struct ath_regulatory *reg)
 {
-	struct country_code_to_enum_rd *country;
 	/* We always apply this */
 	ath_reg_apply_radar_flags(wiphy);
 
@@ -383,10 +370,6 @@ int ath_reg_notifier_apply(struct wiphy *wiphy,
 						  reg);
 		break;
 	}
-	reg->alpha2[0] = request->alpha2[0];
-	reg->alpha2[1] = request->alpha2[1];
-	country = ath_regd_find_country_by_name(request->alpha2);
-	reg->country_code = country ? country->countryCode : CTRY_DEFAULT;
 
 	return 0;
 }
@@ -522,11 +505,28 @@ static void ath_regd_sanitize(struct ath_regulatory *reg)
 	reg->current_rd = 0x64;
 }
 
-int ath_regd_init_from_eeprom(struct ath_regulatory *reg)
+int
+ath_regd_init(struct ath_regulatory *reg,
+	      struct wiphy *wiphy,
+	      int (*reg_notifier)(struct wiphy *wiphy,
+				  struct regulatory_request *request))
 {
 	struct country_code_to_enum_rd *country = NULL;
-	u16 regdmn = ath_regd_get_eepromRD(reg);
+	u16 regdmn;
 
+	if (!reg)
+		return -EINVAL;
+
+	ath_regd_sanitize(reg);
+
+	printk(KERN_DEBUG "ath: EEPROM regdomain: 0x%0x\n", reg->current_rd);
+
+	if (!ath_regd_is_eeprom_valid(reg)) {
+		printk(KERN_ERR "ath: Invalid EEPROM contents\n");
+		return -EINVAL;
+	}
+
+	regdmn = ath_regd_get_eepromRD(reg);
 	reg->country_code = ath_regd_get_default_country(regdmn);
 
 	if (reg->country_code == CTRY_DEFAULT &&
@@ -574,36 +574,6 @@ int ath_regd_init_from_eeprom(struct ath_regulatory *reg)
 		reg->alpha2[0] = '0';
 		reg->alpha2[1] = '0';
 	}
-	return 0;
-}
-EXPORT_SYMBOL(ath_regd_init_from_eeprom);
-
-int
-ath_regd_init(struct ath_regulatory *reg,
-	      struct wiphy *wiphy,
-	      int (*reg_notifier)(struct wiphy *wiphy,
-				  struct regulatory_request *request))
-{
-	int ret = 0;
-
-	if (!reg) {
-		ret = -EINVAL;
-		goto out;
-	}
-
-	ath_regd_sanitize(reg);
-
-	printk(KERN_DEBUG "ath: EEPROM regdomain: 0x%0x\n", reg->current_rd);
-
-	if (!ath_regd_is_eeprom_valid(reg)) {
-		printk(KERN_ERR "ath: Invalid EEPROM contents\n");
-		ret = -EINVAL;
-		goto out;
-	}
-
-	ret = ath_regd_init_from_eeprom(reg);
-	if (ret)
-		goto out;
 
 	printk(KERN_DEBUG "ath: Country alpha2 being used: %c%c\n",
 		reg->alpha2[0], reg->alpha2[1]);
@@ -611,8 +581,7 @@ ath_regd_init(struct ath_regulatory *reg,
 		reg->regpair->regDmnEnum);
 
 	ath_regd_init_wiphy(reg, wiphy, reg_notifier);
-out:
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL(ath_regd_init);
 
