@@ -1104,7 +1104,6 @@ static void handle_endpoint(struct usb_info *ui, unsigned bit)
 		ept->req, ept->req ? ept->req->item_dma : 0);
 	*/
 
-	del_timer(&ept->prime_timer);
 	/* expire all requests that are no longer active */
 	spin_lock_irqsave(&ui->lock, flags);
 	while ((req = ept->req)) {
@@ -1132,6 +1131,7 @@ dequeue:
 		}
 		req_dequeue = 0;
 
+		del_timer(&ept->prime_timer);
 		/* advance ept queue to the next request */
 		ept->req = req->next;
 		if (ept->req == 0)
