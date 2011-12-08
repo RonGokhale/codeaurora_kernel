@@ -520,7 +520,11 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 				disable_multi = 1;
 				continue;
 			}
+			if (mmc_card_removed(card))
+				goto cmd_err;
 			status = get_card_status(card, req);
+			if (mmc_detect_card_removed(card->host))
+				goto cmd_err;
 		} else if (disable_multi == 1) {
 			disable_multi = 0;
 		}
@@ -641,6 +645,8 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 	mmc_release_host(card->host);
 
 	spin_lock_irq(&md->lock);
+	if (mmc_card_removed(card))
+		req->cmd_flags |= REQ_QUIET;
 	while (ret)
 		ret = __blk_end_request(req, -EIO, blk_rq_cur_bytes(req));
 	spin_unlock_irq(&md->lock);
