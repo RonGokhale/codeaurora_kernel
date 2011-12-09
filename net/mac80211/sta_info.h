@@ -239,6 +239,7 @@ struct sta_ampdu_mlme {
  * @dead: set to true when sta is unlinked
  * @uploaded: set to true when sta is uploaded to the driver
  * @lost_packets: number of consecutive lost packets
+ * @beacon_loss_count: number of times beacon loss has triggered
  */
 struct sta_info {
 	/* General information, mostly static */
@@ -331,6 +332,7 @@ struct sta_info {
 #endif
 
 	unsigned int lost_packets;
+	unsigned int beacon_loss_count;
 
 	/* keep last! */
 	struct ieee80211_sta sta;
