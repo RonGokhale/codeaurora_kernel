@@ -501,6 +501,7 @@ struct station_parameters {
  * @STATION_INFO_CONNECTED_TIME: @connected_time filled
  * @STATION_INFO_ASSOC_REQ_IES: @assoc_req_ies filled
  * @STATION_INFO_STA_FLAGS: @sta_flags filled
+ * @STATION_INFO_BEACON_LOSS_COUNT: @beacon_loss_count filled
  */
 enum station_info_flags {
 	STATION_INFO_INACTIVE_TIME	= 1<<0,
@@ -521,7 +522,8 @@ enum station_info_flags {
 	STATION_INFO_BSS_PARAM          = 1<<15,
 	STATION_INFO_CONNECTED_TIME	= 1<<16,
 	STATION_INFO_ASSOC_REQ_IES	= 1<<17,
-	STATION_INFO_STA_FLAGS		= 1<<18
+	STATION_INFO_STA_FLAGS		= 1<<18,
+	STATION_INFO_BEACON_LOSS_COUNT	= 1<<19
 };
 
 /**
@@ -619,6 +621,10 @@ struct sta_bss_parameters {
  *	the cfg80211_new_sta() calls to notify user space of the IEs.
  * @assoc_req_ies_len: Length of assoc_req_ies buffer in octets.
  * @sta_flags: station flags mask & values
+<<<<<<< HEAD
+=======
+ * @beacon_loss_count: Number of times beacon loss event has triggered.
+>>>>>>> UPSTREAM: cfg80211: Return beacon loss count in station
  */
 struct station_info {
 	u32 filled;
@@ -645,6 +651,8 @@ struct station_info {
 
 	const u8 *assoc_req_ies;
 	size_t assoc_req_ies_len;
+
+	u32 beacon_loss_count;
 
 	/*
 	 * Note: Add a new enum station_info_flags value for each new field and
