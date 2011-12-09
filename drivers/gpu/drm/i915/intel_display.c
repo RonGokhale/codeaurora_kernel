@@ -5172,7 +5172,7 @@ static void ironlake_update_pch_refclk(struct drm_device *dev)
 		} else {
 			/* Enable SSC on PCH eDP if needed */
 			if (intel_panel_use_ssc(dev_priv)) {
-				DRM_ERROR("enabling SSC on PCH\n");
+				DRM_DEBUG_KMS("enabling SSC on PCH\n");
 				temp |= DREF_SUPERSPREAD_SOURCE_ENABLE;
 			}
 		}
