@@ -567,7 +567,7 @@ static int cyapa_get_state(struct cyapa *cyapa)
 	 * -ETIMEDOUT.  In this case, try again using the smbus equivalent
 	 * command.  This should return a BL_HEAD indicating CYAPA_STATE_OP.
 	 */
-	if (cyapa->smbus && ret == -ETIMEDOUT) {
+	if (cyapa->smbus && (ret == -ETIMEDOUT || ret == -ENXIO)) {
 		dev_dbg(dev, "smbus: probing with BL_STATUS command\n");
 		ret = cyapa_read_block(cyapa, CYAPA_CMD_BL_STATUS, status);
 	}
