@@ -2261,12 +2261,14 @@ static int attach_task_by_pid(struct cgroup *cgrp, u64 pid, bool threadgroup)
 		get_task_struct(tsk);
 	}
 
-	if (threadgroup) {
-		threadgroup_lock(tsk);
+	threadgroup_lock(tsk);
+
+	if (threadgroup)
 		ret = cgroup_attach_proc(cgrp, tsk);
-		threadgroup_unlock(tsk);
-	} else {
+	else
 		ret = cgroup_attach_task(cgrp, tsk);
+
+	threadgroup_unlock(tsk);
 
 	put_task_struct(tsk);
 	cgroup_unlock();
