@@ -258,7 +258,6 @@ struct msmsdcc_host {
 
 	struct tasklet_struct 	dma_tlet;
 
-	unsigned int prog_scan;
 	unsigned int prog_enable;
 
 	/* Command parameters */
