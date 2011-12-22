@@ -416,17 +416,31 @@ static void bam_mux_write_done(struct work_struct *work)
 	struct sk_buff *skb;
 	struct bam_mux_hdr *hdr;
 	struct tx_pkt_info *info;
+	struct tx_pkt_info *info_expected;
 	unsigned long event_data;
-	struct list_head *node;
 	unsigned long flags;
 
 	if (in_global_reset)
 		return;
-	spin_lock_irqsave(&bam_tx_pool_spinlock, flags);
-	node = bam_tx_pool.next;
-	list_del(node);
-	spin_unlock_irqrestore(&bam_tx_pool_spinlock, flags);
+
 	info = container_of(work, struct tx_pkt_info, work);
+
+	spin_lock_irqsave(&bam_tx_pool_spinlock, flags);
+	info_expected = list_first_entry(&bam_tx_pool,
+			struct tx_pkt_info, list_node);
+	if (unlikely(info != info_expected)) {
+		struct list_head *node;
+
+		pr_err("%s: bam_tx_pool mismatch .next=%p, list_node=%p\n",
+				__func__, bam_tx_pool.next, &info->list_node);
+		list_for_each(node, &bam_tx_pool)
+			pr_err("%s: node=%p\n", __func__, node);
+		spin_unlock_irqrestore(&bam_tx_pool_spinlock, flags);
+		BUG();
+	}
+	list_del(&info->list_node);
+	spin_unlock_irqrestore(&bam_tx_pool_spinlock, flags);
+
 	if (info->is_cmd) {
 		kfree(info->skb);
 		kfree(info);
@@ -999,10 +1013,12 @@ static void ul_timeout(struct work_struct *work)
 		return;
 	}
 	if (ul_packet_written) {
+		pr_info("%s: packet written\n", __func__);
 		ul_packet_written = 0;
 		schedule_delayed_work(&ul_timeout_work,
 				msecs_to_jiffies(UL_TIMEOUT_DELAY));
 	} else {
+		pr_info("%s: powerdown\n", __func__);
 		wait_for_ack = 1;
 		INIT_COMPLETION(ul_wakeup_ack_completion);
 		smsm_change_state(SMSM_APPS_STATE, SMSM_A2_POWER_CONTROL, 0);
@@ -1020,6 +1036,7 @@ static void ul_wakeup(void)
 		mutex_unlock(&wakeup_lock);
 		return;
 	}
+	pr_info("%s\n", __func__);
 	/*
 	 * must wait for the previous power down request to have been acked
 	 * chances are it already came in and this will just fall through
@@ -1325,6 +1342,7 @@ register_bam_failed:
 static void toggle_apps_ack(void)
 {
 	static unsigned int clear_bit; /* 0 = set the bit, else clear bit */
+	pr_info("%s: clear bit: %d\n", __func__, clear_bit);
 	smsm_change_state(SMSM_APPS_STATE,
 				clear_bit & SMSM_A2_POWER_CONTROL_ACK,
 				~clear_bit & SMSM_A2_POWER_CONTROL_ACK);
@@ -1333,15 +1351,19 @@ static void toggle_apps_ack(void)
 
 static void bam_dmux_smsm_cb(void *priv, uint32_t old_state, uint32_t new_state)
 {
-	DBG("%s: smsm activity\n", __func__);
+	pr_info("%s: smsm activity 0x%08x -> 0x%08x\n", __func__, old_state,
+							new_state);
 	if (bam_mux_initialized && new_state & SMSM_A2_POWER_CONTROL) {
+		pr_info("%s: reconnect\n", __func__);
 		wake_lock(&bam_wakelock);
 		reconnect_to_bam();
 	} else if (bam_mux_initialized &&
 					!(new_state & SMSM_A2_POWER_CONTROL)) {
+		pr_info("%s: disconnect\n", __func__);
 		disconnect_to_bam();
 		wake_unlock(&bam_wakelock);
 	} else if (new_state & SMSM_A2_POWER_CONTROL) {
+		pr_info("%s: init\n", __func__);
 		wake_lock(&bam_wakelock);
 		bam_init();
 	} else {
@@ -1353,6 +1375,7 @@ static void bam_dmux_smsm_cb(void *priv, uint32_t old_state, uint32_t new_state)
 static void bam_dmux_smsm_ack_cb(void *priv, uint32_t old_state,
 						uint32_t new_state)
 {
+	pr_info("%s: 0x%08x -> 0x%08x\n", __func__, old_state, new_state);
 	complete_all(&ul_wakeup_ack_completion);
 }
 
