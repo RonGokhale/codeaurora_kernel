@@ -72,6 +72,7 @@
 
 #define DP_MAIN_LINK_CHANNEL_CODING         0x006
 
+#define DP_EDP_CONFIGURATION_CAP            0x00d
 #define DP_TRAINING_AUX_RD_INTERVAL         0x00e
 
 /* link configuration */
@@ -132,6 +133,8 @@
 
 #define DP_MAIN_LINK_CHANNEL_CODING_SET	    0x108
 # define DP_SET_ANSI_8B10B		    (1 << 0)
+
+#define DP_EDP_CONFIGURATION_SET            0x10a
 
 #define DP_PSR_EN_CFG			    0x170
 # define DP_PSR_ENABLE			    (1 << 0)
