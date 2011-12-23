@@ -1885,11 +1885,19 @@ static const struct i2c_device_id cyapa_id_table[] = {
 };
 MODULE_DEVICE_TABLE(i2c, cyapa_id_table);
 
+static const struct of_device_id cyapa_of_match[] = {
+	{ .compatible = "cy,i2c-apa", },
+	{ .compatible = "cy,apa", },
+	{ },
+};
+MODULE_DEVICE_TABLE(of, cyapa_of_match);
+
 static struct i2c_driver cyapa_driver = {
 	.driver = {
 		.name = CYAPA_I2C_NAME,
 		.owner = THIS_MODULE,
 		.pm = &cyapa_pm_ops,
+		.of_match_table = cyapa_of_match,
 	},
 
 	.probe = cyapa_probe,
