@@ -104,7 +104,7 @@ static int dsps_load(const char *name)
 		return -ENODEV;
 	}
 
-	udelay(1000);
+	msleep(20);
 	return 0;
 }
 
