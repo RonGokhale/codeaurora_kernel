@@ -24,6 +24,7 @@
 #include <linux/slab.h>
 #include <linux/tegra_rpc.h>
 #include <linux/types.h>
+#include <linux/module.h>
 
 #include <mach/clk.h>
 #include <mach/nvmap.h>

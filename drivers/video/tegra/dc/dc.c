@@ -912,7 +912,7 @@ void tegra_dc_setup_clk(struct tegra_dc *dc, struct clk *clk)
 		if (clk_get_parent(clk) != pll_d_out0_clk)
 			clk_set_parent(clk, pll_d_out0_clk);
 	} else {
-		tegra_dvfs_set_rate(clk, dc->pll_rate);
+		clk_set_rate(clk, dc->pll_rate);
 	}
 
 }
@@ -1513,7 +1513,7 @@ static void _tegra_dc_disable(struct tegra_dc *dc)
 
 	clk_disable(dc->emc_clk);
 	clk_disable(dc->clk);
-	tegra_dvfs_set_rate(dc->clk, 0);
+	clk_set_rate(dc->clk, 0);
 
 	/* flush any pending syncpt waits */
 	for (i = 0; i < dc->n_windows; i++) {

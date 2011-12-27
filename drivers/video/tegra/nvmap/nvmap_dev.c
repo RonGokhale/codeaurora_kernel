@@ -34,6 +34,8 @@
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
+#include <linux/export.h>
+#include <linux/module.h>
 
 #include <asm/cacheflush.h>
 #include <asm/tlbflush.h>
@@ -1151,7 +1153,7 @@ static int nvmap_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "couldn't create iovmm client\n");
 		goto fail;
 	}
-	dev->vm_rgn = alloc_vm_area(NVMAP_NUM_PTES * PAGE_SIZE);
+	dev->vm_rgn = alloc_vm_area(NVMAP_NUM_PTES * PAGE_SIZE, NULL);
 	if (!dev->vm_rgn) {
 		e = -ENOMEM;
 		dev_err(&pdev->dev, "couldn't allocate remapping region\n");

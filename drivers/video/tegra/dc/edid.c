@@ -22,6 +22,8 @@
 #include <linux/i2c.h>
 #include <linux/seq_file.h>
 #include <linux/vmalloc.h>
+#include <linux/export.h>
+#include <linux/module.h>
 
 #include "edid.h"
 

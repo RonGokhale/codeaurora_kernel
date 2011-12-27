@@ -27,6 +27,7 @@
 #include <linux/device.h>
 #include <mach/powergate.h>
 #include <mach/clk.h>
+#include <linux/export.h>
 
 #include "dev.h"
 

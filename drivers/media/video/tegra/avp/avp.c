@@ -36,6 +36,7 @@
 #include <linux/types.h>
 #include <linux/uaccess.h>
 #include <linux/workqueue.h>
+#include <linux/module.h>
 
 #include <mach/clk.h>
 #include <mach/io.h>

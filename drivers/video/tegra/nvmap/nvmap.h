@@ -205,7 +205,7 @@ static inline pgprot_t nvmap_pgprot(struct nvmap_handle *h, pgprot_t prot)
 	else if (h->flags == NVMAP_HANDLE_WRITE_COMBINE)
 		return pgprot_writecombine(prot);
 	else if (h->flags == NVMAP_HANDLE_INNER_CACHEABLE)
-		return pgprot_inner_writeback(prot);
+		return pgprot_writecombine(prot); /* No inner_cacheable in mainline */
 	return prot;
 }
 

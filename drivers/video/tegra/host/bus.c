@@ -21,6 +21,7 @@
 
 #include <linux/of_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/export.h>
 
 #include <mach/nvhost.h>
 
