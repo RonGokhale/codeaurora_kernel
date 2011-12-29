@@ -17,7 +17,6 @@
 
 #include <linux/delay.h>
 #include <linux/firmware.h>
-#include <linux/gpio.h>
 #include <linux/i2c.h>
 #include <linux/i2c/cyapa.h>
 #include <linux/input.h>
@@ -27,7 +26,6 @@
 #include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
-#include <linux/semaphore.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
@@ -215,12 +213,10 @@ struct cyapa {
 	struct work_struct detect_work;
 	struct workqueue_struct *detect_wq;
 	int irq;
-	u8 adapter_func;
 	bool smbus;
 
 	/* read from query data region. */
 	char product_id[16];
-	u8 capability[14];
 	u8 fw_maj_ver;  /* firmware major version. */
 	u8 fw_min_ver;  /* firmware minor version. */
 	u8 hw_maj_ver;  /* hardware major version. */
@@ -1287,6 +1283,7 @@ static int cyapa_send_bl_cmd(struct cyapa *cyapa, enum cyapa_bl_cmd cmd)
 
 	case CYAPA_CMD_IDLE_TO_APP:
 		cyapa_detect(cyapa);
+		ret = 0;
 		break;
 
 	default:
@@ -1755,9 +1752,8 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 	cyapa->client = client;
 	i2c_set_clientdata(client, cyapa);
 
-	cyapa->adapter_func = adapter_func;
 	/* i2c isn't supported, set smbus */
-	if (cyapa->adapter_func == CYAPA_ADAPTER_FUNC_SMBUS)
+	if (adapter_func == CYAPA_ADAPTER_FUNC_SMBUS)
 		cyapa->smbus = true;
 	cyapa->state = CYAPA_STATE_NO_DEVICE;
 
