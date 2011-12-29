@@ -485,7 +485,7 @@ static s32 cyapa_read_byte(struct cyapa *cyapa, u8 cmd_idx)
 	}
 	ret = i2c_smbus_read_byte_data(cyapa->client, cmd);
 	dev_dbg(dev, "read byte [0x%02x] = 0x%02x  ret: %d\n",
-		cmd, ret, ret);
+		cmd, (u8)ret, ret);
 
 	return ret;
 }
