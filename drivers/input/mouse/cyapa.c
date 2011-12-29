@@ -745,21 +745,18 @@ static int cyapa_set_power_mode(struct cyapa *cyapa, u8 power_mode)
 {
 	int ret;
 	u8 power;
-	int tries = 3;
 
 	if (cyapa->state != CYAPA_STATE_OP)
 		return 0;
 
-	power = cyapa_read_byte(cyapa, CYAPA_CMD_POWER_MODE);
+	ret = cyapa_read_byte(cyapa, CYAPA_CMD_POWER_MODE);
+	if (ret < 0)
+		return ret;
+
+	power = ret;
 	power &= ~OP_POWER_MODE_MASK;
 	power |= ((power_mode << OP_POWER_MODE_SHIFT) & OP_POWER_MODE_MASK);
-	do {
-		ret = cyapa_write_byte(cyapa, CYAPA_CMD_POWER_MODE, power);
-		/* sleep at least 10 ms. */
-		usleep_range(SET_POWER_MODE_DELAY, 2 * SET_POWER_MODE_DELAY);
-	} while ((ret != 0) && (tries-- > 0));
-
-	return ret;
+	return cyapa_write_byte(cyapa, CYAPA_CMD_POWER_MODE, power);
 }
 
 static int cyapa_get_query_data(struct cyapa *cyapa)
