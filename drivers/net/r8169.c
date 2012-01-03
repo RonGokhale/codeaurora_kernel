@@ -8,6 +8,7 @@
  * See MAINTAINERS file for support contact information.
  */
 
+#include <linux/dmi.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/pci.h>
@@ -1209,6 +1210,17 @@ static void rtl_link_chg_patch(struct rtl8169_private *tp)
 	}
 }
 
+static const struct dmi_system_id blacklist_runtime_pm[] = {
+	{
+		.ident = "Stumpy INSYDE",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Stumpy"),
+			DMI_MATCH(DMI_BIOS_VENDOR, "INSYDE"),
+		},
+	},
+	{ }
+};
+
 static void __rtl8169_check_link_status(struct net_device *dev,
 					struct rtl8169_private *tp,
 					void __iomem *ioaddr, bool pm)
@@ -1227,7 +1239,11 @@ static void __rtl8169_check_link_status(struct net_device *dev,
 	} else {
 		netif_carrier_off(dev);
 		netif_info(tp, ifdown, dev, "link down\n");
-		if (pm)
+		/*
+		 * TODO(tbroch) remove DMI check once crosbug.com/p/6217
+		 * resolved.
+		 */
+		if (pm && !dmi_check_system(blacklist_runtime_pm))
 			pm_schedule_suspend(&tp->pci_dev->dev, 5000);
 	}
 	spin_unlock_irqrestore(&tp->lock, flags);
