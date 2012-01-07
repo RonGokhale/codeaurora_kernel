@@ -27,6 +27,7 @@
 #include <asm/byteorder.h>
 #include <asm/memory.h>
 #include <asm/system.h>
+#include <mach/msm_rtb.h>
 
 /*
  * ISA I/O bus memory addresses are 1:1 with the physical address.
@@ -47,13 +48,73 @@ extern void __raw_readsb(const void __iomem *addr, void *data, int bytelen);
 extern void __raw_readsw(const void __iomem *addr, void *data, int wordlen);
 extern void __raw_readsl(const void __iomem *addr, void *data, int longlen);
 
-#define __raw_writeb(v,a)	(__chk_io_ptr(a), *(volatile unsigned char __force  *)(a) = (v))
-#define __raw_writew(v,a)	(__chk_io_ptr(a), *(volatile unsigned short __force *)(a) = (v))
-#define __raw_writel(v,a)	(__chk_io_ptr(a), *(volatile unsigned int __force   *)(a) = (v))
+/*
+ * There may be cases when clients don't want to support or can't support the
+ * logging. The appropriate functions can be used but clients should carefully
+ * consider why they can't support the logging.
+ */
 
-#define __raw_readb(a)		(__chk_io_ptr(a), *(volatile unsigned char __force  *)(a))
-#define __raw_readw(a)		(__chk_io_ptr(a), *(volatile unsigned short __force *)(a))
-#define __raw_readl(a)		(__chk_io_ptr(a), *(volatile unsigned int __force   *)(a))
+#define __raw_writeb_no_log(v, a)	(__chk_io_ptr(a), *(volatile unsigned char __force  *)(a) = (v))
+#define __raw_writew_no_log(v, a)	(__chk_io_ptr(a), *(volatile unsigned short __force *)(a) = (v))
+#define __raw_writel_no_log(v, a)	(__chk_io_ptr(a), *(volatile unsigned int __force *)(a) = (v))
+
+#define __raw_writeb(v, a)	({ \
+	__chk_io_ptr(a); \
+	log_uncached_data(WRITEL, NULL); \
+	ETB_EXTRA_BRANCHES; \
+	*(volatile unsigned char __force *)(a) = (v); \
+	LOG_BARRIER; \
+	})
+
+#define __raw_writew(v, a)	({ \
+	__chk_io_ptr(a); \
+	log_uncached_data(WRITEL, NULL); \
+	ETB_EXTRA_BRANCHES; \
+	*(volatile unsigned short __force *)(a) = (v); \
+	LOG_BARRIER; \
+	})
+
+#define __raw_writel(v, a)	({ \
+	__chk_io_ptr(a); \
+	log_uncached_data(WRITEL, NULL); \
+	ETB_EXTRA_BRANCHES; \
+	*(volatile unsigned int __force *)(a) = (v); \
+	LOG_BARRIER; \
+	})
+
+#define __raw_readb_no_log(a)		(__chk_io_ptr(a), *(volatile unsigned char __force  *)(a))
+#define __raw_readw_no_log(a)		(__chk_io_ptr(a), *(volatile unsigned short __force *)(a))
+#define __raw_readl_no_log(a)		(__chk_io_ptr(a), *(volatile unsigned int __force *)(a))
+
+#define __raw_readb(a)		({ \
+	unsigned char __a; \
+	__chk_io_ptr(a); \
+	log_uncached_data(READL, NULL); \
+	ETB_EXTRA_BRANCHES; \
+	__a = *(volatile unsigned char __force   *)(a);\
+	LOG_BARRIER; \
+	__a; \
+	})
+
+#define __raw_readw(a)		({ \
+	unsigned short __a; \
+	__chk_io_ptr(a); \
+	log_uncached_data(READL, NULL); \
+	ETB_EXTRA_BRANCHES; \
+	__a = *(volatile unsigned short __force   *)(a);\
+	LOG_BARRIER; \
+	__a; \
+	})
+
+#define __raw_readl(a)		({ \
+	unsigned int __a; \
+	__chk_io_ptr(a); \
+	log_uncached_data(READL, NULL); \
+	ETB_EXTRA_BRANCHES; \
+	__a = *(volatile unsigned int __force   *)(a);\
+	LOG_BARRIER; \
+	__a; \
+	})
 
 /*
  * Architecture ioremap implementation.
