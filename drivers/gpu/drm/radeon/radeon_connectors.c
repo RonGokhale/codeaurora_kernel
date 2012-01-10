@@ -68,11 +68,11 @@ void radeon_connector_hotplug(struct drm_connector *connector)
 	if (connector->connector_type == DRM_MODE_CONNECTOR_DisplayPort) {
 		int saved_dpms = connector->dpms;
 
-		if (radeon_hpd_sense(rdev, radeon_connector->hpd.hpd) &&
-		    radeon_dp_needs_link_train(radeon_connector))
-			drm_helper_connector_dpms(connector, DRM_MODE_DPMS_ON);
-		else
+		/* Only turn off the display it it's physically disconnected */
+		if (!radeon_hpd_sense(rdev, radeon_connector->hpd.hpd))
 			drm_helper_connector_dpms(connector, DRM_MODE_DPMS_OFF);
+		else if (radeon_dp_needs_link_train(radeon_connector))
+			drm_helper_connector_dpms(connector, DRM_MODE_DPMS_ON);
 		connector->dpms = saved_dpms;
 	}
 }
@@ -463,6 +463,16 @@ static bool radeon_connector_needs_extended_probe(struct radeon_device *dev,
 	    (dev->pdev->subsystem_vendor == 0x1019) &&
 	    (dev->pdev->subsystem_device == 0x2615)) {
 		if ((connector_type == DRM_MODE_CONNECTOR_DVID) &&
+		    (supported_device == ATOM_DEVICE_DFP2_SUPPORT))
+			return true;
+	}
+	/* TOSHIBA Satellite L300D with ATI Mobility Radeon x1100
+	 * (RS690M) sends data to i2c bus for a HDMI connector that
+	 * is not implemented */
+	if ((dev->pdev->device == 0x791f) &&
+	    (dev->pdev->subsystem_vendor == 0x1179) &&
+	    (dev->pdev->subsystem_device == 0xff68)) {
+		if ((connector_type == DRM_MODE_CONNECTOR_HDMIA) &&
 		    (supported_device == ATOM_DEVICE_DFP2_SUPPORT))
 			return true;
 	}
