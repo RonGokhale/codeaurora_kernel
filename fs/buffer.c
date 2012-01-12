@@ -274,6 +274,7 @@ void invalidate_bdev(struct block_device *bdev)
 	 * But, for the strange corners, lets be cautious
 	 */
 	cleancache_flush_inode(mapping);
+	mapping->backing_dev_info = &default_backing_dev_info;
 }
 EXPORT_SYMBOL(invalidate_bdev);
 
