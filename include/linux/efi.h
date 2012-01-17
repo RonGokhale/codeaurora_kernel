@@ -236,9 +236,16 @@ typedef efi_status_t efi_query_capsule_caps_t(efi_capsule_header_t **capsules,
 #define LINUX_EFI_CRASH_GUID \
     EFI_GUID(  0xcfc8fc79, 0xbe2e, 0x4ddc, 0x97, 0xf0, 0x9f, 0x98, 0xbf, 0xe2, 0x98, 0xa0 )
 
+#ifdef CONFIG_EFI64
+#define PAD_EFI64(A) u32 pad##A
+#else
+#define PAD_EFI64(A)
+#endif
+
 typedef struct {
 	efi_guid_t guid;
 	unsigned long table;
+        PAD_EFI64(1);
 } efi_config_table_t;
 
 #define EFI_SYSTEM_TABLE_SIGNATURE ((u64)0x5453595320494249ULL)
@@ -253,17 +260,29 @@ typedef struct {
 typedef struct {
 	efi_table_hdr_t hdr;
 	unsigned long fw_vendor;	/* physical addr of CHAR16 vendor string */
+        PAD_EFI64(1);
 	u32 fw_revision;
+        PAD_EFI64(2);
 	unsigned long con_in_handle;
+        PAD_EFI64(3);
 	unsigned long con_in;
+        PAD_EFI64(4);
 	unsigned long con_out_handle;
+        PAD_EFI64(5);
 	unsigned long con_out;
+        PAD_EFI64(6);
 	unsigned long stderr_handle;
+        PAD_EFI64(7);
 	unsigned long stderr;
+        PAD_EFI64(8);
 	efi_runtime_services_t *runtime;
+        PAD_EFI64(9);
 	unsigned long boottime;
+        PAD_EFI64(10);
 	unsigned long nr_tables;
+        PAD_EFI64(11);
 	unsigned long tables;
+        PAD_EFI64(12);
 } efi_system_table_t;
 
 struct efi_memory_map {
