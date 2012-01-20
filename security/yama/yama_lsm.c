@@ -84,7 +84,7 @@ static void yama_ptracer_del(struct task_struct *tracer,
 	list_for_each_safe(list, safe, &ptracer_relations) {
 		relation = list_entry(list, struct ptrace_relation, node);
 		if (relation->tracee == tracee ||
-		    relation->tracer == tracer) {
+		    (tracer && relation->tracer == tracer)) {
 			list_del(&relation->node);
 			kfree(relation);
 		}
@@ -133,6 +133,8 @@ int yama_task_prctl(int option, unsigned long arg2, unsigned long arg3,
 		if (arg2 == 0) {
 			yama_ptracer_del(NULL, myself);
 			rc = 0;
+		} else if (arg2 == PR_SET_PTRACER_ANY) {
+			rc = yama_ptracer_add(NULL, myself);
 		} else {
 			struct task_struct *tracer;
 
@@ -203,6 +205,7 @@ static int ptracer_exception_found(struct task_struct *tracer,
 	int rc = 0;
 	struct ptrace_relation *relation;
 	struct task_struct *parent = NULL;
+	bool found = false;
 
 	spin_lock_bh(&ptracer_relations_lock);
 
@@ -211,11 +214,12 @@ static int ptracer_exception_found(struct task_struct *tracer,
 		tracee = rcu_dereference(tracee->group_leader);
 	list_for_each_entry(relation, &ptracer_relations, node)
 		if (relation->tracee == tracee) {
+			found = true;
 			parent = relation->tracer;
 			break;
 		}
 
-	if (task_is_descendant(parent, tracer))
+	if (found && (parent == NULL || task_is_descendant(parent, tracer)))
 		rc = 1;
 	rcu_read_unlock();
 	spin_unlock_bh(&ptracer_relations_lock);
