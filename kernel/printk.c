@@ -41,7 +41,7 @@
 #include <linux/cpu.h>
 #include <linux/notifier.h>
 #include <linux/rculist.h>
-
+#include <mach/msm_rtb.h>
 #include <asm/uaccess.h>
 
 /*
@@ -784,6 +784,9 @@ asmlinkage int printk(const char *fmt, ...)
 {
 	va_list args;
 	int r;
+#ifdef CONFIG_MSM_RTB
+	void *caller = __builtin_return_address(0);
+#endif
 
 #ifdef CONFIG_KGDB_KDB
 	if (unlikely(kdb_trap_printk)) {
@@ -796,6 +799,11 @@ asmlinkage int printk(const char *fmt, ...)
 	va_start(args, fmt);
 	r = vprintk(fmt, args);
 	va_end(args);
+
+#ifdef CONFIG_MSM_RTB
+	/* todo: add CONFIG_MSM_RTB_LOGBUF */
+	__log_uncached_data(LOGBUF, caller, (void *)log_end);
+#endif
 
 	return r;
 }

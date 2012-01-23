@@ -17,6 +17,7 @@ enum uncached_log_type {
 	NONE = 0,
 	READL,
 	WRITEL,
+	LOGBUF,
 	OTHER,
 };
 
