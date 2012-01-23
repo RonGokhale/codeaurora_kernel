@@ -31,7 +31,6 @@ static struct i2c_client *lumpy_als;
 static struct i2c_board_info __initdata cyapa_device = {
 	I2C_BOARD_INFO(CYAPA_I2C_NAME, LUMPY_TOUCHPAD_I2C_ADDR),
 	.irq		= -1,
-	.flags		= I2C_CLIENT_WAKE,
 };
 
 static struct i2c_board_info __initdata als_device = {
