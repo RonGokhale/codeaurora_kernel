@@ -18,6 +18,8 @@
 #include <linux/smp.h>
 #include <linux/printk.h>
 #include <linux/ratelimit.h>
+#include <linux/io.h>
+#include <linux/memory_alloc.h>
 
 #include "qdss.h"
 #include "cp14.h"
@@ -31,6 +33,9 @@
 #define CPMR_ETMCLKEN		(0x8)
 
 
+unsigned long *jtag_cntr;
+static unsigned long jtag_phys;
+static int jtag_cntr_size = SZ_4K;
 struct dbg_ctx {
 	uint8_t		arch;
 	bool		arch_supported;
@@ -1012,6 +1017,10 @@ void msm_jtag_save_state(void)
 	int cpu;
 
 	cpu = raw_smp_processor_id();
+	if (jtag_cntr) {
+		jtag_cntr[cpu]++;
+		mb();
+	}
 
 	if (dbg.arch_supported)
 		dbg_save_state(cpu);
@@ -1024,6 +1033,10 @@ void msm_jtag_restore_state(void)
 	int cpu;
 
 	cpu = raw_smp_processor_id();
+	if (jtag_cntr) {
+		jtag_cntr[cpu+5]++;
+		mb();
+	}
 
 	if (dbg.arch_supported)
 		dbg_restore_state(cpu);
@@ -1037,6 +1050,18 @@ static int __init msm_jtag_dbg_init(void)
 	uint32_t dbgdidr;
 
 	/* This will run on core0 so use it to populate parameters */
+
+	jtag_phys = allocate_contiguous_ebi_nomap(jtag_cntr_size, SZ_4K);
+	if (!jtag_phys)
+		return -ENOMEM;
+
+	jtag_cntr = ioremap(jtag_phys, jtag_cntr_size);
+	if (!jtag_cntr) {
+		free_contiguous_memory_by_paddr(jtag_phys);
+		return -ENOMEM;
+	}
+	memset(jtag_cntr, 0, jtag_cntr_size);
+	pr_info("phys address for jtag_cntr: %lx", jtag_phys);
 
 	/* Populate dbg_ctx data */
 	dbgdidr = dbg_read(DBGDIDR);
