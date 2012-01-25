@@ -18,6 +18,7 @@ enum uncached_log_type {
 	READL,
 	WRITEL,
 	LOGBUF,
+	CTXID,
 	OTHER,
 };
 
