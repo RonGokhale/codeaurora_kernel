@@ -79,7 +79,7 @@ static struct i2c_client *add_smbus_device(struct i2c_adapter *adap,
 	return i2c_new_device(adap, info);
 }
 
-static int lumpy_add_devices()
+static int lumpy_add_devices(void)
 {
 	struct i2c_adapter *adapter;
 	struct device *dev = NULL;
