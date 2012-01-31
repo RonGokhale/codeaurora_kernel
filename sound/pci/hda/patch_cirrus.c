@@ -1549,8 +1549,10 @@ static void cs421x_auto_input(struct hda_codec *codec)
 	present = snd_hda_jack_detect(codec, nid);
 
 	if (present) {
-		spec->last_input = spec->cur_input;
-		spec->cur_input = spec->automic_idx;
+		if (spec->cur_input != spec->automic_idx) {
+			spec->last_input = spec->cur_input;
+			spec->cur_input = spec->automic_idx;
+		}
 	} else  {
 		spec->cur_input = spec->last_input;
 	}
