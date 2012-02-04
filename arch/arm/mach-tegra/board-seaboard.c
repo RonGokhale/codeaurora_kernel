@@ -664,16 +664,16 @@ static void __init tegra_kaen_init(void)
 	debug_uart_platform_data[0].mapbase = TEGRA_UARTB_BASE;
 	debug_uart_platform_data[0].irq = INT_UARTB;
 
-	seaboard_audio_pdata.gpio_hp_mute = TEGRA_GPIO_KAEN_HP_MUTE;
-	tegra_gpio_enable(TEGRA_GPIO_KAEN_HP_MUTE);
-
 	seaboard_kbc_platform_data.keymap_data = &cros_keymap_data;
 
 	/* setting skew makes WIFI stable when sdmmc1 runs 48MHz. */
 	tegra_set_clock_readskew("sdmmc1", 8);
 
-	kaen_pinmux_fixup();
 	seaboard_common_init();
+	kaen_pinmux_fixup();
+
+	seaboard_audio_pdata.gpio_hp_mute = TEGRA_GPIO_KAEN_HP_MUTE;
+	tegra_gpio_enable(TEGRA_GPIO_KAEN_HP_MUTE);
 
 	seaboard_i2c_init();
 
