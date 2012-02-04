@@ -752,6 +752,12 @@ MACHINE_START(SEABOARD, "seaboard")
 	.init_machine   = tegra_seaboard_init,
 MACHINE_END
 
+static const char *kaen_dt_board_compat[] = {
+	"google,kaen",
+	NULL
+};
+
+
 MACHINE_START(KAEN, "kaen")
 	.atag_offset    = 0x100,
 	.map_io         = tegra_map_common_io,
@@ -759,6 +765,7 @@ MACHINE_START(KAEN, "kaen")
 	.init_irq       = tegra_init_irq,
 	.timer          = &tegra_timer,
 	.init_machine   = tegra_kaen_init,
+	.dt_compat	= kaen_dt_board_compat,
 MACHINE_END
 
 MACHINE_START(WARIO, "wario")
