@@ -550,7 +550,7 @@ static void __init seaboard_i2c_init(void)
 	i2c_register_board_info(0, &mpu3050_device, 1);
 	i2c_register_board_info(0, &cyapa_device, 1);
 
-	i2c_register_board_info(2, &bq20z75_device, 1);
+	i2c_register_board_info(1, &bq20z75_device, 1);
 
 	i2c_register_board_info(3, &adt7461_device, 1);
 	i2c_register_board_info(3, &ak8975_device, 1);
