@@ -743,6 +743,12 @@ void __init ramoops_reserve(void)
 #define ramoops_reserve()
 #endif
 
+#ifdef CONFIG_TEGRA_GRHOST
+extern void seaboard_fb_init(void);
+#else
+#define seaboard_fb_init NULL
+#endif
+
 MACHINE_START(SEABOARD, "seaboard")
 	.atag_offset    = 0x100,
 	.map_io         = tegra_map_common_io,
@@ -750,6 +756,7 @@ MACHINE_START(SEABOARD, "seaboard")
 	.init_irq       = tegra_init_irq,
 	.timer          = &tegra_timer,
 	.init_machine   = tegra_seaboard_init,
+	.reserve	= seaboard_fb_init,
 MACHINE_END
 
 static const char *kaen_dt_board_compat[] = {
@@ -766,6 +773,7 @@ MACHINE_START(KAEN, "kaen")
 	.timer          = &tegra_timer,
 	.init_machine   = tegra_kaen_init,
 	.dt_compat	= kaen_dt_board_compat,
+	.reserve	= seaboard_fb_init,
 MACHINE_END
 
 MACHINE_START(WARIO, "wario")
@@ -775,4 +783,5 @@ MACHINE_START(WARIO, "wario")
 	.init_irq       = tegra_init_irq,
 	.timer          = &tegra_timer,
 	.init_machine   = tegra_wario_init,
+	.reserve	= seaboard_fb_init,
 MACHINE_END

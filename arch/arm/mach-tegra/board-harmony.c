@@ -340,6 +340,12 @@ static void __init tegra_harmony_init(void)
 	harmony_i2c_init();
 }
 
+#ifdef CONFIG_TEGRA_GRHOST
+extern void harmony_fb_init(void);
+#else
+#define harmony_fb_init NULL
+#endif
+
 MACHINE_START(HARMONY, "harmony")
 	.atag_offset	= 0x100,
 	.fixup		= tegra_harmony_fixup,
@@ -348,4 +354,5 @@ MACHINE_START(HARMONY, "harmony")
 	.init_irq       = tegra_init_irq,
 	.timer          = &tegra_timer,
 	.init_machine   = tegra_harmony_init,
+	.reserve	= harmony_fb_init,
 MACHINE_END

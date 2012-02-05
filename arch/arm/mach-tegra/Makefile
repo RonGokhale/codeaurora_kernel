@@ -12,6 +12,8 @@ obj-y                                   += delay.o
 obj-y                                   += powergate.o
 obj-y					+= fuse.o
 obj-y                                   += kfuse.o
+obj-y					+= mc.o
+obj-y					+= fb.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += clock.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += tegra2_clocks.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += tegra2_fuse.o
@@ -22,12 +24,16 @@ obj-$(CONFIG_HOTPLUG_CPU)               += hotplug.o
 obj-$(CONFIG_TEGRA_SYSTEM_DMA)		+= dma.o
 obj-$(CONFIG_CPU_FREQ)                  += cpu-tegra.o
 obj-$(CONFIG_TEGRA_PCI)			+= pcie.o
+obj-$(CONFIG_TEGRA_PWM)			+= pwm.o
 obj-$(CONFIG_USB_SUPPORT)		+= usb_phy.o
+obj-$(CONFIG_TEGRA_IOVMM)               += iovmm.o
+obj-$(CONFIG_TEGRA_IOVMM_GART)          += iovmm-gart.o
 
 obj-${CONFIG_MACH_HARMONY}              += board-harmony.o
 obj-${CONFIG_MACH_HARMONY}              += board-harmony-pinmux.o
 obj-${CONFIG_MACH_HARMONY}              += board-harmony-pcie.o
 obj-${CONFIG_MACH_HARMONY}              += board-harmony-power.o
+obj-${CONFIG_MACH_HARMONY}              += board-harmony-panel.o
 
 obj-${CONFIG_MACH_PAZ00}		+= board-paz00.o
 obj-${CONFIG_MACH_PAZ00}		+= board-paz00-pinmux.o
@@ -35,6 +41,7 @@ obj-${CONFIG_MACH_PAZ00}		+= board-paz00-pinmux.o
 obj-${CONFIG_MACH_SEABOARD}             += board-seaboard.o
 obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-pinmux.o
 obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-power.o
+obj-${CONFIG_MACH_SEABOARD}             += board-seaboard-panel.o
 
 obj-${CONFIG_MACH_TEGRA_DT}             += board-dt.o
 obj-${CONFIG_MACH_TEGRA_DT}             += board-harmony-pinmux.o
