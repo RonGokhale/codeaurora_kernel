@@ -236,8 +236,10 @@ int ath_set_channel(struct ath_softc *sc, struct ieee80211_hw *hw,
 	sc->hw_busy_count = 0;
 
 	del_timer_sync(&common->ani.timer);
+	del_timer_sync(&sc->rx_poll_timer);
 	cancel_work_sync(&sc->paprd_work);
 	cancel_work_sync(&sc->hw_check_work);
+	cancel_work_sync(&sc->hw_reset_work);
 	cancel_delayed_work_sync(&sc->tx_complete_work);
 	cancel_delayed_work_sync(&sc->hw_pll_work);
 
@@ -301,6 +303,10 @@ int ath_set_channel(struct ath_softc *sc, struct ieee80211_hw *hw,
 	if (!(sc->sc_flags & (SC_OP_OFFCHANNEL))) {
 		if (sc->sc_flags & SC_OP_BEACONS)
 			ath_set_beacon(sc);
+
+		if (sc->sc_flags & SC_OP_PRIM_STA_VIF)
+			mod_timer(&sc->rx_poll_timer,
+				  jiffies + msecs_to_jiffies(10));
 		ieee80211_queue_delayed_work(sc->hw, &sc->tx_complete_work, 0);
 		ieee80211_queue_delayed_work(sc->hw, &sc->hw_pll_work, HZ/2);
 		ath_start_ani(common);
@@ -614,6 +620,17 @@ static void ath_node_detach(struct ath_softc *sc, struct ieee80211_sta *sta)
 		ath_tx_node_cleanup(sc, an);
 }
 
+void ath_reset_work(struct work_struct *work)
+{
+	struct ath_softc *sc = container_of(work, struct ath_softc,
+					    hw_reset_work);
+
+	printk(KERN_ERR "resetting chip\n");
+	spin_lock_bh(&sc->sc_pcu_lock);
+	ath_reset(sc, true);
+	spin_unlock_bh(&sc->sc_pcu_lock);
+}
+
 void ath_hw_check(struct work_struct *work)
 {
 	struct ath_softc *sc = container_of(work, struct ath_softc, hw_check_work);
@@ -682,6 +699,250 @@ void ath_hw_pll_work(struct work_struct *work)
 	}
 }
 
+void ath_rx_poll_work(unsigned long data)
+{
+	struct ath_softc *sc = (struct ath_softc *)data;
+	struct ath_hw *ah = sc->sc_ah;
+	struct ath_common *common = ath9k_hw_common(ah);
+	struct ieee80211_conf *conf = &common->hw->conf;
+	struct ath9k_nfcal_hist *h = sc->caldata.nfCalHist;
+	static u32 iter, match_count;
+	static u64 last_run;
+	unsigned long flags;
+	u32 rx_clear, rx, tx, delay = 10, reg;
+	int i, j;
+	u8 chainmask = (ah->rxchainmask << 3) | ah->rxchainmask;
+	u8 nread;
+
+	if (jiffies_to_msecs(jiffies - last_run) > 30)
+		iter = match_count = 0;
+	else {
+		if (atomic_read(&sc->stop_rx_poll) && iter) {
+			iter = match_count = 0;
+			return;
+		}
+		iter += 1;
+	}
+	sc->ps_flags |= PS_WAIT_FOR_BEACON;
+	ath9k_ps_wakeup(sc);
+
+	spin_lock_irqsave(&common->cc_lock, flags);
+	ath_hw_cycle_counters_update(common);
+
+	rx_clear = common->cc_rxpoll.rx_busy * 100 / common->cc_rxpoll.cycles;
+	rx = common->cc_rxpoll.rx_frame * 100 / common->cc_rxpoll.cycles;
+	tx = common->cc_rxpoll.tx_frame * 100 / common->cc_rxpoll.cycles;
+	memset(&common->cc_rxpoll, 0, sizeof(common->cc_rxpoll));
+
+	spin_unlock_irqrestore(&common->cc_lock, flags);
+
+	printk(KERN_ERR "--------------------------------------------------\n");
+	printk(KERN_ERR "Iteration: %d\n", iter);
+	printk(KERN_ERR "Cycle Counters:\n");
+	printk(KERN_ERR "rx_clear = %d%% rx_frame %d%% tx_frame %d%%\n",
+			rx_clear, rx, tx);
+
+	printk(KERN_ERR "IMR %08x IER %08x intr_cnt %d\n",
+			REG_READ(ah, AR_IMR), REG_READ(ah, AR_IER),
+			atomic_read(&ah->intr_ref_cnt));
+	ar9003_hw_dump_txdesc(ah);
+
+	REG_SET_BIT(ah, AR_DIAG_SW, 0x8080000);
+	for (i = 0; i < 5; i++) {
+		printk(KERN_ERR
+		       "OBS_BUS_1(0x806c) = %08x OBS_BUS_CTRL(0x8068) = %08x\n",
+		       REG_READ(ah, AR_OBS_BUS_1),
+		       REG_READ(ah, AR_OBS_BUS_CTRL));
+	}
+	printk(KERN_ERR
+	       "DIAG_SW(0x8048) = %08x MAC_PCU_LOGIC_ANALYZER(0x8264) = %08x"
+	       " PCU_MISC_MODE2(0x8344) = %08x\n",
+		REG_READ(ah, AR_DIAG_SW),
+		REG_READ(ah, AR_MAC_PCU_LOGIC_ANALYZER),
+		REG_READ(ah, AR_PCU_MISC_MODE2));
+
+	printk(KERN_ERR "0x100 = %08x 0x104 = %08x\n",
+	       REG_READ(ah, 0x100), REG_READ(ah, 0x104));
+	for (i = 0; i < 10; i++)
+		printk(KERN_ERR "QSTS(%d) = %08x\n",
+		       i, REG_READ(ah, AR_QSTS(i)));
+
+	printk(KERN_ERR "Rxdp: hp %08x lp %08x\n",
+			REG_READ(ah, AR_HP_RXDP), REG_READ(ah, AR_LP_RXDP));
+	printk(KERN_ERR "rx filter: %08x\n", REG_READ(ah, AR_RX_FILTER));
+
+	printk(KERN_ERR "DMADBG dump:\n");
+	for (i = 0; i < ATH9K_NUM_DMA_DEBUG_REGS; i++)
+		printk(KERN_ERR "%d: %08x ",
+		       i, REG_READ(ah, AR_DMADBG_0 + (i * sizeof(u32))));
+	printk(KERN_ERR "\n");
+
+	printk(KERN_ERR "BB Debug dump:\n");
+	/* Step 1a: Set bit 23 of register 0xa360 to 0 */
+	reg = REG_READ(ah, 0xa360);
+	reg &= ~0x00800000;
+	REG_WRITE(ah, 0xa360, reg);
+
+	/* Step 2a: Set register 0xa364 to 0x1000 */
+	reg = 0x1000;
+	REG_WRITE(ah, 0xa364, reg);
+
+	/* Step 3a: Read bits 17:0 of register 0x9c20 */
+	reg = REG_READ(ah, 0x9c20);
+	reg &= 0x0003ffff;
+	printk(KERN_ERR
+		"Test Control Status [0x1000] 0x9c20[17:0] = 0x%x\n", reg);
+
+	/* Step 1b: Set bit 23 of register 0xa360 to 0 */
+	reg = REG_READ(ah, 0xa360);
+	reg &= ~0x00800000;
+	REG_WRITE(ah, 0xa360, reg);
+
+	/* Step 2b: Set register 0xa364 to 0x1400 */
+	reg = 0x1400;
+	REG_WRITE(ah, 0xa364, reg);
+
+	/* Step 3b: Read bits 17:0 of register 0x9c20 */
+	reg = REG_READ(ah, 0x9c20);
+	reg &= 0x0003ffff;
+	printk(KERN_ERR
+		"Test Control Status [0x1400] 0x9c20[17:0] = 0x%x\n", reg);
+
+	/* Step 1c: Set bit 23 of register 0xa360 to 0 */
+	reg = REG_READ(ah, 0xa360);
+	reg &= ~0x00800000;
+	REG_WRITE(ah, 0xa360, reg);
+
+	/* Step 2c: Set register 0xa364 to 0x3C00 */
+	reg = 0x3c00;
+	REG_WRITE(ah, 0xa364, reg);
+
+	/* Step 3c: Read bits 17:0 of register 0x9c20 */
+	reg = REG_READ(ah, 0x9c20);
+	reg &= 0x0003ffff;
+	printk(KERN_ERR
+		"Test Control Status [0x3C00] 0x9c20[17:0] = 0x%x\n", reg);
+
+	/* Step 1d: Set bit 24 of register 0xa360 to 0 */
+	reg = REG_READ(ah, 0xa360);
+	reg &= ~0x001040000;
+	REG_WRITE(ah, 0xa360, reg);
+
+	/* Step 2d: Set register 0xa364 to 0x5005D */
+	reg = 0x5005D;
+	REG_WRITE(ah, 0xa364, reg);
+
+	/* Step 3d: Read bits 17:0 of register 0xa368 */
+	reg = REG_READ(ah, 0xa368);
+	reg &= 0x0003ffff;
+	printk(KERN_ERR
+		"Test Control Status [0x5005D] 0xa368[17:0] = 0x%x\n", reg);
+
+	/* Step 1e: Set bit 24 of register 0xa360 to 0 */
+	reg = REG_READ(ah, 0xa360);
+	reg &= ~0x001040000;
+	REG_WRITE(ah, 0xa360, reg);
+
+	/* Step 2e: Set register 0xa364 to 0x7005D */
+	reg = 0x7005D;
+	REG_WRITE(ah, 0xa364, reg);
+
+	/* Step 3e: Read bits 17:0 of register 0xa368 */
+	reg = REG_READ(ah, 0xa368);
+	reg &= 0x0003ffff;
+	printk(KERN_ERR
+		"Test Control Status [0x7005D] 0xa368[17:0] = 0x%x\n", reg);
+
+	/* Step 1f: Set bit 24 of register 0xa360 to 0 */
+	reg = REG_READ(ah, 0xa360);
+	reg &= ~0x001000000;
+	reg |= 0x40000;
+	REG_WRITE(ah, 0xa360, reg);
+
+	/* Step 2f: Set register 0xa364 to 0x3005D */
+	reg = 0x3005D;
+	REG_WRITE(ah, 0xa364, reg);
+
+	/* Step 3f: Read bits 17:0 of register 0xa368 */
+	reg = REG_READ(ah, 0xa368);
+	reg &= 0x0003ffff;
+	printk(KERN_ERR
+		"Test Control Status [0x3005D] 0xa368[17:0] = 0x%x\n", reg);
+
+	/* Step 1g: Set bit 24 of register 0xa360 to 0 */
+	reg = REG_READ(ah, 0xa360);
+	reg &= ~0x001000000;
+	reg |= 0x40000;
+	REG_WRITE(ah, 0xa360, reg);
+
+	/* Step 2g: Set register 0xa364 to 0x6005D */
+	reg = 0x6005D;
+	REG_WRITE(ah, 0xa364, reg);
+
+	/* Step 3g: Read bits 17:0 of register 0xa368 */
+	reg = REG_READ(ah, 0xa368);
+	reg &= 0x0003ffff;
+	printk(KERN_ERR
+		"Test Control Status [0x6005D] 0xa368[17:0] = 0x%x\n", reg);
+
+	ar9003_hw_dump_ani_reg(ah);
+
+	printk(KERN_ERR "%8s: %10u\n", "RXLP", sc->debug.stats.istats.rxlp);
+	printk(KERN_ERR "%8s: %10u\n", "RXHP", sc->debug.stats.istats.rxhp);
+	printk(KERN_ERR "%8s: %10u\n", "WATCHDOG",
+			sc->debug.stats.istats.bb_watchdog);
+	printk(KERN_ERR "%8s: %10u\n", "RXEOL", sc->debug.stats.istats.rxeol);
+	printk(KERN_ERR "%8s: %10u\n", "RXORN", sc->debug.stats.istats.rxorn);
+	printk(KERN_ERR "%8s: %10u\n", "TX", sc->debug.stats.istats.txok);
+	printk(KERN_ERR "%8s: %10u\n", "TXURN", sc->debug.stats.istats.txurn);
+	printk(KERN_ERR "%8s: %10u\n", "MIB", sc->debug.stats.istats.mib);
+	printk(KERN_ERR "%8s: %10u\n", "RXPHY",
+			sc->debug.stats.istats.rxphyerr);
+	printk(KERN_ERR "%8s: %10u\n", "RXKCM",
+			sc->debug.stats.istats.rx_keycache_miss);
+	printk(KERN_ERR "%8s: %10u\n", "BMISS", sc->debug.stats.istats.bmiss);
+	printk(KERN_ERR "%8s: %10u\n", "CST", sc->debug.stats.istats.cst);
+	printk(KERN_ERR "%8s: %10u\n", "GTT", sc->debug.stats.istats.gtt);
+
+	printk(KERN_ERR "Noise floor dump:\n");
+	printk(KERN_ERR "Channel Noise Floor : %d\n", ah->noise);
+	printk(KERN_ERR "Chain | privNF | # Readings | NF Readings\n");
+	for (i = 0; i < 6; i++) {
+		if (!(chainmask & (1 << i)) ||
+				((i >= 3) && !conf_is_ht40(conf)))
+			continue;
+
+		nread = 5 - h[i].invalidNFcount;
+		printk(KERN_ERR " %d\t %d\t %d\t\t", i, h[i].privNF, nread);
+		for (j = 0; j < nread; j++)
+			printk(KERN_ERR " %d", h[i].nfCalBuffer[j]);
+		printk(KERN_ERR "\n");
+	}
+
+	last_run = jiffies;
+	if (rx_clear > 98) {
+		printk(KERN_ERR "rx clear %d tx %d matched count %d\n",
+		       rx_clear, tx, match_count);
+		if (match_count++ > 9) {
+			ath9k_ps_restore(sc);
+			ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
+			iter = match_count = 0;
+			return;
+		}
+	} else if (ath9k_hw_detect_mac_hang(ah)) {
+		printk(KERN_ERR "MAC hang signature found\n");
+		ath9k_ps_restore(sc);
+		ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
+		iter = match_count = 0;
+		return;
+	} else if (iter >= 15) {
+		iter = match_count = 0;
+		delay = 200;
+	}
+	ath9k_ps_restore(sc);
+	atomic_set(&sc->stop_rx_poll, 0);
+	mod_timer(&sc->rx_poll_timer, jiffies + msecs_to_jiffies(delay));
+}
 
 void ath9k_tasklet(unsigned long data)
 {
@@ -948,6 +1209,7 @@ void ath_radio_disable(struct ath_softc *sc, struct ieee80211_hw *hw)
 
 	ath9k_ps_wakeup(sc);
 	cancel_delayed_work_sync(&sc->hw_pll_work);
+	del_timer_sync(&sc->rx_poll_timer);
 
 	spin_lock_bh(&sc->sc_pcu_lock);
 
@@ -1000,6 +1262,7 @@ int ath_reset(struct ath_softc *sc, bool retry_tx)
 	ath9k_debug_samp_bb_mac(sc);
 	/* Stop ANI */
 	del_timer_sync(&common->ani.timer);
+	del_timer_sync(&sc->rx_poll_timer);
 
 	ath9k_ps_wakeup(sc);
 
@@ -1029,6 +1292,9 @@ int ath_reset(struct ath_softc *sc, bool retry_tx)
 
 	if ((sc->sc_flags & SC_OP_BEACONS) || !(sc->sc_flags & (SC_OP_OFFCHANNEL)))
 		ath_set_beacon(sc);	/* restart beacons */
+
+	if (sc->sc_flags & SC_OP_PRIM_STA_VIF)
+		mod_timer(&sc->rx_poll_timer, jiffies + msecs_to_jiffies(300));
 
 	ath9k_hw_set_interrupts(ah, ah->imask);
 	ath9k_hw_enable_interrupts(ah);
@@ -1243,10 +1509,12 @@ static void ath9k_stop(struct ieee80211_hw *hw)
 
 	mutex_lock(&sc->mutex);
 
+	del_timer_sync(&sc->rx_poll_timer);
 	cancel_delayed_work_sync(&sc->tx_complete_work);
 	cancel_delayed_work_sync(&sc->hw_pll_work);
 	cancel_work_sync(&sc->paprd_work);
 	cancel_work_sync(&sc->hw_check_work);
+	cancel_work_sync(&sc->hw_reset_work);
 
 	if (sc->sc_flags & SC_OP_INVALID) {
 		ath_dbg(common, ATH_DBG_ANY, "Device not present\n");
@@ -2024,6 +2292,9 @@ static void ath9k_bss_iter(void *data, u8 *mac, struct ieee80211_vif *vif)
 
 			sc->sc_flags |= SC_OP_ANI_RUN;
 			ath_start_ani(common);
+			atomic_set(&sc->stop_rx_poll, 0);
+			mod_timer(&sc->rx_poll_timer,
+				  jiffies + msecs_to_jiffies(300));
 		}
 		break;
 	default:
@@ -2061,6 +2332,7 @@ static void ath9k_config_bss(struct ath_softc *sc, struct ieee80211_vif *vif)
 		/* Stop ANI */
 		sc->sc_flags &= ~SC_OP_ANI_RUN;
 		del_timer_sync(&common->ani.timer);
+		del_timer_sync(&sc->rx_poll_timer);
 	}
 }
 
