@@ -666,3 +666,21 @@ void ath9k_hw_setup_statusring(struct ath_hw *ah, void *ts_start,
 	ath9k_hw_reset_txstatus_ring(ah);
 }
 EXPORT_SYMBOL(ath9k_hw_setup_statusring);
+
+void ar9003_hw_dump_txdesc(struct ath_hw *ah)
+{
+	struct ar9003_txs *ads;
+	u32 status, i, len = 0;
+	u8 buf[1200];
+
+	memset(buf, 0, sizeof(buf));
+	printk(KERN_ERR "ts_tail %d\n", ah->ts_tail);
+
+	for (i = 0; i < ah->ts_size; i++) {
+		ads = &ah->ts_ring[i];
+		status = ACCESS_ONCE(ads->status8);
+		len += sprintf(buf + len, "%d ", status & AR_TxDone);
+	}
+	printk(KERN_ERR "ring status: %s\n", buf);
+}
+EXPORT_SYMBOL(ar9003_hw_dump_txdesc);
