@@ -48,7 +48,8 @@ int mwifiex_handle_rx_packet(struct mwifiex_adapter *adapter,
 	if (!priv)
 		priv = mwifiex_get_priv(adapter, MWIFIEX_BSS_ROLE_ANY);
 
-	rx_info->bss_index = priv->bss_index;
+	rx_info->bss_num = priv->bss_num;
+	rx_info->bss_type = priv->bss_type;
 
 	return mwifiex_process_sta_rx_packet(adapter, skb);
 }
@@ -130,11 +131,12 @@ int mwifiex_write_data_complete(struct mwifiex_adapter *adapter,
 		return 0;
 
 	tx_info = MWIFIEX_SKB_TXCB(skb);
-	priv = mwifiex_bss_index_to_priv(adapter, tx_info->bss_index);
+	priv = mwifiex_get_priv_by_id(adapter, tx_info->bss_num,
+			tx_info->bss_type);
 	if (!priv)
 		goto done;
 
-	priv->netdev->trans_start = jiffies;
+	mwifiex_set_trans_start(priv->netdev);
 	if (!status) {
 		priv->stats.tx_packets++;
 		priv->stats.tx_bytes += skb->len;
@@ -152,7 +154,8 @@ int mwifiex_write_data_complete(struct mwifiex_adapter *adapter,
 		if ((GET_BSS_ROLE(tpriv) == MWIFIEX_BSS_ROLE_STA)
 				&& (tpriv->media_connected)) {
 			if (netif_queue_stopped(tpriv->netdev))
-				netif_wake_queue(tpriv->netdev);
+				mwifiex_wake_up_net_dev_queue(tpriv->netdev,
+								adapter);
 		}
 	}
 done:

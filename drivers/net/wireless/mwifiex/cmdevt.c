@@ -391,7 +391,8 @@ int mwifiex_process_event(struct mwifiex_adapter *adapter)
 
 	if (skb) {
 		rx_info = MWIFIEX_SKB_RXCB(skb);
-		rx_info->bss_index = priv->bss_index;
+		rx_info->bss_num = priv->bss_num;
+		rx_info->bss_type = priv->bss_type;
 	}
 
 	if (eventcause != EVENT_PS_SLEEP && eventcause != EVENT_PS_AWAKE) {
@@ -939,7 +940,6 @@ mwifiex_cancel_pending_ioctl(struct mwifiex_adapter *adapter)
 {
 	struct cmd_ctrl_node *cmd_node = NULL, *tmp_node = NULL;
 	unsigned long cmd_flags;
-	unsigned long cmd_pending_q_flags;
 	unsigned long scan_pending_q_flags;
 	uint16_t cancel_scan_cmd = false;
 
@@ -949,12 +949,9 @@ mwifiex_cancel_pending_ioctl(struct mwifiex_adapter *adapter)
 		cmd_node = adapter->curr_cmd;
 		cmd_node->wait_q_enabled = false;
 		cmd_node->cmd_flag |= CMD_F_CANCELED;
-		spin_lock_irqsave(&adapter->cmd_pending_q_lock,
-				  cmd_pending_q_flags);
-		list_del(&cmd_node->list);
-		spin_unlock_irqrestore(&adapter->cmd_pending_q_lock,
-				       cmd_pending_q_flags);
 		mwifiex_insert_cmd_to_free_q(adapter, cmd_node);
+		mwifiex_complete_cmd(adapter, adapter->curr_cmd);
+		adapter->curr_cmd = NULL;
 		spin_unlock_irqrestore(&adapter->mwifiex_cmd_lock, cmd_flags);
 	}
 
@@ -981,7 +978,6 @@ mwifiex_cancel_pending_ioctl(struct mwifiex_adapter *adapter)
 		spin_unlock_irqrestore(&adapter->mwifiex_cmd_lock, cmd_flags);
 	}
 	adapter->cmd_wait_q.status = -1;
-	mwifiex_complete_cmd(adapter, adapter->curr_cmd);
 }
 
 /*

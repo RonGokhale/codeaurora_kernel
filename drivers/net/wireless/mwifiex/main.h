@@ -352,7 +352,6 @@ struct mwifiex_private;
 
 struct mwifiex_private {
 	struct mwifiex_adapter *adapter;
-	u8 bss_index;
 	u8 bss_type;
 	u8 bss_role;
 	u8 bss_priority;
@@ -392,6 +391,7 @@ struct mwifiex_private {
 	u8 prev_bssid[ETH_ALEN];
 	struct mwifiex_current_bss_params curr_bss_params;
 	u16 beacon_period;
+	u8 dtim_period;
 	u16 listen_interval;
 	u16 atim_window;
 	u8 adhoc_channel;
@@ -453,15 +453,8 @@ struct mwifiex_private {
 	u8 scan_pending_on_block;
 	u8 report_scan_result;
 	struct cfg80211_scan_request *scan_request;
-	int scan_result_status;
-	int assoc_request;
-	u16 assoc_result;
-	int ibss_join_request;
-	u16 ibss_join_result;
-	bool disconnect;
+	struct mwifiex_user_scan_cfg *user_scan_cfg;
 	u8 cfg_bssid[6];
-	struct workqueue_struct *workqueue;
-	struct work_struct cfg_workqueue;
 	u8 country_code[IEEE80211_COUNTRY_STRING_LEN];
 	struct wps wps;
 	u8 scan_block;
@@ -647,7 +640,8 @@ struct mwifiex_adapter {
 	u32 hw_dot_11n_dev_cap;
 	u8 hw_dev_mcs_support;
 	u8 adhoc_11n_enabled;
-	u8 chan_offset;
+	u8 sec_chan_offset;
+	enum nl80211_channel_type channel_type;
 	struct mwifiex_dbg dbg;
 	u8 arp_filter[ARP_FILTER_MAX_BUF_SIZE];
 	u32 arp_filter_size;
@@ -655,9 +649,18 @@ struct mwifiex_adapter {
 	struct mwifiex_wait_queue cmd_wait_q;
 	u8 scan_wait_q_woken;
 	struct cmd_ctrl_node *cmd_queued;
+	spinlock_t queue_lock;		/* lock for tx queues */
 };
 
 int mwifiex_init_lock_list(struct mwifiex_adapter *adapter);
+
+void mwifiex_set_trans_start(struct net_device *dev);
+
+void mwifiex_stop_net_dev_queue(struct net_device *netdev,
+		struct mwifiex_adapter *adapter);
+
+void mwifiex_wake_up_net_dev_queue(struct net_device *netdev,
+		struct mwifiex_adapter *adapter);
 
 int mwifiex_init_fw(struct mwifiex_adapter *adapter);
 
@@ -881,8 +884,6 @@ mwifiex_netdev_get_priv(struct net_device *dev)
 	return (struct mwifiex_private *) (*(unsigned long *) netdev_priv(dev));
 }
 
-struct mwifiex_private *mwifiex_bss_index_to_priv(struct mwifiex_adapter
-						*adapter, u8 bss_index);
 int mwifiex_init_shutdown_fw(struct mwifiex_private *priv,
 			     u32 func_init_shutdown);
 int mwifiex_add_card(void *, struct semaphore *, struct mwifiex_if_ops *, u8);
@@ -952,8 +953,6 @@ int mwifiex_main_process(struct mwifiex_adapter *);
 
 int mwifiex_bss_set_channel(struct mwifiex_private *,
 			    struct mwifiex_chan_freq_power *cfp);
-int mwifiex_set_radio_band_cfg(struct mwifiex_private *,
-			 struct mwifiex_ds_band_cfg *);
 int mwifiex_get_bss_info(struct mwifiex_private *,
 			 struct mwifiex_bss_info *);
 int mwifiex_fill_new_bss_desc(struct mwifiex_private *priv,
