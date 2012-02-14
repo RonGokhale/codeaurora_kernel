@@ -659,6 +659,7 @@ struct rtl8169_private {
 	u16 intr_event;
 	u16 napi_event;
 	u16 intr_mask;
+	bool runtime_suspended;
 
 	struct mdio_ops {
 		void (*write)(void __iomem *, int, int);
@@ -3971,6 +3972,7 @@ static int rtl8169_open(struct net_device *dev)
 	rtl_hw_start(dev);
 
 	tp->saved_wolopts = 0;
+	tp->runtime_suspended = false;
 	pm_runtime_put_noidle(&pdev->dev);
 
 	rtl8169_check_link_status(dev, tp, ioaddr);
@@ -5737,6 +5739,7 @@ static int rtl8169_runtime_suspend(struct device *device)
 	spin_lock_irq(&tp->lock);
 	tp->saved_wolopts = __rtl8169_get_wol(tp);
 	__rtl8169_set_wol(tp, WAKE_ANY);
+	tp->runtime_suspended = true;
 	spin_unlock_irq(&tp->lock);
 
 	rtl8169_net_suspend(dev);
@@ -5756,6 +5759,7 @@ static int rtl8169_runtime_resume(struct device *device)
 	spin_lock_irq(&tp->lock);
 	__rtl8169_set_wol(tp, tp->saved_wolopts);
 	tp->saved_wolopts = 0;
+	tp->runtime_suspended = false;
 	spin_unlock_irq(&tp->lock);
 
 	rtl8169_init_phy(dev, tp);
@@ -5819,6 +5823,10 @@ static void rtl_shutdown(struct pci_dev *pdev)
 	struct net_device *dev = pci_get_drvdata(pdev);
 	struct rtl8169_private *tp = netdev_priv(dev);
 
+	/* Get the device back to D0 state if it was runtime suspended. */
+	if (tp->runtime_suspended)
+		pci_set_power_state(pdev, PCI_D0);
+
 	rtl8169_net_suspend(dev);
 
 	/* Restore original MAC address */
@@ -5827,6 +5835,10 @@ static void rtl_shutdown(struct pci_dev *pdev)
 	spin_lock_irq(&tp->lock);
 
 	rtl8169_hw_reset(tp);
+
+	/* Restore WOL flags if they were messed around with. */
+	if (tp->saved_wolopts)
+		__rtl8169_set_wol(tp, tp->saved_wolopts);
 
 	spin_unlock_irq(&tp->lock);
 
