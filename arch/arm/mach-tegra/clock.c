@@ -27,6 +27,7 @@
 #include <linux/sched.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
+#include <linux/uaccess.h>
 
 #include <mach/clk.h>
 
@@ -416,6 +417,55 @@ void tegra_sdmmc_tap_delay(struct clk *c, int delay)
 	spin_unlock_irqrestore(&c->spinlock, flags);
 }
 
+
+static void __init __tegra_init_check_max_rates(struct clk *c)
+{
+	unsigned long flags, rate;
+	struct clk *child;
+
+	spin_lock_irqsave(&c->spinlock, flags);
+
+	rate = clk_get_rate_locked(c);
+
+	if (rate > c->max_rate) {
+		pr_warn_once("Capping clocks set too high:\n");
+
+		pr_warn("   %12s (%lu > %lu)", c->name, rate, c->max_rate);
+		if (c->state == ON)
+			pr_cont(" (clock enabled!)");
+		if (!c->ops)
+			pr_cont(" (no ops!)");
+		else
+			clk_set_rate_locked(c, c->max_rate);
+		pr_cont("\n");
+	}
+
+	spin_unlock_irqrestore(&c->spinlock, flags);
+
+	list_for_each_entry(child, &clocks, node)
+		if (child->parent == c)
+			__tegra_init_check_max_rates(child);
+}
+
+/*
+ * Iterate through all clocks, capping any clock that is higher than max_rate.
+ */
+static int __init tegra_init_check_max_rates(void)
+{
+	struct clk *c;
+
+	mutex_lock(&clock_list_lock);
+
+	list_for_each_entry(c, &clocks, node)
+		if (!c->parent)
+			__tegra_init_check_max_rates(c);
+
+	mutex_unlock(&clock_list_lock);
+
+	return 0;
+}
+late_initcall(tegra_init_check_max_rates);
+
 #ifdef CONFIG_DEBUG_FS
 
 static int __clk_lock_all_spinlocks(void)
@@ -583,6 +633,70 @@ static const struct file_operations possible_parents_fops = {
 	.release	= single_release,
 };
 
+static int parent_show(struct seq_file *s, void *data)
+{
+	struct clk *c = s->private;
+	struct clk *p = clk_get_parent(c);
+
+	seq_printf(s, "%s\n", p ? p->name : "clk_root");
+	return 0;
+}
+
+static int parent_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, parent_show, inode->i_private);
+}
+
+static ssize_t parent_write(struct file *file,
+	const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	struct seq_file *s = file->private_data;
+	struct clk *c = s->private;
+	struct clk *p = NULL;
+	char buf[32];
+
+	if (sizeof(buf) <= count)
+		return -EINVAL;
+
+	if (copy_from_user(buf, userbuf, count))
+		return -EFAULT;
+
+	/* terminate buffer and trim - white spaces may be appended
+	 *  at the end when invoked from shell command line */
+	buf[count] = '\0';
+	strim(buf);
+
+	p = tegra_get_clock_by_name(buf);
+	if (!p)
+		return -EINVAL;
+
+	clk_set_parent(c, p);
+	return count;
+}
+
+static const struct file_operations parent_fops = {
+	.open		= parent_open,
+	.read		= seq_read,
+	.write		= parent_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int rate_get(void *data, u64 *val)
+{
+	struct clk *c = (struct clk *)data;
+	*val = (u64)clk_get_rate(c);
+	return 0;
+}
+
+static int rate_set(void *data, u64 val)
+{
+	struct clk *c = (struct clk *)data;
+	clk_set_rate(c, (unsigned long)val);
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(rate_fops, rate_get, rate_set, "%llu\n");
+
 static int clk_debugfs_register_one(struct clk *c)
 {
 	struct dentry *d;
@@ -596,11 +710,15 @@ static int clk_debugfs_register_one(struct clk *c)
 	if (!d)
 		goto err_out;
 
-	d = debugfs_create_u32("rate", S_IRUGO, c->dent, (u32 *)&c->rate);
+	d = debugfs_create_x32("flags", S_IRUGO, c->dent, (u32 *)&c->flags);
 	if (!d)
 		goto err_out;
 
-	d = debugfs_create_x32("flags", S_IRUGO, c->dent, (u32 *)&c->flags);
+	d = debugfs_create_file("rate", S_IRUGO | S_IWUGO, c->dent, c, &rate_fops);
+	if (!d)
+		goto err_out;
+
+	d = debugfs_create_file("parent", S_IRUGO | S_IWUGO, c->dent, c, &parent_fops);
 	if (!d)
 		goto err_out;
 

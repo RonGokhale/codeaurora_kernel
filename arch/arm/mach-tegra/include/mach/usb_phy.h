@@ -28,6 +28,9 @@ struct tegra_utmip_config {
 	u8 xcvr_setup;
 	u8 xcvr_lsfslew;
 	u8 xcvr_lsrslew;
+	u8 vbus_gpio;
+	bool shared_pin_vbus_en_oc;
+	bool initialized;
 };
 
 struct tegra_ulpi_config {
@@ -59,6 +62,7 @@ struct tegra_usb_phy {
 	enum tegra_usb_phy_mode mode;
 	void *config;
 	struct otg_transceiver *ulpi;
+	bool ulpi_initialized;
 };
 
 struct tegra_usb_phy *tegra_usb_phy_open(int instance, void __iomem *regs,
@@ -71,6 +75,13 @@ void tegra_usb_phy_clk_disable(struct tegra_usb_phy *phy);
 void tegra_usb_phy_clk_enable(struct tegra_usb_phy *phy);
 
 void tegra_usb_phy_power_off(struct tegra_usb_phy *phy);
+
+void tegra_usb_phy_utmi_vbus_init(struct tegra_utmip_config *utmi_config,
+			const char *label);
+
+void tegra_usb_phy_vbus_on(struct tegra_usb_phy *phy);
+
+void tegra_usb_phy_vbus_off(struct tegra_usb_phy *phy);
 
 void tegra_usb_phy_preresume(struct tegra_usb_phy *phy);
 
