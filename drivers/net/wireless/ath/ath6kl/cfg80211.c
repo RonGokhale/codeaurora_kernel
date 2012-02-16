@@ -641,6 +641,7 @@ static int ath6kl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 	s8 n_channels = 0;
 	u16 *channels = NULL;
 	int ret = 0;
+	u32 force_fg_scan = 0;
 
 	if (!ath6kl_cfg80211_ready(ar))
 		return -EIO;
@@ -702,7 +703,10 @@ static int ath6kl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 			channels[i] = request->channels[i]->center_freq;
 	}
 
-	ret = ath6kl_wmi_startscan_cmd(ar->wmi, WMI_LONG_SCAN, 0,
+	if (test_bit(CONNECTED, &ar->flag))
+		force_fg_scan = 1;
+
+	ret = ath6kl_wmi_startscan_cmd(ar->wmi, WMI_LONG_SCAN, force_fg_scan,
 				       false, 0, 0, n_channels, channels);
 	if (ret)
 		ath6kl_err("wmi_startscan_cmd failed\n");
@@ -1419,6 +1423,13 @@ static int ar6k_cfg80211_suspend(struct wiphy *wiphy,
 
 	return ath6kl_hif_suspend(ar);
 }
+
+static int ar6k_cfg80211_resume(struct wiphy *wiphy)
+{
+	struct ath6kl *ar = wiphy_priv(wiphy);
+
+	return ath6kl_hif_resume(ar);
+}
 #endif
 
 static int ath6kl_set_channel(struct wiphy *wiphy, struct net_device *dev,
@@ -1829,6 +1840,7 @@ static struct cfg80211_ops ath6kl_cfg80211_ops = {
 	CFG80211_TESTMODE_CMD(ath6kl_tm_cmd)
 #ifdef CONFIG_PM
 	.suspend = ar6k_cfg80211_suspend,
+	.resume = ar6k_cfg80211_resume,
 #endif
 	.set_channel = ath6kl_set_channel,
 	.add_beacon = ath6kl_add_beacon,

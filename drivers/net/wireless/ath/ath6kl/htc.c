@@ -15,7 +15,7 @@
  */
 
 #include "core.h"
-#include "htc_hif.h"
+#include "hif.h"
 #include "debug.h"
 #include "hif-ops.h"
 #include <asm/unaligned.h>
@@ -482,7 +482,7 @@ static void ath6kl_htc_tx_bundle(struct htc_endpoint *endpoint,
 		ath6kl_dbg(ATH6KL_DBG_HTC_SEND,
 			   "send scatter total bytes: %d , entries: %d\n",
 			   scat_req->len, scat_req->scat_entries);
-		ath6kldev_submit_scat_req(target->dev, scat_req, false);
+		ath6kl_hif_submit_scat_req(target->dev, scat_req, false);
 
 		if (status)
 			break;
@@ -1620,7 +1620,7 @@ static int ath6kl_htc_rx_bundle(struct htc_target *target,
 	scat_req->len = len;
 	scat_req->scat_entries = i;
 
-	status = ath6kldev_submit_scat_req(target->dev, scat_req, true);
+	status = ath6kl_hif_submit_scat_req(target->dev, scat_req, true);
 
 	if (!status)
 		*n_pkt_fetched = i;
@@ -1643,7 +1643,6 @@ static int ath6kl_htc_rx_process_packets(struct htc_target *target,
 	int status = 0;
 
 	list_for_each_entry_safe(packet, tmp_pkt, comp_pktq, list) {
-		list_del(&packet->list);
 		ep = &target->endpoint[packet->endpoint];
 
 		/* process header for each of the recv packet */
@@ -1651,6 +1650,8 @@ static int ath6kl_htc_rx_process_packets(struct htc_target *target,
 						   n_lk_ahd);
 		if (status)
 			return status;
+
+		list_del(&packet->list);
 
 		if (list_empty(comp_pktq)) {
 			/*
@@ -1686,10 +1687,14 @@ static int ath6kl_htc_rx_fetch(struct htc_target *target,
 	int fetched_pkts;
 	bool part_bundle = false;
 	int status = 0;
+	struct list_head tmp_rxq;
+	struct htc_packet *packet, *tmp_pkt;
 
 	/* now go fetch the list of HTC packets */
 	while (!list_empty(rx_pktq)) {
 		fetched_pkts = 0;
+
+		INIT_LIST_HEAD(&tmp_rxq);
 
 		if (target->rx_bndl_enable && (get_queue_depth(rx_pktq) > 1)) {
 			/*
@@ -1698,28 +1703,27 @@ static int ath6kl_htc_rx_fetch(struct htc_target *target,
 			 * allowed.
 			 */
 			status = ath6kl_htc_rx_bundle(target, rx_pktq,
-						      comp_pktq,
+						      &tmp_rxq,
 						      &fetched_pkts,
 						      part_bundle);
 			if (status)
-				return status;
+				goto fail_rx;
 
 			if (!list_empty(rx_pktq))
 				part_bundle = true;
+
+			list_splice_tail_init(&tmp_rxq, comp_pktq);
 		}
 
 		if (!fetched_pkts) {
-			struct htc_packet *packet;
 
 			packet = list_first_entry(rx_pktq, struct htc_packet,
 						   list);
 
-			list_del(&packet->list);
-
 			/* fully synchronous */
 			packet->completion = NULL;
 
-			if (!list_empty(rx_pktq))
+			if (!list_is_singular(rx_pktq))
 				/*
 				 * look_aheads in all packet
 				 * except the last one in the
@@ -1731,18 +1735,42 @@ static int ath6kl_htc_rx_fetch(struct htc_target *target,
 			/* go fetch the packet */
 			status = ath6kl_htc_rx_packet(target, packet,
 						      packet->act_len);
-			if (status)
-				return status;
 
-			list_add_tail(&packet->list, comp_pktq);
+			list_move_tail(&packet->list, &tmp_rxq);
+
+			if (status)
+				goto fail_rx;
+
+			list_splice_tail_init(&tmp_rxq, comp_pktq);
 		}
+	}
+
+	return 0;
+
+fail_rx:
+
+	/*
+	 * Cleanup any packets we allocated but didn't use to
+	 * actually fetch any packets.
+	 */
+
+	list_for_each_entry_safe(packet, tmp_pkt, rx_pktq, list) {
+		list_del(&packet->list);
+		htc_reclaim_rxbuf(target, packet,
+				&target->endpoint[packet->endpoint]);
+	}
+
+	list_for_each_entry_safe(packet, tmp_pkt, &tmp_rxq, list) {
+		list_del(&packet->list);
+		htc_reclaim_rxbuf(target, packet,
+				&target->endpoint[packet->endpoint]);
 	}
 
 	return status;
 }
 
 int ath6kl_htc_rxmsg_pending_handler(struct htc_target *target,
-				     u32 msg_look_ahead[], int *num_pkts)
+				     u32 msg_look_ahead, int *num_pkts)
 {
 	struct htc_packet *packets, *tmp_pkt;
 	struct htc_endpoint *endpoint;
@@ -1759,7 +1787,7 @@ int ath6kl_htc_rxmsg_pending_handler(struct htc_target *target,
 	 * On first entry copy the look_aheads into our temp array for
 	 * processing
 	 */
-	memcpy(look_aheads, msg_look_ahead, sizeof(look_aheads));
+	look_aheads[0] = msg_look_ahead;
 
 	while (true) {
 
@@ -1827,15 +1855,6 @@ int ath6kl_htc_rxmsg_pending_handler(struct htc_target *target,
 	if (status) {
 		ath6kl_err("failed to get pending recv messages: %d\n",
 			   status);
-		/*
-		 * Cleanup any packets we allocated but didn't use to
-		 * actually fetch any packets.
-		 */
-		list_for_each_entry_safe(packets, tmp_pkt, &rx_pktq, list) {
-			list_del(&packets->list);
-			htc_reclaim_rxbuf(target, packets,
-					&target->endpoint[packets->endpoint]);
-		}
 
 		/* cleanup any packets in sync completion queue */
 		list_for_each_entry_safe(packets, tmp_pkt, &comp_pktq, list) {
@@ -1846,7 +1865,7 @@ int ath6kl_htc_rxmsg_pending_handler(struct htc_target *target,
 
 		if (target->htc_flags & HTC_OP_STATE_STOPPING) {
 			ath6kl_warn("host is going to stop blocking receiver for htc_stop\n");
-			ath6kldev_rx_control(target->dev, false);
+			ath6kl_hif_rx_control(target->dev, false);
 		}
 	}
 
@@ -1856,7 +1875,7 @@ int ath6kl_htc_rxmsg_pending_handler(struct htc_target *target,
 	 */
 	if (target->rx_st_flags & HTC_RECV_WAIT_BUFFERS) {
 		ath6kl_warn("host has no rx buffers blocking receiver to prevent overrun\n");
-		ath6kldev_rx_control(target->dev, false);
+		ath6kl_hif_rx_control(target->dev, false);
 	}
 	*num_pkts = n_fetched;
 
@@ -1874,7 +1893,7 @@ static struct htc_packet *htc_wait_for_ctrl_msg(struct htc_target *target)
 	struct htc_frame_hdr *htc_hdr;
 	u32 look_ahead;
 
-	if (ath6kldev_poll_mboxmsg_rx(target->dev, &look_ahead,
+	if (ath6kl_hif_poll_mboxmsg_rx(target->dev, &look_ahead,
 			       HTC_TARGET_RESPONSE_TIMEOUT))
 		return NULL;
 
@@ -1982,7 +2001,7 @@ int ath6kl_htc_add_rxbuf_multiple(struct htc_target *target,
 
 	if (rx_unblock && !(target->htc_flags & HTC_OP_STATE_STOPPING))
 		/* TODO : implement a buffer threshold count? */
-		ath6kldev_rx_control(target->dev, true);
+		ath6kl_hif_rx_control(target->dev, true);
 
 	return status;
 }
@@ -2321,7 +2340,7 @@ int ath6kl_htc_start(struct htc_target *target)
 	int status;
 
 	/* Disable interrupts at the chip level */
-	ath6kldev_disable_intrs(target->dev);
+	ath6kl_hif_disable_intrs(target->dev);
 
 	target->htc_flags = 0;
 	target->rx_st_flags = 0;
@@ -2346,7 +2365,7 @@ int ath6kl_htc_start(struct htc_target *target)
 		return status;
 
 	/* unmask interrupts */
-	status = ath6kldev_unmask_intrs(target->dev);
+	status = ath6kl_hif_unmask_intrs(target->dev);
 
 	if (status)
 		ath6kl_htc_stop(target);
@@ -2366,7 +2385,7 @@ void ath6kl_htc_stop(struct htc_target *target)
 	 * function returns all pending HIF I/O has completed, we can
 	 * safely flush the queues.
 	 */
-	ath6kldev_mask_intrs(target->dev);
+	ath6kl_hif_mask_intrs(target->dev);
 
 	ath6kl_htc_flush_txep_all(target);
 
@@ -2409,7 +2428,7 @@ void *ath6kl_htc_create(struct ath6kl *ar)
 
 	reset_ep_state(target);
 
-	status = ath6kldev_setup(target->dev);
+	status = ath6kl_hif_setup(target->dev);
 
 	if (status)
 		goto fail_create_htc;

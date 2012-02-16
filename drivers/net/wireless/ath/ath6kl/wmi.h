@@ -93,11 +93,6 @@ struct sq_threshold_params {
 	u8 last_rssi_poll_event;
 };
 
-struct wmi_stats {
-	u32 cmd_len_err;
-	u32 cmd_id_err;
-};
-
 struct wmi_data_sync_bufs {
 	u8 traffic_class;
 	struct sk_buff *skb;
@@ -111,32 +106,26 @@ struct wmi_data_sync_bufs {
 #define WMM_AC_VO   3		/* voice */
 
 struct wmi {
-	bool ready;
 	u16 stream_exist_for_ac[WMM_NUM_AC];
 	u8 fat_pipe_exist;
 	struct ath6kl *parent_dev;
-	struct wmi_stats stat;
 	u8 pwr_mode;
-	u8 phy_mode;
-	u8 keep_alive_intvl;
 	spinlock_t lock;
 	enum htc_endpoint_id ep_id;
 	struct sq_threshold_params
 	    sq_threshld[SIGNAL_QUALITY_METRICS_NUM_MAX];
-	enum crypto_type pair_crypto_type;
-	enum crypto_type grp_crypto_type;
 	bool is_wmm_enabled;
-	u8 ht_allowed[A_NUM_BANDS];
 	u8 traffic_class;
 	bool is_probe_ssid;
 
 	u8 *last_mgmt_tx_frame;
 	size_t last_mgmt_tx_frame_len;
+	u8 saved_pwr_mode;
 };
 
 struct host_app_area {
-	u32 wmi_protocol_ver;
-};
+	__le32 wmi_protocol_ver;
+} __packed;
 
 enum wmi_msg_type {
 	DATA_MSGTYPE = 0x0,

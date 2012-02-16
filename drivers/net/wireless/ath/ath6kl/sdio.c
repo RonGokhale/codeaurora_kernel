@@ -22,7 +22,7 @@
 #include <linux/mmc/sdio_ids.h>
 #include <linux/mmc/sdio.h>
 #include <linux/mmc/sd.h>
-#include "htc_hif.h"
+#include "hif.h"
 #include "hif-ops.h"
 #include "target.h"
 #include "debug.h"
@@ -40,7 +40,11 @@ struct ath6kl_sdio {
 	struct bus_request bus_req[BUS_REQUEST_MAX_NUM];
 
 	struct ath6kl *ar;
+
 	u8 *dma_buffer;
+
+	/* protects access to dma_buffer */
+	struct mutex dma_buffer_mutex;
 
 	/* scatter request list head */
 	struct list_head scat_req;
@@ -135,6 +139,8 @@ static int ath6kl_sdio_io(struct sdio_func *func, u32 request, u32 addr,
 {
 	int ret = 0;
 
+	sdio_claim_host(func);
+
 	if (request & HIF_WRITE) {
 		/* FIXME: looks like ugly workaround for something */
 		if (addr >= HIF_MBOX_BASE_ADDR &&
@@ -156,6 +162,8 @@ static int ath6kl_sdio_io(struct sdio_func *func, u32 request, u32 addr,
 			ret = sdio_memcpy_fromio(func, buf, addr, len);
 	}
 
+	sdio_release_host(func);
+
 	ath6kl_dbg(ATH6KL_DBG_SDIO, "%s addr 0x%x%s buf 0x%p len %d\n",
 		   request & HIF_WRITE ? "wr" : "rd", addr,
 		   request & HIF_FIXED_ADDRESS ? " (fixed)" : "", buf, len);
@@ -167,12 +175,11 @@ static int ath6kl_sdio_io(struct sdio_func *func, u32 request, u32 addr,
 static struct bus_request *ath6kl_sdio_alloc_busreq(struct ath6kl_sdio *ar_sdio)
 {
 	struct bus_request *bus_req;
-	unsigned long flag;
 
-	spin_lock_irqsave(&ar_sdio->lock, flag);
+	spin_lock_bh(&ar_sdio->lock);
 
 	if (list_empty(&ar_sdio->bus_req_freeq)) {
-		spin_unlock_irqrestore(&ar_sdio->lock, flag);
+		spin_unlock_bh(&ar_sdio->lock);
 		return NULL;
 	}
 
@@ -180,7 +187,7 @@ static struct bus_request *ath6kl_sdio_alloc_busreq(struct ath6kl_sdio *ar_sdio)
 				   struct bus_request, list);
 	list_del(&bus_req->list);
 
-	spin_unlock_irqrestore(&ar_sdio->lock, flag);
+	spin_unlock_bh(&ar_sdio->lock);
 	ath6kl_dbg(ATH6KL_DBG_SCATTER, "%s: bus request 0x%p\n",
 		   __func__, bus_req);
 
@@ -190,14 +197,12 @@ static struct bus_request *ath6kl_sdio_alloc_busreq(struct ath6kl_sdio *ar_sdio)
 static void ath6kl_sdio_free_bus_req(struct ath6kl_sdio *ar_sdio,
 				     struct bus_request *bus_req)
 {
-	unsigned long flag;
-
 	ath6kl_dbg(ATH6KL_DBG_SCATTER, "%s: bus request 0x%p\n",
 		   __func__, bus_req);
 
-	spin_lock_irqsave(&ar_sdio->lock, flag);
+	spin_lock_bh(&ar_sdio->lock);
 	list_add_tail(&bus_req->list, &ar_sdio->bus_req_freeq);
-	spin_unlock_irqrestore(&ar_sdio->lock, flag);
+	spin_unlock_bh(&ar_sdio->lock);
 }
 
 static void ath6kl_sdio_setup_scat_data(struct hif_scatter_req *scat_req,
@@ -291,9 +296,13 @@ static int ath6kl_sdio_scat_rw(struct ath6kl_sdio *ar_sdio,
 	mmc_req.cmd = &cmd;
 	mmc_req.data = &data;
 
+	sdio_claim_host(ar_sdio->func);
+
 	mmc_set_data_timeout(&data, ar_sdio->func->card);
 	/* synchronous call to process request */
 	mmc_wait_for_req(ar_sdio->func->card->host, &mmc_req);
+
+	sdio_release_host(ar_sdio->func);
 
 	status = cmd.error ? cmd.error : data.error;
 
@@ -389,17 +398,19 @@ static int ath6kl_sdio_read_write_sync(struct ath6kl *ar, u32 addr, u8 *buf,
 	if (buf_needs_bounce(buf)) {
 		if (!ar_sdio->dma_buffer)
 			return -ENOMEM;
+		mutex_lock(&ar_sdio->dma_buffer_mutex);
 		tbuf = ar_sdio->dma_buffer;
 		memcpy(tbuf, buf, len);
 		bounced = true;
 	} else
 		tbuf = buf;
 
-	sdio_claim_host(ar_sdio->func);
 	ret = ath6kl_sdio_io(ar_sdio->func, request, addr, tbuf, len);
 	if ((request & HIF_READ) && bounced)
 		memcpy(buf, tbuf, len);
-	sdio_release_host(ar_sdio->func);
+
+	if (bounced)
+		mutex_unlock(&ar_sdio->dma_buffer_mutex);
 
 	return ret;
 }
@@ -418,29 +429,25 @@ static void __ath6kl_sdio_write_async(struct ath6kl_sdio *ar_sdio,
 						     req->request);
 		context = req->packet;
 		ath6kl_sdio_free_bus_req(ar_sdio, req);
-		ath6kldev_rw_comp_handler(context, status);
+		ath6kl_hif_rw_comp_handler(context, status);
 	}
 }
 
 static void ath6kl_sdio_write_async_work(struct work_struct *work)
 {
 	struct ath6kl_sdio *ar_sdio;
-	unsigned long flags;
 	struct bus_request *req, *tmp_req;
 
 	ar_sdio = container_of(work, struct ath6kl_sdio, wr_async_work);
-	sdio_claim_host(ar_sdio->func);
 
-	spin_lock_irqsave(&ar_sdio->wr_async_lock, flags);
+	spin_lock_bh(&ar_sdio->wr_async_lock);
 	list_for_each_entry_safe(req, tmp_req, &ar_sdio->wr_asyncq, list) {
 		list_del(&req->list);
-		spin_unlock_irqrestore(&ar_sdio->wr_async_lock, flags);
+		spin_unlock_bh(&ar_sdio->wr_async_lock);
 		__ath6kl_sdio_write_async(ar_sdio, req);
-		spin_lock_irqsave(&ar_sdio->wr_async_lock, flags);
+		spin_lock_bh(&ar_sdio->wr_async_lock);
 	}
-	spin_unlock_irqrestore(&ar_sdio->wr_async_lock, flags);
-
-	sdio_release_host(ar_sdio->func);
+	spin_unlock_bh(&ar_sdio->wr_async_lock);
 }
 
 static void ath6kl_sdio_irq_handler(struct sdio_func *func)
@@ -459,7 +466,7 @@ static void ath6kl_sdio_irq_handler(struct sdio_func *func)
 	 */
 	sdio_release_host(ar_sdio->func);
 
-	status = ath6kldev_intr_bh_handler(ar_sdio->ar);
+	status = ath6kl_hif_intr_bh_handler(ar_sdio->ar);
 	sdio_claim_host(ar_sdio->func);
 	atomic_set(&ar_sdio->irq_handling, 0);
 	WARN_ON(status && status != -ECANCELED);
@@ -521,7 +528,6 @@ static int ath6kl_sdio_write_async(struct ath6kl *ar, u32 address, u8 *buffer,
 {
 	struct ath6kl_sdio *ar_sdio = ath6kl_sdio_priv(ar);
 	struct bus_request *bus_req;
-	unsigned long flags;
 
 	bus_req = ath6kl_sdio_alloc_busreq(ar_sdio);
 
@@ -534,9 +540,9 @@ static int ath6kl_sdio_write_async(struct ath6kl *ar, u32 address, u8 *buffer,
 	bus_req->request = request;
 	bus_req->packet = packet;
 
-	spin_lock_irqsave(&ar_sdio->wr_async_lock, flags);
+	spin_lock_bh(&ar_sdio->wr_async_lock);
 	list_add_tail(&bus_req->list, &ar_sdio->wr_asyncq);
-	spin_unlock_irqrestore(&ar_sdio->wr_async_lock, flags);
+	spin_unlock_bh(&ar_sdio->wr_async_lock);
 	queue_work(ar->ath6kl_wq, &ar_sdio->wr_async_work);
 
 	return 0;
@@ -582,9 +588,8 @@ static struct hif_scatter_req *ath6kl_sdio_scatter_req_get(struct ath6kl *ar)
 {
 	struct ath6kl_sdio *ar_sdio = ath6kl_sdio_priv(ar);
 	struct hif_scatter_req *node = NULL;
-	unsigned long flag;
 
-	spin_lock_irqsave(&ar_sdio->scat_lock, flag);
+	spin_lock_bh(&ar_sdio->scat_lock);
 
 	if (!list_empty(&ar_sdio->scat_req)) {
 		node = list_first_entry(&ar_sdio->scat_req,
@@ -592,7 +597,7 @@ static struct hif_scatter_req *ath6kl_sdio_scatter_req_get(struct ath6kl *ar)
 		list_del(&node->list);
 	}
 
-	spin_unlock_irqrestore(&ar_sdio->scat_lock, flag);
+	spin_unlock_bh(&ar_sdio->scat_lock);
 
 	return node;
 }
@@ -601,13 +606,12 @@ static void ath6kl_sdio_scatter_req_add(struct ath6kl *ar,
 					struct hif_scatter_req *s_req)
 {
 	struct ath6kl_sdio *ar_sdio = ath6kl_sdio_priv(ar);
-	unsigned long flag;
 
-	spin_lock_irqsave(&ar_sdio->scat_lock, flag);
+	spin_lock_bh(&ar_sdio->scat_lock);
 
 	list_add_tail(&s_req->list, &ar_sdio->scat_req);
 
-	spin_unlock_irqrestore(&ar_sdio->scat_lock, flag);
+	spin_unlock_bh(&ar_sdio->scat_lock);
 
 }
 
@@ -618,7 +622,6 @@ static int ath6kl_sdio_async_rw_scatter(struct ath6kl *ar,
 	struct ath6kl_sdio *ar_sdio = ath6kl_sdio_priv(ar);
 	u32 request = scat_req->req;
 	int status = 0;
-	unsigned long flags;
 
 	if (!scat_req->len)
 		return -EINVAL;
@@ -627,14 +630,12 @@ static int ath6kl_sdio_async_rw_scatter(struct ath6kl *ar,
 		"hif-scatter: total len: %d scatter entries: %d\n",
 		scat_req->len, scat_req->scat_entries);
 
-	if (request & HIF_SYNCHRONOUS) {
-		sdio_claim_host(ar_sdio->func);
+	if (request & HIF_SYNCHRONOUS)
 		status = ath6kl_sdio_scat_rw(ar_sdio, scat_req->busrequest);
-		sdio_release_host(ar_sdio->func);
-	} else {
-		spin_lock_irqsave(&ar_sdio->wr_async_lock, flags);
+	else {
+		spin_lock_bh(&ar_sdio->wr_async_lock);
 		list_add_tail(&scat_req->busrequest->list, &ar_sdio->wr_asyncq);
-		spin_unlock_irqrestore(&ar_sdio->wr_async_lock, flags);
+		spin_unlock_bh(&ar_sdio->wr_async_lock);
 		queue_work(ar->ath6kl_wq, &ar_sdio->wr_async_work);
 	}
 
@@ -646,13 +647,12 @@ static void ath6kl_sdio_cleanup_scatter(struct ath6kl *ar)
 {
 	struct ath6kl_sdio *ar_sdio = ath6kl_sdio_priv(ar);
 	struct hif_scatter_req *s_req, *tmp_req;
-	unsigned long flag;
 
 	/* empty the free list */
-	spin_lock_irqsave(&ar_sdio->scat_lock, flag);
+	spin_lock_bh(&ar_sdio->scat_lock);
 	list_for_each_entry_safe(s_req, tmp_req, &ar_sdio->scat_req, list) {
 		list_del(&s_req->list);
-		spin_unlock_irqrestore(&ar_sdio->scat_lock, flag);
+		spin_unlock_bh(&ar_sdio->scat_lock);
 
 		if (s_req->busrequest)
 			ath6kl_sdio_free_bus_req(ar_sdio, s_req->busrequest);
@@ -660,9 +660,9 @@ static void ath6kl_sdio_cleanup_scatter(struct ath6kl *ar)
 		kfree(s_req->sgentries);
 		kfree(s_req);
 
-		spin_lock_irqsave(&ar_sdio->scat_lock, flag);
+		spin_lock_bh(&ar_sdio->scat_lock);
 	}
-	spin_unlock_irqrestore(&ar_sdio->scat_lock, flag);
+	spin_unlock_bh(&ar_sdio->scat_lock);
 }
 
 /* setup of HIF scatter resources */
@@ -733,12 +733,13 @@ static int ath6kl_sdio_suspend(struct ath6kl *ar)
 
 	flags = sdio_get_host_pm_caps(func);
 
-	if (!(flags & MMC_PM_KEEP_POWER))
+	if (!(flags & MMC_PM_KEEP_POWER)) {
 		/* as host doesn't support keep power we need to bail out */
 		ath6kl_dbg(ATH6KL_DBG_SDIO,
 			   "func %d doesn't support MMC_PM_KEEP_POWER\n",
 			   func->num);
 		return -EINVAL;
+	}
 
 	ret = sdio_set_host_pm_flags(func, MMC_PM_KEEP_POWER);
 	if (ret) {
@@ -748,6 +749,18 @@ static int ath6kl_sdio_suspend(struct ath6kl *ar)
 	}
 
 	ath6kl_deep_sleep_enable(ar);
+
+	return 0;
+}
+
+static int ath6kl_sdio_resume(struct ath6kl *ar)
+{
+	if (ar->wmi->pwr_mode != ar->wmi->saved_pwr_mode) {
+		if (ath6kl_wmi_powermode_cmd(ar->wmi,
+			ar->wmi->saved_pwr_mode) != 0)
+			ath6kl_warn("ath6kl_sdio_resume: "
+				"wmi_powermode_cmd failed\n");
+	}
 
 	return 0;
 }
@@ -763,6 +776,7 @@ static const struct ath6kl_hif_ops ath6kl_sdio_ops = {
 	.scat_req_rw = ath6kl_sdio_async_rw_scatter,
 	.cleanup_scatter = ath6kl_sdio_cleanup_scatter,
 	.suspend = ath6kl_sdio_suspend,
+	.resume = ath6kl_sdio_resume,
 };
 
 static int ath6kl_sdio_probe(struct sdio_func *func,
@@ -797,6 +811,7 @@ static int ath6kl_sdio_probe(struct sdio_func *func,
 	spin_lock_init(&ar_sdio->lock);
 	spin_lock_init(&ar_sdio->scat_lock);
 	spin_lock_init(&ar_sdio->wr_async_lock);
+	mutex_init(&ar_sdio->dma_buffer_mutex);
 
 	INIT_LIST_HEAD(&ar_sdio->scat_req);
 	INIT_LIST_HEAD(&ar_sdio->bus_req_freeq);
@@ -909,7 +924,7 @@ static const struct sdio_device_id ath6kl_sdio_devices[] = {
 MODULE_DEVICE_TABLE(sdio, ath6kl_sdio_devices);
 
 static struct sdio_driver ath6kl_sdio_driver = {
-	.name = "ath6kl_sdio",
+	.name = "ath6kl",
 	.id_table = ath6kl_sdio_devices,
 	.probe = ath6kl_sdio_probe,
 	.remove = ath6kl_sdio_remove,
