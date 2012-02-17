@@ -94,6 +94,18 @@ target_emulate_inquiry_std(struct se_cmd *cmd)
 	buf[2] = dev->transport->get_device_rev(dev);
 
 	/*
+	 * NORMACA and HISUP = 0, RESPONSE DATA FORMAT = 2
+	 *
+	 * SPC4 says:
+	 *   A RESPONSE DATA FORMAT field set to 2h indicates that the
+	 *   standard INQUIRY data is in the format defined in this
+	 *   standard. Response data format values less than 2h are
+	 *   obsolete. Response data format values greater than 2h are
+	 *   reserved.
+	 */
+	buf[3] = 2;
+
+	/*
 	 * Enable SCCS and TPGS fields for Emulated ALUA
 	 */
 	if (dev->se_sub_dev->t10_alua.alua_type == SPC3_ALUA_EMULATED)
@@ -689,6 +701,13 @@ int target_emulate_inquiry(struct se_task *task)
 	int p, ret;
 
 	if (!(cdb[1] & 0x1)) {
+		if (cdb[2]) {
+			pr_err("INQUIRY with EVPD==0 but PAGE CODE=%02x\n",
+			       cdb[2]);
+			cmd->scsi_sense_reason = TCM_INVALID_CDB_FIELD;
+			return -EINVAL;
+		}
+
 		ret = target_emulate_inquiry_std(cmd);
 		goto out;
 	}
@@ -720,7 +739,7 @@ int target_emulate_inquiry(struct se_task *task)
 	}
 
 	pr_err("Unknown VPD Code: 0x%02x\n", cdb[2]);
-	cmd->scsi_sense_reason = TCM_UNSUPPORTED_SCSI_OPCODE;
+	cmd->scsi_sense_reason = TCM_INVALID_CDB_FIELD;
 	ret = -EINVAL;
 
 out_unmap:

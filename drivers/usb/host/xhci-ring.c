@@ -1215,6 +1215,7 @@ static void handle_vendor_event(struct xhci_hcd *xhci,
  *
  * Returns a zero-based port number, which is suitable for indexing into each of
  * the split roothubs' port arrays and bus state arrays.
+ * Add one to it in order to call xhci_find_slot_id_by_port.
  */
 static unsigned int find_faked_portnum_from_hw_portnum(struct usb_hcd *hcd,
 		struct xhci_hcd *xhci, u32 port_id)
@@ -1335,7 +1336,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 			xhci_set_link_state(xhci, port_array, faked_port_index,
 						XDEV_U0);
 			slot_id = xhci_find_slot_id_by_port(hcd, xhci,
-					faked_port_index);
+					faked_port_index + 1);
 			if (!slot_id) {
 				xhci_dbg(xhci, "slot_id is zero\n");
 				goto cleanup;
@@ -2561,7 +2562,7 @@ static unsigned int count_sg_trbs_needed(struct xhci_hcd *xhci, struct urb *urb)
 	struct scatterlist *sg;
 
 	sg = NULL;
-	num_sgs = urb->num_sgs;
+	num_sgs = urb->num_mapped_sgs;
 	temp = urb->transfer_buffer_length;
 
 	xhci_dbg(xhci, "count sg list trbs: \n");
@@ -2745,7 +2746,7 @@ static int queue_bulk_sg_tx(struct xhci_hcd *xhci, gfp_t mem_flags,
 		return -EINVAL;
 
 	num_trbs = count_sg_trbs_needed(xhci, urb);
-	num_sgs = urb->num_sgs;
+	num_sgs = urb->num_mapped_sgs;
 	total_packet_count = roundup(urb->transfer_buffer_length,
 			usb_endpoint_maxp(&urb->ep->desc));
 
@@ -3372,7 +3373,8 @@ static int xhci_queue_isoc_tx(struct xhci_hcd *xhci, gfp_t mem_flags,
 		/* Check TD length */
 		if (running_total != td_len) {
 			xhci_err(xhci, "ISOC TD length unmatch\n");
-			return -EINVAL;
+			ret = -EINVAL;
+			goto cleanup;
 		}
 	}
 
