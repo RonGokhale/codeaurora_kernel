@@ -736,48 +736,52 @@ void ath_rx_poll_work(unsigned long data)
 
 	spin_unlock_irqrestore(&common->cc_lock, flags);
 
-	printk(KERN_ERR "--------------------------------------------------\n");
-	printk(KERN_ERR "Iteration: %d\n", iter);
-	printk(KERN_ERR "Cycle Counters:\n");
-	printk(KERN_ERR "rx_clear = %d%% rx_frame %d%% tx_frame %d%%\n",
-			rx_clear, rx, tx);
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"--------------------------------------------------\n");
+	ath_dbg(common, ATH_DBG_RX_STUCK, "Iteration: %d\n", iter);
+	ath_dbg(common, ATH_DBG_RX_STUCK, "Cycle Counters:\n");
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"rx_clear = %d%% rx_frame %d%% tx_frame %d%%\n",
+		rx_clear, rx, tx);
 
-	printk(KERN_ERR "IMR %08x IER %08x intr_cnt %d\n",
-			REG_READ(ah, AR_IMR), REG_READ(ah, AR_IER),
-			atomic_read(&ah->intr_ref_cnt));
+	ath_dbg(common, ATH_DBG_RX_STUCK, "IMR %08x IER %08x intr_cnt %d\n",
+		REG_READ(ah, AR_IMR), REG_READ(ah, AR_IER),
+		atomic_read(&ah->intr_ref_cnt));
 	ar9003_hw_dump_txdesc(ah);
 
 	REG_SET_BIT(ah, AR_DIAG_SW, 0x8080000);
 	for (i = 0; i < 5; i++) {
-		printk(KERN_ERR
-		       "OBS_BUS_1(0x806c) = %08x OBS_BUS_CTRL(0x8068) = %08x\n",
-		       REG_READ(ah, AR_OBS_BUS_1),
-		       REG_READ(ah, AR_OBS_BUS_CTRL));
+		ath_dbg(common, ATH_DBG_RX_STUCK,
+			"OBS_BUS_1(0x806c) = %08x "
+			"OBS_BUS_CTRL(0x8068) = %08x\n",
+			REG_READ(ah, AR_OBS_BUS_1),
+			REG_READ(ah, AR_OBS_BUS_CTRL));
 	}
-	printk(KERN_ERR
-	       "DIAG_SW(0x8048) = %08x MAC_PCU_LOGIC_ANALYZER(0x8264) = %08x"
-	       " PCU_MISC_MODE2(0x8344) = %08x\n",
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"DIAG_SW(0x8048) = %08x MAC_PCU_LOGIC_ANALYZER(0x8264) = %08x"
+		" PCU_MISC_MODE2(0x8344) = %08x\n",
 		REG_READ(ah, AR_DIAG_SW),
 		REG_READ(ah, AR_MAC_PCU_LOGIC_ANALYZER),
 		REG_READ(ah, AR_PCU_MISC_MODE2));
 
-	printk(KERN_ERR "0x100 = %08x 0x104 = %08x\n",
-	       REG_READ(ah, 0x100), REG_READ(ah, 0x104));
+	ath_dbg(common, ATH_DBG_RX_STUCK, "0x100 = %08x 0x104 = %08x\n",
+		REG_READ(ah, 0x100), REG_READ(ah, 0x104));
 	for (i = 0; i < 10; i++)
-		printk(KERN_ERR "QSTS(%d) = %08x\n",
-		       i, REG_READ(ah, AR_QSTS(i)));
+		ath_dbg(common, ATH_DBG_RX_STUCK, "QSTS(%d) = %08x\n",
+			i, REG_READ(ah, AR_QSTS(i)));
 
-	printk(KERN_ERR "Rxdp: hp %08x lp %08x\n",
-			REG_READ(ah, AR_HP_RXDP), REG_READ(ah, AR_LP_RXDP));
-	printk(KERN_ERR "rx filter: %08x\n", REG_READ(ah, AR_RX_FILTER));
+	ath_dbg(common, ATH_DBG_RX_STUCK, "Rxdp: hp %08x lp %08x\n",
+		REG_READ(ah, AR_HP_RXDP), REG_READ(ah, AR_LP_RXDP));
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"rx filter: %08x\n", REG_READ(ah, AR_RX_FILTER));
 
-	printk(KERN_ERR "DMADBG dump:\n");
+	ath_dbg(common, ATH_DBG_RX_STUCK, "DMADBG dump:\n");
 	for (i = 0; i < ATH9K_NUM_DMA_DEBUG_REGS; i++)
-		printk(KERN_ERR "%d: %08x ",
-		       i, REG_READ(ah, AR_DMADBG_0 + (i * sizeof(u32))));
-	printk(KERN_ERR "\n");
+		ath_dbg(common, ATH_DBG_RX_STUCK, "%d: %08x ",
+			i, REG_READ(ah, AR_DMADBG_0 + (i * sizeof(u32))));
+	ath_dbg(common, ATH_DBG_RX_STUCK, "\n");
 
-	printk(KERN_ERR "BB Debug dump:\n");
+	ath_dbg(common, ATH_DBG_RX_STUCK, "BB Debug dump:\n");
 	/* Step 1a: Set bit 23 of register 0xa360 to 0 */
 	reg = REG_READ(ah, 0xa360);
 	reg &= ~0x00800000;
@@ -790,7 +794,7 @@ void ath_rx_poll_work(unsigned long data)
 	/* Step 3a: Read bits 17:0 of register 0x9c20 */
 	reg = REG_READ(ah, 0x9c20);
 	reg &= 0x0003ffff;
-	printk(KERN_ERR
+	ath_dbg(common, ATH_DBG_RX_STUCK,
 		"Test Control Status [0x1000] 0x9c20[17:0] = 0x%x\n", reg);
 
 	/* Step 1b: Set bit 23 of register 0xa360 to 0 */
@@ -805,7 +809,7 @@ void ath_rx_poll_work(unsigned long data)
 	/* Step 3b: Read bits 17:0 of register 0x9c20 */
 	reg = REG_READ(ah, 0x9c20);
 	reg &= 0x0003ffff;
-	printk(KERN_ERR
+	ath_dbg(common, ATH_DBG_RX_STUCK,
 		"Test Control Status [0x1400] 0x9c20[17:0] = 0x%x\n", reg);
 
 	/* Step 1c: Set bit 23 of register 0xa360 to 0 */
@@ -820,7 +824,7 @@ void ath_rx_poll_work(unsigned long data)
 	/* Step 3c: Read bits 17:0 of register 0x9c20 */
 	reg = REG_READ(ah, 0x9c20);
 	reg &= 0x0003ffff;
-	printk(KERN_ERR
+	ath_dbg(common, ATH_DBG_RX_STUCK,
 		"Test Control Status [0x3C00] 0x9c20[17:0] = 0x%x\n", reg);
 
 	/* Step 1d: Set bit 24 of register 0xa360 to 0 */
@@ -835,7 +839,7 @@ void ath_rx_poll_work(unsigned long data)
 	/* Step 3d: Read bits 17:0 of register 0xa368 */
 	reg = REG_READ(ah, 0xa368);
 	reg &= 0x0003ffff;
-	printk(KERN_ERR
+	ath_dbg(common, ATH_DBG_RX_STUCK,
 		"Test Control Status [0x5005D] 0xa368[17:0] = 0x%x\n", reg);
 
 	/* Step 1e: Set bit 24 of register 0xa360 to 0 */
@@ -850,7 +854,7 @@ void ath_rx_poll_work(unsigned long data)
 	/* Step 3e: Read bits 17:0 of register 0xa368 */
 	reg = REG_READ(ah, 0xa368);
 	reg &= 0x0003ffff;
-	printk(KERN_ERR
+	ath_dbg(common, ATH_DBG_RX_STUCK,
 		"Test Control Status [0x7005D] 0xa368[17:0] = 0x%x\n", reg);
 
 	/* Step 1f: Set bit 24 of register 0xa360 to 0 */
@@ -866,7 +870,7 @@ void ath_rx_poll_work(unsigned long data)
 	/* Step 3f: Read bits 17:0 of register 0xa368 */
 	reg = REG_READ(ah, 0xa368);
 	reg &= 0x0003ffff;
-	printk(KERN_ERR
+	ath_dbg(common, ATH_DBG_RX_STUCK,
 		"Test Control Status [0x3005D] 0xa368[17:0] = 0x%x\n", reg);
 
 	/* Step 1g: Set bit 24 of register 0xa360 to 0 */
@@ -882,47 +886,63 @@ void ath_rx_poll_work(unsigned long data)
 	/* Step 3g: Read bits 17:0 of register 0xa368 */
 	reg = REG_READ(ah, 0xa368);
 	reg &= 0x0003ffff;
-	printk(KERN_ERR
+	ath_dbg(common, ATH_DBG_RX_STUCK,
 		"Test Control Status [0x6005D] 0xa368[17:0] = 0x%x\n", reg);
 
 	ar9003_hw_dump_ani_reg(ah);
 
-	printk(KERN_ERR "%8s: %10u\n", "RXLP", sc->debug.stats.istats.rxlp);
-	printk(KERN_ERR "%8s: %10u\n", "RXHP", sc->debug.stats.istats.rxhp);
-	printk(KERN_ERR "%8s: %10u\n", "WATCHDOG",
-			sc->debug.stats.istats.bb_watchdog);
-	printk(KERN_ERR "%8s: %10u\n", "RXEOL", sc->debug.stats.istats.rxeol);
-	printk(KERN_ERR "%8s: %10u\n", "RXORN", sc->debug.stats.istats.rxorn);
-	printk(KERN_ERR "%8s: %10u\n", "TX", sc->debug.stats.istats.txok);
-	printk(KERN_ERR "%8s: %10u\n", "TXURN", sc->debug.stats.istats.txurn);
-	printk(KERN_ERR "%8s: %10u\n", "MIB", sc->debug.stats.istats.mib);
-	printk(KERN_ERR "%8s: %10u\n", "RXPHY",
-			sc->debug.stats.istats.rxphyerr);
-	printk(KERN_ERR "%8s: %10u\n", "RXKCM",
-			sc->debug.stats.istats.rx_keycache_miss);
-	printk(KERN_ERR "%8s: %10u\n", "BMISS", sc->debug.stats.istats.bmiss);
-	printk(KERN_ERR "%8s: %10u\n", "CST", sc->debug.stats.istats.cst);
-	printk(KERN_ERR "%8s: %10u\n", "GTT", sc->debug.stats.istats.gtt);
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"%8s: %10u\n", "RXLP", sc->debug.stats.istats.rxlp);
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"%8s: %10u\n", "RXHP", sc->debug.stats.istats.rxhp);
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"%8s: %10u\n", "WATCHDOG",
+		sc->debug.stats.istats.bb_watchdog);
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"%8s: %10u\n", "RXEOL", sc->debug.stats.istats.rxeol);
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"%8s: %10u\n", "RXORN", sc->debug.stats.istats.rxorn);
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"%8s: %10u\n", "TX", sc->debug.stats.istats.txok);
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"%8s: %10u\n", "TXURN", sc->debug.stats.istats.txurn);
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"%8s: %10u\n", "MIB", sc->debug.stats.istats.mib);
+	ath_dbg(common, ATH_DBG_RX_STUCK, "%8s: %10u\n", "RXPHY",
+		sc->debug.stats.istats.rxphyerr);
+	ath_dbg(common, ATH_DBG_RX_STUCK, "%8s: %10u\n", "RXKCM",
+		sc->debug.stats.istats.rx_keycache_miss);
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"%8s: %10u\n", "BMISS", sc->debug.stats.istats.bmiss);
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"%8s: %10u\n", "CST", sc->debug.stats.istats.cst);
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"%8s: %10u\n", "GTT", sc->debug.stats.istats.gtt);
 
-	printk(KERN_ERR "Noise floor dump:\n");
-	printk(KERN_ERR "Channel Noise Floor : %d\n", ah->noise);
-	printk(KERN_ERR "Chain | privNF | # Readings | NF Readings\n");
+	ath_dbg(common, ATH_DBG_RX_STUCK, "Noise floor dump:\n");
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"Channel Noise Floor : %d\n", ah->noise);
+	ath_dbg(common, ATH_DBG_RX_STUCK,
+		"Chain | privNF | # Readings | NF Readings\n");
 	for (i = 0; i < 6; i++) {
 		if (!(chainmask & (1 << i)) ||
 				((i >= 3) && !conf_is_ht40(conf)))
 			continue;
 
 		nread = 5 - h[i].invalidNFcount;
-		printk(KERN_ERR " %d\t %d\t %d\t\t", i, h[i].privNF, nread);
+		ath_dbg(common, ATH_DBG_RX_STUCK,
+		" %d\t %d\t %d\t\t", i, h[i].privNF, nread);
 		for (j = 0; j < nread; j++)
-			printk(KERN_ERR " %d", h[i].nfCalBuffer[j]);
-		printk(KERN_ERR "\n");
+			ath_dbg(common, ATH_DBG_RX_STUCK,
+				" %d", h[i].nfCalBuffer[j]);
+		ath_dbg(common, ATH_DBG_RX_STUCK, "\n");
 	}
 
 	last_run = jiffies;
 	if (rx_clear > 98) {
-		printk(KERN_ERR "rx clear %d tx %d matched count %d\n",
-		       rx_clear, tx, match_count);
+		ath_dbg(common, ATH_DBG_RX_STUCK,
+			"rx clear %d tx %d matched count %d\n",
+			rx_clear, tx, match_count);
 		if (match_count++ > 9) {
 			ath9k_ps_restore(sc);
 			ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
@@ -930,7 +950,7 @@ void ath_rx_poll_work(unsigned long data)
 			return;
 		}
 	} else if (ath9k_hw_detect_mac_hang(ah)) {
-		printk(KERN_ERR "MAC hang signature found\n");
+		ath_dbg(common, ATH_DBG_RX_STUCK, "MAC hang signature found\n");
 		ath9k_ps_restore(sc);
 		ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
 		iter = match_count = 0;

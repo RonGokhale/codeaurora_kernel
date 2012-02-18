@@ -1357,45 +1357,46 @@ EXPORT_SYMBOL(ar9003_hw_disable_phy_restart);
 void ar9003_hw_dump_ani_reg(struct ath_hw *ah)
 {
 	u32 reg;
+	struct ath_common *common = ath9k_hw_common(ah);
 
 	reg = REG_READ(ah, AR_PHY_FIND_SIG_LOW);
-	printk(KERN_ERR "FIRStep Low = 0x%x (%d)\n",
+	ath_dbg(common, ATH_DBG_RX_STUCK, "FIRStep Low = 0x%x (%d)\n",
 			MS(reg, AR_PHY_FIND_SIG_LOW_FIRSTEP_LOW),
 			MS(reg, AR_PHY_FIND_SIG_LOW_FIRSTEP_LOW));
 	reg = REG_READ(ah, AR_PHY_DESIRED_SZ);
-	printk(KERN_ERR "Total Desired = 0x%x (%d)\n",
+	ath_dbg(common, ATH_DBG_RX_STUCK, "Total Desired = 0x%x (%d)\n",
 			MS(reg, AR_PHY_DESIRED_SZ_TOT_DES),
 			MS(reg, AR_PHY_DESIRED_SZ_TOT_DES));
-	printk(KERN_ERR "ADC Desired = 0x%x (%d)\n",
+	ath_dbg(common, ATH_DBG_RX_STUCK, "ADC Desired = 0x%x (%d)\n",
 			MS(reg, AR_PHY_DESIRED_SZ_ADC),
 			MS(reg, AR_PHY_DESIRED_SZ_ADC));
 	reg = REG_READ(ah, AR_PHY_FIND_SIG);
-	printk(KERN_ERR "FIRStep = 0x%x (%d)\n",
+	ath_dbg(common, ATH_DBG_RX_STUCK, "FIRStep = 0x%x (%d)\n",
 			MS(reg, AR_PHY_FIND_SIG_FIRSTEP),
 			MS(reg, AR_PHY_FIND_SIG_FIRSTEP));
 	reg = REG_READ(ah, AR_PHY_AGC);
-	printk(KERN_ERR "Coarse High = 0x%x (%d)\n",
+	ath_dbg(common, ATH_DBG_RX_STUCK, "Coarse High = 0x%x (%d)\n",
 			MS(reg, AR_PHY_AGC_COARSE_HIGH),
 			MS(reg, AR_PHY_AGC_COARSE_HIGH));
-	printk(KERN_ERR "Coarse Low = 0x%x (%d)\n",
+	ath_dbg(common, ATH_DBG_RX_STUCK, "Coarse Low = 0x%x (%d)\n",
 			MS(reg, AR_PHY_AGC_COARSE_LOW),
 			MS(reg, AR_PHY_AGC_COARSE_LOW));
-	printk(KERN_ERR "Coarse Power Constant = 0x%x (%d)\n",
+	ath_dbg(common, ATH_DBG_RX_STUCK, "Coarse Power Constant = 0x%x (%d)\n",
 			MS(reg, AR_PHY_AGC_COARSE_PWR_CONST),
 			MS(reg, AR_PHY_AGC_COARSE_PWR_CONST));
 	reg = REG_READ(ah, AR_PHY_TIMING5);
-	printk(KERN_ERR "Enable Cyclic Power Thresh = %d\n",
+	ath_dbg(common, ATH_DBG_RX_STUCK, "Enable Cyclic Power Thresh = %d\n",
 			MS(reg, AR_PHY_TIMING5_CYCPWR_THR1_ENABLE));
-	printk(KERN_ERR "Cyclic Power Thresh = 0x%x (%d)\n",
+	ath_dbg(common, ATH_DBG_RX_STUCK, "Cyclic Power Thresh = 0x%x (%d)\n",
 			MS(reg, AR_PHY_TIMING5_CYCPWR_THR1),
 			MS(reg, AR_PHY_TIMING5_CYCPWR_THR1));
-	printk(KERN_ERR "Cyclic Power Thresh 1A= 0x%x (%d)\n",
+	ath_dbg(common, ATH_DBG_RX_STUCK, "Cyclic Power Thresh 1A= 0x%x (%d)\n",
 			MS(reg, AR_PHY_TIMING5_CYCPWR_THR1A),
 			MS(reg, AR_PHY_TIMING5_CYCPWR_THR1A));
 	reg = REG_READ(ah, AR_PHY_DAG_CTRLCCK);
-	printk(KERN_ERR "Barker RSSI Thresh Enable = %d\n",
+	ath_dbg(common, ATH_DBG_RX_STUCK, "Barker RSSI Thresh Enable = %d\n",
 			MS(reg, AR_PHY_DAG_CTRLCCK_EN_RSSI_THR));
-	printk(KERN_ERR "Barker RSSI Thresh = 0x%x (%d)\n",
+	ath_dbg(common, ATH_DBG_RX_STUCK, "Barker RSSI Thresh = 0x%x (%d)\n",
 			MS(reg, AR_PHY_DAG_CTRLCCK_RSSI_THR),
 			MS(reg, AR_PHY_DAG_CTRLCCK_RSSI_THR));
 }
