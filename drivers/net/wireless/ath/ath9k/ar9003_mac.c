@@ -670,17 +670,18 @@ EXPORT_SYMBOL(ath9k_hw_setup_statusring);
 void ar9003_hw_dump_txdesc(struct ath_hw *ah)
 {
 	struct ar9003_txs *ads;
+	struct ath_common *common = ath9k_hw_common(ah);
 	u32 status, i, len = 0;
 	u8 buf[1200];
 
 	memset(buf, 0, sizeof(buf));
-	printk(KERN_ERR "ts_tail %d\n", ah->ts_tail);
+	ath_dbg(common, ATH_DBG_RX_STUCK, "ts_tail %d\n", ah->ts_tail);
 
 	for (i = 0; i < ah->ts_size; i++) {
 		ads = &ah->ts_ring[i];
 		status = ACCESS_ONCE(ads->status8);
 		len += sprintf(buf + len, "%d ", status & AR_TxDone);
 	}
-	printk(KERN_ERR "ring status: %s\n", buf);
+	ath_dbg(common, ATH_DBG_RX_STUCK, "ring status: %s\n", buf);
 }
 EXPORT_SYMBOL(ar9003_hw_dump_txdesc);

@@ -2672,7 +2672,7 @@ bool ath9k_hw_detect_mac_hang(struct ath_hw *ah)
 	dma_dbg_6 = REG_READ(ah, AR_DMADBG_6);
 
 	if ((dma_dbg_6 & 0x3) != DCU_COMPLETE_STATE) {
-		ath_dbg(ath9k_hw_common(ah), ATH_DBG_ANY,
+		ath_dbg(ath9k_hw_common(ah), ATH_DBG_RX_STUCK,
 			"MAC Hang signature not found at DCU complete\n");
 		return false;
 	}
@@ -2691,12 +2691,12 @@ bool ath9k_hw_detect_mac_hang(struct ath_hw *ah)
 			goto hang_check_iter;
 	}
 
-	ath_dbg(ath9k_hw_common(ah), ATH_DBG_ANY,
+	ath_dbg(ath9k_hw_common(ah), ATH_DBG_RX_STUCK,
 		"MAC Hang signature 1 not found\n");
 	return false;
 
 hang_check_iter:
-	ath_dbg(ath9k_hw_common(ah), ATH_DBG_ANY,
+	ath_dbg(ath9k_hw_common(ah), ATH_DBG_RX_STUCK,
 		"DMA Registers: %x %x %x Hang pos: %d\n",
 		dma_dbg_4, dma_dbg_5, dma_dbg_6, hang_pos);
 
@@ -2716,7 +2716,7 @@ hang_check_iter:
 			return false;
 	}
 
-	ath_dbg(ath9k_hw_common(ah), ATH_DBG_ANY,
+	ath_dbg(ath9k_hw_common(ah), ATH_DBG_RX_STUCK,
 		"MAC Hang signature 1 found\n");
 
 	return true;
