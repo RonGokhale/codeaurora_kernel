@@ -26,7 +26,6 @@
 #include <linux/gpio_keys.h>
 #include <linux/i2c-tegra.h>
 #include <linux/i2c/atmel_mxt_ts.h>
-#include <linux/i2c/cyapa.h>
 #include <linux/clk.h>
 #include <linux/power/bq20z75.h>
 #include <linux/rfkill-gpio.h>
@@ -563,7 +562,7 @@ static __initdata struct tegra_pingroup_config mxt_pinmux_config[] = {
 };
 
 static struct i2c_board_info __initdata cyapa_device = {
-	I2C_BOARD_INFO(CYAPA_I2C_NAME, 0x67),
+	I2C_BOARD_INFO("cyapa", 0x67),
 	.irq		= TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_CYTP_INT),
 	.flags		= I2C_CLIENT_WAKE,
 };
