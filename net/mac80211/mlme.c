@@ -171,6 +171,7 @@ static u32 ieee80211_enable_ht(struct ieee80211_sub_if_data *sdata,
 	bool enable_ht = true;
 	enum nl80211_channel_type prev_chantype;
 	enum nl80211_channel_type channel_type = NL80211_CHAN_NO_HT;
+	enum nl80211_channel_type xmit_channel_type;
 
 	sband = local->hw.wiphy->bands[local->hw.conf.channel->band];
 
@@ -210,18 +211,17 @@ static u32 ieee80211_enable_ht(struct ieee80211_sub_if_data *sdata,
 		    (hti->ht_param & IEEE80211_HT_PARAM_CHAN_WIDTH_ANY)) {
 			switch(hti->ht_param & IEEE80211_HT_PARAM_CHA_SEC_OFFSET) {
 			case IEEE80211_HT_PARAM_CHA_SEC_ABOVE:
-				if (!(local->hw.conf.channel->flags &
-				    IEEE80211_CHAN_NO_HT40PLUS))
-					channel_type = NL80211_CHAN_HT40PLUS;
+				channel_type = NL80211_CHAN_HT40PLUS;
 				break;
 			case IEEE80211_HT_PARAM_CHA_SEC_BELOW:
-				if (!(local->hw.conf.channel->flags &
-				    IEEE80211_CHAN_NO_HT40MINUS))
-					channel_type = NL80211_CHAN_HT40MINUS;
+				channel_type = NL80211_CHAN_HT40MINUS;
 				break;
 			}
 		}
 	}
+
+	xmit_channel_type =
+		ieee80211_get_xmit_channel_type(local, channel_type);
 
 	if (local->tmp_channel)
 		local->tmp_channel_type = channel_type;
@@ -235,13 +235,13 @@ static u32 ieee80211_enable_ht(struct ieee80211_sub_if_data *sdata,
 	/* channel_type change automatically detected */
 	ieee80211_hw_config(local, 0);
 
-	if (prev_chantype != channel_type) {
+	if (prev_chantype != xmit_channel_type) {
 		rcu_read_lock();
 		sta = sta_info_get(sdata, bssid);
 		if (sta)
 			rate_control_rate_update(local, sband, sta,
 						 IEEE80211_RC_HT_CHANGED,
-						 channel_type);
+						 xmit_channel_type);
 		rcu_read_unlock();
 	}
 
