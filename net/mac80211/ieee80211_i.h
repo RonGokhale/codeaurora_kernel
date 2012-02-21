@@ -1405,6 +1405,9 @@ ieee80211_get_channel_mode(struct ieee80211_local *local,
 bool ieee80211_set_channel_type(struct ieee80211_local *local,
 				struct ieee80211_sub_if_data *sdata,
 				enum nl80211_channel_type chantype);
+enum nl80211_channel_type ieee80211_get_tx_channel_type(
+	struct ieee80211_local *local,
+	enum nl80211_channel_type channel_type);
 
 #ifdef CONFIG_MAC80211_NOINLINE
 #define debug_noinline noinline
