@@ -150,6 +150,8 @@ enum nl80211_channel_type ieee80211_get_tx_channel_type(
 				IEEE80211_CHAN_NO_HT40MINUS)
 			return NL80211_CHAN_HT20;
 		break;
+	default:
+		break;
 	}
 	return channel_type;
 }
