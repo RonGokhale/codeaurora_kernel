@@ -452,6 +452,8 @@ static inline void audit_inode_child(const struct dentry *dentry,
 		__audit_inode_child(dentry, parent);
 }
 void audit_core_dumps(long signr);
+/* XXX: implement! */
+#define audit_seccomp(i,s,c) do { ; } while (0)
 
 static inline void audit_ptrace(struct task_struct *t)
 {
@@ -641,6 +643,7 @@ extern int audit_enabled;
 #define audit_log_d_path(b, p, d) do { ; } while (0)
 #define audit_log_key(b, k) do { ; } while (0)
 #define audit_log_secctx(b,s) do { ; } while (0)
+#define audit_seccomp(i,s,c) do { ; } while (0)
 #define audit_enabled 0
 #endif
 #endif
