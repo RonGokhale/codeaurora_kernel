@@ -621,10 +621,7 @@ struct sta_bss_parameters {
  *	the cfg80211_new_sta() calls to notify user space of the IEs.
  * @assoc_req_ies_len: Length of assoc_req_ies buffer in octets.
  * @sta_flags: station flags mask & values
-<<<<<<< HEAD
-=======
  * @beacon_loss_count: Number of times beacon loss event has triggered.
->>>>>>> UPSTREAM: cfg80211: Return beacon loss count in station
  */
 struct station_info {
 	u32 filled;
