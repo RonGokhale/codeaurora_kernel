@@ -529,6 +529,12 @@ static void ieee80211_scan_state_decision(struct ieee80211_local *local,
 			next_scan_state = SCAN_ENTER_OPER_CHANNEL;
 		else
 			next_scan_state = SCAN_SET_CHANNEL;
+	} else {
+		/*
+		 * we're on the operating channel currently, let's
+		 * leave that channel now to scan another one
+		 */
+		next_scan_state = SCAN_LEAVE_OPER_CHANNEL;
 	}
 	local->next_scan_state = next_scan_state;
 
