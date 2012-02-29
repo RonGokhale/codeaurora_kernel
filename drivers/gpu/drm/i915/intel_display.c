@@ -7683,7 +7683,8 @@ void gen6_enable_rps(struct drm_i915_private *dev_priv)
 	I915_WRITE(GEN6_RC6p_THRESHOLD, 100000);
 	I915_WRITE(GEN6_RC6pp_THRESHOLD, 64000); /* unused */
 
-	if (i915_enable_rc6)
+	/* disable rc6 on ivy-bridge as our current hardware is broken */
+	if (i915_enable_rc6 && !IS_GEN7(dev_priv->dev))
 		rc6_mask = GEN6_RC_CTL_RC6p_ENABLE |
 			GEN6_RC_CTL_RC6_ENABLE;
 
@@ -8129,8 +8130,9 @@ void ironlake_enable_rc6(struct drm_device *dev)
 
 	/* rc6 disabled by default due to repeated reports of hanging during
 	 * boot and resume.
+	 * also disable it on ivy-bridge as our current hardware is broken.
 	 */
-	if (!i915_enable_rc6)
+	if (!i915_enable_rc6 || IS_GEN7(dev))
 		return;
 
 	mutex_lock(&dev->struct_mutex);
