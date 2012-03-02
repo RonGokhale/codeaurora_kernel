@@ -1054,7 +1054,7 @@ char *get_task_comm(char *buf, struct task_struct *tsk)
 }
 EXPORT_SYMBOL_GPL(get_task_comm);
 
-void set_task_comm(struct task_struct *tsk, char *buf)
+void set_task_comm(struct task_struct *tsk, char *buf, bool is_rename)
 {
 	task_lock(tsk);
 
@@ -1068,7 +1068,7 @@ void set_task_comm(struct task_struct *tsk, char *buf)
 	wmb();
 	strlcpy(tsk->comm, buf, sizeof(tsk->comm));
 	task_unlock(tsk);
-	perf_event_comm(tsk);
+	perf_event_comm(tsk, is_rename);
 }
 
 int flush_old_exec(struct linux_binprm * bprm)
@@ -1141,7 +1141,7 @@ void setup_new_exec(struct linux_binprm * bprm)
 				tcomm[i++] = ch;
 	}
 	tcomm[i] = '\0';
-	set_task_comm(current, tcomm);
+	set_task_comm(current, tcomm, false);
 
 	/* Set the new mm task size. We have to do that late because it may
 	 * depend on TIF_32BIT which is only updated in flush_thread() on
