@@ -22,7 +22,7 @@ struct perf_session;
 
 void thread__delete(struct thread *self);
 
-int thread__set_comm(struct thread *self, const char *comm);
+int thread__set_comm(struct thread *self, const char *comm, bool is_rename);
 int thread__comm_len(struct thread *self);
 struct thread *perf_session__findnew(struct perf_session *self, pid_t pid);
 void thread__insert_map(struct thread *self, struct map *map);
