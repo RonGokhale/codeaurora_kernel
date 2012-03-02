@@ -1446,7 +1446,7 @@ static ssize_t comm_write(struct file *file, const char __user *buf,
 		return -ESRCH;
 
 	if (same_thread_group(current, p))
-		set_task_comm(p, buffer);
+		set_task_comm(p, buffer, true);
 	else
 		count = -EINVAL;
 
