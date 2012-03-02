@@ -4699,7 +4699,7 @@ next:
 	rcu_read_unlock();
 }
 
-void perf_event_comm(struct task_struct *task)
+void perf_event_comm(struct task_struct *task, bool is_rename)
 {
 	struct perf_comm_event comm_event;
 	struct perf_event_context *ctx;
@@ -4723,7 +4723,7 @@ void perf_event_comm(struct task_struct *task)
 		.event_id  = {
 			.header = {
 				.type = PERF_RECORD_COMM,
-				.misc = 0,
+				.misc = is_rename ? PERF_RECORD_MISC_RENAME : 0,
 				/* .size */
 			},
 			/* .pid */

@@ -252,7 +252,7 @@ int kthreadd(void *unused)
 	struct task_struct *tsk = current;
 
 	/* Setup a clean context for our children to inherit. */
-	set_task_comm(tsk, "kthreadd");
+	set_task_comm(tsk, "kthreadd", false);
 	ignore_signals(tsk);
 	set_cpus_allowed_ptr(tsk, cpu_all_mask);
 	set_mems_allowed(node_states[N_HIGH_MEMORY]);

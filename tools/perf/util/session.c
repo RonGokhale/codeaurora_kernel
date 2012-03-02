@@ -856,7 +856,7 @@ static struct thread *perf_session__register_idle_thread(struct perf_session *se
 {
 	struct thread *thread = perf_session__findnew(self, 0);
 
-	if (thread == NULL || thread__set_comm(thread, "swapper")) {
+	if (thread == NULL || thread__set_comm(thread, "swapper", false)) {
 		pr_err("problem inserting idle task.\n");
 		thread = NULL;
 	}

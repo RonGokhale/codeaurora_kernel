@@ -434,10 +434,12 @@ int perf_event__process_comm(union perf_event *event,
 			     struct perf_session *session)
 {
 	struct thread *thread = perf_session__findnew(session, event->comm.tid);
+	bool is_rename = event->header.misc & PERF_RECORD_MISC_RENAME;
 
 	dump_printf(": %s:%d\n", event->comm.comm, event->comm.tid);
 
-	if (thread == NULL || thread__set_comm(thread, event->comm.comm)) {
+	if (thread == NULL || thread__set_comm(thread, event->comm.comm,
+					       is_rename)) {
 		dump_printf("problem processing PERF_RECORD_COMM, skipping event.\n");
 		return -1;
 	}

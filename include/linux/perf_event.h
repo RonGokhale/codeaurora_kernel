@@ -323,6 +323,11 @@ struct perf_event_mmap_page {
  */
 #define PERF_RECORD_MISC_EXACT_IP		(1 << 14)
 /*
+ * Indicates that a PERF_RECORD_COMM is a rename (prctl) rather than an exec.
+ * Note: this bit position has different meanings for different record types.
+ */
+#define PERF_RECORD_MISC_RENAME			(1 << 14)
+/*
  * Reserve the last bit to indicate some extended misc field
  */
 #define PERF_RECORD_MISC_EXT_RESERVED		(1 << 15)
@@ -1092,7 +1097,7 @@ extern struct perf_guest_info_callbacks *perf_guest_cbs;
 extern int perf_register_guest_info_callbacks(struct perf_guest_info_callbacks *callbacks);
 extern int perf_unregister_guest_info_callbacks(struct perf_guest_info_callbacks *callbacks);
 
-extern void perf_event_comm(struct task_struct *tsk);
+extern void perf_event_comm(struct task_struct *tsk, bool is_rename);
 extern void perf_event_fork(struct task_struct *tsk);
 
 /* Callchains */
@@ -1179,7 +1184,7 @@ static inline int perf_unregister_guest_info_callbacks
 (struct perf_guest_info_callbacks *callbacks)				{ return 0; }
 
 static inline void perf_event_mmap(struct vm_area_struct *vma)		{ }
-static inline void perf_event_comm(struct task_struct *tsk)		{ }
+static inline void perf_event_comm(struct task_struct *tsk, bool is_rename) { }
 static inline void perf_event_fork(struct task_struct *tsk)		{ }
 static inline void perf_event_init(void)				{ }
 static inline int  perf_swevent_get_recursion_context(void)		{ return -1; }
