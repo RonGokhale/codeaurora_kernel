@@ -1899,6 +1899,11 @@ static int qfec_open(struct net_device *dev)
 	setup_timer(&priv->phy_tmr, qfec_phy_monitor, (unsigned long)dev);
 	mod_timer(&priv->phy_tmr, jiffies + HZ);
 
+	/* driver supports AN capable PHY only */
+	qfec_mdio_write(dev, priv->phy_id, MII_BMCR, BMCR_RESET);
+	res = (BMCR_ANENABLE|BMCR_ANRESTART);
+	qfec_mdio_write(dev, priv->phy_id, MII_BMCR, res);
+
 	/* initialize interrupts */
 	QFEC_LOG(QFEC_LOG_DBG, " %s: request irq %d\n", __func__, dev->irq);
 	res = request_irq(dev->irq, qfec_int, 0, dev->name, dev);
