@@ -251,12 +251,40 @@ gmbus_xfer(struct i2c_adapter *adapter,
 	I915_WRITE(GMBUS0 + reg_offset, bus->reg0);
 
 	for (i = 0; i < num; i++) {
-		u16 len = msgs[i].len;
-		u8 *buf = msgs[i].buf;
+		u16 len;
+		u8 *buf;
+		u32 gmbus5 = 0;
+		u32 gmbus1_index = 0;
+
+		/*
+		 * The gmbus controller can combine a 1 or 2 byte write with a
+		 * read that immediately follows it by using an "INDEX" cycle.
+		 */
+		if (i + 1 < num &&
+		    !(msgs[i].flags & I2C_M_RD) &&
+		    (msgs[i + 1].flags & I2C_M_RD) &&
+		    msgs[i].len <= 2) {
+			if (msgs[i].len == 2)
+				gmbus5 = GMBUS_2BYTE_INDEX_EN |
+					 msgs[i].buf[1] |
+					 (msgs[i].buf[0] << 8);
+			if (msgs[i].len == 1)
+				gmbus1_index = GMBUS_CYCLE_INDEX |
+					       (msgs[i].buf[0] <<
+						GMBUS_SLAVE_INDEX_SHIFT);
+			i += 1;  /* set i to the index of the read xfer */
+		}
+
+		len = msgs[i].len;
+		buf = msgs[i].buf;
+
+		/* GMBUS5 holds 16-bit index, but must be 0 if not used */
+		I915_WRITE(GMBUS5 + reg_offset, gmbus5);
 
 		if (msgs[i].flags & I2C_M_RD) {
 			I915_WRITE(GMBUS1 + reg_offset,
 				   GMBUS_CYCLE_WAIT |
+				   gmbus1_index |
 				   (len << GMBUS_BYTE_COUNT_SHIFT) |
 				   (msgs[i].addr << GMBUS_SLAVE_ADDR_SHIFT) |
 				   GMBUS_SLAVE_READ | GMBUS_SW_RDY);
