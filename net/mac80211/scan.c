@@ -120,7 +120,7 @@ ieee80211_bss_info_update(struct ieee80211_local *local,
 			(!elems->parse_error ||
 			 !(bss->valid_data & IEEE80211_BSS_VALID_ERP))) {
 		bss->erp_value = elems->erp_info[0];
-		bss->has_erp_value = 1;
+		bss->has_erp_value = true;
 		if (!elems->parse_error)
 			bss->valid_data |= IEEE80211_BSS_VALID_ERP;
 	}

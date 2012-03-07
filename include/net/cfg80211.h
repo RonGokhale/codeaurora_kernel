@@ -2428,6 +2428,9 @@ struct ieee802_11_elems {
 	u8 quiet_elem_len;
 	u8 num_of_quiet_elem;	/* can be more the one */
 	u8 timeout_int_len;
+
+	/* whether a parse error occurred while retrieving these elements */
+	bool parse_error;
 };
 
 /**
