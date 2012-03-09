@@ -12,7 +12,6 @@ extern const struct file_operations low_mem_notify_fops;
 static inline bool is_low_mem_situation(void)
 {
 	const int lru_base = NR_LRU_BASE - LRU_BASE;
-	const int file_mem_multiplier = 2;  /* between 1 and 2 seems right */
 	/*
 	 * We declare a low-memory condition when free memory plus easily
 	 * reclaimable memory is low.
