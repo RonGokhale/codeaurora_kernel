@@ -56,6 +56,8 @@
 #include <linux/oom.h>
 #include <linux/compat.h>
 
+#include <trace/events/fs.h>
+
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
 #include <asm/tlb.h>
@@ -782,6 +784,8 @@ struct file *open_exec(const char *name)
 
 	fsnotify_open(file);
 
+	trace_open_exec(name);
+
 	err = deny_write_access(file);
 	if (err)
 		goto exit;
@@ -1050,7 +1054,7 @@ char *get_task_comm(char *buf, struct task_struct *tsk)
 }
 EXPORT_SYMBOL_GPL(get_task_comm);
 
-void set_task_comm(struct task_struct *tsk, char *buf)
+void set_task_comm(struct task_struct *tsk, char *buf, bool is_rename)
 {
 	task_lock(tsk);
 
@@ -1064,7 +1068,7 @@ void set_task_comm(struct task_struct *tsk, char *buf)
 	wmb();
 	strlcpy(tsk->comm, buf, sizeof(tsk->comm));
 	task_unlock(tsk);
-	perf_event_comm(tsk);
+	perf_event_comm(tsk, is_rename);
 }
 
 int flush_old_exec(struct linux_binprm * bprm)
@@ -1137,7 +1141,7 @@ void setup_new_exec(struct linux_binprm * bprm)
 				tcomm[i++] = ch;
 	}
 	tcomm[i] = '\0';
-	set_task_comm(current, tcomm);
+	set_task_comm(current, tcomm, false);
 
 	/* Set the new mm task size. We have to do that late because it may
 	 * depend on TIF_32BIT which is only updated in flush_thread() on
@@ -2026,7 +2030,7 @@ static void wait_for_dump_helpers(struct file *file)
 	pipe->readers++;
 	pipe->writers--;
 
-	while ((pipe->readers > 1) && (!signal_pending(current))) {
+	while ((pipe->readers > 1) && (!fatal_signal_pending(current))) {
 		wake_up_interruptible_sync(&pipe->wait);
 		kill_fasync(&pipe->fasync_readers, SIGIO, POLL_IN);
 		pipe_wait(pipe);

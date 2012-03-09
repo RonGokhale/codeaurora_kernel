@@ -103,16 +103,35 @@ ieee80211_bss_info_update(struct ieee80211_local *local,
 	cbss->free_priv = ieee80211_rx_bss_free;
 	bss = (void *)cbss->priv;
 
-	/* save the ERP value so that it is available at association time */
-	if (elems->erp_info && elems->erp_info_len >= 1) {
-		bss->erp_value = elems->erp_info[0];
-		bss->has_erp_value = 1;
+	if (elems->parse_error) {
+		if (beacon)
+			bss->corrupt_data |= IEEE80211_BSS_CORRUPT_BEACON;
+		else
+			bss->corrupt_data |= IEEE80211_BSS_CORRUPT_PROBE_RESP;
+	} else {
+		if (beacon)
+			bss->corrupt_data &= ~IEEE80211_BSS_CORRUPT_BEACON;
+		else
+			bss->corrupt_data &= ~IEEE80211_BSS_CORRUPT_PROBE_RESP;
 	}
 
-	if (elems->tim) {
+	/* save the ERP value so that it is available at association time */
+	if (elems->erp_info && elems->erp_info_len >= 1 &&
+			(!elems->parse_error ||
+			 !(bss->valid_data & IEEE80211_BSS_VALID_ERP))) {
+		bss->erp_value = elems->erp_info[0];
+		bss->has_erp_value = true;
+		if (!elems->parse_error)
+			bss->valid_data |= IEEE80211_BSS_VALID_ERP;
+	}
+
+	if (elems->tim && (!elems->parse_error ||
+			   !(bss->valid_data & IEEE80211_BSS_VALID_DTIM))) {
 		struct ieee80211_tim_ie *tim_ie =
 			(struct ieee80211_tim_ie *)elems->tim;
 		bss->dtim_period = tim_ie->dtim_period;
+		if (!elems->parse_error)
+				bss->valid_data |= IEEE80211_BSS_VALID_DTIM;
 	}
 
 	/* If the beacon had no TIM IE, or it was invalid, use 1 */
@@ -120,26 +139,38 @@ ieee80211_bss_info_update(struct ieee80211_local *local,
 		bss->dtim_period = 1;
 
 	/* replace old supported rates if we get new values */
-	srlen = 0;
-	if (elems->supp_rates) {
-		clen = IEEE80211_MAX_SUPP_RATES;
-		if (clen > elems->supp_rates_len)
-			clen = elems->supp_rates_len;
-		memcpy(bss->supp_rates, elems->supp_rates, clen);
-		srlen += clen;
+	if (!elems->parse_error ||
+	    !(bss->valid_data & IEEE80211_BSS_VALID_RATES)) {
+		srlen = 0;
+		if (elems->supp_rates) {
+			clen = IEEE80211_MAX_SUPP_RATES;
+			if (clen > elems->supp_rates_len)
+				clen = elems->supp_rates_len;
+			memcpy(bss->supp_rates, elems->supp_rates, clen);
+			srlen += clen;
+		}
+		if (elems->ext_supp_rates) {
+			clen = IEEE80211_MAX_SUPP_RATES - srlen;
+			if (clen > elems->ext_supp_rates_len)
+				clen = elems->ext_supp_rates_len;
+			memcpy(bss->supp_rates + srlen, elems->ext_supp_rates,
+			       clen);
+			srlen += clen;
+		}
+		if (srlen) {
+			bss->supp_rates_len = srlen;
+			if (!elems->parse_error)
+				bss->valid_data |= IEEE80211_BSS_VALID_RATES;
+		}
 	}
-	if (elems->ext_supp_rates) {
-		clen = IEEE80211_MAX_SUPP_RATES - srlen;
-		if (clen > elems->ext_supp_rates_len)
-			clen = elems->ext_supp_rates_len;
-		memcpy(bss->supp_rates + srlen, elems->ext_supp_rates, clen);
-		srlen += clen;
-	}
-	if (srlen)
-		bss->supp_rates_len = srlen;
 
-	bss->wmm_used = elems->wmm_param || elems->wmm_info;
-	bss->uapsd_supported = is_uapsd_supported(elems);
+	if (!elems->parse_error ||
+	    !(bss->valid_data & IEEE80211_BSS_VALID_WMM)) {
+		bss->wmm_used = elems->wmm_param || elems->wmm_info;
+		bss->uapsd_supported = is_uapsd_supported(elems);
+		if (!elems->parse_error)
+			bss->valid_data |= IEEE80211_BSS_VALID_WMM;
+	}
 
 	if (!beacon)
 		bss->last_probe_resp = jiffies;
@@ -453,6 +484,7 @@ static void ieee80211_scan_state_decision(struct ieee80211_local *local,
 	unsigned long min_beacon_int = 0;
 	struct ieee80211_sub_if_data *sdata;
 	struct ieee80211_channel *next_chan;
+	enum mac80211_scan_state next_scan_state;
 
 	/*
 	 * check if at least one STA interface is associated,
@@ -511,18 +543,31 @@ static void ieee80211_scan_state_decision(struct ieee80211_local *local,
 				usecs_to_jiffies(min_beacon_int * 1024) *
 				local->hw.conf.listen_interval);
 
-		if (associated && ( !tx_empty || bad_latency ||
-		    listen_int_exceeded))
-			local->next_scan_state = SCAN_ENTER_OPER_CHANNEL;
+
+		if (associated && !tx_empty) {
+			if (unlikely(local->scan_req->flags &
+				CFG80211_SCAN_FLAG_TX_ABORT)) {
+				/*
+				 * Scan request is marked to abort when there
+				 * is outbound traffic.  Mark state to return
+				 * the operating channel and then abort.  This
+				 * happens as soon as possible.
+				 */
+				next_scan_state = SCAN_ENTER_OPER_CHANNEL_ABORT;
+			} else
+				next_scan_state = SCAN_ENTER_OPER_CHANNEL;
+		} else if (associated && (bad_latency || listen_int_exceeded))
+			next_scan_state = SCAN_ENTER_OPER_CHANNEL;
 		else
-			local->next_scan_state = SCAN_SET_CHANNEL;
+			next_scan_state = SCAN_SET_CHANNEL;
 	} else {
 		/*
 		 * we're on the operating channel currently, let's
 		 * leave that channel now to scan another one
 		 */
-		local->next_scan_state = SCAN_LEAVE_OPER_CHANNEL;
+		next_scan_state = SCAN_LEAVE_OPER_CHANNEL;
 	}
+	local->next_scan_state = next_scan_state;
 
 	*next_delay = 0;
 }
@@ -565,8 +610,13 @@ static void ieee80211_scan_state_enter_oper_channel(struct ieee80211_local *loca
 
 	__clear_bit(SCAN_OFF_CHANNEL, &local->scanning);
 
-	*next_delay = HZ / 5;
-	local->next_scan_state = SCAN_DECISION;
+	if (local->next_scan_state == SCAN_ENTER_OPER_CHANNEL) {
+		*next_delay = HZ / 5;
+		local->next_scan_state = SCAN_DECISION;
+	} else {
+		*next_delay = 0;
+		local->next_scan_state = SCAN_ABORT;
+	}
 }
 
 static void ieee80211_scan_state_set_channel(struct ieee80211_local *local,
@@ -714,8 +764,12 @@ void ieee80211_scan_work(struct work_struct *work)
 			ieee80211_scan_state_leave_oper_channel(local, &next_delay);
 			break;
 		case SCAN_ENTER_OPER_CHANNEL:
+		case SCAN_ENTER_OPER_CHANNEL_ABORT:
 			ieee80211_scan_state_enter_oper_channel(local, &next_delay);
 			break;
+		case SCAN_ABORT:
+			aborted = true;
+			goto out_complete;
 		}
 	} while (next_delay == 0);
 

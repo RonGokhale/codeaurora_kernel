@@ -29,7 +29,7 @@ void thread__delete(struct thread *self)
 	free(self);
 }
 
-int thread__set_comm(struct thread *self, const char *comm)
+int thread__set_comm(struct thread *self, const char *comm, bool is_rename)
 {
 	int err;
 
@@ -37,11 +37,12 @@ int thread__set_comm(struct thread *self, const char *comm)
 		free(self->comm);
 	self->comm = strdup(comm);
 	err = self->comm == NULL ? -ENOMEM : 0;
-	if (!err) {
-		self->comm_set = true;
+	if (err)
+		return err;
+	self->comm_set = true;
+	if (!is_rename)
 		map_groups__flush(&self->mg);
-	}
-	return err;
+	return 0;
 }
 
 int thread__comm_len(struct thread *self)
