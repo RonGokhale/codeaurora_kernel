@@ -63,7 +63,7 @@ module_param_named(semaphores, i915_semaphores, int, 0600);
 MODULE_PARM_DESC(semaphores,
 		"Use semaphores for inter-ring sync (default: -1 (use per-chip defaults))");
 
-int i915_enable_rc6 __read_mostly = -1;
+int i915_enable_rc6 __read_mostly = 1;
 module_param_named(i915_enable_rc6, i915_enable_rc6, int, 0600);
 MODULE_PARM_DESC(i915_enable_rc6,
 		"Enable power-saving render C-state 6 (default: -1 (use per-chip default)");
@@ -74,7 +74,7 @@ MODULE_PARM_DESC(i915_enable_fbc,
 		"Enable frame buffer compression for power savings "
 		"(default: -1 (use per-chip default))");
 
-unsigned int i915_lvds_downclock __read_mostly = 0;
+unsigned int i915_lvds_downclock __read_mostly = 1;
 module_param_named(lvds_downclock, i915_lvds_downclock, int, 0400);
 MODULE_PARM_DESC(lvds_downclock,
 		"Use panel (LVDS/eDP) downclocking for power savings "

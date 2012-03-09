@@ -460,6 +460,8 @@ static DEVICE_ATTR(caps, S_IRUGO, tpm_show_caps_1_2, NULL);
 static DEVICE_ATTR(cancel, S_IWUSR | S_IWGRP, NULL, tpm_store_cancel);
 static DEVICE_ATTR(durations, S_IRUGO, tpm_show_durations, NULL);
 static DEVICE_ATTR(timeouts, S_IRUGO, tpm_show_timeouts, NULL);
+static DEVICE_ATTR(s3power, S_IRUGO | S_IWUSR, tpm_s3power_get,
+		   tpm_s3power_set);
 
 static struct attribute *tis_attrs[] = {
 	&dev_attr_pubek.attr,
@@ -472,6 +474,8 @@ static struct attribute *tis_attrs[] = {
 	&dev_attr_cancel.attr,
 	&dev_attr_durations.attr,
 	&dev_attr_timeouts.attr, NULL,
+	&dev_attr_s3power.attr,
+	NULL,
 };
 
 static struct attribute_group tis_attr_grp = {
@@ -725,10 +729,18 @@ static int tpm_tis_init(struct device *dev, resource_size_t start,
 	list_add(&chip->vendor.list, &tis_chips);
 	spin_unlock(&tis_lock);
 
-	tpm_continue_selftest(chip);
+	tpm_get_timeouts(chip);
+
+	if (!tpm_continue_selftest(chip)) {
+		dev_err(chip->dev, "TPM not present or not functional\n");
+		rc = -ENODEV;
+		goto out_err;
+	}
 
 	return 0;
 out_err:
+	if (chip->vendor.irq)
+		free_irq(chip->vendor.irq, chip);
 	if (chip->vendor.iobase)
 		iounmap(chip->vendor.iobase);
 	tpm_remove_hardware(chip->dev);
