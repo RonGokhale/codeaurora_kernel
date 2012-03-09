@@ -32,6 +32,7 @@
 
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/gpio.h>
 
@@ -62,6 +63,8 @@ struct tegra_wm8903 {
 	struct tegra_asoc_utils_data util_data;
 	struct tegra_wm8903_platform_data *pdata;
 	int gpio_requested;
+	struct regulator *vdd_dmic; /* IS_ERR() -> no digital mic. */
+	bool vdd_dmic_enabled;
 };
 
 static int tegra_wm8903_hw_params(struct snd_pcm_substream *substream,
@@ -188,10 +191,39 @@ static int tegra_wm8903_event_hp(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static int wm8903_event_dmic(struct snd_soc_dapm_widget *w,
+			     struct snd_kcontrol *k, int event)
+{
+	struct snd_soc_dapm_context *dapm = w->dapm;
+	struct snd_soc_card *card = dapm->card;
+	struct tegra_wm8903 *machine = snd_soc_card_get_drvdata(card);
+	bool new_enabled;
+	int ret;
+
+	if (IS_ERR(machine->vdd_dmic))
+	    return 0;
+
+	new_enabled = !!SND_SOC_DAPM_EVENT_ON(event);
+	if (machine->vdd_dmic_enabled == new_enabled)
+	    return 0;
+
+	if (new_enabled)
+	    ret = regulator_enable(machine->vdd_dmic);
+	else
+	    ret = regulator_disable(machine->vdd_dmic);
+
+	if (!ret)
+	    machine->vdd_dmic_enabled = new_enabled;
+
+	return ret;
+}
+
+
 static const struct snd_soc_dapm_widget tegra_wm8903_dapm_widgets[] = {
 	SND_SOC_DAPM_SPK("Int Spk", tegra_wm8903_event_int_spk),
 	SND_SOC_DAPM_HP("Headphone Jack", tegra_wm8903_event_hp),
 	SND_SOC_DAPM_MIC("Mic Jack", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic", wm8903_event_dmic),
 };
 
 static const struct snd_soc_dapm_route harmony_audio_map[] = {
@@ -214,6 +246,7 @@ static const struct snd_soc_dapm_route seaboard_audio_map[] = {
 	{"Int Spk", NULL, "LON"},
 	{"Mic Bias", NULL, "Mic Jack"},
 	{"IN1R", NULL, "Mic Bias"},
+	{"DMICDAT", NULL, "Digital Mic"},
 };
 
 static const struct snd_soc_dapm_route kaen_audio_map[] = {
@@ -225,6 +258,7 @@ static const struct snd_soc_dapm_route kaen_audio_map[] = {
 	{"Int Spk", NULL, "LON"},
 	{"Mic Bias", NULL, "Mic Jack"},
 	{"IN2R", NULL, "Mic Bias"},
+	{"DMICDAT", NULL, "Digital Mic"},
 };
 
 static const struct snd_soc_dapm_route aebl_audio_map[] = {
@@ -234,6 +268,7 @@ static const struct snd_soc_dapm_route aebl_audio_map[] = {
 	{"Int Spk", NULL, "LINEOUTL"},
 	{"Mic Bias", NULL, "Mic Jack"},
 	{"IN1R", NULL, "Mic Bias"},
+	{"DMICDAT", NULL, "Digital Mic"},
 };
 
 static const struct snd_kcontrol_new tegra_wm8903_controls[] = {
@@ -389,6 +424,13 @@ static __devinit int tegra_wm8903_driver_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_free_machine;
 
+	machine->vdd_dmic = regulator_get(&pdev->dev, "vdd_dmic");
+	if (IS_ERR(machine->vdd_dmic)) {
+		dev_info(&pdev->dev,
+			 "Unable to locate 'vdd_dmic', error %ld\n",
+			 PTR_ERR(machine->vdd_dmic));
+	}
+
 	card->dev = &pdev->dev;
 	platform_set_drvdata(pdev, card);
 	snd_soc_card_set_drvdata(card, machine);
@@ -403,6 +445,7 @@ static __devinit int tegra_wm8903_driver_probe(struct platform_device *pdev)
 		card->dapm_routes = kaen_audio_map;
 		card->num_dapm_routes = ARRAY_SIZE(kaen_audio_map);
 	} else {
+		BUG_ON(!machine_is_aebl());
 		card->dapm_routes = aebl_audio_map;
 		card->num_dapm_routes = ARRAY_SIZE(aebl_audio_map);
 	}
@@ -417,9 +460,12 @@ static __devinit int tegra_wm8903_driver_probe(struct platform_device *pdev)
 	return 0;
 
 err_fini_utils:
+	if (!IS_ERR(machine->vdd_dmic))
+		regulator_put(machine->vdd_dmic);
 	tegra_asoc_utils_fini(&machine->util_data);
 err_free_machine:
 	kfree(machine);
+	dev_err(&pdev->dev, "Failed to probe wm8903 (%d)\n", ret);
 	return ret;
 }
 
@@ -444,6 +490,9 @@ static int __devexit tegra_wm8903_driver_remove(struct platform_device *pdev)
 	machine->gpio_requested = 0;
 
 	snd_soc_unregister_card(card);
+
+	if (!IS_ERR(machine->vdd_dmic))
+		regulator_put(machine->vdd_dmic);
 
 	tegra_asoc_utils_fini(&machine->util_data);
 

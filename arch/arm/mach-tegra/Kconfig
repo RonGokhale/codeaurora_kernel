@@ -13,6 +13,7 @@ config ARCH_TEGRA_2x_SOC
 	select USB_ARCH_HAS_EHCI if USB_SUPPORT
 	select USB_ULPI if USB_SUPPORT
 	select USB_ULPI_VIEWPORT if USB_SUPPORT
+	select ARM_ERRATA_742230
 	help
 	  Support for NVIDIA Tegra AP20 and T20 processors, based on the
 	  ARM CortexA9MP CPU and the ARM PL310 L2 cache controller
@@ -108,5 +109,24 @@ config TEGRA_SYSTEM_DMA
 
 config TEGRA_EMC_SCALING_ENABLE
 	bool "Enable scaling the memory frequency"
+
+config TEGRA_PWM
+	tristate "Enable PWM driver"
+	select HAVE_PWM
+	help
+	  Enable support for the Tegra PWM controller(s).
+
+config TEGRA_IOVMM_GART
+	bool "Enable I/O virtual memory manager for GART"
+	depends on ARCH_TEGRA_2x_SOC
+	default y
+	select TEGRA_IOVMM
+	help
+	  Enables support for remapping discontiguous physical memory
+	  shared with the operating system into contiguous I/O virtual
+	  space through the GART hardware included on Tegra SoCs
+
+config TEGRA_IOVMM
+	bool
 
 endif

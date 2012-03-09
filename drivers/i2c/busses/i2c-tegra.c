@@ -34,6 +34,7 @@
 #include <mach/clk.h>
 
 #define TEGRA_I2C_TIMEOUT (msecs_to_jiffies(1000))
+#define TEGRA_I2C_RETRIES 3
 #define BYTES_PER_FIFO_WORD 4
 
 #define I2C_CNFG				0x000
@@ -41,6 +42,7 @@
 #define I2C_CNFG_PACKET_MODE_EN			(1<<10)
 #define I2C_CNFG_NEW_MASTER_FSM			(1<<11)
 #define I2C_STATUS				0x01C
+#define I2C_STATUS_BUSY				(1<<8)
 #define I2C_SL_CNFG				0x020
 #define I2C_SL_CNFG_NACK			(1<<1)
 #define I2C_SL_CNFG_NEWSL			(1<<2)
@@ -84,6 +86,7 @@
 #define I2C_ERR_NO_ACK				0x01
 #define I2C_ERR_ARBITRATION_LOST		0x02
 #define I2C_ERR_UNKNOWN_INTERRUPT		0x04
+#define I2C_ERR_UNEXPECTED_STATUS		0x08
 
 #define PACKET_HEADER0_HEADER_SIZE_SHIFT	28
 #define PACKET_HEADER0_PACKET_ID_SHIFT		16
@@ -136,6 +139,7 @@ struct tegra_i2c_dev {
 	size_t msg_buf_remaining;
 	int msg_read;
 	unsigned long bus_clk_rate;
+	struct i2c_msg *msg;
 	bool is_suspended;
 };
 
@@ -415,6 +419,21 @@ static irqreturn_t tegra_i2c_isr(int irq, void *dev_id)
 		goto err;
 	}
 
+	if ((i2c_readl(i2c_dev, I2C_STATUS) & I2C_STATUS_BUSY)
+	    && (status == I2C_INT_TX_FIFO_DATA_REQ)
+	    && i2c_dev->msg_read
+	    && i2c_dev->msg_buf_remaining) {
+		i2c_dev->msg_err |= I2C_ERR_UNEXPECTED_STATUS;
+
+		if (!i2c_dev->irq_disabled) {
+			disable_irq_nosync(i2c_dev->irq);
+			i2c_dev->irq_disabled = 1;
+		}
+
+		complete(&i2c_dev->msg_complete);
+		goto err;
+	}
+
 	if (i2c_dev->msg_read && (status & I2C_INT_RX_FIFO_DATA_REQ)) {
 		if (i2c_dev->msg_buf_remaining)
 			tegra_i2c_empty_rx_fifo(i2c_dev);
@@ -430,7 +449,25 @@ static irqreturn_t tegra_i2c_isr(int irq, void *dev_id)
 	}
 
 	if (status & I2C_INT_PACKET_XFER_COMPLETE) {
-		BUG_ON(i2c_dev->msg_buf_remaining);
+		if (i2c_dev->msg_buf_remaining) {
+			int i;
+			dev_warn(i2c_dev->dev,
+				 "interrupt status says complete but %d "\
+				 "bytes remains in msg\n",
+				 i2c_dev->msg_buf_remaining);
+			dev_warn(i2c_dev->dev, "operation: %s len: %d\n",
+				 i2c_dev->msg_read ? "read" : "write",
+				 i2c_dev->msg->len);
+			pr_warn("msg:");
+			for (i = 0; i < i2c_dev->msg->len; i++) {
+				pr_cont(" %02x", i2c_dev->msg->buf[i]);
+				if (!((i+1) % 20)) {
+					pr_cont("\n");
+					pr_warn("");
+				}
+			}
+			WARN_ON(1);
+		}
 		complete(&i2c_dev->msg_complete);
 	}
 
@@ -439,13 +476,10 @@ static irqreturn_t tegra_i2c_isr(int irq, void *dev_id)
 		dvc_writel(i2c_dev, DVC_STATUS_I2C_DONE_INTR, DVC_STATUS);
 	return IRQ_HANDLED;
 err:
-	/* An error occurred, mask all interrupts */
-	tegra_i2c_mask_irq(i2c_dev, I2C_INT_NO_ACK | I2C_INT_ARBITRATION_LOST |
-		I2C_INT_PACKET_XFER_COMPLETE | I2C_INT_TX_FIFO_DATA_REQ |
-		I2C_INT_RX_FIFO_DATA_REQ);
-	i2c_writel(i2c_dev, status, I2C_INT_STATUS);
+	/* An error occurred, clear DVC status if needed and reset */
 	if (i2c_dev->is_dvc)
 		dvc_writel(i2c_dev, DVC_STATUS_I2C_DONE_INTR, DVC_STATUS);
+	tegra_periph_reset_assert(i2c_dev->clk);
 	return IRQ_HANDLED;
 }
 
@@ -464,6 +498,7 @@ static int tegra_i2c_xfer_msg(struct tegra_i2c_dev *i2c_dev,
 
 	i2c_dev->msg_buf = msg->buf;
 	i2c_dev->msg_buf_remaining = msg->len;
+	i2c_dev->msg = msg;
 	i2c_dev->msg_err = I2C_ERR_NONE;
 	i2c_dev->msg_read = (msg->flags & I2C_M_RD);
 	INIT_COMPLETION(i2c_dev->msg_complete);
@@ -521,8 +556,11 @@ static int tegra_i2c_xfer_msg(struct tegra_i2c_dev *i2c_dev,
 	if (i2c_dev->msg_err == I2C_ERR_NO_ACK) {
 		if (msg->flags & I2C_M_IGNORE_NAK)
 			return 0;
-		return -EREMOTEIO;
+		return -EAGAIN;
 	}
+
+	if (i2c_dev->msg_err & I2C_ERR_UNEXPECTED_STATUS)
+		return -EAGAIN;
 
 	return -EIO;
 }
@@ -665,6 +703,7 @@ static int tegra_i2c_probe(struct platform_device *pdev)
 	i2c_dev->adapter.dev.parent = &pdev->dev;
 	i2c_dev->adapter.nr = pdev->id;
 	i2c_dev->adapter.dev.of_node = pdev->dev.of_node;
+	i2c_dev->adapter.retries = TEGRA_I2C_RETRIES;
 
 	ret = i2c_add_numbered_adapter(&i2c_dev->adapter);
 	if (ret) {

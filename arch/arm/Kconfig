@@ -188,6 +188,9 @@ config FIQ
 config ARCH_MTD_XIP
 	bool
 
+config ARCH_PROVIDES_UDELAY
+  bool
+
 config VECTORS_BASE
 	hex
 	default 0xffff0000 if MMU || CPU_HIGH_VECTOR
@@ -636,6 +639,7 @@ config ARCH_TEGRA
 	select HAVE_CLK
 	select HAVE_SCHED_CLOCK
 	select ARCH_HAS_CPUFREQ
+	select ARCH_PROVIDES_UDELAY
 	help
 	  This enables support for NVIDIA Tegra based systems (Tegra APX,
 	  Tegra 6xx and Tegra 2 series).
