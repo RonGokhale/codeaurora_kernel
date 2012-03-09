@@ -558,14 +558,10 @@ static void acm_tty_hangup(struct tty_struct *tty)
 
 	mutex_lock(&open_mutex);
 	acm = tty->driver_data;
-
-	if (!acm)
-		goto out;
-
-	tty_port_hangup(&acm->port);
-	acm_port_down(acm);
-
-out:
+	if (acm) {
+		tty_port_hangup(&acm->port);
+		acm_port_down(acm);
+	}
 	mutex_unlock(&open_mutex);
 }
 
