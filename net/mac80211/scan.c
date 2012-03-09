@@ -514,7 +514,21 @@ static void ieee80211_scan_state_decision(struct ieee80211_local *local,
 	}
 	mutex_unlock(&local->iflist_mtx);
 
-	if (local->scan_channel) {
+	next_chan = local->scan_req->channels[local->scan_channel_idx];
+
+	if (ieee80211_cfg_on_oper_channel(local)) {
+		/*
+		 * We're on the operating channel currently; let's
+		 * leave that channel now to scan another one unless
+		 * there is pending traffic and the scan request is
+		 * marked to abort when this happens.
+		 */
+		if (associated && !tx_empty &&
+		    (local->scan_req->flags & CFG80211_SCAN_FLAG_TX_ABORT))
+			next_scan_state = SCAN_ABORT;
+		else
+			next_scan_state = SCAN_LEAVE_OPER_CHANNEL;
+	} else {
 		/*
 		 * we're currently scanning a different channel, let's
 		 * see if we can scan another channel without interfering
