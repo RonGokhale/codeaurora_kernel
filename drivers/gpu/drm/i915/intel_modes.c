@@ -35,9 +35,9 @@
  * intel_ddc_probe
  *
  */
-bool intel_ddc_probe(struct intel_encoder *intel_encoder, int ddc_bus)
+bool intel_ddc_probe(struct intel_encoder *intel_encoder,
+		     struct i2c_adapter *ddc_bus)
 {
-	struct drm_i915_private *dev_priv = intel_encoder->base.dev->dev_private;
 	u8 out_buf[] = { 0x0, 0x0};
 	u8 buf[2];
 	struct i2c_msg msgs[] = {
@@ -55,7 +55,7 @@ bool intel_ddc_probe(struct intel_encoder *intel_encoder, int ddc_bus)
 		}
 	};
 
-	return i2c_transfer(&dev_priv->gmbus[ddc_bus].adapter, msgs, 2) == 2;
+	return i2c_transfer(ddc_bus, msgs, 2) == 2;
 }
 
 /**

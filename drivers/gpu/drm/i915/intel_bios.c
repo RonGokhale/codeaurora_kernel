@@ -331,12 +331,14 @@ parse_general_definitions(struct drm_i915_private *dev_priv,
 		u16 block_size = get_blocksize(general);
 		if (block_size >= sizeof(*general)) {
 			int bus_pin = general->crt_ddc_gmbus_pin;
+			struct i2c_adapter *i2c;
 			DRM_DEBUG_KMS("crt_ddc_bus_pin: %d\n", bus_pin);
-			if (bus_pin >= 1 && bus_pin <= 6)
-				dev_priv->crt_ddc_pin = bus_pin;
+			i2c = intel_gmbus_get_adapter(dev_priv, bus_pin);
+			if (i2c)
+				dev_priv->crt_ddc = i2c;
 		} else {
 			DRM_DEBUG_KMS("BDB_GD too small (%d). Invalid.\n",
-				  block_size);
+				      block_size);
 		}
 	}
 }
@@ -611,7 +613,8 @@ init_vbt_defaults(struct drm_i915_private *dev_priv)
 {
 	struct drm_device *dev = dev_priv->dev;
 
-	dev_priv->crt_ddc_pin = GMBUS_PORT_VGADDC;
+	dev_priv->crt_ddc = intel_gmbus_get_adapter(dev_priv,
+						    GMBUS_PORT_VGADDC);
 
 	/* LFP panel data */
 	dev_priv->lvds_dither = 1;
