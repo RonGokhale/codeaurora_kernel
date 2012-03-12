@@ -40,7 +40,7 @@
 struct intel_hdmi {
 	struct intel_encoder base;
 	u32 sdvox_reg;
-	int ddc_bus;
+	struct i2c_adapter *ddc_bus;
 	uint32_t color_range;
 	bool has_hdmi_sink;
 	bool has_audio;
@@ -323,14 +323,12 @@ static enum drm_connector_status
 intel_hdmi_detect(struct drm_connector *connector, bool force)
 {
 	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
-	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	struct edid *edid;
 	enum drm_connector_status status = connector_status_disconnected;
 
 	intel_hdmi->has_hdmi_sink = false;
 	intel_hdmi->has_audio = false;
-	edid = drm_get_edid(connector,
-			    &dev_priv->gmbus[intel_hdmi->ddc_bus].adapter);
+	edid = drm_get_edid(connector, intel_hdmi->ddc_bus);
 
 	if (edid) {
 		if (edid->input & DRM_EDID_INPUT_DIGITAL) {
@@ -353,26 +351,22 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 static int intel_hdmi_get_modes(struct drm_connector *connector)
 {
 	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
-	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 
 	/* We should parse the EDID data and find out if it's an HDMI sink so
 	 * we can send audio to it.
 	 */
 
-	return intel_ddc_get_modes(connector,
-				   &dev_priv->gmbus[intel_hdmi->ddc_bus].adapter);
+	return intel_ddc_get_modes(connector, intel_hdmi->ddc_bus);
 }
 
 static bool
 intel_hdmi_detect_audio(struct drm_connector *connector)
 {
 	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
-	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	struct edid *edid;
 	bool has_audio = false;
 
-	edid = drm_get_edid(connector,
-			    &dev_priv->gmbus[intel_hdmi->ddc_bus].adapter);
+	edid = drm_get_edid(connector, intel_hdmi->ddc_bus);
 	if (edid) {
 		if (edid->input & DRM_EDID_INPUT_DIGITAL)
 			has_audio = drm_detect_monitor_audio(edid);
@@ -517,23 +511,28 @@ void intel_hdmi_init(struct drm_device *dev, int sdvox_reg)
 	/* Set up the DDC bus. */
 	if (sdvox_reg == SDVOB) {
 		intel_encoder->clone_mask = (1 << INTEL_HDMIB_CLONE_BIT);
-		intel_hdmi->ddc_bus = GMBUS_PORT_DPB;
+		intel_hdmi->ddc_bus = intel_gmbus_get_adapter(dev_priv,
+							      GMBUS_PORT_DPB);
 		dev_priv->hotplug_supported_mask |= HDMIB_HOTPLUG_INT_STATUS;
 	} else if (sdvox_reg == SDVOC) {
 		intel_encoder->clone_mask = (1 << INTEL_HDMIC_CLONE_BIT);
-		intel_hdmi->ddc_bus = GMBUS_PORT_DPC;
+		intel_hdmi->ddc_bus = intel_gmbus_get_adapter(dev_priv,
+							      GMBUS_PORT_DPC);
 		dev_priv->hotplug_supported_mask |= HDMIC_HOTPLUG_INT_STATUS;
 	} else if (sdvox_reg == HDMIB) {
 		intel_encoder->clone_mask = (1 << INTEL_HDMID_CLONE_BIT);
-		intel_hdmi->ddc_bus = GMBUS_PORT_DPB;
+		intel_hdmi->ddc_bus = intel_gmbus_get_adapter(dev_priv,
+							      GMBUS_PORT_DPB);
 		dev_priv->hotplug_supported_mask |= HDMIB_HOTPLUG_INT_STATUS;
 	} else if (sdvox_reg == HDMIC) {
 		intel_encoder->clone_mask = (1 << INTEL_HDMIE_CLONE_BIT);
-		intel_hdmi->ddc_bus = GMBUS_PORT_DPC;
+		intel_hdmi->ddc_bus = intel_gmbus_get_adapter(dev_priv,
+							      GMBUS_PORT_DPC);
 		dev_priv->hotplug_supported_mask |= HDMIC_HOTPLUG_INT_STATUS;
 	} else if (sdvox_reg == HDMID) {
 		intel_encoder->clone_mask = (1 << INTEL_HDMIF_CLONE_BIT);
-		intel_hdmi->ddc_bus = GMBUS_PORT_DPD;
+		intel_hdmi->ddc_bus = intel_gmbus_get_adapter(dev_priv,
+							      GMBUS_PORT_DPD);
 		dev_priv->hotplug_supported_mask |= HDMID_HOTPLUG_INT_STATUS;
 	}
 

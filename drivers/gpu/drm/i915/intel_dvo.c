@@ -244,7 +244,7 @@ static int intel_dvo_get_modes(struct drm_connector *connector)
 	 * that's not the case.
 	 */
 	intel_ddc_get_modes(connector,
-			    &dev_priv->gmbus[GMBUS_PORT_DPC].adapter);
+			    intel_gmbus_get_adapter(dev_priv, GMBUS_PORT_DPC));
 	if (!list_empty(&connector->probed_modes))
 		return 1;
 
@@ -387,7 +387,7 @@ void intel_dvo_init(struct drm_device *dev)
 		 * It appears that everything is on GPIOE except for panels
 		 * on i830 laptops, which are on GPIOB (DVOA).
 		 */
-		i2c = &dev_priv->gmbus[gpio].adapter;
+		i2c = intel_gmbus_get_adapter(dev_priv, gpio);
 
 		intel_dvo->dev = *dvo;
 		if (!dvo->dev_ops->init(&intel_dvo->dev, i2c))

@@ -426,6 +426,13 @@ err:
 	return ret;
 }
 
+struct i2c_adapter *intel_gmbus_get_adapter(struct drm_i915_private *dev_priv,
+					    unsigned pin)
+{
+	BUG_ON(pin >= GMBUS_NUM_PORTS);
+	return &dev_priv->gmbus[pin].adapter;
+}
+
 void intel_gmbus_set_speed(struct i2c_adapter *adapter, int speed)
 {
 	struct intel_gmbus *bus = to_intel_gmbus(adapter);
