@@ -244,6 +244,7 @@ gmbus_xfer(struct i2c_adapter *adapter,
 	int i, reg_offset;
 	int ret = 0;
 	u32 gmbus2 = 0;
+	u32 gmbus0;
 
 	if (bus->force_bit)
 		return intel_i2c_quirk_xfer(dev_priv,
@@ -253,7 +254,12 @@ gmbus_xfer(struct i2c_adapter *adapter,
 
 	reg_offset = HAS_PCH_SPLIT(dev_priv->dev) ? PCH_GMBUS0 - GMBUS0 : 0;
 
-	I915_WRITE(GMBUS0 + reg_offset, bus->reg0);
+	/* Hack to use 400kHz only for atmel_mxt i2c device on vga ddc port */
+	gmbus0 = bus->reg0;
+	if ((gmbus0 & GMBUS_PORT_MASK) == GMBUS_PORT_VGADDC &&
+	    msgs[0].addr == 0x4b)
+		gmbus0 = (gmbus0 & ~GMBUS_RATE_MASK) | GMBUS_RATE_400KHZ;
+	I915_WRITE(GMBUS0 + reg_offset, gmbus0);
 
 	for (i = 0; i < num; i++) {
 		u16 len;
@@ -477,9 +483,10 @@ int intel_setup_gmbus(struct drm_device *dev)
 
 		/* By default use a conservative clock rate */
 		bus->reg0 = port | GMBUS_RATE_100KHZ;
-
-		/* XXX force bit banging until GMBUS is fully debugged */
-		bus->force_bit = intel_gpio_create(dev_priv, port);
+		if (port != GMBUS_PORT_VGADDC) {
+			/* XXX force bit banging until GMBUS is debugged */
+			bus->force_bit = intel_gpio_create(dev_priv, port);
+		}
 	}
 
 	intel_i2c_reset(dev_priv->dev);
