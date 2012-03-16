@@ -331,8 +331,8 @@ int ath_rx_init(struct ath_softc *sc, int nbufs)
 	sc->sc_flags &= ~SC_OP_RXFLUSH;
 	spin_lock_init(&sc->rx.rxbuflock);
 
-	common->rx_bufsize = IEEE80211_MAX_MPDU_LEN / 2 +
-			     sc->sc_ah->caps.rx_status_len;
+	/* optimal frag size so that skbs use kmalloc-2048 slab */
+	common->rx_bufsize = SKB_WITH_OVERHEAD(2048 - common->cachelsz);
 
 	if (sc->sc_ah->caps.hw_caps & ATH9K_HW_CAP_EDMA) {
 		return ath_rx_edma_init(sc, nbufs);
@@ -1904,26 +1904,18 @@ int ath_rx_tasklet(struct ath_softc *sc, int flush, bool hp)
 			break;
 		}
 
-		if (rs.rs_more) {
+		if (rs.rs_more && !sc->rx.frag) {
 			/*
 			 * rs_more indicates chained descriptors which can be
 			 * used to link buffers together for a sort of
 			 * scatter-gather operation.
 			 */
-			if (sc->rx.frag) {
-				/* too many fragments - cannot handle frame */
-				dev_kfree_skb_any(sc->rx.frag);
-				dev_kfree_skb_any(skb);
-				skb = NULL;
-			}
 			sc->rx.frag = skb;
 			goto requeue;
 		}
 
 		if (sc->rx.frag) {
 			int space = skb->len - skb_tailroom(hdr_skb);
-
-			sc->rx.frag = NULL;
 
 			if (pskb_expand_head(hdr_skb, 0, space, GFP_ATOMIC) < 0) {
 				dev_kfree_skb(skb);
@@ -1935,7 +1927,9 @@ int ath_rx_tasklet(struct ath_softc *sc, int flush, bool hp)
 			dev_kfree_skb_any(skb);
 			skb = hdr_skb;
 		}
-
+		if (rs.rs_more)
+			goto requeue;
+		sc->rx.frag = NULL;
 		/*
 		 * change the default rx antenna if rx diversity chooses the
 		 * other antenna 3 times in a row.

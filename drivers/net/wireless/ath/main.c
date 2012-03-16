@@ -42,8 +42,14 @@ struct sk_buff *ath_rxbuf_alloc(struct ath_common *common,
 	 * as that is the MAX AMSDU size this hardware supports.
 	 * Unfortunately this means we may get 8 KB here from the
 	 * kernel... and that is actually what is observed on some
-	 * systems :( */
-	skb = __dev_alloc_skb(len + common->cachelsz - 1, gfp_mask);
+	 * systems :(
+	 *
+	 * Note: space used by status header can be reused by upper stacks,
+	 * so dont reserve NET_SKB_PAD bytes.
+	 * This allows us building skbs using kmalloc-2048 slab instead of
+	 * kmalloc-4096 even for MTU=1500 full frames.
+	 */
+	skb = alloc_skb(len + common->cachelsz - 1, gfp_mask);
 	if (skb != NULL) {
 		off = ((unsigned long) skb->data) % common->cachelsz;
 		if (off != 0)
