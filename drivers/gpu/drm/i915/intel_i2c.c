@@ -250,10 +250,12 @@ gmbus_xfer(struct i2c_adapter *adapter,
 
 	reg_offset = HAS_PCH_SPLIT(dev_priv->dev) ? PCH_GMBUS0 - GMBUS0 : 0;
 
-	/* Hack to use 400kHz only for atmel_mxt i2c device on vga ddc port */
+	/* Hack to use 400kHz only for atmel_mxt i2c devices on ddc ports */
 	gmbus0 = bus->reg0;
-	if ((gmbus0 & GMBUS_PORT_MASK) == GMBUS_PORT_VGADDC &&
-	    msgs[0].addr == 0x4b)
+	if (((gmbus0 & GMBUS_PORT_MASK) == GMBUS_PORT_VGADDC &&
+	     msgs[0].addr == 0x4b) ||
+	    ((gmbus0 & GMBUS_PORT_MASK) == GMBUS_PORT_PANEL &&
+	     msgs[0].addr == 0x4a))
 		gmbus0 = (gmbus0 & ~GMBUS_RATE_MASK) | GMBUS_RATE_400KHZ;
 	I915_WRITE(GMBUS0 + reg_offset, gmbus0);
 
