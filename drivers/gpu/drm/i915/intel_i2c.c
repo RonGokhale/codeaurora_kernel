@@ -239,6 +239,7 @@ gmbus_xfer(struct i2c_adapter *adapter,
 	struct drm_i915_private *dev_priv = adapter->algo_data;
 	int i, reg_offset;
 	int ret = 0;
+	u32 gmbus2 = 0;
 
 	if (bus->force_bit)
 		return intel_i2c_quirk_xfer(dev_priv,
@@ -292,12 +293,12 @@ gmbus_xfer(struct i2c_adapter *adapter,
 			do {
 				u32 val, loop = 0;
 
-				if (wait_for(I915_READ(GMBUS2 + reg_offset) &
+				if (wait_for((gmbus2 = I915_READ(GMBUS2 +
+								 reg_offset)) &
 					     (GMBUS_SATOER | GMBUS_HW_RDY),
 					     50))
 					goto timeout;
-				if (I915_READ(GMBUS2 + reg_offset) &
-				    GMBUS_SATOER)
+				if (gmbus2 & GMBUS_SATOER)
 					goto clear_err;
 
 				val = I915_READ(GMBUS3 + reg_offset);
@@ -332,21 +333,21 @@ gmbus_xfer(struct i2c_adapter *adapter,
 				I915_WRITE(GMBUS3 + reg_offset, val);
 				POSTING_READ(GMBUS2 + reg_offset);
 
-				if (wait_for(I915_READ(GMBUS2 + reg_offset) &
+				if (wait_for((gmbus2 = I915_READ(GMBUS2 +
+								 reg_offset)) &
 					     (GMBUS_SATOER | GMBUS_HW_RDY),
 					     50))
 					goto timeout;
-				if (I915_READ(GMBUS2 + reg_offset) &
-					      GMBUS_SATOER)
+				if (gmbus2 & GMBUS_SATOER)
 					goto clear_err;
 			}
 		}
 
-		if (wait_for(I915_READ(GMBUS2 + reg_offset) &
+		if (wait_for((gmbus2 = I915_READ(GMBUS2 + reg_offset)) &
 			     (GMBUS_SATOER | GMBUS_HW_WAIT_PHASE),
 			     50))
 			goto timeout;
-		if (I915_READ(GMBUS2 + reg_offset) & GMBUS_SATOER)
+		if (gmbus2 & GMBUS_SATOER)
 			goto clear_err;
 	}
 
