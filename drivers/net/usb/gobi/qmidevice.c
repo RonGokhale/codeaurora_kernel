@@ -106,8 +106,10 @@ static unsigned devqmi_poll(struct file *file,
 			    struct poll_table_struct *poll_table);
 
 static bool qmi_ready(struct qcusbnet *dev, u16 timeout);
-static void wds_callback(struct qcusbnet *dev, u16 cid, void *data);
+static void wds_callback(struct work_struct *work);
+static void queue_wds_callback(struct qcusbnet *dev, u16 cid, void *data);
 static int setup_wds_callback(struct qcusbnet *dev, int sync_flags);
+
 static int qmidms_getmeid(struct qcusbnet *dev, int sync_flags);
 
 #define IOCTL_QMI_GET_SERVICE_FILE	(0x8BE0 + 1)
@@ -1494,16 +1496,23 @@ int qc_register(struct qcusbnet *dev)
 	char *name;
 	int sync_flags = SYNC_TIMEOUT;
 
+	dev->qmi.workqueue = alloc_ordered_workqueue("qmi", 0);
+	if (!dev->qmi.workqueue) {
+		GOBI_ERROR("alloc_ordered_workqueue failed");
+		goto fail;
+	}
+	INIT_WORK(&dev->qmi.wds_callback_work, wds_callback);
+
 	dev->valid = true;
 	result = client_alloc(dev, QMICTL, sync_flags);
 	if (result < 0) {
 		GOBI_ERROR("client_alloc failed: %d", result);
-		goto fail;
+		goto fail_destroy_workqueue;
 	}
 	if (result > 0) {
 		GOBI_ERROR("client_alloc assigned nonzero cid %d", result);
 		result = -ENXIO;
-		goto fail;
+		goto fail_destroy_workqueue;
 	}
 	atomic_set(&dev->qmi.qmitid, 1);
 
@@ -1582,6 +1591,8 @@ fail_stopread:
 	qc_stopread(dev);
 fail_client_free:
 	client_free(dev, 0, sync_flags);
+fail_destroy_workqueue:
+	destroy_workqueue(dev->qmi.workqueue);
 fail:
 	dev->valid = false;
 	return result;
@@ -1603,6 +1614,7 @@ void qc_deregister(struct qcusbnet *dev)
 	unregister_chrdev_region(dev->qmi.devnum, 1);
 	qc_stopread(dev);
 	dev->valid = false;
+	destroy_workqueue(dev->qmi.workqueue);
 }
 
 static bool qmi_ready(struct qcusbnet *dev, u16 timeout)
@@ -1678,12 +1690,18 @@ static bool qmi_ready(struct qcusbnet *dev, u16 timeout)
 	return true;
 }
 
-static void wds_callback(struct qcusbnet *dev, u16 cid, void *data)
+static void wds_callback(struct work_struct *work)
 {
 	bool ret;
 	int result;
 	void *rbuf;
 	u16 rbufsize;
+
+	GOBI_DEBUG("doing wds_callback_work");
+
+	struct qmidev *qmidev = container_of(work, struct qmidev,
+					     wds_callback_work);
+	struct qcusbnet *dev = container_of(qmidev, struct qcusbnet, qmi);
 
 	struct net_device_stats *stats = &(dev->usbnet->net->stats);
 
@@ -1701,7 +1719,7 @@ static void wds_callback(struct qcusbnet *dev, u16 cid, void *data)
 	}
 
 	spin_lock_irqsave(&dev->qmi.clients_lock, flags);
-	ret = client_delread(dev, cid, 0, &rbuf, &rbufsize);
+	ret = client_delread(dev, dev->qmi.wds_cid, 0, &rbuf, &rbufsize);
 	spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 
 	if (!ret) {
@@ -1757,16 +1775,22 @@ static void wds_callback(struct qcusbnet *dev, u16 cid, void *data)
 
 	kfree(rbuf);
 
-	result = read_async(dev, cid, 0, wds_callback, data);
+	result = read_async(dev, dev->qmi.wds_cid, 0, queue_wds_callback, NULL);
 	if (result != 0) {
 		GOBI_ERROR("failed to set up async read: %d", result);
 	}
 }
 
+static void queue_wds_callback(struct qcusbnet *dev, u16 cid, void *data)
+{
+	BUG_ON(dev->qmi.wds_cid != cid);
+	GOBI_DEBUG("queueing qds_callback_work");
+	queue_work(dev->qmi.workqueue, &dev->qmi.wds_callback_work);
+}
+
 static int setup_wds_callback(struct qcusbnet *dev, int sync_flags)
 {
 	struct buffer *wbuf;
-	u16 cid;
 	int result;
 
 	if (!device_valid(dev)) {
@@ -1779,7 +1803,7 @@ static int setup_wds_callback(struct qcusbnet *dev, int sync_flags)
 		GOBI_ERROR("failed to allocate client");
 		return result;
 	}
-	cid = result;
+	dev->qmi.wds_cid = result;
 
 	wbuf = qmiwds_new_seteventreport(1);
 	if (!wbuf) {
@@ -1787,7 +1811,7 @@ static int setup_wds_callback(struct qcusbnet *dev, int sync_flags)
 		return -ENOMEM;
 	}
 
-	result = write_sync(dev, wbuf, cid, sync_flags);
+	result = write_sync(dev, wbuf, dev->qmi.wds_cid, sync_flags);
 	buffer_put(wbuf);
 	if (result < 0) {
 		GOBI_ERROR("failed to write seteventreport request: %d",
@@ -1801,7 +1825,7 @@ static int setup_wds_callback(struct qcusbnet *dev, int sync_flags)
 		return -ENOMEM;
 	}
 
-	result = write_sync(dev, wbuf, cid, sync_flags);
+	result = write_sync(dev, wbuf, dev->qmi.wds_cid, sync_flags);
 	buffer_put(wbuf);
 	if (result < 0) {
 		GOBI_ERROR("failed to write getpkgsrvcstatus request: %d",
@@ -1809,7 +1833,7 @@ static int setup_wds_callback(struct qcusbnet *dev, int sync_flags)
 		return result;
 	}
 
-	result = read_async(dev, cid, 0, wds_callback, NULL);
+	result = read_async(dev, dev->qmi.wds_cid, 0, queue_wds_callback, NULL);
 	if (result) {
 		GOBI_ERROR("failed to set up async read: %d", result);
 		return result;

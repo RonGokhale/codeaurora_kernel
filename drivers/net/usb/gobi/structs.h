@@ -66,6 +66,10 @@ struct qmidev {
 	struct list_head clients;
 	spinlock_t clients_lock;
 	atomic_t qmitid;
+
+	struct workqueue_struct *workqueue;
+	struct work_struct wds_callback_work;
+	u16 wds_cid;
 };
 
 enum {
