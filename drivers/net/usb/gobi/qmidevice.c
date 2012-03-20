@@ -866,11 +866,6 @@ static int client_alloc(struct qcusbnet *dev, u8 type, int sync_flags)
 	int result;
 	unsigned long flags;
 
-	if (!device_valid(dev)) {
-		GOBI_ERROR("invalid device (type=0x%02x)", type);
-		return -ENXIO;
-	}
-
 	if (type) {
 		result = cid_alloc(dev, type, sync_flags);
 		if (result < 0) {
@@ -884,6 +879,12 @@ static int client_alloc(struct qcusbnet *dev, u8 type, int sync_flags)
 	}
 
 	spin_lock_irqsave(&dev->qmi.clients_lock, flags);
+
+	if (!device_valid(dev)) {
+		GOBI_ERROR("invalid device (type=0x%02x)", type);
+		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
+		return -ENXIO;
+	}
 
 	if (client_bycid(dev, cid)) {
 		spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
@@ -910,23 +911,23 @@ static int client_alloc(struct qcusbnet *dev, u8 type, int sync_flags)
 	return cid;
 }
 
-static void client_free(struct qcusbnet *dev, u16 cid, int sync_flags)
+/*
+ * Note that client_free_locked does *not* free the cid associated with the
+ * client -- we can't do that with a spinlock held.  The only place we call
+ * client_free_locked directly is from qc_deregister, and at that point, the
+ * Release Client ID messages wouldn't be able to reach the card anyway, since
+ * it's already been disconnected.
+ */
+static void client_free_locked(struct qcusbnet *dev, u16 cid, int sync_flags)
 {
 	struct list_head *node, *tmp;
 	struct client *client;
 	struct urb *urb;
 	void *data;
 	u16 size;
-	unsigned long flags;
-	int result;
 
-	if (cid != QMICTL) {
-		result = cid_free(dev, cid, sync_flags);
-		if (result)
-			GOBI_ERROR("failed to free cid: %d (ignoring)", result);
-	}
+	assert_locked(dev);
 
-	spin_lock_irqsave(&dev->qmi.clients_lock, flags);
 	list_for_each_safe(node, tmp, &dev->qmi.clients) {
 		struct notifyreq *notify;
 
@@ -934,17 +935,16 @@ static void client_free(struct qcusbnet *dev, u16 cid, int sync_flags)
 		if (client->cid != cid)
 			continue;
 
-		while ((notify = client_remove_notify(client, 0)) != NULL) {
-			/* release lock during notification */
-			spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
+		/*
+		 * Don't need to release lock to call notify, since the hook is
+		 * either upsem or queue_wds_callback, either of which can be
+		 * called with a spinlock held.
+		 */
+		while ((notify = client_remove_notify(client, 0)) != NULL)
 			client_notify_and_free(dev, notify);
-			spin_lock_irqsave(&dev->qmi.clients_lock, flags);
-		}
-		urb = client_delurb(dev, cid, NULL);
-		while (urb != NULL) {
+		while ((urb = client_delurb(dev, cid, NULL)) != NULL) {
 			usb_kill_urb(urb);
 			usb_free_urb(urb);
-			urb = client_delurb(dev, cid, NULL);
 		}
 		while (client_delread(dev, cid, 0, &data, &size))
 			kfree(data);
@@ -955,6 +955,29 @@ static void client_free(struct qcusbnet *dev, u16 cid, int sync_flags)
 		kfree(client);
 		break;
 	}
+}
+
+static void client_free(struct qcusbnet *dev, u16 cid, int sync_flags)
+{
+	unsigned long flags;
+	int result;
+
+	if (cid != QMICTL) {
+		result = cid_free(dev, cid, sync_flags);
+		if (result)
+			GOBI_ERROR("failed to free cid: %d (ignoring)", result);
+	}
+
+	spin_lock_irqsave(&dev->qmi.clients_lock, flags);
+
+	/*
+	 * Don't need to check device->valid -- if the device is invalid and
+	 * we're holding the spinlock, then qc_deregister has already freed
+	 * all the clients, so we're not going to find one to free and race
+	 * with it.
+	 */
+	client_free_locked(dev, cid, sync_flags);
+
 	spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 }
 
@@ -1603,18 +1626,22 @@ void qc_deregister(struct qcusbnet *dev)
 	struct list_head *node, *tmp;
 	struct client *client;
 	int sync_flags = SYNC_TIMEOUT;
+	unsigned long flags;
 
+
+	spin_lock_irqsave(&dev->qmi.clients_lock, flags);
+	dev->valid = false;
 	list_for_each_safe(node, tmp, &dev->qmi.clients) {
 		client = list_entry(node, struct client, node);
-		client_free(dev, client->cid, sync_flags);
+		client_free_locked(dev, client->cid, sync_flags);
 	}
+	spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
 
+	destroy_workqueue(dev->qmi.workqueue);
 	device_destroy(dev->qmi.devclass, dev->qmi.devnum);
 	cdev_del(&dev->qmi.cdev);
 	unregister_chrdev_region(dev->qmi.devnum, 1);
 	qc_stopread(dev);
-	dev->valid = false;
-	destroy_workqueue(dev->qmi.workqueue);
 }
 
 static bool qmi_ready(struct qcusbnet *dev, u16 timeout)
