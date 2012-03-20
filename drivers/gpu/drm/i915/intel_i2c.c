@@ -35,20 +35,6 @@
 #include "i915_drm.h"
 #include "i915_drv.h"
 
-struct gmbus_port {
-	const char *name;
-	int reg;
-};
-
-static const struct gmbus_port gmbus_ports[] = {
-	{ "ssc", GPIOB },
-	{ "vga", GPIOA },
-	{ "panel", GPIOC },
-	{ "dpc", GPIOD },
-	{ "dpb", GPIOE },
-	{ "dpd", GPIOF },
-};
-
 /* Intel GPIO access functions */
 
 #define I2C_RISEFALL_TIME 20
@@ -164,22 +150,32 @@ static void set_data(void *data, int state_high)
 static struct i2c_adapter *
 intel_gpio_create(struct drm_i915_private *dev_priv, u32 pin)
 {
+	static const int map_pin_to_reg[] = {
+		0,
+		GPIOB,
+		GPIOA,
+		GPIOC,
+		GPIOD,
+		GPIOE,
+		GPIOF,
+		0,
+	};
 	struct intel_gpio *gpio;
 
-	pin -= 1;  /* NB: -1 to map pin pair to gmbus array index */
-	BUG_ON(pin >= ARRAY_SIZE(gmbus_ports));
+	if (pin >= ARRAY_SIZE(map_pin_to_reg) || !map_pin_to_reg[pin])
+		return NULL;
 
 	gpio = kzalloc(sizeof(struct intel_gpio), GFP_KERNEL);
 	if (gpio == NULL)
 		return NULL;
 
-	gpio->reg = gmbus_ports[pin].reg;
+	gpio->reg = map_pin_to_reg[pin];
 	if (HAS_PCH_SPLIT(dev_priv->dev))
 		gpio->reg += PCH_GPIOA - GPIOA;
 	gpio->dev_priv = dev_priv;
 
 	snprintf(gpio->adapter.name, sizeof(gpio->adapter.name),
-		 "i915 GPIO%c", "BACDEF"[pin]);
+		 "i915 GPIO%c", "?BACDEF?"[pin]);
 	gpio->adapter.owner = THIS_MODULE;
 	gpio->adapter.algo_data	= &gpio->algo;
 	gpio->adapter.dev.parent = &dev_priv->dev->pdev->dev;
@@ -456,24 +452,35 @@ static const struct i2c_algorithm gmbus_algorithm = {
  */
 int intel_setup_gmbus(struct drm_device *dev)
 {
+	static const char *names[GMBUS_NUM_PORTS] = {
+		"disabled",
+		"ssc",
+		"vga",
+		"panel",
+		"dpc",
+		"dpb",
+		"dpd",
+		"reserved",
+	};
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret, i;
 
-	dev_priv->gmbus = kcalloc(sizeof(struct intel_gmbus),
-				  ARRAY_SIZE(gmbus_ports), GFP_KERNEL);
+	dev_priv->gmbus = kcalloc(sizeof(struct intel_gmbus), GMBUS_NUM_PORTS,
+				  GFP_KERNEL);
 	if (dev_priv->gmbus == NULL)
 		return -ENOMEM;
 
 	mutex_init(&dev_priv->gmbus_mutex);
 
-	for (i = 0; i < ARRAY_SIZE(gmbus_ports); i++) {
+	for (i = 0; i < GMBUS_NUM_PORTS; i++) {
 		struct intel_gmbus *bus = &dev_priv->gmbus[i];
-		u32 port = i + 1; /* +1 to map gmbus index to pin pair */
 
 		bus->adapter.owner = THIS_MODULE;
 		bus->adapter.class = I2C_CLASS_DDC;
-		snprintf(bus->adapter.name, sizeof(bus->adapter.name),
-			 "i915 gmbus %s", gmbus_ports[i].name);
+		snprintf(bus->adapter.name,
+			 sizeof(bus->adapter.name),
+			 "i915 gmbus %s",
+			 names[i]);
 
 		bus->adapter.dev.parent = &dev->pdev->dev;
 		bus->adapter.algo_data	= dev_priv;
@@ -484,11 +491,11 @@ int intel_setup_gmbus(struct drm_device *dev)
 			goto err;
 
 		/* By default use a conservative clock rate */
-		bus->reg0 = port | GMBUS_RATE_100KHZ;
-		if (port != GMBUS_PORT_VGADDC &&
-		    port != GMBUS_PORT_PANEL) {
+		bus->reg0 = i | GMBUS_RATE_100KHZ;
+		if (i != GMBUS_PORT_VGADDC &&
+		    i != GMBUS_PORT_PANEL) {
 			/* XXX force bit banging until GMBUS is debugged */
-			bus->force_bit = intel_gpio_create(dev_priv, port);
+			bus->force_bit = intel_gpio_create(dev_priv, i);
 		}
 	}
 
@@ -509,8 +516,7 @@ err:
 struct i2c_adapter *intel_gmbus_get_adapter(struct drm_i915_private *dev_priv,
 					    unsigned pin)
 {
-	pin -= 1;  /* NB: -1 to map pin pair to gmbus array index */
-	BUG_ON(pin >= ARRAY_SIZE(gmbus_ports));
+	BUG_ON(pin >= GMBUS_NUM_PORTS);
 	return &dev_priv->gmbus[pin].adapter;
 }
 
@@ -548,7 +554,7 @@ void intel_teardown_gmbus(struct drm_device *dev)
 	if (dev_priv->gmbus == NULL)
 		return;
 
-	for (i = 0; i < ARRAY_SIZE(gmbus_ports); i++) {
+	for (i = 0; i < GMBUS_NUM_PORTS; i++) {
 		struct intel_gmbus *bus = &dev_priv->gmbus[i];
 		if (bus->force_bit) {
 			i2c_del_adapter(bus->force_bit);
