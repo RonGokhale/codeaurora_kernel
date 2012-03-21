@@ -27,6 +27,7 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
+#include <linux/freezer.h>
 
 #include "tpm.h"
 
@@ -1005,6 +1006,70 @@ ssize_t tpm_store_cancel(struct device *dev, struct device_attribute *attr,
 }
 EXPORT_SYMBOL_GPL(tpm_store_cancel);
 
+int wait_for_tpm_stat(struct tpm_chip *chip, u8 mask, unsigned long timeout,
+			 wait_queue_head_t *queue)
+{
+	unsigned long stop;
+	long rc;
+	u8 status;
+
+	/* check current status */
+	status = chip->vendor.status(chip);
+	if ((status & mask) == mask)
+		return 0;
+
+	stop = jiffies + timeout;
+
+	if (chip->vendor.irq) {
+again:
+		timeout = stop - jiffies;
+		if ((long)timeout <= 0)
+			return -ETIME;
+		rc = wait_event_interruptible_timeout(*queue,
+						      ((chip->vendor.status(chip)
+						      & mask) == mask),
+						      timeout);
+		if (rc > 0)
+			return 0;
+		if (rc == -ERESTARTSYS && freezing(current)) {
+			clear_thread_flag(TIF_SIGPENDING);
+			goto again;
+		}
+	} else {
+		do {
+			msleep(TPM_TIMEOUT);
+			status = chip->vendor.status(chip);
+			if ((status & mask) == mask)
+				return 0;
+		} while (time_before(jiffies, stop));
+	}
+	return -ETIME;
+}
+EXPORT_SYMBOL_GPL(wait_for_tpm_stat);
+
+static int tpm_s3power = 0;
+
+/*
+ * Tell the kernel whether or not to save the TPM state at suspend, depending
+ * on whether the TPM stays powered on or is powered off.
+ */
+ssize_t tpm_s3power_set(struct device *dev, struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	return sscanf(buf, "%d", &tpm_s3power) == 1 ? count : -EINVAL;
+}
+EXPORT_SYMBOL_GPL(tpm_s3power_set);
+
+/*
+ * Read the value of tpm_s3power.  See tpm_s3power_set.
+ */
+ssize_t tpm_s3power_get(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	return sprintf(buf, "%d", tpm_s3power);
+}
+EXPORT_SYMBOL_GPL(tpm_s3power_get);
+
 /*
  * Device file system interface to the TPM
  *
@@ -1178,6 +1243,9 @@ int tpm_pm_suspend(struct device *dev, pm_message_t pm_state)
 
 	if (chip == NULL)
 		return -ENODEV;
+
+	if (tpm_s3power)
+		return 0;
 
 	/* for buggy tpm, flush pcrs with extend to selected dummy */
 	if (tpm_suspend_pcr) {
