@@ -330,12 +330,13 @@ parse_general_definitions(struct drm_i915_private *dev_priv,
 	if (general) {
 		u16 block_size = get_blocksize(general);
 		if (block_size >= sizeof(*general)) {
-			int bus_pin = general->crt_ddc_gmbus_pin;
+			int port = general->crt_ddc_gmbus_pin;
 			struct i2c_adapter *i2c;
-			DRM_DEBUG_KMS("crt_ddc_bus_pin: %d\n", bus_pin);
-			i2c = intel_gmbus_get_adapter(dev_priv, bus_pin);
-			if (i2c)
+			if (intel_gmbus_is_port_valid(port)) {
+				DRM_DEBUG_KMS("crt_ddc_bus_pin: %d\n", port);
+				i2c = intel_gmbus_get_adapter(dev_priv, port);
 				dev_priv->crt_ddc = i2c;
+			}
 		} else {
 			DRM_DEBUG_KMS("BDB_GD too small (%d). Invalid.\n",
 				      block_size);
