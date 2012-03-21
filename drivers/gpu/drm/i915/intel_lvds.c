@@ -805,8 +805,8 @@ static bool lvds_is_present_in_vbt(struct drm_device *dev,
 		    child->device_type != DEVICE_TYPE_LFP)
 			continue;
 
-		if (child->i2c_pin)
-		    *i2c_pin = child->i2c_pin;
+		if (intel_gmbus_is_port_valid(child->i2c_pin))
+			*i2c_pin = child->i2c_pin;
 
 		/* However, we cannot trust the BIOS writers to populate
 		 * the VBT correctly.  Since LVDS requires additional
