@@ -426,6 +426,7 @@ void ath_reset_work(struct work_struct *work);
 void ath_hw_check(struct work_struct *work);
 void ath_hw_pll_work(struct work_struct *work);
 void ath_rx_poll_work(unsigned long data);
+void ath_start_rx_poll(struct ath_softc *sc, u32 nmsec);
 void ath_paprd_calibrate(struct work_struct *work);
 void ath_ani_calibrate(unsigned long data);
 void ath_start_ani(struct ath_common *common);
@@ -650,7 +651,6 @@ struct ath_softc {
 
 	struct ath_ant_comb ant_comb;
 	u8 ant_tx, ant_rx;
-	atomic_t stop_rx_poll;
 };
 
 void ath9k_tasklet(unsigned long data);
