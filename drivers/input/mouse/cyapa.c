@@ -14,7 +14,6 @@
  * more details.
  */
 
-
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
@@ -585,9 +584,15 @@ static int cyapa_get_state(struct cyapa *cyapa)
 	 * -ETIMEDOUT.  In this case, try again using the smbus equivalent
 	 * command.  This should return a BL_HEAD indicating CYAPA_STATE_OP.
 	 */
-	if (cyapa->smbus && (ret == -ETIMEDOUT || ret == -ENXIO)) {
-		dev_dbg(dev, "smbus: probing with BL_STATUS command\n");
+	if ((cyapa->adapter_func & CYAPA_ADAPTER_FUNC_SMBUS) &&
+	    (ret == -ETIMEDOUT || ret == -ENXIO)) {
+		bool old_smbus = cyapa->smbus;
+		dev_dbg(dev, "i2c probe failed. Probing using smbus\n");
+		cyapa->smbus = true;
 		ret = cyapa_read_block(cyapa, CYAPA_CMD_BL_STATUS, status);
+		/* If smbus ping failed, too, restore smbus flag. */
+		if (ret != BL_STATUS_SIZE)
+			cyapa->smbus = old_smbus;
 	}
 
 	if (ret != BL_STATUS_SIZE)
@@ -661,11 +666,19 @@ static int cyapa_bl_enter(struct cyapa *cyapa)
 		cyapa->input = NULL;
 	}
 
-	if (cyapa->state != CYAPA_STATE_OP)
+	ret = cyapa_get_state(cyapa);
+	if (cyapa->state == CYAPA_STATE_BL_IDLE ||
+	    cyapa->state == CYAPA_STATE_BL_ACTIVE)
 		return 0;
 
 	cyapa->state = CYAPA_STATE_NO_DEVICE;
 	ret = cyapa_write_byte(cyapa, CYAPA_CMD_SOFT_RESET, 0x01);
+	if (ret < 0) {  // try again using other method
+		bool smbus_old = cyapa->smbus;
+		cyapa->smbus = !smbus_old;
+		ret = cyapa_write_byte(cyapa, CYAPA_CMD_SOFT_RESET, 0x01);
+		cyapa->smbus = smbus_old;
+	}
 	if (ret < 0)
 		return -EIO;
 
@@ -1191,6 +1204,24 @@ err_detect:
  *      cat /sys/bus/i2c/drivers/cyapa/0-0067/firmware_version
  *******************************************************************
  */
+
+static ssize_t cyapa_enter_bl(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct cyapa *cyapa = dev_get_drvdata(dev);
+	int ret;
+
+	ret = cyapa_bl_enter(cyapa);
+	if (ret)
+		dev_err(dev, "%s bootloader failed, %d\n", ret);
+	else
+		dev_dbg(dev, "%s bootloader succeeded\n");
+
+	return ret ?: count;
+
+}
+
 static ssize_t cyapa_show_fm_ver(struct device *dev,
 				 struct device_attribute *attr, char *buf)
 {
@@ -1303,6 +1334,7 @@ invalidparam:
 	return -EINVAL;
 }
 
+static DEVICE_ATTR(enter_bl, S_IWUSR, NULL, cyapa_enter_bl);
 static DEVICE_ATTR(firmware_version, S_IRUGO, cyapa_show_fm_ver, NULL);
 static DEVICE_ATTR(hardware_version, S_IRUGO, cyapa_show_hw_ver, NULL);
 static DEVICE_ATTR(product_id, S_IRUGO, cyapa_show_product_id, NULL);
@@ -1658,6 +1690,7 @@ static int __devinit cyapa_probe(struct i2c_client *client,
 	struct device *dev = &client->dev;
 
 	adapter_func = cyapa_check_adapter_functionality(client);
+	dev_dbg(dev, "adapter functionality = %02x\n", adapter_func);
 	if (adapter_func == CYAPA_ADAPTER_FUNC_NONE) {
 		dev_err(dev, "not a supported I2C/SMBus adapter\n");
 		return -EIO;
