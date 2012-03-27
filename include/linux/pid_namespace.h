@@ -32,6 +32,9 @@ struct pid_namespace {
 #endif
 	gid_t pid_gid;
 	int hide_pid;
+#ifdef CONFIG_SECURITY_YAMA
+	int ptrace_scope;
+#endif
 };
 
 extern struct pid_namespace init_pid_ns;
