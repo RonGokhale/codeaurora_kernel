@@ -14,6 +14,7 @@
  * more details.
  */
 
+#define DEBUG
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
@@ -28,6 +29,8 @@
 #include <linux/semaphore.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+
+static int suppress_debug_output;
 
 /* APA trackpad firmware generation */
 enum cyapa_gen {
@@ -408,9 +411,10 @@ static ssize_t cyapa_i2c_reg_read_block(struct cyapa *cyapa, u8 reg, size_t len,
 	ssize_t ret;
 
 	ret = i2c_smbus_read_i2c_block_data(cyapa->client, reg, len, values);
-	dev_dbg(dev, "i2c read block reg: 0x%02x len: %zu ret: %zd\n",
-		reg, len, ret);
-	if (ret > 0)
+	if (!suppress_debug_output)
+		dev_dbg(dev, "i2c read block reg: 0x%02x len: %zu ret: %zd\n",
+			reg, len, ret);
+	if (!suppress_debug_output && (ret > 0))
 		cyapa_dump_data(cyapa, ret, values);
 
 	return ret;
@@ -579,6 +583,9 @@ static int cyapa_get_state(struct cyapa *cyapa)
 	ret = cyapa_i2c_reg_read_block(cyapa, BL_HEAD_OFFSET, BL_STATUS_SIZE,
 				       status);
 
+	if (!ret)
+		suppress_debug_output = 1;
+
 	/*
 	 * On smbus systems in OP mode, the i2c_reg_read will fail with
 	 * -ETIMEDOUT.  In this case, try again using the smbus equivalent
@@ -587,7 +594,8 @@ static int cyapa_get_state(struct cyapa *cyapa)
 	if ((cyapa->adapter_func & CYAPA_ADAPTER_FUNC_SMBUS) &&
 	    (ret == -ETIMEDOUT || ret == -ENXIO)) {
 		bool old_smbus = cyapa->smbus;
-		dev_dbg(dev, "i2c probe failed. Probing using smbus\n");
+		if (!suppress_debug_output)
+			dev_dbg(dev, "i2c probe failed. Probing using smbus\n");
 		cyapa->smbus = true;
 		ret = cyapa_read_block(cyapa, CYAPA_CMD_BL_STATUS, status);
 		/* If smbus ping failed, too, restore smbus flag. */
