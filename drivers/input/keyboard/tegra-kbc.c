@@ -590,6 +590,8 @@ tegra_kbc_dt_parse_pdata(struct platform_device *pdev)
 {
 	struct tegra_kbc_platform_data *pdata;
 	struct device_node *np = pdev->dev.of_node;
+	u32 prop;
+	int i;
 
 	if (!np)
 		return NULL;
