@@ -22,7 +22,7 @@
 #define DRIVER_AUTHOR "Qualcomm Inc"
 #define DRIVER_DESC "Qualcomm USB Serial driver"
 
-static int debug;
+static bool debug;
 
 static const struct usb_device_id id_table[] = {
 	{USB_DEVICE(0x05c6, 0x9211)},	/* Acer Gobi QDL device */
@@ -143,11 +143,8 @@ static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
 		/* Gobi 2000 has a single altsetting, older ones have two */
 		if (serial->interface->num_altsetting == 2)
 			intf = &serial->interface->altsetting[1];
-		else if (serial->interface->num_altsetting > 2) {
-			dev_err(&serial->dev->dev,
-				"too many altsettings: %u", serial->interface->num_altsetting);
+		else if (serial->interface->num_altsetting > 2)
 			break;
-		}
 
 		if (intf->desc.bNumEndpoints == 2 &&
 		    usb_endpoint_is_bulk_in(&intf->endpoint[0].desc) &&
