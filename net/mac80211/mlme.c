@@ -35,6 +35,12 @@ module_param(max_nullfunc_tries, int, 0644);
 MODULE_PARM_DESC(max_nullfunc_tries,
 		 "Maximum nullfunc tx tries before disconnecting (reason 4).");
 
+static int max_nullfunc_tries_resume = 2;
+module_param(max_nullfunc_tries_resume, int, 0644);
+MODULE_PARM_DESC(max_nullfunc_tries_resume,
+		 "Maximum nullfunc tx tries on resume before disconnecting "
+		 "(reason 4).");
+
 static int max_probe_tries = 5;
 module_param(max_probe_tries, int, 0644);
 MODULE_PARM_DESC(max_probe_tries,
@@ -1018,7 +1024,8 @@ static void ieee80211_set_associated(struct ieee80211_sub_if_data *sdata,
 
 	/* just to be sure */
 	sdata->u.mgd.flags &= ~(IEEE80211_STA_CONNECTION_POLL |
-				IEEE80211_STA_BEACON_POLL);
+				IEEE80211_STA_BEACON_POLL |
+				IEEE80211_STA_RESUME_POLL);
 
 	ieee80211_led_assoc(local, 1);
 
@@ -1173,11 +1180,13 @@ static void ieee80211_reset_ap_probe(struct ieee80211_sub_if_data *sdata)
 	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
 
 	if (!(ifmgd->flags & (IEEE80211_STA_BEACON_POLL |
-			      IEEE80211_STA_CONNECTION_POLL)))
+			      IEEE80211_STA_CONNECTION_POLL |
+			      IEEE80211_STA_RESUME_POLL)))
 	    return;
 
 	ifmgd->flags &= ~(IEEE80211_STA_CONNECTION_POLL |
-			  IEEE80211_STA_BEACON_POLL);
+			  IEEE80211_STA_BEACON_POLL |
+			  IEEE80211_STA_RESUME_POLL);
 	mutex_lock(&sdata->local->iflist_mtx);
 	ieee80211_recalc_ps(sdata->local, -1);
 	mutex_unlock(&sdata->local->iflist_mtx);
@@ -2134,7 +2143,8 @@ static void ieee80211_sta_connection_lost(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
 
 	ifmgd->flags &= ~(IEEE80211_STA_CONNECTION_POLL |
-			  IEEE80211_STA_BEACON_POLL);
+			  IEEE80211_STA_BEACON_POLL |
+			  IEEE80211_STA_RESUME_POLL);
 
 	ieee80211_set_disassoc(sdata, true, true);
 	mutex_unlock(&ifmgd->mtx);
@@ -2160,16 +2170,20 @@ void ieee80211_sta_work(struct ieee80211_sub_if_data *sdata)
 	mutex_lock(&ifmgd->mtx);
 
 	if (ifmgd->flags & (IEEE80211_STA_BEACON_POLL |
-			    IEEE80211_STA_CONNECTION_POLL) &&
+			    IEEE80211_STA_CONNECTION_POLL |
+			    IEEE80211_STA_RESUME_POLL) &&
 	    ifmgd->associated) {
 		u8 bssid[ETH_ALEN];
 		int max_tries;
 
 		memcpy(bssid, ifmgd->associated->bssid, ETH_ALEN);
 
-		if (local->hw.flags & IEEE80211_HW_REPORTS_TX_ACK_STATUS)
-			max_tries = max_nullfunc_tries;
-		else
+		if (local->hw.flags & IEEE80211_HW_REPORTS_TX_ACK_STATUS) {
+			if (ifmgd->flags & IEEE80211_STA_RESUME_POLL)
+				max_tries = max_nullfunc_tries_resume;
+			else
+				max_tries = max_nullfunc_tries;
+		} else
 			max_tries = max_probe_tries;
 
 		/* ACK received for nullfunc probing frame */
@@ -2275,7 +2289,8 @@ static void ieee80211_restart_sta_timer(struct ieee80211_sub_if_data *sdata)
 {
 	if (sdata->vif.type == NL80211_IFTYPE_STATION) {
 		sdata->u.mgd.flags &= ~(IEEE80211_STA_BEACON_POLL |
-					IEEE80211_STA_CONNECTION_POLL);
+					IEEE80211_STA_CONNECTION_POLL |
+					IEEE80211_STA_RESUME_POLL);
 
 		/* let's probe the connection once */
 		ieee80211_queue_work(&sdata->local->hw,
@@ -2343,6 +2358,7 @@ void ieee80211_sta_restart(struct ieee80211_sub_if_data *sdata)
 		add_timer(&ifmgd->chswitch_timer);
 	ieee80211_sta_reset_beacon_monitor(sdata);
 	ieee80211_restart_sta_timer(sdata);
+	ifmgd->flags |= IEEE80211_STA_RESUME_POLL;
 	ieee80211_queue_work(&sdata->local->hw, &sdata->u.mgd.monitor_work);
 }
 #endif
