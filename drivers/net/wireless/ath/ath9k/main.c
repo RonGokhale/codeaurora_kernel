@@ -2671,11 +2671,11 @@ static void ath9k_flush(struct ieee80211_hw *hw, bool drop)
 	ath9k_ps_wakeup(sc);
 	spin_lock_bh(&sc->sc_pcu_lock);
 	drain_txq = ath_drain_all_txq(sc, false);
+	spin_unlock_bh(&sc->sc_pcu_lock);
 
 	if (!drain_txq)
 		ath_reset(sc, false);
 
-	spin_unlock_bh(&sc->sc_pcu_lock);
 	ath9k_ps_restore(sc);
 	ieee80211_wake_queues(hw);
 
