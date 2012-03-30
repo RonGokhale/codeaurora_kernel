@@ -367,7 +367,10 @@ static void msm_gpio_irq_mask(struct irq_data *d)
 
 static void __msm_gpio_irq_unmask(unsigned int gpio)
 {
-	set_gpio_bits(INTR_RAW_STATUS_EN | INTR_ENABLE, GPIO_INTR_CFG(gpio));
+	/*Sequence to follow due the TLMM hardware design*/
+	set_gpio_bits(INTR_RAW_STATUS_EN, GPIO_INTR_CFG(gpio));
+	__raw_writel(BIT(INTR_STATUS_BIT), GPIO_INTR_STATUS(gpio));
+	set_gpio_bits(INTR_ENABLE, GPIO_INTR_CFG(gpio));
 	__raw_writel(TARGET_PROC_SCORPION, GPIO_INTR_CFG_SU(gpio));
 }
 
