@@ -3618,6 +3618,7 @@ msmsdcc_probe(struct platform_device *pdev)
 	mmc->caps |= plat->mmc_bus_width;
 
 	mmc->caps |= MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED;
+	mmc->caps |= MMC_CAP_ERASE;
 	mmc->caps |= plat->uhs_caps;
 	/*
 	 * XPC controls the maximum current in the default speed mode of SDXC
