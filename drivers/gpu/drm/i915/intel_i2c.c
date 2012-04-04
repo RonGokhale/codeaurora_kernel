@@ -53,6 +53,9 @@ static const struct gmbus_port gmbus_ports[] = {
 
 #define I2C_RISEFALL_TIME 20
 
+#define BITBANG_FALLBACK_TIMEOUT 50
+#define EXTENDED_FALLBACK_TIMEOUT 300
+
 static inline struct intel_gmbus *
 to_intel_gmbus(struct i2c_adapter *i2c)
 {
@@ -243,6 +246,7 @@ gmbus_xfer(struct i2c_adapter *adapter,
 	struct drm_i915_private *dev_priv = adapter->algo_data;
 	int i, reg_offset;
 	int ret = 0;
+	int bitbang_fallback_timeout_ms = BITBANG_FALLBACK_TIMEOUT;
 	u32 gmbus2 = 0;
 	u32 gmbus0;
 
@@ -262,6 +266,15 @@ gmbus_xfer(struct i2c_adapter *adapter,
 	     msgs[0].addr == 0x4a))
 		gmbus0 = (gmbus0 & ~GMBUS_RATE_MASK) | GMBUS_RATE_400KHZ;
 	I915_WRITE(GMBUS0 + reg_offset, gmbus0);
+
+	/*
+	 * Hack to increase bitbang fallout timeout for atmel_mxt devices
+	 * in Bootloader mode. Observed a 220ms delay on a byte read when
+	 * updating atmel_mxt firmware.
+	 */
+	if ((gmbus0 & GMBUS_PORT_MASK) == GMBUS_PORT_PANEL &&
+	     msgs[0].addr == 0x26)
+		bitbang_fallback_timeout_ms = EXTENDED_FALLBACK_TIMEOUT;
 
 	for (i = 0; i < num; i++) {
 		u16 len;
@@ -308,7 +321,7 @@ gmbus_xfer(struct i2c_adapter *adapter,
 				if (wait_for((gmbus2 = I915_READ(GMBUS2 +
 								 reg_offset)) &
 					     (GMBUS_SATOER | GMBUS_HW_RDY),
-					     50))
+					     bitbang_fallback_timeout_ms))
 					goto timeout;
 				if (gmbus2 & GMBUS_SATOER)
 					goto clear_err;
@@ -348,7 +361,7 @@ gmbus_xfer(struct i2c_adapter *adapter,
 				if (wait_for((gmbus2 = I915_READ(GMBUS2 +
 								 reg_offset)) &
 					     (GMBUS_SATOER | GMBUS_HW_RDY),
-					     50))
+					     bitbang_fallback_timeout_ms))
 					goto timeout;
 				if (gmbus2 & GMBUS_SATOER)
 					goto clear_err;
@@ -357,7 +370,7 @@ gmbus_xfer(struct i2c_adapter *adapter,
 
 		if (wait_for((gmbus2 = I915_READ(GMBUS2 + reg_offset)) &
 			     (GMBUS_SATOER | GMBUS_HW_WAIT_PHASE),
-			     50))
+			     bitbang_fallback_timeout_ms))
 			goto timeout;
 		if (gmbus2 & GMBUS_SATOER)
 			goto clear_err;
