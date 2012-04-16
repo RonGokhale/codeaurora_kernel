@@ -925,9 +925,12 @@ asmlinkage int syscall_trace(int why, struct pt_regs *regs, int scno)
 
 	if (!ip)
 		audit_syscall_exit(regs);
-	else
+	else {
+		if (secure_computing(scno) == -1)
+			return -1;
 		audit_syscall_entry(AUDIT_ARCH_NR, scno, regs->ARM_r0,
 				    regs->ARM_r1, regs->ARM_r2, regs->ARM_r3);
+	}
 
 	if (!test_thread_flag(TIF_SYSCALL_TRACE))
 		return scno;
