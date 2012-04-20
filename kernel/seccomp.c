@@ -52,6 +52,9 @@ void __secure_computing(int this_syscall)
 		break;
 #ifdef CONFIG_SECCOMP_FILTER
 	case 13:
+		if (this_syscall >= NR_syscalls || this_syscall < 0)
+			break;
+
 		if (!seccomp_test_filters(this_syscall))
 			return;
 
