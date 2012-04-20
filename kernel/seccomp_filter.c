@@ -903,6 +903,9 @@ long prctl_set_seccomp_filter(unsigned long id_type,
 		goto out;
 	}
 
+	if (nr >= NR_syscalls)
+		goto out;
+
 	ret = -EFAULT;
 	if (!user_filter)
 		goto out;
@@ -945,7 +948,11 @@ long prctl_clear_seccomp_filter(unsigned long id_type, unsigned long id)
 		goto out;
 	}
 
+	if (nr >= NR_syscalls)
+		goto out;
+
 	ret = seccomp_clear_filter(nr);
+
 out:
 	return ret;
 }
@@ -979,6 +986,9 @@ long prctl_get_seccomp_filter(unsigned long id_type, unsigned long id,
 		ret = nr;
 		goto out;
 	}
+
+	if (nr >= NR_syscalls)
+		goto out;
 
 	ret = -ENOMEM;
 	buf = kzalloc(available, GFP_KERNEL);
