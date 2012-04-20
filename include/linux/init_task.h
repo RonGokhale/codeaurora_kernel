@@ -128,16 +128,6 @@ extern struct cred init_cred;
 
 #define INIT_TASK_COMM "swapper"
 
-#ifdef CONFIG_SECCOMP_FILTER
-# define INIT_SECCOMP_FILTER(tsk)					\
-	.seccomp = { \
-		.filters_guard = \
-			__MUTEX_INITIALIZER(tsk.seccomp.filters_guard), \
-	},
-#else
-# define INIT_SECCOMP_FILTER(tsk)
-#endif
-
 /*
  *  INIT_TASK is used to set up the first task table, touch at
  * your own risk!. Base=0, limit=0x1fffff (=2MB)
@@ -198,7 +188,6 @@ extern struct cred init_cred;
 	.thread_group	= LIST_HEAD_INIT(tsk.thread_group),		\
 	INIT_IDS							\
 	INIT_PERF_EVENTS(tsk)						\
-	INIT_SECCOMP_FILTER(tsk)					\
 	INIT_TRACE_IRQFLAGS						\
 	INIT_LOCKDEP							\
 	INIT_FTRACE_GRAPH						\
