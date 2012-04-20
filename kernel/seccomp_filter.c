@@ -172,16 +172,12 @@ core_initcall(init_seccomp_filter);
 
 
 static int create_event_filter(struct event_filter **filter,
-			       struct syscall_metadata *data,
+			       int event_type,
 			       char *filter_string)
 {
 	int ret = -ENOSYS;
-	int event_type;
 	struct perf_event event;
-	memset(&event, 0, sizeof(event));
 	event.filter = NULL;
-	event.tp_event = data->enter_event;
-	event_type = data->enter_event->event.type;
 	ret = ftrace_profile_set_filter(&event, event_type, filter_string);
 	if (ret)
 		goto out;
@@ -306,7 +302,7 @@ static int event_to_syscall_nr(int event_id)
 
 #else  /*  defined(CONFIG_FTRACE_SYSCALLS) && defined(CONFIG_PERF_EVENTS) */
 
-#define create_event_filter(_ef_pptr, _sys_data, _str) (-ENOSYS)
+#define create_event_filter(_ef_pptr, _event_type, _str) (-ENOSYS)
 #define event_to_syscall_nr(x) (-ENOSYS)
 #define syscall_nr_to_meta(x) (NULL)
 
@@ -374,7 +370,9 @@ static struct event_filter *alloc_event_filter(int syscall_nr,
 	err = -ENOSYS;
 	if (!data)
 		goto fail;
-	err = create_event_filter(&filter, data, filter_string);
+	err = create_event_filter(&filter,
+				  data->enter_event->event.type,
+				  filter_string);
 	if (err)
 		goto fail;
 
