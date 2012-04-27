@@ -68,7 +68,6 @@ snd_hda_jack_tbl_new(struct hda_codec *codec, hda_nid_t nid)
 	jack->jack_dirty = 1;
 	return jack;
 }
-EXPORT_SYMBOL_HDA(snd_hda_jack_tbl_new);
 
 void snd_hda_jack_tbl_clear(struct hda_codec *codec)
 {
@@ -249,7 +248,6 @@ int snd_hda_jack_add_kctl(struct hda_codec *codec, hda_nid_t nid,
 	jack->kctl = kctl;
 	return 0;
 }
-EXPORT_SYMBOL_HDA(snd_hda_jack_add_kctl);
 
 static int add_jack_kctl(struct hda_codec *codec, hda_nid_t nid, int idx,
 			 const struct auto_pin_cfg *cfg)
