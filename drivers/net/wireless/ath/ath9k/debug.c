@@ -26,6 +26,12 @@
 #define REG_READ_D(_ah, _reg) \
 	ath9k_hw_common(_ah)->ops->read((_ah), (_reg))
 
+static int ath9k_debugfs_open(struct inode *inode, struct file *file)
+{
+	file->private_data = inode->i_private;
+	return 0;
+}
+
 
 static ssize_t ath9k_debugfs_read_buf(struct file *file, char __user *user_buf,
 				      size_t count, loff_t *ppos)
@@ -442,6 +448,110 @@ static ssize_t read_file_interrupt(struct file *file, char __user *user_buf,
 static const struct file_operations fops_interrupt = {
 	.read = read_file_interrupt,
 	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
+static const char *channel_type_str(enum nl80211_channel_type t)
+{
+	switch (t) {
+	case NL80211_CHAN_NO_HT:
+		return "no ht";
+	case NL80211_CHAN_HT20:
+		return "ht20";
+	case NL80211_CHAN_HT40MINUS:
+		return "ht40-";
+	case NL80211_CHAN_HT40PLUS:
+		return "ht40+";
+	default:
+		return "???";
+	}
+}
+
+static ssize_t read_file_wiphy(struct file *file, char __user *user_buf,
+			       size_t count, loff_t *ppos)
+{
+	struct ath_softc *sc = file->private_data;
+	struct ieee80211_channel *chan = sc->hw->conf.channel;
+	struct ieee80211_conf *conf = &(sc->hw->conf);
+	char buf[512];
+	unsigned int len = 0;
+	u8 addr[ETH_ALEN];
+	u32 tmp;
+
+	len += snprintf(buf + len, sizeof(buf) - len,
+			"%s (chan=%d  center-freq: %d MHz  channel-type: %d (%s))\n",
+			wiphy_name(sc->hw->wiphy),
+			ieee80211_frequency_to_channel(chan->center_freq),
+			chan->center_freq,
+			conf->channel_type,
+			channel_type_str(conf->channel_type));
+
+	ath9k_ps_wakeup(sc);
+	put_unaligned_le32(REG_READ_D(sc->sc_ah, AR_STA_ID0), addr);
+	put_unaligned_le16(REG_READ_D(sc->sc_ah, AR_STA_ID1) & 0xffff, addr + 4);
+	len += snprintf(buf + len, sizeof(buf) - len,
+			"addr: %pM\n", addr);
+	put_unaligned_le32(REG_READ_D(sc->sc_ah, AR_BSSMSKL), addr);
+	put_unaligned_le16(REG_READ_D(sc->sc_ah, AR_BSSMSKU) & 0xffff, addr + 4);
+	len += snprintf(buf + len, sizeof(buf) - len,
+			"addrmask: %pM\n", addr);
+	ath9k_ps_wakeup(sc);
+	tmp = ath9k_hw_getrxfilter(sc->sc_ah);
+	ath9k_ps_restore(sc);
+	len += snprintf(buf + len, sizeof(buf) - len,
+			"rfilt: 0x%x", tmp);
+	if (tmp & ATH9K_RX_FILTER_UCAST)
+		len += snprintf(buf + len, sizeof(buf) - len, " UCAST");
+	if (tmp & ATH9K_RX_FILTER_MCAST)
+		len += snprintf(buf + len, sizeof(buf) - len, " MCAST");
+	if (tmp & ATH9K_RX_FILTER_BCAST)
+		len += snprintf(buf + len, sizeof(buf) - len, " BCAST");
+	if (tmp & ATH9K_RX_FILTER_CONTROL)
+		len += snprintf(buf + len, sizeof(buf) - len, " CONTROL");
+	if (tmp & ATH9K_RX_FILTER_BEACON)
+		len += snprintf(buf + len, sizeof(buf) - len, " BEACON");
+	if (tmp & ATH9K_RX_FILTER_PROM)
+		len += snprintf(buf + len, sizeof(buf) - len, " PROM");
+	if (tmp & ATH9K_RX_FILTER_PROBEREQ)
+		len += snprintf(buf + len, sizeof(buf) - len, " PROBEREQ");
+	if (tmp & ATH9K_RX_FILTER_PHYERR)
+		len += snprintf(buf + len, sizeof(buf) - len, " PHYERR");
+	if (tmp & ATH9K_RX_FILTER_MYBEACON)
+		len += snprintf(buf + len, sizeof(buf) - len, " MYBEACON");
+	if (tmp & ATH9K_RX_FILTER_COMP_BAR)
+		len += snprintf(buf + len, sizeof(buf) - len, " COMP_BAR");
+	if (tmp & ATH9K_RX_FILTER_PSPOLL)
+		len += snprintf(buf + len, sizeof(buf) - len, " PSPOLL");
+	if (tmp & ATH9K_RX_FILTER_PHYRADAR)
+		len += snprintf(buf + len, sizeof(buf) - len, " PHYRADAR");
+	if (tmp & ATH9K_RX_FILTER_MCAST_BCAST_ALL)
+		len += snprintf(buf + len, sizeof(buf) - len, " MCAST_BCAST_ALL");
+
+	len += snprintf(buf + len, sizeof(buf) - len,
+		       "\n\nReset causes:\n"
+		       "  baseband hang: %d\n"
+		       "  baseband watchdog: %d\n"
+		       "  fatal hardware error interrupt: %d\n"
+		       "  tx hardware error: %d\n"
+		       "  tx path hang: %d\n"
+		       "  pll rx hang: %d\n",
+		       sc->debug.stats.reset[RESET_TYPE_BB_HANG],
+		       sc->debug.stats.reset[RESET_TYPE_BB_WATCHDOG],
+		       sc->debug.stats.reset[RESET_TYPE_FATAL_INT],
+		       sc->debug.stats.reset[RESET_TYPE_TX_ERROR],
+		       sc->debug.stats.reset[RESET_TYPE_TX_HANG],
+		       sc->debug.stats.reset[RESET_TYPE_PLL_HANG]);
+
+	if (len > sizeof(buf))
+		len = sizeof(buf);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations fops_wiphy = {
+	.read = read_file_wiphy,
+	.open = ath9k_debugfs_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
@@ -889,6 +999,7 @@ static ssize_t read_file_recv(struct file *file, char __user *user_buf,
 	if (buf == NULL)
 		return -ENOMEM;
 
+	ath9k_ps_wakeup(sc);
 	len += snprintf(buf + len, size - len,
 			"%22s : %10u\n", "CRC ERR",
 			sc->debug.stats.rxstats.crc_err);
@@ -1524,6 +1635,37 @@ static const struct file_operations fops_samps = {
 
 #endif
 
+static ssize_t read_file_dump_eep_power(struct file *file,
+					char __user *user_buf,
+					size_t count, loff_t *ppos)
+{
+	struct ath_softc *sc = file->private_data;
+	struct ath_hw *ah = sc->sc_ah;
+	u32 len = 0, size = 6000;
+	ssize_t retval = 0;
+	char *buf;
+
+	buf = kzalloc(size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	ath9k_ps_wakeup(sc);
+	len = ah->eep_ops->dump_eep_power(ah, buf, len, size);
+	ath9k_ps_restore(sc);
+
+	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	kfree(buf);
+
+	return retval;
+}
+
+static const struct file_operations fops_dump_eep_power = {
+	.read = read_file_dump_eep_power,
+	.open = ath9k_debugfs_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 int ath9k_init_debug(struct ath_hw *ah)
 {
 	struct ath_common *common = ath9k_hw_common(ah);
@@ -1538,23 +1680,22 @@ int ath9k_init_debug(struct ath_hw *ah)
 	debugfs_create_file("debug", S_IRUSR | S_IWUSR, sc->debug.debugfs_phy,
 			    sc, &fops_debug);
 #endif
-
 	ath9k_dfs_init_debug(sc);
 
-	debugfs_create_file("dma", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_dma);
-	debugfs_create_file("interrupt", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_interrupt);
-	debugfs_create_file("xmit", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_xmit);
-	debugfs_create_file("stations", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_stations);
-	debugfs_create_file("misc", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_misc);
-	debugfs_create_file("reset", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_reset);
-	debugfs_create_file("recv", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_recv);
+	debugfs_create_file("dma", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_dma);
+	debugfs_create_file("interrupt", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_interrupt);
+	debugfs_create_file("wiphy", S_IRUSR | S_IWUSR, sc->debug.debugfs_phy,
+			    sc, &fops_wiphy);
+	debugfs_create_file("xmit", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_xmit);
+	debugfs_create_file("stations", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_stations);
+	debugfs_create_file("misc", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_misc);
+	debugfs_create_file("recv", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_recv);
 	debugfs_create_file("rx_chainmask", S_IRUSR | S_IWUSR,
 			    sc->debug.debugfs_phy, sc, &fops_rx_chainmask);
 	debugfs_create_file("tx_chainmask", S_IRUSR | S_IWUSR,
@@ -1568,18 +1709,20 @@ int ath9k_init_debug(struct ath_hw *ah)
 	debugfs_create_bool("ignore_extcca", S_IRUSR | S_IWUSR,
 			    sc->debug.debugfs_phy,
 			    &ah->config.cwm_ignore_extcca);
-	debugfs_create_file("regdump", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_regdump);
-	debugfs_create_file("dump_nfcal", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_dump_nfcal);
+	debugfs_create_file("regdump", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_regdump);
+	debugfs_create_file("dump_nfcal", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_dump_nfcal);
 	debugfs_create_file("base_eeprom", S_IRUSR, sc->debug.debugfs_phy, sc,
 			    &fops_base_eeprom);
 	debugfs_create_file("modal_eeprom", S_IRUSR, sc->debug.debugfs_phy, sc,
 			    &fops_modal_eeprom);
 #ifdef CONFIG_ATH9K_MAC_DEBUG
-	debugfs_create_file("samples", S_IRUSR, sc->debug.debugfs_phy, sc,
-			    &fops_samps);
+	debugfs_create_file("samples", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_samps);
 #endif
+	debugfs_create_file("dump_eep_power", S_IRUSR | S_IRGRP | S_IROTH,
+			    sc->debug.debugfs_phy, sc, &fops_dump_eep_power);
 
 	debugfs_create_u32("gpio_mask", S_IRUSR | S_IWUSR,
 			   sc->debug.debugfs_phy, &sc->sc_ah->gpio_mask);
