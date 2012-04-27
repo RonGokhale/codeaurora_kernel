@@ -1519,11 +1519,6 @@ static int via_build_controls(struct hda_codec *codec)
 	}
 
 	via_free_kctls(codec); /* no longer needed */
-
-	err = snd_hda_jack_add_kctls(codec, &spec->autocfg);
-	if (err < 0)
-		return err;
-
 	return 0;
 }
 
@@ -1747,7 +1742,6 @@ static void via_unsol_event(struct hda_codec *codec,
 		via_hp_automute(codec);
 	else if (res == VIA_GPIO_EVENT)
 		via_gpio_control(codec);
-	snd_hda_jack_report_sync(codec);
 }
 
 #ifdef CONFIG_PM
@@ -2806,7 +2800,7 @@ static int via_init(struct hda_codec *codec)
 	via_auto_init_unsol_event(codec);
 
 	via_hp_automute(codec);
-	snd_hda_jack_report_sync(codec);
+	vt1708_update_hp_work(spec);
 
 	return 0;
 }
