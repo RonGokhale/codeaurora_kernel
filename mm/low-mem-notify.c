@@ -32,7 +32,7 @@
 
 static DECLARE_WAIT_QUEUE_HEAD(low_mem_wait);
 static atomic_t low_mem_state = ATOMIC_INIT(0);
-unsigned low_mem_margin_percent = 10;
+unsigned low_mem_margin_percent = 5;
 unsigned long low_mem_minfree;
 
 struct low_mem_notify_file_info {
