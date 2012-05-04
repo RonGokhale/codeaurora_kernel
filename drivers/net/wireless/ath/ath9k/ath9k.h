@@ -425,6 +425,7 @@ void ath9k_set_beaconing_status(struct ath_softc *sc, bool status);
 void ath_reset_work(struct work_struct *work);
 void ath_hw_check(struct work_struct *work);
 void ath_hw_pll_work(struct work_struct *work);
+void ath_rx_poll_work(unsigned long data);
 void ath_paprd_calibrate(struct work_struct *work);
 void ath_ani_calibrate(unsigned long data);
 void ath_start_ani(struct ath_common *common);
@@ -642,12 +643,14 @@ struct ath_softc {
 	struct ath_beacon_config cur_beacon_conf;
 	struct delayed_work tx_complete_work;
 	struct delayed_work hw_pll_work;
+	struct timer_list rx_poll_timer;
 	struct ath_btcoex btcoex;
 
 	struct ath_descdma txsdma;
 
 	struct ath_ant_comb ant_comb;
 	u8 ant_tx, ant_rx;
+	atomic_t stop_rx_poll;
 };
 
 void ath9k_tasklet(unsigned long data);
