@@ -214,7 +214,8 @@ gmbus_xfer(struct i2c_adapter *adapter,
 					       struct intel_gmbus,
 					       adapter);
 	struct drm_i915_private *dev_priv = bus->dev_priv;
-	int i, reg_offset, ret;
+	int i, reg_offset;
+	int ret = 0;
 
 	mutex_lock(&dev_priv->gmbus_mutex);
 
@@ -248,7 +249,8 @@ gmbus_xfer(struct i2c_adapter *adapter,
 					     (GMBUS_SATOER | GMBUS_HW_RDY),
 					     50))
 					goto timeout;
-				if (I915_READ(GMBUS2 + reg_offset) & GMBUS_SATOER)
+				if (I915_READ(GMBUS2 + reg_offset) &
+				    GMBUS_SATOER)
 					goto clear_err;
 
 				val = I915_READ(GMBUS3 + reg_offset);
@@ -276,13 +278,6 @@ gmbus_xfer(struct i2c_adapter *adapter,
 			POSTING_READ(GMBUS2 + reg_offset);
 
 			while (len) {
-				if (wait_for(I915_READ(GMBUS2 + reg_offset) &
-					     (GMBUS_SATOER | GMBUS_HW_RDY),
-					     50))
-					goto timeout;
-				if (I915_READ(GMBUS2 + reg_offset) & GMBUS_SATOER)
-					goto clear_err;
-
 				val = loop = 0;
 				do {
 					val |= *buf++ << (8 * loop);
@@ -290,11 +285,18 @@ gmbus_xfer(struct i2c_adapter *adapter,
 
 				I915_WRITE(GMBUS3 + reg_offset, val);
 				POSTING_READ(GMBUS2 + reg_offset);
+
+				if (wait_for(I915_READ(GMBUS2 + reg_offset) &
+					     (GMBUS_SATOER | GMBUS_HW_RDY),
+					     50))
+					goto timeout;
+				if (I915_READ(GMBUS2 + reg_offset) &
+					      GMBUS_SATOER)
+					goto clear_err;
 			}
 		}
 
-		if (i + 1 < num &&
-		    wait_for(I915_READ(GMBUS2 + reg_offset) &
+		if (wait_for(I915_READ(GMBUS2 + reg_offset) &
 			     (GMBUS_SATOER | GMBUS_HW_WAIT_PHASE),
 			     50))
 			goto timeout;
@@ -302,14 +304,24 @@ gmbus_xfer(struct i2c_adapter *adapter,
 			goto clear_err;
 	}
 
-	/* Mark the GMBUS interface as disabled. We will re-enable it at the
-	 * start of the next xfer, till then let it sleep.
+	/* Generate a STOP condition on the bus */
+	I915_WRITE(GMBUS1 + reg_offset, GMBUS_CYCLE_STOP | GMBUS_SW_RDY);
+
+	/* Mark the GMBUS interface as disabled after waiting for idle.
+	 * We will re-enable it at the start of the next xfer,
+	 * till then let it sleep.
 	 */
+	if (wait_for((I915_READ(GMBUS2 + reg_offset) & GMBUS_ACTIVE) == 0,
+		     10)) {
+		DRM_INFO("GMBUS [%s] timed out waiting for IDLE\n",
+			 adapter->name);
+		ret = -ETIMEDOUT;
+	}
 	I915_WRITE(GMBUS0 + reg_offset, 0);
 
 	mutex_unlock(&dev_priv->gmbus_mutex);
 
-	return i;
+	return ret ?: i;
 
 clear_err:
 	/*
