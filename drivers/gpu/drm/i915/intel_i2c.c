@@ -185,6 +185,8 @@ intel_i2c_quirk_xfer(struct intel_gmbus *bus,
 	struct drm_i915_private *dev_priv = bus->dev_priv;
 	int ret;
 
+	mutex_lock(&dev_priv->gmbus_mutex);
+
 	intel_i2c_reset(dev_priv->dev);
 
 	intel_i2c_quirk_set(dev_priv, true);
@@ -197,6 +199,8 @@ intel_i2c_quirk_xfer(struct intel_gmbus *bus,
 	set_data(bus, 1);
 	set_clock(bus, 1);
 	intel_i2c_quirk_set(dev_priv, false);
+
+	mutex_unlock(&dev_priv->gmbus_mutex);
 
 	return ret;
 }
@@ -218,6 +222,8 @@ gmbus_xfer(struct i2c_adapter *adapter,
 		ret = intel_i2c_quirk_xfer(bus, msgs, num);
 		goto out;
 	}
+
+	mutex_lock(&dev_priv->gmbus_mutex);
 
 	reg_offset = HAS_PCH_SPLIT(dev_priv->dev) ? PCH_GMBUS0 - GMBUS0 : 0;
 
@@ -313,13 +319,17 @@ done:
 	if (wait_for((I915_READ(GMBUS2 + reg_offset) & GMBUS_ACTIVE) == 0, 10))
 		DRM_INFO("GMBUS timed out waiting for idle\n");
 	I915_WRITE(GMBUS0 + reg_offset, 0);
-	ret = i;
-	goto out;
+
+	mutex_unlock(&dev_priv->gmbus_mutex);
+
+	return i;
 
 timeout:
 	DRM_INFO("GMBUS timed out, falling back to bit banging on pin %d [%s]\n",
 		 bus->reg0 & 0xff, bus->adapter.name);
 	I915_WRITE(GMBUS0 + reg_offset, 0);
+
+	mutex_unlock(&dev_priv->gmbus_mutex);
 
 	/* Hardware may not support GMBUS over these pins? Try GPIO bitbanging instead. */
 	if (!bus->has_gpio) {
