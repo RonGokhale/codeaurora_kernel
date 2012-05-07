@@ -151,8 +151,8 @@ intel_gpio_setup(struct intel_gmbus *bus, u32 pin)
 		GPIOC,
 		GPIOD,
 		GPIOE,
-		0,
 		GPIOF,
+		0,
 	};
 	struct i2c_algo_bit_data *algo;
 
@@ -360,8 +360,8 @@ int intel_setup_gmbus(struct drm_device *dev)
 		"panel",
 		"dpc",
 		"dpb",
-		"reserved",
 		"dpd",
+		"reserved",
 	};
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret, i;
