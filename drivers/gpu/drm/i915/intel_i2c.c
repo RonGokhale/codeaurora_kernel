@@ -35,6 +35,20 @@
 #include "i915_drm.h"
 #include "i915_drv.h"
 
+struct gmbus_port {
+	const char *name;
+	int reg;
+};
+
+static const struct gmbus_port gmbus_ports[] = {
+	{ "ssc", GPIOB },
+	{ "vga", GPIOA },
+	{ "panel", GPIOC },
+	{ "dpc", GPIOD },
+	{ "dpb", GPIOE },
+	{ "dpd", GPIOF },
+};
+
 /* Intel GPIO access functions */
 
 #define I2C_RISEFALL_TIME 10
@@ -439,35 +453,24 @@ static const struct i2c_algorithm gmbus_algorithm = {
  */
 int intel_setup_gmbus(struct drm_device *dev)
 {
-	static const char *names[GMBUS_NUM_PORTS] = {
-		"disabled",
-		"ssc",
-		"vga",
-		"panel",
-		"dpc",
-		"dpb",
-		"dpd",
-		"reserved",
-	};
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret, i;
 
-	dev_priv->gmbus = kcalloc(GMBUS_NUM_PORTS, sizeof(struct intel_gmbus),
-				  GFP_KERNEL);
+	dev_priv->gmbus = kcalloc(sizeof(struct intel_gmbus),
+				  ARRAY_SIZE(gmbus_ports), GFP_KERNEL);
 	if (dev_priv->gmbus == NULL)
 		return -ENOMEM;
 
 	mutex_init(&dev_priv->gmbus_mutex);
 
-	for (i = 0; i < GMBUS_NUM_PORTS; i++) {
+	for (i = 0; i < ARRAY_SIZE(gmbus_ports); i++) {
 		struct intel_gmbus *bus = &dev_priv->gmbus[i];
+		u32 port = i + 1; /* +1 to map gmbus index to pin pair */
 
 		bus->adapter.owner = THIS_MODULE;
 		bus->adapter.class = I2C_CLASS_DDC;
-		snprintf(bus->adapter.name,
-			 sizeof(bus->adapter.name),
-			 "i915 gmbus %s",
-			 names[i]);
+		snprintf(bus->adapter.name, sizeof(bus->adapter.name),
+			 "i915 gmbus %s", gmbus_ports[i].name);
 
 		bus->adapter.dev.parent = &dev->pdev->dev;
 		bus->dev_priv = dev_priv;
@@ -502,10 +505,11 @@ err:
 }
 
 struct i2c_adapter *intel_gmbus_get_adapter(struct drm_i915_private *dev_priv,
-					    unsigned pin)
+					    unsigned port)
 {
-	BUG_ON(pin >= GMBUS_NUM_PORTS);
-	return &dev_priv->gmbus[pin].adapter;
+	BUG_ON(!intel_gmbus_is_port_valid(port));
+	/* NB: -1 to map pin pair to gmbus array index */
+	return &dev_priv->gmbus[port - 1].adapter;
 }
 
 void intel_gmbus_set_speed(struct i2c_adapter *adapter, int speed)
@@ -531,7 +535,7 @@ void intel_teardown_gmbus(struct drm_device *dev)
 	if (dev_priv->gmbus == NULL)
 		return;
 
-	for (i = 0; i < GMBUS_NUM_PORTS; i++) {
+	for (i = 0; i < ARRAY_SIZE(gmbus_ports); i++) {
 		struct intel_gmbus *bus = &dev_priv->gmbus[i];
 		i2c_del_adapter(&bus->adapter);
 	}
