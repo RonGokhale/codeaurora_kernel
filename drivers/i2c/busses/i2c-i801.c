@@ -385,8 +385,8 @@ static int i801_block_transaction_by_block(struct i801_priv *priv,
  * When any of these occur, update ->status and wake up the waitq.
  * ->status must be cleared before kicking off the next transaction.
  *
-* (2) For byte-by-byte (I2C read/write) transactions, one BYTE_DONE interrupt
-*     occurs for each byte of a byte-by-byte to prepare the next byte.
+ * (2) For byte-by-byte (I2C read/write) transactions, one BYTE_DONE interrupt
+ *     occurs for each byte of a byte-by-byte to prepare the next byte.
  */
 static irqreturn_t i801_isr(int irq, void *dev_id)
 {
