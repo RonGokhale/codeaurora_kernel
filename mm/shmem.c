@@ -968,7 +968,7 @@ static struct page *shmem_alloc_page(gfp_t gfp,
 	 */
 	do {
 		page = alloc_page_vma(gfp, &pvma, 0);
-	} while (!i915_usable_page(page));
+	} while (page && !i915_usable_page(page));
 
 	return page;
 }
@@ -991,7 +991,7 @@ static inline struct page *shmem_alloc_page(gfp_t gfp,
 	struct page *page;
 	do {
 		page = alloc_page(gfp);
-	} while (!i915_usable_page(page));
+	} while (page && !i915_usable_page(page));
 
 	return page;
 }
