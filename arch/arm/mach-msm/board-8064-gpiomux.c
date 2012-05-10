@@ -1253,11 +1253,23 @@ static struct msm_gpiomux_config apq8064_sdc3_configs[] __initdata = {
 
 static struct gpiomux_setting gsbi1_uartdm_active = {
 	.func = GPIOMUX_FUNC_1,
+        .drv = GPIOMUX_DRV_8MA,
+        .pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting gsbi6_uartdm_active = {
+	.func = GPIOMUX_FUNC_2,
 	.drv = GPIOMUX_DRV_8MA,
 	.pull = GPIOMUX_PULL_NONE,
 };
 
 static struct gpiomux_setting gsbi1_uartdm_suspended = {
+        .func = GPIOMUX_FUNC_GPIO,
+        .drv = GPIOMUX_DRV_2MA,
+        .pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct gpiomux_setting gsbi6_uartdm_suspended = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_DOWN,
@@ -1290,6 +1302,37 @@ static struct msm_gpiomux_config apq8064_uartdm_gsbi1_configs[] __initdata = {
 		.settings = {
 			[GPIOMUX_ACTIVE] = &gsbi1_uartdm_active,
 			[GPIOMUX_SUSPENDED] = &gsbi1_uartdm_suspended,
+                },
+        },
+};
+
+static struct msm_gpiomux_config mpq8064_uartdm_configs[] __initdata = {
+	{ /* UARTDM_TX */
+		.gpio      = 14,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &gsbi6_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi6_uartdm_suspended,
+		},
+	},
+	{ /* UARTDM_RX */
+		.gpio      = 15,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &gsbi6_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi6_uartdm_suspended,
+		},
+	},
+	{ /* UARTDM_CTS */
+		.gpio      = 16,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &gsbi6_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi6_uartdm_suspended,
+		},
+	},
+	{ /* UARTDM_RFR */
+		.gpio      = 17,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &gsbi6_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi6_uartdm_suspended,
 		},
 	},
 };
@@ -1399,4 +1442,8 @@ void __init apq8064_init_gpiomux(void)
 	if (socinfo_get_platform_subtype() == PLATFORM_SUBTYPE_DSDA)
 		msm_gpiomux_install(apq8064_uartdm_gsbi1_configs,
 				ARRAY_SIZE(apq8064_uartdm_gsbi1_configs));
+
+	 if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv())
+		msm_gpiomux_install(mpq8064_uartdm_configs,
+				ARRAY_SIZE(mpq8064_uartdm_configs));
 }
