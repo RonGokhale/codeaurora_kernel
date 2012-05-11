@@ -469,7 +469,7 @@ out:
  * Returns 0 on success, < 0 in case of fatal error or a value > 0 representing
  * a TPM error code.
  */
-static int tpm_continue_selftest(struct tpm_chip *chip)
+int tpm_continue_selftest(struct tpm_chip *chip)
 {
 	int rc;
 	struct tpm_cmd_t cmd;
@@ -478,6 +478,8 @@ static int tpm_continue_selftest(struct tpm_chip *chip)
 	rc = tpm_transmit(chip, &cmd, CONTINUE_SELFTEST_RESULT_SIZE);
 	return rc;
 }
+EXPORT_SYMBOL_GPL(tpm_continue_selftest);
+
 
 /* The maximum time in milliseconds that the TPM self test will take to
  * complete.  TODO(semenzato): 1s should be plenty for all TPMs, but how can we
@@ -503,6 +505,8 @@ static void resume_if_needed(struct tpm_chip *chip)
 	mutex_unlock(&chip->resume_mutex);
 }
 
+#define TPM_ERROR_SIZE 10
+
 static ssize_t transmit_cmd(struct tpm_chip *chip, struct tpm_cmd_t *cmd,
 			    int len, const char *desc)
 {
@@ -513,14 +517,12 @@ static ssize_t transmit_cmd(struct tpm_chip *chip, struct tpm_cmd_t *cmd,
 	len = tpm_transmit(chip,(u8 *) cmd, len);
 	if (len <  0)
 		return len;
-	else if (len < TPM_HEADER_SIZE)
-		return -EFAULT;
-
-	err = be32_to_cpu(cmd->header.out.return_code);
-	if (err != 0)
-		dev_err(chip->dev, "A TPM error (%d) occurred %s\n", err, desc);
-
-	return err;
+	if (len == TPM_ERROR_SIZE) {
+		err = be32_to_cpu(cmd->header.out.return_code);
+		dev_dbg(chip->dev, "A TPM error (%d) occurred %s\n", err, desc);
+		return err;
+	}
+	return 0;
 }
 
 #define TPM_DIGEST_SIZE 20
@@ -593,7 +595,7 @@ void tpm_gen_interrupt(struct tpm_chip *chip)
 }
 EXPORT_SYMBOL_GPL(tpm_gen_interrupt);
 
-int tpm_get_timeouts(struct tpm_chip *chip)
+void tpm_get_timeouts(struct tpm_chip *chip)
 {
 	struct tpm_cmd_t tpm_cmd;
 	struct timeout_t *timeout_cap;
@@ -615,7 +617,7 @@ int tpm_get_timeouts(struct tpm_chip *chip)
 	if (be32_to_cpu(tpm_cmd.header.out.return_code) != 0 ||
 	    be32_to_cpu(tpm_cmd.header.out.length)
 	    != sizeof(tpm_cmd.header.out) + sizeof(u32) + 4 * sizeof(u32))
-		return -EINVAL;
+		return;
 
 	timeout_cap = &tpm_cmd.params.getcap_out.cap.timeout;
 	/* Don't overwrite default if value is 0 */
@@ -646,12 +648,12 @@ duration:
 	rc = transmit_cmd(chip, &tpm_cmd, TPM_INTERNAL_RESULT_SIZE,
 			"attempting to determine the durations");
 	if (rc)
-		return rc;
+		return;
 
 	if (be32_to_cpu(tpm_cmd.header.out.return_code) != 0 ||
 	    be32_to_cpu(tpm_cmd.header.out.length)
 	    != sizeof(tpm_cmd.header.out) + sizeof(u32) + 3 * sizeof(u32))
-		return -EINVAL;
+		return;
 
 	duration_cap = &tpm_cmd.params.getcap_out.cap.duration;
 	chip->vendor.duration[TPM_SHORT] =
@@ -673,7 +675,6 @@ duration:
 		chip->vendor.duration_adjusted = true;
 		dev_info(chip->dev, "Adjusting TPM timeout parameters.");
 	}
-	return 0;
 }
 EXPORT_SYMBOL_GPL(tpm_get_timeouts);
 
@@ -770,7 +771,7 @@ static struct tpm_input_header pcrread_header = {
 	.ordinal = TPM_ORDINAL_PCRREAD
 };
 
-static int __tpm_pcr_read(struct tpm_chip *chip, int pcr_idx, u8 *res_buf)
+int __tpm_pcr_read(struct tpm_chip *chip, int pcr_idx, u8 *res_buf)
 {
 	int rc;
 	struct tpm_cmd_t cmd;
@@ -849,54 +850,6 @@ int tpm_pcr_extend(u32 chip_num, int pcr_idx, const u8 *hash)
 	return rc;
 }
 EXPORT_SYMBOL_GPL(tpm_pcr_extend);
-
-/**
- * tpm_do_selftest - have the TPM continue its selftest and wait until it
- *                   can receive further commands
- * @chip: TPM chip to use
- *
- * Returns 0 on success, < 0 in case of fatal error or a value > 0 representing
- * a TPM error code.
- */
-int tpm_do_selftest(struct tpm_chip *chip)
-{
-	int rc;
-	u8 digest[TPM_DIGEST_SIZE];
-	unsigned int loops;
-	unsigned int delay_msec = 1000;
-	unsigned long duration;
-
-	duration = tpm_calc_ordinal_duration(chip,
-	                                     TPM_ORD_CONTINUE_SELFTEST);
-
-	loops = jiffies_to_msecs(duration) / delay_msec;
-
-	rc = tpm_continue_selftest(chip);
-	/* This may fail if there was no TPM driver during a suspend/resume
-	 * cycle; some may return 10 (BAD_ORDINAL), others 28 (FAILEDSELFTEST)
-	 */
-	if (rc)
-		return rc;
-
-	do {
-		rc = __tpm_pcr_read(chip, 0, digest);
-		if (rc == TPM_ERR_DISABLED || rc == TPM_ERR_DEACTIVATED) {
-			dev_info(chip->dev,
-				 "TPM is disabled/deactivated (0x%X)\n", rc);
-			/* TPM is disabled and/or deactivated; driver can
-			 * proceed and TPM does handle commands for
-			 * suspend/resume correctly
-			 */
-			return 0;
-		}
-		if (rc != TPM_WARN_DOING_SELFTEST)
-			return rc;
-		msleep(delay_msec);
-	} while (--loops > 0);
-
-	return rc;
-}
-EXPORT_SYMBOL_GPL(tpm_do_selftest);
 
 int tpm_send(u32 chip_num, void *cmd, size_t buflen)
 {
@@ -1145,6 +1098,30 @@ again:
 	return -ETIME;
 }
 EXPORT_SYMBOL_GPL(wait_for_tpm_stat);
+
+static int tpm_s3power = 0;
+
+/*
+ * Tell the kernel whether or not to save the TPM state at suspend, depending
+ * on whether the TPM stays powered on or is powered off.
+ */
+ssize_t tpm_s3power_set(struct device *dev, struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	return sscanf(buf, "%d", &tpm_s3power) == 1 ? count : -EINVAL;
+}
+EXPORT_SYMBOL_GPL(tpm_s3power_set);
+
+/*
+ * Read the value of tpm_s3power.  See tpm_s3power_set.
+ */
+ssize_t tpm_s3power_get(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	return sprintf(buf, "%d", tpm_s3power);
+}
+EXPORT_SYMBOL_GPL(tpm_s3power_get);
+
 /*
  * Device file system interface to the TPM
  *
@@ -1321,6 +1298,9 @@ int tpm_pm_suspend(struct device *dev, pm_message_t pm_state)
 
 	if (chip == NULL)
 		return -ENODEV;
+
+	if (tpm_s3power)
+		return 0;
 
 	/* for buggy tpm, flush pcrs with extend to selected dummy */
 	if (tpm_suspend_pcr) {
