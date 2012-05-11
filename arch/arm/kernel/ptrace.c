@@ -916,6 +916,16 @@ asmlinkage int syscall_trace(int why, struct pt_regs *regs, int scno)
 {
 	unsigned long ip;
 
+	current_thread_info()->syscall = scno;
+
+	/* Only check seccomp on entry. */
+	if (why == 0 && secure_computing(scno) == -1)
+		return -1;
+	if (!test_thread_flag(TIF_SYSCALL_TRACE))
+		return scno;
+	if (!(current->ptrace & PT_PTRACED))
+		return scno;
+
 	/*
 	 * Save IP.  IP is used to denote syscall entry/exit:
 	 *  IP = 0 -> entry, = 1 -> exit
