@@ -5030,6 +5030,8 @@ static const struct alc_fixup alc269_fixups[] = {
 			{ 0x21, 0x0121401f }, /* HP out */
 			{ }
 		},
+		.chained = true,
+		.chain_id = ALC271_FIXUP_DMIC,
 	},
 };
 
