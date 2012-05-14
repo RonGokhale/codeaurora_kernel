@@ -542,7 +542,8 @@ static int __init smd_tty_init(void)
 			cpu_is_msm7x27a() || cpu_is_msm7x27aa() ||
 			cpu_is_msm7x25a() || cpu_is_msm7x25aa() ||
 			cpu_is_msm7x30() || cpu_is_qsd8x50() ||
-			cpu_is_msm8x55() ||  (cpu_is_msm8x60() &&
+			cpu_is_msm8x55() || cpu_is_msm7x25ab() ||
+			(cpu_is_msm8x60() &&
 			socinfo_get_platform_subtype() == 0x1)) {
 		ret = platform_driver_register(&smd_tty[0].driver);
 		if (ret)
