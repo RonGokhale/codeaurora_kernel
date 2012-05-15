@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -311,9 +311,14 @@ static void mdp4_overlay_dtv_wait4vsync(struct msm_fb_data_type *mfd)
 void mdp4_overlay_dtv_vsync_push(struct msm_fb_data_type *mfd,
 			struct mdp4_overlay_pipe *pipe)
 {
+	u32 data = inpdw(MDP_BASE + DTV_BASE);
 
 	mdp4_overlay_reg_flush(pipe, 1);
 	if (pipe->flags & MDP_OV_PLAY_NOWAIT)
+		return;
+
+	/* Return if DTV is not enabled */
+	if (!(data & 0x1))
 		return;
 
 	mdp4_overlay_dtv_wait4vsync(mfd);
