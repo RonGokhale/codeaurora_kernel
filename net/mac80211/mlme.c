@@ -30,7 +30,7 @@
 #include "rate.h"
 #include "led.h"
 
-static int max_nullfunc_tries = 10;
+static int max_nullfunc_tries = 100;
 module_param(max_nullfunc_tries, int, 0644);
 MODULE_PARM_DESC(max_nullfunc_tries,
 		 "Maximum nullfunc tx tries before disconnecting (reason 4).");
