@@ -357,6 +357,10 @@ struct hc_driver {
 		 */
 	int	(*disable_usb3_lpm_timeout)(struct usb_hcd *,
 			struct usb_device *, enum usb3_link_state state);
+
+	/* to log completion events*/
+	void	(*log_urb_complete)(struct urb *urb, char * event,
+			unsigned extra);
 };
 
 extern int usb_hcd_link_urb_to_ep(struct usb_hcd *hcd, struct urb *urb);
