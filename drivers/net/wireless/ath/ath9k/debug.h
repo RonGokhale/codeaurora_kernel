@@ -85,6 +85,7 @@ struct ath_interrupt_stats {
 	u32 dtim;
 	u32 bb_watchdog;
 	u32 tsfoor;
+	u32 mci;
 };
 
 /**
