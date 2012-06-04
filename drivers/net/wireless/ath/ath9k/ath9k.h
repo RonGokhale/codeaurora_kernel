@@ -603,12 +603,14 @@ void ath_ant_comb_update(struct ath_softc *sc);
 #define ATH_TXPOWER_MAX         100     /* .5 dBm units */
 #define ATH_RATE_DUMMY_MARKER   0
 
-#define SC_OP_INVALID                BIT(0)
-#define SC_OP_BEACONS                BIT(1)
-#define SC_OP_RXFLUSH                BIT(2)
-#define SC_OP_ANI_RUN                BIT(3)
-#define SC_OP_PRIM_STA_VIF           BIT(4)
-#define SC_OP_BB_WATCHDOG            BIT(5)
+enum sc_op_flags {
+	SC_OP_INVALID,
+	SC_OP_BEACONS,
+	SC_OP_RXFLUSH,
+	SC_OP_ANI_RUN,
+	SC_OP_PRIM_STA_VIF,
+	SC_OP_BB_WATCHDOG,
+};
 
 /* Powersave flags */
 #define PS_WAIT_FOR_BEACON        BIT(0)
@@ -657,7 +659,7 @@ struct ath_softc {
 	unsigned int hw_busy_count;
 
 	u32 intrstatus;
-	u32 sc_flags; /* SC_OP_* */
+	unsigned long sc_flags;
 	u16 ps_flags; /* PS_* */
 	u16 curtxpow;
 	bool ps_enabled;

@@ -155,7 +155,7 @@ void ath_start_ani(struct ath_common *common)
 	unsigned long timestamp = jiffies_to_msecs(jiffies);
 	struct ath_softc *sc = (struct ath_softc *) common->priv;
 
-	if (!(sc->sc_flags & SC_OP_ANI_RUN))
+	if (!test_bit(SC_OP_ANI_RUN, &sc->sc_flags))
 		return;
 
 	if (sc->hw->conf.flags & IEEE80211_CONF_OFFCHANNEL)
@@ -232,7 +232,7 @@ static void __ath_cancel_work(struct ath_softc *sc)
 	struct ath_hw *ah = sc->sc_ah;
 	struct ath_common *common = ath9k_hw_common(ah);
 
-	if (sc->sc_flags & SC_OP_INVALID)
+	if (test_bit(SC_OP_INVALID, &sc->sc_flags))
 		return;
 
 	sc->hw_busy_count = 0;
@@ -304,7 +304,7 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 	ath9k_hw_enable_interrupts(ah);
 
 	if (!(sc->hw->conf.flags & IEEE80211_CONF_OFFCHANNEL) && start) {
-		if (sc->sc_flags & SC_OP_BEACONS) {
+		if (test_bit(SC_OP_BEACONS, &sc->sc_flags)) {
 			if (ah->opmode == NL80211_IFTYPE_AP) {
 				ath9k_set_beacon(sc);
 			} else if (ah->opmode == NL80211_IFTYPE_ADHOC) {
@@ -330,7 +330,7 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 	ieee80211_wake_queues(sc->hw);
 
 	spin_lock_irqsave(&sc->sc_bb_lock, flags);
-	sc->sc_flags &= ~SC_OP_BB_WATCHDOG;
+	clear_bit(SC_OP_BB_WATCHDOG, &sc->sc_flags);
 	spin_unlock_irqrestore(&sc->sc_bb_lock, flags);
 
 	return true;
@@ -393,7 +393,7 @@ static int ath_set_channel(struct ath_softc *sc, struct ieee80211_hw *hw,
 {
 	int r;
 
-	if (sc->sc_flags & SC_OP_INVALID)
+	if (test_bit(SC_OP_INVALID, &sc->sc_flags))
 		return -EIO;
 
 	r = ath_reset_internal(sc, hchan, false);
@@ -697,7 +697,7 @@ void ath_start_rx_poll(struct ath_softc *sc, u32 nmsec)
 	if (!AR_SREV_9300(sc->sc_ah))
 		return;
 
-	if (!(sc->sc_flags & SC_OP_PRIM_STA_VIF))
+	if (!test_bit(SC_OP_PRIM_STA_VIF, &sc->sc_flags))
 		return;
 
 	mod_timer(&sc->rx_poll_timer, jiffies + msecs_to_jiffies(nmsec));
@@ -986,7 +986,7 @@ void ath9k_tasklet(unsigned long data)
 		RESET_STAT_INC(sc, type);
 #endif
 		spin_lock(&sc->sc_bb_lock);
-		sc->sc_flags |= SC_OP_BB_WATCHDOG;
+		set_bit(SC_OP_BB_WATCHDOG, &sc->sc_flags);
 		spin_unlock(&sc->sc_bb_lock);
 		ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
 		goto out;
@@ -1072,7 +1072,7 @@ irqreturn_t ath_isr(int irq, void *dev)
 	 * touch anything. Note this can happen early
 	 * on if the IRQ is shared.
 	 */
-	if (sc->sc_flags & SC_OP_INVALID)
+	if (test_bit(SC_OP_INVALID, &sc->sc_flags))
 		return IRQ_NONE;
 
 	/* shared irq, not for us */
@@ -1081,7 +1081,7 @@ irqreturn_t ath_isr(int irq, void *dev)
 		return IRQ_NONE;
 
 	spin_lock(&sc->sc_bb_lock);
-	if (sc->sc_flags & SC_OP_BB_WATCHDOG) {
+	if (test_bit(SC_OP_BB_WATCHDOG, &sc->sc_flags)) {
 		spin_unlock(&sc->sc_bb_lock);
 		return IRQ_HANDLED;
 	}
@@ -1349,7 +1349,7 @@ static int ath9k_start(struct ieee80211_hw *hw)
 
 	ath_mci_enable(sc);
 
-	sc->sc_flags &= ~SC_OP_INVALID;
+	clear_bit(SC_OP_INVALID, &sc->sc_flags);
 	sc->sc_ah->is_monitoring = false;
 
 	if (!ath_complete_reset(sc, false)) {
@@ -1464,7 +1464,7 @@ static void ath9k_stop(struct ieee80211_hw *hw)
 
 	ath_cancel_work(sc);
 
-	if (sc->sc_flags & SC_OP_INVALID) {
+	if (test_bit(SC_OP_INVALID, &sc->sc_flags)) {
 		ath_dbg(common, ANY, "Device not present\n");
 		mutex_unlock(&sc->mutex);
 		return;
@@ -1519,7 +1519,7 @@ static void ath9k_stop(struct ieee80211_hw *hw)
 
 	ath9k_ps_restore(sc);
 
-	sc->sc_flags |= SC_OP_INVALID;
+	set_bit(SC_OP_INVALID, &sc->sc_flags);
 	sc->ps_idle = prev_idle;
 
 	mutex_unlock(&sc->mutex);
