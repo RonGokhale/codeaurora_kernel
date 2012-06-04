@@ -1862,12 +1862,9 @@ static void ath9k_set_power_sleep(struct ath_hw *ah)
 	REG_SET_BIT(ah, AR_STA_ID1, AR_STA_ID1_PWR_SAV);
 
 	if (AR_SREV_9462(ah)) {
-		REG_WRITE(ah, AR_TIMER_MODE,
-			  REG_READ(ah, AR_TIMER_MODE) & 0xFFFFFF00);
-		REG_WRITE(ah, AR_NDP2_TIMER_MODE,
-			  REG_READ(ah, AR_NDP2_TIMER_MODE) & 0xFFFFFF00);
-		REG_WRITE(ah, AR_SLP32_INC,
-			  REG_READ(ah, AR_SLP32_INC) & 0xFFF00000);
+		REG_CLR_BIT(ah, AR_TIMER_MODE, 0xff);
+		REG_CLR_BIT(ah, AR_NDP2_TIMER_MODE, 0xff);
+		REG_CLR_BIT(ah, AR_SLP32_INC, 0xfffff);
 		/* xxx Required for WLAN only case ? */
 		REG_WRITE(ah, AR_MCI_INTERRUPT_RX_MSG_EN, 0);
 		udelay(100);
@@ -1879,7 +1876,7 @@ static void ath9k_set_power_sleep(struct ath_hw *ah)
 	 */
 	REG_CLR_BIT(ah, AR_RTC_FORCE_WAKE, AR_RTC_FORCE_WAKE_EN);
 
-	if (AR_SREV_9462(ah))
+	if (ath9k_hw_mci_is_enabled(ah))
 		udelay(100);
 
 	if (!AR_SREV_9100(ah) && !AR_SREV_9300_20_OR_LATER(ah))
@@ -1904,7 +1901,6 @@ static void ath9k_set_power_sleep(struct ath_hw *ah)
 static void ath9k_set_power_network_sleep(struct ath_hw *ah)
 {
 	struct ath9k_hw_capabilities *pCap = &ah->caps;
-	u32 val;
 
 	REG_SET_BIT(ah, AR_STA_ID1, AR_STA_ID1_PWR_SAV);
 
@@ -1923,19 +1919,16 @@ static void ath9k_set_power_network_sleep(struct ath_hw *ah)
 		 * SYS_WAKING and SYS_SLEEPING messages which will make
 		 * BT CPU to busy to process.
 		 */
-		if (AR_SREV_9462(ah)) {
-			val = REG_READ(ah, AR_MCI_INTERRUPT_RX_MSG_EN) &
-				~AR_MCI_INTERRUPT_RX_HW_MSG_MASK;
-			REG_WRITE(ah, AR_MCI_INTERRUPT_RX_MSG_EN, val);
-		}
+		if (ath9k_hw_mci_is_enabled(ah))
+			REG_CLR_BIT(ah, AR_MCI_INTERRUPT_RX_MSG_EN,
+				    AR_MCI_INTERRUPT_RX_HW_MSG_MASK);
 		/*
 		 * Clear the RTC force wake bit to allow the
 		 * mac to go to sleep.
 		 */
-		REG_CLR_BIT(ah, AR_RTC_FORCE_WAKE,
-			    AR_RTC_FORCE_WAKE_EN);
+		REG_CLR_BIT(ah, AR_RTC_FORCE_WAKE, AR_RTC_FORCE_WAKE_EN);
 
-		if (AR_SREV_9462(ah))
+		if (ath9k_hw_mci_is_enabled(ah))
 			udelay(30);
 	}
 
