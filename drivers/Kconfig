@@ -158,6 +158,4 @@ source "drivers/irqchip/Kconfig"
 
 source "drivers/ipack/Kconfig"
 
-source "chromeos/drivers/Kconfig"
-
 endmenu
