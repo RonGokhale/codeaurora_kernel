@@ -185,11 +185,24 @@ static int soc_pcm_open(struct snd_pcm_substream *substream)
 	}
 
 	if (codec_dai->driver->ops->startup) {
-		ret = codec_dai->driver->ops->startup(substream, codec_dai);
-		if (ret < 0) {
-			dev_err(codec_dai->dev, "can't open codec %s: %d\n",
-				codec_dai->name, ret);
-			goto codec_dai_err;
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+			ret = codec_dai->driver->ops->startup(substream,
+								codec_dai);
+			if (ret < 0) {
+				dev_err(platform->dev, "asoc: can't open codec %s\n",
+					codec_dai->name);
+				goto codec_dai_err;
+			}
+		} else {
+			if (!codec_dai->capture_active) {
+				ret = codec_dai->driver->ops->startup(substream,
+								codec_dai);
+				if (ret < 0) {
+					dev_err(platform->dev, "can't open codec %s\n",
+						codec_dai->name);
+					goto codec_dai_err;
+				}
+			}
 		}
 	}
 
@@ -405,8 +418,15 @@ static int soc_pcm_close(struct snd_pcm_substream *substream)
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 		snd_soc_dai_digital_mute(codec_dai, 1);
 
-	if (cpu_dai->driver->ops->shutdown)
-		cpu_dai->driver->ops->shutdown(substream, cpu_dai);
+	if (cpu_dai->driver->ops->shutdown) {
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+			codec_dai->driver->ops->shutdown(substream, codec_dai);
+		} else {
+			if (!codec_dai->capture_active)
+				codec_dai->driver->ops->shutdown(substream,
+								codec_dai);
+		}
+	}
 
 	if (codec_dai->driver->ops->shutdown)
 		codec_dai->driver->ops->shutdown(substream, codec_dai);
@@ -433,8 +453,10 @@ static int soc_pcm_close(struct snd_pcm_substream *substream)
 		}
 	} else {
 		/* capture streams can be powered down now */
-		snd_soc_dapm_stream_event(rtd, SNDRV_PCM_STREAM_CAPTURE,
-					  SND_SOC_DAPM_STREAM_STOP);
+		if (!codec_dai->capture_active)
+			snd_soc_dapm_stream_event(rtd,
+			SNDRV_PCM_STREAM_CAPTURE,
+			SND_SOC_DAPM_STREAM_STOP);
 	}
 
 	mutex_unlock(&rtd->pcm_mutex);
@@ -502,9 +524,14 @@ static int soc_pcm_prepare(struct snd_pcm_substream *substream)
 		cancel_delayed_work(&rtd->delayed_work);
 	}
 
-	snd_soc_dapm_stream_event(rtd, substream->stream,
-			SND_SOC_DAPM_STREAM_START);
-
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		snd_soc_dapm_stream_event(rtd, substream->stream,
+					  SND_SOC_DAPM_STREAM_START);
+	} else {
+		if (codec_dai->capture_active == 1)
+			snd_soc_dapm_stream_event(rtd, substream->stream,
+					  SND_SOC_DAPM_STREAM_START);
+	}
 	snd_soc_dai_digital_mute(codec_dai, 0);
 
 out:
@@ -537,11 +564,24 @@ static int soc_pcm_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	if (codec_dai->driver->ops->hw_params) {
-		ret = codec_dai->driver->ops->hw_params(substream, params, codec_dai);
-		if (ret < 0) {
-			dev_err(codec_dai->dev, "can't set %s hw params: %d\n",
-				codec_dai->name, ret);
-			goto codec_err;
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+			ret = codec_dai->driver->ops->hw_params(substream,
+							params, codec_dai);
+			if (ret < 0) {
+				dev_err(platform->dev, "not set codec %s hw params\n",
+					codec_dai->name);
+				goto codec_err;
+			}
+		} else {
+			if (codec_dai->capture_active == 1) {
+				ret = codec_dai->driver->ops->hw_params(
+						substream, params, codec_dai);
+				if (ret < 0) {
+					dev_err(platform->dev, "fail: %s hw params\n",
+						codec_dai->name);
+					goto codec_err;
+				}
+			}
 		}
 	}
 
@@ -649,9 +689,19 @@ static int soc_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	int ret;
 
 	if (codec_dai->driver->ops->trigger) {
-		ret = codec_dai->driver->ops->trigger(substream, cmd, codec_dai);
-		if (ret < 0)
-			return ret;
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+			ret = codec_dai->driver->ops->trigger(substream,
+						cmd, codec_dai);
+			if (ret < 0)
+				return ret;
+		} else {
+			if (codec_dai->capture_active == 1) {
+				ret = codec_dai->driver->ops->trigger(
+						substream, cmd, codec_dai);
+				if (ret < 0)
+					return ret;
+			}
+		}
 	}
 
 	if (platform->driver->ops && platform->driver->ops->trigger) {
