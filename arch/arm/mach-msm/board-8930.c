@@ -1444,6 +1444,11 @@ static struct msm_spi_platform_data msm8960_qup_spi_gsbi1_pdata = {
 	.max_clock_speed = 15060000,
 };
 
+static struct msm_spi_platform_data msm8930_qup_spi_gsbi11_pdata = {
+	.max_clock_speed = 15060000,
+//	.infinite_mode = 0xFFC0,
+};
+
 #ifdef CONFIG_USB_MSM_OTG_72K
 static struct msm_otg_platform_data msm_otg_pdata;
 #else
@@ -2193,6 +2198,13 @@ static struct spi_board_info spi_board_info[] __initdata = {
 		.chip_select            = 1,
 		.mode                   = SPI_MODE_0,
 	},
+	{
+		.modalias       = "imx175_spi",
+		.mode           = SPI_MODE_0,
+		.bus_num        = 1,
+		.chip_select    = 0,
+		.max_speed_hz   = 9963243,
+	}
 };
 
 static struct platform_device msm_device_saw_core0 = {
@@ -2330,6 +2342,7 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm8960_device_qup_i2c_gsbi4,
 	&msm8960_device_qup_i2c_gsbi9,
 	&msm8960_device_qup_i2c_gsbi10,
+	&msm8930_device_qup_spi_gsbi11,
 	&msm8960_device_qup_i2c_gsbi12,
 	&msm_slim_ctrl,
 	&msm_device_wcnss_wlan,
@@ -2823,6 +2836,8 @@ static void __init msm8930_cdp_init(void)
 	msm8930_init_gpiomux();
 	msm8960_device_qup_spi_gsbi1.dev.platform_data =
 				&msm8960_qup_spi_gsbi1_pdata;
+	msm8930_device_qup_spi_gsbi11.dev.platform_data =
+		&msm8930_qup_spi_gsbi11_pdata;
 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
 
 	/*

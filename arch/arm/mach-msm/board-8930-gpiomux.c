@@ -395,6 +395,34 @@ static struct msm_gpiomux_config msm8960_gsbi_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &gsbi10,
 		},
 	},
+	{
+		.gpio      = 38,		/* GSBI11 QUP SPI_DATA_MOSI */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &spi_suspended_config,
+			[GPIOMUX_ACTIVE] = &spi_active,
+		},
+	},
+	{
+		.gpio      = 39,		/* GSBI11 QUP SPI_DATA_MISO */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &spi_suspended_config,
+			[GPIOMUX_ACTIVE] = &spi_active,
+		},
+	},
+	{
+		.gpio      = 40,		/* GSBI11 QUP SPI_CS_N */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &spi_suspended_config,
+			[GPIOMUX_ACTIVE] = &spi_active,
+		},
+	},
+	{
+		.gpio      = 41,		/* GSBI11 QUP SPI_CLK */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &spi_suspended_config,
+			[GPIOMUX_ACTIVE] = &spi_active,
+		},
+	},
 };
 
 static struct msm_gpiomux_config msm8960_slimbus_config[] __initdata = {

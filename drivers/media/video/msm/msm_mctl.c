@@ -551,6 +551,10 @@ static int msm_mctl_open(struct msm_cam_media_controller *p_mctl,
 			goto act_power_up_failed;
 		}
 
+		if (sinfo->eeprom_info && sinfo->eeprom_info->type == MSM_EEPROM_SPI) {
+			msm_mctl_find_eeprom_subdev(p_mctl);
+		}
+
 		if (p_mctl->csic_sdev)
 			csi_info.is_csic = 1;
 		else

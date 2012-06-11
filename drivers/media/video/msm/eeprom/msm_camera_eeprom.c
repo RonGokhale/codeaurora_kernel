@@ -19,18 +19,23 @@ int32_t msm_camera_eeprom_read(struct msm_eeprom_ctrl_t *ectrl,
 	if (ectrl->func_tbl.eeprom_set_dev_addr != NULL)
 		ectrl->func_tbl.eeprom_set_dev_addr(ectrl, &reg_addr);
 
-	if (!convert_endian) {
-		rc = msm_camera_i2c_read_seq(
-			&ectrl->i2c_client, reg_addr, data, num_byte);
+	if (ectrl->func_tbl.eeprom_read != NULL) {
+		rc = ectrl->func_tbl.eeprom_read(ectrl, reg_addr,
+			data, num_byte);
 	} else {
-		unsigned char buf[num_byte];
-		uint8_t *data_ptr = (uint8_t *) data;
-		int i;
-		rc = msm_camera_i2c_read_seq(
-			&ectrl->i2c_client, reg_addr, buf, num_byte);
-		for (i = 0; i < num_byte; i += 2) {
-			data_ptr[i] = buf[i+1];
-			data_ptr[i+1] = buf[i];
+		if (!convert_endian) {
+			rc = msm_camera_i2c_read_seq(
+				&ectrl->i2c_client, reg_addr, data, num_byte);
+		} else {
+			unsigned char buf[num_byte];
+			uint8_t *data_ptr = (uint8_t *) data;
+			int i;
+			rc = msm_camera_i2c_read_seq(
+				&ectrl->i2c_client, reg_addr, buf, num_byte);
+			for (i = 0; i < num_byte; i += 2) {
+				data_ptr[i] = buf[i+1];
+				data_ptr[i+1] = buf[i];
+			}
 		}
 	}
 	return rc;
@@ -118,6 +123,41 @@ int32_t msm_eeprom_config(struct msm_eeprom_ctrl_t *e_ctrl,
 			&cdata,
 			sizeof(struct msm_eeprom_cfg_data)))
 			rc = -EFAULT;
+		break;
+	case CFG_EEPROM_DIRECT_DATA_READ:
+		if (e_ctrl->func_tbl.eeprom_direct_data_read == NULL) {
+			rc = -EFAULT;
+			break;
+		}
+		rc = e_ctrl->func_tbl.eeprom_direct_data_read(e_ctrl,
+			&cdata.cfg.direct_access);
+
+		if (copy_to_user((void *)argp,
+			&cdata,
+			sizeof(struct msm_eeprom_cfg_data)))
+			rc = -EFAULT;
+		break;
+	case CFG_EEPROM_DIRECT_DATA_WRITE:
+		if (e_ctrl->func_tbl.eeprom_direct_data_write == NULL) {
+			rc = -EFAULT;
+			break;
+		}
+		rc = e_ctrl->func_tbl.eeprom_direct_data_write(e_ctrl,
+			&cdata.cfg.direct_access);
+
+		if (copy_to_user((void *)argp,
+			&cdata,
+			sizeof(struct msm_eeprom_cfg_data)))
+			rc = -EFAULT;
+		break;
+	case CFG_EEPROM_DIRECT_DATA_ERASE:
+		if (e_ctrl->func_tbl.eeprom_direct_data_erase == NULL) {
+			rc = -EFAULT;
+			break;
+		}
+		rc = e_ctrl->func_tbl.eeprom_direct_data_erase(e_ctrl,
+			&cdata.cfg.direct_access);
+
 		break;
 	default:
 		break;

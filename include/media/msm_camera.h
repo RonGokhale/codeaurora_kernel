@@ -994,7 +994,10 @@ struct msm_snapshot_pp_status {
 #define CFG_CONFIG_VREG_ARRAY         52
 #define CFG_CONFIG_CLK_ARRAY          53
 #define CFG_GPIO_OP                   54
-#define CFG_MAX                       55
+#define CFG_EEPROM_DIRECT_DATA_READ   55
+#define CFG_EEPROM_DIRECT_DATA_WRITE  56
+#define CFG_EEPROM_DIRECT_DATA_ERASE  57
+#define CFG_MAX                       58
 
 
 #define MOVE_NEAR	0
@@ -1677,6 +1680,7 @@ struct damping_params_t {
 enum actuator_type {
 	ACTUATOR_VCM,
 	ACTUATOR_PIEZO,
+	ACTUATOR_HALL_EFFECT,
 };
 
 enum msm_actuator_data_type {
@@ -1839,12 +1843,20 @@ struct msm_calib_raw {
 	uint32_t size;
 };
 
+struct eeprom_data_access_t {
+  uint8_t *data;
+  uint32_t addr;
+  uint32_t num_bytes;
+};
+
 struct msm_camera_eeprom_info_t {
 	struct msm_eeprom_support af;
 	struct msm_eeprom_support wb;
 	struct msm_eeprom_support lsc;
 	struct msm_eeprom_support dpc;
 	struct msm_eeprom_support raw;
+	struct msm_eeprom_support gld_wb;
+	struct msm_eeprom_support gld_lsc;
 };
 
 struct msm_eeprom_cfg_data {
@@ -1853,6 +1865,7 @@ struct msm_eeprom_cfg_data {
 	union {
 		struct msm_eeprom_data_t get_data;
 		struct msm_camera_eeprom_info_t get_info;
+		struct eeprom_data_access_t direct_access;
 	} cfg;
 };
 
