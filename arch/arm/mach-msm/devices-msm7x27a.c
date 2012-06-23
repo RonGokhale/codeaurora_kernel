@@ -1443,7 +1443,7 @@ static struct resource msm8625_mipi_dsi_resources[] = {
 	},
 };
 
-struct platform_device msm8625_mipi_dsi_device = {
+static struct platform_device msm8625_mipi_dsi_device = {
 	.name   = "mipi_dsi",
 	.id     = 1,
 	.num_resources  = ARRAY_SIZE(msm8625_mipi_dsi_resources),
