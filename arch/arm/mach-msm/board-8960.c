@@ -409,9 +409,7 @@ static struct ion_co_heap_pdata fw_co_ion_pdata = {
  * to each other.
  * Don't swap the order unless you know what you are doing!
  */
-static struct ion_platform_data ion_pdata = {
-	.nr = MSM_ION_HEAP_NUM,
-	.heaps = {
+struct ion_platform_heap msm8960_heaps[] = {
 		{
 			.id	= ION_SYSTEM_HEAP_ID,
 			.type	= ION_HEAP_TYPE_SYSTEM,
@@ -474,13 +472,17 @@ static struct ion_platform_data ion_pdata = {
 			.extra_data = (void *) &co_ion_pdata,
 		},
 #endif
-	}
+};
+
+static struct ion_platform_data msm8960_ion_pdata = {
+	.nr = MSM_ION_HEAP_NUM,
+	.heaps = msm8960_heaps,
 };
 
 static struct platform_device ion_dev = {
 	.name = "ion-msm",
 	.id = 1,
-	.dev = { .platform_data = &ion_pdata },
+	.dev = { .platform_data = &msm8960_ion_pdata },
 };
 #endif
 
@@ -503,9 +505,9 @@ static void __init adjust_mem_for_liquid(void)
 
 		if (machine_is_msm8960_liquid() ||
 			msm8960_hdmi_as_primary_selected()) {
-			for (i = 0; i < ion_pdata.nr; i++) {
-				if (ion_pdata.heaps[i].id == ION_SF_HEAP_ID) {
-					ion_pdata.heaps[i].size =
+			for (i = 0; i < msm8960_ion_pdata.nr; i++) {
+				if (msm8960_ion_pdata.heaps[i].id == ION_SF_HEAP_ID) {
+					msm8960_ion_pdata.heaps[i].size =
 						msm_ion_sf_size;
 					pr_debug("msm_ion_sf_size 0x%x\n",
 						msm_ion_sf_size);
@@ -573,8 +575,8 @@ static void __init reserve_ion_memory(void)
 	/* We only support 1 reusable heap. Check if more than one heap
 	 * is specified as reusable and set as non-reusable if found.
 	 */
-	for (i = 0; i < ion_pdata.nr; ++i) {
-		const struct ion_platform_heap *heap = &(ion_pdata.heaps[i]);
+	for (i = 0; i < msm8960_ion_pdata.nr; ++i) {
+		const struct ion_platform_heap *heap = &(msm8960_ion_pdata.heaps[i]);
 
 		if (heap->type == (enum ion_heap_type) ION_HEAP_TYPE_CP
 			&& heap->extra_data) {
@@ -591,9 +593,9 @@ static void __init reserve_ion_memory(void)
 		}
 	}
 
-	for (i = 0; i < ion_pdata.nr; ++i) {
+	for (i = 0; i < msm8960_ion_pdata.nr; ++i) {
 		struct ion_platform_heap *heap =
-						&(ion_pdata.heaps[i]);
+						&(msm8960_ion_pdata.heaps[i]);
 		int align = SZ_4K;
 		int iommu_map_all = 0;
 		int adjacent_mem_id = INVALID_HEAP_ID;
@@ -668,8 +670,8 @@ static void __init reserve_ion_memory(void)
 	fixed_middle_start = fixed_low_start + fixed_low_size;
 	fixed_high_start = fixed_middle_start + fixed_middle_size;
 
-	for (i = 0; i < ion_pdata.nr; ++i) {
-		struct ion_platform_heap *heap = &(ion_pdata.heaps[i]);
+	for (i = 0; i < msm8960_ion_pdata.nr; ++i) {
+		struct ion_platform_heap *heap = &(msm8960_ion_pdata.heaps[i]);
 
 		if (heap->extra_data) {
 			int fixed_position = NOT_FIXED;
