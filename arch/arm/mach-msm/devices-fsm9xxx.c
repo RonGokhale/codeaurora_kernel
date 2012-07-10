@@ -1,4 +1,4 @@
-/* Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -68,6 +68,26 @@ struct platform_device msm_device_uart2 = {
 	.id	= 1,
 	.num_resources	= ARRAY_SIZE(resources_uart2),
 	.resource	= resources_uart2,
+};
+
+static struct resource resources_uart3[] = {
+	{
+		.start	= INT_UART3,
+		.end	= INT_UART3,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.start	= MSM_UART3_PHYS,
+		.end	= MSM_UART3_PHYS + MSM_UART3_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
+struct platform_device msm_device_uart3 = {
+	.name	= "msm_uim",
+	.id	= 2,
+	.num_resources	= ARRAY_SIZE(resources_uart3),
+	.resource	= resources_uart3,
 };
 
 /*

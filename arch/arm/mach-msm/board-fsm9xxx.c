@@ -93,6 +93,15 @@
 #define GPIO_USER_FIRST		58
 #define GPIO_USER_LAST		63
 
+#define GPIO_UIM_RESET		75
+#define GPIO_UIM_DATA_IO	76
+#define GPIO_UIM_CLOCK		77
+
+#define GPIO_PM_UIM_M_RST	26	/* UIM_RST input */
+#define GPIO_PM_UIM_RST		27	/* UIM_RST output */
+#define GPIO_PM_UIM_M_CLK	28	/* UIM_CLK input */
+#define GPIO_PM_UIM_CLK		29	/* UIM_CLK output */
+
 #define FPGA_SDCC_STATUS        0x8E0001A8
 
 /* Macros assume PMIC GPIOs start at 0 */
@@ -101,6 +110,8 @@
 
 #define PMIC_GPIO_5V_PA_PWR	21	/* PMIC GPIO Number 22 */
 #define PMIC_GPIO_4_2V_PA_PWR	22	/* PMIC GPIO Number 23 */
+#define PMIC_MPP_UIM_M_DATA	0	/* UIM_DATA input */
+#define PMIC_MPP_UIM_DATA	1	/* UIM_DATA output */
 #define PMIC_MPP_3		2	/* PMIC MPP Number 3 */
 #define PMIC_MPP_6		5	/* PMIC MPP Number 6 */
 #define PMIC_MPP_7		6	/* PMIC MPP Number 7 */
@@ -109,6 +120,8 @@
 /*
  * PM8058
  */
+
+#define PM8058_GPIO_VIN_L3	3
 
 static int pm8058_gpios_init(void)
 {
@@ -146,6 +159,46 @@ static int pm8058_gpios_init(void)
 				.inv_int_pol = 0,
 			},
 		},
+		{
+			GPIO_PM_UIM_M_RST,
+			{
+				.direction	= PM_GPIO_DIR_IN,
+				.pull		= PM_GPIO_PULL_NO,
+				.out_strength	= PM_GPIO_STRENGTH_HIGH,
+				.function	= PM_GPIO_FUNC_PAIRED,
+				.vin_sel	= PM8058_GPIO_VIN_L3,
+			},
+		},
+		{
+			GPIO_PM_UIM_RST,
+			{
+				.direction	= PM_GPIO_DIR_OUT,
+				.pull		= PM_GPIO_PULL_NO,
+				.out_strength	= PM_GPIO_STRENGTH_HIGH,
+				.function	= PM_GPIO_FUNC_PAIRED,
+				.vin_sel	= PM8058_GPIO_VIN_L3,
+			}
+		},
+		{
+			GPIO_PM_UIM_M_CLK,
+			{
+				.direction	= PM_GPIO_DIR_IN,
+				.pull		= PM_GPIO_PULL_NO,
+				.out_strength	= PM_GPIO_STRENGTH_HIGH,
+				.function	= PM_GPIO_FUNC_PAIRED,
+				.vin_sel	= PM8058_GPIO_VIN_L3,
+			},
+		},
+		{
+			GPIO_PM_UIM_CLK,
+			{
+				.direction	= PM_GPIO_DIR_OUT,
+				.pull		= PM_GPIO_PULL_NO,
+				.out_strength	= PM_GPIO_STRENGTH_HIGH,
+				.function	= PM_GPIO_FUNC_PAIRED,
+				.vin_sel	= PM8058_GPIO_VIN_L3,
+			}
+		},
 	};
 
 	for (i = 0; i < ARRAY_SIZE(gpio_cfgs); ++i) {
@@ -177,6 +230,21 @@ static int pm8058_mpps_init(void)
 		pr_err("%s: Config mpp5 on pmic 8058 failed\n", __func__);
 		return rc;
 	}
+
+	rc = pm8058_mpp_config_bi_dir(PMIC_MPP_UIM_M_DATA,
+			PM8058_MPP_DIG_LEVEL_L3, PM_MPP_BI_PULLUP_30KOHM);
+	if (rc) {
+		pr_err("%s: Config UIM_M_DATA on pmic 8058 failed\n", __func__);
+		return rc;
+	}
+
+	rc = pm8058_mpp_config_bi_dir(PMIC_MPP_UIM_DATA,
+			PM8058_MPP_DIG_LEVEL_L3, PM_MPP_BI_PULLUP_30KOHM);
+	if (rc) {
+		pr_err("%s: Config UIM_DATA on pmic 8058 failed\n", __func__);
+		return rc;
+	}
+
 	return 0;
 }
 
@@ -622,6 +690,27 @@ static void fsm9xxx_init_uart1(void)
 }
 #endif
 
+static struct msm_gpio uart3_uim_config_data[] = {
+	{ GPIO_CFG(GPIO_UIM_RESET, 0, GPIO_CFG_OUTPUT,
+		GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "UIM_Reset" },
+	{ GPIO_CFG(GPIO_UIM_DATA_IO, 2, GPIO_CFG_OUTPUT,
+		GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "UIM_Data" },
+	{ GPIO_CFG(GPIO_UIM_CLOCK, 2, GPIO_CFG_OUTPUT,
+		GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "UIM_Clock" },
+};
+
+static void fsm9xxx_init_uart3_uim(void)
+{
+	/* TLMM */
+	msm_gpios_request_enable(uart3_uim_config_data,
+			ARRAY_SIZE(uart3_uim_config_data));
+
+	/* Put UIM to reset state */
+	gpio_direction_output(GPIO_UIM_RESET, 0);
+	gpio_set_value(GPIO_UIM_RESET, 0);
+	gpio_export(GPIO_UIM_RESET, false);
+}
+
 /*
  * SSBI
  */
@@ -850,6 +939,7 @@ static struct platform_device *devices[] __initdata = {
 #if defined(CONFIG_SERIAL_MSM) || defined(CONFIG_MSM_SERIAL_DEBUGGER)
 	&msm_device_uart1,
 #endif
+	&msm_device_uart3,
 #if defined(CONFIG_QFP_FUSE)
 	&fsm_qfp_fuse_device,
 #endif
@@ -905,6 +995,7 @@ static void __init fsm9xxx_init(void)
 	msm_device_ssbi_pmic1.dev.platform_data =
 				&fsm9xxx_ssbi_pm8058_pdata;
 #endif
+	fsm9xxx_init_uart3_uim();
 #ifdef CONFIG_I2C_SSBI
 	msm_device_ssbi2.dev.platform_data = &msm_i2c_ssbi2_pdata;
 	msm_device_ssbi3.dev.platform_data = &msm_i2c_ssbi3_pdata;

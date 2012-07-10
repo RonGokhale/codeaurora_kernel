@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -112,8 +112,11 @@
 #define MSM_UART1_PHYS        0x94000000
 #define MSM_UART1_SIZE        SZ_4K
 
-#define MSM_UART2_PHYS        0x94100000
+#define MSM_UART2_PHYS        0x94010000
 #define MSM_UART2_SIZE        SZ_4K
+
+#define MSM_UART3_PHYS        0x94100000
+#define MSM_UART3_SIZE        SZ_4K
 
 #ifdef CONFIG_MSM_DEBUG_UART
 #define MSM_DEBUG_UART_BASE   0xFB000000
