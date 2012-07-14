@@ -801,8 +801,16 @@ static void __init exynos5250_dt_machine_init(void)
 		smdk5250_lcd1_pdata.clock_rate = 267 * 1000 * 1000;
 		smdk5250_lcd1_pdata.vidcon1 = 0;
 #endif
-		ret = gpio_request_one(EXYNOS5_GPX1(5), GPIOF_OUT_INIT_HIGH,
-					"DP_PD_N");
+		if (of_machine_is_compatible("google,snow")) {
+			ret = gpio_request_one(EXYNOS5_GPX1(5), GPIOF_OUT_INIT_HIGH,
+						"DP_RST_N");
+			ret = gpio_request_one(EXYNOS5_GPY2(5), GPIOF_OUT_INIT_HIGH,
+						"DP_PD_N");
+			}
+		else
+			ret = gpio_request_one(EXYNOS5_GPX1(5), GPIOF_OUT_INIT_HIGH,
+						"DP_PD_N");
+
 		WARN_ON(ret);
 	}
 
