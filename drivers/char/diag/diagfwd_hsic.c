@@ -374,6 +374,7 @@ int diagfwd_disconnect_bridge(int process_cable)
 		driver->logging_mode == USB_MODE) {
 		driver->in_busy_smux = 1;
 		driver->lcid = LCID_INVALID;
+		driver->smux_connected = 0;
 		/* Turn off communication over usb mdm and smux */
 		msm_smux_close(LCID_VALID);
 	}
@@ -510,7 +511,8 @@ static void diag_read_mdm_work_fn(struct work_struct *work)
 	int ret;
 	if (driver->diag_smux_enabled) {
 		if (driver->lcid && driver->usb_buf_mdm_out &&
-					 (driver->read_len_mdm > 0)) {
+				(driver->read_len_mdm > 0) &&
+				driver->smux_connected) {
 			ret = msm_smux_write(driver->lcid,  NULL,
 		 driver->usb_buf_mdm_out, driver->read_len_mdm);
 			if (ret)
