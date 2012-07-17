@@ -1105,8 +1105,8 @@ static int ath9k_htc_add_interface(struct ieee80211_hw *hw,
 	ath9k_htc_set_opmode(priv);
 
 	if ((priv->ah->opmode == NL80211_IFTYPE_AP) &&
-	    !(priv->op_flags & OP_ANI_RUNNING)) {
-		ath9k_hw_set_tsfadjust(priv->ah, 1);
+	    !test_bit(OP_ANI_RUNNING, &priv->op_flags)) {
+		ath9k_hw_set_tsfadjust(priv->ah, true);
 		ath9k_htc_start_ani(priv);
 	}
 
