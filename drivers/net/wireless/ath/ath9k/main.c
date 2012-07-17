@@ -1536,16 +1536,6 @@ bool ath9k_uses_beacons(int type)
 	}
 }
 
-static void ath9k_reclaim_beacon(struct ath_softc *sc,
-				 struct ieee80211_vif *vif)
-{
-	struct ath_vif *avp = (void *)vif->drv_priv;
-
-	ath9k_set_beaconing_status(sc, false);
-	ath_beacon_return(sc, avp);
-	ath9k_set_beaconing_status(sc, true);
-}
-
 static void ath9k_vif_iter(void *data, u8 *mac, struct ieee80211_vif *vif)
 {
 	struct ath9k_vif_iter_data *iter_data = data;
@@ -1661,23 +1651,6 @@ static void ath9k_calculate_summary_state(struct ieee80211_hw *hw,
 	}
 }
 
-/* Called with sc->mutex held, vif counts set up properly. */
-static void ath9k_do_vif_add_setup(struct ieee80211_hw *hw,
-				   struct ieee80211_vif *vif)
-{
-	struct ath_softc *sc = hw->priv;
-
-	ath9k_calculate_summary_state(hw, vif);
-
-	if (ath9k_uses_beacons(vif->type)) {
-		/* Reserve a beacon slot for the vif */
-		ath9k_set_beaconing_status(sc, false);
-		ath_beacon_alloc(sc, vif);
-		ath9k_set_beaconing_status(sc, true);
-	}
-}
-
-
 static int ath9k_add_interface(struct ieee80211_hw *hw,
 			       struct ieee80211_vif *vif)
 {
@@ -1726,7 +1699,10 @@ static int ath9k_add_interface(struct ieee80211_hw *hw,
 
 	sc->nvifs++;
 
-	ath9k_do_vif_add_setup(hw, vif);
+	ath9k_calculate_summary_state(hw, vif);
+	if (ath9k_uses_beacons(vif->type))
+		ath9k_beacon_assign_slot(sc, vif);
+
 out:
 	mutex_unlock(&sc->mutex);
 	ath9k_ps_restore(sc);
@@ -1743,6 +1719,7 @@ static int ath9k_change_interface(struct ieee80211_hw *hw,
 	int ret = 0;
 
 	ath_dbg(common, CONFIG, "Change Interface\n");
+
 	mutex_lock(&sc->mutex);
 	ath9k_ps_wakeup(sc);
 
@@ -1764,15 +1741,16 @@ static int ath9k_change_interface(struct ieee80211_hw *hw,
 		}
 	}
 
-	/* Clean up old vif stuff */
 	if (ath9k_uses_beacons(vif->type))
-		ath9k_reclaim_beacon(sc, vif);
+		ath9k_beacon_remove_slot(sc, vif);
 
-	/* Add new settings */
 	vif->type = new_type;
 	vif->p2p = p2p;
 
-	ath9k_do_vif_add_setup(hw, vif);
+	ath9k_calculate_summary_state(hw, vif);
+	if (ath9k_uses_beacons(vif->type))
+		ath9k_beacon_assign_slot(sc, vif);
+
 out:
 	ath9k_ps_restore(sc);
 	mutex_unlock(&sc->mutex);
@@ -1792,9 +1770,8 @@ static void ath9k_remove_interface(struct ieee80211_hw *hw,
 
 	sc->nvifs--;
 
-	/* Reclaim beacon resources */
 	if (ath9k_uses_beacons(vif->type))
-		ath9k_reclaim_beacon(sc, vif);
+		ath9k_beacon_remove_slot(sc, vif);
 
 	ath9k_calculate_summary_state(hw, NULL);
 
@@ -2309,14 +2286,8 @@ static void ath9k_bss_info_changed(struct ieee80211_hw *hw,
 	     (changed & BSS_CHANGED_BEACON_ENABLED) ||
 	     (changed & BSS_CHANGED_BEACON_INT))) {
 		ath9k_set_beaconing_status(sc, false);
-		if (bss_conf->enable_beacon) {
-			ath_beacon_alloc(sc, vif);
-			if (vif->type == NL80211_IFTYPE_ADHOC)
-				sc->ps_flags |= PS_BEACON_SYNC |
-						PS_WAIT_FOR_BEACON;
-		} else {
+		if (!bss_conf->enable_beacon)
 			avp->is_bslot_active = false;
-		}
 		ath_beacon_config(sc, vif);
 		ath9k_set_beaconing_status(sc, true);
 	}
