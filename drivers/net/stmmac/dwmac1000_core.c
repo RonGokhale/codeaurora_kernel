@@ -245,5 +245,9 @@ struct mac_device_info *dwmac1000_setup(void __iomem *ioaddr)
 	mac->mii.addr = GMAC_MII_ADDR;
 	mac->mii.data = GMAC_MII_DATA;
 
+	/* See comment to des04 in desc.h */
+	if ( (uid & 0x000000ff) >= 0x35)
+		mac->atds = 1;
+
 	return mac;
 }

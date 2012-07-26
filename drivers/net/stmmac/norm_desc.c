@@ -25,10 +25,14 @@
 #include "common.h"
 
 static int ndesc_get_tx_status(void *data, struct stmmac_extra_stats *x,
-			       struct dma_desc *p, void __iomem *ioaddr)
+			       struct dma_desc *pdesc, void __iomem *ioaddr)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
 	int ret = 0;
 	struct net_device_stats *stats = (struct net_device_stats *)data;
+
+	dma_desc_le2cpu(pdesc, p);
 
 	if (unlikely(p->des01.tx.error_summary)) {
 		if (unlikely(p->des01.tx.underflow_error)) {
@@ -60,8 +64,13 @@ static int ndesc_get_tx_status(void *data, struct stmmac_extra_stats *x,
 	return ret;
 }
 
-static int ndesc_get_tx_len(struct dma_desc *p)
+static int ndesc_get_tx_len(struct dma_desc *pdesc)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
+
+	dma_desc_le2cpu(pdesc, p);
+
 	return p->des01.tx.buffer1_size;
 }
 
@@ -70,10 +79,14 @@ static int ndesc_get_tx_len(struct dma_desc *p)
  * In case of success, it returns csum_none becasue the device
  * is not able to compute the csum in HW. */
 static int ndesc_get_rx_status(void *data, struct stmmac_extra_stats *x,
-			       struct dma_desc *p)
+			       struct dma_desc *pdesc, const int atds)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
 	int ret = csum_none;
 	struct net_device_stats *stats = (struct net_device_stats *)data;
+
+	dma_desc_le2cpu(pdesc, p);
 
 	if (unlikely(p->des01.rx.last_descriptor == 0)) {
 		pr_warning("ndesc Error: Oversized Ethernet "
@@ -119,86 +132,164 @@ static int ndesc_get_rx_status(void *data, struct stmmac_extra_stats *x,
 	return ret;
 }
 
-static void ndesc_init_rx_desc(struct dma_desc *p, unsigned int ring_size,
+static void ndesc_init_rx_desc(struct dma_desc *pdesc, unsigned int ring_size,
 			       int disable_rx_ic)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
 	int i;
+
 	for (i = 0; i < ring_size; i++) {
+		dma_desc_le2cpu(pdesc, p);
+
 		p->des01.rx.own = 1;
 		p->des01.rx.buffer1_size = BUF_SIZE_2KiB - 1;
 		if (i == ring_size - 1)
 			p->des01.rx.end_ring = 1;
 		if (disable_rx_ic)
 			p->des01.rx.disable_ic = 1;
-		p++;
+
+		dma_desc_cpu2le(pdesc, p);
+
+		pdesc++;
 	}
 }
 
-static void ndesc_init_tx_desc(struct dma_desc *p, unsigned int ring_size)
+static void ndesc_init_tx_desc(struct dma_desc *pdesc, unsigned int ring_size)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
 	int i;
+
 	for (i = 0; i < ring_size; i++) {
+		dma_desc_le2cpu(pdesc, p);
+
 		p->des01.tx.own = 0;
 		if (i == ring_size - 1)
 			p->des01.tx.end_ring = 1;
-		p++;
+
+		dma_desc_cpu2le(pdesc, p);
+
+		pdesc++;
 	}
 }
 
-static int ndesc_get_tx_owner(struct dma_desc *p)
+static int ndesc_get_tx_owner(struct dma_desc *pdesc)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
+
+	dma_desc_le2cpu(pdesc, p);
+
 	return p->des01.tx.own;
 }
 
-static int ndesc_get_rx_owner(struct dma_desc *p)
+static int ndesc_get_rx_owner(struct dma_desc *pdesc)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
+
+	dma_desc_le2cpu(pdesc, p);
+
 	return p->des01.rx.own;
 }
 
-static void ndesc_set_tx_owner(struct dma_desc *p)
+static void ndesc_set_tx_owner(struct dma_desc *pdesc)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
+
+	dma_desc_le2cpu(pdesc, p);
+
 	p->des01.tx.own = 1;
+
+	dma_desc_cpu2le(pdesc, p);
 }
 
-static void ndesc_set_rx_owner(struct dma_desc *p)
+static void ndesc_set_rx_owner(struct dma_desc *pdesc)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
+
+	dma_desc_le2cpu(pdesc, p);
+
 	p->des01.rx.own = 1;
+
+	dma_desc_cpu2le(pdesc, p);
 }
 
-static int ndesc_get_tx_ls(struct dma_desc *p)
+static int ndesc_get_tx_ls(struct dma_desc *pdesc)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
+
+	dma_desc_le2cpu(pdesc, p);
+
 	return p->des01.tx.last_segment;
 }
 
-static void ndesc_release_tx_desc(struct dma_desc *p)
+static void ndesc_release_tx_desc(struct dma_desc *pdesc)
 {
-	int ter = p->des01.tx.end_ring;
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
+	int ter;
+
+	dma_desc_le2cpu(pdesc, p);
+	ter = p->des01.tx.end_ring;
 
 	memset(p, 0, offsetof(struct dma_desc, des2));
 	/* set termination field */
 	p->des01.tx.end_ring = ter;
+
+	dma_desc_cpu2le(pdesc, p);
 }
 
-static void ndesc_prepare_tx_desc(struct dma_desc *p, int is_fs, int len,
+static void ndesc_prepare_tx_desc(struct dma_desc *pdesc, int is_fs, int len,
 				  int csum_flag)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
+
+	dma_desc_le2cpu(pdesc, p);
+
 	p->des01.tx.first_segment = is_fs;
 	p->des01.tx.buffer1_size = len;
+
+	dma_desc_cpu2le(pdesc, p);
 }
 
-static void ndesc_clear_tx_ic(struct dma_desc *p)
+static void ndesc_clear_tx_ic(struct dma_desc *pdesc)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
+
+	dma_desc_le2cpu(pdesc, p);
+
 	p->des01.tx.interrupt = 0;
+
+	dma_desc_cpu2le(pdesc, p);
 }
 
-static void ndesc_close_tx_desc(struct dma_desc *p)
+static void ndesc_close_tx_desc(struct dma_desc *pdesc)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
+
+	dma_desc_le2cpu(pdesc, p);
+
 	p->des01.tx.last_segment = 1;
 	p->des01.tx.interrupt = 1;
+
+	dma_desc_cpu2le(pdesc, p);
 }
 
-static int ndesc_get_rx_frame_len(struct dma_desc *p)
+static int ndesc_get_rx_frame_len(struct dma_desc *pdesc)
 {
+	struct dma_desc		pcpu;
+	struct dma_desc		*p = &pcpu;
+
+	dma_desc_le2cpu(pdesc, p);
+
 	return p->des01.rx.frame_length;
 }
 

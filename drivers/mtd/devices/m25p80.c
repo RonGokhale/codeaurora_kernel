@@ -328,7 +328,7 @@ static int m25p80_erase(struct mtd_info *mtd, struct erase_info *instr)
  * Read an address range from the flash chip.  The address range
  * may be any size provided it is within the physical boundaries.
  */
-static int m25p80_read(struct mtd_info *mtd, loff_t from, size_t len,
+static int m25p80_try_read(struct mtd_info *mtd, loff_t from, size_t len,
 	size_t *retlen, u_char *buf)
 {
 	struct m25p *flash = mtd_to_m25p(mtd);
@@ -396,7 +396,7 @@ static int m25p80_read(struct mtd_info *mtd, loff_t from, size_t len,
  * FLASH_PAGESIZE chunks.  The address range may be any size provided
  * it is within the physical boundaries.
  */
-static int m25p80_write(struct mtd_info *mtd, loff_t to, size_t len,
+static int m25p80_try_write(struct mtd_info *mtd, loff_t to, size_t len,
 	size_t *retlen, const u_char *buf)
 {
 	struct m25p *flash = mtd_to_m25p(mtd);
@@ -461,6 +461,12 @@ static int m25p80_write(struct mtd_info *mtd, loff_t to, size_t len,
 
 		*retlen = m.actual_length - m25p_cmdsz(flash);
 
+		if (m.actual_length - m25p_cmdsz(flash) < page_size)
+		{
+		        mutex_unlock(&flash->lock);
+			return 0;
+		}
+
 		/* write everything in flash->page_size chunks */
 		for (i = page_size; i < len; i += page_size) {
 			page_size = len - i;
@@ -480,12 +486,63 @@ static int m25p80_write(struct mtd_info *mtd, loff_t to, size_t len,
 			spi_sync(flash->spi, &m);
 
 			*retlen += m.actual_length - m25p_cmdsz(flash);
+
+			if (m.actual_length - m25p_cmdsz(flash) < page_size)
+			        break;
 		}
 	}
 
 	mutex_unlock(&flash->lock);
 
 	return 0;
+}
+
+/*
+ * Read an address range from the flash chip.  The address range
+ * may be any size provided it is within the physical boundaries.
+ */
+static int m25p80_read(struct mtd_info *mtd, loff_t from, size_t len,
+	size_t *retlen, u_char *buf)
+{
+        int status = 0;
+	size_t len_left = len;
+	size_t rlen = 0;
+
+	*retlen = 0;
+	while (status == 0 && *retlen < len)
+	{
+	      rlen = 0;
+	      status = m25p80_try_read(mtd, from, len_left, &rlen, buf);
+	      *retlen += rlen;
+	      buf += rlen;
+	      len_left -= rlen;
+	      from += rlen;
+	}
+	return status;
+}
+
+/*
+ * Read an address range from the flash chip.  The address range
+ * may be any size provided it is within the physical boundaries.
+ */
+static int m25p80_write(struct mtd_info *mtd, loff_t to, size_t len,
+	size_t *retlen, const u_char *buf)
+{
+        int status = 0;
+	size_t len_left = len;
+	size_t rlen = 0;
+
+	*retlen = 0;
+	while (status == 0 && *retlen < len)
+	{
+	      rlen = 0;
+	      status = m25p80_try_write(mtd, to, len_left, &rlen, buf);
+	      *retlen += rlen;
+	      buf += rlen;
+	      len_left -= rlen;
+	      to += rlen;
+	}
+	return status;
 }
 
 static int sst_write(struct mtd_info *mtd, loff_t to, size_t len,
@@ -699,6 +756,9 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "sst25wf010",  INFO(0xbf2502, 0, 64 * 1024,  2, SECT_4K) },
 	{ "sst25wf020",  INFO(0xbf2503, 0, 64 * 1024,  4, SECT_4K) },
 	{ "sst25wf040",  INFO(0xbf2504, 0, 64 * 1024,  8, SECT_4K) },
+
+	/* Numonyx flashes */
+	{ "n25q128", INFO(0x20BB18,  0,  64 * 1024,  256, 0) },
 
 	/* ST Microelectronics -- newer production may have feature updates */
 	{ "m25p05",  INFO(0x202010,  0,  32 * 1024,   2, 0) },

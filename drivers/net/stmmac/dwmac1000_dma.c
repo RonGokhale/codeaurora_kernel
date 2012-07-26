@@ -29,9 +29,18 @@
 #include "dwmac1000.h"
 #include "dwmac_dma.h"
 
+#define SIZEOF_FIELD(type,field)	sizeof( ((type *)0)->field )
+
 static int dwmac1000_dma_init(void __iomem *ioaddr, int pbl, u32 dma_tx,
-			      u32 dma_rx)
+			      u32 dma_rx, const int atds)
 {
+	/* So many words should be skipped in not using 32-bytes
+	 * DMA descriptor (GMAC version <= 3.50a)
+	 */
+	const unsigned desc_skip_len = (SIZEOF_FIELD(struct dma_desc, des04) +
+				SIZEOF_FIELD(struct dma_desc, des5) +
+				SIZEOF_FIELD(struct dma_desc, des6) +
+				SIZEOF_FIELD(struct dma_desc, des7)) / sizeof(uint32_t);
 	u32 value = readl(ioaddr + DMA_BUS_MODE);
 	int limit;
 
@@ -53,6 +62,10 @@ static int dwmac1000_dma_init(void __iomem *ioaddr, int pbl, u32 dma_tx,
 #ifdef CONFIG_STMMAC_DA
 	value |= DMA_BUS_MODE_DA;	/* Rx has priority over tx */
 #endif
+
+	value |= (atds) ? 1 << DMA_BUS_MODE_ATDS_SHIFT :
+			  desc_skip_len << DMA_BUS_MODE_DSL_SHIFT;
+
 	writel(value, ioaddr + DMA_BUS_MODE);
 
 	/* Mask interrupts by writing to CSR7 */

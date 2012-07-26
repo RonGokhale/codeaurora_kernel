@@ -162,13 +162,13 @@ struct dw_spi {
 };
 
 #define dw_readl(dw, name) \
-	__raw_readl(&(((struct dw_spi_reg *)dw->regs)->name))
+	readl(&(((struct dw_spi_reg *)dw->regs)->name))
 #define dw_writel(dw, name, val) \
-	__raw_writel((val), &(((struct dw_spi_reg *)dw->regs)->name))
+	writel((val), &(((struct dw_spi_reg *)dw->regs)->name))
 #define dw_readw(dw, name) \
-	__raw_readw(&(((struct dw_spi_reg *)dw->regs)->name))
+	readw(&(((struct dw_spi_reg *)dw->regs)->name))
 #define dw_writew(dw, name, val) \
-	__raw_writew((val), &(((struct dw_spi_reg *)dw->regs)->name))
+	writew((val), &(((struct dw_spi_reg *)dw->regs)->name))
 
 static inline void spi_enable_chip(struct dw_spi *dws, int enable)
 {

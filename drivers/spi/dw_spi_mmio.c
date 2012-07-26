@@ -13,6 +13,7 @@
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/scatterlist.h>
 #include <linux/spi/dw_spi.h>
 #include <linux/spi/spi.h>
 

@@ -45,6 +45,11 @@
 #include <linux/if_vlan.h>
 #include <linux/dma-mapping.h>
 #include <linux/slab.h>
+
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+#endif
+
 #include "stmmac.h"
 
 #define STMMAC_RESOURCE_NAME	"stmmaceth"
@@ -140,6 +145,74 @@ static const u32 default_msg_level = (NETIF_MSG_DRV | NETIF_MSG_PROBE |
 
 static irqreturn_t stmmac_interrupt(int irq, void *dev_id);
 static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev);
+
+/** DEBUGFS section **/
+
+#ifdef CONFIG_DEBUG_FS
+static struct dentry *debugfs;
+
+static int stmmac_show_regs_open(struct inode *inode, struct file *file)
+{
+	file->private_data = inode->i_private;
+	return 0;
+}
+
+#define STMMAC_DEBUGFS_REGS_SIZE	1536
+static ssize_t  stmmac_show_regs(struct file *file, char __user *user_buf,
+				size_t count, loff_t *ppos)
+{
+	const unsigned long ioaddr = (unsigned long)file->private_data;
+	char *buf;
+	u32 len = 0;
+	ssize_t ret;
+	int i;
+
+	buf = kzalloc(STMMAC_DEBUGFS_REGS_SIZE, GFP_KERNEL);
+	if (!buf)
+		return 0;
+
+	for (i = 0; i < 32*sizeof(uint32_t); i+=sizeof(uint32_t))
+	{
+		len += snprintf(buf + len, STMMAC_DEBUGFS_REGS_SIZE - len,
+			"[%04x]: %08x\n", i, readl(ioaddr + i));
+	}
+
+	len += snprintf(buf + len, STMMAC_DEBUGFS_REGS_SIZE - len, "\n");
+
+	for (i = 0; i < 32*sizeof(uint32_t); i+=sizeof(uint32_t))
+	{
+		len += snprintf(buf + len, STMMAC_DEBUGFS_REGS_SIZE - len,
+			"[%04x]: %08x\n", i + 0x1000, readl(ioaddr + i + 0x1000));
+	}
+
+	ret =  simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	kfree(buf);
+	return ret;
+}
+
+static const struct file_operations stmmac_regs_ops = {
+	.owner		= THIS_MODULE,
+	.open		= stmmac_show_regs_open,
+	.read		= stmmac_show_regs,
+};
+
+static int stmmac_debugfs_init(unsigned int *addr)
+{
+	debugfs = debugfs_create_dir("stmmac", NULL);
+	if (!debugfs)
+		return -ENOMEM;
+
+	debugfs_create_file("registers", S_IFREG | S_IRUGO,
+		debugfs, (void *)addr, &stmmac_regs_ops);
+	return 0;
+}
+
+static void stmmac_debugfs_remove(void)
+{
+	if (debugfs)
+		debugfs_remove_recursive(debugfs);
+}
+#endif /* CONFIG_DEBUG_FS */
 
 /**
  * stmmac_verify_args - verify the driver parameters.
@@ -333,10 +406,12 @@ static int stmmac_init_phy(struct net_device *dev)
 	 * device as well.
 	 * Note: phydev->phy_id is the result of reading the UID PHY registers.
 	 */
+#ifndef CONFIG_ARCH_DAN2400
 	if (phydev->phy_id == 0) {
 		phy_disconnect(phydev);
 		return -ENODEV;
 	}
+#endif
 	pr_debug("stmmac_init_phy:  %s: attached to PHY (UID 0x%x)"
 	       " Link = %d\n", dev->name, phydev->phy_id, phydev->link);
 
@@ -370,7 +445,8 @@ static inline void stmmac_disable_mac(void __iomem *ioaddr)
 static void display_ring(struct dma_desc *p, int size)
 {
 	struct tmp_s {
-		u64 a;
+		uint32_t     w0;
+		uint32_t     w1;
 		unsigned int b;
 		unsigned int c;
 	};
@@ -379,8 +455,8 @@ static void display_ring(struct dma_desc *p, int size)
 		struct tmp_s *x = (struct tmp_s *)(p + i);
 		pr_info("\t%d [0x%x]: DES0=0x%x DES1=0x%x BUF1=0x%x BUF2=0x%x",
 		       i, (unsigned int)virt_to_phys(&p[i]),
-		       (unsigned int)(x->a), (unsigned int)((x->a) >> 32),
-		       x->b, x->c);
+		       le32_to_cpu(x->w0), le32_to_cpu(x->w1),
+		       le32_to_cpu(x->b), le32_to_cpu(x->c));
 		pr_info("\n");
 	}
 }
@@ -471,9 +547,9 @@ static void init_dma_desc_rings(struct net_device *dev)
 		priv->rx_skbuff_dma[i] = dma_map_single(priv->device, skb->data,
 						bfsize, DMA_FROM_DEVICE);
 
-		p->des2 = priv->rx_skbuff_dma[i];
+		p->des2 = cpu_to_le32(priv->rx_skbuff_dma[i]);
 		if (unlikely(buff2_needed))
-			p->des3 = p->des2 + BUF_SIZE_8KiB;
+			p->des3 = cpu_to_le32(le32_to_cpu(p->des2) + BUF_SIZE_8KiB);
 		DBG(probe, INFO, "[%p]\t[%p]\t[%x]\n", priv->rx_skbuff[i],
 			priv->rx_skbuff[i]->data, priv->rx_skbuff_dma[i]);
 	}
@@ -523,8 +599,8 @@ static void dma_free_tx_skbufs(struct stmmac_priv *priv)
 	for (i = 0; i < priv->dma_tx_size; i++) {
 		if (priv->tx_skbuff[i] != NULL) {
 			struct dma_desc *p = priv->dma_tx + i;
-			if (p->des2)
-				dma_unmap_single(priv->device, p->des2,
+			if (le32_to_cpu(p->des2))
+				dma_unmap_single(priv->device, le32_to_cpu(p->des2),
 						 priv->hw->desc->get_tx_len(p),
 						 DMA_TO_DEVICE);
 			dev_kfree_skb_any(priv->tx_skbuff[i]);
@@ -609,12 +685,12 @@ static void stmmac_tx(struct stmmac_priv *priv)
 		TX_DBG("%s: curr %d, dirty %d\n", __func__,
 			priv->cur_tx, priv->dirty_tx);
 
-		if (likely(p->des2))
-			dma_unmap_single(priv->device, p->des2,
+		if (likely(le32_to_cpu(p->des2)))
+			dma_unmap_single(priv->device, le32_to_cpu(p->des2),
 					 priv->hw->desc->get_tx_len(p),
 					 DMA_TO_DEVICE);
-		if (unlikely(p->des3))
-			p->des3 = 0;
+		if (unlikely(le32_to_cpu(p->des3)))
+			p->des3 = cpu_to_le32(0);
 
 		if (likely(skb != NULL)) {
 			/*
@@ -824,7 +900,8 @@ static int stmmac_open(struct net_device *dev)
 	/* DMA initialization and SW reset */
 	if (unlikely(priv->hw->dma->init(priv->ioaddr, priv->plat->pbl,
 					 priv->dma_tx_phy,
-					 priv->dma_rx_phy) < 0)) {
+					 priv->dma_rx_phy,
+					 priv->hw->atds) < 0)) {
 
 		pr_err("%s: DMA initialization failed\n", __func__);
 		return -1;
@@ -981,27 +1058,27 @@ static unsigned int stmmac_handle_jumbo_frames(struct sk_buff *skb,
 
 		int buf2_size = nopaged_len - BUF_SIZE_8KiB;
 
-		desc->des2 = dma_map_single(priv->device, skb->data,
-					    BUF_SIZE_8KiB, DMA_TO_DEVICE);
-		desc->des3 = desc->des2 + BUF_SIZE_4KiB;
+		desc->des2 = cpu_to_le32(dma_map_single(priv->device, skb->data,
+					    BUF_SIZE_8KiB, DMA_TO_DEVICE));
+		desc->des3 = cpu_to_le32(le32_to_cpu(desc->des2) + BUF_SIZE_4KiB);
 		priv->hw->desc->prepare_tx_desc(desc, 1, BUF_SIZE_8KiB,
 						csum_insertion);
 
 		entry = (++priv->cur_tx) % txsize;
 		desc = priv->dma_tx + entry;
 
-		desc->des2 = dma_map_single(priv->device,
+		desc->des2 = cpu_to_le32(dma_map_single(priv->device,
 					skb->data + BUF_SIZE_8KiB,
-					buf2_size, DMA_TO_DEVICE);
-		desc->des3 = desc->des2 + BUF_SIZE_4KiB;
+					buf2_size, DMA_TO_DEVICE));
+		desc->des3 = cpu_to_le32(le32_to_cpu(desc->des2) + BUF_SIZE_4KiB);
 		priv->hw->desc->prepare_tx_desc(desc, 0, buf2_size,
 						csum_insertion);
 		priv->hw->desc->set_tx_owner(desc);
 		priv->tx_skbuff[entry] = NULL;
 	} else {
-		desc->des2 = dma_map_single(priv->device, skb->data,
-					nopaged_len, DMA_TO_DEVICE);
-		desc->des3 = desc->des2 + BUF_SIZE_4KiB;
+		desc->des2 = cpu_to_le32(dma_map_single(priv->device, skb->data,
+					nopaged_len, DMA_TO_DEVICE));
+		desc->des3 = cpu_to_le32(le32_to_cpu(desc->des2) + BUF_SIZE_4KiB);
 		priv->hw->desc->prepare_tx_desc(desc, 1, nopaged_len,
 						csum_insertion);
 	}
@@ -1070,8 +1147,8 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 		desc = priv->dma_tx + entry;
 	} else {
 		unsigned int nopaged_len = skb_headlen(skb);
-		desc->des2 = dma_map_single(priv->device, skb->data,
-					nopaged_len, DMA_TO_DEVICE);
+		desc->des2 = cpu_to_le32(dma_map_single(priv->device, skb->data,
+					nopaged_len, DMA_TO_DEVICE));
 		priv->hw->desc->prepare_tx_desc(desc, 1, nopaged_len,
 						csum_insertion);
 	}
@@ -1084,9 +1161,9 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 		desc = priv->dma_tx + entry;
 
 		TX_DBG("\t[entry %d] segment len: %d\n", entry, len);
-		desc->des2 = dma_map_page(priv->device, frag->page,
+		desc->des2 = cpu_to_le32(dma_map_page(priv->device, frag->page,
 					  frag->page_offset,
-					  len, DMA_TO_DEVICE);
+					  len, DMA_TO_DEVICE));
 		priv->tx_skbuff[entry] = NULL;
 		priv->hw->desc->prepare_tx_desc(desc, 0, len, csum_insertion);
 		priv->hw->desc->set_tx_owner(desc);
@@ -1152,11 +1229,11 @@ static inline void stmmac_rx_refill(struct stmmac_priv *priv)
 			    dma_map_single(priv->device, skb->data, bfsize,
 					   DMA_FROM_DEVICE);
 
-			(p + entry)->des2 = priv->rx_skbuff_dma[entry];
+			(p + entry)->des2 = cpu_to_le32(priv->rx_skbuff_dma[entry]);
 			if (unlikely(priv->plat->has_gmac)) {
 				if (bfsize >= BUF_SIZE_8KiB)
 					(p + entry)->des3 =
-					    (p + entry)->des2 + BUF_SIZE_8KiB;
+					    cpu_to_le32(le32_to_cpu((p + entry)->des2) + BUF_SIZE_8KiB);
 			}
 			RX_DBG(KERN_INFO "\trefill entry #%d\n", entry);
 		}
@@ -1194,7 +1271,8 @@ static int stmmac_rx(struct stmmac_priv *priv, int limit)
 
 		/* read the status of the incoming frame */
 		status = (priv->hw->desc->rx_status(&priv->dev->stats,
-						    &priv->xstats, p));
+						    &priv->xstats, p,
+						    priv->hw->atds));
 		if (unlikely(status == discard_frame))
 			priv->dev->stats.rx_errors++;
 		else {
@@ -1213,7 +1291,7 @@ static int stmmac_rx(struct stmmac_priv *priv, int limit)
 
 			if (netif_msg_hw(priv))
 				pr_debug("\tdesc: %p [entry %d] buff=0x%x\n",
-					p, entry, p->des2);
+					p, entry, le32_to_cpu(p->des2));
 #endif
 			skb = priv->rx_skbuff[entry];
 			if (unlikely(!skb)) {
@@ -1494,8 +1572,9 @@ static int stmmac_probe(struct net_device *dev)
 	dev->netdev_ops = &stmmac_netdev_ops;
 	stmmac_set_ethtool_ops(dev);
 
-	dev->features |= NETIF_F_SG | NETIF_F_HIGHDMA |
-		NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
+	dev->features |= NETIF_F_SG | NETIF_F_HIGHDMA;
+	if (priv->plat->tx_coe)
+		dev->features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
 	dev->watchdog_timeo = msecs_to_jiffies(watchdog);
 #ifdef STMMAC_VLAN_TAG_USED
 	/* Both mac100 and gmac support receive VLAN tag detection */
@@ -1757,6 +1836,10 @@ out_unmap:
 out_release_region:
 	release_mem_region(res->start, resource_size(res));
 
+#ifdef CONFIG_DEBUG_FS
+	stmmac_debugfs_init(addr);
+#endif
+
 	return ret;
 }
 
@@ -1774,6 +1857,10 @@ static int stmmac_dvr_remove(struct platform_device *pdev)
 	struct resource *res;
 
 	pr_info("%s:\n\tremoving driver", __func__);
+
+#ifdef CONFIG_DEBUG_FS
+	stmmac_debugfs_remove();
+#endif
 
 	priv->hw->dma->stop_rx(priv->ioaddr);
 	priv->hw->dma->stop_tx(priv->ioaddr);

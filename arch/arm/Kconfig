@@ -875,6 +875,14 @@ config PLAT_SPEAR
 	help
 	  Support for ST's SPEAr platform (SPEAr3xx, SPEAr6xx and SPEAr13xx).
 
+config ARCH_DAN
+	bool "DAN platforms family"
+	select HAVE_CLK
+	select CPU_ARM926T
+	select GENERIC_CLOCKEVENTS
+	help
+	  Support for DAN platforms.
+
 endchoice
 
 #
@@ -891,6 +899,8 @@ source "arch/arm/mach-bcmring/Kconfig"
 source "arch/arm/mach-clps711x/Kconfig"
 
 source "arch/arm/mach-cns3xxx/Kconfig"
+
+source "arch/arm/mach-dan/Kconfig"
 
 source "arch/arm/mach-davinci/Kconfig"
 

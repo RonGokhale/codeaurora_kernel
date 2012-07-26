@@ -82,9 +82,11 @@ config INTEL_IOP_ADMA
 
 config DW_DMAC
 	tristate "Synopsys DesignWare AHB DMA support"
-	depends on AVR32
+	depends on AVR32 || ARCH_DAN2400 || ARCH_DAN3x00
 	select DMA_ENGINE
 	default y if CPU_AT32AP7000
+	default y if ARCH_DAN2400
+	default y if ARCH_DAN3x00
 	help
 	  Support the Synopsys DesignWare AHB DMA controller.  This
 	  can be integrated in chips such as the Atmel AT32ap7000.

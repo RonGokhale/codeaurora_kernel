@@ -149,7 +149,7 @@ static int enh_desc_coe_rdes0(int ipc_err, int type, int payload_err)
 }
 
 static int enh_desc_get_rx_status(void *data, struct stmmac_extra_stats *x,
-				  struct dma_desc *p)
+				  struct dma_desc *p, const int atds)
 {
 	int ret = good_frame;
 	struct net_device_stats *stats = (struct net_device_stats *)data;
@@ -191,12 +191,28 @@ static int enh_desc_get_rx_status(void *data, struct stmmac_extra_stats *x,
 		ret = discard_frame;
 	}
 
-	/* After a payload csum error, the ES bit is set.
-	 * It doesn't match with the information reported into the databook.
-	 * At any rate, we need to understand if the CSUM hw computation is ok
-	 * and report this info to the upper layers. */
-	ret = enh_desc_coe_rdes0(p->des01.erx.ipc_csum_error,
-		p->des01.erx.frame_type, p->des01.erx.payload_csum_error);
+	if (!atds)
+		/* After a payload csum error, the ES bit is set.
+		 * It doesn't match with the information reported into the databook.
+		 * At any rate, we need to understand if the CSUM hw computation is ok
+		 * and report this info to the upper layers. */
+		ret = enh_desc_coe_rdes0(p->des01.erx.ipc_csum_error,
+			p->des01.erx.frame_type,
+			p->des01.erx.payload_csum_error);
+	else {
+		/* See comment to payload_csum_error in desc.h */
+		if (unlikely(p->des01.erx.payload_csum_error) &&
+				p->des01.erx.last_descriptor) {
+			if (unlikely(p->des04.ext_stat.ip_header_error)) {
+				CHIP_DBG(KERN_ERR "GMAC RX: IP Header Error\n");
+				ret = discard_frame;
+			}
+			if (unlikely(p->des04.ext_stat.ip_payload_error)) {
+				CHIP_DBG(KERN_ERR "GMAC RX: IP Payload Error\n");
+				ret = discard_frame;
+			}
+		}
+	}
 
 	if (unlikely(p->des01.erx.dribbling)) {
 		CHIP_DBG(KERN_ERR "GMAC RX: dribbling error\n");

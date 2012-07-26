@@ -98,8 +98,12 @@ enum inter_frame_gap {
 #define GMAC_CONTROL_TE		0x00000008 /* Transmitter Enable */
 #define GMAC_CONTROL_RE		0x00000004 /* Receiver Enable */
 
-#define GMAC_CORE_INIT (GMAC_CONTROL_JD | GMAC_CONTROL_PS | GMAC_CONTROL_ACS | \
-			GMAC_CONTROL_JE | GMAC_CONTROL_BE)
+#if 0
+#define GMAC_CORE_INIT (GMAC_CONTROL_JD | GMAC_CONTROL_ACS | \
+			GMAC_CONTROL_JE | GMAC_CONTROL_BE /*| GMAC_CONTROL_LUD*/ )
+#else
+#define GMAC_CORE_INIT (GMAC_CONTROL_TC | GMAC_CONTROL_LUD | GMAC_CONTROL_DM)
+#endif
 
 /* GMAC Frame Filter defines */
 #define GMAC_FRAME_FILTER_PR	0x00000001	/* Promiscuous Mode */
@@ -128,6 +132,7 @@ enum inter_frame_gap {
 #define DMA_BUS_MODE_DA		0x00000002	/* Arbitration scheme */
 #define DMA_BUS_MODE_DSL_MASK	0x0000007c	/* Descriptor Skip Length */
 #define DMA_BUS_MODE_DSL_SHIFT	2	/*   (in DWORDS)      */
+#define DMA_BUS_MODE_ATDS_SHIFT	7		/* Alternate Descriptor Size */
 /* Programmable burst length (passed thorugh platform)*/
 #define DMA_BUS_MODE_PBL_MASK	0x00003f00	/* Programmable Burst Len */
 #define DMA_BUS_MODE_PBL_SHIFT	8

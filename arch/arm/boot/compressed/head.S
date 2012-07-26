@@ -469,7 +469,11 @@ __armv4_mmu_cache_on:
 		mcr	p15, 0, r0, c7, c10, 4	@ drain write buffer
 		mcr	p15, 0, r0, c8, c7, 0	@ flush I,D TLBs
 		mrc	p15, 0, r0, c1, c0, 0	@ read control reg
+#ifdef CONFIG_CPU_ICACHE_DISABLE
+		bic	r0, r0, #0x1000		@ I-cache disable
+#else
 		orr	r0, r0, #0x5000		@ I-cache enable, RR cache replacement
+#endif
 		orr	r0, r0, #0x0030
 #ifdef CONFIG_CPU_ENDIAN_BE8
 		orr	r0, r0, #1 << 25	@ big-endian page tables
@@ -539,6 +543,9 @@ __common_mmu_cache_on:
 #ifndef CONFIG_THUMB2_KERNEL
 #ifndef DEBUG
 		orr	r0, r0, #0x000d		@ Write buffer, mmu
+#ifdef CONFIG_CPU_DCACHE_DISABLE
+		bic	r0, r0, #0x0004		@ Disable D-cache
+#endif
 #endif
 		mov	r1, #-1
 		mcr	p15, 0, r3, c2, c0, 0	@ load page table pointer

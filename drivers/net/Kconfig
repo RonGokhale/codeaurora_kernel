@@ -2934,6 +2934,13 @@ source "drivers/net/benet/Kconfig"
 
 endif # NETDEV_10000
 
+
+config DANIPC
+	tristate "DAN IPC network device"
+	depends on PACKET
+	help
+		DAN IPC network device
+
 source "drivers/net/tokenring/Kconfig"
 
 source "drivers/net/wireless/Kconfig"

@@ -175,12 +175,13 @@ struct stmmac_desc_ops {
 	int (*get_rx_frame_len) (struct dma_desc *p);
 	/* Return the reception status looking at the RDES1 */
 	int (*rx_status) (void *data, struct stmmac_extra_stats *x,
-			  struct dma_desc *p);
+			  struct dma_desc *p, const int atds);
 };
 
 struct stmmac_dma_ops {
 	/* DMA core initialization */
-	int (*init) (void __iomem *ioaddr, int pbl, u32 dma_tx, u32 dma_rx);
+	int (*init) (void __iomem *ioaddr, int pbl, u32 dma_tx, u32 dma_rx,
+		     const int atds);
 	/* Dump DMA registers */
 	void (*dump_regs) (void __iomem *ioaddr);
 	/* Set tx/rx threshold in the csr6 register
@@ -240,6 +241,7 @@ struct mac_device_info {
 	const struct stmmac_dma_ops	*dma;
 	struct mii_regs mii;	/* MII register Addresses */
 	struct mac_link link;
+	int atds;		/* Alternate Descriptor Size */
 };
 
 struct mac_device_info *dwmac1000_setup(void __iomem *ioaddr);

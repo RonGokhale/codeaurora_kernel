@@ -414,6 +414,185 @@ static irqreturn_t dw_spi_irq(int irq, void *dev_id)
 	return dws->transfer_handler(dws);
 }
 
+
+static noinline u32 SPI_process 
+	(
+	        struct dw_spi *dws,
+		unsigned    len_in, 
+		unsigned    len_out1,
+		unsigned    len_out2, 
+		u8	    *inbuf, 
+		const u8    *outbuf1,
+		const u8    *outbuf2,
+		unsigned    in_skip_start, 
+		unsigned    in_skip_end
+	)
+{
+        unsigned i, data_read = 0;
+        u8       dummy = 0xff;
+        int      len_diff;
+	u32      retry_cnt = 0;
+
+	// Wait till not busy
+	while (dw_readl(dws, sr) & SR_BUSY);
+
+	len_diff = (int)len_in - (int)(len_out1 + len_out2);
+	// cache pre-fetch
+	if (outbuf1)
+	  *(volatile u8 *)outbuf1;
+	if (outbuf2)
+	  *(volatile u8 *)outbuf2;
+
+	if (len_diff > 0)
+	{
+	        // Write data from the outbuf1
+	        for (i = 0; i < len_out1; i++) 
+	        {
+		      dw_writel(dws, dr, *outbuf1++);
+		}
+		// Write dummy data to the FIFO
+		for (i = 0; i < (unsigned)len_diff; i++) 
+		{
+		      dw_writel(dws, dr, dummy);
+		}
+	}
+	else
+	{
+	        // Write data from the outbuf1
+	        for (i = 0; i < len_out1; i++) 
+	        {
+		      dw_writel(dws, dr, *outbuf1++);
+		}
+
+		// Write data from the outbuf2
+		for (i = 0; i < len_out2; i++) 
+		{
+		      dw_writel(dws, dr, *outbuf2++);
+		}
+	}
+
+
+	// Poll status (level) of the input FIFO till it has all data
+	do
+	{
+		u32 ready_data;
+		ready_data = dw_readl(dws, rxflr);
+		if (ready_data && (data_read < in_skip_start))
+		{
+			unsigned limit = min(data_read + ready_data, in_skip_start);
+			ready_data -= limit - data_read;
+			// Skip start bytes if needed (dummy bytes)
+			for (; (data_read < limit); data_read++)
+			{
+				dummy = dw_readl(dws, dr);
+			}
+			retry_cnt = 0;
+		}
+		if (ready_data && (data_read < (len_in - in_skip_end)))
+		{
+			unsigned limit = min(data_read + ready_data, (len_in - in_skip_end));
+			ready_data -= limit - data_read;
+			// Read input data
+			for (; data_read < limit; data_read++)
+			{
+				u8  data;
+				data = dw_readl(dws, dr);
+				*inbuf++ = data;
+			}
+			retry_cnt = 0;
+		}
+		if (ready_data && (data_read < len_in))
+		{
+			unsigned limit = min(data_read + ready_data, len_in);
+			ready_data -= limit - data_read;
+			// Skip end bytes if needed (dummy bytes)
+			for (; data_read < limit; data_read++)
+			{
+				dummy = dw_readl(dws, dr);
+			}
+			retry_cnt = 0;
+		}
+		retry_cnt++;
+		if (retry_cnt > 1000) 
+		{
+		     break;
+		}
+	}
+	while (data_read < len_in);
+	return (data_read);
+}
+
+
+/* Must be called inside pump_transfers() */
+static void poll_transfer_concatenated(struct dw_spi *dws)
+{
+        const u8 *tx_buf1 = NULL, *tx_buf2 = NULL;
+	u8 *rx_buf = NULL;
+	u32 tx_cnt1 = 0, tx_cnt2 = 0, rx_cnt = 0, rx_skip = 0, acc_len = 0;
+	u32 data_read;
+	struct spi_transfer *transfer = dws->cur_transfer;
+	unsigned long flags;
+	
+	if (transfer->tx_buf)
+	{
+	      tx_buf1 = transfer->tx_buf;
+	      tx_cnt1 = min(transfer->len, dws->fifo_len);
+	      dws->tx += tx_cnt1;
+	}
+	if (transfer->rx_buf)
+	{
+	      rx_buf = transfer->rx_buf;
+	      rx_cnt = min(transfer->len, dws->fifo_len);
+	      dws->rx += rx_cnt;
+	}
+	else
+	{
+	      rx_skip = tx_cnt1;
+	}
+	acc_len += transfer->len;
+
+	dws->cur_msg->state = next_transfer(dws);
+	transfer = dws->cur_transfer;
+
+	if (dws->cur_msg->state != DONE_STATE)
+	{
+	      if (transfer->tx_buf)
+	      {
+		    tx_buf2 = transfer->tx_buf;
+	            tx_cnt2 = min(transfer->len, dws->fifo_len - tx_cnt1);
+		    dws->tx += tx_cnt2;
+	      }
+	      if (transfer->rx_buf && !rx_buf)
+	      {
+		    rx_buf = transfer->rx_buf;
+		    rx_cnt = min(transfer->len, dws->fifo_len - rx_skip);
+		    dws->rx += rx_cnt;
+	      }
+	      else
+	      {
+		    rx_skip += tx_cnt2;
+	      }
+	      acc_len += transfer->len;
+	}
+
+	dws->cur_msg->state = next_transfer(dws);
+	if (dws->cur_msg->state != DONE_STATE)
+	{
+	      printk(KERN_ERR "Unsupported more then 2 transfers\n");
+	}
+
+	spin_lock_irqsave(&dws->lock, flags);
+        data_read = SPI_process(dws, rx_cnt + rx_skip, tx_cnt1, tx_cnt2, 
+		    rx_buf, tx_buf1, tx_buf2, rx_skip, 0);
+	spin_unlock_irqrestore(&dws->lock, flags);
+
+	/* put the actual length of successfully read bytes */
+	dws->cur_msg->actual_length = data_read;
+
+	dws->cur_msg->status = 0;
+	giveback(dws);
+}
+
 /* Must be called inside pump_transfers() */
 static void poll_transfer(struct dw_spi *dws)
 {
@@ -610,7 +789,18 @@ static void pump_transfers(unsigned long data)
 		dws->dma_ops->dma_transfer(dws, cs_change);
 
 	if (chip->poll_mode)
-		poll_transfer(dws);
+	{
+	        if (dws->cs_control)
+		        poll_transfer(dws);
+		else
+		        /* In case when no user chip select callback is 
+			   provided, all transfers of the same message
+			   should be serviced concatenated.
+			   This is because DW SPI cancel transaction 
+			   when its FIFO became empty, this makes the driver
+			   unusable for SPI flash devices */
+		        poll_transfer_concatenated(dws);
+	}
 
 	return;
 
