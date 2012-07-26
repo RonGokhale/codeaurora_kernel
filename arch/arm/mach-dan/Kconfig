@@ -1,0 +1,37 @@
+if ARCH_DAN
+
+config ARCH_SUPPORTS_BIG_ENDIAN
+	bool
+	default n
+
+config ARCH_DAN2400
+	bool
+	default n
+
+config ARCH_DAN3x00
+	bool
+	default n
+
+choice
+	prompt "Platform"
+	help
+		DAN platform configuration
+#menu "DAN platform configuration"
+
+config MACH_DAN2400_EVB
+	bool "DAN2400 EVB support"
+	select ARCH_DAN2400
+	select ARCH_SUPPORTS_BIG_ENDIAN
+	help
+	  Include support for DAN2400 EVB.
+
+config MACH_DAN3400_EVB
+	bool "DAN3400 EVB support"
+	select ARCH_DAN3x00
+	help
+	  Include support for DAN3400 EVB.
+
+endchoice
+#endmenu
+
+endif # ARCH_DAN

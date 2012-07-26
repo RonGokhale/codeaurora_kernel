@@ -1,0 +1,64 @@
+/*
+	All files except if stated otherwise in the begining of the file are under the ISC license:
+	-----------------------------------------------------------------------------------
+
+	Copyright (c) 2010-2012 Design Art Networks Ltd.
+
+	Permission to use, copy, modify, and/or distribute this software for any
+	purpose with or without fee is hereby granted, provided that the above
+	copyright notice and this permission notice appear in all copies.
+
+	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+	WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+	MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+	ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+	WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+	ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+	OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+*/
+
+
+/*
+ *  linux/arch/arm/mach-dan/clock.c
+ */
+#include <linux/types.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/clk.h>
+
+#include <mach/timex.h>
+
+
+/* Dummy struct and dummy variable clk */
+struct clk {
+        unsigned int            enabled;
+};
+static struct clk dummy_clk;
+
+void clk_disable(struct clk *clk)
+{
+}
+EXPORT_SYMBOL(clk_disable);
+
+int clk_enable(struct clk *clk)
+{
+	return 0;
+}
+EXPORT_SYMBOL(clk_enable);
+
+struct clk *clk_get(struct device *dev, const char *id)
+{
+	return &dummy_clk;
+}
+EXPORT_SYMBOL(clk_get);
+
+void clk_put(struct clk *clk)
+{
+}
+EXPORT_SYMBOL(clk_put);
+
+unsigned long clk_get_rate(struct clk *clk)
+{
+	return BUS_CLOCK;
+}
+EXPORT_SYMBOL(clk_get_rate);
