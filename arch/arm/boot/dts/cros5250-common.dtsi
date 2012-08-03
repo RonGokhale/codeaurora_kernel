@@ -472,4 +472,8 @@
 			gpio-key,wakeup;
 		};
 	};
+
+	sound {
+		compatible = "google,daisy-audio-max98095";
+	};
 };
