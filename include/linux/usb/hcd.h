@@ -359,9 +359,8 @@ struct hc_driver {
 	int	(*disable_usb3_lpm_timeout)(struct usb_hcd *,
 			struct usb_device *, enum usb3_link_state state);
 
-	/* to log completion events*/
-	void	(*log_urb_complete)(struct urb *urb, char * event,
-			unsigned extra);
+	/* to log submission/completion events*/
+	void	(*log_urb)(struct urb *urb, char *event, unsigned extra);
 	void	(*dump_regs)(struct usb_hcd *);
 	void	(*enable_ulpi_control)(struct usb_hcd *hcd, u32 linestate);
 	void	(*disable_ulpi_control)(struct usb_hcd *hcd);
