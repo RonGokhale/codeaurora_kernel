@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -504,7 +504,7 @@ static void msm_bus_noc_update_bw(struct msm_bus_inode_info *hop,
 	struct msm_bus_inode_info *info,
 	struct msm_bus_fabric_registration *fab_pdata,
 	void *sel_cdata, int *master_tiers,
-	long int add_bw)
+	int64_t add_bw)
 {
 	struct msm_bus_noc_info *ninfo;
 	struct msm_bus_noc_qos_bw qos_bw;
@@ -527,7 +527,7 @@ static void msm_bus_noc_update_bw(struct msm_bus_inode_info *hop,
 	ports = info->node_info->num_mports;
 	bw = INTERLEAVED_BW(fab_pdata, add_bw, ports);
 
-	MSM_BUS_DBG("NOC: Update bw for: %d: %ld\n",
+	MSM_BUS_DBG("NOC: Update bw for: %d: %lld\n",
 		info->node_info->priv_id, add_bw);
 	for (i = 0; i < ports; i++) {
 		sel_cd->mas[info->node_info->masterp[i]].bw += bw;

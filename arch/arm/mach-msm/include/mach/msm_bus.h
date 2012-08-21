@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2011, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -44,8 +44,8 @@
 struct msm_bus_vectors {
 	int src; /* Master */
 	int dst; /* Slave */
-	unsigned int ab; /* Arbitrated bandwidth */
-	unsigned int ib; /* Instantaneous bandwidth */
+	uint64_t ab; /* Arbitrated bandwidth */
+	uint64_t ib; /* Instantaneous bandwidth */
 };
 
 struct msm_bus_paths {
