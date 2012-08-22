@@ -232,7 +232,7 @@ static int pm8058_mpps_init(void)
 	}
 
 	rc = pm8058_mpp_config_bi_dir(PMIC_MPP_UIM_M_DATA,
-			PM8058_MPP_DIG_LEVEL_L3, PM_MPP_BI_PULLUP_30KOHM);
+			PM8058_MPP_DIG_LEVEL_S3, PM_MPP_BI_PULLUP_1KOHM);
 	if (rc) {
 		pr_err("%s: Config UIM_M_DATA on pmic 8058 failed\n", __func__);
 		return rc;
@@ -309,7 +309,7 @@ static struct regulator_consumer_supply pm8058_vreg_supply[PM8058_VREG_MAX] = {
 			REGULATOR_CHANGE_STATUS, 0, 0, 1)
 
 static struct pm8058_vreg_pdata pm8058_vreg_init[PM8058_VREG_MAX] = {
-	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L3, 1800000, 1800000),
+	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L3, 3000000, 3000000),
 	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L8, 2200000, 2200000),
 	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L9, 2050000, 2050000),
 	PM8058_VREG_INIT_LDO(PM8058_VREG_ID_L14, 2850000, 2850000),
@@ -692,11 +692,11 @@ static void fsm9xxx_init_uart1(void)
 
 static struct msm_gpio uart3_uim_config_data[] = {
 	{ GPIO_CFG(GPIO_UIM_RESET, 0, GPIO_CFG_OUTPUT,
-		GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "UIM_Reset" },
+		GPIO_CFG_PULL_UP, GPIO_CFG_2MA), "UIM_Reset" },
 	{ GPIO_CFG(GPIO_UIM_DATA_IO, 2, GPIO_CFG_OUTPUT,
-		GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "UIM_Data" },
+		GPIO_CFG_PULL_UP, GPIO_CFG_2MA), "UIM_Data" },
 	{ GPIO_CFG(GPIO_UIM_CLOCK, 2, GPIO_CFG_OUTPUT,
-		GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "UIM_Clock" },
+		GPIO_CFG_PULL_UP, GPIO_CFG_2MA), "UIM_Clock" },
 };
 
 static void fsm9xxx_init_uart3_uim(void)
