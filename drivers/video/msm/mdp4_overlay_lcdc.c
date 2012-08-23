@@ -66,6 +66,10 @@ static struct vsycn_ctrl {
 	int vsync_irq_enabled;
 	ktime_t vsync_time;
 	wait_queue_head_t wait_queue;
+        uint32 *avtimer;
+        int vg1fd;
+        int vg2fd;
+        unsigned long long avtimer_tick;
 } vsync_ctrl_db[MAX_CONTROLLER];
 
 
@@ -414,11 +418,15 @@ ssize_t mdp4_lcdc_show_event(struct device *dev,
 	int cndx;
 	struct vsycn_ctrl *vctrl;
 	ssize_t ret = 0;
-	u64 vsync_tick;
+        char ch = '\0';
+        int vg1fd = -1, vg2fd = -1;
+        unsigned long long avtimer_tick = 0;
+	u64 vsync_tick = 0;
 	ktime_t timestamp;
 
 	cndx = 0;
 	vctrl = &vsync_ctrl_db[0];
+        memset(buf, 0, 64);
 	timestamp = vctrl->vsync_time;
 
 	ret = wait_event_interruptible(vctrl->wait_queue,
@@ -426,10 +434,20 @@ ssize_t mdp4_lcdc_show_event(struct device *dev,
 			vctrl->vsync_irq_enabled);
 	if (ret == -ERESTARTSYS)
 		return ret;
+        vg1fd = vctrl->vg1fd;
+        vg2fd = vctrl->vg2fd;
+        avtimer_tick = vctrl->avtimer_tick;
 
 	vsync_tick = ktime_to_ns(vctrl->vsync_time);
-	ret = scnprintf(buf, PAGE_SIZE, "VSYNC=%llu", vsync_tick);
-	buf[strlen(buf) + 1] = '\0';
+	ret = scnprintf(buf, PAGE_SIZE,
+                        "VSYNC=%llu%c"
+                        "AVSYNCTP=%llu%c"
+                        "VG1MEMID=%d%c"
+                        "VG2MEMID=%d",
+                        vsync_tick,
+                        ch, avtimer_tick,
+                        ch, vg1fd,
+                        ch, vg2fd);
 	return ret;
 }
 
@@ -713,6 +731,13 @@ int mdp4_lcdc_on(struct platform_device *pdev)
 
 	mdp_histogram_ctrl_all(TRUE);
 	mdp4_overlay_lcdc_start();
+        if (mfd->panel_info.type == LVDS_PANEL) {
+            if (mfd->avtimer_phy && (vctrl->avtimer == NULL)) {
+                vctrl->avtimer = (uint32 *)ioremap(mfd->avtimer_phy, 8);
+                if (vctrl->avtimer == NULL)
+                    pr_err(" avtimer ioremap fail\n");
+            }
+        }
 	mutex_unlock(&mfd->dma->ov_mutex);
 
 	return ret;
@@ -796,7 +821,6 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 				vctrl->base_pipe->pipe_ndx, 1);
 		}
 	}
-
 	mdp4_lcdc_tg_off(vctrl);
 
 	atomic_set(&vctrl->suspend, 1);
@@ -809,6 +833,10 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 	mdp4_overlay_iommu_unmap_freelist(mixer);
 	mdp4_overlay_iommu_unmap_freelist(mixer);
 
+        if ((mfd->panel_info.type == LVDS_PANEL) && (vctrl->avtimer != NULL)) {
+            iounmap(vctrl->avtimer);
+            vctrl->avtimer = NULL;
+        }
 	/* MDP clock disable */
 	mdp_clk_ctrl(0);
 	mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
@@ -865,6 +893,26 @@ static void mdp4_lcdc_blt_dmap_update(struct mdp4_overlay_pipe *pipe)
 	MDP_OUTP(MDP_BASE + 0x90008, addr);
 }
 
+int mdp4_overlay_lcdc_unset(struct msm_fb_data_type *mfd,
+                            struct mdp4_overlay_pipe *pipe)
+{
+    int result = 0;
+    int cndx = 0;
+    struct vsycn_ctrl *vctrl;
+
+    vctrl = &vsync_ctrl_db[cndx];
+    if (vctrl->base_pipe == NULL)
+        return 0;
+
+    vctrl = &vsync_ctrl_db[cndx];
+    if (pipe->pipe_num == OVERLAY_PIPE_VG1)
+        vctrl->vg1fd = -1;
+    else if (pipe->pipe_num == OVERLAY_PIPE_VG2)
+        vctrl->vg2fd = -1;
+
+    return result;
+}
+
 /*
  * mdp4_primary_vsync_lcdc: called from isr
  */
@@ -872,6 +920,7 @@ void mdp4_primary_vsync_lcdc(void)
 {
 	int cndx;
 	struct vsycn_ctrl *vctrl;
+        uint32 *tp, LSW;
 
 	cndx = 0;
 	vctrl = &vsync_ctrl_db[cndx];
@@ -879,6 +928,13 @@ void mdp4_primary_vsync_lcdc(void)
 
 	spin_lock(&vctrl->spin_lock);
 	vctrl->vsync_time = ktime_get();
+        if (vctrl->avtimer && ((vctrl->vg1fd > 0) || (vctrl->vg2fd > 0))) {
+            tp = vctrl->avtimer;
+            LSW = inpdw(tp);
+            tp++;
+            vctrl->avtimer_tick = (unsigned long long) inpdw(tp);
+            vctrl->avtimer_tick = ((vctrl->avtimer_tick << 32) | LSW);
+        }
 	wake_up_interruptible_all(&vctrl->wait_queue);
 	spin_unlock(&vctrl->spin_lock);
 }
@@ -1060,3 +1116,18 @@ void mdp4_lcdc_overlay(struct msm_fb_data_type *mfd)
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
 	mutex_unlock(&mfd->dma->ov_mutex);
 }
+
+void mdp4_lcdc_set_avparams(struct mdp4_overlay_pipe *pipe, int id)
+{
+    struct vsycn_ctrl *vctrl;
+    if (pipe == NULL) {
+        pr_warn("%s: dtv_pipe == NULL\n", __func__);
+        return;
+    }
+    vctrl = &vsync_ctrl_db[0];
+    if (pipe->pipe_num == OVERLAY_PIPE_VG1)
+        vctrl->vg1fd = id;
+    else if (pipe->pipe_num == OVERLAY_PIPE_VG2)
+        vctrl->vg2fd = id;
+}
+
