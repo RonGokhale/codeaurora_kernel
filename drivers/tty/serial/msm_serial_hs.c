@@ -2122,7 +2122,6 @@ static void msm_hs_shutdown(struct uart_port *uport)
 	free_irq(uport->irq, msm_uport);
 	if (use_low_power_wakeup(msm_uport))
 		free_irq(msm_uport->wakeup.irq, msm_uport);
-	mutex_destroy(&msm_uport->clk_mutex);
 
 	if (pdata && pdata->gpio_config)
 		if (pdata->gpio_config(0))
