@@ -76,7 +76,7 @@ static inline void get_new_mmu_context(struct mm_struct *mm)
 
 	/* move to new ASID */
 	if (!(++asid_cpu(cpu) & MM_CTXT_ASID_MASK)) {	/* ASID roll-over */
-		flush_tlb_all();
+		local_flush_tlb_all();
 	}
 
 	/* Above was rollover of 8 bit ASID in 32 bit container.
