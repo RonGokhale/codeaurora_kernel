@@ -1349,9 +1349,6 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 		if (ieee80211_sdata_running(sdata))
 			ieee80211_enable_keys(sdata);
 
-	local->in_reconfig = false;
-	barrier();
-
  wake_up:
 	/*
 	 * Clear the WLAN_STA_BLOCK_BA flag so new aggregation
