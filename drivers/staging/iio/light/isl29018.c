@@ -64,6 +64,7 @@ struct isl29018_chip {
 	unsigned int		range;
 	unsigned int		adc_bit;
 	int			prox_scheme;
+	bool			suspended;
 	u8			reg_cache[ISL29018_MAX_REGS];
 };
 
@@ -271,6 +272,10 @@ static ssize_t get_sensor_data(struct device *dev, char *buf, int mode)
 	int status;
 
 	mutex_lock(&chip->lock);
+	if (chip->suspended) {
+		mutex_unlock(&chip->lock);
+		return -EBUSY;
+	}
 	switch (mode) {
 	case COMMMAND1_OPMODE_PROX_ONCE:
 		status = isl29018_read_proximity_ir(client,
@@ -472,6 +477,10 @@ static int isl29018_read_raw(struct iio_dev *indio_dev,
 	struct i2c_client *client = chip->client;
 
 	mutex_lock(&chip->lock);
+	if (chip->suspended) {
+		mutex_unlock(&chip->lock);
+		return -EBUSY;
+	}
 	switch (mask) {
 	case 0:
 		switch (chan->type) {
@@ -649,6 +658,7 @@ static int __devinit isl29018_probe(struct i2c_client *client,
 	chip->lux_scale = 1;
 	chip->range = 1000;
 	chip->adc_bit = 16;
+	chip->suspended = false;
 
 	err = isl29018_chip_init(client);
 	if (err)
@@ -684,6 +694,46 @@ static int __devexit isl29018_remove(struct i2c_client *client)
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int isl29018_suspend(struct device *dev)
+{
+	struct isl29018_chip *chip = iio_priv(dev_get_drvdata(dev));
+
+	mutex_lock(&chip->lock);
+
+	/* Since this driver uses only polling commands, we are by default in
+	 * auto shutdown (ie, power-down) mode.
+	 * So we do not have much to do here.
+	 */
+	chip->suspended = true;
+
+	mutex_unlock(&chip->lock);
+	return 0;
+}
+
+static int isl29018_resume(struct device *dev)
+{
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct isl29018_chip *chip = iio_priv(indio_dev);
+	struct i2c_client *client = chip->client;
+	int err;
+
+	mutex_lock(&chip->lock);
+
+	err = isl29018_chip_init(client);
+	if (!err)
+		chip->suspended = false;
+
+	mutex_unlock(&chip->lock);
+	return err;
+}
+
+static SIMPLE_DEV_PM_OPS(isl29018_pm_ops, isl29018_suspend, isl29018_resume);
+#define ISL29018_PM_OPS (&isl29018_pm_ops)
+#else
+#define ISL29018_PM_OPS NULL
+#endif
+
 static const struct i2c_device_id isl29018_id[] = {
 	{"isl29018", 0},
 	{}
@@ -701,6 +751,7 @@ static struct i2c_driver isl29018_driver = {
 	.class	= I2C_CLASS_HWMON,
 	.driver	 = {
 			.name = "isl29018",
+			.pm = ISL29018_PM_OPS,
 			.owner = THIS_MODULE,
 			.of_match_table = isl29018_of_match,
 		    },
