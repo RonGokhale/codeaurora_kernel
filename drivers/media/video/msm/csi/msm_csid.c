@@ -180,6 +180,13 @@ static int msm_csid_init(struct v4l2_subdev *sd, uint32_t *csid_version)
 		return rc;
 	}
 
+	if (csid_dev->csid_state == CSID_POWER_UP) {
+		pr_err("%s: csid invalid state %d\n", __func__,
+			csid_dev->csid_state);
+		rc = -EINVAL;
+		return rc;
+	}
+
 	csid_dev->base = ioremap(csid_dev->mem->start,
 		resource_size(csid_dev->mem));
 	if (!csid_dev->base) {
@@ -218,6 +225,7 @@ static int msm_csid_init(struct v4l2_subdev *sd, uint32_t *csid_version)
 		IRQF_TRIGGER_RISING, "csid", csid_dev);
 
 	msm_csid_reset(csid_dev);
+	csid_dev->csid_state = CSID_POWER_UP;
 	return rc;
 
 clk_enable_failed:
@@ -238,6 +246,12 @@ static int msm_csid_release(struct v4l2_subdev *sd)
 	struct csid_device *csid_dev;
 	csid_dev = v4l2_get_subdevdata(sd);
 
+	if (csid_dev->csid_state != CSID_POWER_UP) {
+		pr_err("%s: csid invalid state %d\n", __func__,
+			csid_dev->csid_state);
+		return -EINVAL;
+	}
+
 	irq = msm_camera_io_r(csid_dev->base + CSID_IRQ_STATUS_ADDR);
 	msm_camera_io_w(irq, csid_dev->base + CSID_IRQ_CLEAR_CMD_ADDR);
 	msm_camera_io_w(0, csid_dev->base + CSID_IRQ_MASK_ADDR);
@@ -255,6 +269,7 @@ static int msm_csid_release(struct v4l2_subdev *sd)
 
 	iounmap(csid_dev->base);
 	csid_dev->base = NULL;
+	csid_dev->csid_state = CSID_POWER_DOWN;
 	return 0;
 }
 
@@ -339,6 +354,7 @@ static int __devinit csid_probe(struct platform_device *pdev)
 
 	new_csid_dev->pdev = pdev;
 	msm_cam_register_subdev_node(&new_csid_dev->subdev, CSID_DEV, pdev->id);
+	new_csid_dev->csid_state = CSID_POWER_DOWN;
 	return 0;
 
 csid_no_resource:

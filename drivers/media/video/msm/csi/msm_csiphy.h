@@ -17,6 +17,11 @@
 #include <linux/io.h>
 #include <media/v4l2-subdev.h>
 
+enum msm_csiphy_state_t {
+	CSIPHY_POWER_UP,
+	CSIPHY_POWER_DOWN,
+};
+
 struct csiphy_device {
 	struct platform_device *pdev;
 	struct v4l2_subdev subdev;
@@ -25,6 +30,7 @@ struct csiphy_device {
 	struct resource *io;
 	void __iomem *base;
 	struct mutex mutex;
+	enum msm_csiphy_state_t csiphy_state;
 
 	struct clk *csiphy_clk[2];
 };
