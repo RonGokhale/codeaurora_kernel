@@ -233,6 +233,8 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 	}
 	buffer->dev = dev;
 	buffer->size = len;
+	buffer->flags = flags;
+
 	mutex_init(&buffer->lock);
 	ion_buffer_add(dev, buffer);
 	return buffer;
@@ -393,7 +395,8 @@ static void ion_handle_add(struct ion_client *client, struct ion_handle *handle)
 }
 
 struct ion_handle *ion_alloc(struct ion_client *client, size_t len,
-			     size_t align, unsigned int flags)
+			     size_t align, unsigned int heap_mask,
+			     unsigned int flags)
 {
 	struct rb_node *n;
 	struct ion_handle *handle;
@@ -419,7 +422,7 @@ struct ion_handle *ion_alloc(struct ion_client *client, size_t len,
 		if (!((1 << heap->type) & client->heap_mask))
 			continue;
 		/* if the caller didn't specify this heap type */
-		if (!((1 << heap->id) & flags))
+		if (!((1 << heap->id) & heap_mask))
 			continue;
 		/* Do not allow un-secure heap if secure is specified */
 		if (secure_allocation && (heap->type != ION_HEAP_TYPE_CP))
@@ -1298,9 +1301,7 @@ static int ion_share_mmap(struct file *file, struct vm_area_struct *vma)
 	struct ion_client *client;
 	struct ion_handle *handle;
 	int ret;
-	unsigned long flags = file->f_flags & O_DSYNC ?
-				ION_SET_CACHE(UNCACHED) :
-				ION_SET_CACHE(CACHED);
+	unsigned long flags = buffer->flags;
 
 
 	pr_debug("%s: %d\n", __func__, __LINE__);
@@ -1401,9 +1402,6 @@ static int ion_ioctl_share(struct file *parent, struct ion_client *client,
 	if (IS_ERR_OR_NULL(file))
 		goto err;
 
-	if (parent->f_flags & O_DSYNC)
-		file->f_flags |= O_DSYNC;
-
 	ion_buffer_get(handle->buffer);
 	fd_install(fd, file);
 
@@ -1426,7 +1424,7 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (copy_from_user(&data, (void __user *)arg, sizeof(data)))
 			return -EFAULT;
 		data.handle = ion_alloc(client, data.len, data.align,
-					     data.flags);
+					     data.heap_mask, data.flags);
 
 		if (IS_ERR_OR_NULL(data.handle))
 			return -ENOMEM;
