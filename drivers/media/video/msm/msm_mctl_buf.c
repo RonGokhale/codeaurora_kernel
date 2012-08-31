@@ -505,13 +505,26 @@ struct msm_cam_v4l2_dev_inst *msm_mctl_get_pcam_inst(
 		 * If mctl node doesnt have the instance, then
 		 * search in the user's video node */
 		if (pmctl->vfe_output_mode == VFE_OUTPUTS_MAIN_AND_THUMB
-		|| pmctl->vfe_output_mode == VFE_OUTPUTS_THUMB_AND_MAIN
-		|| pmctl->vfe_output_mode == VFE_OUTPUTS_MAIN_AND_PREVIEW) {
+		|| pmctl->vfe_output_mode == VFE_OUTPUTS_THUMB_AND_MAIN) {
 			if (pcam->mctl_node.dev_inst_map[image_mode]
 			&& is_buffer_queued(pcam, image_mode)) {
 				idx =
 				pcam->mctl_node.dev_inst_map[image_mode]
 				->my_index;
+				pcam_inst = pcam->mctl_node.dev_inst[idx];
+				D("%s Found instance %p in mctl node device\n",
+				  __func__, pcam_inst);
+			} else if (pcam->dev_inst_map[image_mode]) {
+				idx = pcam->dev_inst_map[image_mode]->my_index;
+				pcam_inst = pcam->dev_inst[idx];
+				D("%s Found instance %p in video device\n",
+				__func__, pcam_inst);
+			}
+		} else if (image_mode == MSM_V4L2_EXT_CAPTURE_MODE_V2X_LIVESHOT) {
+				image_mode = MSM_V4L2_EXT_CAPTURE_MODE_MAIN;
+			if (pcam->mctl_node.dev_inst_map[image_mode] &&
+					is_buffer_queued(pcam, image_mode)) {
+				idx = pcam->mctl_node.dev_inst_map[image_mode]->my_index;
 				pcam_inst = pcam->mctl_node.dev_inst[idx];
 				D("%s Found instance %p in mctl node device\n",
 				  __func__, pcam_inst);
