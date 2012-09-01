@@ -442,8 +442,13 @@ static void ksb_rx_cb(struct urb *urb)
 
 	pr_debug("status:%d actual:%d", urb->status, urb->actual_length);
 
+	/*non zero len of data received while unlinking urb*/
+	if (urb->status == -ENOENT && urb->actual_length > 0)
+		goto add_to_list;
+
 	if (urb->status < 0) {
-		if (urb->status != -ESHUTDOWN && urb->status != -ENOENT)
+		if (urb->status != -ESHUTDOWN && urb->status != -ENOENT
+				&& urb->status != -EPROTO)
 			pr_err_ratelimited("urb failed with err:%d",
 					urb->status);
 		ksb_free_data_pkt(pkt);
@@ -455,6 +460,7 @@ static void ksb_rx_cb(struct urb *urb)
 		return;
 	}
 
+add_to_list:
 	spin_lock(&ksb->lock);
 	pkt->len = urb->actual_length;
 	list_add_tail(&pkt->list, &ksb->to_ks_list);
