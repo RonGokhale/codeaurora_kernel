@@ -76,7 +76,7 @@
 #include <linux/mfd/wcd9310/pdata.h>
 #endif
 
-#include <linux/ion.h>
+#include <linux/msm_ion.h>
 #include <mach/ion.h>
 #include <mach/mdm2.h>
 #include <mach/mdm-peripheral.h>
