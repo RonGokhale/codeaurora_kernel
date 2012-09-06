@@ -31,7 +31,7 @@
 #include <media/msm_isp.h>
 #include <mach/camera.h>
 #include <media/msm_isp.h>
-#include <linux/ion.h>
+#include <linux/msm_ion.h>
 
 #define MSM_V4L2_DIMENSION_SIZE 96
 #define MAX_DEV_NAME_LEN 50
