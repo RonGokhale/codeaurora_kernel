@@ -1184,8 +1184,9 @@ limRestorePreScanState(tpAniSirGlobal pMac)
     {
       for(i=0;i<pMac->lim.maxBssId;i++)
       {
-        if((pMac->lim.gpSession[i].valid == TRUE) && 
-          (eLIM_MLM_LINK_ESTABLISHED_STATE == pMac->lim.gpSession[i].limMlmState))
+        if((peFindSessionBySessionId(pMac,i) != NULL) &&
+           (pMac->lim.gpSession[i].valid == TRUE) && 
+           (eLIM_MLM_LINK_ESTABLISHED_STATE == pMac->lim.gpSession[i].limMlmState))
         {
           limReactivateHeartBeatTimer(pMac, peFindSessionBySessionId(pMac,i));
         }  
