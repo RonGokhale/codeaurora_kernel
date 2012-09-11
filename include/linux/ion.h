@@ -111,17 +111,26 @@ enum ion_fixed_position {
 #define CACHED          1
 #define UNCACHED        0
 
-#define ION_CACHE_SHIFT 0
+#define ION_SET_CACHED(__cache)		(__cache | ION_FLAG_CACHED)
+#define ION_SET_UNCACHED(__cache)	(__cache & ~ION_FLAG_CACHED)
 
-#define ION_SET_CACHE(__cache)  ((__cache) << ION_CACHE_SHIFT)
+#define ION_IS_CACHED(__flags)	((__flags) & ION_FLAG_CACHED)
 
-#define ION_IS_CACHED(__flags)	((__flags) & (1 << ION_CACHE_SHIFT))
 
 /*
  * This flag allows clients when mapping into the IOMMU to specify to
  * defer un-mapping from the IOMMU until the buffer memory is freed.
  */
 #define ION_IOMMU_UNMAP_DELAYED 1
+
+/**
+ * heap flags - the lower 16 bits are used by core ion, the upper 16
+ * bits are reserved for use by the heaps themselves.
+ */
+#define ION_FLAG_CACHED 1		/* mappings of this buffer should be
+					   cached, ion will do cache
+					   maintenance when the buffer is
+					   mapped for dma */
 
 #ifdef __KERNEL__
 #include <linux/err.h>
