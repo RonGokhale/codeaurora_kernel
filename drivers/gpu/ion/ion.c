@@ -110,24 +110,6 @@ struct ion_handle {
 
 static void ion_iommu_release(struct kref *kref);
 
-static int ion_validate_buffer_flags(struct ion_buffer *buffer,
-					unsigned long flags)
-{
-	if (buffer->kmap_cnt || buffer->dmap_cnt || buffer->umap_cnt ||
-		buffer->iommu_map_cnt) {
-		if (buffer->flags != flags) {
-			pr_err("%s: buffer was already mapped with flags %lx,"
-				" cannot map with flags %lx\n", __func__,
-				buffer->flags, flags);
-			return 1;
-		}
-
-	} else {
-		buffer->flags = flags;
-	}
-	return 0;
-}
-
 /* this function should only be called while dev->lock is held */
 static void ion_buffer_add(struct ion_device *dev,
 			   struct ion_buffer *buffer)
@@ -579,11 +561,6 @@ void *ion_map_kernel(struct ion_client *client, struct ion_handle *handle,
 		return ERR_PTR(-ENODEV);
 	}
 
-	if (ion_validate_buffer_flags(buffer, flags)) {
-			vaddr = ERR_PTR(-EEXIST);
-			goto out;
-	}
-
 	if (_ion_map(&buffer->kmap_cnt, &handle->kmap_cnt)) {
 		vaddr = buffer->heap->ops->map_kernel(buffer->heap, buffer,
 							flags);
@@ -594,7 +571,6 @@ void *ion_map_kernel(struct ion_client *client, struct ion_handle *handle,
 		vaddr = buffer->vaddr;
 	}
 
-out:
 	mutex_unlock(&buffer->lock);
 	mutex_unlock(&client->lock);
 	return vaddr;
@@ -810,11 +786,6 @@ struct scatterlist *ion_map_dma(struct ion_client *client,
 		return ERR_PTR(-ENODEV);
 	}
 
-	if (ion_validate_buffer_flags(buffer, flags)) {
-		sglist = ERR_PTR(-EEXIST);
-		goto out;
-	}
-
 	if (_ion_map(&buffer->dmap_cnt, &handle->dmap_cnt)) {
 		sglist = buffer->heap->ops->map_dma(buffer->heap, buffer);
 		if (IS_ERR_OR_NULL(sglist))
@@ -824,7 +795,6 @@ struct scatterlist *ion_map_dma(struct ion_client *client,
 		sglist = buffer->sglist;
 	}
 
-out:
 	mutex_unlock(&buffer->lock);
 	mutex_unlock(&client->lock);
 	return sglist;
@@ -1338,12 +1308,6 @@ static int ion_share_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 
 	mutex_lock(&buffer->lock);
-
-	if (ion_validate_buffer_flags(buffer, flags)) {
-		ret = -EEXIST;
-		mutex_unlock(&buffer->lock);
-		goto err1;
-	}
 
 	/* now map it to userspace */
 	ret = buffer->heap->ops->map_user(buffer->heap, buffer, vma,
