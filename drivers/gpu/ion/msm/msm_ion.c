@@ -180,7 +180,7 @@ static void msm_ion_allocate(struct ion_platform_heap *heap)
 
 	if (!heap->base && heap->extra_data) {
 		unsigned int align = 0;
-		switch (heap->type) {
+		switch ((int) heap->type) {
 		case ION_HEAP_TYPE_CARVEOUT:
 			align =
 			((struct ion_co_heap_pdata *) heap->extra_data)->align;
