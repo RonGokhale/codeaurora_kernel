@@ -145,7 +145,11 @@ struct audio_port_data {
 	struct mutex	    lock;
 	spinlock_t	    dsp_lock;
 };
-
+struct audio_session_priv_data {
+	struct asm_session_mtmx_strtr_param_session_time_v1_1_t session_time;
+	struct asm_session_mtmx_strtr_session_statistics_t inst_statistics;
+	struct asm_session_mtmx_strtr_session_statistics_t cumu_statistics;
+};
 struct audio_client {
 	int                    session;
 	/* idx:1 out port, 0: in port*/
@@ -167,9 +171,20 @@ struct audio_client {
 	uint64_t         time_stamp;
 	atomic_t         cmd_response;
 	bool             perf_mode;
+
+	struct audio_session_priv_data  *session_priv_data;
 };
 
 void q6asm_audio_client_free(struct audio_client *ac);
+int q6asm_set_window_param(struct audio_client *ac,
+				uint32_t param,
+				uint32_t msw,
+				uint32_t lsw);
+int q6asm_get_avsync_session_time(struct audio_client *ac,
+		struct asm_session_mtmx_strtr_param_session_time_v1_1_t  *st);
+
+int q6asm_get_avsync_statistics(struct audio_client *ac, int paramId,
+		struct asm_session_mtmx_strtr_session_statistics_t  *st);
 
 struct audio_client *q6asm_audio_client_alloc(app_cb cb, void *priv);
 

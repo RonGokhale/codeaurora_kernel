@@ -140,7 +140,37 @@ struct snd_compr_audio_info {
 	uint32_t frame_size;
 	uint32_t reserved[15];
 };
-
+struct snd_avsync_window {
+	uint32_t ws_msw;
+	uint32_t ws_lsw;
+	uint32_t we_msw;
+	uint32_t we_lsw;
+};
+struct snd_avsync_session_time {
+	uint32_t session_msw;
+	uint32_t session_lsw;
+	uint32_t absolute_msw;
+	uint32_t absolute_lsw;
+	uint32_t timeStamp_msw;
+	uint32_t timeStamp_lsw;
+	uint32_t flags;
+};
+struct snd_avsync_statistics {
+	uint32_t absolute_time_msw;
+	uint32_t absolute_time_lsw;
+	uint32_t duration_region_A_msw;
+	uint32_t duration_region_A_lsw;
+	uint32_t average_region_A_msw;
+	uint32_t average_region_A_lsw;
+	uint32_t duration_region_B_msw;
+	uint32_t duration_region_B_lsw;
+	uint32_t average_region_B_msw;
+	uint32_t average_region_B_lsw;
+	uint32_t duration_region_C_msw;
+	uint32_t duration_region_C_lsw;
+	uint32_t average_region_C_msw;
+	uint32_t average_region_C_lsw;
+};
 /**
  * compress path ioctl definitions
  * SNDRV_COMPRESS_GET_CAPS: Query capability of DSP
@@ -176,6 +206,16 @@ struct snd_compr_audio_info {
 #define SNDRV_COMPRESS_DRAIN		_IO('C', 0x34)
 #define SNDRV_COMPRESS_SET_ROUTING	_IOR('C', 0x35,\
 						struct snd_compr_routing)
+#define SNDRV_COMPRESS_SET_AVSYNC_RENDER_WINDOW  _IOW('C', 0x40,\
+						struct snd_avsync_window)
+#define SNDRV_COMPRESS_SET_AVSYNC_STAT_WINDOW  _IOW('C', 0x41,\
+						struct snd_avsync_window)
+#define SNDRV_COMPRESS_GET_AVSYNC_SESSION_TIME  _IOR('C', 0x42,\
+						struct snd_avsync_session_time)
+#define SNDRV_COMPRESS_GET_AVSYNC_INST_STATISTICS  _IOR('C', 0x43,\
+						struct snd_avsync_statistics)
+#define SNDRV_COMPRESS_GET_AVSYNC_CUMU_STATISTICS  _IOR('C', 0x44,\
+						struct snd_avsync_statistics)
 /*
  * TODO
  * 1. add mmap support

@@ -2609,6 +2609,11 @@ static int snd_pcm_common_ioctl1(struct file *file,
 	case SNDRV_COMPRESS_DRAIN:
 	case SNDRV_COMPRESS_METADATA_MODE:
 	case SNDRV_COMPRESS_SET_ROUTING:
+	case SNDRV_COMPRESS_SET_AVSYNC_RENDER_WINDOW:
+	case SNDRV_COMPRESS_SET_AVSYNC_STAT_WINDOW:
+	case SNDRV_COMPRESS_GET_AVSYNC_SESSION_TIME:
+	case SNDRV_COMPRESS_GET_AVSYNC_INST_STATISTICS:
+	case SNDRV_COMPRESS_GET_AVSYNC_CUMU_STATISTICS:
 		return snd_compressed_ioctl(substream, cmd, arg);
 	}
 	snd_printd("unknown ioctl = 0x%x\n", cmd);

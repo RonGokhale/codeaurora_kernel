@@ -1958,4 +1958,570 @@ struct srs_SS3D_params {
 
 int srs_ss3d_open(int port_id, int srs_tech_id, void *srs_params);
 /* SRS Studio Sound 3D end */
+
+/* Avsync interface start */
+
+/** @ingroup audio_mtmx_strtr_module_ids
+	This module should be used for AV sync related parameters.
+	This module supports the following parameter IDs:
+	Set only & RX direction only:
+	- #ASM_SESSION_MTMX_STRTR_PARAM_RENDER_WINDOW_START
+	- #ASM_SESSION_MTMX_STRTR_PARAM_RENDER_WINDOW_END
+	- #ASM_SESSION_MTMX_STRTR_PARAM_STAT_WINDOW_START
+	- #ASM_SESSION_MTMX_STRTR_PARAM_STAT_WINDOW_END
+	Get only & RX direction only:
+	- #ASM_SESSION_MTMX_STRTR_PARAM_SESSION_TIME
+	- #ASM_SESSION_MTMX_STRTR_PARAM_SESSION_INST_STATISTICS
+	- #ASM_SESSION_MTMX_STRTR_PARAM_SESSION_CUMU_STATISTICS
+*/
+#define ASM_SESSION_MTMX_STRTR_MODULE_ID_AVSYNC 0x00010DC6
+
+/* Generic structure payload for:
+* ASM_SESSION_MTMX_STRTR_PARAM_RENDER_WINDOW_START
+* ASM_SESSION_MTMX_STRTR_PARAM_RENDER_WINDOW_END
+* ASM_SESSION_MTMX_STRTR_PARAM_STAT_WINDOW_START
+* ASM_SESSION_MTMX_STRTR_PARAM_STAT_WINDOW_END */
+/* generic Payload of the window parameter.
+*/
+struct asm_session_mtmx_strtr_param_window_t {
+	uint32_t                  window_msw;
+	/**< upper 32 bits of render window start */
+	uint32_t                  window_lsw;
+	/**<
+	lower 32 bits of render window start
+	Upper and lower 32 bit values form a signed 64 bit window value in us.
+	Note that sign extension is necessary.
+	The aDSP will honor the windows at a granularity of 1ms.
+
+	@values, the value depends on the param ID used.
+	1. ASM_SESSION_MTMX_STRTR_PARAM_RENDER_WINDOW_START
+	The signed 64 bit number formed by MSW and LSW should be less
+	than or equal to zero.
+	2. ASM_SESSION_MTMX_STRTR_PARAM_RENDER_WINDOW_END
+	The signed 64 bit number formed by MSW and LSW should be
+	greater than or equal to zero.
+	3. ASM_SESSION_MTMX_STRTR_PARAM_STAT_WINDOW_START
+	The signed 64 bit number formed by MSW and LSW should be
+	less than or equal to zero.
+	4. ASM_SESSION_MTMX_STRTR_PARAM_STAT_WINDOW_END
+	The signed 64 bit number formed by MSW and LSW should be
+	greater than or equal to zero.
+	*/
+} __packed;
+
+/** This parameter specifies render window start value.
+	Render window start is (ST-TS) value below which frames are held
+	and after which frames are immediately rendered
+	(ST=session time, TS=time stamp).
+	Supported only for Rx direction. Supported only for SET (no GET).
+	@msgpayload{asm_session_mtmx_strtr_param_window_t}
+	The signed 64 bit number formed by MSW and LSW should be less
+	than or equal to zero.
+*/
+#define ASM_SESSION_MTMX_STRTR_PARAM_RENDER_WINDOW_START 0x00010DC7
+
+
+/** This parameter specifies render window end value.
+	Render window end is (ST-TS) value above which frames are dropped and
+	below which frames are immediately rendered.
+	Supported only for Rx direction. Supported only for SET (no GET)
+	@msgpayload{asm_session_mtmx_strtr_param_window_t}
+	The signed 64 bit number formed by MSW and LSW should be greater
+	than or equal to zero.
+*/
+#define ASM_SESSION_MTMX_STRTR_PARAM_RENDER_WINDOW_END 0x00010DC8
+
+
+/** This parameter specifies statistics window start value.
+	Statistics window start is (ST-TS) value below which frames
+	are considered early when calculating statistics and above
+	which frames are considered on time.
+	Supported only for Rx direction. Supported only for SET (no GET).
+	@msgpayload{asm_session_mtmx_strtr_param_window_t}
+	The signed 64 bit number formed by MSW and LSW should be less
+	than or equal to zero.
+*/
+#define ASM_SESSION_MTMX_STRTR_PARAM_STAT_WINDOW_START 0x00010DC9
+
+/** This parameter specifies stat window end value.
+	Statistics window end is (ST-TS) value above which
+	frames are considered late when calculating statistics and below
+	which frames are considered on time.
+	Supported only for Rx direction. Supported only for SET (no GET)
+
+	@msgpayload{asm_session_mtmx_strtr_param_window_t}
+
+	The signed 64 bit number formed by MSW and LSW should be greater
+	than or equal to zero.
+*/
+#define ASM_SESSION_MTMX_STRTR_PARAM_STAT_WINDOW_END 0x00010DCA
+
+
+/* Structure for session parameter data. */
+
+/** @weakgroup weak_asm_session_param_data_t
+	Payload of the sessoin parameter data of the
+	#ASM_SESSION_CMD_SET_MTMX_STRTR_PARAMS &
+	ASM_SESSION_CMD_GET_MTMX_STRTR_PARAMS command.
+	Immediately following this structure are param_size bytes of parameter
+	data. The structure and size depend on the module_id/param_id pair.
+*/
+struct asm_session_param_data_t {
+	uint32_t                  module_id;
+	/**< Valid ID of the module to be configured (see Section
+	@xref{hdr:MatrixStrmRtrModuleIDs}). */
+
+	uint32_t                  param_id;
+	/**< Valid ID of the parameter to be configured (see Section
+	@xref{hdr:MatrixStrmRtrParamIDs}). */
+
+	uint16_t                  param_size;
+	/**< Data size of the param_id/module_id combination. This is a multiple
+	of four bytes.
+
+	@values > 0 bytes */
+
+	uint16_t                  reserved;
+	/**< This field must be set to zero. */
+	struct asm_session_mtmx_strtr_param_window_t window;
+} __packed;
+
+/** @ingroup asm_session_cmd_set_mtmx_strtr_param
+	This command sets a parameter related to a parameter on matrix
+	mixer or stream router.
+
+	@apr_hdr_fields
+	Opcode -- ASM_SESSION_CMD_SET_MTMX_STRTR_PARAMS \n
+	Dst_port:
+	    - Session ID 1 -- #ASM_MAX_SESSION_ID
+	    - Stream ID 1 -- ignored
+
+	@apr_msg_payload{asm_session_cmd_set_mtmx_strtr_params_t}
+	@table{weak__asm__session__cmd__set__mtmx_strtr__params__t}
+
+	@par Parameter data variable payload (asm_session_param_data_t)
+	@tablens{weak__asm__session__param__data__t}
+
+	@keep{6} @detdesc
+	This command is sent to an opened session to set a parameter on
+	the matrix or stream router. Note that in some use cases like nontunnel
+	playback, these entities are not supported
+	and an error will be returned in such a case.
+
+	@par
+	If data_payload_addr=NULL, a series of asm_session_param_data_t
+	structures immediately follow, whose total size is
+	data_payload_size bytes.
+
+	@return
+	APRV2_IBASIC_RSP_RESULT (refer to @xhyperref{Q3,[Q3]}).
+
+	@dependencies
+	The session must be opened & session must have a matrix
+	or a stream router (see use cases section for more details)
+*/
+#define ASM_SESSION_CMD_SET_MTMX_STRTR_PARAMS 0x00010DC3
+
+/* Structure for a set param command on matrix or stream router. */
+/** @weakgroup weak_asm_session_cmd_set_mtmx_strtr_params_t
+	Payload of the ASM_SESSION_CMD_SET_MTMX_STRTR_PARAMS
+	command, which allows one or more parameters to be set on a
+	matrix or stream router present in a session.
+*/
+struct asm_session_cmd_set_mtmx_strtr_params_t {
+	struct apr_hdr     hdr;
+
+	uint32_t                  data_payload_addr;
+	/**< Parameter data payload address.
+
+	@values
+	- NULL -- Message is in the payload
+	- Non-NULL -- Physical address to the payload data in shared memory
+
+	If the address is sent (non-NULL), the <b>Parameter data variable
+	payload</b> (see below) begins at the specified address. */
+
+	uint32_t                  data_payload_size;
+	/**< Actual size of the variable payload accompanying the message, or in
+	shared memory. This field is used for parsing the parameter payload.
+	@values > 0 bytes */
+
+	uint32_t                  direction;
+	/**< The direction of the entity (Matrix or Stream router) on which
+	parameter is to be set.
+
+	@values
+	0 - RX (for RX stream router or RX matrix)
+	1 - TX (for TX stream router or TX matrix) */
+	struct asm_session_param_data_t  paramData;
+
+} __packed;
+/** @} */ /* end_weakgroup weak_asm_session_cmd_set_mtmx_strtr_params_t */
+
+/** @ingroup asm_session_cmd_get_mtmx_strtr_params
+	This command allows a query of matrix or stream router
+	related parameters. This command is sent to an opened session
+	to get a parameter on the matrix or stream router. Note that in
+	some use cases like nontunnel playback, these entities
+	are not supported and an error will be returned in such a case.
+
+	@apr_hdr_fields
+	Opcode -- ASM_SESSION_CMD_GET_MTMX_STRTR_PARAMS \n
+	Dst_port:
+	- Session ID 1 -- #ASM_MAX_SESSION_ID
+	- Stream ID 1 -- ignored
+
+	@apr_msg_payload{asm_session_cmd_get_mtmx_strtr_params_t}
+	@table{weak__asm__session__cmd__get__mtmx__strtr__params__t}
+
+	@return
+#ASM_SESSION_CMDRSP_GET_MTMX_STRTR_PARAMS
+
+	@dependencies
+	The session must be opened & session must have a matrix
+	or a stream router (see use cases section for more details).
+*/
+#define ASM_SESSION_CMD_GET_MTMX_STRTR_PARAMS 0x00010DC4
+
+/* Structure for a stream get parameters command. */
+/** @weakgroup weak_asm_session_cmd_get_mtmx_strtr_params_t
+	Payload of the ASM_SESSION_CMD_GET_MTMX_STRTR_PARAMS command.
+*/
+struct asm_session_cmd_get_mtmx_strtr_params_t {
+	struct apr_hdr     hdr;
+	uint32_t                  data_payload_addr;
+	/**< Parameter data payload address.
+
+	@values
+	- NULL -- Message is in the payload
+	- Non-NULL -- Pointer to the physical address in shared memory
+
+	A NULL address means that the command response must include the
+	parameter data payload in band.
+
+	If the address is sent (non-NULL), the <b>Parameter data variable
+	payload</b> is out of band from the command response message and
+	begins at the specified address. The size of the shared memory, if
+	specified, must be large enough to contain the entire parameter data
+	payload. For details, see asm_session_param_data_t. */
+
+	uint32_t                  direction;
+	/**< The direction of the entity (Matrix or Stream router) from which
+	parameter is to be obtained.
+
+	@values
+	0 - RX (for RX stream router or RX matrix)
+	1 - TX (for TX stream router or TX matrix) */
+
+	uint32_t                  module_id;
+	/**< Valid ID of the module to be configured (see Section
+	@xref{hdr:MatrixStrmRtrModuleIDs}). */
+
+	uint32_t                  param_id;
+	/**< Valid ID of the parameter to be configured (see Section
+	@xref{hdr:MatrixStrmRtrIDs}). */
+
+	uint32_t                  param_max_size;
+	/**< Maximum data size of the module_id/param_id combination. This is a
+	multiple of four bytes.
+
+	@values > 0 bytes */
+
+} __packed;
+/** @} */ /* end_weakgroup weak_asm_session_cmd_get_mtmx_strtr_params_t */
+
+	/** @ingroup asm_session_resp_get_mtmx_strtr_params
+	Returns parameter values in response to an
+	#ASM_SESSION_CMD_GET_MTMX_STRTR_PARAMS
+	command.
+
+	@apr_hdr_fields
+	Opcode -- ASM_SESSION_CMDRSP_GET_MTMX_STRTR_PARAMS \n
+	Src_port:
+	- Session ID 1 -- #ASM_MAX_SESSION_ID
+	- Stream ID 1 -- ignored
+
+	@apr_msg_payload{asm_session_cmdrsp_get_mtmx_strtr_params_t}
+	For in-band, Immediately following this structure is the
+	acknowledgment payload (parameter data variable payload)
+	containing the matrix/stream router
+	parameter data. For details, see asm_session_param_data_t.
+	for out-band, asm_session_param_data_t is present at the
+	address given by client.
+	@tablens{weak__asm__stream__cmdrsp__get__pp__params__t}
+
+	@return
+	None.
+
+	@dependencies
+	ASM_SESSION_CMD_GET_MTMX_STRTR_PARAMS has to be issued.
+*/
+#define ASM_SESSION_CMDRSP_GET_MTMX_STRTR_PARAMS 0x00010DC5
+
+/* Structure for an ASM session get matrix,
+	stream router parameters ACK event. */
+/** @weakgroup weak_asm_session_cmdrsp_get_mtmx_strtr_params_t
+	Payload of the ASM_SESSION_CMDRSP_GET_MTMX_STRTR_PARAMS
+	message, which returns parameter values in response to an
+	ASM_SESSION_CMD_GET_MTMX_STRTR_PARAMS command.
+*/
+struct asm_session_cmdrsp_get_mtmx_strtr_params_t {
+	uint32_t                  status;
+	/**< Status message (error code).
+	@values Refer to @xhyperref{Q5,[Q5]} */
+} __packed;
+
+/** This parameter is used to obtain the session time.
+	This command replaces previous ASM_SESSION_CMD_GET_SESSION_TIME
+	(and its versions). This parameter only supports GET (no SET).
+
+	Supported only for RX direction.
+
+	The session time value must be interpreted by
+	clients as a signed 64-bit value. A negative session time can be
+	returned	in cases where the client wants to start running a
+	session in the future, but first queries for the session clock.
+
+	The absolute time value in the command response must be interpreted by
+	clients as an unsigned 64-bit value. The absolute time may be in
+	the past or future.
+
+	@msgpayload{asm_session_mtmx_strtr_param_session_time_t}
+*/
+#define ASM_SESSION_MTMX_STRTR_PARAM_SESSION_TIME 0x00010DCB
+
+/* Structure for query of session time. */
+/* Payload of the ASM_SESSION_MTMX_STRTR_PARAM_SESSION_TIME
+	parameter.
+*/
+struct asm_session_mtmx_strtr_param_session_time_t {
+	uint32_t                  session_time_msw;
+	/**< Upper 32 bits of the current session time in 탎
+	@values, any */
+	uint32_t                  session_time_lsw;
+	/**< Lower 32 bits of the current session time in 탎
+	*  the 64 bit number is treated as signed.
+	*  @values, any */
+
+	uint32_t                  absolute_time_msw;
+	/**< Upper 32 bits in 탎 of the absolute time at which the sample
+	corresponding to the above session time gets rendered to hardware.
+	This absolute time may be slightly in the future or past.
+	@values, any */
+
+	uint32_t                  absolute_time_lsw;
+	/**< Lower 32 bits in 탎 of the absolute time at which the
+	sample corresponding to the above session time gets
+	rendered to hardware.
+	This absolute time may be slightly in the future or past.
+	the 64 bit number is treated as unsigned.
+	@values, any */
+} __packed;
+
+/** @ingroup audio_matrix_stream_router_rx_get
+	Parameter used by #ASM_SESSION_MTMX_STRTR_MODULE_ID_AVSYNC to get the
+	session time.
+	This parameter is supported only for a Get command (not a Set command) in
+	the Rx direction (#ASM_SESSION_CMD_GET_MTMX_STRTR_PARAMS).
+
+	The session time value must be interpreted by clients as a signed 64-bit
+	value. A negative session time can be returned in cases where the client
+	wants to start running a session in the future, but first queries for the
+	session clock.
+
+	The absolute time value in the command response must be interpreted by
+	clients as an unsigned 64-bit value. The absolute time can be in the past
+	or future.
+
+	The timestamp field will be populated using that last processed timestamp (TS).
+	It will follow the following rules:
+	1) For Uninitialized/Invalid TS, the value will read zero and the flag
+	that follows this TS field will be set to 0 to indicate Uninitialized/Invalid.
+	2) During steady state rendering, it will reflect the last processed timestamp.
+
+	The timestamp value in the command response must be interpreted by
+	clients as an unsigned 64-bit value.
+
+	@msgpayload{asm_session_mtmx_strtr_param_session_time_v1_1_t}
+	@table{weak__asm__session__mtmx__strtr__param__session__time__v1__1__t}
+*/
+#define ASM_SESSION_MTMX_STRTR_PARAM_SESSION_TIME_V1_1              0x00012F0A
+
+struct asm_session_mtmx_strtr_param_session_time_v1_1_t
+{
+	uint32_t                  session_time_msw;
+	/**< Upper 32 bits of the current session time in microseconds. */
+
+	uint32_t                  session_time_lsw;
+	/**< Lower 32 bits of the current session time in microseconds.
+
+	The 64-bit number formed by session_time_lsw and session_time_msw
+	is treated as signed. */
+
+	uint32_t                  absolute_time_msw;
+	/**< Upper 32 bits of the 64-bit absolute time in microseconds.
+
+	This is the time at which the sample corresponding to the
+	session_time_msw is rendered to hardware. This absolute time may be
+	slightly in the future or past. */
+
+	uint32_t                  absolute_time_lsw;
+	/**< Lower 32 bits of the 64-bit absolute time in microseconds.
+
+	This is the time at which the sample corresponding to the
+	session_time_lsw is rendered to the hardware. This absolute time may
+	be slightly in the future or past.
+
+	The 64-bit number formed by absolute_time_lsw and absolute_time_msw
+	is treated as unsigned. */
+
+	uint32_t                  time_stamp_msw;
+	/**< Upper 32 bits of the last processed time stamp in microseconds. */
+
+	uint32_t                  time_stamp_lsw;
+	/**< Lower 32 bits of the last prcoessed time stamp in microseconds.
+
+	The 64-bit number formed by time_stamp_lsw and time_stamp_lsw
+	is treated as unsigned. */
+
+	uint32_t                  flags;
+	/**< A 32-bit entitiy to keep track of any additional flags needed.
+
+	@values{for bit 31}
+		0: Uninitialized/Invalid.
+		1: Valid.
+		All other bits will be set to zero and should be ignored by the client.*/
+} __packed;
+
+struct asm_session_mtmx_strtr_param_session_time_payload {
+	uint32_t                  moduleID;
+	uint32_t                  paramID;
+	uint32_t                  paramSize;
+	struct asm_session_mtmx_strtr_param_session_time_v1_1_t sessionTime;
+} __packed;
+
+/** This parameter specifies instantaneous statistics of the session.
+	The observation period is defined as the period between any change
+	in render or statistics window change.
+	This parameter only supports GET (no SET).
+
+	Refer to Figure <region_wrt_ST_minus_TS> for the definition of
+	the regions A, B and C.
+	Unless statistics window start and end are set, statistics
+	cannot be queried (the query command will be failed).
+
+	Supported only for RX direction.
+
+	@msgpayload{asm_session_mtmx_strtr_session_inst_statistics_t}
+*/
+#define ASM_SESSION_MTMX_STRTR_PARAM_INST_STATISTICS 0x00010DCC
+
+/** This parameter specifies cumulative statistics of the session.
+	The observation period is defined as lifetime of a session.
+	This parameter only supports GET (no SET).
+	Refer to Figure <region_wrt_ST_minus_TS> for the definition of the
+	regions A, B and C.
+	Unless statistics window start and end are set, statistics cannot
+	be queried (the query command will be failed).
+	Supported only for RX direction.
+
+	@msgpayload{asm_session_mtmx_strtr_session_cumu_statistics_t}
+*/
+#define ASM_SESSION_MTMX_STRTR_PARAM_CUMU_STATISTICS 0x00010DCD
+
+/* Structure query of statistics */
+/* Payload of the ASM_SESSION_MTMX_STRTR_PARAM_INST_STATISTICS
+	parameter.
+*/
+struct asm_session_mtmx_strtr_session_statistics_t {
+	uint32_t                  absolute_time_msw;
+	/**< Upper 32 bits in 탎 of the absolute time at which the instantaneous
+	statistics is calculated.
+	@values, any */
+	uint32_t                  absolute_time_lsw;
+	/**< Lower 32 bits in 탎 of the absolute time at which
+	the instantaneous	statistics is calculated.
+	* the 64 bit number is treated as unsigned.
+	@values, any */
+
+	uint32_t                  duration_region_A_msw;
+	/**< Instantaneous statistics: Duration of frames in region A MSW */
+	uint32_t                  duration_region_A_lsw;
+	/**< Instantaneous statistics: Duration of frames in region A LSW
+	Upper and lower 32 bit values form a unsigned 64 bit duration in us.
+	Duration of frames in region A during the given observation period.
+
+	@values, any
+	*/
+
+	uint32_t                  average_region_A_msw;
+	/**< Instantaneous statistics:
+	Average (ST-TS) of frames in region A MSW */
+	uint32_t                  average_region_A_lsw;
+	/**< Instantaneous statistics:
+	Average (ST-TS) of frames in region A LSW */
+	/**< Upper and lower 32 bit values of signed 64 bit average value of
+	(ST-TS) in us.
+	Average (ST-TS) of frames in region A during the given observation
+	period.
+	@values, any
+	*/
+
+
+	uint32_t                  duration_region_B_msw;
+	/**< Instantaneous statistics: Duration of frames in region B MSW */
+	uint32_t                  duration_region_B_lsw;
+	/**< Instantaneous statistics: Duration of frames in region B LSW
+	Upper and lower 32 bit values form a unsigned 64 bit duration in us.
+	Duration of frames in region B during the given observation period.
+
+	@values, any
+	*/
+
+	uint32_t                  average_region_B_msw;
+	/**< Instantaneous statistics:
+	Average (ST-TS) of frames in region B MSW */
+	uint32_t                  average_region_B_lsw;
+	/**< Instantaneous statistics:
+	Average (ST-TS) of frames in region B LSW
+	Upper and lower 32 bit values of signed 64 bit average value
+	of (ST-TS) in us.
+	Average (ST-TS) of frames in region B during the given
+	observation period.
+	@values, any
+	*/
+
+	uint32_t                  duration_region_C_msw;
+	/**< Instantaneous statistics:
+	Duration of frames in region C MSW */
+	uint32_t                  duration_region_C_lsw;
+	/**< Instantaneous statistics:
+	Duration of frames in region C LSW
+	Upper and lower 32 bit values form a unsigned 64 bit duration in us.
+	Duration of frames in region C during the given observation period.
+	@values, any
+	*/
+
+	uint32_t                  average_region_C_msw;
+	/**< Instantaneous statistics:
+	Average (ST-TS) of frames in region C MSW */
+	uint32_t                  average_region_C_lsw;
+	/**< Instantaneous statistics:
+	Average (ST-TS) of frames in region C LSW
+	Upper and lower 32 bit values of signed 64 bit average value of
+	(ST-TS) in us.
+	Average (ST-TS) of frames in region C during the given
+	observation period. @values, any
+	*/
+} __packed;
+
+struct asm_session_mtmx_strtr_session_statistics_payload {
+	uint32_t                  moduleID;
+	uint32_t                  paramID;
+	uint32_t                  paramSize;
+	struct asm_session_mtmx_strtr_session_statistics_t statistics;
+} __packed;
+
+/*Avsync interface end*/
+
 #endif /*_APR_AUDIO_H_*/

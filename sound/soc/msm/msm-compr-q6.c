@@ -560,6 +560,7 @@ static int msm_compr_playback_prepare(struct snd_pcm_substream *substream)
 	default:
 		return -EINVAL;
 	}
+
 	if (compr->info.codec_param.codec.transcode_dts) {
 		msm_pcm_routing_reg_pseudo_stream(
 			MSM_FRONTEND_DAI_PSEUDO,
@@ -836,6 +837,16 @@ static int msm_compr_open(struct snd_pcm_substream *substream)
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		runtime->hw = msm_compr_hardware_playback;
 		prtd->cmd_ack = 1;
+		/* session private data for avsync statistics */
+		prtd->audio_client->session_priv_data = kzalloc(
+			sizeof(struct audio_session_priv_data), GFP_KERNEL);
+		if (!prtd->audio_client->session_priv_data) {
+			pr_err("%s: Could not allocate for session priv data\n",
+					__func__);
+			kfree(prtd->audio_client);
+			kfree(prtd);
+			return -ENOMEM;
+		}
 	} else {
 		runtime->hw = msm_compr_hardware_capture;
 	}
@@ -975,6 +986,7 @@ static int msm_compr_playback_close(struct snd_pcm_substream *substream)
 	}
 	if (prtd->enc_audio_client)
 		q6asm_audio_client_free(prtd->enc_audio_client);
+	kfree(prtd->audio_client->session_priv_data);
 	q6asm_audio_client_free(prtd->audio_client);
 	kfree(prtd);
 	return 0;
@@ -1507,6 +1519,119 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 		}
 		return 0;
 
+     case SNDRV_COMPRESS_SET_AVSYNC_RENDER_WINDOW: {
+		struct snd_avsync_window render_window;
+		int param;
+		if (copy_from_user(&render_window, (void *) arg,
+			sizeof(struct snd_avsync_window))) {
+			rc = -EFAULT;
+			pr_err("%s: ERROR: copy from user\n", __func__);
+			return rc;
+		}
+		pr_debug("RENDER ws_msw=%d, ws_lsw=%d, we_msw=%d, we_lsw=%d\n",
+			render_window.ws_msw, render_window.ws_lsw,
+			render_window.we_msw, render_window.we_lsw);
+		param = ASM_SESSION_MTMX_STRTR_PARAM_RENDER_WINDOW_START;
+		rc = q6asm_set_window_param(prtd->audio_client, param,
+				render_window.ws_msw, render_window.ws_lsw);
+		if (rc < 0) {
+				pr_debug("set_window_param failed param=%d rc=%d\n",
+					param, rc);
+				rc = -EFAULT;
+			}
+		param = ASM_SESSION_MTMX_STRTR_PARAM_RENDER_WINDOW_END;
+		rc = q6asm_set_window_param(prtd->audio_client, param,
+				render_window.we_msw, render_window.we_lsw);
+		if (rc < 0) {
+				pr_debug("set_window_param failed param=%d rc=%d\n",
+					param, rc);
+				rc = -EFAULT;
+			}
+		}
+		return rc;
+	case SNDRV_COMPRESS_SET_AVSYNC_STAT_WINDOW: {
+		struct snd_avsync_window stat_window;
+		int param;
+		if (copy_from_user(&stat_window, (void *) arg,
+			sizeof(struct snd_avsync_window))) {
+			rc = -EFAULT;
+			pr_err("%s: ERROR: copy from user\n", __func__);
+			return rc;
+		}
+		pr_debug("STAT ws_msw=%d, ws_lsw=%d, we_msw=%d, we_lsw=%d\n",
+			stat_window.ws_msw, stat_window.ws_lsw,
+			stat_window.we_msw, stat_window.we_lsw);
+		param = ASM_SESSION_MTMX_STRTR_PARAM_STAT_WINDOW_START;
+		rc = q6asm_set_window_param(prtd->audio_client, param,
+			stat_window.ws_msw, stat_window.ws_lsw);
+		if (rc < 0) {
+				pr_debug("set_window_param failed param=%d rc=%d\n",
+					param, rc);
+				rc = -EFAULT;
+			}
+		param = ASM_SESSION_MTMX_STRTR_PARAM_STAT_WINDOW_END;
+		rc = q6asm_set_window_param(prtd->audio_client, param,
+			stat_window.we_msw, stat_window.we_lsw);
+		if (rc < 0) {
+				pr_debug("set_window_param failed param=%d rc=%d\n",
+					param, rc);
+				rc = -EFAULT;
+			}
+		}
+		return rc;
+	case SNDRV_COMPRESS_GET_AVSYNC_SESSION_TIME: {
+		struct asm_session_mtmx_strtr_param_session_time_v1_1_t st;
+		pr_debug("SNDRV_COMPRESS_GET_AVSYNC_SESSION_TIME\n");
+		memset(&st, 0x0, sizeof(
+			struct asm_session_mtmx_strtr_param_session_time_v1_1_t));
+		rc = q6asm_get_avsync_session_time(prtd->audio_client, &st);
+		if (rc < 0) {
+				pr_debug("get_avsync_session_time failed rc=%d\n",
+					rc);
+				rc = -EFAULT;
+			}
+		if (copy_to_user((void *) arg, &st,
+			sizeof(struct snd_avsync_session_time))) {
+				rc = -EFAULT;
+		}
+		return 0;
+	}
+	case SNDRV_COMPRESS_GET_AVSYNC_INST_STATISTICS: {
+		struct asm_session_mtmx_strtr_session_statistics_t st;
+		pr_debug("SNDRV_COMPRESS_GET_AVSYNC_INST_STATISTICS\n");
+		memset(&st, 0x0, sizeof(struct snd_avsync_statistics));
+		rc = q6asm_get_avsync_statistics(prtd->audio_client,
+			ASM_SESSION_MTMX_STRTR_PARAM_INST_STATISTICS,
+			&st);
+		if (rc < 0) {
+				pr_debug("get_avsync_inst_statistics failed rc=%d\n",
+					rc);
+				rc = -EFAULT;
+			}
+		if (copy_to_user((void *) arg, &st,
+			sizeof(struct snd_avsync_statistics))) {
+				rc = -EFAULT;
+		}
+		return 0;
+	}
+	case SNDRV_COMPRESS_GET_AVSYNC_CUMU_STATISTICS: {
+		struct asm_session_mtmx_strtr_session_statistics_t st;
+		pr_debug("SNDRV_COMPRESS_GET_AVSYNC_CUMU_STATISTICS\n");
+		memset(&st, 0x0, sizeof(struct snd_avsync_statistics));
+		rc = q6asm_get_avsync_statistics(prtd->audio_client,
+			ASM_SESSION_MTMX_STRTR_PARAM_CUMU_STATISTICS,
+			&st);
+		if (rc < 0) {
+				pr_debug("get_avsync_cumu_statistics failed rc=%d\n",
+					rc);
+				rc = -EFAULT;
+			}
+		if (copy_to_user((void *) arg, &st,
+			sizeof(struct snd_avsync_statistics))) {
+				rc = -EFAULT;
+		}
+		return 0;
+	}
 	default:
 		break;
 	}
