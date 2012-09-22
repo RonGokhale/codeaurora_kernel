@@ -136,30 +136,9 @@ static int fimd_check_timing(struct device *dev, void *timing)
 	return -EINVAL;
 }
 
-static int fimd_power_on(struct fimd_context *ctx, bool enable);
-
 static int fimd_display_power_on(struct device *dev, int mode)
 {
-	struct fimd_context *ctx = get_fimd_context(dev);
-	bool enable;
-
 	DRM_DEBUG_KMS("%s\n", __FILE__);
-
-	switch (mode) {
-	case DRM_MODE_DPMS_ON:
-	case DRM_MODE_DPMS_STANDBY:
-		enable = true;
-		break;
-	case DRM_MODE_DPMS_SUSPEND:
-	case DRM_MODE_DPMS_OFF:
-		enable = false;
-		break;
-	default:
-		DRM_DEBUG_KMS("unspecified mode %d\n", mode);
-		return -EINVAL;
-	}
-
-	fimd_power_on(ctx, enable);
 
 	return 0;
 }
