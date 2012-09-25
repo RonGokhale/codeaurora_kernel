@@ -45,6 +45,8 @@
 
 #define SECCLKAGD		BIT(4)
 
+#define SECCLKAGD		BIT(4)
+
 static DEFINE_MUTEX(driver_lock);
 static DEFINE_SPINLOCK(l2_lock);
 
