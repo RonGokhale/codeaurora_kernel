@@ -240,6 +240,17 @@ long mdm_modem_ioctl(struct file *filp, unsigned int cmd,
 		else
 			put_user(0, (unsigned long __user *) arg);
 		break;
+	case SHUTDOWN_CHARM:
+		if (!mdm_drv->pdata->send_shdn)
+			break;
+		mdm_drv->mdm_ready = 0;
+		if (mdm_debug_mask & MDM_DEBUG_MASK_SHDN_LOG)
+			pr_info("Sending shutdown request to mdm\n");
+		ret = sysmon_send_shutdown(SYSMON_SS_EXT_MODEM);
+		if (ret)
+			pr_err("%s: Graceful shutdown of the external modem failed, ret = %d\n",
+				   __func__, ret);
+		break;
 	default:
 		pr_err("%s: invalid ioctl cmd = %d\n", __func__, _IOC_NR(cmd));
 		ret = -EINVAL;
@@ -328,6 +339,9 @@ static struct notifier_block mdm_panic_blk = {
 static irqreturn_t mdm_status_change(int irq, void *dev_id)
 {
 	int value = gpio_get_value(mdm_drv->mdm2ap_status_gpio);
+
+	if ((mdm_debug_mask & MDM_DEBUG_MASK_SHDN_LOG) && (value == 0))
+		pr_info("%s: mdm2ap_status went low\n", __func__);
 
 	pr_debug("%s: mdm sent status change interrupt\n", __func__);
 	if (value == 0 && mdm_drv->mdm_ready == 1) {

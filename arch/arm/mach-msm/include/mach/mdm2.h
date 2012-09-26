@@ -31,6 +31,7 @@ struct mdm_platform_data {
 	struct mdm_vddmin_resource *vddmin_resource;
 	struct platform_device *peripheral_platform_device;
 	const unsigned int ramdump_timeout_ms;
+	int send_shdn;
 };
 
 #endif
