@@ -193,6 +193,13 @@ static int msm_csiphy_init(struct v4l2_subdev *sd)
 		return rc;
 	}
 
+	if (csiphy_dev->csiphy_state == CSIPHY_POWER_UP) {
+		pr_err("%s: csiphy invalid state %d\n", __func__,
+			csiphy_dev->csiphy_state);
+		rc = -EINVAL;
+		return rc;
+	}
+
 	csiphy_dev->base = ioremap(csiphy_dev->mem->start,
 		resource_size(csiphy_dev->mem));
 	if (!csiphy_dev->base) {
@@ -214,6 +221,7 @@ static int msm_csiphy_init(struct v4l2_subdev *sd)
 #endif
 	msm_csiphy_reset(csiphy_dev);
 
+	csiphy_dev->csiphy_state = CSIPHY_POWER_UP;
 	return 0;
 }
 
@@ -222,6 +230,13 @@ static int msm_csiphy_release(struct v4l2_subdev *sd)
 	struct csiphy_device *csiphy_dev;
 	int i;
 	csiphy_dev = v4l2_get_subdevdata(sd);
+
+	if (csiphy_dev->csiphy_state != CSIPHY_POWER_UP) {
+		pr_err("%s: csiphy invalid state %d\n", __func__,
+			csiphy_dev->csiphy_state);
+		return -EINVAL;
+	}
+
 	for (i = 0; i < 4; i++)
 		msm_camera_io_w(0x0, csiphy_dev->base +
 		MIPI_CSIPHY_LNn_CFG2_ADDR + 0x40*i);
@@ -237,6 +252,7 @@ static int msm_csiphy_release(struct v4l2_subdev *sd)
 
 	iounmap(csiphy_dev->base);
 	csiphy_dev->base = NULL;
+	csiphy_dev->csiphy_state = CSIPHY_POWER_DOWN;
 	return 0;
 }
 
@@ -335,6 +351,7 @@ static int __devinit csiphy_probe(struct platform_device *pdev)
 	new_csiphy_dev->pdev = pdev;
 	msm_cam_register_subdev_node(
 		&new_csiphy_dev->subdev, CSIPHY_DEV, pdev->id);
+	new_csiphy_dev->csiphy_state = CSIPHY_POWER_DOWN;
 	return 0;
 
 csiphy_no_resource:

@@ -22,6 +22,11 @@ struct ispif_irq_status {
 	uint32_t ispifIrqStatus1;
 };
 
+enum msm_ispif_state_t {
+	ISPIF_POWER_UP,
+	ISPIF_POWER_DOWN,
+};
+
 struct ispif_device {
 	struct platform_device *pdev;
 	struct v4l2_subdev subdev;
@@ -34,6 +39,7 @@ struct ispif_device {
 	struct completion reset_complete;
 	uint32_t csid_version;
 	struct clk *ispif_clk[5];
+	enum msm_ispif_state_t ispif_state;
 };
 
 struct ispif_isr_queue_cmd {
