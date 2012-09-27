@@ -399,6 +399,7 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 				  &exynos_fb->kds_cb, crtc, fb, 1, shared,
 				  resource_list);
 	} else {
+		DRM_ERROR("flipping a non-kds buffer\n");
 		exynos_drm_kds_callback(crtc, fb);
 	}
 #endif
