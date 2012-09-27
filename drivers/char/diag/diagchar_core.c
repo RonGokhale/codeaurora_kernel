@@ -38,6 +38,8 @@
 #endif
 #include <linux/timer.h>
 #include "diagfwd_bridge.h"
+#include "diag_debugfs.h"
+#include "diag_masks.h"
 
 MODULE_DESCRIPTION("Diag Char Driver");
 MODULE_LICENSE("GPL v2");
@@ -373,7 +375,7 @@ void diag_add_reg(int j, struct bindpkt_params *params,
 	(*count_entries)++;
 }
 
-#ifdef CONFIG_DIAG_BRIDGE_CODE
+#ifdef CONFIG_DIAGFWD_BRIDGE_CODE
 uint16_t diag_get_remote_device_mask(void)
 {
 	uint16_t remote_dev = 0;
@@ -688,7 +690,7 @@ static int diagchar_read(struct file *file, char __user *buf, size_t count,
 {
 	int index = -1, i = 0, ret = 0;
 	int num_data = 0, data_type;
-#if defined(CONFIG_DIAG_SDIO_PIPE) || defined(CONFIG_DIAG_BRIDGE_CODE)
+#if defined(CONFIG_DIAG_SDIO_PIPE) || defined(CONFIG_DIAGFWD_BRIDGE_CODE)
 	int mdm_token = MDM_TOKEN;
 #endif
 
@@ -1486,6 +1488,7 @@ static int __init diagchar_init(void)
 						 diag_disconnect_work_fn);
 #endif
 		diagfwd_cntl_init();
+		diag_masks_init();
 		driver->dci_state = diag_dci_init();
 		diag_sdio_fn(INIT);
 
@@ -1521,6 +1524,7 @@ fail:
 	diagchar_cleanup();
 	diagfwd_exit();
 	diagfwd_cntl_exit();
+	diag_masks_exit();
 	diag_sdio_fn(EXIT);
 	diagfwd_bridge_fn(EXIT);
 	return -1;
@@ -1534,6 +1538,7 @@ static void diagchar_exit(void)
 	diagmem_exit(driver, POOL_TYPE_ALL);
 	diagfwd_exit();
 	diagfwd_cntl_exit();
+	diag_masks_exit();
 	diag_sdio_fn(EXIT);
 	diagfwd_bridge_fn(EXIT);
 	diag_debugfs_cleanup();
