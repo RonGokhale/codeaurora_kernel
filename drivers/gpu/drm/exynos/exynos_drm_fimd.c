@@ -863,9 +863,6 @@ static int fimd_power_on(struct fimd_context *ctx, bool enable)
 		clk_disable(ctx->bus_clk);
 
 		ctx->suspended = true;
-
-		if (pdata->panel_type == DP_LCD)
-			writel(0, ctx->regs + DPCLKCON);
 	}
 
 	return 0;
