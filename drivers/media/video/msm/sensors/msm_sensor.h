@@ -69,6 +69,10 @@ struct msm_sensor_id_info_t {
 struct msm_sensor_exp_gain_info_t {
 	uint16_t coarse_int_time_addr;
 	uint16_t global_gain_addr;
+	uint16_t digital_gain_gr;
+	uint16_t digital_gain_r;
+	uint16_t digital_gain_b;
+	uint16_t digital_gain_gb;
 	uint16_t vert_offset;
 };
 
