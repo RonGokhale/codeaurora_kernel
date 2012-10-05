@@ -185,7 +185,7 @@ static void riva_crash_shutdown(const struct subsys_data *subsys)
 }
 
 static struct subsys_data riva_8960 = {
-	.name = "riva",
+	.name = "wcnss",
 	.shutdown = riva_shutdown,
 	.powerup = riva_powerup,
 	.ramdump = riva_ramdump,
