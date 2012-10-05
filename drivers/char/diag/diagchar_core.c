@@ -1480,6 +1480,7 @@ static int __init diagchar_init(void)
 		INIT_WORK(&(driver->diag_clean_wcnss_reg_work),
 						 diag_clean_wcnss_reg_fn);
 		diag_debugfs_init();
+		diag_masks_init();
 		diagfwd_init();
 #ifdef CONFIG_DIAGFWD_BRIDGE_CODE
 		diagfwd_bridge_init(HSIC);
@@ -1488,7 +1489,6 @@ static int __init diagchar_init(void)
 						 diag_disconnect_work_fn);
 #endif
 		diagfwd_cntl_init();
-		diag_masks_init();
 		driver->dci_state = diag_dci_init();
 		diag_sdio_fn(INIT);
 
