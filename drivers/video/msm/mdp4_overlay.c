@@ -1519,19 +1519,27 @@ void mdp4_overlayproc_cfg(struct mdp4_overlay_pipe *pipe)
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 }
 
-int mdp4_overlay_pipe_staged(int mixer)
+int mdp4_overlay_pipe_staged(struct mdp4_overlay_pipe *pipe)
 {
-	uint32 data, mask, i, off;
+	uint32 data, mask;
+	int mixer;
+
+	mixer = pipe->mixer_num;
+	data = ctrl->mixer_cfg[mixer];
+
+	mask = 0x0f;
+	mask <<= (4 * pipe->pipe_num);
+	data &= mask;
+
+	return data;
+}
+
+int mdp4_overlay_mixer_staged(int mixer)
+{
+	uint32 data, mask, i;
 	int p1, p2;
 
-	if (mixer == MDP4_MIXER2)
-		off = 0x100F0;
-	else
-		off = 0x10100;
-
-	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
-	data = inpdw(MDP_BASE + off);
-	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	data = ctrl->mixer_cfg[mixer];
 	p1 = 0;
 	p2 = 0;
 	for (i = 0; i < 8; i++) {
@@ -2381,6 +2389,9 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 	 * zorder 2 == stage 2 == 4
 	 */
 	if (req->id == MSMFB_NEW_REQUEST) {  /* new request */
+		if (mdp4_overlay_pipe_staged(pipe))
+			pr_err("%s: ndx=%d still staged\n", __func__,
+						pipe->pipe_ndx);
 		pipe->pipe_used++;
 		pipe->mixer_num = mixer;
 		pr_debug("%s: zorder=%d pipe ndx=%d num=%d\n", __func__,
