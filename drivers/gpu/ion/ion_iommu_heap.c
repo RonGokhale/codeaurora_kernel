@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -19,6 +19,7 @@
 #include <linux/vmalloc.h>
 #include <linux/iommu.h>
 #include <linux/pfn.h>
+#include <linux/dma-mapping.h>
 #include "ion_priv.h"
 
 #include <asm/mach/map.h>
@@ -75,8 +76,14 @@ static int ion_iommu_heap_allocate(struct ion_heap *heap,
 
 			sg_set_page(&data->iommu_sglist[i], data->pages[i],
 				    PAGE_SIZE, 0);
+			sg_dma_address(&data->iommu_sglist[i]) =
+				sg_phys(&data->iommu_sglist[i]);
 		}
 
+		if (!ION_IS_CACHED(flags))
+			dma_sync_sg_for_device(NULL, data->iommu_sglist,
+						data->nrpages,
+						DMA_BIDIRECTIONAL);
 
 		buffer->priv_virt = data;
 		return 0;
