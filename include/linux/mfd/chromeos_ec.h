@@ -46,6 +46,12 @@ struct chromeos_ec_device {
 			struct chromeos_ec_msg *msg);
 	int (*command_raw)(struct chromeos_ec_device *ec,
 			struct i2c_msg *msgs, int num);
+
+	/*
+	 * Indicate to sub-drivers that we have woken up from resume but we
+	 * were not a wakeup source.
+	 */
+	struct blocking_notifier_head wake_notifier;
 };
 
 #endif /* __LINUX_MFD_CHROMEOS_EC_H */

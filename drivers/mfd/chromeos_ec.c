@@ -262,6 +262,7 @@ static int __devinit cros_ec_probe(struct i2c_client *client,
 	ec_dev->command_raw  = cros_ec_command_raw;
 
 	BLOCKING_INIT_NOTIFIER_HEAD(&ec_dev->event_notifier);
+	BLOCKING_INIT_NOTIFIER_HEAD(&ec_dev->wake_notifier);
 
 	err = request_threaded_irq(ec_dev->irq, NULL, ec_irq_thread,
 				   IRQF_TRIGGER_LOW | IRQF_ONESHOT,
@@ -308,6 +309,16 @@ static int cros_ec_resume(struct device *dev)
 {
 	struct chromeos_ec_device *ec = to_ec_dev(dev);
 
+	/*
+	 * When the EC is not a wake source, then it could not have caused the
+	 * resume, so we should do the resume processing. This may clear the
+	 * EC's key scan buffer, for example. If the EC is a wake source (e.g.
+	 * the lid is open and the user might press a key to wake) then we
+	 * don't want to do resume processing (key scan buffer should be
+	 * preserved).
+	 */
+	if (!ec->wake_enabled)
+		blocking_notifier_call_chain(&ec->wake_notifier, 1, ec);
 	enable_irq(ec->irq);
 
 	if (ec->wake_enabled) {
