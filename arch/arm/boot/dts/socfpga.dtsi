@@ -469,6 +469,32 @@
 			cache-level = <2>;
 		};
 
+		mmc: sdmmc@ff704000 {
+			compatible = "snps,dw-mmc";
+			reg = <0xff704000 0x1000>;
+			interrupts = <0 139 4>;
+			bus-hz = <50000000>; /*50MHz*/
+			num-slots = <1>;
+			bus-width = <8>;
+			fifo-depth = <1024>;
+			voltage-switch = <0>;	/* 0-No support */
+
+			/* First cell: smpl_sel, second cell: drv_sel*/
+			mmc-hs-timing = <7 4>;
+			sdr12-timing = <0 4>;
+			sdr25-timing = <7 3>;
+			};
+
+		rstmgr@ffd05000 {
+				compatible = "altr,rst-mgr";
+				reg = <0xffd05000 0x1000>;
+			};
+		
+		sysmgr@ffd08000 {
+				compatible = "altr,sys-mgr";
+				reg = <0xffd08000 0x4000>;
+			};
+
 		/* Local timer */
 		timer@fffec600 {
 			compatible = "arm,cortex-a9-twd-timer";
