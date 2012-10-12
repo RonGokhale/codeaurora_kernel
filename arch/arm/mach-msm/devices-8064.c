@@ -3689,3 +3689,8 @@ struct platform_device apq8064_cache_dump_device = {
 		.platform_data = &apq8064_cache_dump_pdata,
 	},
 };
+
+struct dev_avtimer_data dev_avtimer_pdata = {
+	.avtimer_msw_phy_addr = AVTIMER_MSW_PHYSICAL_ADDRESS,
+	.avtimer_lsw_phy_addr = AVTIMER_LSW_PHYSICAL_ADDRESS,
+};
