@@ -45,5 +45,12 @@
 #define ADDR_VGV3_NEXTADDR               0x0075
 #define ADDR_VGV3_NEXTCMD                0x0076
 #define ADDR_VGV3_WRITEADDR              0x0072
+#define ADDR_VGC_VERSION				 0x400
+#define ADDR_VGC_SYSSTATUS				 0x410
+#define ADDR_VGC_CLOCKEN				 0x508
+#define ADDR_VGC_GPR0					 0x520
+#define ADDR_VGC_GPR1					 0x528
+#define ADDR_VGC_BUSYCNT				 0x530
+#define ADDR_VGC_FIFOFREE				 0x7c0
 
 #endif /* __Z180_REG_H */

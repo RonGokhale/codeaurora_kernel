@@ -105,6 +105,7 @@ struct kgsl_functable {
 		struct kgsl_context *context);
 	long (*ioctl) (struct kgsl_device_private *dev_priv,
 		unsigned int cmd, void *data);
+	int (*postmortem_dump) (struct kgsl_device *device, int manual);
 };
 
 struct kgsl_memregion {
@@ -190,6 +191,10 @@ struct kgsl_device {
 	struct work_struct ts_expired_ws;
 	struct list_head events;
 	s64 on_time;
+
+	/* Postmortem Control Switches */
+	int pm_regs_enabled;
+	int pm_ib_enabled;
 
 	/* page fault debugging parameters */
 	struct work_struct print_fault_ib;

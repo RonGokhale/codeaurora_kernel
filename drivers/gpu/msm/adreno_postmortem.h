@@ -24,7 +24,7 @@ struct ib_list {
 	uint32_t offsets[IB_LIST_SIZE];
 };
 
-int adreno_postmortem_dump(struct kgsl_device *device, int manual);
+int adreno_dump(struct kgsl_device *device, int manual);
 
 void dump_ib(struct kgsl_device *device, char *buffId, uint32_t pt_base,
 	uint32_t base_offset, uint32_t ib_base, uint32_t ib_size, bool dump);
