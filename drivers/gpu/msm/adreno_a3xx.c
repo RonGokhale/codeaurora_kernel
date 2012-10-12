@@ -2693,35 +2693,70 @@ static unsigned int a3xx_busy_cycles(struct adreno_device *adreno_dev)
 	return val;
 }
 
+struct a3xx_vbif_data {
+	unsigned int reg;
+	unsigned int val;
+};
+
+/* VBIF registers start after 0x3000 so use 0x0 as end of list marker */
+static struct a3xx_vbif_data a305_vbif[] = {
+	/* Set up 16 deep read/write request queues */
+	{ A3XX_VBIF_IN_RD_LIM_CONF0, 0x10101010 },
+	{ A3XX_VBIF_IN_RD_LIM_CONF1, 0x10101010 },
+	{ A3XX_VBIF_OUT_RD_LIM_CONF0, 0x10101010 },
+	{ A3XX_VBIF_OUT_WR_LIM_CONF0, 0x10101010 },
+	{ A3XX_VBIF_DDR_OUT_MAX_BURST, 0x0000303 },
+	{ A3XX_VBIF_IN_WR_LIM_CONF0, 0x10101010 },
+	{ A3XX_VBIF_IN_WR_LIM_CONF1, 0x10101010 },
+	/* Enable WR-REQ */
+	{ A3XX_VBIF_GATE_OFF_WRREQ_EN, 0x0000FF },
+	/* Set up round robin arbitration between both AXI ports */
+	{ A3XX_VBIF_ARB_CTL, 0x00000030 },
+	/* Set up AOOO */
+	{ A3XX_VBIF_OUT_AXI_AOOO_EN, 0x0000003C },
+	{ A3XX_VBIF_OUT_AXI_AOOO, 0x003C003C },
+	{0, 0},
+};
+
+static struct a3xx_vbif_data a320_vbif[] = {
+	/* Set up 16 deep read/write request queues */
+	{ A3XX_VBIF_IN_RD_LIM_CONF0, 0x10101010 },
+	{ A3XX_VBIF_IN_RD_LIM_CONF1, 0x10101010 },
+	{ A3XX_VBIF_OUT_RD_LIM_CONF0, 0x10101010 },
+	{ A3XX_VBIF_OUT_WR_LIM_CONF0, 0x10101010 },
+	{ A3XX_VBIF_DDR_OUT_MAX_BURST, 0x0000303 },
+	{ A3XX_VBIF_IN_WR_LIM_CONF0, 0x10101010 },
+	{ A3XX_VBIF_IN_WR_LIM_CONF1, 0x10101010 },
+	/* Enable WR-REQ */
+	{ A3XX_VBIF_GATE_OFF_WRREQ_EN, 0x0000FF },
+	/* Set up round robin arbitration between both AXI ports */
+	{ A3XX_VBIF_ARB_CTL, 0x00000030 },
+	/* Set up AOOO */
+	{ A3XX_VBIF_OUT_AXI_AOOO_EN, 0x0000003C },
+	{ A3XX_VBIF_OUT_AXI_AOOO, 0x003C003C },
+	/* Enable 1K sort */
+	{ A3XX_VBIF_ABIT_SORT, 0x000000FF },
+	{ A3XX_VBIF_ABIT_SORT_CONF, 0x000000A4 },
+	{0, 0},
+};
+
 static void a3xx_start(struct adreno_device *adreno_dev)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
+	struct a3xx_vbif_data *vbif = NULL;
 
-	/* Set up 16 deep read/write request queues */
+	if (adreno_is_a305(adreno_dev))
+		vbif = a305_vbif;
+	else if (adreno_is_a320(adreno_dev))
+		vbif = a320_vbif;
 
-	adreno_regwrite(device, A3XX_VBIF_IN_RD_LIM_CONF0, 0x10101010);
-	adreno_regwrite(device, A3XX_VBIF_IN_RD_LIM_CONF1, 0x10101010);
-	adreno_regwrite(device, A3XX_VBIF_OUT_RD_LIM_CONF0, 0x10101010);
-	adreno_regwrite(device, A3XX_VBIF_OUT_WR_LIM_CONF0, 0x10101010);
-	adreno_regwrite(device, A3XX_VBIF_DDR_OUT_MAX_BURST, 0x00000303);
-	adreno_regwrite(device, A3XX_VBIF_IN_WR_LIM_CONF0, 0x10101010);
-	adreno_regwrite(device, A3XX_VBIF_IN_WR_LIM_CONF1, 0x10101010);
+	BUG_ON(vbif == NULL);
 
-	/* Enable WR-REQ */
-	adreno_regwrite(device, A3XX_VBIF_GATE_OFF_WRREQ_EN, 0x000000FF);
-
-	/* Set up round robin arbitration between both AXI ports */
-	adreno_regwrite(device, A3XX_VBIF_ARB_CTL, 0x00000030);
-
-	/* Set up AOOO */
-	adreno_regwrite(device, A3XX_VBIF_OUT_AXI_AOOO_EN, 0x0000003C);
-	adreno_regwrite(device, A3XX_VBIF_OUT_AXI_AOOO, 0x003C003C);
-
-	if (cpu_is_apq8064()) {
-		/* Enable 1K sort */
-		adreno_regwrite(device, A3XX_VBIF_ABIT_SORT, 0x000000FF);
-		adreno_regwrite(device, A3XX_VBIF_ABIT_SORT_CONF, 0x000000A4);
+	while (vbif->reg != 0) {
+		adreno_regwrite(device, vbif->reg, vbif->val);
+		vbif++;
 	}
+
 	/* Make all blocks contribute to the GPU BUSY perf counter */
 	adreno_regwrite(device, A3XX_RBBM_GPU_BUSY_MASKED, 0xFFFFFFFF);
 
