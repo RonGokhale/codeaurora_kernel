@@ -19,6 +19,7 @@
 #include <linux/clkdev.h>
 #include <linux/dma-mapping.h>
 #include <linux/coresight.h>
+#include <linux/avtimer.h>
 #include <mach/irqs-8064.h>
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
@@ -108,6 +109,10 @@
 #define MSM8064_RPM_MASTER_STATS_BASE	0x10BB00
 #define MSM8064_PC_CNTR_PHYS	(APQ8064_IMEM_PHYS + 0x664)
 #define MSM8064_PC_CNTR_SIZE		0x40
+#define MSM8064_RPM_MASTER_STATS_BASE	0x10BB00
+/* avtimer */
+#define AVTIMER_MSW_PHYSICAL_ADDRESS 0x2800900C
+#define AVTIMER_LSW_PHYSICAL_ADDRESS 0x28009008
 
 static struct resource msm8064_resources_pccntr[] = {
 	{
