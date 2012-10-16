@@ -139,8 +139,8 @@ static int msm_ext_top_spk_pamp;
 static int msm_slim_0_rx_ch = 1;
 static int msm_slim_0_tx_ch = 1;
 static int msm_hdmi_rx_ch = 8;
-static int hdmi_rate_variable;
 static int mi2s_rate_variable;
+static int hdmi_rate_variable;
 static struct clk *codec_clk;
 static int clk_users;
 
@@ -523,8 +523,8 @@ static const char *slim0_rx_ch_text[] = {"One", "Two"};
 static const char *slim0_tx_ch_text[] = {"One", "Two", "Three", "Four"};
 static const char * const hdmi_rx_ch_text[] = {"Two", "Three", "Four",
 					"Five", "Six", "Seven", "Eight"};
-static const char * const hdmi_rate[] = {"Default", "Variable"};
 static const char * const mi2s_rate[] = {"Default", "Variable"};
+static const char * const hdmi_rate[] = {"Default", "Variable"};
 
 
 static const struct soc_enum msm_enum[] = {
@@ -532,8 +532,8 @@ static const struct soc_enum msm_enum[] = {
 	SOC_ENUM_SINGLE_EXT(2, slim0_rx_ch_text),
 	SOC_ENUM_SINGLE_EXT(4, slim0_tx_ch_text),
 	SOC_ENUM_SINGLE_EXT(7, hdmi_rx_ch_text),
-	SOC_ENUM_SINGLE_EXT(2, hdmi_rate),
 	SOC_ENUM_SINGLE_EXT(2, mi2s_rate),
+	SOC_ENUM_SINGLE_EXT(2, hdmi_rate),
 
 };
 
@@ -633,12 +633,13 @@ static const struct snd_kcontrol_new tabla_msm_controls[] = {
 		msm_slim_0_tx_ch_get, msm_slim_0_tx_ch_put),
 	SOC_ENUM_EXT("HDMI_RX Channels", msm_enum[3],
 		msm_hdmi_rx_ch_get, msm_hdmi_rx_ch_put),
-	SOC_ENUM_EXT("HDMI RX Rate", msm_enum[4],
-					msm_hdmi_rate_get,
-					msm_hdmi_rate_put),
 	SOC_ENUM_EXT("SEC RX Rate", msm_enum[4],
 					msm_mi2s_rate_get,
 					msm_mi2s_rate_put),
+	SOC_ENUM_EXT("HDMI RX Rate", msm_enum[5],
+					msm_hdmi_rate_get,
+					msm_hdmi_rate_put),
+
 };
 
 static void *def_tabla_mbhc_cal(void)
