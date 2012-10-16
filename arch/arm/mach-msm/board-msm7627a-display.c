@@ -1368,7 +1368,10 @@ void __init msm_fb_add_devices(void)
 				ARRAY_SIZE(evb_fb_devices));
 	} else if (machine_is_msm7627a_qrd3() || machine_is_msm8625_qrd7()) {
 		sku3_lcdc_lcd_camera_power_init();
-		mdp_pdata.cont_splash_enabled = 0x1;
+		if (machine_is_msm7627a_qrd3())
+			mdp_pdata.cont_splash_enabled = 0x0;
+		else
+			mdp_pdata.cont_splash_enabled = 0x1;
 		platform_add_devices(qrd3_fb_devices,
 						ARRAY_SIZE(qrd3_fb_devices));
 	} else {
