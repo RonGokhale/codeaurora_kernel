@@ -962,6 +962,7 @@ typedef struct drm_i915_private {
 	struct {
 		int level;
 		bool enabled;
+		bool level_has_been_set;
 		struct backlight_device *device;
 	} backlight;
 
