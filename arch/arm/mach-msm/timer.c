@@ -965,7 +965,8 @@ int __cpuinit local_timer_setup(struct clock_event_device *evt)
 		return 0;
 
 	if (cpu_is_msm8x60() || cpu_is_msm8960() || cpu_is_apq8064() ||
-	    cpu_is_msm8930() || cpu_is_msm8930aa() || cpu_is_msm8627())
+	    cpu_is_msm8930() || cpu_is_msm8930aa() || cpu_is_msm8627() ||
+	    cpu_is_apq8064ab())
 		__raw_writel(DGT_CLK_CTL_DIV_4, MSM_TMR_BASE + DGT_CLK_CTL);
 
 	if (__get_cpu_var(first_boot)) {
@@ -1062,7 +1063,8 @@ static void __init msm_timer_init(void)
 		gpt->flags |= MSM_CLOCK_FLAGS_UNSTABLE_COUNT;
 		dgt->flags |= MSM_CLOCK_FLAGS_UNSTABLE_COUNT;
 	} else if (cpu_is_msm8960() || cpu_is_apq8064() || cpu_is_msm8930() ||
-		   cpu_is_msm8930aa() || cpu_is_msm8627()) {
+		   cpu_is_msm8930aa() || cpu_is_msm8627() ||
+		   cpu_is_apq8064ab()) {
 		global_timer_offset = MSM_TMR0_BASE - MSM_TMR_BASE;
 		dgt->freq = 6750000;
 		__raw_writel(DGT_CLK_CTL_DIV_4, MSM_TMR_BASE + DGT_CLK_CTL);
@@ -1124,7 +1126,8 @@ static void __init msm_timer_init(void)
 		ce->irq = clock->irq;
 		if (cpu_is_msm8x60() || cpu_is_msm8960() || cpu_is_apq8064() ||
 		    cpu_is_msm8930() || cpu_is_msm8930aa() ||
-		    cpu_is_msm9615() || cpu_is_msm8625() || cpu_is_msm8627()) {
+		    cpu_is_msm9615() || cpu_is_msm8625() ||
+			cpu_is_msm8627() || cpu_is_apq8064ab()) {
 			clock->percpu_evt = alloc_percpu(struct clock_event_device *);
 			if (!clock->percpu_evt) {
 				pr_err("msm_timer_init: memory allocation "
