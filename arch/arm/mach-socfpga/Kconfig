@@ -13,5 +13,6 @@ config ARCH_SOCFPGA
 	select HAVE_ARM_TWD if SMP
 	select HAVE_SMP
 	select MFD_SYSCON
+	select MIGHT_HAVE_CACHE_L2X0
 	select SPARSE_IRQ
 	select USE_OF
