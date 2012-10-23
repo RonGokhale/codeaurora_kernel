@@ -53,6 +53,7 @@ static char vid_thread_names[DVB_MPQ_NUM_VIDEO_DEVICES][10] = {
 				"dvb-vid-3",
 };
 
+static enum scan_format mapScanType(enum vdec_interlaced_format type);
 static int mpq_int_vid_dec_decode_frame(struct video_client_ctx *client_ctx,
 				struct video_data_buffer *input_frame);
 static int mpq_int_vid_dec_get_buffer_req(struct video_client_ctx *client_ctx,
@@ -2120,6 +2121,8 @@ static int mpq_dvb_video_get_event(struct video_client_ctx *client_ctx,
 				vdec_msg_info.msgdata.output_frame.time_stamp;
 		ev->u.buffer.offset      =
 				vdec_msg_info.msgdata.output_frame.offset;
+		ev->u.buffer.interlaced_format = mapScanType(vdec_msg_info.\
+				msgdata.output_frame.interlaced_format);
 		break;
 	case VDEC_MSG_RESP_START_DONE:
 		DBG("VIDEO_EVENT_DECODER_PLAYING\n");
@@ -2161,6 +2164,8 @@ static int mpq_dvb_video_get_event(struct video_client_ctx *client_ctx,
 				vdec_msg_info.msgdata.output_frame.time_stamp;
 		ev->u.buffer.offset      =
 				vdec_msg_info.msgdata.output_frame.offset;
+		ev->u.buffer.interlaced_format = mapScanType(vdec_msg_info.\
+				msgdata.output_frame.interlaced_format);
 		break;
 	case VDEC_MSG_RESP_FLUSH_INPUT_DONE:
 		DBG("VIDEO_EVENT_INPUT_FLUSH_DONE\n");
@@ -2176,6 +2181,16 @@ static int mpq_dvb_video_get_event(struct video_client_ctx *client_ctx,
 	return 0;
 }
 
+static enum scan_format mapScanType(enum vdec_interlaced_format type)
+{
+	if (type == VDEC_InterlaceFrameProgressive)
+		return InterlaceFrameProgressive;
+	if (type == VDEC_InterlaceInterleaveFrameTopFieldFirst)
+		return InterlaceInterleaveFrameTopFieldFirst;
+	if (type == VDEC_InterlaceInterleaveFrameBottomFieldFirst)
+		return InterlaceInterleaveFrameBottomFieldFirst;
+	return InterlaceFrameProgressive;
+}
 static int mpq_dvb_video_play(struct mpq_dvb_video_inst *dev_inst)
 {
 	return mpq_int_vid_dec_start_stop(dev_inst->client_ctx, true);
