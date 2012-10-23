@@ -466,7 +466,17 @@ static struct gpiomux_setting hdmi_active_4_cfg = {
 	.pull = GPIOMUX_PULL_UP,
 	.dir = GPIOMUX_OUT_HIGH,
 };
+static struct gpiomux_setting mpqrev2_gsbi1_suspended_cfg = {
+	.func = GPIOMUX_FUNC_4,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
 
+static struct gpiomux_setting mpqrev2_gsbi1_active_cfg = {
+	.func = GPIOMUX_FUNC_4,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
 static struct gpiomux_setting gsbi5_suspended_cfg = {
 	.func = GPIOMUX_FUNC_2,
 	.drv = GPIOMUX_DRV_12MA,
@@ -1272,7 +1282,22 @@ static struct msm_gpiomux_config wcnss_5wire_interface[] = {
 		},
 	},
 };
-
+static struct msm_gpiomux_config mpq8064_gsbi1_i2c_configs[] __initdata = {
+	{
+		.gpio      = 0,			/* GSBI1 I2C QUP SDA */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &mpqrev2_gsbi1_suspended_cfg,
+			[GPIOMUX_ACTIVE] = &mpqrev2_gsbi1_active_cfg,
+		},
+	},
+	{
+		.gpio      = 1,			/* GSBI1 I2C QUP SCL */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &mpqrev2_gsbi1_suspended_cfg,
+			[GPIOMUX_ACTIVE] = &mpqrev2_gsbi1_active_cfg,
+		},
+	},
+};
 static struct msm_gpiomux_config mpq8064_gsbi5_i2c_configs[] __initdata = {
 	{
 		.gpio      = 53,			/* GSBI5 I2C QUP SDA */
@@ -1572,6 +1597,8 @@ void __init apq8064_init_gpiomux(void)
 {
 	int rc;
 	int platform_version = socinfo_get_platform_version();
+	uint32_t hrd_version = socinfo_get_version();
+
 
 	rc = msm_gpiomux_init(NR_GPIO_IRQS);
 	if (rc) {
@@ -1588,6 +1615,11 @@ void __init apq8064_init_gpiomux(void)
 				ARRAY_SIZE(mpq8064_gsbi5_i2c_configs));
 		msm_gpiomux_install(mpq8064_gsbi5_uart_configs,
 				ARRAY_SIZE(mpq8064_gsbi5_uart_configs));
+		if (machine_is_mpq8064_hrd() &&
+		 (SOCINFO_VERSION_MAJOR(hrd_version) == 2)) {
+			msm_gpiomux_install(mpq8064_gsbi1_i2c_configs,
+				ARRAY_SIZE(mpq8064_gsbi1_i2c_configs));
+		}
 #ifdef CONFIG_MSM_VCAP
 		msm_gpiomux_install(vcap_configs,
 				ARRAY_SIZE(vcap_configs));
@@ -1621,7 +1653,11 @@ void __init apq8064_init_gpiomux(void)
 	} else {
 		msm_gpiomux_install(apq8064_slimbus_config,
 				ARRAY_SIZE(apq8064_slimbus_config));
-		msm_gpiomux_install(apq8064_gsbi1_i2c_8ma_configs,
+		/* if Rev2 MPQ8064 hybrid,
+		dont configure GPIO 20 and 21 as GSBI I2C Lines*/
+		if (!(machine_is_mpq8064_hrd() &&
+		(SOCINFO_VERSION_MAJOR(hrd_version) == 2)))
+			msm_gpiomux_install(apq8064_gsbi1_i2c_8ma_configs,
 				ARRAY_SIZE(apq8064_gsbi1_i2c_8ma_configs));
 	}
 
