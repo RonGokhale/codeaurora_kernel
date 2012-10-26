@@ -195,7 +195,6 @@ enum mmc_packed_stop_reasons {
 	EMPTY_QUEUE,
 	REL_WRITE,
 	THRESHOLD,
-	LARGE_SEC_ALIGN,
 	MAX_REASONS,
 };
 
