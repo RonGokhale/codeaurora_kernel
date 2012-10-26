@@ -435,6 +435,9 @@ int msm_mctl_buf_done_proc(
 			cam_ts->timestamp.tv_sec, cam_ts->timestamp.tv_usec);
 		buf->vidbuf.v4l2_buf.timestamp = cam_ts->timestamp;
 	}
+	CDBG("In Buf_done:Notify user frame id %d img mode %d\n",
+		buf->vidbuf.v4l2_buf.sequence,
+		pcam_inst->image_mode);
 	vb2_buffer_done(&buf->vidbuf, VB2_BUF_STATE_DONE);
 	return 0;
 }
