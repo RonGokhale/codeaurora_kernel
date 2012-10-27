@@ -152,6 +152,16 @@ int msm_cam_server_config_interface_map(u32 extendedmode,
 						mctl_handle = 0;
 				}
 			}
+			if (!is_bayer_sensor && interface == PIX_0) {
+				if (g_server_dev.
+					interface_map_table[i].mctl_handle &&
+					g_server_dev.interface_map_table[i].
+						is_bayer_sensor) {
+					/* in simultaneous camera usecase
+					 * SoC does not use PIX interface */
+					break;
+				}
+			}
 			old_handle =
 				g_server_dev.interface_map_table[i].mctl_handle;
 			if (old_handle == 0) {
@@ -183,7 +193,7 @@ int msm_cam_server_config_interface_map(u32 extendedmode,
 				}
 			}
 			break;
-		}
+			}
 	}
 
 	if (i == INTF_MAX)
@@ -249,6 +259,18 @@ struct msm_cam_media_controller *msm_cam_server_get_mctl(uint32_t handle)
 	return NULL;
 }
 
+uint32_t msm_cam_find_handle_from_mctl_ptr(
+			struct msm_cam_media_controller *p_mctl)
+{
+	uint32_t idx;
+	struct msm_cam_media_controller *tmp_mctl = NULL;
+	for (idx = 0; idx < MAX_NUM_ACTIVE_CAMERA; idx++) {
+		tmp_mctl = &g_server_dev.mctl[idx].mctl;
+		if (p_mctl == tmp_mctl)
+			return g_server_dev.mctl[idx].handle;
+	}
+	return 0;
+}
 
 static void msm_cam_server_send_error_evt(
 		struct msm_cam_media_controller *pmctl, int evt_type)
@@ -736,7 +758,6 @@ int msm_server_streamon(struct msm_cam_v4l2_device *pcam, int idx)
 
 	/* send command to config thread in usersspace, and get return value */
 	rc = msm_server_control(&g_server_dev, 0, &ctrlcmd);
-
 	return rc;
 }
 
@@ -1382,6 +1403,13 @@ static long msm_ioctl_server(struct file *file, void *fh,
 		rc = msm_server_send_v4l2_evt(arg);
 		break;
 
+	case MSM_CAM_IOCTL_V4L2_EVT_NATIVE_CMD:
+		rc = 0;
+		break;
+	case MSM_CAM_IOCTL_V4L2_EVT_NATIVE_FRONT_CMD:
+		rc = 0;
+		break;
+
 	default:
 		pr_err("%s: Invalid IOCTL = %d", __func__, cmd);
 		break;
@@ -1640,6 +1668,9 @@ static uint32_t msm_camera_server_find_mctl(
 		else if (((struct isp_msg_event *)arg)->msg_id ==
 			MSG_ID_RDI1_UPDATE_ACK)
 			interface = RDI_1;
+		else if (((struct isp_msg_event *)arg)->msg_id ==
+			MSG_ID_RDI2_UPDATE_ACK)
+			interface = RDI_2;
 		else
 			interface = PIX_0;
 		break;
@@ -1650,6 +1681,9 @@ static uint32_t msm_camera_server_find_mctl(
 		else if (((struct isp_msg_output *)arg)->output_id ==
 						MSG_ID_OUTPUT_TERTIARY2)
 			interface = RDI_1;
+		else if (((struct isp_msg_output *)arg)->output_id ==
+						MSG_ID_OUTPUT_TERTIARY3)
+			interface = RDI_2;
 		else
 			interface = PIX_0;
 		break;
@@ -1675,6 +1709,8 @@ static uint32_t msm_camera_server_find_mctl(
 				interface = RDI_0;
 			else if (frame_info->path == VFE_MSG_OUTPUT_TERTIARY2)
 				interface = RDI_1;
+			else if (frame_info->path == VFE_MSG_OUTPUT_TERTIARY3)
+				interface = RDI_2;
 			else
 				interface = PIX_0;
 		}
