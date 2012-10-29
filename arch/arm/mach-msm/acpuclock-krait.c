@@ -44,9 +44,6 @@
 #define SEC_SRC_SEL_L2PLL	1
 #define SEC_SRC_SEL_AUX		2
 
-/* PTE EFUSE register offset. */
-#define PTE_EFUSE		0xC0
-
 static DEFINE_MUTEX(driver_lock);
 static DEFINE_SPINLOCK(l2_lock);
 
@@ -914,58 +911,69 @@ static void krait_apply_vmin(struct acpu_level *tbl)
 			tbl->vdd_core = 1150000;
 }
 
-static int __init select_freq_plan(u32 qfprom_phys)
+static int __init get_speed_bin(u32 pte_efuse)
 {
-	void __iomem *qfprom_base;
-	u32 pte_efuse, pvs, tbl_idx;
-	char *pvs_names[] = { "Slow", "Nominal", "Fast", "Faster", "Unknown" };
+	uint32_t speed_bin;
 
-	qfprom_base = ioremap(qfprom_phys, SZ_256);
-	/* Select frequency tables. */
-	if (qfprom_base) {
-		pte_efuse = readl_relaxed(qfprom_base + PTE_EFUSE);
-		pvs = (pte_efuse >> 10) & 0x7;
-		iounmap(qfprom_base);
-		if (pvs == 0x7)
-			pvs = (pte_efuse >> 13) & 0x7;
+	speed_bin = pte_efuse & 0xF;
+	if (speed_bin == 0xF)
+		speed_bin = (pte_efuse >> 4) & 0xF;
 
-		switch (pvs) {
-		case 0x0:
-		case 0x7:
-			tbl_idx = PVS_SLOW;
-			break;
-		case 0x1:
-			tbl_idx = PVS_NOMINAL;
-			break;
-		case 0x3:
-			tbl_idx = PVS_FAST;
-			break;
-		case 0x4:
-			tbl_idx = PVS_FASTER;
-			break;
-		default:
-			tbl_idx = PVS_UNKNOWN;
-			break;
-		}
+	if (speed_bin == 0xF) {
+		speed_bin = 0;
+		dev_warn(drv.dev, "SPEED BIN: Defaulting to %d\n", speed_bin);
 	} else {
-		tbl_idx = PVS_UNKNOWN;
-		dev_err(drv.dev, "Unable to map QFPROM base\n");
-	}
-	if (tbl_idx == PVS_UNKNOWN) {
-		tbl_idx = PVS_SLOW;
-		dev_warn(drv.dev, "ACPU PVS: Defaulting to %s\n",
-			 pvs_names[tbl_idx]);
-	} else {
-		dev_info(drv.dev, "ACPU PVS: %s\n", pvs_names[tbl_idx]);
+		dev_info(drv.dev, "SPEED BIN: %d\n", speed_bin);
 	}
 
-	return tbl_idx;
+	return speed_bin;
 }
+
+static int __init get_pvs_bin(u32 pte_efuse)
+{
+	uint32_t pvs_bin;
+
+	pvs_bin = (pte_efuse >> 10) & 0x7;
+	if (pvs_bin == 0x7)
+		pvs_bin = (pte_efuse >> 13) & 0x7;
+
+	if (pvs_bin == 0x7) {
+		pvs_bin = 0;
+		dev_warn(drv.dev, "ACPU PVS: Defaulting to %d\n", pvs_bin);
+	} else {
+		dev_info(drv.dev, "ACPU PVS: %d\n", pvs_bin);
+	}
+
+	return pvs_bin;
+}
+
+static struct pvs_table * __init select_freq_plan(u32 pte_efuse_phys,
+			struct pvs_table (*pvs_tables)[NUM_PVS])
+{
+	void __iomem *pte_efuse;
+	u32 pte_efuse_val, tbl_idx, bin_idx;
+
+	pte_efuse = ioremap(pte_efuse_phys, 4);
+	if (!pte_efuse) {
+		dev_err(drv.dev, "Unable to map QFPROM base\n");
+		return NULL;
+	}
+
+	pte_efuse_val = readl_relaxed(pte_efuse);
+	iounmap(pte_efuse);
+
+	/* Select frequency tables. */
+	bin_idx = get_speed_bin(pte_efuse_val);
+	tbl_idx = get_pvs_bin(pte_efuse_val);
+
+	return &pvs_tables[bin_idx][tbl_idx];
+}
+
 
 static void __init drv_data_init(struct device *dev,
 				 const struct acpuclk_krait_params *params)
 {
-	int tbl_idx;
+	struct pvs_table *pvs;
 
 	drv.dev = dev;
 	drv.scalable = kmemdup(params->scalable, params->scalable_size,
@@ -988,12 +996,12 @@ static void __init drv_data_init(struct device *dev,
 		GFP_KERNEL);
 	BUG_ON(!drv.bus_scale->usecase);
 
-	tbl_idx = select_freq_plan(params->qfprom_phys_base);
-	drv.acpu_freq_tbl = kmemdup(params->pvs_tables[tbl_idx].table,
-				    params->pvs_tables[tbl_idx].size,
-				    GFP_KERNEL);
+	pvs = select_freq_plan(params->pte_efuse_phys, params->pvs_tables);
+	BUG_ON(!pvs->table);
+
+	drv.acpu_freq_tbl = kmemdup(pvs->table, pvs->size, GFP_KERNEL);
 	BUG_ON(!drv.acpu_freq_tbl);
-	drv.boost_uv = params->pvs_tables[tbl_idx].boost_uv;
+	drv.boost_uv = pvs->boost_uv;
 
 	acpuclk_krait_data.power_collapse_khz = params->stby_khz;
 	acpuclk_krait_data.wait_for_irq_khz = params->stby_khz;
