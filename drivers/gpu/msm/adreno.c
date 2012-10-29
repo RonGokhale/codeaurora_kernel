@@ -543,7 +543,7 @@ a3xx_getchipid(struct kgsl_device *device)
 
 	unsigned int version = socinfo_get_version();
 
-	if (cpu_is_apq8064()) {
+	if (cpu_is_apq8064() || cpu_is_apq8064ab()) {
 
 		/* A320 */
 		majorid = 2;
@@ -554,11 +554,15 @@ a3xx_getchipid(struct kgsl_device *device)
 		 * up to user space via the patchid
 		 */
 
-		if ((SOCINFO_VERSION_MAJOR(version) == 1) &&
-			(SOCINFO_VERSION_MINOR(version) == 1))
-			patchid = 1;
-		else
-			patchid = 0;
+		if (SOCINFO_VERSION_MAJOR(version) == 2) {
+			patchid = 2;
+		} else {
+			if ((SOCINFO_VERSION_MAJOR(version) == 1) &&
+				(SOCINFO_VERSION_MINOR(version) == 1))
+					patchid = 1;
+			else
+					patchid = 0;
+		}
 	} else if (cpu_is_msm8930() || cpu_is_msm8930aa() || cpu_is_msm8627()) {
 
 		/* A305 */
@@ -625,8 +629,8 @@ a2xx_getchipid(struct kgsl_device *device)
 static unsigned int
 adreno_getchipid(struct kgsl_device *device)
 {
-	if (cpu_is_apq8064() || cpu_is_msm8930() || cpu_is_msm8930aa() ||
-	    cpu_is_msm8627())
+	if (cpu_is_apq8064() || cpu_is_apq8064ab() || cpu_is_msm8930() ||
+		cpu_is_msm8930aa() || cpu_is_msm8627())
 		return a3xx_getchipid(device);
 	else
 		return a2xx_getchipid(device);

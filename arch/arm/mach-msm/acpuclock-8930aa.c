@@ -185,10 +185,10 @@ static struct acpu_level acpu_freq_tbl_fast[] __initdata = {
 	{ 0, { 0 } }
 };
 
-static struct pvs_table pvs_tables[NUM_PVS] __initdata = {
-[PVS_SLOW]    = { acpu_freq_tbl_slow, sizeof(acpu_freq_tbl_slow),     0 },
-[PVS_NOMINAL] = { acpu_freq_tbl_nom,  sizeof(acpu_freq_tbl_nom),  25000 },
-[PVS_FAST]    = { acpu_freq_tbl_fast, sizeof(acpu_freq_tbl_fast), 25000 },
+static struct pvs_table pvs_tables[NUM_SPEED_BINS][NUM_PVS] __initdata = {
+[0][PVS_SLOW]    = { acpu_freq_tbl_slow, sizeof(acpu_freq_tbl_slow),     0 },
+[0][PVS_NOMINAL] = { acpu_freq_tbl_nom,  sizeof(acpu_freq_tbl_nom),  25000 },
+[0][PVS_FAST]    = { acpu_freq_tbl_fast, sizeof(acpu_freq_tbl_fast), 25000 },
 };
 
 static struct acpuclk_krait_params acpuclk_8930aa_params __initdata = {
@@ -199,7 +199,7 @@ static struct acpuclk_krait_params acpuclk_8930aa_params __initdata = {
 	.l2_freq_tbl = l2_freq_tbl,
 	.l2_freq_tbl_size = sizeof(l2_freq_tbl),
 	.bus_scale = &bus_scale_data,
-	.qfprom_phys_base = 0x00700000,
+	.pte_efuse_phys = 0x007000C0,
 	.stby_khz = 384000,
 };
 

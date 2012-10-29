@@ -4994,16 +4994,16 @@ static void __init reg_init(void)
 
 	if (!(readl_relaxed(GCC_REG_BASE(GPLL0_STATUS_REG))
 			& gpll0_clk_src.status_mask))
-		configure_pll(&gpll0_config, &gpll0_regs, 1);
+		configure_sr_hpm_lp_pll(&gpll0_config, &gpll0_regs, 1);
 
 	if (!(readl_relaxed(GCC_REG_BASE(GPLL1_STATUS_REG))
 			& gpll1_clk_src.status_mask))
-		configure_pll(&gpll1_config, &gpll1_regs, 1);
+		configure_sr_hpm_lp_pll(&gpll1_config, &gpll1_regs, 1);
 
-	configure_pll(&mmpll0_config, &mmpll0_regs, 1);
-	configure_pll(&mmpll1_config, &mmpll1_regs, 1);
-	configure_pll(&mmpll3_config, &mmpll3_regs, 0);
-	configure_pll(&lpapll0_config, &lpapll0_regs, 1);
+	configure_sr_hpm_lp_pll(&mmpll0_config, &mmpll0_regs, 1);
+	configure_sr_hpm_lp_pll(&mmpll1_config, &mmpll1_regs, 1);
+	configure_sr_hpm_lp_pll(&mmpll3_config, &mmpll3_regs, 0);
+	configure_sr_hpm_lp_pll(&lpapll0_config, &lpapll0_regs, 1);
 
 	/* Active GPLL0's aux output. This is needed by acpuclock. */
 	regval = readl_relaxed(GCC_REG_BASE(GPLL0_USER_CTL_REG));
@@ -5092,7 +5092,7 @@ static void __init msm8974_clock_pre_init(void)
 	if (!virt_bases[MSS_BASE])
 		panic("clock-8974: Unable to ioremap MSS_CC memory!");
 
-	clk_ops_local_pll.enable = msm8974_pll_clk_enable;
+	clk_ops_local_pll.enable = sr_hpm_lp_pll_clk_enable;
 
 	reg_init();
 }

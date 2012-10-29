@@ -17,7 +17,7 @@
 #include <mach/msm_bus_board.h>
 #include <mach/board.h>
 #include <mach/msm_dcvs.h>
-
+#include <mach/socinfo.h>
 #include "devices.h"
 #include "board-8064.h"
 
@@ -243,5 +243,8 @@ struct platform_device device_kgsl_3d0 = {
 
 void __init apq8064_init_gpu(void)
 {
+	if (cpu_is_apq8064ab())
+		kgsl_3d0_pdata.pwrlevel[0].gpu_freq = 450000000;
+
 	platform_device_register(&device_kgsl_3d0);
 }
