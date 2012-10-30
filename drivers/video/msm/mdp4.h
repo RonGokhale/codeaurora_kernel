@@ -557,6 +557,8 @@ ssize_t mdp4_lcdc_show_event(struct device *dev,
 	struct device_attribute *attr, char *buf);
 ssize_t mdp4_dtv_show_event(struct device *dev,
 	struct device_attribute *attr, char *buf);
+ssize_t mdp4_mddi_show_event(struct device *dev,
+	struct device_attribute *attr, char *buf);
 void mdp4_overlay_dsi_state_set(int state);
 int mdp4_overlay_dsi_state_get(void);
 void mdp4_overlay_rgb_setup(struct mdp4_overlay_pipe *pipe);
