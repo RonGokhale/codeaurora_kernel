@@ -807,7 +807,7 @@ static struct msm_camera_i2c_reg_conf vx6953_recommend_settings[] = {
 
 static struct v4l2_subdev_info vx6953_subdev_info[] = {
 	{
-	.code   = V4L2_MBUS_FMT_SGRBG10_1X10,
+	.code   = V4L2_MBUS_FMT_SBGGR10_1X10,
 	.colorspace = V4L2_COLORSPACE_JPEG,
 	.fmt    = 1,
 	.order    = 0,
