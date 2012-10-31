@@ -26,6 +26,7 @@
 #include <mach/board.h>
 #include <mach/gpiomux.h>
 #include <mach/restart.h>
+#include <mach/socinfo.h>
 #include "devices.h"
 #include "board-8064.h"
 
@@ -150,6 +151,24 @@ static struct pm8xxx_mpp_init pm8xxx_mpps[] __initdata = {
 	PM8921_MPP_INIT(1, D_OUTPUT, PM8921_MPP_DIG_LEVEL_VPH, DOUT_CTRL_HIGH),
 };
 
+static struct pm8xxx_gpio_init pm8921_dsda_gpios[] __initdata = {
+	PM8921_GPIO_OUTPUT(12, 0, HIGH),		/* PM2QSC_SOFT_RESET */
+	PM8921_GPIO_OUTPUT(8, 0, HIGH),			/* PM2QSC_PWR_EN */
+	PM8921_GPIO_OUTPUT(16, 0, HIGH),		/* PM2QSC_KEYPADPWR */
+};
+
+void __init apq8064_configure_gpios(struct pm8xxx_gpio_init *data, int len)
+{
+	int i, rc;
+
+	for (i = 0; i < len; i++) {
+		rc = pm8xxx_gpio_config(data[i].gpio, &data[i].config);
+		if (rc)
+			pr_err("%s: pm8xxx_gpio_config(%u) failed: rc=%d\n",
+				__func__, data[i].gpio, rc);
+	}
+}
+
 void __init apq8064_pm8xxx_gpio_mpp_init(void)
 {
 	int i, rc;
@@ -173,6 +192,14 @@ void __init apq8064_pm8xxx_gpio_mpp_init(void)
 				break;
 			}
 		}
+
+	if (machine_is_apq8064_mtp()) {
+		apq8064_configure_gpios(pm8921_mtp_kp_gpios,
+					ARRAY_SIZE(pm8921_mtp_kp_gpios));
+		if (socinfo_get_platform_subtype() == PLATFORM_SUBTYPE_DSDA)
+			apq8064_configure_gpios(pm8921_dsda_gpios,
+						ARRAY_SIZE(pm8921_dsda_gpios));
+	}
 
 	if (machine_is_apq8064_mtp())
 		for (i = 0; i < ARRAY_SIZE(pm8921_mtp_kp_gpios); i++) {

@@ -44,6 +44,8 @@
 #include <mach/iommu_domains.h>
 #include <mach/msm_cache_dump.h>
 
+#include "board-8064.h"
+
 /* Address of GSBI blocks */
 #define MSM_GSBI1_PHYS		0x12440000
 #define MSM_GSBI3_PHYS		0x16200000
@@ -2263,11 +2265,21 @@ struct msm_mpm_device_data apq8064_mpm_dev_data __initdata = {
 #define MDM2AP_STATUS			49
 #define AP2MDM_STATUS			48
 #define AP2MDM_SOFT_RESET		27
-#define I2S_AP2MDM_SOFT_RESET		0
+#define I2S_AP2MDM_SOFT_RESET	0
 #define AP2MDM_WAKEUP			35
 #define I2S_AP2MDM_WAKEUP		44
 #define MDM2AP_PBLRDY			46
 #define I2S_MDM2AP_PBLRDY		81
+#define DSDA_MDM2AP_ERRFATAL	36
+#define DSDA_AP2MDM_ERRFATAL	37
+#define DSDA_AP2MDM_SOFT_RESET	59
+#define DSDA_AP2MDM_WAKEUP		3
+#define DSDA_MDM2AP_PBLRDY		35
+#define QSC2AP_STATUS			61
+#define QSC2AP_ERRFATAL			50
+#define PM2QSC_SOFT_RESET	PM8921_GPIO_PM_TO_SYS(12)
+#define PM2QSC_PWR_EN		PM8921_GPIO_PM_TO_SYS(8)
+#define PM2QSC_KEYPADPWR	PM8921_GPIO_PM_TO_SYS(16)
 
 static struct resource mdm_resources[] = {
 	{
@@ -2359,6 +2371,96 @@ static struct resource i2s_mdm_resources[] = {
 	},
 };
 
+static struct resource dsda_mdm_resources[] = {
+	{
+		.start	= DSDA_MDM2AP_ERRFATAL,
+		.end	= DSDA_MDM2AP_ERRFATAL,
+		.name	= "MDM2AP_ERRFATAL",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= DSDA_AP2MDM_ERRFATAL,
+		.end	= DSDA_AP2MDM_ERRFATAL,
+		.name	= "AP2MDM_ERRFATAL",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= MDM2AP_STATUS,
+		.end	= MDM2AP_STATUS,
+		.name	= "MDM2AP_STATUS",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= AP2MDM_STATUS,
+		.end	= AP2MDM_STATUS,
+		.name	= "AP2MDM_STATUS",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= DSDA_AP2MDM_SOFT_RESET,
+		.end	= DSDA_AP2MDM_SOFT_RESET,
+		.name	= "AP2MDM_SOFT_RESET",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= DSDA_AP2MDM_WAKEUP,
+		.end	= DSDA_AP2MDM_WAKEUP,
+		.name	= "AP2MDM_WAKEUP",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= DSDA_MDM2AP_PBLRDY,
+		.end	= DSDA_MDM2AP_PBLRDY,
+		.name	= "MDM2AP_PBLRDY",
+		.flags	= IORESOURCE_IO,
+	},
+};
+
+static struct resource dsda_qsc_resources[] = {
+	{
+		.start	= QSC2AP_ERRFATAL,
+		.end	= QSC2AP_ERRFATAL,
+		.name	= "MDM2AP_ERRFATAL",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= DSDA_AP2MDM_ERRFATAL,
+		.end	= DSDA_AP2MDM_ERRFATAL,
+		.name	= "AP2MDM_ERRFATAL",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= QSC2AP_STATUS,
+		.end	= QSC2AP_STATUS,
+		.name	= "MDM2AP_STATUS",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= AP2MDM_STATUS,
+		.end	= AP2MDM_STATUS,
+		.name	= "AP2MDM_STATUS",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= PM2QSC_PWR_EN,
+		.end	= PM2QSC_PWR_EN,
+		.name	= "AP2MDM_PMIC_PWR_EN",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= PM2QSC_KEYPADPWR,
+		.end	= PM2QSC_KEYPADPWR,
+		.name	= "AP2MDM_KPDPWR_N",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= PM2QSC_SOFT_RESET,
+		.end	= PM2QSC_SOFT_RESET,
+		.name	= "AP2MDM_SOFT_RESET",
+		.flags	= IORESOURCE_IO,
+	},
+};
+
 struct platform_device mdm_8064_device = {
 	.name		= "mdm2_modem",
 	.id		= -1,
@@ -2380,6 +2482,20 @@ struct platform_device apq8064_cpu_idle_device = {
 	.dev = {
 		.platform_data = &apq8064_LPM_latency,
 	},
+};
+
+struct platform_device dsda_mdm_8064_device = {
+	.name		= "mdm2_modem",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(dsda_mdm_resources),
+	.resource	= dsda_mdm_resources,
+};
+
+struct platform_device dsda_qsc_8064_device = {
+	.name		= "mdm2_modem",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(dsda_qsc_resources),
+	.resource	= dsda_qsc_resources,
 };
 
 static struct msm_dcvs_freq_entry apq8064_freq[] = {
