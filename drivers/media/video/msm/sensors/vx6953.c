@@ -875,11 +875,11 @@ static struct msm_sensor_id_info_t vx6953_id_info = {
 
 static struct msm_sensor_exp_gain_info_t vx6953_exp_gain_info = {
 	.coarse_int_time_addr = 0x0202,
-	.global_gain_addr = 0x0204,
-	.digital_gain_gr = 0x020E,
-	.digital_gain_r = 0x0210,
-	.digital_gain_b = 0x0212,
-	.digital_gain_gb = 0x0214,
+	.global_gain_addr = 0x0205,
+	.digital_gain_gr = 0x020F,
+	.digital_gain_r = 0x0211,
+	.digital_gain_b = 0x0213,
+	.digital_gain_gb = 0x0215,
 	.vert_offset = 9,
 };
 
@@ -933,10 +933,19 @@ int32_t vx6953_write_exp_gain(struct msm_sensor_ctrl_t *s_ctrl,
 	uint8_t frame_length_lines_hi = 0, frame_length_lines_lo = 0;
 	int32_t rc = 0;
 
-	frame_length_lines = VX6953_QTR_SIZE_HEIGHT +
-		VX6953_VER_QTR_BLK_LINES;
-	line_length_pck = VX6953_QTR_SIZE_WIDTH +
-		VX6953_HRZ_QTR_BLK_PIXELS;
+	if (s_ctrl->curr_res != 0) {
+		frame_length_lines = VX6953_QTR_SIZE_HEIGHT +
+			VX6953_VER_QTR_BLK_LINES;
+		line_length_pck = VX6953_QTR_SIZE_WIDTH +
+			VX6953_HRZ_QTR_BLK_PIXELS;
+	} else {
+
+		frame_length_lines = VX6953_FULL_SIZE_HEIGHT +
+			VX6953_VER_FULL_BLK_LINES;
+		line_length_pck = VX6953_FULL_SIZE_WIDTH +
+			VX6953_HRZ_FULL_BLK_PIXELS;
+	}
+
 	s_ctrl->func_tbl->sensor_group_hold_on(s_ctrl);
 	if ((line + VX6953_STM5M0EDOF_OFFSET) > MAX_FRAME_LENGTH_LINES) {
 		frame_length_lines = MAX_FRAME_LENGTH_LINES;
@@ -961,48 +970,28 @@ int32_t vx6953_write_exp_gain(struct msm_sensor_ctrl_t *s_ctrl,
 	gain_hi = (uint8_t) ((gain & 0xFF00) >> 8);
 	gain_lo = (uint8_t) (gain & 0x00FF);
 	msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
-		s_ctrl->sensor_exp_gain_info->global_gain_addr + 1,
-		gain_lo,
-		MSM_CAMERA_I2C_BYTE_DATA);
-		msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
 		s_ctrl->sensor_exp_gain_info->global_gain_addr,
-		gain_hi,
+		gain_lo,
 		MSM_CAMERA_I2C_BYTE_DATA);
 		/*Update GR Comopnent*/
 	msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
 		s_ctrl->sensor_exp_gain_info->digital_gain_gr,
 		gain_hi,
 		MSM_CAMERA_I2C_BYTE_DATA);
-	msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
-		s_ctrl->sensor_exp_gain_info->digital_gain_gr + 1,
-		gain_lo,
-		MSM_CAMERA_I2C_BYTE_DATA);
 		/*Update R Comopnent*/
 	msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
 		s_ctrl->sensor_exp_gain_info->digital_gain_r,
 		gain_hi,
-		MSM_CAMERA_I2C_BYTE_DATA);
-	msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
-		s_ctrl->sensor_exp_gain_info->digital_gain_r + 1,
-		gain_lo,
 		MSM_CAMERA_I2C_BYTE_DATA);
 		/*Update B Comopnent*/
 	msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
 		s_ctrl->sensor_exp_gain_info->digital_gain_b,
 		gain_hi,
 		MSM_CAMERA_I2C_BYTE_DATA);
-	msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
-		s_ctrl->sensor_exp_gain_info->digital_gain_b + 1,
-		gain_lo,
-		MSM_CAMERA_I2C_BYTE_DATA);
 		/*Update GB Comopnent*/
 	msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
 		s_ctrl->sensor_exp_gain_info->digital_gain_gb,
 		gain_hi,
-		MSM_CAMERA_I2C_BYTE_DATA);
-	msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
-		s_ctrl->sensor_exp_gain_info->digital_gain_gb + 1,
-		gain_lo,
 		MSM_CAMERA_I2C_BYTE_DATA);
 		/* update line count registers */
 		intg_time_hi = (uint8_t) (((uint16_t)line & 0xFF00) >> 8);
