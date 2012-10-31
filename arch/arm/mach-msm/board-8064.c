@@ -2150,7 +2150,6 @@ static struct platform_device gpio_ir_recv_pdev = {
 };
 
 static struct platform_device *common_not_mpq_devices[] __initdata = {
-	&apq8064_device_qup_i2c_gsbi1,
 	&apq8064_device_qup_i2c_gsbi3,
 	&apq8064_device_qup_i2c_gsbi4,
 };
@@ -2290,7 +2289,6 @@ static struct platform_device *rumi3_devices[] __initdata = {
 };
 
 static struct platform_device *cdp_devices[] __initdata = {
-	&apq8064_device_uart_gsbi1,
 	&apq8064_device_uart_gsbi7,
 	&msm_device_sps_apq8064,
 #ifdef CONFIG_MSM_ROTATOR
@@ -2460,18 +2458,20 @@ static void __init apq8064_i2c_init(void)
 {
 	void __iomem *gsbi_mem;
 
-	apq8064_device_qup_i2c_gsbi1.dev.platform_data =
-					&apq8064_i2c_qup_gsbi1_pdata;
-	gsbi_mem = ioremap_nocache(MSM_GSBI1_PHYS, 4);
-	writel_relaxed(GSBI_DUAL_MODE_CODE, gsbi_mem);
-	/* Ensure protocol code is written before proceeding */
-	wmb();
-	iounmap(gsbi_mem);
-	apq8064_i2c_qup_gsbi1_pdata.use_gsbi_shared_mode = 1;
+	if (socinfo_get_platform_subtype() == PLATFORM_SUBTYPE_DSDA) {
+		apq8064_device_qup_i2c_gsbi1.dev.platform_data =
+				&apq8064_i2c_qup_gsbi1_pdata;
+		gsbi_mem = ioremap_nocache(MSM_GSBI1_PHYS, 4);
+		writel_relaxed(GSBI_DUAL_MODE_CODE, gsbi_mem);
+		/* Ensure protocol code is written before proceeding */
+		wmb();
+		iounmap(gsbi_mem);
+		apq8064_i2c_qup_gsbi1_pdata.use_gsbi_shared_mode = 1;
+		apq8064_device_qup_i2c_gsbi1.dev.platform_data =
+				&apq8064_i2c_qup_gsbi1_pdata;
+	}
 	apq8064_device_qup_i2c_gsbi3.dev.platform_data =
 					&apq8064_i2c_qup_gsbi3_pdata;
-	apq8064_device_qup_i2c_gsbi1.dev.platform_data =
-					&apq8064_i2c_qup_gsbi1_pdata;
 	apq8064_device_qup_i2c_gsbi4.dev.platform_data =
 					&apq8064_i2c_qup_gsbi4_pdata;
 	mpq8064_device_qup_i2c_gsbi5.dev.platform_data =
@@ -2944,6 +2944,12 @@ static void __init apq8064_common_init(void)
 			machine_is_mpq8064_dtv()))
 		platform_add_devices(common_not_mpq_devices,
 			ARRAY_SIZE(common_not_mpq_devices));
+
+	if (socinfo_get_platform_subtype() == PLATFORM_SUBTYPE_DSDA)
+		platform_device_register(&apq8064_device_uartdm_gsbi1);
+	else
+		platform_device_register(&apq8064_device_qup_i2c_gsbi1);
+
 	enable_ddr3_regulator();
 	if (machine_is_apq8064_mtp()) {
 		msm_hsic_pdata.log2_irq_thresh = 5,
@@ -3015,6 +3021,10 @@ static void __init apq8064_cdp_init(void)
 		ethernet_init();
 		msm_rotator_set_split_iommu_domain();
 		platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
+
+		if (socinfo_get_platform_subtype() != PLATFORM_SUBTYPE_DSDA)
+			platform_device_register(&apq8064_device_uart_gsbi1);
+
 		spi_register_board_info(spi_board_info,
 						ARRAY_SIZE(spi_board_info));
 	}

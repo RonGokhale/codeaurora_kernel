@@ -1251,6 +1251,49 @@ static struct msm_gpiomux_config apq8064_sdc3_configs[] __initdata = {
 	},
 };
 
+static struct gpiomux_setting gsbi1_uartdm_active = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting gsbi1_uartdm_suspended = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct msm_gpiomux_config apq8064_uartdm_gsbi1_configs[] __initdata = {
+	{
+		.gpio      = 18,        /* GSBI1 UARTDM TX */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gsbi1_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi1_uartdm_suspended,
+		},
+	},
+	{
+		.gpio      = 19,        /* GSBI1 UARTDM RX */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gsbi1_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi1_uartdm_suspended,
+		},
+	},
+	{
+		.gpio      = 20,        /* GSBI1 UARTDM CTS */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gsbi1_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi1_uartdm_suspended,
+		},
+	},
+	{
+		.gpio      = 21,        /* GSBI1 UARTDM RFR */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gsbi1_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi1_uartdm_suspended,
+		},
+	},
+};
+
 void __init apq8064_init_gpiomux(void)
 {
 	int rc;
@@ -1352,4 +1395,8 @@ void __init apq8064_init_gpiomux(void)
 
 	msm_gpiomux_install(apq8064_sdc3_configs,
 			ARRAY_SIZE(apq8064_sdc3_configs));
+
+	if (socinfo_get_platform_subtype() == PLATFORM_SUBTYPE_DSDA)
+		msm_gpiomux_install(apq8064_uartdm_gsbi1_configs,
+				ARRAY_SIZE(apq8064_uartdm_gsbi1_configs));
 }

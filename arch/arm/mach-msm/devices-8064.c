@@ -264,6 +264,50 @@ struct platform_device apq8064_device_qup_i2c_gsbi1 = {
 	.resource	= resources_qup_i2c_gsbi1,
 };
 
+/* GSBI 1 used into UARTDM Mode */
+static struct resource msm_uart_dm1_resources[] = {
+	{
+		.start  = MSM_UART1DM_PHYS,
+		.end    = MSM_UART1DM_PHYS + PAGE_SIZE - 1,
+		.name   = "uartdm_resource",
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.start  = APQ8064_GSBI1_UARTDM_IRQ,
+		.end    = APQ8064_GSBI1_UARTDM_IRQ,
+		.flags  = IORESOURCE_IRQ,
+	},
+	{
+		.start  = MSM_GSBI1_PHYS,
+		.end    = MSM_GSBI1_PHYS + 4 - 1,
+		.name   = "gsbi_resource",
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.start  = DMOV_APQ8064_HSUART_GSBI1_TX_CHAN,
+		.end    = DMOV_APQ8064_HSUART_GSBI1_RX_CHAN,
+		.name   = "uartdm_channels",
+		.flags  = IORESOURCE_DMA,
+	},
+	{
+		.start  = DMOV_APQ8064_HSUART_GSBI1_TX_CRCI,
+		.end    = DMOV_APQ8064_HSUART_GSBI1_RX_CRCI,
+		.name   = "uartdm_crci",
+		.flags  = IORESOURCE_DMA,
+	},
+};
+static u64 msm_uart_dm1_dma_mask = DMA_BIT_MASK(32);
+struct platform_device apq8064_device_uartdm_gsbi1 = {
+	.name   = "msm_serial_hs",
+	.id     = 1,
+	.num_resources  = ARRAY_SIZE(msm_uart_dm1_resources),
+	.resource       = msm_uart_dm1_resources,
+	.dev    = {
+		.dma_mask		= &msm_uart_dm1_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+};
+
 struct platform_device apq8064_device_qup_i2c_gsbi3 = {
 	.name		= "qup_i2c",
 	.id		= 3,
