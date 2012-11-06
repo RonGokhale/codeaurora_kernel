@@ -5331,7 +5331,8 @@ static irqreturn_t vfe32_parse_irq(int irq_num, void *data)
 	struct axi_ctrl_t *axi_ctrl = data;
 
 	CDBG("vfe_parse_irq\n");
-
+	if (!axi_ctrl->share_ctrl->vfebase)
+		return IRQ_HANDLED;
 	vfe32_read_irq_status(axi_ctrl, &irq);
 
 	if ((irq.vfeIrqStatus0 == 0) && (irq.vfeIrqStatus1 == 0)) {
@@ -7152,7 +7153,7 @@ static int __devinit vfe32_probe(struct platform_device *pdev)
 vfe32_no_resource:
 	kfree(vfe32_ctrl);
 	kfree(axi_ctrl);
-	return 0;
+	return rc;
 }
 
 static struct platform_driver vfe32_driver = {
