@@ -905,55 +905,20 @@ static int __init msm_sensor_init_module(void)
 	return i2c_add_driver(&vx6953_i2c_driver);
 }
 
-static int32_t vx6953_set_fps(struct msm_sensor_ctrl_t *s_ctrl,
-	struct fps_cfg *fps) {
-	uint16_t total_lines_per_frame;
-	int32_t rc = 0;
-
-	total_lines_per_frame = (uint16_t)((VX6953_QTR_SIZE_HEIGHT +
-			VX6953_VER_QTR_BLK_LINES) * s_ctrl->fps_divider/0x400);
-			s_ctrl->func_tbl->sensor_group_hold_on(s_ctrl);
-	rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
-			s_ctrl->sensor_output_reg_addr->frame_length_lines,
-			((total_lines_per_frame & 0xFF00) >> 8),
-			MSM_CAMERA_I2C_BYTE_DATA);
-	rc = msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
-			s_ctrl->sensor_output_reg_addr->frame_length_lines + 1,
-			(total_lines_per_frame & 0xFF00),
-			MSM_CAMERA_I2C_BYTE_DATA);
-	s_ctrl->func_tbl->sensor_group_hold_off(s_ctrl);
-	return rc;
-}
-
 int32_t vx6953_write_exp_gain(struct msm_sensor_ctrl_t *s_ctrl,
 	uint16_t gain, uint32_t line) {
-	uint16_t line_length_pck, frame_length_lines;
+	uint16_t frame_length_lines;
 	uint8_t gain_hi, gain_lo;
 	uint8_t intg_time_hi, intg_time_lo;
 	uint8_t frame_length_lines_hi = 0, frame_length_lines_lo = 0;
 	int32_t rc = 0;
 
-	if (s_ctrl->curr_res != 0) {
-		frame_length_lines = VX6953_QTR_SIZE_HEIGHT +
-			VX6953_VER_QTR_BLK_LINES;
-		line_length_pck = VX6953_QTR_SIZE_WIDTH +
-			VX6953_HRZ_QTR_BLK_PIXELS;
-	} else {
-
-		frame_length_lines = VX6953_FULL_SIZE_HEIGHT +
-			VX6953_VER_FULL_BLK_LINES;
-		line_length_pck = VX6953_FULL_SIZE_WIDTH +
-			VX6953_HRZ_FULL_BLK_PIXELS;
-	}
-
+	frame_length_lines = s_ctrl->curr_frame_length_lines;
+	frame_length_lines = (frame_length_lines * s_ctrl->fps_divider) / Q10;
 	s_ctrl->func_tbl->sensor_group_hold_on(s_ctrl);
-	if ((line + VX6953_STM5M0EDOF_OFFSET) > MAX_FRAME_LENGTH_LINES) {
-		frame_length_lines = MAX_FRAME_LENGTH_LINES;
-		line = MAX_FRAME_LENGTH_LINES - VX6953_STM5M0EDOF_OFFSET;
-	} else if ((line + VX6953_STM5M0EDOF_OFFSET) > frame_length_lines) {
-			frame_length_lines = line + VX6953_STM5M0EDOF_OFFSET;
-			line = frame_length_lines;
-			}
+	if ((line + VX6953_STM5M0EDOF_OFFSET) > frame_length_lines) {
+		frame_length_lines = line + VX6953_STM5M0EDOF_OFFSET;
+	}
 	frame_length_lines_hi = (uint8_t) ((frame_length_lines &
 		0xFF00) >> 8);
 	frame_length_lines_lo = (uint8_t) (frame_length_lines &
@@ -1585,7 +1550,7 @@ static struct msm_sensor_fn_t vx6953_func_tbl = {
 	.sensor_stop_stream = msm_sensor_stop_stream,
 	.sensor_group_hold_on = msm_sensor_group_hold_on,
 	.sensor_group_hold_off = msm_sensor_group_hold_off,
-	.sensor_set_fps = vx6953_set_fps,
+	.sensor_set_fps = msm_sensor_set_fps,
 	.sensor_write_exp_gain = vx6953_write_exp_gain,
 	.sensor_write_snapshot_exp_gain = vx6953_write_exp_gain,
 	.sensor_csi_setting = vx6953_set_sensor_mode,
