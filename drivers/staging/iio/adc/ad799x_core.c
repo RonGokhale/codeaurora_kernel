@@ -163,6 +163,7 @@ static int ad799x_read_raw(struct iio_dev *indio_dev,
 {
 	int ret;
 	struct ad799x_state *st = iio_priv(indio_dev);
+	int vref_mv;
 
 	switch (m) {
 	case IIO_CHAN_INFO_RAW:
@@ -179,8 +180,14 @@ static int ad799x_read_raw(struct iio_dev *indio_dev,
 			RES_MASK(chan->scan_type.realbits);
 		return IIO_VAL_INT;
 	case IIO_CHAN_INFO_SCALE:
-		*val = st->int_vref_mv;
+		vref_mv = regulator_get_voltage(st->reg);
+		if (vref_mv < 0)
+			return vref_mv;
+		vref_mv /= 1000;
+
+		*val = vref_mv;
 		*val2 = chan->scan_type.realbits;
+
 		return IIO_VAL_FRACTIONAL_LOG2;
 	}
 	return -EINVAL;
@@ -527,7 +534,6 @@ static int ad799x_probe(struct i2c_client *client,
 				   const struct i2c_device_id *id)
 {
 	int ret;
-	struct ad799x_platform_data *pdata = client->dev.platform_data;
 	struct ad799x_state *st;
 	struct iio_dev *indio_dev;
 
@@ -543,19 +549,14 @@ static int ad799x_probe(struct i2c_client *client,
 	st->chip_info = &ad799x_chip_info_tbl[st->id];
 	st->config = st->chip_info->default_config;
 
-	/* TODO: Add pdata options for filtering and bit delay */
+	st->reg = devm_regulator_get(&client->dev, "vref");
+	if (!IS_ERR(st->reg))
+		return PTR_ERR(st->reg);
 
-	if (!pdata)
-		return -EINVAL;
+	ret = regulator_enable(st->reg);
+	if (ret)
+		return ret;
 
-	st->int_vref_mv = pdata->vref_mv;
-
-	st->reg = devm_regulator_get(&client->dev, "vcc");
-	if (!IS_ERR(st->reg)) {
-		ret = regulator_enable(st->reg);
-		if (ret)
-			return ret;
-	}
 	st->client = client;
 
 	indio_dev->dev.parent = &client->dev;
@@ -592,7 +593,7 @@ error_free_irq:
 error_cleanup_ring:
 	ad799x_ring_cleanup(indio_dev);
 error_disable_reg:
-	if (!IS_ERR(st->reg))
+	if (st->reg)
 		regulator_disable(st->reg);
 
 	return ret;
