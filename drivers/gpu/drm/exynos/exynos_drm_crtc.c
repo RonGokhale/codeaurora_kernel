@@ -72,6 +72,7 @@ struct exynos_drm_crtc {
 #ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
 	DECLARE_KFIFO(flip_fifo, struct exynos_drm_flip_desc, 2);
 	struct exynos_drm_flip_desc	scanout_desc;
+	wait_queue_head_t		vsync_wq;
 #endif
 };
 
@@ -97,15 +98,16 @@ static void exynos_drm_crtc_prepare(struct drm_crtc *crtc)
 	/* drm framework doesn't check NULL. */
 }
 
+static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
+				     struct drm_framebuffer *fb,
+				     struct drm_pending_vblank_event *event);
+
+
 static void exynos_drm_crtc_commit(struct drm_crtc *crtc)
 {
-	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
-	exynos_drm_crtc_dpms(crtc, DRM_MODE_DPMS_ON);
-	exynos_plane_commit(exynos_crtc->plane);
-	exynos_plane_dpms(exynos_crtc->plane, DRM_MODE_DPMS_ON);
+	exynos_drm_crtc_page_flip(crtc, crtc->fb, NULL);
 }
 
 static bool
@@ -125,10 +127,8 @@ exynos_drm_crtc_mode_set(struct drm_crtc *crtc, struct drm_display_mode *mode,
 			  struct drm_framebuffer *old_fb)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
-	struct drm_plane *plane = exynos_crtc->plane;
-	unsigned int crtc_w;
-	unsigned int crtc_h;
 	int pipe = exynos_crtc->pipe;
+	int ret;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
@@ -138,11 +138,12 @@ exynos_drm_crtc_mode_set(struct drm_crtc *crtc, struct drm_display_mode *mode,
 	 */
 	memcpy(&crtc->mode, adjusted_mode, sizeof(*adjusted_mode));
 
-	crtc_w = crtc->fb->width - x;
-	crtc_h = crtc->fb->height - y;
-
-	exynos_plane_mode_set(plane, crtc, crtc->fb, 0, 0, crtc_w, crtc_h,
-			      x, y, crtc_w, crtc_h);
+	/* We should never timeout here. */
+	ret = wait_event_timeout(exynos_crtc->vsync_wq,
+				 kfifo_is_empty(&exynos_crtc->flip_fifo),
+				 DRM_HZ/20);
+	if (!ret)
+		DRM_ERROR("Timed out waiting for flips to complete\n");
 
 	exynos_drm_fn_encoder(crtc, &pipe, exynos_drm_encoder_crtc_pipe);
 
@@ -165,13 +166,16 @@ static void exynos_drm_crtc_update(struct drm_crtc *crtc,
 	exynos_plane_mode_set(plane, crtc, fb, 0, 0, crtc_w, crtc_h,
 			      crtc->x, crtc->y, crtc_w, crtc_h);
 
-	exynos_drm_crtc_commit(crtc);
+	exynos_drm_crtc_dpms(crtc, DRM_MODE_DPMS_ON);
+	exynos_plane_commit(exynos_crtc->plane);
+	exynos_plane_dpms(exynos_crtc->plane, DRM_MODE_DPMS_ON);
 }
 
 static int exynos_drm_crtc_mode_set_base(struct drm_crtc *crtc, int x, int y,
 					  struct drm_framebuffer *old_fb)
 {
 	struct exynos_drm_crtc *exynos_crtc = to_exynos_crtc(crtc);
+	int ret;
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
@@ -181,7 +185,14 @@ static int exynos_drm_crtc_mode_set_base(struct drm_crtc *crtc, int x, int y,
 		return -EPERM;
 	}
 
-	exynos_drm_crtc_update(crtc, crtc->fb);
+	/* We should never timeout here. */
+	ret = wait_event_timeout(exynos_crtc->vsync_wq,
+				 kfifo_is_empty(&exynos_crtc->flip_fifo),
+				 DRM_HZ/20);
+	if (!ret)
+		DRM_ERROR("Timed out waiting for flips to complete\n");
+
+	exynos_drm_crtc_page_flip(crtc, crtc->fb, NULL);
 
 	return 0;
 }
@@ -262,12 +273,6 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 
 	DRM_DEBUG_KMS("%s\n", __FILE__);
 
-	/* msb: The event flag is optional but exynos does not support it. */
-	if (!event) {
-		DRM_ERROR("called page_flip with empty event flag\n");
-		return -EINVAL;
-	}
-
 	/* when the page flip is requested, crtc's dpms should be on */
 	if (exynos_crtc->dpms > DRM_MODE_DPMS_ON) {
 		DRM_ERROR("failed page flip request.\n");
@@ -278,7 +283,8 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 	 * the pipe from user always is 0 so we can set pipe number
 	 * of current owner to event.
 	 */
-	event->pipe = exynos_crtc->pipe;
+	if (event)
+		event->pipe = exynos_crtc->pipe;
 
 	ret = drm_vblank_get(dev, exynos_crtc->pipe);
 	if (ret) {
@@ -298,7 +304,7 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 
 	/* Send flip event if no flips pending. */
 	BUG_ON(exynos_crtc->event);
-	if (kfifo_is_empty(&exynos_crtc->flip_fifo))
+	if (event && kfifo_is_empty(&exynos_crtc->flip_fifo))
 		send_event = true;
 
 	if (exynos_gem_obj->base.export_dma_buf) {
@@ -318,6 +324,12 @@ static int exynos_drm_crtc_page_flip(struct drm_crtc *crtc,
 			goto fail_kds;
 		}
 	} else {
+		/*
+		 * For normal page-flip (i.e. non-modeset) we should
+		 * never be flipping a non-kds buffer.
+		 */
+		if (event)
+			DRM_ERROR("flipping a non-kds buffer\n");
 		flip_desc.kds = NULL;
 		exynos_drm_kds_callback(fb, crtc);
 	}
@@ -441,6 +453,7 @@ int exynos_drm_crtc_create(struct drm_device *dev, unsigned int nr)
 	}
 
 	INIT_KFIFO(exynos_crtc->flip_fifo);
+	init_waitqueue_head(&exynos_crtc->vsync_wq);
 	exynos_crtc->pipe = nr;
 	exynos_crtc->dpms = DRM_MODE_DPMS_OFF;
 	exynos_crtc->plane = exynos_plane_init(dev, 1 << nr, true);
@@ -532,6 +545,8 @@ void exynos_drm_crtc_finish_pageflip(struct drm_device *dev, int crtc_idx)
 			to_exynos_fb(next_desc.fb)->prepared = true;
 		}
 	}
+
+	wake_up(&exynos_crtc->vsync_wq);
 #endif
 
 	if (exynos_crtc->event) {
