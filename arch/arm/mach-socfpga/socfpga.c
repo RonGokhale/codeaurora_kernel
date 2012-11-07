@@ -152,8 +152,11 @@ static void socfpga_cyclone5_restart(enum reboot_mode mode, const char *cmd)
 
 static void __init socfpga_cyclone5_init(void)
 {
+#ifdef CONFIG_CACHE_L2X0
 	l2x0_of_init(0, ~0UL);
-	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
+	of_platform_populate(NULL, of_default_bus_match_table,
+		socfpga_auxdata_lookup, NULL);
+#endif
 	socfpga_init_clocks();
 	enable_periphs();
 }
