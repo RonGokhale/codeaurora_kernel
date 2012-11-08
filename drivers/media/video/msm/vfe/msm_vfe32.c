@@ -414,7 +414,7 @@ uint8_t vfe32_use_bayer_stats(struct vfe32_ctrl_type *vfe32_ctrl)
 
 static void axi_enable_wm_irq(struct vfe_share_ctrl_t *share_ctrl)
 {
-	uint32_t irq_mask, irq_comp_mask = 0;
+	uint32_t irq_mask = 0, irq_comp_mask = 0;
 	uint16_t vfe_output_mode1 = 0;
 
 	uint16_t vfe_output_mode =
@@ -429,7 +429,7 @@ static void axi_enable_wm_irq(struct vfe_share_ctrl_t *share_ctrl)
 		(share_ctrl->outpath.output_mode &
 		VFE32_OUTPUT_MODE_TERTIARY2));
 
-	if (vfe_output_mode)
+	if (vfe_output_mode || vfe_output_mode1)
 		irq_comp_mask =
 		msm_camera_io_r(share_ctrl->vfebase +
 			VFE_IRQ_COMP_MASK);
@@ -513,12 +513,9 @@ static void axi_disable_wm_irq(struct vfe_share_ctrl_t *share_ctrl,
 			  VFE32_OUTPUT_MODE_TERTIARY3);
 
 	vfe_output_mode1 =
-		((share_ctrl->outpath.output_mode &
-		VFE32_OUTPUT_MODE_TERTIARY1)  &&
-		(share_ctrl->outpath.output_mode &
-		VFE32_OUTPUT_MODE_TERTIARY2));
+		(output_mode & VFE32_OUTPUT_MODE_TERTIARY2);
 
-	if (vfe_output_mode)
+	if (vfe_output_mode || vfe_output_mode1)
 		irq_comp_mask =
 		msm_camera_io_r(share_ctrl->vfebase +
 			VFE_IRQ_COMP_MASK);
@@ -5680,6 +5677,10 @@ static int msm_axi_subdev_s_crystal_freq(struct v4l2_subdev *sd,
 	int rc = 0;
 	int round_rate;
 	struct axi_ctrl_t *axi_ctrl = v4l2_get_subdevdata(sd);
+	if(axi_ctrl->share_ctrl->dual_enabled){
+		CDBG("%s Dual camera Enabled hence returning without clock change\n", __func__);
+		return rc;
+	}
 	round_rate = clk_round_rate(axi_ctrl->vfe_clk[0], freq);
 	if (rc < 0) {
 		pr_err("%s: clk_round_rate failed %d\n",
@@ -5763,9 +5764,13 @@ int msm_axi_subdev_init(struct v4l2_subdev *sd,
 	msm_camio_bus_scale_cfg(
 		mctl->sdata->pdata->cam_bus_scale_table, S_INIT);
 
-	if (axi_ctrl->share_ctrl->dual_enabled)
+	CDBG("%s: axi_ctrl->share_ctrl->dual_enabled ? = %d\n", __func__,
+			axi_ctrl->share_ctrl->dual_enabled);
+	if (axi_ctrl->share_ctrl->dual_enabled){
+		pr_info("%s: Scaling bus config for dual bus vectors\n", __func__);
 		msm_camio_bus_scale_cfg(
 			mctl->sdata->pdata->cam_bus_scale_table, S_DUAL);
+	}
 	else
 		msm_camio_bus_scale_cfg(
 			mctl->sdata->pdata->cam_bus_scale_table, S_PREVIEW);
