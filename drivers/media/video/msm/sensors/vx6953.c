@@ -915,7 +915,7 @@ int32_t vx6953_write_exp_gain(struct msm_sensor_ctrl_t *s_ctrl,
 
 	frame_length_lines = s_ctrl->curr_frame_length_lines;
 	frame_length_lines = (frame_length_lines * s_ctrl->fps_divider) / Q10;
-	s_ctrl->func_tbl->sensor_group_hold_on(s_ctrl);
+//	s_ctrl->func_tbl->sensor_group_hold_on(s_ctrl);
 	if ((line + VX6953_STM5M0EDOF_OFFSET) > frame_length_lines) {
 		frame_length_lines = line + VX6953_STM5M0EDOF_OFFSET;
 	}
@@ -969,7 +969,7 @@ int32_t vx6953_write_exp_gain(struct msm_sensor_ctrl_t *s_ctrl,
 		s_ctrl->sensor_exp_gain_info->coarse_int_time_addr + 1,
 		intg_time_lo,
 		MSM_CAMERA_I2C_BYTE_DATA);
-		s_ctrl->func_tbl->sensor_group_hold_off(s_ctrl);
+//		s_ctrl->func_tbl->sensor_group_hold_off(s_ctrl);
 		return rc;
 }
 
