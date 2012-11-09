@@ -3153,7 +3153,6 @@ static void __init msm8960_cdp_init(void)
 		platform_device_register(&msm8960ab_device_acpuclk);
 	else
 		platform_device_register(&msm8960_device_acpuclk);
-	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 
 	msm8960_pm8921_gpio_mpp_init();
 	platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
