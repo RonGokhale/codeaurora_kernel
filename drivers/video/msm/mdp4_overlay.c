@@ -2613,6 +2613,9 @@ static int mdp4_calc_pipe_mdp_clk(struct msm_fb_data_type *mfd,
 			__func__);
 	}
 
+	if (mfd->panel_info.type == MDDI_PANEL && rst <= 122880000)
+		rst = 122880000;
+
 	pipe->req_clk = (u32) rst;
 
 	pr_debug("%s: required mdp clk %d mixer %d pipe ndx %d\n",

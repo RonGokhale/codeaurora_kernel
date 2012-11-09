@@ -1367,8 +1367,8 @@ int mdp_ppp_pipe_wait(void)
 }
 
 static DEFINE_SPINLOCK(mdp_lock);
-static int mdp_irq_mask;
-static int mdp_irq_enabled;
+int mdp_irq_mask;
+int mdp_irq_enabled;
 
 /*
  * mdp_enable_irq: can not be called from isr
