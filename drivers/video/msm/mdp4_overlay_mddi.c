@@ -1097,6 +1097,10 @@ void mdp4_mddi_overlay(struct msm_fb_data_type *mfd)
 		mdp4_mddi_pipe_queue(0, pipe);
 	}
 
+	mdp4_overlay_mdp_pipe_req(pipe, mfd);
+
+	mdp4_overlay_mdp_perf_req(mfd, pipe);
+
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
 
 	mutex_lock(&mfd->dma->ov_mutex);
