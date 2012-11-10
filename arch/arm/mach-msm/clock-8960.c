@@ -5116,6 +5116,8 @@ static struct clk_lookup msm_clocks_8064[] = {
 	CLK_LOOKUP("core_clk",		gp1_clk.c,		""),
 	CLK_LOOKUP("core_clk",		gp2_clk.c,		""),
 	CLK_LOOKUP("core_clk",		gsbi1_uart_clk.c, "msm_serial_hsl.1"),
+	/*Used with APQ8064 to connect external device */
+	CLK_LOOKUP("core_clk",		gsbi1_uart_clk.c, "msm_serial_hs.1"),
 	CLK_LOOKUP("core_clk",		gsbi2_uart_clk.c,	""),
 	CLK_LOOKUP("core_clk",		gsbi3_uart_clk.c,	""),
 	CLK_LOOKUP("core_clk",		gsbi4_uart_clk.c,	""),
@@ -5161,6 +5163,8 @@ static struct clk_lookup msm_clocks_8064[] = {
 	CLK_LOOKUP("ce3_core_src_clk",	ce3_src_clk.c,		"qcrypto.0"),
 	CLK_LOOKUP("dma_bam_pclk",	dma_bam_p_clk.c,	NULL),
 	CLK_LOOKUP("iface_clk",		gsbi1_p_clk.c,	"msm_serial_hsl.1"),
+	/*Used with APQ8064 to connect external device */
+	CLK_LOOKUP("iface_clk",		gsbi1_p_clk.c,	"msm_serial_hs.1"),
 	CLK_LOOKUP("iface_clk",		gsbi1_p_clk.c,	"qup_i2c.0"),
 	CLK_LOOKUP("iface_clk",		gsbi2_p_clk.c,		""),
 	CLK_LOOKUP("iface_clk",		gsbi3_p_clk.c,		"qup_i2c.3"),
