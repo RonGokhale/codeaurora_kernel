@@ -24,6 +24,7 @@
 #include <asm/hardware/cache-l2x0.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
+#include <asm/smp_twd.h>
 
 #include "core.h"
 
@@ -135,6 +136,9 @@ static void __init socfpga_init_irq(void)
 		init_socfpga_vt();
 	else
 		init_socfpga();
+
+	socfpga_init_clocks();
+	twd_local_timer_of_register();
 }
 
 static void socfpga_cyclone5_restart(enum reboot_mode mode, const char *cmd)
