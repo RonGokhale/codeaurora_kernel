@@ -306,7 +306,7 @@ static uint8_t imx175_gld_lsccalib_data[SPI_PROTOCOL_OFFSET + sizeof(FRom_lsc)];
 static uint8_t imx175_mod_info_data[SPI_PROTOCOL_OFFSET + 4];
 
 static struct msm_camera_eeprom_info_t imx175_calib_supp_info = {
-	{FALSE, sizeof(imx175_af_data), 0, 1},
+	{TRUE, sizeof(imx175_af_data), 0, 1},
 	{TRUE, sizeof(imx175_wb_data), 1, 1},
 	{TRUE, sizeof(imx175_lsc_data), 2, 1},
 	{FALSE, 0, 0, 1},
@@ -336,9 +336,10 @@ static void imx175_format_afdata(void)
 {
 	FRom_af* af = (FRom_af*)&imx175_afcalib_data[SPI_PROTOCOL_OFFSET];
 
-	imx175_af_data.inf_dac = (uint16_t)af->inf1;
-	imx175_af_data.macro_dac = (uint16_t)af->macro1;
-	imx175_af_data.start_dac = (uint16_t)af->position;
+	imx175_af_data.inf_dac = 0;
+	imx175_af_data.macro_dac = 0;
+	imx175_af_data.start_dac = 0;
+	imx175_af_data.pan_dac = (uint16_t)af->position;
 }
 static void imx175_format_wbdata(void)
 {
@@ -418,6 +419,7 @@ void imx175_format_calibrationdata(void)
 		imx175_format_wbdata();
 		imx175_format_lscdata();
 	} else {
+		imx175_calib_supp_info.af.is_supported = FALSE;
 		imx175_calib_supp_info.wb.is_supported = FALSE;
 		imx175_calib_supp_info.lsc.is_supported = FALSE;
 		imx175_calib_supp_info.gld_wb.is_supported = FALSE;
