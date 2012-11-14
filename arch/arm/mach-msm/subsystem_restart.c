@@ -92,9 +92,14 @@ DEFINE_SINGLE_RESTART_ORDER(orders_8x60_modems, _order_8x60_modems);
 
 /* MSM 8960 restart ordering info */
 static const char * const order_8960[] = {"modem", "lpass"};
+
 /*SGLTE restart ordering info*/
 static const char * const order_8960_sglte[] = {"external_modem",
 						"modem"};
+
+/* DSDA restart ordering info*/
+static const char * const order_8064_dsda[] = {"external_modem",
+						"external_modem.1"};
 
 static struct subsys_soc_restart_order restart_orders_8960_one = {
 	.subsystem_list = order_8960,
@@ -108,12 +113,22 @@ static struct subsys_soc_restart_order restart_orders_8960_fusion_sglte = {
 	.subsys_ptrs = {[ARRAY_SIZE(order_8960_sglte)] = NULL}
 	};
 
+static struct subsys_soc_restart_order restart_orders_8064_fusion_dsda = {
+	.subsystem_list = order_8064_dsda,
+	.count = ARRAY_SIZE(order_8064_dsda),
+	.subsys_ptrs = {[ARRAY_SIZE(order_8064_dsda)] = NULL}
+	};
+
 static struct subsys_soc_restart_order *restart_orders_8960[] = {
 	&restart_orders_8960_one,
 	};
 
 static struct subsys_soc_restart_order *restart_orders_8960_sglte[] = {
 	&restart_orders_8960_fusion_sglte,
+	};
+
+static struct subsys_soc_restart_order *restart_orders_8064_dsda[] = {
+	&restart_orders_8064_fusion_dsda,
 	};
 
 /* These will be assigned to one of the sets above after
@@ -364,7 +379,7 @@ static void subsystem_restart_wq_func(struct work_struct *work)
 		pr_info("[%p]: Shutting down %s\n", current,
 			restart_list[i]->name);
 
-		if (restart_list[i]->shutdown(subsys) < 0)
+		if (restart_list[i]->shutdown(restart_list[i]) < 0)
 			panic("subsys-restart: %s[%p]: Failed to shutdown %s!",
 				__func__, current, restart_list[i]->name);
 	}
@@ -386,7 +401,7 @@ static void subsystem_restart_wq_func(struct work_struct *work)
 
 		if (restart_list[i]->ramdump)
 			if (restart_list[i]->ramdump(enable_ramdumps,
-							subsys) < 0)
+						restart_list[i]) < 0)
 				pr_warn("%s[%p]: Ramdump failed.\n",
 						restart_list[i]->name, current);
 	}
@@ -403,7 +418,7 @@ static void subsystem_restart_wq_func(struct work_struct *work)
 		pr_info("[%p]: Powering up %s\n", current,
 					restart_list[i]->name);
 
-		if (restart_list[i]->powerup(subsys) < 0)
+		if (restart_list[i]->powerup(restart_list[i]) < 0)
 			panic("%s[%p]: Failed to powerup %s!", __func__,
 				current, restart_list[i]->name);
 	}
@@ -574,6 +589,11 @@ static int __init ssr_init_soc_restart_orders(void)
 			restart_orders = restart_orders_8960_sglte;
 			n_restart_orders =
 				ARRAY_SIZE(restart_orders_8960_sglte);
+		} else if (socinfo_get_platform_subtype() ==
+				   PLATFORM_SUBTYPE_DSDA) {
+				restart_orders = restart_orders_8064_dsda;
+				n_restart_orders =
+					ARRAY_SIZE(restart_orders_8064_dsda);
 		} else {
 			restart_orders = restart_orders_8960;
 			n_restart_orders = ARRAY_SIZE(restart_orders_8960);
