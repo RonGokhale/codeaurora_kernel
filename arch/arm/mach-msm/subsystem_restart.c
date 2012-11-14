@@ -98,8 +98,8 @@ static const char * const order_8960_sglte[] = {"external_modem",
 						"modem"};
 
 /* DSDA restart ordering info*/
-static const char * const order_8064_dsda[] = {"external_modem",
-						"external_modem.1"};
+static const char * const order_8064_dsda[] = {"qsc_modem",
+						"external_modem"};
 
 static struct subsys_soc_restart_order restart_orders_8960_one = {
 	.subsystem_list = order_8960,
