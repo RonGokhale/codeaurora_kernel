@@ -1734,6 +1734,19 @@ static struct mdm_platform_data mdm_platform_data = {
 	.mdm2ap_status_gpio_run_cfg = &mdm2ap_status_gpio_run_cfg,
 };
 
+static struct mdm_platform_data dsda_mdm_platform_data = {
+	.mdm_version = "3.0",
+	.ramdump_delay_ms = 2000,
+	.early_power_on = 1,
+	.sfr_query = 1,
+	.send_shdn = 1,
+	.vddmin_resource = &mdm_vddmin_rscs,
+	.peripheral_platform_device = &apq8064_device_hsic_host,
+	.ramdump_timeout_ms = 120000,
+	.mdm2ap_status_gpio_run_cfg = &mdm2ap_status_gpio_run_cfg,
+	.cascading_ssr = 1,
+};
+
 static struct mdm_platform_data dsda_qsc_platform_data = {
 	.mdm_version = "3.0",
 	.ramdump_delay_ms = 2000,
@@ -1741,6 +1754,7 @@ static struct mdm_platform_data dsda_qsc_platform_data = {
 	.ramdump_timeout_ms = 600000,
 	.no_powerdown_after_ramdumps = 1,
 	.image_upgrade_supported = 1,
+	.cascading_ssr = 1,
 };
 
 static struct tsens_platform_data apq_tsens_pdata  = {
@@ -3028,6 +3042,10 @@ static void __init apq8064_common_init(void)
 	if (machine_is_apq8064_mtp()) {
 		platform_version = socinfo_get_platform_version();
 		if (socinfo_get_platform_subtype() == PLATFORM_SUBTYPE_DSDA) {
+			dsda_mdm_8064_device.dev.platform_data =
+				&dsda_mdm_platform_data;
+			platform_device_register(&dsda_mdm_8064_device);
+
 			dsda_qsc_8064_device.dev.platform_data =
 				&dsda_qsc_platform_data;
 			platform_device_register(&dsda_qsc_8064_device);
