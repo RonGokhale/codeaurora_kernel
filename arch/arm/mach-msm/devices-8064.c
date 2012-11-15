@@ -2627,14 +2627,14 @@ struct platform_device apq8064_cpu_idle_device = {
 
 struct platform_device dsda_mdm_8064_device = {
 	.name		= "mdm2_modem",
-	.id		= -1,
+	.id		= 0,
 	.num_resources	= ARRAY_SIZE(dsda_mdm_resources),
 	.resource	= dsda_mdm_resources,
 };
 
 struct platform_device dsda_qsc_8064_device = {
 	.name		= "mdm2_modem",
-	.id		= -1,
+	.id		= 1,
 	.num_resources	= ARRAY_SIZE(dsda_qsc_resources),
 	.resource	= dsda_qsc_resources,
 };
