@@ -39,6 +39,7 @@
 #include "diagfwd_sdio.h"
 #endif
 #include "diag_dci.h"
+#include "diagfwd_bridge.h"
 
 #define MODE_CMD		41
 #define RESET_ID		2
@@ -276,7 +277,7 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 				}
 		}
 
-#ifdef CONFIG_DIAG_BRIDGE_CODE
+#ifdef CONFIG_DIAGFWD_BRIDGE_CODE
 		else if (proc_num == HSIC_DATA) {
 			unsigned long flags;
 			int foundIndex = -1;
@@ -286,7 +287,7 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 				if (driver->hsic_buf_tbl[i].length == 0) {
 					driver->hsic_buf_tbl[i].buf = buf;
 					driver->hsic_buf_tbl[i].length =
-							driver->write_len_mdm;
+						diag_bridge[HSIC].write_len;
 					driver->num_hsic_buf_tbl_entries++;
 					foundIndex = i;
 					break;
@@ -298,7 +299,7 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 			else
 				pr_debug("diag: ENQUEUE HSIC buf ptr and length is %x , %d\n",
 					(unsigned int)buf,
-					driver->write_len_mdm);
+					 diag_bridge[HSIC].write_len);
 		}
 #endif
 		for (i = 0; i < driver->num_clients; i++)
@@ -335,10 +336,10 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 				&(driver->diag_read_sdio_work));
 		}
 #endif
-#ifdef CONFIG_DIAG_BRIDGE_CODE
+#ifdef CONFIG_DIAGFWD_BRIDGE_CODE
 		else if (proc_num == HSIC_DATA) {
 			if (driver->hsic_ch)
-				queue_work(driver->diag_bridge_wq,
+				queue_work(diag_bridge[HSIC].wq,
 					&(driver->diag_read_hsic_work));
 		}
 #endif
@@ -385,7 +386,7 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 						"while USB write\n");
 		}
 #endif
-#ifdef CONFIG_DIAG_BRIDGE_CODE
+#ifdef CONFIG_DIAGFWD_BRIDGE_CODE
 		else if (proc_num == HSIC_DATA) {
 			if (driver->hsic_device_enabled) {
 				struct diag_request *write_ptr_mdm;
@@ -396,9 +397,10 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 				if (write_ptr_mdm) {
 					write_ptr_mdm->buf = buf;
 					write_ptr_mdm->length =
-						driver->write_len_mdm;
-					err = usb_diag_write(driver->mdm_ch,
-								write_ptr_mdm);
+					   diag_bridge[HSIC].write_len;
+					write_ptr_mdm->context = (void *)HSIC;
+					err = usb_diag_write(
+					diag_bridge[HSIC].ch, write_ptr_mdm);
 					/* Return to the pool immediately */
 					if (err) {
 						diagmem_free(driver,
@@ -412,14 +414,16 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 					err = -1;
 				}
 			} else {
-				pr_err("diag: Incorrect hsic data "
+				pr_err("diag: Incorrect HSIC data "
 						"while USB write\n");
 				err = -1;
 			}
 		} else if (proc_num == SMUX_DATA) {
 				write_ptr->buf = buf;
+				write_ptr->context = (void *)SMUX;
 				pr_debug("diag: writing SMUX data\n");
-				err = usb_diag_write(driver->mdm_ch, write_ptr);
+				err = usb_diag_write(diag_bridge[SMUX].ch,
+								 write_ptr);
 		}
 #endif
 		APPEND_DEBUG('d');
