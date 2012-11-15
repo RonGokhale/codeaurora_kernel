@@ -50,6 +50,8 @@ struct msm_camera_eeprom_fn_t {
 	int32_t (*eeprom_direct_data_erase)
 		(struct msm_eeprom_ctrl_t *ectrl,
 		 struct eeprom_data_access_t *data_access);
+	int32_t (*eeprom_get_chromatix)
+		(struct msm_eeprom_ctrl_t *ectrl, void *edata);
 };
 
 struct msm_camera_eeprom_read_t {
@@ -94,4 +96,8 @@ long msm_eeprom_subdev_ioctl(struct v4l2_subdev *sd,
 
 #define VIDIOC_MSM_EEPROM_CFG \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 12, void __user *)
+
+#define VIDIOC_MSM_EEPROM_CHROMATIX \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 13, struct chromatix_params *)
+
 #endif

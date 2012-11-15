@@ -25,6 +25,10 @@
 
 #define sizeof_member(type, member) sizeof(((type *)0)->member)
 
+#define CHROMATIX_ADDRESS 0x000000
+#define CHROMATIX_SIZE    10240
+#define SPI_PAGE_SIZE     256
+
 DEFINE_MUTEX(imx175_eeprom_mutex);
 static struct msm_eeprom_ctrl_t imx175_eeprom_t;
 
@@ -270,14 +274,19 @@ static struct v4l2_subdev_ops imx175_eeprom_subdev_ops = {
 	.core = &imx175_eeprom_subdev_core_ops,
 };
 
-// data after formatting
+
+/*
+ * AWB, AF, LSC
+ */
+
+/* data after formatting */
 static struct msm_calib_af imx175_af_data;
 static struct msm_calib_wb imx175_wb_data;
 static struct msm_calib_lsc imx175_lsc_data;
 static struct msm_calib_wb imx175_gld_wb_data;
 static struct msm_calib_lsc imx175_gld_lsc_data;
 
-// based on F-Rom definition
+/* based on F-Rom definition */
 typedef struct {
 	uint32_t inf1;
 	uint32_t inf2;
@@ -297,7 +306,7 @@ typedef struct {
 	uint16_t b_gain[221];
 } FRom_lsc;
 
-// buffer for receiving data from F-Rom
+/* buffer for receiving data from F-Rom */
 static uint8_t imx175_afcalib_data[SPI_PROTOCOL_OFFSET + sizeof(FRom_af)];
 static uint8_t imx175_wbcalib_data[SPI_PROTOCOL_OFFSET + sizeof(FRom_wb)];
 static uint8_t imx175_lsccalib_data[SPI_PROTOCOL_OFFSET + sizeof(FRom_lsc)];
@@ -425,6 +434,83 @@ void imx175_format_calibrationdata(void)
 	}
 }
 
+
+/*
+ * CHROMATIX
+ */
+
+typedef struct {
+	uint8_t *data;
+	uint8_t size;
+} chromatix_raw_data_type;
+
+static chromatix_raw_data_type *chromatix_data;
+static uint8_t chromatix_array_size;
+
+static void alloc_chromatix_memory(void)
+{
+	chromatix_array_size = CHROMATIX_SIZE / SPI_PAGE_SIZE;
+	if (CHROMATIX_SIZE % SPI_PAGE_SIZE > 0)
+		chromatix_array_size++;
+
+	chromatix_data = kmalloc(
+		sizeof(chromatix_raw_data_type) * chromatix_array_size, GFP_KERNEL);
+}
+static void imx175_read_choromatix(struct msm_eeprom_ctrl_t *eeprom_ctrl)
+{
+	int32_t size = CHROMATIX_SIZE;
+	uint32_t address = CHROMATIX_ADDRESS;
+	uint32_t num_byte = SPI_PAGE_SIZE;
+	uint32_t offset = 0;
+
+	alloc_chromatix_memory();
+
+	while (size > 0) {
+		if (size < SPI_PAGE_SIZE)
+			num_byte = size;
+
+		chromatix_data[offset].data = kmalloc(num_byte + SPI_PROTOCOL_OFFSET,
+			GFP_KERNEL);
+		chromatix_data[offset].data[SPI_PROTOCOL_OFFSET] = 0xAA;
+		chromatix_data[offset].size = num_byte;
+
+#ifdef READ_CHROMATIX_FROM
+		if (imx175_spi_read(eeprom_ctrl, address,
+							chromatix_data[offset].data, num_byte) < 0) {
+			printk("%s : read fail\n", __func__);
+		}
+#endif
+		size -= num_byte;
+		address += num_byte;
+		offset++;
+	};
+}
+
+int32_t imx175_get_chromatix(struct msm_eeprom_ctrl_t *ectrl, void *edata)
+{
+	int32_t rc = 0;
+	int i;
+	struct chromatix_params *chr_params = (struct chromatix_params *)edata;
+	uint8_t *offset = chr_params->chromatix;
+
+	mutex_lock(ectrl->eeprom_mutex);
+
+	if (chr_params->chromatix_size == CHROMATIX_SIZE) {
+		for (i = 0; i < chromatix_array_size; i++) {
+			if (copy_to_user(offset,
+					chromatix_data[i].data + SPI_PROTOCOL_OFFSET,
+					chromatix_data[i].size)) {
+				rc = -EFAULT;
+			}
+			offset += chromatix_data[i].size;
+		}
+	}
+
+	mutex_unlock(ectrl->eeprom_mutex);
+
+	return rc;
+}
+
 static int __devinit imx175_spi_probe(struct spi_device *spi)
 {
 	int rc = 0;
@@ -435,7 +521,6 @@ static int __devinit imx175_spi_probe(struct spi_device *spi)
 	eeprom_ctrl->spi = spi;
 	printk("imx175 spi driver probe\n");
 
-
 	if (eeprom_ctrl->func_tbl.eeprom_init != NULL) {
 		rc = eeprom_ctrl->func_tbl.eeprom_init(eeprom_ctrl,
 			eeprom_ctrl->i2c_client.client->adapter);
@@ -443,6 +528,8 @@ static int __devinit imx175_spi_probe(struct spi_device *spi)
 	msm_camera_eeprom_read_tbl(eeprom_ctrl,
 		eeprom_ctrl->read_tbl,
 		eeprom_ctrl->read_tbl_size);
+
+	imx175_read_choromatix(eeprom_ctrl);
 
 	if (eeprom_ctrl->func_tbl.eeprom_format_data != NULL)
 		eeprom_ctrl->func_tbl.eeprom_format_data();
@@ -455,7 +542,13 @@ static int __devinit imx175_spi_probe(struct spi_device *spi)
 		spi, eeprom_ctrl->eeprom_v4l2_subdev_ops);
 
 	sd_info.sdev_type = EEPROM_DEV;
+	eeprom_ctrl->sdev.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	msm_cam_register_subdev_node(&eeprom_ctrl->sdev, &sd_info);
+	media_entity_init(&eeprom_ctrl->sdev.entity, 0, NULL, 0);
+	eeprom_ctrl->sdev.entity.type = MEDIA_ENT_T_DEVNODE_V4L;
+	eeprom_ctrl->sdev.entity.group_id = EEPROM_DEV;
+	eeprom_ctrl->sdev.entity.name = "chromatix_eeprom";
+	eeprom_ctrl->sdev.entity.revision = eeprom_ctrl->sdev.devnode->num;
 
 	return 0;
 }
@@ -495,6 +588,7 @@ static struct msm_eeprom_ctrl_t imx175_eeprom_t = {
 		.eeprom_direct_data_read = imx175_direct_read,
 		.eeprom_direct_data_write = imx175_direct_write,
 		.eeprom_direct_data_erase = imx175_direct_erase,
+		.eeprom_get_chromatix = imx175_get_chromatix,
 	},
 	.info = &imx175_calib_supp_info,
 	.info_size = sizeof(struct msm_camera_eeprom_info_t),

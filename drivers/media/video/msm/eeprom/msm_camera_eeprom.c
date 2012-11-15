@@ -86,7 +86,7 @@ int32_t msm_camera_eeprom_get_data(struct msm_eeprom_ctrl_t *ectrl,
 	return rc;
 }
 
-int32_t msm_eeprom_config(struct msm_eeprom_ctrl_t *e_ctrl,
+static int32_t msm_eeprom_config(struct msm_eeprom_ctrl_t *e_ctrl,
 	void __user *argp)
 {
 	struct msm_eeprom_cfg_data cdata;
@@ -166,6 +166,15 @@ int32_t msm_eeprom_config(struct msm_eeprom_ctrl_t *e_ctrl,
 	return rc;
 }
 
+static int32_t msm_eeprom_chromatix(struct msm_eeprom_ctrl_t *e_ctrl,
+	void __user *argp)
+{
+	if (e_ctrl->func_tbl.eeprom_get_chromatix == NULL)
+		return -EFAULT;
+
+	return e_ctrl->func_tbl.eeprom_get_chromatix(e_ctrl, argp);
+}
+
 struct msm_eeprom_ctrl_t *get_ectrl(struct v4l2_subdev *sd)
 {
 	return container_of(sd, struct msm_eeprom_ctrl_t, sdev);
@@ -179,6 +188,9 @@ long msm_eeprom_subdev_ioctl(struct v4l2_subdev *sd,
 	switch (cmd) {
 	case VIDIOC_MSM_EEPROM_CFG:
 		return msm_eeprom_config(e_ctrl, argp);
+	case VIDIOC_MSM_EEPROM_CHROMATIX:
+	case MSM_CAM_IOCTL_CHROMATIX_PARMS:
+		return msm_eeprom_chromatix(e_ctrl, argp);
 	default:
 		return -ENOIOCTLCMD;
 	}
