@@ -46,12 +46,16 @@ enum src_id {
  */
 enum pvs {
 	PVS_SLOW = 0,
-	PVS_NOMINAL,
-	PVS_FAST,
-	PVS_FASTER,
-	PVS_UNKNOWN,
-	NUM_PVS
+	PVS_NOMINAL = 1,
+	PVS_FAST = 3,
+	PVS_FASTER = 4,
+	NUM_PVS = 7
 };
+
+/**
+ * The maximum number of speed bins.
+ */
+#define NUM_SPEED_BINS (16)
 
 /**
  * enum scalables - IDs of frequency scalable hardware blocks.
@@ -111,14 +115,12 @@ struct vreg {
  * @khz: Clock rate in KHz.
  * @src: Clock source ID.
  * @pri_src_sel: Input to select on the primary MUX.
- * @sec_src_sel: Input to select on the secondary MUX.
  * @pll_l_val: HFPLL "L" value to be applied when an HFPLL source is selected.
  */
 struct core_speed {
 	unsigned long khz;
 	int src;
 	u32 pri_src_sel;
-	u32 sec_src_sel;
 	u32 pll_l_val;
 };
 
@@ -177,8 +179,8 @@ struct hfpll_data {
 	const bool has_droop_ctl;
 	const u32 droop_offset;
 	const u32 droop_val;
-	const u32 low_vdd_l_max;
-	const u32 nom_vdd_l_max;
+	u32 low_vdd_l_max;
+	u32 nom_vdd_l_max;
 	const int vdd[NUM_HFPLL_VDD];
 };
 
@@ -188,6 +190,7 @@ struct hfpll_data {
  * @hfpll_base: Virtual base address of HFPLL registers.
  * @aux_clk_sel_phys: Physical address of auxiliary MUX.
  * @aux_clk_sel: Auxiliary mux input to select at boot.
+ * @sec_clk_sel: Secondary mux input to select at boot.
  * @l2cpmr_iaddr: Indirect address of the CPMR MUX/divider CP15 register.
  * @cur_speed: Pointer to currently-set speed.
  * @l2_vote: L2 performance level vote associate with the current CPU speed.
@@ -199,6 +202,7 @@ struct scalable {
 	void __iomem *hfpll_base;
 	const phys_addr_t aux_clk_sel_phys;
 	const u32 aux_clk_sel;
+	const u32 sec_clk_sel;
 	const u32 l2cpmr_iaddr;
 	const struct core_speed *cur_speed;
 	unsigned int l2_vote;
@@ -223,10 +227,10 @@ struct pvs_table {
  * @scalable: Array of scalables.
  * @scalable_size: Size of @scalable.
  * @hfpll_data: HFPLL configuration data.
- * @pvs_tables: CPU frequency tables.
+ * @pvs_tables: 2D array of CPU frequency tables.
  * @l2_freq_tbl: L2 frequency table.
  * @l2_freq_tbl_size: Size of @l2_freq_tbl.
- * @qfprom_phys_base: Physical base address of QFPROM.
+ * @pte_efuse_phys: Physical address of PTE EFUSE.
  * @bus_scale: MSM bus driver parameters.
  * @stby_khz: KHz value corresponding to an always-on clock source.
  */
@@ -234,10 +238,10 @@ struct acpuclk_krait_params {
 	struct scalable *scalable;
 	size_t scalable_size;
 	struct hfpll_data *hfpll_data;
-	struct pvs_table *pvs_tables;
+	struct pvs_table (*pvs_tables)[NUM_PVS];
 	struct l2_level *l2_freq_tbl;
 	size_t l2_freq_tbl_size;
-	phys_addr_t qfprom_phys_base;
+	phys_addr_t pte_efuse_phys;
 	struct msm_bus_scale_pdata *bus_scale;
 	unsigned long stby_khz;
 };
