@@ -908,7 +908,10 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 
 	codec_clk = clk_get(cpu_dai->dev, "osr_clk");
 
-	err = tabla_hs_detect(codec, &mbhc_cfg);
+        /* Disable headset detection only for DTV due to headset detection bug*/
+        if (!detect_dtv_platform)
+	        err = tabla_hs_detect(codec, &mbhc_cfg);
+
 	snd_soc_dai_set_channel_map(codec_dai, ARRAY_SIZE(tx_ch),
 				    tx_ch, ARRAY_SIZE(rx_ch), rx_ch);
 
