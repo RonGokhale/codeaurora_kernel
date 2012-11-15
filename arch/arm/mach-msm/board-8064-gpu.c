@@ -18,7 +18,6 @@
 #include <mach/board.h>
 #include <mach/msm_dcvs.h>
 #include <mach/socinfo.h>
-
 #include "devices.h"
 #include "board-8064.h"
 
@@ -256,6 +255,9 @@ void __init apq8064_init_gpu(void)
 		kgsl_3d0_pdata.chipid = ADRENO_CHIPID(3, 2, 0, 1);
 	else
 		kgsl_3d0_pdata.chipid = ADRENO_CHIPID(3, 2, 0, 0);
+
+	if (cpu_is_apq8064ab())
+		kgsl_3d0_pdata.pwrlevel[0].gpu_freq = 450000000;
 
 	platform_device_register(&device_kgsl_3d0);
 }
