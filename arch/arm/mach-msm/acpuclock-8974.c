@@ -48,6 +48,7 @@ static struct scalable scalable[] __initdata = {
 	[CPU0] = {
 		.hfpll_phys_base = 0xF908A000,
 		.l2cpmr_iaddr = 0x4501,
+		.sec_clk_sel = 2,
 		.vreg[VREG_CORE] = { "krait0",     1050000 },
 		.vreg[VREG_MEM]  = { "krait0_mem", 1050000 },
 		.vreg[VREG_DIG]  = { "krait0_dig", LVL_HIGH },
@@ -57,6 +58,7 @@ static struct scalable scalable[] __initdata = {
 	[CPU1] = {
 		.hfpll_phys_base = 0xF909A000,
 		.l2cpmr_iaddr = 0x5501,
+		.sec_clk_sel = 2,
 		.vreg[VREG_CORE] = { "krait1",     1050000 },
 		.vreg[VREG_MEM]  = { "krait1_mem", 1050000 },
 		.vreg[VREG_DIG]  = { "krait1_dig", LVL_HIGH },
@@ -66,6 +68,7 @@ static struct scalable scalable[] __initdata = {
 	[CPU2] = {
 		.hfpll_phys_base = 0xF90AA000,
 		.l2cpmr_iaddr = 0x6501,
+		.sec_clk_sel = 2,
 		.vreg[VREG_CORE] = { "krait2",     1050000 },
 		.vreg[VREG_MEM]  = { "krait2_mem", 1050000 },
 		.vreg[VREG_DIG]  = { "krait2_dig", LVL_HIGH },
@@ -75,6 +78,7 @@ static struct scalable scalable[] __initdata = {
 	[CPU3] = {
 		.hfpll_phys_base = 0xF90BA000,
 		.l2cpmr_iaddr = 0x7501,
+		.sec_clk_sel = 2,
 		.vreg[VREG_CORE] = { "krait3",     1050000 },
 		.vreg[VREG_MEM]  = { "krait3_mem", 1050000 },
 		.vreg[VREG_DIG]  = { "krait3_dig", LVL_HIGH },
@@ -84,6 +88,7 @@ static struct scalable scalable[] __initdata = {
 	[L2] = {
 		.hfpll_phys_base = 0xF9016000,
 		.l2cpmr_iaddr = 0x0500,
+		.sec_clk_sel = 2,
 		.vreg[VREG_HFPLL_A] = { "l2_hfpll_a", 2150000 },
 		.vreg[VREG_HFPLL_B] = { "l2_hfpll_b", 1800000 },
 	},
@@ -105,32 +110,32 @@ static struct msm_bus_scale_pdata bus_scale_data __initdata = {
 };
 
 static struct l2_level l2_freq_tbl[] __initdata = {
-	[0]  = { {  300000, PLL_0, 0, 2,   0 }, LVL_LOW, 1050000, 2 },
-	[1]  = { {  384000, HFPLL, 2, 0,  40 }, LVL_NOM, 1050000, 2 },
-	[2]  = { {  460800, HFPLL, 2, 0,  48 }, LVL_NOM, 1050000, 2 },
-	[3]  = { {  537600, HFPLL, 1, 0,  28 }, LVL_NOM, 1050000, 2 },
-	[4]  = { {  576000, HFPLL, 1, 0,  30 }, LVL_NOM, 1050000, 3 },
-	[5]  = { {  652800, HFPLL, 1, 0,  34 }, LVL_NOM, 1050000, 3 },
-	[6]  = { {  729600, HFPLL, 1, 0,  38 }, LVL_NOM, 1050000, 3 },
-	[7]  = { {  806400, HFPLL, 1, 0,  42 }, LVL_NOM, 1050000, 3 },
-	[8]  = { {  883200, HFPLL, 1, 0,  46 }, LVL_NOM, 1050000, 4 },
-	[9]  = { {  960000, HFPLL, 1, 0,  50 }, LVL_NOM, 1050000, 4 },
-	[10] = { { 1036800, HFPLL, 1, 0,  54 }, LVL_NOM, 1050000, 4 },
+	[0]  = { {  300000, PLL_0, 0,   0 }, LVL_LOW, 1050000, 2 },
+	[1]  = { {  384000, HFPLL, 2,  40 }, LVL_NOM, 1050000, 2 },
+	[2]  = { {  460800, HFPLL, 2,  48 }, LVL_NOM, 1050000, 2 },
+	[3]  = { {  537600, HFPLL, 1,  28 }, LVL_NOM, 1050000, 2 },
+	[4]  = { {  576000, HFPLL, 1,  30 }, LVL_NOM, 1050000, 3 },
+	[5]  = { {  652800, HFPLL, 1,  34 }, LVL_NOM, 1050000, 3 },
+	[6]  = { {  729600, HFPLL, 1,  38 }, LVL_NOM, 1050000, 3 },
+	[7]  = { {  806400, HFPLL, 1,  42 }, LVL_NOM, 1050000, 3 },
+	[8]  = { {  883200, HFPLL, 1,  46 }, LVL_NOM, 1050000, 4 },
+	[9]  = { {  960000, HFPLL, 1,  50 }, LVL_NOM, 1050000, 4 },
+	[10] = { { 1036800, HFPLL, 1,  54 }, LVL_NOM, 1050000, 4 },
 	{ }
 };
 
 static struct acpu_level acpu_freq_tbl[] __initdata = {
-	{ 1, {  300000, PLL_0, 0, 2,   0 }, L2(0),  1050000, 3200000 },
-	{ 1, {  384000, HFPLL, 2, 0,  40 }, L2(1),  1050000, 3200000 },
-	{ 1, {  460800, HFPLL, 2, 0,  48 }, L2(2),  1050000, 3200000 },
-	{ 1, {  537600, HFPLL, 1, 0,  28 }, L2(3),  1050000, 3200000 },
-	{ 1, {  576000, HFPLL, 1, 0,  30 }, L2(4),  1050000, 3200000 },
-	{ 1, {  652800, HFPLL, 1, 0,  34 }, L2(5),  1050000, 3200000 },
-	{ 1, {  729600, HFPLL, 1, 0,  38 }, L2(6),  1050000, 3200000 },
-	{ 1, {  806400, HFPLL, 1, 0,  42 }, L2(7),  1050000, 3200000 },
-	{ 1, {  883200, HFPLL, 1, 0,  46 }, L2(8),  1050000, 3200000 },
-	{ 1, {  960000, HFPLL, 1, 0,  50 }, L2(9),  1050000, 3200000 },
-	{ 1, { 1036800, HFPLL, 1, 0,  54 }, L2(10), 1050000, 3200000 },
+	{ 1, {  300000, PLL_0, 0,   0 }, L2(0),  1050000, 3200000 },
+	{ 1, {  384000, HFPLL, 2,  40 }, L2(1),  1050000, 3200000 },
+	{ 1, {  460800, HFPLL, 2,  48 }, L2(2),  1050000, 3200000 },
+	{ 1, {  537600, HFPLL, 1,  28 }, L2(3),  1050000, 3200000 },
+	{ 1, {  576000, HFPLL, 1,  30 }, L2(4),  1050000, 3200000 },
+	{ 1, {  652800, HFPLL, 1,  34 }, L2(5),  1050000, 3200000 },
+	{ 1, {  729600, HFPLL, 1,  38 }, L2(6),  1050000, 3200000 },
+	{ 1, {  806400, HFPLL, 1,  42 }, L2(7),  1050000, 3200000 },
+	{ 1, {  883200, HFPLL, 1,  46 }, L2(8),  1050000, 3200000 },
+	{ 1, {  960000, HFPLL, 1,  50 }, L2(9),  1050000, 3200000 },
+	{ 1, { 1036800, HFPLL, 1,  54 }, L2(10), 1050000, 3200000 },
 	{ 0, { 0 } }
 };
 
