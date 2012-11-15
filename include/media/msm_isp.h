@@ -70,6 +70,7 @@
 #define MSG_ID_RDI2_UPDATE_ACK          51
 #define MSG_ID_PIX0_UPDATE_ACK          52
 #define MSG_ID_PREV_STOP_ACK            53
+#define MSG_ID_OUTPUT_TERTIARY3         54
 
 
 /* ISP command IDs */
@@ -344,6 +345,7 @@ struct msm_vpe_clock_rate {
 #define VFE_OUTPUTS_THUMB_AND_JPEG      BIT(10)
 #define VFE_OUTPUTS_RDI0                BIT(11)
 #define VFE_OUTPUTS_RDI1                BIT(12)
+#define VFE_OUTPUTS_RDI2                BIT(13)
 
 struct msm_frame_info {
 	uint32_t inst_handle;

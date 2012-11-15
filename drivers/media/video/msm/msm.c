@@ -704,6 +704,8 @@ static int msm_vidbuf_get_path(u32 extendedmode)
 		return OUTPUT_TYPE_R;
 	case MSM_V4L2_EXT_CAPTURE_MODE_RDI1:
 		return OUTPUT_TYPE_R1;
+	case MSM_V4L2_EXT_CAPTURE_MODE_RDI2:
+		return OUTPUT_TYPE_R2;
 	case MSM_V4L2_EXT_CAPTURE_MODE_AEC:
 		return OUTPUT_TYPE_SAEC;
 	case MSM_V4L2_EXT_CAPTURE_MODE_AF:

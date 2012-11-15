@@ -242,6 +242,34 @@ static uint8_t msm_sensor_state_check(
 	return 0;
 }
 
+static int msm_mctl_add_intf_to_mctl_map(
+	struct msm_cam_media_controller *p_mctl,
+	struct intf_mctl_mapping_cfg *intf_map)
+{
+
+	int i;
+	int rc = 0;
+	uint32_t mctl_handle;
+
+	mctl_handle = msm_cam_find_handle_from_mctl_ptr(p_mctl);
+	if (mctl_handle == 0) {
+		pr_err("%s Error in finding handle from mctl_ptr, rc = %d",
+			__func__, rc);
+		return -EFAULT;
+	}
+	for (i = 0; i < intf_map->num_entries; i++) {
+		rc = msm_cam_server_config_interface_map(
+			intf_map->image_modes[i], mctl_handle,
+			intf_map->vnode_id, intf_map->is_bayer_sensor);
+		if (rc < 0) {
+				pr_err("%s Error in INTF MAPPING rc = %d",
+					__func__, rc);
+				return -EINVAL;
+		}
+	}
+	return rc;
+}
+
 /* called by the server or the config nodes to handle user space
 	commands*/
 static int msm_mctl_cmd(struct msm_cam_media_controller *p_mctl,
@@ -416,6 +444,16 @@ static int msm_mctl_cmd(struct msm_cam_media_controller *p_mctl,
 		} else {
 			if (msm_sensor_state_check(p_mctl))
 				rc = msm_flash_ctrl(p_mctl->sdata, &flash_info);
+		}
+		break;
+	}
+	case MSM_CAM_IOCTL_INTF_MCTL_MAPPING_CFG: {
+		struct intf_mctl_mapping_cfg intf_map;
+		if (copy_from_user(&intf_map, argp, sizeof(intf_map))) {
+			ERR_COPY_FROM_USER();
+			rc = -EFAULT;
+		} else {
+			rc = msm_mctl_add_intf_to_mctl_map(p_mctl, &intf_map);
 		}
 		break;
 	}
@@ -1014,7 +1052,7 @@ static int msm_mctl_v4l2_s_ctrl(struct file *f, void *pctx,
 					__func__, pcam_inst);
 			rc = -EFAULT;
 		}
-		D("%s inst %p got plane info: num_planes = %d,"
+		D("%s inst %p got plane info: num_planes = %d," \
 				"plane size = %ld %ld ", __func__, pcam_inst,
 				pcam_inst->plane_info.num_planes,
 				pcam_inst->plane_info.plane[0].size,
@@ -1484,8 +1522,8 @@ static int msm_mctl_vidbuf_get_path(u32 extendedmode)
 		return OUTPUT_TYPE_R;
 	case MSM_V4L2_EXT_CAPTURE_MODE_RDI1:
 		return OUTPUT_TYPE_R1;
-	case MSM_V4L2_EXT_CAPTURE_MODE_DEFAULT:
-	case MSM_V4L2_EXT_CAPTURE_MODE_PREVIEW:
+	case MSM_V4L2_EXT_CAPTURE_MODE_RDI2:
+		return OUTPUT_TYPE_R2;
 	default:
 		return OUTPUT_TYPE_P;
 	}
