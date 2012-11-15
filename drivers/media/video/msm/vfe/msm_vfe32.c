@@ -232,11 +232,26 @@ static struct vfe32_cmd_type vfe32_cmd[] = {
 		{VFE_CMD_STATS_UNREGBUF},
 		{VFE_CMD_STATS_BG_START, V32_STATS_BG_LEN, V32_STATS_BG_OFF},
 		{VFE_CMD_STATS_BG_STOP},
-		{VFE_CMD_STATS_BF_START, V32_STATS_BF_LEN, V32_STATS_BF_OFF},
-/*145*/ {VFE_CMD_STATS_BF_STOP},
+/*145*/	{VFE_CMD_STATS_BF_START, V32_STATS_BF_LEN, V32_STATS_BF_OFF},
+		{VFE_CMD_STATS_BF_STOP},
 		{VFE_CMD_STATS_BHIST_START, V32_STATS_BHIST_LEN,
 			V32_STATS_BHIST_OFF},
-/*147*/	{VFE_CMD_STATS_BHIST_STOP},
+		{VFE_CMD_STATS_BHIST_STOP},
+		{VFE_CMD_RESET_2},
+/*150*/	{VFE_CMD_FOV_ENC_CFG},
+		{VFE_CMD_FOV_VIEW_CFG},
+		{VFE_CMD_FOV_ENC_UPDATE},
+		{VFE_CMD_FOV_VIEW_UPDATE},
+		{VFE_CMD_SCALER_ENC_CFG},
+/*155*/	{VFE_CMD_SCALER_VIEW_CFG},
+		{VFE_CMD_SCALER_ENC_UPDATE},
+		{VFE_CMD_SCALER_VIEW_UPDATE},
+		{VFE_CMD_COLORXFORM_ENC_CFG},
+		{VFE_CMD_COLORXFORM_VIEW_CFG},
+/*160*/	{VFE_CMD_COLORXFORM_ENC_UPDATE},
+		{VFE_CMD_COLORXFORM_VIEW_UPDATE},
+		{VFE_CMD_TEST_GEN_CFG},
+		{VFE_CMD_STOP_RECORDING_DONE},
 };
 
 uint32_t vfe32_AXI_WM_CFG[] = {
@@ -399,7 +414,21 @@ static const char * const vfe32_general_cmd[] = {
 	"STATS_BF_STOP",
 	"STATS_BHIST_START",
 	"STATS_BHIST_STOP",
-	"RESET_2",
+	"VFE_CMD_RESET_2",
+	"VFE_CMD_FOV_ENC_CFG",
+	"VFE_CMD_FOV_VIEW_CFG",
+	"VFE_CMD_FOV_ENC_UPDATE",
+	"VFE_CMD_FOV_VIEW_UPDATE",
+	"VFE_CMD_SCALER_ENC_CFG",
+	"VFE_CMD_SCALER_VIEW_CFG",
+	"VFE_CMD_SCALER_ENC_UPDATE",
+	"VFE_CMD_SCALER_VIEW_UPDATE",
+	"VFE_CMD_COLORXFORM_ENC_CFG",
+	"VFE_CMD_COLORXFORM_VIEW_CFG",
+	"VFE_CMD_COLORXFORM_ENC_UPDATE",
+	"VFE_CMD_COLORXFORM_VIEW_UPDATE",
+	"VFE_CMD_TEST_GEN_CFG",
+	"VFE_CMD_STOP_RECORDING_DONE",
 };
 
 uint8_t vfe32_use_bayer_stats(struct vfe32_ctrl_type *vfe32_ctrl)
@@ -1469,6 +1498,12 @@ static int vfe32_stop_recording(
 	return 0;
 }
 
+static void vfe32_stop_recording_done(struct msm_cam_media_controller *pmctl)
+{
+	msm_camio_bus_scale_cfg(pmctl->sdata->pdata->cam_bus_scale_table,
+							S_PREVIEW);
+}
+
 static void vfe32_start_liveshot(
 	struct msm_cam_media_controller *pmctl,
 	struct vfe32_ctrl_type *vfe32_ctrl)
@@ -1949,6 +1984,9 @@ static int vfe32_proc_general(
 		pr_info("vfe32_proc_general: cmdID = %s\n",
 			vfe32_general_cmd[cmd->id]);
 		rc = vfe32_stop_recording(pmctl, vfe32_ctrl);
+		break;
+	case VFE_CMD_STOP_RECORDING_DONE:
+		vfe32_stop_recording_done(pmctl);
 		break;
 	case VFE_CMD_OPERATION_CFG: {
 		if (cmd->length != V32_OPERATION_CFG_LEN) {
@@ -3923,10 +3961,10 @@ static void vfe32_process_error_irq(
 		reg_value = msm_camera_io_r(
 			axi_ctrl->share_ctrl->vfebase + VFE_CAMIF_STATUS);
 		v4l2_subdev_notify(&axi_ctrl->subdev,
-			NOTIFY_VFE_CAMIF_ERROR, (void *)NULL);
+			NOTIFY_VFE_ERROR, (void *)NULL);
 		pr_err("camifStatus  = 0x%x\n", reg_value);
 		vfe32_send_isp_msg(&axi_ctrl->subdev,
-			axi_ctrl->share_ctrl->vfeFrameId, MSG_ID_CAMIF_ERROR);
+			axi_ctrl->share_ctrl->vfeFrameId, MSG_ID_VFE_ERROR);
 	}
 
 	if (errStatus & VFE32_IMASK_BHIST_OVWR)
@@ -3967,6 +4005,14 @@ static void vfe32_process_error_irq(
 
 	if (errStatus & VFE32_IMASK_STATS_SKIN_BHIST_BUS_OVFL)
 		pr_err("vfe32_irq: skin/bhist stats bus overflow\n");
+
+	if (errStatus & VFE32_IMASK_BUS_OVFL_ERROR) {
+		pr_err("%s Bus Overflow. Notify error ", __func__);
+		v4l2_subdev_notify(&axi_ctrl->subdev,
+			NOTIFY_VFE_ERROR, (void *)NULL);
+		vfe32_send_isp_msg(&axi_ctrl->subdev,
+			axi_ctrl->share_ctrl->vfeFrameId, MSG_ID_VFE_ERROR);
+	}
 }
 
 static void vfe32_process_common_error_irq(
@@ -3996,6 +4042,11 @@ static void vfe32_process_common_error_irq(
 
 	if (errStatus & VFE32_IMASK_AXI_ERROR)
 		pr_err("vfe32_irq: axi error\n");
+
+	v4l2_subdev_notify(&axi_ctrl->subdev, NOTIFY_VFE_ERROR,
+		(void *)NULL);
+	vfe32_send_isp_msg(&axi_ctrl->subdev,
+		axi_ctrl->share_ctrl->vfeFrameId, MSG_ID_VFE_ERROR);
 }
 
 
@@ -6033,9 +6084,6 @@ void axi_stop(struct msm_cam_media_controller *pmctl,
 		axi_ctrl->share_ctrl->cmd_type = vfe_params.cmd_type;
 		break;
 	case AXI_CMD_RECORD:
-		if (!axi_ctrl->share_ctrl->dual_enabled)
-			msm_camio_bus_scale_cfg(
-			pmctl->sdata->pdata->cam_bus_scale_table, S_PREVIEW);
 		return;
 	case AXI_CMD_LIVESHOT:
 		if (!axi_ctrl->share_ctrl->dual_enabled)

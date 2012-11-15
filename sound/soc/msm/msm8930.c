@@ -183,7 +183,7 @@ static void msm8960_ext_spk_power_amp_on(u32 spk)
 				pm8xxx_spk_enable(MSM8930_SPK_ON);
 			}
 
-			pr_debug("%s: sleeping 10 ms after turning on external "
+			pr_debug("%s: slepping 10 ms after turning on external "
 				" Left Speaker Ampl\n", __func__);
 			usleep_range(10000, 10000);
 		}
