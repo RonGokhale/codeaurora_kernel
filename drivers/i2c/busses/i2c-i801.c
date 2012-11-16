@@ -1122,6 +1122,7 @@ static int __devinit i801_probe(struct pci_dev *dev,
 
 	/* IRQ processing tested on CougarPoint PCH, ICH5, ICH7-M and ICH10 */
 	if (dev->device == PCI_DEVICE_ID_INTEL_COUGARPOINT_SMBUS ||
+	    dev->device == PCI_DEVICE_ID_INTEL_PANTHERPOINT_SMBUS ||
 	    dev->device == PCI_DEVICE_ID_INTEL_82801EB_3 ||
 	    dev->device == PCI_DEVICE_ID_INTEL_ICH7_17 ||
 	    dev->device == PCI_DEVICE_ID_INTEL_ICH8_5 ||
