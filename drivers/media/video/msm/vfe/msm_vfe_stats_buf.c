@@ -316,7 +316,6 @@ static int msm_stats_bufq_flush(struct msm_stats_bufq_ctrl *stats_ctrl,
 	struct msm_stats_bufq *bufq = NULL;
 	struct msm_stats_meta_buf *stats_buf = NULL;
 
-	D("%s: type : %d\n", __func__, stats_type);
 	bufq = stats_ctrl->bufq[stats_type];
 
 	for (i = 0; i < bufq->num_bufs; i++) {
