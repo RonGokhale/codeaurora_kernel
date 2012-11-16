@@ -41,6 +41,7 @@
 #include <linux/slab.h>
 #include <linux/input.h>
 #include <linux/uaccess.h>
+#include <linux/delay.h>
 
 #include <asm/ptrace.h>
 #include <asm/irq_regs.h>
@@ -398,6 +399,21 @@ static struct sysrq_key_op sysrq_unrt_op = {
 	.enable_mask	= SYSRQ_ENABLE_RTNICE,
 };
 
+static void sysrq_handle_cros_xkey(int key)
+{
+	sysrq_handle_showstate_blocked(key);
+	sysrq_handle_sync(key);
+	mdelay(1000); /* Delay for a bit to give time for sync to complete */
+	panic("ChromeOS X Key");
+}
+
+static struct sysrq_key_op sysrq_cros_xkey = {
+	.handler	= sysrq_handle_cros_xkey,
+	.help_msg	= "Cros-dump-and-crash",
+	.action_msg	= "Cros dump and crash",
+	.enable_mask	= SYSRQ_ENABLE_CROS_XKEY,
+};
+
 /* Key Operations table and lock */
 static DEFINE_SPINLOCK(sysrq_key_table_lock);
 
@@ -453,7 +469,8 @@ static struct sysrq_key_op *sysrq_key_table[36] = {
 	&sysrq_showstate_blocked_op,	/* w */
 	/* x: May be registered on ppc/powerpc for xmon */
 	/* x: May be registered on sparc64 for global PMU dump */
-	NULL,				/* x */
+	/* x: On Chrome OS, this is the dump and crash key */
+	&sysrq_cros_xkey,		/* x */
 	/* y: May be registered on sparc64 for global register dump */
 	NULL,				/* y */
 	&sysrq_ftrace_dump_op,		/* z */
@@ -643,6 +660,7 @@ static bool sysrq_filter(struct input_handle *handle,
 			break;
 
 		case KEY_SYSRQ:
+		case KEY_F10:
 			if (value == 1 && sysrq->alt != KEY_RESERVED) {
 				sysrq->active = true;
 				sysrq->alt_use = sysrq->alt;
