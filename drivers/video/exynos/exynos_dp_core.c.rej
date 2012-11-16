@@ -1,0 +1,22 @@
+--- drivers/video/exynos/exynos_dp_core.c
++++ drivers/video/exynos/exynos_dp_core.c
+@@ -1040,6 +1040,9 @@
+        struct exynos_dp_platdata *pdata = pdev->dev.platform_data;
+        struct exynos_dp_device *dp = platform_get_drvdata(pdev);
+ 
++       if (work_pending(&dp->config_work))
++               flush_work_sync(&dp->config_work);
++
+        if (pdata && pdata->phy_exit)
+                pdata->phy_exit();
+ 
+@@ -1063,6 +1066,9 @@
+        struct exynos_dp_platdata *pdata = pdev->dev.platform_data;
+        struct exynos_dp_device *dp = platform_get_drvdata(pdev);
+ 
++       if (work_pending(&dp->config_work))
++               flush_work_sync(&dp->config_work);
++
+        if (pdata && pdata->phy_exit)
+                pdata->phy_exit();
+ 

@@ -1,0 +1,20 @@
+--- arch/x86/platform/efi/efi.c
++++ arch/x86/platform/efi/efi.c
+@@ -702,7 +704,7 @@
+ 		efi_enabled = 0;
+ 		return;
+ 	}
+-	if (efi_native) {
++	if (efi_is_native()) {
+ 		x86_platform.get_wallclock = efi_get_time;
+ 		x86_platform.set_wallclock = efi_set_rtc_mmss;
+ 	}
+@@ -767,7 +769,7 @@
+ 	 * non-native EFI
+ 	 */
+ 
+-	if (!efi_native)
++	if (!efi_is_native())
+ 		goto out;
+ 
+ 	/* Merge contiguous regions of the same type and attribute */
