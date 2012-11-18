@@ -62,7 +62,7 @@
 #include "board-msm7627a.h"
 
 #define PMEM_KERNEL_EBI1_SIZE	0x3A000
-#define MSM_PMEM_AUDIO_SIZE	0x1F4000
+#define MSM_PMEM_AUDIO_SIZE     0x100000
 
 #if defined(CONFIG_GPIO_SX150X)
 enum {
