@@ -496,7 +496,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 	}
 
 	if (mfd->index == 0)
-		mfd->fb_imgType = MSMFB_DEFAULT_TYPE;
+		mfd->fb_imgType = MDP_RGB_565;
 	else
 		mfd->fb_imgType = MDP_RGB_565;
 
