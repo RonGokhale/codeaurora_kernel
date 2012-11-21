@@ -1759,6 +1759,9 @@ int afe_close(int port_id)
 			afe_close_done[port_id & 0x1] = true;
 	}
 
+	if ((port_id == RT_PROXY_DAI_001_RX) ||
+		(port_id == RT_PROXY_DAI_002_TX))
+		return 0;
 	port_id = afe_convert_virtual_to_portid(port_id);
 
 	stop.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
