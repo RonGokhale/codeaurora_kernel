@@ -22,6 +22,11 @@
 #include <linux/jiffies.h>
 #include <linux/gpio.h>
 #include <mach/peripheral-loader.h>
+#include <mach/msm_smd.h>
+#include <mach/msm_iomap.h>
+#ifdef CONFIG_WCNSS_MEM_PRE_ALLOC
+#include "wcnss_prealloc.h"
+#endif
 
 #define DEVICE "wcnss_wlan"
 #define VERSION "1.01"
@@ -105,6 +110,20 @@ static ssize_t wcnss_thermal_mitigation_store(struct device *dev,
 
 static DEVICE_ATTR(thermal_mitigation, S_IRUSR | S_IWUSR,
 	wcnss_thermal_mitigation_show, wcnss_thermal_mitigation_store);
+
+
+
+/* interface to reset Riva by sending the reset interrupt */
+void wcnss_reset_intr(void)
+{
+//	if (wcnss_hardware_type() == WCNSS_RIVA_HW) {
+//		wmb();
+//		__raw_writel(1 << 24, MSM_APCS_GCC_BASE + 0x8);
+//	} else {
+//		pr_err("%s: reset interrupt not supported\n", __func__);
+//	}
+}
+EXPORT_SYMBOL(wcnss_reset_intr);
 
 static int wcnss_create_sysfs(struct device *dev)
 {
