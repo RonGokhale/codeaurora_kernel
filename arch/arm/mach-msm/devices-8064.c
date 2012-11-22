@@ -2266,9 +2266,13 @@ struct msm_mpm_device_data apq8064_mpm_dev_data __initdata = {
 #define AP2MDM_STATUS			48
 #define AP2MDM_SOFT_RESET		27
 #define I2S_AP2MDM_SOFT_RESET	0
+#ifndef AP2MDM_WAKEUP
 #define AP2MDM_WAKEUP			35
+#endif
 #define I2S_AP2MDM_WAKEUP		44
+#ifndef MDM2AP_PBLRDY
 #define MDM2AP_PBLRDY			46
+#endif
 #define I2S_MDM2AP_PBLRDY		81
 #define DSDA_MDM2AP_ERRFATAL	36
 #define DSDA_AP2MDM_ERRFATAL	37
@@ -2492,7 +2496,7 @@ struct platform_device dsda_mdm_8064_device = {
 };
 
 struct platform_device dsda_qsc_8064_device = {
-	.name		= "mdm2_modem",
+	.name		= "qsc_modem",
 	.id		= -1,
 	.num_resources	= ARRAY_SIZE(dsda_qsc_resources),
 	.resource	= dsda_qsc_resources,
