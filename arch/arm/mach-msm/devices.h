@@ -433,3 +433,14 @@ extern struct platform_device msm8930_device_acpuclk;
 extern struct platform_device msm8930aa_device_acpuclk;
 extern struct platform_device msm8960_device_acpuclk;
 extern struct platform_device msm9615_device_acpuclk;
+
+extern struct platform_device apq8064_msm_mpd_device;
+
+extern struct platform_device msm_gpio_device;
+
+extern struct platform_device apq_cpudai_mi2s;
+extern struct platform_device apq_cpudai_i2s_rx;
+extern struct platform_device apq_cpudai_i2s_tx;
+
+extern struct platform_device dsda_mdm_8064_device;
+extern struct platform_device dsda_qsc_8064_device;
