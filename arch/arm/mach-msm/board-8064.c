@@ -2968,6 +2968,10 @@ static void __init apq8064_common_init(void)
 			dsda_qsc_8064_device.dev.platform_data =
 				&dsda_qsc_platform_data;
 			platform_device_register(&dsda_qsc_8064_device);
+
+			dsda_mdm_8064_device.dev.platform_data =
+				&dsda_mdm_8064_device;
+			platform_device_register(&dsda_mdm_8064_device);
 		} else if (SOCINFO_VERSION_MINOR(platform_version) == 1) {
 			i2s_mdm_8064_device.dev.platform_data =
 				&mdm_platform_data;
