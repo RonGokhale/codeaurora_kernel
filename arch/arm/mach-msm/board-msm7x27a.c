@@ -63,6 +63,7 @@
 
 #define PMEM_KERNEL_EBI1_SIZE	0x3A000
 #define MSM_PMEM_AUDIO_SIZE	0xF8000
+#define BOOTLOADER_BASE_ADDR	0x8000
 
 #if defined(CONFIG_GPIO_SX150X)
 enum {
@@ -797,6 +798,7 @@ static struct ion_platform_data ion_pdata = {
 			.name	= ION_AUDIO_BL_HEAP_NAME,
 			.memory_type = ION_EBI_TYPE,
 			.extra_data = (void *)&co_ion_pdata,
+			.base = BOOTLOADER_BASE_ADDR,
 		},
 
 #endif
@@ -903,7 +905,6 @@ static void __init reserve_ion_memory(void)
 	msm7x27a_reserve_table[MEMTYPE_EBI1].size += msm_ion_camera_size;
 	msm7x27a_reserve_table[MEMTYPE_EBI1].size += PMEM_KERNEL_EBI1_SIZE;
 	msm7x27a_reserve_table[MEMTYPE_EBI1].size += msm_ion_sf_size;
-	msm7x27a_reserve_table[MEMTYPE_EBI1].size += msm_ion_audio_size;
 #endif
 }
 
@@ -930,6 +931,7 @@ static struct reserve_info msm7x27a_reserve_info __initdata = {
 static void __init msm7x27a_reserve(void)
 {
 	reserve_info = &msm7x27a_reserve_info;
+	memblock_remove(BOOTLOADER_BASE_ADDR, msm_ion_audio_size);
 	msm_reserve();
 }
 
