@@ -131,6 +131,9 @@ struct driver_info {
 	/* link reset handling, called from defer_kevent */
 	int	(*link_reset)(struct usbnet *);
 
+	/*used for dmuxing header if mux is enabled*/
+	void (*rx_complete) (struct urb *);
+
 	/* fixup rx packet (strip framing) */
 	int	(*rx_fixup)(struct usbnet *dev, struct sk_buff *skb);
 
@@ -228,5 +231,7 @@ extern u32 usbnet_get_msglevel(struct net_device *);
 extern void usbnet_set_msglevel(struct net_device *, u32);
 extern void usbnet_get_drvinfo(struct net_device *, struct ethtool_drvinfo *);
 extern int usbnet_nway_reset(struct net_device *net);
+extern void usbnet_terminate_urbs(struct usbnet *dev);
+extern void rx_complete(struct urb *urb);
 
 #endif /* __LINUX_USB_USBNET_H */
