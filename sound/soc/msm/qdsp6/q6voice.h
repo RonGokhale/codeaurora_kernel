@@ -990,7 +990,8 @@ uint8_t voc_get_route_flag(uint16_t session_id, uint8_t path_dir);
 #define VOICE_SESSION_NAME "Voice session"
 #define VOIP_SESSION_NAME "VoIP session"
 #define VOLTE_SESSION_NAME "VoLTE session"
-#define SGLTE_SESSION_NAME "SGLTE session"
+#define VOICE2_SESSION_NAME "Voice2 session"
+
 uint16_t voc_get_session_id(char *name);
 
 int voc_start_playback(uint32_t set);
