@@ -30,6 +30,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/android_pmem.h>
 #include <sound/timer.h>
+#include <sound/pcm.h>
 
 #include "msm-compr-q6.h"
 #include "msm-pcm-routing.h"
@@ -133,8 +134,10 @@ static void compr_event_handler(uint32_t opcode,
 			break;
 		} else
 			atomic_set(&prtd->pending_buffer, 0);
-		if (runtime->status->hw_ptr >= runtime->control->appl_ptr)
+		if (runtime->status->hw_ptr >= runtime->control->appl_ptr) {
+			runtime->render_flag |= SNDRV_RENDER_STOPPED;
 			break;
+		}
 		buf = prtd->audio_client->port[IN].buf;
 		pr_debug("%s:writing %d bytes of buffer[%d] to dsp 2\n",
 				__func__, prtd->pcm_count, prtd->out_head);
@@ -411,6 +414,46 @@ static int msm_compr_capture_prepare(struct snd_pcm_substream *substream)
 	return ret;
 }
 
+static int msm_compr_restart(struct snd_pcm_substream *substream)
+{
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct compr_audio *compr = runtime->private_data;
+	struct msm_audio *prtd = &compr->prtd;
+	struct audio_aio_write_param param;
+	struct audio_buffer *buf = NULL;
+
+	pr_err("msm_compr_restart\n");
+	if (runtime->render_flag & SNDRV_RENDER_STOPPED) {
+		buf = prtd->audio_client->port[IN].buf;
+		pr_debug("%s:writing %d bytes of buffer[%d] to dsp 2\n",
+				__func__, prtd->pcm_count, prtd->out_head);
+		pr_debug("%s:writing buffer[%d] from 0x%08x\n",
+				__func__, prtd->out_head,
+				((unsigned int)buf[0].phys
+				+ (prtd->out_head * prtd->pcm_count)));
+
+		param.paddr = (unsigned long)buf[0].phys
+				+ (prtd->out_head * prtd->pcm_count);
+		param.len = prtd->pcm_count;
+		param.msw_ts = 0;
+		param.lsw_ts = 0;
+		param.flags = NO_TIMESTAMP;
+		param.uid =  (unsigned long)buf[0].phys
+				+ (prtd->out_head * prtd->pcm_count);
+		if (q6asm_async_write(prtd->audio_client,
+					&param) < 0)
+			pr_err("%s:q6asm_async_write failed\n",
+				__func__);
+		else
+			prtd->out_head =
+				(prtd->out_head + 1) & (runtime->periods - 1);
+
+		runtime->render_flag &= ~SNDRV_RENDER_STOPPED;
+		return 0;
+	}
+	return 0;
+}
+
 static int msm_compr_trigger(struct snd_pcm_substream *substream, int cmd)
 {
 	int ret = 0;
@@ -461,12 +504,14 @@ static int msm_compr_trigger(struct snd_pcm_substream *substream, int cmd)
 				0);
 		}
 		atomic_set(&prtd->start, 0);
+		runtime->render_flag &= ~SNDRV_RENDER_STOPPED;
 		break;
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		pr_debug("SNDRV_PCM_TRIGGER_PAUSE\n");
 		q6asm_cmd_nowait(prtd->audio_client, CMD_PAUSE);
 		atomic_set(&prtd->start, 0);
+		runtime->render_flag &= ~SNDRV_RENDER_STOPPED;
 		break;
 	default:
 		ret = -EINVAL;
@@ -523,6 +568,7 @@ static int msm_compr_open(struct snd_pcm_substream *substream)
 	}
 	prtd = &compr->prtd;
 	prtd->substream = substream;
+	runtime->render_flag = SNDRV_DMA_MODE;
 	prtd->audio_client = q6asm_audio_client_alloc(
 				(app_cb)compr_event_handler, compr);
 	if (!prtd->audio_client) {
@@ -689,6 +735,7 @@ static int msm_compr_mmap(struct snd_pcm_substream *substream,
 
 	pr_debug("%s\n", __func__);
 	prtd->mmap_flag = 1;
+	runtime->render_flag = SNDRV_NON_DMA_MODE;
 	if (runtime->dma_addr && runtime->dma_bytes) {
 		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 		result = remap_pfn_range(vma, vma->vm_start,
@@ -912,6 +959,7 @@ static struct snd_pcm_ops msm_compr_ops = {
 	.trigger	= msm_compr_trigger,
 	.pointer	= msm_compr_pointer,
 	.mmap		= msm_compr_mmap,
+	.restart	= msm_compr_restart,
 };
 
 static int msm_asoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
