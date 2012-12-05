@@ -155,7 +155,7 @@ static struct msm_gpiomux_config msm8960_cam_common_configs[] = {
 			[GPIOMUX_SUSPENDED] = &cam_settings[0],
 		},
 	},
-{
+	{
 		.gpio = 75,
 		.settings = {
 			[GPIOMUX_ACTIVE]    = &cam_settings[2],
@@ -524,6 +524,7 @@ static struct gpio msm8960_front_cam_gpio[] = {
 static struct gpio msm8960_back_cam_gpio[] = {
 	{54, GPIOF_DIR_OUT, "CAM_STANDBY"},
 	{107, GPIOF_DIR_OUT, "CAM_RESET"},
+	{54, GPIOF_DIR_OUT, "CAM_STBY_N"},
 };
 
 static struct msm_gpio_set_tbl msm8960_front_cam_gpio_set_tbl[] = {
@@ -536,6 +537,8 @@ static struct msm_gpio_set_tbl msm8960_back_cam_gpio_set_tbl[] = {
 	{54, GPIOF_OUT_INIT_HIGH, 1000},
 	{107, GPIOF_OUT_INIT_LOW, 1000},
 	{107, GPIOF_OUT_INIT_HIGH, 4000},
+	{54, GPIOF_OUT_INIT_LOW, 1000},
+	{54, GPIOF_OUT_INIT_HIGH, 4000},
 };
 
 static struct msm_camera_gpio_conf msm_8960_front_cam_gpio_conf = {
@@ -821,6 +824,34 @@ static struct msm_camera_sensor_info msm_camera_sensor_ov8830_data = {
 	.eeprom_info = &ov8830_eeprom_info,
 };
 
+static struct msm_camera_sensor_flash_data flash_imx175 = {
+	.flash_type	= MSM_CAMERA_FLASH_NONE,
+};
+
+static struct msm_camera_csi_lane_params imx175_csi_lane_params = {
+	.csi_lane_assign = 0xE4,
+	.csi_lane_mask = 0xF,
+};
+
+static struct msm_camera_sensor_platform_info sensor_board_info_imx175 = {
+	.mount_angle	= 90,
+	.cam_vreg = msm_8960_cam_vreg,
+	.num_vreg = ARRAY_SIZE(msm_8960_cam_vreg),
+	.gpio_conf = &msm_8960_back_cam_gpio_conf,
+	.csi_lane_params = &imx175_csi_lane_params,
+};
+
+static struct msm_camera_sensor_info msm_camera_sensor_imx175_data = {
+	.sensor_name	= "imx175",
+	.pdata	= &msm_camera_csi_device_data[0],
+	.flash_data	= &flash_imx175,
+	.sensor_platform_info = &sensor_board_info_imx175,
+	.csi_if	= 1,
+	.camera_type = BACK_CAMERA_2D,
+	.sensor_type = BAYER_SENSOR,
+	.actuator_info = &msm_act_main_cam_1_info,
+};
+
 static struct pm8xxx_mpp_config_data privacy_light_on_config = {
 	.type		= PM8XXX_MPP_TYPE_SINK,
 	.level		= PM8XXX_MPP_CS_OUT_5MA,
@@ -930,6 +961,10 @@ static struct i2c_board_info msm8960_camera_i2c_boardinfo[] = {
 	{
 	I2C_BOARD_INFO("imx091", 0x34),
 	.platform_data = &msm_camera_sensor_imx091_data,
+	},
+	{
+	I2C_BOARD_INFO("imx175", 0x10),
+	.platform_data = &msm_camera_sensor_imx175_data,
 	},
 };
 

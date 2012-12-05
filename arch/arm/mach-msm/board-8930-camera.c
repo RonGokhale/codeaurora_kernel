@@ -498,6 +498,18 @@ static struct msm_actuator_info msm_act_main_cam_0_info = {
 	.vcm_enable     = 0,
 };
 
+static struct i2c_board_info msm_act_main_cam1_i2c_info = {
+        I2C_BOARD_INFO("msm_actuator", 0x18),
+};
+
+static struct msm_actuator_info msm_act_main_cam_1_info = {
+        .board_info     = &msm_act_main_cam1_i2c_info,
+        .cam_name       = MSM_ACTUATOR_MAIN_CAM_1,
+        .bus_id         = MSM_8930_GSBI4_QUP_I2C_BUS_ID,
+        .vcm_pwd        = 0,
+        .vcm_enable     = 0,
+};
+
 static struct msm_camera_sensor_flash_data flash_imx074 = {
 	.flash_type	= MSM_CAMERA_FLASH_LED,
 #ifdef CONFIG_MSM_CAMERA_FLASH
@@ -528,6 +540,39 @@ static struct msm_camera_sensor_info msm_camera_sensor_imx074_data = {
 	.camera_type = BACK_CAMERA_2D,
 	.sensor_type = BAYER_SENSOR,
 	.actuator_info = &msm_act_main_cam_0_info,
+};
+
+static struct msm_eeprom_info imx175_eeprom_info = {
+	.type = MSM_EEPROM_SPI,
+};
+
+static struct msm_camera_sensor_flash_data flash_imx175 = {
+	.flash_type = MSM_CAMERA_FLASH_NONE,
+};
+
+static struct msm_camera_csi_lane_params imx175_csi_lane_params = {
+	.csi_lane_assign = 0xE4,
+	.csi_lane_mask = 0xF,
+};
+
+static struct msm_camera_sensor_platform_info sensor_board_info_imx175 = {
+	.mount_angle = 90,
+	.cam_vreg = msm_8930_cam_vreg,
+	.num_vreg = ARRAY_SIZE(msm_8930_cam_vreg),
+	.gpio_conf = &msm_8930_back_cam_gpio_conf,
+	.csi_lane_params = &imx175_csi_lane_params,
+};
+
+static struct msm_camera_sensor_info msm_camera_sensor_imx175_data = {
+	.sensor_name = "imx175",
+	.pdata = &msm_camera_csi_device_data[0],
+	.flash_data = &flash_imx175,
+	.sensor_platform_info = &sensor_board_info_imx175,
+	.csi_if = 1,
+	.camera_type = BACK_CAMERA_2D,
+	.sensor_type = BAYER_SENSOR,
+	.actuator_info = &msm_act_main_cam_1_info,
+	.eeprom_info = &imx175_eeprom_info,
 };
 
 static struct msm_camera_sensor_flash_data flash_mt9m114 = {
@@ -673,6 +718,10 @@ struct i2c_board_info msm8930_camera_i2c_boardinfo[] = {
 	{
 	I2C_BOARD_INFO("s5k3l1yx", 0x20),
 	.platform_data = &msm_camera_sensor_s5k3l1yx_data,
+	},
+	{
+	I2C_BOARD_INFO("imx175", 0x10),
+	.platform_data = &msm_camera_sensor_imx175_data,
 	},
 	{
 	I2C_BOARD_INFO("tps61310", 0x66),

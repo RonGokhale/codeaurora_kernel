@@ -1416,7 +1416,13 @@ static struct v4l2_subdev *msm_eeprom_probe(
 
 	D("%s called\n", __func__);
 
-	if (!eeprom_info || !eeprom_info->board_info)
+	if (!eeprom_info)
+		goto probe_fail;
+
+	if (eeprom_info->type == MSM_EEPROM_SPI)
+		goto probe_fail;
+
+	if (!eeprom_info->board_info)
 		goto probe_fail;
 
 	adapter = i2c_get_adapter(eeprom_info->bus_id);

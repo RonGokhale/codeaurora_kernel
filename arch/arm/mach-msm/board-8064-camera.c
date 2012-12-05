@@ -664,6 +664,41 @@ static struct msm_camera_sensor_info msm_camera_sensor_ov2720_data = {
 	.sensor_type = BAYER_SENSOR,
 };
 
+static struct camera_vreg_t msm_8064_imx175_vreg[] = {
+	{"cam_vdig", REG_LDO, 1200000, 1200000, 105000},
+	{"cam_vio", REG_VS, 0, 0, 0},
+	{"cam_vana", REG_LDO, 2800000, 2850000, 85600},
+	{"cam_vaf", REG_LDO, 2800000, 2800000, 300000},
+};
+
+static struct msm_camera_sensor_flash_data flash_imx175 = {
+	.flash_type     = MSM_CAMERA_FLASH_NONE,
+};
+
+static struct msm_camera_csi_lane_params imx175_csi_lane_params = {
+	.csi_lane_assign = 0xE4,
+	.csi_lane_mask = 0xF,
+};
+
+static struct msm_camera_sensor_platform_info sensor_board_info_imx175 = {
+	.mount_angle    = 90,
+	.cam_vreg = msm_8064_imx175_vreg,
+	.num_vreg = ARRAY_SIZE(msm_8064_imx175_vreg),
+	.gpio_conf = &apq8064_back_cam_gpio_conf,
+	.i2c_conf = &apq8064_back_cam_i2c_conf,
+	.csi_lane_params = &imx175_csi_lane_params,
+};
+
+static struct msm_camera_sensor_info msm_camera_sensor_imx175_data = {
+	.sensor_name    = "imx175",
+	.pdata  = &msm_camera_csi_device_data[0],
+	.flash_data     = &flash_imx175,
+	.sensor_platform_info = &sensor_board_info_imx175,
+	.csi_if = 1,
+	.camera_type = BACK_CAMERA_2D,
+	.sensor_type = BAYER_SENSOR,
+};
+
 static struct platform_device msm_camera_server = {
 	.name = "msm_cam_server",
 	.id = 0,
@@ -711,6 +746,10 @@ static struct i2c_board_info apq8064_camera_i2c_boardinfo[] = {
 	{
 	I2C_BOARD_INFO("imx091", 0x34),
 	.platform_data = &msm_camera_sensor_imx091_data,
+	},
+	{
+	I2C_BOARD_INFO("imx175", 0x10),
+	.platform_data = &msm_camera_sensor_imx175_data,
 	},
 	{
 	I2C_BOARD_INFO("s5k3l1yx", 0x20),

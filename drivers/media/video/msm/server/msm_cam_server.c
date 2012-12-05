@@ -1827,6 +1827,11 @@ int msm_mctl_find_sensor_subdevs(struct msm_cam_media_controller *p_mctl,
 	return rc;
 }
 
+void msm_mctl_find_eeprom_subdev(struct msm_cam_media_controller *p_mctl)
+{
+	p_mctl->eeprom_sdev = g_server_dev.eeprom_device;
+}
+
 static irqreturn_t msm_camera_server_parse_irq(int irq_num, void *data)
 {
 	unsigned long flags;
@@ -2300,6 +2305,9 @@ int msm_cam_register_subdev_node(struct v4l2_subdev *sd,
 			err = msm_cam_server_fill_sdev_irqnum(MSM_CAM_HW_CCI,
 				sd_info->irq_num);
 		}
+		break;
+	case EEPROM_DEV:
+		g_server_dev.eeprom_device = sd;
 		break;
 	default:
 		break;

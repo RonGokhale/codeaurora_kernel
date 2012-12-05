@@ -6,6 +6,7 @@ EXTRA_CFLAGS += -Idrivers/media/video/msm/csi
 obj-$(CONFIG_MSM_CAMERA_SENSOR) += msm_sensor_common.o msm_sensor.o msm_sensor_bayer.o msm_sensor_init.o
 obj-$(CONFIG_OV5647) += ov5647_v4l2.o
 obj-$(CONFIG_OV8825) += ov8825_v4l2.o
+obj-$(CONFIG_IMX175) += imx175.o
 obj-$(CONFIG_IMX074) += imx074_v4l2.o
 obj-$(CONFIG_S5K3L1YX) += s5k3l1yx.o
 obj-$(CONFIG_OV8830) += ov8830_v4l2.o

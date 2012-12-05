@@ -1,6 +1,8 @@
 GCC_VERSION      := $(shell $(CONFIG_SHELL) $(PWD)/scripts/gcc-version.sh $(CROSS_COMPILE)gcc)
 EXTRA_CFLAGS += -Idrivers/media/video/msm/io
+EXTRA_CFLAGS += -Idrivers/media/video/msm
 obj-$(CONFIG_MSM_EEPROM) += msm_camera_eeprom.o
 obj-$(CONFIG_IMX074_EEPROM) += imx074_eeprom.o
 obj-$(CONFIG_IMX091_EEPROM) += imx091_eeprom.o
 obj-$(CONFIG_OV8830_EEPROM) += ov8830_eeprom.o
+obj-$(CONFIG_IMX175_EEPROM) += imx175_eeprom.o

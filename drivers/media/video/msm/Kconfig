@@ -31,6 +31,12 @@ config MT9D112
 	default y
 	---help---
 	  MICRON 2M YUV Sensor
+config IMX175
+	bool "Sensor IMX175 (BAYER 8M)"
+	depends on MSM_CAMERA && (ARCH_MSM8X60 || ARCH_MSM8960)
+	default y
+	---help---
+	Sony 8MP Bayer Sensor
 config IMX074
 	bool "Sensor IMX074 (BAYER 13.5M)"
 	depends on MSM_CAMERA
@@ -136,6 +142,12 @@ config IMX074_ACT
 	---help---
 	Actuator for SONY 13.5 MP Bayer Sensor
 
+config IMX175_ACT
+	bool "Actuator IMX175 (BAYER 8M)"
+	depends on MSM_CAMERA && ARCH_MSM8960
+	default y
+	---help---
+	Actuator for IMX175 8 MP Bayer Sensor
 config S5K3E2FX
 	bool "Sensor s5k3e2fx (Samsung 5M)"
 	depends on MSM_CAMERA && !ARCH_MSM8X60 && !MSM_CAMERA_V4L2
@@ -250,6 +262,10 @@ config IMX091_EEPROM
 
 config OV8830_EEPROM
 	bool "OV8830 EEPROM support"
+	depends on MSM_CAMERA
+
+config IMX175_EEPROM
+	bool "IMX175 EEPROM support"
 	depends on MSM_CAMERA
 
 config MSM_GEMINI

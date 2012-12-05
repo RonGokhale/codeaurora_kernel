@@ -16,10 +16,12 @@
 static struct msm_actuator_ctrl_t msm_actuator_t;
 static struct msm_actuator msm_vcm_actuator_table;
 static struct msm_actuator msm_piezo_actuator_table;
+static struct msm_actuator msm_hall_effect_actuator_table;
 
 static struct msm_actuator *actuators[] = {
 	&msm_vcm_actuator_table,
 	&msm_piezo_actuator_table,
+	&msm_hall_effect_actuator_table,
 };
 
 static int32_t msm_actuator_piezo_set_default_focus(
@@ -153,6 +155,59 @@ static int32_t msm_actuator_init_focus(struct msm_actuator_ctrl_t *a_ctrl,
 	return rc;
 }
 
+static int32_t msm_actuator_hall_effect_init_focus(
+	struct msm_actuator_ctrl_t *a_ctrl,
+	uint16_t size, enum msm_actuator_data_type type,
+	struct reg_settings_t *settings)
+{
+	int32_t rc = -EFAULT;
+#if 0
+	uint16_t yy = 0, xx = 0, zz = 0;
+
+	rc = msm_camera_i2c_write(&a_ctrl->i2c_client, 0xAA, 0x55,
+		MSM_CAMERA_I2C_BYTE_DATA);
+	if (rc < 0)
+		return rc;
+	usleep_range(1000, 2000);
+	rc = msm_camera_i2c_read(&a_ctrl->i2c_client, 0x07, &yy,
+		MSM_CAMERA_I2C_BYTE_DATA);
+	if (rc < 0)
+		return rc;
+	usleep_range(1000, 2000);
+	zz = (yy / 32) * 32;
+	xx = (yy - zz) + 224;
+	rc = msm_camera_i2c_write(&a_ctrl->i2c_client, 0x07, xx,
+		MSM_CAMERA_I2C_BYTE_DATA);
+	if (rc < 0)
+		return rc;
+	usleep_range(1000, 2000);
+	rc = msm_camera_i2c_write(&a_ctrl->i2c_client, 0x00, 0x6C,
+		MSM_CAMERA_I2C_BYTE_DATA);
+	if (rc < 0)
+		return rc;
+	usleep_range(1000, 2000);
+#endif
+	rc = msm_camera_i2c_write(&a_ctrl->i2c_client, 0x01, 0x00,
+		MSM_CAMERA_I2C_BYTE_DATA);
+	if (rc < 0)
+		return rc;
+	usleep_range(20000, 21000);
+#if 0
+	rc = msm_camera_i2c_write(&a_ctrl->i2c_client, 0x07, yy,
+		MSM_CAMERA_I2C_BYTE_DATA);
+	if (rc < 0)
+		return rc;
+	usleep_range(1000, 2000);
+	rc = msm_camera_i2c_write(&a_ctrl->i2c_client, 0xAA, 0x00,
+		MSM_CAMERA_I2C_BYTE_DATA);
+	if (rc < 0)
+		return rc;
+	usleep_range(1000, 2000);
+#endif
+	CDBG("%s Exit:%d, Addr:0x%x\n", __func__, rc, a_ctrl->i2c_client.client->addr);
+	return rc;
+}
+
 static int32_t msm_actuator_write_focus(
 	struct msm_actuator_ctrl_t *a_ctrl,
 	uint16_t curr_lens_pos,
@@ -212,6 +267,67 @@ static int32_t msm_actuator_piezo_move_focus(
 		(num_steps *
 		a_ctrl->region_params[0].code_per_step),
 		move_params->ringing_params[0].hw_params, 0);
+
+	rc = msm_camera_i2c_write_table_w_microdelay(&a_ctrl->i2c_client,
+		a_ctrl->i2c_reg_tbl, a_ctrl->i2c_tbl_index,
+		a_ctrl->i2c_data_type);
+	if (rc < 0) {
+		pr_err("%s: i2c write error:%d\n",
+			__func__, rc);
+		return rc;
+	}
+	a_ctrl->i2c_tbl_index = 0;
+	a_ctrl->curr_step_pos = dest_step_position;
+	return rc;
+}
+
+static int32_t msm_actuator_hall_effect_move_focus(
+	struct msm_actuator_ctrl_t *a_ctrl,
+	struct msm_actuator_move_params_t *move_params)
+{
+	int32_t dest_step_position = move_params->dest_step_pos;
+	int32_t rc = 0;
+	int32_t num_steps = move_params->num_steps;
+	int16_t next_lens_pos = 0;
+	uint16_t damping_code_step = 0;
+	uint16_t wait_time = 0;
+	int8_t sign_direction = move_params->sign_dir;
+	struct damping_params_t *damping_params = &move_params->ringing_params[0];
+	uint16_t curr_lens_pos = a_ctrl->step_position_table[a_ctrl->curr_step_pos];
+	int16_t code_boundary = a_ctrl->step_position_table[dest_step_position];
+
+	if (num_steps == 0)
+		return rc;
+
+	damping_code_step = damping_params->damping_step;
+	wait_time = damping_params->damping_delay;
+	a_ctrl->i2c_tbl_index = 0;
+
+	/* Write code based on damping_code_step in a loop */
+	for (next_lens_pos =
+		curr_lens_pos + (sign_direction * damping_code_step);
+		(sign_direction * next_lens_pos) <=
+			(sign_direction * code_boundary);
+		next_lens_pos =
+			(next_lens_pos +
+				(sign_direction * damping_code_step))) {
+		a_ctrl->i2c_reg_tbl[a_ctrl->i2c_tbl_index].reg_addr = 0x00;
+		a_ctrl->i2c_reg_tbl[a_ctrl->i2c_tbl_index].reg_data =
+			next_lens_pos;
+		a_ctrl->i2c_reg_tbl[a_ctrl->i2c_tbl_index].delay = wait_time;
+
+		a_ctrl->i2c_tbl_index++;
+		curr_lens_pos = next_lens_pos;
+	}
+
+	if (curr_lens_pos != code_boundary) {
+		a_ctrl->i2c_reg_tbl[a_ctrl->i2c_tbl_index].reg_addr = 0x00;
+		a_ctrl->i2c_reg_tbl[a_ctrl->i2c_tbl_index].reg_data =
+			code_boundary;
+		a_ctrl->i2c_reg_tbl[a_ctrl->i2c_tbl_index].delay = wait_time;
+		a_ctrl->i2c_tbl_index++;
+
+	}
 
 	rc = msm_camera_i2c_write_table_w_microdelay(&a_ctrl->i2c_client,
 		a_ctrl->i2c_reg_tbl, a_ctrl->i2c_tbl_index,
@@ -401,6 +517,13 @@ static int32_t msm_actuator_power_down(struct msm_actuator_ctrl_t *a_ctrl)
 		if (!rc)
 			gpio_free(a_ctrl->vcm_pwd);
 	}
+	CDBG("%s Exit:%d, Addr:0x%x\n", __func__, rc, a_ctrl->i2c_client.client->addr);
+
+	rc = msm_camera_i2c_write(&a_ctrl->i2c_client, 0x01, 0x40,
+		MSM_CAMERA_I2C_BYTE_DATA);
+	if (rc < 0)
+		return rc;
+	usleep_range(1000, 2000);
 
 	kfree(a_ctrl->step_position_table);
 	a_ctrl->step_position_table = NULL;
@@ -701,6 +824,19 @@ static struct msm_actuator msm_piezo_actuator_table = {
 		.actuator_set_default_focus =
 			msm_actuator_piezo_set_default_focus,
 		.actuator_init_focus = msm_actuator_init_focus,
+		.actuator_parse_i2c_params = msm_actuator_parse_i2c_params,
+	},
+};
+
+static struct msm_actuator msm_hall_effect_actuator_table = {
+	.act_type = ACTUATOR_HALL_EFFECT,
+	.func_tbl = {
+		.actuator_init_step_table = msm_actuator_init_step_table,
+		.actuator_move_focus = msm_actuator_hall_effect_move_focus,
+		.actuator_write_focus = NULL,
+		.actuator_set_default_focus =
+			msm_actuator_set_default_focus,
+		.actuator_init_focus = msm_actuator_hall_effect_init_focus,
 		.actuator_parse_i2c_params = msm_actuator_parse_i2c_params,
 	},
 };

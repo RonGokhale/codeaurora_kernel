@@ -246,12 +246,18 @@ struct msm_actuator_info {
 	int vcm_enable;
 };
 
+enum msm_eeprom_type {
+	MSM_EEPROM_I2C,
+	MSM_EEPROM_SPI,
+};
+
 struct msm_eeprom_info {
 	struct i2c_board_info const *board_info;
 	int bus_id;
 	int eeprom_reg_addr;
 	int eeprom_read_length;
 	int eeprom_i2c_slave_addr;
+	enum msm_eeprom_type type;
 };
 
 struct msm_camera_sensor_info {
