@@ -285,6 +285,7 @@ static struct msm_calib_wb imx175_wb_data;
 static struct msm_calib_lsc imx175_lsc_data;
 static struct msm_calib_wb imx175_gld_wb_data;
 static struct msm_calib_lsc imx175_gld_lsc_data;
+static struct msm_calib_module_info imx175_mod_data;
 
 /* based on F-Rom definition */
 typedef struct {
@@ -322,6 +323,7 @@ static struct msm_camera_eeprom_info_t imx175_calib_supp_info = {
 	{FALSE, 0, 0, 1},
 	{TRUE, sizeof(imx175_gld_wb_data), 3, 1},
 	{TRUE, sizeof(imx175_gld_lsc_data), 4, 1},
+	{TRUE, sizeof(imx175_mod_data), 5, 1},
 };
 
 static struct msm_camera_eeprom_read_t imx175_eeprom_read_tbl[] = {
@@ -339,6 +341,7 @@ static struct msm_camera_eeprom_data_t imx175_eeprom_data_tbl[] = {
 	{&imx175_lsc_data, sizeof(imx175_lsc_data)},
 	{&imx175_gld_wb_data, sizeof(imx175_wb_data)},
 	{&imx175_gld_lsc_data, sizeof(imx175_lsc_data)},
+	{&imx175_mod_data, sizeof(imx175_mod_data)},
 };
 
 static void imx175_format_afdata(void)
@@ -349,6 +352,7 @@ static void imx175_format_afdata(void)
 	imx175_af_data.macro_dac = 0;
 	imx175_af_data.start_dac = 0;
 	imx175_af_data.pan_dac = (uint16_t)af->position;
+	imx175_mod_data.actuator_id = MSM_ACTUATOR_MAIN_CAM_1;
 }
 static void imx175_format_wbdata(void)
 {
@@ -422,6 +426,9 @@ uint8_t imx175_check_module_info(void)
 void imx175_format_calibrationdata(void)
 {
 	uint8_t is_all_supported = 0;
+
+	imx175_mod_data.actuator_id = MSM_ACTUATOR_MAIN_CAM_1;
+
 	is_all_supported = imx175_check_module_info();
 	if (is_all_supported) {
 		imx175_format_afdata();
@@ -433,6 +440,7 @@ void imx175_format_calibrationdata(void)
 		imx175_calib_supp_info.lsc.is_supported = FALSE;
 		imx175_calib_supp_info.gld_wb.is_supported = FALSE;
 		imx175_calib_supp_info.gld_lsc.is_supported = FALSE;
+		imx175_calib_supp_info.mod_info.is_supported = FALSE;
 	}
 }
 

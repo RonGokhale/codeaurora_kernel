@@ -1785,6 +1785,7 @@ enum af_camera_name {
 	ACTUATOR_WEB_CAM_0,
 	ACTUATOR_WEB_CAM_1,
 	ACTUATOR_WEB_CAM_2,
+	ACTUATOR_CAM_MAX,
 };
 
 struct msm_actuator_cfg_data {
@@ -1821,6 +1822,10 @@ struct msm_calib_af {
 	uint16_t inf_dac;
 	uint16_t start_dac;
 	int16_t pan_dac;
+};
+
+struct msm_calib_module_info {
+	enum af_camera_name actuator_id;
 };
 
 struct msm_calib_lsc {
@@ -1866,6 +1871,7 @@ struct msm_camera_eeprom_info_t {
 	struct msm_eeprom_support raw;
 	struct msm_eeprom_support gld_wb;
 	struct msm_eeprom_support gld_lsc;
+	struct msm_eeprom_support mod_info;
 };
 
 struct msm_eeprom_cfg_data {
