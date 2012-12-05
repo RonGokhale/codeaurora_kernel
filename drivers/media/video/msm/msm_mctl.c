@@ -495,6 +495,14 @@ static int msm_mctl_cmd(struct msm_cam_media_controller *p_mctl,
 		}
 		break;
 
+	case MSM_CAM_IOCTL_CHROMATIX_PARMS: {
+		if (p_mctl->eeprom_sdev) {
+			rc = v4l2_subdev_call(p_mctl->eeprom_sdev,
+				core, ioctl, VIDIOC_MSM_EEPROM_CHROMATIX, argp);
+		}
+		break;
+	}
+
 	default:
 		/* ISP config*/
 		D("%s:%d: go to default. Calling msm_isp_config\n",
