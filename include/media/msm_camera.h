@@ -1820,6 +1820,7 @@ struct msm_calib_af {
 	uint16_t macro_dac;
 	uint16_t inf_dac;
 	uint16_t start_dac;
+	int16_t pan_dac;
 };
 
 struct msm_calib_lsc {
