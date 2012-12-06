@@ -1324,7 +1324,9 @@ static void verity_dtr(struct dm_target *ti)
 }
 
 static int verity_status(struct dm_target *ti, status_type_t type,
-			char *result, unsigned int maxlen) {
+			 unsigned int status_flags, char *result,
+			 unsigned int maxlen)
+{
 	struct verity_config *vc = (struct verity_config *) ti->private;
 	unsigned int sz = 0;
 	char hashdev[BDEVNAME_SIZE], vdev[BDEVNAME_SIZE];
