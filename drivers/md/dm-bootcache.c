@@ -1154,7 +1154,8 @@ bad_cache:
 }
 
 static int bootcache_status(struct dm_target *ti, status_type_t type,
-				char *result, uint maxlen)
+			    unsigned int status_flags, char *result,
+			    uint maxlen)
 {
 	struct bootcache *cache = (struct bootcache *) ti->private;
 	uint sz = 0;
