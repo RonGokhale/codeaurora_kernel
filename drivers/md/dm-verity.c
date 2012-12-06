@@ -250,14 +250,6 @@ EXPORT_SYMBOL_GPL(dm_verity_unregister_error_notifier);
 
 static void kverityd_src_io_read_end(struct bio *clone, int error);
 
-/* Shared destructor for all internal bios */
-static void dm_verity_bio_destructor(struct bio *bio)
-{
-	struct dm_verity_io *io = bio->bi_private;
-	struct verity_config *vc = io->target->private;
-	bio_free(bio, vc->bs);
-}
-
 struct bio *verity_alloc_bioset(struct verity_config *vc, gfp_t gfp_mask,
 				int nr_iovecs)
 {
@@ -306,7 +298,6 @@ static struct bio *verity_bio_clone(struct dm_verity_io *io)
 	clone->bi_end_io  = kverityd_src_io_read_end;
 	clone->bi_bdev    = vc->dev->bdev;
 	clone->bi_sector  = vc->start + io->sector;
-	clone->bi_destructor = dm_verity_bio_destructor;
 
 	return clone;
 }
@@ -775,7 +766,6 @@ static int kverityd_bht_read_callback(void *ctx, sector_t start, u8 *dst,
 	bio->bi_end_io = kverityd_io_bht_populate_end;
 	bio->bi_rw = REQ_META;
 	/* Only need to free the bio since the page is managed by bht */
-	bio->bi_destructor = dm_verity_bio_destructor;
 	bio->bi_vcnt = 1;
 	bio->bi_io_vec->bv_offset = 0;
 	bio->bi_io_vec->bv_len = to_bytes(count);
