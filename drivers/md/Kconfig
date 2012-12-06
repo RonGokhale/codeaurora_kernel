@@ -281,6 +281,7 @@ config DM_VERITY
 config DM_VERITY_CHROMEOS
 	bool "Support Chrome OS specific verity error behavior"
 	depends on DM_VERITY
+	depends on CHROMEOS
 	---help---
 	  Enables Chrome OS platform-specific error behavior.  In particular,
 	  it will modify the partition preceding the verified block device
