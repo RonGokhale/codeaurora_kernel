@@ -237,6 +237,8 @@
 #define VFE_CMD_COLORXFORM_VIEW_UPDATE                  161
 #define VFE_CMD_TEST_GEN_CFG                            162
 #define VFE_CMD_STOP_RECORDING_DONE                     163
+#define VFE_CMD_RGB_ALL_CFG                             164
+#define VFE_CMD_RGB_ALL_UPDATE                          165
 
 struct msm_isp_cmd {
 	int32_t  id;
