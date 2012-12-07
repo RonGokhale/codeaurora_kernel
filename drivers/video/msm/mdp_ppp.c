@@ -1317,7 +1317,7 @@ int get_img(struct mdp_img *img, struct mdp_blit_req *req,
 
 		if (!ion_phys(mfd->iclient, *srcp_ihdl, start, (size_t *) len))
 			return ret;
-		 else
+		else
 			return -EINVAL;
 #endif
 
@@ -1348,7 +1348,8 @@ static int mdp_ppp_blit_addr(struct fb_info *info, struct mdp_blit_req *req,
 	unsigned long srcp1_start, unsigned long srcp1_len,
 	unsigned long dst_start, unsigned long dst_len,
 	struct file *p_src_file, struct file *p_dst_file,
-	struct ion_handle **src_ihdl, struct ion_handle **dst_ihdl)
+	struct ion_handle **src_ihdl, struct ion_handle **dst_ihdl,
+	int v4l2play)
 {
 	MDPIBUF iBuf;
 	u32 dst_width, dst_height;
@@ -1361,8 +1362,10 @@ static int mdp_ppp_blit_addr(struct fb_info *info, struct mdp_blit_req *req,
 
 	if (mdp_ppp_verify_req(req)) {
 		pr_err("mdp_ppp: invalid image!\n");
-		put_img(p_src_file, *src_ihdl);
-		put_img(p_dst_file, *dst_ihdl);
+		if (!v4l2play) {
+			put_img(p_src_file, *src_ihdl);
+			put_img(p_dst_file, *dst_ihdl);
+		}
 		return -1;
 	}
 
@@ -1432,8 +1435,10 @@ static int mdp_ppp_blit_addr(struct fb_info *info, struct mdp_blit_req *req,
 #if defined(CONFIG_FB_MSM_MDP31) || defined(CONFIG_FB_MSM_MDP303)
 		iBuf.mdpImg.mdpOp |= MDPOP_FG_PM_ALPHA;
 #else
-		put_img(p_src_file, *src_ihdl);
-		put_img(p_dst_file, *dst_ihdl);
+		if (!v4l2play) {
+			put_img(p_src_file, *src_ihdl);
+			put_img(p_dst_file, *dst_ihdl);
+		}
 		return -EINVAL;
 #endif
 	}
@@ -1443,8 +1448,10 @@ static int mdp_ppp_blit_addr(struct fb_info *info, struct mdp_blit_req *req,
 		if ((req->src.format != MDP_Y_CBCR_H2V2) &&
 			(req->src.format != MDP_Y_CRCB_H2V2)) {
 #endif
-			put_img(p_src_file, *src_ihdl);
-			put_img(p_dst_file, *dst_ihdl);
+			if (!v4l2play) {
+				put_img(p_src_file, *src_ihdl);
+				put_img(p_dst_file, *dst_ihdl);
+			}
 			return -EINVAL;
 #ifdef CONFIG_FB_MSM_MDP31
 		}
@@ -1483,16 +1490,20 @@ static int mdp_ppp_blit_addr(struct fb_info *info, struct mdp_blit_req *req,
 			printk(KERN_ERR
 				"%s: sharpening strength out of range\n",
 				__func__);
-			put_img(p_src_file, *src_ihdl);
-			put_img(p_dst_file, *dst_ihdl);
+			if (!v4l2play) {
+				put_img(p_src_file, *src_ihdl);
+				put_img(p_dst_file, *dst_ihdl);
+			}
 			return -EINVAL;
 		}
 
 		iBuf.mdpImg.mdpOp |= MDPOP_ASCALE | MDPOP_SHARPENING;
 		iBuf.mdpImg.sp_value = req->sharpening_strength & 0xff;
 #else
-		put_img(p_src_file, *src_ihdl);
-		put_img(p_dst_file, *dst_ihdl);
+		if (!v4l2play) {
+			put_img(p_src_file, *src_ihdl);
+			put_img(p_dst_file, *dst_ihdl);
+		}
 		return -EINVAL;
 #endif
 	}
@@ -1596,9 +1607,10 @@ static int mdp_ppp_blit_addr(struct fb_info *info, struct mdp_blit_req *req,
 	/* MDP cmd block disable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	up(&mdp_ppp_mutex);
-
-	put_img(p_src_file, *src_ihdl);
-	put_img(p_dst_file, *dst_ihdl);
+	if (!v4l2play) {
+		put_img(p_src_file, *src_ihdl);
+		put_img(p_dst_file, *dst_ihdl);
+	}
 	return 0;
 }
 
@@ -1637,7 +1649,7 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	}
 
 	return mdp_ppp_blit_addr(info, req, src_start, src_len, 0, 0, dst_start,
-		dst_len, p_src_file, p_dst_file, &src_ihdl, &dst_ihdl);
+		dst_len, p_src_file, p_dst_file, &src_ihdl, &dst_ihdl, 0);
 }
 
 static struct mdp_blit_req overlay_req;
@@ -1681,6 +1693,8 @@ int mdp_ppp_v4l2_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 		pr_debug("Overlay format(%u) unknown\n",
 		overlay_req.src.format);
 
+	pr_debug("flag = 0x%x, alpha = 0x%x, transp_mask = 0x%x\n",
+		overlay_req.flags, overlay_req.alpha, overlay_req.transp_mask);
 	pr_debug("Dst_Image (%u %u)\n", overlay_req.dst.width,
 		overlay_req.dst.height);
 	pr_debug("Src rect: (%u,%u,%u,%u), Dst rect: (%u,%u,%u,%u)\n",
@@ -1715,7 +1729,7 @@ int mdp_ppp_v4l2_overlay_play(struct fb_info *info,
 	ret = mdp_ppp_blit_addr(info, &overlay_req,
 		srcp0_addr, srcp0_size, srcp1_addr, srcp1_size,
 		info->fix.smem_start, info->fix.smem_len, NULL, NULL,
-		NULL, NULL);
+		NULL, NULL, 1);
 
 	if (ret)
 		pr_err("%s:Blitting overlay failed(%d)\n", __func__, ret);
