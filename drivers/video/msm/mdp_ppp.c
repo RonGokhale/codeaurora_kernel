@@ -548,7 +548,7 @@ static void mdp_ppp_setbg(MDPIBUF *iBuf)
 	  format == MDP_Y_CRCB_H2V2) ?  2 : (format == MDP_Y_CBCR_H2V1 || \
 	  format == MDP_Y_CRCB_H2V1) ?  1 : 1)
 
-#ifdef CONFIG_ANDROID_PMEM
+#if (defined(CONFIG_ANDROID_PMEM) && !defined(CONFIG_MSM_MULTIMEDIA_USE_ION))
 static void get_len(struct mdp_img *img, struct mdp_rect *rect, uint32_t bpp,
 			uint32_t *len0, uint32_t *len1)
 {
@@ -1286,7 +1286,7 @@ int get_img(struct mdp_img *img, struct mdp_blit_req *req,
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 #endif
-#ifdef CONFIG_ANDROID_PMEM
+#if (defined(CONFIG_ANDROID_PMEM) && !defined(CONFIG_MSM_MULTIMEDIA_USE_ION))
 	unsigned long vstart;
 #endif
 
@@ -1321,7 +1321,7 @@ int get_img(struct mdp_img *img, struct mdp_blit_req *req,
 			return -EINVAL;
 #endif
 
-#ifdef CONFIG_ANDROID_PMEM
+#if (defined(CONFIG_ANDROID_PMEM) && !defined(CONFIG_MSM_MULTIMEDIA_USE_ION))
 	if (!get_pmem_file(img->memory_id, start, &vstart, len, srcp_file))
 		return ret;
 	else
@@ -1331,7 +1331,7 @@ int get_img(struct mdp_img *img, struct mdp_blit_req *req,
 
 void put_img(struct file *p_src_file, struct ion_handle *p_ihdl)
 {
-#ifdef CONFIG_ANDROID_PMEM
+#if (defined(CONFIG_ANDROID_PMEM) && !defined(CONFIG_MSM_MULTIMEDIA_USE_ION))
 	if (p_src_file)
 		put_pmem_file(p_src_file);
 #endif
