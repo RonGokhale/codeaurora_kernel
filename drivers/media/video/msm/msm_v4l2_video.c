@@ -322,6 +322,7 @@ msm_v4l2_overlay_vidioc_reqbufs(struct file *file,
 			mutex_lock(&vout->update_lock);
 			vout->numbufs = 0;
 			kfree(vout->bufs);
+			vout->bufs = NULL;
 			/*
 			 * There should be a way to look at bufs[i]->mapped,
 			 * and prevent userspace from mmaping and directly
