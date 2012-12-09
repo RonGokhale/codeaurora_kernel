@@ -3084,6 +3084,76 @@ static struct platform_device mpq_hrd_keys_pdev = {
 		},
 };
 
+static struct gpio_keys_button mpq_rev2hrd_keys[] = {
+	{
+		.code		= KEY_HOME,
+		.gpio		= MPQ_HRD_HOME_GPIO,
+		.desc		= "home_key",
+		.active_low	= 1,
+		.type		= EV_KEY,
+		.wakeup		= 1,
+		.debounce_interval = 15,
+	},
+	{
+		.code		= KEY_VOLUMEUP,
+		.gpio		= GPIO_KEY_VOLUME_UP,
+		.desc		= "volume_up_key",
+		.active_low	= 1,
+		.type		= EV_KEY,
+		.wakeup		= 1,
+		.debounce_interval = 15,
+	},
+	{
+		.code		= KEY_VOLUMEDOWN,
+		.gpio		= GPIO_KEY_VOLUME_DOWN_PM8921,
+		.desc		= "volume_down_key",
+		.active_low	= 1,
+		.type		= EV_KEY,
+		.wakeup		= 1,
+		.debounce_interval = 15,
+	},
+	{
+		.code		= KEY_RIGHT,
+		.gpio		= MPQ_HRD_RIGHT_GPIO,
+		.desc		= "right_key",
+		.active_low	= 1,
+		.type		= EV_KEY,
+		.wakeup		= 1,
+		.debounce_interval = 15,
+	},
+	{
+		.code		= KEY_LEFT,
+		.gpio		= MPQ_HRD_LEFT_GPIO,
+		.desc		= "left_key",
+		.active_low	= 1,
+		.type		= EV_KEY,
+		.wakeup		= 1,
+		.debounce_interval = 15,
+	},
+	{
+		.code		= KEY_ENTER,
+		.gpio		= MPQ_HRD_ENTER_GPIO,
+		.desc		= "enter_key",
+		.active_low	= 1,
+		.type		= EV_KEY,
+		.wakeup		= 1,
+		.debounce_interval = 15,
+	},
+};
+
+static struct gpio_keys_platform_data mpq_rev2hrd_keys_pdata = {
+	.buttons	= mpq_rev2hrd_keys,
+	.nbuttons	= ARRAY_SIZE(mpq_rev2hrd_keys),
+};
+
+static struct platform_device mpq_rev2hrd_keys_pdev = {
+	.name	= "gpio-keys",
+	.id	= -1,
+	.dev	= {
+		.platform_data = &mpq_rev2hrd_keys_pdata,
+	},
+};
+
 static struct gpio_keys_button mpq_keys[] = {
 	{
 		.code           = KEY_VOLUMEDOWN,
@@ -3612,6 +3682,12 @@ static void __init apq8064_cdp_init(void)
 	if (machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
 		machine_is_mpq8064_dtv())
 		platform_device_register(&msm_dev_avtimer_device);
+	 else if (machine_is_mpq8064_hrd()) {
+		if (SOCINFO_VERSION_MAJOR(hrd_version) == 2)
+			platform_device_register(&mpq_rev2hrd_keys_pdev);
+		else
+			platform_device_register(&mpq_hrd_keys_pdev);
+	}
 }
 
 MACHINE_START(APQ8064_CDP, "QCT APQ8064 CDP")
