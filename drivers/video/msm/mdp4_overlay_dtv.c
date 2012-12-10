@@ -164,7 +164,7 @@ void mdp4_dtv_pipe_queue(int cndx, struct mdp4_overlay_pipe *pipe)
 static void mdp4_dtv_blt_ov_update(struct mdp4_overlay_pipe *pipe);
 static void mdp4_dtv_wait4dmae(int cndx);
 
-int mdp4_dtv_pipe_commit(void)
+int mdp4_dtv_pipe_commit(int cndx, int wait)
 {
 
 	int  i, undx;
@@ -176,7 +176,7 @@ int mdp4_dtv_pipe_commit(void)
 	unsigned long flags;
 	int cnt = 0;
 
-	vctrl = &vsync_ctrl_db[0];
+	vctrl = &vsync_ctrl_db[cndx];
 	mutex_lock(&vctrl->update_lock);
 	undx =  vctrl->update_ndx;
 	vp = &vctrl->vlist[undx];
@@ -234,6 +234,9 @@ int mdp4_dtv_pipe_commit(void)
 	}
 	spin_unlock_irqrestore(&vctrl->spin_lock, flags);
 	mdp4_stat.overlay_commit[pipe->mixer_num]++;
+
+	if (wait)
+		mdp4_dtv_wait4dmae(cndx);
 
 	return cnt;
 }
@@ -993,7 +996,6 @@ void mdp4_dtv_overlay(struct msm_fb_data_type *mfd)
 	if (hdmi_prim_display && (pipe->pipe_used == 0 ||
 			pipe->mixer_stage != MDP4_MIXER_STAGE_BASE)) {
 		pr_err("%s: NOT baselayer\n", __func__);
-		mutex_unlock(&mfd->dma->ov_mutex);
 		return;
 	}
 
@@ -1003,6 +1005,8 @@ void mdp4_dtv_overlay(struct msm_fb_data_type *mfd)
 	}
 
 	mutex_lock(&mfd->dma->ov_mutex);
-	mdp4_dtv_pipe_commit();
+	mdp4_overlay_mdp_perf_upd(mfd, 1);
+	mdp4_dtv_pipe_commit(cndx, 0);
+	mdp4_overlay_mdp_perf_upd(mfd, 0);
 	mutex_unlock(&mfd->dma->ov_mutex);
 }
