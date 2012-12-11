@@ -376,6 +376,7 @@ static struct ion_cp_heap_pdata cp_mm_ion_pdata = {
 	.iommu_map_all = 1,
 	.iommu_2x_map_domain = VIDEO_DOMAIN,
 	.is_cma = 1,
+	.no_nonsecure_alloc = 1,
 };
 
 static struct ion_cp_heap_pdata cp_mfc_ion_pdata = {
@@ -384,6 +385,7 @@ static struct ion_cp_heap_pdata cp_mfc_ion_pdata = {
 	.reusable = 0,
 	.mem_is_fmem = FMEM_ENABLED,
 	.fixed_position = FIXED_HIGH,
+	.no_nonsecure_alloc = 1,
 };
 
 static struct ion_co_heap_pdata co_ion_pdata = {
