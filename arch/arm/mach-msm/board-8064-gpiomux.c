@@ -440,6 +440,12 @@ static struct gpiomux_setting gsbi5_active_cfg = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
+static struct gpiomux_setting gsbi6_spi_cfg = {
+	.func = GPIOMUX_FUNC_2,
+	.drv = GPIOMUX_DRV_16MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
 static struct gpiomux_setting sx150x_suspended_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_8MA,
@@ -1335,6 +1341,119 @@ static struct msm_gpiomux_config apq8064_sdc3_configs[] __initdata = {
 	},
 };
 
+static struct gpiomux_setting gsbi1_uartdm_active = {
+	.func = GPIOMUX_FUNC_1,
+        .drv = GPIOMUX_DRV_8MA,
+        .pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting gsbi6_uartdm_active = {
+	.func = GPIOMUX_FUNC_2,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting gsbi1_uartdm_suspended = {
+        .func = GPIOMUX_FUNC_GPIO,
+        .drv = GPIOMUX_DRV_2MA,
+        .pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct gpiomux_setting gsbi6_uartdm_suspended = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct msm_gpiomux_config apq8064_uartdm_gsbi1_configs[] __initdata = {
+	{
+		.gpio      = 18,        /* GSBI1 UARTDM TX */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gsbi1_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi1_uartdm_suspended,
+		},
+	},
+	{
+		.gpio      = 19,        /* GSBI1 UARTDM RX */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gsbi1_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi1_uartdm_suspended,
+		},
+	},
+	{
+		.gpio      = 20,        /* GSBI1 UARTDM CTS */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gsbi1_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi1_uartdm_suspended,
+		},
+	},
+	{
+		.gpio      = 21,        /* GSBI1 UARTDM RFR */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gsbi1_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi1_uartdm_suspended,
+                },
+        },
+};
+
+static struct msm_gpiomux_config mpq8064_uartdm_configs[] __initdata = {
+	{ /* UARTDM_TX */
+		.gpio      = 14,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &gsbi6_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi6_uartdm_suspended,
+		},
+	},
+	{ /* UARTDM_RX */
+		.gpio      = 15,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &gsbi6_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi6_uartdm_suspended,
+		},
+	},
+	{ /* UARTDM_CTS */
+		.gpio      = 16,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &gsbi6_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi6_uartdm_suspended,
+		},
+	},
+	{ /* UARTDM_RFR */
+		.gpio      = 17,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &gsbi6_uartdm_active,
+			[GPIOMUX_SUSPENDED] = &gsbi6_uartdm_suspended,
+		},
+	},
+};
+
+static struct msm_gpiomux_config mpq8064_gsbi6_spi_configs[] __initdata = {
+	{
+		.gpio      = 17,        /* GSBI6_0 SPI CLK */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg,
+		},
+	},
+	{
+		.gpio      = 16,        /* GSBI6_1 SPI CS */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg,
+		},
+	},
+	{
+		.gpio      = 15,        /* GSBI6_2 SPI MISO */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg,
+		},
+	},
+	{
+		.gpio      = 14,        /* GSBI6_3 SPI_MOSI */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg,
+		},
+	},
+};
+
 void __init apq8064_init_gpiomux(void)
 {
 	int rc;
@@ -1426,9 +1545,13 @@ void __init apq8064_init_gpiomux(void)
 	msm_gpiomux_install(apq8064_hdmi_configs,
 			ARRAY_SIZE(apq8064_hdmi_configs));
 
-	 if (machine_is_mpq8064_cdp())
+	if (machine_is_mpq8064_cdp()) {
 		msm_gpiomux_install(mpq8064_ir_configs,
 				ARRAY_SIZE(mpq8064_ir_configs));
+
+		msm_gpiomux_install(mpq8064_gsbi6_spi_configs,
+				ARRAY_SIZE(mpq8064_gsbi6_spi_configs));
+	}
 
 #ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
 	 msm_gpiomux_install(apq8064_sdc2_configs,
@@ -1442,4 +1565,12 @@ void __init apq8064_init_gpiomux(void)
 
 	msm_gpiomux_install(apq8064_sdc3_configs,
 			ARRAY_SIZE(apq8064_sdc3_configs));
+
+	if (socinfo_get_platform_subtype() == PLATFORM_SUBTYPE_DSDA)
+		msm_gpiomux_install(apq8064_uartdm_gsbi1_configs,
+				ARRAY_SIZE(apq8064_uartdm_gsbi1_configs));
+
+	 if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv())
+		msm_gpiomux_install(mpq8064_uartdm_configs,
+				ARRAY_SIZE(mpq8064_uartdm_configs));
 }

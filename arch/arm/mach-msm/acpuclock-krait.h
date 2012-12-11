@@ -39,6 +39,7 @@ enum src_id {
 	PLL_0 = 0,
 	HFPLL,
 	PLL_8,
+	NUM_SRC_ID
 };
 
 /**
@@ -66,6 +67,7 @@ enum scalables {
 	CPU2,
 	CPU3,
 	L2,
+	MAX_SCALABLES
 };
 
 
@@ -115,14 +117,12 @@ struct vreg {
  * @khz: Clock rate in KHz.
  * @src: Clock source ID.
  * @pri_src_sel: Input to select on the primary MUX.
- * @sec_src_sel: Input to select on the secondary MUX.
  * @pll_l_val: HFPLL "L" value to be applied when an HFPLL source is selected.
  */
 struct core_speed {
 	unsigned long khz;
 	int src;
 	u32 pri_src_sel;
-	u32 sec_src_sel;
 	u32 pll_l_val;
 };
 
@@ -147,6 +147,7 @@ struct l2_level {
  * @l2_level: L2 configuration to use.
  * @vdd_core: CPU core voltage in uV.
  * @ua_core: CPU core current consumption in uA.
+ * @avsdscr_setting: AVS DSCR configuration.
  */
 struct acpu_level {
 	const int use_for_scaling;
@@ -154,6 +155,7 @@ struct acpu_level {
 	const unsigned int l2_level;
 	int vdd_core;
 	int ua_core;
+	unsigned int avsdscr_setting;
 };
 
 /**
@@ -193,22 +195,26 @@ struct hfpll_data {
  * @hfpll_base: Virtual base address of HFPLL registers.
  * @aux_clk_sel_phys: Physical address of auxiliary MUX.
  * @aux_clk_sel: Auxiliary mux input to select at boot.
+ * @sec_clk_sel: Secondary mux input to select at boot.
  * @l2cpmr_iaddr: Indirect address of the CPMR MUX/divider CP15 register.
  * @cur_speed: Pointer to currently-set speed.
  * @l2_vote: L2 performance level vote associate with the current CPU speed.
  * @vreg: Array of voltage regulators needed by the scalable.
  * @initialized: Flag set to true when per_cpu_init() has been called.
+ * @avs_enabled: True if avs is enabled for the scalabale. False otherwise.
  */
 struct scalable {
 	const phys_addr_t hfpll_phys_base;
 	void __iomem *hfpll_base;
 	const phys_addr_t aux_clk_sel_phys;
 	const u32 aux_clk_sel;
+	const u32 sec_clk_sel;
 	const u32 l2cpmr_iaddr;
 	const struct core_speed *cur_speed;
 	unsigned int l2_vote;
 	struct vreg vreg[NUM_VREG];
 	bool initialized;
+	bool avs_enabled;
 };
 
 /**
@@ -248,9 +254,52 @@ struct acpuclk_krait_params {
 };
 
 /**
+ * struct drv_data - Driver state
+ * @acpu_freq_tbl: CPU frequency table.
+ * @l2_freq_tbl: L2 frequency table.
+ * @scalable: Array of scalables (CPUs and L2).
+ * @hfpll_data: High-frequency PLL data.
+ * @bus_perf_client: Bus driver client handle.
+ * @bus_scale: Bus driver scaling data.
+ * @boost_uv: Voltage boost amount
+ * @speed_bin: Speed bin ID.
+ * @pvs_bin: PVS bin ID.
+ * @dev: Device.
+ */
+struct drv_data {
+	struct acpu_level *acpu_freq_tbl;
+	const struct l2_level *l2_freq_tbl;
+	struct scalable *scalable;
+	struct hfpll_data *hfpll_data;
+	u32 bus_perf_client;
+	struct msm_bus_scale_pdata *bus_scale;
+	int boost_uv;
+	int speed_bin;
+	int pvs_bin;
+	struct device *dev;
+};
+
+/**
+ * struct acpuclk_platform_data - PMIC configuration data.
+ * @uses_pm8917: Boolean indicates presence of pm8917.
+ */
+struct acpuclk_platform_data {
+	bool uses_pm8917;
+};
+
+/**
  * acpuclk_krait_init - Initialize the Krait CPU clock driver give SoC params.
  */
 extern int acpuclk_krait_init(struct device *dev,
 			      const struct acpuclk_krait_params *params);
+
+#ifdef CONFIG_DEBUG_FS
+/**
+ * acpuclk_krait_debug_init - Initialize debugfs interface.
+ */
+extern void __init acpuclk_krait_debug_init(struct drv_data *drv);
+#else
+static inline void acpuclk_krait_debug_init(void) { }
+#endif
 
 #endif
