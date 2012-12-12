@@ -34,6 +34,7 @@ struct mdm_platform_data {
 	int image_upgrade_supported;
 	struct gpiomux_setting *mdm2ap_status_gpio_run_cfg;
 	int send_shdn;
+	int cascading_ssr;
 };
 
 #endif

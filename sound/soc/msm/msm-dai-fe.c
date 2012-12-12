@@ -455,8 +455,8 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 	},
 	{
 		.playback = {
-			.stream_name = "SGLTE Playback",
-			.aif_name = "SGLTE_DL",
+			.stream_name = "Voice2 Playback",
+			.aif_name = "Voice2_DL",
 			.rates = SNDRV_PCM_RATE_8000_48000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
 			.channels_min = 1,
@@ -465,8 +465,8 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.rate_max =     48000,
 		},
 		.capture = {
-			.stream_name = "SGLTE Capture",
-			.aif_name = "SGLTE_UL",
+			.stream_name = "Voice2 Capture",
+			.aif_name = "Voice2_UL",
 			.rates = SNDRV_PCM_RATE_8000_48000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
 			.channels_min = 1,
@@ -475,7 +475,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.rate_max =     48000,
 		},
 		.ops = &msm_fe_dai_ops,
-		.name = "SGLTE",
+		.name = "Voice2",
 	},
 };
 

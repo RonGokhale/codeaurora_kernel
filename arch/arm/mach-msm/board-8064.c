@@ -42,6 +42,7 @@
 #include <asm/hardware/gic.h>
 #include <asm/mach/mmc.h>
 #include <linux/platform_data/qcom_wcnss_device.h>
+#include <linux/ci-bridge-spi.h>
 
 #include <mach/board.h>
 #include <mach/msm_iomap.h>
@@ -68,6 +69,7 @@
 #include <linux/msm_tsens.h>
 #include <mach/msm_xo.h>
 #include <mach/msm_rtb.h>
+#include <mach/msm_serial_hs.h>
 #include <sound/cs8427.h>
 #include <media/gpio-ir-recv.h>
 #include <linux/fmem.h>
@@ -1720,6 +1722,19 @@ static struct mdm_platform_data mdm_platform_data = {
 	.mdm2ap_status_gpio_run_cfg = &mdm2ap_status_gpio_run_cfg,
 };
 
+static struct mdm_platform_data dsda_mdm_platform_data = {
+	.mdm_version = "3.0",
+	.ramdump_delay_ms = 2000,
+	.early_power_on = 1,
+	.sfr_query = 1,
+	.send_shdn = 1,
+	.vddmin_resource = &mdm_vddmin_rscs,
+	.peripheral_platform_device = &apq8064_device_hsic_host,
+	.ramdump_timeout_ms = 120000,
+	.mdm2ap_status_gpio_run_cfg = &mdm2ap_status_gpio_run_cfg,
+	.cascading_ssr = 1,
+};
+
 static struct mdm_platform_data dsda_qsc_platform_data = {
 	.mdm_version = "3.0",
 	.ramdump_delay_ms = 2000,
@@ -1727,6 +1742,7 @@ static struct mdm_platform_data dsda_qsc_platform_data = {
 	.ramdump_timeout_ms = 600000,
 	.no_powerdown_after_ramdumps = 1,
 	.image_upgrade_supported = 1,
+	.cascading_ssr = 1,
 };
 
 static struct tsens_platform_data apq_tsens_pdata  = {
@@ -2147,7 +2163,6 @@ static struct platform_device gpio_ir_recv_pdev = {
 };
 
 static struct platform_device *common_not_mpq_devices[] __initdata = {
-	&apq8064_device_qup_i2c_gsbi1,
 	&apq8064_device_qup_i2c_gsbi3,
 	&apq8064_device_qup_i2c_gsbi4,
 };
@@ -2287,7 +2302,6 @@ static struct platform_device *rumi3_devices[] __initdata = {
 };
 
 static struct platform_device *cdp_devices[] __initdata = {
-	&apq8064_device_uart_gsbi1,
 	&apq8064_device_uart_gsbi7,
 	&msm_device_sps_apq8064,
 #ifdef CONFIG_MSM_ROTATOR
@@ -2377,6 +2391,40 @@ static int rf4ce_gpio_init(void)
 }
 late_initcall(rf4ce_gpio_init);
 
+#ifdef CONFIG_SERIAL_MSM_HS
+static int configure_uart_gpios(int on)
+{
+	int ret = 0, i;
+	int uart_gpios[] = {14, 15, 16, 17};
+
+	for (i = 0; i < ARRAY_SIZE(uart_gpios); i++) {
+		if (on) {
+			ret = gpio_request(uart_gpios[i], NULL);
+			if (ret) {
+				pr_err("%s:unable to request uart gpio[%d]\n",
+						__func__, uart_gpios[i]);
+				break;
+			}
+		} else {
+			gpio_free(uart_gpios[i]);
+		}
+	}
+
+	if (ret && on && i)
+		for (; i >= 0; i--)
+			gpio_free(uart_gpios[i]);
+	return ret;
+}
+
+static struct msm_serial_hs_platform_data mpq8064_gsbi6_uartdm_pdata = {
+	.inject_rx_on_wakeup	= 1,
+	.rx_to_inject		= 0xFD,
+	.gpio_config		= configure_uart_gpios,
+};
+#else
+static struct msm_serial_hs_platform_data msm_uart_dm9_pdata;
+#endif
+
 static struct platform_device *mpq_devices[] __initdata = {
 	&msm_device_sps_apq8064,
 	&mpq8064_device_qup_i2c_gsbi5,
@@ -2393,10 +2441,20 @@ static struct platform_device *mpq_devices[] __initdata = {
 	&msm8064_device_vcap,
 #endif
 	&rc_input_loopback_pdev,
+	&mpq8064_device_qup_spi_gsbi6,
 };
 
 static struct msm_spi_platform_data apq8064_qup_spi_gsbi5_pdata = {
 	.max_clock_speed = 1100000,
+};
+
+static struct msm_spi_platform_data mpq8064_qup_spi_gsbi6_pdata = {
+	.max_clock_speed = 1100000,
+};
+
+static struct ci_bridge_platform_data mpq8064_ci_bridge_pdata = {
+	.reset_pin = 260,
+	.interrupt_pin = 261,
 };
 
 #define KS8851_IRQ_GPIO		43
@@ -2416,6 +2474,17 @@ static struct spi_board_info spi_board_info[] __initdata = {
 		.bus_num		= 0,
 		.chip_select		= 3,
 		.mode			= SPI_MODE_0,
+	}
+};
+
+static struct spi_board_info mpq8064_spi_board_info[] __initdata = {
+	{
+		.modalias		= "ci_bridge_spi",
+		.max_speed_hz		= 1000000,
+		.bus_num		= 1,
+		.chip_select		= 0,
+		.mode			= SPI_MODE_0,
+		.platform_data		= &mpq8064_ci_bridge_pdata,
 	},
 };
 
@@ -2457,18 +2526,20 @@ static void __init apq8064_i2c_init(void)
 {
 	void __iomem *gsbi_mem;
 
-	apq8064_device_qup_i2c_gsbi1.dev.platform_data =
-					&apq8064_i2c_qup_gsbi1_pdata;
-	gsbi_mem = ioremap_nocache(MSM_GSBI1_PHYS, 4);
-	writel_relaxed(GSBI_DUAL_MODE_CODE, gsbi_mem);
-	/* Ensure protocol code is written before proceeding */
-	wmb();
-	iounmap(gsbi_mem);
-	apq8064_i2c_qup_gsbi1_pdata.use_gsbi_shared_mode = 1;
+	if (socinfo_get_platform_subtype() != PLATFORM_SUBTYPE_DSDA) {
+		apq8064_device_qup_i2c_gsbi1.dev.platform_data =
+				&apq8064_i2c_qup_gsbi1_pdata;
+		gsbi_mem = ioremap_nocache(MSM_GSBI1_PHYS, 4);
+		writel_relaxed(GSBI_DUAL_MODE_CODE, gsbi_mem);
+		/* Ensure protocol code is written before proceeding */
+		wmb();
+		iounmap(gsbi_mem);
+		apq8064_i2c_qup_gsbi1_pdata.use_gsbi_shared_mode = 1;
+		apq8064_device_qup_i2c_gsbi1.dev.platform_data =
+				&apq8064_i2c_qup_gsbi1_pdata;
+	}
 	apq8064_device_qup_i2c_gsbi3.dev.platform_data =
 					&apq8064_i2c_qup_gsbi3_pdata;
-	apq8064_device_qup_i2c_gsbi1.dev.platform_data =
-					&apq8064_i2c_qup_gsbi1_pdata;
 	apq8064_device_qup_i2c_gsbi4.dev.platform_data =
 					&apq8064_i2c_qup_gsbi4_pdata;
 	mpq8064_device_qup_i2c_gsbi5.dev.platform_data =
@@ -2906,6 +2977,38 @@ static void enable_avc_i2c_bus(void)
 		gpio_set_value_cansleep(avc_i2c_en_mpp, 1);
 }
 
+#ifdef CONFIG_SERIAL_MSM_HS
+static int configure_uartdm_gsbi1_gpios(int on)
+{
+	int ret = 0, i;
+	int uart_gpios[] = {18, 19, 20, 21};
+
+	for (i = 0; i < ARRAY_SIZE(uart_gpios); i++) {
+		if (on) {
+			ret = gpio_request(uart_gpios[i], NULL);
+			if (ret) {
+				pr_err("%s: unable to request uart gpio[%d]\n",
+						__func__, uart_gpios[i]);
+				break;
+			}
+		} else {
+			gpio_free(uart_gpios[i]);
+		}
+	}
+
+	if (ret && on && i)
+		for (; i >= 0; i--)
+			gpio_free(uart_gpios[i]);
+	return ret;
+}
+
+static struct msm_serial_hs_platform_data apq8064_uartdm_gsbi1_pdata = {
+	.gpio_config	= configure_uartdm_gsbi1_gpios,
+};
+#else
+static struct msm_serial_hs_platform_data apq8064_uartdm_gsbi1_pdata;
+#endif
+
 static void __init apq8064_common_init(void)
 {
 	u32 platform_version;
@@ -2943,6 +3046,16 @@ static void __init apq8064_common_init(void)
 			machine_is_mpq8064_dtv()))
 		platform_add_devices(common_not_mpq_devices,
 			ARRAY_SIZE(common_not_mpq_devices));
+
+	if (socinfo_get_platform_subtype() == PLATFORM_SUBTYPE_DSDA) {
+		apq8064_uartdm_gsbi1_pdata.wakeup_irq = gpio_to_irq(19);
+		apq8064_device_uartdm_gsbi1.dev.platform_data =
+					&apq8064_uartdm_gsbi1_pdata;
+		platform_device_register(&apq8064_device_uartdm_gsbi1);
+	} else {
+		platform_device_register(&apq8064_device_qup_i2c_gsbi1);
+	}
+
 	enable_ddr3_regulator();
 	rpmrs_level =
 		msm_rpmrs_levels[MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT];
@@ -2961,13 +3074,13 @@ static void __init apq8064_common_init(void)
 	if (machine_is_apq8064_mtp()) {
 		platform_version = socinfo_get_platform_version();
 		if (socinfo_get_platform_subtype() == PLATFORM_SUBTYPE_DSDA) {
+			dsda_mdm_8064_device.dev.platform_data =
+				&dsda_mdm_platform_data;
+			platform_device_register(&dsda_mdm_8064_device);
+
 			dsda_qsc_8064_device.dev.platform_data =
 				&dsda_qsc_platform_data;
 			platform_device_register(&dsda_qsc_8064_device);
-
-			dsda_mdm_8064_device.dev.platform_data =
-				&dsda_mdm_8064_device;
-			platform_device_register(&dsda_mdm_8064_device);
 		} else if (SOCINFO_VERSION_MINOR(platform_version) == 1) {
 			i2s_mdm_8064_device.dev.platform_data =
 				&mdm_platform_data;
@@ -3021,12 +3134,22 @@ static void __init apq8064_cdp_init(void)
 		machine_is_mpq8064_dtv()) {
 		enable_avc_i2c_bus();
 		msm_rotator_set_split_iommu_domain();
+
+		mpq8064_device_qup_spi_gsbi6.dev.platform_data =
+						&mpq8064_qup_spi_gsbi6_pdata;
+
 		platform_add_devices(mpq_devices, ARRAY_SIZE(mpq_devices));
 		mpq8064_pcie_init();
+		spi_register_board_info(mpq8064_spi_board_info,
+					ARRAY_SIZE(mpq8064_spi_board_info));
 	} else {
 		ethernet_init();
 		msm_rotator_set_split_iommu_domain();
 		platform_add_devices(cdp_devices, ARRAY_SIZE(cdp_devices));
+
+		if (socinfo_get_platform_subtype() != PLATFORM_SUBTYPE_DSDA)
+			platform_device_register(&apq8064_device_uart_gsbi1);
+
 		spi_register_board_info(spi_board_info,
 						ARRAY_SIZE(spi_board_info));
 	}
@@ -3036,6 +3159,16 @@ static void __init apq8064_cdp_init(void)
 #ifdef CONFIG_MSM_CAMERA
 	apq8064_init_cam();
 #endif
+
+	if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv()) {
+		platform_device_register(&mpq8064_device_uartdm_gsbi6);
+#ifdef CONFIG_SERIAL_MSM_HS
+		/* GSBI6(2) - UARTDM_RX */
+		mpq8064_gsbi6_uartdm_pdata.wakeup_irq = gpio_to_irq(15);
+		mpq8064_device_uartdm_gsbi6.dev.platform_data =
+					&mpq8064_gsbi6_uartdm_pdata;
+#endif
+	}
 
 	if (machine_is_apq8064_cdp() || machine_is_apq8064_liquid())
 		platform_device_register(&cdp_kp_pdev);
