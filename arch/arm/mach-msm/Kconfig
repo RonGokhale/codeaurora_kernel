@@ -172,6 +172,7 @@ config ARCH_MSM8960
 	select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
 	select MSM_KRAIT_WFE_FIXUP
+	select MSM_CPU_PWRCTL
 
 config ARCH_MSM8930
 	bool "MSM8930"
@@ -204,6 +205,7 @@ config ARCH_MSM8930
 	select HOLES_IN_ZONE if SPARSEMEM
 	select ARM_HAS_SG_CHAIN
 	select MSM_KRAIT_WFE_FIXUP
+	select MSM_CPU_PWRCTL
 
 config ARCH_APQ8064
 	bool "APQ8064"
@@ -231,6 +233,7 @@ config ARCH_APQ8064
 	select ARCH_SUPPORTS_MSI
 	select ARM_HAS_SG_CHAIN
 	select MSM_KRAIT_WFE_FIXUP
+	select MSM_CPU_PWRCTL
 
 config ARCH_MSM8974
 	bool "MSM8974"
@@ -2462,4 +2465,10 @@ config MSM_HSIC_SYSMON_TEST
 	  can be read and written to send character data to the sysmon port of
 	  the modem over USB.
 
+config MSM_CPU_PWRCTL
+	bool "Ensures that krait droop detectors are always off"
+	help
+	  Droop detector mechanism can adversely affect krait plls during
+	  stand alone power collapse operation. Selecting this option
+	  ensures that they are always off.
 endif
