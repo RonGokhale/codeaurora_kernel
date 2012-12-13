@@ -1081,6 +1081,7 @@ resume_again:
 		}
 	}
 
+	ehci->command |= CMD_RUN;
 	dbg_log_event(NULL, "FPR: RT-Done", 0);
 	mehci->resume_status = 1;
 	spin_unlock_irq(&ehci->lock);
@@ -1121,6 +1122,8 @@ static int ehci_hsic_bus_resume(struct usb_hcd *hcd)
 	if (ehci->periodic_sched)
 		temp |= CMD_PSE;
 	if (temp) {
+		pr_info("%s: ASE enabled during resume!!!\n", __func__);
+		dbg_log_event(NULL, "ASE set during resume", 0);
 		ehci->command |= temp;
 		ehci_writel(ehci, ehci->command, &ehci->regs->command);
 	}
