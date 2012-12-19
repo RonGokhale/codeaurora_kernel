@@ -80,12 +80,19 @@
 extern unsigned int diag_max_reg;
 extern unsigned int diag_threshold_reg;
 
+#define MAX_PROC	10
 #define APPEND_DEBUG(ch) \
 do {							\
 	diag_debug_buf[diag_debug_buf_idx] = ch; \
 	(diag_debug_buf_idx < 1023) ? \
 	(diag_debug_buf_idx++) : (diag_debug_buf_idx = 0); \
 } while (0)
+
+/* List of remote processor supported */
+enum remote_procs {
+	MDM = 1,
+	QSC = 2,
+};
 
 struct diag_master_table {
 	uint16_t cmd_code;
