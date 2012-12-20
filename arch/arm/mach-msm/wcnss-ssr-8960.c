@@ -83,7 +83,7 @@ static void smsm_state_cb_hdlr(void *data, uint32_t old_state,
 	}
 
 	ss_restart_inprogress = true;
-	subsystem_restart("riva");
+	subsystem_restart("wcnss");
 }
 
 static irqreturn_t riva_wdog_bite_irq_hdlr(int irq, void *dev_id)
@@ -100,7 +100,7 @@ static irqreturn_t riva_wdog_bite_irq_hdlr(int irq, void *dev_id)
 		panic(MODULE_NAME ": Watchdog bite received from Riva");
 
 	ss_restart_inprogress = true;
-	subsystem_restart("riva");
+	subsystem_restart("wcnss");
 
 	return IRQ_HANDLED;
 }
