@@ -3794,11 +3794,19 @@ static int ca0132_volume_put(struct snd_kcontrol *kcontrol,
 
 	/* store the left and right volume */
 	if (ch & 1) {
-		spec->vnode_lvol[nid - VNODE_START_NID] = *valp;
+		/* Complete hack to avoid setting capture gain too low. */
+		long val = *valp;
+		if (nid == VNID_MIC)
+			val = max(val, 90);
+		spec->vnode_lvol[nid - VNODE_START_NID] = val;
 		valp++;
 	}
 	if (ch & 2) {
-		spec->vnode_rvol[nid - VNODE_START_NID] = *valp;
+		/* Complete hack to avoid setting capture gain too low. */
+		long val = *valp;
+		if (nid == VNID_MIC)
+			val = max(val, 90);
+		spec->vnode_rvol[nid - VNODE_START_NID] = val;
 		valp++;
 	}
 
