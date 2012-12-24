@@ -372,6 +372,15 @@ void ddl_vidc_encode_dynamic_property(struct ddl_client_context *ddl,
 				(u32)(DDL_FRAMERATE_SCALE(encoder->\
 				frame_rate.fps_numerator) /
 				encoder->frame_rate.fps_denominator));
+			if (encoder->vui_timinginfo_enable &&
+				encoder->frame_rate.fps_denominator) {
+				vidc_sm_set_h264_encoder_timing_info(
+					&ddl->shared_mem[ddl->command_channel],
+					DDL_FRAMERATE_SCALE_FACTOR,
+					(u32)(DDL_FRAMERATE_SCALE(encoder->\
+					frame_rate.fps_numerator) / encoder->\
+					frame_rate.fps_denominator) << 1);
+			}
 			encoder->dynamic_prop_change &=
 				~(DDL_ENC_CHANGE_FRAMERATE);
 		}
@@ -598,7 +607,13 @@ void ddl_vidc_encode_init_codec(struct ddl_client_context *ddl)
 		[ddl->command_channel], hdr_ext_control,
 		r_cframe_skip, false, 0,
 		h263_cpfc_enable, encoder->sps_pps.sps_pps_for_idr_enable_flag,
-		encoder->closed_gop);
+		encoder->closed_gop, encoder->vui_timinginfo_enable);
+	if (encoder->vui_timinginfo_enable) {
+		vidc_sm_set_h264_encoder_timing_info(
+			&ddl->shared_mem[ddl->command_channel],
+			DDL_FRAMERATE_SCALE_FACTOR,
+			scaled_frame_rate << 1);
+	}
 	vidc_sm_set_encoder_init_rc_value(&ddl->shared_mem
 		[ddl->command_channel],
 		encoder->target_bit_rate.target_bitrate);
