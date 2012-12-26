@@ -3743,17 +3743,15 @@ static void __init apq8064_cdp_init(void)
 	if (machine_is_mpq8064_cdp()) {
 		platform_device_register(&mpq_gpio_keys_pdev);
 		platform_device_register(&mpq_keypad_device);
-	} else if (machine_is_mpq8064_hrd())
-		platform_device_register(&mpq_hrd_keys_pdev);
-	if (machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
-		machine_is_mpq8064_dtv())
-		platform_device_register(&msm_dev_avtimer_device);
-	 else if (machine_is_mpq8064_hrd()) {
+	} else if (machine_is_mpq8064_hrd()) {
 		if (SOCINFO_VERSION_MAJOR(hrd_version) == 2)
 			platform_device_register(&mpq_rev2hrd_keys_pdev);
 		else
 			platform_device_register(&mpq_hrd_keys_pdev);
 	}
+	if (machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
+		machine_is_mpq8064_dtv())
+		platform_device_register(&msm_dev_avtimer_device);
 }
 
 MACHINE_START(APQ8064_CDP, "QCT APQ8064 CDP")
