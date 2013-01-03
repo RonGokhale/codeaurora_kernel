@@ -1,6 +1,6 @@
 /*
  *
- * Copyright (c) 2012, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2012-2013, Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -63,6 +63,13 @@ enum ion_fixed_position {
  * Flag to use when allocating to indicate that a heap is secure.
  */
 #define ION_SECURE (1 << ION_HEAP_ID_RESERVED)
+
+/**
+ * Flag for clients to force contiguous memort allocation
+ *
+ * Use of this flag is carefully monitored!
+ */
+#define ION_FORCE_CONTIGUOUS (1 << 30)
 
 /**
  * Macro should be used with ion_heap_ids defined above.
