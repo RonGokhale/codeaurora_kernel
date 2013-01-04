@@ -101,8 +101,7 @@ static struct msm_pcie_dev_t msm_pcie_dev;
 static struct msm_pcie_vreg_info_t msm_pcie_vreg_info[MSM_PCIE_MAX_VREG] = {
 	{NULL, "vp_pcie",      1050000, 1050000, 40900},
 	{NULL, "vptx_pcie",    1050000, 1050000, 18200},
-	{NULL, "vdd_pcie_vph",       0,       0,     0},
-	{NULL, "pcie_ext_3p3v",      0,       0,     0}
+	{NULL, "vdd_pcie_vph",       0,       0,     0}
 };
 
 /* clocks */
