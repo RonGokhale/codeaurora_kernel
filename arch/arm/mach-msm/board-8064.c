@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -76,6 +76,7 @@
 #include <mach/msm_pcie.h>
 #include <mach/restart.h>
 #include <mach/msm_iomap.h>
+#include <mach/mpq_mcu_comm_pdata.h>
 
 #include "msm_watchdog.h"
 #include "board-8064.h"
@@ -3550,6 +3551,11 @@ static void __init apq8064_pm8917_pdata_fixup(void)
 	cdp_keys_data.nbuttons = ARRAY_SIZE(cdp_keys_pm8917);
 }
 
+static struct mpq_mcu_comm_platform_data mpq_mcu_pdata = {
+	.wakeup_gpio    = 77,
+	.status_gpio    = 64,
+};
+
 static void __init apq8064_common_init(void)
 {
 	u32 platform_version = socinfo_get_platform_version();
@@ -3631,6 +3637,12 @@ static void __init apq8064_common_init(void)
 		if (SOCINFO_VERSION_MINOR(platform_version) == 1)
 			platform_add_devices(common_i2s_devices,
 			ARRAY_SIZE(common_i2s_devices));
+	}
+
+	if (machine_is_mpq8064_hrd()) {
+		mpq_mcu_pdata.swfi_latency = msm_rpmrs_levels[0].latency_us;
+		mpq_mcu_comm_dev.dev.platform_data = &mpq_mcu_pdata;
+		platform_device_register(&mpq_mcu_comm_dev);
 	}
 
 	enable_ddr3_regulator();

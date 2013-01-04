@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1593,6 +1593,41 @@ static struct msm_gpiomux_config mpq8064_gsbi5_uart_configs[] __initdata = {
 	},
 };
 
+static struct gpiomux_setting mpq_mcu_comm_wakeup_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv  = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting mpq_mcu_comm_status_active_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv  = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting mpq_mcu_comm_status_suspend_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv  = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct msm_gpiomux_config mpq_mcu_comm_configs[] __initdata = {
+	{
+		.gpio      = 77,        /* WAKEUP FROM MCU */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &mpq_mcu_comm_wakeup_cfg,
+			[GPIOMUX_ACTIVE]    = &mpq_mcu_comm_wakeup_cfg,
+		},
+	},
+	{
+		.gpio      = 64,        /* STATUS OF MPQ */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &mpq_mcu_comm_status_suspend_cfg,
+			[GPIOMUX_ACTIVE]    = &mpq_mcu_comm_status_active_cfg,
+		},
+	},
+};
+
 void __init apq8064_init_gpiomux(void)
 {
 	int rc;
@@ -1745,4 +1780,8 @@ void __init apq8064_init_gpiomux(void)
 	 if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv())
 		msm_gpiomux_install(mpq8064_uartdm_configs,
 				ARRAY_SIZE(mpq8064_uartdm_configs));
+
+	if (machine_is_mpq8064_hrd())
+		msm_gpiomux_install(mpq_mcu_comm_configs,
+				ARRAY_SIZE(mpq_mcu_comm_configs));
 }
