@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2013, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -829,13 +829,6 @@ void mdp4_overlay_vg_setup(struct mdp4_overlay_pipe *pipe)
 	/* CSC Post Processing enabled? */
 	if (pipe->flags & MDP_OVERLAY_PP_CFG_EN) {
 		if (pipe->pp_cfg.config_ops & MDP_OVERLAY_PP_CSC_CFG) {
-			if (pipe->pp_cfg.csc_cfg.flags & MDP_CSC_FLAG_ENABLE)
-				pipe->op_mode |= MDP4_OP_CSC_EN;
-			if (pipe->pp_cfg.csc_cfg.flags & MDP_CSC_FLAG_YUV_IN)
-				pipe->op_mode |= MDP4_OP_SRC_DATA_YCBCR;
-			if (pipe->pp_cfg.csc_cfg.flags & MDP_CSC_FLAG_YUV_OUT)
-				pipe->op_mode |= MDP4_OP_DST_DATA_YCBCR;
-
 			mdp4_csc_write(&pipe->pp_cfg.csc_cfg,
 				(uint32_t) (vg_base + MDP4_VIDEO_CSC_OFF));
 
@@ -860,9 +853,19 @@ void mdp4_overlay_vg_setup(struct mdp4_overlay_pipe *pipe)
 							(uint32_t) vg_base);
 		}
 	}
-	/* not RGB use VG pipe, pure VG pipe */
-	if (ptype != OVERLAY_TYPE_RGB)
+	if (pipe->pp_cfg.config_ops & MDP_OVERLAY_PP_CSC_CFG) {
+		/* User CSC for VG pipe, check for it as pipe->flags gets
+		reset to 0 on every play */
+		if (pipe->pp_cfg.csc_cfg.flags & MDP_CSC_FLAG_ENABLE)
+			pipe->op_mode |= MDP4_OP_CSC_EN;
+		if (pipe->pp_cfg.csc_cfg.flags & MDP_CSC_FLAG_YUV_IN)
+			pipe->op_mode |= MDP4_OP_SRC_DATA_YCBCR;
+		if (pipe->pp_cfg.csc_cfg.flags & MDP_CSC_FLAG_YUV_OUT)
+			pipe->op_mode |= MDP4_OP_DST_DATA_YCBCR;
+	} else if (ptype != OVERLAY_TYPE_RGB) {
+		/* Default CSC for Video content, yuv_to_rgb */
 		pipe->op_mode |= (MDP4_OP_CSC_EN | MDP4_OP_SRC_DATA_YCBCR);
+	}
 
 #ifdef MDP4_IGC_LUT_ENABLE
 	pipe->op_mode |= MDP4_OP_IGC_LUT_EN;
