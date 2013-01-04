@@ -1478,6 +1478,11 @@ static int mmc_suspend(struct mmc_host *host)
 	BUG_ON(!host->card);
 
 	mmc_claim_host(host);
+
+	err = mmc_cache_ctrl(host, 0);
+	if (err)
+		goto out;
+
 	mmc_save_ios(host);
 	if (mmc_can_poweroff_notify(host->card) &&
 		(host->caps2 & MMC_CAP2_POWER_OFF_VCCQ_DURING_SUSPEND)) {
@@ -1499,8 +1504,9 @@ static int mmc_suspend(struct mmc_host *host)
 	if (!err)
 		host->card->state &=
 			~(MMC_STATE_HIGHSPEED | MMC_STATE_HIGHSPEED_200);
-	mmc_release_host(host);
 
+out:
+	mmc_release_host(host);
 	return err;
 }
 
