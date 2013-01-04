@@ -78,6 +78,7 @@
 #include <mach/restart.h>
 #include <mach/msm_iomap.h>
 #include <mach/msm_serial_hs.h>
+#include <mach/mpq_mcu_comm_pdata.h>
 
 #include "msm_watchdog.h"
 #include "board-8064.h"
@@ -3658,6 +3659,11 @@ static void __init apq8064ab_update_retention_spm(void)
 	}
 }
 
+static struct mpq_mcu_comm_platform_data mpq_mcu_pdata = {
+	.wakeup_gpio    = 77,
+	.status_gpio    = 64,
+};
+
 static void __init apq8064_common_init(void)
 {
 	u32 platform_version = socinfo_get_platform_version();
@@ -3757,6 +3763,12 @@ static void __init apq8064_common_init(void)
 		if (SOCINFO_VERSION_MINOR(platform_version) == 1)
 			platform_add_devices(common_i2s_devices,
 			ARRAY_SIZE(common_i2s_devices));
+	}
+
+	if (machine_is_mpq8064_hrd()) {
+		mpq_mcu_pdata.swfi_latency = msm_rpmrs_levels[0].latency_us;
+		mpq_mcu_comm_dev.dev.platform_data = &mpq_mcu_pdata;
+		platform_device_register(&mpq_mcu_comm_dev);
 	}
 
 	if (machine_is_apq8064_mtp()) {
