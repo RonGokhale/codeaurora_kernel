@@ -8,6 +8,7 @@ list of branches
 - donut_frosted
 - donut_cream
 - eclair_coffee
+- froyo
 - froyo_almond
 - android-msm-2.6.32
 - android-msm-2.6.35-froyo
