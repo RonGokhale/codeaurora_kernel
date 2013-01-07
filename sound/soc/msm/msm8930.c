@@ -139,8 +139,12 @@ static void msm8960_ext_spk_power_amp_on(u32 spk)
 		if ((msm8930_ext_spk_pamp & SPK_AMP_POS) &&
 			(msm8930_ext_spk_pamp & SPK_AMP_NEG)) {
 
-			if (machine_is_msm8930_mtp()
-				|| machine_is_msm8930_fluid()) {
+			/*
+			 * 8930 CDP does not have a 5V speaker boost,
+			 * hence the GPIO enable for speaker boost is
+			 * only required for platforms other than CDP
+			 */
+			if (!machine_is_msm8930_cdp()) {
 				pr_debug("%s: Configure Speaker Boost GPIO %u",
 						__func__, SPKR_BOOST_GPIO);
 				ret = gpio_request(SPKR_BOOST_GPIO,
@@ -175,8 +179,8 @@ static void msm8960_ext_spk_power_amp_off(u32 spk)
 	if (spk & (SPK_AMP_POS | SPK_AMP_NEG)) {
 		if (!msm8930_ext_spk_pamp)
 			return;
-		if (machine_is_msm8930_mtp()
-			|| machine_is_msm8930_fluid()) {
+
+		if (!machine_is_msm8930_cdp()) {
 			pr_debug("%s: Free speaker boost gpio %u\n",
 					__func__, SPKR_BOOST_GPIO);
 			gpio_direction_output(SPKR_BOOST_GPIO, 0);
