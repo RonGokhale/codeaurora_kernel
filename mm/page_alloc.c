@@ -1370,10 +1370,9 @@ void split_page(struct page *page, unsigned int order)
  * Note: this is probably too low level an operation for use in drivers.
  * Please consult with lkml before using this in your driver.
  */
-int split_free_page(struct page *page)
+int split_free_page(struct page *page, bool for_cma)
 {
 	unsigned int order;
-	unsigned long watermark;
 	struct zone *zone;
 
 	BUG_ON(!PageBuddy(page));
@@ -1382,9 +1381,13 @@ int split_free_page(struct page *page)
 	order = page_order(page);
 
 	/* Obey watermarks as if the page was being allocated */
-	watermark = low_wmark_pages(zone) + (1 << order);
-	if (!zone_watermark_ok(zone, 0, watermark, 0, 0))
-		return 0;
+	if (!for_cma) {
+		unsigned long watermark;
+
+		watermark = low_wmark_pages(zone) + (1 << order);
+		if (!zone_watermark_ok(zone, 0, watermark, 0, 0))
+			return 0;
+	}
 
 	/* Remove page from free list */
 	list_del(&page->lru);
@@ -6061,7 +6064,7 @@ int alloc_contig_range(unsigned long start, unsigned long end,
 	__reclaim_pages(zone, GFP_HIGHUSER_MOVABLE, end-start);
 
 	/* Grab isolated pages from freelists. */
-	outer_end = isolate_freepages_range(outer_start, end);
+	outer_end = isolate_freepages_range(outer_start, end, true);
 	if (!outer_end) {
 		ret = -EBUSY;
 		goto done;
