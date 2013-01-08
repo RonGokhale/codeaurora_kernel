@@ -35,6 +35,8 @@
 #include "msm_watchdog.h"
 #include "timer.h"
 
+#include <linux/mpq_mcu_gpio_comm.h>
+
 #define WDT0_RST	0x38
 #define WDT0_EN		0x40
 #define WDT0_BARK_TIME	0x4C
@@ -150,6 +152,8 @@ static void __msm_power_off(int lower_pshold)
 
 static void msm_power_off(void)
 {
+	mpq_mcu_dev_power_off();
+
 	/* MSM initiated power off, lower ps_hold */
 	__msm_power_off(1);
 }
