@@ -20,9 +20,6 @@
 #include <linux/device.h>
 #include <linux/cdev.h>
 #include <linux/slab.h>
-#include <linux/irq.h>
-#include <linux/interrupt.h>
-#include <mach/mpm.h>
 
 #include <media/rc-core.h>
 #include <media/user-rc-input.h>
@@ -116,18 +113,11 @@ const struct file_operations sp_fops = {
 	.release = user_sp_input_release,
 };
 
-static irqreturn_t mcu_status_change(int irq, void *dev_id)
-{
-	pr_err("MCU Status Change IRQ\n");
-	return IRQ_HANDLED;
-}
-
 static int __devinit user_sp_input_probe(struct platform_device *pdev)
 {
 	struct user_sp_input_dev *user_sp_dev;
 	struct rc_dev *spdev;
 	int retval;
-	unsigned int irq;
 
 	user_sp_dev = kzalloc(sizeof(struct user_sp_input_dev), GFP_KERNEL);
 	if (!user_sp_dev)
@@ -194,26 +184,6 @@ static int __devinit user_sp_input_probe(struct platform_device *pdev)
 	user_sp_dev->dev = &pdev->dev;
 	platform_set_drvdata(pdev, user_sp_dev);
 	user_sp_dev->in_use = 0;
-
-	irq = MSM_GPIO_TO_INT(77);
-
-	retval = request_threaded_irq(irq, NULL, mcu_status_change,
-		IRQF_TRIGGER_FALLING,
-		"mcu status", NULL);
-	if (retval)
-		pr_err("request_threaded_irq failed\n");
-
-	retval = msm_mpm_set_pin_type(8, IRQ_TYPE_EDGE_FALLING);
-	if (retval)
-		pr_err("msm_mpm_set_pin_type failed\n");
-
-	retval = msm_mpm_enable_pin(8, 1);
-	if (retval)
-		pr_err("msm_mpm_enable_pin failed\n");
-
-	retval = msm_mpm_set_pin_wake(8, 1);
-	if (retval)
-		pr_err("msm_mpm_set_pin_wake failed\n");
 
 	return 0;
 
