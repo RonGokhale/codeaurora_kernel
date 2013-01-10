@@ -287,6 +287,17 @@ static int thermal_mitigation;
 
 static struct pm8921_chg_chip *the_chip;
 
+static int pm_chg_write(struct pm8921_chg_chip *chip, u16 addr, u8 reg)
+{
+	int rc;
+
+	rc = pm8xxx_writeb(chip->dev->parent, addr, reg);
+	if (rc)
+		pr_err("pm_chg_write failed: addr=%03X, rc=%d\n", addr, rc);
+
+	return rc;
+}
+
 static int pm_chg_masked_write(struct pm8921_chg_chip *chip, u16 addr,
 							u8 mask, u8 val)
 {
@@ -300,9 +311,9 @@ static int pm_chg_masked_write(struct pm8921_chg_chip *chip, u16 addr,
 	}
 	reg &= ~mask;
 	reg |= val & mask;
-	rc = pm8xxx_writeb(chip->dev->parent, addr, reg);
+	rc = pm_chg_write(chip, addr, reg);
 	if (rc) {
-		pr_err("pm8xxx_writeb failed: addr=%03X, rc=%d\n", addr, rc);
+		pr_err("pm_chg_write failed: addr=%03X, rc=%d\n", addr, rc);
 		return rc;
 	}
 	return 0;
@@ -339,14 +350,14 @@ static int pm_chg_get_fsm_state(struct pm8921_chg_chip *chip)
 	int err, ret = 0;
 
 	temp = CAPTURE_FSM_STATE_CMD;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return err;
 	}
 
 	temp = READ_BANK_7;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return err;
@@ -361,7 +372,7 @@ static int pm_chg_get_fsm_state(struct pm8921_chg_chip *chip)
 	ret = temp & 0xF;
 
 	temp = READ_BANK_4;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return err;
@@ -384,7 +395,7 @@ static int pm_chg_get_regulation_loop(struct pm8921_chg_chip *chip)
 	int err;
 
 	temp = READ_BANK_6;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return err;
@@ -466,7 +477,7 @@ static int __pm_chg_vddmax_set(struct pm8921_chg_chip *chip, int voltage)
 	}
 
 	pr_debug("voltage=%d setting %02x\n", voltage, temp);
-	return pm8xxx_writeb(chip->dev->parent, CHG_VDD_MAX, temp);
+	return pm_chg_write(chip, CHG_VDD_MAX, temp);
 }
 
 static int pm_chg_vddmax_get(struct pm8921_chg_chip *chip, int *voltage)
@@ -1238,7 +1249,7 @@ static int switch_usb_to_charge_mode(struct pm8921_chg_chip *chip)
 		return 0;
 
 	/* enable usbin valid comparator and remove force usb ovp fet off */
-	rc = pm8xxx_writeb(chip->dev->parent, USB_OVP_TEST, 0xB2);
+	rc = pm_chg_write(chip, USB_OVP_TEST, 0xB2);
 	if (rc < 0) {
 		pr_err("Failed to write 0xB2 to USB_OVP_TEST rc = %d\n", rc);
 		return rc;
@@ -1257,7 +1268,7 @@ static int switch_usb_to_host_mode(struct pm8921_chg_chip *chip)
 		return 0;
 
 	/* disable usbin valid comparator and force usb ovp fet off */
-	rc = pm8xxx_writeb(chip->dev->parent, USB_OVP_TEST, 0xB3);
+	rc = pm_chg_write(chip, USB_OVP_TEST, 0xB3);
 	if (rc < 0) {
 		pr_err("Failed to write 0xB3 to USB_OVP_TEST rc = %d\n", rc);
 		return rc;
@@ -1779,7 +1790,7 @@ int pm8921_disable_input_current_limit(bool disable)
 	if (disable) {
 		pr_warn("Disabling input current limit!\n");
 
-		return pm8xxx_writeb(the_chip->dev->parent,
+		return pm_chg_write(the_chip,
 			 CHG_BUCK_CTRL_TEST3, 0xF2);
 	}
 	return 0;
@@ -2078,7 +2089,7 @@ static void turn_off_ovp_fet(struct pm8921_chg_chip *chip, u16 ovptestreg)
 	u8 temp;
 	int rc;
 
-	rc = pm8xxx_writeb(chip->dev->parent, ovptestreg, 0x30);
+	rc = pm_chg_write(chip, ovptestreg, 0x30);
 	if (rc) {
 		pr_err("Failed to write 0x30 to OVP_TEST rc = %d\n", rc);
 		return;
@@ -2090,7 +2101,7 @@ static void turn_off_ovp_fet(struct pm8921_chg_chip *chip, u16 ovptestreg)
 	}
 	/* set ovp fet disable bit and the write bit */
 	temp |= 0x81;
-	rc = pm8xxx_writeb(chip->dev->parent, ovptestreg, temp);
+	rc = pm_chg_write(chip, ovptestreg, temp);
 	if (rc) {
 		pr_err("Failed to write 0x%x OVP_TEST rc=%d\n", temp, rc);
 		return;
@@ -2102,7 +2113,7 @@ static void turn_on_ovp_fet(struct pm8921_chg_chip *chip, u16 ovptestreg)
 	u8 temp;
 	int rc;
 
-	rc = pm8xxx_writeb(chip->dev->parent, ovptestreg, 0x30);
+	rc = pm_chg_write(chip, ovptestreg, 0x30);
 	if (rc) {
 		pr_err("Failed to write 0x30 to OVP_TEST rc = %d\n", rc);
 		return;
@@ -2115,7 +2126,7 @@ static void turn_on_ovp_fet(struct pm8921_chg_chip *chip, u16 ovptestreg)
 	/* unset ovp fet disable bit and set the write bit */
 	temp &= 0xFE;
 	temp |= 0x80;
-	rc = pm8xxx_writeb(chip->dev->parent, ovptestreg, temp);
+	rc = pm_chg_write(chip, ovptestreg, temp);
 	if (rc) {
 		pr_err("Failed to write 0x%x to OVP_TEST rc = %d\n",
 								temp, rc);
@@ -2417,7 +2428,6 @@ static void attempt_reverse_boost_fix(struct pm8921_chg_chip *chip,
 	pr_debug("count = %d disable_input_regulation\n", count);
 
 	msleep(20);
-
 	pr_debug("count = %d end sleep 20ms chg_gone=%d, usb_valid = %d\n",
 				count,
 				pm_chg_get_rt_status(chip, CHG_GONE_IRQ),
@@ -3407,28 +3417,28 @@ static void pm8921_chg_force_19p2mhz_clk(struct pm8921_chg_chip *chip)
 	u8 temp;
 
 	temp  = 0xD1;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return;
 	}
 
 	temp  = 0xD3;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return;
 	}
 
 	temp  = 0xD1;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return;
 	}
 
 	temp  = 0xD5;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return;
@@ -3437,14 +3447,14 @@ static void pm8921_chg_force_19p2mhz_clk(struct pm8921_chg_chip *chip)
 	udelay(183);
 
 	temp  = 0xD1;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return;
 	}
 
 	temp  = 0xD0;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return;
@@ -3452,14 +3462,14 @@ static void pm8921_chg_force_19p2mhz_clk(struct pm8921_chg_chip *chip)
 	udelay(32);
 
 	temp  = 0xD1;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return;
 	}
 
 	temp  = 0xD3;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return;
@@ -3472,14 +3482,14 @@ static void pm8921_chg_set_hw_clk_switching(struct pm8921_chg_chip *chip)
 	u8 temp;
 
 	temp  = 0xD1;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return;
 	}
 
 	temp  = 0xD0;
-	err = pm8xxx_writeb(chip->dev->parent, CHG_TEST, temp);
+	err = pm_chg_write(chip, CHG_TEST, temp);
 	if (err) {
 		pr_err("Error %d writing %d to addr %d\n", err, temp, CHG_TEST);
 		return;
@@ -3627,7 +3637,7 @@ static int __devinit pm8921_chg_hw_init(struct pm8921_chg_chip *chip)
 		return rc;
 	}
 	/* switch to a 3.2Mhz for the buck */
-	rc = pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CLOCK_CTRL, 0x15);
+	rc = pm_chg_write(chip, CHG_BUCK_CLOCK_CTRL, 0x15);
 	if (rc) {
 		pr_err("Failed to switch buck clk rc=%d\n", rc);
 		return rc;
@@ -3697,10 +3707,10 @@ static int __devinit pm8921_chg_hw_init(struct pm8921_chg_chip *chip)
 		}
 		/* Check if die 3.0.1 is present */
 		if (subrev == 0x1)
-			pm8xxx_writeb(chip->dev->parent,
+			pm_chg_write(chip,
 				CHG_BUCK_CTRL_TEST3, 0xA4);
 		else
-			pm8xxx_writeb(chip->dev->parent,
+			pm_chg_write(chip,
 				CHG_BUCK_CTRL_TEST3, 0xAC);
 	}
 
@@ -3717,10 +3727,10 @@ static int __devinit pm8921_chg_hw_init(struct pm8921_chg_chip *chip)
 		}
 	}
 
-	pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, 0xD9);
+	pm_chg_write(chip, CHG_BUCK_CTRL_TEST3, 0xD9);
 
 	/* Disable EOC FSM processing */
-	pm8xxx_writeb(chip->dev->parent, CHG_BUCK_CTRL_TEST3, 0x91);
+	pm_chg_write(chip, CHG_BUCK_CTRL_TEST3, 0x91);
 
 	rc = pm_chg_masked_write(chip, CHG_CNTRL, VREF_BATT_THERM_FORCE_ON,
 						VREF_BATT_THERM_FORCE_ON);
@@ -3801,9 +3811,9 @@ static int set_reg(void *data, u64 val)
 	u8 temp;
 
 	temp = (u8) val;
-	ret = pm8xxx_writeb(the_chip->dev->parent, addr, temp);
+	ret = pm_chg_write(the_chip, addr, temp);
 	if (ret) {
-		pr_err("pm8xxx_writeb to %x value =%d errored = %d\n",
+		pr_err("pm_chg_write to %x value =%d errored = %d\n",
 			addr, temp, ret);
 		return -EAGAIN;
 	}
