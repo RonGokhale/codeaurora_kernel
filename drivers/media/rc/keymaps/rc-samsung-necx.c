@@ -56,6 +56,10 @@ static struct rc_map_table samsung_necx[] = {
 	{ 0x7071b, KEY_TV},
 	{ 0x7078b, KEY_AUX},
 	{ 0x7078c, KEY_MEDIA},
+	{ 0x70779, KEY_PVR},
+	{ 0x70773, KEY_SEARCH},
+	{ 0x7074b, KEY_ARCHIVE},
+	{ 0x7073e, KEY_CYCLEWINDOWS},
 
 };
 
