@@ -68,10 +68,10 @@ int msm_lpm_enter_sleep(uint32_t sclk_count, void *limits,
 
 	if (from_idle)
 		debug_mask = msm_lpm_lvl_dbg_msk &
-				MSM_LPM_LVL_DBG_IDLE_LIMITS;
+			MSM_LPM_LVL_DBG_IDLE_LIMITS;
 	else
 		debug_mask = msm_lpm_lvl_dbg_msk &
-				MSM_LPM_LVL_DBG_SUSPEND_LIMITS;
+			MSM_LPM_LVL_DBG_SUSPEND_LIMITS;
 
 	if (debug_mask)
 		pr_info("%s(): pxo:%d l2:%d mem:0x%x(0x%x) dig:0x%x(0x%x)\n",
@@ -87,10 +87,13 @@ int msm_lpm_enter_sleep(uint32_t sclk_count, void *limits,
 				__func__);
 		goto bail;
 	}
-	ret = msm_rpm_enter_sleep(debug_mask);
-	if (ret)
-		pr_warn("%s(): RPM failed to enter sleep err:%d\n",
-				__func__, ret);
+
+	if (notify_rpm) {
+		ret = msm_rpm_enter_sleep(debug_mask);
+		if (ret)
+			pr_warn("%s(): RPM failed to enter sleep err:%d\n",
+					__func__, ret);
+	}
 bail:
 	return ret;
 }
