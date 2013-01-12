@@ -96,6 +96,7 @@ extern struct platform_device apq8064_slim_ctrl;
 extern struct platform_device apq8064_device_ssbi_pmic1;
 extern struct platform_device apq8064_device_ssbi_pmic2;
 extern struct platform_device apq8064_device_cache_erp;
+extern struct platform_device apq8064_device_sata;
 
 extern struct platform_device mpq_mcu_comm_dev;
 
