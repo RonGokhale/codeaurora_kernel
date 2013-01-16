@@ -264,6 +264,7 @@ void msm_restart(char mode, const char *cmd)
 	printk(KERN_NOTICE "Going down for restart now\n");
 
 	pm8xxx_reset_pwr_off(1);
+	mpq_mcu_dev_power_off();
 
 	if (cmd != NULL) {
 		if (!strncmp(cmd, "bootloader", 10)) {
