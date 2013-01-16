@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -173,6 +173,8 @@
 #define WCD9XXX_A_MICB_4_MBHC__POR		(0x01)
 #define WCD9XXX_A_MICB_CFILT_1_VAL		(0x129)
 #define WCD9XXX_A_MICB_CFILT_1_VAL__POR		(0x80)
+#define WCD9XXX_A_RX_HPH_L_STATUS		(0x1B3)
+#define WCD9XXX_A_RX_HPH_L_STATUS__POR		(0x00)
 #define WCD9XXX_A_MBHC_HPH			(0x1FE)
 #define WCD9XXX_A_MBHC_HPH__POR			(0x44)
 #define WCD9XXX_A_RX_HPH_CNP_WG_TIME		(0x1AD)
