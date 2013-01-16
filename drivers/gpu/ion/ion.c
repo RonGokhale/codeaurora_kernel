@@ -903,27 +903,24 @@ end:
 }
 EXPORT_SYMBOL(ion_import);
 
-static int check_vaddr_bounds(unsigned long start, unsigned long end)
+static int check_vaddr_bounds(unsigned long start, unsigned long end,
+						struct mm_struct *mm)
 {
-	struct mm_struct *mm = current->active_mm;
 	struct vm_area_struct *vma;
 	int ret = 1;
 
 	if (end < start)
 		goto out;
 
-	down_read(&mm->mmap_sem);
 	vma = find_vma(mm, start);
 	if (vma && vma->vm_start < end) {
 		if (start < vma->vm_start)
-			goto out_up;
+			goto out;
 		if (end > vma->vm_end)
-			goto out_up;
+			goto out;
 		ret = 0;
 	}
 
-out_up:
-	up_read(&mm->mmap_sem);
 out:
 	return ret;
 }
@@ -1441,6 +1438,7 @@ err:
 static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct ion_client *client = filp->private_data;
+	struct mm_struct *mm = current->active_mm;
 
 	switch (cmd) {
 	case ION_IOC_ALLOC:
@@ -1538,11 +1536,6 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		start = (unsigned long) data.vaddr;
 		end = (unsigned long) data.vaddr + data.length;
 
-		if (check_vaddr_bounds(start, end)) {
-			pr_err("%s: virtual address %p is out of bounds\n",
-				__func__, data.vaddr);
-			return -EINVAL;
-		}
 
 		if (!data.handle) {
 			handle = ion_import_fd(client, data.fd);
@@ -1553,10 +1546,20 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			}
 		}
 
+		down_read(&mm->mmap_sem);
+
+		if (check_vaddr_bounds(start, end, mm)) {
+			pr_err("%s: virtual address %p is out of bounds\n",
+							__func__, data.vaddr);
+			return -EINVAL;
+		}
+
 		ret = ion_do_cache_op(client,
 					data.handle ? data.handle : handle,
 					data.vaddr, data.offset, data.length,
 					cmd);
+
+		up_read(&mm->mmap_sem);
 
 		if (!data.handle)
 			ion_free(client, handle);
