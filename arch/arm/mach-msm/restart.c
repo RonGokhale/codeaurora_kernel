@@ -216,6 +216,7 @@ static void msm_restart_prepare(const char *cmd)
 
 	pm8xxx_reset_pwr_off(1);
 	qpnp_pon_system_pwr_off(1);
+	mpq_mcu_dev_power_off();
 
 	if (cmd != NULL) {
 		if (!strncmp(cmd, "bootloader", 10)) {
