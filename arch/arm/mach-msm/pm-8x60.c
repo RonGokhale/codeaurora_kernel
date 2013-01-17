@@ -551,18 +551,13 @@ static bool __ref msm_pm_spm_power_collapse(
 static bool msm_pm_power_collapse_standalone(bool from_idle)
 {
 	unsigned int cpu = smp_processor_id();
-	unsigned int avsdscr;
-	unsigned int avscsr;
+	unsigned int avsdscr_setting;
 	bool collapsed;
 
-	avsdscr = avs_get_avsdscr();
-	avscsr = avs_get_avscsr();
-	avs_set_avscsr(0); /* Disable AVS */
-
+	avsdscr_setting = avs_get_avsdscr();
+	avs_disable();
 	collapsed = msm_pm_spm_power_collapse(cpu, from_idle, false);
-
-	avs_set_avsdscr(avsdscr);
-	avs_set_avscsr(avscsr);
+	avs_reset_delays(avsdscr_setting);
 	return collapsed;
 }
 
@@ -570,8 +565,7 @@ static bool msm_pm_power_collapse(bool from_idle)
 {
 	unsigned int cpu = smp_processor_id();
 	unsigned long saved_acpuclk_rate;
-	unsigned int avsdscr;
-	unsigned int avscsr;
+	unsigned int avsdscr_setting;
 	bool collapsed;
 
 	if (MSM_PM_DEBUG_POWER_COLLAPSE & msm_pm_debug_mask)
@@ -582,9 +576,8 @@ static bool msm_pm_power_collapse(bool from_idle)
 	if (MSM_PM_DEBUG_POWER_COLLAPSE & msm_pm_debug_mask)
 		pr_info("CPU%u: %s: pre power down\n", cpu, __func__);
 
-	avsdscr = avs_get_avsdscr();
-	avscsr = avs_get_avscsr();
-	avs_set_avscsr(0); /* Disable AVS */
+	avsdscr_setting = avs_get_avsdscr();
+	avs_disable();
 
 	if (cpu_online(cpu))
 		saved_acpuclk_rate = acpuclk_power_collapse();
@@ -626,8 +619,7 @@ static bool msm_pm_power_collapse(bool from_idle)
 	}
 
 
-	avs_set_avsdscr(avsdscr);
-	avs_set_avscsr(avscsr);
+	avs_reset_delays(avsdscr_setting);
 	msm_pm_config_hw_after_power_up();
 	if (MSM_PM_DEBUG_POWER_COLLAPSE & msm_pm_debug_mask)
 		pr_info("CPU%u: %s: post power up\n", cpu, __func__);
