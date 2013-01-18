@@ -2,6 +2,7 @@ codeaurora_kernel clone on github
 ========================
 
 list of branches 
+=================
 
 - banana.cupcake
 - donut_glazed
@@ -32,6 +33,7 @@ list of branches
 - msm-3.4
 
 list of tags
+=============
 
 - M8625SSNSKMLYA1015
 - M7630AABBQMLZA40901000
@@ -47,3 +49,4 @@ list of tags
 - M76XXTSNCJNLYA6013
 
 branchs and tags will be updated as i get time 
+==============================================
