@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation, All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -32,6 +32,7 @@
 #include <linux/mfd/pmic8058.h>
 #include <asm/mach-types.h>
 #include <asm/uaccess.h>
+#include <asm/atomic.h>
 #include <mach/mdm2.h>
 #include <mach/restart.h>
 #include <mach/subsystem_notif.h>
@@ -63,6 +64,7 @@ DECLARE_COMPLETION(mdm_boot);
 DECLARE_COMPLETION(mdm_ram_dumps);
 
 static int first_boot = 1;
+static atomic_t ssr_in_progress;
 
 #define RD_BUF_SIZE			100
 #define SFR_MAX_RETRIES		10
@@ -127,6 +129,11 @@ static void mdm_restart_reason_fn(struct work_struct *work)
 
 	do {
 		msleep(SFR_RETRY_INTERVAL);
+		/* Calling sysmon during an SSR may cause unclocked
+		 * accesses.
+		 */
+		if (atomic_read(&ssr_in_progress) > 0)
+			break;
 		ret = sysmon_get_reason(SYSMON_SS_EXT_MODEM,
 					sfr_buf, sizeof(sfr_buf));
 		if (ret) {
@@ -354,6 +361,7 @@ static irqreturn_t mdm_pblrdy_change(int irq, void *dev_id)
 static int mdm_subsys_shutdown(const struct subsys_data *crashed_subsys)
 {
 	mdm_drv->mdm_ready = 0;
+	atomic_inc(&ssr_in_progress);
 	gpio_direction_output(mdm_drv->ap2mdm_errfatal_gpio, 1);
 	if (mdm_drv->pdata->ramdump_delay_ms > 0) {
 		/* Wait for the external modem to complete
@@ -388,6 +396,7 @@ static int mdm_subsys_powerup(const struct subsys_data *crashed_subsys)
 			queue_work(mdm_sfr_queue, &sfr_reason_work);
 	}
 	INIT_COMPLETION(mdm_boot);
+	atomic_dec(&ssr_in_progress);
 	return mdm_drv->mdm_boot_status;
 }
 
