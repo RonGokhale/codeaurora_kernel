@@ -1,0 +1,16 @@
+Qualcomm IMEM
+
+IMEM is fast on-chip memory used for various debug features
+
+
+Required properties
+
+-compatible: "qcom,msm-imem"
+-reg: start address and size of imem memory
+
+Example:
+
+	qcom,msm-imem@deadbeef {
+		compatible = "qcom,msm-imem";
+		reg = <0xdeadbeef 0x1000>; /* < start_address size > */
+	};

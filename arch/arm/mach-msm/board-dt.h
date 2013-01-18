@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -16,3 +16,5 @@ void __init msm_dt_init_irq_nompm(void);
 void __init msm_dt_init_irq_l2x0(void);
 extern int __init msm_gpio_of_init(struct device_node *,
 				struct device_node *);
+int __init msm_scan_dt_map_imem(unsigned long node, const char *uname,
+				int depth, void *data);
