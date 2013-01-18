@@ -2334,23 +2334,6 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"AUX_PCM_TX", NULL, "BE_IN"},
 	{"INCALL_RECORD_TX", NULL, "BE_IN"},
 	{"INCALL_RECORD_RX", NULL, "BE_IN"},
-	/*Route the be dai link with the aif*/
-	{"SLIM0_RX Playback", NULL, "SLIMBUS_0_RX"},
-	{"SLIM1_RX Playback", NULL, "SLIMBUS_1_RX"},
-	{"SLIM3_RX Playback", NULL, "SLIMBUS_3_RX"},
-	{"SLIM4_RX Playback", NULL, "SLIMBUS_4_RX"},
-	{"FM Playback", NULL, "INT_FM_RX"},
-	{"AFE Playback", NULL, "PCM_RX"},
-	{"Voice Downlink Capture", NULL, "INCALL_RECORD_RX"},
-	{"BT-SCO Playback", NULL, "INT_BT_SCO_RX"},
-	{"SLIMBUS_0_TX", NULL, "SLIM0_TX Capture" },
-	{"SLIMBUS_1_TX", NULL, "SLIM1_TX Capture" },
-	{"SLIMBUS_3_TX", NULL, "SLIM3_TX Capture" },
-	{"SLIMBUS_4_TX", NULL, "SLIM4_TX Capture" },
-	{"INT_BT_SCO_TX", NULL, "BT-SCO Capture"},
-	{"INT_FM_TX", NULL, "FM Capture"},
-	{"PCM_TX", NULL, "AFE Capture"},
-	{"INCALL_RECORD_TX", NULL, "Voice Uplink Capture"}
 };
 
 static int msm_pcm_routing_hw_params(struct snd_pcm_substream *substream,

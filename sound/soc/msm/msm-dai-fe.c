@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -39,10 +39,39 @@ static int multimedia_startup(struct snd_pcm_substream *substream,
 	snd_pcm_hw_constraint_list(substream->runtime, 0,
 		SNDRV_PCM_HW_PARAM_RATE,
 		&constraints_sample_rates);
-
 	return 0;
 }
 
+static int fe_dai_probe(struct snd_soc_dai *dai)
+{
+	struct snd_soc_dapm_route intercon;
+	if (!dai || !dai->driver) {
+		pr_err("%s invalid params\n", __func__);
+		return -EINVAL;
+	}
+	memset(&intercon, 0 , sizeof(intercon));
+	if (dai->driver->playback.stream_name &&
+		dai->driver->playback.aif_name) {
+		dev_dbg(dai->dev, "%s add route for widget %s",
+			   __func__, dai->driver->playback.stream_name);
+		intercon.source = dai->driver->playback.stream_name;
+		intercon.sink = dai->driver->playback.aif_name;
+		dev_dbg(dai->dev, "%s src %s sink %s\n",
+			   __func__, intercon.source, intercon.sink);
+		snd_soc_dapm_add_routes(&dai->dapm, &intercon, 1);
+	}
+	if (dai->driver->capture.stream_name &&
+	   dai->driver->capture.aif_name) {
+		dev_dbg(dai->dev, "%s add route for widget %s",
+			   __func__, dai->driver->capture.stream_name);
+		intercon.sink = dai->driver->capture.stream_name;
+		intercon.source = dai->driver->capture.aif_name;
+		dev_dbg(dai->dev, "%s src %s sink %s\n",
+			   __func__, intercon.source, intercon.sink);
+		snd_soc_dapm_add_routes(&dai->dapm, &intercon, 1);
+	}
+	return 0;
+}
 static struct snd_soc_dai_ops msm_fe_Multimedia_dai_ops = {
 	.startup	= multimedia_startup,
 };
@@ -73,6 +102,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_Multimedia_dai_ops,
 		.name = "MultiMedia1",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -99,6 +129,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_Multimedia_dai_ops,
 		.name = "MultiMedia2",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -123,6 +154,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "CS-VOICE",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -149,6 +181,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "VoIP",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -164,6 +197,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_Multimedia_dai_ops,
 		.name = "MultiMedia3",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -190,6 +224,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_Multimedia_dai_ops,
 		.name = "MultiMedia4",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -216,6 +251,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_Multimedia_dai_ops,
 		.name = "MultiMedia5",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -231,6 +267,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_Multimedia_dai_ops,
 		.name = "MultiMedia6",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -246,6 +283,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_Multimedia_dai_ops,
 		.name = "MultiMedia7",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -261,6 +299,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_Multimedia_dai_ops,
 		.name = "MultiMedia8",
+		.probe = fe_dai_probe,
 	},
 	/* FE DAIs created for hostless operation purpose */
 	{
@@ -286,6 +325,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "SLIMBUS0_HOSTLESS",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -310,6 +350,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "SLIMBUS1_HOSTLESS",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -334,6 +375,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "SLIMBUS3_HOSTLESS",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -358,6 +400,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "SLIMBUS4_HOSTLESS",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -382,6 +425,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "INT_FM_HOSTLESS",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -410,6 +454,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "AFE-PROXY",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -448,6 +493,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "AUXPCM_HOSTLESS",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -472,6 +518,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "VOICE_STUB",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -496,6 +543,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "VoLTE",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -520,6 +568,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "MI2S_TX_HOSTLESS",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -534,6 +583,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "SEC_I2S_RX_HOSTLESS",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -558,6 +608,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "SGLTE",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -584,6 +635,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_Multimedia_dai_ops,
 		.name = "Pseudo",
+		.probe = fe_dai_probe,
 	},
 	{
 		.playback = {
@@ -598,6 +650,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "DTMF_RX_HOSTLESS",
+		.probe = fe_dai_probe,
 	},
 };
 
