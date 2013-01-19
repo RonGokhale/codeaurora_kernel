@@ -66,6 +66,8 @@
 #define TRIP_STAGE1			2
 #define TRIP_NUM			3
 
+#define WRITABLE_TRIPS_MASK ((1 << TRIP_NUM ) - 1)
+
 struct pm8xxx_tm_chip {
 	struct pm8xxx_tm_core_data	cdata;
 	struct delayed_work		irq_work;
@@ -605,7 +607,7 @@ static int __devinit pm8xxx_tm_probe(struct platform_device *pdev)
 		tz_ops = &pm8xxx_thermal_zone_ops_no_adc;
 
 	chip->tz_dev = thermal_zone_device_register(chip->cdata.tm_name,
-			TRIP_NUM, chip, tz_ops, 0, 0, 0, 0);
+		    TRIP_NUM, WRITABLE_TRIPS_MASK, chip, tz_ops, 0, 0);
 
 	if (chip->tz_dev == NULL) {
 		pr_err("thermal_zone_device_register() failed.\n");
