@@ -296,7 +296,7 @@ int data_bridge_open(struct bridge *brdg)
 	struct data_bridge	*dev;
 
 	if (!brdg) {
-		err("bridge is null\n");
+		pr_err("bridge is null\n");
 		return -EINVAL;
 	}
 
@@ -305,7 +305,7 @@ int data_bridge_open(struct bridge *brdg)
 
 	dev = __dev[brdg->ch_id];
 	if (!dev) {
-		err("dev is null\n");
+		pr_err("dev is null\n");
 		return -ENODEV;
 	}
 
@@ -627,13 +627,13 @@ static int data_bridge_probe(struct usb_interface *iface,
 
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev) {
-		err("%s: unable to allocate dev\n", __func__);
+		pr_err("%s: unable to allocate dev\n", __func__);
 		return -ENOMEM;
 	}
 
 	dev->pdev = platform_device_alloc(data_bridge_names[id], id);
 	if (!dev->pdev) {
-		err("%s: unable to allocate platform device\n", __func__);
+		pr_err("%s: unable to allocate platform device\n", __func__);
 		kfree(dev);
 		return -ENOMEM;
 	}
@@ -915,7 +915,7 @@ bridge_probe(struct usb_interface *iface, const struct usb_device_id *id)
 	iface_num = iface->cur_altsetting->desc.bInterfaceNumber;
 
 	if (iface->num_altsetting != 1) {
-		err("%s invalid num_altsetting %u\n",
+		pr_err("%s invalid num_altsetting %u\n",
 				__func__, iface->num_altsetting);
 		return -EINVAL;
 	}
@@ -985,7 +985,7 @@ static void bridge_disconnect(struct usb_interface *intf)
 	unsigned long		flags;
 
 	if (!dev) {
-		err("%s: data device not found\n", __func__);
+		pr_err("%s: data device not found\n", __func__);
 		return;
 	}
 
@@ -1056,7 +1056,7 @@ static int __init bridge_init(void)
 
 	ret = usb_register(&bridge_driver);
 	if (ret) {
-		err("%s: unable to register mdm_bridge driver", __func__);
+		pr_err("%s: unable to register mdm_bridge driver", __func__);
 		return ret;
 	}
 

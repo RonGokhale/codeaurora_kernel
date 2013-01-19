@@ -628,14 +628,14 @@ static int __init rmnet_usb_init(void)
 
 	retval = usb_register(&rmnet_usb);
 	if (retval) {
-		err("usb_register failed: %d", retval);
+		pr_err("usb_register failed: %d", retval);
 		return retval;
 	}
 	/* initialize rmnet ctrl device here*/
 	retval = rmnet_usb_ctrl_init();
 	if (retval) {
 		usb_deregister(&rmnet_usb);
-		err("rmnet_usb_cmux_init failed: %d", retval);
+		pr_err("rmnet_usb_cmux_init failed: %d", retval);
 		return retval;
 	}
 

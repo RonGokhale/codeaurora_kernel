@@ -279,7 +279,7 @@ int ctrl_bridge_open(struct bridge *brdg)
 	struct ctrl_bridge	*dev;
 
 	if (!brdg) {
-		err("bridge is null\n");
+		pr_err("bridge is null\n");
 		return -EINVAL;
 	}
 
@@ -288,7 +288,7 @@ int ctrl_bridge_open(struct bridge *brdg)
 
 	dev = __dev[brdg->ch_id];
 	if (!dev) {
-		err("dev is null\n");
+		pr_err("dev is null\n");
 		return -ENODEV;
 	}
 
