@@ -1331,6 +1331,7 @@ static struct slim_device mpq8064_slim_ashiko20 = {
 };
 
 
+#ifdef CONFIG_SND_SOC_CS8427
 /* enable the level shifter for cs8427 to make sure the I2C
  * clock is running at 100KHz and voltage levels are at 3.3
  * and 5 volts
@@ -1357,6 +1358,7 @@ static struct i2c_board_info cs8427_device_info[] __initdata = {
 		.platform_data = &cs8427_i2c_platform_data,
 	},
 };
+#endif
 
 #define HAP_SHIFT_LVL_OE_GPIO		PM8921_MPP_PM_TO_SYS(8)
 #define ISA1200_HAP_EN_GPIO		PM8921_GPIO_PM_TO_SYS(33)
@@ -3400,12 +3402,14 @@ static struct i2c_registry apq8064_i2c_devices[] __initdata = {
 		isa1200_board_info,
 		ARRAY_SIZE(isa1200_board_info),
 	},
+#ifdef CONFIG_SND_SOC_CS8427
 	{
 		I2C_MPQ_CDP,
 		APQ_8064_GSBI5_QUP_I2C_BUS_ID,
 		cs8427_device_info,
 		ARRAY_SIZE(cs8427_device_info),
 	},
+#endif
 	{
 		I2C_SURF | I2C_FFA | I2C_LIQUID,
 		APQ_8064_GSBI1_QUP_I2C_BUS_ID,
