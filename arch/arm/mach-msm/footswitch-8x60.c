@@ -480,6 +480,7 @@ static struct footswitch footswitches[] = {
 static int footswitch_probe(struct platform_device *pdev)
 {
 	struct footswitch *fs;
+	struct regulator_config reg_config = {};
 	struct regulator_init_data *init_data;
 	struct fs_driver_data *driver_data;
 	struct fs_clk_data *clock;
@@ -520,8 +521,10 @@ static int footswitch_probe(struct platform_device *pdev)
 	regval &= ~RETENTION_BIT;
 	writel_relaxed(regval, fs->gfs_ctl_reg);
 
-	fs->rdev = regulator_register(&fs->desc, &pdev->dev,
-							init_data, fs, NULL);
+	reg_config.dev = &pdev->dev;
+	reg_config.init_data = init_data;
+	reg_config.driver_data = fs;
+	fs->rdev = regulator_register(&fs->desc, &reg_config);
 	if (IS_ERR(footswitches[pdev->id].rdev)) {
 		pr_err("regulator_register(\"%s\") failed\n",
 			fs->desc.name);
