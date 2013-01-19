@@ -28,6 +28,44 @@
  * with the relevant device-wide data.
  */
 
+/* big enough to hold our biggest descriptor */
+#define USB_BUFSIZ	4096
+
+static struct usb_composite_driver *composite;
+static int (*composite_gadget_bind)(struct usb_composite_dev *cdev);
+
+/* Some systems will need runtime overrides for the  product identifiers
+ * published in the device descriptor, either numbers or strings or both.
+ * String parameters are in UTF-8 (superset of ASCII's 7 bit characters).
+ */
+
+static ushort idVendor;
+module_param(idVendor, ushort, 0);
+MODULE_PARM_DESC(idVendor, "USB Vendor ID");
+
+static ushort idProduct;
+module_param(idProduct, ushort, 0);
+MODULE_PARM_DESC(idProduct, "USB Product ID");
+
+static ushort bcdDevice;
+module_param(bcdDevice, ushort, 0);
+MODULE_PARM_DESC(bcdDevice, "USB Device version (BCD)");
+
+static char *iManufacturer;
+module_param(iManufacturer, charp, 0);
+MODULE_PARM_DESC(iManufacturer, "USB Manufacturer string");
+
+static char *iProduct;
+module_param(iProduct, charp, 0);
+MODULE_PARM_DESC(iProduct, "USB Product string");
+
+static char *iSerialNumber;
+module_param(iSerialNumber, charp, 0);
+MODULE_PARM_DESC(iSerialNumber, "SerialNumber string");
+
+static char __maybe_unused composite_manufacturer[50];
+
+/*-------------------------------------------------------------------------*/
 /**
  * next_ep_desc() - advance to the next EP descriptor
  * @t: currect pointer within descriptor array
@@ -138,12 +176,13 @@ ep_found:
 	_ep->comp_desc = comp_desc;
 	if (g->speed == USB_SPEED_SUPER) {
 		switch (usb_endpoint_type(_ep->desc)) {
-		case USB_ENDPOINT_XFER_ISOC:
-			/* mult: bits 1:0 of bmAttributes */
-			_ep->mult = comp_desc->bmAttributes & 0x3;
 		case USB_ENDPOINT_XFER_BULK:
 		case USB_ENDPOINT_XFER_INT:
 			_ep->maxburst = comp_desc->bMaxBurst + 1;
+			break;
+		case USB_ENDPOINT_XFER_ISOC:
+			/* mult: bits 1:0 of bmAttributes */
+			_ep->mult = comp_desc->bmAttributes & 0x3;
 			break;
 		default:
 			if (comp_desc->bMaxBurst != 0)
@@ -339,7 +378,8 @@ static int config_buf(struct usb_configuration *config,
 	c->bConfigurationValue = config->bConfigurationValue;
 	c->iConfiguration = config->iConfiguration;
 	c->bmAttributes = USB_CONFIG_ATT_ONE | config->bmAttributes;
-	c->bMaxPower = config->bMaxPower ? : (CONFIG_USB_GADGET_VBUS_DRAW / 2);
+	c->bMaxPower = config->bMaxPower ? :
+		(CONFIG_USB_GADGET_VBUS_DRAW / config->cdev->vbus_draw_units);
 
 	/* There may be e.g. OTG descriptors */
 	if (config->descriptors) {
@@ -656,9 +696,11 @@ static int set_config(struct usb_composite_dev *cdev,
 	}
 
 	/* when we return, be sure our power usage is valid */
-	power = c->bMaxPower ? (2 * c->bMaxPower) : CONFIG_USB_GADGET_VBUS_DRAW;
+	power = c->bMaxPower ? (cdev->vbus_draw_units * c->bMaxPower) :
+			CONFIG_USB_GADGET_VBUS_DRAW;
 done:
 	usb_gadget_vbus_draw(gadget, power);
+
 	if (result >= 0 && cdev->delayed_status)
 		result = USB_GADGET_DELAYED_STATUS;
 	return result;
@@ -759,9 +801,8 @@ done:
 				config->bConfigurationValue, status);
 	return status;
 }
-EXPORT_SYMBOL_GPL(usb_add_config);
 
-static void remove_config(struct usb_composite_dev *cdev,
+static int unbind_config(struct usb_composite_dev *cdev,
 			      struct usb_configuration *config)
 {
 	while (!list_empty(&config->functions)) {
@@ -782,6 +823,8 @@ static void remove_config(struct usb_composite_dev *cdev,
 		config->unbind(config);
 			/* may free memory for "c" */
 	}
+
+	return 0;
 }
 
 /**
@@ -793,7 +836,7 @@ static void remove_config(struct usb_composite_dev *cdev,
  * to disconnect the device from the host and make sure the host will not
  * try to enumerate the device while we are changing the config list.
  */
-void usb_remove_config(struct usb_composite_dev *cdev,
+int usb_remove_config(struct usb_composite_dev *cdev,
 		      struct usb_configuration *config)
 {
 	unsigned long flags;
@@ -803,9 +846,11 @@ void usb_remove_config(struct usb_composite_dev *cdev,
 	if (cdev->config == config)
 		reset_config(cdev);
 
+	list_del(&config->list);
+
 	spin_unlock_irqrestore(&cdev->lock, flags);
 
-	remove_config(cdev, config);
+	return unbind_config(cdev, config);
 }
 
 /*-------------------------------------------------------------------------*/
@@ -1046,6 +1091,11 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 	u16				w_length = le16_to_cpu(ctrl->wLength);
 	struct usb_function		*f = NULL;
 	u8				endp;
+	struct usb_configuration *c;
+
+
+	if (w_length > USB_BUFSIZ)
+		return value;
 
 	/* partial re-init of the response message; the function or the
 	 * gadget might need to intercept e.g. a control-OUT completion
@@ -1069,12 +1119,16 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 				count_configs(cdev, USB_DT_DEVICE);
 			cdev->desc.bMaxPacketSize0 =
 				cdev->gadget->ep0->maxpacket;
+			cdev->vbus_draw_units = 2;
 			if (gadget_is_superspeed(gadget)) {
 				if (gadget->speed >= USB_SPEED_SUPER) {
 					cdev->desc.bcdUSB = cpu_to_le16(0x0300);
 					cdev->desc.bMaxPacketSize0 = 9;
+					cdev->vbus_draw_units = 8;
+					DBG(cdev, "Config SS device in SS\n");
 				} else {
 					cdev->desc.bcdUSB = cpu_to_le16(0x0210);
+					DBG(cdev, "Config SS device in HS\n");
 				}
 			}
 
@@ -1098,6 +1152,16 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 			value = config_desc(cdev, w_value);
 			if (value >= 0)
 				value = min(w_length, (u16) value);
+			break;
+		case USB_DT_OTG:
+			if (!gadget_is_otg(gadget))
+				break;
+			c = list_first_entry(&cdev->configs,
+				struct usb_configuration, list);
+			if (c && c->descriptors)
+				value = usb_find_descriptor_fillbuf(req->buf,
+						USB_BUFSIZ, c->descriptors,
+						USB_DT_OTG);
 			break;
 		case USB_DT_STRING:
 			value = get_string(cdev, req->buf,
@@ -1346,10 +1410,11 @@ composite_unbind(struct usb_gadget *gadget)
 		struct usb_configuration	*c;
 		c = list_first_entry(&cdev->configs,
 				struct usb_configuration, list);
-		remove_config(cdev, c);
+		list_del(&c->list);
+		unbind_config(cdev, c);
 	}
-	if (cdev->driver->unbind)
-		cdev->driver->unbind(cdev);
+	if (composite->unbind)
+		composite->unbind(cdev);
 
 	if (cdev->req) {
 		kfree(cdev->req->buf);
@@ -1521,7 +1586,8 @@ composite_resume(struct usb_gadget *gadget)
 		maxpower = cdev->config->bMaxPower;
 
 		usb_gadget_vbus_draw(gadget, maxpower ?
-			(2 * maxpower) : CONFIG_USB_GADGET_VBUS_DRAW);
+			(cdev->vbus_draw_units * maxpower) :
+			CONFIG_USB_GADGET_VBUS_DRAW);
 	}
 
 	cdev->suspended = 0;
@@ -1529,8 +1595,7 @@ composite_resume(struct usb_gadget *gadget)
 
 /*-------------------------------------------------------------------------*/
 
-static const struct usb_gadget_driver composite_driver_template = {
-	.bind		= composite_bind,
+static struct usb_gadget_driver composite_driver = {
 	.unbind		= composite_unbind,
 
 	.setup		= composite_setup,
@@ -1565,24 +1630,26 @@ static const struct usb_gadget_driver composite_driver_template = {
  */
 int usb_composite_probe(struct usb_composite_driver *driver)
 {
-	struct usb_gadget_driver *gadget_driver;
+	int retval;
 
-	if (!driver || !driver->dev || !driver->bind)
+	if (!driver || !driver->dev || !bind)
 		return -EINVAL;
 
 	if (!driver->name)
 		driver->name = "composite";
+	if (!driver->iProduct)
+		driver->iProduct = driver->name;
+	composite_driver.function =  (char *) driver->name;
+	composite_driver.driver.name = driver->name;
+	composite_driver.max_speed = driver->max_speed;
+	composite = driver;
+	composite_gadget_bind = bind;
 
-	driver->gadget_driver = composite_driver_template;
-	gadget_driver = &driver->gadget_driver;
-
-	gadget_driver->function =  (char *) driver->name;
-	gadget_driver->driver.name = driver->name;
-	gadget_driver->max_speed = driver->max_speed;
-
-	return usb_gadget_probe_driver(gadget_driver);
+	retval = usb_gadget_probe_driver(&composite_driver, composite_bind);
+	if (retval)
+		composite = NULL;
+	return retval;
 }
-EXPORT_SYMBOL_GPL(usb_composite_probe);
 
 /**
  * usb_composite_unregister() - unregister a composite driver

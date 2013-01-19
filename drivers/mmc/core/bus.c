@@ -144,6 +144,9 @@ static int mmc_bus_resume(struct device *dev)
 		ret = drv->resume(card);
 	return ret;
 }
+#else
+#define mmc_bus_suspend NULL
+#define mmc_bus_resume NULL
 #endif
 
 #ifdef CONFIG_PM_RUNTIME
@@ -251,6 +254,9 @@ struct mmc_card *mmc_alloc_card(struct mmc_host *host, struct device_type *type)
 	card->dev.release = mmc_release_card;
 	card->dev.type = type;
 
+	spin_lock_init(&card->bkops_info.bkops_stats.lock);
+	spin_lock_init(&card->wr_pack_stats.lock);
+
 	return card;
 }
 
@@ -322,6 +328,7 @@ int mmc_add_card(struct mmc_card *card)
 #ifdef CONFIG_DEBUG_FS
 	mmc_add_card_debugfs(card);
 #endif
+	mmc_init_context_info(card->host);
 
 	ret = device_add(&card->dev);
 	if (ret)
@@ -352,6 +359,8 @@ void mmc_remove_card(struct mmc_card *card)
 		}
 		device_del(&card->dev);
 	}
+
+	kfree(card->wr_pack_stats.packing_events);
 
 	put_device(&card->dev);
 }

@@ -1075,7 +1075,6 @@ static int soc_probe_codec(struct snd_soc_card *card,
 	codec->card = card;
 	codec->dapm.card = card;
 	soc_set_name_prefix(card, codec);
-
 	if (!try_module_get(codec->dev->driver->owner))
 		return -ENODEV;
 
@@ -1142,7 +1141,6 @@ static int soc_probe_platform(struct snd_soc_card *card,
 
 	if (!try_module_get(platform->dev->driver->owner))
 		return -ENODEV;
-
 	soc_init_platform_debugfs(platform);
 
 	if (driver->dapm_widgets)
@@ -1151,9 +1149,8 @@ static int soc_probe_platform(struct snd_soc_card *card,
 
 	/* Create DAPM widgets for each DAI stream */
 	list_for_each_entry(dai, &dai_list, list) {
-		if (dai->dev != platform->dev)
+		if (dai->codec != NULL)
 			continue;
-
 		snd_soc_dapm_new_dai_widgets(&platform->dapm, dai);
 	}
 
@@ -1293,7 +1290,6 @@ static int soc_probe_link_components(struct snd_soc_card *card, int num,
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	struct snd_soc_platform *platform = rtd->platform;
 	int ret;
-
 	/* probe the CPU-side component, if it is a CODEC */
 	if (cpu_dai->codec &&
 	    !cpu_dai->codec->probed &&
@@ -1335,7 +1331,6 @@ static int soc_probe_link_dais(struct snd_soc_card *card, int num, int order)
 
 	dev_dbg(card->dev, "probe %s dai link %d late %d\n",
 			card->name, num, order);
-
 	/* config components */
 	cpu_dai->platform = platform;
 	codec_dai->card = card;
@@ -1343,7 +1338,6 @@ static int soc_probe_link_dais(struct snd_soc_card *card, int num, int order)
 
 	/* set default power off timeout */
 	rtd->pmdown_time = pmdown_time;
-
 	/* probe the cpu_dai */
 	if (!cpu_dai->probed &&
 			cpu_dai->driver->probe_order == order) {
@@ -1351,9 +1345,8 @@ static int soc_probe_link_dais(struct snd_soc_card *card, int num, int order)
 			cpu_dai->dapm.card = card;
 			if (!try_module_get(cpu_dai->dev->driver->owner))
 				return -ENODEV;
-
 			list_add(&cpu_dai->dapm.list, &card->dapm_list);
-			snd_soc_dapm_new_dai_widgets(&cpu_dai->dapm, cpu_dai);
+			//snd_soc_dapm_new_dai_widgets(&cpu_dai->dapm, cpu_dai);
 		}
 
 		if (cpu_dai->driver->probe) {
@@ -1645,7 +1638,6 @@ static int snd_soc_instantiate_card(struct snd_soc_card *card)
 	/* deferred resume work */
 	INIT_WORK(&card->deferred_resume_work, soc_resume_deferred);
 #endif
-
 	if (card->dapm_widgets)
 		snd_soc_dapm_new_controls(&card->dapm, card->dapm_widgets,
 					  card->num_dapm_widgets);
@@ -1693,10 +1685,8 @@ static int snd_soc_instantiate_card(struct snd_soc_card *card)
 	}
 
 	snd_soc_dapm_link_dai_widgets(card);
-
 	if (card->controls)
 		snd_soc_add_card_controls(card, card->controls, card->num_controls);
-
 	if (card->dapm_routes)
 		snd_soc_dapm_add_routes(&card->dapm, card->dapm_routes,
 					card->num_dapm_routes);
@@ -2213,6 +2203,10 @@ int snd_soc_set_runtime_hwparams(struct snd_pcm_substream *substream,
 	const struct snd_pcm_hardware *hw)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
+	if (!runtime) {
+		pr_err("%s runtime is NULL\n",__func__);
+		return 0;
+	}
 	runtime->hw.info = hw->info;
 	runtime->hw.formats = hw->formats;
 	runtime->hw.period_bytes_min = hw->period_bytes_min;
@@ -2586,6 +2580,39 @@ int snd_soc_info_volsw_ext(struct snd_kcontrol *kcontrol,
 EXPORT_SYMBOL_GPL(snd_soc_info_volsw_ext);
 
 /**
+ * snd_soc_info_multi_ext - external single mixer info callback
+ * @kcontrol: mixer control
+ * @uinfo: control element information
+ *
+ * Callback to provide information about a single external mixer control.
+ * that accepts multiple input.
+ *
+ * Returns 0 for success.
+ */
+int snd_soc_info_multi_ext(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_info *uinfo)
+{
+	struct soc_multi_mixer_control *mc =
+		(struct soc_multi_mixer_control *)kcontrol->private_value;
+	int platform_max;
+
+	if (!mc->platform_max)
+		mc->platform_max = mc->max;
+	platform_max = mc->platform_max;
+
+	if (platform_max == 1 && !strnstr(kcontrol->id.name, " Volume", 30))
+		uinfo->type = SNDRV_CTL_ELEM_TYPE_BOOLEAN;
+	else
+		uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+
+	uinfo->count = mc->count;
+	uinfo->value.integer.min = 0;
+	uinfo->value.integer.max = platform_max;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(snd_soc_info_multi_ext);
+
+/**
  * snd_soc_info_volsw - single mixer info callback
  * @kcontrol: mixer control
  * @uinfo: control element information
@@ -2613,7 +2640,10 @@ int snd_soc_info_volsw(struct snd_kcontrol *kcontrol,
 
 	uinfo->count = snd_soc_volsw_is_stereo(mc) ? 2 : 1;
 	uinfo->value.integer.min = 0;
-	uinfo->value.integer.max = platform_max;
+	if (mc->min < 0 && (uinfo->type == SNDRV_CTL_ELEM_TYPE_INTEGER))
+		uinfo->value.integer.max = platform_max - mc->min;
+	else
+		uinfo->value.integer.max = platform_max;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_info_volsw);
@@ -3482,6 +3512,29 @@ int snd_soc_dai_set_channel_map(struct snd_soc_dai *dai,
 EXPORT_SYMBOL_GPL(snd_soc_dai_set_channel_map);
 
 /**
+ * snd_soc_dai_get_channel_map - configure DAI audio channel map
+ * @dai: DAI
+ * @tx_num: how many TX channels
+ * @tx_slot: pointer to an array which imply the TX slot number channel
+ *           0~num-1 uses
+ * @rx_num: how many RX channels
+ * @rx_slot: pointer to an array which imply the RX slot number channel
+ *           0~num-1 uses
+ *
+ * configure the relationship between channel number and TDM slot number.
+ */
+int snd_soc_dai_get_channel_map(struct snd_soc_dai *dai,
+	unsigned int *tx_num, unsigned int *tx_slot,
+	unsigned int *rx_num, unsigned int *rx_slot)
+{
+	if (dai->driver && dai->driver->ops->get_channel_map)
+		return dai->driver->ops->get_channel_map(dai, tx_num, tx_slot,
+			rx_num, rx_slot);
+	else
+		return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(snd_soc_dai_get_channel_map);
+/**
  * snd_soc_dai_set_tristate - configure DAI system or master clock.
  * @dai: DAI
  * @tristate: tristate enable
@@ -3797,7 +3850,6 @@ int snd_soc_register_dais(struct device *dev,
 			ret = -EINVAL;
 			goto err;
 		}
-
 		dai->dev = dev;
 		dai->driver = &dai_drv[i];
 		if (dai->driver->id)

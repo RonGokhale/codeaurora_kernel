@@ -76,7 +76,7 @@ static const unsigned armv6_perf_map[PERF_COUNT_HW_MAX] = {
 	[PERF_COUNT_HW_STALLED_CYCLES_BACKEND]	= ARMV6_PERFCTR_LSU_FULL_STALL,
 };
 
-static const unsigned armv6_perf_cache_map[PERF_COUNT_HW_CACHE_MAX]
+static unsigned armv6_perf_cache_map[PERF_COUNT_HW_CACHE_MAX]
 					  [PERF_COUNT_HW_CACHE_OP_MAX]
 					  [PERF_COUNT_HW_CACHE_RESULT_MAX] = {
 	[C(L1D)] = {
@@ -231,7 +231,7 @@ static const unsigned armv6mpcore_perf_map[PERF_COUNT_HW_MAX] = {
 	[PERF_COUNT_HW_STALLED_CYCLES_BACKEND]	= ARMV6MPCORE_PERFCTR_LSU_FULL_STALL,
 };
 
-static const unsigned armv6mpcore_perf_cache_map[PERF_COUNT_HW_CACHE_MAX]
+static unsigned armv6mpcore_perf_cache_map[PERF_COUNT_HW_CACHE_MAX]
 					[PERF_COUNT_HW_CACHE_OP_MAX]
 					[PERF_COUNT_HW_CACHE_RESULT_MAX] = {
 	[C(L1D)] = {
@@ -652,6 +652,8 @@ static int armv6_map_event(struct perf_event *event)
 static struct arm_pmu armv6pmu = {
 	.name			= "v6",
 	.handle_irq		= armv6pmu_handle_irq,
+	.request_pmu_irq	= armpmu_generic_request_irq,
+	.free_pmu_irq		= armpmu_generic_free_irq,
 	.enable			= armv6pmu_enable_event,
 	.disable		= armv6pmu_disable_event,
 	.read_counter		= armv6pmu_read_counter,
@@ -686,6 +688,8 @@ static int armv6mpcore_map_event(struct perf_event *event)
 static struct arm_pmu armv6mpcore_pmu = {
 	.name			= "v6mpcore",
 	.handle_irq		= armv6pmu_handle_irq,
+	.request_pmu_irq	= armpmu_generic_request_irq,
+	.free_pmu_irq		= armpmu_generic_free_irq,
 	.enable			= armv6pmu_enable_event,
 	.disable		= armv6mpcore_pmu_disable_event,
 	.read_counter		= armv6pmu_read_counter,

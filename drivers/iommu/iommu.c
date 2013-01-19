@@ -26,12 +26,13 @@
 #include <linux/slab.h>
 #include <linux/errno.h>
 #include <linux/iommu.h>
+#include <linux/scatterlist.h>
 #include <linux/idr.h>
 #include <linux/notifier.h>
 #include <linux/err.h>
 
 static struct kset *iommu_group_kset;
-static struct ida iommu_group_ida;
+static struct idr iommu_group_idr;
 static struct mutex iommu_group_mutex;
 
 struct iommu_group {
@@ -125,7 +126,7 @@ static void iommu_group_release(struct kobject *kobj)
 		group->iommu_data_release(group->iommu_data);
 
 	mutex_lock(&iommu_group_mutex);
-	ida_remove(&iommu_group_ida, group->id);
+	idr_remove(&iommu_group_idr, group->id);
 	mutex_unlock(&iommu_group_mutex);
 
 	kfree(group->name);
@@ -166,22 +167,27 @@ struct iommu_group *iommu_group_alloc(void)
 	mutex_lock(&iommu_group_mutex);
 
 again:
-	if (unlikely(0 == ida_pre_get(&iommu_group_ida, GFP_KERNEL))) {
+	if (unlikely(0 == idr_pre_get(&iommu_group_idr, GFP_KERNEL))) {
 		kfree(group);
 		mutex_unlock(&iommu_group_mutex);
 		return ERR_PTR(-ENOMEM);
 	}
 
-	if (-EAGAIN == ida_get_new(&iommu_group_ida, &group->id))
+	ret = idr_get_new_above(&iommu_group_idr, group, 1, &group->id);
+	if (ret == -EAGAIN)
 		goto again;
-
 	mutex_unlock(&iommu_group_mutex);
+
+	if (ret == -ENOSPC) {
+		kfree(group);
+		return ERR_PTR(ret);
+	}
 
 	ret = kobject_init_and_add(&group->kobj, &iommu_group_ktype,
 				   NULL, "%d", group->id);
 	if (ret) {
 		mutex_lock(&iommu_group_mutex);
-		ida_remove(&iommu_group_ida, group->id);
+		idr_remove(&iommu_group_idr, group->id);
 		mutex_unlock(&iommu_group_mutex);
 		kfree(group);
 		return ERR_PTR(ret);
@@ -425,6 +431,37 @@ struct iommu_group *iommu_group_get(struct device *dev)
 EXPORT_SYMBOL_GPL(iommu_group_get);
 
 /**
+ * iommu_group_find - Find and return the group based on the group name.
+ * Also increment the reference count.
+ * @name: the name of the group
+ *
+ * This function is called by iommu drivers and clients to get the group
+ * by the specified name.  If found, the group is returned and the group
+ * reference is incremented, else NULL.
+ */
+struct iommu_group *iommu_group_find(const char *name)
+{
+	struct iommu_group *group;
+	int next = 0;
+
+	mutex_lock(&iommu_group_mutex);
+	while ((group = idr_get_next(&iommu_group_idr, &next))) {
+		if (group->name) {
+			if (strcmp(group->name, name) == 0)
+				break;
+		}
+		++next;
+	}
+	mutex_unlock(&iommu_group_mutex);
+
+	if (group)
+		kobject_get(group->devices_kobj);
+
+	return group;
+}
+EXPORT_SYMBOL_GPL(iommu_group_find);
+
+/**
  * iommu_group_put - Decrement group reference
  * @group: the group to use
  *
@@ -613,7 +650,7 @@ void iommu_set_fault_handler(struct iommu_domain *domain,
 }
 EXPORT_SYMBOL_GPL(iommu_set_fault_handler);
 
-struct iommu_domain *iommu_domain_alloc(struct bus_type *bus)
+struct iommu_domain *iommu_domain_alloc(struct bus_type *bus, int flags)
 {
 	struct iommu_domain *domain;
 	int ret;
@@ -627,7 +664,7 @@ struct iommu_domain *iommu_domain_alloc(struct bus_type *bus)
 
 	domain->ops = bus->iommu_ops;
 
-	ret = domain->ops->domain_init(domain);
+	ret = domain->ops->domain_init(domain, flags);
 	if (ret)
 		goto out_free;
 
@@ -850,11 +887,44 @@ size_t iommu_unmap(struct iommu_domain *domain, unsigned long iova, size_t size)
 }
 EXPORT_SYMBOL_GPL(iommu_unmap);
 
+int iommu_map_range(struct iommu_domain *domain, unsigned int iova,
+		    struct scatterlist *sg, unsigned int len, int prot)
+{
+	if (unlikely(domain->ops->map_range == NULL))
+		return -ENODEV;
+
+	BUG_ON(iova & (~PAGE_MASK));
+
+	return domain->ops->map_range(domain, iova, sg, len, prot);
+}
+EXPORT_SYMBOL_GPL(iommu_map_range);
+
+int iommu_unmap_range(struct iommu_domain *domain, unsigned int iova,
+		      unsigned int len)
+{
+	if (unlikely(domain->ops->unmap_range == NULL))
+		return -ENODEV;
+
+	BUG_ON(iova & (~PAGE_MASK));
+
+	return domain->ops->unmap_range(domain, iova, len);
+}
+EXPORT_SYMBOL_GPL(iommu_unmap_range);
+
+phys_addr_t iommu_get_pt_base_addr(struct iommu_domain *domain)
+{
+	if (unlikely(domain->ops->get_pt_base_addr == NULL))
+		return 0;
+
+	return domain->ops->get_pt_base_addr(domain);
+}
+EXPORT_SYMBOL_GPL(iommu_get_pt_base_addr);
+
 static int __init iommu_init(void)
 {
 	iommu_group_kset = kset_create_and_add("iommu_groups",
 					       NULL, kernel_kobj);
-	ida_init(&iommu_group_ida);
+	idr_init(&iommu_group_idr);
 	mutex_init(&iommu_group_mutex);
 
 	BUG_ON(!iommu_group_kset);

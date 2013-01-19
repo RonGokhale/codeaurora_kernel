@@ -701,7 +701,6 @@ struct station_info {
 
 	const u8 *assoc_req_ies;
 	size_t assoc_req_ies_len;
-
 	u32 beacon_loss_count;
 	s64 t_offset;
 
@@ -1418,6 +1417,21 @@ struct cfg80211_gtk_rekey_data {
 };
 
 /**
+ * struct cfg80211_update_ft_ies_params - FT IE Information
+ *
+ * This structure provides information needed to update the fast transition IE
+ *
+ * @md: The Mobility Domain ID, 2 Octet value
+ * @ie: Fast Transition IEs
+ * @ie_len: Length of ft_ie in octets
+ */
+struct cfg80211_update_ft_ies_params {
+	u16 md;
+	u8 *ie;
+	size_t ie_len;
+};
+
+/**
  * struct cfg80211_ops - backend description for wireless configuration
  *
  * This struct is registered by fullmac card drivers and/or wireless stacks
@@ -1843,6 +1857,9 @@ struct cfg80211_ops {
 				    struct wireless_dev *wdev);
 	void	(*stop_p2p_device)(struct wiphy *wiphy,
 				   struct wireless_dev *wdev);
+
+	int	(*update_ft_ies)(struct wiphy *wiphy, struct net_device *dev,
+				 struct cfg80211_update_ft_ies_params *ftie);
 };
 
 /*
@@ -3593,6 +3610,32 @@ u32 cfg80211_calculate_bitrate(struct rate_info *rate);
  * Requires the RTNL to be held.
  */
 void cfg80211_unregister_wdev(struct wireless_dev *wdev);
+
+/**
+ * struct cfg80211_ft_event - FT Information Elements
+ * @dev: network device
+ * @ies: FT IEs
+ * @ies_len: length of the FT IE in bytes
+ * @target_ap: target AP's MAC address
+ * @ric_ies: RIC IE
+ * @ric_ies_len: length of the RIC IE in bytes
+ */
+struct cfg80211_ft_event_params {
+	u8 *ies;
+	size_t ies_len;
+	u8 target_ap[ETH_ALEN];
+	u8 *ric_ies;
+	size_t ric_ies_len;
+};
+
+/**
+ * cfg80211_ft_event - notify userspace about FT IE and RIC IE
+ * @dev: network device
+ * @cfg80211_ft_event_params: IE information
+ */
+int cfg80211_ft_event(struct net_device *dev,
+			struct cfg80211_ft_event_params ft_event);
+
 
 /* Logging, debugging and troubleshooting/diagnostic helpers. */
 

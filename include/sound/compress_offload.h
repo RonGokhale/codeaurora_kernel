@@ -27,7 +27,7 @@
 
 #include <linux/types.h>
 #include <sound/asound.h>
-#include <sound/compress_params.h>
+#include "compress_params.h"
 
 
 #define SNDRV_COMPRESS_VERSION SNDRV_PROTOCOL_VERSION(0, 1, 0)
@@ -70,6 +70,7 @@ struct snd_compr_tstamp {
 	snd_pcm_uframes_t pcm_frames;
 	snd_pcm_uframes_t pcm_io_frames;
 	__u32 sampling_rate;
+	uint64_t timestamp;
 };
 
 /**
@@ -119,6 +120,16 @@ struct snd_compr_codec_caps {
 	__u32 codec;
 	__u32 num_descriptors;
 	struct snd_codec_desc descriptor[MAX_NUM_CODEC_DESCRIPTORS];
+};
+
+/**
+ * struct snd_compr_audio_info: compressed input audio information
+ * @frame_size: legth of the encoded frame with valid data
+ * @reserved: reserved for furture use
+ */
+struct snd_compr_audio_info {
+	uint32_t frame_size;
+	uint32_t reserved[15];
 };
 
 /**

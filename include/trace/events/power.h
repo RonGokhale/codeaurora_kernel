@@ -48,6 +48,48 @@ DEFINE_EVENT(cpu, cpu_frequency,
 	TP_ARGS(frequency, cpu_id)
 );
 
+TRACE_EVENT(cpu_frequency_switch_start,
+
+	TP_PROTO(unsigned int start_freq, unsigned int end_freq,
+		 unsigned int cpu_id),
+
+	TP_ARGS(start_freq, end_freq, cpu_id),
+
+	TP_STRUCT__entry(
+		__field(	u32,		start_freq	)
+		__field(	u32,		end_freq	)
+		__field(	u32,		cpu_id		)
+	),
+
+	TP_fast_assign(
+		__entry->start_freq = start_freq;
+		__entry->end_freq = end_freq;
+		__entry->cpu_id = cpu_id;
+	),
+
+	TP_printk("start=%lu end=%lu cpu_id=%lu",
+		  (unsigned long)__entry->start_freq,
+		  (unsigned long)__entry->end_freq,
+		  (unsigned long)__entry->cpu_id)
+);
+
+TRACE_EVENT(cpu_frequency_switch_end,
+
+	TP_PROTO(unsigned int cpu_id),
+
+	TP_ARGS(cpu_id),
+
+	TP_STRUCT__entry(
+		__field(	u32,		cpu_id		)
+	),
+
+	TP_fast_assign(
+		__entry->cpu_id = cpu_id;
+	),
+
+	TP_printk("cpu_id=%lu", (unsigned long)__entry->cpu_id)
+);
+
 TRACE_EVENT(machine_suspend,
 
 	TP_PROTO(unsigned int state),
@@ -236,6 +278,25 @@ DEFINE_EVENT(clock, clock_set_rate,
 	TP_PROTO(const char *name, unsigned int state, unsigned int cpu_id),
 
 	TP_ARGS(name, state, cpu_id)
+);
+
+TRACE_EVENT(clock_set_parent,
+
+	TP_PROTO(const char *name, const char *parent_name),
+
+	TP_ARGS(name, parent_name),
+
+	TP_STRUCT__entry(
+		__string(       name,           name            )
+		__string(       parent_name,    parent_name     )
+	),
+
+	TP_fast_assign(
+		__assign_str(name, name);
+		__assign_str(parent_name, parent_name);
+	),
+
+	TP_printk("%s parent=%s", __get_str(name), __get_str(parent_name))
 );
 
 /*

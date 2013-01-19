@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -8,11 +8,6 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
  */
 
 #ifndef __ARCH_ARM_MACH_MSM_IOMMU_HW_8XXX_H
@@ -20,14 +15,14 @@
 
 #define CTX_SHIFT 12
 
-#define GET_GLOBAL_REG(reg, base) (readl((base) + (reg)))
+#define GET_GLOBAL_REG(reg, base) (readl_relaxed((base) + (reg)))
 #define GET_CTX_REG(reg, base, ctx) \
-				(readl((base) + (reg) + ((ctx) << CTX_SHIFT)))
+			(readl_relaxed((base) + (reg) + ((ctx) << CTX_SHIFT)))
 
-#define SET_GLOBAL_REG(reg, base, val)	writel((val), ((base) + (reg)))
+#define SET_GLOBAL_REG(reg, base, val)	writel_relaxed((val), ((base) + (reg)))
 
 #define SET_CTX_REG(reg, base, ctx, val) \
-			writel((val), ((base) + (reg) + ((ctx) << CTX_SHIFT)))
+		writel_relaxed((val), ((base) + (reg) + ((ctx) << CTX_SHIFT)))
 
 /* Wrappers for numbered registers */
 #define SET_GLOBAL_REG_N(b, n, r, v) SET_GLOBAL_REG(b, ((r) + (n << 2)), (v))
@@ -43,12 +38,13 @@
 #define SET_CONTEXT_FIELD(b, c, r, F, v)	\
 	SET_FIELD(((b) + (r) + ((c) << CTX_SHIFT)), F##_MASK, F##_SHIFT, (v))
 
-#define GET_FIELD(addr, mask, shift)  ((readl(addr) >> (shift)) & (mask))
+#define GET_FIELD(addr, mask, shift) ((readl_relaxed(addr) >> (shift)) & (mask))
 
 #define SET_FIELD(addr, mask, shift, v) \
 do { \
-	int t = readl(addr); \
-	writel((t & ~((mask) << (shift))) + (((v) & (mask)) << (shift)), addr);\
+	int t = readl_relaxed(addr); \
+	writel_relaxed((t & ~((mask) << (shift))) + (((v) & \
+		       (mask)) << (shift)), addr);\
 } while (0)
 
 
@@ -61,8 +57,9 @@ do { \
 #define FL_TYPE_TABLE		(1 << 0)
 #define FL_TYPE_SECT		(2 << 0)
 #define FL_SUPERSECTION		(1 << 18)
-#define FL_AP_WRITE		(1 << 10)
-#define FL_AP_READ		(1 << 11)
+#define FL_AP0			(1 << 10)
+#define FL_AP1			(1 << 11)
+#define FL_AP2			(1 << 15)
 #define FL_SHARED		(1 << 16)
 #define FL_BUFFERABLE		(1 << 2)
 #define FL_CACHEABLE		(1 << 3)
@@ -77,6 +74,7 @@ do { \
 #define SL_TYPE_SMALL		(2 << 0)
 #define SL_AP0			(1 << 4)
 #define SL_AP1			(2 << 4)
+#define SL_AP2			(1 << 9)
 #define SL_SHARED		(1 << 10)
 #define SL_BUFFERABLE		(1 << 2)
 #define SL_CACHEABLE		(1 << 3)
@@ -813,24 +811,24 @@ do { \
 
 
 /* Global Registers */
-#define M2VCBR_N	(0xFF000)
-#define CBACR_N		(0xFF800)
-#define TLBRSW		(0xFFE00)
-#define TLBTR0		(0xFFE80)
-#define TLBTR1		(0xFFE84)
-#define TLBTR2		(0xFFE88)
-#define TESTBUSCR	(0xFFE8C)
-#define GLOBAL_TLBIALL	(0xFFF00)
-#define TLBIVMID	(0xFFF04)
-#define CR		(0xFFF80)
-#define EAR		(0xFFF84)
-#define ESR		(0xFFF88)
-#define ESRRESTORE	(0xFFF8C)
-#define ESYNR0		(0xFFF90)
-#define ESYNR1		(0xFFF94)
-#define REV		(0xFFFF4)
-#define IDR		(0xFFFF8)
-#define RPU_ACR		(0xFFFFC)
+#define M2VCBR_N	(0x000)
+#define CBACR_N		(0x800)
+#define TLBRSW		(0xE00)
+#define TLBTR0		(0xE80)
+#define TLBTR1		(0xE84)
+#define TLBTR2		(0xE88)
+#define TESTBUSCR	(0xE8C)
+#define GLOBAL_TLBIALL	(0xF00)
+#define TLBIVMID	(0xF04)
+#define CR		(0xF80)
+#define EAR		(0xF84)
+#define ESR		(0xF88)
+#define ESRRESTORE	(0xF8C)
+#define ESYNR0		(0xF90)
+#define ESYNR1		(0xF94)
+#define REV		(0xFF4)
+#define IDR		(0xFF8)
+#define RPU_ACR		(0xFFC)
 
 
 /* Context Bank Registers */

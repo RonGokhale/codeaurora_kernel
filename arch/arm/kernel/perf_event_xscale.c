@@ -59,7 +59,7 @@ static const unsigned xscale_perf_map[PERF_COUNT_HW_MAX] = {
 	[PERF_COUNT_HW_STALLED_CYCLES_BACKEND]	= HW_OP_UNSUPPORTED,
 };
 
-static const unsigned xscale_perf_cache_map[PERF_COUNT_HW_CACHE_MAX]
+static unsigned xscale_perf_cache_map[PERF_COUNT_HW_CACHE_MAX]
 					   [PERF_COUNT_HW_CACHE_OP_MAX]
 					   [PERF_COUNT_HW_CACHE_RESULT_MAX] = {
 	[C(L1D)] = {
@@ -804,6 +804,8 @@ xscale2pmu_write_counter(int counter, u32 val)
 static struct arm_pmu xscale2pmu = {
 	.name		= "xscale2",
 	.handle_irq	= xscale2pmu_handle_irq,
+	.request_pmu_irq = armpmu_generic_request_irq,
+	.free_pmu_irq	= armpmu_generic_free_irq,
 	.enable		= xscale2pmu_enable_event,
 	.disable	= xscale2pmu_disable_event,
 	.read_counter	= xscale2pmu_read_counter,

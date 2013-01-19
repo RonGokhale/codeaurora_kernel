@@ -49,6 +49,7 @@
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
+#include <linux/usb/otg.h>
 
 #include "core.h"
 #include "gadget.h"
@@ -243,6 +244,8 @@ void dwc3_gadget_giveback(struct dwc3_ep *dep, struct dwc3_request *req,
 	struct dwc3			*dwc = dep->dwc;
 
 	if (req->queued) {
+		req->queued = false;
+
 		if (req->request.num_mapped_sgs)
 			dep->busy_slot += req->request.num_mapped_sgs;
 		else
@@ -368,7 +371,7 @@ int dwc3_send_gadget_ep_cmd(struct dwc3 *dwc, unsigned ep,
 	} while (1);
 }
 
-static dma_addr_t dwc3_trb_dma_offset(struct dwc3_ep *dep,
+dma_addr_t dwc3_trb_dma_offset(struct dwc3_ep *dep,
 		struct dwc3_trb *trb)
 {
 	u32		offset = (char *) trb - (char *) dep->trb_pool;
@@ -1150,6 +1153,9 @@ static int dwc3_gadget_ep_queue(struct usb_ep *ep, struct usb_request *request,
 	dev_vdbg(dwc->dev, "queing request %p to %s length %d\n",
 			request, ep->name, request->length);
 
+	WARN(!dep->direction && (request->length % ep->desc->wMaxPacketSize),
+		"trying to queue unaligned request (%d)\n", request->length);
+
 	spin_lock_irqsave(&dwc->lock, flags);
 	ret = __dwc3_gadget_ep_queue(dep, req);
 	spin_unlock_irqrestore(&dwc->lock, flags);
@@ -1220,9 +1226,6 @@ int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value)
 		else
 			dep->flags |= DWC3_EP_STALL;
 	} else {
-		if (dep->flags & DWC3_EP_WEDGE)
-			return 0;
-
 		ret = dwc3_send_gadget_ep_cmd(dwc, dep->number,
 			DWC3_DEPCMD_CLEARSTALL, &params);
 		if (ret)
@@ -1230,7 +1233,7 @@ int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value)
 					value ? "set" : "clear",
 					dep->name);
 		else
-			dep->flags &= ~DWC3_EP_STALL;
+			dep->flags &= ~(DWC3_EP_STALL | DWC3_EP_WEDGE);
 	}
 
 	return ret;
@@ -1454,6 +1457,17 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
 	return 0;
 }
 
+static int dwc3_gadget_vbus_draw(struct usb_gadget *g, unsigned mA)
+{
+	struct dwc3		*dwc = gadget_to_dwc(g);
+	struct dwc3_otg		*dotg = dwc->dotg;
+
+	if (dotg && dotg->otg.phy)
+		return usb_phy_set_power(dotg->otg.phy, mA);
+
+	return -ENOTSUPP;
+}
+
 static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 {
 	struct dwc3		*dwc = gadget_to_dwc(g);
@@ -1463,10 +1477,153 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 	is_on = !!is_on;
 
 	spin_lock_irqsave(&dwc->lock, flags);
+
+	dwc->softconnect = is_on;
+
+	if ((dwc->dotg && !dwc->vbus_active) ||
+		!dwc->gadget_driver) {
+
+		spin_unlock_irqrestore(&dwc->lock, flags);
+
+		/*
+		 * Need to wait for vbus_session(on) from otg driver or to
+		 * the udc_start.
+		 */
+		return 0;
+	}
+
 	ret = dwc3_gadget_run_stop(dwc, is_on);
+
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
 	return ret;
+}
+
+static int dwc3_gadget_vbus_session(struct usb_gadget *_gadget, int is_active)
+{
+	struct dwc3 *dwc = gadget_to_dwc(_gadget);
+	unsigned long flags;
+	int ret = 0;
+
+	if (!dwc->dotg)
+		return -EPERM;
+
+	is_active = !!is_active;
+
+	spin_lock_irqsave(&dwc->lock, flags);
+
+	/* Mark that the vbus was powered */
+	dwc->vbus_active = is_active;
+
+	/*
+	 * Check if upper level usb_gadget_driver was already registerd with
+	 * this udc controller driver (if dwc3_gadget_start was called)
+	 */
+	if (dwc->gadget_driver && dwc->softconnect) {
+		if (dwc->vbus_active) {
+			/*
+			 * Both vbus was activated by otg and pullup was
+			 * signaled by the gadget driver.
+			 */
+			ret = dwc3_gadget_run_stop(dwc, 1);
+		} else {
+			ret = dwc3_gadget_run_stop(dwc, 0);
+		}
+	} else if (dwc->gadget_driver && !dwc->softconnect &&
+						!dwc->vbus_active) {
+		if (dwc->gadget_driver->disconnect) {
+			spin_unlock_irqrestore(&dwc->lock, flags);
+			dwc->gadget_driver->disconnect(&dwc->gadget);
+			return 0;
+		}
+	}
+
+	spin_unlock_irqrestore(&dwc->lock, flags);
+
+	return ret;
+}
+
+/* Required gadget re-initialization before switching to gadget in OTG mode */
+void dwc3_gadget_restart(struct dwc3 *dwc)
+{
+	struct dwc3_ep		*dep;
+	int			ret = 0;
+	u32			reg;
+
+	/* Enable all but Start and End of Frame IRQs */
+	reg = (DWC3_DEVTEN_EVNTOVERFLOWEN |
+			DWC3_DEVTEN_CMDCMPLTEN |
+			DWC3_DEVTEN_ERRTICERREN |
+			DWC3_DEVTEN_WKUPEVTEN |
+			DWC3_DEVTEN_ULSTCNGEN |
+			DWC3_DEVTEN_CONNECTDONEEN |
+			DWC3_DEVTEN_USBRSTEN |
+			DWC3_DEVTEN_DISCONNEVTEN);
+	dwc3_writel(dwc->regs, DWC3_DEVTEN, reg);
+
+	/* Enable USB2 LPM and automatic phy suspend only on recent versions */
+	if (dwc->revision >= DWC3_REVISION_194A) {
+		reg = dwc3_readl(dwc->regs, DWC3_DCFG);
+		reg |= DWC3_DCFG_LPM_CAP;
+		dwc3_writel(dwc->regs, DWC3_DCFG, reg);
+
+		reg = dwc3_readl(dwc->regs, DWC3_DCTL);
+		reg &= ~(DWC3_DCTL_HIRD_THRES_MASK | DWC3_DCTL_L1_HIBER_EN);
+
+		/* TODO: This should be configurable */
+		reg |= DWC3_DCTL_HIRD_THRES(28);
+
+		dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+	}
+
+	reg = dwc3_readl(dwc->regs, DWC3_DCFG);
+	reg &= ~(DWC3_DCFG_SPEED_MASK);
+
+	/**
+	 * WORKAROUND: DWC3 revision < 2.20a have an issue
+	 * which would cause metastability state on Run/Stop
+	 * bit if we try to force the IP to USB2-only mode.
+	 *
+	 * Because of that, we cannot configure the IP to any
+	 * speed other than the SuperSpeed
+	 *
+	 * Refers to:
+	 *
+	 * STAR#9000525659: Clock Domain Crossing on DCTL in
+	 * USB 2.0 Mode
+	 */
+	if (dwc->revision < DWC3_REVISION_220A)
+		reg |= DWC3_DCFG_SUPERSPEED;
+	else
+		reg |= dwc->maximum_speed;
+	dwc3_writel(dwc->regs, DWC3_DCFG, reg);
+
+	dwc->start_config_issued = false;
+
+	/* Start with SuperSpeed Default */
+	dwc3_gadget_ep0_desc.wMaxPacketSize = cpu_to_le16(512);
+
+	dwc->delayed_status = false;
+	/* reinitialize physical ep0-1 */
+	dep = dwc->eps[0];
+	dep->flags = 0;
+	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, false);
+	if (ret) {
+		dev_err(dwc->dev, "failed to enable %s\n", dep->name);
+		return;
+	}
+
+	dep = dwc->eps[1];
+	dep->flags = 0;
+	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL, false);
+	if (ret) {
+		dev_err(dwc->dev, "failed to enable %s\n", dep->name);
+		return;
+	}
+
+	/* begin to receive SETUP packets */
+	dwc->ep0state = EP0_SETUP_PHASE;
+	dwc3_ep0_out_start(dwc);
 }
 
 static int dwc3_gadget_start(struct usb_gadget *g,
@@ -1572,6 +1729,8 @@ static const struct usb_gadget_ops dwc3_gadget_ops = {
 	.get_frame		= dwc3_gadget_get_frame,
 	.wakeup			= dwc3_gadget_wakeup,
 	.set_selfpowered	= dwc3_gadget_set_selfpowered,
+	.vbus_session		= dwc3_gadget_vbus_session,
+	.vbus_draw		= dwc3_gadget_vbus_draw,
 	.pullup			= dwc3_gadget_pullup,
 	.udc_start		= dwc3_gadget_start,
 	.udc_stop		= dwc3_gadget_stop,
@@ -1905,6 +2064,7 @@ static void dwc3_stop_active_transfer(struct dwc3 *dwc, u32 epnum)
 	WARN_ON_ONCE(ret);
 	dep->resource_index = 0;
 	dep->flags &= ~DWC3_EP_BUSY;
+
 	udelay(100);
 }
 
@@ -1997,6 +2157,7 @@ static void dwc3_gadget_usb2_phy_suspend(struct dwc3 *dwc, int suspend)
 static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 {
 	u32			reg;
+	struct dwc3_otg		*dotg = dwc->dotg;
 
 	dev_vdbg(dwc->dev, "%s\n", __func__);
 
@@ -2040,6 +2201,9 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 		dwc3_gadget_usb2_phy_suspend(dwc, false);
 		dwc3_gadget_usb3_phy_suspend(dwc, false);
 	}
+
+	if (dotg && dotg->otg.phy)
+		usb_phy_set_power(dotg->otg.phy, 0);
 
 	if (dwc->gadget.speed != USB_SPEED_UNKNOWN)
 		dwc3_disconnect_gadget(dwc);
@@ -2248,6 +2412,13 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
 		}
 	}
 
+	if (next == DWC3_LINK_STATE_U0) {
+		if (dwc->link_state == DWC3_LINK_STATE_U3)
+			dwc->gadget_driver->resume(&dwc->gadget);
+	} else if (next == DWC3_LINK_STATE_U3) {
+		dwc->gadget_driver->suspend(&dwc->gadget);
+	}
+
 	dwc->link_state = next;
 
 	dev_vdbg(dwc->dev, "%s link %d\n", __func__, dwc->link_state);
@@ -2286,6 +2457,33 @@ static void dwc3_gadget_interrupt(struct dwc3 *dwc,
 		break;
 	case DWC3_DEVICE_EVENT_OVERFLOW:
 		dev_vdbg(dwc->dev, "Overflow\n");
+		/*
+		 * Controllers prior to 2.30a revision has a bug where
+		 * Overflow Event may overwrite an unacknowledged event
+		 * in the event buffer.  The severity of the issue depends
+		 * on the overwritten event type.  Add a warning message
+		 * saying that an event is overwritten.
+		 *
+		 * TODO: In future we may need to see if we can re-enumerate
+		 * with host.
+		 */
+		if (dwc->revision < DWC3_REVISION_230A)
+			dev_warn(dwc->dev, "Unacknowledged event overwritten\n");
+		break;
+	case DWC3_DEVICE_EVENT_VENDOR_DEV_TEST_LMP:
+		/*
+		 * Controllers prior to 2.30a revision has a bug, due to which
+		 * a vendor device test LMP event can not be filtered.  But
+		 * this event is not handled in the current code.  This is a
+		 * special event and 8 bytes of data will follow the event.
+		 * Handling this event is tricky when event buffer is almost
+		 * full. Moreover this event will not occur in normal scenario
+		 * and can only happen with special hosts in testing scenarios.
+		 * Add a warning message to indicate that this event is received
+		 * which means that event buffer might have corrupted.
+		 */
+		if (dwc->revision < DWC3_REVISION_230A)
+			dev_warn(dwc->dev, "Vendor Device Test LMP Received\n");
 		break;
 	default:
 		dev_dbg(dwc->dev, "UNKNOWN IRQ %d\n", event->type);
@@ -2451,8 +2649,7 @@ int __devinit dwc3_gadget_init(struct dwc3 *dwc)
 	dwc3_writel(dwc->regs, DWC3_DCFG, reg);
 
 	/* Enable all but Start and End of Frame IRQs */
-	reg = (DWC3_DEVTEN_VNDRDEVTSTRCVEDEN |
-			DWC3_DEVTEN_EVNTOVERFLOWEN |
+	reg = (DWC3_DEVTEN_EVNTOVERFLOWEN |
 			DWC3_DEVTEN_CMDCMPLTEN |
 			DWC3_DEVTEN_ERRTICERREN |
 			DWC3_DEVTEN_WKUPEVTEN |
@@ -2493,6 +2690,20 @@ int __devinit dwc3_gadget_init(struct dwc3 *dwc)
 		goto err7;
 	}
 
+	if (dwc->dotg) {
+		/* dwc3 otg driver is active (DRD mode + SRPSupport=1) */
+		ret = otg_set_peripheral(&dwc->dotg->otg, &dwc->gadget);
+		if (ret) {
+			dev_err(dwc->dev, "failed to set peripheral to otg\n");
+			goto err7;
+		}
+	} else {
+		pm_runtime_no_callbacks(&dwc->gadget.dev);
+		pm_runtime_set_active(&dwc->gadget.dev);
+		pm_runtime_enable(&dwc->gadget.dev);
+		pm_runtime_get(&dwc->gadget.dev);
+	}
+
 	return 0;
 
 err7:
@@ -2527,6 +2738,11 @@ err0:
 void dwc3_gadget_exit(struct dwc3 *dwc)
 {
 	int			irq;
+
+	if (dwc->dotg) {
+		pm_runtime_put(&dwc->gadget.dev);
+		pm_runtime_disable(&dwc->gadget.dev);
+	}
 
 	usb_del_gadget_udc(&dwc->gadget);
 	irq = platform_get_irq(to_platform_device(dwc->dev), 0);

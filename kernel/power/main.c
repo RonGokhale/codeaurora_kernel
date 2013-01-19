@@ -15,8 +15,11 @@
 #include <linux/workqueue.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
+#include <linux/hrtimer.h>
 
 #include "power.h"
+
+#define MAX_BUF 100
 
 DEFINE_MUTEX(pm_mutex);
 
@@ -25,6 +28,13 @@ DEFINE_MUTEX(pm_mutex);
 /* Routines for PM-transition notifications */
 
 static BLOCKING_NOTIFIER_HEAD(pm_chain_head);
+
+static void touch_event_fn(struct work_struct *work);
+static DECLARE_WORK(touch_event_struct, touch_event_fn);
+
+static struct hrtimer tc_ev_timer;
+static int tc_ev_processed;
+static ktime_t touch_evt_timer_val;
 
 int register_pm_notifier(struct notifier_block *nb)
 {
@@ -70,6 +80,81 @@ static ssize_t pm_async_store(struct kobject *kobj, struct kobj_attribute *attr,
 }
 
 power_attr(pm_async);
+
+static ssize_t
+touch_event_show(struct kobject *kobj,
+		 struct kobj_attribute *attr, char *buf)
+{
+	if (tc_ev_processed == 0)
+		return snprintf(buf, strnlen("touch_event", MAX_BUF) + 1,
+				"touch_event");
+	else
+		return snprintf(buf, strnlen("null", MAX_BUF) + 1,
+				"null");
+}
+
+static ssize_t
+touch_event_store(struct kobject *kobj,
+		  struct kobj_attribute *attr,
+		  const char *buf, size_t n)
+{
+
+	hrtimer_cancel(&tc_ev_timer);
+	tc_ev_processed = 0;
+
+	/* set a timer to notify the userspace to stop processing
+	 * touch event
+	 */
+	hrtimer_start(&tc_ev_timer, touch_evt_timer_val, HRTIMER_MODE_REL);
+
+	/* wakeup the userspace poll */
+	sysfs_notify(kobj, NULL, "touch_event");
+
+	return n;
+}
+
+power_attr(touch_event);
+
+static ssize_t
+touch_event_timer_show(struct kobject *kobj,
+		 struct kobj_attribute *attr, char *buf)
+{
+	return snprintf(buf, MAX_BUF, "%lld", touch_evt_timer_val.tv64);
+}
+
+static ssize_t
+touch_event_timer_store(struct kobject *kobj,
+			struct kobj_attribute *attr,
+			const char *buf, size_t n)
+{
+	unsigned long val;
+
+	if (strict_strtoul(buf, 10, &val))
+		return -EINVAL;
+
+	touch_evt_timer_val = ktime_set(0, val*1000);
+
+	return n;
+}
+
+power_attr(touch_event_timer);
+
+static void touch_event_fn(struct work_struct *work)
+{
+	/* wakeup the userspace poll */
+	tc_ev_processed = 1;
+	sysfs_notify(power_kobj, NULL, "touch_event");
+
+	return;
+}
+
+static enum hrtimer_restart tc_ev_stop(struct hrtimer *hrtimer)
+{
+
+	schedule_work(&touch_event_struct);
+
+	return HRTIMER_NORESTART;
+}
 
 #ifdef CONFIG_PM_DEBUG
 int pm_test_level = TEST_NONE;
@@ -313,7 +398,11 @@ static ssize_t state_show(struct kobject *kobj, struct kobj_attribute *attr,
 static suspend_state_t decode_state(const char *buf, size_t n)
 {
 #ifdef CONFIG_SUSPEND
+#ifdef CONFIG_EARLYSUSPEND
+	suspend_state_t state = PM_SUSPEND_ON;
+#else
 	suspend_state_t state = PM_SUSPEND_STANDBY;
+#endif
 	const char * const *s;
 #endif
 	char *p;
@@ -329,7 +418,12 @@ static suspend_state_t decode_state(const char *buf, size_t n)
 #ifdef CONFIG_SUSPEND
 	for (s = &pm_states[state]; state < PM_SUSPEND_MAX; s++, state++)
 		if (*s && len == strlen(*s) && !strncmp(buf, *s, len))
+#ifdef CONFIG_EARLYSUSPEND
+			if (state == PM_SUSPEND_ON || valid_state(state))
+				return state;
+#else
 			return state;
+#endif
 #endif
 
 	return PM_SUSPEND_ON;
@@ -351,12 +445,19 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 	}
 
 	state = decode_state(buf, n);
+#ifdef CONFIG_EARLYSUSPEND
+	if (state == PM_SUSPEND_ON || valid_state(state)) {
+		error = 0;
+		request_suspend_state(state);
+	}
+#else
 	if (state < PM_SUSPEND_MAX)
 		error = pm_suspend(state);
 	else if (state == PM_SUSPEND_MAX)
 		error = hibernate();
 	else
 		error = -EINVAL;
+#endif
 
  out:
 	pm_autosleep_unlock();
@@ -553,7 +654,12 @@ power_attr(pm_trace_dev_match);
 
 #endif /* CONFIG_PM_TRACE */
 
-static struct attribute * g[] = {
+#ifdef CONFIG_USER_WAKELOCK
+power_attr(wake_lock);
+power_attr(wake_unlock);
+#endif
+
+static struct attribute *g[] = {
 	&state_attr.attr,
 #ifdef CONFIG_PM_TRACE
 	&pm_trace_attr.attr,
@@ -562,10 +668,12 @@ static struct attribute * g[] = {
 #ifdef CONFIG_PM_SLEEP
 	&pm_async_attr.attr,
 	&wakeup_count_attr.attr,
+	&touch_event_attr.attr,
+	&touch_event_timer_attr.attr,
 #ifdef CONFIG_PM_AUTOSLEEP
 	&autosleep_attr.attr,
 #endif
-#ifdef CONFIG_PM_WAKELOCKS
+#if defined(CONFIG_PM_WAKELOCKS) || defined(CONFIG_USER_WAKELOCK)
 	&wake_lock_attr.attr,
 	&wake_unlock_attr.attr,
 #endif
@@ -604,6 +712,13 @@ static int __init pm_init(void)
 		return error;
 	hibernate_image_size_init();
 	hibernate_reserved_size_init();
+
+	touch_evt_timer_val = ktime_set(2, 0);
+	hrtimer_init(&tc_ev_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	tc_ev_timer.function = &tc_ev_stop;
+	tc_ev_processed = 1;
+
+
 	power_kobj = kobject_create_and_add("power", NULL);
 	if (!power_kobj)
 		return -ENOMEM;

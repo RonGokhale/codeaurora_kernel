@@ -335,6 +335,31 @@ static int run_builtin(struct cmd_struct *p, int argc, const char **argv)
 static void handle_internal_command(int argc, const char **argv)
 {
 	const char *cmd = argv[0];
+	static struct cmd_struct commands[] = {
+		{ "buildid-cache", cmd_buildid_cache, 0 },
+		{ "buildid-list", cmd_buildid_list, 0 },
+		{ "diff",	cmd_diff,	0 },
+		{ "evlist",	cmd_evlist,	0 },
+		{ "help",	cmd_help,	0 },
+		{ "list",	cmd_list,	0 },
+		{ "record",	cmd_record,	0 },
+		{ "report",	cmd_report,	0 },
+		{ "bench",	cmd_bench,	0 },
+		{ "stat",	cmd_stat,	0 },
+		{ "periodic",   cmd_periodic,   0 },
+		{ "timechart",	cmd_timechart,	0 },
+		{ "top",	cmd_top,	0 },
+		{ "annotate",	cmd_annotate,	0 },
+		{ "version",	cmd_version,	0 },
+		{ "script",	cmd_script,	0 },
+		{ "sched",	cmd_sched,	0 },
+		{ "probe",	cmd_probe,	0 },
+		{ "kmem",	cmd_kmem,	0 },
+		{ "lock",	cmd_lock,	0 },
+		{ "kvm",	cmd_kvm,	0 },
+		{ "test",	cmd_test,	0 },
+		{ "inject",	cmd_inject,	0 },
+	};
 	unsigned int i;
 	static const char ext[] = STRIP_EXTENSION;
 

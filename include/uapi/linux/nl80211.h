@@ -578,6 +578,14 @@
  *	station, due to particular reason. %NL80211_ATTR_CONN_FAILED_REASON
  *	is used for this.
  *
+ * @NL80211_CMD_UPDATE_FT_IES: Pass down the most up-to-date Fast Transition
+ *      Information Element to the WLAN driver
+ *
+ * @NL80211_CMD_FT_EVENT: Send a Fast transition event from the WLAN driver
+ *      to the supplicant. This will carry the target AP's MAC address along
+ *      with the relevant Information Elements. This event to report received
+ *      FT IEs( MDIE, FTIE,RSN IE, TIE, RICIE).
+ *
  * @NL80211_CMD_MAX: highest used command number
  * @__NL80211_CMD_AFTER_LAST: internal use
  */
@@ -725,6 +733,9 @@ enum nl80211_commands {
 	NL80211_CMD_STOP_P2P_DEVICE,
 
 	NL80211_CMD_CONN_FAILED,
+
+	NL80211_CMD_UPDATE_FT_IES,
+	NL80211_CMD_FT_EVENT,
 
 	/* add new commands above here */
 
@@ -1273,6 +1284,10 @@ enum nl80211_commands {
  *	the connection request from a station. nl80211_connect_failed_reason
  *	enum has different reasons of connection failure.
  *
+ * @NL80211_ATTR_MDID: Mobility Domain Identifier
+ *
+ * @NL80211_ATTR_IE_RIC: Resource Information Container Information Element
+ *
  * @NL80211_ATTR_MAX: highest attribute number currently defined
  * @__NL80211_ATTR_AFTER_LAST: internal use
  */
@@ -1529,6 +1544,9 @@ enum nl80211_attrs {
 	NL80211_ATTR_USER_REG_HINT_TYPE,
 
 	NL80211_ATTR_CONN_FAILED_REASON,
+
+	NL80211_ATTR_MDID,
+	NL80211_ATTR_IE_RIC,
 
 	/* add attributes here, update the policy in nl80211.c */
 

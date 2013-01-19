@@ -13,6 +13,7 @@
 #ifndef __LINUX_POWER_SUPPLY_H__
 #define __LINUX_POWER_SUPPLY_H__
 
+#include <linux/wakelock.h>
 #include <linux/workqueue.h>
 #include <linux/leds.h>
 
@@ -89,6 +90,7 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_AUTHENTIC,
+	POWER_SUPPLY_PROP_CHARGING_ENABLED,
 	POWER_SUPPLY_PROP_TECHNOLOGY,
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
@@ -151,6 +153,7 @@ enum power_supply_type {
 	POWER_SUPPLY_TYPE_USB_DCP,	/* Dedicated Charging Port */
 	POWER_SUPPLY_TYPE_USB_CDP,	/* Charging Downstream Port */
 	POWER_SUPPLY_TYPE_USB_ACA,	/* Accessory Charger Adapters */
+	POWER_SUPPLY_TYPE_BMS,		/* Battery Monitor System */
 };
 
 union power_supply_propval {
@@ -187,6 +190,9 @@ struct power_supply {
 #ifdef CONFIG_THERMAL
 	struct thermal_zone_device *tzd;
 #endif
+	spinlock_t changed_lock;
+	bool changed;
+	struct wake_lock work_wake_lock;
 
 #ifdef CONFIG_LEDS_TRIGGERS
 	struct led_trigger *charging_full_trig;
@@ -221,11 +227,18 @@ struct power_supply_info {
 	int use_for_apm;
 };
 
+#if defined(CONFIG_POWER_SUPPLY) || defined(CONFIG_POWER_SUPPLY_MODULE)
 extern struct power_supply *power_supply_get_by_name(char *name);
 extern void power_supply_changed(struct power_supply *psy);
 extern int power_supply_am_i_supplied(struct power_supply *psy);
 extern int power_supply_set_battery_charged(struct power_supply *psy);
-
+extern int power_supply_set_current_limit(struct power_supply *psy, int limit);
+extern int power_supply_set_online(struct power_supply *psy, bool enable);
+extern int power_supply_set_present(struct power_supply *psy, bool enable);
+extern int power_supply_set_scope(struct power_supply *psy, int scope);
+extern int power_supply_set_charge_type(struct power_supply *psy, int type);
+extern int power_supply_set_supply_type(struct power_supply *psy,
+					enum power_supply_type supply_type);
 #ifdef CONFIG_POWER_SUPPLY
 extern int power_supply_is_system_supplied(void);
 #else
@@ -236,6 +249,41 @@ extern int power_supply_register(struct device *parent,
 				 struct power_supply *psy);
 extern void power_supply_unregister(struct power_supply *psy);
 extern int power_supply_powers(struct power_supply *psy, struct device *dev);
+#else
+static inline struct power_supply *power_supply_get_by_name(char *name)
+							{ return NULL; }
+static inline void power_supply_changed(struct power_supply *psy) { }
+static inline int power_supply_am_i_supplied(struct power_supply *psy)
+							{ return -ENOSYS; }
+static inline int power_supply_set_battery_charged(struct power_supply *psy)
+							{ return -ENOSYS; }
+static inline int power_supply_set_current_limit(struct power_supply *psy,
+							int limit)
+							{ return -ENOSYS; }
+static inline int power_supply_set_online(struct power_supply *psy,
+							bool enable)
+							{ return -ENOSYS; }
+static inline int power_supply_set_present(struct power_supply *psy,
+							bool enable)
+							{ return -ENOSYS; }
+static inline int power_supply_set_scope(struct power_supply *psy,
+							int scope)
+							{ return -ENOSYS; }
+static inline int power_supply_set_charge_type(struct power_supply *psy,
+							int type)
+							{ return -ENOSYS; }
+static inline int power_supply_set_supply_type(struct power_supply *psy,
+					enum power_supply_type supply_type)
+							{ return -ENOSYS; }
+static inline int power_supply_is_system_supplied(void) { return -ENOSYS; }
+static inline int power_supply_register(struct device *parent,
+					struct power_supply *psy)
+							{ return -ENOSYS; }
+static inline void power_supply_unregister(struct power_supply *psy) { }
+static inline int power_supply_powers(struct power_supply *psy,
+				      struct device *dev)
+							{ return -ENOSYS; }
+#endif
 
 /* For APM emulation, think legacy userspace. */
 extern struct class *power_supply_class;

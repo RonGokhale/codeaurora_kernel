@@ -23,6 +23,7 @@
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
 #include <linux/alarmtimer.h>
+#include <linux/wakelock.h>
 #include "android_alarm.h"
 
 #define ANDROID_ALARM_PRINT_INFO (1U << 0)
@@ -352,6 +353,7 @@ static int __init alarm_dev_init(void)
 		if (!is_wakeup(i))
 			alarms[i].u.hrt.function = devalarm_hrthandler;
 	}
+	wake_lock_init(&alarm_wake_lock, WAKE_LOCK_SUSPEND, "alarm");
 
 	wakeup_source_init(&alarm_wake_lock, "alarm");
 	return 0;

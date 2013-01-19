@@ -17,6 +17,8 @@
 #include <asm/thread_notify.h>
 #include <asm/tlbflush.h>
 
+#include <mach/msm_rtb.h>
+
 static DEFINE_RAW_SPINLOCK(cpu_asid_lock);
 unsigned int cpu_last_asid = ASID_FIRST_VERSION;
 
@@ -50,6 +52,13 @@ void cpu_set_reserved_ttbr0(void)
 #endif
 
 #ifdef CONFIG_PID_IN_CONTEXTIDR
+static void write_contextidr(u32 contextidr)
+{
+	uncached_logk(LOGK_CTXID, (void *)contextidr);
+	asm("mcr	p15, 0, %0, c13, c0, 1" : : "r" (contextidr));
+	isb();
+}
+
 static int contextidr_notifier(struct notifier_block *unused, unsigned long cmd,
 			       void *t)
 {
@@ -69,6 +78,7 @@ static int contextidr_notifier(struct notifier_block *unused, unsigned long cmd,
 	: "=r" (contextidr), "+r" (pid)
 	: "I" (~ASID_MASK));
 	isb();
+    write_contextidr(contextidr);
 
 	return NOTIFY_OK;
 }

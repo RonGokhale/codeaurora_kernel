@@ -42,6 +42,16 @@ static int raw(yyscan_t scanner)
 	return __value(yylval, text + 1, 16, PE_RAW);
 }
 
+static int sh_raw(void)
+{
+	return __value(parse_events_text + 2, 16, PE_SH_RAW);
+}
+
+static int fab_raw(void)
+{
+	return __value(parse_events_text + 2, 16, PE_FAB_RAW);
+}
+
 static int str(yyscan_t scanner, int token)
 {
 	YYSTYPE *yylval = parse_events_get_lval(scanner);
@@ -80,7 +90,7 @@ event		[^,{}/]+
 num_dec		[0-9]+
 num_hex		0x[a-fA-F0-9]+
 num_raw_hex	[a-fA-F0-9]+
-name		[a-zA-Z_*?][a-zA-Z0-9_*?]*
+name		[a-zA-Z_*?][a-zA-Z\-0-9_*?]*
 modifier_event	[ukhpGH]{1,8}
 modifier_bp	[rwx]{1,3}
 
@@ -159,25 +169,29 @@ speculative-read|speculative-load	|
 refs|Reference|ops|access		|
 misses|miss				{ return str(yyscanner, PE_NAME_CACHE_OP_RESULT); }
 
-<config>{
-config			{ return term(yyscanner, PARSE_EVENTS__TERM_TYPE_CONFIG); }
-config1			{ return term(yyscanner, PARSE_EVENTS__TERM_TYPE_CONFIG1); }
-config2			{ return term(yyscanner, PARSE_EVENTS__TERM_TYPE_CONFIG2); }
-name			{ return term(yyscanner, PARSE_EVENTS__TERM_TYPE_NAME); }
-period			{ return term(yyscanner, PARSE_EVENTS__TERM_TYPE_SAMPLE_PERIOD); }
-branch_type		{ return term(yyscanner, PARSE_EVENTS__TERM_TYPE_BRANCH_SAMPLE_TYPE); }
-,			{ return ','; }
-"/"			{ BEGIN(INITIAL); return '/'; }
-}
+	/*
+	 * These are event config hardcoded term names to be specified
+	 * within xxx/.../ syntax. So far we dont clash with other names,
+	 * so we can put them here directly. In case the we have a conflict
+	 * in future, this needs to go into '//' condition block.
+	 */
+config			{ return term(PARSE_EVENTS__TERM_TYPE_CONFIG); }
+config1			{ return term(PARSE_EVENTS__TERM_TYPE_CONFIG1); }
+config2			{ return term(PARSE_EVENTS__TERM_TYPE_CONFIG2); }
+period			{ return term(PARSE_EVENTS__TERM_TYPE_SAMPLE_PERIOD); }
+branch_type		{ return term(PARSE_EVENTS__TERM_TYPE_BRANCH_SAMPLE_TYPE); }
 
-mem:			{ BEGIN(mem); return PE_PREFIX_MEM; }
-r{num_raw_hex}		{ return raw(yyscanner); }
-{num_dec}		{ return value(yyscanner, 10); }
-{num_hex}		{ return value(yyscanner, 16); }
+mem:			{ return PE_PREFIX_MEM; }
+r{num_raw_hex}		{ return raw(); }
+rs{num_raw_hex}		{ return sh_raw(); }
+rm{num_raw_hex}		{ return fab_raw(); }
+{num_dec}		{ return value(10); }
+{num_hex}		{ return value(16); }
 
-{modifier_event}	{ return str(yyscanner, PE_MODIFIER_EVENT); }
-{name}			{ return str(yyscanner, PE_NAME); }
-"/"			{ BEGIN(config); return '/'; }
+{modifier_event}	{ return str(PE_MODIFIER_EVENT); }
+{modifier_bp}		{ return str(PE_MODIFIER_BP); }
+{name}			{ return str(PE_NAME); }
+"/"			{ return '/'; }
 -			{ return '-'; }
 ,			{ BEGIN(event); return ','; }
 :			{ return ':'; }

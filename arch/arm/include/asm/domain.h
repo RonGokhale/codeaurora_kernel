@@ -2,6 +2,7 @@
  *  arch/arm/include/asm/domain.h
  *
  *  Copyright (C) 1999 Russell King.
+ *  Copyright (c) 2009, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -32,7 +33,7 @@
  * 36-bit addressing and supersections are only available on
  * CPUs based on ARMv6+ or the Intel XSC3 core.
  */
-#ifndef CONFIG_IO_36
+#if !defined(CONFIG_IO_36) && !defined(CONFIG_VERIFY_PERMISSION_FAULT)
 #define DOMAIN_KERNEL	0
 #define DOMAIN_TABLE	0
 #define DOMAIN_USER	1

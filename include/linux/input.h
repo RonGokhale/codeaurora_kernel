@@ -13,7 +13,344 @@
 #include <uapi/linux/input.h>
 /* Implementation details, userspace should not care about these */
 #define ABS_MT_FIRST		ABS_MT_TOUCH_MAJOR
-#define ABS_MT_LAST		ABS_MT_TOOL_Y
+#define ABS_MT_LAST		ABS_MT_DISTANCE
+
+#define ABS_MAX			0x3f
+#define ABS_CNT			(ABS_MAX+1)
+
+/*
+ * Switch events
+ */
+
+#define SW_LID			0x00  /* set = lid shut */
+#define SW_TABLET_MODE		0x01  /* set = tablet mode */
+#define SW_HEADPHONE_INSERT	0x02  /* set = inserted */
+#define SW_RFKILL_ALL		0x03  /* rfkill master switch, type "any"
+					 set = radio enabled */
+#define SW_RADIO		SW_RFKILL_ALL	/* deprecated */
+#define SW_MICROPHONE_INSERT	0x04  /* set = inserted */
+#define SW_DOCK			0x05  /* set = plugged into dock */
+#define SW_LINEOUT_INSERT	0x06  /* set = inserted */
+#define SW_JACK_PHYSICAL_INSERT 0x07  /* set = mechanical switch set */
+#define SW_VIDEOOUT_INSERT	0x08  /* set = inserted */
+#define SW_CAMERA_LENS_COVER	0x09  /* set = lens covered */
+#define SW_KEYPAD_SLIDE		0x0a  /* set = keypad slide out */
+#define SW_FRONT_PROXIMITY	0x0b  /* set = front proximity sensor active */
+#define SW_ROTATE_LOCK		0x0c  /* set = rotate locked/disabled */
+#define SW_LINEIN_INSERT	0x0d  /* set = inserted */
+#define SW_HPHL_OVERCURRENT    0x0e  /* set = over current on left hph */
+#define SW_HPHR_OVERCURRENT    0x0f  /* set = over current on right hph */
+#define SW_UNSUPPORT_INSERT	0x10  /* set = unsupported device inserted */
+#define SW_MAX			0x20
+#define SW_CNT			(SW_MAX+1)
+
+/*
+ * Misc events
+ */
+
+#define MSC_SERIAL		0x00
+#define MSC_PULSELED		0x01
+#define MSC_GESTURE		0x02
+#define MSC_RAW			0x03
+#define MSC_SCAN		0x04
+#define MSC_MAX			0x07
+#define MSC_CNT			(MSC_MAX+1)
+
+/*
+ * LEDs
+ */
+
+#define LED_NUML		0x00
+#define LED_CAPSL		0x01
+#define LED_SCROLLL		0x02
+#define LED_COMPOSE		0x03
+#define LED_KANA		0x04
+#define LED_SLEEP		0x05
+#define LED_SUSPEND		0x06
+#define LED_MUTE		0x07
+#define LED_MISC		0x08
+#define LED_MAIL		0x09
+#define LED_CHARGING		0x0a
+#define LED_MAX			0x0f
+#define LED_CNT			(LED_MAX+1)
+
+/*
+ * Autorepeat values
+ */
+
+#define REP_DELAY		0x00
+#define REP_PERIOD		0x01
+#define REP_MAX			0x01
+#define REP_CNT			(REP_MAX+1)
+
+/*
+ * Sounds
+ */
+
+#define SND_CLICK		0x00
+#define SND_BELL		0x01
+#define SND_TONE		0x02
+#define SND_MAX			0x07
+#define SND_CNT			(SND_MAX+1)
+
+/*
+ * IDs.
+ */
+
+#define ID_BUS			0
+#define ID_VENDOR		1
+#define ID_PRODUCT		2
+#define ID_VERSION		3
+
+#define BUS_PCI			0x01
+#define BUS_ISAPNP		0x02
+#define BUS_USB			0x03
+#define BUS_HIL			0x04
+#define BUS_BLUETOOTH		0x05
+#define BUS_VIRTUAL		0x06
+
+#define BUS_ISA			0x10
+#define BUS_I8042		0x11
+#define BUS_XTKBD		0x12
+#define BUS_RS232		0x13
+#define BUS_GAMEPORT		0x14
+#define BUS_PARPORT		0x15
+#define BUS_AMIGA		0x16
+#define BUS_ADB			0x17
+#define BUS_I2C			0x18
+#define BUS_HOST		0x19
+#define BUS_GSC			0x1A
+#define BUS_ATARI		0x1B
+#define BUS_SPI			0x1C
+
+/*
+ * MT_TOOL types
+ */
+#define MT_TOOL_FINGER		0
+#define MT_TOOL_PEN		1
+#define MT_TOOL_MAX		1
+
+/*
+ * Values describing the status of a force-feedback effect
+ */
+#define FF_STATUS_STOPPED	0x00
+#define FF_STATUS_PLAYING	0x01
+#define FF_STATUS_MAX		0x01
+
+/*
+ * Structures used in ioctls to upload effects to a device
+ * They are pieces of a bigger structure (called ff_effect)
+ */
+
+/*
+ * All duration values are expressed in ms. Values above 32767 ms (0x7fff)
+ * should not be used and have unspecified results.
+ */
+
+/**
+ * struct ff_replay - defines scheduling of the force-feedback effect
+ * @length: duration of the effect
+ * @delay: delay before effect should start playing
+ */
+struct ff_replay {
+	__u16 length;
+	__u16 delay;
+};
+
+/**
+ * struct ff_trigger - defines what triggers the force-feedback effect
+ * @button: number of the button triggering the effect
+ * @interval: controls how soon the effect can be re-triggered
+ */
+struct ff_trigger {
+	__u16 button;
+	__u16 interval;
+};
+
+/**
+ * struct ff_envelope - generic force-feedback effect envelope
+ * @attack_length: duration of the attack (ms)
+ * @attack_level: level at the beginning of the attack
+ * @fade_length: duration of fade (ms)
+ * @fade_level: level at the end of fade
+ *
+ * The @attack_level and @fade_level are absolute values; when applying
+ * envelope force-feedback core will convert to positive/negative
+ * value based on polarity of the default level of the effect.
+ * Valid range for the attack and fade levels is 0x0000 - 0x7fff
+ */
+struct ff_envelope {
+	__u16 attack_length;
+	__u16 attack_level;
+	__u16 fade_length;
+	__u16 fade_level;
+};
+
+/**
+ * struct ff_constant_effect - defines parameters of a constant force-feedback effect
+ * @level: strength of the effect; may be negative
+ * @envelope: envelope data
+ */
+struct ff_constant_effect {
+	__s16 level;
+	struct ff_envelope envelope;
+};
+
+/**
+ * struct ff_ramp_effect - defines parameters of a ramp force-feedback effect
+ * @start_level: beginning strength of the effect; may be negative
+ * @end_level: final strength of the effect; may be negative
+ * @envelope: envelope data
+ */
+struct ff_ramp_effect {
+	__s16 start_level;
+	__s16 end_level;
+	struct ff_envelope envelope;
+};
+
+/**
+ * struct ff_condition_effect - defines a spring or friction force-feedback effect
+ * @right_saturation: maximum level when joystick moved all way to the right
+ * @left_saturation: same for the left side
+ * @right_coeff: controls how fast the force grows when the joystick moves
+ *	to the right
+ * @left_coeff: same for the left side
+ * @deadband: size of the dead zone, where no force is produced
+ * @center: position of the dead zone
+ */
+struct ff_condition_effect {
+	__u16 right_saturation;
+	__u16 left_saturation;
+
+	__s16 right_coeff;
+	__s16 left_coeff;
+
+	__u16 deadband;
+	__s16 center;
+};
+
+/**
+ * struct ff_periodic_effect - defines parameters of a periodic force-feedback effect
+ * @waveform: kind of the effect (wave)
+ * @period: period of the wave (ms)
+ * @magnitude: peak value
+ * @offset: mean value of the wave (roughly)
+ * @phase: 'horizontal' shift
+ * @envelope: envelope data
+ * @custom_len: number of samples (FF_CUSTOM only)
+ * @custom_data: buffer of samples (FF_CUSTOM only)
+ *
+ * Known waveforms - FF_SQUARE, FF_TRIANGLE, FF_SINE, FF_SAW_UP,
+ * FF_SAW_DOWN, FF_CUSTOM. The exact syntax FF_CUSTOM is undefined
+ * for the time being as no driver supports it yet.
+ *
+ * Note: the data pointed by custom_data is copied by the driver.
+ * You can therefore dispose of the memory after the upload/update.
+ */
+struct ff_periodic_effect {
+	__u16 waveform;
+	__u16 period;
+	__s16 magnitude;
+	__s16 offset;
+	__u16 phase;
+
+	struct ff_envelope envelope;
+
+	__u32 custom_len;
+	__s16 __user *custom_data;
+};
+
+/**
+ * struct ff_rumble_effect - defines parameters of a periodic force-feedback effect
+ * @strong_magnitude: magnitude of the heavy motor
+ * @weak_magnitude: magnitude of the light one
+ *
+ * Some rumble pads have two motors of different weight. Strong_magnitude
+ * represents the magnitude of the vibration generated by the heavy one.
+ */
+struct ff_rumble_effect {
+	__u16 strong_magnitude;
+	__u16 weak_magnitude;
+};
+
+/**
+ * struct ff_effect - defines force feedback effect
+ * @type: type of the effect (FF_CONSTANT, FF_PERIODIC, FF_RAMP, FF_SPRING,
+ *	FF_FRICTION, FF_DAMPER, FF_RUMBLE, FF_INERTIA, or FF_CUSTOM)
+ * @id: an unique id assigned to an effect
+ * @direction: direction of the effect
+ * @trigger: trigger conditions (struct ff_trigger)
+ * @replay: scheduling of the effect (struct ff_replay)
+ * @u: effect-specific structure (one of ff_constant_effect, ff_ramp_effect,
+ *	ff_periodic_effect, ff_condition_effect, ff_rumble_effect) further
+ *	defining effect parameters
+ *
+ * This structure is sent through ioctl from the application to the driver.
+ * To create a new effect application should set its @id to -1; the kernel
+ * will return assigned @id which can later be used to update or delete
+ * this effect.
+ *
+ * Direction of the effect is encoded as follows:
+ *	0 deg -> 0x0000 (down)
+ *	90 deg -> 0x4000 (left)
+ *	180 deg -> 0x8000 (up)
+ *	270 deg -> 0xC000 (right)
+ */
+struct ff_effect {
+	__u16 type;
+	__s16 id;
+	__u16 direction;
+	struct ff_trigger trigger;
+	struct ff_replay replay;
+
+	union {
+		struct ff_constant_effect constant;
+		struct ff_ramp_effect ramp;
+		struct ff_periodic_effect periodic;
+		struct ff_condition_effect condition[2]; /* One for each axis */
+		struct ff_rumble_effect rumble;
+	} u;
+};
+
+/*
+ * Force feedback effect types
+ */
+
+#define FF_RUMBLE	0x50
+#define FF_PERIODIC	0x51
+#define FF_CONSTANT	0x52
+#define FF_SPRING	0x53
+#define FF_FRICTION	0x54
+#define FF_DAMPER	0x55
+#define FF_INERTIA	0x56
+#define FF_RAMP		0x57
+
+#define FF_EFFECT_MIN	FF_RUMBLE
+#define FF_EFFECT_MAX	FF_RAMP
+
+/*
+ * Force feedback periodic effect types
+ */
+
+#define FF_SQUARE	0x58
+#define FF_TRIANGLE	0x59
+#define FF_SINE		0x5a
+#define FF_SAW_UP	0x5b
+#define FF_SAW_DOWN	0x5c
+#define FF_CUSTOM	0x5d
+
+#define FF_WAVEFORM_MIN	FF_SQUARE
+#define FF_WAVEFORM_MAX	FF_CUSTOM
+
+/*
+ * Set ff device properties
+ */
+
+#define FF_GAIN		0x60
+#define FF_AUTOCENTER	0x61
+
+#define FF_MAX		0x7f
+#define FF_CNT		(FF_MAX+1)
 
 /*
  * In-kernel definitions.

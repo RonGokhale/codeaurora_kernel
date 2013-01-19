@@ -12,7 +12,7 @@ lib-y := ctype.o string.o vsprintf.o cmdline.o \
 	 idr.o int_sqrt.o extable.o \
 	 sha1.o md5.o irq_regs.o reciprocal_div.o argv_split.o \
 	 proportions.o flex_proportions.o prio_heap.o ratelimit.o show_mem.o \
-	 is_single_threaded.o plist.o decompress.o
+	 is_single_threaded.o plist.o decompress.o show_mem.o memory_alloc.o
 
 lib-$(CONFIG_MMU) += ioremap.o
 lib-$(CONFIG_SMP) += cpumask.o
@@ -146,6 +146,8 @@ obj-$(CONFIG_INTERVAL_TREE_TEST) += interval_tree_test.o
 interval_tree_test-objs := interval_tree_test_main.o interval_tree.o
 
 obj-$(CONFIG_ASN1) += asn1_decoder.o
+
+obj-$(CONFIG_QMI_ENCDEC) += qmi_encdec.o
 
 hostprogs-y	:= gen_crc32table
 clean-files	:= crc32table.h

@@ -337,6 +337,15 @@ struct usb_bus {
 					 * the ep queue on a short transfer
 					 * with the URB_SHORT_NOT_OK flag set.
 					 */
+	unsigned hnp_support:1;		/* OTG: HNP is supported on OTG port */
+	unsigned quick_hnp:1;		/* OTG: Indiacates if hnp is required
+					   irrespective of host_request flag
+					 */
+	unsigned otg_vbus_off:1;	/* OTG: OTG test device feature bit that
+					 * tells A-device to turn off VBUS after
+					 * B-device is disconnected.
+					 */
+	struct delayed_work hnp_polling;/* OTG: HNP polling work */
 	unsigned sg_tablesize;		/* 0 or largest number of sg list entries */
 
 	int devnum_next;		/* Next open device number in
@@ -361,6 +370,15 @@ struct usb_bus {
 	struct mon_bus *mon_bus;	/* non-null when associated */
 	int monitored;			/* non-zero when monitored */
 #endif
+	unsigned skip_resume:1;		/* All USB devices are brought into full
+					 * power state after system resume. It
+					 * is desirable for some buses to keep
+					 * their devices in suspend state even
+					 * after system resume. The devices
+					 * are resumed later when a remote
+					 * wakeup is detected or an interface
+					 * driver starts I/O.
+					 */
 };
 
 /* ----------------------------------------------------------------------- */
@@ -374,6 +392,16 @@ struct usb_bus {
  * limit. Because the arrays need to add a bit for hub status data, we
  * do 31, so plus one evens out to four bytes.
  */
+
+#if defined(CONFIG_USB_PEHCI_HCD) || defined(CONFIG_USB_PEHCI_HCD_MODULE)
+#define USB_OTG_SUSPEND		0x1
+#define USB_OTG_ENUMERATE	0x2
+#define USB_OTG_DISCONNECT	0x4
+#define USB_OTG_RESUME		0x8
+#define USB_OTG_REMOTEWAKEUP	0x10
+#define USB_OTG_WAKEUP_ALL	0x20
+#endif
+
 #define USB_MAXCHILDREN		(31)
 
 struct usb_tt;
@@ -548,6 +576,18 @@ struct usb_device {
 
 	struct list_head filelist;
 
+#if defined(CONFIG_USB_PEHCI_HCD) || defined(CONFIG_USB_PEHCI_HCD_MODULE)
+	/*otg add ons */
+	u8 otgdevice;				/*device is otg type */
+
+	/*otg states from otg driver, suspend, enumerate, disconnect */
+	u8 otgstate;
+	void *otgpriv;
+	void (*otg_notif) (void *otg_priv,
+				unsigned long notif, unsigned long data);
+	void *hcd_priv;
+	void (*hcd_suspend) (void *hcd_priv);
+#endif
 	int maxchild;
 
 	u32 quirks;
@@ -1775,8 +1815,15 @@ static inline int usb_translate_errors(int error_code)
 #define USB_DEVICE_REMOVE	0x0002
 #define USB_BUS_ADD		0x0003
 #define USB_BUS_REMOVE		0x0004
+#define USB_DEVICE_CONFIG	0x0005
+
+#ifdef CONFIG_USB
 extern void usb_register_notify(struct notifier_block *nb);
 extern void usb_unregister_notify(struct notifier_block *nb);
+#else
+static inline void usb_register_notify(struct notifier_block *nb) {}
+static inline void usb_unregister_notify(struct notifier_block *nb) {}
+#endif
 
 /* debugfs stuff */
 extern struct dentry *usb_debug_root;

@@ -72,6 +72,8 @@
 #define SIOCGIFTXQLEN	0x8942		/* Get the tx queue length	*/
 #define SIOCSIFTXQLEN	0x8943		/* Set the tx queue length 	*/
 
+#define SIOCKILLADDR	0x8944		/* kill sockets with this local addr */
+
 /* SIOCGIFDIVERT was:	0x8944		Frame diversion support */
 /* SIOCSIFDIVERT was:	0x8945		Set frame diversion options */
 

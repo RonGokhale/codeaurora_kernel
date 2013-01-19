@@ -475,6 +475,10 @@ static int dwc3_ep0_handle_feature(struct dwc3 *dwc,
 			dep = dwc3_wIndex_to_dep(dwc, wIndex);
 			if (!dep)
 				return -EINVAL;
+
+			if (!set && (dep->flags & DWC3_EP_WEDGE))
+				return 0;
+
 			ret = __dwc3_gadget_ep_set_halt(dep, set);
 			if (ret)
 				return -EINVAL;
@@ -1016,11 +1020,13 @@ static void dwc3_ep0_xfernotready(struct dwc3 *dwc,
 
 		dwc->ep0state = EP0_STATUS_PHASE;
 
-		if (dwc->delayed_status) {
+		if (dwc->delayed_status &&
+				list_empty(&dwc->eps[0]->request_list)) {
 			WARN_ON_ONCE(event->endpoint_number != 1);
 			dev_vdbg(dwc->dev, "Mass Storage delayed status\n");
 			return;
 		}
+		dwc->delayed_status = false;
 
 		dwc3_ep0_do_control_status(dwc, event);
 	}

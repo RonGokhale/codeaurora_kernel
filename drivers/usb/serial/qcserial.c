@@ -1,7 +1,7 @@
 /*
  * Qualcomm Serial USB driver
  *
- *	Copyright (c) 2008 QUALCOMM Incorporated.
+ *	Copyright (c) 2008, 2012 Code Aurora Forum. All rights reserved.
  *	Copyright (c) 2009 Greg Kroah-Hartman <gregkh@suse.de>
  *	Copyright (c) 2009 Novell Inc.
  *
@@ -21,6 +21,8 @@
 
 #define DRIVER_AUTHOR "Qualcomm Inc"
 #define DRIVER_DESC "Qualcomm USB Serial driver"
+
+static bool debug;
 
 #define DEVICE_G1K(v, p) \
 	USB_DEVICE(v, p), .driver_info = 1
@@ -103,170 +105,167 @@ static const struct usb_device_id id_table[] = {
 	{USB_DEVICE(0x1410, 0xa021)},	/* Novatel Gobi 3000 Composite */
 	{USB_DEVICE(0x413c, 0x8193)},	/* Dell Gobi 3000 QDL */
 	{USB_DEVICE(0x413c, 0x8194)},	/* Dell Gobi 3000 Composite */
-	{USB_DEVICE(0x1199, 0x68a4)},	/* Sierra Wireless QDL */
-	{USB_DEVICE(0x1199, 0x68a5)},	/* Sierra Wireless Modem */
-	{USB_DEVICE(0x1199, 0x68a8)},	/* Sierra Wireless QDL */
-	{USB_DEVICE(0x1199, 0x68a9)},	/* Sierra Wireless Modem */
-	{USB_DEVICE(0x1199, 0x9010)},	/* Sierra Wireless Gobi 3000 QDL */
-	{USB_DEVICE(0x1199, 0x9012)},	/* Sierra Wireless Gobi 3000 QDL */
 	{USB_DEVICE(0x1199, 0x9013)},	/* Sierra Wireless Gobi 3000 Modem device (MC8355) */
-	{USB_DEVICE(0x1199, 0x9014)},	/* Sierra Wireless Gobi 3000 QDL */
-	{USB_DEVICE(0x1199, 0x9015)},	/* Sierra Wireless Gobi 3000 Modem device */
-	{USB_DEVICE(0x1199, 0x9018)},	/* Sierra Wireless Gobi 3000 QDL */
-	{USB_DEVICE(0x1199, 0x9019)},	/* Sierra Wireless Gobi 3000 Modem device */
-	{USB_DEVICE(0x1199, 0x901b)},	/* Sierra Wireless MC7770 */
 	{USB_DEVICE(0x12D1, 0x14F0)},	/* Sony Gobi 3000 QDL */
 	{USB_DEVICE(0x12D1, 0x14F1)},	/* Sony Gobi 3000 Composite */
-
-	/* non Gobi Qualcomm serial devices */
-	{USB_DEVICE_INTERFACE_NUMBER(0x0f3d, 0x68a2, 0)},	/* Sierra Wireless MC7700 Device Management */
-	{USB_DEVICE_INTERFACE_NUMBER(0x0f3d, 0x68a2, 2)},	/* Sierra Wireless MC7700 NMEA */
-	{USB_DEVICE_INTERFACE_NUMBER(0x0f3d, 0x68a2, 3)},	/* Sierra Wireless MC7700 Modem */
-	{USB_DEVICE_INTERFACE_NUMBER(0x114f, 0x68a2, 0)},	/* Sierra Wireless MC7750 Device Management */
-	{USB_DEVICE_INTERFACE_NUMBER(0x114f, 0x68a2, 2)},	/* Sierra Wireless MC7750 NMEA */
-	{USB_DEVICE_INTERFACE_NUMBER(0x114f, 0x68a2, 3)},	/* Sierra Wireless MC7750 Modem */
-	{USB_DEVICE_INTERFACE_NUMBER(0x1199, 0x68a2, 0)},	/* Sierra Wireless MC7710 Device Management */
-	{USB_DEVICE_INTERFACE_NUMBER(0x1199, 0x68a2, 2)},	/* Sierra Wireless MC7710 NMEA */
-	{USB_DEVICE_INTERFACE_NUMBER(0x1199, 0x68a2, 3)},	/* Sierra Wireless MC7710 Modem */
-	{USB_DEVICE_INTERFACE_NUMBER(0x1199, 0x901c, 0)},	/* Sierra Wireless EM7700 Device Management */
-	{USB_DEVICE_INTERFACE_NUMBER(0x1199, 0x901c, 2)},	/* Sierra Wireless EM7700 NMEA */
-	{USB_DEVICE_INTERFACE_NUMBER(0x1199, 0x901c, 3)},	/* Sierra Wireless EM7700 Modem */
-
+	{USB_DEVICE(0x05c6, 0x9048)},	/* MDM9x15 device */
+	{USB_DEVICE(0x05c6, 0x904C)},	/* MDM9x15 device */
 	{ }				/* Terminating entry */
 };
 MODULE_DEVICE_TABLE(usb, id_table);
 
+#define EFS_SYNC_IFC_NUM	2
+
+static struct usb_driver qcdriver = {
+	.name			= "qcserial",
+	.probe			= usb_serial_probe,
+	.disconnect		= usb_serial_disconnect,
+	.id_table		= id_table,
+	.suspend		= usb_serial_suspend,
+	.resume			= usb_serial_resume,
+	.supports_autosuspend	= true,
+};
+
 static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
 {
+	struct usb_wwan_intf_private *data;
 	struct usb_host_interface *intf = serial->interface->cur_altsetting;
-	struct device *dev = &serial->dev->dev;
 	int retval = -ENODEV;
 	__u8 nintf;
 	__u8 ifnum;
 	bool is_gobi1k = id->driver_info ? true : false;
-	int altsetting = -1;
 
-	dev_dbg(dev, "Is Gobi 1000 = %d\n", is_gobi1k);
+	dbg("%s", __func__);
+	dbg("Is Gobi 1000 = %d", is_gobi1k);
 
 	nintf = serial->dev->actconfig->desc.bNumInterfaces;
-	dev_dbg(dev, "Num Interfaces = %d\n", nintf);
+	dbg("Num Interfaces = %d", nintf);
 	ifnum = intf->desc.bInterfaceNumber;
-	dev_dbg(dev, "This Interface = %d\n", ifnum);
+	dbg("This Interface = %d", ifnum);
 
-	if (nintf == 1) {
-		/* QDL mode */
-		/* Gobi 2000 has a single altsetting, older ones have two */
-		if (serial->interface->num_altsetting == 2)
-			intf = &serial->interface->altsetting[1];
-		else if (serial->interface->num_altsetting > 2)
-			goto done;
-
-		if (intf->desc.bNumEndpoints == 2 &&
-		    usb_endpoint_is_bulk_in(&intf->endpoint[0].desc) &&
-		    usb_endpoint_is_bulk_out(&intf->endpoint[1].desc)) {
-			dev_dbg(dev, "QDL port found\n");
-
-			if (serial->interface->num_altsetting == 1)
-				retval = 0; /* Success */
-			else
-				altsetting = 1;
-		}
-		goto done;
-
-	}
-
-	/* allow any number of interfaces when doing direct interface match */
-	if (id->match_flags & USB_DEVICE_ID_MATCH_INT_NUMBER) {
-		dev_dbg(dev, "Generic Qualcomm serial interface found\n");
-		altsetting = 0;
-		goto done;
-	}
-
-	if (nintf < 3 || nintf > 4) {
-		dev_err(dev, "unknown number of interfaces: %d\n", nintf);
-		goto done;
-	}
-
-	/* default to enabling interface */
-	altsetting = 0;
-
-	/* Composite mode; don't bind to the QMI/net interface as that
-	 * gets handled by other drivers.
-	 */
-
-	if (is_gobi1k) {
-		/* Gobi 1K USB layout:
-		 * 0: serial port (doesn't respond)
-		 * 1: serial port (doesn't respond)
-		 * 2: AT-capable modem port
-		 * 3: QMI/net
-		 */
-		if (ifnum == 2)
-			dev_dbg(dev, "Modem port found\n");
-		else
-			altsetting = -1;
-	} else {
-		/* Gobi 2K+ USB layout:
-		 * 0: QMI/net
-		 * 1: DM/DIAG (use libqcdm from ModemManager for communication)
-		 * 2: AT-capable modem port
-		 * 3: NMEA
-		 */
-		switch (ifnum) {
-		case 0:
-			/* Don't claim the QMI/net interface */
-			altsetting = -1;
-			break;
-		case 1:
-			dev_dbg(dev, "Gobi 2K+ DM/DIAG interface found\n");
-			break;
-		case 2:
-			dev_dbg(dev, "Modem port found\n");
-			break;
-		case 3:
-			/*
-			 * NMEA (serial line 9600 8N1)
-			 * # echo "\$GPS_START" > /dev/ttyUSBx
-			 * # echo "\$GPS_STOP"  > /dev/ttyUSBx
-			 */
-			dev_dbg(dev, "Gobi 2K+ NMEA GPS interface found\n");
-			break;
-		}
-	}
-
-done:
-	if (altsetting >= 0) {
-		retval = usb_set_interface(serial->dev, ifnum, altsetting);
-		if (retval < 0) {
-			dev_err(dev,
-				"Could not set interface, error %d\n",
-				retval);
-			retval = -ENODEV;
-		}
-	}
-
-	return retval;
-}
-
-static int qc_attach(struct usb_serial *serial)
-{
-	struct usb_wwan_intf_private *data;
-
-	data = kzalloc(sizeof(*data), GFP_KERNEL);
+	data = kzalloc(sizeof(struct usb_wwan_intf_private),
+					 GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
 
 	spin_lock_init(&data->susp_lock);
 
-	usb_set_serial_data(serial, data);
+	switch (nintf) {
+	case 1:
+		/* QDL mode */
+		/* Gobi 2000 has a single altsetting, older ones have two */
+		if (serial->interface->num_altsetting == 2)
+			intf = &serial->interface->altsetting[1];
+		else if (serial->interface->num_altsetting > 2)
+			break;
 
-	return 0;
+		if (intf->desc.bNumEndpoints == 2 &&
+		    usb_endpoint_is_bulk_in(&intf->endpoint[0].desc) &&
+		    usb_endpoint_is_bulk_out(&intf->endpoint[1].desc)) {
+			dbg("QDL port found");
+
+			if (serial->interface->num_altsetting == 1) {
+				retval = 0; /* Success */
+				break;
+			}
+
+			retval = usb_set_interface(serial->dev, ifnum, 1);
+			if (retval < 0) {
+				dev_err(&serial->dev->dev,
+					"Could not set interface, error %d\n",
+					retval);
+				retval = -ENODEV;
+				kfree(data);
+			}
+		}
+		break;
+
+	case 3:
+	case 4:
+		/* Composite mode; don't bind to the QMI/net interface as that
+		 * gets handled by other drivers.
+		 */
+
+		/* Gobi 1K USB layout:
+		 * 0: serial port (doesn't respond)
+		 * 1: serial port (doesn't respond)
+		 * 2: AT-capable modem port
+		 * 3: QMI/net
+		 *
+		 * Gobi 2K+ USB layout:
+		 * 0: QMI/net
+		 * 1: DM/DIAG (use libqcdm from ModemManager for communication)
+		 * 2: AT-capable modem port
+		 * 3: NMEA
+		 */
+
+		if (ifnum == 1 && !is_gobi1k) {
+			dbg("Gobi 2K+ DM/DIAG interface found");
+			retval = usb_set_interface(serial->dev, ifnum, 0);
+			if (retval < 0) {
+				dev_err(&serial->dev->dev,
+					"Could not set interface, error %d\n",
+					retval);
+				retval = -ENODEV;
+				kfree(data);
+			}
+		} else if (ifnum == 2) {
+			dbg("Modem port found");
+			retval = usb_set_interface(serial->dev, ifnum, 0);
+			if (retval < 0) {
+				dev_err(&serial->dev->dev,
+					"Could not set interface, error %d\n",
+					retval);
+				retval = -ENODEV;
+				kfree(data);
+			}
+		} else if (ifnum==3 && !is_gobi1k) {
+			/*
+			 * NMEA (serial line 9600 8N1)
+			 * # echo "\$GPS_START" > /dev/ttyUSBx
+			 * # echo "\$GPS_STOP"  > /dev/ttyUSBx
+			 */
+			dbg("Gobi 2K+ NMEA GPS interface found");
+			retval = usb_set_interface(serial->dev, ifnum, 0);
+			if (retval < 0) {
+				dev_err(&serial->dev->dev,
+					"Could not set interface, error %d\n",
+					retval);
+				retval = -ENODEV;
+				kfree(data);
+			}
+		}
+		break;
+
+	case 9:
+		if (ifnum != EFS_SYNC_IFC_NUM) {
+			kfree(data);
+			break;
+		}
+
+		retval = 0;
+		break;
+	default:
+		dev_err(&serial->dev->dev,
+			"unknown number of interfaces: %d\n", nintf);
+		kfree(data);
+		retval = -ENODEV;
+	}
+
+	/* Set serial->private if not returning -ENODEV */
+	if (retval != -ENODEV)
+		usb_set_serial_data(serial, data);
+	return retval;
 }
 
 static void qc_release(struct usb_serial *serial)
 {
 	struct usb_wwan_intf_private *priv = usb_get_serial_data(serial);
 
+	dbg("%s", __func__);
+
+	/* Call usb_wwan release & free the private data allocated in qcprobe */
+	usb_wwan_release(serial);
 	usb_set_serial_data(serial, NULL);
 	kfree(priv);
 }
@@ -285,10 +284,11 @@ static struct usb_serial_driver qcdevice = {
 	.write		     = usb_wwan_write,
 	.write_room	     = usb_wwan_write_room,
 	.chars_in_buffer     = usb_wwan_chars_in_buffer,
-	.attach              = qc_attach,
+	.throttle            = usb_wwan_throttle,
+	.unthrottle          = usb_wwan_unthrottle,
+	.attach		     = usb_wwan_startup,
+	.disconnect	     = usb_wwan_disconnect,
 	.release	     = qc_release,
-	.port_probe          = usb_wwan_port_probe,
-	.port_remove	     = usb_wwan_port_remove,
 #ifdef CONFIG_PM
 	.suspend	     = usb_wwan_suspend,
 	.resume		     = usb_wwan_resume,
@@ -299,8 +299,11 @@ static struct usb_serial_driver * const serial_drivers[] = {
 	&qcdevice, NULL
 };
 
-module_usb_serial_driver(serial_drivers, id_table);
+module_usb_serial_driver(qcdriver, serial_drivers);
 
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_LICENSE("GPL v2");
+
+module_param(debug, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(debug, "Debug enabled or not");

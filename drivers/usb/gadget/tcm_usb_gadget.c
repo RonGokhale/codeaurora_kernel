@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 /* Target based USB-Gadget
+=======
+/* Target based USB-Gadget Function
+>>>>>>> ref_merge
  *
  * UAS protocol handling, target callbacks, configfs handling,
  * BBB (USB Mass Storage Class Bulk-Only (BBB) and Transport protocol handling.
@@ -6,6 +10,7 @@
  * Author: Sebastian Andrzej Siewior <bigeasy at linutronix dot de>
  * License: GPLv2 as published by FSF.
  */
+<<<<<<< HEAD
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/types.h>
@@ -2180,10 +2185,33 @@ static struct usb_descriptor_header *uasp_ss_function_desc[] = {
 	(struct usb_descriptor_header *) &uasp_cmd_pipe_desc,
 	NULL,
 };
+=======
+
+#include <linux/init.h>
+#include <linux/module.h>
+
+#include <linux/usb/composite.h>
+#include <linux/usb/gadget.h>
+
+#include "usbstring.c"
+#include "epautoconf.c"
+#include "config.c"
+#include "composite.c"
+
+#include "f_tcm.c"
+>>>>>>> ref_merge
 
 #define UAS_VENDOR_ID	0x0525	/* NetChip */
 #define UAS_PRODUCT_ID	0xa4a5	/* Linux-USB File-backed Storage Gadget */
 
+<<<<<<< HEAD
+=======
+#define USB_G_STR_MANUFACTOR    1
+#define USB_G_STR_PRODUCT       2
+#define USB_G_STR_SERIAL        3
+#define USB_G_STR_CONFIG        4
+
+>>>>>>> ref_merge
 static struct usb_device_descriptor usbg_device_desc = {
 	.bLength =		sizeof(usbg_device_desc),
 	.bDescriptorType =	USB_DT_DEVICE,
@@ -2191,16 +2219,30 @@ static struct usb_device_descriptor usbg_device_desc = {
 	.bDeviceClass =		USB_CLASS_PER_INTERFACE,
 	.idVendor =		cpu_to_le16(UAS_VENDOR_ID),
 	.idProduct =		cpu_to_le16(UAS_PRODUCT_ID),
+<<<<<<< HEAD
+=======
+	.iManufacturer =	USB_G_STR_MANUFACTOR,
+	.iProduct =		USB_G_STR_PRODUCT,
+	.iSerialNumber =	USB_G_STR_SERIAL,
+
+>>>>>>> ref_merge
 	.bNumConfigurations =   1,
 };
 
 static struct usb_string	usbg_us_strings[] = {
+<<<<<<< HEAD
 	[USB_GADGET_MANUFACTURER_IDX].s	= "Target Manufactor",
 	[USB_GADGET_PRODUCT_IDX].s	= "Target Product",
 	[USB_GADGET_SERIAL_IDX].s	= "000000000001",
 	[USB_G_STR_CONFIG].s		= "default config",
 	[USB_G_STR_INT_UAS].s		= "USB Attached SCSI",
 	[USB_G_STR_INT_BBB].s		= "Bulk Only Transport",
+=======
+	{ USB_G_STR_MANUFACTOR,	"Target Manufactor"},
+	{ USB_G_STR_PRODUCT,	"Target Product"},
+	{ USB_G_STR_SERIAL,	"000000000001"},
+	{ USB_G_STR_CONFIG,	"default config"},
+>>>>>>> ref_merge
 	{ },
 };
 
@@ -2214,6 +2256,7 @@ static struct usb_gadget_strings *usbg_strings[] = {
 	NULL,
 };
 
+<<<<<<< HEAD
 static int guas_unbind(struct usb_composite_dev *cdev)
 {
 	return 0;
@@ -2405,12 +2448,25 @@ static int usbg_cfg_bind(struct usb_configuration *c)
 err:
 	kfree(fu);
 	return ret;
+=======
+static struct usb_configuration usbg_config_driver = {
+	.label                  = "Linux Target",
+	.bConfigurationValue    = 1,
+	.iConfiguration		= USB_G_STR_CONFIG,
+	.bmAttributes           = USB_CONFIG_ATT_SELFPOWER,
+};
+
+static int usbg_cfg_bind(struct usb_configuration *c)
+{
+	return tcm_bind_config(c);
+>>>>>>> ref_merge
 }
 
 static int usb_target_bind(struct usb_composite_dev *cdev)
 {
 	int ret;
 
+<<<<<<< HEAD
 	ret = usb_string_ids_tab(cdev, usbg_us_strings);
 	if (ret)
 		return ret;
@@ -2432,10 +2488,24 @@ static int usb_target_bind(struct usb_composite_dev *cdev)
 }
 
 static __refdata struct usb_composite_driver usbg_driver = {
+=======
+	ret = usb_add_config(cdev, &usbg_config_driver,
+			usbg_cfg_bind);
+	return ret;
+}
+
+static int guas_unbind(struct usb_composite_dev *cdev)
+{
+	return 0;
+}
+
+static struct usb_composite_driver usbg_driver = {
+>>>>>>> ref_merge
 	.name           = "g_target",
 	.dev            = &usbg_device_desc,
 	.strings        = usbg_strings,
 	.max_speed      = USB_SPEED_SUPER,
+<<<<<<< HEAD
 	.bind		= usb_target_bind,
 	.unbind         = guas_unbind,
 };
@@ -2448,20 +2518,43 @@ static int usbg_attach(struct usbg_tpg *tpg)
 static void usbg_detach(struct usbg_tpg *tpg)
 {
 	usb_composite_unregister(&usbg_driver);
+=======
+	.unbind         = guas_unbind,
+};
+
+static int usbg_attach_cb(bool connect)
+{
+	int ret = 0;
+
+	if (connect)
+		ret = usb_composite_probe(&usbg_driver, usb_target_bind);
+	else
+		usb_composite_unregister(&usbg_driver);
+
+	return ret;
+>>>>>>> ref_merge
 }
 
 static int __init usb_target_gadget_init(void)
 {
 	int ret;
 
+<<<<<<< HEAD
 	ret = usbg_register_configfs();
+=======
+	ret = f_tcm_init(&usbg_attach_cb);
+>>>>>>> ref_merge
 	return ret;
 }
 module_init(usb_target_gadget_init);
 
 static void __exit usb_target_gadget_exit(void)
 {
+<<<<<<< HEAD
 	usbg_deregister_configfs();
+=======
+	f_tcm_exit();
+>>>>>>> ref_merge
 }
 module_exit(usb_target_gadget_exit);
 

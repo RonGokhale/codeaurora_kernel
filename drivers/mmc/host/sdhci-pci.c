@@ -23,8 +23,9 @@
 #include <linux/scatterlist.h>
 #include <linux/io.h>
 #include <linux/gpio.h>
-#include <linux/pm_runtime.h>
 #include <linux/mmc/sdhci-pci-data.h>
+#include <linux/sfi.h>
+#include <linux/pm_runtime.h>
 
 #include "sdhci.h"
 
@@ -367,6 +368,8 @@ static int o2_probe(struct sdhci_pci_chip *chip)
 		scratch |= 0x80;
 		pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch);
 	}
+
+	slot->host->mmc->caps2 = MMC_CAP2_BOOTPART_NOACC;
 
 	return 0;
 }
@@ -1449,6 +1452,8 @@ static void __devexit sdhci_pci_remove(struct pci_dev *pdev)
 {
 	int i;
 	struct sdhci_pci_chip *chip;
+
+	sdhci_pci_runtime_pm_forbid(&pdev->dev);
 
 	chip = pci_get_drvdata(pdev);
 

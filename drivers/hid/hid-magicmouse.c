@@ -354,6 +354,7 @@ static int magicmouse_raw_event(struct hid_device *hdev,
 static int magicmouse_setup_input(struct input_dev *input, struct hid_device *hdev)
 {
 	int error;
+	struct input_dev *input = hi->input;
 
 	__set_bit(EV_KEY, input->evbit);
 
@@ -568,6 +569,7 @@ static struct hid_driver magicmouse_driver = {
 	.remove = magicmouse_remove,
 	.raw_event = magicmouse_raw_event,
 	.input_mapping = magicmouse_input_mapping,
+	.input_register = magicmouse_setup_input,
 };
 
 static int __init magicmouse_init(void)

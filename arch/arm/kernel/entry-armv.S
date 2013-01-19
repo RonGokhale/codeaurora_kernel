@@ -743,7 +743,14 @@ ENTRY(__switch_to)
 	ldr	r7, [r7, #TSK_STACK_CANARY]
 #endif
 #ifdef CONFIG_CPU_USE_DOMAINS
+#ifdef CONFIG_EMULATE_DOMAIN_MANAGER_V7
+	stmdb	r13!, {r0-r3, lr}
+	mov	r0, r6
+	bl	emulate_domain_manager_set
+	ldmia	r13!, {r0-r3, lr}
+#else
 	mcr	p15, 0, r6, c3, c0, 0		@ Set domain register
+#endif
 #endif
 	mov	r5, r0
 	add	r4, r2, #TI_CPU_SAVE
@@ -787,6 +794,97 @@ ENDPROC(__switch_to)
 	.align	5
 	.globl	__kuser_helper_start
 __kuser_helper_start:
+#ifdef GENERIC_TIME_VSYSCALL
+/*
+ * Reference declaration:
+ *
+ *      extern struct timezone __kernel_helper_gtod_timezone
+ *      extern unsigned int __kernel_helper_gtod_seqnum
+ *
+ *  Definition and user space usage example:
+ *
+ *      #define __kernel_helper_gtod_timezone (*(unsigned int*)0xffff0f20)
+ *      #define __kernel_helper_gtod_seqnum   (*(unsigned int*)0xffff0f28)
+ *
+ *      unsigned int prelock, postlock ;
+ *      do {
+ *          prelock = __kernel_helper_gtod_seqnum;
+ *          memcpy(&tz, (void*)&(__kernel_helper_gtod_timezone),
+ *                     sizeof(struct timezone)) ;
+ *          postlock = __kernel_helper_gtod_seqnum;
+ *      } while (prelock != postlock);
+ *
+ * 0xffff0f20-3: tz_minuteswest
+ * 0xffff0f24-7: tz_dsttime
+ * 0xffff0f28-b: sequence #.
+ * 0xffff0f30-3: offset into CONFIG_USER_ACCESSIBLE_TIMER_BASE to get the timer.
+ * 0xffff0f34-7: Feature flag
+ * 0xffff0f38-b: wall-to-mononic: tv_sec
+ * 0xffff0f3c-f: wall-to-mononic: tv_nsec
+ */
+	.globl  __kuser_gtod_timezone
+__kuser_gtod_timezone: @0xffff0f20
+	.word	0
+	.word	0
+	.word	0
+	.word	0
+	.word	0
+	/* This offset is where the flag to enable the
+	 * user accessible timers is located.
+	 */
+	.word	0
+	.word	0
+	.word	0
+	.align	5
+
+/*
+ * Reference declaration:
+ *
+ *      extern struct timeval __kernel_helper_gtod_timeval
+ *      extern unsigned int __kernel_helper_gtod_seqnum
+ *
+ *  Definition and user space usage example:
+ *
+ *      #define __kernel_helper_gtod_timeval (*(unsigned int*)0xffff0f40)
+ *      #define __kernel_helper_gtod_seqnum   (*(unsigned int*)0xffff0f48)
+ *
+ *      unsigned int prelock, postlock ;
+ *      struct gtod {
+ *          uint64_t  cycle_last;
+ *          uint64_t  mask;
+ *          uint32_t  mult;
+ *          uint32_t  shift;
+ *          uint32_t  tv_sec;
+ *          uint32_t  tv_nsec;
+ *      };
+ *      struct gtod gdtod;
+ *
+ *      do {
+ *          prelock = __kernel_helper_gtod_seqnum;
+ *          memcpy(&gdtod, (void*)&(__kernel_helper_gtod_timeval),
+ *                     sizeof(struct gtod)) ;
+ *          postlock = __kernel_helper_gtod_seqnum;
+ *      } while (prelock != postlock);
+ *
+ * 0xffff0f40-7: cycle_last
+ * 0xffff0f48-f: mask
+ * 0xffff0f50-3: mult
+ * 0xffff0f54-7: shift
+ * 0xffff0f58-b: tv_sec
+ * 0xffff0f5c-f: tv_nsec
+ */
+	.globl  __kuser_gtod_timeval
+__kuser_gtod_timeval:  @0xffff0f40
+	.word	0
+	.word	0
+	.word	0
+	.word	0
+	.word	0
+	.word	0
+	.word	0
+	.word	0
+	.align	5
+#endif
 
 /*
  * Due to the length of some sequences, __kuser_cmpxchg64 spans 2 regular
@@ -989,7 +1087,7 @@ __kuser_helper_end:
  * SP points to a minimal amount of processor-private memory, the address
  * of which is copied into r0 for the mode specific abort handler.
  */
-	.macro	vector_stub, name, mode, correction=0
+	.macro	vector_stub, name, mode, fixup, correction=0
 	.align	5
 
 vector_\name:
@@ -1018,6 +1116,18 @@ vector_\name:
 	and	lr, lr, #0x0f
  THUMB(	adr	r0, 1f			)
  THUMB(	ldr	lr, [r0, lr, lsl #2]	)
+	.if	\fixup
+#ifdef CONFIG_MSM_KRAIT_WFE_FIXUP
+	ldr	r0, .krait_fixup
+	ldr	r0, [r0]
+	cmp	r0, #0
+	beq	10f
+	mrc	p15, 7, r0, c15, c0, 5
+	orr	r0, r0, #0x10000
+	mcr	p15, 7, r0, c15, c0, 5
+10:	isb
+#endif
+	.endif
 	mov	r0, sp
  ARM(	ldr	lr, [pc, lr, lsl #2]	)
 	movs	pc, lr			@ branch to handler in SVC mode
@@ -1033,7 +1143,7 @@ __stubs_start:
 /*
  * Interrupt dispatcher
  */
-	vector_stub	irq, IRQ_MODE, 4
+	vector_stub	irq, IRQ_MODE, 1, 4
 
 	.long	__irq_usr			@  0  (USR_26 / USR_32)
 	.long	__irq_invalid			@  1  (FIQ_26 / FIQ_32)
@@ -1056,7 +1166,7 @@ __stubs_start:
  * Data abort dispatcher
  * Enter in ABT mode, spsr = USR CPSR, lr = USR PC
  */
-	vector_stub	dabt, ABT_MODE, 8
+	vector_stub	dabt, ABT_MODE, 0, 8
 
 	.long	__dabt_usr			@  0  (USR_26 / USR_32)
 	.long	__dabt_invalid			@  1  (FIQ_26 / FIQ_32)
@@ -1079,7 +1189,7 @@ __stubs_start:
  * Prefetch abort dispatcher
  * Enter in ABT mode, spsr = USR CPSR, lr = USR PC
  */
-	vector_stub	pabt, ABT_MODE, 4
+	vector_stub	pabt, ABT_MODE, 0, 4
 
 	.long	__pabt_usr			@  0 (USR_26 / USR_32)
 	.long	__pabt_invalid			@  1 (FIQ_26 / FIQ_32)
@@ -1102,7 +1212,7 @@ __stubs_start:
  * Undef instr entry dispatcher
  * Enter in UND mode, spsr = SVC/USR CPSR, lr = SVC/USR PC
  */
-	vector_stub	und, UND_MODE
+	vector_stub	und, UND_MODE, 0
 
 	.long	__und_usr			@  0 (USR_26 / USR_32)
 	.long	__und_invalid			@  1 (FIQ_26 / FIQ_32)
@@ -1154,6 +1264,8 @@ vector_addrexcptn:
 
 .LCvswi:
 	.word	vector_swi
+.krait_fixup:
+	.word	msm_krait_need_wfe_fixup
 
 	.globl	__stubs_end
 __stubs_end:

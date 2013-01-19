@@ -42,6 +42,9 @@ static unsigned int __blk_recalc_rq_segments(struct request_queue *q,
 					goto new_segment;
 				if (!BIOVEC_SEG_BOUNDARY(q, bvprv, bv))
 					goto new_segment;
+				if ((bvprv->bv_page != bv->bv_page) &&
+				    (bvprv->bv_page + 1) != bv->bv_page)
+					goto new_segment;
 
 				seg_size += bv->bv_len;
 				bvprv = bv;
@@ -116,40 +119,43 @@ __blk_segment_map_sg(struct request_queue *q, struct bio_vec *bvec,
 		     struct scatterlist **sg, int *nsegs, int *cluster)
 {
 
-	int nbytes = bvec->bv_len;
+		int nbytes = bvec->bv_len;
 
 	if (*bvprv && *cluster) {
 		if ((*sg)->length + nbytes > queue_max_segment_size(q))
-			goto new_segment;
+				goto new_segment;
 
 		if (!BIOVEC_PHYS_MERGEABLE(*bvprv, bvec))
-			goto new_segment;
+				goto new_segment;
 		if (!BIOVEC_SEG_BOUNDARY(q, *bvprv, bvec))
-			goto new_segment;
+				goto new_segment;
+		if (((*bvprv)->bv_page != bvec->bv_page) &&
+		    (((*bvprv)->bv_page + 1) != bvec->bv_page))
+				goto new_segment;
 
 		(*sg)->length += nbytes;
-	} else {
+		} else {
 new_segment:
 		if (!*sg)
 			*sg = sglist;
-		else {
-			/*
-			 * If the driver previously mapped a shorter
-			 * list, we could see a termination bit
-			 * prematurely unless it fully inits the sg
-			 * table on each mapping. We KNOW that there
-			 * must be more entries here or the driver
-			 * would be buggy, so force clear the
-			 * termination bit to avoid doing a full
-			 * sg_init_table() in drivers for each command.
-			 */
+			else {
+				/*
+				 * If the driver previously mapped a shorter
+				 * list, we could see a termination bit
+				 * prematurely unless it fully inits the sg
+				 * table on each mapping. We KNOW that there
+				 * must be more entries here or the driver
+				 * would be buggy, so force clear the
+				 * termination bit to avoid doing a full
+				 * sg_init_table() in drivers for each command.
+				 */
 			(*sg)->page_link &= ~0x02;
 			*sg = sg_next(*sg);
-		}
+			}
 
 		sg_set_page(*sg, bvec->bv_page, nbytes, bvec->bv_offset);
 		(*nsegs)++;
-	}
+		}
 	*bvprv = bvec;
 }
 
@@ -406,6 +412,12 @@ static int attempt_merge(struct request_queue *q, struct request *req,
 		return 0;
 
 	if (!blk_check_merge_flags(req->cmd_flags, next->cmd_flags))
+		return 0;
+
+	/*
+	 * Don't merge file system requests and sanitize requests
+	 */
+	if ((req->cmd_flags & REQ_SANITIZE) != (next->cmd_flags & REQ_SANITIZE))
 		return 0;
 
 	/*

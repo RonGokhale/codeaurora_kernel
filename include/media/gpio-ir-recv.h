@@ -18,6 +18,8 @@ struct gpio_ir_recv_platform_data {
 	bool		active_low;
 	u64		allowed_protos;
 	const char	*map_name;
+	bool can_wakeup;
+	u32 swfi_latency;
 };
 
 #endif /* __GPIO_IR_RECV_H__ */

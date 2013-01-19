@@ -1319,7 +1319,7 @@ static void rcu_gp_cleanup(struct rcu_state *rsp)
 /*
  * Body of kthread that handles grace periods.
  */
-static int __noreturn rcu_gp_kthread(void *arg)
+static int rcu_gp_kthread(void *arg)
 {
 	int fqs_state;
 	unsigned long j;
@@ -1381,6 +1381,7 @@ static int __noreturn rcu_gp_kthread(void *arg)
 		/* Handle grace-period end. */
 		rcu_gp_cleanup(rsp);
 	}
+	return 0;
 }
 
 /*

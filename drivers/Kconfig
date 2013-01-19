@@ -52,6 +52,10 @@ source "drivers/i2c/Kconfig"
 
 source "drivers/spi/Kconfig"
 
+source "drivers/spmi/Kconfig"
+
+source "drivers/slimbus/Kconfig"
+
 source "drivers/hsi/Kconfig"
 
 source "drivers/pps/Kconfig"
@@ -97,6 +101,8 @@ source "drivers/mmc/Kconfig"
 source "drivers/memstick/Kconfig"
 
 source "drivers/leds/Kconfig"
+
+source "drivers/switch/Kconfig"
 
 source "drivers/accessibility/Kconfig"
 
@@ -155,5 +161,9 @@ source "drivers/vme/Kconfig"
 source "drivers/pwm/Kconfig"
 
 source "drivers/irqchip/Kconfig"
+
+source "drivers/gud/Kconfig"
+
+source "drivers/coresight/Kconfig"
 
 endmenu

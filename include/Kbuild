@@ -6,3 +6,4 @@ header-y += sound/
 header-y += rdma/
 header-y += video/
 header-y += scsi/
+header-y += media/

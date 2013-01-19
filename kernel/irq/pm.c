@@ -45,7 +45,7 @@ static void resume_irqs(bool want_early)
 	struct irq_desc *desc;
 	int irq;
 
-	for_each_irq_desc(irq, desc) {
+	for_each_irq_desc_reverse(irq, desc) {
 		unsigned long flags;
 		bool is_early = desc->action &&
 			desc->action->flags & IRQF_EARLY_RESUME;
@@ -109,8 +109,13 @@ int check_wakeup_irqs(void)
 		 * can abort suspend.
 		 */
 		if (irqd_is_wakeup_set(&desc->irq_data)) {
-			if (desc->depth == 1 && desc->istate & IRQS_PENDING)
+			if (desc->depth == 1 && desc->istate & IRQS_PENDING) {
+				pr_info("Wakeup IRQ %d %s pending, suspend aborted\n",
+					irq,
+					desc->action && desc->action->name ?
+					desc->action->name : "");
 				return -EBUSY;
+			}
 			continue;
 		}
 		/*

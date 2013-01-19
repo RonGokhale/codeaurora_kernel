@@ -149,7 +149,7 @@ static int perf_evsel__check_stype(struct perf_evsel *evsel,
 		return 0;
 
 	if (output[type].user_set) {
-		evname = perf_evsel__name(evsel);
+		evname = __event_name(attr->type, attr->config, NULL);
 		pr_err("Samples for '%s' event do not have %s attribute set. "
 		       "Cannot print '%s' field.\n",
 		       evname, sample_msg, output_field2str(field));
@@ -158,7 +158,7 @@ static int perf_evsel__check_stype(struct perf_evsel *evsel,
 
 	/* user did not ask for it explicitly so remove from the default list */
 	output[type].fields &= ~field;
-	evname = perf_evsel__name(evsel);
+	evname = __event_name(attr->type, attr->config, NULL);
 	pr_debug("Samples for '%s' event do not have %s attribute set. "
 		 "Skipping '%s' field.\n",
 		 evname, sample_msg, output_field2str(field));
@@ -299,7 +299,14 @@ static void print_sample_start(struct perf_sample *sample,
 	}
 
 	if (PRINT_FIELD(EVNAME)) {
-		evname = perf_evsel__name(evsel);
+		if (attr->type == PERF_TYPE_TRACEPOINT) {
+			type = trace_parse_common_type(sample->raw_data);
+			event = trace_find_event(type);
+			if (event)
+				evname = event->name;
+		} else
+			evname = __event_name(attr->type, attr->config, NULL);
+
 		printf("%s: ", evname ? evname : "[unknown]");
 	}
 }
@@ -461,6 +468,7 @@ static void setup_scripting(void)
 {
 	setup_perl_scripting();
 	setup_python_scripting();
+	setup_json_export();
 
 	scripting_ops = &default_scripting_ops;
 }

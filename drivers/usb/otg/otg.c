@@ -235,3 +235,4 @@ const char *otg_state_string(enum usb_otg_state state)
 	}
 }
 EXPORT_SYMBOL(otg_state_string);
+

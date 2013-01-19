@@ -91,3 +91,12 @@ transferred to 'device' domain. This attribute can be also used for
 dma_unmap_{single,page,sg} functions family to force buffer to stay in
 device domain after releasing a mapping for it. Use this attribute with
 care!
+
+DMA_ATTR_STRONGLY_ORDERED
+-------------------------
+
+DMA_ATTR_STRONGLY_ORDERED allocates memory with a very restrictive type
+of mapping (no unaligned accesses, no re-ordering, no write merging, no
+buffering, no pre-fetching). This has severe performance penalties and
+should not be used for general purpose DMA allocations. It should only
+be used if one of the restrictions on strongly ordered memory is required.
