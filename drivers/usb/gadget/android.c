@@ -53,7 +53,6 @@
 #include "f_rmnet_sdio.c"
 #include "f_rmnet_smd_sdio.c"
 #include "f_rmnet.c"
-#include "f_audio_source.c"
 #include "f_mass_storage.c"
 #include "u_serial.c"
 #include "u_sdio.c"
@@ -84,6 +83,7 @@
 #include "f_tcm.c"
 #endif
 #ifdef CONFIG_SND_PCM
+#include "f_audio_source.c"
 #include "u_uac1.c"
 #include "f_uac1.c"
 #endif
@@ -273,7 +273,6 @@ static struct usb_otg_descriptor otg_descriptor = {
 	.bLength =		sizeof otg_descriptor,
 	.bDescriptorType =	USB_DT_OTG,
 	.bmAttributes =		USB_OTG_SRP | USB_OTG_HNP,
-	.bcdOTG               = __constant_cpu_to_le16(0x0200),
 };
 
 static const struct usb_descriptor_header *otg_desc[] = {
@@ -1590,6 +1589,7 @@ static struct android_usb_function accessory_function = {
 	.ctrlrequest	= accessory_function_ctrlrequest,
 };
 
+#ifdef CONFIG_SND_PCM
 static int audio_source_function_init(struct android_usb_function *f,
 			struct usb_composite_dev *cdev)
 {
@@ -1651,6 +1651,7 @@ static struct android_usb_function audio_source_function = {
 	.unbind_config	= audio_source_function_unbind_config,
 	.attributes	= audio_source_function_attributes,
 };
+#endif
 
 static int android_uasp_connect_cb(bool connect)
 {
@@ -1703,6 +1704,7 @@ static struct android_usb_function *supported_functions[] = {
 	&ecm_qc_function,
 #ifdef CONFIG_SND_PCM
 	&audio_function,
+	&audio_source_function,
 #endif
 	&rmnet_smd_function,
 	&rmnet_sdio_function,
@@ -1721,7 +1723,6 @@ static struct android_usb_function *supported_functions[] = {
 	&ecm_function,
 	&mass_storage_function,
 	&accessory_function,
-	&audio_source_function,
 	&uasp_function,
 	NULL
 };
@@ -2323,6 +2324,7 @@ static struct usb_composite_driver android_usb_driver = {
 	.name		= "android_usb",
 	.dev		= &device_desc,
 	.strings	= dev_strings,
+	.bind		= android_bind,
 	.unbind		= android_usb_unbind,
 	.max_speed	= USB_SPEED_SUPER
 };
@@ -2599,9 +2601,9 @@ static int __devinit android_probe(struct platform_device *pdev)
 	android_dev_count++;
 
 	if (pdata)
-		composite_driver.usb_core_id = pdata->usb_core_id;
+		composite_driver_template.usb_core_id = pdata->usb_core_id;
 	else
-		composite_driver.usb_core_id = 0; /*To backward compatibility*/
+		composite_driver_template.usb_core_id = 0; /*To backward compatibility*/
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (res) {
@@ -2616,13 +2618,14 @@ static int __devinit android_probe(struct platform_device *pdev)
 		dev_dbg(&pdev->dev, "failed to get mem resource\n");
 	}
 
-	ret = android_create_device(android_dev, composite_driver.usb_core_id);
+	ret = android_create_device(android_dev,
+					composite_driver_template.usb_core_id);
 	if (ret) {
 		pr_err("%s(): android_create_device failed\n", __func__);
 		goto err_dev;
 	}
 
-	ret = usb_composite_probe(&android_usb_driver, android_bind);
+	ret = usb_composite_probe(&android_usb_driver);
 	if (ret) {
 		pr_err("%s(): Failed to register android "
 				 "composite driver\n", __func__);
@@ -2715,8 +2718,10 @@ static int __init init(void)
 	int ret;
 
 	/* Override composite driver functions */
-	composite_driver.setup = android_setup;
-	composite_driver.disconnect = android_disconnect;
+	composite_driver_template.setup = android_setup;
+	composite_driver_template.disconnect = android_disconnect;
+	composite_driver_template.suspend = android_suspend;
+	composite_driver_template.resume = android_resume;
 
 	INIT_LIST_HEAD(&android_dev_list);
 	android_dev_count = 0;

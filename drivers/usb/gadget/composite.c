@@ -31,9 +31,6 @@
 /* big enough to hold our biggest descriptor */
 #define USB_BUFSIZ	4096
 
-static struct usb_composite_driver *composite;
-static int (*composite_gadget_bind)(struct usb_composite_dev *cdev);
-
 /* Some systems will need runtime overrides for the  product identifiers
  * published in the device descriptor, either numbers or strings or both.
  * String parameters are in UTF-8 (superset of ASCII's 7 bit characters).
@@ -1413,8 +1410,8 @@ composite_unbind(struct usb_gadget *gadget)
 		list_del(&c->list);
 		unbind_config(cdev, c);
 	}
-	if (composite->unbind)
-		composite->unbind(cdev);
+	if (cdev->driver->unbind)
+		cdev->driver->unbind(cdev);
 
 	if (cdev->req) {
 		kfree(cdev->req->buf);
@@ -1595,7 +1592,8 @@ composite_resume(struct usb_gadget *gadget)
 
 /*-------------------------------------------------------------------------*/
 
-static struct usb_gadget_driver composite_driver = {
+static struct usb_gadget_driver composite_driver_template = {
+	.bind		= composite_bind,
 	.unbind		= composite_unbind,
 
 	.setup		= composite_setup,
@@ -1630,25 +1628,22 @@ static struct usb_gadget_driver composite_driver = {
  */
 int usb_composite_probe(struct usb_composite_driver *driver)
 {
-	int retval;
+	struct usb_gadget_driver *gadget_driver;
 
-	if (!driver || !driver->dev || !bind)
+	if (!driver || !driver->dev || !driver->bind)
 		return -EINVAL;
 
 	if (!driver->name)
 		driver->name = "composite";
-	if (!driver->iProduct)
-		driver->iProduct = driver->name;
-	composite_driver.function =  (char *) driver->name;
-	composite_driver.driver.name = driver->name;
-	composite_driver.max_speed = driver->max_speed;
-	composite = driver;
-	composite_gadget_bind = bind;
 
-	retval = usb_gadget_probe_driver(&composite_driver, composite_bind);
-	if (retval)
-		composite = NULL;
-	return retval;
+	driver->gadget_driver = composite_driver_template;
+	gadget_driver = &driver->gadget_driver;
+
+	gadget_driver->function =  (char *) driver->name;
+	gadget_driver->driver.name = driver->name;
+	gadget_driver->max_speed = driver->max_speed;
+
+	return usb_gadget_probe_driver(gadget_driver);
 }
 
 /**
