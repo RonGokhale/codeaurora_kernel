@@ -17,6 +17,7 @@
 #define MAX_DBG_BUF_SIZE 4096
 int msm_vidc_debug = 0x3;
 int msm_fw_debug = 0x18;
+int msm_fw_debug_mode = 0x1;
 
 struct debug_buffer {
 	char ptr[MAX_DBG_BUF_SIZE];
@@ -87,6 +88,33 @@ static const struct file_operations core_info_fops = {
 	.read = core_info_read,
 };
 
+static int trigger_ssr_open(struct inode *inode, struct file *file)
+{
+	file->private_data = inode->i_private;
+	return 0;
+}
+
+static ssize_t trigger_ssr_write(struct file *filp, const char __user *buf,
+		size_t count, loff_t *ppos) {
+	u32 ssr_trigger_val;
+	int rc;
+	struct msm_vidc_core *core = filp->private_data;
+	rc = sscanf(buf, "%d", &ssr_trigger_val);
+	if (rc < 0) {
+		dprintk(VIDC_WARN, "returning error err %d\n", rc);
+		rc = -EINVAL;
+	} else {
+		msm_vidc_trigger_ssr(core, ssr_trigger_val);
+		rc = count;
+	}
+	return rc;
+}
+
+static const struct file_operations ssr_fops = {
+	.open = trigger_ssr_open,
+	.write = trigger_ssr_write,
+};
+
 struct dentry *msm_vidc_debugfs_init_core(struct msm_vidc_core *core,
 		struct dentry *parent)
 {
@@ -114,6 +142,16 @@ struct dentry *msm_vidc_debugfs_init_core(struct msm_vidc_core *core,
 	}
 	if (!debugfs_create_u32("fw_level", S_IRUGO | S_IWUSR,
 			parent, &msm_fw_debug)) {
+		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
+		goto failed_create_dir;
+	}
+	if (!debugfs_create_file("trigger_ssr", S_IWUSR,
+			dir, core, &ssr_fops)) {
+		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
+		goto failed_create_dir;
+	}
+	if (!debugfs_create_u32("fw_debug_mode", S_IRUGO | S_IWUSR,
+			parent, &msm_fw_debug_mode)) {
 		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
 		goto failed_create_dir;
 	}
@@ -217,8 +255,12 @@ void msm_vidc_debugfs_update(struct msm_vidc_inst *inst,
 	break;
 	case MSM_VIDC_DEBUGFS_EVENT_EBD:
 		inst->count.ebd++;
-		if (inst->count.ebd && inst->count.ebd == inst->count.etb)
+		if (inst->count.ebd && inst->count.ebd == inst->count.etb) {
 			toc(inst, FRAME_PROCESSING);
+			dprintk(VIDC_PROF, "EBD: FW needs input buffers\n");
+		}
+		if (inst->count.ftb == inst->count.fbd)
+			dprintk(VIDC_PROF, "EBD: FW needs output buffers\n");
 	break;
 	case MSM_VIDC_DEBUGFS_EVENT_FTB: {
 		inst->count.ftb++;
@@ -230,8 +272,12 @@ void msm_vidc_debugfs_update(struct msm_vidc_inst *inst,
 	break;
 	case MSM_VIDC_DEBUGFS_EVENT_FBD:
 		inst->debug.samples++;
-		if (inst->count.ebd && inst->count.fbd == inst->count.ftb)
+		if (inst->count.ebd && inst->count.fbd == inst->count.ftb) {
 			toc(inst, FRAME_PROCESSING);
+			dprintk(VIDC_PROF, "FBD: FW needs output buffers\n");
+		}
+		if (inst->count.etb == inst->count.ebd)
+			dprintk(VIDC_PROF, "FBD: FW needs input buffers\n");
 		break;
 	default:
 		dprintk(VIDC_ERR, "Invalid state in debugfs: %d\n", e);

@@ -46,11 +46,21 @@
 		clock-frequency = <19200000>;
 	};
 
+	qcom,msm-adsp-loader {
+		compatible = "qcom,adsp-loader";
+		qcom,adsp-state = <0>;
+	};
+
 	serial@f991f000 {
 		compatible = "qcom,msm-lsuart-v14";
 		reg = <0xf991f000 0x1000>;
 		interrupts = <0 109 0>;
 		status = "disabled";
+	};
+
+	qcom,vidc@fdc00000 {
+		compatible = "qcom,msm-vidc";
+		hfi = "q6";
 	};
 
 	usb@f9a55000 {
@@ -308,6 +318,15 @@
 					 <0x155000cf>; /* LDO_22 */
 	};
 
+	qcom,lpass@fe200000 {
+		compatible = "qcom,pil-q6v5-lpass";
+		reg = <0xfe200000 0x00100>,
+		      <0xfd485100 0x00010>;
+		reg-names = "qdsp6_base", "halt_base";
+		interrupts = <0 162 1>;
+
+		qcom,firmware-name = "adsp";
+	};
 };
 
 &gdsc_vfe {

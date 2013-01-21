@@ -1272,6 +1272,8 @@ static struct branch_clk gcc_lpass_q6_axi_clk = {
 	.cbcr_reg = LPASS_Q6_AXI_CBCR,
 	.has_sibling = 1,
 	.base = &virt_bases[GCC_BASE],
+	 /* FIXME: Remove this once simulation is fixed. */
+	.halt_check = DELAY,
 	.c = {
 		.dbg_name = "gcc_lpass_q6_axi_clk",
 		.ops = &clk_ops_branch,
@@ -1735,6 +1737,8 @@ static struct branch_clk bimc_gfx_clk = {
 	.cbcr_reg = BIMC_GFX_CBCR,
 	.has_sibling = 1,
 	.base = &virt_bases[MMSS_BASE],
+	 /* FIXME: Remove this once simulation is fixed. */
+	.halt_check = DELAY,
 	.c = {
 		.dbg_name = "bimc_gfx_clk",
 		.ops = &clk_ops_branch,
@@ -1843,7 +1847,7 @@ static struct branch_clk csi1pix_clk = {
 	.has_sibling = 1,
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
-		.parent = &csi0_clk_src.c,
+		.parent = &csi1_clk_src.c,
 		.dbg_name = "csi1pix_clk",
 		.ops = &clk_ops_branch,
 		CLK_INIT(csi1pix_clk.c),
@@ -1855,7 +1859,7 @@ static struct branch_clk csi1rdi_clk = {
 	.has_sibling = 1,
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
-		.parent = &csi0_clk_src.c,
+		.parent = &csi1_clk_src.c,
 		.dbg_name = "csi1rdi_clk",
 		.ops = &clk_ops_branch,
 		CLK_INIT(csi1rdi_clk.c),
@@ -1995,6 +1999,8 @@ static struct branch_clk mdp_axi_clk = {
 	.cbcr_reg = MDP_AXI_CBCR,
 	.has_sibling = 1,
 	.base = &virt_bases[MMSS_BASE],
+	 /* FIXME: Remove this once simulation is fixed. */
+	.halt_check = DELAY,
 	.c = {
 		.parent = &axi_clk_src.c,
 		.dbg_name = "mdp_axi_clk",
@@ -2148,6 +2154,8 @@ static struct branch_clk vfe_axi_clk = {
 	.cbcr_reg = VFE_AXI_CBCR,
 	.has_sibling = 1,
 	.base = &virt_bases[MMSS_BASE],
+	 /* FIXME: Remove this once simulation is fixed. */
+	.halt_check = DELAY,
 	.c = {
 		.parent = &axi_clk_src.c,
 		.dbg_name = "vfe_axi_clk",

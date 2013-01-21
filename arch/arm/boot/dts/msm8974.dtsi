@@ -897,6 +897,12 @@
 		qcom,is-loadable;
 		qcom,firmware-name = "mba";
 		qcom,pil-self-auth = <1>;
+
+		/* GPIO input from mss */
+		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_1_in 0 0>;
+
+		/* GPIO output to mss */
+		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_1_out 0 0>;
 	};
 
 	qcom,pronto@fb21b000 {
@@ -1096,6 +1102,7 @@
 		qcom,usb-bam-num-pipes = <16>;
 		qcom,usb-base-address = <0xf9200000>;
 		qcom,ignore-core-reset-ack;
+		qcom,disable-clk-gating;
 
 		qcom,pipe1 {
 			label = "usb-to-peri-qdss-dwc3";
@@ -1178,6 +1185,20 @@
                 compatible = "qcom,msm-mem-hole";
                 qcom,memblock-remove = <0x7f00000 0x8000000>; /* Address and Size of Hole */
         };
+
+	uart7: uart@f995d000 { /*BLSP #2, UART #7 */
+		cell-index = <0>;
+		compatible = "qcom,msm-hsuart-v14";
+		status = "disabled";
+		reg = <0xf995d000 0x1000>,
+			<0xf9944000 0x5000>;
+		reg-names = "core_mem", "bam_mem";
+		interrupts = <0 113 0>, <0 239 0>;
+		interrupt-names = "core_irq", "bam_irq";
+
+		qcom,bam-tx-ep-pipe-index = <0>;
+		qcom,bam-rx-ep-pipe-index = <1>;
+	};
 
 	qcom,smem@fa00000 {
 		compatible = "qcom,smem";

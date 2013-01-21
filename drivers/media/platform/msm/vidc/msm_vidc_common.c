@@ -422,6 +422,9 @@ static void handle_session_prop_info(enum command_response cmd, void *data)
 			inst->buff_req.buffer[i].buffer_count_actual,
 			inst->buff_req.buffer[i].buffer_size);
 	}
+	dprintk(VIDC_PROF, "Input buffers: %d, Output buffers: %d\n",
+			inst->buff_req.buffer[0].buffer_count_actual,
+			inst->buff_req.buffer[1].buffer_count_actual);
 	signal_session_msg_receipt(cmd, inst);
 }
 
@@ -716,6 +719,10 @@ static void handle_fbd(enum command_response cmd, void *data)
 		(u32)fill_buf_done->packet_buffer1);
 	if (vb) {
 		vb->v4l2_planes[0].bytesused = fill_buf_done->filled_len1;
+		vb->v4l2_planes[0].reserved[2] = fill_buf_done->start_x_coord;
+		vb->v4l2_planes[0].reserved[3] = fill_buf_done->start_y_coord;
+		vb->v4l2_planes[0].reserved[4] = fill_buf_done->frame_width;
+		vb->v4l2_planes[0].reserved[5] = fill_buf_done->frame_height;
 		if (!(fill_buf_done->flags1 &
 			HAL_BUFFERFLAG_TIMESTAMPINVALID) &&
 			fill_buf_done->filled_len1) {
@@ -2208,3 +2215,18 @@ enum hal_extradata_id msm_comm_get_hal_extradata_index(
 	}
 	return ret;
 };
+
+int msm_vidc_trigger_ssr(struct msm_vidc_core *core,
+	enum hal_ssr_trigger_type type)
+{
+	int rc = 0;
+	struct hfi_device *hdev;
+	if (!core && !core->device) {
+		dprintk(VIDC_WARN, "Invalid parameters: %p\n", core);
+		return -EINVAL;
+	}
+	hdev = core->device;
+	if (core->state == VIDC_CORE_INIT_DONE)
+		rc = hdev->core_trigger_ssr(hdev->hfi_device_data, type);
+	return rc;
+}
