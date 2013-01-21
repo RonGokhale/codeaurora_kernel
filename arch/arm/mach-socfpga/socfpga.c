@@ -83,10 +83,10 @@ static void __init init_socfpga(void)
 static void __init enable_periphs(void)
 {
 	/* Release all peripherals from reset.*/
-	__raw_writel(0, rst_manager_base_addr + SOCFPGA_MODPERRST);
+	__raw_writel(0, rst_manager_base_addr + SOCFPGA_RSTMGR_MODPERRST);
 
 	/* Release all FPGA bridges from reset.*/
-	__raw_writel(0, rst_manager_base_addr + SOCFPGA_BRGMODRST);
+	__raw_writel(0, rst_manager_base_addr + SOCFPGA_RSTMGR_BRGMODRST);
 }
 
 static void __init socfpga_sysmgr_init(void)
@@ -144,13 +144,13 @@ static void socfpga_cyclone5_restart(enum reboot_mode mode, const char *cmd)
 {
 	u32 temp;
 
-	temp = readl(rst_manager_base_addr + SOCFPGA_RSTMGR_CTRL);
+	temp = __raw_readl(rst_manager_base_addr + SOCFPGA_RSTMGR_CTRL);
 
 	if (mode == REBOOT_HARD)
 		temp |= RSTMGR_CTRL_SWCOLDRSTREQ;
 	else
 		temp |= RSTMGR_CTRL_SWWARMRSTREQ;
-	writel(temp, rst_manager_base_addr + SOCFPGA_RSTMGR_CTRL);
+	__raw_writel(temp, rst_manager_base_addr + SOCFPGA_RSTMGR_CTRL);
 }
 
 static void __init socfpga_cyclone5_init(void)
