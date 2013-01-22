@@ -71,7 +71,7 @@ printdir = $(patsubst $(INSTALL_HDR_PATH)/%/,%,$(dir $@))
 quiet_cmd_install = INSTALL $(printdir) ($(words $(all-files))\
                             file$(if $(word 2, $(all-files)),s))
       cmd_install = \
-        xargs $(PERL) $< $(installdir) $(SRCARCH) < $(INSTALL_HDR_PATH)/.input-files; \
+        xargs $(PERL) $< $(installdir) $(SRCARCH) < $@-input-files; \
         for F in $(wrapper-files); do                                   \
                 echo "\#include <asm-generic/$$F>" > $(installdir)/$$F;    \
         done;                                                           \
@@ -100,9 +100,9 @@ targets += $(install-file)
 $(install-file): scripts/headers_install.pl $(input-files) FORCE
 	$(if $(unwanted),$(call cmd,remove),)
 	$(if $(wildcard $(dir $@)),,$(shell mkdir -p $(dir $@)))
-	@echo $(input-files) > $(INSTALL_HDR_PATH)/.input-files
+	@echo $(input-files) > $@-input-files
 	$(call if_changed,install)
-	@rm $(INSTALL_HDR_PATH)/.input-files
+	@rm $@-input-files
 
 else
 __headerscheck: $(subdirs) $(check-file)
