@@ -984,7 +984,6 @@ static int __devexit ehci_msm2_remove(struct platform_device *pdev)
 	struct msm_hcd *mhcd = hcd_to_mhcd(hcd);
 
 	device_init_wakeup(&pdev->dev, 0);
-	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
 
 	usb_remove_hcd(hcd);
