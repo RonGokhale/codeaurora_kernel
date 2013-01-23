@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -272,6 +272,8 @@ int mdp4_dsi_cmd_pipe_commit(int cndx, int wait)
 	vp = &vctrl->vlist[undx];
 	pipe = vctrl->base_pipe;
 	mixer = pipe->mixer_num;
+
+	mdp_update_pm(vctrl->mfd, vctrl->vsync_time);
 
 	if (vp->update_cnt == 0) {
 		mutex_unlock(&vctrl->update_lock);
@@ -858,6 +860,9 @@ static void mdp4_overlay_update_dsi_cmd(struct msm_fb_data_type *mfd)
 	} else {
 		pipe = vctrl->base_pipe;
 	}
+
+	/* TE enabled */
+	mdp4_mipi_vsync_enable(mfd, pipe, 0);
 
 	MDP_OUTP(MDP_BASE + 0x021c, 10); /* read pointer */
 
