@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -275,6 +275,9 @@ void mdp4_writeback_kickoff_video(struct msm_fb_data_type *mfd,
 	mutex_unlock(&mfd->writeback_mutex);
 
 	writeback_pipe->ov_blt_addr = (ulong) (node ? node->addr : NULL);
+
+	/* free previous iommu at freelist back to pool */
+	mdp4_overlay_iommu_unmap_freelist(writeback_pipe->mixer_num);
 
 	if (!writeback_pipe->ov_blt_addr) {
 		pr_err("%s: no writeback buffer 0x%x, %p\n", __func__,
