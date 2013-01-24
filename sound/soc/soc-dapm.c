@@ -3316,7 +3316,7 @@ int snd_soc_dapm_new_dai_widgets(struct snd_soc_dapm_context *dapm,
 	struct snd_soc_dapm_widget template;
 	struct snd_soc_dapm_widget *w;
 
-	//WARN_ON(dapm->dev != dai->dev);
+	WARN_ON(dapm->dev != dai->dev);
 
 	memset(&template, 0, sizeof(template));
 	template.reg = SND_SOC_NOPM;
