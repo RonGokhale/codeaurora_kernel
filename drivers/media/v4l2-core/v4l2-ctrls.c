@@ -456,7 +456,13 @@ const char * const *v4l2_ctrl_get_menu(u32 id)
 		"RGB full range (0-255)",
 		NULL,
 	};
-
+	static const char *const mpeg_video_intra_refresh_mode[] = {
+		"No Intra Refresh",
+		"AIR MBS",
+		"AIR REF",
+		"CIR MBS",
+		NULL
+	};
 
 	switch (id) {
 	case V4L2_CID_MPEG_AUDIO_SAMPLING_FREQ:
@@ -543,7 +549,8 @@ const char * const *v4l2_ctrl_get_menu(u32 id)
 	case V4L2_CID_DV_TX_RGB_RANGE:
 	case V4L2_CID_DV_RX_RGB_RANGE:
 		return dv_rgb_range;
-
+	case V4L2_CID_MPEG_VIDC_VIDEO_INTRA_REFRESH_MODE:
+		return mpeg_video_intra_refresh_mode;
 	default:
 		return NULL;
 	}
