@@ -447,3 +447,4 @@ extern struct platform_device apq_cpudai_i2s_tx;
 
 extern struct platform_device dsda_mdm_8064_device;
 extern struct platform_device dsda_qsc_8064_device;
+extern struct platform_device bmdm_8064_device;

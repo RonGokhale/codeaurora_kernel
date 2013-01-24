@@ -1710,7 +1710,7 @@ static struct gpiomux_setting mdm2ap_status_gpio_run_cfg = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
-static struct mdm_platform_data mdm_platform_data = {
+struct mdm_platform_data mdm_platform_data = {
 	.mdm_version = "3.0",
 	.ramdump_delay_ms = 2000,
 	.early_power_on = 1,
@@ -1718,6 +1718,25 @@ static struct mdm_platform_data mdm_platform_data = {
 	.send_shdn = 1,
 	.vddmin_resource = &mdm_vddmin_rscs,
 	.peripheral_platform_device = &apq8064_device_hsic_host,
+	.ramdump_timeout_ms = 120000,
+	.mdm2ap_status_gpio_run_cfg = &mdm2ap_status_gpio_run_cfg,
+};
+
+static struct mdm_vddmin_resource bmdm_vddmin_rscs = {
+	.rpm_id = MSM_RPM_ID_VDDMIN_GPIO,
+	.ap2mdm_vddmin_gpio = 30,
+	.modes  = 0x03,
+	.drive_strength = 8,
+	.mdm2ap_vddmin_gpio = 64,
+};
+
+static struct mdm_platform_data bmdm_platform_data = {
+	.mdm_version = "3.0",
+	.ramdump_delay_ms = 2000,
+	.sfr_query = 1,
+	.send_shdn = 1,
+	.vddmin_resource = &bmdm_vddmin_rscs,
+	.peripheral_platform_device = &apq8064_device_ehci_host3,
 	.ramdump_timeout_ms = 120000,
 	.mdm2ap_status_gpio_run_cfg = &mdm2ap_status_gpio_run_cfg,
 };
@@ -3066,7 +3085,9 @@ static void __init apq8064_common_init(void)
 	if (machine_is_apq8064_mtp()) {
 		msm_hsic_pdata.log2_irq_thresh = 5,
 		apq8064_device_hsic_host.dev.platform_data = &msm_hsic_pdata;
-		device_initialize(&apq8064_device_hsic_host.dev);
+		apq8064_device_ehci_host3.dev.platform_data =
+			&msm_ehci_host_pdata3;
+		device_initialize(&apq8064_device_ehci_host3.dev);
 	}
 	apq8064_pm8xxx_gpio_mpp_init();
 	apq8064_init_mmc();
@@ -3086,8 +3107,8 @@ static void __init apq8064_common_init(void)
 				&mdm_platform_data;
 			platform_device_register(&i2s_mdm_8064_device);
 		} else {
-			mdm_8064_device.dev.platform_data = &mdm_platform_data;
-			platform_device_register(&mdm_8064_device);
+			bmdm_8064_device.dev.platform_data = &bmdm_platform_data;
+			platform_device_register(&bmdm_8064_device);
 		}
 	}
 	platform_device_register(&apq8064_slim_ctrl);

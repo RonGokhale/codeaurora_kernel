@@ -2412,7 +2412,7 @@ struct msm_mpm_device_data apq8064_mpm_dev_data __initdata = {
 #endif
 #define I2S_AP2MDM_WAKEUP		44
 #ifndef MDM2AP_PBLRDY
-#define MDM2AP_PBLRDY			46
+#define MDM2AP_PBLRDY			31
 #endif
 #define I2S_MDM2AP_PBLRDY		81
 #define DSDA_MDM2AP_ERRFATAL	36
@@ -2425,6 +2425,14 @@ struct msm_mpm_device_data apq8064_mpm_dev_data __initdata = {
 #define PM2QSC_SOFT_RESET	PM8921_GPIO_PM_TO_SYS(12)
 #define PM2QSC_PWR_EN		PM8921_GPIO_PM_TO_SYS(8)
 #define PM2QSC_KEYPADPWR	PM8921_GPIO_PM_TO_SYS(16)
+
+/* Gpios for second MDM */
+#define BMDM2AP_ERRFATAL		38
+#define AP2BMDM_ERRFATAL		18
+#define BMDM2AP_STATUS			32
+#define AP2BMDM_STATUS			48
+#define AP2BMDM_SOFT_RESET		3
+#define AP2BMDM_WAKEUP			29
 
 static struct resource mdm_resources[] = {
 	{
@@ -2467,6 +2475,45 @@ static struct resource mdm_resources[] = {
 		.start	= MDM2AP_PBLRDY,
 		.end	= MDM2AP_PBLRDY,
 		.name	= "MDM2AP_PBLRDY",
+		.flags	= IORESOURCE_IO,
+	},
+};
+
+static struct resource bmdm_resources[] = {
+	{
+		.start	= BMDM2AP_ERRFATAL,
+		.end	= BMDM2AP_ERRFATAL,
+		.name	= "MDM2AP_ERRFATAL",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= AP2BMDM_ERRFATAL,
+		.end	= AP2BMDM_ERRFATAL,
+		.name	= "AP2MDM_ERRFATAL",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= BMDM2AP_STATUS,
+		.end	= BMDM2AP_STATUS,
+		.name	= "MDM2AP_STATUS",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= AP2BMDM_STATUS,
+		.end	= AP2BMDM_STATUS,
+		.name	= "AP2MDM_STATUS",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= AP2BMDM_SOFT_RESET,
+		.end	= AP2BMDM_SOFT_RESET,
+		.name	= "AP2MDM_SOFT_RESET",
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.start	= AP2BMDM_WAKEUP,
+		.end	= AP2BMDM_WAKEUP,
+		.name	= "AP2MDM_WAKEUP",
 		.flags	= IORESOURCE_IO,
 	},
 };
@@ -2611,6 +2658,13 @@ struct platform_device mdm_8064_device = {
 	.id		= -1,
 	.num_resources	= ARRAY_SIZE(mdm_resources),
 	.resource	= mdm_resources,
+};
+
+struct platform_device bmdm_8064_device = {
+	.name		= "mdm2_modem",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(bmdm_resources),
+	.resource	= bmdm_resources,
 };
 
 struct platform_device i2s_mdm_8064_device = {
