@@ -1719,7 +1719,7 @@ config ARCH_NR_GPIO
 	default 264 if MACH_H4700
 	default 512 if SOC_OMAP5
 	default 288 if ARCH_VT8500
-	default 512 if ARCH_MSM
+	default 1024 if ARCH_MSM
 	default 0
 	help
 	  Maximum number of GPIOs in the system.
