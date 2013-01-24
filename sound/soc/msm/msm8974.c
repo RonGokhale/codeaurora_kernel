@@ -142,7 +142,7 @@ static struct mutex cdc_mclk_mutex;
 static struct q_clkdiv *codec_clk;
 static int clk_users;
 static atomic_t auxpcm_rsc_ref;
-#if 0
+
 static int msm8974_liquid_ext_spk_power_amp_init(void)
 {
 	int ret = 0;
@@ -174,7 +174,7 @@ static int msm8974_liquid_ext_spk_power_amp_init(void)
 
 	return 0;
 }
-#endif
+
 static void msm8974_liquid_ext_spk_power_amp_enable(u32 on)
 {
 	if (on)
@@ -815,14 +815,12 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 					 ARRAY_SIZE(msm_snd_controls));
 	if (err < 0)
 		return err;
-#if 0
 	err = msm8974_liquid_ext_spk_power_amp_init();
 	if (err) {
 		pr_err("%s: LiQUID 8974 CLASS_D PAs init failed (%d)\n",
 			__func__, err);
 		return err;
 	}
-#endif
 	snd_soc_dapm_new_controls(dapm, msm8974_dapm_widgets,
 				ARRAY_SIZE(msm8974_dapm_widgets));
 
@@ -1651,7 +1649,7 @@ static __devinit int msm8974_asoc_machine_probe(struct platform_device *pdev)
 	ret = msm8974_prepare_codec_mclk(card);
 	if (ret)
 		goto err;
-	if (0) {
+	if (of_property_read_bool(pdev->dev.of_node, "qcom,hdmi-audio-rx")) {
 		dev_info(&pdev->dev, "%s(): hdmi audio support present\n",
 				__func__);
 
@@ -1671,21 +1669,21 @@ static __devinit int msm8974_asoc_machine_probe(struct platform_device *pdev)
 	}
 
 	mutex_init(&cdc_mclk_mutex);
+	atomic_set(&auxpcm_rsc_ref, 0);
+	spdev = pdev;
+	ext_spk_amp_regulator = NULL;
+
 	ret = snd_soc_register_card(card);
 	if (ret) {
 		dev_err(&pdev->dev, "snd_soc_register_card failed (%d)\n",
 			ret);
 		if (pdata->mclk_gpio > 0) {
-			pr_err("%s free gpio %d\n",__func__,pdata->mclk_gpio);
+			dev_err(&pdev->dev, "%s free gpio %d\n",
+			__func__, pdata->mclk_gpio);
 			gpio_free(pdata->mclk_gpio);
 		}
 		goto err;
 	}
-
-	atomic_set(&auxpcm_rsc_ref, 0);
-
-	spdev = pdev;
-	ext_spk_amp_regulator = NULL;
 
 	lpaif_pri_muxsel_virt_addr = ioremap(LPAIF_PRI_MODE_MUXSEL, 4);
 	if (lpaif_pri_muxsel_virt_addr == NULL) {
