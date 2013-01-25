@@ -2,7 +2,7 @@
  *
  * MSM MDP Interface (used by framebuffer core)
  *
- * Copyright (c) 2007-2012, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2007-2013, The Linux Foundation. All rights reserved.
  * Copyright (C) 2007 Google Incorporated
  *
  * This software is licensed under the terms of the GNU General Public
@@ -2385,16 +2385,6 @@ static int mdp_irq_clk_setup(struct platform_device *pdev,
 	MSM_FB_DEBUG("mdp_clk: mdp_clk=%d\n", (int)clk_get_rate(mdp_clk));
 #endif
 
-	if (mdp_rev == MDP_REV_42 && !cont_splashScreen) {
-		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
-		/* DSI Video Timing generator disable */
-		outpdw(MDP_BASE + 0xE0000, 0x0);
-		/* Clear MDP Interrupt Enable register */
-		outpdw(MDP_BASE + 0x50, 0x0);
-		/* Set Overlay Proc 0 to reset state */
-		outpdw(MDP_BASE + 0x10004, 0x3);
-		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
-	}
 	return 0;
 }
 
@@ -2447,8 +2437,22 @@ static int mdp_probe(struct platform_device *pdev)
 
 		/* initializing mdp hw */
 #ifdef CONFIG_FB_MSM_MDP40
-		if (!(mdp_pdata->cont_splash_enabled))
+		if (!(mdp_pdata->cont_splash_enabled)) {
+			if (mdp_rev == MDP_REV_42) {
+				mdp_pipe_ctrl(MDP_CMD_BLOCK,
+					MDP_BLOCK_POWER_ON, FALSE);
+				/* DSI Video Timing generator disable */
+				outpdw(MDP_BASE + 0xE0000, 0x0);
+				/* Clear MDP Interrupt Enable register */
+				outpdw(MDP_BASE + 0x50, 0x0);
+				/* Set Overlay Proc 0 to reset state */
+				outpdw(MDP_BASE + 0x10004, 0x3);
+				mdp_pipe_ctrl(MDP_CMD_BLOCK,
+					MDP_BLOCK_POWER_OFF, FALSE);
+			}
+
 			mdp4_hw_init();
+		}
 #else
 		mdp_hw_init();
 #endif
