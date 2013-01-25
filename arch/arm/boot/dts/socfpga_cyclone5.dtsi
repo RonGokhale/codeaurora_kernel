@@ -19,6 +19,20 @@
 /include/ "socfpga.dtsi"
 
 / {
+	model = "Altera SOCFPGA Cyclone V";
+	compatible = "altr,socfpga-cyclone5", "altr,socfpga";
+
+	chosen {
+		bootargs = "console=ttyS0,57600";
+	};
+
+	aliases {
+		/* this allow the ethaddr uboot environmnet variable contents
+		 * to be added to the gmac1 device tree blob.
+		 */
+		ethernet0 = &gmac1;
+	};
+
 	soc {
 		clkmgr@ffd04000 {
 			clocks {
@@ -60,6 +74,12 @@
 
 		sysmgr@ffd08000 {
 			cpu1-start-addr = <0xffd080c4>;
+		};
+
+		stmmac@ff702000 {
+			phy-mode = "rgmii";
+			phy-addr = <0xffffffff>; /* probe for phy addr */
+			status = "okay";
 		};
 
 		qspi: spi@ff705000 {
