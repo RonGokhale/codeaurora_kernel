@@ -85,18 +85,6 @@ static DEFINE_MUTEX(audpp_dec_lock);
 #define AUDPP_CMD_IIR_FLAG_DIS	  0x0000
 #define AUDPP_CMD_IIR_FLAG_ENA	  -1
 
-#define AUDPP_CMD_VOLUME_PAN		0
-#define AUDPP_CMD_IIR_TUNING_FILTER	1
-#define AUDPP_CMD_EQUALIZER		2
-#define AUDPP_CMD_ADRC			3
-#define AUDPP_CMD_SPECTROGRAM		4
-#define AUDPP_CMD_QCONCERT		5
-#define AUDPP_CMD_SIDECHAIN_TUNING_FILTER	6
-#define AUDPP_CMD_SAMPLING_FREQUENCY	7
-#define AUDPP_CMD_QAFX			8
-#define AUDPP_CMD_QRUMBLE		9
-#define AUDPP_CMD_MBADRC		10
-
 #define MAX_EVENT_CALLBACK_CLIENTS 	1
 
 #define AUDPP_CONCURRENCY_DEFAULT 6	/* All non tunnel mode */
@@ -215,9 +203,13 @@ static void audpp_broadcast(struct audpp_state *audpp, unsigned id,
 			    uint16_t *msg)
 {
 	unsigned n;
-	for (n = 0; n < AUDPP_CLNT_MAX_COUNT; n++) {
-		if (audpp->func[n])
-			audpp->func[n] (audpp->private[n], id, msg);
+
+	if ((id != AUDPP_MSG_PP_DISABLE_FEEDBACK) &&
+		(id != AUDPP_MSG_PP_FEATS_RE_ENABLE)) {
+		for (n = 0; n < AUDPP_CLNT_MAX_COUNT; n++) {
+			if (audpp->func[n])
+				audpp->func[n] (audpp->private[n], id, msg);
+		}
 	}
 
 	for (n = 0; n < MAX_EVENT_CALLBACK_CLIENTS; ++n)
@@ -334,6 +326,14 @@ static void audpp_dsp_event(void *data, unsigned id, size_t len,
 		break;
 	case ADSP_MESSAGE_ID:
 		MM_DBG("Received ADSP event: module enable/disable(audpptask)");
+		break;
+	case AUDPP_MSG_PP_DISABLE_FEEDBACK:
+		MM_DBG("PP Disable feedback due to mips limitation");
+		audpp_broadcast(audpp, id, msg);
+		break;
+	case AUDPP_MSG_PP_FEATS_RE_ENABLE:
+		MM_DBG("Re-enable the disabled PP features");
+		audpp_broadcast(audpp, id, msg);
 		break;
 	default:
 		MM_ERR("unhandled msg id %x\n", id);
