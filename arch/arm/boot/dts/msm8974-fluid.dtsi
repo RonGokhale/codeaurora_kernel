@@ -283,6 +283,10 @@
 	qcom,otg-capability;
 };
 
+&pm8941_bms {
+	status = "ok";
+};
+
 &pm8941_chg {
 	status = "ok";
 
