@@ -672,10 +672,12 @@ static int msm_dai_q6_hw_params(struct snd_pcm_substream *substream,
 		break;
 	case SLIMBUS_0_RX:
 	case SLIMBUS_1_RX:
+	case SLIMBUS_2_RX:
 	case SLIMBUS_3_RX:
 	case SLIMBUS_4_RX:
 	case SLIMBUS_0_TX:
 	case SLIMBUS_1_TX:
+	case SLIMBUS_2_TX:
 	case SLIMBUS_3_TX:
 	case SLIMBUS_4_TX:
 		rc = msm_dai_q6_slim_bus_hw_params(params, dai,
@@ -779,6 +781,7 @@ static int msm_dai_q6_set_channel_map(struct snd_soc_dai *dai,
 	switch (dai->id) {
 	case SLIMBUS_0_RX:
 	case SLIMBUS_1_RX:
+	case SLIMBUS_2_RX:
 	case SLIMBUS_3_RX:
 	case SLIMBUS_4_RX:
 		/*
@@ -796,13 +799,15 @@ static int msm_dai_q6_set_channel_map(struct snd_soc_dai *dai,
 			       __func__, i, rx_slot[i]);
 		}
 		dai_data->port_config.slim_sch.num_channels = rx_num;
-		pr_debug("%s:SLIMBUS_0_RX cnt[%d] ch[%d %d]\n", __func__,
-		rx_num, dai_data->port_config.slim_sch.shared_ch_mapping[0],
-		dai_data->port_config.slim_sch.shared_ch_mapping[1]);
+		pr_debug("%s:SLIMBUS_%d_RX cnt[%d] ch[%d %d]\n", __func__,
+			(dai->id - SLIMBUS_0_RX) / 2, rx_num,
+			dai_data->port_config.slim_sch.shared_ch_mapping[0],
+			dai_data->port_config.slim_sch.shared_ch_mapping[1]);
 
 		break;
 	case SLIMBUS_0_TX:
 	case SLIMBUS_1_TX:
+	case SLIMBUS_2_TX:
 	case SLIMBUS_3_TX:
 	case SLIMBUS_4_TX:
 		/*
@@ -820,10 +825,10 @@ static int msm_dai_q6_set_channel_map(struct snd_soc_dai *dai,
 				 __func__, i, tx_slot[i]);
 		}
 		dai_data->port_config.slim_sch.num_channels = tx_num;
-		pr_debug("%s:SLIMBUS_0_TX cnt[%d] ch[%d %d]\n", __func__,
-			 tx_num,
-			 dai_data->port_config.slim_sch.shared_ch_mapping[0],
-		dai_data->port_config.slim_sch.shared_ch_mapping[1]);
+		pr_debug("%s:SLIMBUS_%d_TX cnt[%d] ch[%d %d]\n", __func__,
+			(dai->id - SLIMBUS_0_TX) / 2, tx_num,
+			dai_data->port_config.slim_sch.shared_ch_mapping[0],
+			dai_data->port_config.slim_sch.shared_ch_mapping[1]);
 		break;
 	default:
 		dev_err(dai->dev, "invalid cpu_dai id %d\n", dai->id);
@@ -1332,6 +1337,22 @@ static struct snd_soc_dai_driver msm_dai_q6_slimbus_rx_dai[] = {
 	},
 	{
 		.playback = {
+			.stream_name = "SLIM2_RX Playback",
+			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
+			SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_96000 |
+			SNDRV_PCM_RATE_192000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+			.channels_min = 1,
+			.channels_max = 8,
+			.rate_min = 8000,
+			.rate_max = 192000,
+		},
+		.ops = &msm_dai_q6_ops,
+		.probe = msm_dai_q6_dai_probe,
+		.remove = msm_dai_q6_dai_remove,
+	},
+	{
+		.playback = {
 			.stream_name = "SLIM3_RX Playback",
 			.aif_name = "SLIMBUS_3_RX",
 			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
@@ -1361,7 +1382,7 @@ static struct snd_soc_dai_driver msm_dai_q6_slimbus_rx_dai[] = {
 		.ops = &msm_dai_q6_ops,
 		.probe = msm_dai_q6_dai_probe,
 		.remove = msm_dai_q6_dai_remove,
-	},
+	}
 };
 
 static struct snd_soc_dai_driver msm_dai_q6_slimbus_tx_dai[] = {
@@ -1392,6 +1413,22 @@ static struct snd_soc_dai_driver msm_dai_q6_slimbus_tx_dai[] = {
 			 .channels_max = 8,
 			 .rate_min = 8000,
 			 .rate_max = 48000,
+		 },
+		 .ops = &msm_dai_q6_ops,
+		 .probe = msm_dai_q6_dai_probe,
+		 .remove = msm_dai_q6_dai_remove,
+	},
+	{
+		 .capture = {
+			 .stream_name = "SLIM2_TX Capture",
+			 .rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
+			 SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_96000 |
+			 SNDRV_PCM_RATE_192000,
+			 .formats = SNDRV_PCM_FMTBIT_S16_LE,
+			 .channels_min = 1,
+			 .channels_max = 8,
+			 .rate_min = 8000,
+			 .rate_max = 192000,
 		 },
 		 .ops = &msm_dai_q6_ops,
 		 .probe = msm_dai_q6_dai_probe,
@@ -2107,6 +2144,9 @@ static int msm_dai_q6_dev_probe(struct platform_device *pdev)
 	case SLIMBUS_1_RX:
 		strlcpy(stream_name, "SLIM1_RX Playback", 80);
 		goto register_slim_playback;
+	case SLIMBUS_2_RX:
+		strlcpy(stream_name, "SLIM2_RX Playback", 80);
+		goto register_slim_playback;
 	case SLIMBUS_3_RX:
 		strlcpy(stream_name, "SLIM3_RX Playback", 80);
 		goto register_slim_playback;
@@ -2135,6 +2175,9 @@ register_slim_playback:
 		goto register_slim_capture;
 	case SLIMBUS_1_TX:
 		strlcpy(stream_name, "SLIM1_TX Capture", 80);
+		goto register_slim_capture;
+	case SLIMBUS_2_TX:
+		strlcpy(stream_name, "SLIM2_TX Capture", 80);
 		goto register_slim_capture;
 	case SLIMBUS_3_TX:
 		strlcpy(stream_name, "SLIM3_TX Capture", 80);
