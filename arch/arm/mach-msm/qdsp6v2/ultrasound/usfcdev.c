@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -290,6 +290,7 @@ static void usfcdev_clean_dev(uint16_t event_type_ind)
 	int i;
 	int j;
 	int retries = 0;
+	struct input_mt *mt = NULL;
 
 	if (event_type_ind >= MAX_EVENT_TYPE_NUM) {
 		pr_err("%s: wrong input: event_type_ind=%d\n",
@@ -299,15 +300,21 @@ static void usfcdev_clean_dev(uint16_t event_type_ind)
 	}
 
 	dev = s_usfc_handles[event_type_ind].dev;
+	mt = dev->mt;
+	if (mt == NULL) {
+		pr_debug("%s: mt is not supported\n",
+			__func__);
+		return;
+	}
 
 	for (i = 0; i < ARRAY_SIZE(initial_clear_cmds); i++)
 		usfcdev_send_cmd(dev, initial_clear_cmds[i]);
 	input_sync(dev);
 
 	/* Send commands to free all slots */
-	for (i = 0; i < dev->mtsize; i++) {
+	for (i = 0; i < mt->num_slots; i++) {
 		s_usfcdev_events[event_type_ind].interleaved = false;
-		if (input_mt_get_value(&(dev->mt[i]), ABS_MT_TRACKING_ID) < 0) {
+		if (!input_mt_is_active(&mt->slots[i])) {
 			pr_debug("%s: skipping slot %d",
 				__func__, i);
 			continue;
@@ -317,13 +324,13 @@ static void usfcdev_clean_dev(uint16_t event_type_ind)
 			usfcdev_send_cmd(dev, slot_clear_cmds[j]);
 
 		if (s_usfcdev_events[event_type_ind].interleaved) {
-			pr_debug("%s: interleaved(%d): slot(%d)",
-				__func__, i, dev->slot);
+			pr_debug("%s: interleaved(%d)",
+				__func__, i);
 			if (retries++ < MAX_RETRIES) {
 				--i;
 				continue;
 			}
-			pr_warning("%s: index(%d) reached max retires",
+			pr_debug("%s: index(%d) reached max retires",
 				__func__, i);
 		}
 
