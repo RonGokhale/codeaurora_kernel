@@ -33,6 +33,7 @@
 #include <mach/gpiomux.h>
 #include <mach/hardware.h>
 #include <mach/msm_iomap.h>
+#include <mach/socinfo.h>
 
 #include "pcie.h"
 
@@ -101,7 +102,8 @@ static struct msm_pcie_dev_t msm_pcie_dev;
 static struct msm_pcie_vreg_info_t msm_pcie_vreg_info[MSM_PCIE_MAX_VREG] = {
 	{NULL, "vp_pcie",      1050000, 1050000, 40900},
 	{NULL, "vptx_pcie",    1050000, 1050000, 18200},
-	{NULL, "vdd_pcie_vph",       0,       0,     0}
+	{NULL, "vdd_pcie_vph",       0,       0,     0},
+	{NULL, "pcie_ext_3p3v",      0,       0,     0}
 };
 
 /* clocks */
@@ -260,8 +262,17 @@ static int __init msm_pcie_vreg_init(struct device *dev)
 	int i, rc = 0;
 	struct regulator *vreg;
 	struct msm_pcie_vreg_info_t *info;
+	uint32_t hrd_version = socinfo_get_version();
+	unsigned int num_reg = MSM_PCIE_MAX_VREG;
 
-	for (i = 0; i < MSM_PCIE_MAX_VREG; i++) {
+	if (machine_is_mpq8064_hrd() &&
+		(SOCINFO_VERSION_MAJOR(hrd_version) == 2)) {
+		num_reg = MSM_PCIE_MAX_VREG - 1;
+	}
+
+	pr_err("PCIE :: Num Regulators : %u\n", num_reg);
+
+	for (i = 0; i < num_reg; i++) {
 		info = &msm_pcie_dev.vreg[i];
 
 		vreg = regulator_get(dev, info->name);
@@ -314,8 +325,17 @@ static int __init msm_pcie_vreg_init(struct device *dev)
 static void msm_pcie_vreg_deinit(void)
 {
 	int i;
+	uint32_t hrd_version = socinfo_get_version();
+	unsigned int num_reg = MSM_PCIE_MAX_VREG;
 
-	for (i = 0; i < MSM_PCIE_MAX_VREG; i++) {
+	if (machine_is_mpq8064_hrd() &&
+		(SOCINFO_VERSION_MAJOR(hrd_version) == 2)) {
+		num_reg = MSM_PCIE_MAX_VREG - 1;
+	}
+
+	pr_err("PCIE :: Num Regulators : %u\n", num_reg);
+
+	for (i = 0; i < num_reg; i++) {
 		regulator_disable(msm_pcie_dev.vreg[i].hdl);
 		regulator_put(msm_pcie_dev.vreg[i].hdl);
 		msm_pcie_dev.vreg[i].hdl = NULL;
