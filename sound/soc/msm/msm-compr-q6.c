@@ -728,17 +728,6 @@ static int msm_compr_open(struct snd_pcm_substream *substream)
 	struct compr_audio *compr;
 	struct msm_audio *prtd;
 	int ret = 0;
-	struct asm_softpause_params softpause = {
-		.enable = SOFT_PAUSE_ENABLE,
-		.period = SOFT_PAUSE_PERIOD,
-		.step = SOFT_PAUSE_STEP,
-		.rampingcurve = SOFT_PAUSE_CURVE_LINEAR,
-	};
-	struct asm_softvolume_params softvol = {
-		.period = SOFT_VOLUME_PERIOD,
-		.step = SOFT_VOLUME_STEP,
-		.rampingcurve = SOFT_VOLUME_CURVE_LINEAR,
-	};
 
 	pr_debug("%s\n", __func__);
 	compr = kzalloc(sizeof(struct compr_audio), GFP_KERNEL);
@@ -782,26 +771,13 @@ static int msm_compr_open(struct snd_pcm_substream *substream)
 
 	prtd->dsp_cnt = 0;
 	atomic_set(&prtd->pending_buffer, 1);
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		compr->codec = FORMAT_MP3;
+		compressed_audio.prtd =  &compr->prtd;
+	}
 	populate_codec_list(compr, runtime);
 	runtime->private_data = compr;
 	atomic_set(&prtd->eos, 0);
-	compressed_audio.prtd =  &compr->prtd;
-	ret = compressed_set_volume(compressed_audio.volume);
-	if (ret < 0)
-		pr_err("%s : Set Volume failed : %d", __func__, ret);
-
-	ret = q6asm_set_softpause(compressed_audio.prtd->audio_client,
-								&softpause);
-	if (ret < 0)
-		pr_err("%s: Send SoftPause Param failed ret=%d\n",
-			__func__, ret);
-	ret = q6asm_set_softvolume(compressed_audio.prtd->audio_client,
-								&softvol);
-	if (ret < 0)
-		pr_err("%s: Send SoftVolume Param failed ret=%d\n",
-			__func__, ret);
 
 	return 0;
 }
@@ -809,7 +785,26 @@ static int msm_compr_open(struct snd_pcm_substream *substream)
 int compressed_set_volume(unsigned volume)
 {
 	int rc = 0;
-	if (compressed_audio.prtd && compressed_audio.prtd->audio_client) {
+	struct snd_pcm_substream *substream = NULL;
+	struct compr_audio *compr = NULL;
+
+	if (compressed_audio.prtd)
+		substream = compressed_audio.prtd->substream;
+	if (substream)
+		compr = substream->runtime->private_data;
+	if (compr) {
+		switch (compr->info.codec_param.codec.id) {
+		case SND_AUDIOCODEC_AC3_PASS_THROUGH:
+		case SND_AUDIOCODEC_DTS_PASS_THROUGH:
+		case SND_AUDIOCODEC_DTS_LBR_PASS_THROUGH:
+		case SND_AUDIOCODEC_PASS_THROUGH:
+			pr_err("%s: called on passthrough handle", __func__);
+			return rc;
+		}
+	} else
+		return rc;
+
+	if (compressed_audio.prtd->audio_client) {
 		rc = q6asm_set_volume(compressed_audio.prtd->audio_client,
 								 volume);
 		if (rc < 0) {
@@ -875,7 +870,6 @@ static int msm_compr_capture_close(struct snd_pcm_substream *substream)
 	pr_debug("%s\n", __func__);
 	atomic_set(&prtd->pending_buffer, 0);
 	q6asm_cmd(prtd->audio_client, CMD_CLOSE);
-	compressed_audio.prtd = NULL;
 	q6asm_audio_client_buf_free_contiguous(dir,
 				prtd->audio_client);
 	if (compr->info.codec_param.codec.id ==
