@@ -802,7 +802,7 @@ static int is_connected_output_ep(struct snd_soc_dapm_widget *widget,
 	case snd_soc_dapm_dai:
 		if (widget->active) {
 			if (list && widget->id == snd_soc_dapm_dai)
-				pr_err("%s Get the list\n", __func__);
+				pr_debug("%s Get the list\n", __func__);
 			else {
 				widget->outputs = snd_soc_dapm_suspend_check(widget);
 				return widget->outputs;
@@ -892,7 +892,7 @@ static int is_connected_input_ep(struct snd_soc_dapm_widget *widget,
 	case snd_soc_dapm_dai:
 		if (widget->active) {
 			if (list && widget->id == snd_soc_dapm_dai)
-				pr_err("%s Get the list \n", __func__);
+				pr_debug("%s Get the list\n", __func__);
 			else {
 				widget->inputs = snd_soc_dapm_suspend_check(widget);
 				return widget->inputs;
@@ -1575,11 +1575,11 @@ static void dapm_widget_set_power(struct snd_soc_dapm_widget *w, bool power,
 
 	if (power) {
 		dapm_seq_insert(w, up_list, true);
-		dev_err(w->dapm->dev,
+		dev_dbg(w->dapm->dev,
 		"dapm: power up widget %s\n", w->name);
 	} else {
 		dapm_seq_insert(w, down_list, false);
-		dev_err(w->dapm->dev,
+		dev_dbg(w->dapm->dev,
 		"dapm: power down widget %s\n", w->name);
 	}
 
