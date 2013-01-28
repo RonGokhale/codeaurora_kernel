@@ -869,6 +869,23 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			temp |= PORT_U2_TIMEOUT(timeout);
 			xhci_writel(xhci, temp, port_array[wIndex] + 1);
 			break;
+		case USB_PORT_FEAT_TEST:
+			slot_id = xhci_find_slot_id_by_port(hcd, xhci,
+					wIndex + 1);
+			if (timeout && timeout <= 5) {
+				/* unlock to execute stop endpoint commands */
+				spin_unlock_irqrestore(&xhci->lock, flags);
+				xhci_stop_device(xhci, slot_id, 1);
+				spin_lock_irqsave(&xhci->lock, flags);
+				xhci_halt(xhci);
+
+				temp = xhci_readl(xhci, port_array[wIndex] + 1);
+				temp |= timeout << 28;
+				xhci_writel(xhci, temp, port_array[wIndex] + 1);
+			} else {
+				goto error;
+			}
+			break;
 		default:
 			goto error;
 		}
