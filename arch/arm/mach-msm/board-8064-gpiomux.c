@@ -1759,9 +1759,6 @@ void __init apq8064_init_gpiomux(void)
 				ARRAY_SIZE(apq8064_mhl_configs));
 
 	if (machine_is_mpq8064_cdp()) {
-		msm_gpiomux_install(mpq8064_ir_configs,
-				ARRAY_SIZE(mpq8064_ir_configs));
-
 		msm_gpiomux_install(mpq8064_gsbi6_spi_configs,
 				ARRAY_SIZE(mpq8064_gsbi6_spi_configs));
 	}
@@ -1782,7 +1779,11 @@ void __init apq8064_init_gpiomux(void)
 		msm_gpiomux_install(mpq8064_uartdm_configs,
 				ARRAY_SIZE(mpq8064_uartdm_configs));
 
-	if (machine_is_mpq8064_hrd())
+	if ((machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv()) &&
+		(SOCINFO_VERSION_MAJOR(hrd_version) == 2))
 		msm_gpiomux_install(mpq_mcu_comm_configs,
 				ARRAY_SIZE(mpq_mcu_comm_configs));
+	else
+		msm_gpiomux_install(mpq8064_ir_configs,
+				ARRAY_SIZE(mpq8064_ir_configs));
 }
