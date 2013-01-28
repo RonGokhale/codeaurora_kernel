@@ -132,6 +132,12 @@ static struct timeval interpolate_ts(struct timeval tv, uint32_t delta)
 inline void vc_isr_error_checking(struct vcap_dev *dev,
 		struct v4l2_event v4l2_evt, uint32_t irq)
 {
+	if (dev->vc_client->vc_action.vs_seq_err) {
+		writel_iowmb(0x00000102, VCAP_VC_NPL_CTRL);
+		v4l2_evt.type = V4L2_EVENT_PRIVATE_START +
+			VCAP_VC_VSYNC_SEQ_ERR;
+		v4l2_event_queue(dev->vfd, &v4l2_evt);
+	}
 	if (irq & 0x200) {
 		if (irq & 0x80000000) {
 			writel_iowmb(0x00000102, VCAP_VC_NPL_CTRL);
@@ -153,10 +159,7 @@ inline void vc_isr_error_checking(struct vcap_dev *dev,
 		}
 	}
 	if (irq & 0x00001000) {
-		writel_iowmb(0x00000102, VCAP_VC_NPL_CTRL);
-		v4l2_evt.type = V4L2_EVENT_PRIVATE_START +
-			VCAP_VC_VSYNC_SEQ_ERR;
-		v4l2_event_queue(dev->vfd, &v4l2_evt);
+		dev->vc_client->vc_action.vs_seq_err = 1;
 	}
 	if (irq & 0x00000800) {
 		writel_iowmb(0x00000102, VCAP_VC_NPL_CTRL);
@@ -342,6 +345,9 @@ irqreturn_t vc_handler(struct vcap_dev *dev)
 		return IRQ_HANDLED;
 	}
 
+	if (c_data->vc_action.vs_seq_err)
+		c_data->vc_action.vs_seq_err = 0;
+
 	done_count = vc_isr_buffer_done_count(dev, c_data, irq);
 	buf_num = c_data->vc_action.buf_num;
 	tot = c_data->vc_action.tot_buf;
@@ -446,6 +452,7 @@ void vc_stop_capture(struct vcap_client_data *c_data)
 	unsigned int reg;
 	int timeout;
 
+	c_data->vc_action.vs_seq_err = 0;
 	writel_iowmb(0x00000102, VCAP_VC_NPL_CTRL);
 	writel_iowmb(0x0, VCAP_VC_INT_MASK);
 	flush_workqueue(dev->vcap_wq);
