@@ -48,7 +48,7 @@ endif # MSMB_CAMERA
 
 menuconfig MSM_MEDIA
 	bool "Qualcomm MSM media drivers"
-		depends on ARCH_MSM8974
+		depends on ARCH_MSM8974 || ARCH_MSM8610
         default y
 
 source "drivers/media/platform/msm/vidc/Kconfig"
