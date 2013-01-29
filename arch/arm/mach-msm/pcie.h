@@ -20,7 +20,7 @@
 #include <linux/types.h>
 #include <mach/msm_pcie.h>
 
-#define MSM_PCIE_MAX_VREG 3
+#define MSM_PCIE_MAX_VREG 4
 #define MSM_PCIE_MAX_CLK  3
 
 #define PCIE_DBG(x...) do {              \
