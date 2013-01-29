@@ -263,9 +263,25 @@ int32_t msm_actuator_move_focus(
 	if (dest_step_pos == a_ctrl->curr_step_pos)
 		return rc;
 
-	curr_lens_pos = a_ctrl->step_position_table[a_ctrl->curr_step_pos];
-	CDBG("curr_step_pos =%d dest_step_pos =%d curr_lens_pos=%d\n",
-		a_ctrl->curr_step_pos, dest_step_pos, curr_lens_pos);
+	if(!a_ctrl) {
+		pr_err("%s a_ctrl can't be null\n",__func__);
+		return -EINVAL;
+	}
+
+	if(a_ctrl->step_position_table) {
+		if(a_ctrl->curr_step_pos < 0 ||
+				a_ctrl->curr_step_pos >= a_ctrl->total_steps) {
+			pr_err("%s invalid step position %d\n", __func__,
+					a_ctrl->curr_step_pos);
+			return -EINVAL;
+		}
+		curr_lens_pos = a_ctrl->step_position_table[a_ctrl->curr_step_pos];
+		CDBG("curr_step_pos =%d dest_step_pos =%d curr_lens_pos=%d\n",
+				a_ctrl->curr_step_pos, dest_step_pos, curr_lens_pos);
+	} else {
+		pr_err("%s step_position table can't be null\n",__func__);
+		return -EINVAL;
+	}
 
 	if(!move_params) {
 		pr_err("%s move_params can't be null\n",
