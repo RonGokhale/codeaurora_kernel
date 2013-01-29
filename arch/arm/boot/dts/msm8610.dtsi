@@ -436,12 +436,24 @@
 	i2c@f9925000 { /* BLSP-1 QUP-3 */
 		cell-index = <0>;
 		compatible = "qcom,i2c-qup";
+                #address-cells = <1>;
+                #size-cells = <0>;
+                reg-names = "qup_phys_addr";
+                reg = <0xf9925000 0x1000>;
+                interrupt-names = "qup_err_intr";
+                interrupts = <0 97 0>;
+                qcom,i2c-bus-freq = <100000>;
+	};
+
+	i2c@f9927000 { /* BLSP1 QUP5 */
+		cell-index = <5>;
+		compatible = "qcom,i2c-qup";
 		#address-cells = <1>;
 		#size-cells = <0>;
 		reg-names = "qup_phys_addr";
-		reg = <0xf9925000 0x1000>;
+		reg = <0xf9927000 0x1000>;
 		interrupt-names = "qup_err_intr";
-		interrupts = <0 97 0>;
+		interrupts = <0 99 0>;
 		qcom,i2c-bus-freq = <100000>;
 	};
 
