@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2013, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2462,6 +2462,26 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 
 	}
 
+	if (((mfd->panel.type != MIPI_CMD_PANEL)
+		|| (mfd->panel.type != MDDI_PANEL))
+			&& (pipe->pipe_type != OVERLAY_TYPE_VIDEO)) {
+		if ((pipe->bpp == 2) && (req->src_rect.w < 5)) {
+			pr_err("%s: src_w is too small: 0X%x!\n",
+				__func__, req->src_rect.w);
+			mdp4_stat.err_size++;
+			if (req->id == MSMFB_NEW_REQUEST)
+				pipe->pipe_used = 0;
+			return -EINVAL;
+		} else if ((pipe->bpp == 3 || pipe->bpp == 4)
+				&& (req->src_rect.w < 3)) {
+					pr_err("%s: src_w is too small: 0X%x!\n",
+						__func__, req->src_rect.w);
+					mdp4_stat.err_size++;
+					if (req->id == MSMFB_NEW_REQUEST)
+						pipe->pipe_used = 0;
+					return -EINVAL;
+		}
+	}
 	pipe->mixer_stage = req->z_order + MDP4_MIXER_STAGE0;
 	pipe->src_width = req->src.width & 0x1fff;	/* source img width */
 	pipe->src_height = req->src.height & 0x1fff;	/* source img height */
