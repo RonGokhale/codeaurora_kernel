@@ -111,6 +111,7 @@ struct vc_action {
 
 	bool					field1;
 	bool					field_dropped;
+	bool					vs_seq_err;
 
 	struct timeval			vc_ts;
 	uint32_t				last_ts;
