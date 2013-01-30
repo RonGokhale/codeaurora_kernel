@@ -3,7 +3,7 @@
  * Core MSM framebuffer driver.
  *
  * Copyright (C) 2007 Google Incorporated
- * Copyright (c) 2008-2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -484,7 +484,7 @@ static int msm_fb_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#if defined(CONFIG_PM) && !defined(CONFIG_HAS_EARLYSUSPEND)
+#if defined(CONFIG_PM)
 static int msm_fb_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct msm_fb_data_type *mfd;
@@ -590,6 +590,9 @@ static int msm_fb_resume_sub(struct msm_fb_data_type *mfd)
 	mfd->op_enable = mfd->suspend.op_enable;
 
 	if (mfd->suspend.panel_power_on) {
+	    if (mfd->panel_driver_on == FALSE)
+		msm_fb_blank_sub(FB_BLANK_POWERDOWN, mfd->fbi,
+					mfd->op_enable);
 		ret =
 		     msm_fb_blank_sub(FB_BLANK_UNBLANK, mfd->fbi,
 				      mfd->op_enable);
@@ -601,7 +604,7 @@ static int msm_fb_resume_sub(struct msm_fb_data_type *mfd)
 }
 #endif
 
-#if defined(CONFIG_PM) && !defined(CONFIG_HAS_EARLYSUSPEND)
+#if defined(CONFIG_PM)
 static int msm_fb_resume(struct platform_device *pdev)
 {
 	/* This resume function is called when interrupt is enabled.
@@ -724,10 +727,9 @@ static struct dev_pm_ops msm_fb_dev_pm_ops = {
 static struct platform_driver msm_fb_driver = {
 	.probe = msm_fb_probe,
 	.remove = msm_fb_remove,
-#ifndef CONFIG_HAS_EARLYSUSPEND
 	.suspend = msm_fb_suspend,
 	.resume = msm_fb_resume,
-#endif
+
 	.shutdown = NULL,
 	.driver = {
 		   /* Driver name must match the device name added in platform.c. */
@@ -736,71 +738,12 @@ static struct platform_driver msm_fb_driver = {
 		   },
 };
 
-#if defined(CONFIG_HAS_EARLYSUSPEND) && defined(CONFIG_FB_MSM_MDP303)
+#if defined(CONFIG_FB_MSM_MDP303)
 static void memset32_io(u32 __iomem *_ptr, u32 val, size_t count)
 {
 	count >>= 2;
 	while (count--)
 		writel(val, _ptr++);
-}
-#endif
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void msmfb_early_suspend(struct early_suspend *h)
-{
-	struct msm_fb_data_type *mfd = container_of(h, struct msm_fb_data_type,
-						early_suspend);
-	struct msm_fb_panel_data *pdata = NULL;
-
-#if defined(CONFIG_FB_MSM_MDP303)
-	/*
-	* For MDP with overlay, set framebuffer with black pixels
-	* to show black screen on HDMI.
-	*/
-	struct fb_info *fbi = mfd->fbi;
-	switch (mfd->fbi->var.bits_per_pixel) {
-	case 32:
-		memset32_io((void *)fbi->screen_base, 0xFF000000,
-							fbi->fix.smem_len);
-		break;
-	default:
-		memset32_io((void *)fbi->screen_base, 0x00, fbi->fix.smem_len);
-		break;
-	}
-#endif
-	msm_fb_suspend_sub(mfd);
-
-	pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
-	if (hdmi_prim_display &&
-		(mfd->panel_info.type == HDMI_PANEL ||
-		 mfd->panel_info.type == DTV_PANEL)) {
-		/* Turn off the HPD circuitry */
-		if (pdata->power_ctrl) {
-			MSM_FB_INFO("%s: Turning off HPD circuitry\n",
-				__func__);
-			pdata->power_ctrl(FALSE);
-		}
-	}
-}
-
-static void msmfb_early_resume(struct early_suspend *h)
-{
-	struct msm_fb_data_type *mfd = container_of(h, struct msm_fb_data_type,
-						early_suspend);
-	struct msm_fb_panel_data *pdata = NULL;
-
-	pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
-	if (hdmi_prim_display &&
-		(mfd->panel_info.type == HDMI_PANEL ||
-		 mfd->panel_info.type == DTV_PANEL)) {
-		/* Turn on the HPD circuitry */
-		if (pdata->power_ctrl) {
-			MSM_FB_INFO("%s: Turning on HPD circuitry\n", __func__);
-			pdata->power_ctrl(TRUE);
-		}
-	}
-
-	msm_fb_resume_sub(mfd);
 }
 #endif
 
@@ -891,17 +834,7 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 			ret = pdata->on(mfd->pdev);
 			if (ret == 0) {
 				mfd->panel_power_on = TRUE;
-
-/* ToDo: possible conflict with android which doesn't expect sw refresher */
-/*
-	  if (!mfd->hw_refresh)
-	  {
-	    if ((ret = msm_fb_resume_sw_refresher(mfd)) != 0)
-	    {
-	      MSM_FB_INFO("msm_fb_blank_sub: msm_fb_resume_sw_refresher failed = %d!\n",ret);
-	    }
-	  }
-*/
+				mfd->panel_driver_on = mfd->op_enable;
 			}
 		}
 		break;
@@ -1025,6 +958,12 @@ static void msm_fb_imageblit(struct fb_info *info, const struct fb_image *image)
 static int msm_fb_blank(int blank_mode, struct fb_info *info)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
+	if (mfd->op_enable == 0) {
+	    if (blank_mode == FB_BLANK_UNBLANK)
+		mfd->suspend.panel_power_on = TRUE;
+	    else
+		mfd->suspend.panel_power_on = FALSE;
+	}
 	return msm_fb_blank_sub(blank_mode, info, mfd->op_enable);
 }
 
@@ -1489,18 +1428,6 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 		;
 #endif
 	ret = 0;
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-
-	if (hdmi_prim_display ||
-	    (mfd->panel_info.type != DTV_PANEL &&
-	     mfd->panel_info.type != WRITEBACK_PANEL)) {
-		mfd->early_suspend.suspend = msmfb_early_suspend;
-		mfd->early_suspend.resume = msmfb_early_resume;
-		mfd->early_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 2;
-		register_early_suspend(&mfd->early_suspend);
-	}
-#endif
 
 #ifdef MSM_FB_ENABLE_DBGFS
 	{
