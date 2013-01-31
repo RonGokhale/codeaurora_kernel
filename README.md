@@ -30,6 +30,7 @@ list of branches
 - jb_mr1_chocolate
 - jb_rel
 - jb_chocolate
+- jb_2.5
 - msm-3.4
 - msm-3.7
 
