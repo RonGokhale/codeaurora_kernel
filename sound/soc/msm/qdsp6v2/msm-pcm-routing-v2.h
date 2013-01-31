@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -37,6 +37,11 @@
 #define LPASS_BE_QUAT_MI2S_TX "QUAT_MI2S_TX"
 #define LPASS_BE_SEC_MI2S_RX "SEC_MI2S_RX"
 #define LPASS_BE_SEC_MI2S_TX "SEC_MI2S_TX"
+#define LPASS_BE_PRI_MI2S_RX "PRI_MI2S_RX"
+#define LPASS_BE_PRI_MI2S_TX "PRI_MI2S_TX"
+#define LPASS_BE_TERT_MI2S_RX "TERTIARY_MI2S_RX"
+#define LPASS_BE_TERT_MI2S_TX "TERTIARY_MI2S_TX"
+#define LPASS_BE_AUDIO_I2S_RX "AUDIO_I2S_RX"
 #define LPASS_BE_STUB_RX "STUB_RX"
 #define LPASS_BE_STUB_TX "STUB_TX"
 #define LPASS_BE_SLIMBUS_1_RX "SLIMBUS_1_RX"
@@ -103,6 +108,11 @@ enum {
 	MSM_BACKEND_DAI_QUATERNARY_MI2S_TX,
 	MSM_BACKEND_DAI_SECONDARY_MI2S_RX,
 	MSM_BACKEND_DAI_SECONDARY_MI2S_TX,
+	MSM_BACKEND_DAI_PRI_MI2S_RX,
+	MSM_BACKEND_DAI_PRI_MI2S_TX,
+	MSM_BACKEND_DAI_TERTIARY_MI2S_RX,
+	MSM_BACKEND_DAI_TERTIARY_MI2S_TX,
+	MSM_BACKEND_DAI_AUDIO_I2S_RX,
 	MSM_BACKEND_DAI_MAX,
 };
 
