@@ -46,14 +46,21 @@
 					  COMPRE_CAPTURE_HEADER_SIZE) * \
 					  MAX_NUM_FRAMES_PER_BUFFER)
 #define COMPRE_OUTPUT_METADATA_SIZE	(sizeof(struct output_meta_data_st))
-
+#define MAX_COMPR_SESSIONS		4
+#define INVALID_SESSION			-1
 struct snd_msm {
+	int fe_id;
 	struct msm_audio *prtd;
 	unsigned volume;
 };
-static struct snd_msm compressed_audio = {NULL, 0x20002000} ;
+static struct snd_msm compressed_audio[MAX_COMPR_SESSIONS] = {
+					{INVALID_SESSION, NULL, 0x2000},
+					{INVALID_SESSION, NULL, 0x2000},
+					{INVALID_SESSION, NULL, 0x2000},
+					{INVALID_SESSION, NULL, 0x2000} };
 
 static struct audio_locks the_locks;
+static struct mutex volume_lock;
 
 static struct snd_pcm_hardware msm_compr_hardware_capture = {
 	.info =		 (SNDRV_PCM_INFO_MMAP |
@@ -744,9 +751,11 @@ static void populate_codec_list(struct compr_audio *compr,
 static int msm_compr_open(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
 	struct compr_audio *compr;
 	struct msm_audio *prtd;
 	int ret = 0;
+	int index = 0;
 
 	pr_debug("%s\n", __func__);
 	compr = kzalloc(sizeof(struct compr_audio), GFP_KERNEL);
@@ -792,23 +801,44 @@ static int msm_compr_open(struct snd_pcm_substream *substream)
 	atomic_set(&prtd->pending_buffer, 1);
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		compr->codec = FORMAT_MP3;
-		compressed_audio.prtd =  &compr->prtd;
+		mutex_lock(&volume_lock);
+		for (index = 0; index < MAX_COMPR_SESSIONS; index++) {
+			if (compressed_audio[index].fe_id == INVALID_SESSION)
+				break;
+		}
+		if (index == MAX_COMPR_SESSIONS) {
+			pr_err("Cannot allocate the session, no free sessions");
+			mutex_unlock(&volume_lock);
+			return -EMFILE;
+		}
+		compressed_audio[index].prtd =  &compr->prtd;
+		compressed_audio[index].fe_id =  soc_prtd->dai_link->be_id;
+		mutex_unlock(&volume_lock);
 	}
 	populate_codec_list(compr, runtime);
 	runtime->private_data = compr;
 	atomic_set(&prtd->eos, 0);
-	compressed_audio.prtd =  &compr->prtd;
+
 	return 0;
 }
 
-int compressed_set_volume(unsigned volume)
+int compressed_set_volume(unsigned volume, int fe_id)
 {
 	int rc = 0;
 	struct snd_pcm_substream *substream = NULL;
 	struct compr_audio *compr = NULL;
+	int index = 0;
+	if (fe_id == INVALID_SESSION)
+		return -ENODEV;
+	for (index = 0; index < MAX_COMPR_SESSIONS; index++) {
+		if (compressed_audio[index].fe_id == fe_id)
+			break;
+	}
+	if (index == MAX_COMPR_SESSIONS)
+		return -ENODEV;
 
-	if (compressed_audio.prtd)
-		substream = compressed_audio.prtd->substream;
+	if (compressed_audio[index].prtd)
+		substream = compressed_audio[index].prtd->substream;
 	if (substream)
 		compr = substream->runtime->private_data;
 	if (compr) {
@@ -824,15 +854,16 @@ int compressed_set_volume(unsigned volume)
 	} else
 		return rc;
 
-	if (compressed_audio.prtd->audio_client) {
-		rc = q6asm_set_volume(compressed_audio.prtd->audio_client,
-								 volume);
+	if (compressed_audio[index].prtd->audio_client) {
+		rc = q6asm_set_volume(
+				compressed_audio[index].prtd->audio_client,
+				volume);
 		if (rc < 0) {
 			pr_err("%s: Send Volume command failed"
 					" rc=%d\n", __func__, rc);
 		}
 	}
-	compressed_audio.volume = volume;
+	compressed_audio[index].volume = volume;
 	return rc;
 }
 
@@ -843,6 +874,7 @@ static int msm_compr_playback_close(struct snd_pcm_substream *substream)
 	struct compr_audio *compr = runtime->private_data;
 	struct msm_audio *prtd = &compr->prtd;
 	int dir = 0;
+	int index = 0;
 
 	pr_debug("%s\n", __func__);
 
@@ -852,7 +884,19 @@ static int msm_compr_playback_close(struct snd_pcm_substream *substream)
 	q6asm_cmd(prtd->audio_client, CMD_CLOSE);
 	if (prtd->enc_audio_client)
 		q6asm_cmd(prtd->enc_audio_client, CMD_CLOSE);
-	compressed_audio.prtd = NULL;
+
+	mutex_lock(&volume_lock);
+	for (index = 0; index < MAX_COMPR_SESSIONS; index++) {
+		if (compressed_audio[index].fe_id == soc_prtd->dai_link->be_id)
+			break;
+	}
+	if (index != MAX_COMPR_SESSIONS) {
+		compressed_audio[index].prtd = NULL;
+		compressed_audio[index].fe_id = INVALID_SESSION;
+		compressed_audio[index].volume = 0x2000;
+	}
+	mutex_unlock(&volume_lock);
+
 	q6asm_audio_client_buf_free_contiguous(dir,
 				prtd->audio_client);
 	switch (compr->info.codec_param.codec.id) {
@@ -980,7 +1024,7 @@ static int msm_compr_hw_params(struct snd_pcm_substream *substream,
 	struct snd_dma_buffer *dma_buf = &substream->dma_buffer;
 	struct audio_buffer *buf;
 	int dir, ret;
-	struct asm_softpause_params softpause = {
+/*	struct asm_softpause_params softpause = {
 		.enable = SOFT_PAUSE_ENABLE,
 		.period = SOFT_PAUSE_PERIOD,
 		.step = SOFT_PAUSE_STEP,
@@ -991,7 +1035,7 @@ static int msm_compr_hw_params(struct snd_pcm_substream *substream,
 		.step = SOFT_VOLUME_STEP,
 		.rampingcurve = SOFT_VOLUME_CURVE_LINEAR,
 	};
-
+*/
 	pr_debug("%s\n", __func__);
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 		dir = IN;
@@ -1027,21 +1071,6 @@ static int msm_compr_hw_params(struct snd_pcm_substream *substream,
 				prtd->audio_client->perf_mode,
 				prtd->session_id,
 				substream->stream);
-			ret = compressed_set_volume(compressed_audio.volume);
-			if (ret < 0)
-				pr_err("%s : Set Volume failed : %d",
-					__func__, ret);
-
-			ret = q6asm_set_softpause(prtd->audio_client,
-					&softpause);
-			if (ret < 0)
-				pr_err("%s: Send SoftPause Param failed ret=%d\n",
-					__func__, ret);
-			ret = q6asm_set_softvolume(prtd->audio_client,
-					&softvol);
-			if (ret < 0)
-				pr_err("%s: Send SoftVolume Param failed ret=%d\n",
-					__func__, ret);
 
 			if (compr->info.codec_param.codec.transcode_dts) {
 				prtd->enc_audio_client =
@@ -1477,6 +1506,7 @@ static int __init msm_soc_platform_init(void)
 	init_waitqueue_head(&the_locks.write_wait);
 	init_waitqueue_head(&the_locks.read_wait);
 	init_waitqueue_head(&the_locks.flush_wait);
+	mutex_init(&volume_lock);
 
 	return platform_driver_register(&msm_compr_driver);
 }
