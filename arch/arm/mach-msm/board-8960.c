@@ -2940,7 +2940,7 @@ static struct platform_device *common_devices[] __initdata = {
 	&msm8960_cache_dump_device,
 	&msm8960_iommu_domain_device,
 	&msm_tsens_device,
-	&msm8960_pc_cntr,
+	&msm8960_pm_8x60,
 };
 
 static struct platform_device *cdp_devices[] __initdata = {
@@ -3520,7 +3520,6 @@ static void __init msm8960_cdp_init(void)
 		mdm_sglte_device.dev.platform_data = &sglte_platform_data;
 		platform_device_register(&mdm_sglte_device);
 	}
-	msm_pm_set_tz_retention_flag(1);
 	ion_adjust_secure_allocation();
 }
 
