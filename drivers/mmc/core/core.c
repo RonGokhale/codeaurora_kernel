@@ -785,7 +785,7 @@ int mmc_stop_bkops(struct mmc_card *card)
 	 */
 	card->bkops_info.cancel_delayed_work = true;
 	if (delayed_work_pending(&card->bkops_info.dw))
-		cancel_delayed_work(&card->bkops_info.dw);
+		cancel_delayed_work_sync(&card->bkops_info.dw);
 	if (!mmc_card_doing_bkops(card))
 		goto out;
 
