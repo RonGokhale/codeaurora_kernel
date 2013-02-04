@@ -1,7 +1,7 @@
 Firmware Update Function
 ========================
 
-Call export function "synaptics_fw_updater" in rmi_fw_update.c to start
+Call exporting function "synaptics_fw_updater" in rmi_fw_update.c to start
 firmware updating process in the driver.
 
 The RMI4 driver uses the kernel's request_firmware() feature to obtain
