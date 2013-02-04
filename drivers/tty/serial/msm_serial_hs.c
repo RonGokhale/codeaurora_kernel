@@ -57,6 +57,7 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
+#include <linux/gpio.h>
 #include <asm/atomic.h>
 #include <asm/irq.h>
 
@@ -2002,6 +2003,97 @@ static const char *msm_hs_type(struct uart_port *port)
 	return ("MSM HS UART");
 }
 
+/**
+ * msm_hs_unconfig_uart_gpios: Unconfigures UART GPIOs
+ * @uport: uart port
+ */
+static void msm_hs_unconfig_uart_gpios(struct uart_port *uport)
+{
+	struct platform_device *pdev = to_platform_device(uport->dev);
+	const struct msm_serial_hs_platform_data *pdata =
+					pdev->dev.platform_data;
+
+	if (pdata) {
+		if (pdata->uart_tx_gpio >= 0)
+			gpio_free(pdata->uart_tx_gpio);
+		if (pdata->uart_rx_gpio >= 0)
+			gpio_free(pdata->uart_rx_gpio);
+		if (pdata->uart_cts_gpio >= 0)
+			gpio_free(pdata->uart_cts_gpio);
+		if (pdata->uart_rfr_gpio >= 0)
+			gpio_free(pdata->uart_rfr_gpio);
+	} else {
+		pr_err("Error:Pdata is NULL.\n");
+	}
+}
+
+/**
+ * msm_hs_config_uart_gpios - Configures UART GPIOs
+ * @uport: uart port
+ */
+static int msm_hs_config_uart_gpios(struct uart_port *uport)
+{
+	struct platform_device *pdev = to_platform_device(uport->dev);
+	const struct msm_serial_hs_platform_data *pdata =
+					pdev->dev.platform_data;
+	int ret = 0;
+
+	if (pdata) {
+		if (pdata->uart_tx_gpio >= 0) {
+			ret = gpio_request(pdata->uart_tx_gpio,
+							"UART_TX_GPIO");
+			if (unlikely(ret)) {
+				pr_err("gpio request failed for:%d\n",
+					pdata->uart_tx_gpio);
+				goto exit_uart_config;
+			}
+		}
+
+		if (pdata->uart_rx_gpio >= 0) {
+			ret = gpio_request(pdata->uart_rx_gpio,
+							"UART_RX_GPIO");
+			if (unlikely(ret)) {
+				pr_err("gpio request failed for:%d\n",
+					pdata->uart_rx_gpio);
+				goto uart_tx_unconfig;
+			}
+		}
+
+		if (pdata->uart_cts_gpio >= 0) {
+			ret = gpio_request(pdata->uart_cts_gpio,
+							"UART_CTS_GPIO");
+			if (unlikely(ret)) {
+				pr_err("gpio request failed for:%d\n",
+					pdata->uart_cts_gpio);
+				goto uart_rx_unconfig;
+			}
+		}
+
+		if (pdata->uart_rfr_gpio >= 0) {
+			ret = gpio_request(pdata->uart_rfr_gpio,
+							"UART_RFR_GPIO");
+			if (unlikely(ret)) {
+				pr_err("gpio request failed for:%d\n",
+					pdata->uart_rfr_gpio);
+				goto uart_cts_unconfig;
+			}
+		}
+	} else {
+		pr_err("Pdata is NULL.\n");
+		ret = -EINVAL;
+	}
+	return ret;
+
+uart_cts_unconfig:
+	gpio_free(pdata->uart_cts_gpio);
+uart_rx_unconfig:
+	gpio_free(pdata->uart_rx_gpio);
+uart_tx_unconfig:
+	gpio_free(pdata->uart_tx_gpio);
+exit_uart_config:
+	return ret;
+}
+
 /* Called when port is opened */
 static int msm_hs_startup(struct uart_port *uport)
 {
@@ -2035,10 +2127,17 @@ static int msm_hs_startup(struct uart_port *uport)
 		return ret;
 	}
 
-	if (pdata && pdata->gpio_config)
-		if (unlikely(pdata->gpio_config(1)))
-			dev_err(uport->dev, "Cannot configure gpios\n");
-
+	if (is_blsp_uart(msm_uport)) {
+		ret = msm_hs_config_uart_gpios(uport);
+		if (ret) {
+			pr_err("Uart GPIO request failed\n");
+			goto deinit_uart_clk;
+		}
+	} else {
+		if (pdata && pdata->gpio_config)
+			if (unlikely(pdata->gpio_config(1)))
+				dev_err(uport->dev, "Cannot configure gpios\n");
+	}
 
 	/* SPS Connect for BAM endpoints */
 	if (is_blsp_uart(msm_uport)) {
@@ -2046,7 +2145,7 @@ static int msm_hs_startup(struct uart_port *uport)
 		ret = msm_hs_spsconnect_tx(uport);
 		if (ret) {
 			pr_err("msm_serial_hs: SPS connect failed for TX");
-			goto deinit_uart_clk;
+			goto unconfig_uart_gpios;
 		}
 
 		/* SPS connect for RX */
@@ -2178,6 +2277,9 @@ sps_disconnect_rx:
 sps_disconnect_tx:
 	if (is_blsp_uart(msm_uport))
 		sps_disconnect(sps_pipe_handle_tx);
+unconfig_uart_gpios:
+	if (is_blsp_uart(msm_uport))
+		msm_hs_unconfig_uart_gpios(uport);
 deinit_uart_clk:
 	clk_disable_unprepare(msm_uport->clk);
 	if (msm_uport->pclk)
@@ -2991,9 +3093,13 @@ static void msm_hs_shutdown(struct uart_port *uport)
 	if (use_low_power_wakeup(msm_uport))
 		free_irq(msm_uport->wakeup.irq, msm_uport);
 
-	if (pdata && pdata->gpio_config)
-		if (pdata->gpio_config(0))
-			dev_err(uport->dev, "GPIO config error\n");
+	if (is_blsp_uart(msm_uport)) {
+		msm_hs_unconfig_uart_gpios(uport);
+	} else {
+		if (pdata && pdata->gpio_config)
+			if (pdata->gpio_config(0))
+				dev_err(uport->dev, "GPIO config error\n");
+	}
 }
 
 static void __exit msm_serial_hs_exit(void)
