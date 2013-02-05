@@ -178,7 +178,7 @@ static int audio_enable(struct audio *audio)
 
 }
 
-static void audlpa_async_flush(struct audio *audio)
+static int audlpa_async_flush(struct audio *audio)
 {
 	struct audlpa_buffer_node *buf_node;
 	struct list_head *ptr, *next;
@@ -226,6 +226,7 @@ static void audlpa_async_flush(struct audio *audio)
 		}
 		wake_up(&audio->write_wait);
 	}
+	return rc;
 }
 
 /* must be called with audio->lock held */
@@ -869,7 +870,9 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		pr_info("%s: AUDIO_STOP: session_id:%d\n", __func__,
 			audio->ac->session);
 		audio->stopped = 1;
-		audlpa_async_flush(audio);
+		rc = audlpa_async_flush(audio);
+		if (rc < 0)
+			pr_err("%s:flush failed\n", __func__);
 		audio->out_enabled = 0;
 		audio->out_needed = 0;
 		audio->drv_status &= ~ADRV_STATUS_PAUSE;
@@ -881,7 +884,9 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			audio->ac->session);
 		audio->wflush = 1;
 		if (audio->out_enabled)
-			audlpa_async_flush(audio);
+			rc = audlpa_async_flush(audio);
+			if (rc < 0)
+				pr_err("%s:AUDIO_FLUSH failed\n", __func__);
 		else
 			audio->wflush = 0;
 		audio->wflush = 0;
