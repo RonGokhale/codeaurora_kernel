@@ -26,3 +26,7 @@
 		qcom,android-usb-swfi-latency = <1>;
 	};
 };
+
+&tsens {
+	qcom,calibration-less-mode;
+};
