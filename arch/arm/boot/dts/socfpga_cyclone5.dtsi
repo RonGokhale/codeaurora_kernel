@@ -224,4 +224,9 @@
 		reg = <0x51>;
 		pagesize = <32>;
 	};
+
+	rtc@68 {
+		compatible = "dallas,ds1339";
+		reg = <0x68>;
+	};
 };
