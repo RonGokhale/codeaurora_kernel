@@ -39,10 +39,10 @@ struct msm_serial_hs_platform_data {
 	int (*gpio_config)(int);
 	int userid;
 
-	unsigned uart_tx_gpio;
-	unsigned uart_rx_gpio;
-	unsigned uart_cts_gpio;
-	unsigned uart_rfr_gpio;
+	int uart_tx_gpio;
+	int uart_rx_gpio;
+	int uart_cts_gpio;
+	int uart_rfr_gpio;
 	unsigned bam_tx_ep_pipe_index;
 	unsigned bam_rx_ep_pipe_index;
 };
