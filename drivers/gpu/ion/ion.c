@@ -1451,8 +1451,6 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		end = (unsigned long) data.vaddr + data.length;
 
 		if (check_vaddr_bounds(start, end)) {
-			pr_err("%s: virtual address %p is out of bounds\n",
-				__func__, data.vaddr);
 			return -EINVAL;
 		}
 
