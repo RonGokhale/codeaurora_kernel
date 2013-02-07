@@ -136,8 +136,7 @@ void msm_pcm_routing_reg_phy_stream_v2(int fedai_id, bool perf_mode,
 				       struct msm_pcm_routing_evt event_info);
 
 void msm_pcm_routing_reg_pseudo_stream(int fedai_id, bool perf_mode,
-				int dspst_id, int stream_type, int sample_rate,
-				int channels);
+				int dspst_id, int stream_type);
 
 void msm_pcm_routing_dereg_pseudo_stream(int fedai_id, int dspst_id);
 
