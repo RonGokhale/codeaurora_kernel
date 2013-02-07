@@ -226,7 +226,8 @@ static void kgsl_iommu_clk_disable_event(struct kgsl_device *device, void *data,
 		 * if we queued an event and someone requested the clocks to
 		 * be disbaled on a later timestamp */
 		if (kgsl_add_event(device, id, iommu->iommu_last_cmd_ts,
-			kgsl_iommu_clk_disable_event, mmu, mmu)) {
+			kgsl_iommu_clk_disable_event, mmu, mmu,
+			EVENT_IOMMU_CLK_OFF)) {
 				KGSL_DRV_ERR(device,
 				"Failed to add IOMMU disable clk event\n");
 				iommu->clk_event_queued = false;
@@ -263,7 +264,8 @@ kgsl_iommu_disable_clk_on_ts(struct kgsl_mmu *mmu, unsigned int ts,
 			iommu->iommu_last_cmd_ts = ts;
 			iommu->clk_event_queued = true;
 			if (kgsl_add_event(mmu->device, KGSL_MEMSTORE_GLOBAL,
-				ts, kgsl_iommu_clk_disable_event, mmu, mmu)) {
+				ts, kgsl_iommu_clk_disable_event, mmu, mmu,
+				EVENT_IOMMU_CLK_OFF)) {
 				KGSL_DRV_ERR(mmu->device,
 				"Failed to add IOMMU disable clk event\n");
 				iommu->clk_event_queued = false;

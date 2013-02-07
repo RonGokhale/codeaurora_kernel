@@ -134,6 +134,7 @@ struct kgsl_event {
 	void *priv;
 	struct list_head list;
 	void *owner;
+	enum kgsl_event_type type;
 };
 
 
@@ -156,6 +157,7 @@ struct kgsl_device {
 	const struct kgsl_functable *ftbl;
 	struct work_struct idle_check_ws;
 	struct timer_list idle_timer;
+	struct work_struct check_fences;
 	struct kgsl_pwrctrl pwrctrl;
 	int open_count;
 
@@ -211,6 +213,7 @@ struct kgsl_device {
 };
 
 void kgsl_timestamp_expired(struct work_struct *work);
+void kgsl_check_fences(struct work_struct *work);
 
 #define KGSL_DEVICE_COMMON_INIT(_dev) \
 	.hwaccess_gate = COMPLETION_INITIALIZER((_dev).hwaccess_gate),\
@@ -219,6 +222,8 @@ void kgsl_timestamp_expired(struct work_struct *work);
 	.ts_notifier_list = ATOMIC_NOTIFIER_INIT((_dev).ts_notifier_list),\
 	.idle_check_ws = __WORK_INITIALIZER((_dev).idle_check_ws,\
 			kgsl_idle_check),\
+	.check_fences = __WORK_INITIALIZER((_dev).check_fences,\
+			kgsl_check_fences),\
 	.ts_expired_ws  = __WORK_INITIALIZER((_dev).ts_expired_ws,\
 			kgsl_timestamp_expired),\
 	.context_idr = IDR_INIT((_dev).context_idr),\
