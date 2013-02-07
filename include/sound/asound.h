@@ -484,6 +484,26 @@ enum {
 	SNDRV_CHMAP_LAST = SNDRV_CHMAP_NA,
 };
 
+struct snd_pcm_transcode_param {
+	__u32 transcode_dts;
+	__u32 operation;
+	__u32 session_type;
+	__u32 modelIdLength;
+	__u8 *modelId;
+};
+
+enum {
+	INVALID_STREAM,
+	DISCONNECT_STREAM,
+	CONNECT_STREAM,
+};
+enum {
+	INVALID_SESSION,
+	DECODE_SESSION,
+	PASSTHROUGH_SESSION,
+	TRANSCODE_SESSION,
+};
+
 #define SNDRV_CHMAP_POSITION_MASK	0xffff
 #define SNDRV_CHMAP_PHASE_INVERSE	(0x01 << 16)
 #define SNDRV_CHMAP_DRIVER_SPEC		(0x02 << 16)
@@ -517,6 +537,7 @@ enum {
 #define SNDRV_PCM_IOCTL_READN_FRAMES	_IOR('A', 0x53, struct snd_xfern)
 #define SNDRV_PCM_IOCTL_LINK		_IOW('A', 0x60, int)
 #define SNDRV_PCM_IOCTL_UNLINK		_IO('A', 0x61)
+#define SNDRV_PCM_CONFIGURE_TRANSCODE	_IOR('A', 0x62, struct snd_pcm_transcode_param)
 
 /*****************************************************************************
  *                                                                           *

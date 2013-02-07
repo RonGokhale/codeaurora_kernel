@@ -29,6 +29,7 @@
 #include <sound/initval.h>
 #include <sound/control.h>
 #include <sound/timer.h>
+#include <mach/qdsp6v2/q6core.h>
 
 #include "msm-pcm-q6.h"
 #include "msm-pcm-routing.h"
@@ -312,6 +313,19 @@ static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
 
 	prtd->enabled = 1;
 	prtd->cmd_ack = 0;
+	if (prtd->transcode_dts) {
+		msm_pcm_routing_reg_pseudo_stream(
+			MSM_FRONTEND_DAI_PSEUDO,
+			prtd->enc_audio_client->perf_mode,
+			prtd->enc_audio_client->session,
+			SNDRV_PCM_STREAM_CAPTURE);
+		pr_debug("%s: cmd: DTS ENCDEC CFG BLK\n", __func__);
+		ret = q6asm_enc_cfg_blk_dts(prtd->enc_audio_client,
+				DTS_ENC_SAMPLE_RATE48k, 6);
+		if (ret < 0)
+			pr_err("%s: CMD: DTS ENCDEC CFG BLK failed\n",
+				__func__);
+	}
 
 	return 0;
 }
@@ -362,6 +376,8 @@ static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		pr_debug("%s: Trigger start\n", __func__);
 		q6asm_run_nowait(prtd->audio_client, 0, 0, 0);
+		if(prtd->enc_audio_client)
+			q6asm_run_nowait(prtd->enc_audio_client, 0, 0, 0);
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 		pr_debug("SNDRV_PCM_TRIGGER_STOP\n");
@@ -375,6 +391,8 @@ static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		pr_debug("SNDRV_PCM_TRIGGER_PAUSE\n");
 		q6asm_cmd_nowait(prtd->audio_client, CMD_PAUSE);
+		if(prtd->enc_audio_client)
+			q6asm_cmd_nowait(prtd->enc_audio_client, CMD_PAUSE);
 		atomic_set(&prtd->start, 0);
 		break;
 	default:
@@ -630,6 +648,8 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 	if (ret < 0)
 		pr_err("%s: CMD_EOS failed\n", __func__);
 	q6asm_cmd(prtd->audio_client, CMD_CLOSE);
+	if(prtd->enc_audio_client)
+		q6asm_cmd(prtd->enc_audio_client, CMD_CLOSE);
 	q6asm_audio_client_buf_free_contiguous(dir,
 				prtd->audio_client);
 
@@ -648,6 +668,12 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 		multi_ch_pcm_audio[index].volume = 0x0;
 	}
 	mutex_unlock(&volume_lock);
+	if (prtd->transcode_dts) {
+		msm_pcm_routing_dereg_pseudo_stream(MSM_FRONTEND_DAI_PSEUDO,
+			prtd->enc_audio_client->session);
+	}
+	if(prtd->enc_audio_client)
+		q6asm_audio_client_free(prtd->enc_audio_client);
 	q6asm_audio_client_free(prtd->audio_client);
 	kfree(prtd);
 	return 0;
@@ -852,6 +878,27 @@ static int msm_pcm_hw_params(struct snd_pcm_substream *substream,
 		return -ENOMEM;
 
 	snd_pcm_set_runtime_buffer(substream, &substream->dma_buffer);
+	if (prtd->transcode_dts) {
+		prtd->enc_audio_client =
+			q6asm_audio_client_alloc(
+			(app_cb)event_handler, prtd);
+		if (!prtd->enc_audio_client) {
+			pr_err("%s: Could not allocate " \
+					"memory\n", __func__);
+			return -ENOMEM;
+		}
+		prtd->enc_audio_client->perf_mode = false;
+		pr_debug("%s Setting up loopback path\n",
+				__func__);
+		ret = q6asm_open_transcode_loopback(
+			prtd->enc_audio_client, params_channels(params));
+		if (ret < 0) {
+			pr_err("%s: Session transcode " \
+				"loopback open failed\n",
+				__func__);
+			return -ENODEV;
+		}
+	}
 	return 0;
 }
 static int msm_pcm_ioctl(struct snd_pcm_substream *substream,
@@ -860,6 +907,7 @@ static int msm_pcm_ioctl(struct snd_pcm_substream *substream,
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct msm_audio *prtd = runtime->private_data;
 	int ret = 0, rc;
+	struct snd_pcm_transcode_param transcode_param;
 
 	pr_debug("%s\n", __func__);
 	ret = snd_pcm_lib_ioctl(substream, cmd, arg);
@@ -886,6 +934,42 @@ static int msm_pcm_ioctl(struct snd_pcm_substream *substream,
 			prtd->pcm_irq_pos = 0;
 			atomic_set(&prtd->out_count, runtime->periods);
 		}
+		break;
+	case SNDRV_PCM_CONFIGURE_TRANSCODE:
+		pr_debug("SNDRV_PCM_CONFIGURE_TRANSCODE");
+		if (copy_from_user(&transcode_param, (void *) arg,
+			sizeof(struct snd_pcm_transcode_param))) {
+			rc = -EFAULT;
+			pr_err("%s: ERROR: copy from user\n", __func__);
+			return rc;
+		}
+		if (transcode_param.transcode_dts) {
+			char modelId[128];
+			int modelIdLength = transcode_param.modelIdLength;
+			prtd->transcode_dts = transcode_param.transcode_dts;
+			if (copy_from_user(modelId,
+				(void *)transcode_param.modelId,
+				modelIdLength))
+				pr_err("%s: ERROR: copy modelId\n", __func__);
+			modelId[modelIdLength] = '\0';
+			pr_debug("%s: Received modelId =%s,length=%d\n",
+				__func__, modelId, modelIdLength);
+			core_set_dts_model_id(modelIdLength, modelId);
+		}
+		if (transcode_param.session_type == TRANSCODE_SESSION &&
+			prtd->enc_audio_client) {
+			if (transcode_param.operation == DISCONNECT_STREAM)
+				msm_pcm_routing_dereg_pseudo_stream(
+					MSM_FRONTEND_DAI_PSEUDO,
+					prtd->enc_audio_client->session);
+			else if (transcode_param.operation == CONNECT_STREAM)
+				msm_pcm_routing_reg_pseudo_stream(
+					MSM_FRONTEND_DAI_PSEUDO,
+					prtd->enc_audio_client->perf_mode,
+					prtd->enc_audio_client->session,
+					SNDRV_PCM_STREAM_CAPTURE);
+		}
+
 		break;
 	default:
 		break;

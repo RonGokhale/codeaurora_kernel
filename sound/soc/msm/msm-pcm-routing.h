@@ -122,8 +122,7 @@ void msm_pcm_routing_reg_psthr_stream(int fedai_id, int dspst_id,
 		int stream_type, int enable);
 
 void msm_pcm_routing_reg_pseudo_stream(int fedai_id, bool perf_mode,
-				int dspst_id, int stream_type, int sample_rate,
-				int channels);
+				int dspst_id, int stream_type);
 
 void msm_pcm_routing_dereg_pseudo_stream(int fedai_id, int dspst_id);
 
