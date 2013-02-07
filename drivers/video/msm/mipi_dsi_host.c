@@ -1515,6 +1515,19 @@ int mipi_dsi_cmd_dma_rx(struct dsi_buf *rp, int rlen)
 	return rlen;
 }
 
+static void mipi_dsi_video_wait_to_mdp_busy(void)
+{
+	u32 status;
+
+	/*
+	 * if video mode engine was not busy (in BLLP)
+	 * wait to pass BLLP
+	 */
+	status = MIPI_INP(MIPI_DSI_BASE + 0x0004); /* DSI_STATUS */
+	if (!(status & 0x08)) /* VIDEO_MODE_ENGINE_BUSY */
+		usleep(4000);
+}
+
 void mipi_dsi_cmd_mdp_busy(void)
 {
 	u32 status;
@@ -1589,6 +1602,8 @@ void mipi_dsi_cmdlist_rx(struct dcs_cmd_req *req)
 void mipi_dsi_cmdlist_commit(int from_mdp)
 {
 	struct dcs_cmd_req *req;
+	int video;
+	u32 dsi_ctrl;
 
 	mutex_lock(&cmd_mutex);
 	req = mipi_dsi_cmdlist_get();
@@ -1599,9 +1614,18 @@ void mipi_dsi_cmdlist_commit(int from_mdp)
 
 	pr_debug("%s:  from_mdp=%d pid=%d\n", __func__, from_mdp, current->pid);
 
-	if (!from_mdp) { /* from put */
-		/* make sure dsi_cmd_mdp is idle */
-		mipi_dsi_cmd_mdp_busy();
+	dsi_ctrl = MIPI_INP(MIPI_DSI_BASE + 0x0000);
+	if (dsi_ctrl & 0x02) {
+		/* video mode, make sure dsi_cmd_mdp is busy
+		 * sodcs command will be txed at start of BLLP
+		 */
+		mipi_dsi_video_wait_to_mdp_busy();
+	} else {
+		/* command mode */
+		if (!from_mdp) { /* cmdlist_put */
+			/* make sure dsi_cmd_mdp is idle */
+			mipi_dsi_cmd_mdp_busy();
+		}
 	}
 
 	mipi_dsi_clk_cfg(1);
