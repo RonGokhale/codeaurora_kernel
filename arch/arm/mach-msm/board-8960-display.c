@@ -21,7 +21,7 @@
 #include <mach/board.h>
 #include <mach/gpio.h>
 #include <mach/gpiomux.h>
-#include <linux/ion.h>
+#include <linux/msm_ion.h>
 #include <mach/ion.h>
 #include <mach/socinfo.h>
 
