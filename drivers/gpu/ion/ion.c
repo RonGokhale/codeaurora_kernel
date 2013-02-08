@@ -536,8 +536,7 @@ int ion_phys(struct ion_client *client, struct ion_handle *handle,
 }
 EXPORT_SYMBOL(ion_phys);
 
-void *ion_map_kernel(struct ion_client *client, struct ion_handle *handle,
-			unsigned long flags)
+void *ion_map_kernel(struct ion_client *client, struct ion_handle *handle)
 {
 	struct ion_buffer *buffer;
 	void *vaddr;
@@ -563,7 +562,7 @@ void *ion_map_kernel(struct ion_client *client, struct ion_handle *handle,
 
 	if (_ion_map(&buffer->kmap_cnt, &handle->kmap_cnt)) {
 		vaddr = buffer->heap->ops->map_kernel(buffer->heap, buffer,
-							flags);
+							buffer->flags);
 		if (IS_ERR_OR_NULL(vaddr))
 			_ion_unmap(&buffer->kmap_cnt, &handle->kmap_cnt);
 		buffer->vaddr = vaddr;
