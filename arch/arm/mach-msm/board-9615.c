@@ -37,7 +37,6 @@
 #include "pm.h"
 #include "acpuclock.h"
 #include "pm-boot.h"
-
 static struct pm8xxx_adc_amux pm8018_adc_channels_data[] = {
 	{"vcoin", CHANNEL_VCOIN, CHAN_PATH_SCALING2, AMUX_RSV1,
 		ADC_DECIMATION_TYPE2, ADC_SCALE_DEFAULT},
