@@ -239,7 +239,7 @@ static inline dma_addr_t map_single(struct device *dev, void *ptr, size_t size,
 		if (limit && size > limit) {
 			dev_err(dev, "DMA mapping too big (requested %#x "
 				"mask %#Lx)\n", size, *dev->dma_mask);
-			return ~0;
+			return DMA_ERROR_CODE;
 		}
 
 		/*
@@ -255,7 +255,7 @@ static inline dma_addr_t map_single(struct device *dev, void *ptr, size_t size,
 		if (buf == 0) {
 			dev_err(dev, "%s: unable to map unsafe buffer %p!\n",
 			       __func__, ptr);
-			return ~0;
+			return DMA_ERROR_CODE;
 		}
 
 		dev_dbg(dev,
@@ -367,7 +367,7 @@ dma_addr_t __dma_map_page(struct device *dev, struct page *page,
 	if (PageHighMem(page)) {
 		dev_err(dev, "DMA buffer bouncing of HIGHMEM pages "
 			     "is not supported\n");
-		return ~0;
+		return DMA_ERROR_CODE;
 	}
 
 	return map_single(dev, page_address(page) + offset, size, dir);
