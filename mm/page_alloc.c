@@ -5888,6 +5888,7 @@ static int __reclaim_pages(struct zone *zone, gfp_t gfp_mask, int count)
 	struct zonelist *zonelist = node_zonelist(0, gfp_mask);
 	int did_some_progress = 0;
 	int order = 1;
+	int retry = 0;
 
 	/*
 	 * Increase level of watermarks to force kswapd do his job
@@ -5896,7 +5897,8 @@ static int __reclaim_pages(struct zone *zone, gfp_t gfp_mask, int count)
 	__update_cma_watermarks(zone, count);
 
 	/* Obey watermarks as if the page was being allocated */
-	while (!zone_watermark_ok(zone, 0, low_wmark_pages(zone), 0, 0)) {
+	while (!zone_watermark_ok(zone, 0, low_wmark_pages(zone), 0, 0)
+			&& retry++ < 16) {
 		wake_all_kswapd(order, zonelist, high_zoneidx, zone_idx(zone));
 
 		did_some_progress = __perform_reclaim(gfp_mask, order, zonelist,
