@@ -59,7 +59,7 @@ static inline bool migrate_async_suitable(int migratetype)
 static unsigned long isolate_freepages_block(unsigned long blockpfn,
 				unsigned long end_pfn,
 				struct list_head *freelist,
-				bool strict)
+				bool strict, bool for_cma)
 {
 	int nr_scanned = 0, total_isolated = 0;
 	struct page *cursor;
@@ -85,7 +85,7 @@ static unsigned long isolate_freepages_block(unsigned long blockpfn,
 		}
 
 		/* Found a free page, break it into order-0 pages */
-		isolated = split_free_page(page);
+		isolated = split_free_page(page, for_cma);
 		if (!isolated && strict)
 			return 0;
 		total_isolated += isolated;
@@ -119,7 +119,8 @@ static unsigned long isolate_freepages_block(unsigned long blockpfn,
  * a free page).
  */
 unsigned long
-isolate_freepages_range(unsigned long start_pfn, unsigned long end_pfn)
+isolate_freepages_range(unsigned long start_pfn, unsigned long end_pfn,
+				bool for_cma)
 {
 	unsigned long isolated, pfn, block_end_pfn, flags;
 	struct zone *zone = NULL;
@@ -141,7 +142,7 @@ isolate_freepages_range(unsigned long start_pfn, unsigned long end_pfn)
 
 		spin_lock_irqsave(&zone->lock, flags);
 		isolated = isolate_freepages_block(pfn, block_end_pfn,
-						   &freelist, true);
+						   &freelist, true, for_cma);
 		spin_unlock_irqrestore(&zone->lock, flags);
 
 		/*
@@ -444,7 +445,7 @@ static void isolate_freepages(struct zone *zone,
 		if (suitable_migration_target(page)) {
 			end_pfn = min(pfn + pageblock_nr_pages, zone_end_pfn);
 			isolated = isolate_freepages_block(pfn, end_pfn,
-							   freelist, false);
+						   freelist, false, false);
 			nr_freepages += isolated;
 		}
 		spin_unlock_irqrestore(&zone->lock, flags);
