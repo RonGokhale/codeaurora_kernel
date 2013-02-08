@@ -814,3 +814,4 @@ int msm_mctl_buf_return_buf(struct msm_cam_media_controller *pmctl,
 	spin_unlock_irqrestore(&pcam_inst->vq_irqlock, flags);
 	return -EINVAL;
 }
+
