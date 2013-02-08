@@ -2238,10 +2238,10 @@ register_afe_playback:
 			pr_err("%s Device not found stream name %s\n",
 			__func__, stream_name);
 		break;
-	case RT_PROXY_DAI_001_TX:
+	case RT_PROXY_DAI_002_TX:
 		strlcpy(stream_name, "AFE Capture", 80);
 		goto register_afe_capture;
-	case RT_PROXY_DAI_002_TX:
+	case RT_PROXY_DAI_001_TX:
 		strlcpy(stream_name, "AFE Proxy Tx", 80);
 register_afe_capture:
 		rc = -ENODEV;
