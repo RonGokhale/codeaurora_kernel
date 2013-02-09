@@ -882,7 +882,7 @@ static void __init apq8064_ehci_host_init(void)
 {
 	if (machine_is_apq8064_liquid() || machine_is_mpq8064_cdp() ||
 		machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
-					machine_is_apq8064_cdp()) {
+		machine_is_mpq8064_dma() || machine_is_apq8064_cdp()) {
 		if (machine_is_apq8064_liquid())
 			msm_ehci_host_pdata3.dock_connect_irq =
 					PM8921_MPP_IRQ(PM8921_IRQ_BASE, 9);
@@ -2676,9 +2676,8 @@ static struct platform_device sp_input_loopback_pdev = {
 
 static int rf4ce_gpio_init(void)
 {
-	if (!machine_is_mpq8064_cdp() &&
-		!machine_is_mpq8064_hrd() &&
-			!machine_is_mpq8064_dtv())
+	if (!machine_is_mpq8064_cdp() && !machine_is_mpq8064_hrd() &&
+		!machine_is_mpq8064_dtv() && !machine_is_mpq8064_dma())
 		return -EINVAL;
 
 	/* CC2533 SRDY Input */
@@ -3603,13 +3602,13 @@ static void __init apq8064_common_init(void)
 	msm_clock_init(&apq8064_clock_init_data);
 	apq8064_init_gpiomux();
 	if (machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
-			machine_is_mpq8064_dtv())
+			machine_is_mpq8064_dtv() || machine_is_mpq8064_dma())
 		mpq8064_i2c_init();
 	else
 		apq8064_i2c_init();
 
 	/* configure sx150x parameters for HRD */
-	if (machine_is_mpq8064_hrd()) {
+	if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dma()) {
 		mpq8064_sx150x_pdata[SX150X_EXP2].irq_summary    =
 					PM8921_GPIO_IRQ(PM8921_IRQ_BASE, 40);
 		mpq8064_sx150x_pdata[SX150X_EXP2].io_pullup_ena  = 0xff;
@@ -3638,7 +3637,7 @@ static void __init apq8064_common_init(void)
 	platform_add_devices(early_common_devices,
 				ARRAY_SIZE(early_common_devices));
 	if (socinfo_get_pmic_model() != PMIC_MODEL_PM8917) {
-		if (!machine_is_mpq8064_hrd())
+		if (!(machine_is_mpq8064_hrd() || machine_is_mpq8064_dma()))
 			platform_add_devices(pm8921_common_devices,
 				ARRAY_SIZE(pm8921_common_devices));
 		else
@@ -3652,12 +3651,12 @@ static void __init apq8064_common_init(void)
 		platform_device_register(&apq8064_device_ext_ts_sw_vreg);
 	platform_add_devices(common_devices, ARRAY_SIZE(common_devices));
 	if (!(machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
-			machine_is_mpq8064_dtv()))
+			machine_is_mpq8064_dtv() || machine_is_mpq8064_dma()))
 		platform_add_devices(common_not_mpq_devices,
 			ARRAY_SIZE(common_not_mpq_devices));
 
 	if ((machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
-			machine_is_mpq8064_dtv()))
+			machine_is_mpq8064_dtv() || machine_is_mpq8064_dma()))
 		platform_add_devices(common_mpq_devices,
 			ARRAY_SIZE(common_mpq_devices));
 
@@ -3690,7 +3689,8 @@ static void __init apq8064_common_init(void)
 		}
 	}
 	platform_device_register(&apq8064_slim_ctrl);
-	if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv()) {
+	if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
+		machine_is_mpq8064_dma()) {
 		apq8064_slim_devices[ARRAY_SIZE(apq8064_slim_devices) - 1].\
 			slim_slave = &mpq8064_slim_ashiko20;
 	}
@@ -3725,7 +3725,7 @@ static void __init apq8064_cdp_init(void)
 			cyttsp_pdata.sleep_gpio = CYTTSP_TS_GPIO_SLEEP_ALT;
 	apq8064_common_init();
 	if (machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
-		machine_is_mpq8064_dtv()) {
+		machine_is_mpq8064_dtv() || machine_is_mpq8064_dma()) {
 		gpio_ir_recv_pdata.swfi_latency =
 					msm_rpmrs_levels[0].latency_us;
 		enable_avc_i2c_bus();
@@ -3751,8 +3751,8 @@ static void __init apq8064_cdp_init(void)
 						ARRAY_SIZE(spi_board_info));
 	}
 
-	if ((machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv()) &&
-		(SOCINFO_VERSION_MAJOR(hrd_version) == 2)) {
+	if ((machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
+		machine_is_mpq8064_dma()) && (SOCINFO_VERSION_MAJOR(hrd_version) == 2)) {
 		mpq_mcu_pdata.swfi_latency = msm_rpmrs_levels[0].latency_us;
 		mpq_mcu_comm_dev.dev.platform_data = &mpq_mcu_pdata;
 		platform_device_register(&mpq_mcu_comm_dev);
@@ -3768,7 +3768,8 @@ static void __init apq8064_cdp_init(void)
 	apq8064_init_cam();
 #endif
 
-	if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv()) {
+	if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
+		machine_is_mpq8064_dma()) {
 		platform_device_register(&mpq8064_device_uartdm_gsbi6);
 #ifdef CONFIG_SERIAL_MSM_HS
 		/* GSBI6(2) - UARTDM_RX */
@@ -3779,7 +3780,7 @@ static void __init apq8064_cdp_init(void)
 	}
 
 #if defined(CONFIG_BT) && defined(CONFIG_MARIMBA_CORE)
-	if (machine_is_mpq8064_hrd())
+	if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dma())
 		apq8064_bt_power_init();
 #endif
 
@@ -3794,17 +3795,18 @@ static void __init apq8064_cdp_init(void)
 	if (machine_is_mpq8064_cdp()) {
 		platform_device_register(&mpq_gpio_keys_pdev);
 		platform_device_register(&mpq_keypad_device);
-	} else if (machine_is_mpq8064_hrd()) {
+	} else if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dma()) {
 		if (SOCINFO_VERSION_MAJOR(hrd_version) == 2)
 			platform_device_register(&mpq_rev2hrd_keys_pdev);
 		else
 			platform_device_register(&mpq_hrd_keys_pdev);
 	}
 	if (machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
-		machine_is_mpq8064_dtv())
+		machine_is_mpq8064_dtv() || machine_is_mpq8064_dma())
 		platform_device_register(&msm_dev_avtimer_device);
 
-	if (machine_is_apq8064_cdp() || machine_is_mpq8064_hrd()) {
+	if (machine_is_apq8064_cdp() || machine_is_mpq8064_hrd() ||
+		machine_is_mpq8064_dma()) {
 		int ret;
 		struct pm8xxx_mpp_config_data sata_pwr_cfg = {
 			.type = PM8XXX_MPP_TYPE_D_OUTPUT,

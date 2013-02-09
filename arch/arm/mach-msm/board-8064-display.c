@@ -819,7 +819,8 @@ static int hdmi_core_power(int on, int show)
 
 	/* TBD: PM8921 regulator instead of 8901 */
 	if (!reg_ext_3p3v &&
-		(!(machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv()))) {
+		(!(machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
+			machine_is_mpq8064_dma()))) {
 		reg_ext_3p3v = regulator_get(&hdmi_msm_device.dev,
 						"hdmi_mux_vdd");
 		if (IS_ERR_OR_NULL(reg_ext_3p3v)) {
@@ -861,7 +862,8 @@ static int hdmi_core_power(int on, int show)
 		 * Configure 3P3V_BOOST_EN as GPIO, 8mA drive strength,
 		 * pull none, out-high
 		 */
-		if (!(machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv())) {
+		if (!(machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
+			machine_is_mpq8064_dma())) {
 			rc = regulator_set_optimum_mode(reg_ext_3p3v, 290000);
 			if (rc < 0) {
 				pr_err("set_optimum_mode ext_3p3v failed," \
@@ -891,7 +893,8 @@ static int hdmi_core_power(int on, int show)
 		}
 		pr_debug("%s(on): success\n", __func__);
 	} else {
-		if (!(machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv())) {
+		if (!(machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
+			machine_is_mpq8064_dma())) {
 			rc = regulator_disable(reg_ext_3p3v);
 			if (rc) {
 				pr_err("disable reg_ext_3p3v failed, rc=%d\n",
@@ -920,7 +923,8 @@ static int hdmi_core_power(int on, int show)
 error2:
 	regulator_disable(reg_8921_lvs7);
 error1:
-	if (!(machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv()))
+	if (!(machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
+		machine_is_mpq8064_dma()))
 		regulator_disable(reg_ext_3p3v);
 	return rc;
 }
@@ -1069,7 +1073,8 @@ void __init apq8064_set_display_params(char *prim_panel, char *ext_panel,
 	 * by default, with the flexibility to specify any other panel
 	 * as a primary panel through boot parameters.
 	 */
-	if (machine_is_mpq8064_hrd() || machine_is_mpq8064_cdp()) {
+	if (machine_is_mpq8064_hrd() || machine_is_mpq8064_cdp() || 
+		machine_is_mpq8064_dma()) {
 		pr_debug("HDMI is the primary display by default for MPQ\n");
 		if (!strnlen(prim_panel, PANEL_NAME_MAX_LEN))
 			strlcpy(msm_fb_pdata.prim_panel_name, HDMI_PANEL_NAME,
