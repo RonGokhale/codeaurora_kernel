@@ -241,11 +241,11 @@ void __init apq8064_pm8xxx_gpio_mpp_init(void)
 	}
 
 	if (machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd()
-	    || machine_is_mpq8064_dtv())
+	    || machine_is_mpq8064_dtv() || machine_is_mpq8064_dma())
 		apq8064_configure_gpios(pm8921_mpq_gpios,
 					ARRAY_SIZE(pm8921_mpq_gpios));
 
-	if (machine_is_mpq8064_hrd())
+	if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dma())
 		apq8064_configure_gpios(pm8921_mpq8064_hrd_gpios,
 					ARRAY_SIZE(pm8921_mpq8064_hrd_gpios));
 
