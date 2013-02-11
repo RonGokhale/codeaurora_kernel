@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -56,14 +56,5 @@
 #define MSM_DEBUG_UART_BASE	IOMEM(0xFA71E000)
 #define MSM_DEBUG_UART_PHYS	0xF991E000
 #endif
-
-/*
- * IMEM is retained for secure watchdog reset
- * Debug Image looks at actual IMEM to
- * do memory dumping.
- */
-
-#define MSM9625_DBG_IMEM_PHYS	0xFE807800
-#define MSM9625_DBG_IMEM_SIZE	SZ_4K
 
 #endif
