@@ -2956,6 +2956,7 @@ static int __devinit cyttsp_probe(struct i2c_client *client,
 			return -EINVAL;
 		}
 
+		mutex_init(&ts->mutex);
 		i2c_set_clientdata(client, ts);
 
 		init_completion(&ts->si_int_running);
@@ -2963,6 +2964,8 @@ static int __devinit cyttsp_probe(struct i2c_client *client,
 		error = cyttsp_initialize(client, ts);
 		if (error) {
 			cyttsp_xdebug1("err cyttsp_initialize\n");
+			/* release mutex */
+			mutex_destroy(&ts->mutex);
 			/* deallocate memory */
 			kfree(ts);
 /*
@@ -2981,8 +2984,6 @@ static int __devinit cyttsp_probe(struct i2c_client *client,
 	}
 #endif /* CONFIG_HAS_EARLYSUSPEND */
 	device_init_wakeup(&client->dev, ts->platform_data->wakeup);
-	mutex_init(&ts->mutex);
-	retval = cyttsp_set_lp_mode(ts);
 
 	cyttsp_info("Start Probe %s\n", \
 		(retval < CY_OK) ? "FAIL" : "PASS");
