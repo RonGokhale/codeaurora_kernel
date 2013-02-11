@@ -2180,6 +2180,21 @@ static struct msm_spm_platform_data msm_spm_data[] __initdata = {
 	},
 };
 
+static void __init apq8064ab_update_krait_spm(void)
+{
+	int i;
+
+	/* Update the SPM sequences for SPC and PC */
+	for (i = 0; i < ARRAY_SIZE(msm_spm_data); i++) {
+		struct msm_spm_platform_data *pdata = &msm_spm_data[i];
+#if defined(CONFIG_MSM_AVS_HW)
+		pdata->reg_init_values[MSM_SPM_REG_SAW2_AVS_CTL] = 0x58589464;
+		pdata->reg_init_values[MSM_SPM_REG_SAW2_AVS_HYSTERESIS] =
+								0x00020000;
+#endif
+	}
+}
+
 static void __init apq8064_init_buses(void)
 {
 	msm_bus_rpm_set_mt_mask();
@@ -3187,6 +3202,8 @@ static void __init apq8064_common_init(void)
 		apq8064_init_dsps();
 		platform_device_register(&msm_8960_riva);
 	}
+	if (cpu_is_apq8064ab())
+		apq8064ab_update_krait_spm();
 	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
 	msm_spm_l2_init(msm_spm_l2_data);
 	BUG_ON(msm_pm_boot_init(&msm_pm_boot_pdata));
