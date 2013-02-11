@@ -338,7 +338,8 @@ void __init apq8064_init_mmc(void)
 		apq8064_add_sdcc(2, apq8064_sdc2_pdata);
 
 	if (apq8064_sdc3_pdata) {
-		if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv()) {
+		if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
+			machine_is_mpq8064_dma()) {
 			apq8064_sdc3_pdata->uhs_caps &= ~(MMC_CAP_UHS_SDR12 |
 				MMC_CAP_UHS_SDR25 | MMC_CAP_UHS_DDR50 |
 				MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR104);
@@ -348,7 +349,7 @@ void __init apq8064_init_mmc(void)
 			apq8064_sdc3_pdata->is_wpswitch_active_low = false;
 		}
 		if (machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
-			machine_is_mpq8064_dtv()) {
+			machine_is_mpq8064_dtv() || machine_is_mpq8064_dma()) {
 			int rc;
 			struct pm_gpio sd_card_det_init_cfg = {
 				.direction      = PM_GPIO_DIR_IN,
@@ -390,6 +391,16 @@ void __init apq8064_init_mmc(void)
 				drv->on[1].val = GPIO_CFG_10MA;
 			apq8064_sdc3_pdata->pin_data->pad_data->\
 				drv->on[2].val = GPIO_CFG_10MA;
+		}
+		if (machine_is_mpq8064_dma()) {
+			int i;
+
+                        for (i = 0;
+                             i < apq8064_sdc3_pdata->pin_data->pad_data->\
+                                 drv->size;
+                             i++)
+                                apq8064_sdc3_pdata->pin_data->pad_data->\
+                                        drv->on[i].val = GPIO_CFG_4MA;
 		}
 		apq8064_add_sdcc(3, apq8064_sdc3_pdata);
 	}
