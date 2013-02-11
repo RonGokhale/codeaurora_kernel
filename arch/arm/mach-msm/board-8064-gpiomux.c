@@ -1588,12 +1588,12 @@ void __init apq8064_init_gpiomux(void)
 		pr_err(KERN_ERR "msm_gpiomux_init failed %d\n", rc);
 		return;
 	}
-	if (!(machine_is_mpq8064_hrd()))
+	if (!(machine_is_mpq8064_hrd() || machine_is_mpq8064_dma()))
 		msm_gpiomux_install(wcnss_5wire_interface,
 				ARRAY_SIZE(wcnss_5wire_interface));
 
 	if (machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
-		 machine_is_mpq8064_dtv()) {
+		 machine_is_mpq8064_dtv() || machine_is_mpq8064_dma()) {
 		msm_gpiomux_install(mpq8064_gsbi5_i2c_configs,
 				ARRAY_SIZE(mpq8064_gsbi5_i2c_configs));
 		msm_gpiomux_install(mpq8064_gsbi5_uart_configs,
@@ -1637,7 +1637,8 @@ void __init apq8064_init_gpiomux(void)
 		msm_gpiomux_install(apq8064_slimbus_config,
 				ARRAY_SIZE(apq8064_slimbus_config));
 		if (!(machine_is_mpq8064_cdp()||machine_is_mpq8064_hrd()||
-	        machine_is_mpq8064_dtv()) && !machine_is_apq8064_mtp()) 
+	        	machine_is_mpq8064_dtv() || machine_is_mpq8064_dma()) 
+			&& !machine_is_apq8064_mtp()) 
 			msm_gpiomux_install(apq8064_gsbi1_i2c_8ma_configs,
 				ARRAY_SIZE(apq8064_gsbi1_i2c_8ma_configs));
 	}
@@ -1646,7 +1647,7 @@ void __init apq8064_init_gpiomux(void)
 			ARRAY_SIZE(apq8064_audio_codec_configs));
 
 	if (machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
-		machine_is_mpq8064_dtv()) {
+		machine_is_mpq8064_dtv() || machine_is_mpq8064_dma()) {
 
 		msm_gpiomux_install(mpq8064_audio_auxpcm_configs,
 			ARRAY_SIZE(mpq8064_audio_auxpcm_configs));
@@ -1660,11 +1661,11 @@ void __init apq8064_init_gpiomux(void)
 		" for these GPIO Pins\n", __func__);
 
 	if (machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
-		machine_is_mpq8064_dtv())
+		machine_is_mpq8064_dtv() || machine_is_mpq8064_dma())
 		msm_gpiomux_install(mpq8064_mi2s_configs,
 			ARRAY_SIZE(mpq8064_mi2s_configs));
 
-	if (!machine_is_mpq8064_hrd())
+	if (!(machine_is_mpq8064_hrd() || machine_is_mpq8064_dma()))
 		msm_gpiomux_install(apq8064_ext_regulator_configs,
 			ARRAY_SIZE(apq8064_ext_regulator_configs));
 
@@ -1720,16 +1721,17 @@ void __init apq8064_init_gpiomux(void)
 #endif
 
 	if (!(machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
-		 machine_is_mpq8064_dtv())) {
+		 machine_is_mpq8064_dtv() || machine_is_mpq8064_dma())) {
 		msm_gpiomux_install(apq8064_sdc3_configs,
 				ARRAY_SIZE(apq8064_sdc3_configs));
 	}
-	 if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv())
+	 if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
+		machine_is_mpq8064_dma())
 		msm_gpiomux_install(mpq8064_uartdm_configs,
 				ARRAY_SIZE(mpq8064_uartdm_configs));
 
-	if ((machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv()) &&
-		(SOCINFO_VERSION_MAJOR(hrd_version) == 2))
+	if ((machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
+		machine_is_mpq8064_dma()) && (SOCINFO_VERSION_MAJOR(hrd_version) == 2))
 		msm_gpiomux_install(mpq_mcu_comm_configs,
 				ARRAY_SIZE(mpq_mcu_comm_configs));
 	else
