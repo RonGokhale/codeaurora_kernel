@@ -1077,7 +1077,7 @@ static struct snd_soc_dai_driver msm_dai_q6_incall_uplink_record_dai = {
 };
 
 static struct snd_soc_dai_driver msm_dai_q6_incall_downlink_record_dai = {
-	 .playback = {
+	 .capture = {
 		 .stream_name = "Voice Downlink Capture",
 		 .aif_name = "INCALL_RECORD_RX",
 		 .rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
