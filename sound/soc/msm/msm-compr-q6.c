@@ -345,6 +345,48 @@ static void compr_event_handler(uint32_t opcode,
 		break;
 	}
 }
+static int msm_compr_dts_pp_configure(struct audio_client *ac,
+				struct snd_dec_dts_config dts, int format)
+{
+	int dts_pp_param;
+	int ret = 0;
+	dts_pp_param = dts.mix_lfe_to_front;
+	if (dts_pp_param == 0 || dts_pp_param == 1) {
+		ret = q6asm_dts_mix_lfe_to_front(ac, dts_pp_param, format);
+		if (ret < 0) {
+			pr_err("%s:q6asm_dts_mix_lfe_to_front failed\n",
+				__func__);
+			return ret;
+		}
+	}
+	dts_pp_param = dts.drc_ratio;
+	if (dts_pp_param >= 0 && dts_pp_param <= 100) {
+		ret = q6asm_dts_drc_ratio(ac, dts_pp_param);
+		if (ret < 0) {
+			pr_err("%s:q6asm_dts_drc_ratio failed\n", __func__);
+			return ret;
+		}
+	}
+	dts_pp_param = dts.enable_dialnorm;
+	if (dts_pp_param == 0 || dts_pp_param == 1) {
+		ret = q6asm_dts_enable_dialnorm(ac, dts_pp_param);
+		if (ret < 0) {
+			pr_err("%s:q6asm_dts_enable_dialnorm failed\n",
+				__func__);
+			return ret;
+		}
+	}
+	dts_pp_param = dts.parse_rev2aux;
+	if (dts_pp_param == 0 || dts_pp_param == 1) {
+		ret = q6asm_dts_parse_rev2aux(ac, dts_pp_param, format);
+		if (ret < 0) {
+			pr_err("%s:q6asm_dts_parse_rev2aux failed\n",
+				__func__);
+			return ret;
+		}
+	}
+	return ret;
+}
 
 static int msm_compr_playback_prepare(struct snd_pcm_substream *substream)
 {
@@ -457,6 +499,11 @@ static int msm_compr_playback_prepare(struct snd_pcm_substream *substream)
 			pr_err("%s: CMD Format block failed\n", __func__);
 			return ret;
 		}
+		ret = msm_compr_dts_pp_configure(prtd->audio_client,
+				compr->info.codec_param.codec.options.dts,
+				compr->codec);
+		if (ret < 0)
+			return ret;
 		break;
 	case SND_AUDIOCODEC_AMRWB:
 		pr_debug("SND_AUDIOCODEC_AMRWB\n");

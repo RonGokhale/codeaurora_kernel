@@ -349,13 +349,20 @@ struct snd_dec_dts {
 	__u8 *modelId;
 };
 
+struct snd_dec_dts_config {
+	__u32 mix_lfe_to_front;
+	__u32 drc_ratio;
+	__u32 enable_dialnorm;
+	__u32 parse_rev2aux;
+};
+
 union snd_codec_options {
 	struct snd_enc_wma wma;
 	struct snd_enc_vorbis vorbis;
 	struct snd_enc_real real;
 	struct snd_enc_flac flac;
 	struct snd_enc_generic generic;
-	struct snd_dec_dts dts;
+	struct snd_dec_dts_config dts;
 };
 
 /** struct snd_codec_desc - description of codec capabilities

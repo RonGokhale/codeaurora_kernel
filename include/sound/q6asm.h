@@ -343,4 +343,10 @@ int q6asm_get_apr_service_id(int session_id);
 */
 int q6asm_media_format_block(struct audio_client *ac, uint32_t format);
 
+int q6asm_dts_mix_lfe_to_front(struct audio_client *ac,
+					int enable, int format);
+int q6asm_dts_drc_ratio(struct audio_client *ac, int ratio);
+int q6asm_dts_enable_dialnorm(struct audio_client *ac, int enable);
+int q6asm_dts_parse_rev2aux(struct audio_client *ac, int enable, int format);
+
 #endif /* __Q6_ASM_H__ */
