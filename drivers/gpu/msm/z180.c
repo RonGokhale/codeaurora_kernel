@@ -822,6 +822,20 @@ static int z180_waittimestamp(struct kgsl_device *device,
 	return status;
 }
 
+static int z180_next_event(struct kgsl_device *device,
+		struct kgsl_event *event, unsigned int processed)
+{
+	int status;
+
+	/* returns 1 if timestamp already passed */
+	status = timestamp_cmp(processed, event->timestamp);
+	if (status >= 0)
+		return 1;
+
+	/* return 0 or err */
+	return 0;
+}
+
 static int z180_wait(struct kgsl_device *device,
 				struct kgsl_context *context,
 				unsigned int timestamp,
@@ -932,6 +946,7 @@ static const struct kgsl_functable z180_functable = {
 	.drawctxt_destroy = z180_drawctxt_destroy,
 	.ioctl = NULL,
 	.postmortem_dump = z180_dump,
+	.next_event = z180_next_event,
 };
 
 static struct platform_device_id z180_id_table[] = {

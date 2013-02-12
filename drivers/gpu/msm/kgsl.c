@@ -438,19 +438,38 @@ void kgsl_timestamp_expired(struct work_struct *work)
 		ts_expired_ws);
 	struct kgsl_event *event, *event_tmp;
 	uint32_t ts_processed;
-	unsigned int id;
+	unsigned int id, last_id;
+	int status;
 
 	mutex_lock(&device->mutex);
 
+	last_id = KGSL_MEMSTORE_GLOBAL;
+	ts_processed = kgsl_readtimestamp(device, NULL, KGSL_TIMESTAMP_RETIRED);
+
 	/* Process expired events */
 	list_for_each_entry_safe(event, event_tmp, &device->events, list) {
-		ts_processed = kgsl_readtimestamp(device, event->context,
-						  KGSL_TIMESTAMP_RETIRED);
-		if (timestamp_cmp(ts_processed, event->timestamp) < 0)
+		/* read timestamp once per context */
+		id = event->context ? event->context->id :
+			KGSL_MEMSTORE_GLOBAL;
+		if (id != last_id) {
+			ts_processed = kgsl_readtimestamp(device,
+				event->context, KGSL_TIMESTAMP_RETIRED);
+			last_id = id;
+		}
+
+		/*
+		 * Check if the next event has already passed.
+		 * status is 1 when event has already passed, so call
+		 * the event callback, otherwise, continue to check
+		 * the next event.  If next_event returns error, skip
+		 * bypass that event and continue.
+		 */
+		status = device->ftbl->next_event(device, event,
+				ts_processed);
+		if (status != 1)
 			continue;
 
-		id = event->context ? event->context->id : KGSL_MEMSTORE_GLOBAL;
-
+		/* event callback since event has passed */
 		if (event->func)
 			event->func(device, event->priv, id, ts_processed);
 
@@ -461,25 +480,30 @@ void kgsl_timestamp_expired(struct work_struct *work)
 		kfree(event);
 	}
 
-	/* Send the next pending event for each context to the device */
-	if (device->ftbl->next_event) {
-		unsigned int id = KGSL_MEMSTORE_GLOBAL;
-
-		list_for_each_entry(event, &device->events, list) {
-
-			if (!event->context)
-				continue;
-
-			if (event->context->id != id) {
-				device->ftbl->next_event(device, event);
-				id = event->context->id;
-			}
-		}
+	if (!list_empty(&device->events)) {
+		/*
+		 * mod timer to force workqueue in X ms in case an
+		 * interrupt was missed
+		 */
+		mod_timer(&device->event_expired_timer, jiffies +
+			msecs_to_jiffies(KGSL_EXPIRED_TIMESTAMP_WAIT));
+	} else {
+		/* nobody is left in list waiting, so remove callback timer */
+		del_timer_sync(&device->event_expired_timer);
 	}
+
 
 	mutex_unlock(&device->mutex);
 }
 EXPORT_SYMBOL(kgsl_timestamp_expired);
+
+static void kgsl_event_expired_timer(unsigned long data)
+{
+	struct kgsl_device *device = (struct kgsl_device *) data;
+
+	/* Have work run in a non-interrupt context. */
+	queue_work(device->work_queue, &device->ts_expired_ws);
+}
 
 static void kgsl_check_idle_locked(struct kgsl_device *device)
 {
@@ -2529,6 +2553,8 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 	kgsl_cffdump_open(device->id);
 
 	setup_timer(&device->idle_timer, kgsl_timer, (unsigned long) device);
+	setup_timer(&device->event_expired_timer, kgsl_event_expired_timer,
+			(unsigned long) device);
 	status = kgsl_create_device_workqueue(device);
 	if (status)
 		goto error_pwrctrl_close;
@@ -2608,6 +2634,7 @@ int kgsl_postmortem_dump(struct kgsl_device *device, int manual)
 
 	/* Disable the idle timer so we don't get interrupted */
 	del_timer_sync(&device->idle_timer);
+	del_timer_sync(&device->event_expired_timer);
 	mutex_unlock(&device->mutex);
 	flush_workqueue(device->work_queue);
 	mutex_lock(&device->mutex);
