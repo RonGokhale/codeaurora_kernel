@@ -39,6 +39,8 @@ struct ion_iommu_priv_data {
 	struct scatterlist *iommu_sglist;
 };
 
+#define MAX_VMAP_RETRIES 10
+
 static int ion_iommu_heap_allocate(struct ion_heap *heap,
 				      struct ion_buffer *buffer,
 				      unsigned long size, unsigned long align,
@@ -48,6 +50,10 @@ static int ion_iommu_heap_allocate(struct ion_heap *heap,
 	struct ion_iommu_priv_data *data = NULL;
 
 	if (msm_use_iommu()) {
+		int j, k;
+		void *ptr = NULL;
+		unsigned int npages_to_vmap, total_pages;
+
 		data = kmalloc(sizeof(*data), GFP_KERNEL);
 		if (!data)
 			return -ENOMEM;
@@ -70,7 +76,7 @@ static int ion_iommu_heap_allocate(struct ion_heap *heap,
 		sg_init_table(data->iommu_sglist, data->nrpages);
 
 		for (i = 0; i < data->nrpages; i++) {
-			data->pages[i] = alloc_page(GFP_KERNEL | __GFP_ZERO);
+			data->pages[i] = alloc_page(GFP_KERNEL);
 			if (!data->pages[i])
 				goto err2;
 
@@ -78,6 +84,39 @@ static int ion_iommu_heap_allocate(struct ion_heap *heap,
 				    PAGE_SIZE, 0);
 			sg_dma_address(&data->iommu_sglist[i]) =
 				sg_phys(&data->iommu_sglist[i]);
+		}
+
+
+		/*
+		 * As an optimization, we omit __GFP_ZERO from
+		 * alloc_page above and manually zero out all of the
+		 * pages in one fell swoop here. To safeguard against
+		 * insufficient vmalloc space, we only vmap
+		 * `npages_to_vmap' at a time, starting with a
+		 * conservative estimate of 1/8 of the total number of
+		 * vmalloc pages available.
+		 */
+		npages_to_vmap = ((VMALLOC_END - VMALLOC_START)/8)
+				>> PAGE_SHIFT;
+		total_pages = data->nrpages;
+		for (j = 0; j < total_pages; j += npages_to_vmap) {
+			npages_to_vmap = min(npages_to_vmap, total_pages - j);
+			for (k = 0; k < MAX_VMAP_RETRIES && npages_to_vmap;
+			     ++k) {
+				ptr = vmap(&data->pages[j], npages_to_vmap,
+					VM_IOREMAP, pgprot_kernel);
+				if (ptr)
+					break;
+				else
+					npages_to_vmap >>= 1;
+			}
+			if (!ptr) {
+				pr_err("Couldn't vmap the pages for zeroing\n");
+				ret = -ENOMEM;
+				goto err2;
+			}
+			memset(ptr, 0, npages_to_vmap * PAGE_SIZE);
+			vunmap(ptr);
 		}
 
 		if (!ION_IS_CACHED(flags))
