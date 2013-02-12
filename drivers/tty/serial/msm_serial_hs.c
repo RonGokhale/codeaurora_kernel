@@ -2014,13 +2014,13 @@ static void msm_hs_unconfig_uart_gpios(struct uart_port *uport)
 					pdev->dev.platform_data;
 
 	if (pdata) {
-		if (pdata->uart_tx_gpio >= 0)
+		if (gpio_is_valid(pdata->uart_tx_gpio))
 			gpio_free(pdata->uart_tx_gpio);
-		if (pdata->uart_rx_gpio >= 0)
+		if (gpio_is_valid(pdata->uart_rx_gpio))
 			gpio_free(pdata->uart_rx_gpio);
-		if (pdata->uart_cts_gpio >= 0)
+		if (gpio_is_valid(pdata->uart_cts_gpio))
 			gpio_free(pdata->uart_cts_gpio);
-		if (pdata->uart_rfr_gpio >= 0)
+		if (gpio_is_valid(pdata->uart_rfr_gpio))
 			gpio_free(pdata->uart_rfr_gpio);
 	} else {
 		pr_err("Error:Pdata is NULL.\n");
@@ -2039,7 +2039,7 @@ static int msm_hs_config_uart_gpios(struct uart_port *uport)
 	int ret = 0;
 
 	if (pdata) {
-		if (pdata->uart_tx_gpio >= 0) {
+		if (gpio_is_valid(pdata->uart_tx_gpio)) {
 			ret = gpio_request(pdata->uart_tx_gpio,
 							"UART_TX_GPIO");
 			if (unlikely(ret)) {
@@ -2049,7 +2049,7 @@ static int msm_hs_config_uart_gpios(struct uart_port *uport)
 			}
 		}
 
-		if (pdata->uart_rx_gpio >= 0) {
+		if (gpio_is_valid(pdata->uart_rx_gpio)) {
 			ret = gpio_request(pdata->uart_rx_gpio,
 							"UART_RX_GPIO");
 			if (unlikely(ret)) {
@@ -2059,7 +2059,7 @@ static int msm_hs_config_uart_gpios(struct uart_port *uport)
 			}
 		}
 
-		if (pdata->uart_cts_gpio >= 0) {
+		if (gpio_is_valid(pdata->uart_cts_gpio)) {
 			ret = gpio_request(pdata->uart_cts_gpio,
 							"UART_CTS_GPIO");
 			if (unlikely(ret)) {
@@ -2069,7 +2069,7 @@ static int msm_hs_config_uart_gpios(struct uart_port *uport)
 			}
 		}
 
-		if (pdata->uart_rfr_gpio >= 0) {
+		if (gpio_is_valid(pdata->uart_rfr_gpio)) {
 			ret = gpio_request(pdata->uart_rfr_gpio,
 							"UART_RFR_GPIO");
 			if (unlikely(ret)) {
@@ -2085,11 +2085,14 @@ static int msm_hs_config_uart_gpios(struct uart_port *uport)
 	return ret;
 
 uart_cts_unconfig:
-	gpio_free(pdata->uart_cts_gpio);
+	if (gpio_is_valid(pdata->uart_cts_gpio))
+		gpio_free(pdata->uart_cts_gpio);
 uart_rx_unconfig:
-	gpio_free(pdata->uart_rx_gpio);
+	if (gpio_is_valid(pdata->uart_rx_gpio))
+		gpio_free(pdata->uart_rx_gpio);
 uart_tx_unconfig:
-	gpio_free(pdata->uart_tx_gpio);
+	if (gpio_is_valid(pdata->uart_tx_gpio))
+		gpio_free(pdata->uart_tx_gpio);
 exit_uart_config:
 	return ret;
 }
