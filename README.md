@@ -22,6 +22,7 @@ list of branches
 - gingerbread_chocolate
 - msm-2.6.38
 - ics
+- ics_es3
 - ics_choco_cs
 - ics_chocolate
 - ics_chocolate_rb4.2
