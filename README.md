@@ -32,6 +32,7 @@ list of branches
 - jb_chocolate
 - jb_2.5
 - msm-3.4
+- jb_vanilla
 - msm-3.7
 
 list of tags
