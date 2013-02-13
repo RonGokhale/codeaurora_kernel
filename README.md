@@ -15,10 +15,12 @@ list of branches
 - froyo
 - froyo_almond
 - android-msm-2.6.32
+- aosp/android-msm-2.6.32 
 - msm-2.6.35
 - android-msm-2.6.35-froyo
 - android-msm-2.6.35
-- gingerbread_rel
+- aosp/android-msm-2.6.35 
+- aosp-kernel-common/android-2.6.36
 - gingerbread_chocolate
 - msm-2.6.38
 - ics
