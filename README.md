@@ -40,6 +40,7 @@ list of branches
 - jb_rel_rb4_2.1 
 - jb_rel_2.0.3
 - jb_2.2_rb2.3
+- jb_2.2_rb2_5.2
 - msm-3.4
 - jb_vanilla
 - msm-3.7
