@@ -14,6 +14,7 @@ list of branches
 - aosp/android-msm-2.6.32-nexusonec
 - froyo
 - froyo_almond
+- froyo_pumpkin
 - android-msm-2.6.32
 - aosp/android-msm-2.6.32 
 - msm-2.6.35
