@@ -485,6 +485,15 @@ enum {
 	mdp_op_max,
 };
 
+enum {
+	WB_FORMAT_NV12,
+	WB_FORMAT_RGB_565,
+	WB_FORMAT_RGB_888,
+	WB_FORMAT_xRGB_8888,
+	WB_FORMAT_ARGB_8888,
+	WB_FORMAT_ARGB_8888_INPUT_ALPHA /* Need to support */
+};
+
 struct msmfb_mdp_pp {
 	uint32_t op;
 	union {
@@ -499,6 +508,7 @@ struct msmfb_mdp_pp {
 enum {
 	metadata_op_none,
 	metadata_op_base_blend,
+	metadata_op_wb_format,
 	metadata_op_max
 };
 
@@ -506,13 +516,20 @@ struct mdp_blend_cfg {
 	uint32_t is_premultiplied;
 };
 
+struct mdp_mixer_cfg {
+	uint32_t writeback_format;
+	uint32_t alpha;
+};
+
 struct msmfb_metadata {
 	uint32_t op;
 	uint32_t flags;
 	union {
 		struct mdp_blend_cfg blend_cfg;
+		struct mdp_mixer_cfg mixer_cfg;
 	} data;
 };
+
 struct mdp_page_protection {
 	uint32_t page_protection;
 };
