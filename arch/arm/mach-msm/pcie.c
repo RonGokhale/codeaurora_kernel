@@ -265,8 +265,8 @@ static int __init msm_pcie_vreg_init(struct device *dev)
 	uint32_t hrd_version = socinfo_get_version();
 	unsigned int num_reg = MSM_PCIE_MAX_VREG;
 
-	if (machine_is_mpq8064_hrd() &&
-		(SOCINFO_VERSION_MAJOR(hrd_version) == 2)) {
+	if (machine_is_mpq8064_dma() || (machine_is_mpq8064_hrd() &&
+		(SOCINFO_VERSION_MAJOR(hrd_version) == 2))) {
 		num_reg = MSM_PCIE_MAX_VREG - 1;
 	}
 
@@ -328,8 +328,8 @@ static void msm_pcie_vreg_deinit(void)
 	uint32_t hrd_version = socinfo_get_version();
 	unsigned int num_reg = MSM_PCIE_MAX_VREG;
 
-	if (machine_is_mpq8064_hrd() &&
-		(SOCINFO_VERSION_MAJOR(hrd_version) == 2)) {
+	if (machine_is_mpq8064_dma() || (machine_is_mpq8064_hrd() &&
+		(SOCINFO_VERSION_MAJOR(hrd_version) == 2))) {
 		num_reg = MSM_PCIE_MAX_VREG - 1;
 	}
 
