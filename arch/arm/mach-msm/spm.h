@@ -251,11 +251,6 @@ static inline unsigned int msm_spm_get_vdd(unsigned int cpu)
 	return 0;
 }
 
-static inline void msm_spm_reinit(void)
-{
-	/* empty */
-}
-
 static inline int msm_spm_turn_on_cpu_rail(unsigned int cpu)
 {
 	return -ENOSYS;
