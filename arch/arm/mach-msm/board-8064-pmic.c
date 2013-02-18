@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -207,9 +207,20 @@ void __init apq8064_pm8xxx_gpio_mpp_init(void)
 {
 	int i, rc;
 
-	if (socinfo_get_pmic_model() != PMIC_MODEL_PM8917)
-		apq8064_configure_gpios(pm8921_gpios, ARRAY_SIZE(pm8921_gpios));
-	else
+	if (socinfo_get_pmic_model() != PMIC_MODEL_PM8917) {
+		/* PCIE_CLK_PWR_EN is 23 and PCIE_WAKE_N is 22
+		for MPQ8064 Hybrid */
+		if (machine_is_mpq8064_hrd()) {
+			int size = ARRAY_SIZE(pm8921_gpios);
+			for (i = 0; i < size; i++)
+				if (pm8921_gpios[i].gpio == 13)
+					pm8921_gpios[i].gpio = 23;
+				else if (pm8921_gpios[i].gpio == 12)
+					pm8921_gpios[i].gpio = 22;
+		}
+		apq8064_configure_gpios(pm8921_gpios,
+					ARRAY_SIZE(pm8921_gpios));
+	} else
 		apq8064_configure_gpios(pm8917_gpios, ARRAY_SIZE(pm8917_gpios));
 
 	if (machine_is_apq8064_cdp() || machine_is_apq8064_liquid()) {
