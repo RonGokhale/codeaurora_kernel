@@ -3702,6 +3702,8 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 		} else if (ctrl->panel_mode & MDP4_PANEL_LCDC) {
 			/* cndx = 0 */
 			mdp4_lcdc_pipe_queue(0, pipe);
+			if (mfd->panel.type == LVDS_PANEL)
+				mdp4_lcdc_set_avparams(pipe, img->memory_id);
 		}
 		if (ctrl->panel_mode & MDP4_PANEL_MDDI) {
 			/* cndx = 0 */
