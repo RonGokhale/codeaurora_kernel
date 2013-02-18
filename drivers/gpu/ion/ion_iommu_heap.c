@@ -194,7 +194,7 @@ static int ion_iommu_heap_allocate(struct ion_heap *heap,
 
 		if (!ION_IS_CACHED(flags))
 			dma_sync_sg_for_device(NULL, data->iommu_sglist,
-						data->nrpages,
+						num_large_pages,
 						DMA_BIDIRECTIONAL);
 
 		buffer->priv_virt = data;
