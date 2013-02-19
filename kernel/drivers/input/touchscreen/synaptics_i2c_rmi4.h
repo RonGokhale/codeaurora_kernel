@@ -187,7 +187,6 @@ struct synaptics_rmi4_device_info {
  * @irq: attention interrupt
  * @sensor_max_x: sensor maximum x value
  * @sensor_max_y: sensor maximum y value
- * @irq_enabled: flag for indicating interrupt enable status
  * @touch_stopped: flag to stop interrupt thread processing
  * @fingers_on_2d: flag to indicate presence of fingers in 2d area
  * @sensor_sleep: flag to indicate sleep state of sensor
@@ -223,7 +222,6 @@ struct synaptics_rmi4_data {
 	int irq;
 	int sensor_max_x;
 	int sensor_max_y;
-	bool irq_enabled;
 	bool touch_stopped;
 	bool fingers_on_2d;
 	bool sensor_sleep;

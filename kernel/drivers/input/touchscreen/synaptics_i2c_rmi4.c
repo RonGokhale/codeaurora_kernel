@@ -966,9 +966,8 @@ static irqreturn_t synaptics_rmi4_irq(int irq, void *data)
  /**
  * synaptics_rmi4_irq_enable()
  *
- * Called by synaptics_rmi4_probe() and the power management functions
- * in this driver and also exported to other expansion Function modules
- * such as rmi_dev.
+ * Called by synaptics_rmi4_irq_acquire() and power management 
+ * functions in this driver
  *
  * This function handles the enabling and disabling of the attention
  * irq including the setting up of the ISR thread.
@@ -980,9 +979,6 @@ static int synaptics_rmi4_irq_enable(struct synaptics_rmi4_data *rmi4_data,
 	unsigned char intr_status;
 
 	if (enable) {
-		if (rmi4_data->irq_enabled)
-			return retval;
-
 		/* Clear interrupts first */
 		retval = synaptics_rmi4_i2c_read(rmi4_data,
 				rmi4_data->f01_data_base_addr + 1,
@@ -992,18 +988,51 @@ static int synaptics_rmi4_irq_enable(struct synaptics_rmi4_data *rmi4_data,
 			return retval;
 
 		enable_irq(rmi4_data->irq);
-
-		rmi4_data->irq_enabled = true;
-	} else {
-		if (rmi4_data->irq_enabled) {
-			disable_irq(rmi4_data->irq);
-			rmi4_data->irq_enabled = false;
-		}
-	}
+	} else
+		disable_irq(rmi4_data->irq);
 
 	return retval;
 }
 
+ /**
+ * synaptics_rmi4_irq_acquire()
+ *
+ * Called by synaptics_rmi4_probe()  in this driver and also exported 
+ * to other expansion Function modules such as rmi_dev.
+ *
+ * This function handles the enabling and disabling of the attention
+ * irq including the setting up of the ISR thread.
+ */
+static int synaptics_rmi4_irq_acquire(struct synaptics_rmi4_data *rmi4_data,
+		bool enable)
+{
+	int retval = 0;
+	const struct synaptics_rmi4_platform_data *pdata = rmi4_data->board;
+	unsigned char intr_status;
+
+	if (enable) {
+		/* Clear interrupts first */
+		retval = synaptics_rmi4_i2c_read(rmi4_data,
+				rmi4_data->f01_data_base_addr + 1,
+				&intr_status,
+				rmi4_data->num_of_intr_regs);
+		if (retval < 0)
+			return retval;
+
+		retval = request_threaded_irq(rmi4_data->irq, NULL,
+			synaptics_rmi4_irq, pdata->irq_flags,
+			DRIVER_NAME, rmi4_data);
+		if (retval < 0) {
+			dev_err(&rmi4_data->i2c_client->dev,
+			"%s: Failed to request_threaded_irq\n",
+			__func__);
+			return retval;
+		}
+	} else
+		free_irq(rmi4_data->irq, rmi4_data);
+	return retval;
+}
+ 
  /**
  * synaptics_rmi4_f11_init()
  *
@@ -1738,11 +1767,10 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 	rmi4_data->board = platform_data;
 	rmi4_data->touch_stopped = false;
 	rmi4_data->sensor_sleep = false;
-	rmi4_data->irq_enabled = false;
 
 	rmi4_data->i2c_read = synaptics_rmi4_i2c_read;
 	rmi4_data->i2c_write = synaptics_rmi4_i2c_write;
-	rmi4_data->irq_enable = synaptics_rmi4_irq_enable;
+	rmi4_data->irq_enable = synaptics_rmi4_irq_acquire;
 	rmi4_data->reset_device = synaptics_rmi4_reset_device;
 
 	rmi4_data->flip_x = rmi4_data->board->x_flip;
@@ -1870,14 +1898,10 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 
 	rmi4_data->irq = gpio_to_irq(platform_data->irq_gpio);
 
-	retval = request_threaded_irq(rmi4_data->irq, NULL,
-				synaptics_rmi4_irq, platform_data->irq_flags,
-				DRIVER_NAME, rmi4_data);
-	rmi4_data->irq_enabled = true;
-
+	retval = synaptics_rmi4_irq_acquire(rmi4_data, true);
 	if (retval < 0) {
 		dev_err(&client->dev,
-				"%s: Failed to create irq thread\n",
+				"%s: Failed to acquire irq\n",
 				__func__);
 		goto err_enable_irq;
 	}
@@ -1891,14 +1915,6 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 					__func__);
 			goto err_sysfs;
 		}
-	}
-
-	retval = synaptics_rmi4_irq_enable(rmi4_data, true);
-	if (retval < 0) {
-		dev_err(&client->dev,
-				"%s: Failed to enable attention interrupt\n",
-				__func__);
-		goto err_enable_irq;
 	}
 
 	return retval;
@@ -1968,7 +1984,7 @@ static int __devexit synaptics_rmi4_remove(struct i2c_client *client)
 	rmi4_data->touch_stopped = true;
 	wake_up(&rmi4_data->wait);
 
-	free_irq(rmi4_data->irq, rmi4_data);
+	synaptics_rmi4_irq_acquire(rmi4_data, false);
 
 	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {
 		sysfs_remove_file(&rmi4_data->input_dev->dev.kobj,
