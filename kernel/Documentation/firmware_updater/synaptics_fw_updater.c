@@ -1,27 +1,27 @@
-/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/*
+ * synaptics_fw_updater.c
  *
- * Copyright © 2011, 2012 Synaptics Incorporated. All rights reserved.
+ * Copyright (C) 2012 Synaptics Incorporated
  *
- * The information in this file is confidential under the terms
- * of a non-disclosure agreement with Synaptics and is provided
- * AS IS without warranties or guarantees of any kind.
- *
- * The information in this file shall remain the exclusive property
- * of Synaptics and may be the subject of Synaptics patents, in
- * whole or part. Synaptics intellectual property rights in the
- * information in this file are not expressly or implicitly licensed
- * or otherwise transferred to you as a result of such information
- * being made available to you.
- *
- * File: synaptics_fw_updater.c
+ * Copyright (C) 2012 Alexandra Chin <alexandra.chin@tw.synaptics.com>
+ * Copyright (C) 2012 Scott Lin <scott.lin@tw.synaptics.com>
  *
  * Description: command line reflash implimentation using command
  * line args. This file should not be OS dependant and should build and
- * run under any Linux based OS that utilizes the Synaptice rmi driver
- * built into the kernel (kernel/drivers/input/rmi4).
+ * run under any Linux based OS that utilizes the Synaptice firmware
+ * update built into the kernel
  *
- * ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
+
 #include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -32,7 +32,9 @@
 #include <unistd.h>
 #include <sys/time.h>
 
-#define DEFAULT_SENSOR "/sys/class/input/input1"
+#define VERSION "1.0"
+
+#define DEFAULT_SENSOR "/sys/class/input/input0"
 
 #define MAX_STRING_LEN 256
 #define MAX_INT_LEN 33
@@ -73,13 +75,14 @@ int pmConfig = 0;
 int blConfig = 0;
 int dpConfig = 0;
 int force = 0;
-int verbose = 0;
+int verbose = 1;
 
 char mySensor[MAX_STRING_LEN];
 char imageFileName[MAX_STRING_LEN];
 
 static void usage(char *name)
 {
+	printf("Version %s\n", VERSION);
 	printf("Usage: %s [-b {image_file}] [-d {sysfs_entry}] [-r] [-ui] [-pm] [-bl] [-dp] [-f] [-v]\n", name);
 	printf("\t[-b {image_file}] - Name of image file\n");
 	printf("\t[-d {sysfs_entry}] - Path to sysfs entry of sensor\n");
@@ -98,7 +101,7 @@ static void TimeSubtract(struct timeval *result, struct timeval *x, struct timev
 {
 	if (x->tv_usec < y->tv_usec) {
 		result->tv_sec = x->tv_sec - y->tv_sec - 1;
-		result->tv_usec = y->tv_usec - x->tv_usec;
+		result->tv_usec = 1000000 - y->tv_usec + x->tv_usec;
 	} else {
 		result->tv_sec = x->tv_sec - y->tv_sec;
 		result->tv_usec = x->tv_usec - y->tv_usec;
@@ -496,6 +499,15 @@ static int ProceedWithReflash(void)
 	}
 }
 
+static void ConvertTo_LittleEndian(unsigned char *dest, unsigned long src)
+{
+	dest[0] = (unsigned char)(src & 0xFF);
+	dest[1] = (unsigned char)((src>>8) & 0xFF);
+	dest[2] = (unsigned char)((src>>16) & 0xFF);
+	dest[3] = (unsigned char)((src>>24) & 0xFF);
+}
+
+
 static void DoReadConfig(void)
 {
 	int ii;
@@ -504,6 +516,7 @@ static void DoReadConfig(void)
 	int configSize;
 	int blockCount;
 	unsigned char *buffer;
+	FILE *fp;
 
 	if (uiConfig) {
 		SetConfigArea(UI_CONFIG_AREA);
@@ -535,6 +548,31 @@ static void DoReadConfig(void)
 		printf("\n");
 	}
 
+	if (strlen(imageFileName)) {
+		unsigned long checkSum;
+		unsigned char checkSumArray[IMAGE_FILE_CHECKSUM_SIZE];
+
+		printf("Save config to %s file, from 0x%2X, size %d bytes\n",
+			imageFileName, 0x100 + firmwareImgSize, configSize);
+		fp = fopen(imageFileName, "r+b");
+		fseek(fp, 0x100 + firmwareImgSize, SEEK_SET);
+		fwrite(buffer, 1, configSize, fp);
+
+		/* update file checksum */
+		fseek(fp, 0, SEEK_SET);
+		fread(firmware, 1, fileSize, fp);
+		CalculateChecksum(
+			(unsigned short *)&firmware[IMAGE_FILE_CHECKSUM_SIZE],
+			((fileSize - IMAGE_FILE_CHECKSUM_SIZE) / 2),
+			&checkSum);
+
+		ConvertTo_LittleEndian(checkSumArray, checkSum);
+
+		fseek(fp, 0, SEEK_SET);
+		fwrite(checkSumArray, 1, IMAGE_FILE_CHECKSUM_SIZE, fp);
+
+		fclose(fp);
+	}
 	free(buffer);
 
 	return;
@@ -588,7 +626,7 @@ static int InitFirmwareImage(void)
 	int numBytesRead;
 	FILE *fp;
 
-	if (!readConfig) {
+	if (strlen(imageFileName)) {
 		fp = fopen(imageFileName, "rb");
 
 		if (!fp) {
