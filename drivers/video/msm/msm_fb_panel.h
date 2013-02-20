@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -147,6 +147,8 @@ struct lvds_panel_info {
 	enum lvds_mode channel_mode;
 	/* Channel swap in dual mode */
 	char channel_swap;
+	int ctrl_reg[8];
+	bool update_ctrl_reg;
 };
 
 struct msm_panel_info {

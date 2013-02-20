@@ -67,40 +67,92 @@ static void lvds_init(struct msm_fb_data_type *mfd)
 	MDP_OUTP(MDP_BASE + 0xc2034, 0x33);
 	usleep(1000);
 
-	/* LVDS PHY PLL configuration */
-	if (mfd->panel_info.clk_rate == 74250000) {
-		MDP_OUTP(MDP_BASE + 0xc3000, 0x08);
-		MDP_OUTP(MDP_BASE + 0xc3004, 0x4c);
-		MDP_OUTP(MDP_BASE + 0xc3008, 0x30);
-		MDP_OUTP(MDP_BASE + 0xc300c, 0xc3);
-		MDP_OUTP(MDP_BASE + 0xc3014, 0x10);
-		MDP_OUTP(MDP_BASE + 0xc3018, 0x04);
-		MDP_OUTP(MDP_BASE + 0xc301c, 0x62);
-		MDP_OUTP(MDP_BASE + 0xc3020, 0x41);
-		MDP_OUTP(MDP_BASE + 0xc3024, 0x0d);
-		MDP_OUTP(MDP_BASE + 0xc3028, 0x07);
-		MDP_OUTP(MDP_BASE + 0xc302c, 0x00);
-		MDP_OUTP(MDP_BASE + 0xc3030, 0x1c);
-		MDP_OUTP(MDP_BASE + 0xc3034, 0x01);
-		MDP_OUTP(MDP_BASE + 0xc3038, 0x00);
-		MDP_OUTP(MDP_BASE + 0xc3040, 0xC0);
-		MDP_OUTP(MDP_BASE + 0xc3044, 0x00);
-		MDP_OUTP(MDP_BASE + 0xc3048, 0x30);
-		MDP_OUTP(MDP_BASE + 0xc304c, 0x00);
+	MDP_OUTP(MDP_BASE + 0xc3000, 0x08);
 
-		MDP_OUTP(MDP_BASE + 0xc3000, 0x11);
-		MDP_OUTP(MDP_BASE + 0xc3064, 0x05);
-		MDP_OUTP(MDP_BASE + 0xc3050, 0x20);
+	/* LVDS PHY PLL configuration */
+	if (mfd->panel_info.lvds.update_ctrl_reg) {
+		int *ctrl_reg = mfd->panel_info.lvds.ctrl_reg;
+		uint32 mask, val;
+
+		/* reset update of LVDS PLL registers */
+		mfd->panel_info.lvds.update_ctrl_reg = false;
+
+		/* MDP_LVDSPHY_PLL_CTRL_1 - LVDSPLL_DIV_FB_7_0 (7:0) */
+		MDP_OUTP(MDP_BASE + 0xc3004, ctrl_reg[0] & 0xFF);
+
+		/* MDP_LVDSPHY_PLL_CTRL_2 - LVDSPLL_DIV_FB_10_8 (2:0) */
+		val  = inpdw(MDP_BASE + 0xc3008);
+		mask = 0x07;
+		val &= ~mask;
+		MDP_OUTP(MDP_BASE + 0xc3008, val | (ctrl_reg[1] & mask));
+
+		/* MDP_LVDSPHY_PLL_CTRL_3 - LVDSPLL_DIV_REF (5:0) */
+		val  = inpdw(MDP_BASE + 0xc300c);
+		mask = 0x3F;
+		val &= ~mask;
+		MDP_OUTP(MDP_BASE + 0xc300c, val | (ctrl_reg[2] & mask));
+
+		/* MDP_LVDSPHY_PLL_CTRL_5 - LVDSPLL_LF_R (6:4) */
+		MDP_OUTP(MDP_BASE + 0xc3014, (ctrl_reg[3] & 0x07) << 4);
+
+		/*
+		 * MDP_LVDSPHY_PLL_CTRL_6 - LVDSPLL_LF_C2 (6:4)
+		 * MDP_LVDSPHY_PLL_CTRL_6 - LVDSPLL_LF_C1 (3:0)
+		 */
+		MDP_OUTP(MDP_BASE + 0xc3018, ((ctrl_reg[5] & 0x07) << 4) |
+					      (ctrl_reg[4] & 0xFF));
+
+		/* MDP_LVDSPHY_PLL_CTRL_7 - LVDSPLL_CP (2:0) */
+		val  = inpdw(MDP_BASE + 0xc301c);
+		mask = 0x07;
+		val &= ~mask;
+		MDP_OUTP(MDP_BASE + 0xc301c, val | (ctrl_reg[6] & mask));
+
+		/* MDP_LVDSPHY_PLL_CTRL_8 - LVDSPLL_OUT_DIV1 (3:0) */
+		val  = inpdw(MDP_BASE + 0xc3020);
+		mask = 0x0F;
+		val &= ~mask;
+		MDP_OUTP(MDP_BASE + 0xc3020, val | (ctrl_reg[7] & mask));
+
+		/* MDP_LVDSPHY_PLL_CTRL_9 - LVDSPLL_OUT_DIV2 (7:0)*/
+		mask = 0xFF;
+		val = (((ctrl_reg[7] & mask) + 1) * 7) - 1;
+		MDP_OUTP(MDP_BASE + 0xc3024, val & mask);
 	} else {
-		MDP_OUTP(MDP_BASE + 0xc3004, 0x8f);
-		MDP_OUTP(MDP_BASE + 0xc3008, 0x30);
-		MDP_OUTP(MDP_BASE + 0xc300c, 0xc6);
-		MDP_OUTP(MDP_BASE + 0xc3014, 0x10);
-		MDP_OUTP(MDP_BASE + 0xc3018, 0x07);
-		MDP_OUTP(MDP_BASE + 0xc301c, 0x62);
-		MDP_OUTP(MDP_BASE + 0xc3020, 0x41);
-		MDP_OUTP(MDP_BASE + 0xc3024, 0x0d);
+		if (mfd->panel_info.clk_rate == 74250000) {
+			MDP_OUTP(MDP_BASE + 0xc3004, 0x4c);
+			MDP_OUTP(MDP_BASE + 0xc3008, 0x30);
+			MDP_OUTP(MDP_BASE + 0xc300c, 0xc3);
+			MDP_OUTP(MDP_BASE + 0xc3014, 0x10);
+			MDP_OUTP(MDP_BASE + 0xc3018, 0x04);
+			MDP_OUTP(MDP_BASE + 0xc301c, 0x62);
+			MDP_OUTP(MDP_BASE + 0xc3020, 0x41);
+			MDP_OUTP(MDP_BASE + 0xc3024, 0x0d);
+		} else {
+			MDP_OUTP(MDP_BASE + 0xc3004, 0x8f);
+			MDP_OUTP(MDP_BASE + 0xc3008, 0x30);
+			MDP_OUTP(MDP_BASE + 0xc300c, 0xc6);
+			MDP_OUTP(MDP_BASE + 0xc3014, 0x10);
+			MDP_OUTP(MDP_BASE + 0xc3018, 0x07);
+			MDP_OUTP(MDP_BASE + 0xc301c, 0x62);
+			MDP_OUTP(MDP_BASE + 0xc3020, 0x41);
+			MDP_OUTP(MDP_BASE + 0xc3024, 0x0d);
+		}
 	}
+
+	MDP_OUTP(MDP_BASE + 0xc3028, 0x07);
+	MDP_OUTP(MDP_BASE + 0xc302c, 0x00);
+	MDP_OUTP(MDP_BASE + 0xc3030, 0x1c);
+	MDP_OUTP(MDP_BASE + 0xc3034, 0x01);
+	MDP_OUTP(MDP_BASE + 0xc3038, 0x00);
+	MDP_OUTP(MDP_BASE + 0xc3040, 0xC0);
+	MDP_OUTP(MDP_BASE + 0xc3044, 0x00);
+	MDP_OUTP(MDP_BASE + 0xc3048, 0x30);
+	MDP_OUTP(MDP_BASE + 0xc304c, 0x00);
+
+	MDP_OUTP(MDP_BASE + 0xc3000, 0x11);
+	MDP_OUTP(MDP_BASE + 0xc3064, 0x05);
+	MDP_OUTP(MDP_BASE + 0xc3050, 0x20);
 
 	MDP_OUTP(MDP_BASE + 0xc3000, 0x01);
 	/* Wait until LVDS PLL is locked and ready */
