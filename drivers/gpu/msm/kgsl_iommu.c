@@ -543,7 +543,7 @@ static int kgsl_iommu_init_sync_lock(struct kgsl_mmu *mmu)
 
 	if (status) {
 		kgsl_mmu_unmap(pagetable, &iommu->sync_lock_desc);
-		iommu->sync_lock_desc.priv &= ~~KGSL_MEMFLAGS_GLOBAL;
+		iommu->sync_lock_desc.priv &= ~KGSL_MEMFLAGS_GLOBAL;
 		return status;
 	}
 
