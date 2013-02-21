@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -994,7 +994,13 @@ int mdp4_dsi_cmd_on(struct platform_device *pdev)
 	pr_debug("%s+: pid=%d\n", __func__, current->pid);
 
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
-	mfd->cont_splash_done = 1;
+
+	if (!(mfd->cont_splash_done)) {
+		/* Clks are enabled in probe.
+		   Disabling clocks now */
+		mdp_clk_ctrl(0);
+		mfd->cont_splash_done = 1;
+	}
 
 	vctrl = &vsync_ctrl_db[cndx];
 	vctrl->mfd = mfd;
