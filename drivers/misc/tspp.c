@@ -741,10 +741,10 @@ static int tspp_clock_start(struct tspp_device *device)
 static void tspp_clock_stop(struct tspp_device *device)
 {
 	if (device->tsif_pclk)
-		clk_disable(device->tsif_pclk);
+		clk_disable_unprepare(device->tsif_pclk);
 
 	if (device->tsif_ref_clk)
-		clk_disable(device->tsif_ref_clk);
+		clk_disable_unprepare(device->tsif_ref_clk);
 }
 
 /*** TSIF functions ***/
@@ -1573,6 +1573,8 @@ int tspp_close_channel(u32 dev, u32 channel_id)
 		wake_unlock(&pdev->wake_lock);
 		tspp_clock_stop(pdev);
 	}
+
+	pm_runtime_put(&pdev->pdev->dev);
 
 	return 0;
 }
@@ -2952,7 +2954,7 @@ static int __devexit msm_tspp_remove(struct platform_device *pdev)
 		clk_put(device->tsif_pclk);
 
 	pm_runtime_disable(&pdev->dev);
-	pm_runtime_put(&pdev->dev);
+
 	kfree(device);
 
 	return 0;
