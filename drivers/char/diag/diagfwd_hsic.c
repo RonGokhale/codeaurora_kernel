@@ -41,6 +41,7 @@ static void diag_read_hsic_work_fn(struct work_struct *work)
 	int num_reads_submitted = 0;
 	int err = 0;
 	int write_ptrs_available;
+	static DEFINE_RATELIMIT_STATE(rl, 10*HZ, 1);
 
 	if (!driver->hsic_ch) {
 		pr_err("DIAG in %s: driver->hsic_ch == 0\n", __func__);
@@ -98,7 +99,8 @@ static void diag_read_hsic_work_fn(struct work_struct *work)
 				diagmem_free(driver, buf_in_hsic,
 						POOL_TYPE_HSIC);
 
-				pr_err_ratelimited("diag: Error initiating HSIC read, err: %d\n",
+				if (__ratelimit(&rl))
+					pr_err("diag: Error initiating HSIC read, err: %d\n",
 					err);
 				/*
 				 * An error occurred, discontinue queuing
@@ -125,6 +127,7 @@ static void diag_hsic_read_complete_callback(void *ctxt, char *buf,
 					int buf_size, int actual_size)
 {
 	int err = -2;
+	static DEFINE_RATELIMIT_STATE(rl, 10*HZ, 1);
 
 	if (!driver->hsic_ch) {
 		/*
@@ -155,7 +158,8 @@ static void diag_hsic_read_complete_callback(void *ctxt, char *buf,
 			/* If an error, return buffer to the pool */
 			if (err) {
 				diagmem_free(driver, buf, POOL_TYPE_HSIC);
-				pr_err_ratelimited("diag: In %s, error calling diag_device_write, err: %d\n",
+				if (__ratelimit(&rl))
+					pr_err("diag: In %s, error calling diag_device_write, err: %d\n",
 					__func__, err);
 			}
 		}
