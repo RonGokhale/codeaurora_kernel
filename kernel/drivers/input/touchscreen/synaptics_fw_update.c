@@ -555,8 +555,6 @@ static enum flash_area fwu_go_nogo(void)
 		goto exit;
 	}
 
-	imagePR = kzalloc(sizeof(MAX_FIRMWARE_ID_LEN), GFP_KERNEL);
-
 	/* Force update firmware when device is in bootloader mode */
 	if (f01_device_status.flash_prog) {
 		dev_info(&i2c_client->dev,
@@ -609,6 +607,11 @@ static enum flash_area fwu_go_nogo(void)
 			(unsigned int)imageFirmwareID);
 	if (imageFirmwareID > deviceFirmwareID) {
 		flash_area = UI_FIRMWARE;
+		goto exit;
+	} else if (imageFirmwareID < deviceFirmwareID) {
+		flash_area = NONE;
+		dev_info(&i2c_client->dev,
+			"Img fw is older than device fw. Skip fw update.\n");
 		goto exit;
 	}
 
@@ -1630,6 +1633,9 @@ static int synaptics_rmi4_fwu_init(struct synaptics_rmi4_data *rmi4_data)
 			&fwu->fwu_work,
 			msecs_to_jiffies(1000));
 #endif
+
+	init_completion(&remove_complete);
+
 	return 0;
 
 exit_remove_attrs:
@@ -1680,7 +1686,6 @@ static int __init rmi4_fw_update_module_init(void)
 
 static void __exit rmi4_fw_update_module_exit(void)
 {
-	init_completion(&remove_complete);
 	synaptics_rmi4_new_function(RMI_FW_UPDATER, false,
 			synaptics_rmi4_fwu_init,
 			synaptics_rmi4_fwu_remove,
