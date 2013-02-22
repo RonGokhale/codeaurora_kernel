@@ -1724,6 +1724,10 @@ fail_voltage:
 
 static int get_prop_batt_current_max(struct pm8921_chg_chip *chip, int *curr)
 {
+
+	if (chip->battery_less_hardware)
+		return 0;
+
 	*curr = 0;
 	*curr = pm8921_bms_get_current_max();
 	if (*curr == -EINVAL)
