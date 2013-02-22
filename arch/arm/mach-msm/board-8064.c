@@ -2364,7 +2364,7 @@ static int __init mpq8064_pcie_enabled(void)
 static void __init mpq8064_pcie_init(void)
 {
 	if (mpq8064_pcie_enabled()) {
-		if (machine_is_mpq8064_hrd()) {
+		if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dma()) {
 			msm_pcie_platform_data.vreg_n = 3;
 			msm_pcie_gpio_info[1].num =
 			PM8921_GPIO_PM_TO_SYS(PCIE_PWR_EN_PMIC_GPIO_HRD);
