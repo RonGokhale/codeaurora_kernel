@@ -527,4 +527,5 @@ void __init apq8064_init_pmic(void)
 
 	if (!machine_is_apq8064_mtp() && !machine_is_apq8064_liquid())
 		apq8064_pm8921_chg_pdata.battery_less_hardware = 1;
+		apq8064_pm8921_bms_pdata.battery_less_hardware = 1;
 }

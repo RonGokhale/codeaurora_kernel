@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1462,6 +1462,9 @@ static int get_prop_batt_current_max(struct pm8921_chg_chip *chip)
 	int rbatt, ibatt_ua, vbatt_uv, ocv_uv;
 	int imax_ma;
 	int rc;
+
+	if (chip->battery_less_hardware)
+		return 0;
 
 	rbatt = pm8921_bms_get_rbatt();
 
