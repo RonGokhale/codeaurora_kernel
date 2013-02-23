@@ -1009,7 +1009,15 @@ drop_hsic:
 		/* copy number of data fields */
 		COPY_USER_SPACE_OR_EXIT(buf+4, num_data, 4);
 		ret -= 4;
+#ifdef CONFIG_DIAG_BRIDGE_CODE
+		spin_lock_irqsave(&driver->hsic_spinlock, spin_lock_flags);
+		if (driver->num_hsic_buf_tbl_entries == 0)
+			driver->data_ready[index] ^= USER_SPACE_DATA_TYPE;
+		spin_unlock_irqrestore(&driver->hsic_spinlock,
+			spin_lock_flags);
+#else
 		driver->data_ready[index] ^= USER_SPACE_DATA_TYPE;
+#endif
 		for (i = 0; i < NUM_SMD_DATA_CHANNELS; i++) {
 			if (driver->smd_data[i].ch)
 				queue_work(driver->diag_wq,
