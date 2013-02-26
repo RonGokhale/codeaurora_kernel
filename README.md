@@ -33,7 +33,6 @@ list of branches
 - ics_strawberry_rb5.1
 - ics_strawberry_rb5.3
 - jb_mr1_chocolate
-- jb_rel
 - jb_chocolate
 - jb_2.5
 - jb_2.5.1
@@ -42,8 +41,12 @@ list of branches
 - jb_mr1_rb1.11
 - jb_mr1_rb1.12
 - jb_mr1_rb1.13
+- jb_mr1_rb1.17
+- jb_rel
+- jb_rel_rb3.1
 - jb_rel_rb4_2.1 
 - jb_rel_2.0.3
+- jb_rel_2.0.3.1 
 - jb_2.2_rb2.3
 - jb_2.2_rb2_5.2
 - msm-3.4
