@@ -2,7 +2,7 @@
  *
  * MSM MDP Interface (used by framebuffer core)
  *
- * Copyright (c) 2007-2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2007-2013, The Linux Foundation. All rights reserved.
  * Copyright (C) 2007 Google Incorporated
  *
  * This software is licensed under the terms of the GNU General Public
@@ -134,7 +134,7 @@ extern int first_pixel_start_y;
 struct dentry *mdp_dir;
 #endif
 
-#if defined(CONFIG_PM) && !defined(CONFIG_HAS_EARLYSUSPEND)
+#if defined(CONFIG_PM)
 static int mdp_suspend(struct platform_device *pdev, pm_message_t state);
 #else
 #define mdp_suspend NULL
@@ -142,10 +142,6 @@ static int mdp_suspend(struct platform_device *pdev, pm_message_t state);
 
 struct timeval mdp_dma2_timeval;
 struct timeval mdp_ppp_timeval;
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static struct early_suspend early_suspend;
-#endif
 
 static u32 mdp_irq;
 
@@ -2197,10 +2193,8 @@ static struct dev_pm_ops mdp_dev_pm_ops = {
 static struct platform_driver mdp_driver = {
 	.probe = mdp_probe,
 	.remove = mdp_remove,
-#ifndef CONFIG_HAS_EARLYSUSPEND
 	.suspend = mdp_suspend,
 	.resume = NULL,
-#endif
 	.shutdown = NULL,
 	.driver = {
 		/*
@@ -3105,7 +3099,7 @@ static void mdp_suspend_sub(void)
 }
 #endif
 
-#if defined(CONFIG_PM) && !defined(CONFIG_HAS_EARLYSUSPEND)
+#if defined(CONFIG_PM)
 static int mdp_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	if (pdev->id == 0) {
@@ -3117,25 +3111,6 @@ static int mdp_suspend(struct platform_device *pdev, pm_message_t state)
 	}
 
 	return 0;
-}
-#endif
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void mdp_early_suspend(struct early_suspend *h)
-{
-	mdp_suspend_sub();
-#ifdef CONFIG_FB_MSM_DTV
-	mdp4_dtv_set_black_screen();
-#endif
-	mdp_footswitch_ctrl(FALSE);
-}
-
-static void mdp_early_resume(struct early_suspend *h)
-{
-	mdp_footswitch_ctrl(TRUE);
-	mutex_lock(&mdp_suspend_mutex);
-	mdp_suspended = FALSE;
-	mutex_unlock(&mdp_suspend_mutex);
 }
 #endif
 
@@ -3161,13 +3136,6 @@ static int mdp_remove(struct platform_device *pdev)
 
 static int mdp_register_driver(void)
 {
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	early_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 1;
-	early_suspend.suspend = mdp_early_suspend;
-	early_suspend.resume = mdp_early_resume;
-	register_early_suspend(&early_suspend);
-#endif
-
 	return platform_driver_register(&mdp_driver);
 }
 
