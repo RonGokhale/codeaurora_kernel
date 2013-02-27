@@ -2616,6 +2616,8 @@ int mdp4_pcc_cfg(struct mdp_pcc_cfg_data *cfg_ptr)
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
+	ret = 0;
+
 	switch ((0x6 & cfg_ptr->ops)>>1) {
 	case 0x1:
 		ret = mdp4_read_pcc_regs(pcc_offset, cfg_ptr);
