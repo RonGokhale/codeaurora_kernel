@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1225,7 +1225,6 @@ static int mpq_dmx_init_streambuffer(
 			dec_buffs->buffers_size,
 			dec_buffs->is_linear);
 
-	feed_data->buffer_desc.decoder_buffers_num = dec_buffs->buffers_num;
 	if (0 == dec_buffs->buffers_num)
 		ret = mpq_dmx_init_internal_buffers(
 			feed_data, dec_buffs, client);
@@ -1269,6 +1268,8 @@ static void mpq_dmx_release_streambuffer(
 	struct dmx_decoder_buffers *dec_buffs = feed->feed.ts.decoder_buffers;
 	*/
 	mpq_adapter_unregister_stream_if(feed_data->stream_interface);
+
+	mpq_streambuffer_terminate(feed_data->video_buffer);
 
 	vfree(feed_data->video_buffer->packet_data.data);
 
