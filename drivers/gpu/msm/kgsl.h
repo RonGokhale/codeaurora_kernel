@@ -176,14 +176,6 @@ struct kgsl_mem_entry {
 #define MMU_CONFIG 1
 #endif
 
-enum kgsl_event_type {
-	EVENT_WAIT_ON_TS = 0,
-	EVENT_FREE_ON_TS,
-	EVENT_FENCE,
-	EVENT_IOMMU_CLK_OFF,
-	EVENT_GENLOCK,
-};
-
 void kgsl_mem_entry_destroy(struct kref *kref);
 int kgsl_postmortem_dump(struct kgsl_device *device, int manual);
 
@@ -198,7 +190,7 @@ void kgsl_get_memory_usage(char *str, size_t len, unsigned int memflags);
 
 int kgsl_add_event(struct kgsl_device *device, u32 id, u32 ts,
 	void (*cb)(struct kgsl_device *, void *, u32, u32), void *priv,
-	void *owner, enum kgsl_event_type type);
+	void *owner);
 
 void kgsl_cancel_events(struct kgsl_device *device,
 	void *owner);
