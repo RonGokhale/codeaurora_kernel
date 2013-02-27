@@ -1072,6 +1072,9 @@ static int mpq_dmx_init_internal_buffers(
 	feed_data->buffer_desc.desc[0].size = actual_buffer_size;
 	feed_data->buffer_desc.desc[0].read_ptr = 0;
 	feed_data->buffer_desc.desc[0].write_ptr = 0;
+
+	return 0;
+/*
 	feed_data->buffer_desc.desc[0].handle =
 		ion_share_dma_buf(client, temp_handle);
 	if (IS_ERR_VALUE(feed_data->buffer_desc.desc[0].handle)) {
@@ -1081,12 +1084,10 @@ static int mpq_dmx_init_internal_buffers(
 		ret = -ENOMEM;
 		goto init_failed_unmap_payload_buffer;
 	}
-
-	return 0;
-
 init_failed_unmap_payload_buffer:
 	ion_unmap_kernel(client, temp_handle);
 	feed_data->buffer_desc.desc[0].base = NULL;
+*/
 init_failed_free_payload_buffer:
 	ion_free(client, temp_handle);
 	feed_data->buffer_desc.ion_handle[0] = NULL;
@@ -1264,8 +1265,9 @@ static void mpq_dmx_release_streambuffer(
 {
 	int buf_num = 0;
 	int i;
+	/*
 	struct dmx_decoder_buffers *dec_buffs = feed->feed.ts.decoder_buffers;
-
+	*/
 	mpq_adapter_unregister_stream_if(feed_data->stream_interface);
 
 	vfree(feed_data->video_buffer->packet_data.data);
@@ -1284,6 +1286,7 @@ static void mpq_dmx_release_streambuffer(
 			 * Un-share the buffer if kernel it the one that
 			 * shared it.
 			 */
+/*
 			if (0 == dec_buffs->buffers_num) {
 				struct file *shared_file = fget(
 					feed_data->buffer_desc.desc[i].handle);
@@ -1295,7 +1298,7 @@ static void mpq_dmx_release_streambuffer(
 						"%s: failed to get shared-file handle\n",
 						__func__);
 			}
-
+*/
 			ion_free(client, feed_data->buffer_desc.ion_handle[i]);
 			feed_data->buffer_desc.ion_handle[i] = NULL;
 			feed_data->buffer_desc.desc[i].size = 0;
