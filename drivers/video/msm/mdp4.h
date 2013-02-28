@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -184,6 +184,7 @@ enum {
 };
 
 #define CSC_MAX_BLOCKS 6
+#define PCC_MAX_BLOCKS 2
 
 #define MDP4_BLEND_BG_TRANSP_EN		BIT(9)
 #define MDP4_BLEND_FG_TRANSP_EN		BIT(8)
@@ -236,6 +237,11 @@ enum {
 
 #define MDP4_MAX_PLANE		4
 #define VSYNC_PERIOD		16
+
+struct mdp4_pp_set_ctrl {
+	struct mutex mdp_postproc_mutex;
+	bool mdp_postproc_set;
+};
 
 struct mdp4_hsic_regs {
 	int32_t params[NUM_HSIC_PARAM];
@@ -463,6 +469,7 @@ uint32 mdp4_overlay_unpack_pattern(struct mdp4_overlay_pipe *pipe);
 uint32 mdp4_overlay_op_mode(struct mdp4_overlay_pipe *pipe);
 void mdp4_lcdc_base_swap(int cndx, struct mdp4_overlay_pipe *pipe);
 void mdp4_lcdc_overlay(struct msm_fb_data_type *mfd);
+void mdp4_overlay_postproc_setup(struct work_struct *work);
 
 
 #ifdef CONFIG_FB_MSM_DTV
@@ -979,6 +986,7 @@ void mdp4_overlay_mdp_perf_upd(struct msm_fb_data_type *mfd, int flag);
 int mdp4_update_base_blend(struct msm_fb_data_type *mfd,
 				struct mdp_blend_cfg *mdp_blend_cfg);
 u32 mdp4_get_mixer_num(u32 panel_type);
+int mdp4_pcc_write_cfg(struct mdp_pcc_cfg_data *cfg);
 
 #ifndef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL
 static inline void mdp4_wfd_pipe_queue(int cndx, struct mdp4_overlay_pipe *pipe)

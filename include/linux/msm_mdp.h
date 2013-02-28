@@ -1,7 +1,7 @@
 /* include/linux/msm_mdp.h
  *
  * Copyright (C) 2007 Google Incorporated
- * Copyright (c) 2012 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -313,6 +313,7 @@ struct mdp_csc_cfg {
 struct mdp_csc_cfg_data {
 	uint32_t block;
 	struct mdp_csc_cfg csc_data;
+	uint32_t write_to_hw;
 };
 
 struct mdp_overlay_pp_params {
@@ -424,6 +425,7 @@ struct mdp_pcc_cfg_data {
 	uint32_t block;
 	uint32_t ops;
 	struct mdp_pcc_coeff r, g, b;
+	uint32_t write_to_hw;
 };
 
 #define MDP_GAMUT_TABLE_NUM		8
