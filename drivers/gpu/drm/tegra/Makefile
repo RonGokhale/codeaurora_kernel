@@ -10,6 +10,7 @@ tegra-drm-y := \
 	rgb.o \
 	hdmi.o \
 	dsi.o \
-	gr2d.o
+	gr2d.o \
+	gr3d.o
 
 obj-$(CONFIG_DRM_TEGRA) += tegra-drm.o
