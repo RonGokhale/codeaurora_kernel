@@ -115,6 +115,8 @@ void kgsl_check_fences(struct work_struct *work)
 					(unsigned int) ev->fence,
 					id, event->timestamp);
 			ev->poke = 2;
+			/* force workqueue again if we know we missed */
+			queue_work(device->work_queue, &device->ts_expired_ws);
 		}
 
 		/*

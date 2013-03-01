@@ -24,10 +24,11 @@
 #include "kgsl_pwrscale.h"
 #include <linux/sync.h>
 
-#define KGSL_TIMEOUT_NONE           0
-#define KGSL_TIMEOUT_DEFAULT        0xFFFFFFFF
-#define KGSL_TIMEOUT_PART           50 /* 50 msec */
 #define KGSL_TIMEOUT_LONG_IB_DETECTION  2000 /* 2 sec*/
+#define KGSL_TIMEOUT_NONE       0
+#define KGSL_TIMEOUT_DEFAULT    0xFFFFFFFF
+#define KGSL_TIMEOUT_PART       50 /* 50 msec */
+#define KGSL_EXPIRED_TIMESTAMP_WAIT 500 /* 500 ms */
 
 #define FIRST_TIMEOUT (HZ / 2)
 
@@ -114,8 +115,8 @@ struct kgsl_functable {
 		enum kgsl_property_type type, void *value,
 		unsigned int sizebytes);
 	int (*postmortem_dump) (struct kgsl_device *device, int manual);
-	void (*next_event)(struct kgsl_device *device,
-		struct kgsl_event *event);
+	int (*next_event)(struct kgsl_device *device,
+		struct kgsl_event *event, unsigned int processed);
 };
 
 /* MH register values */
@@ -157,6 +158,7 @@ struct kgsl_device {
 	const struct kgsl_functable *ftbl;
 	struct work_struct idle_check_ws;
 	struct timer_list idle_timer;
+	struct timer_list event_expired_timer;
 	struct work_struct check_fences;
 	struct kgsl_pwrctrl pwrctrl;
 	int open_count;
