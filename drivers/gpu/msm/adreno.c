@@ -2555,6 +2555,7 @@ static unsigned int _get_context_id(struct kgsl_context *k_ctxt)
 static unsigned int adreno_check_hw_ts(struct kgsl_device *device,
 		struct kgsl_context *context, unsigned int timestamp)
 {
+	int status = 0;
 	unsigned int ref_ts, enableflag;
 	unsigned int context_id = _get_context_id(context);
 
@@ -2566,6 +2567,10 @@ static unsigned int adreno_check_hw_ts(struct kgsl_device *device,
 		KGSL_DRV_WARN(device, "context was detached");
 		return -EINVAL;
 	}
+
+	status = kgsl_check_timestamp(device, context, timestamp);
+	if (status)
+		return status;
 
 	kgsl_sharedmem_readl(&device->memstore, &enableflag,
 			KGSL_MEMSTORE_OFFSET(context_id, ts_cmp_enable));
@@ -2615,19 +2620,10 @@ static unsigned int adreno_check_hw_ts(struct kgsl_device *device,
 	return 0;
 }
 
-/* Return 1 if the event timestmp has already passed, 0 if it was marked */
-static int adreno_next_event(struct kgsl_device *device,
-		struct kgsl_event *event, unsigned int processed)
+static void adreno_next_event(struct kgsl_device *device,
+		struct kgsl_event *event)
 {
-	int status;
-
-	/* returns 1 if timestamp already passed */
-	status = timestamp_cmp(processed, event->timestamp);
-	if (status >= 0)
-		return 1;
-
-	/* return 0 or err */
-	return adreno_check_hw_ts(device, event->context, event->timestamp);
+	adreno_check_hw_ts(device, event->context, event->timestamp);
 }
 
 static int adreno_check_interrupt_timestamp(struct kgsl_device *device,
@@ -2636,14 +2632,7 @@ static int adreno_check_interrupt_timestamp(struct kgsl_device *device,
 	int status;
 
 	mutex_lock(&device->mutex);
-	/* check against the RETIRED memstore timestamp */
-	status = kgsl_check_timestamp(device, context, timestamp);
-	/*
-	 * If timestamp has not yet passed, enable conditional timetamp
-	 * check in the hardware
-	 */
-	if (status == 0)
-		status = adreno_check_hw_ts(device, context, timestamp);
+	status = adreno_check_hw_ts(device, context, timestamp);
 	mutex_unlock(&device->mutex);
 
 	return status;
