@@ -65,7 +65,7 @@ static struct ion_client *kgsl_ion_client;
 
 int kgsl_add_event(struct kgsl_device *device, u32 id, u32 ts,
 	void (*cb)(struct kgsl_device *, void *, u32, u32), void *priv,
-	void *owner)
+	void *owner, enum kgsl_event_type type)
 {
 	struct kgsl_event *event;
 	struct list_head *n;
@@ -98,6 +98,7 @@ int kgsl_add_event(struct kgsl_device *device, u32 id, u32 ts,
 	event->priv = priv;
 	event->func = cb;
 	event->owner = owner;
+	event->type = type;
 
 	/* inc refcount to avoid race conditions in cleanup */
 	if (context)
@@ -1295,7 +1296,8 @@ static long _cmdstream_freememontimestamp(struct kgsl_device_private *dev_priv,
 						  KGSL_TIMESTAMP_RETIRED),
 				       timestamp);
 	result = kgsl_add_event(dev_priv->device, context_id, timestamp,
-				kgsl_freemem_event_cb, entry, dev_priv);
+				kgsl_freemem_event_cb, entry, dev_priv,
+				EVENT_FREE_ON_TS);
 done:
 	return result;
 }
@@ -2039,7 +2041,7 @@ static int kgsl_add_genlock_event(struct kgsl_device *device,
 	}
 
 	ret = kgsl_add_event(device, context_id, timestamp,
-			kgsl_genlock_event_cb, event, owner);
+			kgsl_genlock_event_cb, event, owner, EVENT_GENLOCK);
 	if (ret)
 		kfree(event);
 

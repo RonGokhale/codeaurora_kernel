@@ -68,8 +68,74 @@ static int kgsl_sync_pt_compare(struct sync_pt *a, struct sync_pt *b)
 }
 
 struct kgsl_fence_event_priv {
+	struct sync_fence *fence;
+	struct timer_list fence_timer;
 	struct kgsl_context *context;
+	unsigned long jiffies;
+	unsigned int poke;
 };
+
+void kgsl_check_fences(struct work_struct *work)
+{
+	struct kgsl_device *device = container_of(work, struct kgsl_device,
+		check_fences);
+	struct kgsl_fence_event_priv *ev;
+	struct kgsl_event *event;
+	unsigned int id;
+	bool is_idle = false;
+	unsigned long jiffs;
+
+	mutex_lock(&device->mutex);
+
+	list_for_each_entry(event, &device->events, list) {
+		if (event->type != EVENT_FENCE)
+			continue;
+
+		ev = event->priv;
+		jiffs = jiffies - ev->jiffies;
+
+		if (jiffs < msecs_to_jiffies(800))
+			continue;
+
+		id = event->context ? event->context->id :
+			KGSL_MEMSTORE_GLOBAL;
+
+		if (ev->poke == 0) {
+			if (device->ftbl->isidle)
+				is_idle = device->ftbl->isidle(device);
+
+			pr_info("kgsl: slow fence: [%x] id(%d), GPU %s\n",
+					(unsigned int) ev->fence, id,
+					is_idle ? "idle" : "active");
+			ev->poke = 1;
+		} else if (ev->poke == 1 &&
+				kgsl_check_timestamp(device, event->context,
+					event->timestamp)) {
+			pr_info("kgsl: missed fence [%x] for <%d:0x%x>\n",
+					(unsigned int) ev->fence,
+					id, event->timestamp);
+			ev->poke = 2;
+		}
+
+		/*
+		 * reset the timer to fire again in 1 second
+		 * if no fence event
+		 */
+
+		mod_timer(&ev->fence_timer,
+				jiffies + msecs_to_jiffies(1000));
+	}
+
+	mutex_unlock(&device->mutex);
+}
+
+void kgsl_fence_timer(unsigned long data)
+{
+	struct kgsl_device *device = (struct kgsl_device *) data;
+
+	/* Have work run in a non-interrupt context. */
+	queue_work(device->work_queue, &device->check_fences);
+}
 
 /**
  * kgsl_fence_event_cb - Event callback for a fence timestamp event
@@ -85,6 +151,14 @@ static inline void kgsl_fence_event_cb(struct kgsl_device *device,
 	void *priv, u32 context_id, u32 timestamp)
 {
 	struct kgsl_fence_event_priv *ev = priv;
+	unsigned int msecs = jiffies_to_msecs(jiffies - ev->jiffies);
+
+	if (msecs > 1000)
+		pr_info("kgsl: long fence signalled [%x] <%d:0x%x> after %d ms\n",
+			(unsigned int) ev->fence, context_id, timestamp, msecs);
+
+	/* Signal time timeline for every event type */
+	del_timer_sync(&ev->fence_timer);
 	kgsl_sync_timeline_signal(ev->context->timeline, timestamp);
 	kgsl_context_put(ev->context);
 	kfree(ev);
@@ -156,8 +230,20 @@ int kgsl_add_fence_event(struct kgsl_device *device,
 		goto fail_copy_fd;
 	}
 
+	/*
+	 * Hold the context ref-count for the event - it will get released in
+	 * the callback
+	 */
+
+	event->poke = 0;
+	event->fence = fence;
+	event->jiffies = jiffies;
+	setup_timer(&event->fence_timer, kgsl_fence_timer,
+			(unsigned long) device);
+	mod_timer(&event->fence_timer, jiffies + msecs_to_jiffies(800));
+
 	ret = kgsl_add_event(device, context_id, timestamp,
-			kgsl_fence_event_cb, event, owner);
+			kgsl_fence_event_cb, event, owner, EVENT_FENCE);
 	if (ret)
 		goto fail_event;
 
