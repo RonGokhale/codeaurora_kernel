@@ -767,7 +767,7 @@ out:
 
 static void rmnet_usb_disconnect(struct usb_interface *intf)
 {
-	struct usbnet		*unet = usb_get_intfdata(intf);
+	struct usbnet		*free_unet, *unet = usb_get_intfdata(intf);
 	struct rmnet_ctrl_dev	*dev;
 	unsigned int		n, rdev_cnt, unet_id;
 
@@ -777,16 +777,16 @@ static void rmnet_usb_disconnect(struct usb_interface *intf)
 
 	for (n = 0; n < rdev_cnt; n++) {
 		unet_id = n + unet->driver_info->data * no_rmnet_insts_per_dev;
-		unet =
+		free_unet =
 		unet->data[4] ? unet_list[unet_id] : usb_get_intfdata(intf);
-		device_remove_file(&unet->net->dev, &dev_attr_dbg_mask);
+		device_remove_file(&free_unet->net->dev, &dev_attr_dbg_mask);
 
-		dev = (struct rmnet_ctrl_dev *)unet->data[1];
+		dev = (struct rmnet_ctrl_dev *)free_unet->data[1];
 		rmnet_usb_ctrl_disconnect(dev);
-		unet->data[0] = 0;
-		unet->data[1] = 0;
-		rmnet_usb_data_debugfs_cleanup(unet);
-		usb_set_intfdata(intf, unet);
+		free_unet->data[0] = 0;
+		free_unet->data[1] = 0;
+		rmnet_usb_data_debugfs_cleanup(free_unet);
+		usb_set_intfdata(intf, free_unet);
 		usbnet_disconnect(intf);
 		unet_list[unet_id] = NULL;
 	}
