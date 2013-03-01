@@ -1016,7 +1016,8 @@ struct msm_snapshot_pp_status {
 #define CFG_GPIO_OP                   54
 #define CFG_SET_VISION_MODE           55
 #define CFG_SET_VISION_AE             56
-#define CFG_MAX                       57
+#define CFG_ACTUAOTOR_REG_INIT        58
+#define CFG_MAX                       59
 
 
 #define MOVE_NEAR	0
@@ -1690,6 +1691,7 @@ struct damping_params_t {
 enum actuator_type {
 	ACTUATOR_VCM,
 	ACTUATOR_PIEZO,
+	ACTUATOR_HALL_EFFECT,
 };
 
 enum msm_actuator_data_type {
