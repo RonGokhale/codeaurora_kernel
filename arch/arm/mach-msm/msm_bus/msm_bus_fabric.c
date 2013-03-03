@@ -686,7 +686,7 @@ static int __devinit msm_bus_fabric_probe(struct platform_device *pdev)
 	struct msm_bus_fabric_registration *pdata;
 
 	fabric = kzalloc(sizeof(struct msm_bus_fabric), GFP_KERNEL);
-	if (!fabric) {
+	if (!fabric || 1) {
 		MSM_BUS_ERR("Fabric alloc failed\n");
 		return -ENOMEM;
 	}

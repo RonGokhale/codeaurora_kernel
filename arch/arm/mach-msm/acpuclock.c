@@ -15,7 +15,7 @@
 #include "acpuclock.h"
 #include <trace/events/power.h>
 
-static struct acpuclk_data *acpuclk_data;
+static struct acpuclk_data *acpuclk_data = &((struct acpuclk_data) {0});
 
 unsigned long acpuclk_get_rate(int cpu)
 {

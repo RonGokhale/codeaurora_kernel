@@ -21,6 +21,16 @@
 		regulator-max-microvolt = <7>;
 		qcom,consumer-supplies = "vdd_dig", "";
 	};
+
+
+	pm8226_l8: regulator-l8 {
+		compatible = "qcom,stub-regulator";
+		regulator-name = "8226_l8";
+		qcom,hpm-min-load = <5000>;
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		qcom,consumer-supplies = "vdd_sr2_pll", "";
+	};
 };
 
 /* QPNP controlled regulators: */
@@ -45,7 +55,7 @@
 			qcom,enable-time = <500>;
 			qcom,system-load = <100000>;
 			regulator-always-on;
-			regulator-min-microvolt = <1150000>;
+			regulator-min-microvolt = <1050000>;
 			regulator-max-microvolt = <1150000>;
 		};
 
@@ -84,17 +94,6 @@
 			qcom,enable-time = <200>;
 			regulator-min-microvolt = <1225000>;
 			regulator-max-microvolt = <1225000>;
-		};
-
-		pm8226_l2: regulator@4100 {
-			status = "okay";
-			regulator-name = "8226_l2";
-			parent-supply = <&pm8226_s3>;
-			regulator-always-on;
-			qcom,enable-time = <200>;
-			qcom,system-load = <10000>;
-			regulator-min-microvolt = <1200000>;
-			regulator-max-microvolt = <1200000>;
 		};
 
 		pm8226_l3: regulator@4200 {
@@ -144,16 +143,6 @@
 			qcom,enable-time = <200>;
 			regulator-min-microvolt = <1850000>;
 			regulator-max-microvolt = <1850000>;
-		};
-
-		pm8226_l8: regulator@4700 {
-			status = "okay";
-			regulator-name = "8226_l8";
-			parent-supply = <&pm8226_s4>;
-			qcom,enable-time = <200>;
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			qcom,consumer-supplies = "vdd_sr2_pll", "";
 		};
 
 		pm8226_l9: regulator@4800 {

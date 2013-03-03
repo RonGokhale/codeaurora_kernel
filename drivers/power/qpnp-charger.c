@@ -1,3 +1,5 @@
+#define DEBUG
+
 /* Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -88,13 +90,13 @@
 
 /* SMBB peripheral subtype values */
 #define REG_OFFSET_PERP_SUBTYPE			0x05
-#define SMBB_CHGR_SUBTYPE			0x01
-#define SMBB_BUCK_SUBTYPE			0x02
-#define SMBB_BAT_IF_SUBTYPE			0x03
-#define SMBB_USB_CHGPTH_SUBTYPE			0x04
+#define SMBB_CHGR_SUBTYPE			0x31
+#define SMBB_BUCK_SUBTYPE			0x32
+#define SMBB_BAT_IF_SUBTYPE			0x33
+#define SMBB_USB_CHGPTH_SUBTYPE			0x34
 #define SMBB_DC_CHGPTH_SUBTYPE			0x05
-#define SMBB_BOOST_SUBTYPE			0x06
-#define SMBB_MISC_SUBTYPE			0x07
+#define SMBB_BOOST_SUBTYPE			0x36
+#define SMBB_MISC_SUBTYPE			0x37
 
 #define QPNP_CHARGER_DEV_NAME	"qcom,qpnp-charger"
 
@@ -1397,9 +1399,9 @@ qpnp_charger_probe(struct spmi_device *spmi)
 		return -ENOMEM;
 	}
 
-	rc = qpnp_vadc_is_ready();
-	if (rc)
-		goto fail_chg_enable;
+//	rc = qpnp_vadc_is_ready();
+//	if (rc)
+//		goto fail_chg_enable;
 
 	chip->dev = &(spmi->dev);
 	chip->spmi = spmi;
@@ -1652,12 +1654,6 @@ qpnp_charger_probe(struct spmi_device *spmi)
 		goto fail_chg_enable;
 	}
 
-	rc = power_supply_register(chip->dev, &chip->dc_psy);
-	if (rc < 0) {
-		pr_err("power_supply_register usb failed rc = %d\n", rc);
-		goto unregister_batt;
-	}
-
 	/* Turn on appropriate workaround flags */
 	qpnp_chg_setup_flags(chip);
 
@@ -1683,8 +1679,6 @@ qpnp_charger_probe(struct spmi_device *spmi)
 			get_prop_batt_health(chip));
 	return 0;
 
-unregister_batt:
-	power_supply_unregister(&chip->batt_psy);
 fail_chg_enable:
 	kfree(chip->thermal_mitigation);
 	kfree(chip);

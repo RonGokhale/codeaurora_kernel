@@ -344,6 +344,16 @@ static int sysfs_open_file(struct inode *inode, struct file *file)
 		goto err_out;
 	}
 
+#if 1
+if ((unsigned int)ops < 0xc0000000) {
+    char *tmp = (char *)__get_free_page(GFP_TEMPORARY);
+    char *pathname = d_path(&file->f_path, tmp, PAGE_SIZE);
+    WARN(1, KERN_ERR "XYZ ***** sysfs_open %s -ops 0x%08x *****\n", pathname, (unsigned int)ops);
+    free_page((unsigned long)tmp);
+    return -ENODEV;
+}
+#endif
+
 	/* File needs write support.
 	 * The inode's perms must say it's ok, 
 	 * and we must have a store method.

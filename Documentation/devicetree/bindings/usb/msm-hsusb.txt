@@ -22,6 +22,9 @@ Required properties :
             1 - PHY control
 	    2 - PMIC control
 	    3 - User control (via debugfs)
+- qcom,vdd-voltage-level: This property must be a list of three integer
+	values (no, min, max) where each value represents either a voltage
+	in microvolts or a value corresponding to voltage corner.
 
 Optional properties :
 - qcom,hsusb-otg-disable-reset: If present then core is RESET only during
@@ -72,6 +75,7 @@ Example HSUSB OTG controller device node :
 		qcom,hsusb-otg-pmic-id-irq = <47>
 		qcom,hsusb-otg-lpm-on-dev-suspend;
 		qcom,hsusb-otg-clk-always-on-workaround;
+		qcom,vdd-voltage-level = <1 5 7>;
 
 		qcom,msm_bus,name = "usb2";
 		qcom,msm_bus,num_cases = <2>;

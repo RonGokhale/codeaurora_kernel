@@ -379,6 +379,11 @@ static int hw_device_state(u32 dma)
 			hw_cwrite(CAP_USBMODE, USBMODE_SDIS, USBMODE_SDIS);
 
 		hw_cwrite(CAP_ENDPTLISTADDR, ~0, dma);
+
+#define GEN_CONFIG2         (0x00A0UL)
+		hw_awrite(GEN_CONFIG2, BIT(7), BIT(7));
+		hw_cwrite(CAP_USBCMD, BIT(25), BIT(25));
+
 		/* interrupt, error, port change, reset, sleep/suspend */
 		hw_cwrite(CAP_USBINTR, ~0,
 			     USBi_UI|USBi_UEI|USBi_PCI|USBi_URI|USBi_SLI);

@@ -14,7 +14,6 @@
 /include/ "msm8226-ion.dtsi"
 /include/ "msm-gdsc.dtsi"
 /include/ "msm8226-iommu.dtsi"
-/include/ "msm8226-pm.dtsi"
 /include/ "msm8226-smp2p.dtsi"
 /include/ "msm8226-gpu.dtsi"
 /include/ "msm8226-bus.dtsi"
@@ -85,13 +84,14 @@
 		reg = <0xf9a55000 0x400>;
 		interrupts = <0 134 0>, <0 140 0>;
 		interrupt-names = "core_irq", "async_irq";
-		HSUSB_VDDCX-supply = <&pm8226_s1>;
+		hsusb_vdd_dig-supply = <&pm8226_s1_corner>;
 		HSUSB_1p8-supply = <&pm8226_l10>;
 		HSUSB_3p3-supply = <&pm8226_l20>;
+		qcom,vdd-voltage-level = <1 5 7>;
 
 		qcom,hsusb-otg-phy-type = <2>;
 		qcom,hsusb-otg-mode = <1>;
-		qcom,hsusb-otg-otg-control = <1>;
+		qcom,hsusb-otg-otg-control = <2>;
 		qcom,hsusb-otg-disable-reset;
 	};
 
@@ -333,7 +333,6 @@
 		qcom,pet-time = <10000>;
 		qcom,ipi-ping;
 	};
-
 	qcom,smem@fa00000 {
 		compatible = "qcom,smem";
 		reg = <0xfa00000 0x200000>,
@@ -405,10 +404,9 @@
 	rpm_bus: qcom,rpm-smd {
 		compatible = "qcom,rpm-smd";
 		rpm-channel-name = "rpm_requests";
-		rpm-channel-type = <15>; /* SMD_APPS_RPM */
+		rpm-channel-type = <15>;
 		rpm-standalone;
 	};
-
 	sdcc1: qcom,sdcc@f9824000 {
 		cell-index = <1>; /* SDC1 eMMC slot */
 		compatible = "qcom,msm-sdcc";
@@ -466,14 +464,6 @@
 		qcom,i2c-bus-freq = <100000>;
 	};
 
-	qcom,acpuclk@f9011050 {
-		compatible = "qcom,acpuclk-a7";
-		reg = <0xf9011050 0x8>;
-		reg-names = "rcg_base";
-		a7_cpu-supply = <&pm8226_s2>;
-		a7_mem-supply = <&pm8226_l3>;
-	};
-
 	qcom,ocmem@fdd00000 {
 		compatible = "qcom,msm-ocmem";
 		reg = <0xfdd00000 0x2000>,
@@ -528,11 +518,6 @@
 		interrupts = <0 162 1>;
 
 		qcom,firmware-name = "adsp";
-	};
-
-	qcom,msm-mem-hole {
-		compatible = "qcom,msm-mem-hole";
-		qcom,memblock-remove = <0x8400000 0x7b00000>; /* Address and Size of Hole */
 	};
 
 	tsens: tsens@fc4a8000 {
@@ -694,5 +679,37 @@
 		qcom,scale-function = <4>;
 		qcom,hw-settle-time = <2>;
 		qcom,fast-avg-setup = <0>;
+	};
+
+};
+
+&pm8226_chg {
+	status = "ok";
+
+	qcom,chg-charging-disabled;
+	qcom,chg-use-default-batt-values;
+
+	qcom,chg-chgr@1000 {
+		status = "ok";
+	};
+
+	qcom,chg-buck@1100 {
+		status = "ok";
+	};
+
+	qcom,chg-bat-if@1200 {
+		status = "ok";
+	};
+
+	qcom,chg-usb-chgpth@1300 {
+		status = "ok";
+	};
+
+	qcom,chg-boost@1500 {
+		status = "ok";
+	};
+
+	qcom,chg-misc@1600 {
+		status = "ok";
 	};
 };

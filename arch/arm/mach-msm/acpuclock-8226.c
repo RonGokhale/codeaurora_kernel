@@ -68,7 +68,7 @@ static struct acpuclk_drv_data drv_data = {
 	.current_speed = &(struct clkctl_acpu_speed){ 0 },
 	.bus_scale = &bus_client_pdata,
 	/* FIXME regulator doesn't support corners yet */
-	.vdd_max_cpu = 1050000,
+	.vdd_max_cpu = 1150000,
 	.vdd_max_mem = 1150000,
 	.src_clocks = {
 		[PLL0].name = "gpll0",
