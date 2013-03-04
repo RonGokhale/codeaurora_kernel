@@ -1206,7 +1206,7 @@ int adm_multi_ch_copp_open(int port_id, int path, int rate, int channel_mode,
 			return -EINVAL;
 		}
                 if ((channel_mode > 2) &&
-			multi_ch_map.set_channel_map)
+			multi_ch_map.set_channel_map && path == ADM_PATH_PLAYBACK)
 			memcpy(open.dev_channel_mapping,
 				multi_ch_map.channel_mapping,
 				PCM_FORMAT_MAX_NUM_CHANNEL);
