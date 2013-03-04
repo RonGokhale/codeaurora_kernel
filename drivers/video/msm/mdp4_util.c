@@ -3232,60 +3232,56 @@ static uint32_t mdp4_pp_block2qseed(uint32_t block)
 	return valid;
 }
 
-int mdp4_qseed_access_cfg(struct mdp_qseed_cfg *config, uint32_t base)
+static int mdp4_qseed_access_cfg(struct mdp_qseed_cfg_data *cfg)
 {
 	int i, ret = 0;
+	uint32_t base = (uint32_t) (MDP_BASE + mdp_block2base(cfg->block));
 	uint32_t *values;
 
-	if ((config->table_num != 1) && (config->table_num != 2)) {
+	if ((cfg->table_num != 1) && (cfg->table_num != 2)) {
 		ret = -ENOTTY;
 		goto error;
 	}
 
-	if (((config->table_num == 1) && (config->len != QSEED_TABLE_1_COUNT))
-			|| ((config->table_num == 2) &&
-				(config->len != QSEED_TABLE_2_COUNT))) {
+	if (((cfg->table_num == 1) && (cfg->len != QSEED_TABLE_1_COUNT)) ||
+		((cfg->table_num == 2) && (cfg->len != QSEED_TABLE_2_COUNT))) {
 		ret = -EINVAL;
 		goto error;
 	}
 
-	values = kmalloc(config->len * sizeof(uint32_t), GFP_KERNEL);
+	values = kmalloc(cfg->len * sizeof(uint32_t), GFP_KERNEL);
 	if (!values) {
 		ret = -ENOMEM;
 		goto error;
 	}
 
-	base += (config->table_num == 1) ? MDP4_QSEED_TABLE1_OFF :
+	base += (cfg->table_num == 1) ? MDP4_QSEED_TABLE1_OFF :
 							MDP4_QSEED_TABLE2_OFF;
 
-	if (config->ops & MDP_PP_OPS_WRITE) {
-		ret = copy_from_user(values, config->data,
-						sizeof(uint32_t) * config->len);
+	if (cfg->ops & MDP_PP_OPS_WRITE) {
+		ret = copy_from_user(values, cfg->data,
+						sizeof(uint32_t) * cfg->len);
 		if (ret) {
 			pr_warn("%s: Error copying from user, %d", __func__,
 									ret);
 			ret = -EINVAL;
 			goto err_mem;
 		}
-		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
-		for (i = 0; i < config->len; i++) {
+		for (i = 0; i < cfg->len; i++) {
 			if (!(base & 0x3FF))
 				wmb();
 			MDP_OUTP(base , values[i]);
 			base += sizeof(uint32_t);
 		}
-		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
-	} else if (config->ops & MDP_PP_OPS_READ) {
-		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
-		for (i = 0; i < config->len; i++) {
+	} else if (cfg->ops & MDP_PP_OPS_READ) {
+		for (i = 0; i < cfg->len; i++) {
 			values[i] = inpdw(base);
 			if (!(base & 0x3FF))
 				rmb();
 			base += sizeof(uint32_t);
 		}
-		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
-		ret = copy_to_user(config->data, values,
-						sizeof(uint32_t) * config->len);
+		ret = copy_to_user(cfg->data, values,
+						sizeof(uint32_t) * cfg->len);
 		if (ret) {
 			pr_warn("%s: Error copying to user, %d", __func__, ret);
 			ret = -EINVAL;
@@ -3299,13 +3295,11 @@ error:
 	return ret;
 }
 
-int mdp4_qseed_cfg(struct mdp_qseed_cfg_data *config)
+int mdp4_qseed_cfg(struct mdp_qseed_cfg_data *cfg)
 {
 	int ret = 0;
-	struct mdp_qseed_cfg *cfg = &config->qseed_data;
-	uint32_t base;
 
-	if (!mdp4_pp_block2qseed(config->block)) {
+	if (!mdp4_pp_block2qseed(cfg->block)) {
 		ret = -ENOTTY;
 		goto error;
 	}
@@ -3316,8 +3310,8 @@ int mdp4_qseed_cfg(struct mdp_qseed_cfg_data *config)
 								__func__);
 		goto error;
 	}
-	base = (uint32_t) (MDP_BASE + mdp_block2base(config->block));
-	ret = mdp4_qseed_access_cfg(cfg, base);
+
+	ret = mdp4_qseed_access_cfg(cfg);
 
 error:
 	return ret;
