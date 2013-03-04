@@ -51,8 +51,10 @@ static struct clk *mdp_pclk;
 static struct clk *mdp_lut_clk;
 int mdp_rev;
 int mdp_iommu_split_domain;
-u32 mdp_max_clk = 200000000;
-u64 mdp_max_bw = 2000000000;
+
+u32 mdp_max_clk = 266667000;   /* Max MDP Clk */
+u64 mdp_max_bw = 0xFFFFFFFFUL; /* Max BW Possible */
+
 
 static struct platform_device *mdp_init_pdev;
 static struct regulator *footswitch, *dsi_pll_vdda, *dsi_pll_vddio;
