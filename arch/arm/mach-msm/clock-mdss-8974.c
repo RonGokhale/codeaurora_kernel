@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -313,6 +313,16 @@ out:
 	return ret;
 }
 
+static enum handoff mdss_dsi_pll_handoff(struct clk *c)
+{
+	/*
+	 * FIXME: Continuous display is not implemented. So the display is
+	 * always off. Implement a poor man's handoff by always returning
+	 * "disabled".
+	 */
+	return HANDOFF_DISABLED_CLK;
+}
+
 void hdmi_pll_disable(void)
 {
 	REG_W(0x0, hdmi_phy_pll_base + HDMI_UNI_PLL_GLB_CFG);
@@ -515,6 +525,7 @@ struct clk_ops clk_ops_dsi_pixel_pll = {
 	.disable = mdss_dsi_pll_disable,
 	.set_rate = mdss_dsi_pll_pixel_set_rate,
 	.round_rate = mdss_dsi_pll_pixel_round_rate,
+	.handoff = mdss_dsi_pll_handoff,
 };
 
 struct clk_ops clk_ops_dsi_byte_pll = {
@@ -522,4 +533,5 @@ struct clk_ops clk_ops_dsi_byte_pll = {
 	.disable = mdss_dsi_pll_disable,
 	.set_rate = mdss_dsi_pll_byte_set_rate,
 	.round_rate = mdss_dsi_pll_byte_round_rate,
+	.handoff = mdss_dsi_pll_handoff,
 };
