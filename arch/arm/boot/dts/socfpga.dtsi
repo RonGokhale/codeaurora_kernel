@@ -463,6 +463,8 @@
 			clocks = <&emac0_clk>;
 			clock-names = "stmmaceth";
 			status = "disabled";
+			clocks = <&emac0_clk>;
+			clock-names = "stmmaceth";
 		};
 
 		gmac1: ethernet@ff702000 {
@@ -474,6 +476,8 @@
 			clocks = <&emac1_clk>;
 			clock-names = "stmmaceth";
 			status = "disabled";
+			clocks = <&emac1_clk>;
+			clock-names = "stmmaceth";
 		};
 
 		gpio0: gpio@ff708000 {
@@ -486,6 +490,7 @@
 			#interrupt-cells = <2>;
 			gpio-controller;
 			#gpio-cells = <2>;
+			clocks = <&per_base_clk>;
 		};
 
 		gpio1: gpio@ff709000 {
@@ -498,6 +503,7 @@
 			#interrupt-cells = <2>;
 			gpio-controller;
 			#gpio-cells = <2>;
+			clocks = <&per_base_clk>;
 		};
 
 		gpio2: gpio@ff70a000 {
@@ -510,6 +516,7 @@
 			#interrupt-cells = <2>;
 			gpio-controller;
 			#gpio-cells = <2>;
+			clocks = <&per_base_clk>;
 		};
 
 		L2: l2-cache@fffef000 {
@@ -564,6 +571,7 @@
 			bus-num = <0>;
 			tx-dma-channel = <&pdma 16>;
 			rx-dma-channel = <&pdma 17>;
+			clocks = <&per_base_clk>;
 
 			spidev@0 {
 				compatible = "spidev";
@@ -583,6 +591,7 @@
 			bus-num = <1>;
 			tx-dma-channel = <&pdma 20>;
 			rx-dma-channel = <&pdma 21>;
+			clocks = <&per_base_clk>;
 
 			spidev@0 {
 				compatible = "spidev";
@@ -671,6 +680,7 @@
 			reg = <0xffc04000 0x1000>;
 			interrupts = <0 158 4>;
 			emptyfifo_hold_master = <1>;
+			clocks = <&per_base_clk>;
 		};
 
 		i2c1: i2c@ffc05000 {
@@ -680,6 +690,7 @@
 			reg = <0xffc05000 0x1000>;
 			interrupts = <0 159 4>;
 			emptyfifo_hold_master = <1>;
+			clocks = <&per_base_clk>;
 		};
 	};
 };
