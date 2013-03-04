@@ -30,3 +30,5 @@ void ufsdbg_remove_debugfs(struct ufs_hba *hba);
 #endif
 
 #endif /* End of Header */
+
+void ufsdbg_fail_request(struct ufs_hba *hba, u32 *intr_status);
