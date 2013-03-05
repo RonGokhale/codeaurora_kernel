@@ -36,6 +36,7 @@ list of branches
 - jb_chocolate
 - jb_2.2_rb2.3
 - jb_2.2_rb2_5.2
+- jb_2.2_rb4.1
 - jb_2.5
 - jb_2.5.1
 - jb_2.3.2
@@ -50,6 +51,7 @@ list of branches
 - jb_rel
 - jb_rel_rb3.1
 - jb_rel_rb4_2.1 
+- jb_rel_2.0.0.1 
 - jb_rel_2.0.3
 - jb_rel_2.0.3.1 
 - jb_rel_2.0.3.1.1
