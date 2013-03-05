@@ -134,13 +134,22 @@ static int pil_proxy_vote(struct pil_device *pil)
 	return ret;
 }
 
-static void pil_proxy_unvote(struct pil_device *pil, unsigned long timeout)
+static void pil_proxy_unvote(struct pil_device *pil, int immediate)
 {
-	if (proxy_timeout_ms >= 0)
-		timeout = proxy_timeout_ms;
+	unsigned long timeout;
 
-	if (timeout && pil->desc->ops->proxy_unvote)
+	if (proxy_timeout_ms == 0 && !immediate)
+		return;
+	else if (proxy_timeout_ms > 0)
+		timeout = proxy_timeout_ms;
+	else
+		timeout = pil->desc->proxy_timeout;
+
+	if (pil->desc->ops->proxy_unvote) {
+		if (immediate)
+			timeout = 0;
 		schedule_delayed_work(&pil->proxy, msecs_to_jiffies(timeout));
+	}
 }
 
 #define IOMAP_SIZE SZ_4M
@@ -255,7 +264,6 @@ static int load_image(struct pil_device *pil)
 	struct elf32_hdr *ehdr;
 	const struct elf32_phdr *phdr;
 	const struct firmware *fw;
-	unsigned long proxy_timeout = pil->desc->proxy_timeout;
 
 	down_read(&pil_pm_rwsem);
 	snprintf(fw_name, sizeof(fw_name), "%s.mdt", pil->desc->name);
@@ -325,12 +333,11 @@ static int load_image(struct pil_device *pil)
 	if (ret) {
 		dev_err(&pil->dev, "%s: Failed to bring out of reset\n",
 				pil->desc->name);
-		proxy_timeout = 0; /* Remove proxy vote immediately on error */
 		goto err_boot;
 	}
 	dev_info(&pil->dev, "%s: Brought out of reset\n", pil->desc->name);
 err_boot:
-	pil_proxy_unvote(pil, proxy_timeout);
+	pil_proxy_unvote(pil, ret);
 release_fw:
 	release_firmware(fw);
 out:
