@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1312,6 +1312,7 @@ static u32 ddl_decoder_output_done_callback(
 			DDL_MSG_LOW("%s y_cb_cr_size = %u "
 				"actual_output_buf_req.sz = %u"
 				"min_output_buf_req.sz = %u\n",
+				__func__,
 				decoder->y_cb_cr_size,
 				decoder->actual_output_buf_req.sz,
 				decoder->min_output_buf_req.sz);
@@ -1827,9 +1828,9 @@ static void ddl_handle_slice_done_slice_batch(struct ddl_client_context *ddl)
 			encoder->batch_frame.output_frame[actual_idx].vcd_frm);
 		DDL_MSG_LOW("OutBfr: vcd_frm 0x%x frmbfr(virtual) 0x%x"
 			"frmbfr(physical) 0x%x\n",
-			&output_frame,
-			output_frame.virtual_base_addr,
-			output_frame.physical_base_addr);
+			(u32)&output_frame,
+			(u32)output_frame->virtual,
+			(u32)output_frame->physical);
 		vidc_1080p_get_encode_frame_info(&encoder->enc_frame_info);
 		vidc_sm_get_frame_tags(&ddl->shared_mem
 			[ddl->command_channel],
@@ -1910,14 +1911,14 @@ static u32 ddl_handle_enc_frame_done_slice_mode(
 		DDL_MSG_LOW("Slice Info: OutBfrIndex %d SliceSize %d",
 			actual_idx,
 			slice_output->slice_info[start_bfr_idx+index]. \
-			stream_buffer_size, 0);
+			stream_buffer_size);
 		output_frame =
 		&(encoder->batch_frame.output_frame[actual_idx].vcd_frm);
 		DDL_MSG_LOW("OutBfr: vcd_frm 0x%x frmbfr(virtual) 0x%x"
 				"frmbfr(physical) 0x%x",
-				&output_frame,
-				output_frame.virtual_base_addr,
-				output_frame.physical_base_addr);
+				(u32)&output_frame,
+				(u32)output_frame->virtual,
+				(u32)output_frame->physical);
 		vidc_1080p_get_encode_frame_info(
 			&encoder->enc_frame_info);
 		vidc_sm_get_frame_tags(&ddl->shared_mem
