@@ -2498,10 +2498,17 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 	pipe->mixer_stage = req->z_order + MDP4_MIXER_STAGE0;
 	pipe->src_width = req->src.width & 0x1fff;	/* source img width */
 	pipe->src_height = req->src.height & 0x1fff;	/* source img height */
-	pipe->src_h = req->src_rect.h & 0x07ff;
-	pipe->src_w = req->src_rect.w & 0x07ff;
-	pipe->src_y = req->src_rect.y & 0x07ff;
-	pipe->src_x = req->src_rect.x & 0x07ff;
+	if (mdp_rev > MDP_REV_42) {
+		pipe->src_h = req->src_rect.h & 0x0fff;
+		pipe->src_w = req->src_rect.w & 0x0fff;
+		pipe->src_y = req->src_rect.y & 0x0fff;
+		pipe->src_x = req->src_rect.x & 0x0fff;
+	} else {
+		pipe->src_h = req->src_rect.h & 0x07ff;
+		pipe->src_w = req->src_rect.w & 0x07ff;
+		pipe->src_y = req->src_rect.y & 0x07ff;
+		pipe->src_x = req->src_rect.x & 0x07ff;
+	}
 	pipe->dst_h = req->dst_rect.h & 0x07ff;
 	pipe->dst_w = req->dst_rect.w & 0x07ff;
 	pipe->dst_y = req->dst_rect.y & 0x07ff;
