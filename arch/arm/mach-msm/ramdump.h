@@ -24,7 +24,5 @@ void *create_ramdump_device(const char *dev_name, struct device *parent);
 void destroy_ramdump_device(void *dev);
 int do_ramdump(void *handle, struct ramdump_segment *segments,
 		int nsegments);
-int do_elf_ramdump(void *handle, struct ramdump_segment *segments,
-		int nsegments);
 
 #endif
