@@ -1277,7 +1277,7 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 
 	mfd->var_xres = panel_info->xres;
 	mfd->var_yres = panel_info->yres;
-	mfd->var_frame_rate = panel_info->frame_rate;
+	mfd->var_frame_rate = panel_info->frame_rate * 1000;
 
 	var->pixclock = mfd->panel_info.clk_rate;
 	mfd->var_pixclock = var->pixclock;
@@ -1290,14 +1290,37 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	var->bits_per_pixel = bpp * 8;	/* FrameBuffer color depth */
 	if (mfd->dest == DISPLAY_LCD) {
 		if (panel_info->type == MDDI_PANEL && panel_info->mddi.is_type1)
-			var->reserved[4] = panel_info->lcd.refx100 / (100 * 2);
+			var->reserved[4] = (panel_info->lcd.refx100 / (100 * 2))
+							* 1000;
 		else
-			var->reserved[4] = panel_info->lcd.refx100 / 100;
+			var->reserved[4] = (panel_info->lcd.refx100 / 100) *
+							1000;
 	} else {
 		if (panel_info->type == MIPI_VIDEO_PANEL) {
-			var->reserved[4] = panel_info->mipi.frame_rate;
+			var->reserved[4] = panel_info->mipi.frame_rate * 1000;
+		} else if (panel_info->type == LVDS_PANEL &&
+				panel_info->lvds.channel_mode ==
+					LVDS_DUAL_CHANNEL_MODE) {
+			uint64 frame_rate_tmp = panel_info->clk_rate;
+			uint64 panel_height, panel_width;
+
+			panel_height =  panel_info->yres +
+					panel_info->lcdc.v_back_porch +
+					panel_info->lcdc.v_front_porch +
+					panel_info->lcdc.v_pulse_width;
+			panel_width  =  panel_info->xres +
+					panel_info->lcdc.h_back_porch * 2 +
+					panel_info->lcdc.h_front_porch * 2 +
+					panel_info->lcdc.h_pulse_width * 2;
+
+			frame_rate_tmp *= 1000;
+
+			var->reserved[4] = div_u64(frame_rate_tmp,
+						(panel_height * panel_width));
+			mfd->var_frame_rate = panel_info->frame_rate =
+				var->reserved[4];
 		} else {
-			var->reserved[4] = panel_info->clk_rate /
+			var->reserved[4] = (panel_info->clk_rate /
 				((panel_info->lcdc.h_back_porch +
 				  panel_info->lcdc.h_front_porch +
 				  panel_info->lcdc.h_pulse_width +
@@ -1305,7 +1328,7 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 				 (panel_info->lcdc.v_back_porch +
 				  panel_info->lcdc.v_front_porch +
 				  panel_info->lcdc.v_pulse_width +
-				  panel_info->yres));
+				  panel_info->yres)))*1000;
 		}
 	}
 	pr_debug("reserved[4] %u\n", var->reserved[4]);
@@ -1898,19 +1921,45 @@ static int msm_fb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 	return 0;
 }
 
+uint32 msm_fb_calc_frame_rate(struct fb_info *info)
+{
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
+	struct fb_var_screeninfo *var = &info->var;
+	uint64 panel_height, panel_width, ret;
+	uint64 frame_rate_tmp = var->pixclock;
+
+	panel_height = var->yres + var->upper_margin +
+			var->vsync_len + var->lower_margin;
+
+	if (mfd->panel_info.type == LVDS_PANEL &&
+		mfd->panel_info.lvds.channel_mode == LVDS_DUAL_CHANNEL_MODE) {
+		panel_width =   var->xres +
+				var->right_margin * 2 +
+				var->hsync_len    * 2 +
+				var->left_margin  * 2;
+	} else {
+		panel_width =   var->xres +
+				var->right_margin +
+				var->hsync_len +
+				var->left_margin;
+	}
+
+	frame_rate_tmp *= 1000;
+
+	ret = div_u64(frame_rate_tmp, (panel_height * panel_width));
+
+	return (uint32) ret;
+}
+
 int msm_fb_check_frame_rate(struct msm_fb_data_type *mfd
 						, struct fb_info *info)
 {
-	int panel_height, panel_width, var_frame_rate, fps_mod;
-	struct fb_var_screeninfo *var = &info->var;
+	int var_frame_rate, fps_mod;
 	fps_mod = 0;
+
 	if ((mfd->panel_info.type == DTV_PANEL) ||
 		(mfd->panel_info.type == HDMI_PANEL)) {
-		panel_height = var->yres + var->upper_margin +
-			var->vsync_len + var->lower_margin;
-		panel_width = var->xres + var->right_margin +
-			var->hsync_len + var->left_margin;
-		var_frame_rate = ((var->pixclock)/(panel_height * panel_width));
+		var_frame_rate = msm_fb_calc_frame_rate(info);
 		if (mfd->var_frame_rate != var_frame_rate) {
 			fps_mod = 1;
 			mfd->var_frame_rate = var_frame_rate;
@@ -1965,8 +2014,12 @@ static int msm_fb_set_par(struct fb_info *info)
 		mfd->var_xres = var->xres;
 		mfd->var_yres = var->yres;
 		mfd->var_pixclock = var->pixclock;
+		var->reserved[4] = msm_fb_calc_frame_rate(info);
+		mfd->var_frame_rate = var->reserved[4];
+
 		blank = 1;
 	}
+
 	mfd->fbi->fix.line_length = msm_fb_line_length(mfd->index, var->xres,
 						       var->bits_per_pixel/8);
 
