@@ -602,6 +602,13 @@ int msm_bus_scale_client_update_request(uint32_t cl, unsigned index)
 				vectors[i].dst);
 		}
 
+		printk("cl: %u index: %d curr: %d num_paths: %d\n",
+			cl, index, client->curr, client->pdata->usecase->num_paths);
+
+		printk("cl: %u master: %d slave: %d\n",
+			cl, client->pdata->usecase[index].vectors[i].src,
+			client->pdata->usecase[index].vectors[i].dst);
+
 		pnode = client->src_pnode[i];
 		req_clk = client->pdata->usecase[index].vectors[i].ib;
 		req_bw = client->pdata->usecase[index].vectors[i].ab;
@@ -611,7 +618,7 @@ int msm_bus_scale_client_update_request(uint32_t cl, unsigned index)
 		} else {
 			curr_clk = client->pdata->usecase[curr].vectors[i].ib;
 			curr_bw = client->pdata->usecase[curr].vectors[i].ab;
-			MSM_BUS_DBG("ab: %llu ib: %llu\n", curr_bw, curr_clk);
+			printk("ab: %llu ib: %llu\n", curr_bw, curr_clk);
 		}
 
 		if (index == 0) {

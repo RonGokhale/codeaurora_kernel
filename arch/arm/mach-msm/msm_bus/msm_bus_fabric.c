@@ -422,7 +422,7 @@ static int msm_bus_fabric_clk_set(int enable, struct msm_bus_inode_info *info)
 					nodeclk[i].clk, info->nodeclk[i].rate);
 				status = clk_set_rate(info->nodeclk[i].clk,
 					rounded_rate);
-				MSM_BUS_DBG("AXI: node: %d set_rate: %ld\n",
+				printk("AXI: node: %d set_rate: %ld\n",
 					info->node_info->id, rounded_rate);
 			}
 
@@ -444,7 +444,7 @@ static int msm_bus_fabric_clk_set(int enable, struct msm_bus_inode_info *info)
 					memclk[i].clk, info->memclk[i].rate);
 				status = clk_set_rate(info->memclk[i].clk,
 					rounded_rate);
-				MSM_BUS_DBG("AXI: node: %d set_rate: %ld\n",
+				printk("AXI: node: %d set_rate: %ld\n",
 					info->node_info->id, rounded_rate);
 			}
 
