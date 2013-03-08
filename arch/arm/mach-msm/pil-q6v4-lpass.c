@@ -231,14 +231,18 @@ static int lpass_powerup(const struct subsys_desc *subsys)
 	return ret;
 }
 
+static struct ramdump_segment segments[] = {
+	{0x8da00000, 0x8f200000 - 0x8da00000},
+	{0x28400000, 0x20000}
+};
+
 static int lpass_ramdump(int enable, const struct subsys_desc *subsys)
 {
 	struct lpass_q6v4 *drv = subsys_to_lpass(subsys);
 
 	if (!enable)
 		return 0;
-
-	return pil_do_ramdump(&drv->q6.desc, drv->ramdump_dev);
+	return do_ramdump(drv->ramdump_dev, segments, ARRAY_SIZE(segments));
 }
 
 static void lpass_crash_shutdown(const struct subsys_desc *subsys)

@@ -361,14 +361,19 @@ static void crash_shutdown(const struct subsys_desc *subsys)
 		smsm_change_state(SMSM_APPS_STATE, SMSM_RESET, SMSM_RESET);
 }
 
+static struct ramdump_segment pronto_segments[] = {
+	{ 0x0D200000, 0x0D980000 - 0x0D200000 }
+};
+
 static int wcnss_ramdump(int enable, const struct subsys_desc *subsys)
 {
 	struct pronto_data *drv = subsys_to_drv(subsys);
 
-	if (!enable)
+	if (enable)
+		return do_ramdump(drv->ramdump_dev, pronto_segments,
+				ARRAY_SIZE(pronto_segments));
+	else
 		return 0;
-
-	return pil_do_ramdump(&drv->desc, drv->ramdump_dev);
 }
 
 static int __devinit pil_pronto_probe(struct platform_device *pdev)
