@@ -243,6 +243,14 @@ void modem_crash_shutdown(const struct subsys_desc *subsys)
 	smsm_reset_modem(SMSM_RESET);
 }
 
+static struct ramdump_segment sw_segments[] = {
+	{0x89000000, 0x8D400000 - 0x89000000},
+};
+
+static struct ramdump_segment fw_segments[] = {
+	{0x8D400000, 0x8DA00000 - 0x8D400000},
+};
+
 static struct ramdump_segment smem_segments[] = {
 	{0x80000000, 0x00200000},
 };
@@ -255,15 +263,17 @@ static int modem_ramdump(int enable, const struct subsys_desc *subsys)
 	if (!enable)
 		return 0;
 
-	ret = pil_do_ramdump(&drv->q6_sw.desc, drv->sw_ramdump_dev);
+	ret = do_ramdump(drv->sw_ramdump_dev, sw_segments,
+		ARRAY_SIZE(sw_segments));
 	if (ret < 0)
 		return ret;
 
-	ret = pil_do_ramdump(&drv->q6_fw.desc, drv->fw_ramdump_dev);
+	ret = do_ramdump(drv->fw_ramdump_dev, fw_segments,
+		ARRAY_SIZE(fw_segments));
 	if (ret < 0)
 		return ret;
 
-	ret = do_elf_ramdump(drv->smem_ramdump_dev, smem_segments,
+	ret = do_ramdump(drv->smem_ramdump_dev, smem_segments,
 		ARRAY_SIZE(smem_segments));
 	if (ret < 0)
 		return ret;
