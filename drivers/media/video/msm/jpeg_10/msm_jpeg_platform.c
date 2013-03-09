@@ -17,7 +17,7 @@
 #include <linux/clk.h>
 #include <mach/clk.h>
 #include <linux/io.h>
-#include <linux/android_pmem.h>
+
 #include <mach/camera.h>
 #include <mach/iommu_domains.h>
 
