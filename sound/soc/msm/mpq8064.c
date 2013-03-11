@@ -1743,7 +1743,6 @@ static struct snd_soc_dai_link msm_dai[] = {
 		.codec_dai_name = "msm-stub-tx",
 		.no_pcm = 1,
 		.be_id = MSM_BACKEND_DAI_MI2S_TX,
-		.be_hw_params_fixup = msm_be_hw_params_fixup,
 		.ops = &msm_mi2s_tx_be_ops,
 	},
 	/* Backend AFE DAI Links */
