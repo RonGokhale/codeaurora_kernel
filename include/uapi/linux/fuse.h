@@ -95,7 +95,7 @@
 #ifndef _LINUX_FUSE_H
 #define _LINUX_FUSE_H
 
-#ifdef __linux__
+#if defined(__KERNEL__) || defined(__linux__)
 #include <linux/types.h>
 #else
 #include <stdint.h>
