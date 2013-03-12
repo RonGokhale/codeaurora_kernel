@@ -852,8 +852,9 @@ static struct msm_bus_scale_pdata usb_bus_scale_pdata = {
 };
 
 static int phy_init_seq[] = {
-	0x68, 0x81, /* update DC voltage level */
-	0x24, 0x82, /* set pre-emphasis and rise/fall time */
+	0x7A, 0x81, /* update DC voltage level */
+	0x30, 0x82, /* set pre-emphasis and rise/fall time */
+	0x33, 0x83,
 	-1
 };
 
@@ -874,6 +875,7 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 
 static struct msm_usb_host_platform_data msm_ehci_host_pdata3 = {
 	.power_budget = 500,
+	.phy_init_seq		= phy_init_seq,
 };
 
 #ifdef CONFIG_USB_EHCI_MSM_HOST4
