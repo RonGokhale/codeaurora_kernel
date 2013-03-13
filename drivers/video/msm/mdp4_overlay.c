@@ -2738,20 +2738,18 @@ static int mdp4_calc_pipe_mdp_bw(struct msm_fb_data_type *mfd,
 
 	quota >>= shift;
 	/* factor 1.15 for ab */
-	pipe->bw_ab_quota = quota * MDP4_BW_AB_FACTOR / 100;
-	/* factor 1.25 for ib */
-	pipe->bw_ib_quota = quota * MDP4_BW_IB_FACTOR / 100;
-	/* down scaling factor for ib */
-	if ((!pipe->dst_h) && (!pipe->src_h) &&
+	quota = quota * MDP4_BW_AB_FACTOR / 100;
+	/* downscaling factor for ab */
+	if ((pipe->dst_h) && (pipe->src_h) &&
 	    (pipe->src_h > pipe->dst_h)) {
-		u64 ib = quota;
-		ib *= pipe->src_h;
-		ib /= pipe->dst_h;
-		pipe->bw_ib_quota = max(ib, pipe->bw_ib_quota);
-		pr_debug("%s: src_h=%d dst_h=%d mdp ib %llu, ib_quota=%llu\n",
-			 __func__, pipe->src_h, pipe->dst_h,
-			 ib<<shift, pipe->bw_ib_quota<<shift);
+		quota = quota * pipe->src_h / pipe->dst_h;
+		pr_info("%s: src_h=%d dst_h=%d mdp ab %llu\n",
+			__func__, pipe->src_h, pipe->dst_h, ((u64)quota << 16));
 	}
+	pipe->bw_ab_quota = quota;
+
+	/* factor 1.5 for ib */
+	pipe->bw_ib_quota = quota * MDP4_BW_IB_FACTOR / 100;
 
 	pipe->bw_ab_quota <<= shift;
 	pipe->bw_ib_quota <<= shift;
@@ -2963,11 +2961,11 @@ int mdp4_overlay_mdp_perf_req(struct msm_fb_data_type *mfd,
 	perf_req->mdp_ab_port0_bw =
 		roundup(ab_quota_port0, MDP_BUS_SCALE_AB_STEP);
 	perf_req->mdp_ib_port0_bw =
-		roundup(ib_quota_port0, MDP_BUS_SCALE_AB_STEP);
+		roundup(ib_quota_total, MDP_BUS_SCALE_AB_STEP);
 	perf_req->mdp_ab_port1_bw =
 		roundup(ab_quota_port1, MDP_BUS_SCALE_AB_STEP);
 	perf_req->mdp_ib_port1_bw =
-		roundup(ib_quota_port1, MDP_BUS_SCALE_AB_STEP);
+		roundup(ib_quota_total, MDP_BUS_SCALE_AB_STEP);
 
 	pr_debug("%s %d: ab_quota_total=(%llu, %llu) ib_quota_total=(%llu, %llu)\n",
 		 __func__, __LINE__,
