@@ -249,6 +249,9 @@
 #define MSM_CAM_IOCTL_INTF_MCTL_MAPPING_CFG \
 	_IOR(MSM_CAM_IOCTL_MAGIC, 71, struct intf_mctl_mapping_cfg *)
 
+#define MSM_CAM_IOCTL_VFE_STATS_VERSION \
+	_IOWR(MSM_CAM_IOCTL_MAGIC, 68, uint32_t *)
+
 struct ioctl_native_cmd {
 	unsigned short mode;
 	unsigned short address;
@@ -2061,6 +2064,8 @@ struct msm_mctl_set_sdev_data {
 #define VIDIOC_MSM_AXI_LOW_POWER_MODE \
 	_IO('V', BASE_VIDIOC_PRIVATE + 26)
 
+#define VIDIOC_MSM_VFE_STATS_VERSION \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 26, uint32_t *)
 
 struct msm_camera_v4l2_ioctl_t {
 	uint32_t id;

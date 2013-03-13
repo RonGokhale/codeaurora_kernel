@@ -5623,6 +5623,9 @@ static long msm_vfe_subdev_ioctl(struct v4l2_subdev *sd,
 	} else if (subdev_cmd == VIDIOC_MSM_VFE_RELEASE) {
 		msm_vfe_subdev_release(sd);
 		return 0;
+	} else if (subdev_cmd == VIDIOC_MSM_VFE_STATS_VERSION) {
+		vfe32_ctrl->ver_num.main = *(uint32_t *)arg;
+		return 0;
 	}
 	vfe_params = (struct msm_camvfe_params *)arg;
 	cmd = vfe_params->vfe_cfg;
