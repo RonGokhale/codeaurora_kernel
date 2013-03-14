@@ -5238,9 +5238,13 @@ void axi_start(struct msm_cam_media_controller *pmctl,
 
 	if (axi_ctrl->share_ctrl->outpath.output_mode &
 			VFE32_OUTPUT_MODE_PRIMARY) {
-		irq_comp_mask |= (
-			0x1 << axi_ctrl->share_ctrl->outpath.out0.ch0 |
-			0x1 << axi_ctrl->share_ctrl->outpath.out0.ch1);
+		if (axi_ctrl->share_ctrl->current_mode == VFE_OUTPUTS_RAW)
+                        irq_comp_mask |= (
+                                0x1 << axi_ctrl->share_ctrl->outpath.out0.ch0);
+                else
+                        irq_comp_mask |= (
+                                0x1 << axi_ctrl->share_ctrl->outpath.out0.ch0 |
+                                0x1 << axi_ctrl->share_ctrl->outpath.out0.ch1);
 	} else if (axi_ctrl->share_ctrl->outpath.output_mode &
 			   VFE32_OUTPUT_MODE_PRIMARY_ALL_CHNLS) {
 		irq_comp_mask |= (
