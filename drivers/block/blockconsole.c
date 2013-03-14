@@ -229,8 +229,8 @@ static void bcon_advance_write_bytes(struct blockconsole *bc, int bytes)
 	bc->write_bytes += bytes;
 	if (bc->write_bytes >= bc->max_bytes) {
 		bc->write_bytes = 0;
-		bcon_init_first_page(bc);
 		bc->round++;
+		bcon_init_first_page(bc);
 	}
 }
 
