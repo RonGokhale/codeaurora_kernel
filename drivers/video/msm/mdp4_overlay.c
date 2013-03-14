@@ -3230,6 +3230,8 @@ int mdp4_overlay_3d_sbys(struct fb_info *info, struct msmfb_overlay_3d *req)
 	} else if (ctrl->panel_mode & MDP4_PANEL_DSI_VIDEO) {
 		mdp4_dsi_video_3d_sbys(mfd, req);
 		ret = 0;
+	} else {
+		ret = 0;
 	}
 	mutex_unlock(&mfd->dma->ov_mutex);
 

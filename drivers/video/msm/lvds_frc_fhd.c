@@ -118,8 +118,10 @@ static ssize_t lvds_frc_fhd_pll_update(struct device *dev,
 }
 
 static DEVICE_ATTR(lvds_pll_update, S_IWOTH, NULL, lvds_frc_fhd_pll_update);
+static DEVICE_ATTR(format_3d, S_IWOTH, NULL, NULL);
 static struct attribute *lvds_frc_fhd_attrs[] = {
 	&dev_attr_lvds_pll_update.attr,
+	&dev_attr_format_3d.attr,
 	NULL,
 };
 
@@ -213,6 +215,7 @@ static int __init lvds_frc_fhd_init(void)
 	pinfo->clk_rate = 74250000;
 	pinfo->bl_max = 255;
 	pinfo->bl_min = 1;
+	pinfo->is_3d_panel = FB_TYPE_3D_PANEL;
 
 	/*
 	 * use hdmi 1080p60 setting, for dual channel mode,
