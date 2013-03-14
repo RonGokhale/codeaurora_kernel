@@ -1391,9 +1391,9 @@ u32 mdp_get_panel_framerate(struct msm_fb_data_type *mfd)
 		else
 			frame_rate = panel_info->lcd.refx100 / 100;
 	} else {
-		if (panel_info->type == MIPI_VIDEO_PANEL) {
+		if (panel_info->type == MIPI_VIDEO_PANEL)
 			frame_rate = panel_info->mipi.frame_rate;
-		} else {
+		else {
 			total_pixel = (panel_info->lcdc.h_back_porch +
 				  panel_info->lcdc.h_front_porch +
 				  panel_info->lcdc.h_pulse_width +
@@ -1407,6 +1407,11 @@ u32 mdp_get_panel_framerate(struct msm_fb_data_type *mfd)
 					total_pixel;
 		}
 	}
+
+	if ((panel_info->type == LVDS_PANEL) &&
+	   (panel_info->lvds.channel_mode == LVDS_DUAL_CHANNEL_MODE))
+		frame_rate = frame_rate * 2;
+
 	if (frame_rate == 0)
 		frame_rate = DEFAULT_FRAME_RATE;
 	return frame_rate;
