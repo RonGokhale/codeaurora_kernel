@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -107,6 +107,13 @@ static int msm_dai_q6_hdmi_hw_params(struct snd_pcm_substream *substream,
 	case 6:
 		channel_allocation  = 0x0B;
 		hdmi_msm_audio_info_setup(1, MSM_HDMI_AUDIO_CHANNEL_6,
+				channel_allocation, level_shift, down_mix);
+		dai_data->port_config.hdmi_multi_ch.channel_allocation =
+				channel_allocation;
+		break;
+	case 8:
+		channel_allocation  = 0x1F;
+		hdmi_msm_audio_info_setup(1, MSM_HDMI_AUDIO_CHANNEL_8,
 				channel_allocation, level_shift, down_mix);
 		dai_data->port_config.hdmi_multi_ch.channel_allocation =
 				channel_allocation;
