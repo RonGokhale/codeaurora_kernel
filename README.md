@@ -50,6 +50,7 @@ list of branches
 - jb_mr1_rb1.17
 - jb_mr1_rb1.18
 - jb_mr1_rb1.19 
+- jb_mr1_rb1.20
 - jb_rel
 - jb_rel_rb3.1
 - jb_rel_rb4_2.1 
