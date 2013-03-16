@@ -42,6 +42,7 @@ list of branches
 - jb_2.3.2
 - jb_2.5.3
 - jb_2.5.3_rb1.1
+- jb_2.5.4
 - jb_2.5_release
 - jb_mr1_rb1.11
 - jb_mr1_rb1.12
