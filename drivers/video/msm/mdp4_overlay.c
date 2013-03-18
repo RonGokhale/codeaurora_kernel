@@ -2008,6 +2008,7 @@ void mdp4_mixer_blend_setup(int mixer)
 			d_alpha = 0;
 			continue;
 		}
+		alpha_drop = 0;
 		/* alpha channel is lost on VG pipe when using QSEED or M/N */
 		if (s_pipe->pipe_type == OVERLAY_TYPE_VIDEO &&
 			((s_pipe->op_mode & MDP4_OP_SCALEY_EN) ||
