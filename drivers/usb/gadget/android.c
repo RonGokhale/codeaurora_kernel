@@ -1448,6 +1448,7 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 	struct usb_composite_dev *cdev = dev->cdev;
 	struct android_usb_function *f;
 	int enabled = 0;
+	static DEFINE_RATELIMIT_STATE(rl, 10*HZ, 1);
 
 	if (!cdev)
 		return -ENODEV;
@@ -1479,7 +1480,7 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 				f->disable(f);
 		}
 		dev->enabled = false;
-	} else {
+	} else if (__ratelimit(&rl)) {
 		pr_err("android_usb: already %s\n",
 				dev->enabled ? "enabled" : "disabled");
 	}
