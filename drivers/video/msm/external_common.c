@@ -1498,7 +1498,6 @@ static void add_supported_video_format(
 			DEV_DBG("%s: Default resolution %d [%s] supported\n",
 					__func__, video_format,
 					video_format_2string(video_format));
-			external_common_state->default_res_supported = true;
 		}
 	}
 }
@@ -1935,7 +1934,6 @@ int hdmi_common_read_edid(void)
 	memset(&external_common_state->disp_mode_list, 0,
 		sizeof(external_common_state->disp_mode_list));
 	memset(edid_buf, 0, sizeof(edid_buf));
-	external_common_state->default_res_supported = false;
 	memset(external_common_state->audio_data_block, 0,
 		sizeof(external_common_state->audio_data_block));
 	memset(external_common_state->spkr_alloc_data_block, 0,
@@ -2045,7 +2043,6 @@ int hdmi_common_read_edid(void)
 
 error:
 	external_common_state->hdmi_sink = TRUE;
-	external_common_state->default_res_supported = TRUE;
 	external_common_state->disp_mode_list.num_of_elements = 1;
 	external_common_state->disp_mode_list.disp_mode_list[0] =
 		external_common_state->video_resolution;
