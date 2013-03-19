@@ -17,6 +17,7 @@ i915-y := i915_drv.o i915_dma.o i915_irq.o \
 	  i915_sysfs.o \
 	  i915_trace_points.o \
 	  i915_ums.o \
+	  intel_adaptive_backlight.o \
 	  intel_display.o \
 	  intel_crt.o \
 	  intel_lvds.o \
