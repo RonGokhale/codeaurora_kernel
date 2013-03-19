@@ -13,12 +13,15 @@
  */
 
 #include <linux/delay.h>
+#include <linux/err.h>
 #include <linux/gpio.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/of_gpio.h>
+#include <linux/regulator/consumer.h>
 #include <linux/platform_data/slimport_device.h>
 #include <linux/slab.h>
 #include <linux/types.h>
@@ -94,14 +97,14 @@ int sp_write_reg(uint8_t slave_addr, uint8_t offset, uint8_t value)
 
 void sp_tx_hardware_poweron(void)
 {
-	struct anx7808_platform_data *pdata =
-		anx7808_client->dev.platform_data;
+	struct anx7808_platform_data *pdata;
+	pdata = anx7808_client->dev.platform_data;
 
 	gpio_set_value(pdata->gpio_reset, 0);
 	msleep(1);
 	gpio_set_value(pdata->gpio_p_dwn, 0);
 	msleep(2);
-	gpio_set_value(pdata->gpio_v10_ctrl, 1);
+	regulator_enable(pdata->vdd_mydp);
 	msleep(20);
 	gpio_set_value(pdata->gpio_reset, 1);
 
@@ -115,7 +118,7 @@ void sp_tx_hardware_powerdown(void)
 
 	gpio_set_value(pdata->gpio_reset, 0);
 	msleep(1);
-	gpio_set_value(pdata->gpio_v10_ctrl, 0);
+	regulator_disable(pdata->vdd_mydp);
 	msleep(5);
 	gpio_set_value(pdata->gpio_p_dwn, 1);
 	msleep(1);
@@ -309,12 +312,12 @@ static void anx7808_chip_initial(void)
 
 static void anx7808_free_gpio(struct anx7808_data *anx7808)
 {
-	gpio_free(anx7808->pdata->gpio_v10_ctrl);
 	gpio_free(anx7808->pdata->gpio_cbl_det);
 	gpio_free(anx7808->pdata->gpio_int);
 	gpio_free(anx7808->pdata->gpio_reset);
 	gpio_free(anx7808->pdata->gpio_p_dwn);
 }
+
 static int anx7808_init_gpio(struct anx7808_data *anx7808)
 {
 	int ret = 0;
@@ -353,21 +356,10 @@ static int anx7808_init_gpio(struct anx7808_data *anx7808)
 	}
 	gpio_direction_input(anx7808->pdata->gpio_cbl_det);
 
-	ret = gpio_request(anx7808->pdata->gpio_v10_ctrl, "anx7808_v10_ctrl");
-	if (ret) {
-		DEV_ERR("%s : failed to request gpio %d\n", __func__,
-				anx7808->pdata->gpio_v10_ctrl);
-		goto err4;
-	}
-	gpio_direction_output(anx7808->pdata->gpio_v10_ctrl, 0);
-
-	gpio_set_value(anx7808->pdata->gpio_v10_ctrl, 0);
 	gpio_set_value(anx7808->pdata->gpio_reset, 0);
 	gpio_set_value(anx7808->pdata->gpio_p_dwn, 1);
 	goto out;
 
-err4:
-	gpio_free(anx7808->pdata->gpio_v10_ctrl);
 err3:
 	gpio_free(anx7808->pdata->gpio_cbl_det);
 err2:
@@ -428,7 +420,6 @@ static void anx7808_work_func(struct work_struct *work)
 static int anx7808_i2c_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
-
 	struct anx7808_data *anx7808;
 	int ret = 0;
 	int i;
@@ -522,6 +513,64 @@ exit:
 	return ret;
 }
 
+static int anx7808_dt_probe(struct i2c_client *client,
+			const struct i2c_device_id *id)
+{
+	int ret = 0;
+	struct anx7808_platform_data *pdata;
+	struct device_node *node = client->dev.of_node;
+
+	pdata = kzalloc(sizeof(struct anx7808_platform_data), GFP_KERNEL);
+	if (pdata == NULL) {
+		DEV_ERR("%s: Failed to allocate platform_data.\n", __func__);
+		return -ENOMEM;
+	}
+	client->dev.platform_data = pdata;
+
+	i2c_new_dummy(client->adapter, 0x39);
+	i2c_new_dummy(client->adapter, 0x3d);
+	i2c_new_dummy(client->adapter, 0x3f);
+	i2c_new_dummy(client->adapter, 0x40);
+
+	pdata->vdd_mydp = regulator_get(&client->dev, "vdd_mydp");
+	if (IS_ERR(pdata->vdd_mydp)) {
+		DEV_ERR("no regulator vdd_mydp found.\n");
+		pdata->vdd_mydp = NULL;
+		ret = -EINVAL;
+	}
+
+	pdata->gpio_p_dwn = of_get_named_gpio(node, "pd-gpio", 0);
+	pdata->gpio_int = of_get_named_gpio(node, "intp-gpio", 0);
+	pdata->gpio_reset = of_get_named_gpio(node, "reset-gpio", 0);
+	pdata->gpio_cbl_det = of_get_named_gpio(node, "cable-det-gpio", 0);
+
+	if (pdata->vdd_mydp == 0) {
+		ret = -EINVAL;
+		DEV_ERR("%s: Failed to locate vdd_mydp.", __func__);
+	}
+	if (pdata->gpio_p_dwn == 0) {
+		ret = -EINVAL;
+		DEV_ERR("%s: Failed to locate pd-gpio.", __func__);
+	}
+	if (pdata->gpio_int == 0) {
+		ret = -EINVAL;
+		DEV_ERR("%s: Failed to locate intp-gpio.", __func__);
+	}
+	if (pdata->gpio_reset == 0) {
+		ret = -EINVAL;
+		DEV_ERR("%s: Failed to locate reset-gpio.", __func__);
+	}
+	if (pdata->gpio_cbl_det == 0) {
+		ret = -EINVAL;
+		DEV_ERR("%s: Failed to locate cable-det-gpio.", __func__);
+	}
+
+	if (ret != 0)
+		return ret;
+
+	return anx7808_i2c_probe(client, id);
+}
+
 static int anx7808_i2c_remove(struct i2c_client *client)
 {
 	struct anx7808_data *anx7808 = i2c_get_clientdata(client);
@@ -547,30 +596,12 @@ static struct i2c_driver anx7808_driver = {
 		.name = "anx7808",
 		.owner = THIS_MODULE,
 	},
-	.probe = anx7808_i2c_probe,
+	.probe = anx7808_dt_probe,
 	.remove = anx7808_i2c_remove,
 	.id_table = anx7808_id,
 };
 
-static int __init anx7808_init(void)
-{
-	int ret = 0;
-
-	ret = i2c_add_driver(&anx7808_driver);
-	if (ret < 0)
-		DEV_ERR("%s: failed to register anx7808 i2c drivern",
-			__func__);
-	return ret;
-}
-
-static void __exit anx7808_exit(void)
-{
-	i2c_del_driver(&anx7808_driver);
-}
-
-module_init(anx7808_init);
-module_exit(anx7808_exit);
-
+module_i2c_driver(anx7808_driver);
 
 MODULE_DESCRIPTION("Slimport  transmitter ANX7808 driver");
 MODULE_AUTHOR("FeiWang <fwang@analogixsemi.com>");

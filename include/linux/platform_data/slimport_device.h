@@ -21,6 +21,7 @@ struct anx7808_platform_data {
 	int gpio_int;
 	int gpio_cbl_det;
 	int gpio_v10_ctrl;
+	struct regulator *vdd_mydp;
 };
 
 #endif /* SLIMPORT_DEVICE */
