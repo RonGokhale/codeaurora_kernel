@@ -34,6 +34,7 @@
 #include "drmP.h"
 #include "drm_edid.h"
 #include "drm_edid_modes.h"
+#include "bridge/slimport.h"
 
 #define version_greater(edid, maj, min) \
 	(((edid)->version > (maj)) || \
@@ -42,7 +43,7 @@
 #define EDID_EST_TIMINGS 16
 #define EDID_STD_TIMINGS 8
 #define EDID_DETAILED_TIMINGS 4
-#define CACHE_EDID
+#define SLIMPORT_EDID
 
 /*
  * EDID blocks out in the wild have a variety of bugs, try to collect
@@ -241,11 +242,6 @@ bool drm_edid_is_valid(struct edid *edid)
 }
 EXPORT_SYMBOL(drm_edid_is_valid);
 
-#ifdef CACHE_EDID
-static unsigned char cache_good[0x2];
-static unsigned char cached_edid[0x100];
-#endif
-
 #define DDC_SEGMENT_ADDR 0x30
 /**
  * Get EDID information via I2C.
@@ -266,12 +262,8 @@ drm_do_probe_ddc_edid(struct i2c_adapter *adapter, unsigned char *buf,
 	unsigned char xfers = segment ? 3 : 2;
 	int ret, retries = 5;
 
-	#ifdef CACHE_EDID
-	if (cache_good[block]) {
-		memcpy(buf, &cached_edid[block * 0x80], len);
-		DRM_DEBUG_KMS("Returning cached EDID.\n");
-		return 0;
-	}
+	#ifdef SLIMPORT_EDID
+	return slimport_read_edid_block(block, buf, len);
 	#endif
 
 	/* The core i2c driver will automatically retry the transfer if the
@@ -312,13 +304,6 @@ drm_do_probe_ddc_edid(struct i2c_adapter *adapter, unsigned char *buf,
 			break;
 		}
 	} while (ret != xfers && --retries);
-
-	#ifdef CACHE_EDID
-	if (len == 0x80) {
-		memcpy(&cached_edid[block * 0x80], buf, len);
-		cache_good[block] = 1;
-	}
-	#endif
 
 	return ret == xfers ? 0 : -1;
 }

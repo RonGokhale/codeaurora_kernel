@@ -198,17 +198,18 @@ static void slimport_edid_proc(void)
 
 	if (bedid_break)
 		DEV_ERR("%s: EDID corruption!\n", __func__);
+
 	hdmi_rx_set_hpd(1);
 	hdmi_rx_set_termination(1);
 	sp_tx_set_sys_state(STATE_CONFIG_HDMI);
 }
 
-int slimport_read_edid_block(int block, uint8_t *edid_buf)
+int slimport_read_edid_block(int block, uint8_t *edid_buf, size_t len)
 {
 	if (block == 0) {
-		memcpy(edid_buf, bedid_firstblock, sizeof(bedid_firstblock));
+		memcpy(edid_buf, bedid_firstblock, len);
 	} else if (block == 1) {
-		memcpy(edid_buf, bedid_extblock, sizeof(bedid_extblock));
+		memcpy(edid_buf, bedid_extblock, len);
 	} else {
 		pr_err("%s: block number %d is invalid\n", __func__, block);
 		return -EINVAL;
@@ -479,12 +480,14 @@ static int anx7808_i2c_probe(struct i2c_client *client,
 		goto err3;
 	}
 
+	#if 0
 	ret = enable_irq_wake(anx7808->cab_irq);
 	if (ret < 0) {
 		DEV_ERR("%s : Enable irq for cable detect", __func__);
 		DEV_ERR("interrupt wake enable fail\n");
 		goto err3;
 	}
+	#endif
 
 	for (i = 0; i < ARRAY_SIZE(slimport_device_attrs); i++) {
 		ret = device_create_file(

@@ -443,9 +443,11 @@ static int daisy_resume_post(struct snd_soc_card *card)
 
 static int daisy_hdmi_jack_report(int plugged)
 {
+	#if 0
 	snd_soc_jack_report(&daisy_hdmi_jack,
 			    plugged ? SND_JACK_AVOUT : 0,
 			    SND_JACK_AVOUT);
+	#endif
 	return 0;
 }
 
