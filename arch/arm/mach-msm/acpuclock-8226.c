@@ -58,8 +58,9 @@ static struct clkctl_acpu_speed acpu_freq_tbl[] = {
 	{ 1,  384000, ACPUPLL, 5, 0,   1150000,   1150000, 4 },
 	{ 1,  600000, PLL0,    4, 0,   1150000,   1150000, 6 },
 	{ 1,  787200, ACPUPLL, 5, 0,   1150000,   1150000, 7 },
-	{ 0,  998400, ACPUPLL, 5, 0,   1150000,   1150000, 7 },
-	{ 0, 1190400, ACPUPLL, 5, 0,   1150000,   1150000, 7 },
+	{ 1,  998400, ACPUPLL, 5, 0,   1250000,   1150000, 7 },
+	{ 1, 1094400, ACPUPLL, 5, 0,   1250000,   1150000, 7 },
+	{ 0, 1190400, ACPUPLL, 5, 0,   1250000,   1150000, 7 },
 	{ 0 }
 };
 
@@ -68,7 +69,7 @@ static struct acpuclk_drv_data drv_data = {
 	.current_speed = &(struct clkctl_acpu_speed){ 0 },
 	.bus_scale = &bus_client_pdata,
 	/* FIXME regulator doesn't support corners yet */
-	.vdd_max_cpu = 1150000,
+	.vdd_max_cpu = 1275000,
 	.vdd_max_mem = 1150000,
 	.src_clocks = {
 		[PLL0].name = "gpll0",
