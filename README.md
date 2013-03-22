@@ -4,13 +4,22 @@ codeaurora_kernel clone on github
 list of branches 
 =================
 
+- aosp/android-msm-2.6.25
 - banana.cupcake
+- android-msm-2.6.27
+- aosp/android-msm-2.6.27
 - donut_glazed
 - donut_frosted
 - donut_cream
+- aosp/android-msm-2.6.29-donut
+- android-msm-2.6.29-donut
+- android-msm-2.6.29
+- aosp/android-msm-2.6.29
+- android-msm-2.6.29b
 - eclair_rum
 - eclair_frosted
 - eclair_coffee
+- msm-2.6.31.5
 - aosp/android-msm-2.6.32-nexusonec
 - froyo
 - froyo_almond
@@ -21,6 +30,7 @@ list of branches
 - android-msm-2.6.35-froyo
 - android-msm-2.6.35
 - aosp/android-msm-2.6.35 
+- aosp-new/android-msm-2.6.35
 - aosp-kernel-common/android-2.6.36
 - gingerbread_chocolate
 - msm-2.6.38
