@@ -539,6 +539,7 @@ struct msmfb_mdp_pp {
 enum {
 	metadata_op_none,
 	metadata_op_base_blend,
+	metadata_op_panel_tune,
 	metadata_op_max
 };
 
@@ -546,11 +547,16 @@ struct mdp_blend_cfg {
 	uint32_t is_premultiplied;
 };
 
+struct panel_param_cfg {
+	int32_t h_back_porch;
+};
+
 struct msmfb_metadata {
 	uint32_t op;
 	uint32_t flags;
 	union {
 		struct mdp_blend_cfg blend_cfg;
+		struct panel_param_cfg panel_cfg;
 	} data;
 };
 struct mdp_page_protection {
