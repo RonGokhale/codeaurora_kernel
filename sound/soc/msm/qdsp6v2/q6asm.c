@@ -342,6 +342,7 @@ static void q6asm_session_free(struct audio_client *ac)
 	mutex_unlock(&session_lock);
 	ac->session = 0;
 	ac->perf_mode = 0;
+	ac->fptr_cache_ops = NULL;
 	return;
 }
 
@@ -621,6 +622,7 @@ struct audio_client *q6asm_audio_client_alloc(app_cb cb, void *priv)
 	ac->priv = priv;
 	ac->io_mode = SYNC_IO_MODE;
 	ac->perf_mode = false;
+	ac->fptr_cache_ops = NULL;
 	ac->apr = apr_register("ADSP", "ASM", \
 				(apr_fn)q6asm_callback,\
 				((ac->session) << 8 | 0x0001),\
@@ -746,6 +748,9 @@ int q6asm_audio_client_buf_alloc(unsigned int dir,
 		}
 		ac->port[dir].max_buf_cnt = cnt;
 
+		if(0) //msm_audio_ion_is_smmu_available())
+			ac->fptr_cache_ops = msm_audio_ion_cache_operations;
+
 		mutex_unlock(&ac->cmd_lock);
 		rc = q6asm_memory_map_regions(ac, dir, bufsz, cnt, 0);
 		if (rc < 0) {
@@ -805,6 +810,9 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 		goto fail;
 	}
 
+	if(0) //msm_audio_ion_is_smmu_available())
+		ac->fptr_cache_ops = msm_audio_ion_cache_operations;
+		
 	buf[0].used = dir ^ 1;
 	buf[0].size = bufsz;
 	buf[0].actual_size = bufsz;
@@ -1124,8 +1132,16 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 	case ASM_DATA_EVENT_READ_DONE_V2:{
 
 		struct audio_port_data *port = &ac->port[OUT];
+		struct audio_buffer *ab;
+		int dsp_buf;
 
 		config_debug_fs_read_cb();
+
+		dsp_buf = port->dsp_buf;
+		ab = &port->buf[dsp_buf];
+
+		if (ac->fptr_cache_ops)
+			ac->fptr_cache_ops(ab, ION_IOC_INV_CACHES);
 
 		pr_debug("%s:R-D: status=%d buff_add=%x act_size=%d offset=%d\n",
 				__func__, payload[READDONE_IDX_STATUS],
@@ -3210,6 +3226,10 @@ int q6asm_read(struct audio_client *ac)
 		read.seq_id = port->dsp_buf;
 		read.hdr.token = port->dsp_buf;
 		port->dsp_buf = (port->dsp_buf + 1) & (port->max_buf_cnt - 1);
+
+		if (ac->fptr_cache_ops)
+			ac->fptr_cache_ops(ab, ION_IOC_INV_CACHES);
+
 		mutex_unlock(&port->lock);
 		pr_debug("%s:buf add[0x%x] token[%d] uid[%d]\n", __func__,
 						read.buf_addr_lsw,
@@ -3273,6 +3293,10 @@ int q6asm_read_nolock(struct audio_client *ac)
 		}
 
 		port->dsp_buf = (port->dsp_buf + 1) & (port->max_buf_cnt - 1);
+
+		if (ac->fptr_cache_ops)
+			ac->fptr_cache_ops(ab, ION_IOC_INV_CACHES);
+		
 		pr_debug("%s:buf add[0x%x] token[%d] uid[%d]\n", __func__,
 					read.buf_addr_lsw,
 					read.hdr.token,
@@ -3341,6 +3365,9 @@ int q6asm_async_write(struct audio_client *ac,
 	else
 		write.flags = (0x80000000 | param->flags);
 
+	if (ac->fptr_cache_ops)
+		ac->fptr_cache_ops(ab, ION_IOC_CLEAN_CACHES);
+
 	write.seq_id = param->uid;
 	list_for_each_safe(ptr, next, &ac->port[IN].mem_map_handle) {
 		buf_node = list_entry(ptr, struct asm_buffer_node,
@@ -3371,6 +3398,9 @@ int q6asm_async_read(struct audio_client *ac,
 	struct list_head *ptr, *next;
 	u32 lbuf_addr_lsw;
 	u32 liomode;
+	struct audio_port_data *port;
+	struct audio_buffer *ab;
+	int dsp_buf;
 
 	if (!ac || ac->apr == NULL) {
 		pr_err("%s: APR handle NULL\n", __func__);
@@ -3391,6 +3421,13 @@ int q6asm_async_read(struct audio_client *ac,
 		lbuf_addr_lsw = (read.buf_addr_lsw - 32);
 	else
 		lbuf_addr_lsw = read.buf_addr_lsw;
+
+	port = &ac->port[OUT];
+	dsp_buf = port->dsp_buf;
+	ab = &port->buf[dsp_buf];
+
+	if (ac->fptr_cache_ops)
+		ac->fptr_cache_ops(ab, ION_IOC_INV_CACHES);
 
 	list_for_each_safe(ptr, next, &ac->port[IN].mem_map_handle) {
 		buf_node = list_entry(ptr, struct asm_buffer_node, list);
@@ -3454,6 +3491,9 @@ int q6asm_write(struct audio_client *ac, uint32_t len, uint32_t msw_ts,
 						struct asm_buffer_node,
 						list);
 		write.mem_map_handle = buf_node->mmap_hdl;
+
+		if (ac->fptr_cache_ops)
+			ac->fptr_cache_ops(ab, ION_IOC_CLEAN_CACHES);
 
 		pr_debug("%s:ab->phys[0x%x]bufadd[0x%x] token[0x%x]buf_id[0x%x]buf_size[0x%x]mmaphdl[0x%x]"
 						, __func__,
@@ -3521,6 +3561,9 @@ int q6asm_write_nolock(struct audio_client *ac, uint32_t len, uint32_t msw_ts,
 		else
 			write.flags = (0x80000000 | flags);
 		port->dsp_buf = (port->dsp_buf + 1) & (port->max_buf_cnt - 1);
+
+		if (ac->fptr_cache_ops)
+			ac->fptr_cache_ops(ab, ION_IOC_CLEAN_CACHES);
 
 		pr_debug("%s:ab->phys[0x%x]bufadd[0x%x]token[0x%x] buf_id[0x%x]buf_size[0x%x]mmaphdl[0x%x]"
 							, __func__,

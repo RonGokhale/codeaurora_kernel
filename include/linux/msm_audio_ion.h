@@ -14,6 +14,7 @@
 #ifndef _LINUX_MSM_AUDIO_ION_H
 #define _LINUX_MSM_AUDIO_ION_H
 
+#include <sound/q6asm-v2.h>
 #include <linux/msm_ion.h>
 
 
@@ -29,6 +30,7 @@ int msm_audio_ion_free(struct ion_client *client, struct ion_handle *handle);
 
 
 bool msm_audio_ion_is_smmu_available(void);
+int msm_audio_ion_cache_operations(struct audio_buffer *abuff, int cache_op);
 
 #ifdef CONFIG_SND_SOC_QDSP6V2
 struct ion_client *msm_audio_ion_client_create(unsigned int heap_mask,
