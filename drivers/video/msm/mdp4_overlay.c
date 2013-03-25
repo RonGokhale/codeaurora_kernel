@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2872,8 +2872,9 @@ void mdp4_overlay_mdp_perf_upd(struct msm_fb_data_type *mfd,
 				perf_req->mdp_bw);
 			perf_cur->mdp_bw = perf_req->mdp_bw;
 		}
-		if (mfd->panel_info.pdest == DISPLAY_1 &&
-		    perf_req->use_ov0_blt && !perf_cur->use_ov0_blt) {
+		if ((mfd->panel_info.pdest == DISPLAY_1 &&
+		     perf_req->use_ov0_blt && !perf_cur->use_ov0_blt) ||
+		    dbg_force_ov0_blt) {
 			if (mfd->panel_info.type == LCDC_PANEL ||
 			    mfd->panel_info.type == LVDS_PANEL)
 				mdp4_lcdc_overlay_blt_start(mfd);
@@ -2881,17 +2882,18 @@ void mdp4_overlay_mdp_perf_upd(struct msm_fb_data_type *mfd,
 				mdp4_dsi_video_blt_start(mfd);
 			else if (ctrl->panel_mode & MDP4_PANEL_DSI_CMD)
 				mdp4_dsi_cmd_blt_start(mfd);
-			pr_info("%s mixer0 start blt [%d] from %d to %d.\n",
+			pr_debug("%s mixer0 start blt [%d] from %d to %d.\n",
 				__func__,
 				flag,
 				perf_cur->use_ov0_blt,
 				perf_req->use_ov0_blt);
 			perf_cur->use_ov0_blt = perf_req->use_ov0_blt;
 		}
-		if (mfd->panel_info.pdest == DISPLAY_2 &&
-		    perf_req->use_ov1_blt && !perf_cur->use_ov1_blt) {
+		if ((mfd->panel_info.pdest == DISPLAY_2 &&
+		     perf_req->use_ov1_blt && !perf_cur->use_ov1_blt) ||
+		    dbg_force_ov1_blt) {
 			mdp4_dtv_overlay_blt_start(mfd);
-			pr_info("%s mixer1 start blt [%d] from %d to %d.\n",
+			pr_debug("%s mixer1 start blt [%d] from %d to %d.\n",
 				__func__,
 				flag,
 				perf_cur->use_ov1_blt,
@@ -2920,8 +2922,9 @@ void mdp4_overlay_mdp_perf_upd(struct msm_fb_data_type *mfd,
 				 perf_req->mdp_bw);
 			perf_cur->mdp_bw = perf_req->mdp_bw;
 		}
-		if (mfd->panel_info.pdest == DISPLAY_1 &&
-		    !perf_req->use_ov0_blt && perf_cur->use_ov0_blt) {
+		if ((mfd->panel_info.pdest == DISPLAY_1 &&
+		     !perf_req->use_ov0_blt && perf_cur->use_ov0_blt) ||
+		    dbg_force_ov0_blt) {
 			if (mfd->panel_info.type == LCDC_PANEL ||
 			    mfd->panel_info.type == LVDS_PANEL)
 				mdp4_lcdc_overlay_blt_stop(mfd);
@@ -2929,17 +2932,18 @@ void mdp4_overlay_mdp_perf_upd(struct msm_fb_data_type *mfd,
 				mdp4_dsi_video_blt_stop(mfd);
 			else if (ctrl->panel_mode & MDP4_PANEL_DSI_CMD)
 				mdp4_dsi_cmd_blt_stop(mfd);
-			pr_info("%s mixer0 stop blt [%d] from %d to %d.\n",
+			pr_debug("%s mixer0 stop blt [%d] from %d to %d.\n",
 				__func__,
 				flag,
 				perf_cur->use_ov0_blt,
 				perf_req->use_ov0_blt);
 			perf_cur->use_ov0_blt = perf_req->use_ov0_blt;
 		}
-		if (mfd->panel_info.pdest == DISPLAY_2 &&
-		    !perf_req->use_ov1_blt && perf_cur->use_ov1_blt) {
+		if ((mfd->panel_info.pdest == DISPLAY_2 &&
+		     !perf_req->use_ov1_blt && perf_cur->use_ov1_blt) ||
+		    dbg_force_ov1_blt) {
 			mdp4_dtv_overlay_blt_stop(mfd);
-			pr_info("%s mixer1 stop blt [%d] from %d to %d.\n",
+			pr_debug("%s mixer1 stop blt [%d] from %d to %d.\n",
 				__func__,
 				flag,
 				perf_cur->use_ov1_blt,
