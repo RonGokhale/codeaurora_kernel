@@ -1,6 +1,6 @@
 /* ehci-msm2.c - HSUSB Host Controller Driver Implementation
  *
- * Copyright (c) 2008-2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
  *
  * Partly derived from ehci-fsl.c and ehci-hcd.c
  * Copyright (c) 2000-2004 by David Brownell
@@ -28,6 +28,7 @@
 #include <linux/wakelock.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
+#include <linux/irq.h>
 
 #include <linux/usb/ulpi.h>
 #include <linux/usb/msm_hsusb_hw.h>
@@ -35,6 +36,7 @@
 #include <mach/clk.h>
 #include <mach/msm_xo.h>
 #include <mach/msm_iomap.h>
+#include <mach/mpm.h>
 
 #define MSM_USB_BASE (hcd->regs)
 
@@ -595,10 +597,13 @@ static void msm_ehci_phy_susp_fail_work(struct work_struct *w)
 #ifdef CONFIG_PM_SLEEP
 static int msm_ehci_suspend(struct msm_hcd *mhcd)
 {
+	struct msm_usb_host_platform_data *pdata;
 	struct usb_hcd *hcd = mhcd_to_hcd(mhcd);
 	unsigned long timeout;
 	int ret;
 	u32 portsc;
+
+	pdata = mhcd->dev->platform_data;
 
 	if (atomic_read(&mhcd->in_lpm)) {
 		dev_dbg(mhcd->dev, "%s called in lpm\n", __func__);
@@ -653,7 +658,13 @@ static int msm_ehci_suspend(struct msm_hcd *mhcd)
 		dev_err(mhcd->dev, "%s failed to devote for "
 			"TCXO D0 buffer%d\n", __func__, ret);
 
-	msm_ehci_config_vddcx(mhcd, 0);
+	if (pdata->mpm_xo_wakeup_int) {
+		msm_mpm_set_pin_type(pdata->mpm_xo_wakeup_int,
+						IRQ_TYPE_LEVEL_HIGH);
+		msm_mpm_set_pin_wake(pdata->mpm_xo_wakeup_int, 1);
+	} else {
+		msm_ehci_config_vddcx(mhcd, 0);
+	}
 
 	atomic_set(&mhcd->in_lpm, 1);
 	enable_irq(hcd->irq);
@@ -671,10 +682,13 @@ static int msm_ehci_suspend(struct msm_hcd *mhcd)
 
 static int msm_ehci_resume(struct msm_hcd *mhcd)
 {
+	struct msm_usb_host_platform_data *pdata;
 	struct usb_hcd *hcd = mhcd_to_hcd(mhcd);
 	unsigned long timeout;
 	unsigned temp;
 	int ret;
+
+	pdata = mhcd->dev->platform_data;
 
 	if (!atomic_read(&mhcd->in_lpm)) {
 		dev_dbg(mhcd->dev, "%s called in !in_lpm\n", __func__);
@@ -697,7 +711,10 @@ static int msm_ehci_resume(struct msm_hcd *mhcd)
 	clk_prepare_enable(mhcd->core_clk);
 	clk_prepare_enable(mhcd->iface_clk);
 
-	msm_ehci_config_vddcx(mhcd, 1);
+	if (pdata->mpm_xo_wakeup_int)
+		msm_mpm_set_pin_wake(pdata->mpm_xo_wakeup_int, 0);
+	else
+		msm_ehci_config_vddcx(mhcd, 1);
 
 	temp = readl_relaxed(USB_USBCMD);
 	temp &= ~ASYNC_INTR_CTRL;
@@ -1064,6 +1081,10 @@ static int __devinit ehci_msm2_probe(struct platform_device *pdev)
 			mhcd->pmic_gpio_dp_irq = 0;
 		}
 	}
+
+	if (pdata->mpm_xo_wakeup_int)
+		msm_mpm_enable_pin(pdata->mpm_xo_wakeup_int, 1);
+
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 
