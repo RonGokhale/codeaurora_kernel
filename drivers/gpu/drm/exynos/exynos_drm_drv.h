@@ -17,6 +17,10 @@
 
 #include <linux/module.h>
 
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+#include <linux/kds.h>
+#endif
+
 #define MAX_CRTC	3
 #define MAX_PLANE	5
 #define MAX_FB_BUFFER	4
@@ -249,6 +253,10 @@ struct exynos_drm_private {
 	struct drm_crtc *crtc[MAX_CRTC];
 	struct drm_property *plane_zpos_property;
 	struct drm_property *crtc_mode_property;
+
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	struct kds_callback kds_cb;
+#endif
 
 	unsigned long da_start;
 	unsigned long da_space_size;

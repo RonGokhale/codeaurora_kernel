@@ -16,6 +16,10 @@
 
 #include <drm/exynos_drm.h>
 
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+#include <linux/kds.h>
+#endif
+
 #include "exynos_drm_drv.h"
 #include "exynos_drm_crtc.h"
 #include "exynos_drm_encoder.h"
@@ -40,6 +44,12 @@
 /* platform device pointer for eynos drm device. */
 static struct platform_device *exynos_drm_pdev;
 
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+void exynos_drm_kds_callback(void *callback_parameter,
+			     void *callback_extra_parameter);
+#endif
+
+
 static int exynos_drm_load(struct drm_device *dev, unsigned long flags)
 {
 	struct exynos_drm_private *private;
@@ -55,6 +65,15 @@ static int exynos_drm_load(struct drm_device *dev, unsigned long flags)
 	}
 
 	dev->dev_private = (void *)private;
+
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	if (kds_callback_init(&private->kds_cb, 1,
+			      exynos_drm_kds_callback) < 0) {
+		DRM_ERROR("kds alloc queue failed.\n");
+		ret = -ENOMEM;
+		goto err_kds;
+	}
+#endif
 
 	/*
 	 * create mapping to manage iommu table and set a pointer to iommu
@@ -132,6 +151,10 @@ err_release_iommu_mapping:
 	drm_release_iommu_mapping(dev);
 err_crtc:
 	drm_mode_config_cleanup(dev);
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	kds_callback_term(&private->kds_cb);
+err_kds:
+#endif
 	kfree(private);
 
 	return ret;
@@ -139,6 +162,8 @@ err_crtc:
 
 static int exynos_drm_unload(struct drm_device *dev)
 {
+	struct exynos_drm_private *private = dev->dev_private;
+
 	DRM_DEBUG_DRIVER("%s\n", __FILE__);
 
 	exynos_drm_fbdev_fini(dev);
@@ -147,8 +172,12 @@ static int exynos_drm_unload(struct drm_device *dev)
 	drm_kms_helper_poll_fini(dev);
 	drm_mode_config_cleanup(dev);
 
+#ifdef CONFIG_DMA_SHARED_BUFFER_USES_KDS
+	kds_callback_term(&private->kds_cb);
+#endif
+
 	drm_release_iommu_mapping(dev);
-	kfree(dev->dev_private);
+	kfree(private);
 
 	dev->dev_private = NULL;
 
