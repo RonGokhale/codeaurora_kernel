@@ -174,7 +174,8 @@ static void res_trk_pmem_free(struct ddl_buf_addr *addr)
 			free_contiguous_memory_by_paddr(
 			(unsigned long)addr->alloced_phys_addr);
 	}
-	memset(addr, 0 , sizeof(struct ddl_buf_addr));
+	if (addr)
+		memset(addr, 0 , sizeof(struct ddl_buf_addr));
 }
 static int res_trk_pmem_alloc
 	(struct ddl_buf_addr *addr, size_t sz, u32 alignment)
