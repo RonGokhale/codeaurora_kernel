@@ -995,6 +995,8 @@ int mdp4_overlay_mdp_perf_req(struct msm_fb_data_type *mfd,
 void mdp4_overlay_mdp_perf_upd(struct msm_fb_data_type *mfd, int flag);
 int mdp4_update_base_blend(struct msm_fb_data_type *mfd,
 				struct mdp_blend_cfg *mdp_blend_cfg);
+int mdp4_update_panel_tune(struct msm_fb_data_type *mfd,
+				struct panel_param_cfg *panel_param_cfg);
 u32 mdp4_get_mixer_num(u32 panel_type);
 int mdp4_pcc_write_cfg(struct mdp_pcc_cfg_data *cfg);
 
