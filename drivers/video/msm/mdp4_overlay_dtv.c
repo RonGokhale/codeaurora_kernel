@@ -82,6 +82,7 @@ static struct vsycn_ctrl {
 	uint32 *avtimer;
 	int vg1fd;
 	int vg2fd;
+	int vsync_count;
 	unsigned long long avtimer_tick;
 	struct msm_fb_data_type *mfd;
 } vsync_ctrl_db[MAX_CONTROLLER];
@@ -382,6 +383,7 @@ ssize_t mdp4_dtv_show_event(struct device *dev,
 	unsigned long flags;
 	char ch = '\0';
 	int vg1fd = -1, vg2fd = -1;
+	int vsync_count;
 	unsigned long long avtimer_tick = 0;
 	u64 vsync_tick = 0;
 
@@ -418,6 +420,7 @@ ssize_t mdp4_dtv_show_event(struct device *dev,
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
 	vg1fd = vctrl->vg1fd;
 	vg2fd = vctrl->vg2fd;
+	vsync_count = vctrl->vsync_count;
 	avtimer_tick = vctrl->avtimer_tick;
 	vsync_tick = ktime_to_ns(vctrl->vsync_time);
 	spin_unlock_irqrestore(&vctrl->spin_lock, flags);
@@ -426,11 +429,13 @@ ssize_t mdp4_dtv_show_event(struct device *dev,
 			"VSYNC=%llu%c"
 			"AVSYNCTP=%llu%c"
 			"VG1MEMID=%d%c"
-			"VG2MEMID=%d",
+			"VG2MEMID=%d%c"
+			"VSYNCCOUNT=%d",
 			vsync_tick,
 			ch, avtimer_tick,
 			ch, vg1fd,
-			ch, vg2fd);
+			ch, vg2fd,
+			ch, vsync_count);
 
 	return ret;
 }
@@ -976,6 +981,7 @@ void mdp4_external_vsync_dtv(void)
 		tp++;
 		vctrl->avtimer_tick = (unsigned long long) inpdw(tp);
 		vctrl->avtimer_tick = ((vctrl->avtimer_tick << 32) | LSW);
+		vctrl->vsync_count = vctrl->vsync_count +1;
 	}
 
 	if (vctrl->wait_vsync_cnt) {
