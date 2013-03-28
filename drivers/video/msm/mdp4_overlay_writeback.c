@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -260,6 +260,7 @@ static int mdp4_overlay_writeback_update(struct msm_fb_data_type *mfd)
 	pipe->dst_x = 0;
 
 	mdp4_overlay_mdp_pipe_req(pipe, mfd);
+	mdp4_calc_blt_mdp_bw(mfd, pipe);
 
 	if (mfd->display_iova)
 		pipe->srcp0_addr = mfd->display_iova + buf_offset;
