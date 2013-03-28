@@ -126,6 +126,8 @@ struct mdp4_overlay_perf perf_current;
 static struct ion_client *display_iclient;
 
 static void mdp4_overlay_bg_solidfill(struct blend_cfg *blend);
+extern struct mdp_pcc_cfg_data pcc_cfg_matrix[];
+extern struct mdp4_pp_set_ctrl mdp4_pp_set;
 
 /*
  * mdp4_overlay_iommu_unmap_freelist()
@@ -3998,4 +4000,28 @@ int mdp4_update_base_blend(struct msm_fb_data_type *mfd,
 		blend->bg_alpha = 0;
 	}
 	return ret;
+}
+
+void mdp4_overlay_postproc_setup(struct work_struct *work)
+{
+	int i;
+
+	mutex_lock(&mdp4_pp_set.mdp_postproc_mutex);
+
+/* Configure CSC */
+	for (i = 0; i < CSC_MAX_BLOCKS; i++) {
+		if (csc_cfg_matrix[i].write_to_hw == true) {
+			mdp4_csc_config(&csc_cfg_matrix[i]);
+			csc_cfg_matrix[i].write_to_hw = false;
+		}
+	}
+/* Configure PCC */
+	for (i = 0; i < PCC_MAX_BLOCKS; i++) {
+		if (pcc_cfg_matrix[i].write_to_hw == true) {
+			mdp4_pcc_write_cfg(&pcc_cfg_matrix[i]);
+			pcc_cfg_matrix[i].write_to_hw = false;
+		}
+	}
+	mdp4_pp_set.mdp_postproc_set = false;
+	mutex_unlock(&mdp4_pp_set.mdp_postproc_mutex);
 }

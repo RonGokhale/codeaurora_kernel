@@ -3,7 +3,7 @@
  * Core MSM framebuffer driver.
  *
  * Copyright (C) 2007 Google Incorporated
- * Copyright (c) 2008-2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -67,6 +67,8 @@ static struct platform_device *pdev_list[MSM_FB_MAX_DEV_LIST];
 static int pdev_list_cnt;
 
 int vsync_mode = 1;
+
+struct mdp4_pp_set_ctrl mdp4_pp_set;
 
 #define MAX_BLIT_REQ 256
 
@@ -3252,16 +3254,20 @@ static int msmfb_handle_pp_ioctl(struct msm_fb_data_type *mfd,
 	switch (pp_ptr->op) {
 #ifdef CONFIG_FB_MSM_MDP40
 	case mdp_op_csc_cfg:
-		ret = mdp4_csc_config(&(pp_ptr->data.csc_cfg_data));
+		ret = 0;
+		mutex_lock(&mdp4_pp_set.mdp_postproc_mutex);
 		for (i = 0; i < CSC_MAX_BLOCKS; i++) {
 			if (pp_ptr->data.csc_cfg_data.block ==
 					csc_cfg_matrix[i].block) {
+				csc_cfg_matrix[i].write_to_hw = true;
 				memcpy(&csc_cfg_matrix[i].csc_data,
 				&(pp_ptr->data.csc_cfg_data.csc_data),
 				sizeof(struct mdp_csc_cfg));
 				break;
 			}
 		}
+		mdp4_pp_set.mdp_postproc_set = true;
+		mutex_unlock(&mdp4_pp_set.mdp_postproc_mutex);
 		break;
 
 	case mdp_op_pcc_cfg:

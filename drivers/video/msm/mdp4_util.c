@@ -34,10 +34,14 @@
 #include "mdp4.h"
 
 struct mdp4_statistic mdp4_stat;
+extern struct workqueue_struct *mdp_pp_wq;
+extern struct work_struct mdp_postproc_worker;
+extern struct mdp4_pp_set_ctrl mdp4_pp_set;
 
 struct mdp_csc_cfg_data csc_cfg_matrix[CSC_MAX_BLOCKS] = {
 	{
 	.block = MDP_BLOCK_VG_1,
+	.write_to_hw = 0,
 	.csc_data = {
 			(MDP_CSC_FLAG_YUV_OUT),
 			{
@@ -61,6 +65,7 @@ struct mdp_csc_cfg_data csc_cfg_matrix[CSC_MAX_BLOCKS] = {
 	},
 	{
 	.block = MDP_BLOCK_VG_2,
+	.write_to_hw = 0,
 	.csc_data = {
 			(MDP_CSC_FLAG_YUV_OUT),
 			{
@@ -84,6 +89,7 @@ struct mdp_csc_cfg_data csc_cfg_matrix[CSC_MAX_BLOCKS] = {
 	},
 	{
 	.block = MDP_BLOCK_DMA_P,
+	.write_to_hw = 0,
 	.csc_data = {
 			(0),
 			{
@@ -107,6 +113,7 @@ struct mdp_csc_cfg_data csc_cfg_matrix[CSC_MAX_BLOCKS] = {
 	},
 	{
 	.block = MDP_BLOCK_OVERLAY_1,
+	.write_to_hw = 0,
 	.csc_data = {
 			(0),
 			{
@@ -131,6 +138,7 @@ struct mdp_csc_cfg_data csc_cfg_matrix[CSC_MAX_BLOCKS] = {
 	},
 	{
 	.block = MDP_BLOCK_OVERLAY_2,
+	.write_to_hw = 0,
 	.csc_data = {
 			(0),
 			{
@@ -155,6 +163,7 @@ struct mdp_csc_cfg_data csc_cfg_matrix[CSC_MAX_BLOCKS] = {
 	},
 	{
 	.block = MDP_BLOCK_DMA_S,
+	.write_to_hw = 0,
 	.csc_data = {
 			(0),
 			{
@@ -176,6 +185,15 @@ struct mdp_csc_cfg_data csc_cfg_matrix[CSC_MAX_BLOCKS] = {
 			},
 		},
 	},
+};
+
+struct mdp_pcc_cfg_data pcc_cfg_matrix[PCC_MAX_BLOCKS] = {
+	{
+	.block = MDP_BLOCK_DMA_P,
+	},
+	{
+	.block = MDP_BLOCK_DMA_S,
+	}
 };
 
 unsigned is_mdp4_hw_reset(void)
@@ -651,12 +669,20 @@ irqreturn_t mdp4_isr(int irq, void *ptr)
 			mdp4_primary_vsync_lcdc();
 		else if (panel & MDP4_PANEL_DSI_VIDEO)
 			mdp4_primary_vsync_dsi_video();
+
+		if (mdp4_pp_set.mdp_postproc_set == true) {
+			queue_work(mdp_pp_wq, &mdp_postproc_worker);
+		}
 	}
 #ifdef CONFIG_FB_MSM_DTV
 	if (isr & INTR_EXTERNAL_VSYNC) {
 		mdp4_stat.intr_vsync_e++;
 		if (panel & MDP4_PANEL_DTV)
 			mdp4_external_vsync_dtv();
+
+		if (mdp4_pp_set.mdp_postproc_set == true) {
+			queue_work(mdp_pp_wq, &mdp_postproc_worker);
+		}
 	}
 #endif
 	if (isr & INTR_DMA_P_HISTOGRAM) {
@@ -2223,6 +2249,7 @@ void mdp4_csc_write(struct mdp_csc_cfg *data, uint32_t base)
 	int i;
 	uint32_t *off;
 
+	mdp_clk_ctrl(1);
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	off = (uint32_t *) ((uint32_t) base + CSC_MV_OFF);
 	for (i = 0; i < 9; i++) {
@@ -2246,6 +2273,8 @@ void mdp4_csc_write(struct mdp_csc_cfg *data, uint32_t base)
 		off++;
 	}
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	mdp_clk_ctrl(0);
+
 }
 
 int mdp4_csc_config(struct mdp_csc_cfg_data *config)
@@ -2587,6 +2616,7 @@ int mdp4_pcc_cfg(struct mdp_pcc_cfg_data *cfg_ptr)
 	uint32_t pcc_offset = 0, mdp_cfg_offset = 0;
 	uint32_t mdp_dma_op_mode = 0;
 	uint32_t blockbase;
+	int i = 0;
 
 	if (!mdp_pp_block2pcc(cfg_ptr->block))
 		return ret;
@@ -2607,7 +2637,6 @@ int mdp4_pcc_cfg(struct mdp_pcc_cfg_data *cfg_ptr)
 			 MDP_DMA_P_OP_MODE_OFFSET
 			 : MDP_DMA_S_OP_MODE_OFFSET);
 		break;
-
 	default:
 		break;
 	}
@@ -2625,21 +2654,26 @@ int mdp4_pcc_cfg(struct mdp_pcc_cfg_data *cfg_ptr)
 		break;
 
 	case 0x2:
-		ret = mdp4_update_pcc_regs(pcc_offset, cfg_ptr);
+		mutex_lock(&mdp4_pp_set.mdp_postproc_mutex);
+		for (i = 0; i < PCC_MAX_BLOCKS; i++) {
+			if (cfg_ptr->block == pcc_cfg_matrix[i].block) {
+				pcc_cfg_matrix[i].write_to_hw = true;
+				pcc_cfg_matrix[i].ops = cfg_ptr->ops;
+				memcpy(&pcc_cfg_matrix[i].r, &(cfg_ptr->r),
+				sizeof(struct mdp_pcc_coeff));
+				memcpy(&pcc_cfg_matrix[i].g, &(cfg_ptr->g),
+				sizeof(struct mdp_pcc_coeff));
+				memcpy(&pcc_cfg_matrix[i].b, &(cfg_ptr->b),
+				sizeof(struct mdp_pcc_coeff));
+				break;
+			}
+		}
+		mdp4_pp_set.mdp_postproc_set = true;
+		mutex_unlock(&mdp4_pp_set.mdp_postproc_mutex);
 		break;
-
 	default:
 		break;
 	}
-
-	if (0x8 & cfg_ptr->ops)
-		outpdw(mdp_dma_op_mode,
-			((inpdw(mdp_dma_op_mode) & ~(0x1<<10)) |
-						((0x8 & cfg_ptr->ops)<<10)));
-
-	outpdw(mdp_cfg_offset,
-			((inpdw(mdp_cfg_offset) & ~(0x1<<29)) |
-						((cfg_ptr->ops & 0x1)<<29)));
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 
@@ -3098,4 +3132,47 @@ u32 mdp4_get_mixer_num(u32 panel_type)
 		mixer_num = MDP4_MIXER0;
 	}
 	return mixer_num;
+}
+
+int mdp4_pcc_write_cfg(struct mdp_pcc_cfg_data *cfg)
+{
+	int ret = 0;
+	uint32_t pcc_offset = 0;
+	uint32_t dma_op_mode = 0;
+	uint32_t blockbase = 0;
+
+	mdp_clk_ctrl(1);
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+
+	if (cfg->block == MDP_BLOCK_DMA_P) {
+		blockbase = (uint32_t) (MDP_BASE + 0x90000);
+		pcc_offset = blockbase + MDP_PCC_OFFSET;
+		dma_op_mode = blockbase + MDP_DMA_P_OP_MODE_OFFSET;
+	} else if (cfg->block == MDP_BLOCK_DMA_S) {
+		blockbase = (uint32_t) (MDP_BASE + 0xA0000);
+		pcc_offset = blockbase + MDP_PCC_OFFSET;
+		dma_op_mode = blockbase + MDP_DMA_S_OP_MODE_OFFSET;
+	}
+
+	if (blockbase == 0)
+		return -EINVAL;
+
+	if (0x8 & cfg->ops)
+		pcc_offset += DMA_PCC_R2_OFFSET;
+
+	ret = mdp4_update_pcc_regs(pcc_offset, cfg);
+
+	if (0x8 & cfg->ops)
+		outpdw(dma_op_mode,
+		((inpdw(dma_op_mode) & ~(0x1<<10)) |
+		((0x8 & cfg->ops)<<10)));
+
+	outpdw(blockbase,
+	((inpdw(blockbase) & ~(0x1<<29)) |
+	((cfg->ops & 0x1)<<29)));
+
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	mdp_clk_ctrl(0);
+
+	return ret;
 }

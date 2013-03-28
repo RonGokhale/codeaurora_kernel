@@ -101,6 +101,9 @@ bool mdp_pp_initialized = FALSE;
 static struct workqueue_struct *mdp_pipe_ctrl_wq; /* mdp mdp pipe ctrl wq */
 static struct delayed_work mdp_pipe_ctrl_worker;
 
+struct workqueue_struct *mdp_pp_wq;	/*mdp Post proc wq */
+struct work_struct mdp_postproc_worker;
+
 static boolean mdp_suspended = FALSE;
 ulong mdp4_display_intf;
 DEFINE_MUTEX(mdp_suspend_mutex);
@@ -122,6 +125,7 @@ struct mdp_dma_data dma_wb_data;
 #endif
 
 static struct mdp_dma_data dma3_data;
+extern struct  mdp4_pp_set_ctrl mdp4_pp_set;
 
 extern ktime_t mdp_dma2_last_update_time;
 
@@ -1326,6 +1330,20 @@ error:
 	mutex_unlock(&mgmt->mdp_do_hist_mutex);
 	return ret;
 }
+
+static int mdp_postproc_init(void)
+{
+	int ret = 0;
+
+	if (mdp_pp_initialized)
+		return -EEXIST;
+
+	mutex_init(&mdp4_pp_set.mdp_postproc_mutex);
+	mdp4_pp_set.mdp_postproc_set = false;
+	INIT_WORK(&mdp_postproc_worker, &mdp4_overlay_postproc_setup);
+	return ret;
+}
+
 #endif
 
 #ifdef CONFIG_FB_MSM_MDP303
@@ -2080,6 +2098,8 @@ static void mdp_drv_init(void)
 	mdp_pipe_ctrl_wq = create_singlethread_workqueue("mdp_pipe_ctrl_wq");
 	INIT_DELAYED_WORK(&mdp_pipe_ctrl_worker,
 			  mdp_pipe_ctrl_workqueue_handler);
+	mdp_pp_wq = alloc_workqueue("mdp_pp_wq",
+					WQ_NON_REENTRANT | WQ_UNBOUND, 0);
 
 	/* initialize semaphore */
 	init_completion(&mdp_ppp_comp);
@@ -2729,6 +2749,7 @@ static int mdp_probe(struct platform_device *pdev)
 	/* initialize Post Processing data*/
 	mdp_hist_lut_init();
 	mdp_histogram_init();
+	mdp_postproc_init();
 	mdp_pp_initialized = TRUE;
 
 	/* add panel data */
