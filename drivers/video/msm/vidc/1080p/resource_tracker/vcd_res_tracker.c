@@ -538,7 +538,6 @@ int res_trk_update_bus_perf_level(struct vcd_dev_ctxt *dev_ctxt, u32 perf_level)
 	u32 enc_perf_level = 0, dec_perf_level = 0;
 	u32 bus_clk_index, client_type = 0;
 	int rc = 0;
-	bool turbo_enabled = false;
 	bool turbo_supported =
 		!resource_context.vidc_platform_data->disable_turbo;
 
@@ -549,8 +548,6 @@ int res_trk_update_bus_perf_level(struct vcd_dev_ctxt *dev_ctxt, u32 perf_level)
 		else
 			enc_perf_level += cctxt_itr->reqd_perf_lvl;
 
-		if (cctxt_itr->is_turbo_enabled)
-			turbo_enabled = true;
 		cctxt_itr = cctxt_itr->next;
 	}
 
@@ -567,7 +564,7 @@ int res_trk_update_bus_perf_level(struct vcd_dev_ctxt *dev_ctxt, u32 perf_level)
 
 	if (dev_ctxt->reqd_perf_lvl + dev_ctxt->curr_perf_lvl == 0)
 		bus_clk_index = 2;
-	else if ((!turbo_supported || !turbo_enabled) && bus_clk_index == 3) {
+	else if (!turbo_supported && bus_clk_index == 3) {
 		if (!turbo_supported)
 			VCDRES_MSG_MED("Warning: Turbo mode not supported "\
 					" falling back to 1080p bus\n");
