@@ -13,6 +13,7 @@
 /dts-v1/;
 
 /include/ "msm8610.dtsi"
+/include/ "dsi-v2-panel-truly-wvga-video.dtsi"
 
 / {
 	model = "Qualcomm MSM 8610 CDP";
@@ -21,6 +22,10 @@
 		      <163 1 0>, <164 1 0>, <166 1 0>;
 
 	serial@f991e000 {
+		status = "ok";
+	};
+
+	qcom,dsi_v2_truly_wvga_video {
 		status = "ok";
 	};
 };
