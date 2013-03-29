@@ -116,12 +116,8 @@ static DEVICE_ATTR(thermal_mitigation, S_IRUSR | S_IWUSR,
 /* interface to reset Riva by sending the reset interrupt */
 void wcnss_reset_intr(void)
 {
-//	if (wcnss_hardware_type() == WCNSS_RIVA_HW) {
-//		wmb();
-//		__raw_writel(1 << 24, MSM_APCS_GCC_BASE + 0x8);
-//	} else {
-//		pr_err("%s: reset interrupt not supported\n", __func__);
-//	}
+	wmb();
+	__raw_writel(1 << 24, MSM_APCS_GCC_BASE + 0x8);
 }
 EXPORT_SYMBOL(wcnss_reset_intr);
 
