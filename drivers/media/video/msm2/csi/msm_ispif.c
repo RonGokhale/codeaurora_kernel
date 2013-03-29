@@ -703,6 +703,9 @@ static int msm_ispif_init(struct ispif_device *ispif,
 	int rc = 0;
 	CDBG("%s called %d\n", __func__, __LINE__);
 
+	ispif->ispif_ref_cnt++;
+	CDBG("%s, ref count = %d\n", __func__, ispif->ispif_ref_cnt);
+
 	if (ispif->ispif_state == ISPIF_POWER_UP) {
 		pr_err("%s: ispif invalid state %d\n", __func__,
 			ispif->ispif_state);
@@ -744,6 +747,11 @@ static void msm_ispif_release(struct ispif_device *ispif)
 			ispif->ispif_state);
 		return;
 	}
+
+	ispif->ispif_ref_cnt--;
+	CDBG("%s, ref count = %d\n", __func__, ispif->ispif_ref_cnt);
+	if (ispif->ispif_ref_cnt > 0)
+		return;
 
 	CDBG("%s, free_irq\n", __func__);
 	free_irq(ispif->irq->start, ispif);
@@ -805,6 +813,15 @@ static long msm_ispif_subdev_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 	switch (cmd) {
 	case VIDIOC_MSM_ISPIF_CFG:
 		return msm_ispif_cmd(sd, arg);
+
+	case VIDIOC_MSM_ISPIF_RELEASE: {
+		struct ispif_device *ispif =
+                (struct ispif_device *)v4l2_get_subdevdata(sd);
+		CDBG("release ispif\n");
+                msm_ispif_release(ispif);
+		return 0;
+	}
+
 	default:
 		return -ENOIOCTLCMD;
 	}
@@ -894,6 +911,7 @@ static int __devinit ispif_probe(struct platform_device *pdev)
 	ispif->subdev.entity.name = pdev->name;
 	ispif->subdev.entity.revision = ispif->subdev.devnode->num;
 	ispif->ispif_state = ISPIF_POWER_DOWN;
+	ispif->ispif_ref_cnt = 0;
 	return 0;
 
 ispif_no_mem:

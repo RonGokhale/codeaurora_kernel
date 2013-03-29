@@ -36,6 +36,8 @@
 static unsigned msm_camera_v4l2_nr = -1;
 static int vnode_count;
 
+unsigned int open_fail_flag = 0;
+
 module_param(msm_camera_v4l2_nr, uint, 0644);
 MODULE_PARM_DESC(msm_camera_v4l2_nr, "videoX start number, -1 is autodetect");
 
@@ -323,7 +325,7 @@ static int msm_camera_v4l2_qbuf(struct file *f, void *pctx,
 			return -EINVAL;
 		}
 		for (i = 0; i < pcam_inst->plane_info.num_planes; i++) {
-			D("%s stored offsets for plane %d as"
+			D("%s stored offsets for plane %d as" \
 				"addr offset %d, data offset %d\n",
 				__func__, i, pb->m.planes[i].reserved[0],
 				pb->m.planes[i].data_offset);
@@ -376,7 +378,7 @@ static int msm_camera_v4l2_dqbuf(struct file *f, void *pctx,
 				pcam_inst->buf_offset[pb->index][i].data_offset;
 			pb->m.planes[i].reserved[0] =
 				pcam_inst->buf_offset[pb->index][i].addr_offset;
-			D("%s stored offsets for plane %d as "
+			D("%s stored offsets for plane %d as " \
 				"addr offset %d, data offset %d\n",
 				__func__, i, pb->m.planes[i].reserved[0],
 				pb->m.planes[i].data_offset);
@@ -907,6 +909,8 @@ static int msm_open(struct file *f)
 
 	D("%s\n", __func__);
 
+	open_fail_flag = 0;
+
 	if (!pcam) {
 		pr_err("%s NULL pointer passed in!\n", __func__);
 		return rc;
@@ -996,6 +1000,7 @@ static int msm_open(struct file *f)
 		if (rc < 0 && rc != -ERESTARTSYS) {
 			pr_err("%s: msm_send_open_server failed %d\n",
 				__func__, rc);
+			open_fail_flag = 1;
 			goto msm_send_open_server_failed;
 		}
 	}
@@ -1007,14 +1012,18 @@ msm_send_open_server_failed:
 	msm_drain_eventq(&pcam->eventData_q);
 	msm_destroy_v4l2_event_queue(&pcam_inst->eventHandle);
 
-	if (pmctl->mctl_release)
+	if (pmctl->mctl_release) {
 		pmctl->mctl_release(pmctl);
+		pmctl->mctl_release = NULL;
+		pmctl->mctl_cmd = NULL;
+	}
 mctl_open_failed:
 	if (pcam->use_count == 1) {
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 		if (ion_client_created) {
 			D("%s: destroy ion client", __func__);
 			kref_put(&pmctl->refcount, msm_release_ion_client);
+			ion_client_created = 0;
 		}
 #endif
 		if (msm_server_end_session(pcam) < 0)
@@ -1022,6 +1031,7 @@ mctl_open_failed:
 				__func__);
 	}
 msm_cam_server_begin_session_failed:
+	open_fail_flag = 0;
 	if (pcam->use_count == 1) {
 		pcam->dev_inst[i] = NULL;
 		pcam->use_count = 0;
@@ -1102,8 +1112,11 @@ void msm_release_ion_client(struct kref *ref)
 {
 	struct msm_cam_media_controller *mctl = container_of(ref,
 		struct msm_cam_media_controller, refcount);
-	pr_err("%s Calling ion_client_destroy\n", __func__);
-	ion_client_destroy(mctl->client);
+	pr_err("%s Calling ion_client_destroy client %x\n", __func__, (unsigned int)mctl->client);
+	if (mctl->client) {
+		ion_client_destroy(mctl->client);
+		mctl->client = NULL;
+	}
 }
 
 static int msm_close(struct file *f)
@@ -1132,9 +1145,12 @@ static int msm_close(struct file *f)
 	if (pcam_inst->streamon) {
 		/*something went wrong since instance
 		is closing without streamoff*/
-		if (pmctl->mctl_release)
+		if (pmctl->mctl_release) {
 			pmctl->mctl_release(pmctl);
-		pmctl->mctl_release = NULL;/*so that it isn't closed again*/
+			/*so that it isn't closed again*/
+			pmctl->mctl_release = NULL;
+			pmctl->mctl_cmd = NULL;
+		}
 	}
 
 	pcam_inst->streamon = 0;
@@ -1169,8 +1185,11 @@ static int msm_close(struct file *f)
 				pr_err("msm_send_close_server failed %d\n", rc);
 		}
 
-		if (pmctl->mctl_release)
+		if (pmctl->mctl_release) {
 			pmctl->mctl_release(pmctl);
+			pmctl->mctl_release = NULL;
+			pmctl->mctl_cmd = NULL;
+		}
 
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 		kref_put(&pmctl->refcount, msm_release_ion_client);

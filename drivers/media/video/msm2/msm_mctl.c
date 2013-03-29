@@ -539,9 +539,8 @@ static int msm_mctl_cmd(struct msm_cam_media_controller *p_mctl,
 			rc = v4l2_subdev_call(p_mctl->axi_sdev, core, ioctl,
 				VIDIOC_MSM_AXI_LOW_POWER_MODE,
 				(void __user *)arg);
-		} else {
-			rc = 0;
-		}
+		} else
+		rc = 0;
 		break;
 
 	default:
@@ -652,6 +651,12 @@ static void msm_mctl_release(struct msm_cam_media_controller *p_mctl)
 	if (p_mctl->vpe_sdev) {
 		v4l2_subdev_call(p_mctl->vpe_sdev, core, ioctl,
 			VIDIOC_MSM_VPE_RELEASE, NULL);
+	}
+
+	if (p_mctl->ispif_sdev) {
+		v4l2_set_subdev_hostdata(p_mctl->ispif_sdev, p_mctl);
+                v4l2_subdev_call(p_mctl->ispif_sdev, core, ioctl,
+                        VIDIOC_MSM_ISPIF_RELEASE, NULL);
 	}
 
 	if (p_mctl->axi_sdev) {
@@ -790,6 +795,8 @@ int msm_mctl_init(struct msm_cam_v4l2_device *pcam)
 
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 	pmctl->client = msm_ion_client_create(-1, "camera");
+	if(pmctl->client == NULL) 
+		return -EINVAL;
 	kref_init(&pmctl->refcount);
 #endif
 
@@ -972,10 +979,12 @@ static int msm_mctl_dev_close(struct file *f)
 
 	kfree(pcam_inst);
 	f->private_data = NULL;
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 	if (NULL != pmctl) {
 		D("%s : release ion client", __func__);
 		kref_put(&pmctl->refcount, msm_release_ion_client);
 	}
+#endif
 	mutex_unlock(&pcam->mctl_node.dev_lock);
 	D("%s : use_count %d X ", __func__, pcam->mctl_node.use_count);
 	return rc;
@@ -1201,7 +1210,7 @@ static int msm_mctl_v4l2_qbuf(struct file *f, void *pctx,
 			return -EINVAL;
 		}
 		for (i = 0; i < pcam_inst->plane_info.num_planes; i++) {
-			D("%s stored offsets for plane %d as"
+			D("%s stored offsets for plane %d as" \
 				"addr offset %d, data offset %d",
 				__func__, i, pb->m.planes[i].reserved[0],
 				pb->m.planes[i].data_offset);

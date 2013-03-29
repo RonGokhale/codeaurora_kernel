@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2013, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -383,7 +383,7 @@ static int msm_mctl_pp_get_phy_addr(
 			pcam_inst->buf_offset[buf_idx][i].data_offset;
 			pp_frame->mp[i].fd = (int)mem->vaddr;
 			pp_frame->mp[i].length = mem->size;
-			D("%s frame id %d buffer %d plane %d phy addr 0x%x"
+			D("%s frame id %d buffer %d plane %d phy addr 0x%x"\
 				" fd %d length %d\n", __func__,
 				pp_frame->frame_id, buf_idx, i,
 				(uint32_t)pp_frame->mp[i].phy_addr,

@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2013, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -56,7 +56,7 @@ static int msm_vb2_ops_queue_setup(struct vb2_queue *vq,
 	*num_planes = pcam_inst->plane_info.num_planes;
 	for (i = 0; i < pcam_inst->vid_fmt.fmt.pix_mp.num_planes; i++) {
 		sizes[i] = pcam_inst->plane_info.plane[i].size;
-		D("%s Inst %p : Plane %d Offset = %d Size = %ld"
+		D("%s Inst %p : Plane %d Offset = %d Size = %ld" \
 			"Aligned Size = %d", __func__, pcam_inst, i,
 			pcam_inst->plane_info.plane[i].offset,
 			pcam_inst->plane_info.plane[i].size, sizes[i]);
@@ -269,15 +269,22 @@ static void msm_vb2_ops_buf_cleanup(struct vb2_buffer *vb)
 		buf->state = MSM_BUFFER_STATE_UNUSED;
 		return;
 	}
+	if(pmctl->client == NULL) {
+		pr_err("%s No mctl client found\n", __func__);
+		buf->state = MSM_BUFFER_STATE_UNUSED;
+		return;
+	}
 	for (i = 0; i < vb->num_planes; i++) {
 		mem = vb2_plane_cookie(vb, i);
-		if (mem) {
-			videobuf2_pmem_contig_user_put(mem, pmctl->client,
-				pmctl->domain_num);
-		} else {
-			pr_err("%s Inst %p buffer plane cookie is null",
-				__func__, pcam_inst);
-			return;
+		if(mem) {
+			if(!mem->ion_handle)
+				continue;
+		videobuf2_pmem_contig_user_put(mem, pmctl->client,
+			pmctl->domain_num);
+		}else {
+			D("%s:%d mem is NULL",
+					__func__, __LINE__);
+                        return;
 		}
 	}
 	buf->state = MSM_BUFFER_STATE_UNUSED;
@@ -402,7 +409,7 @@ struct msm_frame_buffer *msm_mctl_buf_find(
 			spin_unlock_irqrestore(&pcam_inst->vq_irqlock, flags);
 			return NULL;
 		}
-		if (mem->buffer_type == VIDEOBUF2_MULTIPLE_PLANES)
+		if (mem->buffer_type ==	VIDEOBUF2_MULTIPLE_PLANES)
 			offset = mem->offset.data_offset +
 				pcam_inst->buf_offset[buf_idx][0].data_offset;
 		else
@@ -451,9 +458,10 @@ int msm_mctl_buf_done_proc(
 		D("%s Copying timestamp as %ld.%ld", __func__,
 			cam_ts->timestamp.tv_sec, cam_ts->timestamp.tv_usec);
 		buf->vidbuf.v4l2_buf.timestamp = cam_ts->timestamp;
-		buf->vidbuf.v4l2_buf.sequence  = cam_ts->frame_id;
+		buf->vidbuf.v4l2_buf.sequence = cam_ts->frame_id;
 	}
-	D("%s Notify user about buffer %d image_mode %d frame_id %d", __func__,
+	D("%s Notify user about buffer %d image_mode %d frame_id %d\n",
+		__func__,
 		buf->vidbuf.v4l2_buf.index, pcam_inst->image_mode,
 		buf->vidbuf.v4l2_buf.sequence);
 	vb2_buffer_done(&buf->vidbuf, VB2_BUF_STATE_DONE);
@@ -685,14 +693,16 @@ int msm_mctl_reserve_free_buf(
 	 * camera instance using the image mode passed */
 	if (!pcam_inst) {
 		pcam_inst = msm_mctl_get_pcam_inst(pmctl, buf_handle);
-		if(!pcam_inst) {
+		if (!pcam_inst) {
 			pr_err("%s: pcam_inst is NULL\n", __func__);
 			return rc;
 		}
 	}
-	if (!pcam_inst || !pcam_inst->streamon) {
-		pr_err("%s: stream is turned off\n", __func__);
-		return rc;
+	if(!pcam_inst) {
+	    if (!pcam_inst->streamon) {
+     	        pr_err("%s: stream is turned off\n", __func__);
+		    return rc;
+	    }
 	}
 	spin_lock_irqsave(&pcam_inst->vq_irqlock, flags);
 	if (pcam_inst->free_vq.next == NULL) {
@@ -760,7 +770,7 @@ int msm_mctl_reserve_free_buf(
 		}
 		free_buf->vb = (uint32_t)buf;
 		buf->state = MSM_BUFFER_STATE_RESERVED;
-		D("%s inst=0x%p, idx=%d, paddr=0x%x, "
+		D("%s inst=0x%p, idx=%d, paddr=0x%x, " \
 			"ch1 addr=0x%x\n", __func__,
 			pcam_inst, buf->vidbuf.v4l2_buf.index,
 			free_buf->ch_paddr[0], free_buf->ch_paddr[1]);
@@ -856,7 +866,7 @@ int msm_mctl_buf_done_pp(struct msm_cam_media_controller *pmctl,
 		__func__, pcam_inst, frame->ch_paddr[0], ret_frame->dirty);
 	cam_ts.present = 1;
 	cam_ts.timestamp = ret_frame->timestamp;
-	cam_ts.frame_id   = ret_frame->frame_id;
+	cam_ts.frame_id  = ret_frame->frame_id;
 	if (ret_frame->dirty)
 		/* the frame is dirty, not going to disptach to app */
 		rc = msm_mctl_release_free_buf(pmctl, pcam_inst, frame);

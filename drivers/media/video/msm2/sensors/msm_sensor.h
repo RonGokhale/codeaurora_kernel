@@ -62,7 +62,8 @@ int msm_sensor_i2c_probe(struct i2c_client *client,
 int32_t msm_sensor_platform_probe(struct platform_device *pdev, void *data);
 
 int32_t msm_sensor_power(struct v4l2_subdev *sd, int on);
-
+int32_t msm_sensor_enable_i2c_mux(struct msm_camera_i2c_conf *i2c_conf);
+int32_t msm_sensor_disable_i2c_mux(struct msm_camera_i2c_conf *i2c_conf);
 int32_t msm_sensor_v4l2_s_ctrl(struct v4l2_subdev *sd,
 	struct v4l2_control *ctrl);
 
