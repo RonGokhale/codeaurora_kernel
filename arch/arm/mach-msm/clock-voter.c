@@ -1,4 +1,5 @@
-/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+/*
+ * Copyright (c) 2010-2011, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -138,17 +139,11 @@ static bool voter_clk_is_local(struct clk *clk)
 
 static enum handoff voter_clk_handoff(struct clk *clk)
 {
-	if (!clk->rate)
-		return HANDOFF_DISABLED_CLK;
+	/* Apply default rate vote */
+	if (clk->rate)
+		return HANDOFF_ENABLED_CLK;
 
-	/*
-	 * Send the default rate to the parent if necessary and update the
-	 * software state of the voter clock.
-	 */
-	if (voter_clk_prepare(clk) < 0)
-		return HANDOFF_DISABLED_CLK;
-
-	return HANDOFF_ENABLED_CLK;
+	return HANDOFF_DISABLED_CLK;
 }
 
 struct clk_ops clk_ops_voter = {
