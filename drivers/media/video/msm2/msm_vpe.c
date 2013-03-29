@@ -142,7 +142,7 @@ static int msm_vpe_cfg_update(void *pinfo)
 	rot_flag = msm_camera_io_r(vpe_ctrl->vpebase +
 						VPE_OP_MODE_OFFSET) & 0xE00;
 	if (pinfo != NULL) {
-		D("%s: Crop info in2_w = %d, in2_h = %d "
+		D("%s: Crop info in2_w = %d, in2_h = %d "\
 			"out2_w = %d out2_h = %d\n",
 			__func__, pcrop->src_w, pcrop->src_h,
 			pcrop->dst_w, pcrop->dst_h);
@@ -505,7 +505,7 @@ DECLARE_TASKLET(vpe_tasklet, vpe_do_tasklet, 0);
 
 static irqreturn_t vpe_parse_irq(int irq_num, void *data)
 {
-	if(!vpe_ctrl || !vpe_ctrl->vpebase)
+	if (!vpe_ctrl || !vpe_ctrl->vpebase)
 		return IRQ_HANDLED;
 	vpe_ctrl->irq_status = msm_camera_io_r_mb(vpe_ctrl->vpebase +
 							VPE_INTR_STATUS_OFFSET);
