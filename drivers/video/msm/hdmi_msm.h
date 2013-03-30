@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -47,6 +47,14 @@ struct hdmi_msm_cec_msg {
 	uint8 retransmit;
 };
 
+struct hdmi_msm_audio_config {
+	uint8 sample_rate;
+	uint8 channel_num;
+	uint8 spkr_alloc;
+	uint8 level_shift;
+	uint8 down_mix;
+};
+
 #define QFPROM_BASE		((uint32)hdmi_msm_state->qfprom_io)
 #define HDMI_BASE		((uint32)hdmi_msm_state->hdmi_io)
 
@@ -67,6 +75,8 @@ struct hdmi_msm_state_type {
 	struct work_struct hdcp_reauth_work, hdcp_work;
 	struct completion hdcp_success_done;
 	struct timer_list hdcp_timer;
+
+	struct hdmi_msm_audio_config hdmi_audio;
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_CEC_SUPPORT
 	boolean cec_enabled;
