@@ -52,7 +52,7 @@
 
 #define MAX_MSM8X10_WCD_DEVICE	4
 #define CODEC_DT_MAX_PROP_SIZE	40
-#define MSM8X10_WCD_I2C_GSBI_SLAVE_ID "1-000d"
+#define MSM8X10_WCD_I2C_GSBI_SLAVE_ID "5-000d"
 
 enum {
 	MSM8X10_WCD_I2C_TOP_LEVEL = 0,
@@ -171,7 +171,7 @@ static int get_i2c_msm8x10_wcd_device_info(u16 reg,
 	return rtn;
 }
 
-static int msm8x10_wcd_abh_write_device(u16 reg, unsigned int *value, u32 bytes)
+static int msm8x10_wcd_abh_write_device(u16 reg, u8 *value, u32 bytes)
 {
 	u32 temp = ((u32)(*value)) & 0x000000FF;
 	u32 offset = (((u32)(reg)) ^ 0x00000400) & 0x00000FFF;
@@ -179,11 +179,13 @@ static int msm8x10_wcd_abh_write_device(u16 reg, unsigned int *value, u32 bytes)
 	return 0;
 }
 
-static int msm8x10_wcd_abh_read_device(u16 reg, u32 bytes, unsigned int *value)
+static int msm8x10_wcd_abh_read_device(u16 reg, u32 bytes, u8 *value)
 {
+	u32 temp;
 	u32 offset = (((u32)(reg)) ^ 0x00000400) & 0x00000FFF;
-	*value = ioread32(ioremap(MSM8X10_DINO_CODEC_BASE_ADDR +
+	temp = ioread32(ioremap(MSM8X10_DINO_CODEC_BASE_ADDR +
 				      offset, 4));
+	*value = (u8)temp;
 	return 0;
 }
 
@@ -292,20 +294,22 @@ static int msm8x10_wcd_reg_read(struct msm8x10_wcd *msm8x10_wcd,
 				u16 reg, unsigned int *val)
 {
 	int ret = -EINVAL;
+	u8 temp;
 
 	/* check if use I2C interface for Helicon or AHB for Dino */
 	mutex_lock(&msm8x10_wcd->io_lock);
 	if (MSM8X10_WCD_IS_HELICON_REG(reg))
-		ret = msm8x10_wcd_i2c_read(reg, 1, val);
+		ret = msm8x10_wcd_i2c_read(reg, 1, &temp);
 	else if (MSM8X10_WCD_IS_DINO_REG(reg))
-		ret = msm8x10_wcd_abh_read_device(reg, 1, val);
+		ret = msm8x10_wcd_abh_read_device(reg, 1, &temp);
 	mutex_unlock(&msm8x10_wcd->io_lock);
+	*val = temp;
 	return ret;
 }
 
 
 static int msm8x10_wcd_reg_write(struct msm8x10_wcd *msm8x10_wcd, u16  reg,
-				 unsigned int val)
+				 u8 val)
 {
 	int ret = -EINVAL;
 
@@ -393,7 +397,7 @@ static int msm8x10_wcd_write(struct snd_soc_codec *codec, unsigned int reg,
 				reg, ret);
 	}
 
-	return msm8x10_wcd_reg_write(codec->control_data, reg, value);
+	return msm8x10_wcd_reg_write(codec->control_data, reg, (u8)value);
 }
 
 static unsigned int msm8x10_wcd_read(struct snd_soc_codec *codec,
@@ -1203,10 +1207,6 @@ static const struct snd_kcontrol_new aif_cap_mixer[] = {
 			slim_tx_mixer_get, slim_tx_mixer_put),
 	SOC_SINGLE_EXT("I2S TX2", SND_SOC_NOPM, MSM8X10_WCD_TX2, 1, 0,
 			slim_tx_mixer_get, slim_tx_mixer_put),
-	SOC_SINGLE_EXT("I2S TX3", SND_SOC_NOPM, MSM8X10_WCD_TX3, 1, 0,
-			slim_tx_mixer_get, slim_tx_mixer_put),
-	SOC_SINGLE_EXT("I2S TX4", SND_SOC_NOPM, MSM8X10_WCD_TX4, 1, 0,
-			slim_tx_mixer_get, slim_tx_mixer_put),
 };
 
 
@@ -1697,21 +1697,14 @@ static const struct snd_soc_dapm_route audio_map[] = {
 
 	{"I2S TX1", NULL, "TX_I2S_CLK"},
 	{"I2S TX2", NULL, "TX_I2S_CLK"},
-	{"I2S TX3", NULL, "TX_I2S_CLK"},
-	{"I2S TX4", NULL, "TX_I2S_CLK"},
 
 	{"AIF1 CAP", NULL, "AIF1_CAP Mixer"},
 
 	{"AIF1_CAP Mixer", "I2S TX1", "I2S TX1 MUX"},
 	{"AIF1_CAP Mixer", "I2S TX2", "I2S TX2 MUX"},
-	{"AIF1_CAP Mixer", "I2S TX3", "I2S TX3 MUX"},
-	{"AIF1_CAP Mixer", "I2S TX4", "I2S TX4 MUX"},
 
 	{"I2S TX1 MUX", NULL, "DEC1 MUX"},
 	{"I2S TX2 MUX", NULL, "DEC2 MUX"},
-	{"I2S TX3 MUX", NULL, "RX1 MIX1"},
-	{"I2S TX4 MUX", "RMIX2", "RX1 MIX2"},
-	{"I2S TX4 MUX", "RMIX3", "RX1 MIX3"},
 
 	/* Earpiece (RX MIX1) */
 	{"EAR", NULL, "EAR PA"},
@@ -1725,7 +1718,6 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"HPHL", NULL, "HPHL DAC"},
 
 	{"HPHR", NULL, "HPHR DAC"},
-	{"HPHR_PA_MIXER", NULL, "HPHR DAC"},
 
 	{"HPHL DAC", NULL, "CP"},
 
@@ -1745,7 +1737,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"LINEOUT1 DAC", "RX3 INPUT", "RX3 MIX1"},
 
 	{"SPK PA", NULL, "SPK DAC"},
-	{"SPK DAC", NULL, "RX7 MIX2"},
+	{"SPK DAC", NULL, "RX2 MIX2"},
 
 	{"RX1 CHAIN", NULL, "RX1 MIX2"},
 	{"RX2 CHAIN", NULL, "RX2 MIX2"},
@@ -1761,11 +1753,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX3 MIX1", NULL, "RX3 MIX1 INP1"},
 	{"RX3 MIX1", NULL, "RX3 MIX1 INP2"},
 	{"RX1 MIX2", NULL, "RX1 MIX1"},
-	{"RX1 MIX2", NULL, "RX1 MIX2 INP1"},
-	{"RX1 MIX2", NULL, "RX1 MIX2 INP2"},
 	{"RX2 MIX2", NULL, "RX2 MIX1"},
-	{"RX2 MIX2", NULL, "RX2 MIX2 INP1"},
-	{"RX2 MIX2", NULL, "RX2 MIX2 INP2"},
 
 	{"I2S RX1 MUX", "AIF1_PB", "AIF1 PB"},
 	{"I2S RX2 MUX", "AIF1_PB", "AIF1 PB"},
@@ -1825,11 +1813,6 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"IIR1", NULL, "IIR1 INP1 MUX"},
 	{"IIR1 INP1 MUX", "DEC1", "DEC1 MUX"},
 	{"IIR1 INP1 MUX", "DEC2", "DEC2 MUX"},
-
-	/* There is no LDO_H in Helicon */
-	{"MIC BIAS1 Internal1", NULL, "LDO_H"},
-	{"MIC BIAS1 Internal2", NULL, "LDO_H"},
-	{"MIC BIAS1 External", NULL, "LDO_H"},
 };
 
 static int msm8x10_wcd_startup(struct snd_pcm_substream *substream,
@@ -2090,8 +2073,9 @@ static const struct snd_soc_dapm_widget msm8x10_wcd_dapm_widgets[] = {
 	SND_SOC_DAPM_MIXER("I2S RX1", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_MIXER("I2S RX2", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_MIXER("I2S RX3", SND_SOC_NOPM, 0, 0, NULL, 0),
-	SND_SOC_DAPM_MIXER("I2S RX4", SND_SOC_NOPM, 0, 0, NULL, 0),
-	SND_SOC_DAPM_MIXER("I2S RX5", SND_SOC_NOPM, 0, 0, NULL, 0),
+
+	SND_SOC_DAPM_MIXER("I2S TX1", SND_SOC_NOPM, 0, 0, NULL, 0),
+	SND_SOC_DAPM_MIXER("I2S TX2", SND_SOC_NOPM, 0, 0, NULL, 0),
 
 	/* Headphone */
 	SND_SOC_DAPM_OUTPUT("HEADPHONE"),
@@ -2206,8 +2190,7 @@ static const struct snd_soc_dapm_widget msm8x10_wcd_dapm_widgets[] = {
 	SND_SOC_DAPM_ADC_E("ADC1", NULL, MSM8X10_WCD_A_TX_1_EN, 7, 0,
 		msm8x10_wcd_codec_enable_adc, SND_SOC_DAPM_PRE_PMU |
 		SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
-
-	SND_SOC_DAPM_ADC_E("ADC1", NULL, MSM8X10_WCD_A_TX_2_EN, 7, 0,
+	SND_SOC_DAPM_ADC_E("ADC2", NULL, MSM8X10_WCD_A_TX_2_EN, 7, 0,
 		msm8x10_wcd_codec_enable_adc, SND_SOC_DAPM_PRE_PMU |
 		SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
 
@@ -2224,6 +2207,9 @@ static const struct snd_soc_dapm_widget msm8x10_wcd_dapm_widgets[] = {
 		&dec2_mux, msm8x10_wcd_codec_enable_dec,
 		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
 		SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMD),
+
+	SND_SOC_DAPM_MIXER("I2S TX1 MUX", SND_SOC_NOPM, 0, 0, NULL, 0),
+	SND_SOC_DAPM_MIXER("I2S TX2 MUX", SND_SOC_NOPM, 0, 0, NULL, 0),
 
 	SND_SOC_DAPM_INPUT("AMIC2"),
 	SND_SOC_DAPM_AIF_OUT("AIF1 CAP", "AIF1 Capture", 0, SND_SOC_NOPM,
