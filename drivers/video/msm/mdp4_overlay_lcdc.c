@@ -245,8 +245,10 @@ int mdp4_lcdc_pipe_commit(int cndx, int wait)
 	pipe = vctrl->base_pipe;
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
 	if (pipe->ov_blt_addr) {
-		mdp4_lcdc_blt_ov_update(pipe);
 		pipe->ov_cnt++;
+		mdp4_lcdc_blt_ov_update(pipe);
+		if (pipe->ov_cnt == 3)
+			pipe->ov_cnt = 0;
 		INIT_COMPLETION(vctrl->ov_comp);
 		vsync_irq_enable(INTR_OVERLAY0_DONE, MDP_OVERLAY0_TERM);
 		mb();
@@ -798,9 +800,21 @@ static void mdp4_lcdc_blt_ov_update(struct mdp4_overlay_pipe *pipe)
 #else
 	bpp = 3; /* overlay ouput is RGB888 */
 #endif
+
 	off = 0;
-	if (pipe->ov_cnt & 0x01)
+	switch (pipe->ov_cnt & 0x3) {
+	case 1:
+		break;
+	case 2:
 		off = pipe->src_height * pipe->src_width * bpp;
+		break;
+	case 3:
+		off = pipe->src_height * pipe->src_width * bpp * 2;
+		break;
+	default:
+		pr_err("%s error ov_cnt can't be more than 3 ", __func__);
+		break;
+	}
 	addr = pipe->ov_blt_addr + off;
 
 	/* overlay 0 */
@@ -822,9 +836,21 @@ static void mdp4_lcdc_blt_dmap_update(struct mdp4_overlay_pipe *pipe)
 #else
 	bpp = 3; /* overlay ouput is RGB888 */
 #endif
+
 	off = 0;
-	if (pipe->dmap_cnt & 0x01)
+	switch (pipe->dmap_cnt & 0x3) {
+	case 1:
+		break;
+	case 2:
 		off = pipe->src_height * pipe->src_width * bpp;
+		break;
+	case 3:
+		off = pipe->src_height * pipe->src_width * bpp * 2;
+		break;
+	default:
+		pr_err("%s error dmap_cnt can't be more than 3 ", __func__);
+		break;
+	}
 	addr = pipe->dma_blt_addr + off;
 
 	/* dmap */
@@ -931,8 +957,10 @@ void mdp4_overlay0_done_lcdc(int cndx)
 		return;
 	}
 
-	mdp4_lcdc_blt_dmap_update(pipe);
 	pipe->dmap_cnt++;
+	mdp4_lcdc_blt_dmap_update(pipe);
+	if (pipe->dmap_cnt == 3)
+		pipe->dmap_cnt = 0;
 	spin_unlock(&vctrl->spin_lock);
 }
 
