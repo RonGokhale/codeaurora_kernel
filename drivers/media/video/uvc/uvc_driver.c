@@ -768,6 +768,21 @@ static int uvc_parse_streaming(struct uvc_device *dev,
 			"%d has %u bytes of trailing descriptor garbage.\n",
 			dev->udev->devnum, alts->desc.bInterfaceNumber, buflen);
 
+	uvc_printk(KERN_ERR, "HACK: Removing all formats except for 160x120..."
+			" do NOT ship this!\n");
+	for (i = 0; i < streaming->nformats; i++)
+		for (n = 0; n < streaming->format[i].nframes; n++) {
+			frame = &streaming->format[i].frame[n];
+			if (frame->wWidth == 160 && frame->wHeight == 120) {
+				// struct copy assignments
+				streaming->format[i].frame[0] = *frame;
+				streaming->format[i].nframes = 1;
+				streaming->format[0] = streaming->format[i];
+				streaming->nformats = 1;
+				// this kills the loop variable
+			}
+		}
+
 	/* Parse the alternate settings to find the maximum bandwidth. */
 	for (i = 0; i < intf->num_altsetting; ++i) {
 		struct usb_host_endpoint *ep;
