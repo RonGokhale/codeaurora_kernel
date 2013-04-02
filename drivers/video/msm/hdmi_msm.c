@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -59,6 +59,26 @@ static int msm_hdmi_sample_rate = MSM_HDMI_SAMPLE_RATE_48KHZ;
 
 #define HPD_EVENT_OFFLINE 0
 #define HPD_EVENT_ONLINE  1
+
+static int hdmi_msm_res_priority[HDMI_VFRMT_MAX] = {
+	[HDMI_VFRMT_720x240p60_4_3]    = 1,
+	[HDMI_VFRMT_1440x480i60_16_9]  = 2,
+	[HDMI_VFRMT_1440x576i50_4_3]   = 3,
+	[HDMI_VFRMT_1440x576i50_16_9]  = 4,
+	[HDMI_VFRMT_640x480p60_4_3]    = 5,
+	[HDMI_VFRMT_720x480p60_4_3]    = 6,
+	[HDMI_VFRMT_720x480p60_16_9]   = 7,
+	[HDMI_VFRMT_720x576p50_4_3]    = 8,
+	[HDMI_VFRMT_720x576p50_16_9]   = 9,
+	[HDMI_VFRMT_1920x1080i60_16_9] = 10,
+	[HDMI_VFRMT_1280x720p50_16_9]  = 11,
+	[HDMI_VFRMT_1280x720p60_16_9]  = 12,
+	[HDMI_VFRMT_1920x1080p24_16_9] = 13,
+	[HDMI_VFRMT_1920x1080p25_16_9] = 14,
+	[HDMI_VFRMT_1920x1080p30_16_9] = 15,
+	[HDMI_VFRMT_1920x1080p50_16_9] = 16,
+	[HDMI_VFRMT_1920x1080p60_16_9] = 17,
+};
 
 #define SWITCH_SET_HDMI_AUDIO(d, force) \
 	do {\
@@ -782,6 +802,31 @@ static bool hdmi_ready(void)
 					hdmi_msm_state->hpd_initialized;
 }
 
+static void hdmi_msm_reinit_panel_info(void)
+{
+	struct msm_fb_data_type *mfd = platform_get_drvdata(hdmi_msm_pdev);
+	uint32 num   = external_common_state->disp_mode_list.num_of_elements;
+	uint32 *list = external_common_state->disp_mode_list.disp_mode_list;
+	int i;
+
+	for (i = 0; i < num; i++) {
+		uint32 best_format = external_common_state->best_video_format;
+		if (hdmi_msm_res_priority[list[i]] >
+		    hdmi_msm_res_priority[best_format])
+			external_common_state->best_video_format = list[i];
+	}
+
+	if (external_common_state->best_video_format !=
+	    external_common_state->video_resolution) {
+		external_common_state->video_resolution =
+			external_common_state->best_video_format;
+
+		hdmi_common_init_panel_info(&mfd->panel_info);
+
+		mfd->update_var_info(mfd);
+	}
+}
+
 static void hdmi_msm_send_event(boolean on)
 {
 	struct msm_fb_data_type *mfd = platform_get_drvdata(hdmi_msm_pdev);
@@ -797,6 +842,7 @@ static void hdmi_msm_send_event(boolean on)
 	if (on) {
 		/* Build EDID table */
 		hdmi_msm_read_edid();
+		hdmi_msm_reinit_panel_info();
 		switch_set_state(&external_common_state->sdev, 1);
 		DEV_INFO("%s: hdmi state switched to %d\n", __func__,
 				external_common_state->sdev.state);
@@ -813,6 +859,8 @@ static void hdmi_msm_send_event(boolean on)
 		}
 	} else {
 		switch_set_state(&external_common_state->sdev, 0);
+		external_common_state->best_video_format = 0;
+		external_common_state->video_resolution  = 0;
 		DEV_INFO("%s: hdmi state switch to %d\n", __func__,
 				external_common_state->sdev.state);
 		DEV_INFO("hdmi: HDMI HPD: sense DISCONNECTED: send OFFLINE\n");

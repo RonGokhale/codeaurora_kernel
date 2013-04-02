@@ -3767,6 +3767,26 @@ int msm_fb_writeback_terminate(struct fb_info *info)
 EXPORT_SYMBOL(msm_fb_writeback_terminate);
 #endif
 
+static void msm_fb_update_var_info(struct msm_fb_data_type *mfd)
+{
+	struct fb_info *fbi = mfd->fbi;
+
+	fbi->var.xres         = mfd->panel_info.xres;
+	fbi->var.yres         = mfd->panel_info.yres;
+	fbi->var.pixclock     = mfd->panel_info.clk_rate;
+	fbi->var.left_margin  = mfd->panel_info.lcdc.h_back_porch;
+	fbi->var.right_margin = mfd->panel_info.lcdc.h_front_porch;
+	fbi->var.upper_margin = mfd->panel_info.lcdc.v_back_porch;
+	fbi->var.lower_margin = mfd->panel_info.lcdc.v_front_porch;
+	fbi->var.hsync_len    = mfd->panel_info.lcdc.h_pulse_width;
+	fbi->var.vsync_len    = mfd->panel_info.lcdc.v_pulse_width;
+
+	mfd->var_xres         = mfd->panel_info.xres;
+	mfd->var_yres         = mfd->panel_info.yres;
+	mfd->var_frame_rate   = mfd->panel_info.frame_rate;
+	mfd->var_pixclock     = mfd->panel_info.clk_rate;
+}
+
 struct platform_device *msm_fb_add_device(struct platform_device *pdev)
 {
 	struct msm_fb_panel_data *pdata;
@@ -3844,6 +3864,8 @@ struct platform_device *msm_fb_add_device(struct platform_device *pdev)
 	mfd->iclient = iclient;
 	/* link to the latest pdev */
 	mfd->pdev = this_dev;
+
+	mfd->update_var_info = msm_fb_update_var_info;
 
 	mfd_list[mfd_list_index++] = mfd;
 	fbi_list[fbi_list_index++] = fbi;
