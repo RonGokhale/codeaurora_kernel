@@ -156,6 +156,7 @@ struct mdss_mdp_mixer {
 	u32 ref_cnt;
 	char __iomem *base;
 	char __iomem *dspp_base;
+	char __iomem *pingpong_base;
 	u8 type;
 	u8 params_changed;
 	u16 width;
@@ -197,6 +198,8 @@ struct mdss_mdp_plane_sizes {
 	u32 plane_size[MAX_PLANES];
 	u32 total_size;
 	u32 ystride[MAX_PLANES];
+	u32 rau_cnt;
+	u32 rau_h[2];
 };
 
 struct mdss_mdp_img_data {
@@ -283,6 +286,24 @@ struct mdss_mdp_writeback_arg {
 	void *priv_data;
 };
 
+struct mdss_overlay_private {
+	int vsync_pending;
+	ktime_t vsync_time;
+	struct completion vsync_comp;
+	spinlock_t vsync_lock;
+	int borderfill_enable;
+	int overlay_play_enable;
+	int hw_refresh;
+
+	struct mdss_data_type *mdata;
+	struct mutex ov_lock;
+	struct mdss_mdp_ctl *ctl;
+	struct mdss_mdp_wb *wb;
+	struct list_head overlay_list;
+	struct list_head pipes_used;
+	struct list_head pipes_cleanup;
+};
+
 #define is_vig_pipe(_pipe_id_) ((_pipe_id_) <= MDSS_MDP_SSPP_VIG2)
 static inline void mdss_mdp_ctl_write(struct mdss_mdp_ctl *ctl,
 				      u32 reg, u32 val)
@@ -293,6 +314,17 @@ static inline void mdss_mdp_ctl_write(struct mdss_mdp_ctl *ctl,
 static inline u32 mdss_mdp_ctl_read(struct mdss_mdp_ctl *ctl, u32 reg)
 {
 	return readl_relaxed(ctl->base + reg);
+}
+
+static inline void mdss_mdp_pingpong_write(struct mdss_mdp_mixer *mixer,
+				      u32 reg, u32 val)
+{
+	writel_relaxed(val, mixer->pingpong_base + reg);
+}
+
+static inline u32 mdss_mdp_pingpong_read(struct mdss_mdp_mixer *mixer, u32 reg)
+{
+	return readl_relaxed(mixer->pingpong_base + reg);
 }
 
 irqreturn_t mdss_mdp_isr(int irq, void *ptr);
@@ -319,11 +351,12 @@ int mdss_mdp_overlay_vsync_ctrl(struct msm_fb_data_type *mfd, int en);
 int mdss_mdp_video_addr_setup(struct mdss_data_type *mdata,
 		u32 *offsets,  u32 count);
 int mdss_mdp_video_start(struct mdss_mdp_ctl *ctl);
+int mdss_mdp_cmd_start(struct mdss_mdp_ctl *ctl);
 int mdss_mdp_writeback_start(struct mdss_mdp_ctl *ctl);
-int mdss_mdp_overlay_kickoff(struct mdss_mdp_ctl *ctl);
+int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd);
 
 struct mdss_mdp_ctl *mdss_mdp_ctl_init(struct mdss_panel_data *pdata,
-				       struct msm_fb_data_type *mfd);
+					struct msm_fb_data_type *mfd);
 int mdss_mdp_ctl_setup(struct mdss_mdp_ctl *ctl);
 int mdss_mdp_ctl_split_display_setup(struct mdss_mdp_ctl *ctl,
 		struct mdss_panel_data *pdata);
@@ -400,7 +433,7 @@ struct mdss_mdp_pipe *mdss_mdp_pipe_alloc_dma(struct mdss_mdp_mixer *mixer);
 int mdss_mdp_pipe_addr_setup(struct mdss_data_type *mdata, u32 *offsets,
 		u32 *ftch_y_id, u32 type, u32 num_base, u32 len);
 int mdss_mdp_mixer_addr_setup(struct mdss_data_type *mdata, u32 *mixer_offsets,
-		u32 *dspp_offsets, u32 type, u32 len);
+		u32 *dspp_offsets, u32 *pingpong_offsets, u32 type, u32 len);
 int mdss_mdp_ctl_addr_setup(struct mdss_data_type *mdata, u32 *ctl_offsets,
 		u32 *wb_offsets, u32 len);
 
@@ -411,17 +444,29 @@ int mdss_mdp_pipe_queue_data(struct mdss_mdp_pipe *pipe,
 int mdss_mdp_data_check(struct mdss_mdp_data *data,
 			struct mdss_mdp_plane_sizes *ps);
 int mdss_mdp_get_plane_sizes(u32 format, u32 w, u32 h,
-			     struct mdss_mdp_plane_sizes *ps);
+			     struct mdss_mdp_plane_sizes *ps, u32 bwc_mode);
+int mdss_mdp_get_rau_strides(u32 w, u32 h, struct mdss_mdp_format_params *fmt,
+			       struct mdss_mdp_plane_sizes *ps);
 struct mdss_mdp_format_params *mdss_mdp_get_format_params(u32 format);
 int mdss_mdp_put_img(struct mdss_mdp_img_data *data);
 int mdss_mdp_get_img(struct msmfb_data *img, struct mdss_mdp_img_data *data);
 u32 mdss_get_panel_framerate(struct msm_fb_data_type *mfd);
 
-int mdss_mdp_wb_kickoff(struct mdss_mdp_ctl *ctl);
+int mdss_mdp_wb_kickoff(struct msm_fb_data_type *mfd);
 int mdss_mdp_wb_ioctl_handler(struct msm_fb_data_type *mfd, u32 cmd, void *arg);
 
 int mdss_mdp_get_ctl_mixers(u32 fb_num, u32 *mixer_id);
-int mdss_mdp_alloc_fb_mem(struct msm_fb_data_type *mfd,
-				  u32 size, u32 *phys, void **virt);
+int mdss_mdp_alloc_fb_mem(struct msm_fb_data_type *mfd);
 u32 mdss_mdp_fb_stride(u32 fb_index, u32 xres, int bpp);
+
+int mdss_panel_register_done(struct mdss_panel_data *pdata);
+
+#define mfd_to_mdp5_data(mfd) (mfd->mdp.private1)
+#define mfd_to_mdata(mfd) (((struct mdss_overlay_private *)\
+				(mfd->mdp.private1))->mdata)
+#define mfd_to_ctl(mfd) (((struct mdss_overlay_private *)\
+				(mfd->mdp.private1))->ctl)
+#define mfd_to_wb(mfd) (((struct mdss_overlay_private *)\
+				(mfd->mdp.private1))->wb)
+
 #endif /* MDSS_MDP_H */

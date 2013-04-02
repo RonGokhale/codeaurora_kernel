@@ -200,6 +200,20 @@ static int mdss_mdp_ctl_perf_update(struct mdss_mdp_ctl *ctl)
 		total_ib_quota += ib_quota;
 		if (clk_rate > max_clk_rate)
 			max_clk_rate = clk_rate;
+
+		if (ctl->intf_type) {
+			struct mdss_panel_info *pinfo;
+
+			pinfo = &ctl->panel_data->panel_info;
+			clk_rate = (ctl->intf_type == MDSS_INTF_DSI) ?
+					pinfo->mipi.dsi_pclk_rate :
+					pinfo->clk_rate;
+
+			/* minimum clock rate due to inefficiency in 3dmux */
+			clk_rate = mult_frac(clk_rate >> 1, 9, 8);
+			if (clk_rate > max_clk_rate)
+				max_clk_rate = clk_rate;
+		}
 	}
 
 	/* request minimum bandwidth to have bus clock on when display is on */
@@ -575,7 +589,8 @@ struct mdss_mdp_ctl *mdss_mdp_ctl_init(struct mdss_panel_data *pdata,
 	struct mdss_mdp_ctl *ctl;
 	int ret = 0;
 
-	ctl = mdss_mdp_ctl_alloc(mfd->mdata);
+	struct mdss_data_type *mdata = mfd_to_mdata(mfd);
+	ctl = mdss_mdp_ctl_alloc(mdata);
 	if (!ctl) {
 		pr_err("unable to allocate ctl\n");
 		return ERR_PTR(-ENOMEM);
@@ -598,6 +613,15 @@ struct mdss_mdp_ctl *mdss_mdp_ctl_init(struct mdss_panel_data *pdata,
 		ctl->intf_type = MDSS_INTF_DSI;
 		ctl->opmode = MDSS_MDP_CTL_OP_VIDEO_MODE;
 		ctl->start_fnc = mdss_mdp_video_start;
+		break;
+	case MIPI_CMD_PANEL:
+		if (pdata->panel_info.pdest == DISPLAY_1)
+			ctl->intf_num = MDSS_MDP_INTF1;
+		else
+			ctl->intf_num = MDSS_MDP_INTF2;
+		ctl->intf_type = MDSS_INTF_DSI;
+		ctl->opmode = MDSS_MDP_CTL_OP_CMD_MODE;
+		ctl->start_fnc = mdss_mdp_cmd_start;
 		break;
 	case DTV_PANEL:
 		ctl->intf_num = MDSS_MDP_INTF3;
@@ -1032,7 +1056,8 @@ static int mdss_mdp_mixer_setup(struct mdss_mdp_ctl *ctl,
 }
 
 int mdss_mdp_mixer_addr_setup(struct mdss_data_type *mdata,
-	 u32 *mixer_offsets, u32 *dspp_offsets, u32 type, u32 len)
+	 u32 *mixer_offsets, u32 *dspp_offsets, u32 *pingpong_offsets,
+	 u32 type, u32 len)
 {
 	struct mdss_mdp_mixer *head;
 	u32 i;
@@ -1052,8 +1077,11 @@ int mdss_mdp_mixer_addr_setup(struct mdss_data_type *mdata,
 		head[i].base = mdata->mdp_base + mixer_offsets[i];
 		head[i].ref_cnt = 0;
 		head[i].num = i;
-		if (type == MDSS_MDP_MIXER_TYPE_INTF)
+		if (type == MDSS_MDP_MIXER_TYPE_INTF) {
 			head[i].dspp_base = mdata->mdp_base + dspp_offsets[i];
+			head[i].pingpong_base = mdata->mdp_base +
+				pingpong_offsets[i];
+		}
 	}
 
 	switch (type) {

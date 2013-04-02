@@ -2283,15 +2283,14 @@ static int hdmi_tx_sysfs_enable_hpd(struct hdmi_tx_ctrl *hdmi_ctrl, int on)
 		/* If power down is already underway, wait for it to finish */
 		flush_work_sync(&hdmi_ctrl->power_off_work);
 
-		if (!hdmi_ctrl->panel_power_on) {
+		if (!hdmi_ctrl->panel_power_on)
 			hdmi_tx_hpd_off(hdmi_ctrl);
-		} else {
+		else
 			hdmi_ctrl->hpd_off_pending = true;
 
-			hdmi_tx_send_cable_notification(hdmi_ctrl, 0);
-			DEV_DBG("%s: Hdmi state switch to %d\n", __func__,
-				hdmi_ctrl->sdev.state);
-		}
+		hdmi_tx_send_cable_notification(hdmi_ctrl, 0);
+		DEV_DBG("%s: Hdmi state switch to %d\n", __func__,
+			hdmi_ctrl->sdev.state);
 	}
 
 	return rc;
@@ -2540,7 +2539,7 @@ static int hdmi_tx_panel_event_handler(struct mdss_panel_data *panel_data,
 				__func__, rc);
 		break;
 
-	case MDSS_EVENT_TIMEGEN_ON:
+	case MDSS_EVENT_PANEL_ON:
 		if (hdmi_ctrl->hdcp_feature_on && hdmi_ctrl->present_hdcp) {
 			DEV_DBG("%s: Starting HDCP authentication\n", __func__);
 			rc = hdmi_hdcp_authenticate(
@@ -2576,7 +2575,7 @@ static int hdmi_tx_panel_event_handler(struct mdss_panel_data *panel_data,
 		}
 		break;
 
-	case MDSS_EVENT_TIMEGEN_OFF:
+	case MDSS_EVENT_PANEL_OFF:
 		hdmi_ctrl->timing_gen_on = false;
 		break;
 

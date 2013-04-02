@@ -604,8 +604,12 @@ static void wcd9xxx_insert_detect_setup(struct wcd9xxx_mbhc *mbhc, bool ins)
 		 ins ? "insert" : "removal");
 	/* Disable detection to avoid glitch */
 	snd_soc_update_bits(mbhc->codec, WCD9XXX_A_MBHC_INSERT_DETECT, 1, 0);
-	snd_soc_write(mbhc->codec, WCD9XXX_A_MBHC_INSERT_DETECT,
-		      (0x68 | (ins ? (1 << 1) : 0)));
+	if (mbhc->mbhc_cfg->gpio_level_insert)
+		snd_soc_write(mbhc->codec, WCD9XXX_A_MBHC_INSERT_DETECT,
+			      (0x68 | (ins ? (1 << 1) : 0)));
+	else
+		snd_soc_write(mbhc->codec, WCD9XXX_A_MBHC_INSERT_DETECT,
+			      (0x6C | (ins ? (1 << 1) : 0)));
 	/* Re-enable detection */
 	snd_soc_update_bits(mbhc->codec, WCD9XXX_A_MBHC_INSERT_DETECT, 1, 1);
 }
@@ -3018,14 +3022,19 @@ wcd9xxx_event_to_micbias(const enum wcd9xxx_notify_event event)
 	switch (event) {
 	case WCD9XXX_EVENT_PRE_MICBIAS_1_ON:
 		ret = MBHC_MICBIAS1;
+		break;
 	case WCD9XXX_EVENT_PRE_MICBIAS_2_ON:
 		ret = MBHC_MICBIAS2;
+		break;
 	case WCD9XXX_EVENT_PRE_MICBIAS_3_ON:
 		ret = MBHC_MICBIAS3;
+		break;
 	case WCD9XXX_EVENT_PRE_MICBIAS_4_ON:
 		ret = MBHC_MICBIAS4;
+		break;
 	default:
 		ret = MBHC_MICBIAS_INVALID;
+		break;
 	}
 	return ret;
 }

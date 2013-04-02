@@ -55,6 +55,12 @@
 #include "mdss_debug.h"
 
 struct mdss_data_type *mdss_res;
+struct msm_mdp_interface mdp5 = {
+	.init_fnc = mdss_mdp_overlay_init,
+	.fb_mem_alloc_fnc = mdss_mdp_alloc_fb_mem,
+	.panel_register_done = mdss_panel_register_done,
+	.fb_stride = mdss_mdp_fb_stride,
+};
 
 #define IB_QUOTA 800000000
 #define AB_QUOTA 800000000
@@ -127,24 +133,38 @@ static int mdss_mdp_parse_dt_handler(struct platform_device *pdev,
 static int mdss_mdp_parse_dt_prop_len(struct platform_device *pdev,
 				       char *prop_name);
 static int mdss_mdp_parse_dt_smp(struct platform_device *pdev);
+static int mdss_mdp_parse_dt_misc(struct platform_device *pdev);
 
-int mdss_mdp_alloc_fb_mem(struct msm_fb_data_type *mfd,
-			  u32 size, u32 *phys, void **virt)
+int mdss_mdp_alloc_fb_mem(struct msm_fb_data_type *mfd)
 {
 	int dom;
-	void *fb_virt;
-	u32 fb_phys;
-	fb_virt = allocate_contiguous_memory(size, MEMTYPE_EBI1, SZ_1M, 0);
-	if (!fb_virt) {
-		pr_err("unable to alloc fbmem size=%u\n", size);
-		return -ENOMEM;
-	}
-	fb_phys = memory_pool_node_paddr(fb_virt);
-	dom = mdss_get_iommu_domain(MDSS_IOMMU_DOMAIN_UNSECURE);
-	msm_iommu_map_contig_buffer(fb_phys, dom, 0, size, SZ_4K,
-					0, &(mfd->iova));
-	*phys = fb_phys;
-	*virt = fb_virt;
+	void *virt = NULL;
+	unsigned long phys = 0;
+	size_t size;
+	u32 yres = mfd->fbi->var.yres_virtual;
+
+	size = PAGE_ALIGN(mfd->fbi->fix.line_length * yres);
+
+	if (mfd->index == 0) {
+		virt = allocate_contiguous_memory(size, MEMTYPE_EBI1, SZ_1M, 0);
+		if (!virt) {
+			pr_err("unable to alloc fbmem size=%u\n", size);
+			return -ENOMEM;
+		}
+		phys = memory_pool_node_paddr(virt);
+		dom = mdss_get_iommu_domain(MDSS_IOMMU_DOMAIN_UNSECURE);
+		msm_iommu_map_contig_buffer(phys, dom, 0, size, SZ_4K, 0,
+					&mfd->iova);
+
+		pr_debug("allocating %u bytes at %p (%lx phys) for fb %d\n",
+			size, virt, phys, mfd->index);
+	} else
+		size = 0;
+
+	mfd->fbi->screen_base = virt;
+	mfd->fbi->fix.smem_start = phys;
+	mfd->fbi->fix.smem_len = size;
+
 	return 0;
 }
 
@@ -993,6 +1013,10 @@ static int mdss_mdp_probe(struct platform_device *pdev)
 	if (!pm_runtime_enabled(&pdev->dev))
 		mdss_mdp_footswitch_ctrl(mdata, true);
 
+	rc = mdss_fb_register_mdp_instance(&mdp5);
+	if (rc)
+		pr_err("unable to register mdp instance\n");
+
 probe_done:
 	if (IS_ERR_VALUE(rc)) {
 		mdss_res = NULL;
@@ -1029,7 +1053,7 @@ int mdss_mdp_parse_dt_hw_settings(struct platform_device *pdev)
 
 	vbif_arr = of_get_property(pdev->dev.of_node, "qcom,vbif-settings",
 			&vbif_len);
-	if (!vbif_arr || (mdp_len & 1)) {
+	if (!vbif_arr || (vbif_len & 1)) {
 		pr_warn("MDSS VBIF settings not found\n");
 		vbif_len = 0;
 	}
@@ -1097,6 +1121,12 @@ static int mdss_mdp_parse_dt(struct platform_device *pdev)
 	rc = mdss_mdp_parse_dt_smp(pdev);
 	if (rc) {
 		pr_err("Error in device tree : smp\n");
+		return rc;
+	}
+
+	rc = mdss_mdp_parse_dt_misc(pdev);
+	if (rc) {
+		pr_err("Error in device tree : misc\n");
 		return rc;
 	}
 
@@ -1205,9 +1235,10 @@ ftch_alloc_fail:
 static int mdss_mdp_parse_dt_mixer(struct platform_device *pdev)
 {
 
-	u32 nmixers, ndspp;
+	u32 nmixers, ndspp, npingpong;
 	int rc = 0;
-	u32 *mixer_offsets = NULL, *dspp_offsets = NULL;
+	u32 *mixer_offsets = NULL, *dspp_offsets = NULL,
+	    *pingpong_offsets = NULL;
 
 	struct mdss_data_type *mdata = platform_get_drvdata(pdev);
 
@@ -1217,10 +1248,17 @@ static int mdss_mdp_parse_dt_mixer(struct platform_device *pdev)
 				"qcom,mdss-mixer-wb-off");
 	ndspp = mdss_mdp_parse_dt_prop_len(pdev,
 				"qcom,mdss-dspp-off");
+	npingpong = mdss_mdp_parse_dt_prop_len(pdev,
+				"qcom,mdss-pingpong-off");
 	nmixers = mdata->nmixers_intf + mdata->nmixers_wb;
 
 	if (mdata->nmixers_intf != ndspp) {
 		pr_err("device tree err: unequal no of dspp and intf mixers\n");
+		return -EINVAL;
+	}
+
+	if (mdata->nmixers_intf != npingpong) {
+		pr_err("device tree err: unequal no of pingpong and intf mixers\n");
 		return -EINVAL;
 	}
 
@@ -1235,6 +1273,12 @@ static int mdss_mdp_parse_dt_mixer(struct platform_device *pdev)
 		pr_err("no mem assigned: kzalloc fail\n");
 		rc = -ENOMEM;
 		goto dspp_alloc_fail;
+	}
+	pingpong_offsets = kzalloc(sizeof(u32) * npingpong, GFP_KERNEL);
+	if (!pingpong_offsets) {
+		pr_err("no mem assigned: kzalloc fail\n");
+		rc = -ENOMEM;
+		goto pingpong_alloc_fail;
 	}
 
 	rc = mdss_mdp_parse_dt_handler(pdev, "qcom,mdss-mixer-intf-off",
@@ -1252,19 +1296,26 @@ static int mdss_mdp_parse_dt_mixer(struct platform_device *pdev)
 	if (rc)
 		goto parse_done;
 
+	rc = mdss_mdp_parse_dt_handler(pdev, "qcom,mdss-pingpong-off",
+		pingpong_offsets, npingpong);
+	if (rc)
+		goto parse_done;
+
 	rc = mdss_mdp_mixer_addr_setup(mdata, mixer_offsets,
-			dspp_offsets, MDSS_MDP_MIXER_TYPE_INTF,
-			mdata->nmixers_intf);
+			dspp_offsets, pingpong_offsets,
+			MDSS_MDP_MIXER_TYPE_INTF, mdata->nmixers_intf);
 	if (rc)
 		goto parse_done;
 
 	rc = mdss_mdp_mixer_addr_setup(mdata, mixer_offsets +
-			mdata->nmixers_intf, NULL,
+			mdata->nmixers_intf, NULL, NULL,
 			MDSS_MDP_MIXER_TYPE_WRITEBACK, mdata->nmixers_wb);
 	if (rc)
 		goto parse_done;
 
 parse_done:
+	kfree(pingpong_offsets);
+pingpong_alloc_fail:
 	kfree(dspp_offsets);
 dspp_alloc_fail:
 	kfree(mixer_offsets);
@@ -1382,6 +1433,19 @@ static int mdss_mdp_parse_dt_smp(struct platform_device *pdev)
 		pr_err("unable to setup smp data\n");
 
 	return rc;
+}
+
+static int mdss_mdp_parse_dt_misc(struct platform_device *pdev)
+{
+	struct mdss_data_type *mdata = platform_get_drvdata(pdev);
+	u32 data;
+	int rc;
+
+	rc = of_property_read_u32(pdev->dev.of_node, "qcom,mdss-rot-block-size",
+		&data);
+	mdata->rot_block_size = (!rc ? data : 128);
+
+	return 0;
 }
 
 static int mdss_mdp_parse_dt_handler(struct platform_device *pdev,

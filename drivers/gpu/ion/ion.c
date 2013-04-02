@@ -39,7 +39,6 @@
 
 #include <mach/iommu_domains.h>
 #include "ion_priv.h"
-#define DEBUG
 
 /**
  * struct ion_device - the metadata of the ion device node
@@ -106,6 +105,12 @@ struct ion_handle {
 	unsigned int kmap_cnt;
 	unsigned int iommu_map_cnt;
 };
+
+bool ion_buffer_fault_user_mappings(struct ion_buffer *buffer)
+{
+        return ((buffer->flags & ION_FLAG_CACHED) &&
+                !(buffer->flags & ION_FLAG_CACHED_NEEDS_SYNC));
+}
 
 static void ion_iommu_release(struct kref *kref);
 
@@ -190,6 +195,8 @@ static struct ion_iommu_map *ion_iommu_lookup(struct ion_buffer *buffer,
 	return NULL;
 }
 
+static int ion_buffer_alloc_dirty(struct ion_buffer *buffer);
+
 /* this function should only be called while dev->lock is held */
 static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 				     struct ion_device *dev,
@@ -199,13 +206,15 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 {
 	struct ion_buffer *buffer;
 	struct sg_table *table;
-	int ret;
+	struct scatterlist *sg;
+	int i, ret;
 
 	buffer = kzalloc(sizeof(struct ion_buffer), GFP_KERNEL);
 	if (!buffer)
 		return ERR_PTR(-ENOMEM);
 
 	buffer->heap = heap;
+	buffer->flags = flags;
 	kref_init(&buffer->ref);
 
 	ret = heap->ops->allocate(heap, buffer, len, align, flags);
@@ -216,19 +225,54 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 
 	buffer->dev = dev;
 	buffer->size = len;
-	buffer->flags = flags;
 
-	table = buffer->heap->ops->map_dma(buffer->heap, buffer);
+	table = heap->ops->map_dma(heap, buffer);
 	if (IS_ERR_OR_NULL(table)) {
 		heap->ops->free(buffer);
 		kfree(buffer);
 		return ERR_PTR(PTR_ERR(table));
 	}
 	buffer->sg_table = table;
+	if (ion_buffer_fault_user_mappings(buffer)) {
+		for_each_sg(buffer->sg_table->sgl, sg, buffer->sg_table->nents,
+			    i) {
+			if (sg_dma_len(sg) == PAGE_SIZE)
+				continue;
+			pr_err("%s: cached mappings that will be faulted in "
+			       "must have pagewise sg_lists\n", __func__);
+			ret = -EINVAL;
+			goto err;
+		}
 
+		ret = ion_buffer_alloc_dirty(buffer);
+		if (ret)
+			goto err;
+	}
+
+	buffer->dev = dev;
+	buffer->size = len;
+	INIT_LIST_HEAD(&buffer->vmas);
 	mutex_init(&buffer->lock);
+	/* this will set up dma addresses for the sglist -- it is not
+	   technically correct as per the dma api -- a specific
+	   device isn't really taking ownership here.  However, in practice on
+	   our systems the only dma_address space is physical addresses.
+	   Additionally, we can't afford the overhead of invalidating every
+	   allocation via dma_map_sg. The implicit contract here is that
+	   memory comming from the heaps is ready for dma, ie if it has a
+	   cached mapping that mapping has been invalidated */
+	for_each_sg(buffer->sg_table->sgl, sg, buffer->sg_table->nents, i) {
+		if (sg_dma_address(sg) == 0)
+			sg_dma_address(sg) = sg_phys(sg);
+	}
 	ion_buffer_add(dev, buffer);
 	return buffer;
+
+err:
+	heap->ops->unmap_dma(heap, buffer);
+	heap->ops->free(buffer);
+	kfree(buffer);
+	return ERR_PTR(ret);
 }
 
 /**
@@ -276,7 +320,6 @@ static void ion_buffer_destroy(struct kref *kref)
 
 	if (WARN_ON(buffer->kmap_cnt > 0))
 		buffer->heap->ops->unmap_kernel(buffer->heap, buffer);
-
 	buffer->heap->ops->unmap_dma(buffer->heap, buffer);
 
 	ion_delayed_unsecure(buffer);
@@ -285,6 +328,8 @@ static void ion_buffer_destroy(struct kref *kref)
 	mutex_lock(&dev->lock);
 	rb_erase(&buffer->node, &dev->buffers);
 	mutex_unlock(&dev->lock);
+	if (buffer->flags & ION_FLAG_CACHED)
+		kfree(buffer->dirty);
 	kfree(buffer);
 }
 
@@ -418,6 +463,16 @@ struct ion_handle *ion_alloc(struct ion_client *client, size_t len,
 
 	dbg_str[0] = '\0';
 
+	/*
+	 * For now, we don't want to fault in pages individually since
+	 * clients are already doing manual cache maintenance. In
+	 * other words, the implicit caching infrastructure is in
+	 * place (in code) but should not be used.
+	 */
+	flags |= ION_FLAG_CACHED_NEEDS_SYNC;
+
+	pr_debug("%s: len %d align %d heap_mask %u flags %x\n", __func__, len,
+		 align, heap_mask, flags);
 	/*
 	 * traverse the list of heaps available in this system in priority
 	 * order.  If the heap type is supported by the client, and matches the
@@ -1205,12 +1260,47 @@ struct sg_table *ion_sg_table(struct ion_client *client,
 }
 EXPORT_SYMBOL(ion_sg_table);
 
+struct sg_table *ion_create_chunked_sg_table(phys_addr_t buffer_base,
+					size_t chunk_size, size_t total_size)
+{
+	struct sg_table *table;
+	int i, n_chunks, ret;
+	struct scatterlist *sg;
+
+	table = kzalloc(sizeof(struct sg_table), GFP_KERNEL);
+	if (!table)
+		return ERR_PTR(-ENOMEM);
+
+	n_chunks = DIV_ROUND_UP(total_size, chunk_size);
+	pr_debug("creating sg_table with %d chunks\n", n_chunks);
+
+	ret = sg_alloc_table(table, n_chunks, GFP_KERNEL);
+	if (ret)
+		goto err0;
+
+	for_each_sg(table->sgl, sg, table->nents, i) {
+		dma_addr_t addr = buffer_base + i * chunk_size;
+		sg_dma_address(sg) = addr;
+		sg_dma_len(sg) = chunk_size;
+	}
+
+	return table;
+err0:
+	kfree(table);
+	return ERR_PTR(ret);
+}
+
+static void ion_buffer_sync_for_device(struct ion_buffer *buffer,
+				       struct device *dev,
+				       enum dma_data_direction direction);
+
 static struct sg_table *ion_map_dma_buf(struct dma_buf_attachment *attachment,
 					enum dma_data_direction direction)
 {
 	struct dma_buf *dmabuf = attachment->dmabuf;
 	struct ion_buffer *buffer = dmabuf->priv;
 
+	ion_buffer_sync_for_device(buffer, attachment->dev, direction);
 	return buffer->sg_table;
 }
 
@@ -1220,24 +1310,119 @@ static void ion_unmap_dma_buf(struct dma_buf_attachment *attachment,
 {
 }
 
-static void ion_vma_close(struct vm_area_struct *vma)
+static int ion_buffer_alloc_dirty(struct ion_buffer *buffer)
+{
+	unsigned long pages = buffer->sg_table->nents;
+	unsigned long length = (pages + BITS_PER_LONG - 1)/BITS_PER_LONG;
+
+	buffer->dirty = kzalloc(length * sizeof(unsigned long), GFP_KERNEL);
+	if (!buffer->dirty)
+		return -ENOMEM;
+	return 0;
+}
+
+struct ion_vma_list {
+	struct list_head list;
+	struct vm_area_struct *vma;
+};
+
+static void ion_buffer_sync_for_device(struct ion_buffer *buffer,
+				       struct device *dev,
+				       enum dma_data_direction dir)
+{
+	struct scatterlist *sg;
+	int i;
+	struct ion_vma_list *vma_list;
+
+	pr_debug("%s: syncing for device %s\n", __func__,
+		 dev ? dev_name(dev) : "null");
+
+	if (!ion_buffer_fault_user_mappings(buffer))
+		return;
+
+	mutex_lock(&buffer->lock);
+	for_each_sg(buffer->sg_table->sgl, sg, buffer->sg_table->nents, i) {
+		if (!test_bit(i, buffer->dirty))
+			continue;
+		dma_sync_sg_for_device(dev, sg, 1, dir);
+		clear_bit(i, buffer->dirty);
+	}
+	list_for_each_entry(vma_list, &buffer->vmas, list) {
+		struct vm_area_struct *vma = vma_list->vma;
+
+		zap_page_range(vma, vma->vm_start, vma->vm_end - vma->vm_start,
+			       NULL);
+	}
+	mutex_unlock(&buffer->lock);
+}
+
+int ion_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
 	struct ion_buffer *buffer = vma->vm_private_data;
+	struct scatterlist *sg;
+	int i;
 
-	pr_debug("%s: %d\n", __func__, __LINE__);
+	mutex_lock(&buffer->lock);
+	set_bit(vmf->pgoff, buffer->dirty);
+
+	for_each_sg(buffer->sg_table->sgl, sg, buffer->sg_table->nents, i) {
+		if (i != vmf->pgoff)
+			continue;
+		dma_sync_sg_for_cpu(NULL, sg, 1, DMA_BIDIRECTIONAL);
+		vm_insert_page(vma, (unsigned long)vmf->virtual_address,
+			       sg_page(sg));
+		break;
+	}
+	mutex_unlock(&buffer->lock);
+	return VM_FAULT_NOPAGE;
+}
+
+static void ion_vm_open(struct vm_area_struct *vma)
+{
+	struct ion_buffer *buffer = vma->vm_private_data;
+	struct ion_vma_list *vma_list;
+
+	vma_list = kmalloc(sizeof(struct ion_vma_list), GFP_KERNEL);
+	if (!vma_list)
+		return;
+	vma_list->vma = vma;
+	mutex_lock(&buffer->lock);
+	list_add(&vma_list->list, &buffer->vmas);
+	mutex_unlock(&buffer->lock);
+	pr_debug("%s: adding %p\n", __func__, vma);
+}
+
+static void ion_vm_close(struct vm_area_struct *vma)
+{
+	struct ion_buffer *buffer = vma->vm_private_data;
+	struct ion_vma_list *vma_list, *tmp;
+
+	pr_debug("%s\n", __func__);
+	mutex_lock(&buffer->lock);
+	list_for_each_entry_safe(vma_list, tmp, &buffer->vmas, list) {
+		if (vma_list->vma != vma)
+			continue;
+		list_del(&vma_list->list);
+		kfree(vma_list);
+		pr_debug("%s: deleting %p\n", __func__, vma);
+		break;
+	}
+	mutex_unlock(&buffer->lock);
 
 	if (buffer->heap->ops->unmap_user)
 		buffer->heap->ops->unmap_user(buffer->heap, buffer);
 }
 
-static struct vm_operations_struct ion_vm_ops = {
-	.close = ion_vma_close,
+struct vm_operations_struct ion_vma_ops = {
+	.open = ion_vm_open,
+	.close = ion_vm_close,
+	.fault = ion_vm_fault,
 };
 
 static int ion_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 {
 	struct ion_buffer *buffer = dmabuf->priv;
-	int ret;
+	int ret = 0;
 
 	if (!buffer->heap->ops->map_user) {
 		pr_err("%s: this heap does not define a method for mapping "
@@ -1245,24 +1430,26 @@ static int ion_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 		return -EINVAL;
 	}
 
+	if (ion_buffer_fault_user_mappings(buffer)) {
+		vma->vm_private_data = buffer;
+		vma->vm_ops = &ion_vma_ops;
+		vma->vm_flags |= VM_MIXEDMAP;
+		ion_vm_open(vma);
+		return 0;
+	}
+
+	if (!(buffer->flags & ION_FLAG_CACHED))
+		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+
 	mutex_lock(&buffer->lock);
 	/* now map it to userspace */
 	ret = buffer->heap->ops->map_user(buffer->heap, buffer, vma);
+	mutex_unlock(&buffer->lock);
 
-	if (ret) {
-		mutex_unlock(&buffer->lock);
+	if (ret)
 		pr_err("%s: failure mapping buffer to userspace\n",
 		       __func__);
-	} else {
-		mutex_unlock(&buffer->lock);
 
-		vma->vm_ops = &ion_vm_ops;
-		/*
-		 * move the buffer into the vm_private_data so we can access it
-		 * from vma_open/close
-		 */
-		vma->vm_private_data = buffer;
-	}
 	return ret;
 }
 
@@ -1398,6 +1585,30 @@ end:
 }
 EXPORT_SYMBOL(ion_import_dma_buf);
 
+static int ion_sync_for_device(struct ion_client *client, int fd)
+{
+	struct dma_buf *dmabuf;
+	struct ion_buffer *buffer;
+
+	dmabuf = dma_buf_get(fd);
+	if (IS_ERR_OR_NULL(dmabuf))
+		return PTR_ERR(dmabuf);
+
+	/* if this memory came from ion */
+	if (dmabuf->ops != &dma_buf_ops) {
+		pr_err("%s: can not sync dmabuf from another exporter\n",
+		       __func__);
+		dma_buf_put(dmabuf);
+		return -EINVAL;
+	}
+	buffer = dmabuf->priv;
+
+	dma_sync_sg_for_device(NULL, buffer->sg_table->sgl,
+			       buffer->sg_table->nents, DMA_BIDIRECTIONAL);
+	dma_buf_put(dmabuf);
+	return 0;
+}
+
 static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct ion_client *client = filp->private_data;
@@ -1468,6 +1679,15 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			return -EFAULT;
 		if (ret < 0)
 			return ret;
+		break;
+	}
+	case ION_IOC_SYNC:
+	{
+		struct ion_fd_data data;
+		if (copy_from_user(&data, (void __user *)arg,
+				   sizeof(struct ion_fd_data)))
+			return -EFAULT;
+		ion_sync_for_device(client, data.fd);
 		break;
 	}
 	case ION_IOC_CUSTOM:

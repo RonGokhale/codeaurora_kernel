@@ -491,6 +491,9 @@ static uint32_t qpnp_vadc_calib_device(void)
 		goto calib_fail;
 	}
 
+	pr_debug("absolute reference raw: 625mV:0x%x 1.25V:0x%x\n",
+				calib_read_1, calib_read_2);
+
 	vadc->adc->amux_prop->chan_prop->adc_graph[CALIB_ABSOLUTE].dy =
 					(calib_read_1 - calib_read_2);
 
@@ -555,6 +558,8 @@ static uint32_t qpnp_vadc_calib_device(void)
 		goto calib_fail;
 	}
 
+	pr_debug("ratiometric reference raw: VDD:0x%x GND:0x%x\n",
+				calib_read_1, calib_read_2);
 	vadc->adc->amux_prop->chan_prop->adc_graph[CALIB_RATIOMETRIC].dy =
 					(calib_read_1 - calib_read_2);
 	vadc->adc->amux_prop->chan_prop->adc_graph[CALIB_RATIOMETRIC].dx =
@@ -736,7 +741,7 @@ int32_t qpnp_vadc_read(enum qpnp_vadc_channels channel,
 	return qpnp_vadc_conv_seq_request(ADC_SEQ_NONE,
 				channel, result);
 }
-EXPORT_SYMBOL_GPL(qpnp_vadc_read);
+EXPORT_SYMBOL(qpnp_vadc_read);
 
 static void qpnp_vadc_lock(void)
 {

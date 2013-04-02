@@ -99,10 +99,17 @@ enum {
 	SB_PGD_PORT_TX_ENABLE_n,
 	SB_PGD_PORT_RX_WATERMARK_n,
 	SB_PGD_PORT_RX_ENABLE_n,
+	SB_PGD_TX_PORTn_MULTI_CHNL_0,
+	SB_PGD_TX_PORTn_MULTI_CHNL_1,
+	SB_PGD_RX_PORTn_MULTI_CHNL_0,
+	SB_PGD_RX_PORTn_MULTI_CHNL_1,
+	AANC_FF_GAIN_ADAPTIVE,
+	AANC_FFGAIN_ADAPTIVE_EN,
+	AANC_GAIN_CONTROL,
 	MAX_CFG_REGISTERS,
 };
 
-static struct afe_param_cdc_reg_cfg mad_audio_reg_cfg[] = {
+static struct afe_param_cdc_reg_cfg audio_reg_cfg[] = {
 	{
 		1,
 		(TAIKO_REGISTER_START_OFFSET + TAIKO_A_CDC_MAD_MAIN_CTL_1),
@@ -157,12 +164,30 @@ static struct afe_param_cdc_reg_cfg mad_audio_reg_cfg[] = {
 		1,
 		(TAIKO_REGISTER_START_OFFSET + TAIKO_SB_PGD_PORT_RX_BASE),
 		SB_PGD_PORT_RX_ENABLE_n, 0x1, 8, 0x1
-	}
+	},
+	{	1,
+		(TAIKO_REGISTER_START_OFFSET + TAIKO_A_CDC_ANC1_IIR_B1_CTL),
+		AANC_FF_GAIN_ADAPTIVE, 0x4, 8, 0
+	},
+	{	1,
+		(TAIKO_REGISTER_START_OFFSET + TAIKO_A_CDC_ANC1_IIR_B1_CTL),
+		AANC_FFGAIN_ADAPTIVE_EN, 0x8, 8, 0
+	},
+	{
+		1,
+		(TAIKO_REGISTER_START_OFFSET + TAIKO_A_CDC_ANC1_GAIN_CTL),
+		AANC_GAIN_CONTROL, 0xFF, 8, 0
+	},
 };
 
-static struct afe_param_cdc_reg_cfg_data taiko_mad_audio_reg_cfg = {
-	.num_registers = ARRAY_SIZE(mad_audio_reg_cfg),
-	.reg_data = mad_audio_reg_cfg,
+static struct afe_param_cdc_reg_cfg_data taiko_audio_reg_cfg = {
+	.num_registers = ARRAY_SIZE(audio_reg_cfg),
+	.reg_data = audio_reg_cfg,
+};
+
+static struct afe_param_id_cdc_aanc_version taiko_cdc_aanc_version = {
+	.cdc_aanc_minor_version = AFE_API_VERSION_CDC_AANC_VERSION,
+	.aanc_hw_version        = AANC_HW_BLOCK_VERSION_2,
 };
 
 module_param_cb(spkr_drv_wrnd, &spkr_drv_wrnd_param_ops, &spkr_drv_wrnd, 0644);
@@ -556,55 +581,6 @@ static int taiko_put_anc_func(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-static int taiko_pa_gain_get(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	u8 ear_pa_gain;
-	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
-
-	ear_pa_gain = snd_soc_read(codec, TAIKO_A_RX_EAR_GAIN);
-
-	ear_pa_gain = ear_pa_gain >> 5;
-
-	if (ear_pa_gain == 0x00) {
-		ucontrol->value.integer.value[0] = 0;
-	} else if (ear_pa_gain == 0x04) {
-		ucontrol->value.integer.value[0] = 1;
-	} else  {
-		pr_err("%s: ERROR: Unsupported Ear Gain = 0x%x\n",
-				__func__, ear_pa_gain);
-		return -EINVAL;
-	}
-
-	pr_debug("%s: ear_pa_gain = 0x%x\n", __func__, ear_pa_gain);
-
-	return 0;
-}
-
-static int taiko_pa_gain_put(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	u8 ear_pa_gain;
-	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
-
-	pr_debug("%s: ucontrol->value.integer.value[0]  = %ld\n", __func__,
-			ucontrol->value.integer.value[0]);
-
-	switch (ucontrol->value.integer.value[0]) {
-	case 0:
-		ear_pa_gain = 0x00;
-		break;
-	case 1:
-		ear_pa_gain = 0x80;
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	snd_soc_update_bits(codec, TAIKO_A_RX_EAR_GAIN, 0xE0, ear_pa_gain);
-	return 0;
-}
-
 static int taiko_get_iir_enable_audio_mixer(
 					struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
@@ -961,10 +937,7 @@ static int taiko_config_compander(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
-static const char * const taiko_ear_pa_gain_text[] = {"POS_6_DB", "POS_2_DB"};
-static const struct soc_enum taiko_ear_pa_gain_enum[] = {
-		SOC_ENUM_SINGLE_EXT(2, taiko_ear_pa_gain_text),
-};
+
 
 static const char *const taiko_anc_func_text[] = {"OFF", "ON"};
 static const struct soc_enum taiko_anc_func_enum =
@@ -1044,26 +1017,6 @@ static const struct snd_kcontrol_new class_h_dsm_mux =
 
 static const struct snd_kcontrol_new taiko_snd_controls[] = {
 
-	SOC_ENUM_EXT("EAR PA Gain", taiko_ear_pa_gain_enum[0],
-		taiko_pa_gain_get, taiko_pa_gain_put),
-
-	SOC_SINGLE_TLV("LINEOUT1 Volume", TAIKO_A_RX_LINE_1_GAIN, 0, 12, 1,
-		line_gain),
-	SOC_SINGLE_TLV("LINEOUT2 Volume", TAIKO_A_RX_LINE_2_GAIN, 0, 12, 1,
-		line_gain),
-	SOC_SINGLE_TLV("LINEOUT3 Volume", TAIKO_A_RX_LINE_3_GAIN, 0, 12, 1,
-		line_gain),
-	SOC_SINGLE_TLV("LINEOUT4 Volume", TAIKO_A_RX_LINE_4_GAIN, 0, 12, 1,
-		line_gain),
-
-	SOC_SINGLE_TLV("HPHL Volume", TAIKO_A_RX_HPH_L_GAIN, 0, 12, 1,
-		line_gain),
-	SOC_SINGLE_TLV("HPHR Volume", TAIKO_A_RX_HPH_R_GAIN, 0, 12, 1,
-		line_gain),
-
-	SOC_SINGLE_TLV("SPK DRV Volume", TAIKO_A_SPKR_DRV_GAIN, 3, 7, 1,
-		line_gain),
-
 	SOC_SINGLE_S8_TLV("RX1 Digital Volume", TAIKO_A_CDC_RX1_VOL_CTL_B2_CTL,
 		-84, 40, digital_gain),
 	SOC_SINGLE_S8_TLV("RX2 Digital Volume", TAIKO_A_CDC_RX2_VOL_CTL_B2_CTL,
@@ -1099,6 +1052,7 @@ static const struct snd_kcontrol_new taiko_snd_controls[] = {
 		digital_gain),
 	SOC_SINGLE_S8_TLV("DEC10 Volume", TAIKO_A_CDC_TX10_VOL_CTL_GAIN, -84,
 		40, digital_gain),
+
 	SOC_SINGLE_S8_TLV("IIR1 INP1 Volume", TAIKO_A_CDC_IIR1_GAIN_B1_CTL, -84,
 		40, digital_gain),
 	SOC_SINGLE_S8_TLV("IIR1 INP2 Volume", TAIKO_A_CDC_IIR1_GAIN_B2_CTL, -84,
@@ -1107,17 +1061,12 @@ static const struct snd_kcontrol_new taiko_snd_controls[] = {
 		40, digital_gain),
 	SOC_SINGLE_S8_TLV("IIR1 INP4 Volume", TAIKO_A_CDC_IIR1_GAIN_B4_CTL, -84,
 		40, digital_gain),
-	SOC_SINGLE_TLV("ADC1 Volume", TAIKO_A_TX_1_2_EN, 5, 3, 0, analog_gain),
-	SOC_SINGLE_TLV("ADC2 Volume", TAIKO_A_TX_1_2_EN, 1, 3, 0, analog_gain),
-	SOC_SINGLE_TLV("ADC3 Volume", TAIKO_A_TX_3_4_EN, 5, 3, 0, analog_gain),
-	SOC_SINGLE_TLV("ADC4 Volume", TAIKO_A_TX_3_4_EN, 1, 3, 0, analog_gain),
-	SOC_SINGLE_TLV("ADC5 Volume", TAIKO_A_TX_5_6_EN, 5, 3, 0, analog_gain),
-	SOC_SINGLE_TLV("ADC6 Volume", TAIKO_A_TX_5_6_EN, 1, 3, 0, analog_gain),
 
 	SOC_SINGLE_EXT("ANC Slot", SND_SOC_NOPM, 0, 100, 0, taiko_get_anc_slot,
 		taiko_put_anc_slot),
 	SOC_ENUM_EXT("ANC Function", taiko_anc_func_enum, taiko_get_anc_func,
 		taiko_put_anc_func),
+
 	SOC_ENUM("TX1 HPF cut off", cf_dec1_enum),
 	SOC_ENUM("TX2 HPF cut off", cf_dec2_enum),
 	SOC_ENUM("TX3 HPF cut off", cf_dec3_enum),
@@ -1205,6 +1154,122 @@ static const struct snd_kcontrol_new taiko_snd_controls[] = {
 	SOC_SINGLE_EXT("COMP2 Switch", SND_SOC_NOPM, COMPANDER_2, 1, 0,
 		       taiko_get_compander, taiko_set_compander),
 
+};
+
+static int taiko_pa_gain_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	u8 ear_pa_gain;
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+
+	ear_pa_gain = snd_soc_read(codec, TAIKO_A_RX_EAR_GAIN);
+
+	ear_pa_gain = ear_pa_gain >> 5;
+
+	ucontrol->value.integer.value[0] = ear_pa_gain;
+
+	pr_debug("%s: ear_pa_gain = 0x%x\n", __func__, ear_pa_gain);
+
+	return 0;
+}
+
+static int taiko_pa_gain_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	u8 ear_pa_gain;
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+
+	pr_debug("%s: ucontrol->value.integer.value[0]  = %ld\n", __func__,
+			ucontrol->value.integer.value[0]);
+
+	ear_pa_gain =  ucontrol->value.integer.value[0] << 5;
+
+	snd_soc_update_bits(codec, TAIKO_A_RX_EAR_GAIN, 0xE0, ear_pa_gain);
+	return 0;
+}
+
+static const char * const taiko_1_x_ear_pa_gain_text[] = {
+	"POS_6_DB", "UNDEFINED_1", "UNDEFINED_2", "UNDEFINED_3", "POS_2_DB",
+	"NEG_2P5_DB", "UNDEFINED_4", "NEG_12_DB"
+};
+
+static const struct soc_enum taiko_1_x_ear_pa_gain_enum =
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(taiko_1_x_ear_pa_gain_text),
+			taiko_1_x_ear_pa_gain_text);
+
+static const struct snd_kcontrol_new taiko_1_x_analog_gain_controls[] = {
+
+	SOC_ENUM_EXT("EAR PA Gain", taiko_1_x_ear_pa_gain_enum,
+		taiko_pa_gain_get, taiko_pa_gain_put),
+
+	SOC_SINGLE_TLV("HPHL Volume", TAIKO_A_RX_HPH_L_GAIN, 0, 20, 1,
+		line_gain),
+	SOC_SINGLE_TLV("HPHR Volume", TAIKO_A_RX_HPH_R_GAIN, 0, 20, 1,
+		line_gain),
+
+	SOC_SINGLE_TLV("LINEOUT1 Volume", TAIKO_A_RX_LINE_1_GAIN, 0, 20, 1,
+		line_gain),
+	SOC_SINGLE_TLV("LINEOUT2 Volume", TAIKO_A_RX_LINE_2_GAIN, 0, 20, 1,
+		line_gain),
+	SOC_SINGLE_TLV("LINEOUT3 Volume", TAIKO_A_RX_LINE_3_GAIN, 0, 20, 1,
+		line_gain),
+	SOC_SINGLE_TLV("LINEOUT4 Volume", TAIKO_A_RX_LINE_4_GAIN, 0, 20, 1,
+		line_gain),
+
+	SOC_SINGLE_TLV("SPK DRV Volume", TAIKO_A_SPKR_DRV_GAIN, 3, 7, 1,
+		line_gain),
+
+	SOC_SINGLE_TLV("ADC1 Volume", TAIKO_A_TX_1_2_EN, 5, 3, 0, analog_gain),
+	SOC_SINGLE_TLV("ADC2 Volume", TAIKO_A_TX_1_2_EN, 1, 3, 0, analog_gain),
+	SOC_SINGLE_TLV("ADC3 Volume", TAIKO_A_TX_3_4_EN, 5, 3, 0, analog_gain),
+	SOC_SINGLE_TLV("ADC4 Volume", TAIKO_A_TX_3_4_EN, 1, 3, 0, analog_gain),
+	SOC_SINGLE_TLV("ADC5 Volume", TAIKO_A_TX_5_6_EN, 5, 3, 0, analog_gain),
+	SOC_SINGLE_TLV("ADC6 Volume", TAIKO_A_TX_5_6_EN, 1, 3, 0, analog_gain),
+};
+
+static const char * const taiko_2_x_ear_pa_gain_text[] = {
+	"POS_6_DB", "POS_4P5_DB", "POS_3_DB", "POS_1P5_DB",
+	"POS_0_DB", "NEG_2P5_DB", "UNDEFINED", "NEG_12_DB"
+};
+
+static const struct soc_enum taiko_2_x_ear_pa_gain_enum =
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(taiko_2_x_ear_pa_gain_text),
+			taiko_2_x_ear_pa_gain_text);
+
+static const struct snd_kcontrol_new taiko_2_x_analog_gain_controls[] = {
+
+	SOC_ENUM_EXT("EAR PA Gain", taiko_2_x_ear_pa_gain_enum,
+		taiko_pa_gain_get, taiko_pa_gain_put),
+
+	SOC_SINGLE_TLV("HPHL Volume", TAIKO_A_RX_HPH_L_GAIN, 0, 20, 1,
+		line_gain),
+	SOC_SINGLE_TLV("HPHR Volume", TAIKO_A_RX_HPH_R_GAIN, 0, 20, 1,
+		line_gain),
+
+	SOC_SINGLE_TLV("LINEOUT1 Volume", TAIKO_A_RX_LINE_1_GAIN, 0, 20, 1,
+		line_gain),
+	SOC_SINGLE_TLV("LINEOUT2 Volume", TAIKO_A_RX_LINE_2_GAIN, 0, 20, 1,
+		line_gain),
+	SOC_SINGLE_TLV("LINEOUT3 Volume", TAIKO_A_RX_LINE_3_GAIN, 0, 20, 1,
+		line_gain),
+	SOC_SINGLE_TLV("LINEOUT4 Volume", TAIKO_A_RX_LINE_4_GAIN, 0, 20, 1,
+		line_gain),
+
+	SOC_SINGLE_TLV("SPK DRV Volume", TAIKO_A_SPKR_DRV_GAIN, 3, 8, 1,
+		line_gain),
+
+	SOC_SINGLE_TLV("ADC1 Volume", TAIKO_A_CDC_TX_1_GAIN, 2, 19, 0,
+			analog_gain),
+	SOC_SINGLE_TLV("ADC2 Volume", TAIKO_A_CDC_TX_2_GAIN, 2, 19, 0,
+			analog_gain),
+	SOC_SINGLE_TLV("ADC3 Volume", TAIKO_A_CDC_TX_3_GAIN, 2, 19, 0,
+			analog_gain),
+	SOC_SINGLE_TLV("ADC4 Volume", TAIKO_A_CDC_TX_4_GAIN, 2, 19, 0,
+			analog_gain),
+	SOC_SINGLE_TLV("ADC5 Volume", TAIKO_A_CDC_TX_5_GAIN, 2, 19, 0,
+			analog_gain),
+	SOC_SINGLE_TLV("ADC6 Volume", TAIKO_A_CDC_TX_6_GAIN, 2, 19, 0,
+			analog_gain),
 };
 
 static const char * const rx_mix1_text[] = {
@@ -3581,8 +3646,8 @@ static int taiko_volatile(struct snd_soc_codec *ssc, unsigned int reg)
 		return 1;
 	}
 
-	for (i = 0; i < ARRAY_SIZE(mad_audio_reg_cfg); i++)
-		if (mad_audio_reg_cfg[i].reg_logical_addr -
+	for (i = 0; i < ARRAY_SIZE(audio_reg_cfg); i++)
+		if (audio_reg_cfg[i].reg_logical_addr -
 		    TAIKO_REGISTER_START_OFFSET == reg)
 			return 1;
 
@@ -3869,7 +3934,7 @@ static int taiko_set_interpolator_rate(struct snd_soc_dai *dai,
 					taiko->comp_fs[comp_rx_path[j]]
 					= compander_fs;
 			}
-			if (j <= 2)
+			if (j < 2)
 				rx_mix_1_reg_1 += 3;
 			else
 				rx_mix_1_reg_1 += 2;
@@ -5420,6 +5485,12 @@ static const struct wcd9xxx_reg_mask_val taiko_2_0_reg_defaults[] = {
 	TAIKO_REG_VAL(TAIKO_A_CDC_TX9_MUX_CTL, 0x48),
 	TAIKO_REG_VAL(TAIKO_A_CDC_TX10_MUX_CTL, 0x48),
 	TAIKO_REG_VAL(TAIKO_A_CDC_RX1_B4_CTL, 0x8),
+	TAIKO_REG_VAL(TAIKO_A_CDC_RX2_B4_CTL, 0x8),
+	TAIKO_REG_VAL(TAIKO_A_CDC_RX3_B4_CTL, 0x8),
+	TAIKO_REG_VAL(TAIKO_A_CDC_RX4_B4_CTL, 0x8),
+	TAIKO_REG_VAL(TAIKO_A_CDC_RX5_B4_CTL, 0x8),
+	TAIKO_REG_VAL(TAIKO_A_CDC_RX6_B4_CTL, 0x8),
+	TAIKO_REG_VAL(TAIKO_A_CDC_RX7_B4_CTL, 0x8),
 	TAIKO_REG_VAL(TAIKO_A_CDC_VBAT_GAIN_UPD_MON, 0x0),
 	TAIKO_REG_VAL(TAIKO_A_CDC_PA_RAMP_B1_CTL, 0x0),
 	TAIKO_REG_VAL(TAIKO_A_CDC_PA_RAMP_B2_CTL, 0x0),
@@ -5632,9 +5703,11 @@ void *taiko_get_afe_config(struct snd_soc_codec *codec,
 	case AFE_SLIMBUS_SLAVE_CONFIG:
 		return &priv->slimbus_slave_cfg;
 	case AFE_CDC_REGISTERS_CONFIG:
-		return &taiko_mad_audio_reg_cfg;
+		return &taiko_audio_reg_cfg;
 	case AFE_SLIMBUS_SLAVE_PORT_CONFIG:
 		return &taiko_slimbus_slave_port_cfg;
+	case AFE_AANC_VERSION:
+		return &taiko_cdc_aanc_version;
 	default:
 		pr_err("%s: Unknown config_type 0x%x\n", __func__, config_type);
 		return NULL;
@@ -5843,12 +5916,19 @@ static int taiko_codec_probe(struct snd_soc_codec *codec)
 		taiko_init_slim_slave_cfg(codec);
 	}
 
-	if (TAIKO_IS_1_0(control->version))
+	if (TAIKO_IS_1_0(control->version)) {
 		snd_soc_dapm_new_controls(dapm, taiko_1_dapm_widgets,
 					  ARRAY_SIZE(taiko_1_dapm_widgets));
-	else
+		snd_soc_add_codec_controls(codec,
+			taiko_1_x_analog_gain_controls,
+			ARRAY_SIZE(taiko_1_x_analog_gain_controls));
+	} else {
 		snd_soc_dapm_new_controls(dapm, taiko_2_dapm_widgets,
 					  ARRAY_SIZE(taiko_2_dapm_widgets));
+		snd_soc_add_codec_controls(codec,
+			taiko_2_x_analog_gain_controls,
+			ARRAY_SIZE(taiko_2_x_analog_gain_controls));
+	}
 
 	control->num_rx_port = TAIKO_RX_MAX;
 	control->rx_chs = ptr;

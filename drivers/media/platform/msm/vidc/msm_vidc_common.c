@@ -22,7 +22,7 @@
 #include "msm_smem.h"
 #include "msm_vidc_debug.h"
 
-#define HW_RESPONSE_TIMEOUT msecs_to_jiffies(200)
+#define HW_RESPONSE_TIMEOUT 200
 
 #define IS_ALREADY_IN_STATE(__p, __d) ({\
 	int __rc = (__p >= __d);\
@@ -48,11 +48,6 @@
 })
 
 #define TIME_DIFF_THRESHOLD 200
-
-/*Load is in Macroblocks (MBs) per sec. This value is calculated
- * based on one 4k video instance @ 24 fps plus one 1080p video
- * instance @ 30fps. 1 MB = 16 X 16 pixels*/
-#define MAX_LOAD 1074240
 
 static int msm_comm_get_load(struct msm_vidc_core *core,
 	enum session_type type)
@@ -142,9 +137,10 @@ struct msm_vidc_core *get_vidc_core(int core_id)
 	}
 	mutex_lock(&vidc_driver->lock);
 	list_for_each_entry(core, &vidc_driver->cores, list) {
-		if (core && core->id == core_id)
+		if (core && core->id == core_id) {
 			found = 1;
 			break;
+		}
 	}
 	mutex_unlock(&vidc_driver->lock);
 	if (found)
@@ -366,22 +362,27 @@ static void handle_session_init_done(enum command_response cmd, void *data)
 	}
 }
 
+static void queue_v4l2_event(struct msm_vidc_inst *inst, int event_type)
+{
+	struct v4l2_event event = {.id = 0, .type = event_type};
+	v4l2_event_queue_fh(&inst->event_handler, &event);
+	wake_up(&inst->kernel_event_queue);
+}
+
 static void handle_event_change(enum command_response cmd, void *data)
 {
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst;
-	struct v4l2_event dqevent;
 	struct v4l2_control control = {0};
 	struct msm_vidc_cb_event *event_notify;
+	int event = 0;
 	int rc = 0;
 	if (response) {
 		inst = (struct msm_vidc_inst *)response->session_id;
-		dqevent.id = 0;
 		event_notify = (struct msm_vidc_cb_event *) response->data;
 		switch (event_notify->hal_event_type) {
 		case HAL_EVENT_SEQ_CHANGED_SUFFICIENT_RESOURCES:
-			dqevent.type =
-				V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT;
+			event = V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT;
 			control.id =
 				V4L2_CID_MPEG_VIDC_VIDEO_CONTINUE_DATA_TRANSFER;
 			rc = v4l2_g_ctrl(&inst->ctrl_handler, &control);
@@ -389,24 +390,24 @@ static void handle_event_change(enum command_response cmd, void *data)
 				dprintk(VIDC_WARN,
 					"Failed to get Smooth streamng flag\n");
 			if (!rc && control.value == true)
-				dqevent.type =
-					V4L2_EVENT_SEQ_CHANGED_SUFFICIENT;
+				event = V4L2_EVENT_SEQ_CHANGED_SUFFICIENT;
 			break;
 		case HAL_EVENT_SEQ_CHANGED_INSUFFICIENT_RESOURCES:
-			dqevent.type =
-				V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT;
+			event = V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT;
 			break;
 		default:
 			break;
 		}
+
 		inst->reconfig_height = event_notify->height;
 		inst->reconfig_width = event_notify->width;
 		inst->in_reconfig = true;
+
 		rc = msm_vidc_check_session_supported(inst);
 		if (!rc) {
-			v4l2_event_queue_fh(&inst->event_handler, &dqevent);
-			wake_up(&inst->kernel_event_queue);
+			queue_v4l2_event(inst, event);
 		}
+
 		return;
 	} else {
 		dprintk(VIDC_ERR,
@@ -496,13 +497,9 @@ static void handle_session_flush(enum command_response cmd, void *data)
 {
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst;
-	struct v4l2_event dqevent;
 	if (response) {
 		inst = (struct msm_vidc_inst *)response->session_id;
-		dqevent.type = V4L2_EVENT_MSM_VIDC_FLUSH_DONE;
-		dqevent.id = 0;
-		v4l2_event_queue_fh(&inst->event_handler, &dqevent);
-		wake_up(&inst->kernel_event_queue);
+		queue_v4l2_event(inst, V4L2_EVENT_MSM_VIDC_FLUSH_DONE);
 	} else {
 		dprintk(VIDC_ERR, "Failed to get valid response for flush\n");
 	}
@@ -512,7 +509,6 @@ static void handle_session_error(enum command_response cmd, void *data)
 {
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst = NULL;
-	struct v4l2_event dqevent;
 	if (response) {
 		inst = (struct msm_vidc_inst *)response->session_id;
 		if (inst) {
@@ -521,10 +517,7 @@ static void handle_session_error(enum command_response cmd, void *data)
 			mutex_lock(&inst->sync_lock);
 			inst->state = MSM_VIDC_CORE_INVALID;
 			mutex_unlock(&inst->sync_lock);
-			dqevent.type = V4L2_EVENT_MSM_VIDC_SYS_ERROR;
-			dqevent.id = 0;
-			v4l2_event_queue_fh(&inst->event_handler, &dqevent);
-			wake_up(&inst->kernel_event_queue);
+			queue_v4l2_event(inst, V4L2_EVENT_MSM_VIDC_SYS_ERROR);
 		}
 	} else {
 		dprintk(VIDC_ERR,
@@ -536,7 +529,6 @@ static void handle_sys_error(enum command_response cmd, void *data)
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst = NULL ;
 	struct msm_vidc_core *core = NULL;
-	struct v4l2_event dqevent;
 	if (response) {
 		core = get_vidc_core(response->device_id);
 		dprintk(VIDC_WARN, "SYS_ERROR received for core %p\n", core);
@@ -544,18 +536,14 @@ static void handle_sys_error(enum command_response cmd, void *data)
 			mutex_lock(&core->lock);
 			core->state = VIDC_CORE_INVALID;
 			mutex_unlock(&core->lock);
-			dqevent.type = V4L2_EVENT_MSM_VIDC_SYS_ERROR;
-			dqevent.id = 0;
 			list_for_each_entry(inst, &core->instances,
 					list) {
-				v4l2_event_queue_fh(&inst->event_handler,
-						&dqevent);
-
 				mutex_lock(&inst->lock);
 				inst->state = MSM_VIDC_CORE_INVALID;
 				mutex_unlock(&inst->lock);
 
-				wake_up(&inst->kernel_event_queue);
+				queue_v4l2_event(inst,
+						V4L2_EVENT_MSM_VIDC_SYS_ERROR);
 			}
 		} else {
 			dprintk(VIDC_ERR,
@@ -572,7 +560,6 @@ static void handle_sys_watchdog_timeout(enum command_response cmd, void *data)
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst;
 	struct msm_vidc_core *core = NULL;
-	struct v4l2_event dqevent;
 	dprintk(VIDC_ERR, "Venus Subsystem crashed\n");
 	core = get_vidc_core(response->device_id);
 	if (!core) {
@@ -583,11 +570,9 @@ static void handle_sys_watchdog_timeout(enum command_response cmd, void *data)
 	mutex_lock(&core->lock);
 	core->state = VIDC_CORE_INVALID;
 	mutex_unlock(&core->lock);
-	dqevent.type = V4L2_EVENT_MSM_VIDC_SYS_ERROR;
-	dqevent.id = 0;
 	list_for_each_entry(inst, &core->instances, list) {
 		if (inst) {
-			v4l2_event_queue_fh(&inst->event_handler, &dqevent);
+			queue_v4l2_event(inst, V4L2_EVENT_MSM_VIDC_SYS_ERROR);
 			mutex_lock(&inst->lock);
 			inst->state = MSM_VIDC_CORE_INVALID;
 			inst->session = NULL;
@@ -600,15 +585,11 @@ static void handle_session_close(enum command_response cmd, void *data)
 {
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst;
-	struct v4l2_event dqevent;
 	if (response) {
 		inst = (struct msm_vidc_inst *)response->session_id;
 		signal_session_msg_receipt(cmd, inst);
-		dqevent.type = V4L2_EVENT_MSM_VIDC_CLOSE_DONE;
-		dqevent.id = 0;
-		v4l2_event_queue_fh(&inst->event_handler, &dqevent);
+		queue_v4l2_event(inst, V4L2_EVENT_MSM_VIDC_CLOSE_DONE);
 		inst->session = NULL;
-		wake_up(&inst->kernel_event_queue);
 		show_stats(inst);
 	} else {
 		dprintk(VIDC_ERR,
@@ -1212,6 +1193,10 @@ static enum hal_video_codec get_hal_codec_type(int fourcc)
 		  HAL_VIDEO_CODEC_SPARK
 		  HAL_VIDEO_CODEC_VP6
 		  HAL_VIDEO_CODEC_VP7*/
+	case V4L2_PIX_FMT_HEVC:
+		codec = HAL_VIDEO_CODEC_HEVC;
+		break;
+
 	default:
 		dprintk(VIDC_ERR, "Wrong codec: %d\n", fourcc);
 		codec = HAL_UNUSED_CODEC;
@@ -1275,13 +1260,32 @@ static int msm_vidc_load_resources(int flipped_state,
 		dprintk(VIDC_ERR, "%s invalid parameters", __func__);
 		return -EINVAL;
 	}
+
 	num_mbs_per_sec = msm_comm_get_load(inst->core, MSM_VIDC_DECODER);
 	num_mbs_per_sec += msm_comm_get_load(inst->core, MSM_VIDC_ENCODER);
-	if (num_mbs_per_sec > MAX_LOAD) {
-		dprintk(VIDC_ERR, "HW is overloaded, needed:%d max: %d\n",
-			num_mbs_per_sec, MAX_LOAD);
+	if (num_mbs_per_sec > inst->core->resources.max_load) {
+		struct msm_vidc_inst *temp;
+
+		dprintk(VIDC_ERR, "HW is overloaded, needed: %d max: %d\n",
+			num_mbs_per_sec, inst->core->resources.max_load);
+		dprintk(VIDC_ERR, "Running instances:\n");
+		dprintk(VIDC_ERR, "%4s|%4s|%4s|%4s\n", "type", "w", "h", "fps");
+		list_for_each_entry(temp, &inst->core->instances, list) {
+			mutex_lock(&temp->lock);
+			if (temp->state >= MSM_VIDC_OPEN_DONE &&
+					temp->state < MSM_VIDC_STOP_DONE) {
+				dprintk(VIDC_ERR, "%4d|%4d|%4d|%4d\n",
+						temp->session_type,
+						temp->prop.width,
+						temp->prop.height,
+						temp->prop.fps);
+			}
+			mutex_unlock(&temp->lock);
+		}
+
 		return -ENOMEM;
 	}
+
 	hdev = inst->core->device;
 
 	if (IS_ALREADY_IN_STATE(flipped_state, MSM_VIDC_LOAD_RESOURCES)) {
@@ -2144,7 +2148,6 @@ error:
 
 static void msm_comm_flush_in_invalid_state(struct msm_vidc_inst *inst)
 {
-	struct v4l2_event dqevent = {0};
 	struct list_head *ptr, *next;
 	struct vb2_buffer *vb;
 	if (!list_empty(&inst->bufq[CAPTURE_PORT].
@@ -2181,9 +2184,7 @@ static void msm_comm_flush_in_invalid_state(struct msm_vidc_inst *inst)
 			}
 		}
 	}
-	dqevent.type = V4L2_EVENT_MSM_VIDC_FLUSH_DONE;
-	dqevent.id = 0;
-	v4l2_event_queue_fh(&inst->event_handler, &dqevent);
+	queue_v4l2_event(inst, V4L2_EVENT_MSM_VIDC_FLUSH_DONE);
 	return;
 }
 int msm_comm_flush(struct msm_vidc_inst *inst, u32 flags)

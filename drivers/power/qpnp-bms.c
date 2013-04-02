@@ -71,9 +71,9 @@
 #define BMS1_VBAT_AVG_DATA0		0x9E
 #define BMS1_VBAT_AVG_DATA1		0x9F
 /* Extra bms registers */
-#define BMS1_BMS_DATA_REG_0		0xB0
+#define SOC_STORAGE_REG			0xB0
 #define IAVG_STORAGE_REG		0xB1
-#define SOC_STORAGE_REG			0xB2
+#define BMS1_BMS_DATA_REG_2		0xB2
 #define BMS1_BMS_DATA_REG_3		0xB3
 /* IADC Channel Select */
 #define IADC1_BMS_ADC_CH_SEL_CTL	0x48
@@ -83,7 +83,7 @@
 #define IAVG_STEP_SIZE_MA		50
 #define IAVG_START			600
 #define IAVG_INVALID			0xFF
-#define SOC_ZERO			0xFF
+#define SOC_INVALID			0xFF
 
 #define IAVG_SAMPLES 16
 
@@ -184,7 +184,6 @@ struct qpnp_bms_chip {
 	unsigned int			vadc_v1250;
 
 	int				ibat_max_ua;
-	int				prev_iavg_ua;
 	int				prev_uuc_iavg_ma;
 	int				prev_pc_unusable;
 	int				ibat_at_cv_ua;
@@ -486,7 +485,7 @@ static int read_cc_raw(struct qpnp_bms_chip *chip, int64_t *reading)
 
 static int calib_vadc(struct qpnp_bms_chip *chip)
 {
-	int rc;
+	int rc, raw_0625, raw_1250;
 	struct qpnp_vadc_result result;
 
 	rc = qpnp_vadc_read(REF_625MV, &result);
@@ -494,16 +493,19 @@ static int calib_vadc(struct qpnp_bms_chip *chip)
 		pr_debug("vadc read failed with rc = %d\n", rc);
 		return rc;
 	}
-	chip->vadc_v0625 = result.physical;
+	raw_0625 = result.adc_code;
 
 	rc = qpnp_vadc_read(REF_125V, &result);
 	if (rc) {
 		pr_debug("vadc read failed with rc = %d\n", rc);
 		return rc;
 	}
-	chip->vadc_v1250 = result.physical;
-	pr_debug("vadc calib: 0625 = %d, 1250 = %d\n",
-			chip->vadc_v0625, chip->vadc_v1250);
+	raw_1250 = result.adc_code;
+	chip->vadc_v0625 = vadc_reading_to_uv(raw_0625);
+	chip->vadc_v1250 = vadc_reading_to_uv(raw_1250);
+	pr_debug("vadc calib: 0625 = %d raw (%d uv), 1250 = %d raw (%d uv)\n",
+			raw_0625, chip->vadc_v0625,
+			raw_1250, chip->vadc_v1250);
 	return 0;
 }
 
@@ -846,22 +848,18 @@ static int get_rbatt(struct qpnp_bms_chip *chip,
 	return rbatt_mohm;
 }
 
+#define IAVG_MINIMAL_TIME	2
 static void calculate_iavg(struct qpnp_bms_chip *chip, int cc_uah,
 				int *iavg_ua, int delta_time_s)
 {
 	int delta_cc_uah = 0;
 
-	/* if anything fails report the previous iavg_ua */
-	*iavg_ua = chip->prev_iavg_ua;
-
-	if (chip->last_cc_uah == INT_MIN) {
+	/*
+	 * use the battery current if called too quickly
+	 */
+	if (delta_time_s < IAVG_MINIMAL_TIME
+			|| chip->last_cc_uah == INT_MIN) {
 		get_battery_current(chip, iavg_ua);
-		goto out;
-	}
-
-	/* use the previous iavg if called within 15 seconds */
-	if (delta_time_s < 15) {
-		*iavg_ua = chip->prev_iavg_ua;
 		goto out;
 	}
 
@@ -871,8 +869,6 @@ static void calculate_iavg(struct qpnp_bms_chip *chip, int cc_uah,
 
 out:
 	pr_debug("delta_cc = %d iavg_ua = %d\n", delta_cc_uah, (int)*iavg_ua);
-	/* remember the iavg */
-	chip->prev_iavg_ua = *iavg_ua;
 
 	/* remember cc_uah */
 	chip->last_cc_uah = cc_uah;
@@ -1608,10 +1604,9 @@ static int calculate_state_of_charge(struct qpnp_bms_chip *chip,
 	pr_debug("SOC before adjustment = %d\n", soc);
 	new_calculated_soc = adjust_soc(chip, &params, soc, batt_temp);
 
-	/* clamp soc due to BMS HW inaccuracies in pm8941v2.0 */
-	if (chip->revision1 == 0 && chip->revision2 == 0)
-		new_calculated_soc = clamp_soc_based_on_voltage(chip,
-						new_calculated_soc);
+	/* always clamp soc due to BMS hw/sw immaturities */
+	new_calculated_soc = clamp_soc_based_on_voltage(chip,
+					new_calculated_soc);
 
 done_calculating:
 	if (new_calculated_soc != chip->calculated_soc
@@ -1732,10 +1727,7 @@ static void backup_soc_and_iavg(struct qpnp_bms_chip *chip, int batt_temp,
 	rc = qpnp_write_wrapper(chip, &temp,
 			chip->base + IAVG_STORAGE_REG, 1);
 
-	if (soc == 0)
-		temp = SOC_ZERO;
-	else
-		temp = soc;
+	temp = soc;
 
 	/* don't store soc if temperature is below 5degC */
 	if (batt_temp > IGNORE_SOC_TEMP_DECIDEG)
@@ -2067,12 +2059,10 @@ static void read_shutdown_soc_and_iavg(struct qpnp_bms_chip *chip)
 		} else {
 			chip->shutdown_soc = temp;
 
-			if (chip->shutdown_soc == 0) {
+			if (chip->shutdown_soc == SOC_INVALID) {
 				pr_debug("No shutdown soc available\n");
 				chip->shutdown_soc_invalid = true;
 				chip->shutdown_iavg_ma = 0;
-			} else if (chip->shutdown_soc == SOC_ZERO) {
-				chip->shutdown_soc = 0;
 			}
 		}
 	}

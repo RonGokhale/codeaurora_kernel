@@ -96,6 +96,12 @@
 		interrupts = <0 44 0>;
 		qcom,hfi = "venus";
 		qcom,has-ocmem;
+		qcom,max-hw-load = <1224450>; /* 4k @ 30 + 1080p @ 30*/
+	};
+
+	qcom,vidc {
+		compatible = "qcom,msm-vidc";
+		qcom,hfi = "q6";
 	};
 
 	qcom,wfd {
@@ -204,6 +210,7 @@
 				<78 512 2048000 4096000>; /* Max. bandwidth */
 		qcom,bus-bw-vectors-bps = <0 400000 20000000 25000000 50000000 100000000 200000000 4294967295>;
 		qcom,dat1-mpm-int = <42>;
+		status = "disable";
 	};
 
 	sdcc2: qcom,sdcc@f98a4000 {
@@ -250,6 +257,7 @@
 				<81 512 2048000 4096000>; /* Max. bandwidth */
 		qcom,bus-bw-vectors-bps = <0 400000 20000000 25000000 50000000 100000000 200000000 4294967295>;
 		qcom,dat1-mpm-int = <44>;
+		status = "disable";
 	};
 
 	sdcc3: qcom,sdcc@f9864000 {
@@ -702,13 +710,10 @@
 
 	usb3: qcom,ssusb@f9200000 {
 		compatible = "qcom,dwc-usb3-msm";
-		#address-cells = <1>;
-		#size-cells = <1>;
-		ranges;
 		reg = <0xf9200000 0xfc000>,
 			  <0xfd4ab000 0x4>;
-		interrupts = <0 133 0>;
-		interrupt-names = "hs_phy_irq";
+		interrupts = <0 131 0>, <0 179 0>, <0 133 0>;
+		interrupt-names = "irq", "otg_irq", "hs_phy_irq";
 		ssusb_vdd_dig-supply = <&pm8841_s2_corner>;
 		SSUSB_1p8-supply = <&pm8941_l6>;
 		hsusb_vdd_dig-supply = <&pm8841_s2_corner>;
@@ -726,14 +731,6 @@
 		qcom,msm-bus,vectors-KBps =
 				<61 512 0 0>,
 				<61 512 240000 960000>;
-		dwc3@f9200000 {
-			compatible = "synopsys,dwc3";
-			reg = <0xf9200000 0xfc000>;
-			interrupts = <0 131 0>, <0 179 0>;
-			interrupt-names = "irq", "otg_irq";
-			tx-fifo-resize;
-		};
-
 	};
 
 	ehci: qcom,ehci-host@f9a55000 {
@@ -995,10 +992,9 @@
 		reg = <0xfc880000 0x100>,
 		      <0xfd485000 0x400>,
 		      <0xfc820000 0x020>,
-		      <0xfc401680 0x004>,
-		      <0x0d1fc000 0x4000>;
+		      <0xfc401680 0x004>;
 		reg-names = "qdsp6_base", "halt_base", "rmb_base",
-			    "restart_reg", "metadata_base";
+			    "restart_reg";
 
 		interrupts = <0 24 1>;
 		vdd_mss-supply = <&pm8841_s3>;
@@ -1027,6 +1023,12 @@
 		vdd_pronto_pll-supply = <&pm8941_l12>;
 
 		qcom,firmware-name = "wcnss";
+
+		/* GPIO input from wcnss */
+		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_4_in 0 0>;
+
+		/* GPIO output to wcnss */
+		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_4_out 0 0>;
 	};
 
 	qcom,iris-fm {
@@ -1104,6 +1106,9 @@
 		compatible = "qcom,qseecom";
 		reg = <0x7f00000 0x500000>;
 		reg-names = "secapp-region";
+		qcom,disk-encrypt-pipe-pair = <2>;
+		qcom,hlos-ce-hw-instance = <1>;
+		qcom,qsee-ce-hw-instance = <0>;
 		qcom,msm-bus,name = "qseecom-noc";
 		qcom,msm-bus,num-cases = <4>;
 		qcom,msm-bus,active-only = <0>;
@@ -1124,9 +1129,9 @@
 		qcom,ipi-ping;
 	};
 
-	qcom,tz-log@fc03000 {
+	qcom,tz-log@fe805720 {
 		compatible = "qcom,tz-log";
-		reg = <0x0fc03000 0x1000>;
+		reg = <0xfe805720 0x1000>;
 	};
 
 	qcom,venus@fdce0000 {
@@ -1273,6 +1278,7 @@
 		compatible = "qcom,bam_dmux";
 		reg = <0xfc834000 0x7000>;
 		interrupts = <0 29 1>;
+		qcom,rx-ring-size = <64>;
 	};
 
         qcom,msm-mem-hole {

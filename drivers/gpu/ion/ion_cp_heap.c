@@ -457,6 +457,12 @@ static int ion_cp_heap_allocate(struct ion_heap *heap,
 	struct ion_cp_buffer *buf;
 	phys_addr_t addr;
 
+	/*
+	 * we never want Ion to fault pages in for us with this
+	 * heap. We want to set up the mappings ourselves in .map_user
+	 */
+	flags |= ION_FLAG_CACHED_NEEDS_SYNC;
+
 	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
 	if (!buf)
 		return ION_CP_ALLOCATE_FAIL;
@@ -491,9 +497,6 @@ static void ion_cp_heap_free(struct ion_buffer *buffer)
 struct sg_table *ion_cp_heap_create_sg_table(struct ion_buffer *buffer)
 {
 	size_t chunk_size = buffer->size;
-	struct sg_table *table;
-	int ret, i, n_chunks;
-	struct scatterlist *sg;
 	struct ion_cp_buffer *buf = buffer->priv_virt;
 
 	if (ION_IS_CACHED(buffer->flags))
@@ -501,26 +504,8 @@ struct sg_table *ion_cp_heap_create_sg_table(struct ion_buffer *buffer)
 	else if (buf->is_secure && IS_ALIGNED(buffer->size, SZ_1M))
 		chunk_size = SZ_1M;
 
-	table = kzalloc(sizeof(struct sg_table), GFP_KERNEL);
-	if (!table)
-		return ERR_PTR(-ENOMEM);
-
-	n_chunks = DIV_ROUND_UP(buffer->size, chunk_size);
-
-	ret = sg_alloc_table(table, n_chunks, GFP_KERNEL);
-	if (ret)
-		goto err0;
-
-	for_each_sg(table->sgl, sg, table->nents, i) {
-		sg_dma_address(sg) = buf->buffer + i * chunk_size;
-		sg->length = chunk_size;
-		sg->offset = 0;
-	}
-
-	return table;
-err0:
-	kfree(table);
-	return ERR_PTR(ret);
+	return ion_create_chunked_sg_table(buf->buffer, chunk_size,
+					buffer->size);
 }
 
 struct sg_table *ion_cp_heap_map_dma(struct ion_heap *heap,
@@ -613,6 +598,11 @@ void *ion_cp_heap_map_kernel(struct ion_heap *heap, struct ion_buffer *buffer)
 						sizeof(struct page *) * npages);
 			int i;
 			pgprot_t pgprot;
+
+			if (!pages) {
+				mutex_unlock(&cp_heap->lock);
+				return ERR_PTR(-ENOMEM);
+			}
 
 			if (ION_IS_CACHED(buffer->flags))
 				pgprot = PAGE_KERNEL;

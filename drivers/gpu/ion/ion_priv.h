@@ -98,6 +98,8 @@ struct ion_buffer {
 	void *vaddr;
 	int dmap_cnt;
 	struct sg_table *sg_table;
+	unsigned long *dirty;
+	struct list_head vmas;
 	unsigned int iommu_map_cnt;
 	struct rb_root iommu_maps;
 	int marked;
@@ -177,6 +179,15 @@ struct ion_heap {
 	const char *name;
 	void *priv;
 };
+
+/**
+ * ion_buffer_fault_user_mappings - fault in user mappings of this buffer
+ * @buffer:		buffer
+ *
+ * indicates whether userspace mappings of this buffer will be faulted
+ * in, this can affect how buffers are allocated from the heap.
+ */
+bool ion_buffer_fault_user_mappings(struct ion_buffer *buffer);
 
 /**
  * struct mem_map_data - represents information about the memory map for a heap
@@ -330,4 +341,16 @@ int ion_heap_allow_secure_allocation(enum ion_heap_type type);
 int ion_heap_allow_heap_secure(enum ion_heap_type type);
 
 int ion_heap_allow_handle_secure(enum ion_heap_type type);
+
+/**
+ * ion_create_chunked_sg_table - helper function to create sg table
+ * with specified chunk size
+ * @buffer_base:	The starting address used for the sg dma address
+ * @chunk_size:		The size of each entry in the sg table
+ * @total_size:		The total size of the sg table (i.e. the sum of the
+ *			entries). This will be rounded up to the nearest
+ *			multiple of `chunk_size'
+ */
+struct sg_table *ion_create_chunked_sg_table(phys_addr_t buffer_base,
+					size_t chunk_size, size_t total_size);
 #endif /* _ION_PRIV_H */

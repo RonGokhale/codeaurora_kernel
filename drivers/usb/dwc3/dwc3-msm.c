@@ -26,7 +26,6 @@
 #include <linux/types.h>
 #include <linux/delay.h>
 #include <linux/of.h>
-#include <linux/of_platform.h>
 #include <linux/list.h>
 #include <linux/debugfs.h>
 #include <linux/uaccess.h>
@@ -153,6 +152,7 @@ struct dwc3_msm_req_complete {
 };
 
 struct dwc3_msm {
+	struct platform_device *dwc3;
 	struct device *dev;
 	void __iomem *base;
 	u32 resource_size;
@@ -188,7 +188,7 @@ struct dwc3_msm {
 	enum usb_chg_state	chg_state;
 	int			pmic_id_irq;
 	struct work_struct	id_work;
-	struct qpnp_adc_tm_usbid_param	adc_param;
+	struct qpnp_adc_tm_btm_param	adc_param;
 	struct delayed_work	init_adc_work;
 	bool			id_adc_detect;
 	u8			dcd_retries;
@@ -220,6 +220,7 @@ struct dwc3_msm {
 #define USB_SSPHY_1P8_HPM_LOAD		23000	/* uA */
 
 static struct dwc3_msm *context;
+static u64 dwc3_msm_dma_mask = DMA_BIT_MASK(64);
 
 static struct usb_ext_notification *usb_ext;
 
@@ -2085,16 +2086,25 @@ static void dwc3_ext_notify_online(int on)
 static void dwc3_id_work(struct work_struct *w)
 {
 	struct dwc3_msm *mdwc = container_of(w, struct dwc3_msm, id_work);
+	int ret;
 
 	/* Give external client a chance to handle */
-	if (!mdwc->ext_inuse) {
-		if (usb_ext) {
-			int ret = usb_ext->notify(usb_ext->ctxt, mdwc->id_state,
-						  dwc3_ext_notify_online);
-			dev_dbg(mdwc->dev, "%s: external handler returned %d\n",
-				__func__, ret);
-			mdwc->ext_inuse = (ret == 0);
+	if (!mdwc->ext_inuse && usb_ext) {
+		if (mdwc->pmic_id_irq)
+			disable_irq(mdwc->pmic_id_irq);
+
+		ret = usb_ext->notify(usb_ext->ctxt, mdwc->id_state,
+				      dwc3_ext_notify_online);
+		dev_dbg(mdwc->dev, "%s: external handler returned %d\n",
+			__func__, ret);
+
+		if (mdwc->pmic_id_irq) {
+			/* ID may have changed while IRQ disabled; update it */
+			mdwc->id_state = !!irq_read_line(mdwc->pmic_id_irq);
+			enable_irq(mdwc->pmic_id_irq);
 		}
+
+		mdwc->ext_inuse = (ret == 0);
 	}
 
 	if (!mdwc->ext_inuse) { /* notify OTG */
@@ -2106,10 +2116,14 @@ static void dwc3_id_work(struct work_struct *w)
 static irqreturn_t dwc3_pmic_id_irq(int irq, void *data)
 {
 	struct dwc3_msm *mdwc = data;
+	enum dwc3_id_state id;
 
 	/* If we can't read ID line state for some reason, treat it as float */
-	mdwc->id_state = !!irq_read_line(irq);
-	queue_work(system_nrt_wq, &mdwc->id_work);
+	id = !!irq_read_line(irq);
+	if (mdwc->id_state != id) {
+		mdwc->id_state = id;
+		queue_work(system_nrt_wq, &mdwc->id_work);
+	}
 
 	return IRQ_HANDLED;
 }
@@ -2158,7 +2172,7 @@ static void dwc3_init_adc_work(struct work_struct *w)
 	mdwc->adc_param.high_thr = adc_high_threshold;
 	mdwc->adc_param.timer_interval = adc_meas_interval;
 	mdwc->adc_param.state_request = ADC_TM_HIGH_LOW_THR_ENABLE;
-	mdwc->adc_param.usbid_ctx = mdwc;
+	mdwc->adc_param.btm_ctx = mdwc;
 	mdwc->adc_param.threshold_notification = dwc3_adc_notification;
 
 	ret = qpnp_adc_tm_usbid_configure(&mdwc->adc_param);
@@ -2200,6 +2214,7 @@ static DEVICE_ATTR(adc_enable, S_IRUGO | S_IWUSR, adc_enable_show,
 static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node;
+	struct platform_device *dwc3;
 	struct dwc3_msm *msm;
 	struct resource *res;
 	void __iomem *tcsr;
@@ -2368,7 +2383,7 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 		goto free_hs_ldo_init;
 	}
 
-	msm->ext_xceiv.id = DWC3_ID_FLOAT;
+	msm->id_state = msm->ext_xceiv.id = DWC3_ID_FLOAT;
 	msm->ext_xceiv.otg_capability = of_property_read_bool(node,
 				"qcom,otg-capability");
 	msm->charger.charging_disabled = of_property_read_bool(node,
@@ -2461,7 +2476,19 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 		goto disable_hs_ldo;
 	}
 
+	dwc3 = platform_device_alloc("dwc3", -1);
+	if (!dwc3) {
+		dev_err(&pdev->dev, "couldn't allocate dwc3 device\n");
+		ret = -ENODEV;
+		goto disable_hs_ldo;
+	}
+
+	dwc3->dev.parent = &pdev->dev;
+	dwc3->dev.coherent_dma_mask = DMA_BIT_MASK(32);
+	dwc3->dev.dma_mask = &dwc3_msm_dma_mask;
+	dwc3->dev.dma_parms = pdev->dev.dma_parms;
 	msm->resource_size = resource_size(res);
+	msm->dwc3 = dwc3;
 
 	if (of_property_read_u32(node, "qcom,dwc-hsphy-init",
 						&msm->hsphy_init_seq))
@@ -2487,7 +2514,7 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 			"max: %d, dbm_num_eps: %d\n",
 			DBM_MAX_EPS, msm->dbm_num_eps);
 		ret = -ENODEV;
-		goto disable_hs_ldo;
+		goto put_pdev;
 	}
 
 	msm->usb_psy.name = "usb";
@@ -2507,16 +2534,20 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev,
 				"%s:power_supply_register usb failed\n",
 					__func__);
-		goto disable_hs_ldo;
+		goto put_pdev;
 	}
 
-	if (node) {
-		ret = of_platform_populate(node, NULL, NULL, &pdev->dev);
-		if (ret) {
-			dev_err(&pdev->dev,
-				"failed to add create dwc3 core\n");
-			goto put_psupply;
-		}
+	ret = platform_device_add_resources(dwc3, pdev->resource,
+		pdev->num_resources);
+	if (ret) {
+		dev_err(&pdev->dev, "couldn't add resources to dwc3 device\n");
+		goto put_psupply;
+	}
+
+	ret = platform_device_add(dwc3);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to register dwc3 device\n");
+		goto put_psupply;
 	}
 
 	msm->bus_scale_table = msm_bus_cl_get_pdata(pdev);
@@ -2561,8 +2592,11 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 
 put_xcvr:
 	usb_put_transceiver(msm->otg_xceiv);
+	platform_device_del(dwc3);
 put_psupply:
 	power_supply_unregister(&msm->usb_psy);
+put_pdev:
+	platform_device_put(dwc3);
 disable_hs_ldo:
 	dwc3_hsusb_ldo_enable(0);
 free_hs_ldo_init:
@@ -2613,6 +2647,7 @@ static int __devexit dwc3_msm_remove(struct platform_device *pdev)
 	}
 
 	pm_runtime_disable(msm->dev);
+	platform_device_unregister(msm->dwc3);
 	wake_lock_destroy(&msm->wlock);
 
 	dwc3_hsusb_ldo_enable(0);

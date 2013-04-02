@@ -19,7 +19,9 @@
 
 #include "mdss_mdp.h"
 
-#define SMP_MB_CNT (mdss_res->smp_mb_cnt)
+#define SMP_MB_SIZE		(mdss_res->smp_mb_size)
+#define SMP_MB_CNT		(mdss_res->smp_mb_cnt)
+#define SMP_ENTRIES_PER_MB	(SMP_MB_SIZE / 16)
 
 static DEFINE_MUTEX(mdss_mdp_sspp_lock);
 static DEFINE_MUTEX(mdss_mdp_smp_lock);
@@ -28,6 +30,17 @@ static DECLARE_BITMAP(mdss_mdp_smp_mmb_pool, MDSS_MDP_SMP_MMB_BLOCKS);
 static struct mdss_mdp_pipe *mdss_mdp_pipe_search(struct mdss_data_type *mdata,
 						  u32 ndx);
 static int mdss_mdp_pipe_free(struct mdss_mdp_pipe *pipe);
+
+static inline void mdss_mdp_pipe_write(struct mdss_mdp_pipe *pipe,
+				       u32 reg, u32 val)
+{
+	writel_relaxed(val, pipe->base + reg);
+}
+
+static inline u32 mdss_mdp_pipe_read(struct mdss_mdp_pipe *pipe, u32 reg)
+{
+	return readl_relaxed(pipe->base + reg);
+}
 
 static u32 mdss_mdp_smp_mmb_reserve(unsigned long *smp, size_t n)
 {
@@ -45,9 +58,10 @@ static u32 mdss_mdp_smp_mmb_reserve(unsigned long *smp, size_t n)
 	return i;
 }
 
-static void mdss_mdp_smp_mmb_set(int client_id, unsigned long *smp)
+static int mdss_mdp_smp_mmb_set(int client_id, unsigned long *smp)
 {
 	u32 mmb, off, data, s;
+	int cnt = 0;
 
 	for_each_set_bit(mmb, smp, SMP_MB_CNT) {
 		off = (mmb / 3) * 4;
@@ -57,7 +71,9 @@ static void mdss_mdp_smp_mmb_set(int client_id, unsigned long *smp)
 		data |= client_id << s;
 		MDSS_MDP_REG_WRITE(MDSS_MDP_REG_SMP_ALLOC_W0 + off, data);
 		MDSS_MDP_REG_WRITE(MDSS_MDP_REG_SMP_ALLOC_R0 + off, data);
+		cnt++;
 	}
+	return cnt;
 }
 
 static void mdss_mdp_smp_mmb_free(unsigned long *smp)
@@ -68,6 +84,24 @@ static void mdss_mdp_smp_mmb_free(unsigned long *smp)
 			      smp, SMP_MB_CNT);
 		bitmap_zero(smp, SMP_MB_CNT);
 	}
+}
+
+static void mdss_mdp_smp_set_wm_levels(struct mdss_mdp_pipe *pipe, int mb_cnt)
+{
+	u32 entries, val, wm[3];
+
+	entries = mb_cnt * SMP_ENTRIES_PER_MB;
+	val = entries >> 2;
+
+	wm[0] = val;
+	wm[1] = wm[0] + val;
+	wm[2] = wm[1] + val;
+
+	pr_debug("pnum=%d watermarks %u,%u,%u\n", pipe->num,
+			wm[0], wm[1], wm[2]);
+	mdss_mdp_pipe_write(pipe, MDSS_MDP_REG_SSPP_REQPRIO_FIFO_WM_0, wm[0]);
+	mdss_mdp_pipe_write(pipe, MDSS_MDP_REG_SSPP_REQPRIO_FIFO_WM_1, wm[1]);
+	mdss_mdp_pipe_write(pipe, MDSS_MDP_REG_SSPP_REQPRIO_FIFO_WM_2, wm[2]);
 }
 
 static void mdss_mdp_smp_free(struct mdss_mdp_pipe *pipe)
@@ -85,25 +119,31 @@ static int mdss_mdp_smp_reserve(struct mdss_mdp_pipe *pipe)
 	u32 num_blks = 0, reserved = 0;
 	struct mdss_mdp_plane_sizes ps;
 	int i, rc;
+	u32 nlines;
 
-	if ((mdata->mdp_rev >= MDSS_MDP_HW_REV_102) &&
+	if (pipe->bwc_mode) {
+		rc = mdss_mdp_get_rau_strides(pipe->src.w, pipe->src.h,
+			pipe->src_fmt, &ps);
+		if (rc)
+			return rc;
+		pr_debug("BWC SMP strides ystride0=%x ystride1=%x\n",
+			ps.ystride[0], ps.ystride[1]);
+	} else if ((mdata->mdp_rev >= MDSS_MDP_HW_REV_102) &&
 			pipe->src_fmt->is_yuv) {
 		ps.num_planes = 2;
 		ps.ystride[0] = pipe->src.w;
 		ps.ystride[1] = pipe->src.w;
 	} else {
 		rc = mdss_mdp_get_plane_sizes(pipe->src_fmt->format,
-				pipe->src.w, pipe->src.h, &ps);
+			pipe->src.w, pipe->src.h, &ps, 0);
 		if (rc)
 			return rc;
 	}
 
-	if ((ps.num_planes > 1) && (pipe->type == MDSS_MDP_PIPE_TYPE_RGB))
-		return -EINVAL;
-
 	mutex_lock(&mdss_mdp_smp_lock);
 	for (i = 0; i < ps.num_planes; i++) {
-		num_blks = DIV_ROUND_UP(2 * ps.ystride[i],
+		nlines = pipe->bwc_mode ? ps.rau_h[i] : 2;
+		num_blks = DIV_ROUND_UP(nlines * ps.ystride[i],
 			mdss_res->smp_mb_size);
 
 		if (mdata->mdp_rev == MDSS_MDP_HW_REV_100)
@@ -131,9 +171,12 @@ static int mdss_mdp_smp_reserve(struct mdss_mdp_pipe *pipe)
 static int mdss_mdp_smp_alloc(struct mdss_mdp_pipe *pipe)
 {
 	int i;
+	int cnt = 0;
+
 	mutex_lock(&mdss_mdp_smp_lock);
 	for (i = 0; i < MAX_PLANES; i++)
-		mdss_mdp_smp_mmb_set(pipe->ftch_id + i, &pipe->smp[i]);
+		cnt += mdss_mdp_smp_mmb_set(pipe->ftch_id + i, &pipe->smp[i]);
+	mdss_mdp_smp_set_wm_levels(pipe, cnt);
 	mutex_unlock(&mdss_mdp_smp_lock);
 	return 0;
 }
@@ -305,6 +348,8 @@ static int mdss_mdp_pipe_free(struct mdss_mdp_pipe *pipe)
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
 	mdss_mdp_pipe_sspp_term(pipe);
 	mdss_mdp_smp_free(pipe);
+	pipe->flags = 0;
+	pipe->bwc_mode = 0;
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
 
 	return 0;
@@ -327,17 +372,6 @@ int mdss_mdp_pipe_destroy(struct mdss_mdp_pipe *pipe)
 
 }
 
-static inline void mdss_mdp_pipe_write(struct mdss_mdp_pipe *pipe,
-				       u32 reg, u32 val)
-{
-	writel_relaxed(val, pipe->base + reg);
-}
-
-static inline u32 mdss_mdp_pipe_read(struct mdss_mdp_pipe *pipe, u32 reg)
-{
-	return readl_relaxed(pipe->base + reg);
-}
-
 static int mdss_mdp_image_setup(struct mdss_mdp_pipe *pipe)
 {
 	u32 img_size, src_size, src_xy, dst_size, dst_xy, ystride0, ystride1;
@@ -351,7 +385,7 @@ static int mdss_mdp_image_setup(struct mdss_mdp_pipe *pipe)
 	width = pipe->img_width;
 	height = pipe->img_height;
 	mdss_mdp_get_plane_sizes(pipe->src_fmt->format, width, height,
-			&pipe->src_planes);
+			&pipe->src_planes, pipe->bwc_mode);
 
 	if ((pipe->flags & MDP_DEINTERLACE) &&
 			!(pipe->flags & MDP_SOURCE_ROTATED_90)) {
@@ -391,8 +425,9 @@ static int mdss_mdp_image_setup(struct mdss_mdp_pipe *pipe)
 static int mdss_mdp_format_setup(struct mdss_mdp_pipe *pipe)
 {
 	struct mdss_mdp_format_params *fmt;
-	u32 opmode, chroma_samp, unpack, src_format;
+	u32 chroma_samp, unpack, src_format;
 	u32 secure = 0;
+	u32 opmode;
 
 	fmt = pipe->src_fmt;
 
@@ -529,8 +564,7 @@ static int mdss_mdp_src_addr_setup(struct mdss_mdp_pipe *pipe,
 
 	pr_debug("pnum=%d\n", pipe->num);
 
-	if (!is_rot)
-		data->bwc_enabled = pipe->bwc_mode;
+	data->bwc_enabled = pipe->bwc_mode;
 
 	ret = mdss_mdp_data_check(data, &pipe->src_planes);
 	if (ret)

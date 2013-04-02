@@ -20,12 +20,14 @@
 #define DEINIT_TYPE			16
 #define USER_SPACE_DATA_TYPE		32
 #define DCI_DATA_TYPE			64
+#define CALLBACK_DATA_TYPE		128
 #define USB_MODE			1
 #define MEMORY_DEVICE_MODE		2
 #define NO_LOGGING_MODE			3
 #define UART_MODE			4
 #define SOCKET_MODE			5
 #define CALLBACK_MODE			6
+#define MEMORY_DEVICE_MODE_NRT		7
 /* different values that go in for diag_data_type */
 #define DATA_TYPE_EVENT         	0
 #define DATA_TYPE_F3            	1

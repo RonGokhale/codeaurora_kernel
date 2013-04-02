@@ -279,13 +279,13 @@ static void config_debug_fs_init(void)
 {
 	out_buffer = kmalloc(OUT_BUFFER_SIZE, GFP_KERNEL);
 	out_dentry = debugfs_create_file("audio_out_latency_measurement_node",\
-				S_IFREG | S_IRUGO | S_IWUGO,\
+				S_IRUGO | S_IWUSR | S_IWGRP,\
 				NULL, NULL, &audio_output_latency_debug_fops);
 	if (IS_ERR(out_dentry))
 		pr_err("debugfs_create_file failed\n");
 	in_buffer = kmalloc(IN_BUFFER_SIZE, GFP_KERNEL);
 	in_dentry = debugfs_create_file("audio_in_latency_measurement_node",\
-				S_IFREG | S_IRUGO | S_IWUGO,\
+				S_IRUGO | S_IWUSR | S_IWGRP,\
 				NULL, NULL, &audio_input_latency_debug_fops);
 	if (IS_ERR(in_dentry))
 		pr_err("debugfs_create_file failed\n");
@@ -1651,6 +1651,9 @@ int q6asm_open_read_write(struct audio_client *ac,
 	case FORMAT_AMRWB:
 		open.dec_fmt_id = ASM_MEDIA_FMT_AMRWB_FS;
 		break;
+	case FORMAT_AMR_WB_PLUS:
+		open.dec_fmt_id = ASM_MEDIA_FMT_AMR_WB_PLUS_V2;
+		break;
 	case FORMAT_V13K:
 		open.dec_fmt_id = ASM_MEDIA_FMT_V13K_FS;
 		break;
@@ -2523,6 +2526,42 @@ int q6asm_media_format_block_wmapro(struct audio_client *ac,
 	}
 	rc = wait_event_timeout(ac->cmd_wait,
 			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("%s:timeout. waited for FORMAT_UPDATE\n", __func__);
+		goto fail_cmd;
+	}
+	return 0;
+fail_cmd:
+	return -EINVAL;
+}
+
+int q6asm_media_format_block_amrwbplus(struct audio_client *ac,
+				struct asm_amrwbplus_cfg *cfg)
+{
+	struct asm_amrwbplus_fmt_blk_v2 fmt;
+	int rc = 0;
+
+	pr_debug("%s:session[%d]band-mode[%d]frame-fmt[%d]ch[%d]\n",
+		__func__,
+		ac->session,
+		cfg->amr_band_mode,
+		cfg->amr_frame_fmt,
+		cfg->num_channels);
+
+	q6asm_add_hdr(ac, &fmt.hdr, sizeof(fmt), TRUE);
+
+	fmt.hdr.opcode = ASM_DATA_CMD_MEDIA_FMT_UPDATE_V2;
+	fmt.fmtblk.fmt_blk_size = sizeof(fmt) - sizeof(fmt.hdr) -
+					sizeof(fmt.fmtblk);
+	fmt.amr_frame_fmt = cfg->amr_frame_fmt;
+
+	rc = apr_send_pkt(ac->apr, (uint32_t *) &fmt);
+	if (rc < 0) {
+		pr_err("%s:Comamnd media format update failed..\n", __func__);
+		goto fail_cmd;
+	}
+	rc = wait_event_timeout(ac->cmd_wait,
+				(atomic_read(&ac->cmd_state) == 0), 5*HZ);
 	if (!rc) {
 		pr_err("%s:timeout. waited for FORMAT_UPDATE\n", __func__);
 		goto fail_cmd;

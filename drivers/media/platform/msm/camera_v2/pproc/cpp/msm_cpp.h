@@ -17,6 +17,7 @@
 #include <linux/io.h>
 #include <linux/list.h>
 #include <linux/platform_device.h>
+#include <linux/interrupt.h>
 #include <media/v4l2-subdev.h>
 #include "msm_sd.h"
 
@@ -70,6 +71,8 @@
 #define MSM_CPP_END_ADDRESS			0x3F00
 
 #define MSM_CPP_POLL_RETRIES		20
+#define MSM_CPP_TASKLETQ_SIZE		16
+#define MSM_CPP_TX_FIFO_LEVEL		16
 
 struct cpp_subscribe_info {
 	struct v4l2_fh *vfh;
@@ -116,6 +119,34 @@ struct msm_device_queue {
 	const char *name;
 };
 
+struct msm_cpp_tasklet_queue_cmd {
+	struct list_head list;
+	uint32_t irq_status;
+	uint32_t tx_fifo[MSM_CPP_TX_FIFO_LEVEL];
+	uint32_t tx_level;
+	uint8_t cmd_used;
+};
+
+struct msm_cpp_buffer_map_info_t {
+	unsigned long len;
+	unsigned long phy_addr;
+	struct ion_handle *ion_handle;
+	struct msm_cpp_buffer_info_t buff_info;
+};
+
+struct msm_cpp_buffer_map_list_t {
+	struct msm_cpp_buffer_map_info_t map_info;
+	struct list_head entry;
+};
+
+struct msm_cpp_buff_queue_info_t {
+	uint32_t used;
+	uint16_t session_id;
+	uint16_t stream_id;
+	struct list_head vb2_buff_head;
+	struct list_head native_buff_head;
+};
+
 struct cpp_device {
 	struct platform_device *pdev;
 	struct msm_sd_subdev msm_sd;
@@ -141,19 +172,28 @@ struct cpp_device {
 	struct ion_client *client;
 	struct kref refcount;
 
+	/* Reusing proven tasklet from msm isp */
+	atomic_t irq_cnt;
+	uint8_t taskletq_idx;
+	spinlock_t  tasklet_lock;
+	struct list_head tasklet_q;
+	struct tasklet_struct cpp_tasklet;
+	struct msm_cpp_tasklet_queue_cmd
+		tasklet_queue_cmd[MSM_CPP_TASKLETQ_SIZE];
+
 	struct cpp_subscribe_info cpp_subscribe_list[MAX_ACTIVE_CPP_INSTANCE];
 	uint32_t cpp_open_cnt;
 	struct cpp_hw_info hw_info;
 
 	struct msm_device_queue eventData_q; /* V4L2 Event Payload Queue */
 
-	/* Offline Frame Queue process when realtime queue is empty */
-	struct msm_device_queue offline_q;
-	/* Realtime Frame Queue process with highest priority */
-	struct msm_device_queue realtime_q;
 	/* Processing Queue
 	 * store frame info for frames sent to microcontroller
 	 */
 	struct msm_device_queue processing_q;
+
+	struct msm_cpp_buff_queue_info_t *buff_queue;
+	uint32_t num_buffq;
+	struct v4l2_subdev *buf_mgr_subdev;
 };
 #endif /* __MSM_CPP_H__ */

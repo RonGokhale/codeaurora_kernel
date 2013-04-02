@@ -190,8 +190,8 @@
  * @safe_current:		battery safety current setting
  * @maxinput_usb_ma:		Maximum Input current USB
  * @maxinput_dc_ma:		Maximum Input current DC
- * @warm_bat_degc		Warm battery temperature in degree Celsius
- * @cool_bat_degc		Cool battery temperature in degree Celsius
+ * @warm_bat_decidegc		Warm battery temperature in degree Celsius
+ * @cool_bat_decidegc		Cool battery temperature in degree Celsius
  * @revision:			PMIC revision
  * @thermal_levels		amount of thermal mitigation levels
  * @thermal_mitigation		thermal mitigation level values
@@ -242,8 +242,8 @@ struct qpnp_chg_chip {
 	unsigned int			term_current;
 	unsigned int			maxinput_usb_ma;
 	unsigned int			maxinput_dc_ma;
-	unsigned int			warm_bat_degc;
-	unsigned int			cool_bat_degc;
+	unsigned int			warm_bat_decidegc;
+	unsigned int			cool_bat_decidegc;
 	unsigned int			safe_current;
 	unsigned int			revision;
 	unsigned int			thermal_levels;
@@ -546,6 +546,12 @@ qpnp_chg_bat_if_batt_pres_irq_handler(int irq, void *_chip)
 	if (chip->batt_present ^ batt_present) {
 		chip->batt_present = batt_present;
 		power_supply_changed(&chip->batt_psy);
+
+		if (chip->cool_bat_decidegc && chip->warm_bat_decidegc
+						&& batt_present) {
+			if (qpnp_adc_tm_channel_measure(&chip->adc_param))
+				pr_err("request ADC error\n");
+		}
 	}
 
 	if (chip->bms_psy)
@@ -1019,12 +1025,15 @@ qpnp_batt_external_power_changed(struct power_supply *psy)
 
 	/* Only honour requests while USB is present */
 	if (qpnp_chg_is_usb_chg_plugged_in(chip)) {
-		if (ret.intval <= 2) {
-			qpnp_chg_usb_suspend_enable(chip, 1);
+		chip->usb_psy->get_property(chip->usb_psy,
+			  POWER_SUPPLY_PROP_CURRENT_MAX, &ret);
+		if (ret.intval <= 2 && !chip->use_default_batt_values &&
+						get_prop_batt_present(chip)) {
 			qpnp_chg_iusbmax_set(chip, QPNP_CHG_I_MAX_MIN_100);
+			qpnp_chg_usb_suspend_enable(chip, 1);
 		} else {
-			qpnp_chg_iusbmax_set(chip, ret.intval / 1000);
 			qpnp_chg_usb_suspend_enable(chip, 0);
+			qpnp_chg_iusbmax_set(chip, ret.intval / 1000);
 		}
 	}
 
@@ -1304,56 +1313,74 @@ qpnp_batt_system_temp_level_set(struct qpnp_chg_chip *chip, int lvl_sel)
 	}
 }
 
-#define TEMP_HYSTERISIS_DEGC 2
+#define HYSTERISIS_DECIDEGC 20
 static void
 qpnp_chg_adc_notification(enum qpnp_tm_state state, void *ctx)
 {
 	struct qpnp_chg_chip *chip = ctx;
 	bool bat_warm = 0, bat_cool = 0;
+	int temp;
 
 	if (state >= ADC_TM_STATE_NUM) {
 		pr_err("invalid notification %d\n", state);
 		return;
 	}
 
-	pr_debug("state = %s\n", state == ADC_TM_HIGH_STATE ? "high" : "low");
+	temp = get_prop_batt_temp(chip);
 
-	if (state == ADC_TM_HIGH_STATE) {
-		if (!chip->bat_is_warm) {
+	pr_debug("temp = %d state = %s\n", temp,
+			state == ADC_TM_WARM_STATE ? "warm" : "cool");
+
+	if (state == ADC_TM_WARM_STATE) {
+		if (temp > chip->warm_bat_decidegc) {
 			bat_warm = true;
 			bat_cool = false;
 			chip->adc_param.low_temp =
-				chip->warm_bat_degc - TEMP_HYSTERISIS_DEGC;
-		} else if (chip->bat_is_cool) {
+				chip->warm_bat_decidegc - HYSTERISIS_DECIDEGC;
+			chip->adc_param.state_request =
+				ADC_TM_COOL_THR_ENABLE;
+		} else if (temp >
+				chip->cool_bat_decidegc + HYSTERISIS_DECIDEGC){
 			bat_warm = false;
 			bat_cool = false;
-			chip->adc_param.high_temp = chip->warm_bat_degc;
+
+			chip->adc_param.low_temp = chip->cool_bat_decidegc;
+			chip->adc_param.high_temp = chip->warm_bat_decidegc;
+			chip->adc_param.state_request =
+					ADC_TM_HIGH_LOW_THR_ENABLE;
 		}
 	} else {
-		if (!chip->bat_is_cool) {
+		if (temp < chip->cool_bat_decidegc) {
+			bat_warm = false;
 			bat_cool = true;
-			bat_warm = false;
 			chip->adc_param.high_temp =
-				chip->cool_bat_degc + TEMP_HYSTERISIS_DEGC;
-		} else if (chip->bat_is_warm) {
-			bat_cool = false;
+				chip->cool_bat_decidegc + HYSTERISIS_DECIDEGC;
+			chip->adc_param.state_request =
+				ADC_TM_WARM_THR_ENABLE;
+		} else if (temp >
+				chip->warm_bat_decidegc - HYSTERISIS_DECIDEGC){
 			bat_warm = false;
-			chip->adc_param.low_temp = chip->cool_bat_degc;
+			bat_cool = false;
+
+			chip->adc_param.low_temp = chip->cool_bat_decidegc;
+			chip->adc_param.high_temp = chip->warm_bat_decidegc;
+			chip->adc_param.state_request =
+					ADC_TM_HIGH_LOW_THR_ENABLE;
 		}
 	}
 
 	if (chip->bat_is_cool ^ bat_cool || chip->bat_is_warm ^ bat_warm) {
+		chip->bat_is_cool = bat_cool;
+		chip->bat_is_warm = bat_warm;
+
 		/* set appropriate voltages and currents */
 		qpnp_chg_set_appropriate_vddmax(chip);
 		qpnp_chg_set_appropriate_battery_current(chip);
 		qpnp_chg_set_appropriate_vbatdet(chip);
-
-		chip->bat_is_cool = bat_cool;
-		chip->bat_is_warm = bat_warm;
 	}
 
-	/* re-arm ADC interrupt */
-	qpnp_adc_tm_btm_configure(&chip->adc_param);
+	if (qpnp_adc_tm_channel_measure(&chip->adc_param))
+		pr_err("request ADC error\n");
 }
 
 static int
@@ -1743,8 +1770,8 @@ qpnp_charger_probe(struct spmi_device *spmi)
 
 	/* Get the warm-bat-degc property */
 	rc = of_property_read_u32(spmi->dev.of_node,
-				"qcom,chg-warm-bat-degc",
-				&chip->warm_bat_degc);
+				"qcom,chg-warm-bat-decidegc",
+				&chip->warm_bat_decidegc);
 	if (rc && rc != -EINVAL) {
 		pr_err("Error reading warm-bat-degc property %d\n", rc);
 		goto fail_chg_enable;
@@ -1752,14 +1779,14 @@ qpnp_charger_probe(struct spmi_device *spmi)
 
 	/* Get the cool-bat-degc property */
 	rc = of_property_read_u32(spmi->dev.of_node,
-				"qcom,chg-cool-bat-degc",
-				&chip->cool_bat_degc);
+				"qcom,chg-cool-bat-decidegc",
+				&chip->cool_bat_decidegc);
 	if (rc && rc != -EINVAL) {
 		pr_err("Error reading cool-bat-degc property %d\n", rc);
 		goto fail_chg_enable;
 	}
 
-	if (chip->cool_bat_degc && chip->warm_bat_degc) {
+	if (chip->cool_bat_decidegc && chip->warm_bat_decidegc) {
 		rc = qpnp_adc_tm_is_ready();
 		if (rc) {
 			pr_err("tm not ready %d\n", rc);
@@ -1997,19 +2024,22 @@ qpnp_charger_probe(struct spmi_device *spmi)
 		}
 	}
 
-	if (chip->cool_bat_degc && chip->warm_bat_degc) {
-		chip->adc_param.low_temp = chip->cool_bat_degc;
-		chip->adc_param.high_temp = chip->warm_bat_degc;
+	if (chip->cool_bat_decidegc && chip->warm_bat_decidegc) {
+		chip->adc_param.low_temp = chip->cool_bat_decidegc;
+		chip->adc_param.high_temp = chip->warm_bat_decidegc;
 		chip->adc_param.timer_interval = ADC_MEAS2_INTERVAL_1S;
 		chip->adc_param.state_request = ADC_TM_HIGH_LOW_THR_ENABLE;
 		chip->adc_param.btm_ctx = chip;
 		chip->adc_param.threshold_notification =
 						qpnp_chg_adc_notification;
+		chip->adc_param.channel = LR_MUX1_BATT_THERM;
 
-		rc = qpnp_adc_tm_btm_configure(&chip->adc_param);
-		if (rc) {
-			pr_err("request ADC error %d\n", rc);
-			goto fail_chg_enable;
+		if (get_prop_batt_present(chip)) {
+			rc = qpnp_adc_tm_channel_measure(&chip->adc_param);
+			if (rc) {
+				pr_err("request ADC error %d\n", rc);
+				goto fail_chg_enable;
+			}
 		}
 	}
 
@@ -2038,6 +2068,10 @@ static int __devexit
 qpnp_charger_remove(struct spmi_device *spmi)
 {
 	struct qpnp_chg_chip *chip = dev_get_drvdata(&spmi->dev);
+	if (chip->cool_bat_decidegc && chip->warm_bat_decidegc
+						&& chip->batt_present) {
+		qpnp_adc_tm_disable_chan_meas(&chip->adc_param);
+	}
 	dev_set_drvdata(&spmi->dev, NULL);
 	kfree(chip);
 

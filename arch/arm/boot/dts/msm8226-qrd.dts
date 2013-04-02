@@ -13,6 +13,7 @@
 /dts-v1/;
 /include/ "msm8226.dtsi"
 /include/ "dsi-panel-nt35590-720p-video.dtsi"
+/include/ "msm8226-camera-sensor-cdp-mtp-qrd.dtsi"
 
 / {
 	model = "Qualcomm MSM 8226 QRD";
@@ -173,6 +174,10 @@
 
 &spmi_bus {
 	qcom,pm8226@1 {
+                qcom,leds@d300 {
+                        status = "okay";
+                };
+
 		qcom,leds@d800 {
 			status = "okay";
 			qcom,wled_0 {
@@ -180,14 +185,14 @@
 				linux,name = "wled:backlight";
 				linux,default-trigger = "bkl-trigger";
 				qcom,cs-out-en;
-				qcom,op-fdbck;
+				qcom,op-fdbck = <1>;
 				qcom,default-state = "on";
 				qcom,max-current = <25>;
 				qcom,ctrl-delay-us = <0>;
 				qcom,boost-curr-lim = <3>;
 				qcom,cp-sel = <0>;
 				qcom,switch-freq = <2>;
-				qcom,ovp-val = <2>;
+				qcom,ovp-val = <0>;
 				qcom,num-strings = <1>;
 				qcom,id = <0>;
 			};
