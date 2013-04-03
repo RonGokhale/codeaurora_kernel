@@ -414,6 +414,14 @@ static struct gpiomux_setting hdmi_active_4_cfg = {
 	.pull = GPIOMUX_PULL_UP,
 	.dir = GPIOMUX_OUT_HIGH,
 };
+
+static struct gpiomux_setting hdmi_active_5_cfg = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+	.dir = GPIOMUX_OUT_HIGH,
+};
+
 static struct gpiomux_setting mpqrev2_gsbi1_suspended_cfg = {
 	.func = GPIOMUX_FUNC_4,
 	.drv = GPIOMUX_DRV_2MA,
@@ -599,7 +607,7 @@ static struct msm_gpiomux_config apq8064_hdmi_configs[] __initdata = {
 	{
 		.gpio = 69,
 		.settings = {
-			[GPIOMUX_ACTIVE]    = &hdmi_active_1_cfg,
+			[GPIOMUX_ACTIVE]    = &hdmi_active_5_cfg,
 			[GPIOMUX_SUSPENDED] = &hdmi_suspend_cfg,
 		},
 	},
