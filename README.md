@@ -76,6 +76,7 @@ list of branches
 - jb_mr1_rb1.21
 - jb_mr1_rb1.22
 - jb_mr1_rb1.23 
+- jb_mr1_rb2.9 
 - jb_rel
 - jb_rel_rb1.2
 - jb_rel_rb3.1
