@@ -55,6 +55,7 @@ list of branches
 - ics_strawberry_rb5.3
 - jb_mr1_chocolate
 - jb_chocolate
+- jb_chocolate_rb4.1
 - jb_2.2_rb2.3
 - jb_2.2_rb2_5_1.1 
 - jb_2.2_rb2_5.2
