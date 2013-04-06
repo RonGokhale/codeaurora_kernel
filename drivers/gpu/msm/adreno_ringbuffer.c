@@ -18,6 +18,7 @@
 #include "kgsl.h"
 #include "kgsl_sharedmem.h"
 #include "kgsl_cffdump.h"
+#include "kgsl_trace.h"
 
 #include "adreno.h"
 #include "adreno_pm4types.h"
@@ -592,6 +593,9 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 	if (adreno_is_a20x(adreno_dev))
 		total_sizedwords += 2; /* CACHE_FLUSH */
 
+	if (flags & KGSL_CMD_FLAGS_EOF)
+		total_sizedwords += 2;
+
 	ringcmds = adreno_ringbuffer_allocspace(rb, context, total_sizedwords);
 	if (!ringcmds) {
 		/*
@@ -986,26 +990,31 @@ adreno_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
 {
 	struct kgsl_device *device = dev_priv->device;
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
-	unsigned int *link;
+	unsigned int *link = 0;
 	unsigned int *cmds;
 	unsigned int i;
-	struct adreno_context *drawctxt;
+	struct adreno_context *drawctxt = NULL;
 	unsigned int start_index = 0;
 	int ret;
 
-	if (device->state & KGSL_STATE_HUNG)
-		return -EBUSY;
-	if (!(adreno_dev->ringbuffer.flags & KGSL_FLAGS_STARTED) ||
-	      context == NULL || ibdesc == 0 || numibs == 0)
-		return -EINVAL;
+	if (device->state & KGSL_STATE_HUNG) {
+		ret = -EBUSY;
+		goto done;
+	}
 
+	if (!(adreno_dev->ringbuffer.flags & KGSL_FLAGS_STARTED) ||
+	      context == NULL || ibdesc == 0 || numibs == 0) {
+		ret = -EINVAL;
+		goto done;
+	}
 	drawctxt = context->devctxt;
 
 	if (drawctxt->flags & CTXT_FLAGS_GPU_HANG) {
 		KGSL_CTXT_ERR(device, "proc %s failed fault tolerance"
 			" will not accept commands for context %d\n",
 			drawctxt->pid_name, drawctxt->id);
-		return -EDEADLK;
+		ret = -EDEADLK;
+		goto done;
 	}
 
 	/*When preamble is enabled, the preamble buffer with state restoration
@@ -1032,9 +1041,8 @@ adreno_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
 	cmds = link = kzalloc(sizeof(unsigned int) * (numibs * 3 + 4),
 				GFP_KERNEL);
 	if (!link) {
-		KGSL_CORE_ERR("kzalloc(%d) failed\n",
-			sizeof(unsigned int) * (numibs * 3 + 4));
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto done;
 	}
 
 	if (!start_index) {
@@ -1099,6 +1107,9 @@ adreno_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
 		ret = 0;
 
 done:
+	trace_kgsl_issueibcmds(device, context->id, ibdesc, numibs,
+		*timestamp, flags, ret, drawctxt->type);
+
 	kfree(link);
 	return ret;
 }

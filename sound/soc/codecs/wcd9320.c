@@ -204,8 +204,21 @@ MODULE_PARM_DESC(spkr_drv_wrnd,
 #define TAIKO_TX_PORT_NUMBER	16
 
 #define TAIKO_I2S_MASTER_MODE_MASK 0x08
-#define TAIKO_MCLK_CLK_12P288MHZ 12288000
-#define TAIKO_MCLK_CLK_9P6HZ 9600000
+
+#define TAIKO_DMIC_SAMPLE_RATE_DIV_2	0x0
+#define TAIKO_DMIC_SAMPLE_RATE_DIV_3	0x1
+#define TAIKO_DMIC_SAMPLE_RATE_DIV_4	0x2
+
+#define TAIKO_DMIC_B1_CTL_DIV_2 0x00
+#define TAIKO_DMIC_B1_CTL_DIV_3 0x22
+#define TAIKO_DMIC_B1_CTL_DIV_4 0x44
+
+#define TAIKO_DMIC_B2_CTL_DIV_2 0x00
+#define TAIKO_DMIC_B2_CTL_DIV_3 0x02
+#define TAIKO_DMIC_B2_CTL_DIV_4 0x04
+
+#define TAIKO_ANC_DMIC_X2_ON	0x1
+#define TAIKO_ANC_DMIC_X2_OFF	0x0
 
 #define TAIKO_SLIM_CLOSE_TIMEOUT 1000
 #define TAIKO_SLIM_IRQ_OVERFLOW (1 << 0)
@@ -1061,6 +1074,21 @@ static const struct snd_kcontrol_new taiko_snd_controls[] = {
 		40, digital_gain),
 	SOC_SINGLE_S8_TLV("IIR1 INP4 Volume", TAIKO_A_CDC_IIR1_GAIN_B4_CTL, -84,
 		40, digital_gain),
+	SOC_SINGLE_S8_TLV("IIR2 INP1 Volume", TAIKO_A_CDC_IIR2_GAIN_B1_CTL, -84,
+		40, digital_gain),
+	SOC_SINGLE_S8_TLV("IIR2 INP2 Volume", TAIKO_A_CDC_IIR2_GAIN_B2_CTL, -84,
+		40, digital_gain),
+	SOC_SINGLE_S8_TLV("IIR2 INP3 Volume", TAIKO_A_CDC_IIR2_GAIN_B3_CTL, -84,
+		40, digital_gain),
+	SOC_SINGLE_S8_TLV("IIR2 INP4 Volume", TAIKO_A_CDC_IIR2_GAIN_B4_CTL, -84,
+		40, digital_gain),
+	SOC_SINGLE_TLV("ADC1 Volume", TAIKO_A_TX_1_2_EN, 5, 3, 0, analog_gain),
+	SOC_SINGLE_TLV("ADC2 Volume", TAIKO_A_TX_1_2_EN, 1, 3, 0, analog_gain),
+	SOC_SINGLE_TLV("ADC3 Volume", TAIKO_A_TX_3_4_EN, 5, 3, 0, analog_gain),
+	SOC_SINGLE_TLV("ADC4 Volume", TAIKO_A_TX_3_4_EN, 1, 3, 0, analog_gain),
+	SOC_SINGLE_TLV("ADC5 Volume", TAIKO_A_TX_5_6_EN, 5, 3, 0, analog_gain),
+	SOC_SINGLE_TLV("ADC6 Volume", TAIKO_A_TX_5_6_EN, 1, 3, 0, analog_gain),
+
 
 	SOC_SINGLE_EXT("ANC Slot", SND_SOC_NOPM, 0, 100, 0, taiko_get_anc_slot,
 		taiko_put_anc_slot),
@@ -1375,7 +1403,7 @@ static const char * const anc1_fb_mux_text[] = {
 	"ZERO", "EAR_HPH_L", "EAR_LINE_1",
 };
 
-static const char * const iir1_inp1_text[] = {
+static const char * const iir_inp1_text[] = {
 	"ZERO", "DEC1", "DEC2", "DEC3", "DEC4", "DEC5", "DEC6", "DEC7", "DEC8",
 	"DEC9", "DEC10", "RX1", "RX2", "RX3", "RX4", "RX5", "RX6", "RX7"
 };
@@ -1523,7 +1551,10 @@ static const struct soc_enum anc1_fb_mux_enum =
 	SOC_ENUM_SINGLE(TAIKO_A_CDC_CONN_ANC_B2_CTL, 0, 3, anc1_fb_mux_text);
 
 static const struct soc_enum iir1_inp1_mux_enum =
-	SOC_ENUM_SINGLE(TAIKO_A_CDC_CONN_EQ1_B1_CTL, 0, 18, iir1_inp1_text);
+	SOC_ENUM_SINGLE(TAIKO_A_CDC_CONN_EQ1_B1_CTL, 0, 18, iir_inp1_text);
+
+static const struct soc_enum iir2_inp1_mux_enum =
+	SOC_ENUM_SINGLE(TAIKO_A_CDC_CONN_EQ2_B1_CTL, 0, 18, iir_inp1_text);
 
 static const struct snd_kcontrol_new rx_mix1_inp1_mux =
 	SOC_DAPM_ENUM("RX1 MIX1 INP1 Mux", rx_mix1_inp1_chain_enum);
@@ -1746,6 +1777,9 @@ static const struct snd_kcontrol_new dec10_mux =
 
 static const struct snd_kcontrol_new iir1_inp1_mux =
 	SOC_DAPM_ENUM("IIR1 INP1 Mux", iir1_inp1_mux_enum);
+
+static const struct snd_kcontrol_new iir2_inp1_mux =
+	SOC_DAPM_ENUM("IIR2 INP1 Mux", iir2_inp1_mux_enum);
 
 static const struct snd_kcontrol_new anc1_mux =
 	SOC_DAPM_ENUM("ANC1 MUX Mux", anc1_mux_enum);
@@ -3359,6 +3393,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX1 MIX1 INP1", "RX6", "SLIM RX6"},
 	{"RX1 MIX1 INP1", "RX7", "SLIM RX7"},
 	{"RX1 MIX1 INP1", "IIR1", "IIR1"},
+	{"RX1 MIX1 INP1", "IIR2", "IIR2"},
 	{"RX1 MIX1 INP2", "RX1", "SLIM RX1"},
 	{"RX1 MIX1 INP2", "RX2", "SLIM RX2"},
 	{"RX1 MIX1 INP2", "RX3", "SLIM RX3"},
@@ -3367,6 +3402,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX1 MIX1 INP2", "RX6", "SLIM RX6"},
 	{"RX1 MIX1 INP2", "RX7", "SLIM RX7"},
 	{"RX1 MIX1 INP2", "IIR1", "IIR1"},
+	{"RX1 MIX1 INP2", "IIR2", "IIR2"},
 	{"RX1 MIX1 INP3", "RX1", "SLIM RX1"},
 	{"RX1 MIX1 INP3", "RX2", "SLIM RX2"},
 	{"RX1 MIX1 INP3", "RX3", "SLIM RX3"},
@@ -3382,6 +3418,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX2 MIX1 INP1", "RX6", "SLIM RX6"},
 	{"RX2 MIX1 INP1", "RX7", "SLIM RX7"},
 	{"RX2 MIX1 INP1", "IIR1", "IIR1"},
+	{"RX2 MIX1 INP1", "IIR2", "IIR2"},
 	{"RX2 MIX1 INP2", "RX1", "SLIM RX1"},
 	{"RX2 MIX1 INP2", "RX2", "SLIM RX2"},
 	{"RX2 MIX1 INP2", "RX3", "SLIM RX3"},
@@ -3390,6 +3427,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX2 MIX1 INP2", "RX6", "SLIM RX6"},
 	{"RX2 MIX1 INP2", "RX7", "SLIM RX7"},
 	{"RX2 MIX1 INP2", "IIR1", "IIR1"},
+	{"RX2 MIX1 INP2", "IIR2", "IIR2"},
 	{"RX3 MIX1 INP1", "RX1", "SLIM RX1"},
 	{"RX3 MIX1 INP1", "RX2", "SLIM RX2"},
 	{"RX3 MIX1 INP1", "RX3", "SLIM RX3"},
@@ -3398,6 +3436,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX3 MIX1 INP1", "RX6", "SLIM RX6"},
 	{"RX3 MIX1 INP1", "RX7", "SLIM RX7"},
 	{"RX3 MIX1 INP1", "IIR1", "IIR1"},
+	{"RX3 MIX1 INP1", "IIR2", "IIR2"},
 	{"RX3 MIX1 INP2", "RX1", "SLIM RX1"},
 	{"RX3 MIX1 INP2", "RX2", "SLIM RX2"},
 	{"RX3 MIX1 INP2", "RX3", "SLIM RX3"},
@@ -3406,6 +3445,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX3 MIX1 INP2", "RX6", "SLIM RX6"},
 	{"RX3 MIX1 INP2", "RX7", "SLIM RX7"},
 	{"RX3 MIX1 INP2", "IIR1", "IIR1"},
+	{"RX3 MIX1 INP2", "IIR2", "IIR2"},
 	{"RX4 MIX1 INP1", "RX1", "SLIM RX1"},
 	{"RX4 MIX1 INP1", "RX2", "SLIM RX2"},
 	{"RX4 MIX1 INP1", "RX3", "SLIM RX3"},
@@ -3414,6 +3454,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX4 MIX1 INP1", "RX6", "SLIM RX6"},
 	{"RX4 MIX1 INP1", "RX7", "SLIM RX7"},
 	{"RX4 MIX1 INP1", "IIR1", "IIR1"},
+	{"RX4 MIX1 INP1", "IIR2", "IIR2"},
 	{"RX4 MIX1 INP2", "RX1", "SLIM RX1"},
 	{"RX4 MIX1 INP2", "RX2", "SLIM RX2"},
 	{"RX4 MIX1 INP2", "RX3", "SLIM RX3"},
@@ -3422,6 +3463,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX4 MIX1 INP2", "RX6", "SLIM RX6"},
 	{"RX4 MIX1 INP2", "RX7", "SLIM RX7"},
 	{"RX4 MIX1 INP2", "IIR1", "IIR1"},
+	{"RX4 MIX1 INP2", "IIR2", "IIR2"},
 	{"RX5 MIX1 INP1", "RX1", "SLIM RX1"},
 	{"RX5 MIX1 INP1", "RX2", "SLIM RX2"},
 	{"RX5 MIX1 INP1", "RX3", "SLIM RX3"},
@@ -3430,6 +3472,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX5 MIX1 INP1", "RX6", "SLIM RX6"},
 	{"RX5 MIX1 INP1", "RX7", "SLIM RX7"},
 	{"RX5 MIX1 INP1", "IIR1", "IIR1"},
+	{"RX5 MIX1 INP1", "IIR2", "IIR2"},
 	{"RX5 MIX1 INP2", "RX1", "SLIM RX1"},
 	{"RX5 MIX1 INP2", "RX2", "SLIM RX2"},
 	{"RX5 MIX1 INP2", "RX3", "SLIM RX3"},
@@ -3438,6 +3481,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX5 MIX1 INP2", "RX6", "SLIM RX6"},
 	{"RX5 MIX1 INP2", "RX7", "SLIM RX7"},
 	{"RX5 MIX1 INP2", "IIR1", "IIR1"},
+	{"RX5 MIX1 INP2", "IIR2", "IIR2"},
 	{"RX6 MIX1 INP1", "RX1", "SLIM RX1"},
 	{"RX6 MIX1 INP1", "RX2", "SLIM RX2"},
 	{"RX6 MIX1 INP1", "RX3", "SLIM RX3"},
@@ -3446,6 +3490,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX6 MIX1 INP1", "RX6", "SLIM RX6"},
 	{"RX6 MIX1 INP1", "RX7", "SLIM RX7"},
 	{"RX6 MIX1 INP1", "IIR1", "IIR1"},
+	{"RX6 MIX1 INP1", "IIR2", "IIR2"},
 	{"RX6 MIX1 INP2", "RX1", "SLIM RX1"},
 	{"RX6 MIX1 INP2", "RX2", "SLIM RX2"},
 	{"RX6 MIX1 INP2", "RX3", "SLIM RX3"},
@@ -3454,6 +3499,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX6 MIX1 INP2", "RX6", "SLIM RX6"},
 	{"RX6 MIX1 INP2", "RX7", "SLIM RX7"},
 	{"RX6 MIX1 INP2", "IIR1", "IIR1"},
+	{"RX6 MIX1 INP2", "IIR2", "IIR2"},
 	{"RX7 MIX1 INP1", "RX1", "SLIM RX1"},
 	{"RX7 MIX1 INP1", "RX2", "SLIM RX2"},
 	{"RX7 MIX1 INP1", "RX3", "SLIM RX3"},
@@ -3462,6 +3508,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX7 MIX1 INP1", "RX6", "SLIM RX6"},
 	{"RX7 MIX1 INP1", "RX7", "SLIM RX7"},
 	{"RX7 MIX1 INP1", "IIR1", "IIR1"},
+	{"RX7 MIX1 INP1", "IIR2", "IIR2"},
 	{"RX7 MIX1 INP2", "RX1", "SLIM RX1"},
 	{"RX7 MIX1 INP2", "RX2", "SLIM RX2"},
 	{"RX7 MIX1 INP2", "RX3", "SLIM RX3"},
@@ -3476,6 +3523,13 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX2 MIX2 INP2", "IIR1", "IIR1"},
 	{"RX7 MIX2 INP1", "IIR1", "IIR1"},
 	{"RX7 MIX2 INP2", "IIR1", "IIR1"},
+	{"RX7 MIX1 INP2", "IIR2", "IIR2"},
+	{"RX1 MIX2 INP1", "IIR2", "IIR2"},
+	{"RX1 MIX2 INP2", "IIR2", "IIR2"},
+	{"RX2 MIX2 INP1", "IIR2", "IIR2"},
+	{"RX2 MIX2 INP2", "IIR2", "IIR2"},
+	{"RX7 MIX2 INP1", "IIR2", "IIR2"},
+	{"RX7 MIX2 INP2", "IIR2", "IIR2"},
 
 	/* Decimator Inputs */
 	{"DEC1 MUX", "DMIC1", "DMIC1"},
@@ -3547,6 +3601,18 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"IIR1 INP1 MUX", "DEC8", "DEC8 MUX"},
 	{"IIR1 INP1 MUX", "DEC9", "DEC9 MUX"},
 	{"IIR1 INP1 MUX", "DEC10", "DEC10 MUX"},
+
+	{"IIR2", NULL, "IIR2 INP1 MUX"},
+	{"IIR2 INP1 MUX", "DEC1", "DEC1 MUX"},
+	{"IIR2 INP1 MUX", "DEC2", "DEC2 MUX"},
+	{"IIR2 INP1 MUX", "DEC3", "DEC3 MUX"},
+	{"IIR2 INP1 MUX", "DEC4", "DEC4 MUX"},
+	{"IIR2 INP1 MUX", "DEC5", "DEC5 MUX"},
+	{"IIR2 INP1 MUX", "DEC6", "DEC6 MUX"},
+	{"IIR2 INP1 MUX", "DEC7", "DEC7 MUX"},
+	{"IIR2 INP1 MUX", "DEC8", "DEC8 MUX"},
+	{"IIR2 INP1 MUX", "DEC9", "DEC9 MUX"},
+	{"IIR2 INP1 MUX", "DEC10", "DEC10 MUX"},
 
 	{"MIC BIAS1 Internal1", NULL, "LDO_H"},
 	{"MIC BIAS1 Internal2", NULL, "LDO_H"},
@@ -5101,6 +5167,9 @@ static const struct snd_soc_dapm_widget taiko_dapm_widgets[] = {
 	SND_SOC_DAPM_MUX("IIR1 INP1 MUX", SND_SOC_NOPM, 0, 0, &iir1_inp1_mux),
 	SND_SOC_DAPM_PGA("IIR1", TAIKO_A_CDC_CLK_SD_CTL, 0, 0, NULL, 0),
 
+	SND_SOC_DAPM_MUX("IIR2 INP1 MUX", SND_SOC_NOPM, 0, 0, &iir2_inp1_mux),
+	SND_SOC_DAPM_PGA("IIR2", TAIKO_A_CDC_CLK_SD_CTL, 1, 0, NULL, 0),
+
 	/* AUX PGA */
 	SND_SOC_DAPM_ADC_E("AUX_PGA_Left", NULL, TAIKO_A_RX_AUX_SW_CTL, 7, 0,
 		taiko_codec_enable_aux_pga, SND_SOC_DAPM_PRE_PMU |
@@ -5208,6 +5277,9 @@ static int taiko_handle_pdata(struct taiko_priv *taiko)
 	u8 leg_mode, txfe_bypass, txfe_buff, flag;
 	u8 i = 0, j = 0;
 	u8 val_txfe = 0, value = 0;
+	u8 dmic_sample_rate_value = 0;
+	u8 dmic_b1_ctl_value = 0, dmic_b2_ctl_value = 0;
+	u8 anc_ctl_value = 0;
 
 	if (!pdata) {
 		pr_err("%s: NULL pdata\n", __func__);
@@ -5337,6 +5409,96 @@ static int taiko_handle_pdata(struct taiko_priv *taiko)
 	value = (pdata->micbias.bias4_cap_mode == MICBIAS_EXT_BYP_CAP ?
 		 0x00 : 0x16);
 	snd_soc_update_bits(codec, TAIKO_A_MICB_4_CTL, 0x1E, value);
+
+	/* Set the DMIC sample rate */
+	if (pdata->mclk_rate == TAIKO_MCLK_CLK_9P6HZ) {
+		switch (pdata->dmic_sample_rate) {
+		case TAIKO_DMIC_SAMPLE_RATE_2P4MHZ:
+			dmic_sample_rate_value = TAIKO_DMIC_SAMPLE_RATE_DIV_4;
+			dmic_b1_ctl_value = TAIKO_DMIC_B1_CTL_DIV_4;
+			dmic_b2_ctl_value = TAIKO_DMIC_B2_CTL_DIV_4;
+			anc_ctl_value = TAIKO_ANC_DMIC_X2_OFF;
+			break;
+		case TAIKO_DMIC_SAMPLE_RATE_4P8MHZ:
+			dmic_sample_rate_value = TAIKO_DMIC_SAMPLE_RATE_DIV_2;
+			dmic_b1_ctl_value = TAIKO_DMIC_B1_CTL_DIV_2;
+			dmic_b2_ctl_value = TAIKO_DMIC_B2_CTL_DIV_2;
+			anc_ctl_value = TAIKO_ANC_DMIC_X2_ON;
+			break;
+		case TAIKO_DMIC_SAMPLE_RATE_3P2MHZ:
+		case TAIKO_DMIC_SAMPLE_RATE_UNDEFINED:
+			dmic_sample_rate_value = TAIKO_DMIC_SAMPLE_RATE_DIV_3;
+			dmic_b1_ctl_value = TAIKO_DMIC_B1_CTL_DIV_3;
+			dmic_b2_ctl_value = TAIKO_DMIC_B2_CTL_DIV_3;
+			anc_ctl_value = TAIKO_ANC_DMIC_X2_OFF;
+			break;
+		default:
+			pr_err("%s Invalid sample rate %d for mclk %d\n",
+			__func__, pdata->dmic_sample_rate, pdata->mclk_rate);
+			rc = -EINVAL;
+			goto done;
+			break;
+		}
+	} else if (pdata->mclk_rate == TAIKO_MCLK_CLK_12P288MHZ) {
+		switch (pdata->dmic_sample_rate) {
+		case TAIKO_DMIC_SAMPLE_RATE_3P072MHZ:
+			dmic_sample_rate_value = TAIKO_DMIC_SAMPLE_RATE_DIV_4;
+			dmic_b1_ctl_value = TAIKO_DMIC_B1_CTL_DIV_4;
+			dmic_b2_ctl_value = TAIKO_DMIC_B2_CTL_DIV_4;
+			anc_ctl_value = TAIKO_ANC_DMIC_X2_OFF;
+			break;
+		case TAIKO_DMIC_SAMPLE_RATE_6P144MHZ:
+			dmic_sample_rate_value = TAIKO_DMIC_SAMPLE_RATE_DIV_2;
+			dmic_b1_ctl_value = TAIKO_DMIC_B1_CTL_DIV_2;
+			dmic_b2_ctl_value = TAIKO_DMIC_B2_CTL_DIV_2;
+			anc_ctl_value = TAIKO_ANC_DMIC_X2_ON;
+			break;
+		case TAIKO_DMIC_SAMPLE_RATE_4P096MHZ:
+		case TAIKO_DMIC_SAMPLE_RATE_UNDEFINED:
+			dmic_sample_rate_value = TAIKO_DMIC_SAMPLE_RATE_DIV_3;
+			dmic_b1_ctl_value = TAIKO_DMIC_B1_CTL_DIV_3;
+			dmic_b2_ctl_value = TAIKO_DMIC_B2_CTL_DIV_3;
+			anc_ctl_value = TAIKO_ANC_DMIC_X2_OFF;
+			break;
+		default:
+			pr_err("%s Invalid sample rate %d for mclk %d\n",
+			__func__, pdata->dmic_sample_rate, pdata->mclk_rate);
+			rc = -EINVAL;
+			goto done;
+			break;
+		}
+	} else {
+		pr_err("%s MCLK is not set!\n", __func__);
+		rc = -EINVAL;
+		goto done;
+	}
+
+	snd_soc_update_bits(codec, TAIKO_A_CDC_TX1_DMIC_CTL,
+		0x7, dmic_sample_rate_value);
+	snd_soc_update_bits(codec, TAIKO_A_CDC_TX2_DMIC_CTL,
+		0x7, dmic_sample_rate_value);
+	snd_soc_update_bits(codec, TAIKO_A_CDC_TX3_DMIC_CTL,
+		0x7, dmic_sample_rate_value);
+	snd_soc_update_bits(codec, TAIKO_A_CDC_TX4_DMIC_CTL,
+		0x7, dmic_sample_rate_value);
+	snd_soc_update_bits(codec, TAIKO_A_CDC_TX5_DMIC_CTL,
+		0x7, dmic_sample_rate_value);
+	snd_soc_update_bits(codec, TAIKO_A_CDC_TX6_DMIC_CTL,
+		0x7, dmic_sample_rate_value);
+	snd_soc_update_bits(codec, TAIKO_A_CDC_TX7_DMIC_CTL,
+		0x7, dmic_sample_rate_value);
+	snd_soc_update_bits(codec, TAIKO_A_CDC_TX8_DMIC_CTL,
+		0x7, dmic_sample_rate_value);
+	snd_soc_update_bits(codec, TAIKO_A_CDC_TX9_DMIC_CTL,
+		0x7, dmic_sample_rate_value);
+	snd_soc_update_bits(codec, TAIKO_A_CDC_TX10_DMIC_CTL,
+		0x7, dmic_sample_rate_value);
+	snd_soc_update_bits(codec, TAIKO_A_CDC_CLK_DMIC_B1_CTL,
+		0xEE, dmic_b1_ctl_value);
+	snd_soc_update_bits(codec, TAIKO_A_CDC_CLK_DMIC_B2_CTL,
+		0xE, dmic_b2_ctl_value);
+	snd_soc_update_bits(codec, TAIKO_A_CDC_ANC1_B2_CTL,
+		0x1, anc_ctl_value);
 
 done:
 	return rc;
@@ -5567,22 +5729,6 @@ static const struct wcd9xxx_reg_mask_val taiko_codec_reg_init_val[] = {
 	{TAIKO_A_CDC_TX8_MUX_CTL, 0x8, 0x0},
 	{TAIKO_A_CDC_TX9_MUX_CTL, 0x8, 0x0},
 	{TAIKO_A_CDC_TX10_MUX_CTL, 0x8, 0x0},
-
-	/* config Decimator for DMIC CLK_MODE_1(3.2Mhz@9.6Mhz mclk) */
-	{TAIKO_A_CDC_TX1_DMIC_CTL, 0x7, 0x1},
-	{TAIKO_A_CDC_TX2_DMIC_CTL, 0x7, 0x1},
-	{TAIKO_A_CDC_TX3_DMIC_CTL, 0x7, 0x1},
-	{TAIKO_A_CDC_TX4_DMIC_CTL, 0x7, 0x1},
-	{TAIKO_A_CDC_TX5_DMIC_CTL, 0x7, 0x1},
-	{TAIKO_A_CDC_TX6_DMIC_CTL, 0x7, 0x1},
-	{TAIKO_A_CDC_TX7_DMIC_CTL, 0x7, 0x1},
-	{TAIKO_A_CDC_TX8_DMIC_CTL, 0x7, 0x1},
-	{TAIKO_A_CDC_TX9_DMIC_CTL, 0x7, 0x1},
-	{TAIKO_A_CDC_TX10_DMIC_CTL, 0x7, 0x1},
-
-	/* config DMIC clk to CLK_MODE_1 (3.2Mhz@9.6Mhz mclk) */
-	{TAIKO_A_CDC_CLK_DMIC_B1_CTL, 0xEE, 0x22},
-	{TAIKO_A_CDC_CLK_DMIC_B2_CTL, 0x0E, 0x02},
 
 	/* Compander zone selection */
 	{TAIKO_A_CDC_COMP0_B4_CTL, 0x3F, 0x37},

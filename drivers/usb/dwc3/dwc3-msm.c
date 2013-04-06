@@ -26,6 +26,7 @@
 #include <linux/types.h>
 #include <linux/delay.h>
 #include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/list.h>
 #include <linux/debugfs.h>
 #include <linux/uaccess.h>
@@ -62,6 +63,11 @@ MODULE_PARM_DESC(adc_meas_interval, "ADC ID polling period");
 static int override_phy_init;
 module_param(override_phy_init, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(override_phy_init, "Override HSPHY Init Seq");
+
+/* Enable Proprietary charger detection */
+static bool prop_chg_detect;
+module_param(prop_chg_detect, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(prop_chg_detect, "Enable Proprietary charger detection");
 
 /**
  *  USB DBM Hardware registers.
@@ -152,7 +158,6 @@ struct dwc3_msm_req_complete {
 };
 
 struct dwc3_msm {
-	struct platform_device *dwc3;
 	struct device *dev;
 	void __iomem *base;
 	u32 resource_size;
@@ -220,7 +225,6 @@ struct dwc3_msm {
 #define USB_SSPHY_1P8_HPM_LOAD		23000	/* uA */
 
 static struct dwc3_msm *context;
-static u64 dwc3_msm_dma_mask = DMA_BIT_MASK(64);
 
 static struct usb_ext_notification *usb_ext;
 
@@ -1391,12 +1395,12 @@ static void dwc3_chg_enable_secondary_det(struct dwc3_msm *mdwc)
 static bool dwc3_chg_det_check_linestate(struct dwc3_msm *mdwc)
 {
 	u32 chg_det;
-	bool ret = false;
+
+	if (!prop_chg_detect)
+		return false;
 
 	chg_det = dwc3_msm_read_reg(mdwc->base, CHARGING_DET_OUTPUT_REG);
-	ret = chg_det & (3 << 8);
-
-	return ret;
+	return chg_det & (3 << 8);
 }
 
 static bool dwc3_chg_det_check_output(struct dwc3_msm *mdwc)
@@ -2214,10 +2218,10 @@ static DEVICE_ATTR(adc_enable, S_IRUGO | S_IWUSR, adc_enable_show,
 static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node;
-	struct platform_device *dwc3;
 	struct dwc3_msm *msm;
 	struct resource *res;
 	void __iomem *tcsr;
+	unsigned long flags;
 	int ret = 0;
 	int len = 0;
 	u32 tmp[3];
@@ -2430,6 +2434,11 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 					dev_err(&pdev->dev, "irqreq IDINT failed\n");
 					goto disable_hs_ldo;
 				}
+				local_irq_save(flags);
+				/* Update initial ID state */
+				msm->id_state = msm->ext_xceiv.id =
+					!!irq_read_line(msm->pmic_id_irq);
+				local_irq_restore(flags);
 				enable_irq_wake(msm->pmic_id_irq);
 			}
 		}
@@ -2476,19 +2485,7 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 		goto disable_hs_ldo;
 	}
 
-	dwc3 = platform_device_alloc("dwc3", -1);
-	if (!dwc3) {
-		dev_err(&pdev->dev, "couldn't allocate dwc3 device\n");
-		ret = -ENODEV;
-		goto disable_hs_ldo;
-	}
-
-	dwc3->dev.parent = &pdev->dev;
-	dwc3->dev.coherent_dma_mask = DMA_BIT_MASK(32);
-	dwc3->dev.dma_mask = &dwc3_msm_dma_mask;
-	dwc3->dev.dma_parms = pdev->dev.dma_parms;
 	msm->resource_size = resource_size(res);
-	msm->dwc3 = dwc3;
 
 	if (of_property_read_u32(node, "qcom,dwc-hsphy-init",
 						&msm->hsphy_init_seq))
@@ -2514,7 +2511,7 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 			"max: %d, dbm_num_eps: %d\n",
 			DBM_MAX_EPS, msm->dbm_num_eps);
 		ret = -ENODEV;
-		goto put_pdev;
+		goto disable_hs_ldo;
 	}
 
 	msm->usb_psy.name = "usb";
@@ -2534,20 +2531,16 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev,
 				"%s:power_supply_register usb failed\n",
 					__func__);
-		goto put_pdev;
+		goto disable_hs_ldo;
 	}
 
-	ret = platform_device_add_resources(dwc3, pdev->resource,
-		pdev->num_resources);
-	if (ret) {
-		dev_err(&pdev->dev, "couldn't add resources to dwc3 device\n");
-		goto put_psupply;
-	}
-
-	ret = platform_device_add(dwc3);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to register dwc3 device\n");
-		goto put_psupply;
+	if (node) {
+		ret = of_platform_populate(node, NULL, NULL, &pdev->dev);
+		if (ret) {
+			dev_err(&pdev->dev,
+				"failed to add create dwc3 core\n");
+			goto put_psupply;
+		}
 	}
 
 	msm->bus_scale_table = msm_bus_cl_get_pdata(pdev);
@@ -2592,11 +2585,8 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 
 put_xcvr:
 	usb_put_transceiver(msm->otg_xceiv);
-	platform_device_del(dwc3);
 put_psupply:
 	power_supply_unregister(&msm->usb_psy);
-put_pdev:
-	platform_device_put(dwc3);
 disable_hs_ldo:
 	dwc3_hsusb_ldo_enable(0);
 free_hs_ldo_init:
@@ -2647,7 +2637,6 @@ static int __devexit dwc3_msm_remove(struct platform_device *pdev)
 	}
 
 	pm_runtime_disable(msm->dev);
-	platform_device_unregister(msm->dwc3);
 	wake_lock_destroy(&msm->wlock);
 
 	dwc3_hsusb_ldo_enable(0);

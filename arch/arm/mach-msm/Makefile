@@ -5,7 +5,7 @@ ifndef CONFIG_ARM_ARCH_TIMER
 obj-y += timer.o
 endif
 obj-y += clock.o clock-voter.o clock-dummy.o
-obj-y += modem_notifier.o subsystem_map.o
+obj-y += modem_notifier.o
 obj-$(CONFIG_USE_OF) += board-dt.o
 obj-$(CONFIG_CPU_FREQ_MSM) += cpufreq.o
 obj-$(CONFIG_DEBUG_FS) += nohlt.o clock-debug.o
@@ -24,6 +24,7 @@ endif
 endif
 
 obj-y += acpuclock.o
+obj-$(CONFIG_HW_PERF_EVENTS) += perf_trace_counters.o
 obj-$(CONFIG_ARCH_MSM_KRAIT) += acpuclock-krait.o
 ifdef CONFIG_ARCH_MSM_KRAIT
 obj-$(CONFIG_DEBUG_FS) += acpuclock-krait-debug.o

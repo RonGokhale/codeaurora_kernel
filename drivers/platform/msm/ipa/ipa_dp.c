@@ -259,7 +259,7 @@ int ipa_send(struct ipa_sys_context *sys, u32 num_desc, struct ipa_desc *desc,
 	if (unlikely(!in_atomic))
 		mem_flag = GFP_KERNEL;
 
-	transfer.iovec = dma_alloc_coherent(NULL, size, &dma_addr, 0);
+	transfer.iovec = dma_alloc_coherent(NULL, size, &dma_addr, mem_flag);
 	transfer.iovec_phys = dma_addr;
 	transfer.iovec_count = num_desc;
 	spin_lock_irqsave(&sys->spinlock, irq_flags);
@@ -943,7 +943,6 @@ static void ipa_tx_comp_usr_notify_release(void *user1, void *user2)
 
 static void ipa_tx_cmd_comp(void *user1, void *user2)
 {
-	IPA_STATS_INC_CNT(ipa_ctx->stats.imm_cmds[IPA_IP_PACKET_INIT]);
 	kfree(user1);
 }
 
@@ -1022,6 +1021,7 @@ int ipa_tx_dp(enum ipa_client_type dst, struct sk_buff *skb,
 			IPAERR("fail to send immediate command\n");
 			goto fail_send;
 		}
+		IPA_STATS_INC_CNT(ipa_ctx->stats.imm_cmds[IPA_IP_PACKET_INIT]);
 	} else if (dst == IPA_CLIENT_A5_WLAN_AMPDU_PROD) {
 		desc[0].pyld = skb->data;
 		desc[0].len = skb->len;

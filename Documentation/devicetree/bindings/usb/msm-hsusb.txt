@@ -22,6 +22,10 @@ Required properties :
             1 - PHY control
 	    2 - PMIC control
 	    3 - User control (via debugfs)
+- <supply-name>-supply: handle to the regulator device tree node
+         Required "supply-name" is "HSUSB_VDDCX" (when voting for VDDCX) or
+         "hsusb_vdd_dig" (when voting for VDDCX Corner voltage),
+         "HSUSB_1p8-supply" and "HSUSB_3p3-supply".
 
 Optional properties :
 - qcom,hsusb-otg-disable-reset: If present then core is RESET only during
@@ -54,10 +58,8 @@ Optional properties :
 	    Used for allowing USB to respond for remote wakup.
 - qcom,hsusb-otg-delay-lpm: If present then USB core will wait one second
 	after disconnect before entering low power mode.
-- <supply-name>-supply: handle to the regulator device tree node
-         Required "supply-name" is "HSUSB_VDDCX" (when voting for VDDCX) or
-         "hsusb_vdd_dig" (when voting for VDDCX Corner voltage),
-         "HSUSB_1p8-supply" and "HSUSB_3p3-supply".
+- <supply-name>-supply: handle to the regulator device tree node.
+         Optional "supply-name" is "vbus_otg" to supply vbus in host mode.
 - qcom,vdd-voltage-level: This property must be a list of three integer
 	values (no, min, max) where each value represents either a voltage
 	in microvolts or a value corresponding to voltage corner.
@@ -173,7 +175,11 @@ Required properties:
             If HSUSB_BAM is used, "hsusb" should be present.
             If HSIC_BAM is used, "hsic" should be present.
 - qcom,usb-bam-num-pipes: max number of pipes that can be used
-- qcom,usb-base-address: physical base address of the BAM
+
+Optional properties:
+- qcom,usb-bam-fifo-baseaddr: base address for bam pipe's data and descriptor
+  fifos. This can be on chip memory (ocimem) or usb private memory. This
+  property is required if sub-node's mem-type is ocimem or usb private mem.
 
 A number of USB BAM pipe parameters are represented as sub-nodes:
 
@@ -186,8 +192,9 @@ Subnode Required:
 	pipe num options: 0..127
 - qcom,usb-bam-mem-type: Type of memory used by this PIPE. Can be one of
             0 - Uses SPS's dedicated pipe memory
-            1 - USB's private memory residing @ 'qcom,usb-base-address'
+            1 - USB's private memory residing @ 'qcom,usb-bam-fifo-baseaddr'
             2 - System RAM allocated by driver
+	    3 - OCI memory residing @ 'qcom,usb-bam-fifo-baseaddr'
 - qcom,bam-type: BAM type can be one of
 	0 - SSUSB_BAM
 	1 - HSUSB_BAM

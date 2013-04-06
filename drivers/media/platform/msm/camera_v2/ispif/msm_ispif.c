@@ -380,6 +380,8 @@ static void msm_ispif_enable_crop(struct ispif_device *ispif,
 
 	data = msm_camera_io_r(ispif->base + ISPIF_VFE_m_CTRL_0(vfe_intf));
 	data |= (1 << (intftype + 7));
+	if (intftype == PIX0)
+		data |= 1 << PIX0_LINE_BUF_EN_BIT;
 	msm_camera_io_w(data,
 		ispif->base + ISPIF_VFE_m_CTRL_0(vfe_intf));
 
@@ -502,6 +504,13 @@ static int msm_ispif_config(struct ispif_device *ispif,
 
 	BUG_ON(!ispif);
 	BUG_ON(!params);
+
+	if (ispif->ispif_state != ISPIF_POWER_UP) {
+		pr_err("%s: ispif invalid state %d\n", __func__,
+			ispif->ispif_state);
+		rc = -EPERM;
+		return rc;
+	}
 
 	rc = msm_ispif_clk_enable(ispif, params, 1);
 	if (rc < 0) {
@@ -653,6 +662,13 @@ static int msm_ispif_stop_immediately(struct ispif_device *ispif,
 	BUG_ON(!ispif);
 	BUG_ON(!params);
 
+	if (ispif->ispif_state != ISPIF_POWER_UP) {
+		pr_err("%s: ispif invalid state %d\n", __func__,
+			ispif->ispif_state);
+		rc = -EPERM;
+		return rc;
+	}
+
 	msm_ispif_intf_cmd(ispif, ISPIF_INTF_CMD_DISABLE_IMMEDIATELY, params);
 
 	/* after stop the interface we need to unmask the CID enable bits */
@@ -670,6 +686,13 @@ static int msm_ispif_start_frame_boundary(struct ispif_device *ispif,
 	struct msm_ispif_param_data *params)
 {
 	int rc;
+
+	if (ispif->ispif_state != ISPIF_POWER_UP) {
+		pr_err("%s: ispif invalid state %d\n", __func__,
+			ispif->ispif_state);
+		rc = -EPERM;
+		return rc;
+	}
 
 	rc = msm_ispif_clk_enable(ispif, params, 1);
 	if (rc < 0) {
@@ -702,6 +725,13 @@ static int msm_ispif_stop_frame_boundary(struct ispif_device *ispif,
 	BUG_ON(!ispif);
 	BUG_ON(!params);
 
+
+	if (ispif->ispif_state != ISPIF_POWER_UP) {
+		pr_err("%s: ispif invalid state %d\n", __func__,
+			ispif->ispif_state);
+		rc = -EPERM;
+		return rc;
+	}
 
 	rc = msm_ispif_clk_enable(ispif, params, 1);
 	if (rc < 0) {

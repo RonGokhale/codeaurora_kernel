@@ -1187,9 +1187,12 @@ out:
 static unsigned int sdhci_get_bw_required(struct sdhci_host *host,
 					struct mmc_ios *ios)
 {
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+
 	unsigned int bw;
 
-	bw = host->clock;
+	bw = msm_host->clk_rate;
 	/*
 	 * For DDR mode, SDCC controller clock will be at
 	 * the double rate than the actual clock that goes to card.
@@ -2184,6 +2187,7 @@ static int __devinit sdhci_msm_probe(struct platform_device *pdev)
 	host->quirks |= SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN;
 	host->quirks2 |= SDHCI_QUIRK2_ALWAYS_USE_BASE_CLOCK;
 	host->quirks2 |= SDHCI_QUIRK2_IGNORE_CMDCRC_FOR_TUNING;
+	host->quirks2 |= SDHCI_QUIRK2_USE_MAX_DISCARD_SIZE;
 
 	host_version = readl_relaxed((host->ioaddr + SDHCI_HOST_VERSION));
 	dev_dbg(&pdev->dev, "Host Version: 0x%x Vendor Version 0x%x\n",

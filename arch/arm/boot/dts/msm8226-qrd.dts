@@ -13,11 +13,11 @@
 /dts-v1/;
 /include/ "msm8226.dtsi"
 /include/ "dsi-panel-nt35590-720p-video.dtsi"
-/include/ "msm8226-camera-sensor-cdp-mtp-qrd.dtsi"
+/include/ "msm8226-camera-sensor-cdp-qrd.dtsi"
 
 / {
 	model = "Qualcomm MSM 8226 QRD";
-	compatible = "qcom,msm8226-qrd", "qcom,msm8226";
+	compatible = "qcom,msm8226-qrd", "qcom,msm8226", "qcom,qrd";
 	qcom,msm-id = <145 11 0>;
 
 	serial@f991f000 {
@@ -197,6 +197,13 @@
 				qcom,id = <0>;
 			};
 		};
+
+		qcom,vibrator@c000 {
+			status = "okay";
+			qcom,vib-timeout-ms = <15000>;
+			qcom,vib-vtg-level-mV = <3100>;
+		};
+
 	};
 };
 

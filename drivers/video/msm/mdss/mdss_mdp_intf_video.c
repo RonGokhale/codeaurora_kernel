@@ -182,6 +182,9 @@ static inline void video_vsync_irq_enable(struct mdss_mdp_ctl *ctl)
 
 	if (atomic_inc_return(&ctx->vsync_ref) == 1)
 		mdss_mdp_irq_enable(MDSS_MDP_IRQ_INTF_VSYNC, ctl->intf_num);
+	else
+		mdss_mdp_irq_clear(ctl->mdata, MDSS_MDP_IRQ_INTF_VSYNC,
+				ctl->intf_num);
 }
 
 static inline void video_vsync_irq_disable(struct mdss_mdp_ctl *ctl)
@@ -197,6 +200,7 @@ static int mdss_mdp_video_set_vsync_handler(struct mdss_mdp_ctl *ctl,
 {
 	struct mdss_mdp_video_ctx *ctx;
 	unsigned long flags;
+	int need_update;
 
 	ctx = (struct mdss_mdp_video_ctx *) ctl->priv_data;
 	if (!ctx) {
@@ -205,13 +209,17 @@ static int mdss_mdp_video_set_vsync_handler(struct mdss_mdp_ctl *ctl,
 	}
 
 	spin_lock_irqsave(&ctx->vsync_lock, flags);
-	if (!ctx->vsync_handler && vsync_handler)
-		video_vsync_irq_enable(ctl);
-	else if (ctx->vsync_handler && !vsync_handler)
-		video_vsync_irq_disable(ctl);
-
+	need_update = (!ctx->vsync_handler && vsync_handler) ||
+			(ctx->vsync_handler && !vsync_handler);
 	ctx->vsync_handler = vsync_handler;
 	spin_unlock_irqrestore(&ctx->vsync_lock, flags);
+
+	if (need_update) {
+		if (vsync_handler)
+			video_vsync_irq_enable(ctl);
+		else
+			video_vsync_irq_disable(ctl);
+	}
 
 	return 0;
 }
@@ -335,8 +343,8 @@ static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 
 	if (!ctx->wait_pending) {
 		ctx->wait_pending++;
-		INIT_COMPLETION(ctx->vsync_comp);
 		video_vsync_irq_enable(ctl);
+		INIT_COMPLETION(ctx->vsync_comp);
 	} else {
 		WARN(1, "commit without wait! ctl=%d", ctl->num);
 	}
@@ -373,6 +381,7 @@ int mdss_mdp_video_start(struct mdss_mdp_ctl *ctl)
 	struct mdss_mdp_video_ctx *ctx;
 	struct mdss_mdp_mixer *mixer;
 	struct intf_timing_params itp = {0};
+	u32 dst_bpp;
 	int i;
 
 	mdata = ctl->mdata;
@@ -411,19 +420,27 @@ int mdss_mdp_video_start(struct mdss_mdp_ctl *ctl)
 	mdss_mdp_set_intr_callback(MDSS_MDP_IRQ_INTF_UNDER_RUN, ctl->intf_num,
 				   mdss_mdp_video_underrun_intr_done, ctl);
 
-	itp.width = pinfo->xres + pinfo->lcdc.xres_pad;
+	dst_bpp = pinfo->fbc.enabled ? (pinfo->fbc.target_bpp) : (pinfo->bpp);
+
+	itp.width = mult_frac((pinfo->xres + pinfo->lcdc.xres_pad),
+				dst_bpp, pinfo->bpp);
 	itp.height = pinfo->yres + pinfo->lcdc.yres_pad;
 	itp.border_clr = pinfo->lcdc.border_clr;
 	itp.underflow_clr = pinfo->lcdc.underflow_clr;
 	itp.hsync_skew = pinfo->lcdc.hsync_skew;
 
-	itp.xres =  pinfo->xres;
+	itp.xres =  mult_frac(pinfo->xres, dst_bpp, pinfo->bpp);
 	itp.yres = pinfo->yres;
-	itp.h_back_porch =  pinfo->lcdc.h_back_porch;
-	itp.h_front_porch =  pinfo->lcdc.h_front_porch;
-	itp.v_back_porch =  pinfo->lcdc.v_back_porch;
-	itp.v_front_porch = pinfo->lcdc.v_front_porch;
-	itp.hsync_pulse_width = pinfo->lcdc.h_pulse_width;
+	itp.h_back_porch =  mult_frac(pinfo->lcdc.h_back_porch, dst_bpp,
+			pinfo->bpp);
+	itp.h_front_porch = mult_frac(pinfo->lcdc.h_front_porch, dst_bpp,
+			pinfo->bpp);
+	itp.v_back_porch =  mult_frac(pinfo->lcdc.v_back_porch, dst_bpp,
+			pinfo->bpp);
+	itp.v_front_porch = mult_frac(pinfo->lcdc.v_front_porch, dst_bpp,
+			pinfo->bpp);
+	itp.hsync_pulse_width = mult_frac(pinfo->lcdc.h_pulse_width, dst_bpp,
+			pinfo->bpp);
 	itp.vsync_pulse_width = pinfo->lcdc.v_pulse_width;
 
 	if (mdss_mdp_video_timegen_setup(ctx, &itp)) {

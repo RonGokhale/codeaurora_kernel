@@ -17,7 +17,7 @@
 #include <linux/wait.h>
 #include <linux/jiffies.h>
 #include <linux/sched.h>
-#include <linux/msm_ion.h>
+#include <linux/msm_audio_ion.h>
 #include <sound/apr_audio-v2.h>
 #include <sound/q6afe-v2.h>
 #include <sound/q6audio-v2.h>
@@ -224,6 +224,7 @@ int afe_get_port_type(u16 port_id)
 	case AFE_PORT_ID_SECONDARY_MI2S_RX:
 	case AFE_PORT_ID_TERTIARY_MI2S_RX:
 	case AFE_PORT_ID_QUATERNARY_MI2S_RX:
+	case AFE_PORT_ID_SECONDARY_PCM_RX:
 		ret = MSM_AFE_PORT_TYPE_RX;
 		break;
 
@@ -247,6 +248,7 @@ int afe_get_port_type(u16 port_id)
 	case AFE_PORT_ID_SECONDARY_MI2S_TX:
 	case AFE_PORT_ID_TERTIARY_MI2S_TX:
 	case AFE_PORT_ID_QUATERNARY_MI2S_TX:
+	case AFE_PORT_ID_SECONDARY_PCM_TX:
 		ret = MSM_AFE_PORT_TYPE_TX;
 		break;
 
@@ -295,6 +297,8 @@ int afe_sizeof_cfg_cmd(u16 port_id)
 		break;
 	case PCM_RX:
 	case PCM_TX:
+	case AFE_PORT_ID_SECONDARY_PCM_RX:
+	case AFE_PORT_ID_SECONDARY_PCM_TX:
 	default:
 		ret_size = SIZEOF_CFG_CMD(afe_param_id_pcm_cfg);
 		break;
@@ -1120,7 +1124,9 @@ int afe_port_start(u16 port_id, union afe_port_config *afe_config,
 		break;
 	case PCM_RX:
 	case PCM_TX:
-		cfg_type = AFE_PARAM_ID_HDMI_CONFIG;
+	case AFE_PORT_ID_SECONDARY_PCM_RX:
+	case AFE_PORT_ID_SECONDARY_PCM_TX:
+		cfg_type = AFE_PARAM_ID_PCM_CONFIG;
 		break;
 	case SECONDARY_I2S_RX:
 	case SECONDARY_I2S_TX:
@@ -1215,6 +1221,10 @@ int afe_get_port_index(u16 port_id)
 	case PRIMARY_I2S_TX: return IDX_PRIMARY_I2S_TX;
 	case PCM_RX: return IDX_PCM_RX;
 	case PCM_TX: return IDX_PCM_TX;
+	case AFE_PORT_ID_SECONDARY_PCM_RX:
+		return IDX_AFE_PORT_ID_SECONDARY_PCM_RX;
+	case AFE_PORT_ID_SECONDARY_PCM_TX:
+		return IDX_AFE_PORT_ID_SECONDARY_PCM_TX;
 	case SECONDARY_I2S_RX: return IDX_SECONDARY_I2S_RX;
 	case SECONDARY_I2S_TX: return IDX_SECONDARY_I2S_TX;
 	case MI2S_RX: return IDX_MI2S_RX;
@@ -1310,6 +1320,8 @@ int afe_open(u16 port_id,
 		break;
 	case PCM_RX:
 	case PCM_TX:
+	case AFE_PORT_ID_SECONDARY_PCM_RX:
+	case AFE_PORT_ID_SECONDARY_PCM_TX:
 		cfg_type = AFE_PARAM_ID_PCM_CONFIG;
 		break;
 	case SECONDARY_I2S_RX:
@@ -1707,35 +1719,13 @@ int q6afe_audio_client_buf_alloc_contiguous(unsigned int dir,
 
 	ac->port[dir].buf = buf;
 
-	buf[0].client = msm_ion_client_create(UINT_MAX, "audio_client");
-	if (IS_ERR_OR_NULL((void *)buf[0].client)) {
-		pr_err("%s: ION create client for AUDIO failed\n", __func__);
-		goto fail;
-	}
-	buf[0].handle = ion_alloc(buf[0].client, bufsz * bufcnt, SZ_4K,
-				  (0x1 << ION_AUDIO_HEAP_ID), 0);
-	if (IS_ERR_OR_NULL((void *) buf[0].handle)) {
-		pr_err("%s: ION memory allocation for AUDIO failed\n",
-			__func__);
-		goto fail;
-	}
-
-	rc = ion_phys(buf[0].client, buf[0].handle,
-		  (ion_phys_addr_t *)&buf[0].phys, (size_t *)&len);
+	rc = msm_audio_ion_alloc("audio_client", &buf[0].client,
+				&buf[0].handle, bufsz*bufcnt,
+				(ion_phys_addr_t *)&buf[0].phys, (size_t *)&len,
+				&buf[0].data);
 	if (rc) {
-		pr_err("%s: ION Get Physical for AUDIO failed, rc = %d\n",
+		pr_err("%s: audio ION alloc failed, rc = %d\n",
 			__func__, rc);
-		goto fail;
-	}
-
-	buf[0].data = ion_map_kernel(buf[0].client, buf[0].handle);
-	if (IS_ERR_OR_NULL((void *) buf[0].data)) {
-		pr_err("%s: ION memory mapping for AUDIO failed\n", __func__);
-		goto fail;
-	}
-	memset((void *)buf[0].data, 0, (bufsz * bufcnt));
-	if (!buf[0].data) {
-		pr_err("%s:invalid vaddr, iomap failed\n", __func__);
 		mutex_unlock(&ac->cmd_lock);
 		goto fail;
 	}
@@ -1944,9 +1934,7 @@ int q6afe_audio_client_buf_free_contiguous(unsigned int dir,
 	cnt = port->max_buf_cnt - 1;
 
 	if (port->buf[0].data) {
-		ion_unmap_kernel(port->buf[0].client, port->buf[0].handle);
-		ion_free(port->buf[0].client, port->buf[0].handle);
-		ion_client_destroy(port->buf[0].client);
+		msm_audio_ion_free(port->buf[0].client, port->buf[0].handle);
 		pr_debug("%s:data[%p]phys[%p][%p] , client[%p] handle[%p]\n",
 			__func__,
 			(void *)port->buf[0].data,
@@ -2521,6 +2509,8 @@ int afe_validate_port(u16 port_id)
 	case PRIMARY_I2S_TX:
 	case PCM_RX:
 	case PCM_TX:
+	case AFE_PORT_ID_SECONDARY_PCM_RX:
+	case AFE_PORT_ID_SECONDARY_PCM_TX:
 	case SECONDARY_I2S_RX:
 	case SECONDARY_I2S_TX:
 	case MI2S_RX:

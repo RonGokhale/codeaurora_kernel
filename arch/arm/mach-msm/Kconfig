@@ -428,6 +428,8 @@ config ARCH_MSM8610
 	select MSM_SPM_REGULATOR
 	select MSM_JTAG_MM if CORESIGHT_ETM
 	select MSM_CPR_REGULATOR
+	select MSM_RPM_LOG
+	select MSM_RPM_STATS_LOG
 
 config ARCH_MSM8226
 	bool "MSM8226"
@@ -466,6 +468,8 @@ config ARCH_MSM8226
 	select MSM_SPM_REGULATOR
 	select MSM_JTAG_MM if CORESIGHT_ETM
 	select MSM_CPR_REGULATOR
+	select MSM_RPM_LOG
+	select MSM_RPM_STATS_LOG
 endmenu
 
 choice
@@ -1079,7 +1083,7 @@ config PHYS_OFFSET
 config KERNEL_MSM_CONTIG_MEM_REGION
 	bool "Enable in-kernel contiguous memory region"
 	default y if ARCH_MSM8X60
-	depends on ANDROID_PMEM && (ARCH_MSM8X60 || ARCH_MSM8960 || ARCH_MSM8974)
+	depends on ARCH_MSM8X60 || ARCH_MSM8960 || ARCH_MSM8974
 	help
 	   Enable the in-kernel contiguous memory allocator. Sets up a
 	   region of physically contiguous memory. This memory is
