@@ -20,6 +20,8 @@
 #include "dvb_frontend.h"
 #include "mb86a20s.h"
 
+#define NUM_LAYERS 3
+
 static int debug = 1;
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Activates frontend debugging (default:0)");
@@ -48,7 +50,7 @@ struct mb86a20s_state {
 	bool inversion;
 	u32 subchannel;
 
-	u32 estimated_rate[3];
+	u32 estimated_rate[NUM_LAYERS];
 	unsigned long get_strength_time;
 
 	bool need_init;
@@ -564,12 +566,13 @@ static u32 isdbt_rate[3][5][4] = {
 };
 
 static void mb86a20s_layer_bitrate(struct dvb_frontend *fe, u32 layer,
-				   u32 modulation, u32 fec, u32 interleaving,
+				   u32 modulation, u32 forward_error_correction,
+				   u32 interleaving,
 				   u32 segment)
 {
 	struct mb86a20s_state *state = fe->demodulator_priv;
 	u32 rate;
-	int m, f, i;
+	int mod, fec, guard;
 
 	/*
 	 * If modulation/fec/interleaving is not detected, the default is
@@ -580,54 +583,54 @@ static void mb86a20s_layer_bitrate(struct dvb_frontend *fe, u32 layer,
 	case DQPSK:
 	case QPSK:
 	default:
-		m = 0;
+		mod = 0;
 		break;
 	case QAM_16:
-		m = 1;
+		mod = 1;
 		break;
 	case QAM_64:
-		m = 2;
+		mod = 2;
 		break;
 	}
 
-	switch (fec) {
+	switch (forward_error_correction) {
 	default:
 	case FEC_1_2:
 	case FEC_AUTO:
-		f = 0;
+		fec = 0;
 		break;
 	case FEC_2_3:
-		f = 1;
+		fec = 1;
 		break;
 	case FEC_3_4:
-		f = 2;
+		fec = 2;
 		break;
 	case FEC_5_6:
-		f = 3;
+		fec = 3;
 		break;
 	case FEC_7_8:
-		f = 4;
+		fec = 4;
 		break;
 	}
 
 	switch (interleaving) {
 	default:
 	case GUARD_INTERVAL_1_4:
-		i = 0;
+		guard = 0;
 		break;
 	case GUARD_INTERVAL_1_8:
-		i = 1;
+		guard = 1;
 		break;
 	case GUARD_INTERVAL_1_16:
-		i = 2;
+		guard = 2;
 		break;
 	case GUARD_INTERVAL_1_32:
-		i = 3;
+		guard = 3;
 		break;
 	}
 
 	/* Samples BER at BER_SAMPLING_RATE seconds */
-	rate = isdbt_rate[m][f][i] * segment * BER_SAMPLING_RATE;
+	rate = isdbt_rate[mod][fec][guard] * segment * BER_SAMPLING_RATE;
 
 	/* Avoids sampling too quickly or to overflow the register */
 	if (rate < 256)
@@ -637,18 +640,18 @@ static void mb86a20s_layer_bitrate(struct dvb_frontend *fe, u32 layer,
 
 	dev_dbg(&state->i2c->dev,
 		"%s: layer %c bitrate: %d kbps; counter = %d (0x%06x)\n",
-	       __func__, 'A' + layer, segment * isdbt_rate[m][f][i]/1000,
+		__func__, 'A' + layer,
+		segment * isdbt_rate[mod][fec][guard]/1000,
 		rate, rate);
 
 	state->estimated_rate[layer] = rate;
 }
 
-
 static int mb86a20s_get_frontend(struct dvb_frontend *fe)
 {
 	struct mb86a20s_state *state = fe->demodulator_priv;
 	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
-	int i, rc;
+	int layer, rc;
 
 	dev_dbg(&state->i2c->dev, "%s called.\n", __func__);
 
@@ -666,43 +669,43 @@ static int mb86a20s_get_frontend(struct dvb_frontend *fe)
 
 	/* Get per-layer data */
 
-	for (i = 0; i < 3; i++) {
+	for (layer = 0; layer < NUM_LAYERS; layer++) {
 		dev_dbg(&state->i2c->dev, "%s: getting data for layer %c.\n",
-			__func__, 'A' + i);
+			__func__, 'A' + layer);
 
-		rc = mb86a20s_get_segment_count(state, i);
+		rc = mb86a20s_get_segment_count(state, layer);
 		if (rc < 0)
 			goto noperlayer_error;
 		if (rc >= 0 && rc < 14) {
-			c->layer[i].segment_count = rc;
+			c->layer[layer].segment_count = rc;
 		} else {
-			c->layer[i].segment_count = 0;
-			state->estimated_rate[i] = 0;
+			c->layer[layer].segment_count = 0;
+			state->estimated_rate[layer] = 0;
 			continue;
 		}
-		c->isdbt_layer_enabled |= 1 << i;
-		rc = mb86a20s_get_modulation(state, i);
+		c->isdbt_layer_enabled |= 1 << layer;
+		rc = mb86a20s_get_modulation(state, layer);
 		if (rc < 0)
 			goto noperlayer_error;
 		dev_dbg(&state->i2c->dev, "%s: modulation %d.\n",
 			__func__, rc);
-		c->layer[i].modulation = rc;
-		rc = mb86a20s_get_fec(state, i);
+		c->layer[layer].modulation = rc;
+		rc = mb86a20s_get_fec(state, layer);
 		if (rc < 0)
 			goto noperlayer_error;
 		dev_dbg(&state->i2c->dev, "%s: FEC %d.\n",
 			__func__, rc);
-		c->layer[i].fec = rc;
-		rc = mb86a20s_get_interleaving(state, i);
+		c->layer[layer].fec = rc;
+		rc = mb86a20s_get_interleaving(state, layer);
 		if (rc < 0)
 			goto noperlayer_error;
 		dev_dbg(&state->i2c->dev, "%s: interleaving %d.\n",
 			__func__, rc);
-		c->layer[i].interleaving = rc;
-		mb86a20s_layer_bitrate(fe, i, c->layer[i].modulation,
-				       c->layer[i].fec,
-				       c->layer[i].interleaving,
-				       c->layer[i].segment_count);
+		c->layer[layer].interleaving = rc;
+		mb86a20s_layer_bitrate(fe, layer, c->layer[layer].modulation,
+				       c->layer[layer].fec,
+				       c->layer[layer].interleaving,
+				       c->layer[layer].segment_count);
 	}
 
 	rc = mb86a20s_writereg(state, 0x6d, 0x84);
@@ -828,7 +831,7 @@ static int mb86a20s_get_pre_ber(struct dvb_frontend *fe,
 
 	dev_dbg(&state->i2c->dev, "%s called.\n", __func__);
 
-	if (layer >= 3)
+	if (layer >= NUM_LAYERS)
 		return -EINVAL;
 
 	/* Check if the BER measures are already available */
@@ -962,7 +965,7 @@ static int mb86a20s_get_post_ber(struct dvb_frontend *fe,
 
 	dev_dbg(&state->i2c->dev, "%s called.\n", __func__);
 
-	if (layer >= 3)
+	if (layer >= NUM_LAYERS)
 		return -EINVAL;
 
 	/* Check if the BER measures are already available */
@@ -1089,7 +1092,7 @@ static int mb86a20s_get_blk_error(struct dvb_frontend *fe,
 	u32 collect_rate;
 	dev_dbg(&state->i2c->dev, "%s called.\n", __func__);
 
-	if (layer >= 3)
+	if (layer >= NUM_LAYERS)
 		return -EINVAL;
 
 	/* Check if the PER measures are already available */
@@ -1454,7 +1457,7 @@ static int mb86a20s_get_blk_error_layer_CNR(struct dvb_frontend *fe)
 	struct mb86a20s_state *state = fe->demodulator_priv;
 	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
 	u32 mer, cnr;
-	int rc, val, i;
+	int rc, val, layer;
 	struct linear_segments *segs;
 	unsigned segs_len;
 
@@ -1476,27 +1479,27 @@ static int mb86a20s_get_blk_error_layer_CNR(struct dvb_frontend *fe)
 	}
 
 	/* Read all layers */
-	for (i = 0; i < 3; i++) {
-		if (!(c->isdbt_layer_enabled & (1 << i))) {
-			c->cnr.stat[1 + i].scale = FE_SCALE_NOT_AVAILABLE;
+	for (layer = 0; layer < NUM_LAYERS; layer++) {
+		if (!(c->isdbt_layer_enabled & (1 << layer))) {
+			c->cnr.stat[1 + layer].scale = FE_SCALE_NOT_AVAILABLE;
 			continue;
 		}
 
-		rc = mb86a20s_writereg(state, 0x50, 0x52 + i * 3);
+		rc = mb86a20s_writereg(state, 0x50, 0x52 + layer * 3);
 		if (rc < 0)
 			return rc;
 		rc = mb86a20s_readreg(state, 0x51);
 		if (rc < 0)
 			return rc;
 		mer = rc << 16;
-		rc = mb86a20s_writereg(state, 0x50, 0x53 + i * 3);
+		rc = mb86a20s_writereg(state, 0x50, 0x53 + layer * 3);
 		if (rc < 0)
 			return rc;
 		rc = mb86a20s_readreg(state, 0x51);
 		if (rc < 0)
 			return rc;
 		mer |= rc << 8;
-		rc = mb86a20s_writereg(state, 0x50, 0x54 + i * 3);
+		rc = mb86a20s_writereg(state, 0x50, 0x54 + layer * 3);
 		if (rc < 0)
 			return rc;
 		rc = mb86a20s_readreg(state, 0x51);
@@ -1504,7 +1507,7 @@ static int mb86a20s_get_blk_error_layer_CNR(struct dvb_frontend *fe)
 			return rc;
 		mer |= rc;
 
-		switch (c->layer[i].modulation) {
+		switch (c->layer[layer].modulation) {
 		case DQPSK:
 		case QPSK:
 			segs = cnr_qpsk_table;
@@ -1522,12 +1525,12 @@ static int mb86a20s_get_blk_error_layer_CNR(struct dvb_frontend *fe)
 		}
 		cnr = interpolate_value(mer, segs, segs_len);
 
-		c->cnr.stat[1 + i].scale = FE_SCALE_DECIBEL;
-		c->cnr.stat[1 + i].svalue = cnr;
+		c->cnr.stat[1 + layer].scale = FE_SCALE_DECIBEL;
+		c->cnr.stat[1 + layer].svalue = cnr;
 
 		dev_dbg(&state->i2c->dev,
 			"%s: CNR for layer %c is %d.%03d dB (MER = %d).\n",
-			__func__, 'A' + i, cnr / 1000, cnr % 1000, mer);
+			__func__, 'A' + layer, cnr / 1000, cnr % 1000, mer);
 
 	}
 
@@ -1555,7 +1558,7 @@ static void mb86a20s_stats_not_ready(struct dvb_frontend *fe)
 {
 	struct mb86a20s_state *state = fe->demodulator_priv;
 	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
-	int i;
+	int layer;
 
 	dev_dbg(&state->i2c->dev, "%s called.\n", __func__);
 
@@ -1565,27 +1568,27 @@ static void mb86a20s_stats_not_ready(struct dvb_frontend *fe)
 	c->strength.len = 1;
 
 	/* Per-layer stats - 3 layers + global */
-	c->cnr.len = 4;
-	c->pre_bit_error.len = 4;
-	c->pre_bit_count.len = 4;
-	c->post_bit_error.len = 4;
-	c->post_bit_count.len = 4;
-	c->block_error.len = 4;
-	c->block_count.len = 4;
+	c->cnr.len = NUM_LAYERS + 1;
+	c->pre_bit_error.len = NUM_LAYERS + 1;
+	c->pre_bit_count.len = NUM_LAYERS + 1;
+	c->post_bit_error.len = NUM_LAYERS + 1;
+	c->post_bit_count.len = NUM_LAYERS + 1;
+	c->block_error.len = NUM_LAYERS + 1;
+	c->block_count.len = NUM_LAYERS + 1;
 
 	/* Signal is always available */
 	c->strength.stat[0].scale = FE_SCALE_RELATIVE;
 	c->strength.stat[0].uvalue = 0;
 
 	/* Put all of them at FE_SCALE_NOT_AVAILABLE */
-	for (i = 0; i < 4; i++) {
-		c->cnr.stat[i].scale = FE_SCALE_NOT_AVAILABLE;
-		c->pre_bit_error.stat[i].scale = FE_SCALE_NOT_AVAILABLE;
-		c->pre_bit_count.stat[i].scale = FE_SCALE_NOT_AVAILABLE;
-		c->post_bit_error.stat[i].scale = FE_SCALE_NOT_AVAILABLE;
-		c->post_bit_count.stat[i].scale = FE_SCALE_NOT_AVAILABLE;
-		c->block_error.stat[i].scale = FE_SCALE_NOT_AVAILABLE;
-		c->block_count.stat[i].scale = FE_SCALE_NOT_AVAILABLE;
+	for (layer = 0; layer < NUM_LAYERS + 1; layer++) {
+		c->cnr.stat[layer].scale = FE_SCALE_NOT_AVAILABLE;
+		c->pre_bit_error.stat[layer].scale = FE_SCALE_NOT_AVAILABLE;
+		c->pre_bit_count.stat[layer].scale = FE_SCALE_NOT_AVAILABLE;
+		c->post_bit_error.stat[layer].scale = FE_SCALE_NOT_AVAILABLE;
+		c->post_bit_count.stat[layer].scale = FE_SCALE_NOT_AVAILABLE;
+		c->block_error.stat[layer].scale = FE_SCALE_NOT_AVAILABLE;
+		c->block_count.stat[layer].scale = FE_SCALE_NOT_AVAILABLE;
 	}
 }
 
@@ -1593,7 +1596,7 @@ static int mb86a20s_get_stats(struct dvb_frontend *fe, int status_nr)
 {
 	struct mb86a20s_state *state = fe->demodulator_priv;
 	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
-	int rc = 0, i;
+	int rc = 0, layer;
 	u32 bit_error = 0, bit_count = 0;
 	u32 t_pre_bit_error = 0, t_pre_bit_count = 0;
 	u32 t_post_bit_error = 0, t_post_bit_count = 0;
@@ -1617,90 +1620,90 @@ static int mb86a20s_get_stats(struct dvb_frontend *fe, int status_nr)
 	if (status_nr < 9)
 		return 0;
 
-	for (i = 0; i < 3; i++) {
-		if (c->isdbt_layer_enabled & (1 << i)) {
+	for (layer = 0; layer < NUM_LAYERS; layer++) {
+		if (c->isdbt_layer_enabled & (1 << layer)) {
 			/* Layer is active and has rc segments */
 			active_layers++;
 
 			/* Handle BER before vterbi */
-			rc = mb86a20s_get_pre_ber(fe, i,
+			rc = mb86a20s_get_pre_ber(fe, layer,
 						  &bit_error, &bit_count);
 			if (rc >= 0) {
-				c->pre_bit_error.stat[1 + i].scale = FE_SCALE_COUNTER;
-				c->pre_bit_error.stat[1 + i].uvalue += bit_error;
-				c->pre_bit_count.stat[1 + i].scale = FE_SCALE_COUNTER;
-				c->pre_bit_count.stat[1 + i].uvalue += bit_count;
+				c->pre_bit_error.stat[1 + layer].scale = FE_SCALE_COUNTER;
+				c->pre_bit_error.stat[1 + layer].uvalue += bit_error;
+				c->pre_bit_count.stat[1 + layer].scale = FE_SCALE_COUNTER;
+				c->pre_bit_count.stat[1 + layer].uvalue += bit_count;
 			} else if (rc != -EBUSY) {
 				/*
 					* If an I/O error happened,
 					* measures are now unavailable
 					*/
-				c->pre_bit_error.stat[1 + i].scale = FE_SCALE_NOT_AVAILABLE;
-				c->pre_bit_count.stat[1 + i].scale = FE_SCALE_NOT_AVAILABLE;
+				c->pre_bit_error.stat[1 + layer].scale = FE_SCALE_NOT_AVAILABLE;
+				c->pre_bit_count.stat[1 + layer].scale = FE_SCALE_NOT_AVAILABLE;
 				dev_err(&state->i2c->dev,
 					"%s: Can't get BER for layer %c (error %d).\n",
-					__func__, 'A' + i, rc);
+					__func__, 'A' + layer, rc);
 			}
-			if (c->block_error.stat[1 + i].scale != FE_SCALE_NOT_AVAILABLE)
+			if (c->block_error.stat[1 + layer].scale != FE_SCALE_NOT_AVAILABLE)
 				pre_ber_layers++;
 
 			/* Handle BER post vterbi */
-			rc = mb86a20s_get_post_ber(fe, i,
+			rc = mb86a20s_get_post_ber(fe, layer,
 						   &bit_error, &bit_count);
 			if (rc >= 0) {
-				c->post_bit_error.stat[1 + i].scale = FE_SCALE_COUNTER;
-				c->post_bit_error.stat[1 + i].uvalue += bit_error;
-				c->post_bit_count.stat[1 + i].scale = FE_SCALE_COUNTER;
-				c->post_bit_count.stat[1 + i].uvalue += bit_count;
+				c->post_bit_error.stat[1 + layer].scale = FE_SCALE_COUNTER;
+				c->post_bit_error.stat[1 + layer].uvalue += bit_error;
+				c->post_bit_count.stat[1 + layer].scale = FE_SCALE_COUNTER;
+				c->post_bit_count.stat[1 + layer].uvalue += bit_count;
 			} else if (rc != -EBUSY) {
 				/*
 					* If an I/O error happened,
 					* measures are now unavailable
 					*/
-				c->post_bit_error.stat[1 + i].scale = FE_SCALE_NOT_AVAILABLE;
-				c->post_bit_count.stat[1 + i].scale = FE_SCALE_NOT_AVAILABLE;
+				c->post_bit_error.stat[1 + layer].scale = FE_SCALE_NOT_AVAILABLE;
+				c->post_bit_count.stat[1 + layer].scale = FE_SCALE_NOT_AVAILABLE;
 				dev_err(&state->i2c->dev,
 					"%s: Can't get BER for layer %c (error %d).\n",
-					__func__, 'A' + i, rc);
+					__func__, 'A' + layer, rc);
 			}
-			if (c->block_error.stat[1 + i].scale != FE_SCALE_NOT_AVAILABLE)
+			if (c->block_error.stat[1 + layer].scale != FE_SCALE_NOT_AVAILABLE)
 				post_ber_layers++;
 
 			/* Handle Block errors for PER/UCB reports */
-			rc = mb86a20s_get_blk_error(fe, i,
+			rc = mb86a20s_get_blk_error(fe, layer,
 						&block_error,
 						&block_count);
 			if (rc >= 0) {
-				c->block_error.stat[1 + i].scale = FE_SCALE_COUNTER;
-				c->block_error.stat[1 + i].uvalue += block_error;
-				c->block_count.stat[1 + i].scale = FE_SCALE_COUNTER;
-				c->block_count.stat[1 + i].uvalue += block_count;
+				c->block_error.stat[1 + layer].scale = FE_SCALE_COUNTER;
+				c->block_error.stat[1 + layer].uvalue += block_error;
+				c->block_count.stat[1 + layer].scale = FE_SCALE_COUNTER;
+				c->block_count.stat[1 + layer].uvalue += block_count;
 			} else if (rc != -EBUSY) {
 				/*
 					* If an I/O error happened,
 					* measures are now unavailable
 					*/
-				c->block_error.stat[1 + i].scale = FE_SCALE_NOT_AVAILABLE;
-				c->block_count.stat[1 + i].scale = FE_SCALE_NOT_AVAILABLE;
+				c->block_error.stat[1 + layer].scale = FE_SCALE_NOT_AVAILABLE;
+				c->block_count.stat[1 + layer].scale = FE_SCALE_NOT_AVAILABLE;
 				dev_err(&state->i2c->dev,
 					"%s: Can't get PER for layer %c (error %d).\n",
-					__func__, 'A' + i, rc);
+					__func__, 'A' + layer, rc);
 
 			}
-			if (c->block_error.stat[1 + i].scale != FE_SCALE_NOT_AVAILABLE)
+			if (c->block_error.stat[1 + layer].scale != FE_SCALE_NOT_AVAILABLE)
 				per_layers++;
 
 			/* Update total preBER */
-			t_pre_bit_error += c->pre_bit_error.stat[1 + i].uvalue;
-			t_pre_bit_count += c->pre_bit_count.stat[1 + i].uvalue;
+			t_pre_bit_error += c->pre_bit_error.stat[1 + layer].uvalue;
+			t_pre_bit_count += c->pre_bit_count.stat[1 + layer].uvalue;
 
 			/* Update total postBER */
-			t_post_bit_error += c->post_bit_error.stat[1 + i].uvalue;
-			t_post_bit_count += c->post_bit_count.stat[1 + i].uvalue;
+			t_post_bit_error += c->post_bit_error.stat[1 + layer].uvalue;
+			t_post_bit_count += c->post_bit_count.stat[1 + layer].uvalue;
 
 			/* Update total PER */
-			t_block_error += c->block_error.stat[1 + i].uvalue;
-			t_block_count += c->block_count.stat[1 + i].uvalue;
+			t_block_error += c->block_error.stat[1 + layer].uvalue;
+			t_block_count += c->block_count.stat[1 + layer].uvalue;
 		}
 	}
 
@@ -1913,7 +1916,7 @@ static int mb86a20s_set_frontend(struct dvb_frontend *fe)
 	if (!c->isdbt_sb_mode) {
 		state->subchannel = 0;
 	} else {
-		if (c->isdbt_sb_subchannel > ARRAY_SIZE(mb86a20s_subchannel))
+		if (c->isdbt_sb_subchannel >= ARRAY_SIZE(mb86a20s_subchannel))
 			c->isdbt_sb_subchannel = 0;
 
 		state->subchannel = mb86a20s_subchannel[c->isdbt_sb_subchannel];

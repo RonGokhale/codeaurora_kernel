@@ -45,6 +45,7 @@
 #if IS_ENABLED(CONFIG_VIDEO_SAA7134_DVB)
 #include <media/videobuf-dvb.h>
 #endif
+#include "tda8290.h"
 
 #define UNSET (-1U)
 
@@ -334,6 +335,7 @@ struct saa7134_card_ir {
 #define SAA7134_BOARD_KWORLD_PC150U         189
 #define SAA7134_BOARD_ASUSTeK_PS3_100      190
 #define SAA7134_BOARD_HAWELL_HW_9004V1      191
+#define SAA7134_BOARD_AVERMEDIA_A706		192
 
 #define SAA7134_MAXBOARDS 32
 #define SAA7134_INPUT_MAX 8
@@ -390,7 +392,7 @@ struct saa7134_board {
 	unsigned char		rds_addr;
 
 	unsigned int            tda9887_conf;
-	unsigned int            tuner_config;
+	struct tda829x_config   tda829x_conf;
 
 	/* peripheral I/O */
 	enum saa7134_video_out  video_out;
