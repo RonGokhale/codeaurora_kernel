@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -49,6 +49,12 @@ struct mbhc_internal_cal_data {
 	u16 adj_v_ins_h;
 	s16 v_inval_ins_low;
 	s16 v_inval_ins_high;
+};
+
+enum wcd9xxx_mbhc_version {
+	WCD9XXX_MBHC_VERSION_UNKNOWN = 0,
+	WCD9XXX_MBHC_VERSION_TAIKO,
+	WCD9XXX_MBHC_VERSION_TAPAN,
 };
 
 enum wcd9xxx_mbhc_plug_type {
@@ -242,6 +248,7 @@ struct wcd9xxx_mbhc {
 	struct snd_soc_jack button_jack;
 
 	struct notifier_block nblock;
+	enum wcd9xxx_mbhc_version mbhc_version;
 
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_poke;
@@ -307,7 +314,7 @@ struct wcd9xxx_mbhc {
 int wcd9xxx_mbhc_start(struct wcd9xxx_mbhc *mbhc,
 		       struct wcd9xxx_mbhc_config *mbhc_cfg);
 int wcd9xxx_mbhc_init(struct wcd9xxx_mbhc *mbhc, struct wcd9xxx_resmgr *resmgr,
-		      struct snd_soc_codec *codec);
+		      struct snd_soc_codec *codec, int version);
 void wcd9xxx_mbhc_deinit(struct wcd9xxx_mbhc *mbhc);
 void *wcd9xxx_mbhc_cal_btn_det_mp(
 			    const struct wcd9xxx_mbhc_btn_detect_cfg *btn_det,
