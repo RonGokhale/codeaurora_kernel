@@ -75,6 +75,10 @@ enum {
 	VOC_STANDBY,
 };
 
+/* QSC UP and Down notification */
+#define APRV2_CMD_HSUART_ENABLE  0x00012E7C
+#define APRV2_CMD_HSUART_DISABLE 0x00012E7D
+
 /* Common */
 #define VSS_ICOMMON_CMD_SET_UI_PROPERTY 0x00011103
 /* Set a UI property */
@@ -990,6 +994,11 @@ struct common_data {
 	void *apr_q6_cvs;
 	/* APR to CVP in the Q6 */
 	void *apr_q6_cvp;
+	/* APR to ROUTER in Q6 for QSC up/down notification */
+	void *apr_q6_router;
+
+	uint32_t router_status;
+	wait_queue_head_t router_wait;
 
 	struct ion_client *ion_client;
 	struct ion_handle *ion_handle;
