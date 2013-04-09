@@ -364,7 +364,7 @@ static int dvb_dmxdev_update_events(struct dmxdev_events_queue *events,
 		if (data_event) {
 			if (res) {
 				/*
-				 * Data relevent to this event was
+				 * Data relevant to this event was
 				 * fully consumed, remove it from the queue.
 				 */
 				bytes_read -= res;
@@ -467,6 +467,35 @@ static struct dmx_frontend *get_fe(struct dmx_demux *demux, int type)
 	return NULL;
 }
 
+static void dvb_dvr_oob_cmd(struct dmxdev *dmxdev, struct dmx_oob_command *cmd)
+{
+	int i;
+	struct dmxdev_filter *filter;
+	struct dmxdev_feed *feed;
+
+	for (i = 0; i < dmxdev->filternum; i++) {
+		filter = &dmxdev->filter[i];
+		if (filter->state != DMXDEV_STATE_GO)
+			continue;
+
+		switch (filter->type) {
+		case DMXDEV_TYPE_SEC:
+			filter->feed.sec->oob_command(filter->feed.sec, cmd);
+			break;
+		case DMXDEV_TYPE_PES:
+			feed = list_first_entry(&filter->feed.ts,
+						struct dmxdev_feed, next);
+			feed->ts->oob_command(feed->ts, cmd);
+			break;
+		case DMXDEV_TYPE_NONE:
+			break;
+
+		default:
+			break;
+		}
+	}
+}
+
 static int dvr_input_thread_entry(void *arg)
 {
 	struct dmxdev *dmxdev = arg;
@@ -474,6 +503,7 @@ static int dvr_input_thread_entry(void *arg)
 	int ret;
 	size_t todo;
 	size_t split;
+	int eos;
 
 	while (1) {
 		/* wait for input */
@@ -482,7 +512,8 @@ static int dvr_input_thread_entry(void *arg)
 			(!src->data) ||
 			(dvb_ringbuffer_avail(src) > 188) ||
 			(src->error != 0) ||
-			dmxdev->dvr_in_exit);
+			dmxdev->dvr_in_exit ||
+			dmxdev->dvr_eos_indication);
 
 		if (ret < 0)
 			break;
@@ -501,7 +532,7 @@ static int dvr_input_thread_entry(void *arg)
 		}
 
 		dmxdev->dvr_processing_input = 1;
-
+		eos = dmxdev->dvr_eos_indication;
 		ret = dvb_ringbuffer_avail(src);
 		todo = ret;
 
@@ -513,8 +544,8 @@ static int dvr_input_thread_entry(void *arg)
 		 * In DVR PULL mode, write might block.
 		 * Lock on DVR buffer is released before calling to
 		 * write, if DVR was released meanwhile, dvr_in_exit is
-		 * prompted. Lock is aquired when updating the read pointer
-		 * again to preserve read/write pointers consistancy
+		 * prompted. Lock is acquired when updating the read pointer
+		 * again to preserve read/write pointers consistency
 		 */
 		if (split > 0) {
 			spin_unlock(&dmxdev->dvr_in_lock);
@@ -532,8 +563,9 @@ static int dvr_input_thread_entry(void *arg)
 		}
 
 		spin_unlock(&dmxdev->dvr_in_lock);
-		dmxdev->demux->write(dmxdev->demux,
-					src->data + src->pread, todo);
+		if (todo)
+			dmxdev->demux->write(dmxdev->demux,
+				src->data + src->pread, todo);
 
 		if (dmxdev->dvr_in_exit)
 			break;
@@ -542,7 +574,17 @@ static int dvr_input_thread_entry(void *arg)
 
 		DVB_RINGBUFFER_SKIP(src, todo);
 		dmxdev->dvr_processing_input = 0;
+		if (eos)
+			dmxdev->dvr_eos_indication = 0;
+
 		spin_unlock(&dmxdev->dvr_in_lock);
+
+		if (eos) {
+			struct dmx_oob_command oob_eos;
+
+			oob_eos.type = DMX_OOB_CMD_EOS;
+			dvb_dvr_oob_cmd(dmxdev, &oob_eos);
+		}
 
 		wake_up_all(&src->queue);
 	}
@@ -924,6 +966,28 @@ static ssize_t dvb_dvr_read(struct file *file, char __user *buf, size_t count,
 	}
 
 	return res;
+}
+
+/*
+ * dvb_dvr_push_oob_cmd
+ *
+ * Note: this function assume dmxdev->mutex was taken, so command buffer cannot
+ * be released during its operation.
+ */
+static int dvb_dvr_push_oob_cmd(struct dmxdev *dmxdev, unsigned int f_flags,
+		struct dmx_oob_command *cmd)
+{
+	if ((f_flags & O_ACCMODE) == O_RDONLY ||
+		dmxdev->source < DMX_SOURCE_DVR0)
+		return -EPERM;
+
+	if (cmd->type == DMX_OOB_CMD_MARKER)
+		return -ENOSYS;
+
+	dmxdev->dvr_eos_indication = 1;
+	wake_up_all(&dmxdev->dvr_input_buffer.queue);
+
+	return 0;
 }
 
 static int dvb_dvr_set_buffer_size(struct dmxdev *dmxdev,
@@ -1745,7 +1809,8 @@ static int dvb_dmxdev_section_callback(const u8 *buffer1, size_t buffer1_len,
 		return 0;
 	}
 	spin_lock(&dmxdevfilter->dev->lock);
-	if (dmxdevfilter->state != DMXDEV_STATE_GO) {
+	if (dmxdevfilter->state != DMXDEV_STATE_GO ||
+		dmxdevfilter->eos_state) {
 		spin_unlock(&dmxdevfilter->dev->lock);
 		return 0;
 	}
@@ -1822,13 +1887,15 @@ static int dvb_dmxdev_ts_callback(const u8 *buffer1, size_t buffer1_len,
 	u32 *flush_data_len;
 
 	spin_lock(&dmxdevfilter->dev->lock);
-	if (dmxdevfilter->params.pes.output == DMX_OUT_DECODER) {
+
+	if (dmxdevfilter->params.pes.output == DMX_OUT_DECODER ||
+		dmxdevfilter->state != DMXDEV_STATE_GO ||
+		dmxdevfilter->eos_state) {
 		spin_unlock(&dmxdevfilter->dev->lock);
 		return 0;
 	}
 
-	if (dmxdevfilter->params.pes.output == DMX_OUT_TAP
-	    || dmxdevfilter->params.pes.output == DMX_OUT_TSDEMUX_TAP) {
+	if (dmxdevfilter->params.pes.output != DMX_OUT_TS_TAP) {
 		buffer = &dmxdevfilter->buffer;
 		events = &dmxdevfilter->events;
 		flush_data_len = &dmxdevfilter->flush_data_len;
@@ -1841,11 +1908,6 @@ static int dvb_dmxdev_ts_callback(const u8 *buffer1, size_t buffer1_len,
 	if (buffer->error) {
 		spin_unlock(&dmxdevfilter->dev->lock);
 		wake_up_all(&buffer->queue);
-		return 0;
-	}
-
-	if (dmxdevfilter->state != DMXDEV_STATE_GO) {
-		spin_unlock(&dmxdevfilter->dev->lock);
 		return 0;
 	}
 
@@ -1936,7 +1998,8 @@ static int dvb_dmxdev_section_event_cb(struct dmx_section_filter *filter,
 
 	spin_lock(&dmxdevfilter->dev->lock);
 
-	if (dmxdevfilter->state != DMXDEV_STATE_GO) {
+	if (dmxdevfilter->state != DMXDEV_STATE_GO ||
+		dmxdevfilter->eos_state) {
 		spin_unlock(&dmxdevfilter->dev->lock);
 		return 0;
 	}
@@ -1947,6 +2010,12 @@ static int dvb_dmxdev_section_event_cb(struct dmx_section_filter *filter,
 			event.type = DMX_EVENT_SECTION_CRC_ERROR;
 			dvb_dmxdev_add_event(&dmxdevfilter->events, &event);
 
+			spin_unlock(&dmxdevfilter->dev->lock);
+			wake_up_all(&dmxdevfilter->buffer.queue);
+		} else if (dmx_data_ready->status == DMX_OK_EOS) {
+			dmxdevfilter->eos_state = 1;
+			event.type = DMX_EVENT_EOS;
+			dvb_dmxdev_add_event(&dmxdevfilter->events, &event);
 			spin_unlock(&dmxdevfilter->dev->lock);
 			wake_up_all(&dmxdevfilter->buffer.queue);
 		} else {
@@ -2007,7 +2076,8 @@ static int dvb_dmxdev_ts_event_cb(struct dmx_ts_feed *feed,
 
 	spin_lock(&dmxdevfilter->dev->lock);
 
-	if (dmxdevfilter->state != DMXDEV_STATE_GO) {
+	if (dmxdevfilter->state != DMXDEV_STATE_GO ||
+		dmxdevfilter->eos_state) {
 		spin_unlock(&dmxdevfilter->dev->lock);
 		return 0;
 	}
@@ -2020,6 +2090,16 @@ static int dvb_dmxdev_ts_event_cb(struct dmx_ts_feed *feed,
 		buffer = &dmxdevfilter->dev->dvr_buffer;
 		events = &dmxdevfilter->dev->dvr_output_events;
 		flush_data_len = &dmxdevfilter->dev->dvr_flush_data_len;
+	}
+
+	if (dmx_data_ready->status == DMX_OK_EOS) {
+		dmxdevfilter->eos_state = 1;
+		dprintk("dmxdev: DMX_OK_EOS - entering EOS state\n");
+		event.type = DMX_EVENT_EOS;
+		dvb_dmxdev_add_event(events, &event);
+		spin_unlock(&dmxdevfilter->dev->lock);
+		wake_up_all(&dmxdevfilter->buffer.queue);
+		return 0;
 	}
 
 	if (dmx_data_ready->status == DMX_OK_PCR) {
@@ -2421,6 +2501,8 @@ static int dvb_dmxdev_filter_start(struct dmxdev_filter *filter)
 		filter->buffer.data = mem;
 		spin_unlock_irq(&filter->dev->lock);
 	}
+
+	filter->eos_state = 0;
 
 	spin_lock_irq(&filter->dev->lock);
 	dvb_dmxdev_flush_output(&filter->buffer, &filter->events);
@@ -2838,6 +2920,12 @@ dvb_demux_read(struct file *file, char __user *buf, size_t count,
 
 	if (mutex_lock_interruptible(&dmxdevfilter->mutex))
 		return -ERESTARTSYS;
+
+	if (dmxdevfilter->eos_state &&
+		dvb_ringbuffer_empty(&dmxdevfilter->buffer)) {
+		mutex_unlock(&dmxdevfilter->mutex);
+		return 0;
+	}
 
 	if (dmxdevfilter->type == DMXDEV_TYPE_SEC)
 		ret = dvb_dmxdev_read_sec(dmxdevfilter, file, buf, count, ppos);
@@ -3273,6 +3361,10 @@ static int dvb_dvr_do_ioctl(struct file *file,
 
 	case DMX_GET_EVENT:
 		ret = dvb_dvr_get_event(dmxdev, file->f_flags, parg);
+		break;
+
+	case DMX_PUSH_OOB_COMMAND:
+		ret = dvb_dvr_push_oob_cmd(dmxdev, file->f_flags, parg);
 		break;
 
 	default:

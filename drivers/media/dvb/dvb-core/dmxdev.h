@@ -123,6 +123,9 @@ struct dmxdev_filter {
 	enum dmx_tsp_format_t dmx_tsp_format;
 	u32 rec_chunk_size;
 
+	/* End-of-stream indication has been received */
+	int eos_state;
+
 	/* only for sections */
 	struct timer_list timer;
 	int todo;
@@ -152,6 +155,7 @@ struct dmxdev {
 	unsigned int exit:1;
 	unsigned int dvr_in_exit:1;
 	unsigned int dvr_processing_input:1;
+	unsigned int dvr_eos_indication:1;
 
 	struct dmx_frontend *dvr_orig_fe;
 
