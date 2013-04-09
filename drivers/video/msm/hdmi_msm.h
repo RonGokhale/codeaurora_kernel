@@ -22,6 +22,10 @@
 #include "hdcp_tx.h"
 /* #define PORT_DEBUG */
 
+#ifndef DRVR_ONLY_CECT_NO_DAEMON
+#define DRVR_ONLY_CECT_NO_DAEMON
+#endif
+
 #ifdef PORT_DEBUG
 const char *hdmi_msm_name(uint32 offset);
 void hdmi_outp(uint32 offset, uint32 value);
