@@ -730,5 +730,22 @@ int mpq_sdmx_process(struct mpq_demux *mpq_demux,
 int mpq_sdmx_is_loaded(void);
 
 
+/**
+ * mpq_dmx_oob_command - Handles OOB command from dvb-demux.
+ *
+ * OOB marker commands trigger callback to the dmxdev.
+ * Handling of EOS command may trigger current (last on stream) PES/Frame to
+ * be reported, in addition to callback to the dmxdev.
+ * In case secure demux is active for the feed, EOS command is passed to the
+ * secure demux for handling.
+ *
+ * @feed: dvb demux feed object
+ * @cmd: oob command data
+ *
+ * returns 0 on success or error
+ */
+int mpq_dmx_oob_command(struct dvb_demux_feed *feed,
+	struct dmx_oob_command *cmd);
+
 #endif /* _MPQ_DMX_PLUGIN_COMMON_H */
 
