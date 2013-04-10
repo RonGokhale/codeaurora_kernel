@@ -1,25 +1,16 @@
 codeaurora_kernel clone on github
 ========================
 
-list of branches 
+list of codeaurora msm branches 
 =================
 
-- aosp-kernel-common/android-2.6.25
-- aosp/msm-2.6.25
-- aosp/android-msm-2.6.25
-- aosp-kernel-common/android-2.6.27
 - banana.cupcake
 - android-msm-2.6.27
-- aosp/android-msm-2.6.27
-- aosp-kernel-common/android-2.6.29
 - donut_glazed
 - donut_frosted
 - donut_cream
-- aosp/android-msm8k-2.6.29
-- aosp/android-msm-2.6.29-donut
 - android-msm-2.6.29-donut
 - android-msm-2.6.29
-- aosp/android-msm-2.6.29
 - android-msm-2.6.29b
 - eclair_caramel
 - eclair_chocolate
@@ -27,22 +18,15 @@ list of branches
 - eclair_frosted
 - eclair_coffee
 - msm-2.6.31.5
-- aosp-kernel-common/android-2.6.32
-- aosp/android-msm-2.6.32-nexusonec
 - froyo
 - froyo_almond
 - froyo_pumpkin
 - froyo_squash 
 - froyo-release-2
 - android-msm-2.6.32
-- aosp/android-msm-2.6.32 
-- aosp-kernel-common/android-2.6.35
 - msm-2.6.35
 - android-msm-2.6.35-froyo
 - android-msm-2.6.35
-- aosp/android-msm-2.6.35 
-- aosp-new/android-msm-2.6.35
-- aosp-kernel-common/android-2.6.36
 - gingerbread_chocolate
 - msm-2.6.38
 - ics
@@ -60,9 +44,10 @@ list of branches
 - jb_2.2_rb2_5_1.1 
 - jb_2.2_rb2_5.2
 - jb_2.2_rb4.1
+- jb_2.3.2
 - jb_2.5
 - jb_2.5.1
-- jb_2.3.2
+- jb_2.5.2 
 - jb_2.5.3
 - jb_2.5.3_rb1.1
 - jb_2.5.4
@@ -78,7 +63,10 @@ list of branches
 - jb_mr1_rb1.22
 - jb_mr1_rb1.23 
 - jb_mr1_rb1.24 
+- jb_mr1_rb2.3
+- jb_mr1_rb2.7 
 - jb_mr1_rb2.9 
+- jb_mr1_rb2.12
 - jb_rel
 - jb_rel_rb1.2
 - jb_rel_rb3.1
@@ -98,21 +86,38 @@ list of branches
 - jb_vanilla
 - msm-3.7
 
+list of aosp branches 
+=================
+
+- aosp-kernel-common/android-2.6.25
+- aosp/msm-2.6.25
+- aosp/android-msm-2.6.25
+- aosp-kernel-common/android-2.6.27
+- aosp/android-msm-2.6.27
+- aosp-kernel-common/android-2.6.29
+- aosp/android-msm8k-2.6.29
+- aosp/android-msm-2.6.29-donut
+- aosp/android-msm-2.6.29
+- aosp-kernel-common/android-2.6.32
+- aosp/android-msm-2.6.32-nexusonec
+- aosp/android-msm-2.6.32 
+- aosp-kernel-common/android-2.6.35
+- aosp/android-msm-2.6.35 
+- aosp-new/android-msm-2.6.35
+- aosp-kernel-common/android-2.6.36
+- aosp-common/android-2.6.39
+- aosp-common/android-3.0 
+- aosp-common/android-3.3 
+- aosp-common/android-3.4
+- aosp-common/android-3.4-compat
+- aosp-common/experimental/android-3.8
+- aosp-common/experimental/android-3.9-rc2
+
+
 list of tags
 =============
 
-- M8625SSNSKMLYA1015
-- M7630AABBQMLZA40901000
-- M7630AABBQMLZA40701060
-- M76XXUSNEKNLYA2545
-- M76XXUSNEKNLYA2515
-- M76XXUSNEKNLYA1745
-- M76XXUSNEKNFYA1025
-- M76XXTSNCJNLYA61901004
-- M76XXTSNCJNLYA61901003
-- M76XXTSNCJNLYA60501020
-- M76XXTSNCJNLYA7246
-- M76XXTSNCJNLYA6013
+* [Tags can be found here](https://github.com/RonGokhale/codeaurora_kernel/tags)
 
 branchs and tags will be updated as i get time 
 ==============================================
