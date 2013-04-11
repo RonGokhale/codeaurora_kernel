@@ -78,8 +78,8 @@
 #define RMI4_I2C_LOAD_UA	10000
 #define RMI4_I2C_LPM_LOAD_UA	10
 
-#define RMI4_GPIO_SLEEP_LOW_US 10000
-#define RMI4_GPIO_WAIT_HIGH_MS 25
+#define RMI4_GPIO_SLEEP_LOW_US 20000
+#define RMI4_GPIO_WAIT_HIGH_MS 50
 
 static int synaptics_rmi4_i2c_read(struct synaptics_rmi4_data *rmi4_data,
 		unsigned short addr, unsigned char *data,
