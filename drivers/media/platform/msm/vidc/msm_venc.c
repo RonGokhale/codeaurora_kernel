@@ -107,16 +107,17 @@ static const char *const mpeg_video_vidc_extradata[] = {
 };
 
 enum msm_venc_ctrl_cluster {
-	MSM_VENC_CTRL_CLUSTER_QP = 1,
-	MSM_VENC_CTRL_CLUSTER_INTRA_PERIOD,
-	MSM_VENC_CTRL_CLUSTER_H264_PROFILE_LEVEL,
-	MSM_VENC_CTRL_CLUSTER_MPEG_PROFILE_LEVEL,
-	MSM_VENC_CTRL_CLUSTER_H263_PROFILE_LEVEL,
-	MSM_VENC_CTRL_CLUSTER_H264_ENTROPY,
-	MSM_VENC_CTRL_CLUSTER_SLICING,
-	MSM_VENC_CTRL_CLUSTER_INTRA_REFRESH,
-	MSM_VENC_CTRL_CLUSTER_BITRATE,
-	MSM_VENC_CTRL_CLUSTER_MAX,
+	MSM_VENC_CTRL_CLUSTER_QP = 1 << 0,
+	MSM_VENC_CTRL_CLUSTER_INTRA_PERIOD = 1 << 1,
+	MSM_VENC_CTRL_CLUSTER_H264_PROFILE_LEVEL = 1 << 2,
+	MSM_VENC_CTRL_CLUSTER_MPEG_PROFILE_LEVEL = 1 << 3,
+	MSM_VENC_CTRL_CLUSTER_H263_PROFILE_LEVEL = 1 << 4,
+	MSM_VENC_CTRL_CLUSTER_H264_ENTROPY = 1 << 5,
+	MSM_VENC_CTRL_CLUSTER_SLICING = 1 << 6,
+	MSM_VENC_CTRL_CLUSTER_INTRA_REFRESH = 1 << 7,
+	MSM_VENC_CTRL_CLUSTER_BITRATE = 1 << 8,
+	MSM_VENC_CTRL_CLUSTER_TIMING = 1 << 9,
+	MSM_VENC_CTRL_CLUSTER_MAX = 1 << 10,
 };
 
 static struct msm_vidc_ctrl msm_venc_ctrls[] = {
@@ -228,6 +229,18 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 	{
 		.id = V4L2_CID_MPEG_VIDEO_BITRATE,
 		.name = "Bit Rate",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.minimum = MIN_BIT_RATE,
+		.maximum = MAX_BIT_RATE,
+		.default_value = DEFAULT_BIT_RATE,
+		.step = BIT_RATE_STEP,
+		.menu_skip_mask = 0,
+		.qmenu = NULL,
+		.cluster = MSM_VENC_CTRL_CLUSTER_BITRATE,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_BITRATE_PEAK,
+		.name = "Peak Bit Rate",
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.minimum = MIN_BIT_RATE,
 		.maximum = MAX_BIT_RATE,
@@ -1255,6 +1268,29 @@ static int try_set_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
 		bitrate.layer_id = 0;
 		pdata = &bitrate;
 		break;
+	case V4L2_CID_MPEG_VIDEO_BITRATE_PEAK:
+	{
+		struct v4l2_ctrl *avg_bitrate = TRY_GET_CTRL(
+			V4L2_CID_MPEG_VIDEO_BITRATE);
+
+		if (ctrl->val < avg_bitrate->val) {
+			dprintk(VIDC_ERR,
+				"Peak bitrate (%d) is lower than average bitrate (%d)",
+				ctrl->val, avg_bitrate->val);
+			rc = -EINVAL;
+			break;
+		} else if (ctrl->val < avg_bitrate->val * 2) {
+			dprintk(VIDC_WARN,
+				"Peak bitrate (%d) ideally should be twice the average bitrate (%d)",
+				ctrl->val, avg_bitrate->val);
+		}
+
+		property_id = HAL_CONFIG_VENC_MAX_BITRATE;
+		bitrate.bit_rate = ctrl->val;
+		bitrate.layer_id = 0;
+		pdata = &bitrate;
+		break;
+	}
 	case V4L2_CID_MPEG_VIDEO_H264_ENTROPY_MODE:
 		temp_ctrl = TRY_GET_CTRL(
 			V4L2_CID_MPEG_VIDC_VIDEO_H264_CABAC_MODEL);
@@ -1979,7 +2015,7 @@ int msm_venc_prepare_buf(struct msm_vidc_inst *inst,
 {
 	int rc = 0;
 	int i;
-	struct vidc_buffer_addr_info buffer_info;
+	struct vidc_buffer_addr_info buffer_info = {0};
 	struct hfi_device *hdev;
 	int extra_idx = 0;
 
@@ -2042,7 +2078,7 @@ int msm_venc_release_buf(struct msm_vidc_inst *inst,
 					struct v4l2_buffer *b)
 {
 	int i, rc = 0, extra_idx = 0;
-	struct vidc_buffer_addr_info buffer_info;
+	struct vidc_buffer_addr_info buffer_info = {0};
 	struct hfi_device *hdev;
 
 	if (!inst || !inst->core || !inst->core->device) {
@@ -2187,7 +2223,7 @@ static struct v4l2_ctrl **get_cluster(int type, int *size)
 		return NULL;
 
 	for (c = 0; c < NUM_CTRLS; c++) {
-		if (msm_venc_ctrls[c].cluster == type) {
+		if (msm_venc_ctrls[c].cluster & type) {
 			cluster[sz] = msm_venc_ctrls[c].priv;
 			++sz;
 		}

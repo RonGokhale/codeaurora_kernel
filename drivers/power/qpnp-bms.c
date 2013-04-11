@@ -125,7 +125,6 @@ struct qpnp_bms_chip {
 	int				r_conn_mohm;
 	int				shutdown_soc_valid_limit;
 	int				adjust_soc_low_threshold;
-	int				adjust_soc_high_threshold;
 	int				chg_term_ua;
 	enum battery_type		batt_type;
 	unsigned int			fcc;
@@ -176,6 +175,7 @@ struct qpnp_bms_chip {
 	struct timespec			t_soc_queried;
 	int				last_soc;
 	int				last_soc_est;
+	int				last_soc_unbound;
 
 	int				charge_time_us;
 	int				catch_up_time_us;
@@ -195,6 +195,10 @@ struct qpnp_bms_chip {
 	bool				use_voltage_soc;
 
 	int				prev_batt_terminal_uv;
+	int				high_ocv_correction_limit_uv;
+	int				low_ocv_correction_limit_uv;
+	int				flat_ocv_threshold_uv;
+	int				hold_soc_est;
 
 	int				ocv_high_threshold_uv;
 	int				ocv_low_threshold_uv;
@@ -1363,6 +1367,7 @@ static void very_low_voltage_check(struct qpnp_bms_chip *chip, int vbat_uv)
 	}
 }
 
+#define NO_ADJUST_HIGH_SOC_THRESHOLD	90
 static int adjust_soc(struct qpnp_bms_chip *chip, struct soc_params *params,
 							int soc, int batt_temp)
 {
@@ -1376,6 +1381,7 @@ static int adjust_soc(struct qpnp_bms_chip *chip, struct soc_params *params,
 	int slope = 0;
 	int rc = 0;
 	int delta_ocv_uv_limit = 0;
+	int correction_limit_uv = 0;
 
 	rc = get_simultaneous_batt_v_and_i(chip, &ibat_ua, &vbat_uv);
 	if (rc < 0) {
@@ -1411,18 +1417,15 @@ static int adjust_soc(struct qpnp_bms_chip *chip, struct soc_params *params,
 
 	/*
 	 * do not adjust
-	 * if soc is same as what bms calculated
-	 * if soc_est is between 45 and 25, this is the flat portion of the
-	 * curve where soc_est is not so accurate. We generally don't want to
-	 * adjust when soc_est is inaccurate except for the cases when soc is
-	 * way far off (higher than 50 or lesser than 20).
-	 * Also don't adjust soc if it is above 90 becuase it might be pulled
-	 * low and cause a bad user experience
+	 * if soc_est is same as what bms calculated
+	 * OR if soc_est > adjust_soc_low_threshold
+	 * OR if soc is above 90
+	 * because we might pull it low
+	 * and cause a bad user experience
 	 */
 	if (soc_est == soc
-		|| (is_between(45, chip->adjust_soc_low_threshold, soc_est)
-		&& is_between(50, chip->adjust_soc_low_threshold - 5, soc))
-		|| soc >= 90)
+		|| soc_est > chip->adjust_soc_low_threshold
+		|| soc >= NO_ADJUST_HIGH_SOC_THRESHOLD)
 		goto out;
 
 	if (chip->last_soc_est == -EINVAL)
@@ -1467,6 +1470,21 @@ static int adjust_soc(struct qpnp_bms_chip *chip, struct soc_params *params,
 		pr_debug("new delta ocv = %d\n", delta_ocv_uv);
 	}
 
+	if (chip->last_ocv_uv > chip->flat_ocv_threshold_uv)
+		correction_limit_uv = chip->high_ocv_correction_limit_uv;
+	else
+		correction_limit_uv = chip->low_ocv_correction_limit_uv;
+
+	if (abs(delta_ocv_uv) > correction_limit_uv) {
+		pr_debug("limiting delta ocv %d limit = %d\n",
+			delta_ocv_uv, correction_limit_uv);
+		if (delta_ocv_uv > 0)
+			delta_ocv_uv = correction_limit_uv;
+		else
+			delta_ocv_uv = -correction_limit_uv;
+		pr_debug("new delta ocv = %d\n", delta_ocv_uv);
+	}
+
 	chip->last_ocv_uv -= delta_ocv_uv;
 
 	if (chip->last_ocv_uv >= chip->max_voltage_uv)
@@ -1481,9 +1499,9 @@ static int adjust_soc(struct qpnp_bms_chip *chip, struct soc_params *params,
 
 	/*
 	 * if soc_new is ZERO force it higher so that phone doesnt report soc=0
-	 * soc = 0 should happen only when soc_est == 0
+	 * soc = 0 should happen only when soc_est is above a set value
 	 */
-	if (soc_new == 0 && soc_est != 0)
+	if (soc_new == 0 && soc_est >= chip->hold_soc_est)
 		soc_new = 1;
 
 	soc = soc_new;
@@ -1881,9 +1899,18 @@ static int report_cc_based_soc(struct qpnp_bms_chip *chip)
 		soc = scale_soc_while_chg(chip, delta_time_us,
 						soc, chip->last_soc);
 
+	if (chip->last_soc_unbound)
+		chip->last_soc_unbound = false;
+	else if (chip->last_soc != -EINVAL) {
+		if (soc < chip->last_soc && soc != 0)
+			soc = chip->last_soc - 1;
+		if (soc > chip->last_soc && soc != 100)
+			soc = chip->last_soc + 1;
+	}
+
 	pr_debug("last_soc = %d, calculated_soc = %d, soc = %d\n",
 			chip->last_soc, chip->calculated_soc, soc);
-	chip->last_soc = soc;
+	chip->last_soc = bound_soc(soc);
 	backup_soc_and_iavg(chip, batt_temp, chip->last_soc);
 	pr_debug("Reported SOC = %d\n", chip->last_soc);
 	chip->t_soc_queried = now;
@@ -2150,6 +2177,7 @@ static int set_battery_data(struct qpnp_bms_chip *chip)
 	chip->rbatt_sf_lut = batt_data->rbatt_sf_lut;
 	chip->default_rbatt_mohm = batt_data->default_rbatt_mohm;
 	chip->rbatt_capacitive_mohm = batt_data->rbatt_capacitive_mohm;
+	chip->flat_ocv_threshold_uv = batt_data->flat_ocv_threshold_uv;
 
 	if (chip->pc_temp_ocv_lut == NULL) {
 		pr_err("temp ocv lut table is NULL\n");
@@ -2181,8 +2209,6 @@ static inline int bms_read_properties(struct qpnp_bms_chip *chip)
 	SPMI_PROP_READ(chg_term_ua, "chg-term-ua", rc);
 	SPMI_PROP_READ(shutdown_soc_valid_limit,
 			"shutdown-soc-valid-limit", rc);
-	SPMI_PROP_READ(adjust_soc_high_threshold,
-			"adjust-soc-high-threshold", rc);
 	SPMI_PROP_READ(adjust_soc_low_threshold,
 			"adjust-soc-low-threshold", rc);
 	SPMI_PROP_READ(batt_type, "batt-type", rc);
@@ -2202,6 +2228,12 @@ static inline int bms_read_properties(struct qpnp_bms_chip *chip)
 	chip->use_ocv_thresholds = of_property_read_bool(
 			chip->spmi->dev.of_node,
 			"qcom,use-ocv-thresholds");
+	SPMI_PROP_READ(high_ocv_correction_limit_uv,
+			"high-ocv-correction-limit-uv", rc);
+	SPMI_PROP_READ(low_ocv_correction_limit_uv,
+			"low-ocv-correction-limit-uv", rc);
+	SPMI_PROP_READ(hold_soc_est,
+			"hold-soc-est", rc);
 	SPMI_PROP_READ(ocv_high_threshold_uv,
 			"ocv-voltage-high-threshold-uv", rc);
 	SPMI_PROP_READ(ocv_low_threshold_uv,
@@ -2217,8 +2249,8 @@ static inline int bms_read_properties(struct qpnp_bms_chip *chip)
 	pr_debug("r_conn:%d, shutdown_soc: %d, adjust_soc_low:%d\n",
 			chip->r_conn_mohm, chip->shutdown_soc_valid_limit,
 			chip->adjust_soc_low_threshold);
-	pr_debug("adjust_soc_high:%d, chg_term_ua:%d, batt_type:%d\n",
-			chip->adjust_soc_high_threshold, chip->chg_term_ua,
+	pr_debug("chg_term_ua:%d, batt_type:%d\n",
+			chip->chg_term_ua,
 			chip->batt_type);
 	pr_debug("ignore_shutdown_soc:%d, use_voltage_soc:%d\n",
 			chip->ignore_shutdown_soc, chip->use_voltage_soc);
@@ -2549,6 +2581,11 @@ static int bms_resume(struct device *dev)
 	if (rc) {
 		pr_err("Could not read current time: %d\n", rc);
 	} else if (tm_now_sec > chip->last_recalc_time) {
+		/*
+		 * unbind the last soc so that the next
+		 * recalculation is not limited to changing by 1%
+		 */
+		chip->last_soc_unbound = true;
 		time_since_last_recalc = tm_now_sec - chip->last_recalc_time;
 		pr_debug("Time since last recalc: %lu\n",
 				time_since_last_recalc);

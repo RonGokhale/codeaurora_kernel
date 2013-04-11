@@ -280,10 +280,13 @@ static int tsens_tz_code_to_degc(int adc_code, int sensor_num)
 	num = ((adc_code * tmdev->tsens_factor) -
 				tmdev->sensor[sensor_num].offset);
 	den = (int) tmdev->sensor[sensor_num].slope_mul_tsens_factor;
-	degc = num/den;
 
-	if ((degc >= 0) && (num % den != 0))
-		degc++;
+	if (num > 0)
+		degc = ((num + (den/2))/den);
+	else if (num < 0)
+		degc = ((num - (den/2))/den);
+	else
+		degc = num/den;
 
 	return degc;
 }
@@ -343,6 +346,17 @@ int tsens_get_temp(struct tsens_device *device, unsigned long *temp)
 	return 0;
 }
 EXPORT_SYMBOL(tsens_get_temp);
+
+int tsens_get_max_sensor_num(uint32_t *tsens_num_sensors)
+{
+	if (!tmdev)
+		return -ENODEV;
+
+	*tsens_num_sensors = tmdev->tsens_num_sensor;
+
+	return 0;
+}
+EXPORT_SYMBOL(tsens_get_max_sensor_num);
 
 static int tsens_tz_get_mode(struct thermal_zone_device *thermal,
 			      enum thermal_device_mode *mode)

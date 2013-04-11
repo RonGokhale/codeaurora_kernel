@@ -162,10 +162,9 @@
 			qcom,r-sense-uohm = <10000>;
 			qcom,v-cutoff-uv = <3400000>;
 			qcom,max-voltage-uv = <4200000>;
-			qcom,r-conn-mohm = <18>;
+			qcom,r-conn-mohm = <0>;
 			qcom,shutdown-soc-valid-limit = <20>;
-			qcom,adjust-soc-low-threshold = <25>;
-			qcom,adjust-soc-high-threshold = <45>;
+			qcom,adjust-soc-low-threshold = <15>;
 			qcom,ocv-voltage-high-threshold-uv = <3750000>;
 			qcom,ocv-voltage-low-threshold-uv = <3650000>;
 			qcom,low-soc-calculate-soc-threshold = <15>;
@@ -173,6 +172,9 @@
 			qcom,calculate-soc-ms = <20000>;
 			qcom,chg-term-ua = <100000>;
 			qcom,batt-type = <0>;
+			qcom,low-ocv-correction-limit-uv = <100>;
+			qcom,high-ocv-correction-limit-uv = <50>;
+			qcom,hold-soc-est = <3>;
 
 			qcom,bms-iadc@3800 {
 				reg = <0x3800 0x100>;
