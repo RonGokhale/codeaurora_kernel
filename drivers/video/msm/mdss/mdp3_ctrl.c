@@ -22,6 +22,7 @@
 
 #include "mdp3_ctrl.h"
 #include "mdp3.h"
+#include "mdp3_ppp.h"
 
 #define MDP_VSYNC_CLK_RATE	19200000
 #define VSYNC_PERIOD 16
@@ -54,6 +55,54 @@ static int mdp3_ctrl_vsync_enable(struct msm_fb_data_type *mfd, int enable)
 
 	mdp3_session->dma->vsync_enable(mdp3_session->dma, &vsync_client);
 	mutex_unlock(&mdp3_session->lock);
+	return 0;
+}
+
+static int mdp3_ctrl_blit_req(struct msm_fb_data_type *mfd, void __user *p)
+{
+	const int MAX_LIST_WINDOW = 16;
+	struct mdp_blit_req req_list[MAX_LIST_WINDOW];
+	struct mdp_blit_req_list req_list_header;
+	int rc, count, i, req_list_count;
+
+	if (copy_from_user(&req_list_header, p, sizeof(req_list_header)))
+		return -EFAULT;
+	p += sizeof(req_list_header);
+	count = req_list_header.count;
+	if (count < 0 || count >= MAX_BLIT_REQ)
+		return -EINVAL;
+	while (count > 0) {
+		/*
+		 * Access the requests through a narrow window to decrease copy
+		 * overhead and make larger requests accessible to the
+		 * coherency management code.
+		 * NOTE: The window size is intended to be larger than the
+		 *       typical request size, but not require more than 2
+		 *       kbytes of stack storage.
+		 */
+		req_list_count = count;
+		if (req_list_count > MAX_LIST_WINDOW)
+			req_list_count = MAX_LIST_WINDOW;
+		if (copy_from_user(&req_list, p,
+				sizeof(struct mdp_blit_req)*req_list_count))
+			return -EFAULT;
+		/*
+		 * Do the blit DMA, if required -- returning early only if
+		 * there is a failure.
+		 */
+		for (i = 0; i < req_list_count; i++) {
+			if (!(req_list[i].flags & MDP_NO_BLIT)) {
+				/* Do the actual blit. */
+				rc = mdp3_ppp_start_blit(mfd, &(req_list[i]));
+				if (rc)
+					return rc;
+			}
+		}
+
+		/* Go to next window of requests. */
+		count -= req_list_count;
+		p += sizeof(struct mdp_blit_req)*req_list_count;
+	}
 	return 0;
 }
 
@@ -110,9 +159,9 @@ static int mdp3_ctrl_res_req_bus(struct msm_fb_data_type *mfd, int status)
 		ab = panel_info->xres * panel_info->yres * 4;
 		ab *= panel_info->mipi.frame_rate;
 		ib = (ab * 3) / 2;
-		rc = mdp3_bus_scale_set_quota(MDP3_BW_CLIENT_DMA_P, ab, ib);
+		rc = mdp3_bus_scale_set_quota(MDP3_CLIENT_DMA_P, ab, ib);
 	} else {
-		rc = mdp3_bus_scale_set_quota(MDP3_BW_CLIENT_DMA_P, 0, 0);
+		rc = mdp3_bus_scale_set_quota(MDP3_CLIENT_DMA_P, 0, 0);
 	}
 	return rc;
 }
@@ -131,13 +180,13 @@ static int mdp3_ctrl_res_req_clk(struct msm_fb_data_type *mfd, int status)
 		core_clk = panel_info->xres * panel_info->yres;
 		core_clk *= panel_info->mipi.frame_rate;
 		core_clk = (core_clk / panel_info->yres) * vtotal;
-		mdp3_clk_set_rate(MDP3_CLK_CORE, core_clk);
-		mdp3_clk_set_rate(MDP3_CLK_VSYNC, MDP_VSYNC_CLK_RATE);
+		mdp3_clk_set_rate(MDP3_CLK_CORE, core_clk, MDP3_CLIENT_DMA_P);
+		mdp3_clk_set_rate(MDP3_CLK_VSYNC, MDP_VSYNC_CLK_RATE,
+				MDP3_CLIENT_DMA_P);
 
 		rc = mdp3_clk_enable(true);
 		if (rc)
 			return rc;
-
 	} else {
 		rc = mdp3_clk_enable(false);
 	}
@@ -484,6 +533,9 @@ static int mdp3_ctrl_ioctl_handler(struct msm_fb_data_type *mfd,
 			pr_err("MSMFB_OVERLAY_VSYNC_CTRL failed\n");
 			rc = -EFAULT;
 		}
+		break;
+	case MSMFB_BLIT:
+		rc = mdp3_ctrl_blit_req(mfd, argp);
 		break;
 	case MSMFB_METADATA_GET:
 		rc = copy_from_user(&metadata, argp, sizeof(metadata));
