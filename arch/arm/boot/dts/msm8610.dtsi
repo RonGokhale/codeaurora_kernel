@@ -47,6 +47,8 @@
 
 	aliases {
 		spi0 = &spi_0;
+		sdhc1 = &sdhc_1; /* SDC1 eMMC slot */
+		sdhc2 = &sdhc_2; /* SDC2 SD card slot */
 	};
 
 	timer {
@@ -94,8 +96,17 @@
 
 		qcom,hsusb-otg-phy-type = <2>;
 		qcom,hsusb-otg-mode = <1>;
-		qcom,hsusb-otg-otg-control = <1>;
+		qcom,hsusb-otg-otg-control = <2>;
 		qcom,hsusb-otg-disable-reset;
+		qcom,dp-manual-pullup;
+
+		qcom,msm-bus,name = "usb2";
+		qcom,msm-bus,num-cases = <2>;
+		qcom,msm-bus,active-only = <0>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps =
+				<87 512 0 0>,
+				<87 512 60000 960000>;
 	};
 
 	android_usb@fe8050c8 {
@@ -135,6 +146,8 @@
 		qcom,bus-width = <8>;
 		qcom,nonremovable;
 		qcom,bus-speed-mode = "HS200_1p8v", "DDR_1p8v";
+
+		status = "disabled";
 	};
 
 	sdcc2: qcom,sdcc@f98a4000 {
@@ -166,6 +179,32 @@
 		qcom,xpc;
 		qcom,bus-speed-mode = "SDR12", "SDR25", "SDR50", "DDR50", "SDR104";
 		qcom,current-limit = <800>;
+
+		status = "disabled";
+	};
+
+	sdhc_1: sdhci@f9824900 {
+		compatible = "qcom,sdhci-msm";
+		reg = <0xf9824900 0x11c>, <0xf9824000 0x800>;
+		reg-names = "hc_mem", "core_mem";
+
+		interrupts = <0 123 0>, <0 138 0>;
+		interrupt-names = "hc_irq", "pwr_irq";
+
+		qcom,bus-width = <8>;
+		status = "disabled";
+	};
+
+	sdhc_2: sdhci@f98a4900 {
+		compatible = "qcom,sdhci-msm";
+		reg = <0xf98a4900 0x11c>, <0xf98a4000 0x800>;
+		reg-names = "hc_mem", "core_mem";
+
+		interrupts = <0 125 0>, <0 221 0>;
+		interrupt-names = "hc_irq", "pwr_irq";
+
+		qcom,bus-width = <4>;
+		status = "disabled";
 	};
 
 	qcom,sps {
@@ -250,7 +289,7 @@
 
 	qcom,msm-mem-hole {
 		compatible = "qcom,msm-mem-hole";
-		qcom,memblock-remove = <0x07C00000 0x6000000>; /* Address and Size of Hole */
+		qcom,memblock-remove = <0x07B00000 0x6400000>; /* Address and Size of Hole */
 	};
 
 	qcom,wdt@f9017000 {
@@ -331,6 +370,12 @@
 		vdd_pronto_pll-supply = <&pm8110_l10>;
 
 		qcom,firmware-name = "wcnss";
+
+		/* GPIO input from wcnss */
+		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_4_in 0 0>;
+
+		/* GPIO output to wcnss */
+		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_4_out 0 0>;
 	};
 
 	sound {
@@ -458,8 +503,9 @@
 		qcom,firmware-name = "mba";
 		qcom,pil-self-auth;
 
-		/* GPIO input from mss */
+		/* GPIO inputs from mss */
 		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_1_in 0 0>;
+		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_1_in 2 0>;
 
 		/* GPIO output to mss */
 		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_1_out 0 0>;

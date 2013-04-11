@@ -157,6 +157,11 @@
 /* smbb_misc_interrupts */
 #define TFTWDOG_IRQ			BIT(0)
 
+/* SMBB types */
+#define SMBB				BIT(1)
+#define SMBBP				BIT(2)
+#define SMBCL				BIT(3)
+
 /* Workaround flags */
 #define CHG_FLAGS_VCP_WA		BIT(0)
 
@@ -194,6 +199,8 @@
  * @warm_bat_decidegc		Warm battery temperature in degree Celsius
  * @cool_bat_decidegc		Cool battery temperature in degree Celsius
  * @revision:			PMIC revision
+ * @type:			SMBB type
+ * @tchg_mins			maximum allowed software initiated charge time
  * @thermal_levels		amount of thermal mitigation levels
  * @thermal_mitigation		thermal mitigation level values
  * @therm_lvl_sel		thermal mitigation level selection
@@ -247,6 +254,8 @@ struct qpnp_chg_chip {
 	unsigned int			cool_bat_decidegc;
 	unsigned int			safe_current;
 	unsigned int			revision;
+	unsigned int			type;
+	unsigned int			tchg_mins;
 	unsigned int			thermal_levels;
 	unsigned int			therm_lvl_sel;
 	unsigned int			*thermal_mitigation;
@@ -256,6 +265,7 @@ struct qpnp_chg_chip {
 	struct power_supply		batt_psy;
 	uint32_t			flags;
 	struct qpnp_adc_tm_btm_param	adc_param;
+	struct work_struct		adc_measure_work;
 };
 
 static struct of_device_id qpnp_charger_match_table[] = {
@@ -508,6 +518,15 @@ qpnp_chg_usb_suspend_enable(struct qpnp_chg_chip *chip, int enable)
 			enable ? USB_SUSPEND_BIT : 0, 1);
 }
 
+static void qpnp_bat_if_adc_measure_work(struct work_struct *work)
+{
+	struct qpnp_chg_chip *chip = container_of(work,
+				struct qpnp_chg_chip, adc_measure_work);
+
+	if (qpnp_adc_tm_channel_measure(&chip->adc_param))
+		pr_err("request ADC error\n");
+}
+
 #define ENUM_T_STOP_BIT		BIT(0)
 static irqreturn_t
 qpnp_chg_usb_usbin_valid_irq_handler(int irq, void *_chip)
@@ -550,8 +569,7 @@ qpnp_chg_bat_if_batt_pres_irq_handler(int irq, void *_chip)
 
 		if (chip->cool_bat_decidegc && chip->warm_bat_decidegc
 						&& batt_present) {
-			if (qpnp_adc_tm_channel_measure(&chip->adc_param))
-				pr_err("request ADC error\n");
+			schedule_work(&chip->adc_measure_work);
 		}
 	}
 
@@ -773,6 +791,7 @@ static enum power_supply_property msm_batt_power_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_CAPACITY,
+	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_TEMP,
@@ -813,16 +832,16 @@ get_prop_battery_voltage_now(struct qpnp_chg_chip *chip)
 	int rc = 0;
 	struct qpnp_vadc_result results;
 
-	if (chip->revision > 0) {
+	if (chip->revision == 0 && chip->type == SMBB) {
+		pr_err("vbat reading not supported for 1.0 rc=%d\n", rc);
+		return 0;
+	} else {
 		rc = qpnp_vadc_read(VBAT_SNS, &results);
 		if (rc) {
 			pr_err("Unable to read vbat rc=%d\n", rc);
 			return 0;
 		}
 		return results.physical;
-	} else {
-		pr_err("vbat reading not supported for 1.0 rc=%d\n", rc);
-		return 0;
 	}
 }
 
@@ -911,6 +930,21 @@ get_prop_batt_status(struct qpnp_chg_chip *chip)
 		return POWER_SUPPLY_STATUS_CHARGING;
 
 	return POWER_SUPPLY_STATUS_DISCHARGING;
+}
+static int
+get_prop_current_max(struct qpnp_chg_chip *chip)
+{
+	union power_supply_propval ret = {0,};
+
+	if (chip->bms_psy) {
+		chip->bms_psy->get_property(chip->bms_psy,
+			  POWER_SUPPLY_PROP_CURRENT_MAX, &ret);
+		return ret.intval;
+	} else {
+		pr_debug("No BMS supply registered return 0\n");
+	}
+
+	return 0;
 }
 
 static int
@@ -1089,6 +1123,9 @@ qpnp_batt_power_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		val->intval = get_prop_capacity(chip);
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_MAX:
+		val->intval = get_prop_current_max(chip);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		val->intval = get_prop_current_now(chip);
@@ -1421,7 +1458,7 @@ qpnp_batt_power_set_property(struct power_supply *psy,
 static void
 qpnp_chg_setup_flags(struct qpnp_chg_chip *chip)
 {
-	if (chip->revision > 0)
+	if (chip->revision > 0 && chip->type == SMBB)
 		chip->flags |= CHG_FLAGS_VCP_WA;
 }
 
@@ -1651,7 +1688,9 @@ qpnp_chg_hwinit(struct qpnp_chg_chip *chip, u8 subtype,
 	case SMBBP_BOOST_SUBTYPE:
 		break;
 	case SMBB_MISC_SUBTYPE:
+		chip->type = SMBB;
 	case SMBBP_MISC_SUBTYPE:
+		chip->type = SMBBP;
 		pr_debug("Setting BOOT_DONE\n");
 		rc = qpnp_chg_masked_write(chip,
 			chip->misc_base + CHGR_MISC_BOOT_DONE,
@@ -2002,6 +2041,8 @@ qpnp_charger_probe(struct spmi_device *spmi)
 			pr_err("batt failed to register rc = %d\n", rc);
 			goto fail_chg_enable;
 		}
+		INIT_WORK(&chip->adc_measure_work,
+			qpnp_bat_if_adc_measure_work);
 	}
 
 	if (chip->dc_chgpth_base) {
@@ -2082,6 +2123,8 @@ qpnp_charger_remove(struct spmi_device *spmi)
 						&& chip->batt_present) {
 		qpnp_adc_tm_disable_chan_meas(&chip->adc_param);
 	}
+	cancel_work_sync(&chip->adc_measure_work);
+
 	dev_set_drvdata(&spmi->dev, NULL);
 	kfree(chip);
 

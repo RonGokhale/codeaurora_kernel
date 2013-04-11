@@ -1036,8 +1036,9 @@
 		qcom,firmware-name = "mba";
 		qcom,pil-self-auth;
 
-		/* GPIO input from mss */
+		/* GPIO inputs from mss */
 		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_1_in 0 0>;
+		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_1_in 2 0>;
 
 		/* GPIO output to mss */
 		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_1_out 0 0>;
@@ -1153,7 +1154,7 @@
 	qcom,wdt@f9017000 {
 		compatible = "qcom,msm-watchdog";
 		reg = <0xf9017000 0x1000>;
-		interrupts = <0 3 0 0 4 0>;
+		interrupts = <0 3 0>, <0 4 0>;
 		qcom,bark-time = <11000>;
 		qcom,pet-time = <10000>;
 		qcom,ipi-ping;
