@@ -16,6 +16,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/err.h>
 #include <linux/init.h>
+#include <linux/ratelimit.h>
 #include <linux/platform_device.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
@@ -33,6 +34,12 @@
 #include "udc.h"
 #include "bits.h"
 #include "debug.h"
+
+#define ATDTW_SET_DELAY		100 /* 100msec delay */
+
+/* Turns on streaming. overrides CI13XXX_DISABLE_STREAMING */
+static unsigned int streaming;
+module_param(streaming, uint, S_IRUGO | S_IWUSR);
 
 /* control endpoint description */
 static const struct usb_endpoint_descriptor
@@ -86,6 +93,13 @@ static inline int ep_to_bit(struct ci13xxx *ci, int n)
 static int hw_device_state(struct ci13xxx *ci, u32 dma)
 {
 	if (dma) {
+		if (streaming ||
+		    !(ci->plat_data->flags & CI13XXX_DISABLE_STREAMING))
+			hw_write(ci, OP_USBMODE, USBMODE_CI_SDIS, 0);
+		else
+			hw_write(ci, OP_USBMODE, USBMODE_CI_SDIS,
+					USBMODE_CI_SDIS);
+
 		hw_write(ci, OP_ENDPTLISTADDR, ~0, dma);
 		/* interrupt, error, port change, reset, sleep/suspend */
 		hw_write(ci, OP_USBINTR, ~0,
@@ -126,7 +140,6 @@ static int hw_ep_flush(struct ci13xxx *ci, int num, int dir)
  */
 static int hw_ep_disable(struct ci13xxx *ci, int num, int dir)
 {
-	hw_ep_flush(ci, num, dir);
 	hw_write(ci, OP_ENDPTCTRL + num,
 		 dir ? ENDPTCTRL_TXE : ENDPTCTRL_RXE, 0);
 	return 0;
@@ -465,6 +478,7 @@ static int _hardware_enqueue(struct ci13xxx_ep *mEp, struct ci13xxx_req *mReq)
 		struct ci13xxx_req *mReqPrev;
 		int n = hw_ep_bit(mEp->num, mEp->dir);
 		int tmp_stat;
+		ktime_t start, diff;
 
 		mReqPrev = list_entry(mEp->qh.queue.prev,
 				struct ci13xxx_req, queue);
@@ -475,9 +489,20 @@ static int _hardware_enqueue(struct ci13xxx_ep *mEp, struct ci13xxx_req *mReq)
 		wmb();
 		if (hw_read(ci, OP_ENDPTPRIME, BIT(n)))
 			goto done;
+		start = ktime_get();
 		do {
 			hw_write(ci, OP_USBCMD, USBCMD_ATDTW, USBCMD_ATDTW);
 			tmp_stat = hw_read(ci, OP_ENDPTSTAT, BIT(n));
+			diff = ktime_sub(ktime_get(), start);
+			/* poll for max. 100ms */
+			if (ktime_to_ms(diff) > ATDTW_SET_DELAY) {
+				if (hw_cread(CAP_USBCMD, USBCMD_ATDTW))
+					break;
+				printk_ratelimited(KERN_ERR
+				"%s:queue failed ep#%d %s\n",
+				 __func__, mEp->num, mEp->dir ? "IN" : "OUT");
+				return -EAGAIN;
+			}
 		} while (!hw_read(ci, OP_USBCMD, USBCMD_ATDTW));
 		hw_write(ci, OP_USBCMD, USBCMD_ATDTW, 0);
 		if (tmp_stat)
@@ -770,8 +795,11 @@ __acquires(mEp->lock)
 	struct ci13xxx_ep *mEp;
 
 	mEp = (ci->ep0_dir == TX) ? ci->ep0out : ci->ep0in;
-	ci->status->context = ci;
-	ci->status->complete = isr_setup_status_complete;
+	if (ci->status) {
+		ci->status->context = ci;
+		ci->status->complete = isr_setup_status_complete;
+	} else
+		return -EINVAL;
 
 	spin_unlock(mEp->lock);
 	retval = usb_ep_queue(&mEp->ep, ci->status, GFP_ATOMIC);

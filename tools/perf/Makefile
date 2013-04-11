@@ -520,6 +520,7 @@ BUILTIN_OBJS += $(OUTPUT)builtin-list.o
 BUILTIN_OBJS += $(OUTPUT)builtin-record.o
 BUILTIN_OBJS += $(OUTPUT)builtin-report.o
 BUILTIN_OBJS += $(OUTPUT)builtin-stat.o
+BUILTIN_OBJS += $(OUTPUT)builtin-periodic.o
 BUILTIN_OBJS += $(OUTPUT)builtin-timechart.o
 BUILTIN_OBJS += $(OUTPUT)builtin-top.o
 BUILTIN_OBJS += $(OUTPUT)builtin-script.o
@@ -789,6 +790,12 @@ else
       endif
     endif
   endif
+endif
+
+ifdef NO_JSON_EXPORT
+	BASIC_CFLAGS += -DNO_JSON_EXPORT
+else
+	LIB_OBJS += $(OUTPUT)util/scripting-engines/trace-event-json-export.o
 endif
 
 ifdef NO_DEMANGLE
