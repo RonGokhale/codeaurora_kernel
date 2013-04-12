@@ -57,6 +57,19 @@ static int msm_hdmi_sample_rate = MSM_HDMI_SAMPLE_RATE_48KHZ;
 #define HDCP_DDC_CTRL_1		0x0124
 #define HDMI_DDC_CTRL		0x020C
 
+#define SWITCH_SET_HDMI_AUDIO(d, force) \
+	do {\
+		if (!hdmi_msm_is_dvi_mode() &&\
+			((force) ||\
+			 (external_common_state->audio_sdev.state != (d)))) {\
+			switch_set_state(&external_common_state->audio_sdev,\
+					(d));\
+			DEV_INFO("%s: hdmi_audio state switched to %d\n",\
+				__func__,\
+				external_common_state->audio_sdev.state);\
+		} \
+	} while (0)
+
 struct workqueue_struct *hdmi_work_queue;
 struct hdmi_msm_state_type *hdmi_msm_state;
 
@@ -76,6 +89,7 @@ static void hdmi_msm_turn_on(void);
 static int hdmi_msm_audio_off(void);
 static int hdmi_msm_read_edid(void);
 static void hdmi_msm_hpd_off(void);
+static boolean hdmi_msm_is_dvi_mode(void);
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_CEC_SUPPORT
 
@@ -841,9 +855,6 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 			DEV_INFO("HDMI HPD: CONNECTED: send ONLINE\n");
 			kobject_uevent(external_common_state->uevent_kobj,
 				KOBJ_ONLINE);
-			switch_set_state(&external_common_state->sdev, 1);
-				DEV_INFO("Hdmi state switch to %d: %s\n",
-			external_common_state->sdev.state,  __func__);
 #ifndef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 			/* Send Audio for HDMI Compliance Cases*/
 			envp[0] = "HDCP_STATE=PASS";
@@ -1097,9 +1108,7 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 		DEV_INFO("HDCP: AUTH_FAIL_INT received, LINK0_STATUS=0x%08x\n",
 			HDMI_INP_ND(0x011C));
 		if (hdmi_msm_state->full_auth_done) {
-			switch_set_state(&external_common_state->sdev, 0);
-			DEV_INFO("Hdmi state switched to %d: %s\n",
-				external_common_state->sdev.state,  __func__);
+			SWITCH_SET_HDMI_AUDIO(0, 0);
 
 			envp[0] = "HDCP_STATE=FAIL";
 			envp[1] = NULL;
@@ -3048,11 +3057,10 @@ static void hdmi_msm_hdcp_enable(void)
 		envp[1] = NULL;
 		kobject_uevent_env(external_common_state->uevent_kobj,
 		    KOBJ_CHANGE, envp);
+
+		SWITCH_SET_HDMI_AUDIO(1, 0);
 	}
 
-	switch_set_state(&external_common_state->sdev, 1);
-	DEV_INFO("Hdmi state switched to %d: %s\n",
-		external_common_state->sdev.state, __func__);
 	return;
 
 error:
@@ -3632,7 +3640,12 @@ static int hdmi_msm_audio_off(void)
 	for (i = 0; (i < timeout_val) &&
 		((audio_cfg = HDMI_INP_ND(0x01D0)) & BIT(0)); i++) {
 		DEV_DBG("%s: %d times: AUDIO CFG is %08xi\n", __func__,
-				i+1, audio_cfg);
+				i + 1, audio_cfg);
+		if (!((i + 1) % 10)) {
+			DEV_ERR("%s: audio still on after %d sec. try again\n",
+				__func__, (i+1)/10);
+			SWITCH_SET_HDMI_AUDIO(0, 1);
+		}
 		msleep(100);
 	}
 
@@ -4151,8 +4164,17 @@ static void hdmi_msm_turn_on(void)
 	hdmi_msm_set_mode(TRUE);
 
 	hdmi_msm_video_setup(external_common_state->video_resolution);
-	if (!hdmi_msm_is_dvi_mode())
+	if (!hdmi_msm_is_dvi_mode()) {
 		hdmi_msm_audio_setup();
+
+		/*
+		 * Send the audio switch device notification if HDCP is
+		 * not enabled. Otherwise, the notification would be
+		 * sent after HDCP authentication is successful.
+		 */
+		if (!hdmi_msm_has_hdcp())
+			SWITCH_SET_HDMI_AUDIO(1, 0);
+	}
 	hdmi_msm_avi_info_frame();
 #ifdef CONFIG_FB_MSM_HDMI_3D
 	hdmi_msm_vendor_infoframe_packetsetup();
@@ -4437,6 +4459,8 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 	mutex_unlock(&hdmi_msm_state_mutex);
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT */
 
+	SWITCH_SET_HDMI_AUDIO(0, 0);
+
 	DEV_INFO("power: OFF (audio off, Reset Core)\n");
 	hdmi_msm_audio_off();
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
@@ -4627,8 +4651,19 @@ static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 		external_common_state->sdev.name = "hdmi_as_primary";
 	else
 		external_common_state->sdev.name = "hdmi";
-	if (switch_dev_register(&external_common_state->sdev) < 0)
+	if (switch_dev_register(&external_common_state->sdev) < 0) {
 		DEV_ERR("Hdmi switch registration failed\n");
+		rc = -ENODEV;
+		goto error;
+	}
+
+	external_common_state->audio_sdev.name = "hdmi_audio";
+	if (switch_dev_register(&external_common_state->audio_sdev) < 0) {
+		DEV_ERR("Hdmi audio switch registration failed\n");
+		switch_dev_unregister(&external_common_state->sdev);
+		rc = -ENODEV;
+		goto error;
+	}
 
 	return 0;
 
@@ -4665,6 +4700,7 @@ static int __devexit hdmi_msm_remove(struct platform_device *pdev)
 
 	/* Unregister hdmi node from switch driver */
 	switch_dev_unregister(&external_common_state->sdev);
+	switch_dev_unregister(&external_common_state->audio_sdev);
 
 	hdmi_msm_hpd_off();
 	free_irq(hdmi_msm_state->irq, NULL);
@@ -4705,6 +4741,8 @@ static int hdmi_msm_hpd_feature(int on)
 		rc = hdmi_msm_hpd_on(true);
 	} else {
 		hdmi_msm_hpd_off();
+		SWITCH_SET_HDMI_AUDIO(0, 0);
+
 		/* Set HDMI switch node to 0 on HPD feature disable */
 		switch_set_state(&external_common_state->sdev, 0);
 	}
