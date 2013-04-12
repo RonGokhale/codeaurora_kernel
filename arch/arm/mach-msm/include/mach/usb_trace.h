@@ -1,4 +1,6 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* include/asm-arm/arch-msm/usbtrace.h
+ *
+ * Copyright (c) 2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -8,21 +10,18 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
+ *
  */
 
-/dts-v1/;
-/include/ "msm8226.dtsi"
+#ifndef _USB_TRACE_H_
+#define _USB_TRACE_H_
 
-/ {
-	model = "Qualcomm MSM 8226 FLUID";
-	compatible = "qcom,msm8226-fluid", "qcom,msm8226", "qcom,fluid";
-	qcom,msm-id = <145 3 0>;
+#include <linux/tracepoint.h>
 
-	serial@f991f000 {
-		status = "disabled";
-	};
-};
+DECLARE_TRACE(usb_daytona_invalid_access,
+	TP_PROTO(unsigned int ebi_addr,
+	 unsigned int ebi_apacket0, unsigned int ebi_apacket1),
+	TP_ARGS(ebi_addr, ebi_apacket0, ebi_apacket1));
 
-&pm8226_bms {
-	status = "ok";
-};
+#endif
+
