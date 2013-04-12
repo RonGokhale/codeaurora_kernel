@@ -41,10 +41,18 @@
 			};
 		};
 
-		ethernet@ff700000 {
-			phy-mode = "gmii";
-			status = "okay";
-		};
+		dwmmc0@ff704000 {
+			num-slots = <1>;
+			supports-highspeed;
+			broken-cd;
+			altr,dw-mshc-ciu-div = <3>;
+			altr,dw-mshc-sdr-timing = <0 3>;
+
+			slot@0 {
+				reg = <0>;
+				bus-width = <4>;
+			};
+		};		
 
 		timer0@ffc08000 {
 			clock-frequency = <7000000>;
