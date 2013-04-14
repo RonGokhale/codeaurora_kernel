@@ -301,5 +301,5 @@
 };
 
 &pm8226_chg {
-	qcom,charging-disabled;
+	qcom,chg-charging-disabled;
 };
