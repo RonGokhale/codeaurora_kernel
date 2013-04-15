@@ -1,11 +1,11 @@
-<refentry id="vidioc-dbg-g-chip-name">
+<refentry id="vidioc-dbg-g-chip-info">
   <refmeta>
-    <refentrytitle>ioctl VIDIOC_DBG_G_CHIP_NAME</refentrytitle>
+    <refentrytitle>ioctl VIDIOC_DBG_G_CHIP_INFO</refentrytitle>
     &manvol;
   </refmeta>
 
   <refnamediv>
-    <refname>VIDIOC_DBG_G_CHIP_NAME</refname>
+    <refname>VIDIOC_DBG_G_CHIP_INFO</refname>
     <refpurpose>Identify the chips on a TV card</refpurpose>
   </refnamediv>
 
@@ -15,7 +15,7 @@
 	<funcdef>int <function>ioctl</function></funcdef>
 	<paramdef>int <parameter>fd</parameter></paramdef>
 	<paramdef>int <parameter>request</parameter></paramdef>
-	<paramdef>struct v4l2_dbg_chip_name
+	<paramdef>struct v4l2_dbg_chip_info
 *<parameter>argp</parameter></paramdef>
       </funcprototype>
     </funcsynopsis>
@@ -34,7 +34,7 @@
       <varlistentry>
 	<term><parameter>request</parameter></term>
 	<listitem>
-	  <para>VIDIOC_DBG_G_CHIP_NAME</para>
+	  <para>VIDIOC_DBG_G_CHIP_INFO</para>
 	</listitem>
       </varlistentry>
       <varlistentry>
@@ -63,11 +63,14 @@ card. Regular applications must not use it. When you found a chip
 specific bug, please contact the linux-media mailing list (&v4l-ml;)
 so it can be fixed.</para>
 
+    <para>Additionally the Linux kernel must be compiled with the
+<constant>CONFIG_VIDEO_ADV_DEBUG</constant> option to enable this ioctl.</para>
+
     <para>To query the driver applications must initialize the
 <structfield>match.type</structfield> and
 <structfield>match.addr</structfield> or <structfield>match.name</structfield>
-fields of a &v4l2-dbg-chip-name;
-and call <constant>VIDIOC_DBG_G_CHIP_NAME</constant> with a pointer to
+fields of a &v4l2-dbg-chip-info;
+and call <constant>VIDIOC_DBG_G_CHIP_INFO</constant> with a pointer to
 this structure. On success the driver stores information about the
 selected chip in the <structfield>name</structfield> and
 <structfield>flags</structfield> fields. On failure the structure
@@ -78,22 +81,13 @@ remains unchanged.</para>
 <structfield>match.addr</structfield> selects the nth bridge 'chip'
 on the TV card. You can enumerate all chips by starting at zero and
 incrementing <structfield>match.addr</structfield> by one until
-<constant>VIDIOC_DBG_G_CHIP_NAME</constant> fails with an &EINVAL;.
+<constant>VIDIOC_DBG_G_CHIP_INFO</constant> fails with an &EINVAL;.
 The number zero always selects the bridge chip itself, &eg; the chip
 connected to the PCI or USB bus. Non-zero numbers identify specific
 parts of the bridge chip such as an AC97 register block.</para>
 
     <para>When <structfield>match.type</structfield> is
-<constant>V4L2_CHIP_MATCH_SUBDEV_NAME</constant>,
-<structfield>match.name</structfield> contains the name of a sub-device.
-For instance
-<constant>"saa7127 6-0044"</constant> will match the saa7127 sub-device
-at the given i2c bus. This match type is not very useful for this ioctl
-and is here only for consistency.
-</para>
-
-    <para>When <structfield>match.type</structfield> is
-<constant>V4L2_CHIP_MATCH_SUBDEV_IDX</constant>,
+<constant>V4L2_CHIP_MATCH_SUBDEV</constant>,
 <structfield>match.addr</structfield> selects the nth sub-device. This
 allows you to enumerate over all sub-devices.</para>
 
@@ -144,8 +138,8 @@ to the <structfield>type</structfield> field.</entry>
       </tgroup>
     </table>
 
-    <table pgwide="1" frame="none" id="v4l2-dbg-chip-name">
-      <title>struct <structname>v4l2_dbg_chip_name</structname></title>
+    <table pgwide="1" frame="none" id="v4l2-dbg-chip-info">
+      <title>struct <structname>v4l2_dbg_chip_info</structname></title>
       <tgroup cols="3">
 	&cs-str;
 	<tbody valign="top">
@@ -204,13 +198,8 @@ is set, then the driver supports reading registers from the device. If
 	    <entry>Match the nth anciliary AC97 chip. Can't be used with this ioctl.</entry>
 	  </row>
 	  <row>
-	    <entry><constant>V4L2_CHIP_MATCH_SUBDEV_NAME</constant></entry>
+	    <entry><constant>V4L2_CHIP_MATCH_SUBDEV</constant></entry>
 	    <entry>4</entry>
-	    <entry>Match the sub-device by name.</entry>
-	  </row>
-	  <row>
-	    <entry><constant>V4L2_CHIP_MATCH_SUBDEV_IDX</constant></entry>
-	    <entry>5</entry>
 	    <entry>Match the nth sub-device.</entry>
 	  </row>
 	</tbody>

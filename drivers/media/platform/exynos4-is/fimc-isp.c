@@ -30,7 +30,7 @@
 #include "fimc-is-regs.h"
 #include "fimc-is.h"
 
-static int debug = 10;
+static int debug;
 module_param_named(debug_isp, debug, int, S_IRUGO | S_IWUSR);
 
 static const struct fimc_fmt fimc_isp_formats[FIMC_ISP_NUM_FORMATS] = {
@@ -229,11 +229,14 @@ static int fimc_isp_subdev_s_stream(struct v4l2_subdev *sd, int on)
 	fimc_is_mem_barrier();
 
 	if (on) {
-		if (atomic_read(&is->cfg_param[is->scenario_id].p_region_num))
+		if (__get_pending_param_count(is)) {
 			ret = fimc_is_itf_s_param(is, true);
+			if (ret < 0)
+				return ret;
+		}
 
 		v4l2_dbg(1, debug, sd, "changing mode to %d\n",
-						is->scenario_id);
+						is->config_index);
 		ret = fimc_is_itf_mode_change(is);
 		if (ret)
 			return -EINVAL;
@@ -314,8 +317,8 @@ static int fimc_isp_subdev_s_power(struct v4l2_subdev *sd, int on)
 		clear_bit(IS_ST_PWR_ON, &is->state);
 		clear_bit(IS_ST_INIT_DONE, &is->state);
 		is->state = 0;
-		is->cfg_param[is->scenario_id].p_region_index1 = 0;
-		is->cfg_param[is->scenario_id].p_region_index2 = 0;
+		is->config[is->config_index].p_region_index1 = 0;
+		is->config[is->config_index].p_region_index2 = 0;
 		set_bit(IS_ST_IDLE, &is->state);
 		wmb();
 	}
@@ -414,7 +417,6 @@ static int __ctrl_set_aewb_lock(struct fimc_is *is,
 	isp->aa.cmd = cmd;
 	isp->aa.target = ISP_AA_TARGET_AE;
 	fimc_is_set_param_bit(is, PARAM_ISP_AA);
-	fimc_is_inc_param_num(is);
 	is->af.ae_lock_state = ae_lock;
 	wmb();
 
@@ -426,7 +428,6 @@ static int __ctrl_set_aewb_lock(struct fimc_is *is,
 	isp->aa.cmd = cmd;
 	isp->aa.target = ISP_AA_TARGET_AE;
 	fimc_is_set_param_bit(is, PARAM_ISP_AA);
-	fimc_is_inc_param_num(is);
 	is->af.awb_lock_state = awb_lock;
 	wmb();
 

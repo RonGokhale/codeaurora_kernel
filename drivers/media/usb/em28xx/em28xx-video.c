@@ -1331,8 +1331,9 @@ static int vidioc_g_chip_ident(struct file *file, void *priv,
 	return 0;
 }
 
-static int vidioc_g_chip_name(struct file *file, void *priv,
-	       struct v4l2_dbg_chip_name *chip)
+#ifdef CONFIG_VIDEO_ADV_DEBUG
+static int vidioc_g_chip_info(struct file *file, void *priv,
+	       struct v4l2_dbg_chip_info *chip)
 {
 	struct em28xx_fh      *fh  = priv;
 	struct em28xx         *dev = fh->dev;
@@ -1346,7 +1347,6 @@ static int vidioc_g_chip_name(struct file *file, void *priv,
 	return 0;
 }
 
-#ifdef CONFIG_VIDEO_ADV_DEBUG
 static int em28xx_reg_len(int reg)
 {
 	switch (reg) {
@@ -1796,8 +1796,8 @@ static const struct v4l2_ioctl_ops video_ioctl_ops = {
 	.vidioc_subscribe_event = v4l2_ctrl_subscribe_event,
 	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
 	.vidioc_g_chip_ident        = vidioc_g_chip_ident,
-	.vidioc_g_chip_name         = vidioc_g_chip_name,
 #ifdef CONFIG_VIDEO_ADV_DEBUG
+	.vidioc_g_chip_info         = vidioc_g_chip_info,
 	.vidioc_g_register          = vidioc_g_register,
 	.vidioc_s_register          = vidioc_s_register,
 #endif
@@ -1827,7 +1827,7 @@ static const struct v4l2_ioctl_ops radio_ioctl_ops = {
 	.vidioc_subscribe_event = v4l2_ctrl_subscribe_event,
 	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
 	.vidioc_g_chip_ident  = vidioc_g_chip_ident,
-	.vidioc_g_chip_name   = vidioc_g_chip_name,
+	.vidioc_g_chip_info   = vidioc_g_chip_info,
 #ifdef CONFIG_VIDEO_ADV_DEBUG
 	.vidioc_g_register    = vidioc_g_register,
 	.vidioc_s_register    = vidioc_s_register,

@@ -30,15 +30,6 @@
 
 #define PINCTRL_STATE_IDLE	"idle"
 
-/* Group IDs of sensor, MIPI-CSIS, FIMC-LITE and the writeback subdevs. */
-#define GRP_ID_SENSOR		(1 << 8)
-#define GRP_ID_FIMC_IS_SENSOR	(1 << 9)
-#define GRP_ID_WRITEBACK	(1 << 10)
-#define GRP_ID_CSIS		(1 << 11)
-#define GRP_ID_FIMC		(1 << 12)
-#define GRP_ID_FLITE		(1 << 13)
-#define GRP_ID_FIMC_IS		(1 << 14)
-
 #define FIMC_MAX_SENSORS	8
 #define FIMC_MAX_CAMCLKS	2
 
@@ -123,6 +114,12 @@ struct fimc_md {
 	((me->type) & (MEDIA_ENT_TYPE_MASK | MEDIA_ENT_SUBTYPE_MASK))
 
 #define subdev_has_devnode(__sd) (__sd->flags & V4L2_SUBDEV_FL_HAS_DEVNODE)
+
+static inline
+struct fimc_sensor_info *source_to_sensor_info(struct fimc_source_info *si)
+{
+	return container_of(si, struct fimc_sensor_info, pdata);
+}
 
 static inline struct fimc_md *entity_to_fimc_mdev(struct media_entity *me)
 {

@@ -12,14 +12,15 @@
  */
 #define pr_fmt(fmt) "%s:%d " fmt, __func__, __LINE__
 
+#include <linux/bitops.h>
 #include <linux/bug.h>
 #include <linux/device.h>
 #include <linux/errno.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/types.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/types.h>
 #include <linux/videodev2.h>
 
 #include <media/v4l2-device.h>
@@ -42,7 +43,7 @@ void __fimc_is_hw_update_param_global_shotmode(struct fimc_is *is)
 	struct param_global_shotmode *dst, *src;
 
 	dst = &is->is_p_region->parameter.global.shotmode;
-	src = &is->cfg_param[is->scenario_id].global.shotmode;
+	src = &is->config[is->config_index].global.shotmode;
 	__hw_param_copy(dst, src);
 }
 
@@ -51,14 +52,14 @@ void __fimc_is_hw_update_param_sensor_framerate(struct fimc_is *is)
 	struct param_sensor_framerate *dst, *src;
 
 	dst = &is->is_p_region->parameter.sensor.frame_rate;
-	src = &is->cfg_param[is->scenario_id].sensor.frame_rate;
+	src = &is->config[is->config_index].sensor.frame_rate;
 	__hw_param_copy(dst, src);
 }
 
 int __fimc_is_hw_update_param(struct fimc_is *is, u32 offset)
 {
 	struct is_param_region *par = &is->is_p_region->parameter;
-	struct is_config_param *cfg = &is->cfg_param[is->scenario_id];
+	struct chain_config *cfg = &is->config[is->config_index];
 
 	switch (offset) {
 	case PARAM_ISP_CONTROL:
@@ -160,14 +161,28 @@ int __fimc_is_hw_update_param(struct fimc_is *is, u32 offset)
 	return 0;
 }
 
+unsigned int __get_pending_param_count(struct fimc_is *is)
+{
+	struct chain_config *config = &is->config[is->config_index];
+	unsigned long flags;
+	unsigned int count;
+
+	spin_lock_irqsave(&is->slock, flags);
+	count = hweight32(config->p_region_index1);
+	count += hweight32(config->p_region_index2);
+	spin_unlock_irqrestore(&is->slock, flags);
+
+	return count;
+}
+
 int __is_hw_update_params(struct fimc_is *is)
 {
 	unsigned long *p_index1, *p_index2;
 	int i, id, ret = 0;
 
-	id = is->scenario_id;
-	p_index1 = &is->cfg_param[id].p_region_index1;
-	p_index2 = &is->cfg_param[id].p_region_index2;
+	id = is->config_index;
+	p_index1 = &is->config[id].p_region_index1;
+	p_index2 = &is->config[id].p_region_index2;
 
 	if (test_bit(PARAM_GLOBAL_SHOTMODE, p_index1))
 		__fimc_is_hw_update_param_global_shotmode(is);
@@ -197,22 +212,21 @@ void __is_get_frame_size(struct fimc_is *is, struct v4l2_mbus_framefmt *mf)
 {
 	struct isp_param *isp;
 
-	isp = &is->cfg_param[is->scenario_id].isp;
+	isp = &is->config[is->config_index].isp;
 	mf->width = isp->otf_input.width;
 	mf->height = isp->otf_input.height;
 }
 
 void __is_set_frame_size(struct fimc_is *is, struct v4l2_mbus_framefmt *mf)
 {
+	unsigned int index = is->config_index;
 	struct isp_param *isp;
 	struct drc_param *drc;
 	struct fd_param *fd;
-	unsigned int mode;
 
-	mode = is->scenario_id;
-	isp = &is->cfg_param[mode].isp;
-	drc = &is->cfg_param[mode].drc;
-	fd = &is->cfg_param[mode].fd;
+	isp = &is->config[index].isp;
+	drc = &is->config[index].drc;
+	fd = &is->config[index].fd;
 
 	/* Update isp size info (OTF only) */
 	isp->otf_input.width = mf->width;
@@ -229,20 +243,15 @@ void __is_set_frame_size(struct fimc_is *is, struct v4l2_mbus_framefmt *mf)
 	fd->otf_input.height = mf->height;
 
 	if (test_bit(PARAM_ISP_OTF_INPUT,
-		      &is->cfg_param[mode].p_region_index1))
+		      &is->config[index].p_region_index1))
 		return;
 
 	/* Update field */
 	fimc_is_set_param_bit(is, PARAM_ISP_OTF_INPUT);
-	fimc_is_inc_param_num(is);
 	fimc_is_set_param_bit(is, PARAM_ISP_OTF_OUTPUT);
-	fimc_is_inc_param_num(is);
 	fimc_is_set_param_bit(is, PARAM_DRC_OTF_INPUT);
-	fimc_is_inc_param_num(is);
 	fimc_is_set_param_bit(is, PARAM_DRC_OTF_OUTPUT);
-	fimc_is_inc_param_num(is);
 	fimc_is_set_param_bit(is, PARAM_FD_OTF_INPUT);
-	fimc_is_inc_param_num(is);
 }
 
 int fimc_is_hw_get_sensor_max_framerate(struct fimc_is *is)
@@ -257,14 +266,12 @@ int fimc_is_hw_get_sensor_max_framerate(struct fimc_is *is)
 
 void __is_set_sensor(struct fimc_is *is, int fps)
 {
+	unsigned int index = is->config_index;
 	struct sensor_param *sensor;
 	struct isp_param *isp;
-	unsigned long *p_index, mode;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index1;
-	sensor = &is->cfg_param[mode].sensor;
-	isp = &is->cfg_param[mode].isp;
+	sensor = &is->config[index].sensor;
+	isp = &is->config[index].isp;
 
 	if (fps == 0) {
 		sensor->frame_rate.frame_rate =
@@ -277,21 +284,15 @@ void __is_set_sensor(struct fimc_is *is, int fps)
 		isp->otf_input.frametime_max = (u32)1000000 / fps;
 	}
 
-	if (!test_bit(PARAM_SENSOR_FRAME_RATE, p_index)) {
-		fimc_is_set_param_bit(is, PARAM_SENSOR_FRAME_RATE);
-		fimc_is_inc_param_num(is);
-	}
-	if (!test_bit(PARAM_ISP_OTF_INPUT, p_index)) {
-		fimc_is_set_param_bit(is, PARAM_ISP_OTF_INPUT);
-		fimc_is_inc_param_num(is);
-	}
+	fimc_is_set_param_bit(is, PARAM_SENSOR_FRAME_RATE);
+	fimc_is_set_param_bit(is, PARAM_ISP_OTF_INPUT);
 }
 
 void __is_set_init_isp_aa(struct fimc_is *is)
 {
 	struct isp_param *isp;
 
-	isp = &is->cfg_param[is->scenario_id].isp;
+	isp = &is->config[is->config_index].isp;
 
 	isp->aa.cmd = ISP_AA_COMMAND_START;
 	isp->aa.target = ISP_AA_TARGET_AF | ISP_AA_TARGET_AE |
@@ -306,89 +307,69 @@ void __is_set_init_isp_aa(struct fimc_is *is)
 	isp->aa.err = ISP_AF_ERROR_NONE;
 
 	fimc_is_set_param_bit(is, PARAM_ISP_AA);
-	fimc_is_inc_param_num(is);
 }
 
 void __is_set_isp_flash(struct fimc_is *is, u32 cmd, u32 redeye)
 {
-	unsigned int mode = is->scenario_id;
-	struct is_config_param *cfg = &is->cfg_param[mode];
-	struct isp_param *isp = &cfg->isp;
+	unsigned int index = is->config_index;
+	struct isp_param *isp = &is->config[index].isp;
 
 	isp->flash.cmd = cmd;
 	isp->flash.redeye = redeye;
 	isp->flash.err = ISP_FLASH_ERROR_NONE;
 
-	if (!test_bit(PARAM_ISP_FLASH, &cfg->p_region_index1)) {
-		fimc_is_set_param_bit(is, PARAM_ISP_FLASH);
-		fimc_is_inc_param_num(is);
-	}
+	fimc_is_set_param_bit(is, PARAM_ISP_FLASH);
 }
 
 void __is_set_isp_awb(struct fimc_is *is, u32 cmd, u32 val)
 {
-	unsigned int mode = is->scenario_id;
+	unsigned int index = is->config_index;
 	struct isp_param *isp;
-	unsigned long *p_index;
 
-	p_index = &is->cfg_param[mode].p_region_index1;
-	isp = &is->cfg_param[mode].isp;
+	isp = &is->config[index].isp;
 
 	isp->awb.cmd = cmd;
 	isp->awb.illumination = val;
 	isp->awb.err = ISP_AWB_ERROR_NONE;
 
-	if (!test_bit(PARAM_ISP_AWB, p_index)) {
-		fimc_is_set_param_bit(is, PARAM_ISP_AWB);
-		fimc_is_inc_param_num(is);
-	}
+	fimc_is_set_param_bit(is, PARAM_ISP_AWB);
 }
 
 void __is_set_isp_effect(struct fimc_is *is, u32 cmd)
 {
-	unsigned int mode = is->scenario_id;
+	unsigned int index = is->config_index;
 	struct isp_param *isp;
-	unsigned long *p_index;
 
-	p_index = &is->cfg_param[mode].p_region_index1;
-	isp = &is->cfg_param[mode].isp;
+	isp = &is->config[index].isp;
 
 	isp->effect.cmd = cmd;
 	isp->effect.err = ISP_IMAGE_EFFECT_ERROR_NONE;
 
-	if (!test_bit(PARAM_ISP_IMAGE_EFFECT, p_index)) {
-		fimc_is_set_param_bit(is, PARAM_ISP_IMAGE_EFFECT);
-		fimc_is_inc_param_num(is);
-	}
+	fimc_is_set_param_bit(is, PARAM_ISP_IMAGE_EFFECT);
 }
 
 void __is_set_isp_iso(struct fimc_is *is, u32 cmd, u32 val)
 {
-	unsigned int mode = is->scenario_id;
+	unsigned int index = is->config_index;
 	struct isp_param *isp;
-	unsigned long *p_index;
 
-	p_index = &is->cfg_param[mode].p_region_index1;
-	isp = &is->cfg_param[mode].isp;
+	isp = &is->config[index].isp;
 
 	isp->iso.cmd = cmd;
 	isp->iso.value = val;
 	isp->iso.err = ISP_ISO_ERROR_NONE;
 
-	if (!test_bit(PARAM_ISP_ISO, p_index)) {
-		fimc_is_set_param_bit(is, PARAM_ISP_ISO);
-		fimc_is_inc_param_num(is);
-	}
+	fimc_is_set_param_bit(is, PARAM_ISP_ISO);
 }
 
 void __is_set_isp_adjust(struct fimc_is *is, u32 cmd, u32 val)
 {
-	unsigned int mode = is->scenario_id;
+	unsigned int index = is->config_index;
 	unsigned long *p_index;
 	struct isp_param *isp;
 
-	p_index = &is->cfg_param[mode].p_region_index1;
-	isp = &is->cfg_param[mode].isp;
+	p_index = &is->config[index].p_region_index1;
+	isp = &is->config[index].isp;
 
 	switch (cmd) {
 	case ISP_ADJUST_COMMAND_MANUAL_CONTRAST:
@@ -423,7 +404,6 @@ void __is_set_isp_adjust(struct fimc_is *is, u32 cmd, u32 val)
 		isp->adjust.cmd = cmd;
 		isp->adjust.err = ISP_ADJUST_ERROR_NONE;
 		fimc_is_set_param_bit(is, PARAM_ISP_ADJUST);
-		fimc_is_inc_param_num(is);
 	} else {
 		isp->adjust.cmd |= cmd;
 	}
@@ -431,12 +411,12 @@ void __is_set_isp_adjust(struct fimc_is *is, u32 cmd, u32 val)
 
 void __is_set_isp_metering(struct fimc_is *is, u32 id, u32 val)
 {
+	unsigned int index = is->config_index;
 	struct isp_param *isp;
-	unsigned long *p_index, mode;
+	unsigned long *p_index;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index1;
-	isp = &is->cfg_param[mode].isp;
+	p_index = &is->config[index].p_region_index1;
+	isp = &is->config[index].isp;
 
 	switch (id) {
 	case IS_METERING_CONFIG_CMD:
@@ -461,71 +441,58 @@ void __is_set_isp_metering(struct fimc_is *is, u32 id, u32 val)
 	if (!test_bit(PARAM_ISP_METERING, p_index)) {
 		isp->metering.err = ISP_METERING_ERROR_NONE;
 		fimc_is_set_param_bit(is, PARAM_ISP_METERING);
-		fimc_is_inc_param_num(is);
 	}
 }
 
 void __is_set_isp_afc(struct fimc_is *is, u32 cmd, u32 val)
 {
+	unsigned int index = is->config_index;
 	struct isp_param *isp;
-	unsigned long *p_index, mode;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index1;
-	isp = &is->cfg_param[mode].isp;
+	isp = &is->config[index].isp;
 
 	isp->afc.cmd = cmd;
 	isp->afc.manual = val;
 	isp->afc.err = ISP_AFC_ERROR_NONE;
 
-	if (!test_bit(PARAM_ISP_AFC, p_index)) {
-		fimc_is_set_param_bit(is, PARAM_ISP_AFC);
-		fimc_is_inc_param_num(is);
-	}
+	fimc_is_set_param_bit(is, PARAM_ISP_AFC);
 }
 
 void __is_set_drc_control(struct fimc_is *is, u32 val)
 {
+	unsigned int index = is->config_index;
 	struct drc_param *drc;
-	unsigned long *p_index, mode;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index1;
-	drc = &is->cfg_param[mode].drc;
+	drc = &is->config[index].drc;
 
 	drc->control.bypass = val;
 
-	if (!test_bit(PARAM_DRC_CONTROL, p_index)) {
-		fimc_is_set_param_bit(is, PARAM_DRC_CONTROL);
-		fimc_is_inc_param_num(is);
-	}
+	fimc_is_set_param_bit(is, PARAM_DRC_CONTROL);
 }
 
 void __is_set_fd_control(struct fimc_is *is, u32 val)
 {
+	unsigned int index = is->config_index;
 	struct fd_param *fd;
-	unsigned long *p_index, mode;
+	unsigned long *p_index;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index2;
-	fd = &is->cfg_param[mode].fd;
+	p_index = &is->config[index].p_region_index2;
+	fd = &is->config[index].fd;
 
 	fd->control.cmd = val;
 
-	if (!test_bit((PARAM_FD_CONFIG - 32), p_index)) {
+	if (!test_bit((PARAM_FD_CONFIG - 32), p_index))
 		fimc_is_set_param_bit(is, PARAM_FD_CONTROL);
-		fimc_is_inc_param_num(is);
-	}
 }
 
 void __is_set_fd_config_maxface(struct fimc_is *is, u32 val)
 {
+	unsigned int index = is->config_index;
 	struct fd_param *fd;
-	unsigned long *p_index, mode;
+	unsigned long *p_index;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index2;
-	fd = &is->cfg_param[mode].fd;
+	p_index = &is->config[index].p_region_index2;
+	fd = &is->config[index].fd;
 
 	fd->config.max_number = val;
 
@@ -533,7 +500,6 @@ void __is_set_fd_config_maxface(struct fimc_is *is, u32 val)
 		fd->config.cmd = FD_CONFIG_COMMAND_MAXIMUM_NUMBER;
 		fd->config.err = ERROR_FD_NONE;
 		fimc_is_set_param_bit(is, PARAM_FD_CONFIG);
-		fimc_is_inc_param_num(is);
 	} else {
 		fd->config.cmd |= FD_CONFIG_COMMAND_MAXIMUM_NUMBER;
 	}
@@ -541,12 +507,12 @@ void __is_set_fd_config_maxface(struct fimc_is *is, u32 val)
 
 void __is_set_fd_config_rollangle(struct fimc_is *is, u32 val)
 {
+	unsigned int index = is->config_index;
 	struct fd_param *fd;
-	unsigned long *p_index, mode;
+	unsigned long *p_index;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index2;
-	fd = &is->cfg_param[mode].fd;
+	p_index = &is->config[index].p_region_index2;
+	fd = &is->config[index].fd;
 
 	fd->config.roll_angle = val;
 
@@ -554,7 +520,6 @@ void __is_set_fd_config_rollangle(struct fimc_is *is, u32 val)
 		fd->config.cmd = FD_CONFIG_COMMAND_ROLL_ANGLE;
 		fd->config.err = ERROR_FD_NONE;
 		fimc_is_set_param_bit(is, PARAM_FD_CONFIG);
-		fimc_is_inc_param_num(is);
 	} else {
 		fd->config.cmd |= FD_CONFIG_COMMAND_ROLL_ANGLE;
 	}
@@ -562,12 +527,12 @@ void __is_set_fd_config_rollangle(struct fimc_is *is, u32 val)
 
 void __is_set_fd_config_yawangle(struct fimc_is *is, u32 val)
 {
+	unsigned int index = is->config_index;
 	struct fd_param *fd;
-	unsigned long *p_index, mode;
+	unsigned long *p_index;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index2;
-	fd = &is->cfg_param[mode].fd;
+	p_index = &is->config[index].p_region_index2;
+	fd = &is->config[index].fd;
 
 	fd->config.yaw_angle = val;
 
@@ -575,7 +540,6 @@ void __is_set_fd_config_yawangle(struct fimc_is *is, u32 val)
 		fd->config.cmd = FD_CONFIG_COMMAND_YAW_ANGLE;
 		fd->config.err = ERROR_FD_NONE;
 		fimc_is_set_param_bit(is, PARAM_FD_CONFIG);
-		fimc_is_inc_param_num(is);
 	} else {
 		fd->config.cmd |= FD_CONFIG_COMMAND_YAW_ANGLE;
 	}
@@ -583,12 +547,12 @@ void __is_set_fd_config_yawangle(struct fimc_is *is, u32 val)
 
 void __is_set_fd_config_smilemode(struct fimc_is *is, u32 val)
 {
+	unsigned int index = is->config_index;
 	struct fd_param *fd;
-	unsigned long *p_index, mode;
+	unsigned long *p_index;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index2;
-	fd = &is->cfg_param[mode].fd;
+	p_index = &is->config[index].p_region_index2;
+	fd = &is->config[index].fd;
 
 	fd->config.smile_mode = val;
 
@@ -596,7 +560,6 @@ void __is_set_fd_config_smilemode(struct fimc_is *is, u32 val)
 		fd->config.cmd = FD_CONFIG_COMMAND_SMILE_MODE;
 		fd->config.err = ERROR_FD_NONE;
 		fimc_is_set_param_bit(is, PARAM_FD_CONFIG);
-		fimc_is_inc_param_num(is);
 	} else {
 		fd->config.cmd |= FD_CONFIG_COMMAND_SMILE_MODE;
 	}
@@ -604,12 +567,12 @@ void __is_set_fd_config_smilemode(struct fimc_is *is, u32 val)
 
 void __is_set_fd_config_blinkmode(struct fimc_is *is, u32 val)
 {
+	unsigned int index = is->config_index;
 	struct fd_param *fd;
-	unsigned long *p_index, mode;
+	unsigned long *p_index;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index2;
-	fd = &is->cfg_param[mode].fd;
+	p_index = &is->config[index].p_region_index2;
+	fd = &is->config[index].fd;
 
 	fd->config.blink_mode = val;
 
@@ -617,7 +580,6 @@ void __is_set_fd_config_blinkmode(struct fimc_is *is, u32 val)
 		fd->config.cmd = FD_CONFIG_COMMAND_BLINK_MODE;
 		fd->config.err = ERROR_FD_NONE;
 		fimc_is_set_param_bit(is, PARAM_FD_CONFIG);
-		fimc_is_inc_param_num(is);
 	} else {
 		fd->config.cmd |= FD_CONFIG_COMMAND_BLINK_MODE;
 	}
@@ -625,12 +587,12 @@ void __is_set_fd_config_blinkmode(struct fimc_is *is, u32 val)
 
 void __is_set_fd_config_eyedetect(struct fimc_is *is, u32 val)
 {
+	unsigned int index = is->config_index;
 	struct fd_param *fd;
-	unsigned long *p_index, mode;
+	unsigned long *p_index;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index2;
-	fd = &is->cfg_param[mode].fd;
+	p_index = &is->config[index].p_region_index2;
+	fd = &is->config[index].fd;
 
 	fd->config.eye_detect = val;
 
@@ -638,7 +600,6 @@ void __is_set_fd_config_eyedetect(struct fimc_is *is, u32 val)
 		fd->config.cmd = FD_CONFIG_COMMAND_EYES_DETECT;
 		fd->config.err = ERROR_FD_NONE;
 		fimc_is_set_param_bit(is, PARAM_FD_CONFIG);
-		fimc_is_inc_param_num(is);
 	} else {
 		fd->config.cmd |= FD_CONFIG_COMMAND_EYES_DETECT;
 	}
@@ -646,12 +607,12 @@ void __is_set_fd_config_eyedetect(struct fimc_is *is, u32 val)
 
 void __is_set_fd_config_mouthdetect(struct fimc_is *is, u32 val)
 {
+	unsigned int index = is->config_index;
 	struct fd_param *fd;
-	unsigned long *p_index, mode;
+	unsigned long *p_index;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index2;
-	fd = &is->cfg_param[mode].fd;
+	p_index = &is->config[index].p_region_index2;
+	fd = &is->config[index].fd;
 
 	fd->config.mouth_detect = val;
 
@@ -659,7 +620,6 @@ void __is_set_fd_config_mouthdetect(struct fimc_is *is, u32 val)
 		fd->config.cmd = FD_CONFIG_COMMAND_MOUTH_DETECT;
 		fd->config.err = ERROR_FD_NONE;
 		fimc_is_set_param_bit(is, PARAM_FD_CONFIG);
-		fimc_is_inc_param_num(is);
 	} else {
 		fd->config.cmd |= FD_CONFIG_COMMAND_MOUTH_DETECT;
 	}
@@ -667,12 +627,12 @@ void __is_set_fd_config_mouthdetect(struct fimc_is *is, u32 val)
 
 void __is_set_fd_config_orientation(struct fimc_is *is, u32 val)
 {
+	unsigned int index = is->config_index;
 	struct fd_param *fd;
-	unsigned long *p_index, mode;
+	unsigned long *p_index;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index2;
-	fd = &is->cfg_param[mode].fd;
+	p_index = &is->config[index].p_region_index2;
+	fd = &is->config[index].fd;
 
 	fd->config.orientation = val;
 
@@ -680,7 +640,6 @@ void __is_set_fd_config_orientation(struct fimc_is *is, u32 val)
 		fd->config.cmd = FD_CONFIG_COMMAND_ORIENTATION;
 		fd->config.err = ERROR_FD_NONE;
 		fimc_is_set_param_bit(is, PARAM_FD_CONFIG);
-		fimc_is_inc_param_num(is);
 	} else {
 		fd->config.cmd |= FD_CONFIG_COMMAND_ORIENTATION;
 	}
@@ -688,12 +647,12 @@ void __is_set_fd_config_orientation(struct fimc_is *is, u32 val)
 
 void __is_set_fd_config_orientation_val(struct fimc_is *is, u32 val)
 {
+	unsigned int index = is->config_index;
 	struct fd_param *fd;
-	unsigned long *p_index, mode;
+	unsigned long *p_index;
 
-	mode = is->scenario_id;
-	p_index = &is->cfg_param[mode].p_region_index2;
-	fd = &is->cfg_param[mode].fd;
+	p_index = &is->config[index].p_region_index2;
+	fd = &is->config[index].fd;
 
 	fd->config.orientation_value = val;
 
@@ -701,7 +660,6 @@ void __is_set_fd_config_orientation_val(struct fimc_is *is, u32 val)
 		fd->config.cmd = FD_CONFIG_COMMAND_ORIENTATION_VALUE;
 		fd->config.err = ERROR_FD_NONE;
 		fimc_is_set_param_bit(is, PARAM_FD_CONFIG);
-		fimc_is_inc_param_num(is);
 	} else {
 		fd->config.cmd |= FD_CONFIG_COMMAND_ORIENTATION_VALUE;
 	}
@@ -715,35 +673,32 @@ void fimc_is_set_initial_params(struct fimc_is *is)
 	struct drc_param *drc;
 	struct fd_param *fd;
 	unsigned long *p_index1, *p_index2;
-	unsigned int mode;
+	unsigned int index;
 
-	mode = is->scenario_id;
-	global = &is->cfg_param[mode].global;
-	sensor = &is->cfg_param[mode].sensor;
-	isp = &is->cfg_param[mode].isp;
-	drc = &is->cfg_param[mode].drc;
-	fd = &is->cfg_param[mode].fd;
-	p_index1 = &is->cfg_param[mode].p_region_index1;
-	p_index2 = &is->cfg_param[mode].p_region_index2;
+	index = is->config_index;
+	global = &is->config[index].global;
+	sensor = &is->config[index].sensor;
+	isp = &is->config[index].isp;
+	drc = &is->config[index].drc;
+	fd = &is->config[index].fd;
+	p_index1 = &is->config[index].p_region_index1;
+	p_index2 = &is->config[index].p_region_index2;
 
 	/* Global */
 	global->shotmode.cmd = 1;
 	fimc_is_set_param_bit(is, PARAM_GLOBAL_SHOTMODE);
-	fimc_is_inc_param_num(is);
 
 	/* ISP */
 	isp->control.cmd = CONTROL_COMMAND_START;
 	isp->control.bypass = CONTROL_BYPASS_DISABLE;
 	isp->control.err = CONTROL_ERROR_NONE;
 	fimc_is_set_param_bit(is, PARAM_ISP_CONTROL);
-	fimc_is_inc_param_num(is);
 
 	isp->otf_input.cmd = OTF_INPUT_COMMAND_ENABLE;
 	if (!test_bit(PARAM_ISP_OTF_INPUT, p_index1)) {
 		isp->otf_input.width = DEFAULT_PREVIEW_STILL_WIDTH;
 		isp->otf_input.height = DEFAULT_PREVIEW_STILL_HEIGHT;
 		fimc_is_set_param_bit(is, PARAM_ISP_OTF_INPUT);
-		fimc_is_inc_param_num(is);
 	}
 	if (is->sensor->test_pattern)
 		isp->otf_input.format = OTF_INPUT_FORMAT_STRGEN_COLORBAR_BAYER;
@@ -766,7 +721,6 @@ void fimc_is_set_initial_params(struct fimc_is *is)
 	isp->dma1_input.width = 0;
 	isp->dma1_input.err = DMA_INPUT_ERROR_NONE;
 	fimc_is_set_param_bit(is, PARAM_ISP_DMA1_INPUT);
-	fimc_is_inc_param_num(is);
 
 	isp->dma2_input.cmd = DMA_INPUT_COMMAND_DISABLE;
 	isp->dma2_input.width = 0;
@@ -779,12 +733,10 @@ void fimc_is_set_initial_params(struct fimc_is *is)
 	isp->dma2_input.width = 0;
 	isp->dma2_input.err = DMA_INPUT_ERROR_NONE;
 	fimc_is_set_param_bit(is, PARAM_ISP_DMA2_INPUT);
-	fimc_is_inc_param_num(is);
 
 	isp->aa.cmd = ISP_AA_COMMAND_START;
 	isp->aa.target = ISP_AA_TARGET_AE | ISP_AA_TARGET_AWB;
 	fimc_is_set_param_bit(is, PARAM_ISP_AA);
-	fimc_is_inc_param_num(is);
 
 	if (!test_bit(PARAM_ISP_FLASH, p_index1))
 		__is_set_isp_flash(is, ISP_FLASH_COMMAND_DISABLE,
@@ -826,7 +778,6 @@ void fimc_is_set_initial_params(struct fimc_is *is)
 		isp->otf_output.width = DEFAULT_PREVIEW_STILL_WIDTH;
 		isp->otf_output.height = DEFAULT_PREVIEW_STILL_HEIGHT;
 		fimc_is_set_param_bit(is, PARAM_ISP_OTF_OUTPUT);
-		fimc_is_inc_param_num(is);
 	}
 	isp->otf_output.format = OTF_OUTPUT_FORMAT_YUV444;
 	isp->otf_output.bitwidth = 12;
@@ -847,7 +798,6 @@ void fimc_is_set_initial_params(struct fimc_is *is)
 		isp->dma1_output.dma_out_mask = 0;
 		isp->dma1_output.err = DMA_OUTPUT_ERROR_NONE;
 		fimc_is_set_param_bit(is, PARAM_ISP_DMA1_OUTPUT);
-		fimc_is_inc_param_num(is);
 	}
 
 	if (!test_bit(PARAM_ISP_DMA2_OUTPUT, p_index1)) {
@@ -864,12 +814,11 @@ void fimc_is_set_initial_params(struct fimc_is *is)
 		isp->dma2_output.dma_out_mask = 0;
 		isp->dma2_output.err = DMA_OUTPUT_ERROR_NONE;
 		fimc_is_set_param_bit(is, PARAM_ISP_DMA2_OUTPUT);
-		fimc_is_inc_param_num(is);
 	}
 
 	/* Sensor */
 	if (!test_bit(PARAM_SENSOR_FRAME_RATE, p_index1)) {
-		if (!mode)
+		if (is->config_index == 0)
 			__is_set_sensor(is, 0);
 	}
 
@@ -882,7 +831,6 @@ void fimc_is_set_initial_params(struct fimc_is *is)
 		drc->otf_input.width = DEFAULT_PREVIEW_STILL_WIDTH;
 		drc->otf_input.height = DEFAULT_PREVIEW_STILL_HEIGHT;
 		fimc_is_set_param_bit(is, PARAM_DRC_OTF_INPUT);
-		fimc_is_inc_param_num(is);
 	}
 	drc->otf_input.format = OTF_INPUT_FORMAT_YUV444;
 	drc->otf_input.bitwidth = 12;
@@ -900,14 +848,12 @@ void fimc_is_set_initial_params(struct fimc_is *is)
 	drc->dma_input.width = 0;
 	drc->dma_input.err = DMA_INPUT_ERROR_NONE;
 	fimc_is_set_param_bit(is, PARAM_DRC_DMA_INPUT);
-	fimc_is_inc_param_num(is);
 
 	drc->otf_output.cmd = OTF_OUTPUT_COMMAND_ENABLE;
 	if (!test_bit(PARAM_DRC_OTF_OUTPUT, p_index1)) {
 		drc->otf_output.width = DEFAULT_PREVIEW_STILL_WIDTH;
 		drc->otf_output.height = DEFAULT_PREVIEW_STILL_HEIGHT;
 		fimc_is_set_param_bit(is, PARAM_DRC_OTF_OUTPUT);
-		fimc_is_inc_param_num(is);
 	}
 	drc->otf_output.format = OTF_OUTPUT_FORMAT_YUV444;
 	drc->otf_output.bitwidth = 8;
@@ -923,8 +869,8 @@ void fimc_is_set_initial_params(struct fimc_is *is)
 		fd->otf_input.width = DEFAULT_PREVIEW_STILL_WIDTH;
 		fd->otf_input.height = DEFAULT_PREVIEW_STILL_HEIGHT;
 		fimc_is_set_param_bit(is, PARAM_FD_OTF_INPUT);
-		fimc_is_inc_param_num(is);
 	}
+
 	fd->otf_input.format = OTF_INPUT_FORMAT_YUV444;
 	fd->otf_input.bitwidth = 8;
 	fd->otf_input.order = 0;
@@ -941,7 +887,6 @@ void fimc_is_set_initial_params(struct fimc_is *is)
 	fd->dma_input.width = 0;
 	fd->dma_input.err = DMA_INPUT_ERROR_NONE;
 	fimc_is_set_param_bit(is, PARAM_FD_DMA_INPUT);
-	fimc_is_inc_param_num(is);
 
 	__is_set_fd_config_maxface(is, 5);
 	__is_set_fd_config_rollangle(is, FD_CONFIG_ROLL_ANGLE_FULL);
