@@ -73,7 +73,7 @@
 #define NO_SLEEP_OFF (0 << 2)
 #define NO_SLEEP_ON (1 << 2)
 
-enum device_status{
+enum device_status {
 	STATUS_NO_ERROR = 0x00,
 	STATUS_RESET_OCCURRED = 0x01,
 	STATUS_INVALID_CONFIG = 0x02,
@@ -1431,9 +1431,11 @@ static int synaptics_rmi4_query_device(struct synaptics_rmi4_data *rmi4_data)
 				if (retval < 0)
 					return retval;
 
-				while (status.status_code == STATUS_CRC_IN_PROGRESS) {
-					msleep(1);					
-					retval = synaptics_rmi4_i2c_read(rmi4_data,
+				while (status.status_code ==
+						STATUS_CRC_IN_PROGRESS) {
+					msleep(20);
+					retval = synaptics_rmi4_i2c_read(
+						rmi4_data,
 						rmi4_data->f01_data_base_addr,
 						status.data,
 						sizeof(status.data));
@@ -1859,7 +1861,7 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 			gpio_set_value(platform_data->reset_gpio, 0);
 			msleep(10);
 			gpio_set_value(platform_data->reset_gpio, 1);
-		   	msleep(RESET_DELAY);
+			msleep(RESET_DELAY);
 		} 
 	} else {
 		synaptics_rmi4_reset_command(rmi4_data);

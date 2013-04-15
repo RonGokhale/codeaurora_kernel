@@ -93,7 +93,7 @@ enum flash_area {
 	CONFIG_AREA
 };
 
-enum image_file_option{
+enum image_file_option {
 	OPTION_BUILD_INFO		= 0,
 	OPTION_CONTAIN_BOOTLOADER	= 1,
 };
@@ -372,7 +372,7 @@ static unsigned int extract_uint_be(const unsigned char *ptr)
 
 static void parse_header(struct image_header *header,
 		const unsigned char *fw_image)
-{	
+{
 	struct image_header_data *data = (struct image_header_data *)fw_image;
 	header->checksum = extract_uint(data->file_checksum);
 	header->bootloader_version = data->bootloader_version;
@@ -384,10 +384,10 @@ static void parse_header(struct image_header *header,
 	memcpy(header->product_info, data->product_info,
 			sizeof(data->product_info));
 
-	header->is_contain_build_info = 
+	header->is_contain_build_info =
 		(data->options_firmware_id == (1 << OPTION_BUILD_INFO));
 	if (header->is_contain_build_info) {
-		header->firmware_id= extract_uint(data->firmware_id);
+		header->firmware_id = extract_uint(data->firmware_id);
 		dev_info(&fwu->rmi4_data->i2c_client->dev,
 				"%s Firwmare build id %d\n",
 				__func__,
@@ -724,7 +724,8 @@ static enum flash_area fwu_go_nogo(struct image_header *header)
 
 	dev_dbg(&i2c_client->dev,
 		"%s: Device config ID 0x%02X, 0x%02X, 0x%02X, 0x%02X\n",
-		__func__, config_id[0], config_id[1], config_id[2], config_id[3]);
+		__func__,
+		config_id[0], config_id[1], config_id[2], config_id[3]);
 
 	/* .img config id */
 	dev_dbg(&i2c_client->dev,
@@ -1308,13 +1309,14 @@ static void synaptics_rmi4_fwu_config_sensor_id(void)
 	int i;
 	char sensor_id_pin[2] = {SENPR_ID_PIN1, SENPR_ID_PIN2};
 
-	for (i =0; i< sizeof(sensor_id_pin); i++){
+	for (i = 0; i < sizeof(sensor_id_pin); i++) {
 		if (sensor_id_pin[i] != SENPR_ID_PIN_NULL) {
 			fwu->sensor_id_pin_mask |= (0x01 << sensor_id_pin[i]);
-			fwu->sensor_id_pullup_mask |= (0x01 << sensor_id_pin[i]);
-		}
-		else
+			fwu->sensor_id_pullup_mask |=
+				(0x01 << sensor_id_pin[i]);
+		} else {
 			break;
+		}
 	}
 	dev_info(&fwu->rmi4_data->i2c_client->dev,
 			"Sensor ID pin mask %#04X, pullup mask %#04X\n",
@@ -1421,7 +1423,7 @@ static int fwu_start_reflash(void)
 	const struct firmware *fw_entry = NULL;
 	struct f01_device_status f01_device_status;
 	enum flash_area flash_area;
-#ifdef SENSOR_ID_SUPPORT	
+#ifdef SENSOR_ID_SUPPORT
 	unsigned short sensor_id;
 	bool sensor_pin1, sensor_pin2;
 	char *file_name_sep;
@@ -1434,7 +1436,8 @@ static int fwu_start_reflash(void)
 	if (fwu->ext_data_source)
 		fw_image = fwu->ext_data_source;
 	else {
-		fwu->firmware_name = kcalloc(NAME_BUFFER_SIZE, sizeof(char), GFP_KERNEL);
+		fwu->firmware_name =
+			kcalloc(NAME_BUFFER_SIZE, sizeof(char), GFP_KERNEL);
 		if (!fwu->firmware_name) {
 			dev_err(&fwu->rmi4_data->i2c_client->dev,
 				"%s Failed to allocate firmware name (%d).\n",
@@ -1445,28 +1448,29 @@ static int fwu_start_reflash(void)
 
 #ifdef SENSOR_ID_SUPPORT
 		/* Sensor ID support: if firmware image file name is xxx.img
-		  * image file name for sensor vender 1 will be 
-		  			xxx.{SENSOR_VENDOR_1}.img
-		  * image file name for sensor vender 2 will be 
-		  			xxx.{SENSOR_VENDOR_2}.img
-		  * image file name for sensor vender 3 will be 
-		  			xxx.{SENSOR_VENDOR_3}.img
+		  * image file name for sensor vender 1 will be
+				xxx.{SENSOR_VENDOR_1}.img
+		  * image file name for sensor vender 2 will be
+				xxx.{SENSOR_VENDOR_2}.img
+		  * image file name for sensor vender 3 will be
+				xxx.{SENSOR_VENDOR_3}.img
 		  */
 
 		file_name = strsep(&cur, ".");
-		snprintf(fwu->firmware_name, NAME_BUFFER_SIZE, "%s", file_name_sep);
+		snprintf(fwu->firmware_name,
+				NAME_BUFFER_SIZE, "%s", file_name_sep);
 
 		sensor_id = fwu_read_sensor_id();
 		sensor_pin1 = sensor_id & (0x01 << SENPR_ID_PIN1);
 		sensor_pin2 = sensor_id & (0x01 << SENPR_ID_PIN2);
 
 		dev_info(&fwu->rmi4_data->i2c_client->dev,
-					"%s: Sensor id %d (pin %d) %d (pin %d) \n",
+					"%s: Sensor id %d (pin %d) %d (pin %d)\n",
 					__func__,
 					sensor_pin1,
 					SENPR_ID_PIN1,
 					sensor_pin2,
-					SENPR_ID_PIN2);	
+					SENPR_ID_PIN2);
 
 		if ((sensor_pin1 == 0) && (sensor_pin2 == 0))
 			strcat(fwu->firmware_name, SENSOR_VENDOR_1);
