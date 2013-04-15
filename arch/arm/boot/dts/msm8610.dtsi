@@ -74,6 +74,13 @@
 		status = "disabled";
 	};
 
+	serial@f991e000 {
+		compatible = "qcom,msm-lsuart-v14";
+		reg = <0xf991e000 0x1000>;
+		interrupts = <0 108 0>;
+		status = "disabled";
+	};
+
 	qcom,vidc@fdc00000 {
 		compatible = "qcom,msm-vidc";
 		qcom,vidc-ns-map = <0x40000000 0x40000000>;
@@ -376,6 +383,10 @@
 
 		/* GPIO output to wcnss */
 		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_4_out 0 0>;
+	};
+
+	qcom,iris-fm {
+		compatible = "qcom,iris_fm";
 	};
 
 	sound {
