@@ -78,8 +78,10 @@
 #define RMI4_I2C_LOAD_UA	10000
 #define RMI4_I2C_LPM_LOAD_UA	10
 
-#define RMI4_GPIO_SLEEP_LOW_US 20000
-#define RMI4_GPIO_WAIT_HIGH_MS 50
+#define RMI4_GPIO_SLEEP_LOW_US 10000
+#define RMI4_GPIO_WAIT_HIGH_MS 63
+
+#define RMI4_POWER_ON_DELAY 100
 
 static int synaptics_rmi4_i2c_read(struct synaptics_rmi4_data *rmi4_data,
 		unsigned short addr, unsigned char *data,
@@ -2068,6 +2070,8 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 		dev_err(&client->dev, "Failed to power on\n");
 		goto err_power_device;
 	}
+
+	msleep(RMI4_POWER_ON_DELAY);
 
 	if (gpio_is_valid(platform_data->irq_gpio)) {
 		/* configure touchscreen irq gpio */
