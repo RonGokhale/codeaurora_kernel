@@ -31,10 +31,12 @@
 #define MSM_FB_SIZE		0x4BF000
 #define MSM7x25A_MSM_FB_SIZE    0x1C2000
 #define MSM8x25_MSM_FB_SIZE	0x5FA000
+#define MSM7627A_QRD3_FB_SIZE	0xE1000
 #else
 #define MSM_FB_SIZE		0x32A000
 #define MSM7x25A_MSM_FB_SIZE	0x12C000
 #define MSM8x25_MSM_FB_SIZE	0x3FC000
+#define MSM7627A_QRD3_FB_SIZE	0x96000
 #endif
 
 /*
@@ -801,6 +803,8 @@ void __init msm_msm7627a_allocate_memory_regions(void)
 	else if (machine_is_msm7627a_evb() || machine_is_msm8625_evb()
 						|| machine_is_msm8625_evt())
 		fb_size = MSM8x25_MSM_FB_SIZE;
+	else if (machine_is_msm7627a_qrd3())
+		fb_size = MSM7627A_QRD3_FB_SIZE;
 	else
 		fb_size = MSM_FB_SIZE;
 
