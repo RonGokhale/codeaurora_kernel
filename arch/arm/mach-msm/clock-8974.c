@@ -1405,7 +1405,14 @@ static struct rcg_clk ce2_clk_src = {
 };
 
 static struct clk_freq_tbl ftbl_gcc_gp_clk[] = {
-	F(19200000,  cxo,  1,   0,   0),
+	F( 4800000,   cxo,  4,  0,   0),
+	F( 6000000, gpll0, 10,  1,  10),
+	F( 6750000, gpll0,  1,  1,  89),
+	F( 8000000, gpll0, 15,  1,   5),
+	F( 9600000,   cxo,  2,  0,   0),
+	F(16000000, gpll0,  1,  2,  75),
+	F(19200000,   cxo,  1,  0,   0),
+	F(24000000, gpll0,  5,  1,   5),
 	F_END
 };
 
@@ -5488,15 +5495,6 @@ static void __init msm8974_clock_pre_init(void)
 	if (IS_ERR(vdd_dig.regulator[0]))
 		panic("clock-8974: Unable to get the vdd_dig regulator!");
 
-	/*
-	 * TODO: Set a voltage and enable vdd_dig, leaving the voltage high
-	 * until late_init. This may not be necessary with clock handoff;
-	 * Investigate this code on a real non-simulator target to determine
-	 * its necessity.
-	 */
-	vote_vdd_level(&vdd_dig, VDD_DIG_HIGH);
-	regulator_enable(vdd_dig.regulator[0]);
-
 	enable_rpm_scaling();
 
 	reg_init();
@@ -5533,11 +5531,6 @@ static void __init msm8974_clock_pre_init(void)
 	mdss_clk_ctrl_pre_init(&mdss_ahb_clk.c);
 }
 
-static int __init msm8974_clock_late_init(void)
-{
-	return unvote_vdd_level(&vdd_dig, VDD_DIG_HIGH);
-}
-
 static void __init msm8974_rumi_clock_pre_init(void)
 {
 	virt_bases[GCC_BASE] = ioremap(GCC_CC_PHYS, GCC_CC_SIZE);
@@ -5553,15 +5546,6 @@ static void __init msm8974_rumi_clock_pre_init(void)
 	vdd_dig.regulator[0] = regulator_get(NULL, "vdd_dig");
 	if (IS_ERR(vdd_dig.regulator[0]))
 		panic("clock-8974: Unable to get the vdd_dig regulator!");
-
-	/*
-	 * TODO: Set a voltage and enable vdd_dig, leaving the voltage high
-	 * until late_init. This may not be necessary with clock handoff;
-	 * Investigate this code on a real non-simulator target to determine
-	 * its necessity.
-	 */
-	vote_vdd_level(&vdd_dig, VDD_DIG_HIGH);
-	regulator_enable(vdd_dig.regulator[0]);
 }
 
 struct clock_init_data msm8974_clock_init_data __initdata = {
@@ -5569,7 +5553,6 @@ struct clock_init_data msm8974_clock_init_data __initdata = {
 	.size = ARRAY_SIZE(msm_clocks_8974),
 	.pre_init = msm8974_clock_pre_init,
 	.post_init = msm8974_clock_post_init,
-	.late_init = msm8974_clock_late_init,
 };
 
 struct clock_init_data msm8974_rumi_clock_init_data __initdata = {

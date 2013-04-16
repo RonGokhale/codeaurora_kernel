@@ -226,7 +226,7 @@ static void __init reserve_rtb_memory(void)
 #endif
 }
 
-static int msm8930_paddr_to_memtype(unsigned int paddr)
+static int msm8930_paddr_to_memtype(phys_addr_t paddr)
 {
 	return MEMTYPE_EBI1;
 }
@@ -957,7 +957,7 @@ static struct msm_bus_paths qseecom_hw_bus_scale_usecases[] = {
 	},
 	{
 		ARRAY_SIZE(qseecom_enable_dfab_vectors),
-		qseecom_enable_sfpb_vectors,
+		qseecom_enable_dfab_vectors,
 	},
 	{
 		ARRAY_SIZE(qseecom_enable_sfpb_vectors),
