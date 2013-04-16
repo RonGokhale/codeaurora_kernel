@@ -3443,6 +3443,7 @@ static void __init msm8960_cdp_init(void)
 		mdm_sglte_device.dev.platform_data = &sglte_platform_data;
 		platform_device_register(&mdm_sglte_device);
 	}
+
 }
 
 MACHINE_START(MSM8960_CDP, "QCT MSM8960 CDP")

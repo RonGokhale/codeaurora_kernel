@@ -544,6 +544,19 @@ static int msm_mctl_cmd(struct msm_cam_media_controller *p_mctl,
 		}
 		break;
 
+	case MSM_CAM_IOCTL_VFE_STATS_VERSION: {
+		uint32_t vfe_ver_num;
+		rc = copy_from_user(&vfe_ver_num, (void *)argp,
+			sizeof(uint32_t));
+		if (rc != 0) {
+			rc = -EFAULT;
+			break;
+		}
+		rc = v4l2_subdev_call(p_mctl->vfe_sdev, core, ioctl,
+			VIDIOC_MSM_VFE_STATS_VERSION, &vfe_ver_num);
+		break;
+	}
+
 	default:
 		/* ISP config*/
 		D("%s:%d: go to default. Calling msm_isp_config\n",
