@@ -176,7 +176,6 @@
 
 		qcom,msm-bus,name = "usb2";
 		qcom,msm-bus,num-cases = <2>;
-		qcom,msm-bus,active-only = <0>;
 		qcom,msm-bus,num-paths = <1>;
 		qcom,msm-bus,vectors-KBps =
 				<87 512 0 0>,
@@ -642,8 +641,9 @@
 
 		qcom,firmware-name = "wcnss";
 
-		/* GPIO input from wcnss */
+		/* GPIO inputs from wcnss */
 		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_4_in 0 0>;
+		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_4_in 2 0>;
 
 		/* GPIO output to wcnss */
 		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_4_out 0 0>;
@@ -798,6 +798,24 @@
 		reg = <0xfd484000 0x400>;
 		qcom,num-locks = <8>;
 	};
+
+	qcom,qseecom@d980000 {
+		compatible = "qcom,qseecom";
+		reg = <0xd980000 0x256000>;
+		reg-names = "secapp-region";
+		qcom,disk-encrypt-pipe-pair = <2>;
+		qcom,hlos-ce-hw-instance = <0>;
+		qcom,qsee-ce-hw-instance = <0>;
+		qcom,msm-bus,name = "qseecom-noc";
+		qcom,msm-bus,num-cases = <4>;
+		qcom,msm-bus,active-only = <0>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps =
+				<55 512 0 0>,
+				<55 512 3936000 393600>,
+				<55 512 3936000 393600>,
+				<55 512 3936000 393600>;
+	};
 };
 
 &gdsc_venus {
@@ -917,6 +935,16 @@
 		qcom,fast-avg-setup = <0>;
 	};
 
+	chan@39 {
+		label = "usb_id_nopull";
+		reg = <0x39>;
+		qcom,decimation = <0>;
+		qcom,pre-div-channel-scaling = <0>;
+		qcom,calibration-type = "ratiometric";
+		qcom,scale-function = <0>;
+		qcom,hw-settle-time = <2>;
+		qcom,fast-avg-setup = <0>;
+	};
 };
 
 &pm8226_chg {

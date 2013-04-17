@@ -564,6 +564,7 @@ static struct pll_clk a7sspll = {
 	},
 	.base = &virt_bases[APCS_PLL_BASE],
 	.c = {
+		.parent = &gcc_xo_a_clk_src.c,
 		.dbg_name = "a7sspll",
 		.ops = &clk_ops_sr2_pll,
 		.vdd_class = &vdd_sr2_pll,
@@ -2782,12 +2783,16 @@ static struct clk_lookup msm_clocks_8610[] = {
 	CLK_LOOKUP("measure_clk", apc3_m_clk, ""),
 	CLK_LOOKUP("measure_clk",   l2_m_clk, ""),
 
+	CLK_LOOKUP("xo",   gcc_xo_clk_src.c, "fb000000.qcom,wcnss-wlan"),
+	CLK_LOOKUP("rf_clk",       cxo_a2.c, "fb000000.qcom,wcnss-wlan"),
+
 	CLK_LOOKUP("iface_clk", mdp_ahb_clk.c, "fd900000.qcom,mdss_mdp"),
 	CLK_LOOKUP("core_clk", mdp_axi_clk.c, "fd900000.qcom,mdss_mdp"),
 	CLK_LOOKUP("lcdc_clk", mdp_lcdc_clk.c, "fd900000.qcom,mdss_mdp"),
 	CLK_LOOKUP("vsync_clk", mdp_vsync_clk.c, "fd900000.qcom,mdss_mdp"),
+	CLK_LOOKUP("dsi_clk", mdp_dsi_clk.c, "fd900000.qcom,mdss_mdp"),
 	CLK_LOOKUP("iface_clk", dsi_ahb_clk.c, "fdd00000.qcom,mdss_dsi"),
-	CLK_LOOKUP("core_clk", dsi_clk.c, "fdd00000.qcom,mdss_dsi"),
+	CLK_LOOKUP("dsi_clk", dsi_clk.c, "fdd00000.qcom,mdss_dsi"),
 	CLK_LOOKUP("byte_clk", dsi_byte_clk.c, "fdd00000.qcom,mdss_dsi"),
 	CLK_LOOKUP("esc_clk", dsi_esc_clk.c, "fdd00000.qcom,mdss_dsi"),
 	CLK_LOOKUP("pixel_clk", dsi_pclk_clk.c, "fdd00000.qcom,mdss_dsi"),
@@ -2966,19 +2971,6 @@ static void __init msm8610_clock_pre_init(void)
 	if (IS_ERR(vdd_sr2_pll.regulator[1]))
 		panic("clock-8610: Unable to get the vdd_sr2_dig regulator!");
 
-	vote_vdd_level(&vdd_sr2_pll, VDD_SR2_PLL_TUR);
-	regulator_enable(vdd_sr2_pll.regulator[0]);
-	regulator_enable(vdd_sr2_pll.regulator[1]);
-
-	/*
-	 * TODO: Set a voltage and enable vdd_dig, leaving the voltage high
-	 * until late_init. This may not be necessary with clock handoff;
-	 * Investigate this code on a real non-simulator target to determine
-	 * its necessity.
-	 */
-	vote_vdd_level(&vdd_dig, VDD_DIG_HIGH);
-	regulator_enable(vdd_dig.regulator[0]);
-
 	enable_rpm_scaling();
 
 	/* Enable a clock to allow access to MMSS clock registers */
@@ -2995,17 +2987,9 @@ static void __init msm8610_clock_pre_init(void)
 	clk_prepare_enable(&mmss_s0_axi_clk.c);
 }
 
-static int __init msm8610_clock_late_init(void)
-{
-	unvote_vdd_level(&vdd_dig, VDD_DIG_HIGH);
-	unvote_vdd_level(&vdd_sr2_pll, VDD_SR2_PLL_TUR);
-	return 0;
-}
-
 struct clock_init_data msm8610_clock_init_data __initdata = {
 	.table = msm_clocks_8610,
 	.size = ARRAY_SIZE(msm_clocks_8610),
 	.pre_init = msm8610_clock_pre_init,
 	.post_init = msm8610_clock_post_init,
-	.late_init = msm8610_clock_late_init,
 };

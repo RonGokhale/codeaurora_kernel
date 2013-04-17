@@ -1094,6 +1094,8 @@ static void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 	    cmd->opcode == MMC_SEND_TUNING_BLOCK_HS200)
 		flags |= SDHCI_CMD_DATA;
 
+	if (cmd->data)
+		host->data_start_time = ktime_get();
 	sdhci_writew(host, SDHCI_MAKE_CMD(cmd->opcode, flags), SDHCI_COMMAND);
 }
 
@@ -2361,7 +2363,6 @@ static void sdhci_cmd_irq(struct sdhci_host *host, u32 intmask)
 		sdhci_finish_command(host);
 }
 
-#ifdef CONFIG_MMC_DEBUG
 static void sdhci_show_adma_error(struct sdhci_host *host)
 {
 	const char *name = mmc_hostname(host->mmc);
@@ -2377,7 +2378,7 @@ static void sdhci_show_adma_error(struct sdhci_host *host)
 		len = (__le16 *)(desc + 2);
 		attr = *desc;
 
-		DBG("%s: %p: DMA 0x%08x, LEN 0x%04x, Attr=0x%02x\n",
+		pr_info("%s: %p: DMA 0x%08x, LEN 0x%04x, Attr=0x%02x\n",
 		    name, desc, le32_to_cpu(*dma), le16_to_cpu(*len), attr);
 
 		desc += 8;
@@ -2386,9 +2387,6 @@ static void sdhci_show_adma_error(struct sdhci_host *host)
 			break;
 	}
 }
-#else
-static void sdhci_show_adma_error(struct sdhci_host *host) { }
-#endif
 
 static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 {
@@ -2453,9 +2451,10 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 			pr_msg = true;
 		}
 		if (pr_msg) {
-			pr_err("%s: data txfr (0x%08x) error: %d\n",
+			pr_err("%s: data txfr (0x%08x) error: %d after %lld ms\n",
 			       mmc_hostname(host->mmc), intmask,
-			       host->data->error);
+			       host->data->error, ktime_to_ms(ktime_sub(
+			       ktime_get(), host->data_start_time)));
 			sdhci_dumpregs(host);
 		}
 		sdhci_finish_data(host);
