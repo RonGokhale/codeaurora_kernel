@@ -249,6 +249,9 @@
 #define MSM_CAM_IOCTL_INTF_MCTL_MAPPING_CFG \
 	_IOR(MSM_CAM_IOCTL_MAGIC, 71, struct intf_mctl_mapping_cfg *)
 
+#define MSM_CAM_IOCTL_VFE_STATS_VERSION \
+	_IOWR(MSM_CAM_IOCTL_MAGIC, 68, uint32_t *)
+
 struct ioctl_native_cmd {
 	unsigned short mode;
 	unsigned short address;
@@ -1018,7 +1021,8 @@ struct msm_snapshot_pp_status {
 #define CFG_SET_VISION_MODE           55
 #define CFG_SET_VISION_AE             56
 #define CFG_HDR_UPDATE                57
-#define CFG_MAX                       58
+#define CFG_ACTUAOTOR_REG_INIT        58
+#define CFG_MAX                       59
 
 #define MOVE_NEAR	0
 #define MOVE_FAR	1
@@ -1705,6 +1709,7 @@ struct damping_params_t {
 enum actuator_type {
 	ACTUATOR_VCM,
 	ACTUATOR_PIEZO,
+	ACTUATOR_HALL_EFFECT,
 };
 
 enum msm_actuator_data_type {
@@ -2074,6 +2079,8 @@ struct msm_mctl_set_sdev_data {
 #define VIDIOC_MSM_AXI_LOW_POWER_MODE \
 	_IO('V', BASE_VIDIOC_PRIVATE + 26)
 
+#define VIDIOC_MSM_VFE_STATS_VERSION \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 26, uint32_t *)
 
 struct msm_camera_v4l2_ioctl_t {
 	uint32_t id;

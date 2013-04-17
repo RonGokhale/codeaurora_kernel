@@ -2925,7 +2925,6 @@ static struct msm_serial_hs_platform_data msm_uart_dm9_pdata = {
 static struct msm_serial_hs_platform_data msm_uart_dm9_pdata;
 #endif
 
-
 static void __init msm8930_cdp_init(void)
 {
 	int i, reg_size = 0;
