@@ -301,3 +301,6 @@
 		status = "ok";
 	};
 };
+&pm8110_bms {
+	status = "ok";
+};
