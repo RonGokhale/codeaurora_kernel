@@ -219,6 +219,8 @@ struct diagchar_dev {
 	struct usb_diag_ch *legacy_ch;
 	struct work_struct diag_proc_hdlc_work;
 	struct work_struct diag_read_work;
+	struct work_struct diag_usb_connect_work;
+	struct work_struct diag_usb_disconnect_work;
 #endif
 	struct workqueue_struct *diag_wq;
 	struct work_struct diag_drain_work;
@@ -296,6 +298,7 @@ struct diagchar_dev {
 	struct usb_diag_ch *mdm_ch;
 	struct workqueue_struct *diag_bridge_wq;
 	struct work_struct diag_read_mdm_work;
+	struct work_struct diag_connect_work;
 	struct work_struct diag_disconnect_work;
 	struct work_struct diag_usb_read_complete_work;
 	struct diag_request *usb_read_mdm_ptr;
