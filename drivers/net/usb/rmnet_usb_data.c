@@ -95,10 +95,13 @@ static int rmnet_usb_suspend(struct usb_interface *iface, pm_message_t message)
 	if (work_busy(&dev->get_encap_work))
 		return -EBUSY;
 
-	if (usbnet_suspend(iface, message))
+	usb_kill_anchored_urbs(&dev->rx_submitted);
+
+	if (work_busy(&dev->get_encap_work))
 		return -EBUSY;
 
-	usb_kill_anchored_urbs(&dev->rx_submitted);
+	if (usbnet_suspend(iface, message))
+		return -EBUSY;
 
 	return 0;
 }
