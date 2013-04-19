@@ -648,6 +648,7 @@ struct adm_cmd_memory_unmap_regions{
 #define ASM_OPEN_READ_PERF_MODE_BIT			(1<<29)
 #define ADM_MULTI_CH_COPP_OPEN_PERF_MODE_BIT		(1<<13)
 
+#define AUDPROC_POPP_TOPOLOGY_ID_DTS_AUDIO		0x0001071F
 
 #define ASM_MAX_EQ_BANDS 12
 
@@ -1333,6 +1334,7 @@ struct asm_stream_cmd_open_transcode_loopback {
 * ASM_PARAM_ID_DTS_MIX_LFE_TO_FRONT
 */
 #define ASM_PARAM_ID_DTS_MIX_LFE_TO_FRONT                          0x00010DB6
+#define ASM_PARAM_ID_DTS_LBR_MIX_LFE_TO_FRONT                      0x00010DBC
 
 /*
 * ID of the DTS DRC ratio parameter in the
@@ -1340,7 +1342,8 @@ struct asm_stream_cmd_open_transcode_loopback {
 * asm_dts_generic_param_t
 * ASM_PARAM_ID_DTS_DRC_RATIO
 */
-#define ASM_PARAM_ID_DTS_DRC_RATIO                                   0x00010DB7
+#define ASM_PARAM_ID_DTS_DRC_RATIO                                   0x0001071E
+#define ASM_MODULE_ID_DTS_DRC_RATIO                                  0x0001071D
 
 /*
 * ID of the DTS enable dialog normalization parameter in the
@@ -1349,7 +1352,8 @@ struct asm_stream_cmd_open_transcode_loopback {
 * asm_dts_generic_param_t
 * ASM_PARAM_ID_DTS_ENABLE_DIALNORM
 */
-#define ASM_PARAM_ID_DTS_ENABLE_DIALNORM                             0x00010DB8
+#define ASM_PARAM_ID_DTS_ENABLE_DIALNORM                             0x0001071C
+#define ASM_MODULE_ID_DTS_ENABLE_DIALNORM                            0x0001071B
 
 /*
 * ID of the DTS enable parse REV2AUX parameter in the
@@ -1358,6 +1362,7 @@ struct asm_stream_cmd_open_transcode_loopback {
 * ASM_PARAM_ID_DTS_ENABLE_PARSE_REV2AUX
 */
 #define ASM_PARAM_ID_DTS_ENABLE_PARSE_REV2AUX                         0x00010DB9
+#define ASM_PARAM_ID_DTS_LBR_ENABLE_PARSE_REV2AUX                     0x00010DBD
 
 struct asm_dts_generic_param {
 	int32_t		generic_parameter;

@@ -1680,9 +1680,11 @@ int q6asm_open_write(struct audio_client *ac, uint32_t format)
 		break;
 	case FORMAT_DTS:
 		open.format = DTS;
+		open.post_proc_top = AUDPROC_POPP_TOPOLOGY_ID_DTS_AUDIO;
 		break;
 	case FORMAT_DTS_LBR:
 		open.format = DTS_LBR;
+		open.post_proc_top = AUDPROC_POPP_TOPOLOGY_ID_DTS_AUDIO;
 		break;
 	case FORMAT_AMRWB:
 		open.format = AMRWB_FS;
@@ -3423,6 +3425,188 @@ int q6asm_equalizer(struct audio_client *ac, void *eq)
 	rc = 0;
 fail_cmd:
 	kfree(eq_cmd);
+	return rc;
+}
+
+int q6asm_dts_mix_lfe_to_front(struct audio_client *ac,
+			int enable, int format)
+{
+	struct asm_stream_cmd_dts_dec_param dts_param;
+	int rc = 0;
+
+	pr_debug("%s: format=%d, enable=%d\n", __func__,
+				format, enable);
+
+	q6asm_add_hdr(ac, &dts_param.hdr, sizeof(dts_param), TRUE);
+
+	dts_param.hdr.opcode = ASM_STREAM_CMD_SET_ENCDEC_PARAM;
+	if (format == FORMAT_DTS)
+		dts_param.param_id = ASM_PARAM_ID_DTS_MIX_LFE_TO_FRONT;
+	else if (format == FORMAT_DTS_LBR)
+		dts_param.param_id = ASM_PARAM_ID_DTS_LBR_MIX_LFE_TO_FRONT;
+	dts_param.param_size = sizeof(struct asm_dts_generic_param);
+	dts_param.generic_param.generic_parameter = enable;
+
+	rc = apr_send_pkt(ac->apr, (uint32_t *) &dts_param);
+	if (rc < 0) {
+		pr_err("Comamnd %d failed\n", ASM_STREAM_CMD_SET_ENCDEC_PARAM);
+		rc = -EINVAL;
+		goto fail_cmd;
+	}
+	rc = wait_event_timeout(ac->cmd_wait,
+			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("timeout. waited for FORMAT_UPDATE\n");
+		goto fail_cmd;
+	}
+	return 0;
+fail_cmd:
+	return -EINVAL;
+}
+
+int q6asm_dts_parse_rev2aux(struct audio_client *ac,
+			int enable, int format)
+{
+	struct asm_stream_cmd_dts_dec_param dts_param;
+	int rc = 0;
+
+	pr_debug("%s: format=%d, enable=%d\n", __func__,
+				format, enable);
+
+	q6asm_add_hdr(ac, &dts_param.hdr, sizeof(dts_param), TRUE);
+
+	dts_param.hdr.opcode = ASM_STREAM_CMD_SET_ENCDEC_PARAM;
+	if (format == FORMAT_DTS)
+		dts_param.param_id = ASM_PARAM_ID_DTS_ENABLE_PARSE_REV2AUX;
+	else if (format == FORMAT_DTS_LBR)
+		dts_param.param_id = ASM_PARAM_ID_DTS_LBR_ENABLE_PARSE_REV2AUX;
+	dts_param.param_size = sizeof(struct asm_dts_generic_param);
+	dts_param.generic_param.generic_parameter = enable;
+
+	rc = apr_send_pkt(ac->apr, (uint32_t *) &dts_param);
+	if (rc < 0) {
+		pr_err("Comamnd %d failed\n", ASM_STREAM_CMD_SET_ENCDEC_PARAM);
+		rc = -EINVAL;
+		goto fail_cmd;
+	}
+	rc = wait_event_timeout(ac->cmd_wait,
+			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("timeout. waited for FORMAT_UPDATE\n");
+		goto fail_cmd;
+	}
+	return 0;
+fail_cmd:
+	return -EINVAL;
+}
+
+int q6asm_dts_drc_ratio(struct audio_client *ac,
+				int ratio)
+{
+	void *dts_cmd = NULL;
+	void *payload = NULL;
+	struct asm_pp_params_command *cmd = NULL;
+	struct asm_dts_generic_param *dts_param = NULL;
+	int sz = 0;
+	int rc  = 0;
+
+	sz = sizeof(struct asm_pp_params_command) +
+		+ sizeof(struct asm_dts_generic_param);
+	dts_cmd = kzalloc(sz, GFP_KERNEL);
+	if (dts_cmd == NULL) {
+		pr_err("%s[%d]: Mem alloc failed\n", __func__, ac->session);
+		rc = -EINVAL;
+		return rc;
+	}
+	cmd = (struct asm_pp_params_command *)dts_cmd;
+	q6asm_add_hdr_async(ac, &cmd->hdr, sz, TRUE);
+	cmd->hdr.opcode = ASM_STREAM_CMD_SET_PP_PARAMS;
+	cmd->payload = NULL;
+	cmd->payload_size = sizeof(struct  asm_pp_param_data_hdr) +
+				sizeof(struct asm_dts_generic_param);
+	cmd->params.module_id = ASM_MODULE_ID_DTS_DRC_RATIO;
+	cmd->params.param_id = ASM_PARAM_ID_DTS_DRC_RATIO;
+	cmd->params.param_size = sizeof(struct asm_dts_generic_param);
+	cmd->params.reserved = 0;
+
+	payload = (u8 *)(dts_cmd + sizeof(struct asm_pp_params_command));
+	dts_param = (struct asm_dts_generic_param *)payload;
+
+	dts_param->generic_parameter = ratio;
+	pr_debug("%s: ratio = %d\n", __func__, ratio);
+	rc = apr_send_pkt(ac->apr, (uint32_t *) dts_cmd);
+	if (rc < 0) {
+		pr_err("%s: setting Drc Ratio command failed\n", __func__);
+		rc = -EINVAL;
+		goto fail_cmd;
+	}
+
+	rc = wait_event_timeout(ac->cmd_wait,
+			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("%s: timeout in sending drc ratio command to apr\n",
+							 __func__);
+		rc = -EINVAL;
+		goto fail_cmd;
+	}
+	rc = 0;
+fail_cmd:
+	kfree(dts_cmd);
+	return rc;
+}
+
+int q6asm_dts_enable_dialnorm(struct audio_client *ac,
+				int enable)
+{
+	void *dts_cmd = NULL;
+	void *payload = NULL;
+	struct asm_pp_params_command *cmd = NULL;
+	struct asm_dts_generic_param *dts_param = NULL;
+	int sz = 0;
+	int rc  = 0;
+
+	sz = sizeof(struct asm_pp_params_command) +
+		+ sizeof(struct asm_dts_generic_param);
+	dts_cmd = kzalloc(sz, GFP_KERNEL);
+	if (dts_cmd == NULL) {
+		pr_err("%s[%d]: Mem alloc failed\n", __func__, ac->session);
+		rc = -EINVAL;
+		return rc;
+	}
+	cmd = (struct asm_pp_params_command *)dts_cmd;
+	q6asm_add_hdr_async(ac, &cmd->hdr, sz, TRUE);
+	cmd->hdr.opcode = ASM_STREAM_CMD_SET_PP_PARAMS;
+	cmd->payload = NULL;
+	cmd->payload_size = sizeof(struct  asm_pp_param_data_hdr) +
+				sizeof(struct asm_dts_generic_param);
+	cmd->params.module_id = ASM_MODULE_ID_DTS_ENABLE_DIALNORM;
+	cmd->params.param_id = ASM_PARAM_ID_DTS_ENABLE_DIALNORM;
+	cmd->params.param_size = sizeof(struct asm_dts_generic_param);
+	cmd->params.reserved = 0;
+
+	payload = (u8 *)(dts_cmd + sizeof(struct asm_pp_params_command));
+	dts_param = (struct asm_dts_generic_param *)payload;
+
+	dts_param->generic_parameter = enable;
+	pr_debug("%s: enable = %d\n", __func__, enable);
+	rc = apr_send_pkt(ac->apr, (uint32_t *) dts_cmd);
+	if (rc < 0) {
+		pr_err("%s: Dial Norm command failed\n", __func__);
+		rc = -EINVAL;
+		goto fail_cmd;
+	}
+
+	rc = wait_event_timeout(ac->cmd_wait,
+			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("%s: timeout in sending dialnorm command to apr\n",
+							 __func__);
+		rc = -EINVAL;
+		goto fail_cmd;
+	}
+	rc = 0;
+fail_cmd:
+	kfree(dts_cmd);
 	return rc;
 }
 
