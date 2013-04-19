@@ -30,6 +30,8 @@
 #include <sound/soc.h>
 #include <sound/initval.h>
 
+#include "xilinx-pcm.h"
+
 struct axi_spdif {
 	void __iomem *base;
 
@@ -208,11 +210,12 @@ static int axi_spdif_probe(struct platform_device *pdev)
 
 	axi_spdif_write(spdif, AXI_SPDIF_REG_CTRL, AXI_SPDIF_CTRL_TXEN);
 
-	return 0;
+	return xlnx_pcm_register(&pdev->dev);
 }
 
 static int axi_spdif_dev_remove(struct platform_device *pdev)
 {
+	xlnx_pcm_unregister(&pdev->dev);
 	snd_soc_unregister_dai(&pdev->dev);
 
 	return 0;
