@@ -823,7 +823,7 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 			/* base pipe may change after borderfill_stage_down */
 			pipe = vctrl->base_pipe;
 			mdp4_mixer_stage_down(pipe, 1);
-			mdp4_overlay_pipe_free(pipe);
+			mdp4_overlay_pipe_free(pipe, 1);
 			vctrl->base_pipe = NULL;
 		} else {
 			/* system suspending */
