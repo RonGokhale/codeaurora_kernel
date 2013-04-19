@@ -31,6 +31,13 @@
 #include <linux/module.h>
 #include "../codecs/msm8x10-wcd.h"
 #define DRV_NAME "msm8x10-asoc-wcd"
+#define BTSCO_RATE_8KHZ 8000
+#define BTSCO_RATE_16KHZ 16000
+
+static int msm_btsco_rate = BTSCO_RATE_8KHZ;
+static int msm_btsco_ch = 1;
+
+static int msm_proxy_rx_ch = 2;
 
 #define MSM8X10_DINO_LPASS_AUDIO_CORE_DIG_CODEC_CLK_SEL	0xFE03B004
 #define MSM8X10_DINO_LPASS_DIGCODEC_CMD_RCGR			0xFE02C000
@@ -211,6 +218,21 @@ static int msm_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
+static int msm_btsco_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
+                                        struct snd_pcm_hw_params *params)
+{
+        struct snd_interval *rate = hw_param_interval(params,
+                                        SNDRV_PCM_HW_PARAM_RATE);
+
+        struct snd_interval *channels = hw_param_interval(params,
+                                        SNDRV_PCM_HW_PARAM_CHANNELS);
+
+        rate->min = rate->max = msm_btsco_rate;
+        channels->min = channels->max = msm_btsco_ch;
+
+        return 0;
+}
+
 static int msm_mi2s_snd_hw_params(struct snd_pcm_substream *substream,
 			     struct snd_pcm_hw_params *params)
 {
@@ -381,10 +403,38 @@ static struct snd_soc_ops msm8x10_mi2s_be_ops = {
 	.shutdown = msm_mi2s_snd_shutdown,
 };
 
+static int msm_proxy_rx_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
+					struct snd_pcm_hw_params *params)
+{
+	struct snd_interval *rate = hw_param_interval(params,
+					SNDRV_PCM_HW_PARAM_RATE);
+
+	struct snd_interval *channels = hw_param_interval(params,
+					SNDRV_PCM_HW_PARAM_CHANNELS);
+
+	pr_debug("%s: msm_proxy_rx_ch =%d\n", __func__, msm_proxy_rx_ch);
+
+	if (channels->max < 2)
+		channels->min = channels->max = 2;
+	channels->min = channels->max = msm_proxy_rx_ch;
+	rate->min = rate->max = 48000;
+	return 0;
+}
+
+static int msm_proxy_tx_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
+					struct snd_pcm_hw_params *params)
+{
+	struct snd_interval *rate = hw_param_interval(params,
+					SNDRV_PCM_HW_PARAM_RATE);
+
+	rate->min = rate->max = 48000;
+	return 0;
+}
+
 /* Digital audio interface glue - connects codec <---> CPU */
 static struct snd_soc_dai_link msm8x10_dai[] = {
 	/* FrontEnd DAI Links */
-	{
+	{/* hw:x,0 */
 		.name = "MSM8X10 Media1",
 		.stream_name = "MultiMedia1",
 		.cpu_dai_name	= "MultiMedia1",
@@ -399,7 +449,7 @@ static struct snd_soc_dai_link msm8x10_dai[] = {
 		.ignore_pmdown_time = 1,
 		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA1
 	},
-	{
+	{/* hw:x,1 */
 		.name = "MSM8X10 Media2",
 		.stream_name = "MultiMedia2",
 		.cpu_dai_name   = "MultiMedia2",
@@ -414,7 +464,7 @@ static struct snd_soc_dai_link msm8x10_dai[] = {
 		.ignore_pmdown_time = 1,
 		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA2,
 	},
-	{
+	{/* hw:x,2 */
 		.name = "Circuit-Switch Voice",
 		.stream_name = "CS-Voice",
 		.cpu_dai_name   = "CS-VOICE",
@@ -430,23 +480,38 @@ static struct snd_soc_dai_link msm8x10_dai[] = {
 		.ignore_pmdown_time = 1,
 		.be_id = MSM_FRONTEND_DAI_CS_VOICE,
 	},
-	{
-		.name = "MSM8x10 LowLatency",
-		.stream_name = "MultiMedia5",
-		.cpu_dai_name   = "MultiMedia5",
-		.platform_name  = "msm-pcm-dsp.1",
+	{/* hw:x,3 */
+		.name = "MSM VoIP",
+		.stream_name = "VoIP",
+		.cpu_dai_name	= "VoIP",
+		.platform_name  = "msm-voip-dsp",
 		.dynamic = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
-				SND_SOC_DPCM_TRIGGER_POST},
 		.ignore_suspend = 1,
 		/* this dainlink has playback support */
 		.ignore_pmdown_time = 1,
-		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA5,
+		.be_id = MSM_FRONTEND_DAI_VOIP,
+	},
+	{/* hw:x,4 */
+		.name = "MSM8X10 LPA",
+		.stream_name = "LPA",
+		.cpu_dai_name	= "MultiMedia3",
+		.platform_name  = "msm-pcm-lpa",
+		.dynamic = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.ignore_suspend = 1,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA3,
 	},
 	/* Hostless PCM purpose */
-	{
+	{/* hw:x,5 */
 		.name = "Secondary MI2S RX Hostless",
 		.stream_name = "Secondary MI2S_RX Hostless Playback",
 		.cpu_dai_name = "SEC_MI2S_RX_HOSTLESS",
@@ -461,7 +526,72 @@ static struct snd_soc_dai_link msm8x10_dai[] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
 	},
-	{
+	{/* hw:x,6 */
+		.name = "INT_FM Hostless",
+		.stream_name = "INT_FM Hostless",
+		.cpu_dai_name	= "INT_FM_HOSTLESS",
+		.platform_name  = "msm-pcm-hostless",
+		.dynamic = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
+		.ignore_suspend = 1,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+	},
+	{/* hw:x,7 */
+		.name = "MSM AFE-PCM RX",
+		.stream_name = "AFE-PROXY RX",
+		.cpu_dai_name = "msm-dai-q6-dev.241",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-rx",
+		.platform_name  = "msm-pcm-afe",
+		.ignore_suspend = 1,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+	},
+	{/* hw:x,8 */
+		.name = "MSM AFE-PCM TX",
+		.stream_name = "AFE-PROXY TX",
+		.cpu_dai_name = "msm-dai-q6-dev.240",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-tx",
+		.platform_name  = "msm-pcm-afe",
+		.ignore_suspend = 1,
+	},
+	{/* hw:x,9 */
+		.name = "MSM8X10 Compr",
+		.stream_name = "COMPR",
+		.cpu_dai_name	= "MultiMedia4",
+		.platform_name  = "msm-compr-dsp",
+		.dynamic = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			 SND_SOC_DPCM_TRIGGER_POST},
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.ignore_suspend = 1,
+		.ignore_pmdown_time = 1,
+		 /* this dainlink has playback support */
+		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA4,
+	},
+	{/* hw:x,10 */
+		.name = "AUXPCM Hostless",
+		.stream_name = "AUXPCM Hostless",
+		.cpu_dai_name   = "AUXPCM_HOSTLESS",
+		.platform_name  = "msm-pcm-hostless",
+		.dynamic = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
+		.ignore_suspend = 1,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+	},
+	{/* hw:x,11 */
 		.name = "Primary MI2S TX Hostless",
 		.stream_name = "Primary MI2S_TX Hostless Capture",
 		.cpu_dai_name = "PRI_MI2S_TX_HOSTLESS",
@@ -475,6 +605,21 @@ static struct snd_soc_dai_link msm8x10_dai[] = {
 		 /* This dainlink has MI2S support */
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
+	},
+	{/* hw:x,12 */
+		.name = "MSM8x10 LowLatency",
+		.stream_name = "MultiMedia5",
+		.cpu_dai_name   = "MultiMedia5",
+		.platform_name  = "msm-pcm-dsp.1",
+		.dynamic = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+				SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA5,
 	},
 	/* Backend I2S DAI Links */
 	{
@@ -503,6 +648,84 @@ static struct snd_soc_dai_link msm8x10_dai[] = {
 		.init = &msm_audrx_init,
 		.be_hw_params_fixup = msm_be_hw_params_fixup,
 		.ops = &msm8x10_mi2s_be_ops,
+		.ignore_suspend = 1,
+	},
+	{
+		.name = LPASS_BE_INT_BT_SCO_RX,
+		.stream_name = "Internal BT-SCO Playback",
+		.cpu_dai_name = "msm-dai-q6-dev.12288",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name	= "msm-stub-rx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_INT_BT_SCO_RX,
+		.be_hw_params_fixup = msm_btsco_be_hw_params_fixup,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
+	},
+	{
+		.name = LPASS_BE_INT_BT_SCO_TX,
+		.stream_name = "Internal BT-SCO Capture",
+		.cpu_dai_name = "msm-dai-q6-dev.12289",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name	= "msm-stub-tx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_INT_BT_SCO_TX,
+		.be_hw_params_fixup = msm_btsco_be_hw_params_fixup,
+		.ignore_suspend = 1,
+	},
+	{
+		.name = LPASS_BE_INT_FM_RX,
+		.stream_name = "Internal FM Playback",
+		.cpu_dai_name = "msm-dai-q6-dev.12292",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-rx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_INT_FM_RX,
+		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
+	},
+	{
+		.name = LPASS_BE_INT_FM_TX,
+		.stream_name = "Internal FM Capture",
+		.cpu_dai_name = "msm-dai-q6-dev.12293",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-tx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_INT_FM_TX,
+		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		.ignore_suspend = 1,
+	},
+	{
+		.name = LPASS_BE_AFE_PCM_RX,
+		.stream_name = "AFE Playback",
+		.cpu_dai_name = "msm-dai-q6-dev.224",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-rx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_AFE_PCM_RX,
+		.be_hw_params_fixup = msm_proxy_rx_be_hw_params_fixup,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
+	},
+	{
+		.name = LPASS_BE_AFE_PCM_TX,
+		.stream_name = "AFE Capture",
+		.cpu_dai_name = "msm-dai-q6-dev.225",
+		.platform_name = "msm-pcm-routing",
+		.codec_name = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-tx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_AFE_PCM_TX,
+		.be_hw_params_fixup = msm_proxy_tx_be_hw_params_fixup,
 		.ignore_suspend = 1,
 	},
 	/* Incall Record Uplink BACK END DAI Link */
