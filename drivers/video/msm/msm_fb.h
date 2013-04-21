@@ -51,6 +51,7 @@
 #define MFD_KEY  0x11161126
 #define MSM_FB_MAX_DEV_LIST 32
 #define MDP_MAX_FENCE_LOG 128
+#define MDP_MAX_CACHED_REG 128
 
 struct disp_info_type_suspend {
 	boolean op_enable;
@@ -247,6 +248,9 @@ struct msm_fb_data_type {
 	uint32 edid_fail_status;
 	uint32 vfmt_kernel;
 	uint32 vfmt_lk;
+	struct mdp_table_entry cached_reg[MDP_MAX_CACHED_REG];
+	uint32 cached_reg_cnt;
+	uint32 cache_reg_en;
 };
 struct msm_fb_backup_type {
 	struct fb_info info;
