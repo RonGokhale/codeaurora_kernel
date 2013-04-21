@@ -112,6 +112,17 @@ list of aosp branches
 - aosp-common/android-3.4-compat
 - aosp-common/experimental/android-3.8
 - aosp-common/experimental/android-3.9-rc2
+- aosp-common/experimental/android-3.9-rc7
+
+QUALCOMM Branches
+===================
+- q3.4/android-jb_2.5
+- q3.4/jb_2.5
+- q3.4/android-msm-3.4 
+- q3.4/qandroid-3.4
+- q3.4/core-3.4 
+- q3.9/android-msm-3.9-rc2
+
 
 
 list of tags
