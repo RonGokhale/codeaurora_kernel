@@ -15,6 +15,7 @@
 
 #include <mach/msm_iomap.h>
 #include "external_common.h"
+#include "hdcp_tx.h"
 /* #define PORT_DEBUG */
 
 #ifdef PORT_DEBUG
@@ -118,6 +119,23 @@ struct hdmi_msm_state_type {
 	struct external_common_state_type common;
 	boolean is_mhl_enabled;
 	struct completion hpd_event_processed;
+
+	/*
+	 * keep track of retrying times of hdcp re-authenticating
+	 * before aborting.
+	 */
+	int auth_retries;
+	struct hdcp_tx_apis hdcp_tx_ops;
+	/*
+	 * Used to cache latest topology of auth'ed HDCP data link
+	 * Will be accessed from both user task and authentication task.
+	 */
+	struct HDCP_V2V1_MSG_TOPOLOGY cached_tp;
+	/*
+	 * Used to transfer current topology btw stages of HDCP auth
+	 * only used by authentication thread.
+	 */
+	struct HDCP_V2V1_MSG_TOPOLOGY cur_tp;
 };
 
 extern struct hdmi_msm_state_type *hdmi_msm_state;
