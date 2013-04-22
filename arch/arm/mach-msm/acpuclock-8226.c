@@ -81,8 +81,8 @@ static struct clkctl_acpu_speed acpu_freq_tbl_8610[] = {
 	{ 1,  384000, ACPUPLL, 5, 0,   CPR_CORNER_SVS,   1150000, 3 },
 	{ 1,  600000, PLL0,    4, 0,   CPR_CORNER_NORMAL,   1150000, 4 },
 	{ 1,  787200, ACPUPLL, 5, 0,   CPR_CORNER_NORMAL,   1150000, 4 },
-	{ 0,  998400, ACPUPLL, 5, 0,   CPR_CORNER_TURBO,   1275000, 5 },
-	{ 0, 1190400, ACPUPLL, 5, 0,   CPR_CORNER_TURBO,   1275000, 5 },
+	{ 1,  998400, ACPUPLL, 5, 0,   CPR_CORNER_TURBO,   1275000, 5 },
+	{ 1, 1190400, ACPUPLL, 5, 0,   CPR_CORNER_TURBO,   1275000, 5 },
 	{ 0 }
 };
 
@@ -91,7 +91,7 @@ static struct acpuclk_drv_data drv_data = {
 	.current_speed = &(struct clkctl_acpu_speed){ 0 },
 	.bus_scale = &bus_client_pdata,
 	.vdd_max_cpu = CPR_CORNER_TURBO,
-	.vdd_max_mem = 1150000,
+	.vdd_max_mem = 1275000,
 	.src_clocks = {
 		[PLL0].name = "gpll0",
 		[ACPUPLL].name = "a7sspll",

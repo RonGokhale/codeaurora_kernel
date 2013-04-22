@@ -2430,11 +2430,11 @@ static struct measure_mux_entry measure_mux[] = {
 	{             &q6ss_ahb_lfabif_clk.c, LPASS_BASE, 0x001e},
 	{                     &q6ss_xo_clk.c, LPASS_BASE, 0x002b},
 
-	{&apc0_m_clk,                    APCS_BASE, 0x10},
-	{&apc1_m_clk,                    APCS_BASE, 0x11},
-	{&apc2_m_clk,                    APCS_BASE, 0x12},
-	{&apc3_m_clk,                    APCS_BASE, 0x13},
-	{&l2_m_clk,                      APCS_BASE, 0x15},
+	{&apc0_m_clk,                    APCS_BASE, 0x00010},
+	{&apc1_m_clk,                    APCS_BASE, 0x00114},
+	{&apc2_m_clk,                    APCS_BASE, 0x00220},
+	{&apc3_m_clk,                    APCS_BASE, 0x00324},
+	{&l2_m_clk,                      APCS_BASE, 0x01000},	
 
 	{&dummy_clk, N_BASES, 0x0000},
 };
@@ -2501,6 +2501,7 @@ static int measure_clk_set_parent(struct clk *c, struct clk *parent)
 		clk->multiplier = 4;
 		clk_sel = 0x16A;
 		regval = measure_mux[i].debug_mux;
+		regval |= BVAL(31, 30, 0x3);
 		writel_relaxed(regval, APCS_REG_BASE(GLB_CLK_DIAG));
 		break;
 
