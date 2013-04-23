@@ -97,6 +97,20 @@ static void mdss_mdp_smp_set_wm_levels(struct mdss_mdp_pipe *pipe, int mb_cnt)
 	u32 entries, val, wm[3];
 
 	entries = mb_cnt * SMP_ENTRIES_PER_MB;
+
+	/*
+	 * when doing hflip, one line is reserved to be consumed down the
+	 * pipeline. This line will always be marked as full even if it doesn't
+	 * have any data. In order to generate proper priority levels ignore
+	 * this region while setting up watermark levels
+	 */
+	if (pipe->flags & MDP_FLIP_LR) {
+		u8 bpp = pipe->src_fmt->is_yuv ? 1 :
+			pipe->src_fmt->bpp;
+		entries -= (pipe->src.w * bpp) / 16;
+	}
+
+	/* 1/4 of SMP pool that is being fetched */
 	val = entries >> 2;
 
 	wm[0] = val;
