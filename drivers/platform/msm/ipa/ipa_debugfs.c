@@ -556,15 +556,27 @@ static ssize_t ipa_read_stats(struct file *file, char __user *ubuf,
 			"x_intr_repost=%u\n"
 			"rx_q_len=%u\n"
 			"act_clnt=%u\n"
-			"con_clnt_bmap=0x%x\n",
+			"con_clnt_bmap=0x%x\n"
+			"a2_power_on_reqs_in=%u\n"
+			"a2_power_on_reqs_out=%u\n"
+			"a2_power_off_reqs_in=%u\n"
+			"a2_power_off_reqs_out=%u\n"
+			"a2_power_modem_acks=%u\n"
+			"a2_power_apps_acks=%u\n",
 			ipa_ctx->stats.tx_sw_pkts,
 			ipa_ctx->stats.tx_hw_pkts,
 			ipa_ctx->stats.rx_pkts,
 			ipa_ctx->stats.rx_repl_repost,
 			ipa_ctx->stats.x_intr_repost,
 			ipa_ctx->stats.rx_q_len,
-			atomic_read(&ipa_ctx->ipa_active_clients),
-			connect);
+			ipa_ctx->ipa_active_clients,
+			connect,
+			ipa_ctx->stats.a2_power_on_reqs_in,
+			ipa_ctx->stats.a2_power_on_reqs_out,
+			ipa_ctx->stats.a2_power_off_reqs_in,
+			ipa_ctx->stats.a2_power_off_reqs_out,
+			ipa_ctx->stats.a2_power_modem_acks,
+			ipa_ctx->stats.a2_power_apps_acks);
 	cnt += nbytes;
 
 	for (i = 0; i < MAX_NUM_EXCP; i++) {

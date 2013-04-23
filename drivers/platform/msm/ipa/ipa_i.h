@@ -531,6 +531,12 @@ struct ipa_stats {
 	u32 rx_q_len;
 	u32 msg_w[IPA_EVENT_MAX];
 	u32 msg_r[IPA_EVENT_MAX];
+	u32 a2_power_on_reqs_in;
+	u32 a2_power_on_reqs_out;
+	u32 a2_power_off_reqs_in;
+	u32 a2_power_off_reqs_out;
+	u32 a2_power_modem_acks;
+	u32 a2_power_apps_acks;
 };
 
 /**
@@ -585,7 +591,7 @@ struct ipa_stats {
  * @ip6_flt_tbl_lcl: where ip6 flt tables reside 1-local; 0-system
  * @empty_rt_tbl_mem: empty routing tables memory
  * @pipe_mem_pool: pipe memory pool
- * @one_kb_no_straddle_pool: one kb no straddle pool
+ * @dma_pool: special purpose DMA pool
  * @ipa_hw_type: type of IPA HW type (e.g. IPA 1.0, IPA 1.1 etc')
  * @ipa_hw_mode: mode of IPA HW mode (e.g. Normal, Virtual or over PCIe)
  *
@@ -643,8 +649,9 @@ struct ipa_context {
 	bool ip6_flt_tbl_lcl;
 	struct ipa_mem_buffer empty_rt_tbl_mem;
 	struct gen_pool *pipe_mem_pool;
-	struct dma_pool *one_kb_no_straddle_pool;
-	atomic_t ipa_active_clients;
+	struct dma_pool *dma_pool;
+	struct mutex ipa_active_clients_lock;
+	int ipa_active_clients;
 	u32 clnt_hdl_cmd;
 	u32 clnt_hdl_data_in;
 	u32 clnt_hdl_data_out;
@@ -795,6 +802,8 @@ int ipa_straddle_boundary(u32 start, u32 end, u32 boundary);
 struct ipa_context *ipa_get_ctx(void);
 void ipa_enable_clks(void);
 void ipa_disable_clks(void);
+void ipa_inc_client_enable_clks(void);
+void ipa_dec_client_disable_clks(void);
 int __ipa_del_rt_rule(u32 rule_hdl);
 int __ipa_del_hdr(u32 hdr_hdl);
 int __ipa_release_hdr(u32 hdr_hdl);

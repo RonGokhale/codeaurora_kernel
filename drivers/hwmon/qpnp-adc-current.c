@@ -129,6 +129,7 @@
 struct qpnp_iadc_drv {
 	struct qpnp_adc_drv			*adc;
 	int32_t					rsense;
+	bool					external_rsense;
 	struct device				*iadc_hwmon;
 	bool					iadc_initialized;
 	int64_t					die_temp_calib_offset;
@@ -543,6 +544,9 @@ int32_t qpnp_iadc_get_rsense(int32_t *rsense)
 	if (!iadc || !iadc->iadc_initialized)
 		return -EPROBE_DEFER;
 
+	if (iadc->external_rsense)
+		*rsense = iadc->rsense;
+
 	rc = qpnp_iadc_read_reg(QPNP_IADC_NOMINAL_RSENSE, &rslt_rsense);
 	if (rc < 0) {
 		pr_err("qpnp adc rsense read failed with %d\n", rc);
@@ -571,15 +575,21 @@ static int32_t qpnp_check_pmic_temp(void)
 {
 	struct qpnp_iadc_drv *iadc = qpnp_iadc;
 	struct qpnp_vadc_result result_pmic_therm;
+	int64_t die_temp_offset;
 	int rc = 0;
 
 	rc = qpnp_vadc_read(DIE_TEMP, &result_pmic_therm);
 	if (rc < 0)
 		return rc;
 
-	if (((uint64_t) (result_pmic_therm.physical -
-				iadc->die_temp_calib_offset))
-			> QPNP_IADC_DIE_TEMP_CALIB_OFFSET) {
+	die_temp_offset = result_pmic_therm.physical -
+			iadc->die_temp_calib_offset;
+	if (die_temp_offset < 0)
+		die_temp_offset = -die_temp_offset;
+
+	if (die_temp_offset > QPNP_IADC_DIE_TEMP_CALIB_OFFSET) {
+		iadc->die_temp_calib_offset =
+			result_pmic_therm.physical;
 		rc = qpnp_iadc_calibrate_for_trim();
 		if (rc)
 			pr_err("periodic IADC calibration failed\n");
@@ -822,9 +832,11 @@ static int __devinit qpnp_iadc_probe(struct spmi_device *spmi)
 
 	rc = of_property_read_u32(node, "qcom,rsense",
 			&iadc->rsense);
-	if (rc) {
-		pr_err("Invalid rsens reference property\n");
-		goto fail;
+	if (rc)
+		pr_debug("Defaulting to internal rsense\n");
+	else {
+		pr_debug("Use external rsense\n");
+		iadc->external_rsense = true;
 	}
 
 	rc = devm_request_irq(&spmi->dev, iadc->adc->adc_irq_eoc,

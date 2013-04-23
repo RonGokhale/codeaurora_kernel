@@ -17,10 +17,29 @@
 / {
 	model = "Qualcomm MSM 8610 CDP";
 	compatible = "qcom,msm8610-cdp", "qcom,msm8610", "qcom,cdp";
-	qcom,msm-id = <147 1 0>, <165 1 0>;
+	qcom,msm-id = <147 1 0>, <165 1 0>, <161 1 0>, <162 1 0>,
+		      <163 1 0>, <164 1 0>, <166 1 0>;
 
 	serial@f991e000 {
 		status = "ok";
+	};
+};
+
+&spmi_bus {
+	qcom,pm8110@0 {
+		qcom,leds@a200 {
+			status = "okay";
+			qcom,led_mpp_3 {
+				label = "mpp";
+				linux,name = "wled-backlight";
+				linux-default-trigger = "none";
+				qcom,default-state = "on";
+				qcom,max-current = <40>;
+				qcom,id = <6>;
+				qcom,source-sel = <1>;
+				qcom,mode-ctrl = <0x10>;
+			};
+		};
 	};
 };
 
@@ -78,4 +97,26 @@
 	cd-gpios = <&msmgpio 42 0x1>;
 
 	status = "ok";
+};
+
+&pm8110_chg {
+	status = "ok";
+	qcom,charging-disabled;
+	qcom,use-default-batt-values;
+
+	qcom,chgr@1000 {
+		status = "ok";
+	};
+
+	qcom,buck@1100 {
+		status = "ok";
+	};
+
+	qcom,usb-chgpth@1300 {
+		status = "ok";
+	};
+
+	qcom,chg-misc@1600 {
+		status = "ok";
+	};
 };

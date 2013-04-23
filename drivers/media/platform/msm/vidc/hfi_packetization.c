@@ -1057,6 +1057,51 @@ int create_pkt_cmd_session_set_property(
 		pkt->size += sizeof(u32) + sizeof(struct hfi_quantization);
 		break;
 	}
+	case HAL_PARAM_VENC_SESSION_QP_RANGE:
+	{
+		struct hfi_quantization_range *hfi;
+		struct hfi_quantization_range *hal_range =
+			(struct hfi_quantization_range *) pdata;
+		u32 min_qp, max_qp;
+
+		pkt->rg_property_data[0] =
+			HFI_PROPERTY_PARAM_VENC_SESSION_QP_RANGE;
+		hfi = (struct hfi_quantization_range *)
+				&pkt->rg_property_data[1];
+
+		min_qp = hal_range->min_qp;
+		max_qp = hal_range->max_qp;
+
+		/* We'll be packing in the qp, so make sure we
+		 * won't be losing data when masking */
+		if (min_qp > 0xff || max_qp > 0xff) {
+			dprintk(VIDC_ERR, "qp value out of range\n");
+			rc = -ERANGE;
+			break;
+		}
+
+		/* When creating the packet, pack the qp value as
+		 * 0xiippbb, where ii = qp range for I-frames,
+		 * pp = qp range for P-frames, etc. */
+		hfi->min_qp = min_qp | min_qp << 8 | min_qp << 16;
+		hfi->max_qp = max_qp | max_qp << 8 | max_qp << 16;
+		hfi->layer_id = hal_range->layer_id;
+
+		pkt->size += sizeof(u32) +
+			sizeof(struct hfi_quantization_range);
+		break;
+	}
+	case HAL_PARAM_VENC_MAX_NUM_B_FRAMES:
+	{
+		struct hfi_max_num_b_frames *hfi;
+		pkt->rg_property_data[0] =
+			HFI_PROPERTY_PARAM_VENC_MAX_NUM_B_FRAMES;
+		hfi = (struct hfi_max_num_b_frames *) &pkt->rg_property_data[1];
+		memcpy(hfi, (struct hfi_max_num_b_frames *) pdata,
+				sizeof(struct hfi_max_num_b_frames));
+		pkt->size += sizeof(u32) + sizeof(struct hfi_max_num_b_frames);
+		break;
+	}
 	case HAL_CONFIG_VENC_INTRA_PERIOD:
 	{
 		struct hfi_intra_period *hfi;
@@ -1203,6 +1248,16 @@ int create_pkt_cmd_session_set_property(
 	}
 	case HAL_CONFIG_VPE_DEINTERLACE:
 		break;
+	case HAL_PARAM_VENC_H264_GENERATE_AUDNAL:
+	{
+		struct hfi_enable *hfi;
+		pkt->rg_property_data[0] =
+			HFI_PROPERTY_PARAM_VENC_H264_GENERATE_AUDNAL;
+		hfi = (struct hfi_enable *) &pkt->rg_property_data[1];
+		hfi->enable = ((struct hal_enable *) pdata)->enable;
+		pkt->size += sizeof(u32) + sizeof(struct hfi_enable);
+		break;
+	}
 	/* FOLLOWING PROPERTIES ARE NOT IMPLEMENTED IN CORE YET */
 	case HAL_CONFIG_BUFFER_REQUIREMENTS:
 	case HAL_CONFIG_PRIORITY:

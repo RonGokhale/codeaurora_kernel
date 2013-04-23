@@ -1,5 +1,3 @@
-
-
 /*Qualcomm Secure Execution Environment Communicator (QSEECOM) driver
  *
  * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
@@ -53,6 +51,7 @@
 #define QSEE_VERSION_01			0x401000
 #define QSEE_VERSION_02			0x402000
 #define QSEE_VERSION_03			0x403000
+#define QSEE_VERSION_04			0x404000
 
 
 #define QSEOS_CHECK_VERSION_CMD		0x00001803
@@ -61,6 +60,12 @@
 
 #define QSEECOM_MAX_SG_ENTRY	512
 #define QSEECOM_DISK_ENCRYTPION_KEY_ID 0
+
+/* Save partition image hash for authentication check */
+#define	SCM_SAVE_PARTITION_HASH_ID	0x01
+
+/* Check if enterprise security is activate */
+#define	SCM_IS_ACTIVATED_ID		0x02
 
 enum qseecom_clk_definitions {
 	CLK_DFAB = 0,
@@ -74,6 +79,11 @@ enum qseecom_client_handle_type {
 	QSEECOM_GENERIC,
 };
 
+enum qseecom_ce_hw_instance {
+	CLK_QSEE = 0,
+	CLK_CE_DRV,
+};
+
 static struct class *driver_class;
 static dev_t qseecom_device_no;
 static struct cdev qseecom_cdev;
@@ -85,6 +95,7 @@ static DEFINE_MUTEX(pil_access_lock);
 
 static DEFINE_MUTEX(qsee_bw_mutex);
 static DEFINE_MUTEX(app_access_lock);
+static DEFINE_MUTEX(clk_access_lock);
 
 struct qseecom_registered_listener_list {
 	struct list_head                 list;
@@ -117,10 +128,12 @@ struct ce_hw_usage_info {
 };
 
 struct qseecom_clk {
+	enum qseecom_ce_hw_instance instance;
 	struct clk *ce_core_clk;
 	struct clk *ce_clk;
 	struct clk *ce_core_src_clk;
 	struct clk *ce_bus_clk;
+	uint32_t clk_access_cnt;
 };
 
 struct qseecom_control {
@@ -148,6 +161,7 @@ struct qseecom_control {
 
 	uint32_t qsee_perf_client;
 	struct qseecom_clk qsee;
+	struct qseecom_clk ce_drv;
 };
 
 struct qseecom_client_handle {
@@ -551,13 +565,14 @@ static int __qseecom_process_incomplete_cmd(struct qseecom_dev_handle *data,
 		if (wait_event_freezable(qseecom.send_resp_wq,
 				__qseecom_listener_has_sent_rsp(data))) {
 			pr_warning("Interrupted: exiting send_cmd loop\n");
-			return -ERESTARTSYS;
+			ret = -ERESTARTSYS;
 		}
 
-		if (data->abort) {
-			pr_err("Aborting listener service %d\n",
-				data->listener.id);
-			rc = -ENODEV;
+		if ((data->abort) || (ret == -ERESTARTSYS)) {
+			pr_err("Abort clnt %d waiting on lstnr svc %d, ret %d",
+				data->client.app_id, lstnr, ret);
+			if (data->abort)
+				rc = -ENODEV;
 			send_data_rsp.status  = QSEOS_RESULT_FAILURE;
 		} else {
 			send_data_rsp.status  = QSEOS_RESULT_SUCCESS;
@@ -658,7 +673,7 @@ static int qseecom_load_app(struct qseecom_dev_handle *data, void __user *argp)
 		app_id = ret;
 
 	if (app_id) {
-		pr_warn("App id %d (%s) already exists\n", app_id,
+		pr_debug("App id %d (%s) already exists\n", app_id,
 			(char *)(req.app_name));
 		spin_lock_irqsave(&qseecom.registered_app_list_lock, flags);
 		list_for_each_entry(entry,
@@ -816,7 +831,7 @@ static int qseecom_unload_app(struct qseecom_dev_handle *data)
 					break;
 				} else {
 					ptr_app->ref_cnt--;
-					pr_warn("Can't unload app(%d) inuse\n",
+					pr_debug("Can't unload app(%d) inuse\n",
 							ptr_app->app_id);
 					break;
 				}
@@ -1633,7 +1648,6 @@ int qseecom_start_app(struct qseecom_handle **handle,
 	data->abort = 0;
 	data->type = QSEECOM_CLIENT_APP;
 	data->released = false;
-	data->client.app_id = ret;
 	data->client.sb_length = size;
 	data->client.user_virt_sb_base = 0;
 	data->client.ihandle = NULL;
@@ -1678,7 +1692,7 @@ int qseecom_start_app(struct qseecom_handle **handle,
 		*handle = NULL;
 		return -EINVAL;
 	}
-
+	data->client.app_id = ret;
 	if (ret > 0) {
 		pr_warn("App id %d for [%s] app exists\n", ret,
 			(char *)app_ireq.app_name);
@@ -1891,12 +1905,23 @@ static int qseecom_get_qseos_version(struct qseecom_dev_handle *data,
 	return 0;
 }
 
-static int __qseecom_enable_clk(void)
+static int __qseecom_enable_clk(enum qseecom_ce_hw_instance ce)
 {
 	int rc = 0;
 	struct qseecom_clk *qclk;
 
+	if (ce == CLK_QSEE)
 		qclk = &qseecom.qsee;
+	else
+		qclk = &qseecom.ce_drv;
+
+	mutex_lock(&clk_access_lock);
+	if (qclk->clk_access_cnt > 0) {
+		qclk->clk_access_cnt++;
+		mutex_unlock(&clk_access_lock);
+		return rc;
+	}
+
 	/* Enable CE core clk */
 	rc = clk_prepare_enable(qclk->ce_core_clk);
 	if (rc) {
@@ -1915,6 +1940,8 @@ static int __qseecom_enable_clk(void)
 		pr_err("Unable to enable/prepare CE bus clk\n");
 		goto ce_bus_clk_err;
 	}
+	qclk->clk_access_cnt++;
+	mutex_unlock(&clk_access_lock);
 	return 0;
 
 ce_bus_clk_err:
@@ -1922,20 +1949,30 @@ ce_bus_clk_err:
 ce_clk_err:
 	clk_disable_unprepare(qclk->ce_core_clk);
 err:
+	mutex_unlock(&clk_access_lock);
 	return -EIO;
 }
 
-static void __qseecom_disable_clk(void)
+static void __qseecom_disable_clk(enum qseecom_ce_hw_instance ce)
 {
 	struct qseecom_clk *qclk;
 
-	qclk = &qseecom.qsee;
-	if (qclk->ce_clk != NULL)
-		clk_disable_unprepare(qclk->ce_clk);
-	if (qclk->ce_core_clk != NULL)
-		clk_disable_unprepare(qclk->ce_core_clk);
-	if (qclk->ce_bus_clk != NULL)
-		clk_disable_unprepare(qclk->ce_bus_clk);
+	if (ce == CLK_QSEE)
+		qclk = &qseecom.qsee;
+	else
+		qclk = &qseecom.ce_drv;
+
+	mutex_lock(&clk_access_lock);
+	if (qclk->clk_access_cnt == 1) {
+		if (qclk->ce_clk != NULL)
+			clk_disable_unprepare(qclk->ce_clk);
+		if (qclk->ce_core_clk != NULL)
+			clk_disable_unprepare(qclk->ce_core_clk);
+		if (qclk->ce_bus_clk != NULL)
+			clk_disable_unprepare(qclk->ce_bus_clk);
+	}
+	qclk->clk_access_cnt--;
+	mutex_unlock(&clk_access_lock);
 }
 
 static int qsee_vote_for_clock(struct qseecom_dev_handle *data,
@@ -1957,14 +1994,14 @@ static int qsee_vote_for_clock(struct qseecom_dev_handle *data,
 					qseecom.qsee_perf_client, 3);
 			else {
 				if (qclk->ce_core_src_clk != NULL)
-					ret = __qseecom_enable_clk();
+					ret = __qseecom_enable_clk(CLK_QSEE);
 				if (!ret) {
 					ret =
 					msm_bus_scale_client_update_request(
 						qseecom.qsee_perf_client, 1);
 					if ((ret) &&
 						(qclk->ce_core_src_clk != NULL))
-						__qseecom_disable_clk();
+						__qseecom_disable_clk(CLK_QSEE);
 				}
 			}
 			if (ret)
@@ -1988,14 +2025,14 @@ static int qsee_vote_for_clock(struct qseecom_dev_handle *data,
 					qseecom.qsee_perf_client, 3);
 			else {
 				if (qclk->ce_core_src_clk != NULL)
-					ret = __qseecom_enable_clk();
+					ret = __qseecom_enable_clk(CLK_QSEE);
 				if (!ret) {
 					ret =
 					msm_bus_scale_client_update_request(
 						qseecom.qsee_perf_client, 2);
 					if ((ret) &&
 						(qclk->ce_core_src_clk != NULL))
-						__qseecom_disable_clk();
+						__qseecom_disable_clk(CLK_QSEE);
 				}
 			}
 
@@ -2046,7 +2083,7 @@ static void qsee_disable_clock_vote(struct qseecom_dev_handle *data,
 				ret = msm_bus_scale_client_update_request(
 						qseecom.qsee_perf_client, 0);
 				if ((!ret) && (qclk->ce_core_src_clk != NULL))
-					__qseecom_disable_clk();
+					__qseecom_disable_clk(CLK_QSEE);
 			}
 			if (ret)
 				pr_err("SFPB Bandwidth req fail (%d)\n",
@@ -2076,7 +2113,7 @@ static void qsee_disable_clock_vote(struct qseecom_dev_handle *data,
 				ret = msm_bus_scale_client_update_request(
 						qseecom.qsee_perf_client, 0);
 				if ((!ret) && (qclk->ce_core_src_clk != NULL))
-					__qseecom_disable_clk();
+					__qseecom_disable_clk(CLK_QSEE);
 			}
 			if (ret)
 				pr_err("SFPB Bandwidth req fail (%d)\n",
@@ -2278,7 +2315,7 @@ static int qseecom_query_app_loaded(struct qseecom_dev_handle *data,
 		pr_err(" scm call to check if app is loaded failed");
 		return ret;	/* scm call failed */
 	} else if (ret > 0) {
-		pr_warn("App id %d (%s) already exists\n", ret,
+		pr_debug("App id %d (%s) already exists\n", ret,
 			(char *)(req.app_name));
 		spin_lock_irqsave(&qseecom.registered_app_list_lock, flags);
 		list_for_each_entry(entry,
@@ -2345,11 +2382,13 @@ static int __qseecom_generate_and_save_key(struct qseecom_dev_handle *data,
 	memcpy(ireq.key_id, key_id, QSEECOM_KEY_ID_SIZE);
 	ireq.flags = flags;
 
+	__qseecom_enable_clk(CLK_QSEE);
 	ret = scm_call(SCM_SVC_CRYPTO, QSEOS_GENERATE_KEY,
 				&ireq, sizeof(struct qseecom_key_generate_ireq),
 				&resp, sizeof(resp));
 	if (ret) {
 		pr_err("scm call to generate key failed : %d\n", ret);
+		__qseecom_disable_clk(CLK_QSEE);
 		return ret;
 	}
 
@@ -2367,6 +2406,7 @@ static int __qseecom_generate_and_save_key(struct qseecom_dev_handle *data,
 		ret = -EINVAL;
 		break;
 	}
+	__qseecom_disable_clk(CLK_QSEE);
 	return ret;
 }
 
@@ -2386,11 +2426,13 @@ static int __qseecom_delete_saved_key(struct qseecom_dev_handle *data,
 	memcpy(ireq.key_id, key_id, QSEECOM_KEY_ID_SIZE);
 	ireq.flags = flags;
 
+	__qseecom_enable_clk(CLK_QSEE);
 	ret = scm_call(SCM_SVC_CRYPTO, QSEOS_DELETE_KEY,
 				&ireq, sizeof(struct qseecom_key_delete_ireq),
 				&resp, sizeof(struct qseecom_command_scm_resp));
 	if (ret) {
 		pr_err("scm call to delete key failed : %d\n", ret);
+		__qseecom_disable_clk(CLK_QSEE);
 		return ret;
 	}
 
@@ -2409,6 +2451,7 @@ static int __qseecom_delete_saved_key(struct qseecom_dev_handle *data,
 		ret = -EINVAL;
 		break;
 	}
+	__qseecom_disable_clk(CLK_QSEE);
 	return ret;
 }
 
@@ -2424,6 +2467,12 @@ static int __qseecom_set_clear_ce_key(struct qseecom_dev_handle *data,
 			pr_err("Error:: unsupported usage %d\n", usage);
 			return -EFAULT;
 	}
+
+	if (qseecom.qsee.instance == qseecom.ce_drv.instance)
+		__qseecom_enable_clk(CLK_QSEE);
+	else
+		__qseecom_enable_clk(CLK_CE_DRV);
+
 	memcpy(ireq.key_id, set_key_para->key_id, QSEECOM_KEY_ID_SIZE);
 	ireq.ce = set_key_para->ce_hw;
 	ireq.pipe = set_key_para->pipe;
@@ -2458,6 +2507,11 @@ static int __qseecom_set_clear_ce_key(struct qseecom_dev_handle *data,
 		ret = -EINVAL;
 		break;
 	}
+
+	if (qseecom.qsee.instance == qseecom.ce_drv.instance)
+		__qseecom_disable_clk(CLK_QSEE);
+	else
+		__qseecom_disable_clk(CLK_CE_DRV);
 
 	return ret;
 }
@@ -2568,6 +2622,70 @@ static int qseecom_wipe_key(struct qseecom_dev_handle *data,
 	}
 
 	return ret;
+}
+
+static int qseecom_is_es_activated(void __user *argp)
+{
+	struct qseecom_is_es_activated_req req;
+	int ret;
+	int resp_buf;
+
+	if (qseecom.qsee_version < QSEE_VERSION_04) {
+		pr_err("invalid qsee version");
+		return -ENODEV;
+	}
+
+	if (argp == NULL) {
+		pr_err("arg is null");
+		return -EINVAL;
+	}
+
+	ret = scm_call(SCM_SVC_ES, SCM_IS_ACTIVATED_ID, NULL, 0,
+		       (void *) &resp_buf, sizeof(resp_buf));
+	if (ret) {
+		pr_err("scm_call failed");
+		return ret;
+	}
+
+	req.is_activated = resp_buf;
+	ret = copy_to_user(argp, &req, sizeof(req));
+	if (ret) {
+		pr_err("copy_to_user failed");
+		return ret;
+	}
+
+	return 0;
+}
+
+static int qseecom_save_partition_hash(void __user *argp)
+{
+	struct qseecom_save_partition_hash_req req;
+	int ret;
+
+	if (qseecom.qsee_version < QSEE_VERSION_04) {
+		pr_err("invalid qsee version ");
+		return -ENODEV;
+	}
+
+	if (argp == NULL) {
+		pr_err("arg is null");
+		return -EINVAL;
+	}
+
+	ret = copy_from_user(&req, argp, sizeof(req));
+	if (ret) {
+		pr_err("copy_from_user failed");
+		return ret;
+	}
+
+	ret = scm_call(SCM_SVC_ES, SCM_SAVE_PARTITION_HASH_ID,
+		       (void *) &req, sizeof(req), NULL, 0);
+	if (ret) {
+		pr_err("scm_call failed");
+		return ret;
+	}
+
+	return 0;
 }
 
 static long qseecom_ioctl(struct file *file, unsigned cmd,
@@ -2782,6 +2900,24 @@ static long qseecom_ioctl(struct file *file, unsigned cmd,
 		mutex_unlock(&app_access_lock);
 		break;
 	}
+	case QSEECOM_IOCTL_SAVE_PARTITION_HASH_REQ: {
+		data->released = true;
+		mutex_lock(&app_access_lock);
+		atomic_inc(&data->ioctl_count);
+		ret = qseecom_save_partition_hash(argp);
+		atomic_dec(&data->ioctl_count);
+		mutex_unlock(&app_access_lock);
+		break;
+	}
+	case QSEECOM_IOCTL_IS_ES_ACTIVATED_REQ: {
+		data->released = true;
+		mutex_lock(&app_access_lock);
+		atomic_inc(&data->ioctl_count);
+		ret = qseecom_is_es_activated(argp);
+		atomic_dec(&data->ioctl_count);
+		mutex_unlock(&app_access_lock);
+		break;
+	}
 	default:
 		return -EINVAL;
 	}
@@ -2877,18 +3013,43 @@ static const struct file_operations qseecom_fops = {
 		.release = qseecom_release
 };
 
-static int __qseecom_init_clk(void)
+static int __qseecom_init_clk(enum qseecom_ce_hw_instance ce)
 {
 	int rc = 0;
 	struct device *pdev;
 	struct qseecom_clk *qclk;
+	char *core_clk_src = NULL;
+	char *core_clk = NULL;
+	char *iface_clk = NULL;
+	char *bus_clk = NULL;
 
-	qclk = &qseecom.qsee;
-
+	switch (ce) {
+	case CLK_QSEE: {
+		core_clk_src = "core_clk_src";
+		core_clk = "core_clk";
+		iface_clk = "iface_clk";
+		bus_clk = "bus_clk";
+		qclk = &qseecom.qsee;
+		qclk->instance = CLK_QSEE;
+		break;
+	};
+	case CLK_CE_DRV: {
+		core_clk_src = "ce_drv_core_clk_src";
+		core_clk = "ce_drv_core_clk";
+		iface_clk = "ce_drv_iface_clk";
+		bus_clk = "ce_drv_bus_clk";
+		qclk = &qseecom.ce_drv;
+		qclk->instance = CLK_CE_DRV;
+		break;
+	};
+	default:
+		pr_err("Invalid ce hw instance: %d!\n", ce);
+		return -EIO;
+	}
 	pdev = qseecom.pdev;
-	/* Get CE3 src core clk. */
 
-	qclk->ce_core_src_clk = clk_get(pdev, "core_clk_src");
+	/* Get CE3 src core clk. */
+	qclk->ce_core_src_clk = clk_get(pdev, core_clk_src);
 	if (!IS_ERR(qclk->ce_core_src_clk)) {
 		/* Set the core src clk @100Mhz */
 		rc = clk_set_rate(qclk->ce_core_src_clk, QSEE_CE_CLK_100MHZ);
@@ -2903,7 +3064,7 @@ static int __qseecom_init_clk(void)
 	}
 
 	/* Get CE core clk */
-	qclk->ce_core_clk = clk_get(pdev, "core_clk");
+	qclk->ce_core_clk = clk_get(pdev, core_clk);
 	if (IS_ERR(qclk->ce_core_clk)) {
 		rc = PTR_ERR(qclk->ce_core_clk);
 		pr_err("Unable to get CE core clk\n");
@@ -2913,7 +3074,7 @@ static int __qseecom_init_clk(void)
 	}
 
 	/* Get CE Interface clk */
-	qclk->ce_clk = clk_get(pdev, "iface_clk");
+	qclk->ce_clk = clk_get(pdev, iface_clk);
 	if (IS_ERR(qclk->ce_clk)) {
 		rc = PTR_ERR(qclk->ce_clk);
 		pr_err("Unable to get CE interface clk\n");
@@ -2924,7 +3085,7 @@ static int __qseecom_init_clk(void)
 	}
 
 	/* Get CE AXI clk */
-	qclk->ce_bus_clk = clk_get(pdev, "bus_clk");
+	qclk->ce_bus_clk = clk_get(pdev, bus_clk);
 	if (IS_ERR(qclk->ce_bus_clk)) {
 		rc = PTR_ERR(qclk->ce_bus_clk);
 		pr_err("Unable to get CE BUS interface clk\n");
@@ -2937,11 +3098,14 @@ static int __qseecom_init_clk(void)
 	return rc;
 }
 
-static void __qseecom_deinit_clk(void)
+static void __qseecom_deinit_clk(enum qseecom_ce_hw_instance ce)
 {
 	struct qseecom_clk *qclk;
 
-	qclk = &qseecom.qsee;
+	if (ce == CLK_QSEE)
+		qclk = &qseecom.qsee;
+	else
+		qclk = &qseecom.ce_drv;
 
 	if (qclk->ce_clk != NULL) {
 		clk_put(qclk->ce_clk);
@@ -2978,6 +3142,11 @@ static int __devinit qseecom_probe(struct platform_device *pdev)
 	qseecom.qsee.ce_clk = NULL;
 	qseecom.qsee.ce_core_src_clk = NULL;
 	qseecom.qsee.ce_bus_clk = NULL;
+
+	qseecom.ce_drv.ce_core_clk = NULL;
+	qseecom.ce_drv.ce_clk = NULL;
+	qseecom.ce_drv.ce_core_src_clk = NULL;
+	qseecom.ce_drv.ce_bus_clk = NULL;
 
 	rc = alloc_chrdev_region(&qseecom_device_no, 0, 1, QSEECOM_DEV);
 	if (rc < 0) {
@@ -3053,6 +3222,7 @@ static int __devinit qseecom_probe(struct platform_device *pdev)
 
 	/* register client for bus scaling */
 	if (pdev->dev.of_node) {
+
 		if (of_property_read_u32((&pdev->dev)->of_node,
 				"qcom,disk-encrypt-pipe-pair",
 				&qseecom.ce_info.disk_encrypt_pipe)) {
@@ -3089,9 +3259,28 @@ static int __devinit qseecom_probe(struct platform_device *pdev)
 			qseecom.ce_info.hlos_ce_hw_instance);
 		}
 
-		ret = __qseecom_init_clk();
+		qseecom.qsee.instance = qseecom.ce_info.qsee_ce_hw_instance;
+		qseecom.ce_drv.instance = qseecom.ce_info.hlos_ce_hw_instance;
+
+		ret = __qseecom_init_clk(CLK_QSEE);
 		if (ret)
 			goto err;
+
+		if (qseecom.qsee.instance != qseecom.ce_drv.instance) {
+			ret = __qseecom_init_clk(CLK_CE_DRV);
+			if (ret) {
+				__qseecom_deinit_clk(CLK_QSEE);
+				goto err;
+			}
+		} else {
+			struct qseecom_clk *qclk;
+
+			qclk = &qseecom.qsee;
+			qseecom.ce_drv.ce_core_clk = qclk->ce_core_clk;
+			qseecom.ce_drv.ce_clk = qclk->ce_clk;
+			qseecom.ce_drv.ce_core_src_clk = qclk->ce_core_src_clk;
+			qseecom.ce_drv.ce_bus_clk = qclk->ce_bus_clk;
+		}
 
 		qseecom_platform_support = (struct msm_bus_scale_pdata *)
 						msm_bus_cl_get_pdata(pdev);
@@ -3203,9 +3392,11 @@ static int __devinit qseecom_remove(struct platform_device *pdev)
 		msm_bus_scale_client_update_request(qseecom.qsee_perf_client,
 									0);
 	/* register client for bus scaling */
-	if (pdev->dev.of_node)
-		__qseecom_deinit_clk();
-
+	if (pdev->dev.of_node) {
+		__qseecom_deinit_clk(CLK_QSEE);
+		if (qseecom.qsee.instance != qseecom.ce_drv.instance)
+			__qseecom_deinit_clk(CLK_CE_DRV);
+	}
 	return ret;
 };
 

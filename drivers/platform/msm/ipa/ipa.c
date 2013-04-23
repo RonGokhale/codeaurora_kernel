@@ -41,6 +41,7 @@
 #define IPA_DMA_POOL_SIZE (512)
 #define IPA_DMA_POOL_ALIGNMENT (4)
 #define IPA_DMA_POOL_BOUNDARY (1024)
+#define IPA_NUM_DESC_PER_SW_TX (2)
 #define IPA_ROUTING_RULE_BYTE_SIZE (4)
 #define IPA_BAM_CNFG_BITS_VAL (0x7FFFE004)
 
@@ -1459,6 +1460,41 @@ void ipa_disable_clks(void)
 		WARN_ON(1);
 }
 
+/**
+* ipa_inc_client_enable_clks() - Increase active clients counter, and
+* enable ipa clocks if necessary
+*
+* Return codes:
+* None
+*/
+void ipa_inc_client_enable_clks(void)
+{
+	mutex_lock(&ipa_ctx->ipa_active_clients_lock);
+	ipa_ctx->ipa_active_clients++;
+	if (ipa_ctx->ipa_active_clients == 1)
+		if (ipa_ctx->ipa_hw_mode == IPA_HW_MODE_NORMAL)
+			ipa_enable_clks();
+	mutex_unlock(&ipa_ctx->ipa_active_clients_lock);
+}
+
+/**
+* ipa_dec_client_disable_clks() - Decrease active clients counter, and
+* disable ipa clocks if necessary
+*
+* Return codes:
+* None
+*/
+void ipa_dec_client_disable_clks(void)
+{
+	mutex_lock(&ipa_ctx->ipa_active_clients_lock);
+	ipa_ctx->ipa_active_clients--;
+	if (ipa_ctx->ipa_active_clients == 0)
+		if (ipa_ctx->ipa_hw_mode == IPA_HW_MODE_NORMAL)
+			ipa_disable_clks();
+	mutex_unlock(&ipa_ctx->ipa_active_clients_lock);
+}
+
+
 static int ipa_setup_bam_cfg(const struct ipa_plat_drv_res *res)
 {
 	void *bam_cnfg_bits;
@@ -1761,15 +1797,20 @@ static int ipa_init(const struct ipa_plat_drv_res *resource_p)
 	 * This is an issue with IPA HW v1.0 only.
 	 */
 	if (ipa_ctx->ipa_hw_type == IPA_HW_v1_0) {
-		ipa_ctx->one_kb_no_straddle_pool = dma_pool_create("ipa_1k",
+		ipa_ctx->dma_pool = dma_pool_create("ipa_1k",
 				NULL,
 				IPA_DMA_POOL_SIZE, IPA_DMA_POOL_ALIGNMENT,
 				IPA_DMA_POOL_BOUNDARY);
-		if (!ipa_ctx->one_kb_no_straddle_pool) {
-			IPAERR("cannot setup 1kb alloc DMA pool.\n");
-			result = -ENOMEM;
-			goto fail_dma_pool;
-		}
+	} else {
+		ipa_ctx->dma_pool = dma_pool_create("ipa_tx", NULL,
+			IPA_NUM_DESC_PER_SW_TX * sizeof(struct sps_iovec),
+			0, 0);
+	}
+
+	if (!ipa_ctx->dma_pool) {
+		IPAERR("cannot alloc DMA pool.\n");
+		result = -ENOMEM;
+		goto fail_dma_pool;
 	}
 
 	ipa_ctx->glob_flt_tbl[IPA_IP_v4].in_sys = !ipa_ctx->ip4_flt_tbl_lcl;
@@ -1839,7 +1880,8 @@ static int ipa_init(const struct ipa_plat_drv_res *resource_p)
 	ipa_ctx->flt_rule_hdl_tree = RB_ROOT;
 	ipa_ctx->tag_tree = RB_ROOT;
 
-	atomic_set(&ipa_ctx->ipa_active_clients, 0);
+	mutex_init(&ipa_ctx->ipa_active_clients_lock);
+	ipa_ctx->ipa_active_clients = 0;
 
 	result = ipa_bridge_init();
 	if (result) {
@@ -1976,7 +2018,7 @@ fail_rx_wq:
 	 * DMA pool need to be released only for IPA HW v1.0 only.
 	 */
 	if (ipa_ctx->ipa_hw_type == IPA_HW_v1_0)
-		dma_pool_destroy(ipa_ctx->one_kb_no_straddle_pool);
+		dma_pool_destroy(ipa_ctx->dma_pool);
 fail_dma_pool:
 	kmem_cache_destroy(ipa_ctx->tree_node_cache);
 fail_tree_node_cache:

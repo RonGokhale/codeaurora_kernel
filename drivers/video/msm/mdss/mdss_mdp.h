@@ -38,6 +38,7 @@
 #define MAX_PLANES		4
 #define MAX_DOWNSCALE_RATIO	4
 #define MAX_UPSCALE_RATIO	20
+#define MAX_DECIMATION		4
 
 #define C3_ALPHA	3	/* alpha */
 #define C2_R_Cr		2	/* R/Cr */
@@ -128,6 +129,7 @@ struct mdss_mdp_ctl {
 	u16 width;
 	u16 height;
 	u32 dst_format;
+	bool is_secure;
 
 	u32 bus_ab_quota;
 	u32 bus_ib_quota;
@@ -249,6 +251,7 @@ struct pp_sts_type {
 struct mdss_pipe_pp_res {
 	u32 igc_c0_c1[IGC_LUT_ENTRIES];
 	u32 igc_c2[IGC_LUT_ENTRIES];
+	u32 hist_lut[ENHIST_LUT_ENTRIES];
 	struct pp_hist_col_info hist;
 	struct pp_sts_type pp_sts;
 };
@@ -267,6 +270,8 @@ struct mdss_mdp_pipe {
 
 	u16 img_width;
 	u16 img_height;
+	u8 horz_deci;
+	u8 vert_deci;
 	struct mdss_mdp_img_rect src;
 	struct mdss_mdp_img_rect dst;
 
@@ -286,6 +291,7 @@ struct mdss_mdp_pipe {
 	u32 params_changed;
 
 	unsigned long smp[MAX_PLANES];
+	unsigned long smp_reserved[MAX_PLANES];
 
 	struct mdss_mdp_data back_buf;
 	struct mdss_mdp_data front_buf;
@@ -438,16 +444,20 @@ int mdss_mdp_histogram_start(struct mdss_mdp_ctl *ctl,
 				struct mdp_histogram_start_req *req);
 int mdss_mdp_histogram_stop(struct mdss_mdp_ctl *ctl, u32 block);
 int mdss_mdp_hist_collect(struct mdss_mdp_ctl *ctl,
-				struct mdp_histogram_data *hist,
-				u32 *hist_data_addr);
+				struct mdp_histogram_data *hist);
 void mdss_mdp_hist_intr_done(u32 isr);
 
 struct mdss_mdp_pipe *mdss_mdp_pipe_alloc(struct mdss_mdp_mixer *mixer,
 					  u32 type);
 struct mdss_mdp_pipe *mdss_mdp_pipe_get(struct mdss_data_type *mdata, u32 ndx);
+struct mdss_mdp_pipe *mdss_mdp_pipe_search(struct mdss_data_type *mdata,
+						  u32 ndx);
 int mdss_mdp_pipe_map(struct mdss_mdp_pipe *pipe);
 void mdss_mdp_pipe_unmap(struct mdss_mdp_pipe *pipe);
 struct mdss_mdp_pipe *mdss_mdp_pipe_alloc_dma(struct mdss_mdp_mixer *mixer);
+
+int mdss_mdp_smp_reserve(struct mdss_mdp_pipe *pipe);
+void mdss_mdp_smp_unreserve(struct mdss_mdp_pipe *pipe);
 
 int mdss_mdp_pipe_addr_setup(struct mdss_data_type *mdata, u32 *offsets,
 		u32 *ftch_y_id, u32 type, u32 num_base, u32 len);
@@ -466,6 +476,8 @@ int mdss_mdp_get_plane_sizes(u32 format, u32 w, u32 h,
 			     struct mdss_mdp_plane_sizes *ps, u32 bwc_mode);
 int mdss_mdp_get_rau_strides(u32 w, u32 h, struct mdss_mdp_format_params *fmt,
 			       struct mdss_mdp_plane_sizes *ps);
+void mdss_mdp_data_calc_offset(struct mdss_mdp_data *data, u16 x, u16 y,
+	struct mdss_mdp_plane_sizes *ps, struct mdss_mdp_format_params *fmt);
 struct mdss_mdp_format_params *mdss_mdp_get_format_params(u32 format);
 int mdss_mdp_put_img(struct mdss_mdp_img_data *data);
 int mdss_mdp_get_img(struct msmfb_data *img, struct mdss_mdp_img_data *data);

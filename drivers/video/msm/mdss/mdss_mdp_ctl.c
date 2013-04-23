@@ -279,8 +279,6 @@ static int mdss_mdp_ctl_free(struct mdss_mdp_ctl *ctl)
 		return -EINVAL;
 	}
 
-	mutex_lock(&mdss_mdp_ctl_lock);
-	ctl->ref_cnt--;
 	if (ctl->mixer_left) {
 		mdss_mdp_mixer_free(ctl->mixer_left);
 		ctl->mixer_left = NULL;
@@ -289,6 +287,9 @@ static int mdss_mdp_ctl_free(struct mdss_mdp_ctl *ctl)
 		mdss_mdp_mixer_free(ctl->mixer_right);
 		ctl->mixer_right = NULL;
 	}
+	mutex_lock(&mdss_mdp_ctl_lock);
+	ctl->ref_cnt--;
+	ctl->is_secure = false;
 	ctl->power_on = false;
 	ctl->start_fnc = NULL;
 	ctl->stop_fnc = NULL;
@@ -437,7 +438,6 @@ int mdss_mdp_wb_mixer_destroy(struct mdss_mdp_mixer *mixer)
 	if (ctl->stop_fnc)
 		ctl->stop_fnc(ctl);
 
-	mdss_mdp_mixer_free(mixer);
 	mdss_mdp_ctl_free(ctl);
 
 	mdss_mdp_ctl_perf_commit(ctl->mdata, MDSS_MDP_PERF_UPDATE_ALL);
@@ -1085,14 +1085,6 @@ static int mdss_mdp_mixer_setup(struct mdss_mdp_ctl *ctl,
 					stage);
 		}
 
-		if (mixercfg == MDSS_MDP_LM_BORDER_COLOR &&
-				pipe->src_fmt->alpha_enable &&
-				pipe->dst.w == mixer->width &&
-				pipe->dst.h == mixer->height) {
-			pr_debug("setting pipe=%d as BG_PIPE\n", pipe->num);
-			bgalpha = 1;
-		}
-
 		mixercfg |= stage << (3 * pipe->num);
 
 		mdp_mixer_write(mixer, off + MDSS_MDP_REG_LM_OP_MODE, blend_op);
@@ -1236,6 +1228,7 @@ int mdss_mdp_mixer_pipe_update(struct mdss_mdp_pipe *pipe, int params_changed)
 {
 	struct mdss_mdp_ctl *ctl;
 	struct mdss_mdp_mixer *mixer;
+	int i;
 
 	if (!pipe)
 		return -EINVAL;
@@ -1259,7 +1252,12 @@ int mdss_mdp_mixer_pipe_update(struct mdss_mdp_pipe *pipe, int params_changed)
 
 	if (params_changed) {
 		mixer->params_changed++;
-		mixer->stage_pipe[pipe->mixer_stage] = pipe;
+		for (i = 0; i < MDSS_MDP_MAX_STAGE; i++) {
+			if (i == pipe->mixer_stage)
+				mixer->stage_pipe[i] = pipe;
+			else if (mixer->stage_pipe[i] == pipe)
+				mixer->stage_pipe[i] = NULL;
+		}
 	}
 
 	if (pipe->type == MDSS_MDP_PIPE_TYPE_DMA)

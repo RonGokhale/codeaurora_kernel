@@ -266,7 +266,7 @@ static void msm_vfe40_init_hardware_reg(struct vfe_device *vfe_dev)
 	msm_camera_io_w(0xC001FF7F, vfe_dev->vfe_base + 0x974);
 	/* BUS_CFG */
 	msm_camera_io_w(0x10000001, vfe_dev->vfe_base + 0x50);
-	msm_camera_io_w(0x800000F3, vfe_dev->vfe_base + 0x28);
+	msm_camera_io_w(0xE00000F3, vfe_dev->vfe_base + 0x28);
 	msm_camera_io_w_mb(0xFEFFFFFF, vfe_dev->vfe_base + 0x2C);
 	msm_camera_io_w(0xFFFFFFFF, vfe_dev->vfe_base + 0x30);
 	msm_camera_io_w_mb(0xFEFFFFFF, vfe_dev->vfe_base + 0x34);
@@ -466,6 +466,8 @@ static void msm_vfe40_process_reg_update(struct vfe_device *vfe_dev,
 
 	if (vfe_dev->axi_data.stream_update)
 		msm_isp_axi_stream_update(vfe_dev);
+	if (atomic_read(&vfe_dev->stats_data.stats_update))
+		msm_isp_stats_stream_update(vfe_dev);
 	msm_isp_update_framedrop_reg(vfe_dev);
 	msm_isp_update_error_frame_count(vfe_dev);
 
@@ -1003,12 +1005,16 @@ static int msm_vfe40_get_stats_idx(enum msm_isp_stats_type stats_type)
 	}
 }
 
-static void msm_vfe40_stats_cfg_comp_mask(struct vfe_device *vfe_dev)
+static void msm_vfe40_stats_cfg_comp_mask(struct vfe_device *vfe_dev,
+	uint32_t stats_mask, uint8_t enable)
 {
-	if (vfe_dev->stats_data.stats_pipeline_policy == STATS_COMP_ALL)
-		msm_camera_io_w(0x00FF0000, vfe_dev->vfe_base + 0x44);
+	uint32_t comp_mask;
+	comp_mask = msm_camera_io_r(vfe_dev->vfe_base + 0x44) >> 16;
+	if (enable)
+		comp_mask |= stats_mask;
 	else
-		msm_camera_io_w(0x00000000, vfe_dev->vfe_base + 0x44);
+		comp_mask &= ~stats_mask;
+	msm_camera_io_w(comp_mask << 16, vfe_dev->vfe_base + 0x44);
 }
 
 static void msm_vfe40_stats_cfg_wm_irq_mask(
@@ -1039,9 +1045,10 @@ static void msm_vfe40_stats_cfg_wm_reg(
 	uint32_t stats_base = VFE40_STATS_BASE(stats_idx);
 
 	/*WR_ADDR_CFG*/
-	msm_camera_io_w(0x7C, vfe_dev->vfe_base + stats_base + 0x8);
+	msm_camera_io_w(stream_info->framedrop_period << 2,
+		vfe_dev->vfe_base + stats_base + 0x8);
 	/*WR_IRQ_FRAMEDROP_PATTERN*/
-	msm_camera_io_w(0xFFFFFFFF,
+	msm_camera_io_w(stream_info->framedrop_pattern,
 		vfe_dev->vfe_base + stats_base + 0x10);
 	/*WR_IRQ_SUBSAMPLE_PATTERN*/
 	msm_camera_io_w(0xFFFFFFFF,
@@ -1189,11 +1196,9 @@ static int msm_vfe40_get_platform_data(struct vfe_device *vfe_dev)
 		goto vfe_no_resource;
 	}
 
-	if (vfe_dev->pdev->id == 0)
-		vfe_dev->iommu_ctx[0] = msm_iommu_get_ctx("vfe0");
-	else if (vfe_dev->pdev->id == 1)
-		vfe_dev->iommu_ctx[0] = msm_iommu_get_ctx("vfe1");
-	if (!vfe_dev->iommu_ctx[0]) {
+	vfe_dev->iommu_ctx[0] = msm_iommu_get_ctx("vfe0");
+	vfe_dev->iommu_ctx[1] = msm_iommu_get_ctx("vfe1");
+	if (!vfe_dev->iommu_ctx[0] || !vfe_dev->iommu_ctx[1]) {
 		pr_err("%s: cannot get iommu_ctx\n", __func__);
 		rc = -ENODEV;
 		goto vfe_no_resource;
@@ -1245,7 +1250,7 @@ static struct v4l2_subdev_internal_ops msm_vfe40_internal_ops = {
 };
 
 struct msm_vfe_hardware_info vfe40_hw_info = {
-	.num_iommu_ctx = 1,
+	.num_iommu_ctx = 2,
 	.vfe_clk_idx = VFE40_CLK_IDX,
 	.vfe_ops = {
 		.irq_ops = {

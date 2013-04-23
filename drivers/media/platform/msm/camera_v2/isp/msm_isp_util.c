@@ -12,6 +12,7 @@
 #include <linux/mutex.h>
 #include <linux/io.h>
 #include <media/v4l2-subdev.h>
+#include <linux/ratelimit.h>
 
 #include "msm.h"
 #include "msm_isp_util.h"
@@ -121,7 +122,7 @@ int msm_isp_update_bandwidth(enum msm_isp_hw_client client,
 	path->vectors[0].ab = MSM_ISP_MIN_AB;
 	path->vectors[0].ib = MSM_ISP_MIN_IB;
 	for (i = 0; i < MAX_ISP_CLIENT; i++) {
-		if (isp_bandwidth_mgr.client_info[client].active) {
+		if (isp_bandwidth_mgr.client_info[i].active) {
 			path->vectors[0].ab +=
 				isp_bandwidth_mgr.client_info[i].ab;
 			path->vectors[0].ib +=
@@ -152,6 +153,31 @@ void msm_isp_deinit_bandwidth_mgr(enum msm_isp_hw_client client)
 	msm_bus_scale_unregister_client(isp_bandwidth_mgr.bus_client);
 	isp_bandwidth_mgr.bus_client = 0;
 	mutex_unlock(&bandwidth_mgr_mutex);
+}
+
+uint32_t msm_isp_get_framedrop_period(
+	enum msm_vfe_frame_skip_pattern frame_skip_pattern)
+{
+	switch (frame_skip_pattern) {
+	case NO_SKIP:
+	case EVERY_2FRAME:
+	case EVERY_3FRAME:
+	case EVERY_4FRAME:
+	case EVERY_5FRAME:
+	case EVERY_6FRAME:
+	case EVERY_7FRAME:
+	case EVERY_8FRAME:
+		return frame_skip_pattern + 1;
+	case EVERY_16FRAME:
+		return 16;
+		break;
+	case EVERY_32FRAME:
+		return 32;
+		break;
+	default:
+		return 1;
+	}
+	return 1;
 }
 
 static inline void msm_isp_get_timestamp(struct msm_isp_timestamp *time_stamp)
@@ -353,11 +379,6 @@ long msm_isp_ioctl(struct v4l2_subdev *sd,
 	case VIDIOC_MSM_ISP_CFG_STATS_STREAM:
 		mutex_lock(&vfe_dev->core_mutex);
 		rc = msm_isp_cfg_stats_stream(vfe_dev, arg);
-		mutex_unlock(&vfe_dev->core_mutex);
-		break;
-	case VIDIOC_MSM_ISP_CFG_STATS_COMP_POLICY:
-		mutex_lock(&vfe_dev->core_mutex);
-		rc = msm_isp_cfg_stats_comp_policy(vfe_dev, arg);
 		mutex_unlock(&vfe_dev->core_mutex);
 		break;
 	case VIDIOC_MSM_ISP_UPDATE_STREAM:
@@ -686,6 +707,11 @@ void msm_isp_process_error_info(struct vfe_device *vfe_dev)
 {
 	int i;
 	struct msm_vfe_error_info *error_info = &vfe_dev->error_info;
+	static DEFINE_RATELIMIT_STATE(rs,
+		DEFAULT_RATELIMIT_INTERVAL, DEFAULT_RATELIMIT_BURST);
+	static DEFINE_RATELIMIT_STATE(rs_stats,
+		DEFAULT_RATELIMIT_INTERVAL, DEFAULT_RATELIMIT_BURST);
+
 	if (error_info->error_count == 1 ||
 		!(error_info->info_dump_frame_count % 100)) {
 		vfe_dev->hw_info->vfe_ops.core_ops.
@@ -695,7 +721,8 @@ void msm_isp_process_error_info(struct vfe_device *vfe_dev)
 		error_info->camif_status = 0;
 		error_info->violation_status = 0;
 		for (i = 0; i < MAX_NUM_STREAM; i++) {
-			if (error_info->stream_framedrop_count[i] != 0) {
+			if (error_info->stream_framedrop_count[i] != 0 &&
+				__ratelimit(&rs)) {
 				pr_err("%s: Stream[%d]: dropped %d frames\n",
 					__func__, i,
 					error_info->stream_framedrop_count[i]);
@@ -703,7 +730,8 @@ void msm_isp_process_error_info(struct vfe_device *vfe_dev)
 			}
 		}
 		for (i = 0; i < MSM_ISP_STATS_MAX; i++) {
-			if (error_info->stats_framedrop_count[i] != 0) {
+			if (error_info->stats_framedrop_count[i] != 0 &&
+				__ratelimit(&rs_stats)) {
 				pr_err("%s: Stats stream[%d]: dropped %d frames\n",
 					__func__, i,
 					error_info->stats_framedrop_count[i]);
@@ -750,7 +778,8 @@ irqreturn_t msm_isp_process_irq(int irq_num, void *data)
 	spin_lock_irqsave(&vfe_dev->tasklet_lock, flags);
 	queue_cmd = &vfe_dev->tasklet_queue_cmd[vfe_dev->taskletq_idx];
 	if (queue_cmd->cmd_used) {
-		pr_err("%s: Tasklet queue overflow\n", __func__);
+		pr_err_ratelimited("%s: Tasklet queue overflow: %d\n",
+			__func__, vfe_dev->pdev->id);
 		list_del(&queue_cmd->list);
 	} else {
 		atomic_add(1, &vfe_dev->irq_cnt);
@@ -818,7 +847,6 @@ void msm_isp_set_src_state(struct vfe_device *vfe_dev, void *arg)
 
 int msm_isp_open_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 {
-	uint32_t i;
 	struct vfe_device *vfe_dev = v4l2_get_subdevdata(sd);
 	long rc;
 	ISP_DBG("%s\n", __func__);
@@ -851,9 +879,6 @@ int msm_isp_open_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 
 	vfe_dev->hw_info->vfe_ops.core_ops.init_hw_reg(vfe_dev);
 
-	for (i = 0; i < vfe_dev->hw_info->num_iommu_ctx; i++)
-		vfe_dev->buf_mgr->ops->attach_ctx(vfe_dev->buf_mgr,
-			vfe_dev->iommu_ctx[i]);
 	vfe_dev->buf_mgr->ops->buf_mgr_init(vfe_dev->buf_mgr, "msm_isp", 28);
 
 	memset(&vfe_dev->axi_data, 0, sizeof(struct msm_vfe_axi_shared_data));
@@ -870,7 +895,6 @@ int msm_isp_open_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 
 int msm_isp_close_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 {
-	int i;
 	long rc;
 	struct vfe_device *vfe_dev = v4l2_get_subdevdata(sd);
 	ISP_DBG("%s\n", __func__);
@@ -888,11 +912,6 @@ int msm_isp_close_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 		pr_err("%s: halt timeout\n", __func__);
 
 	vfe_dev->buf_mgr->ops->buf_mgr_deinit(vfe_dev->buf_mgr);
-
-	for (i = vfe_dev->hw_info->num_iommu_ctx - 1; i >= 0; i--)
-		vfe_dev->buf_mgr->ops->detach_ctx(vfe_dev->buf_mgr,
-			vfe_dev->iommu_ctx[i]);
-
 	vfe_dev->hw_info->vfe_ops.core_ops.release_hw(vfe_dev);
 
 	vfe_dev->vfe_open_cnt--;
