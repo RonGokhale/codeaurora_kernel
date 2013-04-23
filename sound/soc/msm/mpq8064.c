@@ -1205,7 +1205,8 @@ static int msm_startup(struct snd_pcm_substream *substream)
 {
 	pr_debug("%s(): substream = %s  stream = %d\n", __func__,
 		 substream->name, substream->stream);
-	if (detect_dtv_platform)
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK &&
+		detect_dtv_platform)
 		mpq_dtv_amp_power_up();
 	return 0;
 }
@@ -1215,7 +1216,8 @@ static void msm_shutdown(struct snd_pcm_substream *substream)
 	pr_debug("%s(): substream = %s  stream = %d\n", __func__,
 		 substream->name, substream->stream);
 
-	if (detect_dtv_platform)
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK &&
+		detect_dtv_platform)
 		mpq_dtv_amp_power_down();
 }
 
