@@ -137,7 +137,9 @@ static int dtv_off_sub(void)
 
 	pr_info("%s\n", __func__);
 
-	clk_disable_unprepare(hdmi_clk);
+	if (!hdmi_msm_is_cec_wakeup_enabled())
+		clk_disable_unprepare(hdmi_clk);
+
 	if (mdp_tv_clk)
 		clk_disable_unprepare(mdp_tv_clk);
 

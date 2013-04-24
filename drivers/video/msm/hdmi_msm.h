@@ -67,6 +67,7 @@ struct hdmi_msm_audio_config {
 
 #define QFPROM_BASE		((uint32)hdmi_msm_state->qfprom_io)
 #define HDMI_BASE		((uint32)hdmi_msm_state->hdmi_io)
+#define FLAG_SYSFS_CEC_WAKEUP_EN	0x2
 
 struct hdmi_msm_state_type {
 	boolean panel_power_on;
@@ -85,6 +86,7 @@ struct hdmi_msm_state_type {
 	struct work_struct hdcp_reauth_work, hdcp_work;
 	struct completion hdcp_success_done;
 	struct timer_list hdcp_timer;
+	u32 cec_wakeup_enabled;
 
 	struct hdmi_msm_audio_config hdmi_audio;
 
@@ -176,4 +178,5 @@ void mhl_connect_api(boolean on);
 void hdmi_msm_en_gc_packet(boolean do_av_mute);
 void hdmi_msm_encrypt_en(u32 enable);
 void mdp4_dtv_mute(u32 enable);
+u32 hdmi_msm_is_cec_wakeup_enabled(void);
 #endif /* __HDMI_MSM_H__ */
