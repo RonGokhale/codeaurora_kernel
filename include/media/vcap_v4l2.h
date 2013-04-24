@@ -214,7 +214,8 @@ struct vcap_dev {
 	struct vp_work_t		vp_to_vc_work;
 
 	struct nr_param			nr_param;
-	bool					nr_update;
+	struct tuning_param			tuning_param;
+	bool					update;
 	struct vcap_debugfs_params	dbg_p;
 };
 
