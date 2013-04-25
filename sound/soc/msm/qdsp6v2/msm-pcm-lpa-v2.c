@@ -421,24 +421,87 @@ static snd_pcm_uframes_t msm_pcm_pointer(struct snd_pcm_substream *substream)
 static int msm_pcm_mmap(struct snd_pcm_substream *substream,
 				struct vm_area_struct *vma)
 {
-	int result = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct msm_audio *prtd = runtime->private_data;
+	struct sg_table *table;
+	unsigned long addr = vma->vm_start;
+	unsigned long offset = vma->vm_pgoff * PAGE_SIZE;
+	struct scatterlist *sg;
+	unsigned int i;
+	struct audio_client *ac = prtd->audio_client;
+	struct audio_port_data *apd = ac->port;
+	struct audio_buffer *ab = &(apd[IN].buf[0]);
+	struct page *page;
+	int ret;
 
-	pr_debug("%s\n", __func__);
+	pr_err("%s\n", __func__);
 	prtd->mmap_flag = 1;
 
-	if (runtime->dma_addr && runtime->dma_bytes) {
-		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-		result = remap_pfn_range(vma, vma->vm_start,
-				runtime->dma_addr >> PAGE_SHIFT,
-				runtime->dma_bytes,
-				vma->vm_page_prot);
-	} else {
-		pr_err("Physical address or size of buf is NULL");
+	table = ion_sg_table(ab->client, ab->handle);
+
+	if (IS_ERR(table)) {
+		pr_err("%s: Unable to get sg_table from ion: %ld\n",
+			__func__, PTR_ERR(table));
+		return PTR_ERR(table);
+	} else if (!table) {
+		pr_err("%s: sg_list is NULL\n", __func__);
 		return -EINVAL;
 	}
-	return result;
+
+	/* uncached */
+	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+
+	/* We need to check if a page is associated with this sg list because:
+	 * If the allocation came from a carveout we currently don't have
+	 * pages associated with carved out memory. This might change in the
+	 * future and we can remove this check and the else statement.
+	 */
+	page = sg_page(table->sgl);
+	if (page) {
+		pr_err("%s: page is NOT null\n", __func__);
+		for_each_sg(table->sgl, sg, table->nents, i) {
+			unsigned long remainder = vma->vm_end - addr;
+			unsigned long len = sg_dma_len(sg);
+
+			page = sg_page(sg);
+
+			if (offset >= sg_dma_len(sg)) {
+				offset -= sg_dma_len(sg);
+				continue;
+			} else if (offset) {
+				page += offset / PAGE_SIZE;
+				len = sg_dma_len(sg) - offset;
+				offset = 0;
+			}
+			len = min(len, remainder);
+			pr_err("-- vma=%p, addr=%x len=%ld vm_start=%x vm_end=%x vm_page_prot=%ld\n",
+				vma, (unsigned int)addr, len, (unsigned int)vma->vm_start, (unsigned int)vma->vm_end, (unsigned long int)vma->vm_page_prot);
+			remap_pfn_range(vma, addr, page_to_pfn(page), len,
+					vma->vm_page_prot);
+			addr += len;
+			if (addr >= vma->vm_end)
+				return 0;
+		}
+	} else {
+		ion_phys_addr_t phys_addr;
+		size_t phys_len;
+		pr_err("%s: page is NULL\n", __func__);
+
+		ret = ion_phys(ab->client, ab->handle, &phys_addr, &phys_len);
+		if (ret) {
+			pr_err("%s: Unable to get phys address from ION buffer: %d\n"
+				, __func__ , ret);
+			return ret;
+		}
+		pr_err("-- phys=%x len=%d\n", (unsigned int)phys_addr, phys_len);
+		pr_err("-- vma=%p, vm_start=%x vm_end=%x vm_pgoff=%ld vm_page_prot=%ld\n",
+			vma, (unsigned int)vma->vm_start, (unsigned int)vma->vm_end, vma->vm_pgoff, (unsigned long int)vma->vm_page_prot);
+		ret =  remap_pfn_range(vma, vma->vm_start,
+				__phys_to_pfn(phys_addr) + vma->vm_pgoff,
+				vma->vm_end - vma->vm_start,
+				vma->vm_page_prot);
+	}
+	return 0;
 }
 
 static int msm_pcm_hw_params(struct snd_pcm_substream *substream,
