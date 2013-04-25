@@ -419,6 +419,9 @@ static int __devinit msm_spm_dev_probe(struct platform_device *pdev)
 		goto fail;
 	cpu = val;
 
+	if(cpu >= num_present_cpus() && cpu != 0xffff)
+		goto skip;
+
 	key = "qcom,saw2-ver-reg";
 	ret = of_property_read_u32(node, key, &val);
 	if (ret)
@@ -499,6 +502,8 @@ fail:
 	pr_err("%s: Failed reading node=%s, key=%s\n",
 			__func__, node->full_name, key);
 	return -EFAULT;
+skip:
+	return ret;
 }
 
 static struct of_device_id msm_spm_match_table[] = {
