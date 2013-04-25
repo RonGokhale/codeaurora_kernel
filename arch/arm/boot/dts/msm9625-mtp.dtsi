@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -10,17 +10,7 @@
  * GNU General Public License for more details.
  */
 
-/dts-v1/;
-
-/include/ "msm9625-v2-1.dtsi"
-
 / {
-	model = "Qualcomm MSM 9625V2.1 CDP";
-	compatible = "qcom,msm9625-cdp", "qcom,msm9625", "qcom,cdp";
-	qcom,msm-id = <134 1 0x20001>, <152 1 0x20001>, <149 1 0x20001>,
-		      <150 1 0x20001>, <151 1 0x20001>, <148 1 0x20001>,
-		      <173 1 0x20001>, <174 1 0x20001>, <175 1 0x20001>;
-
 	i2c@f9925000 {
 		charger@57 {
 			compatible = "summit,smb137c";
@@ -42,10 +32,18 @@
 
 	wlan0: qca,wlan {
 		cell-index = <0>;
-		compatible = "qca,ar6004-sdio";
+		compatible = "qca,ar6004-hsic";
 		qca,chip-pwd-l-gpios = <&msmgpio 62 0>;
 		qca,pm-enable-gpios = <&pm8019_gpios 3 0x0>;
-		qca,ar6004-vdd-io-supply = <&pm8019_l11>;
+		qca,vdd-io-supply = <&pm8019_l11>;
+	};
+
+	qca,wlan_ar6003 {
+		cell-index = <0>;
+		compatible = "qca,ar6003-sdio";
+		qca,chip-pwd-l-gpios = <&msmgpio 62 0>;
+		qca,pm-enable-gpios = <&pm8019_gpios 3 0x0>;
+		qca,vdd-io-supply = <&pm8019_l11>;
 	};
 };
 
@@ -89,11 +87,23 @@
 	};
 
 	mpp@a300 { /* MPP 4 */
+		/* VADC channel 19 */
+		qcom,mode = <4>;
+		qcom,ain-route = <3>; /* AMUX 8 */
+		qcom,master-en = <1>;
+		qcom,src-sel = <0>; /* Function constant */
+		qcom,invert = <1>;
 	};
 
 	mpp@a400 { /* MPP 5 */
 	};
 
 	mpp@a500 { /* MPP 6 */
+		/* channel 21 */
+		qcom,mode = <4>;
+		qcom,ain-route = <1>; /* AMUX 6 */
+		qcom,master-en = <1>;
+		qcom,src-sel = <0>; /* Function constant */
+		qcom,invert = <1>;
 	};
 };

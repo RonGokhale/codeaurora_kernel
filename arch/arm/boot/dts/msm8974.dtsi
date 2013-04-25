@@ -84,6 +84,66 @@
 		clock-frequency = <19200000>;
 	};
 
+	timer@f9020000 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		compatible = "arm,armv7-timer-mem";
+		reg = <0xf9020000 0x1000>;
+		clock-frequency = <19200000>;
+
+		frame@f9021000 {
+			frame-number = <0>;
+			interrupts = <0 8 0x4>,
+				     <0 7 0x4>;
+			reg = <0xf9021000 0x1000>,
+			      <0xf9022000 0x1000>;
+		};
+
+		frame@f9023000 {
+			frame-number = <1>;
+			interrupts = <0 9 0x4>;
+			reg = <0xf9023000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9024000 {
+			frame-number = <2>;
+			interrupts = <0 10 0x4>;
+			reg = <0xf9024000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9025000 {
+			frame-number = <3>;
+			interrupts = <0 11 0x4>;
+			reg = <0xf9025000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9026000 {
+			frame-number = <4>;
+			interrupts = <0 12 0x4>;
+			reg = <0xf9026000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9027000 {
+			frame-number = <5>;
+			interrupts = <0 13 0x4>;
+			reg = <0xf9027000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9028000 {
+			frame-number = <6>;
+			interrupts = <0 14 0x4>;
+			reg = <0xf9028000 0x1000>;
+			status = "disabled";
+		};
+	};
+
+
 	qcom,mpm2-sleep-counter@fc4a3000 {
 		compatible = "qcom,mpm2-sleep-counter";
 		reg = <0xfc4a3000 0x1000>;
@@ -573,6 +633,14 @@
 			qcom,cdc-vddcx-2-voltage = <1225000 1225000>;
 			qcom,cdc-vddcx-2-current = <10000>;
 
+			qcom,cdc-static-supplies = "cdc-vdd-buck",
+						   "cdc-vdd-tx-h",
+						   "cdc-vdd-rx-h",
+						   "cdc-vddpx-1",
+						   "cdc-vdd-a-1p2v",
+						   "cdc-vddcx-1",
+						   "cdc-vddcx-2";
+
 			qcom,cdc-micbias-ldoh-v = <0x3>;
 			qcom,cdc-micbias-cfilt1-mv = <1800>;
 			qcom,cdc-micbias-cfilt2-mv = <2700>;
@@ -618,7 +686,6 @@
 			"MIC BIAS4 External", "Digital Mic6";
 
 		qcom,cdc-mclk-gpios = <&pm8941_gpios 15 0>;
-		taiko-mclk-clk = <&pm8941_clkdiv1>;
 		qcom,taiko-mclk-clk-freq = <9600000>;
 		qcom,prim-auxpcm-gpio-clk  = <&msmgpio 65 0>;
 		qcom,prim-auxpcm-gpio-sync = <&msmgpio 66 0>;
@@ -766,6 +833,13 @@
 		interrupts = <0 162 1>;
 
 		qcom,firmware-name = "adsp";
+
+		/* GPIO inputs from lpass */
+		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_2_in 0 0>;
+		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_2_in 2 0>;
+
+		/* GPIO output to lpass */
+		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_2_out 0 0>;
 	};
 
 	qcom,msm-adsp-loader {
@@ -1058,8 +1132,9 @@
 
 	qcom,wcnss-wlan@fb000000 {
 		compatible = "qcom,wcnss_wlan";
-		reg = <0xfb000000 0x280000>;
-		reg-names = "wcnss_mmio";
+		reg = <0xfb000000 0x280000>,
+			<0xf9011008 0x04>;
+		reg-names = "wcnss_mmio", "wcnss_fiq";
 		interrupts = <0 145 0 0 146 0>;
 		interrupt-names = "wcnss_wlantx_irq", "wcnss_wlanrx_irq";
 
@@ -1295,8 +1370,8 @@
 		qcom,core-control-mask = <0xe>;
 		qcom,vdd-restriction-temp = <5>;
 		qcom,vdd-restriction-temp-hysteresis = <10>;
-		qcom,pmic-sw-mode-temp = <90>;
-		qcom,pmic-sw-mode-temp-hysteresis = <70>;
+		qcom,pmic-sw-mode-temp = <85>;
+		qcom,pmic-sw-mode-temp-hysteresis = <75>;
 		qcom,pmic-sw-mode-regs = "vdd_dig";
 		vdd_dig-supply = <&pm8841_s2_floor_corner>;
 		vdd_gfx-supply = <&pm8841_s4_floor_corner>;

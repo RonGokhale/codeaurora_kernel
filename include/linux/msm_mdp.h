@@ -76,6 +76,8 @@
 						struct mdp_display_commit)
 #define MSMFB_METADATA_SET  _IOW(MSMFB_IOCTL_MAGIC, 165, struct msmfb_metadata)
 #define MSMFB_METADATA_GET  _IOW(MSMFB_IOCTL_MAGIC, 166, struct msmfb_metadata)
+#define MSMFB_WRITEBACK_SET_MIRRORING_HINT _IOW(MSMFB_IOCTL_MAGIC, 167, \
+						unsigned int)
 
 #define FB_TYPE_3D_PANEL 0x10101010
 #define MDP_IMGTYPE2_START 0x10000
@@ -171,6 +173,7 @@ enum {
 #define MDP_OV_PIPE_FORCE_DMA		0x00004000
 #define MDP_MEMORY_ID_TYPE_FB		0x00001000
 #define MDP_BWC_EN			0x00000400
+#define MDP_DECIMATION_EN		0x00000800
 #define MDP_TRANSP_NOP 0xffffffff
 #define MDP_ALPHA_NOP 0xff
 
@@ -296,7 +299,7 @@ struct msmfb_writeback_data {
 
 #define MDSS_PP_ARG_MASK	0x3C00
 #define MDSS_PP_ARG_NUM		4
-#define MDSS_PP_ARG_SHIFT	8
+#define MDSS_PP_ARG_SHIFT	10
 #define MDSS_PP_LOCATION_MASK	0x0300
 #define MDSS_PP_LOGICAL_MASK	0x00FF
 
@@ -332,6 +335,7 @@ struct mdp_qseed_cfg_data {
 #define MDP_OVERLAY_PP_IGC_CFG         0x8
 #define MDP_OVERLAY_PP_SHARP_CFG       0x10
 #define MDP_OVERLAY_PP_HIST_CFG        0x20
+#define MDP_OVERLAY_PP_HIST_LUT_CFG    0x40
 
 #define MDP_CSC_FLAG_ENABLE	0x1
 #define MDP_CSC_FLAG_YUV_IN	0x2
@@ -375,6 +379,13 @@ struct mdp_histogram_cfg {
 	uint16_t num_bins;
 };
 
+struct mdp_hist_lut_data {
+	uint32_t block;
+	uint32_t ops;
+	uint32_t len;
+	uint32_t *data;
+};
+
 struct mdp_overlay_pp_params {
 	uint32_t config_ops;
 	struct mdp_csc_cfg csc_cfg;
@@ -383,6 +394,7 @@ struct mdp_overlay_pp_params {
 	struct mdp_igc_lut_data igc_cfg;
 	struct mdp_sharp_cfg sharp_cfg;
 	struct mdp_histogram_cfg hist_cfg;
+	struct mdp_hist_lut_data hist_lut_cfg;
 };
 
 struct mdp_overlay {
@@ -395,7 +407,9 @@ struct mdp_overlay {
 	uint32_t transp_mask;
 	uint32_t flags;
 	uint32_t id;
-	uint32_t user_data[8];
+	uint32_t user_data[7];
+	uint8_t horz_deci;
+	uint8_t vert_deci;
 	struct mdp_overlay_pp_params overlay_pp_cfg;
 };
 
@@ -516,13 +530,6 @@ struct mdp_pgc_lut_data {
 	struct mdp_ar_gc_lut_data *b_data;
 };
 
-
-struct mdp_hist_lut_data {
-	uint32_t block;
-	uint32_t ops;
-	uint32_t len;
-	uint32_t *data;
-};
 
 struct mdp_lut_cfg_data {
 	uint32_t lut_type;
@@ -692,6 +699,7 @@ struct mdss_hw_caps {
 	uint8_t rgb_pipes;
 	uint8_t vig_pipes;
 	uint8_t dma_pipes;
+	uint32_t features;
 };
 
 struct msmfb_metadata {
@@ -761,6 +769,13 @@ enum {
 enum {
 	MDP_IOMMU_DOMAIN_CP,
 	MDP_IOMMU_DOMAIN_NS,
+};
+
+enum {
+	MDP_WRITEBACK_MIRROR_OFF,
+	MDP_WRITEBACK_MIRROR_ON,
+	MDP_WRITEBACK_MIRROR_PAUSE,
+	MDP_WRITEBACK_MIRROR_RESUME,
 };
 
 #ifdef __KERNEL__

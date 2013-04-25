@@ -57,6 +57,65 @@
 		clock-frequency = <19200000>;
 	};
 
+	timer@f9020000 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		compatible = "arm,armv7-timer-mem";
+		reg = <0xf9020000 0x1000>;
+		clock-frequency = <19200000>;
+
+		frame@f9021000 {
+			frame-number = <0>;
+			interrupts = <0 8 0x4>,
+				     <0 7 0x4>;
+			reg = <0xf9021000 0x1000>,
+			      <0xf9022000 0x1000>;
+		};
+
+		frame@f9023000 {
+			frame-number = <1>;
+			interrupts = <0 9 0x4>;
+			reg = <0xf9023000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9024000 {
+			frame-number = <2>;
+			interrupts = <0 10 0x4>;
+			reg = <0xf9024000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9025000 {
+			frame-number = <3>;
+			interrupts = <0 11 0x4>;
+			reg = <0xf9025000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9026000 {
+			frame-number = <4>;
+			interrupts = <0 12 0x4>;
+			reg = <0xf9026000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9027000 {
+			frame-number = <5>;
+			interrupts = <0 13 0x4>;
+			reg = <0xf9027000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9028000 {
+			frame-number = <6>;
+			interrupts = <0 14 0x4>;
+			reg = <0xf9028000 0x1000>;
+			status = "disabled";
+		};
+	};
+
 	qcom,msm-adsp-loader {
 		compatible = "qcom,adsp-loader";
 		qcom,adsp-state = <0>;
@@ -342,7 +401,7 @@
 		reg = <0xf9011050 0x8>;
 		reg-names = "rcg_base";
 		a7_cpu-supply = <&apc_vreg_corner>;
-		a7_mem-supply = <&pm8110_l3>;
+		a7_mem-supply = <&pm8110_l3_ao>;
 	};
 
 	spmi_bus: qcom,spmi@fc4c0000 {
@@ -355,7 +414,6 @@
 		/* 190,ee0_krait_hlos_spmi_periph_irq */
 		/* 187,channel_0_krait_hlos_trans_done_irq */
 		interrupts = <0 190 0>, <0 187 0>;
-		qcom,not-wakeup;
 		qcom,pmic-arb-ee = <0>;
 		qcom,pmic-arb-channel = <0>;
 	};
@@ -580,6 +638,13 @@
 		interrupts = <0 162 1>;
 		vdd_cx-supply = <&pm8110_s1_corner>;
 		qcom,firmware-name = "adsp";
+
+		/* GPIO inputs from lpass */
+		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_2_in 0 0>;
+		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_2_in 2 0>;
+
+		/* GPIO output to lpass */
+		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_2_out 0 0>;
 	};
 
 	tsens: tsens@fc4a8000 {
@@ -593,6 +658,7 @@
 		qcom,calib-mode = "fuse_map3";
 		qcom,calibration-less-mode;
 		qcom,tsens-local-init;
+		qcom,sensor-id = <0 5>;
 	};
 
 	qcom,msm-thermal {
@@ -614,6 +680,63 @@
 		compatible = "qcom,bam_dmux";
 		reg = <0xfc834000 0x7000>;
 		interrupts = <0 29 1>;
+	};
+
+	qcom,qseecom@7B00000 {
+		compatible = "qcom,qseecom";
+		reg = <0x7B00000 0x500000>;
+		reg-names = "secapp-region";
+		qcom,disk-encrypt-pipe-pair = <2>;
+		qcom,hlos-ce-hw-instance = <0>;
+		qcom,qsee-ce-hw-instance = <0>;
+		qcom,msm-bus,name = "qseecom-noc";
+		qcom,msm-bus,num-cases = <4>;
+		qcom,msm-bus,active-only = <0>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps =
+				<55 512 0 0>,
+				<55 512 3936000 393600>,
+				<55 512 3936000 393600>,
+				<55 512 3936000 393600>;
+	};
+
+        qcom,msm-rng@f9bff000 {
+                compatible = "qcom,msm-rng";
+                reg = <0xf9bff000 0x200>;
+                qcom,msm-rng-iface-clk;
+        };
+
+	jtag_mm0: jtagmm@fc34c000 {
+		compatible = "qcom,jtag-mm";
+		reg = <0xfc34c000 0x1000>,
+		      <0xfc340000 0x1000>;
+		reg-names = "etm-base","debug-base";
+	};
+
+	jtag_mm1: jtagmm@fc34d000 {
+		compatible = "qcom,jtag-mm";
+		reg = <0xfc34d000 0x1000>,
+		      <0xfc342000 0x1000>;
+		reg-names = "etm-base","debug-base";
+	};
+
+	jtag_mm2: jtagmm@fc34e000 {
+		compatible = "qcom,jtag-mm";
+		reg = <0xfc34e000 0x1000>,
+		      <0xfc344000 0x1000>;
+		reg-names = "etm-base","debug-base";
+	};
+
+	jtag_mm3: jtagmm@fc34f000 {
+		compatible = "qcom,jtag-mm";
+		reg = <0xfc34f000 0x1000>,
+		      <0xfc346000 0x1000>;
+		reg-names = "etm-base","debug-base";
+	};
+
+	qcom,tz-log@fe805720 {
+		compatible = "qcom,tz-log";
+		reg = <0x0fe805720 0x1000>;
 	};
 };
 
@@ -651,6 +774,7 @@
 
 /include/ "msm8610-iommu-domains.dtsi"
 
+/include/ "msm-pm8110-rpm-regulator.dtsi"
 /include/ "msm-pm8110.dtsi"
 /include/ "msm8610-regulator.dtsi"
 

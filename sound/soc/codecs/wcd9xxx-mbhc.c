@@ -89,7 +89,7 @@
 #define WCD9XXX_MEAS_INVALD_RANGE_LOW_MV 20
 #define WCD9XXX_MEAS_INVALD_RANGE_HIGH_MV 80
 #define WCD9XXX_GM_SWAP_THRES_MIN_MV 150
-#define WCD9XXX_GM_SWAP_THRES_MAX_MV 500
+#define WCD9XXX_GM_SWAP_THRES_MAX_MV 650
 
 #define WCD9XXX_USLEEP_RANGE_MARGIN_US 1000
 
@@ -3534,7 +3534,6 @@ void wcd9xxx_mbhc_deinit(struct wcd9xxx_mbhc *mbhc)
 {
 	void *cdata = mbhc->codec->control_data;
 
-	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_SLIMBUS, mbhc);
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_MBHC_RELEASE, mbhc);
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_MBHC_POTENTIAL, mbhc);
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_MBHC_REMOVAL, mbhc);
@@ -3543,7 +3542,6 @@ void wcd9xxx_mbhc_deinit(struct wcd9xxx_mbhc *mbhc)
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_MBHC_JACK_SWITCH, mbhc);
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_HPH_PA_OCPL_FAULT, mbhc);
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_HPH_PA_OCPR_FAULT, mbhc);
-	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_MBHC_RELEASE, mbhc);
 
 	if (mbhc->mbhc_fw)
 		release_firmware(mbhc->mbhc_fw);

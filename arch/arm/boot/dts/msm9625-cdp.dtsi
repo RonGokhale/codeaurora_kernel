@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -10,17 +10,10 @@
  * GNU General Public License for more details.
  */
 
-/dts-v1/;
-
-/include/ "msm9625-v2-1.dtsi"
+/include/ "msm9625-display.dtsi"
+/include/ "qpic-panel-ili-qvga.dtsi"
 
 / {
-	model = "Qualcomm MSM 9625V2.1 MTP";
-	compatible = "qcom,msm9625-mtp", "qcom,msm9625", "qcom,mtp";
-	qcom,msm-id = <134 7 0x20001>, <152 7 0x20001>, <149 7 0x20001>,
-		      <150 7 0x20001>, <151 7 0x20001>, <148 7 0x20001>,
-		      <173 7 0x20001>, <174 7 0x20001>, <175 7 0x20001>;
-
 	i2c@f9925000 {
 		charger@57 {
 			compatible = "summit,smb137c";
@@ -42,10 +35,18 @@
 
 	wlan0: qca,wlan {
 		cell-index = <0>;
-		compatible = "qca,ar6004-sdio";
+		compatible = "qca,ar6004-hsic";
 		qca,chip-pwd-l-gpios = <&msmgpio 62 0>;
 		qca,pm-enable-gpios = <&pm8019_gpios 3 0x0>;
-		qca,ar6004-vdd-io-supply = <&pm8019_l11>;
+		qca,vdd-io-supply = <&pm8019_l11>;
+	};
+
+	qca,wlan_ar6003 {
+		cell-index = <0>;
+		compatible = "qca,ar6003-sdio";
+		qca,chip-pwd-l-gpios = <&msmgpio 62 0>;
+		qca,pm-enable-gpios = <&pm8019_gpios 3 0x0>;
+		qca,vdd-io-supply = <&pm8019_l11>;
 	};
 };
 
