@@ -830,8 +830,10 @@ void msm_isp_do_tasklet(unsigned long data)
 			irq_status0, irq_status1, &ts);
 		irq_ops->process_axi_irq(vfe_dev,
 			irq_status0, irq_status1, &ts);
+#if 0 //TODO: only for 8610 once debug done remove this. 
 		irq_ops->process_stats_irq(vfe_dev,
 			irq_status0, irq_status1, &ts);
+#endif
 		irq_ops->process_reg_update(vfe_dev,
 			irq_status0, irq_status1, &ts);
 		msm_isp_process_error_info(vfe_dev);

@@ -610,11 +610,11 @@ ERROR:
 	return rc;
 }
 
-static int32_t msm_sensor_get_dt_data(struct platform_device *pdev,
+static int32_t msm_sensor_get_dt_data(struct device_node *of_node,
 	struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int32_t rc = 0, i = 0;
-	struct device_node *of_node = pdev->dev.of_node;
+//	struct device_node *of_node = pdev->dev.of_node;
 	struct msm_camera_gpio_conf *gconf = NULL;
 	struct msm_camera_sensor_board_info *sensordata = NULL;
 	uint16_t *gpio_array = NULL;
@@ -819,6 +819,11 @@ int32_t msm_sensor_free_sensor_data(struct msm_sensor_ctrl_t *s_ctrl)
 
 static struct msm_cam_clk_info cam_8960_clk_info[] = {
 	[SENSOR_CAM_MCLK] = {"cam_clk", 24000000},
+};
+
+static struct msm_cam_clk_info cam_8610_clk_info[] = {
+	[SENSOR_CAM_MCLK] = {"cam_src_clk", 24000000},
+	[SENSOR_CAM_CLK] = {"cam_clk", 0},
 };
 
 static struct msm_cam_clk_info cam_8974_clk_info[] = {
@@ -1440,7 +1445,11 @@ int32_t msm_sensor_platform_probe(struct platform_device *pdev, void *data)
 	CDBG("%s called data %p\n", __func__, data);
 	CDBG("%s pdev name %s\n", __func__, pdev->id_entry->name);
 	if (pdev->dev.of_node) {
+#if 0
 		rc = msm_sensor_get_dt_data(pdev, s_ctrl);
+#else
+		rc = msm_sensor_get_dt_data(pdev->dev.of_node, s_ctrl);
+#endif
 		if (rc < 0) {
 			pr_err("%s failed line %d\n", __func__, __LINE__);
 			return rc;
@@ -1505,10 +1514,10 @@ int32_t msm_sensor_platform_probe(struct platform_device *pdev, void *data)
 }
 
 int32_t msm_sensor_i2c_probe(struct i2c_client *client,
-	const struct i2c_device_id *id)
+	const struct i2c_device_id *id, struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int rc = 0;
-	struct msm_sensor_ctrl_t *s_ctrl;
+//	struct msm_sensor_ctrl_t *s_ctrl;
 	uint32_t session_id;
 	CDBG("%s %s_i2c_probe called\n", __func__, client->name);
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
@@ -1518,15 +1527,26 @@ int32_t msm_sensor_i2c_probe(struct i2c_client *client,
 		return rc;
 	}
 
-	s_ctrl = (struct msm_sensor_ctrl_t *)(id->driver_data);
-	if (!s_ctrl) {
-		pr_err("%s:%d sensor ctrl structure NULL\n", __func__,
-			__LINE__);
-		return -EINVAL;
-	}
+	if (!client->dev.of_node) {
+	CDBG("msm_sensor_i2c_probe: of_node is NULL");
+		s_ctrl = (struct msm_sensor_ctrl_t *)(id->driver_data);
+		if (!s_ctrl) {
+			pr_err("%s:%d sensor ctrl structure NULL\n", __func__,
+				__LINE__);
+			return -EINVAL;
+		}
+		s_ctrl->sensordata = client->dev.platform_data;
+	} else {
+	CDBG("msm_sensor_i2c_probe: of_node exisists");
+		rc = msm_sensor_get_dt_data(client->dev.of_node, s_ctrl);
+		if (rc < 0) {
+			pr_err("%s failed line %d\n", __func__, __LINE__);
+			return rc;
+		}
+ 	}
 
 	s_ctrl->sensor_device_type = MSM_CAMERA_I2C_DEVICE;
-	s_ctrl->sensordata = client->dev.platform_data;
+	//s_ctrl->sensordata = client->dev.platform_data; /*lokesh*/
 	if (s_ctrl->sensordata == NULL) {
 		pr_err("%s %s NULL sensor data\n", __func__, client->name);
 		return -EFAULT;
@@ -1554,9 +1574,14 @@ int32_t msm_sensor_i2c_probe(struct i2c_client *client,
 	if (!s_ctrl->sensor_v4l2_subdev_ops)
 		s_ctrl->sensor_v4l2_subdev_ops = &msm_sensor_subdev_ops;
 
-	s_ctrl->clk_info = cam_8960_clk_info;
-	s_ctrl->clk_info_size = ARRAY_SIZE(cam_8960_clk_info);
-
+	if(!client->dev.of_node){
+		s_ctrl->clk_info = cam_8960_clk_info;
+		s_ctrl->clk_info_size = ARRAY_SIZE(cam_8960_clk_info);
+	} else {
+		s_ctrl->clk_info = cam_8610_clk_info;
+		s_ctrl->clk_info_size = ARRAY_SIZE(cam_8610_clk_info);
+	}
+ 
 	rc = s_ctrl->func_tbl->sensor_power_up(s_ctrl);
 	if (rc < 0) {
 		pr_err("%s %s power up failed\n", __func__, client->name);

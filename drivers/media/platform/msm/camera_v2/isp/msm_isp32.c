@@ -22,7 +22,7 @@
 #include "msm.h"
 #include "msm_camera_io_util.h"
 
-#define VFE32_BURST_LEN 3
+#define VFE32_BURST_LEN 1
 #define VFE32_UB_SIZE 1024
 #define VFE32_EQUAL_SLICE_UB 204
 #define VFE32_WM_BASE(idx) (0x4C + 0x18 * idx)
@@ -41,9 +41,16 @@
 
 #define VFE32_CLK_IDX 0
 static struct msm_cam_clk_info msm_vfe32_clk_info[] = {
+	{"vfe_clk_src", 266670000},
+	{"vfe_clk", -1},
+	{"vfe_ahb_clk", -1},
+	{"csi_vfe_clk", -1},
+	{"bus_clk", -1},
+#if 0
 	{"vfe_clk", 266667000},
 	{"vfe_pclk", -1},
 	{"csi_vfe_clk", -1},
+#endif
 };
 
 static int msm_vfe32_init_hardware(struct vfe_device *vfe_dev)
@@ -331,7 +338,16 @@ static long msm_vfe32_reset_hardware(struct vfe_device *vfe_dev)
 static void msm_vfe32_axi_reload_wm(
 	struct vfe_device *vfe_dev, uint32_t reload_mask)
 {
+#if 0 /*8960 Case*/
 	msm_camera_io_w_mb(reload_mask, vfe_dev->vfe_base + 0x38);
+#else
+	msm_camera_io_w(0x0, vfe_dev->vfe_base + 0x24);
+	msm_camera_io_w(0x0, vfe_dev->vfe_base + 0x28);
+	msm_camera_io_w(0x0, vfe_dev->vfe_base + 0x20);
+	msm_camera_io_w_mb(0x1, vfe_dev->vfe_base + 0x18);
+	msm_camera_io_w(0x9AAAAAAA , vfe_dev->vfe_base + 0x600);
+	msm_camera_io_w(reload_mask, vfe_dev->vfe_base + 0x38);
+#endif
 }
 
 static void msm_vfe32_axi_enable_wm(struct vfe_device *vfe_dev,

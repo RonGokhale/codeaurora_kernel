@@ -263,14 +263,14 @@
 			reg = <0xfd890000 0x1000>;
 			interrupts = <0 65 0>;
 			qcom,iommu-ctx-mids = <0>;
-			label = "vfe0";
+			label = "vfe_imgwr";
 		};
 
 		qcom,iommu-ctx@fd891000 {
 			reg = <0xfd891000 0x1000>;
 			interrupts = <0 65 0>;
 			qcom,iommu-ctx-mids = <1>;
-			label = "vfe1";
+			label = "vfe_misc";
 		};
 	};
 };

@@ -47,6 +47,6 @@
 #define CSID_RST_STB_ALL                            0x7FFF
 #define CSID_DL_INPUT_SEL_SHIFT                     0x2
 #define CSID_PHY_SEL_SHIFT                          17
-#define CSID_VERSION                                0x02000011
+#define CSID_VERSION                                0x02001000  // 0x02000011
 
 #endif

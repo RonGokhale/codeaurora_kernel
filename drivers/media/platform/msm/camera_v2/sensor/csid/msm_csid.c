@@ -20,7 +20,7 @@
 #include "msm_camera_io_util.h"
 
 #define V4L2_IDENT_CSID                            50002
-#define CSID_VERSION_V2                      0x02000011
+#define CSID_VERSION_V2                       0x02001000 //0x02000011
 #define CSID_VERSION_V3                      0x30000000
 #define MSM_CSID_DRV_NAME                    "msm_csid"
 
@@ -196,10 +196,26 @@ static struct msm_cam_clk_info csid_8974_clk_info[] = {
 	{"csi_rdi_clk", -1},
 };
 
-static struct camera_vreg_t csid_8960_vreg_info[] = {
-	{"mipi_csi_vdd", REG_LDO, 1200000, 1200000, 20000},
+static struct msm_cam_clk_info csid_8610_clk_info[] = {
+	{"csi_ahb_clk", -1},
+	{"csi_src_clk", 200000000},
+	{"csi_clk", -1},
+	{"csi_phy_clk", -1},
+	{"csi_pix_clk", -1},
+	{"csi_rdi_clk", -1},
 };
 
+static struct camera_vreg_t csid_8960_vreg_info[] = {
+	{"qcom,mipi-csi-vdd", REG_LDO, 0, 0, 12000},
+	//{"mipi_csi_vdd", REG_LDO, 1200000, 1200000, 20000},
+};
+
+#if 0
+static struct camera_vreg_t csid_8610_vreg_info[] = {
+	{"qcom,mipi_csi_vdd", REG_LDO, 1200000, 1200000, 20000},
+ };
+#endif
+ 
 static struct camera_vreg_t csid_vreg_info[] = {
 	{"qcom,mipi-csi-vdd", REG_LDO, 0, 0, 12000},
 };
@@ -230,22 +246,34 @@ static int msm_csid_init(struct csid_device *csid_dev, uint32_t *csid_version)
 	}
 
 	if (CSID_VERSION <= CSID_VERSION_V2) {
+#if 0
 		rc = msm_camera_config_vreg(&csid_dev->pdev->dev,
 			csid_8960_vreg_info, ARRAY_SIZE(csid_8960_vreg_info),
 			NULL, 0, &csid_dev->csi_vdd, 1);
+#else
+		rc = msm_camera_config_vreg(&csid_dev->pdev->dev,
+			csid_vreg_info, ARRAY_SIZE(csid_vreg_info),
+			NULL, 0, &csid_dev->csi_vdd, 1);
+#endif
 		if (rc < 0) {
 			pr_err("%s: regulator on failed\n", __func__);
 			goto vreg_config_failed;
 		}
-
+#if 0 
 		rc = msm_camera_enable_vreg(&csid_dev->pdev->dev,
 			csid_8960_vreg_info, ARRAY_SIZE(csid_8960_vreg_info),
 			NULL, 0, &csid_dev->csi_vdd, 1);
+#else
+		rc = msm_camera_enable_vreg(&csid_dev->pdev->dev,
+			csid_vreg_info, ARRAY_SIZE(csid_vreg_info),
+			NULL, 0, &csid_dev->csi_vdd, 1);
+#endif
 		if (rc < 0) {
 			pr_err("%s: regulator enable failed\n", __func__);
 			goto vreg_enable_failed;
 		}
 
+if(0) {
 		rc = msm_cam_clk_enable(&csid_dev->pdev->dev,
 			csid_8960_clk_info, csid_dev->csid_clk,
 			ARRAY_SIZE(csid_8960_clk_info), 1);
@@ -253,6 +281,16 @@ static int msm_csid_init(struct csid_device *csid_dev, uint32_t *csid_version)
 			pr_err("%s: clock enable failed\n", __func__);
 			goto clk_enable_failed;
 		}
+} else {
+
+		rc = msm_cam_clk_enable(&csid_dev->pdev->dev,
+			csid_8610_clk_info, csid_dev->csid_clk,
+			ARRAY_SIZE(csid_8610_clk_info), 1);
+		if (rc < 0) {
+			pr_err("%s: clock enable failed\n", __func__);
+			goto clk_enable_failed;
+		}
+}
 	} else if (CSID_VERSION >= CSID_VERSION_V3) {
 		rc = msm_camera_config_vreg(&csid_dev->pdev->dev,
 			csid_vreg_info, ARRAY_SIZE(csid_vreg_info),
@@ -295,9 +333,15 @@ static int msm_csid_init(struct csid_device *csid_dev, uint32_t *csid_version)
 
 clk_enable_failed:
 	if (CSID_VERSION <= CSID_VERSION_V2) {
+if(0) {
 		msm_camera_enable_vreg(&csid_dev->pdev->dev,
 			csid_8960_vreg_info, ARRAY_SIZE(csid_8960_vreg_info),
 			NULL, 0, &csid_dev->csi_vdd, 0);
+} else {
+		msm_camera_enable_vreg(&csid_dev->pdev->dev,
+			csid_vreg_info, ARRAY_SIZE(csid_vreg_info),
+			NULL, 0, &csid_dev->csi_vdd, 0);
+}
 	} else if (CSID_VERSION >= CSID_VERSION_V3) {
 		msm_camera_enable_vreg(&csid_dev->pdev->dev,
 			csid_vreg_info, ARRAY_SIZE(csid_vreg_info),
@@ -305,9 +349,15 @@ clk_enable_failed:
 	}
 vreg_enable_failed:
 	if (CSID_VERSION <= CSID_VERSION_V2) {
+#if 0
 		msm_camera_config_vreg(&csid_dev->pdev->dev,
 			csid_8960_vreg_info, ARRAY_SIZE(csid_8960_vreg_info),
 			NULL, 0, &csid_dev->csi_vdd, 0);
+#else
+		msm_camera_config_vreg(&csid_dev->pdev->dev,
+			csid_vreg_info, ARRAY_SIZE(csid_vreg_info),
+			NULL, 0, &csid_dev->csi_vdd, 0);
+#endif
 	} else if (CSID_VERSION >= CSID_VERSION_V3) {
 		msm_camera_config_vreg(&csid_dev->pdev->dev,
 			csid_vreg_info, ARRAY_SIZE(csid_vreg_info),
@@ -336,6 +386,7 @@ static int msm_csid_release(struct csid_device *csid_dev)
 	disable_irq(csid_dev->irq->start);
 
 	if (csid_dev->hw_version <= CSID_VERSION_V2) {
+#if 0
 		msm_cam_clk_enable(&csid_dev->pdev->dev, csid_8960_clk_info,
 			csid_dev->csid_clk, ARRAY_SIZE(csid_8960_clk_info), 0);
 
@@ -346,6 +397,21 @@ static int msm_csid_release(struct csid_device *csid_dev)
 		msm_camera_config_vreg(&csid_dev->pdev->dev,
 			csid_8960_vreg_info, ARRAY_SIZE(csid_8960_vreg_info),
 			NULL, 0, &csid_dev->csi_vdd, 0);
+#else
+		msm_cam_clk_enable(&csid_dev->pdev->dev,
+			csid_8610_clk_info,
+			csid_dev->csid_clk,
+			ARRAY_SIZE(csid_8610_clk_info), 0);
+
+		msm_camera_enable_vreg(&csid_dev->pdev->dev,
+			csid_vreg_info, ARRAY_SIZE(csid_vreg_info),
+			NULL, 0, &csid_dev->csi_vdd, 0);
+
+		msm_camera_config_vreg(&csid_dev->pdev->dev,
+			csid_vreg_info, ARRAY_SIZE(csid_vreg_info),
+			NULL, 0, &csid_dev->csi_vdd, 0);
+
+#endif
 	} else if (csid_dev->hw_version >= CSID_VERSION_V3) {
 		msm_cam_clk_enable(&csid_dev->pdev->dev, csid_8974_clk_info,
 			csid_dev->csid_clk, ARRAY_SIZE(csid_8974_clk_info), 0);
