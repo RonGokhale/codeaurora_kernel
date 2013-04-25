@@ -797,6 +797,13 @@ static int r820t_sysfreq_sel(struct r820t_priv *priv, u32 freq,
 		cable2_in = 0x00;
 	}
 
+
+	if (priv->cfg->use_predetect) {
+		rc = r820t_write_reg_mask(priv, 0x06, pre_dect, 0x40);
+		if (rc < 0)
+			return rc;
+	}
+
 	rc = r820t_write_reg_mask(priv, 0x1d, lna_top, 0xc7);
 	if (rc < 0)
 		return rc;
@@ -1378,7 +1385,7 @@ static int r820t_xtal_check(struct r820t_priv *priv)
 		rc = r820t_read(priv, 0x00, data, sizeof(data));
 		if (rc < 0)
 			return rc;
-		if ((!data[2]) & 0x40)
+		if (!(data[2] & 0x40))
 			continue;
 
 		val = data[2] & 0x3f;
@@ -1854,15 +1861,12 @@ static int r820t_imr(struct r820t_priv *priv, unsigned imr_mem, bool im_flag)
 	else
 		ring_ref = priv->cfg->xtal;
 
+	n_ring = 15;
 	for (n = 0; n < 16; n++) {
 		if ((16 + n) * 8 * ring_ref >= 3100000) {
 			n_ring = n;
 			break;
 		}
-
-		/* n_ring not found */
-		if (n == 15)
-			n_ring = n;
 	}
 
 	reg18 = r820t_read_cache_reg(priv, 0x18);
@@ -2252,9 +2256,8 @@ static int r820t_release(struct dvb_frontend *fe)
 
 	mutex_unlock(&r820t_list_mutex);
 
-	fe->tuner_priv = NULL;
-
 	kfree(fe->tuner_priv);
+	fe->tuner_priv = NULL;
 
 	return 0;
 }

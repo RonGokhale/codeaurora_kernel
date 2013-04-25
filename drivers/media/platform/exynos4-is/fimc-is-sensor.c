@@ -40,11 +40,6 @@ static const struct v4l2_mbus_framefmt fimc_is_sensor_formats[] = {
 	}
 };
 
-static struct fimc_is_sensor *sd_to_fimc_is_sensor(struct v4l2_subdev *sd)
-{
-	return container_of(sd, struct fimc_is_sensor, subdev);
-}
-
 static const struct v4l2_mbus_framefmt *find_sensor_format(
 	struct v4l2_mbus_framefmt *mf)
 {
@@ -147,7 +142,7 @@ static const struct v4l2_subdev_internal_ops fimc_is_sensor_sd_internal_ops = {
 
 static int fimc_is_sensor_s_power(struct v4l2_subdev *sd, int on)
 {
-	struct fimc_is_sensor *sensor = v4l2_get_subdevdata(sd);
+	struct fimc_is_sensor *sensor = sd_to_fimc_is_sensor(sd);
 	int gpio = sensor->gpio_reset;
 	int ret;
 
@@ -216,7 +211,8 @@ static int fimc_is_sensor_probe(struct i2c_client *client,
 
 	gpio = of_get_gpio_flags(dev->of_node, 0, NULL);
 	if (gpio_is_valid(gpio)) {
-		ret = gpio_request_one(gpio, GPIOF_OUT_INIT_LOW, DRIVER_NAME);
+		ret = devm_gpio_request_one(dev, gpio, GPIOF_OUT_INIT_LOW,
+							DRIVER_NAME);
 		if (ret < 0)
 			return ret;
 	}
@@ -228,13 +224,11 @@ static int fimc_is_sensor_probe(struct i2c_client *client,
 	ret = devm_regulator_bulk_get(&client->dev, SENSOR_NUM_SUPPLIES,
 				      sensor->supplies);
 	if (ret < 0)
-		goto err_gpio;
+		return ret;
 
 	of_id = of_match_node(fimc_is_sensor_of_match, dev->of_node);
-	if (!of_id) {
-		ret = -ENODEV;
-		goto err_reg;
-	}
+	if (!of_id)
+		return -ENODEV;
 
 	sensor->drvdata = of_id->data;
 	sensor->dev = dev;
@@ -251,28 +245,18 @@ static int fimc_is_sensor_probe(struct i2c_client *client,
 	sensor->pad.flags = MEDIA_PAD_FL_SOURCE;
 	ret = media_entity_init(&sd->entity, 1, &sensor->pad, 0);
 	if (ret < 0)
-		goto err_reg;
+		return ret;
 
-	v4l2_set_subdevdata(sd, sensor);
 	pm_runtime_no_callbacks(dev);
 	pm_runtime_enable(dev);
 
-	return 0;
-err_reg:
-	regulator_bulk_free(SENSOR_NUM_SUPPLIES, sensor->supplies);
-err_gpio:
-	if (gpio_is_valid(sensor->gpio_reset))
-		gpio_free(sensor->gpio_reset);
 	return ret;
 }
 
 static int fimc_is_sensor_remove(struct i2c_client *client)
 {
-	struct fimc_is_sensor *sensor;
-
-	regulator_bulk_free(SENSOR_NUM_SUPPLIES, sensor->supplies);
-	media_entity_cleanup(&sensor->subdev.entity);
-
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	media_entity_cleanup(&sd->entity);
 	return 0;
 }
 
@@ -294,7 +278,6 @@ static const struct of_device_id fimc_is_sensor_of_match[] = {
 	},
 	{  }
 };
-MODULE_DEVICE_TABLE(of, fimc_is_sensor_of_match);
 
 static struct i2c_driver fimc_is_sensor_driver = {
 	.driver = {

@@ -220,7 +220,7 @@ static int fimc_is_register_subdevs(struct fimc_is *is)
 			if (WARN_ON(is->sensor))
 				continue;
 
-			is->sensor = v4l2_get_subdevdata(sd);
+			is->sensor = sd_to_fimc_is_sensor(sd);
 
 			if (fimc_is_parse_sensor_config(is->sensor, child)) {
 				dev_warn(&is->pdev->dev, "DT parse error: %s\n",
@@ -766,7 +766,7 @@ static const struct file_operations fimc_is_debugfs_fops = {
 
 static void fimc_is_debugfs_remove(struct fimc_is *is)
 {
-	debugfs_remove(is->debugfs_entry);
+	debugfs_remove_recursive(is->debugfs_entry);
 	is->debugfs_entry = NULL;
 }
 
@@ -847,16 +847,17 @@ static int fimc_is_probe(struct platform_device *pdev)
 		goto err_irq;
 
 	ret = fimc_is_setup_clocks(is);
+	pm_runtime_put_sync(dev);
+
 	if (ret < 0)
 		goto err_irq;
 
-	pm_runtime_put_sync(dev);
 	is->clk_init = true;
 
 	is->alloc_ctx = vb2_dma_contig_init_ctx(dev);
 	if (IS_ERR(is->alloc_ctx)) {
 		ret = PTR_ERR(is->alloc_ctx);
-		goto err_pm;
+		goto err_irq;
 	}
 	/*
 	 * Register FIMC-IS V4L2 subdevs to this driver. The video nodes
@@ -885,8 +886,6 @@ err_sd:
 	fimc_is_unregister_subdevs(is);
 err_irq:
 	free_irq(is->irq, is);
-err_pm:
-	pm_runtime_put(dev);
 err_clk:
 	fimc_is_put_clocks(is);
 	return ret;
@@ -995,9 +994,9 @@ err_sens:
 
 static void fimc_is_module_exit(void)
 {
-	platform_driver_unregister(&fimc_is_driver);
-	fimc_is_unregister_i2c_driver();
 	fimc_is_unregister_sensor_driver();
+	fimc_is_unregister_i2c_driver();
+	platform_driver_unregister(&fimc_is_driver);
 }
 
 module_init(fimc_is_module_init);

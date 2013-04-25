@@ -635,7 +635,7 @@ static int anysee_frontend_attach(struct dvb_usb_adapter *adap)
 {
 	struct anysee_state *state = adap_to_priv(adap);
 	struct dvb_usb_device *d = adap_to_d(adap);
-	int ret;
+	int ret = 0;
 	u8 tmp;
 	struct i2c_msg msg[2] = {
 		{
@@ -882,7 +882,7 @@ static int anysee_frontend_attach(struct dvb_usb_adapter *adap)
 		/* we have no frontend :-( */
 		ret = -ENODEV;
 		dev_err(&d->udev->dev,
-				"%s: Unsupported Anysee version. Please report the <linux-media@vger.kernel.org>.\n",
+				"%s: Unsupported Anysee version. Please report to <linux-media@vger.kernel.org>.\n",
 				KBUILD_MODNAME);
 	}
 error:
