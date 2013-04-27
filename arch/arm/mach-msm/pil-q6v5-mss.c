@@ -243,7 +243,7 @@ static int pil_mss_reset(struct pil_desc *pil)
 	struct q6v5_data *drv = container_of(pil, struct q6v5_data, desc);
 	struct platform_device *pdev = to_platform_device(pil->dev);
 	struct mba_data *mba = platform_get_drvdata(pdev);
-	unsigned long start_addr = pil_get_entry_addr(pil);
+	phys_addr_t start_addr = pil_get_entry_addr(pil);
 	int ret;
 
 	/*
@@ -402,7 +402,7 @@ static int pil_mba_init_image(struct pil_desc *pil,
 	return ret;
 }
 
-static int pil_mba_verify_blob(struct pil_desc *pil, u32 phy_addr,
+static int pil_mba_verify_blob(struct pil_desc *pil, phys_addr_t phy_addr,
 			       size_t size)
 {
 	struct mba_data *drv = dev_get_drvdata(pil->dev);

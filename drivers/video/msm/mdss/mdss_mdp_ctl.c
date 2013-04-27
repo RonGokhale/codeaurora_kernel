@@ -47,6 +47,15 @@ static inline void mdp_mixer_write(struct mdss_mdp_mixer *mixer,
 	writel_relaxed(val, mixer->base + reg);
 }
 
+static inline u32 mdss_mdp_get_pclk_rate(struct mdss_mdp_ctl *ctl)
+{
+	struct mdss_panel_info *pinfo = &ctl->panel_data->panel_info;
+
+	return (ctl->intf_type == MDSS_INTF_DSI) ?
+		pinfo->mipi.dsi_pclk_rate :
+		pinfo->clk_rate;
+}
+
 static int mdss_mdp_ctl_perf_commit(struct mdss_data_type *mdata, u32 flags)
 {
 	struct mdss_mdp_ctl *ctl;
@@ -202,13 +211,7 @@ static int mdss_mdp_ctl_perf_update(struct mdss_mdp_ctl *ctl)
 			max_clk_rate = clk_rate;
 
 		if (ctl->intf_type) {
-			struct mdss_panel_info *pinfo;
-
-			pinfo = &ctl->panel_data->panel_info;
-			clk_rate = (ctl->intf_type == MDSS_INTF_DSI) ?
-					pinfo->mipi.dsi_pclk_rate :
-					pinfo->clk_rate;
-
+			clk_rate = mdss_mdp_get_pclk_rate(ctl);
 			/* minimum clock rate due to inefficiency in 3dmux */
 			clk_rate = mult_frac(clk_rate >> 1, 9, 8);
 			if (clk_rate > max_clk_rate)
@@ -289,6 +292,7 @@ static int mdss_mdp_ctl_free(struct mdss_mdp_ctl *ctl)
 	}
 	mutex_lock(&mdss_mdp_ctl_lock);
 	ctl->ref_cnt--;
+	ctl->intf_num = MDSS_MDP_NO_INTF;
 	ctl->is_secure = false;
 	ctl->power_on = false;
 	ctl->start_fnc = NULL;
@@ -297,6 +301,7 @@ static int mdss_mdp_ctl_free(struct mdss_mdp_ctl *ctl)
 	ctl->display_fnc = NULL;
 	ctl->wait_fnc = NULL;
 	ctl->set_vsync_handler = NULL;
+	ctl->read_line_cnt_fnc = NULL;
 	mutex_unlock(&mdss_mdp_ctl_lock);
 
 	return 0;
@@ -647,15 +652,18 @@ struct mdss_mdp_ctl *mdss_mdp_ctl_init(struct mdss_panel_data *pdata,
 	}
 	ctl->mfd = mfd;
 	ctl->panel_data = pdata;
+	ctl->is_video_mode = false;
 
 	switch (pdata->panel_info.type) {
 	case EDP_PANEL:
+		ctl->is_video_mode = true;
 		ctl->intf_num = MDSS_MDP_INTF0;
 		ctl->intf_type = MDSS_INTF_EDP;
 		ctl->opmode = MDSS_MDP_CTL_OP_VIDEO_MODE;
 		ctl->start_fnc = mdss_mdp_video_start;
 		break;
 	case MIPI_VIDEO_PANEL:
+		ctl->is_video_mode = true;
 		if (pdata->panel_info.pdest == DISPLAY_1)
 			ctl->intf_num = MDSS_MDP_INTF1;
 		else
@@ -674,6 +682,7 @@ struct mdss_mdp_ctl *mdss_mdp_ctl_init(struct mdss_panel_data *pdata,
 		ctl->start_fnc = mdss_mdp_cmd_start;
 		break;
 	case DTV_PANEL:
+		ctl->is_video_mode = true;
 		ctl->intf_num = MDSS_MDP_INTF3;
 		ctl->intf_type = MDSS_INTF_HDMI;
 		ctl->opmode = MDSS_MDP_CTL_OP_VIDEO_MODE;
@@ -1189,16 +1198,19 @@ int mdss_mdp_ctl_addr_setup(struct mdss_data_type *mdata,
 struct mdss_mdp_mixer *mdss_mdp_mixer_get(struct mdss_mdp_ctl *ctl, int mux)
 {
 	struct mdss_mdp_mixer *mixer = NULL;
+	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(ctl->mfd);
 	if (!ctl)
 		return NULL;
 
 	switch (mux) {
 	case MDSS_MDP_MIXER_MUX_DEFAULT:
 	case MDSS_MDP_MIXER_MUX_LEFT:
-		mixer = ctl->mixer_left;
+		mixer = mdp5_data->mixer_swap ?
+			ctl->mixer_right : ctl->mixer_left;
 		break;
 	case MDSS_MDP_MIXER_MUX_RIGHT:
-		mixer = ctl->mixer_right;
+		mixer = mdp5_data->mixer_swap ?
+			ctl->mixer_left : ctl->mixer_right;
 		break;
 	}
 
@@ -1290,9 +1302,10 @@ int mdss_mdp_mixer_pipe_unstage(struct mdss_mdp_pipe *pipe)
 	if (mutex_lock_interruptible(&ctl->lock))
 		return -EINTR;
 
-	mixer->params_changed++;
-	mixer->stage_pipe[pipe->mixer_stage] = NULL;
-
+	if (pipe == mixer->stage_pipe[pipe->mixer_stage]) {
+		mixer->params_changed++;
+		mixer->stage_pipe[pipe->mixer_stage] = NULL;
+	}
 	mutex_unlock(&ctl->lock);
 
 	return 0;
@@ -1305,6 +1318,71 @@ static int mdss_mdp_mixer_update(struct mdss_mdp_mixer *mixer)
 	/* skip mixer setup for rotator */
 	if (!mixer->rotator_mode)
 		mdss_mdp_mixer_setup(mixer->ctl, mixer);
+
+	return 0;
+}
+
+int mdss_mdp_display_wakeup_time(struct mdss_mdp_ctl *ctl,
+				 ktime_t *wakeup_time)
+{
+	struct mdss_panel_info *pinfo;
+	u32 clk_rate, clk_period;
+	u32 current_line, total_line;
+	u32 time_of_line, time_to_vsync;
+	ktime_t current_time = ktime_get();
+
+	if (!ctl->read_line_cnt_fnc)
+		return -ENOSYS;
+
+	pinfo = &ctl->panel_data->panel_info;
+	if (!pinfo)
+		return -ENODEV;
+
+	clk_rate = mdss_mdp_get_pclk_rate(ctl);
+
+	clk_rate /= 1000;	/* in kHz */
+	if (!clk_rate)
+		return -EINVAL;
+
+	/*
+	 * calculate clk_period as pico second to maintain good
+	 * accuracy with high pclk rate and this number is in 17 bit
+	 * range.
+	 */
+	clk_period = 1000000000 / clk_rate;
+	if (!clk_period)
+		return -EINVAL;
+
+	time_of_line = (pinfo->lcdc.h_back_porch +
+		 pinfo->lcdc.h_front_porch +
+		 pinfo->lcdc.h_pulse_width +
+		 pinfo->xres) * clk_period;
+
+	time_of_line /= 1000;	/* in nano second */
+	if (!time_of_line)
+		return -EINVAL;
+
+	current_line = ctl->read_line_cnt_fnc(ctl);
+
+	total_line = pinfo->lcdc.v_back_porch +
+		pinfo->lcdc.v_front_porch +
+		pinfo->lcdc.v_pulse_width +
+		pinfo->yres;
+
+	if (current_line > total_line)
+		return -EINVAL;
+
+	time_to_vsync = time_of_line * (total_line - current_line);
+	if (!time_to_vsync)
+		return -EINVAL;
+
+	*wakeup_time = ktime_add_ns(current_time, time_to_vsync);
+
+	pr_debug("clk_rate=%dkHz clk_period=%d cur_line=%d tot_line=%d\n",
+		clk_rate, clk_period, current_line, total_line);
+	pr_debug("time_to_vsync=%d current_time=%d wakeup_time=%d\n",
+		time_to_vsync, (int)ktime_to_ms(current_time),
+		(int)ktime_to_ms(*wakeup_time));
 
 	return 0;
 }

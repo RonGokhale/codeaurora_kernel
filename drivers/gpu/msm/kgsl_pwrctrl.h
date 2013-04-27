@@ -23,7 +23,7 @@
 #define KGSL_PWRLEVEL_NOMINAL 1
 #define KGSL_PWRLEVEL_LAST_OFFSET 2
 
-#define KGSL_MAX_CLKS 5
+#define KGSL_MAX_CLKS 6
 
 struct platform_device;
 
@@ -91,6 +91,7 @@ struct kgsl_pwrctrl {
 	struct pm_qos_request pm_qos_req_dma;
 	unsigned int pm_qos_latency;
 	unsigned int step_mul;
+	unsigned int irq_last;
 };
 
 void kgsl_pwrctrl_irq(struct kgsl_device *device, int state);

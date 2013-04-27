@@ -24,6 +24,7 @@
 #include <linux/msm_mdp.h>
 
 #include <mach/iommu_domains.h>
+#include <mach/event_timer.h>
 
 #include "mdss.h"
 #include "mdss_fb.h"
@@ -37,6 +38,7 @@
 
 static atomic_t ov_active_panels = ATOMIC_INIT(0);
 static int mdss_mdp_overlay_free_fb_pipe(struct msm_fb_data_type *mfd);
+static int mdss_mdp_overlay_fb_parse_dt(struct msm_fb_data_type *mfd);
 
 static int mdss_mdp_overlay_get(struct msm_fb_data_type *mfd,
 				struct mdp_overlay *req)
@@ -598,6 +600,7 @@ static int mdss_mdp_overlay_cleanup(struct msm_fb_data_type *mfd)
 		list_move(&pipe->cleanup_list, &destroy_pipes);
 		mdss_mdp_overlay_free_buf(&pipe->back_buf);
 		mdss_mdp_overlay_free_buf(&pipe->front_buf);
+		pipe->mfd = NULL;
 	}
 
 	list_for_each_entry(pipe, &mdp5_data->pipes_used, used_list) {
@@ -740,6 +743,19 @@ static int mdss_mdp_overlay_start(struct msm_fb_data_type *mfd)
 	return rc;
 }
 
+static void mdss_mdp_overlay_update_pm(struct mdss_overlay_private *mdp5_data)
+{
+	ktime_t wakeup_time;
+
+	if (!mdp5_data->cpu_pm_hdl)
+		return;
+
+	if (mdss_mdp_display_wakeup_time(mdp5_data->ctl, &wakeup_time))
+		return;
+
+	activate_event_timer(mdp5_data->cpu_pm_hdl, wakeup_time);
+}
+
 int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 {
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
@@ -758,6 +774,7 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 			buf = &pipe->front_buf;
 		} else {
 			pr_warn("pipe queue w/o buffer. unstaging layer\n");
+			pipe->params_changed = 0;
 			mdss_mdp_mixer_pipe_unstage(pipe);
 			continue;
 		}
@@ -779,6 +796,8 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 
 	if (IS_ERR_VALUE(ret))
 		goto commit_fail;
+
+	mdss_mdp_overlay_update_pm(mdp5_data);
 
 	ret = mdss_mdp_display_wait4comp(mdp5_data->ctl);
 
@@ -987,6 +1006,41 @@ static int mdss_mdp_overlay_queue(struct msm_fb_data_type *mfd,
 	return ret;
 }
 
+static int mdss_mdp_overlay_force_cleanup(struct msm_fb_data_type *mfd)
+{
+	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
+	struct mdss_mdp_ctl *ctl = mdp5_data->ctl;
+	int ret;
+
+	pr_debug("forcing cleanup to unset dma pipes on fb%d\n", mfd->index);
+
+	/*
+	 * video mode panels require the layer to be unstaged and wait for
+	 * vsync to be able to release buffer.
+	 */
+	if (ctl && ctl->is_video_mode) {
+		ret = mdss_mdp_display_commit(ctl, NULL);
+		if (!IS_ERR_VALUE(ret))
+			mdss_mdp_display_wait4comp(ctl);
+	}
+
+	ret = mdss_mdp_overlay_cleanup(mfd);
+
+	return ret;
+}
+
+static void mdss_mdp_overlay_force_dma_cleanup(struct mdss_data_type *mdata)
+{
+	struct mdss_mdp_pipe *pipe;
+	int i;
+
+	for (i = 0; i < mdata->ndma_pipes; i++) {
+		pipe = mdata->dma_pipes + i;
+		if (atomic_read(&pipe->ref_cnt) && pipe->mfd)
+			mdss_mdp_overlay_force_cleanup(pipe->mfd);
+	}
+}
+
 static int mdss_mdp_overlay_play(struct msm_fb_data_type *mfd,
 				 struct msmfb_overlay_data *req)
 {
@@ -1011,6 +1065,8 @@ static int mdss_mdp_overlay_play(struct msm_fb_data_type *mfd,
 	}
 
 	if (req->id & MDSS_MDP_ROT_SESSION_MASK) {
+		mdss_mdp_overlay_force_dma_cleanup(mfd_to_mdata(mfd));
+
 		ret = mdss_mdp_overlay_rotate(mfd, req);
 	} else if (req->id == BORDERFILL_NDX) {
 		pr_debug("borderfill enable\n");
@@ -1720,11 +1776,8 @@ static int mdss_mdp_overlay_ioctl_handler(struct msm_fb_data_type *mfd,
 			struct msmfb_overlay_data data;
 
 			ret = copy_from_user(&data, argp, sizeof(data));
-			if (!ret) {
+			if (!ret)
 				ret = mdss_mdp_overlay_play(mfd, &data);
-				if (!IS_ERR_VALUE(ret))
-					mdss_fb_update_backlight(mfd);
-			}
 
 			if (ret)
 				pr_debug("OVERLAY_PLAY failed (%d)\n", ret);
@@ -1935,6 +1988,10 @@ int mdss_mdp_overlay_init(struct msm_fb_data_type *mfd)
 	}
 	mfd->mdp.private1 = mdp5_data;
 
+	rc = mdss_mdp_overlay_fb_parse_dt(mfd);
+	if (rc)
+		return rc;
+
 	rc = sysfs_create_group(&dev->kobj, &vsync_fs_attr_group);
 	if (rc) {
 		pr_err("vsync sysfs group creation failed, ret=%d\n", rc);
@@ -1947,8 +2004,27 @@ int mdss_mdp_overlay_init(struct msm_fb_data_type *mfd)
 	kobject_uevent(&dev->kobj, KOBJ_ADD);
 	pr_debug("vsync kobject_uevent(KOBJ_ADD)\n");
 
+	mdp5_data->cpu_pm_hdl = add_event_timer(NULL, (void *)mdp5_data);
+	if (!mdp5_data->cpu_pm_hdl)
+		pr_warn("%s: unable to add event timer\n", __func__);
+
 	return rc;
 init_fail:
 	kfree(mdp5_data);
 	return rc;
+}
+
+static int mdss_mdp_overlay_fb_parse_dt(struct msm_fb_data_type *mfd)
+{
+	struct platform_device *pdev = mfd->pdev;
+	struct mdss_overlay_private *mdp5_mdata = mfd_to_mdp5_data(mfd);
+
+	mdp5_mdata->mixer_swap = of_property_read_bool(pdev->dev.of_node,
+					   "qcom,mdss-mixer-swap");
+	if (mdp5_mdata->mixer_swap) {
+		pr_info("mixer swap is enabled for fb device=%s\n",
+			pdev->name);
+	}
+
+	return 0;
 }

@@ -60,6 +60,15 @@
 
 #define TETH_MTU_BYTE 1500
 
+#define TETH_INACTIVITY_TIME_MSEC (1000)
+
+#define TETH_WORKQUEUE_NAME "tethering_bridge_wq"
+
+#define TETH_TOTAL_HDR_ENTRIES 6
+#define TETH_TOTAL_RT_ENTRIES_IP 3
+#define TETH_TOTAL_FLT_ENTRIES_IP 2
+#define TETH_IP_FAMILIES 2
+
 struct mac_addresses_type {
 	u8 host_pc_mac_addr[ETH_ALEN];
 	bool host_pc_mac_addr_known;
@@ -70,6 +79,7 @@ struct mac_addresses_type {
 struct stats {
 	u64 a2_to_usb_num_sw_tx_packets;
 	u64 usb_to_a2_num_sw_tx_packets;
+	u64 num_sw_tx_packets_during_resource_wakeup;
 };
 
 struct teth_bridge_ctx {
@@ -94,9 +104,24 @@ struct teth_bridge_ctx {
 	bool comp_hw_bridge_in_progress;
 	struct teth_aggr_capabilities *aggr_caps;
 	struct stats stats;
+	struct workqueue_struct *teth_wq;
+	u16 a2_ipa_hdr_len;
+	struct ipa_ioc_del_hdr *hdr_del;
+	struct ipa_ioc_del_rt_rule *routing_del[TETH_IP_FAMILIES];
+	struct ipa_ioc_del_flt_rule *filtering_del[TETH_IP_FAMILIES];
+};
+static struct teth_bridge_ctx *teth_ctx;
+
+enum teth_packet_direction {
+	TETH_USB_TO_A2,
+	TETH_A2_TO_USB,
 };
 
-static struct teth_bridge_ctx *teth_ctx;
+struct teth_work {
+	struct work_struct work;
+	struct sk_buff *skb;
+	enum teth_packet_direction dir;
+};
 
 #ifdef CONFIG_DEBUG_FS
 #define TETH_MAX_MSG_LEN 512
@@ -110,6 +135,7 @@ static int add_eth_hdrs(char *hdr_name_ipv4, char *hdr_name_ipv6,
 	struct ipa_ioc_add_hdr *hdrs;
 	struct ethhdr hdr_ipv4;
 	struct ethhdr hdr_ipv6;
+	int idx1;
 
 	TETH_DBG_FUNC_ENTRY();
 	memcpy(hdr_ipv4.h_source, src_mac_addr, ETH_ALEN);
@@ -144,6 +170,13 @@ static int add_eth_hdrs(char *hdr_name_ipv4, char *hdr_name_ipv6,
 	res = ipa_add_hdr(hdrs);
 	if (res || hdrs->hdr[0].status || hdrs->hdr[1].status)
 		TETH_ERR("Header insertion failed\n");
+
+	/* Save the headers handles in order to delete them later */
+	for (idx1 = 0; idx1 < hdrs->num_hdrs; idx1++) {
+		int idx2 = teth_ctx->hdr_del->num_hdls++;
+		teth_ctx->hdr_del->hdl[idx2].hdl = hdrs->hdr[idx1].hdr_hdl;
+	}
+
 	kfree(hdrs);
 	TETH_DBG_FUNC_EXIT();
 
@@ -169,6 +202,7 @@ static int configure_ipa_header_block_internal(u32 usb_ipa_hdr_len,
 	}
 
 	hdr_cfg.hdr_len = a2_ipa_hdr_len;
+	teth_ctx->a2_ipa_hdr_len = a2_ipa_hdr_len;
 	res = ipa_cfg_ep_hdr(teth_ctx->a2_ipa_pipe_hdl, &hdr_cfg);
 	if (res) {
 		TETH_ERR("Header removal config for A2->IPA pipe failed\n");
@@ -200,6 +234,7 @@ static int add_mbim_hdr(void)
 	int res;
 	struct ipa_ioc_add_hdr *mbim_hdr;
 	u8 mbim_stream_id = 0;
+	int idx;
 
 	TETH_DBG_FUNC_ENTRY();
 	mbim_hdr = kzalloc(sizeof(struct ipa_ioc_add_hdr) +
@@ -223,6 +258,11 @@ static int add_mbim_hdr(void)
 	} else {
 		TETH_DBG("Added MBIM stream ID header\n");
 	}
+
+	/* Save the header handle in order to delete it later */
+	idx = teth_ctx->hdr_del->num_hdls++;
+	teth_ctx->hdr_del->hdl[idx].hdl = mbim_hdr->hdr[0].hdr_hdl;
+
 	kfree(mbim_hdr);
 	TETH_DBG_FUNC_EXIT();
 
@@ -299,6 +339,7 @@ static int configure_routing_by_ip(char *hdr_name,
 	struct ipa_ioc_add_rt_rule *rt_rule;
 	struct ipa_ioc_get_hdr hdr_info;
 	int res;
+	int idx;
 
 	TETH_DBG_FUNC_ENTRY();
 	/* Get the header handle */
@@ -325,6 +366,12 @@ static int configure_routing_by_ip(char *hdr_name,
 	res = ipa_add_rt_rule(rt_rule);
 	if (res || rt_rule->rules[0].status)
 		TETH_ERR("Failed adding routing rule\n");
+
+	/* Save the routing rule handle in order to delete it later */
+	idx = teth_ctx->routing_del[ip_address_family]->num_hdls++;
+	teth_ctx->routing_del[ip_address_family]->hdl[idx].hdl =
+		rt_rule->rules[0].rt_rule_hdl;
+
 	kfree(rt_rule);
 	TETH_DBG_FUNC_EXIT();
 
@@ -432,6 +479,7 @@ static int configure_filtering_by_ip(char *rt_tbl_name,
 	struct ipa_ioc_add_flt_rule *flt_tbl;
 	struct ipa_ioc_get_rt_tbl rt_tbl_info;
 	int res;
+	int idx;
 
 	TETH_DBG_FUNC_ENTRY();
 	/* Get the needed routing table handle */
@@ -462,6 +510,12 @@ static int configure_filtering_by_ip(char *rt_tbl_name,
 	res = ipa_add_flt_rule(flt_tbl);
 	if (res || flt_tbl->rules[0].status)
 		TETH_ERR("Failed adding filtering table\n");
+
+	/* Save the filtering rule handle in order to delete it later */
+	idx = teth_ctx->filtering_del[ip_address_family]->num_hdls++;
+	teth_ctx->filtering_del[ip_address_family]->hdl[idx].hdl =
+		flt_tbl->rules[0].flt_rule_hdl;
+
 	kfree(flt_tbl);
 	TETH_DBG_FUNC_EXIT();
 
@@ -568,7 +622,6 @@ static int teth_set_aggr_per_ep(
 	u32 pipe_hdl)
 {
 	struct ipa_ep_cfg_aggr agg_params;
-	struct ipa_ep_cfg_hdr hdr_params;
 	int res;
 
 	TETH_DBG_FUNC_ENTRY();
@@ -585,18 +638,7 @@ static int teth_set_aggr_per_ep(
 		TETH_ERR("ipa_cfg_ep_aggr() failed\n");
 		goto bail;
 	}
-
-	if (!client_is_prod) {
-		memset(&hdr_params, 0, sizeof(hdr_params));
-		hdr_params.hdr_len = 1;
-		res = ipa_cfg_ep_hdr(pipe_hdl, &hdr_params);
-		if (res) {
-			TETH_ERR("ipa_cfg_ep_hdr() failed\n");
-			goto bail;
-		}
-	}
 	TETH_DBG_FUNC_EXIT();
-
 bail:
 	return res;
 }
@@ -627,6 +669,19 @@ static int teth_set_aggregation(void)
 	char aggr_prot_str[20];
 
 	TETH_DBG_FUNC_ENTRY();
+	if (!teth_ctx->aggr_params_known) {
+		TETH_ERR("Aggregation parameters unknown.\n");
+		return -EINVAL;
+	}
+
+	if ((teth_ctx->usb_ipa_pipe_hdl == 0) ||
+	    (teth_ctx->ipa_usb_pipe_hdl == 0))
+		return 0;
+		/*
+		 * Returning 0 in case pipe handles are 0 becuase aggregation
+		 * params will be set later
+		 */
+
 	if (teth_ctx->aggr_params.ul.aggr_prot == TETH_AGGR_PROTOCOL_MBIM ||
 	    teth_ctx->aggr_params.dl.aggr_prot == TETH_AGGR_PROTOCOL_MBIM) {
 		res = ipa_set_aggr_mode(IPA_MBIM);
@@ -672,6 +727,23 @@ bail:
 	return res;
 }
 
+static int teth_request_resource(void)
+{
+	int res;
+
+	INIT_COMPLETION(teth_ctx->is_bridge_prod_up);
+	res = ipa_rm_inactivity_timer_request_resource(
+		IPA_RM_RESOURCE_BRIDGE_PROD);
+	if (res < 0) {
+		if (res == -EINPROGRESS)
+			wait_for_completion(&teth_ctx->is_bridge_prod_up);
+		else
+			return res;
+	}
+
+	return 0;
+}
+
 static void complete_hw_bridge(struct work_struct *work)
 {
 	int res;
@@ -681,6 +753,12 @@ static void complete_hw_bridge(struct work_struct *work)
 		 (teth_ctx->link_protocol == TETH_LINK_PROTOCOL_ETHERNET) ?
 		 "ETHERNET" :
 		 "IP");
+
+	res = teth_request_resource();
+	if (res) {
+		TETH_ERR("request_resource() failed.\n");
+		goto bail;
+	}
 
 	res = teth_set_aggregation();
 	if (res) {
@@ -719,6 +797,7 @@ static void complete_hw_bridge(struct work_struct *work)
 	teth_ctx->is_hw_bridge_complete = true;
 bail:
 	teth_ctx->comp_hw_bridge_in_progress = false;
+	ipa_rm_inactivity_timer_release_resource(IPA_RM_RESOURCE_BRIDGE_PROD);
 	TETH_DBG_FUNC_EXIT();
 
 	return;
@@ -758,8 +837,76 @@ static void check_to_complete_hw_bridge(struct sk_buff *skb,
 	    (teth_ctx->aggr_params_known)) {
 		INIT_WORK(&teth_ctx->comp_hw_bridge_work, complete_hw_bridge);
 		teth_ctx->comp_hw_bridge_in_progress = true;
-		schedule_work(&teth_ctx->comp_hw_bridge_work);
+		queue_work(teth_ctx->teth_wq, &teth_ctx->comp_hw_bridge_work);
 	}
+}
+
+static void teth_send_skb_work(struct work_struct *work)
+{
+	struct teth_work *work_data =
+		container_of(work, struct teth_work, work);
+	int res;
+
+	res = teth_request_resource();
+	if (res) {
+		TETH_ERR("Packet send failure, dropping packet !\n");
+		goto bail;
+	}
+
+	switch (work_data->dir) {
+	case TETH_USB_TO_A2:
+		res = a2_mux_write(A2_MUX_TETHERED_0, work_data->skb);
+		if (res) {
+			TETH_ERR("Packet send failure, dropping packet !\n");
+			goto bail;
+		}
+		teth_ctx->stats.usb_to_a2_num_sw_tx_packets++;
+		break;
+
+	case TETH_A2_TO_USB:
+		res = ipa_tx_dp(IPA_CLIENT_USB_CONS, work_data->skb, NULL);
+		if (res) {
+			TETH_ERR("Packet send failure, dropping packet !\n");
+			goto bail;
+		}
+		teth_ctx->stats.a2_to_usb_num_sw_tx_packets++;
+		break;
+
+	default:
+		TETH_ERR("Unsupported direction to send !\n");
+		WARN_ON(1);
+	}
+	ipa_rm_inactivity_timer_release_resource(IPA_RM_RESOURCE_BRIDGE_PROD);
+	kfree(work_data);
+	teth_ctx->stats.num_sw_tx_packets_during_resource_wakeup++;
+
+	return;
+bail:
+	ipa_rm_inactivity_timer_release_resource(IPA_RM_RESOURCE_BRIDGE_PROD);
+	dev_kfree_skb(work_data->skb);
+	kfree(work_data);
+}
+
+static void defer_skb_send(struct sk_buff *skb, enum teth_packet_direction dir)
+{
+	struct teth_work *work = kmalloc(sizeof(struct teth_work), GFP_KERNEL);
+
+	if (!work) {
+		TETH_ERR("No mem, dropping packet\n");
+		dev_kfree_skb(skb);
+		ipa_rm_inactivity_timer_release_resource
+			(IPA_RM_RESOURCE_BRIDGE_PROD);
+		return;
+	}
+
+	/*
+	 * Since IPA uses a single Rx thread, we don't
+	 * want to wait for completion here
+	 */
+	INIT_WORK(&work->work, teth_send_skb_work);
+	work->dir = dir;
+	work->skb = skb;
+	queue_work(teth_ctx->teth_wq, &work->work);
 }
 
 static void usb_notify_cb(void *priv,
@@ -778,13 +925,36 @@ static void usb_notify_cb(void *priv,
 				&teth_ctx->mac_addresses.host_pc_mac_addr_known,
 				&teth_ctx->mac_addresses.device_mac_addr_known);
 
-		/* Send the packet to A2, using a2_service driver API */
-		teth_ctx->stats.usb_to_a2_num_sw_tx_packets++;
+		/*
+		 * Request the BRIDGE_PROD resource, send the packet and release
+		 * the resource
+		 */
+		res = ipa_rm_inactivity_timer_request_resource(
+			IPA_RM_RESOURCE_BRIDGE_PROD);
+		if (res < 0) {
+			if (res == -EINPROGRESS) {
+				/* The resource is waking up */
+				defer_skb_send(skb, TETH_USB_TO_A2);
+			} else {
+				TETH_ERR(
+					"Packet send failure, dropping packet !\n");
+				dev_kfree_skb(skb);
+			}
+			ipa_rm_inactivity_timer_release_resource(
+				IPA_RM_RESOURCE_BRIDGE_PROD);
+			return;
+		}
 		res = a2_mux_write(A2_MUX_TETHERED_0, skb);
 		if (res) {
 			TETH_ERR("Packet send failure, dropping packet !\n");
 			dev_kfree_skb(skb);
+			ipa_rm_inactivity_timer_release_resource(
+				IPA_RM_RESOURCE_BRIDGE_PROD);
+			return;
 		}
+		teth_ctx->stats.usb_to_a2_num_sw_tx_packets++;
+		ipa_rm_inactivity_timer_release_resource(
+			IPA_RM_RESOURCE_BRIDGE_PROD);
 		break;
 
 	case IPA_WRITE_DONE:
@@ -816,13 +986,37 @@ static void a2_notify_cb(void *user_data,
 				&teth_ctx->
 				mac_addresses.host_pc_mac_addr_known);
 
-		/* Send the packet to USB */
-		teth_ctx->stats.a2_to_usb_num_sw_tx_packets++;
+		/*
+		 * Request the BRIDGE_PROD resource, send the packet and release
+		 * the resource
+		 */
+		res = ipa_rm_inactivity_timer_request_resource(
+			IPA_RM_RESOURCE_BRIDGE_PROD);
+		if (res < 0) {
+			if (res == -EINPROGRESS) {
+				/* The resource is waking up */
+				defer_skb_send(skb, TETH_A2_TO_USB);
+			} else {
+				TETH_ERR(
+					"Packet send failure, dropping packet !\n");
+				dev_kfree_skb(skb);
+			}
+			ipa_rm_inactivity_timer_release_resource(
+				IPA_RM_RESOURCE_BRIDGE_PROD);
+			return;
+		}
+
 		res = ipa_tx_dp(IPA_CLIENT_USB_CONS, skb, NULL);
 		if (res) {
 			TETH_ERR("Packet send failure, dropping packet !\n");
 			dev_kfree_skb(skb);
+			ipa_rm_inactivity_timer_release_resource(
+				IPA_RM_RESOURCE_BRIDGE_PROD);
+			return;
 		}
+		teth_ctx->stats.a2_to_usb_num_sw_tx_packets++;
+		ipa_rm_inactivity_timer_release_resource(
+			IPA_RM_RESOURCE_BRIDGE_PROD);
 		break;
 
 	case A2_MUX_WRITE_DONE:
@@ -841,8 +1035,28 @@ static void bridge_prod_notify_cb(void *notify_cb_data,
 				  enum ipa_rm_event event,
 				  unsigned long data)
 {
+	int res;
+	struct ipa_ep_cfg ipa_ep_cfg;
+
 	switch (event) {
 	case IPA_RM_RESOURCE_GRANTED:
+		res = a2_mux_get_tethered_client_handles(
+			A2_MUX_TETHERED_0,
+			&teth_ctx->ipa_a2_pipe_hdl,
+			&teth_ctx->a2_ipa_pipe_hdl);
+		if (res) {
+			TETH_ERR(
+				"a2_mux_get_tethered_client_handles() failed, res = %d\n",
+				res);
+			return;
+		}
+
+		/* Reset the various endpoints configuration */
+		memset(&ipa_ep_cfg, 0, sizeof(ipa_ep_cfg));
+		ipa_cfg_ep(teth_ctx->ipa_a2_pipe_hdl, &ipa_ep_cfg);
+
+		ipa_ep_cfg.hdr.hdr_len = teth_ctx->a2_ipa_hdr_len;
+		ipa_cfg_ep(teth_ctx->a2_ipa_pipe_hdl, &ipa_ep_cfg);
 		complete(&teth_ctx->is_bridge_prod_up);
 		break;
 
@@ -886,32 +1100,34 @@ int teth_bridge_init(ipa_notify_cb *usb_notify_cb_ptr, void **private_data_ptr)
 	/* Build IPA Resource manager dependency graph */
 	res = ipa_rm_add_dependency(IPA_RM_RESOURCE_BRIDGE_PROD,
 				    IPA_RM_RESOURCE_USB_CONS);
-	if (res && res != -EEXIST) {
+	if (res && res != -EINPROGRESS) {
 		TETH_ERR("ipa_rm_add_dependency() failed\n");
 		goto bail;
 	}
 
 	res = ipa_rm_add_dependency(IPA_RM_RESOURCE_BRIDGE_PROD,
 				    IPA_RM_RESOURCE_A2_CONS);
-	if (res && res != -EEXIST) {
+	if (res && res != -EINPROGRESS) {
 		TETH_ERR("ipa_rm_add_dependency() failed\n");
 		goto fail_add_dependency_1;
 	}
 
 	res = ipa_rm_add_dependency(IPA_RM_RESOURCE_USB_PROD,
 				    IPA_RM_RESOURCE_A2_CONS);
-	if (res && res != -EEXIST) {
+	if (res && res != -EINPROGRESS) {
 		TETH_ERR("ipa_rm_add_dependency() failed\n");
 		goto fail_add_dependency_2;
 	}
 
 	res = ipa_rm_add_dependency(IPA_RM_RESOURCE_A2_PROD,
 				    IPA_RM_RESOURCE_USB_CONS);
-	if (res && res != -EEXIST) {
+	if (res && res != -EINPROGRESS) {
 		TETH_ERR("ipa_rm_add_dependency() failed\n");
 		goto fail_add_dependency_3;
 	}
 
+	/* Return 0 as EINPROGRESS is a valid return value at this point */
+	res = 0;
 	goto bail;
 
 fail_add_dependency_3:
@@ -929,6 +1145,57 @@ bail:
 }
 EXPORT_SYMBOL(teth_bridge_init);
 
+static void initialize_context(void)
+{
+	TETH_DBG_FUNC_ENTRY();
+	/* Initialize context variables */
+	teth_ctx->usb_ipa_pipe_hdl = 0;
+	teth_ctx->ipa_a2_pipe_hdl = 0;
+	teth_ctx->a2_ipa_pipe_hdl = 0;
+	teth_ctx->ipa_usb_pipe_hdl = 0;
+	teth_ctx->is_connected = false;
+
+	/* The default link protocol is Ethernet */
+	teth_ctx->link_protocol = TETH_LINK_PROTOCOL_ETHERNET;
+
+	memset(&teth_ctx->mac_addresses, 0, sizeof(teth_ctx->mac_addresses));
+	teth_ctx->is_hw_bridge_complete = false;
+	memset(&teth_ctx->aggr_params, 0, sizeof(teth_ctx->aggr_params));
+	teth_ctx->aggr_params_known = false;
+	teth_ctx->tethering_mode = 0;
+	INIT_COMPLETION(teth_ctx->is_bridge_prod_up);
+	INIT_COMPLETION(teth_ctx->is_bridge_prod_down);
+	teth_ctx->comp_hw_bridge_in_progress = false;
+	memset(&teth_ctx->stats, 0, sizeof(teth_ctx->stats));
+	teth_ctx->a2_ipa_hdr_len = 0;
+	memset(teth_ctx->hdr_del,
+	       0,
+	       sizeof(struct ipa_ioc_del_hdr) + TETH_TOTAL_HDR_ENTRIES *
+	       sizeof(struct ipa_hdr_del));
+	memset(teth_ctx->routing_del[IPA_IP_v4],
+	       0,
+	       sizeof(struct ipa_ioc_del_rt_rule) +
+	       TETH_TOTAL_RT_ENTRIES_IP * sizeof(struct ipa_rt_rule_del));
+	teth_ctx->routing_del[IPA_IP_v4]->ip = IPA_IP_v4;
+	memset(teth_ctx->routing_del[IPA_IP_v6],
+	       0,
+	       sizeof(struct ipa_ioc_del_rt_rule) +
+	       TETH_TOTAL_RT_ENTRIES_IP * sizeof(struct ipa_rt_rule_del));
+	teth_ctx->routing_del[IPA_IP_v6]->ip = IPA_IP_v6;
+	memset(teth_ctx->filtering_del[IPA_IP_v4],
+	       0,
+	       sizeof(struct ipa_ioc_del_flt_rule) +
+	       TETH_TOTAL_FLT_ENTRIES_IP * sizeof(struct ipa_flt_rule_del));
+	teth_ctx->filtering_del[IPA_IP_v4]->ip = IPA_IP_v4;
+	memset(teth_ctx->filtering_del[IPA_IP_v6],
+	       0,
+	       sizeof(struct ipa_ioc_del_flt_rule) +
+	       TETH_TOTAL_FLT_ENTRIES_IP * sizeof(struct ipa_flt_rule_del));
+	teth_ctx->filtering_del[IPA_IP_v6]->ip = IPA_IP_v6;
+
+	TETH_DBG_FUNC_EXIT();
+}
+
 /**
 * teth_bridge_disconnect() - Disconnect tethering bridge module
 *
@@ -938,38 +1205,82 @@ EXPORT_SYMBOL(teth_bridge_init);
 */
 int teth_bridge_disconnect(void)
 {
-	int res = -EPERM;
+	int res;
 
 	TETH_DBG_FUNC_ENTRY();
 	if (!teth_ctx->is_connected) {
 		TETH_ERR(
-		"Trying to disconnect an already disconnected bridge\n");
+			"Trying to disconnect an already disconnected bridge\n");
+		goto bail;
+	}
+
+	/* Request the BRIDGE_PROD resource */
+	res = teth_request_resource();
+	if (res) {
+		TETH_ERR("request_resource() failed.\n");
 		goto bail;
 	}
 
 	teth_ctx->is_connected = false;
 
-	res = ipa_rm_release_resource(IPA_RM_RESOURCE_BRIDGE_PROD);
-	if (res == -EINPROGRESS)
-		wait_for_completion(&teth_ctx->is_bridge_prod_down);
+	/* Close the channel to A2 */
+	if (a2_mux_close_channel(A2_MUX_TETHERED_0))
+		TETH_ERR("a2_mux_close_channel() failed\n");
 
-	/* Initialize statistics */
-	memset(&teth_ctx->stats, 0, sizeof(teth_ctx->stats));
+	if (teth_ctx->is_hw_bridge_complete) {
+		/* Delete header entries */
+		if (ipa_del_hdr(teth_ctx->hdr_del))
+			TETH_ERR("ipa_del_hdr() failed\n");
+
+		/* Delete installed routing rules */
+		if (ipa_del_rt_rule(teth_ctx->routing_del[IPA_IP_v4]))
+			TETH_ERR("ipa_del_rt_rule() failed\n");
+		if (ipa_del_rt_rule(teth_ctx->routing_del[IPA_IP_v6]))
+			TETH_ERR("ipa_del_rt_rule() failed\n");
+
+		/* Delete installed filtering rules */
+		if (ipa_del_flt_rule(teth_ctx->filtering_del[IPA_IP_v4]))
+			TETH_ERR("ipa_del_flt_rule() failed\n");
+		if (ipa_del_flt_rule(teth_ctx->filtering_del[IPA_IP_v6]))
+			TETH_ERR("ipa_del_flt_rule() failed\n");
+
+		/*
+		 * Commit all the data to HW, including header, routing and
+		 * filtering blocks, IPv4 and IPv6
+		 */
+		if (ipa_commit_hdr())
+			TETH_ERR("Failed committing headers\n");
+	}
+
+	initialize_context();
+
+	ipa_rm_inactivity_timer_release_resource(IPA_RM_RESOURCE_BRIDGE_PROD);
 
 	/* Delete IPA Resource manager dependency graph */
 	res = ipa_rm_delete_dependency(IPA_RM_RESOURCE_BRIDGE_PROD,
 				       IPA_RM_RESOURCE_USB_CONS);
-	res |= ipa_rm_delete_dependency(IPA_RM_RESOURCE_BRIDGE_PROD,
-					IPA_RM_RESOURCE_A2_CONS);
-	res |= ipa_rm_delete_dependency(IPA_RM_RESOURCE_USB_PROD,
-					IPA_RM_RESOURCE_A2_CONS);
-	res |= ipa_rm_delete_dependency(IPA_RM_RESOURCE_A2_PROD,
-					IPA_RM_RESOURCE_USB_CONS);
-	if (res)
-		TETH_ERR("Failed deleting ipa_rm dependency.\n");
+	if ((res != 0) && (res != -EINPROGRESS))
+		TETH_ERR(
+			"Failed deleting ipa_rm dependency BRIDGE_PROD <-> USB_CONS\n");
+	res = ipa_rm_delete_dependency(IPA_RM_RESOURCE_BRIDGE_PROD,
+				       IPA_RM_RESOURCE_A2_CONS);
+	if ((res != 0) && (res != -EINPROGRESS))
+		TETH_ERR(
+			"Failed deleting ipa_rm dependency BRIDGE_PROD <-> A2_CONS\n");
+	res = ipa_rm_delete_dependency(IPA_RM_RESOURCE_USB_PROD,
+				       IPA_RM_RESOURCE_A2_CONS);
+	if ((res != 0) && (res != -EINPROGRESS))
+		TETH_ERR(
+			"Failed deleting ipa_rm dependency USB_PROD <-> A2_CONS\n");
+	res = ipa_rm_delete_dependency(IPA_RM_RESOURCE_A2_PROD,
+				       IPA_RM_RESOURCE_USB_CONS);
+	if ((res != 0) && (res != -EINPROGRESS))
+		TETH_ERR(
+			"Failed deleting ipa_rm dependency A2_PROD <-> USB_CONS\n");
 bail:
 	TETH_DBG_FUNC_EXIT();
-	return res;
+
+	return 0;
 }
 EXPORT_SYMBOL(teth_bridge_disconnect);
 
@@ -1003,12 +1314,10 @@ int teth_bridge_connect(struct teth_bridge_connect_params *connect_params)
 	teth_ctx->usb_ipa_pipe_hdl = connect_params->usb_ipa_pipe_hdl;
 	teth_ctx->tethering_mode = connect_params->tethering_mode;
 
-	res = ipa_rm_request_resource(IPA_RM_RESOURCE_BRIDGE_PROD);
-	if (res < 0) {
-		if (res == -EINPROGRESS)
-			wait_for_completion(&teth_ctx->is_bridge_prod_up);
-		else
-			goto bail;
+	res = teth_request_resource();
+	if (res) {
+		TETH_ERR("request_resource() failed.\n");
+		goto bail;
 	}
 
 	res = a2_mux_open_channel(A2_MUX_TETHERED_0,
@@ -1039,10 +1348,28 @@ int teth_bridge_connect(struct teth_bridge_connect_params *connect_params)
 
 	if (teth_ctx->tethering_mode == TETH_TETHERING_MODE_MBIM)
 		teth_ctx->link_protocol = TETH_LINK_PROTOCOL_IP;
-	TETH_DBG_FUNC_EXIT();
+
+	if (teth_ctx->aggr_params_known) {
+		res = teth_set_aggregation();
+		if (res) {
+			TETH_ERR("Failed setting aggregation params\n");
+			goto bail;
+		}
+	}
+
+	/* In case of IP link protocol, complete HW bridge */
+	if ((teth_ctx->link_protocol == TETH_LINK_PROTOCOL_IP) &&
+	    (!teth_ctx->comp_hw_bridge_in_progress) &&
+	    (teth_ctx->aggr_params_known) &&
+	    (!teth_ctx->is_hw_bridge_complete)) {
+		INIT_WORK(&teth_ctx->comp_hw_bridge_work, complete_hw_bridge);
+		teth_ctx->comp_hw_bridge_in_progress = true;
+		queue_work(teth_ctx->teth_wq, &teth_ctx->comp_hw_bridge_work);
+	}
 bail:
-	if (res)
-		ipa_rm_release_resource(IPA_RM_RESOURCE_BRIDGE_PROD);
+	ipa_rm_inactivity_timer_release_resource(IPA_RM_RESOURCE_BRIDGE_PROD);
+	TETH_DBG_FUNC_EXIT();
+
 	return res;
 }
 EXPORT_SYMBOL(teth_bridge_connect);
@@ -1068,6 +1395,7 @@ int teth_bridge_set_aggr_params(struct teth_aggr_params *aggr_params)
 {
 	int res;
 
+	TETH_DBG_FUNC_ENTRY();
 	if (!aggr_params) {
 		TETH_ERR("Invalid parameter\n");
 		return -EINVAL;
@@ -1086,6 +1414,14 @@ int teth_bridge_set_aggr_params(struct teth_aggr_params *aggr_params)
 		aggr_params->ul.max_transfer_size_byte =
 			TETH_AGGR_MAX_AGGR_PACKET_SIZE_DEFAULT;
 
+	/* Ethernet link protocol and MBIM aggregation is not supported */
+	if (teth_ctx->link_protocol == TETH_LINK_PROTOCOL_ETHERNET &&
+	    (aggr_params->dl.aggr_prot == TETH_AGGR_PROTOCOL_MBIM ||
+	     aggr_params->ul.aggr_prot == TETH_AGGR_PROTOCOL_MBIM)) {
+		TETH_ERR("Ethernet with MBIM is not supported.\n");
+		return -EINVAL;
+	}
+
 	memcpy(&teth_ctx->aggr_params,
 	       aggr_params,
 	       sizeof(struct teth_aggr_params));
@@ -1096,6 +1432,7 @@ int teth_bridge_set_aggr_params(struct teth_aggr_params *aggr_params)
 	res = teth_set_aggregation();
 	if (res)
 		TETH_ERR("Failed setting aggregation params\n");
+	TETH_DBG_FUNC_EXIT();
 
 	return res;
 }
@@ -1135,6 +1472,19 @@ static long teth_bridge_ioctl(struct file *filp,
 		}
 
 		res = teth_bridge_set_aggr_params(&aggr_params);
+		if (res)
+			break;
+
+		/* In case of IP link protocol, complete HW bridge */
+		if ((teth_ctx->link_protocol == TETH_LINK_PROTOCOL_IP) &&
+		    (!teth_ctx->comp_hw_bridge_in_progress) &&
+		    (!teth_ctx->is_hw_bridge_complete)) {
+			INIT_WORK(&teth_ctx->comp_hw_bridge_work,
+				  complete_hw_bridge);
+			teth_ctx->comp_hw_bridge_in_progress = true;
+			queue_work(teth_ctx->teth_wq,
+				   &teth_ctx->comp_hw_bridge_work);
+		}
 		break;
 
 	case TETH_BRIDGE_IOC_GET_AGGR_PARAMS:
@@ -1190,7 +1540,7 @@ static long teth_bridge_ioctl(struct file *filp,
 	return res;
 }
 
-static void set_aggr_capabilities(void)
+static int set_aggr_capabilities(void)
 {
 	u16 NUM_PROTOCOLS = 2;
 
@@ -1198,9 +1548,9 @@ static void set_aggr_capabilities(void)
 				      NUM_PROTOCOLS *
 				      sizeof(struct teth_aggr_params_link),
 				      GFP_KERNEL);
-	if (teth_ctx->aggr_caps == NULL) {
+	if (!teth_ctx->aggr_caps) {
 		TETH_ERR("Memory alloc failed for aggregation capabilities.\n");
-		return;
+		return -ENOMEM;
 	}
 
 	teth_ctx->aggr_caps->num_protocols = NUM_PROTOCOLS;
@@ -1210,8 +1560,15 @@ static void set_aggr_capabilities(void)
 
 	teth_ctx->aggr_caps->prot_caps[1].aggr_prot = TETH_AGGR_PROTOCOL_TLP;
 	set_aggr_default_params(&teth_ctx->aggr_caps->prot_caps[1]);
+
+	return 0;
 }
 
+/**
+* teth_bridge_get_client_handles() - Get USB <--> IPA pipe handles
+* @producer_handle:	USB --> IPA pipe handle
+* @consumer_handle:	IPA --> USB pipe handle
+*/
 void teth_bridge_get_client_handles(u32 *producer_handle,
 		u32 *consumer_handle)
 {
@@ -1379,6 +1736,11 @@ static ssize_t teth_debugfs_stats(struct file *file,
 			    TETH_MAX_MSG_LEN - nbytes,
 			   "A2 to USB SW Tx packets: %lld\n",
 			    teth_ctx->stats.a2_to_usb_num_sw_tx_packets);
+	nbytes += scnprintf(
+		&dbg_buff[nbytes],
+		TETH_MAX_MSG_LEN - nbytes,
+		"SW Tx packets sent during resource wakeup: %lld\n",
+		teth_ctx->stats.num_sw_tx_packets_during_resource_wakeup);
 	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, nbytes);
 }
 
@@ -1505,7 +1867,59 @@ int teth_bridge_driver_init(void)
 		return -ENOMEM;
 	}
 
-	set_aggr_capabilities();
+	res = set_aggr_capabilities();
+	if (res) {
+		TETH_ERR("kzalloc err.\n");
+		goto fail_alloc_aggr_caps;
+	}
+
+	res = -ENOMEM;
+	teth_ctx->hdr_del = kzalloc(sizeof(struct ipa_ioc_del_hdr) +
+				    TETH_TOTAL_HDR_ENTRIES *
+				    sizeof(struct ipa_hdr_del),
+				    GFP_KERNEL);
+	if (!teth_ctx->hdr_del) {
+		TETH_ERR("kzalloc err.\n");
+		goto fail_alloc_hdr_del;
+	}
+
+	teth_ctx->routing_del[IPA_IP_v4] =
+		kzalloc(sizeof(struct ipa_ioc_del_rt_rule) +
+			TETH_TOTAL_RT_ENTRIES_IP *
+			sizeof(struct ipa_rt_rule_del),
+			GFP_KERNEL);
+	if (!teth_ctx->routing_del[IPA_IP_v4]) {
+		TETH_ERR("kzalloc err.\n");
+		goto fail_alloc_routing_del_ipv4;
+	}
+	teth_ctx->routing_del[IPA_IP_v6] =
+		kzalloc(sizeof(struct ipa_ioc_del_rt_rule) +
+			TETH_TOTAL_RT_ENTRIES_IP *
+			sizeof(struct ipa_rt_rule_del),
+			GFP_KERNEL);
+	if (!teth_ctx->routing_del[IPA_IP_v6]) {
+		TETH_ERR("kzalloc err.\n");
+		goto fail_alloc_routing_del_ipv6;
+	}
+
+	teth_ctx->filtering_del[IPA_IP_v4] =
+		kzalloc(sizeof(struct ipa_ioc_del_flt_rule) +
+			TETH_TOTAL_FLT_ENTRIES_IP *
+			sizeof(struct ipa_flt_rule_del),
+			GFP_KERNEL);
+	if (!teth_ctx->filtering_del[IPA_IP_v4]) {
+		TETH_ERR("kzalloc err.\n");
+		goto fail_alloc_filtering_del_ipv4;
+	}
+	teth_ctx->filtering_del[IPA_IP_v6] =
+		kzalloc(sizeof(struct ipa_ioc_del_flt_rule) +
+			TETH_TOTAL_FLT_ENTRIES_IP *
+			sizeof(struct ipa_flt_rule_del),
+			GFP_KERNEL);
+	if (!teth_ctx->filtering_del[IPA_IP_v6]) {
+		TETH_ERR("kzalloc err.\n");
+		goto fail_alloc_filtering_del_ipv6;
+	}
 
 	teth_ctx->class = class_create(THIS_MODULE, TETH_BRIDGE_DRV_NAME);
 
@@ -1536,8 +1950,6 @@ int teth_bridge_driver_init(void)
 		goto fail_cdev_add;
 	}
 
-	teth_ctx->comp_hw_bridge_in_progress = false;
-
 	teth_debugfs_init();
 
 	/* Create BRIDGE_PROD entity in IPA Resource Manager */
@@ -1552,9 +1964,21 @@ int teth_bridge_driver_init(void)
 	init_completion(&teth_ctx->is_bridge_prod_up);
 	init_completion(&teth_ctx->is_bridge_prod_down);
 
-	/* The default link protocol is Ethernet */
-	teth_ctx->link_protocol = TETH_LINK_PROTOCOL_ETHERNET;
+	res = ipa_rm_inactivity_timer_init(IPA_RM_RESOURCE_BRIDGE_PROD,
+					   TETH_INACTIVITY_TIME_MSEC);
+	if (res) {
+		TETH_ERR("ipa_rm_inactivity_timer_init() failed, res=%d\n",
+			 res);
+		goto fail_cdev_add;
+	}
 
+	teth_ctx->teth_wq = create_workqueue(TETH_WORKQUEUE_NAME);
+	if (!teth_ctx->teth_wq) {
+		TETH_ERR("workqueue creation failed\n");
+		goto fail_cdev_add;
+	}
+
+	initialize_context();
 	TETH_DBG("Tethering bridge driver init OK\n");
 
 	return 0;
@@ -1563,7 +1987,18 @@ fail_cdev_add:
 fail_device_create:
 	unregister_chrdev_region(teth_ctx->dev_num, 1);
 fail_alloc_chrdev_region:
+	kfree(teth_ctx->filtering_del[IPA_IP_v6]);
+fail_alloc_filtering_del_ipv6:
+	kfree(teth_ctx->filtering_del[IPA_IP_v4]);
+fail_alloc_filtering_del_ipv4:
+	kfree(teth_ctx->routing_del[IPA_IP_v6]);
+fail_alloc_routing_del_ipv6:
+	kfree(teth_ctx->routing_del[IPA_IP_v4]);
+fail_alloc_routing_del_ipv4:
+	kfree(teth_ctx->hdr_del);
+fail_alloc_hdr_del:
 	kfree(teth_ctx->aggr_caps);
+fail_alloc_aggr_caps:
 	kfree(teth_ctx);
 	teth_ctx = NULL;
 

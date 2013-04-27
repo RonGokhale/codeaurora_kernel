@@ -50,6 +50,13 @@
 #define IPA_AGGR_STR_IN_BYTES(str) \
 	(strnlen((str), IPA_AGGR_MAX_STR_LENGTH - 1) + 1)
 
+/*
+ * This equals a timer value of 162.56us. This value was
+ * determined empirically and shows good bi-directional
+ * WLAN throughputs
+ */
+#define IPA_HOLB_TMR_DEFAULT_VAL 0x7f
+
 static struct ipa_plat_drv_res ipa_res = {0, };
 static struct of_device_id ipa_plat_drv_match[] = {
 	{
@@ -73,12 +80,36 @@ static struct msm_bus_vectors ipa_init_vectors[]  = {
 		.ab = 0,
 		.ib = 0,
 	},
+	{
+		.src = MSM_BUS_MASTER_BAM_DMA,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 0,
+	},
+	{
+		.src = MSM_BUS_MASTER_BAM_DMA,
+		.dst = MSM_BUS_SLAVE_OCIMEM,
+		.ab = 0,
+		.ib = 0,
+	},
 };
 
 static struct msm_bus_vectors ipa_max_perf_vectors[]  = {
 	{
 		.src = MSM_BUS_MASTER_IPA,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 50000000,
+		.ib = 960000000,
+	},
+	{
+		.src = MSM_BUS_MASTER_BAM_DMA,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 50000000,
+		.ib = 960000000,
+	},
+	{
+		.src = MSM_BUS_MASTER_BAM_DMA,
+		.dst = MSM_BUS_SLAVE_OCIMEM,
 		.ab = 50000000,
 		.ib = 960000000,
 	},
@@ -901,7 +932,7 @@ static int ipa_setup_a5_pipes(void)
 	/* LAN-WAN OUT (A5->IPA) */
 	memset(&sys_in, 0, sizeof(struct ipa_sys_connect_params));
 	sys_in.client = IPA_CLIENT_A5_LAN_WAN_PROD;
-	sys_in.desc_fifo_sz = IPA_SYS_DESC_FIFO_SZ;
+	sys_in.desc_fifo_sz = IPA_SYS_TX_DATA_DESC_FIFO_SZ;
 	sys_in.ipa_ep_cfg.mode.mode = IPA_BASIC;
 	sys_in.ipa_ep_cfg.mode.dst = IPA_CLIENT_A5_LAN_WAN_CONS;
 	if (ipa_setup_sys_pipe(&sys_in, &ipa_ctx->clnt_hdl_data_out)) {
@@ -1123,7 +1154,7 @@ static void ipa_set_aggregation_params(void)
 	u32 producer_hdl = 0;
 	u32 consumer_hdl = 0;
 
-	rmnet_bridge_get_client_handles(&producer_hdl, &consumer_hdl);
+	teth_bridge_get_client_handles(&producer_hdl, &consumer_hdl);
 
 	/* configure aggregation on producer */
 	memset(&agg_params, 0, sizeof(struct ipa_ep_cfg_aggr));
@@ -1630,6 +1661,8 @@ static int ipa_init(const struct ipa_plat_drv_res *resource_p)
 		result = -ENOMEM;
 		goto fail_mem;
 	}
+	ipa_ctx->hol_en = 0x1;
+	ipa_ctx->hol_timer = IPA_HOLB_TMR_DEFAULT_VAL;
 
 	IPADBG("polling_mode=%u delay_ms=%u\n", polling_mode, polling_delay_ms);
 	ipa_ctx->polling_mode = polling_mode;
@@ -1712,6 +1745,7 @@ static int ipa_init(const struct ipa_plat_drv_res *resource_p)
 	bam_props.num_pipes = IPA_NUM_PIPES;
 	bam_props.summing_threshold = IPA_SUMMING_THRESHOLD;
 	bam_props.event_threshold = IPA_EVENT_THRESHOLD;
+	bam_props.options |= SPS_BAM_NO_LOCAL_CLK_GATING;
 
 	result = sps_register_bam_device(&bam_props, &ipa_ctx->bam_handle);
 	if (result) {
@@ -1887,7 +1921,7 @@ static int ipa_init(const struct ipa_plat_drv_res *resource_p)
 	if (result) {
 		IPAERR("ipa bridge init err.\n");
 		result = -ENODEV;
-		goto fail_bridge_init;
+		goto fail_a5_pipes;
 	}
 
 	/* setup the A5-IPA pipes */
@@ -2008,8 +2042,6 @@ fail_empty_rt_tbl:
 	ipa_cleanup_rx();
 	ipa_teardown_a5_pipes();
 fail_a5_pipes:
-	ipa_bridge_cleanup();
-fail_bridge_init:
 	destroy_workqueue(ipa_ctx->tx_wq);
 fail_tx_wq:
 	destroy_workqueue(ipa_ctx->rx_wq);
