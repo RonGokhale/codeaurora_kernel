@@ -49,10 +49,10 @@ struct snd_msm_volume {
 	unsigned volume;
 };
 static struct snd_msm_volume multi_ch_pcm_audio[MAX_PCM_SESSIONS] = {
-				{INVALID_SESSION, NULL, 0x2000},
-				{INVALID_SESSION, NULL, 0x2000},
-				{INVALID_SESSION, NULL, 0x2000},
-				{INVALID_SESSION, NULL, 0x2000} };
+				{INVALID_SESSION, NULL, 0x0},
+				{INVALID_SESSION, NULL, 0x0},
+				{INVALID_SESSION, NULL, 0x0},
+				{INVALID_SESSION, NULL, 0x0} };
 
 #define PLAYBACK_NUM_PERIODS		8
 #define PLAYBACK_MAX_PERIOD_SIZE	12288
@@ -645,7 +645,7 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 	if (index != MAX_PCM_SESSIONS) {
 		multi_ch_pcm_audio[index].prtd = NULL;
 		multi_ch_pcm_audio[index].fe_id = INVALID_SESSION;
-		multi_ch_pcm_audio[index].volume = 0x2000;
+		multi_ch_pcm_audio[index].volume = 0x0;
 	}
 	mutex_unlock(&volume_lock);
 	q6asm_audio_client_free(prtd->audio_client);
