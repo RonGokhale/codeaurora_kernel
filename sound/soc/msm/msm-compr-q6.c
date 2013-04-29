@@ -935,6 +935,7 @@ static int msm_compr_playback_close(struct snd_pcm_substream *substream)
 			soc_prtd->dai_link->be_id,
 			prtd->session_id, substream->stream,
 			0);
+		break;
 	default:
 		msm_pcm_routing_dereg_phy_stream(
 			soc_prtd->dai_link->be_id,
