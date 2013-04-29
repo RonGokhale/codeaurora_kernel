@@ -638,7 +638,7 @@ int msm_isp_subdev_ioctl(struct v4l2_subdev *sd,
 	struct msm_vfe_cfg_cmd *cfgcmd, void *data);
 int msm_vpe_subdev_init(struct v4l2_subdev *sd);
 int msm_gemini_subdev_init(struct v4l2_subdev *gemini_sd);
-void msm_vpe_subdev_release(void);
+void msm_vpe_subdev_release(struct v4l2_subdev *sd);
 void msm_gemini_subdev_release(struct v4l2_subdev *gemini_sd);
 int msm_mctl_is_pp_msg_type(struct msm_cam_media_controller *p_mctl,
 	int msg_type);
