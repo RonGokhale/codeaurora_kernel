@@ -30,7 +30,8 @@
 #define IPA_COOKIE 0xfacefeed
 
 #define IPA_NUM_PIPES 0x14
-#define IPA_SYS_DESC_FIFO_SZ (0x800)
+#define IPA_SYS_DESC_FIFO_SZ 0x800
+#define IPA_SYS_TX_DATA_DESC_FIFO_SZ 0x1000
 
 #ifdef IPA_DEBUG
 #define IPADBG(fmt, args...) \
@@ -40,10 +41,11 @@
 #define IPADBG(fmt, args...)
 #endif
 
-#define WLAN_AMPDU_TX_EP (15)
-#define WLAN_PROD_TX_EP (19)
-#define MAX_NUM_EXCP	 (8)
-#define MAX_NUM_IMM_CMD	 (17)
+#define WLAN_AMPDU_TX_EP 15
+#define WLAN_PROD_TX_EP  19
+
+#define MAX_NUM_EXCP     8
+#define MAX_NUM_IMM_CMD 17
 
 #define IPA_STATS
 
@@ -665,6 +667,10 @@ struct ipa_context {
 	enum ipa_hw_mode ipa_hw_mode;
 	/* featurize if memory footprint becomes a concern */
 	struct ipa_stats stats;
+	void *smem_pipe_mem;
+	/* store HOLB configuration for WLAN TX pipes */
+	u32 hol_en;
+	u32 hol_timer;
 };
 
 /**
@@ -749,7 +755,7 @@ int ipa_get_a2_mux_pipe_info(enum a2_mux_pipe_direction pipe_dir,
 				struct a2_mux_pipe_connection *pipe_connect);
 int ipa_get_a2_mux_bam_info(u32 *a2_bam_mem_base, u32 *a2_bam_mem_size,
 			    u32 *a2_bam_irq);
-void rmnet_bridge_get_client_handles(u32 *producer_handle,
+void teth_bridge_get_client_handles(u32 *producer_handle,
 		u32 *consumer_handle);
 int ipa_send_one(struct ipa_sys_context *sys, struct ipa_desc *desc,
 		bool in_atomic);

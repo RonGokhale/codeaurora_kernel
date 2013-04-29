@@ -38,7 +38,7 @@
 
 		secure_mem: secure_region {
 			linux,contiguous-region;
-			reg = <0 0x7800000>;
+			reg = <0 0xFC00000>;
 			label = "secure_mem";
 		};
 
@@ -246,7 +246,7 @@
 
 		qcom,pad-pull-on = <0x0 0x3 0x3>; /* no-pull, pull-up, pull-up */
 		qcom,pad-pull-off = <0x0 0x3 0x3>; /* no-pull, pull-up, pull-up */
-		qcom,pad-drv-on = <0x7 0x4 0x4>; /* 16mA, 10mA, 10mA */
+		qcom,pad-drv-on = <0x4 0x4 0x4>; /* 10mA, 10mA, 10mA */
 		qcom,pad-drv-off = <0x0 0x0 0x0>; /* 2mA, 2mA, 2mA */
 
 		qcom,clk-rates = <400000 20000000 25000000 50000000 100000000 200000000>;
@@ -291,7 +291,7 @@
 
 		qcom,pad-pull-on = <0x0 0x3 0x3>; /* no-pull, pull-up, pull-up */
 		qcom,pad-pull-off = <0x0 0x3 0x3>; /* no-pull, pull-up, pull-up */
-		qcom,pad-drv-on = <0x7 0x4 0x4>; /* 16mA, 10mA, 10mA */
+		qcom,pad-drv-on = <0x4 0x4 0x4>; /* 10mA, 10mA, 10mA */
 		qcom,pad-drv-off = <0x0 0x0 0x0>; /* 2mA, 2mA, 2mA */
 
 		qcom,clk-rates = <400000 20000000 25000000 50000000 100000000 200000000>;
@@ -691,6 +691,7 @@
 		qcom,prim-auxpcm-gpio-sync = <&msmgpio 66 0>;
 		qcom,prim-auxpcm-gpio-din  = <&msmgpio 67 0>;
 		qcom,prim-auxpcm-gpio-dout = <&msmgpio 68 0>;
+		qcom,prim-auxpcm-gpio-set = "prim-gpio-prim";
 		qcom,sec-auxpcm-gpio-clk  = <&msmgpio 79 0>;
 		qcom,sec-auxpcm-gpio-sync = <&msmgpio 80 0>;
 		qcom,sec-auxpcm-gpio-din  = <&msmgpio 81 0>;
@@ -1198,7 +1199,7 @@
                reg = <0xf9bff000 0x200>;
         };
 
-	qcom,qseecom@fe806000 {
+	qseecom: qcom,qseecom@7f00000 {
 		compatible = "qcom,qseecom";
 		reg = <0x7f00000 0x500000>;
 		reg-names = "secapp-region";
@@ -1239,7 +1240,27 @@
 		qcom,firmware-name = "venus";
 	};
 
-	qcom,cache_erp {
+	qcom,cache_erp@f9012000 {
+		reg = <0xf9012000 0x80>,
+		      <0xf9089000 0x80>,
+		      <0xf9099000 0x80>,
+		      <0xf90a9000 0x80>,
+		      <0xf90b9000 0x80>,
+		      <0xf9088000 0x40>,
+		      <0xf9098000 0x40>,
+		      <0xf90a8000 0x40>,
+		      <0xf90b8000 0x40>;
+
+		reg-names = "l2_saw",
+			    "krait0_saw",
+			    "krait1_saw",
+			    "krait2_saw",
+			    "krait3_saw",
+			    "krait0_acs",
+			    "krait1_acs",
+			    "krait2_acs",
+			    "krait3_acs";
+
 		compatible = "qcom,cache_erp";
 		interrupts = <1 9 0>, <0 2 0>;
 		interrupt-names = "l1_irq", "l2_irq";
@@ -1397,7 +1418,7 @@
 		qcom,rx-ring-size = <64>;
 	};
 
-        qcom,msm-mem-hole {
+        memory_hole: qcom,msm-mem-hole {
                 compatible = "qcom,msm-mem-hole";
                 qcom,memblock-remove = <0x7f00000 0x8000000>; /* Address and Size of Hole */
         };

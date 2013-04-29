@@ -1709,11 +1709,17 @@ static struct clk_freq_tbl ftbl_camss_vfe_vfe0_clk[] = {
 	F_MMSS( 100000000,      gpll0,   6,    0,    0),
 	F_MMSS( 109090000,      gpll0, 5.5,    0,    0),
 	F_MMSS( 133330000,      gpll0, 4.5,    0,    0),
+	F_MMSS( 150000000,      gpll0,   4,    0,    0),
 	F_MMSS( 200000000,      gpll0,   3,    0,    0),
 	F_MMSS( 228570000, mmpll0_pll, 3.5,    0,    0),
 	F_MMSS( 266670000, mmpll0_pll,   3,    0,    0),
 	F_MMSS( 320000000, mmpll0_pll, 2.5,    0,    0),
+	F_MMSS( 400000000, mmpll0_pll,   2,    0,    0),
 	F_END
+};
+
+static unsigned long camss_vfe_vfe0_fmax_v2[VDD_DIG_NUM] = {
+	150000000, 320000000, 400000000,
 };
 
 static struct rcg_clk vfe0_clk_src = {
@@ -1972,9 +1978,15 @@ static struct rcg_clk csi1phytimer_clk_src = {
 
 static struct clk_freq_tbl ftbl_camss_vfe_cpp_clk[] = {
 	F_MMSS( 133330000,      gpll0, 4.5,    0,    0),
+	F_MMSS( 150000000,      gpll0,   4,    0,    0),
 	F_MMSS( 266670000, mmpll0_pll,   3,    0,    0),
 	F_MMSS( 320000000, mmpll0_pll, 2.5,    0,    0),
+	F_MMSS( 400000000, mmpll0_pll,   2,    0,    0),
 	F_END
+};
+
+static unsigned long camss_vfe_cpp_fmax_v2[VDD_DIG_NUM] = {
+	150000000, 320000000, 400000000,
 };
 
 static struct rcg_clk cpp_clk_src = {
@@ -2697,7 +2709,6 @@ static struct branch_clk q6ss_xo_clk = {
 	.base = &virt_bases[LPASS_BASE],
 	.c = {
 		.dbg_name = "q6ss_xo_clk",
-		.parent = &xo.c,
 		.ops = &clk_ops_branch,
 		CLK_INIT(q6ss_xo_clk.c),
 	},
@@ -2811,8 +2822,8 @@ static DEFINE_CLK_VOTER(ocmemgx_core_clk, &ocmemgx_clk.c, LONG_MAX);
 
 static DEFINE_CLK_VOTER(pnoc_sps_clk, &pnoc_clk.c, LONG_MAX);
 
-static DEFINE_CLK_VOTER(qseecom_ce1_clk_src, &ce1_clk_src.c, LONG_MAX);
-static DEFINE_CLK_VOTER(scm_ce1_clk_src, &ce1_clk_src.c, LONG_MAX);
+static DEFINE_CLK_VOTER(qseecom_ce1_clk_src, &ce1_clk_src.c, 100000000);
+static DEFINE_CLK_VOTER(scm_ce1_clk_src, &ce1_clk_src.c, 100000000);
 
 static DEFINE_CLK_BRANCH_VOTER(cxo_otg_clk, &xo.c);
 static DEFINE_CLK_BRANCH_VOTER(cxo_pil_lpass_clk, &xo.c);
@@ -3417,6 +3428,18 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("osr_clk", div_clk1.c, "msm-dai-q6-dev.16390"),
 	CLK_LOOKUP("osr_clk", div_clk1.c, "msm-dai-q6-dev.16391"),
 
+	/* Add QCEDEV clocks */
+	CLK_LOOKUP("core_clk",     gcc_ce1_clk.c,      "fd400000.qcom,qcedev"),
+	CLK_LOOKUP("iface_clk",    gcc_ce1_ahb_clk.c,  "fd400000.qcom,qcedev"),
+	CLK_LOOKUP("bus_clk",      gcc_ce1_axi_clk.c,  "fd400000.qcom,qcedev"),
+	CLK_LOOKUP("core_clk_src", ce1_clk_src.c,      "fd400000.qcom,qcedev"),
+
+	/* Add QCRYPTO clocks */
+	CLK_LOOKUP("core_clk",     gcc_ce1_clk.c,     "fd404000.qcom,qcrypto"),
+	CLK_LOOKUP("iface_clk",    gcc_ce1_ahb_clk.c, "fd404000.qcom,qcrypto"),
+	CLK_LOOKUP("bus_clk",      gcc_ce1_axi_clk.c, "fd404000.qcom,qcrypto"),
+	CLK_LOOKUP("core_clk_src", ce1_clk_src.c,     "fd404000.qcom,qcrypto"),
+
 };
 
 static struct clk_lookup msm_clocks_8226_rumi[] = {
@@ -3545,6 +3568,12 @@ static void __init msm8226_clock_pre_init(void)
 	enable_rpm_scaling();
 
 	reg_init();
+
+	/* v2 specific changes */
+	if (SOCINFO_VERSION_MAJOR(socinfo_get_version()) == 2) {
+		cpp_clk_src.c.fmax = camss_vfe_cpp_fmax_v2;
+		vfe0_clk_src.c.fmax = camss_vfe_vfe0_fmax_v2;
+	}
 
 	/*
 	 * MDSS needs the ahb clock and needs to init before we register the

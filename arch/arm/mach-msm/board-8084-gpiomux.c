@@ -8,22 +8,22 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
+ *
  */
 
-/dts-v1/;
+#include <linux/gpio.h>
+#include <linux/init.h>
+#include <linux/ioport.h>
+#include <mach/board.h>
+#include <mach/gpiomux.h>
 
-/include/ "msmzinc.dtsi"
+void __init apq8084_init_gpiomux(void)
+{
+	int rc;
 
-/ {
-	model = "Qualcomm MSM ZINC Simulator";
-	compatible = "qcom,msmzinc-sim", "qcom,msmzinc", "qcom,sim";
-	qcom,msm-id = <178 0 0>;
-
-	aliases {
-		serial0 = &uart0;
-	};
-
-	uart0: serial@f991f000 {
-		status = "ok";
-	};
-};
+	rc = msm_gpiomux_init_dt();
+	if (rc) {
+		pr_err("%s failed %d\n", __func__, rc);
+		return;
+	}
+}

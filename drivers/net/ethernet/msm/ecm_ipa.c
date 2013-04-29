@@ -22,13 +22,13 @@
 #include <mach/ecm_ipa.h>
 
 #define DRIVER_NAME "ecm_ipa"
-#define DRIVER_VERSION "20-Mar-2013"
 #define ECM_IPA_IPV4_HDR_NAME "ecm_eth_ipv4"
 #define ECM_IPA_IPV6_HDR_NAME "ecm_eth_ipv6"
 #define IPA_TO_USB_CLIENT	IPA_CLIENT_USB_CONS
 #define INACTIVITY_MSEC_DELAY 100
 #define DEFAULT_OUTSTANDING_HIGH 64
 #define DEFAULT_OUTSTANDING_LOW 32
+#define DEBUGFS_TEMP_BUF_SIZE 4
 
 #define ECM_IPA_ERROR(fmt, args...) \
 	pr_err(DRIVER_NAME "@%s@%d@ctx:%s: "\
@@ -57,6 +57,7 @@
  * @tx_file: saved debugfs entry to allow cleanup
  * @rx_file: saved debugfs entry to allow cleanup
  * @rm_file: saved debugfs entry to allow cleanup
+ * @outstanding_file:  saved debugfs entry to allow cleanup
  * @outstanding_high_file saved debugfs entry to allow cleanup
  * @outstanding_low_file saved debugfs entry to allow cleanup
  * @dma_file: saved debugfs entry to allow cleanup
@@ -82,6 +83,7 @@ struct ecm_ipa_dev {
 	struct dentry *outstanding_high_file;
 	struct dentry *outstanding_low_file;
 	struct dentry *dma_file;
+	struct dentry *outstanding_file;
 	uint32_t eth_ipv4_hdr_hdl;
 	uint32_t eth_ipv6_hdr_hdl;
 	u32 usb_to_ipa_hdl;
@@ -129,7 +131,10 @@ static int ecm_ipa_debugfs_tx_open(struct inode *inode, struct file *file);
 static int ecm_ipa_debugfs_rx_open(struct inode *inode, struct file *file);
 static int ecm_ipa_debugfs_rm_open(struct inode *inode, struct file *file);
 static int ecm_ipa_debugfs_dma_open(struct inode *inode, struct file *file);
+static int ecm_ipa_debugfs_atomic_open(struct inode *inode, struct file *file);
 static ssize_t ecm_ipa_debugfs_enable_read(struct file *file,
+		char __user *ubuf, size_t count, loff_t *ppos);
+static ssize_t ecm_ipa_debugfs_atomic_read(struct file *file,
 		char __user *ubuf, size_t count, loff_t *ppos);
 static ssize_t ecm_ipa_debugfs_enable_write(struct file *file,
 		const char __user *buf, size_t count, loff_t *ppos);
@@ -169,6 +174,11 @@ const struct file_operations ecm_ipa_debugfs_dma_ops = {
 	.write = ecm_ipa_debugfs_enable_write_dma,
 };
 
+const struct file_operations ecm_ipa_debugfs_atomic_ops = {
+		.open = ecm_ipa_debugfs_atomic_open,
+		.read = ecm_ipa_debugfs_atomic_read,
+};
+
 /**
  * ecm_ipa_init() - initializes internal data structures
  * @ecm_ipa_rx_dp_notify: supplied callback to be called by the IPA
@@ -195,10 +205,12 @@ int ecm_ipa_init(ecm_ipa_callback *ecm_ipa_rx_dp_notify,
 	struct net_device *net;
 	struct ecm_ipa_dev *dev;
 	ECM_IPA_LOG_ENTRY();
-	pr_debug("%s version %s\n", DRIVER_NAME, DRIVER_VERSION);
+	pr_debug("%s initializing\n", DRIVER_NAME);
 	NULL_CHECK(ecm_ipa_rx_dp_notify);
 	NULL_CHECK(ecm_ipa_tx_dp_notify);
 	NULL_CHECK(priv);
+	pr_debug("rx_cb=0x%p, tx_cb=0x%p priv=0x%p\n",
+			ecm_ipa_rx_dp_notify, ecm_ipa_tx_dp_notify, *priv);
 	net = alloc_etherdev(sizeof(struct ecm_ipa_dev));
 	if (!net) {
 		ret = -ENOMEM;
@@ -420,8 +432,8 @@ int ecm_ipa_configure(u8 host_ethaddr[], u8 device_ethaddr[],
 	NULL_CHECK(dev);
 	net = dev->net;
 	NULL_CHECK(net);
-	pr_debug("host_ethaddr=%pM device_ethaddr=%pM\n",
-					host_ethaddr, device_ethaddr);
+	pr_debug("priv=0x%p, host_ethaddr=%pM device_ethaddr=%pM\n",
+					priv, host_ethaddr, device_ethaddr);
 	result = ecm_ipa_create_rm_resource(dev);
 	if (result) {
 		ECM_IPA_ERROR("fail on RM create\n");
@@ -472,8 +484,8 @@ int ecm_ipa_connect(u32 usb_to_ipa_hdl, u32 ipa_to_usb_hdl,
 	struct ecm_ipa_dev *dev = priv;
 	ECM_IPA_LOG_ENTRY();
 	NULL_CHECK(priv);
-	pr_debug("usb_to_ipa_hdl = %d, ipa_to_usb_hdl = %d\n",
-					usb_to_ipa_hdl, ipa_to_usb_hdl);
+	pr_debug("usb_to_ipa_hdl = %d, ipa_to_usb_hdl = %d, priv=0x%p\n",
+					usb_to_ipa_hdl, ipa_to_usb_hdl, priv);
 	if (!usb_to_ipa_hdl || usb_to_ipa_hdl >= IPA_CLIENT_MAX) {
 		ECM_IPA_ERROR("usb_to_ipa_hdl(%d) is not a valid ipa handle\n",
 				usb_to_ipa_hdl);
@@ -502,6 +514,7 @@ int ecm_ipa_disconnect(void *priv)
 	struct ecm_ipa_dev *dev = priv;
 	ECM_IPA_LOG_ENTRY();
 	NULL_CHECK(dev);
+	pr_debug("priv=0x%p\n", priv);
 	netif_carrier_off(dev->net);
 	ECM_IPA_LOG_EXIT();
 	return 0;
@@ -622,6 +635,7 @@ void ecm_ipa_cleanup(void *priv)
 {
 	struct ecm_ipa_dev *dev = priv;
 	ECM_IPA_LOG_ENTRY();
+	pr_debug("priv=0x%p\n", priv);
 	if (!dev) {
 		ECM_IPA_ERROR("dev NULL pointer\n");
 		return;
@@ -630,10 +644,9 @@ void ecm_ipa_cleanup(void *priv)
 	ecm_ipa_destory_rm_resource(dev);
 	ecm_ipa_debugfs_destroy(dev);
 
-	if (!dev->net) {
-		unregister_netdev(dev->net);
-		free_netdev(dev->net);
-	}
+	unregister_netdev(dev->net);
+	free_netdev(dev->net);
+
 	pr_debug("cleanup done\n");
 	ecm_ipa_ctx = NULL;
 	ECM_IPA_LOG_EXIT();
@@ -833,6 +846,15 @@ static int ecm_ipa_debugfs_rm_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static int ecm_ipa_debugfs_atomic_open(struct inode *inode, struct file *file)
+{
+	struct ecm_ipa_dev *dev = inode->i_private;
+	ECM_IPA_LOG_ENTRY();
+	file->private_data = &(dev->outstanding_pkts);
+	ECM_IPA_LOG_EXIT();
+	return 0;
+}
+
 static ssize_t ecm_ipa_debugfs_enable_write_dma(struct file *file,
 		const char __user *buf, size_t count, loff_t *ppos)
 {
@@ -904,9 +926,22 @@ static ssize_t ecm_ipa_debugfs_enable_read(struct file *file,
 	return size;
 }
 
+static ssize_t ecm_ipa_debugfs_atomic_read(struct file *file,
+		char __user *ubuf, size_t count, loff_t *ppos)
+{
+	int nbytes;
+	u8 atomic_str[DEBUGFS_TEMP_BUF_SIZE] = {0};
+	atomic_t *atomic_var = file->private_data;
+	nbytes = scnprintf(atomic_str, sizeof(atomic_str), "%d\n",
+			atomic_read(atomic_var));
+	return simple_read_from_buffer(ubuf, count, ppos, atomic_str, nbytes);
+}
+
+
 static int ecm_ipa_debugfs_init(struct ecm_ipa_dev *dev)
 {
 	const mode_t flags = S_IRUGO | S_IWUGO;
+	const mode_t flags_read_only = S_IRUGO;
 
 	int ret = -EINVAL;
 	ECM_IPA_LOG_ENTRY();
@@ -961,6 +996,14 @@ static int ecm_ipa_debugfs_init(struct ecm_ipa_dev *dev)
 		ret = -EFAULT;
 		goto fail_file;
 	}
+	dev->outstanding_file = debugfs_create_file("outstanding",
+			flags_read_only, dev->folder, dev,
+			&ecm_ipa_debugfs_atomic_ops);
+	if (!dev->outstanding_file) {
+		ECM_IPA_ERROR("could not create outstanding file\n");
+		ret = -EFAULT;
+		goto fail_file;
+	}
 
 	ECM_IPA_LOG_EXIT();
 	return 0;
@@ -980,7 +1023,6 @@ static void eth_get_drvinfo(struct net_device *net,
 {
 	ECM_IPA_LOG_ENTRY();
 	strlcpy(drv_info->driver, DRIVER_NAME, sizeof(drv_info->driver));
-	strlcpy(drv_info->version, DRIVER_VERSION, sizeof(drv_info->version));
 	ECM_IPA_LOG_EXIT();
 }
 
