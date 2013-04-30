@@ -366,6 +366,7 @@ int mdp4_wfd_pipe_commit(struct msm_fb_data_type *mfd,
 			if (real_pipe && real_pipe->pipe_used) {
 				/* pipe not unset */
 				mdp4_overlay_vsync_commit(pipe);
+				real_pipe->is_pp_dirty = pipe->is_pp_dirty;
 			}
 			/* free previous iommu to freelist
 			* which will be freed at next

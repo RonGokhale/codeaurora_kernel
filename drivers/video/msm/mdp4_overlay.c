@@ -839,7 +839,8 @@ void mdp4_overlay_vg_setup(struct mdp4_overlay_pipe *pipe)
 	pattern = mdp4_overlay_unpack_pattern(pipe);
 
 	/* CSC Post Processing enabled? */
-	if (pipe->flags & MDP_OVERLAY_PP_CFG_EN) {
+	if ((pipe->flags & MDP_OVERLAY_PP_CFG_EN) &&
+		(pipe->is_pp_dirty)) {
 		if (pipe->pp_cfg.config_ops & MDP_OVERLAY_PP_CSC_CFG) {
 			mdp4_csc_write(&pipe->pp_cfg.csc_cfg,
 				(uint32_t) (vg_base + MDP4_VIDEO_CSC_OFF));
@@ -864,6 +865,7 @@ void mdp4_overlay_vg_setup(struct mdp4_overlay_pipe *pipe)
 			mdp4_qseed_access_cfg(&pipe->pp_cfg.qseed_cfg[1],
 							(uint32_t) vg_base);
 		}
+		pipe->is_pp_dirty = false;
 	}
 	if (pipe->pp_cfg.config_ops & MDP_OVERLAY_PP_CSC_CFG) {
 		/* User CSC for VG pipe, check for it as pipe->flags gets
@@ -3351,6 +3353,7 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 		else
 			pr_debug("%s: RGB Pipes don't support CSC/QSEED\n",
 								__func__);
+		pipe->is_pp_dirty = true;
 	}
 
 	mdp4_overlay_mdp_pipe_req(pipe, mfd);
