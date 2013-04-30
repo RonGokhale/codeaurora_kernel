@@ -202,7 +202,34 @@
 
 	sound {
 		qcom,model = "msm8974-taiko-fluid-snd-card";
+		qcom,audio-routing =
+			"RX_BIAS", "MCLK",
+			"LDO_H", "MCLK",
+			"AMIC1", "MIC BIAS1 Internal1",
+			"MIC BIAS1 Internal1", "Handset Mic",
+			"AMIC2", "MIC BIAS2 External",
+			"MIC BIAS2 External", "Headset Mic",
+			"AMIC3", "MIC BIAS2 External",
+			"MIC BIAS2 External", "ANCRight Headset Mic",
+			"AMIC4", "MIC BIAS2 External",
+			"MIC BIAS2 External", "ANCLeft Headset Mic",
+			"DMIC1", "MIC BIAS1 External",
+			"MIC BIAS1 External", "Digital Mic1",
+			"DMIC2", "MIC BIAS1 External",
+			"MIC BIAS1 External", "Digital Mic2",
+			"DMIC3", "MIC BIAS3 External",
+			"MIC BIAS3 External", "Digital Mic3",
+			"DMIC4", "MIC BIAS3 External",
+			"MIC BIAS3 External", "Digital Mic4",
+			"DMIC5", "MIC BIAS4 External",
+			"MIC BIAS4 External", "Digital Mic5",
+			"DMIC6", "MIC BIAS4 External",
+			"MIC BIAS4 External", "Digital Mic6",
+			"Lineout_1 amp", "LINEOUT1",
+			"Lineout_3 amp", "LINEOUT3";
+
 		qcom,hdmi-audio-rx;
+		qcom,ext-ult-lo-amp-gpio = <&pm8941_gpios 6 0>;
 	};
 };
 
@@ -212,6 +239,13 @@
 		qcom,cdc-micbias2-ext-cap;
 		qcom,cdc-micbias3-ext-cap;
 		qcom,cdc-micbias4-ext-cap;
+
+		/* If boot isn't available, vph_pwr_vreg can be used instead */
+		cdc-vdd-spkdrv-supply = <&pm8941_boost>;
+		qcom,cdc-vdd-spkdrv-voltage = <5000000 5000000>;
+		qcom,cdc-vdd-spkdrv-current = <1250000>;
+
+		qcom,cdc-on-demand-supplies = "cdc-vdd-spkdrv";
 	};
 };
 

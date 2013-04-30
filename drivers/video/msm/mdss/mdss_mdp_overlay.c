@@ -1302,7 +1302,7 @@ int mdss_mdp_overlay_vsync_ctrl(struct msm_fb_data_type *mfd, int en)
 
 	if (!ctl)
 		return -ENODEV;
-	if (!ctl->set_vsync_handler)
+	if (!ctl->add_vsync_handler || !ctl->remove_vsync_handler)
 		return -ENOTSUPP;
 
 	rc = mutex_lock_interruptible(&ctl->lock);
@@ -1325,9 +1325,9 @@ int mdss_mdp_overlay_vsync_ctrl(struct msm_fb_data_type *mfd, int en)
 
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
 	if (en)
-		rc = ctl->set_vsync_handler(ctl, mdss_mdp_overlay_handle_vsync);
+		rc = ctl->add_vsync_handler(ctl, &ctl->vsync_handler);
 	else
-		rc = ctl->set_vsync_handler(ctl, NULL);
+		rc = ctl->remove_vsync_handler(ctl, &ctl->vsync_handler);
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
 
 	mutex_unlock(&ctl->lock);
@@ -1517,7 +1517,7 @@ static int mdss_bl_scale_config(struct msm_fb_data_type *mfd,
 {
 	int ret = 0;
 	int curr_bl;
-	mutex_lock(&mfd->lock);
+	mutex_lock(&mfd->bl_lock);
 	curr_bl = mfd->bl_level;
 	mfd->bl_scale = data->scale;
 	mfd->bl_min_lvl = data->min_lvl;
@@ -1526,7 +1526,7 @@ static int mdss_bl_scale_config(struct msm_fb_data_type *mfd,
 
 	/* update current backlight to use new scaling*/
 	mdss_fb_set_backlight(mfd, curr_bl);
-	mutex_unlock(&mfd->lock);
+	mutex_unlock(&mfd->bl_lock);
 	return ret;
 }
 
@@ -1599,6 +1599,16 @@ static int mdss_mdp_pp_ioctl(struct msm_fb_data_type *mfd,
 	case mdp_bl_scale_cfg:
 		ret = mdss_bl_scale_config(mfd, (struct mdp_bl_scale_data *)
 						&mdp_pp.data.bl_scale_data);
+		break;
+	case mdp_op_ad_cfg:
+		ret = mdss_mdp_ad_config(mfd, &mdp_pp.data.ad_init_cfg);
+		break;
+	case mdp_op_ad_input:
+		ret = mdss_mdp_ad_input(mfd, &mdp_pp.data.ad_input);
+		if (ret > 0) {
+			ret = 0;
+			copyback = 1;
+		}
 		break;
 	default:
 		pr_err("Unsupported request to MDP_PP IOCTL.\n");
@@ -1865,6 +1875,8 @@ static int mdss_mdp_overlay_on(struct msm_fb_data_type *mfd)
 				mfd->index);
 			return PTR_ERR(ctl);
 		}
+		ctl->vsync_handler.vsync_handler =
+						mdss_mdp_overlay_handle_vsync;
 
 		if (mfd->split_display && pdata->next) {
 			/* enable split display */

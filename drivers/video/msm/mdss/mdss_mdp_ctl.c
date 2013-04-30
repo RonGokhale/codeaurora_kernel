@@ -300,8 +300,9 @@ static int mdss_mdp_ctl_free(struct mdss_mdp_ctl *ctl)
 	ctl->prepare_fnc = NULL;
 	ctl->display_fnc = NULL;
 	ctl->wait_fnc = NULL;
-	ctl->set_vsync_handler = NULL;
 	ctl->read_line_cnt_fnc = NULL;
+	ctl->add_vsync_handler = NULL;
+	ctl->remove_vsync_handler = NULL;
 	mutex_unlock(&mdss_mdp_ctl_lock);
 
 	return 0;
@@ -890,7 +891,7 @@ static int mdss_mdp_ctl_start_sub(struct mdss_mdp_ctl *ctl)
 		mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_LAYER(i), 0);
 
 	mixer = ctl->mixer_left;
-	mdss_mdp_pp_resume(mixer->num);
+	mdss_mdp_pp_resume(ctl, mixer->num);
 	mixer->params_changed++;
 
 	temp = MDSS_MDP_REG_READ(MDSS_MDP_REG_DISP_INTF_SEL);
@@ -950,7 +951,7 @@ int mdss_mdp_ctl_start(struct mdss_mdp_ctl *ctl)
 			struct mdss_mdp_mixer *mixer = ctl->mixer_right;
 			u32 out, off;
 
-			mdss_mdp_pp_resume(mixer->num);
+			mdss_mdp_pp_resume(ctl, mixer->num);
 			mixer->params_changed++;
 			out = (mixer->height << 16) | mixer->width;
 			off = MDSS_MDP_REG_LM_OFFSET(mixer->num);

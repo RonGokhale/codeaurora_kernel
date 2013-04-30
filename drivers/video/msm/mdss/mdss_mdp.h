@@ -109,6 +109,12 @@ enum mdss_mdp_csc_type {
 struct mdss_mdp_ctl;
 typedef void (*mdp_vsync_handler_t)(struct mdss_mdp_ctl *, ktime_t);
 
+struct mdss_mdp_vsync_handler {
+	mdp_vsync_handler_t vsync_handler;
+	u32 ref_cnt;
+	struct list_head list;
+};
+
 struct mdss_mdp_ctl {
 	u32 num;
 	char __iomem *base;
@@ -144,14 +150,18 @@ struct mdss_mdp_ctl {
 	struct mutex lock;
 
 	struct mdss_panel_data *panel_data;
+	struct mdss_mdp_vsync_handler vsync_handler;
 
 	int (*start_fnc) (struct mdss_mdp_ctl *ctl);
 	int (*stop_fnc) (struct mdss_mdp_ctl *ctl);
 	int (*prepare_fnc) (struct mdss_mdp_ctl *ctl, void *arg);
 	int (*display_fnc) (struct mdss_mdp_ctl *ctl, void *arg);
 	int (*wait_fnc) (struct mdss_mdp_ctl *ctl, void *arg);
-	int (*set_vsync_handler) (struct mdss_mdp_ctl *, mdp_vsync_handler_t);
 	u32 (*read_line_cnt_fnc) (struct mdss_mdp_ctl *);
+	int (*add_vsync_handler) (struct mdss_mdp_ctl *,
+					struct mdss_mdp_vsync_handler *);
+	int (*remove_vsync_handler) (struct mdss_mdp_ctl *,
+					struct mdss_mdp_vsync_handler *);
 
 	void *priv_data;
 };
@@ -235,6 +245,25 @@ struct pp_hist_col_info {
 	u32 data[HIST_V_SIZE];
 	struct mutex hist_mutex;
 	spinlock_t hist_lock;
+};
+
+struct mdss_ad_info {
+	char __iomem *base;
+	u8 num;
+	u32 sts;
+	u32 state;
+	u32 ad_data;
+	u32 ad_data_mode;
+	struct mdss_ad_init init;
+	struct mdss_ad_cfg cfg;
+	struct mutex lock;
+	struct work_struct calc_work;
+	struct msm_fb_data_type *mfd;
+	struct mdss_mdp_vsync_handler handle;
+	struct completion comp;
+	u32 last_str;
+	u32 last_bl;
+	u32 calc_itr;
 };
 
 struct pp_sts_type {
@@ -413,7 +442,7 @@ int mdss_mdp_csc_setup_data(u32 block, u32 blk_idx, u32 tbl_idx,
 int mdss_mdp_pp_init(struct device *dev);
 void mdss_mdp_pp_term(struct device *dev);
 
-int mdss_mdp_pp_resume(u32 mixer_num);
+int mdss_mdp_pp_resume(struct mdss_mdp_ctl *ctl, u32 mixer_num);
 
 int mdss_mdp_pp_setup(struct mdss_mdp_ctl *ctl);
 int mdss_mdp_pp_setup_locked(struct mdss_mdp_ctl *ctl);
@@ -452,6 +481,13 @@ int mdss_mdp_histogram_stop(struct mdss_mdp_ctl *ctl, u32 block);
 int mdss_mdp_hist_collect(struct mdss_mdp_ctl *ctl,
 				struct mdp_histogram_data *hist);
 void mdss_mdp_hist_intr_done(u32 isr);
+
+int mdss_ad_init_checks(struct msm_fb_data_type *mfd);
+int mdss_mdp_ad_config(struct msm_fb_data_type *mfd,
+				struct mdss_ad_init_cfg *init_cfg);
+int mdss_mdp_ad_input(struct msm_fb_data_type *mfd,
+				struct mdss_ad_input *input);
+int mdss_mdp_ad_addr_setup(struct mdss_data_type *mdata, u32 *ad_off);
 
 struct mdss_mdp_pipe *mdss_mdp_pipe_alloc(struct mdss_mdp_mixer *mixer,
 					  u32 type);
