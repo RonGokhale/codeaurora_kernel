@@ -163,11 +163,13 @@ static void mov_buf_to_vc(struct work_struct *work)
 	}
 }
 
-void update_nr_value(struct vcap_dev *dev)
+void update_vp_value(struct vcap_dev *dev)
 {
 	struct nr_param *par;
+	struct tuning_param *tuning;
 	uint32_t val = 0;
 	par = &dev->nr_param;
+	tuning = &dev->tuning_param;
 	if (par->mode == NR_MANUAL) {
 		writel_relaxed(par->window << 24 | par->decay_ratio << 20,
 			VCAP_VP_NR_CONFIG);
@@ -199,7 +201,10 @@ void update_nr_value(struct vcap_dev *dev)
 			par->chroma.blend_limit << 0,
 			VCAP_VP_NR_CTRL_CHROMA);
 	}
-	dev->nr_update = false;
+	writel_relaxed(tuning->split_mode,
+		VCAP_VP_SPLIT_SCRN_CTRL);
+	wmb();
+	dev->update = false;
 }
 
 static void vp_wq_fnc(struct work_struct *work)
@@ -230,8 +235,8 @@ static void vp_wq_fnc(struct work_struct *work)
 	writel_relaxed(0x40000000, VCAP_VP_REDUCT_AVG_MOTION2);
 
 	spin_lock_irqsave(&dev->vp_client->cap_slock, flags);
-	if (dev->nr_update == true)
-		update_nr_value(dev);
+	if (dev->update == true)
+		update_vp_value(dev);
 	spin_unlock_irqrestore(&dev->vp_client->cap_slock, flags);
 
 	/* Queue the done buffers */
@@ -286,8 +291,12 @@ static void vp_wq_fnc(struct work_struct *work)
 	if (vp_act->bufT2->vb.v4l2_buf.field == V4L2_FIELD_BOTTOM)
 		top_field = 1;
 
-	writel_iowmb(0x00000000 | top_field, VCAP_VP_CTRL);
-	writel_iowmb(0x00010000 | top_field, VCAP_VP_CTRL);
+	writel_iowmb(0x00000000 | top_field |
+		dev->tuning_param.bal_mode << VP_TUNING_BAL_MODE,
+		VCAP_VP_CTRL);
+	writel_iowmb(0x00010000 | top_field |
+		dev->tuning_param.bal_mode << VP_TUNING_BAL_MODE,
+		VCAP_VP_CTRL);
 	enable_irq(dev->vpirq->start);
 
 	do_gettimeofday(&tv);
@@ -587,7 +596,7 @@ int init_nr_buf(struct vcap_client_data *c_data)
 	}
 
 	c_data->vp_action.bufNR.nr_handle = handle;
-	update_nr_value(dev);
+	update_vp_value(dev);
 
 	c_data->vp_action.bufNR.paddr = paddr;
 	rc = readl_relaxed(VCAP_VP_NR_CONFIG2);
@@ -730,6 +739,44 @@ void s_default_nr_val(struct nr_param *param)
 	param->chroma.diff_limit = 0xf8;
 	param->chroma.scale_motion = 0;
 	param->chroma.blend_limit = 0;
+}
+
+int vp_check_tuning_param(struct tuning_param *param)
+{
+	if (param->split_mode > VP_TUNING_MAX)
+		return -EINVAL;
+	if (param->bal_mode > VP_TUNING_MAX)
+		return -EINVAL;
+	if (param->bal_mode == VP_TUNING_BAL_INVALID)
+		return -EINVAL;
+	return 0;
+}
+
+int vp_set_tuning_param(struct vcap_client_data *c_data,
+		struct tuning_param *param)
+{
+	struct vcap_dev *dev = c_data->dev;
+	int rc;
+	rc = vp_check_tuning_param(param);
+	if (rc < 0)
+		return rc;
+	dev->tuning_param.bal_mode = param->bal_mode;
+	dev->tuning_param.split_mode = param->split_mode;
+	return 0;
+}
+
+int vp_get_tuning_param(struct vcap_client_data *c_data,
+		struct tuning_param *param)
+{
+	struct vcap_dev *dev = c_data->dev;
+	int reg;
+	reg = readl_relaxed(VCAP_VP_CTRL);
+	param->bal_mode = BITS_VALUE(reg, 8, 3);
+	reg = readl_relaxed(VCAP_VP_FILM_MODE_STATE);
+	param->film_state = BITS_VALUE(reg, 0, 2);
+	reg = readl_relaxed(VCAP_VP_SPLIT_SCRN_CTRL);
+	param->split_mode = BITS_VALUE(reg, 0, 3);
+	return 0;
 }
 
 int vp_dummy_event(struct vcap_client_data *c_data)
@@ -893,8 +940,12 @@ int kickoff_vp(struct vcap_client_data *c_data)
 		top_field = 1;
 	vp_act->vp_state = VP_FRAME2;
 	writel_relaxed(0x01100001, VCAP_VP_INTERRUPT_ENABLE);
-	writel_iowmb(0x00000000 | top_field, VCAP_VP_CTRL);
-	writel_iowmb(0x00010000 | top_field, VCAP_VP_CTRL);
+	writel_iowmb(0x00000000 | top_field |
+		dev->tuning_param.bal_mode << VP_TUNING_BAL_MODE,
+		VCAP_VP_CTRL);
+	writel_iowmb(0x00010000 | top_field |
+		dev->tuning_param.bal_mode << VP_TUNING_BAL_MODE,
+		VCAP_VP_CTRL);
 	atomic_set(&c_data->dev->vp_enabled, 1);
 	enable_irq(dev->vpirq->start);
 
@@ -937,8 +988,12 @@ int continue_vp(struct vcap_client_data *c_data)
 
 	/* Config VP & Enable Interrupt */
 	writel_relaxed(0x01100001, VCAP_VP_INTERRUPT_ENABLE);
-	writel_iowmb(0x00000000 | top_field, VCAP_VP_CTRL);
-	writel_iowmb(0x00010000 | top_field, VCAP_VP_CTRL);
+	writel_iowmb(0x00000000 | top_field |
+		dev->tuning_param.bal_mode << VP_TUNING_BAL_MODE,
+		VCAP_VP_CTRL);
+	writel_iowmb(0x00010000 | top_field |
+		dev->tuning_param.bal_mode << VP_TUNING_BAL_MODE,
+		VCAP_VP_CTRL);
 
 	atomic_set(&c_data->dev->vp_enabled, 1);
 	enable_irq(dev->vpirq->start);

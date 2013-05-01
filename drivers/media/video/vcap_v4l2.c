@@ -1699,7 +1699,6 @@ static long vidioc_default(struct file *file, void *fh, bool valid_prio,
 			return -EBUSY;
 		}
 
-
 		spin_lock_irqsave(&c_data->cap_slock, flags);
 		ret = nr_s_param(c_data, (struct nr_param *) arg);
 		if (ret < 0) {
@@ -1710,7 +1709,7 @@ static long vidioc_default(struct file *file, void *fh, bool valid_prio,
 		dev->nr_param = *param;
 		if (param->mode == NR_AUTO)
 			s_default_nr_val(&dev->nr_param);
-		dev->nr_update = true;
+		dev->update = true;
 		spin_unlock_irqrestore(&c_data->cap_slock, flags);
 		break;
 	case VCAPIOC_NR_G_PARAMS:
@@ -1728,6 +1727,21 @@ static long vidioc_default(struct file *file, void *fh, bool valid_prio,
 		if (val < VCAP_VC_MIN_BUF || val > VCAP_VC_MAX_BUF)
 			return -EINVAL;
 		dev->vc_tot_buf = (uint8_t) val;
+		break;
+	case VCAPIOC_TUNE_S_PARAMS:
+		spin_lock_irqsave(&c_data->cap_slock, flags);
+		ret = vp_set_tuning_param(c_data,
+			(struct tuning_param *) arg);
+		if (ret < 0) {
+			spin_unlock_irqrestore(&c_data->cap_slock, flags);
+			pr_err("Set vcap tuning param failed\n");
+			return ret;
+		}
+		dev->update = true;
+		spin_unlock_irqrestore(&c_data->cap_slock, flags);
+		break;
+	case VCAPIOC_TUNE_G_PARAMS:
+		vp_get_tuning_param(c_data, (struct tuning_param *) arg);
 		break;
 	default:
 		return -EINVAL;

@@ -69,6 +69,31 @@ enum nr_decay_ratio {
 	NR_Decay_Ratio_19,
 };
 
+enum tune_balance_mode {
+	VCAP_TUNE_AUTO = 0,
+	VCAP_TUNE_SPACE_TIME = 1,
+	VCAP_TUNE_SPATIAL = 2,
+	VCAP_TUNE_TEMPORAL = 3,
+	VCAP_TUNE_WEAVE_FM = 5,
+	VCAP_TUNE_WEAVE_T1 = 6,
+	VCAP_TUNE_WEAVE_TM1 = 7,
+};
+
+enum tune_film_state {
+	VCAP_TUNE_VIDEO = 0,
+	VCAP_TUNE_UNSURE = 1,
+	VCAP_TUNE_MIXED = 2,
+	VCAP_TUNE_FILM = 3,
+};
+
+enum tune_split_mode {
+	VCAP_TUNE_SPLIT_OFF = 0,
+	VCAP_TUNE_SPLIT_WEAVE_L = 1,
+	VCAP_TUNE_SPLIT_WEAVE_R = 3,
+	VCAP_TUNE_SPLIT_BOB_L = 5,
+	VCAP_TUNE_SPLIT_BOB_R = 7,
+};
+
 struct nr_config {
 	uint8_t max_blend_ratio;
 	uint8_t scale_diff_ratio;
@@ -90,10 +115,19 @@ struct nr_param {
 	struct nr_config chroma;
 };
 
-#define VCAPIOC_NR_S_PARAMS _IOWR('V', (BASE_VIDIOC_PRIVATE+0), struct nr_param)
+struct tuning_param {
+	enum tune_balance_mode bal_mode;
+	enum tune_film_state film_state;
+	enum tune_split_mode split_mode;
+};
 
+#define VCAPIOC_NR_S_PARAMS _IOWR('V', (BASE_VIDIOC_PRIVATE+0), struct nr_param)
 #define VCAPIOC_NR_G_PARAMS _IOWR('V', (BASE_VIDIOC_PRIVATE+1), struct nr_param)
 #define VCAPIOC_S_NUM_VC_BUF _IOWR('V', (BASE_VIDIOC_PRIVATE+2), int)
+#define VCAPIOC_TUNE_S_PARAMS _IOWR('V', (BASE_VIDIOC_PRIVATE+3), \
+	struct tuning_param)
+#define VCAPIOC_TUNE_G_PARAMS _IOWR('V', (BASE_VIDIOC_PRIVATE+4), \
+	struct tuning_param)
 
 struct v4l2_format_vc_ext {
 	enum hal_vcap_mode     mode;
