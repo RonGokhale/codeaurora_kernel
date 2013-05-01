@@ -75,6 +75,10 @@ struct nr_config {
 	uint8_t diff_limit_ratio;
 	uint8_t scale_motion_ratio;
 	uint8_t blend_limit_ratio;
+	uint16_t scale_diff;
+	uint16_t diff_limit;
+	uint16_t scale_motion;
+	uint16_t blend_limit;
 };
 
 struct nr_param {

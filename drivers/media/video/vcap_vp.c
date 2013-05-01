@@ -187,6 +187,17 @@ void update_nr_value(struct vcap_dev *dev)
 			par->chroma.scale_motion_ratio << 4 |
 			par->chroma.blend_limit_ratio << 0,
 			VCAP_VP_NR_CHROMA_CONFIG);
+		wmb();
+		writel_relaxed(par->luma.scale_diff << 24 |
+			par->luma.diff_limit << 16  |
+			par->luma.scale_motion << 8 |
+			par->luma.blend_limit << 0,
+			VCAP_VP_NR_CTRL_LUMA);
+		writel_relaxed(par->chroma.scale_diff << 24 |
+			par->chroma.diff_limit << 16  |
+			par->chroma.scale_motion << 8 |
+			par->chroma.blend_limit << 0,
+			VCAP_VP_NR_CTRL_CHROMA);
 	}
 	dev->nr_update = false;
 }
@@ -629,6 +640,14 @@ int nr_s_param(struct vcap_client_data *c_data, struct nr_param *param)
 		return -EINVAL;
 	if (param->luma.blend_limit_ratio > VP_NR_MAX_RATIO)
 		return -EINVAL;
+	if (param->luma.scale_diff >= VP_NR_MAX_LIMIT)
+		return -EINVAL;
+	if (param->luma.diff_limit >= VP_NR_MAX_LIMIT)
+		return -EINVAL;
+	if (param->luma.scale_motion >= VP_NR_MAX_LIMIT)
+		return -EINVAL;
+	if (param->luma.blend_limit >= VP_NR_MAX_LIMIT)
+		return -EINVAL;
 	if (param->chroma.max_blend_ratio > VP_NR_MAX_RATIO)
 		return -EINVAL;
 	if (param->chroma.scale_diff_ratio > VP_NR_MAX_RATIO)
@@ -638,6 +657,14 @@ int nr_s_param(struct vcap_client_data *c_data, struct nr_param *param)
 	if (param->chroma.scale_motion_ratio > VP_NR_MAX_RATIO)
 		return -EINVAL;
 	if (param->chroma.blend_limit_ratio > VP_NR_MAX_RATIO)
+		return -EINVAL;
+	if (param->chroma.scale_diff >= VP_NR_MAX_LIMIT)
+		return -EINVAL;
+	if (param->chroma.diff_limit >= VP_NR_MAX_LIMIT)
+		return -EINVAL;
+	if (param->chroma.scale_motion >= VP_NR_MAX_LIMIT)
+		return -EINVAL;
+	if (param->chroma.blend_limit > VP_NR_MAX_LIMIT)
 		return -EINVAL;
 	return 0;
 }
@@ -660,12 +687,24 @@ void nr_g_param(struct vcap_client_data *c_data, struct nr_param *param)
 	param->luma.scale_motion_ratio = BITS_VALUE(rc, 4, 4);
 	param->luma.blend_limit_ratio = BITS_VALUE(rc, 0, 4);
 
+	rc = readl_relaxed(VCAP_VP_NR_CTRL_LUMA);
+	param->luma.scale_diff = BITS_VALUE(rc, 24, 8);
+	param->luma.diff_limit = BITS_VALUE(rc, 16, 8);
+	param->luma.scale_motion = BITS_VALUE(rc, 8, 8);
+	param->luma.blend_limit = BITS_VALUE(rc, 0, 8);
+
 	rc = readl_relaxed(VCAP_VP_NR_CHROMA_CONFIG);
 	param->chroma.max_blend_ratio = BITS_VALUE(rc, 24, 4);
 	param->chroma.scale_diff_ratio = BITS_VALUE(rc, 12, 4);
 	param->chroma.diff_limit_ratio = BITS_VALUE(rc, 8, 4);
 	param->chroma.scale_motion_ratio = BITS_VALUE(rc, 4, 4);
 	param->chroma.blend_limit_ratio = BITS_VALUE(rc, 0, 4);
+
+	rc = readl_relaxed(VCAP_VP_NR_CTRL_CHROMA);
+	param->chroma.scale_diff = BITS_VALUE(rc, 24, 8);
+	param->chroma.diff_limit = BITS_VALUE(rc, 16, 8);
+	param->chroma.scale_motion = BITS_VALUE(rc, 8, 8);
+	param->chroma.blend_limit = BITS_VALUE(rc, 0, 8);
 }
 
 void s_default_nr_val(struct nr_param *param)
@@ -678,11 +717,19 @@ void s_default_nr_val(struct nr_param *param)
 	param->luma.diff_limit_ratio = 1;
 	param->luma.scale_motion_ratio = 4;
 	param->luma.blend_limit_ratio = 9;
+	param->luma.scale_diff = 0x80;
+	param->luma.diff_limit = 0xf8;
+	param->luma.scale_motion = 0;
+	param->luma.blend_limit = 0;
 	param->chroma.max_blend_ratio = 0;
 	param->chroma.scale_diff_ratio = 4;
 	param->chroma.diff_limit_ratio = 1;
 	param->chroma.scale_motion_ratio = 4;
 	param->chroma.blend_limit_ratio = 9;
+	param->chroma.scale_diff = 0x80;
+	param->chroma.diff_limit = 0xf8;
+	param->chroma.scale_motion = 0;
+	param->chroma.blend_limit = 0;
 }
 
 int vp_dummy_event(struct vcap_client_data *c_data)
