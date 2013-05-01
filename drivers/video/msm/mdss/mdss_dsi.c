@@ -100,12 +100,12 @@ static int mdss_dsi_regulator_init(struct platform_device *pdev)
 
 	return 0;
 }
-
-static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata, int enable)
+static int mdss_dsi_regulator_on(struct mdss_panel_data *pdata, int enable)
 {
 	int ret;
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 
+	pr_debug("%s: enable=%d\n", __func__, enable);
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
 		return -EINVAL;
@@ -113,7 +113,6 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata, int enable)
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
-	pr_debug("%s: enable=%d\n", __func__, enable);
 
 	if (enable) {
 		if (ctrl_pdata->power_data.num_vreg > 0) {
@@ -170,6 +169,8 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata, int enable)
 			if (ret) {
 				pr_err("%s: Failed to enable regulator.\n",
 					__func__);
+				regulator_disable(
+				(ctrl_pdata->shared_pdata).vdd_io_vreg);
 				return ret;
 			}
 			msleep(20);
@@ -178,17 +179,15 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata, int enable)
 				(ctrl_pdata->shared_pdata).vdda_vreg);
 			if (ret) {
 				pr_err("%s: Failed to enable regulator.\n",
-					__func__);
+						__func__);
+				regulator_disable(
+				(ctrl_pdata->shared_pdata).vdd_vreg);
+				regulator_disable(
+				(ctrl_pdata->shared_pdata).vdd_io_vreg);
 				return ret;
 			}
 		}
-
-		if (pdata->panel_info.panel_power_on == 0)
-			mdss_dsi_panel_reset(pdata, 1);
-
 	} else {
-
-		mdss_dsi_panel_reset(pdata, 0);
 
 		if (ctrl_pdata->power_data.num_vreg > 0) {
 			ret = msm_dss_enable_vreg(
@@ -217,7 +216,7 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata, int enable)
 			}
 
 			ret = regulator_disable(
-				(ctrl_pdata->shared_pdata).vdd_io_vreg);
+					(ctrl_pdata->shared_pdata).vdd_io_vreg);
 			if (ret) {
 				pr_err("%s: Failed to disable regulator.\n",
 					__func__);
@@ -228,7 +227,7 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata, int enable)
 				(ctrl_pdata->shared_pdata).vdd_vreg, 100);
 			if (ret < 0) {
 				pr_err("%s: vdd_vreg set opt mode failed.\n",
-					 __func__);
+					__func__);
 				return ret;
 			}
 
@@ -248,7 +247,46 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata, int enable)
 			}
 		}
 	}
-	return 0;
+	return ret;
+}
+
+static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata, int enable)
+{
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+	int rc = 0;
+
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return -EINVAL;
+	}
+
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+			panel_data);
+	pr_debug("%s: enable=%d\n", __func__, enable);
+
+	if (enable) {
+		rc = mdss_dsi_regulator_on(pdata, enable);
+		if (rc) {
+			pr_err("%s: DSI regulator fail to turn off reglator\n",
+					__func__);
+			return rc;
+		}
+
+		if (pdata->panel_info.panel_power_on == 0) {
+			rc = mdss_dsi_panel_reset(pdata, 1);
+			if (rc) {
+				pr_err("%s: DSI panel reset fail\n", __func__);
+				mdss_dsi_regulator_on(pdata, 0);
+			}
+		}
+	} else {
+		rc = mdss_dsi_panel_reset(pdata, 0);
+		if (rc)
+			pr_err("%s: panel reset while off failed\n", __func__);
+		mdss_dsi_regulator_on(pdata, enable);
+	}
+
+	return rc;
 }
 
 static void mdss_dsi_put_dt_vreg_data(struct device *dev,
@@ -400,8 +438,6 @@ static int mdss_dsi_off(struct mdss_panel_data *pdata)
 		return -EPERM;
 	}
 
-	pdata->panel_info.panel_power_on = 0;
-
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 
@@ -421,6 +457,8 @@ static int mdss_dsi_off(struct mdss_panel_data *pdata)
 		pr_err("%s: Panel power off failed\n", __func__);
 		return ret;
 	}
+
+	pdata->panel_info.panel_power_on = 0;
 
 	pr_debug("%s-:\n", __func__);
 
@@ -493,13 +531,20 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 		return ret;
 	}
 
-	pdata->panel_info.panel_power_on = 1;
-
 	mdss_dsi_phy_sw_reset((ctrl_pdata->ctrl_base));
 	mdss_dsi_phy_init(pdata);
 
-	mdss_dsi_prepare_clocks(ctrl_pdata);
-	mdss_dsi_clk_enable(pdata);
+	ret = mdss_dsi_prepare_clocks(ctrl_pdata);
+	if (ret) {
+		pr_err("%s: dsi clks prepare failed\n", __func__);
+		goto free_resources;
+	}
+	ret = mdss_dsi_clk_enable(pdata);
+	if (ret) {
+		mdss_dsi_unprepare_clocks(ctrl_pdata);
+		pr_err("%s: dsi clks enable failed\n", __func__);
+		goto free_resources;
+	}
 
 	clk_rate = pdata->panel_info.clk_rate;
 	clk_rate = min(clk_rate, pdata->panel_info.clk_max);
@@ -577,8 +622,18 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 		wmb();
 	}
 
+	pdata->panel_info.panel_power_on = 1;
+
 	pr_debug("%s-:\n", __func__);
 	return 0;
+
+free_resources:
+	pr_err("%s Disabling regulators\n", __func__);
+	pdata->panel_info.panel_power_on = 0;
+	mdss_dsi_regulator_on(pdata, 0);
+	mdss_dsi_panel_gpio_free(pdata);
+
+	return ret;
 }
 
 static int mdss_dsi_unblank(struct mdss_panel_data *pdata)
@@ -655,6 +710,11 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 	switch (event) {
 	case MDSS_EVENT_UNBLANK:
 		rc = mdss_dsi_on(pdata);
+		if (rc) {
+			pr_err("%s: dsi_on failed.\n",
+				__func__);
+			return rc;
+		}
 		if (ctrl_pdata->on_cmds->ctrl_state == DSI_LP_MODE) {
 			rc = mdss_dsi_unblank(pdata);
 		}
@@ -671,12 +731,22 @@ static int mdss_dsi_event_handler(struct mdss_panel_data *pdata,
 	case MDSS_EVENT_PANEL_OFF:
 		if (ctrl_pdata->off_cmds->ctrl_state == DSI_LP_MODE) {
 			rc = mdss_dsi_blank(pdata);
+			if (rc) {
+				pr_err("%s: dsi_blank failed.\n",
+					__func__);
+				return rc;
+			}
 		}
 		rc = mdss_dsi_off(pdata);
 		break;
 	case MDSS_EVENT_CONT_SPLASH_FINISH:
 		if (ctrl_pdata->on_cmds->ctrl_state == DSI_LP_MODE) {
 			rc = mdss_dsi_cont_splash_on(pdata);
+			if (rc) {
+				pr_err("%s: cont_splash_on failed.\n",
+					__func__);
+				return rc;
+			}
 		} else {
 			pr_debug("%s:event=%d, Dsi On not called: ctrl_state: %d\n",
 				 __func__, event,
@@ -1094,18 +1164,23 @@ int dsi_panel_device_register(struct platform_device *pdev,
 
 
 	if (ctrl_pdata->panel_data.panel_info.cont_splash_enabled) {
-		mdss_dsi_prepare_clocks(ctrl_pdata);
-		mdss_dsi_clk_enable(&(ctrl_pdata->panel_data));
+		rc = mdss_dsi_prepare_clocks(ctrl_pdata);
+		if (rc) {
+			pr_err("%s: dsi clks prepare failed\n", __func__);
+			goto register_error;
+		}
+		rc = mdss_dsi_clk_enable(&(ctrl_pdata->panel_data));
+		if (rc) {
+			mdss_dsi_unprepare_clocks(ctrl_pdata);
+			pr_err("%s: dsi clks enable failed\n", __func__);
+			goto register_error;
+		}
 	}
 
 	rc = mdss_register_panel(ctrl_pdev, &(ctrl_pdata->panel_data));
 	if (rc) {
 		dev_err(&pdev->dev, "unable to register MIPI DSI panel\n");
-		if (ctrl_pdata->rst_gpio)
-			gpio_free(ctrl_pdata->rst_gpio);
-		if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
-			gpio_free(ctrl_pdata->disp_en_gpio);
-		return rc;
+		goto register_error;
 	}
 
 	ctrl_pdata->on = panel_data->on;
@@ -1128,6 +1203,13 @@ int dsi_panel_device_register(struct platform_device *pdev,
 
 	pr_debug("%s: Panal data initialized\n", __func__);
 	return 0;
+
+register_error:
+	if (ctrl_pdata->rst_gpio)
+		gpio_free(ctrl_pdata->rst_gpio);
+	if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
+		gpio_free(ctrl_pdata->disp_en_gpio);
+	return rc;
 }
 
 static const struct of_device_id mdss_dsi_ctrl_dt_match[] = {
