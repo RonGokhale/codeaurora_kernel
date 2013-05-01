@@ -402,6 +402,7 @@ struct msm_usb_host_platform_data {
 	int pmic_gpio_dp_irq;
 	unsigned int dock_connect_irq;
 	int *phy_init_seq;
+	unsigned int mpm_xo_wakeup_int;
 };
 
 /**
