@@ -219,6 +219,9 @@ static int venus_hfi_write_queue(void *info, u8 *packet, u32 *rx_req_is_set)
 	}
 	queue->qhdr_write_idx = new_write_idx;
 	*rx_req_is_set = (1 == queue->qhdr_rx_req) ? 1 : 0;
+	/*Memory barrier to make sure data is written before an
+	 * interupt is raised on venus.*/
+	mb();
 	dprintk(VIDC_DBG, "Out : ");
 	return 0;
 }
@@ -294,6 +297,9 @@ static int venus_hfi_read_queue(void *info, u8 *packet, u32 *pb_tx_req_is_set)
 		dprintk(VIDC_WARN, "Queues have already been freed\n");
 		return -EINVAL;
 	}
+	/*Memory barrier to make sure data is valid before
+	 *reading it*/
+	mb();
 	queue = (struct hfi_queue_header *) qinfo->q_hdr;
 
 	if (!queue) {
@@ -1083,7 +1089,6 @@ static int venus_hfi_core_release(void *device)
 		if (!(dev->intr_status & VIDC_WRAPPER_INTR_STATUS_A2HWD_BMSK))
 			disable_irq_nosync(dev->hal_data->irq);
 		dev->intr_status = 0;
-		venus_hfi_interface_queues_release(dev);
 		mutex_unlock(&dev->clock_lock);
 	}
 	dprintk(VIDC_INFO, "HAL exited\n");
@@ -2794,6 +2799,7 @@ static void venus_hfi_unload_fw(void *dev)
 		flush_workqueue(device->vidc_workq);
 		venus_hfi_disable_clks(device);
 		subsystem_put(device->resources.fw.cookie);
+		venus_hfi_interface_queues_release(dev);
 		venus_hfi_iommu_detach(device);
 		device->resources.fw.cookie = NULL;
 	}

@@ -46,7 +46,7 @@ static struct kgsl_iommu_register_list kgsl_iommuv0_reg[KGSL_IOMMU_REG_MAX] = {
 	{ 0x03C, 1 },			/* TLBLKCR */
 	{ 0x818, 1 },			/* V2PUR */
 	{ 0x2C, 1 },			/* FSYNR0 */
-	{ 0x2C, 1 },			/* FSYNR0 */
+	{ 0x30, 1 },			/* FSYNR1 */
 	{ 0, 0 },			/* TLBSYNC, not in v0 */
 	{ 0, 0 },			/* TLBSTATUS, not in v0 */
 	{ 0, 0 }			/* IMPLDEF_MICRO_MMU_CRTL, not in v0 */
@@ -390,18 +390,20 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 	kgsl_sharedmem_readl(&device->memstore, &curr_context_id,
 		KGSL_MEMSTORE_OFFSET(KGSL_MEMSTORE_GLOBAL, current_context));
 	context = idr_find(&device->context_idr, curr_context_id);
-	if (context != NULL)
+	if (context != NULL) {
 			curr_context = context->devctxt;
 
-	kgsl_sharedmem_readl(&device->memstore, &curr_global_ts,
-		KGSL_MEMSTORE_OFFSET(KGSL_MEMSTORE_GLOBAL, eoptimestamp));
+		kgsl_sharedmem_readl(&device->memstore, &curr_global_ts,
+			KGSL_MEMSTORE_OFFSET(KGSL_MEMSTORE_GLOBAL,
+			eoptimestamp));
 
-	/*
-	 * Store pagefault's timestamp in adreno context,
-	 * this information will be used in GFT
-	 */
-	curr_context->pagefault = 1;
-	curr_context->pagefault_ts = curr_global_ts;
+		/*
+		 * Store pagefault's timestamp in adreno context,
+		 * this information will be used in GFT
+		 */
+		curr_context->pagefault = 1;
+		curr_context->pagefault_ts = curr_global_ts;
+	}
 
 	trace_kgsl_mmu_pagefault(iommu_dev->kgsldev, addr,
 			kgsl_mmu_get_ptname_from_ptbase(mmu, ptbase),
@@ -624,8 +626,10 @@ static void kgsl_iommu_destroy_pagetable(struct kgsl_pagetable *pt)
 {
 	struct kgsl_iommu_pt *iommu_pt = pt->priv;
 	if (iommu_pt->domain)
-		iommu_domain_free(iommu_pt->domain);
+		msm_unregister_domain(iommu_pt->domain);
+
 	kfree(iommu_pt);
+	iommu_pt = NULL;
 }
 
 /*
