@@ -19,6 +19,7 @@
 /include/ "msm8610-pm.dtsi"
 /include/ "msm8610-smp2p.dtsi"
 /include/ "msm8610-bus.dtsi"
+/include/ "msm8610-mdss.dtsi"
 
 / {
 	model = "Qualcomm MSM 8610";
@@ -43,6 +44,16 @@
 		ngpio = <102>;
 		interrupts = <0 208 0>;
 		qcom,direct-connect-irqs = <8>;
+	};
+
+	memory {
+
+		qsecom_mem: qsecom_region {
+			linux,contiguous-region;
+			reg = <0 0x100000>;
+			label = "qsecom_mem";
+		};
+
 	};
 
 	aliases {
@@ -309,7 +320,7 @@
 
 	qcom,smem@d900000 {
 		compatible = "qcom,smem";
-		reg = <0xd900000 0x200000>,
+		reg = <0xd900000 0x100000>,
 			<0xf9011000 0x1000>,
 			<0xfc428000 0x4000>;
 		reg-names = "smem", "irq-reg-base", "aux-mem1";

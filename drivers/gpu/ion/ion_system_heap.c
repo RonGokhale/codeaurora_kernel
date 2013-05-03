@@ -26,9 +26,6 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include "ion_priv.h"
-#include <mach/memory.h>
-#include <asm/cacheflush.h>
-#include <linux/msm_ion.h>
 #include <linux/dma-mapping.h>
 #include <trace/events/kmem.h>
 
@@ -265,7 +262,27 @@ static struct ion_heap_ops system_heap_ops = {
 	.map_user = ion_heap_map_user,
 };
 
-struct ion_heap *ion_system_heap_create(struct ion_platform_heap *pheap)
+static int ion_system_heap_debug_show(struct ion_heap *heap, struct seq_file *s,
+				      void *unused)
+{
+
+	struct ion_system_heap *sys_heap = container_of(heap,
+							struct ion_system_heap,
+							heap);
+	int i;
+	for (i = 0; i < num_orders; i++) {
+		struct ion_page_pool *pool = sys_heap->pools[i];
+		seq_printf(s, "%d order %u highmem pages in pool = %lu total\n",
+			   pool->high_count, pool->order,
+			   (1 << pool->order) * PAGE_SIZE * pool->high_count);
+		seq_printf(s, "%d order %u lowmem pages in pool = %lu total\n",
+			   pool->low_count, pool->order,
+			   (1 << pool->order) * PAGE_SIZE * pool->low_count);
+	}
+	return 0;
+}
+
+struct ion_heap *ion_system_heap_create(struct ion_platform_heap *unused)
 {
 	struct ion_system_heap *heap;
 	int i;
@@ -291,6 +308,7 @@ struct ion_heap *ion_system_heap_create(struct ion_platform_heap *pheap)
 			goto err_create_pool;
 		heap->pools[i] = pool;
 	}
+	heap->heap.debug_show = ion_system_heap_debug_show;
 	return &heap->heap;
 err_create_pool:
 	for (i = 0; i < num_orders; i++)
@@ -378,7 +396,7 @@ static struct ion_heap_ops kmalloc_ops = {
 	.map_user = ion_heap_map_user,
 };
 
-struct ion_heap *ion_system_contig_heap_create(struct ion_platform_heap *pheap)
+struct ion_heap *ion_system_contig_heap_create(struct ion_platform_heap *unused)
 {
 	struct ion_heap *heap;
 
