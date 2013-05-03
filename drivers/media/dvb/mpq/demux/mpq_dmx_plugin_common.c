@@ -1952,6 +1952,134 @@ static inline void mpq_dmx_prepare_es_event_data(
 	feed_data->continuity_errs = 0;
 }
 
+/**
+ * mpq_dmx_decoder_frame_closure - Helper function to handle closing current
+ * pending frame upon reaching EOS.
+ *
+ * @mpq_demux - mpq demux instance
+ * @mpq_feed - mpq feed object
+ */
+static void mpq_dmx_decoder_frame_closure(struct mpq_demux *mpq_demux,
+		struct dvb_demux_feed *feed)
+{
+	struct mpq_streambuffer_packet_header packet;
+	struct mpq_streambuffer *stream_buffer;
+	struct mpq_adapter_video_meta_data meta_data;
+	struct mpq_video_feed_info *feed_data;
+	struct dmx_data_ready data;
+
+	spin_lock(&mpq_demux->feed_lock);
+	feed_data = feed->priv;
+	if (unlikely(feed_data == NULL)) {
+		spin_unlock(&mpq_demux->feed_lock);
+		return;
+	}
+
+	stream_buffer = feed_data->video_buffer;
+
+	/* Report last pattern found */
+	if ((feed_data->pending_pattern_len) &&
+		mpq_dmx_is_video_frame(feed->indexing_params.standard,
+			feed_data->last_framing_match_type)) {
+		meta_data.packet_type = DMX_FRAMING_INFO_PACKET;
+		mpq_dmx_write_pts_dts(feed_data,
+			&(meta_data.info.framing.pts_dts_info));
+		mpq_dmx_save_pts_dts(feed_data);
+		packet.user_data_len =
+			sizeof(struct mpq_adapter_video_meta_data);
+		packet.raw_data_len = feed_data->pending_pattern_len;
+		packet.raw_data_offset = feed_data->frame_offset;
+		meta_data.info.framing.pattern_type =
+			feed_data->last_framing_match_type;
+
+		mpq_streambuffer_get_buffer_handle(stream_buffer,
+			0, /* current write buffer handle */
+			&packet.raw_data_handle);
+
+		/* Writing meta-data that includes the framing information */
+		if (mpq_streambuffer_pkt_write(stream_buffer, &packet,
+			(u8 *)&meta_data) < 0)
+			MPQ_DVB_ERR_PRINT("%s: Couldn't write packet\n",
+				__func__);
+
+		if (generate_es_events) {
+			mpq_dmx_prepare_es_event_data(&packet, &meta_data,
+				feed_data,
+				stream_buffer, &data);
+			feed->data_ready_cb.ts(&feed->feed.ts, &data);
+		}
+	}
+
+	spin_unlock(&mpq_demux->feed_lock);
+}
+
+/**
+ * mpq_dmx_decoder_pes_closure - Helper function to handle closing current PES
+ * upon reaching EOS.
+ *
+ * @mpq_demux - mpq demux instance
+ * @mpq_feed - mpq feed object
+ */
+static void mpq_dmx_decoder_pes_closure(struct mpq_demux *mpq_demux,
+	struct dvb_demux_feed *feed)
+{
+	struct mpq_streambuffer_packet_header packet;
+	struct mpq_streambuffer *stream_buffer;
+	struct mpq_adapter_video_meta_data meta_data;
+	struct mpq_video_feed_info *feed_data;
+	struct dmx_data_ready data;
+
+	spin_lock(&mpq_demux->feed_lock);
+	feed_data = feed->priv;
+	if (unlikely(feed_data == NULL)) {
+		spin_unlock(&mpq_demux->feed_lock);
+		return;
+	}
+
+	stream_buffer = feed_data->video_buffer;
+
+	/*
+	 * Close previous PES.
+	 * Push new packet to the meta-data buffer.
+	 */
+	if ((feed->pusi_seen) && (0 == feed_data->pes_header_left_bytes)) {
+		packet.raw_data_len = feed->peslen;
+		mpq_streambuffer_get_buffer_handle(stream_buffer,
+			0, /* current write buffer handle */
+			&packet.raw_data_handle);
+		packet.raw_data_offset = feed_data->frame_offset;
+		packet.user_data_len =
+			sizeof(struct mpq_adapter_video_meta_data);
+
+		mpq_dmx_write_pts_dts(feed_data,
+			&(meta_data.info.pes.pts_dts_info));
+		mpq_dmx_save_pts_dts(feed_data);
+
+		meta_data.packet_type = DMX_PES_PACKET;
+
+		if (mpq_streambuffer_pkt_write(stream_buffer, &packet,
+			(u8 *)&meta_data) < 0)
+			MPQ_DVB_ERR_PRINT("%s: Couldn't write packet\n",
+				__func__);
+
+		/* Save write offset where new PES will begin */
+		mpq_streambuffer_get_data_rw_offset(stream_buffer, NULL,
+			&feed_data->frame_offset);
+
+		if (generate_es_events) {
+			mpq_dmx_prepare_es_event_data(&packet, &meta_data,
+				feed_data, stream_buffer, &data);
+			feed->data_ready_cb.ts(&feed->feed.ts, &data);
+		}
+	}
+	/* Reset PES info */
+	feed->peslen = 0;
+	feed_data->pes_header_offset = 0;
+	feed_data->pes_header_left_bytes = PES_MANDATORY_FIELDS_LEN;
+
+	spin_unlock(&mpq_demux->feed_lock);
+}
+
 static int mpq_dmx_process_video_packet_framing(
 			struct dvb_demux_feed *feed,
 			const u8 *buf)
@@ -2712,3 +2840,80 @@ int mpq_dmx_process_pcr_packet(
 	return 0;
 }
 EXPORT_SYMBOL(mpq_dmx_process_pcr_packet);
+
+static int mpq_dmx_decoder_eos_cmd(struct mpq_demux *mpq_demux,
+		struct dvb_demux_feed *feed)
+{
+	struct mpq_video_feed_info *feed_data;
+	struct mpq_streambuffer *stream_buffer;
+	struct mpq_streambuffer_packet_header oob_packet;
+	struct mpq_adapter_video_meta_data oob_meta_data;
+	int ret;
+
+	spin_lock(&mpq_demux->feed_lock);
+	feed_data = feed->priv;
+	if (unlikely(feed_data == NULL)) {
+		spin_unlock(&mpq_demux->feed_lock);
+		return 0;
+	}
+
+	stream_buffer = feed_data->video_buffer;
+
+	memset(&oob_packet, 0, sizeof(oob_packet));
+	oob_packet.user_data_len = sizeof(oob_meta_data);
+	oob_meta_data.packet_type = DMX_EOS_PACKET;
+
+	ret = mpq_streambuffer_pkt_write(stream_buffer, &oob_packet,
+					(u8 *)&oob_meta_data);
+
+	spin_unlock(&mpq_demux->feed_lock);
+	return ret;
+}
+
+int mpq_dmx_oob_command(struct dvb_demux_feed *feed,
+		struct dmx_oob_command *cmd)
+{
+	struct mpq_demux *mpq_demux = feed->demux->priv;
+	struct dmx_data_ready event;
+	int ret = 0;
+
+	if (!mpq_dmx_is_video_feed(feed) && !mpq_dmx_is_pcr_feed(feed))
+		return 0;
+
+	event.data_length = 0;
+
+	switch (cmd->type) {
+	case DMX_OOB_CMD_EOS:
+		event.status = DMX_OK_EOS;
+		if (mpq_dmx_is_video_feed(feed)) {
+			if (mpq_dmx_info.decoder_framing)
+				mpq_dmx_decoder_pes_closure(mpq_demux, feed);
+			else
+				mpq_dmx_decoder_frame_closure(mpq_demux, feed);
+			MPQ_DVB_DBG_PRINT(
+				"%s(%d): plugin notify decoder last pes/frame event\n",
+				__func__, feed->pid);
+			ret = mpq_dmx_decoder_eos_cmd(mpq_demux, feed);
+			if (ret)
+				MPQ_DVB_ERR_PRINT(
+					"%s: Couldn't write oob eos packet\n",
+					__func__);
+		}
+		MPQ_DVB_DBG_PRINT(
+			"%s(%d): plugin notify EOS event\n",
+			__func__, feed->pid);
+		ret = feed->data_ready_cb.ts(&feed->feed.ts, &event);
+		break;
+
+	case DMX_OOB_CMD_MARKER:
+		ret = -ENOSYS;
+		break;
+
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(mpq_dmx_oob_command);

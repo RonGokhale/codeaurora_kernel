@@ -1204,6 +1204,72 @@ static int dmx_ts_set_indexing_params(
 	return 0;
 }
 
+static int dvbdmx_ts_feed_oob_cmd(struct dmx_ts_feed *ts_feed,
+		struct dmx_oob_command *cmd)
+{
+	struct dvb_demux_feed *feed = (struct dvb_demux_feed *)ts_feed;
+	struct dmx_data_ready data;
+	struct dvb_demux *dvbdmx = feed->demux;
+	int ret = 0;
+
+	mutex_lock(&dvbdmx->mutex);
+
+	if (feed->state != DMX_STATE_GO) {
+		mutex_unlock(&dvbdmx->mutex);
+		return -EINVAL;
+	}
+
+	/* Decoder feeds are handled by plug-in */
+	if (feed->ts_type & TS_DECODER) {
+		if (feed->demux->oob_command)
+			ret = feed->demux->oob_command(feed, cmd);
+	}
+
+	if (!(feed->ts_type & (TS_PAYLOAD_ONLY | TS_PACKET))) {
+		mutex_unlock(&dvbdmx->mutex);
+		return ret;
+	}
+
+	data.data_length = 0;
+
+	switch (cmd->type) {
+	case DMX_OOB_CMD_EOS:
+		if (feed->ts_type & TS_PAYLOAD_ONLY) {
+			/* Close last PES if necessary */
+			if (feed->pusi_seen) {
+				data.status = DMX_OK_PES_END;
+				data.pes_end.start_gap = 0;
+				data.pes_end.actual_length =
+					feed->peslen;
+				data.pes_end.disc_indicator_set = 0;
+				data.pes_end.pes_length_mismatch = 0;
+				data.pes_end.stc = 0;
+
+				feed->peslen = 0;
+
+				ret = feed->data_ready_cb.ts(&feed->feed.ts,
+					&data);
+				if (ret)
+					break;
+			}
+		}
+		data.status = DMX_OK_EOS;
+		ret = feed->data_ready_cb.ts(&feed->feed.ts, &data);
+		break;
+
+	case DMX_OOB_CMD_MARKER:
+		ret = -ENOSYS;
+		break;
+
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	mutex_unlock(&dvbdmx->mutex);
+	return ret;
+}
+
 static int dmx_ts_set_tsp_out_format(
 	struct dmx_ts_feed *ts_feed,
 	enum dmx_tsp_format_t tsp_format)
@@ -1268,6 +1334,7 @@ static int dvbdmx_allocate_ts_feed(struct dmx_demux *dmx,
 	(*ts_feed)->reuse_decoder_buffer = dmx_ts_feed_reuse_decoder_buffer;
 	(*ts_feed)->data_ready_cb = dmx_ts_feed_data_ready_cb;
 	(*ts_feed)->notify_data_read = NULL;
+	(*ts_feed)->oob_command = dvbdmx_ts_feed_oob_cmd;
 
 	if (!(feed->filter = dvb_dmx_filter_alloc(demux))) {
 		feed->state = DMX_STATE_FREE;
@@ -1530,6 +1597,42 @@ static int dmx_section_feed_release_filter(struct dmx_section_feed *feed,
 	return 0;
 }
 
+static int dvbdmx_section_feed_oob_cmd(struct dmx_section_feed *section_feed,
+		struct dmx_oob_command *cmd)
+{
+	struct dvb_demux_feed *feed = (struct dvb_demux_feed *)section_feed;
+	struct dvb_demux *dvbdmx = feed->demux;
+	struct dmx_data_ready data;
+	int ret;
+
+	data.data_length = 0;
+
+	mutex_lock(&dvbdmx->mutex);
+
+	if (feed->state != DMX_STATE_GO) {
+		mutex_unlock(&dvbdmx->mutex);
+		return -EINVAL;
+	}
+
+	switch (cmd->type) {
+	case DMX_OOB_CMD_EOS:
+		data.status = DMX_OK_EOS;
+		ret = feed->data_ready_cb.sec(&feed->filter->filter, &data);
+		break;
+
+	case DMX_OOB_CMD_MARKER:
+		ret = -ENOSYS;
+		break;
+
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	mutex_unlock(&dvbdmx->mutex);
+	return ret;
+}
+
 static int dvbdmx_allocate_section_feed(struct dmx_demux *demux,
 					struct dmx_section_feed **feed,
 					dmx_section_cb callback)
@@ -1567,6 +1670,7 @@ static int dvbdmx_allocate_section_feed(struct dmx_demux *demux,
 	(*feed)->release_filter = dmx_section_feed_release_filter;
 	(*feed)->data_ready_cb = dmx_section_feed_data_ready_cb;
 	(*feed)->notify_data_read = NULL;
+	(*feed)->oob_command = dvbdmx_section_feed_oob_cmd;
 
 	mutex_unlock(&dvbdmx->mutex);
 	return 0;

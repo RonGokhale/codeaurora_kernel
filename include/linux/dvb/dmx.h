@@ -214,6 +214,14 @@ enum dmx_event {
 	DMX_EVENT_NEW_ES_DATA
 };
 
+enum dmx_oob_cmd {
+	/* End-of-stream, no more data from this filter */
+	DMX_OOB_CMD_EOS,
+
+	/* Data markers */
+	DMX_OOB_CMD_MARKER,
+};
+
 /* Flags passed in filter events */
 
 /* Continuity counter error was detected */
@@ -349,6 +357,12 @@ struct dmx_es_data_event_info {
 	__u32 ts_dropped_bytes;
 };
 
+/* Marker details associated with DMX_EVENT_MARKER event */
+struct dmx_marker_event_info {
+	/* Marker id */
+	__u64 id;
+};
+
 /*
  * Filter's event returned through DMX_GET_EVENT.
  * poll with POLLPRI would block until events are available.
@@ -393,6 +407,15 @@ struct dmx_buffer_requirement {
 
 /* Filter output can be output to a linear buffer group */
 #define DMX_BUFFER_LINEAR_GROUP_SUPPORT		0x10
+};
+
+/* Out-of-band (OOB) command */
+struct dmx_oob_command {
+	enum dmx_oob_cmd type;
+
+	union {
+		struct dmx_marker_event_info marker;
+	} params;
 };
 
 typedef struct dmx_caps {
@@ -585,5 +608,6 @@ struct dmx_decoder_buffers {
 #define DMX_SET_BUFFER		 _IOW('o', 62, struct dmx_buffer)
 #define DMX_SET_DECODER_BUFFER	 _IOW('o', 63, struct dmx_decoder_buffers)
 #define DMX_REUSE_DECODER_BUFFER _IO('o', 64)
+#define DMX_PUSH_OOB_COMMAND	_IOW('o', 65, struct dmx_oob_command)
 
 #endif /*_DVBDMX_H_*/
