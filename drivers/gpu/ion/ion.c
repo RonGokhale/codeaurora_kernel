@@ -16,7 +16,6 @@
  *
  */
 
-#include <linux/module.h>
 #include <linux/device.h>
 #include <linux/file.h>
 #include <linux/freezer.h>
@@ -27,6 +26,7 @@
 #include <linux/list.h>
 #include <linux/memblock.h>
 #include <linux/miscdevice.h>
+#include <linux/export.h>
 #include <linux/mm.h>
 #include <linux/mm_types.h>
 #include <linux/rbtree.h>
@@ -41,7 +41,6 @@
 #include <trace/events/kmem.h>
 
 
-#include <mach/iommu_domains.h>
 #include "ion_priv.h"
 
 /**
@@ -83,7 +82,6 @@ struct ion_client {
 	struct ion_device *dev;
 	struct rb_root handles;
 	struct mutex lock;
-	unsigned int heap_type_mask;
 	char *name;
 	struct task_struct *task;
 	pid_t pid;
@@ -108,7 +106,6 @@ struct ion_handle {
 	struct ion_buffer *buffer;
 	struct rb_node node;
 	unsigned int kmap_cnt;
-	unsigned int iommu_map_cnt;
 };
 
 bool ion_buffer_fault_user_mappings(struct ion_buffer *buffer)
@@ -545,8 +542,8 @@ void ion_free(struct ion_client *client, struct ion_handle *handle)
 	mutex_lock(&client->lock);
 	valid_handle = ion_handle_validate(client, handle);
 	if (!valid_handle) {
-		mutex_unlock(&client->lock);
 		WARN(1, "%s: invalid handle passed to free.\n", __func__);
+		mutex_unlock(&client->lock);
 		return;
 	}
 	ion_handle_put(handle);
@@ -678,29 +675,20 @@ static int ion_debug_client_show(struct seq_file *s, void *unused)
 	struct ion_client *client = s->private;
 	struct rb_node *n;
 
-	seq_printf(s, "%16.16s: %16.16s : %16.16s : %12.12s : %12.12s : %s\n",
+	seq_printf(s, "%16.16s: %16.16s : %16.16s : %12.12s\n",
 			"heap_name", "size_in_bytes", "handle refcount",
-			"buffer", "physical", "[domain,partition] - virt");
+			"buffer");
 
 	mutex_lock(&client->lock);
 	for (n = rb_first(&client->handles); n; n = rb_next(n)) {
 		struct ion_handle *handle = rb_entry(n, struct ion_handle,
 						     node);
 
-		enum ion_heap_type type = handle->buffer->heap->type;
-
 		seq_printf(s, "%16.16s: %16x : %16d : %12p",
 				handle->buffer->heap->name,
 				handle->buffer->size,
 				atomic_read(&handle->ref.refcount),
 				handle->buffer);
-
-		if (type == ION_HEAP_TYPE_SYSTEM_CONTIG ||
-			type == ION_HEAP_TYPE_CARVEOUT ||
-			type == (enum ion_heap_type) ION_HEAP_TYPE_CP)
-			seq_printf(s, " : %12pa", &handle->buffer->priv_phys);
-		else
-			seq_printf(s, " : %12s", "N/A");
 
 		seq_printf(s, "\n");
 	}
@@ -1287,8 +1275,8 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		ion_free(client, data.handle);
 		break;
 	}
-	case ION_IOC_MAP:
 	case ION_IOC_SHARE:
+	case ION_IOC_MAP:
 	{
 		struct ion_fd_data data;
 		if (copy_from_user(&data, (void __user *)arg, sizeof(data)))
@@ -1391,7 +1379,7 @@ static const struct file_operations ion_fops = {
 };
 
 static size_t ion_debug_heap_total(struct ion_client *client,
-				   enum ion_heap_ids id)
+				   unsigned int id)
 {
 	size_t size = 0;
 	struct rb_node *n;
@@ -1560,7 +1548,6 @@ static int ion_debug_heap_show(struct seq_file *s, void *unused)
 	size_t total_size = 0;
 	size_t total_orphaned_size = 0;
 
-	mutex_lock(&dev->buffer_lock);
 	seq_printf(s, "%16.s %16.s %16.s\n", "client", "pid", "size");
 	seq_printf(s, "----------------------------------------------------\n");
 
@@ -1584,25 +1571,31 @@ static int ion_debug_heap_show(struct seq_file *s, void *unused)
 	seq_printf(s, "----------------------------------------------------\n");
 	seq_printf(s, "orphaned allocations (info is from last known client):"
 		   "\n");
+	mutex_lock(&dev->buffer_lock);
 	for (n = rb_first(&dev->buffers); n; n = rb_next(n)) {
 		struct ion_buffer *buffer = rb_entry(n, struct ion_buffer,
 						     node);
-		if (buffer->heap->type == heap->type)
-			total_size += buffer->size;
+		if (buffer->heap->id != heap->id)
+			continue;
+		total_size += buffer->size;
 		if (!buffer->handle_count) {
-			seq_printf(s, "%16.s %16u %16u\n", buffer->task_comm,
-				   buffer->pid, buffer->size);
+			seq_printf(s, "%16.s %16u %16u %d %d\n", buffer->task_comm,
+				   buffer->pid, buffer->size, buffer->kmap_cnt,
+				   atomic_read(&buffer->ref.refcount));
 			total_orphaned_size += buffer->size;
 		}
 	}
+	mutex_unlock(&dev->buffer_lock);
 	seq_printf(s, "----------------------------------------------------\n");
 	seq_printf(s, "%16.s %16u\n", "total orphaned",
 		   total_orphaned_size);
 	seq_printf(s, "%16.s %16u\n", "total ", total_size);
 	seq_printf(s, "----------------------------------------------------\n");
 
+	if (heap->debug_show)
+		heap->debug_show(heap, s, unused);
+
 	ion_heap_print_debug(s, heap);
-	mutex_unlock(&dev->buffer_lock);
 	return 0;
 }
 
