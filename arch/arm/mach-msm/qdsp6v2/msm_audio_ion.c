@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-#define DEBUG
-#include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/err.h>
@@ -81,10 +79,10 @@ int msm_audio_ion_alloc(const char *name, struct ion_client **client,
 		pr_err("%s: ION memory mapping for AUDIO failed\n", __func__);
 		goto err_ion_handle;
 	}
-	pr_info("%s: mapped address = %p\n", __func__, *vaddr);
+	pr_debug("%s: mapped address = %p\n", __func__, *vaddr);
 
 	if (bufsz != 0) {
-		pr_info("%s: memset to 0 %p %d\n", __func__, *vaddr, bufsz);
+		pr_debug("%s: memset to 0 %p %d\n", __func__, *vaddr, bufsz);
 		memset((void *)*vaddr, 0, bufsz);
 	}
 
@@ -116,7 +114,7 @@ int msm_audio_ion_import(const char *name, struct ion_client **client,
 	bufsz should be 0 and fd shouldn't be 0 as of now
 	*/
 	*handle = ion_import_dma_buf(*client, fd);
-	pr_err("%s: DMA Buf name=%s, fd=%d handle=%p\n", __func__,
+	pr_debug("%s: DMA Buf name=%s, fd=%d handle=%p\n", __func__,
 							name, fd, *handle);
 	if (IS_ERR_OR_NULL((void *) (*handle))) {
 		pr_err("%s: ion import dma buffer failed\n",
@@ -157,7 +155,7 @@ int msm_audio_ion_free(struct ion_client *client, struct ion_handle *handle)
 {
 	if (msm_audio_ion_data.smmu_enabled) {
 		/* Need to populate book kept infomation */
-		pr_err("<<<client=%p, domain=%p, domain_id=%d, group=%p",
+		pr_debug("client=%p, domain=%p, domain_id=%d, group=%p",
 			client, msm_audio_ion_data.domain,
 			msm_audio_ion_data.domain_id, msm_audio_ion_data.group);
 
@@ -208,7 +206,7 @@ int msm_audio_ion_import_legacy(const char *name, struct ion_client *client,
 	bufsz should be 0 and fd shouldn't be 0 as of now
 	*/
 	*handle = ion_import_dma_buf(client, fd);
-	pr_err("%s: DMA Buf name=%s, fd=%d handle=%p\n", __func__,
+	pr_debug("%s: DMA Buf name=%s, fd=%d handle=%p\n", __func__,
 							name, fd, *handle);
 	if (IS_ERR_OR_NULL((void *)(*handle))) {
 		pr_err("%s: ion import dma buffer failed\n",
@@ -313,7 +311,7 @@ static int msm_audio_ion_get_phys(struct ion_client *client,
 			pr_err("%s: ION map iommu failed %d\n", __func__, rc);
 			return rc;
 		}
-		pr_err("===client=%p, domain=%p, domain_id=%d, group=%p",
+		pr_debug("client=%p, domain=%p, domain_id=%d, group=%p",
 			client, msm_audio_ion_data.domain,
 			msm_audio_ion_data.domain_id, msm_audio_ion_data.group);
 	} else {
@@ -360,7 +358,7 @@ static int msm_audio_ion_probe(struct platform_device *pdev)
 					msm_audio_ion_data.domain);
 			goto fail_group;
 		}
-		pr_err(">>>domain=%p, domain_id=%d, group=%p",
+		pr_debug("domain=%p, domain_id=%d, group=%p",
 			msm_audio_ion_data.domain,
 			msm_audio_ion_data.domain_id, msm_audio_ion_data.group);
 
