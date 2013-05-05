@@ -77,6 +77,7 @@ static int msm_hdmi_sample_rate = MSM_HDMI_SAMPLE_RATE_48KHZ;
 struct workqueue_struct *hdmi_work_queue;
 struct hdmi_msm_state_type *hdmi_msm_state;
 
+static bool hdmi_msm_cable_connected(void);
 /* Enable HDCP by default */
 static bool hdcp_feature_on = true;
 
@@ -2577,7 +2578,7 @@ static int hdcp_authentication_part1(void)
 			DEV_ERR("%s(%d): timedout, Link0=<%s>\n", __func__,
 			  __LINE__,
 			  is_match ? "RI_MATCH" : "No RI Match INTR in time");
-			if (!is_match)
+			if (!is_match || !hdmi_msm_cable_connected())
 				goto error;
 		}
 
@@ -2732,6 +2733,10 @@ static int hdcp_authentication_part2(void)
 			    __LINE__);
 			goto error;
 		}
+		if (unlikely(!hdmi_msm_cable_connected())) {
+			DEV_ERR("%s: (%d): hpd is low\n", __func__, __LINE__);
+			goto error;
+		}
 		msleep(100);
 	} while ((0 == (bcaps & 0x20)) && timeout_count); /* READY (Bit 5) */
 	if (!timeout_count) {
@@ -2857,11 +2862,17 @@ static int hdcp_authentication_part2(void)
 					"complete. HDCP_SHA_STATUS=%08x. "
 					"timeout_count=%d\n",
 					 HDMI_INP_ND(0x0240), timeout_count);
+				if (unlikely(!hdmi_msm_cable_connected())) {
+					DEV_ERR("%s: (%d): hpd is low\n",
+							__func__, __LINE__);
+					goto error;
+				}
 				msleep(20);
 			}
 			if (!timeout_count) {
 				ret = -ETIMEDOUT;
-				DEV_ERR("%s(%d): timedout", __func__, __LINE__);
+				DEV_ERR("%s: (%d): timedout\n",
+						__func__, __LINE__);
 				goto error;
 			}
 		}
@@ -2875,8 +2886,15 @@ static int hdcp_authentication_part2(void)
 	[4] COMP_DONE */
 	/* Now wait for HDCP_SHA_COMP_DONE */
 	timeout_count = 100;
-	while ((0x10 != (HDMI_INP_ND(0x0240) & 0xFFFFFF10)) && --timeout_count)
+	while ((0x10 != (HDMI_INP_ND(0x0240) & 0xFFFFFF10)) &&
+			--timeout_count) {
+		if (unlikely(!hdmi_msm_cable_connected())) {
+			DEV_ERR("%s: (%d): hpd is low\n",
+					__func__, __LINE__);
+			goto error;
+		}
 		msleep(20);
+	}
 
 	if (!timeout_count) {
 		ret = -ETIMEDOUT;
@@ -2889,6 +2907,10 @@ static int hdcp_authentication_part2(void)
 	timeout_count = 100;
 	while (((HDMI_INP_ND(0x011C) & (1 << 20)) != (1 << 20))
 	    && --timeout_count) {
+		if (unlikely(!hdmi_msm_cable_connected())) {
+			DEV_ERR("%s(%d): hpd is low !", __func__, __LINE__);
+			goto error;
+		}
 		msleep(20);
 	}
 
@@ -4786,6 +4808,13 @@ static int hdmi_msm_hpd_feature(int on)
 		rc = hdmi_msm_hpd_on();
 	} else {
 		if (external_common_state->hpd_state) {
+			if (hdmi_msm_state->hdcp_enable) {
+				if (!completion_done(
+				    &hdmi_msm_state->hdcp_success_done))
+					complete_all(
+					  &hdmi_msm_state->hdcp_success_done);
+			}
+
 			/* Send offline event to switch OFF HDMI and HAL FD */
 			hdmi_msm_send_event(HPD_EVENT_OFFLINE);
 
