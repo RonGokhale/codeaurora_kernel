@@ -193,9 +193,13 @@ int q6asm_open_read_compressed(struct audio_client *ac,
 
 int q6asm_open_write(struct audio_client *ac, uint32_t format);
 
+int q6asm_open_write_v2(struct audio_client *ac, uint32_t format,
+						uint16_t bit_width);
+
 int q6asm_open_write_compressed(struct audio_client *ac, uint32_t format);
 
-int q6asm_open_transcode_loopback(struct audio_client *ac, uint32_t channels);
+int q6asm_open_transcode_loopback(struct audio_client *ac, uint32_t channels,
+					uint16_t bit_width);
 
 int q6asm_enc_cfg_blk_dts(struct audio_client *ac,
 				uint32_t sample_rate, uint32_t channels);
@@ -293,6 +297,10 @@ int q6asm_media_format_block_pcm(struct audio_client *ac,
 int q6asm_media_format_block_multi_ch_pcm(struct audio_client *ac,
 				uint32_t rate, uint32_t channels,
 				char *channel_map);
+
+int q6asm_media_format_block_multi_ch_pcm_v2(
+		struct audio_client *ac, uint32_t rate, uint32_t channels,
+		char *channel_map, uint16_t bit_width);
 
 int q6asm_media_format_block_aac(struct audio_client *ac,
 			struct asm_aac_cfg *cfg);

@@ -664,12 +664,14 @@ static int msm_dai_q6_pseudo_hw_params(struct snd_pcm_hw_params *params,
 				struct snd_soc_dai *dai)
 {
 	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
+	short bit_width = 16;
 
 	dai_data->rate = params_rate(params);
-	dai_data->channels = params_channels(params) > 6 ?
+	dai_data->channels = params_channels(params) < 6 ?
 				params_channels(params) : 6;
-
-	dai_data->port_config.pseudo.bit_width = 16;
+	if (params_format(params) == SNDRV_PCM_FORMAT_S24_LE)
+		bit_width = 24;
+	dai_data->port_config.pseudo.bit_width = bit_width;
 	dai_data->port_config.pseudo.num_channels =
 			dai_data->channels;
 	dai_data->port_config.pseudo.data_format = 0;
@@ -1832,7 +1834,7 @@ static struct snd_soc_dai_driver msm_dai_q6_pseudo_dai = {
 	.playback = {
 		.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
 		SNDRV_PCM_RATE_48000,
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE,
 		.channels_min = 1,
 		.channels_max = 6,
 		.rate_min = 8000,
