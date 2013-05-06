@@ -434,7 +434,7 @@ enum vdd_dig_levels {
 	VDD_DIG_NUM
 };
 
-static const int *vdd_corner[] = {
+static int *vdd_corner[] = {
 	[VDD_DIG_NONE]	  = VDD_UV(RPM_REGULATOR_CORNER_NONE),
 	[VDD_DIG_LOW]	  = VDD_UV(RPM_REGULATOR_CORNER_SVS_SOC),
 	[VDD_DIG_NOMINAL] = VDD_UV(RPM_REGULATOR_CORNER_NORMAL),
@@ -533,7 +533,7 @@ enum vdd_sr2_pll_levels {
 	VDD_SR2_PLL_NUM
 };
 
-static const int *vdd_sr2_levels[] = {
+static int *vdd_sr2_levels[] = {
 	[VDD_SR2_PLL_OFF] = VDD_UV(0,       RPM_REGULATOR_CORNER_NONE),
 	[VDD_SR2_PLL_SVS] = VDD_UV(1800000, RPM_REGULATOR_CORNER_SVS_SOC),
 	[VDD_SR2_PLL_NOM] = VDD_UV(1800000, RPM_REGULATOR_CORNER_NORMAL),
@@ -2872,17 +2872,18 @@ static struct clk_lookup msm_clocks_8610[] = {
 	CLK_LOOKUP("core_clk_src",          sdcc1_apps_clk_src.c, ""),
 	CLK_LOOKUP("core_clk_src",          sdcc2_apps_clk_src.c, ""),
 	CLK_LOOKUP("core_clk_src",       usb_hs_system_clk_src.c, ""),
+	CLK_LOOKUP("iface_clk",           gcc_blsp1_ahb_clk.c, "f9923000.i2c"),
 	CLK_LOOKUP("iface_clk",           gcc_blsp1_ahb_clk.c, "f9925000.i2c"),
-	CLK_LOOKUP("iface_clk",           gcc_blsp1_ahb_clk.c, "f9923000.spi"),
-	CLK_LOOKUP("core_clk",  gcc_blsp1_qup1_i2c_apps_clk.c, ""),
-	CLK_LOOKUP("core_clk",  gcc_blsp1_qup1_spi_apps_clk.c, "f9923000.spi"),
+	CLK_LOOKUP("iface_clk",           gcc_blsp1_ahb_clk.c, "f9927000.i2c"),
+	CLK_LOOKUP("core_clk",  gcc_blsp1_qup1_i2c_apps_clk.c, "f9923000.i2c"),
+	CLK_LOOKUP("core_clk",  gcc_blsp1_qup1_spi_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup2_i2c_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup2_spi_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup3_i2c_apps_clk.c, "f9925000.i2c"),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup3_spi_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup4_i2c_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup4_spi_apps_clk.c, ""),
-	CLK_LOOKUP("core_clk",  gcc_blsp1_qup5_i2c_apps_clk.c, ""),
+	CLK_LOOKUP("core_clk",  gcc_blsp1_qup5_i2c_apps_clk.c, "f9927000.i2c"),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup5_spi_apps_clk.c, ""),
 	CLK_LOOKUP("iface_clk",           gcc_blsp1_ahb_clk.c, "f9928000.i2c"),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup6_i2c_apps_clk.c, "f9928000.i2c"),

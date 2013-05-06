@@ -638,7 +638,7 @@ enum vdd_dig_levels {
 	VDD_DIG_NUM
 };
 
-static const int *vdd_corner[] = {
+static int *vdd_corner[] = {
 	[VDD_DIG_NONE]	  = VDD_UV(RPM_REGULATOR_CORNER_NONE),
 	[VDD_DIG_LOW]	  = VDD_UV(RPM_REGULATOR_CORNER_SVS_SOC),
 	[VDD_DIG_NOMINAL] = VDD_UV(RPM_REGULATOR_CORNER_NORMAL),
@@ -920,6 +920,7 @@ static struct rcg_clk blsp1_qup6_spi_apps_clk_src = {
 };
 
 static struct clk_freq_tbl ftbl_gcc_blsp1_2_qup1_6_i2c_apps_clk[] = {
+	F(19200000,    cxo,   1,   0,   0),
 	F(50000000,  gpll0,  12,   0,   0),
 	F_END
 };
@@ -4894,6 +4895,7 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("alt_iface_clk", mdss_hdmi_ahb_clk.c,
 		"fd922100.qcom,hdmi_tx"),
 	CLK_LOOKUP("core_clk", mdss_hdmi_clk.c, "fd922100.qcom,hdmi_tx"),
+	CLK_LOOKUP("mdp_core_clk", mdss_mdp_clk.c, "fd922100.qcom,hdmi_tx"),
 	CLK_LOOKUP("extp_clk", mdss_extpclk_clk.c, "fd922100.qcom,hdmi_tx"),
 	CLK_LOOKUP("core_clk", mdss_mdp_clk.c, "mdp.0"),
 	CLK_LOOKUP("lut_clk", mdss_mdp_lut_clk.c, "mdp.0"),
@@ -5121,6 +5123,17 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("bus_clk",  venus0_axi_clk.c, "fdc00000.qcom,vidc"),
 	CLK_LOOKUP("mem_clk",  venus0_ocmemnoc_clk.c, "fdc00000.qcom,vidc"),
 
+	CLK_LOOKUP("core_clk", venus0_vcodec0_clk.c, "fd8c1024.qcom,gdsc"),
+	CLK_LOOKUP("core_clk", mdss_mdp_clk.c, "fd8c2304.qcom,gdsc"),
+	CLK_LOOKUP("lut_clk", mdss_mdp_lut_clk.c, "fd8c2304.qcom,gdsc"),
+	CLK_LOOKUP("core0_clk", camss_jpeg_jpeg0_clk.c, "fd8c35a4.qcom,gdsc"),
+	CLK_LOOKUP("core1_clk", camss_jpeg_jpeg1_clk.c, "fd8c35a4.qcom,gdsc"),
+	CLK_LOOKUP("core2_clk", camss_jpeg_jpeg2_clk.c, "fd8c35a4.qcom,gdsc"),
+	CLK_LOOKUP("core0_clk", camss_vfe_vfe0_clk.c,	"fd8c36a4.qcom,gdsc"),
+	CLK_LOOKUP("core1_clk", camss_vfe_vfe1_clk.c,	"fd8c36a4.qcom,gdsc"),
+	CLK_LOOKUP("csi0_clk", camss_csi_vfe0_clk.c,	"fd8c36a4.qcom,gdsc"),
+	CLK_LOOKUP("csi1_clk", camss_csi_vfe1_clk.c,	"fd8c36a4.qcom,gdsc"),
+	CLK_LOOKUP("cpp_clk", camss_vfe_cpp_clk.c,	"fd8c36a4.qcom,gdsc"),
 	CLK_LOOKUP("core_clk", oxili_gfx3d_clk.c, "fd8c4024.qcom,gdsc"),
 
 	/* LPASS clocks */

@@ -546,6 +546,9 @@ qpnp_chg_force_run_on_batt(struct qpnp_chg_chip *chip, int disable)
 	/* Don't run on battery for batteryless hardware */
 	if (chip->use_default_batt_values)
 		return 0;
+	/* Don't force on battery if battery is not present */
+	if (!qpnp_chg_is_batt_present(chip))
+		return 0;
 
 	/* This bit forces the charger to run off of the battery rather
 	 * than a connected charger */
@@ -2120,8 +2123,9 @@ qpnp_charger_probe(struct spmi_device *spmi)
 		}
 		INIT_WORK(&chip->adc_measure_work,
 			qpnp_bat_if_adc_measure_work);
-		INIT_DELAYED_WORK(&chip->arb_stop_work, qpnp_arb_stop_work);
 	}
+
+	INIT_DELAYED_WORK(&chip->arb_stop_work, qpnp_arb_stop_work);
 
 	if (chip->dc_chgpth_base) {
 		chip->dc_psy.name = "qpnp-dc";
@@ -2245,7 +2249,7 @@ static int qpnp_chg_suspend(struct device *dev)
 	return rc;
 }
 
-static const struct dev_pm_ops qpnp_bms_pm_ops = {
+static const struct dev_pm_ops qpnp_chg_pm_ops = {
 	.resume		= qpnp_chg_resume,
 	.suspend	= qpnp_chg_suspend,
 };
@@ -2254,9 +2258,10 @@ static struct spmi_driver qpnp_charger_driver = {
 	.probe		= qpnp_charger_probe,
 	.remove		= __devexit_p(qpnp_charger_remove),
 	.driver		= {
-		.name	= QPNP_CHARGER_DEV_NAME,
-		.owner  = THIS_MODULE,
-		.of_match_table = qpnp_charger_match_table,
+		.name		= QPNP_CHARGER_DEV_NAME,
+		.owner		= THIS_MODULE,
+		.of_match_table	= qpnp_charger_match_table,
+		.pm		= &qpnp_chg_pm_ops,
 	},
 };
 

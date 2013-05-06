@@ -1704,7 +1704,14 @@ static int qce_sps_init(struct qce_device *pce_dev)
 	bam.summing_threshold = 64;
 	/* SPS driver wll handle the crypto BAM IRQ */
 	bam.irq = (u32)pce_dev->ce_sps.bam_irq;
-	bam.manage = SPS_BAM_MGR_LOCAL;
+	/*
+	 * Set flag to indicate BAM global device control is managed
+	 * remotely.
+	 */
+	if (pce_dev->support_cmd_dscr == false)
+		bam.manage = SPS_BAM_MGR_DEVICE_REMOTE;
+	else
+		bam.manage = SPS_BAM_MGR_LOCAL;
 	bam.ee = 1;
 
 	pr_debug("bam physical base=0x%x\n", (u32)bam.phys_addr);
@@ -2990,8 +2997,6 @@ int qce_ablk_cipher_req(void *handle, struct qce_req *c_req)
 	pce_dev->dir = c_req->dir;
 	if  ((pce_dev->ce_sps.minor_version == 0) && (c_req->dir == QCE_DECRYPT)
 			&& (c_req->mode == QCE_MODE_CBC)) {
-		struct ablkcipher_request *areq =
-				(struct ablkcipher_request *)pce_dev->areq;
 		memcpy(pce_dev->dec_iv, (unsigned char *)sg_virt(areq->src) +
 					 areq->src->length - 16,
 			NUM_OF_CRYPTO_CNTR_IV_REG * CRYPTO_REG_SIZE);
@@ -3140,8 +3145,6 @@ static int __qce_get_device_tree_data(struct platform_device *pdev,
 
 	pce_dev->is_shared = of_property_read_bool((&pdev->dev)->of_node,
 				"qcom,ce-hw-shared");
-	pce_dev->support_cmd_dscr = of_property_read_bool((&pdev->dev)->of_node,
-				"qcom,ce-hw-support-cmd-dscr");
 	if (of_property_read_u32((&pdev->dev)->of_node,
 				"qcom,bam-pipe-pair",
 				&pce_dev->ce_sps.pipe_pair_index)) {
@@ -3176,7 +3179,7 @@ static int __qce_get_device_tree_data(struct platform_device *pdev,
 		pce_dev->ce_sps.bam_mem = resource->start;
 		pce_dev->ce_sps.bam_iobase = ioremap_nocache(resource->start,
 					resource_size(resource));
-		if (!pce_dev->iobase) {
+		if (!pce_dev->ce_sps.bam_iobase) {
 			rc = -ENOMEM;
 			pr_err("Can not map BAM io memory\n");
 			goto err_getting_bam_info;
@@ -3189,7 +3192,6 @@ static int __qce_get_device_tree_data(struct platform_device *pdev,
 	pr_warn("ce_bam_phy_reg_base=0x%x  ", pce_dev->ce_sps.bam_mem);
 	pr_warn("ce_bam_virt_reg_base=0x%x\n",
 				(uint32_t)pce_dev->ce_sps.bam_iobase);
-
 	resource  = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (resource) {
 		pce_dev->ce_sps.bam_irq = resource->start;
@@ -3355,6 +3357,7 @@ EXPORT_SYMBOL(qce_disable_clk);
 void *qce_open(struct platform_device *pdev, int *rc)
 {
 	struct qce_device *pce_dev;
+	uint32_t bam_cfg = 0 ;
 
 	pce_dev = kzalloc(sizeof(struct qce_device), GFP_KERNEL);
 	if (!pce_dev) {
@@ -3396,9 +3399,15 @@ void *qce_open(struct platform_device *pdev, int *rc)
 		goto err;
 	}
 	*rc = 0;
+
+	bam_cfg = readl_relaxed(pce_dev->ce_sps.bam_iobase +
+					CRYPTO_BAM_CNFG_BITS_REG);
+	pce_dev->support_cmd_dscr = (bam_cfg & CRYPTO_BAM_CD_ENABLE_MASK) ?
+								true : false;
 	qce_init_ce_cfg_val(pce_dev);
 	qce_setup_ce_sps_data(pce_dev);
 	qce_sps_init(pce_dev);
+
 
 	qce_disable_clk(pce_dev);
 
