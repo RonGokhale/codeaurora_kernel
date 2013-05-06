@@ -30,6 +30,7 @@
 #include <sound/control.h>
 #include <sound/timer.h>
 #include <mach/qdsp6v2/q6core.h>
+#include <sound/pcm_params.h>
 
 #include "msm-pcm-q6.h"
 #include "msm-pcm-routing.h"
@@ -88,7 +89,8 @@ static struct snd_pcm_hardware msm_pcm_hardware_playback = {
 				SNDRV_PCM_INFO_MMAP_VALID |
 				SNDRV_PCM_INFO_INTERLEAVED |
 				SNDRV_PCM_INFO_PAUSE | SNDRV_PCM_INFO_RESUME),
-	.formats =              SNDRV_PCM_FMTBIT_S16_LE,
+	.formats =              SNDRV_PCM_FMTBIT_S16_LE
+				| SNDRV_PCM_FMTBIT_S24_LE,
 	.rates =                SNDRV_PCM_RATE_8000_48000 | SNDRV_PCM_RATE_KNOT,
 	.rate_min =             8000,
 	.rate_max =             48000,
@@ -266,6 +268,7 @@ static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct msm_audio *prtd = runtime->private_data;
 	int ret;
+	short bit_width = 16;
 
 	pr_debug("%s\n", __func__);
 	if (prtd->mmap_flag) {
@@ -283,15 +286,21 @@ static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
 	prtd->channel_mode = runtime->channels;
 	if (prtd->enabled)
 		return 0;
+
 	pr_debug("prtd->set_channel_map: %d", prtd->set_channel_map);
 	if (!prtd->set_channel_map) {
 		pr_debug("using default channel map");
 		memset(prtd->channel_map, 0, PCM_FORMAT_MAX_NUM_CHANNEL);
 		if (prtd->channel_mode == 1) {
-			prtd->channel_map[0] = PCM_CHANNEL_FL;
+			prtd->channel_map[0] = PCM_CHANNEL_FC;
 		} else if (prtd->channel_mode == 2) {
 			prtd->channel_map[0] = PCM_CHANNEL_FL;
 			prtd->channel_map[1] = PCM_CHANNEL_FR;
+		} else if (prtd->channel_mode == 4) {
+			prtd->channel_map[0] = PCM_CHANNEL_FL;
+			prtd->channel_map[1] = PCM_CHANNEL_FR;
+			prtd->channel_map[2] = PCM_CHANNEL_LB;
+			prtd->channel_map[3] = PCM_CHANNEL_RB;
 		} else if (prtd->channel_mode == 6) {
 			prtd->channel_map[0] = PCM_CHANNEL_FC;
 			prtd->channel_map[1] = PCM_CHANNEL_FL;
@@ -304,8 +313,19 @@ static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
 				prtd->channel_mode);
 		}
 	}
-	ret = q6asm_media_format_block_multi_ch_pcm(prtd->audio_client,
-			runtime->rate, runtime->channels, prtd->channel_map);
+
+	if (runtime->format == SNDRV_PCM_FORMAT_S24_LE)
+		bit_width = 24;
+
+	if (bit_width == 24)
+		ret = q6asm_media_format_block_multi_ch_pcm_v2(
+			prtd->audio_client, runtime->rate, runtime->channels,
+			prtd->channel_map, bit_width);
+	else
+		ret = q6asm_media_format_block_multi_ch_pcm(
+			prtd->audio_client,runtime->rate, runtime->channels,
+			prtd->channel_map);
+
 	if (ret < 0)
 		pr_info("%s: CMD Format block failed\n", __func__);
 
@@ -321,7 +341,8 @@ static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
 			SNDRV_PCM_STREAM_CAPTURE);
 		pr_debug("%s: cmd: DTS ENCDEC CFG BLK\n", __func__);
 		ret = q6asm_enc_cfg_blk_dts(prtd->enc_audio_client,
-				DTS_ENC_SAMPLE_RATE48k, 6);
+				DTS_ENC_SAMPLE_RATE48k,
+				runtime->channels > 6 ? 6 : runtime->channels);
 		if (ret < 0)
 			pr_err("%s: CMD: DTS ENCDEC CFG BLK failed\n",
 				__func__);
@@ -439,36 +460,14 @@ static int msm_pcm_open(struct snd_pcm_substream *substream)
 	prtd->audio_client->perf_mode = false;
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		runtime->hw = msm_pcm_hardware_playback;
-		ret = q6asm_open_write(prtd->audio_client,
-				FORMAT_MULTI_CHANNEL_LINEAR_PCM);
-		if (ret < 0) {
-			pr_err("%s: pcm out open failed\n", __func__);
-			q6asm_audio_client_free(prtd->audio_client);
-			kfree(prtd);
-			return -ENOMEM;
-		}
-	}
-	/* Capture path */
-	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
+		prtd->cmd_ack = 1;
+	} else {
 		runtime->hw = msm_pcm_hardware_capture;
-		ret = q6asm_open_read(prtd->audio_client,
-				FORMAT_MULTI_CHANNEL_LINEAR_PCM);
-		if (ret < 0) {
-			pr_err("%s: pcm in open failed\n", __func__);
-			q6asm_audio_client_free(prtd->audio_client);
-			kfree(prtd);
-			return -ENOMEM;
-		}
 	}
 
 	pr_debug("%s: session ID %d\n", __func__, prtd->audio_client->session);
 
 	prtd->session_id = prtd->audio_client->session;
-	msm_pcm_routing_reg_phy_stream(soc_prtd->dai_link->be_id,
-			prtd->audio_client->perf_mode,
-			prtd->session_id, substream->stream);
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		prtd->cmd_ack = 1;
 
 	ret = snd_pcm_hw_constraint_list(runtime, 0,
 				SNDRV_PCM_HW_PARAM_RATE,
@@ -846,15 +845,44 @@ static int msm_pcm_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
 	struct msm_audio *prtd = runtime->private_data;
 	struct snd_dma_buffer *dma_buf = &substream->dma_buffer;
 	struct audio_buffer *buf;
 	int dir, ret;
+	short bit_width = 16;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 		dir = IN;
 	else
 		dir = OUT;
+	if (params_format(params) == SNDRV_PCM_FORMAT_S24_LE)
+		bit_width = 24;
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		// use v2 api only for 24 pcm is getting transcoded
+		if (bit_width == 24 && prtd->transcode_dts)
+			ret = q6asm_open_write_v2(prtd->audio_client,
+				FORMAT_MULTI_CHANNEL_LINEAR_PCM, bit_width);
+		else
+			ret = q6asm_open_write(prtd->audio_client,
+				FORMAT_MULTI_CHANNEL_LINEAR_PCM);
+		if (ret < 0) {
+			pr_err("%s: pcm out open failed\n", __func__);
+			return -ENOMEM;
+		}
+	} else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
+		/* Capture path */
+		ret = q6asm_open_read(prtd->audio_client,
+				FORMAT_MULTI_CHANNEL_LINEAR_PCM);
+		if (ret < 0) {
+			pr_err("%s: pcm in open failed\n", __func__);
+			return -ENOMEM;
+		}
+	}
+	msm_pcm_routing_reg_phy_stream(soc_prtd->dai_link->be_id,
+			prtd->audio_client->perf_mode,
+			prtd->session_id, substream->stream);
 
 	ret = q6asm_audio_client_buf_alloc_contiguous(dir,
 		prtd->audio_client,
@@ -890,8 +918,8 @@ static int msm_pcm_hw_params(struct snd_pcm_substream *substream,
 		prtd->enc_audio_client->perf_mode = false;
 		pr_debug("%s Setting up loopback path\n",
 				__func__);
-		ret = q6asm_open_transcode_loopback(
-			prtd->enc_audio_client, params_channels(params));
+		ret = q6asm_open_transcode_loopback(prtd->enc_audio_client,
+					params_channels(params), bit_width);
 		if (ret < 0) {
 			pr_err("%s: Session transcode " \
 				"loopback open failed\n",
