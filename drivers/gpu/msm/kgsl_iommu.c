@@ -268,6 +268,8 @@ static void _check_if_freed(struct kgsl_iommu_device *iommu_dev,
 	void *base = kgsl_driver.memfree_hist.base_hist_rb;
 	struct kgsl_memfree_hist_elem *wptr;
 	struct kgsl_memfree_hist_elem *p;
+	char name[32];
+	memset(name, 0, sizeof(name));
 
 	mutex_lock(&kgsl_driver.memfree_hist_mutex);
 	wptr = kgsl_driver.memfree_hist.wptr;
@@ -277,12 +279,15 @@ static void _check_if_freed(struct kgsl_iommu_device *iommu_dev,
 			if (addr >= p->gpuaddr &&
 				addr < (p->gpuaddr + p->size)) {
 
+				kgsl_get_memory_usage(name, sizeof(name) - 1,
+					p->flags),
 				KGSL_LOG_DUMP(iommu_dev->kgsldev,
 					"---- premature free ----\n");
 				KGSL_LOG_DUMP(iommu_dev->kgsldev,
-					"[%8.8X-%8.8X] was already freed by pid %d\n",
+					"[%8.8X-%8.8X] (%s) was already freed by pid %d\n",
 					p->gpuaddr,
 					p->gpuaddr + p->size,
+					name,
 					p->pid);
 			}
 		p++;
@@ -347,22 +352,17 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 			KGSL_IOMMU_V1_FSYNR0_WNR_SHIFT)) ? 1 : 0);
 
 	pid = kgsl_mmu_get_ptname_from_ptbase(mmu, ptbase);
-	KGSL_MEM_CRIT(iommu_dev->kgsldev,
-		"GPU PAGE FAULT: addr = %lX pid = %d\n", addr, pid);
-	KGSL_MEM_CRIT(iommu_dev->kgsldev,
-		"context = %d FSR = %X FSYNR0 = %X FSYNR1 = %X(%s fault)\n",
-		iommu_dev->ctx_id, fsr, fsynr0, fsynr1,
-		write ? "write" : "read");
 
 	if (adreno_dev->ft_pf_policy & KGSL_FT_PAGEFAULT_LOG_ONE_PER_PAGE)
 		no_page_fault_log = kgsl_mmu_log_fault_addr(mmu, ptbase, addr);
 
 	if (!no_page_fault_log) {
 		KGSL_MEM_CRIT(iommu_dev->kgsldev,
-			"GPU PAGE FAULT: addr = %lX pid = %d\n",
-			addr, kgsl_mmu_get_ptname_from_ptbase(mmu, ptbase));
-		KGSL_MEM_CRIT(iommu_dev->kgsldev, "context = %d FSR = %X\n",
-			iommu_dev->ctx_id, fsr);
+			"GPU PAGE FAULT: addr = %lX pid = %d\n", addr, pid);
+		KGSL_MEM_CRIT(iommu_dev->kgsldev,
+		 "context = %d FSR = %X FSYNR0 = %X FSYNR1 = %X(%s fault)\n",
+			iommu_dev->ctx_id, fsr, fsynr0, fsynr1,
+			write ? "write" : "read");
 
 		_check_if_freed(iommu_dev, addr, pid);
 

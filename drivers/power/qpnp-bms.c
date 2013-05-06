@@ -375,7 +375,7 @@ static inline int convert_vbatt_raw_to_uv(struct qpnp_bms_chip *chip,
 
 #define CC_READING_RESOLUTION_N	542535
 #define CC_READING_RESOLUTION_D	100000
-static int cc_reading_to_uv(int16_t reading)
+static s64 cc_reading_to_uv(s64 reading)
 {
 	return div_s64(reading * CC_READING_RESOLUTION_N,
 					CC_READING_RESOLUTION_D);
@@ -582,7 +582,7 @@ static bool is_battery_charging(struct qpnp_bms_chip *chip)
 	return false;
 }
 
-static bool is_batfet_open(struct qpnp_bms_chip *chip)
+static bool is_battery_full(struct qpnp_bms_chip *chip)
 {
 	union power_supply_propval ret = {0,};
 
@@ -610,18 +610,32 @@ static int get_simultaneous_batt_v_and_i(struct qpnp_bms_chip *chip,
 
 	iadc_channel = chip->use_external_rsense ?
 				EXTERNAL_RSENSE : INTERNAL_RSENSE;
-	rc = qpnp_iadc_vadc_sync_read(iadc_channel, &i_result,
-				VBAT_SNS, &v_result);
-	if (rc) {
-		pr_err("vadc read failed with rc: %d\n", rc);
-		return rc;
+	if (is_battery_full(chip)) {
+		rc = get_battery_current(chip, ibat_ua);
+		if (rc) {
+			pr_err("bms current read failed with rc: %d\n", rc);
+			return rc;
+		}
+		rc = qpnp_vadc_read(VBAT_SNS, &v_result);
+		if (rc) {
+			pr_err("vadc read failed with rc: %d\n", rc);
+			return rc;
+		}
+		*vbat_uv = (int)v_result.physical;
+	} else {
+		rc = qpnp_iadc_vadc_sync_read(iadc_channel, &i_result,
+					VBAT_SNS, &v_result);
+		if (rc) {
+			pr_err("adc sync read failed with rc: %d\n", rc);
+			return rc;
+		}
+		/*
+		* reverse the current read by the iadc, since the bms uses
+		* flipped battery current polarity.
+		*/
+		*ibat_ua = -1 * (int)i_result.result_ua;
+		*vbat_uv = (int)v_result.physical;
 	}
-	/*
-	 * reverse the current read by the iadc, since the bms uses
-	 * flipped battery current polarity.
-	 */
-	*ibat_ua = -1 * (int)i_result.result_ua;
-	*vbat_uv = (int)v_result.physical;
 
 	return 0;
 }
@@ -774,14 +788,6 @@ static int calculate_ocv_charge(struct qpnp_bms_chip *chip,
 	return (fcc_uah * pc) / 100;
 }
 
-#define CC_RESOLUTION_N		542535
-#define CC_RESOLUTION_D		100000
-
-static s64 cc_to_uv(s64 cc)
-{
-	return div_s64(cc * CC_RESOLUTION_N, CC_RESOLUTION_D);
-}
-
 #define CC_READING_TICKS	56
 #define SLEEP_CLK_HZ		32764
 #define SECONDS_PER_HOUR	3600
@@ -817,7 +823,7 @@ static int calculate_cc(struct qpnp_bms_chip *chip, int64_t cc)
 
 	qpnp_iadc_get_gain_and_offset(&calibration);
 	pr_debug("cc = %lld\n", cc);
-	cc_voltage_uv = cc_to_uv(cc);
+	cc_voltage_uv = cc_reading_to_uv(cc);
 	cc_voltage_uv = cc_adjust_for_gain(cc_voltage_uv,
 					calibration.gain_raw
 					- calibration.offset_raw);
@@ -1409,7 +1415,7 @@ static int adjust_soc(struct qpnp_bms_chip *chip, struct soc_params *params,
 		goto out;
 	}
 
-	if (ibat_ua < 0 && !is_batfet_open(chip)) {
+	if (ibat_ua < 0 && !is_battery_full(chip)) {
 		soc = charging_adjustments(chip, params, soc, vbat_uv, ibat_ua,
 				batt_temp);
 		goto out;
