@@ -441,7 +441,7 @@ static int *vdd_corner[] = {
 	[VDD_DIG_HIGH]	  = VDD_UV(RPM_REGULATOR_CORNER_SUPER_TURBO),
 };
 
-static DEFINE_VDD_REGULATORS(vdd_dig, VDD_DIG_NUM, 1, vdd_corner);
+static DEFINE_VDD_REGULATORS(vdd_dig, VDD_DIG_NUM, 1, vdd_corner, NULL);
 
 #define RPM_MISC_CLK_TYPE	0x306b6c63
 #define RPM_BUS_CLK_TYPE	0x316b6c63
@@ -540,7 +540,8 @@ static int *vdd_sr2_levels[] = {
 	[VDD_SR2_PLL_TUR] = VDD_UV(1800000, RPM_REGULATOR_CORNER_SUPER_TURBO),
 };
 
-static DEFINE_VDD_REGULATORS(vdd_sr2_pll, VDD_SR2_PLL_NUM, 2, vdd_sr2_levels);
+static DEFINE_VDD_REGULATORS(vdd_sr2_pll, VDD_SR2_PLL_NUM, 2,
+				vdd_sr2_levels, NULL);
 
 static struct pll_freq_tbl apcs_pll_freq[] = {
 	F_APCS_PLL( 384000000, 20, 0x0, 0x1, 0x0, 0x0, 0x0),
@@ -2017,7 +2018,7 @@ static struct branch_clk csi1rdi_clk = {
 	},
 };
 
-static struct mux_clk csi0phy_mux_clk = {
+static struct cam_mux_clk csi0phy_cam_mux_clk = {
 	.enable_reg = MMSS_CAMSS_MISC,
 	.enable_mask = BIT(11),
 	.select_reg = MMSS_CAMSS_MISC,
@@ -2029,13 +2030,13 @@ static struct mux_clk csi0phy_mux_clk = {
 	},
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
-		.dbg_name = "csi0phy_mux_clk",
-		.ops = &clk_ops_mux,
-		CLK_INIT(csi0phy_mux_clk.c),
+		.dbg_name = "csi0phy_cam_mux_clk",
+		.ops = &clk_ops_cam_mux,
+		CLK_INIT(csi0phy_cam_mux_clk.c),
 	},
 };
 
-static struct mux_clk csi1phy_mux_clk = {
+static struct cam_mux_clk csi1phy_cam_mux_clk = {
 	.enable_reg = MMSS_CAMSS_MISC,
 	.enable_mask = BIT(10),
 	.select_reg = MMSS_CAMSS_MISC,
@@ -2047,13 +2048,13 @@ static struct mux_clk csi1phy_mux_clk = {
 	},
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
-		.dbg_name = "csi1phy_mux_clk",
-		.ops = &clk_ops_mux,
-		CLK_INIT(csi1phy_mux_clk.c),
+		.dbg_name = "csi1phy_cam_mux_clk",
+		.ops = &clk_ops_cam_mux,
+		CLK_INIT(csi1phy_cam_mux_clk.c),
 	},
 };
 
-static struct mux_clk csi0pix_mux_clk = {
+static struct cam_mux_clk csi0pix_cam_mux_clk = {
 	.enable_reg = MMSS_CAMSS_MISC,
 	.enable_mask = BIT(7),
 	.select_reg = MMSS_CAMSS_MISC,
@@ -2065,14 +2066,14 @@ static struct mux_clk csi0pix_mux_clk = {
 	},
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
-		.dbg_name = "csi0pix_mux_clk",
-		.ops = &clk_ops_mux,
-		CLK_INIT(csi0pix_mux_clk.c),
+		.dbg_name = "csi0pix_cam_mux_clk",
+		.ops = &clk_ops_cam_mux,
+		CLK_INIT(csi0pix_cam_mux_clk.c),
 	},
 };
 
 
-static struct mux_clk rdi2_mux_clk = {
+static struct cam_mux_clk rdi2_cam_mux_clk = {
 	.enable_reg = MMSS_CAMSS_MISC,
 	.enable_mask = BIT(6),
 	.select_reg = MMSS_CAMSS_MISC,
@@ -2084,13 +2085,13 @@ static struct mux_clk rdi2_mux_clk = {
 	},
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
-		.dbg_name = "rdi2_mux_clk",
-		.ops = &clk_ops_mux,
-		CLK_INIT(rdi2_mux_clk.c),
+		.dbg_name = "rdi2_cam_mux_clk",
+		.ops = &clk_ops_cam_mux,
+		CLK_INIT(rdi2_cam_mux_clk.c),
 	},
 };
 
-static struct mux_clk rdi1_mux_clk = {
+static struct cam_mux_clk rdi1_cam_mux_clk = {
 	.enable_reg = MMSS_CAMSS_MISC,
 	.enable_mask = BIT(5),
 	.select_reg = MMSS_CAMSS_MISC,
@@ -2102,13 +2103,13 @@ static struct mux_clk rdi1_mux_clk = {
 	},
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
-		.dbg_name = "rdi1_mux_clk",
-		.ops = &clk_ops_mux,
-		CLK_INIT(rdi1_mux_clk.c),
+		.dbg_name = "rdi1_cam_mux_clk",
+		.ops = &clk_ops_cam_mux,
+		CLK_INIT(rdi1_cam_mux_clk.c),
 	},
 };
 
-static struct mux_clk rdi0_mux_clk = {
+static struct cam_mux_clk rdi0_cam_mux_clk = {
 	.enable_reg = MMSS_CAMSS_MISC,
 	.enable_mask = BIT(4),
 	.select_reg = MMSS_CAMSS_MISC,
@@ -2120,9 +2121,9 @@ static struct mux_clk rdi0_mux_clk = {
 	},
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
-		.dbg_name = "rdi0_mux_clk",
-		.ops = &clk_ops_mux,
-		CLK_INIT(rdi0_mux_clk.c),
+		.dbg_name = "rdi0_cam_mux_clk",
+		.ops = &clk_ops_cam_mux,
+		CLK_INIT(rdi0_cam_mux_clk.c),
 	},
 };
 
@@ -2495,7 +2496,7 @@ static struct measure_mux_entry measure_mux[] = {
 	{            &gcc_ce1_axi_clk.c, GCC_BASE, 0x0139},
 	{            &gcc_ce1_ahb_clk.c, GCC_BASE, 0x013a},
 	{             &gcc_xo_clk_src.c, GCC_BASE, 0x0149},
-	{                   &bimc_clk.c, GCC_BASE, 0x0154},
+	{                   &bimc_clk.c, GCC_BASE, 0x015d},
 	{          &gcc_bimc_smmu_clk.c, GCC_BASE, 0x015e},
 	{       &gcc_lpass_q6_axi_clk.c, GCC_BASE, 0x0160},
 
@@ -2539,11 +2540,11 @@ static struct measure_mux_entry measure_mux[] = {
 	{             &q6ss_ahb_lfabif_clk.c, LPASS_BASE, 0x001e},
 	{                     &q6ss_xo_clk.c, LPASS_BASE, 0x002b},
 
-	{&apc0_m_clk,                    APCS_BASE, 0x10},
-	{&apc1_m_clk,                    APCS_BASE, 0x11},
-	{&apc2_m_clk,                    APCS_BASE, 0x12},
-	{&apc3_m_clk,                    APCS_BASE, 0x13},
-	{&l2_m_clk,                      APCS_BASE, 0x15},
+	{&apc0_m_clk,                    APCS_BASE, 0x00010},
+	{&apc1_m_clk,                    APCS_BASE, 0x00114},
+	{&apc2_m_clk,                    APCS_BASE, 0x00220},
+	{&apc3_m_clk,                    APCS_BASE, 0x00324},
+	{&l2_m_clk,                      APCS_BASE, 0x01000},
 
 	{&dummy_clk, N_BASES, 0x0000},
 };
@@ -2610,6 +2611,8 @@ static int measure_clk_set_parent(struct clk *c, struct clk *parent)
 		clk->multiplier = 4;
 		clk_sel = 0x16A;
 		regval = measure_mux[i].debug_mux;
+		/* Use a divider value of 4. */
+		regval |= BVAL(31, 30, 0x3);
 		writel_relaxed(regval, APCS_REG_BASE(GLB_CLK_DIAG));
 		break;
 
@@ -2968,12 +2971,12 @@ static struct clk_lookup msm_clocks_8610[] = {
 	CLK_LOOKUP("core_clk",                  vfe_ahb_clk.c, ""),
 	CLK_LOOKUP("core_clk",                  vfe_axi_clk.c, ""),
 
-	CLK_LOOKUP("core_clk",              csi0pix_mux_clk.c, ""),
-	CLK_LOOKUP("core_clk",              csi0phy_mux_clk.c, ""),
-	CLK_LOOKUP("core_clk",              csi1phy_mux_clk.c, ""),
-	CLK_LOOKUP("core_clk",                 rdi2_mux_clk.c, ""),
-	CLK_LOOKUP("core_clk",                 rdi1_mux_clk.c, ""),
-	CLK_LOOKUP("core_clk",                 rdi0_mux_clk.c, ""),
+	CLK_LOOKUP("core_clk",              csi0pix_cam_mux_clk.c, ""),
+	CLK_LOOKUP("core_clk",              csi0phy_cam_mux_clk.c, ""),
+	CLK_LOOKUP("core_clk",              csi1phy_cam_mux_clk.c, ""),
+	CLK_LOOKUP("core_clk",                 rdi2_cam_mux_clk.c, ""),
+	CLK_LOOKUP("core_clk",                 rdi1_cam_mux_clk.c, ""),
+	CLK_LOOKUP("core_clk",                 rdi0_cam_mux_clk.c, ""),
 
 	CLK_LOOKUP("core_clk",   oxili_gfx3d_clk.c, "fdc00000.qcom,kgsl-3d0"),
 	CLK_LOOKUP("iface_clk",    oxili_ahb_clk.c, "fdc00000.qcom,kgsl-3d0"),
