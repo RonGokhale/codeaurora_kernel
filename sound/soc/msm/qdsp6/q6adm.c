@@ -37,6 +37,7 @@ struct adm_ctl {
 	atomic_t copp_id[AFE_MAX_PORTS];
 	atomic_t copp_cnt[AFE_MAX_PORTS];
 	atomic_t copp_stat[AFE_MAX_PORTS];
+        atomic_t cmd_open_state[AFE_MAX_PORTS];
 	wait_queue_head_t wait;
 	int  ec_ref_rx;
 };
@@ -460,6 +461,7 @@ static int32_t adm_callback(struct apr_client_data *data, void *priv)
 							RESET_COPP_ID);
 				atomic_set(&this_adm.copp_cnt[i], 0);
 				atomic_set(&this_adm.copp_stat[i], 0);
+				atomic_set(&this_adm.cmd_open_state[i], 0);
 			}
 			this_adm.apr = NULL;
 		}
@@ -528,7 +530,7 @@ static int32_t adm_callback(struct apr_client_data *data, void *priv)
 			if (open->copp_id == INVALID_COPP_ID) {
 				pr_err("%s: invalid coppid rxed %d\n",
 					__func__, open->copp_id);
-				atomic_set(&this_adm.copp_stat[index], 1);
+				atomic_set(&this_adm.cmd_open_state[index], 1);
 				wake_up(&this_adm.wait);
 				break;
 			}
@@ -537,7 +539,7 @@ static int32_t adm_callback(struct apr_client_data *data, void *priv)
 				atomic_read(&this_adm.copp_cnt[index])] =
 					open->copp_id;
 			atomic_set(&this_adm.copp_id[index], open->copp_id);
-			atomic_set(&this_adm.copp_stat[index], 1);
+			atomic_set(&this_adm.cmd_open_state[index], 1);
 			pr_debug("%s: coppid rxed=%d\n", __func__,
 							open->copp_id);
 			wake_up(&this_adm.wait);
@@ -983,7 +985,7 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology)
 			open.endpoint_id1, open.rate,\
 			open.topology_id);
 
-		atomic_set(&this_adm.copp_stat[index], 0);
+		atomic_set(&this_adm.cmd_open_state[index], 0);
 
 		ret = apr_send_pkt(this_adm.apr, (uint32_t *)&open);
 		if (ret < 0) {
@@ -994,7 +996,7 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology)
 		}
 		/* Wait for the callback with copp id */
 		ret = wait_event_timeout(this_adm.wait,
-			atomic_read(&this_adm.copp_stat[index]),
+			atomic_read(&this_adm.cmd_open_state[index]),
 			msecs_to_jiffies(TIMEOUT_MS));
 		if (!ret) {
 			pr_err("%s ADM open failed for port %d\n", __func__,
@@ -1109,7 +1111,7 @@ int adm_multi_ch_copp_pseudo_open_v3(int port_id, int path,
 			open.endpoint_id1, open.rate,\
 			open.topology_id);
 
-		atomic_set(&this_adm.copp_stat[index], 0);
+		atomic_set(&this_adm.cmd_open_state[index], 0);
 		ret = apr_send_pkt(this_adm.apr, (uint32_t *)&open);
 		if (ret < 0) {
 			pr_err("%s:ADM enable for port %d failed\n",
@@ -1118,7 +1120,7 @@ int adm_multi_ch_copp_pseudo_open_v3(int port_id, int path,
 			goto fail_cmd;
 		}
 		ret = wait_event_timeout(this_adm.wait,
-			atomic_read(&this_adm.copp_stat[index]),
+			atomic_read(&this_adm.cmd_open_state[index]),
 			msecs_to_jiffies(TIMEOUT_MS));
 		if (!ret) {
 			pr_err("%s ADM open failed for port %d\n", __func__,
@@ -1266,7 +1268,7 @@ int adm_multi_ch_copp_open(int port_id, int path, int rate, int channel_mode,
 			open.endpoint_id1, open.rate,
 			open.topology_id);
 
-		atomic_set(&this_adm.copp_stat[index], 0);
+		atomic_set(&this_adm.cmd_open_state[index], 0);
 
 		ret = apr_send_pkt(this_adm.apr, (uint32_t *)&open);
 		if (ret < 0) {
@@ -1277,7 +1279,7 @@ int adm_multi_ch_copp_open(int port_id, int path, int rate, int channel_mode,
 		}
 		/* Wait for the callback with copp id */
 		ret = wait_event_timeout(this_adm.wait,
-			atomic_read(&this_adm.copp_stat[index]),
+			atomic_read(&this_adm.cmd_open_state[index]),
 			msecs_to_jiffies(TIMEOUT_MS));
 		if (!ret) {
 			pr_err("%s ADM open failed for port %d\n", __func__,
@@ -1706,6 +1708,7 @@ static int __init adm_init(void)
 		atomic_set(&this_adm.copp_id[i], RESET_COPP_ID);
 		atomic_set(&this_adm.copp_cnt[i], 0);
 		atomic_set(&this_adm.copp_stat[i], 0);
+		atomic_set(&this_adm.cmd_open_state[i], 0);
 	}
 	return 0;
 }
