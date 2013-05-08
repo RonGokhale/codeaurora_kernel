@@ -20,6 +20,7 @@
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/bitops.h>
+#include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -471,6 +472,8 @@ static int cpr_scale_voltage(struct cpr_regulator *cpr_vreg, int corner,
 
 	if (!rc)
 		rc = cpr_apc_set(cpr_vreg, new_apc_volt);
+	udelay(100);
+	
 
 	if (!rc && vdd_mx_vmin && dir == DOWN) {
 		if (vdd_mx_vmin != cpr_vreg->vdd_mx_vmin)
