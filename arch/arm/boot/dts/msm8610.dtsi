@@ -11,6 +11,29 @@
  */
 
 /include/ "skeleton.dtsi"
+
+/ {
+	model = "Qualcomm MSM 8610";
+	compatible = "qcom,msm8610";
+	interrupt-parent = <&intc>;
+
+	memory {
+		qsecom_mem: qsecom_region {
+			linux,contiguous-region;
+			reg = <0 0x100000>;
+			label = "qsecom_mem";
+		};
+	};
+
+	aliases {
+		sdhc1 = &sdhc_1; /* SDC1 eMMC slot */
+		sdhc2 = &sdhc_2; /* SDC2 SD card slot */
+	};
+
+	soc: soc { };
+};
+
+/include/ "msm8610-camera.dtsi"
 /include/ "msm-iommu-v0.dtsi"
 /include/ "msm8610-ion.dtsi"
 /include/ "msm8610-gpu.dtsi"
@@ -465,7 +488,7 @@
                 qcom,i2c-bus-freq = <100000>;
         };
 
-	i2c@f9928000 { /* BLSP1 QUP6 */
+	i2c: i2c@f9928000 { /* BLSP1 QUP6 */
 		cell-index = <6>;
 		compatible = "qcom,i2c-qup";
 		#address-cells = <1>;
