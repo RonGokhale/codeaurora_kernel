@@ -75,6 +75,7 @@ list of codeaurora msm branches
 - jb_2.5.5
 - jb_2.5.6
 - jb_2.5_release
+- jb_3.2.1_rb1 
 - jb_mr1_rb1.11
 - jb_mr1_rb1.12
 - jb_mr1_rb1.13
@@ -94,6 +95,7 @@ list of codeaurora msm branches
 - jb_mr1_rb2.9 
 - jb_mr1_rb2.12
 - jb_mr1_rb2.14
+- jb_mr1_rb3.7 
 - jb_mr1_rb4.1
 - jb_rel
 - jb_rel_rb1.2
@@ -142,6 +144,7 @@ list of aosp branches
 - aosp-common/experimental/android-3.9-rc2
 - aosp-common/experimental/android-3.9-rc7
 - aosp-common/experimental/android-3.9
+- aosp-new/android-msm-3.9-usb-and-mmc-hacks
 
 QUALCOMM Branches
 ===================
