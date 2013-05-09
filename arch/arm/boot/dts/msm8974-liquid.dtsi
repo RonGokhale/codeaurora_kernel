@@ -13,7 +13,7 @@
 /include/ "msm8974-leds.dtsi"
 /include/ "msm8974-camera-sensor-liquid.dtsi"
 
-/ {
+&soc {
 	serial@f991e000 {
 		status = "ok";
 	};
@@ -511,7 +511,7 @@
 		qcom,output-type = <0>;
 		qcom,pull = <5>;
 		qcom,vin-sel = <2>;
-		qcom,out-strength = <3>;
+		qcom,out-strength = <1>;
 		qcom,src-sel = <2>;
 		qcom,master-en = <1>;
 	};

@@ -5207,6 +5207,7 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("core_clk", qdss_clk.c, "fc342000.cti"),
 	CLK_LOOKUP("core_clk", qdss_clk.c, "fc343000.cti"),
 	CLK_LOOKUP("core_clk", qdss_clk.c, "fc344000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fdf30018.hwevent"),
 
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc322000.tmc"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc318000.tpiu"),
@@ -5236,6 +5237,9 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc342000.cti"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc343000.cti"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc344000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fdf30018.hwevent"),
+
+	CLK_LOOKUP("core_mmss_clk", mmss_misc_ahb_clk.c, "fdf30018.hwevent"),
 
 	CLK_LOOKUP("l2_m_clk",		l2_m_clk,     ""),
 	CLK_LOOKUP("krait0_m_clk",	krait0_m_clk, ""),
@@ -5355,20 +5359,6 @@ static struct pll_config mmpll3_v2_config __initdata = {
 	.main_output_val = BIT(0),
 	.main_output_mask = BIT(0),
 };
-
-#define PWR_ON_MASK		BIT(31)
-#define EN_REST_WAIT_MASK	(0xF << 20)
-#define EN_FEW_WAIT_MASK	(0xF << 16)
-#define CLK_DIS_WAIT_MASK	(0xF << 12)
-#define SW_OVERRIDE_MASK	BIT(2)
-#define HW_CONTROL_MASK		BIT(1)
-#define SW_COLLAPSE_MASK	BIT(0)
-
-/* Wait 2^n CXO cycles between all states. Here, n=2 (4 cycles). */
-#define EN_REST_WAIT_VAL	(0x2 << 20)
-#define EN_FEW_WAIT_VAL		(0x2 << 16)
-#define CLK_DIS_WAIT_VAL	(0x2 << 12)
-#define GDSC_TIMEOUT_US		50000
 
 static void __init reg_init(void)
 {

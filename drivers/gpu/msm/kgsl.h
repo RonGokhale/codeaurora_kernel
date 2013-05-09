@@ -151,6 +151,8 @@ struct kgsl_memdesc_ops {
 #define KGSL_MEMDESC_GLOBAL BIT(1)
 /* The memdesc is frozen during a snapshot */
 #define KGSL_MEMDESC_FROZEN BIT(2)
+/* The memdesc is scheduled to be freed on a timestamp */
+#define KGSL_MEMDESC_FREE_PENDING BIT(3)
 
 /* shared memory allocation */
 struct kgsl_memdesc {
@@ -251,6 +253,10 @@ static inline void kgsl_drm_exit(void)
 static inline int kgsl_gpuaddr_in_memdesc(const struct kgsl_memdesc *memdesc,
 				unsigned int gpuaddr, unsigned int size)
 {
+	/* set a minimum size to search for */
+	if (!size)
+		size = 1;
+
 	/* don't overflow */
 	if ((gpuaddr + size) < gpuaddr)
 		return 0;

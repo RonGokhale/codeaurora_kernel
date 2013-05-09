@@ -26,7 +26,7 @@
 
 /* CPR controlled regulator */
 
-/ {
+&soc {
 	apc_vreg_corner: regulator@f9018000 {
 		status = "okay";
 		compatible = "qcom,cpr-regulator";
@@ -44,6 +44,9 @@
 		qcom,pvs-corner-ceiling-nom  =  <975000 1075000 1200000 1200000>;
 		qcom,pvs-corner-ceiling-fast =  <900000 1000000 1140000 1140000>;
 		vdd-apc-supply = <&pm8110_s2>;
+		vdd-mx-supply = <&pm8110_l3_ao>;
+		qcom,vdd-mx-vmax = <1350000>;
+		qcom,vdd-mx-vmin-method = <1>;
 	};
 };
 

@@ -3138,10 +3138,10 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc33d000.etm"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc33e000.etm"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc33f000.etm"),
-	CLK_LOOKUP("core_a_clk", qdss_clk.c, "fc33c000.jtagmm"),
-	CLK_LOOKUP("core_a_clk", qdss_clk.c, "fc33d000.jtagmm"),
-	CLK_LOOKUP("core_a_clk", qdss_clk.c, "fc33e000.jtagmm"),
-	CLK_LOOKUP("core_a_clk", qdss_clk.c, "fc33f000.jtagmm"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc33c000.jtagmm"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc33d000.jtagmm"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc33e000.jtagmm"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc33f000.jtagmm"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc308000.cti"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc309000.cti"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc30a000.cti"),
@@ -3278,6 +3278,15 @@ static struct clk_lookup msm_clocks_8226[] = {
 
 	CLK_LOOKUP("iface_clk", mdss_ahb_clk.c, "fd928000.qcom,iommu"),
 	CLK_LOOKUP("core_clk", mdss_axi_clk.c, "fd928000.qcom,iommu"),
+
+	CLK_LOOKUP("core_clk", venus0_vcodec0_clk.c, "fd8c1024.qcom,gdsc"),
+	CLK_LOOKUP("core_clk", mdss_mdp_clk.c, "fd8c2304.qcom,gdsc"),
+	CLK_LOOKUP("lut_clk", mdss_mdp_lut_clk.c, "fd8c2304.qcom,gdsc"),
+	CLK_LOOKUP("core_clk", camss_jpeg_jpeg0_clk.c, "fd8c35a4.qcom,gdsc"),
+	CLK_LOOKUP("core_clk", camss_vfe_vfe0_clk.c,	"fd8c36a4.qcom,gdsc"),
+	CLK_LOOKUP("csi_clk", camss_csi_vfe0_clk.c,	"fd8c36a4.qcom,gdsc"),
+	CLK_LOOKUP("cpp_clk", camss_vfe_cpp_clk.c,	"fd8c36a4.qcom,gdsc"),
+	CLK_LOOKUP("core_clk", oxili_gfx3d_clk.c, "fd8c4034.qcom,gdsc"),
 
 	/* MM sensor clocks */
 	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "6f.qcom,camera"),
