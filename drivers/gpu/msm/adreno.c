@@ -1719,6 +1719,7 @@ static int adreno_start(struct kgsl_device *device)
 {
 	int status = -EINVAL;
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
+	unsigned int state = device->state;
 
 	kgsl_cffdump_open(device);
 
@@ -1780,8 +1781,11 @@ error_mmu_off:
 	kgsl_mmu_stop(&device->mmu);
 
 error_clk_off:
-	if (KGSL_STATE_DUMP_AND_FT != device->state)
+	if (KGSL_STATE_DUMP_AND_FT != device->state) {
 		kgsl_pwrctrl_disable(device);
+		/* set the state back to original state */
+		kgsl_pwrctrl_set_state(device, state);
+	}
 
 	return status;
 }
@@ -2772,9 +2776,6 @@ static int adreno_ringbuffer_drain(struct kgsl_device *device,
 	struct adreno_ringbuffer *rb = &adreno_dev->ringbuffer;
 	unsigned long wait;
 	unsigned long timeout = jiffies + msecs_to_jiffies(ADRENO_IDLE_TIMEOUT);
-
-	if (!(rb->flags & KGSL_FLAGS_STARTED))
-		return 0;
 
 	/*
 	 * The first time into the loop, wait for 100 msecs and kick wptr again

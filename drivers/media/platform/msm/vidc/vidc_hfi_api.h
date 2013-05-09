@@ -95,6 +95,7 @@ enum hal_extradata_id {
 	HAL_EXTRADATA_NUM_CONCEALED_MB,
 	HAL_EXTRADATA_METADATA_FILLER,
 	HAL_EXTRADATA_ASPECT_RATIO,
+	HAL_EXTRADATA_MPEG2_SEQDISP
 };
 
 enum hal_property {
@@ -482,7 +483,7 @@ enum hal_picture {
 	HAL_PICTURE_I = 0x01,
 	HAL_PICTURE_P = 0x02,
 	HAL_PICTURE_B = 0x04,
-	HAL_PICTURE_IDR = 0x7F001000,
+	HAL_PICTURE_IDR = 0x08,
 	HAL_FRAME_NOTCODED = 0x7F002000,
 	HAL_FRAME_YUV = 0x7F004000,
 	HAL_UNUSED_PICT = 0x10000000,
@@ -1020,7 +1021,7 @@ enum fw_info {
 };
 
 #define call_hfi_op(q, op, args...)			\
-	(((q)->op) ? ((q)->op(args)) : 0)
+	(((q) && (q)->op) ? ((q)->op(args)) : 0)
 
 struct hfi_device {
 	void *hfi_device_data;
