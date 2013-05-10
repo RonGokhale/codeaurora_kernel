@@ -90,13 +90,7 @@ static int msm_ispif_clk_enable_one(struct ispif_device *ispif,
 		pr_debug("disable clk for VFE%d\n", vfe_intf);
 
 	if (1 /*ispif->csid_version == CSID_VERSION_V22*/) {
-		rc = msm_cam_clk_enable(&ispif->pdev->dev, ispif_8960_clk_info,
-			ispif->ispif_clk[vfe_intf], 2, enable);
-		if (rc) {
-			pr_err("%s: cannot enable clock, error = %d\n",
-				__func__, rc);
-			goto end;
-		}
+
 	} else if (ispif->csid_version == CSID_VERSION_V20) {
 		rc = msm_cam_clk_enable(&ispif->pdev->dev, ispif_8960_clk_info,
 			ispif->ispif_clk[vfe_intf],
