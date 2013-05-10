@@ -1100,8 +1100,7 @@ static int get_current_time(unsigned long *now_tm_sec)
 	if (rtc == NULL) {
 		pr_err("%s: unable to open rtc device (%s)\n",
 			__FILE__, CONFIG_RTC_HCTOSYS_DEVICE);
-		rc = -EINVAL;
-		goto close_time;
+		return -EINVAL;
 	}
 
 	rc = rtc_read_time(rtc, &tm);
@@ -1523,10 +1522,6 @@ static int clamp_soc_based_on_voltage(struct qpnp_bms_chip *chip, int soc)
 		pr_debug("clamping soc to 1, vbat (%d) > cutoff (%d)\n",
 						vbat_uv, chip->v_cutoff_uv);
 		return 1;
-	} else if (soc > 0 && vbat_uv < chip->v_cutoff_uv) {
-		pr_debug("forcing soc to 0, vbat (%d) < cutoff (%d)\n",
-						vbat_uv, chip->v_cutoff_uv);
-		return 0;
 	} else {
 		pr_debug("not clamping, using soc = %d, vbat = %d and cutoff = %d\n",
 				soc, vbat_uv, chip->v_cutoff_uv);
@@ -2564,10 +2559,20 @@ qpnp_bms_remove(struct spmi_device *spmi)
 	return 0;
 }
 
+static int bms_suspend(struct device *dev)
+{
+	struct qpnp_bms_chip *chip = dev_get_drvdata(dev);
+
+	cancel_delayed_work_sync(&chip->calculate_soc_delayed_work);
+	chip->last_soc_unbound = true;
+	return 0;
+}
+
 static int bms_resume(struct device *dev)
 {
 	int rc;
-	unsigned long soc_calc_period;
+	int soc_calc_period;
+	int time_until_next_recalc;
 	unsigned long time_since_last_recalc;
 	unsigned long tm_now_sec;
 	struct qpnp_bms_chip *chip = dev_get_drvdata(dev);
@@ -2580,7 +2585,6 @@ static int bms_resume(struct device *dev)
 		 * unbind the last soc so that the next
 		 * recalculation is not limited to changing by 1%
 		 */
-		chip->last_soc_unbound = true;
 		time_since_last_recalc = tm_now_sec - chip->last_recalc_time;
 		pr_debug("Time since last recalc: %lu\n",
 				time_since_last_recalc);
@@ -2589,16 +2593,19 @@ static int bms_resume(struct device *dev)
 		else
 			soc_calc_period = chip->calculate_soc_ms;
 
-		if (time_since_last_recalc >= soc_calc_period) {
-			chip->last_recalc_time = tm_now_sec;
-			recalculate_soc(chip);
-		}
+		time_until_next_recalc = max(0, soc_calc_period
+				- (int)(time_since_last_recalc * 1000));
+
+		schedule_delayed_work(&chip->calculate_soc_delayed_work,
+			round_jiffies_relative(msecs_to_jiffies
+			(time_until_next_recalc)));
 	}
 	return 0;
 }
 
 static const struct dev_pm_ops qpnp_bms_pm_ops = {
 	.resume		= bms_resume,
+	.suspend	= bms_suspend,
 };
 
 static struct spmi_driver qpnp_bms_driver = {
