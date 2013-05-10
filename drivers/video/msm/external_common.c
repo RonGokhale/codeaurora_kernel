@@ -1067,6 +1067,54 @@ static ssize_t hdmi_common_rda_audio_caps(struct device *dev,
 	return snprintf(buf, str_size, "%s\n", str);
 }
 
+static ssize_t hdmi_wta_avi_itc(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	ssize_t ret = strnlen(buf, PAGE_SIZE);
+	int err = 0;
+	int itc = atoi(buf);
+
+	if (itc == 0 || itc == 1) {
+		if (external_common_state->config_itc_bit) {
+			err = external_common_state->config_itc_bit(itc);
+			if (!err)
+				DEV_INFO("%s: '%d is configured'!\n",
+							__func__, itc);
+			else
+				ret = err;
+		}
+	} else {
+		DEV_DBG("%s: '%d' (unknown should be either 0 or 1.)\n",
+				__func__, itc);
+	}
+
+	return ret;
+}
+
+static ssize_t hdmi_wta_avi_cn0_1(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	ssize_t ret = strnlen(buf, PAGE_SIZE);
+	int err = 0;
+	int cns = atoi(buf);
+
+	if (cns == 0 || cns == 1 || cns == 2 || cns == 3) {
+		if (external_common_state->config_cn_bits) {
+			err = external_common_state->config_cn_bits(cns);
+			if (!err)
+				DEV_INFO("%s: '%d is configured'!\n",
+							__func__, cns);
+			else
+				ret = err;
+		}
+	} else {
+		DEV_DBG("%s: '%d' (unknown should be either 0 or 1, 2 ,3.)\n",
+				__func__, cns);
+	}
+
+	return ret;
+}
+
 static DEVICE_ATTR(video_mode, S_IRUGO | S_IWUSR | S_IWGRP,
 	external_common_rda_video_mode, external_common_wta_video_mode);
 static DEVICE_ATTR(video_mode_str, S_IRUGO, external_common_rda_video_mode_str,
@@ -1105,6 +1153,8 @@ static DEVICE_ATTR(spkr_alloc_data_block, S_IRUGO,
 	hdmi_common_rda_spkr_alloc_data_block, NULL);
 static DEVICE_ATTR(audio_caps, S_IRUGO | S_IWUSR, hdmi_common_rda_audio_caps,
 	hdmi_common_wta_audio_caps);
+static DEVICE_ATTR(avi_itc, S_IWUSR, NULL, hdmi_wta_avi_itc);
+static DEVICE_ATTR(avi_cn0_1, S_IWUSR, NULL, hdmi_wta_avi_cn0_1);
 
 static struct attribute *external_common_fs_attrs[] = {
 	&dev_attr_video_mode.attr,
@@ -1138,6 +1188,8 @@ static struct attribute *external_common_fs_attrs[] = {
 	&dev_attr_audio_data_block.attr,
 	&dev_attr_spkr_alloc_data_block.attr,
 	&dev_attr_audio_caps.attr,
+	&dev_attr_avi_itc.attr,
+	&dev_attr_avi_cn0_1.attr,
 	NULL,
 };
 static struct attribute_group external_common_fs_attr_group = {
