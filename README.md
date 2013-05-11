@@ -75,6 +75,7 @@ list of codeaurora msm branches
 - jb_2.5.5
 - jb_2.5.6
 - jb_2.5_release
+- jb_3.2.1
 - jb_3.2.1_rb1 
 - jb_mr1_rb1.11
 - jb_mr1_rb1.12
@@ -90,6 +91,7 @@ list of codeaurora msm branches
 - jb_mr1_rb1.25 
 - jb_mr1_rb1.26
 - jb_mr1_rb1.27
+- jb_mr1_rb1.29
 - jb_mr1_rb2.3
 - jb_mr1_rb2.7 
 - jb_mr1_rb2.9 
@@ -97,10 +99,12 @@ list of codeaurora msm branches
 - jb_mr1_rb2.14
 - jb_mr1_rb3.7 
 - jb_mr1_rb4.1
+- jb_mr1_rb4.2
 - jb_rel
 - jb_rel_rb1.2
 - jb_rel_rb3.1
 - jb_rel_rb3_2.2 
+- jb_rel_rb3_4.1
 - jb_rel_rb4.2
 - jb_rel_rb4_2.1 
 - jb_rel_rb5.1 
