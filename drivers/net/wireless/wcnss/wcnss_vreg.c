@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -47,6 +47,9 @@ static DEFINE_SEMAPHORE(wcnss_power_on_lock);
 
 #define WCNSS_PMU_CFG_IRIS_XO_MODE         0x6
 #define WCNSS_PMU_CFG_IRIS_XO_MODE_48      (3 << 1)
+
+#define RIVA_SPARE_OFFSET       0x0b4
+#define NVBIN_DLND_BIT              BIT(25)
 
 #define VREG_NULL_CONFIG            0x0000
 #define VREG_GET_REGULATOR_MASK     0x0001
@@ -115,8 +118,10 @@ static int configure_iris_xo(struct device *dev, bool use_48mhz_xo, int on)
 	int rc = 0;
 	int size = 0;
 	int pmu_offset = 0;
+	int spare_offset = 0;
 	unsigned long wcnss_phys_addr;
 	void __iomem *pmu_conf_reg;
+	void __iomem *spare_reg;
 	struct clk *clk;
 
 	if (wcnss_hardware_type() == WCNSS_PRONTO_HW) {
@@ -132,6 +137,7 @@ static int configure_iris_xo(struct device *dev, bool use_48mhz_xo, int on)
 	} else {
 		wcnss_phys_addr = MSM_RIVA_PHYS;
 		pmu_offset = RIVA_PMU_OFFSET;
+		spare_offset = RIVA_SPARE_OFFSET;
 		size = SZ_256;
 
 		clk = clk_get(dev, "cxo");
@@ -147,7 +153,6 @@ static int configure_iris_xo(struct device *dev, bool use_48mhz_xo, int on)
 			pr_err("ioremap wcnss physical failed\n");
 			goto fail;
 		}
-		pmu_conf_reg = msm_wcnss_base + pmu_offset;
 
 		/* Enable IRIS XO */
 		rc = clk_prepare_enable(clk);
@@ -155,10 +160,23 @@ static int configure_iris_xo(struct device *dev, bool use_48mhz_xo, int on)
 			pr_err("clk enable failed\n");
 			goto fail;
 		}
+		/* NV bit is set to indicate that platform driver is capable
+		 * of doing NV download. SSR should not set NV bit; during
+		 * SSR NV bin is downloaded by WLAN drive.
+		 */
+		if (!wcnss_cold_boot_done()) {
+			pr_debug("wcnss: Indicate NV bin download\n");
+			spare_reg = msm_wcnss_base + spare_offset;
+			reg = readl_relaxed(spare_reg);
+			reg |= NVBIN_DLND_BIT;
+			writel_relaxed(reg, spare_reg);
+		}
+
+		pmu_conf_reg = msm_wcnss_base + pmu_offset;
 		writel_relaxed(0, pmu_conf_reg);
 		reg = readl_relaxed(pmu_conf_reg);
 		reg |= WCNSS_PMU_CFG_GC_BUS_MUX_SEL_TOP |
-				WCNSS_PMU_CFG_IRIS_XO_EN;
+			WCNSS_PMU_CFG_IRIS_XO_EN;
 		writel_relaxed(reg, pmu_conf_reg);
 
 		/* Clear XO_MODE[b2:b1] bits. Clear implies 19.2 MHz TCXO */
@@ -189,14 +207,14 @@ static int configure_iris_xo(struct device *dev, bool use_48mhz_xo, int on)
 			if (IS_ERR(wlan_clock)) {
 				rc = PTR_ERR(wlan_clock);
 				pr_err("Failed to get MSM_XO_TCXO_A2 voter (%d)\n",
-						rc);
+					rc);
 				goto fail;
 			}
 
 			rc = msm_xo_mode_vote(wlan_clock, MSM_XO_MODE_ON);
 			if (rc < 0) {
 				pr_err("Configuring MSM_XO_MODE_ON failed (%d)\n",
-						rc);
+					rc);
 				goto msm_xo_vote_fail;
 			}
 		}
@@ -205,7 +223,7 @@ static int configure_iris_xo(struct device *dev, bool use_48mhz_xo, int on)
 			rc = msm_xo_mode_vote(wlan_clock, MSM_XO_MODE_OFF);
 			if (rc < 0)
 				pr_err("Configuring MSM_XO_MODE_OFF failed (%d)\n",
-						rc);
+					rc);
 		}
 	}
 
@@ -463,7 +481,11 @@ int wcnss_req_power_on_lock(char *driver_name)
 	node = kmalloc(sizeof(struct host_driver), GFP_KERNEL);
 	if (!node)
 		goto err;
-	strlcpy(node->name, driver_name, sizeof(node->name));
+	if (strlcpy(node->name, driver_name, sizeof(node->name))
+			>= sizeof(node->name)) {
+		kfree(node);
+		goto err;
+	}
 
 	mutex_lock(&list_lock);
 	/* Lock when the first request is added */
