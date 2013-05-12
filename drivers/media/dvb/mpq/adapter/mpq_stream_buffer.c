@@ -107,7 +107,7 @@ ssize_t mpq_streambuffer_pkt_read(
 	/* buffer was released, return no packet available */
 	if (sbuff->packet_data.error == -ENODEV) {
 		spin_unlock(&sbuff->packet_data.lock);
-		return 0;
+		return -ENODEV;
 	}
 
 	/* read-out the packet header first */
@@ -164,7 +164,7 @@ int mpq_streambuffer_pkt_dispose(
 	/* check if buffer was released */
 	if (sbuff->packet_data.error == -ENODEV) {
 		spin_unlock(&sbuff->packet_data.lock);
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	/* read-out the packet header first */
@@ -180,7 +180,6 @@ int mpq_streambuffer_pkt_dispose(
 
 	if ((MPQ_STREAMBUFFER_BUFFER_MODE_LINEAR == sbuff->mode) ||
 		(dispose_data)) {
-
 		/* Advance the read pointer in the raw-data buffer first */
 		ret = mpq_streambuffer_data_read_dispose(sbuff,
 				packet.raw_data_len);
@@ -196,7 +195,7 @@ int mpq_streambuffer_pkt_dispose(
 		(sbuff->raw_data.error == -ENODEV)) {
 		spin_unlock(&sbuff->raw_data.lock);
 		spin_unlock(&sbuff->packet_data.lock);
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	/* Move read pointer to the next linear buffer for subsequent reads */
@@ -246,7 +245,7 @@ int mpq_streambuffer_pkt_write(
 	/* check if buffer was released */
 	if (sbuff->packet_data.error == -ENODEV) {
 		spin_unlock(&sbuff->packet_data.lock);
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	len = sizeof(struct mpq_streambuffer_packet_header) +
@@ -306,7 +305,7 @@ ssize_t mpq_streambuffer_data_write(
 	/* check if buffer was released */
 	if (sbuff->raw_data.error == -ENODEV) {
 		spin_unlock(&sbuff->raw_data.lock);
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	if (MPQ_STREAMBUFFER_BUFFER_MODE_RING == sbuff->mode) {
@@ -375,7 +374,7 @@ int mpq_streambuffer_data_write_deposit(
 	/* check if buffer was released */
 	if (sbuff->raw_data.error == -ENODEV) {
 		spin_unlock(&sbuff->raw_data.lock);
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	if (MPQ_STREAMBUFFER_BUFFER_MODE_RING == sbuff->mode) {
@@ -423,7 +422,7 @@ ssize_t mpq_streambuffer_data_read(
 	/* check if buffer was released */
 	if (sbuff->raw_data.error == -ENODEV) {
 		spin_unlock(&sbuff->raw_data.lock);
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	if (MPQ_STREAMBUFFER_BUFFER_MODE_RING == sbuff->mode) {
@@ -483,7 +482,7 @@ ssize_t mpq_streambuffer_data_read_user(
 
 	/* check if buffer was released */
 	if (sbuff->raw_data.error == -ENODEV)
-		return -EINVAL;
+		return -ENODEV;
 
 	if (MPQ_STREAMBUFFER_BUFFER_MODE_RING == sbuff->mode) {
 		/*
@@ -538,7 +537,7 @@ int mpq_streambuffer_data_read_dispose(
 	/* check if buffer was released */
 	if (sbuff->raw_data.error == -ENODEV) {
 		spin_unlock(&sbuff->raw_data.lock);
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	if (MPQ_STREAMBUFFER_BUFFER_MODE_RING == sbuff->mode) {
@@ -582,7 +581,7 @@ int mpq_streambuffer_get_buffer_handle(
 	/* check if buffer was released */
 	if (sbuff->raw_data.error == -ENODEV) {
 		spin_unlock(&sbuff->raw_data.lock);
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	if (MPQ_STREAMBUFFER_BUFFER_MODE_RING == sbuff->mode) {
@@ -633,7 +632,7 @@ ssize_t mpq_streambuffer_data_free(
 	/* check if buffer was released */
 	if (sbuff->raw_data.error == -ENODEV) {
 		spin_unlock(&sbuff->raw_data.lock);
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	if (MPQ_STREAMBUFFER_BUFFER_MODE_RING == sbuff->mode) {
@@ -669,7 +668,7 @@ ssize_t mpq_streambuffer_data_avail(
 	/* check if buffer was released */
 	if (sbuff->raw_data.error == -ENODEV) {
 		spin_unlock(&sbuff->raw_data.lock);
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	if (MPQ_STREAMBUFFER_BUFFER_MODE_RING == sbuff->mode) {
@@ -700,7 +699,7 @@ int mpq_streambuffer_get_data_rw_offset(
 	/* check if buffer was released */
 	if (sbuff->raw_data.error == -ENODEV) {
 		spin_unlock(&sbuff->raw_data.lock);
-		return -EINVAL;
+		return -ENODEV;
 	}
 
 	if (MPQ_STREAMBUFFER_BUFFER_MODE_RING == sbuff->mode) {

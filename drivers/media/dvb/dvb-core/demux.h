@@ -7,7 +7,7 @@
  * Copyright (c) 2000 Nokia Research Center
  *                    Tampere, FINLAND
  *
- * Copyright (c) 2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -66,13 +66,16 @@ enum dmx_success {
 	DMX_OK = 0, /* Received Ok */
 	DMX_OK_PES_END, /* Received OK, data reached end of PES packet */
 	DMX_OK_PCR, /* Received OK, data with new PCR/STC pair */
+	DMX_OK_EOS, /* Received OK, reached End-of-Stream (EOS) */
+	DMX_OK_MARKER, /* Received OK, reached a data Marker */
 	DMX_LENGTH_ERROR, /* Incorrect length */
 	DMX_OVERRUN_ERROR, /* Receiver ring buffer overrun */
 	DMX_CRC_ERROR, /* Incorrect CRC */
 	DMX_FRAME_ERROR, /* Frame alignment error */
 	DMX_FIFO_ERROR, /* Receiver FIFO overrun */
 	DMX_MISSED_ERROR, /* Receiver missed packet */
-	DMX_OK_DECODER_BUF /* Received OK, new ES data in decoder buffer */
+	DMX_OK_DECODER_BUF, /* Received OK, new ES data in decoder buffer */
+	DMX_OK_IDX /* Received OK, new index event */
 } ;
 
 
@@ -87,7 +90,7 @@ struct dmx_data_ready {
 	enum dmx_success status;
 
 	/*
-	 * data_length may be 0 in case of DMX_OK_PES_END
+	 * data_length may be 0 in case of DMX_OK_PES_END or DMX_OK_EOS
 	 * and in non-DMX_OK_XXX events. In DMX_OK_PES_END,
 	 * data_length is for data comming after the end of PES.
 	 */
@@ -100,6 +103,9 @@ struct dmx_data_ready {
 			int disc_indicator_set;
 			int pes_length_mismatch;
 			u64 stc;
+			u32 tei_counter;
+			u32 cont_err_counter;
+			u32 ts_packets_num;
 		} pes_end;
 
 		struct {
@@ -121,7 +127,14 @@ struct dmx_data_ready {
 			u32 cont_err_counter;
 			u32 ts_packets_num;
 			u32 ts_dropped_bytes;
+			u64 stc;
 		} buf;
+
+		struct {
+			u64 id;
+		} marker;
+
+		struct dmx_index_event_info idx_event;
 	};
 };
 
@@ -213,8 +226,10 @@ struct dmx_ts_feed {
 		    struct timespec timeout);
 	int (*start_filtering) (struct dmx_ts_feed* feed);
 	int (*stop_filtering) (struct dmx_ts_feed* feed);
-	int (*set_indexing_params) (struct dmx_ts_feed *feed,
-				struct dmx_indexing_video_params *params);
+	int (*set_video_codec) (struct dmx_ts_feed *feed,
+				enum dmx_video_codec video_codec);
+	int (*set_idx_params) (struct dmx_ts_feed *feed,
+				struct dmx_indexing_params *idx_params);
 	int (*get_decoder_buff_status)(
 			struct dmx_ts_feed *feed,
 			struct dmx_buffer_status *dmx_buffer_status);
@@ -225,8 +240,16 @@ struct dmx_ts_feed {
 			dmx_ts_data_ready_cb callback);
 	int (*notify_data_read)(struct dmx_ts_feed *feed,
 			u32 bytes_num);
-	int (*set_tsp_out_format) (struct dmx_ts_feed *feed,
+	int (*set_tsp_out_format)(struct dmx_ts_feed *feed,
 				enum dmx_tsp_format_t tsp_format);
+	int (*set_secure_mode)(struct dmx_ts_feed *feed,
+				struct dmx_secure_mode *sec_mode);
+	int (*oob_command) (struct dmx_ts_feed *feed,
+			struct dmx_oob_command *cmd);
+	int (*ts_insertion_init)(struct dmx_ts_feed *feed);
+	int (*ts_insertion_terminate)(struct dmx_ts_feed *feed);
+	int (*ts_insertion_insert_buffer)(struct dmx_ts_feed *feed,
+			char *data, size_t size);
 };
 
 /*--------------------------------------------------------------------------*/
@@ -273,6 +296,10 @@ struct dmx_section_feed {
 			dmx_section_data_ready_cb callback);
 	int (*notify_data_read)(struct dmx_section_filter *filter,
 			u32 bytes_num);
+	int (*set_secure_mode)(struct dmx_section_feed *feed,
+				struct dmx_secure_mode *sec_mode);
+	int (*oob_command) (struct dmx_section_feed *feed,
+				struct dmx_oob_command *cmd);
 };
 
 /*--------------------------------------------------------------------------*/
@@ -357,7 +384,6 @@ struct dmx_demux {
 	struct dmx_frontend* frontend;    /* Front-end connected to the demux */
 	void* priv;                  /* Pointer to private data of the API client */
 	struct data_buffer dvr_input; /* DVR input buffer */
-
 	struct dentry *debugfs_demux_dir; /* debugfs dir */
 
 	int (*open) (struct dmx_demux* demux);
@@ -407,6 +433,8 @@ struct dmx_demux {
 
 	int (*unmap_buffer) (struct dmx_demux *demux,
 			void *priv_handle);
+
+	int (*get_tsp_size) (struct dmx_demux *demux);
 };
 
 #endif /* #ifndef __DEMUX_H */
