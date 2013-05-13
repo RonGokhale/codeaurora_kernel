@@ -334,7 +334,7 @@ static int msm_ispif_subdev_g_chip_ident(struct v4l2_subdev *sd,
 static void msm_ispif_sel_csid_core(struct ispif_device *ispif,
 	uint8_t intftype, uint8_t csid, uint8_t vfe_intf)
 {
-	int rc = 0;
+//	int rc = 0;
 	uint32_t data;
 
 	BUG_ON(!ispif);
@@ -344,7 +344,8 @@ static void msm_ispif_sel_csid_core(struct ispif_device *ispif,
 		return;
 	}
 
-	if (ispif->csid_version <= CSID_VERSION_V22) {
+#if 0
+	if (ispif->csid_version <= CSID_VERSION_V20) {
 		if (ispif->ispif_clk[vfe_intf][intftype] == NULL) {
 			CDBG("%s: ispif NULL clk\n", __func__);
 			return;
@@ -356,7 +357,7 @@ static void msm_ispif_sel_csid_core(struct ispif_device *ispif,
 			return;
 		}
 	}
-
+#endif
 	data = msm_camera_io_r(ispif->base + ISPIF_VFE_m_INPUT_SEL(vfe_intf));
 	switch (intftype) {
 	case PIX0:
