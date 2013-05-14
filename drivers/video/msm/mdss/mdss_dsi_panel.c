@@ -90,14 +90,26 @@ static void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 		pr_err("%s: pwm_enable() failed err=%d\n", __func__, ret);
 }
 
+void mdss_dsi_panel_gpio_free(struct mdss_panel_data *pdata)
+{
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 
-void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
+	pr_debug("%s: Cleaning up panel gpio's\n", __func__);
+
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
+
+	gpio_free(ctrl_pdata->disp_en_gpio);
+	gpio_free(ctrl_pdata->rst_gpio);
+}
+
+int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 {
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
-		return;
+		return -EINVAL;
 	}
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
@@ -111,7 +123,7 @@ void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 	if (!gpio_is_valid(ctrl_pdata->rst_gpio)) {
 		pr_debug("%s:%d, reset line not configured\n",
 			   __func__, __LINE__);
-		return;
+		return -EPERM;
 	}
 
 	pr_debug("%s: enable = %d\n", __func__, enable);
@@ -130,6 +142,8 @@ void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 		if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
 			gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
 	}
+
+	return 0;
 }
 
 static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
@@ -171,6 +185,7 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 {
 	struct mipi_panel_info *mipi;
 	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
+	int ret = 0;
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
@@ -181,15 +196,24 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 				panel_data);
 	mipi  = &pdata->panel_info.mipi;
 
-	pr_debug("%s: ctrl=%p ndx=%d\n", __func__, ctrl, ctrl->ndx);
+	pr_info("%s: ctrl=%p ndx=%d\n", __func__, ctrl, ctrl->ndx);
 
-	if (ctrl->on_cmds->size)
-		mdss_dsi_cmds_tx(pdata, &dsi_panel_tx_buf,
+	if (ctrl->on_cmds->size) {
+		ret = mdss_dsi_cmds_tx(pdata, &dsi_panel_tx_buf,
 				 ctrl->on_cmds->buf,
 				 ctrl->on_cmds->size);
+		if (ret < 0) {
+			pr_err("%s: Error sending ON cmds failed\n", __func__);
+			return ret;
+		}
+	}
 
-	mdss_dsi_cmds_tx(pdata, &dsi_panel_tx_buf,
+	ret = mdss_dsi_cmds_tx(pdata, &dsi_panel_tx_buf,
 			&dsi_tear_on_cmd, 1);
+	if (ret < 0) {
+		pr_err("%s: Error sending ON cmds failed\n", __func__);
+		return ret;
+	}
 
 	return 0;
 }
@@ -198,6 +222,7 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 {
 	struct mipi_panel_info *mipi;
 	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
+	int ret = 0;
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
@@ -211,14 +236,22 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 
 	mipi  = &pdata->panel_info.mipi;
 
-	mdss_dsi_cmds_tx(pdata, &dsi_panel_tx_buf,
+	ret = mdss_dsi_cmds_tx(pdata, &dsi_panel_tx_buf,
 			&dsi_tear_off_cmd, 1);
+	if (ret < 0) {
+		pr_err("%s: Error sending ON cmds failed\n", __func__);
+		return ret;
+	}
 
-	if (ctrl->off_cmds->size)
-		mdss_dsi_cmds_tx(pdata, &dsi_panel_tx_buf,
+	if (ctrl->off_cmds->size) {
+		ret = mdss_dsi_cmds_tx(pdata, &dsi_panel_tx_buf,
 				 ctrl->off_cmds->buf,
 				 ctrl->off_cmds->size);
-
+		if (ret < 0) {
+			pr_err("%s: Error sending ON cmds failed\n", __func__);
+			return ret;
+		}
+	}
 	return 0;
 }
 

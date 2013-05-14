@@ -25,6 +25,8 @@
 #include "mdss.h"
 #include "mdss_dsi.h"
 
+#define DSI_CMDS_TIMEOUT_MS 	900
+
 static struct completion dsi_dma_comp;
 static spinlock_t dsi_irq_lock;
 static spinlock_t dsi_mdp_lock;
@@ -1046,6 +1048,7 @@ int mdss_dsi_cmds_tx(struct mdss_panel_data *pdata,
 	int i, video_mode;
 	unsigned long flag;
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+	int ret = cnt;
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
@@ -1099,7 +1102,12 @@ int mdss_dsi_cmds_tx(struct mdss_panel_data *pdata,
 	for (i = 0; i < cnt; i++) {
 		mdss_dsi_buf_init(tp);
 		mdss_dsi_cmd_dma_add(tp, cm);
-		mdss_dsi_cmd_dma_tx(tp, pdata);
+		ret = mdss_dsi_cmd_dma_tx(tp, pdata);
+		if (ret < 0) {
+			pr_err("%s: cmd tx failed\n", __func__);
+			break;
+		}
+
 		if (cm->wait)
 			msleep(cm->wait);
 		cm++;
@@ -1113,7 +1121,7 @@ int mdss_dsi_cmds_tx(struct mdss_panel_data *pdata,
 	if (video_mode)
 		MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x0004,
 					dsi_ctrl); /* restore */
-	return cnt;
+	return ret;
 }
 
 /* MDSS_DSI_MRPS, Maximum Return Packet Size */
@@ -1144,6 +1152,7 @@ int mdss_dsi_cmds_rx(struct mdss_panel_data *pdata,
 	unsigned long flag;
 	char cmd;
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+	int ret;
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
@@ -1189,7 +1198,11 @@ int mdss_dsi_cmds_rx(struct mdss_panel_data *pdata,
 		max_pktsize[0] = pkt_size;
 		mdss_dsi_buf_init(tp);
 		mdss_dsi_cmd_dma_add(tp, pkt_size_cmd);
-		mdss_dsi_cmd_dma_tx(tp, pdata);
+		ret = mdss_dsi_cmd_dma_tx(tp, pdata);
+		if (ret < 0) {
+			pr_err("%s: cmd tx failed\n", __func__);
+			return ret;
+		}
 		pr_debug("%s: Max packet size sent\n", __func__);
 	}
 
@@ -1197,7 +1210,11 @@ int mdss_dsi_cmds_rx(struct mdss_panel_data *pdata,
 	mdss_dsi_cmd_dma_add(tp, cmds);
 
 	/* transmit read comamnd to client */
-	mdss_dsi_cmd_dma_tx(tp, pdata);
+	ret = mdss_dsi_cmd_dma_tx(tp, pdata);
+	if (ret < 0) {
+		pr_err("%s: cmd tx failed\n", __func__);
+		return ret;
+	}
 	/*
 	 * once cmd_dma_done interrupt received,
 	 * return data from client is ready and stored
@@ -1265,6 +1282,8 @@ int mdss_dsi_cmd_dma_tx(struct dsi_buf *tp,
 	char *bp;
 	unsigned long size, addr;
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+	bool iommu_attached;
+	int ret;
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
@@ -1274,7 +1293,7 @@ int mdss_dsi_cmd_dma_tx(struct dsi_buf *tp,
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 	bp = tp->data;
-
+	ret = tp->len;
 	len = ALIGN(tp->len, 4);
 	size = ALIGN(tp->len, SZ_4K);
 
@@ -1284,13 +1303,14 @@ int mdss_dsi_cmd_dma_tx(struct dsi_buf *tp,
 		return -ENOMEM;
 	}
 
-	if (is_mdss_iommu_attached()) {
-		int ret = msm_iommu_map_contig_buffer(tp->dmap,
+	iommu_attached = is_mdss_iommu_attached();
+	if (iommu_attached) {
+		ret = msm_iommu_map_contig_buffer(tp->dmap,
 					mdss_get_iommu_domain(domain), 0,
 					size, SZ_4K, 0, &(addr));
 		if (IS_ERR_VALUE(ret)) {
 			pr_err("unable to map dma memory to iommu(%d)\n", ret);
-			return -ENOMEM;
+			ret = -ENOMEM;
 		}
 	} else {
 		addr = tp->dmap;
@@ -1318,15 +1338,22 @@ int mdss_dsi_cmd_dma_tx(struct dsi_buf *tp,
 	MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x090, 0x01);	/* trigger */
 	wmb();
 
-	wait_for_completion(&dsi_dma_comp);
+	ret = wait_for_completion_timeout(&dsi_dma_comp,
+			msecs_to_jiffies(DSI_CMDS_TIMEOUT_MS));
+	if (ret == 0) {
+		pr_err("%s dsi dma timeout.\n", __func__);
+		ret = -ETIMEDOUT;
 
-	if (is_mdss_iommu_attached())
+	}
+
+	if (iommu_attached)
 		msm_iommu_unmap_contig_buffer(addr,
 			mdss_get_iommu_domain(domain), 0, size);
 
 	dma_unmap_single(&dsi_dev, tp->dmap, size, DMA_TO_DEVICE);
 	tp->dmap = 0;
-	return tp->len;
+
+	return ret;
 }
 
 int mdss_dsi_cmd_dma_rx(struct dsi_buf *rp, int rlen,
