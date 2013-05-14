@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -445,6 +445,82 @@ err:
 	return rc;
 }
 
+static int vcap_footswitch_enable(struct regulator_dev *rdev)
+{
+	struct footswitch *fs = rdev_get_drvdata(rdev);
+	struct fs_clk_data *clock;
+	uint32_t regval, rc = 0;
+
+	mutex_lock(&claim_lock);
+	fs->is_claimed = true;
+	mutex_unlock(&claim_lock);
+
+	/* Return early if already enabled. */
+	regval = readl_relaxed(fs->gfs_ctl_reg);
+	if ((regval & (ENABLE_BIT | CLAMP_BIT)) == ENABLE_BIT)
+		return 0;
+
+	/* Un-halt all bus ports in the power domain. */
+	if (fs->bus_port0) {
+		rc = msm_bus_axi_portunhalt(fs->bus_port0);
+		if (rc) {
+			pr_err("%s port 0 unhalt failed.\n", fs->desc.name);
+			goto err;
+		}
+	}
+	if (fs->bus_port1) {
+		rc = msm_bus_axi_portunhalt(fs->bus_port1);
+		if (rc) {
+			pr_err("%s port 1 unhalt failed.\n", fs->desc.name);
+			goto err_port2_halt;
+		}
+	}
+
+	/*
+	 * (Re-)Assert resets for all clocks in the clock domain, since
+	 * footswitch_enable() is first called before footswitch_disable()
+	 * and resets should be asserted before power is restored.
+	 */
+	for (clock = fs->clk_data; clock->clk; clock++)
+		; /* Do nothing */
+	for (clock--; clock >= fs->clk_data; clock--)
+		clk_reset(clock->clk, CLK_RESET_ASSERT);
+	/* Wait for synchronous resets to propagate. */
+	udelay(RESET_DELAY_US);
+
+	/* Enable the power rail at the footswitch. */
+	regval |= ENABLE_BIT;
+	writel_relaxed(regval, fs->gfs_ctl_reg);
+
+	/* Wait for the rail to fully charge. */
+	mb();
+	udelay(1);
+
+	setup_clocks(fs);
+
+	/* Un-clamp the I/O ports. */
+	regval &= ~CLAMP_BIT;
+	writel_relaxed(regval, fs->gfs_ctl_reg);
+
+	/* Deassert resets for all clocks in the power domain. */
+	for (clock = fs->clk_data; clock->clk; clock++)
+		clk_reset(clock->clk, CLK_RESET_DEASSERT);
+
+	/* Prevent core memory from collapsing when its clock is gated. */
+	clk_set_flags(fs->core_clk, CLKFLAG_RETAIN);
+
+	/* Return clocks to their state before this function. */
+	restore_clocks(fs);
+
+	fs->is_enabled = true;
+	return 0;
+
+err_port2_halt:
+	msm_bus_axi_porthalt(fs->bus_port0);
+err:
+	return rc;
+}
+
 static struct regulator_ops standard_fs_ops = {
 	.is_enabled = footswitch_is_enabled,
 	.enable = footswitch_enable,
@@ -455,6 +531,12 @@ static struct regulator_ops gfx2d_fs_ops = {
 	.is_enabled = footswitch_is_enabled,
 	.enable = gfx2d_footswitch_enable,
 	.disable = gfx2d_footswitch_disable,
+};
+
+static struct regulator_ops vcap_fs_ops = {
+	.is_enabled = footswitch_is_enabled,
+	.enable = vcap_footswitch_enable,
+	.disable = footswitch_disable,
 };
 
 #define FOOTSWITCH(_id, _name, _ops, _gfs_ctl_reg) \
@@ -478,7 +560,7 @@ static struct footswitch footswitches[] = {
 	FOOTSWITCH(FS_VED,    "fs_ved",   &standard_fs_ops, VED_GFS_CTL_REG),
 	FOOTSWITCH(FS_VFE,    "fs_vfe",   &standard_fs_ops, VFE_GFS_CTL_REG),
 	FOOTSWITCH(FS_VPE,    "fs_vpe",   &standard_fs_ops, VPE_GFS_CTL_REG),
-	FOOTSWITCH(FS_VCAP,   "fs_vcap",  &standard_fs_ops, VCAP_GFS_CTL_REG),
+	FOOTSWITCH(FS_VCAP,   "fs_vcap",  &vcap_fs_ops, VCAP_GFS_CTL_REG),
 };
 
 static int footswitch_probe(struct platform_device *pdev)
