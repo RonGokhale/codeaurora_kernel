@@ -468,6 +468,10 @@ static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 		if (rc) {
 			pr_warn("intf #%d unblank error (%d)\n",
 					ctl->intf_num, rc);
+			WARN_ON(1);
+
+			while(1);
+
 			video_vsync_irq_disable(ctl);
 			ctx->wait_pending = 0;
 			return rc;
