@@ -189,9 +189,12 @@ struct cgroup_event {
 static LIST_HEAD(roots);
 static int root_count;
 
-static DEFINE_IDA(hierarchy_ida);
-static int next_hierarchy_id;
-static DEFINE_SPINLOCK(hierarchy_id_lock);
+/*
+ * Hierarchy ID allocation and mapping.  It follows the same exclusion
+ * rules as other root ops - both cgroup_mutex and cgroup_root_mutex for
+ * writes, either for reads.
+ */
+static DEFINE_IDR(cgroup_hierarchy_idr);
 
 /* dummytop is a shorthand for the dummy hierarchy's top cgroup */
 #define dummytop (&rootnode.top_cgroup)
@@ -1426,29 +1429,30 @@ static void init_cgroup_root(struct cgroupfs_root *root)
 	list_add_tail(&cgrp->allcg_node, &root->allcg_list);
 }
 
-static bool init_root_id(struct cgroupfs_root *root)
+static int cgroup_init_root_id(struct cgroupfs_root *root)
 {
-	int ret = 0;
+	int id;
 
-	do {
-		if (!ida_pre_get(&hierarchy_ida, GFP_KERNEL))
-			return false;
-		spin_lock(&hierarchy_id_lock);
-		/* Try to allocate the next unused ID */
-		ret = ida_get_new_above(&hierarchy_ida, next_hierarchy_id,
-					&root->hierarchy_id);
-		if (ret == -ENOSPC)
-			/* Try again starting from 0 */
-			ret = ida_get_new(&hierarchy_ida, &root->hierarchy_id);
-		if (!ret) {
-			next_hierarchy_id = root->hierarchy_id + 1;
-		} else if (ret != -EAGAIN) {
-			/* Can only get here if the 31-bit IDR is full ... */
-			BUG_ON(ret);
-		}
-		spin_unlock(&hierarchy_id_lock);
-	} while (ret);
-	return true;
+	lockdep_assert_held(&cgroup_mutex);
+	lockdep_assert_held(&cgroup_root_mutex);
+
+	id = idr_alloc_cyclic(&cgroup_hierarchy_idr, root, 2, 0, GFP_KERNEL);
+	if (id < 0)
+		return id;
+
+	root->hierarchy_id = id;
+	return 0;
+}
+
+static void cgroup_exit_root_id(struct cgroupfs_root *root)
+{
+	lockdep_assert_held(&cgroup_mutex);
+	lockdep_assert_held(&cgroup_root_mutex);
+
+	if (root->hierarchy_id) {
+		idr_remove(&cgroup_hierarchy_idr, root->hierarchy_id);
+		root->hierarchy_id = 0;
+	}
 }
 
 static int cgroup_test_super(struct super_block *sb, void *data)
@@ -1482,10 +1486,6 @@ static struct cgroupfs_root *cgroup_root_from_opts(struct cgroup_sb_opts *opts)
 	if (!root)
 		return ERR_PTR(-ENOMEM);
 
-	if (!init_root_id(root)) {
-		kfree(root);
-		return ERR_PTR(-ENOMEM);
-	}
 	init_cgroup_root(root);
 
 	root->subsys_mask = opts->subsys_mask;
@@ -1500,17 +1500,15 @@ static struct cgroupfs_root *cgroup_root_from_opts(struct cgroup_sb_opts *opts)
 	return root;
 }
 
-static void cgroup_drop_root(struct cgroupfs_root *root)
+static void cgroup_free_root(struct cgroupfs_root *root)
 {
-	if (!root)
-		return;
+	if (root) {
+		/* hierarhcy ID shoulid already have been released */
+		WARN_ON_ONCE(root->hierarchy_id);
 
-	BUG_ON(!root->hierarchy_id);
-	spin_lock(&hierarchy_id_lock);
-	ida_remove(&hierarchy_ida, root->hierarchy_id);
-	spin_unlock(&hierarchy_id_lock);
-	ida_destroy(&root->cgroup_ida);
-	kfree(root);
+		ida_destroy(&root->cgroup_ida);
+		kfree(root);
+	}
 }
 
 static int cgroup_set_super(struct super_block *sb, void *data)
@@ -1597,7 +1595,7 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 	sb = sget(fs_type, cgroup_test_super, cgroup_set_super, 0, &opts);
 	if (IS_ERR(sb)) {
 		ret = PTR_ERR(sb);
-		cgroup_drop_root(opts.new_root);
+		cgroup_free_root(opts.new_root);
 		goto drop_modules;
 	}
 
@@ -1638,6 +1636,10 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 		 * have some link structures left over
 		 */
 		ret = allocate_cg_links(css_set_count, &tmp_cg_links);
+		if (ret)
+			goto unlock_drop;
+
+		ret = cgroup_init_root_id(root);
 		if (ret)
 			goto unlock_drop;
 
@@ -1684,7 +1686,7 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 		 * We re-used an existing hierarchy - the new root (if
 		 * any) is not needed
 		 */
-		cgroup_drop_root(opts.new_root);
+		cgroup_free_root(opts.new_root);
 
 		if (((root->flags | opts.flags) & CGRP_ROOT_SANE_BEHAVIOR) &&
 		    root->flags != opts.flags) {
@@ -1702,6 +1704,7 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 	return dget(sb->s_root);
 
  unlock_drop:
+	cgroup_exit_root_id(root);
 	mutex_unlock(&cgroup_root_mutex);
 	mutex_unlock(&cgroup_mutex);
 	mutex_unlock(&inode->i_mutex);
@@ -1754,13 +1757,15 @@ static void cgroup_kill_sb(struct super_block *sb) {
 		root_count--;
 	}
 
+	cgroup_exit_root_id(root);
+
 	mutex_unlock(&cgroup_root_mutex);
 	mutex_unlock(&cgroup_mutex);
 
 	simple_xattrs_free(&cgrp->xattrs);
 
 	kill_litter_super(sb);
-	cgroup_drop_root(root);
+	cgroup_free_root(root);
 }
 
 static struct file_system_type cgroup_fs_type = {
@@ -1821,6 +1826,38 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(cgroup_path);
+
+/**
+ * task_cgroup_path_from_hierarchy - cgroup path of a task on a hierarchy
+ * @task: target task
+ * @hierarchy_id: the hierarchy to look up @task's cgroup from
+ * @buf: the buffer to write the path into
+ * @buflen: the length of the buffer
+ *
+ * Determine @task's cgroup on the hierarchy specified by @hierarchy_id and
+ * copy its path into @buf.  This function grabs cgroup_mutex and shouldn't
+ * be used inside locks used by cgroup controller callbacks.
+ */
+int task_cgroup_path_from_hierarchy(struct task_struct *task, int hierarchy_id,
+				    char *buf, size_t buflen)
+{
+	struct cgroupfs_root *root;
+	struct cgroup *cgrp = NULL;
+	int ret = -ENOENT;
+
+	mutex_lock(&cgroup_mutex);
+
+	root = idr_find(&cgroup_hierarchy_idr, hierarchy_id);
+	if (root) {
+		cgrp = task_cgroup_from_root(task, root);
+		ret = cgroup_path(cgrp, buf, buflen);
+	}
+
+	mutex_unlock(&cgroup_mutex);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(task_cgroup_path_from_hierarchy);
 
 /*
  * Control Group taskset
@@ -4643,7 +4680,15 @@ int __init cgroup_init(void)
 	/* Add init_css_set to the hash table */
 	key = css_set_hash(init_css_set.subsys);
 	hash_add(css_set_table, &init_css_set.hlist, key);
-	BUG_ON(!init_root_id(&rootnode));
+
+	/* allocate id for the dummy hierarchy */
+	mutex_lock(&cgroup_mutex);
+	mutex_lock(&cgroup_root_mutex);
+
+	BUG_ON(cgroup_init_root_id(&rootnode));
+
+	mutex_unlock(&cgroup_root_mutex);
+	mutex_unlock(&cgroup_mutex);
 
 	cgroup_kobj = kobject_create_and_add("cgroup", fs_kobj);
 	if (!cgroup_kobj) {
