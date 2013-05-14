@@ -864,6 +864,7 @@ void mdp4_primary_vsync_lcdc(void)
 	int cndx;
 	struct vsycn_ctrl *vctrl;
 	uint32 *tp, LSW;
+	static int vg1fd_last;
 
 	cndx = 0;
 	vctrl = &vsync_ctrl_db[cndx];
@@ -880,6 +881,13 @@ void mdp4_primary_vsync_lcdc(void)
 		vctrl->avtimer_tick = (unsigned long long) inpdw(tp);
 		vctrl->avtimer_tick = ((vctrl->avtimer_tick << 32) | LSW);
 		vctrl->vsync_count = vctrl->vsync_count + 1;
+		if (vg1fd_last == vctrl->vg1fd) {
+			mdp4_stat.frame_repeat_cnt++;
+			mdp4_stat.frame_cnt_from_last_drop = 0;
+		} else
+			mdp4_stat.frame_cnt_from_last_drop++;
+		mdp4_stat.frame_cnt++;
+		vg1fd_last = vctrl->vg1fd;
 	}
 
 	vctrl->vsync_event++;
