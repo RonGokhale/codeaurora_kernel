@@ -101,6 +101,8 @@ enum vcap_op_mode {
 
 struct vc_action {
 	struct list_head		active;
+	int size;
+	bool pause;
 
 	/* thread for generating video stream*/
 	wait_queue_head_t		wq;

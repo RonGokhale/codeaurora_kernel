@@ -485,6 +485,7 @@ void vc_stop_capture(struct vcap_client_data *c_data)
 	reg = readl_relaxed(VCAP_VC_NPL_CTRL);
 	reg = readl_relaxed(VCAP_VC_NPL_CTRL);
 	writel_iowmb(0x00000002, VCAP_VC_NPL_CTRL);
+	c_data->vc_action.pause = false;
 }
 
 int config_vc_format(struct vcap_client_data *c_data)
@@ -583,5 +584,39 @@ int detect_vc(struct vcap_dev *dev)
 
 int deinit_vc(void)
 {
+	return 0;
+}
+
+int vc_pause(struct vcap_client_data *c_data)
+{
+	/*
+	 * If vc_enable is 1 when reset is called then irq is
+	 * will be disabled. If vc_enable is kept at 0 then
+	 * any qbuf call might trigger vc to come out of puase
+   */
+	atomic_set(&c_data->dev->vc_enabled, 0);
+	vc_sw_reset(c_data->dev);
+	atomic_set(&c_data->dev->vc_enabled, 1);
+	return 0;
+}
+
+int vc_resume(struct vcap_client_data *c_data)
+{
+	struct vcap_dev *dev = c_data->dev;
+	int rc = 0, i;
+
+	/* reconfigure vc in case case s_fmt was called */
+	config_vc_format(c_data);
+	atomic_set(&dev->dbg_p.vc_drop_count, 0);
+
+	for (i = 0; i < c_data->vc_action.tot_buf; i++)
+		rc = rc << 1 | 0x2;
+	rc |= VC_ERR_MASK;
+	rc |= VC_VSYNC_MASK;
+	writel_relaxed(rc, VCAP_VC_INT_MASK);
+
+	/* Reset in pause disables irq */
+	rc = readl_relaxed(VCAP_VC_CTRL);
+	writel_iowmb(rc | 0x1, VCAP_VC_CTRL);
 	return 0;
 }
