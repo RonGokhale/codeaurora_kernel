@@ -1094,6 +1094,9 @@ void mdp4_overlay_vg_setup(struct mdp4_overlay_pipe *pipe)
 
 	outpdw(vg_base + 0x0050, format);	/* MDP_RGB_SRC_FORMAT */
 	outpdw(vg_base + 0x0054, pattern);	/* MDP_RGB_SRC_UNPACK_PATTERN */
+	if (pipe->pp_cfg.config_ops & MDP_OVERLAY_PP_QSEED_CFG)
+		pipe->op_mode |= (MDP4_OP_SCALEX_EN | MDP4_OP_SCALEY_EN);
+
 	if (format & MDP4_FORMAT_SOLID_FILL) {
 		u32 op_mode = pipe->op_mode;
 		op_mode &= ~(MDP4_OP_FLIP_LR + MDP4_OP_SCALEX_EN);
