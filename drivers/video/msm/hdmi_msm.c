@@ -4500,7 +4500,13 @@ static int hdmi_msm_power_on(struct platform_device *pdev)
 		goto error;
 	}
 
-	hdmi_common_get_video_format_from_drv_data(mfd);
+	if (hdmi_msm_state->panel_power_on) {
+		DEV_INFO("HDMI already ON\n");
+		goto error;
+	}
+
+	if (hdmi_common_get_video_format_from_drv_data(mfd))
+		hdmi_common_init_panel_info(&mfd->panel_info);
 
 	mutex_lock(&external_common_state_hpd_mutex);
 	if (external_common_state->hpd_state && hdmi_msm_is_power_on()) {

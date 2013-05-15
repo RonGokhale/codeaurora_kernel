@@ -242,12 +242,31 @@ struct mdp4_pp_set_ctrl {
 	struct mutex mdp_postproc_mutex;
 	bool mdp_postproc_set;
 };
+#define FRC_MAX_WAIT_VSYNC_CYCLE	3
+#define FRC_CADENCE_23_RATIO	25000
+#define FRC_CADENCE_22_RATIO	20000
+#define FRC_CADENCE_22_RATIO_LOW	19400
+#define FRC_CADENCE_22_RATIO_HIGH	20600
+#define FRC_CADENCE_23_RATIO_LOW	24500
+#define FRC_CADENCE_23_RATIO_HIGH	25500
+#define FRC_FREE_RUN_DETECT_SIZE	10
+#define FRC_FREE_RUN_MAX	1
+#define FRC_FRAMERATE_DETECT_SIZE	4
+
+#define FRC_MAX_RENDER_LATENCY	900
 
 #ifdef BLT_RGB565
 #define BLT_BPP 2
 #else
 #define BLT_BPP 3
 #endif
+
+enum {
+	FRC_CADENCE_NONE,
+	FRC_CADENCE_23,
+	FRC_CADENCE_22,
+	FRC_CADENCE_FREE_RUN
+};
 
 struct mdp4_hsic_regs {
 	int32_t params[NUM_HSIC_PARAM];
@@ -295,6 +314,7 @@ struct mdp4_overlay_pipe {
 	uint32 mixer_num;		/* which mixer used */
 	uint32 mixer_stage;		/* which stage of mixer used */
 	uint32 src_format;
+	uint32 src_type;
 	uint32 src_width;	/* source img width */
 	uint32 src_height;	/* source img height */
 	uint32 is_3d;
@@ -378,6 +398,21 @@ struct mdp4_overlay_pipe {
 	uint64 bw_ab_quota;
 	uint64 bw_ib_quota;
 	uint32 luma_align_size;
+	uint32 frame_rate;
+	uint32 frc_data_play;
+	uint32 frc_last_repeat;
+	uint32 frc_cadence;
+	uint32 frc_last_vsync_cnt;
+	uint32 play_time_100us;
+	uint32 frc_base_ts;
+	uint32 frc_base_frame_cnt;
+	uint32 frc_cnt;
+	uint32 frc_free_run_base;
+	uint32 frc_free_run_cnt;
+	uint32 frc_min_fps_ratio;
+	uint32 frc_max_fps_ratio;
+	struct msmfb_frc_data last_frc_data;
+	struct msmfb_frc_data cur_frc_data;
 	struct mdp_overlay_pp_params pp_cfg;
 	struct mdp_overlay req_data;
 	struct completion comp;
@@ -496,7 +531,11 @@ int mdp4_overlay_dtv_unset(struct msm_fb_data_type *mfd,
 			struct mdp4_overlay_pipe *pipe);
 void mdp4_dmae_done_dtv(void);
 void mdp4_dtv_wait4vsync(int cndx, long long *vtime);
+u32 mdp4_dtv_wait_expect_vsync(u32 timeout, u32 expect_vsync);
 void mdp4_dtv_vsync_ctrl(struct fb_info *info, int enable);
+u32 mdp4_dtv_get_vsync_cnt(void);
+u32 mdp4_lcdc_get_vsync_cnt(void);
+u32 mdp4_lcdc_wait_expect_vsync(u32 timeout, u32 expect_vsync);
 void mdp4_dtv_base_swap(int cndx, struct mdp4_overlay_pipe *pipe);
 #else
 static inline void mdp4_overlay_dtv_start(void)
@@ -1004,6 +1043,8 @@ int mdp4_update_panel_tune(struct msm_fb_data_type *mfd,
 				struct panel_param_cfg *panel_param_cfg);
 u32 mdp4_get_mixer_num(u32 panel_type);
 int mdp4_pcc_write_cfg(struct mdp_pcc_cfg_data *cfg);
+int mdp4_overlay_reset(struct msm_fb_data_type *mfd);
+void mdp4_overlay_frc_update(struct msm_fb_data_type *mfd);
 
 #ifndef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL
 static inline void mdp4_wfd_pipe_queue(int cndx, struct mdp4_overlay_pipe *pipe)

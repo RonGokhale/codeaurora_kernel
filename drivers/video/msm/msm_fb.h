@@ -157,6 +157,9 @@ struct msm_fb_data_type {
 	__u32 var_yres;
 	__u32 var_pixclock;
 	__u32 var_frame_rate;
+	u32 disp_frame_rate;
+	u32 disp_frame_period;
+	u32 var_vic;
 
 #ifdef MSM_FB_ENABLE_DBGFS
 	struct dentry *sub_dir;
@@ -193,6 +196,12 @@ struct msm_fb_data_type {
 	u32 writeback_state;
 	bool writeback_active_cnt;
 	int cont_splash_done;
+	u32 frc_pipe_ndx;
+	struct mutex sync_mutex;
+	struct completion commit_comp;
+	u32 is_committing;
+	struct work_struct commit_work;
+	void *msm_fb_backup;
 	void *copy_splash_buf;
 	unsigned char *copy_splash_phys;
 	void *cpu_pm_hdl;

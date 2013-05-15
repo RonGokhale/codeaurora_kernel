@@ -856,17 +856,11 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 			ret = pdata->on(mfd->pdev);
 			if (ret == 0) {
 				mfd->panel_power_on = TRUE;
-
-/* ToDo: possible conflict with android which doesn't expect sw refresher */
-/*
-	  if (!mfd->hw_refresh)
-	  {
-	    if ((ret = msm_fb_resume_sw_refresher(mfd)) != 0)
-	    {
-	      MSM_FB_INFO("msm_fb_blank_sub: msm_fb_resume_sw_refresher failed = %d!\n",ret);
-	    }
-	  }
-*/
+				mfd->disp_frame_rate =
+					mdp_get_panel_framerate(mfd);
+				if (mfd->disp_frame_rate)
+					mfd->disp_frame_period = 1000000 /
+					mfd->disp_frame_rate;
 			}
 		}
 		break;

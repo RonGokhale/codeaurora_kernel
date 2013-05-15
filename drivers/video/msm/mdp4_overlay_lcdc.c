@@ -74,6 +74,7 @@ static struct vsycn_ctrl {
 	unsigned long long avtimer_tick;
 	wait_queue_head_t vsync_queue;
 	uint32 vsync_event;
+	uint32 vsync_cnt;
 } vsync_ctrl_db[MAX_CONTROLLER];
 
 
@@ -238,6 +239,7 @@ int mdp4_lcdc_pipe_commit(int cndx, int wait)
 		}
 	}
 
+	mdp4_overlay_frc_update(vctrl->mfd);
 	mdp4_mixer_stage_commit(mixer);
 
 	/* start timing generator & mmu if they are not started yet */
@@ -856,6 +858,29 @@ static void mdp4_lcdc_blt_dmap_update(struct mdp4_overlay_pipe *pipe)
 	MDP_OUTP(MDP_BASE + 0x90008, addr);
 }
 
+u32 mdp4_lcdc_get_vsync_cnt(void)
+{
+	struct vsycn_ctrl *vctrl;
+	vctrl = &vsync_ctrl_db[0];
+	return vctrl->vsync_cnt;
+}
+
+u32 mdp4_lcdc_wait_expect_vsync(u32 timeout, u32 expect_vsync)
+{
+	struct vsycn_ctrl *vctrl;
+	int ret;
+
+	vctrl = &vsync_ctrl_db[0];
+
+	ret = wait_event_interruptible_timeout(
+			vctrl->vsync_queue,
+			(expect_vsync == vctrl->vsync_cnt),
+			timeout);
+	if (ret <= 0)
+		pr_err("%s fails: %d", __func__, ret);
+	return vctrl->vsync_cnt;
+}
+
 /*
  * mdp4_primary_vsync_lcdc: called from isr
  */
@@ -891,6 +916,7 @@ void mdp4_primary_vsync_lcdc(void)
 	}
 
 	vctrl->vsync_event++;
+	vctrl->vsync_cnt++;
 	wake_up_interruptible(&vctrl->vsync_queue);
 	spin_unlock(&vctrl->spin_lock);
 }
