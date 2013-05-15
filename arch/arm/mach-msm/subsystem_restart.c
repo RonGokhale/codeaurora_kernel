@@ -495,7 +495,7 @@ static int subsys_start(struct subsys_device *subsys)
 	if (ret)
 		return ret;
 
-	if (!subsys->desc->is_loadable)
+	if (subsys->desc->is_not_loadable)
 		return 0;
 
 	ret = wait_for_err_ready(subsys);
@@ -938,6 +938,10 @@ static irqreturn_t subsys_err_ready_intr_handler(int irq, void *subsys)
 	struct subsys_device *subsys_dev = subsys;
 	pr_info("Error ready interrupt occured for %s\n",
 		 subsys_dev->desc->name);
+
+	if (subsys_dev->desc->is_not_loadable)
+		return IRQ_HANDLED;
+
 	complete(&subsys_dev->err_ready);
 	return IRQ_HANDLED;
 }

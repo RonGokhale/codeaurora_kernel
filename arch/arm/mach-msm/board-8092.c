@@ -29,6 +29,7 @@
 #include <linux/gpio.h>
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
+#include <mach/clk-provider.h>
 
 #include "board-dt.h"
 #include "clock.h"
@@ -37,6 +38,11 @@
 static struct clk_lookup msm_clocks_dummy[] = {
 	CLK_DUMMY("core_clk",   BLSP1_UART_CLK, "msm_serial_hsl.0", OFF),
 	CLK_DUMMY("iface_clk",  BLSP1_UART_CLK, "msm_serial_hsl.0", OFF),
+	CLK_DUMMY("core_clk",	SDC1_CLK,	"msm_sdcc.1", OFF),
+	CLK_DUMMY("iface_clk",	SDC1_P_CLK,	"msm_sdcc.1", OFF),
+	CLK_DUMMY("core_clk",	SDC2_CLK,	"msm_sdcc.2", OFF),
+	CLK_DUMMY("iface_clk",	SDC2_P_CLK,	"msm_sdcc.2", OFF),
+
 };
 
 struct clock_init_data mpq8092_clock_init_data __initdata = {

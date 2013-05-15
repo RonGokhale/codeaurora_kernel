@@ -671,7 +671,7 @@ static void msm_pm_set_timer(uint32_t modified_time_us)
 	u64 modified_time_ns = modified_time_us * NSEC_PER_USEC;
 	ktime_t modified_ktime = ns_to_ktime(modified_time_ns);
 	pm_hrtimer.function = pm_hrtimer_cb;
-	hrtimer_start(&pm_hrtimer, modified_ktime, HRTIMER_MODE_ABS);
+	hrtimer_start(&pm_hrtimer, modified_ktime, HRTIMER_MODE_REL);
 }
 
 /******************************************************************************
@@ -1248,24 +1248,19 @@ core_initcall(msm_pm_setup_saved_state);
 
 static void setup_broadcast_timer(void *arg)
 {
-	unsigned long reason = (unsigned long)arg;
 	int cpu = smp_processor_id();
 
-	reason = reason ?
-		CLOCK_EVT_NOTIFY_BROADCAST_ON : CLOCK_EVT_NOTIFY_BROADCAST_OFF;
-
-	clockevents_notify(reason, &cpu);
+	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ON, &cpu);
 }
 
 static int setup_broadcast_cpuhp_notify(struct notifier_block *n,
 		unsigned long action, void *hcpu)
 {
-	int hotcpu = (unsigned long)hcpu;
+	int cpu = (unsigned long)hcpu;
 
 	switch (action & ~CPU_TASKS_FROZEN) {
 	case CPU_ONLINE:
-		smp_call_function_single(hotcpu, setup_broadcast_timer,
-				(void *)true, 1);
+		smp_call_function_single(cpu, setup_broadcast_timer, NULL, 1);
 		break;
 	}
 
@@ -1288,14 +1283,11 @@ static int __init msm_pm_init(void)
 	msm_pm_mode_sysfs_add();
 	msm_pm_add_stats(enable_stats, ARRAY_SIZE(enable_stats));
 	suspend_set_ops(&msm_pm_ops);
-	hrtimer_init(&pm_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+	hrtimer_init(&pm_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	msm_cpuidle_init();
 
 	if (msm_pm_pc_reset_timer) {
-		get_cpu();
-		smp_call_function_many(cpu_online_mask, setup_broadcast_timer,
-				(void *)true, 1);
-		put_cpu();
+		on_each_cpu(setup_broadcast_timer, NULL, 1);
 		register_cpu_notifier(&setup_broadcast_notifier);
 	}
 
