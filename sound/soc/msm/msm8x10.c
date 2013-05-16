@@ -182,6 +182,42 @@ static int msm_config_mclk(u16 port_id, struct afe_digital_clk_cfg *cfg)
 
 }
 
+static int msm_config_mi2s_clk(int enable)
+{
+	int ret = 0;
+	pr_debug("%s(line %d):enable = %x\n", __func__, __LINE__, enable);
+	if (enable) {
+		digital_cdc_clk.clk_val = 9600000;
+		mi2s_rx_clk.clk_val2 = Q6AFE_LPASS_OSR_CLK_12_P288_MHZ;
+		mi2s_rx_clk.clk_val1 = Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ;
+		ret = afe_set_lpass_clock(AFE_PORT_ID_SECONDARY_MI2S_RX,
+					  &mi2s_rx_clk);
+		mi2s_tx_clk.clk_val2 = Q6AFE_LPASS_OSR_CLK_12_P288_MHZ;
+		mi2s_tx_clk.clk_val1 = Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ;
+		ret = afe_set_lpass_clock(AFE_PORT_ID_PRIMARY_MI2S_RX,
+					  &mi2s_tx_clk);
+		if (ret < 0)
+			pr_err("%s:afe_set_lpass_clock failed\n", __func__);
+
+	} else {
+		digital_cdc_clk.clk_val = 0;
+		mi2s_rx_clk.clk_val2 = Q6AFE_LPASS_OSR_CLK_DISABLE;
+		mi2s_rx_clk.clk_val1 = Q6AFE_LPASS_IBIT_CLK_DISABLE;
+		ret = afe_set_lpass_clock(AFE_PORT_ID_SECONDARY_MI2S_RX,
+					  &mi2s_rx_clk);
+		mi2s_tx_clk.clk_val2 = Q6AFE_LPASS_OSR_CLK_DISABLE;
+		mi2s_tx_clk.clk_val1 = Q6AFE_LPASS_IBIT_CLK_DISABLE;
+		ret = afe_set_lpass_clock(AFE_PORT_ID_PRIMARY_MI2S_RX,
+					  &mi2s_tx_clk);
+		if (ret < 0)
+			pr_err("%s:afe_set_lpass_clock failed\n", __func__);
+
+	}
+	ret = msm_config_mclk(AFE_PORT_ID_SECONDARY_MI2S_RX, &digital_cdc_clk);
+	return ret;
+}
+
+
 static int msm_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 				struct snd_pcm_hw_params *params)
 {
@@ -257,6 +293,7 @@ static int mi2s_clk_ctl(struct snd_pcm_substream *substream, bool enable)
 			pr_err("%s:afe_set_lpass_clock failed\n", __func__);
 
 	}
+	ret = msm_config_mclk(AFE_PORT_ID_SECONDARY_MI2S_RX, &digital_cdc_clk);
 	return ret;
 }
 
@@ -269,14 +306,15 @@ static int msm8x10_enable_codec_ext_clk(struct snd_soc_codec *codec,
 		   __func__, enable, codec->name, enable);
 	if (enable) {
 		digital_cdc_clk.clk_val = 9600000;
+		msm_config_mi2s_clk(1);
 		ret = msm_config_mclk(AFE_PORT_ID_SECONDARY_MI2S_RX,
 					   &digital_cdc_clk);
 		msm8x10_wcd_mclk_enable(codec, 1, dapm);
 	} else {
-		digital_cdc_clk.clk_val = 0;
 		msm8x10_wcd_mclk_enable(codec, 0, dapm);
 		ret = msm_config_mclk(AFE_PORT_ID_SECONDARY_MI2S_RX,
 					   &digital_cdc_clk);
+		msm_config_mi2s_clk(0);
 	}
 	return ret;
 }
