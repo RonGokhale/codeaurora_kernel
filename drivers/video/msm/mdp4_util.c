@@ -38,6 +38,48 @@ extern struct workqueue_struct *mdp_pp_wq;
 extern struct work_struct mdp_postproc_worker;
 extern struct mdp4_pp_set_ctrl mdp4_pp_set;
 
+struct mdp_csc_cfg csc_cfg_601_yuv2rgb = {
+	(MDP_CSC_FLAG_YUV_IN),
+	{
+		0x0254, 0x0000, 0x0331,
+		0x0254, 0xff37, 0xfe60,
+		0x0254, 0x0409, 0x0000,
+	},
+	{
+		0xfff0, 0xff80, 0xff80,
+	},
+	{
+		0, 0, 0,
+	},
+	{
+		0, 0xff, 0, 0xff, 0, 0xff,
+	},
+	{
+		0, 0xff, 0, 0xff, 0, 0xff,
+	},
+};
+
+struct mdp_csc_cfg csc_cfg_709_yuv2rgb = {
+	(MDP_CSC_FLAG_YUV_IN),
+	{
+		0x0254, 0x0000, 0x0396,
+		0x0254, 0xff92, 0xfeee,
+		0x0254, 0x043a, 0x0000,
+	},
+	{
+		0xfff0, 0xff80, 0xff80,
+	},
+	{
+		0, 0, 0,
+	},
+	{
+		0x10, 0xeb, 0x10, 0xf0, 0x10, 0xf0,
+	},
+	{
+		0, 0xff, 0, 0xff, 0, 0xff,
+	},
+};
+
 struct mdp_csc_cfg_data csc_cfg_matrix[CSC_MAX_BLOCKS] = {
 	{
 	.block = MDP_BLOCK_VG_1,

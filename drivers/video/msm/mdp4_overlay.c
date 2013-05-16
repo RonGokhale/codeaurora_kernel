@@ -844,6 +844,7 @@ void mdp4_overlay_vg_setup(struct mdp4_overlay_pipe *pipe)
 		if (pipe->pp_cfg.config_ops & MDP_OVERLAY_PP_CSC_CFG) {
 			mdp4_csc_write(&pipe->pp_cfg.csc_cfg,
 				(uint32_t) (vg_base + MDP4_VIDEO_CSC_OFF));
+			pipe->is_csc_init = true;
 
 			if (pipe->pipe_num == OVERLAY_PIPE_VG1)
 				block = MDP_BLOCK_VG_1;
@@ -879,6 +880,20 @@ void mdp4_overlay_vg_setup(struct mdp4_overlay_pipe *pipe)
 	} else if (ptype != OVERLAY_TYPE_RGB) {
 		/* Default CSC for Video content, yuv_to_rgb */
 		pipe->op_mode |= (MDP4_OP_CSC_EN | MDP4_OP_SRC_DATA_YCBCR);
+		if (pipe->is_csc_init == false) {
+			if ((pipe->src_height > 576) &&
+				(pipe->src_width > 720))
+				memcpy(&pipe->pp_cfg.csc_cfg,
+					&csc_cfg_709_yuv2rgb,
+					sizeof(struct mdp_csc_cfg));
+			else
+				memcpy(&pipe->pp_cfg.csc_cfg,
+					&csc_cfg_601_yuv2rgb,
+					sizeof(struct mdp_csc_cfg));
+			mdp4_csc_write(&pipe->pp_cfg.csc_cfg,
+				(uint32_t) (vg_base + MDP4_VIDEO_CSC_OFF));
+			pipe->is_csc_init = true;
+		}
 	}
 
 #ifdef MDP4_IGC_LUT_ENABLE
