@@ -101,13 +101,6 @@ static struct adreno_device device_3d0 = {
 		.iomemname = KGSL_3D0_REG_MEMORY,
 		.shadermemname = KGSL_3D0_SHADER_MEMORY,
 		.ftbl = &adreno_functable,
-#ifdef CONFIG_HAS_EARLYSUSPEND
-		.display_off = {
-			.level = EARLY_SUSPEND_LEVEL_STOP_DRAWING,
-			.suspend = kgsl_early_suspend_driver,
-			.resume = kgsl_late_resume_driver,
-		},
-#endif
 	},
 	.gmem_base = 0,
 	.gmem_size = SZ_256K,
@@ -813,7 +806,8 @@ static void adreno_iommu_setstate(struct kgsl_device *device,
 	struct adreno_ringbuffer *rb = &adreno_dev->ringbuffer;
 
 	if (!adreno_dev->drawctxt_active ||
-		KGSL_STATE_ACTIVE != device->state) {
+		KGSL_STATE_ACTIVE != device->state ||
+		!device->active_cnt) {
 		kgsl_mmu_device_setstate(&device->mmu, flags);
 		return;
 	}

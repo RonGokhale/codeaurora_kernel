@@ -217,9 +217,12 @@ static int venus_hfi_write_queue(void *info, u8 *packet, u32 *rx_req_is_set)
 			packet + ((packet_size_in_words - new_write_idx) << 2),
 			new_write_idx  << 2);
 	}
+	/* Memory barrier to make sure packet is written before updating the
+	 * write index */
+	mb();
 	queue->qhdr_write_idx = new_write_idx;
 	*rx_req_is_set = (1 == queue->qhdr_rx_req) ? 1 : 0;
-	/*Memory barrier to make sure data is written before an
+	/*Memory barrier to make sure write index is updated before an
 	 * interupt is raised on venus.*/
 	mb();
 	dprintk(VIDC_DBG, "Out : ");
@@ -2846,6 +2849,28 @@ int venus_hfi_get_stride_scanline(int color_fmt,
 	return 0;
 }
 
+int venus_hfi_capability_check(u32 fourcc, u32 width,
+		u32 *max_width, u32 *max_height)
+{
+	int rc = 0;
+	if (!max_width || !max_height) {
+		dprintk(VIDC_ERR, "%s - invalid parameter\n", __func__);
+		return -EINVAL;
+	}
+
+	if (msm_vp8_low_tier && fourcc == V4L2_PIX_FMT_VP8) {
+		*max_width = DEFAULT_WIDTH;
+		*max_height = DEFAULT_HEIGHT;
+	}
+	if (width > *max_width) {
+		dprintk(VIDC_ERR,
+		"Unsupported width = %u supported max width = %u",
+		width, *max_width);
+		rc = -ENOTSUPP;
+	}
+	return rc;
+}
+
 static void *venus_hfi_add_device(u32 device_id,
 			struct msm_vidc_platform_resources *res,
 			hfi_cmd_response_callback callback)
@@ -2985,6 +3010,7 @@ static void venus_init_hfi_callbacks(struct hfi_device *hdev)
 	hdev->unload_fw = venus_hfi_unload_fw;
 	hdev->get_fw_info = venus_hfi_get_fw_info;
 	hdev->get_stride_scanline = venus_hfi_get_stride_scanline;
+	hdev->capability_check = venus_hfi_capability_check;
 }
 
 int venus_hfi_initialize(struct hfi_device *hdev, u32 device_id,

@@ -29,6 +29,7 @@
 #include <mach/subsystem_notif.h>
 #include <mach/scm.h>
 #include <mach/ramdump.h>
+#include <mach/msm_smem.h>
 
 #include "peripheral-loader.h"
 #include "pil-q6v5.h"
@@ -407,6 +408,12 @@ static int __devinit pil_lpass_driver_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 	drv->err_fatal_irq = ret;
+
+	ret = gpio_to_irq(of_get_named_gpio(pdev->dev.of_node,
+					    "qcom,gpio-err-ready", 0));
+	if (ret < 0)
+		return ret;
+	drv->subsys_desc.err_ready_irq = ret;
 
 	ret = gpio_to_irq(of_get_named_gpio(pdev->dev.of_node,
 					    "qcom,gpio-proxy-unvote", 0));

@@ -144,6 +144,11 @@
 		qcom,adsp-state = <0>;
 	};
 
+	qcom,msm-audio-ion {
+		compatible = "qcom,msm-audio-ion";
+		qcom,smmu-enabled;
+	};
+
 	qcom,msm-imem@fe805000 {
 		compatible = "qcom,msm-imem";
 		reg = <0xfe805000 0x1000>; /* Address and size of IMEM */
@@ -706,6 +711,7 @@
 		/* GPIO inputs from lpass */
 		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_2_in 0 0>;
 		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_2_in 2 0>;
+		qcom,gpio-err-ready = <&smp2pgpio_ssr_smp2p_2_in 1 0>;
 
 		/* GPIO output to lpass */
 		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_2_out 0 0>;
@@ -725,7 +731,7 @@
 
 	qcom,msm-thermal {
 		compatible = "qcom,msm-thermal";
-		qcom,sensor-id = <0>;
+		qcom,sensor-id = <5>;
 		qcom,poll-ms = <250>;
 		qcom,limit-temp = <60>;
 		qcom,temp-hysteresis = <10>;

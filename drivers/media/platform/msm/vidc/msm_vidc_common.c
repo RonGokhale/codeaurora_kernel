@@ -61,8 +61,29 @@ static int msm_comm_get_load(struct msm_vidc_core *core,
 		if (inst->session_type == type &&
 			inst->state >= MSM_VIDC_OPEN_DONE &&
 			inst->state < MSM_VIDC_STOP_DONE) {
-			num_mbs_per_sec += NUM_MBS_PER_SEC(inst->prop.height,
-					inst->prop.width, inst->prop.fps);
+			int stride, scanlines, rc;
+			struct hfi_device *hdev;
+
+			hdev = inst->core->device;
+			if (!hdev) {
+				dprintk(VIDC_ERR,
+						"No hdev (probably in bad state)\n");
+				return -EINVAL;
+			}
+
+			rc = call_hfi_op(hdev, get_stride_scanline,
+					COLOR_FMT_NV12,
+					inst->prop.width, inst->prop.height,
+					&stride, &scanlines);
+			if (rc) {
+				dprintk(VIDC_WARN,
+						"Failed to determine stride/scan when getting load. Perf. might be affected\n");
+				stride = inst->prop.width;
+				scanlines = inst->prop.height;
+			}
+
+			num_mbs_per_sec += NUM_MBS_PER_SEC(stride, scanlines,
+					inst->prop.fps);
 		}
 		mutex_unlock(&inst->lock);
 	}
@@ -313,6 +334,7 @@ static int wait_for_sess_signal_receipt(struct msm_vidc_inst *inst,
 		msecs_to_jiffies(HW_RESPONSE_TIMEOUT));
 	if (!rc) {
 		dprintk(VIDC_ERR, "Wait interrupted or timeout: %d\n", rc);
+		msm_comm_recover_from_session_error(inst);
 		rc = -EIO;
 	} else {
 		rc = 0;
@@ -343,7 +365,7 @@ static void handle_session_init_done(enum command_response cmd, void *data)
 {
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst;
-	if (response) {
+	if (response && !response->status) {
 		struct vidc_hal_session_init_done *session_init_done =
 			(struct vidc_hal_session_init_done *) response->data;
 		inst = (struct msm_vidc_inst *)response->session_id;
@@ -1230,7 +1252,8 @@ static int msm_vidc_load_resources(int flipped_state,
 			}
 			mutex_unlock(&temp->lock);
 		}
-
+		inst->state = MSM_VIDC_CORE_INVALID;
+		msm_comm_recover_from_session_error(inst);
 		return -ENOMEM;
 	}
 
@@ -1882,6 +1905,8 @@ int msm_comm_try_get_bufreqs(struct msm_vidc_inst *inst)
 	if (!rc) {
 		dprintk(VIDC_ERR,
 			"Wait interrupted or timeout: %d\n", rc);
+		inst->state = MSM_VIDC_CORE_INVALID;
+		msm_comm_recover_from_session_error(inst);
 		rc = -EIO;
 		goto exit;
 	}
@@ -1942,6 +1967,13 @@ int msm_comm_release_scratch_buffers(struct msm_vidc_inst *inst)
 				mutex_unlock(&inst->lock);
 				rc = wait_for_sess_signal_receipt(inst,
 					SESSION_RELEASE_BUFFER_DONE);
+				if (rc) {
+					mutex_lock(&inst->sync_lock);
+					inst->state = MSM_VIDC_CORE_INVALID;
+					mutex_unlock(&inst->sync_lock);
+					msm_comm_recover_from_session_error(
+						inst);
+				}
 				mutex_lock(&inst->lock);
 			}
 			list_del(&buf->list);
@@ -2006,6 +2038,13 @@ int msm_comm_release_persist_buffers(struct msm_vidc_inst *inst)
 				mutex_unlock(&inst->lock);
 				rc = wait_for_sess_signal_receipt(inst,
 					SESSION_RELEASE_BUFFER_DONE);
+				if (rc) {
+					mutex_lock(&inst->sync_lock);
+					inst->state = MSM_VIDC_CORE_INVALID;
+					mutex_unlock(&inst->sync_lock);
+					msm_comm_recover_from_session_error(
+						inst);
+				}
 				mutex_lock(&inst->lock);
 			}
 			list_del(&buf->list);
@@ -2344,38 +2383,27 @@ int msm_vidc_check_session_supported(struct msm_vidc_inst *inst)
 	struct msm_vidc_core_capability *capability;
 	int rc = 0;
 	struct v4l2_event dqevent;
+	struct hfi_device *hdev;
 
-	if (!inst) {
+	if (!inst || !inst->core || !inst->core->device) {
 		dprintk(VIDC_WARN, "%s: Invalid parameter\n", __func__);
 		return -EINVAL;
 	}
 	capability = &inst->capability;
+	hdev = inst->core->device;
 
 	if (inst->capability.capability_set) {
-		if (msm_vp8_low_tier &&
-			inst->core->hfi_type == VIDC_HFI_VENUS &&
-			inst->fmts[OUTPUT_PORT]->fourcc == V4L2_PIX_FMT_VP8) {
-			capability->width.max = DEFAULT_WIDTH;
-			capability->height.max = DEFAULT_HEIGHT;
-		}
-		if (inst->prop.width < capability->width.min ||
-			inst->prop.width > capability->width.max ||
-			(inst->prop.width % capability->width.step_size != 0)) {
-			dprintk(VIDC_ERR,
-			"Unsupported width = %d range min(%u) - max(%u) step_size(%u)",
-			inst->prop.width, capability->width.min,
-			capability->width.max, capability->width.step_size);
-			rc = -ENOTSUPP;
-		}
+		rc = call_hfi_op(hdev, capability_check,
+			inst->fmts[OUTPUT_PORT]->fourcc,
+			inst->prop.width, &capability->width.max,
+			&capability->height.max);
 
-		if (inst->prop.height < capability->height.min ||
-			inst->prop.height > capability->height.max ||
-			(inst->prop.height %
-			capability->height.step_size != 0)) {
+		if (!rc && (inst->prop.height * inst->prop.width >
+			capability->width.max * capability->height.max)) {
 			dprintk(VIDC_ERR,
-			"Unsupported height = %d range min(%u) - max(%u) step_size(%u)",
-			inst->prop.height, capability->height.min,
-			capability->height.max, capability->height.step_size);
+			"Unsupported WxH = (%u)x(%u), Max supported is - (%u)x(%u)",
+			inst->prop.width, inst->prop.height,
+			capability->width.max, capability->height.max);
 			rc = -ENOTSUPP;
 		}
 	}
@@ -2391,6 +2419,20 @@ int msm_vidc_check_session_supported(struct msm_vidc_inst *inst)
 	return rc;
 }
 
+static void msm_comm_generate_sys_error(struct msm_vidc_inst *inst)
+{
+	struct msm_vidc_core *core;
+	enum command_response cmd = SYS_ERROR;
+	struct msm_vidc_cb_cmd_done response  = {0};
+	if (!inst || !inst->core) {
+		dprintk(VIDC_ERR, "%s: invalid input parameters", __func__);
+		return;
+	}
+	core = inst->core;
+	response.device_id = (u32) core->id;
+	handle_sys_error(cmd, (void *) &response);
+
+}
 int msm_comm_recover_from_session_error(struct msm_vidc_inst *inst)
 {
 	struct hfi_device *hdev;
@@ -2399,6 +2441,12 @@ int msm_comm_recover_from_session_error(struct msm_vidc_inst *inst)
 	if (!inst || !inst->core || !inst->core->device) {
 		dprintk(VIDC_ERR, "%s: invalid input parameters", __func__);
 		return -EINVAL;
+	}
+	if (inst->state < MSM_VIDC_OPEN_DONE) {
+		dprintk(VIDC_WARN,
+			"No corresponding FW session. No need to send Abort");
+		inst->state = MSM_VIDC_CORE_INVALID;
+		return rc;
 	}
 	hdev = inst->core->device;
 
@@ -2413,10 +2461,14 @@ int msm_comm_recover_from_session_error(struct msm_vidc_inst *inst)
 		dprintk(VIDC_ERR, "session_abort failed rc: %d\n", rc);
 		return rc;
 	}
-
-	rc = wait_for_sess_signal_receipt(inst, SESSION_ABORT_DONE);
-	if (rc)
+	rc = wait_for_completion_timeout(
+		&inst->completions[SESSION_MSG_INDEX(SESSION_ABORT_DONE)],
+		msecs_to_jiffies(HW_RESPONSE_TIMEOUT));
+	if (!rc) {
 		dprintk(VIDC_ERR, "%s: Wait interrupted or timeout: %d\n",
 			__func__, rc);
+		msm_comm_generate_sys_error(inst);
+	} else
+		change_inst_state(inst, MSM_VIDC_CLOSE_DONE);
 	return rc;
 }
