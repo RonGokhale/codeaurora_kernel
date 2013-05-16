@@ -275,6 +275,9 @@ static int local_pll_clk_set_rate(struct clk *c, unsigned long rate)
 	struct pll_clk *pll = to_pll_clk(c);
 	u32 mode;
 
+	local_pll_clk_disable(c);
+	mb();
+
 	mode = readl_relaxed(PLL_MODE_REG(pll));
 
 	/* Don't change PLL's rate if it is enabled */
