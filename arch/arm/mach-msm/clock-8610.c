@@ -3304,13 +3304,6 @@ static void __init msm8610_clock_pre_init(void)
 	/* Maintain the max nominal frequency on the MMSSNOC AHB bus. */
 	clk_set_rate(&mmssnoc_ahb_a_clk.c,  40000000);
 	clk_prepare_enable(&mmssnoc_ahb_a_clk.c);
-
-	/* TODO: Remove this once the bus driver is in place */
-	clk_set_rate(&axi_clk_src.c, 200000000);
-	clk_prepare_enable(&mmss_s0_axi_clk.c);
-
-	clk_prepare_enable(&gcc_lpss_smmu_ahb_clk.c);
-
 }
 
 struct clock_init_data msm8610_clock_init_data __initdata = {
