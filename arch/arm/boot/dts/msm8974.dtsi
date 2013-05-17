@@ -1570,6 +1570,7 @@
 
 &gdsc_venus {
 	qcom,clock-names = "core_clk";
+	qcom,skip-logic-collapse;
 	status = "ok";
 };
 
