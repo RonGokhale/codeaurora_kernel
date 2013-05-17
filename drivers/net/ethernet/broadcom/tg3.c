@@ -15937,6 +15937,8 @@ static int tg3_resume(struct device *device)
 	struct tg3 *tp = netdev_priv(dev);
 	int err;
 
+	msleep(200);
+
 	if (!netif_running(dev))
 		return 0;
 
