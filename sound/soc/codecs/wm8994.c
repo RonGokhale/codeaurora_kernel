@@ -16,6 +16,7 @@
 #include <linux/init.h>
 #include <linux/delay.h>
 #include <linux/pm.h>
+#include <linux/gcd.h>
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -2005,15 +2006,16 @@ struct fll_div {
 	u16 outdiv;
 	u16 n;
 	u16 k;
+	u16 lambda;
 	u16 clk_ref_div;
 	u16 fll_fratio;
 };
 
-static int wm8994_get_fll_config(struct fll_div *fll,
+static int wm8994_get_fll_config(struct wm8994 *control, struct fll_div *fll,
 				 int freq_in, int freq_out)
 {
 	u64 Kpart;
-	unsigned int K, Ndiv, Nmod;
+	unsigned int K, Ndiv, Nmod, gcd_fll;
 
 	pr_debug("FLL input=%dHz, output=%dHz\n", freq_in, freq_out);
 
@@ -2062,20 +2064,31 @@ static int wm8994_get_fll_config(struct fll_div *fll,
 	Nmod = freq_out % freq_in;
 	pr_debug("Nmod=%d\n", Nmod);
 
-	/* Calculate fractional part - scale up so we can round. */
-	Kpart = FIXED_FLL_SIZE * (long long)Nmod;
+	switch (control->type) {
+	case WM8994:
+		/* Calculate fractional part - scale up so we can round. */
+		Kpart = FIXED_FLL_SIZE * (long long)Nmod;
 
-	do_div(Kpart, freq_in);
+		do_div(Kpart, freq_in);
 
-	K = Kpart & 0xFFFFFFFF;
+		K = Kpart & 0xFFFFFFFF;
 
-	if ((K % 10) >= 5)
-		K += 5;
+		if ((K % 10) >= 5)
+			K += 5;
 
-	/* Move down to proper range now rounding is done */
-	fll->k = K / 10;
+		/* Move down to proper range now rounding is done */
+		fll->k = K / 10;
 
-	pr_debug("N=%x K=%x\n", fll->n, fll->k);
+		pr_debug("N=%x K=%x\n", fll->n, fll->k);
+		break;
+
+	default:
+		gcd_fll = gcd(freq_out, freq_in);
+
+		fll->k = (freq_out - (freq_in * fll->n)) / gcd_fll;
+		fll->lambda = freq_in / gcd_fll;
+		
+	}
 
 	return 0;
 }
@@ -2139,9 +2152,9 @@ static int _wm8994_set_fll(struct snd_soc_codec *codec, int id, int src,
 	 * analysis bugs spewing warnings.
 	 */
 	if (freq_out)
-		ret = wm8994_get_fll_config(&fll, freq_in, freq_out);
+		ret = wm8994_get_fll_config(control, &fll, freq_in, freq_out);
 	else
-		ret = wm8994_get_fll_config(&fll, wm8994->fll[id].in,
+		ret = wm8994_get_fll_config(control, &fll, wm8994->fll[id].in,
 					    wm8994->fll[id].out);
 	if (ret < 0)
 		return ret;
@@ -2185,6 +2198,17 @@ static int _wm8994_set_fll(struct snd_soc_codec *codec, int id, int src,
 	snd_soc_update_bits(codec, WM8994_FLL1_CONTROL_4 + reg_offset,
 			    WM8994_FLL1_N_MASK,
 			    fll.n << WM8994_FLL1_N_SHIFT);
+
+	if (fll.lambda) {
+		snd_soc_update_bits(codec, WM8958_FLL1_EFS_1 + reg_offset,
+				    WM8958_FLL1_LAMBDA_MASK,
+				    fll.lambda);
+		snd_soc_update_bits(codec, WM8958_FLL1_EFS_2 + reg_offset,
+				    WM8958_FLL1_EFS_ENA, WM8958_FLL1_EFS_ENA);
+	} else {
+		snd_soc_update_bits(codec, WM8958_FLL1_EFS_2 + reg_offset,
+				    WM8958_FLL1_EFS_ENA, 0);
+	}
 
 	snd_soc_update_bits(codec, WM8994_FLL1_CONTROL_5 + reg_offset,
 			    WM8994_FLL1_FRC_NCO | WM8958_FLL1_BYP |
@@ -2550,17 +2574,24 @@ static int wm8994_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	struct wm8994 *control = wm8994->wm8994;
 	int ms_reg;
 	int aif1_reg;
+	int dac_reg;
+	int adc_reg;
 	int ms = 0;
 	int aif1 = 0;
+	int lrclk = 0;
 
 	switch (dai->id) {
 	case 1:
 		ms_reg = WM8994_AIF1_MASTER_SLAVE;
 		aif1_reg = WM8994_AIF1_CONTROL_1;
+		dac_reg = WM8994_AIF1DAC_LRCLK;
+		adc_reg = WM8994_AIF1ADC_LRCLK;
 		break;
 	case 2:
 		ms_reg = WM8994_AIF2_MASTER_SLAVE;
 		aif1_reg = WM8994_AIF2_CONTROL_1;
+		dac_reg = WM8994_AIF1DAC_LRCLK;
+		adc_reg = WM8994_AIF1ADC_LRCLK;
 		break;
 	default:
 		return -EINVAL;
@@ -2579,6 +2610,7 @@ static int wm8994_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
 	case SND_SOC_DAIFMT_DSP_B:
 		aif1 |= WM8994_AIF1_LRCLK_INV;
+		lrclk |= WM8958_AIF1_LRCLK_INV;
 	case SND_SOC_DAIFMT_DSP_A:
 		aif1 |= 0x18;
 		break;
@@ -2617,12 +2649,14 @@ static int wm8994_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 			break;
 		case SND_SOC_DAIFMT_IB_IF:
 			aif1 |= WM8994_AIF1_BCLK_INV | WM8994_AIF1_LRCLK_INV;
+			lrclk |= WM8958_AIF1_LRCLK_INV;
 			break;
 		case SND_SOC_DAIFMT_IB_NF:
 			aif1 |= WM8994_AIF1_BCLK_INV;
 			break;
 		case SND_SOC_DAIFMT_NB_IF:
 			aif1 |= WM8994_AIF1_LRCLK_INV;
+			lrclk |= WM8958_AIF1_LRCLK_INV;
 			break;
 		default:
 			return -EINVAL;
@@ -2653,6 +2687,10 @@ static int wm8994_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 			    aif1);
 	snd_soc_update_bits(codec, ms_reg, WM8994_AIF1_MSTR,
 			    ms);
+	snd_soc_update_bits(codec, dac_reg,
+			    WM8958_AIF1_LRCLK_INV, lrclk);
+	snd_soc_update_bits(codec, adc_reg,
+			    WM8958_AIF1_LRCLK_INV, lrclk);
 
 	return 0;
 }
