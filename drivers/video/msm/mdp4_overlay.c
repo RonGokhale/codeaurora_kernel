@@ -2755,19 +2755,27 @@ static int mdp4_calc_pipe_mdp_bw(struct msm_fb_data_type *mfd,
 	quota = pipe->src_w * pipe->src_h * fps * pipe->bpp;
 
 	quota >>= shift;
-	/* factor 1.15 for ab */
+	/* Multiply factor for ab */
 	quota = quota * MDP4_BW_AB_FACTOR / 100;
 	/* downscaling factor for ab */
 	if ((pipe->dst_h) && (pipe->src_h) &&
 	    (pipe->src_h > pipe->dst_h)) {
 		quota = quota * pipe->src_h / pipe->dst_h;
-		pr_info("%s: src_h=%d dst_h=%d mdp ab %llu\n",
-			__func__, pipe->src_h, pipe->dst_h, ((u64)quota << 16));
+		pr_debug("%s: src_h=%d dst_h=%d mdp ab %llu\n",
+		__func__, pipe->src_h, pipe->dst_h, ((u64)quota << 16));
 	}
 	pipe->bw_ab_quota = quota;
 
-	/* factor 1.5 for ib */
-	pipe->bw_ib_quota = quota * MDP4_BW_IB_FACTOR / 100;
+	/* Multiply factor for ib */
+	quota = quota * MDP4_BW_IB_FACTOR / 100;
+	if ((pipe->dst_w) && (pipe->src_w) &&
+	    (pipe->src_w > pipe->dst_w)) {
+		quota = quota * pipe->src_w / pipe->dst_w;
+		pr_debug("%s: src_w=%d dst_w=%d mdp ab %llu\n",
+		__func__, pipe->src_w, pipe->dst_w, ((u64)quota << 16));
+	}
+
+	pipe->bw_ib_quota = quota;
 
 	pipe->bw_ab_quota <<= shift;
 	pipe->bw_ib_quota <<= shift;
@@ -3001,10 +3009,10 @@ int mdp4_overlay_mdp_perf_req(struct msm_fb_data_type *mfd,
 		 ib_quota_port1, perf_req->mdp_ib_port1_bw);
 
 	if (ab_quota_total > mdp_max_bw)
-		pr_warn("%s: req ab bw=%llu is larger than max bw=%llu",
+		pr_debug("%s: req ab bw=%llu is larger than max bw=%llu",
 			__func__, ab_quota_total, mdp_max_bw);
 	if (ib_quota_total > mdp_max_bw)
-		pr_warn("%s: req ib bw=%llu is larger than max bw=%llu",
+		pr_debug("%s: req ib bw=%llu is larger than max bw=%llu",
 			__func__, ib_quota_total, mdp_max_bw);
 
 	pr_debug("%s %d: pid %d cnt %d clk %d ov0_blt %d, ov1_blt %d\n",
