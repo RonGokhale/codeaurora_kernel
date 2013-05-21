@@ -102,10 +102,12 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 	size_t pktlen = 0;
 	int frame_found = true;
 	unsigned long kernel_vaddr, phy_addr, user_vaddr;
+	unsigned long input_vaddr;
 	int pmem_fd;
 	struct file *file;
 	s32 buffer_index = -1;
 	size_t size = 0;
+	struct ion_handle *ion_buff_handle = NULL;
 
 	do {
 		wait_event_interruptible(streambuff->packet_data.queue,
@@ -163,9 +165,22 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 				BUFFER_TYPE_INPUT, true, &user_vaddr,
 				&kernel_vaddr,	&phy_addr, &pmem_fd, &file,
 				&buffer_index);
+			/* kernel_vaddr will have the physical addr*/
+			/* in addr_table, get the input buffer */
+			/* virtual address to write in to it */
+			vidc_get_fd_info(dev_inst->client_ctx,
+				BUFFER_TYPE_INPUT, pmem_fd, kernel_vaddr,
+				buffer_index, &ion_buff_handle);
+			input_vaddr = (unsigned long)ion_map_kernel(
+				dev_inst->client_ctx->user_ion_client,
+				ion_buff_handle);
+			if (IS_ERR_OR_NULL((void *)input_vaddr)) {
+				ERR("ion_map failed!!");
+				break;
+			}
 			bytes_read = 0;
 			bytes_read = mpq_streambuffer_data_read(streambuff,
-						(u8 *)(kernel_vaddr + size),
+						(u8 *)(input_vaddr + size),
 						pkt_hdr.raw_data_len);
 			DBG("Data Read : %d from Packet Size : %d\n",
 				bytes_read, pkt_hdr.raw_data_len);
@@ -184,6 +199,9 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 						dev_inst->client_ctx,
 						&dmx_data->in_buffer[free_buf]);
 			}
+			ion_unmap_kernel(
+				dev_inst->client_ctx->user_ion_client,
+				ion_buff_handle);
 			break;
 		case DMX_EOS_PACKET:
 			break;
@@ -577,7 +595,7 @@ static void mpq_int_vid_dec_output_frame_done(
 			msm_ion_do_cache_op(
 				client_ctx->user_ion_client,
 				buff_handle,
-				(unsigned long *) kernel_vaddr,
+				(unsigned long *) NULL,
 				(unsigned long)vcd_frame_data->data_len,
 				ION_IOC_INV_CACHES);
 		}
@@ -1496,6 +1514,10 @@ static int mpq_int_vid_dec_decode_frame(struct video_client_ctx *client_ctx,
 		       sizeof(struct vcd_frame_data));
 		vcd_input_buffer.virtual =
 		    (u8 *) (kernel_vaddr + input_frame->offset);
+		if (input_frame->offset) {
+			DBG("input_frame offset is %u instead of 0",
+				(u32)input_frame->offset);
+		}
 		vcd_input_buffer.offset = 0;
 		vcd_input_buffer.frm_clnt_data =
 		    (u32) input_frame->client_data;
@@ -1518,7 +1540,7 @@ static int mpq_int_vid_dec_decode_frame(struct video_client_ctx *client_ctx,
 				msm_ion_do_cache_op(
 				client_ctx->user_ion_client,
 				buff_handle,
-				(unsigned long *)kernel_vaddr,
+				(unsigned long *) NULL,
 				(unsigned long) vcd_input_buffer.data_len,
 				ION_IOC_CLEAN_CACHES);
 			}
