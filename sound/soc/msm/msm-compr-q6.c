@@ -538,9 +538,7 @@ static int msm_compr_playback_prepare(struct snd_pcm_substream *substream)
 			MSM_FRONTEND_DAI_PSEUDO,
 			prtd->enc_audio_client->perf_mode,
 			prtd->enc_audio_client->session,
-			SNDRV_PCM_STREAM_CAPTURE,
-			48000, runtime->channels > 6 ?
-			6 : runtime->channels);
+			SNDRV_PCM_STREAM_CAPTURE);
 		pr_debug("%s: cmd: DTS ENCDEC CFG BLK\n", __func__);
 		ret = q6asm_enc_cfg_blk_dts(prtd->enc_audio_client,
 				DTS_ENC_SAMPLE_RATE48k,
@@ -1429,9 +1427,7 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 					MSM_FRONTEND_DAI_PSEUDO,
 					prtd->enc_audio_client->perf_mode,
 					prtd->enc_audio_client->session,
-					SNDRV_PCM_STREAM_CAPTURE,
-					48000, runtime->channels > 6 ?
-					6 : runtime->channels);
+					SNDRV_PCM_STREAM_CAPTURE);
 		}
 		if (param.session_type == PASSTHROUGH_SESSION) {
 			if (param.operation == DISCONNECT_STREAM)

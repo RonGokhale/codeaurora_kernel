@@ -1129,6 +1129,22 @@ static int msm_mi2s_startup(struct snd_pcm_substream *substream)
 	return ret;
 }
 
+static int mpq8064_pseudo_be_params_fixup(struct snd_soc_pcm_runtime *rtd,
+					struct snd_pcm_hw_params *params)
+{
+	struct snd_interval *rate = hw_param_interval(params,
+					SNDRV_PCM_HW_PARAM_RATE);
+
+	struct snd_interval *channels = hw_param_interval(params,
+					SNDRV_PCM_HW_PARAM_CHANNELS);
+
+	rate->min = rate->max = 48000;
+	channels->min = channels->max = params_channels(params) > 6 ?
+						6 : params_channels(params);
+
+	return 0;
+}
+
 static int mpq8064_auxpcm_be_params_fixup(struct snd_soc_pcm_runtime *rtd,
 					struct snd_pcm_hw_params *params)
 {
@@ -1805,7 +1821,7 @@ static struct snd_soc_dai_link msm_dai[] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.no_pcm = 1,
 		.be_id = MSM_BACKEND_DAI_PSEUDO_PORT,
-		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		.be_hw_params_fixup = mpq8064_pseudo_be_params_fixup,
 		.ignore_pmdown_time = 1,
 	},
 };

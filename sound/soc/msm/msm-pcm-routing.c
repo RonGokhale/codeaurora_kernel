@@ -344,8 +344,7 @@ void msm_pcm_routing_reg_psthr_stream(int fedai_id, int dspst_id,
 }
 
 void msm_pcm_routing_reg_pseudo_stream(int fedai_id, bool perf_mode,
-					int dspst_id, int stream_type,
-					int sample_rate, int channels)
+					int dspst_id, int stream_type)
 {
 	int i, session_type, path_type, port_type, mode, ret;
 	struct route_payload payload;
@@ -372,9 +371,12 @@ void msm_pcm_routing_reg_pseudo_stream(int fedai_id, bool perf_mode,
 		if (!is_be_dai_extproc(i) &&
 		   (msm_bedais[i].active) &&
 		   (test_bit(fedai_id, &msm_bedais[i].fe_sessions))) {
+			int pseudo_be_id = MSM_BACKEND_DAI_PSEUDO_PORT;
 
 			adm_multi_ch_copp_pseudo_open_v3(PSEUDOPORT_01,
-					path_type, sample_rate, channels,
+					path_type,
+					msm_bedais[pseudo_be_id].sample_rate,
+					msm_bedais[pseudo_be_id].channel,
 					DEFAULT_COPP_TOPOLOGY);
 
 			payload.copp_ids[payload.num_copps++] = PSEUDOPORT_01;
@@ -1563,8 +1565,17 @@ static const struct snd_kcontrol_new hdmi_mixer_controls[] = {
 	msm_routing_put_audio_mixer),
 };
 static const struct snd_kcontrol_new pseudo_mixer_controls[] = {
+	SOC_SINGLE_EXT("MultiMedia2", MSM_BACKEND_DAI_PSEUDO_PORT,
+	MSM_FRONTEND_DAI_MULTIMEDIA2, 1, 0, msm_routing_get_audio_mixer,
+	msm_routing_put_audio_mixer),
+	SOC_SINGLE_EXT("MultiMedia3", MSM_BACKEND_DAI_PSEUDO_PORT,
+	MSM_FRONTEND_DAI_MULTIMEDIA3, 1, 0, msm_routing_get_audio_mixer,
+	msm_routing_put_audio_mixer),
 	SOC_SINGLE_EXT("MultiMedia4", MSM_BACKEND_DAI_PSEUDO_PORT,
 	MSM_FRONTEND_DAI_MULTIMEDIA4, 1, 0, msm_routing_get_audio_mixer,
+	msm_routing_put_audio_mixer),
+	SOC_SINGLE_EXT("MultiMedia5", MSM_BACKEND_DAI_PSEUDO_PORT,
+	MSM_FRONTEND_DAI_MULTIMEDIA5, 1, 0, msm_routing_get_audio_mixer,
 	msm_routing_put_audio_mixer),
 	SOC_SINGLE_EXT("MultiMedia7", MSM_BACKEND_DAI_PSEUDO_PORT,
 	MSM_FRONTEND_DAI_MULTIMEDIA7, 1, 0, msm_routing_get_audio_mixer,
@@ -2817,7 +2828,10 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"HDMI Mixer", "Pseudo", "MM_DL9"},
 	{"HDMI", NULL, "HDMI Mixer"},
 
+	{"PSEUDO Mixer", "MultiMedia2", "MM_DL2"},
+	{"PSEUDO Mixer", "MultiMedia3", "MM_DL3"},
 	{"PSEUDO Mixer", "MultiMedia4", "MM_DL4"},
+	{"PSEUDO Mixer", "MultiMedia5", "MM_DL5"},
 	{"PSEUDO Mixer", "MultiMedia7", "MM_DL7"},
 	{"PSEUDO Mixer", "MultiMedia8", "MM_DL8"},
 	{"PSEUDO", NULL, "PSEUDO Mixer"},
