@@ -343,6 +343,7 @@ struct mdp4_overlay_pipe {
 	uint32 bpp;	/* byte per pixel */
 	uint32 alpha_enable;/*  source has alpha */
 	uint32 is_pp_dirty;
+	uint32 is_csc_init;
 	/*
 	 * number of bits for source component,
 	 * 0 = 1 bit, 1 = 2 bits, 2 = 6 bits, 3 = 8 bits
