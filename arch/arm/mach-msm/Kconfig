@@ -145,7 +145,7 @@ config ARCH_MSM8960
 	select CPU_V7
 	select GPIO_MSM_V2
 	select MSM_GPIOMUX
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MSM_DIRECT_SCLK_ACCESS
 	select REGULATOR
 	select MSM_RPM_REGULATOR
@@ -187,7 +187,7 @@ config ARCH_MSM8930
 	select CPU_V7
 	select GPIO_MSM_V2
 	select MSM_GPIOMUX
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MSM_DIRECT_SCLK_ACCESS
 	select REGULATOR
 	select MSM_RPM_REGULATOR
@@ -223,7 +223,7 @@ config ARCH_APQ8064
 	select GPIO_MSM_V2
 	select ARM_GIC
 	select CPU_V7
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MSM_GPIOMUX
 	select MSM_REMOTE_SPINLOCK_SFPB
 	select MSM_PIL
@@ -257,7 +257,7 @@ config ARCH_MSM8974
 	select GPIO_MSM_V3
 	select ARM_GIC
 	select CPU_V7
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MSM_GPIOMUX
 	select MULTI_IRQ_HANDLER
 	select MSM_MULTIMEDIA_USE_ION
@@ -292,7 +292,7 @@ config ARCH_APQ8084
 	select GPIO_MSM_V3
 	select ARM_GIC
 	select CPU_V7
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MSM_GPIOMUX
 	select MULTI_IRQ_HANDLER
 	select MSM_NATIVE_RESTART
@@ -315,6 +315,25 @@ config ARCH_MPQ8092
 	select MSM_GPIOMUX
 	select MAY_HAVE_SPARSE_IRQ
 	select SPARSE_IRQ
+	select MSM_NOPM
+
+config ARCH_FSM9900
+	bool "FSM9900"
+	select ARCH_MSM_KRAITMP
+	select GPIO_MSM_V3
+	select ARM_GIC
+	select CPU_V7
+	select MSM_SCM
+	select MSM_GPIOMUX
+	select MULTI_IRQ_HANDLER
+	select MSM_PIL
+	select MSM_NATIVE_RESTART
+	select MSM_RESTART_V2
+	select MAY_HAVE_SPARSE_IRQ
+	select SPARSE_IRQ
+	select REGULATOR
+	select ARM_HAS_SG_CHAIN
+	select MSM_RUN_QUEUE_STATS
 	select MSM_NOPM
 
 config ARCH_FSM9XXX
@@ -378,7 +397,6 @@ config ARCH_MSM9625
 	select MSM_RESTART_V2
 	select MSM_SPM_V2
 	select MSM_PM8X60 if PM
-	select MSM_SCM if SMP
 	select MULTI_IRQ_HANDLER
 	select GPIO_MSM_V3
 	select MAY_HAVE_SPARSE_IRQ
@@ -414,7 +432,7 @@ config ARCH_MSM8610
 	select GIC_SECURE
 	select ARCH_MSM_CORTEXMP
 	select CPU_V7
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MAY_HAVE_SPARSE_IRQ
 	select SPARSE_IRQ
 	select MULTI_IRQ_HANDLER
@@ -456,7 +474,7 @@ config ARCH_MSM8226
 	select GIC_SECURE
 	select ARCH_MSM_CORTEXMP
 	select CPU_V7
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MAY_HAVE_SPARSE_IRQ
 	select SPARSE_IRQ
 	select MULTI_IRQ_HANDLER
@@ -1094,6 +1112,7 @@ config PHYS_OFFSET
 	default "0x00000000" if ARCH_MSM8226
 	default "0x00000000" if ARCH_MSM8610
 	default "0x10000000" if ARCH_FSM9XXX
+	default "0x00000000" if ARCH_FSM9900
 	default "0x00200000" if ARCH_MSM9625
 	default "0x00000000" if ARCH_MSMKRYPTON
 	default "0x00200000" if !MSM_STACKED_MEMORY
@@ -1257,6 +1276,14 @@ choice
                 help
                   Say Y here if you want the debug print routines to direct
                   their output to the serial port on MSM9625 devices.
+
+	config DEBUG_FSM9900_UART
+		bool "Kernel low-level debugging messages via FSM9900 UART"
+		depends on ARCH_FSM9900
+		select MSM_HAS_DEBUG_UART_HS_V14
+		help
+		  Say Y here if you want the debug print routines to direct
+		  their output to the serial port on FSM9900 devices.
 endchoice
 
 choice
