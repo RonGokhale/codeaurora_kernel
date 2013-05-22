@@ -38,6 +38,7 @@ static int msm_btsco_rate = BTSCO_RATE_8KHZ;
 static int msm_btsco_ch = 1;
 
 static int msm_proxy_rx_ch = 2;
+static struct snd_soc_jack hs_jack;
 
 
 /*
@@ -299,6 +300,15 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 		ARRAY_SIZE(msm8x10_common_audio_map));
 
 	snd_soc_dapm_sync(dapm);
+
+	ret = snd_soc_jack_new(codec, "Headset Jack",
+			SND_JACK_HEADSET, &hs_jack);
+
+	if (ret) {
+		pr_err("%s: Failed to create headset jack\n", __func__);
+		return ret;
+	}
+
 	return ret;
 }
 
@@ -549,7 +559,6 @@ static struct snd_soc_dai_link msm8x10_dai[] = {
 		.codec_dai_name = "msm8x10_wcd_i2s_tx1",
 		.no_pcm = 1,
 		.be_id = MSM_BACKEND_DAI_PRI_MI2S_TX,
-		.init = &msm_audrx_init,
 		.be_hw_params_fixup = msm_be_hw_params_fixup,
 		.ops = &msm8x10_mi2s_be_ops,
 		.ignore_suspend = 1,
