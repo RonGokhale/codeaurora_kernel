@@ -14,33 +14,16 @@
  * GNU General Public License for more details.
  */
 
-#include <linux/kernel.h>
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/errno.h>
-#include <linux/fs.h>
-#include <linux/mm.h>
 #include <linux/interrupt.h>
-#include <linux/workqueue.h>
-#include <linux/string.h>
-#include <linux/videodev2.h>
-#include <linux/wait.h>
-#include <linux/time.h>
-#include <linux/i2c.h>
+#include <linux/module.h>
 #include <linux/platform_device.h>
-#include <linux/io.h>
 #include <linux/slab.h>
 
-#include <asm/irq.h>
-#include <asm/page.h>
-
-#include <media/adv7343.h>
-#include <media/v4l2-device.h>
-#include <media/v4l2-ioctl.h>
 #include <media/v4l2-chip-ident.h>
+#include <media/v4l2-ioctl.h>
 
-#include "vpif_display.h"
 #include "vpif.h"
+#include "vpif_display.h"
 
 MODULE_DESCRIPTION("TI DaVinci VPIF Display driver");
 MODULE_LICENSE("GPL");
@@ -1742,6 +1725,7 @@ static __init int vpif_probe(struct platform_device *pdev)
 				for (j = 0; j < i; j++)
 					free_irq(j, (void *)
 					(&vpif_obj.dev[res_idx]->channel_id));
+				vpif_err("VPIF IRQ request failed\n");
 				goto vpif_int_err;
 			}
 		}
@@ -1895,7 +1879,6 @@ vpif_sd_error:
 	}
 vpif_int_err:
 	v4l2_device_unregister(&vpif_obj.v4l2_dev);
-	vpif_err("VPIF IRQ request failed\n");
 	for (i = 0; i < res_idx; i++) {
 		res = platform_get_resource(pdev, IORESOURCE_IRQ, i);
 		for (j = res->start; j <= res->end; j++)

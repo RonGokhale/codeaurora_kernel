@@ -555,7 +555,7 @@ static int adv7180_probe(struct i2c_client *client,
 	v4l_info(client, "chip found @ 0x%02x (%s)\n",
 		 client->addr, client->adapter->name);
 
-	state = kzalloc(sizeof(struct adv7180_state), GFP_KERNEL);
+	state = devm_kzalloc(&client->dev, sizeof(*state), GFP_KERNEL);
 	if (state == NULL) {
 		ret = -ENOMEM;
 		goto err;
@@ -582,7 +582,6 @@ err_free_ctrl:
 err_unreg_subdev:
 	mutex_destroy(&state->mutex);
 	v4l2_device_unregister_subdev(sd);
-	kfree(state);
 err:
 	printk(KERN_ERR KBUILD_MODNAME ": Failed to probe: %d\n", ret);
 	return ret;
@@ -607,7 +606,6 @@ static int adv7180_remove(struct i2c_client *client)
 
 	mutex_destroy(&state->mutex);
 	v4l2_device_unregister_subdev(sd);
-	kfree(to_state(sd));
 	return 0;
 }
 
@@ -616,9 +614,10 @@ static const struct i2c_device_id adv7180_id[] = {
 	{},
 };
 
-#ifdef CONFIG_PM
-static int adv7180_suspend(struct i2c_client *client, pm_message_t state)
+#ifdef CONFIG_PM_SLEEP
+static int adv7180_suspend(struct device *dev)
 {
+	struct i2c_client *client = to_i2c_client(dev);
 	int ret;
 
 	ret = i2c_smbus_write_byte_data(client, ADV7180_PWR_MAN_REG,
@@ -628,8 +627,9 @@ static int adv7180_suspend(struct i2c_client *client, pm_message_t state)
 	return 0;
 }
 
-static int adv7180_resume(struct i2c_client *client)
+static int adv7180_resume(struct device *dev)
 {
+	struct i2c_client *client = to_i2c_client(dev);
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct adv7180_state *state = to_state(sd);
 	int ret;
@@ -643,6 +643,12 @@ static int adv7180_resume(struct i2c_client *client)
 		return ret;
 	return 0;
 }
+
+static SIMPLE_DEV_PM_OPS(adv7180_pm_ops, adv7180_suspend, adv7180_resume);
+#define ADV7180_PM_OPS (&adv7180_pm_ops)
+
+#else
+#define ADV7180_PM_OPS NULL
 #endif
 
 MODULE_DEVICE_TABLE(i2c, adv7180_id);
@@ -651,13 +657,10 @@ static struct i2c_driver adv7180_driver = {
 	.driver = {
 		   .owner = THIS_MODULE,
 		   .name = KBUILD_MODNAME,
+		   .pm = ADV7180_PM_OPS,
 		   },
 	.probe = adv7180_probe,
 	.remove = adv7180_remove,
-#ifdef CONFIG_PM
-	.suspend = adv7180_suspend,
-	.resume = adv7180_resume,
-#endif
 	.id_table = adv7180_id,
 };
 

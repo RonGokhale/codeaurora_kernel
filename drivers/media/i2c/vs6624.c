@@ -805,20 +805,18 @@ static int vs6624_probe(struct i2c_client *client,
 	if (ce == NULL)
 		return -EINVAL;
 
-	ret = gpio_request(*ce, "VS6624 Chip Enable");
+	ret = devm_gpio_request_one(&client->dev, *ce, GPIOF_OUT_INIT_HIGH,
+				    "VS6624 Chip Enable");
 	if (ret) {
 		v4l_err(client, "failed to request GPIO %d\n", *ce);
 		return ret;
 	}
-	gpio_direction_output(*ce, 1);
 	/* wait 100ms before any further i2c writes are performed */
 	mdelay(100);
 
-	sensor = kzalloc(sizeof(*sensor), GFP_KERNEL);
-	if (sensor == NULL) {
-		gpio_free(*ce);
+	sensor = devm_kzalloc(&client->dev, sizeof(*sensor), GFP_KERNEL);
+	if (sensor == NULL)
 		return -ENOMEM;
-	}
 
 	sd = &sensor->sd;
 	v4l2_i2c_subdev_init(sd, client, &vs6624_ops);
@@ -866,30 +864,22 @@ static int vs6624_probe(struct i2c_client *client,
 		int err = hdl->error;
 
 		v4l2_ctrl_handler_free(hdl);
-		kfree(sensor);
-		gpio_free(*ce);
 		return err;
 	}
 
 	/* initialize the hardware to the default control values */
 	ret = v4l2_ctrl_handler_setup(hdl);
-	if (ret) {
+	if (ret)
 		v4l2_ctrl_handler_free(hdl);
-		kfree(sensor);
-		gpio_free(*ce);
-	}
 	return ret;
 }
 
 static int vs6624_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
-	struct vs6624 *sensor = to_vs6624(sd);
 
 	v4l2_device_unregister_subdev(sd);
 	v4l2_ctrl_handler_free(sd->ctrl_handler);
-	gpio_free(sensor->ce_pin);
-	kfree(sensor);
 	return 0;
 }
 

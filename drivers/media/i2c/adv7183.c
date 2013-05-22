@@ -474,9 +474,9 @@ static int adv7183_s_stream(struct v4l2_subdev *sd, int enable)
 	struct adv7183 *decoder = to_adv7183(sd);
 
 	if (enable)
-		gpio_direction_output(decoder->oe_pin, 0);
+		gpio_set_value(decoder->oe_pin, 0);
 	else
-		gpio_direction_output(decoder->oe_pin, 1);
+		gpio_set_value(decoder->oe_pin, 1);
 	udelay(1);
 	return 0;
 }
@@ -573,23 +573,24 @@ static int adv7183_probe(struct i2c_client *client,
 	if (pin_array == NULL)
 		return -EINVAL;
 
-	decoder = kzalloc(sizeof(struct adv7183), GFP_KERNEL);
+	decoder = devm_kzalloc(&client->dev, sizeof(*decoder), GFP_KERNEL);
 	if (decoder == NULL)
 		return -ENOMEM;
 
 	decoder->reset_pin = pin_array[0];
 	decoder->oe_pin = pin_array[1];
 
-	if (gpio_request(decoder->reset_pin, "ADV7183 Reset")) {
+	if (devm_gpio_request_one(&client->dev, decoder->reset_pin,
+				  GPIOF_OUT_INIT_LOW, "ADV7183 Reset")) {
 		v4l_err(client, "failed to request GPIO %d\n", decoder->reset_pin);
-		ret = -EBUSY;
-		goto err_free_decoder;
+		return -EBUSY;
 	}
 
-	if (gpio_request(decoder->oe_pin, "ADV7183 Output Enable")) {
+	if (devm_gpio_request_one(&client->dev, decoder->oe_pin,
+				  GPIOF_OUT_INIT_HIGH,
+				  "ADV7183 Output Enable")) {
 		v4l_err(client, "failed to request GPIO %d\n", decoder->oe_pin);
-		ret = -EBUSY;
-		goto err_free_reset;
+		return -EBUSY;
 	}
 
 	sd = &decoder->sd;
@@ -611,7 +612,7 @@ static int adv7183_probe(struct i2c_client *client,
 		ret = hdl->error;
 
 		v4l2_ctrl_handler_free(hdl);
-		goto err_free_oe;
+		return ret;
 	}
 
 	/* v4l2 doesn't support an autodetect standard, pick PAL as default */
@@ -619,12 +620,10 @@ static int adv7183_probe(struct i2c_client *client,
 	decoder->input = ADV7183_COMPOSITE4;
 	decoder->output = ADV7183_8BIT_OUT;
 
-	gpio_direction_output(decoder->oe_pin, 1);
 	/* reset chip */
-	gpio_direction_output(decoder->reset_pin, 0);
 	/* reset pulse width at least 5ms */
 	mdelay(10);
-	gpio_direction_output(decoder->reset_pin, 1);
+	gpio_set_value(decoder->reset_pin, 1);
 	/* wait 5ms before any further i2c writes are performed */
 	mdelay(5);
 
@@ -638,29 +637,18 @@ static int adv7183_probe(struct i2c_client *client,
 	ret = v4l2_ctrl_handler_setup(hdl);
 	if (ret) {
 		v4l2_ctrl_handler_free(hdl);
-		goto err_free_oe;
+		return ret;
 	}
 
 	return 0;
-err_free_oe:
-	gpio_free(decoder->oe_pin);
-err_free_reset:
-	gpio_free(decoder->reset_pin);
-err_free_decoder:
-	kfree(decoder);
-	return ret;
 }
 
 static int adv7183_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
-	struct adv7183 *decoder = to_adv7183(sd);
 
 	v4l2_device_unregister_subdev(sd);
 	v4l2_ctrl_handler_free(sd->ctrl_handler);
-	gpio_free(decoder->oe_pin);
-	gpio_free(decoder->reset_pin);
-	kfree(decoder);
 	return 0;
 }
 
