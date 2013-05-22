@@ -29,12 +29,11 @@
 #define SYSMGR_SDMMC_CTRL_SET(smplsel, drvsel)		\
 	((((drvsel) << 0) & 0x7) | (((smplsel) << 3) & 0x38))
 
-extern void __iomem *sys_manager_base_addr;
-
 /* SOCFPGA implementation specific driver private data */
 struct dw_mci_socfpga_priv_data {
 	u8	ciu_div;
 	u32	hs_timing;
+	struct regmap   *sysreg;
 };
 
 static int dw_mci_socfpga_priv_init(struct dw_mci *host)
