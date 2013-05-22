@@ -290,6 +290,15 @@ static void compr_event_handler(uint32_t opcode,
 			}
 			if (!atomic_read(&prtd->pending_buffer))
 				break;
+			if (runtime->status->hw_ptr >=
+					runtime->control->appl_ptr) {
+				runtime->render_flag |= SNDRV_RENDER_STOPPED;
+				atomic_set(&prtd->pending_buffer, 1);
+				pr_debug("%s:underrun hptr = %ld aptr = %ld\n",
+					__func__, runtime->status->hw_ptr,
+				runtime->control->appl_ptr);
+				break;
+			}
 			pr_debug("%s:writing %d bytes"
 				" of buffer[%d] to dsp\n",
 				__func__, prtd->pcm_count, prtd->out_head);
