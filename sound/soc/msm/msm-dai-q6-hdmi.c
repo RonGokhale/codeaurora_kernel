@@ -117,13 +117,25 @@ static int msm_dai_q6_hdmi_hw_params(struct snd_pcm_substream *substream,
 	u32 channel_allocation = 0;
 	u32 level_shift  = 0; /* 0dB */
 	bool down_mix = FALSE;
-	int sample_rate = 48000;
+	int sample_rate = HDMI_SAMPLE_RATE_48KHZ;
 
 	dai_data->channels = params_channels(params);
 	dai_data->rate = params_rate(params);
 	dai_data->port_config.hdmi_multi_ch.reserved = 0;
 
 	switch (dai_data->rate) {
+	case 192000:
+		sample_rate = HDMI_SAMPLE_RATE_192KHZ;
+		break;
+	case 176400:
+		sample_rate = HDMI_SAMPLE_RATE_176_4KHZ;
+		break;
+	case 96000:
+		sample_rate = HDMI_SAMPLE_RATE_96KHZ;
+		break;
+	case 88200:
+		sample_rate = HDMI_SAMPLE_RATE_88_2KHZ;
+		break;
 	case 48000:
 		sample_rate = HDMI_SAMPLE_RATE_48KHZ;
 		break;
@@ -282,12 +294,12 @@ static struct snd_soc_dai_ops msm_dai_q6_hdmi_ops = {
 
 static struct snd_soc_dai_driver msm_dai_q6_hdmi_hdmi_rx_dai = {
 	.playback = {
-		.rates = SNDRV_PCM_RATE_48000,
+		.rates = SNDRV_PCM_RATE_8000_192000,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 		.channels_min = 2,
 		.channels_max = 6,
-		.rate_max =     48000,
-		.rate_min =	48000,
+		.rate_max =     192000,
+		.rate_min =	8000,
 	},
 	.ops = &msm_dai_q6_hdmi_ops,
 	.probe = msm_dai_q6_hdmi_dai_probe,
