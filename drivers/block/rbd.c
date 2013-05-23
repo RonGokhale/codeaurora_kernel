@@ -1683,14 +1683,17 @@ static void rbd_osd_req_callback(struct ceph_osd_request *osd_req,
 		rbd_osd_read_callback(obj_request);
 		break;
 	case CEPH_OSD_OP_WRITE:
+		rbd_assert(!msg);
 		rbd_osd_write_callback(obj_request);
 		break;
 	case CEPH_OSD_OP_STAT:
 		rbd_osd_stat_callback(obj_request);
 		break;
+	case CEPH_OSD_OP_WATCH:
+		rbd_assert(!msg);
+		/* fall through */
 	case CEPH_OSD_OP_CALL:
 	case CEPH_OSD_OP_NOTIFY_ACK:
-	case CEPH_OSD_OP_WATCH:
 		rbd_osd_trivial_callback(obj_request);
 		break;
 	default:
@@ -1701,6 +1704,24 @@ static void rbd_osd_req_callback(struct ceph_osd_request *osd_req,
 
 	if (obj_request_done_test(obj_request))
 		rbd_obj_request_complete(obj_request);
+}
+
+/*
+ * This is called twice:  once (with unsafe == true) when the
+ * request message is first handed to the messenger for delivery;
+ * and the second time (with unsafe == false) after we get
+ * confirmation the change is durable on the osd.  We ignore the
+ * first, and let the "normal" callback routine handle the second.
+ */
+static void rbd_osd_req_unsafe_callback(struct ceph_osd_request *osd_req,
+				bool unsafe)
+{
+	dout("%s: osd_req %p unsafe %s op 0x%hx\n", __func__, osd_req,
+		unsafe ? "true" : "false", osd_req->r_ops[0].op);
+
+	rbd_assert(osd_req->r_flags & CEPH_OSD_FLAG_WRITE);
+	if (!unsafe)
+		rbd_osd_req_callback(osd_req, NULL);
 }
 
 static void rbd_osd_req_format_read(struct rbd_obj_request *obj_request)
@@ -1755,12 +1776,13 @@ static struct ceph_osd_request *rbd_osd_req_create(
 	if (!osd_req)
 		return NULL;	/* ENOMEM */
 
-	if (write_request)
+	if (write_request) {
 		osd_req->r_flags = CEPH_OSD_FLAG_WRITE | CEPH_OSD_FLAG_ONDISK;
-	else
+		osd_req->r_unsafe_callback = rbd_osd_req_unsafe_callback;
+	} else {
 		osd_req->r_flags = CEPH_OSD_FLAG_READ;
-
-	osd_req->r_callback = rbd_osd_req_callback;
+		osd_req->r_callback = rbd_osd_req_callback;
+	}
 	osd_req->r_priv = obj_request;
 
 	osd_req->r_oid_len = strlen(obj_request->object_name);
