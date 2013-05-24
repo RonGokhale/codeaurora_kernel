@@ -189,6 +189,14 @@ struct cgroup {
 	struct dentry *dentry;		/* cgroup fs entry, RCU protected */
 
 	/*
+	 * Monotonically increasing unique serial number which defines a
+	 * uniform order among all cgroups.  It's guaranteed that all
+	 * ->children lists are in the ascending order of ->serial_nr.
+	 * It's used to allow interrupting and resuming iterations.
+	 */
+	u64 serial_nr;
+
+	/*
 	 * This is a copy of dentry->d_name, and it's needed because
 	 * we can't use dentry->d_name in cgroup_path().
 	 *
@@ -538,7 +546,6 @@ static inline const char *cgroup_name(const struct cgroup *cgrp)
 int cgroup_add_cftypes(struct cgroup_subsys *ss, struct cftype *cfts);
 int cgroup_rm_cftypes(struct cgroup_subsys *ss, struct cftype *cfts);
 
-int cgroup_is_removed(const struct cgroup *cgrp);
 bool cgroup_is_descendant(struct cgroup *cgrp, struct cgroup *ancestor);
 
 int cgroup_path(const struct cgroup *cgrp, char *buf, int buflen);
@@ -676,12 +683,14 @@ static inline struct cgroup* task_cgroup(struct task_struct *task,
 	return task_subsys_state(task, subsys_id)->cgroup;
 }
 
+struct cgroup *cgroup_next_sibling(struct cgroup *pos);
+
 /**
  * cgroup_for_each_child - iterate through children of a cgroup
  * @pos: the cgroup * to use as the loop cursor
- * @cgroup: cgroup whose children to walk
+ * @cgrp: cgroup whose children to walk
  *
- * Walk @cgroup's children.  Must be called under rcu_read_lock().  A child
+ * Walk @cgrp's children.  Must be called under rcu_read_lock().  A child
  * cgroup which hasn't finished ->css_online() or already has finished
  * ->css_offline() may show up during traversal and it's each subsystem's
  * responsibility to verify that each @pos is alive.
@@ -689,9 +698,15 @@ static inline struct cgroup* task_cgroup(struct task_struct *task,
  * If a subsystem synchronizes against the parent in its ->css_online() and
  * before starting iterating, a cgroup which finished ->css_online() is
  * guaranteed to be visible in the future iterations.
+ *
+ * It is allowed to temporarily drop RCU read lock during iteration.  The
+ * caller is responsible for ensuring that @pos remains accessible until
+ * the start of the next iteration by, for example, bumping the css refcnt.
  */
-#define cgroup_for_each_child(pos, cgroup)				\
-	list_for_each_entry_rcu(pos, &(cgroup)->children, sibling)
+#define cgroup_for_each_child(pos, cgrp)				\
+	for ((pos) = list_first_or_null_rcu(&(cgrp)->children,		\
+					    struct cgroup, sibling);	\
+	     (pos); (pos) = cgroup_next_sibling((pos)))
 
 struct cgroup *cgroup_next_descendant_pre(struct cgroup *pos,
 					  struct cgroup *cgroup);
@@ -750,6 +765,10 @@ struct cgroup *cgroup_rightmost_descendant(struct cgroup *pos);
  * Alternatively, a subsystem may choose to use a single global lock to
  * synchronize ->css_online() and ->css_offline() against tree-walking
  * operations.
+ *
+ * It is allowed to temporarily drop RCU read lock during iteration.  The
+ * caller is responsible for ensuring that @pos remains accessible until
+ * the start of the next iteration by, for example, bumping the css refcnt.
  */
 #define cgroup_for_each_descendant_pre(pos, cgroup)			\
 	for (pos = cgroup_next_descendant_pre(NULL, (cgroup)); (pos);	\
@@ -840,8 +859,6 @@ static inline void cgroup_fork(struct task_struct *p) {}
 static inline void cgroup_post_fork(struct task_struct *p) {}
 static inline void cgroup_exit(struct task_struct *p, int callbacks) {}
 
-static inline void cgroup_lock(void) {}
-static inline void cgroup_unlock(void) {}
 static inline int cgroupstats_build(struct cgroupstats *stats,
 					struct dentry *dentry)
 {
