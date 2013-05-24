@@ -213,6 +213,25 @@ static void mdp4_dtv_pipe_clean(struct vsync_update *vp)
 
 static void mdp4_dtv_blt_ov_update(struct mdp4_overlay_pipe *pipe);
 static void mdp4_dtv_wait4dmae(int cndx);
+static void mdp4_dtv_wait4dmae_done(int cndx);
+
+static void mdp4_dtv_wait4dmae_done(int cndx)
+{
+	unsigned long flags;
+	struct vsycn_ctrl *vctrl;
+
+	if (cndx >= MAX_CONTROLLER) {
+		pr_err("%s: out or range: cndx=%d\n", __func__, cndx);
+		return;
+	}
+	vctrl = &vsync_ctrl_db[cndx];
+
+	spin_lock_irqsave(&vctrl->spin_lock, flags);
+	INIT_COMPLETION(vctrl->dmae_comp);
+	vsync_irq_enable(INTR_DMA_E_DONE, MDP_DMA_E_TERM);
+	spin_unlock_irqrestore(&vctrl->spin_lock, flags);
+	mdp4_dtv_wait4dmae(cndx);
+}
 
 int mdp4_dtv_pipe_commit(int cndx, int wait, u32 *release_busy)
 {
@@ -409,7 +428,8 @@ static void mdp4_dtv_wait4dmae(int cndx)
 	if (atomic_read(&vctrl->suspend) > 0)
 		return;
 
-	wait_for_completion(&vctrl->dmae_comp);
+	wait_for_completion_interruptible_timeout(&vctrl->dmae_comp,
+		msecs_to_jiffies(VSYNC_PERIOD * 2));
 }
 
 ssize_t mdp4_dtv_show_event(struct device *dev,
@@ -670,6 +690,15 @@ int mdp4_dtv_on(struct platform_device *pdev)
 		pr_warn("%s: panel_next_on failed", __func__);
 
 	atomic_set(&vctrl->suspend, 0);
+
+	if (!(mfd->cont_splash_done)) {
+		mfd->cont_splash_done = 1;
+		mdp4_dtv_wait4dmae_done(0);
+		MDP_OUTP(MDP_BASE + DTV_BASE, 0);
+		/* Clks are enabled in probe.
+		   Disabling clocks now */
+		mdp_clk_ctrl(0);
+	}
 
 	mutex_unlock(&mfd->dma->ov_mutex);
 
