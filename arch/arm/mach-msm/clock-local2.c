@@ -187,7 +187,8 @@ static int rcg_clk_set_rate(struct clk *c, unsigned long rate)
 		rc = clk_enable(nf->src_clk);
 		if (rc) {
 			spin_unlock_irqrestore(&c->lock, flags);
-			clk_unprepare(nf->src_clk);
+			if (c->prepare_count)
+				clk_unprepare(nf->src_clk);
 			return rc;
 		}
 	}
