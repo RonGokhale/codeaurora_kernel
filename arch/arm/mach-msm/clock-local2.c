@@ -159,12 +159,20 @@ static int rcg_clk_prepare(struct clk *c)
 	return 0;
 }
 
+static int rcg_clk_is_enabled(struct clk *c)
+{
+	struct rcg_clk *rcg = to_rcg_clk(c);
+	return !(readl_relaxed(CMD_RCGR_REG(rcg)) & CMD_RCGR_ROOT_STATUS_BIT);
+}
+
 static int rcg_clk_set_rate(struct clk *c, unsigned long rate)
 {
 	struct clk_freq_tbl *cf, *nf;
 	struct rcg_clk *rcg = to_rcg_clk(c);
 	int rc;
 	unsigned long flags;
+	bool do_prepare = !!c->prepare_count;
+	bool do_enable = !!c->count;
 
 	for (nf = rcg->freq_tbl; nf->freq_hz != FREQ_END
 			&& nf->freq_hz != rate; nf++)
@@ -175,19 +183,29 @@ static int rcg_clk_set_rate(struct clk *c, unsigned long rate)
 
 	cf = rcg->current_freq;
 
+	/* If the clock is unprepared, but already enabled from the boot
+	 * ROM, we need to enable the parent for the potential source
+	 * switch.
+	 */
+	if (!c->prepare_count || !c->count)
+		if (c->ops->is_enabled && c->ops->is_enabled(c)) {
+			do_prepare = true;
+			do_enable = true;
+		}
+
 	/* Enable source clock dependency for the new freq. */
-	if (c->prepare_count) {
+	if (do_prepare) {
 		rc = clk_prepare(nf->src_clk);
 		if (rc)
 			return rc;
 	}
 
 	spin_lock_irqsave(&c->lock, flags);
-	if (c->count) {
+	if (do_enable) {
 		rc = clk_enable(nf->src_clk);
 		if (rc) {
 			spin_unlock_irqrestore(&c->lock, flags);
-			if (c->prepare_count)
+			if (do_prepare)
 				clk_unprepare(nf->src_clk);
 			return rc;
 		}
@@ -199,11 +217,11 @@ static int rcg_clk_set_rate(struct clk *c, unsigned long rate)
 	rcg->set_rate(rcg, nf);
 
 	/* Release source requirements of the old freq. */
-	if (c->count)
+	if (do_enable)
 		clk_disable(cf->src_clk);
 	spin_unlock_irqrestore(&c->lock, flags);
 
-	if (c->prepare_count)
+	if (do_enable)
 		clk_unprepare(cf->src_clk);
 
 	rcg->current_freq = nf;
@@ -963,6 +981,7 @@ struct clk_ops clk_ops_empty;
 
 struct clk_ops clk_ops_rcg = {
 	.enable = rcg_clk_prepare,
+	.is_enabled = rcg_clk_is_enabled,
 	.set_rate = rcg_clk_set_rate,
 	.list_rate = rcg_clk_list_rate,
 	.round_rate = rcg_clk_round_rate,
