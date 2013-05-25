@@ -163,7 +163,11 @@ QUALCOMM Branches
 - q3.4/core-3.4 
 - q3.9/android-msm-3.9-rc2
 
+List of b2g branches
+========================
 
+- b2g/ics_strawberry 
+- b2g/ics_strawberry_v1 
 
 list of tags
 =============
