@@ -115,7 +115,6 @@ static DEFINE_MUTEX(local_ports_lock);
 #define SRV_HASH_SIZE 32
 static struct list_head server_list[SRV_HASH_SIZE];
 static DEFINE_MUTEX(server_list_lock);
-static wait_queue_head_t newserver_wait;
 
 struct msm_ipc_server {
 	struct list_head list;
@@ -181,9 +180,6 @@ struct msm_ipc_routing_table_entry {
 static struct list_head routing_table[RT_HASH_SIZE];
 static DEFINE_MUTEX(routing_table_lock);
 static int routing_table_inited;
-
-static LIST_HEAD(msm_ipc_board_dev_list);
-static DEFINE_MUTEX(msm_ipc_board_dev_list_lock);
 
 static void do_read_data(struct work_struct *work);
 
@@ -476,23 +472,44 @@ static void msm_ipc_router_free_skb(struct sk_buff_head *skb_head)
 	kfree(skb_head);
 }
 
+static int post_pkt_to_port(struct msm_ipc_port *port_ptr,
+			    struct rr_packet *pkt, int clone)
+{
+	struct rr_packet *temp_pkt = pkt;
+
+	if (unlikely(!port_ptr || !pkt))
+		return -EINVAL;
+
+	if (clone) {
+		temp_pkt = clone_pkt(pkt);
+		if (!temp_pkt) {
+			pr_err("%s: Error cloning packet for port %08x:%08x\n",
+				__func__, port_ptr->this_port.node_id,
+				port_ptr->this_port.port_id);
+			return -ENOMEM;
+		}
+	}
+
+	mutex_lock(&port_ptr->port_rx_q_lock);
+	wake_lock(&port_ptr->port_rx_wake_lock);
+	list_add_tail(&temp_pkt->list, &port_ptr->port_rx_q);
+	wake_up(&port_ptr->port_rx_wait_q);
+	if (port_ptr->notify)
+		port_ptr->notify(MSM_IPC_ROUTER_READ_CB, port_ptr->priv);
+	mutex_unlock(&port_ptr->port_rx_q_lock);
+	return 0;
+}
+
 static int post_control_ports(struct rr_packet *pkt)
 {
 	struct msm_ipc_port *port_ptr;
-	struct rr_packet *cloned_pkt;
 
 	if (!pkt)
 		return -EINVAL;
 
 	mutex_lock(&control_ports_lock);
-	list_for_each_entry(port_ptr, &control_ports, list) {
-		mutex_lock(&port_ptr->port_rx_q_lock);
-		cloned_pkt = clone_pkt(pkt);
-		wake_lock(&port_ptr->port_rx_wake_lock);
-		list_add_tail(&cloned_pkt->list, &port_ptr->port_rx_q);
-		wake_up(&port_ptr->port_rx_wait_q);
-		mutex_unlock(&port_ptr->port_rx_q_lock);
-	}
+	list_for_each_entry(port_ptr, &control_ports, list)
+		post_pkt_to_port(port_ptr, pkt, 1);
 	mutex_unlock(&control_ports_lock);
 	return 0;
 }
@@ -565,8 +582,6 @@ struct msm_ipc_port *msm_ipc_router_create_raw_port(void *endpoint,
 	}
 
 	spin_lock_init(&port_ptr->port_lock);
-	INIT_LIST_HEAD(&port_ptr->incomplete);
-	mutex_init(&port_ptr->incomplete_lock);
 	INIT_LIST_HEAD(&port_ptr->port_rx_q);
 	mutex_init(&port_ptr->port_rx_q_lock);
 	init_waitqueue_head(&port_ptr->port_rx_wait_q);
@@ -736,27 +751,14 @@ static void post_resume_tx(struct msm_ipc_router_remote_port *rport_ptr,
 {
 	struct msm_ipc_resume_tx_port *rtx_port, *tmp_rtx_port;
 	struct msm_ipc_port *local_port;
-	struct rr_packet *cloned_pkt;
 
 	list_for_each_entry_safe(rtx_port, tmp_rtx_port,
 				&rport_ptr->resume_tx_port_list, list) {
 		mutex_lock(&local_ports_lock);
 		local_port =
 			msm_ipc_router_lookup_local_port(rtx_port->port_id);
-		if (local_port) {
-			cloned_pkt = clone_pkt(pkt);
-			if (cloned_pkt) {
-				mutex_lock(&local_port->port_rx_q_lock);
-				list_add_tail(&cloned_pkt->list,
-						&local_port->port_rx_q);
-				wake_up(&local_port->port_rx_wait_q);
-				mutex_unlock(&local_port->port_rx_q_lock);
-			} else {
-				pr_err("%s: Clone_pkt failed for %08x:%08x\n",
-					__func__, local_port->this_port.node_id,
-					local_port->this_port.port_id);
-			}
-		}
+		if (local_port)
+			post_pkt_to_port(local_port, pkt, 1);
 		mutex_unlock(&local_ports_lock);
 		list_del(&rtx_port->list);
 		kfree(rtx_port);
@@ -1646,16 +1648,157 @@ static int process_hello_msg(struct msm_ipc_router_xprt_info *xprt_info,
 	return rc;
 }
 
+static int process_resume_tx_msg(union rr_control_msg *msg,
+				 struct rr_packet *pkt)
+{
+	struct msm_ipc_router_remote_port *rport_ptr;
+
+	RR("o RESUME_TX id=%d:%08x\n", msg->cli.node_id, msg->cli.port_id);
+
+	rport_ptr = msm_ipc_router_lookup_remote_port(msg->cli.node_id,
+						      msg->cli.port_id);
+	if (!rport_ptr) {
+		pr_err("%s: Unable to resume client\n", __func__);
+		return -ENODEV;
+	}
+	mutex_lock(&rport_ptr->quota_lock);
+	rport_ptr->tx_quota_cnt = 0;
+	post_resume_tx(rport_ptr, pkt);
+	mutex_unlock(&rport_ptr->quota_lock);
+	return 0;
+}
+
+static int process_new_server_msg(struct msm_ipc_router_xprt_info *xprt_info,
+			union rr_control_msg *msg, struct rr_packet *pkt)
+{
+	struct msm_ipc_routing_table_entry *rt_entry;
+	struct msm_ipc_server *server;
+	struct msm_ipc_router_remote_port *rport_ptr;
+
+	if (msg->srv.instance == 0) {
+		pr_err("%s: Server %08x create rejected, version = 0\n",
+			__func__, msg->srv.service);
+		return -EINVAL;
+	}
+
+	RR("o NEW_SERVER id=%d:%08x service=%08x:%08x\n", msg->srv.node_id,
+	    msg->srv.port_id, msg->srv.service, msg->srv.instance);
+	/*
+	 * Find the entry from Routing Table corresponding to Node ID.
+	 * Under SSR, an entry will be found. When the subsystem hosting
+	 * service is not adjacent, an entry will not be found and hence
+	 * allocate an entry. Update the entry with the Node ID that it
+	 * corresponds to and the XPRT through which it can be reached.
+	 */
+	mutex_lock(&routing_table_lock);
+	rt_entry = lookup_routing_table(msg->srv.node_id);
+	if (!rt_entry) {
+		rt_entry = alloc_routing_table_entry(msg->srv.node_id);
+		if (!rt_entry) {
+			mutex_unlock(&routing_table_lock);
+			pr_err("%s: rt_entry allocation failed\n", __func__);
+			return -ENOMEM;
+		}
+		mutex_lock(&rt_entry->lock);
+		rt_entry->neighbor_node_id = xprt_info->remote_node_id;
+		rt_entry->xprt_info = xprt_info;
+		mutex_unlock(&rt_entry->lock);
+		add_routing_table_entry(rt_entry);
+	}
+	mutex_unlock(&routing_table_lock);
+
+	/*
+	 * If the service does not exist already in the database, create and
+	 * store the service info. Create a remote port structure in which
+	 * the service is hosted and cache the security rule for the service
+	 * in that remote port structure.
+	 */
+	mutex_lock(&server_list_lock);
+	server = msm_ipc_router_lookup_server(msg->srv.service,
+			msg->srv.instance, msg->srv.node_id, msg->srv.port_id);
+	if (!server) {
+		server = msm_ipc_router_create_server(
+				msg->srv.service, msg->srv.instance,
+				msg->srv.node_id, msg->srv.port_id, xprt_info);
+		if (!server) {
+			mutex_unlock(&server_list_lock);
+			pr_err("%s: Server Create failed\n", __func__);
+			return -ENOMEM;
+		}
+
+		if (!msm_ipc_router_lookup_remote_port(
+				msg->srv.node_id, msg->srv.port_id)) {
+			rport_ptr = msm_ipc_router_create_remote_port(
+					msg->srv.node_id, msg->srv.port_id);
+			if (!rport_ptr) {
+				mutex_unlock(&server_list_lock);
+				return -ENOMEM;
+			}
+			rport_ptr->sec_rule = msm_ipc_get_security_rule(
+						msg->srv.service,
+						msg->srv.instance);
+		}
+	}
+	mutex_unlock(&server_list_lock);
+
+	/*
+	 * Relay the new server message to other subsystems that do not belong
+	 * to the cluster from which this message is received. Notify the
+	 * local clients waiting for this service.
+	 */
+	relay_msg(xprt_info, pkt);
+	post_control_ports(pkt);
+	return 0;
+}
+
+static int process_rmv_server_msg(struct msm_ipc_router_xprt_info *xprt_info,
+			union rr_control_msg *msg, struct rr_packet *pkt)
+{
+	struct msm_ipc_server *server;
+
+	RR("o REMOVE_SERVER service=%08x:%d\n",
+	    msg->srv.service, msg->srv.instance);
+	mutex_lock(&server_list_lock);
+	server = msm_ipc_router_lookup_server(msg->srv.service,
+			msg->srv.instance, msg->srv.node_id, msg->srv.port_id);
+	if (server) {
+		msm_ipc_router_destroy_server(server, msg->srv.node_id,
+					      msg->srv.port_id);
+		/*
+		 * Relay the new server message to other subsystems that do not
+		 * belong to the cluster from which this message is received.
+		 * Notify the local clients communicating with the service.
+		 */
+		relay_msg(xprt_info, pkt);
+		post_control_ports(pkt);
+	}
+	mutex_unlock(&server_list_lock);
+	return 0;
+}
+
+static int process_rmv_client_msg(struct msm_ipc_router_xprt_info *xprt_info,
+			union rr_control_msg *msg, struct rr_packet *pkt)
+{
+	struct msm_ipc_router_remote_port *rport_ptr;
+
+	RR("o REMOVE_CLIENT id=%d:%08x\n", msg->cli.node_id, msg->cli.port_id);
+	rport_ptr = msm_ipc_router_lookup_remote_port(msg->cli.node_id,
+						      msg->cli.port_id);
+	if (rport_ptr)
+		msm_ipc_router_destroy_remote_port(rport_ptr);
+
+	relay_msg(xprt_info, pkt);
+	post_control_ports(pkt);
+	return 0;
+}
+
 static int process_control_msg(struct msm_ipc_router_xprt_info *xprt_info,
 			       struct rr_packet *pkt)
 {
 	union rr_control_msg *msg;
-	struct msm_ipc_router_remote_port *rport_ptr;
 	int rc = 0;
 	struct sk_buff *temp_ptr;
 	struct rr_header *hdr;
-	struct msm_ipc_server *server;
-	struct msm_ipc_routing_table_entry *rt_entry;
 
 	if (pkt->length != (IPC_ROUTER_HDR_SIZE + sizeof(*msg))) {
 		pr_err("%s: r2r msg size %d != %d\n", __func__, pkt->length,
@@ -1679,115 +1822,17 @@ static int process_control_msg(struct msm_ipc_router_xprt_info *xprt_info,
 	case IPC_ROUTER_CTRL_CMD_HELLO:
 		rc = process_hello_msg(xprt_info, hdr);
 		break;
-
 	case IPC_ROUTER_CTRL_CMD_RESUME_TX:
-		RR("o RESUME_TX id=%d:%08x\n",
-		   msg->cli.node_id, msg->cli.port_id);
-
-		rport_ptr = msm_ipc_router_lookup_remote_port(msg->cli.node_id,
-							msg->cli.port_id);
-		if (!rport_ptr) {
-			pr_err("%s: Unable to resume client\n", __func__);
-			break;
-		}
-		mutex_lock(&rport_ptr->quota_lock);
-		rport_ptr->tx_quota_cnt = 0;
-		post_resume_tx(rport_ptr, pkt);
-		mutex_unlock(&rport_ptr->quota_lock);
+		rc = process_resume_tx_msg(msg, pkt);
 		break;
-
 	case IPC_ROUTER_CTRL_CMD_NEW_SERVER:
-		if (msg->srv.instance == 0) {
-			pr_err(
-			"rpcrouter: Server create rejected, version = 0, "
-			"service = %08x\n", msg->srv.service);
-			break;
-		}
-
-		RR("o NEW_SERVER id=%d:%08x service=%08x:%08x\n",
-		   msg->srv.node_id, msg->srv.port_id,
-		   msg->srv.service, msg->srv.instance);
-
-		mutex_lock(&routing_table_lock);
-		rt_entry = lookup_routing_table(msg->srv.node_id);
-		if (!rt_entry) {
-			rt_entry = alloc_routing_table_entry(msg->srv.node_id);
-			if (!rt_entry) {
-				mutex_unlock(&routing_table_lock);
-				pr_err("%s: rt_entry allocation failed\n",
-					__func__);
-				return -ENOMEM;
-			}
-			mutex_lock(&rt_entry->lock);
-			rt_entry->neighbor_node_id = xprt_info->remote_node_id;
-			rt_entry->xprt_info = xprt_info;
-			mutex_unlock(&rt_entry->lock);
-			add_routing_table_entry(rt_entry);
-		}
-		mutex_unlock(&routing_table_lock);
-
-		mutex_lock(&server_list_lock);
-		server = msm_ipc_router_lookup_server(msg->srv.service,
-						      msg->srv.instance,
-						      msg->srv.node_id,
-						      msg->srv.port_id);
-		if (!server) {
-			server = msm_ipc_router_create_server(
-				msg->srv.service, msg->srv.instance,
-				msg->srv.node_id, msg->srv.port_id, xprt_info);
-			if (!server) {
-				mutex_unlock(&server_list_lock);
-				pr_err("%s: Server Create failed\n", __func__);
-				return -ENOMEM;
-			}
-
-			if (!msm_ipc_router_lookup_remote_port(
-					msg->srv.node_id, msg->srv.port_id)) {
-				rport_ptr = msm_ipc_router_create_remote_port(
-					msg->srv.node_id, msg->srv.port_id);
-				if (!rport_ptr)
-					pr_err("%s: Remote port create "
-					       "failed\n", __func__);
-				else
-					rport_ptr->sec_rule =
-						msm_ipc_get_security_rule(
-						msg->srv.service,
-						msg->srv.instance);
-			}
-			wake_up(&newserver_wait);
-		}
-		mutex_unlock(&server_list_lock);
-
-		relay_msg(xprt_info, pkt);
-		post_control_ports(pkt);
+		rc = process_new_server_msg(xprt_info, msg, pkt);
 		break;
 	case IPC_ROUTER_CTRL_CMD_REMOVE_SERVER:
-		RR("o REMOVE_SERVER service=%08x:%d\n",
-		   msg->srv.service, msg->srv.instance);
-		mutex_lock(&server_list_lock);
-		server = msm_ipc_router_lookup_server(msg->srv.service,
-						      msg->srv.instance,
-						      msg->srv.node_id,
-						      msg->srv.port_id);
-		if (server) {
-			msm_ipc_router_destroy_server(server,
-						      msg->srv.node_id,
-						      msg->srv.port_id);
-			relay_msg(xprt_info, pkt);
-			post_control_ports(pkt);
-		}
-		mutex_unlock(&server_list_lock);
+		rc = process_rmv_server_msg(xprt_info, msg, pkt);
 		break;
 	case IPC_ROUTER_CTRL_CMD_REMOVE_CLIENT:
-		RR("o REMOVE_CLIENT id=%d:%08x\n",
-		    msg->cli.node_id, msg->cli.port_id);
-		rport_ptr = msm_ipc_router_lookup_remote_port(msg->cli.node_id,
-							msg->cli.port_id);
-		if (rport_ptr)
-			msm_ipc_router_destroy_remote_port(rport_ptr);
-
-		relay_msg(xprt_info, pkt);
-		post_control_ports(pkt);
+		rc = process_rmv_client_msg(xprt_info, msg, pkt);
 		break;
 	case IPC_ROUTER_CTRL_CMD_PING:
 		/* No action needed for ping messages received */
@@ -1901,14 +1946,7 @@ static void do_read_data(struct work_struct *work)
 			}
 		}
 
-		mutex_lock(&port_ptr->port_rx_q_lock);
-		wake_lock(&port_ptr->port_rx_wake_lock);
-		list_add_tail(&pkt->list, &port_ptr->port_rx_q);
-		wake_up(&port_ptr->port_rx_wait_q);
-		if (port_ptr->notify)
-			port_ptr->notify(MSM_IPC_ROUTER_READ_CB,
-					 port_ptr->priv);
-		mutex_unlock(&port_ptr->port_rx_q_lock);
+		post_pkt_to_port(port_ptr, pkt, 0);
 		mutex_unlock(&local_ports_lock);
 
 process_done:
@@ -2082,12 +2120,8 @@ static int loopback_data(struct msm_ipc_port *src,
 		return -ENODEV;
 	}
 
-	mutex_lock(&port_ptr->port_rx_q_lock);
-	wake_lock(&port_ptr->port_rx_wake_lock);
-	list_add_tail(&pkt->list, &port_ptr->port_rx_q);
 	ret_len = pkt->length;
-	wake_up(&port_ptr->port_rx_wait_q);
-	mutex_unlock(&port_ptr->port_rx_q_lock);
+	post_pkt_to_port(port_ptr, pkt, 0);
 	update_comm_mode_info(&src->mode_info, NULL);
 	mutex_unlock(&local_ports_lock);
 
@@ -2962,9 +2996,14 @@ void msm_ipc_router_xprt_notify(struct msm_ipc_router_xprt *xprt,
 		D("open event for '%s'\n", xprt->name);
 		xprt_work = kmalloc(sizeof(struct msm_ipc_router_xprt_work),
 				GFP_ATOMIC);
-		xprt_work->xprt = xprt;
-		INIT_WORK(&xprt_work->work, xprt_open_worker);
-		queue_work(msm_ipc_router_workqueue, &xprt_work->work);
+		if (xprt_work) {
+			xprt_work->xprt = xprt;
+			INIT_WORK(&xprt_work->work, xprt_open_worker);
+			queue_work(msm_ipc_router_workqueue, &xprt_work->work);
+		} else {
+			pr_err("%s: malloc failure - Couldn't notify OPEN event",
+				__func__);
+		}
 		break;
 
 	case IPC_ROUTER_XPRT_EVENT_CLOSE:
@@ -2972,9 +3011,14 @@ void msm_ipc_router_xprt_notify(struct msm_ipc_router_xprt *xprt,
 		atomic_inc(&pending_close_count);
 		xprt_work = kmalloc(sizeof(struct msm_ipc_router_xprt_work),
 				GFP_ATOMIC);
-		xprt_work->xprt = xprt;
-		INIT_WORK(&xprt_work->work, xprt_close_worker);
-		queue_work(msm_ipc_router_workqueue, &xprt_work->work);
+		if (xprt_work) {
+			xprt_work->xprt = xprt;
+			INIT_WORK(&xprt_work->work, xprt_close_worker);
+			queue_work(msm_ipc_router_workqueue, &xprt_work->work);
+		} else {
+			pr_err("%s: malloc failure - Couldn't notify CLOSE event",
+				__func__);
+		}
 		break;
 	}
 
@@ -3070,7 +3114,6 @@ static int __init msm_ipc_router_init(void)
 	}
 	mutex_unlock(&routing_table_lock);
 
-	init_waitqueue_head(&newserver_wait);
 	init_waitqueue_head(&subsystem_restart_wait);
 	ret = msm_ipc_router_init_sockets();
 	if (ret < 0)

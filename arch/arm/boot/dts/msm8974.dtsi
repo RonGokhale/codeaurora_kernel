@@ -26,6 +26,35 @@
 		sdhc4 = &sdhc_4; /* SDC4 SDIO slot */
 	};
 
+	cpus {
+		#size-cells = <0>;
+		#address-cells = <1>;
+
+		CPU0: cpu@0 {
+			device_type = "cpu";
+			compatible = "qcom,krait";
+			reg = <0x0>;
+		};
+
+		CPU1: cpu@1 {
+			device_type = "cpu";
+			compatible = "qcom,krait";
+			reg = <0x1>;
+		};
+
+		CPU2: cpu@2 {
+			device_type = "cpu";
+			compatible = "qcom,krait";
+			reg = <0x2>;
+		};
+
+		CPU3: cpu@3 {
+			device_type = "cpu";
+			compatible = "qcom,krait";
+			reg = <0x3>;
+		};
+	};
+
 	memory {
 		secure_mem: secure_region {
 			linux,contiguous-region;
@@ -738,6 +767,7 @@
 		interrupt-names = "qup_err_intr";
 		qcom,i2c-bus-freq = <100000>;
 		qcom,i2c-src-freq = <50000000>;
+		qcom,master-id = <84>;
 	};
 
 	i2c_1: i2c@f9923000 {
@@ -753,6 +783,7 @@
 		qcom,i2c-src-freq = <19200000>;
 		qcom,scl-gpio = <&msmgpio 3 0>;
 		qcom,sda-gpio = <&msmgpio 2 0>;
+		qcom,master-id = <86>;
 		status = "disabled";
 	};
 
@@ -767,6 +798,7 @@
 		interrupt-names = "qup_err_intr";
 		qcom,i2c-bus-freq = <100000>;
 		qcom,i2c-src-freq = <50000000>;
+		qcom,master-id = <86>;
 	};
 
 	spi_0: spi@f9923000 {
@@ -1419,6 +1451,7 @@
 		qcom,limit-temp = <60>;
 		qcom,temp-hysteresis = <10>;
 		qcom,freq-step = <2>;
+		qcom,freq-control-mask = <0xf>;
 		qcom,core-limit-temp = <80>;
 		qcom,core-temp-hysteresis = <10>;
 		qcom,core-control-mask = <0xe>;
@@ -1583,6 +1616,7 @@
 
 &gdsc_venus {
 	qcom,clock-names = "core_clk";
+	qcom,skip-logic-collapse;
 	status = "ok";
 };
 

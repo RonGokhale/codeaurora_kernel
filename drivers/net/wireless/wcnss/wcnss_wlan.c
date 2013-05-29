@@ -31,6 +31,7 @@
 #include <linux/kthread.h>
 #include <linux/wait.h>
 #include <linux/uaccess.h>
+#include <linux/mfd/pm8xxx/misc.h>
 
 #include <mach/msm_smd.h>
 #include <mach/msm_iomap.h>
@@ -54,6 +55,10 @@ MODULE_PARM_DESC(has_48mhz_xo, "Is an external 48 MHz XO present");
 static int has_calibrated_data = WCNSS_CONFIG_UNSPECIFIED;
 module_param(has_calibrated_data, int, S_IWUSR | S_IRUGO);
 MODULE_PARM_DESC(has_calibrated_data, "whether calibrated data file available");
+
+static int has_autodetect_xo = WCNSS_CONFIG_UNSPECIFIED;
+module_param(has_autodetect_xo, int, S_IWUSR | S_IRUGO);
+MODULE_PARM_DESC(has_autodetect_xo, "Perform auto detect to configure IRIS XO");
 
 static int do_not_cancel_vote = WCNSS_CONFIG_UNSPECIFIED;
 module_param(do_not_cancel_vote, int, S_IWUSR | S_IRUGO);
@@ -131,6 +136,21 @@ struct wcnss_version {
 	unsigned char  minor;
 	unsigned char  version;
 	unsigned char  revision;
+};
+
+struct wcnss_pmic_dump {
+	char reg_name[10];
+	u16 reg_addr;
+};
+
+static struct wcnss_pmic_dump wcnss_pmic_reg_dump[] = {
+	{"S2", 0x1D8},
+	{"L4", 0xB4},
+	{"L10", 0xC0},
+	{"LVS2", 0x62},
+	{"S4", 0x1E8},
+	{"LVS7", 0x06C},
+	{"LVS1", 0x060},
 };
 
 #define NVBIN_FILE "wlan/prima/WCNSS_qcom_wlan_nv.bin"
@@ -342,6 +362,25 @@ static ssize_t wcnss_version_show(struct device *dev,
 static DEVICE_ATTR(wcnss_version, S_IRUSR,
 		wcnss_version_show, NULL);
 
+void wcnss_riva_dump_pmic_regs(void)
+{
+	int i, rc;
+	u8  val;
+
+	for (i = 0; i < ARRAY_SIZE(wcnss_pmic_reg_dump); i++) {
+		val = 0;
+		rc = pm8xxx_read_register(wcnss_pmic_reg_dump[i].reg_addr,
+				&val);
+		if (rc)
+			pr_err("PMIC READ: Failed to read addr = %d\n",
+					wcnss_pmic_reg_dump[i].reg_addr);
+		else
+			pr_info_ratelimited("PMIC READ: %s addr = %x, value = %x\n",
+				wcnss_pmic_reg_dump[i].reg_name,
+				wcnss_pmic_reg_dump[i].reg_addr, val);
+	}
+}
+
 /* wcnss_reset_intr() is invoked when host drivers fails to
  * communicate with WCNSS over SMD; so logging these registers
  * helps to know WCNSS failure reason
@@ -366,6 +405,7 @@ void wcnss_riva_log_debug_regs(void)
 	ccu_reg = penv->riva_ccu_base + CCU_RIVA_LAST_ADDR2_OFFSET;
 	reg = readl_relaxed(ccu_reg);
 	pr_info_ratelimited("%s: CCU_CCPU_LAST_ADDR2 %08x\n", __func__, reg);
+	wcnss_riva_dump_pmic_regs();
 
 }
 EXPORT_SYMBOL(wcnss_riva_log_debug_regs);
@@ -836,6 +876,11 @@ static int enable_wcnss_suspend_notify_set(const char *val,
 }
 module_param_call(enable_wcnss_suspend_notify, enable_wcnss_suspend_notify_set,
 		param_get_int, &enable_wcnss_suspend_notify, S_IRUGO | S_IWUSR);
+
+int wcnss_xo_auto_detect_enabled(void)
+{
+	return (has_autodetect_xo == 1 ? 1 : 0);
+}
 
 
 void wcnss_suspend_notify(void)
@@ -1470,6 +1515,11 @@ wcnss_trigger_config(struct platform_device *pdev)
 	}
 	penv->wcnss_hw_type = (has_pronto_hw) ? WCNSS_PRONTO_HW : WCNSS_RIVA_HW;
 	penv->wlan_config.use_48mhz_xo = has_48mhz_xo;
+
+	if (WCNSS_CONFIG_UNSPECIFIED == has_autodetect_xo && has_pronto_hw) {
+		has_autodetect_xo = of_property_read_bool(pdev->dev.of_node,
+									"qcom,has_autodetect_xo");
+	}
 
 	penv->thermal_mitigation = 0;
 	strlcpy(penv->wcnss_version, "INVALID", WCNSS_VERSION_LEN);

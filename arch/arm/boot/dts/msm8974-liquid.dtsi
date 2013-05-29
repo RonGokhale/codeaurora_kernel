@@ -294,9 +294,19 @@
 		enable-active-high;
 	};
 
+	ath_chip_pwd_l: ath_chip_reset {
+		compatible = "regulator-fixed";
+		regulator-name = "ath_chip_pwd_l";
+		gpio = <&pm8941_gpios 33 0>;
+		enable-active-high;
+	};
+
 	bt_ar3002 {
 		compatible = "qca,ar3002";
 		qca,bt-reset-gpio = <&pm8941_gpios 34 0>;
+		qca,bt-chip-pwd-supply = <&ath_chip_pwd_l>;
+		qca,bt-vdd-io-supply = <&pm8941_s3>;
+		qca,bt-vdd-pa-supply = <&pm8941_l19>;
 	};
 
 	bt_ar3002_sleep {
@@ -412,10 +422,6 @@
 
 &usb3 {
 	qcom,otg-capability;
-};
-
-&pm8941_mvs1 {
-	parent-supply = <&ext_5v>;
 };
 
 &pm8941_mvs2 {
@@ -717,8 +723,10 @@
 
 &slim_msm {
 	taiko_codec {
+		qcom,cdc-micbias1-ext-cap;
 		qcom,cdc-micbias2-ext-cap;
 		qcom,cdc-micbias3-ext-cap;
+		qcom,cdc-micbias4-ext-cap;
 
 		/*
 		 * Liquid has external spkrdrv supply. Give a dummy supply to
@@ -765,6 +773,7 @@
 
 &pm8941_chg {
 	status = "ok";
+	otg-parent-supply = <&ext_5v>;
 
 	qcom,charging-disabled;
 

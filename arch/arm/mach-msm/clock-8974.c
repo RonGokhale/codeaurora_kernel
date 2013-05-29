@@ -638,11 +638,11 @@ enum vdd_dig_levels {
 	VDD_DIG_NUM
 };
 
-static int *vdd_corner[] = {
-	[VDD_DIG_NONE]	  = VDD_UV(RPM_REGULATOR_CORNER_NONE),
-	[VDD_DIG_LOW]	  = VDD_UV(RPM_REGULATOR_CORNER_SVS_SOC),
-	[VDD_DIG_NOMINAL] = VDD_UV(RPM_REGULATOR_CORNER_NORMAL),
-	[VDD_DIG_HIGH]	  = VDD_UV(RPM_REGULATOR_CORNER_SUPER_TURBO),
+static int vdd_corner[] = {
+	RPM_REGULATOR_CORNER_NONE,		/* VDD_DIG_NONE */
+	RPM_REGULATOR_CORNER_SVS_SOC,		/* VDD_DIG_LOW */
+	RPM_REGULATOR_CORNER_NORMAL,		/* VDD_DIG_NOMINAL */
+	RPM_REGULATOR_CORNER_SUPER_TURBO,	/* VDD_DIG_HIGH */
 };
 
 static DEFINE_VDD_REGULATORS(vdd_dig, VDD_DIG_NUM, 1, vdd_corner, NULL);
@@ -4212,6 +4212,7 @@ static struct branch_clk venus0_ocmemnoc_clk = {
 
 static struct branch_clk venus0_vcodec0_clk = {
 	.cbcr_reg = VENUS0_VCODEC0_CBCR,
+	.bcr_reg = VENUS0_BCR,
 	.has_sibling = 0,
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
@@ -4891,6 +4892,10 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("byte_clk", mdss_byte1_clk.c, "fd922e00.qcom,mdss_dsi"),
 	CLK_LOOKUP("core_clk", mdss_esc0_clk.c, "fd922800.qcom,mdss_dsi"),
 	CLK_LOOKUP("core_clk", mdss_esc1_clk.c, "fd922e00.qcom,mdss_dsi"),
+	CLK_LOOKUP("iface_clk", mdss_ahb_clk.c, "fd922800.qcom,mdss_dsi"),
+	CLK_LOOKUP("iface_clk", mdss_ahb_clk.c, "fd922e00.qcom,mdss_dsi"),
+	CLK_LOOKUP("bus_clk", mdss_axi_clk.c, "fd922800.qcom,mdss_dsi"),
+	CLK_LOOKUP("bus_clk", mdss_axi_clk.c, "fd922e00.qcom,mdss_dsi"),
 	CLK_LOOKUP("pixel_clk", mdss_pclk0_clk.c, "fd922800.qcom,mdss_dsi"),
 	CLK_LOOKUP("pixel_clk", mdss_pclk1_clk.c, "fd922e00.qcom,mdss_dsi"),
 	CLK_LOOKUP("iface_clk", mdss_ahb_clk.c, "fd922100.qcom,hdmi_tx"),
@@ -5097,7 +5102,6 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("core_clk", camss_vfe_vfe_axi_clk.c, "fda44000.qcom,iommu"),
 	CLK_LOOKUP("alt_core_clk", camss_top_ahb_clk.c, "fda44000.qcom,iommu"),
 	CLK_LOOKUP("iface_clk", mdss_ahb_clk.c, "mdp.0"),
-	CLK_LOOKUP("iface_clk", mdss_ahb_clk.c, "mdss_dsi_clk_ctrl"),
 	CLK_LOOKUP("iface_clk", mdss_ahb_clk.c, "fd923400.qcom,mdss_edp"),
 	CLK_LOOKUP("iface_clk", mdss_ahb_clk.c, "fd928000.qcom,iommu"),
 	CLK_LOOKUP("core_clk", mdss_axi_clk.c, "fd928000.qcom,iommu"),
@@ -5391,12 +5395,6 @@ static void __init reg_init(void)
 		writel_relaxed(regval | BIT(26) | BIT(25),
 				GCC_REG_BASE(APCS_CLOCK_BRANCH_ENA_VOTE));
 	}
-
-	/*
-	 * TODO: Confirm that no clocks need to be voted on in this sleep vote
-	 * register.
-	 */
-	writel_relaxed(0x0, GCC_REG_BASE(APCS_CLOCK_SLEEP_ENA_VOTE));
 }
 
 static void __init msm8974_clock_post_init(void)

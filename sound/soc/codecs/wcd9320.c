@@ -41,6 +41,8 @@
 
 #define TAIKO_MAD_SLIMBUS_TX_PORT 12
 #define TAIKO_MAD_AUDIO_FIRMWARE_PATH "wcd9320/wcd9320_mad_audio.bin"
+#define TAIKO_VALIDATE_RX_SBPORT_RANGE(port) ((port >= 16) && (port <= 22))
+#define TAIKO_CONVERT_RX_SBPORT_ID(port) (port - 16) /* RX1 port ID = 0 */
 
 #define TAIKO_HPH_PA_SETTLE_COMP_ON 3000
 #define TAIKO_HPH_PA_SETTLE_COMP_OFF 13000
@@ -294,6 +296,7 @@ MODULE_PARM_DESC(spkr_drv_wrnd,
 #define NUM_INTERPOLATORS 7
 #define BITS_PER_REG 8
 #define TAIKO_TX_PORT_NUMBER	16
+#define TAIKO_RX_PORT_START_NUMBER	16
 
 #define TAIKO_I2S_MASTER_MODE_MASK 0x08
 
@@ -409,19 +412,19 @@ struct hpf_work {
 static struct hpf_work tx_hpf_work[NUM_DECIMATORS];
 
 static const struct wcd9xxx_ch taiko_rx_chs[TAIKO_RX_MAX] = {
-	WCD9XXX_CH(16, 0),
-	WCD9XXX_CH(17, 1),
-	WCD9XXX_CH(18, 2),
-	WCD9XXX_CH(19, 3),
-	WCD9XXX_CH(20, 4),
-	WCD9XXX_CH(21, 5),
-	WCD9XXX_CH(22, 6),
-	WCD9XXX_CH(23, 7),
-	WCD9XXX_CH(24, 8),
-	WCD9XXX_CH(25, 9),
-	WCD9XXX_CH(26, 10),
-	WCD9XXX_CH(27, 11),
-	WCD9XXX_CH(28, 12),
+	WCD9XXX_CH(TAIKO_RX_PORT_START_NUMBER, 0),
+	WCD9XXX_CH(TAIKO_RX_PORT_START_NUMBER + 1, 1),
+	WCD9XXX_CH(TAIKO_RX_PORT_START_NUMBER + 2, 2),
+	WCD9XXX_CH(TAIKO_RX_PORT_START_NUMBER + 3, 3),
+	WCD9XXX_CH(TAIKO_RX_PORT_START_NUMBER + 4, 4),
+	WCD9XXX_CH(TAIKO_RX_PORT_START_NUMBER + 5, 5),
+	WCD9XXX_CH(TAIKO_RX_PORT_START_NUMBER + 6, 6),
+	WCD9XXX_CH(TAIKO_RX_PORT_START_NUMBER + 7, 7),
+	WCD9XXX_CH(TAIKO_RX_PORT_START_NUMBER + 8, 8),
+	WCD9XXX_CH(TAIKO_RX_PORT_START_NUMBER + 9, 9),
+	WCD9XXX_CH(TAIKO_RX_PORT_START_NUMBER + 10, 10),
+	WCD9XXX_CH(TAIKO_RX_PORT_START_NUMBER + 11, 11),
+	WCD9XXX_CH(TAIKO_RX_PORT_START_NUMBER + 12, 12),
 };
 
 static const struct wcd9xxx_ch taiko_tx_chs[TAIKO_TX_MAX] = {
@@ -2042,11 +2045,10 @@ static int slim_tx_mixer_put(struct snd_kcontrol *kcontrol,
 						vtable,
 						port_id,
 						taiko_p->dai)) {
-					pr_debug("%s: TX%u is used by other\n"
-						"virtual port\n",
+					dev_dbg(codec->dev, "%s: TX%u is used by other virtual port\n",
 						__func__, port_id + 1);
 					mutex_unlock(&codec->mutex);
-					return -EINVAL;
+					return 0;
 				}
 				widget->value |= 1 << port_id;
 				list_add_tail(&core->tx_chs[port_id].list,
@@ -2057,11 +2059,11 @@ static int slim_tx_mixer_put(struct snd_kcontrol *kcontrol,
 				list_del_init(&core->tx_chs[port_id].list);
 			} else {
 				if (enable)
-					pr_debug("%s: TX%u port is used by\n"
+					dev_dbg(codec->dev, "%s: TX%u port is used by\n"
 						"this virtual port\n",
 						__func__, port_id + 1);
 				else
-					pr_debug("%s: TX%u port is not used by\n"
+					dev_dbg(codec->dev, "%s: TX%u port is not used by\n"
 						"this virtual port\n",
 						__func__, port_id + 1);
 				/* avoid update power function */
@@ -2130,23 +2132,35 @@ static int slim_rx_mux_put(struct snd_kcontrol *kcontrol,
 		list_del_init(&core->rx_chs[port_id].list);
 	break;
 	case 1:
-		if (wcd9xxx_rx_vport_validation(port_id + core->num_tx_port,
-			&taiko_p->dai[AIF1_PB].wcd9xxx_ch_list))
-			goto pr_err;
+		if (wcd9xxx_rx_vport_validation(port_id +
+			TAIKO_RX_PORT_START_NUMBER,
+			&taiko_p->dai[AIF1_PB].wcd9xxx_ch_list)) {
+			dev_dbg(codec->dev, "%s: RX%u is used by current requesting AIF_PB itself\n",
+				__func__, port_id + 1);
+			goto rtn;
+		}
 		list_add_tail(&core->rx_chs[port_id].list,
 			      &taiko_p->dai[AIF1_PB].wcd9xxx_ch_list);
 	break;
 	case 2:
-		if (wcd9xxx_rx_vport_validation(port_id + core->num_tx_port,
-			&taiko_p->dai[AIF2_PB].wcd9xxx_ch_list))
-			goto pr_err;
+		if (wcd9xxx_rx_vport_validation(port_id +
+			TAIKO_RX_PORT_START_NUMBER,
+			&taiko_p->dai[AIF2_PB].wcd9xxx_ch_list)) {
+			dev_dbg(codec->dev, "%s: RX%u is used by current requesting AIF_PB itself\n",
+				__func__, port_id + 1);
+			goto rtn;
+		}
 		list_add_tail(&core->rx_chs[port_id].list,
 			      &taiko_p->dai[AIF2_PB].wcd9xxx_ch_list);
 	break;
 	case 3:
-		if (wcd9xxx_rx_vport_validation(port_id + core->num_tx_port,
-			&taiko_p->dai[AIF3_PB].wcd9xxx_ch_list))
-			goto pr_err;
+		if (wcd9xxx_rx_vport_validation(port_id +
+			TAIKO_RX_PORT_START_NUMBER,
+			&taiko_p->dai[AIF3_PB].wcd9xxx_ch_list)) {
+			dev_dbg(codec->dev, "%s: RX%u is used by current requesting AIF_PB itself\n",
+				__func__, port_id + 1);
+			goto rtn;
+		}
 		list_add_tail(&core->rx_chs[port_id].list,
 			      &taiko_p->dai[AIF3_PB].wcd9xxx_ch_list);
 	break;
@@ -2154,14 +2168,11 @@ static int slim_rx_mux_put(struct snd_kcontrol *kcontrol,
 		pr_err("Unknown AIF %d\n", widget->value);
 		goto err;
 	}
-
+rtn:
 	snd_soc_dapm_mux_update_power(widget, kcontrol, 1, widget->value, e);
 
 	mutex_unlock(&codec->mutex);
 	return 0;
-pr_err:
-	pr_err("%s: RX%u is used by current requesting AIF_PB itself\n",
-		__func__, port_id + 1);
 err:
 	mutex_unlock(&codec->mutex);
 	return -EINVAL;
@@ -3097,7 +3108,7 @@ static int taiko_codec_enable_anc(struct snd_soc_dapm_widget *w,
 		}
 		release_firmware(fw);
 		break;
-	case SND_SOC_DAPM_POST_PMD:
+	case SND_SOC_DAPM_PRE_PMD:
 		msleep(40);
 		snd_soc_update_bits(codec, TAIKO_A_CDC_ANC1_B1_CTL, 0x01, 0x00);
 		snd_soc_update_bits(codec, TAIKO_A_CDC_ANC2_B1_CTL, 0x02, 0x00);
@@ -3198,8 +3209,6 @@ static int taiko_codec_enable_anc_hph(struct snd_soc_dapm_widget *w,
 			snd_soc_update_bits(codec,
 					TAIKO_A_RX_HPH_CNP_EN, 0x30, 0x00);
 			msleep(40);
-		}
-		if (w->shift == 5) {
 			snd_soc_update_bits(codec,
 					TAIKO_A_TX_7_MBHC_EN, 0x80, 00);
 			ret |= taiko_codec_enable_anc(w, kcontrol, event);
@@ -4266,6 +4275,65 @@ static int taiko_set_decimator_rate(struct snd_soc_dai *dai,
 	return 0;
 }
 
+static void taiko_set_rxsb_port_format(struct snd_pcm_hw_params *params,
+				       struct snd_soc_dai *dai)
+{
+	struct snd_soc_codec *codec = dai->codec;
+	struct taiko_priv *taiko_p = snd_soc_codec_get_drvdata(codec);
+	struct wcd9xxx_codec_dai_data *cdc_dai;
+	struct wcd9xxx_ch *ch;
+	int port;
+	u8 bit_sel;
+	u16 sb_ctl_reg, field_shift;
+
+	switch (params_format(params)) {
+	case SNDRV_PCM_FORMAT_S16_LE:
+		bit_sel = 0x2;
+		taiko_p->dai[dai->id].bit_width = 16;
+		break;
+	case SNDRV_PCM_FORMAT_S24_LE:
+		bit_sel = 0x0;
+		taiko_p->dai[dai->id].bit_width = 24;
+		break;
+	default:
+		dev_err(codec->dev, "Invalid format\n");
+		return;
+	}
+
+	cdc_dai = &taiko_p->dai[dai->id];
+
+	list_for_each_entry(ch, &cdc_dai->wcd9xxx_ch_list, list) {
+		port = wcd9xxx_get_slave_port(ch->ch_num);
+
+		if (IS_ERR_VALUE(port) ||
+		    !TAIKO_VALIDATE_RX_SBPORT_RANGE(port)) {
+			dev_warn(codec->dev,
+				 "%s: invalid port ID %d returned for RX DAI\n",
+				 __func__, port);
+			return;
+		}
+
+		port = TAIKO_CONVERT_RX_SBPORT_ID(port);
+
+		if (port <= 3) {
+			sb_ctl_reg = TAIKO_A_CDC_CONN_RX_SB_B1_CTL;
+			field_shift = port << 1;
+		} else if (port <= 6) {
+			sb_ctl_reg = TAIKO_A_CDC_CONN_RX_SB_B2_CTL;
+			field_shift = (port - 4) << 1;
+		} else { /* should not happen */
+			dev_warn(codec->dev,
+				 "%s: bad port ID %d\n", __func__, port);
+			return;
+		}
+
+		dev_dbg(codec->dev, "%s: sb_ctl_reg %x field_shift %x\n",
+			__func__, sb_ctl_reg, field_shift);
+		snd_soc_update_bits(codec, sb_ctl_reg, 0x3 << field_shift,
+				    bit_sel << field_shift);
+	}
+}
+
 static int taiko_hw_params(struct snd_pcm_substream *substream,
 			    struct snd_pcm_hw_params *params,
 			    struct snd_soc_dai *dai)
@@ -4380,29 +4448,7 @@ static int taiko_hw_params(struct snd_pcm_substream *substream,
 			snd_soc_update_bits(codec, TAIKO_A_CDC_CLK_RX_I2S_CTL,
 					    0x03, (rx_fs_rate >> 0x05));
 		} else {
-			switch (params_format(params)) {
-			case SNDRV_PCM_FORMAT_S16_LE:
-				snd_soc_update_bits(codec,
-					TAIKO_A_CDC_CONN_RX_SB_B1_CTL,
-					0xFF, 0xAA);
-				snd_soc_update_bits(codec,
-					TAIKO_A_CDC_CONN_RX_SB_B2_CTL,
-					0xFF, 0x2A);
-				taiko->dai[dai->id].bit_width = 16;
-				break;
-			case SNDRV_PCM_FORMAT_S24_LE:
-				snd_soc_update_bits(codec,
-					TAIKO_A_CDC_CONN_RX_SB_B1_CTL,
-					0xFF, 0x00);
-				snd_soc_update_bits(codec,
-					TAIKO_A_CDC_CONN_RX_SB_B2_CTL,
-					0xFF, 0x00);
-				taiko->dai[dai->id].bit_width = 24;
-				break;
-			default:
-				dev_err(codec->dev, "Invalid format\n");
-				break;
-			}
+			taiko_set_rxsb_port_format(params, dai);
 			taiko->dai[dai->id].rate   = params_rate(params);
 		}
 		break;

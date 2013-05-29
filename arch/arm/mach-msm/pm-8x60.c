@@ -35,7 +35,10 @@
 #include <mach/system.h>
 #include <mach/scm.h>
 #include <mach/socinfo.h>
+#define CREATE_TRACE_POINTS
+#include <mach/trace_msm_low_power.h>
 #include <mach/msm-krait-l2-accessors.h>
+#include <mach/msm_bus.h>
 #include <asm/cacheflush.h>
 #include <asm/hardware/gic.h>
 #include <asm/pgtable.h>
@@ -55,8 +58,7 @@
 #include "timer.h"
 #include "pm-boot.h"
 #include <mach/event_timer.h>
-#define CREATE_TRACE_POINTS
-#include "trace_msm_low_power.h"
+
 #define SCM_L2_RETENTION	(0x2)
 #define SCM_CMD_TERMINATE_PC	(0x2)
 
@@ -854,8 +856,10 @@ enum msm_pm_sleep_mode msm_pm_idle_enter(struct cpuidle_device *dev,
 	time = ktime_to_ns(ktime_get());
 
 	if (sleep_mode == MSM_PM_SLEEP_MODE_POWER_COLLAPSE) {
+		int64_t ns = msm_pm_timer_enter_idle();
 		notify_rpm = true;
-		sleep_delay = (uint32_t)msm_pm_timer_enter_idle();
+		do_div(ns, NSEC_PER_SEC / SCLK_HZ);
+		sleep_delay = (uint32_t)ns;
 
 		if (sleep_delay == 0) /* 0 would mean infinite time */
 			sleep_delay = 1;
@@ -1110,6 +1114,36 @@ static const struct platform_suspend_ops msm_pm_ops = {
 	.enter = msm_pm_enter,
 	.valid = suspend_valid_only_mem,
 };
+
+static int __devinit msm_pm_snoc_client_probe(struct platform_device *pdev)
+{
+	int rc = 0;
+	static struct msm_bus_scale_pdata *msm_pm_bus_pdata;
+	static uint32_t msm_pm_bus_client;
+
+	msm_pm_bus_pdata = msm_bus_cl_get_pdata(pdev);
+
+	if (msm_pm_bus_pdata) {
+		msm_pm_bus_client =
+			msm_bus_scale_register_client(msm_pm_bus_pdata);
+
+		if (!msm_pm_bus_client) {
+			pr_err("%s: Failed to register SNOC client",
+							__func__);
+			rc = -ENXIO;
+			goto snoc_cl_probe_done;
+		}
+
+		rc = msm_bus_scale_client_update_request(msm_pm_bus_client, 1);
+
+		if (rc)
+			pr_err("%s: Error setting bus rate", __func__);
+	}
+
+snoc_cl_probe_done:
+	return rc;
+}
+
 static int __devinit msm_cpu_status_probe(struct platform_device *pdev)
 {
 	struct msm_pm_sleep_status_data *pdata;
@@ -1197,6 +1231,21 @@ static struct platform_driver msm_cpu_status_driver = {
 		.of_match_table = msm_slp_sts_match_tbl,
 	},
 };
+
+static struct of_device_id msm_snoc_clnt_match_tbl[] = {
+	{.compatible = "qcom,pm-snoc-client"},
+	{},
+};
+
+static struct platform_driver msm_cpu_pm_snoc_client_driver = {
+	.probe = msm_pm_snoc_client_probe,
+	.driver = {
+		.name = "pm_snoc_client",
+		.owner = THIS_MODULE,
+		.of_match_table = msm_snoc_clnt_match_tbl,
+	},
+};
+
 
 static int __init msm_pm_setup_saved_state(void)
 {
@@ -1535,6 +1584,14 @@ static int __init msm_pm_8x60_init(void)
 	if (rc) {
 		pr_err("%s(): failed to register driver %s\n", __func__,
 				msm_cpu_status_driver.driver.name);
+		return rc;
+	}
+
+	rc = platform_driver_register(&msm_cpu_pm_snoc_client_driver);
+
+	if (rc) {
+		pr_err("%s(): failed to register driver %s\n", __func__,
+				msm_cpu_pm_snoc_client_driver.driver.name);
 		return rc;
 	}
 

@@ -175,38 +175,18 @@ static int rcg_clk_set_rate(struct clk *c, unsigned long rate)
 
 	cf = rcg->current_freq;
 
-	/* Enable source clock dependency for the new freq. */
-	if (c->prepare_count) {
-		rc = clk_prepare(nf->src_clk);
-		if (rc)
-			return rc;
-	}
-
-	spin_lock_irqsave(&c->lock, flags);
-	if (c->count) {
-		rc = clk_enable(nf->src_clk);
-		if (rc) {
-			spin_unlock_irqrestore(&c->lock, flags);
-			clk_unprepare(nf->src_clk);
-			return rc;
-		}
-	}
+	rc = __clk_pre_reparent(c, nf->src_clk, &flags);
+	if (rc)
+		return rc;
 
 	BUG_ON(!rcg->set_rate);
 
 	/* Perform clock-specific frequency switch operations. */
 	rcg->set_rate(rcg, nf);
-
-	/* Release source requirements of the old freq. */
-	if (c->count)
-		clk_disable(cf->src_clk);
-	spin_unlock_irqrestore(&c->lock, flags);
-
-	if (c->prepare_count)
-		clk_unprepare(cf->src_clk);
-
 	rcg->current_freq = nf;
 	c->parent = nf->src_clk;
+
+	__clk_post_reparent(c, cf->src_clk, &flags);
 
 	return 0;
 }
@@ -559,11 +539,8 @@ static int branch_clk_reset(struct clk *c, enum clk_reset_action action)
 {
 	struct branch_clk *branch = to_branch_clk(c);
 
-	if (!branch->bcr_reg) {
-		WARN("clk_reset called on an unsupported clock (%s)\n",
-			c->dbg_name);
+	if (!branch->bcr_reg)
 		return -EPERM;
-	}
 	return __branch_clk_reset(BCR_REG(branch), action);
 }
 

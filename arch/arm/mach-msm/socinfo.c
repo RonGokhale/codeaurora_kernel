@@ -324,6 +324,12 @@ static enum msm_cpu cpu_of_id[] = {
 
 	/* 8226 IDs */
 	[145] = MSM_CPU_8226,
+	[158] = MSM_CPU_8226,
+	[159] = MSM_CPU_8226,
+	[198] = MSM_CPU_8226,
+	[199] = MSM_CPU_8226,
+	[200] = MSM_CPU_8226,
+	[205] = MSM_CPU_8226,
 
 	/* 8092 IDs */
 	[146] = MSM_CPU_8092,
@@ -363,6 +369,9 @@ static enum msm_cpu cpu_of_id[] = {
 
 	/* FSM9900 ID */
 	[188] = FSM_CPU_9900,
+
+	/* Samarium IDs */
+	[195] = MSM_CPU_SAMARIUM,
 
 	/* Uninitialized IDs are not known to run Linux.
 	   MSM_CPU_UNKNOWN is set to 0 to ensure these IDs are
@@ -870,6 +879,10 @@ static void * __init setup_dummy_socinfo(void)
 	} else if (early_machine_is_msmkrypton()) {
 		dummy_socinfo.id = 187;
 		strlcpy(dummy_socinfo.build_id, "msmkrypton - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_msmsamarium()) {
+		dummy_socinfo.id = 195;
+		strlcpy(dummy_socinfo.build_id, "msmsamarium - ",
 			sizeof(dummy_socinfo.build_id));
 	}
 	strlcat(dummy_socinfo.build_id, "Dummy socinfo",

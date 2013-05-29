@@ -510,6 +510,15 @@ struct msm_mhl_platform_data {
 	bool mhl_enabled;
 };
 
+/**
+ * msm_i2c_platform_data: i2c-qup driver configuration data
+ *
+ * @active_only when set, votes when system active and removes the vote when
+ *       system goes idle (optimises for performance). When unset, voting using
+ *       runtime pm (optimizes for power).
+ * @master_id master id number of the i2c core or its wrapper (BLSP/GSBI).
+ *       When zero, clock path voting is disabled.
+ */
 struct msm_i2c_platform_data {
 	int clk_freq;
 	uint32_t rmutex;
@@ -523,6 +532,8 @@ struct msm_i2c_platform_data {
 	int use_gsbi_shared_mode;
 	int keep_ahb_clk_on;
 	void (*msm_i2c_config_gpio)(int iface, int config_type);
+	bool active_only;
+	uint32_t master_id;
 };
 
 struct msm_i2c_ssbi_platform_data {
@@ -604,6 +615,7 @@ void fsm9900_init_gpiomux(void);
 void msm_map_8974_io(void);
 void msm_map_8084_io(void);
 void msm_map_msmkrypton_io(void);
+void msm_map_msmsamarium_io(void);
 void msm_map_msm8625_io(void);
 void msm_map_msm9625_io(void);
 void msm_init_irq(void);
@@ -615,6 +627,7 @@ void msm_8974_init_gpiomux(void);
 void apq8084_init_gpiomux(void);
 void msm9625_init_gpiomux(void);
 void msmkrypton_init_gpiomux(void);
+void msmsamarium_init_gpiomux(void);
 void msm_map_mpq8092_io(void);
 void mpq8092_init_gpiomux(void);
 void msm_map_msm8226_io(void);

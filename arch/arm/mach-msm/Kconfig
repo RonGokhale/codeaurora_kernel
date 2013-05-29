@@ -304,6 +304,9 @@ config ARCH_APQ8084
 	select ARM_HAS_SG_CHAIN
 	select ARCH_DMA_ADDR_T_64BIT if ARM_LPAE
 	select ARCH_WANT_KMAP_ATOMIC_FLUSH
+	select MEMORY_HOLE_CARVEOUT
+	select DONT_MAP_HOLE_AFTER_MEMBANK0
+	select QMI_ENCDEC
 
 config ARCH_MPQ8092
 	bool "MPQ8092"
@@ -508,6 +511,26 @@ config ARCH_MSM8226
 	select MSM_CPR_REGULATOR
 	select MSM_RPM_LOG
 	select MSM_RPM_STATS_LOG
+	select ARCH_WANT_KMAP_ATOMIC_FLUSH
+
+config ARCH_MSMSAMARIUM
+	bool "MSMSAMARIUM"
+	select ARCH_MSM_KRAITMP
+	select GPIO_MSM_V3
+	select ARM_GIC
+	select CPU_V7
+	select MSM_SCM
+	select MSM_GPIOMUX
+	select MULTI_IRQ_HANDLER
+	select MSM_SPM_V2
+	select MSM_L2_SPM
+	select MSM_NATIVE_RESTART
+	select MSM_RESTART_V2
+	select MSM_PM8X60 if PM
+	select MAY_HAVE_SPARSE_IRQ
+	select SPARSE_IRQ
+	select ARM_HAS_SG_CHAIN
+	select MSM_RUN_QUEUE_STATS
 	select ARCH_WANT_KMAP_ATOMIC_FLUSH
 endmenu
 
@@ -1111,6 +1134,7 @@ config PHYS_OFFSET
 	default "0x00000000" if ARCH_MPQ8092
 	default "0x00000000" if ARCH_MSM8226
 	default "0x00000000" if ARCH_MSM8610
+	default "0x00000000" if ARCH_MSMSAMARIUM
 	default "0x10000000" if ARCH_FSM9XXX
 	default "0x00000000" if ARCH_FSM9900
 	default "0x00200000" if ARCH_MSM9625
@@ -1284,6 +1308,14 @@ choice
 		help
 		  Say Y here if you want the debug print routines to direct
 		  their output to the serial port on FSM9900 devices.
+
+	config DEBUG_MSMSAMARIUM_UART
+		bool "Kernel low-level debugging messages via MSM SAMARIUM UART"
+		depends on ARCH_MSMSAMARIUM
+		select MSM_HAS_DEBUG_UART_HS_V14
+		help
+		  Say Y here if you want the debug print routines to direct
+		  their output to the serial port on MSM SAMARIUM devices.
 endchoice
 
 choice
@@ -2690,14 +2722,25 @@ config MSM_OCMEM_POWER_DEBUG
 	  related operations of OCMEM. Both local power management
 	  and RPM assisted power management operations are supported.
 
-config MSM_OCMEM_POWER_DISABLE
-	bool "OCMEM Disable Power Control"
+config MSM_OCMEM_DEBUG_ALWAYS_ON
+	bool "Keep OCMEM always turned ON"
 	depends on MSM_OCMEM_DEBUG
 	help
+	  Always vote for all OCMEM clocks and keep all OCMEM
+	  macros turned ON and never allow them to be turned OFF.
+	  Both local power management and RPM assisted power modes
+	  are supported for individual macro power control operations.
+
+config MSM_OCMEM_POWER_DISABLE
+	bool "OCMEM Disable Power Control"
+	depends on MSM_OCMEM
+	help
 	  Disable all OCMEM power management.
-	  This keeps all OCMEM macros turned ON at all times thus
-	  never allowing them to be turned OFF. Both local power
-	  management and RPM assisted power modes are supported.
+	  Skip all OCMEM power operations that turn ON or
+	  turn OFF the macros. Both local power management and
+	  RPM assisted power management operations are skipped.
+	  Enable this configuration if OCMEM is being exclusively
+	  used as GMEM or OCIMEM.
 
 config SENSORS_ADSP
 	bool "Enable Sensors Driver Support for ADSP"

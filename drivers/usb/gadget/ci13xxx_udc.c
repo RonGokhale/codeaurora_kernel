@@ -79,7 +79,7 @@ module_param(streaming, uint, S_IRUGO | S_IWUSR);
  *****************************************************************************/
 
 #define DMA_ADDR_INVALID	(~(dma_addr_t)0)
-#define USB_MAX_TIMEOUT		100 /* 100msec timeout */
+#define USB_MAX_TIMEOUT		25 /* 25msec timeout */
 #define EP_PRIME_CHECK_DELAY	(jiffies + msecs_to_jiffies(1000))
 #define MAX_PRIME_CHECK_RETRY	3 /*Wait for 3sec for EP prime failure */
 
@@ -2275,8 +2275,11 @@ static int _gadget_stop_activity(struct usb_gadget *gadget)
 	gadget->otg_srp_reqd = 0;
 
 	udc->driver->disconnect(gadget);
+
+	spin_lock_irqsave(udc->lock, flags);
 	_ep_nuke(&udc->ep0out);
 	_ep_nuke(&udc->ep0in);
+	spin_unlock_irqrestore(udc->lock, flags);
 
 	if (udc->ep0in.last_zptr) {
 		dma_pool_free(udc->ep0in.td_pool, udc->ep0in.last_zptr,
@@ -2325,7 +2328,7 @@ __acquires(udc->lock)
 
 	/*stop charging upon reset */
 	if (udc->transceiver)
-		usb_phy_set_power(udc->transceiver, 0);
+		usb_phy_set_power(udc->transceiver, 100);
 
 	retval = _gadget_stop_activity(&udc->gadget);
 	if (retval)
@@ -3793,9 +3796,7 @@ static int udc_probe(struct ci13xxx_udc_driver *driver, struct device *dev,
 	pm_runtime_no_callbacks(&udc->gadget.dev);
 	pm_runtime_enable(&udc->gadget.dev);
 
-	retval = register_trace_usb_daytona_invalid_access(dump_usb_info,
-								NULL);
-	if (retval)
+	if (register_trace_usb_daytona_invalid_access(dump_usb_info, NULL))
 		pr_err("Registering trace failed\n");
 
 	_udc = udc;
