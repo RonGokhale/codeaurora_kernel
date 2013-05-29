@@ -957,6 +957,8 @@ static int mdss_mdp_probe(struct platform_device *pdev)
 
 	pdev->id = 0;
 	mdata->pdev = pdev;
+	mutex_init(&mdata->sec_lock);
+
 	platform_set_drvdata(pdev, mdata);
 	mdss_res = mdata;
 

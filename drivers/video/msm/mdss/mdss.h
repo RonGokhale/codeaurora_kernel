@@ -118,6 +118,10 @@ struct mdss_data_type {
 	int iommu_attached;
 	struct mdss_iommu_map_type *iommu_map;
 
+	int secure_mode;
+	struct kref sec_kref;
+	struct mutex sec_lock;
+
 	struct early_suspend early_suspend;
 	void *debug_data;
 };
@@ -164,6 +168,13 @@ static inline int mdss_get_iommu_domain(u32 type)
 
 	if (!mdss_res)
 		return -ENODEV;
+
+	/*
+	 * When MDP is in special secure mode, all iommu mappings should
+	 * happen on unsecure domain
+	 */
+	if (mdss_res->secure_mode)
+		type = MDSS_IOMMU_DOMAIN_UNSECURE;
 
 	return mdss_res->iommu_map[type].domain_idx;
 }

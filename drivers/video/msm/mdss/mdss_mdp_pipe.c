@@ -470,7 +470,8 @@ static int mdss_mdp_format_setup(struct mdss_mdp_pipe *pipe)
 
 	fmt = pipe->src_fmt;
 
-	if (pipe->flags & MDP_SECURE_OVERLAY_SESSION)
+	if (!mdss_res->secure_mode &&
+			(pipe->flags & MDP_SECURE_OVERLAY_SESSION))
 		secure = 0xF;
 
 	opmode = pipe->bwc_mode;
