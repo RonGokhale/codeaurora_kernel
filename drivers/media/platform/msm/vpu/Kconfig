@@ -1,0 +1,7 @@
+config MSM_VPU
+	tristate "Qualcomm VPU"
+	depends on VIDEO_V4L2
+	default n
+	---help---
+		Enables VPU driver. This device allows for advanced video post
+		processing using the v4l2 api
