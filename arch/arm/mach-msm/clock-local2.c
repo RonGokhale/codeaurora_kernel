@@ -188,6 +188,8 @@ static int rcg_clk_set_rate(struct clk *c, unsigned long rate)
 
 	__clk_post_reparent(c, cf->src_clk, &flags);
 
+	__clk_post_reparent(c, cf->src_clk, &flags);
+
 	return 0;
 }
 
