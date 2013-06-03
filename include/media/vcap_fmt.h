@@ -128,6 +128,8 @@ struct tuning_param {
 	struct tuning_param)
 #define VCAPIOC_TUNE_G_PARAMS _IOWR('V', (BASE_VIDIOC_PRIVATE+4), \
 	struct tuning_param)
+#define VCAPIOC_PAUSE _IO('V', (BASE_VIDIOC_PRIVATE+5))
+#define VCAPIOC_RESUME _IO('V', (BASE_VIDIOC_PRIVATE+6))
 
 struct v4l2_format_vc_ext {
 	enum hal_vcap_mode     mode;
