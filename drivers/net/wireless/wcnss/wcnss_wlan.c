@@ -103,6 +103,8 @@ static DEFINE_SPINLOCK(reg_spinlock);
 #define CCU_PRONTO_LAST_ADDR1_OFFSET		0x10
 #define CCU_PRONTO_LAST_ADDR2_OFFSET		0x14
 
+#define WCNSS_DEF_WLAN_RX_BUFF_COUNT		1024
+
 #define WCNSS_CTRL_CHANNEL			"WCNSS_CTRL"
 #define WCNSS_MAX_FRAME_SIZE		(4*1024)
 #define WCNSS_VERSION_LEN			30
@@ -258,6 +260,7 @@ static struct {
 	const struct dev_pm_ops *pm_ops;
 	int		triggered;
 	int		smd_channel_ready;
+	u32		wlan_rx_buff_count;
 	smd_channel_t	*smd_ch;
 	unsigned char	wcnss_version[WCNSS_VERSION_LEN];
 	unsigned char   fw_major;
@@ -977,6 +980,17 @@ int fw_cal_data_available(void)
 		return -ENODEV;
 }
 
+u32 wcnss_get_wlan_rx_buff_count(void)
+{
+	if (penv)
+		return penv->wlan_rx_buff_count;
+	else
+		return WCNSS_DEF_WLAN_RX_BUFF_COUNT;
+
+}
+EXPORT_SYMBOL(wcnss_get_wlan_rx_buff_count);
+
+
 static int wcnss_smd_tx(void *data, int len)
 {
 	int ret = 0;
@@ -1035,6 +1049,8 @@ static void wcnss_send_cal_rsp(unsigned char fw_status)
 	rc = wcnss_smd_tx(msg, rsphdr->msg_len);
 	if (rc < 0)
 		pr_err("wcnss: smd tx failed\n");
+
+	kfree(msg);
 }
 
 /* Collect calibrated data from WCNSS */
@@ -1496,7 +1512,12 @@ wcnss_trigger_config(struct platform_device *pdev)
 	int size = 0;
 	struct resource *res;
 	int has_pronto_hw = of_property_read_bool(pdev->dev.of_node,
-									"qcom,has_pronto_hw");
+									"qcom,has-pronto-hw");
+
+	if (of_property_read_u32(pdev->dev.of_node,
+			"qcom,wlan-rx-buff-count", &penv->wlan_rx_buff_count)) {
+		penv->wlan_rx_buff_count = WCNSS_DEF_WLAN_RX_BUFF_COUNT;
+	}
 
 	/* make sure we are only triggered once */
 	if (penv->triggered)
@@ -1508,7 +1529,7 @@ wcnss_trigger_config(struct platform_device *pdev)
 	if (WCNSS_CONFIG_UNSPECIFIED == has_48mhz_xo) {
 		if (has_pronto_hw) {
 			has_48mhz_xo = of_property_read_bool(pdev->dev.of_node,
-										"qcom,has_48mhz_xo");
+										"qcom,has-48mhz-xo");
 		} else {
 			has_48mhz_xo = pdata->has_48mhz_xo;
 		}
@@ -1518,7 +1539,7 @@ wcnss_trigger_config(struct platform_device *pdev)
 
 	if (WCNSS_CONFIG_UNSPECIFIED == has_autodetect_xo && has_pronto_hw) {
 		has_autodetect_xo = of_property_read_bool(pdev->dev.of_node,
-									"qcom,has_autodetect_xo");
+									"qcom,has-autodetect-xo");
 	}
 
 	penv->thermal_mitigation = 0;
@@ -1662,6 +1683,9 @@ static int wcnss_node_open(struct inode *inode, struct file *file)
 {
 	struct platform_device *pdev;
 
+	if (!penv)
+		return -EFAULT;
+
 	/* first open is only to trigger WCNSS platform driver */
 	if (!penv->triggered) {
 		pr_info(DEVICE " triggered by userspace\n");
@@ -1689,7 +1713,7 @@ static ssize_t wcnss_wlan_read(struct file *fp, char __user
 {
 	int rc = 0;
 
-	if (!penv->device_opened)
+	if (!penv || !penv->device_opened)
 		return -EFAULT;
 
 	rc = wait_event_interruptible(penv->read_wait, penv->fw_cal_rcvd
@@ -1728,7 +1752,7 @@ static ssize_t wcnss_wlan_write(struct file *fp, const char __user
 	int rc = 0;
 	int size = 0;
 
-	if (!penv->device_opened || penv->user_cal_available)
+	if (!penv || !penv->device_opened || penv->user_cal_available)
 		return -EFAULT;
 
 	if (penv->user_cal_rcvd == 0 && count >= 4
