@@ -64,6 +64,7 @@ struct anx7808_data {
 	struct workqueue_struct *wq;
 	enum dp_link_bw dp_supported_bw;
 	enum dp_link_bw dp_manual_bw;
+	int reset;
 };
 
 static struct i2c_client *anx7808_addr_to_client(struct anx7808_data *anx7808,
@@ -425,7 +426,6 @@ static int anx7808_detect_hdmi_input(struct anx7808_data *anx7808)
 static int anx7808_dp_link_training(struct anx7808_data *anx7808)
 {
 	uint8_t dp_bw, status;
-	uint8_t m_vid_1;
 	int err;
 
 	err = anx7808_aux_dpcd_read(anx7808, MAX_LINK_RATE, 1, &dp_bw);
@@ -473,12 +473,6 @@ static int anx7808_dp_link_training(struct anx7808_data *anx7808)
 	anx7808_set_bits(anx7808, SP_TX_PLL_CTRL_REG, PLL_RST);
 	usleep_range(1000, 2000);
 	anx7808_clear_bits(anx7808, SP_TX_PLL_CTRL_REG, PLL_RST);
-
-	anx7808_read_reg(anx7808, M_VID_1, &m_vid_1);
-	if (anx7808->dp_supported_bw == BW_54G && m_vid_1 < 0x18) {
-		DRM_INFO("Switching to 2.7Gb/s bandwidth.\n");
-		anx7808->dp_supported_bw = BW_27G;
-	}
 
 	if (anx7808->dp_manual_bw == 0)
 		dp_bw = (uint8_t)anx7808->dp_supported_bw;
@@ -530,8 +524,13 @@ static void anx7808_play_video(struct work_struct *work)
 	anx7808_clear_bits(anx7808, SP_POWERD_CTRL_REG, TOTAL_PD);
 	anx7808_init_pipeline(anx7808);
 
+	anx7808->reset = 0;
+
 	while (state != STATE_INIT) {
 		DRM_DEBUG_KMS("State: %d\n", state);
+
+		if (anx7808->reset)
+			break;
 
 		/* Make progress towards playback state. */
 		switch (state) {
@@ -613,6 +612,7 @@ static ssize_t anx7808_bw_store(struct device *dev,
 		case BW_27G:
 		case BW_54G:
 			anx7808->dp_manual_bw = val;
+			anx7808->reset = 1;
 			break;
 		default:
 			break;
