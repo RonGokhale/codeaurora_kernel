@@ -63,6 +63,7 @@ struct qce_device {
 	int memsize;				/* Memory allocated */
 	int is_shared;				/* CE HW is shared */
 	bool support_cmd_dscr;
+	bool support_hw_key;
 
 	void __iomem *iobase;	    /* Virtual io base of CE HW  */
 	unsigned int phy_iobase;    /* Physical io base of CE HW    */
@@ -1858,7 +1859,7 @@ static int qce_sps_init(struct qce_device *pce_dev)
 	 * Set flag to indicate BAM global device control is managed
 	 * remotely.
 	 */
-	if (pce_dev->support_cmd_dscr == false)
+	if ((pce_dev->support_cmd_dscr == false) || (pce_dev->is_shared))
 		bam.manage = SPS_BAM_MGR_DEVICE_REMOTE;
 	else
 		bam.manage = SPS_BAM_MGR_LOCAL;
@@ -3311,6 +3312,8 @@ static int __qce_get_device_tree_data(struct platform_device *pdev,
 
 	pce_dev->is_shared = of_property_read_bool((&pdev->dev)->of_node,
 				"qcom,ce-hw-shared");
+	pce_dev->support_hw_key = of_property_read_bool((&pdev->dev)->of_node,
+				"qcom,ce-hw-key");
 	if (of_property_read_u32((&pdev->dev)->of_node,
 				"qcom,bam-pipe-pair",
 				&pce_dev->ce_sps.pipe_pair_index)) {
@@ -3639,6 +3642,7 @@ int qce_hw_support(void *handle, struct ce_hw_support *ce_support)
 	ce_support->ota = false;
 	ce_support->bam = true;
 	ce_support->is_shared = (pce_dev->is_shared == 1) ? true : false;
+	ce_support->hw_key = pce_dev->support_hw_key;
 	ce_support->aes_ccm = true;
 	if (pce_dev->ce_sps.minor_version)
 		ce_support->aligned_only = false;

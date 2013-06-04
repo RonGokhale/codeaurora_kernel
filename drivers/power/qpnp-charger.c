@@ -320,20 +320,24 @@ static struct of_device_id qpnp_charger_match_table[] = {
 	{}
 };
 
-#define BPD_MAX		3
+enum bpd_type {
+	BPD_TYPE_BAT_ID,
+	BPD_TYPE_BAT_THM,
+	BPD_TYPE_BAT_THM_BAT_ID,
+};
 
-static const char *bpd_list[BPD_MAX] = {
-	"bpd_thm",
-	"bpd_id",
-	"bpd_thm_id",
+static const char * const bpd_label[] = {
+	[BPD_TYPE_BAT_ID] = "bpd_id",
+	[BPD_TYPE_BAT_THM] = "bpd_thm",
+	[BPD_TYPE_BAT_THM_BAT_ID] = "bpd_thm_id",
 };
 
 static inline int
 get_bpd(const char *name)
 {
 	int i = 0;
-	for (i = 0 ; i < BPD_MAX; i++) {
-		if (strcmp(name, bpd_list[i]) == 0)
+	for (i = 0; i < ARRAY_SIZE(bpd_label); i++) {
+		if (strcmp(bpd_label[i], name) == 0)
 			return i;
 	}
 	return -EINVAL;
@@ -2300,10 +2304,20 @@ qpnp_chg_hwinit(struct qpnp_chg_chip *chip, u8 subtype,
 	case SMBBP_BAT_IF_SUBTYPE:
 	case SMBCL_BAT_IF_SUBTYPE:
 		/* Select battery presence detection */
-		if (chip->bpd_detection == 1)
+		switch (chip->bpd_detection) {
+		case BPD_TYPE_BAT_THM:
+			reg = BAT_THM_EN;
+			break;
+		case BPD_TYPE_BAT_ID:
 			reg = BAT_ID_EN;
-		else if (chip->bpd_detection == 2)
-			reg = BAT_ID_EN | BAT_THM_EN;
+			break;
+		case BPD_TYPE_BAT_THM_BAT_ID:
+			reg = BAT_THM_EN | BAT_ID_EN;
+			break;
+		default:
+			reg = BAT_THM_EN;
+			break;
+		}
 
 		rc = qpnp_chg_masked_write(chip,
 			chip->bat_if_base + BAT_IF_BPD_CTRL,
@@ -2363,6 +2377,7 @@ qpnp_chg_hwinit(struct qpnp_chg_chip *chip, u8 subtype,
 					spmi_resource->of_node);
 			if (IS_ERR(chip->otg_vreg.rdev)) {
 				rc = PTR_ERR(chip->otg_vreg.rdev);
+				chip->otg_vreg.rdev = NULL;
 				if (rc != -EPROBE_DEFER)
 					pr_err("OTG reg failed, rc=%d\n", rc);
 				return rc;
@@ -2421,6 +2436,7 @@ qpnp_chg_hwinit(struct qpnp_chg_chip *chip, u8 subtype,
 					spmi_resource->of_node);
 			if (IS_ERR(chip->boost_vreg.rdev)) {
 				rc = PTR_ERR(chip->boost_vreg.rdev);
+				chip->boost_vreg.rdev = NULL;
 				if (rc != -EPROBE_DEFER)
 					pr_err("boost reg failed, rc=%d\n", rc);
 				return rc;
@@ -2499,7 +2515,8 @@ qpnp_charger_read_dt_props(struct qpnp_chg_chip *chip)
 	rc = of_property_read_string(chip->spmi->dev.of_node,
 		"qcom,bpd-detection", &bpd);
 	if (rc) {
-		pr_debug("no bpd-detection specified, ignored\n");
+		/* Select BAT_THM as default BPD scheme */
+		chip->bpd_detection = BPD_TYPE_BAT_THM;
 	} else {
 		chip->bpd_detection = get_bpd(bpd);
 		if (chip->bpd_detection < 0) {
@@ -2846,6 +2863,8 @@ unregister_batt:
 	if (chip->bat_if_base)
 		power_supply_unregister(&chip->batt_psy);
 fail_chg_enable:
+	regulator_unregister(chip->otg_vreg.rdev);
+	regulator_unregister(chip->boost_vreg.rdev);
 	kfree(chip->thermal_mitigation);
 	kfree(chip);
 	dev_set_drvdata(&spmi->dev, NULL);
@@ -2863,11 +2882,8 @@ qpnp_charger_remove(struct spmi_device *spmi)
 	cancel_work_sync(&chip->adc_measure_work);
 	cancel_delayed_work_sync(&chip->eoc_work);
 
-	if (chip->otg_vreg.rdev)
-		regulator_unregister(chip->otg_vreg.rdev);
-
-	if (chip->boost_vreg.rdev)
-		regulator_unregister(chip->boost_vreg.rdev);
+	regulator_unregister(chip->otg_vreg.rdev);
+	regulator_unregister(chip->boost_vreg.rdev);
 
 	dev_set_drvdata(&spmi->dev, NULL);
 	kfree(chip);

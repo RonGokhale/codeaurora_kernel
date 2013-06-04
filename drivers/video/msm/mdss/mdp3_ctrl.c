@@ -29,6 +29,7 @@
 #define VSYNC_PERIOD 16
 
 static void mdp3_ctrl_pan_display(struct msm_fb_data_type *mfd);
+static int mdp3_overlay_unset(struct msm_fb_data_type *mfd, int ndx);
 
 static void mdp3_bufq_init(struct mdp3_buffer_queue *bufq)
 {
@@ -192,13 +193,9 @@ static ssize_t mdp3_vsync_show_event(struct device *dev,
 
 	mdp3_session = (struct mdp3_session_data *)mfd->mdp.private1;
 
-	rc = wait_for_completion_interruptible_timeout(
-				&mdp3_session->vsync_comp,
-				msecs_to_jiffies(VSYNC_PERIOD * 5));
-	if (rc <= 0) {
-		pr_warn("vsync wait on fb%d interrupted (%d)\n",
-			mfd->index, rc);
-	}
+	rc = wait_for_completion_interruptible(&mdp3_session->vsync_comp);
+	if (rc < 0)
+		return rc;
 
 	spin_lock_irqsave(&mdp3_session->vsync_lock, flag);
 	vsync_ticks = ktime_to_ns(mdp3_session->vsync_time);
@@ -507,8 +504,9 @@ static int mdp3_ctrl_off(struct msm_fb_data_type *mfd)
 		pr_err("mdp clock resource release failed\n");
 off_error:
 	mdp3_session->status = 0;
-
 	mutex_unlock(&mdp3_session->lock);
+	if (mdp3_session->overlay.id != MSMFB_NEW_REQUEST)
+		mdp3_overlay_unset(mfd, mdp3_session->overlay.id);
 	return 0;
 }
 

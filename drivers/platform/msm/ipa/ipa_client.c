@@ -13,8 +13,14 @@
 #include <linux/delay.h>
 #include "ipa_i.h"
 
+/*
+ * These values were determined empirically and shows good E2E bi-
+ * directional throughputs
+ */
 #define IPA_A2_HOLB_TMR_EN 0x1
 #define IPA_A2_HOLB_TMR_DEFAULT_VAL 0xff
+#define IPA_WLAN_HOLB_TMR_EN 0x1
+#define IPA_WLAN_HOLB_TMR_DEFAULT_VAL 0x7f
 
 static void ipa_enable_data_path(u32 clnt_hdl)
 {
@@ -180,34 +186,22 @@ static int ipa_connect_allocate_fifo(const struct ipa_connect_params *in,
 
 static void ipa_program_holb(struct ipa_ep_context *ep, int ipa_ep_idx)
 {
-	u32 hol_en;
-	u32 hol_tmr;
+	struct ipa_ep_cfg_holb holb;
 
 	if (IPA_CLIENT_IS_PROD(ep->client))
 		return;
 
 	switch (ep->client) {
-	case IPA_CLIENT_HSIC1_CONS:
-	case IPA_CLIENT_HSIC2_CONS:
-	case IPA_CLIENT_HSIC3_CONS:
-	case IPA_CLIENT_HSIC4_CONS:
-		hol_en = ipa_ctx->hol_en;
-		hol_tmr = ipa_ctx->hol_timer;
-		break;
 	case IPA_CLIENT_A2_TETHERED_CONS:
 	case IPA_CLIENT_A2_EMBEDDED_CONS:
-		hol_en = IPA_A2_HOLB_TMR_EN;
-		hol_tmr = IPA_A2_HOLB_TMR_DEFAULT_VAL;
+		holb.en = IPA_A2_HOLB_TMR_EN;
+		holb.tmr_val = IPA_A2_HOLB_TMR_DEFAULT_VAL;
 		break;
 	default:
 		return;
 	}
 
-	IPADBG("disable holb for ep=%d tmr=%d\n", ipa_ep_idx, hol_tmr);
-	ipa_write_reg(ipa_ctx->mmio,
-		IPA_ENDP_INIT_HOL_BLOCK_EN_n_OFST(ipa_ep_idx), hol_en);
-	ipa_write_reg(ipa_ctx->mmio,
-		IPA_ENDP_INIT_HOL_BLOCK_TIMER_n_OFST(ipa_ep_idx), hol_tmr);
+	ipa_cfg_ep_holb(ipa_ep_idx, &holb);
 }
 
 /**
