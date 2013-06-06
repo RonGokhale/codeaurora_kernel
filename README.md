@@ -99,6 +99,7 @@ list of codeaurora msm branches
 - jb_mr1_rb1.33
 - jb_mr1_rb1.34
 - jb_mr1_rb1.35 
+- jb_mr1_rb1.36
 - jb_mr1_rb2.3
 - jb_mr1_rb2.7 
 - jb_mr1_rb2.9 
