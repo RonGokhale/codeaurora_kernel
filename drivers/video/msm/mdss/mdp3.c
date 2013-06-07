@@ -863,7 +863,7 @@ int mdp3_get_img(struct msmfb_data *img, struct mdp3_img_data *data)
 	if (img->flags & MDP_BLIT_SRC_GEM) {
 		data->srcp_file = NULL;
 		ret = kgsl_gem_obj_addr(img->memory_id, (int) img->priv,
-					&data->addr, &data->len);
+					(unsigned long *)&data->addr, (unsigned long*)&data->len);
 		if (!ret)
 			goto done;
 	}
