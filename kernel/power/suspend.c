@@ -24,6 +24,7 @@
 #include <linux/export.h>
 #include <linux/suspend.h>
 #include <linux/syscore_ops.h>
+#include <linux/pm_wakeup.h>
 #include <trace/events/power.h>
 
 #include "power.h"
@@ -187,6 +188,7 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 	if (suspend_ops->wake)
 		suspend_ops->wake();
 
+	print_active_wakeup_sources();
 	dpm_resume_start(PMSG_RESUME);
 
  Platform_finish:
