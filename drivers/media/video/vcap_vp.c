@@ -291,19 +291,20 @@ static void vp_wq_fnc(struct work_struct *work)
 	if (vp_act->bufT2->vb.v4l2_buf.field == V4L2_FIELD_BOTTOM)
 		top_field = 1;
 
+	writel_iowmb(irq, VCAP_VP_INT_CLEAR);
+	mb();
+	enable_irq(dev->vpirq->start);
 	writel_iowmb(0x00000000 | top_field |
 		dev->tuning_param.bal_mode << VP_TUNING_BAL_MODE,
 		VCAP_VP_CTRL);
 	writel_iowmb(0x00010000 | top_field |
 		dev->tuning_param.bal_mode << VP_TUNING_BAL_MODE,
 		VCAP_VP_CTRL);
-	enable_irq(dev->vpirq->start);
+	mb();
 
 	do_gettimeofday(&tv);
 	dev->dbg_p.vp_timestamp = (uint32_t) (tv.tv_sec * VCAP_USEC +
 	tv.tv_usec);
-
-	writel_iowmb(irq, VCAP_VP_INT_CLEAR);
 }
 
 irqreturn_t vp_handler(struct vcap_dev *dev)
@@ -988,15 +989,16 @@ int continue_vp(struct vcap_client_data *c_data)
 
 	/* Config VP & Enable Interrupt */
 	writel_relaxed(0x01100001, VCAP_VP_INTERRUPT_ENABLE);
+
+	atomic_set(&c_data->dev->vp_enabled, 1);
+	enable_irq(dev->vpirq->start);
 	writel_iowmb(0x00000000 | top_field |
 		dev->tuning_param.bal_mode << VP_TUNING_BAL_MODE,
 		VCAP_VP_CTRL);
 	writel_iowmb(0x00010000 | top_field |
 		dev->tuning_param.bal_mode << VP_TUNING_BAL_MODE,
 		VCAP_VP_CTRL);
-
-	atomic_set(&c_data->dev->vp_enabled, 1);
-	enable_irq(dev->vpirq->start);
+	mb();
 
 	do_gettimeofday(&tv);
 	dev->dbg_p.vp_timestamp = (uint32_t) (tv.tv_sec * VCAP_USEC +
