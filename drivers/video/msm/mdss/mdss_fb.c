@@ -1434,7 +1434,7 @@ static int mdss_fb_set_par(struct fb_info *info)
 
 	case 32:
 		if (var->transp.offset == 24)
-			mfd->fb_imgType = MDP_ARGB_8888;
+			mfd->fb_imgType = MDP_BGRA_8888;
 		else
 			mfd->fb_imgType	= MDP_RGBA_8888;
 		break;
