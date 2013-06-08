@@ -13,6 +13,7 @@ obj-$(CONFIG_SKUF_OV12830_P12V01C) += skuf_ov12830_p12v01c.o
 obj-$(CONFIG_OV2720) += ov2720.o
 obj-$(CONFIG_OV9724) += ov9724.o
 obj-$(CONFIG_HI256) += hi256.o
+obj-$(CONFIG_SKUF_OV5648_P5V23C) += skuf_ov5648_p5v23c.o
 obj-$(CONFIG_MT9M114) += mt9m114.o
 obj-$(CONFIG_SP1628) += sp1628.o
 obj-$(CONFIG_GC0339) += gc0339.o
