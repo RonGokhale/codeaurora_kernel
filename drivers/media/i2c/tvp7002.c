@@ -41,9 +41,6 @@ MODULE_DESCRIPTION("TI TVP7002 Video and Graphics Digitizer driver");
 MODULE_AUTHOR("Santiago Nunez-Corrales <santiago.nunez@ridgerun.com>");
 MODULE_LICENSE("GPL");
 
-/* Module Name */
-#define TVP7002_MODULE_NAME	"tvp7002"
-
 /* I2C retry attempts */
 #define I2C_RETRY_COUNT		(5)
 
@@ -739,8 +736,7 @@ static int tvp7002_query_dv_timings(struct v4l2_subdev *sd,
  *
  * Get the value of a TVP7002 decoder device register.
  * Returns zero when successful, -EINVAL if register read fails or
- * access to I2C client fails, -EPERM if the call is not allowed
- * by disabled CAP_SYS_ADMIN.
+ * access to I2C client fails.
  */
 static int tvp7002_g_register(struct v4l2_subdev *sd,
 						struct v4l2_dbg_register *reg)
@@ -751,8 +747,6 @@ static int tvp7002_g_register(struct v4l2_subdev *sd,
 
 	if (!v4l2_chip_match_i2c_client(client, &reg->match))
 		return -EINVAL;
-	if (!capable(CAP_SYS_ADMIN))
-		return -EPERM;
 
 	ret = tvp7002_read(sd, reg->reg & 0xff, &val);
 	reg->val = val;
@@ -765,8 +759,7 @@ static int tvp7002_g_register(struct v4l2_subdev *sd,
  * @reg: ptr to v4l2_dbg_register struct
  *
  * Get the value of a TVP7002 decoder device register.
- * Returns zero when successful, -EINVAL if register read fails or
- * -EPERM if call not allowed.
+ * Returns zero when successful, -EINVAL if register read fails.
  */
 static int tvp7002_s_register(struct v4l2_subdev *sd,
 						const struct v4l2_dbg_register *reg)
@@ -775,8 +768,6 @@ static int tvp7002_s_register(struct v4l2_subdev *sd,
 
 	if (!v4l2_chip_match_i2c_client(client, &reg->match))
 		return -EINVAL;
-	if (!capable(CAP_SYS_ADMIN))
-		return -EPERM;
 
 	return tvp7002_write(sd, reg->reg & 0xff, reg->val & 0xff);
 }

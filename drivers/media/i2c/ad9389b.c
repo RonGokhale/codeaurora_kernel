@@ -347,8 +347,6 @@ static int ad9389b_g_register(struct v4l2_subdev *sd, struct v4l2_dbg_register *
 
 	if (!v4l2_chip_match_i2c_client(client, &reg->match))
 		return -EINVAL;
-	if (!capable(CAP_SYS_ADMIN))
-		return -EPERM;
 	reg->val = ad9389b_rd(sd, reg->reg & 0xff);
 	reg->size = 1;
 	return 0;
@@ -360,8 +358,6 @@ static int ad9389b_s_register(struct v4l2_subdev *sd, const struct v4l2_dbg_regi
 
 	if (!v4l2_chip_match_i2c_client(client, &reg->match))
 		return -EINVAL;
-	if (!capable(CAP_SYS_ADMIN))
-		return -EPERM;
 	ad9389b_wr(sd, reg->reg & 0xff, reg->val & 0xff);
 	return 0;
 }
@@ -1250,12 +1246,14 @@ static int ad9389b_probe(struct i2c_client *client, const struct i2c_device_id *
 	state->edid_i2c_client = i2c_new_dummy(client->adapter, (0x7e>>1));
 	if (state->edid_i2c_client == NULL) {
 		v4l2_err(sd, "failed to register edid i2c client\n");
+		err = -ENOMEM;
 		goto err_entity;
 	}
 
 	state->work_queue = create_singlethread_workqueue(sd->name);
 	if (state->work_queue == NULL) {
 		v4l2_err(sd, "could not create workqueue\n");
+		err = -ENOMEM;
 		goto err_unreg;
 	}
 
