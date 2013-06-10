@@ -40,8 +40,12 @@
 #define COMPRE_CAPTURE_NUM_PERIODS	16
 /* Allocate the worst case frame size for compressed audio */
 #define COMPRE_CAPTURE_HEADER_SIZE	(sizeof(struct snd_compr_audio_info))
-#define COMPRE_CAPTURE_MAX_FRAME_SIZE	(6144)
-#define COMPRE_CAPTURE_PERIOD_SIZE	((COMPRE_CAPTURE_MAX_FRAME_SIZE + \
+#define COMPRE_CAPTURE_MIN_FRAME_SIZE	(1920)
+#define COMPRE_CAPTURE_MAX_FRAME_SIZE	(23040)
+#define COMPRE_CAPTURE_MIN_PERIOD_SIZE	((COMPRE_CAPTURE_MIN_FRAME_SIZE + \
+					  COMPRE_CAPTURE_HEADER_SIZE) * \
+					  MAX_NUM_FRAMES_PER_BUFFER)
+#define COMPRE_CAPTURE_MAX_PERIOD_SIZE	((COMPRE_CAPTURE_MAX_FRAME_SIZE + \
 					  COMPRE_CAPTURE_HEADER_SIZE) * \
 					  MAX_NUM_FRAMES_PER_BUFFER)
 #define COMPRE_OUTPUT_METADATA_SIZE	(sizeof(struct output_meta_data_st))
@@ -74,9 +78,9 @@ static struct snd_pcm_hardware msm_compr_hardware_capture = {
 	.channels_min =	 1,
 	.channels_max =	 8,
 	.buffer_bytes_max =
-		COMPRE_CAPTURE_PERIOD_SIZE * COMPRE_CAPTURE_NUM_PERIODS ,
-	.period_bytes_min =	COMPRE_CAPTURE_PERIOD_SIZE,
-	.period_bytes_max = COMPRE_CAPTURE_PERIOD_SIZE,
+		COMPRE_CAPTURE_MAX_PERIOD_SIZE * COMPRE_CAPTURE_NUM_PERIODS ,
+	.period_bytes_min =	COMPRE_CAPTURE_MIN_PERIOD_SIZE,
+	.period_bytes_max = COMPRE_CAPTURE_MAX_PERIOD_SIZE,
 	.periods_min =	  COMPRE_CAPTURE_NUM_PERIODS,
 	.periods_max =	  COMPRE_CAPTURE_NUM_PERIODS,
 	.fifo_size =	    0,
