@@ -174,26 +174,29 @@ static int mdss_mdp_overlay_req_check(struct msm_fb_data_type *mfd,
 			return -EINVAL;
 		}
 
-		if ((fmt->chroma_sample == MDSS_MDP_CHROMA_420 ||
-		     fmt->chroma_sample == MDSS_MDP_CHROMA_H2V1) &&
-		    ((req->src_rect.w * (MAX_UPSCALE_RATIO / 2)) < dst_w)) {
-			pr_err("too much YUV upscaling Width %d->%d\n",
-			       req->src_rect.w, req->dst_rect.w);
-			return -EINVAL;
-		}
-
-		if ((fmt->chroma_sample == MDSS_MDP_CHROMA_420 ||
-		     fmt->chroma_sample == MDSS_MDP_CHROMA_H1V2) &&
-		    (req->src_rect.h * (MAX_UPSCALE_RATIO / 2)) < dst_h) {
-			pr_err("too much YUV upscaling Height %d->%d\n",
-			       req->src_rect.h, req->dst_rect.h);
-			return -EINVAL;
-		}
-
 		if (req->flags & MDP_BWC_EN) {
 			if ((req->src.width != req->src_rect.w) ||
 			    (req->src.height != req->src_rect.h)) {
 				pr_err("BWC: unequal src img and rect w,h\n");
+				return -EINVAL;
+			}
+		}
+
+		if (req->flags & MDP_DEINTERLACE) {
+			if (req->flags & MDP_SOURCE_ROTATED_90) {
+				if ((req->src_rect.w % 4) != 0) {
+					pr_err("interlaced rect not h/4\n");
+					return -EINVAL;
+				}
+			} else if ((req->src_rect.h % 4) != 0) {
+				pr_err("interlaced rect not h/4\n");
+				return -EINVAL;
+			}
+		}
+	} else {
+		if (req->flags & MDP_DEINTERLACE) {
+			if ((req->src_rect.h % 4) != 0) {
+				pr_err("interlaced rect h not multiple of 4\n");
 				return -EINVAL;
 			}
 		}
@@ -203,13 +206,6 @@ static int mdss_mdp_overlay_req_check(struct msm_fb_data_type *mfd,
 		if ((req->src_rect.x & 0x1) || (req->src_rect.y & 0x1) ||
 		    (req->src_rect.w & 0x1) || (req->src_rect.h & 0x1)) {
 			pr_err("invalid odd src resolution or coordinates\n");
-			return -EINVAL;
-		}
-	}
-
-	if (req->flags & MDP_DEINTERLACE) {
-		if ((req->src.width % 4 != 0) || (req->src.height % 4 != 0)) {
-			pr_err("interlaced fmt w,h need to be even post div\n");
 			return -EINVAL;
 		}
 	}
@@ -300,7 +296,7 @@ static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 	struct mdss_mdp_format_params *fmt;
 	struct mdss_mdp_pipe *pipe;
 	struct mdss_mdp_mixer *mixer = NULL;
-	u32 pipe_type, mixer_mux, len, src_format;
+	u32 pipe_type, mixer_mux, len;
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
 	struct mdp_histogram_start_req hist;
 	int ret;
@@ -328,13 +324,13 @@ static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 	pr_debug("pipe ctl=%u req id=%x mux=%d\n", mdp5_data->ctl->num, req->id,
 			mixer_mux);
 
-	src_format = req->src.format;
 	if (req->flags & (MDP_SOURCE_ROTATED_90 | MDP_BWC_EN))
-		src_format = mdss_mdp_get_rotator_dst_format(src_format);
+		req->src.format =
+			mdss_mdp_get_rotator_dst_format(req->src.format);
 
-	fmt = mdss_mdp_get_format_params(src_format);
+	fmt = mdss_mdp_get_format_params(req->src.format);
 	if (!fmt) {
-		pr_err("invalid pipe format %d\n", src_format);
+		pr_err("invalid pipe format %d\n", req->src.format);
 		return -EINVAL;
 	}
 
@@ -696,7 +692,7 @@ static void mdss_mdp_overlay_update_pm(struct mdss_overlay_private *mdp5_data)
 int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 {
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
-	struct mdss_mdp_pipe *pipe;
+	struct mdss_mdp_pipe *pipe, *next;
 	struct mdss_mdp_ctl *ctl = mfd_to_ctl(mfd);
 	int ret;
 
@@ -710,7 +706,8 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 		return ret;
 	}
 
-	list_for_each_entry(pipe, &mdp5_data->pipes_used, used_list) {
+	list_for_each_entry_safe(pipe, next, &mdp5_data->pipes_used,
+			used_list) {
 		struct mdss_mdp_data *buf;
 		if (pipe->back_buf.num_planes) {
 			buf = &pipe->back_buf;
@@ -718,6 +715,13 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 			pipe->params_changed++;
 			buf = &pipe->front_buf;
 		} else if (!pipe->params_changed) {
+			if (pipe->mixer) {
+				if (!mdss_mdp_pipe_is_staged(pipe)) {
+					list_del(&pipe->used_list);
+					list_add(&pipe->cleanup_list,
+						 &mdp5_data->pipes_cleanup);
+				}
+			}
 			continue;
 		} else if (pipe->front_buf.num_planes) {
 			buf = &pipe->front_buf;
@@ -750,15 +754,7 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 
 	ret = mdss_mdp_display_wait4comp(mdp5_data->ctl);
 
-	complete(&mfd->update.comp);
-	mutex_lock(&mfd->no_update.lock);
-	if (mfd->no_update.timer.function)
-		del_timer(&(mfd->no_update.timer));
-
-	mfd->no_update.timer.expires = jiffies + (2 * HZ);
-	add_timer(&mfd->no_update.timer);
-	mutex_unlock(&mfd->no_update.lock);
-
+	mdss_fb_update_notify_update(mfd);
 commit_fail:
 	mdss_mdp_overlay_cleanup(mfd);
 
@@ -1560,6 +1556,9 @@ static int mdss_mdp_pp_ioctl(struct msm_fb_data_type *mfd,
 	case mdp_op_calib_cfg:
 		ret = mdss_mdp_calib_config((struct mdp_calib_config_data *)
 					 &mdp_pp.data.calib_cfg, &copyback);
+		break;
+	case mdp_op_calib_mode:
+		ret = mdss_mdp_calib_mode(mfd, &mdp_pp.data.mdss_calib_cfg);
 		break;
 	default:
 		pr_err("Unsupported request to MDP_PP IOCTL. %d = op\n",

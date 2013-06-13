@@ -314,7 +314,7 @@ err:
 }
 
 int
-kgsl_mmu_get_ptname_from_ptbase(struct kgsl_mmu *mmu, unsigned int pt_base)
+kgsl_mmu_get_ptname_from_ptbase(struct kgsl_mmu *mmu, phys_addr_t pt_base)
 {
 	struct kgsl_pagetable *pt;
 	int ptid = -1;
@@ -335,7 +335,7 @@ kgsl_mmu_get_ptname_from_ptbase(struct kgsl_mmu *mmu, unsigned int pt_base)
 EXPORT_SYMBOL(kgsl_mmu_get_ptname_from_ptbase);
 
 unsigned int
-kgsl_mmu_log_fault_addr(struct kgsl_mmu *mmu, unsigned int pt_base,
+kgsl_mmu_log_fault_addr(struct kgsl_mmu *mmu, phys_addr_t pt_base,
 					unsigned int addr)
 {
 	struct kgsl_pagetable *pt;
@@ -372,7 +372,7 @@ int kgsl_mmu_init(struct kgsl_device *device)
 	status = kgsl_allocate_contiguous(&mmu->setstate_memory, PAGE_SIZE);
 	if (status)
 		return status;
-	kgsl_sharedmem_set(&mmu->setstate_memory, 0, 0,
+	kgsl_sharedmem_set(device, &mmu->setstate_memory, 0, 0,
 				mmu->setstate_memory.size);
 
 	if (KGSL_MMU_TYPE_NONE == kgsl_mmu_type) {
@@ -410,7 +410,8 @@ EXPORT_SYMBOL(kgsl_mmu_start);
 
 static void mh_axi_error(struct kgsl_device *device, const char* type)
 {
-	unsigned int reg, gpu_err, phys_err, pt_base;
+	unsigned int reg, gpu_err, phys_err;
+	phys_addr_t pt_base;
 
 	kgsl_regread(device, MH_AXI_ERROR, &reg);
 	pt_base = kgsl_mmu_get_current_ptbase(&device->mmu);
@@ -423,8 +424,8 @@ static void mh_axi_error(struct kgsl_device *device, const char* type)
 	kgsl_regwrite(device, MH_DEBUG_CTRL, 45);
 	kgsl_regread(device, MH_DEBUG_DATA, &phys_err);
 	KGSL_MEM_CRIT(device,
-			"axi %s error: %08x pt %08x gpu %08x phys %08x\n",
-			type, reg, pt_base, gpu_err, phys_err);
+			"axi %s error: %08x pt %pa gpu %08x phys %08x\n",
+			type, reg, &pt_base, gpu_err, phys_err);
 }
 
 void kgsl_mh_intrcallback(struct kgsl_device *device)
