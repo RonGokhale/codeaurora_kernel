@@ -164,6 +164,7 @@ list of aosp branches
 - aosp-common/experimental/android-3.9-rc7
 - aosp-common/experimental/android-3.9
 - aosp-new/android-msm-3.9-usb-and-mmc-hacks
+- aosp-common/experimental/android-3.10-rc5
 
 QUALCOMM Branches
 ===================
