@@ -36,11 +36,19 @@
 #define BTSCO_RATE_8KHZ 8000
 #define BTSCO_RATE_16KHZ 16000
 
+/* It takes about 13ms for Class-D PAs to ramp-up */
+#define EXT_CLASS_D_EN_DELAY 13000
+#define EXT_CLASS_D_DIS_DELAY 3000
+#define EXT_CLASS_D_DELAY_DELTA 2000
+
 #define WCD9XXX_MBHC_DEF_BUTTONS 8
 #define WCD9XXX_MBHC_DEF_RLOADS 5
 #define TAPAN_EXT_CLK_RATE 9600000
 
 #define NUM_OF_AUXPCM_GPIOS 4
+
+#define LO_1_SPK_AMP   0x1
+#define LO_2_SPK_AMP   0x2
 
 static int msm8226_auxpcm_rate = 8000;
 static atomic_t auxpcm_rsc_ref;
@@ -116,6 +124,7 @@ enum {
 	SLIM_4_TX_1 = 150, /* In-call musid delivery TX */
 };
 
+static int msm8226_ext_spk_pamp;
 static int msm_slim_0_rx_ch = 1;
 static int msm_slim_0_tx_ch = 1;
 
@@ -125,6 +134,8 @@ static int msm_btsco_ch = 1;
 static struct mutex cdc_mclk_mutex;
 static struct clk *codec_clk;
 static int clk_users;
+static struct platform_device *spdev;
+static int ext_spk_amp_gpio = -1;
 static int vdd_spkr_gpio = -1;
 
 static int msm_snd_enable_codec_ext_clk(struct snd_soc_codec *codec, int enable,
@@ -188,6 +199,118 @@ static int msm8226_mclk_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static void msm8226_ext_spk_power_amp_enable(u32 on)
+{
+       if (on) {
+               gpio_direction_output(ext_spk_amp_gpio, on);
+               /*time takes enable the external power amplifier*/
+               usleep_range(EXT_CLASS_D_EN_DELAY,
+                            EXT_CLASS_D_EN_DELAY + EXT_CLASS_D_DELAY_DELTA);
+       } else {
+               gpio_direction_output(ext_spk_amp_gpio, on);
+               /*time takes disable the external power amplifier*/
+               usleep_range(EXT_CLASS_D_DIS_DELAY,
+                            EXT_CLASS_D_DIS_DELAY + EXT_CLASS_D_DELAY_DELTA);
+       }
+
+       pr_debug("%s: %s external speaker PAs.\n", __func__,
+                       on ? "Enable" : "Disable");
+}
+
+static int msm8226_skuf_ext_spk_power_amp_on(u32 spk)
+{
+       int rc;
+
+       if (spk & (LO_1_SPK_AMP | LO_2_SPK_AMP)) {
+               pr_debug("%s: External speakers are already on. spk = 0x%x\n",
+                        __func__, spk);
+
+               msm8226_ext_spk_pamp |= spk;
+               if ((msm8226_ext_spk_pamp & LO_1_SPK_AMP) &&
+                   (msm8226_ext_spk_pamp & LO_2_SPK_AMP))
+                       if (ext_spk_amp_gpio >= 0){
+                               pr_debug("%s  enable power", __func__);
+                               msm8226_ext_spk_power_amp_enable(1);
+                        }
+               rc = 0;
+       } else  {
+               pr_err("%s: Invalid external speaker ampl. spk = 0x%x\n",
+                      __func__, spk);
+               rc = -EINVAL;
+       }
+
+       return rc;
+}
+
+
+static void msm8226_skuf_ext_spk_power_amp_off(u32 spk)
+{
+
+       if (spk & (LO_1_SPK_AMP | LO_2_SPK_AMP )) {
+               pr_debug("%s Left and right speakers case spk = 0x%08x",
+                                 __func__, spk);
+
+               msm8226_ext_spk_pamp &= ~spk;
+
+               if (!msm8226_ext_spk_pamp) {
+                       if (ext_spk_amp_gpio >= 0){
+                               pr_debug("%s  disable power", __func__);
+                               msm8226_ext_spk_power_amp_enable(0);
+                        }
+                       msm8226_ext_spk_pamp = 0;
+               }
+
+       } else  {
+
+               pr_err("%s: ERROR : Invalid Ext Spk Ampl. spk = 0x%08x\n",
+                       __func__, spk);
+               return;
+       }
+}
+
+
+static void msm8226_ext_spk_power_amp_on(u32 spk)
+{
+       if (gpio_is_valid(ext_spk_amp_gpio))
+               msm8226_skuf_ext_spk_power_amp_on(spk);
+}
+
+static void msm8226_ext_spk_power_amp_off(u32 spk)
+{
+       if (gpio_is_valid(ext_spk_amp_gpio))
+               msm8226_skuf_ext_spk_power_amp_off(spk);
+}
+
+static int msm8226_ext_spkramp_event(struct snd_soc_dapm_widget *w,
+                            struct snd_kcontrol *k, int event)
+{
+       pr_debug("%s()\n", __func__);
+
+       if (SND_SOC_DAPM_EVENT_ON(event)) {
+               if (!strncmp(w->name, "Lineout_1 amp", 14))
+                       msm8226_ext_spk_power_amp_on(LO_1_SPK_AMP);
+               else if (!strncmp(w->name, "Lineout_2 amp", 14))
+                       msm8226_ext_spk_power_amp_on(LO_2_SPK_AMP);
+               else {
+                       pr_err("%s() Invalid Speaker Widget = %s\n",
+                                       __func__, w->name);
+                       return -EINVAL;
+               }
+       } else {
+               if (!strncmp(w->name, "Lineout_1 amp", 14))
+                       msm8226_ext_spk_power_amp_off(LO_1_SPK_AMP);
+               else if (!strncmp(w->name, "Lineout_2 amp", 14))
+                       msm8226_ext_spk_power_amp_off(LO_2_SPK_AMP);
+               else {
+                       pr_err("%s() Invalid Speaker Widget = %s\n",
+                                       __func__, w->name);
+                       return -EINVAL;
+               }
+       }
+
+       return 0;
+}
+
 static int msm8226_vdd_spkr_event(struct snd_soc_dapm_widget *w,
 		struct snd_kcontrol *kcontrol, int event)
 {
@@ -229,7 +352,10 @@ static const struct snd_soc_dapm_widget msm8226_dapm_widgets[] = {
 	SND_SOC_DAPM_MIC("Digital Mic5", NULL),
 	SND_SOC_DAPM_MIC("Digital Mic6", NULL),
 
-	SND_SOC_DAPM_SUPPLY("EXT_VDD_SPKR",  SND_SOC_NOPM, 0, 0,
+        SND_SOC_DAPM_SPK("Lineout_1 amp", msm8226_ext_spkramp_event),
+        SND_SOC_DAPM_SPK("Lineout_2 amp", msm8226_ext_spkramp_event),
+
+        SND_SOC_DAPM_SUPPLY("EXT_VDD_SPKR",  SND_SOC_NOPM, 0, 0,
 	msm8226_vdd_spkr_event, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 };
 
@@ -577,6 +703,9 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 
 	snd_soc_dapm_new_controls(dapm, msm8226_dapm_widgets,
 				ARRAY_SIZE(msm8226_dapm_widgets));
+
+        snd_soc_dapm_enable_pin(dapm, "Lineout_1 amp");
+        snd_soc_dapm_enable_pin(dapm, "Lineout_2 amp");
 
 	snd_soc_dapm_sync(dapm);
 
@@ -1475,6 +1604,24 @@ static __devinit int msm8226_asoc_machine_probe(struct platform_device *pdev)
 		}
 	}
 
+       ext_spk_amp_gpio = of_get_named_gpio(pdev->dev.of_node,
+                         "qcom,cdc-lineout-spkr-gpios", 0);
+       if (ext_spk_amp_gpio < 0) {
+           dev_err(&pdev->dev,
+                   "Looking up %s property in node %s failed %d\n",
+                   "qcom, cdc-lineout-spkr-gpios",
+           pdev->dev.of_node->full_name, ext_spk_amp_gpio);
+      } else {
+             ret = gpio_request(ext_spk_amp_gpio, "TAPAN_CODEC_LINEOUT_SPKR");
+             if (ret) {
+                      // GPIO to enable EXT VDD exists, but failed request
+                      dev_err(card->dev,
+                                       "%s: Failed to request tapan vdd spkr gpio %d\n",
+                                       __func__, ext_spk_amp_gpio);
+                      goto err;
+               }
+       }
+
 	mbhc_cfg.gpio_level_insert = of_property_read_bool(pdev->dev.of_node,
 					"qcom,headset-jack-type-NO");
 	msm8226_setup_hs_jack(pdev, pdata);
@@ -1482,6 +1629,8 @@ static __devinit int msm8226_asoc_machine_probe(struct platform_device *pdev)
 	ret = msm8226_prepare_codec_mclk(card);
 	if (ret)
 		goto err_vdd_spkr;
+
+        spdev = pdev;
 
 	ret = snd_soc_register_card(card);
 	if (ret) {
@@ -1522,7 +1671,10 @@ err_vdd_spkr:
 		gpio_free(vdd_spkr_gpio);
 		vdd_spkr_gpio = -1;
 	}
-
+        if (ext_spk_amp_gpio >= 0) {
+               gpio_free(ext_spk_amp_gpio);
+               ext_spk_amp_gpio = -1;
+       }
 err:
 	if (pdata->mclk_gpio > 0) {
 		dev_dbg(&pdev->dev, "%s free gpio %d\n",
@@ -1540,11 +1692,15 @@ static int __devexit msm8226_asoc_machine_remove(struct platform_device *pdev)
 	struct msm8226_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
 
 	gpio_free(pdata->mclk_gpio);
-	gpio_free(vdd_spkr_gpio);
+        if (vdd_spkr_gpio >= 0)
+               gpio_free(vdd_spkr_gpio);
+       if (ext_spk_amp_gpio >= 0)
+               gpio_free(ext_spk_amp_gpio);
 	if (pdata->us_euro_gpio > 0)
 		gpio_free(pdata->us_euro_gpio);
 
 	vdd_spkr_gpio = -1;
+        ext_spk_amp_gpio = -1;
 	snd_soc_unregister_card(card);
 
 	return 0;
