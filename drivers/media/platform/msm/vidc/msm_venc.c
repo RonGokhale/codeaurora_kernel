@@ -152,6 +152,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_I_PERIOD,
@@ -164,6 +165,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_INTRA_PERIOD,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_NUM_P_FRAMES,
@@ -176,6 +178,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_INTRA_PERIOD,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_NUM_B_FRAMES,
@@ -188,6 +191,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_INTRA_PERIOD,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_REQUEST_IFRAME,
@@ -200,6 +204,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL,
@@ -219,6 +224,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.qmenu = mpeg_video_rate_control,
 		.cluster = MSM_VENC_CTRL_CLUSTER_BITRATE |
 			MSM_VENC_CTRL_CLUSTER_TIMING,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_BITRATE_MODE,
@@ -234,6 +240,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		),
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_BITRATE,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_BITRATE,
@@ -246,6 +253,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_BITRATE,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_BITRATE_PEAK,
@@ -258,6 +266,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_BITRATE,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_ENTROPY_MODE,
@@ -272,6 +281,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		(1 << V4L2_MPEG_VIDEO_H264_ENTROPY_MODE_CABAC)
 		),
 		.cluster = MSM_VENC_CTRL_CLUSTER_H264_ENTROPY,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_H264_CABAC_MODEL,
@@ -288,6 +298,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		),
 		.qmenu = h264_video_entropy_cabac_model,
 		.cluster = MSM_VENC_CTRL_CLUSTER_H264_ENTROPY,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_MPEG4_PROFILE,
@@ -299,6 +310,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.step = 1,
 		.menu_skip_mask = 0,
 		.cluster = MSM_VENC_CTRL_CLUSTER_MPEG_PROFILE_LEVEL,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_MPEG4_LEVEL,
@@ -310,6 +322,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.step = 1,
 		.menu_skip_mask = 0,
 		.cluster = MSM_VENC_CTRL_CLUSTER_MPEG_PROFILE_LEVEL,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_PROFILE,
@@ -321,6 +334,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.step = 1,
 		.menu_skip_mask = 0,
 		.cluster = MSM_VENC_CTRL_CLUSTER_H264_PROFILE_LEVEL,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_LEVEL,
@@ -332,6 +346,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.step = 0,
 		.menu_skip_mask = 0,
 		.cluster = MSM_VENC_CTRL_CLUSTER_H264_PROFILE_LEVEL,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_H263_PROFILE,
@@ -353,6 +368,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		),
 		.qmenu = h263_profile,
 		.cluster = MSM_VENC_CTRL_CLUSTER_H263_PROFILE_LEVEL,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_H263_LEVEL,
@@ -372,6 +388,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		),
 		.qmenu = h263_level,
 		.cluster = MSM_VENC_CTRL_CLUSTER_H263_PROFILE_LEVEL,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_ROTATION,
@@ -389,6 +406,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		),
 		.qmenu = mpeg_video_rotation,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_I_FRAME_QP,
@@ -401,6 +419,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_QP,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_P_FRAME_QP,
@@ -413,6 +432,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_QP,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_B_FRAME_QP,
@@ -425,6 +445,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_QP,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP,
@@ -437,6 +458,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_QP,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP,
@@ -449,6 +471,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_QP,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MODE,
@@ -465,6 +488,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		(1 << V4L2_MPEG_VIDEO_MULTI_SLICE_GOB)
 		),
 		.cluster = MSM_VENC_CTRL_CLUSTER_SLICING,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_BYTES,
@@ -477,6 +501,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_SLICING,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_MB,
@@ -489,6 +514,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_SLICING,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_MULTI_SLICE_GOB,
@@ -501,6 +527,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_SLICING,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_MULTI_SLICE_DELIVERY_MODE,
@@ -513,6 +540,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_SLICING,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_INTRA_REFRESH_MODE,
@@ -530,6 +558,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		(1 << V4L2_CID_MPEG_VIDC_VIDEO_INTRA_REFRESH_RANDOM)
 		),
 		.cluster = MSM_VENC_CTRL_CLUSTER_INTRA_REFRESH,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_AIR_MBS,
@@ -542,6 +571,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_INTRA_REFRESH,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_AIR_REF,
@@ -554,6 +584,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_INTRA_REFRESH,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_CIR_MBS,
@@ -566,6 +597,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = MSM_VENC_CTRL_CLUSTER_INTRA_REFRESH,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_LOOP_FILTER_ALPHA,
@@ -578,6 +610,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_LOOP_FILTER_BETA,
@@ -590,6 +623,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_LOOP_FILTER_MODE,
@@ -605,6 +639,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		(1 << L_MODE)
 		),
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_HEADER_MODE,
@@ -620,6 +655,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		(1 << V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_I_FRAME)
 		),
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_SECURE,
@@ -632,6 +668,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_EXTRADATA,
@@ -662,6 +699,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 			),
 		.qmenu = mpeg_video_vidc_extradata,
 		.step = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_H264_VUI_TIMING_INFO,
@@ -672,6 +710,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.default_value =
 			V4L2_MPEG_VIDC_VIDEO_H264_VUI_TIMING_INFO_DISABLED,
 		.cluster = MSM_VENC_CTRL_CLUSTER_TIMING,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_H264_AU_DELIMITER,
@@ -681,6 +720,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.maximum = V4L2_MPEG_VIDC_VIDEO_H264_AU_DELIMITER_ENABLED,
 		.default_value =
 			V4L2_MPEG_VIDC_VIDEO_H264_AU_DELIMITER_DISABLED,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_SET_PERF_LEVEL,
@@ -694,6 +734,20 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 			(1 << V4L2_CID_MPEG_VIDC_PERF_LEVEL_TURBO)),
 		.qmenu = perf_level,
 		.step = 0,
+		.flags = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDC_ONGOING_SECURE_SESSIONS,
+		.name = "Number of ongoing secure sessions",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.minimum = 0,
+		.maximum = INT_MAX,
+		.default_value = 0,
+		.step = 1,
+		.menu_skip_mask = 0,
+		.qmenu = NULL,
+		.cluster = 0,
+		.flags = V4L2_CTRL_FLAG_READ_ONLY | V4L2_CTRL_FLAG_VOLATILE,
 	},
 };
 
@@ -1875,9 +1929,47 @@ failed_open_done:
 	return rc;
 }
 
+static int try_get_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
+{
+	int rc = 0;
+	switch (ctrl->id) {
+	case V4L2_CID_MPEG_VIDC_ONGOING_SECURE_SESSIONS:
+	{
+		struct msm_vidc_inst *temp = NULL;
+		int secured = 0;
+		list_for_each_entry(temp, &inst->core->instances, list) {
+			mutex_lock(&temp->lock);
+			if (temp->flags & VIDC_SECURE)
+				secured++;
+			mutex_unlock(&temp->lock);
+		}
+
+		ctrl->val = secured;
+		break;
+	}
+	default:
+		rc = -ENOTSUPP;
+		dprintk(VIDC_ERR, "g_ctrl not supported for %x\n", ctrl->id);
+		break;
+	}
+
+	return rc;
+}
+
 static int msm_venc_op_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 {
-	return 0;
+	struct msm_vidc_inst *inst = container_of(ctrl->handler,
+					struct msm_vidc_inst, ctrl_handler);
+	int rc = 0;
+
+	rc = try_get_ctrl(inst, ctrl);
+	if (rc) {
+		dprintk(VIDC_ERR, "Failed getting %s (%x)",
+				v4l2_ctrl_get_name(ctrl->id),
+				ctrl->id);
+	}
+
+	return rc;
 }
 
 static const struct v4l2_ctrl_ops msm_venc_ctrl_ops = {
@@ -2471,7 +2563,7 @@ int msm_venc_ctrl_init(struct msm_vidc_inst *inst)
 		struct v4l2_ctrl *ctrl = NULL;
 		if (IS_PRIV_CTRL(msm_venc_ctrls[idx].id)) {
 			ctrl_cfg.def = msm_venc_ctrls[idx].default_value;
-			ctrl_cfg.flags = 0;
+			ctrl_cfg.flags = msm_venc_ctrls[idx].flags;
 			ctrl_cfg.id = msm_venc_ctrls[idx].id;
 			ctrl_cfg.max = msm_venc_ctrls[idx].maximum;
 			ctrl_cfg.min = msm_venc_ctrls[idx].minimum;

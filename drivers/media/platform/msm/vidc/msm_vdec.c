@@ -92,6 +92,7 @@ static struct msm_vidc_ctrl msm_vdec_ctrls[] = {
 		.qmenu = mpeg_video_stream_format,
 		.step = 0,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_OUTPUT_ORDER,
@@ -107,6 +108,7 @@ static struct msm_vidc_ctrl msm_vdec_ctrls[] = {
 		.qmenu = mpeg_video_output_order,
 		.step = 0,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_ENABLE_PICTURE_TYPE,
@@ -119,6 +121,7 @@ static struct msm_vidc_ctrl msm_vdec_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_KEEP_ASPECT_RATIO,
@@ -131,6 +134,7 @@ static struct msm_vidc_ctrl msm_vdec_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_POST_LOOP_DEBLOCKER_MODE,
@@ -143,6 +147,7 @@ static struct msm_vidc_ctrl msm_vdec_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_DIVX_FORMAT,
@@ -159,6 +164,7 @@ static struct msm_vidc_ctrl msm_vdec_ctrls[] = {
 		.qmenu = mpeg_video_vidc_divx_format,
 		.step = 0,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_MB_ERROR_MAP_REPORTING,
@@ -171,6 +177,7 @@ static struct msm_vidc_ctrl msm_vdec_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_CONTINUE_DATA_TRANSFER,
@@ -183,6 +190,7 @@ static struct msm_vidc_ctrl msm_vdec_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_SYNC_FRAME_DECODE,
@@ -191,6 +199,8 @@ static struct msm_vidc_ctrl msm_vdec_ctrls[] = {
 		.minimum = V4L2_MPEG_VIDC_VIDEO_SYNC_FRAME_DECODE_DISABLE,
 		.maximum = V4L2_MPEG_VIDC_VIDEO_SYNC_FRAME_DECODE_ENABLE,
 		.default_value = V4L2_MPEG_VIDC_VIDEO_SYNC_FRAME_DECODE_DISABLE,
+		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_SECURE,
@@ -203,6 +213,7 @@ static struct msm_vidc_ctrl msm_vdec_ctrls[] = {
 		.menu_skip_mask = 0,
 		.qmenu = NULL,
 		.cluster = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_EXTRADATA,
@@ -233,6 +244,7 @@ static struct msm_vidc_ctrl msm_vdec_ctrls[] = {
 			),
 		.qmenu = mpeg_video_vidc_extradata,
 		.step = 0,
+		.flags = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_SET_PERF_LEVEL,
@@ -246,6 +258,7 @@ static struct msm_vidc_ctrl msm_vdec_ctrls[] = {
 			(1 << V4L2_CID_MPEG_VIDC_PERF_LEVEL_TURBO)),
 		.qmenu = perf_level,
 		.step = 0,
+		.flags = 0,
 	},
 };
 
@@ -1386,9 +1399,47 @@ failed_open_done:
 	return rc;
 }
 
+static int try_get_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
+{
+	int rc = 0;
+	switch (ctrl->id) {
+	case V4L2_CID_MPEG_VIDC_ONGOING_SECURE_SESSIONS:
+	{
+		struct msm_vidc_inst *temp = NULL;
+		int secured = 0;
+		list_for_each_entry(temp, &inst->core->instances, list) {
+			mutex_lock(&temp->lock);
+			if (temp->flags & VIDC_SECURE)
+				secured++;
+			mutex_unlock(&temp->lock);
+		}
+
+		ctrl->val = secured;
+		break;
+	}
+	default:
+		rc = -ENOTSUPP;
+		dprintk(VIDC_ERR, "g_ctrl not supported for %x\n", ctrl->id);
+		break;
+	}
+
+	return rc;
+}
+
 static int msm_vdec_op_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 {
-	return 0;
+	struct msm_vidc_inst *inst = container_of(ctrl->handler,
+					struct msm_vidc_inst, ctrl_handler);
+	int rc = 0;
+
+	rc = try_get_ctrl(inst, ctrl);
+	if (rc) {
+		dprintk(VIDC_ERR, "Failed getting %s (%x)",
+				v4l2_ctrl_get_name(ctrl->id),
+				ctrl->id);
+	}
+
+	return rc;
 }
 
 static const struct v4l2_ctrl_ops msm_vdec_ctrl_ops = {
@@ -1450,7 +1501,7 @@ int msm_vdec_ctrl_init(struct msm_vidc_inst *inst)
 		if (IS_PRIV_CTRL(msm_vdec_ctrls[idx].id)) {
 			/*add private control*/
 			ctrl_cfg.def = msm_vdec_ctrls[idx].default_value;
-			ctrl_cfg.flags = 0;
+			ctrl_cfg.flags = msm_vdec_ctrls[idx].flags;
 			ctrl_cfg.id = msm_vdec_ctrls[idx].id;
 			/* ctrl_cfg.is_private =
 			 * msm_vdec_ctrls[idx].is_private;
