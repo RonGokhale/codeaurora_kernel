@@ -42,11 +42,9 @@ static int stmmac_probe_config_dt(struct platform_device *pdev,
 
 	*mac = of_get_mac_address(np);
 	plat->interface = of_get_phy_mode(np);
-	if (NULL == plat->mdio_bus_data) {
-		plat->mdio_bus_data = devm_kzalloc(&pdev->dev,
+	plat->mdio_bus_data = devm_kzalloc(&pdev->dev,
 					   sizeof(struct stmmac_mdio_bus_data),
 					   GFP_KERNEL);
-	}
 
 	/*
 	 * Currently only the properties needed on SPEAr600
@@ -78,6 +76,8 @@ static int stmmac_probe_config_dt(struct platform_device *pdev,
 			of_property_read_bool(np, "snps,fixed-burst");
 		dma_cfg->mixed_burst =
 			of_property_read_bool(np, "snps,mixed-burst");
+	}
+
 	if (0 == of_property_read_u32(np, "phy-addr", &phyaddr)) {
 		if ((-1 == phyaddr) ||
 			((phyaddr >= 0) && (phyaddr < PHY_MAX_ADDR))) {
