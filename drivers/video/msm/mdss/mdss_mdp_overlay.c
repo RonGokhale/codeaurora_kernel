@@ -1871,11 +1871,12 @@ static int mdss_mdp_overlay_off(struct msm_fb_data_type *mfd)
 
 	mixer = mdss_mdp_mixer_get(mdp5_data->ctl, MDSS_MDP_MIXER_MUX_DEFAULT);
 	mixer->cursor_enabled = 0;
-
+	mdss_mdp_overlay_free_fb_pipe(mfd);
 	if (!mfd->ref_cnt) {
 		mdss_mdp_overlay_release_all(mfd);
 	} else {
 		int need_cleanup;
+
 		mutex_lock(&mfd->lock);
 		need_cleanup = !list_empty(&mdp5_data->pipes_cleanup);
 		mutex_unlock(&mfd->lock);
