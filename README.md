@@ -110,6 +110,7 @@ list of codeaurora msm branches
 - jb_mr1_rb2.15 
 - jb_mr1_rb2.17
 - jb_mr1_rb2.18
+- jb_mr1_rb2.19 
 - jb_mr1_rb3.7 
 - jb_mr1_rb3.8
 - jb_mr1_rb4.1
