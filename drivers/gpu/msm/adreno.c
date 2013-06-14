@@ -527,12 +527,8 @@ static irqreturn_t adreno_irq_handler(struct kgsl_device *device)
 
 	device->pwrctrl.irq_last = 1;
 	if (device->requested_state == KGSL_STATE_NONE) {
-		if (device->pwrctrl.nap_allowed == true) {
-			kgsl_pwrctrl_request_state(device, KGSL_STATE_NAP);
-			queue_work(device->work_queue, &device->idle_check_ws);
-		} else if (device->pwrscale.policy != NULL) {
-			queue_work(device->work_queue, &device->idle_check_ws);
-		}
+		kgsl_pwrctrl_request_state(device, KGSL_STATE_NAP);
+		queue_work(device->work_queue, &device->idle_check_ws);
 	}
 
 	/* Reset the time-out in our idle timer */
@@ -603,10 +599,10 @@ error:
 
 static unsigned int _adreno_iommu_setstate_v0(struct kgsl_device *device,
 					unsigned int *cmds_orig,
-					unsigned int pt_val,
+					phys_addr_t pt_val,
 					int num_iommu_units, uint32_t flags)
 {
-	unsigned int reg_pt_val;
+	phys_addr_t reg_pt_val;
 	unsigned int *cmds = cmds_orig;
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 	int i;
@@ -632,8 +628,10 @@ static unsigned int _adreno_iommu_setstate_v0(struct kgsl_device *device,
 		 * IOMMU units
 		 */
 		for (i = 0; i < num_iommu_units; i++) {
-			reg_pt_val = (pt_val + kgsl_mmu_get_pt_lsb(&device->mmu,
-						i, KGSL_IOMMU_CONTEXT_USER));
+			reg_pt_val = kgsl_mmu_get_default_ttbr0(&device->mmu,
+						i, KGSL_IOMMU_CONTEXT_USER);
+			reg_pt_val &= ~KGSL_IOMMU_CTX_TTBR0_ADDR_MASK;
+			reg_pt_val |= (pt_val & KGSL_IOMMU_CTX_TTBR0_ADDR_MASK);
 			/*
 			 * Set address of the new pagetable by writng to IOMMU
 			 * TTBR0 register
@@ -662,8 +660,11 @@ static unsigned int _adreno_iommu_setstate_v0(struct kgsl_device *device,
 		 * tlb flush
 		 */
 		for (i = 0; i < num_iommu_units; i++) {
-			reg_pt_val = (pt_val + kgsl_mmu_get_pt_lsb(&device->mmu,
+			reg_pt_val = (pt_val + kgsl_mmu_get_default_ttbr0(
+						&device->mmu,
 						i, KGSL_IOMMU_CONTEXT_USER));
+			reg_pt_val &= ~KGSL_IOMMU_CTX_TTBR0_ADDR_MASK;
+			reg_pt_val |= (pt_val & KGSL_IOMMU_CTX_TTBR0_ADDR_MASK);
 
 			*cmds++ = cp_type3_packet(CP_MEM_WRITE, 2);
 			*cmds++ = kgsl_mmu_get_reg_gpuaddr(&device->mmu, i,
@@ -707,17 +708,20 @@ static unsigned int _adreno_iommu_setstate_v0(struct kgsl_device *device,
 
 static unsigned int _adreno_iommu_setstate_v1(struct kgsl_device *device,
 					unsigned int *cmds_orig,
-					unsigned int pt_val,
+					phys_addr_t pt_val,
 					int num_iommu_units, uint32_t flags)
 {
+	phys_addr_t ttbr0_val;
 	unsigned int reg_pt_val;
 	unsigned int *cmds = cmds_orig;
 	int i;
 	unsigned int ttbr0, tlbiall, tlbstatus, tlbsync, mmu_ctrl;
 
 	for (i = 0; i < num_iommu_units; i++) {
-		reg_pt_val = (pt_val + kgsl_mmu_get_pt_lsb(&device->mmu,
-				i, KGSL_IOMMU_CONTEXT_USER));
+		ttbr0_val = kgsl_mmu_get_default_ttbr0(&device->mmu,
+				i, KGSL_IOMMU_CONTEXT_USER);
+		ttbr0_val &= ~KGSL_IOMMU_CTX_TTBR0_ADDR_MASK;
+		ttbr0_val |= (pt_val & KGSL_IOMMU_CTX_TTBR0_ADDR_MASK);
 		if (flags & KGSL_MMUFLAGS_PTUPDATE) {
 			mmu_ctrl = kgsl_mmu_get_reg_ahbaddr(
 				&device->mmu, i,
@@ -753,8 +757,19 @@ static unsigned int _adreno_iommu_setstate_v1(struct kgsl_device *device,
 				KGSL_IOMMU_IMPLDEF_MICRO_MMU_CTRL_IDLE, 0xF);
 			}
 			/* set ttbr0 */
-			*cmds++ = cp_type0_packet(ttbr0, 1);
-			*cmds++ = reg_pt_val;
+			if (sizeof(phys_addr_t) > sizeof(unsigned long)) {
+				reg_pt_val = ttbr0_val & 0xFFFFFFFF;
+				*cmds++ = cp_type0_packet(ttbr0, 1);
+				*cmds++ = reg_pt_val;
+				reg_pt_val = (unsigned int)
+				((ttbr0_val & 0xFFFFFFFF00000000ULL) >> 32);
+				*cmds++ = cp_type0_packet(ttbr0 + 1, 1);
+				*cmds++ = reg_pt_val;
+			} else {
+				reg_pt_val = ttbr0_val;
+				*cmds++ = cp_type0_packet(ttbr0, 1);
+				*cmds++ = reg_pt_val;
+			}
 			if (kgsl_mmu_hw_halt_supported(&device->mmu, i)) {
 				/* unlock the IOMMU lock */
 				*cmds++ = cp_type3_packet(CP_REG_RMW, 3);
@@ -796,7 +811,7 @@ static void adreno_iommu_setstate(struct kgsl_device *device,
 					unsigned int context_id,
 					uint32_t flags)
 {
-	unsigned int pt_val;
+	phys_addr_t pt_val;
 	unsigned int link[230];
 	unsigned int *cmds = &link[0];
 	int sizedwords = 0;
@@ -808,7 +823,8 @@ static void adreno_iommu_setstate(struct kgsl_device *device,
 
 	if (!adreno_dev->drawctxt_active ||
 		KGSL_STATE_ACTIVE != device->state ||
-		!device->active_cnt) {
+		!device->active_cnt ||
+		device->cff_dump_enable) {
 		kgsl_mmu_device_setstate(&device->mmu, flags);
 		return;
 	}
@@ -891,7 +907,7 @@ static void adreno_gpummu_setstate(struct kgsl_device *device,
 	 * writes For CFF dump we must idle and use the registers so that it is
 	 * easier to filter out the mmu accesses from the dump
 	 */
-	if (!kgsl_cff_dump_enable && adreno_dev->drawctxt_active) {
+	if (!device->cff_dump_enable && adreno_dev->drawctxt_active) {
 		context = idr_find(&device->context_idr, context_id);
 		if (context == NULL)
 			return;
@@ -1489,10 +1505,6 @@ static int adreno_of_get_pdata(struct platform_device *pdev)
 		&pdata->idle_timeout))
 		pdata->idle_timeout = HZ/12;
 
-	if (adreno_of_read_property(pdev->dev.of_node, "qcom,nap-allowed",
-		&pdata->nap_allowed))
-		pdata->nap_allowed = 1;
-
 	pdata->strtstp_sleepwake = of_property_read_bool(pdev->dev.of_node,
 						"qcom,strtstp-sleepwake");
 
@@ -1814,7 +1826,7 @@ static int adreno_stop(struct kgsl_device *device)
 	/* Power down the device */
 	kgsl_pwrctrl_disable(device);
 
-	kgsl_cffdump_close(device->id);
+	kgsl_cffdump_close(device);
 
 	return 0;
 }
@@ -1861,11 +1873,11 @@ static void adreno_set_max_ts_for_bad_ctxs(struct kgsl_device *device)
 	while ((context = idr_get_next(&device->context_idr, &next))) {
 		temp_adreno_context = context->devctxt;
 		if (temp_adreno_context->flags & CTXT_FLAGS_GPU_HANG) {
-			kgsl_sharedmem_writel(&device->memstore,
+			kgsl_sharedmem_writel(device, &device->memstore,
 				KGSL_MEMSTORE_OFFSET(context->id,
 				soptimestamp),
 				rb->timestamp[context->id]);
-			kgsl_sharedmem_writel(&device->memstore,
+			kgsl_sharedmem_writel(device, &device->memstore,
 				KGSL_MEMSTORE_OFFSET(context->id,
 				eoptimestamp),
 				rb->timestamp[context->id]);
@@ -2542,7 +2554,7 @@ adreno_ft(struct kgsl_device *device,
 	else
 		device->mmu.hwpagetable = device->mmu.defaultpagetable;
 	rb->timestamp[KGSL_MEMSTORE_GLOBAL] = timestamp;
-	kgsl_sharedmem_writel(&device->memstore,
+	kgsl_sharedmem_writel(device, &device->memstore,
 			KGSL_MEMSTORE_OFFSET(KGSL_MEMSTORE_GLOBAL,
 			eoptimestamp),
 			rb->timestamp[KGSL_MEMSTORE_GLOBAL]);
@@ -2581,7 +2593,7 @@ adreno_dump_and_exec_ft(struct kgsl_device *device)
 		INIT_COMPLETION(device->ft_gate);
 		/* Detected a hang */
 
-		kgsl_cffdump_hang(device->id);
+		kgsl_cffdump_hang(device);
 		/* Run fault tolerance at max power level */
 		curr_pwrlevel = pwr->active_pwrlevel;
 		kgsl_pwrctrl_pwrlevel_change(device, pwr->max_pwrlevel);
@@ -2742,8 +2754,6 @@ static int adreno_setproperty(struct kgsl_device *device,
 	switch (type) {
 	case KGSL_PROP_PWRCTRL: {
 			unsigned int enable;
-			struct kgsl_device_platform_data *pdata =
-				kgsl_device_get_drvdata(device);
 
 			if (sizebytes != sizeof(enable))
 				break;
@@ -2755,12 +2765,11 @@ static int adreno_setproperty(struct kgsl_device *device,
 			}
 
 			if (enable) {
-				if (pdata->nap_allowed)
-					device->pwrctrl.nap_allowed = true;
+				device->pwrctrl.ctrl_flags = 0;
 				adreno_dev->fast_hang_detect = 1;
 				kgsl_pwrscale_enable(device);
 			} else {
-				device->pwrctrl.nap_allowed = false;
+				device->pwrctrl.ctrl_flags = KGSL_PWR_ON;
 				adreno_dev->fast_hang_detect = 0;
 				kgsl_pwrscale_disable(device);
 			}
@@ -2823,7 +2832,7 @@ int adreno_idle(struct kgsl_device *device)
 
 	memset(prev_reg_val, 0, sizeof(prev_reg_val));
 
-	kgsl_cffdump_regpoll(device->id,
+	kgsl_cffdump_regpoll(device,
 		adreno_dev->gpudev->reg_rbbm_status << 2,
 		0x00000000, 0x80000000);
 
@@ -2945,7 +2954,7 @@ static int adreno_suspend_context(struct kgsl_device *device)
 /* Find a memory structure attached to an adreno context */
 
 struct kgsl_memdesc *adreno_find_ctxtmem(struct kgsl_device *device,
-	unsigned int pt_base, unsigned int gpuaddr, unsigned int size)
+	phys_addr_t pt_base, unsigned int gpuaddr, unsigned int size)
 {
 	struct kgsl_context *context;
 	struct adreno_context *adreno_context = NULL;
@@ -2977,7 +2986,7 @@ struct kgsl_memdesc *adreno_find_ctxtmem(struct kgsl_device *device,
 }
 
 struct kgsl_memdesc *adreno_find_region(struct kgsl_device *device,
-						unsigned int pt_base,
+						phys_addr_t pt_base,
 						unsigned int gpuaddr,
 						unsigned int size)
 {
@@ -3006,7 +3015,7 @@ struct kgsl_memdesc *adreno_find_region(struct kgsl_device *device,
 	return adreno_find_ctxtmem(device, pt_base, gpuaddr, size);
 }
 
-uint8_t *adreno_convertaddr(struct kgsl_device *device, unsigned int pt_base,
+uint8_t *adreno_convertaddr(struct kgsl_device *device, phys_addr_t pt_base,
 			    unsigned int gpuaddr, unsigned int size)
 {
 	struct kgsl_memdesc *memdesc;
@@ -3080,7 +3089,7 @@ void adreno_regwrite(struct kgsl_device *device, unsigned int offsetwords,
 
 	kgsl_trace_regwrite(device, offsetwords, value);
 
-	kgsl_cffdump_regwrite(device->id, offsetwords << 2, value);
+	kgsl_cffdump_regwrite(device, offsetwords << 2, value);
 	reg = (unsigned int *)(device->reg_virt + (offsetwords << 2));
 
 	/*ensure previous writes post before this one,
@@ -3140,18 +3149,18 @@ static unsigned int adreno_check_hw_ts(struct kgsl_device *device,
 		/* Make sure the memstore read has posted */
 		mb();
 		if (timestamp_cmp(ref_ts, timestamp) >= 0) {
-			kgsl_sharedmem_writel(&device->memstore,
+			kgsl_sharedmem_writel(device, &device->memstore,
 					KGSL_MEMSTORE_OFFSET(context_id,
 						ref_wait_ts), timestamp);
 			/* Make sure the memstore write is posted */
 			wmb();
 		}
 	} else {
-		kgsl_sharedmem_writel(&device->memstore,
+		kgsl_sharedmem_writel(device, &device->memstore,
 				KGSL_MEMSTORE_OFFSET(context_id,
 					ref_wait_ts), timestamp);
 		enableflag = 1;
-		kgsl_sharedmem_writel(&device->memstore,
+		kgsl_sharedmem_writel(device, &device->memstore,
 				KGSL_MEMSTORE_OFFSET(context_id,
 					ts_cmp_enable), enableflag);
 
