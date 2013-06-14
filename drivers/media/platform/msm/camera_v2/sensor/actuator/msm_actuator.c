@@ -435,6 +435,8 @@ static int32_t msm_actuator_init(struct msm_actuator_ctrl_t *a_ctrl,
 		return -EFAULT;
 	}
 
+	kfree(a_ctrl->i2c_reg_tbl);
+
 	a_ctrl->i2c_reg_tbl =
 		kmalloc(sizeof(struct msm_camera_i2c_reg_tbl) *
 		(set_info->af_tuning_params.total_steps + 1), GFP_KERNEL);
@@ -608,6 +610,9 @@ static int msm_actuator_close(struct v4l2_subdev *sd,
 		if (rc < 0)
 			pr_err("cci_init failed\n");
 	}
+	kfree(a_ctrl->i2c_reg_tbl);
+	a_ctrl->i2c_reg_tbl = NULL;
+
 	CDBG("Exit\n");
 	return rc;
 }

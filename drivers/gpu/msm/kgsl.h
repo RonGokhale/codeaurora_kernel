@@ -207,7 +207,7 @@ void kgsl_mem_entry_destroy(struct kref *kref);
 int kgsl_postmortem_dump(struct kgsl_device *device, int manual);
 
 struct kgsl_mem_entry *kgsl_get_mem_entry(struct kgsl_device *device,
-		unsigned int ptbase, unsigned int gpuaddr, unsigned int size);
+		phys_addr_t ptbase, unsigned int gpuaddr, unsigned int size);
 
 struct kgsl_mem_entry *kgsl_sharedmem_find_region(
 	struct kgsl_process_private *private, unsigned int gpuaddr,
@@ -237,6 +237,10 @@ void kgsl_trace_issueibcmds(struct kgsl_device *device, int id,
 		struct kgsl_ibdesc *ibdesc, int numibs,
 		unsigned int timestamp, unsigned int flags,
 		int result, unsigned int type);
+
+int kgsl_open_device(struct kgsl_device *device);
+
+int kgsl_close_device(struct kgsl_device *device);
 
 #ifdef CONFIG_MSM_KGSL_DRM
 extern int kgsl_drm_init(struct platform_device *dev);

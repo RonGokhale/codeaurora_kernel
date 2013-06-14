@@ -577,11 +577,6 @@ static struct pll_clk a7sspll = {
 		},
 		.num_fmax = VDD_SR2_PLL_NUM,
 		CLK_INIT(a7sspll.c),
-		/*
-		 * Need to skip handoff of the acpu pll to avoid
-		 * turning off the pll when the cpu is using it
-		 */
-		.flags = CLKFLAG_SKIP_HANDOFF,
 	},
 };
 
@@ -2878,6 +2873,7 @@ static struct clk_lookup msm_clocks_8610[] = {
 	CLK_LOOKUP("iface_clk",           gcc_blsp1_ahb_clk.c, "f9923000.i2c"),
 	CLK_LOOKUP("iface_clk",           gcc_blsp1_ahb_clk.c, "f9925000.i2c"),
 	CLK_LOOKUP("iface_clk",           gcc_blsp1_ahb_clk.c, "f9927000.i2c"),
+	CLK_LOOKUP("iface_clk",           gcc_blsp1_ahb_clk.c, "f9926000.spi"),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup1_i2c_apps_clk.c, "f9923000.i2c"),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup1_spi_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup2_i2c_apps_clk.c, ""),
@@ -2885,6 +2881,7 @@ static struct clk_lookup msm_clocks_8610[] = {
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup3_i2c_apps_clk.c, "f9925000.i2c"),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup3_spi_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup4_i2c_apps_clk.c, ""),
+	CLK_LOOKUP("core_clk",  gcc_blsp1_qup4_spi_apps_clk.c, "f9926000.spi"),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup4_spi_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup5_i2c_apps_clk.c, "f9927000.i2c"),
 	CLK_LOOKUP("core_clk",  gcc_blsp1_qup5_spi_apps_clk.c, ""),

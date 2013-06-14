@@ -173,7 +173,7 @@
 			status = "disabled";
 
 			qcom,vddmax-mv = <4200>;
-			qcom,vddsafe-mv = <4200>;
+			qcom,vddsafe-mv = <4230>;
 			qcom,vinmin-mv = <4300>;
 			qcom,ibatmax-ma = <1500>;
 			qcom,ibatterm-ma = <100>;
@@ -1230,6 +1230,7 @@
 			compatible = "qcom,leds-qpnp";
 			reg = <0xd300 0x100>;
 			label = "flash";
+			flash_boost-supply = <&pm8941_chg_boost>;
 		};
 
 		qcom,leds@d400 {

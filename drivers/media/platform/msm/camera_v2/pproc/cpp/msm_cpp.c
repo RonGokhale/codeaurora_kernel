@@ -698,11 +698,9 @@ static void cpp_release_hardware(struct cpp_device *cpp_dev)
 	iounmap(cpp_dev->cpp_hw_base);
 	msm_cam_clk_enable(&cpp_dev->pdev->dev, cpp_clk_info,
 		cpp_dev->cpp_clk, ARRAY_SIZE(cpp_clk_info), 0);
-	if (0) {
-		regulator_disable(cpp_dev->fs_cpp);
-		regulator_put(cpp_dev->fs_cpp);
-		cpp_dev->fs_cpp = NULL;
-	}
+	regulator_disable(cpp_dev->fs_cpp);
+	regulator_put(cpp_dev->fs_cpp);
+	cpp_dev->fs_cpp = NULL;
 	msm_isp_update_bandwidth(ISP_CPP, 0, 0);
 	msm_isp_deinit_bandwidth_mgr(ISP_CPP);
 }
@@ -741,10 +739,14 @@ static void cpp_load_fw(struct cpp_device *cpp_dev, char *fw_name_bin)
 	if (NULL != fw)
 		ptr_bin = (uint32_t *)fw->data;
 
-	for (i = 0; i < fw->size/4; i++) {
-		if (ptr_bin) {
-			msm_cpp_write(*ptr_bin, cpp_dev->base);
-			ptr_bin++;
+	if (ptr_bin == NULL) {
+		pr_err("ptr_bin is NULL\n");
+	} else {
+		for (i = 0; i < fw->size/4; i++) {
+			if (ptr_bin) {
+				msm_cpp_write(*ptr_bin, cpp_dev->base);
+				ptr_bin++;
+			}
 		}
 	}
 	if (fw)
@@ -815,6 +817,7 @@ static int cpp_open_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 	cpp_dev->cpp_open_cnt++;
 	if (cpp_dev->cpp_open_cnt == 1) {
 		cpp_init_hardware(cpp_dev);
+		iommu_attach_device(cpp_dev->domain, cpp_dev->iommu_ctx);
 		cpp_init_mem(cpp_dev);
 		cpp_dev->state = CPP_STATE_IDLE;
 	}
@@ -851,6 +854,7 @@ static int cpp_close_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 	if (cpp_dev->cpp_open_cnt == 0) {
 		msm_camera_io_w(0x0, cpp_dev->base + MSM_CPP_MICRO_CLKEN_CTL);
 		cpp_deinit_mem(cpp_dev);
+		iommu_detach_device(cpp_dev->domain, cpp_dev->iommu_ctx);
 		cpp_release_hardware(cpp_dev);
 		cpp_dev->state = CPP_STATE_OFF;
 	}
@@ -1172,6 +1176,11 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 	int rc = 0;
 	char *fw_name_bin;
 
+	if (ioctl_ptr == NULL) {
+		pr_err("ioctl_ptr is null\n");
+		return -EINVAL;
+	}
+
 	mutex_lock(&cpp_dev->mutex);
 	CPP_DBG("E cmd: %d\n", cmd);
 	switch (cmd) {
@@ -1187,7 +1196,7 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 
 	case VIDIOC_MSM_CPP_LOAD_FIRMWARE: {
 		if (cpp_dev->is_firmware_loaded == 0) {
-			fw_name_bin = kzalloc(ioctl_ptr->len, GFP_KERNEL);
+			fw_name_bin = kzalloc(ioctl_ptr->len+1, GFP_KERNEL);
 			if (!fw_name_bin) {
 				pr_err("%s:%d: malloc error\n", __func__,
 					__LINE__);
@@ -1195,6 +1204,14 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 				return -EINVAL;
 			}
 
+			if (ioctl_ptr->ioctl_ptr == NULL) {
+				pr_err("ioctl_ptr->ioctl_ptr=NULL\n");
+				return -EINVAL;
+			}
+			if (ioctl_ptr->len == 0) {
+				pr_err("ioctl_ptr->len is 0\n");
+				return -EINVAL;
+			}
 			rc = (copy_from_user(fw_name_bin,
 				(void __user *)ioctl_ptr->ioctl_ptr,
 				ioctl_ptr->len) ? -EFAULT : 0);
@@ -1202,6 +1219,11 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 				ERR_COPY_FROM_USER();
 				kfree(fw_name_bin);
 				mutex_unlock(&cpp_dev->mutex);
+				return -EINVAL;
+			}
+			*(fw_name_bin+ioctl_ptr->len) = '\0';
+			if (cpp_dev == NULL) {
+				pr_err("cpp_dev is null\n");
 				return -EINVAL;
 			}
 
@@ -1435,6 +1457,7 @@ static int cpp_register_domain(void)
 	return msm_register_domain(&cpp_fw_layout);
 }
 
+
 static int __devinit cpp_probe(struct platform_device *pdev)
 {
 	struct cpp_device *cpp_dev;
@@ -1527,9 +1550,9 @@ static int __devinit cpp_probe(struct platform_device *pdev)
 	}
 
 	cpp_dev->iommu_ctx = msm_iommu_get_ctx("cpp");
-	if (!cpp_dev->iommu_ctx) {
+	if (IS_ERR(cpp_dev->iommu_ctx)) {
 		pr_err("%s: cannot get iommu_ctx\n", __func__);
-		rc = -ENODEV;
+		rc = -EPROBE_DEFER;
 		goto ERROR3;
 	}
 
@@ -1549,7 +1572,6 @@ static int __devinit cpp_probe(struct platform_device *pdev)
 	cpp_dev->msm_sd.sd.entity.revision = cpp_dev->msm_sd.sd.devnode->num;
 	cpp_dev->state = CPP_STATE_BOOT;
 	cpp_init_hardware(cpp_dev);
-	iommu_attach_device(cpp_dev->domain, cpp_dev->iommu_ctx);
 
 	msm_camera_io_w(0x0, cpp_dev->base +
 					   MSM_CPP_MICRO_IRQGEN_MASK);
@@ -1567,7 +1589,6 @@ static int __devinit cpp_probe(struct platform_device *pdev)
 	cpp_dev->cpp_open_cnt = 0;
 	cpp_dev->is_firmware_loaded = 0;
 	return rc;
-
 ERROR3:
 	release_mem_region(cpp_dev->mem->start, resource_size(cpp_dev->mem));
 ERROR2:
@@ -1597,7 +1618,6 @@ static int cpp_device_remove(struct platform_device *dev)
 		return 0;
 	}
 
-	iommu_detach_device(cpp_dev->domain, cpp_dev->iommu_ctx);
 	msm_sd_unregister(&cpp_dev->msm_sd);
 	release_mem_region(cpp_dev->mem->start, resource_size(cpp_dev->mem));
 	release_mem_region(cpp_dev->vbif_mem->start,
