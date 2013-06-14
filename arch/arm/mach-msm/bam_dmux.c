@@ -1576,14 +1576,8 @@ static void ul_timeout(struct work_struct *work)
 
 static int ssrestart_check(void)
 {
-	int ret = 0;
-
-	DMUX_LOG_KERR("%s: modem timeout: BAM DMUX disabled for SSR\n",
-								__func__);
+	DMUX_LOG_KERR("%s: modem timeout: BAM DMUX disabled\n", __func__);
 	in_global_reset = 1;
-	ret = subsystem_restart("modem");
-	if (ret == -ENODEV)
-		panic("modem subsystem restart failed\n");
 	return 1;
 }
 
