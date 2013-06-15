@@ -191,6 +191,13 @@ List of b2g branches
 - b2g/ics_strawberry 
 - b2g/ics_strawberry_v1 
 
+MQ branches
+========================
+
+- MQ/caf-master
+- MQ/jasonh
+- MQ/kgsl_sync_dump_update
+
 list of tags
 =============
 
