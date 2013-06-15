@@ -496,6 +496,8 @@ int mdss_mdp_ad_config(struct msm_fb_data_type *mfd,
 int mdss_mdp_ad_input(struct msm_fb_data_type *mfd,
 				struct mdss_ad_input *input, int wait);
 int mdss_mdp_ad_addr_setup(struct mdss_data_type *mdata, u32 *ad_off);
+int mdss_mdp_calib_mode(struct msm_fb_data_type *mfd,
+				struct mdss_calib_cfg *cfg);
 
 struct mdss_mdp_pipe *mdss_mdp_pipe_alloc(struct mdss_mdp_mixer *mixer,
 					  u32 type);
@@ -543,6 +545,8 @@ u32 mdss_mdp_fb_stride(u32 fb_index, u32 xres, int bpp);
 int mdss_panel_register_done(struct mdss_panel_data *pdata);
 int mdss_mdp_limited_lut_igc_config(struct mdss_mdp_ctl *ctl);
 int mdss_mdp_calib_config(struct mdp_calib_config_data *cfg, u32 *copyback);
+
+int mdss_mdp_pipe_is_staged(struct mdss_mdp_pipe *pipe);
 
 #define mfd_to_mdp5_data(mfd) (mfd->mdp.private1)
 #define mfd_to_mdata(mfd) (((struct mdss_overlay_private *)\

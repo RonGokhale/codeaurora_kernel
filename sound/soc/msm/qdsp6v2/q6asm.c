@@ -408,7 +408,7 @@ void send_asm_custom_topology(struct audio_client *ac)
 
 	result = wait_event_timeout(ac->cmd_wait,
 			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
-	if (result < 0) {
+	if (!result) {
 		pr_err("%s: Set topologies failed payload = 0x%x\n",
 			__func__, cal_block.cal_paddr);
 		goto done;
@@ -508,16 +508,17 @@ int q6asm_audio_client_buf_free_contiguous(unsigned int dir,
 
 int q6asm_mmap_apr_dereg(void)
 {
-	if (atomic_read(&this_mmap.ref_cnt) <= 0) {
-		pr_err("%s: APR Common Port Already Closed\n", __func__);
-		goto done;
-	}
-	atomic_dec(&this_mmap.ref_cnt);
-	if (atomic_read(&this_mmap.ref_cnt) == 0) {
+	int c;
+
+	c = atomic_sub_return(1, &this_mmap.ref_cnt);
+	if (c == 0) {
 		apr_deregister(this_mmap.apr);
-		pr_debug("%s:APR De-Register common port\n", __func__);
+		pr_debug("%s: APR De-Register common port\n", __func__);
+	} else if (c < 0) {
+		pr_err("%s: APR Common Port Already Closed\n", __func__);
+		atomic_set(&this_mmap.ref_cnt, 0);
 	}
-done:
+
 	return 0;
 }
 
@@ -1716,12 +1717,14 @@ int q6asm_run_nowait(struct audio_client *ac, uint32_t flags,
 	run.time_lsw = lsw_ts;
 	run.time_msw = msw_ts;
 
+	/* have to increase first avoid race */
+	atomic_inc(&ac->nowait_cmd_cnt);
 	rc = apr_send_pkt(ac->apr, (uint32_t *) &run);
 	if (rc < 0) {
+		atomic_dec(&ac->nowait_cmd_cnt);
 		pr_err("%s:Commmand run failed[%d]", __func__, rc);
 		return -EINVAL;
 	}
-	atomic_inc(&ac->nowait_cmd_cnt);
 	return 0;
 }
 
@@ -3692,12 +3695,14 @@ int q6asm_cmd_nowait(struct audio_client *ac, int cmd)
 	pr_debug("%s:session[%d]opcode[0x%x] ", __func__,
 						ac->session,
 						hdr.opcode);
+	/* have to increase first avoid race */
+	atomic_inc(&ac->nowait_cmd_cnt);
 	rc = apr_send_pkt(ac->apr, (uint32_t *) &hdr);
 	if (rc < 0) {
+		atomic_dec(&ac->nowait_cmd_cnt);
 		pr_err("%s:Commmand 0x%x failed\n", __func__, hdr.opcode);
 		goto fail_cmd;
 	}
-	atomic_inc(&ac->nowait_cmd_cnt);
 	return 0;
 fail_cmd:
 	return -EINVAL;
