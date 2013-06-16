@@ -102,6 +102,21 @@
 	};
 };
 
+&usb_otg {
+	#address-cells = <0>;
+	interrupt-parent = <&usb_otg>;
+	interrupts = <0 1 2>;
+	#interrupt-cells = <1>;
+	interrupt-map-mask = <0xffffffff>;
+	interrupt-map = <0 &intc 0 134 0
+			1 &intc 0 140 0
+			2 &spmi_bus 0x0 0x0 0x9 0x0>;
+	interrupt-names = "core_irq", "async_irq", "pmic_id_irq";
+
+	qcom,hsusb-otg-mode = <3>;
+	vbus_otg-supply = <&usb_otg_sw>;
+};
+
 &sdcc1 {
 	vdd-supply = <&pm8226_l17>;
 	qcom,vdd-always-on;
@@ -246,13 +261,15 @@
 				qcom,max-current = <40>;
 				qcom,current-setting = <5>;
 				qcom,id = <6>;
-				qcom,mode = "lpg";
+				qcom,mode = "pwm";
+				qcom,pwm-us = <1000>;
 				qcom,source-sel = <8>;
 				qcom,mode-ctrl = <0x60>;
 				qcom,pwm-channel = <0>;
 				qcom,start-idx = <1>;
 				qcom,duty-pcts = [00 00 00 00 64
 						 64 00 00 00 00];
+				qcom,use-blink;
 			};
 		};
 
@@ -266,13 +283,15 @@
 				qcom,max-current = <40>;
 				qcom,current-setting = <5>;
 				qcom,id = <6>;
+				qcom,mode = "pwm";
+				qcom,pwm-us = <1000>;
 				qcom,mode-ctrl = <0x60>;
 				qcom,source-sel = <10>;
-				qcom,mode = "lpg";
 				qcom,pwm-channel = <5>;
 				qcom,start-idx = <1>;
 				qcom,duty-pcts = [00 00 00 00 64
 						 64 00 00 00 00];
+				qcom,use-blink;
 			};
 		};
 	};

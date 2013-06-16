@@ -117,6 +117,14 @@
 		status = "disabled";
 	};
 
+	qcom,sps@f9980000 {
+		compatible = "qcom,msm_sps";
+		reg = <0xf9984000 0x15000>,
+		      <0xf9999000 0xb000>;
+		interrupts = <0 94 0>;
+		qcom,pipe-attr-ee;
+	};
+
 	spmi_bus: qcom,spmi@fc4c0000 {
 		cell-index = <0>;
 		compatible = "qcom,spmi-pmic-arb";
@@ -134,6 +142,21 @@
 		#size-cells = <0>;
 		interrupt-controller;
 		#interrupt-cells = <3>;
+	};
+
+	i2c_0: i2c@f9925000 { /* BLSP1 QUP3 */
+		cell-index = <0>;
+		compatible = "qcom,i2c-qup";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg-names = "qup_phys_addr";
+		reg = <0xf9925000 0x1000>;
+		interrupt-names = "qup_err_intr";
+		interrupts = <0 97 0>;
+		qcom,i2c-bus-freq = <100000>;
+		qcom,i2c-src-freq = <50000000>;
+		qcom,sda-gpio = <&msmgpio 10 0>;
+		qcom,scl-gpio = <&msmgpio 11 0>;
 	};
 
 	usb3: qcom,ssusb@f9200000 {
