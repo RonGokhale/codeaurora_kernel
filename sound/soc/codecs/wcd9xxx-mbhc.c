@@ -94,9 +94,6 @@
 
 #define WCD9XXX_USLEEP_RANGE_MARGIN_US 1000
 
-#define WCD9XXX_IRQ_MBHC_JACK_SWITCH_TAIKO 28
-#define WCD9XXX_IRQ_MBHC_JACK_SWITCH_TAPAN 21
-
 static bool detect_use_vddio_switch = true;
 
 struct wcd9xxx_mbhc_detect {
@@ -680,7 +677,7 @@ static void wcd9xxx_clr_and_turnon_hph_padac(struct wcd9xxx_mbhc *mbhc)
 				&mbhc->hph_pa_dac_state)) {
 		pr_debug("%s: HPHL clear flag and enable DAC\n", __func__);
 		snd_soc_update_bits(codec, WCD9XXX_A_RX_HPH_L_DAC_CTL,
-				    0xC0, 0xC0);
+				    0x80, 0x80);
 	}
 
 	if (test_and_clear_bit(WCD9XXX_HPHR_PA_OFF_ACK,
@@ -3115,10 +3112,10 @@ static int wcd9xxx_setup_jack_detect_irq(struct wcd9xxx_mbhc *mbhc)
 
 		switch (mbhc->mbhc_version) {
 		case WCD9XXX_MBHC_VERSION_TAIKO:
-			jack_irq = WCD9XXX_IRQ_MBHC_JACK_SWITCH_TAIKO;
+			jack_irq = WCD9320_IRQ_MBHC_JACK_SWITCH;
 			break;
 		case WCD9XXX_MBHC_VERSION_TAPAN:
-			jack_irq = WCD9XXX_IRQ_MBHC_JACK_SWITCH_TAPAN;
+			jack_irq = WCD9306_IRQ_MBHC_JACK_SWITCH;
 			break;
 		default:
 			return -EINVAL;
@@ -3800,7 +3797,18 @@ void wcd9xxx_mbhc_deinit(struct wcd9xxx_mbhc *mbhc)
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_MBHC_REMOVAL, mbhc);
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_MBHC_INSERTION, mbhc);
 
-	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_MBHC_JACK_SWITCH, mbhc);
+	switch (mbhc->mbhc_version) {
+	case WCD9XXX_MBHC_VERSION_TAIKO:
+		wcd9xxx_free_irq(cdata, WCD9320_IRQ_MBHC_JACK_SWITCH, mbhc);
+		break;
+	case WCD9XXX_MBHC_VERSION_TAPAN:
+		wcd9xxx_free_irq(cdata, WCD9306_IRQ_MBHC_JACK_SWITCH, mbhc);
+		break;
+	default:
+		pr_err("%s: irq free failed! Invalid MBHC version %d\n",
+			__func__, mbhc->mbhc_version);
+	}
+
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_HPH_PA_OCPL_FAULT, mbhc);
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_HPH_PA_OCPR_FAULT, mbhc);
 

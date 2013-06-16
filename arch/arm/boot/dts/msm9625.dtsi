@@ -244,9 +244,9 @@
 			qcom,dst-bam-physical-address = <0xf9a44000>;
 			qcom,dst-bam-pipe-index = <2>;
 			qcom,data-fifo-offset = <0x4100>;
-			qcom,data-fifo-size = <0x400>;
+			qcom,data-fifo-size = <0x700>;
 			qcom,descriptor-fifo-offset = <0x4000>;
-			qcom,descriptor-fifo-size = <0x400>;
+			qcom,descriptor-fifo-size = <0x100>;
 		};
 		qcom,pipe3 {
 			label = "hsic-ipa-in-0";
@@ -514,6 +514,25 @@
 		qcom,sensors = <5>;
 		qcom,slope = <3200 3200 3200 3200 3200>;
 		qcom,calib-mode = "fuse_map1";
+	};
+
+	qcom,msm-thermal {
+		compatible = "qcom,msm-thermal";
+		qcom,sensor-id = <0>;
+		qcom,poll-ms = <250>;
+		qcom,limit-temp = <60>;
+		qcom,temp-hysteresis = <10>;
+		qcom,freq-step = <2>;
+		qcom,freq-control-mask = <0x0>;
+		qcom,vdd-restriction-temp = <5>;
+		qcom,vdd-restriction-temp-hysteresis = <10>;
+		vdd_dig-supply = <&pm8019_l10_corner>;
+
+		qcom,vdd-dig-rstr{
+			qcom,vdd-rstr-reg = "vdd_dig";
+			qcom,levels = <5 7 7>; /* Nominal, Super Turbo, Super Turbo */
+			qcom,min-level = <1>; /* No Request */
+		};
 	};
 
 	qcom,msm-rng@f9bff000 {
