@@ -102,7 +102,7 @@ static void __init add_clocksource(struct device_node *source_timer)
 	 * timer is found. sched_io_base then points to the current_value
 	 * register of the clocksource timer.
 	 */
-	sched_io_base = iobase + 0x04;
+	sched_io_base = iobase;
 	sched_rate = rate;
 }
 
