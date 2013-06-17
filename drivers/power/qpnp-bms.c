@@ -168,6 +168,7 @@ struct qpnp_bms_chip {
 	uint16_t			ocv_reading_at_100;
 	uint16_t			prev_last_good_ocv_raw;
 	int				last_ocv_uv;
+	int				charging_adjusted_ocv;
 	int				last_ocv_temp;
 	int				last_cc_uah;
 	unsigned long			last_soc_change_sec;
@@ -1523,7 +1524,7 @@ static int report_cc_based_soc(struct qpnp_bms_chip *chip)
 			soc = chip->last_soc + soc_change;
 	}
 
-	if (chip->last_soc != soc)
+	if (chip->last_soc != soc && !chip->last_soc_unbound)
 		chip->last_soc_change_sec = last_change_sec;
 
 	pr_debug("last_soc = %d, calculated_soc = %d, soc = %d, time since last change = %d\n",
@@ -1610,9 +1611,8 @@ static int charging_adjustments(struct qpnp_bms_chip *chip,
 		chip->prev_chg_soc = chg_soc;
 
 		find_ocv_for_soc(chip, params, batt_temp, chg_soc, &new_ocv_uv);
-		chip->last_ocv_uv = new_ocv_uv;
-		pr_debug("CC CHG ADJ OCV = %d CHG SOC %d\n",
-				new_ocv_uv,
+		chip->charging_adjusted_ocv = new_ocv_uv;
+		pr_debug("CC CHG ADJ OCV = %d CHG SOC %d\n", new_ocv_uv,
 				chip->prev_chg_soc);
 	}
 
@@ -2286,7 +2286,13 @@ static void charging_ended(struct qpnp_bms_chip *chip)
 	if (get_battery_status(chip) == POWER_SUPPLY_STATUS_FULL) {
 		chip->done_charging = true;
 		chip->last_soc_invalid = true;
+	} else if (chip->charging_adjusted_ocv > 0) {
+		pr_debug("Charging stopped before full, adjusted OCV = %d\n",
+				chip->charging_adjusted_ocv);
+		chip->last_ocv_uv = chip->charging_adjusted_ocv;
 	}
+	chip->charging_adjusted_ocv = -EINVAL;
+
 	mutex_unlock(&chip->last_ocv_uv_mutex);
 }
 
@@ -3048,7 +3054,7 @@ static int bms_resume(struct device *dev)
 {
 	int rc;
 	int soc_calc_period;
-	int time_until_next_recalc;
+	int time_until_next_recalc = 0;
 	unsigned long time_since_last_recalc;
 	unsigned long tm_now_sec;
 	struct qpnp_bms_chip *chip = dev_get_drvdata(dev);
@@ -3056,26 +3062,24 @@ static int bms_resume(struct device *dev)
 	rc = get_current_time(&tm_now_sec);
 	if (rc) {
 		pr_err("Could not read current time: %d\n", rc);
-	} else if (tm_now_sec > chip->last_recalc_time) {
-		time_since_last_recalc = tm_now_sec - chip->last_recalc_time;
-		pr_debug("Time since last recalc: %lu\n",
-				time_since_last_recalc);
+	} else {
 		if (chip->calculated_soc < chip->low_soc_calc_threshold)
 			soc_calc_period = chip->low_soc_calculate_soc_ms;
 		else
 			soc_calc_period = chip->calculate_soc_ms;
-
+		time_since_last_recalc = tm_now_sec - chip->last_recalc_time;
+		pr_debug("Time since last recalc: %lu\n",
+				time_since_last_recalc);
 		time_until_next_recalc = max(0, soc_calc_period
 				- (int)(time_since_last_recalc * 1000));
-
-		if (!wake_lock_active(&chip->soc_wake_lock)
-				&& time_until_next_recalc == 0)
-			wake_lock(&chip->soc_wake_lock);
-
-		schedule_delayed_work(&chip->calculate_soc_delayed_work,
-			round_jiffies_relative(msecs_to_jiffies
-			(time_until_next_recalc)));
 	}
+
+	if (!wake_lock_active(&chip->soc_wake_lock)
+			&& time_until_next_recalc == 0)
+		wake_lock(&chip->soc_wake_lock);
+	schedule_delayed_work(&chip->calculate_soc_delayed_work,
+		round_jiffies_relative(msecs_to_jiffies
+		(time_until_next_recalc)));
 	return 0;
 }
 

@@ -158,11 +158,36 @@ static unsigned long wfd_enc_addr_to_mdp_addr(struct wfd_inst *inst,
 	return (unsigned long)NULL;
 }
 
+#ifdef CONFIG_MSM_WFD_DEBUG
+static void *wfd_map_kernel(struct ion_client *client,
+		struct ion_handle *handle)
+{
+	return ion_map_kernel(client, handle);
+}
+
+static void wfd_unmap_kernel(struct ion_client *client,
+		struct ion_handle *handle)
+{
+	ion_unmap_kernel(client, handle);
+}
+#else
+static void *wfd_map_kernel(struct ion_client *client,
+		struct ion_handle *handle)
+{
+	return NULL;
+}
+
+static void wfd_unmap_kernel(struct ion_client *client,
+		struct ion_handle *handle)
+{
+	return;
+}
+#endif
+
 static int wfd_allocate_ion_buffer(struct ion_client *client,
 		bool secure, struct mem_region *mregion)
 {
 	struct ion_handle *handle = NULL;
-	void *kvaddr = NULL;
 	unsigned int alloc_regions = 0, ion_flags = 0, align = 0;
 	int rc = 0;
 
@@ -184,26 +209,14 @@ static int wfd_allocate_ion_buffer(struct ion_client *client,
 		goto alloc_fail;
 	}
 
-	if (!secure) {
-		kvaddr = ion_map_kernel(client, handle);
-
-		if (IS_ERR_OR_NULL(kvaddr)) {
-			WFD_MSG_ERR("Failed to get virtual addr\n");
-			rc = PTR_ERR(kvaddr);
-			goto alloc_fail;
-		}
-	} else {
-		kvaddr = NULL;
-	}
-
-	mregion->kvaddr = kvaddr;
+	mregion->kvaddr = secure ? NULL :
+		wfd_map_kernel(client, handle);
 	mregion->ion_handle = handle;
-
 	return rc;
 alloc_fail:
 	if (!IS_ERR_OR_NULL(handle)) {
-		if (!IS_ERR_OR_NULL(kvaddr))
-			ion_unmap_kernel(client, handle);
+		if (!IS_ERR_OR_NULL(mregion->kvaddr))
+			wfd_unmap_kernel(client, handle);
 
 		ion_free(client, handle);
 
@@ -223,8 +236,10 @@ static int wfd_free_ion_buffer(struct ion_client *client,
 				"Invalid client or region");
 		return -EINVAL;
 	}
-	if (mregion->kvaddr)
-		ion_unmap_kernel(client, mregion->ion_handle);
+
+	if (!IS_ERR_OR_NULL(mregion->kvaddr))
+		wfd_unmap_kernel(client, mregion->ion_handle);
+
 	ion_free(client, mregion->ion_handle);
 	return 0;
 }
@@ -1258,7 +1273,7 @@ static void venc_op_buffer_done(void *cookie, u32 status,
 
 	WFD_MSG_DBG("yay!! got callback\n");
 	mutex_lock(&inst->vb2_lock);
-	vb2_buffer_done(buf, VB2_BUF_STATE_DONE);
+	vb2_buffer_done(buf, status ? VB2_BUF_STATE_ERROR : VB2_BUF_STATE_DONE);
 	mutex_unlock(&inst->vb2_lock);
 }
 

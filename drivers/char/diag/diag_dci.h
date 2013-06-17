@@ -24,6 +24,9 @@
 #define DISABLE_LOG_MASK	0
 #define MAX_EVENT_SIZE		512
 #define DCI_CLIENT_INDEX_INVALID -1
+#define DCI_PKT_REQ_MIN_LEN		8
+#define DCI_LOG_CON_MIN_LEN		14
+#define DCI_EVENT_CON_MIN_LEN		16
 
 
 /* 16 log code categories, each has:
@@ -95,7 +98,7 @@ int diag_process_smd_dci_read_data(struct diag_smd_info *smd_info, void *buf,
 int diag_process_dci_transaction(unsigned char *buf, int len);
 int diag_send_dci_pkt(struct diag_master_table entry, unsigned char *buf,
 							 int len, int index);
-void extract_dci_pkt_rsp(unsigned char *buf);
+void extract_dci_pkt_rsp(struct diag_smd_info *smd_info, unsigned char *buf);
 int diag_dci_find_client_index(int client_id);
 /* DCI Log streaming functions */
 void create_dci_log_mask_tbl(unsigned char *tbl_buf);

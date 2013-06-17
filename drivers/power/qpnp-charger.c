@@ -285,6 +285,8 @@ struct qpnp_chg_chip {
 	unsigned int			safe_voltage_mv;
 	unsigned int			max_voltage_mv;
 	unsigned int			min_voltage_mv;
+	int				set_vddmax_mv;
+	int				delta_vddmax_mv;
 	unsigned int			warm_bat_mv;
 	unsigned int			cool_bat_mv;
 	unsigned int			resume_delta_mv;
@@ -320,20 +322,24 @@ static struct of_device_id qpnp_charger_match_table[] = {
 	{}
 };
 
-#define BPD_MAX		3
+enum bpd_type {
+	BPD_TYPE_BAT_ID,
+	BPD_TYPE_BAT_THM,
+	BPD_TYPE_BAT_THM_BAT_ID,
+};
 
-static const char *bpd_list[BPD_MAX] = {
-	"bpd_thm",
-	"bpd_id",
-	"bpd_thm_id",
+static const char * const bpd_label[] = {
+	[BPD_TYPE_BAT_ID] = "bpd_id",
+	[BPD_TYPE_BAT_THM] = "bpd_thm",
+	[BPD_TYPE_BAT_THM_BAT_ID] = "bpd_thm_id",
 };
 
 static inline int
 get_bpd(const char *name)
 {
 	int i = 0;
-	for (i = 0 ; i < BPD_MAX; i++) {
-		if (strcmp(name, bpd_list[i]) == 0)
+	for (i = 0; i < ARRAY_SIZE(bpd_label); i++) {
+		if (strcmp(bpd_label[i], name) == 0)
 			return i;
 	}
 	return -EINVAL;
@@ -1497,10 +1503,11 @@ qpnp_chg_vddmax_set(struct qpnp_chg_chip *chip, int voltage)
 		pr_err("bad mV=%d asked to set\n", voltage);
 		return -EINVAL;
 	}
+	chip->set_vddmax_mv = voltage + chip->delta_vddmax_mv;
 
-	temp = (voltage - QPNP_CHG_V_MIN_MV) / QPNP_CHG_V_STEP_MV;
+	temp = (chip->set_vddmax_mv - QPNP_CHG_V_MIN_MV) / QPNP_CHG_V_STEP_MV;
 
-	pr_debug("voltage=%d setting %02x\n", voltage, temp);
+	pr_debug("voltage=%d setting %02x\n", chip->set_vddmax_mv, temp);
 	return qpnp_chg_write(chip, &temp, chip->chgr_base + CHGR_VDD_MAX, 1);
 }
 
@@ -1830,6 +1837,31 @@ static struct regulator_ops qpnp_chg_boost_reg_ops = {
 	.list_voltage		= qpnp_chg_regulator_boost_list_voltage,
 };
 
+#define MIN_DELTA_MV_TO_INCREASE_VDD_MAX	13
+#define MAX_DELTA_VDD_MAX_MV			30
+static void
+qpnp_chg_adjust_vddmax(struct qpnp_chg_chip *chip, int vbat_mv)
+{
+	int delta_mv, closest_delta_mv, sign;
+
+	delta_mv = chip->max_voltage_mv - vbat_mv;
+	if (delta_mv > 0 && delta_mv < MIN_DELTA_MV_TO_INCREASE_VDD_MAX) {
+		pr_debug("vbat is not low enough to increase vdd\n");
+		return;
+	}
+
+	sign = delta_mv > 0 ? 1 : -1;
+	closest_delta_mv = ((delta_mv + sign * QPNP_CHG_V_STEP_MV / 2)
+			/ QPNP_CHG_V_STEP_MV) * QPNP_CHG_V_STEP_MV;
+	pr_debug("max_voltage = %d, vbat_mv = %d, delta_mv = %d, closest = %d\n",
+			chip->max_voltage_mv, vbat_mv,
+			delta_mv, closest_delta_mv);
+	chip->delta_vddmax_mv = clamp(chip->delta_vddmax_mv + closest_delta_mv,
+			-MAX_DELTA_VDD_MAX_MV, MAX_DELTA_VDD_MAX_MV);
+	pr_debug("using delta_vddmax_mv = %d\n", chip->delta_vddmax_mv);
+	qpnp_chg_set_appropriate_vddmax(chip);
+}
+
 #define CONSECUTIVE_COUNT	3
 static void
 qpnp_eoc_work(struct work_struct *work)
@@ -1875,12 +1907,30 @@ qpnp_eoc_work(struct work_struct *work)
 					|| chg_sts & TRKL_CHG_ON_IRQ)) {
 		ibat_ma = get_prop_current_now(chip) / 1000;
 		vbat_mv = get_prop_battery_voltage_now(chip) / 1000;
-		pr_debug("ibat_ma: %d term_current =%d\n",
-				ibat_ma, chip->term_current);
-		if (ibat_ma > chip->term_current) {
-			pr_debug("charging but increase in current demand\n");
+
+		pr_debug("ibat_ma = %d vbat_mv = %d term_current_ma = %d\n",
+				ibat_ma, vbat_mv, chip->term_current);
+
+		if ((!(chg_sts & VBAT_DET_LOW_IRQ)) && (vbat_mv <
+			(chip->max_voltage_mv - chip->resume_delta_mv))) {
+			pr_debug("woke up too early\n");
+			qpnp_chg_enable_irq(&chip->chg_vbatdet_lo);
+			goto stop_eoc;
+		}
+
+		if (buck_sts & VDD_LOOP_IRQ)
+			qpnp_chg_adjust_vddmax(chip, vbat_mv);
+
+		if (!(buck_sts & VDD_LOOP_IRQ)) {
+			pr_debug("Not in CV\n");
 			count = 0;
-		} else if ((ibat_ma * -1) < chip->term_current) {
+		} else if ((ibat_ma * -1) > chip->term_current) {
+			pr_debug("Not at EOC, battery current too high\n");
+			count = 0;
+		} else if (ibat_ma > 0) {
+			pr_debug("Charging but system demand increased\n");
+			count = 0;
+		} else {
 			if (count == CONSECUTIVE_COUNT) {
 				pr_info("End of Charging\n");
 				qpnp_chg_charge_en(chip, 0);
@@ -1892,11 +1942,6 @@ qpnp_eoc_work(struct work_struct *work)
 				count += 1;
 				pr_debug("EOC count = %d\n", count);
 			}
-		} else if ((!(chg_sts & VBAT_DET_LOW_IRQ)) && (vbat_mv <
-			(chip->max_voltage_mv - chip->resume_delta_mv))) {
-			pr_debug("woke up too early\n");
-			qpnp_chg_enable_irq(&chip->chg_vbatdet_lo);
-			goto stop_eoc;
 		}
 	} else {
 		pr_debug("not charging\n");
@@ -2017,6 +2062,8 @@ qpnp_chg_setup_flags(struct qpnp_chg_chip *chip)
 	if (chip->revision > 0 && chip->type == SMBB)
 		chip->flags |= CHG_FLAGS_VCP_WA;
 	if (chip->type == SMBB)
+		chip->flags |= BOOST_FLASH_WA;
+	if (chip->type == SMBBP)
 		chip->flags |= BOOST_FLASH_WA;
 }
 
@@ -2300,10 +2347,20 @@ qpnp_chg_hwinit(struct qpnp_chg_chip *chip, u8 subtype,
 	case SMBBP_BAT_IF_SUBTYPE:
 	case SMBCL_BAT_IF_SUBTYPE:
 		/* Select battery presence detection */
-		if (chip->bpd_detection == 1)
+		switch (chip->bpd_detection) {
+		case BPD_TYPE_BAT_THM:
+			reg = BAT_THM_EN;
+			break;
+		case BPD_TYPE_BAT_ID:
 			reg = BAT_ID_EN;
-		else if (chip->bpd_detection == 2)
-			reg = BAT_ID_EN | BAT_THM_EN;
+			break;
+		case BPD_TYPE_BAT_THM_BAT_ID:
+			reg = BAT_THM_EN | BAT_ID_EN;
+			break;
+		default:
+			reg = BAT_THM_EN;
+			break;
+		}
 
 		rc = qpnp_chg_masked_write(chip,
 			chip->bat_if_base + BAT_IF_BPD_CTRL,
@@ -2363,6 +2420,7 @@ qpnp_chg_hwinit(struct qpnp_chg_chip *chip, u8 subtype,
 					spmi_resource->of_node);
 			if (IS_ERR(chip->otg_vreg.rdev)) {
 				rc = PTR_ERR(chip->otg_vreg.rdev);
+				chip->otg_vreg.rdev = NULL;
 				if (rc != -EPROBE_DEFER)
 					pr_err("OTG reg failed, rc=%d\n", rc);
 				return rc;
@@ -2421,6 +2479,7 @@ qpnp_chg_hwinit(struct qpnp_chg_chip *chip, u8 subtype,
 					spmi_resource->of_node);
 			if (IS_ERR(chip->boost_vreg.rdev)) {
 				rc = PTR_ERR(chip->boost_vreg.rdev);
+				chip->boost_vreg.rdev = NULL;
 				if (rc != -EPROBE_DEFER)
 					pr_err("boost reg failed, rc=%d\n", rc);
 				return rc;
@@ -2499,7 +2558,8 @@ qpnp_charger_read_dt_props(struct qpnp_chg_chip *chip)
 	rc = of_property_read_string(chip->spmi->dev.of_node,
 		"qcom,bpd-detection", &bpd);
 	if (rc) {
-		pr_debug("no bpd-detection specified, ignored\n");
+		/* Select BAT_THM as default BPD scheme */
+		chip->bpd_detection = BPD_TYPE_BAT_THM;
 	} else {
 		chip->bpd_detection = get_bpd(bpd);
 		if (chip->bpd_detection < 0) {
@@ -2817,6 +2877,7 @@ qpnp_charger_probe(struct spmi_device *spmi)
 
 	qpnp_chg_charge_en(chip, !chip->charging_disabled);
 	qpnp_chg_force_run_on_batt(chip, chip->charging_disabled);
+	qpnp_chg_set_appropriate_vddmax(chip);
 
 	rc = qpnp_chg_request_irqs(chip);
 	if (rc) {
@@ -2846,6 +2907,8 @@ unregister_batt:
 	if (chip->bat_if_base)
 		power_supply_unregister(&chip->batt_psy);
 fail_chg_enable:
+	regulator_unregister(chip->otg_vreg.rdev);
+	regulator_unregister(chip->boost_vreg.rdev);
 	kfree(chip->thermal_mitigation);
 	kfree(chip);
 	dev_set_drvdata(&spmi->dev, NULL);
@@ -2863,11 +2926,8 @@ qpnp_charger_remove(struct spmi_device *spmi)
 	cancel_work_sync(&chip->adc_measure_work);
 	cancel_delayed_work_sync(&chip->eoc_work);
 
-	if (chip->otg_vreg.rdev)
-		regulator_unregister(chip->otg_vreg.rdev);
-
-	if (chip->boost_vreg.rdev)
-		regulator_unregister(chip->boost_vreg.rdev);
+	regulator_unregister(chip->otg_vreg.rdev);
+	regulator_unregister(chip->boost_vreg.rdev);
 
 	dev_set_drvdata(&spmi->dev, NULL);
 	kfree(chip);

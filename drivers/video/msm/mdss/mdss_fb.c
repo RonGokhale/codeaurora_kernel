@@ -127,7 +127,6 @@ static int mdss_fb_notify_update(struct msm_fb_data_type *mfd,
 	return (ret > 0) ? 0 : ret;
 }
 
-#define MAX_BACKLIGHT_BRIGHTNESS 255
 static int lcd_backlight_registered;
 
 static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
@@ -136,13 +135,13 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 	struct msm_fb_data_type *mfd = dev_get_drvdata(led_cdev->dev->parent);
 	int bl_lvl;
 
-	if (value > MAX_BACKLIGHT_BRIGHTNESS)
-		value = MAX_BACKLIGHT_BRIGHTNESS;
+	if (value > MDSS_MAX_BL_BRIGHTNESS)
+		value = MDSS_MAX_BL_BRIGHTNESS;
 
 	/* This maps android backlight level 0 to 255 into
 	   driver backlight level 0 to bl_max with rounding */
 	bl_lvl = (2 * value * mfd->panel_info->bl_max +
-		  MAX_BACKLIGHT_BRIGHTNESS) / (2 * MAX_BACKLIGHT_BRIGHTNESS);
+		  MDSS_MAX_BL_BRIGHTNESS) / (2 * MDSS_MAX_BL_BRIGHTNESS);
 
 	if (!bl_lvl && value)
 		bl_lvl = 1;
@@ -154,7 +153,7 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 
 static struct led_classdev backlight_led = {
 	.name           = "lcd-backlight",
-	.brightness     = MAX_BACKLIGHT_BRIGHTNESS,
+	.brightness     = MDSS_MAX_BL_BRIGHTNESS,
 	.brightness_set = mdss_fb_set_bl_brightness,
 };
 
@@ -669,22 +668,16 @@ static int mdss_fb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 	}
 
 	mdss_fb_pan_idle(mfd);
-	if (off >= len) {
-		/* memory mapped io */
-		off -= len;
-		if (info->var.accel_flags) {
-			mutex_unlock(&info->lock);
-			return -EINVAL;
-		}
-		start = info->fix.mmio_start;
-		len = PAGE_ALIGN((start & ~PAGE_MASK) + info->fix.mmio_len);
-	}
 
 	/* Set VM flags. */
 	start &= PAGE_MASK;
-	if ((vma->vm_end - vma->vm_start + off) > len)
+	if ((vma->vm_end <= vma->vm_start) ||
+	    (off >= len) ||
+	    ((vma->vm_end - vma->vm_start) > (len - off)))
 		return -EINVAL;
 	off += start;
+	if (off < start)
+		return -EINVAL;
 	vma->vm_pgoff = off >> PAGE_SHIFT;
 	/* This is an IO map - tell maydump to skip this VMA */
 	vma->vm_flags |= VM_IO | VM_RESERVED;
