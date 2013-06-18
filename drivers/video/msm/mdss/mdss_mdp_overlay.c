@@ -1853,6 +1853,7 @@ static int mdss_mdp_overlay_off(struct msm_fb_data_type *mfd)
 {
 	int rc;
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
+	struct mdss_mdp_mixer *mixer;
 
 	if (!mfd)
 		return -ENODEV;
@@ -1867,6 +1868,9 @@ static int mdss_mdp_overlay_off(struct msm_fb_data_type *mfd)
 
 	if (!mdp5_data->ctl->power_on)
 		return 0;
+
+	mixer = mdss_mdp_mixer_get(mdp5_data->ctl, MDSS_MDP_MIXER_MUX_DEFAULT);
+	mixer->cursor_enabled = 0;
 
 	if (!mfd->ref_cnt) {
 		mdss_mdp_overlay_release_all(mfd);
