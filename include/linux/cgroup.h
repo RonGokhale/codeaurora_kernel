@@ -264,6 +264,14 @@ enum {
 	 *
 	 * - Remount is disallowed.
 	 *
+	 * - "tasks" is removed.  Everything should be at process
+	 *   granularity.  Use "cgroup.procs" instead.
+	 *
+	 * - "release_agent" and "notify_on_release" are removed.
+	 *   Replacement notification mechanism will be implemented.
+	 *
+	 * - rename(2) is disallowed.
+	 *
 	 * - cpuset: tasks will be kept in empty cpusets when hotplug happens
 	 *   and take masks of ancestors with non-empty cpus/mems, instead of
 	 *   being moved to an ancestor.
@@ -273,11 +281,6 @@ enum {
 	 *
 	 * - memcg: use_hierarchy is on by default and the cgroup file for
 	 *   the flag is not created.
-	 *
-	 * The followings are planned changes.
-	 *
-	 * - release_agent will be disallowed once replacement notification
-	 *   mechanism is implemented.
 	 */
 	CGRP_ROOT_SANE_BEHAVIOR	= (1 << 0),
 
