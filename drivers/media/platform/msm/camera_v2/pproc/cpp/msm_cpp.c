@@ -698,11 +698,9 @@ static void cpp_release_hardware(struct cpp_device *cpp_dev)
 	iounmap(cpp_dev->cpp_hw_base);
 	msm_cam_clk_enable(&cpp_dev->pdev->dev, cpp_clk_info,
 		cpp_dev->cpp_clk, ARRAY_SIZE(cpp_clk_info), 0);
-	if (0) {
-		regulator_disable(cpp_dev->fs_cpp);
-		regulator_put(cpp_dev->fs_cpp);
-		cpp_dev->fs_cpp = NULL;
-	}
+	regulator_disable(cpp_dev->fs_cpp);
+	regulator_put(cpp_dev->fs_cpp);
+	cpp_dev->fs_cpp = NULL;
 	msm_isp_update_bandwidth(ISP_CPP, 0, 0);
 	msm_isp_deinit_bandwidth_mgr(ISP_CPP);
 }
@@ -1013,6 +1011,7 @@ static int msm_cpp_cfg(struct cpp_device *cpp_dev,
 	struct msm_cpp_frame_info_t *u_frame_info =
 		(struct msm_cpp_frame_info_t *)ioctl_ptr->ioctl_ptr;
 	int32_t status = 0;
+	uint8_t fw_version_1_2_x = 0;
 
 	int i = 0;
 	if (!new_frame) {
@@ -1117,12 +1116,21 @@ static int msm_cpp_cfg(struct cpp_device *cpp_dev,
 		((cpp_frame_msg[12] >> 10) & 0x3FF) +
 		(cpp_frame_msg[12] & 0x3FF);
 
+	fw_version_1_2_x = 0;
+	if (cpp_dev->hw_info.cpp_hw_version == 0x10010000)
+		fw_version_1_2_x = 2;
+
 	for (i = 0; i < num_stripes; i++) {
-		cpp_frame_msg[133 + i * 27] += (uint32_t) in_phyaddr;
-		cpp_frame_msg[139 + i * 27] += (uint32_t) out_phyaddr0;
-		cpp_frame_msg[140 + i * 27] += (uint32_t) out_phyaddr1;
-		cpp_frame_msg[141 + i * 27] += (uint32_t) out_phyaddr0;
-		cpp_frame_msg[142 + i * 27] += (uint32_t) out_phyaddr1;
+		cpp_frame_msg[(133 + fw_version_1_2_x) + i * 27] +=
+			(uint32_t) in_phyaddr;
+		cpp_frame_msg[(139 + fw_version_1_2_x) + i * 27] +=
+			(uint32_t) out_phyaddr0;
+		cpp_frame_msg[(140 + fw_version_1_2_x) + i * 27] +=
+			(uint32_t) out_phyaddr1;
+		cpp_frame_msg[(141 + fw_version_1_2_x) + i * 27] +=
+			(uint32_t) out_phyaddr0;
+		cpp_frame_msg[(142 + fw_version_1_2_x) + i * 27] +=
+			(uint32_t) out_phyaddr1;
 	}
 
 	frame_qcmd = kzalloc(sizeof(struct msm_queue_cmd), GFP_KERNEL);
@@ -1549,9 +1557,9 @@ static int __devinit cpp_probe(struct platform_device *pdev)
 	}
 
 	cpp_dev->iommu_ctx = msm_iommu_get_ctx("cpp");
-	if (!cpp_dev->iommu_ctx) {
+	if (IS_ERR(cpp_dev->iommu_ctx)) {
 		pr_err("%s: cannot get iommu_ctx\n", __func__);
-		rc = -ENODEV;
+		rc = -EPROBE_DEFER;
 		goto ERROR3;
 	}
 
