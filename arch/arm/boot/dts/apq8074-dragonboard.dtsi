@@ -21,6 +21,7 @@
 
 	qcom,mdss_dsi_sharp_qhd_video {
 		status = "ok";
+		qcom,cont-splash-enabled;
 	};
 
 	qcom,hdmi_tx@fd922100 {
@@ -636,6 +637,9 @@
 			2 &msmgpio 62 0x3>;
 	interrupt-names = "hc_irq", "pwr_irq", "status_irq";
 	cd-gpios = <&msmgpio 62 0x1>;
+
+	qcom,vdd-always-on;
+	qcom,vdd-lpm-sup;
 
 	vdd-supply = <&pm8941_l21>;
 	vdd-io-supply = <&pm8941_l13>;

@@ -14,6 +14,7 @@
 
 /include/ "msm8610.dtsi"
 /include/ "dsi-v2-panel-hx8379a-wvga-video.dtsi"
+/include/ "msm8610-qrd-camera-sensor.dtsi"
 
 / {
 	model = "Qualcomm MSM 8610 QRD";
@@ -157,6 +158,7 @@
 				qcom,id = <6>;
 				qcom,source-sel = <1>;
 				qcom,mode-ctrl = <0x61>;
+				qcom,mode = "manual";
 			};
 		};
 
@@ -171,6 +173,7 @@
 				qcom,id = <6>;
 				qcom,source-sel = <1>;
 				qcom,mode-ctrl = <0x10>;
+				qcom,mode = "manual";
 			};
 		};
 	};
@@ -263,5 +266,35 @@
 
 	qcom,chg-misc@1600 {
 		status = "ok";
+	};
+};
+
+&pm8110_gpios {
+	gpio@c000 { /* GPIO 1 */
+	};
+
+	gpio@c100 { /* GPIO 2 */
+	};
+
+	gpio@c200 { /* GPIO 3 */
+	};
+
+	gpio@c300 { /* GPIO 4 */
+	};
+};
+
+&pm8110_mpps {
+	mpp@a000 { /* MPP 1 */
+	};
+
+	mpp@a100 { /* MPP 2 */
+		status = "disabled";
+	};
+
+	mpp@a200 { /* MPP 3 */
+		status = "disabled";
+	};
+
+	mpp@a300 { /* MPP 4 */
 	};
 };
