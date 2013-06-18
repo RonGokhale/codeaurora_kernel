@@ -198,6 +198,16 @@ static DEFINE_IDR(cgroup_hierarchy_idr);
 
 static struct cgroup_name root_cgroup_name = { .name = "/" };
 
+/*
+ * Assign a monotonically increasing serial number to cgroups.  It
+ * guarantees cgroups with bigger numbers are newer than those with smaller
+ * numbers.  Also, as cgroups are always appended to the parent's
+ * ->children list, it guarantees that sibling cgroups are always sorted in
+ * the ascending serial number order on the list.  Protected by
+ * cgroup_mutex.
+ */
+static u64 cgroup_serial_nr_next = 1;
+
 /* This flag indicates whether tasks in the fork and exit paths should
  * check for fork/exit handlers to call. This avoids us having to do
  * extra work in the fork/exit path if none of the subsystems need to
@@ -1390,7 +1400,6 @@ static void init_cgroup_housekeeping(struct cgroup *cgrp)
 	INIT_LIST_HEAD(&cgrp->children);
 	INIT_LIST_HEAD(&cgrp->files);
 	INIT_LIST_HEAD(&cgrp->cset_links);
-	INIT_LIST_HEAD(&cgrp->allcg_node);
 	INIT_LIST_HEAD(&cgrp->release_list);
 	INIT_LIST_HEAD(&cgrp->pidlists);
 	mutex_init(&cgrp->pidlist_mutex);
@@ -1405,12 +1414,10 @@ static void init_cgroup_root(struct cgroupfs_root *root)
 
 	INIT_LIST_HEAD(&root->subsys_list);
 	INIT_LIST_HEAD(&root->root_list);
-	INIT_LIST_HEAD(&root->allcg_list);
 	root->number_of_cgroups = 1;
 	cgrp->root = root;
 	cgrp->name = &root_cgroup_name;
 	init_cgroup_housekeeping(cgrp);
-	list_add_tail(&cgrp->allcg_node, &root->allcg_list);
 }
 
 static int cgroup_init_root_id(struct cgroupfs_root *root)
@@ -2776,58 +2783,78 @@ static int cgroup_addrm_files(struct cgroup *cgrp, struct cgroup_subsys *subsys,
 	return ret;
 }
 
-static DEFINE_MUTEX(cgroup_cft_mutex);
-
 static void cgroup_cfts_prepare(void)
-	__acquires(&cgroup_cft_mutex) __acquires(&cgroup_mutex)
+	__acquires(&cgroup_mutex)
 {
 	/*
 	 * Thanks to the entanglement with vfs inode locking, we can't walk
 	 * the existing cgroups under cgroup_mutex and create files.
-	 * Instead, we increment reference on all cgroups and build list of
-	 * them using @cgrp->cft_q_node.  Grab cgroup_cft_mutex to ensure
-	 * exclusive access to the field.
+	 * Instead, we use cgroup_for_each_descendant_pre() and drop RCU
+	 * read lock before calling cgroup_addrm_files().
 	 */
-	mutex_lock(&cgroup_cft_mutex);
 	mutex_lock(&cgroup_mutex);
 }
 
 static void cgroup_cfts_commit(struct cgroup_subsys *ss,
 			       struct cftype *cfts, bool is_add)
-	__releases(&cgroup_mutex) __releases(&cgroup_cft_mutex)
+	__releases(&cgroup_mutex)
 {
 	LIST_HEAD(pending);
-	struct cgroup *cgrp, *n;
+	struct cgroup *cgrp, *root = &ss->root->top_cgroup;
+	struct super_block *sb = ss->root->sb;
+	struct dentry *prev = NULL;
+	struct inode *inode;
+	u64 update_before;
 
 	/* %NULL @cfts indicates abort and don't bother if @ss isn't attached */
-	if (cfts && ss->root != &rootnode) {
-		list_for_each_entry(cgrp, &ss->root->allcg_list, allcg_node) {
-			dget(cgrp->dentry);
-			list_add_tail(&cgrp->cft_q_node, &pending);
-		}
+	if (!cfts || ss->root == &rootnode ||
+	    !atomic_inc_not_zero(&sb->s_active)) {
+		mutex_unlock(&cgroup_mutex);
+		return;
 	}
+
+	/*
+	 * All cgroups which are created after we drop cgroup_mutex will
+	 * have the updated set of files, so we only need to update the
+	 * cgroups created before the current @cgroup_serial_nr_next.
+	 */
+	update_before = cgroup_serial_nr_next;
 
 	mutex_unlock(&cgroup_mutex);
 
-	/*
-	 * All new cgroups will see @cfts update on @ss->cftsets.  Add/rm
-	 * files for all cgroups which were created before.
-	 */
-	list_for_each_entry_safe(cgrp, n, &pending, cft_q_node) {
-		struct inode *inode = cgrp->dentry->d_inode;
+	/* @root always needs to be updated */
+	inode = root->dentry->d_inode;
+	mutex_lock(&inode->i_mutex);
+	mutex_lock(&cgroup_mutex);
+	cgroup_addrm_files(root, ss, cfts, is_add);
+	mutex_unlock(&cgroup_mutex);
+	mutex_unlock(&inode->i_mutex);
+
+	/* add/rm files for all cgroups created before */
+	rcu_read_lock();
+	cgroup_for_each_descendant_pre(cgrp, root) {
+		if (cgroup_is_dead(cgrp))
+			continue;
+
+		inode = cgrp->dentry->d_inode;
+		dget(cgrp->dentry);
+		rcu_read_unlock();
+
+		dput(prev);
+		prev = cgrp->dentry;
 
 		mutex_lock(&inode->i_mutex);
 		mutex_lock(&cgroup_mutex);
-		if (!cgroup_is_dead(cgrp))
+		if (cgrp->serial_nr < update_before && !cgroup_is_dead(cgrp))
 			cgroup_addrm_files(cgrp, ss, cfts, is_add);
 		mutex_unlock(&cgroup_mutex);
 		mutex_unlock(&inode->i_mutex);
 
-		list_del_init(&cgrp->cft_q_node);
-		dput(cgrp->dentry);
+		rcu_read_lock();
 	}
-
-	mutex_unlock(&cgroup_cft_mutex);
+	rcu_read_unlock();
+	dput(prev);
+	deactivate_super(sb);
 }
 
 /**
@@ -2882,7 +2909,8 @@ int cgroup_rm_cftypes(struct cgroup_subsys *ss, struct cftype *cfts)
 
 	list_for_each_entry(set, &ss->cftsets, node) {
 		if (set->cfts == cfts) {
-			list_del_init(&set->node);
+			list_del(&set->node);
+			kfree(set);
 			cgroup_cfts_commit(ss, cfts, false);
 			return 0;
 		}
@@ -3815,6 +3843,23 @@ static int cgroup_write_notify_on_release(struct cgroup *cgrp,
 }
 
 /*
+ * When dput() is called asynchronously, if umount has been done and
+ * then deactivate_super() in cgroup_free_fn() kills the superblock,
+ * there's a small window that vfs will see the root dentry with non-zero
+ * refcnt and trigger BUG().
+ *
+ * That's why we hold a reference before dput() and drop it right after.
+ */
+static void cgroup_dput(struct cgroup *cgrp)
+{
+	struct super_block *sb = cgrp->root->sb;
+
+	atomic_inc(&sb->s_active);
+	dput(cgrp->dentry);
+	deactivate_super(sb);
+}
+
+/*
  * Unregister event and free resources.
  *
  * Gets called from workqueue.
@@ -3834,7 +3879,7 @@ static void cgroup_event_remove(struct work_struct *work)
 
 	eventfd_ctx_put(event->eventfd);
 	kfree(event);
-	dput(cgrp->dentry);
+	cgroup_dput(cgrp);
 }
 
 /*
@@ -4122,12 +4167,8 @@ static void css_dput_fn(struct work_struct *work)
 {
 	struct cgroup_subsys_state *css =
 		container_of(work, struct cgroup_subsys_state, dput_work);
-	struct dentry *dentry = css->cgroup->dentry;
-	struct super_block *sb = dentry->d_sb;
 
-	atomic_inc(&sb->s_active);
-	dput(dentry);
-	deactivate_super(sb);
+	cgroup_dput(css->cgroup);
 }
 
 static void css_release(struct percpu_ref *ref)
@@ -4201,7 +4242,6 @@ static void offline_css(struct cgroup_subsys *ss, struct cgroup *cgrp)
 static long cgroup_create(struct cgroup *parent, struct dentry *dentry,
 			     umode_t mode)
 {
-	static atomic64_t serial_nr_cursor = ATOMIC64_INIT(0);
 	struct cgroup *cgrp;
 	struct cgroup_name *name;
 	struct cgroupfs_root *root = parent->root;
@@ -4288,16 +4328,9 @@ static long cgroup_create(struct cgroup *parent, struct dentry *dentry,
 		goto err_free_all;
 	lockdep_assert_held(&dentry->d_inode->i_mutex);
 
-	/*
-	 * Assign a monotonically increasing serial number.  With the list
-	 * appending below, it guarantees that sibling cgroups are always
-	 * sorted in the ascending serial number order on the parent's
-	 * ->children.
-	 */
-	cgrp->serial_nr = atomic64_inc_return(&serial_nr_cursor);
+	cgrp->serial_nr = cgroup_serial_nr_next++;
 
 	/* allocation complete, commit to creation */
-	list_add_tail(&cgrp->allcg_node, &root->allcg_list);
 	list_add_tail_rcu(&cgrp->sibling, &cgrp->parent->children);
 	root->number_of_cgroups++;
 
@@ -4536,7 +4569,6 @@ static void cgroup_offline_fn(struct work_struct *work)
 
 	/* delete this cgroup from parent->children */
 	list_del_rcu(&cgrp->sibling);
-	list_del_init(&cgrp->allcg_node);
 
 	dput(d);
 
