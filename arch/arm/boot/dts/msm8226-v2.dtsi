@@ -57,4 +57,14 @@
 			<0xfc4b80b0 0x8>;
 		reg-names = "rcg_base", "pte_efuse";
 	};
+
+	qcom,mss@fc880000 {
+		reg = <0xfc880000 0x100>,
+		      <0xfd485000 0x400>,
+		      <0xfc820000 0x020>,
+		      <0xfc401680 0x004>,
+		      <0xfd485194 0x4>;
+		reg-names = "qdsp6_base", "halt_base", "rmb_base",
+			    "restart_reg", "cxrail_bhs_reg";
+	};
 };
