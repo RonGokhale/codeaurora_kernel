@@ -538,6 +538,7 @@ enum {
 #define SNDRV_PCM_IOCTL_LINK		_IOW('A', 0x60, int)
 #define SNDRV_PCM_IOCTL_UNLINK		_IO('A', 0x61)
 #define SNDRV_PCM_CONFIGURE_TRANSCODE	_IOR('A', 0x62, struct snd_pcm_transcode_param)
+#define SNDRV_PCM_ADJUST_SESSION_CLOCK	_IOR('A', 0x63, uint64_t)
 
 /*****************************************************************************
  *                                                                           *

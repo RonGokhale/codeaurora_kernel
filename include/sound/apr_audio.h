@@ -1179,7 +1179,21 @@ struct asm_frame_meta_info {
 
 /* Stream level commands */
 #define ASM_STREAM_CMD_OPEN_READ                         0x00010BCB
+#define ASM_STREAM_CMD_OPEN_READ_V2                      0x00010D8C
 #define ASM_STREAM_CMD_OPEN_READ_V2_1                    0x00010DB2
+
+/* Definition of the timestamp type flag bitmask */
+#define ASM_BIT_MASKIMESTAMPYPE_FLAG        (0x00000020UL)
+
+/* Definition of the timestamp type flag shift value. */
+#define ASM_SHIFTIMESTAMPYPE_FLAG 5
+
+/* Relative timestamp is identified by this value.*/
+#define ASM_RELATIVEIMESTAMP      0
+
+/* Absolute timestamp is identified by this value.*/
+#define ASM_ABSOLUTEIMESTAMP      1
+
 struct asm_stream_cmd_open_read {
 	struct apr_hdr hdr;
 	u32            uMode;
@@ -1187,6 +1201,17 @@ struct asm_stream_cmd_open_read {
 	u32            pre_proc_top;
 	u32            format;
 } __attribute__((packed));
+
+struct asm_stream_cmd_open_read_v2 {
+	struct apr_hdr hdr;
+	u32            mode_flags;
+	u32            src_endpoint;
+	u32            pre_proc_top;
+	u32            format;
+	u16            bits_per_sample;
+	u16            reserved;
+} __attribute__((packed));
+
 
 struct asm_stream_cmd_open_read_v2_1 {
 	struct apr_hdr hdr;
@@ -1709,6 +1734,23 @@ struct asm_svc_cmdrsp_get_wallclock_time{
 	u32            msw_ts;
 	u32            lsw_ts;
 } __attribute__((packed));
+
+#define ASM_SESSION_CMD_ADJUST_SESSION_CLOCK      0x00010C0A
+struct asm_session_cmd_adjust_session_clock{
+	struct apr_hdr     hdr;
+	uint32_t	adjust_time_msw;
+	uint32_t	adjust_time_lsw;
+} __attribute__((packed));
+
+#define ASM_SESSION_CMDRSP_ADJUST_SESSION_CLOCK                     0x00010C67 
+struct asm_session_cmdrsp_adjust_session_clock {
+	struct apr_hdr     hdr;
+    uint32_t                  status;
+    uint32_t                  actual_adjust_time_msw;
+    uint32_t                  actual_adjust_time_lsw;
+    uint32_t                  cmd_latency_msw;
+    uint32_t                  cmd_latency_lsw;
+}__attribute__((packed));
 
 /*
  * Error code

@@ -186,6 +186,7 @@ int q6asm_audio_client_buf_free_contiguous(unsigned int dir,
 			struct audio_client *ac);
 
 int q6asm_open_read(struct audio_client *ac, uint32_t format);
+int q6asm_open_read_v2(struct audio_client *ac, uint32_t format);
 int q6asm_open_read_v2_1(struct audio_client *ac, uint32_t format);
 
 int q6asm_open_read_compressed(struct audio_client *ac,
@@ -341,6 +342,9 @@ uint64_t q6asm_get_session_time(struct audio_client *ac);
 
 /* Client can set the IO mode to either AIO/SIO mode */
 int q6asm_set_io_mode(struct audio_client *ac, uint32_t mode);
+
+int q6asm_adjust_session_time(struct audio_client *ac, uint64_t adjust_time );
+
 
 #ifdef CONFIG_RTAC
 /* Get Service ID for APR communication */
