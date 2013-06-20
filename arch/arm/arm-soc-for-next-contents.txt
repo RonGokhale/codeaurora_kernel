@@ -252,3 +252,7 @@ next/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.11/gpmc-part2-signed
 	drivers/mailbox
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.11/mailbox-signed
+	samsung/common-clk-audio
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/common-clk-audio
+	samsung/s3c24xx-pinctrl2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/s3c24xx-pinctrl-2
