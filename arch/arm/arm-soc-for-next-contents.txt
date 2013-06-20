@@ -223,6 +223,10 @@ next/dt
 		git://github.com/mripard/linux.git tags/sunxi-dt-for-3.11-2
 	nomadik/dt2
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik.git tags/nomadik-dt-2
+	samsung/exynos-dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/exynos-dt-2
+	samsung/s3c24xx-dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/s3c24xx-dt-2
 
 next/drivers
 	ux500/dma40
