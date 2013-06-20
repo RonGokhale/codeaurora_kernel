@@ -1359,40 +1359,18 @@ static int v4l_enumstd(const struct v4l2_ioctl_ops *ops,
 	return 0;
 }
 
-static int v4l_g_std(const struct v4l2_ioctl_ops *ops,
-				struct file *file, void *fh, void *arg)
-{
-	struct video_device *vfd = video_devdata(file);
-	v4l2_std_id *id = arg;
-
-	/* Calls the specific handler */
-	if (ops->vidioc_g_std)
-		return ops->vidioc_g_std(file, fh, arg);
-	if (vfd->current_norm) {
-		*id = vfd->current_norm;
-		return 0;
-	}
-	return -ENOTTY;
-}
-
 static int v4l_s_std(const struct v4l2_ioctl_ops *ops,
 				struct file *file, void *fh, void *arg)
 {
 	struct video_device *vfd = video_devdata(file);
 	v4l2_std_id id = *(v4l2_std_id *)arg, norm;
-	int ret;
 
 	norm = id & vfd->tvnorms;
 	if (vfd->tvnorms && !norm)	/* Check if std is supported */
 		return -EINVAL;
 
 	/* Calls the specific handler */
-	ret = ops->vidioc_s_std(file, fh, norm);
-
-	/* Updates standard information */
-	if (ret >= 0)
-		vfd->current_norm = norm;
-	return ret;
+	return ops->vidioc_s_std(file, fh, norm);
 }
 
 static int v4l_querystd(const struct v4l2_ioctl_ops *ops,
@@ -1402,10 +1380,10 @@ static int v4l_querystd(const struct v4l2_ioctl_ops *ops,
 	v4l2_std_id *p = arg;
 
 	/*
-	 * If nothing detected, it should return all supported
-	 * standard.
-	 * Drivers just need to mask the std argument, in order
-	 * to remove the standards that don't apply from the mask.
+	 * If no signal is detected, then the driver should return
+	 * V4L2_STD_UNKNOWN. Otherwise it should return tvnorms with
+	 * any standards that do not apply removed.
+	 *
 	 * This means that tuners, audio and video decoders can join
 	 * their efforts to improve the standards detection.
 	 */
@@ -1495,7 +1473,6 @@ static int v4l_prepare_buf(const struct v4l2_ioctl_ops *ops,
 static int v4l_g_parm(const struct v4l2_ioctl_ops *ops,
 				struct file *file, void *fh, void *arg)
 {
-	struct video_device *vfd = video_devdata(file);
 	struct v4l2_streamparm *p = arg;
 	v4l2_std_id std;
 	int ret = check_fmt(file, p->type);
@@ -1504,16 +1481,13 @@ static int v4l_g_parm(const struct v4l2_ioctl_ops *ops,
 		return ret;
 	if (ops->vidioc_g_parm)
 		return ops->vidioc_g_parm(file, fh, p);
-	std = vfd->current_norm;
 	if (p->type != V4L2_BUF_TYPE_VIDEO_CAPTURE &&
 	    p->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
 		return -EINVAL;
 	p->parm.capture.readbuffers = 2;
-	if (is_valid_ioctl(vfd, VIDIOC_G_STD) && ops->vidioc_g_std)
-		ret = ops->vidioc_g_std(file, fh, &std);
+	ret = ops->vidioc_g_std(file, fh, &std);
 	if (ret == 0)
-		v4l2_video_std_frame_period(std,
-			    &p->parm.capture.timeperframe);
+		v4l2_video_std_frame_period(std, &p->parm.capture.timeperframe);
 	return ret;
 }
 
@@ -1802,7 +1776,8 @@ static int v4l_dbg_g_register(const struct v4l2_ioctl_ops *ops,
 				return v4l2_subdev_call(sd, core, g_register, p);
 		return -EINVAL;
 	}
-	if (ops->vidioc_g_register)
+	if (ops->vidioc_g_register && p->match.type == V4L2_CHIP_MATCH_BRIDGE &&
+	    (ops->vidioc_g_chip_info || p->match.addr == 0))
 		return ops->vidioc_g_register(file, fh, p);
 	return -EINVAL;
 #else
@@ -1829,7 +1804,8 @@ static int v4l_dbg_s_register(const struct v4l2_ioctl_ops *ops,
 				return v4l2_subdev_call(sd, core, s_register, p);
 		return -EINVAL;
 	}
-	if (ops->vidioc_s_register)
+	if (ops->vidioc_s_register && p->match.type == V4L2_CHIP_MATCH_BRIDGE &&
+	    (ops->vidioc_g_chip_info || p->match.addr == 0))
 		return ops->vidioc_s_register(file, fh, p);
 	return -EINVAL;
 #else
@@ -2048,7 +2024,7 @@ static struct v4l2_ioctl_info v4l2_ioctls[] = {
 	IOCTL_INFO_FNC(VIDIOC_STREAMOFF, v4l_streamoff, v4l_print_buftype, INFO_FL_PRIO | INFO_FL_QUEUE),
 	IOCTL_INFO_FNC(VIDIOC_G_PARM, v4l_g_parm, v4l_print_streamparm, INFO_FL_CLEAR(v4l2_streamparm, type)),
 	IOCTL_INFO_FNC(VIDIOC_S_PARM, v4l_s_parm, v4l_print_streamparm, INFO_FL_PRIO),
-	IOCTL_INFO_FNC(VIDIOC_G_STD, v4l_g_std, v4l_print_std, 0),
+	IOCTL_INFO_STD(VIDIOC_G_STD, vidioc_g_std, v4l_print_std, 0),
 	IOCTL_INFO_FNC(VIDIOC_S_STD, v4l_s_std, v4l_print_std, INFO_FL_PRIO),
 	IOCTL_INFO_FNC(VIDIOC_ENUMSTD, v4l_enumstd, v4l_print_standard, INFO_FL_CLEAR(v4l2_standard, index)),
 	IOCTL_INFO_FNC(VIDIOC_ENUMINPUT, v4l_enuminput, v4l_print_enuminput, INFO_FL_CLEAR(v4l2_input, index)),

@@ -28,7 +28,6 @@
 #include <linux/videodev2.h>
 
 #include <media/adv7183.h>
-#include <media/v4l2-chip-ident.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 
@@ -375,28 +374,28 @@ static int adv7183_querystd(struct v4l2_subdev *sd, v4l2_std_id *std)
 	reg = adv7183_read(sd, ADV7183_STATUS_1);
 	switch ((reg >> 0x4) & 0x7) {
 	case 0:
-		*std = V4L2_STD_NTSC;
+		*std &= V4L2_STD_NTSC;
 		break;
 	case 1:
-		*std = V4L2_STD_NTSC_443;
+		*std &= V4L2_STD_NTSC_443;
 		break;
 	case 2:
-		*std = V4L2_STD_PAL_M;
+		*std &= V4L2_STD_PAL_M;
 		break;
 	case 3:
-		*std = V4L2_STD_PAL_60;
+		*std &= V4L2_STD_PAL_60;
 		break;
 	case 4:
-		*std = V4L2_STD_PAL;
+		*std &= V4L2_STD_PAL;
 		break;
 	case 5:
-		*std = V4L2_STD_SECAM;
+		*std &= V4L2_STD_SECAM;
 		break;
 	case 6:
-		*std = V4L2_STD_PAL_Nc;
+		*std &= V4L2_STD_PAL_Nc;
 		break;
 	case 7:
-		*std = V4L2_STD_SECAM;
+		*std &= V4L2_STD_SECAM;
 		break;
 	default:
 		*std = V4L2_STD_UNKNOWN;
@@ -481,25 +480,9 @@ static int adv7183_s_stream(struct v4l2_subdev *sd, int enable)
 	return 0;
 }
 
-static int adv7183_g_chip_ident(struct v4l2_subdev *sd,
-		struct v4l2_dbg_chip_ident *chip)
-{
-	int rev;
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
-	/* 0x11 for adv7183, 0x13 for adv7183b */
-	rev = adv7183_read(sd, ADV7183_IDENT);
-
-	return v4l2_chip_ident_i2c_client(client, chip, V4L2_IDENT_ADV7183, rev);
-}
-
 #ifdef CONFIG_VIDEO_ADV_DEBUG
 static int adv7183_g_register(struct v4l2_subdev *sd, struct v4l2_dbg_register *reg)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
-	if (!v4l2_chip_match_i2c_client(client, &reg->match))
-		return -EINVAL;
 	reg->val = adv7183_read(sd, reg->reg & 0xff);
 	reg->size = 1;
 	return 0;
@@ -507,10 +490,6 @@ static int adv7183_g_register(struct v4l2_subdev *sd, struct v4l2_dbg_register *
 
 static int adv7183_s_register(struct v4l2_subdev *sd, const struct v4l2_dbg_register *reg)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
-	if (!v4l2_chip_match_i2c_client(client, &reg->match))
-		return -EINVAL;
 	adv7183_write(sd, reg->reg & 0xff, reg->val & 0xff);
 	return 0;
 }
@@ -525,7 +504,6 @@ static const struct v4l2_subdev_core_ops adv7183_core_ops = {
 	.g_std = adv7183_g_std,
 	.s_std = adv7183_s_std,
 	.reset = adv7183_reset,
-	.g_chip_ident = adv7183_g_chip_ident,
 #ifdef CONFIG_VIDEO_ADV_DEBUG
 	.g_register = adv7183_g_register,
 	.s_register = adv7183_s_register,

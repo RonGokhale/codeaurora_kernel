@@ -63,7 +63,6 @@
 #include <dmxdev.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-ioctl.h>
-#include <media/v4l2-chip-ident.h>
 
 #include "saa7164-reg.h"
 #include "saa7164-types.h"
@@ -376,6 +375,7 @@ struct saa7164_port {
 	/* Encoder */
 	/* Defaults established in saa7164-encoder.c */
 	struct saa7164_tvnorm encodernorm;
+	v4l2_std_id std;
 	u32 height;
 	u32 width;
 	u32 freq;
