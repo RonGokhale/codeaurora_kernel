@@ -473,7 +473,8 @@ static void diagfwd_bridge_notifier(void *priv, unsigned event,
 {
 	switch (event) {
 	case USB_DIAG_CONNECT:
-		diagfwd_connect_bridge(1);
+		queue_work(driver->diag_bridge_wq,
+			&driver->diag_connect_work);
 		break;
 	case USB_DIAG_DISCONNECT:
 		queue_work(driver->diag_bridge_wq,
@@ -501,6 +502,10 @@ static void diag_usb_read_complete_fn(struct work_struct *w)
 	diagfwd_read_complete_bridge(driver->usb_read_mdm_ptr);
 }
 
+static void diag_connect_work_fn(struct work_struct *w)
+{
+	diagfwd_connect_bridge(1);
+}
 static void diag_disconnect_work_fn(struct work_struct *w)
 {
 	diagfwd_disconnect_bridge(1);
@@ -698,6 +703,7 @@ void diagfwd_bridge_init(void)
 #ifdef CONFIG_DIAG_OVER_USB
 	INIT_WORK(&(driver->diag_read_mdm_work), diag_read_mdm_work_fn);
 #endif
+	INIT_WORK(&(driver->diag_connect_work), diag_connect_work_fn);
 	INIT_WORK(&(driver->diag_disconnect_work), diag_disconnect_work_fn);
 	INIT_WORK(&(driver->diag_usb_read_complete_work),
 			diag_usb_read_complete_fn);

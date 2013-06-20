@@ -1683,6 +1683,16 @@ void diag_process_hdlc(void *data, unsigned len)
 #define N_LEGACY_WRITE	(driver->poolsize + 6)
 #define N_LEGACY_READ	1
 
+static void diag_usb_connect_work_fn(struct work_struct *w)
+{
+	diagfwd_connect();
+}
+
+static void diag_usb_disconnect_work_fn(struct work_struct *w)
+{
+	diagfwd_disconnect();
+}
+
 int diagfwd_connect(void)
 {
 	int err;
@@ -1857,10 +1867,12 @@ void diag_usb_legacy_notifier(void *priv, unsigned event,
 {
 	switch (event) {
 	case USB_DIAG_CONNECT:
-		diagfwd_connect();
+		queue_work(driver->diag_wq,
+			 &driver->diag_usb_connect_work);
 		break;
 	case USB_DIAG_DISCONNECT:
-		diagfwd_disconnect();
+		queue_work(driver->diag_wq,
+			 &driver->diag_usb_disconnect_work);
 		break;
 	case USB_DIAG_READ_DONE:
 		diagfwd_read_complete(d_req);
@@ -2187,6 +2199,10 @@ void diagfwd_init(void)
 	}
 	driver->diag_wq = create_singlethread_workqueue("diag_wq");
 #ifdef CONFIG_DIAG_OVER_USB
+	INIT_WORK(&(driver->diag_usb_connect_work),
+						 diag_usb_connect_work_fn);
+	INIT_WORK(&(driver->diag_usb_disconnect_work),
+						 diag_usb_disconnect_work_fn);
 	INIT_WORK(&(driver->diag_proc_hdlc_work), diag_process_hdlc_fn);
 	INIT_WORK(&(driver->diag_read_work), diag_read_work_fn);
 	INIT_WORK(&(driver->diag_modem_mask_update_work),
