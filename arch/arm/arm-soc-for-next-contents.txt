@@ -188,6 +188,8 @@ next/boards
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-boards2-for-v3.11
 	zynq/defconfig
 		git://git.xilinx.com/linux-xlnx.git tags/zynq-defconfig-for-3.11
+	mvebu/regmap2
+		git://git.infradead.org/users/jcooper/linux.git tags/regmap-3.11-2
 
 next/dt
 	nomadik/dt
