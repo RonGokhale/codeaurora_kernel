@@ -152,6 +152,8 @@ i	sunxi/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/exynos-arch-2
 	rockchip/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip.git tags/v3.11-rockchip-basics
+	renesas/soc-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-cleanup-boot-for-v3.11
 
 next/boards
 	mvebu/boards
@@ -180,6 +182,8 @@ next/boards
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/remove-nondt-exynos-3
 	samsung/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-defconfig-1
+	renesas/boards
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-boards2-for-v3.11
 
 next/dt
 	nomadik/dt
@@ -268,3 +272,9 @@ next/drivers
 		ARM: ux500: Provide a AB8500 GPIO Device Tree node
 		ARM: ux500: Correct the EN_3v3 regulator's on/off GPIO
 		ARM: ux500: Remove mop500_snowball_ethernet_clock_enable()
+
+next/late
+	renesas/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-cleanup-for-v3.11
+	samsung/exynos5420
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/soc-exynos5420-1
