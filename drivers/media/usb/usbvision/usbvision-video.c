@@ -467,8 +467,6 @@ static int vidioc_g_register(struct file *file, void *priv,
 	struct usb_usbvision *usbvision = video_drvdata(file);
 	int err_code;
 
-	if (!v4l2_chip_match_host(&reg->match))
-		return -EINVAL;
 	/* NT100x has a 8-bit register space */
 	err_code = usbvision_read_reg(usbvision, reg->reg&0xff);
 	if (err_code < 0) {
@@ -488,8 +486,6 @@ static int vidioc_s_register(struct file *file, void *priv,
 	struct usb_usbvision *usbvision = video_drvdata(file);
 	int err_code;
 
-	if (!v4l2_chip_match_host(&reg->match))
-		return -EINVAL;
 	/* NT100x has a 8-bit register space */
 	err_code = usbvision_write_reg(usbvision, reg->reg & 0xff, reg->val);
 	if (err_code < 0) {
@@ -1464,6 +1460,7 @@ static void usbvision_release(struct usb_usbvision *usbvision)
 
 	usbvision_remove_sysfs(usbvision->vdev);
 	usbvision_unregister_video(usbvision);
+	kfree(usbvision->alt_max_pkt_size);
 
 	usb_free_urb(usbvision->ctrl_urb);
 
@@ -1579,6 +1576,7 @@ static int usbvision_probe(struct usb_interface *intf,
 	usbvision->alt_max_pkt_size = kmalloc(32 * usbvision->num_alt, GFP_KERNEL);
 	if (usbvision->alt_max_pkt_size == NULL) {
 		dev_err(&intf->dev, "usbvision: out of memory!\n");
+		usbvision_release(usbvision);
 		return -ENOMEM;
 	}
 

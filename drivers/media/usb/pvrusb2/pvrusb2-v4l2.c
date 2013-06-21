@@ -31,6 +31,7 @@
 #include <linux/videodev2.h>
 #include <linux/module.h>
 #include <media/v4l2-dev.h>
+#include <media/v4l2-device.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-ioctl.h>
 
@@ -870,8 +871,8 @@ static void pvr2_v4l2_dev_destroy(struct pvr2_v4l2_dev *dip)
 static void pvr2_v4l2_dev_disassociate_parent(struct pvr2_v4l2_dev *dip)
 {
 	if (!dip) return;
-	if (!dip->devbase.parent) return;
-	dip->devbase.parent = NULL;
+	if (!dip->devbase.v4l2_dev->dev) return;
+	dip->devbase.v4l2_dev->dev = NULL;
 	device_move(&dip->devbase.dev, NULL, DPM_ORDER_NONE);
 }
 
@@ -1264,7 +1265,6 @@ static void pvr2_v4l2_dev_init(struct pvr2_v4l2_dev *dip,
 			       struct pvr2_v4l2 *vp,
 			       int v4l_type)
 {
-	struct usb_device *usbdev;
 	int mindevnum;
 	int unit_number;
 	struct pvr2_hdw *hdw;
@@ -1272,7 +1272,6 @@ static void pvr2_v4l2_dev_init(struct pvr2_v4l2_dev *dip,
 	dip->v4lp = vp;
 
 	hdw = vp->channel.mc_head->hdw;
-	usbdev = pvr2_hdw_get_dev(hdw);
 	dip->v4l_type = v4l_type;
 	switch (v4l_type) {
 	case VFL_TYPE_GRABBER:
@@ -1321,7 +1320,7 @@ static void pvr2_v4l2_dev_init(struct pvr2_v4l2_dev *dip,
 	if (nr_ptr && (unit_number >= 0) && (unit_number < PVR_NUM)) {
 		mindevnum = nr_ptr[unit_number];
 	}
-	dip->devbase.parent = &usbdev->dev;
+	pvr2_hdw_set_v4l2_dev(hdw, &dip->devbase);
 	if ((video_register_device(&dip->devbase,
 				   dip->v4l_type, mindevnum) < 0) &&
 	    (video_register_device(&dip->devbase,
