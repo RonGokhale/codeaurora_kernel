@@ -186,6 +186,8 @@ next/boards
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-defconfig-1
 	renesas/boards
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-boards2-for-v3.11
+	zynq/defconfig
+		git://git.xilinx.com/linux-xlnx.git tags/zynq-defconfig-for-3.11
 
 next/dt
 	nomadik/dt
