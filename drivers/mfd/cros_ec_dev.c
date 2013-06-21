@@ -44,9 +44,14 @@ static long cros_ec_xfer_command(struct cros_ec_command *s)
 	int rv;
 
 	s->result = EC_RES_UNAVAILABLE;		/* FIXME (crbug.com/242706) */
+
+	/* one at time, please */
+	mutex_lock(&ec_device_mutex);
+
 	rv = ec->command_sendrecv(ec, s->command,
 				  s->outdata, s->outsize,
 				  s->indata, s->insize);
+	mutex_unlock(&ec_device_mutex);
 	if (rv)
 		return rv;
 
@@ -79,10 +84,6 @@ static int ec_get_version(struct cros_ec_device *ec, char *str, int maxlen)
 
 static int ec_device_open(struct inode *inode, struct file *filp)
 {
-	/* one at time, please */
-	if (!mutex_trylock(&ec_device_mutex))
-		return -EBUSY;
-
 	return 0;
 }
 
