@@ -150,6 +150,8 @@ i	sunxi/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.11/soc-part2-signed
 	samsung/exynos-arch
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/exynos-arch-2
+	rockchip/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip.git tags/v3.11-rockchip-basics
 
 next/boards
 	mvebu/boards
