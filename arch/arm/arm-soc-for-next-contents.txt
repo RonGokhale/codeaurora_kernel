@@ -264,3 +264,7 @@ next/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/common-clk-audio
 	samsung/s3c24xx-pinctrl2
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/s3c24xx-pinctrl-2
+	ux500/cleanup patches
+		ARM: ux500: Provide a AB8500 GPIO Device Tree node
+		ARM: ux500: Correct the EN_3v3 regulator's on/off GPIO
+		ARM: ux500: Remove mop500_snowball_ethernet_clock_enable()
