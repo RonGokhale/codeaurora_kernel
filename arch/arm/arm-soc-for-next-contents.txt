@@ -239,6 +239,10 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/s3c24xx-dt-2
 	omap/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/bcousson/linux-omap-dt.git for_3.11/dts
+	bcm/dt
+		git://github.com/broadcom/bcm11351.git armsoc/for-3.11/dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-dt2-for-v3.11
 
 next/drivers
 	ux500/dma40
@@ -272,6 +276,10 @@ next/drivers
 		ARM: ux500: Provide a AB8500 GPIO Device Tree node
 		ARM: ux500: Correct the EN_3v3 regulator's on/off GPIO
 		ARM: ux500: Remove mop500_snowball_ethernet_clock_enable()
+	renesas/pinmux2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-pinmux2-for-v3.11
+	renesas/gpio-rcar2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-gpio-rcar2-for-v3.11
 
 next/late
 	renesas/cleanup
