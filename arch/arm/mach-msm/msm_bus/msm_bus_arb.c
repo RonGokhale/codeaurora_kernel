@@ -342,6 +342,15 @@ static int update_path(int curr, int pnode, uint64_t req_clk, uint64_t req_bw,
 		return -ENXIO;
 	}
 
+	/**
+	 * If master supports dual configuration, check if
+	 * the configuration needs to be changed based on
+	 * incoming requests
+	 */
+	if (info->node_info->dual_conf)
+		fabdev->algo->config_master(fabdev, info,
+			req_clk, req_bw);
+
 	info->link_info.sel_bw = &info->link_info.bw[ctx];
 	info->link_info.sel_clk = &info->link_info.clk[ctx];
 	*info->link_info.sel_bw += add_bw;
@@ -417,6 +426,11 @@ static int update_path(int curr, int pnode, uint64_t req_clk, uint64_t req_bw,
 			req_clk);
 		bwsum_hz = BW_TO_CLK_FREQ_HZ(hop->node_info->buswidth,
 			bwsum);
+		/* Account for multiple channels */
+		bwsum_hz = msm_bus_div64(hop->node_info->num_sports, bwsum_hz);
+		MSM_BUS_DBG("AXI: Hop: %d, ports: %d, bwsum_hz: %llu\n",
+				hop->node_info->id, hop->node_info->num_sports,
+				bwsum_hz);
 		MSM_BUS_DBG("up-clk: curr_hz: %llu, req_hz: %llu, bw_hz %llu\n",
 			curr_clk, req_clk, bwsum_hz);
 		ret = fabdev->algo->update_clks(fabdev, hop, index,

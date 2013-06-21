@@ -68,6 +68,7 @@ static int msm_comm_get_load(struct msm_vidc_core *core,
 			if (!hdev) {
 				dprintk(VIDC_ERR,
 						"No hdev (probably in bad state)\n");
+				mutex_unlock(&inst->lock);
 				return -EINVAL;
 			}
 
@@ -307,10 +308,21 @@ static void handle_sys_release_res_done(
 static void change_inst_state(struct msm_vidc_inst *inst,
 	enum instance_state state)
 {
+	if (!inst) {
+		dprintk(VIDC_ERR, "Invalid parameter %s", __func__);
+		return;
+	}
 	mutex_lock(&inst->lock);
+	if (inst->state == MSM_VIDC_CORE_INVALID) {
+		dprintk(VIDC_DBG,
+			"Inst: %p is in bad state can't change state",
+			inst);
+		goto exit;
+	}
 	dprintk(VIDC_DBG, "Moved inst: %p from state: %d to state: %d\n",
 		   inst, inst->state, state);
 	inst->state = state;
+exit:
 	mutex_unlock(&inst->lock);
 }
 
@@ -361,27 +373,6 @@ err_same_state:
 	return rc;
 }
 
-static void handle_session_init_done(enum command_response cmd, void *data)
-{
-	struct msm_vidc_cb_cmd_done *response = data;
-	struct msm_vidc_inst *inst;
-	if (response && !response->status) {
-		struct vidc_hal_session_init_done *session_init_done =
-			(struct vidc_hal_session_init_done *) response->data;
-		inst = (struct msm_vidc_inst *)response->session_id;
-
-		inst->capability.width = session_init_done->width;
-		inst->capability.height = session_init_done->height;
-		inst->capability.frame_rate =
-				session_init_done->frame_rate;
-		inst->capability.capability_set = true;
-		signal_session_msg_receipt(cmd, inst);
-	} else {
-		dprintk(VIDC_ERR,
-			"Failed to get valid response for session init\n");
-	}
-}
-
 static void queue_v4l2_event(struct msm_vidc_inst *inst, int event_type)
 {
 	struct v4l2_event event = {.id = 0, .type = event_type};
@@ -389,10 +380,57 @@ static void queue_v4l2_event(struct msm_vidc_inst *inst, int event_type)
 	wake_up(&inst->kernel_event_queue);
 }
 
+static void msm_comm_generate_session_error(struct msm_vidc_inst *inst)
+{
+	if (!inst) {
+		dprintk(VIDC_ERR, "%s: invalid input parameters", __func__);
+		return;
+	}
+	mutex_lock(&inst->lock);
+	inst->session = NULL;
+	inst->state = MSM_VIDC_CORE_INVALID;
+	queue_v4l2_event(inst, V4L2_EVENT_MSM_VIDC_SYS_ERROR);
+	mutex_unlock(&inst->lock);
+}
+
+static void handle_session_init_done(enum command_response cmd, void *data)
+{
+	struct msm_vidc_cb_cmd_done *response = data;
+	struct msm_vidc_inst *inst = NULL;
+	if (response) {
+		struct vidc_hal_session_init_done *session_init_done =
+			(struct vidc_hal_session_init_done *)
+			response->data;
+		inst = (struct msm_vidc_inst *)response->session_id;
+		if (!inst) {
+			dprintk(VIDC_ERR, "%s: invalid input parameters",
+				__func__);
+			return;
+		}
+		if (!response->status && session_init_done) {
+			inst->capability.width = session_init_done->width;
+			inst->capability.height = session_init_done->height;
+			inst->capability.frame_rate =
+				session_init_done->frame_rate;
+			inst->capability.capability_set = true;
+		} else {
+			dprintk(VIDC_ERR,
+				"Session init response from FW : 0x%x",
+				response->status);
+			msm_comm_generate_session_error(inst);
+		}
+		signal_session_msg_receipt(cmd, inst);
+	} else {
+		dprintk(VIDC_ERR,
+				"Failed to get valid response for session init\n");
+	}
+}
+
 static void handle_event_change(enum command_response cmd, void *data)
 {
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst;
+	struct v4l2_control control = {0};
 	struct msm_vidc_cb_event *event_notify;
 	int event = V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT;
 	int rc = 0;
@@ -401,7 +439,15 @@ static void handle_event_change(enum command_response cmd, void *data)
 		event_notify = (struct msm_vidc_cb_event *) response->data;
 		switch (event_notify->hal_event_type) {
 		case HAL_EVENT_SEQ_CHANGED_SUFFICIENT_RESOURCES:
-			event = V4L2_EVENT_SEQ_CHANGED_SUFFICIENT;
+			event = V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT;
+			control.id =
+				V4L2_CID_MPEG_VIDC_VIDEO_CONTINUE_DATA_TRANSFER;
+			rc = v4l2_g_ctrl(&inst->ctrl_handler, &control);
+			if (rc)
+				dprintk(VIDC_WARN,
+					"Failed to get Smooth streamng flag\n");
+			if (!rc && control.value == true)
+				event = V4L2_EVENT_SEQ_CHANGED_SUFFICIENT;
 			break;
 		case HAL_EVENT_SEQ_CHANGED_INSUFFICIENT_RESOURCES:
 			event = V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT;
@@ -543,6 +589,10 @@ static void handle_sys_error(enum command_response cmd, void *data)
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst = NULL ;
 	struct msm_vidc_core *core = NULL;
+	struct hfi_device *hdev = NULL;
+	int rc = 0;
+
+	subsystem_crashed("venus");
 	if (response) {
 		core = get_vidc_core(response->device_id);
 		dprintk(VIDC_WARN, "SYS_ERROR received for core %p\n", core);
@@ -554,8 +604,18 @@ static void handle_sys_error(enum command_response cmd, void *data)
 					list) {
 				mutex_lock(&inst->lock);
 				inst->state = MSM_VIDC_CORE_INVALID;
+				if (inst->core)
+					hdev = inst->core->device;
+				if (hdev && inst->session) {
+					rc = call_hfi_op(hdev, session_clean,
+						(void *) inst->session);
+					if (rc)
+						dprintk(VIDC_ERR,
+							"Sess clean failed :%p",
+							inst);
+				}
+				inst->session = NULL;
 				mutex_unlock(&inst->lock);
-
 				queue_v4l2_event(inst,
 						V4L2_EVENT_MSM_VIDC_SYS_ERROR);
 			}
@@ -574,6 +634,8 @@ static void handle_sys_watchdog_timeout(enum command_response cmd, void *data)
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst;
 	struct msm_vidc_core *core = NULL;
+	struct hfi_device *hdev = NULL;
+	int rc = 0;
 	dprintk(VIDC_ERR, "Venus Subsystem crashed\n");
 	core = get_vidc_core(response->device_id);
 	if (!core) {
@@ -589,6 +651,17 @@ static void handle_sys_watchdog_timeout(enum command_response cmd, void *data)
 			queue_v4l2_event(inst, V4L2_EVENT_MSM_VIDC_SYS_ERROR);
 			mutex_lock(&inst->lock);
 			inst->state = MSM_VIDC_CORE_INVALID;
+			if (inst->core)
+				hdev = inst->core->device;
+			if (hdev && inst->session) {
+				rc = call_hfi_op(hdev, session_clean,
+						(void *) inst->session);
+				if (rc)
+					dprintk(VIDC_ERR,
+						"Sess clean failed :%p",
+						inst);
+
+			}
 			inst->session = NULL;
 			mutex_unlock(&inst->lock);
 		}
@@ -705,6 +778,7 @@ static void handle_fbd(enum command_response cmd, void *data)
 		switch (fill_buf_done->picture_type) {
 		case HAL_PICTURE_IDR:
 			vb->v4l2_buf.flags |= V4L2_QCOM_BUF_FLAG_IDRFRAME;
+			vb->v4l2_buf.flags |= V4L2_BUF_FLAG_KEYFRAME;
 			break;
 		case HAL_PICTURE_I:
 			vb->v4l2_buf.flags |= V4L2_BUF_FLAG_KEYFRAME;
@@ -1202,9 +1276,11 @@ static int msm_comm_session_init(int flipped_state,
 	}
 	init_completion(
 		&inst->completions[SESSION_MSG_INDEX(SESSION_INIT_DONE)]);
+	mutex_lock(&inst->lock);
 	inst->session = call_hfi_op(hdev, session_init, hdev->hfi_device_data,
 			(u32) inst, get_hal_domain(inst->session_type),
 			get_hal_codec_type(fourcc));
+	mutex_unlock(&inst->lock);
 	if (!inst->session) {
 		dprintk(VIDC_ERR,
 			"Failed to call session init for: %d, %d, %d, %d\n",
@@ -1228,6 +1304,12 @@ static int msm_vidc_load_resources(int flipped_state,
 
 	if (!inst || !inst->core || !inst->core->device) {
 		dprintk(VIDC_ERR, "%s invalid parameters", __func__);
+		return -EINVAL;
+	}
+	if (inst->state == MSM_VIDC_CORE_INVALID ||
+			inst->core->state == VIDC_CORE_INVALID) {
+		dprintk(VIDC_ERR,
+				"Core is in bad state can't do load res");
 		return -EINVAL;
 	}
 
@@ -1302,6 +1384,12 @@ static int msm_vidc_start(int flipped_state, struct msm_vidc_inst *inst)
 
 	if (!inst || !inst->core || !inst->core->device) {
 		dprintk(VIDC_ERR, "%s invalid parameters", __func__);
+		return -EINVAL;
+	}
+	if (inst->state == MSM_VIDC_CORE_INVALID ||
+			inst->core->state == VIDC_CORE_INVALID) {
+		dprintk(VIDC_ERR,
+				"Core is in bad state can't do start");
 		return -EINVAL;
 	}
 
@@ -2220,6 +2308,7 @@ int msm_comm_flush(struct msm_vidc_inst *inst, u32 flags)
 				"Core %p and inst %p are in bad state\n",
 					core, inst);
 		msm_comm_flush_in_invalid_state(inst);
+		return 0;
 	}
 
 	mutex_lock(&inst->sync_lock);
@@ -2442,10 +2531,9 @@ int msm_comm_recover_from_session_error(struct msm_vidc_inst *inst)
 		dprintk(VIDC_ERR, "%s: invalid input parameters", __func__);
 		return -EINVAL;
 	}
-	if (inst->state < MSM_VIDC_OPEN_DONE) {
+	if (!inst->session || inst->state < MSM_VIDC_OPEN_DONE) {
 		dprintk(VIDC_WARN,
 			"No corresponding FW session. No need to send Abort");
-		inst->state = MSM_VIDC_CORE_INVALID;
 		return rc;
 	}
 	hdev = inst->core->device;

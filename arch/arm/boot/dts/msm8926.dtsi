@@ -10,13 +10,21 @@
  * GNU General Public License for more details.
  */
 
-#ifndef __ARCH_ARM_MACH_MSM_CLOCK_MDSS_8226
-#define __ARCH_ARM_MACH_MSM_CLOCK_MDSS_8226
+/*
+ * Only 8926-specific property overrides should be placed inside this
+ * file. Device definitions should be placed inside the msm8226.dtsi
+ * file.
+ */
 
-extern struct clk_ops clk_ops_dsi_byte_pll;
-extern struct clk_ops clk_ops_dsi_pixel_pll;
+/include/ "msm8226.dtsi"
 
-void mdss_clk_ctrl_pre_init(struct clk *ahb_clk);
-void mdss_clk_ctrl_post_init(void);
+/ {
+	model = "Qualcomm MSM 8926";
+	compatible = "qcom,msm8926";
+};
 
-#endif /* __ARCH_ARM_MACH_MSM_CLOCK_MDSS_8226 */
+&soc {
+	qcom,mss@fc880000 {
+		vdd_mss-supply = <&pm8226_s5>;
+	};
+};
