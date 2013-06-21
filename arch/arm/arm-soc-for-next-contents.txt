@@ -247,6 +247,8 @@ next/dt
 		git://github.com/broadcom/bcm11351.git armsoc/for-3.11/dt
 	renesas/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-dt2-for-v3.11
+	mvebu/dt6
+		git://git.infradead.org/users/jcooper/linux.git tags/dt-3.11-6
 
 next/drivers
 	ux500/dma40
