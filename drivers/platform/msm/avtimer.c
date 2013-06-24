@@ -161,10 +161,14 @@ static int avtimer_open(struct inode *inode, struct file *file)
 	try_module_get(THIS_MODULE);
 
 	rc = avcs_core_open();
+	if (rc)
+		goto leave;
 	if (core_handle)
 		rc = avcs_core_disable_power_collapse(1);
+	if (!rc)
+		pavtimer->avtimer_open_cnt++;
 
-	pavtimer->avtimer_open_cnt++;
+leave:
 	pr_debug("%s: opened avtimer open count=%d\n",
 		__func__, pavtimer->avtimer_open_cnt);
 	mutex_unlock(&pavtimer->avtimer_lock);
