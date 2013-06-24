@@ -381,14 +381,28 @@ static void dwc3_msm_ssusb_write_phycreg(void *base, u32 addr, u32 val)
  */
 static u32 dwc3_msm_ssusb_read_phycreg(void *base, u32 addr)
 {
+	bool first_read = true;
+
 	iowrite32(addr, base + SS_CR_PROTOCOL_DATA_IN_REG);
 	iowrite32(0x1, base + SS_CR_PROTOCOL_CAP_ADDR_REG);
 	while (ioread32(base + SS_CR_PROTOCOL_CAP_ADDR_REG))
 		cpu_relax();
 
+	/*
+	 * Due to hardware bug, first read of SSPHY register might be
+	 * incorrect. Hence as workaround, SW should perform SSPHY register
+	 * read twice, but use only second read and ignore first read.
+	 */
+retry:
 	iowrite32(0x1, base + SS_CR_PROTOCOL_READ_REG);
 	while (ioread32(base + SS_CR_PROTOCOL_READ_REG))
 		cpu_relax();
+
+	if (first_read) {
+		ioread32(base + SS_CR_PROTOCOL_DATA_OUT_REG);
+		first_read = false;
+		goto retry;
+	}
 
 	return ioread32(base + SS_CR_PROTOCOL_DATA_OUT_REG);
 }
@@ -1511,7 +1525,8 @@ static const char *chg_to_string(enum dwc3_chg_type chg_type)
 	case DWC3_DCP_CHARGER:		return "USB_DCP_CHARGER";
 	case DWC3_CDP_CHARGER:		return "USB_CDP_CHARGER";
 	case DWC3_PROPRIETARY_CHARGER:	return "USB_PROPRIETARY_CHARGER";
-	default:			return "INVALID_CHARGER";
+	case DWC3_UNSUPPORTED_CHARGER:	return "INVALID_CHARGER";
+	default:			return "UNKNOWN_CHARGER";
 	}
 }
 
@@ -1541,9 +1556,17 @@ static void dwc3_chg_detect_work(struct work_struct *w)
 		if (is_dcd || tmout) {
 			dwc3_chg_disable_dcd(mdwc);
 			if (dwc3_chg_det_check_linestate(mdwc)) {
-				dev_dbg(mdwc->dev, "proprietary charger\n");
-				mdwc->charger.chg_type =
+				dwc3_chg_enable_primary_det(mdwc);
+				usleep_range(1000, 1200);
+				vout = dwc3_chg_det_check_output(mdwc);
+				if (!vout)
+					mdwc->charger.chg_type =
+						DWC3_UNSUPPORTED_CHARGER;
+				else
+					mdwc->charger.chg_type =
 						DWC3_PROPRIETARY_CHARGER;
+				dwc3_msm_write_reg(mdwc->base,
+						CHARGING_DET_CTRL_REG, 0x0);
 				mdwc->chg_state = USB_CHG_STATE_DETECTED;
 				delay = 0;
 				break;

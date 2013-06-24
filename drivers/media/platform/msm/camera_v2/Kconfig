@@ -155,6 +155,24 @@ config MT9M114
 		1280 * 270. It does not support auto focus. It supports
 		few special effects like saturation.
 
+config SP1628
+	bool "Sensor SP1628 (YUV 720P)"
+	depends on MSMB_CAMERA
+	---help---
+		SP1628 is SuperPix YUV sensor. It supports 720P preview
+		and snapshot. The preview and snapshot resolution shall be
+		1280 * 270. It does not support auto focus. It supports
+		few special effects like mono.
+
+config GC0339
+	bool "Sensor GC0339 (BAYER .3M)"
+	depends on MSMB_CAMERA
+	---help---
+		gc0339 is a Galaxycore .3 MP Bayer Sensor.
+		It supports 1 or 2 mipi lanes.
+		Preview and snapshot resolution shall be 640*480 at 30 fps,
+		It does not support auto focus.
+
 config OV8825
 	bool "OmniVision OV8825 (BAYER 8MP)"
 	depends on MSMB_CAMERA

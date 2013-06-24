@@ -44,6 +44,26 @@
 #define POOL_TYPE_HSIC_WRITE	11
 #define POOL_TYPE_HSIC_2_WRITE	12
 #define POOL_TYPE_ALL		10
+
+#define POOL_COPY_IDX		0
+#define POOL_HDLC_IDX		1
+#define POOL_USER_IDX		2
+#define POOL_WRITE_STRUCT_IDX	3
+#define POOL_HSIC_IDX		4
+#define POOL_HSIC_2_IDX		5
+#define POOL_HSIC_3_IDX		6
+#define POOL_HSIC_4_IDX		7
+#define POOL_HSIC_WRITE_IDX	8
+#define POOL_HSIC_2_WRITE_IDX	9
+#define POOL_HSIC_3_WRITE_IDX	10
+#define POOL_HSIC_4_WRITE_IDX	11
+
+#ifdef CONFIG_DIAGFWD_BRIDGE_CODE
+#define NUM_MEMORY_POOLS	12
+#else
+#define NUM_MEMORY_POOLS	4
+#endif
+
 #define MODEM_DATA		0
 #define LPASS_DATA		1
 #define WCNSS_DATA		2
@@ -92,6 +112,8 @@
 #define SMD_DCI_TYPE 2
 #define SMD_CMD_TYPE 3
 #define SMD_DCI_CMD_TYPE 4
+
+#define DIAG_TS_SIZE	50
 
 /* Maximum number of pkt reg supported at initialization*/
 extern int diag_max_reg;
@@ -345,5 +367,7 @@ extern struct diagchar_dev *driver;
 
 extern int wrap_enabled;
 extern uint16_t wrap_count;
+
+void diag_get_timestamp(char *time_str);
 
 #endif

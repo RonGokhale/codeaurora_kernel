@@ -237,6 +237,7 @@
 	android_usb@fe8050c8 {
 		compatible = "qcom,android-usb";
 		reg = <0xfe8050c8 0xc8>;
+		qcom,android-usb-swfi-latency = <1>;
 	};
 
 	sdcc1: qcom,sdcc@f9824000 {
@@ -418,7 +419,7 @@
 
 	qcom,msm-mem-hole {
 		compatible = "qcom,msm-mem-hole";
-		qcom,memblock-remove = <0x07B00000 0x6400000>; /* Address and Size of Hole */
+		qcom,memblock-remove = <0x07b00000 0x6400000>; /* Address and Size of Hole */
 	};
 
 	qcom,wdt@f9017000 {
@@ -804,10 +805,22 @@
                 compatible = "qcom,msm-rng";
                 reg = <0xf9bff000 0x200>;
                 qcom,msm-rng-iface-clk;
+                qcom,msm-bus,name = "msm-rng-noc";
+                qcom,msm-bus,num-cases = <2>;
+                qcom,msm-bus,num-paths = <1>;
+                qcom,msm-bus,vectors-KBps =
+                                <1 618 0 0>,
+                                <1 618 0 800>;
         };
 
 	qcom,msm-rtb {
 		compatible = "qcom,msm-rtb";
+		qcom,memory-reservation-type = "EBI1";
+		qcom,memory-reservation-size = <0x100000>; /* 1M EBI1 buffer */
+	};
+
+	qcom,msm-contig-mem {
+		compatible = "qcom,msm-contig-mem";
 		qcom,memory-reservation-type = "EBI1";
 		qcom,memory-reservation-size = <0x100000>; /* 1M EBI1 buffer */
 	};
