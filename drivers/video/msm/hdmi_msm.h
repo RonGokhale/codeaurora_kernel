@@ -22,10 +22,6 @@
 #include "hdcp_tx.h"
 /* #define PORT_DEBUG */
 
-#ifndef DRVR_ONLY_CECT_NO_DAEMON
-#define DRVR_ONLY_CECT_NO_DAEMON
-#endif
-
 #ifdef PORT_DEBUG
 const char *hdmi_msm_name(uint32 offset);
 void hdmi_outp(uint32 offset, uint32 value);
@@ -41,7 +37,6 @@ uint32 hdmi_inp(uint32 offset);
 #define HDMI_INP_ND(offset)		inpdw(MSM_HDMI_BASE+(offset))
 #define HDMI_INP(offset)		inpdw(MSM_HDMI_BASE+(offset))
 #endif
-
 
 #define HDMI_CEC_LOGICAL_ADDR_BROADCAST	15
 #define HDMI_CEC_DEFAULT_LOGICAL_ADDR	HDMI_CEC_LOGICAL_ADDR_BROADCAST
@@ -71,6 +66,7 @@ struct hdmi_msm_audio_config {
 #define QFPROM_BASE		((uint32)hdmi_msm_state->qfprom_io)
 #define HDMI_BASE		((uint32)hdmi_msm_state->hdmi_io)
 #define FLAG_SYSFS_CEC_WAKEUP_EN	0x2
+#define FLAG_SYSFS_NO_DAEMON_EN	0x4
 
 struct hdmi_msm_state_type {
 	boolean panel_power_on;
@@ -90,6 +86,7 @@ struct hdmi_msm_state_type {
 	struct completion hdcp_success_done;
 	struct timer_list hdcp_timer;
 	u32 cec_wakeup_enabled;
+	u32 cect_no_daemon_enabled;
 	boolean irq_wakeup_enabled;
 	boolean cec_initialized;
 
@@ -186,4 +183,5 @@ void hdmi_msm_en_gc_packet(boolean do_av_mute);
 void hdmi_msm_encrypt_en(u32 enable);
 void mdp4_dtv_mute(u32 enable);
 u32 hdmi_msm_is_cec_wakeup_enabled(void);
+u32 hdmi_msm_cect_no_daemon_enabled(void);
 #endif /* __HDMI_MSM_H__ */

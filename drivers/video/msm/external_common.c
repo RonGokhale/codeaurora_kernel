@@ -476,12 +476,16 @@ static ssize_t hdmi_msm_rda_cec(struct device *dev,
 {
 	/* 0x028C CEC_CTRL */
 	ssize_t ret;
+	int value = (HDMI_INP(0x028C) & BIT(0));
+
 	if (hdmi_msm_state->cec_wakeup_enabled)
-		ret = snprintf(buf, PAGE_SIZE, "%d\n",
-		(HDMI_INP(0x028C) & BIT(0)) | FLAG_SYSFS_CEC_WAKEUP_EN);
-	else
-		ret = snprintf(buf, PAGE_SIZE, "%d\n",
-		(HDMI_INP(0x028C) & BIT(0)));
+		value |= FLAG_SYSFS_CEC_WAKEUP_EN;
+
+	if (hdmi_msm_state->cect_no_daemon_enabled)
+		value |= FLAG_SYSFS_NO_DAEMON_EN;
+
+	ret = snprintf(buf, PAGE_SIZE, "%d\n", value);
+
 	return ret;
 }
 
@@ -493,6 +497,11 @@ static ssize_t hdmi_msm_wta_cec(struct device *dev,
 
 	if (cec != 0) {
 		mutex_lock(&hdmi_msm_state_mutex);
+
+		if (cec & FLAG_SYSFS_NO_DAEMON_EN)
+			hdmi_msm_state->cect_no_daemon_enabled = true;
+		else
+			hdmi_msm_state->cect_no_daemon_enabled = false;
 
 		if (cec & FLAG_SYSFS_CEC_WAKEUP_EN)
 			hdmi_msm_state->cec_wakeup_enabled = true;
@@ -521,6 +530,7 @@ static ssize_t hdmi_msm_wta_cec(struct device *dev,
 		mutex_lock(&hdmi_msm_state_mutex);
 		hdmi_msm_state->cec_enabled = false;
 		hdmi_msm_state->cec_wakeup_enabled = false;
+		hdmi_msm_state->cect_no_daemon_enabled = false;
 		hdmi_msm_state->cec_logical_addr =
 			HDMI_CEC_DEFAULT_LOGICAL_ADDR;
 		mutex_unlock(&hdmi_msm_state_mutex);
