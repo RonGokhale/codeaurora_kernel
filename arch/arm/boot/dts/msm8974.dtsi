@@ -864,7 +864,7 @@
 		vbus_dwc3-supply = <&pm8941_mvs1>;
 		qcom,dwc-usb3-msm-dbm-eps = <4>;
 		qcom,vdd-voltage-level = <1 5 7>;
-		qcom,dwc-hsphy-init = <0x00D195A4>;
+		qcom,dwc-hsphy-init = <0x00D191A4>;
 
 		qcom,msm-bus,name = "usb3";
 		qcom,msm-bus,num-cases = <2>;
@@ -878,7 +878,6 @@
 			interrupt-parent = <&intc>;
 			interrupts = <0 131 0>, <0 179 0>;
 			interrupt-names = "irq", "otg_irq";
-			tx-fifo-resize;
 		};
 	};
 
@@ -1223,7 +1222,7 @@
 		qcom,iris-vddxo-supply = <&pm8941_l6>;
 		qcom,iris-vddrfa-supply = <&pm8941_l11>;
 		qcom,iris-vddpa-supply = <&pm8941_l19>;
-		qcom,iris-vdddig-supply = <&pm8941_l3>;
+		qcom,iris-vdddig-supply = <&pm8941_s3>;
 
 		gpios = <&msmgpio 36 0>, <&msmgpio 37 0>, <&msmgpio 38 0>, <&msmgpio 39 0>, <&msmgpio 40 0>;
 		qcom,has-48mhz-xo;
@@ -1273,8 +1272,14 @@
 	};
 
         qcom,msm-rng@f9bff000 {
-               compatible = "qcom,msm-rng";
-               reg = <0xf9bff000 0x200>;
+		compatible = "qcom,msm-rng";
+		reg = <0xf9bff000 0x200>;
+		qcom,msm-bus,name = "msm-rng-noc";
+		qcom,msm-bus,num-cases = <2>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps =
+				<1 618 0 0>,
+				<1 618 0 800>;
         };
 
 	qseecom: qcom,qseecom@7f00000 {
@@ -1630,12 +1635,16 @@
 &gdsc_venus {
 	qcom,clock-names = "core_clk";
 	qcom,skip-logic-collapse;
+	qcom,retain-periph;
+	qcom,retain-mem;
 	status = "ok";
 };
 
 &gdsc_mdss {
 	qcom,clock-names = "core_clk", "lut_clk";
+	qcom,skip-logic-collapse;
 	qcom,retain-periph;
+	qcom,retain-mem;
 	status = "ok";
 };
 

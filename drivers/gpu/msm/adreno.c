@@ -833,7 +833,7 @@ static void adreno_iommu_setstate(struct kgsl_device *device,
 
 	if (!adreno_dev->drawctxt_active ||
 		KGSL_STATE_ACTIVE != device->state ||
-		!device->active_cnt ||
+		!atomic_read(&device->active_cnt) ||
 		device->cff_dump_enable) {
 		kgsl_mmu_device_setstate(&device->mmu, flags);
 		return;
@@ -1794,11 +1794,6 @@ static int adreno_start(struct kgsl_device *device)
 	if (status)
 		goto error_irq_off;
 
-	/* While fault tolerance is on we do not want timer to
-	 * fire and attempt to change any device state */
-	if (KGSL_STATE_DUMP_AND_FT != device->state)
-		mod_timer(&device->idle_timer, jiffies + FIRST_TIMEOUT);
-
 	mod_timer(&device->hang_timer,
 		(jiffies + msecs_to_jiffies(KGSL_TIMEOUT_PART)));
 
@@ -2596,6 +2591,16 @@ adreno_ft(struct kgsl_device *device,
 	struct adreno_ringbuffer *rb = &adreno_dev->ringbuffer;
 	unsigned int timestamp;
 
+	/*
+	 * If GPU FT is turned off do not run FT.
+	 * If GPU stall detection is suspected to be false,
+	 * we can use this option to confirm stall detection.
+	 */
+	if (ft_data->ft_policy & KGSL_FT_OFF) {
+		KGSL_FT_ERR(device, "GPU FT turned off\n");
+		return 0;
+	}
+
 	KGSL_FT_INFO(device,
 	"Start Parameters: IB1: 0x%X, "
 	"Bad context_id: %u, global_eop: 0x%x\n",
@@ -2670,6 +2675,12 @@ adreno_dump_and_exec_ft(struct kgsl_device *device)
 		if (device->state != KGSL_STATE_HUNG)
 			result = 0;
 	} else {
+		/*
+		 * While fault tolerance is happening we do not want the
+		 * idle_timer to fire and attempt to change any device state
+		 */
+		del_timer_sync(&device->idle_timer);
+
 		kgsl_pwrctrl_set_state(device, KGSL_STATE_DUMP_AND_FT);
 		INIT_COMPLETION(device->ft_gate);
 		/* Detected a hang */
@@ -2681,11 +2692,6 @@ adreno_dump_and_exec_ft(struct kgsl_device *device)
 
 		/* Get the fault tolerance data as soon as hang is detected */
 		adreno_setup_ft_data(device, &ft_data);
-		/*
-		 * Trigger an automatic dump of the state to
-		 * the console
-		 */
-		kgsl_postmortem_dump(device, 0);
 
 		/*
 		 * If long ib is detected, do not attempt postmortem or
@@ -2717,7 +2723,6 @@ adreno_dump_and_exec_ft(struct kgsl_device *device)
 			kgsl_pwrctrl_set_state(device, KGSL_STATE_HUNG);
 		} else {
 			kgsl_pwrctrl_set_state(device, KGSL_STATE_ACTIVE);
-			mod_timer(&device->idle_timer, jiffies + FIRST_TIMEOUT);
 			mod_timer(&device->hang_timer,
 				(jiffies +
 				msecs_to_jiffies(KGSL_TIMEOUT_PART)));
@@ -2875,6 +2880,7 @@ static int adreno_ringbuffer_drain(struct kgsl_device *device,
 	struct adreno_ringbuffer *rb = &adreno_dev->ringbuffer;
 	unsigned long wait;
 	unsigned long timeout = jiffies + msecs_to_jiffies(ADRENO_IDLE_TIMEOUT);
+	unsigned int rptr;
 
 	/*
 	 * The first time into the loop, wait for 100 msecs and kick wptr again
@@ -2893,14 +2899,13 @@ static int adreno_ringbuffer_drain(struct kgsl_device *device,
 
 			wait = jiffies + msecs_to_jiffies(KGSL_TIMEOUT_PART);
 		}
-		GSL_RB_GET_READPTR(rb, &rb->rptr);
-
+		rptr = adreno_get_rptr(rb);
 		if (time_after(jiffies, timeout)) {
 			KGSL_DRV_ERR(device, "rptr: %x, wptr: %x\n",
-				rb->rptr, rb->wptr);
+				rptr, rb->wptr);
 			return -ETIMEDOUT;
 		}
-	} while (rb->rptr != rb->wptr);
+	} while (rptr != rb->wptr);
 
 	return 0;
 }
@@ -3000,8 +3005,8 @@ static unsigned int adreno_isidle(struct kgsl_device *device)
 	/* If the device isn't active, don't force it on. */
 	if (device->state == KGSL_STATE_ACTIVE) {
 		/* Is the ring buffer is empty? */
-		GSL_RB_GET_READPTR(rb, &rb->rptr);
-		if (rb->rptr == rb->wptr) {
+		unsigned int rptr = adreno_get_rptr(rb);
+		if (rptr == rb->wptr) {
 			/*
 			 * Are there interrupts pending? If so then pretend we
 			 * are not idle - this avoids the possiblity that we go

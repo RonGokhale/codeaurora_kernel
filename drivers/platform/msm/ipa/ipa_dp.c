@@ -32,6 +32,8 @@ static void replenish_rx_work_func(struct work_struct *work);
 static struct delayed_work replenish_rx_work;
 static void ipa_wq_handle_rx(struct work_struct *work);
 static DECLARE_WORK(rx_work, ipa_wq_handle_rx);
+static void ipa_wq_handle_tx(struct work_struct *work);
+static DECLARE_WORK(tx_work, ipa_wq_handle_tx);
 /**
  * ipa_write_done() - this function will be (eventually) called when a Tx
  * operation is complete
@@ -205,9 +207,7 @@ static void ipa_handle_tx(struct ipa_sys_context *sys)
 
 static void ipa_wq_handle_tx(struct work_struct *work)
 {
-	struct ipa_tx_pkt_wrapper *tx_pkt;
-	tx_pkt = container_of(work, struct ipa_tx_pkt_wrapper, work);
-	ipa_handle_tx(tx_pkt->sys);
+	ipa_handle_tx(&ipa_ctx->sys[IPA_A5_LAN_WAN_OUT]);
 }
 
 /**
@@ -296,14 +296,11 @@ int ipa_send_one(struct ipa_sys_context *sys, struct ipa_desc *desc,
 		IPADBG("sending cmd=%d pyld_len=%d sps_flags=%x\n",
 				desc->opcode, desc->len, sps_flags);
 		IPA_DUMP_BUFF(desc->pyld, dma_address, desc->len);
-		INIT_WORK(&tx_pkt->work, ipa_wq_write_done);
 	} else {
 		len = desc->len;
-		INIT_WORK(&tx_pkt->work, ipa_wq_handle_tx);
 	}
 
-	if (unlikely(ipa_ctx->polling_mode))
-		INIT_WORK(&tx_pkt->work, ipa_wq_handle_tx);
+	INIT_WORK(&tx_pkt->work, ipa_wq_write_done);
 
 	spin_lock_irqsave(&sys->spinlock, irq_flags);
 	list_add_tail(&tx_pkt->link, &sys->head_desc_list);
@@ -401,7 +398,6 @@ int ipa_send(struct ipa_sys_context *sys, u32 num_desc, struct ipa_desc *desc,
 			tx_pkt->mult.size = size;
 			tx_pkt->cnt = num_desc;
 		}
-		INIT_WORK(&tx_pkt->work, ipa_wq_handle_tx);
 
 		iovec = &transfer.iovec[i];
 		iovec->flags = 0;
@@ -597,14 +593,12 @@ bail:
 static void ipa_sps_irq_tx_notify(struct sps_event_notify *notify)
 {
 	struct ipa_sys_context *sys = &ipa_ctx->sys[IPA_A5_LAN_WAN_OUT];
-	struct ipa_tx_pkt_wrapper *tx_pkt;
 	int ret;
 
 	IPADBG("event %d notified\n", notify->event_id);
 
 	switch (notify->event_id) {
 	case SPS_EVENT_EOT:
-		tx_pkt = notify->data.transfer.user;
 		if (!atomic_read(&sys->curr_polling_state)) {
 			ret = sps_get_config(sys->ep->ep_hdl,
 					&sys->ep->connect);
@@ -621,7 +615,7 @@ static void ipa_sps_irq_tx_notify(struct sps_event_notify *notify)
 				break;
 			}
 			atomic_set(&sys->curr_polling_state, 1);
-			queue_work(ipa_ctx->tx_wq, &tx_pkt->work);
+			queue_work(ipa_ctx->tx_wq, &tx_work);
 		}
 		break;
 	default:
@@ -680,8 +674,6 @@ int ipa_handle_rx_core(struct ipa_sys_context *sys, bool process_all,
 	int ret;
 	struct ipa_ep_context *ep;
 	int cnt = 0;
-	struct completion *compl;
-	struct ipa_tree_node *node;
 	unsigned int src_pipe;
 
 	while ((in_poll_state ? atomic_read(&sys->curr_polling_state) :
@@ -735,35 +727,6 @@ int ipa_handle_rx_core(struct ipa_sys_context *sys, bool process_all,
 
 		IPA_STATS_INC_CNT(ipa_ctx->stats.rx_pkts);
 		IPA_STATS_EXCP_CNT(mux_hdr->flags, ipa_ctx->stats.rx_excp_pkts);
-
-		if (unlikely(mux_hdr->flags & IPA_A5_MUX_HDR_EXCP_FLAG_TAG)) {
-			if (ipa_ctx->ipa_hw_mode != IPA_HW_MODE_VIRTUAL) {
-				/* retrieve the compl object from tag value */
-				mux_hdr++;
-				compl = (struct completion *)
-					ntohl(*((u32 *)mux_hdr));
-				IPADBG("%x %x %p\n", *(u32 *)mux_hdr,
-						*((u32 *)mux_hdr + 1), compl);
-
-				mutex_lock(&ipa_ctx->lock);
-				node = ipa_search(&ipa_ctx->tag_tree,
-						(u32)compl);
-				if (node) {
-					complete_all(compl);
-					rb_erase(&node->node,
-							&ipa_ctx->tag_tree);
-					kmem_cache_free(
-						ipa_ctx->tree_node_cache, node);
-				} else {
-					WARN_ON(1);
-				}
-				mutex_unlock(&ipa_ctx->lock);
-			}
-			dev_kfree_skb(rx_skb);
-			ipa_replenish_rx_cache();
-			++cnt;
-			continue;
-		}
 
 		/*
 		 * Any packets arriving over AMPDU_TX should be dispatched

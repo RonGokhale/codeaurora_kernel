@@ -41,6 +41,7 @@ enum {
 static DEFINE_MUTEX(mdss_mdp_ctl_lock);
 
 static int mdss_mdp_mixer_free(struct mdss_mdp_mixer *mixer);
+static inline int __mdss_mdp_ctl_get_mixer_off(struct mdss_mdp_mixer *mixer);
 
 static inline void mdp_mixer_write(struct mdss_mdp_mixer *mixer,
 				   u32 reg, u32 val)
@@ -339,6 +340,7 @@ static int mdss_mdp_ctl_free(struct mdss_mdp_ctl *ctl)
 	mutex_lock(&mdss_mdp_ctl_lock);
 	ctl->ref_cnt--;
 	ctl->intf_num = MDSS_MDP_NO_INTF;
+	ctl->intf_type = MDSS_MDP_NO_INTF;
 	ctl->is_secure = false;
 	ctl->power_on = false;
 	ctl->start_fnc = NULL;
@@ -1043,6 +1045,7 @@ int mdss_mdp_ctl_stop(struct mdss_mdp_ctl *ctl)
 {
 	struct mdss_mdp_ctl *sctl;
 	int ret = 0;
+	u32 off;
 
 	if (!ctl->power_on) {
 		pr_debug("%s %d already off!\n", __func__, __LINE__);
@@ -1076,12 +1079,13 @@ int mdss_mdp_ctl_stop(struct mdss_mdp_ctl *ctl)
 			mdss_mdp_ctl_write(sctl, MDSS_MDP_REG_CTL_TOP, 0);
 
 		if (ctl->mixer_left) {
-			mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_LAYER(
-					ctl->mixer_left->num), 0);
+			off = __mdss_mdp_ctl_get_mixer_off(ctl->mixer_left);
+			mdss_mdp_ctl_write(ctl, off, 0);
 		}
+
 		if (ctl->mixer_right) {
-			mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_LAYER(
-					ctl->mixer_right->num), 0);
+			off = __mdss_mdp_ctl_get_mixer_off(ctl->mixer_right);
+			mdss_mdp_ctl_write(ctl, off, 0);
 		}
 
 		ctl->power_on = false;
@@ -1185,11 +1189,7 @@ static int mdss_mdp_mixer_setup(struct mdss_mdp_ctl *ctl,
 	ctl->flush_bits |= BIT(6) << mixer->num;	/* LAYER_MIXER */
 
 	mdp_mixer_write(mixer, MDSS_MDP_REG_LM_OP_MODE, blend_color_out);
-	if (mixer->type == MDSS_MDP_MIXER_TYPE_INTF)
-		off = MDSS_MDP_REG_CTL_LAYER(mixer->num);
-	else
-		off = MDSS_MDP_REG_CTL_LAYER(mixer->num +
-				MDSS_MDP_INTF_MAX_LAYERMIXER);
+	off = __mdss_mdp_ctl_get_mixer_off(mixer);
 	mdss_mdp_ctl_write(ctl, off, mixercfg);
 
 	return 0;
@@ -1620,3 +1620,11 @@ int mdss_mdp_get_ctl_mixers(u32 fb_num, u32 *mixer_id)
 	return mixer_cnt;
 }
 
+static inline int __mdss_mdp_ctl_get_mixer_off(struct mdss_mdp_mixer *mixer)
+{
+	if (mixer->type == MDSS_MDP_MIXER_TYPE_INTF)
+		return MDSS_MDP_REG_CTL_LAYER(mixer->num);
+	else
+		return MDSS_MDP_REG_CTL_LAYER(mixer->num +
+				MDSS_MDP_INTF_MAX_LAYERMIXER);
+}
