@@ -293,17 +293,11 @@ enum {
 struct cgroupfs_root {
 	struct super_block *sb;
 
-	/*
-	 * The bitmask of subsystems intended to be attached to this
-	 * hierarchy
-	 */
+	/* The bitmask of subsystems attached to this hierarchy */
 	unsigned long subsys_mask;
 
 	/* Unique id for this hierarchy. */
 	int hierarchy_id;
-
-	/* The bitmask of subsystems currently attached to this hierarchy */
-	unsigned long actual_subsys_mask;
 
 	/* A list running through the attached subsystems */
 	struct list_head subsys_list;
@@ -392,9 +386,11 @@ struct cgroup_map_cb {
  */
 
 /* cftype->flags */
-#define CFTYPE_ONLY_ON_ROOT	(1U << 0)	/* only create on root cg */
-#define CFTYPE_NOT_ON_ROOT	(1U << 1)	/* don't create on root cg */
-#define CFTYPE_INSANE		(1U << 2)	/* don't create if sane_behavior */
+enum {
+	CFTYPE_ONLY_ON_ROOT	= (1 << 0),	/* only create on root cg */
+	CFTYPE_NOT_ON_ROOT	= (1 << 1),	/* don't create on root cg */
+	CFTYPE_INSANE		= (1 << 2),	/* don't create if sane_behavior */
+};
 
 #define MAX_CFTYPE_NAME		64
 
