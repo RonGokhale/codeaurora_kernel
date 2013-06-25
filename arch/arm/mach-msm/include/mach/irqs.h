@@ -38,7 +38,7 @@
 #endif
 
 #elif defined(CONFIG_ARCH_MSM8960) || defined(CONFIG_ARCH_APQ8064) || \
-	defined(CONFIG_ARCH_MSM8930)
+	defined(CONFIG_ARCH_MSM8930) || defined(CONFIG_ARCH_APQ8084)
 
 #ifdef CONFIG_ARCH_MSM8960
 #include "irqs-8960.h"
