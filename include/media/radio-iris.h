@@ -52,6 +52,9 @@
 #define FM_TX_PHY_CFG_MODE   0x3c
 #define FM_TX_PHY_CFG_LEN    0x10
 #define FM_TX_PWR_GAIN_OFFSET 14
+#define FM_AF_LIST_MAX_SIZE   200
+#define AF_LIST_MAX     (FM_AF_LIST_MAX_SIZE / 4) /* Each AF frequency consist
+							of sizeof(int) bytes */
 /* HCI timeouts */
 #define RADIO_HCI_TIMEOUT	(10000)	/* 10 seconds */
 
@@ -460,7 +463,7 @@ struct hci_ev_af_list {
 	__le32   tune_freq;
 	__le16   pi_code;
 	__u8    af_size;
-	__u8    af_list[25];
+	__u8    af_list[FM_AF_LIST_MAX_SIZE];
 } __packed;
 
 struct hci_ev_cmd_complete {
