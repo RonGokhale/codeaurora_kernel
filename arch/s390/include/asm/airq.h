@@ -23,4 +23,41 @@ struct airq_struct {
 int register_adapter_interrupt(struct airq_struct *airq);
 void unregister_adapter_interrupt(struct airq_struct *airq);
 
+/* Adapter interrupt bit vector */
+struct airq_iv {
+	unsigned long *vector;	/* Adapter interrupt bit vector */
+	unsigned long *avail;	/* Allocation bit mask for the bit vector */
+	unsigned int *data;	/* 32 bit value associated with each bit */
+	unsigned long bits;	/* Number of bits in the vector */
+	unsigned long end;	/* Number of highest allocated bit + 1 */
+	spinlock_t lock;	/* Lock to protect alloc & free */
+};
+
+#define AIRQ_IV_ALLOC	1	/* Use an allocation bit mask */
+#define AIRQ_IV_DATA	2	/* Allocate the data array */
+
+struct airq_iv *airq_iv_create(unsigned long bits, unsigned long flags);
+void airq_iv_release(struct airq_iv *iv);
+unsigned long airq_iv_alloc_bit(struct airq_iv *iv);
+void airq_iv_free_bit(struct airq_iv *iv, unsigned long bit);
+unsigned long airq_iv_scan(struct airq_iv *iv, unsigned long start,
+			   unsigned long end);
+
+static inline unsigned long airq_iv_end(struct airq_iv *iv)
+{
+	return iv->end;
+}
+
+static inline void airq_iv_set_data(struct airq_iv *iv, unsigned long bit,
+				    unsigned int data)
+{
+	iv->data[bit] = data;
+}
+
+static inline unsigned int airq_iv_get_data(struct airq_iv *iv,
+					    unsigned long bit)
+{
+	return iv->data[bit];
+}
+
 #endif /* _ASM_S390_AIRQ_H */
