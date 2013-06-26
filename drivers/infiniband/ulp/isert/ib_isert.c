@@ -1302,11 +1302,11 @@ static void
 isert_completion_put(struct iser_tx_desc *tx_desc, struct isert_cmd *isert_cmd,
 		     struct ib_device *ib_dev)
 {
-	if (isert_cmd->sense_buf_dma != 0) {
-		pr_debug("Calling ib_dma_unmap_single for isert_cmd->sense_buf_dma\n");
-		ib_dma_unmap_single(ib_dev, isert_cmd->sense_buf_dma,
-				    isert_cmd->sense_buf_len, DMA_TO_DEVICE);
-		isert_cmd->sense_buf_dma = 0;
+	if (isert_cmd->pdu_buf_dma != 0) {
+		pr_debug("Calling ib_dma_unmap_single for isert_cmd->pdu_buf_dma\n");
+		ib_dma_unmap_single(ib_dev, isert_cmd->pdu_buf_dma,
+				    isert_cmd->pdu_buf_len, DMA_TO_DEVICE);
+		isert_cmd->pdu_buf_dma = 0;
 	}
 
 	isert_unmap_tx_desc(tx_desc, ib_dev);
@@ -1612,12 +1612,12 @@ isert_put_response(struct iscsi_conn *conn, struct iscsi_cmd *cmd)
 		hton24(hdr->dlength, (u32)cmd->se_cmd.scsi_sense_length);
 		sense_len = cmd->se_cmd.scsi_sense_length + padding;
 
-		isert_cmd->sense_buf_dma = ib_dma_map_single(ib_dev,
+		isert_cmd->pdu_buf_dma = ib_dma_map_single(ib_dev,
 				(void *)cmd->sense_buffer, sense_len,
 				DMA_TO_DEVICE);
 
-		isert_cmd->sense_buf_len = sense_len;
-		tx_dsg->addr	= isert_cmd->sense_buf_dma;
+		isert_cmd->pdu_buf_len = sense_len;
+		tx_dsg->addr	= isert_cmd->pdu_buf_dma;
 		tx_dsg->length	= sense_len;
 		tx_dsg->lkey	= isert_conn->conn_mr->lkey;
 		isert_cmd->tx_desc.num_sge = 2;
@@ -1706,11 +1706,11 @@ isert_put_reject(struct iscsi_cmd *cmd, struct iscsi_conn *conn)
 	isert_init_tx_hdrs(isert_conn, &isert_cmd->tx_desc);
 
 	hton24(hdr->dlength, ISCSI_HDR_LEN);
-	isert_cmd->sense_buf_dma = ib_dma_map_single(ib_dev,
+	isert_cmd->pdu_buf_dma = ib_dma_map_single(ib_dev,
 			(void *)cmd->buf_ptr, ISCSI_HDR_LEN,
 			DMA_TO_DEVICE);
-	isert_cmd->sense_buf_len = ISCSI_HDR_LEN;
-	tx_dsg->addr	= isert_cmd->sense_buf_dma;
+	isert_cmd->pdu_buf_len = ISCSI_HDR_LEN;
+	tx_dsg->addr	= isert_cmd->pdu_buf_dma;
 	tx_dsg->length	= ISCSI_HDR_LEN;
 	tx_dsg->lkey	= isert_conn->conn_mr->lkey;
 	isert_cmd->tx_desc.num_sge = 2;
@@ -1747,11 +1747,11 @@ isert_put_text_rsp(struct iscsi_cmd *cmd, struct iscsi_conn *conn)
 		struct ib_sge *tx_dsg = &isert_cmd->tx_desc.tx_sg[1];
 		void *txt_rsp_buf = cmd->buf_ptr;
 
-		isert_cmd->sense_buf_dma = ib_dma_map_single(ib_dev,
+		isert_cmd->pdu_buf_dma = ib_dma_map_single(ib_dev,
 				txt_rsp_buf, txt_rsp_len, DMA_TO_DEVICE);
 
-		isert_cmd->sense_buf_len = txt_rsp_len;
-		tx_dsg->addr	= isert_cmd->sense_buf_dma;
+		isert_cmd->pdu_buf_len = txt_rsp_len;
+		tx_dsg->addr	= isert_cmd->pdu_buf_dma;
 		tx_dsg->length	= txt_rsp_len;
 		tx_dsg->lkey	= isert_conn->conn_mr->lkey;
 		isert_cmd->tx_desc.num_sge = 2;
