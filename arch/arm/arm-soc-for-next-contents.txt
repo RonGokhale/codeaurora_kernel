@@ -266,6 +266,8 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-dt2-for-v3.11
 	mvebu/dt6
 		git://git.infradead.org/users/jcooper/linux.git tags/dt-3.11-6
+	at91/dt3
+		git://github.com/at91linux/linux-at91.git tags/at91-dt
 
 next/drivers
 	ux500/dma40
