@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -464,6 +464,11 @@ int diag_process_dci_transaction(unsigned char *buf, int len)
 		pr_err("diag: DCI smd channel for peripheral %d not valid for dci updates\n",
 			driver->smd_dci[MODEM_DATA].peripheral);
 		return DIAG_DCI_SEND_DATA_FAIL;
+	}
+
+	if (!temp) {
+		pr_err("diag: Invalid buffer in %s\n", __func__);
+		return -ENOMEM;
 	}
 
 	/* This is Pkt request/response transaction */
