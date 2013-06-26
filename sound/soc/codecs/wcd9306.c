@@ -73,6 +73,9 @@ MODULE_PARM_DESC(spkr_drv_wrnd,
 #define TAPAN_SLIM_IRQ_OVERFLOW (1 << 0)
 #define TAPAN_SLIM_IRQ_UNDERFLOW (1 << 1)
 #define TAPAN_SLIM_IRQ_PORT_CLOSED (1 << 2)
+
+#define TAPAN_IRQ_MBHC_JACK_SWITCH 21
+
 enum {
 	AIF1_PB = 0,
 	AIF1_CAP,
@@ -303,18 +306,18 @@ static int spkr_drv_wrnd_param_set(const char *val,
 		return 0;
 	}
 
-	WCD9XXX_BCL_LOCK(&priv->resmgr);
+	codec = priv->codec;
+	mutex_lock(&codec->mutex);
 	old = spkr_drv_wrnd;
 	ret = param_set_int(val, kp);
 	if (ret) {
-		WCD9XXX_BCL_UNLOCK(&priv->resmgr);
+		mutex_unlock(&codec->mutex);
 		return ret;
 	}
 
-	codec = priv->codec;
 	dev_dbg(codec->dev, "%s: spkr_drv_wrnd %d -> %d\n",
 			__func__, old, spkr_drv_wrnd);
-	if (old == 0 && spkr_drv_wrnd == 1) {
+	if ((old == -1 || old == 0) && spkr_drv_wrnd == 1) {
 		WCD9XXX_BG_CLK_LOCK(&priv->resmgr);
 		wcd9xxx_resmgr_get_bandgap(&priv->resmgr,
 					   WCD9XXX_BANDGAP_AUDIO_MODE);
@@ -329,8 +332,8 @@ static int spkr_drv_wrnd_param_set(const char *val,
 			snd_soc_update_bits(codec, TAPAN_A_SPKR_DRV_EN, 0x80,
 					    0x00);
 	}
+	mutex_unlock(&codec->mutex);
 
-	WCD9XXX_BCL_UNLOCK(&priv->resmgr);
 	return 0;
 }
 
@@ -1698,7 +1701,6 @@ static int tapan_codec_enable_spk_pa(struct snd_soc_dapm_widget *w,
 	struct tapan_priv *tapan = snd_soc_codec_get_drvdata(codec);
 
 	dev_dbg(codec->dev, "%s: %s %d\n", __func__, w->name, event);
-	WCD9XXX_BCL_LOCK(&tapan->resmgr);
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
 		tapan->spkr_pa_widget_on = true;
@@ -1709,7 +1711,6 @@ static int tapan_codec_enable_spk_pa(struct snd_soc_dapm_widget *w,
 		snd_soc_update_bits(codec, TAPAN_A_SPKR_DRV_EN, 0x80, 0x00);
 		break;
 	}
-	WCD9XXX_BCL_UNLOCK(&tapan->resmgr);
 	return 0;
 }
 
@@ -4450,6 +4451,72 @@ static void tapan_cleanup_irqs(struct tapan_priv *tapan)
 	wcd9xxx_free_irq(codec->control_data, WCD9XXX_IRQ_SLIMBUS, tapan);
 }
 
+
+static void tapan_enable_mux_bias_block(struct snd_soc_codec *codec)
+{
+	snd_soc_update_bits(codec, WCD9XXX_A_MBHC_SCALING_MUX_1,
+			    0x80, 0x00);
+}
+
+static void tapan_put_cfilt_fast_mode(struct snd_soc_codec *codec,
+				      struct wcd9xxx_mbhc *mbhc)
+{
+	snd_soc_update_bits(codec, mbhc->mbhc_bias_regs.cfilt_ctl,
+			    0x30, 0x30);
+}
+
+static void tapan_codec_specific_cal_setup(struct snd_soc_codec *codec,
+					   struct wcd9xxx_mbhc *mbhc)
+{
+	snd_soc_update_bits(codec, WCD9XXX_A_CDC_MBHC_B1_CTL,
+			    0x0C, 0x04);
+	snd_soc_update_bits(codec, WCD9XXX_A_TX_7_MBHC_EN, 0xE0, 0xE0);
+}
+
+static int tapan_get_jack_detect_irq(struct snd_soc_codec *codec)
+{
+	return TAPAN_IRQ_MBHC_JACK_SWITCH;
+}
+
+static struct wcd9xxx_cfilt_mode tapan_codec_switch_cfilt_mode(
+				 struct wcd9xxx_mbhc *mbhc,
+				 bool fast)
+{
+	struct snd_soc_codec *codec = mbhc->codec;
+	struct wcd9xxx_cfilt_mode cfilt_mode;
+
+	if (fast)
+		cfilt_mode.reg_mode_val = WCD9XXX_CFILT_EXT_PRCHG_EN;
+	else
+		cfilt_mode.reg_mode_val = WCD9XXX_CFILT_EXT_PRCHG_DSBL;
+
+	cfilt_mode.cur_mode_val =
+		snd_soc_read(codec, mbhc->mbhc_bias_regs.cfilt_ctl) & 0x30;
+	return cfilt_mode;
+}
+
+static void tapan_select_cfilt(struct snd_soc_codec *codec,
+			       struct wcd9xxx_mbhc *mbhc)
+{
+	snd_soc_update_bits(codec, mbhc->mbhc_bias_regs.ctl_reg, 0x60, 0x00);
+}
+
+static void tapan_free_irq(struct wcd9xxx_mbhc *mbhc)
+{
+	void *cdata = mbhc->codec->control_data;
+	wcd9xxx_free_irq(cdata, WCD9306_IRQ_MBHC_JACK_SWITCH, mbhc);
+}
+
+static const struct wcd9xxx_mbhc_cb mbhc_cb = {
+	.enable_mux_bias_block = tapan_enable_mux_bias_block,
+	.cfilt_fast_mode = tapan_put_cfilt_fast_mode,
+	.codec_specific_cal = tapan_codec_specific_cal_setup,
+	.jack_detect_irq = tapan_get_jack_detect_irq,
+	.switch_cfilt_mode = tapan_codec_switch_cfilt_mode,
+	.select_cfilt = tapan_select_cfilt,
+	.free_irq = tapan_free_irq,
+};
+
 int tapan_hs_detect(struct snd_soc_codec *codec,
 		    struct wcd9xxx_mbhc_config *mbhc_cfg)
 {
@@ -4468,7 +4535,6 @@ static int tapan_post_reset_cb(struct wcd9xxx *wcd9xxx)
 	codec = (struct snd_soc_codec *)(wcd9xxx->ssr_priv);
 	tapan = snd_soc_codec_get_drvdata(codec);
 	mutex_lock(&codec->mutex);
-	WCD9XXX_BCL_LOCK(&tapan->resmgr);
 
 	if (codec->reg_def_copy) {
 		pr_debug("%s: Update ASOC cache", __func__);
@@ -4477,7 +4543,6 @@ static int tapan_post_reset_cb(struct wcd9xxx *wcd9xxx)
 						codec->reg_size, GFP_KERNEL);
 		if (!codec->reg_cache) {
 			pr_err("%s: Cache update failed!\n", __func__);
-			WCD9XXX_BCL_UNLOCK(&tapan->resmgr);
 			mutex_unlock(&codec->mutex);
 			return -ENOMEM;
 		}
@@ -4486,7 +4551,6 @@ static int tapan_post_reset_cb(struct wcd9xxx *wcd9xxx)
 	wcd9xxx_resmgr_post_ssr(&tapan->resmgr);
 	if (spkr_drv_wrnd == 1)
 		snd_soc_update_bits(codec, TAPAN_A_SPKR_DRV_EN, 0x80, 0x80);
-	WCD9XXX_BCL_UNLOCK(&tapan->resmgr);
 
 	tapan_update_reg_defaults(codec);
 	tapan_update_reg_mclk_rate(wcd9xxx);
@@ -4505,8 +4569,7 @@ static int tapan_post_reset_cb(struct wcd9xxx *wcd9xxx)
 		rco_clk_rate = TAPAN_MCLK_CLK_9P6MHZ;
 
 	ret = wcd9xxx_mbhc_init(&tapan->mbhc, &tapan->resmgr, codec, NULL,
-				WCD9XXX_MBHC_VERSION_TAPAN,
-				rco_clk_rate);
+				&mbhc_cb, rco_clk_rate);
 	if (ret)
 		pr_err("%s: mbhc init failed %d\n", __func__, ret);
 	else
@@ -4578,8 +4641,8 @@ static int tapan_codec_probe(struct snd_soc_codec *codec)
 		rco_clk_rate = TAPAN_MCLK_CLK_9P6MHZ;
 
 	ret = wcd9xxx_mbhc_init(&tapan->mbhc, &tapan->resmgr, codec, NULL,
-				WCD9XXX_MBHC_VERSION_TAPAN,
-				rco_clk_rate);
+				&mbhc_cb, rco_clk_rate);
+
 	if (ret) {
 		pr_err("%s: mbhc init failed %d\n", __func__, ret);
 		return ret;

@@ -42,6 +42,20 @@
 #define MSM_VENDOR_ID			BIT(16)
 
 /**
+ * Requested USB votes for BUS bandwidth
+ *
+ * USB_NO_PERF_VOTE     BUS Vote for inactive USB session or disconnect
+ * USB_MAX_PERF_VOTE    Maximum BUS bandwidth vote
+ * USB_MIN_PERF_VOTE    Minimum BUS bandwidth vote (for some hw same as NO_PERF)
+ *
+ */
+enum usb_bus_vote {
+	USB_NO_PERF_VOTE = 0,
+	USB_MAX_PERF_VOTE,
+	USB_MIN_PERF_VOTE,
+};
+
+/**
  * Supported USB modes
  *
  * USB_PERIPHERAL       Only peripheral mode is supported.
@@ -207,6 +221,7 @@ enum usb_vdd_value {
  * @log2_itc: value of 2^(log2_itc-1) will be used as the
  *              interrupt threshold (ITC), when log2_itc is
  *              between 1 to 7.
+ * @l1_supported: enable link power management support.
  */
 struct msm_otg_platform_data {
 	int *phy_init_seq;
@@ -231,6 +246,7 @@ struct msm_otg_platform_data {
 	struct msm_bus_scale_pdata *bus_scale_table;
 	const char *mhl_dev_name;
 	int log2_itc;
+	bool l1_supported;
 };
 
 /* phy related flags */
@@ -414,6 +430,7 @@ struct ci13xxx_platform_data {
 	 */
 	int log2_itc;
 	void *prv_data;
+	bool l1_supported;
 };
 
 struct msm_hsic_host_platform_data {

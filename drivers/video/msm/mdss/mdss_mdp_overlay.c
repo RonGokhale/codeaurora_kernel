@@ -180,6 +180,11 @@ static int mdss_mdp_overlay_req_check(struct msm_fb_data_type *mfd,
 				pr_err("BWC: unequal src img and rect w,h\n");
 				return -EINVAL;
 			}
+
+			if (req->flags & MDP_DECIMATION_EN) {
+				pr_err("Can't enable BWC decode && decimate\n");
+				return -EINVAL;
+			}
 		}
 
 		if (req->flags & MDP_DEINTERLACE) {
@@ -283,7 +288,7 @@ static int mdss_mdp_overlay_rotator_setup(struct msm_fb_data_type *mfd,
 		req->id = rot->session_id;
 	} else {
 		pr_err("Unable to setup rotator session\n");
-		mdss_mdp_rotator_release(rot->session_id);
+		mdss_mdp_rotator_release(rot);
 	}
 
 	return ret;
@@ -310,6 +315,30 @@ static int __mdp_pipe_tune_perf(struct mdss_mdp_pipe *pipe)
 			pipe->vert_deci++;
 		else
 			return -EPERM;
+	}
+
+	return 0;
+}
+
+static int __mdss_mdp_overlay_setup_scaling(struct mdss_mdp_pipe *pipe)
+{
+	u32 src;
+	int rc;
+
+	src = pipe->src.w >> pipe->horz_deci;
+	rc = mdss_mdp_calc_phase_step(src, pipe->dst.w, &pipe->phase_step_x);
+	if (rc) {
+		pr_err("Horizontal scaling calculation failed=%d! %d->%d\n",
+				rc, src, pipe->dst.w);
+		return rc;
+	}
+
+	src = pipe->src.h >> pipe->vert_deci;
+	rc = mdss_mdp_calc_phase_step(src, pipe->dst.h, &pipe->phase_step_y);
+	if (rc) {
+		pr_err("Vertical scaling calculation failed=%d! %d->%d\n",
+				rc, src, pipe->dst.h);
+		return rc;
 	}
 
 	return 0;
@@ -534,6 +563,10 @@ static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 		pr_debug("unable to satisfy performance. ret=%d\n", ret);
 		goto exit_fail;
 	}
+
+	ret = __mdss_mdp_overlay_setup_scaling(pipe);
+	if (ret)
+		goto exit_fail;
 
 	ret = mdss_mdp_smp_reserve(pipe);
 	if (ret) {
@@ -861,10 +894,17 @@ static int mdss_mdp_overlay_unset(struct msm_fb_data_type *mfd, int ndx)
 
 	pr_debug("unset ndx=%x\n", ndx);
 
-	if (ndx & MDSS_MDP_ROT_SESSION_MASK)
-		ret = mdss_mdp_rotator_release(ndx);
-	else
+	if (ndx & MDSS_MDP_ROT_SESSION_MASK) {
+		struct mdss_mdp_rotator_session *rot;
+		rot = mdss_mdp_rotator_session_get(ndx);
+		if (rot) {
+			mdss_mdp_overlay_free_buf(&rot->src_buf);
+			mdss_mdp_overlay_free_buf(&rot->dst_buf);
+			ret = mdss_mdp_rotator_release(rot);
+		}
+	} else {
 		ret = mdss_mdp_overlay_release(mfd, ndx);
+	}
 
 done:
 	mutex_unlock(&mdp5_data->ov_lock);
@@ -925,7 +965,6 @@ static int mdss_mdp_overlay_rotate(struct msm_fb_data_type *mfd,
 				   struct msmfb_overlay_data *req)
 {
 	struct mdss_mdp_rotator_session *rot;
-	struct mdss_mdp_data src_data, dst_data;
 	int ret;
 	u32 flgs;
 
@@ -937,26 +976,26 @@ static int mdss_mdp_overlay_rotate(struct msm_fb_data_type *mfd,
 
 	flgs = rot->flags & MDP_SECURE_OVERLAY_SESSION;
 
-	ret = mdss_mdp_overlay_get_buf(mfd, &src_data, &req->data, 1, flgs);
+	mdss_mdp_overlay_free_buf(&rot->src_buf);
+	ret = mdss_mdp_overlay_get_buf(mfd, &rot->src_buf, &req->data, 1, flgs);
 	if (ret) {
 		pr_err("src_data pmem error\n");
 		return ret;
 	}
 
-	ret = mdss_mdp_overlay_get_buf(mfd, &dst_data, &req->dst_data, 1, flgs);
+	mdss_mdp_overlay_free_buf(&rot->dst_buf);
+	ret = mdss_mdp_overlay_get_buf(mfd, &rot->dst_buf,
+			&req->dst_data, 1, flgs);
 	if (ret) {
 		pr_err("dst_data pmem error\n");
 		goto dst_buf_fail;
 	}
 
-	ret = mdss_mdp_rotator_queue(rot, &src_data, &dst_data);
+	ret = mdss_mdp_rotator_queue(rot, &rot->src_buf, &rot->dst_buf);
 	if (ret)
 		pr_err("rotator queue error session id=%x\n", req->id);
 
-	mdss_mdp_overlay_free_buf(&dst_data);
 dst_buf_fail:
-	mdss_mdp_overlay_free_buf(&src_data);
-
 	return ret;
 }
 
