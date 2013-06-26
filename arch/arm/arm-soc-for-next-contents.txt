@@ -34,6 +34,10 @@ next/fixes-non-critical
 		git://github.com/at91linux/linux-at91.git tags/at91-fixes
 	exynos/fixes
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/non-critical-fixes-1
+	patches
+		ARM: mxs: don't select HAVE_PWM
+		ARM: mxs: stub out mxs_pm_init for !CONFIG_PM
+		cpuidle: calxeda: select ARM_CPU_SUSPEND
 
 next/cleanup
 	at91/cleanup
@@ -190,6 +194,15 @@ next/boards
 		git://git.xilinx.com/linux-xlnx.git tags/zynq-defconfig-for-3.11
 	mvebu/regmap2
 		git://git.infradead.org/users/jcooper/linux.git tags/regmap-3.11-2
+	patches
+		ARM: multiplatform: always pick one CPU type
+		ARM: imx: select syscon for IMX6SL
+		ARM: keystone: select ARM_ERRATA_798181 only for SMP
+		ARM: imx: Synertronixx scb9328 needs to select SOC_IMX1
+		ARM: OMAP2+: AM43x: resolve SMP related build error
+		ARM: keystone: Move CPU bringup code to dedicated asm file
+	davinci/soc2
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci.git tags/davinci-for-v3.11/soc-2
 
 next/dt
 	nomadik/dt
