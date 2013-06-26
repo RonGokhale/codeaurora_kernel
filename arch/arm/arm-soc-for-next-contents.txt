@@ -160,6 +160,11 @@ i	sunxi/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip.git tags/v3.11-rockchip-basics
 	renesas/soc-cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-cleanup-boot-for-v3.11
+	patches
+		ARM: dts: Add pcie controller node for exynos5440-ssdk5440
+		ARM: dts: Add pcie controller node for Samsung EXYNOS5440 SoC
+		ARM: EXYNOS: Enable PCIe support for Exynos5440
+		pci: Add PCIe driver for Samsung Exynos
 
 next/boards
 	mvebu/boards
