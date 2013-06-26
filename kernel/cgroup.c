@@ -724,7 +724,7 @@ static struct cgroup *task_cgroup_from_root(struct task_struct *task,
 	 * task can't change groups, so the only thing that can happen
 	 * is that it exits and its css is set back to init_css_set.
 	 */
-	cset = task->cgroups;
+	cset = task_css_set(task);
 	if (cset == &init_css_set) {
 		res = &root->top_cgroup;
 	} else {
@@ -1427,7 +1427,7 @@ static void init_cgroup_root(struct cgroupfs_root *root)
 	INIT_LIST_HEAD(&root->root_list);
 	root->number_of_cgroups = 1;
 	cgrp->root = root;
-	cgrp->name = &root_cgroup_name;
+	RCU_INIT_POINTER(cgrp->name, &root_cgroup_name);
 	init_cgroup_housekeeping(cgrp);
 }
 
@@ -1971,7 +1971,7 @@ static void cgroup_task_migrate(struct cgroup *old_cgrp,
 	 * css_set to init_css_set and dropping the old one.
 	 */
 	WARN_ON_ONCE(tsk->flags & PF_EXITING);
-	old_cset = tsk->cgroups;
+	old_cset = task_css_set(tsk);
 
 	task_lock(tsk);
 	rcu_assign_pointer(tsk->cgroups, new_cset);
@@ -2094,8 +2094,11 @@ static int cgroup_attach_task(struct cgroup *cgrp, struct task_struct *tsk,
 	 * we use find_css_set, which allocates a new one if necessary.
 	 */
 	for (i = 0; i < group_size; i++) {
+		struct css_set *old_cset;
+
 		tc = flex_array_get(group, i);
-		tc->cg = find_css_set(tc->task->cgroups, cgrp);
+		old_cset = task_css_set(tc->task);
+		tc->cg = find_css_set(old_cset, cgrp);
 		if (!tc->cg) {
 			retval = -ENOMEM;
 			goto out_put_css_set_refs;
@@ -2555,7 +2558,7 @@ static int cgroup_rename(struct inode *old_dir, struct dentry *old_dentry,
 		return ret;
 	}
 
-	old_name = cgrp->name;
+	old_name = rcu_dereference_protected(cgrp->name, true);
 	rcu_assign_pointer(cgrp->name, name);
 
 	kfree_rcu(old_name, rcu_head);
@@ -3012,7 +3015,7 @@ static void cgroup_enable_task_cg_lists(void)
 		 * entry won't be deleted though the process has exited.
 		 */
 		if (!(p->flags & PF_EXITING) && list_empty(&p->cg_list))
-			list_add(&p->cg_list, &p->cgroups->tasks);
+			list_add(&p->cg_list, &task_css_set(p)->tasks);
 		task_unlock(p);
 	} while_each_thread(g, p);
 	read_unlock(&tasklist_lock);
@@ -4174,13 +4177,15 @@ static int cgroup_populate_dir(struct cgroup *cgrp, bool base_files,
 	/* This cgroup is ready now */
 	for_each_root_subsys(cgrp->root, ss) {
 		struct cgroup_subsys_state *css = cgrp->subsys[ss->subsys_id];
+		struct css_id *id = rcu_dereference_protected(css->id, true);
+
 		/*
 		 * Update id->css pointer and make this css visible from
 		 * CSS ID functions. This pointer will be dereferened
 		 * from RCU-read-side without locks.
 		 */
-		if (css->id)
-			rcu_assign_pointer(css->id->css, css);
+		if (id)
+			rcu_assign_pointer(id->css, css);
 	}
 
 	return 0;
@@ -4860,7 +4865,7 @@ int __init cgroup_init_early(void)
 	css_set_count = 1;
 	init_cgroup_root(&cgroup_dummy_root);
 	cgroup_root_count = 1;
-	init_task.cgroups = &init_css_set;
+	RCU_INIT_POINTER(init_task.cgroups, &init_css_set);
 
 	init_cgrp_cset_link.cset = &init_css_set;
 	init_cgrp_cset_link.cgrp = cgroup_dummy_top;
@@ -5061,8 +5066,8 @@ static const struct file_operations proc_cgroupstats_operations = {
 void cgroup_fork(struct task_struct *child)
 {
 	task_lock(current);
+	get_css_set(task_css_set(current));
 	child->cgroups = current->cgroups;
-	get_css_set(child->cgroups);
 	task_unlock(current);
 	INIT_LIST_HEAD(&child->cg_list);
 }
@@ -5097,7 +5102,7 @@ void cgroup_post_fork(struct task_struct *child)
 		write_lock(&css_set_lock);
 		task_lock(child);
 		if (list_empty(&child->cg_list))
-			list_add(&child->cg_list, &child->cgroups->tasks);
+			list_add(&child->cg_list, &task_css_set(child)->tasks);
 		task_unlock(child);
 		write_unlock(&css_set_lock);
 	}
@@ -5177,8 +5182,8 @@ void cgroup_exit(struct task_struct *tsk, int run_callbacks)
 
 	/* Reassign the task to the init_css_set. */
 	task_lock(tsk);
-	cset = tsk->cgroups;
-	tsk->cgroups = &init_css_set;
+	cset = task_css_set(tsk);
+	RCU_INIT_POINTER(tsk->cgroups, &init_css_set);
 
 	if (run_callbacks && need_forkexit_callback) {
 		/*
@@ -5187,8 +5192,7 @@ void cgroup_exit(struct task_struct *tsk, int run_callbacks)
 		 */
 		for_each_builtin_subsys(ss, i) {
 			if (ss->exit) {
-				struct cgroup *old_cgrp =
-					rcu_dereference_raw(cset->subsys[i])->cgroup;
+				struct cgroup *old_cgrp = cset->subsys[i]->cgroup;
 				struct cgroup *cgrp = task_cgroup(tsk, i);
 
 				ss->exit(cgrp, old_cgrp, tsk);
@@ -5378,7 +5382,8 @@ bool css_is_ancestor(struct cgroup_subsys_state *child,
 
 void free_css_id(struct cgroup_subsys *ss, struct cgroup_subsys_state *css)
 {
-	struct css_id *id = css->id;
+	struct css_id *id = rcu_dereference_protected(css->id, true);
+
 	/* When this is called before css_id initialization, id can be NULL */
 	if (!id)
 		return;
@@ -5444,8 +5449,8 @@ static int __init_or_module cgroup_init_idr(struct cgroup_subsys *ss,
 		return PTR_ERR(newid);
 
 	newid->stack[0] = newid->id;
-	newid->css = rootcss;
-	rootcss->id = newid;
+	RCU_INIT_POINTER(newid->css, rootcss);
+	RCU_INIT_POINTER(rootcss->id, newid);
 	return 0;
 }
 
@@ -5459,7 +5464,7 @@ static int alloc_css_id(struct cgroup_subsys *ss, struct cgroup *parent,
 	subsys_id = ss->subsys_id;
 	parent_css = parent->subsys[subsys_id];
 	child_css = child->subsys[subsys_id];
-	parent_id = parent_css->id;
+	parent_id = rcu_dereference_protected(parent_css->id, true);
 	depth = parent_id->depth + 1;
 
 	child_id = get_new_cssid(ss, depth);
@@ -5555,7 +5560,7 @@ static u64 current_css_set_refcount_read(struct cgroup *cgrp,
 	u64 count;
 
 	rcu_read_lock();
-	count = atomic_read(&current->cgroups->refcount);
+	count = atomic_read(&task_css_set(current)->refcount);
 	rcu_read_unlock();
 	return count;
 }
