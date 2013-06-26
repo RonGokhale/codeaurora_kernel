@@ -203,6 +203,8 @@ next/boards
 		ARM: keystone: Move CPU bringup code to dedicated asm file
 	davinci/soc2
 		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci.git tags/davinci-for-v3.11/soc-2
+	omap/voltdm
+		git://git.kernel.org/pub/scm/linux/kernel/git/khilman/linux-omap-pm.git tags/omap-pm-v3.11/fixes/omap5-voltdm
 
 next/dt
 	nomadik/dt
