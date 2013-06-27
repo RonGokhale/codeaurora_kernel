@@ -335,6 +335,8 @@ next/late
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-sh-sci-for-v3.11
 	patches
 		ARM: ux500: bail out on alien cpus
+	davinci/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci davinci-for-v3.11/dt
 
 PATCH DIRECTLY ON for-next:
 	ARM: Make multi_v7_defconfig usable on hardware
