@@ -38,6 +38,8 @@ next/fixes-non-critical
 		ARM: mxs: don't select HAVE_PWM
 		ARM: mxs: stub out mxs_pm_init for !CONFIG_PM
 		cpuidle: calxeda: select ARM_CPU_SUSPEND
+	at91/fixes2
+		git://github.com/at91linux/linux-at91.git tags/at91-fixes
 
 next/cleanup
 	at91/cleanup
