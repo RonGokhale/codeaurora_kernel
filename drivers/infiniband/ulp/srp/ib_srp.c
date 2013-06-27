@@ -1744,18 +1744,23 @@ static int srp_abort(struct scsi_cmnd *scmnd)
 {
 	struct srp_target_port *target = host_to_target(scmnd->device->host);
 	struct srp_request *req = (struct srp_request *) scmnd->host_scribble;
+	int ret;
 
 	shost_printk(KERN_ERR, target->scsi_host, "SRP abort called\n");
 
 	if (!req || !srp_claim_req(target, req, scmnd))
 		return FAILED;
-	srp_send_tsk_mgmt(target, req->index, scmnd->device->lun,
-			  SRP_TSK_ABORT_TASK);
+	if (srp_send_tsk_mgmt(target, req->index, scmnd->device->lun,
+			      SRP_TSK_ABORT_TASK) == 0 ||
+	    target->transport_offline)
+		ret = SUCCESS;
+	else
+		ret = FAILED;
 	srp_free_req(target, req, scmnd, 0);
 	scmnd->result = DID_ABORT << 16;
 	scmnd->scsi_done(scmnd);
 
-	return SUCCESS;
+	return ret;
 }
 
 static int srp_reset_device(struct scsi_cmnd *scmnd)
@@ -1946,6 +1951,7 @@ static struct scsi_host_template srp_template = {
 	.eh_abort_handler		= srp_abort,
 	.eh_device_reset_handler	= srp_reset_device,
 	.eh_host_reset_handler		= srp_reset_host,
+	.skip_settle_delay		= true,
 	.sg_tablesize			= SRP_DEF_SG_TABLESIZE,
 	.can_queue			= SRP_CMD_SQ_SIZE,
 	.this_id			= -1,
@@ -2507,6 +2513,8 @@ static void srp_remove_one(struct ib_device *device)
 	struct srp_target_port *target;
 
 	srp_dev = ib_get_client_data(device, &srp_client);
+	if (!srp_dev)
+		return;
 
 	list_for_each_entry_safe(host, tmp_host, &srp_dev->dev_list, list) {
 		device_unregister(&host->dev);
