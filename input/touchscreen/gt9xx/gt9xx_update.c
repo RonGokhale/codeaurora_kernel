@@ -1,4 +1,4 @@
-/* drivers/input/touchscreen/gt813_827_828_update.c
+/* drivers/input/touchscreen/gt9xx_update.c
  * 
  * 2010 - 2012 Goodix Technology.
  * 
@@ -35,6 +35,7 @@
 
 #if GTP_HEADER_FW_UPDATE
 #include <linux/namei.h>
+#include <linux/mount.h>
 #include "gt9xx_firmware.h"
 #endif
 
@@ -46,8 +47,8 @@
 #define UPDATE_FILE_PATH_2          "/data/_goodix_update_.bin"
 #define UPDATE_FILE_PATH_1          "/sdcard/_goodix_update_.bin"
 
-#define CONFIG_FILE_PATH_1          "/data/_goodix_config_.cfg"
-#define CONFIG_FILE_PATH_2          "/sdcard/_goodix_config_.cfg"
+#define CONFIG_FILE_PATH_1          "/data/_goodix_config_.cfg"     
+#define CONFIG_FILE_PATH_2          "/sdcard/_goodix_config_.cfg"   
 
 #define FW_HEAD_LENGTH               14
 #define FW_SECTION_LENGTH            0x2000
@@ -94,13 +95,17 @@ st_update_msg update_msg;
 u16 show_len;
 u16 total_len;
 u8 got_file_flag = 0;
-
+u8 searching_file = 0;
+extern u8 config[GTP_CONFIG_MAX_LENGTH + GTP_ADDR_LENGTH];
 extern void gtp_reset_guitar(struct i2c_client *client, s32 ms);
 extern s32  gtp_send_cfg(struct i2c_client *client);
 extern struct i2c_client * i2c_connect_client;
 extern void gtp_irq_enable(struct goodix_ts_data *ts);
 extern void gtp_irq_disable(struct goodix_ts_data *ts);
-
+extern s32 gtp_i2c_read_dbl_check(struct i2c_client *, u16, u8 *, int);
+#if GTP_ESD_PROTECT
+extern void gtp_esd_switch(struct i2c_client *, s32);
+#endif
 /*******************************************************
 Function:
     Read data from the i2c slave device.
@@ -125,11 +130,13 @@ s32 gup_i2c_read(struct i2c_client *client, u8 *buf, s32 len)
     msgs[0].addr  = client->addr;
     msgs[0].len   = GTP_ADDR_LENGTH;
     msgs[0].buf   = &buf[0];
+    //msgs[0].scl_rate = 300 * 1000;    // for Rockchip
 
     msgs[1].flags = I2C_M_RD;
     msgs[1].addr  = client->addr;
     msgs[1].len   = len - GTP_ADDR_LENGTH;
     msgs[1].buf   = &buf[GTP_ADDR_LENGTH];
+    //msgs[1].scl_rate = 300 * 1000;    
 
     while(retries < 5)
     {
@@ -165,6 +172,7 @@ s32 gup_i2c_write(struct i2c_client *client,u8 *buf,s32 len)
     msg.addr  = client->addr;
     msg.len   = len;
     msg.buf   = buf;
+    //msg.scl_rate = 300 * 1000;    // for Rockchip
 
     while(retries < 5)
     {
@@ -175,6 +183,130 @@ s32 gup_i2c_write(struct i2c_client *client,u8 *buf,s32 len)
 
     return ret;
 }
+
+static s32 gup_init_panel(struct goodix_ts_data *ts)
+{
+    s32 ret = 0;
+    s32 i = 0;
+    u8 check_sum = 0;
+    u8 opr_buf[16];
+    u8 sensor_id = 0;
+
+    u8 cfg_info_group1[] = CTP_CFG_GROUP1;
+    u8 cfg_info_group2[] = CTP_CFG_GROUP2;
+    u8 cfg_info_group3[] = CTP_CFG_GROUP3;
+    u8 cfg_info_group4[] = CTP_CFG_GROUP4;
+    u8 cfg_info_group5[] = CTP_CFG_GROUP5;
+    u8 cfg_info_group6[] = CTP_CFG_GROUP6;
+    u8 *send_cfg_buf[] = {cfg_info_group1, cfg_info_group2, cfg_info_group3,
+                        cfg_info_group4, cfg_info_group5, cfg_info_group6};
+    u8 cfg_info_len[] = { CFG_GROUP_LEN(cfg_info_group1),
+                          CFG_GROUP_LEN(cfg_info_group2),
+                          CFG_GROUP_LEN(cfg_info_group3),
+                          CFG_GROUP_LEN(cfg_info_group4),
+                          CFG_GROUP_LEN(cfg_info_group5),
+                          CFG_GROUP_LEN(cfg_info_group6)};
+                          
+    if ((!cfg_info_len[1]) && (!cfg_info_len[2]) && 
+        (!cfg_info_len[3]) && (!cfg_info_len[4]) && 
+        (!cfg_info_len[5]))
+    {
+        sensor_id = 0; 
+    }
+    else
+    {
+        ret = gtp_i2c_read_dbl_check(ts->client, GTP_REG_SENSOR_ID, &sensor_id, 1);
+        if (SUCCESS == ret)
+        {
+            if (sensor_id >= 0x06)
+            {
+                GTP_ERROR("Invalid sensor_id(0x%02X), No Config Sent!", sensor_id);
+                return -1;
+            }
+        }
+        else
+        {
+            GTP_ERROR("Failed to get sensor_id, No config sent!");
+            return -1;
+        }
+    }
+    
+    GTP_DEBUG("Sensor_ID: %d", sensor_id);
+    
+    ts->gtp_cfg_len = cfg_info_len[sensor_id];
+    
+    if (ts->gtp_cfg_len < GTP_CONFIG_MIN_LENGTH)
+    {
+        GTP_ERROR("Sensor_ID(%d) matches with NULL or INVALID CONFIG GROUP! NO Config Sent! You need to check you header file CFG_GROUP section!", sensor_id);
+        return -1;
+    }
+    
+    ret = gtp_i2c_read_dbl_check(ts->client, GTP_REG_CONFIG_DATA, &opr_buf[0], 1);
+    
+    if (ret == SUCCESS)
+    {
+        GTP_DEBUG("CFG_GROUP%d Config Version: %d, IC Config Version: %d", sensor_id+1, 
+                    send_cfg_buf[sensor_id][0], opr_buf[0]);
+        
+        send_cfg_buf[sensor_id][0] = opr_buf[0];
+        ts->fixed_cfg = 0;
+        /*
+        if (opr_buf[0] < 90)    
+        {
+            grp_cfg_version = send_cfg_buf[sensor_id][0];       // backup group config version
+            send_cfg_buf[sensor_id][0] = 0x00;
+            ts->fixed_cfg = 0;
+        }
+        else        // treated as fixed config, not send config
+        {
+            GTP_INFO("Ic fixed config with config version(%d)", opr_buf[0]);
+            ts->fixed_cfg = 1;
+        }*/
+    }
+    else
+    {
+        GTP_ERROR("Failed to get ic config version!No config sent!");
+        return -1;
+    }
+    
+    memset(&config[GTP_ADDR_LENGTH], 0, GTP_CONFIG_MAX_LENGTH);
+    memcpy(&config[GTP_ADDR_LENGTH], send_cfg_buf[sensor_id], ts->gtp_cfg_len);
+
+    GTP_DEBUG("X_MAX = %d, Y_MAX = %d, TRIGGER = 0x%02x",
+        ts->abs_x_max, ts->abs_y_max, ts->int_trigger_type);
+
+    config[RESOLUTION_LOC]     = (u8)GTP_MAX_WIDTH;
+    config[RESOLUTION_LOC + 1] = (u8)(GTP_MAX_WIDTH>>8);
+    config[RESOLUTION_LOC + 2] = (u8)GTP_MAX_HEIGHT;
+    config[RESOLUTION_LOC + 3] = (u8)(GTP_MAX_HEIGHT>>8);
+    
+    if (GTP_INT_TRIGGER == 0)  //RISING
+    {
+        config[TRIGGER_LOC] &= 0xfe; 
+    }
+    else if (GTP_INT_TRIGGER == 1)  //FALLING
+    {
+        config[TRIGGER_LOC] |= 0x01;
+    }
+    
+    check_sum = 0;
+    for (i = GTP_ADDR_LENGTH; i < ts->gtp_cfg_len; i++)
+    {
+        check_sum += config[i];
+    }
+    config[ts->gtp_cfg_len] = (~check_sum) + 1;
+
+    GTP_DEBUG_FUNC();
+    ret = gtp_send_cfg(ts->client);
+    if (ret < 0)
+    {
+        GTP_ERROR("Send config error.");
+    }
+
+    msleep(10);
+    return 0;
+}
+
 
 static u8 gup_get_ic_msg(struct i2c_client *client, u16 addr, u8* msg, s32 len)
 {
@@ -233,22 +365,23 @@ static u8 gup_get_ic_fw_msg(struct i2c_client *client)
     u8  buf[16];
     u8  i;
     
-    //step1:get hardware info
-    ret = gup_get_ic_msg(client, GUP_REG_HW_INFO, buf, 4);
-    if(FAIL == ret)
+    // step1:get hardware info
+    ret = gtp_i2c_read_dbl_check(client, GUP_REG_HW_INFO, &buf[GTP_ADDR_LENGTH], 4);
+    if (FAIL == ret)
     {
-        GTP_ERROR("Read hardware info fail.");
-        return ret;
+        GTP_ERROR("[get_ic_fw_msg]get hw_info failed,exit");
+        return FAIL;
     }
-    
-    memcpy(update_msg.ic_fw_msg.hw_info, &buf[GTP_ADDR_LENGTH], 4);
+     
+    // buf[2~5]: 00 06 90 00
+    // hw_info: 00 90 06 00
     for(i=0; i<4; i++)
     {
         update_msg.ic_fw_msg.hw_info[i] = buf[GTP_ADDR_LENGTH + 3 - i];
     } 
     GTP_DEBUG("IC Hardware info:%02x%02x%02x%02x", update_msg.ic_fw_msg.hw_info[0], update_msg.ic_fw_msg.hw_info[1],
                                                    update_msg.ic_fw_msg.hw_info[2], update_msg.ic_fw_msg.hw_info[3]);
-    //step2:get firmware message
+    // step2:get firmware message
     for(retry=0; retry<2; retry++)
     {
         ret = gup_get_ic_msg(client, GUP_REG_FW_MSG, buf, 1);
@@ -269,13 +402,14 @@ static u8 gup_get_ic_fw_msg(struct i2c_client *client)
     }
     GTP_DEBUG("IC force update flag:0x%x", update_msg.force_update);
     
-    //step3:get pid & vid
-    ret = gup_get_ic_msg(client, GUP_REG_PID_VID, buf, 6);
-    if(FAIL == ret)
+    // step3:get pid & vid
+    ret = gtp_i2c_read_dbl_check(client, GUP_REG_PID_VID, &buf[GTP_ADDR_LENGTH], 6);
+    if (FAIL == ret)
     {
-        GTP_ERROR("Read product id & version id fail.");
-        return ret;
+        GTP_ERROR("[get_ic_fw_msg]get pid & vid failed,exit");
+        return FAIL;
     }
+    
     memset(update_msg.ic_fw_msg.pid, 0, sizeof(update_msg.ic_fw_msg.pid));
     memcpy(update_msg.ic_fw_msg.pid, &buf[GTP_ADDR_LENGTH], 4);
     GTP_DEBUG("IC Product id:%s", update_msg.ic_fw_msg.pid);
@@ -369,15 +503,26 @@ void gup_leave_update_mode(void)
     gtp_reset_guitar(i2c_connect_client, 20);
 }
 
+// Get the correct nvram data
+// The correct conditions: 
+//  1. the hardware info is the same
+//  2. the product id is the same
+//  3. the firmware version in update file is greater than the firmware version in ic 
+//      or the check sum in ic is wrong
+/* Update Conditions: 
+    1. Same hardware info
+    2. Same PID
+    3. File PID > IC PID
+   Force Update Conditions:
+    1. Wrong ic firmware checksum
+    2. INVALID IC PID or VID
+    3. IC PID == 91XX || File PID == 91XX
+*/
+
 static u8 gup_enter_update_judge(st_fw_head *fw_head)
 {
-    //Get the correct nvram data
-    //The correct conditions: 
-    //1. the hardware info is the same
-    //2. the product id is the same
-    //3. the firmware version in update file is greater than the firmware version in ic 
-    //or the check sum in ic is wrong
     u16 u16_tmp;
+    s32 i = 0;
     
     u16_tmp = fw_head->vid;
     fw_head->vid = (u16)(u16_tmp>>8) + (u16)(u16_tmp<<8);
@@ -400,6 +545,27 @@ static u8 gup_enter_update_judge(st_fw_head *fw_head)
             GTP_INFO("FW chksum error,need enter update.");
             return SUCCESS;
         }
+        
+        // 20130523 start
+        if (strlen(update_msg.ic_fw_msg.pid) < 3)
+        {
+            GTP_INFO("Illegal IC pid, need enter update");
+            return SUCCESS;
+        }
+        else
+        {
+            for (i = 0; i < 3; i++)
+            {
+                if ((update_msg.ic_fw_msg.pid[i] < 0x30) || (update_msg.ic_fw_msg.pid[i] > 0x39))
+                {
+                    GTP_INFO("Illegal IC pid, out of bound, need enter update");
+                    return SUCCESS;
+                }
+            }
+        }
+        // 20130523 end
+        
+        
         if (( !memcmp(fw_head->pid, update_msg.ic_fw_msg.pid, (strlen(fw_head->pid)<3?3:strlen(fw_head->pid))))||
             (!memcmp(update_msg.ic_fw_msg.pid, "91XX", 4))||
             (!memcmp(fw_head->pid, "91XX", 4)))
@@ -420,8 +586,17 @@ static u8 gup_enter_update_judge(st_fw_head *fw_head)
                 return SUCCESS;
             }
             GTP_ERROR("Don't meet the third condition.");
+            GTP_ERROR("File VID <= Ic VID, update aborted!");
         }
-    }    
+        else
+        {
+            GTP_ERROR("File PID != Ic PID, update aborted!");
+        }
+    }
+    else
+    {
+        GTP_ERROR("Different Hardware, update aborted!");
+    }
     return FAIL;
 }
 
@@ -460,7 +635,7 @@ static s8 gup_update_config(struct i2c_client *client)
     u8 *buf;
     u8 *pre_buf;
     u8 *file_config;
-    u8 checksum = 0;
+    //u8 checksum = 0;
     u8 pid[8];
     
     if(NULL == update_msg.cfg_file)
@@ -480,7 +655,9 @@ static s8 gup_update_config(struct i2c_client *client)
     GTP_DEBUG("update cfg get pid:%s", &pid[GTP_ADDR_LENGTH]);
     
     chip_cfg_len = 186;
-    if(!memcmp(&pid[GTP_ADDR_LENGTH], "968", 3))
+    if(!memcmp(&pid[GTP_ADDR_LENGTH], "968", 3) || 
+       !memcmp(&pid[GTP_ADDR_LENGTH], "910", 3) ||
+       !memcmp(&pid[GTP_ADDR_LENGTH], "960", 3))
     {
         chip_cfg_len = 228;
     }
@@ -541,15 +718,17 @@ static s8 gup_update_config(struct i2c_client *client)
             goto update_cfg_file_failed;
         }
     }
-    GTP_DEBUG("config:");
-    GTP_DEBUG_ARRAY(file_config, file_cfg_len);
     
-    //cal checksum
-    for(i=GTP_ADDR_LENGTH; i<chip_cfg_len; i++)
-    {
-        checksum += file_config[i];
-    }
-    file_config[chip_cfg_len] = (~checksum) + 1;
+//    //cal checksum
+//    for(i=GTP_ADDR_LENGTH; i<chip_cfg_len; i++)
+//    {
+//        checksum += file_config[i];
+//    }
+//    file_config[chip_cfg_len] = (~checksum) + 1;
+//    file_config[chip_cfg_len+1] = 0x01;
+    
+    GTP_DEBUG("config:");
+    GTP_DEBUG_ARRAY(file_config+2, file_cfg_len);
     
     i = 0;
     while(i++ < 5)
@@ -592,6 +771,17 @@ static u8 gup_check_fs_mounted(char *path_name)
     }
 
     return SUCCESS;
+    
+    /*
+    if (path.mnt->mnt_sb == root_path.mnt->mnt_sb)
+    {
+        //-- not mounted
+        return FAIL;
+    }
+    else
+    {
+        return SUCCESS;
+    }*/
 
 }
 #endif
@@ -605,7 +795,7 @@ static u8 gup_check_update_file(struct i2c_client *client, st_fw_head* fw_head, 
     if (path)
     {
         GTP_DEBUG("Update File path:%s, %d", path, strlen(path));
-        update_msg.file = filp_open(path, O_RDONLY, 0644);
+        update_msg.file = filp_open(path, O_RDONLY, 0);
 
         if (IS_ERR(update_msg.file))
         {
@@ -618,38 +808,69 @@ static u8 gup_check_update_file(struct i2c_client *client, st_fw_head* fw_head, 
 #if GTP_HEADER_FW_UPDATE
         for (i = 0; i < (GUP_SEARCH_FILE_TIMES); i++)
         {
-            GTP_DEBUG("Waiting for /data/ mounted [%d]", i);
+            GTP_DEBUG("Waiting for /data mounted [%d]", i);
 
             if (gup_check_fs_mounted("/data") == SUCCESS)
             {
-                GTP_DEBUG("/data/ Mounted!");
+                GTP_DEBUG("/data Mounted!");
                 break;
             }
             msleep(3000);
         }
         if (i >= (GUP_SEARCH_FILE_TIMES))
         {
-            GTP_ERROR("Wait for /data/ mounting timeout!");
+            GTP_ERROR("Wait for /data mounted timeout!");
             return FAIL;
+        }
+        
+        // update config
+        update_msg.cfg_file = filp_open(CONFIG_FILE_PATH_1, O_RDONLY, 0);
+        if (IS_ERR(update_msg.cfg_file))
+        {
+            GTP_DEBUG("%s is unavailable", CONFIG_FILE_PATH_1);
+        }
+        else
+        {
+            GTP_INFO("Update Config File: %s", CONFIG_FILE_PATH_1);
+            ret = gup_update_config(client);
+            if(ret <= 0)
+            {
+                GTP_ERROR("Update config failed.");
+            }
+            filp_close(update_msg.cfg_file, NULL);
+        }
+        
+        if (sizeof(header_fw_array) < (FW_HEAD_LENGTH+FW_SECTION_LENGTH*4+FW_DSP_ISP_LENGTH+FW_DSP_LENGTH+FW_BOOT_LENGTH))
+        {
+            GTP_ERROR("INVALID header_fw_array, check your gt9xx_firmware.h file!");
+            return FAIL;           
         }
         update_msg.file = filp_open(UPDATE_FILE_PATH_2, O_CREAT | O_RDWR, 0666);
         if ((IS_ERR(update_msg.file)))
         {
-            GTP_ERROR("Failed to Create fw file for fw_header!");
+            GTP_ERROR("Failed to Create file: %s for fw_header!", UPDATE_FILE_PATH_2);
             return FAIL;
         }
         update_msg.file->f_op->llseek(update_msg.file, 0, SEEK_SET);
         update_msg.file->f_op->write(update_msg.file, (char *)header_fw_array, sizeof(header_fw_array), &update_msg.file->f_pos);
         filp_close(update_msg.file, NULL);
-        update_msg.file = filp_open(UPDATE_FILE_PATH_2, O_RDWR , 0444);
+        update_msg.file = filp_open(UPDATE_FILE_PATH_2, O_RDONLY, 0);
 #else
         u8 fp_len = max(sizeof(UPDATE_FILE_PATH_1), sizeof(UPDATE_FILE_PATH_2));
         u8 cfp_len = max(sizeof(CONFIG_FILE_PATH_1), sizeof(CONFIG_FILE_PATH_2));
         u8 *search_update_path = (u8*)kzalloc(fp_len, GFP_KERNEL);
         u8 *search_cfg_path = (u8*)kzalloc(cfp_len, GFP_KERNEL);
         //Begin to search update file,the config file & firmware file must be in the same path,single or double.
+        searching_file = 1;
         for (i = 0; i < GUP_SEARCH_FILE_TIMES; i++)
         {
+            if (searching_file == 0)
+            {
+                kfree(search_update_path);
+                kfree(search_cfg_path);
+                GTP_INFO(".bin/.cfg update file search forcely terminated!");
+                return FAIL;
+            }
             if(i%2)
             {
                 memcpy(search_update_path, UPDATE_FILE_PATH_1, sizeof(UPDATE_FILE_PATH_1));
@@ -663,7 +884,7 @@ static u8 gup_check_update_file(struct i2c_client *client, st_fw_head* fw_head, 
             
             if(!(got_file_flag&0x0F))
             {
-                update_msg.file = filp_open(search_update_path, O_RDWR, 0444);
+                update_msg.file = filp_open(search_update_path, O_RDONLY, 0);
                 if(!IS_ERR(update_msg.file))
                 {
                     GTP_DEBUG("Find the bin file");
@@ -672,7 +893,7 @@ static u8 gup_check_update_file(struct i2c_client *client, st_fw_head* fw_head, 
             }
             if(!(got_file_flag&0xF0))
             {
-                update_msg.cfg_file = filp_open(search_cfg_path, O_RDWR, 0444);
+                update_msg.cfg_file = filp_open(search_cfg_path, O_RDONLY, 0);
                 if(!IS_ERR(update_msg.cfg_file))
                 {
                     GTP_DEBUG("Find the cfg file");
@@ -694,6 +915,7 @@ static u8 gup_check_update_file(struct i2c_client *client, st_fw_head* fw_head, 
             GTP_DEBUG("%3d:Searching %s %s file...", i, (got_file_flag&0x0F)?"":"bin", (got_file_flag&0xF0)?"":"cfg");
             msleep(3000);
         }
+        searching_file = 0;
         kfree(search_update_path);
         kfree(search_cfg_path);
         
@@ -760,7 +982,7 @@ static u8 gup_check_update_file(struct i2c_client *client, st_fw_head* fw_head, 
     if(fw_checksum&0xFFFF)
     {
         GTP_ERROR("Illegal firmware file.");
-        goto load_failed;
+        goto load_failed;    
     }
     
     return SUCCESS;
@@ -1554,34 +1776,47 @@ s32 gup_update_proc(void *dir)
     {
         msleep(3000);                               //wait main thread to be completed
     }
-
+    
     ts = i2c_get_clientdata(i2c_connect_client);
-
+    
+    if (searching_file)
+    {
+        searching_file = 0;     // exit .bin update file searching 
+        GTP_INFO("Exiting searching .bin update file...");
+        while ((show_len != 200) && (show_len != 100))     // wait for auto update quitted completely
+        {
+            msleep(100);
+        }
+    }
+    
     update_msg.file = NULL;
     ret = gup_check_update_file(i2c_connect_client, &fw_head, (u8*)dir);     //20121211
     if(FAIL == ret)
     {
         GTP_ERROR("[update_proc]check update file fail.");
-        goto update_fail;
+        goto file_fail;
     }
     
-    ts->enter_update = 1;        // Shield interrupt handler
-    gtp_irq_disable(ts);
-    gtp_reset_guitar(i2c_connect_client, 20);
+    //gtp_reset_guitar(i2c_connect_client, 20);
     ret = gup_get_ic_fw_msg(i2c_connect_client);
     if(FAIL == ret)
     {
         GTP_ERROR("[update_proc]get ic message fail.");
-        goto update_fail;
+        goto file_fail;
     }    
     
     ret = gup_enter_update_judge(&fw_head);
     if(FAIL == ret)
     {
         GTP_ERROR("[update_proc]Check *.bin file fail.");
-        goto update_fail;
+        goto file_fail;
     }
     
+    ts->enter_update = 1;        
+    gtp_irq_disable(ts);
+#if GTP_ESD_PROTECT
+    gtp_esd_switch(ts->client, SWITCH_OFF);
+#endif
     ret = gup_enter_update_mode(i2c_connect_client);
     if(FAIL == ret)
     {
@@ -1636,24 +1871,38 @@ s32 gup_update_proc(void *dir)
     GTP_DEBUG("[update_proc]leave update mode.");
     gup_leave_update_mode();
     
-    
     msleep(100);
-    GTP_DEBUG("[update_proc]send config.");
-    ret = gtp_send_cfg(i2c_connect_client);
-    if(ret < 0)
+//    GTP_DEBUG("[update_proc]send config.");
+//    ret = gtp_send_cfg(i2c_connect_client);
+//    if(ret < 0)
+//    {
+//        GTP_ERROR("[update_proc]send config fail.");
+//    }
+    if (ts->fw_error)
     {
-        GTP_ERROR("[update_proc]send config fail.");
+        GTP_INFO("firmware error auto update, resent config!");
+        gup_init_panel(ts);
     }
     show_len = 100;
     total_len = 100;
-    ts->enter_update = 0;     
+    ts->enter_update = 0;
     gtp_irq_enable(ts);
-    filp_close(update_msg.file, NULL);    
+    
+#if GTP_ESD_PROTECT
+    gtp_esd_switch(ts->client, SWITCH_ON);
+#endif
+    filp_close(update_msg.file, NULL);
     return SUCCESS;
     
 update_fail:
     ts->enter_update = 0;
     gtp_irq_enable(ts);
+    
+#if GTP_ESD_PROTECT
+    gtp_esd_switch(ts->client, SWITCH_ON);
+#endif
+
+file_fail:
     if(update_msg.file && !IS_ERR(update_msg.file))
     {
         filp_close(update_msg.file, NULL);

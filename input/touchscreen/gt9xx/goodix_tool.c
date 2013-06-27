@@ -13,19 +13,18 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU 
  * General Public License for more details.
  * 
- * Version:1.2
+ * Version:1.6
  *        V1.0:2012/05/01,create file.
  *        V1.2:2012/06/08,modify some warning.
  *        V1.4:2012/08/28,modified to support GT9XX
- *
+ *        V1.6:new proc name
  */
 
 #include "gt9xx.h"
 
-//#define IC_TYPE_NAME        "GT813" //Default
 #define DATA_LENGTH_UINT    512
 #define CMD_HEAD_LENGTH     (sizeof(st_cmd_head) - sizeof(u8*))
-#define GOODIX_ENTRY_NAME   "goodix_tool"
+static char procname[20] = {0};
 
 #define UPDATE_FUNCTIONS
 
@@ -67,8 +66,40 @@ static s32 goodix_tool_read( char *page, char **start, off_t off, int count, int
 static s32 (*tool_i2c_read)(u8 *, u16);
 static s32 (*tool_i2c_write)(u8 *, u16);
 
+#if GTP_ESD_PROTECT
+extern void gtp_esd_switch(struct i2c_client *, s32);
+#endif
 s32 DATA_LENGTH = 0;
 s8 IC_TYPE[16] = {0};
+
+static void tool_set_proc_name(char * procname)
+{
+    char *months[12] = {"Jan", "Feb", "Mar", "Apr", "May", 
+        "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    char date[20] = {0};
+    char month[4] = {0};
+    int i = 0, n_month = 1, n_day = 0, n_year = 0;
+    
+    sprintf(date, "%s", __DATE__);
+    
+    //GTP_DEBUG("compile date: %s", date);
+    
+    sscanf(date, "%s %d %d", month, &n_day, &n_year);
+    
+    for (i = 0; i < 12; ++i)
+    {
+        if (!memcmp(months[i], month, 3))
+        {
+            n_month = i+1;
+            break;
+        }
+    }
+    
+    sprintf(procname, "gmnode%04d%02d%02d", n_year, n_month, n_day);    
+    
+    //GTP_DEBUG("procname = %s", procname);
+}
+
 
 static s32 tool_i2c_read_no_extra(u8* buf, u16 len)
 {
@@ -210,7 +241,8 @@ s32 init_wr_node(struct i2c_client *client)
 
     register_i2c_func();
 
-    goodix_proc_entry = create_proc_entry(GOODIX_ENTRY_NAME, 0666, NULL);
+    tool_set_proc_name(procname);
+    goodix_proc_entry = create_proc_entry(procname, 0666, NULL);
     if (goodix_proc_entry == NULL)
     {
         GTP_ERROR("Couldn't create proc entry!");
@@ -231,7 +263,7 @@ void uninit_wr_node(void)
     kfree(cmd_head.data);
     cmd_head.data = NULL;
     unregister_i2c_func();
-    remove_proc_entry(GOODIX_ENTRY_NAME, NULL);
+    remove_proc_entry(procname, NULL);
 }
 
 static u8 relation(u8 src, u8 dst, u8 rlt)
@@ -414,12 +446,18 @@ static s32 goodix_tool_write(struct file *filp, const char __user *buff, unsigne
     {
         gtp_irq_disable(i2c_get_clientdata(gt_client));
         
+    #if GTP_ESD_PROTECT
+        gtp_esd_switch(gt_client, SWITCH_OFF);
+    #endif
         return CMD_HEAD_LENGTH;
     }
     else if (9 == cmd_head.wr) //enable irq!
     {
         gtp_irq_enable(i2c_get_clientdata(gt_client));
 
+    #if GTP_ESD_PROTECT
+        gtp_esd_switch(gt_client, SWITCH_ON);
+    #endif
         return CMD_HEAD_LENGTH;
     }
     else if(17 == cmd_head.wr)
