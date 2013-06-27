@@ -165,6 +165,8 @@ i	sunxi/defconfig
 		ARM: dts: Add pcie controller node for Samsung EXYNOS5440 SoC
 		ARM: EXYNOS: Enable PCIe support for Exynos5440
 		pci: Add PCIe driver for Samsung Exynos
+		ARM: integrator: let pciv3 use mem/premem from device tree
+		ARM: integrator: set local side PCI addresses right
 
 next/boards
 	mvebu/boards
@@ -327,3 +329,5 @@ next/late
 		ARM: sti: Add DEBUG_LL console support
 		ARM: stih41x: Add B2000 board support
 		ARM: stih41x: Add B2020 board support
+	rensas/sh-sci
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-sh-sci-for-v3.11
