@@ -858,8 +858,7 @@ int ptrace_request(struct task_struct *child, long request,
 
 		break;
 
-	case PTRACE_SETSIGMASK:
-	{
+	case PTRACE_SETSIGMASK: {
 		sigset_t new_set;
 
 		if (addr != sizeof(sigset_t)) {
@@ -991,8 +990,7 @@ int ptrace_request(struct task_struct *child, long request,
 
 #ifdef CONFIG_HAVE_ARCH_TRACEHOOK
 	case PTRACE_GETREGSET:
-	case PTRACE_SETREGSET:
-	{
+	case PTRACE_SETREGSET: {
 		struct iovec kiov;
 		struct iovec __user *uiov = datavp;
 
