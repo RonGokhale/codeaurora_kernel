@@ -560,6 +560,7 @@ redo:
 		 * unevictable page on [in]active list.
 		 * We know how to handle that.
 		 */
+		lru = page_lru_base_type(page);
 		lru_cache_add(page);
 	} else {
 		/*
