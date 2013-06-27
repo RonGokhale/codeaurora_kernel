@@ -331,3 +331,8 @@ next/late
 		ARM: stih41x: Add B2020 board support
 	rensas/sh-sci
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-sh-sci-for-v3.11
+	patches
+		ARM: ux500: bail out on alien cpus
+
+PATCH DIRECTLY ON for-next:
+	ARM: Make multi_v7_defconfig usable on hardware
