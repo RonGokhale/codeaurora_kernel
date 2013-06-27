@@ -790,7 +790,8 @@ static int ocfs2_unlink(struct inode *dir,
 			struct dentry *dentry)
 {
 	int status;
-	int child_locked = 0, is_unlinkable = 0;
+	int child_locked = 0;
+	bool is_unlinkable = false;
 	struct inode *inode = dentry->d_inode;
 	struct inode *orphan_dir = NULL;
 	struct ocfs2_super *osb = OCFS2_SB(dir->i_sb);
@@ -873,7 +874,7 @@ static int ocfs2_unlink(struct inode *dir,
 			mlog_errno(status);
 			goto leave;
 		}
-		is_unlinkable = 1;
+		is_unlinkable = true;
 	}
 
 	handle = ocfs2_start_trans(osb, ocfs2_unlink_credits(osb->sb));
@@ -919,8 +920,8 @@ static int ocfs2_unlink(struct inode *dir,
 	}
 
 	if (is_unlinkable) {
-		status = ocfs2_orphan_add(osb, handle, inode, fe_bh, orphan_name,
-					  &orphan_insert, orphan_dir);
+		status = ocfs2_orphan_add(osb, handle, inode, fe_bh,
+				orphan_name, &orphan_insert, orphan_dir);
 		if (status < 0)
 			mlog_errno(status);
 	}
