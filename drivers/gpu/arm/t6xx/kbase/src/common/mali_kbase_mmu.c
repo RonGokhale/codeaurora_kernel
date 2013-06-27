@@ -1199,6 +1199,21 @@ const char *kbase_exception_name(u32 exception_code)
 
 	return e;
 }
+const char *kbase_access_type_names(u8 access_type)
+{
+	switch (access_type) {
+	case 0:
+		return "RESERVED";
+	case 1:
+		return "EXECUTE";
+	case 2:
+		return "READ";
+	case 3:
+		return "WRITE";
+	default:
+		return "UNKNOWN";
+	};
+}
 
 /**
  * The caller must ensure it's retained the ctx to prevent it from being scheduled out whilst it's being worked on.
@@ -1215,9 +1230,6 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 	kbase_device * kbdev;
 	kbasep_js_device_data *js_devdata;
 	mali_bool reset_status = MALI_FALSE;
-#ifdef CONFIG_MALI_DEBUG
-	static const char *access_type_names[] = { "RESERVED", "EXECUTE", "READ", "WRITE" };
-#endif /* CONFIG_MALI_DEBUG */
 
 	OSK_ASSERT(as);
 	OSK_ASSERT(kctx);
@@ -1242,7 +1254,8 @@ static void kbase_mmu_report_fault_and_kill(kbase_context *kctx, kbase_as * as, 
 	OSK_PRINT_WARN(OSK_BASE_MMU, "raw fault status 0x%X", fault_status);
 	OSK_PRINT_WARN(OSK_BASE_MMU, "decoded fault status (%s):", (fault_status & (1 << 10) ? "DECODER FAULT" : "SLAVE FAULT"));
 	OSK_PRINT_WARN(OSK_BASE_MMU, "exception type 0x%X: %s", exception_type, kbase_exception_name(exception_type));
-	OSK_PRINT_WARN(OSK_BASE_MMU, "access type 0x%X: %s", access_type,  access_type_names[access_type]);
+	OSK_PRINT_WARN(OSK_BASE_MMU, "access type 0x%X: %s", access_type,
+			kbase_access_type_names(access_type));
 	OSK_PRINT_WARN(OSK_BASE_MMU, "source id 0x%X", source_id);
 
 	dump_stack();
