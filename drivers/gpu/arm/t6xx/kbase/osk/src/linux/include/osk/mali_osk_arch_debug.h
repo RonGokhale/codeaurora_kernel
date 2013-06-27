@@ -152,7 +152,7 @@ void oskp_debug_print(const char *fmt, ...);
 	#define OSK_ON_RAW                 OSK_ACTION_PRINT_AND_CONTINUE
 #else
 	#define OSK_ON_INFO                OSK_ACTION_IGNORE
-	#define OSK_ON_WARN                OSK_ACTION_IGNORE
+	#define OSK_ON_WARN                OSK_ACTION_PRINT_AND_CONTINUE
 	#define OSK_ON_ASSERT              OSK_ACTION_IGNORE
 	#define OSK_ON_ERROR               OSK_ACTION_PRINT_AND_CONTINUE
 	#define OSK_ON_RAW                 OSK_ACTION_PRINT_AND_CONTINUE
