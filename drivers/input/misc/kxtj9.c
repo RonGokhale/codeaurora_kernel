@@ -756,7 +756,10 @@ static int kxtj9_parse_dt(struct device *dev,
 
 	kxtj9_pdata->negate_z = of_property_read_bool(np, "kionix,negate-z");
 
-	kxtj9_pdata->res_12bit = of_property_read_bool(np, "kionix,res-12bit");
+	if (of_property_read_bool(np, "kionix,res-12bit"))
+		kxtj9_pdata->res_12bit = RES_12BIT;
+	else
+		kxtj9_pdata->res_12bit = RES_8BIT;
 
 	return 0;
 }
