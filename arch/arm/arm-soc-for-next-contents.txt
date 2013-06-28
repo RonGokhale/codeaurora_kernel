@@ -337,6 +337,9 @@ next/late
 		ARM: ux500: bail out on alien cpus
 	davinci/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci davinci-for-v3.11/dt
+	msm/clock
+		git://git.kernel.org/pub/scm/linux/kernel/git/davidb/linux-msm.git tags/msm-clock-for-3.11b
+		based on msm/fixes to avoid conflict
 
 PATCH DIRECTLY ON for-next:
 	ARM: Make multi_v7_defconfig usable on hardware
