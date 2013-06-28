@@ -37,6 +37,7 @@
 
 struct sh_cmt_priv {
 	void __iomem *mapbase;
+	void __iomem *mapbase_str;
 	struct clk *clk;
 	unsigned long width; /* 16 or 32 bit version of hardware block */
 	unsigned long overflow_bit;
@@ -79,6 +80,12 @@ struct sh_cmt_priv {
  * CMCSR 0xffca0060 16-bit
  * CMCNT 0xffca0064 32-bit
  * CMCOR 0xffca0068 32-bit
+ *
+ * "32-bit counter and 32-bit control" as found on r8a73a4 and r8a7790:
+ * CMSTR 0xffca0500 32-bit
+ * CMCSR 0xffca0510 32-bit
+ * CMCNT 0xffca0514 32-bit
+ * CMCOR 0xffca0518 32-bit
  */
 
 static unsigned long sh_cmt_read16(void __iomem *base, unsigned long offs)
@@ -109,9 +116,7 @@ static void sh_cmt_write32(void __iomem *base, unsigned long offs,
 
 static inline unsigned long sh_cmt_read_cmstr(struct sh_cmt_priv *p)
 {
-	struct sh_timer_config *cfg = p->pdev->dev.platform_data;
-
-	return p->read_control(p->mapbase - cfg->channel_offset, 0);
+	return p->read_control(p->mapbase_str, 0);
 }
 
 static inline unsigned long sh_cmt_read_cmcsr(struct sh_cmt_priv *p)
@@ -127,9 +132,7 @@ static inline unsigned long sh_cmt_read_cmcnt(struct sh_cmt_priv *p)
 static inline void sh_cmt_write_cmstr(struct sh_cmt_priv *p,
 				      unsigned long value)
 {
-	struct sh_timer_config *cfg = p->pdev->dev.platform_data;
-
-	p->write_control(p->mapbase - cfg->channel_offset, 0, value);
+	p->write_control(p->mapbase_str, 0, value);
 }
 
 static inline void sh_cmt_write_cmcsr(struct sh_cmt_priv *p,
@@ -676,35 +679,43 @@ static int sh_cmt_register(struct sh_cmt_priv *p, char *name,
 static int sh_cmt_setup(struct sh_cmt_priv *p, struct platform_device *pdev)
 {
 	struct sh_timer_config *cfg = pdev->dev.platform_data;
-	struct resource *res;
+	struct resource *res, *res2;
 	int irq, ret;
-	ret = -ENXIO;
 
-	memset(p, 0, sizeof(*p));
 	p->pdev = pdev;
 
 	if (!cfg) {
 		dev_err(&p->pdev->dev, "missing platform data\n");
-		goto err0;
+		return -ENXIO;
 	}
 
 	res = platform_get_resource(p->pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		dev_err(&p->pdev->dev, "failed to get I/O memory\n");
-		goto err0;
+		return -ENXIO;
 	}
+
+	/* optional resource for the shared timer start/stop register */
+	res2 = platform_get_resource(p->pdev, IORESOURCE_MEM, 1);
 
 	irq = platform_get_irq(p->pdev, 0);
 	if (irq < 0) {
 		dev_err(&p->pdev->dev, "failed to get irq\n");
-		goto err0;
+		return -ENXIO;
 	}
 
 	/* map memory, let mapbase point to our channel */
-	p->mapbase = ioremap_nocache(res->start, resource_size(res));
-	if (p->mapbase == NULL) {
-		dev_err(&p->pdev->dev, "failed to remap I/O memory\n");
-		goto err0;
+	p->mapbase = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(p->mapbase))
+		return PTR_ERR(p->mapbase);
+
+	/* map second resource for CMSTR */
+	p->mapbase_str = devm_ioremap_nocache(&pdev->dev, res2 ? res2->start :
+					      res->start - cfg->channel_offset,
+					      res2 ? resource_size(res2) : 2);
+	if (p->mapbase_str == NULL) {
+		dev_err(&p->pdev->dev, "failed to remap I/O second memory\n");
+		return -ENXIO;
 	}
 
 	/* request irq using setup_irq() (too early for request_irq()) */
@@ -715,15 +726,20 @@ static int sh_cmt_setup(struct sh_cmt_priv *p, struct platform_device *pdev)
 			     IRQF_IRQPOLL  | IRQF_NOBALANCING;
 
 	/* get hold of clock */
-	p->clk = clk_get(&p->pdev->dev, "cmt_fck");
+	p->clk = devm_clk_get(&p->pdev->dev, "cmt_fck");
 	if (IS_ERR(p->clk)) {
 		dev_err(&p->pdev->dev, "cannot get clock\n");
-		ret = PTR_ERR(p->clk);
-		goto err1;
+		return PTR_ERR(p->clk);
 	}
 
-	p->read_control = sh_cmt_read16;
-	p->write_control = sh_cmt_write16;
+	if (res2 && (resource_size(res2) == 4)) {
+		/* assume both CMSTR and CMCSR to be 32-bit */
+		p->read_control = sh_cmt_read32;
+		p->write_control = sh_cmt_write32;
+	} else {
+		p->read_control = sh_cmt_read16;
+		p->write_control = sh_cmt_write16;
+	}
 
 	if (resource_size(res) == 6) {
 		p->width = 16;
@@ -752,26 +768,19 @@ static int sh_cmt_setup(struct sh_cmt_priv *p, struct platform_device *pdev)
 			      cfg->clocksource_rating);
 	if (ret) {
 		dev_err(&p->pdev->dev, "registration failed\n");
-		goto err2;
+		return ret;
 	}
 	p->cs_enabled = false;
 
 	ret = setup_irq(irq, &p->irqaction);
 	if (ret) {
 		dev_err(&p->pdev->dev, "failed to request irq %d\n", irq);
-		goto err2;
+		return ret;
 	}
 
 	platform_set_drvdata(pdev, p);
 
 	return 0;
-err2:
-	clk_put(p->clk);
-
-err1:
-	iounmap(p->mapbase);
-err0:
-	return ret;
 }
 
 static int sh_cmt_probe(struct platform_device *pdev)
@@ -790,7 +799,7 @@ static int sh_cmt_probe(struct platform_device *pdev)
 		goto out;
 	}
 
-	p = kmalloc(sizeof(*p), GFP_KERNEL);
+	p = devm_kzalloc(&pdev->dev, sizeof(*p), GFP_KERNEL);
 	if (p == NULL) {
 		dev_err(&pdev->dev, "failed to allocate driver data\n");
 		return -ENOMEM;
@@ -798,7 +807,6 @@ static int sh_cmt_probe(struct platform_device *pdev)
 
 	ret = sh_cmt_setup(p, pdev);
 	if (ret) {
-		kfree(p);
 		pm_runtime_idle(&pdev->dev);
 		return ret;
 	}
