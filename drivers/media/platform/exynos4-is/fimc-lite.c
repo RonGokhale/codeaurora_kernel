@@ -44,6 +44,7 @@ static const struct fimc_fmt fimc_lite_formats[] = {
 	{
 		.name		= "YUV 4:2:2 packed, YCbYCr",
 		.fourcc		= V4L2_PIX_FMT_YUYV,
+		.colorspace	= V4L2_COLORSPACE_JPEG,
 		.depth		= { 16 },
 		.color		= FIMC_FMT_YCBYCR422,
 		.memplanes	= 1,
@@ -52,6 +53,7 @@ static const struct fimc_fmt fimc_lite_formats[] = {
 	}, {
 		.name		= "YUV 4:2:2 packed, CbYCrY",
 		.fourcc		= V4L2_PIX_FMT_UYVY,
+		.colorspace	= V4L2_COLORSPACE_JPEG,
 		.depth		= { 16 },
 		.color		= FIMC_FMT_CBYCRY422,
 		.memplanes	= 1,
@@ -60,6 +62,7 @@ static const struct fimc_fmt fimc_lite_formats[] = {
 	}, {
 		.name		= "YUV 4:2:2 packed, CrYCbY",
 		.fourcc		= V4L2_PIX_FMT_VYUY,
+		.colorspace	= V4L2_COLORSPACE_JPEG,
 		.depth		= { 16 },
 		.color		= FIMC_FMT_CRYCBY422,
 		.memplanes	= 1,
@@ -68,6 +71,7 @@ static const struct fimc_fmt fimc_lite_formats[] = {
 	}, {
 		.name		= "YUV 4:2:2 packed, YCrYCb",
 		.fourcc		= V4L2_PIX_FMT_YVYU,
+		.colorspace	= V4L2_COLORSPACE_JPEG,
 		.depth		= { 16 },
 		.color		= FIMC_FMT_YCRYCB422,
 		.memplanes	= 1,
@@ -76,6 +80,7 @@ static const struct fimc_fmt fimc_lite_formats[] = {
 	}, {
 		.name		= "RAW8 (GRBG)",
 		.fourcc		= V4L2_PIX_FMT_SGRBG8,
+		.colorspace	= V4L2_COLORSPACE_SRGB,
 		.depth		= { 8 },
 		.color		= FIMC_FMT_RAW8,
 		.memplanes	= 1,
@@ -84,6 +89,7 @@ static const struct fimc_fmt fimc_lite_formats[] = {
 	}, {
 		.name		= "RAW10 (GRBG)",
 		.fourcc		= V4L2_PIX_FMT_SGRBG10,
+		.colorspace	= V4L2_COLORSPACE_SRGB,
 		.depth		= { 10 },
 		.color		= FIMC_FMT_RAW10,
 		.memplanes	= 1,
@@ -92,6 +98,7 @@ static const struct fimc_fmt fimc_lite_formats[] = {
 	}, {
 		.name		= "RAW12 (GRBG)",
 		.fourcc		= V4L2_PIX_FMT_SGRBG12,
+		.colorspace	= V4L2_COLORSPACE_SRGB,
 		.depth		= { 12 },
 		.color		= FIMC_FMT_RAW12,
 		.memplanes	= 1,
@@ -153,6 +160,7 @@ static int fimc_lite_hw_init(struct fimc_lite *fimc, bool isp_output)
 	flite_hw_set_camera_bus(fimc, si);
 	flite_hw_set_source_format(fimc, &fimc->inp_frame);
 	flite_hw_set_window_offset(fimc, &fimc->inp_frame);
+	flite_hw_set_dma_buf_mask(fimc, 0);
 	flite_hw_set_output_dma(fimc, &fimc->out_frame, !isp_output);
 	flite_hw_set_interrupt_mask(fimc);
 	flite_hw_set_test_pattern(fimc, fimc->test_pattern->val);
@@ -276,19 +284,23 @@ static irqreturn_t flite_irq_handler(int irq, void *priv)
 
 	if ((intsrc & FLITE_REG_CISTATUS_IRQ_SRC_FRMSTART) &&
 	    test_bit(ST_FLITE_RUN, &fimc->state) &&
-	    !list_empty(&fimc->active_buf_q) &&
 	    !list_empty(&fimc->pending_buf_q)) {
+		vbuf = fimc_lite_pending_queue_pop(fimc);
+		flite_hw_set_dma_buffer(fimc, vbuf);
+		fimc_lite_active_queue_add(fimc, vbuf);
+	}
+
+	if ((intsrc & FLITE_REG_CISTATUS_IRQ_SRC_FRMEND) &&
+	    test_bit(ST_FLITE_RUN, &fimc->state) &&
+	    !list_empty(&fimc->active_buf_q)) {
 		vbuf = fimc_lite_active_queue_pop(fimc);
 		ktime_get_ts(&ts);
 		tv = &vbuf->vb.v4l2_buf.timestamp;
 		tv->tv_sec = ts.tv_sec;
 		tv->tv_usec = ts.tv_nsec / NSEC_PER_USEC;
 		vbuf->vb.v4l2_buf.sequence = fimc->frame_count++;
+		flite_hw_mask_dma_buffer(fimc, vbuf->index);
 		vb2_buffer_done(&vbuf->vb, VB2_BUF_STATE_DONE);
-
-		vbuf = fimc_lite_pending_queue_pop(fimc);
-		flite_hw_set_output_addr(fimc, vbuf->paddr);
-		fimc_lite_active_queue_add(fimc, vbuf);
 	}
 
 	if (test_bit(ST_FLITE_CONFIG, &fimc->state))
@@ -307,9 +319,15 @@ done:
 static int start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct fimc_lite *fimc = q->drv_priv;
+	unsigned long flags;
 	int ret;
 
+	spin_lock_irqsave(&fimc->slock, flags);
+
+	fimc->buf_index = 0;
 	fimc->frame_count = 0;
+
+	spin_unlock_irqrestore(&fimc->slock, flags);
 
 	ret = fimc_lite_hw_init(fimc, false);
 	if (ret) {
@@ -412,10 +430,14 @@ static void buffer_queue(struct vb2_buffer *vb)
 	spin_lock_irqsave(&fimc->slock, flags);
 	buf->paddr = vb2_dma_contig_plane_dma_addr(vb, 0);
 
+	buf->index = fimc->buf_index++;
+	if (fimc->buf_index >= fimc->reqbufs_count)
+		fimc->buf_index = 0;
+
 	if (!test_bit(ST_FLITE_SUSPENDED, &fimc->state) &&
 	    !test_bit(ST_FLITE_STREAM, &fimc->state) &&
 	    list_empty(&fimc->active_buf_q)) {
-		flite_hw_set_output_addr(fimc, buf->paddr);
+		flite_hw_set_dma_buffer(fimc, buf);
 		fimc_lite_active_queue_add(fimc, buf);
 	} else {
 		fimc_lite_pending_queue_add(fimc, buf);
@@ -545,37 +567,54 @@ static const struct v4l2_file_operations fimc_lite_fops = {
  * Format and crop negotiation helpers
  */
 
-static const struct fimc_fmt *fimc_lite_try_format(struct fimc_lite *fimc,
-					u32 *width, u32 *height,
-					u32 *code, u32 *fourcc, int pad)
+static const struct fimc_fmt *fimc_lite_subdev_try_fmt(struct fimc_lite *fimc,
+					struct v4l2_subdev_fh *fh,
+					struct v4l2_subdev_format *format)
 {
 	struct flite_drvdata *dd = fimc->dd;
-	const struct fimc_fmt *fmt;
-	unsigned int flags = 0;
+	struct v4l2_mbus_framefmt *mf = &format->format;
+	const struct fimc_fmt *fmt = NULL;
 
-	if (pad == FLITE_SD_PAD_SINK) {
-		v4l_bound_align_image(width, 8, dd->max_width,
-				      ffs(dd->out_width_align) - 1,
-				      height, 0, dd->max_height, 0, 0);
+	if (format->pad == FLITE_SD_PAD_SINK) {
+		v4l_bound_align_image(&mf->width, 8, dd->max_width,
+				ffs(dd->out_width_align) - 1,
+				&mf->height, 0, dd->max_height, 0, 0);
+
+		fmt = fimc_lite_find_format(NULL, &mf->code, 0, 0);
+		if (WARN_ON(!fmt))
+			return NULL;
+
+		mf->colorspace = fmt->colorspace;
+		mf->code = fmt->mbus_code;
 	} else {
-		v4l_bound_align_image(width, 8, fimc->inp_frame.rect.width,
-				      ffs(dd->out_width_align) - 1,
-				      height, 0, fimc->inp_frame.rect.height,
-				      0, 0);
-		flags = fimc->inp_frame.fmt->flags;
+		struct flite_frame *sink = &fimc->inp_frame;
+		struct v4l2_mbus_framefmt *sink_fmt;
+		struct v4l2_rect *rect;
+
+		if (format->which == V4L2_SUBDEV_FORMAT_TRY) {
+			sink_fmt = v4l2_subdev_get_try_format(fh,
+						FLITE_SD_PAD_SINK);
+
+			mf->code = sink_fmt->code;
+			mf->colorspace = sink_fmt->colorspace;
+
+			rect = v4l2_subdev_get_try_crop(fh,
+						FLITE_SD_PAD_SINK);
+		} else {
+			mf->code = sink->fmt->mbus_code;
+			mf->colorspace = sink->fmt->colorspace;
+			rect = &sink->rect;
+		}
+
+		/* Allow changing format only on sink pad */
+		mf->width = rect->width;
+		mf->height = rect->height;
 	}
 
-	fmt = fimc_lite_find_format(fourcc, code, flags, 0);
-	if (WARN_ON(!fmt))
-		return NULL;
+	mf->field = V4L2_FIELD_NONE;
 
-	if (code)
-		*code = fmt->mbus_code;
-	if (fourcc)
-		*fourcc = fmt->fourcc;
-
-	v4l2_dbg(1, debug, &fimc->subdev, "code: 0x%x, %dx%d\n",
-		 code ? *code : 0, *width, *height);
+	v4l2_dbg(1, debug, &fimc->subdev, "code: %#x (%d), %dx%d\n",
+		 mf->code, mf->colorspace, mf->width, mf->height);
 
 	return fmt;
 }
@@ -667,7 +706,7 @@ static int fimc_lite_g_fmt_mplane(struct file *file, void *fh,
 	pixm->width = frame->f_width;
 	pixm->height = frame->f_height;
 	pixm->field = V4L2_FIELD_NONE;
-	pixm->colorspace = V4L2_COLORSPACE_JPEG;
+	pixm->colorspace = fmt->colorspace;
 	return 0;
 }
 
@@ -710,7 +749,7 @@ static int fimc_lite_try_fmt(struct fimc_lite *fimc,
 						fmt->depth[0]) / 8;
 	pixm->num_planes = fmt->memplanes;
 	pixm->pixelformat = fmt->fourcc;
-	pixm->colorspace = V4L2_COLORSPACE_JPEG;
+	pixm->colorspace = fmt->colorspace;
 	pixm->field = V4L2_FIELD_NONE;
 	return 0;
 }
@@ -1020,6 +1059,15 @@ static int fimc_lite_subdev_enum_mbus_code(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static struct v4l2_mbus_framefmt *__fimc_lite_subdev_get_try_fmt(
+			struct v4l2_subdev_fh *fh, unsigned int pad)
+{
+	if (pad != FLITE_SD_PAD_SINK)
+		pad = FLITE_SD_PAD_SOURCE_DMA;
+
+	return v4l2_subdev_get_try_format(fh, pad);
+}
+
 static int fimc_lite_subdev_get_fmt(struct v4l2_subdev *sd,
 				    struct v4l2_subdev_fh *fh,
 				    struct v4l2_subdev_format *fmt)
@@ -1029,13 +1077,13 @@ static int fimc_lite_subdev_get_fmt(struct v4l2_subdev *sd,
 	struct flite_frame *f = &fimc->inp_frame;
 
 	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
-		mf = v4l2_subdev_get_try_format(fh, fmt->pad);
+		mf = __fimc_lite_subdev_get_try_fmt(fh, fmt->pad);
 		fmt->format = *mf;
 		return 0;
 	}
-	mf->colorspace = V4L2_COLORSPACE_JPEG;
 
 	mutex_lock(&fimc->lock);
+	mf->colorspace = f->fmt->colorspace;
 	mf->code = f->fmt->mbus_code;
 
 	if (fmt->pad == FLITE_SD_PAD_SINK) {
@@ -1064,7 +1112,6 @@ static int fimc_lite_subdev_set_fmt(struct v4l2_subdev *sd,
 	v4l2_dbg(1, debug, sd, "pad%d: code: 0x%x, %dx%d\n",
 		 fmt->pad, mf->code, mf->width, mf->height);
 
-	mf->colorspace = V4L2_COLORSPACE_JPEG;
 	mutex_lock(&fimc->lock);
 
 	if ((atomic_read(&fimc->out_path) == FIMC_IO_ISP &&
@@ -1075,12 +1122,20 @@ static int fimc_lite_subdev_set_fmt(struct v4l2_subdev *sd,
 		return -EBUSY;
 	}
 
-	ffmt = fimc_lite_try_format(fimc, &mf->width, &mf->height,
-				    &mf->code, NULL, fmt->pad);
+	ffmt = fimc_lite_subdev_try_fmt(fimc, fh, fmt);
 
 	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
-		mf = v4l2_subdev_get_try_format(fh, fmt->pad);
+		struct v4l2_mbus_framefmt *src_fmt;
+
+		mf = __fimc_lite_subdev_get_try_fmt(fh, fmt->pad);
 		*mf = fmt->format;
+
+		if (fmt->pad == FLITE_SD_PAD_SINK) {
+			unsigned int pad = FLITE_SD_PAD_SOURCE_DMA;
+			src_fmt = __fimc_lite_subdev_get_try_fmt(fh, pad);
+			*src_fmt = *mf;
+		}
+
 		mutex_unlock(&fimc->lock);
 		return 0;
 	}
@@ -1098,11 +1153,6 @@ static int fimc_lite_subdev_set_fmt(struct v4l2_subdev *sd,
 		source->rect = sink->rect;
 		source->f_width = mf->width;
 		source->f_height = mf->height;
-	} else {
-		/* Allow changing format only on sink pad */
-		mf->code = sink->fmt->mbus_code;
-		mf->width = sink->rect.width;
-		mf->height = sink->rect.height;
 	}
 
 	mutex_unlock(&fimc->lock);
@@ -1240,9 +1290,6 @@ static int fimc_lite_subdev_registered(struct v4l2_subdev *sd)
 	int ret;
 
 	memset(vfd, 0, sizeof(*vfd));
-
-	fimc->inp_frame.fmt = &fimc_lite_formats[0];
-	fimc->out_frame.fmt = &fimc_lite_formats[0];
 	atomic_set(&fimc->out_path, FIMC_IO_DMA);
 
 	snprintf(vfd->name, sizeof(vfd->name), "fimc-lite.%d.capture",
@@ -1358,6 +1405,23 @@ static const struct v4l2_ctrl_config fimc_lite_ctrl = {
 	.step	= 1,
 };
 
+static void fimc_lite_set_default_config(struct fimc_lite *fimc)
+{
+	struct flite_frame *sink = &fimc->inp_frame;
+	struct flite_frame *source = &fimc->out_frame;
+
+	sink->fmt = &fimc_lite_formats[0];
+	sink->f_width = FLITE_DEFAULT_WIDTH;
+	sink->f_height = FLITE_DEFAULT_HEIGHT;
+
+	sink->rect.width = FLITE_DEFAULT_WIDTH;
+	sink->rect.height = FLITE_DEFAULT_HEIGHT;
+	sink->rect.left = 0;
+	sink->rect.top = 0;
+
+	*source = *sink;
+}
+
 static int fimc_lite_create_capture_subdev(struct fimc_lite *fimc)
 {
 	struct v4l2_ctrl_handler *handler = &fimc->ctrl_handler;
@@ -1449,13 +1513,14 @@ static int fimc_lite_probe(struct platform_device *pdev)
 		if (of_id)
 			drv_data = (struct flite_drvdata *)of_id->data;
 		fimc->index = of_alias_get_id(dev->of_node, "fimc-lite");
-	} else {
-		drv_data = fimc_lite_get_drvdata(pdev);
-		fimc->index = pdev->id;
 	}
 
-	if (!drv_data || fimc->index < 0 || fimc->index >= FIMC_LITE_MAX_DEVS)
+	if (!drv_data || fimc->index >= drv_data->num_instances ||
+						fimc->index < 0) {
+		dev_err(dev, "Wrong %s node alias\n",
+					dev->of_node->full_name);
 		return -EINVAL;
+	}
 
 	fimc->dd = drv_data;
 	fimc->pdev = pdev;
@@ -1502,7 +1567,10 @@ static int fimc_lite_probe(struct platform_device *pdev)
 		ret = PTR_ERR(fimc->alloc_ctx);
 		goto err_pm;
 	}
+
 	pm_runtime_put(dev);
+
+	fimc_lite_set_default_config(fimc);
 
 	dev_dbg(dev, "FIMC-LITE.%d registered successfully\n",
 		fimc->index);
@@ -1612,12 +1680,29 @@ static struct flite_drvdata fimc_lite_drvdata_exynos4 = {
 	.out_width_align	= 8,
 	.win_hor_offs_align	= 2,
 	.out_hor_offs_align	= 8,
+	.max_dma_bufs		= 1,
+	.num_instances		= 2,
+};
+
+/* EXYNOS5250 */
+static struct flite_drvdata fimc_lite_drvdata_exynos5 = {
+	.max_width		= 8192,
+	.max_height		= 8192,
+	.out_width_align	= 8,
+	.win_hor_offs_align	= 2,
+	.out_hor_offs_align	= 8,
+	.max_dma_bufs		= 32,
+	.num_instances		= 3,
 };
 
 static const struct of_device_id flite_of_match[] = {
 	{
 		.compatible = "samsung,exynos4212-fimc-lite",
 		.data = &fimc_lite_drvdata_exynos4,
+	},
+	{
+		.compatible = "samsung,exynos5250-fimc-lite",
+		.data = &fimc_lite_drvdata_exynos5,
 	},
 	{ /* sentinel */ },
 };
