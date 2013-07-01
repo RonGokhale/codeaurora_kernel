@@ -28,6 +28,7 @@
 
 #define BUF_TYPE_OUTPUT V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE
 #define BUF_TYPE_INPUT V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE
+#define EXCLUSIVITY_HACK
 
 static struct ion_client *venc_ion_client;
 static long venc_secure(struct v4l2_subdev *sd);
@@ -525,6 +526,31 @@ venc_buf_req_fail:
 	return rc;
 }
 
+#ifdef EXCLUSIVITY_HACK
+static int check_exclusivity(struct venc_inst *inst)
+{
+	int rc = 0;
+	struct v4l2_control ctrl;
+
+	if (inst->secure)
+		return true;
+
+	ctrl.id = V4L2_CID_MPEG_VIDC_ONGOING_SECURE_SESSIONS;
+	rc = msm_vidc_g_ctrl(inst->vidc_context, &ctrl);
+	if (rc || ctrl.value) {
+		WFD_MSG_ERR("Refusing to start non-secure session");
+		return false;
+	}
+
+	return true;
+}
+#else
+static int check_exclusivity(struct venc_inst *inst)
+{
+	return true;
+}
+#endif
+
 static long venc_start(struct v4l2_subdev *sd)
 {
 	struct venc_inst *inst = NULL;
@@ -537,6 +563,11 @@ static long venc_start(struct v4l2_subdev *sd)
 	}
 
 	inst = (struct venc_inst *)sd->dev_priv;
+
+	if (!check_exclusivity(inst)) {
+		rc = -ENOTSUPP;
+		goto venc_start_fail;
+	}
 
 	if (set_default_properties(inst))
 		WFD_MSG_WARN("Couldn't set default properties\n");
