@@ -95,6 +95,15 @@
 			qcom,use-voltage-corner;
 			qcom,consumer-supplies = "vdd_sr2_dig", "";
 		};
+		pm8226_s1_floor_corner: regulator-s1-floor-corner {
+			compatible = "qcom,rpm-regulator-smd";
+			regulator-name = "8226_s1_floor_corner";
+			qcom,set = <3>;
+			regulator-min-microvolt = <1>;
+			regulator-max-microvolt = <7>;
+			qcom,use-voltage-floor-corner;
+			qcom,always-send-voltage;
+		};
 	};
 
 	rpm-regulator-smpa3 {
@@ -110,9 +119,9 @@
 	rpm-regulator-smpa4 {
 		status = "okay";
 		pm8226_s4: regulator-s4 {
-			regulator-min-microvolt = <2100000>;
-			regulator-max-microvolt = <2100000>;
-			qcom,init-voltage = <2100000>;
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <2200000>;
+			qcom,init-voltage = <1800000>;
 			status = "okay";
 		};
 	};

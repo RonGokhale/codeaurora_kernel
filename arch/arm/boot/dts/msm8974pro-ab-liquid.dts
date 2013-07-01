@@ -11,15 +11,18 @@
  */
 
 /dts-v1/;
-/include/ "msm8226-v1.dtsi"
-/include/ "msm8226-qrd.dtsi"
+
+/include/ "msm8974pro-ab.dtsi"
+/include/ "msm8974-liquid.dtsi"
 
 / {
-	model = "Qualcomm MSM 8226 QRD";
-	compatible = "qcom,msm8226-qrd", "qcom,msm8226", "qcom,qrd";
-	qcom,msm-id = <145 11 0>,
-		      <158 11 0>,
-		      <159 11 0>,
-		      <198 11 0>,
-		      <205 11 0>;
+	model = "Qualcomm MSM 8974Pro LIQUID";
+	compatible = "qcom,msm8974-liquid", "qcom,msm8974", "qcom,liquid";
+	qcom,msm-id = <209 9 0x10000>,
+		      <211 9 0x10000>,
+		      <212 9 0x10000>,
+		      <214 9 0x10000>,
+		      <215 9 0x10000>,
+		      <217 9 0x10000>,
+		      <218 9 0x10000>;
 };

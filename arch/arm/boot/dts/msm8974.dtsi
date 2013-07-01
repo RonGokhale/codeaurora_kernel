@@ -585,11 +585,11 @@
 		spi-max-frequency = <19200000>;
 		#address-cells = <1>;
 		#size-cells = <0>;
-		gpios = <&msmgpio 56 0>, /* CLK  */
-			<&msmgpio 54 0>, /* MISO */
-			<&msmgpio 53 0>; /* MOSI */
-		cs-gpios = <&msmgpio 55 0>;
 		qcom,master-id = <84>;
+		qcom,gpio-mosi = <&msmgpio 53 0>;
+		qcom,gpio-miso = <&msmgpio 54 0>;
+		qcom,gpio-clk  = <&msmgpio 56 0>;
+		qcom,gpio-cs0  = <&msmgpio 55 0>;
 	};
 
 	tspp: msm_tspp@f99d8000 {
@@ -819,11 +819,11 @@
 		spi-max-frequency = <19200000>;
 		#address-cells = <1>;
 		#size-cells = <0>;
-		gpios = <&msmgpio 3 0>, /* CLK  */
-			<&msmgpio 1 0>, /* MISO */
-			<&msmgpio 0 0>; /* MOSI */
-		cs-gpios = <&msmgpio 9 0>;
 		qcom,master-id = <86>;
+		qcom,gpio-mosi = <&msmgpio 0 0>;
+		qcom,gpio-miso = <&msmgpio 1 0>;
+		qcom,gpio-clk  = <&msmgpio 3 0>;
+		qcom,gpio-cs2  = <&msmgpio 9 0>;
 	};
 
 	qcom,acpuclk@f9000000 {
@@ -854,8 +854,15 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 		ranges;
-		interrupts = <0 133 0>;
-		interrupt-names = "hs_phy_irq";
+
+		interrupt-parent = <&usb3>;
+		interrupts = <0 1>;
+		#interrupt-cells = <1>;
+		interrupt-map-mask = <0x0 0xffffffff>;
+		interrupt-map = <0x0 0 &intc 0 133 0
+				 0x0 1 &spmi_bus 0x0 0x0 0x9 0x0>;
+		interrupt-names = "hs_phy_irq", "pmic_id_irq";
+
 		ssusb_vdd_dig-supply = <&pm8841_s2_corner>;
 		SSUSB_1p8-supply = <&pm8941_l6>;
 		hsusb_vdd_dig-supply = <&pm8841_s2_corner>;
@@ -865,6 +872,7 @@
 		qcom,dwc-usb3-msm-dbm-eps = <4>;
 		qcom,vdd-voltage-level = <1 5 7>;
 		qcom,dwc-hsphy-init = <0x00D191A4>;
+		qcom,misc-ref = <&pm8941_misc>;
 
 		qcom,msm-bus,name = "usb3";
 		qcom,msm-bus,num-cases = <2>;
@@ -1092,9 +1100,8 @@
 		};
 	};
 
-	qcom,msm-auxpcm {
-		compatible = "qcom,msm-auxpcm-resource";
-		qcom,msm-cpudai-auxpcm-clk = "pcm_clk";
+	qcom,msm-pri-auxpcm {
+		compatible = "qcom,msm-auxpcm-dev";
 		qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
 		qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
 		qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
@@ -1102,26 +1109,19 @@
 		qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
 		qcom,msm-cpudai-auxpcm-data = <0>, <0>;
 		qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
+		qcom,msm-auxpcm-interface = "primary";
+	};
 
-		qcom,msm-prim-auxpcm-rx {
-			qcom,msm-auxpcm-dev-id = <4106>;
-			compatible = "qcom,msm-auxpcm-dev";
-		};
-
-		qcom,msm-prim-auxpcm-tx {
-			qcom,msm-auxpcm-dev-id = <4107>;
-			compatible = "qcom,msm-auxpcm-dev";
-		};
-
-		qcom,msm-sec-auxpcm-rx {
-			qcom,msm-auxpcm-dev-id = <4108>;
-			compatible = "qcom,msm-auxpcm-dev";
-		};
-
-		qcom,msm-sec-auxpcm-tx {
-			qcom,msm-auxpcm-dev-id = <4109>;
-			compatible = "qcom,msm-auxpcm-dev";
-		};
+	qcom,msm-sec-auxpcm {
+		compatible = "qcom,msm-auxpcm-dev";
+		qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
+		qcom,msm-cpudai-auxpcm-quant = <2>, <2>;
+		qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-data = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
+		qcom,msm-auxpcm-interface = "secondary";
 	};
 
 	qcom,msm-dai-mi2s {
@@ -1518,8 +1518,15 @@
 		reg = <0xf995d000 0x1000>,
 			<0xf9944000 0x19000>;
 		reg-names = "core_mem", "bam_mem";
-		interrupts = <0 113 0>, <0 239 0>;
-		interrupt-names = "core_irq", "bam_irq";
+		interrupt-names = "core_irq", "bam_irq", "wakeup_irq";
+		#address-cells = <0>;
+		interrupt-parent = <&uart7>;
+		interrupts = <0 1 2>;
+		#interrupt-cells = <1>;
+		interrupt-map-mask = <0xffffffff>;
+		interrupt-map = <0 &intc 0 113 0
+				1 &intc 0 239 0
+				2 &msmgpio 42 0>;
 
 		qcom,bam-tx-ep-pipe-index = <0>;
 		qcom,bam-rx-ep-pipe-index = <1>;

@@ -11,16 +11,18 @@
  */
 
 /dts-v1/;
-/include/ "msm8226-v2.dtsi"
-/include/ "msm8226-qrd.dtsi"
-/include/ "msm8226-camera-sensor-cdp.dtsi"
+
+/include/ "msm8974pro-ab.dtsi"
+/include/ "msm8974-mtp.dtsi"
 
 / {
-	model = "Qualcomm MSM 8226v2 QRD";
-	compatible = "qcom,msm8226-qrd", "qcom,msm8226", "qcom,qrd";
-	qcom,msm-id = <145 11 0x20000>,
-		      <158 11 0x20000>,
-		      <159 11 0x20000>,
-		      <198 11 0x20000>,
-		      <205 11 0x20000>;
+	model = "Qualcomm MSM 8974Pro MTP";
+	compatible = "qcom,msm8974-mtp", "qcom,msm8974", "qcom,mtp";
+	qcom,msm-id = <209 8 0x10000>,
+		      <211 8 0x10000>,
+		      <212 8 0x10000>,
+		      <214 8 0x10000>,
+		      <215 8 0x10000>,
+		      <217 8 0x10000>,
+		      <218 8 0x10000>;
 };

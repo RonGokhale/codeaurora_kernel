@@ -2370,7 +2370,8 @@ kgsl_ioctl_gpumem_sync_cache_bulk(struct kgsl_device_private *dev_priv,
 		entries[actual_count++] = entry;
 
 		/* If we exceed the breakeven point, flush the entire cache */
-		if (op_size >= kgsl_driver.full_cache_threshold &&
+		if (kgsl_driver.full_cache_threshold != 0 &&
+		    op_size >= kgsl_driver.full_cache_threshold &&
 		    param->op == KGSL_GPUMEM_CACHE_FLUSH) {
 			full_flush = true;
 			break;
@@ -2429,6 +2430,7 @@ _gpumem_alloc(struct kgsl_device_private *dev_priv,
 	int result;
 	struct kgsl_process_private *private = dev_priv->process_priv;
 	struct kgsl_mem_entry *entry;
+	int align;
 
 	/*
 	 * Mask off unknown flags from userspace. This way the caller can
@@ -2439,6 +2441,16 @@ _gpumem_alloc(struct kgsl_device_private *dev_priv,
 		| KGSL_MEMTYPE_MASK
 		| KGSL_MEMALIGN_MASK
 		| KGSL_MEMFLAGS_USE_CPU_MAP;
+
+	/* Cap the alignment bits to the highest number we can handle */
+
+	align = (flags & KGSL_MEMALIGN_MASK) >> KGSL_MEMALIGN_SHIFT;
+	if (align >= 32) {
+		KGSL_CORE_ERR("Alignment too big, restricting to 2^31\n");
+
+		flags &= ~KGSL_MEMALIGN_MASK;
+		flags |= (31 << KGSL_MEMALIGN_SHIFT) & KGSL_MEMALIGN_MASK;
+	}
 
 	entry = kgsl_mem_entry_create();
 	if (entry == NULL)

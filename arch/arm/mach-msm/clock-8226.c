@@ -2857,7 +2857,6 @@ static struct pll_clk a7sspll = {
 static struct clk_freq_tbl ftbl_kpss_ahb_clk[] = {
 	F_GCC(19200000, xo_a_clk, 0, 0, 0),
 	F_GCC(37500000, gpll0, 16, 0, 0),
-	F_GCC(75000000, gpll0,  8, 0, 0),
 	F_END
 };
 
@@ -2870,7 +2869,6 @@ static struct rcg_clk kpss_ahb_clk_src = {
 	.c = {
 		.dbg_name = "kpss_ahb_clk_src",
 		.ops = &clk_ops_rcg,
-		VDD_DIG_FMAX_MAP2(LOW, 37500000, NOMINAL, 75000000),
 		CLK_INIT(kpss_ahb_clk_src.c),
 	},
 };
@@ -3378,10 +3376,10 @@ static struct clk_lookup msm_clocks_8226[] = {
 
 	/* MM sensor clocks */
 	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "6f.qcom,camera"),
-	CLK_LOOKUP("cam_src_clk", mclk1_clk_src.c, "90.qcom,camera"),
+	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "90.qcom,camera"),
 	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "6d.qcom,camera"),
 	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "6f.qcom,camera"),
-	CLK_LOOKUP("cam_clk", camss_mclk1_clk.c, "90.qcom,camera"),
+	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "90.qcom,camera"),
 	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "6d.qcom,camera"),
 
 	/* CCI clocks */

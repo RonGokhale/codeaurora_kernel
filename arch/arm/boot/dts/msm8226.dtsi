@@ -30,6 +30,12 @@
 			label = "secure_mem";
 		};
 
+		adsp_mem: adsp_region {
+			linux,contiguous-region;
+			reg = <0 0x2000000>;
+			label = "adsp_mem";
+		};
+
 		qsecom_mem: qsecom_region {
 			linux,contiguous-region;
 			reg = <0 0x780000>;
@@ -260,11 +266,12 @@
 		qcom,dp-manual-pullup;
 
 		qcom,msm-bus,name = "usb";
-		qcom,msm-bus,num-cases = <2>;
+		qcom,msm-bus,num-cases = <3>;
 		qcom,msm-bus,num-paths = <1>;
 		qcom,msm-bus,vectors-KBps =
 				<87 512 0 0>,
-				<87 512 60000 960000>;
+				<87 512 60000 960000>,
+				<87 512 6000  6000>;
 	};
 
 	android_usb@fe8050c8 {
@@ -302,7 +309,7 @@
 			qcom,cdc-reset-gpio = <&msmgpio 72 0>;
 
 			cdc-vdd-buck-supply = <&pm8226_s4>;
-			qcom,cdc-vdd-buck-voltage = <2100000 2100000>;
+			qcom,cdc-vdd-buck-voltage = <1800000 2150000>;
 			qcom,cdc-vdd-buck-current = <650000>;
 
 			cdc-vdd-h-supply = <&pm8226_l6>;
@@ -508,9 +515,8 @@
 		compatible = "qcom,msm-pcm-hostless";
 	};
 
-	qcom,msm-auxpcm {
-		compatible = "qcom,msm-auxpcm-resource";
-		qcom,msm-cpudai-auxpcm-clk = "pcm_clk";
+	qcom,msm-pri-auxpcm {
+		compatible = "qcom,msm-auxpcm-dev";
 		qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
 		qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
 		qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
@@ -518,16 +524,7 @@
 		qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
 		qcom,msm-cpudai-auxpcm-data = <0>, <0>;
 		qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
-
-		qcom,msm-prim-auxpcm-rx {
-			qcom,msm-auxpcm-dev-id = <4106>;
-			compatible = "qcom,msm-auxpcm-dev";
-		};
-
-		qcom,msm-prim-auxpcm-tx {
-			qcom,msm-auxpcm-dev-id = <4107>;
-			compatible = "qcom,msm-auxpcm-dev";
-		};
+		qcom,msm-auxpcm-interface = "primary";
 	};
 
 	qcom,wcnss-wlan@fb000000 {
@@ -714,6 +711,18 @@
 		qcom,pmic-arb-channel = <0>;
 	};
 
+	i2c@f9925000 { /* BLSP-1 QUP-3 */
+		cell-index = <2>;
+		compatible = "qcom,i2c-qup";
+		reg = <0xf9925000 0x1000>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg-names = "qup_phys_addr";
+		interrupts = <0 97 0>;
+		interrupt-names = "qup_err_intr";
+		qcom,i2c-bus-freq = <400000>;
+		qcom,i2c-src-freq = <19200000>;
+	};
 	i2c@f9926000 { /* BLSP-1 QUP-4 */
 		cell-index = <0>;
 		compatible = "qcom,i2c-qup";

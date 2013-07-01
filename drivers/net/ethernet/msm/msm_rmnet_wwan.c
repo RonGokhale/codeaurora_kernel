@@ -188,6 +188,9 @@ static void a2_mux_write_done(void *dev, struct sk_buff *skb)
 		      __func__, skb);
 		netif_wake_queue(dev);
 	}
+	if (a2_mux_is_ch_empty(a2_mux_lcid_by_ch_id[wwan_ptr->ch_id]))
+		ipa_rm_inactivity_timer_release_resource(
+			ipa_rm_resource_by_ch_id[wwan_ptr->ch_id]);
 	spin_unlock_irqrestore(&wwan_ptr->lock, flags);
 }
 
@@ -533,6 +536,7 @@ static int wwan_xmit(struct sk_buff *skb, struct net_device *dev)
 		       __func__, skb);
 	}
 	spin_unlock_irqrestore(&wwan_ptr->lock, flags);
+	return ret;
 exit:
 	ipa_rm_inactivity_timer_release_resource(
 		ipa_rm_resource_by_ch_id[wwan_ptr->ch_id]);
@@ -548,6 +552,7 @@ static struct net_device_stats *wwan_get_stats(struct net_device *dev)
 static void wwan_tx_timeout(struct net_device *dev)
 {
 	pr_warning("[%s] wwan_tx_timeout(), data stall in UL\n", dev->name);
+	ipa_bam_reg_dump();
 }
 
 /**

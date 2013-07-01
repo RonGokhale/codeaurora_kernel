@@ -430,6 +430,7 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd);
 struct mdss_mdp_ctl *mdss_mdp_ctl_init(struct mdss_panel_data *pdata,
 					struct msm_fb_data_type *mfd);
 int mdss_mdp_video_reconfigure_splash_done(struct mdss_mdp_ctl *ctl);
+int mdss_mdp_cmd_reconfigure_splash_done(struct mdss_mdp_ctl *ctl);
 int mdss_mdp_video_copy_splash_screen(struct mdss_panel_data *pdata);
 void mdss_mdp_ctl_splash_start(struct mdss_panel_data *pdata);
 int mdss_mdp_ctl_splash_finish(struct mdss_mdp_ctl *ctl);
@@ -524,8 +525,9 @@ int mdss_mdp_smp_reserve(struct mdss_mdp_pipe *pipe);
 void mdss_mdp_smp_unreserve(struct mdss_mdp_pipe *pipe);
 void mdss_mdp_smp_release(struct mdss_mdp_pipe *pipe);
 
-int mdss_mdp_pipe_addr_setup(struct mdss_data_type *mdata, u32 *offsets,
-		u32 *ftch_y_id, u32 type, u32 num_base, u32 len);
+int mdss_mdp_pipe_addr_setup(struct mdss_data_type *mdata,
+	struct mdss_mdp_pipe *head, u32 *offsets, u32 *ftch_y_id, u32 type,
+	u32 num_base, u32 len);
 int mdss_mdp_mixer_addr_setup(struct mdss_data_type *mdata, u32 *mixer_offsets,
 		u32 *dspp_offsets, u32 *pingpong_offsets, u32 type, u32 len);
 int mdss_mdp_ctl_addr_setup(struct mdss_data_type *mdata, u32 *ctl_offsets,
