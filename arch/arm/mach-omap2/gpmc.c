@@ -1338,11 +1338,13 @@ static void __maybe_unused gpmc_read_timings_dt(struct device_node *np,
 #ifdef CONFIG_MTD_NAND
 
 static const char * const nand_ecc_opts[] = {
-	[OMAP_ECC_HAMMING_CODE_DEFAULT]		= "sw",
-	[OMAP_ECC_HAMMING_CODE_HW]		= "hw",
-	[OMAP_ECC_HAMMING_CODE_HW_ROMCODE]	= "hw-romcode",
-	[OMAP_ECC_BCH4_CODE_HW]			= "bch4",
-	[OMAP_ECC_BCH8_CODE_HW]			= "bch8",
+	[OMAP_ECC_HAMMING_CODE_DEFAULT]		= "hamming_code_sw",
+	[OMAP_ECC_HAMMING_CODE_HW]		= "hamming_code_hw",
+	[OMAP_ECC_HAMMING_CODE_HW_ROMCODE]	= "hamming_code_hw_romcode",
+	[OMAP_ECC_BCH4_CODE_HW]			= "bch4_code_hw",
+	[OMAP_ECC_BCH4_CODE_HW_DETECTION_SW]	= "bch4_code_hw_detection_sw",
+	[OMAP_ECC_BCH8_CODE_HW]			= "bch8_code_hw",
+	[OMAP_ECC_BCH8_CODE_HW_DETECTION_SW]	= "bch8_code_hw_detection_sw"
 };
 
 static int gpmc_probe_nand_child(struct platform_device *pdev,
@@ -1369,7 +1371,7 @@ static int gpmc_probe_nand_child(struct platform_device *pdev,
 
 	if (!of_property_read_string(child, "ti,nand-ecc-opt", &s))
 		for (val = 0; val < ARRAY_SIZE(nand_ecc_opts); val++)
-			if (!strcasecmp(s, nand_ecc_opts[val])) {
+			if (!strcmp(s, nand_ecc_opts[val])) {
 				gpmc_nand_data->ecc_opt = val;
 				break;
 			}
