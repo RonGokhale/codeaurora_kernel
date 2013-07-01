@@ -1067,17 +1067,16 @@ int iscsit_process_scsi_cmd(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 	 * be acknowledged. (See below)
 	 */
 	if (!cmd->immediate_data) {
-		cmdsn_ret = iscsit_sequence_cmd(conn, cmd, hdr->cmdsn);
-		if (cmdsn_ret == CMDSN_LOWER_THAN_EXP) {
+		cmdsn_ret = iscsit_sequence_cmd(conn, cmd,
+					(unsigned char *)hdr, hdr->cmdsn);
+		if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER) {
+			return -1;
+		} else if (cmdsn_ret == CMDSN_LOWER_THAN_EXP) {
 			if (!cmd->sense_reason)
 				return 0;
 
 			target_put_sess_cmd(conn->sess->se_sess, &cmd->se_cmd);
 			return 0;
-		} else if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER) {
-			return iscsit_reject_cmd(cmd,
-					ISCSI_REASON_PROTOCOL_ERROR,
-					(unsigned char *)hdr);
 		}
 	}
 
@@ -1139,7 +1138,10 @@ after_immediate_data:
 		 * DataCRC, check against ExpCmdSN/MaxCmdSN if
 		 * Immediate Bit is not set.
 		 */
-		cmdsn_ret = iscsit_sequence_cmd(cmd->conn, cmd, hdr->cmdsn);
+		cmdsn_ret = iscsit_sequence_cmd(cmd->conn, cmd,
+					(unsigned char *)hdr, hdr->cmdsn);
+		if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER)
+			return -1;
 
 		if (cmd->sense_reason) {
 			if (iscsit_dump_data_payload(cmd->conn,
@@ -1147,11 +1149,6 @@ after_immediate_data:
 				return -1;
 		} else if (cmd->unsolicited_data)
 			iscsit_set_unsoliticed_dataout(cmd);
-
-		if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER)
-			return iscsit_reject_cmd(cmd,
-					ISCSI_REASON_PROTOCOL_ERROR,
-					(unsigned char *)hdr);
 
 	} else if (immed_ret == IMMEDIATE_DATA_ERL1_CRC_FAILURE) {
 		/*
@@ -1603,14 +1600,12 @@ int iscsit_process_nop_out(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 			return 0;
 		}
 
-		cmdsn_ret = iscsit_sequence_cmd(conn, cmd, hdr->cmdsn);
+		cmdsn_ret = iscsit_sequence_cmd(conn, cmd,
+				(unsigned char *)hdr, hdr->cmdsn);
                 if (cmdsn_ret == CMDSN_LOWER_THAN_EXP)
 			return 0;
-
 		if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER)
-			return iscsit_reject_cmd(cmd,
-					ISCSI_REASON_PROTOCOL_ERROR,
-					(unsigned char *)hdr);
+			return -1;
 
 		return 0;
 	}
@@ -1919,14 +1914,13 @@ attach:
 	spin_unlock_bh(&conn->cmd_lock);
 
 	if (!(hdr->opcode & ISCSI_OP_IMMEDIATE)) {
-		int cmdsn_ret = iscsit_sequence_cmd(conn, cmd, hdr->cmdsn);
+		int cmdsn_ret = iscsit_sequence_cmd(conn, cmd, buf, hdr->cmdsn);
 		if (cmdsn_ret == CMDSN_HIGHER_THAN_EXP)
 			out_of_order_cmdsn = 1;
 		else if (cmdsn_ret == CMDSN_LOWER_THAN_EXP)
 			return 0;
 		else if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER)
-			return iscsit_reject_cmd(cmd,
-					ISCSI_REASON_PROTOCOL_ERROR, buf);
+			return -1;
 	}
 	iscsit_ack_from_expstatsn(conn, be32_to_cpu(hdr->exp_statsn));
 
@@ -2023,11 +2017,11 @@ iscsit_process_text_cmd(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 	iscsit_ack_from_expstatsn(conn, be32_to_cpu(hdr->exp_statsn));
 
 	if (!(hdr->opcode & ISCSI_OP_IMMEDIATE)) {
-		cmdsn_ret = iscsit_sequence_cmd(conn, cmd, hdr->cmdsn);
+		cmdsn_ret = iscsit_sequence_cmd(conn, cmd,
+				(unsigned char *)hdr, hdr->cmdsn);
 		if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER)
-			return iscsit_reject_cmd(cmd,
-					ISCSI_REASON_PROTOCOL_ERROR,
-					(unsigned char *)hdr);
+			return -1;
+
 		return 0;
 	}
 
@@ -2312,13 +2306,11 @@ iscsit_handle_logout_cmd(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 		if (ret < 0)
 			return ret;
 	} else {
-		cmdsn_ret = iscsit_sequence_cmd(conn, cmd, hdr->cmdsn);
-		if (cmdsn_ret == CMDSN_LOWER_THAN_EXP) {
+		cmdsn_ret = iscsit_sequence_cmd(conn, cmd, buf, hdr->cmdsn);
+		if (cmdsn_ret == CMDSN_LOWER_THAN_EXP)
 			logout_remove = 0;
-		} else if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER) {
-			return iscsit_reject_cmd(cmd,
-					ISCSI_REASON_PROTOCOL_ERROR, buf);
-		}
+		else if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER)
+			return -1;
 	}
 
 	return logout_remove;
