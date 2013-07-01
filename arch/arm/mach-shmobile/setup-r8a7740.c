@@ -990,10 +990,6 @@ void __init r8a7740_add_early_devices_dt(void)
 	shmobile_setup_console();
 }
 
-static const struct of_dev_auxdata r8a7740_auxdata_lookup[] __initconst = {
-	{ }
-};
-
 void __init r8a7740_add_standard_devices_dt(void)
 {
 	/* clocks are setup late during boot in the case of DT */
@@ -1002,8 +998,7 @@ void __init r8a7740_add_standard_devices_dt(void)
 	platform_add_devices(r8a7740_early_devices,
 			    ARRAY_SIZE(r8a7740_early_devices));
 
-	of_platform_populate(NULL, of_default_bus_match_table,
-			     r8a7740_auxdata_lookup, NULL);
+	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 }
 
 static const char *r8a7740_boards_compat_dt[] __initdata = {
