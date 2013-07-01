@@ -186,8 +186,6 @@ static int mv_can_chain(struct mv_xor_desc_slot *desc)
 
 	if (chain_old_tail->type != desc->type)
 		return 0;
-	if (desc->type == DMA_MEMSET)
-		return 0;
 
 	return 1;
 }
@@ -204,9 +202,6 @@ static void mv_set_mode(struct mv_xor_chan *chan,
 		break;
 	case DMA_MEMCPY:
 		op_mode = XOR_OPERATION_MODE_MEMCPY;
-		break;
-	case DMA_MEMSET:
-		op_mode = XOR_OPERATION_MODE_MEMSET;
 		break;
 	default:
 		dev_err(mv_chan_to_devp(chan),
@@ -274,18 +269,9 @@ static void mv_xor_start_new_chain(struct mv_xor_chan *mv_chan,
 	if (sw_desc->type != mv_chan->current_type)
 		mv_set_mode(mv_chan, sw_desc->type);
 
-	if (sw_desc->type == DMA_MEMSET) {
-		/* for memset requests we need to program the engine, no
-		 * descriptors used.
-		 */
-		struct mv_xor_desc *hw_desc = sw_desc->hw_desc;
-		mv_chan_set_dest_pointer(mv_chan, hw_desc->phy_dest_addr);
-		mv_chan_set_block_size(mv_chan, sw_desc->unmap_len);
-		mv_chan_set_value(mv_chan, sw_desc->value);
-	} else {
-		/* set the hardware chain */
-		mv_chan_set_next_descriptor(mv_chan, sw_desc->async_tx.phys);
-	}
+	/* set the hardware chain */
+	mv_chan_set_next_descriptor(mv_chan, sw_desc->async_tx.phys);
+
 	mv_chan->pending += sw_desc->slot_cnt;
 	mv_xor_issue_pending(&mv_chan->dmachan);
 }
@@ -684,43 +670,6 @@ mv_xor_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dest, dma_addr_t src,
 		"%s sw_desc %p async_tx %p\n",
 		__func__, sw_desc, sw_desc ? &sw_desc->async_tx : 0);
 
-	return sw_desc ? &sw_desc->async_tx : NULL;
-}
-
-static struct dma_async_tx_descriptor *
-mv_xor_prep_dma_memset(struct dma_chan *chan, dma_addr_t dest, int value,
-		       size_t len, unsigned long flags)
-{
-	struct mv_xor_chan *mv_chan = to_mv_xor_chan(chan);
-	struct mv_xor_desc_slot *sw_desc, *grp_start;
-	int slot_cnt;
-
-	dev_dbg(mv_chan_to_devp(mv_chan),
-		"%s dest: %x len: %u flags: %ld\n",
-		__func__, dest, len, flags);
-	if (unlikely(len < MV_XOR_MIN_BYTE_COUNT))
-		return NULL;
-
-	BUG_ON(len > MV_XOR_MAX_BYTE_COUNT);
-
-	spin_lock_bh(&mv_chan->lock);
-	slot_cnt = mv_chan_memset_slot_count(len);
-	sw_desc = mv_xor_alloc_slots(mv_chan, slot_cnt, 1);
-	if (sw_desc) {
-		sw_desc->type = DMA_MEMSET;
-		sw_desc->async_tx.flags = flags;
-		grp_start = sw_desc->group_head;
-		mv_desc_init(grp_start, flags);
-		mv_desc_set_byte_count(grp_start, len);
-		mv_desc_set_dest_addr(sw_desc->group_head, dest);
-		mv_desc_set_block_fill_val(grp_start, value);
-		sw_desc->unmap_src_cnt = 1;
-		sw_desc->unmap_len = len;
-	}
-	spin_unlock_bh(&mv_chan->lock);
-	dev_dbg(mv_chan_to_devp(mv_chan),
-		"%s sw_desc %p async_tx %p \n",
-		__func__, sw_desc, &sw_desc->async_tx);
 	return sw_desc ? &sw_desc->async_tx : NULL;
 }
 
@@ -1137,8 +1086,6 @@ mv_xor_channel_add(struct mv_xor_device *xordev,
 	/* set prep routines based on capability */
 	if (dma_has_cap(DMA_MEMCPY, dma_dev->cap_mask))
 		dma_dev->device_prep_dma_memcpy = mv_xor_prep_dma_memcpy;
-	if (dma_has_cap(DMA_MEMSET, dma_dev->cap_mask))
-		dma_dev->device_prep_dma_memset = mv_xor_prep_dma_memset;
 	if (dma_has_cap(DMA_XOR, dma_dev->cap_mask)) {
 		dma_dev->max_xor = 8;
 		dma_dev->device_prep_dma_xor = mv_xor_prep_dma_xor;
@@ -1189,7 +1136,6 @@ mv_xor_channel_add(struct mv_xor_device *xordev,
 
 	dev_info(&pdev->dev, "Marvell XOR: ( %s%s%s%s)\n",
 		 dma_has_cap(DMA_XOR, dma_dev->cap_mask) ? "xor " : "",
-		 dma_has_cap(DMA_MEMSET, dma_dev->cap_mask)  ? "fill " : "",
 		 dma_has_cap(DMA_MEMCPY, dma_dev->cap_mask) ? "cpy " : "",
 		 dma_has_cap(DMA_INTERRUPT, dma_dev->cap_mask) ? "intr " : "");
 

@@ -14,6 +14,7 @@
 #include <linux/init.h>
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
+#include <linux/reboot.h>
 
 #include <asm/setup.h>
 #include <asm/mach/map.h>
@@ -49,7 +50,7 @@ static const char *keystone_match[] __initconst = {
 	NULL,
 };
 
-void keystone_restart(char mode, const char *cmd)
+void keystone_restart(enum reboot_mode mode, const char *cmd)
 {
 	u32 val;
 
