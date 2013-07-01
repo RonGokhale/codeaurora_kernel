@@ -222,12 +222,6 @@ static int qxl_add_common_modes(struct drm_connector *connector)
 	return i - 1;
 }
 
-static void qxl_crtc_gamma_set(struct drm_crtc *crtc, u16 *red, u16 *green,
-			       u16 *blue, uint32_t start, uint32_t size)
-{
-	/* TODO */
-}
-
 static void qxl_crtc_destroy(struct drm_crtc *crtc)
 {
 	struct qxl_crtc *qxl_crtc = to_qxl_crtc(crtc);
@@ -255,11 +249,11 @@ qxl_hide_cursor(struct qxl_device *qdev)
 	qxl_release_unreserve(qdev, release);
 }
 
-static int qxl_crtc_cursor_set(struct drm_crtc *crtc,
-			       struct drm_file *file_priv,
-			       uint32_t handle,
-			       uint32_t width,
-			       uint32_t height)
+static int qxl_crtc_cursor_set2(struct drm_crtc *crtc,
+				struct drm_file *file_priv,
+				uint32_t handle,
+				uint32_t width,
+				uint32_t height, int32_t hot_x, int32_t hot_y)
 {
 	struct drm_device *dev = crtc->dev;
 	struct qxl_device *qdev = dev->dev_private;
@@ -315,8 +309,8 @@ static int qxl_crtc_cursor_set(struct drm_crtc *crtc,
 	cursor->header.type = SPICE_CURSOR_TYPE_ALPHA;
 	cursor->header.width = 64;
 	cursor->header.height = 64;
-	cursor->header.hot_spot_x = 0;
-	cursor->header.hot_spot_y = 0;
+	cursor->header.hot_spot_x = hot_x;
+	cursor->header.hot_spot_y = hot_y;
 	cursor->data_size = size;
 	cursor->chunk.next_chunk = 0;
 	cursor->chunk.prev_chunk = 0;
@@ -397,9 +391,8 @@ static int qxl_crtc_cursor_move(struct drm_crtc *crtc,
 
 
 static const struct drm_crtc_funcs qxl_crtc_funcs = {
-	.cursor_set = qxl_crtc_cursor_set,
+	.cursor_set2 = qxl_crtc_cursor_set2,
 	.cursor_move = qxl_crtc_cursor_move,
-	.gamma_set = qxl_crtc_gamma_set,
 	.set_config = drm_crtc_helper_set_config,
 	.destroy = qxl_crtc_destroy,
 };
@@ -619,18 +612,12 @@ static void qxl_crtc_commit(struct drm_crtc *crtc)
 	DRM_DEBUG("\n");
 }
 
-static void qxl_crtc_load_lut(struct drm_crtc *crtc)
-{
-	DRM_DEBUG("\n");
-}
-
 static const struct drm_crtc_helper_funcs qxl_crtc_helper_funcs = {
 	.dpms = qxl_crtc_dpms,
 	.mode_fixup = qxl_crtc_mode_fixup,
 	.mode_set = qxl_crtc_mode_set,
 	.prepare = qxl_crtc_prepare,
 	.commit = qxl_crtc_commit,
-	.load_lut = qxl_crtc_load_lut,
 };
 
 static int qdev_crtc_init(struct drm_device *dev, int num_crtc)
