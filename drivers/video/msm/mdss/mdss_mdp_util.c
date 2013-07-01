@@ -23,6 +23,7 @@
 #include <media/msm_media_info.h>
 
 #include <mach/iommu_domains.h>
+#include <mach/scm.h>
 
 #include "mdss_fb.h"
 #include "mdss_mdp.h"
@@ -408,6 +409,68 @@ void mdss_mdp_data_calc_offset(struct mdss_mdp_data *data, u16 x, u16 y,
 	}
 }
 
+#define SCM_CP_MDSS_SECURE 0xF
+
+extern void mdss_mdp_rotator_wait4idle(void);
+
+static int __mdss_mdp_set_secure(struct mdss_data_type *mdata, int enable)
+{
+	u32 cmd, resp = 0;
+	int rc;
+
+	mutex_lock(&mdata->sec_lock);
+	pr_debug("MDP Secure Mode=%d\n", enable);
+
+	cmd = enable ? 1 : 0;
+	if (mdata->secure_mode == cmd) {
+		mutex_unlock(&mdata->sec_lock);
+		return 0;
+	}
+
+	mdata->secure_mode = cmd;
+	if (mdata->secure_mode)
+		mdss_mdp_rotator_wait4idle();
+
+	rc = scm_call(SCM_SVC_MP, SCM_CP_MDSS_SECURE,
+			&cmd, sizeof(cmd), &resp, sizeof(resp));
+	if (resp)
+		rc = resp;
+	mutex_unlock(&mdata->sec_lock);
+
+	return rc;
+}
+
+static void __mdss_mdp_end_secure(struct kref *kref)
+{
+	struct mdss_data_type *mdata;
+	int rc;
+
+	mdata = container_of(kref, struct mdss_data_type, sec_kref);
+
+	rc = __mdss_mdp_set_secure(mdata, 0);
+	WARN(rc, "Unsecure MDSS failed=%d\n", rc);
+}
+
+void mdss_mdp_secure_vote(int enable)
+{
+	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
+	int rc;
+
+	if (enable) {
+		if (!mdata->secure_mode) {
+			kref_init(&mdata->sec_kref);
+
+			rc = __mdss_mdp_set_secure(mdata, 1);
+			WARN(rc, "Secure MDSS failed=%d\n", rc);
+		} else {
+			kref_get(&mdss_res->sec_kref);
+		}
+	} else {
+		WARN(!mdata->secure_mode, "Unbalanced secure mode ref count\n");
+		kref_put(&mdata->sec_kref, __mdss_mdp_end_secure);
+	}
+}
+
 int mdss_mdp_put_img(struct mdss_mdp_img_data *data)
 {
 	struct ion_client *iclient = mdss_get_ionclient();
@@ -433,6 +496,7 @@ int mdss_mdp_put_img(struct mdss_mdp_img_data *data)
 			if (domain == MDSS_IOMMU_DOMAIN_SECURE) {
 				msm_ion_unsecure_buffer(iclient,
 					data->srcp_ihdl);
+				mdss_mdp_secure_vote(0);
 			}
 		}
 
@@ -493,6 +557,8 @@ int mdss_mdp_get_img(struct msmfb_data *img, struct mdss_mdp_img_data *data)
 			int domain;
 			if (data->flags & MDP_SECURE_OVERLAY_SESSION) {
 				domain = MDSS_IOMMU_DOMAIN_SECURE;
+
+				mdss_mdp_secure_vote(1);
 				ret = msm_ion_secure_buffer(iclient,
 					data->srcp_ihdl, 0x2, 0);
 				if (IS_ERR_VALUE(ret)) {

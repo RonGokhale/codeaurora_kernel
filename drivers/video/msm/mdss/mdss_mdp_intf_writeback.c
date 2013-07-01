@@ -102,6 +102,16 @@ static int mdss_mdp_writeback_addr_setup(struct mdss_mdp_writeback_ctx *ctx,
 	if (ctx->bwc_mode)
 		data.bwc_enabled = 1;
 
+	if (mdss_res->secure_mode) {
+		int i;
+		for (i = 0; i < data.num_planes; i++) {
+			if (!(data.p[i].flags & MDP_SECURE_OVERLAY_SESSION)) {
+				pr_err("secure mode: writeback buf needs CP\n");
+				return -EPERM;
+			}
+		}
+	}
+
 	ret = mdss_mdp_data_check(&data, &ctx->dst_planes);
 	if (ret)
 		return ret;
@@ -390,7 +400,8 @@ static int mdss_mdp_writeback_display(struct mdss_mdp_ctl *ctl, void *arg)
 	ctx->callback_arg = wb_args->priv_data;
 
 	flush_bits = BIT(16); /* WB */
-	mdp_wb_write(ctx, MDSS_MDP_REG_WB_DST_ADDR_SW_STATUS, ctl->is_secure);
+	mdp_wb_write(ctx, MDSS_MDP_REG_WB_DST_ADDR_SW_STATUS,
+			!mdss_res->secure_mode && ctl->is_secure);
 	mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_FLUSH, flush_bits);
 
 	INIT_COMPLETION(ctx->wb_comp);

@@ -130,10 +130,15 @@ int mdss_mdp_wb_set_secure(struct msm_fb_data_type *mfd, int enable)
 	struct mdss_mdp_pipe *pipe;
 	struct mdss_mdp_mixer *mixer;
 
+	if (enable == ctl->is_secure)
+		return 0;
+
 	pr_debug("setting secure=%d\n", enable);
 
 	ctl->is_secure = enable;
 	wb->is_secure = enable;
+
+	mdss_mdp_secure_vote(enable);
 
 	/* newer revisions don't require secure src pipe for secure session */
 	if (ctl->mdata->mdp_rev > MDSS_MDP_HW_REV_100)
@@ -247,7 +252,10 @@ static int mdss_mdp_wb_terminate(struct msm_fb_data_type *mfd)
 		}
 	}
 
-	wb->is_secure = false;
+	if (wb->is_secure) {
+		mdss_mdp_secure_vote(0);
+		wb->is_secure = false;
+	}
 	if (wb->secure_pipe)
 		mdss_mdp_pipe_destroy(wb->secure_pipe);
 	mutex_unlock(&wb->lock);
@@ -530,6 +538,13 @@ int mdss_mdp_wb_kickoff(struct msm_fb_data_type *mfd)
 	ret = mdss_mdp_display_commit(ctl, &wb_args);
 	if (ret) {
 		pr_err("error on commit ctl=%d\n", ctl->num);
+		/* output buffer was not used put it back to free_queue */
+		if (node) {
+			mutex_lock(&wb->lock);
+			list_add(&node->active_entry, &wb->free_queue);
+			node->state = IN_FREE_QUEUE;
+			mutex_unlock(&wb->lock);
+		}
 		goto kickoff_fail;
 	}
 
