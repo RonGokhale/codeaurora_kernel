@@ -144,6 +144,7 @@ enum intel_dpll_id {
 
 struct intel_dpll_hw_state {
 	uint32_t dpll;
+	uint32_t dpll_md;
 	uint32_t fp0;
 	uint32_t fp1;
 };
@@ -156,6 +157,8 @@ struct intel_shared_dpll {
 	/* should match the index in the dev_priv->shared_dplls array */
 	enum intel_dpll_id id;
 	struct intel_dpll_hw_state hw_state;
+	void (*mode_set)(struct drm_i915_private *dev_priv,
+			 struct intel_shared_dpll *pll);
 	void (*enable)(struct drm_i915_private *dev_priv,
 		       struct intel_shared_dpll *pll);
 	void (*disable)(struct drm_i915_private *dev_priv,
@@ -364,6 +367,7 @@ struct drm_i915_display_funcs {
 	 * fills out the pipe-config with the hw state. */
 	bool (*get_pipe_config)(struct intel_crtc *,
 				struct intel_crtc_config *);
+	void (*get_clock)(struct intel_crtc *, struct intel_crtc_config *);
 	int (*crtc_mode_set)(struct drm_crtc *crtc,
 			     int x, int y,
 			     struct drm_framebuffer *old_fb);
@@ -462,8 +466,12 @@ struct i915_gtt {
 	void __iomem *gsm;
 
 	bool do_idle_maps;
-	dma_addr_t scratch_page_dma;
-	struct page *scratch_page;
+	struct {
+		dma_addr_t addr;
+		struct page *page;
+	} scratch;
+
+	int mtrr;
 
 	/* global gtt ops */
 	int (*gtt_probe)(struct drm_device *dev, size_t *gtt_total,
@@ -477,21 +485,17 @@ struct i915_gtt {
 				   struct sg_table *st,
 				   unsigned int pg_start,
 				   enum i915_cache_level cache_level);
-	gen6_gtt_pte_t (*pte_encode)(struct drm_device *dev,
-				     dma_addr_t addr,
+	gen6_gtt_pte_t (*pte_encode)(dma_addr_t addr,
 				     enum i915_cache_level level);
 };
 #define gtt_total_entries(gtt) ((gtt).total >> PAGE_SHIFT)
 
-#define I915_PPGTT_PD_ENTRIES 512
-#define I915_PPGTT_PT_ENTRIES 1024
 struct i915_hw_ppgtt {
 	struct drm_device *dev;
 	unsigned num_pd_entries;
 	struct page **pt_pages;
 	uint32_t pd_offset;
 	dma_addr_t *pt_dma_addr;
-	dma_addr_t scratch_page_dma_addr;
 
 	/* pte functions, mirroring the interface of the global gtt. */
 	void (*clear_range)(struct i915_hw_ppgtt *ppgtt,
@@ -501,8 +505,7 @@ struct i915_hw_ppgtt {
 			       struct sg_table *st,
 			       unsigned int pg_start,
 			       enum i915_cache_level cache_level);
-	gen6_gtt_pte_t (*pte_encode)(struct drm_device *dev,
-				     dma_addr_t addr,
+	gen6_gtt_pte_t (*pte_encode)(dma_addr_t addr,
 				     enum i915_cache_level level);
 	int (*enable)(struct drm_device *dev);
 	void (*cleanup)(struct i915_hw_ppgtt *ppgtt);
@@ -528,16 +531,35 @@ struct i915_hw_context {
 	struct i915_ctx_hang_stats hang_stats;
 };
 
-enum no_fbc_reason {
-	FBC_NO_OUTPUT, /* no outputs enabled to compress */
-	FBC_STOLEN_TOO_SMALL, /* not enough space to hold compressed buffers */
-	FBC_UNSUPPORTED_MODE, /* interlace or doublescanned mode */
-	FBC_MODE_TOO_LARGE, /* mode too large for compression */
-	FBC_BAD_PLANE, /* fbc not supported on plane */
-	FBC_NOT_TILED, /* buffer not tiled */
-	FBC_MULTIPLE_PIPES, /* more than one pipe active */
-	FBC_MODULE_PARAM,
+struct i915_fbc {
+	unsigned long size;
+	unsigned int fb_id;
+	enum plane plane;
+	int y;
+
+	struct drm_mm_node *compressed_fb;
+	struct drm_mm_node *compressed_llb;
+
+	struct intel_fbc_work {
+		struct delayed_work work;
+		struct drm_crtc *crtc;
+		struct drm_framebuffer *fb;
+		int interval;
+	} *fbc_work;
+
+	enum {
+		FBC_NO_OUTPUT, /* no outputs enabled to compress */
+		FBC_STOLEN_TOO_SMALL, /* not enough space for buffers */
+		FBC_UNSUPPORTED_MODE, /* interlace or doublescanned mode */
+		FBC_MODE_TOO_LARGE, /* mode too large for compression */
+		FBC_BAD_PLANE, /* fbc not supported on plane */
+		FBC_NOT_TILED, /* buffer not tiled */
+		FBC_MULTIPLE_PIPES, /* more than one pipe active */
+		FBC_MODULE_PARAM,
+		FBC_CHIP_DEFAULT, /* disabled by default on this chip */
+	} no_fbc_reason;
 };
+
 
 enum intel_pch {
 	PCH_NONE = 0,	/* No PCH present */
@@ -815,8 +837,6 @@ struct i915_gem_mm {
 	/** Usable portion of the GTT for GEM */
 	unsigned long stolen_base; /* limited to low memory (32-bit) */
 
-	int gtt_mtrr;
-
 	/** PPGTT used for aliasing the PPGTT with the GTT */
 	struct i915_hw_ppgtt *aliasing_ppgtt;
 
@@ -1058,12 +1078,7 @@ typedef struct drm_i915_private {
 
 	int num_plane;
 
-	unsigned long cfb_size;
-	unsigned int cfb_fb;
-	enum plane cfb_plane;
-	int cfb_y;
-	struct intel_fbc_work *fbc_work;
-
+	struct i915_fbc fbc;
 	struct intel_opregion opregion;
 	struct intel_vbt_data vbt;
 
@@ -1140,11 +1155,6 @@ typedef struct drm_i915_private {
 
 	/* Haswell power well */
 	struct i915_power_well power_well;
-
-	enum no_fbc_reason no_fbc_reason;
-
-	struct drm_mm_node *compressed_fb;
-	struct drm_mm_node *compressed_llb;
 
 	struct i915_gpu_error gpu_error;
 
@@ -1474,6 +1484,8 @@ struct drm_i915_file_private {
 #define HAS_PIPE_CXSR(dev) (INTEL_INFO(dev)->has_pipe_cxsr)
 #define I915_HAS_FBC(dev) (INTEL_INFO(dev)->has_fbc)
 
+#define HAS_IPS(dev)		(IS_ULT(dev))
+
 #define HAS_PIPE_CONTROL(dev) (INTEL_INFO(dev)->gen >= 5)
 
 #define HAS_DDI(dev)		(INTEL_INFO(dev)->has_ddi)
@@ -1540,6 +1552,7 @@ extern int i915_enable_ppgtt __read_mostly;
 extern unsigned int i915_preliminary_hw_support __read_mostly;
 extern int i915_disable_power_well __read_mostly;
 extern int i915_enable_ips __read_mostly;
+extern bool i915_fastboot __read_mostly;
 
 extern int i915_suspend(struct drm_device *dev, pm_message_t state);
 extern int i915_resume(struct drm_device *dev);
