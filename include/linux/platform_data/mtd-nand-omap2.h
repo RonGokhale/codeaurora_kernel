@@ -30,14 +30,14 @@ enum omap_ecc {
 	/* 1-bit  ECC calculation by GPMC, Error detection by Software */
 	/* ECC layout compatible to legacy ROMCODE. */
 	OMAP_ECC_HAMMING_CODE_HW_ROMCODE,
-	/* 4-bit  ECC calculation by GPMC, Error detection by ELM */
-	OMAP_ECC_BCH4_CODE_HW,
 	/* 4-bit  ECC calculation by GPMC, Error detection by Software */
 	OMAP_ECC_BCH4_CODE_HW_DETECTION_SW,
-	/* 8-bit  ECC calculation by GPMC, Error detection by ELM */
-	OMAP_ECC_BCH8_CODE_HW,
+	/* 4-bit  ECC calculation by GPMC, Error detection by ELM */
+	OMAP_ECC_BCH4_CODE_HW,
 	/* 8-bit  ECC calculation by GPMC, Error detection by Software */
-	OMAP_ECC_BCH8_CODE_HW_DETECTION_SW
+	OMAP_ECC_BCH8_CODE_HW_DETECTION_SW,
+	/* 8-bit  ECC calculation by GPMC, Error detection by ELM */
+	OMAP_ECC_BCH8_CODE_HW
 };
 
 struct gpmc_nand_regs {

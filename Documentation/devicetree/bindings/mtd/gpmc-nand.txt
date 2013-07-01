@@ -28,26 +28,43 @@ Optional properties:
 	"hamming_code_sw"		1-bit Hamming ECC
 					- ECC calculation in software
 					- Error detection in software
+					- ECC layout compatible with S/W scheme
 
 	"hamming_code_hw"		1-bit Hamming ECC
 					- ECC calculation in hardware
 					- Error detection in software
+					- ECC layout compatible with S/W scheme
 
 	"hamming_code_hw_romcode"	1-bit Hamming ECC
 					- ECC calculation in hardware
 					- Error detection in software
-					- ECC layout compatible to ROM code
+					- ECC layout compatible with ROM code
 
-	"bch8_hw_code_detection_sw"	8-bit BCH ECC
+	"bch4_code_hw_detection_sw"	4-bit BCH ECC
 					- ECC calculation in hardware
 					- Error detection in software
-					- depends on CONFIG_MTD_NAND_ECC_BCH
+					- ECC layout compatible with S/W scheme
+					* depends on CONFIG_MTD_NAND_ECC_BCH
+
+	"bch4_code_hw"             	4-bit BCH ECC
+					- ECC calculation in hardware
+					- Error detection in hardware
+					- ECC layout compatible with ROM code
+					* depends on CONFIG_MTD_NAND_OMAP_BCH
+					* requires <elm_id> to be specified
+
+	"bch8_code_hw_detection_sw"	8-bit BCH ECC
+					- ECC calculation in hardware
+					- Error detection in software
+					- ECC layout compatible with S/W scheme
+					* depends on CONFIG_MTD_NAND_ECC_BCH
 
 	"bch8_code_hw"             	8-bit BCH ECC
 					- ECC calculation in hardware
 					- Error detection in hardware
-					- depends on CONFIG_MTD_NAND_OMAP_BCH
-					- requires <elm_id> to be specified
+					- ECC layout compatible with ROM code
+					* depends on CONFIG_MTD_NAND_OMAP_BCH
+					* requires <elm_id> to be specified
 
 
  - elm_id:			Specifies elm device node. This is required to
