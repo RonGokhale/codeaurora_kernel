@@ -26,7 +26,6 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/mtd/partitions.h>
-#include <linux/pinctrl/consumer.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_mtd.h>
@@ -473,12 +472,14 @@ static int gpmi_get_clks(struct gpmi_nand_data *this)
 	struct resources *r = &this->resources;
 	char **extra_clks = NULL;
 	struct clk *clk;
-	int i;
+	int err, i;
 
 	/* The main clock is stored in the first. */
 	r->clock[0] = clk_get(this->dev, "gpmi_io");
-	if (IS_ERR(r->clock[0]))
+	if (IS_ERR(r->clock[0])) {
+		err = PTR_ERR(r->clock[0]);
 		goto err_clock;
+	}
 
 	/* Get extra clocks */
 	if (GPMI_IS_MX6Q(this))
@@ -491,8 +492,10 @@ static int gpmi_get_clks(struct gpmi_nand_data *this)
 			break;
 
 		clk = clk_get(this->dev, extra_clks[i - 1]);
-		if (IS_ERR(clk))
+		if (IS_ERR(clk)) {
+			err = PTR_ERR(clk);
 			goto err_clock;
+		}
 
 		r->clock[i] = clk;
 	}
@@ -511,12 +514,11 @@ static int gpmi_get_clks(struct gpmi_nand_data *this)
 err_clock:
 	dev_dbg(this->dev, "failed in finding the clocks.\n");
 	gpmi_put_clks(this);
-	return -ENOMEM;
+	return err;
 }
 
 static int acquire_resources(struct gpmi_nand_data *this)
 {
-	struct pinctrl *pinctrl;
 	int ret;
 
 	ret = acquire_register_block(this, GPMI_NAND_GPMI_REGS_ADDR_RES_NAME);
@@ -535,19 +537,12 @@ static int acquire_resources(struct gpmi_nand_data *this)
 	if (ret)
 		goto exit_dma_channels;
 
-	pinctrl = devm_pinctrl_get_select_default(&this->pdev->dev);
-	if (IS_ERR(pinctrl)) {
-		ret = PTR_ERR(pinctrl);
-		goto exit_pin;
-	}
-
 	ret = gpmi_get_clks(this);
 	if (ret)
 		goto exit_clock;
 	return 0;
 
 exit_clock:
-exit_pin:
 	release_dma_channels(this);
 exit_dma_channels:
 	release_bch_irq(this);
@@ -1633,7 +1628,6 @@ static int gpmi_nand_probe(struct platform_device *pdev)
 exit_nfc_init:
 	release_resources(this);
 exit_acquire_resources:
-	platform_set_drvdata(pdev, NULL);
 	dev_err(this->dev, "driver registration failed: %d\n", ret);
 	kfree(this);
 
@@ -1646,7 +1640,6 @@ static int gpmi_nand_remove(struct platform_device *pdev)
 
 	gpmi_nfc_exit(this);
 	release_resources(this);
-	platform_set_drvdata(pdev, NULL);
 	kfree(this);
 	return 0;
 }

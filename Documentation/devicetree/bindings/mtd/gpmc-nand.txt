@@ -17,20 +17,59 @@ Required properties:
 
 Optional properties:
 
- - nand-bus-width: 		Set this numeric value to 16 if the hardware
-				is wired that way. If not specified, a bus
-				width of 8 is assumed.
+ - nand-bus-width: 		Determines data-width of the connected device
+				x16 = "16"
+				x8  = "8" (default)
 
- - ti,nand-ecc-opt:		A string setting the ECC layout to use. One of:
 
-		"sw"		Software method (default)
-		"hw"		Hardware method
-		"hw-romcode"	gpmc hamming mode method & romcode layout
-		"bch4"		4-bit BCH ecc code
-		"bch8"		8-bit BCH ecc code
+ - ti,nand-ecc-opt:		Determines the ECC scheme used by driver.
+				It can be any of the following strings:
 
- - elm_id:	Specifies elm device node. This is required to support BCH
- 		error correction using ELM module.
+	"hamming_code_sw"		1-bit Hamming ECC
+					- ECC calculation in software
+					- Error detection in software
+					- ECC layout compatible with S/W scheme
+
+	"hamming_code_hw"		1-bit Hamming ECC
+					- ECC calculation in hardware
+					- Error detection in software
+					- ECC layout compatible with S/W scheme
+
+	"hamming_code_hw_romcode"	1-bit Hamming ECC
+					- ECC calculation in hardware
+					- Error detection in software
+					- ECC layout compatible with ROM code
+
+	"bch4_code_hw_detection_sw"	4-bit BCH ECC
+					- ECC calculation in hardware
+					- Error detection in software
+					- ECC layout compatible with S/W scheme
+					* depends on CONFIG_MTD_NAND_ECC_BCH
+
+	"bch4_code_hw"             	4-bit BCH ECC
+					- ECC calculation in hardware
+					- Error detection in hardware
+					- ECC layout compatible with ROM code
+					* depends on CONFIG_MTD_NAND_OMAP_BCH
+					* requires <elm_id> to be specified
+
+	"bch8_code_hw_detection_sw"	8-bit BCH ECC
+					- ECC calculation in hardware
+					- Error detection in software
+					- ECC layout compatible with S/W scheme
+					* depends on CONFIG_MTD_NAND_ECC_BCH
+
+	"bch8_code_hw"             	8-bit BCH ECC
+					- ECC calculation in hardware
+					- Error detection in hardware
+					- ECC layout compatible with ROM code
+					* depends on CONFIG_MTD_NAND_OMAP_BCH
+					* requires <elm_id> to be specified
+
+
+ - elm_id:			Specifies elm device node. This is required to
+				support some BCH ECC schemes mentioned above.
+
 
 For inline partiton table parsing (optional):
 
