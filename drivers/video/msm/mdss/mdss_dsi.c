@@ -416,6 +416,14 @@ static int mdss_dsi_off(struct mdss_panel_data *pdata)
 
 	mdss_dsi_clk_ctrl(ctrl_pdata, 0);
 
+	ret = mdss_dsi_enable_bus_clocks(ctrl_pdata);
+	if (ret) {
+		pr_err("%s: failed to enable bus clocks. rc=%d\n", __func__,
+			ret);
+		mdss_dsi_panel_power_on(pdata, 0);
+		return ret;
+	}
+
 	/* disable DSI phy */
 	mdss_dsi_phy_enable(ctrl_pdata, 0);
 
@@ -479,6 +487,7 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 
 	mdss_dsi_phy_sw_reset((ctrl_pdata->ctrl_base));
 	mdss_dsi_phy_init(pdata);
+	mdss_dsi_disable_bus_clocks(ctrl_pdata);
 
 	mdss_dsi_clk_ctrl(ctrl_pdata, 1);
 
@@ -593,6 +602,13 @@ static int mdss_dsi_unblank(struct mdss_panel_data *pdata)
 	}
 	mdss_dsi_op_mode_config(mipi->mode, pdata);
 
+	if (pdata->panel_info.type == MIPI_CMD_PANEL) {
+		if (mipi->vsync_enable && mipi->hw_vsync_mode
+			&& gpio_is_valid(ctrl_pdata->disp_te_gpio)) {
+				mdss_dsi_set_tear_on(ctrl_pdata);
+		}
+	}
+
 	pr_debug("%s-:\n", __func__);
 
 	return ret;
@@ -601,6 +617,7 @@ static int mdss_dsi_unblank(struct mdss_panel_data *pdata)
 static int mdss_dsi_blank(struct mdss_panel_data *pdata)
 {
 	int ret = 0;
+	struct mipi_panel_info *mipi;
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 
 	pr_debug("%s+:\n", __func__);
@@ -612,8 +629,16 @@ static int mdss_dsi_blank(struct mdss_panel_data *pdata)
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
+	mipi = &pdata->panel_info.mipi;
 
 	mdss_dsi_op_mode_config(DSI_CMD_MODE, pdata);
+
+	if (pdata->panel_info.type == MIPI_CMD_PANEL) {
+		if (mipi->vsync_enable && mipi->hw_vsync_mode
+			&& gpio_is_valid(ctrl_pdata->disp_te_gpio)) {
+			mdss_dsi_set_tear_off(ctrl_pdata);
+		}
+	}
 
 	if (ctrl_pdata->ctrl_state & CTRL_STATE_PANEL_INIT) {
 		ret = ctrl_pdata->off(pdata);
@@ -1140,15 +1165,6 @@ int dsi_panel_device_register(struct platform_device *pdev,
 		rc = mdss_dsi_panel_power_on(&(ctrl_pdata->panel_data), 1);
 		if (rc) {
 			pr_err("%s: Panel power on failed\n", __func__);
-			return rc;
-		}
-
-		rc = mdss_dsi_enable_bus_clocks(ctrl_pdata);
-		if (rc) {
-			pr_err("%s: failed to enable bus clocks. rc=%d\n",
-				__func__, rc);
-			rc = mdss_dsi_panel_power_on(
-				&(ctrl_pdata->panel_data), 0);
 			return rc;
 		}
 

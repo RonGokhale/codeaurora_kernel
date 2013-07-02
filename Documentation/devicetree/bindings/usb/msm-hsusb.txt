@@ -81,6 +81,7 @@ Optional properties :
 	interrupt threshold (ITC), when log2_itc is between 1 to 7.
 - qcom,hsusb-l1-supported: If present, the device supports l1 (Link power
 	management).
+- qcom,no-selective-suspend: If present selective suspend is disabled on hub ports.
 
 Example HSUSB OTG controller device node :
 	usb@f9690000 {
@@ -128,6 +129,9 @@ Required properties :
 
 Optional properties :
 - qcom,usb2-enable-hsphy2: If present, select second PHY for USB operation.
+- qcom,resume-gpio: if present then peripheral connected to usb controller
+  cannot wakeup from XO shutdown using in-band usb bus resume. Use resume
+  gpio to wakeup peripheral.
 
 Example MSM HSUSB EHCI controller device node :
 	ehci: qcom,ehci-host@f9a55000 {

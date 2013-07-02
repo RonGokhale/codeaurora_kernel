@@ -144,6 +144,20 @@ void *smem_alloc(unsigned id, unsigned size);
 void *smem_alloc2(unsigned id, unsigned size_in);
 void *smem_get_entry(unsigned id, unsigned *size);
 void *smem_find(unsigned id, unsigned size);
+
+/**
+ * smem_get_entry_no_rlock - Get existing item without using remote spinlock
+ *
+ * @id:       ID of SMEM item
+ * @size_out: Pointer to size variable for storing the result
+ * @returns:  Pointer to SMEM item or NULL if it doesn't exist
+ *
+ * This function does not lock the remote spinlock and should only be used in
+ * failure-recover cases such as retrieving the subsystem failure reason during
+ * subsystem restart.
+ */
+void *smem_get_entry_no_rlock(unsigned id, unsigned *size_out);
+
 /**
  * smem_virt_to_phys() - Convert SMEM address to physical address.
  *
@@ -154,6 +168,13 @@ void *smem_find(unsigned id, unsigned size);
  * off to a DMA engine.
  */
 phys_addr_t smem_virt_to_phys(void *smem_address);
+
+/**
+ * SMEM initialization function that registers for a SMEM platform driver.
+ *
+ * @returns: success on successful driver registration.
+ */
+int __init msm_smem_init(void);
 
 #else
 static inline void *smem_alloc(unsigned id, unsigned size)
@@ -172,9 +193,17 @@ static inline void *smem_find(unsigned id, unsigned size)
 {
 	return NULL;
 }
+void *smem_get_entry_no_rlock(unsigned id, unsigned *size_out)
+{
+	return NULL;
+}
 static inline phys_addr_t smem_virt_to_phys(void *smem_address)
 {
 	return (phys_addr_t) NULL;
+}
+static int __init msm_smem_init(void)
+{
+	return 0;
 }
 #endif /* CONFIG_MSM_SMD  */
 #endif /* _ARCH_ARM_MACH_MSM_SMEM_H_ */

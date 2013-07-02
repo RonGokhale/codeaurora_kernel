@@ -221,19 +221,25 @@ static void wcd9xxx_enable_buck_mode(struct snd_soc_codec *codec,
 	usleep_range(BUCK_SETTLE_TIME_US, BUCK_SETTLE_TIME_US);
 }
 
-static void wcd9xxx_clsh_enable_post_pa(struct snd_soc_codec *codec)
+
+/* This will be called for all states except Lineout */
+static void wcd9xxx_clsh_enable_post_pa(struct snd_soc_codec *codec,
+	struct wcd9xxx_clsh_cdc_data *cdc_clsh_d)
 {
 	int i;
 	const struct wcd9xxx_reg_mask_val reg_set[] = {
 		{WCD9XXX_A_BUCK_MODE_5, 0x02, 0x00},
 		{WCD9XXX_A_NCP_STATIC, 0x20, 0x00},
 		{WCD9XXX_A_BUCK_MODE_3, 0x04, 0x04},
-		{WCD9XXX_A_BUCK_MODE_3, 0x08, 0x08},
 	};
 
 	for (i = 0; i < ARRAY_SIZE(reg_set); i++)
 		snd_soc_update_bits(codec, reg_set[i].reg,
 					reg_set[i].mask, reg_set[i].val);
+
+	if (!cdc_clsh_d->is_dynamic_vdd_cp)
+		snd_soc_update_bits(codec, WCD9XXX_A_BUCK_MODE_3,
+							0x08, 0x08);
 
 	dev_dbg(codec->dev, "%s: completed clsh mode settings after PA enable\n",
 		   __func__);
@@ -478,13 +484,17 @@ static void wcd9xxx_clsh_state_lo(struct snd_soc_codec *codec,
 			snd_soc_update_bits(codec, WCD9XXX_A_NCP_STATIC,
 							0x20, 0x01);
 			wcd9xxx_enable_ncp(codec, true);
-			msleep(NCP_SETTLE_TIME_US);
+			/* NCP settle time recommended by codec specification */
+			usleep_range(NCP_SETTLE_TIME_US,
+				NCP_SETTLE_TIME_US + 10);
 
 		} else {
 			snd_soc_update_bits(codec, WCD9XXX_A_NCP_EN,
 							0x40, 0x00);
 			wcd9xxx_enable_ncp(codec, true);
-			msleep(NCP_SETTLE_TIME_US);
+			/* NCP settle time recommended by codec specification */
+			usleep_range(NCP_SETTLE_TIME_US,
+				NCP_SETTLE_TIME_US + 10);
 			snd_soc_update_bits(codec, WCD9XXX_A_BUCK_MODE_5,
 							0x01, 0x01);
 			snd_soc_update_bits(codec, WCD9XXX_A_BUCK_MODE_5,
@@ -557,7 +567,7 @@ void wcd9xxx_clsh_fsm(struct snd_soc_codec *codec,
 
 
 		} else if (req_state != WCD9XXX_CLSH_STATE_LO) {
-			wcd9xxx_clsh_enable_post_pa(codec);
+			wcd9xxx_clsh_enable_post_pa(codec, cdc_clsh_d);
 		}
 
 		break;

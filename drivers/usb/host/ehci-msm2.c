@@ -25,9 +25,12 @@
 #include <linux/platform_device.h>
 #include <linux/clk.h>
 #include <linux/err.h>
-#include <linux/wakelock.h>
+#include <linux/pm_wakeup.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
+#include <linux/gpio.h>
+#include <linux/of_gpio.h>
+#include <linux/irq.h>
 
 #include <linux/usb/ulpi.h>
 #include <linux/usb/msm_hsusb_hw.h>
@@ -63,11 +66,16 @@ struct msm_hcd {
 	bool					pmic_gpio_dp_irq_enabled;
 	uint32_t				pmic_gpio_int_cnt;
 	atomic_t				pm_usage_cnt;
-	struct wake_lock			wlock;
+	struct wakeup_source			ws;
 	struct work_struct			phy_susp_fail_work;
 	int					async_irq;
 	bool					async_irq_enabled;
 	uint32_t				async_int_cnt;
+	int					resume_gpio;
+
+	int					wakeup_int_cnt;
+	bool					wakeup_irq_enabled;
+	int					wakeup_irq;
 };
 
 static inline struct msm_hcd *hcd_to_mhcd(struct usb_hcd *hcd)
@@ -602,8 +610,8 @@ static void msm_ehci_phy_susp_fail_work(struct work_struct *w)
 	msm_ehci_vbus_power(mhcd, 1);
 }
 
-#define PHY_SUSPEND_TIMEOUT_USEC	(500 * 1000)
-#define PHY_RESUME_TIMEOUT_USEC		(100 * 1000)
+#define PHY_SUSP_TIMEOUT_MSEC	500
+#define PHY_RESUME_TIMEOUT_USEC	(100 * 1000)
 
 #ifdef CONFIG_PM_SLEEP
 static int msm_ehci_suspend(struct msm_hcd *mhcd)
@@ -620,24 +628,42 @@ static int msm_ehci_suspend(struct msm_hcd *mhcd)
 
 	disable_irq(hcd->irq);
 
-	/* Set the PHCD bit, only if it is not set by the controller.
-	 * PHY may take some time or even fail to enter into low power
-	 * mode (LPM). Hence poll for 500 msec and reset the PHY and link
-	 * in failure case.
+	/* make sure we don't race against a remote wakeup */
+	if (test_bit(HCD_FLAG_WAKEUP_PENDING, &hcd->flags) ||
+	    readl_relaxed(USB_PORTSC) & PORT_RESUME) {
+		dev_dbg(mhcd->dev, "wakeup pending, aborting suspend\n");
+		enable_irq(hcd->irq);
+		return -EBUSY;
+	}
+
+	/* If port is enabled wait 5ms for PHCD to come up. Reset PHY
+	 * and link if it fails to do so.
+	 * If port is not enabled set the PHCD bit and poll for it to
+	 * come up with in 500ms. Reset phy and link if it fails to do so.
 	 */
 	portsc = readl_relaxed(USB_PORTSC);
-	if (!(portsc & PORTSC_PHCD)) {
-		writel_relaxed(portsc | PORTSC_PHCD,
-				USB_PORTSC);
+	if (portsc & PORT_PE) {
 
-		timeout = jiffies + usecs_to_jiffies(PHY_SUSPEND_TIMEOUT_USEC);
+		usleep_range(5000, 5000);
+
+		if (!(readl_relaxed(USB_PORTSC) & PORTSC_PHCD)) {
+			dev_err(mhcd->dev,
+				"Unable to suspend PHY. portsc: %8x\n",
+				readl_relaxed(USB_PORTSC));
+			goto reset_phy_and_link;
+		}
+	} else {
+		writel_relaxed(portsc | PORTSC_PHCD, USB_PORTSC);
+
+		timeout = jiffies + msecs_to_jiffies(PHY_SUSP_TIMEOUT_MSEC);
 		while (!(readl_relaxed(USB_PORTSC) & PORTSC_PHCD)) {
 			if (time_after(jiffies, timeout)) {
-				dev_err(mhcd->dev, "Unable to suspend PHY\n");
-				schedule_work(&mhcd->phy_susp_fail_work);
-				return -ETIMEDOUT;
+				dev_err(mhcd->dev,
+					"Unable to suspend PHY. portsc: %8x\n",
+					readl_relaxed(USB_PORTSC));
+				goto reset_phy_and_link;
 			}
-			udelay(1);
+			usleep_range(10000, 10000);
 		}
 	}
 
@@ -646,9 +672,14 @@ static int msm_ehci_suspend(struct msm_hcd *mhcd)
 	 * power mode (LPM). This interrupt is level triggered. So USB IRQ
 	 * line must be disabled till async interrupt enable bit is cleared
 	 * in USBCMD register. Assert STP (ULPI interface STOP signal) to
-	 * block data communication from PHY.
+	 * block data communication from PHY.  Enable asynchronous interrupt
+	 * only when wakeup gpio IRQ is not present.
 	 */
-	writel_relaxed(readl_relaxed(USB_USBCMD) | ASYNC_INTR_CTRL |
+	if (mhcd->wakeup_irq)
+		writel_relaxed(readl_relaxed(USB_USBCMD) | ULPI_STP_CTRL,
+				USB_USBCMD);
+	else
+		writel_relaxed(readl_relaxed(USB_USBCMD) | ASYNC_INTR_CTRL |
 				ULPI_STP_CTRL, USB_USBCMD);
 
 	/*
@@ -674,6 +705,13 @@ static int msm_ehci_suspend(struct msm_hcd *mhcd)
 
 	atomic_set(&mhcd->in_lpm, 1);
 	enable_irq(hcd->irq);
+
+	if (mhcd->wakeup_irq) {
+		mhcd->wakeup_irq_enabled = 1;
+		enable_irq_wake(mhcd->wakeup_irq);
+		enable_irq(mhcd->wakeup_irq);
+	}
+
 	if (mhcd->pmic_gpio_dp_irq) {
 		mhcd->pmic_gpio_dp_irq_enabled = 1;
 		enable_irq_wake(mhcd->pmic_gpio_dp_irq);
@@ -684,11 +722,15 @@ static int msm_ehci_suspend(struct msm_hcd *mhcd)
 		enable_irq_wake(mhcd->async_irq);
 		enable_irq(mhcd->async_irq);
 	}
-	wake_unlock(&mhcd->wlock);
+	pm_relax(mhcd->dev);
 
 	dev_info(mhcd->dev, "EHCI USB in low power mode\n");
 
 	return 0;
+
+reset_phy_and_link:
+	schedule_work(&mhcd->phy_susp_fail_work);
+	return -ETIMEDOUT;
 }
 
 static int msm_ehci_resume(struct msm_hcd *mhcd)
@@ -709,15 +751,24 @@ static int msm_ehci_resume(struct msm_hcd *mhcd)
 		disable_irq_nosync(mhcd->pmic_gpio_dp_irq);
 		mhcd->pmic_gpio_dp_irq_enabled = 0;
 	}
+
 	spin_lock_irqsave(&mhcd->wakeup_lock, flags);
 	if (mhcd->async_irq_enabled) {
 		disable_irq_wake(mhcd->async_irq);
 		disable_irq_nosync(mhcd->async_irq);
 		mhcd->async_irq_enabled = 0;
 	}
+
+	if (mhcd->wakeup_irq) {
+		if (mhcd->wakeup_irq_enabled) {
+			disable_irq_wake(mhcd->wakeup_irq);
+			disable_irq_nosync(mhcd->wakeup_irq);
+			mhcd->wakeup_irq_enabled = 0;
+		}
+	}
 	spin_unlock_irqrestore(&mhcd->wakeup_lock, flags);
 
-	wake_lock(&mhcd->wlock);
+	pm_stay_awake(mhcd->dev);
 
 	/* Vote for TCXO when waking up the phy */
 	if (!IS_ERR(mhcd->xo_clk)) {
@@ -784,6 +835,7 @@ static irqreturn_t msm_ehci_irq(struct usb_hcd *hcd)
 	struct msm_hcd *mhcd = hcd_to_mhcd(hcd);
 
 	if (atomic_read(&mhcd->in_lpm)) {
+		dev_dbg(mhcd->dev, "phy async intr\n");
 		disable_irq_nosync(hcd->irq);
 		mhcd->async_int = true;
 		pm_runtime_get(mhcd->dev);
@@ -802,7 +854,7 @@ static irqreturn_t msm_async_irq(int irq, void *data)
 	dev_dbg(mhcd->dev, "%s: hsusb host remote wakeup interrupt cnt: %u\n",
 			__func__, mhcd->async_int_cnt);
 
-	wake_lock(&mhcd->wlock);
+	pm_stay_awake(mhcd->dev);
 
 	spin_lock(&mhcd->wakeup_lock);
 	if (mhcd->async_irq_enabled) {
@@ -833,7 +885,7 @@ static irqreturn_t msm_ehci_host_wakeup_irq(int irq, void *data)
 			__func__, mhcd->pmic_gpio_int_cnt);
 
 
-	wake_lock(&mhcd->wlock);
+	pm_stay_awake(mhcd->dev);
 
 	if (mhcd->pmic_gpio_dp_irq_enabled) {
 		mhcd->pmic_gpio_dp_irq_enabled = 0;
@@ -895,6 +947,20 @@ static int msm_ehci_reset(struct usb_hcd *hcd)
 
 	ehci_port_power(ehci, 1);
 	return 0;
+}
+
+static int msm_ehci_bus_resume_with_gpio(struct usb_hcd *hcd)
+{
+	struct msm_hcd *mhcd = hcd_to_mhcd(hcd);
+	int ret;
+
+	gpio_direction_output(mhcd->resume_gpio, 1);
+
+	ret = ehci_bus_resume(hcd);
+
+	gpio_direction_output(mhcd->resume_gpio, 0);
+
+	return ret;
 }
 
 #if defined(CONFIG_DEBUG_FS)
@@ -1072,6 +1138,46 @@ static struct hc_driver msm_hc2_driver = {
 	.bus_resume		= ehci_bus_resume,
 };
 
+static irqreturn_t msm_hsusb_wakeup_irq(int irq, void *data)
+{
+	struct msm_hcd *mhcd = data;
+	int ret;
+
+	mhcd->wakeup_int_cnt++;
+	dev_dbg(mhcd->dev, "%s: hsic remote wakeup interrupt cnt: %u\n",
+			__func__, mhcd->wakeup_int_cnt);
+
+	pm_stay_awake(mhcd->dev);
+
+	spin_lock(&mhcd->wakeup_lock);
+	if (mhcd->wakeup_irq_enabled) {
+		mhcd->wakeup_irq_enabled = 0;
+		disable_irq_wake(irq);
+		disable_irq_nosync(irq);
+	}
+	spin_unlock(&mhcd->wakeup_lock);
+
+	if (!atomic_read(&mhcd->pm_usage_cnt)) {
+		ret = pm_runtime_get(mhcd->dev);
+		/*
+		 * controller runtime resume can race with us.
+		 * if we are active (ret == 1) or resuming
+		 * (ret == -EINPROGRESS), decrement the
+		 * PM usage counter before returning.
+		 */
+		if ((ret == 1) || (ret == -EINPROGRESS)) {
+			pm_runtime_put_noidle(mhcd->dev);
+		} else {
+			/* Let khubd know of hub port status change */
+			if (mhcd->ehci.no_selective_suspend)
+				mhcd->ehci.suspended_ports = 1;
+			atomic_set(&mhcd->pm_usage_cnt, 1);
+		}
+	}
+
+	return IRQ_HANDLED;
+}
+
 static int msm_ehci_init_clocks(struct msm_hcd *mhcd, u32 init)
 {
 	int ret = 0;
@@ -1152,6 +1258,12 @@ struct msm_usb_host_platform_data *ehci_msm2_dt_to_pdata(
 					"qcom,usb2-enable-hsphy2");
 	of_property_read_u32(node, "qcom,usb2-power-budget",
 					&pdata->power_budget);
+	pdata->no_selective_suspend = of_property_read_bool(node,
+					"qcom,no-selective-suspend");
+	pdata->resume_gpio = of_get_named_gpio(node, "qcom,resume-gpio", 0);
+	if (pdata->resume_gpio < 0)
+		pdata->resume_gpio = 0;
+
 	return pdata;
 }
 
@@ -1174,6 +1286,8 @@ static int __devinit ehci_msm2_probe(struct platform_device *pdev)
 
 	if (!pdev->dev.platform_data)
 		dev_dbg(&pdev->dev, "No platform data given\n");
+
+	pdata = pdev->dev.platform_data;
 
 	if (!pdev->dev.dma_mask)
 		pdev->dev.dma_mask = &ehci_msm_dma_mask;
@@ -1252,6 +1366,22 @@ static int __devinit ehci_msm2_probe(struct platform_device *pdev)
 		goto free_xo_handle;
 	}
 
+	if (pdata && pdata->resume_gpio) {
+		mhcd->resume_gpio = pdata->resume_gpio;
+		ret = gpio_request(mhcd->resume_gpio, "hsusb_resume");
+		if (ret) {
+			dev_err(&pdev->dev,
+				"resume gpio(%d) request failed:%d\n",
+				mhcd->resume_gpio, ret);
+			mhcd->resume_gpio = 0;
+		} else {
+			msm_hc2_driver.bus_resume =
+				msm_ehci_bus_resume_with_gpio;
+		}
+	}
+
+	spin_lock_init(&mhcd->wakeup_lock);
+
 	ret = msm_ehci_init_clocks(mhcd, 1);
 	if (ret) {
 		dev_err(&pdev->dev, "unable to initialize clocks\n");
@@ -1307,9 +1437,33 @@ static int __devinit ehci_msm2_probe(struct platform_device *pdev)
 				!irq_read_line(pdata->dock_connect_irq)))
 		msm_ehci_vbus_power(mhcd, 1);
 
+	/* For peripherals directly conneted to downstream port of root hub
+	 * and require to drive suspend and resume by controller driver instead
+	 * of root hub.
+	 */
+	if (pdata)
+		mhcd->ehci.no_selective_suspend = pdata->no_selective_suspend;
+
+	mhcd->wakeup_irq = platform_get_irq_byname(pdev, "wakeup_irq");
+	if (mhcd->wakeup_irq > 0) {
+		dev_dbg(&pdev->dev, "wakeup irq:%d\n", mhcd->wakeup_irq);
+
+		irq_set_status_flags(mhcd->wakeup_irq, IRQ_NOAUTOEN);
+		ret = request_irq(mhcd->wakeup_irq, msm_hsusb_wakeup_irq,
+				IRQF_TRIGGER_HIGH,
+				"msm_hsusb_wakeup", mhcd);
+		if (ret) {
+			dev_err(&pdev->dev, "request_irq(%d) failed:%d\n",
+					mhcd->wakeup_irq, ret);
+			mhcd->wakeup_irq = 0;
+		}
+	} else {
+		mhcd->wakeup_irq = 0;
+	}
+
 	device_init_wakeup(&pdev->dev, 1);
-	wake_lock_init(&mhcd->wlock, WAKE_LOCK_SUSPEND, dev_name(&pdev->dev));
-	wake_lock(&mhcd->wlock);
+	wakeup_source_init(&mhcd->ws, dev_name(&pdev->dev));
+	pm_stay_awake(mhcd->dev);
 	INIT_WORK(&mhcd->phy_susp_fail_work, msm_ehci_phy_susp_fail_work);
 	/*
 	 * This pdev->dev is assigned parent of root-hub by USB core,
@@ -1351,6 +1505,8 @@ deinit_vddcx:
 deinit_clocks:
 	msm_ehci_init_clocks(mhcd, 0);
 devote_xo_handle:
+	if (mhcd->resume_gpio)
+		gpio_free(mhcd->resume_gpio);
 	if (!IS_ERR(mhcd->xo_clk))
 		clk_disable_unprepare(mhcd->xo_clk);
 	else
@@ -1386,6 +1542,16 @@ static int __devexit ehci_msm2_remove(struct platform_device *pdev)
 			disable_irq_wake(mhcd->async_irq);
 		free_irq(mhcd->async_irq, mhcd);
 	}
+
+	if (mhcd->wakeup_irq) {
+		if (mhcd->wakeup_irq_enabled)
+			disable_irq_wake(mhcd->wakeup_irq);
+		free_irq(mhcd->wakeup_irq, mhcd);
+	}
+
+	if (mhcd->resume_gpio)
+		gpio_free(mhcd->resume_gpio);
+
 	device_init_wakeup(&pdev->dev, 0);
 	pm_runtime_set_suspended(&pdev->dev);
 
@@ -1404,7 +1570,7 @@ static int __devexit ehci_msm2_remove(struct platform_device *pdev)
 	msm_ehci_init_vddcx(mhcd, 0);
 
 	msm_ehci_init_clocks(mhcd, 0);
-	wake_lock_destroy(&mhcd->wlock);
+	wakeup_source_trash(&mhcd->ws);
 	iounmap(hcd->regs);
 	usb_put_hcd(hcd);
 

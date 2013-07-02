@@ -165,6 +165,7 @@ enum usb_chg_type {
 	USB_ACA_C_CHARGER,
 	USB_ACA_DOCK_CHARGER,
 	USB_PROPRIETARY_CHARGER,
+	USB_FLOATED_CHARGER,
 };
 
 /**
@@ -457,6 +458,7 @@ struct msm_hsic_host_platform_data {
 	bool disable_park_mode;
 	bool consider_ipa_handshake;
 	bool ahb_async_bridge_bypass;
+	bool disable_cerr;
 };
 
 struct msm_usb_host_platform_data {
@@ -464,6 +466,8 @@ struct msm_usb_host_platform_data {
 	int pmic_gpio_dp_irq;
 	unsigned int dock_connect_irq;
 	bool use_sec_phy;
+	bool no_selective_suspend;
+	int resume_gpio;
 };
 
 /**
