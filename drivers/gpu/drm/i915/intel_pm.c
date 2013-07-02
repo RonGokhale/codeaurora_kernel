@@ -30,6 +30,7 @@
 #include "intel_drv.h"
 #include "../../../platform/x86/intel_ips.h"
 #include <linux/module.h>
+#include <drm/i915_powerwell.h>
 
 #define FORCEWAKE_ACK_TIMEOUT_MS 2
 
@@ -86,7 +87,7 @@ static void i8xx_enable_fbc(struct drm_crtc *crtc, unsigned long interval)
 	int plane, i;
 	u32 fbc_ctl, fbc_ctl2;
 
-	cfb_pitch = dev_priv->cfb_size / FBC_LL_SIZE;
+	cfb_pitch = dev_priv->fbc.size / FBC_LL_SIZE;
 	if (fb->pitches[0] < cfb_pitch)
 		cfb_pitch = fb->pitches[0];
 
@@ -325,7 +326,7 @@ static void intel_fbc_work_fn(struct work_struct *__work)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	mutex_lock(&dev->struct_mutex);
-	if (work == dev_priv->fbc_work) {
+	if (work == dev_priv->fbc.fbc_work) {
 		/* Double check that we haven't switched fb without cancelling
 		 * the prior work.
 		 */
@@ -333,12 +334,12 @@ static void intel_fbc_work_fn(struct work_struct *__work)
 			dev_priv->display.enable_fbc(work->crtc,
 						     work->interval);
 
-			dev_priv->cfb_plane = to_intel_crtc(work->crtc)->plane;
-			dev_priv->cfb_fb = work->crtc->fb->base.id;
-			dev_priv->cfb_y = work->crtc->y;
+			dev_priv->fbc.plane = to_intel_crtc(work->crtc)->plane;
+			dev_priv->fbc.fb_id = work->crtc->fb->base.id;
+			dev_priv->fbc.y = work->crtc->y;
 		}
 
-		dev_priv->fbc_work = NULL;
+		dev_priv->fbc.fbc_work = NULL;
 	}
 	mutex_unlock(&dev->struct_mutex);
 
@@ -347,28 +348,28 @@ static void intel_fbc_work_fn(struct work_struct *__work)
 
 static void intel_cancel_fbc_work(struct drm_i915_private *dev_priv)
 {
-	if (dev_priv->fbc_work == NULL)
+	if (dev_priv->fbc.fbc_work == NULL)
 		return;
 
 	DRM_DEBUG_KMS("cancelling pending FBC enable\n");
 
 	/* Synchronisation is provided by struct_mutex and checking of
-	 * dev_priv->fbc_work, so we can perform the cancellation
+	 * dev_priv->fbc.fbc_work, so we can perform the cancellation
 	 * entirely asynchronously.
 	 */
-	if (cancel_delayed_work(&dev_priv->fbc_work->work))
+	if (cancel_delayed_work(&dev_priv->fbc.fbc_work->work))
 		/* tasklet was killed before being run, clean up */
-		kfree(dev_priv->fbc_work);
+		kfree(dev_priv->fbc.fbc_work);
 
 	/* Mark the work as no longer wanted so that if it does
 	 * wake-up (because the work was already running and waiting
 	 * for our mutex), it will discover that is no longer
 	 * necessary to run.
 	 */
-	dev_priv->fbc_work = NULL;
+	dev_priv->fbc.fbc_work = NULL;
 }
 
-void intel_enable_fbc(struct drm_crtc *crtc, unsigned long interval)
+static void intel_enable_fbc(struct drm_crtc *crtc, unsigned long interval)
 {
 	struct intel_fbc_work *work;
 	struct drm_device *dev = crtc->dev;
@@ -381,6 +382,7 @@ void intel_enable_fbc(struct drm_crtc *crtc, unsigned long interval)
 
 	work = kzalloc(sizeof *work, GFP_KERNEL);
 	if (work == NULL) {
+		DRM_ERROR("Failed to allocate FBC work structure\n");
 		dev_priv->display.enable_fbc(crtc, interval);
 		return;
 	}
@@ -390,9 +392,7 @@ void intel_enable_fbc(struct drm_crtc *crtc, unsigned long interval)
 	work->interval = interval;
 	INIT_DELAYED_WORK(&work->work, intel_fbc_work_fn);
 
-	dev_priv->fbc_work = work;
-
-	DRM_DEBUG_KMS("scheduling delayed FBC enable\n");
+	dev_priv->fbc.fbc_work = work;
 
 	/* Delay the actual enabling to let pageflipping cease and the
 	 * display to settle before starting the compression. Note that
@@ -418,7 +418,7 @@ void intel_disable_fbc(struct drm_device *dev)
 		return;
 
 	dev_priv->display.disable_fbc(dev);
-	dev_priv->cfb_plane = -1;
+	dev_priv->fbc.plane = -1;
 }
 
 /**
@@ -448,7 +448,6 @@ void intel_update_fbc(struct drm_device *dev)
 	struct drm_framebuffer *fb;
 	struct intel_framebuffer *intel_fb;
 	struct drm_i915_gem_object *obj;
-	int enable_fbc;
 	unsigned int max_hdisplay, max_vdisplay;
 
 	if (!i915_powersave)
@@ -471,7 +470,8 @@ void intel_update_fbc(struct drm_device *dev)
 		    !to_intel_crtc(tmp_crtc)->primary_disabled) {
 			if (crtc) {
 				DRM_DEBUG_KMS("more than one pipe active, disabling compression\n");
-				dev_priv->no_fbc_reason = FBC_MULTIPLE_PIPES;
+				dev_priv->fbc.no_fbc_reason =
+					FBC_MULTIPLE_PIPES;
 				goto out_disable;
 			}
 			crtc = tmp_crtc;
@@ -480,7 +480,7 @@ void intel_update_fbc(struct drm_device *dev)
 
 	if (!crtc || crtc->fb == NULL) {
 		DRM_DEBUG_KMS("no output, disabling\n");
-		dev_priv->no_fbc_reason = FBC_NO_OUTPUT;
+		dev_priv->fbc.no_fbc_reason = FBC_NO_OUTPUT;
 		goto out_disable;
 	}
 
@@ -489,23 +489,22 @@ void intel_update_fbc(struct drm_device *dev)
 	intel_fb = to_intel_framebuffer(fb);
 	obj = intel_fb->obj;
 
-	enable_fbc = i915_enable_fbc;
-	if (enable_fbc < 0) {
-		DRM_DEBUG_KMS("fbc set to per-chip default\n");
-		enable_fbc = 1;
-		if (INTEL_INFO(dev)->gen <= 7 && !IS_HASWELL(dev))
-			enable_fbc = 0;
+	if (i915_enable_fbc < 0 &&
+	    INTEL_INFO(dev)->gen <= 7 && !IS_HASWELL(dev)) {
+		DRM_DEBUG_KMS("disabled per chip default\n");
+		dev_priv->fbc.no_fbc_reason = FBC_CHIP_DEFAULT;
+		goto out_disable;
 	}
-	if (!enable_fbc) {
+	if (!i915_enable_fbc) {
 		DRM_DEBUG_KMS("fbc disabled per module param\n");
-		dev_priv->no_fbc_reason = FBC_MODULE_PARAM;
+		dev_priv->fbc.no_fbc_reason = FBC_MODULE_PARAM;
 		goto out_disable;
 	}
 	if ((crtc->mode.flags & DRM_MODE_FLAG_INTERLACE) ||
 	    (crtc->mode.flags & DRM_MODE_FLAG_DBLSCAN)) {
 		DRM_DEBUG_KMS("mode incompatible with compression, "
 			      "disabling\n");
-		dev_priv->no_fbc_reason = FBC_UNSUPPORTED_MODE;
+		dev_priv->fbc.no_fbc_reason = FBC_UNSUPPORTED_MODE;
 		goto out_disable;
 	}
 
@@ -519,13 +518,13 @@ void intel_update_fbc(struct drm_device *dev)
 	if ((crtc->mode.hdisplay > max_hdisplay) ||
 	    (crtc->mode.vdisplay > max_vdisplay)) {
 		DRM_DEBUG_KMS("mode too large for compression, disabling\n");
-		dev_priv->no_fbc_reason = FBC_MODE_TOO_LARGE;
+		dev_priv->fbc.no_fbc_reason = FBC_MODE_TOO_LARGE;
 		goto out_disable;
 	}
 	if ((IS_I915GM(dev) || IS_I945GM(dev) || IS_HASWELL(dev)) &&
 	    intel_crtc->plane != 0) {
 		DRM_DEBUG_KMS("plane not 0, disabling compression\n");
-		dev_priv->no_fbc_reason = FBC_BAD_PLANE;
+		dev_priv->fbc.no_fbc_reason = FBC_BAD_PLANE;
 		goto out_disable;
 	}
 
@@ -535,7 +534,7 @@ void intel_update_fbc(struct drm_device *dev)
 	if (obj->tiling_mode != I915_TILING_X ||
 	    obj->fence_reg == I915_FENCE_REG_NONE) {
 		DRM_DEBUG_KMS("framebuffer not tiled or fenced, disabling compression\n");
-		dev_priv->no_fbc_reason = FBC_NOT_TILED;
+		dev_priv->fbc.no_fbc_reason = FBC_NOT_TILED;
 		goto out_disable;
 	}
 
@@ -545,7 +544,7 @@ void intel_update_fbc(struct drm_device *dev)
 
 	if (i915_gem_stolen_setup_compression(dev, intel_fb->obj->base.size)) {
 		DRM_DEBUG_KMS("framebuffer too large, disabling compression\n");
-		dev_priv->no_fbc_reason = FBC_STOLEN_TOO_SMALL;
+		dev_priv->fbc.no_fbc_reason = FBC_STOLEN_TOO_SMALL;
 		goto out_disable;
 	}
 
@@ -554,9 +553,9 @@ void intel_update_fbc(struct drm_device *dev)
 	 * cannot be unpinned (and have its GTT offset and fence revoked)
 	 * without first being decoupled from the scanout and FBC disabled.
 	 */
-	if (dev_priv->cfb_plane == intel_crtc->plane &&
-	    dev_priv->cfb_fb == fb->base.id &&
-	    dev_priv->cfb_y == crtc->y)
+	if (dev_priv->fbc.plane == intel_crtc->plane &&
+	    dev_priv->fbc.fb_id == fb->base.id &&
+	    dev_priv->fbc.y == crtc->y)
 		return;
 
 	if (intel_fbc_enabled(dev)) {
@@ -2468,8 +2467,8 @@ static void hsw_compute_wm_results(struct drm_device *dev,
 
 /* Find the result with the highest level enabled. Check for enable_fbc_wm in
  * case both are at the same level. Prefer r1 in case they're the same. */
-struct hsw_wm_values *hsw_find_best_result(struct hsw_wm_values *r1,
-					   struct hsw_wm_values *r2)
+static struct hsw_wm_values *hsw_find_best_result(struct hsw_wm_values *r1,
+						  struct hsw_wm_values *r2)
 {
 	int i, val_r1 = 0, val_r2 = 0;
 
@@ -3069,26 +3068,17 @@ void gen6_set_rps(struct drm_device *dev, u8 val)
 	trace_intel_gpu_freq_change(val * 50);
 }
 
-void valleyview_set_rps(struct drm_device *dev, u8 val)
+/*
+ * Wait until the previous freq change has completed,
+ * or the timeout elapsed, and then update our notion
+ * of the current GPU frequency.
+ */
+static void vlv_update_rps_cur_delay(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned long timeout = jiffies + msecs_to_jiffies(10);
-	u32 limits = gen6_rps_limits(dev_priv, &val);
 	u32 pval;
 
 	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
-	WARN_ON(val > dev_priv->rps.max_delay);
-	WARN_ON(val < dev_priv->rps.min_delay);
-
-	DRM_DEBUG_DRIVER("gpu freq request from %d to %d\n",
-			 vlv_gpu_freq(dev_priv->mem_freq,
-				      dev_priv->rps.cur_delay),
-			 vlv_gpu_freq(dev_priv->mem_freq, val));
-
-	if (val == dev_priv->rps.cur_delay)
-		return;
-
-	vlv_punit_write(dev_priv, PUNIT_REG_GPU_FREQ_REQ, val);
 
 	do {
 		pval = vlv_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS);
@@ -3099,17 +3089,41 @@ void valleyview_set_rps(struct drm_device *dev, u8 val)
 		udelay(10);
 	} while (pval & 1);
 
-	pval = vlv_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS);
-	if ((pval >> 8) != val)
-		DRM_DEBUG_DRIVER("punit overrode freq: %d requested, but got %d\n",
-			  val, pval >> 8);
+	pval >>= 8;
 
-	/* Make sure we continue to get interrupts
-	 * until we hit the minimum or maximum frequencies.
-	 */
-	I915_WRITE(GEN6_RP_INTERRUPT_LIMITS, limits);
+	if (pval != dev_priv->rps.cur_delay)
+		DRM_DEBUG_DRIVER("Punit overrode GPU freq: %d MHz (%u) requested, but got %d Mhz (%u)\n",
+				 vlv_gpu_freq(dev_priv->mem_freq, dev_priv->rps.cur_delay),
+				 dev_priv->rps.cur_delay,
+				 vlv_gpu_freq(dev_priv->mem_freq, pval), pval);
 
-	dev_priv->rps.cur_delay = pval >> 8;
+	dev_priv->rps.cur_delay = pval;
+}
+
+void valleyview_set_rps(struct drm_device *dev, u8 val)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	gen6_rps_limits(dev_priv, &val);
+
+	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
+	WARN_ON(val > dev_priv->rps.max_delay);
+	WARN_ON(val < dev_priv->rps.min_delay);
+
+	vlv_update_rps_cur_delay(dev_priv);
+
+	DRM_DEBUG_DRIVER("GPU freq request from %d MHz (%u) to %d MHz (%u)\n",
+			 vlv_gpu_freq(dev_priv->mem_freq,
+				      dev_priv->rps.cur_delay),
+			 dev_priv->rps.cur_delay,
+			 vlv_gpu_freq(dev_priv->mem_freq, val), val);
+
+	if (val == dev_priv->rps.cur_delay)
+		return;
+
+	vlv_punit_write(dev_priv, PUNIT_REG_GPU_FREQ_REQ, val);
+
+	dev_priv->rps.cur_delay = val;
 
 	trace_intel_gpu_freq_change(vlv_gpu_freq(dev_priv->mem_freq, val));
 }
@@ -3446,7 +3460,8 @@ static void vlv_rps_timer_work(struct work_struct *work)
 	 * min freq available.
 	 */
 	mutex_lock(&dev_priv->rps.hw_lock);
-	valleyview_set_rps(dev_priv->dev, dev_priv->rps.rpe_delay);
+	if (dev_priv->rps.cur_delay > dev_priv->rps.rpe_delay)
+		valleyview_set_rps(dev_priv->dev, dev_priv->rps.rpe_delay);
 	mutex_unlock(&dev_priv->rps.hw_lock);
 }
 
@@ -3496,7 +3511,7 @@ static void valleyview_enable_rps(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_ring_buffer *ring;
-	u32 gtfifodbg, val, rpe;
+	u32 gtfifodbg, val;
 	int i;
 
 	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
@@ -3557,31 +3572,39 @@ static void valleyview_enable_rps(struct drm_device *dev)
 	DRM_DEBUG_DRIVER("GPLL enabled? %s\n", val & 0x10 ? "yes" : "no");
 	DRM_DEBUG_DRIVER("GPU status: 0x%08x\n", val);
 
-	DRM_DEBUG_DRIVER("current GPU freq: %d\n",
-			 vlv_gpu_freq(dev_priv->mem_freq, (val >> 8) & 0xff));
 	dev_priv->rps.cur_delay = (val >> 8) & 0xff;
+	DRM_DEBUG_DRIVER("current GPU freq: %d MHz (%u)\n",
+			 vlv_gpu_freq(dev_priv->mem_freq,
+				      dev_priv->rps.cur_delay),
+			 dev_priv->rps.cur_delay);
 
 	dev_priv->rps.max_delay = valleyview_rps_max_freq(dev_priv);
 	dev_priv->rps.hw_max = dev_priv->rps.max_delay;
-	DRM_DEBUG_DRIVER("max GPU freq: %d\n", vlv_gpu_freq(dev_priv->mem_freq,
-						     dev_priv->rps.max_delay));
+	DRM_DEBUG_DRIVER("max GPU freq: %d MHz (%u)\n",
+			 vlv_gpu_freq(dev_priv->mem_freq,
+				      dev_priv->rps.max_delay),
+			 dev_priv->rps.max_delay);
 
-	rpe = valleyview_rps_rpe_freq(dev_priv);
-	DRM_DEBUG_DRIVER("RPe GPU freq: %d\n",
-			 vlv_gpu_freq(dev_priv->mem_freq, rpe));
-	dev_priv->rps.rpe_delay = rpe;
+	dev_priv->rps.rpe_delay = valleyview_rps_rpe_freq(dev_priv);
+	DRM_DEBUG_DRIVER("RPe GPU freq: %d MHz (%u)\n",
+			 vlv_gpu_freq(dev_priv->mem_freq,
+				      dev_priv->rps.rpe_delay),
+			 dev_priv->rps.rpe_delay);
 
-	val = valleyview_rps_min_freq(dev_priv);
-	DRM_DEBUG_DRIVER("min GPU freq: %d\n", vlv_gpu_freq(dev_priv->mem_freq,
-							    val));
-	dev_priv->rps.min_delay = val;
+	dev_priv->rps.min_delay = valleyview_rps_min_freq(dev_priv);
+	DRM_DEBUG_DRIVER("min GPU freq: %d MHz (%u)\n",
+			 vlv_gpu_freq(dev_priv->mem_freq,
+				      dev_priv->rps.min_delay),
+			 dev_priv->rps.min_delay);
 
-	DRM_DEBUG_DRIVER("setting GPU freq to %d\n",
-			 vlv_gpu_freq(dev_priv->mem_freq, rpe));
+	DRM_DEBUG_DRIVER("setting GPU freq to %d MHz (%u)\n",
+			 vlv_gpu_freq(dev_priv->mem_freq,
+				      dev_priv->rps.rpe_delay),
+			 dev_priv->rps.rpe_delay);
 
 	INIT_DELAYED_WORK(&dev_priv->rps.vlv_work, vlv_rps_timer_work);
 
-	valleyview_set_rps(dev_priv->dev, rpe);
+	valleyview_set_rps(dev_priv->dev, dev_priv->rps.rpe_delay);
 
 	/* requires MSI enabled */
 	I915_WRITE(GEN6_PMIER, GEN6_PM_RPS_EVENTS);
@@ -4833,10 +4856,6 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 	/* WaDisableDopClockGating:vlv */
 	I915_WRITE(GEN7_ROW_CHICKEN2,
 		   _MASKED_BIT_ENABLE(DOP_CLOCK_GATING_DISABLE));
-
-	/* WaForceL3Serialization:vlv */
-	I915_WRITE(GEN7_L3SQCREG4, I915_READ(GEN7_L3SQCREG4) &
-		   ~L3SQ_URB_READ_CAM_MATCH_DISABLE);
 
 	/* This is required by WaCatErrorRejectionIssue:vlv */
 	I915_WRITE(GEN7_SQ_CHICKEN_MBCUNIT_CONFIG,
