@@ -5655,7 +5655,7 @@ int ocfs2_remove_btree_range(struct inode *inode,
 					       &ref_tree, NULL);
 		if (ret) {
 			mlog_errno(ret);
-			goto out;
+			goto bail;
 		}
 
 		ret = ocfs2_prepare_refcount_change_for_del(inode,
@@ -5666,7 +5666,7 @@ int ocfs2_remove_btree_range(struct inode *inode,
 							    &extra_blocks);
 		if (ret < 0) {
 			mlog_errno(ret);
-			goto out;
+			goto bail;
 		}
 	}
 
@@ -5674,7 +5674,7 @@ int ocfs2_remove_btree_range(struct inode *inode,
 						 extra_blocks);
 	if (ret) {
 		mlog_errno(ret);
-		return ret;
+		goto bail;
 	}
 
 	mutex_lock(&tl_inode->i_mutex);
@@ -5734,7 +5734,7 @@ out_commit:
 	ocfs2_commit_trans(osb, handle);
 out:
 	mutex_unlock(&tl_inode->i_mutex);
-
+bail:
 	if (meta_ac)
 		ocfs2_free_alloc_context(meta_ac);
 
@@ -7126,7 +7126,7 @@ int ocfs2_truncate_inline(struct inode *inode, struct buffer_head *di_bh,
 	if (end > i_size_read(inode))
 		end = i_size_read(inode);
 
-	BUG_ON(start >= end);
+	BUG_ON(start > end);
 
 	if (!(OCFS2_I(inode)->ip_dyn_features & OCFS2_INLINE_DATA_FL) ||
 	    !(le16_to_cpu(di->i_dyn_features) & OCFS2_INLINE_DATA_FL) ||
