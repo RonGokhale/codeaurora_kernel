@@ -111,4 +111,3 @@ const void *__TBITransStr(const char *str, int len)
 	/* Return base address of translation data or NULL */
 	return res;
 }
-EXPORT_SYMBOL(__TBITransStr);

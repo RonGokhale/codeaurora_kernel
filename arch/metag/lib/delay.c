@@ -34,23 +34,19 @@ void __delay(unsigned long loops)
 		rdtimer(now);
 	} while ((now-bclock) < loops);
 }
-EXPORT_SYMBOL(__delay);
 
 inline void __const_udelay(unsigned long xloops)
 {
 	u64 loops = (u64)xloops * (u64)loops_per_jiffy * HZ;
 	__delay(loops >> 32);
 }
-EXPORT_SYMBOL(__const_udelay);
 
 void __udelay(unsigned long usecs)
 {
 	__const_udelay(usecs * 0x000010c7); /* 2**32 / 1000000 (rounded up) */
 }
-EXPORT_SYMBOL(__udelay);
 
 void __ndelay(unsigned long nsecs)
 {
 	__const_udelay(nsecs * 0x00005); /* 2**32 / 1000000000 (rounded up) */
 }
-EXPORT_SYMBOL(__ndelay);

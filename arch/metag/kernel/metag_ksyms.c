@@ -1,10 +1,14 @@
 #include <linux/export.h>
+#include <linux/types.h>
 
+#include <asm/checksum.h>
+#include <asm/delay.h>
 #include <asm/div64.h>
 #include <asm/ftrace.h>
 #include <asm/page.h>
 #include <asm/string.h>
 #include <asm/tbx.h>
+#include <asm/uaccess.h>
 
 EXPORT_SYMBOL(clear_page);
 EXPORT_SYMBOL(copy_page);
@@ -15,11 +19,39 @@ EXPORT_SYMBOL(max_pfn);
 EXPORT_SYMBOL(min_low_pfn);
 #endif
 
+/* Network checksum functions */
+EXPORT_SYMBOL(ip_fast_csum);
+EXPORT_SYMBOL(csum_partial);
+EXPORT_SYMBOL(ip_compute_csum);
+EXPORT_SYMBOL(csum_partial_copy_from_user);
+EXPORT_SYMBOL(csum_partial_copy);
+
+/* Delay functions */
+EXPORT_SYMBOL(__delay);
+EXPORT_SYMBOL(__const_udelay);
+EXPORT_SYMBOL(__udelay);
+EXPORT_SYMBOL(__ndelay);
+
+/* Userspace copying functions */
+EXPORT_SYMBOL(__copy_user);
+EXPORT_SYMBOL(__copy_user_zeroing);
+EXPORT_SYMBOL(__do_clear_user);
+EXPORT_SYMBOL(__get_user_asm_b);
+EXPORT_SYMBOL(__get_user_asm_w);
+EXPORT_SYMBOL(__get_user_asm_d);
+EXPORT_SYMBOL(__put_user_asm_b);
+EXPORT_SYMBOL(__put_user_asm_w);
+EXPORT_SYMBOL(__put_user_asm_d);
+EXPORT_SYMBOL(__put_user_asm_l);
+EXPORT_SYMBOL(strnlen_user);
+EXPORT_SYMBOL(__strncpy_from_user);
+
 /* TBI symbols */
 EXPORT_SYMBOL(__TBI);
 EXPORT_SYMBOL(__TBIFindSeg);
 EXPORT_SYMBOL(__TBIPoll);
 EXPORT_SYMBOL(__TBITimeStamp);
+EXPORT_SYMBOL(__TBITransStr);
 
 #define DECLARE_EXPORT(name) extern void name(void); EXPORT_SYMBOL(name)
 
