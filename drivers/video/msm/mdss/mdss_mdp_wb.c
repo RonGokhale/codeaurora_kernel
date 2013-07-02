@@ -572,6 +572,70 @@ int mdss_mdp_wb_set_mirr_hint(struct msm_fb_data_type *mfd, int hint)
 	}
 }
 
+int mdss_mdp_wb_get_format(struct msm_fb_data_type *mfd)
+{
+	int dst_format = WB_FORMAT_NV12;
+	struct mdss_mdp_ctl *ctl = mfd_to_ctl(mfd);
+
+	if (!ctl) {
+		pr_err("No panel data!\n");
+		return -EINVAL;
+	}
+
+	switch (ctl->dst_format) {
+	case MDP_RGB_888:
+		dst_format = WB_FORMAT_RGB_888;
+		break;
+	case MDP_RGB_565:
+		dst_format = WB_FORMAT_RGB_565;
+		break;
+	case MDP_XRGB_8888:
+		dst_format = WB_FORMAT_xRGB_8888;
+		break;
+	case MDP_ARGB_8888:
+		dst_format = WB_FORMAT_ARGB_8888;
+		break;
+	case MDP_Y_CBCR_H2V2_VENUS:
+	default:
+		dst_format = WB_FORMAT_NV12;
+		break;
+	}
+	return dst_format;
+}
+
+void mdss_mdp_wb_set_format(struct msm_fb_data_type *mfd, int dst_format)
+{
+	struct mdss_mdp_ctl *ctl = mfd_to_ctl(mfd);
+
+	if (!ctl) {
+		pr_err("No panel data!\n");
+		return;
+	}
+
+	switch (dst_format) {
+	case WB_FORMAT_RGB_888:
+		ctl->dst_format = MDP_RGB_888;
+		break;
+	case WB_FORMAT_RGB_565:
+		ctl->dst_format = MDP_RGB_565;
+		break;
+	case WB_FORMAT_xRGB_8888:
+		ctl->dst_format = MDP_XRGB_8888;
+		break;
+	case WB_FORMAT_ARGB_8888:
+		ctl->dst_format = MDP_ARGB_8888;
+		break;
+	case WB_FORMAT_ARGB_8888_INPUT_ALPHA:
+		pr_warn("currently not supported ARGB_8888_INPUT_ALPHA\n");
+	default:
+		ctl->dst_format = MDP_Y_CBCR_H2V2_VENUS;
+		break;
+	}
+
+	pr_debug("wfd format %d->%d\n",
+		ctl->dst_format, dst_format);
+}
+
 int mdss_mdp_wb_ioctl_handler(struct msm_fb_data_type *mfd, u32 cmd,
 				void *arg)
 {
