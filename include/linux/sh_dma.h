@@ -33,11 +33,21 @@ struct sh_dmae_slave_config {
 	char		mid_rid;
 };
 
+/**
+ * struct sh_dmae_channel - DMAC channel platform data
+ * @offset:		register offset within the main IOMEM resource
+ * @dmars:		channel DMARS register offset
+ * @chclr_offset:	channel CHCLR register offset
+ * @dmars_bit:		channel DMARS field offset within the register
+ * @chclr_bit:		> 0: bit position, to be set to reset the channel
+ *			< 0: CHCLR has to be cleared to clear channel's buffers
+ */
 struct sh_dmae_channel {
 	unsigned int	offset;
 	unsigned int	dmars;
-	unsigned int	dmars_bit;
 	unsigned int	chclr_offset;
+	unsigned char	dmars_bit;
+	signed char	chclr_bit;
 };
 
 struct sh_dmae_pdata {

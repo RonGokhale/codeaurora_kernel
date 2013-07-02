@@ -52,9 +52,11 @@ static LIST_HEAD(sh_dmae_devices);
 static void channel_clear(struct sh_dmae_chan *sh_dc)
 {
 	struct sh_dmae_device *shdev = to_sh_dev(sh_dc);
+	const struct sh_dmae_channel *chan_pdata = shdev->pdata->channel +
+		sh_dc->shdma_chan.id;
+	u32 val = chan_pdata->chclr_bit < 0 ? 0 : 1 << chan_pdata->chclr_bit;
 
-	__raw_writel(0, shdev->chan_reg +
-		shdev->pdata->channel[sh_dc->shdma_chan.id].chclr_offset);
+	__raw_writel(val, shdev->chan_reg + chan_pdata->chclr_offset);
 }
 
 static void sh_dmae_writel(struct sh_dmae_chan *sh_dc, u32 data, u32 reg)
