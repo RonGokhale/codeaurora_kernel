@@ -53,12 +53,13 @@
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #include <linux/of_net.h>
-#include <linux/pinctrl/consumer.h>
 #include <linux/regulator/consumer.h>
 
 #include <asm/cacheflush.h>
 
 #include "fec.h"
+
+static void set_multicast_list(struct net_device *ndev);
 
 #if defined(CONFIG_ARM)
 #define FEC_ALIGNMENT	0xf
@@ -243,7 +244,7 @@ static void *swap_buffer(void *bufaddr, int len)
 	int i;
 	unsigned int *buf = bufaddr;
 
-	for (i = 0; i < (len + 3) / 4; i++, buf++)
+	for (i = 0; i < DIV_ROUND_UP(len, 4); i++, buf++)
 		*buf = cpu_to_be32(*buf);
 
 	return bufaddr;
@@ -471,9 +472,8 @@ fec_restart(struct net_device *ndev, int duplex)
 	/* Clear any outstanding interrupt. */
 	writel(0xffc00000, fep->hwp + FEC_IEVENT);
 
-	/* Reset all multicast.	*/
-	writel(0, fep->hwp + FEC_GRP_HASH_TABLE_HIGH);
-	writel(0, fep->hwp + FEC_GRP_HASH_TABLE_LOW);
+	/* Setup multicast filter. */
+	set_multicast_list(ndev);
 #ifndef CONFIG_M5272
 	writel(0, fep->hwp + FEC_HASH_TABLE_HIGH);
 	writel(0, fep->hwp + FEC_HASH_TABLE_LOW);
@@ -608,6 +608,14 @@ fec_restart(struct net_device *ndev, int duplex)
 
 	if (fep->bufdesc_ex)
 		ecntl |= (1 << 4);
+
+#ifndef CONFIG_M5272
+	/* Disable, clear, and enable the MIB */
+	writel(1 << 31, fep->hwp + FEC_MIB_CTRLSTAT);
+	for (i = RMON_T_DROP; i < IEEE_R_OCTETS_OK; i++)
+		writel(0, fep->hwp + i);
+	writel(0, fep->hwp + FEC_MIB_CTRLSTAT);
+#endif
 
 	/* And last, enable the transmit and receive processing */
 	writel(ecntl, fep->hwp + FEC_ECNTRL);
@@ -1444,7 +1452,116 @@ static int fec_enet_set_pauseparam(struct net_device *ndev,
 	return 0;
 }
 
-#endif /* !defined(CONFIG_M5272) */
+static const struct fec_stat {
+	char name[ETH_GSTRING_LEN];
+	u16 offset;
+} fec_stats[] = {
+	/* RMON TX */
+	{ "tx_dropped", RMON_T_DROP },
+	{ "tx_packets", RMON_T_PACKETS },
+	{ "tx_broadcast", RMON_T_BC_PKT },
+	{ "tx_multicast", RMON_T_MC_PKT },
+	{ "tx_crc_errors", RMON_T_CRC_ALIGN },
+	{ "tx_undersize", RMON_T_UNDERSIZE },
+	{ "tx_oversize", RMON_T_OVERSIZE },
+	{ "tx_fragment", RMON_T_FRAG },
+	{ "tx_jabber", RMON_T_JAB },
+	{ "tx_collision", RMON_T_COL },
+	{ "tx_64byte", RMON_T_P64 },
+	{ "tx_65to127byte", RMON_T_P65TO127 },
+	{ "tx_128to255byte", RMON_T_P128TO255 },
+	{ "tx_256to511byte", RMON_T_P256TO511 },
+	{ "tx_512to1023byte", RMON_T_P512TO1023 },
+	{ "tx_1024to2047byte", RMON_T_P1024TO2047 },
+	{ "tx_GTE2048byte", RMON_T_P_GTE2048 },
+	{ "tx_octets", RMON_T_OCTETS },
+
+	/* IEEE TX */
+	{ "IEEE_tx_drop", IEEE_T_DROP },
+	{ "IEEE_tx_frame_ok", IEEE_T_FRAME_OK },
+	{ "IEEE_tx_1col", IEEE_T_1COL },
+	{ "IEEE_tx_mcol", IEEE_T_MCOL },
+	{ "IEEE_tx_def", IEEE_T_DEF },
+	{ "IEEE_tx_lcol", IEEE_T_LCOL },
+	{ "IEEE_tx_excol", IEEE_T_EXCOL },
+	{ "IEEE_tx_macerr", IEEE_T_MACERR },
+	{ "IEEE_tx_cserr", IEEE_T_CSERR },
+	{ "IEEE_tx_sqe", IEEE_T_SQE },
+	{ "IEEE_tx_fdxfc", IEEE_T_FDXFC },
+	{ "IEEE_tx_octets_ok", IEEE_T_OCTETS_OK },
+
+	/* RMON RX */
+	{ "rx_packets", RMON_R_PACKETS },
+	{ "rx_broadcast", RMON_R_BC_PKT },
+	{ "rx_multicast", RMON_R_MC_PKT },
+	{ "rx_crc_errors", RMON_R_CRC_ALIGN },
+	{ "rx_undersize", RMON_R_UNDERSIZE },
+	{ "rx_oversize", RMON_R_OVERSIZE },
+	{ "rx_fragment", RMON_R_FRAG },
+	{ "rx_jabber", RMON_R_JAB },
+	{ "rx_64byte", RMON_R_P64 },
+	{ "rx_65to127byte", RMON_R_P65TO127 },
+	{ "rx_128to255byte", RMON_R_P128TO255 },
+	{ "rx_256to511byte", RMON_R_P256TO511 },
+	{ "rx_512to1023byte", RMON_R_P512TO1023 },
+	{ "rx_1024to2047byte", RMON_R_P1024TO2047 },
+	{ "rx_GTE2048byte", RMON_R_P_GTE2048 },
+	{ "rx_octets", RMON_R_OCTETS },
+
+	/* IEEE RX */
+	{ "IEEE_rx_drop", IEEE_R_DROP },
+	{ "IEEE_rx_frame_ok", IEEE_R_FRAME_OK },
+	{ "IEEE_rx_crc", IEEE_R_CRC },
+	{ "IEEE_rx_align", IEEE_R_ALIGN },
+	{ "IEEE_rx_macerr", IEEE_R_MACERR },
+	{ "IEEE_rx_fdxfc", IEEE_R_FDXFC },
+	{ "IEEE_rx_octets_ok", IEEE_R_OCTETS_OK },
+};
+
+static void fec_enet_get_ethtool_stats(struct net_device *dev,
+	struct ethtool_stats *stats, u64 *data)
+{
+	struct fec_enet_private *fep = netdev_priv(dev);
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(fec_stats); i++)
+		data[i] = readl(fep->hwp + fec_stats[i].offset);
+}
+
+static void fec_enet_get_strings(struct net_device *netdev,
+	u32 stringset, u8 *data)
+{
+	int i;
+	switch (stringset) {
+	case ETH_SS_STATS:
+		for (i = 0; i < ARRAY_SIZE(fec_stats); i++)
+			memcpy(data + i * ETH_GSTRING_LEN,
+				fec_stats[i].name, ETH_GSTRING_LEN);
+		break;
+	}
+}
+
+static int fec_enet_get_sset_count(struct net_device *dev, int sset)
+{
+	switch (sset) {
+	case ETH_SS_STATS:
+		return ARRAY_SIZE(fec_stats);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+#endif
+
+static int fec_enet_nway_reset(struct net_device *dev)
+{
+	struct fec_enet_private *fep = netdev_priv(dev);
+	struct phy_device *phydev = fep->phy_dev;
+
+	if (!phydev)
+		return -ENODEV;
+
+	return genphy_restart_aneg(phydev);
+}
 
 static const struct ethtool_ops fec_enet_ethtool_ops = {
 #if !defined(CONFIG_M5272)
@@ -1456,6 +1573,12 @@ static const struct ethtool_ops fec_enet_ethtool_ops = {
 	.get_drvinfo		= fec_enet_get_drvinfo,
 	.get_link		= ethtool_op_get_link,
 	.get_ts_info		= fec_enet_get_ts_info,
+	.nway_reset		= fec_enet_nway_reset,
+#ifndef CONFIG_M5272
+	.get_ethtool_stats	= fec_enet_get_ethtool_stats,
+	.get_strings		= fec_enet_get_strings,
+	.get_sset_count		= fec_enet_get_sset_count,
+#endif
 };
 
 static int fec_enet_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
@@ -1865,8 +1988,6 @@ fec_probe(struct platform_device *pdev)
 	struct resource *r;
 	const struct of_device_id *of_id;
 	static int dev_id;
-	struct pinctrl *pinctrl;
-	struct regulator *reg_phy;
 
 	of_id = of_match_device(fec_dt_ids, &pdev->dev);
 	if (of_id)
@@ -1893,16 +2014,16 @@ fec_probe(struct platform_device *pdev)
 		fep->pause_flag |= FEC_PAUSE_FLAG_AUTONEG;
 #endif
 
-	fep->hwp = devm_request_and_ioremap(&pdev->dev, r);
+	fep->hwp = devm_ioremap_resource(&pdev->dev, r);
+	if (IS_ERR(fep->hwp)) {
+		ret = PTR_ERR(fep->hwp);
+		goto failed_ioremap;
+	}
+
 	fep->pdev = pdev;
 	fep->dev_id = dev_id++;
 
 	fep->bufdesc_ex = 0;
-
-	if (!fep->hwp) {
-		ret = -ENOMEM;
-		goto failed_ioremap;
-	}
 
 	platform_set_drvdata(pdev, ndev);
 
@@ -1915,12 +2036,6 @@ fec_probe(struct platform_device *pdev)
 			fep->phy_interface = PHY_INTERFACE_MODE_MII;
 	} else {
 		fep->phy_interface = ret;
-	}
-
-	pinctrl = devm_pinctrl_get_select_default(&pdev->dev);
-	if (IS_ERR(pinctrl)) {
-		ret = PTR_ERR(pinctrl);
-		goto failed_pin;
 	}
 
 	fep->clk_ipg = devm_clk_get(&pdev->dev, "ipg");
@@ -1953,20 +2068,22 @@ fec_probe(struct platform_device *pdev)
 	clk_prepare_enable(fep->clk_enet_out);
 	clk_prepare_enable(fep->clk_ptp);
 
-	reg_phy = devm_regulator_get(&pdev->dev, "phy");
-	if (!IS_ERR(reg_phy)) {
-		ret = regulator_enable(reg_phy);
+	fep->reg_phy = devm_regulator_get(&pdev->dev, "phy");
+	if (!IS_ERR(fep->reg_phy)) {
+		ret = regulator_enable(fep->reg_phy);
 		if (ret) {
 			dev_err(&pdev->dev,
 				"Failed to enable phy regulator: %d\n", ret);
 			goto failed_regulator;
 		}
+	} else {
+		fep->reg_phy = NULL;
 	}
 
 	fec_reset_phy(pdev);
 
 	if (fep->bufdesc_ex)
-		fec_ptp_init(ndev, pdev);
+		fec_ptp_init(pdev);
 
 	ret = fec_enet_init(ndev);
 	if (ret)
@@ -2010,19 +2127,20 @@ fec_probe(struct platform_device *pdev)
 failed_register:
 	fec_enet_mii_remove(fep);
 failed_mii_init:
-failed_init:
+failed_irq:
 	for (i = 0; i < FEC_IRQ_NUM; i++) {
 		irq = platform_get_irq(pdev, i);
 		if (irq > 0)
 			free_irq(irq, ndev);
 	}
-failed_irq:
+failed_init:
+	if (fep->reg_phy)
+		regulator_disable(fep->reg_phy);
 failed_regulator:
 	clk_disable_unprepare(fep->clk_ahb);
 	clk_disable_unprepare(fep->clk_ipg);
 	clk_disable_unprepare(fep->clk_enet_out);
 	clk_disable_unprepare(fep->clk_ptp);
-failed_pin:
 failed_clk:
 failed_ioremap:
 	free_netdev(ndev);
@@ -2041,20 +2159,20 @@ fec_drv_remove(struct platform_device *pdev)
 	unregister_netdev(ndev);
 	fec_enet_mii_remove(fep);
 	del_timer_sync(&fep->time_keep);
+	for (i = 0; i < FEC_IRQ_NUM; i++) {
+		int irq = platform_get_irq(pdev, i);
+		if (irq > 0)
+			free_irq(irq, ndev);
+	}
+	if (fep->reg_phy)
+		regulator_disable(fep->reg_phy);
 	clk_disable_unprepare(fep->clk_ptp);
 	if (fep->ptp_clock)
 		ptp_clock_unregister(fep->ptp_clock);
 	clk_disable_unprepare(fep->clk_enet_out);
 	clk_disable_unprepare(fep->clk_ahb);
 	clk_disable_unprepare(fep->clk_ipg);
-	for (i = 0; i < FEC_IRQ_NUM; i++) {
-		int irq = platform_get_irq(pdev, i);
-		if (irq > 0)
-			free_irq(irq, ndev);
-	}
 	free_netdev(ndev);
-
-	platform_set_drvdata(pdev, NULL);
 
 	return 0;
 }
@@ -2074,6 +2192,9 @@ fec_suspend(struct device *dev)
 	clk_disable_unprepare(fep->clk_ahb);
 	clk_disable_unprepare(fep->clk_ipg);
 
+	if (fep->reg_phy)
+		regulator_disable(fep->reg_phy);
+
 	return 0;
 }
 
@@ -2082,6 +2203,13 @@ fec_resume(struct device *dev)
 {
 	struct net_device *ndev = dev_get_drvdata(dev);
 	struct fec_enet_private *fep = netdev_priv(ndev);
+	int ret;
+
+	if (fep->reg_phy) {
+		ret = regulator_enable(fep->reg_phy);
+		if (ret)
+			return ret;
+	}
 
 	clk_prepare_enable(fep->clk_enet_out);
 	clk_prepare_enable(fep->clk_ahb);
