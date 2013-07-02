@@ -174,26 +174,29 @@ static int mdss_mdp_overlay_req_check(struct msm_fb_data_type *mfd,
 			return -EINVAL;
 		}
 
-		if ((fmt->chroma_sample == MDSS_MDP_CHROMA_420 ||
-		     fmt->chroma_sample == MDSS_MDP_CHROMA_H2V1) &&
-		    ((req->src_rect.w * (MAX_UPSCALE_RATIO / 2)) < dst_w)) {
-			pr_err("too much YUV upscaling Width %d->%d\n",
-			       req->src_rect.w, req->dst_rect.w);
-			return -EINVAL;
-		}
-
-		if ((fmt->chroma_sample == MDSS_MDP_CHROMA_420 ||
-		     fmt->chroma_sample == MDSS_MDP_CHROMA_H1V2) &&
-		    (req->src_rect.h * (MAX_UPSCALE_RATIO / 2)) < dst_h) {
-			pr_err("too much YUV upscaling Height %d->%d\n",
-			       req->src_rect.h, req->dst_rect.h);
-			return -EINVAL;
-		}
-
 		if (req->flags & MDP_BWC_EN) {
 			if ((req->src.width != req->src_rect.w) ||
 			    (req->src.height != req->src_rect.h)) {
 				pr_err("BWC: unequal src img and rect w,h\n");
+				return -EINVAL;
+			}
+		}
+
+		if (req->flags & MDP_DEINTERLACE) {
+			if (req->flags & MDP_SOURCE_ROTATED_90) {
+				if ((req->src_rect.w % 4) != 0) {
+					pr_err("interlaced rect not h/4\n");
+					return -EINVAL;
+				}
+			} else if ((req->src_rect.h % 4) != 0) {
+				pr_err("interlaced rect not h/4\n");
+				return -EINVAL;
+			}
+		}
+	} else {
+		if (req->flags & MDP_DEINTERLACE) {
+			if ((req->src_rect.h % 4) != 0) {
+				pr_err("interlaced rect h not multiple of 4\n");
 				return -EINVAL;
 			}
 		}
@@ -203,13 +206,6 @@ static int mdss_mdp_overlay_req_check(struct msm_fb_data_type *mfd,
 		if ((req->src_rect.x & 0x1) || (req->src_rect.y & 0x1) ||
 		    (req->src_rect.w & 0x1) || (req->src_rect.h & 0x1)) {
 			pr_err("invalid odd src resolution or coordinates\n");
-			return -EINVAL;
-		}
-	}
-
-	if (req->flags & MDP_DEINTERLACE) {
-		if ((req->src.width % 4 != 0) || (req->src.height % 4 != 0)) {
-			pr_err("interlaced fmt w,h need to be even post div\n");
 			return -EINVAL;
 		}
 	}
@@ -291,6 +287,32 @@ static int mdss_mdp_overlay_rotator_setup(struct msm_fb_data_type *mfd,
 	}
 
 	return ret;
+}
+
+static int __mdp_pipe_tune_perf(struct mdss_mdp_pipe *pipe)
+{
+	struct mdss_data_type *mdata = pipe->mixer->ctl->mdata;
+	struct mdss_mdp_perf_params perf;
+	int rc;
+
+	for (;;) {
+		rc = mdss_mdp_perf_calc_pipe(pipe, &perf);
+
+		if (!rc && (perf.mdp_clk_rate <= mdata->max_mdp_clk_rate))
+			break;
+
+		/*
+		 * if decimation is available try to reduce minimum clock rate
+		 * requirement by applying vertical decimation and reduce
+		 * mdp clock requirement
+		 */
+		if (mdata->has_decimation && (pipe->vert_deci < MAX_DECIMATION))
+			pipe->vert_deci++;
+		else
+			return -EPERM;
+	}
+
+	return 0;
 }
 
 static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
@@ -501,6 +523,12 @@ static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 		}
 	}
 
+	ret = __mdp_pipe_tune_perf(pipe);
+	if (ret) {
+		pr_debug("unable to satisfy performance. ret=%d\n", ret);
+		goto exit_fail;
+	}
+
 	ret = mdss_mdp_smp_reserve(pipe);
 	if (ret) {
 		pr_debug("mdss_mdp_smp_reserve failed. ret=%d\n", ret);
@@ -510,6 +538,7 @@ static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 	pipe->params_changed++;
 
 	req->id = pipe->ndx;
+	req->vert_deci = pipe->vert_deci;
 
 	*ppipe = pipe;
 
@@ -696,7 +725,7 @@ static void mdss_mdp_overlay_update_pm(struct mdss_overlay_private *mdp5_data)
 int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 {
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
-	struct mdss_mdp_pipe *pipe;
+	struct mdss_mdp_pipe *pipe, *next;
 	struct mdss_mdp_ctl *ctl = mfd_to_ctl(mfd);
 	int ret;
 
@@ -710,7 +739,8 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 		return ret;
 	}
 
-	list_for_each_entry(pipe, &mdp5_data->pipes_used, used_list) {
+	list_for_each_entry_safe(pipe, next, &mdp5_data->pipes_used,
+			used_list) {
 		struct mdss_mdp_data *buf;
 		if (pipe->back_buf.num_planes) {
 			buf = &pipe->back_buf;
@@ -718,6 +748,13 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 			pipe->params_changed++;
 			buf = &pipe->front_buf;
 		} else if (!pipe->params_changed) {
+			if (pipe->mixer) {
+				if (!mdss_mdp_pipe_is_staged(pipe)) {
+					list_del(&pipe->used_list);
+					list_add(&pipe->cleanup_list,
+						 &mdp5_data->pipes_cleanup);
+				}
+			}
 			continue;
 		} else if (pipe->front_buf.num_planes) {
 			buf = &pipe->front_buf;
@@ -750,15 +787,7 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 
 	ret = mdss_mdp_display_wait4comp(mdp5_data->ctl);
 
-	complete(&mfd->update.comp);
-	mutex_lock(&mfd->no_update.lock);
-	if (mfd->no_update.timer.function)
-		del_timer(&(mfd->no_update.timer));
-
-	mfd->no_update.timer.expires = jiffies + (2 * HZ);
-	add_timer(&mfd->no_update.timer);
-	mutex_unlock(&mfd->no_update.lock);
-
+	mdss_fb_update_notify_update(mfd);
 commit_fail:
 	mdss_mdp_overlay_cleanup(mfd);
 
@@ -1561,6 +1590,9 @@ static int mdss_mdp_pp_ioctl(struct msm_fb_data_type *mfd,
 		ret = mdss_mdp_calib_config((struct mdp_calib_config_data *)
 					 &mdp_pp.data.calib_cfg, &copyback);
 		break;
+	case mdp_op_calib_mode:
+		ret = mdss_mdp_calib_mode(mfd, &mdp_pp.data.mdss_calib_cfg);
+		break;
 	default:
 		pr_err("Unsupported request to MDP_PP IOCTL. %d = op\n",
 								mdp_pp.op);
@@ -1672,7 +1704,7 @@ static int mdss_fb_get_metadata(struct msm_fb_data_type *mfd,
 	switch (metadata->op) {
 	case metadata_op_frame_rate:
 		metadata->data.panel_frame_rate =
-			mdss_get_panel_framerate(mfd);
+			mdss_panel_get_framerate(mfd->panel_info);
 		break;
 	case metadata_op_get_caps:
 		ret = mdss_fb_get_hw_caps(mfd, &metadata->data.caps);

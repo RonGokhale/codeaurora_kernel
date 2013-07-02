@@ -64,7 +64,7 @@
 
 		adsp_mem: adsp_region {
 			linux,contiguous-region;
-			reg = <0 0x2000000>;
+			reg = <0 0x2F00000>;
 			label = "adsp_mem";
 		};
 
@@ -876,7 +876,6 @@
 			interrupt-parent = <&intc>;
 			interrupts = <0 131 0>, <0 179 0>;
 			interrupt-names = "irq", "otg_irq";
-			tx-fifo-resize;
 		};
 	};
 
@@ -1177,6 +1176,7 @@
 		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_1_in 0 0>;
 		qcom,gpio-err-ready = <&smp2pgpio_ssr_smp2p_1_in 1 0>;
 		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_1_in 2 0>;
+		qcom,gpio-stop-ack = <&smp2pgpio_ssr_smp2p_1_in 3 0>;
 
 		/* GPIO output to mss */
 		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_1_out 0 0>;
@@ -1359,6 +1359,12 @@
 		qcom,slope = <3200 3200 3200 3200 3200 3200 3200 3200 3200
 				3200 3200>;
 		qcom,calib-mode = "fuse_map1";
+	};
+
+	jtag_fuse: jtagfuse@fc4be024 {
+		compatible = "qcom,jtag-fuse";
+		reg = <0xfc4be024 0x8>;
+		reg-names = "fuse-base";
 	};
 
 	qcom,msm-rtb {
@@ -1627,11 +1633,16 @@
 &gdsc_venus {
 	qcom,clock-names = "core_clk";
 	qcom,skip-logic-collapse;
+	qcom,retain-periph;
+	qcom,retain-mem;
 	status = "ok";
 };
 
 &gdsc_mdss {
 	qcom,clock-names = "core_clk", "lut_clk";
+	qcom,skip-logic-collapse;
+	qcom,retain-periph;
+	qcom,retain-mem;
 	status = "ok";
 };
 
@@ -1648,7 +1659,8 @@
 
 &gdsc_oxili_gx {
 	qcom,clock-names = "core_clk";
-	qcom,retain-mems;
+	qcom,retain-mem;
+	qcom,retain-periph;
 	status = "ok";
 };
 

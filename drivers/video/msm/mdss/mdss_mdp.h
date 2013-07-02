@@ -45,6 +45,9 @@
 #define C1_B_Cb		1	/* B/Cb */
 #define C0_G_Y		0	/* G/luma */
 
+/* wait for at most 2 vsync for lowest refresh rate (24hz) */
+#define KOFF_TIMEOUT msecs_to_jiffies(84)
+
 #ifdef MDSS_MDP_DEBUG_REG
 static inline void mdss_mdp_reg_write(u32 addr, u32 val)
 {
@@ -364,6 +367,12 @@ struct mdss_overlay_private {
 	bool mixer_swap;
 };
 
+struct mdss_mdp_perf_params {
+	u32 ib_quota;
+	u32 ab_quota;
+	u32 mdp_clk_rate;
+};
+
 #define is_vig_pipe(_pipe_id_) ((_pipe_id_) <= MDSS_MDP_SSPP_VIG2)
 static inline void mdss_mdp_ctl_write(struct mdss_mdp_ctl *ctl,
 				      u32 reg, u32 val)
@@ -430,6 +439,8 @@ int mdss_mdp_ctl_destroy(struct mdss_mdp_ctl *ctl);
 int mdss_mdp_ctl_start(struct mdss_mdp_ctl *ctl);
 int mdss_mdp_ctl_stop(struct mdss_mdp_ctl *ctl);
 int mdss_mdp_ctl_intf_event(struct mdss_mdp_ctl *ctl, int event, void *arg);
+int mdss_mdp_perf_calc_pipe(struct mdss_mdp_pipe *pipe,
+		struct mdss_mdp_perf_params *perf);
 
 struct mdss_mdp_mixer *mdss_mdp_wb_mixer_alloc(int rotator);
 int mdss_mdp_wb_mixer_destroy(struct mdss_mdp_mixer *mixer);
@@ -496,6 +507,8 @@ int mdss_mdp_ad_config(struct msm_fb_data_type *mfd,
 int mdss_mdp_ad_input(struct msm_fb_data_type *mfd,
 				struct mdss_ad_input *input, int wait);
 int mdss_mdp_ad_addr_setup(struct mdss_data_type *mdata, u32 *ad_off);
+int mdss_mdp_calib_mode(struct msm_fb_data_type *mfd,
+				struct mdss_calib_cfg *cfg);
 
 struct mdss_mdp_pipe *mdss_mdp_pipe_alloc(struct mdss_mdp_mixer *mixer,
 					  u32 type);
@@ -546,6 +559,7 @@ int mdss_mdp_calib_config(struct mdp_calib_config_data *cfg, u32 *copyback);
 
 void mdss_mdp_wb_set_format(struct msm_fb_data_type *mfd, int dst_format);
 int mdss_mdp_wb_get_format(struct msm_fb_data_type *mfd);
+int mdss_mdp_pipe_is_staged(struct mdss_mdp_pipe *pipe);
 
 #define mfd_to_mdp5_data(mfd) (mfd->mdp.private1)
 #define mfd_to_mdata(mfd) (((struct mdss_overlay_private *)\
