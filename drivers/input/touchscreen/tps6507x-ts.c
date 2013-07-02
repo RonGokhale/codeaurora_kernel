@@ -42,16 +42,11 @@ struct tps6507x_ts {
 	struct device		*dev;
 	char			phys[32];
 	struct delayed_work	work;
-	unsigned		polling;	/* polling is active */
 	struct ts_event		tc;
 	struct tps6507x_dev	*mfd;
-	u16			model;
-	unsigned		pendown;
-	int			irq;
-	void			(*clear_penirq)(void);
-	unsigned long		poll_period;	/* ms */
 	u16			min_pressure;
-	int			vref;		/* non-zero to leave vref on */
+	unsigned long		poll_period;	/* ms */
+	bool			pendown;
 };
 
 static int tps6507x_read_u8(struct tps6507x_ts *tsc, u8 reg, u8 *data)
@@ -166,13 +161,12 @@ static void tps6507x_ts_handler(struct work_struct *work)
 	struct tps6507x_ts *tsc =  container_of(work,
 				struct tps6507x_ts, work.work);
 	struct input_dev *input_dev = tsc->input_dev;
-	int pendown;
+	bool pendown;
 	int schd;
-	int poll = 0;
 	s32 ret;
 
-	ret =  tps6507x_adc_conversion(tsc, TPS6507X_TSCMODE_PRESSURE,
-				       &tsc->tc.pressure);
+	ret = tps6507x_adc_conversion(tsc, TPS6507X_TSCMODE_PRESSURE,
+				      &tsc->tc.pressure);
 	if (ret)
 		goto done;
 
@@ -183,7 +177,7 @@ static void tps6507x_ts_handler(struct work_struct *work)
 		input_report_key(input_dev, BTN_TOUCH, 0);
 		input_report_abs(input_dev, ABS_PRESSURE, 0);
 		input_sync(input_dev);
-		tsc->pendown = 0;
+		tsc->pendown = false;
 	}
 
 	if (pendown) {
@@ -208,25 +202,15 @@ static void tps6507x_ts_handler(struct work_struct *work)
 		input_report_abs(input_dev, ABS_Y, tsc->tc.y);
 		input_report_abs(input_dev, ABS_PRESSURE, tsc->tc.pressure);
 		input_sync(input_dev);
-		tsc->pendown = 1;
-		poll = 1;
+		tsc->pendown = true;
 	}
 
 done:
 	/* always poll if not using interrupts */
-	poll = 1;
-
-	if (poll) {
-		schd = schedule_delayed_work(&tsc->work,
-					msecs_to_jiffies(tsc->poll_period));
-		if (schd)
-			tsc->polling = 1;
-		else {
-			tsc->polling = 0;
-			dev_err(tsc->dev, "re-schedule failed");
-		}
-	} else
-		tsc->polling = 0;
+	schd = schedule_delayed_work(&tsc->work,
+				msecs_to_jiffies(tsc->poll_period));
+	if (!schd)
+		dev_err(tsc->dev, "re-schedule failed");
 
 	ret = tps6507x_adc_standby(tsc);
 }
@@ -303,7 +287,6 @@ static int tps6507x_ts_probe(struct platform_device *pdev)
 
 	if (init_data) {
 		tsc->poll_period = init_data->poll_period;
-		tsc->vref = init_data->vref;
 		tsc->min_pressure = init_data->min_pressure;
 		input_dev->id.vendor = init_data->vendor;
 		input_dev->id.product = init_data->product;
@@ -324,10 +307,7 @@ static int tps6507x_ts_probe(struct platform_device *pdev)
 	schd = schedule_delayed_work(&tsc->work,
 				     msecs_to_jiffies(tsc->poll_period));
 
-	if (schd)
-		tsc->polling = 1;
-	else {
-		tsc->polling = 0;
+	if (!schd) {
 		dev_err(tsc->dev, "schedule failed");
 		goto err2;
 	 }
