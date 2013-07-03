@@ -407,7 +407,7 @@ static void memcg_kmem_clear_activated(struct mem_cgroup *memcg)
 static void memcg_kmem_mark_dead(struct mem_cgroup *memcg)
 {
 	/*
-	 * We need to call css_get() first, because memcg_uncharge_kmem()
+	 * Our caller must use css_get() first, because memcg_uncharge_kmem()
 	 * will call css_put() if it sees the memcg is dead.
 	 */
 	smp_wmb();
