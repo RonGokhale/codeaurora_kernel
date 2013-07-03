@@ -5896,6 +5896,11 @@ static int memcg_init_kmem(struct mem_cgroup *memcg, struct cgroup_subsys *ss)
 	return mem_cgroup_sockets_init(memcg, ss);
 }
 
+static void memcg_destroy_kmem(struct mem_cgroup *memcg)
+{
+	mem_cgroup_sockets_destroy(memcg);
+}
+
 static void kmem_cgroup_css_offline(struct mem_cgroup *memcg)
 {
 	if (!memcg_kmem_is_active(memcg))
@@ -5933,6 +5938,10 @@ static void kmem_cgroup_css_offline(struct mem_cgroup *memcg)
 static int memcg_init_kmem(struct mem_cgroup *memcg, struct cgroup_subsys *ss)
 {
 	return 0;
+}
+
+static void memcg_destroy_kmem(struct mem_cgroup *memcg)
+{
 }
 
 static void kmem_cgroup_css_offline(struct mem_cgroup *memcg)
@@ -6332,8 +6341,7 @@ static void mem_cgroup_css_free(struct cgroup *cont)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_cont(cont);
 
-	mem_cgroup_sockets_destroy(memcg);
-
+	memcg_destroy_kmem(memcg);
 	__mem_cgroup_free(memcg);
 }
 
