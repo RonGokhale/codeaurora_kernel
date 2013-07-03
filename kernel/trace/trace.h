@@ -224,6 +224,8 @@ enum {
 
 extern struct list_head ftrace_trace_arrays;
 
+extern struct mutex trace_types_lock;
+
 /*
  * The global tracer (top) should be the first trace array added,
  * but we check the flag anyway.
@@ -774,6 +776,7 @@ print_graph_function_flags(struct trace_iterator *iter, u32 flags)
 extern struct list_head ftrace_pids;
 
 #ifdef CONFIG_FUNCTION_TRACER
+extern bool ftrace_filter_param __initdata;
 static inline int ftrace_trace_task(struct task_struct *task)
 {
 	if (list_empty(&ftrace_pids))
