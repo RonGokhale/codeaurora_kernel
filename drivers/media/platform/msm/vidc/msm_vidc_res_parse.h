@@ -1,3 +1,4 @@
+
 /* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -8,19 +9,22 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
+ *
  */
 
-#ifndef __MACH_JTAG_H
-#define __MACH_JTAG_H
+#ifndef DT_PARSE
+#define DT_PARSE
+#include <linux/of.h>
+#include <mach/board.h>
+#include "msm_vidc_resources.h"
+void msm_vidc_free_platform_resources(
+		struct msm_vidc_platform_resources *res);
 
-#if defined(CONFIG_MSM_JTAG) || defined(CONFIG_MSM_JTAG_MM)
-extern void msm_jtag_save_state(void);
-extern void msm_jtag_restore_state(void);
-extern bool msm_jtag_fuse_apps_access_disabled(void);
-#else
-static inline void msm_jtag_save_state(void) {}
-static inline void msm_jtag_restore_state(void) {}
-static inline bool msm_jtag_fuse_apps_access_disabled(void) { return false; }
-#endif
+int read_hfi_type(struct platform_device *pdev);
 
+int read_platform_resources_from_dt(
+		struct msm_vidc_platform_resources *res);
+
+int read_platform_resources_from_board(
+		struct msm_vidc_platform_resources *res);
 #endif
