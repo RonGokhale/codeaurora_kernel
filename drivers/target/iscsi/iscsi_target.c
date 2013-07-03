@@ -1054,8 +1054,11 @@ int iscsit_process_scsi_cmd(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 	 * be acknowledged. (See below)
 	 */
 	if (!cmd->immediate_data) {
-		cmdsn_ret = iscsit_sequence_cmd(conn, cmd, hdr->cmdsn);
-		if (cmdsn_ret == CMDSN_LOWER_THAN_EXP) {
+		cmdsn_ret = iscsit_sequence_cmd(conn, cmd,
+					(unsigned char *)hdr, hdr->cmdsn);
+		if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER) {
+			return -1;
+		} else if (cmdsn_ret == CMDSN_LOWER_THAN_EXP) {
 			if (!cmd->sense_reason)
 				return 0;
 
@@ -1122,7 +1125,10 @@ after_immediate_data:
 		 * DataCRC, check against ExpCmdSN/MaxCmdSN if
 		 * Immediate Bit is not set.
 		 */
-		cmdsn_ret = iscsit_sequence_cmd(cmd->conn, cmd, hdr->cmdsn);
+		cmdsn_ret = iscsit_sequence_cmd(cmd->conn, cmd,
+					(unsigned char *)hdr, hdr->cmdsn);
+		if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER)
+			return -1;
 
 		if (cmd->sense_reason) {
 			if (iscsit_dump_data_payload(cmd->conn,
@@ -1161,7 +1167,7 @@ iscsit_handle_scsi_cmd(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 
 	rc = iscsit_setup_scsi_cmd(conn, cmd, buf);
 	if (rc < 0)
-		return rc;
+		return 0;
 	/*
 	 * Allocation iovecs needed for struct socket operations for
 	 * traditional iSCSI block I/O.
@@ -1496,7 +1502,7 @@ static int iscsit_handle_data_out(struct iscsi_conn *conn, unsigned char *buf)
 
 	rc = iscsit_check_dataout_hdr(conn, buf, &cmd);
 	if (rc < 0)
-		return rc;
+		return 0;
 	else if (!cmd)
 		return 0;
 
@@ -1581,10 +1587,10 @@ int iscsit_process_nop_out(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 			return 0;
 		}
 
-		cmdsn_ret = iscsit_sequence_cmd(conn, cmd, hdr->cmdsn);
+		cmdsn_ret = iscsit_sequence_cmd(conn, cmd,
+				(unsigned char *)hdr, hdr->cmdsn);
                 if (cmdsn_ret == CMDSN_LOWER_THAN_EXP)
 			return 0;
-
 		if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER)
 			return -1;
 
@@ -1625,7 +1631,7 @@ static int iscsit_handle_nop_out(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 
 	ret = iscsit_setup_nop_out(conn, cmd, hdr);
 	if (ret < 0)
-		return ret;
+		return 0;
 	/*
 	 * Handle NOP-OUT payload for traditional iSCSI sockets
 	 */
@@ -1895,7 +1901,7 @@ attach:
 	spin_unlock_bh(&conn->cmd_lock);
 
 	if (!(hdr->opcode & ISCSI_OP_IMMEDIATE)) {
-		int cmdsn_ret = iscsit_sequence_cmd(conn, cmd, hdr->cmdsn);
+		int cmdsn_ret = iscsit_sequence_cmd(conn, cmd, buf, hdr->cmdsn);
 		if (cmdsn_ret == CMDSN_HIGHER_THAN_EXP)
 			out_of_order_cmdsn = 1;
 		else if (cmdsn_ret == CMDSN_LOWER_THAN_EXP)
@@ -1998,7 +2004,8 @@ iscsit_process_text_cmd(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 	iscsit_ack_from_expstatsn(conn, be32_to_cpu(hdr->exp_statsn));
 
 	if (!(hdr->opcode & ISCSI_OP_IMMEDIATE)) {
-		cmdsn_ret = iscsit_sequence_cmd(conn, cmd, hdr->cmdsn);
+		cmdsn_ret = iscsit_sequence_cmd(conn, cmd,
+				(unsigned char *)hdr, hdr->cmdsn);
 		if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER)
 			return -1;
 
@@ -2024,7 +2031,7 @@ iscsit_handle_text_cmd(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 
 	rc = iscsit_setup_text_cmd(conn, cmd, hdr);
 	if (rc < 0)
-		return rc;
+		return 0;
 
 	rx_size = payload_length;
 	if (payload_length) {
@@ -2286,7 +2293,7 @@ iscsit_handle_logout_cmd(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 		if (ret < 0)
 			return ret;
 	} else {
-		cmdsn_ret = iscsit_sequence_cmd(conn, cmd, hdr->cmdsn);
+		cmdsn_ret = iscsit_sequence_cmd(conn, cmd, buf, hdr->cmdsn);
 		if (cmdsn_ret == CMDSN_LOWER_THAN_EXP)
 			logout_remove = 0;
 		else if (cmdsn_ret == CMDSN_ERROR_CANNOT_RECOVER)
