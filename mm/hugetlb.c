@@ -1191,6 +1191,7 @@ static struct page *alloc_huge_page(struct vm_area_struct *vma,
 	set_page_private(page, (unsigned long)spool);
 
 	vma_commit_reservation(h, vma, addr);
+	add_mm_counter(vma->vm_mm, MM_ANONPAGES, pages_per_huge_page(h));
 	return page;
 }
 
@@ -2438,6 +2439,9 @@ again:
 		tlb_remove_tlb_entry(tlb, ptep, address);
 		if (huge_pte_dirty(pte))
 			set_page_dirty(page);
+
+		/* -pages_per_huge_page(h) wouldn't get sign-extended */
+		add_mm_counter(vma->vm_mm, MM_ANONPAGES, -1 << h->order);
 
 		page_remove_rmap(page);
 		force_flush = !__tlb_remove_page(tlb, page);
