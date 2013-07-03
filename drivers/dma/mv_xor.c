@@ -1244,8 +1244,6 @@ static int mv_xor_probe(struct platform_device *pdev)
 				dma_cap_set(DMA_MEMCPY, cap_mask);
 			if (of_property_read_bool(np, "dmacap,xor"))
 				dma_cap_set(DMA_XOR, cap_mask);
-			if (of_property_read_bool(np, "dmacap,memset"))
-				dma_cap_set(DMA_MEMSET, cap_mask);
 			if (of_property_read_bool(np, "dmacap,interrupt"))
 				dma_cap_set(DMA_INTERRUPT, cap_mask);
 
