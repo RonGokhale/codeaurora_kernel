@@ -284,13 +284,12 @@ static inline int iscsit_check_received_cmdsn(struct iscsi_session *sess, u32 cm
  * Commands may be received out of order if MC/S is in use.
  * Ensure they are executed in CmdSN order.
  */
-int iscsit_sequence_cmd(
-	struct iscsi_conn *conn,
-	struct iscsi_cmd *cmd,
-	__be32 cmdsn)
+int iscsit_sequence_cmd(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
+			unsigned char *buf, __be32 cmdsn)
 {
-	int ret;
-	int cmdsn_ret;
+	int ret, cmdsn_ret;
+	bool reject = false;
+	u8 reason = ISCSI_REASON_BOOKMARK_NO_RESOURCES;
 
 	mutex_lock(&conn->sess->cmdsn_mutex);
 
@@ -298,11 +297,22 @@ int iscsit_sequence_cmd(
 	switch (cmdsn_ret) {
 	case CMDSN_NORMAL_OPERATION:
 		ret = iscsit_execute_cmd(cmd, 0);
+		if (ret < 0) {
+			reject = true;
+			ret = 0;
+			break;
+		}
+
 		if ((ret >= 0) && !list_empty(&conn->sess->sess_ooo_cmdsn_list))
 			iscsit_execute_ooo_cmdsns(conn->sess);
 		break;
 	case CMDSN_HIGHER_THAN_EXP:
 		ret = iscsit_handle_ooo_cmdsn(conn->sess, cmd, be32_to_cpu(cmdsn));
+		if (ret) {
+			reject = true;
+			ret = 0;
+			break;
+		}
 		break;
 	case CMDSN_LOWER_THAN_EXP:
 		cmd->i_state = ISTATE_REMOVE;
@@ -310,10 +320,15 @@ int iscsit_sequence_cmd(
 		ret = cmdsn_ret;
 		break;
 	default:
+		reason = ISCSI_REASON_PROTOCOL_ERROR;
+		reject = true;
 		ret = cmdsn_ret;
 		break;
 	}
 	mutex_unlock(&conn->sess->cmdsn_mutex);
+
+	if (reject)
+		iscsit_reject_cmd(cmd, reason, buf);
 
 	return ret;
 }
@@ -681,6 +696,7 @@ void iscsit_release_cmd(struct iscsi_cmd *cmd)
 	kfree(cmd->seq_list);
 	kfree(cmd->tmr_req);
 	kfree(cmd->iov_data);
+	kfree(cmd->text_in_ptr);
 
 	kmem_cache_free(lio_cmd_cache, cmd);
 }
