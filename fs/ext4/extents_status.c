@@ -148,8 +148,8 @@ static int __es_remove_extent(struct inode *inode, ext4_lblk_t lblk,
 			      ext4_lblk_t end);
 static int __es_try_to_reclaim_extents(struct ext4_inode_info *ei,
 				       int nr_to_scan);
-static int __ext4_es_shrink(struct ext4_sb_info *sbi, int nr_to_scan,
-			    struct ext4_inode_info *locked_ei);
+static unsigned long __ext4_es_shrink(struct ext4_sb_info *sbi, int nr_to_scan,
+				      struct ext4_inode_info *locked_ei);
 
 int __init ext4_init_es(void)
 {
@@ -903,24 +903,26 @@ static int ext4_inode_touch_time_cmp(void *priv, struct list_head *a,
 		return -1;
 }
 
-static long ext4_es_count(struct shrinker *shrink, struct shrink_control *sc)
+static unsigned long ext4_es_count(struct shrinker *shrink,
+				   struct shrink_control *sc)
 {
-	long nr;
-	struct ext4_sb_info *sbi = container_of(shrink,
-					struct ext4_sb_info, s_es_shrinker);
+	unsigned long nr;
+	struct ext4_sb_info *sbi;
 
+	sbi = container_of(shrink, struct ext4_sb_info, s_es_shrinker);
 	nr = percpu_counter_read_positive(&sbi->s_extent_cache_cnt);
 	trace_ext4_es_shrink_enter(sbi->s_sb, sc->nr_to_scan, nr);
 	return nr;
 }
 
-static int __ext4_es_shrink(struct ext4_sb_info *sbi, int nr_to_scan,
+static unsigned long __ext4_es_shrink(struct ext4_sb_info *sbi, int nr_to_scan,
 			    struct ext4_inode_info *locked_ei)
 {
 	struct ext4_inode_info *ei;
 	struct list_head *cur, *tmp;
 	LIST_HEAD(skiped);
-	int ret, nr_shrunk = 0;
+	int ret;
+	unsigned long nr_shrunk = 0;
 
 	spin_lock(&sbi->s_es_lru_lock);
 
@@ -975,12 +977,13 @@ static int __ext4_es_shrink(struct ext4_sb_info *sbi, int nr_to_scan,
 	return nr_shrunk;
 }
 
-static long ext4_es_shrink(struct shrinker *shrink, struct shrink_control *sc)
+static unsigned long ext4_es_shrink(struct shrinker *shrink,
+				    struct shrink_control *sc)
 {
 	struct ext4_sb_info *sbi = container_of(shrink,
 					struct ext4_sb_info, s_es_shrinker);
 	int nr_to_scan = sc->nr_to_scan;
-	int nr_shrunk;
+	unsigned long nr_shrunk;
 
 	nr_shrunk = __ext4_es_shrink(sbi, nr_to_scan, NULL);
 
