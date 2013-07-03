@@ -773,7 +773,7 @@ static int ocfs2_remote_dentry_delete(struct dentry *dentry)
 	return ret;
 }
 
-static inline int inode_is_unlinkable(struct inode *inode)
+static inline int ocfs2_inode_is_unlinkable(struct inode *inode)
 {
 	if (S_ISDIR(inode->i_mode)) {
 		if (inode->i_nlink == 2)
@@ -866,7 +866,7 @@ static int ocfs2_unlink(struct inode *dir,
 		goto leave;
 	}
 
-	if (inode_is_unlinkable(inode)) {
+	if (ocfs2_inode_is_unlinkable(inode)) {
 		status = ocfs2_prepare_orphan_dir(osb, &orphan_dir,
 						  OCFS2_I(inode)->ip_blkno,
 						  orphan_name, &orphan_insert);
