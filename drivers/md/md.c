@@ -2931,9 +2931,10 @@ static ssize_t new_offset_store(struct md_rdev *rdev,
 	    .allow_new_offset(rdev, new_offset))
 		return -E2BIG;
 	rdev->new_data_offset = new_offset;
-	if (new_offset > rdev->data_offset)
+	if (new_offset > rdev->data_offset) {
 		mddev->reshape_backwards = 1;
-	else if (new_offset < rdev->data_offset)
+		rdev->sectors -= new_offset - rdev->data_offset;
+	} else if (new_offset < rdev->data_offset)
 		mddev->reshape_backwards = 0;
 
 	return len;
