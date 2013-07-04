@@ -221,15 +221,6 @@ config DW_WATCHDOG
 	  To compile this driver as a module, choose M here: the
 	  module will be called dw_wdt.
 
-config MPCORE_WATCHDOG
-	tristate "MPcore watchdog"
-	depends on HAVE_ARM_TWD
-	help
-	  Watchdog timer embedded into the MPcore system.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called mpcore_wdt.
-
 config EP93XX_WATCHDOG
 	tristate "EP93xx Watchdog"
 	depends on ARCH_EP93XX
@@ -291,7 +282,7 @@ config DAVINCI_WATCHDOG
 
 config ORION_WATCHDOG
 	tristate "Orion watchdog"
-	depends on ARCH_ORION5X || ARCH_KIRKWOOD
+	depends on ARCH_ORION5X || ARCH_KIRKWOOD || ARCH_DOVE
 	select WATCHDOG_CORE
 	help
 	  Say Y here if to include support for the watchdog timer
@@ -1108,6 +1099,17 @@ config BCM63XX_WDT
 
 	  To compile this driver as a loadable module, choose M here.
 	  The module will be called bcm63xx_wdt.
+
+config BCM2835_WDT
+	tristate "Broadcom BCM2835 hardware watchdog"
+	depends on ARCH_BCM2835
+	select WATCHDOG_CORE
+	help
+	  Watchdog driver for the built in watchdog hardware in Broadcom
+	  BCM2835 SoC.
+
+	  To compile this driver as a loadable module, choose M here.
+	  The module will be called bcm2835_wdt.
 
 config LANTIQ_WDT
 	tristate "Lantiq SoC watchdog"
