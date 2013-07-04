@@ -70,29 +70,15 @@ void __init r8a7740_map_io(void)
 }
 
 /* PFC */
-static struct resource r8a7740_pfc_resources[] = {
-	[0] = {
-		.start	= 0xe6050000,
-		.end	= 0xe6057fff,
-		.flags	= IORESOURCE_MEM,
-	},
-	[1] = {
-		.start	= 0xe605800c,
-		.end	= 0xe605802b,
-		.flags	= IORESOURCE_MEM,
-	}
-};
-
-static struct platform_device r8a7740_pfc_device = {
-	.name		= "pfc-r8a7740",
-	.id		= -1,
-	.resource	= r8a7740_pfc_resources,
-	.num_resources	= ARRAY_SIZE(r8a7740_pfc_resources),
+static const struct resource pfc_resources[] = {
+	DEFINE_RES_MEM(0xe6050000, 0x8000),
+	DEFINE_RES_MEM(0xe605800c, 0x0020),
 };
 
 void __init r8a7740_pinmux_init(void)
 {
-	platform_device_register(&r8a7740_pfc_device);
+	platform_device_register_simple("pfc-r8a7740", -1, pfc_resources,
+					ARRAY_SIZE(pfc_resources));
 }
 
 static struct renesas_intc_irqpin_config irqpin0_platform_data = {
@@ -1000,16 +986,22 @@ void __init r8a7740_add_early_devices(void)
 
 #ifdef CONFIG_USE_OF
 
-static const struct of_dev_auxdata r8a7740_auxdata_lookup[] __initconst = {
-	{ }
-};
+void __init r8a7740_add_early_devices_dt(void)
+{
+	shmobile_setup_delay(800, 1, 3); /* Cortex-A9 @ 800MHz */
+
+	early_platform_add_devices(r8a7740_early_devices,
+				   ARRAY_SIZE(r8a7740_early_devices));
+
+	/* setup early console here as well */
+	shmobile_setup_console();
+}
 
 void __init r8a7740_add_standard_devices_dt(void)
 {
 	platform_add_devices(r8a7740_devices_dt,
 			    ARRAY_SIZE(r8a7740_devices_dt));
-	of_platform_populate(NULL, of_default_bus_match_table,
-			     r8a7740_auxdata_lookup, NULL);
+	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 }
 
 void __init r8a7740_init_delay(void)
