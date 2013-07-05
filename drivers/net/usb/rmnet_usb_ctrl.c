@@ -170,8 +170,10 @@ static void notification_available_cb(struct urb *urb)
 
 		status = usb_submit_urb(dev->rcvurb, GFP_ATOMIC);
 		if (status) {
-			dev_err(dev->devicep,
-			"%s: Error submitting Read URB %d\n", __func__, status);
+			if (status != -ENODEV)
+				dev_err(dev->devicep,
+				"%s: Error submitting Read URB %d\n",
+				__func__, status);
 			goto resubmit_int_urb;
 		}
 
@@ -190,7 +192,7 @@ static void notification_available_cb(struct urb *urb)
 
 resubmit_int_urb:
 	status = usb_submit_urb(urb, GFP_ATOMIC);
-	if (status)
+	if (status != -ENODEV)
 		dev_err(dev->devicep, "%s: Error re-submitting Int URB %d\n",
 		__func__, status);
 
@@ -266,7 +268,7 @@ resubmit_int_urb:
 	/*re-submit int urb to check response available*/
 	usb_mark_last_busy(udev);
 	status = usb_submit_urb(dev->inturb, GFP_ATOMIC);
-	if (status)
+	if (status != -ENODEV)
 		dev_err(dev->devicep, "%s: Error re-submitting Int URB %d\n",
 			__func__, status);
 }
@@ -276,7 +278,7 @@ int rmnet_usb_ctrl_start_rx(struct rmnet_ctrl_dev *dev)
 	int	retval = 0;
 
 	retval = usb_submit_urb(dev->inturb, GFP_KERNEL);
-	if (retval < 0)
+	if (retval != -ENODEV)
 		dev_err(dev->devicep, "%s Intr submit %d\n", __func__, retval);
 
 	return retval;
@@ -421,7 +423,8 @@ static int rmnet_usb_ctrl_write(struct rmnet_ctrl_dev *dev, char *buf,
 	dev->snd_encap_cmd_cnt++;
 	result = usb_submit_urb(sndurb, GFP_KERNEL);
 	if (result < 0) {
-		dev_err(dev->devicep, "%s: Submit URB error %d\n",
+		if (result != -ENODEV)
+			dev_err(dev->devicep, "%s: Submit URB error %d\n",
 			__func__, result);
 		dev->snd_encap_cmd_cnt--;
 		usb_autopm_put_interface(dev->intf);
