@@ -18,12 +18,12 @@
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/irq.h>
+#include <linux/sched_clock.h>
 #include <linux/delay.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 
 /* Generic stuff */
-#include <asm/sched_clock.h>
 #include <asm/mach/map.h>
 #include <asm/mach/time.h>
 
