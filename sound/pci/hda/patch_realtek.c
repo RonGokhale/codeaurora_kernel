@@ -2616,6 +2616,7 @@ static void alc5505_dsp_halt(struct hda_codec *codec)
 	alc5505_coef_set(codec, 0x6220, (val | 0x3000)); /* switch Ringbuffer clock to DBUS clock */
 }
 
+#if 0 /* halt DSP unless we really use the DSP code */
 static void alc5505_dsp_back_from_halt(struct hda_codec *codec)
 {
 	alc5505_coef_set(codec, 0x61b8, 0x04133302);
@@ -2660,6 +2661,13 @@ static void alc5505_dsp_init(struct hda_codec *codec)
 	alc5505_coef_set(codec, 0x880c, 0x00000003);
 	alc5505_coef_set(codec, 0x880c, 0x00000010);
 }
+#define alc5505_dsp_suspend(codec)	alc5505_dsp_halt(codec)
+#define alc5505_dsp_resume(codec)	alc5505_dsp_back_from_halt(codec)
+#else
+#define alc5505_dsp_init		alc5505_dsp_halt
+#define alc5505_dsp_suspend(codec)	/* NOP */
+#define alc5505_dsp_resume(codec)	/* NOP */
+#endif
 
 #ifdef CONFIG_PM
 static int alc269_suspend(struct hda_codec *codec)
@@ -2667,7 +2675,7 @@ static int alc269_suspend(struct hda_codec *codec)
 	struct alc_spec *spec = codec->spec;
 
 	if (spec->has_alc5505_dsp)
-		alc5505_dsp_halt(codec);
+		alc5505_dsp_suspend(codec);
 	return alc_suspend(codec);
 }
 
@@ -2696,7 +2704,7 @@ static int alc269_resume(struct hda_codec *codec)
 	alc_inv_dmic_sync(codec, true);
 	hda_call_check_power_status(codec, 0x01);
 	if (spec->has_alc5505_dsp)
-		alc5505_dsp_back_from_halt(codec);
+		alc5505_dsp_resume(codec);
 	return 0;
 }
 #endif /* CONFIG_PM */
