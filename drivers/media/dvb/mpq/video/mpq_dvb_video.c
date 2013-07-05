@@ -54,7 +54,7 @@ static char vid_thread_names[DVB_MPQ_NUM_VIDEO_DEVICES][10] = {
 };
 
 static enum scan_format map_scan_type(enum vdec_interlaced_format type);
-static int mpq_int_vid_dec_decode_frame(struct video_client_ctx *client_ctx,
+static int mpq_int_vid_dec_decode_frame(struct mpq_dvb_video_inst *dev_inst,
 				struct video_data_buffer *input_frame);
 static int mpq_int_vid_dec_get_buffer_req(struct video_client_ctx *client_ctx,
 				  struct video_buffer_req *vdec_buf_req);
@@ -181,7 +181,7 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 							(void *)free_buf;
 				DBG("Size of Data Submitted : %d\n", size);
 				mpq_int_vid_dec_decode_frame(
-						dev_inst->client_ctx,
+						dev_inst,
 						&dmx_data->in_buffer[free_buf]);
 			}
 			break;
@@ -1299,6 +1299,14 @@ static int mpq_int_vid_dec_set_buffer_req(struct video_client_ctx *client_ctx,
 	return 0;
 }
 
+static int mpq_int_vid_dec_set_decode_mode(struct mpq_dvb_video_inst *dev_inst,
+				  enum video_decoded_pictures_t pic_type)
+{
+	dev_inst->picture_type = pic_type;
+
+	return 0;
+}
+
 static int mpq_int_vid_dec_set_buffer(struct mpq_dvb_video_inst *dev_inst,
 			      struct video_data_buffer *data_buffer,
 			      enum buffer_dir dir_buffer)
@@ -1471,9 +1479,10 @@ static int mpq_int_vid_dec_start_stop(struct video_client_ctx *client_ctx,
 	return 0;
 }
 
-static int mpq_int_vid_dec_decode_frame(struct video_client_ctx *client_ctx,
+static int mpq_int_vid_dec_decode_frame(struct mpq_dvb_video_inst *dev_inst,
 				struct video_data_buffer *input_frame)
 {
+	struct video_client_ctx *client_ctx;
 	struct vcd_frame_data vcd_input_buffer;
 	unsigned long kernel_vaddr, phy_addr, user_vaddr;
 	int pmem_fd;
@@ -1483,9 +1492,10 @@ static int mpq_int_vid_dec_decode_frame(struct video_client_ctx *client_ctx,
 	u32 ion_flag = 0;
 	struct ion_handle *buff_handle = NULL;
 
-	if (!client_ctx || !input_frame)
+	if (!dev_inst || !input_frame)
 		return -EINVAL;
 
+	client_ctx = dev_inst->client_ctx;
 	user_vaddr = (unsigned long)input_frame->bufferaddr;
 
 	if (vidc_lookup_addr_table(client_ctx, BUFFER_TYPE_INPUT,
@@ -1524,6 +1534,10 @@ static int mpq_int_vid_dec_decode_frame(struct video_client_ctx *client_ctx,
 				(unsigned long) vcd_input_buffer.data_len,
 				ION_IOC_CLEAN_CACHES);
 			}
+		}
+		/* Inform VCD decoder to decode only I Frame */
+		if (dev_inst->picture_type == VIDEO_DECODED_PICTURES_I) {
+			vcd_input_buffer.flags |= VCD_FRAME_FLAG_EOS;
 		}
 		vcd_status = vcd_decode_frame(client_ctx->vcd_handle,
 					      &vcd_input_buffer);
@@ -1844,6 +1858,8 @@ static int mpq_dvb_video_open(struct inode *inode, struct file *file)
 	/* Set default source to memory for easier handling */
 	dev_inst->source = VIDEO_SOURCE_MEMORY;
 
+	/* Set default decoded picture type is ALL */
+	dev_inst->picture_type = VIDEO_DECODED_PICTURES_ALL;
 	mutex_unlock(&mpq_dvb_video_device->lock);
 
 	return rc;
@@ -2024,6 +2040,10 @@ static int mpq_dvb_video_command_handler(struct mpq_dvb_video_inst *dev_inst,
 		DBG("cmd : VIDEO_CMD_SET_BUFFER_COUNT\n");
 		rc = mpq_int_vid_dec_set_buffer_req(client_ctx, cmd->buf_req);
 		break;
+	case VIDEO_CMD_SET_DECODE_MODE:
+		DBG("cmd : VIDEO_CMD_SET_DECODE_MODE\n");
+		rc = mpq_int_vid_dec_set_decode_mode(dev_inst, cmd->picture_type);
+		break;
 	case VIDEO_CMD_READ_RAW_OUTPUT:
 		DBG("cmd : VIDEO_CMD_READ_RAW_OUTPUT\n");
 		rc = mpq_int_vid_dec_fill_output_buffer(client_ctx,
@@ -2077,7 +2097,7 @@ static ssize_t mpq_dvb_video_write(struct file *file, const char __user *buf,
 	if (dev_inst == NULL)
 		return -EINVAL;
 
-	rc = mpq_int_vid_dec_decode_frame(dev_inst->client_ctx, input_frame);
+	rc = mpq_int_vid_dec_decode_frame(dev_inst, input_frame);
 	if (rc)
 		return -EIO;
 
