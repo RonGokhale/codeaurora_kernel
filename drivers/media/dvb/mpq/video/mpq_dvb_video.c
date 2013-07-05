@@ -101,6 +101,7 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 	ssize_t bytes_read = 0;
 	size_t pktlen = 0;
 	int frame_found = true;
+	int idr_found   = false;
 	unsigned long kernel_vaddr, phy_addr, user_vaddr;
 	int pmem_fd;
 	struct file *file;
@@ -146,13 +147,23 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 				frame_found = false;
 				break;
 			case DMX_IDX_H264_IDR_START:
-			case DMX_IDX_H264_NON_IDR_START:
 			case DMX_IDX_MPEG_I_FRAME_START:
+			case DMX_IDX_VC1_FRAME_START:
+				DBG("IDR FRAME FOUND\n");
+				frame_found = true;
+				if (dev_inst->picture_type == VIDEO_DECODED_PICTURES_I){
+					idr_found   = true;
+				}
+				break;
+			case DMX_IDX_H264_NON_IDR_START:
 			case DMX_IDX_MPEG_P_FRAME_START:
 			case DMX_IDX_MPEG_B_FRAME_START:
-			case DMX_IDX_VC1_FRAME_START:
-				DBG("FRAME FOUND\n");
+			case DMX_IDX_VC1_FRAME_END:
+				DBG("NON IDR FRAME FOUND\n");
 				frame_found = true;
+				if (dev_inst->picture_type == VIDEO_DECODED_PICTURES_I){
+					idr_found   = false;
+				}
 				break;
 			default:
 				break;
@@ -174,15 +185,32 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 			dmx_data->in_buffer[free_buf].pts =
 			(meta_data.info.framing.pts_dts_info.pts_exist) ?
 			(meta_data.info.framing.pts_dts_info.pts) : 0;
-			if (frame_found) {
-				dmx_data->in_buffer[free_buf].buffer_len =
-									size;
-				dmx_data->in_buffer[free_buf].client_data =
-							(void *)free_buf;
-				DBG("Size of Data Submitted : %d\n", size);
-				mpq_int_vid_dec_decode_frame(
-						dev_inst,
-						&dmx_data->in_buffer[free_buf]);
+			if (dev_inst->picture_type == VIDEO_DECODED_PICTURES_I){
+				DBG("Video data to decoder in IDR mode \n");
+				if (frame_found && idr_found) {
+					dmx_data->in_buffer[free_buf].buffer_len =
+										size;
+					dmx_data->in_buffer[free_buf].client_data =
+								(void *)free_buf;
+					DBG("Size of Data Submitted : %d\n", size);
+					mpq_int_vid_dec_decode_frame(dev_inst,
+							&dmx_data->in_buffer[free_buf]);
+				}else {
+					DBG("Size made zero in case of IDR mode for NON IDR frames\n");
+					size = 0;
+					frame_found = false;
+				}
+			}else{
+				DBG("Video data to decoder in NON IDR mode \n");
+				if (frame_found) {
+					dmx_data->in_buffer[free_buf].buffer_len =
+										size;
+					dmx_data->in_buffer[free_buf].client_data =
+								(void *)free_buf;
+					DBG("Size of Data Submitted : %d\n", size);
+					mpq_int_vid_dec_decode_frame(dev_inst,
+							&dmx_data->in_buffer[free_buf]);
+				}
 			}
 			break;
 		case DMX_EOS_PACKET:
