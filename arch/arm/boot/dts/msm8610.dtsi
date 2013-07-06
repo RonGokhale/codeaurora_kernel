@@ -219,6 +219,8 @@
 		HSUSB_1p8-supply = <&pm8110_l10>;
 		HSUSB_3p3-supply = <&pm8110_l20>;
 
+		qcom,hsusb-otg-phy-init-seq =
+			<0x44 0x80 0x68 0x81 0x24 0x82 0x13 0x83 0xffffffff>;
 		qcom,hsusb-otg-phy-type = <2>;
 		qcom,hsusb-otg-mode = <1>;
 		qcom,hsusb-otg-otg-control = <2>;
@@ -835,6 +837,12 @@
 		compatible = "qcom,msm-rtb";
 		qcom,memory-reservation-type = "EBI1";
 		qcom,memory-reservation-size = <0x100000>; /* 1M EBI1 buffer */
+	};
+
+	jtag_fuse: jtagfuse@fc4be024 {
+		compatible = "qcom,jtag-fuse";
+		reg = <0xfc4be024 0x8>;
+		reg-names = "fuse-base";
 	};
 
 	jtag_mm0: jtagmm@fc34c000 {

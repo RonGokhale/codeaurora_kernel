@@ -135,6 +135,7 @@ struct bms_wakeup_source {
 struct qpnp_bms_chip {
 	struct device			*dev;
 	struct power_supply		bms_psy;
+	bool				bms_psy_registered;
 	struct power_supply		*batt_psy;
 	struct spmi_device		*spmi;
 	u16				base;
@@ -1483,7 +1484,7 @@ static void calculate_soc_params(struct qpnp_bms_chip *chip,
 
 	if (params->rbatt_mohm != chip->rbatt_mohm) {
 		chip->rbatt_mohm = params->rbatt_mohm;
-		if (chip->bms_psy.name != NULL)
+		if (chip->bms_psy_registered)
 			power_supply_changed(&chip->bms_psy);
 	}
 
@@ -2288,8 +2289,7 @@ done_calculating:
 	}
 	mutex_unlock(&chip->last_soc_mutex);
 
-	if (new_calculated_soc != previous_soc
-			&& chip->bms_psy.name != NULL) {
+	if (new_calculated_soc != previous_soc && chip->bms_psy_registered) {
 		power_supply_changed(&chip->bms_psy);
 		pr_debug("power supply changed\n");
 	} else {
@@ -2323,7 +2323,7 @@ static int calculate_soc_from_voltage(struct qpnp_bms_chip *chip)
 	voltage_based_soc = clamp(voltage_based_soc, 0, 100);
 
 	if (chip->prev_voltage_based_soc != voltage_based_soc
-				&& chip->bms_psy.name != NULL) {
+				&& chip->bms_psy_registered) {
 		power_supply_changed(&chip->bms_psy);
 		pr_debug("power supply changed\n");
 	}
@@ -2530,7 +2530,7 @@ static void btm_notify_vbat(enum qpnp_tm_state state, void *ctx)
 	} else {
 		pr_debug("unknown voltage notification state: %d\n", state);
 	}
-	if (chip->bms_psy.name != NULL)
+	if (chip->bms_psy_registered)
 		power_supply_changed(&chip->bms_psy);
 }
 
@@ -3419,7 +3419,7 @@ static inline void bms_initialize_constants(struct qpnp_bms_chip *chip)
 	chip->first_time_calc_uuc = 1;
 }
 
-#define SPMI_SETUP_IRQ(irq_name)					\
+#define SPMI_FIND_IRQ(chip, irq_name)					\
 do {									\
 	chip->irq_name##_irq.irq = spmi_get_irq_byname(chip->spmi,	\
 					resource, #irq_name);		\
@@ -3427,6 +3427,18 @@ do {									\
 		pr_err("Unable to get " #irq_name " irq\n");		\
 		return -ENXIO;						\
 	}								\
+} while (0)
+
+static int bms_find_irqs(struct qpnp_bms_chip *chip,
+			struct spmi_resource *resource)
+{
+	SPMI_FIND_IRQ(chip, sw_cc_thr);
+	SPMI_FIND_IRQ(chip, ocv_thr);
+	return 0;
+}
+
+#define SPMI_REQUEST_IRQ(chip, rc, irq_name)				\
+do {									\
 	rc = devm_request_irq(chip->dev, chip->irq_name##_irq.irq,	\
 			bms_##irq_name##_irq_handler,			\
 			IRQF_TRIGGER_RISING, #irq_name, chip);		\
@@ -3436,14 +3448,13 @@ do {									\
 	}								\
 } while (0)
 
-static int bms_setup_irqs(struct qpnp_bms_chip *chip,
-			struct spmi_resource *resource)
+static int bms_request_irqs(struct qpnp_bms_chip *chip)
 {
 	int rc;
 
-	SPMI_SETUP_IRQ(sw_cc_thr);
+	SPMI_REQUEST_IRQ(chip, rc, sw_cc_thr);
 	enable_irq_wake(chip->sw_cc_thr_irq.irq);
-	SPMI_SETUP_IRQ(ocv_thr);
+	SPMI_REQUEST_IRQ(chip, rc, ocv_thr);
 	enable_irq_wake(chip->ocv_thr_irq.irq);
 	return 0;
 }
@@ -3495,9 +3506,9 @@ static int register_spmi(struct qpnp_bms_chip *chip, struct spmi_device *spmi)
 
 		if (type == BMS_BMS_TYPE && subtype == BMS_BMS1_SUBTYPE) {
 			chip->base = resource->start;
-			rc = bms_setup_irqs(chip, spmi_resource);
+			rc = bms_find_irqs(chip, spmi_resource);
 			if (rc) {
-				pr_err("Could not register irqs\n");
+				pr_err("Could not find irqs\n");
 				return rc;
 			}
 		} else if (type == BMS_IADC_TYPE
@@ -3824,11 +3835,18 @@ static int __devinit qpnp_bms_probe(struct spmi_device *spmi)
 		goto unregister_dc;
 	}
 
+	chip->bms_psy_registered = true;
 	vbatt = 0;
 	rc = get_battery_voltage(&vbatt);
 	if (rc) {
 		pr_err("error reading vbat_sns adc channel = %d, rc = %d\n",
 						VBAT_SNS, rc);
+		goto unregister_dc;
+	}
+
+	rc = bms_request_irqs(chip);
+	if (rc) {
+		pr_err("error requesting bms irqs, rc = %d\n", rc);
 		goto unregister_dc;
 	}
 
@@ -3838,6 +3856,7 @@ static int __devinit qpnp_bms_probe(struct spmi_device *spmi)
 	return 0;
 
 unregister_dc:
+	chip->bms_psy_registered = false;
 	power_supply_unregister(&chip->bms_psy);
 error_setup:
 	dev_set_drvdata(&spmi->dev, NULL);

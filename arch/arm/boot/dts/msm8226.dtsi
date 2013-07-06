@@ -660,6 +660,21 @@
 		interrupt-names = "core_irq", "bam_irq";
 
 		qcom,bus-width = <8>;
+
+		qcom,msm-bus,name = "sdcc1";
+		qcom,msm-bus,num-cases = <8>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps = <78 512 0 0>, /* No vote */
+				<78 512 1600 3200>,    /* 400 KB/s*/
+				<78 512 80000 160000>, /* 20 MB/s */
+				<78 512 100000 200000>, /* 25 MB/s */
+				<78 512 200000 400000>, /* 50 MB/s */
+				<78 512 400000 800000>, /* 100 MB/s */
+				<78 512 400000 800000>, /* 200 MB/s */
+				<78 512 2048000 4096000>; /* Max. bandwidth */
+		qcom,bus-bw-vectors-bps = <0 400000 20000000 25000000 50000000
+						100000000 200000000 4294967295>;
+
 		status = "disabled";
 	};
 
@@ -672,6 +687,21 @@
 		interrupt-names = "hc_irq", "pwr_irq";
 
 		qcom,bus-width = <8>;
+
+		qcom,msm-bus,name = "sdhc1";
+		qcom,msm-bus,num-cases = <8>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps = <78 512 0 0>, /* No vote */
+				<78 512 1600 3200>,    /* 400 KB/s*/
+				<78 512 80000 160000>, /* 20 MB/s */
+				<78 512 100000 200000>, /* 25 MB/s */
+				<78 512 200000 400000>, /* 50 MB/s */
+				<78 512 400000 800000>, /* 100 MB/s */
+				<78 512 400000 800000>, /* 200 MB/s */
+				<78 512 2048000 4096000>; /* Max. bandwidth */
+		qcom,bus-bw-vectors-bps = <0 400000 20000000 25000000 50000000
+						100000000 200000000 4294967295>;
+
 		status = "disabled";
 	};
 
@@ -687,6 +717,21 @@
 		interrupt-names = "core_irq", "bam_irq";
 
 		qcom,bus-width = <4>;
+
+		qcom,msm-bus,name = "sdcc2";
+		qcom,msm-bus,num-cases = <8>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps = <81 512 0 0>, /* No vote */
+				<81 512 1600 3200>,    /* 400 KB/s*/
+				<81 512 80000 160000>, /* 20 MB/s */
+				<81 512 100000 200000>, /* 25 MB/s */
+				<81 512 200000 400000>, /* 50 MB/s */
+				<81 512 400000 800000>, /* 100 MB/s */
+				<81 512 400000 800000>, /* 200 MB/s */
+				<81 512 2048000 4096000>; /* Max. bandwidth */
+		qcom,bus-bw-vectors-bps = <0 400000 20000000 25000000 50000000
+						100000000 200000000 4294967295>;
+
 		status = "disabled";
 	};
 
@@ -699,6 +744,21 @@
 		interrupt-names = "hc_irq", "pwr_irq";
 
 		qcom,bus-width = <4>;
+
+		qcom,msm-bus,name = "sdhc2";
+		qcom,msm-bus,num-cases = <8>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps = <81 512 0 0>, /* No vote */
+				<81 512 1600 3200>,    /* 400 KB/s*/
+				<81 512 80000 160000>, /* 20 MB/s */
+				<81 512 100000 200000>, /* 25 MB/s */
+				<81 512 200000 400000>, /* 50 MB/s */
+				<81 512 400000 800000>, /* 100 MB/s */
+				<81 512 400000 800000>, /* 200 MB/s */
+				<81 512 2048000 4096000>; /* Max. bandwidth */
+		qcom,bus-bw-vectors-bps = <0 400000 20000000 25000000 50000000
+						100000000 200000000 4294967295>;
+
 		status = "disabled";
 	};
 
@@ -891,6 +951,9 @@
 		qcom,temp-hysteresis = <10>;
 		qcom,freq-step = <2>;
 		qcom,freq-control-mask = <0xf>;
+		qcom,core-limit-temp = <80>;
+		qcom,core-temp-hysteresis = <10>;
+		qcom,core-control-mask = <0xe>;
 	};
 
 	spi_0: spi@f9923000 { /* BLSP1 QUP1 */
@@ -943,6 +1006,12 @@
 	qcom,tz-log@fe805720 {
 		compatible = "qcom,tz-log";
 		reg = <0x0fe805720 0x1000>;
+	};
+
+	jtag_fuse: jtagfuse@fc4be024 {
+		compatible = "qcom,jtag-fuse";
+		reg = <0xfc4be024 0x8>;
+		reg-names = "fuse-base";
 	};
 
 	jtag_mm0: jtagmm@fc33c000 {
