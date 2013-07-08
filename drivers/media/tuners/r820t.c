@@ -1,7 +1,7 @@
 /*
  * Rafael Micro R820T driver
  *
- * Copyright (C) 2013 Mauro Carvalho Chehab <m.chehab@samsung.com>
+ * Copyright (C) 2013 Mauro Carvalho Chehab <mchehab@redhat.com>
  *
  * This driver was written from scratch, based on an existing driver
  * that it is part of rtl-sdr git tree, released under GPLv2:
@@ -2347,5 +2347,5 @@ err_no_gate:
 EXPORT_SYMBOL_GPL(r820t_attach);
 
 MODULE_DESCRIPTION("Rafael Micro r820t silicon tuner driver");
-MODULE_AUTHOR("Mauro Carvalho Chehab <m.chehab@samsung.com>");
+MODULE_AUTHOR("Mauro Carvalho Chehab <mchehab@redhat.com>");
 MODULE_LICENSE("GPL");

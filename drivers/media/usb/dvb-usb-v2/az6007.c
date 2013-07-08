@@ -7,7 +7,7 @@
  *	http://linux.terratec.de/files/TERRATEC_H7/20110323_TERRATEC_H7_Linux.tar.gz
  * The original driver's license is GPL, as declared with MODULE_LICENSE()
  *
- * Copyright (c) 2010-2012 Mauro Carvalho Chehab <m.chehab@samsung.com>
+ * Copyright (c) 2010-2012 Mauro Carvalho Chehab <mchehab@redhat.com>
  *	Driver modified by in order to work with upstream drxk driver, and
  *	tons of bugs got fixed, and converted to use dvb-usb-v2.
  *
@@ -916,7 +916,7 @@ static struct usb_driver az6007_usb_driver = {
 module_usb_driver(az6007_usb_driver);
 
 MODULE_AUTHOR("Henry Wang <Henry.wang@AzureWave.com>");
-MODULE_AUTHOR("Mauro Carvalho Chehab <m.chehab@samsung.com>");
+MODULE_AUTHOR("Mauro Carvalho Chehab <mchehab@redhat.com>");
 MODULE_DESCRIPTION("Driver for AzureWave 6007 DVB-C/T USB2.0 and clones");
 MODULE_VERSION("2.0");
 MODULE_LICENSE("GPL");

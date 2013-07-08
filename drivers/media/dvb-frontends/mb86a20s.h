@@ -1,7 +1,7 @@
 /*
  *   Fujitsu mb86a20s driver
  *
- *   Copyright (C) 2010 Mauro Carvalho Chehab <m.chehab@samsung.com>
+ *   Copyright (C) 2010 Mauro Carvalho Chehab <mchehab@redhat.com>
  *
  *   This program is free software; you can redistribute it and/or
  *   modify it under the terms of the GNU General Public License as

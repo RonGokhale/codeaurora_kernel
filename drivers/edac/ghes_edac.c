@@ -4,7 +4,7 @@
  * This file may be distributed under the terms of the GNU General Public
  * License version 2.
  *
- * Copyright (c) 2013 by Mauro Carvalho Chehab <m.chehab@samsung.com>
+ * Copyright (c) 2013 by Mauro Carvalho Chehab <mchehab@redhat.com>
  *
  * Red Hat Inc. http://www.redhat.com
  */
