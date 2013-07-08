@@ -32,7 +32,6 @@
 
 #define EM28XX_SNAPSHOT_KEY KEY_CAMERA
 #define EM28XX_SBUTTON_QUERY_INTERVAL 500
-#define EM28XX_R0C_USBSUSP_SNAPSHOT 0x20
 
 static unsigned int ir_debug;
 module_param(ir_debug, int, 0644);
@@ -722,7 +721,7 @@ static void __exit em28xx_rc_unregister(void)
 }
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Mauro Carvalho Chehab <mchehab@redhat.com>");
+MODULE_AUTHOR("Mauro Carvalho Chehab <m.chehab@samsung.com>");
 MODULE_DESCRIPTION("Em28xx Input driver");
 
 module_init(em28xx_rc_register);

@@ -1,7 +1,7 @@
 /*
  * rc-map.h - define RC map names used by RC drivers
  *
- * Copyright (c) 2010 by Mauro Carvalho Chehab <mchehab@redhat.com>
+ * Copyright (c) 2010 by Mauro Carvalho Chehab <m.chehab@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -111,6 +111,7 @@ void rc_map_init(void);
 #define RC_MAP_BUDGET_CI_OLD             "rc-budget-ci-old"
 #define RC_MAP_CINERGY_1400              "rc-cinergy-1400"
 #define RC_MAP_CINERGY                   "rc-cinergy"
+#define RC_MAP_DELOCK_61959              "rc-delock-61959"
 #define RC_MAP_DIB0700_NEC_TABLE         "rc-dib0700-nec"
 #define RC_MAP_DIB0700_RC5_TABLE         "rc-dib0700-rc5"
 #define RC_MAP_DIGITALNOW_TINYTWIN       "rc-digitalnow-tinytwin"

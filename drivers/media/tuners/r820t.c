@@ -1,7 +1,7 @@
 /*
  * Rafael Micro R820T driver
  *
- * Copyright (C) 2013 Mauro Carvalho Chehab <mchehab@redhat.com>
+ * Copyright (C) 2013 Mauro Carvalho Chehab <m.chehab@samsung.com>
  *
  * This driver was written from scratch, based on an existing driver
  * that it is part of rtl-sdr git tree, released under GPLv2:
@@ -364,8 +364,8 @@ static void shadow_store(struct r820t_priv *priv, u8 reg, const u8 *val,
 	}
 	if (len <= 0)
 		return;
-	if (len > NUM_REGS)
-		len = NUM_REGS;
+	if (len > NUM_REGS - r)
+		len = NUM_REGS - r;
 
 	tuner_dbg("%s: prev  reg=%02x len=%d: %*ph\n",
 		  __func__, r + REG_SHADOW_START, len, len, val);
@@ -1857,9 +1857,9 @@ static int r820t_imr(struct r820t_priv *priv, unsigned imr_mem, bool im_flag)
 	int reg18, reg19, reg1f;
 
 	if (priv->cfg->xtal > 24000000)
-		ring_ref = priv->cfg->xtal / 2;
+		ring_ref = priv->cfg->xtal / 2000;
 	else
-		ring_ref = priv->cfg->xtal;
+		ring_ref = priv->cfg->xtal / 1000;
 
 	n_ring = 15;
 	for (n = 0; n < 16; n++) {
@@ -2256,7 +2256,6 @@ static int r820t_release(struct dvb_frontend *fe)
 
 	mutex_unlock(&r820t_list_mutex);
 
-	kfree(fe->tuner_priv);
 	fe->tuner_priv = NULL;
 
 	return 0;
@@ -2311,8 +2310,6 @@ struct dvb_frontend *r820t_attach(struct dvb_frontend *fe,
 		break;
 	}
 
-	memcpy(&fe->ops.tuner_ops, &r820t_tuner_ops, sizeof(r820t_tuner_ops));
-
 	if (fe->ops.i2c_gate_ctrl)
 		fe->ops.i2c_gate_ctrl(fe, 1);
 
@@ -2327,14 +2324,13 @@ struct dvb_frontend *r820t_attach(struct dvb_frontend *fe,
 
 	tuner_info("Rafael Micro r820t successfully identified\n");
 
-	fe->tuner_priv = priv;
-	memcpy(&fe->ops.tuner_ops, &r820t_tuner_ops,
-			sizeof(struct dvb_tuner_ops));
-
 	if (fe->ops.i2c_gate_ctrl)
 		fe->ops.i2c_gate_ctrl(fe, 0);
 
 	mutex_unlock(&r820t_list_mutex);
+
+	memcpy(&fe->ops.tuner_ops, &r820t_tuner_ops,
+			sizeof(struct dvb_tuner_ops));
 
 	return fe;
 err:
@@ -2351,5 +2347,5 @@ err_no_gate:
 EXPORT_SYMBOL_GPL(r820t_attach);
 
 MODULE_DESCRIPTION("Rafael Micro r820t silicon tuner driver");
-MODULE_AUTHOR("Mauro Carvalho Chehab <mchehab@redhat.com>");
+MODULE_AUTHOR("Mauro Carvalho Chehab <m.chehab@samsung.com>");
 MODULE_LICENSE("GPL");
