@@ -721,7 +721,7 @@ static void __exit em28xx_rc_unregister(void)
 }
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Mauro Carvalho Chehab <mchehab@redhat.com>");
+MODULE_AUTHOR("Mauro Carvalho Chehab <m.chehab@samsung.com>");
 MODULE_DESCRIPTION("Em28xx Input driver");
 
 module_init(em28xx_rc_register);
