@@ -31,6 +31,7 @@
 #include <linux/moduleparam.h>
 #include <linux/of.h>
 #include <linux/pm.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/spinlock.h>
 #include <linux/timer.h>
