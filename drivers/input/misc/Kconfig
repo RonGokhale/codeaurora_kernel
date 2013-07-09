@@ -654,4 +654,42 @@ config STM_LIS3DH
           If you say yes here you get support for STMicroelectronics's
           acceleration sensors LIS3DH.
 
+config BMP18X
+       tristate "BMP18X digital pressure sensor"
+       depends on (I2C ) && SYSFS
+       help
+         If you say yes here you get support for Bosch Sensortec
+	 digital pressure sensors BMP085, BMP180.
+
+         To compile this driver as a module, choose M here: the
+         module will be called bmp18x-core.
+
+config BMP18X_I2C
+       tristate "support I2C bus connection"
+       depends on BMP18X && I2C
+       help
+         Say Y here if you want to support Bosch Sensortec digital pressure
+         sensor hooked to an I2C bus.
+
+         To compile this driver as a module, choose M here: the
+         module will be called bmp18x-i2c.
+
+config SENSORS_MMA8X5X
+	tristate "MMA8451/MMA8452/MMA8453/MMA8652/MMA8653 device driver"
+	depends on I2C && SYSFS
+	select INPUT_POLLDEV
+	default n
+	help
+	  If you say yes here you get support for the Freescale MMA8451/
+	  MMA8452/MMA8453/MMA8652/MMA8653  sensors.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called mma8x5x.
+
+config SENSORS_MMA_POSITION
+	int "MMA8x5x Accelerate Sensor Position Setting"
+	depends on SENSORS_MMA8X5X
+	default "0"
+	help
+	  this provide the sensor position setting , value is between 0~7
 endif

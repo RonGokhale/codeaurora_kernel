@@ -173,7 +173,7 @@
 		qcom,msm-bus,vectors-KBps =
 				<87 512 0 0>,
 				<87 512 40000 640000>;
-		qcom,hsusb-log2-itc = <5>;
+		qcom,hsusb-log2-itc = <4>;
 	};
 
 	hsic_host: hsic@f9a15000 {
@@ -857,6 +857,12 @@
 		reg-names = "crypto-base","crypto-bam-base";
 		interrupts = <0 207 0>;
 		qcom,bam-pipe-pair = <2>;
+	};
+
+	jtag_fuse: jtagfuse@fc4be024 {
+		compatible = "qcom,jtag-fuse";
+		reg = <0xfc4be024 0x8>;
+		reg-names = "fuse-base";
 	};
 
 	jtag_mm: jtagmm@fc332000 {
