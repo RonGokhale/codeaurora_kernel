@@ -602,9 +602,9 @@ static struct mddev * mddev_find(dev_t unit)
 	goto retry;
 }
 
-static inline int mddev_lock(struct mddev * mddev)
+int md_queue_misc_work(struct work_struct *work)
 {
-	return mutex_lock_interruptible(&mddev->reconfig_mutex);
+	return queue_work(md_misc_wq, work);
 }
 
 static inline int mddev_is_locked(struct mddev *mddev)
@@ -619,7 +619,7 @@ static inline int mddev_trylock(struct mddev * mddev)
 
 static struct attribute_group md_redundancy_group;
 
-static void mddev_unlock(struct mddev * mddev)
+void mddev_unlock(struct mddev * mddev)
 {
 	if (mddev->to_remove) {
 		/* These cannot be removed under reconfig_mutex as
@@ -2931,9 +2931,10 @@ static ssize_t new_offset_store(struct md_rdev *rdev,
 	    .allow_new_offset(rdev, new_offset))
 		return -E2BIG;
 	rdev->new_data_offset = new_offset;
-	if (new_offset > rdev->data_offset)
+	if (new_offset > rdev->data_offset) {
 		mddev->reshape_backwards = 1;
-	else if (new_offset < rdev->data_offset)
+		rdev->sectors -= new_offset - rdev->data_offset;
+	} else if (new_offset < rdev->data_offset)
 		mddev->reshape_backwards = 0;
 
 	return len;
@@ -8695,6 +8696,8 @@ EXPORT_SYMBOL(md_unregister_thread);
 EXPORT_SYMBOL(md_wakeup_thread);
 EXPORT_SYMBOL(md_check_recovery);
 EXPORT_SYMBOL(md_reap_sync_thread);
+EXPORT_SYMBOL(mddev_unlock);
+EXPORT_SYMBOL(md_queue_misc_work);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("MD RAID framework");
 MODULE_ALIAS("md");
