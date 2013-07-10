@@ -20,12 +20,12 @@
 
 #include <linux/gpio.h>
 #include <linux/interrupt.h>
-#include <linux/irqchip.h>
 #include <linux/kernel.h>
 #include <linux/pinctrl/machine.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/fixed.h>
 #include <linux/regulator/machine.h>
+#include <linux/sh_clk.h>
 #include <linux/smsc911x.h>
 #include <mach/common.h>
 #include <mach/irqs.h>
@@ -65,7 +65,21 @@ static const struct pinctrl_map ape6evm_pinctrl_map[] = {
 
 static void __init ape6evm_add_standard_devices(void)
 {
+
+	struct clk *parent;
+	struct clk *mp;
+
 	r8a73a4_clock_init();
+
+	/* MP clock parent = extal2 */
+	parent      = clk_get(NULL, "extal2");
+	mp          = clk_get(NULL, "mp");
+	BUG_ON(IS_ERR(parent) || IS_ERR(mp));
+
+	clk_set_parent(mp, parent);
+	clk_put(parent);
+	clk_put(mp);
+
 	pinctrl_register_mappings(ape6evm_pinctrl_map,
 				  ARRAY_SIZE(ape6evm_pinctrl_map));
 	r8a73a4_pinmux_init();
@@ -87,7 +101,7 @@ static const char *ape6evm_boards_compat_dt[] __initdata = {
 };
 
 DT_MACHINE_START(APE6EVM_DT, "ape6evm")
-	.init_irq	= irqchip_init,
+	.init_early	= r8a73a4_init_delay,
 	.init_time	= shmobile_timer_init,
 	.init_machine	= ape6evm_add_standard_devices,
 	.dt_compat	= ape6evm_boards_compat_dt,

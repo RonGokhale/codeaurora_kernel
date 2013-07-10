@@ -28,6 +28,7 @@
 #include <linux/leds.h>
 #include <linux/dma-mapping.h>
 #include <linux/pinctrl/machine.h>
+#include <linux/platform_data/gpio-rcar.h>
 #include <linux/regulator/fixed.h>
 #include <linux/regulator/machine.h>
 #include <linux/smsc911x.h>
@@ -68,7 +69,7 @@ static struct resource smsc911x_resources[] = {
 		.flags		= IORESOURCE_MEM,
 	},
 	[1] = {
-		.start		= gic_iid(0x3c), /* IRQ 1 */
+		.start		= irq_pin(1), /* IRQ 1 */
 		.flags		= IORESOURCE_IRQ,
 	},
 };
@@ -173,15 +174,15 @@ static struct platform_device usb_phy_device = {
 static struct gpio_led marzen_leds[] = {
 	{
 		.name		= "led2",
-		.gpio		= 157,
+		.gpio		= RCAR_GP_PIN(4, 29),
 		.default_state	= LEDS_GPIO_DEFSTATE_ON,
 	}, {
 		.name		= "led3",
-		.gpio		= 158,
+		.gpio		= RCAR_GP_PIN(4, 30),
 		.default_state	= LEDS_GPIO_DEFSTATE_ON,
 	}, {
 		.name		= "led4",
-		.gpio		= 159,
+		.gpio		= RCAR_GP_PIN(4, 31),
 		.default_state	= LEDS_GPIO_DEFSTATE_ON,
 	},
 };
@@ -349,7 +350,7 @@ static struct platform_device *marzen_late_devices[] __initdata = {
 	&ohci1_device,
 };
 
-void __init marzen_init_late(void)
+static void __init marzen_init_late(void)
 {
 	/* get usb phy */
 	phy = usb_get_phy(USB_PHY_TYPE_USB2);
@@ -404,6 +405,7 @@ static void __init marzen_init(void)
 	pinctrl_register_mappings(marzen_pinctrl_map,
 				  ARRAY_SIZE(marzen_pinctrl_map));
 	r8a7779_pinmux_init();
+	r8a7779_init_irq_extpin(1); /* IRQ1 as individual interrupt */
 
 	r8a7779_add_standard_devices();
 	platform_add_devices(marzen_devices, ARRAY_SIZE(marzen_devices));
