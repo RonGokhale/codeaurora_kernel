@@ -12,14 +12,23 @@
 
 /dts-v1/;
 
-/include/ "msm8610-qrd.dtsi"
-/include/ "dsi-v2-panel-hx8379a-wvga-video.dtsi"
-/include/ "msm8610-qrd-camera-sensor.dtsi"
+/include/ "apq8074-v2.dtsi"
+/include/ "msm8974-cdp.dtsi"
 
 / {
-	model = "Qualcomm MSM 8610 QRD";
-	compatible = "qcom,msm8610-qrd", "qcom,msm8610", "qcom,qrd";
-	qcom,msm-id = <147 11 0>, <165 11 0>, <161 11 0>, <162 11 0>,
-				  <163 11 0>, <164 11 0>, <166 11 0>;
+	model = "Qualcomm APQ 8074v2 CDP";
+	compatible = "qcom,apq8074-cdp", "qcom,apq8074", "qcom,cdp";
+	qcom,msm-id = <184 1 0x20000>;
 };
 
+&usb3 {
+	interrupt-parent = <&usb3>;
+	interrupts = <0 1>;
+	#interrupt-cells = <1>;
+	interrupt-map-mask = <0x0 0xffffffff>;
+	interrupt-map = <0x0 0 &intc 0 133 0
+			 0x0 1 &spmi_bus 0x0 0x0 0x9 0x0>;
+	interrupt-names = "hs_phy_irq", "pmic_id_irq";
+
+	qcom,misc-ref = <&pm8941_misc>;
+};

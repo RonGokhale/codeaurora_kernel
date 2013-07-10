@@ -89,6 +89,9 @@
 #define CORE_TESTBUS_ENA	(1 << 3)
 #define CORE_TESTBUS_SEL2	(1 << 4)
 
+#define CORE_MCI_VERSION	0x050
+#define CORE_VERSION_310	0x10000011
+
 /*
  * Waiting until end of potential AHB access for data:
  * 16 AHB cycles (160ns for 100MHz and 320ns for 50MHz) +
@@ -594,6 +597,7 @@ out:
 int sdhci_msm_execute_tuning(struct sdhci_host *host, u32 opcode)
 {
 	unsigned long flags;
+	int tuning_seq_cnt = 3;
 	u8 phase, *data_buf, tuned_phases[16], tuned_phase_cnt = 0;
 	const u32 *tuning_block_pattern = tuning_block_64;
 	int size = sizeof(tuning_block_64); /* Tuning pattern size in bytes */
@@ -620,16 +624,17 @@ int sdhci_msm_execute_tuning(struct sdhci_host *host, u32 opcode)
 	}
 	spin_unlock_irqrestore(&host->lock, flags);
 
-	/* first of all reset the tuning block */
-	rc = msm_init_cm_dll(host);
-	if (rc)
-		goto out;
-
 	data_buf = kmalloc(size, GFP_KERNEL);
 	if (!data_buf) {
 		rc = -ENOMEM;
 		goto out;
 	}
+
+retry:
+	/* first of all reset the tuning block */
+	rc = msm_init_cm_dll(host);
+	if (rc)
+		goto kfree;
 
 	phase = 0;
 	do {
@@ -687,10 +692,12 @@ int sdhci_msm_execute_tuning(struct sdhci_host *host, u32 opcode)
 		pr_debug("%s: %s: finally setting the tuning phase to %d\n",
 				mmc_hostname(mmc), __func__, phase);
 	} else {
+		if (--tuning_seq_cnt)
+			goto retry;
 		/* tuning failed */
 		pr_err("%s: %s: no tuning point found\n",
 			mmc_hostname(mmc), __func__);
-		rc = -EAGAIN;
+		rc = -EIO;
 	}
 
 kfree:
@@ -2166,6 +2173,12 @@ static void sdhci_msm_disable_data_xfer(struct sdhci_host *host)
 	struct sdhci_msm_host *msm_host = pltfm_host->priv;
 	u32 value;
 	int ret;
+	u32 version;
+
+	version = readl_relaxed(msm_host->core_mem + CORE_MCI_VERSION);
+	/* Core version 3.1.0 doesn't need this workaround */
+	if (version == CORE_VERSION_310)
+		return;
 
 	value = readl_relaxed(msm_host->core_mem + CORE_MCI_DATA_CTRL);
 	value &= ~(u32)CORE_MCI_DPSM_ENABLE;

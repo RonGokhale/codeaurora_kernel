@@ -427,8 +427,10 @@ static int mdp3_ctrl_on(struct msm_fb_data_type *mfd)
 	}
 
 	panel = mdp3_session->panel;
-	if (panel->event_handler)
-		rc = panel->event_handler(panel, MDSS_EVENT_PANEL_ON, NULL);
+	if (panel->event_handler) {
+		rc = panel->event_handler(panel, MDSS_EVENT_UNBLANK, NULL);
+		rc |= panel->event_handler(panel, MDSS_EVENT_PANEL_ON, NULL);
+	}
 	if (rc) {
 		pr_err("fail to turn on the panel\n");
 		goto on_error;
@@ -459,6 +461,10 @@ static int mdp3_ctrl_on(struct msm_fb_data_type *mfd)
 		goto on_error;
 	}
 
+	if (panel->set_backlight)
+		panel->set_backlight(panel, panel->panel_info.bl_max);
+
+	pr_debug("mdp3_ctrl_on dma start\n");
 	if (mfd->fbi->screen_base) {
 		rc = mdp3_session->dma->start(mdp3_session->dma,
 						mdp3_session->intf);
@@ -490,6 +496,7 @@ static int mdp3_ctrl_off(struct msm_fb_data_type *mfd)
 		return -ENODEV;
 	}
 
+	panel = mdp3_session->panel;
 	mutex_lock(&mdp3_session->lock);
 
 	if (!mdp3_session->status) {
@@ -497,31 +504,38 @@ static int mdp3_ctrl_off(struct msm_fb_data_type *mfd)
 		goto off_error;
 	}
 
-	pr_debug("mdp3_ctrl_off stop mdp3 dma engine\n");
-
 	mdp3_histogram_stop(mdp3_session, MDP_BLOCK_DMA_P);
 
-	rc = mdp3_session->dma->stop(mdp3_session->dma, mdp3_session->intf);
+	pr_debug("mdp3_ctrl_off turn panel off\n");
+	if (panel->set_backlight)
+		panel->set_backlight(panel, 0);
 
-	if (rc)
-		pr_err("fail to stop the MDP3 dma\n");
-
-	mdp3_irq_deregister();
-
-	pr_debug("mdp3_ctrl_off stop dsi panel and controller\n");
-	panel = mdp3_session->panel;
 	if (panel->event_handler)
 		rc = panel->event_handler(panel, MDSS_EVENT_PANEL_OFF, NULL);
 	if (rc)
 		pr_err("fail to turn off the panel\n");
 
-	pr_debug("mdp3_ctrl_off release bus and clock\n");
-	rc = mdp3_ctrl_res_req_bus(mfd, 0);
+	rc = mdp3_session->dma->stop(mdp3_session->dma, mdp3_session->intf);
 	if (rc)
-		pr_err("mdp bus resource release failed\n");
+		pr_err("fail to stop the MDP3 dma\n");
+
+	mdp3_irq_deregister();
+
+	pr_debug("mdp3_ctrl_off stop clock\n");
 	rc = mdp3_ctrl_res_req_clk(mfd, 0);
 	if (rc)
 		pr_err("mdp clock resource release failed\n");
+
+	pr_debug("mdp3_ctrl_off stop dsi controller\n");
+	if (panel->event_handler)
+		rc = panel->event_handler(panel, MDSS_EVENT_BLANK, NULL);
+	if (rc)
+		pr_err("fail to turn off the panel\n");
+
+	pr_debug("mdp3_ctrl_off release bus\n");
+	rc = mdp3_ctrl_res_req_bus(mfd, 0);
+	if (rc)
+		pr_err("mdp bus resource release failed\n");
 
 	rc = mdp3_iommu_disable(MDP3_CLIENT_DMA_P);
 	if (rc)
@@ -670,6 +684,9 @@ static int mdp3_ctrl_display_commit_kickoff(struct msm_fb_data_type *mfd)
 	if (mdp3_bufq_count(&mdp3_session->bufq_out) > 2) {
 		data = mdp3_bufq_pop(&mdp3_session->bufq_out);
 		mdp3_put_img(data);
+
+		if (mfd->fbi->screen_base)
+			mdp3_fbmem_free(mfd);
 	}
 	mutex_unlock(&mdp3_session->lock);
 

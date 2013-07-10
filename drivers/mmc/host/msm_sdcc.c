@@ -5313,7 +5313,7 @@ static void msmsdcc_req_tout_timer_hdlr(unsigned long data)
 	mrq = host->curr.mrq;
 
 	if (mrq && mrq->cmd) {
-		if (!mrq->cmd->bkops_busy) {
+		if (!mrq->cmd->ignore_timeout) {
 			pr_info("%s: CMD%d: Request timeout\n",
 				mmc_hostname(host->mmc), mrq->cmd->opcode);
 			msmsdcc_dump_sdcc_state(host);
@@ -6064,6 +6064,10 @@ msmsdcc_probe(struct platform_device *pdev)
 				  msmsdcc_msm_bus_work);
 
 	msmsdcc_msm_bus_cancel_work_and_set_vote(host, &mmc->ios);
+
+	/* Disable SDHCi mode if supported */
+	if (is_sdhci_supported(host))
+		writel_relaxed(0, (host->base + MCI_CORE_HC_MODE));
 
 	/* Apply Hard reset to SDCC to put it in power on default state */
 	msmsdcc_hard_reset(host);
