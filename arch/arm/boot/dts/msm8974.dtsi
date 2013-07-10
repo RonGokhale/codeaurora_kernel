@@ -1690,9 +1690,3 @@
 &gdsc_usb_hsic {
 	status = "ok";
 };
-
-/include/ "msm-pm8x41-rpm-regulator.dtsi"
-/include/ "msm-pm8841.dtsi"
-/include/ "msm-pm8941.dtsi"
-/include/ "msm8974-regulator.dtsi"
-/include/ "msm8974-clock.dtsi"
