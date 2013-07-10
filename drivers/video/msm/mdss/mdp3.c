@@ -94,7 +94,7 @@ static struct msm_bus_paths
 static struct msm_bus_scale_pdata mdp_bus_ppp_scale_table = {
 	.usecase = mdp_bus_ppp_usecases,
 	.num_usecases = ARRAY_SIZE(mdp_bus_ppp_usecases),
-	.name = "mdp3",
+	.name = "mdp3_ppp",
 };
 
 struct mdp3_bus_handle_map mdp3_bus_handle[MDP3_BUS_HANDLE_MAX] = {
@@ -206,18 +206,7 @@ void mdp3_irq_disable(int type)
 	unsigned long flag;
 
 	spin_lock_irqsave(&mdp3_res->irq_lock, flag);
-	if (mdp3_res->irq_ref_count[type] <= 0) {
-		pr_debug("interrupt %d not enabled\n", type);
-		spin_unlock_irqrestore(&mdp3_res->irq_lock, flag);
-		return;
-	}
-	mdp3_res->irq_ref_count[type] -= 1;
-	if (mdp3_res->irq_ref_count[type] == 0) {
-		mdp3_res->irq_mask &= ~BIT(type);
-		MDP3_REG_WRITE(MDP3_REG_INTR_ENABLE, mdp3_res->irq_mask);
-		if (!mdp3_res->irq_mask)
-			disable_irq(mdp3_res->irq);
-	}
+	mdp3_irq_disable_nosync(type);
 	spin_unlock_irqrestore(&mdp3_res->irq_lock, flag);
 }
 
@@ -773,11 +762,6 @@ static int mdp3_res_init(void)
 	if (rc)
 		return rc;
 
-	rc = mdp3_iommu_attach(MDP3_IOMMU_CTX_DMA_0);
-	if (rc) {
-		pr_err("fail to attach DMA-P context 0\n");
-		return rc;
-	}
 	mdp3_res->bus_handle = mdp3_bus_handle;
 	rc = mdp3_bus_scale_register();
 	if (rc) {
@@ -942,19 +926,31 @@ done:
 	return ret;
 }
 
-int mdp3_ppp_iommu_attach(void)
+int mdp3_iommu_enable(int client)
 {
 	int rc;
-	rc = mdp3_iommu_attach(MDP3_IOMMU_CTX_PPP_0);
-	rc |= mdp3_iommu_attach(MDP3_IOMMU_CTX_PPP_1);
+
+	if (client == MDP3_CLIENT_DMA_P) {
+		rc = mdp3_iommu_attach(MDP3_IOMMU_CTX_DMA_0);
+	} else {
+		rc = mdp3_iommu_attach(MDP3_IOMMU_CTX_PPP_0);
+		rc |= mdp3_iommu_attach(MDP3_IOMMU_CTX_PPP_1);
+	}
+
 	return rc;
 }
 
-int mdp3_ppp_iommu_dettach(void)
+int mdp3_iommu_disable(int client)
 {
 	int rc;
-	rc = mdp3_iommu_dettach(MDP3_IOMMU_CTX_PPP_0);
-	rc = mdp3_iommu_dettach(MDP3_IOMMU_CTX_PPP_1);
+
+	if (client == MDP3_CLIENT_DMA_P) {
+		rc = mdp3_iommu_dettach(MDP3_IOMMU_CTX_DMA_0);
+	} else {
+		rc = mdp3_iommu_dettach(MDP3_IOMMU_CTX_PPP_0);
+		rc |= mdp3_iommu_dettach(MDP3_IOMMU_CTX_PPP_1);
+	}
+
 	return rc;
 }
 

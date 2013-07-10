@@ -96,13 +96,14 @@ void mdss_fb_no_update_notify_timer_cb(unsigned long data)
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)data;
 	if (!mfd)
 		pr_err("%s mfd NULL\n", __func__);
+	mfd->no_update.value = NOTIFY_TYPE_NO_UPDATE;
 	complete(&mfd->no_update.comp);
 }
 
 static int mdss_fb_notify_update(struct msm_fb_data_type *mfd,
 							unsigned long *argp)
 {
-	int ret, notify;
+	int ret, notify, to_user;
 
 	ret = copy_from_user(&notify, argp, sizeof(int));
 	if (ret) {
@@ -117,14 +118,18 @@ static int mdss_fb_notify_update(struct msm_fb_data_type *mfd,
 		INIT_COMPLETION(mfd->update.comp);
 		ret = wait_for_completion_interruptible_timeout(
 						&mfd->update.comp, 4 * HZ);
+		to_user = mfd->update.value;
 	} else {
 		INIT_COMPLETION(mfd->no_update.comp);
 		ret = wait_for_completion_interruptible_timeout(
 						&mfd->no_update.comp, 4 * HZ);
+		to_user = mfd->no_update.value;
 	}
 	if (ret == 0)
 		ret = -ETIMEDOUT;
-	return (ret > 0) ? 0 : ret;
+	else if (ret > 0)
+		ret = copy_to_user(argp, &to_user, sizeof(int));
+	return ret;
 }
 
 static int lcd_backlight_registered;
@@ -140,15 +145,18 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 
 	/* This maps android backlight level 0 to 255 into
 	   driver backlight level 0 to bl_max with rounding */
-	bl_lvl = (2 * value * mfd->panel_info->bl_max +
-		  MDSS_MAX_BL_BRIGHTNESS) / (2 * MDSS_MAX_BL_BRIGHTNESS);
+	MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
+						MDSS_MAX_BL_BRIGHTNESS);
 
 	if (!bl_lvl && value)
 		bl_lvl = 1;
 
-	mutex_lock(&mfd->bl_lock);
-	mdss_fb_set_backlight(mfd, bl_lvl);
-	mutex_unlock(&mfd->bl_lock);
+	if (!IS_CALIB_MODE_BL(mfd) && (!mfd->ext_bl_ctrl || !value ||
+							!mfd->bl_level)) {
+		mutex_lock(&mfd->bl_lock);
+		mdss_fb_set_backlight(mfd, bl_lvl);
+		mutex_unlock(&mfd->bl_lock);
+	}
 }
 
 static struct led_classdev backlight_led = {
@@ -534,7 +542,7 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 	struct mdss_panel_data *pdata;
 	u32 temp = bkl_lvl;
 
-	if (!mfd->panel_power_on || !bl_updated) {
+	if ((!mfd->panel_power_on || !bl_updated) && !IS_CALIB_MODE_BL(mfd)) {
 		unset_bl_level = bkl_lvl;
 		return;
 	} else {
@@ -544,7 +552,8 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 	pdata = dev_get_platdata(&mfd->pdev->dev);
 
 	if ((pdata) && (pdata->set_backlight)) {
-		mdss_fb_scale_bl(mfd, &temp);
+		if (!IS_CALIB_MODE_BL(mfd))
+			mdss_fb_scale_bl(mfd, &temp);
 		/*
 		 * Even though backlight has been scaled, want to show that
 		 * backlight has been set to bkl_lvl to those that read from
@@ -602,6 +611,9 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 			ret = mfd->mdp.on_fnc(mfd);
 			if (ret == 0)
 				mfd->panel_power_on = true;
+			mutex_lock(&mfd->update.lock);
+			mfd->update.type = NOTIFY_TYPE_UPDATE;
+			mutex_unlock(&mfd->update.lock);
 		}
 		break;
 
@@ -613,7 +625,11 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 		if (mfd->panel_power_on && mfd->mdp.off_fnc) {
 			int curr_pwr_state;
 
+			mutex_lock(&mfd->update.lock);
+			mfd->update.type = NOTIFY_TYPE_SUSPEND;
+			mutex_unlock(&mfd->update.lock);
 			del_timer(&mfd->no_update.timer);
+			mfd->no_update.value = NOTIFY_TYPE_SUSPEND;
 			complete(&mfd->no_update.comp);
 
 			mfd->op_enable = false;
@@ -964,6 +980,7 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 
 	mfd->op_enable = true;
 
+	mutex_init(&mfd->update.lock);
 	mutex_init(&mfd->no_update.lock);
 	mutex_init(&mfd->sync_mutex);
 	init_timer(&mfd->no_update.timer);

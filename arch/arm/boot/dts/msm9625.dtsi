@@ -165,6 +165,7 @@
 		qcom,hsusb-otg-lpm-on-dev-suspend;
 		qcom,hsusb-otg-clk-always-on-workaround;
 		qcom,hsusb-otg-delay-lpm-hndshk-on-disconnect;
+		qcom,hsusb-otg-delay-lpm;
 
 		qcom,msm-bus,name = "usb2";
 		qcom,msm-bus,num-cases = <2>;
@@ -771,6 +772,7 @@
 		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_1_in 0 0>;
 		qcom,gpio-err-ready = <&smp2pgpio_ssr_smp2p_1_in 1 0>;
 		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_1_in 2 0>;
+		qcom,gpio-stop-ack = <&smp2pgpio_ssr_smp2p_1_in 3 0>;
 
 		/* GPIO output to mss */
 		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_1_out 0 0>;
