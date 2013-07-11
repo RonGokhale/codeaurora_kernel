@@ -1768,6 +1768,9 @@ static long vidioc_default(struct file *file, void *fh, bool valid_prio,
 		mutex_unlock(&c_data->mutex);
 		c_data->vc_action.pause = false;
 		break;
+	case VCAPIOC_RESET_S_FMT:
+		dealloc_resources(c_data);
+		break;
 	default:
 		return -EINVAL;
 	}
