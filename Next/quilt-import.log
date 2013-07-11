@@ -1,0 +1,49 @@
+Importing jdelvare-hwmon based on 496322bc91e35007ed754184dcd447a02b6dd685
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 496322bc91e35007ed754184dcd447a02b6dd685
+HEAD is now at 496322b Merge git://git.kernel.org/pub/scm/linux/kernel/git/davem/net-next
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-drop-redundant-safety.patch
+Applying: hwmon: (lm90) Drop redundant safety on cache lifetime
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-drop-redundant-safety.patch
+Applying: hwmon: (lm63) Drop redundant safety on cache lifetime
+$ git am ../quilt/jdelvare-hwmon/hwmon-w83792d-update-module-author.patch
+Applying: hwmon: (w83792d) Update module author
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + 6d9a3ca...6f7e0b6 master     -> jdelvare-hwmon/master  (forced update)
+Importing device-mapper based on v3.10-8587-g496322b
+$ cd ../quilt-tmp
+$ git reset --hard 496322bc91e35007ed754184dcd447a02b6dd685
+HEAD is now at 496322b Merge git://git.kernel.org/pub/scm/linux/kernel/git/davem/net-next
+$ git am ../quilt/device-mapper/dm-mpath-fix-ioctl-deadlock-when-no-paths.patch
+Applying: When multipath needs to retry an ioctl the reference to the
+$ git am ../quilt/device-mapper/dm-ioctl-set-noio-flag-to-avoid-__vmalloc-deadlock.patch
+Applying: Set noio flag while calling __vmalloc() because it doesn't fully respect
+$ git am ../quilt/device-mapper/dm-verity-fix-inability-to-use-a-few-specific-devices-sizes.patch
+Applying: Fix a boundary condition that caused failure for certain device sizes.
+$ git am ../quilt/device-mapper/dm-use-__GFP_HIGHMEM-in-__vmalloc.patch
+Applying: Use __GFP_HIGHMEM in __vmalloc.
+$ git am ../quilt/device-mapper/dm-verity-remove-pointless-comparison.patch
+Applying: Remove num < 0 test in verity_ctr because num is unsigned.
+$ git am ../quilt/device-mapper/dm-flakey-correct-ctr-alloc-failure-mesg.patch
+Applying: Remove the reference to the "linear" target from the error message
+$ git am ../quilt/device-mapper/dm-verity-use-__ffs-and-__fls.patch
+Applying: This patch changes ffs() to __ffs() and fls() to __fls() which don't add
+$ git am ../quilt/device-mapper/dm-cache-fix-arm-link-errors-with-inline.patch
+Applying: Use __always_inline to avoid a link failure with gcc 4.6 on ARM.
+$ git am ../quilt/device-mapper/dm-bufio-submit-writes-outside-lock.patch
+Applying: This patch changes dm-bufio so that it submits write I/Os outside of the
+$ git am ../quilt/device-mapper/dm-optimize-use-SRCU-and-RCU.patch
+Applying: This patch removes "io_lock" and "map_lock" in struct mapped_device and
+$ git am ../quilt/device-mapper/dm-optimize-reorder-structure.patch
+Applying: This reorder actually improves performance by 20% (from 39.1s to 32.8s)
+$ git am ../quilt/device-mapper/dm-update-maintainers.patch
+Applying: Add Mike Snitzer as an additional device-mapper maintainer.
+$ git am ../quilt/device-mapper/dm-add-switch-target.patch
+Applying: dm-switch is a new target that maps IO to underlying block devices
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:device-mapper/master
+From ../quilt-tmp
+ + ddd3832...2e535fd master     -> device-mapper/master  (forced update)
