@@ -65,6 +65,8 @@
 #define EPM_ADC_MILLI_VOLTS_SOURCE	4750
 #define EPM_ADC_SCALE_FACTOR		64
 #define GPIO_EPM_GLOBAL_ENABLE		86
+#define GPIO_EPM_MARKER1		85
+#define GPIO_EPM_MARKER2		96
 #define EPM_ADC_CONVERSION_TIME_MIN	50000
 #define EPM_ADC_CONVERSION_TIME_MAX	51000
 /* PSoc Commands */
@@ -715,6 +717,56 @@ static int epm_adc_psoc_gpio_init(bool enable)
 	return 0;
 }
 
+static int epm_set_marker1(struct epm_marker_level *marker_init)
+{
+	int rc = 0;
+
+	rc = gpio_request(GPIO_EPM_MARKER1, "EPM_MARKER1");
+	if (!rc) {
+		gpio_direction_output(GPIO_EPM_MARKER1, 1);
+	} else {
+		pr_err("%s: Configure MARKER1 GPIO Failed\n",
+							__func__);
+		return rc;
+	}
+
+	gpio_set_value(GPIO_EPM_MARKER1, marker_init->level);
+
+	return 0;
+}
+
+static int epm_set_marker2(struct epm_marker_level *marker_init)
+{
+	int rc = 0;
+
+	rc = gpio_request(GPIO_EPM_MARKER2, "EPM_MARKER2");
+	if (!rc) {
+		gpio_direction_output(GPIO_EPM_MARKER2, 1);
+	} else {
+		pr_err("%s: Configure MARKER2 GPIO Failed\n",
+							__func__);
+		return rc;
+	}
+
+	gpio_set_value(GPIO_EPM_MARKER2, marker_init->level);
+
+	return 0;
+}
+
+static int epm_marker1_release(void)
+{
+	gpio_free(GPIO_EPM_MARKER1);
+
+	return 0;
+}
+
+static int epm_marker2_release(void)
+{
+	gpio_free(GPIO_EPM_MARKER2);
+
+	return 0;
+}
+
 static int epm_psoc_init(struct epm_adc_drv *epm_adc,
 					struct epm_psoc_init_resp *init_resp)
 {
@@ -1296,6 +1348,58 @@ static long epm_adc_ioctl(struct file *file, unsigned int cmd,
 				return -EFAULT;
 			break;
 		}
+	case EPM_MARKER1_REQUEST:
+		{
+			struct epm_marker_level marker_init;
+			uint32_t result;
+
+			if (copy_from_user(&marker_init, (void __user *)arg,
+					sizeof(struct epm_marker_level)))
+				return -EFAULT;
+
+			result = epm_set_marker1(&marker_init);
+
+			if (copy_to_user((void __user *)arg, &result,
+						sizeof(uint32_t)))
+				return -EFAULT;
+			break;
+		}
+	case EPM_MARKER2_REQUEST:
+		{
+			struct epm_marker_level marker_init;
+			uint32_t result;
+
+			if (copy_from_user(&marker_init, (void __user *)arg,
+					sizeof(struct epm_marker_level)))
+				return -EFAULT;
+
+			result = epm_set_marker2(&marker_init);
+
+			if (copy_to_user((void __user *)arg, &result,
+						sizeof(uint32_t)))
+				return -EFAULT;
+			break;
+		}
+	case EPM_MARKER1_RELEASE:
+		{
+			uint32_t result;
+			result = epm_marker1_release();
+
+			if (copy_to_user((void __user *)arg, &result,
+						sizeof(uint32_t)))
+				return -EFAULT;
+			break;
+		}
+	case EPM_MARKER2_RELEASE:
+		{
+			uint32_t result;
+			result = epm_marker2_release();
+
+			if (copy_to_user((void __user *)arg, &result,
+						sizeof(uint32_t)))
+				return -EFAULT;
+			break;
+		}
 	case EPM_PSOC_ADC_INIT:
 		{
 			struct epm_psoc_init_resp psoc_init;
@@ -1312,8 +1416,26 @@ static long epm_adc_ioctl(struct file *file, unsigned int cmd,
 				return -EINVAL;
 			}
 
+			if (!rc) {
+				rc = epm_adc_psoc_gpio_init(true);
+				if (rc) {
+					pr_err("GPIO init failed\n");
+					return -EINVAL;
+				}
+			}
+
 			if (copy_to_user((void __user *)arg, &psoc_init,
 				sizeof(struct epm_psoc_init_resp)))
+				return -EFAULT;
+			break;
+		}
+	case EPM_PSOC_ADC_DEINIT:
+		{
+			uint32_t result;
+			result = epm_adc_psoc_gpio_init(false);
+
+			if (copy_to_user((void __user *)arg, &result,
+						sizeof(uint32_t)))
 				return -EFAULT;
 			break;
 		}
