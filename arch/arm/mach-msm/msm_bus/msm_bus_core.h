@@ -36,7 +36,7 @@
 	(((slv >= MSM_BUS_SLAVE_FIRST) && (slv <= MSM_BUS_SLAVE_LAST)) ? 1 : 0)
 
 #define INTERLEAVED_BW(fab_pdata, bw, ports) \
-	((fab_pdata->il_flag && ports) ? DIV_ROUND_UP((bw), (ports)) : (bw))
+	((fab_pdata->il_flag) ? DIV_ROUND_UP((ports), (bw)) : (bw))
 #define INTERLEAVED_VAL(fab_pdata, n) \
 	((fab_pdata->il_flag) ? (n) : 1)
 
