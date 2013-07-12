@@ -61,6 +61,7 @@
 bool disable_ertm;
 bool enable_hs;
 bool enable_reconfig;
+static spinlock_t l2cap_disc_lock;
 
 static u32 l2cap_feat_mask = L2CAP_FEAT_FIXED_CHAN;
 static u8 l2cap_fc_mask = L2CAP_FC_L2CAP;
@@ -1471,6 +1472,7 @@ int l2cap_ertm_send(struct sock *sk)
 	struct l2cap_pinfo *pi = l2cap_pi(sk);
 	struct bt_l2cap_control *control;
 	int sent = 0;
+	unsigned long flags;
 
 	BT_DBG("sk %p", sk);
 
@@ -1488,6 +1490,18 @@ int l2cap_ertm_send(struct sock *sk)
 		atomic_read(&pi->ertm_queued) < L2CAP_MAX_ERTM_QUEUED &&
 		(pi->tx_state == L2CAP_ERTM_TX_STATE_XMIT)) {
 
+		/* Check the sk_state before queuing the skb to the lower
+		 *layers.If the state is BT_DISCONN then it may lead to
+		 * access in nvalid reference.
+		 */
+		spin_lock_irqsave(&l2cap_disc_lock, flags);
+
+		if (sk->sk_state != BT_CONNECTED) {
+			BT_ERR("Avoid to send the packet, skb might be already "
+					"flushed as the connection is lost");
+			spin_unlock_irqrestore(&l2cap_disc_lock, flags);
+			return -ENOTCONN;
+		}
 		skb = sk->sk_send_head;
 
 		bt_cb(skb)->retries = 1;
@@ -1517,9 +1531,10 @@ int l2cap_ertm_send(struct sock *sk)
 		 */
 		tx_skb = skb_clone(skb, GFP_ATOMIC);
 
-		if (!tx_skb)
+		if (!tx_skb) {
+			spin_unlock_irqrestore(&l2cap_disc_lock, flags);
 			break;
-
+		}
 		sock_hold(sk);
 		tx_skb->sk = sk;
 		tx_skb->destructor = l2cap_skb_destructor;
@@ -1538,6 +1553,8 @@ int l2cap_ertm_send(struct sock *sk)
 			sk->sk_send_head = skb_queue_next(TX_QUEUE(sk), skb);
 
 		l2cap_do_send(sk, tx_skb);
+		spin_unlock_irqrestore(&l2cap_disc_lock, flags);
+
 		BT_DBG("Sent txseq %d", (int)control->txseq);
 	}
 
@@ -4598,6 +4615,7 @@ static inline int l2cap_disconnect_req(struct l2cap_conn *conn, struct l2cap_cmd
 	struct l2cap_disconn_rsp rsp;
 	u16 dcid, scid;
 	struct sock *sk;
+	unsigned long flags;
 
 	scid = __le16_to_cpu(req->scid);
 	dcid = __le16_to_cpu(req->dcid);
@@ -4607,6 +4625,8 @@ static inline int l2cap_disconnect_req(struct l2cap_conn *conn, struct l2cap_cmd
 	sk = l2cap_get_chan_by_scid(&conn->chan_list, dcid);
 	if (!sk)
 		return 0;
+
+	spin_lock_irqsave(&l2cap_disc_lock, flags);
 
 	rsp.dcid = cpu_to_le16(l2cap_pi(sk)->scid);
 	rsp.scid = cpu_to_le16(l2cap_pi(sk)->dcid);
@@ -4634,7 +4654,7 @@ static inline int l2cap_disconnect_req(struct l2cap_conn *conn, struct l2cap_cmd
 		l2cap_sock_clear_timer(sk);
 		l2cap_sock_set_timer(sk, HZ / 5);
 		bh_unlock_sock(sk);
-		return 0;
+		goto out;
 	}
 
 	l2cap_chan_del(sk, ECONNRESET);
@@ -4642,6 +4662,8 @@ static inline int l2cap_disconnect_req(struct l2cap_conn *conn, struct l2cap_cmd
 	bh_unlock_sock(sk);
 
 	l2cap_sock_kill(sk);
+out:
+	spin_unlock_irqrestore(&l2cap_disc_lock, flags);
 	return 0;
 }
 
@@ -8047,7 +8069,7 @@ int __init l2cap_init(void)
 		BT_ERR("AMP Manager initialization failed");
 		goto error;
 	}
-
+	spin_lock_init(&l2cap_disc_lock);
 	return 0;
 
 error:
