@@ -359,6 +359,9 @@ static const char * const vfe32_general_cmd[] = {
 	"DEMOSAICV3_UPDATE",
 };
 
+static atomic_t recovery_active;
+static uint32_t recover_irq_mask0, recover_irq_mask1;
+
 static void vfe32_stop(void)
 {
 	uint8_t  axiBusyFlag = true;
@@ -559,6 +562,7 @@ static void vfe32_reset_internal_variables(void)
 	vfe32_ctrl->frame_skip_cnt = 31;
 	vfe32_ctrl->frame_skip_pattern = 0xffffffff;
 	vfe32_ctrl->snapshot_frame_cnt = 0;
+	atomic_set(&recovery_active, 0);
 }
 
 static void vfe32_reset(void)
@@ -2793,7 +2797,13 @@ static void vfe32_process_reg_update_irq(void)
 			vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out0.ch0]);
 			msm_camera_io_w(0, vfe32_ctrl->vfebase +
 			vfe32_AXI_WM_CFG[vfe32_ctrl->outpath.out0.ch1]);
+			vfe32_ctrl->liveshot_state = VFE_STATE_HW_STOP_REQUESTED;
+			msm_camera_io_w_mb(1, vfe32_ctrl->vfebase +
+				VFE_REG_UPDATE_CMD);
 		}
+		break;
+	case VFE_STATE_HW_STOP_REQUESTED:
+		vfe32_ctrl->liveshot_state = VFE_STATE_HW_STOPPED;
 		break;
 	case VFE_STATE_STOP_REQUESTED:
 		if (vfe32_ctrl->outpath.output_mode &
@@ -2937,6 +2947,42 @@ static void vfe32_process_reset_irq(void)
 {
 	unsigned long flags;
 
+	if (atomic_read(&recovery_active) == 1) {
+		pr_info("Recovery restart start\n");
+		msm_camera_io_w(VFE_RELOAD_ALL_WRITE_MASTERS,
+			vfe32_ctrl->vfebase + VFE_BUS_CMD);
+		msm_camera_io_w(recover_irq_mask0,
+			vfe32_ctrl->vfebase + VFE_IRQ_MASK_0);
+		msm_camera_io_w(recover_irq_mask1,
+			vfe32_ctrl->vfebase + VFE_IRQ_MASK_1);
+		if ((vfe32_ctrl->liveshot_state ==
+				VFE_STATE_START_REQUESTED) ||
+			(vfe32_ctrl->liveshot_state ==
+				VFE_STATE_STARTED) ||
+			(vfe32_ctrl->liveshot_state ==
+				VFE_STATE_HW_STOP_REQUESTED)) {
+			pr_info("Liveshot recovery\n");
+			vfe32_ctrl->outpath.out0.capture_cnt = 1;
+			vfe32_ctrl->vfe_capture_count =
+				vfe32_ctrl->outpath.out0.capture_cnt;
+			vfe32_ctrl->liveshot_state =
+				VFE_STATE_START_REQUESTED;
+		}
+		msm_camera_io_w_mb(1,
+			vfe32_ctrl->vfebase + VFE_REG_UPDATE_CMD);
+		pr_info("camif cfg: 0x%x\n",
+			msm_camera_io_r(
+			vfe32_ctrl->vfebase + VFE_CAMIF_FRAME_CFG));
+		/* Clear CAMIF Status */
+		msm_camera_io_w_mb(0x4,
+			vfe32_ctrl->vfebase + VFE_CAMIF_COMMAND);
+		/* Enable CAMIF capture */
+		msm_camera_io_w_mb(0x1,
+			vfe32_ctrl->vfebase + VFE_CAMIF_COMMAND);
+		atomic_set(&recovery_active, 0);
+		pr_info("Recovery restart done\n");
+		return;
+	}
 	atomic_set(&vfe32_ctrl->vstate, 0);
 
 	spin_lock_irqsave(&vfe32_ctrl->stop_flag_lock, flags);
@@ -3000,7 +3046,8 @@ static void vfe32_process_error_irq(uint32_t errStatus)
 		reg_value = msm_camera_io_r(
 				vfe32_ctrl->vfebase + VFE_CAMIF_STATUS);
 		pr_err("camifStatus  = 0x%x\n", reg_value);
-		vfe32_send_isp_msg(vfe32_ctrl, MSG_ID_CAMIF_ERROR);
+		if (reg_value & ~0x80000000)
+			vfe32_send_isp_msg(vfe32_ctrl, MSG_ID_CAMIF_ERROR);
 	}
 
 	if (errStatus & VFE32_IMASK_BHIST_OVWR)
@@ -3113,6 +3160,8 @@ static void vfe32_process_output_path_irq_0(void)
 		vfe32_ctrl->operation_mode == VFE_OUTPUTS_JPEG_AND_THUMB ||
 		vfe32_ctrl->operation_mode == VFE_OUTPUTS_RAW ||
 		vfe32_ctrl->liveshot_state == VFE_STATE_STARTED ||
+		vfe32_ctrl->liveshot_state == VFE_STATE_HW_STOP_REQUESTED ||
+		vfe32_ctrl->liveshot_state == VFE_STATE_HW_STOPPED ||
 		vfe32_ctrl->liveshot_state == VFE_STATE_STOP_REQUESTED ||
 		vfe32_ctrl->liveshot_state == VFE_STATE_STOPPED) &&
 		(vfe32_ctrl->vfe_capture_count <= 1)) || free_buf;
@@ -3731,6 +3780,8 @@ static void vfe32_process_irq(uint32_t irqstatus)
 static void axi32_do_tasklet(unsigned long data)
 {
 	unsigned long flags;
+	uint8_t  axi_busy_flag = true;
+	uint32_t halt_timeout = 100;
 	struct axi_ctrl_t *axi_ctrl = (struct axi_ctrl_t *)data;
 	struct vfe32_isr_queue_cmd *qcmd = NULL;
 
@@ -3752,114 +3803,138 @@ static void axi32_do_tasklet(unsigned long data)
 		spin_unlock_irqrestore(&axi_ctrl->tasklet_lock,
 			flags);
 
-		if (qcmd->vfeInterruptStatus0 &
-				VFE_IRQ_STATUS0_CAMIF_SOF_MASK)
-			v4l2_subdev_notify(&axi_ctrl->subdev,
-				NOTIFY_VFE_IRQ,
-				(void *)VFE_IRQ_STATUS0_CAMIF_SOF_MASK);
+		if (!atomic_read(&recovery_active)) {
+			if (qcmd->vfeInterruptStatus0 &
+					VFE_IRQ_STATUS0_CAMIF_SOF_MASK)
+				v4l2_subdev_notify(&axi_ctrl->subdev,
+					NOTIFY_VFE_IRQ,
+					(void *)VFE_IRQ_STATUS0_CAMIF_SOF_MASK);
 
-		/* interrupt to be processed,  *qcmd has the payload.  */
-		if (qcmd->vfeInterruptStatus0 &
-				VFE_IRQ_STATUS0_REG_UPDATE_MASK)
-			v4l2_subdev_notify(&axi_ctrl->subdev,
-				NOTIFY_VFE_IRQ,
-				(void *)VFE_IRQ_STATUS0_REG_UPDATE_MASK);
+			/* interrupt to be processed,  *qcmd has the payload.  */
+			if (qcmd->vfeInterruptStatus0 &
+					VFE_IRQ_STATUS0_REG_UPDATE_MASK)
+				v4l2_subdev_notify(&axi_ctrl->subdev,
+					NOTIFY_VFE_IRQ,
+					(void *)VFE_IRQ_STATUS0_REG_UPDATE_MASK);
 
-		if (qcmd->vfeInterruptStatus1 &
-				VFE_IRQ_STATUS1_RDI0_REG_UPDATE_MASK)
-			v4l2_subdev_notify(&axi_ctrl->subdev,
-				NOTIFY_VFE_IRQ,
-				(void *)VFE_IRQ_STATUS1_RDI0_REG_UPDATE);
+			if (qcmd->vfeInterruptStatus1 &
+					VFE_IRQ_STATUS1_RDI0_REG_UPDATE_MASK)
+				v4l2_subdev_notify(&axi_ctrl->subdev,
+					NOTIFY_VFE_IRQ,
+					(void *)VFE_IRQ_STATUS1_RDI0_REG_UPDATE);
 
-		if (qcmd->vfeInterruptStatus1 &
-				VFE_IRQ_STATUS1_RDI1_REG_UPDATE_MASK)
-			v4l2_subdev_notify(&axi_ctrl->subdev,
-				NOTIFY_VFE_IRQ,
-				(void *)VFE_IRQ_STATUS1_RDI1_REG_UPDATE);
+			if (qcmd->vfeInterruptStatus1 &
+					VFE_IRQ_STATUS1_RDI1_REG_UPDATE_MASK)
+				v4l2_subdev_notify(&axi_ctrl->subdev,
+					NOTIFY_VFE_IRQ,
+					(void *)VFE_IRQ_STATUS1_RDI1_REG_UPDATE);
+		}
 
-		if (qcmd->vfeInterruptStatus1 &
-				VFE_IMASK_WHILE_STOPPING_1)
+		if ((qcmd->vfeInterruptStatus1 &
+				VFE_IMASK_WHILE_STOPPING_1) &&
+			atomic_read(&recovery_active) != 2)
 			v4l2_subdev_notify(&axi_ctrl->subdev,
 				NOTIFY_VFE_IRQ,
 				(void *)VFE_IMASK_WHILE_STOPPING_1);
 
 		if (atomic_read(&vfe32_ctrl->vstate)) {
-			if (qcmd->vfeInterruptStatus1 &
-					VFE32_IMASK_ERROR_ONLY_1) {
+			if ((qcmd->vfeInterruptStatus1 &
+					VFE32_IMASK_ERROR_ONLY_1)
+					&& !atomic_read(&recovery_active)) {
 				pr_err("irq	errorIrq\n");
 				vfe32_process_error_irq(
 					qcmd->vfeInterruptStatus1 &
 					VFE32_IMASK_ERROR_ONLY_1);
 			}
-			v4l2_subdev_notify(&axi_ctrl->subdev,
-				NOTIFY_AXI_IRQ,
-				(void *)qcmd->vfeInterruptStatus0);
 
-			/* then process stats irq. */
-			if (vfe32_ctrl->stats_comp) {
-				/* process stats comb interrupt. */
-				if (qcmd->vfeInterruptStatus0 &
-					VFE_IRQ_STATUS0_STATS_COMPOSIT_MASK) {
-					CDBG("Stats composite irq occured.\n");
-					v4l2_subdev_notify(&axi_ctrl->subdev,
-					NOTIFY_VFE_IRQ,
-					(void *)qcmd->vfeInterruptStatus0);
+			if ((qcmd->vfeInterruptStatus1 & 0x3FFF00) &&
+					atomic_read(&recovery_active) == 2) {
+				while (axi_busy_flag && halt_timeout--) {
+					if (msm_camera_io_r(
+						vfe32_ctrl->vfebase +
+							VFE_AXI_STATUS) & 0x1)
+						axi_busy_flag = false;
 				}
-			} else {
-				/* process individual stats interrupt. */
-				if (qcmd->vfeInterruptStatus0 &
-						VFE_IRQ_STATUS0_STATS_AEC)
-					v4l2_subdev_notify(&axi_ctrl->subdev,
-					NOTIFY_VFE_IRQ,
-					(void *)VFE_IRQ_STATUS0_STATS_AEC);
+				msm_camera_io_w_mb(AXI_HALT_CLEAR,
+					vfe32_ctrl->vfebase + VFE_AXI_CMD);
+				pr_info("Halt done\n");
+				msm_camera_io_w_mb(VFE_RESET_UPON_STOP_CMD,
+					vfe32_ctrl->vfebase + VFE_GLOBAL_RESET);
+				atomic_set(&recovery_active, 1);
+			}
 
-				if (qcmd->vfeInterruptStatus0 &
-						VFE_IRQ_STATUS0_STATS_AWB)
-					v4l2_subdev_notify(&axi_ctrl->subdev,
-					NOTIFY_VFE_IRQ,
-					(void *)VFE_IRQ_STATUS0_STATS_AWB);
+			if(!atomic_read(&recovery_active))
+				v4l2_subdev_notify(&axi_ctrl->subdev,
+					NOTIFY_AXI_IRQ,
+					(void *)qcmd->vfeInterruptStatus0);
 
-				if (qcmd->vfeInterruptStatus0 &
-						VFE_IRQ_STATUS0_STATS_AF)
-					v4l2_subdev_notify(&axi_ctrl->subdev,
-					NOTIFY_VFE_IRQ,
-					(void *)VFE_IRQ_STATUS0_STATS_AF);
+			if (!atomic_read(&recovery_active)) {
+				/* then process stats irq. */
+				if (vfe32_ctrl->stats_comp) {
+					/* process stats comb interrupt. */
+					if (qcmd->vfeInterruptStatus0 &
+							VFE_IRQ_STATUS0_STATS_COMPOSIT_MASK) {
+						CDBG("Stats composite irq occured.\n");
+						v4l2_subdev_notify(&axi_ctrl->subdev,
+							NOTIFY_VFE_IRQ,
+						(void *)qcmd->vfeInterruptStatus0);
+					}
+				} else {
+					/* process individual stats interrupt. */
+					if (qcmd->vfeInterruptStatus0 &
+							VFE_IRQ_STATUS0_STATS_AEC)
+						v4l2_subdev_notify(&axi_ctrl->subdev,
+						NOTIFY_VFE_IRQ,
+						(void *)VFE_IRQ_STATUS0_STATS_AEC);
 
-				if (qcmd->vfeInterruptStatus0 &
-						VFE_IRQ_STATUS0_STATS_IHIST)
-					v4l2_subdev_notify(&axi_ctrl->subdev,
-					NOTIFY_VFE_IRQ,
-					(void *)VFE_IRQ_STATUS0_STATS_IHIST);
+					if (qcmd->vfeInterruptStatus0 &
+							VFE_IRQ_STATUS0_STATS_AWB)
+						v4l2_subdev_notify(&axi_ctrl->subdev,
+						NOTIFY_VFE_IRQ,
+						(void *)VFE_IRQ_STATUS0_STATS_AWB);
 
-				if (qcmd->vfeInterruptStatus0 &
-						VFE_IRQ_STATUS0_STATS_RS)
-					v4l2_subdev_notify(&axi_ctrl->subdev,
-					NOTIFY_VFE_IRQ,
-					(void *)VFE_IRQ_STATUS0_STATS_RS);
+					if (qcmd->vfeInterruptStatus0 &
+							VFE_IRQ_STATUS0_STATS_AF)
+						v4l2_subdev_notify(&axi_ctrl->subdev,
+						NOTIFY_VFE_IRQ,
+						(void *)VFE_IRQ_STATUS0_STATS_AF);
 
-				if (qcmd->vfeInterruptStatus0 &
-						VFE_IRQ_STATUS0_STATS_CS)
-					v4l2_subdev_notify(&axi_ctrl->subdev,
-					NOTIFY_VFE_IRQ,
-					(void *)VFE_IRQ_STATUS0_STATS_CS);
+					if (qcmd->vfeInterruptStatus0 &
+							VFE_IRQ_STATUS0_STATS_IHIST)
+						v4l2_subdev_notify(&axi_ctrl->subdev,
+						NOTIFY_VFE_IRQ,
+						(void *)VFE_IRQ_STATUS0_STATS_IHIST);
 
-				if (qcmd->vfeInterruptStatus0 &
-						VFE_IRQ_STATUS0_SYNC_TIMER0)
-					v4l2_subdev_notify(&axi_ctrl->subdev,
-					NOTIFY_VFE_IRQ,
-					(void *)VFE_IRQ_STATUS0_SYNC_TIMER0);
+					if (qcmd->vfeInterruptStatus0 &
+							VFE_IRQ_STATUS0_STATS_RS)
+						v4l2_subdev_notify(&axi_ctrl->subdev,
+						NOTIFY_VFE_IRQ,
+						(void *)VFE_IRQ_STATUS0_STATS_RS);
 
-				if (qcmd->vfeInterruptStatus0 &
-						VFE_IRQ_STATUS0_SYNC_TIMER1)
-					v4l2_subdev_notify(&axi_ctrl->subdev,
-					NOTIFY_VFE_IRQ,
-					(void *)VFE_IRQ_STATUS0_SYNC_TIMER1);
+					if (qcmd->vfeInterruptStatus0 &
+							VFE_IRQ_STATUS0_STATS_CS)
+						v4l2_subdev_notify(&axi_ctrl->subdev,
+						NOTIFY_VFE_IRQ,
+						(void *)VFE_IRQ_STATUS0_STATS_CS);
 
-				if (qcmd->vfeInterruptStatus0 &
-						VFE_IRQ_STATUS0_SYNC_TIMER2)
-					v4l2_subdev_notify(&axi_ctrl->subdev,
-					NOTIFY_VFE_IRQ,
-					(void *)VFE_IRQ_STATUS0_SYNC_TIMER2);
+					if (qcmd->vfeInterruptStatus0 &
+							VFE_IRQ_STATUS0_SYNC_TIMER0)
+						v4l2_subdev_notify(&axi_ctrl->subdev,
+						NOTIFY_VFE_IRQ,
+						(void *)VFE_IRQ_STATUS0_SYNC_TIMER0);
+
+					if (qcmd->vfeInterruptStatus0 &
+							VFE_IRQ_STATUS0_SYNC_TIMER1)
+						v4l2_subdev_notify(&axi_ctrl->subdev,
+						NOTIFY_VFE_IRQ,
+						(void *)VFE_IRQ_STATUS0_SYNC_TIMER1);
+
+					if (qcmd->vfeInterruptStatus0 &
+							VFE_IRQ_STATUS0_SYNC_TIMER2)
+						v4l2_subdev_notify(&axi_ctrl->subdev,
+						NOTIFY_VFE_IRQ,
+						(void *)VFE_IRQ_STATUS0_SYNC_TIMER2);
+				}
 			}
 		}
 		kfree(qcmd);
@@ -3891,7 +3966,7 @@ static irqreturn_t vfe32_parse_irq(int irq_num, void *data)
 	}
 
 	spin_lock_irqsave(&vfe32_ctrl->stop_flag_lock, flags);
-	if (vfe32_ctrl->stop_ack_pending) {
+	if (vfe32_ctrl->stop_ack_pending || atomic_read(&recovery_active)) {
 		irq.vfeIrqStatus0 &= VFE_IMASK_WHILE_STOPPING_0;
 		irq.vfeIrqStatus1 &= VFE_IMASK_WHILE_STOPPING_1;
 	}
@@ -3902,6 +3977,33 @@ static irqreturn_t vfe32_parse_irq(int irq_num, void *data)
 
 	qcmd->vfeInterruptStatus0 = irq.vfeIrqStatus0;
 	qcmd->vfeInterruptStatus1 = irq.vfeIrqStatus1;
+
+	if ((qcmd->vfeInterruptStatus1 & 0x3FFF00) &&
+			!atomic_read(&recovery_active)) {
+		pr_info("Start recovery\n");
+		recover_irq_mask0 = msm_camera_io_r(vfe32_ctrl->vfebase +
+					VFE_IRQ_MASK_0);
+		recover_irq_mask1 = msm_camera_io_r(vfe32_ctrl->vfebase +
+					VFE_IRQ_MASK_1);
+		pr_info("mask0: 0x%x mask1: 0x%x\n", recover_irq_mask0,
+					recover_irq_mask1);
+		/* Clear all IRQs from MASK 0 */
+		msm_camera_io_w(0x0, vfe32_ctrl->vfebase + VFE_IRQ_MASK_0);
+		/* Clear all IRQs from MASK 1 except RESET IRQ */
+		msm_camera_io_w((0x1 << 23),
+			vfe32_ctrl->vfebase + VFE_IRQ_MASK_1);
+		msm_camera_io_w(VFE_CLEAR_ALL_IRQS,
+			vfe32_ctrl->vfebase + VFE_IRQ_CLEAR_0);
+		msm_camera_io_w(VFE_CLEAR_ALL_IRQS,
+			vfe32_ctrl->vfebase + VFE_IRQ_CLEAR_1);
+		/* Disable CAMIF capture */
+		msm_camera_io_w(0x2, vfe32_ctrl->vfebase +
+			VFE_CAMIF_COMMAND);
+		msm_camera_io_w(AXI_HALT,
+			vfe32_ctrl->vfebase + VFE_AXI_CMD);
+		wmb();
+		atomic_set(&recovery_active, 2);
+	}
 
 	spin_lock_irqsave(&axi_ctrl->tasklet_lock, flags);
 	list_add_tail(&qcmd->list, &axi_ctrl->tasklet_q);
