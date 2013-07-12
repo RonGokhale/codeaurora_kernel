@@ -766,6 +766,7 @@ static void vfe32_start_common(void)
 			VFE_REG_UPDATE_CMD);
 		msm_camera_io_w_mb(1, vfe32_ctrl->vfebase + VFE_CAMIF_COMMAND);
 	}
+	vfe32_ctrl->overflow_count = 0;
 	/* Ensure the write order while writing
 	to the command register using the barrier */
 	atomic_set(&vfe32_ctrl->vstate, 1);
@@ -2948,6 +2949,23 @@ static void vfe32_process_reset_irq(void)
 	unsigned long flags;
 
 	if (atomic_read(&recovery_active) == 1) {
+		vfe32_ctrl->overflow_count++;
+		CDBG("%s Overflow incident # %d ", __func__,
+			vfe32_ctrl->overflow_count);
+		if (vfe32_ctrl->overflow_count > BUS_OVERFLOW_THRESHOLD) {
+			/* There is no point in continuing with overflow
+			 * recovery at this point. Since VFE is already RESET,
+			 * instead of starting it again, just notify the
+			 * application about the error so that the camera
+			 * application can be gracefully exited. */
+			atomic_set(&recovery_active, 0);
+			pr_info("Stop recovery and notify application");
+			v4l2_subdev_notify(&vfe32_ctrl->subdev,
+				NOTIFY_VFE_CAMIF_ERROR, (void *)NULL);
+			vfe32_send_isp_msg(vfe32_ctrl, MSG_ID_CAMIF_ERROR);
+			return;
+		}
+
 		pr_info("Recovery restart start\n");
 		msm_camera_io_w(VFE_RELOAD_ALL_WRITE_MASTERS,
 			vfe32_ctrl->vfebase + VFE_BUS_CMD);
@@ -3046,7 +3064,8 @@ static void vfe32_process_error_irq(uint32_t errStatus)
 		reg_value = msm_camera_io_r(
 				vfe32_ctrl->vfebase + VFE_CAMIF_STATUS);
 		pr_err("camifStatus  = 0x%x\n", reg_value);
-		if (reg_value & ~0x80000000) {
+		if ((reg_value & ~0x80000000) &&
+				!atomic_read(&recovery_active)) {
 			v4l2_subdev_notify(&vfe32_ctrl->subdev,
 				NOTIFY_VFE_CAMIF_ERROR, (void *)NULL);
 			vfe32_send_isp_msg(vfe32_ctrl, MSG_ID_CAMIF_ERROR);
