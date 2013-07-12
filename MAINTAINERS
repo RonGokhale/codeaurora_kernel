@@ -752,7 +752,7 @@ S:	Maintained
 F:	arch/arm/mach-highbank/
 
 ARM/CAVIUM NETWORKS CNS3XXX MACHINE SUPPORT
-M:	Anton Vorontsov <avorontsov@mvista.com>
+M:	Anton Vorontsov <anton@enomsg.org>
 S:	Maintained
 F:	arch/arm/mach-cns3xxx/
 T:	git git://git.infradead.org/users/cbou/linux-cns3xxx.git
@@ -1332,6 +1332,12 @@ T:	git git://git.xilinx.com/linux-xlnx.git
 S:	Supported
 F:	arch/arm/mach-zynq/
 F:	drivers/cpuidle/cpuidle-zynq.c
+
+ARM SMMU DRIVER
+M:	Will Deacon <will.deacon@arm.com>
+L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
+S:	Maintained
+F:	drivers/iommu/arm-smmu.c
 
 ARM64 PORT (AARCH64 ARCHITECTURE)
 M:	Catalin Marinas <catalin.marinas@arm.com>
@@ -2129,9 +2135,12 @@ COCCINELLE/Semantic Patches (SmPL)
 M:	Julia Lawall <Julia.Lawall@lip6.fr>
 M:	Gilles Muller <Gilles.Muller@lip6.fr>
 M:	Nicolas Palix <nicolas.palix@imag.fr>
+M:	Michal Marek <mmarek@suse.cz>
 L:	cocci@systeme.lip6.fr (moderated for non-subscribers)
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/mmarek/kbuild.git misc
 W:	http://coccinelle.lip6.fr/
 S:	Supported
+F:	Documentation/coccinelle.txt
 F:	scripts/coccinelle/
 F:	scripts/coccicheck
 
@@ -2331,6 +2340,11 @@ CS5535 Audio ALSA driver
 M:	Jaya Kumar <jayakumar.alsa@gmail.com>
 S:	Maintained
 F:	sound/pci/cs5535audio/
+
+CW1200 WLAN driver
+M:     Solomon Peachy <pizza@shaftnet.org>
+S:     Maintained
+F:     drivers/net/wireless/cw1200/
 
 CX18 VIDEO4LINUX DRIVER
 M:	Andy Walls <awalls@md.metrocast.net>
@@ -2560,6 +2574,7 @@ S:	Maintained
 
 DEVICE-MAPPER  (LVM)
 M:	Alasdair Kergon <agk@redhat.com>
+M:	Mike Snitzer <snitzer@redhat.com>
 M:	dm-devel@redhat.com
 L:	dm-devel@redhat.com
 W:	http://sources.redhat.com/dm
@@ -2571,6 +2586,7 @@ F:	drivers/md/dm*
 F:	drivers/md/persistent-data/
 F:	include/linux/device-mapper.h
 F:	include/linux/dm-*.h
+F:	include/uapi/linux/dm-*.h
 
 DIOLAN U2C-12 I2C DRIVER
 M:	Guenter Roeck <linux@roeck-us.net>
@@ -2730,12 +2746,14 @@ F:	include/drm/exynos*
 F:	include/uapi/drm/exynos*
 
 DRM DRIVERS FOR NVIDIA TEGRA
-M:	Thierry Reding <thierry.reding@avionic-design.de>
+M:	Thierry Reding <thierry.reding@gmail.com>
+M:	Terje Bergström <tbergstrom@nvidia.com>
 L:	dri-devel@lists.freedesktop.org
 L:	linux-tegra@vger.kernel.org
-T:	git git://gitorious.org/thierryreding/linux.git
+T:	git git://anongit.freedesktop.org/tegra/linux.git
 S:	Maintained
-F:	drivers/gpu/drm/tegra/
+F:	drivers/gpu/host1x/
+F:	include/uapi/drm/tegra_drm.h
 F:	Documentation/devicetree/bindings/gpu/nvidia,tegra20-host1x.txt
 
 DSBR100 USB FM RADIO DRIVER
@@ -5493,9 +5511,12 @@ F:	include/media/mt9v032.h
 
 MULTIFUNCTION DEVICES (MFD)
 M:	Samuel Ortiz <sameo@linux.intel.com>
-T:	git git://git.kernel.org/pub/scm/linux/kernel/git/sameo/mfd-2.6.git
+M:	Lee Jones <lee.jones@linaro.org>
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/sameo/mfd-next.git
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/sameo/mfd-fixes.git
 S:	Supported
 F:	drivers/mfd/
+F:	include/linux/mfd/
 
 MULTIMEDIA CARD (MMC), SECURE DIGITAL (SD) AND SDIO SUBSYSTEM
 M:	Chris Ball <cjb@laptop.org>
@@ -6396,7 +6417,7 @@ F:	include/linux/timer*
 F:	kernel/*timer*
 
 POWER SUPPLY CLASS/SUBSYSTEM and DRIVERS
-M:	Anton Vorontsov <cbou@mail.ru>
+M:	Anton Vorontsov <anton@enomsg.org>
 M:	David Woodhouse <dwmw2@infradead.org>
 T:	git git://git.infradead.org/battery-2.6.git
 S:	Maintained
@@ -6506,7 +6527,7 @@ S:	Maintained
 F:	drivers/block/ps3vram.c
 
 PSTORE FILESYSTEM
-M:	Anton Vorontsov <cbouatmailru@gmail.com>
+M:	Anton Vorontsov <anton@enomsg.org>
 M:	Colin Cross <ccross@android.com>
 M:	Kees Cook <keescook@chromium.org>
 M:	Tony Luck <tony.luck@intel.com>
@@ -6558,8 +6579,8 @@ S:	Maintained
 F:	drivers/media/usb/pwc/*
 
 PWM SUBSYSTEM
-M:	Thierry Reding <thierry.reding@avionic-design.de>
-L:	linux-kernel@vger.kernel.org
+M:	Thierry Reding <thierry.reding@gmail.com>
+L:	linux-pwm@vger.kernel.org
 S:	Maintained
 W:	http://gitorious.org/linux-pwm
 T:	git git://gitorious.org/linux-pwm/linux-pwm.git
@@ -7204,7 +7225,7 @@ F:	drivers/mmc/host/sdhci.*
 F:	drivers/mmc/host/sdhci-pltfm.[ch]
 
 SECURE DIGITAL HOST CONTROLLER INTERFACE, OPEN FIRMWARE BINDINGS (SDHCI-OF)
-M:	Anton Vorontsov <avorontsov@ru.mvista.com>
+M:	Anton Vorontsov <anton@enomsg.org>
 L:	linuxppc-dev@lists.ozlabs.org
 L:	linux-mmc@vger.kernel.org
 S:	Maintained
@@ -8140,6 +8161,7 @@ M:      Zhang Rui <rui.zhang@intel.com>
 M:      Eduardo Valentin <eduardo.valentin@ti.com>
 L:      linux-pm@vger.kernel.org
 T:      git git://git.kernel.org/pub/scm/linux/kernel/git/rzhang/linux.git
+T:      git git://git.kernel.org/pub/scm/linux/kernel/git/evalenti/linux-soc-thermal.git
 Q:      https://patchwork.kernel.org/project/linux-pm/list/
 S:      Supported
 F:      drivers/thermal/
@@ -8164,8 +8186,8 @@ F:	drivers/platform/x86/thinkpad_acpi.c
 TI BANDGAP AND THERMAL DRIVER
 M:	Eduardo Valentin <eduardo.valentin@ti.com>
 L:	linux-pm@vger.kernel.org
-S:	Maintained
-F:	drivers/staging/omap-thermal/
+S:	Supported
+F:	drivers/thermal/ti-soc-thermal/
 
 TI FLASH MEDIA INTERFACE DRIVER
 M:	Alex Dubov <oakad@yahoo.com>
@@ -8874,6 +8896,7 @@ M:	"Michael S. Tsirkin" <mst@redhat.com>
 L:	virtualization@lists.linux-foundation.org
 S:	Maintained
 F:	drivers/virtio/
+F:	tools/virtio/
 F:	drivers/net/virtio_net.c
 F:	drivers/block/virtio_blk.c
 F:	include/linux/virtio_*.h
@@ -8969,7 +8992,7 @@ M:	Liam Girdwood <lgirdwood@gmail.com>
 M:	Mark Brown <broonie@kernel.org>
 W:	http://opensource.wolfsonmicro.com/node/15
 W:	http://www.slimlogic.co.uk/?p=48
-T:	git git://git.kernel.org/pub/scm/linux/kernel/git/lrg/regulator.git
+T:	git git://git.kernel.org/pub/scm/linux/kernel/git/broonie/regulator.git
 S:	Supported
 F:	drivers/regulator/
 F:	include/linux/regulator/
