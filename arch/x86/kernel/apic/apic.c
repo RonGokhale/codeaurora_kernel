@@ -1622,11 +1622,8 @@ void __init enable_IR_x2apic(void)
 		goto skip_x2apic;
 
 	if (ret < 0) {
-		/* IR is required if there is APIC ID > 255 even when running
-		 * under KVM
-		 */
-		if (max_physical_apicid > 255 ||
-		    !hypervisor_x2apic_available()) {
+		/* IR is required if there is APIC ID > 255 */
+		if (max_physical_apicid > 255) {
 			if (x2apic_preenabled)
 				disable_x2apic();
 			goto skip_x2apic;
