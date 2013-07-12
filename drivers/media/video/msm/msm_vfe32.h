@@ -187,6 +187,8 @@
 
 #define VFE_RELOAD_ALL_WRITE_MASTERS 0x00003FFF
 
+#define BUS_OVERFLOW_THRESHOLD  5
+
 enum VFE32_DMI_RAM_SEL {
 	NO_MEM_SELECTED          = 0,
 	BLACK_LUT_RAM_BANK0      = 0x1,
@@ -1006,6 +1008,7 @@ struct vfe32_ctrl_type {
 	uint32_t frame_skip_cnt;
 	uint32_t frame_skip_pattern;
 	uint32_t snapshot_frame_cnt;
+	uint32_t overflow_count;
 };
 
 #define statsAeNum      0
