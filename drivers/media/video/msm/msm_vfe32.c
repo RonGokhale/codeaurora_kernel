@@ -3046,8 +3046,11 @@ static void vfe32_process_error_irq(uint32_t errStatus)
 		reg_value = msm_camera_io_r(
 				vfe32_ctrl->vfebase + VFE_CAMIF_STATUS);
 		pr_err("camifStatus  = 0x%x\n", reg_value);
-		if (reg_value & ~0x80000000)
+		if (reg_value & ~0x80000000) {
+			v4l2_subdev_notify(&vfe32_ctrl->subdev,
+				NOTIFY_VFE_CAMIF_ERROR, (void *)NULL);
 			vfe32_send_isp_msg(vfe32_ctrl, MSG_ID_CAMIF_ERROR);
+		}
 	}
 
 	if (errStatus & VFE32_IMASK_BHIST_OVWR)
