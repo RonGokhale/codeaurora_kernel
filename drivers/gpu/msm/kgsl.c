@@ -3353,7 +3353,6 @@ static int _register_device(struct kgsl_device *device)
 
 int kgsl_device_platform_probe(struct kgsl_device *device)
 {
-	int result;
 	int status = -EINVAL;
 	struct resource *res;
 	struct platform_device *pdev =
@@ -3457,11 +3456,6 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 		device->reg_virt);
 
 	rwlock_init(&device->context_lock);
-
-	result = kgsl_drm_init(pdev);
-	if (result)
-		goto error_pwrctrl_close;
-
 
 	setup_timer(&device->idle_timer, kgsl_timer, (unsigned long) device);
 	setup_timer(&device->hang_timer, hang_timer, (unsigned long) device);
@@ -3611,7 +3605,6 @@ static void kgsl_core_exit(void)
 	kgsl_mmu_ptpool_destroy(kgsl_driver.ptpool);
 	kgsl_driver.ptpool = NULL;
 
-	kgsl_drm_exit();
 	kgsl_cffdump_destroy();
 	kgsl_core_debugfs_close();
 
