@@ -44,6 +44,8 @@
 #include <linux/suspend.h>
 #include <acpi/video.h>
 
+#include "internal.h"
+
 #define PREFIX "ACPI: "
 
 #define ACPI_VIDEO_BUS_NAME		"Video Bus"
@@ -898,7 +900,7 @@ static void acpi_video_device_find_cap(struct acpi_video_device *device)
 		device->cap._DDC = 1;
 	}
 
-	if (acpi_video_backlight_support()) {
+	if (acpi_video_verify_backlight_support()) {
 		struct backlight_properties props;
 		struct pci_dev *pdev;
 		acpi_handle acpi_parent;
@@ -1854,6 +1856,46 @@ static int acpi_video_bus_remove(struct acpi_device *device)
 	return 0;
 }
 
+static acpi_status video_unregister_backlight(acpi_handle handle, u32 lvl,
+					      void *context, void **rv)
+{
+	struct acpi_device *acpi_dev;
+	struct acpi_video_bus *video;
+	struct acpi_video_device *dev, *next;
+
+	if (acpi_bus_get_device(handle, &acpi_dev))
+		return AE_OK;
+
+	if (acpi_match_device_ids(acpi_dev, video_device_ids))
+		return AE_OK;
+
+	video = acpi_driver_data(acpi_dev);
+	if (!video)
+		return AE_OK;
+
+	acpi_video_bus_stop_devices(video);
+	mutex_lock(&video->device_list_lock);
+	list_for_each_entry_safe(dev, next, &video->video_device_list, entry) {
+		if (dev->backlight) {
+			backlight_device_unregister(dev->backlight);
+			dev->backlight = NULL;
+			kfree(dev->brightness->levels);
+			kfree(dev->brightness);
+		}
+		if (dev->cooling_dev) {
+			sysfs_remove_link(&dev->dev->dev.kobj,
+					  "thermal_cooling");
+			sysfs_remove_link(&dev->cooling_dev->device.kobj,
+					  "device");
+			thermal_cooling_device_unregister(dev->cooling_dev);
+			dev->cooling_dev = NULL;
+		}
+	}
+	mutex_unlock(&video->device_list_lock);
+	acpi_video_bus_start_devices(video);
+	return AE_OK;
+}
+
 static int __init is_i740(struct pci_dev *dev)
 {
 	if (dev->device == 0x00D1)
@@ -1885,14 +1927,25 @@ static int __init intel_opregion_present(void)
 	return opregion;
 }
 
-int acpi_video_register(void)
+int __acpi_video_register(bool backlight_quirks)
 {
-	int result = 0;
+	bool no_backlight;
+	int result;
+
+	no_backlight = backlight_quirks ? acpi_video_backlight_quirks() : false;
+
 	if (register_count) {
 		/*
-		 * if the function of acpi_video_register is already called,
-		 * don't register the acpi_vide_bus again and return no error.
+		 * If acpi_video_register() has been called already, don't try
+		 * to register acpi_video_bus, but unregister backlight devices
+		 * if no backlight support is requested.
 		 */
+		if (no_backlight)
+			acpi_walk_namespace(ACPI_TYPE_DEVICE, ACPI_ROOT_OBJECT,
+					    ACPI_UINT32_MAX,
+					    video_unregister_backlight,
+					    NULL, NULL, NULL);
+
 		return 0;
 	}
 
@@ -1908,7 +1961,7 @@ int acpi_video_register(void)
 
 	return 0;
 }
-EXPORT_SYMBOL(acpi_video_register);
+EXPORT_SYMBOL(__acpi_video_register);
 
 void acpi_video_unregister(void)
 {
