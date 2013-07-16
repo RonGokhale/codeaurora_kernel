@@ -524,6 +524,12 @@ static int msm_compr_playback_prepare(struct snd_pcm_substream *substream)
 				compr->codec);
 		if (ret < 0)
 			return ret;
+		if (runtime->channels == 2) {
+			pr_debug("%s: DTS :set decoder channel map\n", __func__);
+			ret = q6asm_set_encdec_chan_map(prtd->audio_client, 2);
+			if (ret < 0)
+				return ret;
+		}
 		break;
 	case SND_AUDIOCODEC_AMRWB:
 		pr_debug("SND_AUDIOCODEC_AMRWB\n");
