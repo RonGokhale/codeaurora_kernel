@@ -1853,7 +1853,7 @@ int regmap_async_complete(struct regmap *map)
 	int ret;
 
 	/* Nothing to do with no async support */
-	if (!map->bus->async_write)
+	if (!map->bus || !map->bus->async_write)
 		return 0;
 
 	trace_regmap_async_complete_start(map->dev);
@@ -1888,12 +1888,9 @@ EXPORT_SYMBOL_GPL(regmap_async_complete);
 int regmap_register_patch(struct regmap *map, const struct reg_default *regs,
 			  int num_regs)
 {
+	struct reg_default *p;
 	int i, ret;
 	bool bypass;
-
-	/* If needed the implementation can be extended to support this */
-	if (map->patch)
-		return -EBUSY;
 
 	map->lock(map->lock_arg);
 
@@ -1911,11 +1908,13 @@ int regmap_register_patch(struct regmap *map, const struct reg_default *regs,
 		}
 	}
 
-	map->patch = kcalloc(num_regs, sizeof(struct reg_default), GFP_KERNEL);
-	if (map->patch != NULL) {
-		memcpy(map->patch, regs,
-		       num_regs * sizeof(struct reg_default));
-		map->patch_regs = num_regs;
+	p = krealloc(map->patch,
+		     sizeof(struct reg_default) * (map->patch_regs + num_regs),
+		     GFP_KERNEL);
+	if (p) {
+		memcpy(p + map->patch_regs, regs, num_regs);
+		map->patch = p;
+		map->patch_regs += num_regs;
 	} else {
 		ret = -ENOMEM;
 	}
