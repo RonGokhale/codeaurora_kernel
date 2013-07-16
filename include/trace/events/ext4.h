@@ -2378,25 +2378,23 @@ TRACE_EVENT(ext4_es_shrink_enter,
 );
 
 TRACE_EVENT(ext4_es_shrink_exit,
-	TP_PROTO(struct super_block *sb, int shrunk_nr, int cache_cnt),
+	TP_PROTO(struct super_block *sb, unsigned long shrunk_nr),
 
-	TP_ARGS(sb, shrunk_nr, cache_cnt),
+	TP_ARGS(sb, shrunk_nr),
 
 	TP_STRUCT__entry(
 		__field(	dev_t,	dev			)
-		__field(	int,	shrunk_nr		)
-		__field(	int,	cache_cnt		)
+		__field(	unsigned long,	shrunk_nr	)
 	),
 
 	TP_fast_assign(
 		__entry->dev		= sb->s_dev;
 		__entry->shrunk_nr	= shrunk_nr;
-		__entry->cache_cnt	= cache_cnt;
 	),
 
-	TP_printk("dev %d,%d shrunk_nr %d cache_cnt %d",
+	TP_printk("dev %d,%d shrunk_nr %lu",
 		  MAJOR(__entry->dev), MINOR(__entry->dev),
-		  __entry->shrunk_nr, __entry->cache_cnt)
+		  __entry->shrunk_nr)
 );
 
 #endif /* _TRACE_EXT4_H */
