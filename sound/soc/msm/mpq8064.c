@@ -1011,9 +1011,9 @@ static int msm_slim_0_rx_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 			SNDRV_PCM_HW_PARAM_CHANNELS);
 
 	pr_debug("%s()\n", __func__);
-	//pr_debug("Fixing the BE DAI format to 16bit\n");
+	pr_debug("Fixing the BE DAI format to 24bit\n");
 	param_set_mask(params, SNDRV_PCM_HW_PARAM_FORMAT,
-		SNDRV_PCM_FORMAT_S16_LE);
+		SNDRV_PCM_FORMAT_S24_LE);
 	rate->min = rate->max = 48000;
 	channels->min = channels->max = msm_slim_0_rx_ch;
 
@@ -1065,11 +1065,16 @@ static int msm_be_i2s_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 
 	pr_debug("%s mi2s_rate_variable = %d\n", __func__, mi2s_rate_variable);
 	/*Configure the sample rate as 48000 KHz for the LPCM playback*/
-	if (!mi2s_rate_variable)
+	if (!mi2s_rate_variable) {
 		rate->min = rate->max = 48000;
-	//pr_debug("Fixing the BE DAI format to 16bit\n");
-	param_set_mask(params, SNDRV_PCM_HW_PARAM_FORMAT,
-		SNDRV_PCM_FORMAT_S16_LE);
+		pr_debug("Fixing the BE DAI format to 24bit\n");
+		param_set_mask(params, SNDRV_PCM_HW_PARAM_FORMAT,
+			SNDRV_PCM_FORMAT_S24_LE);
+	} else {
+		pr_debug("Fixing the BE DAI format to 16bit\n");
+		param_set_mask(params, SNDRV_PCM_HW_PARAM_FORMAT,
+			SNDRV_PCM_FORMAT_S16_LE);
+	}
 	channels->min =  channels->max = 2;
 
 	return 0;
@@ -1082,9 +1087,9 @@ static int msm_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	SNDRV_PCM_HW_PARAM_RATE);
 
 	pr_debug("%s()\n", __func__);
-	//pr_debug("Fixing the BE DAI format to 16bit\n");
+	pr_debug("Fixing the BE DAI format to 24bit\n");
 	param_set_mask(params, SNDRV_PCM_HW_PARAM_FORMAT,
-		SNDRV_PCM_FORMAT_S16_LE);
+		SNDRV_PCM_FORMAT_S24_LE);
 	rate->min = rate->max = 48000;
 
 	return 0;
@@ -1101,13 +1106,18 @@ static int msm_hdmi_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 
 	pr_debug("%s channels->min %u channels->max %u ()\n", __func__,
 			channels->min, channels->max);
-	//pr_debug("Fixing the BE DAI format to 24bit\n");
 
 	/*Configure the sample rate as 48000 KHz for the LPCM playback*/
-	if (!hdmi_rate_variable)
+	if (!hdmi_rate_variable) {
 		rate->min = rate->max = 48000;
-	param_set_mask(params, SNDRV_PCM_HW_PARAM_FORMAT,
-		SNDRV_PCM_FORMAT_S16_LE);
+		pr_debug("Fixing the BE DAI format to 24bit\n");
+		param_set_mask(params, SNDRV_PCM_HW_PARAM_FORMAT,
+			SNDRV_PCM_FORMAT_S24_LE);
+	} else {
+		pr_debug("Fixing the BE DAI format to 16bit\n");
+		param_set_mask(params, SNDRV_PCM_HW_PARAM_FORMAT,
+			SNDRV_PCM_FORMAT_S16_LE);
+	}
 	channels->min =  channels->max = msm_hdmi_rx_ch;
 
 	return 0;
@@ -1338,7 +1348,7 @@ static int mpq8064_sec_i2s_rx_hw_params(struct snd_pcm_substream *substream,
 			clk_set_rate(sec_i2s_rx_bit_clk, bit_clk_set);
 			break;
 		case SNDRV_PCM_FORMAT_S24_LE:
-			bit_clk_set = I2S_MCLK_RATE/(rate * 2 * 24);
+			bit_clk_set = I2S_MCLK_RATE/(rate * 2 * 32);
 			clk_set_rate(sec_i2s_rx_bit_clk, bit_clk_set);
 			break;
 		default:
