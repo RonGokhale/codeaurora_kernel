@@ -1,0 +1,9 @@
+config VEXPRESS_SPC
+	bool "Versatile Express SPC driver support"
+	help
+	  The Serial Power Controller (SPC) for ARM Ltd. test chips, is
+	  an IP that provides a memory mapped interface to power controller
+	  HW. The driver provides an API abstraction meant to be used by
+	  subsystem drivers allowing to program registers controlling
+	  low-level power management features like power down flags,
+	  global and per-cpu wake-up IRQs.

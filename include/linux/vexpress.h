@@ -124,4 +124,21 @@ void vexpress_osc_of_setup(struct device_node *node);
 void vexpress_clk_init(void __iomem *sp810_base);
 void vexpress_clk_of_init(void);
 
+/* SPC */
+
+#ifdef CONFIG_VEXPRESS_SPC
+int __init ve_spc_init(void);
+void ve_spc_global_wakeup_irq(bool set);
+void ve_spc_cpu_wakeup_irq(u32 cluster, u32 cpu, bool set);
+void ve_spc_set_resume_addr(u32 cluster, u32 cpu, u32 addr);
+u32 ve_spc_get_nr_cpus(u32 cluster);
+void ve_spc_powerdown(u32 cluster, bool enable);
+#else
+static inline int ve_spc_init(void) { return -ENODEV; }
+static inline void ve_spc_global_wakeup_irq(bool set) { }
+static inline void ve_spc_cpu_wakeup_irq(u32 cluster, u32 cpu, bool set) { }
+static inline void ve_spc_set_resume_addr(u32 cluster, u32 cpu, u32 addr) { }
+static inline u32 ve_spc_get_nr_cpus(u32 cluster) { return 0; }
+static inline void ve_spc_powerdown(u32 cluster, bool enable) { }
+#endif
 #endif
