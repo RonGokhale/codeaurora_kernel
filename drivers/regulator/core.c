@@ -984,7 +984,8 @@ static int set_machine_constraints(struct regulator_dev *rdev,
 		}
 	}
 
-	if (rdev->constraints->ramp_delay && ops->set_ramp_delay) {
+	if ((rdev->constraints->ramp_delay || rdev->constraints->ramp_disable)
+		&& ops->set_ramp_delay) {
 		ret = ops->set_ramp_delay(rdev, rdev->constraints->ramp_delay);
 		if (ret < 0) {
 			rdev_err(rdev, "failed to set ramp_delay\n");
@@ -2079,6 +2080,43 @@ int regulator_list_voltage_linear(struct regulator_dev *rdev,
 EXPORT_SYMBOL_GPL(regulator_list_voltage_linear);
 
 /**
+ * regulator_list_voltage_linear_range - List voltages for linear ranges
+ *
+ * @rdev: Regulator device
+ * @selector: Selector to convert into a voltage
+ *
+ * Regulators with a series of simple linear mappings between voltages
+ * and selectors can set linear_ranges in the regulator descriptor and
+ * then use this function as their list_voltage() operation,
+ */
+int regulator_list_voltage_linear_range(struct regulator_dev *rdev,
+					unsigned int selector)
+{
+	const struct regulator_linear_range *range;
+	int i;
+
+	if (!rdev->desc->n_linear_ranges) {
+		BUG_ON(!rdev->desc->n_linear_ranges);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < rdev->desc->n_linear_ranges; i++) {
+		range = &rdev->desc->linear_ranges[i];
+
+		if (!(selector >= range->min_sel &&
+		      selector <= range->max_sel))
+			continue;
+
+		selector -= range->min_sel;
+
+		return range->min_uV + (range->uV_step * selector);
+	}
+
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(regulator_list_voltage_linear_range);
+
+/**
  * regulator_list_voltage_table - List voltages with table based mapping
  *
  * @rdev: Regulator device
@@ -2368,6 +2406,56 @@ int regulator_map_voltage_linear(struct regulator_dev *rdev,
 }
 EXPORT_SYMBOL_GPL(regulator_map_voltage_linear);
 
+/**
+ * regulator_map_voltage_linear - map_voltage() for multiple linear ranges
+ *
+ * @rdev: Regulator to operate on
+ * @min_uV: Lower bound for voltage
+ * @max_uV: Upper bound for voltage
+ *
+ * Drivers providing linear_ranges in their descriptor can use this as
+ * their map_voltage() callback.
+ */
+int regulator_map_voltage_linear_range(struct regulator_dev *rdev,
+				       int min_uV, int max_uV)
+{
+	const struct regulator_linear_range *range;
+	int ret = -EINVAL;
+	int voltage, i;
+
+	if (!rdev->desc->n_linear_ranges) {
+		BUG_ON(!rdev->desc->n_linear_ranges);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < rdev->desc->n_linear_ranges; i++) {
+		range = &rdev->desc->linear_ranges[i];
+
+		if (!(min_uV <= range->max_uV && max_uV >= range->min_uV))
+			continue;
+
+		if (min_uV <= range->min_uV)
+			min_uV = range->min_uV;
+
+		ret = DIV_ROUND_UP(min_uV - range->min_uV, range->uV_step);
+		if (ret < 0)
+			return ret;
+
+		break;
+	}
+
+	if (i == rdev->desc->n_linear_ranges)
+		return -EINVAL;
+
+	/* Map back into a voltage to verify we're still in bounds */
+	voltage = rdev->desc->ops->list_voltage(rdev, ret);
+	if (voltage < min_uV || voltage > max_uV)
+		return -EINVAL;
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(regulator_map_voltage_linear_range);
+
 static int _regulator_do_set_voltage(struct regulator_dev *rdev,
 				     int min_uV, int max_uV)
 {
@@ -2438,8 +2526,8 @@ static int _regulator_do_set_voltage(struct regulator_dev *rdev,
 	}
 
 	/* Call set_voltage_time_sel if successfully obtained old_selector */
-	if (ret == 0 && _regulator_is_enabled(rdev) && old_selector >= 0 &&
-	    old_selector != selector && rdev->desc->ops->set_voltage_time_sel) {
+	if (ret == 0 && !rdev->constraints->ramp_disable && old_selector >= 0
+		&& old_selector != selector) {
 
 		delay = rdev->desc->ops->set_voltage_time_sel(rdev,
 						old_selector, selector);
@@ -3740,8 +3828,11 @@ void regulator_unregister(struct regulator_dev *rdev)
 	if (rdev == NULL)
 		return;
 
-	if (rdev->supply)
+	if (rdev->supply) {
+		while (rdev->use_count--)
+			regulator_disable(rdev->supply);
 		regulator_put(rdev->supply);
+	}
 	mutex_lock(&regulator_list_mutex);
 	debugfs_remove_recursive(rdev->debugfs);
 	flush_work(&rdev->disable_work.work);
