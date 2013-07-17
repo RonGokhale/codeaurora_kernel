@@ -3587,8 +3587,8 @@ static struct mem_pool apq8064_display_read_pools[] =  {
 	[GEN_POOL] =
 	/* One address space for display reads */
 		{
-			.paddr	= SZ_128K,
-			.size	= SZ_2G - SZ_128K,
+			.paddr	= SZ_2G,
+			.size	= SZ_2G - SZ_4K,
 		},
 };
 
