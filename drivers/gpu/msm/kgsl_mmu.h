@@ -141,6 +141,8 @@ struct kgsl_mmu_ops {
 	void (*mmu_pagefault) (struct kgsl_mmu *mmu);
 	phys_addr_t (*mmu_get_current_ptbase)
 			(struct kgsl_mmu *mmu);
+	void (*mmu_pagefault_resume)
+			(struct kgsl_mmu *mmu);
 	void (*mmu_disable_clk_on_ts)
 		(struct kgsl_mmu *mmu, uint32_t ts, bool ts_valid);
 	int (*mmu_enable_clk)
@@ -220,10 +222,14 @@ int kgsl_mmu_start(struct kgsl_device *device);
 int kgsl_mmu_close(struct kgsl_device *device);
 int kgsl_mmu_map(struct kgsl_pagetable *pagetable,
 		 struct kgsl_memdesc *memdesc);
+int kgsl_mmu_get_gpuaddr(struct kgsl_pagetable *pagetable,
+		 struct kgsl_memdesc *memdesc);
 int kgsl_mmu_map_global(struct kgsl_pagetable *pagetable,
 			struct kgsl_memdesc *memdesc);
 int kgsl_mmu_unmap(struct kgsl_pagetable *pagetable,
 		    struct kgsl_memdesc *memdesc);
+int kgsl_mmu_put_gpuaddr(struct kgsl_pagetable *pagetable,
+		 struct kgsl_memdesc *memdesc);
 unsigned int kgsl_virtaddr_to_physaddr(void *virtaddr);
 void kgsl_setstate(struct kgsl_mmu *mmu, unsigned int context_id,
 			uint32_t flags);
