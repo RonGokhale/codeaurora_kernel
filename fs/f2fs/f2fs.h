@@ -350,6 +350,7 @@ enum page_type {
 
 struct f2fs_sb_info {
 	struct super_block *sb;			/* pointer to VFS super block */
+	struct proc_dir_entry *s_proc;		/* proc entry */
 	struct buffer_head *raw_super_buf;	/* buffer head of raw sb */
 	struct f2fs_super_block *raw_super;	/* raw super block pointer */
 	int s_dirty;				/* dirty flag for checkpoint */
@@ -452,6 +453,11 @@ static inline struct f2fs_super_block *F2FS_RAW_SUPER(struct f2fs_sb_info *sbi)
 static inline struct f2fs_checkpoint *F2FS_CKPT(struct f2fs_sb_info *sbi)
 {
 	return (struct f2fs_checkpoint *)(sbi->ckpt);
+}
+
+static inline struct f2fs_node *F2FS_NODE(struct page *page)
+{
+	return (struct f2fs_node *)page_address(page);
 }
 
 static inline struct f2fs_nm_info *NM_I(struct f2fs_sb_info *sbi)
@@ -812,7 +818,7 @@ static inline struct kmem_cache *f2fs_kmem_cache_create(const char *name,
 
 static inline bool IS_INODE(struct page *page)
 {
-	struct f2fs_node *p = (struct f2fs_node *)page_address(page);
+	struct f2fs_node *p = F2FS_NODE(page);
 	return RAW_IS_INODE(p);
 }
 
@@ -826,7 +832,7 @@ static inline block_t datablock_addr(struct page *node_page,
 {
 	struct f2fs_node *raw_node;
 	__le32 *addr_array;
-	raw_node = (struct f2fs_node *)page_address(node_page);
+	raw_node = F2FS_NODE(node_page);
 	addr_array = blkaddr_in_node(raw_node);
 	return le32_to_cpu(addr_array[offset]);
 }
@@ -1112,11 +1118,16 @@ struct f2fs_stat_info {
 	unsigned base_mem, cache_mem;
 };
 
+static inline struct f2fs_stat_info *F2FS_STAT(struct f2fs_sb_info *sbi)
+{
+	return (struct f2fs_stat_info*)sbi->stat_info;
+}
+
 #define stat_inc_call_count(si)	((si)->call_count++)
 
 #define stat_inc_seg_count(sbi, type)					\
 	do {								\
-		struct f2fs_stat_info *si = sbi->stat_info;		\
+		struct f2fs_stat_info *si = F2FS_STAT(sbi);		\
 		(si)->tot_segs++;					\
 		if (type == SUM_TYPE_DATA)				\
 			si->data_segs++;				\
@@ -1129,14 +1140,14 @@ struct f2fs_stat_info {
 
 #define stat_inc_data_blk_count(sbi, blks)				\
 	do {								\
-		struct f2fs_stat_info *si = sbi->stat_info;		\
+		struct f2fs_stat_info *si = F2FS_STAT(sbi);		\
 		stat_inc_tot_blk_count(si, blks);			\
 		si->data_blks += (blks);				\
 	} while (0)
 
 #define stat_inc_node_blk_count(sbi, blks)				\
 	do {								\
-		struct f2fs_stat_info *si = sbi->stat_info;		\
+		struct f2fs_stat_info *si = F2FS_STAT(sbi);		\
 		stat_inc_tot_blk_count(si, blks);			\
 		si->node_blks += (blks);				\
 	} while (0)

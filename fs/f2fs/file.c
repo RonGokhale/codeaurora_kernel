@@ -147,9 +147,10 @@ int f2fs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 
 	mutex_lock(&inode->i_mutex);
 
-	if (datasync && !(inode->i_state & I_DIRTY_DATASYNC))
-		goto out;
-
+	/*
+	 * Both of fdatasync() and fsync() are able to be recovered from
+	 * sudden-power-off.
+	 */
 	if (!S_ISREG(inode->i_mode) || inode->i_nlink != 1)
 		need_cp = true;
 	else if (file_wrong_pino(inode))
@@ -205,7 +206,7 @@ int truncate_data_blocks_range(struct dnode_of_data *dn, int count)
 	struct f2fs_node *raw_node;
 	__le32 *addr;
 
-	raw_node = page_address(dn->node_page);
+	raw_node = F2FS_NODE(dn->node_page);
 	addr = blkaddr_in_node(raw_node) + ofs;
 
 	for ( ; count > 0; count--, addr++, dn->ofs_in_node++) {
