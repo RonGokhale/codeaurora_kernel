@@ -1167,7 +1167,7 @@ static int msm_compr_hw_params(struct snd_pcm_substream *substream,
 			break;
 		case SND_AUDIOCODEC_PCM:
 			pr_debug("q6asm_open_read(FORMAT_PCM)\n");
-			ret = q6asm_open_read(prtd->audio_client,
+			ret = q6asm_open_read_v2(prtd->audio_client,
 				FORMAT_MULTI_CHANNEL_LINEAR_PCM);
 			if (ret < 0) {
 				pr_err("%s: compressed Session open failed\n",

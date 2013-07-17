@@ -903,6 +903,7 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 		}
 		case ASM_STREAM_CMD_OPEN_READ:
 		case ASM_STREAM_CMD_OPEN_READ_V2_1:
+		case ASM_STREAM_CMD_OPEN_READ_V2:
 		case ASM_STREAM_CMD_OPEN_WRITE:
 		case ASM_STREAM_CMD_OPEN_WRITE_V2:
 		case ASM_STREAM_CMD_OPEN_WRITE_V2_1:
@@ -1076,6 +1077,17 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 				payload[0], payload[1], payload[2],
 				payload[3]);
 		break;
+	case ASM_SESSION_CMDRSP_ADJUST_SESSION_CLOCK:
+		if (atomic_read(&ac->cmd_state) && wakeup_flag) {
+			atomic_set(&ac->cmd_state, 0);
+		}
+		pr_err("%s: ASM_SESSION_CMDRSP_ADJUST_SESSION_CLOCK, payload[0] = %d, payload[1] = %d, payload[2] = %d, payload[3] = %d payload[4] %d\n",
+				 __func__,
+				payload[0], payload[1], payload[2],
+				payload[3], payload[4]);
+		wake_up(&ac->cmd_wait);
+		break;
+
 	}
 	if (ac->cb)
 		ac->cb(data->opcode, data->token,
@@ -1434,6 +1446,64 @@ int q6asm_open_read(struct audio_client *ac,
 			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
 	if (!rc) {
 		pr_err("%s: timeout. waited for OPEN_WRITE rc[%d]\n", __func__,
+			rc);
+		goto fail_cmd;
+	}
+	return 0;
+fail_cmd:
+	return -EINVAL;
+}
+
+int q6asm_open_read_v2(struct audio_client *ac,
+		uint32_t format)
+{
+	int rc = 0x00;
+	struct asm_stream_cmd_open_read_v2 open;
+
+	uint16_t bits_per_sample = 16;
+#ifdef CONFIG_DEBUG_FS
+	in_cont_index = 0;
+#endif
+	if ((ac == NULL) || (ac->apr == NULL)) {
+		pr_err("%s: APR handle NULL\n", __func__);
+		return -EINVAL;
+	}
+	pr_debug("%s:session[%d]", __func__, ac->session);
+
+	q6asm_add_hdr(ac, &open.hdr, sizeof(open), TRUE);
+	open.hdr.opcode = ASM_STREAM_CMD_OPEN_READ_V2;
+
+	open.src_endpoint = ASM_END_POINT_DEVICE_MATRIX;
+
+	open.pre_proc_top = get_asm_topology();
+	if (open.pre_proc_top == 0)
+		open.pre_proc_top = DEFAULT_POPP_TOPOLOGY;
+
+	open.bits_per_sample = bits_per_sample;
+
+	switch (format) {
+	case FORMAT_LINEAR_PCM:
+		open.mode_flags = (ASM_BIT_MASKIMESTAMPYPE_FLAG & (ASM_ABSOLUTEIMESTAMP << ASM_SHIFTIMESTAMPYPE_FLAG));
+		open.format = LINEAR_PCM;
+		break;
+	case FORMAT_MULTI_CHANNEL_LINEAR_PCM:
+		open.mode_flags = (ASM_BIT_MASKIMESTAMPYPE_FLAG & (ASM_ABSOLUTEIMESTAMP << ASM_SHIFTIMESTAMPYPE_FLAG));
+		open.format = MULTI_CHANNEL_PCM;
+		break;
+	default:
+		pr_err("Invalid format[%d]\n", format);
+		goto fail_cmd;
+	}
+	rc = apr_send_pkt(ac->apr, (uint32_t *) &open);
+	if (rc < 0) {
+		pr_err("open failed op[0x%x]rc[%d]\n", \
+						open.hdr.opcode, rc);
+		goto fail_cmd;
+	}
+	rc = wait_event_timeout(ac->cmd_wait,
+			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("%s: timeout. waited for open read rc[%d]\n", __func__,
 			rc);
 		goto fail_cmd;
 	}
@@ -3363,6 +3433,41 @@ fail_cmd:
 	kfree(vol_cmd);
 	return rc;
 }
+
+int q6asm_adjust_session_time(struct audio_client *ac, uint64_t adjust_time )
+{
+	int rc  = 0;
+	struct asm_session_cmd_adjust_session_clock cmd_set_clock;
+
+	q6asm_add_hdr(ac, &cmd_set_clock.hdr, sizeof(cmd_set_clock), TRUE);
+
+
+	cmd_set_clock.hdr.opcode = ASM_SESSION_CMD_ADJUST_SESSION_CLOCK;
+	cmd_set_clock.adjust_time_msw = (adjust_time & 0xFFFFFFFF00000000) >> 32;
+	cmd_set_clock.adjust_time_lsw = adjust_time & 0xFFFFFFFFF; //In  microseconds
+	pr_err("%s setting session clock %lld cmd_set_clock.adjust_time_msw %d \
+                 cmd_set_clock.adjust_time_lsw %d ", __func__, adjust_time,\
+                  cmd_set_clock.adjust_time_msw,cmd_set_clock.adjust_time_lsw);
+
+	rc = apr_send_pkt(ac->apr, (uint32_t *) &cmd_set_clock);
+	if (rc < 0) {
+		pr_err("Commmand set_session_clock failed[%d]", rc);
+		goto fail_cmd;
+	}
+
+	rc = wait_event_timeout(ac->cmd_wait,
+			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("timeout. waited for set_session_clock rc[%d]", rc);
+		goto fail_cmd;
+	}
+
+	rc = 0;
+fail_cmd:
+	return rc;
+}
+
+
 
 int q6asm_set_softpause(struct audio_client *ac,
 			struct asm_softpause_params *pause_param)

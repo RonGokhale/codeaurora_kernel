@@ -941,6 +941,7 @@ static int msm_pcm_ioctl(struct snd_pcm_substream *substream,
 	struct msm_audio *prtd = runtime->private_data;
 	int ret = 0, rc;
 	struct snd_pcm_transcode_param transcode_param;
+        int64_t adjust_time = 0;
 
 	pr_debug("%s\n", __func__);
 	ret = snd_pcm_lib_ioctl(substream, cmd, arg);
@@ -1002,8 +1003,18 @@ static int msm_pcm_ioctl(struct snd_pcm_substream *substream,
 					prtd->enc_audio_client->session,
 					SNDRV_PCM_STREAM_CAPTURE);
 		}
-
 		break;
+        case SNDRV_PCM_ADJUST_SESSION_CLOCK:
+		pr_err("SNDRV_PCM_ADJUST_SESSION_CLOCK");
+		if (copy_from_user(&adjust_time, (void *) arg,
+			sizeof(int64_t))){
+			rc = -EFAULT;
+			pr_err("%s: ERROR: copy from user\n", __func__);
+			return rc;
+		}
+                rc = q6asm_adjust_session_time(prtd->audio_client, adjust_time); 
+		break;
+ 
 	default:
 		break;
 	}
