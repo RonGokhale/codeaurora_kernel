@@ -500,7 +500,7 @@ void mdp4_lcdc_update(struct msm_fb_data_type *mfd);
 void mdp4_intr_clear_set(ulong clear, ulong set);
 void mdp4_dma_p_cfg(void);
 unsigned is_mdp4_hw_reset(void);
-void mdp4_hw_init(void);
+void mdp4_hw_init(int cont_splash_done);
 void mdp4_isr_read(int);
 void mdp4_clear_lcdc(void);
 void mdp4_mixer_blend_init(int mixer_num);
@@ -690,6 +690,8 @@ void mdp4_mddi_overlay_dmas_restore(void);
 void mdp4_overlay_solidfill_init(struct mdp4_overlay_pipe *pipe);
 void mdp4_dtv_set_avparams(struct mdp4_overlay_pipe *pipe, int id);
 void mdp4_lcdc_set_avparams(struct mdp4_overlay_pipe *pipe, int id);
+void mdp4_overlay_stage_splash(int mixer);
+void mdp4_overlay_check_splash(struct msm_fb_data_type *mfd, int ndx);
 
 void mdp_dtv_avmute(struct platform_device *pdev, unsigned int avmute_req);
 
