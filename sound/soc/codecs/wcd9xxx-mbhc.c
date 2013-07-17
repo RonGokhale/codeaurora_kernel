@@ -94,9 +94,6 @@
 
 #define WCD9XXX_USLEEP_RANGE_MARGIN_US 1000
 
-#define WCD9XXX_IRQ_MBHC_JACK_SWITCH_TAIKO 28
-#define WCD9XXX_IRQ_MBHC_JACK_SWITCH_TAPAN 21
-
 static bool detect_use_vddio_switch = true;
 
 struct wcd9xxx_mbhc_detect {
@@ -1060,8 +1057,10 @@ static short wcd9xxx_mbhc_setup_hs_polling(struct wcd9xxx_mbhc *mbhc)
 	 * Request BG and clock.
 	 * These will be released by wcd9xxx_cleanup_hs_polling
 	 */
+	WCD9XXX_BG_CLK_LOCK(mbhc->resmgr);
 	wcd9xxx_resmgr_get_bandgap(mbhc->resmgr, WCD9XXX_BANDGAP_MBHC_MODE);
 	wcd9xxx_resmgr_get_clk_block(mbhc->resmgr, WCD9XXX_CLK_RCO);
+	WCD9XXX_BG_CLK_UNLOCK(mbhc->resmgr);
 
 	snd_soc_update_bits(codec, WCD9XXX_A_CLK_BUFF_EN1, 0x05, 0x01);
 
@@ -1108,7 +1107,9 @@ static void wcd9xxx_shutdown_hs_removal_detect(struct wcd9xxx_mbhc *mbhc)
 	    WCD9XXX_MBHC_CAL_GENERAL_PTR(mbhc->mbhc_cfg->calibration);
 
 	/* Need MBHC clock */
+	WCD9XXX_BG_CLK_LOCK(mbhc->resmgr);
 	wcd9xxx_resmgr_get_clk_block(mbhc->resmgr, WCD9XXX_CLK_RCO);
+	WCD9XXX_BG_CLK_UNLOCK(mbhc->resmgr);
 
 	snd_soc_update_bits(codec, WCD9XXX_A_CDC_MBHC_CLK_CTL, 0x2, 0x2);
 	snd_soc_update_bits(codec, WCD9XXX_A_CDC_MBHC_B1_CTL, 0x6, 0x0);
@@ -1119,8 +1120,10 @@ static void wcd9xxx_shutdown_hs_removal_detect(struct wcd9xxx_mbhc *mbhc)
 
 	snd_soc_update_bits(codec, WCD9XXX_A_CDC_MBHC_CLK_CTL, 0xA, 0x8);
 
+	WCD9XXX_BG_CLK_LOCK(mbhc->resmgr);
 	/* Put requested CLK back */
 	wcd9xxx_resmgr_put_clk_block(mbhc->resmgr, WCD9XXX_CLK_RCO);
+	WCD9XXX_BG_CLK_UNLOCK(mbhc->resmgr);
 
 	snd_soc_write(codec, WCD9XXX_A_MBHC_SCALING_MUX_1, 0x00);
 }
@@ -1132,8 +1135,10 @@ static void wcd9xxx_cleanup_hs_polling(struct wcd9xxx_mbhc *mbhc)
 	wcd9xxx_shutdown_hs_removal_detect(mbhc);
 
 	/* Release clock and BG requested by wcd9xxx_mbhc_setup_hs_polling */
+	WCD9XXX_BG_CLK_LOCK(mbhc->resmgr);
 	wcd9xxx_resmgr_put_clk_block(mbhc->resmgr, WCD9XXX_CLK_RCO);
 	wcd9xxx_resmgr_put_bandgap(mbhc->resmgr, WCD9XXX_BANDGAP_MBHC_MODE);
+	WCD9XXX_BG_CLK_UNLOCK(mbhc->resmgr);
 
 	mbhc->polling_active = false;
 	mbhc->mbhc_state = MBHC_STATE_NONE;
@@ -3115,10 +3120,10 @@ static int wcd9xxx_setup_jack_detect_irq(struct wcd9xxx_mbhc *mbhc)
 
 		switch (mbhc->mbhc_version) {
 		case WCD9XXX_MBHC_VERSION_TAIKO:
-			jack_irq = WCD9XXX_IRQ_MBHC_JACK_SWITCH_TAIKO;
+			jack_irq = WCD9320_IRQ_MBHC_JACK_SWITCH;
 			break;
 		case WCD9XXX_MBHC_VERSION_TAPAN:
-			jack_irq = WCD9XXX_IRQ_MBHC_JACK_SWITCH_TAPAN;
+			jack_irq = WCD9306_IRQ_MBHC_JACK_SWITCH;
 			break;
 		default:
 			return -EINVAL;
@@ -3800,7 +3805,18 @@ void wcd9xxx_mbhc_deinit(struct wcd9xxx_mbhc *mbhc)
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_MBHC_REMOVAL, mbhc);
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_MBHC_INSERTION, mbhc);
 
-	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_MBHC_JACK_SWITCH, mbhc);
+	switch (mbhc->mbhc_version) {
+	case WCD9XXX_MBHC_VERSION_TAIKO:
+		wcd9xxx_free_irq(cdata, WCD9320_IRQ_MBHC_JACK_SWITCH, mbhc);
+		break;
+	case WCD9XXX_MBHC_VERSION_TAPAN:
+		wcd9xxx_free_irq(cdata, WCD9306_IRQ_MBHC_JACK_SWITCH, mbhc);
+		break;
+	default:
+		pr_err("%s: irq free failed! Invalid MBHC version %d\n",
+			__func__, mbhc->mbhc_version);
+	}
+
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_HPH_PA_OCPL_FAULT, mbhc);
 	wcd9xxx_free_irq(cdata, WCD9XXX_IRQ_HPH_PA_OCPR_FAULT, mbhc);
 

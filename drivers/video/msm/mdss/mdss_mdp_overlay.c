@@ -315,6 +315,30 @@ static int __mdp_pipe_tune_perf(struct mdss_mdp_pipe *pipe)
 	return 0;
 }
 
+static int __mdss_mdp_overlay_setup_scaling(struct mdss_mdp_pipe *pipe)
+{
+	u32 src;
+	int rc;
+
+	src = pipe->src.w >> pipe->horz_deci;
+	rc = mdss_mdp_calc_phase_step(src, pipe->dst.w, &pipe->phase_step_x);
+	if (rc) {
+		pr_err("Horizontal scaling calculation failed=%d! %d->%d\n",
+				rc, src, pipe->dst.w);
+		return rc;
+	}
+
+	src = pipe->src.h >> pipe->vert_deci;
+	rc = mdss_mdp_calc_phase_step(src, pipe->dst.h, &pipe->phase_step_y);
+	if (rc) {
+		pr_err("Vertical scaling calculation failed=%d! %d->%d\n",
+				rc, src, pipe->dst.h);
+		return rc;
+	}
+
+	return 0;
+}
+
 static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 				       struct mdp_overlay *req,
 				       struct mdss_mdp_pipe **ppipe)
@@ -476,13 +500,17 @@ static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 			ret = copy_from_user(pipe->pp_res.igc_c0_c1,
 					pipe->pp_cfg.igc_cfg.c0_c1_data,
 					sizeof(uint32_t) * len);
-			if (ret)
-				return -ENOMEM;
+			if (ret) {
+				ret = -ENOMEM;
+				goto exit_fail;
+			}
 			ret = copy_from_user(pipe->pp_res.igc_c2,
 					pipe->pp_cfg.igc_cfg.c2_data,
 					sizeof(uint32_t) * len);
-			if (ret)
-				return -ENOMEM;
+			if (ret) {
+				ret = -ENOMEM;
+				goto exit_fail;
+			}
 			pipe->pp_cfg.igc_cfg.c0_c1_data =
 							pipe->pp_res.igc_c0_c1;
 			pipe->pp_cfg.igc_cfg.c2_data = pipe->pp_res.igc_c2;
@@ -508,8 +536,10 @@ static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 			ret = copy_from_user(pipe->pp_res.hist_lut,
 					pipe->pp_cfg.hist_lut_cfg.data,
 					sizeof(uint32_t) * len);
-			if (ret)
-				return -ENOMEM;
+			if (ret) {
+				ret = -ENOMEM;
+				goto exit_fail;
+			}
 			pipe->pp_cfg.hist_lut_cfg.data = pipe->pp_res.hist_lut;
 		}
 	}
@@ -528,6 +558,10 @@ static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 		pr_debug("unable to satisfy performance. ret=%d\n", ret);
 		goto exit_fail;
 	}
+
+	ret = __mdss_mdp_overlay_setup_scaling(pipe);
+	if (ret)
+		goto exit_fail;
 
 	ret = mdss_mdp_smp_reserve(pipe);
 	if (ret) {
