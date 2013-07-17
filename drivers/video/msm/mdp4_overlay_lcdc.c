@@ -176,6 +176,12 @@ int mdp4_lcdc_pipe_commit(int cndx, int wait)
 	undx =  vctrl->update_ndx;
 	vp = &vctrl->vlist[undx];
 	pipe = vctrl->base_pipe;
+	if (pipe == NULL) {
+		pr_err("%s: NO base pipe\n", __func__);
+		mutex_unlock(&vctrl->update_lock);
+		return 0;
+	}
+
 	mixer = pipe->mixer_num;
 
 	if (vp->update_cnt == 0) {
@@ -708,6 +714,7 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 	struct vsync_update *vp;
 	unsigned long flags;
 	int undx, need_wait = 0;
+	int mixer = 0;
 
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 	vctrl = &vsync_ctrl_db[cndx];
@@ -753,7 +760,8 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 
 	if (pipe) {
 		/* sanity check, free pipes besides base layer */
-		mdp4_overlay_unset_mixer(pipe->mixer_num);
+		mixer = pipe->mixer_num;
+		mdp4_overlay_unset_mixer(mixer);
 		if (mfd->ref_cnt == 0) {
 			/* adb stop */
 			if (pipe->pipe_type == OVERLAY_TYPE_BF)
@@ -777,6 +785,14 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 			iounmap(vctrl->avtimer);
 			vctrl->avtimer = NULL;
 		}
+
+	/*
+	 * clean up ion freelist
+	 * there need two stage to empty ion free list
+	 * therefore need call unmap freelist twice
+	 */
+	mdp4_overlay_iommu_unmap_freelist(mixer);
+	mdp4_overlay_iommu_unmap_freelist(mixer);
 
 	/* MDP clock disable */
 	mdp_clk_ctrl(0);
