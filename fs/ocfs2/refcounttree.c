@@ -2965,7 +2965,11 @@ int ocfs2_duplicate_clusters_by_page(handle_t *handle,
 			to = map_end & (PAGE_CACHE_SIZE - 1);
 
 		page = find_or_create_page(mapping, page_index, GFP_NOFS);
-
+		if (!page) {
+			ret = -ENOMEM;
+			mlog_errno(ret);
+			break;
+		}
 		/*
 		 * In case PAGE_CACHE_SIZE <= CLUSTER_SIZE, This page
 		 * can't be dirtied before we CoW it out.
