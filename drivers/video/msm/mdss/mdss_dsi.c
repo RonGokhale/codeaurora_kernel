@@ -1094,6 +1094,7 @@ int dsi_panel_device_register(struct platform_device *pdev,
 		return -EPERM;
 	}
 
+	ctrl_pdata->panel_data.dev = panel_data->dev;
 	ctrl_pdata->panel_data.event_handler = mdss_dsi_event_handler;
 
 	ctrl_pdata->on_cmds = panel_data->on_cmds;

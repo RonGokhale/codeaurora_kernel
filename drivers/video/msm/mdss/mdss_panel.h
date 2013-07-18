@@ -251,6 +251,7 @@ struct mdss_panel_info {
 };
 
 struct mdss_panel_data {
+	struct device *dev;
 	struct mdss_panel_info panel_info;
 	void (*set_backlight) (struct mdss_panel_data *pdata, u32 bl_level);
 	unsigned char *mmss_cc_base;
