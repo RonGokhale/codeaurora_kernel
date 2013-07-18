@@ -28,6 +28,12 @@
 
 DEFINE_LED_TRIGGER(bl_led_trigger);
 
+struct mdss_dsi_panel_ctx {
+	struct device *dev;
+	struct mdss_panel_common_pdata *cmm_pdata;
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata;
+};
+
 static struct mdss_dsi_phy_ctrl phy_params;
 
 void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
@@ -722,12 +728,21 @@ static int mdss_dsi_panel_gpio_config(struct platform_device *pdev,
 static int __devinit mdss_dsi_panel_probe(struct platform_device *pdev)
 {
 	int rc = 0;
+	struct device *dev = &pdev->dev;
+	struct mdss_dsi_panel_ctx *ctx;
 	static struct mdss_panel_common_pdata vendor_pdata;
 	static const char *panel_name;
 
 	pr_debug("%s:%d, debug info id=%d", __func__, __LINE__, pdev->id);
 	if (!pdev->dev.of_node)
 		return -ENODEV;
+
+	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
+	if (!ctx) {
+		pr_err("%s:%d, failed to allocate smc_ctx memory\n",
+					__func__, __LINE__);
+		return -ENOMEM;
+	}
 
 	panel_name = of_get_property(pdev->dev.of_node, "label", NULL);
 	if (!panel_name)
@@ -747,10 +762,15 @@ static int __devinit mdss_dsi_panel_probe(struct platform_device *pdev)
 		return rc;
 	}
 
+	ctx->cmm_pdata = &vendor_pdata;
+	ctx->dev = dev;
+
 	vendor_pdata.on = mdss_dsi_panel_on;
 	vendor_pdata.off = mdss_dsi_panel_off;
 	vendor_pdata.bl_fnc = mdss_dsi_panel_bl_ctrl;
 	vendor_pdata.panel_reset = mdss_dsi_panel_reset;
+
+	dev_set_drvdata(dev, ctx);
 
 	rc = dsi_panel_device_register(pdev, &vendor_pdata);
 	if (rc)
