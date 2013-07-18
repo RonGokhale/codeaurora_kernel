@@ -342,7 +342,7 @@ static void wakeup_readers(unsigned long data)
 	/*
 	 * Stupid polling for now:
 	 */
-	mod_timer(&buf->timer, jiffies + 1);
+	mod_timer(&buf->timer, HZ / 10);
 }
 
 /**
@@ -360,7 +360,7 @@ static void __relay_reset(struct rchan_buf *buf, unsigned int init)
 		init_waitqueue_head(&buf->read_wait);
 		kref_init(&buf->kref);
 		setup_timer(&buf->timer, wakeup_readers, (unsigned long)buf);
-		mod_timer(&buf->timer, jiffies + 1);
+		mod_timer(&buf->timer, HZ / 10);
 	} else
 		del_timer_sync(&buf->timer);
 
