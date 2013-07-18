@@ -2970,6 +2970,7 @@ int ocfs2_duplicate_clusters_by_page(handle_t *handle,
 			mlog_errno(ret);
 			break;
 		}
+
 		/*
 		 * In case PAGE_CACHE_SIZE <= CLUSTER_SIZE, This page
 		 * can't be dirtied before we CoW it out.
