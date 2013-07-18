@@ -1070,10 +1070,6 @@ static void encode_attrs(struct xdr_stream *xdr, const struct iattr *iap,
 
 	p = reserve_space(xdr, 4 + (bmval_len << 2) + 4 + len);
 
-	/*
-	 * We write the bitmap length now, but leave the bitmap and the attribute
-	 * buffer length to be backfilled at the end of this routine.
-	 */
 	*p++ = cpu_to_be32(bmval_len);
 	for (i = 0; i < bmval_len; i++)
 		*p++ = cpu_to_be32(bmval[i]);
