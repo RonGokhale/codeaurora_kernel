@@ -155,7 +155,7 @@ static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
 }
 
-void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
+static void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 {
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 
@@ -750,6 +750,7 @@ static int __devinit mdss_dsi_panel_probe(struct platform_device *pdev)
 	vendor_pdata.on = mdss_dsi_panel_on;
 	vendor_pdata.off = mdss_dsi_panel_off;
 	vendor_pdata.bl_fnc = mdss_dsi_panel_bl_ctrl;
+	vendor_pdata.panel_reset = mdss_dsi_panel_reset;
 
 	rc = dsi_panel_device_register(pdev, &vendor_pdata);
 	if (rc)

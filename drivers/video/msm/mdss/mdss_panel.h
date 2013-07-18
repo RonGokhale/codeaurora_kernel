@@ -269,6 +269,7 @@ struct mdss_panel_data {
 	 * and teardown.
 	 */
 	int (*event_handler) (struct mdss_panel_data *pdata, int e, void *arg);
+	void (*panel_reset_fn)(struct mdss_panel_data *pdata, int enable);
 
 	struct mdss_panel_data *next;
 };
