@@ -652,9 +652,11 @@ int msm_vdec_g_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 		if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 			for (i = 0; i < fmt->num_planes; ++i) {
 				f->fmt.pix_mp.plane_fmt[i].sizeimage =
-					fmt->get_frame_size(i,
+					ALIGN(fmt->get_frame_size(i,
 						inst->capability.height.max,
-						inst->capability.width.max);
+						inst->capability.width.max),
+						  inst->buff_req.buffer
+						[HAL_BUFFER_OUTPUT].buffer_alignment);
 				inst->bufq[OUTPUT_PORT].
 					vb2_bufq.plane_sizes[i] =
 					f->fmt.pix_mp.plane_fmt[i].sizeimage;
@@ -675,9 +677,11 @@ int msm_vdec_g_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 				get_buff_req_buffer(inst, HAL_BUFFER_OUTPUT);
 			if (buff_req_buffer)
 				f->fmt.pix_mp.plane_fmt[0].sizeimage =
-				buff_req_buffer->buffer_size;
+				ALIGN(buff_req_buffer->buffer_size,
+					  buff_req_buffer->buffer_alignment);
 			else
-				f->fmt.pix_mp.plane_fmt[0].sizeimage = 0;
+				f->fmt.pix_mp.plane_fmt[0].sizeimage =
+				ALIGN(buff_req_buffer->buffer_size, SZ_4K);
 
 			extra_idx = EXTRADATA_IDX(fmt->num_planes);
 			if (extra_idx && (extra_idx < VIDEO_MAX_PLANES)) {
@@ -799,22 +803,33 @@ int msm_vdec_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 				frame_sz.width, frame_sz.height);
 		ret = msm_comm_try_set_prop(inst,
 			HAL_PARAM_FRAME_SIZE, &frame_sz);
+		buff_req_buffer =
+			get_buff_req_buffer(inst, HAL_BUFFER_OUTPUT);
 		ret = ret || msm_comm_try_get_bufreqs(inst);
 		if (ret) {
 			for (i = 0; i < fmt->num_planes; ++i) {
-				f->fmt.pix_mp.plane_fmt[i].sizeimage =
-					fmt->get_frame_size(i,
+				if (buff_req_buffer)
+					f->fmt.pix_mp.plane_fmt[i].sizeimage =
+					ALIGN(fmt->get_frame_size(i,
 						inst->capability.height.max,
-						inst->capability.width.max);
+						inst->capability.width.max),
+						buff_req_buffer->buffer_alignment);
+				else
+					f->fmt.pix_mp.plane_fmt[i].sizeimage =
+					ALIGN(fmt->get_frame_size(i,
+						inst->capability.height.max,
+						inst->capability.width.max), SZ_4K);
 			}
 		} else {
 			buff_req_buffer =
 				get_buff_req_buffer(inst, HAL_BUFFER_OUTPUT);
 			if (buff_req_buffer)
 				f->fmt.pix_mp.plane_fmt[0].sizeimage =
-				buff_req_buffer->buffer_size;
+				ALIGN(buff_req_buffer->buffer_size,
+					  buff_req_buffer->buffer_alignment);
 			else
-				f->fmt.pix_mp.plane_fmt[0].sizeimage = 0;
+				f->fmt.pix_mp.plane_fmt[0].sizeimage =
+				ALIGN(buff_req_buffer->buffer_size, SZ_4K);
 			extra_idx = EXTRADATA_IDX(fmt->num_planes);
 			if (extra_idx && (extra_idx < VIDEO_MAX_PLANES)) {
 				buff_req_buffer =
@@ -863,9 +878,16 @@ int msm_vdec_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 		frame_sz.width = inst->prop.width;
 		frame_sz.height = inst->prop.height;
 		msm_comm_try_set_prop(inst, HAL_PARAM_FRAME_SIZE, &frame_sz);
-		f->fmt.pix_mp.plane_fmt[0].sizeimage =
-			fmt->get_frame_size(0, inst->capability.height.max,
-					inst->capability.width.max);
+		buff_req_buffer = get_buff_req_buffer(inst, HAL_BUFFER_INPUT);
+		if (buff_req_buffer)
+			f->fmt.pix_mp.plane_fmt[0].sizeimage =
+				ALIGN(fmt->get_frame_size(0, inst->capability.height.max,
+					inst->capability.width.max),
+					buff_req_buffer->buffer_alignment);
+		else
+			f->fmt.pix_mp.plane_fmt[0].sizeimage =
+				ALIGN(fmt->get_frame_size(0, inst->capability.height.max,
+					inst->capability.width.max), SZ_4K);
 		f->fmt.pix_mp.num_planes = fmt->num_planes;
 		for (i = 0; i < fmt->num_planes; ++i) {
 			inst->bufq[OUTPUT_PORT].vb2_bufq.plane_sizes[i] =
@@ -1207,7 +1229,8 @@ int msm_vdec_cmd(struct msm_vidc_inst *inst, struct v4l2_decoder_cmd *dec)
 				"Failed to release scratch buffers: %d\n", rc);
 		rc = msm_comm_release_persist_buffers(inst);
 		if (rc)
-			pr_err("Failed to release persist buffers: %d\n", rc);
+			dprintk(VIDC_ERR,
+					"Failed to release persist buffers: %d\n", rc);
 		if (inst->state == MSM_VIDC_CORE_INVALID ||
 			core->state == VIDC_CORE_INVALID) {
 			dprintk(VIDC_ERR,

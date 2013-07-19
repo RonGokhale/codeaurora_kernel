@@ -483,6 +483,7 @@ static void handle_session_prop_info(enum command_response cmd, void *data)
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst;
 	int i;
+	struct hal_buffer_requirements *in_buffer, *out_buffer;
 	if (!response || !response->data) {
 		dprintk(VIDC_ERR,
 			"Failed to get valid response for prop info\n");
@@ -493,6 +494,14 @@ static void handle_session_prop_info(enum command_response cmd, void *data)
 	memcpy(&inst->buff_req, response->data,
 			sizeof(struct buffer_requirements));
 	mutex_unlock(&inst->lock);
+
+	in_buffer = get_buff_req_buffer(inst, HAL_BUFFER_INPUT);
+	out_buffer = get_buff_req_buffer(inst, HAL_BUFFER_OUTPUT);
+	if (!in_buffer || !out_buffer) {
+		dprintk(VIDC_ERR, "Could not get input/output buffer pointer\n");
+		goto exit;
+	}
+
 	for (i = 0; i < HAL_BUFFER_MAX; i++) {
 		dprintk(VIDC_DBG,
 			"buffer type: %d, count : %d, size: %d\n",
@@ -501,8 +510,15 @@ static void handle_session_prop_info(enum command_response cmd, void *data)
 			inst->buff_req.buffer[i].buffer_size);
 	}
 	dprintk(VIDC_PROF, "Input buffers: %d, Output buffers: %d\n",
-			inst->buff_req.buffer[0].buffer_count_actual,
-			inst->buff_req.buffer[1].buffer_count_actual);
+			in_buffer->buffer_count_actual,
+			out_buffer->buffer_count_actual);
+	if (inst->flags & VIDC_SECURE)
+		in_buffer->buffer_alignment =
+		out_buffer->buffer_alignment = SZ_1M;
+	else
+		in_buffer->buffer_alignment =
+		out_buffer->buffer_alignment = SZ_4K;
+exit:
 	signal_session_msg_receipt(cmd, inst);
 }
 
