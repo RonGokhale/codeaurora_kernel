@@ -1,0 +1,5 @@
+Importing jdelvare-hwmon based on 496322bc91e35007ed754184dcd447a02b6dd685
+Unchanged quilt series jdelvare-hwmon
+Importing device-mapper based on v3.11-rc1
+	quilt series is empty
+$ git branch -f device-mapper/master ad81f0545ef01ea651886dddac4bef6cec930092
