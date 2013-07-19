@@ -363,6 +363,7 @@
 #define PUNIT_REG_GPU_LFM			0xd3
 #define PUNIT_REG_GPU_FREQ_REQ			0xd4
 #define PUNIT_REG_GPU_FREQ_STS			0xd8
+#define   GENFREQSTATUS				(1<<0)
 #define PUNIT_REG_MEDIA_TURBO_FREQ_REQ		0xdc
 
 #define PUNIT_FUSE_BUS2				0xf6 /* bits 47:40 */
@@ -680,6 +681,7 @@
 #define   ERR_INT_FIFO_UNDERRUN_C	(1<<6)
 #define   ERR_INT_FIFO_UNDERRUN_B	(1<<3)
 #define   ERR_INT_FIFO_UNDERRUN_A	(1<<0)
+#define   ERR_INT_FIFO_UNDERRUN(pipe)	(1<<(pipe*3))
 
 #define FPGA_DBG		0x42300
 #define   FPGA_DBG_RM_NOCLAIM	(1<<31)
@@ -1125,7 +1127,8 @@
 #define _DPLL_B	(dev_priv->info->display_mmio_offset + 0x6018)
 #define DPLL(pipe) _PIPE(pipe, _DPLL_A, _DPLL_B)
 #define   DPLL_VCO_ENABLE		(1 << 31)
-#define   DPLL_DVO_HIGH_SPEED		(1 << 30)
+#define   DPLL_SDVO_HIGH_SPEED		(1 << 30)
+#define   DPLL_DVO_2X_MODE		(1 << 30)
 #define   DPLL_EXT_BUFFER_ENABLE_VLV	(1 << 30)
 #define   DPLL_SYNCLOCK_ENABLE		(1 << 29)
 #define   DPLL_REFA_CLK_ENABLE_VLV	(1 << 29)
@@ -1776,6 +1779,71 @@
 #define BCLRPAT(pipe) _PIPE(pipe, _BCLRPAT_A, _BCLRPAT_B)
 #define VSYNCSHIFT(trans) _TRANSCODER(trans, _VSYNCSHIFT_A, _VSYNCSHIFT_B)
 
+/* HSW eDP PSR registers */
+#define EDP_PSR_CTL				0x64800
+#define   EDP_PSR_ENABLE			(1<<31)
+#define   EDP_PSR_LINK_DISABLE			(0<<27)
+#define   EDP_PSR_LINK_STANDBY			(1<<27)
+#define   EDP_PSR_MIN_LINK_ENTRY_TIME_MASK	(3<<25)
+#define   EDP_PSR_MIN_LINK_ENTRY_TIME_8_LINES	(0<<25)
+#define   EDP_PSR_MIN_LINK_ENTRY_TIME_4_LINES	(1<<25)
+#define   EDP_PSR_MIN_LINK_ENTRY_TIME_2_LINES	(2<<25)
+#define   EDP_PSR_MIN_LINK_ENTRY_TIME_0_LINES	(3<<25)
+#define   EDP_PSR_MAX_SLEEP_TIME_SHIFT		20
+#define   EDP_PSR_SKIP_AUX_EXIT			(1<<12)
+#define   EDP_PSR_TP1_TP2_SEL			(0<<11)
+#define   EDP_PSR_TP1_TP3_SEL			(1<<11)
+#define   EDP_PSR_TP2_TP3_TIME_500us		(0<<8)
+#define   EDP_PSR_TP2_TP3_TIME_100us		(1<<8)
+#define   EDP_PSR_TP2_TP3_TIME_2500us		(2<<8)
+#define   EDP_PSR_TP2_TP3_TIME_0us		(3<<8)
+#define   EDP_PSR_TP1_TIME_500us		(0<<4)
+#define   EDP_PSR_TP1_TIME_100us		(1<<4)
+#define   EDP_PSR_TP1_TIME_2500us		(2<<4)
+#define   EDP_PSR_TP1_TIME_0us			(3<<4)
+#define   EDP_PSR_IDLE_FRAME_SHIFT		0
+
+#define EDP_PSR_AUX_CTL			0x64810
+#define EDP_PSR_AUX_DATA1		0x64814
+#define   EDP_PSR_DPCD_COMMAND		0x80060000
+#define EDP_PSR_AUX_DATA2		0x64818
+#define   EDP_PSR_DPCD_NORMAL_OPERATION	(1<<24)
+#define EDP_PSR_AUX_DATA3		0x6481c
+#define EDP_PSR_AUX_DATA4		0x64820
+#define EDP_PSR_AUX_DATA5		0x64824
+
+#define EDP_PSR_STATUS_CTL			0x64840
+#define   EDP_PSR_STATUS_STATE_MASK		(7<<29)
+#define   EDP_PSR_STATUS_STATE_IDLE		(0<<29)
+#define   EDP_PSR_STATUS_STATE_SRDONACK		(1<<29)
+#define   EDP_PSR_STATUS_STATE_SRDENT		(2<<29)
+#define   EDP_PSR_STATUS_STATE_BUFOFF		(3<<29)
+#define   EDP_PSR_STATUS_STATE_BUFON		(4<<29)
+#define   EDP_PSR_STATUS_STATE_AUXACK		(5<<29)
+#define   EDP_PSR_STATUS_STATE_SRDOFFACK	(6<<29)
+#define   EDP_PSR_STATUS_LINK_MASK		(3<<26)
+#define   EDP_PSR_STATUS_LINK_FULL_OFF		(0<<26)
+#define   EDP_PSR_STATUS_LINK_FULL_ON		(1<<26)
+#define   EDP_PSR_STATUS_LINK_STANDBY		(2<<26)
+#define   EDP_PSR_STATUS_MAX_SLEEP_TIMER_SHIFT	20
+#define   EDP_PSR_STATUS_MAX_SLEEP_TIMER_MASK	0x1f
+#define   EDP_PSR_STATUS_COUNT_SHIFT		16
+#define   EDP_PSR_STATUS_COUNT_MASK		0xf
+#define   EDP_PSR_STATUS_AUX_ERROR		(1<<15)
+#define   EDP_PSR_STATUS_AUX_SENDING		(1<<12)
+#define   EDP_PSR_STATUS_SENDING_IDLE		(1<<9)
+#define   EDP_PSR_STATUS_SENDING_TP2_TP3	(1<<8)
+#define   EDP_PSR_STATUS_SENDING_TP1		(1<<4)
+#define   EDP_PSR_STATUS_IDLE_MASK		0xf
+
+#define EDP_PSR_PERF_CNT		0x64844
+#define   EDP_PSR_PERF_CNT_MASK		0xffffff
+
+#define EDP_PSR_DEBUG_CTL		0x64860
+#define   EDP_PSR_DEBUG_MASK_LPSP	(1<<27)
+#define   EDP_PSR_DEBUG_MASK_MEMUP	(1<<26)
+#define   EDP_PSR_DEBUG_MASK_HPD	(1<<25)
+
 /* VGA port control */
 #define ADPA			0x61100
 #define PCH_ADPA                0xe1100
@@ -2045,6 +2113,7 @@
  * (Haswell and newer) to see which VIDEO_DIP_DATA byte corresponds to each byte
  * of the infoframe structure specified by CEA-861. */
 #define   VIDEO_DIP_DATA_SIZE	32
+#define   VIDEO_DIP_VSC_DATA_SIZE	36
 #define VIDEO_DIP_CTL		0x61170
 /* Pre HSW: */
 #define   VIDEO_DIP_ENABLE		(1 << 31)
@@ -3880,6 +3949,7 @@
 #define  SERR_INT_TRANS_C_FIFO_UNDERRUN	(1<<6)
 #define  SERR_INT_TRANS_B_FIFO_UNDERRUN	(1<<3)
 #define  SERR_INT_TRANS_A_FIFO_UNDERRUN	(1<<0)
+#define  SERR_INT_TRANS_FIFO_UNDERRUN(pipe)	(1<<(pipe*3))
 
 /* digital port hotplug */
 #define PCH_PORT_HOTPLUG        0xc4030		/* SHOTPLUG_CTL */
@@ -4079,6 +4149,13 @@
 	_TRANSCODER(trans, HSW_VIDEO_DIP_GCP_A, HSW_VIDEO_DIP_GCP_B)
 #define HSW_TVIDEO_DIP_VSC_DATA(trans) \
 	 _TRANSCODER(trans, HSW_VIDEO_DIP_VSC_DATA_A, HSW_VIDEO_DIP_VSC_DATA_B)
+
+#define HSW_STEREO_3D_CTL_A	0x70020
+#define   S3D_ENABLE		(1<<31)
+#define HSW_STEREO_3D_CTL_B	0x71020
+
+#define HSW_STEREO_3D_CTL(trans) \
+	_TRANSCODER(trans, HSW_STEREO_3D_CTL_A, HSW_STEREO_3D_CTL_A)
 
 #define _PCH_TRANS_HTOTAL_B          0xe1000
 #define _PCH_TRANS_HBLANK_B          0xe1004
@@ -4467,6 +4544,10 @@
 
 #define  GT_FIFO_FREE_ENTRIES			0x120008
 #define    GT_FIFO_NUM_RESERVED_ENTRIES		20
+
+#define  HSW_IDICR				0x9008
+#define    IDIHASHMSK(x)			(((x) & 0x3f) << 16)
+#define  HSW_EDRAM_PRESENT			0x120010
 
 #define GEN6_UCGCTL1				0x9400
 # define GEN6_BLBUNIT_CLOCK_GATE_DISABLE		(1 << 5)

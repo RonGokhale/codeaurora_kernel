@@ -487,6 +487,7 @@ struct intel_dp {
 	uint8_t link_bw;
 	uint8_t lane_count;
 	uint8_t dpcd[DP_RECEIVER_CAP_SIZE];
+	uint8_t psr_dpcd[EDP_PSR_RECEIVER_CAP_SIZE];
 	uint8_t downstream_ports[DP_MAX_DOWNSTREAM_PORTS];
 	struct i2c_adapter adapter;
 	struct i2c_algo_dp_aux_data algo;
@@ -498,6 +499,7 @@ struct intel_dp {
 	int backlight_off_delay;
 	struct delayed_work panel_vdd_work;
 	bool want_panel_vdd;
+	bool psr_setup_done;
 	struct intel_connector *attached_connector;
 };
 
@@ -547,13 +549,6 @@ struct intel_unpin_work {
 #define INTEL_FLIP_PENDING	1
 #define INTEL_FLIP_COMPLETE	2
 	bool enable_stall_check;
-};
-
-struct intel_fbc_work {
-	struct delayed_work work;
-	struct drm_crtc *crtc;
-	struct drm_framebuffer *fb;
-	int interval;
 };
 
 int intel_pch_rawclk(struct drm_device *dev);
@@ -747,6 +742,22 @@ extern int intel_overlay_attrs(struct drm_device *dev, void *data,
 extern void intel_fb_output_poll_changed(struct drm_device *dev);
 extern void intel_fb_restore_mode(struct drm_device *dev);
 
+struct intel_shared_dpll *
+intel_crtc_to_shared_dpll(struct intel_crtc *crtc);
+
+void assert_shared_dpll(struct drm_i915_private *dev_priv,
+			struct intel_shared_dpll *pll,
+			bool state);
+#define assert_shared_dpll_enabled(d, p) assert_shared_dpll(d, p, true)
+#define assert_shared_dpll_disabled(d, p) assert_shared_dpll(d, p, false)
+void assert_pll(struct drm_i915_private *dev_priv,
+		enum pipe pipe, bool state);
+#define assert_pll_enabled(d, p) assert_pll(d, p, true)
+#define assert_pll_disabled(d, p) assert_pll(d, p, false)
+void assert_fdi_rx_pll(struct drm_i915_private *dev_priv,
+		       enum pipe pipe, bool state);
+#define assert_fdi_rx_pll_enabled(d, p) assert_fdi_rx_pll(d, p, true)
+#define assert_fdi_rx_pll_disabled(d, p) assert_fdi_rx_pll(d, p, false)
 extern void assert_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
 			bool state);
 #define assert_pipe_enabled(d, p) assert_pipe(d, p, true)
@@ -780,7 +791,6 @@ extern int intel_sprite_get_colorkey(struct drm_device *dev, void *data,
 extern void intel_init_pm(struct drm_device *dev);
 /* FBC */
 extern bool intel_fbc_enabled(struct drm_device *dev);
-extern void intel_enable_fbc(struct drm_crtc *crtc, unsigned long interval);
 extern void intel_update_fbc(struct drm_device *dev);
 /* IPS */
 extern void intel_gpu_ips_init(struct drm_i915_private *dev_priv);
@@ -824,5 +834,9 @@ extern bool intel_set_cpu_fifo_underrun_reporting(struct drm_device *dev,
 extern bool intel_set_pch_fifo_underrun_reporting(struct drm_device *dev,
 						 enum transcoder pch_transcoder,
 						 bool enable);
+
+extern void intel_edp_psr_enable(struct intel_dp *intel_dp);
+extern void intel_edp_psr_disable(struct intel_dp *intel_dp);
+extern void intel_edp_psr_update(struct drm_device *dev);
 
 #endif /* __INTEL_DRV_H__ */
