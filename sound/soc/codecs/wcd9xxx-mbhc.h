@@ -16,8 +16,8 @@
 
 #define WCD9XXX_CFILT_FAST_MODE 0x00
 #define WCD9XXX_CFILT_SLOW_MODE 0x40
-#define WCD9XXX_CFILT_EXT_PRCHG_EN 0x70
-#define WCD9XXX_CFILT_EXT_PRCHG_DSBL 0x40
+#define WCD9XXX_CFILT_EXT_PRCHG_EN 0x30
+#define WCD9XXX_CFILT_EXT_PRCHG_DSBL 0x00
 
 struct mbhc_micbias_regs {
 	u16 cfilt_val;
@@ -32,6 +32,12 @@ enum mbhc_v_index {
 	MBHC_V_IDX_CFILT,
 	MBHC_V_IDX_VDDIO,
 	MBHC_V_IDX_NUM,
+};
+
+enum mbhc_cal_type {
+	MBHC_CAL_MCLK,
+	MBHC_CAL_RCO,
+	MBHC_CAL_NUM,
 };
 
 /* Data used by MBHC */
@@ -55,12 +61,6 @@ struct mbhc_internal_cal_data {
 	s16 v_inval_ins_high;
 };
 
-enum wcd9xxx_mbhc_version {
-	WCD9XXX_MBHC_VERSION_UNKNOWN = 0,
-	WCD9XXX_MBHC_VERSION_TAIKO,
-	WCD9XXX_MBHC_VERSION_TAPAN,
-};
-
 enum wcd9xxx_mbhc_plug_type {
 	PLUG_TYPE_INVALID = -1,
 	PLUG_TYPE_NONE,
@@ -76,6 +76,11 @@ enum wcd9xxx_micbias_num {
 	MBHC_MICBIAS2,
 	MBHC_MICBIAS3,
 	MBHC_MICBIAS4,
+};
+
+enum wcd9xx_mbhc_micbias_enable_bits {
+	MBHC_MICBIAS_ENABLE_THRESHOLD_HEADSET,
+	MBHC_MICBIAS_ENABLE_REGULAR_HEADSET,
 };
 
 enum wcd9xxx_mbhc_state {
@@ -97,6 +102,11 @@ enum wcd9xxx_mbhc_clk_freq {
 	TAIKO_MCLK_12P2MHZ = 0,
 	TAIKO_MCLK_9P6MHZ,
 	TAIKO_NUM_CLK_FREQS,
+};
+
+enum wcd9xxx_mbhc_event_state {
+	MBHC_EVENT_PA_HPHL,
+	MBHC_EVENT_PA_HPHR,
 };
 
 struct wcd9xxx_mbhc_general_cfg {
@@ -196,8 +206,27 @@ struct wcd9xxx_mbhc_config {
 	int gpio_level_insert;
 	bool insert_detect; /* codec has own MBHC_INSERT_DETECT */
 	bool detect_extn_cable;
+	/* bit mask of enum wcd9xx_mbhc_micbias_enable_bits */
+	unsigned long micbias_enable_flags;
 	/* swap_gnd_mic returns true if extern GND/MIC swap switch toggled */
 	bool (*swap_gnd_mic) (struct snd_soc_codec *);
+};
+
+struct wcd9xxx_cfilt_mode {
+	u8 reg_mode_val;
+	u8 cur_mode_val;
+};
+
+struct wcd9xxx_mbhc_cb {
+	void (*enable_mux_bias_block) (struct snd_soc_codec *);
+	void (*cfilt_fast_mode) (struct snd_soc_codec *, struct wcd9xxx_mbhc *);
+	void (*codec_specific_cal) (struct snd_soc_codec *,
+				    struct wcd9xxx_mbhc *);
+	int (*jack_detect_irq) (struct snd_soc_codec *);
+	struct wcd9xxx_cfilt_mode (*switch_cfilt_mode) (struct wcd9xxx_mbhc *,
+							bool);
+	void (*select_cfilt) (struct snd_soc_codec *, struct wcd9xxx_mbhc *);
+	void (*free_irq) (struct wcd9xxx_mbhc *);
 };
 
 struct wcd9xxx_mbhc {
@@ -207,6 +236,7 @@ struct wcd9xxx_mbhc {
 	int buttons_pressed;
 	enum wcd9xxx_mbhc_state mbhc_state;
 	struct wcd9xxx_mbhc_config *mbhc_cfg;
+	const struct wcd9xxx_mbhc_cb *mbhc_cb;
 
 	struct mbhc_internal_cal_data mbhc_data;
 
@@ -241,8 +271,13 @@ struct wcd9xxx_mbhc {
 
 	bool no_mic_headset_override;
 
-	/* track PA/DAC state */
+	/* track PA/DAC state to sync with userspace */
 	unsigned long hph_pa_dac_state;
+	/*
+	 * save codec's state with resmgr event notification
+	 * bit flags of enum wcd9xxx_mbhc_event_state
+	 */
+	unsigned long event_state;
 
 	unsigned long mbhc_last_resume; /* in jiffies */
 
@@ -253,7 +288,10 @@ struct wcd9xxx_mbhc {
 
 	struct notifier_block nblock;
 
-	enum wcd9xxx_mbhc_version mbhc_version;
+	bool micbias_enable;
+	int (*micbias_enable_cb) (struct snd_soc_codec*,  bool);
+
+	u32 rco_clk_rate;
 
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_poke;
@@ -319,7 +357,10 @@ struct wcd9xxx_mbhc {
 int wcd9xxx_mbhc_start(struct wcd9xxx_mbhc *mbhc,
 		       struct wcd9xxx_mbhc_config *mbhc_cfg);
 int wcd9xxx_mbhc_init(struct wcd9xxx_mbhc *mbhc, struct wcd9xxx_resmgr *resmgr,
-		      struct snd_soc_codec *codec, int version);
+		      struct snd_soc_codec *codec,
+		      int (*micbias_enable_cb) (struct snd_soc_codec*,  bool),
+		      const struct wcd9xxx_mbhc_cb *mbhc_cb,
+		      int rco_clk_rate);
 void wcd9xxx_mbhc_deinit(struct wcd9xxx_mbhc *mbhc);
 void *wcd9xxx_mbhc_cal_btn_det_mp(
 			    const struct wcd9xxx_mbhc_btn_detect_cfg *btn_det,

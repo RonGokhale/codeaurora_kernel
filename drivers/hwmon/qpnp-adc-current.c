@@ -389,8 +389,13 @@ static int32_t qpnp_iadc_comp_info(void)
 
 	rc = qpnp_iadc_read_reg(QPNP_IADC_ATE_GAIN_CALIB_OFFSET,
 						&iadc->iadc_comp.sys_gain);
-	if (rc < 0)
+	if (rc < 0) {
 		pr_err("full scale read failed with %d\n", rc);
+		return rc;
+	}
+
+	if (iadc->external_rsense)
+		iadc->iadc_comp.ext_rsense = true;
 
 	pr_debug("fab id = %u, revision = %u, sys gain = %u, external_rsense = %d\n",
 			iadc->iadc_comp.id,
@@ -646,13 +651,15 @@ int32_t qpnp_iadc_get_rsense(int32_t *rsense)
 {
 	struct qpnp_iadc_drv *iadc = qpnp_iadc;
 	uint8_t	rslt_rsense;
-	int32_t	rc, sign_bit = 0;
+	int32_t	rc = 0, sign_bit = 0;
 
 	if (!iadc || !iadc->iadc_initialized)
 		return -EPROBE_DEFER;
 
-	if (iadc->external_rsense)
+	if (iadc->external_rsense) {
 		*rsense = iadc->rsense;
+		return rc;
+	}
 
 	rc = qpnp_iadc_read_reg(QPNP_IADC_NOMINAL_RSENSE, &rslt_rsense);
 	if (rc < 0) {

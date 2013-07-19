@@ -84,16 +84,14 @@ enum dsi_panel_bl_ctrl {
 	UNKNOWN_CTRL,
 };
 
-enum dsi_ctrl_state {
+enum dsi_ctrl_op_mode {
 	DSI_LP_MODE,
 	DSI_HS_MODE,
 };
 
-enum dsi_panel_state {
-	UNKNOWN_STATE,
-	PANEL_ON,
-	PANEL_OFF,
-};
+#define CTRL_STATE_UNKNOWN		0x00
+#define CTRL_STATE_PANEL_INIT		BIT(0)
+#define CTRL_STATE_MDP_ACTIVE		BIT(1)
 
 #define DSI_NON_BURST_SYNCH_PULSE	0
 #define DSI_NON_BURST_SYNCH_EVENT	1
@@ -332,7 +330,7 @@ struct mdss_dsi_ctrl_pdata {
 	struct clk *byte_clk;
 	struct clk *esc_clk;
 	struct clk *pixel_clk;
-	u8 panel_state;
+	u8 ctrl_state;
 	int irq_cnt;
 	int mdss_dsi_clk_on;
 	int rst_gpio;
@@ -414,7 +412,7 @@ void mdss_dsi_unprepare_clocks(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
 int mdss_dsi_enable_bus_clocks(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
 void mdss_dsi_disable_bus_clocks(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
 void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable);
-void mdss_dsi_phy_enable(unsigned char *ctrl_base, int on);
+void mdss_dsi_phy_enable(struct mdss_dsi_ctrl_pdata *ctrl, int on);
 void mdss_dsi_phy_init(struct mdss_panel_data *pdata);
 void mdss_dsi_phy_sw_reset(unsigned char *ctrl_base);
 void mdss_dsi_cmd_test_pattern(struct mdss_panel_data *pdata);

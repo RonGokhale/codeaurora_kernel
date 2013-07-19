@@ -14,6 +14,7 @@
  * SPI driver for Qualcomm MSM platforms
  *
  */
+
 #include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -39,10 +40,17 @@
 #include <linux/sched.h>
 #include <linux/mutex.h>
 #include <linux/atomic.h>
+#include <linux/pm_runtime.h>
 #include <mach/msm_spi.h>
 #include <mach/sps.h>
 #include <mach/dma.h>
+#include <mach/msm_bus.h>
+#include <mach/msm_bus_board.h>
 #include "spi_qsd.h"
+
+static int msm_spi_pm_resume_runtime(struct device *device);
+static int msm_spi_pm_suspend_runtime(struct device *device);
+
 
 static inline int msm_spi_configure_gsbi(struct msm_spi *dd,
 					struct platform_device *pdev)
@@ -193,6 +201,177 @@ static void msm_spi_clock_set(struct msm_spi *dd, int speed)
 	rc = clk_set_rate(dd->clk, rate);
 	if (!rc)
 		dd->clock_speed = rate;
+}
+
+static void msm_spi_clk_path_vote(struct msm_spi *dd)
+{
+	if (dd->clk_path_vote.client_hdl)
+		msm_bus_scale_client_update_request(
+						dd->clk_path_vote.client_hdl,
+						MSM_SPI_CLK_PATH_RESUME_VEC);
+}
+
+static void msm_spi_clk_path_unvote(struct msm_spi *dd)
+{
+	if (dd->clk_path_vote.client_hdl)
+		msm_bus_scale_client_update_request(
+						dd->clk_path_vote.client_hdl,
+						MSM_SPI_CLK_PATH_SUSPEND_VEC);
+}
+
+static void msm_spi_clk_path_teardown(struct msm_spi *dd)
+{
+	if (dd->pdata->active_only)
+		msm_spi_clk_path_unvote(dd);
+
+	if (dd->clk_path_vote.client_hdl) {
+		msm_bus_scale_unregister_client(dd->clk_path_vote.client_hdl);
+		dd->clk_path_vote.client_hdl = 0;
+	}
+}
+
+/**
+ * msm_spi_clk_path_init_structs: internal impl detail of msm_spi_clk_path_init
+ *
+ * allocates and initilizes the bus scaling vectors.
+ */
+static int msm_spi_clk_path_init_structs(struct msm_spi *dd)
+{
+	struct msm_bus_vectors *paths    = NULL;
+	struct msm_bus_paths   *usecases = NULL;
+
+	dev_dbg(dd->dev, "initialises path clock voting structs");
+
+	paths = devm_kzalloc(dd->dev, sizeof(*paths) * 2, GFP_KERNEL);
+	if (!paths) {
+		dev_err(dd->dev,
+		"msm_bus_paths.paths memory allocation failed");
+		return -ENOMEM;
+	}
+
+	usecases = devm_kzalloc(dd->dev, sizeof(*usecases) * 2, GFP_KERNEL);
+	if (!usecases) {
+		dev_err(dd->dev,
+		"msm_bus_scale_pdata.usecases memory allocation failed");
+		goto path_init_err;
+	}
+
+	dd->clk_path_vote.pdata = devm_kzalloc(dd->dev,
+					    sizeof(*dd->clk_path_vote.pdata),
+					    GFP_KERNEL);
+	if (!dd->clk_path_vote.pdata) {
+		dev_err(dd->dev,
+		"msm_bus_scale_pdata memory allocation failed");
+		goto path_init_err;
+	}
+
+	paths[MSM_SPI_CLK_PATH_SUSPEND_VEC] = (struct msm_bus_vectors) {
+		.src = dd->pdata->master_id,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = 0,
+		.ib  = 0,
+	};
+
+	paths[MSM_SPI_CLK_PATH_RESUME_VEC]  = (struct msm_bus_vectors) {
+		.src = dd->pdata->master_id,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab  = MSM_SPI_CLK_PATH_AVRG_BW(dd),
+		.ib  = MSM_SPI_CLK_PATH_BRST_BW(dd),
+	};
+
+	usecases[MSM_SPI_CLK_PATH_SUSPEND_VEC] = (struct msm_bus_paths) {
+		.num_paths = 1,
+		.vectors   = &paths[MSM_SPI_CLK_PATH_SUSPEND_VEC],
+	};
+
+	usecases[MSM_SPI_CLK_PATH_RESUME_VEC] = (struct msm_bus_paths) {
+		.num_paths = 1,
+		.vectors   = &paths[MSM_SPI_CLK_PATH_RESUME_VEC],
+	};
+
+	*dd->clk_path_vote.pdata = (struct msm_bus_scale_pdata) {
+		.active_only  = dd->pdata->active_only,
+		.name         = dev_name(dd->dev),
+		.num_usecases = 2,
+		.usecase      = usecases,
+	};
+
+	return 0;
+
+path_init_err:
+	devm_kfree(dd->dev, paths);
+	devm_kfree(dd->dev, usecases);
+	devm_kfree(dd->dev, dd->clk_path_vote.pdata);
+	dd->clk_path_vote.pdata = NULL;
+	return -ENOMEM;
+}
+
+/**
+ * msm_spi_clk_path_postponed_register: reg with bus-scaling after it is probed
+ *
+ * @return zero on success
+ *
+ * Workaround: SPI driver may be probed before the bus scaling driver. Calling
+ * msm_bus_scale_register_client() will fail if the bus scaling driver is not
+ * ready yet. Thus, this function should be called not from probe but from a
+ * later context. Also, this function may be called more then once before
+ * register succeed. At this case only one error message will be logged. At boot
+ * time all clocks are on, so earlier SPI transactions should succeed.
+ */
+static int msm_spi_clk_path_postponed_register(struct msm_spi *dd)
+{
+	dd->clk_path_vote.client_hdl = msm_bus_scale_register_client(
+						dd->clk_path_vote.pdata);
+
+	if (dd->clk_path_vote.client_hdl) {
+		if (dd->clk_path_vote.reg_err) {
+			/* log a success message if an error msg was logged */
+			dd->clk_path_vote.reg_err = false;
+			dev_info(dd->dev,
+				"msm_bus_scale_register_client(mstr-id:%d "
+				"actv-only:%d):0x%x",
+				dd->pdata->master_id, dd->pdata->active_only,
+				dd->clk_path_vote.client_hdl);
+		}
+
+		if (dd->pdata->active_only)
+			msm_spi_clk_path_vote(dd);
+	} else {
+		/* guard to log only one error on multiple failure */
+		if (!dd->clk_path_vote.reg_err) {
+			dd->clk_path_vote.reg_err = true;
+
+			dev_info(dd->dev,
+				"msm_bus_scale_register_client(mstr-id:%d "
+				"actv-only:%d):0",
+				dd->pdata->master_id, dd->pdata->active_only);
+		}
+	}
+
+	return dd->clk_path_vote.client_hdl ? 0 : -EAGAIN;
+}
+
+static void msm_spi_clk_path_init(struct msm_spi *dd)
+{
+	/*
+	 * bail out if path voting is diabled (master_id == 0) or if it is
+	 * already registered (client_hdl != 0)
+	 */
+	if (!dd->pdata->master_id || dd->clk_path_vote.client_hdl)
+		return;
+
+	/* if fail once then try no more */
+	if (!dd->clk_path_vote.pdata && msm_spi_clk_path_init_structs(dd)) {
+		dd->pdata->master_id = 0;
+		return;
+	};
+
+	/* on failure try again later */
+	if (msm_spi_clk_path_postponed_register(dd))
+		return;
+
+	if (dd->pdata->active_only)
+		msm_spi_clk_path_vote(dd);
 }
 
 static int msm_spi_calculate_size(int *fifo_size,
@@ -475,6 +654,16 @@ static void msm_spi_set_spi_config(struct msm_spi *dd, int bpw)
 		msm_spi_set_bpw_and_no_io_flags(dd, &spi_config, bpw-1);
 	else if (dd->mode == SPI_BAM_MODE)
 		spi_config |= SPI_CFG_INPUT_FIRST;
+
+	/*
+	 * HS_MODE improves signal stability for spi-clk high rates
+	 * but is invalid in LOOPBACK mode.
+	 */
+	if ((dd->clock_speed >= SPI_HS_MIN_RATE) &&
+	   !(dd->cur_msg->spi->mode & SPI_LOOP))
+		spi_config |= SPI_CFG_HS_MODE;
+	else
+		spi_config &= ~SPI_CFG_HS_MODE;
 
 	writel_relaxed(spi_config, dd->base + SPI_CONFIG);
 }
@@ -859,6 +1048,10 @@ static inline irqreturn_t msm_spi_qup_irq(int irq, void *dev_id)
 	u32 op, ret = IRQ_NONE;
 	struct msm_spi *dd = dev_id;
 
+	if (pm_runtime_suspended(dd->dev)) {
+		dev_warn(dd->dev, "QUP: pm runtime suspend, irq:%d\n", irq);
+		return ret;
+	}
 	if (readl_relaxed(dd->base + SPI_ERROR_FLAGS) ||
 	    readl_relaxed(dd->base + QUP_ERROR_FLAGS)) {
 		struct spi_master *master = dev_get_drvdata(dd->dev);
@@ -1265,7 +1458,7 @@ msm_spi_use_dma(struct msm_spi *dd, struct spi_transfer *tr, u8 bpw)
 		}
 
 		if (tr->cs_change &&
-		   ((bpw != 8) || (bpw != 16) || (bpw != 32)))
+		   ((bpw != 8) && (bpw != 16) && (bpw != 32)))
 			return false;
 	}
 
@@ -1705,35 +1898,21 @@ static void msm_spi_workq(struct work_struct *work)
 		container_of(work, struct msm_spi, work_data);
 	unsigned long        flags;
 	u32                  status_error = 0;
-	int                  rc = 0;
+
+	pm_runtime_get_sync(dd->dev);
 
 	mutex_lock(&dd->core_lock);
 
-	/* Don't allow power collapse until we release mutex */
-	if (pm_qos_request_active(&qos_req_list))
-		pm_qos_update_request(&qos_req_list,
-				  dd->pm_lat);
+	/*
+	 * Counter-part of system-suspend when runtime-pm is not enabled.
+	 * This way, resume can be left empty and device will be put in
+	 * active mode only if client requests anything on the bus
+	 */
+	if (!pm_runtime_enabled(dd->dev))
+		msm_spi_pm_resume_runtime(dd->dev);
+
 	if (dd->use_rlock)
 		remote_mutex_lock(&dd->r_lock);
-
-	/* Configure the spi clk, miso, mosi and cs gpio */
-	if (dd->pdata->gpio_config) {
-		rc = dd->pdata->gpio_config();
-		if (rc) {
-			dev_err(dd->dev,
-					"%s: error configuring GPIOs\n",
-					__func__);
-			status_error = 1;
-		}
-	}
-
-	rc = msm_spi_request_gpios(dd);
-	if (rc)
-		status_error = 1;
-
-	clk_prepare_enable(dd->clk);
-	clk_prepare_enable(dd->pclk);
-	msm_spi_enable_irqs(dd);
 
 	if (!msm_spi_is_valid_state(dd)) {
 		dev_err(dd->dev, "%s: SPI operational state not valid\n",
@@ -1742,6 +1921,7 @@ static void msm_spi_workq(struct work_struct *work)
 	}
 
 	spin_lock_irqsave(&dd->queue_lock, flags);
+	dd->transfer_pending = 1;
 	while (!list_empty(&dd->queue)) {
 		dd->cur_msg = list_entry(dd->queue.next,
 					 struct spi_message, queue);
@@ -1758,24 +1938,14 @@ static void msm_spi_workq(struct work_struct *work)
 	dd->transfer_pending = 0;
 	spin_unlock_irqrestore(&dd->queue_lock, flags);
 
-	msm_spi_disable_irqs(dd);
-	clk_disable_unprepare(dd->clk);
-	clk_disable_unprepare(dd->pclk);
-
-	/* Free  the spi clk, miso, mosi, cs gpio */
-	if (!rc && dd->pdata && dd->pdata->gpio_release)
-		dd->pdata->gpio_release();
-	if (!rc)
-		msm_spi_free_gpios(dd);
-
 	if (dd->use_rlock)
 		remote_mutex_unlock(&dd->r_lock);
 
-	if (pm_qos_request_active(&qos_req_list))
-		pm_qos_update_request(&qos_req_list,
-				  PM_QOS_DEFAULT_VALUE);
-
 	mutex_unlock(&dd->core_lock);
+
+	pm_runtime_mark_last_busy(dd->dev);
+	pm_runtime_put_autosuspend(dd->dev);
+
 	/* If needed, this can be done after the current message is complete,
 	   and work can be continued upon resume. No motivation for now. */
 	if (dd->suspended)
@@ -1789,8 +1959,6 @@ static int msm_spi_transfer(struct spi_device *spi, struct spi_message *msg)
 	struct spi_transfer *tr;
 
 	dd = spi_master_get_devdata(spi->master);
-	if (dd->suspended)
-		return -EBUSY;
 
 	if (list_empty(&msg->transfers) || !msg->complete)
 		return -EINVAL;
@@ -1810,11 +1978,6 @@ static int msm_spi_transfer(struct spi_device *spi, struct spi_message *msg)
 	}
 
 	spin_lock_irqsave(&dd->queue_lock, flags);
-	if (dd->suspended) {
-		spin_unlock_irqrestore(&dd->queue_lock, flags);
-		return -EBUSY;
-	}
-	dd->transfer_pending = 1;
 	list_add_tail(&msg->queue, &dd->queue);
 	spin_unlock_irqrestore(&dd->queue_lock, flags);
 	queue_work(dd->workqueue, &dd->work_data);
@@ -1845,7 +2008,14 @@ static int msm_spi_setup(struct spi_device *spi)
 
 	dd = spi_master_get_devdata(spi->master);
 
+	pm_runtime_get_sync(dd->dev);
+
 	mutex_lock(&dd->core_lock);
+
+	/* Counter-part of system-suspend when runtime-pm is not enabled. */
+	if (!pm_runtime_enabled(dd->dev))
+		msm_spi_pm_resume_runtime(dd->dev);
+
 	if (dd->suspended) {
 		mutex_unlock(&dd->core_lock);
 		return -EBUSY;
@@ -1853,27 +2023,6 @@ static int msm_spi_setup(struct spi_device *spi)
 
 	if (dd->use_rlock)
 		remote_mutex_lock(&dd->r_lock);
-
-	/* Configure the spi clk, miso, mosi, cs gpio */
-	if (dd->pdata->gpio_config) {
-		rc = dd->pdata->gpio_config();
-		if (rc) {
-			dev_err(&spi->dev,
-					"%s: error configuring GPIOs\n",
-					__func__);
-			rc = -ENXIO;
-			goto err_setup_gpio;
-		}
-	}
-
-	rc = msm_spi_request_gpios(dd);
-	if (rc) {
-		rc = -ENXIO;
-		goto err_setup_gpio;
-	}
-
-	clk_prepare_enable(dd->clk);
-	clk_prepare_enable(dd->pclk);
 
 	spi_ioc = readl_relaxed(dd->base + SPI_IO_CONTROL);
 	mask = SPI_IO_C_CS_N_POLARITY_0 << spi->chip_select;
@@ -1892,18 +2041,19 @@ static int msm_spi_setup(struct spi_device *spi)
 
 	/* Ensure previous write completed before disabling the clocks */
 	mb();
-	clk_disable_unprepare(dd->clk);
-	clk_disable_unprepare(dd->pclk);
 
-	/* Free  the spi clk, miso, mosi, cs gpio */
-	if (dd->pdata && dd->pdata->gpio_release)
-		dd->pdata->gpio_release();
-	msm_spi_free_gpios(dd);
-
-err_setup_gpio:
 	if (dd->use_rlock)
 		remote_mutex_unlock(&dd->r_lock);
+
+	/* Counter-part of system-resume when runtime-pm is not enabled. */
+	if (!pm_runtime_enabled(dd->dev))
+		msm_spi_pm_suspend_runtime(dd->dev);
+
 	mutex_unlock(&dd->core_lock);
+
+	pm_runtime_mark_last_busy(dd->dev);
+	pm_runtime_put_autosuspend(dd->dev);
+
 err_setup_exit:
 	return rc;
 }
@@ -2383,49 +2533,148 @@ static __init int msm_spi_dmov_init(struct msm_spi *dd)
 	return 0;
 }
 
-/**
- * msm_spi_dt_to_pdata: copy device-tree data to platfrom data struct
- */
-struct msm_spi_platform_data *
-__init msm_spi_dt_to_pdata(struct platform_device *pdev)
+enum msm_spi_dt_entry_status {
+	DT_REQ,  /* Required:  fail if missing */
+	DT_SGST, /* Suggested: warn if missing */
+	DT_OPT,  /* Optional:  don't warn if missing */
+};
+
+enum msm_spi_dt_entry_type {
+	DT_U32,
+	DT_GPIO,
+	DT_BOOL,
+};
+
+struct msm_spi_dt_to_pdata_map {
+	const char                  *dt_name;
+	void                        *ptr_data;
+	enum msm_spi_dt_entry_status status;
+	enum msm_spi_dt_entry_type   type;
+	int                          default_val;
+};
+
+static int __init msm_spi_dt_to_pdata_populate(struct platform_device *pdev,
+					struct msm_spi_platform_data *pdata,
+					struct msm_spi_dt_to_pdata_map  *itr)
 {
+	int  ret, err = 0;
 	struct device_node *node = pdev->dev.of_node;
+
+	for (; itr->dt_name ; ++itr) {
+		switch (itr->type) {
+		case DT_GPIO:
+			ret = of_get_named_gpio(node, itr->dt_name, 0);
+			if (ret >= 0) {
+				*((int *) itr->ptr_data) = ret;
+				ret = 0;
+			}
+			break;
+		case DT_U32:
+			ret = of_property_read_u32(node, itr->dt_name,
+							 (u32 *) itr->ptr_data);
+			break;
+		case DT_BOOL:
+			*((bool *) itr->ptr_data) =
+				of_property_read_bool(node, itr->dt_name);
+			ret = 0;
+			break;
+		default:
+			dev_err(&pdev->dev, "%d is an unknown DT entry type\n",
+								itr->type);
+			ret = -EBADE;
+		}
+
+		dev_dbg(&pdev->dev, "DT entry ret:%d name:%s val:%d\n",
+				ret, itr->dt_name, *((int *)itr->ptr_data));
+
+		if (ret) {
+			*((int *)itr->ptr_data) = itr->default_val;
+
+			if (itr->status < DT_OPT) {
+				dev_err(&pdev->dev, "Missing '%s' DT entry\n",
+								itr->dt_name);
+
+				/* cont on err to dump all missing entries */
+				if (itr->status == DT_REQ && !err)
+					err = ret;
+			}
+		}
+	}
+
+	return err;
+}
+
+/**
+ * msm_spi_dt_to_pdata: create pdata and read gpio config from device tree
+ */
+struct msm_spi_platform_data * __init msm_spi_dt_to_pdata(
+			struct platform_device *pdev, struct msm_spi *dd)
+{
+	int i;
 	struct msm_spi_platform_data *pdata;
-	int rc;
 
 	pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);
 	if (!pdata) {
 		pr_err("Unable to allocate platform data\n");
 		return NULL;
+	} else {
+		struct msm_spi_dt_to_pdata_map map[] = {
+		{"spi-max-frequency",
+			&pdata->max_clock_speed,         DT_SGST, DT_U32,   0},
+		{"qcom,infinite-mode",
+			&pdata->infinite_mode,           DT_OPT,  DT_U32,   0},
+		{"qcom,active-only",
+			&pdata->active_only,             DT_OPT,  DT_BOOL,  0},
+		{"qcom,master-id",
+			&pdata->master_id,               DT_SGST, DT_U32,   0},
+		{"qcom,ver-reg-exists",
+			&pdata->ver_reg_exists,          DT_OPT,  DT_BOOL,  0},
+		{"qcom,use-bam",
+			&pdata->use_bam,                 DT_OPT,  DT_BOOL,  0},
+		{"qcom,bam-consumer-pipe-index",
+			&pdata->bam_consumer_pipe_index, DT_OPT,  DT_U32,   0},
+		{"qcom,bam-producer-pipe-index",
+			&pdata->bam_producer_pipe_index, DT_OPT,  DT_U32,   0},
+		{"qcom,gpio-clk",
+			&dd->spi_gpios[0],               DT_OPT,  DT_GPIO, -1},
+		{"qcom,gpio-miso",
+			&dd->spi_gpios[1],               DT_OPT,  DT_GPIO, -1},
+		{"qcom,gpio-mosi",
+			&dd->spi_gpios[2],               DT_OPT,  DT_GPIO, -1},
+		{"qcom,gpio-cs0",
+			&dd->cs_gpios[0].gpio_num,       DT_OPT,  DT_GPIO, -1},
+		{"qcom,gpio-cs1",
+			&dd->cs_gpios[1].gpio_num,       DT_OPT,  DT_GPIO, -1},
+		{"qcom,gpio-cs2",
+			&dd->cs_gpios[2].gpio_num,       DT_OPT,  DT_GPIO, -1},
+		{"qcom,gpio-cs3",
+			&dd->cs_gpios[3].gpio_num,       DT_OPT,  DT_GPIO, -1},
+		{NULL,  NULL,                            0,       0,        0},
+		};
+
+		if (msm_spi_dt_to_pdata_populate(pdev, pdata, map)) {
+			devm_kfree(&pdev->dev, pdata);
+			return NULL;
+		}
 	}
 
-	of_property_read_u32(node, "spi-max-frequency",
-			&pdata->max_clock_speed);
-	of_property_read_u32(node, "qcom,infinite-mode",
-			&pdata->infinite_mode);
-
-	pdata->ver_reg_exists = of_property_read_bool(node
-						, "qcom,ver-reg-exists");
-
-	pdata->use_bam = of_property_read_bool(node, "qcom,use-bam");
-
 	if (pdata->use_bam) {
-		rc = of_property_read_u32(node, "qcom,bam-consumer-pipe-index",
-					&pdata->bam_consumer_pipe_index);
-		if (rc) {
+		if (!pdata->bam_consumer_pipe_index) {
 			dev_warn(&pdev->dev,
 			"missing qcom,bam-consumer-pipe-index entry in device-tree\n");
 			pdata->use_bam = false;
 		}
 
-		rc = of_property_read_u32(node, "qcom,bam-producer-pipe-index",
-					&pdata->bam_producer_pipe_index);
-		if (rc) {
+		if (pdata->bam_producer_pipe_index) {
 			dev_warn(&pdev->dev,
 			"missing qcom,bam-producer-pipe-index entry in device-tree\n");
 			pdata->use_bam = false;
 		}
 	}
+
+	for (i = 0; i < ARRAY_SIZE(spi_cs_rsrcs); ++i)
+		dd->cs_gpios[i].valid = (dd->cs_gpios[i].gpio_num >= 0);
+
 	return pdata;
 }
 
@@ -2485,7 +2734,6 @@ static int __init msm_spi_probe(struct platform_device *pdev)
 	int                     clk_enabled = 0;
 	int                     pclk_enabled = 0;
 	struct msm_spi_platform_data *pdata;
-	enum of_gpio_flags flags;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(struct msm_spi));
 	if (!master) {
@@ -2505,7 +2753,7 @@ static int __init msm_spi_probe(struct platform_device *pdev)
 	if (pdev->dev.of_node) {
 		dd->qup_ver = SPI_QUP_VERSION_BFAM;
 		master->dev.of_node = pdev->dev.of_node;
-		pdata = msm_spi_dt_to_pdata(pdev);
+		pdata = msm_spi_dt_to_pdata(pdev, dd);
 		if (!pdata) {
 			rc = -ENOMEM;
 			goto err_probe_exit;
@@ -2517,18 +2765,6 @@ static int __init msm_spi_probe(struct platform_device *pdev)
 				"using default bus_num %d\n", pdev->id);
 		else
 			master->bus_num = pdev->id = rc;
-
-		for (i = 0; i < ARRAY_SIZE(spi_rsrcs); ++i) {
-			dd->spi_gpios[i] = of_get_gpio_flags(pdev->dev.of_node,
-								i, &flags);
-		}
-
-		for (i = 0; i < ARRAY_SIZE(spi_cs_rsrcs); ++i) {
-			dd->cs_gpios[i].gpio_num = of_get_named_gpio_flags(
-						pdev->dev.of_node, "cs-gpios",
-						i, &flags);
-			dd->cs_gpios[i].valid = 0;
-		}
 	} else {
 		pdata = pdev->dev.platform_data;
 		dd->qup_ver = SPI_QUP_VERSION_NONE;
@@ -2729,7 +2965,7 @@ skip_dma_resources:
 	clk_enabled = 0;
 	pclk_enabled = 0;
 
-	dd->suspended = 0;
+	dd->suspended = 1;
 	dd->transfer_pending = 0;
 	dd->multi_xfr = 0;
 	dd->mode = SPI_MODE_NONE;
@@ -2744,6 +2980,10 @@ skip_dma_resources:
 
 	mutex_unlock(&dd->core_lock);
 	locked = 0;
+
+	pm_runtime_set_autosuspend_delay(&pdev->dev, MSEC_PER_SEC);
+	pm_runtime_use_autosuspend(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
 
 	rc = spi_register_master(master);
 	if (rc)
@@ -2762,6 +3002,7 @@ skip_dma_resources:
 err_attrs:
 	spi_unregister_master(master);
 err_probe_reg_master:
+	pm_runtime_disable(&pdev->dev);
 err_probe_irq:
 err_probe_state:
 	if (dd->dma_teardown)
@@ -2795,48 +3036,136 @@ err_probe_exit:
 }
 
 #ifdef CONFIG_PM
-static int msm_spi_suspend(struct platform_device *pdev, pm_message_t state)
+static int msm_spi_pm_suspend_runtime(struct device *device)
 {
+	struct platform_device *pdev = to_platform_device(device);
 	struct spi_master *master = platform_get_drvdata(pdev);
-	struct msm_spi    *dd;
-	unsigned long      flags;
+	struct msm_spi	  *dd;
+	unsigned long	   flags;
 
+	dev_dbg(device, "pm_runtime: suspending...\n");
 	if (!master)
 		goto suspend_exit;
 	dd = spi_master_get_devdata(master);
 	if (!dd)
 		goto suspend_exit;
 
-	/* Make sure nothing is added to the queue while we're suspending */
+	if (dd->suspended)
+		return 0;
+
+	/*
+	 * Make sure nothing is added to the queue while we're
+	 * suspending
+	 */
 	spin_lock_irqsave(&dd->queue_lock, flags);
 	dd->suspended = 1;
 	spin_unlock_irqrestore(&dd->queue_lock, flags);
 
 	/* Wait for transactions to end, or time out */
-	wait_event_interruptible(dd->continue_suspend, !dd->transfer_pending);
+	wait_event_interruptible(dd->continue_suspend,
+		!dd->transfer_pending);
 
+	msm_spi_disable_irqs(dd);
+	clk_disable_unprepare(dd->clk);
+	clk_disable_unprepare(dd->pclk);
+	if (!dd->pdata->active_only)
+		msm_spi_clk_path_unvote(dd);
+
+	/* Free  the spi clk, miso, mosi, cs gpio */
+	if (dd->pdata && dd->pdata->gpio_release)
+		dd->pdata->gpio_release();
+
+	msm_spi_free_gpios(dd);
+
+	if (pm_qos_request_active(&qos_req_list))
+		pm_qos_update_request(&qos_req_list,
+				PM_QOS_DEFAULT_VALUE);
 suspend_exit:
 	return 0;
 }
 
-static int msm_spi_resume(struct platform_device *pdev)
+static int msm_spi_pm_resume_runtime(struct device *device)
 {
+	struct platform_device *pdev = to_platform_device(device);
 	struct spi_master *master = platform_get_drvdata(pdev);
-	struct msm_spi    *dd;
+	struct msm_spi	  *dd;
+	int ret = 0;
 
+	dev_dbg(device, "pm_runtime: resuming...\n");
 	if (!master)
 		goto resume_exit;
 	dd = spi_master_get_devdata(master);
 	if (!dd)
 		goto resume_exit;
 
+	if (!dd->suspended)
+		return 0;
+
+	if (pm_qos_request_active(&qos_req_list))
+		pm_qos_update_request(&qos_req_list,
+				  dd->pm_lat);
+
+	/* Configure the spi clk, miso, mosi and cs gpio */
+	if (dd->pdata->gpio_config) {
+		ret = dd->pdata->gpio_config();
+		if (ret) {
+			dev_err(dd->dev,
+					"%s: error configuring GPIOs\n",
+					__func__);
+			return ret;
+		}
+	}
+
+	ret = msm_spi_request_gpios(dd);
+	if (ret)
+		return ret;
+
+	msm_spi_clk_path_init(dd);
+	if (!dd->pdata->active_only)
+		msm_spi_clk_path_vote(dd);
+	clk_prepare_enable(dd->clk);
+	clk_prepare_enable(dd->pclk);
+	msm_spi_enable_irqs(dd);
 	dd->suspended = 0;
+
 resume_exit:
+	return 0;
+}
+
+static int msm_spi_suspend(struct device *device)
+{
+	if (!pm_runtime_enabled(device) || !pm_runtime_suspended(device)) {
+		struct platform_device *pdev = to_platform_device(device);
+		struct spi_master *master = platform_get_drvdata(pdev);
+		struct msm_spi   *dd;
+
+		dev_dbg(device, "system suspend");
+		if (!master)
+			goto suspend_exit;
+		dd = spi_master_get_devdata(master);
+		if (!dd)
+			goto suspend_exit;
+		msm_spi_pm_suspend_runtime(device);
+	}
+suspend_exit:
+	return 0;
+}
+
+static int msm_spi_resume(struct device *device)
+{
+	/*
+	 * Rely on runtime-PM to call resume in case it is enabled
+	 * Even if it's not enabled, rely on 1st client transaction to do
+	 * clock ON and gpio configuration
+	 */
+	dev_dbg(device, "system resume");
 	return 0;
 }
 #else
 #define msm_spi_suspend NULL
 #define msm_spi_resume NULL
+#define msm_spi_pm_suspend_runtime NULL
+#define msm_spi_pm_resume_runtime NULL
 #endif /* CONFIG_PM */
 
 static int __devexit msm_spi_remove(struct platform_device *pdev)
@@ -2850,8 +3179,11 @@ static int __devexit msm_spi_remove(struct platform_device *pdev)
 
 	if (dd->dma_teardown)
 		dd->dma_teardown(dd);
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
 	clk_put(dd->clk);
 	clk_put(dd->pclk);
+	msm_spi_clk_path_teardown(dd);
 	destroy_workqueue(dd->workqueue);
 	platform_set_drvdata(pdev, 0);
 	spi_unregister_master(master);
@@ -2867,14 +3199,19 @@ static struct of_device_id msm_spi_dt_match[] = {
 	{}
 };
 
+static const struct dev_pm_ops msm_spi_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(msm_spi_suspend, msm_spi_resume)
+	SET_RUNTIME_PM_OPS(msm_spi_pm_suspend_runtime,
+			msm_spi_pm_resume_runtime, NULL)
+};
+
 static struct platform_driver msm_spi_driver = {
 	.driver		= {
 		.name	= SPI_DRV_NAME,
 		.owner	= THIS_MODULE,
+		.pm		= &msm_spi_dev_pm_ops,
 		.of_match_table = msm_spi_dt_match,
 	},
-	.suspend        = msm_spi_suspend,
-	.resume         = msm_spi_resume,
 	.remove		= __exit_p(msm_spi_remove),
 };
 

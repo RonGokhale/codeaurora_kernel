@@ -45,6 +45,11 @@
 		qcom,direct-connect-irqs = <8>;
 	};
 
+	qcom,msm-imem@fe805000 {
+		compatible = "qcom,msm-imem";
+		reg = <0xfe807800 0x1000>; /* Address and size of IMEM */
+	};
+
 	timer@f9020000 {
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -116,5 +121,20 @@
 		reg = <0xf991f000 0x1000>;
 		interrupts = <0 109 0>;
 		status = "disabled";
+	};
+
+	spi_6: spi@f9928000 { /* BLSP1 QUP6 */
+		cell-index = <0>;
+		compatible = "qcom,spi-qup-v2";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <0xf9928000 0x1000>;
+		interrupts = <0 100 0>;
+		spi-max-frequency = <19200000>;
+
+		gpios = <&msmgpio 23 0>, /* CLK  */
+		<&msmgpio 21 0>, /* MISO */
+		<&msmgpio 20 0>; /* MOSI */
+		cs-gpios = <&msmgpio 22 0>;
 	};
 };

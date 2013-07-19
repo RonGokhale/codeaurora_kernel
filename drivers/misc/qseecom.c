@@ -41,6 +41,7 @@
 #include <mach/subsystem_restart.h>
 #include <mach/socinfo.h>
 #include <mach/qseecomi.h>
+#include <asm/cacheflush.h>
 #include "qseecom_legacy.h"
 #include "qseecom_kernel.h"
 
@@ -515,7 +516,10 @@ static int __qseecom_process_incomplete_cmd(struct qseecom_dev_handle *data,
 		qseecom.send_resp_flag = 0;
 		send_data_rsp.qsee_cmd_id = QSEOS_LISTENER_DATA_RSP_COMMAND;
 		send_data_rsp.listener_id  = lstnr ;
-
+		if (ptr_svc)
+			msm_ion_do_cache_op(qseecom.ion_clnt, ptr_svc->ihandle,
+					ptr_svc->sb_virt, ptr_svc->sb_length,
+						ION_IOC_CLEAN_INV_CACHES);
 		ret = scm_call(SCM_SVC_TZSCHEDULER, 1,
 					(const void *)&send_data_rsp,
 					sizeof(send_data_rsp), resp,
@@ -641,6 +645,8 @@ static int qseecom_load_app(struct qseecom_dev_handle *data, void __user *argp)
 		load_req.mdt_len = load_img_req.mdt_len;
 		load_req.img_len = load_img_req.img_len;
 		load_req.phy_addr = pa;
+		msm_ion_do_cache_op(qseecom.ion_clnt, ihandle, NULL, len,
+					ION_IOC_CLEAN_INV_CACHES);
 
 		/*  SCM_CALL  to load the app and get the app_id back */
 		ret = scm_call(SCM_SVC_TZSCHEDULER, 1,  &load_req,
@@ -880,10 +886,15 @@ static int qseecom_send_service_cmd(struct qseecom_dev_handle *data,
 		pr_err("Unsupported cmd_id %d\n", req.cmd_id);
 		return -EINVAL;
 	}
-
+	msm_ion_do_cache_op(qseecom.ion_clnt, data->client.ihandle,
+				data->client.sb_virt, data->client.sb_length,
+				ION_IOC_CLEAN_INV_CACHES);
 	ret = scm_call(SCM_SVC_TZSCHEDULER, 1, (const void *) &send_svc_ireq,
 					sizeof(send_svc_ireq),
 					&resp, sizeof(resp));
+	msm_ion_do_cache_op(qseecom.ion_clnt, data->client.ihandle,
+				data->client.sb_virt, data->client.sb_length,
+				ION_IOC_INV_CACHES);
 	if (ret) {
 		pr_err("qseecom_scm_call failed with err: %d\n", ret);
 		return ret;
@@ -952,6 +963,11 @@ static int __qseecom_send_cmd(struct qseecom_dev_handle *data,
 					(uint32_t)req->resp_buf));
 	send_data_req.rsp_len = req->resp_len;
 
+	msm_ion_do_cache_op(qseecom.ion_clnt, data->client.ihandle,
+					data->client.sb_virt,
+					(req->cmd_req_len + req->resp_len),
+					ION_IOC_CLEAN_INV_CACHES);
+
 	ret = scm_call(SCM_SVC_TZSCHEDULER, 1, (const void *) &send_data_req,
 					sizeof(send_data_req),
 					&resp, sizeof(resp));
@@ -974,6 +990,9 @@ static int __qseecom_send_cmd(struct qseecom_dev_handle *data,
 			ret = -EINVAL;
 		}
 	}
+	msm_ion_do_cache_op(qseecom.ion_clnt, data->client.ihandle,
+				data->client.sb_virt, data->client.sb_length,
+				ION_IOC_INV_CACHES);
 	return ret;
 }
 
@@ -998,32 +1017,15 @@ static int qseecom_send_cmd(struct qseecom_dev_handle *data, void __user *argp)
 	return ret;
 }
 
-static int __qseecom_send_cmd_req_clean_up(
-			struct qseecom_send_modfd_cmd_req *req)
-{
-	char *field;
-	uint32_t *update;
-	int ret = 0;
-	int i = 0;
-
-	for (i = 0; i < MAX_ION_FD; i++) {
-		if (req->ifd_data[i].fd > 0) {
-			field = (char *)req->cmd_req_buf +
-					req->ifd_data[i].cmd_buf_offset;
-			update = (uint32_t *) field;
-			*update = 0;
-		}
-	}
-	return ret;
-}
-
-static int __qseecom_update_with_phy_addr(
-			struct qseecom_send_modfd_cmd_req *req)
+static int __qseecom_update_cmd_buf(struct qseecom_send_modfd_cmd_req *req,
+								bool cleanup)
 {
 	struct ion_handle *ihandle;
 	char *field;
 	int ret = 0;
 	int i = 0;
+	uint32_t len = 0;
+	struct scatterlist *sg;
 
 	for (i = 0; i < MAX_ION_FD; i++) {
 		struct sg_table *sg_ptr = NULL;
@@ -1054,24 +1056,42 @@ static int __qseecom_update_with_phy_addr(
 					sg_ptr->nents, QSEECOM_MAX_SG_ENTRY);
 				goto err;
 			}
+			sg = sg_ptr->sgl;
 			if (sg_ptr->nents == 1) {
 				uint32_t *update;
 				update = (uint32_t *) field;
-				*update = (uint32_t)sg_dma_address(sg_ptr->sgl);
+				if (cleanup)
+					*update = 0;
+				else
+					*update = (uint32_t)sg_dma_address(
+								sg_ptr->sgl);
+				len += (uint32_t)sg->length;
 			} else {
 				struct qseecom_sg_entry *update;
-				struct scatterlist *sg;
 				int j = 0;
 				update = (struct qseecom_sg_entry *) field;
-				sg = sg_ptr->sgl;
 				for (j = 0; j < sg_ptr->nents; j++) {
-					update->phys_addr = (uint32_t)
-						sg_dma_address(sg);
-					update->len = (uint32_t)sg->length;
+					if (cleanup) {
+						update->phys_addr = 0;
+						update->len = 0;
+					} else {
+						update->phys_addr = (uint32_t)
+							sg_dma_address(sg);
+						update->len = sg->length;
+					}
+					len += sg->length;
 					update++;
 					sg = sg_next(sg);
 				}
 			}
+			if (cleanup)
+				msm_ion_do_cache_op(qseecom.ion_clnt,
+						ihandle, NULL, len,
+						ION_IOC_INV_CACHES);
+			else
+				msm_ion_do_cache_op(qseecom.ion_clnt,
+						ihandle, NULL, len,
+						ION_IOC_CLEAN_INV_CACHES);
 			/* Deallocate the handle */
 			if (!IS_ERR_OR_NULL(ihandle))
 				ion_free(qseecom.ion_clnt, ihandle);
@@ -1101,15 +1121,15 @@ static int qseecom_send_modfd_cmd(struct qseecom_dev_handle *data,
 	send_cmd_req.resp_buf = req.resp_buf;
 	send_cmd_req.resp_len = req.resp_len;
 
-	ret = __qseecom_update_with_phy_addr(&req);
+	ret = __qseecom_update_cmd_buf(&req, false);
 	if (ret)
 		return ret;
-
 	ret = __qseecom_send_cmd(data, &send_cmd_req);
-	__qseecom_send_cmd_req_clean_up(&req);
 	if (ret)
 		return ret;
-
+	ret = __qseecom_update_cmd_buf(&req, true);
+	if (ret)
+		return ret;
 	pr_debug("sending cmd_req->rsp size: %u, ptr: 0x%p\n",
 			req.resp_len, req.resp_buf);
 	return ret;
@@ -1298,6 +1318,7 @@ static int __qseecom_load_fw(struct qseecom_dev_handle *data, char *appname)
 		return -EIO;
 	}
 
+	__cpuc_flush_dcache_area((void *)img_data, fw_size);
 	/* SCM_CALL to load the image */
 	ret = scm_call(SCM_SVC_TZSCHEDULER, 1,	&load_req,
 			sizeof(struct qseecom_load_app_ireq),
@@ -1364,6 +1385,7 @@ static int qseecom_load_commonlib_image(struct qseecom_dev_handle *data)
 		return -EIO;
 	}
 
+	__cpuc_flush_dcache_area((void *)img_data, fw_size);
 	/* SCM_CALL to load the image */
 	ret = scm_call(SCM_SVC_TZSCHEDULER, 1, &load_req,
 				sizeof(struct qseecom_load_lib_image_ireq),
@@ -1995,7 +2017,8 @@ static int qseecom_load_external_elf(struct qseecom_dev_handle *data,
 		ret = -EIO;
 		goto qseecom_load_external_elf_set_cpu_err;
 	}
-
+	msm_ion_do_cache_op(qseecom.ion_clnt, ihandle, NULL, len,
+				ION_IOC_CLEAN_INV_CACHES);
 	/*  SCM_CALL to load the external elf */
 	ret = scm_call(SCM_SVC_TZSCHEDULER, 1,  &load_req,
 			sizeof(struct qseecom_load_app_ireq),
@@ -2508,7 +2531,7 @@ static int qseecom_save_partition_hash(void __user *argp)
 	ret = scm_call(SCM_SVC_ES, SCM_SAVE_PARTITION_HASH_ID,
 		       (void *) &req, sizeof(req), NULL, 0);
 	if (ret) {
-		pr_err("scm_call failed");
+		pr_err("qseecom_scm_call failed");
 		return ret;
 	}
 

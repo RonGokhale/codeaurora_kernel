@@ -754,6 +754,10 @@ struct hal_nal_stream_format_supported {
 	u32 nal_stream_format_supported;
 };
 
+struct hal_nal_stream_format_select {
+	u32 nal_stream_format_select;
+};
+
 struct hal_multi_view_format {
 	u32 views;
 	u32 rg_view_order[1];
@@ -1077,6 +1081,7 @@ struct hfi_device {
 		int height,	int *stride, int *scanlines);
 	int (*capability_check)(u32 fourcc, u32 width,
 		u32 *max_width, u32 *max_height);
+	int (*session_clean)(void *sess);
 };
 
 typedef void (*hfi_cmd_response_callback) (enum command_response cmd,

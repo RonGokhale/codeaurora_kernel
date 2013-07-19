@@ -15,6 +15,7 @@ dallas	Maxim Integrated Products (formerly Dallas Semiconductor)
 denx	Denx Software Engineering
 epson	Seiko Epson Corp.
 est	ESTeem Wireless Modems
+focaltech Focaltech systems
 fsl	Freescale Semiconductor
 GEFanuc	GE Fanuc Intelligent Platforms Embedded Systems, Inc.
 gef	GE Fanuc Intelligent Platforms Embedded Systems, Inc.
@@ -23,6 +24,7 @@ ibm	International Business Machines (IBM)
 idt	Integrated Device Technologies, Inc.
 intercontrol	Inter Control Group
 linux	Linux-specific binding
+kionix	Kionix Inc.
 marvell	Marvell Technology Group Ltd.
 maxim	Maxim Integrated Products
 mosaixtech	Mosaix Technologies, Inc.
@@ -38,6 +40,7 @@ realtek Realtek Semiconductor Corp.
 samsung	Samsung Semiconductor
 sbs	Smart Battery System
 schindler	Schindler
+shinetech	Shine Tech Corporation, Ltd.
 sil	Silicon Image
 simtek
 sirf	SiRF Technology, Inc.

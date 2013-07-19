@@ -190,6 +190,7 @@ static u32 igc_limited[IGC_LUT_ENTRIES] = {
 #define PP_AD_STATE_DATA	0x8
 #define PP_AD_STATE_RUN		0x10
 #define PP_AD_STATE_VSYNC	0x20
+#define PP_AD_STATE_BL_LIN	0x40
 
 #define PP_AD_STATE_IS_INITCFG(st)	(((st) & PP_AD_STATE_INIT) &&\
 						((st) & PP_AD_STATE_CFG))
@@ -217,6 +218,8 @@ static u32 igc_limited[IGC_LUT_ENTRIES] = {
 #define MDSS_AD_MODE_DATA_MATCH(mode, data) ((1 << (mode)) & (data))
 #define MDSS_AD_RUNNING_AUTO_BL(ad) (((ad)->state & PP_AD_STATE_RUN) &&\
 				((ad)->cfg.mode == MDSS_AD_MODE_AUTO_BL))
+#define MDSS_AD_RUNNING_AUTO_STR(ad) (((ad)->state & PP_AD_STATE_RUN) &&\
+				((ad)->cfg.mode == MDSS_AD_MODE_AUTO_STR))
 
 #define SHARP_STRENGTH_DEFAULT	32
 #define SHARP_EDGE_THR_DEFAULT	112
@@ -285,7 +288,8 @@ static void pp_sharp_config(char __iomem *offset,
 				struct pp_sts_type *pp_sts,
 				struct mdp_sharp_cfg *sharp_config);
 static int mdss_ad_init_checks(struct msm_fb_data_type *mfd);
-static struct mdss_ad_info *mdss_mdp_get_ad(struct msm_fb_data_type *mfd);
+static int mdss_mdp_get_ad(struct msm_fb_data_type *mfd,
+					struct mdss_ad_info **ad);
 static int pp_update_ad_input(struct msm_fb_data_type *mfd);
 static void pp_ad_vsync_handler(struct mdss_mdp_ctl *ctl, ktime_t t);
 static void pp_ad_cfg_write(struct mdss_ad_info *ad);
@@ -603,39 +607,6 @@ static int pp_vig_pipe_setup(struct mdss_mdp_pipe *pipe, u32 *op)
 	return 0;
 }
 
-static int mdss_mdp_leading_zero(u32 num)
-{
-	u32 bit = 0x80000000;
-	int i;
-
-	for (i = 0; i < 32; i++) {
-		if (bit & num)
-			return i;
-		bit >>= 1;
-	}
-
-	return i;
-}
-
-static u32 mdss_mdp_scale_phase_step(int f_num, u32 src, u32 dst)
-{
-	u32 val, s;
-	int n;
-
-	n = mdss_mdp_leading_zero(src);
-	if (n > f_num)
-		n = f_num;
-	s = src << n;	/* maximum to reduce lose of resolution */
-	val = s / dst;
-	if (n < f_num) {
-		n = f_num - n;
-		val <<= n;
-		val |= ((s % dst) << n) / dst;
-	}
-
-	return val;
-}
-
 static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 {
 	u32 scale_config = 0;
@@ -701,13 +672,14 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 		}
 
 		scale_config |= MDSS_MDP_SCALEY_EN;
+		phasey_step = pipe->phase_step_y;
 
 		if (pipe->type == MDSS_MDP_PIPE_TYPE_VIG) {
-			u32 chr_dst_h = pipe->dst.h;
+			u32 chroma_shift = 0;
 			if (!pipe->vert_deci &&
 			    ((chroma_sample == MDSS_MDP_CHROMA_420) ||
 			    (chroma_sample == MDSS_MDP_CHROMA_H1V2)))
-				chr_dst_h *= 2;	/* 2x upsample chroma */
+				chroma_shift = 1; /* 2x upsample chroma */
 
 			if (src_h <= pipe->dst.h) {
 				scale_config |= /* G/Y, A */
@@ -718,17 +690,14 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 					(MDSS_MDP_SCALE_FILTER_PCMN << 10) |
 					(MDSS_MDP_SCALE_FILTER_PCMN << 18);
 
-			if (src_h <= chr_dst_h)
+			if ((src_h >> chroma_shift) <= pipe->dst.h)
 				scale_config |= /* CrCb */
 					(MDSS_MDP_SCALE_FILTER_BIL << 14);
 			else
 				scale_config |= /* CrCb */
 					(MDSS_MDP_SCALE_FILTER_PCMN << 14);
 
-			phasey_step = mdss_mdp_scale_phase_step(
-				PHASE_STEP_SHIFT, src_h, chr_dst_h);
-
-			writel_relaxed(phasey_step, pipe->base +
+			writel_relaxed(phasey_step >> chroma_shift, pipe->base +
 				MDSS_MDP_REG_VIG_QSEED2_C12_PHASESTEPY);
 		} else {
 			if (src_h <= pipe->dst.h)
@@ -740,9 +709,6 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 					(MDSS_MDP_SCALE_FILTER_PCMN << 10) |
 					(MDSS_MDP_SCALE_FILTER_PCMN << 18);
 		}
-
-		phasey_step = mdss_mdp_scale_phase_step(
-			PHASE_STEP_SHIFT, src_h, pipe->dst.h);
 	}
 
 	if ((src_w != pipe->dst.w) ||
@@ -758,14 +724,15 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 		}
 
 		scale_config |= MDSS_MDP_SCALEX_EN;
+		phasex_step = pipe->phase_step_x;
 
 		if (pipe->type == MDSS_MDP_PIPE_TYPE_VIG) {
-			u32 chr_dst_w = pipe->dst.w;
+			u32 chroma_shift = 0;
 
 			if (!pipe->horz_deci &&
 			    ((chroma_sample == MDSS_MDP_CHROMA_420) ||
 			    (chroma_sample == MDSS_MDP_CHROMA_H2V1)))
-				chr_dst_w *= 2;	/* 2x upsample chroma */
+				chroma_shift = 1; /* 2x upsample chroma */
 
 			if (src_w <= pipe->dst.w) {
 				scale_config |= /* G/Y, A */
@@ -776,16 +743,14 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 					(MDSS_MDP_SCALE_FILTER_PCMN << 8) |
 					(MDSS_MDP_SCALE_FILTER_PCMN << 16);
 
-			if (src_w <= chr_dst_w)
+			if ((src_w >> chroma_shift) <= pipe->dst.w)
 				scale_config |= /* CrCb */
 					(MDSS_MDP_SCALE_FILTER_BIL << 12);
 			else
 				scale_config |= /* CrCb */
 					(MDSS_MDP_SCALE_FILTER_PCMN << 12);
 
-			phasex_step = mdss_mdp_scale_phase_step(
-				PHASE_STEP_SHIFT, src_w, chr_dst_w);
-			writel_relaxed(phasex_step, pipe->base +
+			writel_relaxed(phasex_step >> chroma_shift, pipe->base +
 				MDSS_MDP_REG_VIG_QSEED2_C12_PHASESTEPX);
 		} else {
 			if (src_w <= pipe->dst.w)
@@ -797,9 +762,6 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 					(MDSS_MDP_SCALE_FILTER_PCMN << 8) |
 					(MDSS_MDP_SCALE_FILTER_PCMN << 16);
 		}
-
-		phasex_step = mdss_mdp_scale_phase_step(
-			PHASE_STEP_SHIFT, src_w, pipe->dst.w);
 	}
 
 	writel_relaxed(scale_config, pipe->base +
@@ -1019,6 +981,8 @@ static int pp_dspp_setup(u32 disp_num, struct mdss_mdp_mixer *mixer)
 	int i, ret = 0;
 	struct mdss_data_type *mdata;
 	struct mdss_mdp_ctl *ctl;
+	u32 mixer_cnt;
+	u32 mixer_id[MDSS_MDP_INTF_MAX_LAYERMIXER];
 
 	if (!mixer || !mixer->ctl || !mixer->ctl->mdata)
 		return -EINVAL;
@@ -1043,11 +1007,17 @@ static int pp_dspp_setup(u32 disp_num, struct mdss_mdp_mixer *mixer)
 	else
 		flags = 0;
 
-	if (dspp_num < mdata->nad_cfgs) {
+	mixer_cnt = mdss_mdp_get_ctl_mixers(disp_num, mixer_id);
+	if (dspp_num < mdata->nad_cfgs && (mixer_cnt != 2) &&
+			ctl->mfd->panel_info->type != MIPI_CMD_PANEL) {
 		ret = mdss_mdp_ad_setup(ctl->mfd);
 		if (ret < 0)
 			pr_warn("ad_setup(dspp%d) returns %d", dspp_num, ret);
 	}
+	/* call calibration specific processing here */
+	if (ctl->mfd->calib_mode)
+		goto flush_exit;
+
 	/* nothing to update */
 	if ((!flags) && (!(opmode)) && (ret <= 0))
 		goto dspp_exit;
@@ -1138,6 +1108,7 @@ static int pp_dspp_setup(u32 disp_num, struct mdss_mdp_mixer *mixer)
 	if (pp_sts->pgc_sts & PP_STS_ENABLE)
 		opmode |= (1 << 22);
 
+flush_exit:
 	writel_relaxed(opmode, basel + MDSS_MDP_REG_DSPP_OP_MODE);
 	mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_FLUSH, BIT(13 + dspp_num));
 	wmb();
@@ -1199,7 +1170,7 @@ int mdss_mdp_pp_setup_locked(struct mdss_mdp_ctl *ctl)
  */
 int mdss_mdp_pp_resume(struct mdss_mdp_ctl *ctl, u32 dspp_num)
 {
-	u32 flags = 0, disp_num;
+	u32 flags = 0, disp_num, bl;
 	struct pp_sts_type pp_sts;
 	struct mdss_ad_info *ad;
 	struct mdss_data_type *mdata = ctl->mdata;
@@ -1216,8 +1187,15 @@ int mdss_mdp_pp_resume(struct mdss_mdp_ctl *ctl, u32 dspp_num)
 			pp_ad_cfg_write(ad);
 		if (PP_AD_STATE_INIT & ad->state)
 			pp_ad_init_write(ad);
-		if (PP_AD_STATE_DATA & ad->state)
-			pp_ad_input_write(ad, ctl->mfd->bl_level);
+		if (PP_AD_STATE_DATA & ad->state) {
+			bl = ctl->mfd->bl_level;
+			ad->last_bl = bl;
+			if (ad->state & PP_AD_STATE_BL_LIN) {
+				bl = ad->bl_lin[bl >> ad->bl_bright_shift];
+				bl = bl << ad->bl_bright_shift;
+			}
+			pp_ad_input_write(ad, bl);
+		}
 		if ((PP_AD_STATE_VSYNC & ad->state) && ad->calc_itr)
 			ctl->add_vsync_handler(ctl, &ad->handle);
 	}
@@ -1650,6 +1628,9 @@ int mdss_mdp_igc_lut_config(struct mdss_mdp_ctl *ctl,
 
 	if ((config->block < MDP_LOGICAL_BLOCK_DISP_0) ||
 		(config->block >= MDP_BLOCK_MAX))
+		return -EINVAL;
+
+	if (config->len != IGC_LUT_ENTRIES)
 		return -EINVAL;
 
 	mutex_lock(&mdss_pp_mutex);
@@ -2526,7 +2507,7 @@ int mdss_mdp_hist_collect(struct mdss_mdp_ctl *ctl,
 				hist_info = &mdss_pp_res->dspp_hist[dspp_num];
 				mutex_lock(&hist_info->hist_mutex);
 				for (j = 0; j < HIST_V_SIZE; j++)
-					hist_concat[i] += hist_info->data[i];
+					hist_concat[j] += hist_info->data[j];
 				mutex_unlock(&hist_info->hist_mutex);
 			}
 			hist_data_addr = hist_concat;
@@ -2709,8 +2690,12 @@ static int mdss_ad_init_checks(struct msm_fb_data_type *mfd)
 	}
 
 	mixer_num = mdss_mdp_get_ctl_mixers(mfd->index, mixer_id);
-	if (!mixer_num || mixer_num > MDSS_AD_MAX_MIXERS) {
-		pr_err("invalid mixer_num, %d", mixer_num);
+	if (!mixer_num) {
+		pr_debug("no mixers connected, %d", mixer_num);
+		return -EHOSTDOWN;
+	}
+	if (mixer_num > MDSS_AD_MAX_MIXERS) {
+		pr_warn("too many mixers, not supported, %d", mixer_num);
 		return ret;
 	}
 
@@ -2725,9 +2710,10 @@ static int mdss_ad_init_checks(struct msm_fb_data_type *mfd)
 	return mixer_id[0];
 }
 
-static struct mdss_ad_info *mdss_mdp_get_ad(struct msm_fb_data_type *mfd)
+static int mdss_mdp_get_ad(struct msm_fb_data_type *mfd,
+					struct mdss_ad_info **ret_ad)
 {
-	int ad_num;
+	int ad_num, ret = 0;
 	struct mdss_data_type *mdata;
 	struct mdss_ad_info *ad = NULL;
 	mdata = mfd_to_mdata(mfd);
@@ -2735,19 +2721,33 @@ static struct mdss_ad_info *mdss_mdp_get_ad(struct msm_fb_data_type *mfd)
 	ad_num = mdss_ad_init_checks(mfd);
 	if (ad_num >= 0)
 		ad = &mdata->ad_cfgs[ad_num];
-	return ad;
+	else
+		ret = ad_num;
+	*ret_ad = ad;
+	return ret;
 }
 
 static int pp_update_ad_input(struct msm_fb_data_type *mfd)
 {
+	int ret;
 	struct mdss_ad_info *ad;
 	struct mdss_ad_input input;
+	struct mdss_mdp_ctl *ctl;
 
-	ad = mdss_mdp_get_ad(mfd);
-	if (!ad)
+	if (!mfd)
+		return -EINVAL;
+	ctl = mfd_to_ctl(mfd);
+	if (!ctl)
 		return -EINVAL;
 
-	pr_debug("backlight level changed, trigger update to AD");
+	ret = mdss_mdp_get_ad(mfd, &ad);
+	if (ret)
+		return ret;
+	if (!ad || ad->cfg.mode == MDSS_AD_MODE_AUTO_BL)
+		return -EINVAL;
+
+	pr_debug("backlight level changed (%d), trigger update to AD",
+						mfd->bl_level);
 	input.mode = ad->cfg.mode;
 	if (MDSS_AD_MODE_DATA_MATCH(ad->cfg.mode, MDSS_AD_INPUT_AMBIENT))
 		input.in.amb_light = ad->ad_data;
@@ -2762,15 +2762,40 @@ int mdss_mdp_ad_config(struct msm_fb_data_type *mfd,
 {
 	struct mdss_ad_info *ad;
 	struct mdss_mdp_ctl *ctl;
+	int lin_ret = -1, inv_ret = -1, ret = 0;
+	u32 ratio_temp, shift = 0;
 
-	ad = mdss_mdp_get_ad(mfd);
-	if (!ad)
-		return -EINVAL;
+	ret = mdss_mdp_get_ad(mfd, &ad);
+	if (ret)
+		return ret;
 
 	mutex_lock(&ad->lock);
 	if (init_cfg->ops & MDP_PP_AD_INIT) {
 		memcpy(&ad->init, &init_cfg->params.init,
 				sizeof(struct mdss_ad_init));
+		if (init_cfg->params.init.bl_lin_len == AD_BL_LIN_LEN) {
+			lin_ret = copy_from_user(&ad->bl_lin,
+				init_cfg->params.init.bl_lin,
+				AD_BL_LIN_LEN * sizeof(uint32_t));
+			inv_ret = copy_from_user(&ad->bl_lin_inv,
+				init_cfg->params.init.bl_lin_inv,
+				AD_BL_LIN_LEN * sizeof(uint32_t));
+			if (lin_ret || inv_ret)
+				ret = -ENOMEM;
+			ratio_temp =  mfd->panel_info->bl_max / AD_BL_LIN_LEN;
+			while (ratio_temp > 0) {
+				ratio_temp = ratio_temp >> 1;
+				shift++;
+			}
+			ad->bl_bright_shift = shift;
+		} else if (init_cfg->params.init.bl_lin_len) {
+			ret = -EINVAL;
+		}
+		if (!lin_ret && !inv_ret)
+			ad->state |= PP_AD_STATE_BL_LIN;
+		else
+			ad->state &= !PP_AD_STATE_BL_LIN;
+
 		ad->sts |= PP_AD_STS_DIRTY_INIT;
 	} else if (init_cfg->ops & MDP_PP_AD_CFG) {
 		memcpy(&ad->cfg, &init_cfg->params.cfg,
@@ -2783,17 +2808,21 @@ int mdss_mdp_ad_config(struct msm_fb_data_type *mfd,
 		ad->sts |= PP_AD_STS_DIRTY_CFG;
 	}
 
-	if (init_cfg->ops & MDP_PP_OPS_DISABLE) {
+	if (!ret && (init_cfg->ops & MDP_PP_OPS_DISABLE)) {
 		ad->sts &= ~PP_STS_ENABLE;
+		mutex_unlock(&ad->lock);
+		cancel_work_sync(&ad->calc_work);
+		mutex_lock(&ad->lock);
 		ad->mfd = NULL;
-	} else if (init_cfg->ops & MDP_PP_OPS_ENABLE) {
+	} else if (!ret && (init_cfg->ops & MDP_PP_OPS_ENABLE)) {
 		ad->sts |= PP_STS_ENABLE;
 		ad->mfd = mfd;
 	}
 	mutex_unlock(&ad->lock);
 	ctl = mfd_to_ctl(mfd);
-	mdss_mdp_pp_setup(ctl);
-	return 0;
+	if (!ret)
+		mdss_mdp_pp_setup(ctl);
+	return ret;
 }
 
 int mdss_mdp_ad_input(struct msm_fb_data_type *mfd,
@@ -2801,14 +2830,16 @@ int mdss_mdp_ad_input(struct msm_fb_data_type *mfd,
 	int ret = 0;
 	struct mdss_ad_info *ad;
 	struct mdss_mdp_ctl *ctl;
+	u32 bl;
 
-	ad = mdss_mdp_get_ad(mfd);
-	if (!ad)
-		return -EINVAL;
+	ret = mdss_mdp_get_ad(mfd, &ad);
+	if (ret)
+		return ret;
 
 	mutex_lock(&ad->lock);
-	if (!PP_AD_STATE_IS_INITCFG(ad->state) &&
-			!PP_AD_STS_IS_DIRTY(ad->sts)) {
+	if ((!PP_AD_STATE_IS_INITCFG(ad->state) &&
+			!PP_AD_STS_IS_DIRTY(ad->sts)) &&
+			!input->mode == MDSS_AD_MODE_CALIB) {
 		pr_warn("AD not initialized or configured.");
 		ret = -EPERM;
 		goto error;
@@ -2840,6 +2871,25 @@ int mdss_mdp_ad_input(struct msm_fb_data_type *mfd,
 		ad->calc_itr = ad->cfg.stab_itr;
 		ad->sts |= PP_AD_STS_DIRTY_VSYNC;
 		ad->sts |= PP_AD_STS_DIRTY_DATA;
+		break;
+	case MDSS_AD_MODE_CALIB:
+		wait = 0;
+		if (mfd->calib_mode) {
+			bl = input->in.calib_bl;
+			if (bl >= AD_BL_LIN_LEN) {
+				pr_warn("calib_bl 255 max!");
+				break;
+			}
+			mutex_unlock(&ad->lock);
+			mutex_lock(&mfd->bl_lock);
+			MDSS_BRIGHT_TO_BL(bl, bl, mfd->panel_info->bl_max,
+							MDSS_MAX_BL_BRIGHTNESS);
+			mdss_fb_set_backlight(mfd, bl);
+			mutex_unlock(&mfd->bl_lock);
+			mutex_lock(&ad->lock);
+		} else {
+			pr_warn("should be in calib mode");
+		}
 		break;
 	default:
 		pr_warn("invalid default %d", input->mode);
@@ -2992,11 +3042,11 @@ static int mdss_mdp_ad_setup(struct msm_fb_data_type *mfd)
 	struct mdss_ad_info *ad;
 	struct mdss_mdp_ctl *ctl = mfd_to_ctl(mfd);
 	char __iomem *base;
-	u32 bypass = MDSS_PP_AD_BYPASS_DEF;
+	u32 bypass = MDSS_PP_AD_BYPASS_DEF, bl;
 
-	ad = mdss_mdp_get_ad(mfd);
-	if (!ad)
-		return -EINVAL;
+	ret = mdss_mdp_get_ad(mfd, &ad);
+	if (ret)
+		return ret;
 
 	base = ad->base;
 
@@ -3008,9 +3058,7 @@ static int mdss_mdp_ad_setup(struct msm_fb_data_type *mfd)
 								ad->state);
 	}
 	if (!PP_AD_STS_IS_DIRTY(ad->sts) &&
-		(ad->sts & PP_AD_STS_DIRTY_DATA ||
-			(ad->state & PP_AD_STATE_RUN &&
-				(ad->cfg.mode == MDSS_AD_MODE_AUTO_STR)))) {
+		(ad->sts & PP_AD_STS_DIRTY_DATA)) {
 		/*
 		 * Write inputs to regs when the data has been updated or
 		 * Assertive Display is up and running as long as there are
@@ -3018,12 +3066,22 @@ static int mdss_mdp_ad_setup(struct msm_fb_data_type *mfd)
 		 */
 		ad->sts &= ~PP_AD_STS_DIRTY_DATA;
 		ad->state |= PP_AD_STATE_DATA;
-		if (mfd->bl_level != ad->last_bl) {
-			ad->last_bl = mfd->bl_level;
-			ad->calc_itr = ad->cfg.stab_itr;
-			ad->sts |= PP_AD_STS_DIRTY_VSYNC;
+		bl = 0;
+		if (MDSS_AD_RUNNING_AUTO_STR(ad) || ad->last_bl == 0) {
+			mutex_lock(&mfd->bl_lock);
+			bl = mfd->bl_level;
+			if (bl != ad->last_bl) {
+				ad->last_bl = bl;
+				ad->calc_itr = ad->cfg.stab_itr;
+				ad->sts |= PP_AD_STS_DIRTY_VSYNC;
+			}
+			if (ad->state & PP_AD_STATE_BL_LIN) {
+				bl = ad->bl_lin[bl >> ad->bl_bright_shift];
+				bl = bl << ad->bl_bright_shift;
+			}
+			mutex_unlock(&mfd->bl_lock);
 		}
-		pp_ad_input_write(ad, mfd->bl_level);
+		pp_ad_input_write(ad, bl);
 	}
 
 	if (ad->sts & PP_AD_STS_DIRTY_CFG) {
@@ -3050,14 +3108,32 @@ static int mdss_mdp_ad_setup(struct msm_fb_data_type *mfd)
 		ad->state |= PP_AD_STATE_RUN;
 		mutex_lock(&mfd->bl_lock);
 		mfd->mdp.update_ad_input = pp_update_ad_input;
+		mfd->ext_bl_ctrl = ad->cfg.bl_ctrl_mode;
 		mutex_unlock(&mfd->bl_lock);
 
 	} else {
 		if (ad->state & PP_AD_STATE_RUN) {
 			ret = 1;
+			/* Clear state and regs when going to off state*/
+			ad->sts = 0;
 			ad->sts |= PP_AD_STS_DIRTY_VSYNC;
+			ad->state &= !PP_AD_STATE_INIT;
+			ad->state &= !PP_AD_STATE_CFG;
+			ad->state &= !PP_AD_STATE_DATA;
+			ad->state &= !PP_AD_STATE_BL_LIN;
+			ad->bl_bright_shift = 0;
+			ad->ad_data = 0;
+			ad->ad_data_mode = 0;
+			ad->calc_itr = 0;
+			memset(&ad->bl_lin, 0, sizeof(uint32_t) *
+								AD_BL_LIN_LEN);
+			memset(&ad->bl_lin_inv, 0, sizeof(uint32_t) *
+								AD_BL_LIN_LEN);
+			memset(&ad->init, 0, sizeof(struct mdss_ad_init));
+			memset(&ad->cfg, 0, sizeof(struct mdss_ad_cfg));
 			mutex_lock(&mfd->bl_lock);
 			mfd->mdp.update_ad_input = NULL;
+			mfd->ext_bl_ctrl = 0;
 			mutex_unlock(&mfd->bl_lock);
 		}
 		ad->state &= ~PP_AD_STATE_RUN;
@@ -3067,7 +3143,8 @@ static int mdss_mdp_ad_setup(struct msm_fb_data_type *mfd)
 	if (PP_AD_STS_DIRTY_VSYNC & ad->sts) {
 		pr_debug("dirty vsync, calc_itr = %d", ad->calc_itr);
 		ad->sts &= ~PP_AD_STS_DIRTY_VSYNC;
-		if (!(PP_AD_STATE_VSYNC & ad->state) && ad->calc_itr) {
+		if (!(PP_AD_STATE_VSYNC & ad->state) && ad->calc_itr &&
+					(ad->state & PP_AD_STATE_RUN)) {
 			ctl->add_vsync_handler(ctl, &ad->handle);
 			ad->state |= PP_AD_STATE_VSYNC;
 		} else if ((PP_AD_STATE_VSYNC & ad->state) &&
@@ -3092,11 +3169,18 @@ static void pp_ad_calc_worker(struct work_struct *work)
 {
 	struct mdss_ad_info *ad;
 	struct mdss_mdp_ctl *ctl;
+	struct msm_fb_data_type *mfd;
 	u32 bl, calc_done = 0;
 	ad = container_of(work, struct mdss_ad_info, calc_work);
-	ctl = mfd_to_ctl(ad->mfd);
 
 	mutex_lock(&ad->lock);
+	if (!ad->mfd || !(ad->sts & PP_STS_ENABLE)) {
+		mutex_unlock(&ad->lock);
+		return;
+	}
+	mfd = ad->mfd;
+	ctl = mfd_to_ctl(ad->mfd);
+
 	if (PP_AD_STATE_RUN & ad->state) {
 		/* Kick off calculation */
 		ad->calc_itr--;
@@ -3115,6 +3199,13 @@ static void pp_ad_calc_worker(struct work_struct *work)
 			if (MDSS_AD_RUNNING_AUTO_BL(ad)) {
 				bl = 0xFFFF & readl_relaxed(ad->base +
 						MDSS_MDP_REG_AD_BL_OUT);
+				if (ad->state & PP_AD_STATE_BL_LIN) {
+					bl = bl >> ad->bl_bright_shift;
+					bl = min_t(u32, bl,
+						MDSS_MAX_BL_BRIGHTNESS);
+					bl = ad->bl_lin_inv[bl];
+					bl = bl << ad->bl_bright_shift;
+				}
 				pr_debug("calc bl = %d", bl);
 				ad->last_str |= bl << 16;
 				mutex_lock(&ad->mfd->bl_lock);
@@ -3135,9 +3226,12 @@ static void pp_ad_calc_worker(struct work_struct *work)
 		ctl->remove_vsync_handler(ctl, &ad->handle);
 	}
 	mutex_unlock(&ad->lock);
-	mutex_lock(&ad->mfd->lock);
+	mutex_lock(&mfd->lock);
 	mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_FLUSH, BIT(13 + ad->num));
-	mutex_unlock(&ad->mfd->lock);
+	mutex_unlock(&mfd->lock);
+
+	/* Trigger update notify to wake up those waiting for display updates */
+	mdss_fb_update_notify_update(mfd);
 }
 
 #define PP_AD_LUT_LEN 33
@@ -3180,4 +3274,97 @@ int mdss_mdp_ad_addr_setup(struct mdss_data_type *mdata, u32 *ad_off)
 		INIT_WORK(&mdata->ad_cfgs[i].calc_work, pp_ad_calc_worker);
 	}
 	return rc;
+}
+
+static int is_valid_calib_addr(void *addr)
+{
+	int ret = 0;
+	unsigned int ptr;
+	ptr = (unsigned int) addr;
+	/* if request is outside the MDP reg-map or is not aligned 4 */
+	if (ptr == 0x0 || ptr > 0x5138 || ptr % 0x4)
+		goto end;
+	if (ptr >= 0x100 && ptr <= 0x5138) {
+		/* if ptr is in dspp range */
+		if (ptr >= 0x4600 && ptr <= 0x5138) {
+			/* if ptr is in dspp0 range*/
+			if (ptr >= 0x4600 && ptr <= 0x4938)
+				ptr -= 0x4600;
+			/* if ptr is in dspp1 range */
+			else if (ptr >= 0x4a00 && ptr <= 0x4d38)
+				ptr -= 0x4a00;
+			/* if ptr is in dspp2 range */
+			else if (ptr >= 0x4e00 && ptr <= 0x5138)
+				ptr -= 0x4e00;
+			/* if ptr is in pcc plane rgb coeff.range */
+			if (ptr >= 0x30 && ptr <= 0xe8)
+				ret = 1;
+			/* if ptr is in ARLUT red range */
+			else if (ptr >= 0x2b0 && ptr <= 0x2b8)
+				ret = 1;
+			/* if ptr is in PA range */
+			else if (ptr >= 0x238 && ptr <= 0x244)
+				ret = 1;
+			 /* if ptr is in ARLUT green range */
+			else if (ptr >= 0x2c0 && ptr <= 0x2c8)
+				ret = 1;
+			/* if ptr is in ARLUT blue range or
+			    gamut map table range */
+			else if (ptr >= 0x2d0 && ptr <= 0x338)
+				ret = 1;
+			/* if ptr is dspp0,dspp1,dspp2 op mode
+						register */
+			else if (ptr == 0)
+				ret = 1;
+		} else if (ptr >= 0x600 && ptr <= 0x608)
+				ret = 1;
+		else if (ptr >= 0x400 && ptr <= 0x408)
+				ret = 1;
+		else if ((ptr == 0x1830) || (ptr == 0x1c30) ||
+				(ptr == 0x1430) || (ptr == 0x1e38))
+				ret = 1;
+		else if ((ptr == 0x1e3c) || (ptr == 0x1e30))
+				ret = 1;
+		else if (ptr >= 0x3220 && ptr <= 0x3228)
+				ret = 1;
+		else if (ptr >= 0x3200 || ptr == 0x100)
+				ret = 1;
+	}
+end:
+	return ret;
+}
+
+int mdss_mdp_calib_config(struct mdp_calib_config_data *cfg, u32 *copyback)
+{
+	int ret = -1;
+	void *ptr = (void *) cfg->addr;
+
+	if (is_valid_calib_addr(ptr))
+		ret = 0;
+	else
+		return ret;
+	ptr = (void *)(((unsigned int) ptr) + (mdss_res->mdp_base));
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
+
+	if (cfg->ops & MDP_PP_OPS_READ) {
+		cfg->data = readl_relaxed(ptr);
+		*copyback = 1;
+		ret = 0;
+	} else if (cfg->ops & MDP_PP_OPS_WRITE) {
+		writel_relaxed(cfg->data, ptr);
+		ret = 0;
+	}
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
+	return ret;
+}
+
+int mdss_mdp_calib_mode(struct msm_fb_data_type *mfd,
+				struct mdss_calib_cfg *cfg)
+{
+	if (!mdss_pp_res || !mfd)
+		return -EINVAL;
+	mutex_lock(&mdss_pp_mutex);
+	mfd->calib_mode = cfg->calib_mask;
+	mutex_unlock(&mdss_pp_mutex);
+	return 0;
 }

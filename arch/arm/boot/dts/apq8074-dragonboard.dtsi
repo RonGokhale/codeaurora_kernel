@@ -11,15 +11,17 @@
  */
 
 /include/ "dsi-panel-sharp-qhd-video.dtsi"
+/include/ "msm8974-camera-sensor-dragonboard.dtsi"
 /include/ "msm8974-leds.dtsi"
 
-/ {
+&soc {
 	serial@f991e000 {
 		status = "ok";
 	};
 
 	qcom,mdss_dsi_sharp_qhd_video {
 		status = "ok";
+		qcom,cont-splash-enabled;
 	};
 
 	qcom,hdmi_tx@fd922100 {
@@ -197,6 +199,26 @@
 			"MIC BIAS4 External", "Digital Mic5",
 			"DMIC6", "MIC BIAS4 External",
 			"MIC BIAS4 External", "Digital Mic6";
+	};
+
+	qcom,pronto@fb21b000 {
+		status = "disabled";
+	};
+
+	qcom,iris-fm {
+		status = "disabled";
+	};
+
+	qcom,wcnss-wlan@fb000000 {
+		status = "disabled";
+	};
+
+	qcom,smd-wcnss {
+		status = "disabled";
+	};
+
+	qcom,smsm-wcnss {
+		status = "disabled";
 	};
 };
 
@@ -539,12 +561,12 @@
 				qcom,cs-out-en;
 				qcom,op-fdbck = <1>;
 				qcom,default-state = "on";
-				qcom,max-current = <25>;
+				qcom,max-current = <20>;
 				qcom,ctrl-delay-us = <0>;
 				qcom,boost-curr-lim = <3>;
 				qcom,cp-sel = <0>;
 				qcom,switch-freq = <2>;
-				qcom,ovp-val = <2>;
+				qcom,ovp-val = <1>;
 				qcom,num-strings = <1>;
 				qcom,id = <0>;
 			};
@@ -555,25 +577,25 @@
 &pm8941_chg {
 	status = "ok";
 
-	qcom,chg-charging-disabled;
+	qcom,charging-disabled;
 
-	qcom,chg-chgr@1000 {
+	qcom,chgr@1000 {
 		status = "ok";
 	};
 
-	qcom,chg-buck@1100 {
+	qcom,buck@1100 {
 		status = "ok";
 	};
 
-	qcom,chg-usb-chgpth@1300 {
+	qcom,usb-chgpth@1300 {
 		status = "ok";
 	};
 
-	qcom,chg-dc-chgpth@1400 {
+	qcom,dc-chgpth@1400 {
 		status = "ok";
 	};
 
-	qcom,chg-boost@1500 {
+	qcom,boost@1500 {
 		status = "ok";
 	};
 
@@ -615,6 +637,9 @@
 			2 &msmgpio 62 0x3>;
 	interrupt-names = "hc_irq", "pwr_irq", "status_irq";
 	cd-gpios = <&msmgpio 62 0x1>;
+
+	qcom,vdd-always-on;
+	qcom,vdd-lpm-sup;
 
 	vdd-supply = <&pm8941_l21>;
 	vdd-io-supply = <&pm8941_l13>;

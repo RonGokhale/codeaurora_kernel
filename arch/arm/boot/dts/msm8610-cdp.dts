@@ -51,7 +51,7 @@
 				/* Object 6, Instance = 0 */
 				00 00 00 00 00 00
 				/* Object 38, Instance = 0 */
-				1D 01 00 0C 04 0D 00 00
+				1D 02 00 0A 06 0D 00 00
 				/* Object 7, Instance = 0 */
 				20 08 32
 				/* Object 8, Instance = 0 */
@@ -59,7 +59,7 @@
 				/* Object 9, Instance = 0 */
 				83 00 00 13 0B 00 20 32 01 03
 				00 32 05 30 0A 05 0A 00 70 03
-				FC 01 00 36 2F 2C 00 00 40 00
+				FC 01 00 36 2F D8 00 00 40 00
 				00 0A 00 00 02
 				/* Object 18, Instance = 0 */
 				00 00
@@ -132,6 +132,16 @@
 			debounce-interval = <15>;
 		};
 	};
+
+    sound {
+        qcom,audio-routing =
+            "RX_BIAS", "MCLK",
+            "INT_LDO_H", "MCLK",
+            "MIC BIAS External", "Handset Mic",
+            "MIC BIAS Internal2", "Headset Mic",
+            "AMIC1", "MIC BIAS External",
+            "AMIC2", "MIC BIAS Internal2";
+    };
 };
 
 &i2c_cdc  {
@@ -192,6 +202,7 @@
 				qcom,id = <6>;
 				qcom,source-sel = <1>;
 				qcom,mode-ctrl = <0x60>;
+				qcom,mode = "manual";
 			};
 		};
 
@@ -206,6 +217,7 @@
 				qcom,id = <6>;
 				qcom,source-sel = <1>;
 				qcom,mode-ctrl = <0x10>;
+				qcom,mode = "manual";
 			};
 		};
 	};
@@ -325,6 +337,12 @@
 	};
 
 	mpp@a300 { /* MPP 4 */
+		/* PA_THERM config */
+		qcom,mode = <4>; /* AIN input */
+		qcom,invert = <1>; /* Enable MPP */
+		qcom,ain-route = <3>; /* AMUX 8 */
+		qcom,master-en = <1>;
+		qcom,src-sel = <0>; /* Function constant */
 	};
 };
 

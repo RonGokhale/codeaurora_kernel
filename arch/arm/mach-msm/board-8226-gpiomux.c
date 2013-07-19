@@ -16,6 +16,7 @@
 #include <mach/board.h>
 #include <mach/gpio.h>
 #include <mach/gpiomux.h>
+#include <mach/socinfo.h>
 
 #define KS8851_IRQ_GPIO 115
 
@@ -135,8 +136,8 @@ static struct msm_gpiomux_config msm_keypad_configs[] __initdata = {
 static struct gpiomux_setting lcd_rst_act_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_8MA,
-	.pull = GPIOMUX_PULL_NONE,
-	.dir = GPIOMUX_OUT_LOW,
+	.pull = GPIOMUX_PULL_UP,
+	.dir = GPIOMUX_OUT_HIGH,
 };
 
 static struct gpiomux_setting lcd_rst_sus_cfg = {
@@ -208,6 +209,18 @@ static struct msm_gpiomux_config msm_blsp_configs[] __initdata = {
 		.gpio      = 22,		/* BLSP1 QUP1 SPI_CS_ETH */
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &gpio_spi_cs_eth_config,
+		},
+	},
+	{					/*  NFC   */
+		.gpio      = 10,		/* BLSP1 QUP3 I2C_DAT */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gpio_i2c_config,
+		},
+	},
+	{					/*  NFC   */
+		.gpio      = 11,		/* BLSP1 QUP3 I2C_CLK */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gpio_i2c_config,
 		},
 	},
 };
@@ -440,6 +453,21 @@ static struct msm_gpiomux_config msm_auxpcm_configs[] __initdata = {
 	},
 };
 
+static struct gpiomux_setting usb_otg_sw_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.dir = GPIOMUX_OUT_LOW,
+};
+
+static struct msm_gpiomux_config usb_otg_sw_configs[] __initdata = {
+	{
+		.gpio = 67,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &usb_otg_sw_cfg,
+		},
+	},
+};
+
 void __init msm8226_init_gpiomux(void)
 {
 	int rc;
@@ -468,4 +496,8 @@ void __init msm8226_init_gpiomux(void)
 	msm_gpiomux_install(msm_sensor_configs, ARRAY_SIZE(msm_sensor_configs));
 	msm_gpiomux_install(msm_auxpcm_configs,
 			ARRAY_SIZE(msm_auxpcm_configs));
+
+	if (of_board_is_cdp() || of_board_is_mtp() || of_board_is_xpm())
+		msm_gpiomux_install(usb_otg_sw_configs,
+					ARRAY_SIZE(usb_otg_sw_configs));
 }

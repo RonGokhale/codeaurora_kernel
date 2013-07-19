@@ -62,6 +62,23 @@ struct tzbsp_resp {
 	int ret;
 };
 
+static void venus_hfi_dump_packet(u8 *packet)
+{
+	u32 c = 0, packet_size = *(u32 *)packet;
+	const int row_size = 32;
+	/* row must contain enough for 0xdeadbaad * 8 to be converted into
+	 * "de ad ba ab " * 8 + '\0' */
+	char row[3 * row_size];
+
+	for (c = 0; c * row_size < packet_size; ++c) {
+		int bytes_to_read = ((c + 1) * row_size > packet_size) ?
+			packet_size % row_size : row_size;
+		hex_dump_to_buffer(packet + c * row_size, bytes_to_read,
+				row_size, 4, row, sizeof(row), false);
+		dprintk(VIDC_PKT, "%s\n", row);
+	}
+}
+
 static void venus_hfi_sim_modify_cmd_packet(u8 *packet)
 {
 	struct hfi_cmd_sys_session_init_packet *sys_init;
@@ -171,13 +188,18 @@ static int venus_hfi_write_queue(void *info, u8 *packet, u32 *rx_req_is_set)
 		return -EINVAL;
 	}
 
-	venus_hfi_sim_modify_cmd_packet(packet);
-
 	queue = (struct hfi_queue_header *) qinfo->q_hdr;
 
 	if (!queue) {
 		dprintk(VIDC_ERR, "queue not present");
 		return -ENOENT;
+	}
+
+	venus_hfi_sim_modify_cmd_packet(packet);
+
+	if (msm_vidc_debug & VIDC_PKT) {
+		dprintk(VIDC_PKT, "%s: %p\n", __func__, qinfo);
+		venus_hfi_dump_packet(packet);
 	}
 
 	packet_size_in_words = (*(u32 *)packet) >> 2;
@@ -359,6 +381,10 @@ static int venus_hfi_read_queue(void *info, u8 *packet, u32 *pb_tx_req_is_set)
 
 	*pb_tx_req_is_set = (1 == queue->qhdr_tx_req) ? 1 : 0;
 	venus_hfi_hal_sim_modify_msg_packet(packet);
+	if (msm_vidc_debug & VIDC_PKT) {
+		dprintk(VIDC_PKT, "%s: %p\n", __func__, qinfo);
+		venus_hfi_dump_packet(packet);
+	}
 	dprintk(VIDC_DBG, "Out : ");
 	return rc;
 }
@@ -1457,12 +1483,12 @@ static void *venus_hfi_session_init(void *device, u32 session_id,
 		goto err_session_init_fail;
 	}
 
-	if (venus_hfi_iface_cmdq_write(dev, &pkt))
-		goto err_session_init_fail;
 	if (venus_hfi_sys_set_debug(dev, msm_fw_debug))
 		dprintk(VIDC_ERR, "Setting fw_debug msg ON failed");
 	if (venus_hfi_sys_set_idle_message(dev, msm_fw_low_power_mode))
 		dprintk(VIDC_ERR, "Setting idle response ON failed");
+	if (venus_hfi_iface_cmdq_write(dev, &pkt))
+		goto err_session_init_fail;
 	return (void *) new_session;
 
 err_session_init_fail:
@@ -1507,6 +1533,21 @@ static int venus_hfi_session_abort(void *session)
 {
 	return venus_hfi_send_session_cmd(session,
 		HFI_CMD_SYS_SESSION_ABORT);
+}
+
+static int venus_hfi_session_clean(void *session)
+{
+	struct hal_session *sess_close;
+	if (!session) {
+		dprintk(VIDC_ERR, "Invalid Params %s", __func__);
+		return -EINVAL;
+	}
+	sess_close = session;
+	dprintk(VIDC_DBG, "deleted the session: 0x%p",
+			sess_close);
+	list_del(&sess_close->list);
+	kfree(sess_close);
+	return 0;
 }
 
 static int venus_hfi_session_set_buffers(void *sess,
@@ -2281,13 +2322,15 @@ static int venus_hfi_init_bus(struct venus_hfi_device *device)
 	bus_info = &device->resources.bus_info;
 
 	bus_info->ddr_handle[MSM_VIDC_ENCODER] =
-		msm_bus_scale_register_client(&device->res->bus_pdata[2]);
+		msm_bus_scale_register_client(
+			&device->res->bus_pdata[BUS_IDX_ENC_DDR]);
 	if (!bus_info->ddr_handle[MSM_VIDC_ENCODER]) {
 		dprintk(VIDC_ERR, "Failed to register bus scale client\n");
 		goto err_init_bus;
 	}
 	bus_info->ddr_handle[MSM_VIDC_DECODER] =
-		msm_bus_scale_register_client(&device->res->bus_pdata[3]);
+		msm_bus_scale_register_client(
+			&device->res->bus_pdata[BUS_IDX_DEC_DDR]);
 	if (!bus_info->ddr_handle[MSM_VIDC_DECODER]) {
 		dprintk(VIDC_ERR, "Failed to register bus scale client\n");
 		goto err_init_bus;
@@ -2296,7 +2339,7 @@ static int venus_hfi_init_bus(struct venus_hfi_device *device)
 	if (device->res->has_ocmem) {
 		bus_info->ocmem_handle[MSM_VIDC_ENCODER] =
 			msm_bus_scale_register_client(
-						&device->res->bus_pdata[0]);
+				&device->res->bus_pdata[BUS_IDX_ENC_OCMEM]);
 		if (!bus_info->ocmem_handle[MSM_VIDC_ENCODER]) {
 			dprintk(VIDC_ERR,
 				"Failed to register bus scale client\n");
@@ -2305,7 +2348,7 @@ static int venus_hfi_init_bus(struct venus_hfi_device *device)
 
 		bus_info->ocmem_handle[MSM_VIDC_DECODER] =
 			msm_bus_scale_register_client(
-						&device->res->bus_pdata[1]);
+				&device->res->bus_pdata[BUS_IDX_DEC_OCMEM]);
 		if (!bus_info->ocmem_handle[MSM_VIDC_DECODER]) {
 			dprintk(VIDC_ERR,
 				"Failed to register bus scale client\n");
@@ -2329,15 +2372,35 @@ static const u32 venus_hfi_bus_table[] = {
 	979200,
 };
 
-static int venus_hfi_get_bus_vector(int load)
+static int venus_hfi_get_bus_vector(struct venus_hfi_device *device, int load,
+			enum session_type type, enum mem_type mtype)
 {
 	int num_rows = sizeof(venus_hfi_bus_table)/(sizeof(u32));
 	int i, j;
+	int idx = 0;
+
+	if (!device || (mtype != DDR_MEM && mtype != OCMEM_MEM) ||
+		(type != MSM_VIDC_ENCODER && type != MSM_VIDC_DECODER)) {
+		dprintk(VIDC_ERR, "%s invalid params", __func__);
+		return -EINVAL;
+	}
+
 	for (i = 0; i < num_rows; i++) {
 		if (load <= venus_hfi_bus_table[i])
 			break;
 	}
+
+	if (type == MSM_VIDC_ENCODER)
+		idx = (mtype == DDR_MEM) ? BUS_IDX_ENC_DDR : BUS_IDX_ENC_OCMEM;
+	else
+		idx = (mtype == DDR_MEM) ? BUS_IDX_DEC_DDR : BUS_IDX_DEC_OCMEM;
+
 	j = clamp(i, 0, num_rows-1) + 1;
+
+	/* Ensure bus index remains within the supported range,
+	* as specified in the device dtsi file */
+	j = clamp(j, 0, device->res->bus_pdata[idx].num_usecases - 1);
+
 	dprintk(VIDC_DBG, "Required bus = %d\n", j);
 	return j;
 }
@@ -2348,6 +2411,7 @@ static int venus_hfi_scale_bus(void *dev, int load,
 	int rc = 0;
 	u32 handle = 0;
 	struct venus_hfi_device *device = dev;
+	int bus_vector = 0;
 
 	if (!device) {
 		dprintk(VIDC_ERR, "%s invalid device handle %p",
@@ -2361,8 +2425,13 @@ static int venus_hfi_scale_bus(void *dev, int load,
 		handle = device->resources.bus_info.ocmem_handle[type];
 
 	if (handle) {
-		rc = msm_bus_scale_client_update_request(
-				handle, venus_hfi_get_bus_vector(load));
+		bus_vector = venus_hfi_get_bus_vector(device, load,
+				type, mtype);
+		if (bus_vector < 0) {
+			dprintk(VIDC_ERR, "Failed to get bus vector\n");
+			return -EINVAL;
+		}
+		rc = msm_bus_scale_client_update_request(handle, bus_vector);
 		if (rc)
 			dprintk(VIDC_ERR, "Failed to scale bus: %d\n", rc);
 	} else {
@@ -2613,7 +2682,7 @@ static void venus_hfi_deinit_resources(struct venus_hfi_device *device)
 
 static int venus_hfi_iommu_attach(struct venus_hfi_device *device)
 {
-	int rc;
+	int rc = 0;
 	struct iommu_domain *domain;
 	int i;
 	struct iommu_set *iommu_group_set;
@@ -2983,6 +3052,7 @@ static void venus_init_hfi_callbacks(struct hfi_device *hdev)
 	hdev->session_init = venus_hfi_session_init;
 	hdev->session_end = venus_hfi_session_end;
 	hdev->session_abort = venus_hfi_session_abort;
+	hdev->session_clean = venus_hfi_session_clean;
 	hdev->session_set_buffers = venus_hfi_session_set_buffers;
 	hdev->session_release_buffers = venus_hfi_session_release_buffers;
 	hdev->session_load_res = venus_hfi_session_load_res;

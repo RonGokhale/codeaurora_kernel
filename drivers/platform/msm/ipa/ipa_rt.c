@@ -67,13 +67,31 @@ static int ipa_generate_rt_hw_rule(enum ipa_ip_type ip,
 	}
 	rule_hdr->u.hdr.pipe_dest_idx = pipe_idx;
 	rule_hdr->u.hdr.system = !ipa_ctx->hdr_tbl_lcl;
-	if (entry->hdr)
+	if (entry->hdr) {
 		rule_hdr->u.hdr.hdr_offset =
 			entry->hdr->offset_entry->offset >> 2;
-	else
+	} else {
 		rule_hdr->u.hdr.hdr_offset = 0;
-
+	}
 	buf += sizeof(struct ipa_rt_rule_hw_hdr);
+	if ((ip == IPA_IP_v4) &&
+		(entry->rule.attrib.attrib_mask & IPA_FLT_TOS)) {
+			entry->rule.attrib.tos_value =
+				(entry->rule.attrib.u.v4.tos << 5);
+			entry->rule.attrib.tos_mask = 0xe0;
+			entry->rule.attrib.attrib_mask &= ~IPA_FLT_TOS;
+			entry->rule.attrib.attrib_mask |= IPA_FLT_TOS_MASKED;
+	}
+
+	if ((ip == IPA_IP_v6) &&
+		(entry->rule.attrib.attrib_mask & IPA_FLT_TC)) {
+			entry->rule.attrib.tos_value =
+				(entry->rule.attrib.u.v6.tc << 5);
+			entry->rule.attrib.tos_mask = 0xe0;
+			entry->rule.attrib.attrib_mask &= ~IPA_FLT_TC;
+			entry->rule.attrib.attrib_mask |= IPA_FLT_TOS_MASKED;
+	}
+
 	if (ipa_generate_hw_rule(ip, &rule->attrib, &buf, &en_rule)) {
 		IPAERR("fail to generate hw rule\n");
 		return -EPERM;
@@ -359,7 +377,8 @@ static int __ipa_commit_rt(enum ipa_ip_type ip)
 	}
 
 	if (ip == IPA_IP_v4) {
-		avail = IPA_RAM_V4_RT_SIZE;
+		avail = ipa_ctx->ip4_rt_tbl_lcl ? IPA_RAM_V4_RT_SIZE :
+			IPA_RAM_V4_RT_SIZE_DDR;
 		size = sizeof(struct ipa_ip_v4_routing_init);
 	} else {
 		avail = ipa_ctx->ip6_rt_tbl_lcl ? IPA_RAM_V6_RT_SIZE :

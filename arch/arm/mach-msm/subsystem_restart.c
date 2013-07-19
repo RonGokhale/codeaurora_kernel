@@ -137,6 +137,7 @@ struct restart_log {
  * @dentry: debugfs directory for this device
  * @do_ramdump_on_put: ramdump on subsystem_put() if true
  * @err_ready: completion variable to record error ready from subsystem
+ * @crashed: indicates if subsystem has crashed
  */
 struct subsys_device {
 	struct subsys_desc *desc;
@@ -160,6 +161,7 @@ struct subsys_device {
 	struct miscdevice misc_dev;
 	char miscdevice_name[32];
 	struct completion err_ready;
+	bool crashed;
 };
 
 static struct subsys_device *to_subsys(struct device *d)
@@ -427,8 +429,10 @@ static int wait_for_err_ready(struct subsys_device *subsys)
 
 	ret = wait_for_completion_timeout(&subsys->err_ready,
 					  msecs_to_jiffies(10000));
-	if (!ret)
+	if (!ret) {
+		pr_err("[%s]: Error ready timed out\n", subsys->desc->name);
 		return -ETIMEDOUT;
+	}
 
 	return 0;
 }
@@ -811,6 +815,15 @@ int subsystem_crashed(const char *name)
 }
 EXPORT_SYMBOL(subsystem_crashed);
 
+void subsys_set_crash_status(struct subsys_device *dev, bool crashed)
+{
+	dev->crashed = true;
+}
+
+bool subsys_get_crash_status(struct subsys_device *dev)
+{
+	return dev->crashed;
+}
 #ifdef CONFIG_DEBUG_FS
 static ssize_t subsys_debugfs_read(struct file *filp, char __user *ubuf,
 		size_t cnt, loff_t *ppos)
@@ -939,8 +952,8 @@ static void subsys_device_release(struct device *dev)
 static irqreturn_t subsys_err_ready_intr_handler(int irq, void *subsys)
 {
 	struct subsys_device *subsys_dev = subsys;
-	pr_info("Error ready interrupt occured for %s\n",
-		 subsys_dev->desc->name);
+	dev_info(subsys_dev->desc->dev,
+		"Subsystem error monitoring/handling services are up\n");
 
 	if (subsys_dev->desc->is_not_loadable)
 		return IRQ_HANDLED;

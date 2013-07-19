@@ -34,6 +34,7 @@
 
 #define DRIVER_NAME "synaptics_rmi4_i2c"
 #define INPUT_PHYS_NAME "synaptics_rmi4_i2c/input0"
+#define DEBUGFS_DIR_NAME "ts_debug"
 
 #define RESET_DELAY 100
 
@@ -287,6 +288,30 @@ static ssize_t synaptics_rmi4_full_pm_cycle_store(struct device *dev,
 
 	return count;
 }
+
+static int synaptics_rmi4_debug_suspend_set(void *_data, u64 val)
+{
+	struct synaptics_rmi4_data *rmi4_data = _data;
+
+	if (val)
+		synaptics_rmi4_suspend(&rmi4_data->input_dev->dev);
+	else
+		synaptics_rmi4_resume(&rmi4_data->input_dev->dev);
+
+	return 0;
+}
+
+static ssize_t synaptics_rmi4_debug_suspend_get(void *_data, u64 *val)
+{
+	struct synaptics_rmi4_data *rmi4_data = _data;
+
+	*val = rmi4_data->suspended;
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(debug_suspend_fops, synaptics_rmi4_debug_suspend_get,
+			synaptics_rmi4_debug_suspend_set, "%lld\n");
 
 #ifdef CONFIG_FB
 static void configure_sleep(struct synaptics_rmi4_data *rmi4_data)
@@ -1031,8 +1056,6 @@ static int synaptics_rmi4_parse_dt(struct device *dev,
 
 	rmi4_pdata->i2c_pull_up = of_property_read_bool(np,
 			"synaptics,i2c-pull-up");
-	rmi4_pdata->regulator_en = of_property_read_bool(np,
-			"synaptics,reg-en");
 	rmi4_pdata->x_flip = of_property_read_bool(np, "synaptics,x-flip");
 	rmi4_pdata->y_flip = of_property_read_bool(np, "synaptics,y-flip");
 
@@ -1865,25 +1888,23 @@ static int synaptics_rmi4_regulator_configure(struct synaptics_rmi4_data
 	if (on == false)
 		goto hw_shutdown;
 
-	if (rmi4_data->board->regulator_en) {
-		rmi4_data->vdd = regulator_get(&rmi4_data->i2c_client->dev,
-						"vdd");
-		if (IS_ERR(rmi4_data->vdd)) {
-			dev_err(&rmi4_data->i2c_client->dev,
-					"%s: Failed to get vdd regulator\n",
-					__func__);
-			return PTR_ERR(rmi4_data->vdd);
-		}
+	rmi4_data->vdd = regulator_get(&rmi4_data->i2c_client->dev,
+					"vdd");
+	if (IS_ERR(rmi4_data->vdd)) {
+		dev_err(&rmi4_data->i2c_client->dev,
+				"%s: Failed to get vdd regulator\n",
+				__func__);
+		return PTR_ERR(rmi4_data->vdd);
+	}
 
-		if (regulator_count_voltages(rmi4_data->vdd) > 0) {
-			retval = regulator_set_voltage(rmi4_data->vdd,
-				RMI4_VTG_MIN_UV, RMI4_VTG_MAX_UV);
-			if (retval) {
-				dev_err(&rmi4_data->i2c_client->dev,
-					"regulator set_vtg failed retval =%d\n",
-					retval);
-				goto err_set_vtg_vdd;
-			}
+	if (regulator_count_voltages(rmi4_data->vdd) > 0) {
+		retval = regulator_set_voltage(rmi4_data->vdd,
+			RMI4_VTG_MIN_UV, RMI4_VTG_MAX_UV);
+		if (retval) {
+			dev_err(&rmi4_data->i2c_client->dev,
+				"regulator set_vtg failed retval =%d\n",
+				retval);
+			goto err_set_vtg_vdd;
 		}
 	}
 
@@ -1915,22 +1936,18 @@ err_set_vtg_i2c:
 	if (rmi4_data->board->i2c_pull_up)
 		regulator_put(rmi4_data->vcc_i2c);
 err_get_vtg_i2c:
-	if (rmi4_data->board->regulator_en)
-		if (regulator_count_voltages(rmi4_data->vdd) > 0)
-			regulator_set_voltage(rmi4_data->vdd, 0,
-				RMI4_VTG_MAX_UV);
+	if (regulator_count_voltages(rmi4_data->vdd) > 0)
+		regulator_set_voltage(rmi4_data->vdd, 0,
+			RMI4_VTG_MAX_UV);
 err_set_vtg_vdd:
-	if (rmi4_data->board->regulator_en)
-		regulator_put(rmi4_data->vdd);
+	regulator_put(rmi4_data->vdd);
 	return retval;
 
 hw_shutdown:
-	if (rmi4_data->board->regulator_en) {
-		if (regulator_count_voltages(rmi4_data->vdd) > 0)
-			regulator_set_voltage(rmi4_data->vdd, 0,
-				RMI4_VTG_MAX_UV);
-		regulator_put(rmi4_data->vdd);
-	}
+	if (regulator_count_voltages(rmi4_data->vdd) > 0)
+		regulator_set_voltage(rmi4_data->vdd, 0,
+			RMI4_VTG_MAX_UV);
+	regulator_put(rmi4_data->vdd);
 	if (rmi4_data->board->i2c_pull_up) {
 		if (regulator_count_voltages(rmi4_data->vcc_i2c) > 0)
 			regulator_set_voltage(rmi4_data->vcc_i2c, 0,
@@ -1947,23 +1964,21 @@ static int synaptics_rmi4_power_on(struct synaptics_rmi4_data *rmi4_data,
 	if (on == false)
 		goto power_off;
 
-	if (rmi4_data->board->regulator_en) {
-		retval = reg_set_optimum_mode_check(rmi4_data->vdd,
-			RMI4_ACTIVE_LOAD_UA);
-		if (retval < 0) {
-			dev_err(&rmi4_data->i2c_client->dev,
-				"Regulator vdd set_opt failed rc=%d\n",
-				retval);
-			return retval;
-		}
+	retval = reg_set_optimum_mode_check(rmi4_data->vdd,
+		RMI4_ACTIVE_LOAD_UA);
+	if (retval < 0) {
+		dev_err(&rmi4_data->i2c_client->dev,
+			"Regulator vdd set_opt failed rc=%d\n",
+			retval);
+		return retval;
+	}
 
-		retval = regulator_enable(rmi4_data->vdd);
-		if (retval) {
-			dev_err(&rmi4_data->i2c_client->dev,
-				"Regulator vdd enable failed rc=%d\n",
-				retval);
-			goto error_reg_en_vdd;
-		}
+	retval = regulator_enable(rmi4_data->vdd);
+	if (retval) {
+		dev_err(&rmi4_data->i2c_client->dev,
+			"Regulator vdd enable failed rc=%d\n",
+			retval);
+		goto error_reg_en_vdd;
 	}
 
 	if (rmi4_data->board->i2c_pull_up) {
@@ -1990,18 +2005,14 @@ error_reg_en_vcc_i2c:
 	if (rmi4_data->board->i2c_pull_up)
 		reg_set_optimum_mode_check(rmi4_data->vdd, 0);
 error_reg_opt_i2c:
-	if (rmi4_data->board->regulator_en)
-		regulator_disable(rmi4_data->vdd);
+	regulator_disable(rmi4_data->vdd);
 error_reg_en_vdd:
-	if (rmi4_data->board->regulator_en)
-		reg_set_optimum_mode_check(rmi4_data->vdd, 0);
+	reg_set_optimum_mode_check(rmi4_data->vdd, 0);
 	return retval;
 
 power_off:
-	if (rmi4_data->board->regulator_en) {
-		reg_set_optimum_mode_check(rmi4_data->vdd, 0);
-		regulator_disable(rmi4_data->vdd);
-	}
+	reg_set_optimum_mode_check(rmi4_data->vdd, 0);
+	regulator_disable(rmi4_data->vdd);
 	if (rmi4_data->board->i2c_pull_up) {
 		reg_set_optimum_mode_check(rmi4_data->vcc_i2c, 0);
 		regulator_disable(rmi4_data->vcc_i2c);
@@ -2035,6 +2046,7 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 	struct synaptics_rmi4_device_info *rmi;
 	struct synaptics_rmi4_platform_data *platform_data =
 			client->dev.platform_data;
+	struct dentry *temp;
 
 	if (!i2c_check_functionality(client->adapter,
 			I2C_FUNC_SMBUS_BYTE_DATA)) {
@@ -2092,6 +2104,8 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 	rmi4_data->touch_stopped = false;
 	rmi4_data->sensor_sleep = false;
 	rmi4_data->irq_enabled = false;
+	rmi4_data->fw_updating = false;
+	rmi4_data->suspended = false;
 
 	rmi4_data->i2c_read = synaptics_rmi4_i2c_read;
 	rmi4_data->i2c_write = synaptics_rmi4_i2c_write;
@@ -2101,7 +2115,9 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 	rmi4_data->flip_x = rmi4_data->board->x_flip;
 	rmi4_data->flip_y = rmi4_data->board->y_flip;
 
-	rmi4_data->fw_image_name = rmi4_data->board->fw_image_name;
+	if (rmi4_data->board->fw_image_name)
+		snprintf(rmi4_data->fw_image_name, NAME_BUFFER_SIZE, "%s",
+			rmi4_data->board->fw_image_name);
 
 	rmi4_data->input_dev->name = DRIVER_NAME;
 	rmi4_data->input_dev->phys = INPUT_PHYS_NAME;
@@ -2266,8 +2282,27 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 		goto err_enable_irq;
 	}
 
+	rmi4_data->dir = debugfs_create_dir(DEBUGFS_DIR_NAME, NULL);
+	if (rmi4_data->dir == NULL || IS_ERR(rmi4_data->dir)) {
+		dev_err(&client->dev,
+			"%s: Failed to create debugfs directory, rc = %ld\n",
+			__func__, PTR_ERR(rmi4_data->dir));
+		retval = PTR_ERR(rmi4_data->dir);
+		goto err_create_debugfs_dir;
+	}
+
+	temp = debugfs_create_file("suspend", S_IRUSR | S_IWUSR, rmi4_data->dir,
+					rmi4_data, &debug_suspend_fops);
+	if (temp == NULL || IS_ERR(temp)) {
+		dev_err(&client->dev,
+			"%s: Failed to create suspend debugfs file, rc = %ld\n",
+			__func__, PTR_ERR(temp));
+		retval = PTR_ERR(temp);
+		goto err_create_debugfs_file;
+	}
+
 	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {
-		retval = sysfs_create_file(&rmi4_data->input_dev->dev.kobj,
+		retval = sysfs_create_file(&client->dev.kobj,
 				&attrs[attr_count].attr);
 		if (retval < 0) {
 			dev_err(&client->dev,
@@ -2291,7 +2326,10 @@ err_sysfs:
 		sysfs_remove_file(&rmi4_data->input_dev->dev.kobj,
 				&attrs[attr_count].attr);
 	}
-
+err_create_debugfs_file:
+	debugfs_remove_recursive(rmi4_data->dir);
+err_create_debugfs_dir:
+	free_irq(rmi4_data->irq, rmi4_data);
 err_enable_irq:
 	cancel_delayed_work_sync(&rmi4_data->det_work);
 	flush_workqueue(rmi4_data->det_workqueue);
@@ -2346,6 +2384,7 @@ static int __devexit synaptics_rmi4_remove(struct i2c_client *client)
 
 	rmi = &(rmi4_data->rmi4_mod_info);
 
+	debugfs_remove_recursive(rmi4_data->dir);
 	cancel_delayed_work_sync(&rmi4_data->det_work);
 	flush_workqueue(rmi4_data->det_workqueue);
 	destroy_workqueue(rmi4_data->det_workqueue);
@@ -2633,18 +2672,31 @@ static int synaptics_rmi4_suspend(struct device *dev)
 	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
 	int retval;
 
-	if (!rmi4_data->sensor_sleep) {
-		rmi4_data->touch_stopped = true;
-		wake_up(&rmi4_data->wait);
-		synaptics_rmi4_irq_enable(rmi4_data, false);
-		synaptics_rmi4_sensor_sleep(rmi4_data);
+	if (rmi4_data->suspended) {
+		dev_info(dev, "Already in suspend state\n");
+		return 0;
 	}
 
-	retval = synaptics_rmi4_regulator_lpm(rmi4_data, true);
-	if (retval < 0) {
-		dev_err(dev, "failed to enter low power mode\n");
-		return retval;
+	if (!rmi4_data->fw_updating) {
+		if (!rmi4_data->sensor_sleep) {
+			rmi4_data->touch_stopped = true;
+			wake_up(&rmi4_data->wait);
+			synaptics_rmi4_irq_enable(rmi4_data, false);
+			synaptics_rmi4_sensor_sleep(rmi4_data);
+		}
+
+		retval = synaptics_rmi4_regulator_lpm(rmi4_data, true);
+		if (retval < 0) {
+			dev_err(dev, "failed to enter low power mode\n");
+			return retval;
+		}
+	} else {
+		dev_err(dev,
+			"Firmware updating, cannot go into suspend mode\n");
+		return 0;
 	}
+
+	rmi4_data->suspended = true;
 
 	return 0;
 }
@@ -2664,6 +2716,11 @@ static int synaptics_rmi4_resume(struct device *dev)
 	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
 	int retval;
 
+	if (!rmi4_data->suspended) {
+		dev_info(dev, "Already in awake state\n");
+		return 0;
+	}
+
 	retval = synaptics_rmi4_regulator_lpm(rmi4_data, false);
 	if (retval < 0) {
 		dev_err(dev, "failed to enter active power mode\n");
@@ -2673,6 +2730,8 @@ static int synaptics_rmi4_resume(struct device *dev)
 	synaptics_rmi4_sensor_wake(rmi4_data);
 	rmi4_data->touch_stopped = false;
 	synaptics_rmi4_irq_enable(rmi4_data, true);
+
+	rmi4_data->suspended = false;
 
 	return 0;
 }

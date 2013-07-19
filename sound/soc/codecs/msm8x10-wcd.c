@@ -50,6 +50,11 @@
 
 #define MSM8X10_WCD_I2S_MASTER_MODE_MASK	0x08
 #define MSM8X10_DINO_CODEC_BASE_ADDR		0xFE043000
+#define MSM8x10_TLMM_CDC_PULL_CTL			0xFD512050
+#define HELICON_CORE_0_I2C_ADDR				0x0d
+#define HELICON_CORE_1_I2C_ADDR				0x77
+#define HELICON_CORE_2_I2C_ADDR				0x66
+#define HELICON_CORE_3_I2C_ADDR				0x55
 
 #define MAX_MSM8X10_WCD_DEVICE	4
 #define CODEC_DT_MAX_PROP_SIZE	40
@@ -540,7 +545,7 @@ static struct msm8x10_wcd_pdata *msm8x10_wcd_populate_dt_pdata(
 						struct device *dev)
 {
 	struct msm8x10_wcd_pdata *pdata;
-	int ret, i;
+	int ret = 0, i;
 	char **codec_supplies;
 	u32 num_of_supplies = 0;
 
@@ -616,7 +621,7 @@ static int msm8x10_wcd_codec_enable_charge_pump(struct snd_soc_dapm_widget *w,
 				    0x00);
 		snd_soc_update_bits(codec,
 				    MSM8X10_WCD_A_CDC_CLK_OTHR_RESET_B1_CTL,
-				    0x01, 0x01);
+				    0x01, 0x00);
 		snd_soc_update_bits(codec,
 				    MSM8X10_WCD_A_CP_STATIC, 0x08, 0x00);
 		break;
@@ -683,9 +688,9 @@ static int msm8x10_wcd_get_iir_enable_audio_mixer(
 					kcontrol->private_value)->shift;
 
 	ucontrol->value.integer.value[0] =
-		snd_soc_read(codec,
+		(snd_soc_read(codec,
 			    (MSM8X10_WCD_A_CDC_IIR1_CTL + 64 * iir_idx)) &
-		(1 << band_idx);
+		(1 << band_idx)) != 0;
 
 	dev_dbg(codec->dev, "%s: IIR #%d band #%d enable %d\n", __func__,
 		iir_idx, band_idx,
@@ -709,22 +714,54 @@ static int msm8x10_wcd_put_iir_enable_audio_mixer(
 			    (1 << band_idx), (value << band_idx));
 
 	dev_dbg(codec->dev, "%s: IIR #%d band #%d enable %d\n", __func__,
-		iir_idx, band_idx, value);
+	  iir_idx, band_idx,
+	  ((snd_soc_read(codec, (MSM8X10_WCD_A_CDC_IIR1_CTL + 64 * iir_idx)) &
+	  (1 << band_idx)) != 0));
+
 	return 0;
 }
 static uint32_t get_iir_band_coeff(struct snd_soc_codec *codec,
 				   int iir_idx, int band_idx,
 				   int coeff_idx)
 {
+	uint32_t value = 0;
+
 	/* Address does not automatically update if reading */
 	snd_soc_write(codec,
 		(MSM8X10_WCD_A_CDC_IIR1_COEF_B1_CTL + 64 * iir_idx),
-		(band_idx * BAND_MAX + coeff_idx) & 0x1F);
+		((band_idx * BAND_MAX + coeff_idx)
+		* sizeof(uint32_t)) & 0x7F);
+
+	value |= snd_soc_read(codec,
+		(MSM8X10_WCD_A_CDC_IIR1_COEF_B2_CTL + 64 * iir_idx));
+
+	snd_soc_write(codec,
+		(MSM8X10_WCD_A_CDC_IIR1_COEF_B1_CTL + 64 * iir_idx),
+		((band_idx * BAND_MAX + coeff_idx)
+		* sizeof(uint32_t) + 1) & 0x7F);
+
+	value |= (snd_soc_read(codec,
+		(MSM8X10_WCD_A_CDC_IIR1_COEF_B2_CTL + 64 * iir_idx)) << 8);
+
+	snd_soc_write(codec,
+		(MSM8X10_WCD_A_CDC_IIR1_COEF_B1_CTL + 64 * iir_idx),
+		((band_idx * BAND_MAX + coeff_idx)
+		* sizeof(uint32_t) + 2) & 0x7F);
+
+	value |= (snd_soc_read(codec,
+		(MSM8X10_WCD_A_CDC_IIR1_COEF_B2_CTL + 64 * iir_idx)) << 16);
+
+	snd_soc_write(codec,
+		(MSM8X10_WCD_A_CDC_IIR1_COEF_B1_CTL + 64 * iir_idx),
+		((band_idx * BAND_MAX + coeff_idx)
+		* sizeof(uint32_t) + 3) & 0x7F);
 
 	/* Mask bits top 2 bits since they are reserved */
-	return ((snd_soc_read(codec,
-		(MSM8X10_WCD_A_CDC_IIR1_COEF_B2_CTL + 64 * iir_idx)) << 24)) &
-		0x3FFFFFFF;
+	value |= ((snd_soc_read(codec,
+	  (MSM8X10_WCD_A_CDC_IIR1_COEF_B2_CTL + 64 * iir_idx)) & 0x3f) << 24);
+
+	return value;
+
 }
 
 static int msm8x10_wcd_get_iir_band_audio_mixer(
@@ -768,13 +805,19 @@ static int msm8x10_wcd_get_iir_band_audio_mixer(
 
 static void set_iir_band_coeff(struct snd_soc_codec *codec,
 				int iir_idx, int band_idx,
-				int coeff_idx, uint32_t value)
+				uint32_t value)
 {
-	/* Mask top 3 bits, 6-8 are reserved */
-	/* Update address manually each time */
 	snd_soc_write(codec,
-		(MSM8X10_WCD_A_CDC_IIR1_COEF_B1_CTL + 64 * iir_idx),
-		(band_idx * BAND_MAX + coeff_idx) & 0x1F);
+		(MSM8X10_WCD_A_CDC_IIR1_COEF_B2_CTL + 64 * iir_idx),
+		(value & 0xFF));
+
+	snd_soc_write(codec,
+		(MSM8X10_WCD_A_CDC_IIR1_COEF_B2_CTL + 64 * iir_idx),
+		(value >> 8) & 0xFF);
+
+	snd_soc_write(codec,
+		(MSM8X10_WCD_A_CDC_IIR1_COEF_B2_CTL + 64 * iir_idx),
+		(value >> 16) & 0xFF);
 
 	/* Mask top 2 bits, 7-8 are reserved */
 	snd_soc_write(codec,
@@ -793,15 +836,22 @@ static int msm8x10_wcd_put_iir_band_audio_mixer(
 	int band_idx = ((struct soc_multi_mixer_control *)
 					kcontrol->private_value)->shift;
 
-	set_iir_band_coeff(codec, iir_idx, band_idx, 0,
+	/* Mask top bit it is reserved */
+	/* Updates addr automatically for each B2 write */
+	snd_soc_write(codec,
+		(MSM8X10_WCD_A_CDC_IIR1_COEF_B1_CTL + 64 * iir_idx),
+		(band_idx * BAND_MAX * sizeof(uint32_t)) & 0x7F);
+
+
+	set_iir_band_coeff(codec, iir_idx, band_idx,
 			   ucontrol->value.integer.value[0]);
-	set_iir_band_coeff(codec, iir_idx, band_idx, 1,
+	set_iir_band_coeff(codec, iir_idx, band_idx,
 			   ucontrol->value.integer.value[1]);
-	set_iir_band_coeff(codec, iir_idx, band_idx, 2,
+	set_iir_band_coeff(codec, iir_idx, band_idx,
 			   ucontrol->value.integer.value[2]);
-	set_iir_band_coeff(codec, iir_idx, band_idx, 3,
+	set_iir_band_coeff(codec, iir_idx, band_idx,
 			   ucontrol->value.integer.value[3]);
-	set_iir_band_coeff(codec, iir_idx, band_idx, 4,
+	set_iir_band_coeff(codec, iir_idx, band_idx,
 			   ucontrol->value.integer.value[4]);
 
 	dev_dbg(codec->dev, "%s: IIR #%d band #%d b0 = 0x%x\n"
@@ -1332,6 +1382,7 @@ static int msm8x10_wcd_codec_enable_micbias(struct snd_soc_dapm_widget *w,
 			snd_soc_update_bits(codec, micb_int_reg, 0x10, 0x10);
 		else if (strnstr(w->name, internal3_text, 30))
 			snd_soc_update_bits(codec, micb_int_reg, 0x2, 0x2);
+		snd_soc_update_bits(codec, w->reg, 0x1, 0x0);
 		break;
 	case SND_SOC_DAPM_POST_PMU:
 		usleep_range(20000, 20100);
@@ -1344,6 +1395,7 @@ static int msm8x10_wcd_codec_enable_micbias(struct snd_soc_dapm_widget *w,
 		else if (strnstr(w->name, internal3_text, 30))
 			snd_soc_update_bits(codec, micb_int_reg, 0x2, 0x0);
 
+		snd_soc_update_bits(codec, w->reg, 0x1, 0x1);
 		break;
 	}
 	return 0;
@@ -1645,9 +1697,6 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"I2S TX1", NULL, "TX_I2S_CLK"},
 	{"I2S TX2", NULL, "TX_I2S_CLK"},
 
-	{"DEC1 MUX", NULL, "TX CLK"},
-	{"DEC2 MUX", NULL, "TX CLK"},
-
 	{"I2S TX1", NULL, "DEC1 MUX"},
 	{"I2S TX2", NULL, "DEC2 MUX"},
 
@@ -1698,7 +1747,9 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX3 MIX1", NULL, "RX3 MIX1 INP1"},
 	{"RX3 MIX1", NULL, "RX3 MIX1 INP2"},
 	{"RX1 MIX2", NULL, "RX1 MIX1"},
+	{"RX1 MIX2", NULL, "RX1 MIX2 INP1"},
 	{"RX2 MIX2", NULL, "RX2 MIX1"},
+	{"RX2 MIX2", NULL, "RX2 MIX2 INP1"},
 
 	{"RX1 MIX1 INP1", "RX1", "I2S RX1"},
 	{"RX1 MIX1 INP1", "RX2", "I2S RX2"},
@@ -1730,6 +1781,9 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX3 MIX1 INP2", "RX3", "I2S RX3"},
 	{"RX3 MIX1 INP2", "IIR1", "IIR1"},
 
+	{"RX1 MIX2 INP1", "IIR1", "IIR1"},
+	{"RX2 MIX2 INP1", "IIR1", "IIR1"},
+
 	/* Decimator Inputs */
 	{"DEC1 MUX", "DMIC1", "DMIC1"},
 	{"DEC1 MUX", "DMIC2", "DMIC2"},
@@ -1750,6 +1804,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"IIR1", NULL, "IIR1 INP1 MUX"},
 	{"IIR1 INP1 MUX", "DEC1", "DEC1 MUX"},
 	{"IIR1 INP1 MUX", "DEC2", "DEC2 MUX"},
+	{"MIC BIAS Internal1", NULL, "INT_LDO_H"},
 	{"MIC BIAS Internal2", NULL, "INT_LDO_H"},
 	{"MIC BIAS External", NULL, "INT_LDO_H"},
 };
@@ -2080,8 +2135,6 @@ static const struct snd_soc_dapm_widget msm8x10_wcd_dapm_widgets[] = {
 
 	SND_SOC_DAPM_AIF_IN("I2S RX3", "AIF1 Playback", 0, SND_SOC_NOPM, 0, 0),
 
-	SND_SOC_DAPM_SUPPLY("TX CLK", MSM8X10_WCD_A_CDC_DIG_CLK_CTL,
-			4, 0, NULL, 0),
 	SND_SOC_DAPM_SUPPLY("INT_LDO_H", SND_SOC_NOPM, 1, 0, NULL, 0),
 
 	SND_SOC_DAPM_OUTPUT("HEADPHONE"),
@@ -2280,14 +2333,24 @@ static const struct msm8x10_wcd_reg_mask_val msm8x10_wcd_reg_defaults[] = {
 	/* Reduce LINE DAC bias to 70% */
 	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_RX_LINE_BIAS_PA, 0x78),
 
-
-	/* Disable TX7 internal biasing path which can cause leakage */
+	/* Disable internal biasing path which can cause leakage */
 	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_BIAS_CURR_CTL_2, 0x04),
 	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_MICB_CFILT_1_VAL, 0x60),
-	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_MICB_1_CTL, 0x82),
+	/* Enable pulldown to reduce leakage */
+	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_MICB_1_CTL, 0x83),
 	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_TX_COM_BIAS, 0xE0),
 	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_TX_1_EN, 0x32),
 	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_TX_2_EN, 0x32),
+
+	/* ClassG fine tuning setting for 16 ohm HPH */
+	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_CDC_CLSG_FREQ_THRESH_B1_CTL, 0x05),
+	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_CDC_CLSG_FREQ_THRESH_B2_CTL, 0x0C),
+	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_CDC_CLSG_FREQ_THRESH_B3_CTL, 0x1A),
+	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_CDC_CLSG_FREQ_THRESH_B4_CTL, 0x47),
+	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_CDC_CLSG_GAIN_THRESH_CTL, 0x23),
+
+	/* Always set TXD_CLK_EN bit to reduce the leakage */
+	MSM8X10_WCD_REG_VAL(MSM8X10_WCD_A_CDC_DIG_CLK_CTL, 0x10),
 };
 
 static void msm8x10_wcd_update_reg_defaults(struct snd_soc_codec *codec)
@@ -2343,6 +2406,15 @@ int msm8x10_wcd_hs_detect(struct snd_soc_codec *codec,
 }
 EXPORT_SYMBOL_GPL(msm8x10_wcd_hs_detect);
 
+static int msm8x10_wcd_bringup(struct snd_soc_codec *codec)
+{
+	snd_soc_write(codec, MSM8X10_WCD_A_CDC_RST_CTL, 0x02);
+	snd_soc_write(codec, MSM8X10_WCD_A_CHIP_CTL, 0x00);
+	usleep_range(5000, 5000);
+	snd_soc_write(codec, MSM8X10_WCD_A_CDC_RST_CTL, 0x03);
+	return 0;
+}
+
 static int msm8x10_wcd_codec_probe(struct snd_soc_codec *codec)
 {
 	struct msm8x10_wcd_priv *msm8x10_wcd;
@@ -2365,6 +2437,7 @@ static int msm8x10_wcd_codec_probe(struct snd_soc_codec *codec)
 	codec->control_data = dev_get_drvdata(codec->dev);
 	snd_soc_codec_set_drvdata(codec, msm8x10_wcd);
 	msm8x10_wcd->codec = codec;
+	msm8x10_wcd_bringup(codec);
 	msm8x10_wcd_codec_init_reg(codec);
 	msm8x10_wcd_update_reg_defaults(codec);
 
@@ -2500,13 +2573,27 @@ static void msm8x10_wcd_disable_supplies(struct msm8x10_wcd *msm8x10,
 	kfree(msm8x10->supplies);
 }
 
-static int msm8x10_wcd_bringup(struct msm8x10_wcd *msm8x10)
+static int msm8x10_wcd_pads_config(void)
 {
-	msm8x10->read_dev = msm8x10_wcd_reg_read;
-	msm8x10->write_dev(msm8x10, MSM8X10_WCD_A_CDC_RST_CTL, 0x02);
-	msm8x10->write_dev(msm8x10, MSM8X10_WCD_A_CHIP_CTL, 0x00);
-	usleep_range(5000, 5000);
-	msm8x10->write_dev(msm8x10, MSM8X10_WCD_A_CDC_RST_CTL, 0x03);
+	/* Set I2C pads as pull up and rest of pads as no pull */
+	iowrite32(0x03C00000, ioremap(MSM8x10_TLMM_CDC_PULL_CTL, 4));
+	usleep_range(100, 200);
+	return 0;
+}
+
+
+static int msm8x10_wcd_clk_init(void)
+{
+	/* Div-2 */
+	iowrite32(0x3, ioremap(MSM8X10_DINO_LPASS_DIGCODEC_CFG_RCGR, 4));
+	iowrite32(0x0, ioremap(MSM8X10_DINO_LPASS_DIGCODEC_M, 4));
+	iowrite32(0x0, ioremap(MSM8X10_DINO_LPASS_DIGCODEC_N, 4));
+	iowrite32(0x0, ioremap(MSM8X10_DINO_LPASS_DIGCODEC_D, 4));
+	/* Digital codec clock enable */
+	iowrite32(0x1, ioremap(MSM8X10_DINO_LPASS_DIGCODEC_CBCR, 4));
+	/* Set the update bit to make the settings go through */
+	iowrite32(0x1, ioremap(MSM8X10_DINO_LPASS_DIGCODEC_CMD_RCGR, 4));
+	usleep_range(100, 200);
 	return 0;
 }
 
@@ -2516,11 +2603,8 @@ static int msm8x10_wcd_device_init(struct msm8x10_wcd *msm8x10)
 	mutex_init(&msm8x10->xfer_lock);
 	mutex_init(&msm8x10->pm_lock);
 	msm8x10->wlock_holders = 0;
-
-	iowrite32(0x03C00000, ioremap(0xFD512050, 4));
-	usleep_range(5000, 5000);
-
-	msm8x10_wcd_bringup(msm8x10);
+	msm8x10_wcd_pads_config();
+	msm8x10_wcd_clk_init();
 	return 0;
 }
 
@@ -2532,14 +2616,43 @@ static int __devinit msm8x10_wcd_i2c_probe(struct i2c_client *client,
 	struct msm8x10_wcd_pdata *pdata;
 	static int device_id;
 	struct device *dev;
+	enum apr_subsys_state q6_state;
 
-	dev_dbg(&client->dev, "%s:slave addr = 0x%x device_id = %d\n",
-		__func__, client->addr, device_id);
+	dev_dbg(&client->dev, "%s(%d):slave addr = 0x%x device_id = %d\n",
+		__func__, __LINE__,  client->addr, device_id);
 
-	if (device_id > 0) {
-		msm8x10_wcd_modules[device_id++].client = client;
+	switch (client->addr) {
+	case HELICON_CORE_0_I2C_ADDR:
+		msm8x10_wcd_modules[0].client = client;
+		break;
+	case HELICON_CORE_1_I2C_ADDR:
+		msm8x10_wcd_modules[1].client = client;
+		goto rtn;
+	case HELICON_CORE_2_I2C_ADDR:
+		msm8x10_wcd_modules[2].client = client;
+		goto rtn;
+	case HELICON_CORE_3_I2C_ADDR:
+		msm8x10_wcd_modules[3].client = client;
+		goto rtn;
+	default:
+		ret = -EINVAL;
 		goto rtn;
 	}
+
+	q6_state = apr_get_q6_state();
+	if ((q6_state == APR_SUBSYS_DOWN) &&
+	    (client->addr == HELICON_CORE_0_I2C_ADDR)) {
+		dev_info(&client->dev, "defering %s, adsp_state %d\n", __func__,
+			q6_state);
+		return -EPROBE_DEFER;
+	} else
+		dev_info(&client->dev, "adsp is ready\n");
+
+	dev_dbg(&client->dev, "%s(%d):slave addr = 0x%x device_id = %d\n",
+		__func__, __LINE__,  client->addr, device_id);
+
+	if (client->addr != HELICON_CORE_0_I2C_ADDR)
+		goto rtn;
 
 	dev = &client->dev;
 	if (client->dev.of_node) {
@@ -2562,7 +2675,6 @@ static int __devinit msm8x10_wcd_i2c_probe(struct i2c_client *client,
 	}
 
 	msm8x10->dev = &client->dev;
-	msm8x10_wcd_modules[device_id++].client = client;
 	msm8x10->read_dev = msm8x10_wcd_reg_read;
 	msm8x10->write_dev = msm8x10_wcd_reg_write;
 	ret = msm8x10_wcd_enable_supplies(msm8x10, pdata);

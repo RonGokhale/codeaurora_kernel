@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 2002 ARM Ltd.
  *  All Rights Reserved
- *  Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+ *  Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -24,13 +24,9 @@
 
 extern volatile int pen_release;
 
-struct msm_hotplug_device {
-	struct completion cpu_killed;
-	unsigned int warm_boot;
-};
+static cpumask_t cpu_dying_mask;
 
-static DEFINE_PER_CPU_SHARED_ALIGNED(struct msm_hotplug_device,
-			msm_hotplug_devices);
+static DEFINE_PER_CPU(unsigned int, warm_boot_flag);
 
 static inline void cpu_enter_lowpower(void)
 {
@@ -70,12 +66,12 @@ static inline void platform_do_lowpower(unsigned int cpu, int *spurious)
 
 int platform_cpu_kill(unsigned int cpu)
 {
-	int ret;
+	int ret = 0;
 
-	ret = msm_pm_wait_cpu_shutdown(cpu);
-	if (ret)
-		return 0;
-	return 1;
+	if (cpumask_test_and_clear_cpu(cpu, &cpu_dying_mask))
+		ret = msm_pm_wait_cpu_shutdown(cpu);
+
+	return ret ? 0 : 1;
 }
 
 /*
@@ -92,7 +88,6 @@ void platform_cpu_die(unsigned int cpu)
 			__func__, smp_processor_id(), cpu);
 		BUG();
 	}
-	complete(&__get_cpu_var(msm_hotplug_devices).cpu_killed);
 	/*
 	 * we're ready for shutdown now, so do it
 	 */
@@ -142,6 +137,7 @@ static int hotplug_rtb_callback(struct notifier_block *nfb,
 		uncached_logk(LOGK_HOTPLUG, (void *)(cpudata | this_cpumask));
 		break;
 	case CPU_DYING:
+		cpumask_set_cpu((unsigned long)hcpu, &cpu_dying_mask);
 		uncached_logk(LOGK_HOTPLUG, (void *)(cpudata & ~this_cpumask));
 		break;
 	default:
@@ -157,11 +153,10 @@ static struct notifier_block hotplug_rtb_notifier = {
 int msm_platform_secondary_init(unsigned int cpu)
 {
 	int ret;
-	struct msm_hotplug_device *dev = &__get_cpu_var(msm_hotplug_devices);
+	unsigned int *warm_boot = &__get_cpu_var(warm_boot_flag);
 
-	if (!dev->warm_boot) {
-		dev->warm_boot = 1;
-		init_completion(&dev->cpu_killed);
+	if (!(*warm_boot)) {
+		*warm_boot = 1;
 		return 0;
 	}
 	msm_jtag_restore_state();
@@ -175,9 +170,6 @@ int msm_platform_secondary_init(unsigned int cpu)
 
 static int __init init_hotplug(void)
 {
-
-	struct msm_hotplug_device *dev = &__get_cpu_var(msm_hotplug_devices);
-	init_completion(&dev->cpu_killed);
 	return register_hotcpu_notifier(&hotplug_rtb_notifier);
 }
 early_initcall(init_hotplug);

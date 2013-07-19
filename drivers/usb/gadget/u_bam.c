@@ -215,6 +215,9 @@ static void gbam_write_data_tohost(struct gbam_port *port)
 			req->no_interrupt = 1;
 		}
 
+		/* Send ZLP in case packet length is multiple of maxpacksize */
+		req->zero = 1;
+
 		list_del(&req->list);
 
 		spin_unlock(&port->port_lock_dl);
@@ -639,6 +642,7 @@ static void gbam_start_io(struct gbam_port *port)
 			gbam_epout_complete, GFP_ATOMIC);
 	if (ret) {
 		pr_err("%s: rx req allocation failed\n", __func__);
+		spin_unlock_irqrestore(&port->port_lock_ul, flags);
 		return;
 	}
 
@@ -655,6 +659,7 @@ static void gbam_start_io(struct gbam_port *port)
 	if (ret) {
 		pr_err("%s: tx req allocation failed\n", __func__);
 		gbam_free_requests(ep, &d->rx_idle);
+		spin_unlock_irqrestore(&port->port_lock_dl, flags);
 		return;
 	}
 
@@ -725,11 +730,11 @@ static void gbam2bam_disconnect_work(struct work_struct *w)
 	int ret;
 
 	if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA) {
-		teth_bridge_disconnect();
 		ret = usb_bam_disconnect_ipa(&d->ipa_params);
 		if (ret)
 			pr_err("%s: usb_bam_disconnect_ipa failed: err:%d\n",
 				__func__, ret);
+		teth_bridge_disconnect();
 	}
 }
 
@@ -778,6 +783,7 @@ static void gbam2bam_connect_work(struct work_struct *w)
 	unsigned long flags;
 
 	if (d->trans == USB_GADGET_XPORT_BAM2BAM) {
+		usb_bam_reset_complete();
 		ret = usb_bam_connect(d->src_connection_idx, &d->src_pipe_idx);
 		if (ret) {
 			pr_err("%s: usb_bam_connect (src) failed: err:%d\n",
@@ -847,6 +853,7 @@ static void gbam2bam_connect_work(struct work_struct *w)
 	d->rx_req->context = port;
 	d->rx_req->complete = gbam_endless_rx_complete;
 	d->rx_req->length = 0;
+	d->rx_req->no_interrupt = 1;
 	sps_params = (MSM_SPS_MODE | d->src_pipe_idx |
 				 MSM_VENDOR_ID) & ~MSM_IS_FINITE_TRANSFER;
 	d->rx_req->udc_priv = sps_params;
@@ -862,6 +869,7 @@ static void gbam2bam_connect_work(struct work_struct *w)
 	d->tx_req->context = port;
 	d->tx_req->complete = gbam_endless_tx_complete;
 	d->tx_req->length = 0;
+	d->tx_req->no_interrupt = 1;
 	sps_params = (MSM_SPS_MODE | d->dst_pipe_idx |
 				 MSM_VENDOR_ID) & ~MSM_IS_FINITE_TRANSFER;
 	d->tx_req->udc_priv = sps_params;
@@ -916,7 +924,7 @@ static int gbam_peer_reset_cb(void *param)
 	msm_hw_bam_disable(1);
 
 	/* Reset BAM */
-	ret = usb_bam_a2_reset();
+	ret = usb_bam_a2_reset(0);
 	if (ret) {
 		pr_err("%s: BAM reset failed %d\n", __func__, ret);
 		goto reenable_eps;

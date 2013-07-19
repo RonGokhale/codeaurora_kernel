@@ -21,6 +21,8 @@
 
 extern pgprot_t     pgprot_kernel;
 extern struct bus_type msm_iommu_sec_bus_type;
+extern struct iommu_access_ops iommu_access_ops_v0;
+extern struct iommu_access_ops iommu_access_ops_v1;
 
 /* Domain attributes */
 #define MSM_IOMMU_DOMAIN_PT_CACHEABLE	0x1
@@ -186,6 +188,46 @@ struct msm_iommu_ctx_drvdata {
 	int attach_count;
 };
 
+enum dump_reg {
+	DUMP_REG_FIRST,
+	DUMP_REG_FAR0 = DUMP_REG_FIRST,
+	DUMP_REG_FAR1,
+	DUMP_REG_PAR0,
+	DUMP_REG_PAR1,
+	DUMP_REG_FSR,
+	DUMP_REG_FSYNR0,
+	DUMP_REG_FSYNR1,
+	DUMP_REG_TTBR0,
+	DUMP_REG_TTBR1,
+	DUMP_REG_SCTLR,
+	DUMP_REG_ACTLR,
+	DUMP_REG_PRRR,
+	DUMP_REG_MAIR0 = DUMP_REG_PRRR,
+	DUMP_REG_NMRR,
+	DUMP_REG_MAIR1 = DUMP_REG_NMRR,
+	MAX_DUMP_REGS,
+};
+
+struct dump_regs_tbl {
+	/*
+	 * To keep things context-bank-agnostic, we only store the CB
+	 * register offset in `key'
+	 */
+	unsigned long key;
+	const char *name;
+	int offset;
+};
+extern struct dump_regs_tbl dump_regs_tbl[MAX_DUMP_REGS];
+
+#define COMBINE_DUMP_REG(upper, lower) (((u64) upper << 32) | lower)
+
+struct msm_iommu_context_reg {
+	uint32_t val;
+	bool valid;
+};
+
+void print_ctx_regs(struct msm_iommu_context_reg regs[]);
+
 /*
  * Interrupt handler for the IOMMU context fault interrupt. Hooking the
  * interrupt is not supported in the API yet, but this will print an error
@@ -193,6 +235,7 @@ struct msm_iommu_ctx_drvdata {
  */
 irqreturn_t msm_iommu_fault_handler(int irq, void *dev_id);
 irqreturn_t msm_iommu_fault_handler_v2(int irq, void *dev_id);
+irqreturn_t msm_iommu_secure_fault_handler_v2(int irq, void *dev_id);
 
 enum {
 	PROC_APPS,
@@ -212,6 +255,8 @@ struct remote_iommu_petersons_spinlock {
 void *msm_iommu_lock_initialize(void);
 void msm_iommu_mutex_lock(void);
 void msm_iommu_mutex_unlock(void);
+void msm_set_iommu_access_ops(struct iommu_access_ops *ops);
+struct iommu_access_ops *msm_get_iommu_access_ops(void);
 #else
 static inline void *msm_iommu_lock_initialize(void)
 {
@@ -219,6 +264,14 @@ static inline void *msm_iommu_lock_initialize(void)
 }
 static inline void msm_iommu_mutex_lock(void) { }
 static inline void msm_iommu_mutex_unlock(void) { }
+static inline void msm_set_iommu_access_ops(struct iommu_access_ops *ops)
+{
+
+}
+static inline struct iommu_access_ops *msm_get_iommu_access_ops(void)
+{
+	return NULL;
+}
 #endif
 
 #ifdef CONFIG_MSM_IOMMU_GPU_SYNC

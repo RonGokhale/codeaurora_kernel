@@ -168,9 +168,9 @@ struct msm_vidc_debug {
 	int samples;
 };
 
-enum msm_vidc_mode {
-	VIDC_NON_SECURE,
-	VIDC_SECURE,
+enum msm_vidc_modes {
+	VIDC_SECURE = 1 << 0,
+	VIDC_TURBO = 1 << 1,
 };
 
 struct msm_vidc_core_capability {
@@ -225,7 +225,7 @@ struct msm_vidc_inst {
 	void *priv;
 	struct msm_vidc_debug debug;
 	struct buf_count count;
-	enum msm_vidc_mode mode;
+	enum msm_vidc_modes flags;
 	struct msm_vidc_core_capability capability;
 };
 
@@ -254,4 +254,6 @@ void handle_cmd_response(enum command_response cmd, void *data);
 int msm_vidc_trigger_ssr(struct msm_vidc_core *core,
 	enum hal_ssr_trigger_type type);
 int msm_vidc_check_session_supported(struct msm_vidc_inst *inst);
+void msm_vidc_queue_v4l2_event(struct msm_vidc_inst *inst, int event_type);
+
 #endif

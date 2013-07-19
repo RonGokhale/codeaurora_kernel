@@ -55,6 +55,7 @@ struct adm_ctl {
 	atomic_t mem_map_cal_index;
 
 	int set_custom_topology;
+	int ec_ref_rx;
 };
 
 static struct adm_ctl			this_adm;
@@ -965,7 +966,13 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology,
 
 		open.mode_of_operation = path;
 		open.endpoint_id_1 = tmp_port;
-		open.endpoint_id_2 = 0xFFFF;
+
+		if (this_adm.ec_ref_rx == -1) {
+			open.endpoint_id_2 = 0xFFFF;
+		} else if (this_adm.ec_ref_rx && (path != 1)) {
+			open.endpoint_id_2 = this_adm.ec_ref_rx;
+			this_adm.ec_ref_rx = -1;
+		}
 
 		open.topology_id = topology;
 		if ((open.topology_id == VPM_TX_SM_ECNS_COPP_TOPOLOGY) ||
@@ -1306,7 +1313,6 @@ int adm_memory_unmap_regions(int32_t port_id, uint32_t *buf_add,
 {
 	struct  avs_cmd_shared_mem_unmap_regions unmap_regions;
 	int     ret = 0;
-	int     cmd_size = 0;
 	int     index = 0;
 
 	pr_debug("%s\n", __func__);
@@ -1327,14 +1333,14 @@ int adm_memory_unmap_regions(int32_t port_id, uint32_t *buf_add,
 	unmap_regions.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 						APR_HDR_LEN(APR_HDR_SIZE),
 							APR_PKT_VER);
-	unmap_regions.hdr.pkt_size = cmd_size;
+	unmap_regions.hdr.pkt_size = sizeof(unmap_regions);
 	unmap_regions.hdr.src_port = 0;
 	unmap_regions.hdr.dest_port = atomic_read(&this_adm.copp_id[index]);
 	unmap_regions.hdr.token = port_id;
 	unmap_regions.hdr.opcode = ADM_CMD_SHARED_MEM_UNMAP_REGIONS;
 	unmap_regions.mem_map_handle = atomic_read(&this_adm.
 		mem_map_cal_handles[atomic_read(&this_adm.mem_map_cal_index)]);
-	atomic_set(&this_adm.copp_stat[0], 0);
+	atomic_set(&this_adm.copp_stat[index], 0);
 	ret = apr_send_pkt(this_adm.apr, (uint32_t *) &unmap_regions);
 	if (ret < 0) {
 		pr_err("%s: mmap_regions op[0x%x]rc[%d]\n", __func__,
@@ -1344,11 +1350,16 @@ int adm_memory_unmap_regions(int32_t port_id, uint32_t *buf_add,
 	}
 
 	ret = wait_event_timeout(this_adm.wait[index],
-			atomic_read(&this_adm.copp_stat[0]), 5 * HZ);
+				 atomic_read(&this_adm.copp_stat[index]),
+				 5 * HZ);
 	if (!ret) {
-		pr_err("%s: timeout. waited for memory_unmap\n", __func__);
+		pr_err("%s: timeout. waited for memory_unmap index %d\n",
+		       __func__, index);
 		ret = -EINVAL;
 		goto fail_cmd;
+	} else {
+		pr_debug("%s: Unmap handle 0x%x succeeded\n", __func__,
+			 unmap_regions.mem_map_handle);
 	}
 fail_cmd:
 	return ret;
@@ -1364,6 +1375,12 @@ int adm_get_copp_id(int port_index)
 	}
 
 	return atomic_read(&this_adm.copp_id[port_index]);
+}
+
+void adm_ec_ref_rx_id(int port_id)
+{
+	this_adm.ec_ref_rx = port_id;
+	pr_debug("%s ec_ref_rx:%d", __func__, this_adm.ec_ref_rx);
 }
 
 int adm_close(int port_id, bool perf_mode)
@@ -1471,6 +1488,7 @@ static int __init adm_init(void)
 	int i = 0;
 	this_adm.apr = NULL;
 	this_adm.set_custom_topology = 1;
+	this_adm.ec_ref_rx = -1;
 
 	for (i = 0; i < AFE_MAX_PORTS; i++) {
 		atomic_set(&this_adm.copp_id[i], RESET_COPP_ID);

@@ -99,6 +99,7 @@ static int mdss_mdp_rotator_busy_wait(struct mdss_mdp_rotator_session *rot)
 		pr_debug("waiting for rot=%d to complete\n", rot->pipe->num);
 		mdss_mdp_display_wait4comp(ctl);
 		rot->busy = false;
+		mdss_mdp_smp_release(rot->pipe);
 
 	}
 	mutex_unlock(&rot->lock);
@@ -365,18 +366,12 @@ static int mdss_mdp_rotator_finish(struct mdss_mdp_rotator_session *rot)
 	return 0;
 }
 
-int mdss_mdp_rotator_release(u32 ndx)
+int mdss_mdp_rotator_release(struct mdss_mdp_rotator_session *rot)
 {
 	int rc = 0;
-	struct mdss_mdp_rotator_session *rot;
+
 	mutex_lock(&rotator_lock);
-	rot = mdss_mdp_rotator_session_get(ndx);
-	if (rot) {
-		mdss_mdp_rotator_finish(rot);
-	} else {
-		pr_warn("unknown session id=%x\n", ndx);
-		rc = -ENOENT;
-	}
+	rc = mdss_mdp_rotator_finish(rot);
 	mutex_unlock(&rotator_lock);
 
 	return rc;

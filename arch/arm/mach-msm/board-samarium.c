@@ -34,6 +34,10 @@
 static struct clk_lookup msm_clocks_dummy[] = {
 	CLK_DUMMY("core_clk",   BLSP1_UART_CLK, "f991f000.serial", OFF),
 	CLK_DUMMY("iface_clk",  BLSP1_UART_CLK, "f991f000.serial", OFF),
+	CLK_DUMMY("core_clk",	SDC1_CLK,	"msm_sdcc.1", OFF),
+	CLK_DUMMY("iface_clk",	SDC1_P_CLK,	"msm_sdcc.1", OFF),
+	CLK_DUMMY("core_clk",	SDC2_CLK,	"msm_sdcc.2", OFF),
+	CLK_DUMMY("iface_clk",	SDC2_P_CLK,	"msm_sdcc.2", OFF),
 };
 
 static struct clock_init_data msm_dummy_clock_init_data __initdata = {
@@ -42,8 +46,46 @@ static struct clock_init_data msm_dummy_clock_init_data __initdata = {
 };
 
 static struct of_dev_auxdata msmsamarium_auxdata_lookup[] __initdata = {
+	OF_DEV_AUXDATA("qcom,msm-sdcc", 0xF9824000, \
+			"msm_sdcc.1", NULL),
+	OF_DEV_AUXDATA("qcom,msm-sdcc", 0xF98A4000, \
+			"msm_sdcc.2", NULL),
 	{},
 };
+
+static struct memtype_reserve msmsamarium_reserve_table[] __initdata = {
+	[MEMTYPE_SMI] = {
+	},
+	[MEMTYPE_EBI0] = {
+		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
+	},
+	[MEMTYPE_EBI1] = {
+		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
+	},
+};
+
+static int msmsamarium_paddr_to_memtype(phys_addr_t paddr)
+{
+	return MEMTYPE_EBI1;
+}
+
+static struct reserve_info msmsamarium_reserve_info __initdata = {
+	.memtype_reserve_table = msmsamarium_reserve_table,
+	.paddr_to_memtype = msmsamarium_paddr_to_memtype,
+};
+
+void __init msmsamarium_reserve(void)
+{
+	reserve_info = &msmsamarium_reserve_info;
+	of_scan_flat_dt(dt_scan_for_memory_reserve, msmsamarium_reserve_table);
+	msm_reserve();
+}
+
+static void __init msmsamarium_early_memory(void)
+{
+	reserve_info = &msmsamarium_reserve_info;
+	of_scan_flat_dt(dt_scan_for_memory_hole, msmsamarium_reserve_table);
+}
 
 /*
  * Used to satisfy dependencies for devices that need to be
@@ -73,6 +115,11 @@ void __init msmsamarium_init(void)
 	msmsamarium_add_drivers();
 }
 
+void __init msmsamarium_init_very_early(void)
+{
+	msmsamarium_early_memory();
+}
+
 static const char *msmsamarium_dt_match[] __initconst = {
 	"qcom,msmsamarium",
 	NULL
@@ -85,6 +132,8 @@ DT_MACHINE_START(MSMSAMARIUM_DT, "Qualcomm MSM Samarium(Flattened Device Tree)")
 	.handle_irq = gic_handle_irq,
 	.timer = &msm_dt_timer,
 	.dt_compat = msmsamarium_dt_match,
+	.reserve = msmsamarium_reserve,
+	.init_very_early = msmsamarium_init_very_early,
 	.restart = msm_restart,
 	.smp = &msm8974_smp_ops,
 MACHINE_END

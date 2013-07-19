@@ -34,10 +34,12 @@
 #include <mach/msm_iommu_priv.h>
 #include <mach/iommu.h>
 #include <mach/scm.h>
+#include <mach/memory.h>
 
 /* bitmap of the page sizes currently supported */
 #define MSM_IOMMU_PGSIZES	(SZ_4K | SZ_64K | SZ_1M | SZ_16M)
 
+/* commands for SCM_SVC_MP */
 #define IOMMU_SECURE_CFG	2
 #define IOMMU_SECURE_PTBL_SIZE  3
 #define IOMMU_SECURE_PTBL_INIT  4
@@ -46,6 +48,9 @@
 #define IOMMU_SECURE_MAP2 0x0B
 #define IOMMU_SECURE_UNMAP2 0x0C
 #define IOMMU_TLBINVAL_FLAG 0x00000001
+
+/* commands for SCM_SVC_UTIL */
+#define IOMMU_DUMP_SMMU_FAULT_REGS 0X0C
 
 static struct iommu_access_ops *iommu_access_ops;
 
@@ -73,9 +78,192 @@ struct msm_scm_unmap2_req {
 	unsigned int flags;
 };
 
+#define NUM_DUMP_REGS 14
+/*
+ * some space to allow the number of registers returned by the secure
+ * environment to grow
+ */
+#define WIGGLE_ROOM (NUM_DUMP_REGS * 2)
+/* Each entry is a (reg_addr, reg_val) pair, hence the * 2 */
+#define SEC_DUMP_SIZE ((NUM_DUMP_REGS * 2) + WIGGLE_ROOM)
+
+struct msm_scm_fault_regs_dump {
+	uint32_t dump_size;
+	uint32_t dump_data[SEC_DUMP_SIZE];
+} __packed;
+
 void msm_iommu_sec_set_access_ops(struct iommu_access_ops *access_ops)
 {
 	iommu_access_ops = access_ops;
+}
+
+static int msm_iommu_dump_fault_regs(int smmu_id, int cb_num,
+				struct msm_scm_fault_regs_dump *regs)
+{
+	int ret;
+
+	struct msm_scm_fault_regs_dump_req {
+		uint32_t id;
+		uint32_t cb_num;
+		phys_addr_t buff;
+		uint32_t len;
+	} req_info;
+	int resp;
+
+	req_info.id = smmu_id;
+	req_info.cb_num = cb_num;
+	req_info.buff = virt_to_phys(regs);
+	req_info.len = sizeof(*regs);
+
+	ret = scm_call(SCM_SVC_UTIL, IOMMU_DUMP_SMMU_FAULT_REGS,
+		&req_info, sizeof(req_info), &resp, 1);
+
+	invalidate_caches((unsigned long) regs, sizeof(*regs),
+			(unsigned long)virt_to_phys(regs));
+
+	return ret;
+}
+
+#define EXTRACT_DUMP_REG_KEY(addr, ctx) (addr & ((1 << CTX_SHIFT) - 1))
+
+static int msm_iommu_reg_dump_to_regs(
+	struct msm_iommu_context_reg ctx_regs[],
+	struct msm_scm_fault_regs_dump *dump, int cb_num)
+{
+	int i, j, ret = 0;
+	const uint32_t nvals = (dump->dump_size / sizeof(uint32_t));
+	uint32_t *it = (uint32_t *) dump->dump_data;
+	const uint32_t * const end = ((uint32_t *) dump) + nvals;
+
+	for (i = 1; it < end; it += 2, i += 2) {
+		uint32_t addr	= *it;
+		uint32_t val	= *(it + 1);
+		struct msm_iommu_context_reg *reg = NULL;
+
+		for (j = 0; j < MAX_DUMP_REGS; ++j) {
+			if (dump_regs_tbl[j].key ==
+				EXTRACT_DUMP_REG_KEY(addr, cb_num)) {
+				reg = &ctx_regs[j];
+				break;
+			}
+		}
+
+		if (reg == NULL) {
+			pr_debug("Unknown register in secure CB dump: %x (%x)\n",
+				addr, EXTRACT_DUMP_REG_KEY(addr, cb_num));
+			continue;
+		}
+
+		if (reg->valid) {
+			WARN(1, "Invalid (repeated?) register in CB dump: %x\n",
+				addr);
+			continue;
+		}
+
+		reg->val = val;
+		reg->valid = true;
+	}
+
+	if (i != nvals) {
+		pr_err("Invalid dump! %d != %d\n", i, nvals);
+		ret = 1;
+		goto out;
+	}
+
+	for (i = 0; i < MAX_DUMP_REGS; ++i) {
+		if (!ctx_regs[i].valid) {
+			pr_err("Register missing from dump: %s, %lx\n",
+				dump_regs_tbl[i].name, dump_regs_tbl[i].key);
+			ret = 1;
+		}
+	}
+
+out:
+	return ret;
+}
+
+irqreturn_t msm_iommu_secure_fault_handler_v2(int irq, void *dev_id)
+{
+	struct platform_device *pdev = dev_id;
+	struct msm_iommu_drvdata *drvdata;
+	struct msm_iommu_ctx_drvdata *ctx_drvdata;
+	struct msm_scm_fault_regs_dump *regs;
+	int tmp, ret = IRQ_HANDLED;
+
+	iommu_access_ops->iommu_lock_acquire();
+
+	BUG_ON(!pdev);
+
+	drvdata = dev_get_drvdata(pdev->dev.parent);
+	BUG_ON(!drvdata);
+
+	ctx_drvdata = dev_get_drvdata(&pdev->dev);
+	BUG_ON(!ctx_drvdata);
+
+	regs = kmalloc(sizeof(*regs), GFP_KERNEL);
+	if (!regs) {
+		pr_err("%s: Couldn't allocate memory\n", __func__);
+		goto lock_release;
+	}
+
+	if (!drvdata->ctx_attach_count) {
+		pr_err("Unexpected IOMMU page fault from secure context bank!\n");
+		pr_err("name = %s\n", drvdata->name);
+		pr_err("Power is OFF. Unable to read page fault information\n");
+		/*
+		 * We cannot determine which context bank caused the issue so
+		 * we just return handled here to ensure IRQ handler code is
+		 * happy
+		 */
+		goto free_regs;
+	}
+
+	iommu_access_ops->iommu_clk_on(drvdata);
+	tmp = msm_iommu_dump_fault_regs(drvdata->sec_id,
+					ctx_drvdata->num, regs);
+	iommu_access_ops->iommu_clk_off(drvdata);
+
+	if (tmp) {
+		pr_err("%s: Couldn't dump fault registers (%d) %s, ctx: %d\n",
+			__func__, tmp, drvdata->name, ctx_drvdata->num);
+		goto free_regs;
+	} else {
+		struct msm_iommu_context_reg ctx_regs[MAX_DUMP_REGS];
+		memset(ctx_regs, 0, sizeof(ctx_regs));
+		tmp = msm_iommu_reg_dump_to_regs(ctx_regs, regs,
+						ctx_drvdata->num);
+		if (!tmp && ctx_regs[DUMP_REG_FSR].val) {
+			if (!ctx_drvdata->attached_domain) {
+				pr_err("Bad domain in interrupt handler\n");
+				tmp = -ENOSYS;
+			} else {
+				tmp = report_iommu_fault(
+					ctx_drvdata->attached_domain,
+					&ctx_drvdata->pdev->dev,
+					COMBINE_DUMP_REG(
+						ctx_regs[DUMP_REG_FAR1].val,
+						ctx_regs[DUMP_REG_FAR0].val),
+					0);
+			}
+
+			/* if the fault wasn't handled by someone else: */
+			if (tmp == -ENOSYS) {
+				pr_err("Unexpected IOMMU page fault from secure context bank!\n");
+				pr_err("name = %s\n", drvdata->name);
+				pr_err("context = %s (%d)\n", ctx_drvdata->name,
+					ctx_drvdata->num);
+				pr_err("Interesting registers:\n");
+				print_ctx_regs(ctx_regs);
+			}
+		} else {
+			ret = IRQ_NONE;
+		}
+	}
+free_regs:
+	kfree(regs);
+lock_release:
+	iommu_access_ops->iommu_lock_release();
+	return ret;
 }
 
 static int msm_iommu_sec_ptbl_init(void)
@@ -168,6 +356,8 @@ static int msm_iommu_sec_ptbl_map(struct msm_iommu_drvdata *iommu_drvdata,
 			unsigned long va, phys_addr_t pa, size_t len)
 {
 	struct msm_scm_map2_req map;
+	void *flush_va;
+	phys_addr_t flush_pa;
 	int ret = 0;
 
 	map.plist.list = virt_to_phys(&pa);
@@ -178,12 +368,22 @@ static int msm_iommu_sec_ptbl_map(struct msm_iommu_drvdata *iommu_drvdata,
 	map.info.va = va;
 	map.info.size = len;
 	map.flags = IOMMU_TLBINVAL_FLAG;
+	flush_va = &pa;
+	flush_pa = virt_to_phys(&pa);
+
+	/*
+	 * Ensure that the buffer is in RAM by the time it gets to TZ
+	 */
+	clean_caches((unsigned long) flush_va, len, flush_pa);
 
 	if (scm_call(SCM_SVC_MP, IOMMU_SECURE_MAP2, &map, sizeof(map), &ret,
 								sizeof(ret)))
 		return -EINVAL;
 	if (ret)
 		return -EINVAL;
+
+	/* Invalidate cache since TZ touched this address range */
+	invalidate_caches((unsigned long) flush_va, len, flush_pa);
 
 	return 0;
 }
@@ -209,6 +409,7 @@ static int msm_iommu_sec_ptbl_map_range(struct msm_iommu_drvdata *iommu_drvdata,
 	struct msm_scm_map2_req map;
 	unsigned int *pa_list = 0;
 	unsigned int pa, cnt;
+	void *flush_va;
 	unsigned int offset = 0, chunk_offset = 0;
 	int ret, scm_ret;
 
@@ -223,6 +424,7 @@ static int msm_iommu_sec_ptbl_map_range(struct msm_iommu_drvdata *iommu_drvdata,
 		map.plist.list = virt_to_phys(&pa);
 		map.plist.list_size = 1;
 		map.plist.size = len;
+		flush_va = &pa;
 	} else {
 		sgiter = sg;
 		cnt = sg->length / SZ_1M;
@@ -253,7 +455,14 @@ static int msm_iommu_sec_ptbl_map_range(struct msm_iommu_drvdata *iommu_drvdata,
 		map.plist.list = virt_to_phys(pa_list);
 		map.plist.list_size = cnt;
 		map.plist.size = SZ_1M;
+		flush_va = pa_list;
 	}
+
+	/*
+	 * Ensure that the buffer is in RAM by the time it gets to TZ
+	 */
+	clean_caches((unsigned long) flush_va,
+		map.plist.size * map.plist.list_size, virt_to_phys(flush_va));
 
 	ret = scm_call(SCM_SVC_MP, IOMMU_SECURE_MAP2, &map, sizeof(map),
 			&scm_ret, sizeof(scm_ret));

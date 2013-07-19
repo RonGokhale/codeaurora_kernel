@@ -23,6 +23,8 @@ struct panel_id {
 	u16 type;
 };
 
+#define DEFAULT_FRAME_RATE	60
+
 /* panel type list */
 #define NO_PANEL		0xffff	/* No Panel */
 #define MDDI_PANEL		1	/* MDDI */
@@ -76,8 +78,13 @@ enum {
  *				 - negative if the configuration is invalid
  *				 - 0 if there is no panel reconfig needed
  *				 - 1 if reconfig is needed to take effect
+ * @MDSS_EVENT_CONT_SPLASH_BEGIN: Special event used to handle transition of
+ *				display state from boot loader to panel driver.
+ *				The event handler will disable the panel.
  * @MDSS_EVENT_CONT_SPLASH_FINISH: Special event used to handle transition of
  *				display state from boot loader to panel driver.
+ *				The event handler will enable the panel and
+ *				vote for the display clocks.
  * @MDSS_EVENT_FB_REGISTERED:	Called after fb dev driver has been registered,
  *				panel driver gets ptr to struct fb_info which
  *				holds fb dev information.
@@ -96,6 +103,7 @@ enum mdss_intf_events {
 	MDSS_EVENT_SUSPEND,
 	MDSS_EVENT_RESUME,
 	MDSS_EVENT_CHECK_PARAMS,
+	MDSS_EVENT_CONT_SPLASH_BEGIN,
 	MDSS_EVENT_CONT_SPLASH_FINISH,
 	MDSS_EVENT_FB_REGISTERED,
 	MDSS_EVENT_PANEL_CLK_CTRL,
@@ -263,6 +271,58 @@ struct mdss_panel_data {
 
 	struct mdss_panel_data *next;
 };
+
+/**
+ * mdss_get_panel_framerate() - get panel frame rate based on panel information
+ * @panel_info:	Pointer to panel info containing all panel information
+ */
+static inline u32 mdss_panel_get_framerate(struct mdss_panel_info *panel_info)
+{
+	u32 frame_rate, pixel_total;
+
+	if (panel_info == NULL)
+		return DEFAULT_FRAME_RATE;
+
+	switch (panel_info->type) {
+	case MIPI_VIDEO_PANEL:
+	case MIPI_CMD_PANEL:
+		frame_rate = panel_info->mipi.frame_rate;
+		break;
+	case WRITEBACK_PANEL:
+		frame_rate = DEFAULT_FRAME_RATE;
+		break;
+	default:
+		pixel_total = (panel_info->lcdc.h_back_porch +
+			  panel_info->lcdc.h_front_porch +
+			  panel_info->lcdc.h_pulse_width +
+			  panel_info->xres) *
+			 (panel_info->lcdc.v_back_porch +
+			  panel_info->lcdc.v_front_porch +
+			  panel_info->lcdc.v_pulse_width +
+			  panel_info->yres);
+		if (pixel_total)
+			frame_rate = panel_info->clk_rate / pixel_total;
+		else
+			frame_rate = DEFAULT_FRAME_RATE;
+
+		break;
+	}
+	return frame_rate;
+}
+
+/*
+ * mdss_panel_get_vtotal() - return panel vertical height
+ * @pinfo:	Pointer to panel info containing all panel information
+ *
+ * Returns the total height of the panel including any blanking regions
+ * which are not visible to user but used to calculate panel pixel clock.
+ */
+static inline int mdss_panel_get_vtotal(struct mdss_panel_info *pinfo)
+{
+	return pinfo->yres + pinfo->lcdc.v_back_porch +
+			pinfo->lcdc.v_front_porch +
+			pinfo->lcdc.v_pulse_width;
+}
 
 int mdss_register_panel(struct platform_device *pdev,
 	struct mdss_panel_data *pdata);

@@ -10,13 +10,19 @@
  * GNU General Public License for more details.
  */
 
-#ifndef __ARCH_ARM_MACH_MSM_CLOCK_MDSS_8226
-#define __ARCH_ARM_MACH_MSM_CLOCK_MDSS_8226
+/dts-v1/;
 
-extern struct clk_ops clk_ops_dsi_byte_pll;
-extern struct clk_ops clk_ops_dsi_pixel_pll;
+/include/ "mpq8092.dtsi"
+/include/ "mpq8092-rumi.dtsi"
 
-void mdss_clk_ctrl_pre_init(struct clk *ahb_clk);
-void mdss_clk_ctrl_post_init(void);
+/ {
+	model = "Qualcomm MPQ8092 RUMI";
+	compatible = "qcom,mpq8092-rumi", "qcom,mpq8092", "qcom,rumi";
+	qcom,msm-id = <146 16 0>;
+};
 
-#endif /* __ARCH_ARM_MACH_MSM_CLOCK_MDSS_8226 */
+&soc {
+	serial@f9922000 {
+		status = "ok";
+	};
+};

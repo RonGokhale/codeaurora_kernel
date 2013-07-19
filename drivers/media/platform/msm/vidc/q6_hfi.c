@@ -400,9 +400,11 @@ static inline void q6_hfi_add_apr_hdr(struct q6_hfi_device *dev,
 static int q6_hfi_apr_callback(struct apr_client_data *data, void *priv)
 {
 	struct q6_hfi_device *device = priv;
+	struct hfi_msg_event_notify_packet pkt = {0};
+	void *payload = NULL;
 	int rc = 0;
 
-	if (!data || !device || !data->payload_size) {
+	if (!data || !device) {
 		dprintk(VIDC_ERR, "%s - Invalid arguments", __func__);
 		return -EINVAL;
 	}
@@ -410,7 +412,23 @@ static int q6_hfi_apr_callback(struct apr_client_data *data, void *priv)
 	dprintk(VIDC_DBG, "%s opcode = %u payload size = %u", __func__,
 				data->opcode, data->payload_size);
 
-	rc = q6_hfi_iface_eventq_write(device, data->payload);
+	if (data->opcode == RESET_EVENTS) {
+		dprintk(VIDC_ERR, "%s Received subsystem reset event: %d",
+				__func__, data->reset_event);
+		pkt.packet_type = HFI_MSG_EVENT_NOTIFY;
+		pkt.size = sizeof(pkt);
+		pkt.event_id = HFI_EVENT_SYS_ERROR;
+		pkt.event_data1 = data->opcode;
+		pkt.event_data2 = data->reset_event;
+		payload = &pkt;
+	} else if (data->payload_size > 0) {
+		payload = data->payload;
+	} else {
+		dprintk(VIDC_ERR, "%s - Invalid payload size", __func__);
+		return -EINVAL;
+	}
+
+	rc = q6_hfi_iface_eventq_write(device, payload);
 	if (rc) {
 		dprintk(VIDC_ERR, "%s failed to write to event queue",
 				__func__);
@@ -616,6 +634,21 @@ static int q6_hfi_session_abort(void *session)
 {
 	return q6_hal_send_session_cmd(session,
 		HFI_CMD_SYS_SESSION_ABORT);
+}
+
+static int q6_hfi_session_clean(void *session)
+{
+	struct hal_session *sess_close;
+	if (!session) {
+		dprintk(VIDC_ERR, "Invalid Params %s", __func__);
+		return -EINVAL;
+	}
+	sess_close = session;
+	dprintk(VIDC_DBG, "deleted the session: 0x%x",
+			sess_close->session_id);
+	list_del(&sess_close->list);
+	kfree(sess_close);
+	return 0;
 }
 
 static int q6_hfi_session_set_buffers(void *sess,
@@ -1364,6 +1397,7 @@ static void q6_init_hfi_callbacks(struct hfi_device *hdev)
 	hdev->session_init = q6_hfi_session_init;
 	hdev->session_end = q6_hfi_session_end;
 	hdev->session_abort = q6_hfi_session_abort;
+	hdev->session_clean = q6_hfi_session_clean;
 	hdev->session_set_buffers = q6_hfi_session_set_buffers;
 	hdev->session_release_buffers = q6_hfi_session_release_buffers;
 	hdev->session_load_res = q6_hfi_session_load_res;

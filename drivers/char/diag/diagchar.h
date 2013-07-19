@@ -44,6 +44,26 @@
 #define POOL_TYPE_HSIC_WRITE	11
 #define POOL_TYPE_HSIC_2_WRITE	12
 #define POOL_TYPE_ALL		10
+
+#define POOL_COPY_IDX		0
+#define POOL_HDLC_IDX		1
+#define POOL_USER_IDX		2
+#define POOL_WRITE_STRUCT_IDX	3
+#define POOL_HSIC_IDX		4
+#define POOL_HSIC_2_IDX		5
+#define POOL_HSIC_3_IDX		6
+#define POOL_HSIC_4_IDX		7
+#define POOL_HSIC_WRITE_IDX	8
+#define POOL_HSIC_2_WRITE_IDX	9
+#define POOL_HSIC_3_WRITE_IDX	10
+#define POOL_HSIC_4_WRITE_IDX	11
+
+#ifdef CONFIG_DIAGFWD_BRIDGE_CODE
+#define NUM_MEMORY_POOLS	12
+#else
+#define NUM_MEMORY_POOLS	4
+#endif
+
 #define MODEM_DATA		0
 #define LPASS_DATA		1
 #define WCNSS_DATA		2
@@ -82,12 +102,18 @@
 #define MODE_NONREALTIME 0
 
 #define NUM_SMD_DATA_CHANNELS 3
-#define NUM_SMD_CONTROL_CHANNELS 3
+#define NUM_SMD_CONTROL_CHANNELS NUM_SMD_DATA_CHANNELS
 #define NUM_SMD_DCI_CHANNELS 1
+#define NUM_SMD_CMD_CHANNELS 1
+#define NUM_SMD_DCI_CMD_CHANNELS 1
 
 #define SMD_DATA_TYPE 0
 #define SMD_CNTL_TYPE 1
 #define SMD_DCI_TYPE 2
+#define SMD_CMD_TYPE 3
+#define SMD_DCI_CMD_TYPE 4
+
+#define DIAG_TS_SIZE	50
 
 /* Maximum number of pkt reg supported at initialization*/
 extern int diag_max_reg;
@@ -221,6 +247,7 @@ struct diagchar_dev {
 	struct diag_write_device *buf_tbl;
 	unsigned int buf_tbl_size;
 	int use_device_tree;
+	int supports_separate_cmdrsp;
 	/* DCI related variables */
 	struct dci_pkt_req_tracking_tbl *req_tracking_tbl;
 	struct diag_dci_client_tbl *dci_client_tbl;
@@ -263,6 +290,9 @@ struct diagchar_dev {
 	struct diag_smd_info smd_data[NUM_SMD_DATA_CHANNELS];
 	struct diag_smd_info smd_cntl[NUM_SMD_CONTROL_CHANNELS];
 	struct diag_smd_info smd_dci[NUM_SMD_DCI_CHANNELS];
+	struct diag_smd_info smd_cmd[NUM_SMD_CMD_CHANNELS];
+	struct diag_smd_info smd_dci_cmd[NUM_SMD_DCI_CMD_CHANNELS];
+	int separate_cmdrsp[NUM_SMD_CONTROL_CHANNELS];
 	unsigned char *usb_buf_out;
 	unsigned char *apps_rsp_buf;
 	/* buffer for updating mask to peripherals */
@@ -337,5 +367,7 @@ extern struct diagchar_dev *driver;
 
 extern int wrap_enabled;
 extern uint16_t wrap_count;
+
+void diag_get_timestamp(char *time_str);
 
 #endif

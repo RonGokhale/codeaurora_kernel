@@ -30,8 +30,9 @@
 	apc_vreg_corner: regulator@f9018000 {
 		status = "okay";
 		compatible = "qcom,cpr-regulator";
-		reg = <0xf9018000 0x1000>, <0xfc4b80b0 8>, <0xfc4bc450 16>;
-		reg-names = "rbcpr", "pvs_efuse", "cpr_efuse";
+		reg = <0xf9018000 0x1000>, <0xf9011064 4>, <0xfc4b80b0 8>,
+			<0xfc4bc450 16>;
+		reg-names = "rbcpr", "rbcpr_clk", "pvs_efuse", "cpr_efuse";
 		interrupts = <0 15 0>;
 		regulator-name = "apc_corner";
 		regulator-min-microvolt = <1>;
@@ -50,17 +51,19 @@
 
 		qcom,cpr-ref-clk = <19200>;
 		qcom,cpr-timer-delay = <5000>;
-		qcom,cpr-timer-cons-up = <1>;
+		qcom,cpr-timer-cons-up = <0>;
 		qcom,cpr-timer-cons-down = <2>;
 		qcom,cpr-irq-line = <0>;
 		qcom,cpr-step-quotient = <15>;
-		qcom,cpr-up-threshold = <1>;
-		qcom,cpr-down-threshold = <2>;
-		qcom,cpr-idle-clocks = <5>;
+		qcom,cpr-up-threshold = <0>;
+		qcom,cpr-down-threshold = <10>;
+		qcom,cpr-idle-clocks = <0>;
 		qcom,cpr-gcnt-time = <1>;
 		qcom,vdd-apc-step-up-limit = <1>;
 		qcom,vdd-apc-step-down-limit = <1>;
 		qcom,cpr-apc-volt-step = <5000>;
+
+		qcom,cpr-enable;
 	};
 };
 
@@ -223,7 +226,26 @@
 			regulator-max-microvolt = <1800000>;
 			qcom,init-voltage = <1800000>;
 			status = "okay";
+		};
+
+		pm8226_l8_ao: regulator-l8-ao {
+			compatible = "qcom,rpm-regulator-smd";
+			regulator-name = "8226_l8_ao";
+			qcom,set = <1>;
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			qcom,init-voltage = <1800000>;
 			qcom,consumer-supplies = "vdd_sr2_pll", "";
+		};
+
+		pm8226_l8_so: regulator-l8-so {
+			compatible = "qcom,rpm-regulator-smd";
+			regulator-name = "8226_l8_so";
+			qcom,set = <2>;
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			qcom,init-voltage = <1800000>;
+			qcom,init-enable = <0>;
 		};
 	};
 
@@ -418,5 +440,23 @@
 		pm8226_lvs1: regulator-lvs1 {
 			status = "okay";
 		};
+	};
+};
+
+&pm8226_chg_boost {
+	regulator-min-microvolt = <5000000>;
+	regulator-max-microvolt = <5000000>;
+	regulator-name = "8226_smbbp_boost";
+};
+
+&soc {
+	usb_otg_sw: regulator-ncp380 {
+		compatible = "regulator-fixed";
+		regulator-name = "usb_otg_sw";
+		gpio = <&msmgpio 67 0>;
+		parent-supply = <&pm8226_chg_boost>;
+		startup-delay-us = <4000>;
+		enable-active-high;
+		status = "disabled";
 	};
 };

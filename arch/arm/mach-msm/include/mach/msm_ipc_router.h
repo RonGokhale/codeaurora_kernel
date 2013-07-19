@@ -29,6 +29,7 @@
 enum msm_ipc_router_event {
 	MSM_IPC_ROUTER_READ_CB = 0,
 	MSM_IPC_ROUTER_WRITE_DONE,
+	MSM_IPC_ROUTER_RESUME_TX,
 };
 
 struct comm_mode_info {
@@ -47,7 +48,7 @@ struct msm_ipc_port {
 	struct comm_mode_info mode_info;
 
 	struct list_head port_rx_q;
-	struct mutex port_rx_q_lock;
+	struct mutex port_rx_q_lock_lhb3;
 	char rx_wakelock_name[MAX_WAKELOCK_NAME_SZ];
 	struct wake_lock port_rx_wake_lock;
 	wait_queue_head_t port_rx_wait_q;

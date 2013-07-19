@@ -1062,6 +1062,7 @@ static int ehci_hsic_reset(struct usb_hcd *hcd)
 {
 	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
 	struct msm_hsic_hcd *mehci = hcd_to_hsic(hcd);
+	struct msm_hsic_host_platform_data *pdata = mehci->dev->platform_data;
 	int retval;
 
 	mehci->timer = USB_HS_GPTIMER_BASE;
@@ -1092,8 +1093,14 @@ static int ehci_hsic_reset(struct usb_hcd *hcd)
 
 	/* bursts of unspecified length. */
 	writel_relaxed(0, USB_AHBBURST);
-	/* Use the AHB transactor */
-	writel_relaxed(0x08, USB_AHBMODE);
+
+	/* Use the AHB transactor and configure async bridge bypass */
+#define MSM_USB_ASYNC_BRIDGE_BYPASS BIT(31)
+	if (pdata->ahb_async_bridge_bypass)
+		writel_relaxed(0x08 | MSM_USB_ASYNC_BRIDGE_BYPASS, USB_AHBMODE);
+	else
+		writel_relaxed(0x08, USB_AHBMODE);
+
 	/* Disable streaming mode and select host mode */
 	writel_relaxed(0x13, USB_USBMODE);
 
@@ -1871,6 +1878,10 @@ struct msm_hsic_host_platform_data *msm_hsic_dt_to_pdata(
 					&pdata->strobe_pad_offset);
 	of_property_read_u32(node, "hsic,data-pad-offset",
 					&pdata->data_pad_offset);
+	of_property_read_u32(node, "hsic,log2-itc",
+					&pdata->log2_irq_thresh);
+	if (pdata->log2_irq_thresh > 6)
+		pdata->log2_irq_thresh = 0;
 
 	pdata->bus_scale_table = msm_bus_cl_get_pdata(pdev);
 
@@ -1882,6 +1893,8 @@ struct msm_hsic_host_platform_data *msm_hsic_dt_to_pdata(
 				"qcom,disable-park-mode"));
 	pdata->consider_ipa_handshake = (of_property_read_bool(node,
 				"hsic,consider-ipa-handshake"));
+	pdata->ahb_async_bridge_bypass = of_property_read_bool(node,
+				"qcom,ahb-async-bridge-bypass");
 
 	return pdata;
 }
@@ -2121,7 +2134,8 @@ static int __devinit ehci_hsic_msm_probe(struct platform_device *pdev)
 	if (mehci->enable_hbm)
 		hbm_init(hcd, pdata->disable_park_mode);
 
-	msm_bam_set_hsic_host_dev(&pdev->dev);
+	if (pdata && pdata->consider_ipa_handshake)
+		msm_bam_set_hsic_host_dev(&pdev->dev);
 
 	return 0;
 
@@ -2146,7 +2160,8 @@ static int __devexit ehci_hsic_msm_remove(struct platform_device *pdev)
 	struct msm_hsic_hcd *mehci = hcd_to_hsic(hcd);
 	struct msm_hsic_host_platform_data *pdata = mehci->dev->platform_data;
 
-	msm_bam_set_hsic_host_dev(NULL);
+	if (pdata && pdata->consider_ipa_handshake)
+		msm_bam_set_hsic_host_dev(NULL);
 
 	/* If the device was removed no need to call pm_runtime_disable */
 	if (pdev->dev.power.power_state.event != PM_EVENT_INVALID)

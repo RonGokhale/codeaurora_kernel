@@ -2360,7 +2360,8 @@ static int a3xx_drawctxt_create(struct adreno_device *adreno_dev,
 	if (ret)
 		return ret;
 
-	kgsl_sharedmem_set(&drawctxt->gpustate, 0, 0, CONTEXT_SIZE);
+	kgsl_sharedmem_set(&adreno_dev->dev, &drawctxt->gpustate, 0, 0,
+			CONTEXT_SIZE);
 	tmp_ctx.cmd = drawctxt->gpustate.hostptr + CMD_OFFSET;
 
 	if (!(drawctxt->flags & CTXT_FLAGS_PREAMBLE)) {
@@ -2419,7 +2420,7 @@ static void a3xx_drawctxt_save(struct adreno_device *adreno_dev,
 		 * already be saved.)
 		 */
 
-		kgsl_cffdump_syncmem(NULL,
+		kgsl_cffdump_syncmem(context->dev_priv,
 			&context->gpustate,
 			context->context_gmem_shadow.gmem_save[1],
 			context->context_gmem_shadow.gmem_save[2] << 2, true);
@@ -2461,7 +2462,7 @@ static void a3xx_drawctxt_restore(struct adreno_device *adreno_dev,
 	 */
 
 	if (context->flags & CTXT_FLAGS_GMEM_RESTORE) {
-		kgsl_cffdump_syncmem(NULL,
+		kgsl_cffdump_syncmem(context->dev_priv,
 			&context->gpustate,
 			context->context_gmem_shadow.gmem_restore[1],
 			context->context_gmem_shadow.gmem_restore[2] << 2,
@@ -2509,25 +2510,26 @@ static int a3xx_rb_init(struct adreno_device *adreno_dev,
 
 	cmds_gpu = rb->buffer_desc.gpuaddr + sizeof(uint) * (rb->wptr - 18);
 
-	GSL_RB_WRITE(cmds, cmds_gpu, cp_type3_packet(CP_ME_INIT, 17));
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x000003f7);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000000);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000000);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000000);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000080);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000100);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000180);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00006600);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000150);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x0000014e);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000154);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000001);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000000);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000000);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu,
+			cp_type3_packet(CP_ME_INIT, 17));
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x000003f7);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000000);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000000);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000000);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000080);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000100);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000180);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00006600);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000150);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x0000014e);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000154);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000001);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000000);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000000);
 	/* Protected mode control - turned off for A3XX */
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000000);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000000);
-	GSL_RB_WRITE(cmds, cmds_gpu, 0x00000000);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000000);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000000);
+	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0x00000000);
 
 	adreno_ringbuffer_submit(rb);
 
@@ -2733,6 +2735,9 @@ static void a3xx_perfcounter_enable_pwr(struct kgsl_device *device,
 {
 	unsigned int in, out;
 
+	if (countable > 1)
+		return;
+
 	adreno_regread(device, A3XX_RBBM_RBBM_CTL, &in);
 
 	if (countable == 0)
@@ -2788,6 +2793,9 @@ static void a3xx_perfcounter_enable_vbif_pwr(struct kgsl_device *device,
 {
 	unsigned int in, out, bit;
 
+	if (countable > 2)
+		return;
+
 	adreno_regread(device, A3XX_VBIF_PERF_CNT_EN, &in);
 	if (countable == 0)
 		bit = VBIF_PERF_PWR_CNT_0;
@@ -2821,12 +2829,6 @@ static void a3xx_perfcounter_enable(struct adreno_device *adreno_dev,
 	unsigned int val = 0;
 	struct a3xx_perfcounter_register *reg;
 
-	if (group >= ARRAY_SIZE(a3xx_perfcounter_reglist))
-		return;
-
-	if (counter >= a3xx_perfcounter_reglist[group].count)
-		return;
-
 	/* Special cases */
 	if (group == KGSL_PERFCOUNTER_GROUP_PWR)
 		return a3xx_perfcounter_enable_pwr(device, countable);
@@ -2834,6 +2836,12 @@ static void a3xx_perfcounter_enable(struct adreno_device *adreno_dev,
 		return a3xx_perfcounter_enable_vbif(device, counter, countable);
 	else if (group == KGSL_PERFCOUNTER_GROUP_VBIF_PWR)
 		return a3xx_perfcounter_enable_vbif_pwr(device, countable);
+
+	if (group >= ARRAY_SIZE(a3xx_perfcounter_reglist))
+		return;
+
+	if (counter >= a3xx_perfcounter_reglist[group].count)
+		return;
 
 	reg = &(a3xx_perfcounter_reglist[group].regs[counter]);
 
@@ -3459,6 +3467,30 @@ static struct adreno_perfcounters a3xx_perfcounters = {
 	ARRAY_SIZE(a3xx_perfcounter_groups),
 };
 
+/*
+ * a3xx_soft_reset() - Soft reset GPU
+ * @adreno_dev: Pointer to adreno device
+ *
+ * Soft reset the GPU by doing a AHB write of value 1 to RBBM_SW_RESET
+ * register. This is used when we want to reset the GPU without
+ * turning off GFX power rail. The reset when asserted resets
+ * all the HW logic, restores GPU registers to default state and
+ * flushes out pending VBIF transactions.
+ */
+static void a3xx_soft_reset(struct adreno_device *adreno_dev)
+{
+	struct kgsl_device *device = &adreno_dev->dev;
+	unsigned int reg;
+
+	adreno_regwrite(device, A3XX_RBBM_SW_RESET_CMD, 1);
+	/*
+	 * Do a dummy read to get a brief read cycle delay for the reset to take
+	 * effect
+	 */
+	adreno_regread(device, A3XX_RBBM_SW_RESET_CMD, &reg);
+	adreno_regwrite(device, A3XX_RBBM_SW_RESET_CMD, 0);
+}
+
 /* Defined in adreno_a3xx_snapshot.c */
 void *a3xx_snapshot(struct adreno_device *adreno_dev, void *snapshot,
 	int *remain, int hang);
@@ -3486,4 +3518,5 @@ struct adreno_gpudev adreno_a3xx_gpudev = {
 	.coresight_enable = a3xx_coresight_enable,
 	.coresight_disable = a3xx_coresight_disable,
 	.coresight_config_debug_reg = a3xx_coresight_config_debug_reg,
+	.soft_reset = a3xx_soft_reset,
 };

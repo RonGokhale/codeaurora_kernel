@@ -512,19 +512,25 @@ static int msm_init_cm_dll(struct sdhci_host *host)
 	int rc = 0;
 	unsigned long flags;
 	u32 wait_cnt;
+	bool prev_pwrsave, curr_pwrsave;
 
 	pr_debug("%s: Enter %s\n", mmc_hostname(mmc), __func__);
 	spin_lock_irqsave(&host->lock, flags);
-
+	prev_pwrsave = !!(readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC) &
+			  CORE_CLK_PWRSAVE);
+	curr_pwrsave = prev_pwrsave;
 	/*
 	 * Make sure that clock is always enabled when DLL
 	 * tuning is in progress. Keeping PWRSAVE ON may
 	 * turn off the clock. So let's disable the PWRSAVE
 	 * here and re-enable it once tuning is completed.
 	 */
-	writel_relaxed((readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC)
-			& ~CORE_CLK_PWRSAVE),
-			host->ioaddr + CORE_VENDOR_SPEC);
+	if (prev_pwrsave) {
+		writel_relaxed((readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC)
+				& ~CORE_CLK_PWRSAVE),
+				host->ioaddr + CORE_VENDOR_SPEC);
+		curr_pwrsave = false;
+	}
 
 	/* Write 1 to DLL_RST bit of DLL_CONFIG register */
 	writel_relaxed((readl_relaxed(host->ioaddr + CORE_DLL_CONFIG)
@@ -567,10 +573,18 @@ static int msm_init_cm_dll(struct sdhci_host *host)
 	}
 
 out:
-	/* re-enable PWRSAVE */
-	writel_relaxed((readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC) |
-			CORE_CLK_PWRSAVE),
-			host->ioaddr + CORE_VENDOR_SPEC);
+	/* Restore the correct PWRSAVE state */
+	if (prev_pwrsave ^ curr_pwrsave) {
+		u32 reg = readl_relaxed(host->ioaddr + CORE_VENDOR_SPEC);
+
+		if (prev_pwrsave)
+			reg |= CORE_CLK_PWRSAVE;
+		else
+			reg &= ~CORE_CLK_PWRSAVE;
+
+		writel_relaxed(reg, host->ioaddr + CORE_VENDOR_SPEC);
+	}
+
 	spin_unlock_irqrestore(&host->lock, flags);
 	pr_debug("%s: Exit %s\n", mmc_hostname(mmc), __func__);
 	return rc;
@@ -1119,6 +1133,7 @@ static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev)
 	int len, i;
 	int clk_table_len;
 	u32 *clk_table = NULL;
+	enum of_gpio_flags flags = OF_GPIO_ACTIVE_LOW;
 
 	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
 	if (!pdata) {
@@ -1126,7 +1141,9 @@ static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev)
 		goto out;
 	}
 
-	pdata->status_gpio = of_get_named_gpio_flags(np, "cd-gpios", 0, 0);
+	pdata->status_gpio = of_get_named_gpio_flags(np, "cd-gpios", 0, &flags);
+	if (gpio_is_valid(pdata->status_gpio) & !(flags & OF_GPIO_ACTIVE_LOW))
+		pdata->caps2 |= MMC_CAP2_CD_ACTIVE_HIGH;
 
 	of_property_read_u32(np, "qcom,bus-width", &bus_width);
 	if (bus_width == 8)
@@ -1418,10 +1435,20 @@ static void sdhci_msm_bus_voting(struct sdhci_host *host, u32 enable)
 		return;
 
 	bw = sdhci_get_bw_required(host, ios);
-	if (enable)
+	if (enable) {
 		sdhci_msm_bus_cancel_work_and_set_vote(host, bw);
-	else
-		sdhci_msm_bus_queue_work(host);
+	} else {
+		/*
+		 * If clock gating is enabled, then remove the vote
+		 * immediately because clocks will be disabled only
+		 * after SDHCI_MSM_MMC_CLK_GATE_DELAY and thus no
+		 * additional delay is required to remove the bus vote.
+		 */
+		if (host->mmc->clkgate_delay)
+			sdhci_msm_bus_cancel_work_and_set_vote(host, 0);
+		else
+			sdhci_msm_bus_queue_work(host);
+	}
 }
 
 /* Regulator utility functions */
@@ -1942,12 +1969,15 @@ static int sdhci_msm_prepare_clocks(struct sdhci_host *host, bool enable)
 	if (enable && !atomic_read(&msm_host->clks_on)) {
 		pr_debug("%s: request to enable clocks\n",
 				mmc_hostname(host->mmc));
+
+		sdhci_msm_bus_voting(host, 1);
+
 		if (!IS_ERR_OR_NULL(msm_host->bus_clk)) {
 			rc = clk_prepare_enable(msm_host->bus_clk);
 			if (rc) {
 				pr_err("%s: %s: failed to enable the bus-clock with error %d\n",
 					mmc_hostname(host->mmc), __func__, rc);
-				goto out;
+				goto remove_vote;
 			}
 		}
 		if (!IS_ERR(msm_host->pclk)) {
@@ -1976,6 +2006,8 @@ static int sdhci_msm_prepare_clocks(struct sdhci_host *host, bool enable)
 			clk_disable_unprepare(msm_host->pclk);
 		if (!IS_ERR_OR_NULL(msm_host->bus_clk))
 			clk_disable_unprepare(msm_host->bus_clk);
+
+		sdhci_msm_bus_voting(host, 0);
 	}
 	atomic_set(&msm_host->clks_on, enable);
 	goto out;
@@ -1985,6 +2017,9 @@ disable_pclk:
 disable_bus_clk:
 	if (!IS_ERR_OR_NULL(msm_host->bus_clk))
 		clk_disable_unprepare(msm_host->bus_clk);
+remove_vote:
+	if (msm_host->msm_bus_vote.client_handle)
+		sdhci_msm_bus_cancel_work_and_set_vote(host, 0);
 out:
 	return rc;
 }
@@ -2031,6 +2066,11 @@ static void sdhci_msm_set_clock(struct sdhci_host *host, unsigned int clock)
 		}
 		msm_host->clk_rate = sup_clock;
 		host->clock = clock;
+		/*
+		 * Update the bus vote in case of frequency change due to
+		 * clock scaling.
+		 */
+		sdhci_msm_bus_voting(host, 1);
 	}
 }
 
@@ -2122,7 +2162,6 @@ static struct sdhci_ops sdhci_msm_ops = {
 	.toggle_cdr = sdhci_msm_toggle_cdr,
 	.get_max_segments = sdhci_msm_max_segs,
 	.set_clock = sdhci_msm_set_clock,
-	.platform_bus_voting = sdhci_msm_bus_voting,
 	.get_min_clock = sdhci_msm_get_min_clock,
 	.get_max_clock = sdhci_msm_get_max_clock,
 	.disable_data_xfer = sdhci_msm_disable_data_xfer,
@@ -2213,24 +2252,33 @@ static int __devinit sdhci_msm_probe(struct platform_device *pdev)
 		goto pclk_disable;
 	}
 
-	ret = clk_prepare_enable(msm_host->clk);
-	if (ret)
-		goto pclk_disable;
-
 	/* Set to the minimum supported clock frequency */
 	ret = clk_set_rate(msm_host->clk, sdhci_msm_get_min_clock(host));
 	if (ret) {
 		dev_err(&pdev->dev, "MClk rate set failed (%d)\n", ret);
-		goto clk_disable;
+		goto pclk_disable;
 	}
+	ret = clk_prepare_enable(msm_host->clk);
+	if (ret)
+		goto pclk_disable;
+
 	msm_host->clk_rate = sdhci_msm_get_min_clock(host);
 	atomic_set(&msm_host->clks_on, 1);
+
+	ret = sdhci_msm_bus_register(msm_host, pdev);
+	if (ret)
+		goto clk_disable;
+
+	if (msm_host->msm_bus_vote.client_handle)
+		INIT_DELAYED_WORK(&msm_host->msm_bus_vote.vote_work,
+				  sdhci_msm_bus_work);
+	sdhci_msm_bus_voting(host, 1);
 
 	/* Setup regulators */
 	ret = sdhci_msm_vreg_init(&pdev->dev, msm_host->pdata, true);
 	if (ret) {
 		dev_err(&pdev->dev, "Regulator setup failed (%d)\n", ret);
-		goto clk_disable;
+		goto bus_unregister;
 	}
 
 	/* Reset the core and Enable SDHC mode */
@@ -2299,6 +2347,9 @@ static int __devinit sdhci_msm_probe(struct platform_device *pdev)
 	host->quirks2 |= SDHCI_QUIRK2_IGNORE_DATATOUT_FOR_R1BCMD;
 	host->quirks2 |= SDHCI_QUIRK2_BROKEN_PRESET_VALUE;
 	host->quirks2 |= SDHCI_QUIRK2_USE_RESERVED_MAX_TIMEOUT;
+
+	if (host->quirks2 & SDHCI_QUIRK2_ALWAYS_USE_BASE_CLOCK)
+		host->quirks2 |= SDHCI_QUIRK2_DIVIDE_TOUT_BY_4;
 
 	host_version = readw_relaxed((host->ioaddr + SDHCI_HOST_VERSION));
 	dev_dbg(&pdev->dev, "Host Version: 0x%x Vendor Version 0x%x\n",
@@ -2371,19 +2422,12 @@ static int __devinit sdhci_msm_probe(struct platform_device *pdev)
 	msm_host->mmc->caps2 |= MMC_CAP2_POWEROFF_NOTIFY;
 	msm_host->mmc->caps2 |= MMC_CAP2_CLK_SCALE;
 	msm_host->mmc->caps2 |= MMC_CAP2_STOP_REQUEST;
+	msm_host->mmc->caps2 |= MMC_CAP2_ASYNC_SDIO_IRQ_4BIT_MODE;
 
 	if (msm_host->pdata->nonremovable)
 		msm_host->mmc->caps |= MMC_CAP_NONREMOVABLE;
 
 	host->cpu_dma_latency_us = msm_host->pdata->cpu_dma_latency_us;
-
-	ret = sdhci_msm_bus_register(msm_host, pdev);
-	if (ret)
-		goto vreg_deinit;
-
-	if (msm_host->msm_bus_vote.client_handle)
-		INIT_DELAYED_WORK(&msm_host->msm_bus_vote.vote_work,
-				  sdhci_msm_bus_work);
 
 	init_completion(&msm_host->pwr_irq_completion);
 
@@ -2393,7 +2437,7 @@ static int __devinit sdhci_msm_probe(struct platform_device *pdev)
 		if (ret) {
 			dev_err(&pdev->dev, "%s: Failed to request card detection IRQ %d\n",
 					__func__, ret);
-			goto bus_unregister;
+			goto vreg_deinit;
 		}
 	}
 
@@ -2436,10 +2480,12 @@ remove_host:
 free_cd_gpio:
 	if (gpio_is_valid(msm_host->pdata->status_gpio))
 		mmc_cd_gpio_free(msm_host->mmc);
-bus_unregister:
-	sdhci_msm_bus_unregister(msm_host);
 vreg_deinit:
 	sdhci_msm_vreg_init(&pdev->dev, msm_host->pdata, false);
+bus_unregister:
+	if (msm_host->msm_bus_vote.client_handle)
+		sdhci_msm_bus_cancel_work_and_set_vote(host, 0);
+	sdhci_msm_bus_unregister(msm_host);
 clk_disable:
 	if (!IS_ERR(msm_host->clk))
 		clk_disable_unprepare(msm_host->clk);
@@ -2495,6 +2541,16 @@ static int sdhci_msm_runtime_suspend(struct device *dev)
 	disable_irq(host->irq);
 	disable_irq(msm_host->pwr_irq);
 
+	/*
+	 * Remove the vote immediately only if clocks are off in which
+	 * case we might have queued work to remove vote but it may not
+	 * be completed before runtime suspend or system suspend.
+	 */
+	if (!atomic_read(&msm_host->clks_on)) {
+		if (msm_host->msm_bus_vote.client_handle)
+			sdhci_msm_bus_cancel_work_and_set_vote(host, 0);
+	}
+
 	return 0;
 }
 
@@ -2527,9 +2583,6 @@ static int sdhci_msm_suspend(struct device *dev)
 		mmc_hostname(host->mmc), __func__);
 		goto out;
 	}
-
-	if (msm_host->msm_bus_vote.client_handle)
-		sdhci_msm_bus_cancel_work_and_set_vote(host, 0);
 
 	return sdhci_msm_runtime_suspend(dev);
 out:

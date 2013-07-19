@@ -94,7 +94,7 @@ static struct msm_bus_paths
 static struct msm_bus_scale_pdata mdp_bus_ppp_scale_table = {
 	.usecase = mdp_bus_ppp_usecases,
 	.num_usecases = ARRAY_SIZE(mdp_bus_ppp_usecases),
-	.name = "mdp3",
+	.name = "mdp3_ppp",
 };
 
 struct mdp3_bus_handle_map mdp3_bus_handle[MDP3_BUS_HANDLE_MAX] = {
@@ -206,18 +206,7 @@ void mdp3_irq_disable(int type)
 	unsigned long flag;
 
 	spin_lock_irqsave(&mdp3_res->irq_lock, flag);
-	if (mdp3_res->irq_ref_count[type] <= 0) {
-		pr_debug("interrupt %d not enabled\n", type);
-		spin_unlock_irqrestore(&mdp3_res->irq_lock, flag);
-		return;
-	}
-	mdp3_res->irq_ref_count[type] -= 1;
-	if (mdp3_res->irq_ref_count[type] == 0) {
-		mdp3_res->irq_mask &= ~BIT(type);
-		MDP3_REG_WRITE(MDP3_REG_INTR_ENABLE, mdp3_res->irq_mask);
-		if (!mdp3_res->irq_mask)
-			disable_irq(mdp3_res->irq);
-	}
+	mdp3_irq_disable_nosync(type);
 	spin_unlock_irqrestore(&mdp3_res->irq_lock, flag);
 }
 
@@ -290,12 +279,16 @@ static int mdp3_bus_scale_register(void)
 static void mdp3_bus_scale_unregister(void)
 {
 	int i;
+
+	if (!mdp3_res->bus_handle)
+		return;
+
 	for (i = 0; i < MDP3_BUS_HANDLE_MAX; i++) {
 		pr_debug("unregister index=%d bus_handle=%x\n",
 			i, mdp3_res->bus_handle[i].handle);
 		if (mdp3_res->bus_handle[i].handle) {
 			msm_bus_scale_unregister_client(
-			   mdp3_res->bus_handle[i].handle);
+				mdp3_res->bus_handle[i].handle);
 			mdp3_res->bus_handle[i].handle = 0;
 		}
 	}
@@ -389,7 +382,8 @@ static int mdp3_clk_update(u32 clk_idx, u32 enable)
 
 
 
-int mdp3_clk_set_rate(int clk_type, unsigned long clk_rate)
+int mdp3_clk_set_rate(int clk_type, unsigned long clk_rate,
+			int client)
 {
 	int ret = 0;
 	unsigned long rounded_rate;
@@ -402,6 +396,19 @@ int mdp3_clk_set_rate(int clk_type, unsigned long clk_rate)
 			pr_err("unable to round rate err=%ld\n", rounded_rate);
 			mutex_unlock(&mdp3_res->res_mutex);
 			return -EINVAL;
+		}
+		if (clk_type == MDP3_CLK_CORE) {
+			if (client == MDP3_CLIENT_DMA_P) {
+				mdp3_res->dma_core_clk_request = rounded_rate;
+			} else if (client == MDP3_CLIENT_PPP) {
+				mdp3_res->ppp_core_clk_request = rounded_rate;
+			} else {
+				pr_err("unrecognized client=%d\n", client);
+				mutex_unlock(&mdp3_res->res_mutex);
+				return -EINVAL;
+			}
+			rounded_rate = max(mdp3_res->dma_core_clk_request,
+				mdp3_res->ppp_core_clk_request);
 		}
 		if (rounded_rate != clk_get_rate(clk)) {
 			ret = clk_set_rate(clk, rounded_rate);
@@ -484,11 +491,20 @@ static int mdp3_clk_setup(void)
 
 static void mdp3_clk_remove(void)
 {
-	clk_put(mdp3_res->clocks[MDP3_CLK_AHB]);
-	clk_put(mdp3_res->clocks[MDP3_CLK_CORE]);
-	clk_put(mdp3_res->clocks[MDP3_CLK_VSYNC]);
-	clk_put(mdp3_res->clocks[MDP3_CLK_LCDC]);
-	clk_put(mdp3_res->clocks[MDP3_CLK_DSI]);
+	if (!IS_ERR_OR_NULL(mdp3_res->clocks[MDP3_CLK_AHB]))
+		clk_put(mdp3_res->clocks[MDP3_CLK_AHB]);
+
+	if (!IS_ERR_OR_NULL(mdp3_res->clocks[MDP3_CLK_CORE]))
+		clk_put(mdp3_res->clocks[MDP3_CLK_CORE]);
+
+	if (!IS_ERR_OR_NULL(mdp3_res->clocks[MDP3_CLK_VSYNC]))
+		clk_put(mdp3_res->clocks[MDP3_CLK_VSYNC]);
+
+	if (!IS_ERR_OR_NULL(mdp3_res->clocks[MDP3_CLK_LCDC]))
+		clk_put(mdp3_res->clocks[MDP3_CLK_LCDC]);
+
+	if (!IS_ERR_OR_NULL(mdp3_res->clocks[MDP3_CLK_DSI]))
+		clk_put(mdp3_res->clocks[MDP3_CLK_DSI]);
 }
 
 int mdp3_clk_enable(int enable)
@@ -519,6 +535,7 @@ static int mdp3_irq_setup(void)
 		return ret;
 	}
 	disable_irq(mdp3_res->irq);
+	mdp3_res->irq_registered = true;
 	return 0;
 }
 
@@ -556,7 +573,8 @@ int mdp3_iommu_dettach(int context)
 	struct mdp3_iommu_ctx_map *context_map;
 	struct mdp3_iommu_domain_map *domain_map;
 
-	if (context >= MDP3_IOMMU_CTX_MAX)
+	if (!mdp3_res->iommu_contexts ||
+		context >= MDP3_IOMMU_CTX_MAX)
 		return -EINVAL;
 
 	context_map = mdp3_res->iommu_contexts + context;
@@ -595,10 +613,13 @@ int mdp3_iommu_domain_init(void)
 
 		mdp3_iommu_domains[i].domain_idx = domain_idx;
 		mdp3_iommu_domains[i].domain = msm_get_iommu_domain(domain_idx);
-		if (!mdp3_iommu_domains[i].domain) {
+		if (IS_ERR_OR_NULL(mdp3_iommu_domains[i].domain)) {
 			pr_err("unable to get iommu domain(%d)\n",
 				domain_idx);
-			return -EINVAL;
+			if (!mdp3_iommu_domains[i].domain)
+				return -EINVAL;
+			else
+				return PTR_ERR(mdp3_iommu_domains[i].domain);
 		}
 		iommu_set_fault_handler(mdp3_iommu_domains[i].domain,
 					mdp3_iommu_fault_handler,
@@ -623,10 +644,13 @@ int mdp3_iommu_context_init(void)
 		mdp3_iommu_contexts[i].ctx =
 			msm_iommu_get_ctx(mdp3_iommu_contexts[i].ctx_name);
 
-		if (!mdp3_iommu_contexts[i].ctx) {
+		if (IS_ERR_OR_NULL(mdp3_iommu_contexts[i].ctx)) {
 			pr_warn("unable to get iommu ctx(%s)\n",
 				mdp3_iommu_contexts[i].ctx_name);
-			return -EINVAL;
+			if (!mdp3_iommu_contexts[i].ctx)
+				return -EINVAL;
+			else
+				return PTR_ERR(mdp3_iommu_contexts[i].ctx);
 		}
 	}
 
@@ -651,6 +675,19 @@ int mdp3_iommu_init(void)
 		return ret;
 	}
 	return ret;
+}
+
+void mdp3_iommu_deinit(void)
+{
+	int i;
+
+	if (!mdp3_res->domains)
+		return;
+
+	for (i = 0; i < MDP3_IOMMU_DOMAIN_MAX; i++) {
+		if (!IS_ERR_OR_NULL(mdp3_res->domains[i].domain))
+			msm_unregister_domain(mdp3_res->domains[i].domain);
+	}
 }
 
 static int mdp3_check_version(void)
@@ -725,11 +762,6 @@ static int mdp3_res_init(void)
 	if (rc)
 		return rc;
 
-	rc = mdp3_iommu_attach(MDP3_IOMMU_CTX_DMA_0);
-	if (rc) {
-		pr_err("fail to attach DMA-P context 0\n");
-		return rc;
-	}
 	mdp3_res->bus_handle = mdp3_bus_handle;
 	rc = mdp3_bus_scale_register();
 	if (rc) {
@@ -740,6 +772,21 @@ static int mdp3_res_init(void)
 	rc = mdp3_hw_init();
 
 	return rc;
+}
+
+static void mdp3_res_deinit(void)
+{
+	mdp3_bus_scale_unregister();
+	mdp3_iommu_dettach(MDP3_IOMMU_CTX_DMA_0);
+	mdp3_iommu_deinit();
+
+	if (!IS_ERR_OR_NULL(mdp3_res->ion_client))
+		ion_client_destroy(mdp3_res->ion_client);
+
+	mdp3_clk_remove();
+
+	if (mdp3_res->irq_registered)
+		devm_free_irq(&mdp3_res->pdev->dev, mdp3_res->irq, mdp3_res);
 }
 
 static int mdp3_parse_dt(struct platform_device *pdev)
@@ -779,20 +826,16 @@ int mdp3_put_img(struct mdp3_img_data *data)
 	struct ion_client *iclient = mdp3_res->ion_client;
 	int dom = (mdp3_res->domains + MDP3_IOMMU_DOMAIN)->domain_idx;
 
-	if (!data->srcp_file) {
-		pr_debug("No img to put\n");
-		return 0;
-	}
-	if (data->flags & MDP_BLIT_SRC_GEM) {
-		pr_debug("memory source MDP_BLIT_SRC_GEM\n");
-	} else if (data->flags & MDP_MEMORY_ID_TYPE_FB) {
-		pr_debug("fb mem buf=0x%x\n", data->addr);
+	 if (data->flags & MDP_MEMORY_ID_TYPE_FB) {
+		pr_info("mdp3_put_img fb mem buf=0x%x\n", data->addr);
 		fput_light(data->srcp_file, data->p_need);
 		data->srcp_file = NULL;
-	} else {
+	} else if (!IS_ERR_OR_NULL(data->srcp_ihdl)) {
 		ion_unmap_iommu(iclient, data->srcp_ihdl, dom, 0);
 		ion_free(iclient, data->srcp_ihdl);
 		data->srcp_ihdl = NULL;
+	} else {
+		return -EINVAL;
 	}
 	return 0;
 }
@@ -808,16 +851,9 @@ int mdp3_get_img(struct msmfb_data *img, struct mdp3_img_data *data)
 
 	start = (unsigned long *) &data->addr;
 	len = (unsigned long *) &data->len;
-	data->flags |= img->flags;
+	data->flags = img->flags;
 	data->p_need = 0;
 
-	if (img->flags & MDP_BLIT_SRC_GEM) {
-		data->srcp_file = NULL;
-		ret = kgsl_gem_obj_addr(img->memory_id, (int) img->priv,
-					&data->addr, &data->len);
-		if (!ret)
-			goto done;
-	}
 	if (img->flags & MDP_MEMORY_ID_TYPE_FB) {
 		file = fget_light(img->memory_id, &data->p_need);
 		if (file == NULL) {
@@ -842,12 +878,14 @@ int mdp3_get_img(struct msmfb_data *img, struct mdp3_img_data *data)
 		data->srcp_file = file;
 		if (!ret)
 			goto done;
-	}
-	if (iclient) {
+	} else if (iclient) {
 		data->srcp_ihdl = ion_import_dma_buf(iclient, img->memory_id);
 		if (IS_ERR_OR_NULL(data->srcp_ihdl)) {
 			pr_err("error on ion_import_fd\n");
-			ret = PTR_ERR(data->srcp_ihdl);
+			if (!data->srcp_ihdl)
+				ret = -EINVAL;
+			else
+				ret = PTR_ERR(data->srcp_ihdl);
 			data->srcp_ihdl = NULL;
 			return ret;
 		}
@@ -876,19 +914,31 @@ done:
 	return ret;
 }
 
-int mdp3_ppp_iommu_attach(void)
+int mdp3_iommu_enable(int client)
 {
 	int rc;
-	rc = mdp3_iommu_attach(MDP3_IOMMU_CTX_PPP_0);
-	rc |= mdp3_iommu_attach(MDP3_IOMMU_CTX_PPP_1);
+
+	if (client == MDP3_CLIENT_DMA_P) {
+		rc = mdp3_iommu_attach(MDP3_IOMMU_CTX_DMA_0);
+	} else {
+		rc = mdp3_iommu_attach(MDP3_IOMMU_CTX_PPP_0);
+		rc |= mdp3_iommu_attach(MDP3_IOMMU_CTX_PPP_1);
+	}
+
 	return rc;
 }
 
-int mdp3_ppp_iommu_dettach(void)
+int mdp3_iommu_disable(int client)
 {
 	int rc;
-	rc = mdp3_iommu_dettach(MDP3_IOMMU_CTX_PPP_0);
-	rc = mdp3_iommu_dettach(MDP3_IOMMU_CTX_PPP_1);
+
+	if (client == MDP3_CLIENT_DMA_P) {
+		rc = mdp3_iommu_dettach(MDP3_IOMMU_CTX_DMA_0);
+	} else {
+		rc = mdp3_iommu_dettach(MDP3_IOMMU_CTX_PPP_0);
+		rc |= mdp3_iommu_dettach(MDP3_IOMMU_CTX_PPP_1);
+	}
+
 	return rc;
 }
 
@@ -896,7 +946,7 @@ static int mdp3_init(struct msm_fb_data_type *mfd)
 {
 	int rc;
 	rc = mdp3_ctrl_init(mfd);
-	rc |= mdp3_ppp_res_init();
+	rc |= mdp3_ppp_res_init(mfd);
 	return rc;
 }
 
@@ -1002,6 +1052,11 @@ static int mdp3_probe(struct platform_device *pdev)
 
 probe_done:
 	if (IS_ERR_VALUE(rc)) {
+		mdp3_res_deinit();
+
+		if (mdp3_res->mdp_base)
+			devm_iounmap(&pdev->dev, mdp3_res->mdp_base);
+
 		devm_kfree(&pdev->dev, mdp3_res);
 		mdp3_res = NULL;
 	}

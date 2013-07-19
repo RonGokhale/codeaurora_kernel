@@ -10,19 +10,8 @@
  * GNU General Public License for more details.
  */
 
-/dts-v1/;
-/include/ "msm8226.dtsi"
 /include/ "dsi-panel-nt35590-720p-video.dtsi"
 /include/ "msm8226-camera-sensor-mtp.dtsi"
-
-/ {
-	model = "Qualcomm MSM 8226 MTP";
-	compatible = "qcom,msm8226-mtp", "qcom,msm8226", "qcom,mtp";
-	qcom,msm-id = <145 8 0>,
-		      <158 8 0>,
-		      <159 8 0>,
-		      <198 8 0>;
-};
 
 &soc {
 	serial@f991f000 {
@@ -31,6 +20,7 @@
 
 	qcom,mdss_dsi_nt35590_720p_video {
 		status = "ok";
+		qcom,cont-splash-enabled;
 	};
 
 	i2c@f9927000 { /* BLSP1 QUP5 */
@@ -45,10 +35,20 @@
 			synaptics,irq-gpio = <&msmgpio 17 0x2008>;
 			synaptics,button-map = <139 102 158>;
 			synaptics,i2c-pull-up;
-			synaptics,reg-en;
 		};
 	};
 
+	i2c@f9925000 { /* BLSP1 QUP3 */
+		nfc-nci@0e {
+			compatible = "qcom,nfc-nci";
+			reg = <0x0e>;
+			qcom,irq-gpio = <&msmgpio 21 0x00>;
+			qcom,dis-gpio = <&msmgpio 20 0x00>;
+			interrupt-parent = <&msmgpio>;
+			interrupts = <21 0>;
+			qcom,clk-gpio = <&pm8226_gpios 3 0>;
+		};
+	};
 	gpio_keys {
 		compatible = "gpio-keys";
 		input-name = "gpio-keys";
@@ -114,6 +114,21 @@
 	};
 };
 
+&usb_otg {
+	#address-cells = <0>;
+	interrupt-parent = <&usb_otg>;
+	interrupts = <0 1 2>;
+	#interrupt-cells = <1>;
+	interrupt-map-mask = <0xffffffff>;
+	interrupt-map = <0 &intc 0 134 0
+			1 &intc 0 140 0
+			2 &spmi_bus 0x0 0x0 0x9 0x0>;
+	interrupt-names = "core_irq", "async_irq", "pmic_id_irq";
+
+	qcom,hsusb-otg-mode = <3>;
+	vbus_otg-supply = <&usb_otg_sw>;
+};
+
 &sdcc1 {
 	vdd-supply = <&pm8226_l17>;
 	qcom,vdd-always-on;
@@ -170,8 +185,6 @@
 	qcom,vdd-current-level = <9000 800000>;
 
 	vdd-io-supply = <&pm8226_l21>;
-	qcom,vdd-io-always-on;
-	qcom,vdd-io-lpm-sup;
 	qcom,vdd-io-voltage-level = <1800000 2950000>;
 	qcom,vdd-io-current-level = <6 22000>;
 
@@ -204,8 +217,6 @@
 	qcom,vdd-current-level = <9000 800000>;
 
 	vdd-io-supply = <&pm8226_l21>;
-	qcom,vdd-io-always-on;
-	qcom,vdd-io-lpm-sup;
 	qcom,vdd-io-voltage-level = <1800000 2950000>;
 	qcom,vdd-io-current-level = <6 22000>;
 
@@ -258,13 +269,15 @@
 				qcom,max-current = <40>;
 				qcom,current-setting = <5>;
 				qcom,id = <6>;
-				qcom,mode = "lpg";
+				qcom,mode = "pwm";
+				qcom,pwm-us = <1000>;
 				qcom,source-sel = <8>;
 				qcom,mode-ctrl = <0x60>;
 				qcom,pwm-channel = <0>;
 				qcom,start-idx = <1>;
 				qcom,duty-pcts = [00 00 00 00 64
 						 64 00 00 00 00];
+				qcom,use-blink;
 			};
 		};
 
@@ -278,13 +291,15 @@
 				qcom,max-current = <40>;
 				qcom,current-setting = <5>;
 				qcom,id = <6>;
+				qcom,mode = "pwm";
+				qcom,pwm-us = <1000>;
 				qcom,mode-ctrl = <0x60>;
 				qcom,source-sel = <10>;
-				qcom,mode = "lpg";
 				qcom,pwm-channel = <5>;
 				qcom,start-idx = <1>;
 				qcom,duty-pcts = [00 00 00 00 64
 						 64 00 00 00 00];
+				qcom,use-blink;
 			};
 		};
 	};
@@ -303,7 +318,7 @@
 				qcom,cs-out-en;
 				qcom,op-fdbck = <1>;
 				qcom,default-state = "on";
-				qcom,max-current = <25>;
+				qcom,max-current = <20>;
 				qcom,ctrl-delay-us = <0>;
 				qcom,boost-curr-lim = <3>;
 				qcom,cp-sel = <0>;
@@ -339,6 +354,11 @@
 	};
 
 	gpio@c200 { /* GPIO 3 */
+		qcom,mode = <0>;		/* QPNP_PIN_MODE_DIG_IN */
+		qcom,pull = <5>;		/* QPNP_PIN_PULL_NO */
+		qcom,vin-sel = <2>;		/* QPNP_PIN_VIN2 */
+		qcom,src-sel = <2>;		/* QPNP_PIN_SEL_FUNC_1 */
+		qcom,master-en = <1>;
 	};
 
 	gpio@c300 { /* GPIO 4 */
@@ -425,6 +445,10 @@
 
 &pm8226_chg {
 	qcom,charging-disabled;
+};
+
+&usb_otg_sw {
+	status = "okay";
 };
 
 &slim_msm {

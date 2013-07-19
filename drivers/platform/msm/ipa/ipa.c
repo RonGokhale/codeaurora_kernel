@@ -50,13 +50,6 @@
 #define IPA_AGGR_STR_IN_BYTES(str) \
 	(strnlen((str), IPA_AGGR_MAX_STR_LENGTH - 1) + 1)
 
-/*
- * This equals a timer value of 162.56us. This value was
- * determined empirically and shows good bi-directional
- * WLAN throughputs
- */
-#define IPA_HOLB_TMR_DEFAULT_VAL 0x7f
-
 static struct ipa_plat_drv_res ipa_res = {0, };
 static struct of_device_id ipa_plat_drv_match[] = {
 	{
@@ -147,7 +140,7 @@ MODULE_PARM_DESC(polling_delay_ms, "set to desired delay between polls");
 static bool hdr_tbl_lcl = 1;
 module_param(hdr_tbl_lcl, bool, 0644);
 MODULE_PARM_DESC(hdr_tbl_lcl, "where hdr tbl resides 1-local; 0-system");
-static bool ip4_rt_tbl_lcl = 1;
+static bool ip4_rt_tbl_lcl;
 module_param(ip4_rt_tbl_lcl, bool, 0644);
 MODULE_PARM_DESC(ip4_rt_tbl_lcl,
 		"where ip4 rt tables reside 1-local; 0-system");
@@ -202,6 +195,8 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return -ENOTTY;
 	if (_IOC_NR(cmd) >= IPA_IOCTL_MAX)
 		return -ENOTTY;
+
+	ipa_inc_client_enable_clks();
 
 	switch (cmd) {
 	case IPA_IOC_ALLOC_NAT_MEM:
@@ -645,9 +640,12 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 						rm_depend.depends_on_name);
 		break;
 	default:        /* redundant, as cmd was checked against MAXNR */
+		ipa_dec_client_disable_clks();
 		return -ENOTTY;
 	}
 	kfree(param);
+
+	ipa_dec_client_disable_clks();
 
 	return retval;
 }
@@ -1603,8 +1601,6 @@ static int ipa_init(const struct ipa_plat_drv_res *resource_p)
 		result = -ENOMEM;
 		goto fail_mem;
 	}
-	ipa_ctx->hol_en = 0x1;
-	ipa_ctx->hol_timer = IPA_HOLB_TMR_DEFAULT_VAL;
 
 	IPADBG("polling_mode=%u delay_ms=%u\n", polling_mode, polling_delay_ms);
 	ipa_ctx->polling_mode = polling_mode;
@@ -1738,6 +1734,22 @@ static int ipa_init(const struct ipa_plat_drv_res *resource_p)
 		result = -ENOMEM;
 		goto fail_rt_tbl_cache;
 	}
+	ipa_ctx->tx_pkt_wrapper_cache =
+	   kmem_cache_create("IPA TX PKT WRAPPER",
+			   sizeof(struct ipa_tx_pkt_wrapper), 0, 0, NULL);
+	if (!ipa_ctx->tx_pkt_wrapper_cache) {
+		IPAERR(":ipa tx pkt wrapper cache create failed\n");
+		result = -ENOMEM;
+		goto fail_tx_pkt_wrapper_cache;
+	}
+	ipa_ctx->rx_pkt_wrapper_cache =
+	   kmem_cache_create("IPA RX PKT WRAPPER",
+			   sizeof(struct ipa_rx_pkt_wrapper), 0, 0, NULL);
+	if (!ipa_ctx->rx_pkt_wrapper_cache) {
+		IPAERR(":ipa rx pkt wrapper cache create failed\n");
+		result = -ENOMEM;
+		goto fail_rx_pkt_wrapper_cache;
+	}
 	ipa_ctx->tree_node_cache =
 	   kmem_cache_create("IPA TREE", sizeof(struct ipa_tree_node), 0, 0,
 			   NULL);
@@ -1806,8 +1818,6 @@ static int ipa_init(const struct ipa_plat_drv_res *resource_p)
 	mutex_init(&ipa_ctx->lock);
 	mutex_init(&ipa_ctx->nat_mem.lock);
 
-	skb_queue_head_init(&ipa_ctx->rx_list);
-
 	for (i = 0; i < IPA_A5_SYS_MAX; i++) {
 		INIT_LIST_HEAD(&ipa_ctx->sys[i].head_desc_list);
 		spin_lock_init(&ipa_ctx->sys[i].spinlock);
@@ -1821,15 +1831,15 @@ static int ipa_init(const struct ipa_plat_drv_res *resource_p)
 			atomic_set(&ipa_ctx->sys[i].curr_polling_state, 0);
 	}
 
-	ipa_ctx->rx_wq = alloc_workqueue("ipa rx wq", WQ_MEM_RECLAIM |
-			WQ_CPU_INTENSIVE, 1);
+	ipa_ctx->rx_wq = create_singlethread_workqueue("ipa rx wq");
 	if (!ipa_ctx->rx_wq) {
 		IPAERR(":fail to create rx wq\n");
 		result = -ENOMEM;
 		goto fail_rx_wq;
 	}
 
-	ipa_ctx->tx_wq = create_singlethread_workqueue("ipa tx wq");
+	ipa_ctx->tx_wq = alloc_workqueue("ipa tx wq", WQ_MEM_RECLAIM |
+			WQ_CPU_INTENSIVE, 1);
 	if (!ipa_ctx->tx_wq) {
 		IPAERR(":fail to create tx wq\n");
 		result = -ENOMEM;
@@ -1840,7 +1850,6 @@ static int ipa_init(const struct ipa_plat_drv_res *resource_p)
 	ipa_ctx->rt_rule_hdl_tree = RB_ROOT;
 	ipa_ctx->rt_tbl_hdl_tree = RB_ROOT;
 	ipa_ctx->flt_rule_hdl_tree = RB_ROOT;
-	ipa_ctx->tag_tree = RB_ROOT;
 
 	mutex_init(&ipa_ctx->ipa_active_clients_lock);
 	ipa_ctx->ipa_active_clients = 0;
@@ -1982,6 +1991,10 @@ fail_rx_wq:
 fail_dma_pool:
 	kmem_cache_destroy(ipa_ctx->tree_node_cache);
 fail_tree_node_cache:
+	kmem_cache_destroy(ipa_ctx->rx_pkt_wrapper_cache);
+fail_rx_pkt_wrapper_cache:
+	kmem_cache_destroy(ipa_ctx->tx_pkt_wrapper_cache);
+fail_tx_pkt_wrapper_cache:
 	kmem_cache_destroy(ipa_ctx->rt_tbl_cache);
 fail_rt_tbl_cache:
 	kmem_cache_destroy(ipa_ctx->hdr_offset_cache);

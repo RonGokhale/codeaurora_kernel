@@ -30,6 +30,7 @@
 #include <linux/time.h>
 #include <linux/atomic.h>
 #include <linux/msm_audio_ion.h>
+#include <linux/mm.h>
 
 #include <asm/ioctls.h>
 
@@ -408,7 +409,7 @@ void send_asm_custom_topology(struct audio_client *ac)
 
 	result = wait_event_timeout(ac->cmd_wait,
 			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
-	if (result < 0) {
+	if (!result) {
 		pr_err("%s: Set topologies failed payload = 0x%x\n",
 			__func__, cal_block.cal_paddr);
 		goto done;
@@ -508,16 +509,17 @@ int q6asm_audio_client_buf_free_contiguous(unsigned int dir,
 
 int q6asm_mmap_apr_dereg(void)
 {
-	if (atomic_read(&this_mmap.ref_cnt) <= 0) {
-		pr_err("%s: APR Common Port Already Closed\n", __func__);
-		goto done;
-	}
-	atomic_dec(&this_mmap.ref_cnt);
-	if (atomic_read(&this_mmap.ref_cnt) == 0) {
+	int c;
+
+	c = atomic_sub_return(1, &this_mmap.ref_cnt);
+	if (c == 0) {
 		apr_deregister(this_mmap.apr);
-		pr_debug("%s:APR De-Register common port\n", __func__);
+		pr_debug("%s: APR De-Register common port\n", __func__);
+	} else if (c < 0) {
+		pr_err("%s: APR Common Port Already Closed\n", __func__);
+		atomic_set(&this_mmap.ref_cnt, 0);
 	}
-done:
+
 	return 0;
 }
 
@@ -578,7 +580,8 @@ int q6asm_set_io_mode(struct audio_client *ac, uint32_t mode1)
 
 void *q6asm_mmap_apr_reg(void)
 {
-	if (atomic_read(&this_mmap.ref_cnt) == 0) {
+	if ((atomic_read(&this_mmap.ref_cnt) == 0) ||
+	    (this_mmap.apr == NULL)) {
 		this_mmap.apr = apr_register("ADSP", "ASM", \
 					(apr_fn)q6asm_mmapcallback,\
 					0x0FFFFFFFF, &this_mmap);
@@ -759,6 +762,7 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 	int rc = 0;
 	struct audio_buffer *buf;
 	int len;
+	int bytes_to_alloc;
 
 	if (!(ac) || ((dir != IN) && (dir != OUT)))
 		return -EINVAL;
@@ -785,8 +789,13 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 
 	ac->port[dir].buf = buf;
 
+	bytes_to_alloc = bufsz * bufcnt;
+
+	/* The size to allocate should be multiple of 4K bytes */
+	bytes_to_alloc = PAGE_ALIGN(bytes_to_alloc);
+
 	rc = msm_audio_ion_alloc("audio_client", &buf[0].client, &buf[0].handle,
-		bufsz*bufcnt,
+		bytes_to_alloc,
 		(ion_phys_addr_t *)&buf[0].phys, (size_t *)&len,
 		&buf[0].data);
 	if (rc) {
@@ -1715,12 +1724,14 @@ int q6asm_run_nowait(struct audio_client *ac, uint32_t flags,
 	run.time_lsw = lsw_ts;
 	run.time_msw = msw_ts;
 
+	/* have to increase first avoid race */
+	atomic_inc(&ac->nowait_cmd_cnt);
 	rc = apr_send_pkt(ac->apr, (uint32_t *) &run);
 	if (rc < 0) {
+		atomic_dec(&ac->nowait_cmd_cnt);
 		pr_err("%s:Commmand run failed[%d]", __func__, rc);
 		return -EINVAL;
 	}
-	atomic_inc(&ac->nowait_cmd_cnt);
 	return 0;
 }
 
@@ -2717,6 +2728,11 @@ static int q6asm_memory_map_regions(struct audio_client *ac, int dir,
 	bufcnt_t = (is_contiguous) ? 1 : bufcnt;
 	bufsz_t = (is_contiguous) ? (bufsz * bufcnt) : bufsz;
 
+	if (is_contiguous) {
+		/* The size to memory map should be multiple of 4K bytes */
+		bufsz_t = PAGE_ALIGN(bufsz_t);
+	}
+
 	cmd_size = sizeof(struct avs_cmd_shared_mem_map_regions)
 			+ (sizeof(struct avs_shared_map_region_payload)
 							* bufcnt_t);
@@ -3691,12 +3707,14 @@ int q6asm_cmd_nowait(struct audio_client *ac, int cmd)
 	pr_debug("%s:session[%d]opcode[0x%x] ", __func__,
 						ac->session,
 						hdr.opcode);
+	/* have to increase first avoid race */
+	atomic_inc(&ac->nowait_cmd_cnt);
 	rc = apr_send_pkt(ac->apr, (uint32_t *) &hdr);
 	if (rc < 0) {
+		atomic_dec(&ac->nowait_cmd_cnt);
 		pr_err("%s:Commmand 0x%x failed\n", __func__, hdr.opcode);
 		goto fail_cmd;
 	}
-	atomic_inc(&ac->nowait_cmd_cnt);
 	return 0;
 fail_cmd:
 	return -EINVAL;

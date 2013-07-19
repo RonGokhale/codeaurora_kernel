@@ -404,6 +404,7 @@ config ARCH_MSM9625
 	select GPIO_MSM_V3
 	select MAY_HAVE_SPARSE_IRQ
 	select SPARSE_IRQ
+	select CPU_FREQ_MSM
 	select MSM_MULTIMEDIA_USE_ION
 	select MSM_RPM_STATS_LOG
 	select MSM_QDSP6_APRV2
@@ -457,9 +458,6 @@ config ARCH_MSM8610
 	select MSM_BUS_SCALING
 	select CPU_FREQ_MSM
 	select CPU_FREQ
-	select CPU_FREQ_GOV_USERSPACE
-	select CPU_FREQ_GOV_ONDEMAND
-	select CPU_FREQ_GOV_POWERSAVE
 	select MSM_PIL
 	select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
@@ -499,8 +497,6 @@ config ARCH_MSM8226
 	select MSM_BUS_SCALING
 	select CPU_FREQ_MSM
 	select CPU_FREQ
-	select CPU_FREQ_GOV_USERSPACE
-	select CPU_FREQ_GOV_ONDEMAND
 	select MSM_PIL
 	select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
@@ -1316,6 +1312,14 @@ choice
 		help
 		  Say Y here if you want the debug print routines to direct
 		  their output to the serial port on MSM SAMARIUM devices.
+
+	config DEBUG_MSM8226_UART
+		bool "Kernel low-level debugging messages via MSM 8226 UART"
+		depends on ARCH_MSM8226
+		select MSM_HAS_DEBUG_UART_HS_V14
+		help
+		  Say Y here if you want the debug print routines to direct
+		  their output to the serial port on MSM 8226 devices.
 endchoice
 
 choice
@@ -2328,8 +2332,8 @@ config SCORPION_Uni_45nm_BUG
 
 config MSM_BUSPM_DEV
 	tristate "MSM Bus Performance Monitor Kernel Module"
-	depends on (ARCH_MSM8X60 || ARCH_MSM8960 || ARCH_MSM8974)
-	default m
+	depends on MSM_BUS_SCALING
+	default n
 	help
 	  This kernel module is used to mmap() hardware registers for the
 	  performance monitors, counters, etc. The module can also be used to
@@ -2375,6 +2379,15 @@ config MSM_RPM_RBCPR_STATS_LOG
           memory location. These messages provide statistical information about
           RBCPR (Rapid Bridge Core Power Reduction) information . The drivers
           outputs the message via a debugfs node.
+
+config MSM_RPM_RBCPR_STATS_V2_LOG
+        tristate "MSM Resource Power Manager RPBCPR Stat Driver"
+        depends on DEBUG_FS
+          help
+          This option enables v2 of the rpmrbcpr_stats driver which reads RPM
+          memory for statistics pertaining to RPM's RBCPR(Rapid Bridge Core
+          Power Reduction) driver. The drivers outputs the message via a
+          debugfs node.
 
 config MSM_DIRECT_SCLK_ACCESS
 	bool "Direct access to the SCLK timer"
@@ -3024,4 +3037,21 @@ config MSM_CPR_REGULATOR
 	  suggestions in efuse as initial settings. It converts corner vote
 	  to voltage value before writing to a voltage regulator API, such as
 	  that provided by spm-regulator driver.
+
+config WALL_CLK
+	tristate "Wall Clock hardware block simulation"
+	depends on ARCH_APQ8064
+	help
+	 This driver simulates the wall-clock hardware block on fsm8064_ep
+	 femto emulation platform. This block will be used to provide
+	 clock information to the LTE Layer 2 module running on the hexagon
+	 processor.
+
+config WALL_CLK_SYSFS
+	tristate "Wall Clock SysFS Support"
+	depends on SYSFS && WALL_CLK
+	help
+	 Support the wallclk directory in sysfs filesystem to enable the
+	 wall clock simulation and read the current SFN.
+
 endif

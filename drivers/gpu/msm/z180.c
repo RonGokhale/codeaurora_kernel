@@ -216,8 +216,7 @@ static irqreturn_t z180_irq_handler(struct kgsl_device *device)
 		}
 	}
 
-	if ((device->pwrctrl.nap_allowed == true) &&
-		(device->requested_state == KGSL_STATE_NONE)) {
+	if (device->requested_state == KGSL_STATE_NONE) {
 		kgsl_pwrctrl_request_state(device, KGSL_STATE_NAP);
 		queue_work(device->work_queue, &device->idle_check_ws);
 	}
@@ -467,10 +466,10 @@ z180_cmdstream_issueibcmds(struct kgsl_device_private *dev_priv,
 	addmarker(&z180_dev->ringbuffer, z180_dev->current_timestamp);
 
 	/* monkey patch the IB so that it jumps back to the ringbuffer */
-	kgsl_sharedmem_writel(&entry->memdesc,
+	kgsl_sharedmem_writel(device, &entry->memdesc,
 		      ((sizedwords + 1) * sizeof(unsigned int)),
 		      rb_gpuaddr(z180_dev, z180_dev->current_timestamp));
-	kgsl_sharedmem_writel(&entry->memdesc,
+	kgsl_sharedmem_writel(device, &entry->memdesc,
 			      ((sizedwords + 2) * sizeof(unsigned int)),
 			      nextcnt);
 
@@ -581,7 +580,6 @@ static int z180_start(struct kgsl_device *device)
 
 	z180_cmdstream_start(device);
 
-	mod_timer(&device->idle_timer, jiffies + FIRST_TIMEOUT);
 	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_ON);
 	device->ftbl->irqctrl(device, 1);
 
@@ -710,7 +708,7 @@ static void _z180_regwrite_simple(struct kgsl_device *device,
 	BUG_ON(offsetwords*sizeof(uint32_t) >= device->reg_len);
 
 	reg = (unsigned int *)(device->reg_virt + (offsetwords << 2));
-	kgsl_cffdump_regwrite(device->id, offsetwords << 2, value);
+	kgsl_cffdump_regwrite(device, offsetwords << 2, value);
 	/*ensure previous writes post before this one,
 	 * i.e. act like normal writel() */
 	wmb();
