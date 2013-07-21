@@ -228,9 +228,12 @@ static int i915_gem_object_info(struct seq_file *m, void *data)
 	if (ret)
 		return ret;
 
-	seq_printf(m, "%u objects, %zu bytes\n",
-		   dev_priv->mm.object_count,
-		   dev_priv->mm.object_memory);
+	size = count = 0;
+	list_for_each_entry(obj, &dev_priv->mm.unbound_list, global_list)
+		size += obj->base.size, ++count;
+	list_for_each_entry(obj, &dev_priv->mm.bound_list, global_list)
+		size += obj->base.size, ++count;
+	seq_printf(m, "%u objects, %zu bytes\n", count, size);
 
 	size = count = mappable_size = mappable_count = 0;
 	count_objects(&dev_priv->mm.bound_list, global_list);

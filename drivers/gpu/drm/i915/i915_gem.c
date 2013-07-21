@@ -71,21 +71,6 @@ static inline void i915_gem_object_fence_lost(struct drm_i915_gem_object *obj)
 	obj->fence_reg = I915_FENCE_REG_NONE;
 }
 
-/* some bookkeeping */
-static void i915_gem_info_add_obj(struct drm_i915_private *dev_priv,
-				  size_t size)
-{
-	dev_priv->mm.object_count++;
-	dev_priv->mm.object_memory += size;
-}
-
-static void i915_gem_info_remove_obj(struct drm_i915_private *dev_priv,
-				     size_t size)
-{
-	dev_priv->mm.object_count--;
-	dev_priv->mm.object_memory -= size;
-}
-
 static int
 i915_gem_wait_for_error(struct i915_gpu_error *error)
 {
@@ -221,7 +206,6 @@ i915_gem_create(struct drm_file *file,
 	ret = drm_gem_handle_create(file, &obj->base, &handle);
 	if (ret) {
 		drm_gem_object_release(&obj->base);
-		i915_gem_info_remove_obj(dev->dev_private, obj->base.size);
 		i915_gem_object_free(obj);
 		return ret;
 	}
@@ -3897,8 +3881,6 @@ void i915_gem_object_init(struct drm_i915_gem_object *obj,
 	obj->madv = I915_MADV_WILLNEED;
 	/* Avoid an unnecessary call to unbind on the first bind. */
 	obj->map_and_fenceable = true;
-
-	i915_gem_info_add_obj(obj->base.dev->dev_private, obj->base.size);
 }
 
 static const struct drm_i915_gem_object_ops i915_gem_object_ops = {
@@ -4004,7 +3986,6 @@ void i915_gem_free_object(struct drm_gem_object *gem_obj)
 		drm_prime_gem_destroy(&obj->base, NULL);
 
 	drm_gem_object_release(&obj->base);
-	i915_gem_info_remove_obj(dev_priv, obj->base.size);
 
 	kfree(obj->bit_17);
 	i915_gem_object_free(obj);

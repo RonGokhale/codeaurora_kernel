@@ -923,10 +923,6 @@ struct i915_gem_mm {
 
 	/* storage for physical objects */
 	struct drm_i915_gem_phys_object *phys_objs[I915_MAX_PHYS_OBJECT];
-
-	/* accounting, useful for userland debugging */
-	size_t object_memory;
-	u32 object_count;
 };
 
 struct drm_i915_error_state_buf {
