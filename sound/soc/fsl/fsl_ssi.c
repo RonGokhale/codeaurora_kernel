@@ -36,7 +36,7 @@
 #define read_ssi(addr)			 in_be32(addr)
 #define write_ssi(val, addr)		 out_be32(addr, val)
 #define write_ssi_mask(addr, clear, set) clrsetbits_be32(addr, clear, set)
-#elif defined ARM
+#else
 #define read_ssi(addr)			 readl(addr)
 #define write_ssi(val, addr)		 writel(val, addr)
 /*
@@ -510,6 +510,9 @@ static int fsl_ssi_trigger(struct snd_pcm_substream *substream, int cmd,
 			write_ssi_mask(&ssi->scr, CCSR_SSI_SCR_TE, 0);
 		else
 			write_ssi_mask(&ssi->scr, CCSR_SSI_SCR_RE, 0);
+
+		if ((read_ssi(&ssi->scr) & (CCSR_SSI_SCR_TE | CCSR_SSI_SCR_RE)) == 0)
+			write_ssi_mask(&ssi->scr, CCSR_SSI_SCR_SSIEN, 0);
 		break;
 
 	default:
@@ -534,15 +537,6 @@ static void fsl_ssi_shutdown(struct snd_pcm_substream *substream,
 		ssi_private->first_stream = ssi_private->second_stream;
 
 	ssi_private->second_stream = NULL;
-
-	/*
-	 * If this is the last active substream, disable the SSI.
-	 */
-	if (!ssi_private->first_stream) {
-		struct ccsr_ssi __iomem *ssi = ssi_private->ssi;
-
-		write_ssi_mask(&ssi->scr, CCSR_SSI_SCR_SSIEN, 0);
-	}
 }
 
 static int fsl_ssi_dai_probe(struct snd_soc_dai *dai)
@@ -680,7 +674,7 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 
 	/* The DAI name is the last part of the full name of the node. */
 	p = strrchr(np->full_name, '/') + 1;
-	ssi_private = kzalloc(sizeof(struct fsl_ssi_private) + strlen(p),
+	ssi_private = devm_kzalloc(&pdev->dev, sizeof(*ssi_private) + strlen(p),
 			      GFP_KERNEL);
 	if (!ssi_private) {
 		dev_err(&pdev->dev, "could not allocate DAI object\n");
@@ -698,26 +692,24 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 	ret = of_address_to_resource(np, 0, &res);
 	if (ret) {
 		dev_err(&pdev->dev, "could not determine device resources\n");
-		goto error_kmalloc;
+		return ret;
 	}
 	ssi_private->ssi = of_iomap(np, 0);
 	if (!ssi_private->ssi) {
 		dev_err(&pdev->dev, "could not map device resources\n");
-		ret = -ENOMEM;
-		goto error_kmalloc;
+		return -ENOMEM;
 	}
 	ssi_private->ssi_phys = res.start;
 
 	ssi_private->irq = irq_of_parse_and_map(np, 0);
 	if (ssi_private->irq == NO_IRQ) {
 		dev_err(&pdev->dev, "no irq for node %s\n", np->full_name);
-		ret = -ENXIO;
-		goto error_iomap;
+		return -ENXIO;
 	}
 
 	/* The 'name' should not have any slashes in it. */
-	ret = request_irq(ssi_private->irq, fsl_ssi_isr, 0, ssi_private->name,
-			  ssi_private);
+	ret = devm_request_irq(&pdev->dev, ssi_private->irq, fsl_ssi_isr, 0,
+			       ssi_private->name, ssi_private);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "could not claim irq %u\n", ssi_private->irq);
 		goto error_irqmap;
@@ -739,13 +731,18 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 		u32 dma_events[2];
 		ssi_private->ssi_on_imx = true;
 
-		ssi_private->clk = clk_get(&pdev->dev, NULL);
+		ssi_private->clk = devm_clk_get(&pdev->dev, NULL);
 		if (IS_ERR(ssi_private->clk)) {
 			ret = PTR_ERR(ssi_private->clk);
 			dev_err(&pdev->dev, "could not get clock: %d\n", ret);
-			goto error_irq;
+			goto error_irqmap;
 		}
-		clk_prepare_enable(ssi_private->clk);
+		ret = clk_prepare_enable(ssi_private->clk);
+		if (ret) {
+			dev_err(&pdev->dev, "clk_prepare_enable failed: %d\n",
+				ret);
+			goto error_irqmap;
+		}
 
 		/*
 		 * We have burstsize be "fifo_depth - 2" to match the SSI
@@ -794,7 +791,7 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "could not create sysfs %s file\n",
 			ssi_private->dev_attr.attr.name);
-		goto error_irq;
+		goto error_clk;
 	}
 
 	/* Register with ASoC */
@@ -857,22 +854,11 @@ error_dev:
 	device_remove_file(&pdev->dev, dev_attr);
 
 error_clk:
-	if (ssi_private->ssi_on_imx) {
+	if (ssi_private->ssi_on_imx)
 		clk_disable_unprepare(ssi_private->clk);
-		clk_put(ssi_private->clk);
-	}
-
-error_irq:
-	free_irq(ssi_private->irq, ssi_private);
 
 error_irqmap:
 	irq_dispose_mapping(ssi_private->irq);
-
-error_iomap:
-	iounmap(ssi_private->ssi);
-
-error_kmalloc:
-	kfree(ssi_private);
 
 	return ret;
 }
@@ -886,15 +872,10 @@ static int fsl_ssi_remove(struct platform_device *pdev)
 	if (ssi_private->ssi_on_imx) {
 		imx_pcm_dma_exit(pdev);
 		clk_disable_unprepare(ssi_private->clk);
-		clk_put(ssi_private->clk);
 	}
 	snd_soc_unregister_component(&pdev->dev);
 	device_remove_file(&pdev->dev, &ssi_private->dev_attr);
-
-	free_irq(ssi_private->irq, ssi_private);
 	irq_dispose_mapping(ssi_private->irq);
-
-	kfree(ssi_private);
 	dev_set_drvdata(&pdev->dev, NULL);
 
 	return 0;
@@ -919,6 +900,7 @@ static struct platform_driver fsl_ssi_driver = {
 
 module_platform_driver(fsl_ssi_driver);
 
+MODULE_ALIAS("platform:fsl-ssi-dai");
 MODULE_AUTHOR("Timur Tabi <timur@freescale.com>");
 MODULE_DESCRIPTION("Freescale Synchronous Serial Interface (SSI) ASoC Driver");
 MODULE_LICENSE("GPL v2");
