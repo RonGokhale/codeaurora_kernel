@@ -589,6 +589,7 @@
 			<&msmgpio 54 0>, /* MISO */
 			<&msmgpio 53 0>; /* MOSI */
 		cs-gpios = <&msmgpio 55 0>;
+		qcom,master-id = <84>;
 	};
 
 	tspp: msm_tspp@f99d8000 {
@@ -822,6 +823,7 @@
 			<&msmgpio 1 0>, /* MISO */
 			<&msmgpio 0 0>; /* MOSI */
 		cs-gpios = <&msmgpio 9 0>;
+		qcom,master-id = <86>;
 	};
 
 	qcom,acpuclk@f9000000 {
@@ -1262,13 +1264,19 @@
 	};
 
         qcom,msm-rng@f9bff000 {
-               compatible = "qcom,msm-rng";
-               reg = <0xf9bff000 0x200>;
+		compatible = "qcom,msm-rng";
+		reg = <0xf9bff000 0x200>;
+		qcom,msm-bus,name = "msm-rng-noc";
+		qcom,msm-bus,num-cases = <2>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps =
+				<1 618 0 0>,
+				<1 618 0 800>;
         };
 
-	qseecom: qcom,qseecom@7f00000 {
+	qseecom: qcom,qseecom@7b00000 {
 		compatible = "qcom,qseecom";
-		reg = <0x7f00000 0x500000>;
+		reg = <0x7b00000 0x500000>;
 		reg-names = "secapp-region";
 		qcom,disk-encrypt-pipe-pair = <2>;
 		qcom,hlos-ce-hw-instance = <1>;
@@ -1499,7 +1507,7 @@
 
         memory_hole: qcom,msm-mem-hole {
                 compatible = "qcom,msm-mem-hole";
-                qcom,memblock-remove = <0x07f00000 0x5b00000
+                qcom,memblock-remove = <0x07b00000 0x5f00000
 					0x0dc00000 0x2300000>; /* Address and Size of Holes */
         };
 
