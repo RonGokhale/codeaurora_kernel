@@ -1358,7 +1358,7 @@ cleanup_gem:
 	i915_gem_context_fini(dev);
 	mutex_unlock(&dev->struct_mutex);
 	i915_gem_cleanup_aliasing_ppgtt(dev);
-	drm_mm_takedown(&dev_priv->mm.gtt_space);
+	drm_mm_takedown(&dev_priv->gtt.base.mm);
 cleanup_irq:
 	drm_irq_uninstall(dev);
 cleanup_gem_stolen:
@@ -1499,6 +1499,10 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 
 	i915_dump_device_info(dev_priv);
 
+	INIT_LIST_HEAD(&dev_priv->vm_list);
+	INIT_LIST_HEAD(&dev_priv->gtt.base.global_link);
+	list_add(&dev_priv->gtt.base.global_link, &dev_priv->vm_list);
+
 	if (i915_get_bridge_dev(dev)) {
 		ret = -EIO;
 		goto free_priv;
@@ -1525,6 +1529,16 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	}
 
 	intel_early_sanitize_regs(dev);
+
+	if (IS_HASWELL(dev) && (I915_READ(HSW_EDRAM_PRESENT) == 1)) {
+		/* The docs do not explain exactly how the calculation can be
+		 * made. It is somewhat guessable, but for now, it's always
+		 * 128MB.
+		 * NB: We can't write IDICR yet because we do not have gt funcs
+		 * set up */
+		dev_priv->ellc_size = 128;
+		DRM_INFO("Found %zuMB of eLLC\n", dev_priv->ellc_size);
+	}
 
 	ret = i915_gem_gtt_init(dev);
 	if (ret)
@@ -1663,7 +1677,7 @@ out_gem_unload:
 out_mtrrfree:
 	arch_phys_wc_del(dev_priv->gtt.mtrr);
 	io_mapping_free(dev_priv->gtt.mappable);
-	dev_priv->gtt.gtt_remove(dev);
+	dev_priv->gtt.base.cleanup(&dev_priv->gtt.base);
 out_rmmap:
 	pci_iounmap(dev->pdev, dev_priv->regs);
 put_bridge:
@@ -1748,7 +1762,9 @@ int i915_driver_unload(struct drm_device *dev)
 			i915_free_hws(dev);
 	}
 
-	drm_mm_takedown(&dev_priv->mm.gtt_space);
+	list_del(&dev_priv->gtt.base.global_link);
+	WARN_ON(!list_empty(&dev_priv->vm_list));
+	drm_mm_takedown(&dev_priv->gtt.base.mm);
 	if (dev_priv->regs != NULL)
 		pci_iounmap(dev->pdev, dev_priv->regs);
 
@@ -1758,7 +1774,7 @@ int i915_driver_unload(struct drm_device *dev)
 	destroy_workqueue(dev_priv->wq);
 	pm_qos_remove_request(&dev_priv->pm_qos);
 
-	dev_priv->gtt.gtt_remove(dev);
+	dev_priv->gtt.base.cleanup(&dev_priv->gtt.base);
 
 	if (dev_priv->slab)
 		kmem_cache_destroy(dev_priv->slab);
