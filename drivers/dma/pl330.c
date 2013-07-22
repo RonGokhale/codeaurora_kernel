@@ -1734,6 +1734,10 @@ static int pl330_update(const struct pl330_info *pi)
 			ret = 1;
 
 			id = pl330->events[ev];
+			/* If error occurs when running dmatest, then id is -1,
+				which causes crash below, so skip to next event */
+			if (id == -1)
+				continue;
 
 			thrd = &pl330->channels[id];
 
@@ -2927,18 +2931,15 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 
 	for (i = 0; i < AMBA_NR_IRQS; i++) {
 		irq = adev->irq[i];
-		if (irq) {
-			ret = devm_request_irq(&adev->dev, irq,
-					       pl330_irq_handler, 0,
-					       dev_name(&adev->dev), pi);
-			if (ret)
-				return ret;
-		} else {
+		if (irq == 0)
 			break;
-		}
+		ret = request_irq(irq, pl330_irq_handler, 0,
+				dev_name(&adev->dev), pi);
+		if (ret)
+			goto probe_err1;
 	}
 
-	if (pdat->init) {
+	if (pdat && pdat->init) {
 		ret = pdat->init(adev);
 		if (ret)
 			goto probe_err3;
@@ -3012,6 +3013,13 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 	pd->device_issue_pending = pl330_issue_pending;
 	pd->device_slave_caps = pl330_dma_device_slave_caps;
 
+	if (adev->dev.of_node) {
+		u32 val;
+		if (!of_property_read_u32(adev->dev.of_node,
+			"copy-align", &val))
+			pd->copy_align = val;
+	}
+
 	ret = dma_async_device_register(pd);
 	if (ret) {
 		dev_err(&adev->dev, "unable to register DMAC\n");
@@ -3058,6 +3066,13 @@ probe_err3:
 	}
 probe_err2:
 	pl330_del(pi);
+probe_err1:
+	for (i = 0; i < AMBA_NR_IRQS; i++) {
+		irq = adev->irq[i];
+		if (irq == 0)
+			break;
+		free_irq(irq, pi);
+	}
 
 	return ret;
 }
@@ -3065,9 +3080,10 @@ probe_err2:
 static int pl330_remove(struct amba_device *adev)
 {
 	struct dma_pl330_dmac *pdmac = amba_get_drvdata(adev);
-	struct dma_pl330_platdata *pdat = adev->dev.platform_data;
 	struct dma_pl330_chan *pch, *_p;
 	struct pl330_info *pi;
+	int irq;
+	int i;
 
 	if (!pdmac)
 		return 0;
@@ -3092,6 +3108,13 @@ static int pl330_remove(struct amba_device *adev)
 	pi = &pdmac->pif;
 
 	pl330_del(pi);
+
+	for (i = 0; i < AMBA_NR_IRQS; i++) {
+		irq = adev->irq[i];
+		if (irq == 0)
+			break;
+		free_irq(irq, pi);
+	}
 
 	return 0;
 }
