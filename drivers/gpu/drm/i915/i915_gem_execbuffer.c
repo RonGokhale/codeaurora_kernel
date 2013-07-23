@@ -759,8 +759,10 @@ validate_exec_list(struct drm_i915_gem_exec_object2 *exec,
 		if (!access_ok(VERIFY_WRITE, ptr, length))
 			return -EFAULT;
 
-		if (fault_in_multipages_readable(ptr, length))
-			return -EFAULT;
+		if (likely(!i915_prefault_disable)) {
+			if (fault_in_multipages_readable(ptr, length))
+				return -EFAULT;
+		}
 	}
 
 	return 0;
@@ -873,7 +875,7 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 		break;
 	case I915_EXEC_BSD:
 		ring = &dev_priv->ring[VCS];
-		if (ctx_id != 0) {
+		if (ctx_id != DEFAULT_CONTEXT_ID) {
 			DRM_DEBUG("Ring %s doesn't support contexts\n",
 				  ring->name);
 			return -EPERM;
@@ -881,7 +883,7 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 		break;
 	case I915_EXEC_BLT:
 		ring = &dev_priv->ring[BCS];
-		if (ctx_id != 0) {
+		if (ctx_id != DEFAULT_CONTEXT_ID) {
 			DRM_DEBUG("Ring %s doesn't support contexts\n",
 				  ring->name);
 			return -EPERM;
@@ -889,7 +891,7 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 		break;
 	case I915_EXEC_VEBOX:
 		ring = &dev_priv->ring[VECS];
-		if (ctx_id != 0) {
+		if (ctx_id != DEFAULT_CONTEXT_ID) {
 			DRM_DEBUG("Ring %s doesn't support contexts\n",
 				  ring->name);
 			return -EPERM;
