@@ -41,12 +41,14 @@
 		volume-up {
 			label = "Volume Up";
 			gpios = <&gpio1 4 0>;
+			gpio-key,wakeup;
 			linux,code = <115>; /* KEY_VOLUMEUP */
 		};
 
 		volume-down {
 			label = "Volume Down";
 			gpios = <&gpio1 5 0>;
+			gpio-key,wakeup;
 			linux,code = <114>; /* KEY_VOLUMEDOWN */
 		};
 	};
@@ -77,6 +79,22 @@
 	status = "okay";
 };
 
+&ecspi1 {
+	fsl,spi-num-chipselects = <1>;
+	cs-gpios = <&gpio4 9 0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi1_2>;
+	status = "okay";
+
+	flash: m25p80@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "st,m25p32";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+	};
+};
+
 &fec {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet_1>;
@@ -93,7 +111,7 @@
 	codec: wm8962@1a {
 		compatible = "wlf,wm8962";
 		reg = <0x1a>;
-		clocks = <&clks 169>;
+		clocks = <&clks 201>;
 		DCVDD-supply = <&reg_audio>;
 		DBVDD-supply = <&reg_audio>;
 		AVDD-supply = <&reg_audio>;
@@ -111,6 +129,50 @@
 			0x0000 /* 5:Default */
 		>;
        };
+};
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog>;
+
+	hog {
+		pinctrl_hog: hoggrp {
+			fsl,pins = <
+				MX6QDL_PAD_GPIO_4__GPIO1_IO04   0x80000000
+				MX6QDL_PAD_GPIO_5__GPIO1_IO05   0x80000000
+				MX6QDL_PAD_NANDF_D0__GPIO2_IO00 0x80000000
+				MX6QDL_PAD_NANDF_D1__GPIO2_IO01 0x80000000
+				MX6QDL_PAD_NANDF_D2__GPIO2_IO02 0x80000000
+				MX6QDL_PAD_NANDF_D3__GPIO2_IO03 0x80000000
+				MX6QDL_PAD_GPIO_0__CCM_CLKO1    0x130b0
+			>;
+		};
+	};
+};
+
+&ldb {
+	status = "okay";
+
+	lvds-channel@1 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <18>;
+		status = "okay";
+
+		display-timings {
+			native-mode = <&timing0>;
+			timing0: hsd100pxn1 {
+				clock-frequency = <65000000>;
+				hactive = <1024>;
+				vactive = <768>;
+				hback-porch = <220>;
+				hfront-porch = <40>;
+				vback-porch = <21>;
+				vfront-porch = <7>;
+				hsync-len = <60>;
+				vsync-len = <10>;
+			};
+		};
+	};
 };
 
 &ssi2 {
