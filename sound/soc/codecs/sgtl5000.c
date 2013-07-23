@@ -1470,6 +1470,7 @@ static struct snd_soc_codec_driver sgtl5000_driver = {
 static const struct regmap_config sgtl5000_regmap = {
 	.reg_bits = 16,
 	.val_bits = 16,
+	.reg_stride = 2,
 
 	.max_register = SGTL5000_MAX_REG_OFFSET,
 	.volatile_reg = sgtl5000_volatile,
@@ -1527,6 +1528,9 @@ static int sgtl5000_i2c_probe(struct i2c_client *client,
 	if (IS_ERR(sgtl5000->mclk)) {
 		ret = PTR_ERR(sgtl5000->mclk);
 		dev_err(&client->dev, "Failed to get mclock: %d\n", ret);
+		/* Defer the probe to see if the clk will be provided later */
+		if (ret == -ENOENT)
+			return -EPROBE_DEFER;
 		return ret;
 	}
 
