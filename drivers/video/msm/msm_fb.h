@@ -244,6 +244,9 @@ struct msm_fb_data_type {
 	uint32 sec_mapped;
 	uint32 sec_active;
 	u32 avtimer_phy;
+	uint32 edid_fail_status;
+	uint32 vfmt_kernel;
+	uint32 vfmt_lk;
 };
 struct msm_fb_backup_type {
 	struct fb_info info;

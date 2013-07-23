@@ -799,7 +799,7 @@ static void hdmi_msm_reinit_panel_info(void)
 	uint32 num   = external_common_state->disp_mode_list.num_of_elements;
 	uint32 *list = external_common_state->disp_mode_list.disp_mode_list;
 	struct fb_info *fbi;
-	int i;
+	int i, mode_change = 0;
 
 	for (i = 0; i < num; i++) {
 		uint32 best_format = external_common_state->best_video_format;
@@ -811,8 +811,13 @@ static void hdmi_msm_reinit_panel_info(void)
 	if (external_common_state->best_video_format !=
 	    external_common_state->video_resolution) {
 		external_common_state->video_resolution =
-			external_common_state->best_video_format;
+		    external_common_state->best_video_format;
+			mode_change = 1;
+		}
 
+	mfd->vfmt_kernel = external_common_state->video_resolution + 1;
+
+        if (mode_change) {
 		hdmi_common_init_panel_info(&mfd->panel_info);
 
 		fbi = mfd->fbi;
