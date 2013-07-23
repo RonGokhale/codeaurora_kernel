@@ -178,7 +178,7 @@ struct image_header_data {
 			/* 0x50-0x53*/
 			unsigned char firmware_id[4];
 		} __packed;
-		unsigned char data[54];
+		unsigned char data[0x54];
 	};
 };
 
@@ -347,7 +347,7 @@ static struct device_attribute attrs[] = {
 
 static struct synaptics_rmi4_fwu_handle *fwu;
 
-static struct completion remove_complete;
+DECLARE_COMPLETION(fwu_remove_complete);
 
 static unsigned int extract_uint(const unsigned char *ptr)
 {
@@ -1793,9 +1793,6 @@ static int synaptics_rmi4_fwu_init(struct synaptics_rmi4_data *rmi4_data)
 			&fwu->fwu_work,
 			msecs_to_jiffies(1000));
 #endif
-
-	init_completion(&remove_complete);
-
 	return 0;
 
 exit_remove_attrs:
@@ -1830,7 +1827,7 @@ static void synaptics_rmi4_fwu_remove(struct synaptics_rmi4_data *rmi4_data)
 	kfree(fwu->fn_ptr);
 	kfree(fwu);
 
-	complete(&remove_complete);
+	complete(&fwu_remove_complete);
 
 	return;
 }
@@ -1850,7 +1847,7 @@ static void __exit rmi4_fw_update_module_exit(void)
 			synaptics_rmi4_fwu_init,
 			synaptics_rmi4_fwu_remove,
 			synaptics_rmi4_fwu_attn);
-	wait_for_completion(&remove_complete);
+	wait_for_completion(&fwu_remove_complete);
 	return;
 }
 
