@@ -17,8 +17,8 @@ void set_huge_pte_at(struct mm_struct *mm, unsigned long addr,
 
 	if (!MACHINE_HAS_HPAGE) {
 		pteptr = (pte_t *) pte_page(pteval)[1].index;
-		mask = pte_val(pteval) &
-				(_SEGMENT_ENTRY_INV | _SEGMENT_ENTRY_RO);
+		mask = pte_val(pteval) & (_SEGMENT_ENTRY_INVALID |
+					  _SEGMENT_ENTRY_PROTECT);
 		pte_val(pteval) = (_SEGMENT_ENTRY + __pa(pteptr)) | mask;
 	}
 
@@ -58,7 +58,7 @@ void arch_release_hugepage(struct page *page)
 	ptep = (pte_t *) page[1].index;
 	if (!ptep)
 		return;
-	clear_table((unsigned long *) ptep, _PAGE_TYPE_EMPTY,
+	clear_table((unsigned long *) ptep, _PAGE_INVALID,
 		    PTRS_PER_PTE * sizeof(pte_t));
 	page_table_free(&init_mm, (unsigned long *) ptep);
 	page[1].index = 0;
