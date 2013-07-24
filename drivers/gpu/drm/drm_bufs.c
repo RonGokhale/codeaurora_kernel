@@ -243,7 +243,7 @@ static int drm_addmap_core(struct drm_device * dev, resource_size_t offset,
 		}
 		map->handle = vmalloc_user(map->size);
 		DRM_DEBUG("%lu %d %p\n",
-			  map->size, drm_order(map->size), map->handle);
+			  map->size, order_base_2(map->size), map->handle);
 		if (!map->handle) {
 			kfree(map);
 			return -ENOMEM;
@@ -630,7 +630,7 @@ int drm_addbufs_agp(struct drm_device * dev, struct drm_buf_desc * request)
 		return -EINVAL;
 
 	count = request->count;
-	order = drm_order(request->size);
+	order = order_base_2(request->size);
 	size = 1 << order;
 
 	alignment = (request->flags & _DRM_PAGE_ALIGN)
@@ -800,7 +800,7 @@ int drm_addbufs_pci(struct drm_device * dev, struct drm_buf_desc * request)
 		return -EPERM;
 
 	count = request->count;
-	order = drm_order(request->size);
+	order = order_base_2(request->size);
 	size = 1 << order;
 
 	DRM_DEBUG("count=%d, size=%d (%d), order=%d\n",
@@ -1002,7 +1002,7 @@ static int drm_addbufs_sg(struct drm_device * dev, struct drm_buf_desc * request
 		return -EPERM;
 
 	count = request->count;
-	order = drm_order(request->size);
+	order = order_base_2(request->size);
 	size = 1 << order;
 
 	alignment = (request->flags & _DRM_PAGE_ALIGN)
@@ -1157,7 +1157,7 @@ static int drm_addbufs_fb(struct drm_device * dev, struct drm_buf_desc * request
 		return -EPERM;
 
 	count = request->count;
-	order = drm_order(request->size);
+	order = order_base_2(request->size);
 	size = 1 << order;
 
 	alignment = (request->flags & _DRM_PAGE_ALIGN)
@@ -1435,7 +1435,7 @@ int drm_markbufs(struct drm_device *dev, void *data,
 
 	DRM_DEBUG("%d, %d, %d\n",
 		  request->size, request->low_mark, request->high_mark);
-	order = drm_order(request->size);
+	order = order_base_2(request->size);
 	if (order < DRM_MIN_ORDER || order > DRM_MAX_ORDER)
 		return -EINVAL;
 	entry = &dma->bufs[order];
@@ -1600,25 +1600,16 @@ int drm_mapbufs(struct drm_device *dev, void *data,
 	return retcode;
 }
 
-/**
- * Compute size order.  Returns the exponent of the smaller power of two which
- * is greater or equal to given number.
- *
- * \param size size.
- * \return order.
- *
- * \todo Can be made faster.
- */
-int drm_order(unsigned long size)
+struct drm_local_map *drm_getsarea(struct drm_device *dev)
 {
-	int order;
-	unsigned long tmp;
+	struct drm_map_list *entry;
 
-	for (order = 0, tmp = size >> 1; tmp; tmp >>= 1, order++) ;
-
-	if (size & (size - 1))
-		++order;
-
-	return order;
+	list_for_each_entry(entry, &dev->maplist, head) {
+		if (entry->map && entry->map->type == _DRM_SHM &&
+		    (entry->map->flags & _DRM_CONTAINS_LOCK)) {
+			return entry->map;
+		}
+	}
+	return NULL;
 }
-EXPORT_SYMBOL(drm_order);
+EXPORT_SYMBOL(drm_getsarea);
