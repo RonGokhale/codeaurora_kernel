@@ -11,11 +11,39 @@
 
 #include <linux/device.h>
 #include <linux/regmap.h>
+#include <linux/list.h>
+
+struct sigmadsp;
+struct snd_soc_codec;
+
+struct sigmadsp_ops {
+	int (*safeload)(struct sigmadsp *sigmadsp, unsigned int addr,
+			const uint8_t *data, size_t len);
+};
+
+typedef int (*sigma_fw_write_fn)(void *, unsigned int, const uint8_t *, size_t);
+
+struct sigmadsp {
+	const struct sigmadsp_ops *ops;
+
+	struct list_head ctrl_list;
+
+	void *control_data;
+	int (*write)(void *, unsigned int, const uint8_t *, size_t);
+	int (*read)(void *, unsigned int, uint8_t *, size_t);
+};
 
 struct i2c_client;
 
-extern int process_sigma_firmware(struct i2c_client *client, const char *name);
-extern int process_sigma_firmware_regmap(struct device *dev,
-		struct regmap *regmap, const char *name);
+void sigmadsp_init_regmap(struct sigmadsp *sigmadsp,
+	const struct sigmadsp_ops *ops,	struct regmap *regmap);
+void sigmadsp_init_i2c(struct sigmadsp *sigmadsp,
+	const struct sigmadsp_ops *ops,	struct i2c_client *client);
+
+int sigmadsp_firmware_load(struct snd_soc_codec *codec,
+	struct sigmadsp *sigmadsp, const char *name,
+	unsigned int sample_rate);
+void sigmadsp_firmware_release(struct snd_soc_codec *codec,
+	struct sigmadsp *sigmadsp);
 
 #endif
