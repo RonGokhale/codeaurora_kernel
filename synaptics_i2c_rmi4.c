@@ -916,7 +916,6 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 {
 	int retval;
 	unsigned char touch_count = 0; /* number of touch points */
-	unsigned char index;
 	unsigned char finger;
 	unsigned char fingers_to_process;
 	unsigned char finger_status;
@@ -926,7 +925,6 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 	int y;
 	int wx;
 	int wy;
-	int temp;
 	struct synaptics_rmi4_f12_extra_data *extra_data;
 	struct synaptics_rmi4_f12_finger_data *data;
 	struct synaptics_rmi4_f12_finger_data *finger_data;
@@ -2637,7 +2635,7 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 		}
 
 		gpio_set_value(platform_data->reset_gpio, 0);
-		usleep_range(RMI4_GPIO_SLEEP_LOW_US);
+		usleep(RMI4_GPIO_SLEEP_LOW_US);
 		gpio_set_value(platform_data->reset_gpio, 1);
 		msleep(RESET_DELAY);
 	} else
@@ -2966,6 +2964,13 @@ static void synaptics_rmi4_early_suspend(struct early_suspend *h)
 			container_of(h, struct synaptics_rmi4_data,
 			early_suspend);
 
+	if (rmi4_data->stay_awake) {
+		rmi4_data->staying_awake = true;
+		return;
+	} else {
+		rmi4_data->staying_awake = false;
+	}
+
 	rmi4_data->touch_stopped = true;
 	wake_up(&rmi4_data->wait);
 	synaptics_rmi4_irq_enable(rmi4_data, false);
@@ -2991,6 +2996,9 @@ static void synaptics_rmi4_late_resume(struct early_suspend *h)
 	struct synaptics_rmi4_data *rmi4_data =
 			container_of(h, struct synaptics_rmi4_data,
 			early_suspend);
+
+	if (rmi4_data->staying_awake)
+		return;
 
 	if (rmi4_data->full_pm_cycle)
 		synaptics_rmi4_resume(&(rmi4_data->input_dev->dev));
@@ -3089,6 +3097,13 @@ static int synaptics_rmi4_suspend(struct device *dev)
 	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
 	int retval;
 
+	if (rmi4_data->stay_awake) {
+		rmi4_data->staying_awake = true;
+		return 0;
+	} else {
+		rmi4_data->staying_awake = false;
+	}
+
 	if (!rmi4_data->sensor_sleep) {
 		rmi4_data->touch_stopped = true;
 		wake_up(&rmi4_data->wait);
@@ -3119,6 +3134,9 @@ static int synaptics_rmi4_resume(struct device *dev)
 {
 	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
 	int retval;
+
+	if (rmi4_data->staying_awake)
+		return 0;
 
 	retval = synaptics_rmi4_regulator_lpm(rmi4_data, false);
 	if (retval < 0) {
