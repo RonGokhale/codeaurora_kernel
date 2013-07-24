@@ -854,7 +854,10 @@ static void rt2800usb_queue_init(struct data_queue *queue)
 	struct rt2x00_dev *rt2x00dev = queue->rt2x00dev;
 	unsigned short txwi_size, rxwi_size;
 
-	if (rt2x00_rt(rt2x00dev, RT5592)) {
+	if (rt2x00_rt(rt2x00dev, RT3593)) {
+		txwi_size = TXWI_DESC_SIZE_4WORDS;
+		rxwi_size = RXWI_DESC_SIZE_5WORDS;
+	} else if (rt2x00_rt(rt2x00dev, RT5592)) {
 		txwi_size = TXWI_DESC_SIZE_5WORDS;
 		rxwi_size = RXWI_DESC_SIZE_6WORDS;
 	} else {
@@ -1193,6 +1196,10 @@ static struct usb_device_id rt2800usb_device_table[] = {
 	{ USB_DEVICE(0x0930, 0x0a07) },
 	/* Zinwell */
 	{ USB_DEVICE(0x5a57, 0x0284) },
+#endif
+#ifdef CONFIG_RT2800USB_RT3573
+	/* Linksys */
+	{ USB_DEVICE(0x13b1, 0x003b) },
 #endif
 #ifdef CONFIG_RT2800USB_RT53XX
 	/* Arcadyan */
