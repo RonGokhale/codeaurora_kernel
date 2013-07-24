@@ -2940,10 +2940,10 @@ nfs4_proc_setattr(struct dentry *dentry, struct nfs_fattr *fattr,
 	
 	/* Deal with open(O_TRUNC) */
 	if (sattr->ia_valid & ATTR_OPEN)
-		sattr->ia_valid &= ~(ATTR_MTIME|ATTR_CTIME|ATTR_OPEN);
+		sattr->ia_valid &= ~(ATTR_MTIME|ATTR_CTIME);
 
 	/* Optimization: if the end result is no change, don't RPC */
-	if ((sattr->ia_valid & ~(ATTR_FILE)) == 0)
+	if ((sattr->ia_valid & ~(ATTR_FILE|ATTR_OPEN)) == 0)
 		return 0;
 
 	/* Search for an existing open(O_WRITE) file */
@@ -6876,7 +6876,7 @@ int nfs4_proc_layoutreturn(struct nfs4_layoutreturn *lrp)
 		.rpc_cred = lrp->cred,
 	};
 	struct rpc_task_setup task_setup_data = {
-		.rpc_client = lrp->clp->cl_rpcclient,
+		.rpc_client = NFS_SERVER(lrp->args.inode)->client,
 		.rpc_message = &msg,
 		.callback_ops = &nfs4_layoutreturn_call_ops,
 		.callback_data = lrp,
