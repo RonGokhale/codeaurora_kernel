@@ -355,14 +355,10 @@ static int
 acpi_video_device_lcd_set_level(struct acpi_video_device *device, int level)
 {
 	int status;
-	union acpi_object arg0 = { ACPI_TYPE_INTEGER };
-	struct acpi_object_list args = { 1, &arg0 };
 	int state;
 
-	arg0.integer.value = level;
-
-	status = acpi_evaluate_object(device->dev->handle, "_BCM",
-				      &args, NULL);
+	status = acpi_execute_simple_method(device->dev->handle,
+					    "_BCM", level);
 	if (ACPI_FAILURE(status)) {
 		ACPI_ERROR((AE_INFO, "Evaluating _BCM failed"));
 		return -EIO;
@@ -638,18 +634,15 @@ static int
 acpi_video_bus_DOS(struct acpi_video_bus *video, int bios_flag, int lcd_flag)
 {
 	acpi_status status;
-	union acpi_object arg0 = { ACPI_TYPE_INTEGER };
-	struct acpi_object_list args = { 1, &arg0 };
 
 	if (!video->cap._DOS)
 		return 0;
 
 	if (bios_flag < 0 || bios_flag > 3 || lcd_flag < 0 || lcd_flag > 1)
 		return -EINVAL;
-	arg0.integer.value = (lcd_flag << 2) | bios_flag;
-	video->dos_setting = arg0.integer.value;
-	status = acpi_evaluate_object(video->device->handle, "_DOS",
-		&args, NULL);
+	video->dos_setting = (lcd_flag << 2) | bios_flag;
+	status = acpi_execute_simple_method(video->device->handle, "_DOS",
+					    (lcd_flag << 2) | bios_flag);
 	if (ACPI_FAILURE(status))
 		return -EIO;
 
@@ -885,28 +878,21 @@ out:
 
 static void acpi_video_device_find_cap(struct acpi_video_device *device)
 {
-	acpi_handle h_dummy1;
-
-	if (ACPI_SUCCESS(acpi_get_handle(device->dev->handle, "_ADR", &h_dummy1))) {
+	if (acpi_has_method(device->dev->handle, "_ADR"))
 		device->cap._ADR = 1;
-	}
-	if (ACPI_SUCCESS(acpi_get_handle(device->dev->handle, "_BCL", &h_dummy1))) {
+	if (acpi_has_method(device->dev->handle, "_BCL"))
 		device->cap._BCL = 1;
-	}
-	if (ACPI_SUCCESS(acpi_get_handle(device->dev->handle, "_BCM", &h_dummy1))) {
+	if (acpi_has_method(device->dev->handle, "_BCM"))
 		device->cap._BCM = 1;
-	}
-	if (ACPI_SUCCESS(acpi_get_handle(device->dev->handle,"_BQC",&h_dummy1)))
+	if (acpi_has_method(device->dev->handle, "_BQC")) {
 		device->cap._BQC = 1;
-	else if (ACPI_SUCCESS(acpi_get_handle(device->dev->handle, "_BCQ",
-				&h_dummy1))) {
+	} else if (acpi_has_method(device->dev->handle, "_BCQ")) {
 		printk(KERN_WARNING FW_BUG "_BCQ is used instead of _BQC\n");
 		device->cap._BCQ = 1;
 	}
 
-	if (ACPI_SUCCESS(acpi_get_handle(device->dev->handle, "_DDC", &h_dummy1))) {
+	if (acpi_has_method(device->dev->handle, "_DDC"))
 		device->cap._DDC = 1;
-	}
 
 	if (acpi_video_init_brightness(device))
 		return;
@@ -999,26 +985,18 @@ static void acpi_video_device_find_cap(struct acpi_video_device *device)
 
 static void acpi_video_bus_find_cap(struct acpi_video_bus *video)
 {
-	acpi_handle h_dummy1;
-
-	if (ACPI_SUCCESS(acpi_get_handle(video->device->handle, "_DOS", &h_dummy1))) {
+	if (acpi_has_method(video->device->handle, "_DOS"))
 		video->cap._DOS = 1;
-	}
-	if (ACPI_SUCCESS(acpi_get_handle(video->device->handle, "_DOD", &h_dummy1))) {
+	if (acpi_has_method(video->device->handle, "_DOD"))
 		video->cap._DOD = 1;
-	}
-	if (ACPI_SUCCESS(acpi_get_handle(video->device->handle, "_ROM", &h_dummy1))) {
+	if (acpi_has_method(video->device->handle, "_ROM"))
 		video->cap._ROM = 1;
-	}
-	if (ACPI_SUCCESS(acpi_get_handle(video->device->handle, "_GPD", &h_dummy1))) {
+	if (acpi_has_method(video->device->handle, "_GPD"))
 		video->cap._GPD = 1;
-	}
-	if (ACPI_SUCCESS(acpi_get_handle(video->device->handle, "_SPD", &h_dummy1))) {
+	if (acpi_has_method(video->device->handle, "_SPD"))
 		video->cap._SPD = 1;
-	}
-	if (ACPI_SUCCESS(acpi_get_handle(video->device->handle, "_VPO", &h_dummy1))) {
+	if (acpi_has_method(video->device->handle, "_VPO"))
 		video->cap._VPO = 1;
-	}
 }
 
 /*
@@ -1577,7 +1555,6 @@ static void acpi_video_bus_notify(struct acpi_device *device, u32 event)
 	switch (event) {
 	case ACPI_VIDEO_NOTIFY_SWITCH:	/* User requested a switch,
 					 * most likely via hotkey. */
-		acpi_bus_generate_proc_event(device, event, 0);
 		keycode = KEY_SWITCHVIDEOMODE;
 		break;
 
@@ -1585,20 +1562,16 @@ static void acpi_video_bus_notify(struct acpi_device *device, u32 event)
 					 * connector. */
 		acpi_video_device_enumerate(video);
 		acpi_video_device_rebind(video);
-		acpi_bus_generate_proc_event(device, event, 0);
 		keycode = KEY_SWITCHVIDEOMODE;
 		break;
 
 	case ACPI_VIDEO_NOTIFY_CYCLE:	/* Cycle Display output hotkey pressed. */
-		acpi_bus_generate_proc_event(device, event, 0);
 		keycode = KEY_SWITCHVIDEOMODE;
 		break;
 	case ACPI_VIDEO_NOTIFY_NEXT_OUTPUT:	/* Next Display output hotkey pressed. */
-		acpi_bus_generate_proc_event(device, event, 0);
 		keycode = KEY_VIDEO_NEXT;
 		break;
 	case ACPI_VIDEO_NOTIFY_PREV_OUTPUT:	/* previous Display output hotkey pressed. */
-		acpi_bus_generate_proc_event(device, event, 0);
 		keycode = KEY_VIDEO_PREV;
 		break;
 
@@ -1641,31 +1614,26 @@ static void acpi_video_device_notify(acpi_handle handle, u32 event, void *data)
 	case ACPI_VIDEO_NOTIFY_CYCLE_BRIGHTNESS:	/* Cycle brightness */
 		if (brightness_switch_enabled)
 			acpi_video_switch_brightness(video_device, event);
-		acpi_bus_generate_proc_event(device, event, 0);
 		keycode = KEY_BRIGHTNESS_CYCLE;
 		break;
 	case ACPI_VIDEO_NOTIFY_INC_BRIGHTNESS:	/* Increase brightness */
 		if (brightness_switch_enabled)
 			acpi_video_switch_brightness(video_device, event);
-		acpi_bus_generate_proc_event(device, event, 0);
 		keycode = KEY_BRIGHTNESSUP;
 		break;
 	case ACPI_VIDEO_NOTIFY_DEC_BRIGHTNESS:	/* Decrease brightness */
 		if (brightness_switch_enabled)
 			acpi_video_switch_brightness(video_device, event);
-		acpi_bus_generate_proc_event(device, event, 0);
 		keycode = KEY_BRIGHTNESSDOWN;
 		break;
 	case ACPI_VIDEO_NOTIFY_ZERO_BRIGHTNESS:	/* zero brightness */
 		if (brightness_switch_enabled)
 			acpi_video_switch_brightness(video_device, event);
-		acpi_bus_generate_proc_event(device, event, 0);
 		keycode = KEY_BRIGHTNESS_ZERO;
 		break;
 	case ACPI_VIDEO_NOTIFY_DISPLAY_OFF:	/* display device off */
 		if (brightness_switch_enabled)
 			acpi_video_switch_brightness(video_device, event);
-		acpi_bus_generate_proc_event(device, event, 0);
 		keycode = KEY_DISPLAY_OFF;
 		break;
 	default:
