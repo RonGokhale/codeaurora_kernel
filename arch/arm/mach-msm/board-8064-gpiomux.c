@@ -451,8 +451,20 @@ static struct gpiomux_setting gsbi5_uart_cfg = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
+static struct gpiomux_setting gsbi6_spi_cfg_suspended = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
 static struct gpiomux_setting gsbi6_spi_cfg = {
 	.func = GPIOMUX_FUNC_2,
+	.drv = GPIOMUX_DRV_16MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting gsbi6_spi_cs2_cfg = {
+	.func = GPIOMUX_FUNC_5,
 	.drv = GPIOMUX_DRV_16MA,
 	.pull = GPIOMUX_PULL_NONE,
 };
@@ -1464,6 +1476,7 @@ static struct msm_gpiomux_config apq8064_sdc3_configs[] __initdata = {
 	},
 };
 
+#ifdef CONFIG_SERIAL_MSM_HS
 static struct gpiomux_setting gsbi6_uartdm_active = {
 	.func = GPIOMUX_FUNC_2,
 	.drv = GPIOMUX_DRV_8MA,
@@ -1475,6 +1488,7 @@ static struct gpiomux_setting gsbi6_uartdm_suspended = {
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_DOWN,
 };
+
 
 static struct msm_gpiomux_config mpq8064_uartdm_configs[] __initdata = {
 	{ /* UARTDM_TX */
@@ -1506,30 +1520,66 @@ static struct msm_gpiomux_config mpq8064_uartdm_configs[] __initdata = {
 		},
 	},
 };
+#endif
 
-static struct msm_gpiomux_config mpq8064_gsbi6_spi_configs[] __initdata = {
+static struct msm_gpiomux_config mpq8064_gsbi6_spi_cdp_configs[] __initdata = {
 	{
 		.gpio      = 17,        /* GSBI6_0 SPI CLK */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg,
+			[GPIOMUX_ACTIVE] = &gsbi6_spi_cfg,
+			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg_suspended,
 		},
 	},
 	{
 		.gpio      = 16,        /* GSBI6_1 SPI CS */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg,
+			[GPIOMUX_ACTIVE] = &gsbi6_spi_cfg,
+			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg_suspended,
 		},
 	},
 	{
 		.gpio      = 15,        /* GSBI6_2 SPI MISO */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg,
+			[GPIOMUX_ACTIVE] = &gsbi6_spi_cfg,
+			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg_suspended,
 		},
 	},
 	{
 		.gpio      = 14,        /* GSBI6_3 SPI_MOSI */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg,
+			[GPIOMUX_ACTIVE] = &gsbi6_spi_cfg,
+			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg_suspended,
+		},
+	},
+};
+
+static struct msm_gpiomux_config mpq8064_gsbi6_spi_dtv_configs[] __initdata = {
+	{
+		.gpio      = 17,        /* GSBI6_0 SPI CLK */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gsbi6_spi_cfg,
+			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg_suspended,
+		},
+	},
+	{
+		.gpio      = 63,        /* GSBI6 SPI CS2C_N */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gsbi6_spi_cs2_cfg,
+			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg_suspended,
+		},
+	},
+	{
+		.gpio      = 15,        /* GSBI6_2 SPI MISO */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gsbi6_spi_cfg,
+			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg_suspended,
+		},
+	},
+	{
+		.gpio      = 14,        /* GSBI6_3 SPI_MOSI */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gsbi6_spi_cfg,
+			[GPIOMUX_SUSPENDED] = &gsbi6_spi_cfg_suspended,
 		},
 	},
 };
@@ -1714,8 +1764,13 @@ void __init apq8064_init_gpiomux(void)
 				ARRAY_SIZE(apq8064_mhl_configs));
 
 	if (machine_is_mpq8064_cdp()) {
-		msm_gpiomux_install(mpq8064_gsbi6_spi_configs,
-				ARRAY_SIZE(mpq8064_gsbi6_spi_configs));
+		msm_gpiomux_install(mpq8064_gsbi6_spi_cdp_configs,
+				ARRAY_SIZE(mpq8064_gsbi6_spi_cdp_configs));
+	}
+
+	if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv()) {
+		msm_gpiomux_install(mpq8064_gsbi6_spi_dtv_configs,
+			ARRAY_SIZE(mpq8064_gsbi6_spi_dtv_configs));
 	}
 
 #ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
@@ -1733,10 +1788,13 @@ void __init apq8064_init_gpiomux(void)
 		msm_gpiomux_install(apq8064_sdc3_configs,
 				ARRAY_SIZE(apq8064_sdc3_configs));
 	}
-	 if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
+
+#ifdef CONFIG_SERIAL_MSM_HS
+	if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
 		machine_is_mpq8064_dma())
 		msm_gpiomux_install(mpq8064_uartdm_configs,
 				ARRAY_SIZE(mpq8064_uartdm_configs));
+#endif
 
 	if ((machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv() ||
 		machine_is_mpq8064_dma()) && (SOCINFO_VERSION_MAJOR(hrd_version) == 2))
