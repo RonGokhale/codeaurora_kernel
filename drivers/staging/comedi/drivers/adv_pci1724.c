@@ -52,6 +52,8 @@ supported PCI devices are configured as comedi devices automatically.
 
 */
 
+#include <linux/module.h>
+#include <linux/delay.h>
 #include <linux/pci.h>
 
 #include "../comedidev.h"
@@ -340,10 +342,9 @@ static int adv_pci1724_auto_attach(struct comedi_device *dev,
 	int retval;
 	unsigned int board_id;
 
-	devpriv = kzalloc(sizeof(*devpriv), GFP_KERNEL);
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
 	if (!devpriv)
 		return -ENOMEM;
-	dev->private = devpriv;
 
 	/* init software copies of output values to indicate we don't know
 	 * what the output value is since it has never been written. */

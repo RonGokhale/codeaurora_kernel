@@ -95,6 +95,7 @@
  * Digital-IO and Analog-Out only support instruction mode.
  */
 
+#include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
@@ -1338,10 +1339,9 @@ static int rtd_auto_attach(struct comedi_device *dev,
 	dev->board_ptr = board;
 	dev->board_name = board->name;
 
-	devpriv = kzalloc(sizeof(*devpriv), GFP_KERNEL);
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
 	if (!devpriv)
 		return -ENOMEM;
-	dev->private = devpriv;
 
 	ret = comedi_pci_enable(dev);
 	if (ret)

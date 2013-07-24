@@ -198,6 +198,7 @@ ldlm_flock_deadlock(struct ldlm_lock *req, struct ldlm_lock *bl_lock)
 		if (lock == NULL)
 			break;
 
+		LASSERT(req != lock);
 		flock = &lock->l_policy_data.l_flock;
 		LASSERT(flock->owner == bl_owner);
 		bl_owner = flock->blocking_owner;
@@ -329,18 +330,21 @@ reprocess:
 				RETURN(LDLM_ITER_STOP);
 			}
 
-			if (ldlm_flock_deadlock(req, lock)) {
-				ldlm_flock_destroy(req, mode, *flags);
-				*err = -EDEADLK;
-				RETURN(LDLM_ITER_STOP);
-			}
-
+			/* add lock to blocking list before deadlock
+			 * check to prevent race */
 			rc = ldlm_flock_blocking_link(req, lock);
 			if (rc) {
 				ldlm_flock_destroy(req, mode, *flags);
 				*err = rc;
 				RETURN(LDLM_ITER_STOP);
 			}
+			if (ldlm_flock_deadlock(req, lock)) {
+				ldlm_flock_blocking_unlink(req);
+				ldlm_flock_destroy(req, mode, *flags);
+				*err = -EDEADLK;
+				RETURN(LDLM_ITER_STOP);
+			}
+
 			ldlm_resource_add_lock(res, &res->lr_waiting, req);
 			*flags |= LDLM_FL_BLOCK_GRANTED;
 			RETURN(LDLM_ITER_STOP);
@@ -639,7 +643,7 @@ ldlm_flock_completion_ast(struct ldlm_lock *lock, __u64 flags, void *data)
 granted:
 	OBD_FAIL_TIMEOUT(OBD_FAIL_LDLM_CP_CB_WAIT, 10);
 
-	if (lock->l_destroyed) {
+	if (lock->l_flags & LDLM_FL_DESTROYED) {
 		LDLM_DEBUG(lock, "client-side enqueue waking up: destroyed");
 		RETURN(0);
 	}

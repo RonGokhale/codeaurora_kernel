@@ -112,9 +112,11 @@ int ll_setxattr_common(struct inode *inode, const char *name,
 	struct ptlrpc_request *req;
 	int xattr_type, rc;
 	struct obd_capa *oc;
+#ifdef CONFIG_FS_POSIX_ACL
 	posix_acl_xattr_header *new_value = NULL;
 	struct rmtacl_ctl_entry *rce = NULL;
 	ext_acl_xattr_header *acl = NULL;
+#endif
 	const char *pv = value;
 	ENTRY;
 
@@ -562,7 +564,12 @@ ssize_t ll_listxattr(struct dentry *dentry, char *buffer, size_t size)
 		const size_t name_len   = sizeof("lov") - 1;
 		const size_t total_len  = prefix_len + name_len + 1;
 
-		if (buffer && (rc + total_len) <= size) {
+		if (((rc + total_len) > size) && (buffer != NULL)) {
+			ptlrpc_req_finished(request);
+			return -ERANGE;
+		}
+
+		if (buffer != NULL) {
 			buffer += rc;
 			memcpy(buffer, XATTR_LUSTRE_PREFIX, prefix_len);
 			memcpy(buffer + prefix_len, "lov", name_len);

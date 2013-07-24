@@ -663,8 +663,8 @@ extern int lprocfs_write_u64_helper(const char *buffer, unsigned long count,
 extern int lprocfs_write_frac_u64_helper(const char *buffer,
 					 unsigned long count,
 					 __u64 *val, int mult);
-char *lprocfs_find_named_value(const char *buffer, const char *name,
-				unsigned long *count);
+extern char *lprocfs_find_named_value(const char *buffer, const char *name,
+				      size_t *count);
 void lprocfs_oh_tally(struct obd_histogram *oh, unsigned int value);
 void lprocfs_oh_tally_log2(struct obd_histogram *oh, unsigned int value);
 void lprocfs_oh_clear(struct obd_histogram *oh);
@@ -826,9 +826,6 @@ extern int lprocfs_quota_rd_qs_factor(char *page, char **start, loff_t off,
 extern int lprocfs_quota_wr_qs_factor(struct file *file,
 				      const char *buffer,
 				      unsigned long count, void *data);
-
-
-
 #else
 /* LPROCFS is not defined */
 

@@ -52,6 +52,7 @@
 #include <lu_ref.h>
 #include <lustre_lib.h>
 #include <lustre_export.h>
+#include <lustre_fid.h>
 #include <lustre_fld.h>
 #include <lustre_capa.h>
 
@@ -118,6 +119,20 @@ struct lov_stripe_md {
 #define lsm_pattern      lsm_wire.lw_pattern
 #define lsm_stripe_count lsm_wire.lw_stripe_count
 #define lsm_pool_name    lsm_wire.lw_pool_name
+
+static inline bool lsm_is_released(struct lov_stripe_md *lsm)
+{
+	return !!(lsm->lsm_pattern & LOV_PATTERN_F_RELEASED);
+}
+
+static inline bool lsm_has_objects(struct lov_stripe_md *lsm)
+{
+	if (lsm == NULL)
+		return false;
+	if (lsm_is_released(lsm))
+		return false;
+	return true;
+}
 
 struct obd_info;
 
@@ -277,9 +292,10 @@ enum llog_ctxt_id {
 	LLOG_TEST_REPL_CTXT,
 	LLOG_LOVEA_ORIG_CTXT,
 	LLOG_LOVEA_REPL_CTXT,
-	LLOG_CHANGELOG_ORIG_CTXT,      /**< changelog generation on mdd */
-	LLOG_CHANGELOG_REPL_CTXT,      /**< changelog access on clients */
-	LLOG_CHANGELOG_USER_ORIG_CTXT, /**< for multiple changelog consumers */
+	LLOG_CHANGELOG_ORIG_CTXT,	/**< changelog generation on mdd */
+	LLOG_CHANGELOG_REPL_CTXT,	/**< changelog access on clients */
+	LLOG_CHANGELOG_USER_ORIG_CTXT,	/**< for multiple changelog consumers */
+	LLOG_AGENT_ORIG_CTXT,		/**< agent requests generation on cdt */
 	LLOG_MAX_CTXTS
 };
 
@@ -1217,12 +1233,6 @@ struct md_enqueue_info;
 typedef int (* md_enqueue_cb_t)(struct ptlrpc_request *req,
 				struct md_enqueue_info *minfo,
 				int rc);
-
-/* seq client type */
-enum lu_cli_type {
-	LUSTRE_SEQ_METADATA = 1,
-	LUSTRE_SEQ_DATA
-};
 
 struct md_enqueue_info {
 	struct md_op_data       mi_data;

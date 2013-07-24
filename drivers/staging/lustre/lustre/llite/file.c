@@ -55,6 +55,8 @@ struct ll_file_data *ll_file_data_get(void)
 	struct ll_file_data *fd;
 
 	OBD_SLAB_ALLOC_PTR_GFP(fd, ll_file_data_slab, __GFP_IO);
+	if (fd == NULL)
+		return NULL;
 	fd->fd_write_failed = false;
 	return fd;
 }
@@ -524,7 +526,7 @@ int ll_file_open(struct inode *inode, struct file *file)
 
 	fd = ll_file_data_get();
 	if (fd == NULL)
-		GOTO(out_och_free, rc = -ENOMEM);
+		GOTO(out_openerr, rc = -ENOMEM);
 
 	fd->fd_file = file;
 	if (S_ISDIR(inode->i_mode)) {
@@ -1141,7 +1143,7 @@ static int ll_lov_recreate(struct inode *inode, struct ost_id *oi,
 		RETURN(-ENOMEM);
 
 	lsm = ccc_inode_lsm_get(inode);
-	if (lsm == NULL)
+	if (!lsm_has_objects(lsm))
 		GOTO(out, rc = -ENOENT);
 
 	lsm_size = sizeof(*lsm) + (sizeof(struct lov_oinfo) *
@@ -1297,6 +1299,12 @@ int ll_lov_getstripe_ea_info(struct inode *inode, const char *filename,
 	 * passing it to userspace.
 	 */
 	if (LOV_MAGIC != cpu_to_le32(LOV_MAGIC)) {
+		int stripe_count;
+
+		stripe_count = le16_to_cpu(lmm->lmm_stripe_count);
+		if (le32_to_cpu(lmm->lmm_pattern) & LOV_PATTERN_F_RELEASED)
+			stripe_count = 0;
+
 		/* if function called for directory - we should
 		 * avoid swab not existent lsm objects */
 		if (lmm->lmm_magic == cpu_to_le32(LOV_MAGIC_V1)) {
@@ -1304,13 +1312,13 @@ int ll_lov_getstripe_ea_info(struct inode *inode, const char *filename,
 			if (S_ISREG(body->mode))
 				lustre_swab_lov_user_md_objects(
 				 ((struct lov_user_md_v1 *)lmm)->lmm_objects,
-				 ((struct lov_user_md_v1 *)lmm)->lmm_stripe_count);
+				 stripe_count);
 		} else if (lmm->lmm_magic == cpu_to_le32(LOV_MAGIC_V3)) {
 			lustre_swab_lov_user_md_v3((struct lov_user_md_v3 *)lmm);
 			if (S_ISREG(body->mode))
 				lustre_swab_lov_user_md_objects(
 				 ((struct lov_user_md_v3 *)lmm)->lmm_objects,
-				 ((struct lov_user_md_v3 *)lmm)->lmm_stripe_count);
+				 stripe_count);
 		}
 	}
 
@@ -1696,20 +1704,18 @@ int ll_data_version(struct inode *inode, __u64 *data_version,
 
 	/* If no stripe, we consider version is 0. */
 	lsm = ccc_inode_lsm_get(inode);
-	if (lsm == NULL) {
+	if (!lsm_has_objects(lsm)) {
 		*data_version = 0;
 		CDEBUG(D_INODE, "No object for inode\n");
-		RETURN(0);
+		GOTO(out, rc = 0);
 	}
 
 	OBD_ALLOC_PTR(obdo);
-	if (obdo == NULL) {
-		ccc_inode_lsm_put(inode, lsm);
-		RETURN(-ENOMEM);
-	}
+	if (obdo == NULL)
+		GOTO(out, rc = -ENOMEM);
 
 	rc = ll_lsm_getattr(lsm, sbi->ll_dt_exp, NULL, obdo, 0, extent_lock);
-	if (!rc) {
+	if (rc == 0) {
 		if (!(obdo->o_valid & OBD_MD_FLDATAVERSION))
 			rc = -EOPNOTSUPP;
 		else
@@ -1717,8 +1723,9 @@ int ll_data_version(struct inode *inode, __u64 *data_version,
 	}
 
 	OBD_FREE_PTR(obdo);
+	EXIT;
+out:
 	ccc_inode_lsm_put(inode, lsm);
-
 	RETURN(rc);
 }
 
@@ -1830,12 +1837,12 @@ static int ll_swap_layouts(struct file *file1, struct file *file2,
 	rc = -ENOMEM;
 	op_data = ll_prep_md_op_data(NULL, llss->inode1, llss->inode2, NULL, 0,
 				     0, LUSTRE_OPC_ANY, &msl);
-	if (op_data != NULL) {
-		rc = obd_iocontrol(LL_IOC_LOV_SWAP_LAYOUTS,
-				   ll_i2mdexp(llss->inode1),
-				   sizeof(*op_data), op_data, NULL);
-		ll_finish_md_op_data(op_data);
-	}
+	if (IS_ERR(op_data))
+		GOTO(free, rc = PTR_ERR(op_data));
+
+	rc = obd_iocontrol(LL_IOC_LOV_SWAP_LAYOUTS, ll_i2mdexp(llss->inode1),
+			   sizeof(*op_data), op_data, NULL);
+	ll_finish_md_op_data(op_data);
 
 putgl:
 	if (gid != 0) {
@@ -2029,9 +2036,9 @@ long ll_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		op_data = ll_prep_md_op_data(NULL, inode, NULL, NULL, 0, 0,
 					     LUSTRE_OPC_ANY, hus);
-		if (op_data == NULL) {
+		if (IS_ERR(op_data)) {
 			OBD_FREE_PTR(hus);
-			RETURN(-ENOMEM);
+			RETURN(PTR_ERR(op_data));
 		}
 
 		rc = obd_iocontrol(cmd, ll_i2mdexp(inode), sizeof(*op_data),
@@ -2067,9 +2074,9 @@ long ll_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		op_data = ll_prep_md_op_data(NULL, inode, NULL, NULL, 0, 0,
 					     LUSTRE_OPC_ANY, hss);
-		if (op_data == NULL) {
+		if (IS_ERR(op_data)) {
 			OBD_FREE_PTR(hss);
-			RETURN(-ENOMEM);
+			RETURN(PTR_ERR(op_data));
 		}
 
 		rc = obd_iocontrol(cmd, ll_i2mdexp(inode), sizeof(*op_data),
@@ -2091,9 +2098,9 @@ long ll_file_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		op_data = ll_prep_md_op_data(NULL, inode, NULL, NULL, 0, 0,
 					     LUSTRE_OPC_ANY, hca);
-		if (op_data == NULL) {
+		if (IS_ERR(op_data)) {
 			OBD_FREE_PTR(hca);
-			RETURN(-ENOMEM);
+			RETURN(PTR_ERR(op_data));
 		}
 
 		rc = obd_iocontrol(cmd, ll_i2mdexp(inode), sizeof(*op_data),
@@ -2288,9 +2295,11 @@ int ll_file_flock(struct file *file, int cmd, struct file_lock *file_lock)
 {
 	struct inode *inode = file->f_dentry->d_inode;
 	struct ll_sb_info *sbi = ll_i2sbi(inode);
-	struct ldlm_enqueue_info einfo = { .ei_type = LDLM_FLOCK,
-					   .ei_cb_cp =ldlm_flock_completion_ast,
-					   .ei_cbdata = file_lock };
+	struct ldlm_enqueue_info einfo = {
+		.ei_type	= LDLM_FLOCK,
+		.ei_cb_cp	= ldlm_flock_completion_ast,
+		.ei_cbdata	= file_lock,
+	};
 	struct md_op_data *op_data;
 	struct lustre_handle lockh = {0};
 	ldlm_policy_data_t flock = {{0}};
@@ -2448,7 +2457,7 @@ int ll_have_md_lock(struct inode *inode, __u64 *bits,  ldlm_mode_t l_req_mode)
 	       ldlm_lockname[mode]);
 
 	flags = LDLM_FL_BLOCK_GRANTED | LDLM_FL_CBPENDING | LDLM_FL_TEST_LOCK;
-	for (i = 0; i < MDS_INODELOCK_MAXSHIFT && *bits != 0; i++) {
+	for (i = 0; i <= MDS_INODELOCK_MAXSHIFT && *bits != 0; i++) {
 		policy.l_inodebits.bits = *bits & (1 << i);
 		if (policy.l_inodebits.bits == 0)
 			continue;
@@ -2932,7 +2941,11 @@ static int ll_layout_fetch(struct inode *inode, struct ldlm_lock *lock)
 	int rc;
 	ENTRY;
 
-	if (lock->l_lvb_data != NULL)
+	CDEBUG(D_INODE, DFID" LVB_READY=%d l_lvb_data=%p l_lvb_len=%d\n",
+	       PFID(ll_inode2fid(inode)), !!(lock->l_flags & LDLM_FL_LVB_READY),
+	       lock->l_lvb_data, lock->l_lvb_len);
+
+	if ((lock->l_lvb_data != NULL) && (lock->l_flags & LDLM_FL_LVB_READY))
 		RETURN(0);
 
 	/* if layout lock was granted right away, the layout is returned
@@ -2968,15 +2981,13 @@ static int ll_layout_fetch(struct inode *inode, struct ldlm_lock *lock)
 
 	memcpy(lvbdata, lmm, lmmsize);
 	lock_res_and_lock(lock);
-	if (lock->l_lvb_data == NULL) {
-		lock->l_lvb_data = lvbdata;
-		lock->l_lvb_len = lmmsize;
-		lvbdata = NULL;
-	}
+	if (lock->l_lvb_data != NULL)
+		OBD_FREE_LARGE(lock->l_lvb_data, lock->l_lvb_len);
+
+	lock->l_lvb_data = lvbdata;
+	lock->l_lvb_len = lmmsize;
 	unlock_res_and_lock(lock);
 
-	if (lvbdata != NULL)
-		OBD_FREE_LARGE(lvbdata, lmmsize);
 	EXIT;
 
 out:
@@ -3008,7 +3019,7 @@ static int ll_layout_lock_set(struct lustre_handle *lockh, ldlm_mode_t mode,
 	LASSERT(ldlm_has_layout(lock));
 
 	LDLM_DEBUG(lock, "File %p/"DFID" being reconfigured: %d.\n",
-		inode, PFID(&lli->lli_fid), reconf);
+		   inode, PFID(&lli->lli_fid), reconf);
 
 	/* in case this is a caching lock and reinstate with new inode */
 	md_set_lock_data(sbi->ll_md_exp, &lockh->cookie, inode, NULL);
@@ -3114,11 +3125,12 @@ int ll_layout_refresh(struct inode *inode, __u32 *gen)
 	struct lookup_intent   it;
 	struct lustre_handle   lockh;
 	ldlm_mode_t	       mode;
-	struct ldlm_enqueue_info einfo = { .ei_type = LDLM_IBITS,
-					   .ei_mode = LCK_CR,
-					   .ei_cb_bl = ll_md_blocking_ast,
-					   .ei_cb_cp = ldlm_completion_ast,
-					   .ei_cbdata = NULL };
+	struct ldlm_enqueue_info einfo = {
+		.ei_type = LDLM_IBITS,
+		.ei_mode = LCK_CR,
+		.ei_cb_bl = ll_md_blocking_ast,
+		.ei_cb_cp = ldlm_completion_ast,
+	};
 	int rc;
 	ENTRY;
 
