@@ -404,6 +404,8 @@ static void intel_enable_fbc(struct drm_crtc *crtc, unsigned long interval)
 	 * following the termination of the page-flipping sequence
 	 * and indeed performing the enable as a co-routine and not
 	 * waiting synchronously upon the vblank.
+	 *
+	 * WaFbcWaitForVBlankBeforeEnable:ilk,snb
 	 */
 	schedule_delayed_work(&work->work, msecs_to_jiffies(50));
 }
@@ -3121,13 +3123,10 @@ void valleyview_set_rps(struct drm_device *dev, u8 val)
 	trace_intel_gpu_freq_change(vlv_gpu_freq(dev_priv->mem_freq, val));
 }
 
-
-static void gen6_disable_rps(struct drm_device *dev)
+static void gen6_disable_rps_interrupts(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	I915_WRITE(GEN6_RC_CONTROL, 0);
-	I915_WRITE(GEN6_RPNSWREQ, 1 << 31);
 	I915_WRITE(GEN6_PMINTRMSK, 0xffffffff);
 	I915_WRITE(GEN6_PMIER, I915_READ(GEN6_PMIER) & ~GEN6_PM_RPS_EVENTS);
 	/* Complete PM interrupt masking here doesn't race with the rps work
@@ -3142,23 +3141,23 @@ static void gen6_disable_rps(struct drm_device *dev)
 	I915_WRITE(GEN6_PMIIR, GEN6_PM_RPS_EVENTS);
 }
 
+static void gen6_disable_rps(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	I915_WRITE(GEN6_RC_CONTROL, 0);
+	I915_WRITE(GEN6_RPNSWREQ, 1 << 31);
+
+	gen6_disable_rps_interrupts(dev);
+}
+
 static void valleyview_disable_rps(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	I915_WRITE(GEN6_RC_CONTROL, 0);
-	I915_WRITE(GEN6_PMINTRMSK, 0xffffffff);
-	I915_WRITE(GEN6_PMIER, 0);
-	/* Complete PM interrupt masking here doesn't race with the rps work
-	 * item again unmasking PM interrupts because that is using a different
-	 * register (PMIMR) to mask PM interrupts. The only risk is in leaving
-	 * stale bits in PMIIR and PMIMR which gen6_enable_rps will clean up. */
 
-	spin_lock_irq(&dev_priv->irq_lock);
-	dev_priv->rps.pm_iir = 0;
-	spin_unlock_irq(&dev_priv->irq_lock);
-
-	I915_WRITE(GEN6_PMIIR, I915_READ(GEN6_PMIIR));
+	gen6_disable_rps_interrupts(dev);
 
 	if (dev_priv->vlv_pctx) {
 		drm_gem_object_unreference(&dev_priv->vlv_pctx->base);
@@ -3168,6 +3167,10 @@ static void valleyview_disable_rps(struct drm_device *dev)
 
 int intel_enable_rc6(const struct drm_device *dev)
 {
+	/* No RC6 before Ironlake */
+	if (INTEL_INFO(dev)->gen < 5)
+		return 0;
+
 	/* Respect the kernel parameter if it is set */
 	if (i915_enable_rc6 >= 0)
 		return i915_enable_rc6;
@@ -3189,6 +3192,19 @@ int intel_enable_rc6(const struct drm_device *dev)
 
 	DRM_DEBUG_DRIVER("RC6 and deep RC6 enabled\n");
 	return (INTEL_RC6_ENABLE | INTEL_RC6p_ENABLE);
+}
+
+static void gen6_enable_rps_interrupts(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	spin_lock_irq(&dev_priv->irq_lock);
+	WARN_ON(dev_priv->rps.pm_iir);
+	I915_WRITE(GEN6_PMIMR, I915_READ(GEN6_PMIMR) & ~GEN6_PM_RPS_EVENTS);
+	I915_WRITE(GEN6_PMIIR, GEN6_PM_RPS_EVENTS);
+	spin_unlock_irq(&dev_priv->irq_lock);
+	/* unmask all PM interrupts */
+	I915_WRITE(GEN6_PMINTRMSK, 0);
 }
 
 static void gen6_enable_rps(struct drm_device *dev)
@@ -3319,17 +3335,7 @@ static void gen6_enable_rps(struct drm_device *dev)
 
 	gen6_set_rps(dev_priv->dev, (gt_perf_status & 0xff00) >> 8);
 
-	/* requires MSI enabled */
-	I915_WRITE(GEN6_PMIER, I915_READ(GEN6_PMIER) | GEN6_PM_RPS_EVENTS);
-	spin_lock_irq(&dev_priv->irq_lock);
-	/* FIXME: Our interrupt enabling sequence is bonghits.
-	 * dev_priv->rps.pm_iir really should be 0 here. */
-	dev_priv->rps.pm_iir = 0;
-	I915_WRITE(GEN6_PMIMR, I915_READ(GEN6_PMIMR) & ~GEN6_PM_RPS_EVENTS);
-	I915_WRITE(GEN6_PMIIR, GEN6_PM_RPS_EVENTS);
-	spin_unlock_irq(&dev_priv->irq_lock);
-	/* unmask all PM interrupts */
-	I915_WRITE(GEN6_PMINTRMSK, 0);
+	gen6_enable_rps_interrupts(dev);
 
 	rc6vids = 0;
 	ret = sandybridge_pcode_read(dev_priv, GEN6_PCODE_READ_RC6VIDS, &rc6vids);
@@ -3599,14 +3605,7 @@ static void valleyview_enable_rps(struct drm_device *dev)
 
 	valleyview_set_rps(dev_priv->dev, dev_priv->rps.rpe_delay);
 
-	/* requires MSI enabled */
-	I915_WRITE(GEN6_PMIER, GEN6_PM_RPS_EVENTS);
-	spin_lock_irq(&dev_priv->irq_lock);
-	WARN_ON(dev_priv->rps.pm_iir != 0);
-	I915_WRITE(GEN6_PMIMR, 0);
-	spin_unlock_irq(&dev_priv->irq_lock);
-	/* enable all PM interrupts */
-	I915_WRITE(GEN6_PMINTRMSK, 0);
+	gen6_enable_rps_interrupts(dev);
 
 	gen6_gt_force_wake_put(dev_priv);
 }
@@ -4421,7 +4420,10 @@ static void ironlake_init_clock_gating(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	uint32_t dspclk_gate = ILK_VRHUNIT_CLOCK_GATE_DISABLE;
 
-	/* Required for FBC */
+	/*
+	 * Required for FBC
+	 * WaFbcDisableDpfcClockGating:ilk
+	 */
 	dspclk_gate |= ILK_DPFCRUNIT_CLOCK_GATE_DISABLE |
 		   ILK_DPFCUNIT_CLOCK_GATE_DISABLE |
 		   ILK_DPFDUNIT_CLOCK_GATE_ENABLE;
@@ -4458,6 +4460,7 @@ static void ironlake_init_clock_gating(struct drm_device *dev)
 	 * The bit 7,8,9 of 0x42020.
 	 */
 	if (IS_IRONLAKE_M(dev)) {
+		/* WaFbcAsynchFlipDisableFbcQueue:ilk */
 		I915_WRITE(ILK_DISPLAY_CHICKEN1,
 			   I915_READ(ILK_DISPLAY_CHICKEN1) |
 			   ILK_FBCQ_DIS);
@@ -4594,6 +4597,8 @@ static void gen6_init_clock_gating(struct drm_device *dev)
 	 * The bit5 and bit7 of 0x42020
 	 * The bit14 of 0x70180
 	 * The bit14 of 0x71180
+	 *
+	 * WaFbcAsynchFlipDisableFbcQueue:snb
 	 */
 	I915_WRITE(ILK_DISPLAY_CHICKEN1,
 		   I915_READ(ILK_DISPLAY_CHICKEN1) |

@@ -118,6 +118,10 @@ module_param_named(i915_enable_ppgtt, i915_enable_ppgtt, int, 0600);
 MODULE_PARM_DESC(i915_enable_ppgtt,
 		"Enable PPGTT (default: true)");
 
+int i915_enable_psr __read_mostly = 0;
+module_param_named(enable_psr, i915_enable_psr, int, 0600);
+MODULE_PARM_DESC(enable_psr, "Enable PSR (default: false)");
+
 unsigned int i915_preliminary_hw_support __read_mostly = 0;
 module_param_named(preliminary_hw_support, i915_preliminary_hw_support, int, 0600);
 MODULE_PARM_DESC(preliminary_hw_support,
@@ -136,6 +140,11 @@ bool i915_fastboot __read_mostly = 0;
 module_param_named(fastboot, i915_fastboot, bool, 0600);
 MODULE_PARM_DESC(fastboot, "Try to skip unnecessary mode sets at boot time "
 		 "(default: false)");
+
+bool i915_prefault_disable __read_mostly;
+module_param_named(prefault_disable, i915_prefault_disable, bool, 0600);
+MODULE_PARM_DESC(prefault_disable,
+		"Disable page prefaulting for pread/pwrite/reloc (default:false). For developers only.");
 
 static struct drm_driver driver;
 extern int intel_agp_enabled;

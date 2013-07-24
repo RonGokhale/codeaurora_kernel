@@ -446,6 +446,54 @@ enum i915_cache_level {
 
 typedef uint32_t gen6_gtt_pte_t;
 
+struct i915_address_space {
+	struct drm_mm mm;
+	struct drm_device *dev;
+	struct list_head global_link;
+	unsigned long start;		/* Start offset always 0 for dri2 */
+	size_t total;		/* size addr space maps (ex. 2GB for ggtt) */
+
+	struct {
+		dma_addr_t addr;
+		struct page *page;
+	} scratch;
+
+	/**
+	 * List of objects currently involved in rendering.
+	 *
+	 * Includes buffers having the contents of their GPU caches
+	 * flushed, not necessarily primitives.  last_rendering_seqno
+	 * represents when the rendering involved will be completed.
+	 *
+	 * A reference is held on the buffer while on this list.
+	 */
+	struct list_head active_list;
+
+	/**
+	 * LRU list of objects which are not in the ringbuffer and
+	 * are ready to unbind, but are still in the GTT.
+	 *
+	 * last_rendering_seqno is 0 while an object is in this list.
+	 *
+	 * A reference is not held on the buffer while on this list,
+	 * as merely being GTT-bound shouldn't prevent its being
+	 * freed, and we'll pull it off the list in the free path.
+	 */
+	struct list_head inactive_list;
+
+	/* FIXME: Need a more generic return type */
+	gen6_gtt_pte_t (*pte_encode)(dma_addr_t addr,
+				     enum i915_cache_level level);
+	void (*clear_range)(struct i915_address_space *vm,
+			    unsigned int first_entry,
+			    unsigned int num_entries);
+	void (*insert_entries)(struct i915_address_space *vm,
+			       struct sg_table *st,
+			       unsigned int first_entry,
+			       enum i915_cache_level cache_level);
+	void (*cleanup)(struct i915_address_space *vm);
+};
+
 /* The Graphics Translation Table is the way in which GEN hardware translates a
  * Graphics Virtual Address into a Physical Address. In addition to the normal
  * collateral associated with any va->pa translations GEN hardware also has a
@@ -454,8 +502,7 @@ typedef uint32_t gen6_gtt_pte_t;
  * the spec.
  */
 struct i915_gtt {
-	unsigned long start;		/* Start offset of used GTT */
-	size_t total;			/* Total size GTT can map */
+	struct i915_address_space base;
 	size_t stolen_size;		/* Total size of stolen memory */
 
 	unsigned long mappable_end;	/* End offset that we can CPU map */
@@ -466,10 +513,6 @@ struct i915_gtt {
 	void __iomem *gsm;
 
 	bool do_idle_maps;
-	struct {
-		dma_addr_t addr;
-		struct page *page;
-	} scratch;
 
 	int mtrr;
 
@@ -477,38 +520,28 @@ struct i915_gtt {
 	int (*gtt_probe)(struct drm_device *dev, size_t *gtt_total,
 			  size_t *stolen, phys_addr_t *mappable_base,
 			  unsigned long *mappable_end);
-	void (*gtt_remove)(struct drm_device *dev);
-	void (*gtt_clear_range)(struct drm_device *dev,
-				unsigned int first_entry,
-				unsigned int num_entries);
-	void (*gtt_insert_entries)(struct drm_device *dev,
-				   struct sg_table *st,
-				   unsigned int pg_start,
-				   enum i915_cache_level cache_level);
-	gen6_gtt_pte_t (*pte_encode)(dma_addr_t addr,
-				     enum i915_cache_level level);
 };
-#define gtt_total_entries(gtt) ((gtt).total >> PAGE_SHIFT)
+#define gtt_total_entries(gtt) ((gtt).base.total >> PAGE_SHIFT)
 
 struct i915_hw_ppgtt {
-	struct drm_device *dev;
+	struct i915_address_space base;
 	unsigned num_pd_entries;
 	struct page **pt_pages;
 	uint32_t pd_offset;
 	dma_addr_t *pt_dma_addr;
 
-	/* pte functions, mirroring the interface of the global gtt. */
-	void (*clear_range)(struct i915_hw_ppgtt *ppgtt,
-			    unsigned int first_entry,
-			    unsigned int num_entries);
-	void (*insert_entries)(struct i915_hw_ppgtt *ppgtt,
-			       struct sg_table *st,
-			       unsigned int pg_start,
-			       enum i915_cache_level cache_level);
-	gen6_gtt_pte_t (*pte_encode)(dma_addr_t addr,
-				     enum i915_cache_level level);
 	int (*enable)(struct drm_device *dev);
-	void (*cleanup)(struct i915_hw_ppgtt *ppgtt);
+};
+
+/* To make things as simple as possible (ie. no refcounting), a VMA's lifetime
+ * will always be <= an objects lifetime. So object refcounting should cover us.
+ */
+struct i915_vma {
+	struct drm_mm_node node;
+	struct drm_i915_gem_object *obj;
+	struct i915_address_space *vm;
+
+	struct list_head vma_link; /* Link in the object's VMA list */
 };
 
 struct i915_ctx_hang_stats {
@@ -560,6 +593,18 @@ struct i915_fbc {
 	} no_fbc_reason;
 };
 
+enum no_psr_reason {
+	PSR_NO_SOURCE, /* Not supported on platform */
+	PSR_NO_SINK, /* Not supported by panel */
+	PSR_MODULE_PARAM,
+	PSR_CRTC_NOT_ACTIVE,
+	PSR_PWR_WELL_ENABLED,
+	PSR_NOT_TILED,
+	PSR_SPRITE_ENABLED,
+	PSR_S3D_ENABLED,
+	PSR_INTERLACED_ENABLED,
+	PSR_HSW_NOT_DDIA,
+};
 
 enum intel_pch {
 	PCH_NONE = 0,	/* No PCH present */
@@ -835,8 +880,6 @@ struct intel_l3_parity {
 struct i915_gem_mm {
 	/** Memory allocator for GTT stolen memory */
 	struct drm_mm stolen;
-	/** Memory allocator for GTT */
-	struct drm_mm gtt_space;
 	/** List of all objects in gtt_space. Used to restore gtt
 	 * mappings on resume */
 	struct list_head bound_list;
@@ -855,29 +898,6 @@ struct i915_gem_mm {
 
 	struct shrinker inactive_shrinker;
 	bool shrinker_no_lock_stealing;
-
-	/**
-	 * List of objects currently involved in rendering.
-	 *
-	 * Includes buffers having the contents of their GPU caches
-	 * flushed, not necessarily primitives.  last_rendering_seqno
-	 * represents when the rendering involved will be completed.
-	 *
-	 * A reference is held on the buffer while on this list.
-	 */
-	struct list_head active_list;
-
-	/**
-	 * LRU list of objects which are not in the ringbuffer and
-	 * are ready to unbind, but are still in the GTT.
-	 *
-	 * last_rendering_seqno is 0 while an object is in this list.
-	 *
-	 * A reference is not held on the buffer while on this list,
-	 * as merely being GTT-bound shouldn't prevent its being
-	 * freed, and we'll pull it off the list in the free path.
-	 */
-	struct list_head inactive_list;
 
 	/** LRU list of objects with fence regs on them. */
 	struct list_head fence_list;
@@ -904,10 +924,6 @@ struct i915_gem_mm {
 
 	/* storage for physical objects */
 	struct drm_i915_gem_phys_object *phys_objs[I915_MAX_PHYS_OBJECT];
-
-	/* accounting, useful for userland debugging */
-	size_t object_memory;
-	u32 object_count;
 };
 
 struct drm_i915_error_state_buf {
@@ -1125,7 +1141,8 @@ typedef struct drm_i915_private {
 	enum modeset_restore modeset_restore;
 	struct mutex modeset_restore_lock;
 
-	struct i915_gtt gtt;
+	struct list_head vm_list; /* Global list of all address spaces */
+	struct i915_gtt gtt; /* VMA representing the global address space */
 
 	struct i915_gem_mm mm;
 
@@ -1152,6 +1169,9 @@ typedef struct drm_i915_private {
 
 	struct intel_l3_parity l3_parity;
 
+	/* Cannot be determined by PCIID. You must always read a register. */
+	size_t ellc_size;
+
 	/* gen6+ rps state */
 	struct intel_gen6_power_mgmt rps;
 
@@ -1161,6 +1181,8 @@ typedef struct drm_i915_private {
 
 	/* Haswell power well */
 	struct i915_power_well power_well;
+
+	enum no_psr_reason no_psr_reason;
 
 	struct i915_gpu_error gpu_error;
 
@@ -1229,8 +1251,9 @@ struct drm_i915_gem_object {
 
 	const struct drm_i915_gem_object_ops *ops;
 
-	/** Current space allocated to this object in the GTT, if any. */
-	struct drm_mm_node gtt_space;
+	/** List of VMAs backed by this object */
+	struct list_head vma_list;
+
 	/** Stolen memory for this object, instead of being backed by shmem. */
 	struct drm_mm_node *stolen;
 	struct list_head global_list;
@@ -1356,18 +1379,32 @@ struct drm_i915_gem_object {
 
 #define to_intel_bo(x) container_of(x, struct drm_i915_gem_object, base)
 
-/* Offset of the first PTE pointing to this object */
-static inline unsigned long
-i915_gem_obj_ggtt_offset(struct drm_i915_gem_object *o)
+/* This is a temporary define to help transition us to real VMAs. If you see
+ * this, you're either reviewing code, or bisecting it. */
+static inline struct i915_vma *
+__i915_gem_obj_to_vma(struct drm_i915_gem_object *obj)
 {
-	return o->gtt_space.start;
+	if (list_empty(&obj->vma_list))
+		return NULL;
+	return list_first_entry(&obj->vma_list, struct i915_vma, vma_link);
 }
 
 /* Whether or not this object is currently mapped by the translation tables */
 static inline bool
 i915_gem_obj_ggtt_bound(struct drm_i915_gem_object *o)
 {
-	return drm_mm_node_allocated(&o->gtt_space);
+	struct i915_vma *vma = __i915_gem_obj_to_vma(o);
+	if (vma == NULL)
+		return false;
+	return drm_mm_node_allocated(&vma->node);
+}
+
+/* Offset of the first PTE pointing to this object */
+static inline unsigned long
+i915_gem_obj_ggtt_offset(struct drm_i915_gem_object *o)
+{
+	BUG_ON(list_empty(&o->vma_list));
+	return __i915_gem_obj_to_vma(o)->node.start;
 }
 
 /* The size used in the translation tables may be larger than the actual size of
@@ -1377,14 +1414,15 @@ i915_gem_obj_ggtt_bound(struct drm_i915_gem_object *o)
 static inline unsigned long
 i915_gem_obj_ggtt_size(struct drm_i915_gem_object *o)
 {
-	return o->gtt_space.size;
+	BUG_ON(list_empty(&o->vma_list));
+	return __i915_gem_obj_to_vma(o)->node.size;
 }
 
 static inline void
 i915_gem_obj_ggtt_set_color(struct drm_i915_gem_object *o,
 			    enum i915_cache_level color)
 {
-	o->gtt_space.color = color;
+	__i915_gem_obj_to_vma(o)->node.color = color;
 }
 
 /**
@@ -1581,10 +1619,12 @@ extern int i915_enable_rc6 __read_mostly;
 extern int i915_enable_fbc __read_mostly;
 extern bool i915_enable_hangcheck __read_mostly;
 extern int i915_enable_ppgtt __read_mostly;
+extern int i915_enable_psr __read_mostly;
 extern unsigned int i915_preliminary_hw_support __read_mostly;
 extern int i915_disable_power_well __read_mostly;
 extern int i915_enable_ips __read_mostly;
 extern bool i915_fastboot __read_mostly;
+extern bool i915_prefault_disable __read_mostly;
 
 extern int i915_suspend(struct drm_device *dev, pm_message_t state);
 extern int i915_resume(struct drm_device *dev);
@@ -1620,6 +1660,7 @@ extern void i915_update_gfx_val(struct drm_i915_private *dev_priv);
 extern void intel_console_resume(struct work_struct *work);
 
 /* i915_irq.c */
+void i915_queue_hangcheck(struct drm_device *dev);
 void i915_hangcheck_elapsed(unsigned long data);
 void i915_handle_error(struct drm_device *dev, bool wedged);
 
@@ -1690,6 +1731,9 @@ void i915_gem_object_init(struct drm_i915_gem_object *obj,
 struct drm_i915_gem_object *i915_gem_alloc_object(struct drm_device *dev,
 						  size_t size);
 void i915_gem_free_object(struct drm_gem_object *obj);
+struct i915_vma *i915_gem_vma_create(struct drm_i915_gem_object *obj,
+				     struct i915_address_space *vm);
+void i915_gem_vma_destroy(struct i915_vma *vma);
 
 int __must_check i915_gem_object_pin(struct drm_i915_gem_object *obj,
 				     uint32_t alignment,
@@ -1860,7 +1904,7 @@ static inline void i915_gem_context_unreference(struct i915_hw_context *ctx)
 }
 
 struct i915_ctx_hang_stats * __must_check
-i915_gem_context_get_hang_stats(struct intel_ring_buffer *ring,
+i915_gem_context_get_hang_stats(struct drm_device *dev,
 				struct drm_file *file,
 				u32 id);
 int i915_gem_context_create_ioctl(struct drm_device *dev, void *data,
