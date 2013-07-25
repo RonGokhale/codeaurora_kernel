@@ -1131,12 +1131,7 @@ struct drm_device {
 	/*@{ */
 	int irq_enabled;		/**< True if irq handler is enabled */
 	__volatile__ long context_flag;	/**< Context swapping flag */
-	__volatile__ long interrupt_flag; /**< Interruption handler flag */
-	__volatile__ long dma_flag;	/**< DMA dispatch flag */
-	wait_queue_head_t context_wait;	/**< Processes waiting on ctx switch */
-	int last_checked;		/**< Last context checked for DMA */
 	int last_context;		/**< Last current context */
-	unsigned long last_switch;	/**< jiffies at last context switch */
 	/*@} */
 
 	struct work_struct work;
@@ -1174,12 +1169,8 @@ struct drm_device {
 	spinlock_t event_lock;
 
 	/*@} */
-	cycles_t ctx_start;
-	cycles_t lck_start;
 
 	struct fasync_struct *buf_async;/**< Processes waiting for SIGIO */
-	wait_queue_head_t buf_readers;	/**< Processes waiting to read */
-	wait_queue_head_t buf_writers;	/**< Processes waiting to ctx switch */
 
 	struct drm_agp_head *agp;	/**< AGP data */
 
@@ -1335,8 +1326,6 @@ extern int drm_resctx(struct drm_device *dev, void *data,
 		      struct drm_file *file_priv);
 extern int drm_addctx(struct drm_device *dev, void *data,
 		      struct drm_file *file_priv);
-extern int drm_modctx(struct drm_device *dev, void *data,
-		      struct drm_file *file_priv);
 extern int drm_getctx(struct drm_device *dev, void *data,
 		      struct drm_file *file_priv);
 extern int drm_switchctx(struct drm_device *dev, void *data,
@@ -1405,7 +1394,6 @@ extern int drm_freebufs(struct drm_device *dev, void *data,
 			struct drm_file *file_priv);
 extern int drm_mapbufs(struct drm_device *dev, void *data,
 		       struct drm_file *file_priv);
-extern int drm_order(unsigned long size);
 
 				/* DMA support (drm_dma.h) */
 extern int drm_dma_setup(struct drm_device *dev);
@@ -1577,9 +1565,8 @@ extern int drm_vma_info(struct seq_file *m, void *data);
 
 				/* Scatter Gather Support (drm_scatter.h) */
 extern void drm_sg_cleanup(struct drm_sg_mem * entry);
-extern int drm_sg_alloc_ioctl(struct drm_device *dev, void *data,
+extern int drm_sg_alloc(struct drm_device *dev, void *data,
 			struct drm_file *file_priv);
-extern int drm_sg_alloc(struct drm_device *dev, struct drm_scatter_gather * request);
 extern int drm_sg_free(struct drm_device *dev, void *data,
 		       struct drm_file *file_priv);
 
@@ -1613,8 +1600,8 @@ struct drm_gem_object *drm_gem_object_alloc(struct drm_device *dev,
 					    size_t size);
 int drm_gem_object_init(struct drm_device *dev,
 			struct drm_gem_object *obj, size_t size);
-int drm_gem_private_object_init(struct drm_device *dev,
-			struct drm_gem_object *obj, size_t size);
+void drm_gem_private_object_init(struct drm_device *dev,
+				 struct drm_gem_object *obj, size_t size);
 void drm_gem_object_handle_free(struct drm_gem_object *obj);
 void drm_gem_vm_open(struct vm_area_struct *vma);
 void drm_gem_vm_close(struct vm_area_struct *vma);
@@ -1658,24 +1645,6 @@ drm_gem_object_handle_reference(struct drm_gem_object *obj)
 {
 	drm_gem_object_reference(obj);
 	atomic_inc(&obj->handle_count);
-}
-
-static inline void
-drm_gem_object_handle_unreference(struct drm_gem_object *obj)
-{
-	if (obj == NULL)
-		return;
-
-	if (atomic_read(&obj->handle_count) == 0)
-		return;
-	/*
-	 * Must bump handle count first as this may be the last
-	 * ref, in which case the object would disappear before we
-	 * checked for a name
-	 */
-	if (atomic_dec_and_test(&obj->handle_count))
-		drm_gem_object_handle_free(obj);
-	drm_gem_object_unreference(obj);
 }
 
 static inline void
