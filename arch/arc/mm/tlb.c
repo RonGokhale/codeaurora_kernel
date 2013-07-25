@@ -100,13 +100,7 @@
 
 
 /* A copy of the ASID from the PID reg is kept in asid_cache */
-int asid_cache = FIRST_ASID;
-
-/* ASID to mm struct mapping. We have one extra entry corresponding to
- * NO_ASID to save us a compare when clearing the mm entry for old asid
- * see get_new_mmu_context (asm-arc/mmu_context.h)
- */
-struct mm_struct *asid_mm_map[NUM_ASID + 1];
+unsigned int asid_cache = MM_CTXT_FIRST_CYCLE;
 
 /*
  * Utility Routine to erase a J-TLB entry
@@ -282,7 +276,6 @@ void local_flush_tlb_range(struct vm_area_struct *vma, unsigned long start,
 			   unsigned long end)
 {
 	unsigned long flags;
-	unsigned int asid;
 
 	/* If range @start to @end is more than 32 TLB entries deep,
 	 * its better to move to a new ASID rather than searching for
@@ -304,11 +297,10 @@ void local_flush_tlb_range(struct vm_area_struct *vma, unsigned long start,
 	start &= PAGE_MASK;
 
 	local_irq_save(flags);
-	asid = vma->vm_mm->context.asid;
 
-	if (asid != NO_ASID) {
+	if (vma->vm_mm->context.asid != MM_CTXT_NO_ASID) {
 		while (start < end) {
-			tlb_entry_erase(start | (asid & 0xff));
+			tlb_entry_erase(start | hw_pid(vma->vm_mm));
 			start += PAGE_SIZE;
 		}
 	}
@@ -362,9 +354,8 @@ void local_flush_tlb_page(struct vm_area_struct *vma, unsigned long page)
 	 */
 	local_irq_save(flags);
 
-	if (vma->vm_mm->context.asid != NO_ASID) {
-		tlb_entry_erase((page & PAGE_MASK) |
-				(vma->vm_mm->context.asid & 0xff));
+	if (vma->vm_mm->context.asid != MM_CTXT_NO_ASID) {
+		tlb_entry_erase((page & PAGE_MASK) | hw_pid(vma->vm_mm));
 		utlb_invalidate();
 	}
 
@@ -410,7 +401,7 @@ void create_tlb(struct vm_area_struct *vma, unsigned long address, pte_t *ptep)
 
 	local_irq_save(flags);
 
-	tlb_paranoid_check(vma->vm_mm->context.asid, address);
+	tlb_paranoid_check(hw_pid(vma->vm_mm), address);
 
 	address &= PAGE_MASK;
 
@@ -572,11 +563,6 @@ void arc_mmu_init(void)
 	if (mmu->pg_sz != PAGE_SIZE)
 		panic("MMU pg size != PAGE_SIZE (%luk)\n", TO_KB(PAGE_SIZE));
 
-	/*
-	 * ASID mgmt data structures are compile time init
-	 *  asid_cache = FIRST_ASID and asid_mm_map[] all zeroes
-	 */
-
 	local_flush_tlb_all();
 
 	/* Enable the MMU */
@@ -693,7 +679,7 @@ void do_tlb_overlap_fault(unsigned long cause, unsigned long address,
 void print_asid_mismatch(int is_fast_path)
 {
 	int pid_sw, pid_hw;
-	pid_sw = current->active_mm->context.asid;
+	pid_sw = hw_pid(current->active_mm);
 	pid_hw = read_aux_reg(ARC_REG_PID) & 0xff;
 
 	pr_emerg("ASID Mismatch in %s Path Handler: sw-pid=0x%x hw-pid=0x%x\n",
@@ -708,7 +694,8 @@ void tlb_paranoid_check(unsigned int pid_sw, unsigned long addr)
 
 	pid_hw = read_aux_reg(ARC_REG_PID) & 0xff;
 
-	if (addr < 0x70000000 && ((pid_hw != pid_sw) || (pid_sw == NO_ASID)))
+	if (addr < 0x70000000 && ((pid_hw != pid_sw) ||
+	    (pid_sw == MM_CTXT_NO_ASID)))
 		print_asid_mismatch(0);
 }
 #endif
