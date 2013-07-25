@@ -122,7 +122,8 @@ int lustre_get_jobid(char *jobid)
 	/* Use process name + fsuid as jobid */
 	if (strcmp(obd_jobid_var, JOBSTATS_PROCNAME_UID) == 0) {
 		snprintf(jobid, JOBSTATS_JOBID_SIZE, "%s.%u",
-			 current_comm(), current_fsuid());
+			 current_comm(),
+			 from_kuid(&init_user_ns, current_fsuid()));
 		RETURN(0);
 	}
 
@@ -431,7 +432,7 @@ int class_handle_ioctl(unsigned int cmd, unsigned long arg)
 	RETURN(err);
 } /* class_handle_ioctl */
 
-extern psdev_t obd_psdev;
+extern struct miscdevice obd_psdev;
 
 #define OBD_INIT_CHECK
 int obd_init_checks(void)
@@ -558,10 +559,10 @@ static int __init init_obdclass(void)
 	/* Default the dirty page cache cap to 1/2 of system memory.
 	 * For clients with less memory, a larger fraction is needed
 	 * for other purposes (mostly for BGL). */
-	if (num_physpages <= 512 << (20 - PAGE_CACHE_SHIFT))
-		obd_max_dirty_pages = num_physpages / 4;
+	if (totalram_pages <= 512 << (20 - PAGE_CACHE_SHIFT))
+		obd_max_dirty_pages = totalram_pages / 4;
 	else
-		obd_max_dirty_pages = num_physpages / 2;
+		obd_max_dirty_pages = totalram_pages / 2;
 
 	err = obd_init_caches();
 	if (err)

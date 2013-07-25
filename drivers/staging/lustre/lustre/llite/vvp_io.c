@@ -407,13 +407,15 @@ static int vvp_io_setattr_start(const struct lu_env *env,
 {
 	struct cl_io	*io    = ios->cis_io;
 	struct inode	*inode = ccc_object_inode(io->ci_obj);
+	int result = 0;
 
 	mutex_lock(&inode->i_mutex);
 	if (cl_io_is_trunc(io))
-		return vvp_io_setattr_trunc(env, ios, inode,
-					    io->u.ci_setattr.sa_attr.lvb_size);
-	else
-		return vvp_io_setattr_time(env, ios);
+		result = vvp_io_setattr_trunc(env, ios, inode,
+					io->u.ci_setattr.sa_attr.lvb_size);
+	if (result == 0)
+		result = vvp_io_setattr_time(env, ios);
+	return result;
 }
 
 static void vvp_io_setattr_end(const struct lu_env *env,
@@ -525,7 +527,7 @@ out:
 			io->ci_continue = 0;
 		io->ci_nob += result;
 		ll_rw_stats_tally(ll_i2sbi(inode), current->pid,
-				  cio->cui_fd, pos, result, 0);
+				  cio->cui_fd, pos, result, READ);
 		result = 0;
 	}
 	return result;
@@ -580,7 +582,7 @@ static int vvp_io_write_start(const struct lu_env *env,
 			io->ci_continue = 0;
 		io->ci_nob += result;
 		ll_rw_stats_tally(ll_i2sbi(inode), current->pid,
-				  cio->cui_fd, pos, result, 0);
+				  cio->cui_fd, pos, result, WRITE);
 		result = 0;
 	}
 	RETURN(result);
@@ -887,10 +889,10 @@ static int vvp_io_prepare_partial(const struct lu_env *env, struct cl_io *io,
 		 * purposes here we can treat it like i_size.
 		 */
 		if (attr->cat_kms <= offset) {
-			char *kaddr = ll_kmap_atomic(cp->cpg_page, KM_USER0);
+			char *kaddr = kmap_atomic(cp->cpg_page);
 
 			memset(kaddr, 0, cl_page_size(obj));
-			ll_kunmap_atomic(kaddr, KM_USER0);
+			kunmap_atomic(kaddr);
 		} else if (cp->cpg_defer_uptodate)
 			cp->cpg_ra_used = 1;
 		else
@@ -968,7 +970,7 @@ static int vvp_io_commit_write(const struct lu_env *env,
 	LINVRNT(cl_page_is_vmlocked(env, pg));
 	LASSERT(vmpage->mapping->host == inode);
 
-	LU_OBJECT_HEADER(D_INODE, env, &obj->co_lu, "commiting page write\n");
+	LU_OBJECT_HEADER(D_INODE, env, &obj->co_lu, "committing page write\n");
 	CL_PAGE_HEADER(D_PAGE, env, pg, "committing: [%d, %d]\n", from, to);
 
 	/*

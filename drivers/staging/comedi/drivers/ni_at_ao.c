@@ -36,9 +36,8 @@ Configuration options:
  * document 320379.pdf.
  */
 
+#include <linux/module.h>
 #include "../comedidev.h"
-
-#include <linux/ioport.h>
 
 /* board egisters */
 /* registers with _2_ are accessed when GRP2WR is set in CFG1 */
@@ -341,10 +340,9 @@ static int atao_attach(struct comedi_device *dev, struct comedi_devconfig *it)
 	if (ret)
 		return ret;
 
-	devpriv = kzalloc(sizeof(*devpriv), GFP_KERNEL);
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
 	if (!devpriv)
 		return -ENOMEM;
-	dev->private = devpriv;
 
 	ret = comedi_alloc_subdevices(dev, 4);
 	if (ret)

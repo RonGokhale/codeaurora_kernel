@@ -50,6 +50,7 @@ comedi_nonfree_firmware tarball available from http://www.comedi.org
 /* #define DEBUG 1 */
 /* #define DEBUG_FLAGS */
 
+#include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/sched.h>
@@ -1108,10 +1109,9 @@ static int nidio_auto_attach(struct comedi_device *dev,
 	if (ret)
 		return ret;
 
-	devpriv = kzalloc(sizeof(*devpriv), GFP_KERNEL);
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
 	if (!devpriv)
 		return -ENOMEM;
-	dev->private = devpriv;
 
 	spin_lock_init(&devpriv->mite_channel_lock);
 

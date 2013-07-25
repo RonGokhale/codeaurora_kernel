@@ -77,6 +77,7 @@ options for PCI-20341M:
 	     3  200
 */
 
+#include <linux/module.h>
 #include "../comedidev.h"
 
 #define PCI20000_ID			0x1d
@@ -203,10 +204,9 @@ static int pci20xxx_attach(struct comedi_device *dev,
 	if (ret)
 		return ret;
 
-	devpriv = kzalloc(sizeof(*devpriv), GFP_KERNEL);
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
 	if (!devpriv)
 		return -ENOMEM;
-	dev->private = devpriv;
 
 	devpriv->ioaddr = (void __iomem *)(unsigned long)it->options[0];
 
