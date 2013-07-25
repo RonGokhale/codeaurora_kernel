@@ -373,6 +373,7 @@ struct nested_vmx {
 	 * we must keep them pinned while L2 runs.
 	 */
 	struct page *apic_access_page;
+	u64 msr_ia32_feature_control;
 };
 
 #define POSTED_INTR_ON  0
@@ -2282,8 +2283,11 @@ static int vmx_get_vmx_msr(struct kvm_vcpu *vcpu, u32 msr_index, u64 *pdata)
 
 	switch (msr_index) {
 	case MSR_IA32_FEATURE_CONTROL:
-		*pdata = 0;
-		break;
+		if (nested_vmx_allowed(vcpu)) {
+			*pdata = to_vmx(vcpu)->nested.msr_ia32_feature_control;
+			break;
+		}
+		return 0;
 	case MSR_IA32_VMX_BASIC:
 		/*
 		 * This MSR reports some information about VMX support. We
@@ -2356,14 +2360,24 @@ static int vmx_get_vmx_msr(struct kvm_vcpu *vcpu, u32 msr_index, u64 *pdata)
 	return 1;
 }
 
-static int vmx_set_vmx_msr(struct kvm_vcpu *vcpu, u32 msr_index, u64 data)
+static int vmx_set_vmx_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 {
+	u32 msr_index = msr_info->index;
+	u64 data = msr_info->data;
+	bool host_initialized = msr_info->host_initiated;
+
 	if (!nested_vmx_allowed(vcpu))
 		return 0;
 
-	if (msr_index == MSR_IA32_FEATURE_CONTROL)
-		/* TODO: the right thing. */
+	if (msr_index == MSR_IA32_FEATURE_CONTROL) {
+		if (!host_initialized &&
+				to_vmx(vcpu)->nested.msr_ia32_feature_control
+				& FEATURE_CONTROL_LOCKED)
+			return 0;
+		to_vmx(vcpu)->nested.msr_ia32_feature_control = data;
 		return 1;
+	}
+
 	/*
 	 * No need to treat VMX capability MSRs specially: If we don't handle
 	 * them, handle_wrmsr will #GP(0), which is correct (they are readonly)
@@ -2494,7 +2508,7 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 			return 1;
 		/* Otherwise falls through */
 	default:
-		if (vmx_set_vmx_msr(vcpu, msr_index, data))
+		if (vmx_set_vmx_msr(vcpu, msr_info))
 			break;
 		msr = find_msr_entry(vmx, msr_index);
 		if (msr) {
@@ -5567,8 +5581,47 @@ static void nested_free_all_saved_vmcss(struct vcpu_vmx *vmx)
 		free_loaded_vmcs(&vmx->vmcs01);
 }
 
+/*
+ * The following 3 functions, nested_vmx_succeed()/failValid()/failInvalid(),
+ * set the success or error code of an emulated VMX instruction, as specified
+ * by Vol 2B, VMX Instruction Reference, "Conventions".
+ */
+static void nested_vmx_succeed(struct kvm_vcpu *vcpu)
+{
+	vmx_set_rflags(vcpu, vmx_get_rflags(vcpu)
+			& ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF |
+			    X86_EFLAGS_ZF | X86_EFLAGS_SF | X86_EFLAGS_OF));
+}
+
+static void nested_vmx_failInvalid(struct kvm_vcpu *vcpu)
+{
+	vmx_set_rflags(vcpu, (vmx_get_rflags(vcpu)
+			& ~(X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF |
+			    X86_EFLAGS_SF | X86_EFLAGS_OF))
+			| X86_EFLAGS_CF);
+}
+
 static void nested_vmx_failValid(struct kvm_vcpu *vcpu,
-				 u32 vm_instruction_error);
+					u32 vm_instruction_error)
+{
+	if (to_vmx(vcpu)->nested.current_vmptr == -1ull) {
+		/*
+		 * failValid writes the error number to the current VMCS, which
+		 * can't be done there isn't a current VMCS.
+		 */
+		nested_vmx_failInvalid(vcpu);
+		return;
+	}
+	vmx_set_rflags(vcpu, (vmx_get_rflags(vcpu)
+			& ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF |
+			    X86_EFLAGS_SF | X86_EFLAGS_OF))
+			| X86_EFLAGS_ZF);
+	get_vmcs12(vcpu)->vm_instruction_error = vm_instruction_error;
+	/*
+	 * We don't need to force a shadow sync because
+	 * VM_INSTRUCTION_ERROR is not shadowed
+	 */
+}
 
 /*
  * Emulate the VMXON instruction.
@@ -5583,6 +5636,8 @@ static int handle_vmon(struct kvm_vcpu *vcpu)
 	struct kvm_segment cs;
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct vmcs *shadow_vmcs;
+	const u64 VMXON_NEEDED_FEATURES = FEATURE_CONTROL_LOCKED
+		| FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
 
 	/* The Intel VMX Instruction Reference lists a bunch of bits that
 	 * are prerequisite to running VMXON, most notably cr4.VMXE must be
@@ -5611,6 +5666,13 @@ static int handle_vmon(struct kvm_vcpu *vcpu)
 		skip_emulated_instruction(vcpu);
 		return 1;
 	}
+
+	if ((vmx->nested.msr_ia32_feature_control & VMXON_NEEDED_FEATURES)
+			!= VMXON_NEEDED_FEATURES) {
+		kvm_inject_gp(vcpu, 0);
+		return 1;
+	}
+
 	if (enable_shadow_vmcs) {
 		shadow_vmcs = alloc_vmcs();
 		if (!shadow_vmcs)
@@ -5628,6 +5690,7 @@ static int handle_vmon(struct kvm_vcpu *vcpu)
 	vmx->nested.vmxon = true;
 
 	skip_emulated_instruction(vcpu);
+	nested_vmx_succeed(vcpu);
 	return 1;
 }
 
@@ -5712,6 +5775,7 @@ static int handle_vmoff(struct kvm_vcpu *vcpu)
 		return 1;
 	free_nested(to_vmx(vcpu));
 	skip_emulated_instruction(vcpu);
+	nested_vmx_succeed(vcpu);
 	return 1;
 }
 
@@ -5766,48 +5830,6 @@ static int get_vmx_mem_address(struct kvm_vcpu *vcpu,
 	 * address, and so on. Currently these are not checked.
 	 */
 	return 0;
-}
-
-/*
- * The following 3 functions, nested_vmx_succeed()/failValid()/failInvalid(),
- * set the success or error code of an emulated VMX instruction, as specified
- * by Vol 2B, VMX Instruction Reference, "Conventions".
- */
-static void nested_vmx_succeed(struct kvm_vcpu *vcpu)
-{
-	vmx_set_rflags(vcpu, vmx_get_rflags(vcpu)
-			& ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF |
-			    X86_EFLAGS_ZF | X86_EFLAGS_SF | X86_EFLAGS_OF));
-}
-
-static void nested_vmx_failInvalid(struct kvm_vcpu *vcpu)
-{
-	vmx_set_rflags(vcpu, (vmx_get_rflags(vcpu)
-			& ~(X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF |
-			    X86_EFLAGS_SF | X86_EFLAGS_OF))
-			| X86_EFLAGS_CF);
-}
-
-static void nested_vmx_failValid(struct kvm_vcpu *vcpu,
-					u32 vm_instruction_error)
-{
-	if (to_vmx(vcpu)->nested.current_vmptr == -1ull) {
-		/*
-		 * failValid writes the error number to the current VMCS, which
-		 * can't be done there isn't a current VMCS.
-		 */
-		nested_vmx_failInvalid(vcpu);
-		return;
-	}
-	vmx_set_rflags(vcpu, (vmx_get_rflags(vcpu)
-			& ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF |
-			    X86_EFLAGS_SF | X86_EFLAGS_OF))
-			| X86_EFLAGS_ZF);
-	get_vmcs12(vcpu)->vm_instruction_error = vm_instruction_error;
-	/*
-	 * We don't need to force a shadow sync because
-	 * VM_INSTRUCTION_ERROR is not shadowed
-	 */
 }
 
 /* Emulate the VMCLEAR instruction */
@@ -5972,8 +5994,8 @@ static void copy_shadow_to_vmcs12(struct vcpu_vmx *vmx)
 	unsigned long field;
 	u64 field_value;
 	struct vmcs *shadow_vmcs = vmx->nested.current_shadow_vmcs;
-	unsigned long *fields = (unsigned long *)shadow_read_write_fields;
-	int num_fields = max_shadow_read_write_fields;
+	const unsigned long *fields = shadow_read_write_fields;
+	const int num_fields = max_shadow_read_write_fields;
 
 	vmcs_load(shadow_vmcs);
 
@@ -6002,12 +6024,11 @@ static void copy_shadow_to_vmcs12(struct vcpu_vmx *vmx)
 
 static void copy_vmcs12_to_shadow(struct vcpu_vmx *vmx)
 {
-	unsigned long *fields[] = {
-		(unsigned long *)shadow_read_write_fields,
-		(unsigned long *)shadow_read_only_fields
+	const unsigned long *fields[] = {
+		shadow_read_write_fields,
+		shadow_read_only_fields
 	};
-	int num_lists =  ARRAY_SIZE(fields);
-	int max_fields[] = {
+	const int max_fields[] = {
 		max_shadow_read_write_fields,
 		max_shadow_read_only_fields
 	};
@@ -6018,7 +6039,7 @@ static void copy_vmcs12_to_shadow(struct vcpu_vmx *vmx)
 
 	vmcs_load(shadow_vmcs);
 
-	for (q = 0; q < num_lists; q++) {
+	for (q = 0; q < ARRAY_SIZE(fields); q++) {
 		for (i = 0; i < max_fields[q]; i++) {
 			field = fields[q][i];
 			vmcs12_read_any(&vmx->vcpu, field, &field_value);
@@ -7948,6 +7969,8 @@ static void prepare_vmcs12(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
 static void load_vmcs12_host_state(struct kvm_vcpu *vcpu,
 				   struct vmcs12 *vmcs12)
 {
+	struct kvm_segment seg;
+
 	if (vmcs12->vm_exit_controls & VM_EXIT_LOAD_IA32_EFER)
 		vcpu->arch.efer = vmcs12->host_ia32_efer;
 	else if (vmcs12->vm_exit_controls & VM_EXIT_HOST_ADDR_SPACE_SIZE)
@@ -8001,22 +8024,58 @@ static void load_vmcs12_host_state(struct kvm_vcpu *vcpu,
 	vmcs_writel(GUEST_SYSENTER_EIP, vmcs12->host_ia32_sysenter_eip);
 	vmcs_writel(GUEST_IDTR_BASE, vmcs12->host_idtr_base);
 	vmcs_writel(GUEST_GDTR_BASE, vmcs12->host_gdtr_base);
-	vmcs_writel(GUEST_TR_BASE, vmcs12->host_tr_base);
-	vmcs_writel(GUEST_GS_BASE, vmcs12->host_gs_base);
-	vmcs_writel(GUEST_FS_BASE, vmcs12->host_fs_base);
-	vmcs_write16(GUEST_ES_SELECTOR, vmcs12->host_es_selector);
-	vmcs_write16(GUEST_CS_SELECTOR, vmcs12->host_cs_selector);
-	vmcs_write16(GUEST_SS_SELECTOR, vmcs12->host_ss_selector);
-	vmcs_write16(GUEST_DS_SELECTOR, vmcs12->host_ds_selector);
-	vmcs_write16(GUEST_FS_SELECTOR, vmcs12->host_fs_selector);
-	vmcs_write16(GUEST_GS_SELECTOR, vmcs12->host_gs_selector);
-	vmcs_write16(GUEST_TR_SELECTOR, vmcs12->host_tr_selector);
 
 	if (vmcs12->vm_exit_controls & VM_EXIT_LOAD_IA32_PAT)
 		vmcs_write64(GUEST_IA32_PAT, vmcs12->host_ia32_pat);
 	if (vmcs12->vm_exit_controls & VM_EXIT_LOAD_IA32_PERF_GLOBAL_CTRL)
 		vmcs_write64(GUEST_IA32_PERF_GLOBAL_CTRL,
 			vmcs12->host_ia32_perf_global_ctrl);
+
+	/* Set L1 segment info according to Intel SDM
+	    27.5.2 Loading Host Segment and Descriptor-Table Registers */
+	seg = (struct kvm_segment) {
+		.base = 0,
+		.limit = 0xFFFFFFFF,
+		.selector = vmcs12->host_cs_selector,
+		.type = 11,
+		.present = 1,
+		.s = 1,
+		.g = 1
+	};
+	if (vmcs12->vm_exit_controls & VM_EXIT_HOST_ADDR_SPACE_SIZE)
+		seg.l = 1;
+	else
+		seg.db = 1;
+	vmx_set_segment(vcpu, &seg, VCPU_SREG_CS);
+	seg = (struct kvm_segment) {
+		.base = 0,
+		.limit = 0xFFFFFFFF,
+		.type = 3,
+		.present = 1,
+		.s = 1,
+		.db = 1,
+		.g = 1
+	};
+	seg.selector = vmcs12->host_ds_selector;
+	vmx_set_segment(vcpu, &seg, VCPU_SREG_DS);
+	seg.selector = vmcs12->host_es_selector;
+	vmx_set_segment(vcpu, &seg, VCPU_SREG_ES);
+	seg.selector = vmcs12->host_ss_selector;
+	vmx_set_segment(vcpu, &seg, VCPU_SREG_SS);
+	seg.selector = vmcs12->host_fs_selector;
+	seg.base = vmcs12->host_fs_base;
+	vmx_set_segment(vcpu, &seg, VCPU_SREG_FS);
+	seg.selector = vmcs12->host_gs_selector;
+	seg.base = vmcs12->host_gs_base;
+	vmx_set_segment(vcpu, &seg, VCPU_SREG_GS);
+	seg = (struct kvm_segment) {
+		.base = 0,
+		.limit = 0x67,
+		.selector = vmcs12->host_tr_selector,
+		.type = 11,
+		.present = 1
+	};
+	vmx_set_segment(vcpu, &seg, VCPU_SREG_TR);
 
 	kvm_set_dr(vcpu, 7, 0x400);
 	vmcs_write64(GUEST_IA32_DEBUGCTL, 0);
