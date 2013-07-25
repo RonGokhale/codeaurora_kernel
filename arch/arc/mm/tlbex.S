@@ -140,12 +140,16 @@ ex_saved_reg1:
 	GET_CURR_TASK_ON_CPU  r3
 	ld r0, [r3, TASK_ACT_MM]
 	ld r0, [r0, MM_CTXT+MM_CTXT_ASID]
+	breq r0, MM_CTXT_NO_ASID, 55f	; Error if no ASID allocated
+
+	and r2, r0, 0xFF	; strip out Generation/alloc-cycle bits
 
 	lr r1, [ARC_REG_PID]
 	and r1, r1, 0xFF
 
-	breq r1, r0, 5f
+	breq r1, r2, 5f
 
+55:
 	; Error if H/w and S/w ASID don't match, but NOT if in kernel mode
 	lr  r2, [erstatus]
 	bbit0 r2, STATUS_U_BIT, 5f
