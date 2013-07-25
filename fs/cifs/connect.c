@@ -1675,7 +1675,8 @@ cifs_parse_mount_options(const char *mountdata, const char *devname,
 			if (string == NULL)
 				goto out_nomem;
 
-			if (strnlen(string, 256) == 256) {
+			if (strnlen(string, MAX_DOMAINNAME_SIZE)
+					== MAX_DOMAINNAME_SIZE) {
 				printk(KERN_WARNING "CIFS: domain name too"
 						    " long\n");
 				goto cifs_parse_mount_err;
@@ -2276,8 +2277,8 @@ cifs_put_smb_ses(struct cifs_ses *ses)
 
 #ifdef CONFIG_KEYS
 
-/* strlen("cifs:a:") + INET6_ADDRSTRLEN + 1 */
-#define CIFSCREDS_DESC_SIZE (7 + INET6_ADDRSTRLEN + 1)
+/* strlen("cifs:a:") + MAX_DOMAINNAME_SIZE + 1 */
+#define CIFSCREDS_DESC_SIZE (7 + MAX_DOMAINNAME_SIZE + 1)
 
 /* Populate username and pw fields from keyring if possible */
 static int
