@@ -99,6 +99,8 @@ flow_ctrl_setting_for_lp2:
 	cmp	r10, #TEGRA30
 	moveq   r3, #FLOW_CTRL_WAIT_FOR_INTERRUPT	@ For LP2
 	movne	r3, #FLOW_CTRL_WAITEVENT
+	orrne	r3, r3, #FLOW_CTRL_HALT_GIC_IRQ
+	orrne	r3, r3, #FLOW_CTRL_HALT_GIC_FIQ
 flow_ctrl_done:
 	cmp	r10, #TEGRA30
 	str	r3, [r2]
@@ -135,6 +137,7 @@ ENTRY(tegra30_sleep_cpu_secondary_finish)
 	mov	r7, lr
 
 	/* Flush and disable the L1 data cache */
+	mov 	r0, #TEGRA_FLUSH_CACHE_LOUIS
 	bl	tegra_disable_clean_inv_dcache
 
 	/* Powergate this CPU. */
@@ -172,8 +175,12 @@ tegra30_enter_sleep:
 	orr	r0, r0, #FLOW_CTRL_CSR_ENABLE
 	str	r0, [r6, r2]
 
+	tegra_get_soc_id TEGRA_APB_MISC_BASE, r10
+	cmp	r10, #TEGRA30
 	mov	r0, #FLOW_CTRL_WAIT_FOR_INTERRUPT
-	orr	r0, r0, #FLOW_CTRL_HALT_CPU_IRQ | FLOW_CTRL_HALT_CPU_FIQ
+	orreq	r0, r0, #FLOW_CTRL_HALT_CPU_IRQ | FLOW_CTRL_HALT_CPU_FIQ
+	orrne   r0, r0, #FLOW_CTRL_HALT_LIC_IRQ | FLOW_CTRL_HALT_LIC_FIQ
+
 	cpu_to_halt_reg r2, r1
 	str	r0, [r6, r2]
 	dsb
