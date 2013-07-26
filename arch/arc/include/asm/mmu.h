@@ -48,7 +48,7 @@
 #ifndef __ASSEMBLY__
 
 typedef struct {
-	unsigned long asid;	/* Hw PID + Generation cycle */
+	unsigned long asid[NR_CPUS];	/* Hw PID + Generation cycle */
 } mm_context_t;
 
 #ifdef CONFIG_ARC_DBG_TLB_PARANOIA
