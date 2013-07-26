@@ -53,18 +53,18 @@
 static const char usbip_version_string[] = PACKAGE_STRING;
 
 static const char usbipd_help_string[] =
-	"usage: usbipd [options]			\n"
-	"	-D, --daemon				\n"
-	"		Run as a daemon process.	\n"
-	"						\n"
-	"	-d, --debug				\n"
-	"		Print debugging information.	\n"
-	"						\n"
-	"	-h, --help				\n"
-	"		Print this help.		\n"
-	"						\n"
-	"	-v, --version				\n"
-	"		Show version.			\n";
+	"usage: usbipd [options]\n"
+	"	-D, --daemon\n"
+	"		Run as a daemon process.\n"
+	"\n"
+	"	-d, --debug\n"
+	"		Print debugging information.\n"
+	"\n"
+	"	-h, --help\n"
+	"		Print this help.\n"
+	"\n"
+	"	-v, --version\n"
+	"		Show version.\n";
 
 static void usbipd_help(void)
 {
@@ -286,13 +286,13 @@ static int do_accept(int listenfd)
 
 	memset(&ss, 0, sizeof(ss));
 
-	connfd = accept(listenfd, (struct sockaddr *) &ss, &len);
+	connfd = accept(listenfd, (struct sockaddr *)&ss, &len);
 	if (connfd < 0) {
 		err("failed to accept connection");
 		return -1;
 	}
 
-	rc = getnameinfo((struct sockaddr *) &ss, len, host, sizeof(host),
+	rc = getnameinfo((struct sockaddr *)&ss, len, host, sizeof(host),
 			 port, sizeof(port), NI_NUMERICHOST | NI_NUMERICSERV);
 	if (rc)
 		err("getnameinfo: %s", gai_strerror(rc));
@@ -328,56 +328,69 @@ int process_request(int listenfd)
 	return 0;
 }
 
-static void log_addrinfo(struct addrinfo *ai)
+static void addrinfo_to_text(struct addrinfo *ai, char buf[],
+			     const size_t buf_size)
 {
 	char hbuf[NI_MAXHOST];
 	char sbuf[NI_MAXSERV];
 	int rc;
+
+	buf[0] = '\0';
 
 	rc = getnameinfo(ai->ai_addr, ai->ai_addrlen, hbuf, sizeof(hbuf),
 			 sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
 	if (rc)
 		err("getnameinfo: %s", gai_strerror(rc));
 
-	info("listening on %s:%s", hbuf, sbuf);
+	snprintf(buf, buf_size, "%s:%s", hbuf, sbuf);
 }
 
 static int listen_all_addrinfo(struct addrinfo *ai_head, int sockfdlist[])
 {
 	struct addrinfo *ai;
 	int ret, nsockfd = 0;
+	const size_t ai_buf_size = NI_MAXHOST + NI_MAXSERV + 2;
+	char ai_buf[ai_buf_size];
 
 	for (ai = ai_head; ai && nsockfd < MAXSOCKFD; ai = ai->ai_next) {
-		sockfdlist[nsockfd] = socket(ai->ai_family, ai->ai_socktype,
-					     ai->ai_protocol);
-		if (sockfdlist[nsockfd] < 0)
-			continue;
-
-		usbip_net_set_reuseaddr(sockfdlist[nsockfd]);
-		usbip_net_set_nodelay(sockfdlist[nsockfd]);
-
-		if (sockfdlist[nsockfd] >= FD_SETSIZE) {
-			close(sockfdlist[nsockfd]);
-			sockfdlist[nsockfd] = -1;
+		int sock;
+		addrinfo_to_text(ai, ai_buf, ai_buf_size);
+		dbg("opening %s", ai_buf);
+		sock = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+		if (sock < 0) {
+			err("socket: %s: %d (%s)",
+			    ai_buf, errno, strerror(errno));
 			continue;
 		}
 
-		ret = bind(sockfdlist[nsockfd], ai->ai_addr, ai->ai_addrlen);
+		usbip_net_set_reuseaddr(sock);
+		usbip_net_set_nodelay(sock);
+
+		if (sock >= FD_SETSIZE) {
+			err("FD_SETSIZE: %s: sock=%d, max=%d",
+			    ai_buf, sock, FD_SETSIZE);
+			close(sock);
+			continue;
+		}
+
+		ret = bind(sock, ai->ai_addr, ai->ai_addrlen);
 		if (ret < 0) {
-			close(sockfdlist[nsockfd]);
-			sockfdlist[nsockfd] = -1;
+			err("bind: %s: %d (%s)",
+			    ai_buf, errno, strerror(errno));
+			close(sock);
 			continue;
 		}
 
-		ret = listen(sockfdlist[nsockfd], SOMAXCONN);
+		ret = listen(sock, SOMAXCONN);
 		if (ret < 0) {
-			close(sockfdlist[nsockfd]);
-			sockfdlist[nsockfd] = -1;
+			err("listen: %s: %d (%s)",
+			    ai_buf, errno, strerror(errno));
+			close(sock);
 			continue;
 		}
 
-		log_addrinfo(ai);
-		nsockfd++;
+		info("listening on %s", ai_buf);
+		sockfdlist[nsockfd++] = sock;
 	}
 
 	if (nsockfd == 0)
@@ -496,8 +509,9 @@ static int do_standalone_mode(int daemonize)
 					process_request(sockfdlist[i]);
 				}
 			}
-		} else
+		} else {
 			dbg("heartbeat timeout on ppoll()");
+		}
 	}
 
 	info("shutting down " PROGNAME);

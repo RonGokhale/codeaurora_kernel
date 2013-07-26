@@ -836,11 +836,11 @@ int lov_setup(struct obd_device *obd, struct lustre_cfg *lcfg)
 	lprocfs_obd_setup(obd, lvars.obd_vars);
 #ifdef LPROCFS
 	{
-		int rc;
+		int rc1;
 
-		rc = lprocfs_seq_create(obd->obd_proc_entry, "target_obd",
+		rc1 = lprocfs_seq_create(obd->obd_proc_entry, "target_obd",
 					0444, &lov_proc_target_fops, obd);
-		if (rc)
+		if (rc1)
 			CWARN("Error adding the target_obd file\n");
 	}
 #endif
@@ -2259,7 +2259,7 @@ static int lov_fiemap(struct lov_obd *lov, __u32 keylen, void *key,
 	int cur_stripe = 0, cur_stripe_wrap = 0, stripe_count;
 	unsigned int buffer_size = FIEMAP_BUFFER_SIZE;
 
-	if (lsm == NULL)
+	if (!lsm_has_objects(lsm))
 		GOTO(out, rc = 0);
 
 	if (fiemap_count_to_size(fm_key->fiemap.fm_extent_count) < buffer_size)

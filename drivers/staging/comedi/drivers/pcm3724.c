@@ -28,10 +28,8 @@ Copy/pasted/hacked from pcm724.c
  *   struct comedi_insn
  */
 
+#include <linux/module.h>
 #include "../comedidev.h"
-
-#include <linux/ioport.h>
-#include <linux/delay.h>
 
 #include "8255.h"
 
@@ -228,10 +226,9 @@ static int pcm3724_attach(struct comedi_device *dev,
 	struct comedi_subdevice *s;
 	int ret, i;
 
-	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+	priv = comedi_alloc_devpriv(dev, sizeof(*priv));
 	if (!priv)
 		return -ENOMEM;
-	dev->private = priv;
 
 	ret = comedi_request_region(dev, it->options[0], PCM3724_SIZE);
 	if (ret)
