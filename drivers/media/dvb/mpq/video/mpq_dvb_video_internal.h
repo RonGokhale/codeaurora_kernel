@@ -34,6 +34,8 @@
 #define DVB_VID_IN_BUFFER_SIZE (2*1024*1024)
 #define DVB_VID_IN_BUFFER_ALGN (8*1024)
 
+#define MPQ_ENABLE_DBGFS
+
 struct vid_dec_msg {
 	struct list_head list;
 	struct vdec_msginfo vdec_msg_info;
@@ -89,6 +91,9 @@ struct mpq_dvb_video_dev {
 	struct video_client_ctx vdec_clients[DVB_MPQ_NUM_VIDEO_DEVICES];
 	u32 num_clients;
 	void(*timer_handler)(void *);
+#ifdef MPQ_ENABLE_DBGFS
+	struct dentry *root;
+#endif
 };
 
 #endif /* MPQ_DVB_VIDEO_INTERNAL_H */

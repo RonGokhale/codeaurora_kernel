@@ -31,6 +31,7 @@
 #include <linux/android_pmem.h>
 #include <linux/clk.h>
 #include <linux/timer.h>
+#include <linux/debugfs.h>
 #include <mach/msm_subsystem_map.h>
 #include <media/msm/vidc_type.h>
 #include <media/msm/vcd_api.h>
@@ -66,6 +67,30 @@ static int mpq_int_vid_dec_get_buffer_req(struct video_client_ctx *client_ctx,
 
 static struct mpq_dvb_video_dev *mpq_dvb_video_device;
 
+static unsigned int mpq_get_time_ms(void);
+
+static u32 input_feed_waittime, input_buffer_waittime, enable_error_recovery;
+
+#ifdef MPQ_ENABLE_DBGFS
+
+static struct dentry *mpq_debugfs_root;
+
+static struct dentry *mpq_get_debugfs_root(void)
+{
+	if (mpq_debugfs_root == NULL)
+		mpq_debugfs_root = debugfs_create_dir("mpq_video", NULL);
+	return mpq_debugfs_root;
+}
+
+void mpq_debugfs_file_create(struct dentry *root, const char *name,
+				u32 *var)
+{
+	struct dentry *mpq_debugfs_file =
+		debugfs_create_u32(name, S_IRUGO | S_IWUSR, root, var);
+	if (!mpq_debugfs_file)
+		ERR("%s(): Error creating/opening file %s\n", __func__, name);
+}
+#endif
 static int mpq_get_dev_frm_client(struct video_client_ctx *client_ctx,
 				struct mpq_dvb_video_inst **dev_inst)
 {
@@ -116,13 +141,21 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 	struct file *file;
 	s32 buffer_index = -1;
 	size_t size = 0;
+	unsigned int u_start = 0;
+	unsigned int u_end   = 0;
 
 	do {
-		DBG("Waiting for the Ring Buffer interrupt\n");
+		DBG("enable_error_recovery %d", enable_error_recovery);
+		if (input_feed_waittime)
+			u_start = mpq_get_time_ms();
 		wait_event_interruptible(streambuff->packet_data.queue,
 			(!dvb_ringbuffer_empty(&streambuff->packet_data) ||
 			streambuff->packet_data.error != 0) ||
 			kthread_should_stop());
+		if (input_feed_waittime) {
+			u_end = mpq_get_time_ms();
+			ERR("Feed WaitTime %u\n", (u_end - u_start));
+		}
 
 		if (kthread_should_stop()) {
 			DBG("STOP signal Received\n");
@@ -191,7 +224,7 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 				drop_ratio = (ts_packets_drop_num*100)
 								/ts_packets_num;
 				DBG("drop_ratio value %d\n", drop_ratio);
-				if ((drop_ratio >= FRAME_DROP_THRESHOLD)
+				if (((drop_ratio >= FRAME_DROP_THRESHOLD)
 					||
 					 (meta_data.info.framing.
 					 continuity_error_counter
@@ -199,7 +232,8 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 					||
 					(meta_data.info.framing.
 					 transport_error_indicator_counter
-					 > TEI_ERROR_THRESHOLD)) {
+					 > TEI_ERROR_THRESHOLD))
+					&&enable_error_recovery) {
 					ERR("drop_ratio %d\n", drop_ratio);
 					ERR("CC Error %d\n",
 						meta_data.info.framing.
@@ -308,12 +342,20 @@ static int mpq_bcast_data_handler(void *arg)
 	struct mpq_dmx_src_data *dmx_data = dev_inst->dmx_src_data;
 	struct mpq_bcast_msg *pMesg;
 	struct mpq_bcast_msg_info msg = {0};
+	unsigned int u_start = 0;
+	unsigned int u_end   = 0;
 
 	do {
+		if (input_buffer_waittime)
+			u_start = mpq_get_time_ms();
 		wait_event_interruptible(dmx_data->msg_wait,
 					((dmx_data->stream_buffer != NULL) &&
 					mpq_int_check_bcast_mq(dmx_data)) ||
 					kthread_should_stop());
+		if (input_buffer_waittime) {
+			u_end = mpq_get_time_ms();
+			pr_err("InputBuffer HoldTime %u\n", (u_end - u_start));
+		}
 
 		if (kthread_should_stop()) {
 			DBG("STOP signal Received\n");
@@ -689,6 +731,7 @@ static void mpq_int_vid_dec_output_frame_done(
 				ION_IOC_INV_CACHES);
 		}
 	}
+
 	mutex_lock(&client_ctx->msg_queue_lock);
 	list_add_tail(&vdec_msg->list, &client_ctx->msg_queue);
 	mutex_unlock(&client_ctx->msg_queue_lock);
@@ -1670,7 +1713,6 @@ static int mpq_int_vid_dec_fill_output_buffer(
 	s32 buffer_index = -1;
 	u32 vcd_status = VCD_ERR_FAIL;
 	struct ion_handle *buff_handle = NULL;
-
 	struct vcd_frame_data vcd_frame;
 
 	if (!client_ctx || !fill_buffer)
@@ -1694,6 +1736,7 @@ static int mpq_int_vid_dec_fill_output_buffer(
 						buffer_index,
 						&buff_handle);
 		vcd_frame.buff_ion_handle = buff_handle;
+
 		vcd_status = vcd_fill_output_buffer(client_ctx->vcd_handle,
 						    &vcd_frame);
 		if (!vcd_status)
@@ -2503,6 +2546,14 @@ static unsigned int mpq_dvb_video_poll(struct file *file, poll_table *wait)
 	return mask;
 }
 
+static unsigned int mpq_get_time_ms(void)
+{
+	struct timeval mpq_time;
+	do_gettimeofday(&mpq_time);
+	return (mpq_time.tv_sec * 1000) + (mpq_time.tv_usec / 1000);
+}
+
+
 /*
  * Driver Registration.
  */
@@ -2564,6 +2615,21 @@ static int __init mpq_dvb_video_init(void)
 
 	}
 
+#ifdef MPQ_ENABLE_DBGFS
+	mpq_dvb_video_device->root = mpq_get_debugfs_root();
+	if (mpq_dvb_video_device->root) {
+		mpq_debugfs_file_create(mpq_dvb_video_device->root,
+			"input_feed_waittime",
+			(u32 *) &input_feed_waittime);
+		mpq_debugfs_file_create(mpq_dvb_video_device->root,
+			"input_buffer_waittime",
+			(u32 *) &input_buffer_waittime);
+		mpq_debugfs_file_create(mpq_dvb_video_device->root,
+			"enable_error_recovery",
+			(u32 *) &enable_error_recovery);
+	}
+#endif
+	enable_error_recovery = 1;
 	return 0;
 
 free_region:
@@ -2578,6 +2644,7 @@ free_region:
 static void __exit mpq_dvb_video_exit(void)
 {
 	int i;
+	debugfs_remove(mpq_dvb_video_device->root);
 
 	for (i = 0; i < DVB_MPQ_NUM_VIDEO_DEVICES; i++)
 		dvb_unregister_device(
