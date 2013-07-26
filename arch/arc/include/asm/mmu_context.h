@@ -30,13 +30,13 @@
  * "Fast Context Switch" i.e. no TLB flush on ctxt-switch
  *
  * Linux assigns each task a unique ASID. A simple round-robin allocation
- * of H/w ASID is done using software tracker @asid_cache.
+ * of H/w ASID is done using software tracker @asid_cpu.
  * When it reaches max 255, the allocation cycle starts afresh by flushing
  * the entire TLB and wrapping ASID back to zero.
  *
  * A new allocation cycle, post rollover, could potentially reassign an ASID
  * to a different task. Thus the rule is to refresh the ASID in a new cycle.
- * The 32 bit @asid_cache (and mm->asid) have 8 bits MMU PID and rest 24 bits
+ * The 32 bit @asid_cpu (and mm->asid) have 8 bits MMU PID and rest 24 bits
  * serve as cycle/generation indicator and natural 32 bit unsigned math
  * automagically increments the generation when lower 8 bits rollover.
  */
@@ -47,9 +47,11 @@
 #define MM_CTXT_FIRST_CYCLE	(MM_CTXT_ASID_MASK + 1)
 #define MM_CTXT_NO_ASID		0UL
 
-#define hw_pid(mm)		(mm->context.asid & MM_CTXT_ASID_MASK)
+#define asid_mm(mm, cpu)	mm->context.asid[cpu]
+#define hw_pid(mm, cpu)		(asid_mm(mm, cpu) & MM_CTXT_ASID_MASK)
 
-extern unsigned int asid_cache;
+DECLARE_PER_CPU(unsigned int, asid_cache);
+#define asid_cpu(cpu)		per_cpu(asid_cache, cpu)
 
 /*
  * Get a new ASID if task doesn't have a valid one (unalloc or from prev cycle)
@@ -57,6 +59,7 @@ extern unsigned int asid_cache;
  */
 static inline void get_new_mmu_context(struct mm_struct *mm)
 {
+	const unsigned int cpu = smp_processor_id();
 	unsigned long flags;
 
 	local_irq_save(flags);
@@ -68,11 +71,11 @@ static inline void get_new_mmu_context(struct mm_struct *mm)
 	 * context, setting it to invalid value, which the check below would
 	 * catch too
 	 */
-	if (!((mm->context.asid ^ asid_cache) & MM_CTXT_CYCLE_MASK))
+	if (!((asid_mm(mm, cpu) ^ asid_cpu(cpu)) & MM_CTXT_CYCLE_MASK))
 		goto set_hw;
 
 	/* move to new ASID */
-	if (!(++asid_cache & MM_CTXT_ASID_MASK)) {	/* ASID roll-over */
+	if (!(++asid_cpu(cpu) & MM_CTXT_ASID_MASK)) {	/* ASID roll-over */
 		flush_tlb_all();
 	}
 
@@ -80,14 +83,14 @@ static inline void get_new_mmu_context(struct mm_struct *mm)
 	 * If the container itself wrapped around, set it to a non zero
 	 * "generation" to distinguish from no context
 	 */
-	if (!asid_cache)
-		asid_cache = MM_CTXT_FIRST_CYCLE;
+	if (!asid_cpu(cpu))
+		asid_cpu(cpu) = MM_CTXT_FIRST_CYCLE;
 
 	/* Assign new ASID to tsk */
-	mm->context.asid = asid_cache;
+	asid_mm(mm, cpu) = asid_cpu(cpu);
 
 set_hw:
-	write_aux_reg(ARC_REG_PID, hw_pid(mm) | MMU_ENABLE);
+	write_aux_reg(ARC_REG_PID, hw_pid(mm, cpu) | MMU_ENABLE);
 
 	local_irq_restore(flags);
 }
@@ -99,8 +102,17 @@ set_hw:
 static inline int
 init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 {
-	mm->context.asid = MM_CTXT_NO_ASID;
+	int i;
+
+	for (i = 0; i < NR_CPUS; i++)
+		asid_mm(mm, i) = MM_CTXT_NO_ASID;
+
 	return 0;
+}
+
+static inline void destroy_context(struct mm_struct *mm)
+{
+	asid_mm(mm, smp_processor_id()) = MM_CTXT_NO_ASID;
 }
 
 /* Prepare the MMU for task: setup PID reg with allocated ASID
@@ -109,6 +121,25 @@ init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 			     struct task_struct *tsk)
 {
+#ifdef CONFIG_SMP
+	const int cpu = smp_processor_id();
+	int migrating;
+
+	/*
+	 * If @next is migrating to a different CPU, force an ASID refresh (by
+	 * 	relinquishing current value as required by new implementation
+	 * 	of get_new_mmu_context()
+	 * Use Case:
+	 *	Task t1 migrates to a different core, forks, migrates back to
+	 *	orig core. COW semantics requires it to have a new ASID now
+	 *	so that pre-fork TLB entries can't be used.
+	 */
+	cpumask_clear_cpu(cpu, mm_cpumask(prev));
+	migrating = !cpumask_test_and_set_cpu(cpu, mm_cpumask(next));
+	if (migrating)
+		destroy_context(next);
+#endif
+
 #ifndef CONFIG_SMP
 	/* PGD cached in MMU reg to avoid 3 mem lookups: task->mm->pgd */
 	write_aux_reg(ARC_REG_SCRATCH_DATA0, next->pgd);
@@ -125,11 +156,6 @@ static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
  * only if it was unallocated
  */
 #define activate_mm(prev, next)		switch_mm(prev, next, NULL)
-
-static inline void destroy_context(struct mm_struct *mm)
-{
-	mm->context.asid = MM_CTXT_NO_ASID;
-}
 
 /* it seemed that deactivate_mm( ) is a reasonable place to do book-keeping
  * for retiring-mm. However destroy_context( ) still needs to do that because
