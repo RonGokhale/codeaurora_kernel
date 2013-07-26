@@ -215,6 +215,8 @@ static u64 cgroup_serial_nr_next = 1;
  */
 static int need_forkexit_callback __read_mostly;
 
+static struct cftype cgroup_base_files[];
+
 static void cgroup_offline_fn(struct work_struct *work);
 static int cgroup_destroy_locked(struct cgroup *cgrp);
 static int cgroup_addrm_files(struct cgroup *cgrp, struct cgroup_subsys *subsys,
@@ -803,8 +805,7 @@ static struct cgroup *task_cgroup_from_root(struct task_struct *task,
 
 static int cgroup_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode);
 static int cgroup_rmdir(struct inode *unused_dir, struct dentry *dentry);
-static int cgroup_populate_dir(struct cgroup *cgrp, bool base_files,
-			       unsigned long subsys_mask);
+static int cgroup_populate_dir(struct cgroup *cgrp, unsigned long subsys_mask);
 static const struct inode_operations cgroup_dir_inode_operations;
 static const struct file_operations proc_cgroupstats_operations;
 
@@ -956,27 +957,22 @@ static void cgroup_rm_file(struct cgroup *cgrp, const struct cftype *cft)
 }
 
 /**
- * cgroup_clear_directory - selective removal of base and subsystem files
- * @dir: directory containing the files
- * @base_files: true if the base files should be removed
+ * cgroup_clear_dir - remove subsys files in a cgroup directory
+ * @cgrp: target cgroup
  * @subsys_mask: mask of the subsystem ids whose files should be removed
  */
-static void cgroup_clear_directory(struct dentry *dir, bool base_files,
-				   unsigned long subsys_mask)
+static void cgroup_clear_dir(struct cgroup *cgrp, unsigned long subsys_mask)
 {
-	struct cgroup *cgrp = __d_cgrp(dir);
 	struct cgroup_subsys *ss;
+	int i;
 
-	for_each_root_subsys(cgrp->root, ss) {
+	for_each_subsys(ss, i) {
 		struct cftype_set *set;
-		if (!test_bit(ss->subsys_id, &subsys_mask))
+
+		if (!test_bit(i, &subsys_mask))
 			continue;
 		list_for_each_entry(set, &ss->cftsets, node)
 			cgroup_addrm_files(cgrp, NULL, set->cfts, false);
-	}
-	if (base_files) {
-		while (!list_empty(&cgrp->files))
-			cgroup_rm_file(cgrp, NULL);
 	}
 }
 
@@ -986,9 +982,6 @@ static void cgroup_clear_directory(struct dentry *dir, bool base_files,
 static void cgroup_d_remove_dir(struct dentry *dentry)
 {
 	struct dentry *parent;
-	struct cgroupfs_root *root = dentry->d_sb->s_fs_info;
-
-	cgroup_clear_directory(dentry, true, root->subsys_mask);
 
 	parent = dentry->d_parent;
 	spin_lock(&parent->d_lock);
@@ -1009,32 +1002,47 @@ static int rebind_subsystems(struct cgroupfs_root *root,
 {
 	struct cgroup *cgrp = &root->top_cgroup;
 	struct cgroup_subsys *ss;
-	int i;
+	unsigned long pinned = 0;
+	int i, ret;
 
 	BUG_ON(!mutex_is_locked(&cgroup_mutex));
 	BUG_ON(!mutex_is_locked(&cgroup_root_mutex));
 
 	/* Check that any added subsystems are currently free */
 	for_each_subsys(ss, i) {
-		unsigned long bit = 1UL << i;
-
-		if (!(bit & added_mask))
+		if (!(added_mask & (1 << i)))
 			continue;
 
+		/* is the subsystem mounted elsewhere? */
 		if (ss->root != &cgroup_dummy_root) {
-			/* Subsystem isn't free */
-			return -EBUSY;
+			ret = -EBUSY;
+			goto out_put;
 		}
+
+		/* pin the module */
+		if (!try_module_get(ss->module)) {
+			ret = -ENOENT;
+			goto out_put;
+		}
+		pinned |= 1 << i;
 	}
 
-	/* Currently we don't handle adding/removing subsystems when
-	 * any child cgroups exist. This is theoretically supportable
-	 * but involves complex error handling, so it's being left until
-	 * later */
-	if (root->number_of_cgroups > 1)
-		return -EBUSY;
+	/* subsys could be missing if unloaded between parsing and here */
+	if (added_mask != pinned) {
+		ret = -ENOENT;
+		goto out_put;
+	}
 
-	/* Process each subsystem */
+	ret = cgroup_populate_dir(cgrp, added_mask);
+	if (ret)
+		goto out_put;
+
+	/*
+	 * Nothing can fail from this point on.  Remove files for the
+	 * removed subsystems and rebind each subsystem.
+	 */
+	cgroup_clear_dir(cgrp, removed_mask);
+
 	for_each_subsys(ss, i) {
 		unsigned long bit = 1UL << i;
 
@@ -1068,20 +1076,6 @@ static int rebind_subsystems(struct cgroupfs_root *root,
 			/* subsystem is now free - drop reference on module */
 			module_put(ss->module);
 			root->subsys_mask &= ~bit;
-		} else if (bit & root->subsys_mask) {
-			/* Subsystem state should already exist */
-			BUG_ON(!cgrp->subsys[i]);
-			/*
-			 * a refcount was taken, but we already had one, so
-			 * drop the extra reference.
-			 */
-			module_put(ss->module);
-#ifdef CONFIG_MODULE_UNLOAD
-			BUG_ON(ss->module && !module_refcount(ss->module));
-#endif
-		} else {
-			/* Subsystem state shouldn't exist */
-			BUG_ON(cgrp->subsys[i]);
 		}
 	}
 
@@ -1092,6 +1086,12 @@ static int rebind_subsystems(struct cgroupfs_root *root,
 	root->flags |= CGRP_ROOT_SUBSYS_BOUND;
 
 	return 0;
+
+out_put:
+	for_each_subsys(ss, i)
+		if (pinned & (1 << i))
+			module_put(ss->module);
+	return ret;
 }
 
 static int cgroup_show_options(struct seq_file *seq, struct dentry *dentry)
@@ -1142,7 +1142,6 @@ static int parse_cgroupfs_options(char *data, struct cgroup_sb_opts *opts)
 	char *token, *o = data;
 	bool all_ss = false, one_ss = false;
 	unsigned long mask = (unsigned long)-1;
-	bool module_pin_failed = false;
 	struct cgroup_subsys *ss;
 	int i;
 
@@ -1285,50 +1284,7 @@ static int parse_cgroupfs_options(char *data, struct cgroup_sb_opts *opts)
 	if (!opts->subsys_mask && !opts->name)
 		return -EINVAL;
 
-	/*
-	 * Grab references on all the modules we'll need, so the subsystems
-	 * don't dance around before rebind_subsystems attaches them. This may
-	 * take duplicate reference counts on a subsystem that's already used,
-	 * but rebind_subsystems handles this case.
-	 */
-	for_each_subsys(ss, i) {
-		if (!(opts->subsys_mask & (1UL << i)))
-			continue;
-		if (!try_module_get(cgroup_subsys[i]->module)) {
-			module_pin_failed = true;
-			break;
-		}
-	}
-	if (module_pin_failed) {
-		/*
-		 * oops, one of the modules was going away. this means that we
-		 * raced with a module_delete call, and to the user this is
-		 * essentially a "subsystem doesn't exist" case.
-		 */
-		for (i--; i >= 0; i--) {
-			/* drop refcounts only on the ones we took */
-			unsigned long bit = 1UL << i;
-
-			if (!(bit & opts->subsys_mask))
-				continue;
-			module_put(cgroup_subsys[i]->module);
-		}
-		return -ENOENT;
-	}
-
 	return 0;
-}
-
-static void drop_parsed_module_refcounts(unsigned long subsys_mask)
-{
-	struct cgroup_subsys *ss;
-	int i;
-
-	mutex_lock(&cgroup_mutex);
-	for_each_subsys(ss, i)
-		if (subsys_mask & (1UL << i))
-			module_put(cgroup_subsys[i]->module);
-	mutex_unlock(&cgroup_mutex);
 }
 
 static int cgroup_remount(struct super_block *sb, int *flags, char *data)
@@ -1370,22 +1326,15 @@ static int cgroup_remount(struct super_block *sb, int *flags, char *data)
 		goto out_unlock;
 	}
 
-	/*
-	 * Clear out the files of subsystems that should be removed, do
-	 * this before rebind_subsystems, since rebind_subsystems may
-	 * change this hierarchy's subsys_list.
-	 */
-	cgroup_clear_directory(cgrp->dentry, false, removed_mask);
-
-	ret = rebind_subsystems(root, added_mask, removed_mask);
-	if (ret) {
-		/* rebind_subsystems failed, re-populate the removed files */
-		cgroup_populate_dir(cgrp, false, removed_mask);
+	/* remounting is not allowed for populated hierarchies */
+	if (root->number_of_cgroups > 1) {
+		ret = -EBUSY;
 		goto out_unlock;
 	}
 
-	/* re-populate subsystem files */
-	cgroup_populate_dir(cgrp, false, added_mask);
+	ret = rebind_subsystems(root, added_mask, removed_mask);
+	if (ret)
+		goto out_unlock;
 
 	if (opts.release_agent)
 		strcpy(root->release_agent_path, opts.release_agent);
@@ -1395,8 +1344,6 @@ static int cgroup_remount(struct super_block *sb, int *flags, char *data)
 	mutex_unlock(&cgroup_root_mutex);
 	mutex_unlock(&cgroup_mutex);
 	mutex_unlock(&cgrp->dentry->d_inode->i_mutex);
-	if (ret)
-		drop_parsed_module_refcounts(opts.subsys_mask);
 	return ret;
 }
 
@@ -1584,7 +1531,9 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 	int ret = 0;
 	struct super_block *sb;
 	struct cgroupfs_root *new_root;
+	struct list_head tmp_links;
 	struct inode *inode;
+	const struct cred *cred;
 
 	/* First find the desired set of subsystems */
 	mutex_lock(&cgroup_mutex);
@@ -1600,7 +1549,7 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 	new_root = cgroup_root_from_opts(&opts);
 	if (IS_ERR(new_root)) {
 		ret = PTR_ERR(new_root);
-		goto drop_modules;
+		goto out_err;
 	}
 	opts.new_root = new_root;
 
@@ -1609,17 +1558,15 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 	if (IS_ERR(sb)) {
 		ret = PTR_ERR(sb);
 		cgroup_free_root(opts.new_root);
-		goto drop_modules;
+		goto out_err;
 	}
 
 	root = sb->s_fs_info;
 	BUG_ON(!root);
 	if (root == opts.new_root) {
 		/* We used the new root structure, so this is a new hierarchy */
-		struct list_head tmp_links;
 		struct cgroup *root_cgrp = &root->top_cgroup;
 		struct cgroupfs_root *existing_root;
-		const struct cred *cred;
 		int i;
 		struct css_set *cset;
 
@@ -1657,25 +1604,36 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 		if (ret)
 			goto unlock_drop;
 
+		sb->s_root->d_fsdata = root_cgrp;
+		root_cgrp->dentry = sb->s_root;
+
+		/*
+		 * We're inside get_sb() and will call lookup_one_len() to
+		 * create the root files, which doesn't work if SELinux is
+		 * in use.  The following cred dancing somehow works around
+		 * it.  See 2ce9738ba ("cgroupfs: use init_cred when
+		 * populating new cgroupfs mount") for more details.
+		 */
+		cred = override_creds(&init_cred);
+
+		ret = cgroup_addrm_files(root_cgrp, NULL, cgroup_base_files, true);
+		if (ret)
+			goto rm_base_files;
+
 		ret = rebind_subsystems(root, root->subsys_mask, 0);
-		if (ret == -EBUSY) {
-			free_cgrp_cset_links(&tmp_links);
-			goto unlock_drop;
-		}
+		if (ret)
+			goto rm_base_files;
+
+		revert_creds(cred);
+
 		/*
 		 * There must be no failure case after here, since rebinding
 		 * takes care of subsystems' refcounts, which are explicitly
 		 * dropped in the failure exit path.
 		 */
 
-		/* EBUSY should be the only error here */
-		BUG_ON(ret);
-
 		list_add(&root->root_list, &cgroup_roots);
 		cgroup_root_count++;
-
-		sb->s_root->d_fsdata = root_cgrp;
-		root->top_cgroup.dentry = sb->s_root;
 
 		/* Link the top cgroup in this hierarchy into all
 		 * the css_set objects */
@@ -1689,9 +1647,6 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 		BUG_ON(!list_empty(&root_cgrp->children));
 		BUG_ON(root->number_of_cgroups != 1);
 
-		cred = override_creds(&init_cred);
-		cgroup_populate_dir(root_cgrp, true, root->subsys_mask);
-		revert_creds(cred);
 		mutex_unlock(&cgroup_root_mutex);
 		mutex_unlock(&cgroup_mutex);
 		mutex_unlock(&inode->i_mutex);
@@ -1711,15 +1666,16 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 				pr_warning("cgroup: new mount options do not match the existing superblock, will be ignored\n");
 			}
 		}
-
-		/* no subsys rebinding, so refcounts don't change */
-		drop_parsed_module_refcounts(opts.subsys_mask);
 	}
 
 	kfree(opts.release_agent);
 	kfree(opts.name);
 	return dget(sb->s_root);
 
+ rm_base_files:
+	free_cgrp_cset_links(&tmp_links);
+	cgroup_addrm_files(&root->top_cgroup, NULL, cgroup_base_files, false);
+	revert_creds(cred);
  unlock_drop:
 	cgroup_exit_root_id(root);
 	mutex_unlock(&cgroup_root_mutex);
@@ -1727,8 +1683,6 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 	mutex_unlock(&inode->i_mutex);
  drop_new_super:
 	deactivate_locked_super(sb);
- drop_modules:
-	drop_parsed_module_refcounts(opts.subsys_mask);
  out_err:
 	kfree(opts.release_agent);
 	kfree(opts.name);
@@ -1746,6 +1700,7 @@ static void cgroup_kill_sb(struct super_block *sb) {
 	BUG_ON(root->number_of_cgroups != 1);
 	BUG_ON(!list_empty(&cgrp->children));
 
+	mutex_lock(&cgrp->dentry->d_inode->i_mutex);
 	mutex_lock(&cgroup_mutex);
 	mutex_lock(&cgroup_root_mutex);
 
@@ -1778,6 +1733,7 @@ static void cgroup_kill_sb(struct super_block *sb) {
 
 	mutex_unlock(&cgroup_root_mutex);
 	mutex_unlock(&cgroup_mutex);
+	mutex_unlock(&cgrp->dentry->d_inode->i_mutex);
 
 	simple_xattrs_free(&cgrp->xattrs);
 
@@ -2782,11 +2738,26 @@ out:
 	return error;
 }
 
+/**
+ * cgroup_addrm_files - add or remove files to a cgroup directory
+ * @cgrp: the target cgroup
+ * @subsys: the subsystem of files to be added
+ * @cfts: array of cftypes to be added
+ * @is_add: whether to add or remove
+ *
+ * Depending on @is_add, add or remove files defined by @cfts on @cgrp.
+ * All @cfts should belong to @subsys.  For removals, this function never
+ * fails.  If addition fails, this function doesn't remove files already
+ * added.  The caller is responsible for cleaning up.
+ */
 static int cgroup_addrm_files(struct cgroup *cgrp, struct cgroup_subsys *subsys,
 			      struct cftype cfts[], bool is_add)
 {
 	struct cftype *cft;
-	int err, ret = 0;
+	int ret;
+
+	lockdep_assert_held(&cgrp->dentry->d_inode->i_mutex);
+	lockdep_assert_held(&cgroup_mutex);
 
 	for (cft = cfts; cft->name[0] != '\0'; cft++) {
 		/* does cft->flags tell us to skip this file on @cgrp? */
@@ -2798,16 +2769,17 @@ static int cgroup_addrm_files(struct cgroup *cgrp, struct cgroup_subsys *subsys,
 			continue;
 
 		if (is_add) {
-			err = cgroup_add_file(cgrp, subsys, cft);
-			if (err)
+			ret = cgroup_add_file(cgrp, subsys, cft);
+			if (ret) {
 				pr_warn("cgroup_addrm_files: failed to add %s, err=%d\n",
-					cft->name, err);
-			ret = err;
+					cft->name, ret);
+				return ret;
+			}
 		} else {
 			cgroup_rm_file(cgrp, cft);
 		}
 	}
-	return ret;
+	return 0;
 }
 
 static void cgroup_cfts_prepare(void)
@@ -2822,8 +2794,8 @@ static void cgroup_cfts_prepare(void)
 	mutex_lock(&cgroup_mutex);
 }
 
-static void cgroup_cfts_commit(struct cgroup_subsys *ss,
-			       struct cftype *cfts, bool is_add)
+static int cgroup_cfts_commit(struct cgroup_subsys *ss,
+			      struct cftype *cfts, bool is_add)
 	__releases(&cgroup_mutex)
 {
 	LIST_HEAD(pending);
@@ -2832,12 +2804,13 @@ static void cgroup_cfts_commit(struct cgroup_subsys *ss,
 	struct dentry *prev = NULL;
 	struct inode *inode;
 	u64 update_before;
+	int ret = 0;
 
 	/* %NULL @cfts indicates abort and don't bother if @ss isn't attached */
 	if (!cfts || ss->root == &cgroup_dummy_root ||
 	    !atomic_inc_not_zero(&sb->s_active)) {
 		mutex_unlock(&cgroup_mutex);
-		return;
+		return 0;
 	}
 
 	/*
@@ -2853,9 +2826,12 @@ static void cgroup_cfts_commit(struct cgroup_subsys *ss,
 	inode = root->dentry->d_inode;
 	mutex_lock(&inode->i_mutex);
 	mutex_lock(&cgroup_mutex);
-	cgroup_addrm_files(root, ss, cfts, is_add);
+	ret = cgroup_addrm_files(root, ss, cfts, is_add);
 	mutex_unlock(&cgroup_mutex);
 	mutex_unlock(&inode->i_mutex);
+
+	if (ret)
+		goto out_deact;
 
 	/* add/rm files for all cgroups created before */
 	rcu_read_lock();
@@ -2873,15 +2849,19 @@ static void cgroup_cfts_commit(struct cgroup_subsys *ss,
 		mutex_lock(&inode->i_mutex);
 		mutex_lock(&cgroup_mutex);
 		if (cgrp->serial_nr < update_before && !cgroup_is_dead(cgrp))
-			cgroup_addrm_files(cgrp, ss, cfts, is_add);
+			ret = cgroup_addrm_files(cgrp, ss, cfts, is_add);
 		mutex_unlock(&cgroup_mutex);
 		mutex_unlock(&inode->i_mutex);
 
 		rcu_read_lock();
+		if (ret)
+			break;
 	}
 	rcu_read_unlock();
 	dput(prev);
+out_deact:
 	deactivate_super(sb);
+	return ret;
 }
 
 /**
@@ -2901,6 +2881,7 @@ static void cgroup_cfts_commit(struct cgroup_subsys *ss,
 int cgroup_add_cftypes(struct cgroup_subsys *ss, struct cftype *cfts)
 {
 	struct cftype_set *set;
+	int ret;
 
 	set = kzalloc(sizeof(*set), GFP_KERNEL);
 	if (!set)
@@ -2909,9 +2890,10 @@ int cgroup_add_cftypes(struct cgroup_subsys *ss, struct cftype *cfts)
 	cgroup_cfts_prepare();
 	set->cfts = cfts;
 	list_add_tail(&set->node, &ss->cftsets);
-	cgroup_cfts_commit(ss, cfts, true);
-
-	return 0;
+	ret = cgroup_cfts_commit(ss, cfts, true);
+	if (ret)
+		cgroup_rm_cftypes(ss, cfts);
+	return ret;
 }
 EXPORT_SYMBOL_GPL(cgroup_add_cftypes);
 
@@ -4148,31 +4130,29 @@ static struct cftype cgroup_base_files[] = {
 };
 
 /**
- * cgroup_populate_dir - selectively creation of files in a directory
+ * cgroup_populate_dir - create subsys files in a cgroup directory
  * @cgrp: target cgroup
- * @base_files: true if the base files should be added
  * @subsys_mask: mask of the subsystem ids whose files should be added
+ *
+ * On failure, no file is added.
  */
-static int cgroup_populate_dir(struct cgroup *cgrp, bool base_files,
-			       unsigned long subsys_mask)
+static int cgroup_populate_dir(struct cgroup *cgrp, unsigned long subsys_mask)
 {
-	int err;
 	struct cgroup_subsys *ss;
-
-	if (base_files) {
-		err = cgroup_addrm_files(cgrp, NULL, cgroup_base_files, true);
-		if (err < 0)
-			return err;
-	}
+	int i, ret = 0;
 
 	/* process cftsets of each subsystem */
-	for_each_root_subsys(cgrp->root, ss) {
+	for_each_subsys(ss, i) {
 		struct cftype_set *set;
-		if (!test_bit(ss->subsys_id, &subsys_mask))
+
+		if (!test_bit(i, &subsys_mask))
 			continue;
 
-		list_for_each_entry(set, &ss->cftsets, node)
-			cgroup_addrm_files(cgrp, ss, set->cfts, true);
+		list_for_each_entry(set, &ss->cftsets, node) {
+			ret = cgroup_addrm_files(cgrp, ss, set->cfts, true);
+			if (ret < 0)
+				goto err;
+		}
 	}
 
 	/* This cgroup is ready now */
@@ -4190,6 +4170,9 @@ static int cgroup_populate_dir(struct cgroup *cgrp, bool base_files,
 	}
 
 	return 0;
+err:
+	cgroup_clear_dir(cgrp, subsys_mask);
+	return ret;
 }
 
 static void css_dput_fn(struct work_struct *work)
@@ -4386,7 +4369,11 @@ static long cgroup_create(struct cgroup *parent, struct dentry *dentry,
 		}
 	}
 
-	err = cgroup_populate_dir(cgrp, true, root->subsys_mask);
+	err = cgroup_addrm_files(cgrp, NULL, cgroup_base_files, true);
+	if (err)
+		goto err_destroy;
+
+	err = cgroup_populate_dir(cgrp, root->subsys_mask);
 	if (err)
 		goto err_destroy;
 
@@ -4539,9 +4526,11 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 	raw_spin_unlock(&release_list_lock);
 
 	/*
-	 * Remove @cgrp directory.  The removal puts the base ref but we
-	 * aren't quite done with @cgrp yet, so hold onto it.
+	 * Clear and remove @cgrp directory.  The removal puts the base ref
+	 * but we aren't quite done with @cgrp yet, so hold onto it.
 	 */
+	cgroup_clear_dir(cgrp, cgrp->root->subsys_mask);
+	cgroup_addrm_files(cgrp, NULL, cgroup_base_files, false);
 	dget(d);
 	cgroup_d_remove_dir(d);
 
@@ -4800,7 +4789,7 @@ void cgroup_unload_subsys(struct cgroup_subsys *ss)
 
 	/*
 	 * we shouldn't be called if the subsystem is in use, and the use of
-	 * try_module_get in parse_cgroupfs_options should ensure that it
+	 * try_module_get() in rebind_subsystems() should ensure that it
 	 * doesn't start being used while we're killing it off.
 	 */
 	BUG_ON(ss->root != &cgroup_dummy_root);
