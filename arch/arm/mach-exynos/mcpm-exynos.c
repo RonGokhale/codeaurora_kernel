@@ -81,6 +81,12 @@ static void exynos_core_power_control(unsigned int cpu, unsigned int cluster,
 	__raw_writel(val, EXYNOS_ARM_CORE_CONFIGURATION(cpu));
 }
 
+#if 1
+static void exynos_cluster_power_control(unsigned int cluster, int enable)
+{
+	return;
+}
+#else
 static void exynos_cluster_power_control(unsigned int cluster, int enable)
 {
 	unsigned long timeout = jiffies + msecs_to_jiffies(20);
@@ -106,6 +112,7 @@ static void exynos_cluster_power_control(unsigned int cluster, int enable)
 	pr_warn("timed out waiting for cluster %u to power %s\n", cluster,
 		enable ? "on" : "off");
 }
+#endif
 
 static int exynos_power_up(unsigned int cpu, unsigned int cluster)
 {
@@ -242,8 +249,10 @@ static void exynos_power_down(void)
 		 * Disable cluster-level coherency by masking
 		 * incoming snoops and DVM messages:
 		 */
+#if 0
 		cci_control_port_by_cpu(mpidr, false);
 		cci_control_port_by_cpu(mpidr ^ (1 << 8), false);
+#endif
 
 		__mcpm_outbound_leave_critical(cluster, CLUSTER_DOWN);
 	} else {
