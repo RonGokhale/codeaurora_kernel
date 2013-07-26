@@ -215,6 +215,27 @@ sclp_request_timeout(unsigned long data)
 	sclp_process_queue();
 }
 
+/*
+ * Timeout handler for queued requests. Removes request from list and
+ * invokes callback. This timer can be set per request in situations where
+ * waiting too long would be harmful to the system, e.g. during SE reboot.
+ */
+static void sclp_req_queue_timeout(unsigned long data)
+{
+	struct sclp_req *req = (struct sclp_req *) data;
+	unsigned long flags;
+
+	spin_lock_irqsave(&sclp_lock, flags);
+	if (req->status == SCLP_REQ_QUEUED) {
+		req->status = SCLP_REQ_QUEUED_TIMEOUT;
+		list_del(&req->list);
+	} else
+		req = NULL;
+	spin_unlock_irqrestore(&sclp_lock, flags);
+	if (req && req->callback)
+		req->callback(req, req->callback_data);
+}
+
 /* Try to start a request. Return zero if the request was successfully
  * started or if it will be started at a later time. Return non-zero otherwise.
  * Called while sclp_lock is locked. */
@@ -281,7 +302,13 @@ do_post:
 		list_del(&req->list);
 		if (req->callback) {
 			spin_unlock_irqrestore(&sclp_lock, flags);
+			if (req->queue_timeout)
+				del_timer_sync(&req->queue_timer);
 			req->callback(req, req->callback_data);
+			spin_lock_irqsave(&sclp_lock, flags);
+		} else if (req->queue_timeout) {
+			spin_unlock_irqrestore(&sclp_lock, flags);
+			del_timer_sync(&req->queue_timer);
 			spin_lock_irqsave(&sclp_lock, flags);
 		}
 	}
@@ -317,6 +344,13 @@ sclp_add_request(struct sclp_req *req)
 	req->start_count = 0;
 	list_add_tail(&req->list, &sclp_req_queue);
 	rc = 0;
+	if (req->queue_timeout) {
+		init_timer(&req->queue_timer);
+		req->queue_timer.function = sclp_req_queue_timeout;
+		req->queue_timer.data = (unsigned long) req;
+		req->queue_timer.expires = jiffies + req->queue_timeout * HZ;
+		add_timer(&req->queue_timer);
+	}
 	/* Start if request is first in list */
 	if (sclp_running_state == sclp_running_state_idle &&
 	    req->list.prev == &sclp_req_queue) {
@@ -450,7 +484,13 @@ static void sclp_interrupt_handler(struct ext_code ext_code,
 			req->status = SCLP_REQ_DONE;
 			if (req->callback) {
 				spin_unlock(&sclp_lock);
+				if (req->queue_timeout)
+					del_timer_sync(&req->queue_timer);
 				req->callback(req, req->callback_data);
+				spin_lock(&sclp_lock);
+			} else if (req->queue_timeout) {
+				spin_unlock(&sclp_lock);
+				del_timer_sync(&req->queue_timer);
 				spin_lock(&sclp_lock);
 			}
 		}
