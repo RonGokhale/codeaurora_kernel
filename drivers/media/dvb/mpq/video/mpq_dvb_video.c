@@ -46,6 +46,11 @@
 static unsigned int vidc_mmu_subsystem[] = {
 	MSM_SUBSYSTEM_VIDEO};
 
+#define FRAME_DROP_THRESHOLD 1
+#define CC_ERROR_THRESHOLD 10
+#define TEI_ERROR_THRESHOLD 10
+
+
 static char vid_thread_names[DVB_MPQ_NUM_VIDEO_DEVICES][10] = {
 				"dvb-vid-0",
 				"dvb-vid-1",
@@ -102,6 +107,10 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 	size_t pktlen = 0;
 	int frame_found = true;
 	int idr_found   = false;
+	int ts_packets_num = 0;
+	int ts_packets_drop_num = 0;
+	int data_drop = 0;
+	int drop_ratio = 0;
 	unsigned long kernel_vaddr, phy_addr, user_vaddr;
 	int pmem_fd;
 	struct file *file;
@@ -109,6 +118,7 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 	size_t size = 0;
 
 	do {
+		DBG("Waiting for the Ring Buffer interrupt\n");
 		wait_event_interruptible(streambuff->packet_data.queue,
 			(!dvb_ringbuffer_empty(&streambuff->packet_data) ||
 			streambuff->packet_data.error != 0) ||
@@ -120,6 +130,7 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 		}
 
 		DBG("Received Free Buffer : %d\n", free_buf);
+		data_drop = 0;
 
 		indx = mpq_streambuffer_pkt_next(streambuff, -1, &pktlen);
 
@@ -130,6 +141,7 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 
 		bytes_read = mpq_streambuffer_pkt_read(streambuff, indx,
 			&pkt_hdr, (u8 *)&meta_data);
+
 
 		switch (meta_data.packet_type) {
 		case DMX_FRAMING_INFO_PACKET:
@@ -170,48 +182,111 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 			default:
 				break;
 			}
-			user_vaddr = (unsigned long)
+
+			if (frame_found || idr_found) {
+				ts_packets_num = meta_data.info.
+						framing.ts_packets_num;
+				ts_packets_drop_num = meta_data.info.
+						framing.ts_dropped_bytes;
+				drop_ratio = (ts_packets_drop_num*100)
+								/ts_packets_num;
+				DBG("drop_ratio value %d\n", drop_ratio);
+				if ((drop_ratio >= FRAME_DROP_THRESHOLD)
+					||
+					 (meta_data.info.framing.
+					 continuity_error_counter
+					 > CC_ERROR_THRESHOLD)
+					||
+					(meta_data.info.framing.
+					 transport_error_indicator_counter
+					 > TEI_ERROR_THRESHOLD)) {
+					ERR("drop_ratio %d\n", drop_ratio);
+					ERR("CC Error %d\n",
+						meta_data.info.framing.
+						continuity_error_counter);
+					data_drop = 1;
+					user_vaddr = (unsigned long)
+						dmx_data->in_buffer[free_buf].
+						bufferaddr;
+					vidc_lookup_addr_table(
+						dev_inst->client_ctx,
+						BUFFER_TYPE_INPUT, true,
+						&user_vaddr,
+						&kernel_vaddr,	&phy_addr,
+						&pmem_fd, &file,
+						&buffer_index);
+					bytes_read = 0;
+					bytes_read = mpq_streambuffer_data_read(
+							streambuff,
+							(u8 *)(kernel_vaddr
+							+ size),
+							pkt_hdr.raw_data_len);
+					ERR("%d - Data Discarded \n",
+						bytes_read);
+
+					mpq_streambuffer_pkt_dispose(
+						streambuff, indx, 0);
+					frame_found = false;
+					size = 0;
+				}
+			}
+			if (data_drop == 0) {
+				user_vaddr = (unsigned long)
 				dmx_data->in_buffer[free_buf].bufferaddr;
-			vidc_lookup_addr_table(dev_inst->client_ctx,
-				BUFFER_TYPE_INPUT, true, &user_vaddr,
-				&kernel_vaddr,	&phy_addr, &pmem_fd, &file,
-				&buffer_index);
-			bytes_read = 0;
-			bytes_read = mpq_streambuffer_data_read(streambuff,
+				vidc_lookup_addr_table(
+					dev_inst->client_ctx,
+					BUFFER_TYPE_INPUT, true,
+					&user_vaddr,
+					&kernel_vaddr,
+					&phy_addr, &pmem_fd, &file,
+					&buffer_index);
+				bytes_read = 0;
+				bytes_read = mpq_streambuffer_data_read(
+						streambuff,
 						(u8 *)(kernel_vaddr + size),
 						pkt_hdr.raw_data_len);
-			DBG("Data Read : %d from Packet Size : %d\n",
-				bytes_read, pkt_hdr.raw_data_len);
-			mpq_streambuffer_pkt_dispose(streambuff, indx, 0);
-			size +=	pkt_hdr.raw_data_len;
-			dmx_data->in_buffer[free_buf].pts =
-			(meta_data.info.framing.pts_dts_info.pts_exist) ?
-			(meta_data.info.framing.pts_dts_info.pts) : 0;
-			if (dev_inst->picture_type == VIDEO_DECODED_PICTURES_I){
-				DBG("Video data to decoder in IDR mode \n");
-				if (frame_found && idr_found) {
-					dmx_data->in_buffer[free_buf].buffer_len =
-										size;
-					dmx_data->in_buffer[free_buf].client_data =
-								(void *)free_buf;
-					DBG("Size of Data Submitted : %d\n", size);
-					mpq_int_vid_dec_decode_frame(dev_inst,
+				DBG("Data Read : %d from Packet Size : %d\n",
+					bytes_read, pkt_hdr.raw_data_len);
+				mpq_streambuffer_pkt_dispose(
+					streambuff, indx, 0);
+				size +=	pkt_hdr.raw_data_len;
+				dmx_data->in_buffer[free_buf].pts =
+				(meta_data.info.framing.
+						pts_dts_info.pts_exist) ?
+					(meta_data.info.framing.pts_dts_info
+					.pts) : 0;
+				if (dev_inst->picture_type ==
+						VIDEO_DECODED_PICTURES_I) {
+					DBG("Video data:IDR mode\n");
+					if (frame_found && idr_found) {
+						dmx_data->in_buffer[free_buf].
+						buffer_len = size;
+						dmx_data->in_buffer[free_buf].
+						client_data = (void *)free_buf;
+						DBG("Submitted Data Size:%d\n",
+							size);
+						mpq_int_vid_dec_decode_frame(
+							dev_inst,
 							&dmx_data->in_buffer[free_buf]);
-				}else {
-					DBG("Size made zero in case of IDR mode for NON IDR frames\n");
-					size = 0;
-					frame_found = false;
-				}
-			}else{
-				DBG("Video data to decoder in NON IDR mode \n");
-				if (frame_found) {
-					dmx_data->in_buffer[free_buf].buffer_len =
-										size;
-					dmx_data->in_buffer[free_buf].client_data =
-								(void *)free_buf;
-					DBG("Size of Data Submitted : %d\n", size);
-					mpq_int_vid_dec_decode_frame(dev_inst,
+					} else {
+						DBG("Size made zero");
+						DBG("for NON IDR frames\n");
+						size = 0;
+						frame_found = false;
+					}
+				} else {
+					DBG("In NON IDR mode\n");
+					if (frame_found) {
+						dmx_data->in_buffer[free_buf].
+						buffer_len = size;
+						dmx_data->in_buffer[free_buf].
+						client_data = (void *)free_buf;
+						DBG("Submitted DataSize:%d\n",
+							size);
+						mpq_int_vid_dec_decode_frame(
+							dev_inst,
 							&dmx_data->in_buffer[free_buf]);
+					}
 				}
 			}
 			break;
