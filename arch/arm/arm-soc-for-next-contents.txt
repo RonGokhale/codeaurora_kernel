@@ -1,0 +1,13 @@
+for-next contents for 3.12: 
+Format is a little different from before in an attempt to make it easier to read:
+
+<next/* branch>
+	<topic branch>
+		<contents>
+		<...>
+	<...>
+
+
+next/cleanup
+	localtimer/removal
+		git://git.kernel.org/pub/scm/linux/kernel/git/davidb/linux-msm.git tags/remove-local-timers
