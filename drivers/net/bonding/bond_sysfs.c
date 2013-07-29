@@ -501,20 +501,25 @@ static ssize_t bonding_store_fail_over_mac(struct device *d,
 					   struct device_attribute *attr,
 					   const char *buf, size_t count)
 {
-	int new_value;
+	int new_value, ret = count;
 	struct bonding *bond = to_bond(d);
+
+	if (!rtnl_trylock())
+		return restart_syscall();
 
 	if (bond->slave_cnt != 0) {
 		pr_err("%s: Can't alter fail_over_mac with slaves in bond.\n",
 		       bond->dev->name);
-		return -EPERM;
+		ret = -EPERM;
+		goto out;
 	}
 
 	new_value = bond_parse_parm(buf, fail_over_mac_tbl);
 	if (new_value < 0) {
 		pr_err("%s: Ignoring invalid fail_over_mac value %s.\n",
 		       bond->dev->name, buf);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	bond->params.fail_over_mac = new_value;
@@ -522,7 +527,9 @@ static ssize_t bonding_store_fail_over_mac(struct device *d,
 		bond->dev->name, fail_over_mac_tbl[new_value].modename,
 		new_value);
 
-	return count;
+out:
+	rtnl_unlock();
+	return ret;
 }
 
 static DEVICE_ATTR(fail_over_mac, S_IRUGO | S_IWUSR,
@@ -1295,8 +1302,7 @@ static ssize_t bonding_store_active_slave(struct device *d,
 					bond->dev->name,
 					slave->dev->name);
 				goto out;
-			}
-			else {
+			} else {
 				if ((new_active) &&
 				    (old_active) &&
 				    (new_active->link == BOND_LINK_UP) &&
@@ -1307,8 +1313,7 @@ static ssize_t bonding_store_active_slave(struct device *d,
 						slave->dev->name);
 					bond_change_active_slave(bond,
 								 new_active);
-				}
-				else {
+				} else {
 					pr_info("%s: Could not set %s as"
 						" active slave; either %s is"
 						" down or the link is down.\n",
