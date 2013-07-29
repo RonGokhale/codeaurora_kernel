@@ -186,7 +186,7 @@ static int exynos_dp_handle_edid(struct exynos_dp_device *dp)
 				12, buf);
 	if (retval)
 		return retval;
-
+	return 0;
 	/* Read EDID */
 	for (i = 0; i < 3; i++) {
 		retval = exynos_dp_read_edid(dp);
