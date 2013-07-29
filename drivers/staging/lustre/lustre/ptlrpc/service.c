@@ -551,6 +551,7 @@ ptlrpc_server_nthreads_check(struct ptlrpc_service *svc,
 	if (tc->tc_thr_factor != 0) {
 		int	  factor = tc->tc_thr_factor;
 		const int fade = 4;
+		cpumask_t mask;
 
 		/*
 		 * User wants to increase number of threads with for
@@ -564,7 +565,8 @@ ptlrpc_server_nthreads_check(struct ptlrpc_service *svc,
 		 * have too many threads no matter how many cores/HTs
 		 * there are.
 		 */
-		if (cfs_cpu_ht_nsiblings(0) > 1) { /* weight is # of HTs */
+		cpumask_copy(&mask, topology_thread_cpumask(0));
+		if (cpus_weight(mask) > 1) { /* weight is # of HTs */
 			/* depress thread factor for hyper-thread */
 			factor = factor - (factor >> 1) + (factor >> 3);
 		}
@@ -2252,7 +2254,9 @@ ptlrpc_wait_event(struct ptlrpc_service_part *svcpt,
 	struct l_wait_info lwi = LWI_TIMEOUT(svcpt->scp_rqbd_timeout,
 					     ptlrpc_retry_rqbds, svcpt);
 
+	/* XXX: Add this back when libcfs watchdog is merged upstream
 	lc_watchdog_disable(thread->t_watchdog);
+	 */
 
 	cond_resched();
 
@@ -2266,8 +2270,10 @@ ptlrpc_wait_event(struct ptlrpc_service_part *svcpt,
 	if (ptlrpc_thread_stopping(thread))
 		return -EINTR;
 
+	/*
 	lc_watchdog_touch(thread->t_watchdog,
 			  ptlrpc_server_get_timeout(svcpt));
+	 */
 	return 0;
 }
 
@@ -2370,8 +2376,10 @@ static int ptlrpc_main(void *arg)
 	/* wake up our creator in case he's still waiting. */
 	wake_up(&thread->t_ctl_waitq);
 
+	/*
 	thread->t_watchdog = lc_watchdog_add(ptlrpc_server_get_timeout(svcpt),
 					     NULL, NULL);
+	 */
 
 	spin_lock(&svcpt->scp_rep_lock);
 	list_add(&rs->rs_list, &svcpt->scp_rep_idle);
@@ -2426,8 +2434,10 @@ static int ptlrpc_main(void *arg)
 		}
 	}
 
+	/*
 	lc_watchdog_delete(thread->t_watchdog);
 	thread->t_watchdog = NULL;
+	*/
 
 out_srv_fini:
 	/*
@@ -2755,11 +2765,19 @@ int ptlrpc_start_thread(struct ptlrpc_service_part *svcpt, int wait)
 		CERROR("cannot start thread '%s': rc %d\n",
 		       thread->t_name, rc);
 		spin_lock(&svcpt->scp_lock);
-		list_del(&thread->t_link);
 		--svcpt->scp_nthrs_starting;
-		spin_unlock(&svcpt->scp_lock);
-
-		OBD_FREE(thread, sizeof(*thread));
+		if (thread_is_stopping(thread)) {
+			/* this ptlrpc_thread is being hanled
+			 * by ptlrpc_svcpt_stop_threads now
+			 */
+			thread_add_flags(thread, SVC_STOPPED);
+			wake_up(&thread->t_ctl_waitq);
+			spin_unlock(&svcpt->scp_lock);
+		} else {
+			list_del(&thread->t_link);
+			spin_unlock(&svcpt->scp_lock);
+			OBD_FREE_PTR(thread);
+		}
 		RETURN(rc);
 	}
 
@@ -2776,11 +2794,13 @@ int ptlrpc_start_thread(struct ptlrpc_service_part *svcpt, int wait)
 
 int ptlrpc_hr_init(void)
 {
+	cpumask_t			mask;
 	struct ptlrpc_hr_partition	*hrp;
 	struct ptlrpc_hr_thread		*hrt;
 	int				rc;
 	int				i;
 	int				j;
+	int				weight;
 	ENTRY;
 
 	memset(&ptlrpc_hr, 0, sizeof(ptlrpc_hr));
@@ -2793,6 +2813,9 @@ int ptlrpc_hr_init(void)
 
 	init_waitqueue_head(&ptlrpc_hr.hr_waitq);
 
+	cpumask_copy(&mask, topology_thread_cpumask(0));
+	weight = cpus_weight(mask);
+
 	cfs_percpt_for_each(hrp, i, ptlrpc_hr.hr_partitions) {
 		hrp->hrp_cpt = i;
 
@@ -2800,7 +2823,7 @@ int ptlrpc_hr_init(void)
 		atomic_set(&hrp->hrp_nstopped, 0);
 
 		hrp->hrp_nthrs = cfs_cpt_weight(ptlrpc_hr.hr_cpt_table, i);
-		hrp->hrp_nthrs /= cfs_cpu_ht_nsiblings(0);
+		hrp->hrp_nthrs /= weight;
 
 		LASSERT(hrp->hrp_nthrs > 0);
 		OBD_CPT_ALLOC(hrp->hrp_thrs, ptlrpc_hr.hr_cpt_table, i,

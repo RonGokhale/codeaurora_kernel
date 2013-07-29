@@ -43,6 +43,7 @@
 #include <lustre_debug.h>
 #include <lprocfs_status.h>
 #include <cl_object.h>
+#include <md_object.h>
 #include <lustre_fid.h>
 #include <lustre_acl.h>
 #include <lustre_net.h>
@@ -648,7 +649,7 @@ static int echo_site_init(const struct lu_env *env, struct echo_device *ed)
 	/* initialize site */
 	rc = cl_site_init(site, &ed->ed_cl);
 	if (rc) {
-		CERROR("Cannot initilize site for echo client(%d)\n", rc);
+		CERROR("Cannot initialize site for echo client(%d)\n", rc);
 		return rc;
 	}
 
@@ -2097,10 +2098,14 @@ static void echo_ucred_init(struct lu_env *env)
 	ucred->uc_suppgids[0] = -1;
 	ucred->uc_suppgids[1] = -1;
 
-	ucred->uc_uid   = ucred->uc_o_uid   = current_uid();
-	ucred->uc_gid   = ucred->uc_o_gid   = current_gid();
-	ucred->uc_fsuid = ucred->uc_o_fsuid = current_fsuid();
-	ucred->uc_fsgid = ucred->uc_o_fsgid = current_fsgid();
+	ucred->uc_uid   = ucred->uc_o_uid   =
+				from_kuid(&init_user_ns, current_uid());
+	ucred->uc_gid   = ucred->uc_o_gid   =
+				from_kgid(&init_user_ns, current_gid());
+	ucred->uc_fsuid = ucred->uc_o_fsuid =
+				from_kuid(&init_user_ns, current_fsuid());
+	ucred->uc_fsgid = ucred->uc_o_fsgid =
+				from_kgid(&init_user_ns, current_fsgid());
 	ucred->uc_cap   = cfs_curproc_cap_pack();
 
 	/* remove fs privilege for non-root user. */
