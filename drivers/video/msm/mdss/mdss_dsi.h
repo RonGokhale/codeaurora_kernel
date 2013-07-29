@@ -295,6 +295,7 @@ struct dsi_kickoff_action {
 };
 
 struct mdss_panel_common_pdata {
+	struct device *dev;
 	struct mdss_panel_info panel_info;
 	int (*on) (struct mdss_panel_data *pdata);
 	int (*off) (struct mdss_panel_data *pdata);
