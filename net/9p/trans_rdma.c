@@ -732,6 +732,7 @@ static struct p9_trans_module p9_rdma_trans = {
 	.close = rdma_close,
 	.request = rdma_request,
 	.cancel = rdma_cancel,
+	.cancelled = rdma_cancelled,
 };
 
 /**
