@@ -187,6 +187,9 @@ static int exynos_dp_handle_edid(struct exynos_dp_device *dp)
 	if (retval)
 		return retval;
 
+	/* HACK: For factory-pit-4471 only, never read EDID */
+	return 0;
+
 	/* On some hardware we need to skip reading the EDID */
 	if (dp->quirks & EXYNOS_DP_QUIRK_SKIP_EDID)
 		return 0;
