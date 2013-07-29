@@ -184,11 +184,11 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata, int enable)
 		}
 
 		if (pdata->panel_info.panel_power_on == 0)
-			mdss_dsi_panel_reset(pdata, 1);
+			(ctrl_pdata->panel_data).panel_reset_fn(pdata, 1);
 
 	} else {
 
-		mdss_dsi_panel_reset(pdata, 0);
+		(ctrl_pdata->panel_data).panel_reset_fn(pdata, 0);
 
 		if (ctrl_pdata->power_data.num_vreg > 0) {
 			ret = msm_dss_enable_vreg(
@@ -1072,6 +1072,7 @@ int dsi_panel_device_register(struct platform_device *pdev,
 
 	ctrl_pdata->panel_data.dev = panel_data->dev;
 	ctrl_pdata->panel_data.event_handler = mdss_dsi_event_handler;
+	ctrl_pdata->panel_data.panel_reset_fn = panel_data->panel_reset;
 
 	ctrl_pdata->on_cmds = panel_data->on_cmds;
 	ctrl_pdata->off_cmds = panel_data->off_cmds;

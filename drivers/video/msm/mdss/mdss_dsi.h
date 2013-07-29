@@ -300,6 +300,8 @@ struct mdss_panel_common_pdata {
 	int (*on) (struct mdss_panel_data *pdata);
 	int (*off) (struct mdss_panel_data *pdata);
 	void (*bl_fnc) (struct mdss_panel_data *pdata, u32 bl_level);
+	void (*panel_reset)(struct mdss_panel_data *pdata, int enable);
+
 	int rst_gpio;
 	int disp_en_gpio;
 
@@ -414,7 +416,6 @@ void mdss_dsi_prepare_clocks(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
 void mdss_dsi_unprepare_clocks(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
 int mdss_dsi_enable_bus_clocks(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
 void mdss_dsi_disable_bus_clocks(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
-void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable);
 void mdss_dsi_phy_enable(unsigned char *ctrl_base, int on);
 void mdss_dsi_phy_init(struct mdss_panel_data *pdata);
 void mdss_dsi_phy_sw_reset(unsigned char *ctrl_base);
