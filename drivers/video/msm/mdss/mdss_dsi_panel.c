@@ -413,6 +413,10 @@ static int mdss_panel_parse_dt(struct platform_device *pdev,
 		panel_data->panel_info.pdest = DISPLAY_1;
 	}
 
+	panel_data->disp_en_gpio = of_get_named_gpio(np, "qcom,enable-gpio", 0);
+
+	panel_data->rst_gpio = of_get_named_gpio(np, "qcom,rst-gpio", 0);
+
 	rc = of_property_read_u32_array(np,
 		"qcom,mdss-pan-porch-values", res, 6);
 	panel_data->panel_info.lcdc.h_back_porch = (!rc ? res[0] : 6);
@@ -678,6 +682,43 @@ error:
 	return -EINVAL;
 }
 
+static int mdss_dsi_panel_gpio_config(struct platform_device *pdev,
+				struct mdss_panel_common_pdata *panel_data)
+{
+	int rc;
+
+	pr_debug("\n");
+
+	if (!gpio_is_valid(panel_data->disp_en_gpio))
+		pr_err("%s:%d, Disp_en gpio not specified\n",
+				__func__, __LINE__);
+	else {
+		rc = gpio_request(panel_data->disp_en_gpio, "disp_enable");
+		if (rc) {
+			pr_err("%s:%d, request Disp_en gpio failed, rc=%d\n",
+					__func__, __LINE__, rc);
+			gpio_free(panel_data->disp_en_gpio);
+			return -ENODEV;
+		}
+	}
+
+	if (!gpio_is_valid(panel_data->rst_gpio))
+		pr_err("%s:%d, reset gpio not specified\n",
+				__func__, __LINE__);
+	else {
+		rc = gpio_request(panel_data->rst_gpio, "disp_rst_n");
+		if (rc) {
+			pr_err("%s:%d, request reset gpio failed, rc=%d\n",
+					__func__, __LINE__, rc);
+			gpio_free(panel_data->rst_gpio);
+			if (gpio_is_valid(panel_data->disp_en_gpio))
+				gpio_free(panel_data->disp_en_gpio);
+			return -ENODEV;
+		}
+	}
+	return 0;
+}
+
 static int __devinit mdss_dsi_panel_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -698,6 +739,13 @@ static int __devinit mdss_dsi_panel_probe(struct platform_device *pdev)
 	rc = mdss_panel_parse_dt(pdev, &vendor_pdata);
 	if (rc)
 		return rc;
+
+	rc = mdss_dsi_panel_gpio_config(pdev, &vendor_pdata);
+	if (rc) {
+		pr_err("%s:%d, failed to config panel gpio\n",
+				    __func__, __LINE__);
+		return rc;
+	}
 
 	vendor_pdata.on = mdss_dsi_panel_on;
 	vendor_pdata.off = mdss_dsi_panel_off;

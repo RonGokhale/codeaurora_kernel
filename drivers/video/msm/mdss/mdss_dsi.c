@@ -1020,21 +1020,6 @@ int dsi_panel_device_register(struct platform_device *pdev,
 	if (broadcast)
 		ctrl_pdata->shared_pdata.broadcast_enable = 1;
 
-	ctrl_pdata->disp_en_gpio = of_get_named_gpio(pdev->dev.of_node,
-						     "qcom,enable-gpio", 0);
-	if (!gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
-		pr_err("%s:%d, Disp_en gpio not specified\n",
-						__func__, __LINE__);
-	} else {
-		rc = gpio_request(ctrl_pdata->disp_en_gpio, "disp_enable");
-		if (rc) {
-			pr_err("request reset gpio failed, rc=%d\n",
-			       rc);
-			gpio_free(ctrl_pdata->disp_en_gpio);
-			return -ENODEV;
-		}
-	}
-
 	ctrl_pdata->disp_te_gpio = of_get_named_gpio(pdev->dev.of_node,
 						     "qcom,te-gpio", 0);
 	if (!gpio_is_valid(ctrl_pdata->disp_te_gpio)) {
@@ -1073,24 +1058,6 @@ int dsi_panel_device_register(struct platform_device *pdev,
 					ctrl_pdata->disp_te_gpio);
 	}
 
-
-	ctrl_pdata->rst_gpio = of_get_named_gpio(pdev->dev.of_node,
-						 "qcom,rst-gpio", 0);
-	if (!gpio_is_valid(ctrl_pdata->rst_gpio)) {
-		pr_err("%s:%d, reset gpio not specified\n",
-						__func__, __LINE__);
-	} else {
-		rc = gpio_request(ctrl_pdata->rst_gpio, "disp_rst_n");
-		if (rc) {
-			pr_err("request reset gpio failed, rc=%d\n",
-				rc);
-			gpio_free(ctrl_pdata->rst_gpio);
-			if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
-				gpio_free(ctrl_pdata->disp_en_gpio);
-			return -ENODEV;
-		}
-	}
-
 	if (mdss_dsi_clk_init(ctrl_pdev, ctrl_pdata)) {
 		pr_err("%s: unable to initialize Dsi ctrl clks\n", __func__);
 		return -EPERM;
@@ -1108,6 +1075,8 @@ int dsi_panel_device_register(struct platform_device *pdev,
 
 	ctrl_pdata->on_cmds = panel_data->on_cmds;
 	ctrl_pdata->off_cmds = panel_data->off_cmds;
+	ctrl_pdata->disp_en_gpio  = panel_data->disp_en_gpio;
+	ctrl_pdata->rst_gpio  = panel_data->rst_gpio;
 
 	memcpy(&((ctrl_pdata->panel_data).panel_info),
 				&(panel_data->panel_info),
