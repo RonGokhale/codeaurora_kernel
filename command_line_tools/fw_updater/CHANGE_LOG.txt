@@ -1,0 +1,19 @@
+Changelog for synaptics_fw_updater
+
+v2.0 2013-07-29
+----------
+- Added lockdown support:
+  (1)To perform a standalone lockdown process
+  	./synaptics_fw_updater -b {image_name}.img -wld
+  (2)To lockdown device during firmware update process
+	./synaptics_fw_updater -b {image_name}.img -ld
+  (3)Force firmware update and lockdown device
+	./synaptics_fw_updater -b {image_name}.img -ld -f
+
+v1.0 2012-02-21
+----------
+
+- Added code to check for important files before attempting
+  flash process.
+
+Supported option presence of sensor00/hasbsr sysfs file.
