@@ -1,19 +1,25 @@
-/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/*
+ * synaptics_fw_updater.c
  *
- * Copyright © 2011, 2012 Synaptics Incorporated. All rights reserved.
+ * Copyright (C) 2012 Synaptics Incorporated
  *
- * The information in this file is confidential under the terms
- * of a non-disclosure agreement with Synaptics and is provided
- * AS IS without warranties or guarantees of any kind.
+ * Copyright (C) 2012 Alexandra Chin <alexandra.chin@tw.synaptics.com>
+ * Copyright (C) 2012 Scott Lin <scott.lin@tw.synaptics.com>
  *
- * The information in this file shall remain the exclusive property
- * of Synaptics and may be the subject of Synaptics patents, in
- * whole or part. Synaptics intellectual property rights in the
- * information in this file are not expressly or implicitly licensed
- * or otherwise transferred to you as a result of such information
- * being made available to you.
+ * Description: command line reflash implimentation using command
+ * line args. This file should not be OS dependant and should build and
+ * run under any Linux based OS that utilizes the Synaptice firmware
+ * update built into the kernel
  *
- * ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #include <errno.h>
