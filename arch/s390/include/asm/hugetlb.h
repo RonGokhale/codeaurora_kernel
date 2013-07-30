@@ -40,14 +40,14 @@ void arch_release_hugepage(struct page *page);
 
 static inline pte_t huge_pte_wrprotect(pte_t pte)
 {
-	pte_val(pte) |= _PAGE_RO;
+	pte_val(pte) |= _PAGE_PROTECT;
 	return pte;
 }
 
 static inline int huge_pte_none(pte_t pte)
 {
-	return (pte_val(pte) & _SEGMENT_ENTRY_INV) &&
-		!(pte_val(pte) & _SEGMENT_ENTRY_RO);
+	return (pte_val(pte) & _SEGMENT_ENTRY_INVALID) &&
+		!(pte_val(pte) & _SEGMENT_ENTRY_PROTECT);
 }
 
 static inline pte_t huge_ptep_get(pte_t *ptep)
@@ -58,8 +58,8 @@ static inline pte_t huge_ptep_get(pte_t *ptep)
 	if (!MACHINE_HAS_HPAGE) {
 		ptep = (pte_t *) (pte_val(pte) & _SEGMENT_ENTRY_ORIGIN);
 		if (ptep) {
-			mask = pte_val(pte) &
-				(_SEGMENT_ENTRY_INV | _SEGMENT_ENTRY_RO);
+			mask = pte_val(pte) & (_SEGMENT_ENTRY_INVALID |
+					       _SEGMENT_ENTRY_PROTECT);
 			pte = pte_mkhuge(*ptep);
 			pte_val(pte) |= mask;
 		}
@@ -71,7 +71,7 @@ static inline void __pmd_csp(pmd_t *pmdp)
 {
 	register unsigned long reg2 asm("2") = pmd_val(*pmdp);
 	register unsigned long reg3 asm("3") = pmd_val(*pmdp) |
-					       _SEGMENT_ENTRY_INV;
+					       _SEGMENT_ENTRY_INVALID;
 	register unsigned long reg4 asm("4") = ((unsigned long) pmdp) + 5;
 
 	asm volatile(
@@ -89,7 +89,7 @@ static inline void huge_ptep_invalidate(struct mm_struct *mm,
 		__pmd_idte(address, pmdp);
 	else
 		__pmd_csp(pmdp);
-	pmd_val(*pmdp) = _SEGMENT_ENTRY_INV | _SEGMENT_ENTRY;
+	pmd_val(*pmdp) = _SEGMENT_ENTRY_INVALID | _SEGMENT_ENTRY;
 }
 
 static inline pte_t huge_ptep_get_and_clear(struct mm_struct *mm,
