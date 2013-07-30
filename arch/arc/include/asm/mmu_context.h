@@ -121,9 +121,10 @@ static inline void destroy_context(struct mm_struct *mm)
 static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 			     struct task_struct *tsk)
 {
+	int migrating = 0;
+
 #ifdef CONFIG_SMP
 	const int cpu = smp_processor_id();
-	int migrating;
 
 	/*
 	 * If @next is migrating to a different CPU, force an ASID refresh (by
@@ -139,6 +140,10 @@ static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	if (migrating)
 		destroy_context(next);
 #endif
+
+	/* threads of same process (and not migrating cores in SMP) */
+	if ((prev == next) && !migrating)
+		return;
 
 #ifndef CONFIG_SMP
 	/* PGD cached in MMU reg to avoid 3 mem lookups: task->mm->pgd */
