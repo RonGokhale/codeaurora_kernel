@@ -632,6 +632,22 @@ static void ar9003_hw_override_ini(struct ath_hw *ah)
 
 	REG_SET_BIT(ah, AR_PHY_CCK_DETECT,
 		    AR_PHY_CCK_DETECT_BB_ENABLE_ANT_FAST_DIV);
+
+	if (AR_SREV_9462(ah) || AR_SREV_9565(ah)) {
+		REG_WRITE(ah, AR_GLB_SWREG_DISCONT_MODE,
+			  AR_GLB_SWREG_DISCONT_EN_BT_WLAN);
+
+		if (REG_READ_FIELD(ah, AR_PHY_TX_IQCAL_CONTROL_0,
+				   AR_PHY_TX_IQCAL_CONTROL_0_ENABLE_TXIQ_CAL))
+			ah->enabled_cals |= TX_IQ_CAL;
+		else
+			ah->enabled_cals &= ~TX_IQ_CAL;
+
+		if (REG_READ(ah, AR_PHY_CL_CAL_CTL) & AR_PHY_CL_CAL_ENABLE)
+			ah->enabled_cals |= TX_CL_CAL;
+		else
+			ah->enabled_cals &= ~TX_CL_CAL;
+	}
 }
 
 static void ar9003_hw_prog_ini(struct ath_hw *ah,
@@ -814,28 +830,11 @@ static int ar9003_hw_process_ini(struct ath_hw *ah,
 	if (chan->channel == 2484)
 		ar9003_hw_prog_ini(ah, &ah->iniCckfirJapan2484, 1);
 
-	if (AR_SREV_9462(ah) || AR_SREV_9565(ah))
-		REG_WRITE(ah, AR_GLB_SWREG_DISCONT_MODE,
-			  AR_GLB_SWREG_DISCONT_EN_BT_WLAN);
-
 	ah->modes_index = modesIndex;
 	ar9003_hw_override_ini(ah);
 	ar9003_hw_set_channel_regs(ah, chan);
 	ar9003_hw_set_chain_masks(ah, ah->rxchainmask, ah->txchainmask);
 	ath9k_hw_apply_txpower(ah, chan, false);
-
-	if (AR_SREV_9462(ah) || AR_SREV_9565(ah)) {
-		if (REG_READ_FIELD(ah, AR_PHY_TX_IQCAL_CONTROL_0,
-				   AR_PHY_TX_IQCAL_CONTROL_0_ENABLE_TXIQ_CAL))
-			ah->enabled_cals |= TX_IQ_CAL;
-		else
-			ah->enabled_cals &= ~TX_IQ_CAL;
-
-		if (REG_READ(ah, AR_PHY_CL_CAL_CTL) & AR_PHY_CL_CAL_ENABLE)
-			ah->enabled_cals |= TX_CL_CAL;
-		else
-			ah->enabled_cals &= ~TX_CL_CAL;
-	}
 
 	return 0;
 }
@@ -1466,8 +1465,8 @@ static void ar9003_hw_antctrl_shared_chain_lnadiv(struct ath_hw *ah,
 			AR_PHY_ANT_DIV_ALT_LNACONF |
 			AR_PHY_ANT_DIV_MAIN_GAINTB |
 			AR_PHY_ANT_DIV_ALT_GAINTB);
-		regval |= (AR_PHY_ANT_DIV_LNA1 << AR_PHY_ANT_DIV_MAIN_LNACONF_S);
-		regval |= (AR_PHY_ANT_DIV_LNA2 << AR_PHY_ANT_DIV_ALT_LNACONF_S);
+		regval |= (ATH_ANT_DIV_COMB_LNA1 << AR_PHY_ANT_DIV_MAIN_LNACONF_S);
+		regval |= (ATH_ANT_DIV_COMB_LNA2 << AR_PHY_ANT_DIV_ALT_LNACONF_S);
 		REG_WRITE(ah, AR_PHY_MC_GAIN_CTRL, regval);
 	}
 }
@@ -1518,6 +1517,18 @@ static int ar9003_hw_fast_chan_change(struct ath_hw *ah,
 
 	REG_WRITE_ARRAY(&ah->iniModesTxGain, modesIndex, regWrites);
 
+	if (AR_SREV_9462_20_OR_LATER(ah)) {
+		/*
+		 * CUS217 mix LNA mode.
+		 */
+		if (ar9003_hw_get_rx_gain_idx(ah) == 2) {
+			REG_WRITE_ARRAY(&ah->ini_modes_rxgain_bb_core,
+					1, regWrites);
+			REG_WRITE_ARRAY(&ah->ini_modes_rxgain_bb_postamble,
+					modesIndex, regWrites);
+		}
+	}
+
 	/*
 	 * For 5GHz channels requiring Fast Clock, apply
 	 * different modal values.
@@ -1528,7 +1539,11 @@ static int ar9003_hw_fast_chan_change(struct ath_hw *ah,
 	if (AR_SREV_9565(ah))
 		REG_WRITE_ARRAY(&ah->iniModesFastClock, 1, regWrites);
 
-	REG_WRITE_ARRAY(&ah->iniAdditional, 1, regWrites);
+	/*
+	 * JAPAN regulatory.
+	 */
+	if (chan->channel == 2484)
+		ar9003_hw_prog_ini(ah, &ah->iniCckfirJapan2484, 1);
 
 	ah->modes_index = modesIndex;
 	*ini_reloaded = true;
