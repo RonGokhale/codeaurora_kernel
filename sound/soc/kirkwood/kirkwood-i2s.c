@@ -26,9 +26,6 @@
 
 #define DRV_NAME	"kirkwood-i2s"
 
-#define KIRKWOOD_I2S_RATES \
-	(SNDRV_PCM_RATE_44100 | \
-	 SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_96000)
 #define KIRKWOOD_I2S_FORMATS \
 	(SNDRV_PCM_FMTBIT_S16_LE | \
 	 SNDRV_PCM_FMTBIT_S24_LE | \
@@ -105,14 +102,16 @@ static void kirkwood_set_rate(struct snd_soc_dai *dai,
 	uint32_t clks_ctrl;
 
 	if (rate == 44100 || rate == 48000 || rate == 96000) {
-		/* use internal dco for supported rates */
+		/* use internal dco for the supported rates
+		 * defined in kirkwood_i2s_dai */
 		dev_dbg(dai->dev, "%s: dco set rate = %lu\n",
 			__func__, rate);
 		kirkwood_set_dco(priv->io, rate);
 
 		clks_ctrl = KIRKWOOD_MCLK_SOURCE_DCO;
-	} else if (!IS_ERR(priv->extclk)) {
-		/* use optional external clk for other rates */
+	} else {
+		/* use the external clock for the other rates
+		 * defined in kirkwood_i2s_dai_extclk */
 		dev_dbg(dai->dev, "%s: extclk set rate = %lu -> %lu\n",
 			__func__, rate, 256 * rate);
 		clk_set_rate(priv->extclk, 256 * rate);
@@ -398,11 +397,6 @@ static int kirkwood_i2s_probe(struct snd_soc_dai *dai)
 
 }
 
-static int kirkwood_i2s_remove(struct snd_soc_dai *dai)
-{
-	return 0;
-}
-
 static const struct snd_soc_dai_ops kirkwood_i2s_dai_ops = {
 	.startup	= kirkwood_i2s_startup,
 	.trigger	= kirkwood_i2s_trigger,
@@ -413,17 +407,18 @@ static const struct snd_soc_dai_ops kirkwood_i2s_dai_ops = {
 
 static struct snd_soc_dai_driver kirkwood_i2s_dai = {
 	.probe = kirkwood_i2s_probe,
-	.remove = kirkwood_i2s_remove,
 	.playback = {
 		.channels_min = 1,
 		.channels_max = 2,
-		.rates = KIRKWOOD_I2S_RATES,
+		.rates = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000 |
+				SNDRV_PCM_RATE_96000,
 		.formats = KIRKWOOD_I2S_FORMATS,
 	},
 	.capture = {
 		.channels_min = 1,
 		.channels_max = 2,
-		.rates = KIRKWOOD_I2S_RATES,
+		.rates = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000 |
+				SNDRV_PCM_RATE_96000,
 		.formats = KIRKWOOD_I2S_FORMATS,
 	},
 	.ops = &kirkwood_i2s_dai_ops,
@@ -431,7 +426,6 @@ static struct snd_soc_dai_driver kirkwood_i2s_dai = {
 
 static struct snd_soc_dai_driver kirkwood_i2s_dai_extclk = {
 	.probe = kirkwood_i2s_probe,
-	.remove = kirkwood_i2s_remove,
 	.playback = {
 		.channels_min = 1,
 		.channels_max = 2,
@@ -498,10 +492,9 @@ static int kirkwood_i2s_dev_probe(struct platform_device *pdev)
 	if (err < 0)
 		return err;
 
-	priv->extclk = clk_get(&pdev->dev, "extclk");
+	priv->extclk = devm_clk_get(&pdev->dev, "extclk");
 	if (!IS_ERR(priv->extclk)) {
 		if (priv->extclk == priv->clk) {
-			clk_put(priv->extclk);
 			priv->extclk = ERR_PTR(-EINVAL);
 		} else {
 			dev_info(&pdev->dev, "found external clock\n");
@@ -529,10 +522,8 @@ static int kirkwood_i2s_dev_probe(struct platform_device *pdev)
 		return 0;
 	dev_err(&pdev->dev, "snd_soc_register_component failed\n");
 
-	if (!IS_ERR(priv->extclk)) {
+	if (!IS_ERR(priv->extclk))
 		clk_disable_unprepare(priv->extclk);
-		clk_put(priv->extclk);
-	}
 	clk_disable_unprepare(priv->clk);
 
 	return err;
@@ -544,10 +535,8 @@ static int kirkwood_i2s_dev_remove(struct platform_device *pdev)
 
 	snd_soc_unregister_component(&pdev->dev);
 
-	if (!IS_ERR(priv->extclk)) {
+	if (!IS_ERR(priv->extclk))
 		clk_disable_unprepare(priv->extclk);
-		clk_put(priv->extclk);
-	}
 	clk_disable_unprepare(priv->clk);
 
 	return 0;
