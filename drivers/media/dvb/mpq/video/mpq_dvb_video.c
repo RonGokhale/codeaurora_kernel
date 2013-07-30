@@ -131,7 +131,6 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 	ssize_t bytes_read = 0;
 	size_t pktlen = 0;
 	int frame_found = true;
-	int idr_found   = false;
 	int ts_packets_num = 0;
 	int ts_packets_drop_num = 0;
 	int data_drop = 0;
@@ -198,8 +197,8 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 			case DMX_IDX_VC1_FRAME_START:
 				DBG("IDR FRAME FOUND\n");
 				frame_found = true;
-				if (dev_inst->picture_type == VIDEO_DECODED_PICTURES_I){
-					idr_found   = true;
+				if (dev_inst->picture_type == VIDEO_DECODED_PICTURES_I) {
+					dev_inst->idr_rcvd = true;
 				}
 				break;
 			case DMX_IDX_H264_NON_IDR_START:
@@ -208,15 +207,15 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 			case DMX_IDX_VC1_FRAME_END:
 				DBG("NON IDR FRAME FOUND\n");
 				frame_found = true;
-				if (dev_inst->picture_type == VIDEO_DECODED_PICTURES_I){
-					idr_found   = false;
+				if (dev_inst->picture_type == VIDEO_DECODED_PICTURES_I) {
+						dev_inst->non_idr_rcvd = true;
 				}
 				break;
 			default:
 				break;
 			}
 
-			if (frame_found || idr_found) {
+			if (frame_found) {
 				ts_packets_num = meta_data.info.
 						framing.ts_packets_num;
 				ts_packets_drop_num = meta_data.info.
@@ -291,14 +290,20 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 					.pts) : 0;
 				if (dev_inst->picture_type ==
 						VIDEO_DECODED_PICTURES_I) {
-					DBG("Video data:IDR mode\n");
-					if (frame_found && idr_found) {
+					DBG("In IDR mode\n");
+					if ((frame_found) &&
+						(dev_inst->frame_count < 2) &&
+						((dev_inst->idr_rcvd) ||
+						(dev_inst->non_idr_rcvd))) {
 						dmx_data->in_buffer[free_buf].
 						buffer_len = size;
 						dmx_data->in_buffer[free_buf].
 						client_data = (void *)free_buf;
 						DBG("Submitted Data Size:%d\n",
 							size);
+						dev_inst->frame_count++;
+						DBG("Video Frame No: %d to decoder in IDR mode\n",
+							dev_inst->frame_count);
 						mpq_int_vid_dec_decode_frame(
 							dev_inst,
 							&dmx_data->in_buffer[free_buf]);
@@ -1451,7 +1456,9 @@ static int mpq_int_vid_dec_set_decode_mode(struct mpq_dvb_video_inst *dev_inst,
 				  enum video_decoded_pictures_t pic_type)
 {
 	dev_inst->picture_type = pic_type;
-
+	dev_inst->frame_count   = 0;
+	dev_inst->idr_rcvd      = false;
+	dev_inst->non_idr_rcvd  = false;
 	return 0;
 }
 
@@ -1685,7 +1692,14 @@ static int mpq_int_vid_dec_decode_frame(struct mpq_dvb_video_inst *dev_inst,
 		}
 		/* Inform VCD decoder to decode only I Frame */
 		if (dev_inst->picture_type == VIDEO_DECODED_PICTURES_I) {
-			vcd_input_buffer.flags |= VCD_FRAME_FLAG_EOS;
+			if (dev_inst->frame_count == 2)
+			{
+				vcd_input_buffer.flags  |= VCD_FRAME_FLAG_EOS;
+				dev_inst->frame_count    = 0;
+				dev_inst->non_idr_rcvd   = false;
+				dev_inst->idr_rcvd       = false;
+				DBG("EOS is marked during I decode mode\n");
+			}
 		}
 		vcd_status = vcd_decode_frame(client_ctx->vcd_handle,
 					      &vcd_input_buffer);
@@ -2008,6 +2022,8 @@ static int mpq_dvb_video_open(struct inode *inode, struct file *file)
 
 	/* Set default decoded picture type is ALL */
 	dev_inst->picture_type = VIDEO_DECODED_PICTURES_ALL;
+	/* No of frames after SPS/Sequence Header */
+	dev_inst->frame_count  = 0;
 	mutex_unlock(&mpq_dvb_video_device->lock);
 
 	return rc;
