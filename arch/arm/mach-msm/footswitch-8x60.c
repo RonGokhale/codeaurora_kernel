@@ -45,6 +45,7 @@
 #define VFE_GFS_CTL_REG		REG(0x0198)
 #define VPE_GFS_CTL_REG		REG(0x019C)
 #define VCAP_GFS_CTL_REG	REG(0x0254)
+#define VCAP_HW_RESET_REG	REG(0x0214)
 
 #define CLAMP_BIT		BIT(5)
 #define ENABLE_BIT		BIT(8)
@@ -56,6 +57,8 @@
 /* Clock rate to use if one has not previously been set. */
 #define DEFAULT_RATE		27000000
 #define MAX_CLKS		10
+
+#define VCAP_CORE_RESET_VAL	0x18
 
 /*
  * Lock is only needed to protect against the first footswitch_enable()
@@ -450,6 +453,7 @@ static int vcap_footswitch_enable(struct regulator_dev *rdev)
 	struct footswitch *fs = rdev_get_drvdata(rdev);
 	struct fs_clk_data *clock;
 	uint32_t regval, rc = 0;
+	uint32_t vcap_hw_reg_val;
 
 	mutex_lock(&claim_lock);
 	fs->is_claimed = true;
@@ -459,6 +463,12 @@ static int vcap_footswitch_enable(struct regulator_dev *rdev)
 	regval = readl_relaxed(fs->gfs_ctl_reg);
 	if ((regval & (ENABLE_BIT | CLAMP_BIT)) == ENABLE_BIT)
 		return 0;
+
+	/* Put vcap core in reset. */
+	vcap_hw_reg_val = readl_relaxed(VCAP_HW_RESET_REG);
+	vcap_hw_reg_val |= VCAP_CORE_RESET_VAL;
+	writel_relaxed(vcap_hw_reg_val, VCAP_HW_RESET_REG);
+	udelay(1);
 
 	/* Un-halt all bus ports in the power domain. */
 	if (fs->bus_port0) {
@@ -512,6 +522,11 @@ static int vcap_footswitch_enable(struct regulator_dev *rdev)
 	/* Return clocks to their state before this function. */
 	restore_clocks(fs);
 
+	/* Release VCAP core reset. */
+	vcap_hw_reg_val = readl_relaxed(VCAP_HW_RESET_REG);
+	vcap_hw_reg_val &= ~VCAP_CORE_RESET_VAL;
+	writel_relaxed(vcap_hw_reg_val, VCAP_HW_RESET_REG);
+	udelay(1);
 	fs->is_enabled = true;
 	return 0;
 

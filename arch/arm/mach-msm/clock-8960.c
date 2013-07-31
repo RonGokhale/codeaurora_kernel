@@ -1225,7 +1225,7 @@ static struct branch_clk vcap_p_clk = {
 		.ctl_reg = AHB_EN3_REG,
 		.en_mask = BIT(1),
 		.reset_reg = SW_RESET_AHB2_REG,
-		.reset_mask = BIT(2),
+		.reset_mask = BIT(2) | BIT(3),
 		.halt_reg = DBG_BUS_VEC_J_REG,
 		.halt_bit = 23,
 	},
