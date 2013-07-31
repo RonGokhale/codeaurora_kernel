@@ -211,7 +211,7 @@ static int __init exynos4_init_cpuidle(void)
 		device->cpu = cpu_id;
 
 		/* Support IDLE only */
-		if (cpu_id != 0)
+		if (soc_is_exynos5440() || cpu_id != 0)
 			device->state_count = 1;
 
 		ret = cpuidle_register_device(device);
