@@ -9,17 +9,17 @@
 
 #include <byteswap.h>
 #include <linux/bitops.h>
-#include "asm/bug.h"
 #include <lk/debugfs.h>
-#include "event-parse.h"
+#include <traceevent/event-parse.h>
+#include <linux/hw_breakpoint.h>
+#include <linux/perf_event.h>
+#include "asm/bug.h"
 #include "evsel.h"
 #include "evlist.h"
 #include "util.h"
 #include "cpumap.h"
 #include "thread_map.h"
 #include "target.h"
-#include <linux/hw_breakpoint.h>
-#include <linux/perf_event.h>
 #include "perf_regs.h"
 
 static struct {
@@ -1482,7 +1482,7 @@ out:
 bool perf_evsel__fallback(struct perf_evsel *evsel, int err,
 			  char *msg, size_t msgsize)
 {
-	if ((err == ENOENT || err == ENXIO) &&
+	if ((err == ENOENT || err == ENXIO || err == ENODEV) &&
 	    evsel->attr.type   == PERF_TYPE_HARDWARE &&
 	    evsel->attr.config == PERF_COUNT_HW_CPU_CYCLES) {
 		/*
