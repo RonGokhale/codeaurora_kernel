@@ -26,14 +26,14 @@
 
 #define SYSMGR_SDMMCGRP_CTRL_OFFSET		0x108
 #define DRV_CLK_PHASE_SHIFT_SEL_MASK	0x7
-#define SYSMGR_SDMMC_CTRL_SET(smplsel, drvsel)		\
-	((((drvsel) << 0) & 0x7) | (((smplsel) << 3) & 0x38))
+#define SYSMGR_SDMMC_CTRL_SET(smplsel, drvsel)\ 
+	((((smplsel) & 0x7) << 3) | (((drvsel) & 0x7) << 0))
 
 /* SOCFPGA implementation specific driver private data */
 struct dw_mci_socfpga_priv_data {
-	u8	ciu_div;
-	u32	hs_timing;
-	struct regmap   *sysreg;
+	u8      ciu_div; /* card interface unit divisor */
+	u32     hs_timing; /* bitmask for CIU clock phase shift */
+	struct regmap   *sysreg; /* regmap for system manager register */
 };
 
 static int dw_mci_socfpga_priv_init(struct dw_mci *host)

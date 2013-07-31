@@ -24,8 +24,6 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 
-static DEFINE_SPINLOCK(_lock);
-
 /* Clock Manager offsets */
 #define CLKMGR_CTRL	0x0
 #define CLKMGR_BYPASS	0x4
@@ -68,50 +66,6 @@ struct socfpga_clk {
 	void __iomem *div_reg;
 	u32 width;	/* only valid if div_reg != 0 */
 	u32 shift;	/* only valid if div_reg != 0 */
-};
-#define to_socfpga_clk(p) container_of(p, struct socfpga_clk, hw.hw)
-
-/* Clock Manager offsets */
-#define CLKMGR_CTRL    0x0
-#define CLKMGR_BYPASS 0x4
-#define CLKMGR_L4SRC	0x70
-#define CLKMGR_PERPLL_SRC	0xAC
-
-/* Clock bypass bits */
-#define MAINPLL_BYPASS (1<<0)
-#define SDRAMPLL_BYPASS (1<<1)
-#define SDRAMPLL_SRC_BYPASS (1<<2)
-#define PERPLL_BYPASS (1<<3)
-#define PERPLL_SRC_BYPASS (1<<4)
-
-#define SOCFPGA_PLL_BG_PWRDWN		0
-#define SOCFPGA_PLL_EXT_ENA		1
-#define SOCFPGA_PLL_PWR_DOWN		2
-#define SOCFPGA_PLL_DIVF_MASK		0x0000FFF8
-#define SOCFPGA_PLL_DIVF_SHIFT	3
-#define SOCFPGA_PLL_DIVQ_MASK		0x003F0000
-#define SOCFPGA_PLL_DIVQ_SHIFT	16
-#define SOCFGPA_MAX_PARENTS	3
-
-#define SOCFPGA_L4_MP_CLK			"l4_mp_clk"
-#define SOCFPGA_L4_SP_CLK			"l4_sp_clk"
-#define SOCFPGA_NAND_CLK		"nand_clk"
-#define SOCFPGA_NAND_X_CLK		"nand_x_clk"
-#define SOCFPGA_MMC_CLK			"mmc_clk"
-#define SOCFPGA_DB_CLK			"gpio_db_clk"
-
-#define div_mask(width)	((1 << (width)) - 1)
-
-extern void __iomem *clk_mgr_base_addr;
-
-struct socfpga_clk {
-	struct clk_gate hw;
-	char *parent_name;
-	char *clk_name;
-	u32 fixed_div;
-	void __iomem *div_reg;
-	u32 width;
-	u32 shift;
 };
 #define to_socfpga_clk(p) container_of(p, struct socfpga_clk, hw.hw)
 
@@ -195,8 +149,9 @@ static __init struct clk *socfpga_clk_init(struct device_node *node,
 
 	socfpga_clk->hw.hw.init = &init;
 
-	if ((strcmp(clk_name, "main_pll") == 0) || (strcmp(clk_name, "periph_pll") == 0)||
-			(strcmp(clk_name, "sdram_pll") == 0))  {
+	if (streq(clk_name, "main_pll") ||
+		streq(clk_name, "periph_pll") ||
+		streq(clk_name, "sdram_pll")) {
 		socfpga_clk->hw.bit_idx = SOCFPGA_PLL_EXT_ENA;
 		clk_pll_ops.enable = clk_gate_ops.enable;
 		clk_pll_ops.disable = clk_gate_ops.disable;
@@ -215,55 +170,52 @@ static u8 socfpga_clk_get_parent(struct clk_hw *hwclk)
 {
 	u32 l4_src;
 	u32 perpll_src;
-	u8 parent;
 
-	if (strcmp(hwclk->init->name, SOCFPGA_L4_MP_CLK) == 0) {
+	if (streq(hwclk->init->name, SOCFPGA_L4_MP_CLK)) {
 		l4_src = readl(clk_mgr_base_addr + CLKMGR_L4SRC);
-		l4_src &= 0x1;
-		parent = l4_src;
-	} else if (strcmp(hwclk->init->name, SOCFPGA_L4_SP_CLK) == 0) {
+		return l4_src &= 0x1;
+	}
+	if (streq(hwclk->init->name, SOCFPGA_L4_SP_CLK)) {
 		l4_src = readl(clk_mgr_base_addr + CLKMGR_L4SRC);
-		l4_src = ((l4_src & 0x2) >> 1);
-		parent = l4_src;
-	} else {
-		perpll_src = readl(clk_mgr_base_addr + CLKMGR_PERPLL_SRC);
-		if (strcmp(hwclk->init->name, SOCFPGA_MMC_CLK) == 0)
-			perpll_src &= 0x3;
-		else if (strcmp(hwclk->init->name, SOCFPGA_NAND_CLK) == 0 ||
-				strcmp(hwclk->init->name, SOCFPGA_NAND_X_CLK) == 0)
-			perpll_src = ((perpll_src & 0xC) >> 2);
-		else /*QSPI clock */
-			perpll_src = ((perpll_src & 0x30) >> 4);
-		parent = perpll_src;
+		return !!(l4_src & 2);
 	}
 
-	return parent;
+	perpll_src = readl(clk_mgr_base_addr + CLKMGR_PERPLL_SRC);
+	if (streq(hwclk->init->name, SOCFPGA_MMC_CLK))
+		return perpll_src &= 0x3;
+	if (streq(hwclk->init->name, SOCFPGA_NAND_CLK) ||
+			streq(hwclk->init->name, SOCFPGA_NAND_X_CLK))
+			return (perpll_src >> 2) & 3;
+
+	/* QSPI clock */
+	return (perpll_src >> 4) & 3;
+
 }
 
 static int socfpga_clk_set_parent(struct clk_hw *hwclk, u8 parent)
 {
 	u32 src_reg;
 
-	if (strcmp(hwclk->init->name, SOCFPGA_L4_MP_CLK) == 0) {
+	if (streq(hwclk->init->name, SOCFPGA_L4_MP_CLK)) {
 		src_reg = readl(clk_mgr_base_addr + CLKMGR_L4SRC);
 		src_reg &= ~0x1;
 		src_reg |= parent;
 		writel(src_reg, clk_mgr_base_addr + CLKMGR_L4SRC);
-	} else if (strcmp(hwclk->init->name, SOCFPGA_L4_SP_CLK) == 0) {
+	} else if (streq(hwclk->init->name, SOCFPGA_L4_SP_CLK)) {
 		src_reg = readl(clk_mgr_base_addr + CLKMGR_L4SRC);
 		src_reg &= ~0x2;
 		src_reg |= (parent << 1);
 		writel(src_reg, clk_mgr_base_addr + CLKMGR_L4SRC);
 	} else {
 		src_reg = readl(clk_mgr_base_addr + CLKMGR_PERPLL_SRC);
-		if (strcmp(hwclk->init->name, SOCFPGA_MMC_CLK) == 0) {
+		if (streq(hwclk->init->name, SOCFPGA_MMC_CLK)) {
 			src_reg &= ~0x3;
 			src_reg |= parent;
-		} else if (strcmp(hwclk->init->name, SOCFPGA_NAND_CLK) == 0 ||
-			strcmp(hwclk->init->name, SOCFPGA_NAND_X_CLK) == 0) {
+		} else if (streq(hwclk->init->name, SOCFPGA_NAND_CLK) ||
+			streq(hwclk->init->name, SOCFPGA_NAND_X_CLK)) {
 			src_reg &= ~0xC;
 			src_reg |= (parent << 2);
-		} else {/*QSPI clock */
+		} else {/* QSPI clock */
 			src_reg &= ~0x30;
 			src_reg |= (parent << 4);
 		}
@@ -284,7 +236,7 @@ static unsigned long socfpga_clk_recalc_rate(struct clk_hw *hwclk,
 	else if (socfpgaclk->div_reg) {
 		val = readl(socfpgaclk->div_reg) >> socfpgaclk->shift;
 		val &= div_mask(socfpgaclk->width);
-		if (strcmp(hwclk->init->name, SOCFPGA_DB_CLK) == 0)
+		if (streq(hwclk->init->name, SOCFPGA_DB_CLK))
 			div = val + 1;
 		else
 			div = (1 << val);
@@ -321,12 +273,6 @@ static void __init socfpga_gate_clk_init(struct device_node *node,
 	if (rc)
 		clk_gate[0] = 0;
 
-	rc = of_property_read_u32(node, "fixed-divider", &fixed_div);
-	if (rc)
-		socfpga_clk->fixed_div = 0;
-	else
-		socfpga_clk->fixed_div = fixed_div;
-
 	if (clk_gate[0]) {
 		socfpga_clk->hw.reg = clk_mgr_base_addr + clk_gate[0];
 		socfpga_clk->hw.bit_idx = clk_gate[1];
@@ -334,6 +280,12 @@ static void __init socfpga_gate_clk_init(struct device_node *node,
 		gateclk_ops.enable = clk_gate_ops.enable;
 		gateclk_ops.disable = clk_gate_ops.disable;
 	}
+
+	rc = of_property_read_u32(node, "fixed-divider", &fixed_div);
+	if (rc)
+		socfpga_clk->fixed_div = 0;
+	else
+		socfpga_clk->fixed_div = fixed_div;
 
 	rc = of_property_read_u32_array(node, "div-reg", div_reg, 3);
 	if (!rc) {
@@ -371,73 +323,24 @@ static void __init socfpga_pll_init(struct device_node *node)
 {
 	socfpga_clk_init(node, &clk_pll_ops);
 }
+CLK_OF_DECLARE(socfpga_pll, "altr,socfpga-pll-clock", socfpga_pll_init);
 
 static void __init socfpga_periph_init(struct device_node *node)
 {
 	socfpga_clk_init(node, &periclk_ops);
 }
+CLK_OF_DECLARE(socfpga_periph, "altr,socfpga-perip-clk", socfpga_periph_init);
 
 static void __init socfpga_gate_init(struct device_node *node)
 {
 	socfpga_gate_clk_init(node, &gateclk_ops);
 }
-
-static const __initconst struct of_device_id clk_match[] = {
-	{ .compatible = "fixed-clock", .data = of_fixed_clk_setup, },
-	{ .compatible = "altr,socfpga-pll-clock", .data = socfpga_pll_init, },
-	{ .compatible = "altr,socfpga-perip-clk", .data = socfpga_periph_init, },
-	{ .compatible = "altr,socfpga-gate-clk", .data = socfpga_gate_init, },
-	{}
-};
+CLK_OF_DECLARE(socfpga_gate, "altr,socfpga-gate-clk", socfpga_gate_init);
 
 void __init socfpga_init_clocks(void)
 {
-	struct socfpga_clk *socfpgaclk = to_socfpga_clk(hwclk);
-	unsigned long divf, divq, vco_freq, reg;
-	unsigned long bypass;
-
-	reg = readl(socfpgaclk->hw.reg);
-	bypass = readl(clk_mgr_base_addr + CLKMGR_BYPASS);
-	if (bypass & MAINPLL_BYPASS)
-		return parent_rate;
-
-	divf = (reg & SOCFPGA_PLL_DIVF_MASK) >> SOCFPGA_PLL_DIVF_SHIFT;
-	divq = (reg & SOCFPGA_PLL_DIVQ_MASK) >> SOCFPGA_PLL_DIVQ_SHIFT;
-	vco_freq = parent_rate * (divf + 1);
-	return vco_freq / (1 + divq);
-}
-
-
-static struct clk_ops clk_pll_ops = {
-	.recalc_rate = clk_pll_recalc_rate,
-};
-
-static unsigned long clk_periclk_recalc_rate(struct clk_hw *hwclk,
-					     unsigned long parent_rate)
-{
-	struct socfpga_clk *socfpgaclk = to_socfpga_clk(hwclk);
-	u32 div;
-
-	if (socfpgaclk->fixed_div)
-		div = socfpgaclk->fixed_div;
-	else
-		div = ((readl(socfpgaclk->hw.reg) & 0x1ff) + 1);
-
-	return parent_rate / div;
-}
-
-static const struct clk_ops periclk_ops = {
-	.recalc_rate = clk_periclk_recalc_rate,
-};
-
-static __init struct clk *socfpga_clk_init(struct device_node *node,
-	const struct clk_ops *ops)
-{
-	u32 reg;
 	struct clk *clk;
 	int ret;
-
-	of_clk_init(clk_match);
 
 	clk = clk_register_fixed_factor(NULL, "smp_twd", "mpuclk", 0, 1, 4);
 	ret = clk_register_clkdev(clk, NULL, "smp_twd");
