@@ -466,7 +466,7 @@ static inline void put_css_set_taskexit(struct css_set *cset)
  * @new_cgrp: cgroup that's being entered by the task
  * @template: desired set of css pointers in css_set (pre-calculated)
  *
- * Returns true if "cg" matches "old_cg" except for the hierarchy
+ * Returns true if "cset" matches "old_cset" except for the hierarchy
  * which "new_cgrp" belongs to, for which it should match "new_cgrp".
  */
 static bool compare_css_sets(struct css_set *cset,
@@ -1846,7 +1846,7 @@ EXPORT_SYMBOL_GPL(task_cgroup_path);
 struct task_and_cgroup {
 	struct task_struct	*task;
 	struct cgroup		*cgrp;
-	struct css_set		*cg;
+	struct css_set		*cset;
 };
 
 struct cgroup_taskset {
@@ -2064,8 +2064,8 @@ static int cgroup_attach_task(struct cgroup *cgrp, struct task_struct *tsk,
 
 		tc = flex_array_get(group, i);
 		old_cset = task_css_set(tc->task);
-		tc->cg = find_css_set(old_cset, cgrp);
-		if (!tc->cg) {
+		tc->cset = find_css_set(old_cset, cgrp);
+		if (!tc->cset) {
 			retval = -ENOMEM;
 			goto out_put_css_set_refs;
 		}
@@ -2078,7 +2078,7 @@ static int cgroup_attach_task(struct cgroup *cgrp, struct task_struct *tsk,
 	 */
 	for (i = 0; i < group_size; i++) {
 		tc = flex_array_get(group, i);
-		cgroup_task_migrate(tc->cgrp, tc->task, tc->cg);
+		cgroup_task_migrate(tc->cgrp, tc->task, tc->cset);
 	}
 	/* nothing is sensitive to fork() after this point. */
 
@@ -2098,9 +2098,9 @@ out_put_css_set_refs:
 	if (retval) {
 		for (i = 0; i < group_size; i++) {
 			tc = flex_array_get(group, i);
-			if (!tc->cg)
+			if (!tc->cset)
 				break;
-			put_css_set(tc->cg);
+			put_css_set(tc->cset);
 		}
 	}
 out_cancel_attach:
@@ -2210,9 +2210,9 @@ int cgroup_attach_task_all(struct task_struct *from, struct task_struct *tsk)
 
 	mutex_lock(&cgroup_mutex);
 	for_each_active_root(root) {
-		struct cgroup *from_cg = task_cgroup_from_root(from, root);
+		struct cgroup *from_cgrp = task_cgroup_from_root(from, root);
 
-		retval = cgroup_attach_task(from_cg, tsk, false);
+		retval = cgroup_attach_task(from_cgrp, tsk, false);
 		if (retval)
 			break;
 	}
@@ -2404,11 +2404,6 @@ static ssize_t cgroup_file_read(struct file *file, char __user *buf,
  * supports string->u64 maps, but can be extended in future.
  */
 
-struct cgroup_seqfile_state {
-	struct cftype *cft;
-	struct cgroup *cgroup;
-};
-
 static int cgroup_map_add(struct cgroup_map_cb *cb, const char *key, u64 value)
 {
 	struct seq_file *sf = cb->state;
@@ -2417,59 +2412,45 @@ static int cgroup_map_add(struct cgroup_map_cb *cb, const char *key, u64 value)
 
 static int cgroup_seqfile_show(struct seq_file *m, void *arg)
 {
-	struct cgroup_seqfile_state *state = m->private;
-	struct cftype *cft = state->cft;
+	struct cfent *cfe = m->private;
+	struct cftype *cft = cfe->type;
+	struct cgroup *cgrp = __d_cgrp(cfe->dentry->d_parent);
+
 	if (cft->read_map) {
 		struct cgroup_map_cb cb = {
 			.fill = cgroup_map_add,
 			.state = m,
 		};
-		return cft->read_map(state->cgroup, cft, &cb);
+		return cft->read_map(cgrp, cft, &cb);
 	}
-	return cft->read_seq_string(state->cgroup, cft, m);
-}
-
-static int cgroup_seqfile_release(struct inode *inode, struct file *file)
-{
-	struct seq_file *seq = file->private_data;
-	kfree(seq->private);
-	return single_release(inode, file);
+	return cft->read_seq_string(cgrp, cft, m);
 }
 
 static const struct file_operations cgroup_seqfile_operations = {
 	.read = seq_read,
 	.write = cgroup_file_write,
 	.llseek = seq_lseek,
-	.release = cgroup_seqfile_release,
+	.release = single_release,
 };
 
 static int cgroup_file_open(struct inode *inode, struct file *file)
 {
 	int err;
+	struct cfent *cfe;
 	struct cftype *cft;
 
 	err = generic_file_open(inode, file);
 	if (err)
 		return err;
-	cft = __d_cft(file->f_dentry);
+	cfe = __d_cfe(file->f_dentry);
+	cft = cfe->type;
 
 	if (cft->read_map || cft->read_seq_string) {
-		struct cgroup_seqfile_state *state;
-
-		state = kzalloc(sizeof(*state), GFP_USER);
-		if (!state)
-			return -ENOMEM;
-
-		state->cft = cft;
-		state->cgroup = __d_cgrp(file->f_dentry->d_parent);
 		file->f_op = &cgroup_seqfile_operations;
-		err = single_open(file, cgroup_seqfile_show, state);
-		if (err < 0)
-			kfree(state);
-	} else if (cft->open)
+		err = single_open(file, cgroup_seqfile_show, cfe);
+	} else if (cft->open) {
 		err = cft->open(inode, file);
-	else
-		err = 0;
+	}
 
 	return err;
 }
@@ -3331,8 +3312,8 @@ int cgroup_scan_tasks(struct cgroup_scanner *scan)
 	 * guarantees forward progress and that we don't miss any tasks.
 	 */
 	heap->size = 0;
-	cgroup_iter_start(scan->cg, &it);
-	while ((p = cgroup_iter_next(scan->cg, &it))) {
+	cgroup_iter_start(scan->cgrp, &it);
+	while ((p = cgroup_iter_next(scan->cgrp, &it))) {
 		/*
 		 * Only affect tasks that qualify per the caller's callback,
 		 * if he provided one
@@ -3365,7 +3346,7 @@ int cgroup_scan_tasks(struct cgroup_scanner *scan)
 		 * the heap and wasn't inserted
 		 */
 	}
-	cgroup_iter_end(scan->cg, &it);
+	cgroup_iter_end(scan->cgrp, &it);
 
 	if (heap->size) {
 		for (i = 0; i < heap->size; i++) {
@@ -3411,7 +3392,7 @@ int cgroup_transfer_tasks(struct cgroup *to, struct cgroup *from)
 {
 	struct cgroup_scanner scan;
 
-	scan.cg = from;
+	scan.cgrp = from;
 	scan.test_task = NULL; /* select all tasks in cgroup */
 	scan.process_task = cgroup_transfer_one_task;
 	scan.heap = NULL;
@@ -4221,7 +4202,7 @@ static void init_cgroup_css(struct cgroup_subsys_state *css,
 	INIT_WORK(&css->dput_work, css_dput_fn);
 }
 
-/* invoke ->post_create() on a new CSS and mark it online if successful */
+/* invoke ->css_online() on a new CSS and mark it online if successful */
 static int online_css(struct cgroup_subsys *ss, struct cgroup *cgrp)
 {
 	int ret = 0;
@@ -4235,9 +4216,8 @@ static int online_css(struct cgroup_subsys *ss, struct cgroup *cgrp)
 	return ret;
 }
 
-/* if the CSS is online, invoke ->pre_destory() on it and mark it offline */
+/* if the CSS is online, invoke ->css_offline() on it and mark it offline */
 static void offline_css(struct cgroup_subsys *ss, struct cgroup *cgrp)
-	__releases(&cgroup_mutex) __acquires(&cgroup_mutex)
 {
 	struct cgroup_subsys_state *css = cgrp->subsys[ss->subsys_id];
 
