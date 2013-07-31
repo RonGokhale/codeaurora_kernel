@@ -387,11 +387,11 @@ static void __init set_volt_table(void)
 	}
 	for (i = L0; i < L2; i++)
 		exynos5420_freq_table[i].frequency = CPUFREQ_ENTRY_INVALID;
-	for (i = L15; i <= L18; i++)
+	for (i = L14; i <= L18; i++)
 		exynos5420_freq_table[i].frequency = CPUFREQ_ENTRY_INVALID;
 
 	max_support_idx = L2;
-	min_support_idx = L14;
+	min_support_idx = L13;
 }
 
 static void __init set_volt_table_CA7(void)
@@ -403,11 +403,9 @@ static void __init set_volt_table_CA7(void)
 		pr_debug("CPUFREQ of CA7  L%d : %d uV\n", i,
 				exynos5420_volt_table_CA7[i]);
 	}
-	for (i = L0; i <= L1; i++)
-		exynos5420_freq_table_CA7[i].frequency = CPUFREQ_ENTRY_INVALID;
 	for (i = L8; i <= L11; i++)
 		exynos5420_freq_table_CA7[i].frequency = CPUFREQ_ENTRY_INVALID;
-	max_support_idx_CA7 = L2;
+	max_support_idx_CA7 = L0;
 	min_support_idx_CA7 = L7;
 }
 
