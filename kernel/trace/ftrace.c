@@ -3384,6 +3384,12 @@ ftrace_match_addr(struct ftrace_hash *hash, unsigned long ip, int remove)
 	return add_hash_entry(hash, ip);
 }
 
+static void ftrace_ops_update_code(struct ftrace_ops *ops)
+{
+	if (ops->flags & FTRACE_OPS_FL_ENABLED && ftrace_enabled)
+		ftrace_run_update_code(FTRACE_UPDATE_CALLS);
+}
+
 static int
 ftrace_set_hash(struct ftrace_ops *ops, unsigned char *buf, int len,
 		unsigned long ip, int remove, int reset, int enable)
@@ -3426,9 +3432,8 @@ ftrace_set_hash(struct ftrace_ops *ops, unsigned char *buf, int len,
 
 	mutex_lock(&ftrace_lock);
 	ret = ftrace_hash_move(ops, enable, orig_hash, hash);
-	if (!ret && ops->flags & FTRACE_OPS_FL_ENABLED
-	    && ftrace_enabled)
-		ftrace_run_update_code(FTRACE_UPDATE_CALLS);
+	if (!ret)
+		ftrace_ops_update_code(ops);
 
 	mutex_unlock(&ftrace_lock);
 
@@ -3655,9 +3660,8 @@ int ftrace_regex_release(struct inode *inode, struct file *file)
 		mutex_lock(&ftrace_lock);
 		ret = ftrace_hash_move(iter->ops, filter_hash,
 				       orig_hash, iter->hash);
-		if (!ret && (iter->ops->flags & FTRACE_OPS_FL_ENABLED)
-		    && ftrace_enabled)
-			ftrace_run_update_code(FTRACE_UPDATE_CALLS);
+		if (!ret)
+			ftrace_ops_update_code(iter->ops);
 
 		mutex_unlock(&ftrace_lock);
 	}
@@ -4057,6 +4061,63 @@ static int ftrace_process_locs(struct module *mod,
 
 #ifdef CONFIG_MODULES
 
+/*
+ * If the filter is cleared, then all functions may end up being
+ * traced. We need to pass that information down to update the
+ * records.
+ */
+static bool remove_rec_entry(struct ftrace_hash *hash, struct dyn_ftrace *rec)
+{
+	struct ftrace_func_entry *entry;
+
+	entry = ftrace_lookup_ip(hash, rec->ip);
+	if (!entry)
+		return false;
+
+	free_hash_entry(hash, entry);
+
+	/* If we cleared the hash, then we now trace all functions */
+	return ftrace_hash_empty(hash);
+}
+
+static void clear_recs(struct ftrace_ops *ops, struct ftrace_page *pg)
+{
+	struct dyn_ftrace *rec;
+	bool update = false;
+	int i;
+
+	for (i = 0; i < pg->index; i++) {
+		rec = &pg->records[i];
+
+		/* If the filter hash gets cleared, we trace all functions */
+		if (remove_rec_entry(ops->filter_hash, rec))
+			update = true;
+		remove_rec_entry(ops->notrace_hash, rec);
+	}
+
+	if (update) {
+		ftrace_hash_rec_enable(ops, 1);
+		if (ftrace_enabled)
+			ftrace_run_update_code(FTRACE_UPDATE_CALLS);
+	}
+}
+
+static bool ops_has_filter(struct ftrace_ops *ops)
+{
+	return !ftrace_hash_empty(ops->filter_hash) ||
+		!ftrace_hash_empty(ops->notrace_hash);
+}
+
+static void clear_hashes(struct ftrace_page *pg)
+{
+	struct ftrace_ops *ops;
+
+	for (ops = ftrace_ops_list; ops != &ftrace_list_end; ops = ops->next) {
+		if ((ops->flags & FTRACE_OPS_FL_ENABLED) && ops_has_filter(ops))
+			clear_recs(ops, pg);
+	}
+}
+
 #define next_to_ftrace_page(p) container_of(p, struct ftrace_page, next)
 
 void ftrace_release_mod(struct module *mod)
@@ -4089,6 +4150,9 @@ void ftrace_release_mod(struct module *mod)
 			/* Check if we are deleting the last page */
 			if (pg == ftrace_pages)
 				ftrace_pages = next_to_ftrace_page(last_pg);
+
+			/* Make sure no hashes reference this module record */
+			clear_hashes(pg);
 
 			*last_pg = pg->next;
 			order = get_count_order(pg->size / ENTRIES_PER_PAGE);
