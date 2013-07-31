@@ -2056,10 +2056,6 @@ fec_probe(struct platform_device *pdev)
 	if (of_id)
 		pdev->id_entry = of_id->data;
 
-	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!r)
-		return -ENXIO;
-
 	/* Init network device */
 	ndev = alloc_etherdev(sizeof(struct fec_enet_private));
 	if (!ndev)
@@ -2077,6 +2073,7 @@ fec_probe(struct platform_device *pdev)
 		fep->pause_flag |= FEC_PAUSE_FLAG_AUTONEG;
 #endif
 
+	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	fep->hwp = devm_ioremap_resource(&pdev->dev, r);
 	if (IS_ERR(fep->hwp)) {
 		ret = PTR_ERR(fep->hwp);
@@ -2126,10 +2123,25 @@ fec_probe(struct platform_device *pdev)
 		fep->bufdesc_ex = 0;
 	}
 
-	clk_prepare_enable(fep->clk_ahb);
-	clk_prepare_enable(fep->clk_ipg);
-	clk_prepare_enable(fep->clk_enet_out);
-	clk_prepare_enable(fep->clk_ptp);
+	ret = clk_prepare_enable(fep->clk_ahb);
+	if (ret)
+		goto failed_clk;
+
+	ret = clk_prepare_enable(fep->clk_ipg);
+	if (ret)
+		goto failed_clk_ipg;
+
+	if (fep->clk_enet_out) {
+		ret = clk_prepare_enable(fep->clk_enet_out);
+		if (ret)
+			goto failed_clk_enet_out;
+	}
+
+	if (fep->clk_ptp) {
+		ret = clk_prepare_enable(fep->clk_ptp);
+		if (ret)
+			goto failed_clk_ptp;
+	}
 
 	fep->reg_phy = devm_regulator_get(&pdev->dev, "phy");
 	if (!IS_ERR(fep->reg_phy)) {
@@ -2160,14 +2172,10 @@ fec_probe(struct platform_device *pdev)
 			ret = irq;
 			goto failed_irq;
 		}
-		ret = request_irq(irq, fec_enet_interrupt, IRQF_DISABLED, pdev->name, ndev);
-		if (ret) {
-			while (--i >= 0) {
-				irq = platform_get_irq(pdev, i);
-				free_irq(irq, ndev);
-			}
+		ret = devm_request_irq(&pdev->dev, irq, fec_enet_interrupt,
+				       IRQF_DISABLED, pdev->name, ndev);
+		if (ret)
 			goto failed_irq;
-		}
 	}
 
 	ret = fec_enet_mii_init(pdev);
@@ -2191,19 +2199,19 @@ failed_register:
 	fec_enet_mii_remove(fep);
 failed_mii_init:
 failed_irq:
-	for (i = 0; i < FEC_IRQ_NUM; i++) {
-		irq = platform_get_irq(pdev, i);
-		if (irq > 0)
-			free_irq(irq, ndev);
-	}
 failed_init:
 	if (fep->reg_phy)
 		regulator_disable(fep->reg_phy);
 failed_regulator:
-	clk_disable_unprepare(fep->clk_ahb);
+	if (fep->clk_ptp)
+		clk_disable_unprepare(fep->clk_ptp);
+failed_clk_ptp:
+	if (fep->clk_enet_out)
+		clk_disable_unprepare(fep->clk_enet_out);
+failed_clk_enet_out:
 	clk_disable_unprepare(fep->clk_ipg);
-	clk_disable_unprepare(fep->clk_enet_out);
-	clk_disable_unprepare(fep->clk_ptp);
+failed_clk_ipg:
+	clk_disable_unprepare(fep->clk_ahb);
 failed_clk:
 failed_ioremap:
 	free_netdev(ndev);
@@ -2216,25 +2224,21 @@ fec_drv_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct fec_enet_private *fep = netdev_priv(ndev);
-	int i;
 
 	cancel_delayed_work_sync(&(fep->delay_work.delay_work));
 	unregister_netdev(ndev);
 	fec_enet_mii_remove(fep);
 	del_timer_sync(&fep->time_keep);
-	for (i = 0; i < FEC_IRQ_NUM; i++) {
-		int irq = platform_get_irq(pdev, i);
-		if (irq > 0)
-			free_irq(irq, ndev);
-	}
 	if (fep->reg_phy)
 		regulator_disable(fep->reg_phy);
-	clk_disable_unprepare(fep->clk_ptp);
+	if (fep->clk_ptp)
+		clk_disable_unprepare(fep->clk_ptp);
 	if (fep->ptp_clock)
 		ptp_clock_unregister(fep->ptp_clock);
-	clk_disable_unprepare(fep->clk_enet_out);
-	clk_disable_unprepare(fep->clk_ahb);
+	if (fep->clk_enet_out)
+		clk_disable_unprepare(fep->clk_enet_out);
 	clk_disable_unprepare(fep->clk_ipg);
+	clk_disable_unprepare(fep->clk_ahb);
 	free_netdev(ndev);
 
 	return 0;
@@ -2251,9 +2255,12 @@ fec_suspend(struct device *dev)
 		fec_stop(ndev);
 		netif_device_detach(ndev);
 	}
-	clk_disable_unprepare(fep->clk_enet_out);
-	clk_disable_unprepare(fep->clk_ahb);
+	if (fep->clk_ptp)
+		clk_disable_unprepare(fep->clk_ptp);
+	if (fep->clk_enet_out)
+		clk_disable_unprepare(fep->clk_enet_out);
 	clk_disable_unprepare(fep->clk_ipg);
+	clk_disable_unprepare(fep->clk_ahb);
 
 	if (fep->reg_phy)
 		regulator_disable(fep->reg_phy);
@@ -2274,15 +2281,44 @@ fec_resume(struct device *dev)
 			return ret;
 	}
 
-	clk_prepare_enable(fep->clk_enet_out);
-	clk_prepare_enable(fep->clk_ahb);
-	clk_prepare_enable(fep->clk_ipg);
+	ret = clk_prepare_enable(fep->clk_ahb);
+	if (ret)
+		goto failed_clk_ahb;
+
+	ret = clk_prepare_enable(fep->clk_ipg);
+	if (ret)
+		goto failed_clk_ipg;
+
+	if (fep->clk_enet_out) {
+		ret = clk_prepare_enable(fep->clk_enet_out);
+		if (ret)
+			goto failed_clk_enet_out;
+	}
+
+	if (fep->clk_ptp) {
+		ret = clk_prepare_enable(fep->clk_ptp);
+		if (ret)
+			goto failed_clk_ptp;
+	}
+
 	if (netif_running(ndev)) {
 		fec_restart(ndev, fep->full_duplex);
 		netif_device_attach(ndev);
 	}
 
 	return 0;
+
+failed_clk_ptp:
+	if (fep->clk_enet_out)
+		clk_disable_unprepare(fep->clk_enet_out);
+failed_clk_enet_out:
+	clk_disable_unprepare(fep->clk_ipg);
+failed_clk_ipg:
+	clk_disable_unprepare(fep->clk_ahb);
+failed_clk_ahb:
+	if (fep->reg_phy)
+		regulator_disable(fep->reg_phy);
+	return ret;
 }
 #endif /* CONFIG_PM_SLEEP */
 
