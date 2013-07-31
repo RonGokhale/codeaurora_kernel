@@ -40,7 +40,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/of.h>
 #include <linux/gpio.h>
-#include <linux/pinctrl/consumer.h>
 #include <linux/platform_data/serial-omap.h>
 
 #define OMAP_MAX_HSUART_PORTS	6
@@ -51,6 +50,11 @@
 #define OMAP_UART_REV_46 0x0406
 #define OMAP_UART_REV_52 0x0502
 #define OMAP_UART_REV_63 0x0603
+
+#define OMAP_UART_TX_WAKEUP_EN		BIT(7)
+
+/* Feature flags */
+#define OMAP_UART_WER_HAS_TX_WAKEUP	BIT(0)
 
 #define UART_ERRATA_i202_MDR1_ACCESS	BIT(0)
 #define UART_ERRATA_i291_DMA_FORCEIDLE	BIT(1)
@@ -137,6 +141,7 @@ struct uart_omap_port {
 	unsigned char		dlh;
 	unsigned char		mdr1;
 	unsigned char		scr;
+	unsigned char		wer;
 
 	int			use_dma;
 	/*
@@ -151,6 +156,7 @@ struct uart_omap_port {
 	int			context_loss_cnt;
 	u32			errata;
 	u8			wakeups_enabled;
+	u32			features;
 
 	int			DTR_gpio;
 	int			DTR_inverted;
@@ -160,7 +166,6 @@ struct uart_omap_port {
 	u32			latency;
 	u32			calc_latency;
 	struct work_struct	qos_work;
-	struct pinctrl		*pins;
 	bool			is_suspending;
 };
 
@@ -310,7 +315,8 @@ static void transmit_chars(struct uart_omap_port *up, unsigned int lsr)
 		serial_omap_stop_tx(&up->port);
 		return;
 	}
-	count = up->port.fifosize / 4;
+	count = up->port.fifosize -
+		(serial_in(up, UART_OMAP_TXFIFO_LVL) & 0xFF);
 	do {
 		serial_out(up, UART_TX, xmit->buf[xmit->tail]);
 		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
@@ -479,7 +485,6 @@ static irqreturn_t serial_omap_irq(int irq, void *dev_id)
 	struct uart_omap_port *up = dev_id;
 	unsigned int iir, lsr;
 	unsigned int type;
-	irqreturn_t ret = IRQ_NONE;
 	int max_count = 256;
 
 	spin_lock(&up->port.lock);
@@ -490,7 +495,6 @@ static irqreturn_t serial_omap_irq(int irq, void *dev_id)
 		if (iir & UART_IIR_NO_INT)
 			break;
 
-		ret = IRQ_HANDLED;
 		lsr = serial_in(up, UART_LSR);
 
 		/* extract IRQ type from IIR register */
@@ -529,7 +533,7 @@ static irqreturn_t serial_omap_irq(int irq, void *dev_id)
 	pm_runtime_put_autosuspend(up->dev);
 	up->port_activity = jiffies;
 
-	return ret;
+	return IRQ_HANDLED;
 }
 
 static unsigned int serial_omap_tx_empty(struct uart_port *port)
@@ -683,7 +687,11 @@ static int serial_omap_startup(struct uart_port *port)
 	serial_out(up, UART_IER, up->ier);
 
 	/* Enable module level wake up */
-	serial_out(up, UART_OMAP_WER, OMAP_UART_WER_MOD_WKUP);
+	up->wer = OMAP_UART_WER_MOD_WKUP;
+	if (up->features & OMAP_UART_WER_HAS_TX_WAKEUP)
+		up->wer |= OMAP_UART_TX_WAKEUP_EN;
+
+	serial_out(up, UART_OMAP_WER, up->wer);
 
 	pm_runtime_mark_last_busy(up->dev);
 	pm_runtime_put_autosuspend(up->dev);
@@ -1334,7 +1342,7 @@ static void omap_serial_fill_features_erratas(struct uart_omap_port *up)
 	u32 mvr, scheme;
 	u16 revision, major, minor;
 
-	mvr = serial_in(up, UART_OMAP_MVER);
+	mvr = readl(up->port.membase + (UART_OMAP_MVER << up->port.regshift));
 
 	/* Check revision register scheme */
 	scheme = mvr >> OMAP_UART_MVR_SCHEME_SHIFT;
@@ -1373,9 +1381,11 @@ static void omap_serial_fill_features_erratas(struct uart_omap_port *up)
 	case OMAP_UART_REV_52:
 		up->errata |= (UART_ERRATA_i202_MDR1_ACCESS |
 				UART_ERRATA_i291_DMA_FORCEIDLE);
+		up->features |= OMAP_UART_WER_HAS_TX_WAKEUP;
 		break;
 	case OMAP_UART_REV_63:
 		up->errata |= UART_ERRATA_i202_MDR1_ACCESS;
+		up->features |= OMAP_UART_WER_HAS_TX_WAKEUP;
 		break;
 	default:
 		break;
@@ -1402,8 +1412,10 @@ static int serial_omap_probe(struct platform_device *pdev)
 	struct omap_uart_port_info *omap_up_info = pdev->dev.platform_data;
 	int ret;
 
-	if (pdev->dev.of_node)
+	if (pdev->dev.of_node) {
 		omap_up_info = of_get_uart_port_info(&pdev->dev);
+		pdev->dev.platform_data = omap_up_info;
+	}
 
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!mem) {
@@ -1468,13 +1480,6 @@ static int serial_omap_probe(struct platform_device *pdev)
 		goto err_port_line;
 	}
 
-	up->pins = devm_pinctrl_get_select_default(&pdev->dev);
-	if (IS_ERR(up->pins)) {
-		dev_warn(&pdev->dev, "did not get pins for uart%i error: %li\n",
-			 up->port.line, PTR_ERR(up->pins));
-		up->pins = NULL;
-	}
-
 	sprintf(up->name, "OMAP UART%d", up->port.line);
 	up->port.mapbase = mem->start;
 	up->port.membase = devm_ioremap(&pdev->dev, mem->start,
@@ -1501,7 +1506,6 @@ static int serial_omap_probe(struct platform_device *pdev)
 	INIT_WORK(&up->qos_work, serial_omap_uart_qos_work);
 
 	platform_set_drvdata(pdev, up);
-	pm_runtime_enable(&pdev->dev);
 	if (omap_up_info->autosuspend_timeout == 0)
 		omap_up_info->autosuspend_timeout = -1;
 	device_init_wakeup(up->dev, true);
@@ -1510,6 +1514,8 @@ static int serial_omap_probe(struct platform_device *pdev)
 			omap_up_info->autosuspend_timeout);
 
 	pm_runtime_irq_safe(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
+
 	pm_runtime_get_sync(&pdev->dev);
 
 	omap_serial_fill_features_erratas(up);
@@ -1609,6 +1615,7 @@ static void serial_omap_restore_context(struct uart_omap_port *up)
 		serial_omap_mdr1_errataset(up, up->mdr1);
 	else
 		serial_out(up, UART_OMAP_MDR1, up->mdr1);
+	serial_out(up, UART_OMAP_WER, up->wer);
 }
 
 static int serial_omap_runtime_suspend(struct device *dev)
