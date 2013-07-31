@@ -6,10 +6,6 @@
  *
  * (C) 2007 SGI, Christoph Lameter
  */
-#include <linux/types.h>
-#include <linux/gfp.h>
-#include <linux/bug.h>
-#include <linux/workqueue.h>
 #include <linux/kobject.h>
 
 enum stat_item {
