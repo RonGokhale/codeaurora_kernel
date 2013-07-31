@@ -242,6 +242,21 @@ config GPIO_TS5500
 	  blocks of the TS-5500: DIO1, DIO2 and the LCD port, and the TS-5600
 	  LCD port.
 
+config GPIO_TZ1090
+	bool "Toumaz Xenif TZ1090 GPIO support"
+	depends on SOC_TZ1090
+	select GENERIC_IRQ_CHIP
+	default y
+	help
+	  Say yes here to support Toumaz Xenif TZ1090 GPIOs.
+
+config GPIO_TZ1090_PDC
+	bool "Toumaz Xenif TZ1090 PDC GPIO support"
+	depends on SOC_TZ1090
+	default y
+	help
+	  Say yes here to support Toumaz Xenif TZ1090 PDC GPIOs.
+
 config GPIO_XILINX
 	bool "Xilinx GPIO support"
 	depends on PPC_OF || MICROBLAZE || ARCH_ZYNQ
@@ -675,6 +690,18 @@ config GPIO_UCB1400
 	help
 	  This enables support for the Philips UCB1400 GPIO pins.
 	  The UCB1400 is an AC97 audio codec.
+
+comment "LPC GPIO expanders:"
+
+config GPIO_KEMPLD
+	tristate "Kontron ETX / COMexpress GPIO"
+	depends on MFD_KEMPLD
+	help
+	  This enables support for the PLD GPIO interface on some Kontron ETX
+	  and COMexpress (ETXexpress) modules.
+
+	  This driver can also be built as a module. If so, the module will be
+	  called gpio-kempld.
 
 comment "MODULbus GPIO expanders:"
 
