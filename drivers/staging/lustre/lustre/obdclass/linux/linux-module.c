@@ -211,7 +211,7 @@ static struct file_operations obd_psdev_fops = {
 };
 
 /* modules setup */
-psdev_t obd_psdev = {
+struct miscdevice obd_psdev = {
 	.minor = OBD_DEV_MINOR,
 	.name  = OBD_DEV_NAME,
 	.fops  = &obd_psdev_fops,
@@ -385,14 +385,21 @@ struct file_operations obd_device_list_fops = {
 
 int class_procfs_init(void)
 {
-	int rc;
+	int rc = 0;
 	ENTRY;
 
 	obd_sysctl_init();
 	proc_lustre_root = lprocfs_register("fs/lustre", NULL,
 					    lprocfs_base, NULL);
+	if (IS_ERR(proc_lustre_root)) {
+		rc = PTR_ERR(proc_lustre_root);
+		proc_lustre_root = NULL;
+		goto out;
+	}
+
 	rc = lprocfs_seq_create(proc_lustre_root, "devices", 0444,
 				&obd_device_list_fops, NULL);
+out:
 	if (rc)
 		CERROR("error adding /proc/fs/lustre/devices file\n");
 	RETURN(0);

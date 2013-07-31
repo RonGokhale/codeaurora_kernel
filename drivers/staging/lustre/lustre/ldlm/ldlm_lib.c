@@ -339,8 +339,8 @@ int client_obd_setup(struct obd_device *obddev, struct lustre_cfg *lcfg)
 	cli->cl_avail_grant = 0;
 	/* FIXME: Should limit this for the sum of all cl_dirty_max. */
 	cli->cl_dirty_max = OSC_MAX_DIRTY_DEFAULT * 1024 * 1024;
-	if (cli->cl_dirty_max >> PAGE_CACHE_SHIFT > num_physpages / 8)
-		cli->cl_dirty_max = num_physpages << (PAGE_CACHE_SHIFT - 3);
+	if (cli->cl_dirty_max >> PAGE_CACHE_SHIFT > totalram_pages / 8)
+		cli->cl_dirty_max = totalram_pages << (PAGE_CACHE_SHIFT - 3);
 	INIT_LIST_HEAD(&cli->cl_cache_waiters);
 	INIT_LIST_HEAD(&cli->cl_loi_ready_list);
 	INIT_LIST_HEAD(&cli->cl_loi_hp_ready_list);
@@ -388,11 +388,11 @@ int client_obd_setup(struct obd_device *obddev, struct lustre_cfg *lcfg)
 
 	if (!strcmp(name, LUSTRE_MDC_NAME)) {
 		cli->cl_max_rpcs_in_flight = MDC_MAX_RIF_DEFAULT;
-	} else if (num_physpages >> (20 - PAGE_CACHE_SHIFT) <= 128 /* MB */) {
+	} else if (totalram_pages >> (20 - PAGE_CACHE_SHIFT) <= 128 /* MB */) {
 		cli->cl_max_rpcs_in_flight = 2;
-	} else if (num_physpages >> (20 - PAGE_CACHE_SHIFT) <= 256 /* MB */) {
+	} else if (totalram_pages >> (20 - PAGE_CACHE_SHIFT) <= 256 /* MB */) {
 		cli->cl_max_rpcs_in_flight = 3;
-	} else if (num_physpages >> (20 - PAGE_CACHE_SHIFT) <= 512 /* MB */) {
+	} else if (totalram_pages >> (20 - PAGE_CACHE_SHIFT) <= 512 /* MB */) {
 		cli->cl_max_rpcs_in_flight = 4;
 	} else {
 		if (osc_on_mdt(obddev->obd_name))
@@ -762,14 +762,14 @@ void target_send_reply(struct ptlrpc_request *req, int rc, int fail_id)
 EXPORT_SYMBOL(target_send_reply);
 
 ldlm_mode_t lck_compat_array[] = {
-	[LCK_EX] LCK_COMPAT_EX,
-	[LCK_PW] LCK_COMPAT_PW,
-	[LCK_PR] LCK_COMPAT_PR,
-	[LCK_CW] LCK_COMPAT_CW,
-	[LCK_CR] LCK_COMPAT_CR,
-	[LCK_NL] LCK_COMPAT_NL,
-	[LCK_GROUP] LCK_COMPAT_GROUP,
-	[LCK_COS] LCK_COMPAT_COS,
+	[LCK_EX]	= LCK_COMPAT_EX,
+	[LCK_PW]	= LCK_COMPAT_PW,
+	[LCK_PR]	= LCK_COMPAT_PR,
+	[LCK_CW]	= LCK_COMPAT_CW,
+	[LCK_CR]	= LCK_COMPAT_CR,
+	[LCK_NL]	= LCK_COMPAT_NL,
+	[LCK_GROUP]	= LCK_COMPAT_GROUP,
+	[LCK_COS]	= LCK_COMPAT_COS,
 };
 
 /**

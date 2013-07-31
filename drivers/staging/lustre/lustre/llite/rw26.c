@@ -51,9 +51,6 @@
 #include <linux/buffer_head.h>
 #include <linux/mpage.h>
 #include <linux/writeback.h>
-#include <linux/stat.h>
-#include <asm/uaccess.h>
-#include <linux/mm.h>
 #include <linux/pagemap.h>
 
 #define DEBUG_SUBSYSTEM S_LLITE
@@ -72,7 +69,8 @@
  * aligned truncate). Lustre leaves partially truncated page in the cache,
  * relying on struct inode::i_size to limit further accesses.
  */
-static void ll_invalidatepage(struct page *vmpage, unsigned long offset)
+static void ll_invalidatepage(struct page *vmpage, unsigned int offset,
+			      unsigned int length)
 {
 	struct inode     *inode;
 	struct lu_env    *env;
@@ -89,7 +87,7 @@ static void ll_invalidatepage(struct page *vmpage, unsigned long offset)
 	 * below because they are run with page locked and all our io is
 	 * happening with locked page too
 	 */
-	if (offset == 0) {
+	if (offset == 0 && length == PAGE_CACHE_SIZE) {
 		env = cl_env_get(&refcheck);
 		if (!IS_ERR(env)) {
 			inode = vmpage->mapping->host;
@@ -286,11 +284,11 @@ ssize_t ll_direct_rw_pages(const struct lu_env *env, struct cl_io *io,
 			src_page = (rw == WRITE) ? pages[i] : vmpage;
 			dst_page = (rw == WRITE) ? vmpage : pages[i];
 
-			src = ll_kmap_atomic(src_page, KM_USER0);
-			dst = ll_kmap_atomic(dst_page, KM_USER1);
+			src = kmap_atomic(src_page);
+			dst = kmap_atomic(dst_page);
 			memcpy(dst, src, min(page_size, size));
-			ll_kunmap_atomic(dst, KM_USER1);
-			ll_kunmap_atomic(src, KM_USER0);
+			kunmap_atomic(dst);
+			kunmap_atomic(src);
 
 			/* make sure page will be added to the transfer by
 			 * cl_io_submit()->...->vvp_page_prep_write(). */

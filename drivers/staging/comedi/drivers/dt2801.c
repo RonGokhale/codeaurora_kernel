@@ -29,9 +29,9 @@ Configuration options:
   [5] - D/A 1 range (same choices)
 */
 
+#include <linux/module.h>
 #include "../comedidev.h"
 #include <linux/delay.h>
-#include <linux/ioport.h>
 
 #define DT2801_TIMEOUT 1000
 
@@ -627,10 +627,9 @@ havetype:
 	if (ret)
 		goto out;
 
-	devpriv = kzalloc(sizeof(*devpriv), GFP_KERNEL);
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
 	if (!devpriv)
 		return -ENOMEM;
-	dev->private = devpriv;
 
 	dev->board_name = board->name;
 

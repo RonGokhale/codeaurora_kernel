@@ -48,9 +48,6 @@
 #include <asm/uaccess.h>
 
 #include <linux/fs.h>
-#include <linux/stat.h>
-#include <asm/uaccess.h>
-#include <linux/mm.h>
 #include <linux/pagemap.h>
 /* current_is_kswapd() */
 #include <linux/swap.h>
@@ -110,7 +107,7 @@ static struct ll_cl_context *ll_cl_init(struct file *file,
 
 	env = cl_env_get(&refcheck);
 	if (IS_ERR(env))
-		return ERR_PTR(PTR_ERR(env));
+		return ERR_CAST(env);
 
 	lcc = &vvp_env_info(env)->vti_io_ctx;
 	memset(lcc, 0, sizeof(*lcc));
@@ -132,7 +129,7 @@ static struct ll_cl_context *ll_cl_init(struct file *file,
 			 * add dirty pages into cache during truncate */
 			CERROR("Proc %s is dirting page w/o inode lock, this"
 			       "will break truncate.\n", current->comm);
-			libcfs_debug_dumpstack(NULL);
+			dump_stack();
 			LBUG();
 			return ERR_PTR(-EIO);
 		}
