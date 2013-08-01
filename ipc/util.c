@@ -746,26 +746,10 @@ int ipc_update_perm(struct ipc64_perm *in, struct kern_ipc_perm *out)
  * It must be called without any lock held and
  *  - retrieves the ipc with the given id in the given table.
  *  - performs some audit and permission check, depending on the given cmd
- *  - returns the ipc with the ipc lock held in case of success
- *    or an err-code without any lock held otherwise.
+ *  - returns a pointer to the ipc object or otherwise, the corresponding error.
  *
  * Call holding the both the rw_mutex and the rcu read lock.
  */
-struct kern_ipc_perm *ipcctl_pre_down(struct ipc_namespace *ns,
-				      struct ipc_ids *ids, int id, int cmd,
-				      struct ipc64_perm *perm, int extra_perm)
-{
-	struct kern_ipc_perm *ipcp;
-
-	ipcp = ipcctl_pre_down_nolock(ns, ids, id, cmd, perm, extra_perm);
-	if (IS_ERR(ipcp))
-		goto out;
-
-	spin_lock(&ipcp->lock);
-out:
-	return ipcp;
-}
-
 struct kern_ipc_perm *ipcctl_pre_down_nolock(struct ipc_namespace *ns,
 					     struct ipc_ids *ids, int id, int cmd,
 					     struct ipc64_perm *perm, int extra_perm)
@@ -782,8 +766,7 @@ struct kern_ipc_perm *ipcctl_pre_down_nolock(struct ipc_namespace *ns,
 
 	audit_ipc_obj(ipcp);
 	if (cmd == IPC_SET)
-		audit_ipc_set_perm(extra_perm, perm->uid,
-				   perm->gid, perm->mode);
+		audit_ipc_set_perm(extra_perm, perm->uid, perm->gid, perm->mode);
 
 	euid = current_euid();
 	if (uid_eq(euid, ipcp->cuid) || uid_eq(euid, ipcp->uid)  ||
