@@ -28,21 +28,10 @@ struct tegra_utmip_config {
 	u8 xcvr_lsrslew;
 };
 
-struct tegra_ulpi_config {
-	int reset_gpio;
-	const char *clk;
-};
-
 enum tegra_usb_phy_port_speed {
 	TEGRA_USB_PHY_PORT_SPEED_FULL = 0,
 	TEGRA_USB_PHY_PORT_SPEED_LOW,
 	TEGRA_USB_PHY_PORT_SPEED_HIGH,
-};
-
-enum tegra_usb_phy_mode {
-	TEGRA_USB_PHY_MODE_DEVICE,
-	TEGRA_USB_PHY_MODE_HOST,
-	TEGRA_USB_PHY_MODE_OTG,
 };
 
 struct tegra_xtal_freq;
@@ -55,17 +44,15 @@ struct tegra_usb_phy {
 	struct clk *clk;
 	struct clk *pll_u;
 	struct clk *pad_clk;
-	enum tegra_usb_phy_mode mode;
+	struct regulator *vbus;
+	enum usb_dr_mode mode;
 	void *config;
 	struct usb_phy *ulpi;
 	struct usb_phy u_phy;
-	struct device *dev;
 	bool is_legacy_phy;
 	bool is_ulpi_phy;
 	int reset_gpio;
 };
-
-struct usb_phy *tegra_usb_get_phy(struct device_node *dn);
 
 void tegra_usb_phy_preresume(struct usb_phy *phy);
 

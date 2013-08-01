@@ -27,7 +27,6 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/platform_device.h>
-#include <linux/platform_data/tegra_usb.h>
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <linux/usb/ehci_def.h>
@@ -58,7 +57,6 @@ static int (*orig_hub_control)(struct usb_hcd *hcd,
 struct tegra_ehci_hcd {
 	struct tegra_usb_phy *phy;
 	struct clk *clk;
-	struct usb_phy *transceiver;
 	int port_resuming;
 	bool needs_double_reset;
 	enum tegra_usb_phy_port_speed port_speed;
@@ -322,50 +320,15 @@ static void tegra_ehci_unmap_urb_for_dma(struct usb_hcd *hcd, struct urb *urb)
 	free_dma_aligned_buffer(urb);
 }
 
-static int setup_vbus_gpio(struct platform_device *pdev,
-			   struct tegra_ehci_platform_data *pdata)
-{
-	int err = 0;
-	int gpio;
-
-	gpio = pdata->vbus_gpio;
-	if (!gpio_is_valid(gpio))
-		gpio = of_get_named_gpio(pdev->dev.of_node,
-					 "nvidia,vbus-gpio", 0);
-	if (!gpio_is_valid(gpio))
-		return 0;
-
-	err = gpio_request(gpio, "vbus_gpio");
-	if (err) {
-		dev_err(&pdev->dev, "can't request vbus gpio %d", gpio);
-		return err;
-	}
-	err = gpio_direction_output(gpio, 1);
-	if (err) {
-		dev_err(&pdev->dev, "can't enable vbus\n");
-		return err;
-	}
-
-	return err;
-}
-
 static int tegra_ehci_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	struct usb_hcd *hcd;
 	struct ehci_hcd *ehci;
 	struct tegra_ehci_hcd *tegra;
-	struct tegra_ehci_platform_data *pdata;
 	int err = 0;
 	int irq;
-	struct device_node *np_phy;
 	struct usb_phy *u_phy;
-
-	pdata = pdev->dev.platform_data;
-	if (!pdata) {
-		dev_err(&pdev->dev, "Platform data missing\n");
-		return -EINVAL;
-	}
 
 	/* Right now device-tree probed devices don't get dma_mask set.
 	 * Since shared usb code relies on it, set it here for now.
@@ -376,14 +339,11 @@ static int tegra_ehci_probe(struct platform_device *pdev)
 	if (!pdev->dev.coherent_dma_mask)
 		pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 
-	setup_vbus_gpio(pdev, pdata);
-
 	hcd = usb_create_hcd(&tegra_ehci_hc_driver, &pdev->dev,
 					dev_name(&pdev->dev));
 	if (!hcd) {
 		dev_err(&pdev->dev, "Unable to create HCD\n");
-		err = -ENOMEM;
-		goto cleanup_vbus_gpio;
+		return -ENOMEM;
 	}
 	platform_set_drvdata(pdev, hcd);
 	ehci = hcd_to_ehci(hcd);
@@ -406,13 +366,7 @@ static int tegra_ehci_probe(struct platform_device *pdev)
 	udelay(1);
 	tegra_periph_reset_deassert(tegra->clk);
 
-	np_phy = of_parse_phandle(pdev->dev.of_node, "nvidia,phy", 0);
-	if (!np_phy) {
-		err = -ENODEV;
-		goto cleanup_clk_en;
-	}
-
-	u_phy = tegra_usb_get_phy(np_phy);
+	u_phy = devm_usb_get_phy_by_phandle(&pdev->dev, "nvidia,phy", 0);
 	if (IS_ERR(u_phy)) {
 		err = PTR_ERR(u_phy);
 		goto cleanup_clk_en;
@@ -466,26 +420,18 @@ static int tegra_ehci_probe(struct platform_device *pdev)
 		goto cleanup_phy;
 	}
 
-	if (pdata->operating_mode == TEGRA_USB_OTG) {
-		tegra->transceiver =
-			devm_usb_get_phy(&pdev->dev, USB_PHY_TYPE_USB2);
-		if (!IS_ERR(tegra->transceiver))
-			otg_set_host(tegra->transceiver->otg, &hcd->self);
-	} else {
-		tegra->transceiver = ERR_PTR(-ENODEV);
-	}
+	otg_set_host(u_phy->otg, &hcd->self);
 
 	err = usb_add_hcd(hcd, irq, IRQF_SHARED);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to add USB HCD\n");
-		goto cleanup_transceiver;
+		goto cleanup_otg_set_host;
 	}
 
 	return err;
 
-cleanup_transceiver:
-	if (!IS_ERR(tegra->transceiver))
-		otg_set_host(tegra->transceiver->otg, NULL);
+cleanup_otg_set_host:
+	otg_set_host(u_phy->otg, NULL);
 cleanup_phy:
 	usb_phy_shutdown(hcd->phy);
 cleanup_clk_en:
@@ -494,8 +440,6 @@ cleanup_clk_get:
 	clk_put(tegra->clk);
 cleanup_hcd_create:
 	usb_put_hcd(hcd);
-cleanup_vbus_gpio:
-	/* FIXME: Undo setup_vbus_gpio() here */
 	return err;
 }
 
@@ -505,8 +449,7 @@ static int tegra_ehci_remove(struct platform_device *pdev)
 	struct tegra_ehci_hcd *tegra =
 		(struct tegra_ehci_hcd *)hcd_to_ehci(hcd)->priv;
 
-	if (!IS_ERR(tegra->transceiver))
-		otg_set_host(tegra->transceiver->otg, NULL);
+	otg_set_host(hcd->phy->otg, NULL);
 
 	usb_phy_shutdown(hcd->phy);
 	usb_remove_hcd(hcd);
