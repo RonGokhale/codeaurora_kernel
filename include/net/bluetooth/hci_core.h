@@ -358,6 +358,7 @@ struct hci_conn {
 	struct timer_list smp_timer;
 	__u8		conn_valid;
 	__u8		hidp_session_valid;
+	__u8		encrypt_attempts;
 
 
 	void (*connect_cfm_cb)	(struct hci_conn *conn, u8 status);

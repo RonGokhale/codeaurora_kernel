@@ -1886,6 +1886,7 @@ static inline void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 				struct hci_cp_set_conn_encrypt cp;
 				cp.handle  = ev->handle;
 				cp.encrypt = 0x01;
+				conn->encrypt_attempts = 1;
 				hci_send_cmd(hdev, HCI_OP_SET_CONN_ENCRYPT,
 							sizeof(cp), &cp);
 			} else {
@@ -1924,6 +1925,7 @@ static inline void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 					struct hci_cp_set_conn_encrypt cp;
 					cp.handle  = ev->handle;
 					cp.encrypt = 0x01;
+					conn->encrypt_attempts = 1;
 					hci_send_cmd(hdev,
 						HCI_OP_SET_CONN_ENCRYPT,
 						sizeof(cp), &cp);
@@ -1975,6 +1977,7 @@ static inline void hci_encrypt_change_evt(struct hci_dev *hdev, struct sk_buff *
 	if (conn) {
 		if (!ev->status) {
 			if (ev->encrypt) {
+				conn->encrypt_attempts = 0;
 				/* Encryption implies authentication */
 				conn->link_mode |= HCI_LM_AUTH;
 				conn->link_mode |= HCI_LM_ENCRYPT;
@@ -1988,7 +1991,22 @@ static inline void hci_encrypt_change_evt(struct hci_dev *hdev, struct sk_buff *
 		if (conn->state == BT_CONFIG) {
 			if (!ev->status)
 				conn->state = BT_CONNECTED;
-
+			/* handle encryption failure with
+			 * transaction collision */
+			else if (ev->status == 0x2a && hdev->ssp_mode > 0 &&
+						conn->ssp_mode > 0 &&
+						conn->encrypt_attempts < 3) {
+				struct hci_cp_set_conn_encrypt cp;
+				cp.handle  = ev->handle;
+				cp.encrypt = 0x01;
+				conn->encrypt_attempts++;
+				set_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend);
+				hci_send_cmd(hdev, HCI_OP_SET_CONN_ENCRYPT,
+							sizeof(cp), &cp);
+				hci_dev_unlock(hdev);
+				return;
+			}
+			conn->encrypt_attempts = 0;
 			hci_proto_connect_cfm(conn, ev->status);
 			hci_conn_put(conn);
 		} else {
