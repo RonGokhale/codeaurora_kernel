@@ -11,3 +11,5 @@ Format is a little different from before in an attempt to make it easier to read
 next/cleanup
 	localtimer/removal
 		git://git.kernel.org/pub/scm/linux/kernel/git/davidb/linux-msm.git tags/remove-local-timers
+	patch
+		ARM: OMAP2+: Fix fallout from localtimer divorce and SMP=n
