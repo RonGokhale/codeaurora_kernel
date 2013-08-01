@@ -29,7 +29,6 @@
 #include <linux/input.h>
 #include <linux/io.h>
 #include <linux/serial_sci.h>
-#include <linux/sh_intc.h>
 #include <linux/sh_timer.h>
 #include <linux/dma-mapping.h>
 #include <linux/usb/otg.h>
@@ -37,7 +36,6 @@
 #include <linux/usb/ehci_pdriver.h>
 #include <linux/usb/ohci_pdriver.h>
 #include <linux/pm_runtime.h>
-#include <mach/hardware.h>
 #include <mach/irqs.h>
 #include <mach/r8a7779.h>
 #include <mach/common.h>
@@ -388,15 +386,6 @@ static struct platform_device sata_device = {
 	},
 };
 
-/* USB PHY */
-static struct resource usb_phy_resources[] __initdata = {
-	[0] = {
-		.start		= 0xffe70800,
-		.end		= 0xffe70900 - 1,
-		.flags		= IORESOURCE_MEM,
-	},
-};
-
 /* USB */
 static struct usb_phy *phy;
 
@@ -599,14 +588,6 @@ void __init r8a7779_add_ether_device(struct sh_eth_plat_data *pdata)
 	platform_device_register_resndata(&platform_bus, "r8a777x-ether", -1,
 					  ether_resources,
 					  ARRAY_SIZE(ether_resources),
-					  pdata, sizeof(*pdata));
-}
-
-void __init r8a7779_add_usb_phy_device(struct rcar_phy_platform_data *pdata)
-{
-	platform_device_register_resndata(&platform_bus, "rcar_usb_phy", -1,
-					  usb_phy_resources,
-					  ARRAY_SIZE(usb_phy_resources),
 					  pdata, sizeof(*pdata));
 }
 
