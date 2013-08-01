@@ -235,9 +235,11 @@ static ssize_t w1_master_attribute_store_search(struct device * dev,
 {
 	long tmp;
 	struct w1_master *md = dev_to_w1_master(dev);
+	int ret;
 
-	if (strict_strtol(buf, 0, &tmp) == -EINVAL)
-		return -EINVAL;
+	ret = kstrtol(buf, 0, &tmp);
+	if (ret)
+		return ret;
 
 	mutex_lock(&md->mutex);
 	md->search_count = tmp;
@@ -267,9 +269,11 @@ static ssize_t w1_master_attribute_store_pullup(struct device *dev,
 {
 	long tmp;
 	struct w1_master *md = dev_to_w1_master(dev);
+	int ret;
 
-	if (strict_strtol(buf, 0, &tmp) == -EINVAL)
-		return -EINVAL;
+	ret = kstrtol(buf, 0, &tmp);
+	if (ret)
+		return ret;
 
 	mutex_lock(&md->mutex);
 	md->enable_pullup = tmp;

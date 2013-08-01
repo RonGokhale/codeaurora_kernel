@@ -4438,7 +4438,7 @@ static ssize_t order_store(struct kmem_cache *s,
 	unsigned long order;
 	int err;
 
-	err = strict_strtoul(buf, 10, &order);
+	err = kstrtoul(buf, 10, &order);
 	if (err)
 		return err;
 
@@ -4466,7 +4466,7 @@ static ssize_t min_partial_store(struct kmem_cache *s, const char *buf,
 	unsigned long min;
 	int err;
 
-	err = strict_strtoul(buf, 10, &min);
+	err = kstrtoul(buf, 10, &min);
 	if (err)
 		return err;
 
@@ -4486,7 +4486,7 @@ static ssize_t cpu_partial_store(struct kmem_cache *s, const char *buf,
 	unsigned long objects;
 	int err;
 
-	err = strict_strtoul(buf, 10, &objects);
+	err = kstrtoul(buf, 10, &objects);
 	if (err)
 		return err;
 	if (objects && !kmem_cache_has_cpu_partial(s))
@@ -4802,7 +4802,7 @@ static ssize_t remote_node_defrag_ratio_store(struct kmem_cache *s,
 	unsigned long ratio;
 	int err;
 
-	err = strict_strtoul(buf, 10, &ratio);
+	err = kstrtoul(buf, 10, &ratio);
 	if (err)
 		return err;
 

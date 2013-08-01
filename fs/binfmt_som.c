@@ -2,7 +2,7 @@
  * linux/fs/binfmt_som.c
  *
  * These are the functions used to load SOM format executables as used
- * by HP-UX.  
+ * by HP-UX.
  *
  * Copyright 1999 Matthew Wilcox <willy@bofh.ai>
  * based on binfmt_elf which is
@@ -53,6 +53,7 @@ static int som_core_dump(struct coredump_params *cprm);
 #define SOM_PAGEALIGN(_v) (((_v) + SOM_PAGESIZE - 1) & ~(SOM_PAGESIZE - 1))
 
 static struct linux_binfmt som_format = {
+	.name		= "SOM",
 	.module		= THIS_MODULE,
 	.load_binary	= load_som_binary,
 	.load_shlib	= load_som_library,

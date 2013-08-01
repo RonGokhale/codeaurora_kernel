@@ -813,7 +813,7 @@ F:	arch/arm/mach-prima2/
 F:	drivers/dma/sirf-dma.c
 F:	drivers/i2c/busses/i2c-sirf.c
 F:	drivers/mmc/host/sdhci-sirf.c
-F:	drivers/pinctrl/pinctrl-sirf.c
+F:	drivers/pinctrl/sirf/
 F:	drivers/spi/spi-sirf.c
 
 ARM/EBSA110 MACHINE SUPPORT
@@ -1023,7 +1023,6 @@ M:	STEricsson <STEricsson_nomadik_linux@list.st.com>
 L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 S:	Maintained
 F:	arch/arm/mach-nomadik/
-F:	arch/arm/plat-nomadik/
 F:	drivers/i2c/busses/i2c-nomadik.c
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik.git
 
@@ -1045,7 +1044,7 @@ F:	drivers/mmc/host/msm_sdcc.h
 F:	drivers/tty/serial/msm_serial.h
 F:	drivers/tty/serial/msm_serial.c
 F:	drivers/*/pm8???-*
-F:	drivers/ssbi/
+F:	drivers/mfd/ssbi/
 F:	include/linux/mfd/pm8xxx/
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/davidb/linux-msm.git
 S:	Maintained
@@ -1131,7 +1130,6 @@ L:	linux-samsung-soc@vger.kernel.org (moderated for non-subscribers)
 W:	http://www.fluff.org/ben/linux/
 S:	Maintained
 F:	arch/arm/plat-samsung/
-F:	arch/arm/plat-s3c24xx/
 F:	arch/arm/mach-s3c24*/
 F:	arch/arm/mach-s3c64xx/
 F:	drivers/*/*s3c2410*
@@ -1154,8 +1152,6 @@ L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 S:	Maintained
 F:	arch/arm/mach-s5pv210/mach-aquila.c
 F:	arch/arm/mach-s5pv210/mach-goni.c
-F:	arch/arm/mach-exynos/mach-universal_c210.c
-F:	arch/arm/mach-exynos/mach-nuri.c
 
 ARM/SAMSUNG S5P SERIES 2D GRAPHICS ACCELERATION (G2D) SUPPORT
 M:	Kyungmin Park <kyungmin.park@samsung.com>
@@ -1301,7 +1297,7 @@ F:	drivers/mmc/host/wmt-sdmmc.c
 F:	drivers/pwm/pwm-vt8500.c
 F:	drivers/rtc/rtc-vt8500.c
 F:	drivers/tty/serial/vt8500_serial.c
-F:	drivers/usb/host/ehci-vt8500.c
+F:	drivers/usb/host/ehci-platform.c
 F:	drivers/usb/host/uhci-platform.c
 F:	drivers/video/vt8500lcdfb.*
 F:	drivers/video/wm8505fb*
@@ -1783,6 +1779,17 @@ M:	Eilon Greenstein <eilong@broadcom.com>
 L:	netdev@vger.kernel.org
 S:	Supported
 F:	drivers/net/ethernet/broadcom/bnx2x/
+
+BROADCOM BCM281XX/BCM11XXX ARM ARCHITECTURE
+M:	Christian Daudt <csd@broadcom.com>
+T:	git git://git.github.com/broadcom/bcm11351
+S:	Maintained
+F:	arch/arm/mach-bcm/
+F:	arch/arm/boot/dts/bcm113*
+F:	arch/arm/boot/dts/bcm281*
+F:	arch/arm/configs/bcm_defconfig
+F:	drivers/mmc/host/sdhci_bcm_kona.c
+F:	drivers/clocksource/bcm_kona_timer.c
 
 BROADCOM BCM2835 ARM ARCHICTURE
 M:	Stephen Warren <swarren@wwwdotorg.org>
@@ -2877,7 +2884,7 @@ F:	drivers/media/usb/dvb-usb-v2/dvb_usb*
 F:	drivers/media/usb/dvb-usb-v2/usb_urb.c
 
 DYNAMIC DEBUG
-M:	Jason Baron <jbaron@redhat.com>
+M:	Jason Baron <jbaron@akamai.com>
 S:	Maintained
 F:	lib/dynamic_debug.c
 F:	include/linux/dynamic_debug.h
@@ -2991,7 +2998,7 @@ M:	Mauro Carvalho Chehab <m.chehab@samsung.com>
 L:	linux-edac@vger.kernel.org
 W:	bluesmoke.sourceforge.net
 S:	Maintained
-F:	drivers/edac/ghes-edac.c
+F:	drivers/edac/ghes_edac.c
 
 EDAC-I82443BXGX
 M:	Tim Small <tim@buttersideup.com>
@@ -3640,7 +3647,8 @@ GRE DEMULTIPLEXER DRIVER
 M:	Dmitry Kozlov <xeb@mail.ru>
 L:	netdev@vger.kernel.org
 S:	Maintained
-F:	net/ipv4/gre.c
+F:	net/ipv4/gre_demux.c
+F:	net/ipv4/gre_offload.c
 F:	include/net/gre.h
 
 GRETH 10/100/1G Ethernet MAC device driver
@@ -4573,7 +4581,7 @@ W:	http://palosaari.fi/linux/
 Q:	http://patchwork.linuxtv.org/project/linux-media/list/
 T:	git git://linuxtv.org/anttip/media_tree.git
 S:	Maintained
-F:	drivers/media/tuners/it913x*
+F:	drivers/media/tuners/tuner_it913x*
 
 IVTV VIDEO4LINUX DRIVER
 M:	Andy Walls <awalls@md.metrocast.net>
@@ -5907,15 +5915,12 @@ S:	Maintained
 F:	arch/arm/*omap*/*pm*
 F:	drivers/cpufreq/omap-cpufreq.c
 
-OMAP POWERDOMAIN/CLOCKDOMAIN SOC ADAPTATION LAYER SUPPORT
+OMAP POWERDOMAIN SOC ADAPTATION LAYER SUPPORT
 M:	Rajendra Nayak <rnayak@ti.com>
 M:	Paul Walmsley <paul@pwsan.com>
 L:	linux-omap@vger.kernel.org
 S:	Maintained
-F:	arch/arm/mach-omap2/powerdomain2xxx_3xxx.c
-F:	arch/arm/mach-omap2/powerdomain44xx.c
-F:	arch/arm/mach-omap2/clockdomain2xxx_3xxx.c
-F:	arch/arm/mach-omap2/clockdomain44xx.c
+F:	arch/arm/mach-omap2/prm*
 
 OMAP AUDIO SUPPORT
 M:	Peter Ujfalusi <peter.ujfalusi@ti.com>
@@ -7425,7 +7430,7 @@ L:	linux-media@vger.kernel.org
 T:	git git://linuxtv.org/media_tree.git
 W:	http://linuxtv.org
 S:	Odd Fixes
-F:	drivers/media/radio/radio-si4713.h
+F:	drivers/media/radio/radio-si4713.c
 
 SIANO DVB DRIVER
 M:	Mauro Carvalho Chehab <m.chehab@samsung.com>
@@ -7434,7 +7439,7 @@ W:	http://linuxtv.org
 T:	git git://linuxtv.org/media_tree.git
 S:	Odd fixes
 F:	drivers/media/common/siano/
-F:	drivers/media/dvb/siano/
+F:	drivers/media/usb/siano/
 F:	drivers/media/usb/siano/
 F:	drivers/media/mmc/siano
 
@@ -7474,9 +7479,9 @@ P:	Vincent Sanders <vince@simtec.co.uk>
 M:	Simtec Linux Team <linux@simtec.co.uk>
 W:	http://www.simtec.co.uk/products/EB2410ITX/
 S:	Supported
-F:	arch/arm/mach-s3c2410/mach-bast.c
-F:	arch/arm/mach-s3c2410/bast-ide.c
-F:	arch/arm/mach-s3c2410/bast-irq.c
+F:	arch/arm/mach-s3c24xx/mach-bast.c
+F:	arch/arm/mach-s3c24xx/bast-ide.c
+F:	arch/arm/mach-s3c24xx/bast-irq.c
 
 TI DAVINCI MACHINE SUPPORT
 M:	Sekhar Nori <nsekhar@ti.com>
@@ -7665,6 +7670,11 @@ W:	http://tifmxx.berlios.de/
 S:	Maintained
 F:	drivers/memstick/host/tifm_ms.c
 
+SONY MEMORYSTICK STANDARD SUPPORT
+M:	Maxim Levitsky <maximlevitsky@gmail.com>
+S:	Maintained
+F:	drivers/memstick/core/ms_block.*
+
 SOUND
 M:	Jaroslav Kysela <perex@perex.cz>
 M:	Takashi Iwai <tiwai@suse.de>
@@ -7729,35 +7739,7 @@ L:	spear-devel@list.st.com
 L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 W:	http://www.st.com/spear
 S:	Maintained
-F:	arch/arm/plat-spear/
-
-SPEAR13XX MACHINE SUPPORT
-M:	Viresh Kumar <viresh.linux@gmail.com>
-M:	Shiraz Hashim <shiraz.hashim@st.com>
-L:	spear-devel@list.st.com
-L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
-W:	http://www.st.com/spear
-S:	Maintained
-F:	arch/arm/mach-spear13xx/
-
-SPEAR3XX MACHINE SUPPORT
-M:	Viresh Kumar <viresh.linux@gmail.com>
-M:	Shiraz Hashim <shiraz.hashim@st.com>
-L:	spear-devel@list.st.com
-L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
-W:	http://www.st.com/spear
-S:	Maintained
-F:	arch/arm/mach-spear3xx/
-
-SPEAR6XX MACHINE SUPPORT
-M:	Rajeev Kumar <rajeev-dlh.kumar@st.com>
-M:	Shiraz Hashim <shiraz.hashim@st.com>
-M:	Viresh Kumar <viresh.linux@gmail.com>
-L:	spear-devel@list.st.com
-L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
-W:	http://www.st.com/spear
-S:	Maintained
-F:	arch/arm/mach-spear6xx/
+F:	arch/arm/mach-spear/
 
 SPEAR CLOCK FRAMEWORK SUPPORT
 M:	Viresh Kumar <viresh.linux@gmail.com>
@@ -8020,7 +8002,7 @@ M:	Vineet Gupta <vgupta@synopsys.com>
 S:	Supported
 F:	arch/arc/
 F:	Documentation/devicetree/bindings/arc/
-F:	drivers/tty/serial/arc-uart.c
+F:	drivers/tty/serial/arc_uart.c
 
 SYSV FILESYSTEM
 M:	Christoph Hellwig <hch@infradead.org>
@@ -8700,7 +8682,6 @@ L:	linux-usb@vger.kernel.org
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/balbi/usb.git
 S:	Maintained
 F:	drivers/usb/phy/
-F:	drivers/usb/otg/
 
 USB PRINTER DRIVER (usblp)
 M:	Pete Zaitcev <zaitcev@redhat.com>
