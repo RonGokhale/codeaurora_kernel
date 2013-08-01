@@ -2640,8 +2640,6 @@ i915_gem_object_unbind(struct drm_i915_gem_object *obj)
 	obj->map_and_fenceable = true;
 
 	vma = i915_gem_obj_to_vma(obj, &dev_priv->gtt.base);
-	list_del(&vma->vma_link);
-	drm_mm_remove_node(&vma->node);
 	i915_gem_vma_destroy(vma);
 
 	/* Since the unbound list is global, only move to that list if
@@ -3176,7 +3174,6 @@ search_free:
 	return 0;
 
 err_remove_node:
-	drm_mm_remove_node(&vma->node);
 err_free_vma:
 	i915_gem_vma_destroy(vma);
 err_unpin:
@@ -4027,7 +4024,8 @@ struct i915_vma *i915_gem_vma_create(struct drm_i915_gem_object *obj,
 
 void i915_gem_vma_destroy(struct i915_vma *vma)
 {
-	WARN_ON(vma->node.allocated);
+	list_del_init(&vma->vma_link);
+	drm_mm_remove_node(&vma->node);
 	kfree(vma);
 }
 
