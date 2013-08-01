@@ -160,7 +160,7 @@ static int ldlm_completion_tail(struct ldlm_lock *lock)
 	long delay;
 	int  result;
 
-	if (lock->l_destroyed || lock->l_flags & LDLM_FL_FAILED) {
+	if (lock->l_flags & (LDLM_FL_DESTROYED | LDLM_FL_FAILED)) {
 		LDLM_DEBUG(lock, "client-side enqueue: destroyed");
 		result = -EIO;
 	} else {
@@ -888,9 +888,8 @@ int ldlm_cli_enqueue(struct obd_export *exp, struct ptlrpc_request **reqp,
 	} else {
 		const struct ldlm_callback_suite cbs = {
 			.lcs_completion = einfo->ei_cb_cp,
-			.lcs_blocking   = einfo->ei_cb_bl,
-			.lcs_glimpse    = einfo->ei_cb_gl,
-			.lcs_weigh      = einfo->ei_cb_wg
+			.lcs_blocking	= einfo->ei_cb_bl,
+			.lcs_glimpse	= einfo->ei_cb_gl
 		};
 		lock = ldlm_lock_create(ns, res_id, einfo->ei_type,
 					einfo->ei_mode, &cbs, einfo->ei_cbdata,
@@ -1023,7 +1022,7 @@ static int ldlm_cli_convert_local(struct ldlm_lock *lock, int new_mode,
 		ldlm_reprocess_all(res);
 		rc = 0;
 	} else {
-		rc = EDEADLOCK;
+		rc = LUSTRE_EDEADLK;
 	}
 	LDLM_DEBUG(lock, "client-side local convert handler END");
 	LDLM_LOCK_PUT(lock);
@@ -1095,7 +1094,7 @@ int ldlm_cli_convert(struct lustre_handle *lockh, int new_mode, __u32 *flags)
 				GOTO(out, rc);
 		}
 	} else {
-		rc = EDEADLOCK;
+		rc = LUSTRE_EDEADLK;
 	}
 	EXIT;
  out:
@@ -1248,7 +1247,7 @@ int ldlm_cli_cancel_req(struct obd_export *exp, struct list_head *cancels,
 		} else {
 			rc = ptlrpc_queue_wait(req);
 		}
-		if (rc == ESTALE) {
+		if (rc == LUSTRE_ESTALE) {
 			CDEBUG(D_DLMTRACE, "client/server (nid %s) "
 			       "out of sync -- not fatal\n",
 			       libcfs_nid2str(req->rq_import->
@@ -2069,7 +2068,10 @@ void ldlm_namespace_foreach(struct ldlm_namespace *ns,
 			    ldlm_iterator_t iter, void *closure)
 
 {
-	struct iter_helper_data helper = { iter: iter, closure: closure };
+	struct iter_helper_data helper = {
+		.iter		= iter,
+		.closure	= closure,
+	};
 
 	cfs_hash_for_each_nolock(ns->ns_rs_hash,
 				 ldlm_res_iter_helper, &helper);
