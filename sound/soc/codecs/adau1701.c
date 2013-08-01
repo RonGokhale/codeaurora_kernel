@@ -91,7 +91,7 @@
 #define ADAU1701_OSCIPOW_OPD		0x04
 #define ADAU1701_DACSET_DACINIT		1
 
-#define ADAU1707_CLKDIV_UNSET		(-1UL)
+#define ADAU1707_CLKDIV_UNSET		(-1U)
 
 #define ADAU1701_FIRMWARE "adau1701.bin"
 
@@ -734,7 +734,10 @@ static int adau1701_i2c_remove(struct i2c_client *client)
 }
 
 static const struct i2c_device_id adau1701_i2c_id[] = {
+	{ "adau1401", 0 },
+	{ "adau1401a", 0 },
 	{ "adau1701", 0 },
+	{ "adau1702", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, adau1701_i2c_id);
