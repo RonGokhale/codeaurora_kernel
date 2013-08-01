@@ -115,6 +115,7 @@ end_coredump:
 #endif
 
 static struct linux_binfmt aout_format = {
+	.name		= "a.out",
 	.module		= THIS_MODULE,
 	.load_binary	= load_aout_binary,
 	.load_shlib	= load_aout_library,

@@ -93,6 +93,7 @@ static int load_em86(struct linux_binprm *bprm)
 }
 
 static struct linux_binfmt em86_format = {
+	.name		= "em86",
 	.module		= THIS_MODULE,
 	.load_binary	= load_em86,
 };

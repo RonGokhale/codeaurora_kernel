@@ -694,6 +694,7 @@ static struct dentry *bm_mount(struct file_system_type *fs_type,
 }
 
 static struct linux_binfmt misc_format = {
+	.name	= "misc",
 	.module = THIS_MODULE,
 	.load_binary = load_misc_binary,
 };

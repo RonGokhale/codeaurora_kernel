@@ -99,6 +99,7 @@ static int load_script(struct linux_binprm *bprm)
 }
 
 static struct linux_binfmt script_format = {
+	.name		= "script",
 	.module		= THIS_MODULE,
 	.load_binary	= load_script,
 };
