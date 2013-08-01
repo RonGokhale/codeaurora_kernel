@@ -388,7 +388,7 @@ void old_reloc(unsigned long rl)
 #endif
 	flat_v2_reloc_t	r;
 	unsigned long *ptr;
-	
+
 	r.value = rl;
 #if defined(CONFIG_COLDFIRE)
 	ptr = (unsigned long *) (current->mm->start_code + r.reloc.offset);
@@ -401,7 +401,7 @@ void old_reloc(unsigned long rl)
 		"(address %p, currently %x) into segment %s\n",
 		r.reloc.offset, ptr, (int)*ptr, segment[r.reloc.type]);
 #endif
-	
+
 	switch (r.reloc.type) {
 	case OLD_FLAT_RELOC_TYPE_TEXT:
 		*ptr += current->mm->start_code;
@@ -420,7 +420,7 @@ void old_reloc(unsigned long rl)
 #ifdef DEBUG
 	printk("Relocation became %x\n", (int)*ptr);
 #endif
-}		
+}
 
 /****************************************************************************/
 
@@ -479,7 +479,7 @@ static int load_flat_file(struct linux_binprm * bprm,
 		ret = -ENOEXEC;
 		goto err;
 	}
-	
+
 	/* Don't allow old format executables to use shared libraries */
 	if (rev == OLD_FLAT_VERSION && id != 0) {
 		printk("BINFMT_FLAT: shared libraries are not available before rev 0x%x\n",
@@ -581,7 +581,7 @@ static int load_flat_file(struct linux_binprm * bprm,
 		fpos = ntohl(hdr->data_start);
 #ifdef CONFIG_BINFMT_ZFLAT
 		if (flags & FLAT_FLAG_GZDATA) {
-			result = decompress_exec(bprm, fpos, (char *) datapos, 
+			result = decompress_exec(bprm, fpos, (char *) datapos,
 						 full_data, 0);
 		} else
 #endif
@@ -704,7 +704,7 @@ static int load_flat_file(struct linux_binprm * bprm,
 	libinfo->lib_list[id].loaded = 1;
 	libinfo->lib_list[id].entry = (0x00ffffff & ntohl(hdr->entry)) + textpos;
 	libinfo->lib_list[id].build_date = ntohl(hdr->build_date);
-	
+
 	/*
 	 * We just load the allocations into some temporary memory to
 	 * help simplify all this mumbo jumbo
@@ -784,11 +784,11 @@ static int load_flat_file(struct linux_binprm * bprm,
 		for (i=0; i < relocs; i++)
 			old_reloc(ntohl(reloc[i]));
 	}
-	
+
 	flush_icache_range(start_code, end_code);
 
 	/* zero the BSS,  BRK and stack areas */
-	memset((void*)(datapos + data_len), 0, bss_len + 
+	memset((void*)(datapos + data_len), 0, bss_len +
 			(memp + memp_size - stack_len -		/* end brk */
 			libinfo->lib_list[id].start_brk) +	/* start brk */
 			stack_len);
@@ -882,11 +882,11 @@ static int load_flat_binary(struct linux_binprm * bprm)
 	stack_len += (bprm->argc + 1) * sizeof(char *); /* the argv array */
 	stack_len += (bprm->envc + 1) * sizeof(char *); /* the envp array */
 	stack_len += FLAT_STACK_ALIGN - 1;  /* reserve for upcoming alignment */
-	
+
 	res = load_flat_file(bprm, &libinfo, 0, &stack_len);
 	if (IS_ERR_VALUE(res))
 		return res;
-	
+
 	/* Update data segment pointers for all libraries */
 	for (i=0; i<MAX_SHARED_LIBS; i++)
 		if (libinfo.lib_list[i].loaded)
@@ -908,7 +908,7 @@ static int load_flat_binary(struct linux_binprm * bprm)
 			((char *) page_address(bprm->page[i/PAGE_SIZE]))[i % PAGE_SIZE];
 
 	sp = (unsigned long *) create_flat_tables(p, bprm);
-	
+
 	/* Fake some return addresses to ensure the call chain will
 	 * initialise library in order for us.  We are required to call
 	 * lib 1 first, then 2, ... and finally the main program (id 0).
@@ -924,7 +924,7 @@ static int load_flat_binary(struct linux_binprm * bprm)
 		}
 	}
 #endif
-	
+
 	/* Stash our initial stack pointer into the mm structure */
 	current->mm->start_stack = (unsigned long )sp;
 
@@ -933,7 +933,7 @@ static int load_flat_binary(struct linux_binprm * bprm)
 #endif
 	DBG_FLT("start_thread(regs=0x%x, entry=0x%x, start_stack=0x%x)\n",
 		(int)regs, (int)start_addr, (int)current->mm->start_stack);
-	
+
 	start_thread(regs, start_addr, current->mm->start_stack);
 
 	return 0;
