@@ -3443,7 +3443,7 @@ struct cgroup_pidlist {
 	/* pointer to the cgroup we belong to, for list removal purposes */
 	struct cgroup *owner;
 	/* protects the other fields */
-	struct rw_semaphore mutex;
+	struct rw_semaphore rwsem;
 };
 
 /*
@@ -3516,7 +3516,7 @@ static struct cgroup_pidlist *cgroup_pidlist_find(struct cgroup *cgrp,
 	struct pid_namespace *ns = task_active_pid_ns(current);
 
 	/*
-	 * We can't drop the pidlist_mutex before taking the l->mutex in case
+	 * We can't drop the pidlist_mutex before taking the l->rwsem in case
 	 * the last ref-holder is trying to remove l from the list at the same
 	 * time. Holding the pidlist_mutex precludes somebody taking whichever
 	 * list we find out from under us - compare release_pid_array().
@@ -3525,7 +3525,7 @@ static struct cgroup_pidlist *cgroup_pidlist_find(struct cgroup *cgrp,
 	list_for_each_entry(l, &cgrp->pidlists, links) {
 		if (l->key.type == type && l->key.ns == ns) {
 			/* make sure l doesn't vanish out from under us */
-			down_write(&l->mutex);
+			down_write(&l->rwsem);
 			mutex_unlock(&cgrp->pidlist_mutex);
 			return l;
 		}
@@ -3536,8 +3536,8 @@ static struct cgroup_pidlist *cgroup_pidlist_find(struct cgroup *cgrp,
 		mutex_unlock(&cgrp->pidlist_mutex);
 		return l;
 	}
-	init_rwsem(&l->mutex);
-	down_write(&l->mutex);
+	init_rwsem(&l->rwsem);
+	down_write(&l->rwsem);
 	l->key.type = type;
 	l->key.ns = get_pid_ns(ns);
 	l->owner = cgrp;
@@ -3598,7 +3598,7 @@ static int pidlist_array_load(struct cgroup *cgrp, enum cgroup_filetype type,
 	l->list = array;
 	l->length = length;
 	l->use_count++;
-	up_write(&l->mutex);
+	up_write(&l->rwsem);
 	*lp = l;
 	return 0;
 }
@@ -3676,7 +3676,7 @@ static void *cgroup_pidlist_start(struct seq_file *s, loff_t *pos)
 	int index = 0, pid = *pos;
 	int *iter;
 
-	down_read(&l->mutex);
+	down_read(&l->rwsem);
 	if (pid) {
 		int end = l->length;
 
@@ -3703,7 +3703,7 @@ static void *cgroup_pidlist_start(struct seq_file *s, loff_t *pos)
 static void cgroup_pidlist_stop(struct seq_file *s, void *v)
 {
 	struct cgroup_pidlist *l = s->private;
-	up_read(&l->mutex);
+	up_read(&l->rwsem);
 }
 
 static void *cgroup_pidlist_next(struct seq_file *s, void *v, loff_t *pos)
@@ -3749,7 +3749,7 @@ static void cgroup_release_pid_array(struct cgroup_pidlist *l)
 	 * pidlist_mutex, we have to take pidlist_mutex first.
 	 */
 	mutex_lock(&l->owner->pidlist_mutex);
-	down_write(&l->mutex);
+	down_write(&l->rwsem);
 	BUG_ON(!l->use_count);
 	if (!--l->use_count) {
 		/* we're the last user if refcount is 0; remove and free */
@@ -3757,12 +3757,12 @@ static void cgroup_release_pid_array(struct cgroup_pidlist *l)
 		mutex_unlock(&l->owner->pidlist_mutex);
 		pidlist_free(l->list);
 		put_pid_ns(l->key.ns);
-		up_write(&l->mutex);
+		up_write(&l->rwsem);
 		kfree(l);
 		return;
 	}
 	mutex_unlock(&l->owner->pidlist_mutex);
-	up_write(&l->mutex);
+	up_write(&l->rwsem);
 }
 
 static int cgroup_pidlist_release(struct inode *inode, struct file *file)
@@ -3941,11 +3941,11 @@ static void cgroup_event_ptable_queue_proc(struct file *file,
 static int cgroup_write_event_control(struct cgroup *cgrp, struct cftype *cft,
 				      const char *buffer)
 {
-	struct cgroup_event *event = NULL;
+	struct cgroup_event *event;
 	struct cgroup *cgrp_cfile;
 	unsigned int efd, cfd;
-	struct file *efile = NULL;
-	struct file *cfile = NULL;
+	struct file *efile;
+	struct file *cfile;
 	char *endp;
 	int ret;
 
@@ -3971,31 +3971,31 @@ static int cgroup_write_event_control(struct cgroup *cgrp, struct cftype *cft,
 	efile = eventfd_fget(efd);
 	if (IS_ERR(efile)) {
 		ret = PTR_ERR(efile);
-		goto fail;
+		goto out_kfree;
 	}
 
 	event->eventfd = eventfd_ctx_fileget(efile);
 	if (IS_ERR(event->eventfd)) {
 		ret = PTR_ERR(event->eventfd);
-		goto fail;
+		goto out_put_efile;
 	}
 
 	cfile = fget(cfd);
 	if (!cfile) {
 		ret = -EBADF;
-		goto fail;
+		goto out_put_eventfd;
 	}
 
 	/* the process need read permission on control file */
 	/* AV: shouldn't we check that it's been opened for read instead? */
 	ret = inode_permission(file_inode(cfile), MAY_READ);
 	if (ret < 0)
-		goto fail;
+		goto out_put_cfile;
 
 	event->cft = __file_cft(cfile);
 	if (IS_ERR(event->cft)) {
 		ret = PTR_ERR(event->cft);
-		goto fail;
+		goto out_put_cfile;
 	}
 
 	/*
@@ -4005,18 +4005,18 @@ static int cgroup_write_event_control(struct cgroup *cgrp, struct cftype *cft,
 	cgrp_cfile = __d_cgrp(cfile->f_dentry->d_parent);
 	if (cgrp_cfile != cgrp) {
 		ret = -EINVAL;
-		goto fail;
+		goto out_put_cfile;
 	}
 
 	if (!event->cft->register_event || !event->cft->unregister_event) {
 		ret = -EINVAL;
-		goto fail;
+		goto out_put_cfile;
 	}
 
 	ret = event->cft->register_event(cgrp, event->cft,
 			event->eventfd, buffer);
 	if (ret)
-		goto fail;
+		goto out_put_cfile;
 
 	efile->f_op->poll(efile, &event->pt);
 
@@ -4036,16 +4036,13 @@ static int cgroup_write_event_control(struct cgroup *cgrp, struct cftype *cft,
 
 	return 0;
 
-fail:
-	if (cfile)
-		fput(cfile);
-
-	if (event && event->eventfd && !IS_ERR(event->eventfd))
-		eventfd_ctx_put(event->eventfd);
-
-	if (!IS_ERR_OR_NULL(efile))
-		fput(efile);
-
+out_put_cfile:
+	fput(cfile);
+out_put_eventfd:
+	eventfd_ctx_put(event->eventfd);
+out_put_efile:
+	fput(efile);
+out_kfree:
 	kfree(event);
 
 	return ret;
