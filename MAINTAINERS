@@ -7411,7 +7411,7 @@ W:	http://linuxtv.org
 T:	git git://linuxtv.org/media_tree.git
 S:	Odd fixes
 F:	drivers/media/common/siano/
-F:	drivers/media/dvb/siano/
+F:	drivers/media/usb/siano/
 F:	drivers/media/usb/siano/
 F:	drivers/media/mmc/siano
 
