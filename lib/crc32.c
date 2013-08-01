@@ -132,9 +132,9 @@ crc32_body(u32 crc, unsigned char const *buf, size_t len, const u32 (*tab)[256])
 
 /**
  * crc32_le_generic() - Calculate bitwise little-endian Ethernet AUTODIN II
- * 			CRC32/CRC32C
- * @crc: seed value for computation.  ~0 for Ethernet, sometimes 0 for
- *	other uses, or the previous crc32/crc32c value if computing incrementally.
+ *			CRC32/CRC32C
+ * @crc: seed value for computation.  ~0 for Ethernet, sometimes 0 for other
+ *	 uses, or the previous crc32/crc32c value if computing incrementally.
  * @p: pointer to buffer over which CRC32/CRC32C is run
  * @len: length of buffer @p
  * @tab: little-endian Ethernet table
