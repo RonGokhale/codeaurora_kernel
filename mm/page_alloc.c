@@ -1020,8 +1020,8 @@ static void change_pageblock_range(struct page *pageblock_page,
  * Returns the new migratetype of the pageblock (or the same old migratetype
  * if it was unchanged).
  */
-static inline int try_to_steal_freepages(struct zone *zone, struct page *page,
-					 int start_type, int fallback_type)
+static int try_to_steal_freepages(struct zone *zone, struct page *page,
+				  int start_type, int fallback_type)
 {
 	int current_order = page_order(page);
 
@@ -1037,7 +1037,6 @@ static inline int try_to_steal_freepages(struct zone *zone, struct page *page,
 	if (current_order >= pageblock_order / 2 ||
 	    start_type == MIGRATE_RECLAIMABLE ||
 	    page_group_by_mobility_disabled) {
-
 		int pages;
 
 		pages = move_freepages_block(zone, page, start_type);
