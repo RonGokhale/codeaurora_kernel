@@ -3183,12 +3183,6 @@ search_free:
 	list_move_tail(&obj->global_list, &dev_priv->mm.bound_list);
 	list_add_tail(&vma->mm_list, &vm->inactive_list);
 
-	/* Keep GGTT vmas first to make debug easier */
-	if (i915_is_ggtt(vm))
-		list_add(&vma->vma_link, &obj->vma_list);
-	else
-		list_add_tail(&vma->vma_link, &obj->vma_list);
-
 	fenceable =
 		i915_is_ggtt(vm) &&
 		i915_gem_obj_ggtt_size(obj) == fence_size &&
@@ -4070,6 +4064,12 @@ struct i915_vma *i915_gem_vma_create(struct drm_i915_gem_object *obj,
 	vma->vm = vm;
 	vma->obj = obj;
 
+	/* Keep GGTT vmas first to make debug easier */
+	if (i915_is_ggtt(vm))
+		list_add(&vma->vma_link, &obj->vma_list);
+	else
+		list_add_tail(&vma->vma_link, &obj->vma_list);
+
 	return vma;
 }
 
@@ -4765,7 +4765,7 @@ bool i915_gem_obj_bound(struct drm_i915_gem_object *o,
 	struct i915_vma *vma;
 
 	list_for_each_entry(vma, &o->vma_list, vma_link)
-		if (vma->vm == vm)
+		if (vma->vm == vm && drm_mm_node_allocated(&vma->node))
 			return true;
 
 	return false;
