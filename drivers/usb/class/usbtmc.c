@@ -19,6 +19,8 @@
  * http://www.gnu.org/copyleft/gpl.html.
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -119,7 +121,6 @@ static void usbtmc_delete(struct kref *kref)
 	struct usbtmc_device_data *data = to_usbtmc_data(kref);
 
 	usb_put_dev(data->usb_dev);
-	kfree(data);
 }
 
 static int usbtmc_open(struct inode *inode, struct file *filp)
@@ -130,10 +131,8 @@ static int usbtmc_open(struct inode *inode, struct file *filp)
 
 	intf = usb_find_interface(&usbtmc_driver, iminor(inode));
 	if (!intf) {
-		printk(KERN_ERR KBUILD_MODNAME
-		       ": can not find device for minor %d", iminor(inode));
-		retval = -ENODEV;
-		goto exit;
+		pr_err("can not find device for minor %d", iminor(inode));
+		return -ENODEV;
 	}
 
 	data = usb_get_intfdata(intf);
@@ -142,7 +141,6 @@ static int usbtmc_open(struct inode *inode, struct file *filp)
 	/* Store pointer in file structure's private data field */
 	filp->private_data = data;
 
-exit:
 	return retval;
 }
 
@@ -394,12 +392,12 @@ static int send_request_dev_dep_msg_in(struct usbtmc_device_data *data, size_t t
 	 */
 	buffer[0] = 2;
 	buffer[1] = data->bTag;
-	buffer[2] = ~(data->bTag);
+	buffer[2] = ~data->bTag;
 	buffer[3] = 0; /* Reserved */
-	buffer[4] = (transfer_size) & 255;
-	buffer[5] = ((transfer_size) >> 8) & 255;
-	buffer[6] = ((transfer_size) >> 16) & 255;
-	buffer[7] = ((transfer_size) >> 24) & 255;
+	buffer[4] = transfer_size >> 0;
+	buffer[5] = transfer_size >> 8;
+	buffer[6] = transfer_size >> 16;
+	buffer[7] = transfer_size >> 24;
 	buffer[8] = data->TermCharEnabled * 2;
 	/* Use term character? */
 	buffer[9] = data->TermChar;
@@ -418,7 +416,7 @@ static int send_request_dev_dep_msg_in(struct usbtmc_device_data *data, size_t t
 	/* Increment bTag -- and increment again if zero */
 	data->bTag++;
 	if (!data->bTag)
-		(data->bTag)++;
+		data->bTag++;
 
 	if (retval < 0) {
 		dev_err(&data->intf->dev, "usb_bulk_msg in send_request_dev_dep_msg_in() returned %d\n", retval);
@@ -473,7 +471,7 @@ static ssize_t usbtmc_read(struct file *filp, char __user *buf,
 	done = 0;
 
 	while (remaining > 0) {
-		if (!(data->rigol_quirk)) {
+		if (!data->rigol_quirk) {
 			dev_dbg(dev, "usb_bulk_msg_in: remaining(%zu), count(%zu)\n", remaining, count);
 
 			if (remaining > USBTMC_SIZE_IOBUFFER - USBTMC_HEADER_SIZE - 3)
@@ -510,7 +508,7 @@ static ssize_t usbtmc_read(struct file *filp, char __user *buf,
 		}
 
 		/* Parse header in first packet */
-		if ((done == 0) || (!(data->rigol_quirk))) {
+		if ((done == 0) || !data->rigol_quirk) {
 			/* Sanity checks for the header */
 			if (actual < USBTMC_HEADER_SIZE) {
 				dev_err(dev, "Device sent too small first packet: %u < %u\n", actual, USBTMC_HEADER_SIZE);
@@ -554,14 +552,14 @@ static ssize_t usbtmc_read(struct file *filp, char __user *buf,
 				if (remaining > n_characters)
 					remaining = n_characters;
 				/* Remove padding if it exists */
-				if (actual > remaining) 
+				if (actual > remaining)
 					actual = remaining;
 			}
 			else {
 				if (this_part > n_characters)
 					this_part = n_characters;
 				/* Remove padding if it exists */
-				if (actual > this_part) 
+				if (actual > this_part)
 					actual = this_part;
 			}
 
@@ -570,7 +568,7 @@ static ssize_t usbtmc_read(struct file *filp, char __user *buf,
 			remaining -= actual;
 
 			/* Terminate if end-of-message bit received from device */
-			if ((buffer[8] &  0x01) && (actual >= n_characters))
+			if ((buffer[8] & 0x01) && (actual >= n_characters))
 				remaining = 0;
 
 			dev_dbg(dev, "Bulk-IN header: remaining(%zu), buf(%p), buffer(%p) done(%zu)\n", remaining,buf,buffer,done);
@@ -585,7 +583,7 @@ static ssize_t usbtmc_read(struct file *filp, char __user *buf,
 			done += actual;
 		}
 		else  {
-			if (actual > remaining) 
+			if (actual > remaining)
 				actual = remaining;
 
 			remaining -= actual;
@@ -651,12 +649,12 @@ static ssize_t usbtmc_write(struct file *filp, const char __user *buf,
 		/* Setup IO buffer for DEV_DEP_MSG_OUT message */
 		buffer[0] = 1;
 		buffer[1] = data->bTag;
-		buffer[2] = ~(data->bTag);
+		buffer[2] = ~data->bTag;
 		buffer[3] = 0; /* Reserved */
-		buffer[4] = this_part & 255;
-		buffer[5] = (this_part >> 8) & 255;
-		buffer[6] = (this_part >> 16) & 255;
-		buffer[7] = (this_part >> 24) & 255;
+		buffer[4] = this_part >> 0;
+		buffer[5] = this_part >> 8;
+		buffer[6] = this_part >> 16;
+		buffer[7] = this_part >> 24;
 		/* buffer[8] is set above... */
 		buffer[9] = 0; /* Reserved */
 		buffer[10] = 0; /* Reserved */
@@ -1102,7 +1100,7 @@ static int usbtmc_probe(struct usb_interface *intf,
 
 	dev_dbg(&intf->dev, "%s called\n", __func__);
 
-	data = kmalloc(sizeof(struct usbtmc_device_data), GFP_KERNEL);
+	data = devm_kzalloc(&intf->dev, sizeof(*data), GFP_KERNEL);
 	if (!data) {
 		dev_err(&intf->dev, "Unable to allocate kernel memory\n");
 		return -ENOMEM;
