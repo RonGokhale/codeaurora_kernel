@@ -746,11 +746,6 @@ static inline int sk_stream_wspace(const struct sock *sk)
 
 extern void sk_stream_write_space(struct sock *sk);
 
-static inline bool sk_stream_memory_free(const struct sock *sk)
-{
-	return sk->sk_wmem_queued < sk->sk_sndbuf;
-}
-
 /* OOB backlog add */
 static inline void __sk_add_backlog(struct sock *sk, struct sk_buff *skb)
 {
@@ -950,6 +945,7 @@ struct proto {
 	unsigned int		inuse_idx;
 #endif
 
+	bool			(*stream_memory_free)(const struct sock *sk);
 	/* Memory pressure */
 	void			(*enter_memory_pressure)(struct sock *sk);
 	atomic_long_t		*memory_allocated;	/* Current allocated memory. */
@@ -1087,6 +1083,21 @@ static inline struct cg_proto *parent_cg_proto(struct proto *proto,
 	return NULL;
 }
 #endif
+
+static inline bool sk_stream_memory_free(const struct sock *sk)
+{
+	if (sk->sk_wmem_queued >= sk->sk_sndbuf)
+		return false;
+
+	return sk->sk_prot->stream_memory_free ?
+		sk->sk_prot->stream_memory_free(sk) : true;
+}
+
+static inline bool sk_stream_is_writeable(const struct sock *sk)
+{
+	return sk_stream_wspace(sk) >= sk_stream_min_wspace(sk) &&
+	       sk_stream_memory_free(sk);
+}
 
 
 static inline bool sk_has_memory_pressure(const struct sock *sk)
@@ -1509,6 +1520,7 @@ extern struct sk_buff		*sock_rmalloc(struct sock *sk,
 					      unsigned long size, int force,
 					      gfp_t priority);
 extern void			sock_wfree(struct sk_buff *skb);
+extern void			skb_orphan_partial(struct sk_buff *skb);
 extern void			sock_rfree(struct sk_buff *skb);
 extern void			sock_edemux(struct sk_buff *skb);
 
@@ -2249,6 +2261,8 @@ static inline struct sock *skb_steal_sock(struct sk_buff *skb)
 extern void sock_enable_timestamp(struct sock *sk, int flag);
 extern int sock_get_timestamp(struct sock *, struct timeval __user *);
 extern int sock_get_timestampns(struct sock *, struct timespec __user *);
+extern int sock_recv_errqueue(struct sock *sk, struct msghdr *msg, int len,
+			      int level, int type);
 
 /*
  *	Enable debug/info messages

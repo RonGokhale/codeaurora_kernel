@@ -106,7 +106,7 @@ static char *arp_ip_target[BOND_MAX_ARP_TARGETS];
 static char *arp_validate;
 static char *arp_all_targets;
 static char *fail_over_mac;
-static int all_slaves_active = 0;
+static int all_slaves_active;
 static struct bond_params bonding_defaults;
 static int resend_igmp = BOND_DEFAULT_RESEND_IGMP;
 
@@ -273,7 +273,7 @@ const char *bond_mode_name(int mode)
 		[BOND_MODE_ALB] = "adaptive load balancing",
 	};
 
-	if (mode < 0 || mode > BOND_MODE_ALB)
+	if (mode < BOND_MODE_ROUNDROBIN || mode > BOND_MODE_ALB)
 		return "unknown";
 
 	return names[mode];
@@ -715,15 +715,6 @@ static int bond_set_allmulti(struct bonding *bond, int inc)
 	return err;
 }
 
-static void __bond_resend_igmp_join_requests(struct net_device *dev)
-{
-	struct in_device *in_dev;
-
-	in_dev = __in_dev_get_rcu(dev);
-	if (in_dev)
-		ip_mc_rejoin_groups(in_dev);
-}
-
 /*
  * Retrieve the list of registered multicast addresses for the bonding
  * device and retransmit an IGMP JOIN request to the current active
@@ -731,33 +722,12 @@ static void __bond_resend_igmp_join_requests(struct net_device *dev)
  */
 static void bond_resend_igmp_join_requests(struct bonding *bond)
 {
-	struct net_device *bond_dev, *vlan_dev, *upper_dev;
-	struct vlan_entry *vlan;
-
-	read_lock(&bond->lock);
-	rcu_read_lock();
-
-	bond_dev = bond->dev;
-
-	/* rejoin all groups on bond device */
-	__bond_resend_igmp_join_requests(bond_dev);
-
-	/*
-	 * if bond is enslaved to a bridge,
-	 * then rejoin all groups on its master
-	 */
-	upper_dev = netdev_master_upper_dev_get_rcu(bond_dev);
-	if (upper_dev && upper_dev->priv_flags & IFF_EBRIDGE)
-		__bond_resend_igmp_join_requests(upper_dev);
-
-	/* rejoin all groups on vlan devices */
-	list_for_each_entry(vlan, &bond->vlan_list, vlan_list) {
-		vlan_dev = __vlan_find_dev_deep(bond_dev, htons(ETH_P_8021Q),
-						vlan->vlan_id);
-		if (vlan_dev)
-			__bond_resend_igmp_join_requests(vlan_dev);
+	if (!rtnl_trylock()) {
+		queue_delayed_work(bond->wq, &bond->mcast_work, 0);
+		return;
 	}
-	rcu_read_unlock();
+	call_netdevice_notifiers(NETDEV_RESEND_IGMP, bond->dev);
+	rtnl_unlock();
 
 	/* We use curr_slave_lock to protect against concurrent access to
 	 * igmp_retrans from multiple running instances of this function and
@@ -769,7 +739,6 @@ static void bond_resend_igmp_join_requests(struct bonding *bond)
 		queue_delayed_work(bond->wq, &bond->mcast_work, HZ/5);
 	}
 	write_unlock_bh(&bond->curr_slave_lock);
-	read_unlock(&bond->lock);
 }
 
 static void bond_resend_igmp_join_requests_delayed(struct work_struct *work)
@@ -1249,22 +1218,15 @@ static void bond_poll_controller(struct net_device *bond_dev)
 {
 }
 
-static void __bond_netpoll_cleanup(struct bonding *bond)
+static void bond_netpoll_cleanup(struct net_device *bond_dev)
 {
+	struct bonding *bond = netdev_priv(bond_dev);
 	struct slave *slave;
 	int i;
 
 	bond_for_each_slave(bond, slave, i)
 		if (IS_UP(slave->dev))
 			slave_disable_netpoll(slave);
-}
-static void bond_netpoll_cleanup(struct net_device *bond_dev)
-{
-	struct bonding *bond = netdev_priv(bond_dev);
-
-	read_lock(&bond->lock);
-	__bond_netpoll_cleanup(bond);
-	read_unlock(&bond->lock);
 }
 
 static int bond_netpoll_setup(struct net_device *dev, struct netpoll_info *ni, gfp_t gfp)
@@ -1273,23 +1235,15 @@ static int bond_netpoll_setup(struct net_device *dev, struct netpoll_info *ni, g
 	struct slave *slave;
 	int i, err = 0;
 
-	read_lock(&bond->lock);
 	bond_for_each_slave(bond, slave, i) {
 		err = slave_enable_netpoll(slave);
 		if (err) {
-			__bond_netpoll_cleanup(bond);
+			bond_netpoll_cleanup(dev);
 			break;
 		}
 	}
-	read_unlock(&bond->lock);
 	return err;
 }
-
-static struct netpoll_info *bond_netpoll_info(struct bonding *bond)
-{
-	return bond->dev->npinfo;
-}
-
 #else
 static inline int slave_enable_netpoll(struct slave *slave)
 {
@@ -1834,7 +1788,7 @@ int bond_enslave(struct net_device *bond_dev, struct net_device *slave_dev)
 	bond_set_carrier(bond);
 
 #ifdef CONFIG_NET_POLL_CONTROLLER
-	slave_dev->npinfo = bond_netpoll_info(bond);
+	slave_dev->npinfo = bond->dev->npinfo;
 	if (slave_dev->npinfo) {
 		if (slave_enable_netpoll(new_slave)) {
 			read_unlock(&bond->lock);
@@ -3233,6 +3187,10 @@ static int bond_slave_netdev_event(unsigned long event,
 		break;
 	case NETDEV_FEAT_CHANGE:
 		bond_compute_features(bond);
+		break;
+	case NETDEV_RESEND_IGMP:
+		/* Propagate to master device */
+		call_netdevice_notifiers(event, slave->bond->dev);
 		break;
 	default:
 		break;
