@@ -85,11 +85,10 @@ static inline void __flush_tlb_one(unsigned long addr)
 
 #ifndef CONFIG_SMP
 
-/* "_up" is for UniProcessor
+/* "_up" is for UniProcessor.
  *
- * This is a helper for other header functions.  *Not*
- * intended to be called directly.  All global TLB
- * flushes need to either call this, or do the bump the
+ * This is a helper for other header functions.  *Not* intended to be called
+ * directly.  All global TLB flushes need to either call this, or to bump the
  * vm statistics themselves.
  */
 static inline void __flush_tlb_up(void)
