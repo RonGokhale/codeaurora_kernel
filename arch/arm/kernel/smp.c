@@ -145,6 +145,14 @@ int boot_secondary(unsigned int cpu, struct task_struct *idle)
 	return -ENOSYS;
 }
 
+int platform_can_cpu_hotplug(void)
+{
+	if (!IS_ENABLED(CONFIG_HOTPLUG_CPU) || !smp_ops.cpu_kill)
+		return 0;
+
+	return 1;
+}
+
 #ifdef CONFIG_HOTPLUG_CPU
 static void percpu_timer_stop(void);
 
