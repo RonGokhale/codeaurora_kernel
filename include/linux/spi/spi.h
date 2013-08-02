@@ -233,6 +233,8 @@ static inline void spi_unregister_driver(struct spi_driver *sdrv)
  *	suported. If set, the SPI core will reject any transfer with an
  *	unsupported bits_per_word. If not set, this value is simply ignored,
  *	and it's up to the individual driver to perform any validation.
+ * @min_speed_hz: Lowest supported transfer speed
+ * @max_speed_hz: Highest supported transfer speed
  * @flags: other constraints relevant to this driver
  * @bus_lock_spinlock: spinlock for SPI bus locking
  * @bus_lock_mutex: mutex for SPI bus locking
@@ -254,6 +256,9 @@ static inline void spi_unregister_driver(struct spi_driver *sdrv)
  * @busy: message pump is busy
  * @running: message pump is running
  * @rt: whether this queue is set to run as a realtime task
+ * @auto_runtime_pm: the core should ensure a runtime PM reference is held
+ *                   while the hardware is prepared, using the parent
+ *                   device for the spidev
  * @prepare_transfer_hardware: a message will soon arrive from the queue
  *	so the subsystem requests the driver to prepare the transfer hardware
  *	by issuing this call
@@ -311,6 +316,10 @@ struct spi_master {
 #define SPI_BPW_MASK(bits) BIT((bits) - 1)
 #define SPI_BIT_MASK(bits) (((bits) == 32) ? ~0UL : (BIT(bits) - 1))
 #define SPI_BPW_RANGE_MASK(min, max) (SPI_BIT_MASK(max) - SPI_BIT_MASK(min - 1))
+
+	/* limits on transfer speed */
+	u32			min_speed_hz;
+	u32			max_speed_hz;
 
 	/* other constraints relevant to this driver */
 	u16			flags;
@@ -374,11 +383,13 @@ struct spi_master {
 	bool				busy;
 	bool				running;
 	bool				rt;
+	bool				auto_runtime_pm;
 
 	int (*prepare_transfer_hardware)(struct spi_master *master);
 	int (*transfer_one_message)(struct spi_master *master,
 				    struct spi_message *mesg);
 	int (*unprepare_transfer_hardware)(struct spi_master *master);
+
 	/* gpio chip select */
 	int			*cs_gpios;
 };
@@ -578,6 +589,7 @@ struct spi_message {
 	/* completion is reported through a callback */
 	void			(*complete)(void *context);
 	void			*context;
+	unsigned		frame_length;
 	unsigned		actual_length;
 	int			status;
 
