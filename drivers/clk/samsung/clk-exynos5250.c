@@ -62,6 +62,7 @@
 #define SRC_CDREX		0x20200
 #define PLL_DIV2_SEL		0x20a24
 #define GATE_IP_DISP1		0x10928
+#define GATE_IP_ACP		0x10000
 
 /*
  * Let each supported clock get a unique id. This id is used to lookup the clock
@@ -99,7 +100,7 @@ enum exynos5250_clks {
 	spi2, i2s1, i2s2, pcm1, pcm2, pwm, spdif, ac97, hsi2c0, hsi2c1, hsi2c2,
 	hsi2c3, chipid, sysreg, pmu, cmu_top, cmu_core, cmu_mem, tzpc0, tzpc1,
 	tzpc2, tzpc3, tzpc4, tzpc5, tzpc6, tzpc7, tzpc8, tzpc9, hdmi_cec, mct,
-	wdt, rtc, tmu, fimd1, mie1, dsim0, dp, mixer, hdmi,
+	wdt, rtc, tmu, fimd1, mie1, dsim0, dp, mixer, hdmi, g2d,
 
 	nr_clks,
 };
@@ -152,6 +153,7 @@ static __initdata unsigned long exynos5250_clk_regs[] = {
 	SRC_CDREX,
 	PLL_DIV2_SEL,
 	GATE_IP_DISP1,
+	GATE_IP_ACP,
 };
 
 /* list of all parent clock list */
@@ -191,24 +193,24 @@ PNAME(mout_spdif_p)	= { "sclk_audio0", "sclk_audio1", "sclk_audio2",
 				"spdif_extclk" };
 
 /* fixed rate clocks generated outside the soc */
-struct samsung_fixed_rate_clock exynos5250_fixed_rate_ext_clks[] __initdata = {
+static struct samsung_fixed_rate_clock exynos5250_fixed_rate_ext_clks[] __initdata = {
 	FRATE(fin_pll, "fin_pll", NULL, CLK_IS_ROOT, 0),
 };
 
 /* fixed rate clocks generated inside the soc */
-struct samsung_fixed_rate_clock exynos5250_fixed_rate_clks[] __initdata = {
+static struct samsung_fixed_rate_clock exynos5250_fixed_rate_clks[] __initdata = {
 	FRATE(none, "sclk_hdmiphy", NULL, CLK_IS_ROOT, 24000000),
 	FRATE(none, "sclk_hdmi27m", NULL, CLK_IS_ROOT, 27000000),
 	FRATE(none, "sclk_dptxphy", NULL, CLK_IS_ROOT, 24000000),
 	FRATE(none, "sclk_uhostphy", NULL, CLK_IS_ROOT, 48000000),
 };
 
-struct samsung_fixed_factor_clock exynos5250_fixed_factor_clks[] __initdata = {
+static struct samsung_fixed_factor_clock exynos5250_fixed_factor_clks[] __initdata = {
 	FFACTOR(none, "fout_mplldiv2", "fout_mpll", 1, 2, 0),
 	FFACTOR(none, "fout_bplldiv2", "fout_bpll", 1, 2, 0),
 };
 
-struct samsung_mux_clock exynos5250_mux_clks[] __initdata = {
+static struct samsung_mux_clock exynos5250_mux_clks[] __initdata = {
 	MUX_A(none, "mout_apll", mout_apll_p, SRC_CPU, 0, 1, "mout_apll"),
 	MUX_A(none, "mout_cpu", mout_cpu_p, SRC_CPU, 16, 1, "mout_cpu"),
 	MUX(none, "mout_mpll_fout", mout_mpll_fout_p, PLL_DIV2_SEL, 4, 1),
@@ -254,7 +256,7 @@ struct samsung_mux_clock exynos5250_mux_clks[] __initdata = {
 	MUX(none, "mout_spi2", mout_group1_p, SRC_PERIC1, 24, 4),
 };
 
-struct samsung_div_clock exynos5250_div_clks[] __initdata = {
+static struct samsung_div_clock exynos5250_div_clks[] __initdata = {
 	DIV(none, "div_arm", "mout_cpu", DIV_CPU0, 0, 3),
 	DIV(none, "sclk_apll", "mout_apll", DIV_CPU0, 24, 3),
 	DIV(none, "aclk66_pre", "sclk_mpll_user", DIV_TOP1, 24, 3),
@@ -314,7 +316,7 @@ struct samsung_div_clock exynos5250_div_clks[] __initdata = {
 			DIV_PERIC2, 8, 8, CLK_SET_RATE_PARENT, 0),
 };
 
-struct samsung_gate_clock exynos5250_gate_clks[] __initdata = {
+static struct samsung_gate_clock exynos5250_gate_clks[] __initdata = {
 	GATE(gscl0, "gscl0", "none", GATE_IP_GSCL, 0, 0, 0),
 	GATE(gscl1, "gscl1", "none", GATE_IP_GSCL, 1, 0, 0),
 	GATE(gscl2, "gscl2", "aclk266", GATE_IP_GSCL, 2, 0, 0),
@@ -463,6 +465,7 @@ struct samsung_gate_clock exynos5250_gate_clks[] __initdata = {
 	GATE(dp, "dp", "aclk200", GATE_IP_DISP1, 4, 0, 0),
 	GATE(mixer, "mixer", "aclk200", GATE_IP_DISP1, 5, 0, 0),
 	GATE(hdmi, "hdmi", "aclk200", GATE_IP_DISP1, 6, 0, 0),
+	GATE(g2d, "g2d", "aclk200", GATE_IP_ACP, 3, 0, 0),
 };
 
 static __initdata struct of_device_id ext_clk_match[] = {
@@ -471,7 +474,7 @@ static __initdata struct of_device_id ext_clk_match[] = {
 };
 
 /* register exynox5250 clocks */
-void __init exynos5250_clk_init(struct device_node *np)
+static void __init exynos5250_clk_init(struct device_node *np)
 {
 	void __iomem *reg_base;
 	struct clk *apll, *mpll, *epll, *vpll, *bpll, *gpll, *cpll;
