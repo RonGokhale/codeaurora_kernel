@@ -40,6 +40,7 @@ broken.
 
  */
 
+#include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
@@ -1544,10 +1545,9 @@ static int me4000_auto_attach(struct comedi_device *dev,
 	dev->board_ptr = thisboard;
 	dev->board_name = thisboard->name;
 
-	info = kzalloc(sizeof(*info), GFP_KERNEL);
+	info = comedi_alloc_devpriv(dev, sizeof(*info));
 	if (!info)
 		return -ENOMEM;
-	dev->private = info;
 
 	result = comedi_pci_enable(dev);
 	if (result)

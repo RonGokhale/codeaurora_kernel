@@ -49,7 +49,6 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
-#include <linux/version.h>
 #include <linux/proc_fs.h>
 #include <linux/mm.h>
 #include <linux/timer.h>
@@ -73,25 +72,6 @@
 #elif defined(for_each_cpu)
 #define cfs_for_each_possible_cpu(cpu) for_each_cpu(cpu)
 #endif
-
-#ifdef NR_CPUS
-#else
-#define NR_CPUS     1
-#endif
-
-/*
- * cache
- */
-
-/*
- * IRQs
- */
-
-
-/*
- * Pseudo device register
- */
-typedef struct miscdevice		psdev_t;
 
 /*
  * Sysctl register

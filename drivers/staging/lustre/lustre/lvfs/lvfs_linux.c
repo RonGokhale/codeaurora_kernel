@@ -40,16 +40,12 @@
 
 #define DEBUG_SUBSYSTEM S_FILTER
 
-#include <linux/version.h>
 #include <linux/fs.h>
 #include <asm/unistd.h>
 #include <linux/slab.h>
 #include <linux/pagemap.h>
 #include <linux/quotaops.h>
-#include <linux/version.h>
 #include <linux/libcfs/libcfs.h>
-#include <lustre_fsfilt.h>
-#include <obd.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/lustre_compat25.h>

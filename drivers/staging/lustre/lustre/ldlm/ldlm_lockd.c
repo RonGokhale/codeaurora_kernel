@@ -198,7 +198,7 @@ static void ldlm_handle_cp_callback(struct ptlrpc_request *req,
 			schedule_timeout_and_set_state(
 				TASK_INTERRUPTIBLE, to);
 			if (lock->l_granted_mode == lock->l_req_mode ||
-			    lock->l_destroyed)
+			    lock->l_flags & LDLM_FL_DESTROYED)
 				break;
 		}
 	}
@@ -238,7 +238,7 @@ static void ldlm_handle_cp_callback(struct ptlrpc_request *req,
 	}
 
 	lock_res_and_lock(lock);
-	if (lock->l_destroyed ||
+	if ((lock->l_flags & LDLM_FL_DESTROYED) ||
 	    lock->l_granted_mode == lock->l_req_mode) {
 		/* bug 11300: the lock has already been granted */
 		unlock_res_and_lock(lock);
@@ -554,6 +554,8 @@ static int ldlm_handle_qc_callback(struct ptlrpc_request *req)
 		CERROR("Can't unpack obd_quotactl\n");
 		RETURN(-EPROTO);
 	}
+
+	oqctl->qc_stat = ptlrpc_status_ntoh(oqctl->qc_stat);
 
 	cli->cl_qchk_stat = oqctl->qc_stat;
 	return 0;

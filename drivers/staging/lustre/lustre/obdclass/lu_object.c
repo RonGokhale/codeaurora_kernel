@@ -538,7 +538,7 @@ static struct lu_object *htable_lookup(struct lu_site *s,
 	__u64  ver = cfs_hash_bd_version_get(bd);
 
 	if (*version == ver)
-		return NULL;
+		return ERR_PTR(-ENOENT);
 
 	*version = ver;
 	bkt = cfs_hash_bd_extra_get(s->ls_obj_hash, bd);
@@ -547,7 +547,7 @@ static struct lu_object *htable_lookup(struct lu_site *s,
 	hnode = cfs_hash_bd_peek_locked(s->ls_obj_hash, bd, (void *)f);
 	if (hnode == NULL) {
 		lprocfs_counter_incr(s->ls_stats, LU_SS_CACHE_MISS);
-		return NULL;
+		return ERR_PTR(-ENOENT);
 	}
 
 	h = container_of0(hnode, struct lu_object_header, loh_hash);
@@ -651,7 +651,7 @@ static struct lu_object *lu_object_find_try(const struct lu_env *env,
 	cfs_hash_bd_get_and_lock(hs, (void *)f, &bd, 1);
 	o = htable_lookup(s, &bd, f, waiter, &version);
 	cfs_hash_bd_unlock(hs, &bd, 1);
-	if (o != NULL)
+	if (!IS_ERR(o) || PTR_ERR(o) != -ENOENT)
 		return o;
 
 	/*
@@ -667,7 +667,7 @@ static struct lu_object *lu_object_find_try(const struct lu_env *env,
 	cfs_hash_bd_lock(hs, &bd, 1);
 
 	shadow = htable_lookup(s, &bd, f, waiter, &version);
-	if (likely(shadow == NULL)) {
+	if (likely(IS_ERR(shadow) && PTR_ERR(shadow) == -ENOENT)) {
 		struct lu_site_bkt_data *bkt;
 
 		bkt = cfs_hash_bd_extra_get(hs, &bd);
@@ -849,7 +849,7 @@ static int lu_htable_order(void)
 	 *
 	 * Size of lu_object is (arbitrary) taken as 1K (together with inode).
 	 */
-	cache_size = num_physpages;
+	cache_size = totalram_pages;
 
 #if BITS_PER_LONG == 32
 	/* limit hashtable size for lowmem systems to low RAM */
@@ -1147,15 +1147,16 @@ EXPORT_SYMBOL(lu_device_fini);
  * Initialize object \a o that is part of compound object \a h and was created
  * by device \a d.
  */
-int lu_object_init(struct lu_object *o,
-		   struct lu_object_header *h, struct lu_device *d)
+int lu_object_init(struct lu_object *o, struct lu_object_header *h,
+		   struct lu_device *d)
 {
-	memset(o, 0, sizeof *o);
+	memset(o, 0, sizeof(*o));
 	o->lo_header = h;
-	o->lo_dev    = d;
+	o->lo_dev = d;
 	lu_device_get(d);
-	o->lo_dev_ref = lu_ref_add(&d->ld_reference, "lu_object", o);
+	lu_ref_add_at(&d->ld_reference, &o->lo_dev_ref, "lu_object", o);
 	INIT_LIST_HEAD(&o->lo_linkage);
+
 	return 0;
 }
 EXPORT_SYMBOL(lu_object_init);
@@ -1170,8 +1171,8 @@ void lu_object_fini(struct lu_object *o)
 	LASSERT(list_empty(&o->lo_linkage));
 
 	if (dev != NULL) {
-		lu_ref_del_at(&dev->ld_reference,
-			      o->lo_dev_ref , "lu_object", o);
+		lu_ref_del_at(&dev->ld_reference, &o->lo_dev_ref,
+			      "lu_object", o);
 		lu_device_put(dev);
 		o->lo_dev = NULL;
 	}
@@ -1315,7 +1316,6 @@ int lu_context_key_register(struct lu_context_key *key)
 	LASSERT(key->lct_init != NULL);
 	LASSERT(key->lct_fini != NULL);
 	LASSERT(key->lct_tags != 0);
-	LASSERT(key->lct_owner != NULL);
 
 	result = -ENFILE;
 	spin_lock(&lu_keys_guard);
@@ -1349,7 +1349,6 @@ static void key_fini(struct lu_context *ctx, int index)
 		lu_ref_del(&key->lct_reference, "ctx", ctx);
 		atomic_dec(&key->lct_used);
 
-		LASSERT(key->lct_owner != NULL);
 		if ((ctx->lc_tags & LCT_NOREF) == 0) {
 #ifdef CONFIG_MODULE_UNLOAD
 			LINVRNT(module_refcount(key->lct_owner) > 0);
@@ -1557,7 +1556,6 @@ static int keys_fill(struct lu_context *ctx)
 			if (unlikely(IS_ERR(value)))
 				return PTR_ERR(value);
 
-			LASSERT(key->lct_owner != NULL);
 			if (!(ctx->lc_tags & LCT_NOREF))
 				try_module_get(key->lct_owner);
 			lu_ref_add_atomic(&key->lct_reference, "ctx", ctx);
@@ -2079,7 +2077,7 @@ void lu_object_assign_fid(const struct lu_env *env, struct lu_object *o,
 	cfs_hash_bd_get_and_lock(hs, (void *)fid, &bd, 1);
 	shadow = htable_lookup(s, &bd, fid, &waiter, &version);
 	/* supposed to be unique */
-	LASSERT(shadow == NULL);
+	LASSERT(IS_ERR(shadow) && PTR_ERR(shadow) == -ENOENT);
 	*old = *fid;
 	bkt = cfs_hash_bd_extra_get(hs, &bd);
 	cfs_hash_bd_add_locked(hs, &bd, &o->lo_header->loh_hash);

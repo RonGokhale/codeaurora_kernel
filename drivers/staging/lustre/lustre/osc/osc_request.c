@@ -2347,6 +2347,8 @@ static int osc_enqueue_fini(struct ptlrpc_request *req, struct ost_lvb *lvb,
 						     &RMF_DLM_REP);
 
 			LASSERT(rep != NULL);
+			rep->lock_policy_res1 =
+				ptlrpc_status_ntoh(rep->lock_policy_res1);
 			if (rep->lock_policy_res1)
 				rc = rep->lock_policy_res1;
 		}
@@ -3679,6 +3681,8 @@ int __init osc_init(void)
 	CDEBUG(D_INFO, "Lustre OSC module (%p).\n", &osc_caches);
 
 	rc = lu_kmem_init(osc_caches);
+	if (rc)
+		RETURN(rc);
 
 	lprocfs_osc_init_vars(&lvars);
 

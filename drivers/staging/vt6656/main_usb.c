@@ -267,7 +267,6 @@ device_set_options(struct vnt_private *pDevice) {
     pDevice->bUpdateBBVGA = true;
     pDevice->byFOETuning = 0;
     pDevice->byAutoPwrTunning = 0;
-    pDevice->wCTSDuration = 0;
     pDevice->byPreambleType = 0;
     pDevice->bExistSWNetAddr = false;
     /* pDevice->bDiversityRegCtlON = true; */
@@ -925,7 +924,6 @@ int device_alloc_frag_buf(struct vnt_private *pDevice,
     pDeF->skb = dev_alloc_skb((int)pDevice->rx_buf_sz);
     if (pDeF->skb == NULL)
         return false;
-    ASSERT(pDeF->skb);
     pDeF->skb->dev = pDevice->dev;
 
     return true;

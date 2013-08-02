@@ -523,7 +523,7 @@ static int osc_io_read_start(const struct lu_env *env,
 		cl_object_attr_lock(obj);
 		result = cl_object_attr_get(env, obj, attr);
 		if (result == 0) {
-			attr->cat_atime = LTIME_S(CFS_CURRENT_TIME);
+			attr->cat_atime = LTIME_S(CURRENT_TIME);
 			result = cl_object_attr_set(env, obj, attr,
 						    CAT_ATIME);
 		}
@@ -547,7 +547,7 @@ static int osc_io_write_start(const struct lu_env *env,
 		result = cl_object_attr_get(env, obj, attr);
 		if (result == 0) {
 			attr->cat_mtime = attr->cat_ctime =
-				LTIME_S(CFS_CURRENT_TIME);
+				LTIME_S(CURRENT_TIME);
 			result = cl_object_attr_set(env, obj, attr,
 						    CAT_MTIME | CAT_CTIME);
 		}
@@ -785,7 +785,7 @@ static void osc_req_attr_set(const struct lu_env *env,
 					      "no cover page!\n");
 			CL_PAGE_DEBUG(D_ERROR, env, apage,
 				      "dump uncover page!\n");
-			libcfs_debug_dumpstack(NULL);
+			dump_stack();
 			LBUG();
 		}
 

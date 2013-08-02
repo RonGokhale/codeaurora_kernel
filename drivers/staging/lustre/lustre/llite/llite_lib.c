@@ -42,7 +42,6 @@
 
 #include <linux/module.h>
 #include <linux/types.h>
-#include <linux/version.h>
 #include <linux/mm.h>
 
 #include <lustre_lite.h>
@@ -583,8 +582,10 @@ static int client_common_fill_super(struct super_block *sb, char *md, char *dt,
 	/* s_dev is also used in lt_compare() to compare two fs, but that is
 	 * only a node-local comparison. */
 	uuid = obd_get_uuid(sbi->ll_md_exp);
-	if (uuid != NULL)
+	if (uuid != NULL) {
 		sb->s_dev = get_uuid2int(uuid->uuid, strlen(uuid->uuid));
+		get_uuid2fsid(uuid->uuid, strlen(uuid->uuid), &sbi->ll_fsid);
+	}
 
 	if (data != NULL)
 		OBD_FREE_PTR(data);
@@ -1188,7 +1189,9 @@ void ll_clear_inode(struct inode *inode)
 		LASSERT(lli->lli_opendir_pid == 0);
 	}
 
+	spin_lock(&lli->lli_lock);
 	ll_i2info(inode)->lli_flags &= ~LLIF_MDS_SIZE_LOCK;
+	spin_unlock(&lli->lli_lock);
 	md_null_inode(sbi->ll_md_exp, ll_inode2fid(inode));
 
 	LASSERT(!lli->lli_open_fd_write_count);
@@ -1400,24 +1403,24 @@ int ll_setattr_raw(struct dentry *dentry, struct iattr *attr)
 
 	/* POSIX: check before ATTR_*TIME_SET set (from inode_change_ok) */
 	if (attr->ia_valid & TIMES_SET_FLAGS) {
-		if (current_fsuid() != inode->i_uid &&
+		if ((!uid_eq(current_fsuid(), inode->i_uid)) &&
 		    !cfs_capable(CFS_CAP_FOWNER))
 			RETURN(-EPERM);
 	}
 
 	/* We mark all of the fields "set" so MDS/OST does not re-set them */
 	if (attr->ia_valid & ATTR_CTIME) {
-		attr->ia_ctime = CFS_CURRENT_TIME;
+		attr->ia_ctime = CURRENT_TIME;
 		attr->ia_valid |= ATTR_CTIME_SET;
 	}
 	if (!(attr->ia_valid & ATTR_ATIME_SET) &&
 	    (attr->ia_valid & ATTR_ATIME)) {
-		attr->ia_atime = CFS_CURRENT_TIME;
+		attr->ia_atime = CURRENT_TIME;
 		attr->ia_valid |= ATTR_ATIME_SET;
 	}
 	if (!(attr->ia_valid & ATTR_MTIME_SET) &&
 	    (attr->ia_valid & ATTR_MTIME)) {
-		attr->ia_mtime = CFS_CURRENT_TIME;
+		attr->ia_mtime = CURRENT_TIME;
 		attr->ia_valid |= ATTR_MTIME_SET;
 	}
 
@@ -1615,7 +1618,7 @@ int ll_statfs(struct dentry *de, struct kstatfs *sfs)
 	sfs->f_blocks = osfs.os_blocks;
 	sfs->f_bfree = osfs.os_bfree;
 	sfs->f_bavail = osfs.os_bavail;
-
+	sfs->f_fsid = ll_s2sbi(sb)->ll_fsid;
 	return 0;
 }
 
@@ -1707,9 +1710,9 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
 		inode->i_blkbits = inode->i_sb->s_blocksize_bits;
 	}
 	if (body->valid & OBD_MD_FLUID)
-		inode->i_uid = body->uid;
+		inode->i_uid = make_kuid(&init_user_ns, body->uid);
 	if (body->valid & OBD_MD_FLGID)
-		inode->i_gid = body->gid;
+		inode->i_gid = make_kgid(&init_user_ns, body->gid);
 	if (body->valid & OBD_MD_FLFLAGS)
 		inode->i_flags = ll_ext_to_inode_flags(body->flags);
 	if (body->valid & OBD_MD_FLNLINK)
@@ -1755,7 +1758,9 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
 					/* Use old size assignment to avoid
 					 * deadlock bz14138 & bz14326 */
 					i_size_write(inode, body->size);
+					spin_lock(&lli->lli_lock);
 					lli->lli_flags |= LLIF_MDS_SIZE_LOCK;
+					spin_unlock(&lli->lli_lock);
 				}
 				ldlm_lock_decref(&lockh, mode);
 			}
@@ -1923,8 +1928,10 @@ int ll_iocontrol(struct inode *inode, struct file *file,
 		inode->i_flags = ll_ext_to_inode_flags(flags);
 
 		lsm = ccc_inode_lsm_get(inode);
-		if (lsm == NULL)
+		if (!lsm_has_objects(lsm)) {
+			ccc_inode_lsm_put(inode, lsm);
 			RETURN(0);
+		}
 
 		OBDO_ALLOC(oinfo.oi_oa);
 		if (!oinfo.oi_oa) {
@@ -1959,7 +1966,8 @@ int ll_flush_ctx(struct inode *inode)
 {
 	struct ll_sb_info  *sbi = ll_i2sbi(inode);
 
-	CDEBUG(D_SEC, "flush context for user %d\n", current_uid());
+	CDEBUG(D_SEC, "flush context for user %d\n",
+		      from_kuid(&init_user_ns, current_uid()));
 
 	obd_set_info_async(NULL, sbi->ll_md_exp,
 			   sizeof(KEY_FLUSH_CTX), KEY_FLUSH_CTX,
@@ -2238,8 +2246,8 @@ struct md_op_data * ll_prep_md_op_data(struct md_op_data *op_data,
 	op_data->op_namelen = namelen;
 	op_data->op_mode = mode;
 	op_data->op_mod_time = cfs_time_current_sec();
-	op_data->op_fsuid = current_fsuid();
-	op_data->op_fsgid = current_fsgid();
+	op_data->op_fsuid = from_kuid(&init_user_ns, current_fsuid());
+	op_data->op_fsgid = from_kgid(&init_user_ns, current_fsgid());
 	op_data->op_cap = cfs_curproc_cap_pack();
 	op_data->op_bias = 0;
 	op_data->op_cli_flags = 0;

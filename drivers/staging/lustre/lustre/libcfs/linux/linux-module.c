@@ -137,7 +137,7 @@ static long libcfs_ioctl(struct file *file,
 	struct cfs_psdev_file	 pfile;
 	int    rc = 0;
 
-	if (current_fsuid() != 0)
+	if (!capable(CAP_SYS_ADMIN))
 		return -EACCES;
 
 	if ( _IOC_TYPE(cmd) != IOC_LIBCFS_TYPE ||
@@ -171,13 +171,13 @@ static long libcfs_ioctl(struct file *file,
 }
 
 static struct file_operations libcfs_fops = {
-	unlocked_ioctl: libcfs_ioctl,
-	open :	  libcfs_psdev_open,
-	release :       libcfs_psdev_release
+	.unlocked_ioctl	= libcfs_ioctl,
+	.open		= libcfs_psdev_open,
+	.release	= libcfs_psdev_release,
 };
 
-psdev_t libcfs_dev = {
-	LNET_MINOR,
-	"lnet",
-	&libcfs_fops
+struct miscdevice libcfs_dev = {
+	.minor = LNET_MINOR,
+	.name = "lnet",
+	.fops = &libcfs_fops,
 };

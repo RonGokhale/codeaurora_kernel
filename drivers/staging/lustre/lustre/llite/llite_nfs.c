@@ -58,6 +58,22 @@ __u32 get_uuid2int(const char *name, int len)
 	return (key0 << 1);
 }
 
+void get_uuid2fsid(const char *name, int len, __kernel_fsid_t *fsid)
+{
+	__u64 key = 0, key0 = 0x12a3fe2d, key1 = 0x37abe8f9;
+
+	while (len--) {
+		key = key1 + (key0 ^ (*name++ * 7152373));
+		if (key & 0x8000000000000000ULL)
+			key -= 0x7fffffffffffffffULL;
+		key1 = key0;
+		key0 = key;
+	}
+
+	fsid->val[0] = key;
+	fsid->val[1] = key >> 32;
+}
+
 static int ll_nfs_test_inode(struct inode *inode, void *opaque)
 {
 	return lu_fid_eq(&ll_i2info(inode)->lli_fid,
@@ -131,7 +147,7 @@ ll_iget_for_nfs(struct super_block *sb, struct lu_fid *fid, struct lu_fid *paren
 
 	inode = search_inode_for_lustre(sb, fid);
 	if (IS_ERR(inode))
-		RETURN(ERR_PTR(PTR_ERR(inode)));
+		RETURN(ERR_CAST(inode));
 
 	if (is_bad_inode(inode)) {
 		/* we didn't find the right inode.. */
@@ -214,9 +230,12 @@ static int ll_get_name(struct dentry *dentry, char *name,
 		       struct dentry *child)
 {
 	struct inode *dir = dentry->d_inode;
-	struct ll_getname_data lgd;
-	__u64 offset = 0;
 	int rc;
+	struct ll_getname_data lgd = {
+		.lgd_name = name,
+		.lgd_fid = ll_i2info(child->d_inode)->lli_fid,
+		.ctx.actor = ll_nfs_get_name_filldir,
+	};
 	ENTRY;
 
 	if (!dir || !S_ISDIR(dir->i_mode))
@@ -225,12 +244,8 @@ static int ll_get_name(struct dentry *dentry, char *name,
 	if (!dir->i_fop)
 		GOTO(out, rc = -EINVAL);
 
-	lgd.lgd_name = name;
-	lgd.lgd_fid = ll_i2info(child->d_inode)->lli_fid;
-	lgd.lgd_found = 0;
-
 	mutex_lock(&dir->i_mutex);
-	rc = ll_dir_read(dir, &offset, &lgd, ll_nfs_get_name_filldir);
+	rc = ll_dir_read(dir, &lgd.ctx);
 	mutex_unlock(&dir->i_mutex);
 	if (!rc && !lgd.lgd_found)
 		rc = -ENOENT;

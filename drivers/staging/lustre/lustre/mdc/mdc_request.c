@@ -377,12 +377,8 @@ static int mdc_xattr_common(struct obd_export *exp,const struct req_format *fmt,
 			 sizeof(struct mdt_rec_reint));
 		rec = req_capsule_client_get(&req->rq_pill, &RMF_REC_REINT);
 		rec->sx_opcode = REINT_SETXATTR;
-		/* TODO:
-		 *  cfs_curproc_fs{u,g}id() should replace
-		 *  current->fs{u,g}id for portability.
-		 */
-		rec->sx_fsuid  = current_fsuid();
-		rec->sx_fsgid  = current_fsgid();
+		rec->sx_fsuid  = from_kuid(&init_user_ns, current_fsuid());
+		rec->sx_fsgid  = from_kgid(&init_user_ns, current_fsgid());
 		rec->sx_cap    = cfs_curproc_cap_pack();
 		rec->sx_suppgid1 = suppgid;
 		rec->sx_suppgid2 = -1;
@@ -1193,6 +1189,7 @@ static int mdc_ioc_hsm_progress(struct obd_export *exp,
 		GOTO(out, rc = -EPROTO);
 
 	*req_hpk = *hpk;
+	req_hpk->hpk_errval = lustre_errno_hton(hpk->hpk_errval);
 
 	ptlrpc_request_set_replen(req);
 
@@ -1774,6 +1771,9 @@ static int mdc_iocontrol(unsigned int cmd, struct obd_export *exp, int len,
 		GOTO(out, rc);
 	case LL_IOC_HSM_CT_START:
 		rc = mdc_ioc_hsm_ct_start(exp, karg);
+		/* ignore if it was already registered on this MDS. */
+		if (rc == -EEXIST)
+			rc = 0;
 		GOTO(out, rc);
 	case LL_IOC_HSM_PROGRESS:
 		rc = mdc_ioc_hsm_progress(exp, karg);
@@ -1991,19 +1991,10 @@ static int mdc_ioc_hsm_ct_start(struct obd_export *exp,
 	       lk->lk_uid, lk->lk_group, lk->lk_flags);
 
 	if (lk->lk_flags & LK_FLG_STOP) {
-		rc = libcfs_kkuc_group_rem(lk->lk_uid, lk->lk_group);
 		/* Unregister with the coordinator */
-		if (rc == 0)
-			rc = mdc_ioc_hsm_ct_unregister(imp);
+		rc = mdc_ioc_hsm_ct_unregister(imp);
 	} else {
-		struct file *fp = fget(lk->lk_wfd);
-
-		rc = libcfs_kkuc_group_add(fp, lk->lk_uid, lk->lk_group,
-					   lk->lk_data);
-		if (rc && fp)
-			fput(fp);
-		if (rc == 0)
-			rc = mdc_ioc_hsm_ct_register(imp, archive);
+		rc = mdc_ioc_hsm_ct_register(imp, archive);
 	}
 
 	return rc;
@@ -2328,7 +2319,7 @@ static int mdc_import_event(struct obd_device *obd, struct obd_import *imp,
 	}
 	case IMP_EVENT_ACTIVE:
 		rc = obd_notify_observer(obd, obd, OBD_NOTIFY_ACTIVE, NULL);
-		/* restore re-establish kuc registration after reconnecting */
+		/* redo the kuc registration after reconnecting */
 		if (rc == 0)
 			rc = mdc_kuc_reregister(imp);
 		break;
@@ -2387,7 +2378,7 @@ static int mdc_resource_inode_free(struct ldlm_resource *res)
 }
 
 struct ldlm_valblock_ops inode_lvbo = {
-	lvbo_free: mdc_resource_inode_free
+	.lvbo_free = mdc_resource_inode_free,
 };
 
 static int mdc_setup(struct obd_device *obd, struct lustre_cfg *cfg)

@@ -115,7 +115,7 @@ int lustre_msg_check_version(struct lustre_msg *msg, __u32 version)
 EXPORT_SYMBOL(lustre_msg_check_version);
 
 /* early reply size */
-int lustre_msg_early_size()
+int lustre_msg_early_size(void)
 {
 	static int size = 0;
 	if (!size) {
@@ -641,6 +641,9 @@ static inline int lustre_unpack_ptlrpc_body_v2(struct ptlrpc_request *req,
 		 CERROR("wrong lustre_msg version %08x\n", pb->pb_version);
 		 return -EINVAL;
 	}
+
+	if (!inout)
+		pb->pb_status = ptlrpc_status_ntoh(pb->pb_status);
 
 	return 0;
 }
@@ -2459,6 +2462,7 @@ void _debug_req(struct ptlrpc_request *req,
 			   rep_ok ? lustre_msg_get_flags(req->rq_repmsg) : -1,
 			   req->rq_status,
 			   rep_ok ? lustre_msg_get_status(req->rq_repmsg) : -1);
+	va_end(args);
 }
 EXPORT_SYMBOL(_debug_req);
 
