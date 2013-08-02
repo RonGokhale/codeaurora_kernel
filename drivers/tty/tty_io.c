@@ -603,8 +603,8 @@ static int tty_signal_session_leader(struct tty_struct *tty, int exit_session)
  *		BTM
  *		  redirect lock for undoing redirection
  *		  file list lock for manipulating list of ttys
- *		  tty_ldisc_lock from called functions
- *		  termios_mutex resetting termios data
+ *		  tty_ldiscs_lock from called functions
+ *		  termios_rwsem resetting termios data
  *		  tasklist_lock to walk task list for hangup event
  *		    ->siglock to protect ->signal/->sighand
  */
@@ -664,7 +664,6 @@ static void __tty_hangup(struct tty_struct *tty, int exit_session)
 
 	spin_lock_irq(&tty->ctrl_lock);
 	clear_bit(TTY_THROTTLED, &tty->flags);
-	clear_bit(TTY_PUSH, &tty->flags);
 	clear_bit(TTY_DO_WRITE_WAKEUP, &tty->flags);
 	put_pid(tty->session);
 	put_pid(tty->pgrp);
@@ -1388,8 +1387,7 @@ static int tty_reopen(struct tty_struct *tty)
 	struct tty_driver *driver = tty->driver;
 
 	if (test_bit(TTY_CLOSING, &tty->flags) ||
-			test_bit(TTY_HUPPING, &tty->flags) ||
-			test_bit(TTY_LDISC_CHANGING, &tty->flags))
+			test_bit(TTY_HUPPING, &tty->flags))
 		return -EIO;
 
 	if (driver->type == TTY_DRIVER_TYPE_PTY &&
@@ -1405,7 +1403,7 @@ static int tty_reopen(struct tty_struct *tty)
 	}
 	tty->count++;
 
-	WARN_ON(!test_bit(TTY_LDISC, &tty->flags));
+	WARN_ON(!tty->ldisc);
 
 	return 0;
 }
@@ -2202,7 +2200,7 @@ static int tty_fasync(int fd, struct file *filp, int on)
  *	FIXME: does not honour flow control ??
  *
  *	Locking:
- *		Called functions take tty_ldisc_lock
+ *		Called functions take tty_ldiscs_lock
  *		current->signal->tty check is safe without locks
  *
  *	FIXME: may race normal receive processing
@@ -2231,7 +2229,7 @@ static int tiocsti(struct tty_struct *tty, char __user *p)
  *
  *	Copies the kernel idea of the window size into the user buffer.
  *
- *	Locking: tty->termios_mutex is taken to ensure the winsize data
+ *	Locking: tty->winsize_mutex is taken to ensure the winsize data
  *		is consistent.
  */
 
@@ -2239,9 +2237,9 @@ static int tiocgwinsz(struct tty_struct *tty, struct winsize __user *arg)
 {
 	int err;
 
-	mutex_lock(&tty->termios_mutex);
+	mutex_lock(&tty->winsize_mutex);
 	err = copy_to_user(arg, &tty->winsize, sizeof(*arg));
-	mutex_unlock(&tty->termios_mutex);
+	mutex_unlock(&tty->winsize_mutex);
 
 	return err ? -EFAULT: 0;
 }
@@ -2262,7 +2260,7 @@ int tty_do_resize(struct tty_struct *tty, struct winsize *ws)
 	unsigned long flags;
 
 	/* Lock the tty */
-	mutex_lock(&tty->termios_mutex);
+	mutex_lock(&tty->winsize_mutex);
 	if (!memcmp(ws, &tty->winsize, sizeof(*ws)))
 		goto done;
 	/* Get the PID values and reference them so we can
@@ -2277,7 +2275,7 @@ int tty_do_resize(struct tty_struct *tty, struct winsize *ws)
 
 	tty->winsize = *ws;
 done:
-	mutex_unlock(&tty->termios_mutex);
+	mutex_unlock(&tty->winsize_mutex);
 	return 0;
 }
 EXPORT_SYMBOL(tty_do_resize);
@@ -3016,8 +3014,10 @@ void initialize_tty_struct(struct tty_struct *tty,
 	tty->session = NULL;
 	tty->pgrp = NULL;
 	mutex_init(&tty->legacy_mutex);
-	mutex_init(&tty->termios_mutex);
-	mutex_init(&tty->ldisc_mutex);
+	mutex_init(&tty->throttle_mutex);
+	init_rwsem(&tty->termios_rwsem);
+	mutex_init(&tty->winsize_mutex);
+	init_ldsem(&tty->ldisc_sem);
 	init_waitqueue_head(&tty->write_wait);
 	init_waitqueue_head(&tty->read_wait);
 	INIT_WORK(&tty->hangup_work, do_tty_hangup);
