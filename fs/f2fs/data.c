@@ -39,7 +39,7 @@ static void __set_data_blkaddr(struct dnode_of_data *dn, block_t new_addr)
 
 	wait_on_page_writeback(node_page);
 
-	rn = (struct f2fs_node *)page_address(node_page);
+	rn = F2FS_NODE(node_page);
 
 	/* Get physical address of data block */
 	addr_array = blkaddr_in_node(rn);
@@ -365,7 +365,6 @@ static void read_end_io(struct bio *bio, int err)
 		}
 		unlock_page(page);
 	} while (bvec >= bio->bi_io_vec);
-	kfree(bio->bi_private);
 	bio_put(bio);
 }
 
