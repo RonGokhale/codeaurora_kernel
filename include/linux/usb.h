@@ -1247,7 +1247,9 @@ typedef void (*usb_complete_t)(struct urb *);
  *	the device driver is saying that it provided this DMA address,
  *	which the host controller driver should use in preference to the
  *	transfer_buffer.
- * @sg: scatter gather buffer list
+ * @sg: scatter gather buffer list, the buffer size of each element in
+ * 	the list (except the last) must be divisible by the endpoint's
+ * 	max packet size
  * @num_mapped_sgs: (internal) number of mapped sg entries
  * @num_sgs: number of entries in the sg list
  * @transfer_buffer_length: How big is transfer_buffer.  The transfer may
@@ -1534,10 +1536,16 @@ static inline void usb_fill_int_urb(struct urb *urb,
 	urb->transfer_buffer_length = buffer_length;
 	urb->complete = complete_fn;
 	urb->context = context;
-	if (dev->speed == USB_SPEED_HIGH || dev->speed == USB_SPEED_SUPER)
+
+	if (dev->speed == USB_SPEED_HIGH || dev->speed == USB_SPEED_SUPER) {
+		/* make sure interval is within allowed range */
+		interval = clamp(interval, 1, 16);
+
 		urb->interval = 1 << (interval - 1);
-	else
+	} else {
 		urb->interval = interval;
+	}
+
 	urb->start_frame = -1;
 }
 

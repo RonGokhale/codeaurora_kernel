@@ -1464,11 +1464,10 @@ static int hub_configure(struct usb_hub *hub,
 	 * and battery-powered root hubs (may provide just 8 mA).
 	 */
 	ret = usb_get_status(hdev, USB_RECIP_DEVICE, 0, &hubstatus);
-	if (ret < 2) {
+	if (ret) {
 		message = "can't get hub status";
 		goto fail;
 	}
-	le16_to_cpus(&hubstatus);
 	hcd = bus_to_hcd(hdev->bus);
 	if (hdev == hdev->bus->root_hub) {
 		if (hcd->power_budget > 0)
@@ -2838,20 +2837,51 @@ void usb_enable_ltm(struct usb_device *udev)
 }
 EXPORT_SYMBOL_GPL(usb_enable_ltm);
 
-#ifdef	CONFIG_PM
 /*
- * usb_disable_function_remotewakeup - disable usb3.0
- * device's function remote wakeup
+ * usb_enable_remote_wakeup - enable remote wakeup for a device
  * @udev: target device
  *
- * Assume there's only one function on the USB 3.0
- * device and disable remote wake for the first
- * interface. FIXME if the interface association
- * descriptor shows there's more than one function.
+ * For USB-2 devices: Set the device's remote wakeup feature.
+ *
+ * For USB-3 devices: Assume there's only one function on the device and
+ * enable remote wake for the first interface.  FIXME if the interface
+ * association descriptor shows there's more than one function.
  */
-static int usb_disable_function_remotewakeup(struct usb_device *udev)
+static int usb_enable_remote_wakeup(struct usb_device *udev)
 {
-	return usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
+	if (udev->speed < USB_SPEED_SUPER)
+		return usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
+				USB_REQ_SET_FEATURE, USB_RECIP_DEVICE,
+				USB_DEVICE_REMOTE_WAKEUP, 0, NULL, 0,
+				USB_CTRL_SET_TIMEOUT);
+	else
+		return usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
+				USB_REQ_SET_FEATURE, USB_RECIP_INTERFACE,
+				USB_INTRF_FUNC_SUSPEND,
+				USB_INTRF_FUNC_SUSPEND_RW |
+					USB_INTRF_FUNC_SUSPEND_LP,
+				NULL, 0, USB_CTRL_SET_TIMEOUT);
+}
+
+/*
+ * usb_disable_remote_wakeup - disable remote wakeup for a device
+ * @udev: target device
+ *
+ * For USB-2 devices: Clear the device's remote wakeup feature.
+ *
+ * For USB-3 devices: Assume there's only one function on the device and
+ * disable remote wake for the first interface.  FIXME if the interface
+ * association descriptor shows there's more than one function.
+ */
+static int usb_disable_remote_wakeup(struct usb_device *udev)
+{
+	if (udev->speed < USB_SPEED_SUPER)
+		return usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
+				USB_REQ_CLEAR_FEATURE, USB_RECIP_DEVICE,
+				USB_DEVICE_REMOTE_WAKEUP, 0, NULL, 0,
+				USB_CTRL_SET_TIMEOUT);
+	else
+		return usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
 				USB_REQ_CLEAR_FEATURE, USB_RECIP_INTERFACE,
 				USB_INTRF_FUNC_SUSPEND,	0, NULL, 0,
 				USB_CTRL_SET_TIMEOUT);
@@ -2918,7 +2948,6 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 {
 	struct usb_hub	*hub = usb_hub_to_struct_hub(udev->parent);
 	struct usb_port *port_dev = hub->ports[udev->portnum - 1];
-	enum pm_qos_flags_status pm_qos_stat;
 	int		port1 = udev->portnum;
 	int		status;
 	bool		really_suspend = true;
@@ -2930,33 +2959,13 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 	 * we don't explicitly enable it here.
 	 */
 	if (udev->do_remote_wakeup) {
-		if (!hub_is_superspeed(hub->hdev)) {
-			status = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
-					USB_REQ_SET_FEATURE, USB_RECIP_DEVICE,
-					USB_DEVICE_REMOTE_WAKEUP, 0,
-					NULL, 0,
-					USB_CTRL_SET_TIMEOUT);
-		} else {
-			/* Assume there's only one function on the USB 3.0
-			 * device and enable remote wake for the first
-			 * interface. FIXME if the interface association
-			 * descriptor shows there's more than one function.
-			 */
-			status = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
-					USB_REQ_SET_FEATURE,
-					USB_RECIP_INTERFACE,
-					USB_INTRF_FUNC_SUSPEND,
-					USB_INTRF_FUNC_SUSPEND_RW |
-					USB_INTRF_FUNC_SUSPEND_LP,
-					NULL, 0,
-					USB_CTRL_SET_TIMEOUT);
-		}
+		status = usb_enable_remote_wakeup(udev);
 		if (status) {
 			dev_dbg(&udev->dev, "won't remote wakeup, status %d\n",
 					status);
 			/* bail if autosuspend is requested */
 			if (PMSG_IS_AUTO(msg))
-				return status;
+				goto err_wakeup;
 		}
 	}
 
@@ -2965,14 +2974,16 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 		usb_set_usb2_hardware_lpm(udev, 0);
 
 	if (usb_disable_ltm(udev)) {
-		dev_err(&udev->dev, "%s Failed to disable LTM before suspend\n.",
-				__func__);
-		return -ENOMEM;
+		dev_err(&udev->dev, "Failed to disable LTM before suspend\n.");
+		status = -ENOMEM;
+		if (PMSG_IS_AUTO(msg))
+			goto err_ltm;
 	}
 	if (usb_unlocked_disable_lpm(udev)) {
-		dev_err(&udev->dev, "%s Failed to disable LPM before suspend\n.",
-				__func__);
-		return -ENOMEM;
+		dev_err(&udev->dev, "Failed to disable LPM before suspend\n.");
+		status = -ENOMEM;
+		if (PMSG_IS_AUTO(msg))
+			goto err_lpm3;
 	}
 
 	/* see 7.1.7.6 */
@@ -3000,28 +3011,19 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 	if (status) {
 		dev_dbg(hub->intfdev, "can't suspend port %d, status %d\n",
 				port1, status);
-		/* paranoia:  "should not happen" */
-		if (udev->do_remote_wakeup) {
-			if (!hub_is_superspeed(hub->hdev)) {
-				(void) usb_control_msg(udev,
-						usb_sndctrlpipe(udev, 0),
-						USB_REQ_CLEAR_FEATURE,
-						USB_RECIP_DEVICE,
-						USB_DEVICE_REMOTE_WAKEUP, 0,
-						NULL, 0,
-						USB_CTRL_SET_TIMEOUT);
-			} else
-				(void) usb_disable_function_remotewakeup(udev);
 
-		}
-
+		/* Try to enable USB3 LPM and LTM again */
+		usb_unlocked_enable_lpm(udev);
+ err_lpm3:
+		usb_enable_ltm(udev);
+ err_ltm:
 		/* Try to enable USB2 hardware LPM again */
 		if (udev->usb2_hw_lpm_capable == 1)
 			usb_set_usb2_hardware_lpm(udev, 1);
 
-		/* Try to enable USB3 LTM and LPM again */
-		usb_enable_ltm(udev);
-		usb_unlocked_enable_lpm(udev);
+		if (udev->do_remote_wakeup)
+			(void) usb_disable_remote_wakeup(udev);
+ err_wakeup:
 
 		/* System sleep transitions should never fail */
 		if (!PMSG_IS_AUTO(msg))
@@ -3043,14 +3045,15 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 	 * Check whether current status meets the requirement of
 	 * usb port power off mechanism
 	 */
-	pm_qos_stat = dev_pm_qos_flags(&port_dev->dev,
-			PM_QOS_FLAG_NO_POWER_OFF);
-	if (!udev->do_remote_wakeup
-			&& pm_qos_stat != PM_QOS_FLAGS_ALL
-			&& udev->persist_enabled
-			&& !status) {
-		pm_runtime_put_sync(&port_dev->dev);
-		port_dev->did_runtime_put = true;
+	if (status == 0 && !udev->do_remote_wakeup && udev->persist_enabled) {
+		enum pm_qos_flags_status pm_qos_stat;
+
+		pm_qos_stat = dev_pm_qos_flags(&port_dev->dev,
+				PM_QOS_FLAG_NO_POWER_OFF);
+		if (pm_qos_stat != PM_QOS_FLAGS_ALL) {
+			pm_runtime_put_sync(&port_dev->dev);
+			port_dev->did_runtime_put = true;
+		}
 	}
 
 	usb_mark_last_busy(hub->hdev);
@@ -3102,8 +3105,6 @@ static int finish_port_resume(struct usb_device *udev)
 	if (status == 0) {
 		devstatus = 0;
 		status = usb_get_status(udev, USB_RECIP_DEVICE, 0, &devstatus);
-		if (status >= 0)
-			status = (status > 0 ? 0 : -ENODEV);
 
 		/* If a normal resume failed, try doing a reset-resume */
 		if (status && !udev->reset_resume && udev->persist_enabled) {
@@ -3123,24 +3124,15 @@ static int finish_port_resume(struct usb_device *udev)
 	 * udev->reset_resume
 	 */
 	} else if (udev->actconfig && !udev->reset_resume) {
-		if (!hub_is_superspeed(udev->parent)) {
-			le16_to_cpus(&devstatus);
+		if (udev->speed < USB_SPEED_SUPER) {
 			if (devstatus & (1 << USB_DEVICE_REMOTE_WAKEUP))
-				status = usb_control_msg(udev,
-						usb_sndctrlpipe(udev, 0),
-						USB_REQ_CLEAR_FEATURE,
-						USB_RECIP_DEVICE,
-						USB_DEVICE_REMOTE_WAKEUP, 0,
-						NULL, 0,
-						USB_CTRL_SET_TIMEOUT);
+				status = usb_disable_remote_wakeup(udev);
 		} else {
 			status = usb_get_status(udev, USB_RECIP_INTERFACE, 0,
 					&devstatus);
-			le16_to_cpus(&devstatus);
 			if (!status && devstatus & (USB_INTRF_STAT_FUNC_RW_CAP
 					| USB_INTRF_STAT_FUNC_RW))
-				status =
-					usb_disable_function_remotewakeup(udev);
+				status = usb_disable_remote_wakeup(udev);
 		}
 
 		if (status)
@@ -3273,8 +3265,6 @@ int usb_port_resume(struct usb_device *udev, pm_message_t msg)
 
 	return status;
 }
-
-#endif	/* CONFIG_PM */
 
 #ifdef	CONFIG_PM_RUNTIME
 
@@ -3843,7 +3833,8 @@ EXPORT_SYMBOL_GPL(usb_disable_ltm);
 
 void usb_enable_ltm(struct usb_device *udev) { }
 EXPORT_SYMBOL_GPL(usb_enable_ltm);
-#endif
+
+#endif	/* CONFIG_PM */
 
 
 /* USB 2.0 spec, 7.1.7.3 / fig 7-29:
@@ -4483,11 +4474,10 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 
 			status = usb_get_status(udev, USB_RECIP_DEVICE, 0,
 					&devstat);
-			if (status < 2) {
+			if (status) {
 				dev_dbg(&udev->dev, "get status %d ?\n", status);
 				goto loop_disable;
 			}
-			le16_to_cpus(&devstat);
 			if ((devstat & (1 << USB_DEVICE_SELF_POWERED)) == 0) {
 				dev_err(&udev->dev,
 					"can't connect bus-powered hub "
@@ -4798,7 +4788,8 @@ static void hub_events(void)
 					hub->ports[i - 1]->child;
 
 				dev_dbg(hub_dev, "warm reset port %d\n", i);
-				if (!udev) {
+				if (!udev || !(portstatus &
+						USB_PORT_STAT_CONNECTION)) {
 					status = hub_port_reset(hub, i,
 							NULL, HUB_BH_RESET_TIME,
 							true);
@@ -4808,8 +4799,8 @@ static void hub_events(void)
 					usb_lock_device(udev);
 					status = usb_reset_device(udev);
 					usb_unlock_device(udev);
+					connect_change = 0;
 				}
-				connect_change = 0;
 			}
 
 			if (connect_change)
