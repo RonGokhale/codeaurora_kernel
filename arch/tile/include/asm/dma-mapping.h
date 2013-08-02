@@ -44,12 +44,12 @@ static inline void set_dma_offset(struct device *dev, dma_addr_t off)
 
 static inline dma_addr_t phys_to_dma(struct device *dev, phys_addr_t paddr)
 {
-	return paddr + get_dma_offset(dev);
+	return paddr;
 }
 
 static inline phys_addr_t dma_to_phys(struct device *dev, dma_addr_t daddr)
 {
-	return daddr - get_dma_offset(dev);
+	return daddr;
 }
 
 static inline void dma_mark_clean(void *addr, size_t size) {}

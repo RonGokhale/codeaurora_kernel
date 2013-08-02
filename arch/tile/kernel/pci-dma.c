@@ -357,7 +357,7 @@ static void *tile_pci_dma_alloc_coherent(struct device *dev, size_t size,
 
 	addr = page_to_phys(pg);
 
-	*dma_handle = phys_to_dma(dev, addr);
+	*dma_handle = addr + get_dma_offset(dev);
 
 	return page_address(pg);
 }
@@ -387,7 +387,7 @@ static int tile_pci_dma_map_sg(struct device *dev, struct scatterlist *sglist,
 		sg->dma_address = sg_phys(sg);
 		__dma_prep_pa_range(sg->dma_address, sg->length, direction);
 
-		sg->dma_address = phys_to_dma(dev, sg->dma_address);
+		sg->dma_address = sg->dma_address + get_dma_offset(dev);
 #ifdef CONFIG_NEED_SG_DMA_LENGTH
 		sg->dma_length = sg->length;
 #endif
@@ -422,7 +422,7 @@ static dma_addr_t tile_pci_dma_map_page(struct device *dev, struct page *page,
 	BUG_ON(offset + size > PAGE_SIZE);
 	__dma_prep_page(page, offset, size, direction);
 
-	return phys_to_dma(dev, page_to_pa(page) + offset);
+	return page_to_pa(page) + offset + get_dma_offset(dev);
 }
 
 static void tile_pci_dma_unmap_page(struct device *dev, dma_addr_t dma_address,
@@ -432,7 +432,7 @@ static void tile_pci_dma_unmap_page(struct device *dev, dma_addr_t dma_address,
 {
 	BUG_ON(!valid_dma_direction(direction));
 
-	dma_address = dma_to_phys(dev, dma_address);
+	dma_address -= get_dma_offset(dev);
 
 	__dma_complete_page(pfn_to_page(PFN_DOWN(dma_address)),
 			    dma_address & PAGE_OFFSET, size, direction);
@@ -445,7 +445,7 @@ static void tile_pci_dma_sync_single_for_cpu(struct device *dev,
 {
 	BUG_ON(!valid_dma_direction(direction));
 
-	dma_handle = dma_to_phys(dev, dma_handle);
+	dma_handle -= get_dma_offset(dev);
 
 	__dma_complete_pa_range(dma_handle, size, direction);
 }
@@ -456,7 +456,7 @@ static void tile_pci_dma_sync_single_for_device(struct device *dev,
 						enum dma_data_direction
 						direction)
 {
-	dma_handle = dma_to_phys(dev, dma_handle);
+	dma_handle -= get_dma_offset(dev);
 
 	__dma_prep_pa_range(dma_handle, size, direction);
 }
@@ -573,6 +573,11 @@ int dma_set_coherent_mask(struct device *dev, u64 mask)
 	if (((dma_ops == gx_pci_dma_map_ops) ||
 	    (dma_ops == gx_legacy_pci_dma_map_ops)) &&
 	    (mask <= DMA_BIT_MASK(32))) {
+		if (dma_ops == gx_pci_dma_map_ops) {
+			dma_ops->alloc = tile_swiotlb_alloc_coherent;
+			dma_ops->free = tile_swiotlb_free_coherent;
+		}
+
 		if (mask > dev->archdata.max_direct_dma_addr)
 			mask = dev->archdata.max_direct_dma_addr;
 	}
