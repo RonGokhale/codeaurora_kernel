@@ -78,7 +78,7 @@
 				gpio-controller;
 				#gpio-cells = <2>;
 				interrupt-controller;
-				#interrupts-cells = <2>;
+				#interrupt-cells = <2>;
 				interrupts = <82>, <83>, <84>, <85>;
 			};
 
@@ -89,7 +89,7 @@
 				gpio-controller;
 				#gpio-cells = <2>;
 				interrupt-controller;
-				#interrupts-cells = <2>;
+				#interrupt-cells = <2>;
 				interrupts = <87>, <88>, <89>, <90>;
 			};
 
@@ -100,7 +100,7 @@
 				gpio-controller;
 				#gpio-cells = <2>;
 				interrupt-controller;
-				#interrupts-cells = <2>;
+				#interrupt-cells = <2>;
 				interrupts = <91>;
 			};
 
@@ -153,6 +153,14 @@
 					dmacap,xor;
 					dmacap,memset;
 				};
+			};
+
+			i2c0: i2c@11000 {
+				reg = <0x11000 0x20>;
+			};
+
+			i2c1: i2c@11100 {
+				reg = <0x11100 0x20>;
 			};
 
 			usb@50000 {
