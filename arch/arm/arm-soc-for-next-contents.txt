@@ -8,6 +8,10 @@ Format is a little different from before in an attempt to make it easier to read
 	<...>
 
 
+next/fixes-non-critical
+	renesas/fixes-for-3.12
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-fixes-for-v3.12
+
 next/cleanup
 	localtimer/removal
 		git://git.kernel.org/pub/scm/linux/kernel/git/davidb/linux-msm.git tags/remove-local-timers
