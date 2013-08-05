@@ -143,7 +143,10 @@ int acpi_bind_one(struct device *dev, acpi_handle handle)
 	list_for_each_entry(pn, &acpi_dev->physical_node_list, node)
 		if (pn->dev == dev) {
 			dev_warn(dev, "Already associated with ACPI node\n");
-			goto err_free;
+			if (ACPI_HANDLE(dev) == handle)
+				retval = 0;
+
+			goto out_free;
 		}
 
 	/* allocate physical node id according to physical_node_id_bitmap */
@@ -152,7 +155,7 @@ int acpi_bind_one(struct device *dev, acpi_handle handle)
 		ACPI_MAX_PHYSICAL_NODE);
 	if (physical_node->node_id >= ACPI_MAX_PHYSICAL_NODE) {
 		retval = -ENOSPC;
-		goto err_free;
+		goto out_free;
 	}
 
 	set_bit(physical_node->node_id, acpi_dev->physical_node_id_bitmap);
@@ -185,10 +188,14 @@ int acpi_bind_one(struct device *dev, acpi_handle handle)
 	put_device(dev);
 	return retval;
 
- err_free:
+ out_free:
 	mutex_unlock(&acpi_dev->physical_node_lock);
 	kfree(physical_node);
-	goto err;
+	if (retval)
+		goto err;
+
+	put_device(dev);
+	return 0;
 }
 EXPORT_SYMBOL_GPL(acpi_bind_one);
 
