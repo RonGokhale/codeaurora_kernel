@@ -25,7 +25,7 @@
  *
  * Please send any bug reports or fixes you make to the
  * email addresses:
- *    lksctp developers <lksctp-developers@lists.sourceforge.net>
+ *    lksctp developers <linux-sctp@vger.kernel.org>
  *
  * Or submit a bug report through the following website:
  *    http://www.sf.net/projects/lksctp
@@ -946,6 +946,7 @@ struct sctp_transport {
 	__u64 hb_nonce;
 
 	struct rcu_head rcu;
+	u32 dst_cookie;
 };
 
 struct sctp_transport *sctp_transport_new(struct net *, const union sctp_addr *,

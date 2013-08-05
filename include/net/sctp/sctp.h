@@ -27,7 +27,7 @@
  *
  * Please send any bug reports or fixes you make to the
  * email address(es):
- *    lksctp developers <lksctp-developers@lists.sourceforge.net>
+ *    lksctp developers <linux-sctp@vger.kernel.org>
  *
  * Or submit a bug report through the following website:
  *    http://www.sf.net/projects/lksctp
@@ -613,7 +613,7 @@ static inline void sctp_v4_map_v6(union sctp_addr *addr)
  */
 static inline struct dst_entry *sctp_transport_dst_check(struct sctp_transport *t)
 {
-	if (t->dst && !dst_check(t->dst, 0)) {
+	if (t->dst && !dst_check(t->dst, t->dst_cookie)) {
 		dst_release(t->dst);
 		t->dst = NULL;
 	}
