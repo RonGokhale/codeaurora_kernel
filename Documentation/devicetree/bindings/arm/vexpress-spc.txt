@@ -1,0 +1,36 @@
+* ARM Versatile Express Serial Power Controller device tree bindings
+
+Latest ARM development boards implement a power management interface (serial
+power controller - SPC) that is capable of managing power states transitions,
+wake-up IRQs and resume addresses for ARM multiprocessor testchips.
+The serial controller can be programmed through a memory mapped interface
+that enables communication between firmware running on the microcontroller
+managing power states and the application processors.
+
+The SPC DT bindings are defined as follows:
+
+- spc node
+
+	- compatible:
+		Usage: required
+		Value type: <stringlist>
+		Definition: must be
+			    "arm,vexpress-spc,v2p-ca15_a7", "arm,vexpress-spc"
+	- reg:
+		Usage: required
+		Value type: <prop-encode-array>
+		Definition: A standard property that specifies the base address
+			    and the size of the SPC address space
+	- interrupts:
+		Usage: required
+		Value type: <prop-encoded-array>
+		Definition:  SPC interrupt configuration. A standard property
+			     that follows ePAPR interrupts specifications
+
+Example:
+
+spc: spc@7fff0000 {
+	compatible = "arm,vexpress-spc,v2p-ca15_a7", "arm,vexpress-spc";
+	reg = <0x7fff0000 0x1000>;
+	interrupts = <0 95 4>;
+};
