@@ -161,7 +161,13 @@ struct cgroup_name {
 struct cgroup {
 	unsigned long flags;		/* "unsigned long" so bitops work */
 
-	int id;				/* ida allocated in-hierarchy ID */
+	/*
+	 * idr allocated in-hierarchy ID.
+	 *
+	 * The ID of the root cgroup is always 0, and a new cgroup
+	 * will be assigned with a smallest available ID.
+	 */
+	int id;
 
 	/*
 	 * We link our 'sibling' struct into our parent's 'children'.
@@ -322,7 +328,7 @@ struct cgroupfs_root {
 	unsigned long flags;
 
 	/* IDs for cgroups in this hierarchy */
-	struct ida cgroup_ida;
+	struct idr cgroup_idr;
 
 	/* The path to use for release notifications. */
 	char release_agent_path[PATH_MAX];
@@ -394,8 +400,8 @@ struct cgroup_map_cb {
 
 /* cftype->flags */
 enum {
-	CFTYPE_ONLY_ON_ROOT	= (1 << 0),	/* only create on root cg */
-	CFTYPE_NOT_ON_ROOT	= (1 << 1),	/* don't create on root cg */
+	CFTYPE_ONLY_ON_ROOT	= (1 << 0),	/* only create on root cgrp */
+	CFTYPE_NOT_ON_ROOT	= (1 << 1),	/* don't create on root cgrp */
 	CFTYPE_INSANE		= (1 << 2),	/* don't create if sane_behavior */
 };
 
@@ -513,7 +519,7 @@ struct cftype_set {
 };
 
 struct cgroup_scanner {
-	struct cgroup *cg;
+	struct cgroup *cgrp;
 	int (*test_task)(struct task_struct *p, struct cgroup_scanner *scan);
 	void (*process_task)(struct task_struct *p,
 			struct cgroup_scanner *scan);
@@ -711,6 +717,24 @@ static inline struct cgroup* task_cgroup(struct task_struct *task,
 					       int subsys_id)
 {
 	return task_subsys_state(task, subsys_id)->cgroup;
+}
+
+/**
+ * cgroup_from_id - lookup cgroup by id
+ * @ss: cgroup subsys to be looked into
+ * @id: the cgroup id
+ *
+ * Returns the cgroup if there's valid one with @id, otherwise returns NULL.
+ * Should be called under rcu_read_lock().
+ */
+static inline struct cgroup *cgroup_from_id(struct cgroup_subsys *ss, int id)
+{
+#ifdef CONFIG_PROVE_RCU
+	rcu_lockdep_assert(rcu_read_lock_held() ||
+			   lockdep_is_held(&cgroup_mutex),
+			   "cgroup_from_id() needs proper protection");
+#endif
+	return idr_find(&ss->root->cgroup_idr, id);
 }
 
 struct cgroup *cgroup_next_sibling(struct cgroup *pos);
