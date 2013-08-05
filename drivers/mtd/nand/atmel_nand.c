@@ -41,9 +41,6 @@
 #include <linux/gpio.h>
 #include <linux/io.h>
 #include <linux/platform_data/atmel.h>
-#include <linux/pinctrl/consumer.h>
-
-#include <mach/cpu.h>
 
 static int use_dma = 1;
 module_param(use_dma, int, 0);
@@ -127,11 +124,6 @@ struct atmel_nand_host {
 };
 
 static struct nand_ecclayout atmel_pmecc_oobinfo;
-
-static int cpu_has_dma(void)
-{
-	return cpu_is_at91sam9rl() || cpu_is_at91sam9g45();
-}
 
 /*
  * Enable NAND.
@@ -1002,7 +994,7 @@ static int __init atmel_pmecc_nand_init_params(struct platform_device *pdev,
 		return err_no;
 	}
 
-	if (cap != host->pmecc_corr_cap ||
+	if (cap > host->pmecc_corr_cap ||
 			sector_size != host->pmecc_sector_size)
 		dev_info(host->dev, "WARNING: Be Caution! Using different PMECC parameters from Nand ONFI ECC reqirement.\n");
 
@@ -1174,10 +1166,9 @@ static int atmel_nand_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 	 * Workaround: Reset the parity registers before reading the
 	 * actual data.
 	 */
-	if (cpu_is_at32ap7000()) {
-		struct atmel_nand_host *host = chip->priv;
+	struct atmel_nand_host *host = chip->priv;
+	if (host->board.need_reset_workaround)
 		ecc_writel(host->ecc, CR, ATMEL_ECC_RST);
-	}
 
 	/* read the page */
 	chip->read_buf(mtd, p, eccsize);
@@ -1298,11 +1289,11 @@ static int atmel_nand_correct(struct mtd_info *mtd, u_char *dat,
  */
 static void atmel_nand_hwctl(struct mtd_info *mtd, int mode)
 {
-	if (cpu_is_at32ap7000()) {
-		struct nand_chip *nand_chip = mtd->priv;
-		struct atmel_nand_host *host = nand_chip->priv;
+	struct nand_chip *nand_chip = mtd->priv;
+	struct atmel_nand_host *host = nand_chip->priv;
+
+	if (host->board.need_reset_workaround)
 		ecc_writel(host->ecc, CR, ATMEL_ECC_RST);
-	}
 }
 
 #if defined(CONFIG_OF)
@@ -1336,6 +1327,8 @@ static int atmel_of_init_port(struct atmel_nand_host *host,
 	board->ecc_mode = ecc_mode < 0 ? NAND_ECC_SOFT : ecc_mode;
 
 	board->on_flash_bbt = of_get_nand_on_flash_bbt(np);
+
+	board->has_dma = of_property_read_bool(np, "atmel,nand-has-dma");
 
 	if (of_get_nand_bus_width(np) == 16)
 		board->bus_width_16 = 1;
@@ -1470,7 +1463,6 @@ static int __init atmel_nand_probe(struct platform_device *pdev)
 	struct resource *mem;
 	struct mtd_part_parser_data ppdata = {};
 	int res;
-	struct pinctrl *pinctrl;
 
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!mem) {
@@ -1514,13 +1506,6 @@ static int __init atmel_nand_probe(struct platform_device *pdev)
 	nand_chip->IO_ADDR_R = host->io_base;
 	nand_chip->IO_ADDR_W = host->io_base;
 	nand_chip->cmd_ctrl = atmel_nand_cmd_ctrl;
-
-	pinctrl = devm_pinctrl_get_select_default(&pdev->dev);
-	if (IS_ERR(pinctrl)) {
-		dev_err(host->dev, "Failed to request pinctrl\n");
-		res = PTR_ERR(pinctrl);
-		goto err_ecc_ioremap;
-	}
 
 	if (gpio_is_valid(host->board.rdy_pin)) {
 		res = gpio_request(host->board.rdy_pin, "nand_rdy");
@@ -1601,7 +1586,7 @@ static int __init atmel_nand_probe(struct platform_device *pdev)
 		nand_chip->bbt_options |= NAND_BBT_USE_FLASH;
 	}
 
-	if (!cpu_has_dma())
+	if (!host->board.has_dma)
 		use_dma = 0;
 
 	if (use_dma) {
@@ -1665,7 +1650,6 @@ err_hw_ecc:
 err_scan_ident:
 err_no_card:
 	atmel_nand_disable(host);
-	platform_set_drvdata(pdev, NULL);
 	if (host->dma_chan)
 		dma_release_channel(host->dma_chan);
 err_ecc_ioremap:
