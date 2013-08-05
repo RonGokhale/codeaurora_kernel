@@ -2153,10 +2153,12 @@ int ocfs2_empty_dir(struct inode *inode)
 {
 	int ret;
 	struct ocfs2_empty_dir_priv priv = {
-		.ctx.actor = ocfs2_empty_dir_filldir
+		.ctx.actor = ocfs2_empty_dir_filldir,
+		.ctx.pos = 0,
 	};
 
-	memset(&priv, 0, sizeof(priv));
+	memset(&priv + sizeof(struct dir_context), 0,
+	       sizeof(priv) - sizeof(struct dir_context));
 
 	if (ocfs2_dir_indexed(inode)) {
 		ret = ocfs2_empty_dir_dx(inode, &priv);
