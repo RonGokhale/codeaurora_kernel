@@ -1341,8 +1341,8 @@ int q6asm_is_dsp_buf_avail(int dir, struct audio_client *ac)
 static void q6asm_add_hdr(struct audio_client *ac, struct apr_hdr *hdr,
 			uint32_t pkt_size, uint32_t cmd_flg)
 {
-	pr_debug("%s:session=%d pkt size=%d cmd_flg=%d\n", __func__, pkt_size,
-		cmd_flg, ac->session);
+	pr_debug("%s:session=%d pkt size=%d cmd_flg=%d\n", __func__, ac->session,
+		pkt_size, cmd_flg);
 	mutex_lock(&ac->cmd_lock);
 	hdr->hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD, \
 				APR_HDR_LEN(sizeof(struct apr_hdr)),\
@@ -2051,8 +2051,8 @@ int q6asm_run_nowait(struct audio_client *ac, uint32_t flags,
 		return -EINVAL;
 	}
 	pr_debug("session[%d]", ac->session);
-	q6asm_add_hdr_async(ac, &run.hdr, sizeof(run), TRUE);
-
+	q6asm_add_hdr_async(ac, &run.hdr, sizeof(run), FALSE);
+	run.hdr.token = ac->session;
 	run.hdr.opcode = ASM_SESSION_CMD_RUN;
 	run.flags    = flags;
 	run.msw_ts   = msw_ts;
@@ -3959,8 +3959,8 @@ fail_cmd:
 static void q6asm_add_hdr_async(struct audio_client *ac, struct apr_hdr *hdr,
 			uint32_t pkt_size, uint32_t cmd_flg)
 {
-	pr_debug("session=%d pkt size=%d cmd_flg=%d\n", pkt_size, cmd_flg,
-		ac->session);
+	pr_debug("session=%d pkt size=%d cmd_flg=%d\n", ac->session, pkt_size,
+		cmd_flg);
 	hdr->hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD, \
 				APR_HDR_LEN(sizeof(struct apr_hdr)),\
 				APR_PKT_VER);
