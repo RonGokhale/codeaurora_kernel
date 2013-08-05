@@ -1,0 +1,33 @@
+for-next contents for 3.12: 
+Format is a little different from before in an attempt to make it easier to read:
+
+<next/* branch>
+	<topic branch>
+		<contents>
+		<...>
+	<...>
+
+
+next/fixes-non-critical
+	renesas/fixes-for-3.12
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-fixes-for-v3.12
+	mvebu/fixes-non-critical
+		git://git.infradead.org/linux-mvebu.git tags/fixes-non-3.12
+
+next/cleanup
+	localtimer/removal
+		git://git.kernel.org/pub/scm/linux/kernel/git/davidb/linux-msm.git tags/remove-local-timers
+	patch
+		ARM: OMAP2+: Fix fallout from localtimer divorce and SMP=n
+		ARM: imx: fix mismerge of localtimer code
+	renesas/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-cleanup-for-v3.12
+
+next/boards
+	renesas/backlight
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-backlight-for-v3.12
+
+next/dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-dt-for-v3.12
+		based on renesas/cleanup
