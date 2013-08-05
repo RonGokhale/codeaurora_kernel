@@ -46,9 +46,7 @@
 
 #include "musb_core.h"
 
-#ifdef CONFIG_OF
 static const struct of_device_id musb_dsps_of_match[];
-#endif
 
 /**
  * avoid using musb_readx()/musb_writex() as glue layer should not be
@@ -75,7 +73,6 @@ struct dsps_musb_wrapper {
 	u16	revision;
 	u16	control;
 	u16	status;
-	u16	eoi;
 	u16	epintr_set;
 	u16	epintr_clear;
 	u16	epintr_status;
@@ -205,7 +202,6 @@ static void dsps_musb_disable(struct musb *musb)
 	dsps_writel(reg_base, wrp->epintr_clear,
 			 wrp->txep_bitmap | wrp->rxep_bitmap);
 	dsps_writeb(musb->mregs, MUSB_DEVCTL, 0);
-	dsps_writel(reg_base, wrp->eoi, 0);
 }
 
 static void otg_timer(unsigned long _musb)
@@ -319,7 +315,7 @@ static irqreturn_t dsps_interrupt(int irq, void *hci)
 	/* Get usb core interrupts */
 	usbintr = dsps_readl(reg_base, wrp->coreintr_status);
 	if (!usbintr && !epintr)
-		goto eoi;
+		goto out;
 
 	musb->int_usb =	(usbintr & wrp->usb_bitmap) >> wrp->usb_shift;
 	if (usbintr)
@@ -387,16 +383,11 @@ static irqreturn_t dsps_interrupt(int irq, void *hci)
 	if (musb->int_tx || musb->int_rx || musb->int_usb)
 		ret |= musb_interrupt(musb);
 
- eoi:
-	/* EOI needs to be written for the IRQ to be re-asserted. */
-	if (ret == IRQ_HANDLED || epintr || usbintr)
-		dsps_writel(reg_base, wrp->eoi, 1);
-
 	/* Poll for ID change */
 	if (musb->xceiv->state == OTG_STATE_B_IDLE)
 		mod_timer(&glue->timer[pdev->id],
 			 jiffies + wrp->poll_seconds * HZ);
-
+out:
 	spin_unlock_irqrestore(&musb->lock, flags);
 
 	return ret;
@@ -428,6 +419,8 @@ static int dsps_musb_init(struct musb *musb)
 		goto err0;
 	}
 
+	usb_phy_init(musb->xceiv);
+
 	setup_timer(&glue->timer[pdev->id], otg_timer, (unsigned long) musb);
 
 	/* Reset the musb */
@@ -442,9 +435,6 @@ static int dsps_musb_init(struct musb *musb)
 	val = dsps_readl(reg_base, wrp->phy_utmi);
 	val &= ~(1 << wrp->otg_disable);
 	dsps_writel(musb->ctrl_base, wrp->phy_utmi, val);
-
-	/* clear level interrupt */
-	dsps_writel(reg_base, wrp->eoi, 0);
 
 	return 0;
 err0:
@@ -463,6 +453,7 @@ static int dsps_musb_exit(struct musb *musb)
 
 	/* Shutdown the on-chip PHY and its PLL. */
 	musb_dsps_phy_control(glue, pdev->id, 0);
+	usb_phy_shutdown(musb->xceiv);
 
 	/* NOP driver needs change if supporting dual instance */
 	usb_put_phy(musb->xceiv);
@@ -487,7 +478,7 @@ static int dsps_create_musb_pdev(struct dsps_glue *glue, u8 id)
 {
 	struct device *dev = glue->dev;
 	struct platform_device *pdev = to_platform_device(dev);
-	struct musb_hdrc_platform_data  *pdata = dev->platform_data;
+	struct musb_hdrc_platform_data  *pdata = dev_get_platdata(dev);
 	struct device_node *np = pdev->dev.of_node;
 	struct musb_hdrc_config	*config;
 	struct platform_device	*musb;
@@ -719,11 +710,10 @@ static int dsps_resume(struct device *dev)
 
 static SIMPLE_DEV_PM_OPS(dsps_pm_ops, dsps_suspend, dsps_resume);
 
-static const struct dsps_musb_wrapper ti81xx_driver_data = {
+static const struct dsps_musb_wrapper am33xx_driver_data = {
 	.revision		= 0x00,
 	.control		= 0x14,
 	.status			= 0x18,
-	.eoi			= 0x24,
 	.epintr_set		= 0x38,
 	.epintr_clear		= 0x40,
 	.epintr_status		= 0x30,
@@ -750,23 +740,12 @@ static const struct dsps_musb_wrapper ti81xx_driver_data = {
 	.instances		= 1,
 };
 
-static const struct platform_device_id musb_dsps_id_table[] = {
-	{
-		.name	= "musb-ti81xx",
-		.driver_data	= (kernel_ulong_t) &ti81xx_driver_data,
-	},
-	{  },	/* Terminating Entry */
-};
-MODULE_DEVICE_TABLE(platform, musb_dsps_id_table);
-
-#ifdef CONFIG_OF
 static const struct of_device_id musb_dsps_of_match[] = {
 	{ .compatible = "ti,musb-am33xx",
-		.data = (void *) &ti81xx_driver_data, },
+		.data = (void *) &am33xx_driver_data, },
 	{  },
 };
 MODULE_DEVICE_TABLE(of, musb_dsps_of_match);
-#endif
 
 static struct platform_driver dsps_usbss_driver = {
 	.probe		= dsps_probe,
@@ -776,7 +755,6 @@ static struct platform_driver dsps_usbss_driver = {
 		.pm	= &dsps_pm_ops,
 		.of_match_table	= of_match_ptr(musb_dsps_of_match),
 	},
-	.id_table	= musb_dsps_id_table,
 };
 
 MODULE_DESCRIPTION("TI DSPS MUSB Glue Layer");
