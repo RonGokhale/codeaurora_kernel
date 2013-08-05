@@ -629,7 +629,7 @@ static int ar933x_uart_probe(struct platform_device *pdev)
 	int id;
 	int ret;
 
-	pdata = pdev->dev.platform_data;
+	pdata = dev_get_platdata(&pdev->dev);
 	if (!pdata)
 		return -EINVAL;
 
@@ -703,7 +703,6 @@ static int ar933x_uart_remove(struct platform_device *pdev)
 	struct ar933x_uart_port *up;
 
 	up = platform_get_drvdata(pdev);
-	platform_set_drvdata(pdev, NULL);
 
 	if (up) {
 		uart_remove_one_port(&ar933x_uart_driver, &up->port);
