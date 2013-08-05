@@ -23,8 +23,9 @@
 #include <asm/cputype.h>
 #include <asm/cp15.h>
 
-#include <linux/vexpress.h>
 #include <linux/arm-cci.h>
+
+#include "spc.h"
 
 /*
  * We can't use regular spinlocks. In the switcher case, it is possible

@@ -250,4 +250,3 @@ int __init ve_spc_init(void)
 
 	return ve_spc_init_status;
 }
-early_initcall(ve_spc_init);
