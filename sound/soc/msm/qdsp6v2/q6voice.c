@@ -86,7 +86,6 @@ static int voice_send_set_pp_enable_cmd(struct voice_data *v,
 					uint32_t module_id, int enable);
 
 static struct voice_data *voice_get_session_by_idx(int idx);
-static int voice_get_idx_for_session(u32 session_id);
 
 static u16 voice_get_mvm_handle(struct voice_data *v)
 {
@@ -231,7 +230,7 @@ static struct voice_data *voice_get_session(u32 session_id)
 	return v;
 }
 
-static int voice_get_idx_for_session(u32 session_id)
+int voice_get_idx_for_session(u32 session_id)
 {
 	int idx = 0;
 
@@ -4284,9 +4283,14 @@ static int32_t qdsp_mvm_callback(struct apr_client_data *data, void *priv)
 			apr_reset(c->apr_q6_mvm);
 			c->apr_q6_mvm = NULL;
 
+			/* clean up memory handle */
+			c->cal_mem_handle = 0;
+
 			/* Sub-system restart is applicable to all sessions. */
-			for (i = 0; i < MAX_VOC_SESSIONS; i++)
+			for (i = 0; i < MAX_VOC_SESSIONS; i++) {
 				c->voice[i].mvm_handle = 0;
+				c->voice[i].shmem_info.mem_handle = 0;
+			}
 		}
 		return 0;
 	}
