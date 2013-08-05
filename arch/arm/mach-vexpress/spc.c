@@ -220,7 +220,7 @@ static int __init ve_spc_probe(void)
 	 */
 	sync_cache_w(info);
 	sync_cache_w(&info);
-	pr_info("vexpress-spc loaded at %p\n", info->baseaddr);
+
 	return 0;
 
 mem_free:
