@@ -187,18 +187,15 @@ void ve_spc_powerdown(u32 cluster, bool enable)
 	writel_relaxed(enable, info->baseaddr + pwdrn_reg);
 }
 
-static const struct of_device_id ve_spc_ids[] __initconst = {
-	{ .compatible = "arm,vexpress-spc,v2p-ca15_a7" },
-	{ .compatible = "arm,vexpress-spc" },
-	{},
-};
-
 static int __init ve_spc_probe(void)
 {
 	int ret;
-	struct device_node *node = of_find_matching_node(NULL, ve_spc_ids);
+	struct device_node *dn;
 
-	if (!node)
+	dn = of_find_compatible_node(NULL, NULL,
+				     "arm,vexpress-scc,v2p-ca15_a7");
+
+	if (!dn)
 		return -ENODEV;
 
 	info = kzalloc(sizeof(*info), GFP_KERNEL);
@@ -207,7 +204,7 @@ static int __init ve_spc_probe(void)
 		return -ENOMEM;
 	}
 
-	info->baseaddr = of_iomap(node, 0);
+	info->baseaddr = of_iomap(dn, 0);
 	if (!info->baseaddr) {
 		pr_err(SPCLOG "unable to ioremap memory\n");
 		ret = -ENXIO;
