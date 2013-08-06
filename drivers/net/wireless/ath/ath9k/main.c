@@ -238,9 +238,6 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 		ath_restart_work(sc);
 	}
 
-	if ((ah->caps.hw_caps & ATH9K_HW_CAP_ANT_DIV_COMB) && sc->ant_rx != 3)
-		ath_ant_comb_update(sc);
-
 	ieee80211_wake_queues(sc->hw);
 
 	return true;
@@ -2094,7 +2091,7 @@ static void ath9k_wow_add_pattern(struct ath_softc *sc,
 {
 	struct ath_hw *ah = sc->sc_ah;
 	struct ath9k_wow_pattern *wow_pattern = NULL;
-	struct cfg80211_wowlan_trig_pkt_pattern *patterns = wowlan->patterns;
+	struct cfg80211_pkt_pattern *patterns = wowlan->patterns;
 	int mask_len;
 	s8 i = 0;
 
