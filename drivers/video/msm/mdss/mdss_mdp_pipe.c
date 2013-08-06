@@ -30,6 +30,7 @@ static DEFINE_MUTEX(mdss_mdp_smp_lock);
 static DECLARE_BITMAP(mdss_mdp_smp_mmb_pool, MDSS_MDP_SMP_MMB_BLOCKS);
 
 static int mdss_mdp_pipe_free(struct mdss_mdp_pipe *pipe);
+static int __mdss_mdp_pipe_smp_mmb_is_empty(unsigned long *smp);
 
 static inline void mdss_mdp_pipe_write(struct mdss_mdp_pipe *pipe,
 				       u32 reg, u32 val)
@@ -94,6 +95,11 @@ static void mdss_mdp_smp_mmb_free(unsigned long *smp, bool write)
 	}
 }
 
+static int __mdss_mdp_pipe_smp_mmb_is_empty(unsigned long *smp)
+{
+	return bitmap_weight(smp, SMP_MB_CNT) == 0;
+}
+
 static void mdss_mdp_smp_set_wm_levels(struct mdss_mdp_pipe *pipe, int mb_cnt)
 {
 	u32 fetch_size, val, wm[3];
@@ -156,6 +162,9 @@ int mdss_mdp_smp_reserve(struct mdss_mdp_pipe *pipe)
 	int i;
 	int rc = 0, rot_mode = 0;
 	u32 nlines;
+	u16 width;
+
+	width = pipe->src.w >> pipe->horz_deci;
 
 	if (pipe->bwc_mode) {
 		rc = mdss_mdp_get_rau_strides(pipe->src.w, pipe->src.h,
@@ -166,11 +175,11 @@ int mdss_mdp_smp_reserve(struct mdss_mdp_pipe *pipe)
 			ps.ystride[0], ps.ystride[1]);
 	} else if (mdata->has_decimation && pipe->src_fmt->is_yuv) {
 		ps.num_planes = 2;
-		ps.ystride[0] = pipe->src.w >> pipe->horz_deci;
-		ps.ystride[1] = pipe->src.h >> pipe->vert_deci;
+		ps.ystride[0] = width;
+		ps.ystride[1] = ps.ystride[0];
 	} else {
 		rc = mdss_mdp_get_plane_sizes(pipe->src_fmt->format,
-			pipe->src.w, pipe->src.h, &ps, 0);
+			width, pipe->src.h, &ps, 0);
 		if (rc)
 			return rc;
 
@@ -178,7 +187,7 @@ int mdss_mdp_smp_reserve(struct mdss_mdp_pipe *pipe)
 			rot_mode = 1;
 		else if (ps.num_planes == 1)
 			ps.ystride[0] = MAX_BPP *
-				max(pipe->mixer->width, pipe->src.w);
+				max(pipe->mixer->width, width);
 	}
 
 	nlines = pipe->bwc_mode ? 1 : 2;
@@ -227,6 +236,8 @@ static int mdss_mdp_smp_alloc(struct mdss_mdp_pipe *pipe)
 
 	mutex_lock(&mdss_mdp_smp_lock);
 	for (i = 0; i < MAX_PLANES; i++) {
+		if (__mdss_mdp_pipe_smp_mmb_is_empty(pipe->smp_map[i].reserved))
+			continue;
 		mdss_mdp_smp_mmb_amend(pipe->smp_map[i].allocated,
 			pipe->smp_map[i].reserved);
 		cnt += mdss_mdp_smp_mmb_set(pipe->ftch_id + i,
@@ -708,10 +719,9 @@ int mdss_mdp_pipe_queue_data(struct mdss_mdp_pipe *pipe,
 		if (pipe->type == MDSS_MDP_PIPE_TYPE_VIG)
 			mdss_mdp_pipe_write(pipe, MDSS_MDP_REG_VIG_OP_MODE,
 			opmode);
-
-		mdss_mdp_smp_alloc(pipe);
 	}
 
+	mdss_mdp_smp_alloc(pipe);
 	ret = mdss_mdp_src_addr_setup(pipe, src_data);
 	if (ret) {
 		pr_err("addr setup error for pnum=%d\n", pipe->num);

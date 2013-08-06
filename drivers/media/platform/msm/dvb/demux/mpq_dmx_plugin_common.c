@@ -99,6 +99,14 @@ module_param(mpq_sdmx_proc_limit, int, S_IRUGO | S_IWUSR);
 static int mpq_sdmx_debug;
 module_param(mpq_sdmx_debug, int, S_IRUGO | S_IWUSR);
 
+/*
+ * Indicates whether the demux should search for frame boundaries
+ * and notify on video packets on frame-basis or whether to provide
+ * only video PES packet payloads as-is.
+ */
+static int video_framing = 1;
+module_param(video_framing, int, S_IRUGO | S_IWUSR);
+
 /* Global data-structure for managing demux devices */
 static struct
 {
@@ -111,13 +119,6 @@ static struct
 	/* Stream buffers objects used for tunneling to decoders */
 	struct mpq_streambuffer
 		decoder_buffers[MPQ_ADAPTER_MAX_NUM_OF_INTERFACES];
-
-	/*
-	 * Indicates whether the video decoder handles framing
-	 * or we are required to provide framing information
-	 * in the meta-data passed to the decoder.
-	 */
-	int decoder_framing;
 
 	/* Indicates whether secure demux TZ application is available */
 	int secure_demux_app_loaded;
@@ -197,7 +198,8 @@ static inline int mpq_dmx_get_pattern_params(
 		patterns[1] = dvb_dmx_get_pattern(DMX_IDX_H264_PPS);
 		patterns[2] = dvb_dmx_get_pattern(DMX_IDX_H264_IDR_START);
 		patterns[3] = dvb_dmx_get_pattern(DMX_IDX_H264_NON_IDR_START);
-		*patterns_num = 4;
+		patterns[4] = dvb_dmx_get_pattern(DMX_IDX_H264_SEI);
+		*patterns_num = 5;
 		break;
 
 	case DMX_VIDEO_CODEC_VC1:
@@ -466,6 +468,12 @@ void mpq_dmx_init_debugfs_entries(struct mpq_demux *mpq_demux)
 		&mpq_demux->decoder_ts_errors);
 
 	debugfs_create_u32(
+		"decoder_cc_errors",
+		S_IRUGO | S_IWUSR | S_IWGRP,
+		mpq_demux->demux.dmx.debugfs_demux_dir,
+		&mpq_demux->decoder_cc_errors);
+
+	debugfs_create_u32(
 		"sdmx_process_count",
 		S_IRUGO | S_IWUSR | S_IWGRP,
 		mpq_demux->demux.dmx.debugfs_demux_dir,
@@ -615,13 +623,6 @@ int mpq_dmx_plugin_init(mpq_dmx_init dmx_init_func)
 	mpq_dmx_info.ion_client = NULL;
 
 	mpq_dmx_info.secure_demux_app_loaded = 0;
-
-	/*
-	 * TODO: the following should be set based on the decoder:
-	 * 0 means the decoder doesn't handle framing, so framing
-	 * is done by demux. 1 means the decoder handles framing.
-	 */
-	mpq_dmx_info.decoder_framing = 0;
 
 	/* Allocate memory for all MPQ devices */
 	mpq_dmx_info.devices =
@@ -1339,7 +1340,7 @@ static int mpq_dmx_init_video_feed(struct mpq_feed *mpq_feed)
 	struct mpq_streambuffer *stream_buffer;
 
 	/* get and store framing information if required */
-	if (!mpq_dmx_info.decoder_framing) {
+	if (video_framing) {
 		mpq_dmx_get_pattern_params(
 			mpq_feed->dvb_demux_feed->video_codec,
 			feed_data->patterns, &feed_data->patterns_num);
@@ -1457,6 +1458,7 @@ static int mpq_dmx_init_video_feed(struct mpq_feed *mpq_feed)
 	mpq_demux->decoder_out_interval_sum = 0;
 	mpq_demux->decoder_out_interval_max = 0;
 	mpq_demux->decoder_ts_errors = 0;
+	mpq_demux->decoder_cc_errors = 0;
 
 	return 0;
 
@@ -1635,7 +1637,17 @@ static int mpq_sdmx_init_metadata_buffer(struct mpq_demux *mpq_demux,
 			__func__, ret);
 		goto failed_unmap_metadata_buf;
 	}
-	metadata_buff_desc->base_addr = (void *)temp;
+
+	/*
+	 * NOTE: the following casting to u32 must be done
+	 * as long as TZ does not support LPAE. Once TZ supports
+	 * LPAE SDMX interface needs to be updated accordingly.
+	 */
+	if (temp > 0xFFFFFFFF)
+		MPQ_DVB_ERR_PRINT(
+			"%s: WARNNING - physical address %pa is larger than 32bits!\n",
+			__func__, &temp);
+	metadata_buff_desc->base_addr = (void *)(u32)temp;
 
 	dvb_ringbuffer_init(&feed->metadata_buf, metadata_buff_base,
 		SDMX_METADATA_BUFFER_SIZE);
@@ -2273,7 +2285,16 @@ static int mpq_sdmx_dvr_buffer_desc(struct mpq_demux *mpq_demux,
 		return ret;
 	}
 
-	buf_desc->base_addr = (void *)phys_addr;
+	/*
+	 * NOTE: the following casting to u32 must be done
+	 * as long as TZ does not support LPAE. Once TZ supports
+	 * LPAE SDMX interface needs to be updated accordingly.
+	 */
+	if (phys_addr > 0xFFFFFFFF)
+		MPQ_DVB_ERR_PRINT(
+			"%s: WARNNING - physical address %pa is larger than 32bits!\n",
+			__func__, &phys_addr);
+	buf_desc->base_addr = (void *)(u32)phys_addr;
 	buf_desc->size = rbuf->size;
 
 	return 0;
@@ -2327,6 +2348,14 @@ static void mpq_dmx_decoder_frame_closure(struct mpq_demux *mpq_demux,
 		meta_data.info.framing.pattern_type =
 			feed_data->last_framing_match_type;
 		meta_data.info.framing.stc = feed_data->last_framing_match_stc;
+		meta_data.info.framing.continuity_error_counter =
+			feed_data->continuity_errs;
+		meta_data.info.framing.transport_error_indicator_counter =
+			feed_data->tei_errs;
+		meta_data.info.framing.ts_dropped_bytes =
+			feed_data->ts_dropped_bytes;
+		meta_data.info.framing.ts_packets_num =
+			feed_data->ts_packets_num;
 
 		mpq_streambuffer_get_buffer_handle(stream_buffer,
 			0, /* current write buffer handle */
@@ -2396,7 +2425,6 @@ static void mpq_dmx_decoder_pes_closure(struct mpq_demux *mpq_demux,
 
 		mpq_dmx_write_pts_dts(feed_data,
 			&(meta_data.info.pes.pts_dts_info));
-		mpq_dmx_save_pts_dts(feed_data);
 
 		meta_data.packet_type = DMX_PES_PACKET;
 		meta_data.info.pes.stc = feed_data->prev_stc;
@@ -2625,6 +2653,7 @@ static int mpq_dmx_process_video_packet_framing(
 	mpq_dmx_check_continuity(feed_data,
 				ts_header->continuity_counter,
 				discontinuity_indicator);
+	mpq_demux->decoder_cc_errors += feed_data->continuity_errs;
 
 	/* Need to back-up the PTS information of the very first frame */
 	if (feed_data->first_pts_dts_copy) {
@@ -2769,6 +2798,15 @@ static int mpq_dmx_process_video_packet_framing(
 				feed_data->last_framing_match_type;
 			meta_data.info.framing.stc =
 				feed_data->last_framing_match_stc;
+			meta_data.info.framing.continuity_error_counter =
+				feed_data->continuity_errs;
+			meta_data.info.framing.
+				transport_error_indicator_counter =
+				 feed_data->tei_errs;
+			meta_data.info.framing.ts_dropped_bytes =
+				feed_data->ts_dropped_bytes;
+			meta_data.info.framing.ts_packets_num =
+				feed_data->ts_packets_num;
 
 			mpq_streambuffer_get_buffer_handle(
 				stream_buffer,
@@ -2914,7 +2952,9 @@ static int mpq_dmx_process_video_packet_no_framing(
 
 				mpq_dmx_write_pts_dts(feed_data,
 					&(meta_data.info.pes.pts_dts_info));
-				mpq_dmx_save_pts_dts(feed_data);
+
+				/* Mark that we detected start of new PES */
+				feed_data->first_pts_dts_copy = 1;
 
 				meta_data.packet_type = DMX_PES_PACKET;
 				meta_data.info.pes.stc = feed_data->prev_stc;
@@ -3019,7 +3059,7 @@ static int mpq_dmx_process_video_packet_no_framing(
 
 	/*
 	 * Need to back-up the PTS information
-	 * of the very first PES
+	 * of the start of new PES
 	 */
 	if (feed_data->first_pts_dts_copy) {
 		mpq_dmx_save_pts_dts(feed_data);
@@ -3033,6 +3073,7 @@ static int mpq_dmx_process_video_packet_no_framing(
 	mpq_dmx_check_continuity(feed_data,
 				ts_header->continuity_counter,
 				discontinuity_indicator);
+	mpq_demux->decoder_cc_errors += feed_data->continuity_errs;
 
 	if (mpq_streambuffer_data_write(
 				stream_buffer,
@@ -3124,7 +3165,7 @@ int mpq_dmx_process_video_packet(
 		curr_stc *= 256; /* convert from 105.47 KHZ to 27MHz */
 	}
 
-	if (mpq_dmx_info.decoder_framing)
+	if (!video_framing)
 		return mpq_dmx_process_video_packet_no_framing(feed, buf,
 				curr_stc);
 	else
@@ -3405,8 +3446,19 @@ static int mpq_sdmx_get_buffer_chunks(struct mpq_demux *mpq_demux,
 
 	sg = sg_ptr->sgl;
 	for (i = 0; i < sg_ptr->nents; i++) {
+		/*
+		 * NOTE: the following casting to u32 must be done
+		 * as long as TZ does not support LPAE. Once TZ supports
+		 * LPAE SDMX interface needs to be updated accordingly.
+		 */
+		if (sg_dma_address(sg) > 0xFFFFFFFF)
+			MPQ_DVB_ERR_PRINT(
+				"%s: WARNNING - physical address %pa is larger than 32bits!\n",
+				__func__, &sg_dma_address(sg));
+
 		buff_chunks[i].base_addr =
-			(void *)sg_dma_address(sg);
+			(void *)(u32)sg_dma_address(sg);
+
 		if (sg->length > actual_buff_size)
 			chunk_size = actual_buff_size;
 		else
@@ -4855,7 +4907,7 @@ int mpq_dmx_oob_command(struct dvb_demux_feed *feed,
 		event.status = DMX_OK_EOS;
 		if (!feed->secure_mode.is_secured) {
 			if (dvb_dmx_is_video_feed(feed)) {
-				if (mpq_dmx_info.decoder_framing)
+				if (!video_framing)
 					mpq_dmx_decoder_pes_closure(mpq_demux,
 						mpq_feed);
 				else

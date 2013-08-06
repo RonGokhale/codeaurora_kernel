@@ -351,7 +351,11 @@ static int mdp3_ctrl_intf_init(struct msm_fb_data_type *mfd,
 		cfg.dsi_cmd.dsi_cmd_tg_intf_sel = 0;
 	} else
 		return -EINVAL;
-	rc = mdp3_intf_init(intf, &cfg);
+
+	if (intf->config)
+		rc = intf->config(intf, &cfg);
+	else
+		rc = -EINVAL;
 	return rc;
 }
 
@@ -390,7 +394,10 @@ static int mdp3_ctrl_dma_init(struct msm_fb_data_type *mfd,
 					(MDP3_DMA_OUTPUT_COMP_BITS_8 << 2)|
 					MDP3_DMA_OUTPUT_COMP_BITS_8;
 
-	rc = mdp3_dma_init(dma, &sourceConfig, &outputConfig);
+	if (dma->dma_config)
+		rc = dma->dma_config(dma, &sourceConfig, &outputConfig);
+	else
+		rc = -EINVAL;
 	return rc;
 }
 
@@ -410,6 +417,11 @@ static int mdp3_ctrl_on(struct msm_fb_data_type *mfd)
 	mutex_lock(&mdp3_session->lock);
 	if (mdp3_session->status) {
 		pr_debug("fb%d is on already", mfd->index);
+		goto on_error;
+	}
+
+	if (mdp3_session->intf->active) {
+		pr_debug("continuous splash screen, initialized already\n");
 		goto on_error;
 	}
 
@@ -460,6 +472,8 @@ static int mdp3_ctrl_on(struct msm_fb_data_type *mfd)
 		pr_err("display interface init failed\n");
 		goto on_error;
 	}
+
+	mdp3_fbmem_clear();
 
 	if (panel->set_backlight)
 		panel->set_backlight(panel, panel->panel_info.bl_max);
@@ -671,6 +685,12 @@ static int mdp3_ctrl_display_commit_kickoff(struct msm_fb_data_type *mfd)
 		return -EPERM;
 	}
 
+	if (!mdp3_iommu_is_attached(MDP3_CLIENT_DMA_P)) {
+		pr_debug("continuous splash screen, IOMMU not attached\n");
+		mdp3_ctrl_off(mfd);
+		mdp3_ctrl_on(mfd);
+	}
+
 	mutex_lock(&mdp3_session->lock);
 
 	data = mdp3_bufq_pop(&mdp3_session->bufq_in);
@@ -713,6 +733,12 @@ static void mdp3_ctrl_pan_display(struct msm_fb_data_type *mfd)
 	if (!mdp3_session->status) {
 		pr_err("mdp3_ctrl_pan_display, display off!\n");
 		return;
+	}
+
+	if (!mdp3_iommu_is_attached(MDP3_CLIENT_DMA_P)) {
+		pr_debug("continuous splash screen, IOMMU not attached\n");
+		mdp3_ctrl_off(mfd);
+		mdp3_ctrl_on(mfd);
 	}
 
 	mutex_lock(&mdp3_session->lock);
@@ -871,7 +897,7 @@ static int mdp3_histogram_collect(struct mdp3_session_data *session,
 
 	ret = session->dma->get_histo(session->dma);
 	if (ret) {
-		pr_err("mdp3_histogram_collect error = %d\n", ret);
+		pr_debug("mdp3_histogram_collect error = %d\n", ret);
 		return ret;
 	}
 
@@ -920,11 +946,53 @@ static int mdp3_bl_scale_config(struct msm_fb_data_type *mfd,
 	return ret;
 }
 
+static int mdp3_csc_config(struct mdp3_session_data *session,
+					struct mdp_csc_cfg_data *data)
+{
+	struct mdp3_dma_color_correct_config config;
+	struct mdp3_dma_ccs ccs;
+	int ret = -EINVAL;
+
+	if (!data->csc_data.csc_mv || !data->csc_data.csc_pre_bv ||
+		!data->csc_data.csc_post_bv || !data->csc_data.csc_pre_lv ||
+			!data->csc_data.csc_post_lv) {
+		pr_err("%s : Invalid csc vectors", __func__);
+		return -EINVAL;
+	}
+
+	session->cc_vect_sel = (session->cc_vect_sel + 1) % 2;
+
+	config.ccs_enable = 1;
+	config.ccs_sel = session->cc_vect_sel;
+	config.pre_limit_sel = session->cc_vect_sel;
+	config.post_limit_sel = session->cc_vect_sel;
+	config.pre_bias_sel = session->cc_vect_sel;
+	config.post_bias_sel = session->cc_vect_sel;
+	config.ccs_dirty = true;
+
+	ccs.mv = data->csc_data.csc_mv;
+	ccs.pre_bv = data->csc_data.csc_pre_bv;
+	ccs.post_bv = data->csc_data.csc_post_bv;
+	ccs.pre_lv = data->csc_data.csc_pre_lv;
+	ccs.post_lv = data->csc_data.csc_post_lv;
+
+	mutex_lock(&session->lock);
+	ret = session->dma->config_ccs(session->dma, &config, &ccs);
+	mutex_unlock(&session->lock);
+	return ret;
+}
+
 static int mdp3_pp_ioctl(struct msm_fb_data_type *mfd,
 					void __user *argp)
 {
 	int ret = -EINVAL;
 	struct msmfb_mdp_pp mdp_pp;
+	struct mdp3_session_data *mdp3_session;
+
+	if (!mfd || !mfd->mdp.private1)
+		return -EINVAL;
+
+	mdp3_session = mfd->mdp.private1;
 
 	ret = copy_from_user(&mdp_pp, argp, sizeof(mdp_pp));
 	if (ret)
@@ -935,6 +1003,11 @@ static int mdp3_pp_ioctl(struct msm_fb_data_type *mfd,
 		ret = mdp3_bl_scale_config(mfd, (struct mdp_bl_scale_data *)
 						&mdp_pp.data.bl_scale_data);
 		break;
+	case mdp_op_csc_cfg:
+		ret = mdp3_csc_config(mdp3_session,
+						&(mdp_pp.data.csc_cfg_data));
+		break;
+
 	default:
 		pr_err("Unsupported request to MDP_PP IOCTL.\n");
 		ret = -EINVAL;
@@ -1022,6 +1095,7 @@ static int mdp3_ctrl_lut_update(struct msm_fb_data_type *mfd,
 	lut_config.lut_enable = 7;
 	lut_config.lut_sel = mdp3_session->lut_sel;
 	lut_config.lut_position = 0;
+	lut_config.lut_dirty = true;
 	lut.color0_lut = r;
 	lut.color1_lut = g;
 	lut.color2_lut = b;
@@ -1169,10 +1243,21 @@ int mdp3_ctrl_init(struct msm_fb_data_type *mfd)
 		goto init_done;
 	}
 
+	rc = mdp3_dma_init(mdp3_session->dma);
+	if (rc) {
+		pr_err("fail to init dma\n");
+		goto init_done;
+	}
+
 	intf_type = mdp3_ctrl_get_intf_type(mfd);
 	mdp3_session->intf = mdp3_get_display_intf(intf_type);
 	if (!mdp3_session->intf) {
 		rc = -ENODEV;
+		goto init_done;
+	}
+	rc = mdp3_intf_init(mdp3_session->intf);
+	if (rc) {
+		pr_err("fail to init interface\n");
 		goto init_done;
 	}
 

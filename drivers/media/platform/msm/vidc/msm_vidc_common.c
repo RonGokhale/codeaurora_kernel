@@ -69,6 +69,20 @@ static bool is_turbo_requested(struct msm_vidc_core *core,
 	return false;
 }
 
+static bool is_thumbnail_session(struct msm_vidc_inst *inst)
+{
+	if (inst->session_type == MSM_VIDC_DECODER) {
+		int rc = 0;
+		struct v4l2_control ctrl = {
+			.id = V4L2_CID_MPEG_VIDC_VIDEO_SYNC_FRAME_DECODE
+		};
+		rc = v4l2_g_ctrl(&inst->ctrl_handler, &ctrl);
+		if (!rc && ctrl.value)
+			return true;
+	}
+	return false;
+}
+
 static int msm_comm_get_load(struct msm_vidc_core *core,
 	enum session_type type)
 {
@@ -83,7 +97,9 @@ static int msm_comm_get_load(struct msm_vidc_core *core,
 		if (inst->session_type == type &&
 			inst->state >= MSM_VIDC_OPEN_DONE &&
 			inst->state < MSM_VIDC_STOP_DONE) {
-			num_mbs_per_sec += NUM_MBS_PER_SEC(inst->prop.height,
+			if (!is_thumbnail_session(inst))
+				num_mbs_per_sec += NUM_MBS_PER_SEC(
+					inst->prop.height,
 					inst->prop.width, inst->prop.fps);
 		}
 		mutex_unlock(&inst->lock);
@@ -611,6 +627,8 @@ static void handle_sys_error(enum command_response cmd, void *data)
 				if (inst->core)
 					hdev = inst->core->device;
 				if (hdev && inst->session) {
+					dprintk(VIDC_DBG,
+					"cleaning up inst: 0x%p", inst);
 					rc = call_hfi_op(hdev, session_clean,
 						(void *) inst->session);
 					if (rc)
@@ -677,10 +695,24 @@ static void handle_session_close(enum command_response cmd, void *data)
 {
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst;
+	struct hfi_device *hdev = NULL;
+
 	if (response) {
 		inst = (struct msm_vidc_inst *)response->session_id;
-		signal_session_msg_receipt(cmd, inst);
+		if (!inst || !inst->core || !inst->core->device) {
+			dprintk(VIDC_ERR, "%s invalid params\n", __func__);
+			return;
+		}
+		hdev = inst->core->device;
+		mutex_lock(&inst->lock);
+		if (inst->session) {
+			dprintk(VIDC_DBG, "cleaning up inst: 0x%p", inst);
+			call_hfi_op(hdev, session_clean,
+				(void *) inst->session);
+		}
 		inst->session = NULL;
+		mutex_unlock(&inst->lock);
+		signal_session_msg_receipt(cmd, inst);
 		show_stats(inst);
 	} else {
 		dprintk(VIDC_ERR,
@@ -721,13 +753,45 @@ static void handle_ebd(enum command_response cmd, void *data)
 	struct msm_vidc_cb_data_done *response = data;
 	struct vb2_buffer *vb;
 	struct msm_vidc_inst *inst;
+	struct vidc_hal_ebd *empty_buf_done;
+
 	if (!response) {
 		dprintk(VIDC_ERR, "Invalid response from vidc_hal\n");
 		return;
 	}
 	vb = response->clnt_data;
 	inst = (struct msm_vidc_inst *)response->session_id;
+	if (!inst) {
+		dprintk(VIDC_ERR, "%s Invalid response from vidc_hal\n",
+			__func__);
+		return;
+	}
 	if (vb) {
+		vb->v4l2_planes[0].bytesused = response->input_done.filled_len;
+		vb->v4l2_planes[0].data_offset = response->input_done.offset;
+		if (vb->v4l2_planes[0].data_offset > vb->v4l2_planes[0].length)
+			dprintk(VIDC_ERR, "Error: data_offset overflow\n");
+		if (vb->v4l2_planes[0].bytesused > vb->v4l2_planes[0].length)
+			dprintk(VIDC_ERR, "Error: buffer overflow\n");
+		if ((u8 *)vb->v4l2_planes[0].m.userptr !=
+			response->input_done.packet_buffer)
+			dprintk(VIDC_ERR, "Error: unexpected buffer address\n");
+		vb->v4l2_buf.flags = 0;
+		empty_buf_done = (struct vidc_hal_ebd *)&response->input_done;
+		if (empty_buf_done) {
+			if (empty_buf_done->status == VIDC_ERR_NOT_SUPPORTED) {
+				dprintk(VIDC_INFO,
+					"Failed : Unsupported input stream\n");
+				vb->v4l2_buf.flags |=
+					V4L2_QCOM_BUF_INPUT_UNSUPPORTED;
+			}
+			if (empty_buf_done->status == VIDC_ERR_BITSTREAM_ERR) {
+				dprintk(VIDC_INFO,
+					"Failed : Corrupted input stream\n");
+				vb->v4l2_buf.flags |=
+					V4L2_QCOM_BUF_DATA_CORRUPT;
+			}
+		}
 		mutex_lock(&inst->bufq[OUTPUT_PORT].lock);
 		vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
 		mutex_unlock(&inst->bufq[OUTPUT_PORT].lock);
@@ -780,6 +844,8 @@ static void handle_fbd(enum command_response cmd, void *data)
 			vb->v4l2_buf.flags |= V4L2_QCOM_BUF_FLAG_DECODEONLY;
 		if (fill_buf_done->flags1 & HAL_BUFFERFLAG_DATACORRUPT)
 			vb->v4l2_buf.flags |= V4L2_QCOM_BUF_DATA_CORRUPT;
+		if (fill_buf_done->flags1 & HAL_BUFFERFLAG_DROP_FRAME)
+			vb->v4l2_buf.flags |= V4L2_QCOM_BUF_DROP_FRAME;
 		switch (fill_buf_done->picture_type) {
 		case HAL_PICTURE_IDR:
 			vb->v4l2_buf.flags |= V4L2_QCOM_BUF_FLAG_IDRFRAME;
@@ -1889,10 +1955,19 @@ int msm_comm_qbuf(struct vb2_buffer *vb)
 		memset(&frame_data, 0 , sizeof(struct vidc_frame_data));
 		frame_data.alloc_len = vb->v4l2_planes[0].length;
 		frame_data.filled_len = vb->v4l2_planes[0].bytesused;
+		frame_data.offset = vb->v4l2_planes[0].data_offset;
 		frame_data.device_addr = vb->v4l2_planes[0].m.userptr;
 		frame_data.timestamp = time_usec;
 		frame_data.flags = 0;
 		frame_data.clnt_data = (u32)vb;
+		if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE &&
+			(frame_data.filled_len > frame_data.alloc_len ||
+			frame_data.offset > frame_data.alloc_len)) {
+			dprintk(VIDC_ERR,
+				"Buffer will overflow, not queueing it\n");
+			rc = -EINVAL;
+			goto err_bad_input;
+		}
 		if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 			frame_data.buffer_type = HAL_BUFFER_INPUT;
 			if (vb->v4l2_buf.flags & V4L2_BUF_FLAG_EOS) {
@@ -1908,11 +1983,20 @@ int msm_comm_qbuf(struct vb2_buffer *vb)
 					"Received CODECCONFIG on output cap\n");
 			}
 			if (vb->v4l2_buf.flags &
+					V4L2_QCOM_BUF_FLAG_DECODEONLY) {
+				frame_data.flags |= HAL_BUFFERFLAG_DECODEONLY;
+				dprintk(VIDC_DBG,
+					"Received DECODEONLY on output cap\n");
+			}
+			if (vb->v4l2_buf.flags &
 				V4L2_QCOM_BUF_TIMESTAMP_INVALID)
 				frame_data.timestamp = LLONG_MAX;
 			dprintk(VIDC_DBG,
-				"Sending etb to hal: Alloc: %d :filled: %d\n",
-				frame_data.alloc_len, frame_data.filled_len);
+				"Sending etb to hal: device_addr: 0x%x"
+				"Alloc: %d, filled: %d, offset: %d\n",
+				frame_data.device_addr,
+				frame_data.alloc_len, frame_data.filled_len,
+				frame_data.offset);
 			rc = call_hfi_op(hdev, session_etb, (void *)
 					inst->session, &frame_data);
 			if (!rc)
@@ -1965,6 +2049,7 @@ int msm_comm_qbuf(struct vb2_buffer *vb)
 			rc = -EINVAL;
 		}
 	}
+err_bad_input:
 	if (rc)
 		dprintk(VIDC_ERR, "Failed to queue buffer\n");
 err_no_mem:

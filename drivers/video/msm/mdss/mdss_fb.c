@@ -111,7 +111,7 @@ static int mdss_fb_notify_update(struct msm_fb_data_type *mfd,
 		return ret;
 	}
 
-	if (notify > NOTIFY_UPDATE_STOP)
+	if (notify > NOTIFY_UPDATE_POWER_OFF)
 		return -EINVAL;
 
 	if (notify == NOTIFY_UPDATE_START) {
@@ -119,12 +119,19 @@ static int mdss_fb_notify_update(struct msm_fb_data_type *mfd,
 		ret = wait_for_completion_interruptible_timeout(
 						&mfd->update.comp, 4 * HZ);
 		to_user = mfd->update.value;
-	} else {
+	} else if (notify == NOTIFY_UPDATE_STOP) {
 		INIT_COMPLETION(mfd->no_update.comp);
 		ret = wait_for_completion_interruptible_timeout(
 						&mfd->no_update.comp, 4 * HZ);
 		to_user = mfd->no_update.value;
+	} else {
+		if (mfd->panel_power_on) {
+			INIT_COMPLETION(mfd->power_off_comp);
+			ret = wait_for_completion_interruptible_timeout(
+						&mfd->power_off_comp, 1 * HZ);
+		}
 	}
+
 	if (ret == 0)
 		ret = -ETIMEDOUT;
 	else if (ret > 0)
@@ -205,9 +212,42 @@ static ssize_t mdss_fb_get_type(struct device *dev,
 	return ret;
 }
 
+static void mdss_fb_parse_dt_split(struct msm_fb_data_type *mfd)
+{
+	u32 data[2];
+	struct platform_device *pdev = mfd->pdev;
+	if (of_property_read_u32_array(pdev->dev.of_node, "qcom,mdss-fb-split",
+				       data, 2))
+		return;
+	if (data[0] && data[1] &&
+	    (mfd->panel_info->xres == (data[0] + data[1]))) {
+		mfd->split_fb_left = data[0];
+		mfd->split_fb_right = data[1];
+		pr_info("split framebuffer left=%d right=%d\n",
+			mfd->split_fb_left, mfd->split_fb_right);
+	} else {
+		mfd->split_fb_left = 0;
+		mfd->split_fb_right = 0;
+	}
+}
+
+static ssize_t mdss_fb_get_split(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+	ret = snprintf(buf, PAGE_SIZE, "%d %d\n",
+		       mfd->split_fb_left, mfd->split_fb_right);
+	return ret;
+}
+
 static DEVICE_ATTR(msm_fb_type, S_IRUGO, mdss_fb_get_type, NULL);
+static DEVICE_ATTR(msm_fb_split, S_IRUGO, mdss_fb_get_split, NULL);
+
 static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_type.attr,
+	&dev_attr_msm_fb_split.attr,
 	NULL,
 };
 
@@ -228,6 +268,16 @@ static int mdss_fb_create_sysfs(struct msm_fb_data_type *mfd)
 static void mdss_fb_remove_sysfs(struct msm_fb_data_type *mfd)
 {
 	sysfs_remove_group(&mfd->fbi->dev->kobj, &mdss_fb_attr_group);
+}
+
+static void mdss_fb_shutdown(struct platform_device *pdev)
+{
+	struct msm_fb_data_type *mfd = platform_get_drvdata(pdev);
+
+	if (mfd->ref_cnt > 1)
+		mfd->ref_cnt = 1;
+
+	mdss_fb_release(mfd->fbi, 0);
 }
 
 static int mdss_fb_probe(struct platform_device *pdev)
@@ -509,6 +559,7 @@ static struct platform_driver mdss_fb_driver = {
 	.remove = mdss_fb_remove,
 	.suspend = mdss_fb_suspend,
 	.resume = mdss_fb_resume,
+	.shutdown = mdss_fb_shutdown,
 	.driver = {
 		.name = "mdss_fb",
 		.of_match_table = mdss_fb_dt_match,
@@ -605,6 +656,9 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 	if (!op_enable)
 		return -EPERM;
 
+	if (mfd->dcm_state == DCM_ENTER)
+		return -EPERM;
+
 	switch (blank_mode) {
 	case FB_BLANK_UNBLANK:
 		if (!mfd->panel_power_on && mfd->mdp.on_fnc) {
@@ -646,6 +700,7 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 			else
 				mdss_fb_release_fences(mfd);
 			mfd->op_enable = true;
+			complete(&mfd->power_off_comp);
 		}
 		break;
 	}
@@ -975,6 +1030,9 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 
 	mfd->ref_cnt = 0;
 	mfd->panel_power_on = false;
+	mfd->dcm_state = DCM_UNINIT;
+
+	mdss_fb_parse_dt_split(mfd);
 
 	if (mdss_fb_alloc_fbmem(mfd)) {
 		pr_err("unable to allocate framebuffer memory\n");
@@ -991,6 +1049,7 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 	mfd->no_update.timer.data = (unsigned long)mfd;
 	init_completion(&mfd->update.comp);
 	init_completion(&mfd->no_update.comp);
+	init_completion(&mfd->power_off_comp);
 	init_completion(&mfd->commit_comp);
 	init_completion(&mfd->power_set_comp);
 	INIT_WORK(&mfd->commit_work, mdss_fb_commit_wq_handler);
@@ -1063,7 +1122,8 @@ static int mdss_fb_release(struct fb_info *info, int user)
 		ret = mdss_fb_blank_sub(FB_BLANK_POWERDOWN, info,
 				       mfd->op_enable);
 		if (ret) {
-			pr_err("can't turn off display!\n");
+			pr_err("can't turn off display attached to fb%d!\n",
+				mfd->index);
 			return ret;
 		}
 	}
@@ -1473,6 +1533,58 @@ static int mdss_fb_set_par(struct fb_info *info)
 	}
 
 	return 0;
+}
+
+int mdss_fb_dcm(struct msm_fb_data_type *mfd, int req_state)
+{
+	int ret = -EINVAL;
+
+	if (req_state == mfd->dcm_state) {
+		pr_warn("Already in correct DCM state");
+		ret = 0;
+	}
+
+	switch (req_state) {
+	case DCM_UNBLANK:
+		if (mfd->dcm_state == DCM_UNINIT &&
+			!mfd->panel_power_on && mfd->mdp.on_fnc) {
+			ret = mfd->mdp.on_fnc(mfd);
+			if (ret == 0) {
+				mfd->panel_power_on = true;
+				mfd->dcm_state = DCM_UNBLANK;
+			}
+		}
+		break;
+	case DCM_ENTER:
+		if (mfd->dcm_state == DCM_UNBLANK) {
+			/* Keep unblank path available for only
+			DCM operation */
+			mfd->panel_power_on = false;
+			mfd->dcm_state = DCM_ENTER;
+			ret = 0;
+		}
+		break;
+	case DCM_EXIT:
+		if (mfd->dcm_state == DCM_ENTER) {
+			/* Release the unblank path for exit */
+			mfd->panel_power_on = true;
+			mfd->dcm_state = DCM_EXIT;
+			ret = 0;
+		}
+		break;
+	case DCM_BLANK:
+		if ((mfd->dcm_state == DCM_EXIT ||
+			mfd->dcm_state == DCM_UNBLANK) &&
+			mfd->panel_power_on && mfd->mdp.off_fnc) {
+			ret = mfd->mdp.off_fnc(mfd);
+			if (ret == 0) {
+				mfd->panel_power_on = false;
+				mfd->dcm_state = DCM_UNINIT;
+			}
+		}
+		break;
+	}
+	return ret;
 }
 
 static int mdss_fb_cursor(struct fb_info *info, void __user *p)

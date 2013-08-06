@@ -1635,8 +1635,9 @@ static void hci_cc_fm_disable_rsp(struct radio_hci_dev *hdev,
 
 	if (status)
 		return;
-	if (radio->mode != FM_CALIB)
+	if ((radio->mode != FM_CALIB) && (radio->mode != FM_OFF))
 		iris_q_event(radio, IRIS_EVT_RADIO_DISABLED);
+	radio->mode = FM_OFF;
 
 	radio_hci_req_complete(hdev, status);
 }
@@ -2416,9 +2417,15 @@ static void hci_ev_af_list(struct radio_hci_dev *hdev,
 	ev.tune_freq = *((int *) &skb->data[0]);
 	ev.pi_code = *((__le16 *) &skb->data[PI_CODE_OFFSET]);
 	ev.af_size = skb->data[AF_SIZE_OFFSET];
-	memcpy(&ev.af_list[0], &skb->data[AF_LIST_OFFSET], ev.af_size);
+	if (ev.af_size > AF_LIST_MAX) {
+		FMDERR("AF list size received more than available size");
+		return;
+	}
+	memcpy(&ev.af_list[0], &skb->data[AF_LIST_OFFSET],
+					ev.af_size * sizeof(int));
 	iris_q_event(radio, IRIS_EVT_NEW_AF_LIST);
-	iris_q_evt_data(radio, (char *)&ev, sizeof(ev), IRIS_BUF_AF_LIST);
+	iris_q_evt_data(radio, (char *)&ev, (7 + ev.af_size * sizeof(int)),
+							IRIS_BUF_AF_LIST);
 }
 
 static void hci_ev_rds_lock_status(struct radio_hci_dev *hdev,
@@ -2688,7 +2695,7 @@ static int iris_do_calibration(struct iris_device *radio)
 			radio->fm_hdev);
 	if (retval < 0)
 		FMDERR("Disable Failed after calibration %d", retval);
-	radio->mode = FM_OFF;
+	radio->mode = FM_TURNING_OFF;
 	return retval;
 }
 static int iris_vidioc_g_ctrl(struct file *file, void *priv,
@@ -3234,7 +3241,7 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 						   " %d\n", retval);
 					return retval;
 				}
-				radio->mode = FM_OFF;
+				radio->mode = FM_TURNING_OFF;
 				break;
 			case FM_TRANS:
 				retval = hci_cmd(HCI_FM_DISABLE_TRANS_CMD,
@@ -3245,7 +3252,7 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 						" %d\n", retval);
 					return retval;
 				}
-				radio->mode = FM_OFF;
+				radio->mode = FM_TURNING_OFF;
 				break;
 			default:
 				retval = -EINVAL;
@@ -4036,16 +4043,18 @@ static int iris_fops_release(struct file *file)
 	if (radio->mode == FM_OFF)
 		return 0;
 
-	if (radio->mode == FM_RECV)
+	if (radio->mode == FM_RECV) {
+		radio->mode = FM_OFF;
 		retval = hci_cmd(HCI_FM_DISABLE_RECV_CMD,
 						radio->fm_hdev);
-	else if (radio->mode == FM_TRANS)
+	} else if (radio->mode == FM_TRANS) {
+		radio->mode = FM_OFF;
 		retval = hci_cmd(HCI_FM_DISABLE_TRANS_CMD,
 					radio->fm_hdev);
+	}
 	if (retval < 0)
 		FMDERR("Err on disable FM %d\n", retval);
 
-	radio->mode = FM_OFF;
 	return retval;
 }
 

@@ -218,7 +218,7 @@ static int dwc3_otg_start_host(struct usb_otg *otg, int on)
 		 */
 		if (ext_xceiv && ext_xceiv->otg_capability &&
 						ext_xceiv->ext_block_reset)
-			ext_xceiv->ext_block_reset(true);
+			ext_xceiv->ext_block_reset(ext_xceiv, true);
 
 		dwc3_otg_set_peripheral_regs(dotg);
 
@@ -285,7 +285,7 @@ static int dwc3_otg_start_peripheral(struct usb_otg *otg, int on)
 		 * DBM reset is required, hence perform only DBM reset here */
 		if (ext_xceiv && ext_xceiv->otg_capability &&
 						ext_xceiv->ext_block_reset)
-			ext_xceiv->ext_block_reset(false);
+			ext_xceiv->ext_block_reset(ext_xceiv, false);
 
 		dwc3_otg_set_peripheral_regs(dotg);
 		usb_gadget_vbus_connect(otg->gadget);
@@ -804,7 +804,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 				 */
 				dev_dbg(phy->dev, "enter lpm as\n"
 					"unable to start A-device\n");
-				phy->state = OTG_STATE_UNDEFINED;
+				phy->state = OTG_STATE_A_IDLE;
 				pm_runtime_put_sync(phy->dev);
 				return;
 			}

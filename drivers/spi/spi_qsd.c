@@ -1426,9 +1426,10 @@ static void msm_spi_dmov_unmap_buffers(struct msm_spi *dd)
 				dma_coherent_post_ops();
 				memcpy(dd->read_buf + offset, dd->rx_padding,
 				       dd->rx_unaligned_len);
-				memcpy(dd->cur_transfer->rx_buf,
-				       dd->read_buf + prev_xfr->len,
-				       dd->cur_transfer->len);
+				if (dd->cur_transfer->rx_buf)
+					memcpy(dd->cur_transfer->rx_buf,
+					       dd->read_buf + prev_xfr->len,
+					       dd->cur_transfer->len);
 			}
 		}
 		kfree(dd->temp_buf);
@@ -2718,7 +2719,7 @@ struct msm_spi_platform_data * __init msm_spi_dt_to_pdata(
 			pdata->use_bam = false;
 		}
 
-		if (pdata->bam_producer_pipe_index) {
+		if (!pdata->bam_producer_pipe_index) {
 			dev_warn(&pdev->dev,
 			"missing qcom,bam-producer-pipe-index entry in device-tree\n");
 			pdata->use_bam = false;
@@ -3121,7 +3122,7 @@ static int msm_spi_pm_suspend_runtime(struct device *device)
 	msm_spi_disable_irqs(dd);
 	clk_disable_unprepare(dd->clk);
 	clk_disable_unprepare(dd->pclk);
-	if (!dd->pdata->active_only)
+	if (dd->pdata && !dd->pdata->active_only)
 		msm_spi_clk_path_unvote(dd);
 
 	/* Free  the spi clk, miso, mosi, cs gpio */
@@ -3199,6 +3200,13 @@ static int msm_spi_suspend(struct device *device)
 		if (!dd)
 			goto suspend_exit;
 		msm_spi_pm_suspend_runtime(device);
+
+		/*
+		 * set the device's runtime PM status to 'suspended'
+		 */
+		pm_runtime_disable(device);
+		pm_runtime_set_suspended(device);
+		pm_runtime_enable(device);
 	}
 suspend_exit:
 	return 0;

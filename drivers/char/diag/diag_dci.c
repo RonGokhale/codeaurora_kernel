@@ -20,6 +20,8 @@
 #include <linux/workqueue.h>
 #include <linux/pm_runtime.h>
 #include <linux/platform_device.h>
+#include <linux/pm_wakeup.h>
+#include <linux/spinlock.h>
 #include <asm/current.h>
 #ifdef CONFIG_DIAG_OVER_USB
 #include <mach/usbdiag.h>
@@ -39,6 +41,12 @@ struct mutex dci_log_mask_mutex;
 struct mutex dci_event_mask_mutex;
 struct mutex dci_health_mutex;
 
+spinlock_t ws_lock;
+unsigned long ws_lock_flags;
+
+/* Number of milliseconds anticipated to process the DCI data */
+#define DCI_WAKEUP_TIMEOUT 1
+
 #define DCI_CHK_CAPACITY(entry, new_data_len)				\
 ((entry->data_len + new_data_len > entry->total_capacity) ? 1 : 0)	\
 
@@ -46,7 +54,7 @@ struct mutex dci_health_mutex;
 struct diag_dci_data_info *dci_data_smd;
 struct mutex dci_stat_mutex;
 
-void diag_dci_smd_record_info(int read_bytes)
+void diag_dci_smd_record_info(int read_bytes, uint8_t ch_type)
 {
 	static int curr_dci_data_smd;
 	static unsigned long iteration;
@@ -59,13 +67,14 @@ void diag_dci_smd_record_info(int read_bytes)
 	temp_data += curr_dci_data_smd;
 	temp_data->iteration = iteration + 1;
 	temp_data->data_size = read_bytes;
+	temp_data->ch_type = ch_type;
 	diag_get_timestamp(temp_data->time_stamp);
 	curr_dci_data_smd++;
 	iteration++;
 	mutex_unlock(&dci_stat_mutex);
 }
 #else
-void diag_dci_smd_record_info(int read_bytes) { }
+void diag_dci_smd_record_info(int read_bytes, uint8_t ch_type) { }
 #endif
 
 /* Process the data read from the smd dci channel */
@@ -75,7 +84,7 @@ int diag_process_smd_dci_read_data(struct diag_smd_info *smd_info, void *buf,
 	int read_bytes, dci_pkt_len, i;
 	uint8_t recv_pkt_cmd_code;
 
-	diag_dci_smd_record_info(recd_bytes);
+	diag_dci_smd_record_info(recd_bytes, (uint8_t)smd_info->type);
 	/* Each SMD read can have multiple DCI packets */
 	read_bytes = 0;
 	while (read_bytes < recd_bytes) {
@@ -96,6 +105,11 @@ int diag_process_smd_dci_read_data(struct diag_smd_info *smd_info, void *buf,
 		read_bytes += 5 + dci_pkt_len;
 		buf += 5 + dci_pkt_len; /* advance to next DCI pkt */
 	}
+	/* Release wakeup source when there are no more clients to
+	   process DCI data */
+	if (driver->num_dci_client == 0)
+		diag_dci_try_deactivate_wakeup_source(smd_info->ch);
+
 	/* wake up all sleeping DCI clients which have some data */
 	for (i = 0; i < MAX_DCI_CLIENTS; i++) {
 		if (driver->dci_client_tbl[i].client &&
@@ -1101,6 +1115,9 @@ static int diag_dci_probe(struct platform_device *pdev)
 			diag_smd_notify);
 		driver->smd_dci[index].ch_save =
 			driver->smd_dci[index].ch;
+		driver->dci_device = &pdev->dev;
+		driver->dci_device->power.wakeup = wakeup_source_register
+							("DIAG_DCI_WS");
 		if (err)
 			pr_err("diag: In %s, cannot open DCI port, Id = %d, err: %d\n",
 				__func__, pdev->id, err);
@@ -1123,6 +1140,9 @@ static int diag_dci_cmd_probe(struct platform_device *pdev)
 			diag_smd_notify);
 		driver->smd_dci_cmd[index].ch_save =
 			driver->smd_dci_cmd[index].ch;
+		driver->dci_cmd_device = &pdev->dev;
+		driver->dci_cmd_device->power.wakeup = wakeup_source_register
+							("DIAG_DCI_CMD_WS");
 		if (err)
 			pr_err("diag: In %s, cannot open DCI port, Id = %d, err: %d\n",
 				__func__, pdev->id, err);
@@ -1174,10 +1194,13 @@ int diag_dci_init(void)
 	driver->dci_tag = 0;
 	driver->dci_client_id = 0;
 	driver->num_dci_client = 0;
+	driver->dci_device = NULL;
+	driver->dci_cmd_device = NULL;
 	mutex_init(&driver->dci_mutex);
 	mutex_init(&dci_log_mask_mutex);
 	mutex_init(&dci_event_mask_mutex);
 	mutex_init(&dci_health_mutex);
+	spin_lock_init(&ws_lock);
 
 	for (i = 0; i < NUM_SMD_DCI_CHANNELS; i++) {
 		success = diag_smd_constructor(&driver->smd_dci[i], i,
@@ -1407,4 +1430,27 @@ int diag_dci_set_real_time(int client_id, uint8_t real_time)
 	if (i != DCI_CLIENT_INDEX_INVALID)
 		driver->dci_client_tbl[i].real_time = real_time;
 	return i;
+}
+
+void diag_dci_try_activate_wakeup_source(smd_channel_t *channel)
+{
+	spin_lock_irqsave(&ws_lock, ws_lock_flags);
+	if (channel == driver->smd_dci[MODEM_DATA].ch) {
+		pm_wakeup_event(driver->dci_device, DCI_WAKEUP_TIMEOUT);
+		pm_stay_awake(driver->dci_device);
+	} else if (channel == driver->smd_dci_cmd[MODEM_DATA].ch) {
+		pm_wakeup_event(driver->dci_cmd_device, DCI_WAKEUP_TIMEOUT);
+		pm_stay_awake(driver->dci_cmd_device);
+	}
+	spin_unlock_irqrestore(&ws_lock, ws_lock_flags);
+}
+
+void diag_dci_try_deactivate_wakeup_source(smd_channel_t *channel)
+{
+	spin_lock_irqsave(&ws_lock, ws_lock_flags);
+	if (channel == driver->smd_dci[MODEM_DATA].ch)
+		pm_relax(driver->dci_device);
+	else if (channel == driver->smd_dci_cmd[MODEM_DATA].ch)
+		pm_relax(driver->dci_cmd_device);
+	spin_unlock_irqrestore(&ws_lock, ws_lock_flags);
 }

@@ -24,12 +24,15 @@
 #include <mach/msm_iomap.h>
 #include <mach/msm_memtypes.h>
 #include <mach/msm_smd.h>
+#include <mach/rpm-smd.h>
 #include <mach/restart.h>
 #include <mach/socinfo.h>
 #include <mach/clk-provider.h>
+#include <mach/msm_smem.h>
 #include "board-dt.h"
 #include "clock.h"
 #include "devices.h"
+#include "modem_notifier.h"
 
 static struct memtype_reserve msmkrypton_reserve_table[] __initdata = {
 	[MEMTYPE_EBI1] = {
@@ -59,7 +62,10 @@ static struct of_dev_auxdata msmkrypton_auxdata_lookup[] __initdata = {
  */
 void __init msmkrypton_add_drivers(void)
 {
+	msm_smem_init();
+	msm_init_modem_notifier_list();
 	msm_smd_init();
+	msm_rpm_driver_init();
 	msm_clock_init(&msmkrypton_clock_init_data);
 }
 

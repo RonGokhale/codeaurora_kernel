@@ -140,6 +140,7 @@ struct usb_bam_ipa_handshake_info {
 	int bus_suspend;
 	bool disconnected;
 	bool in_lpm[MAX_BAMS];
+	bool pending_lpm;
 
 	int (*wake_cb)(void *);
 	void *wake_param;
@@ -634,15 +635,25 @@ static void usb_bam_resume_core(enum usb_bam cur_bam)
 static void usb_bam_start_lpm(bool disconnect)
 {
 	struct usb_phy *trans = usb_get_transceiver();
+
 	BUG_ON(trans == NULL);
-		pr_debug("%s: Going to LPM\n", __func__);
+
 	spin_lock(&usb_bam_ipa_handshake_info_lock);
+
 	info.lpm_wait_handshake[HSUSB_BAM] = false;
 	info.lpm_wait_pipes = 0;
+
 	if (disconnect)
 		pm_runtime_put_noidle(trans->dev);
-	spin_unlock(&usb_bam_ipa_handshake_info_lock);
-	pm_runtime_suspend(trans->dev);
+
+	if (info.pending_lpm) {
+		info.pending_lpm = 0;
+		spin_unlock(&usb_bam_ipa_handshake_info_lock);
+		pr_debug("%s: Going to LPM\n", __func__);
+		pm_runtime_suspend(trans->dev);
+	} else
+		spin_unlock(&usb_bam_ipa_handshake_info_lock);
+
 }
 
 int usb_bam_connect(u8 idx, u32 *bam_pipe_idx)
@@ -1058,10 +1069,11 @@ void notify_usb_connected(enum usb_bam cur_bam)
 		info.connect_complete = 1;
 	spin_unlock(&usb_bam_ipa_handshake_info_lock);
 
-	if (info.cur_cons_state[HSUSB_BAM] == IPA_RM_RESOURCE_GRANTED) {
-		pr_debug("%s: Notify CONS_GRANTED\n", __func__);
+	if (info.cur_cons_state[cur_bam] == IPA_RM_RESOURCE_GRANTED) {
+		pr_debug("%s: Notify %s_CONS_GRANTED\n", __func__,
+			bam_enable_strings[cur_bam]);
 		ipa_rm_notify_completion(IPA_RM_RESOURCE_GRANTED,
-				 ipa_rm_resource_cons[HSUSB_BAM]);
+				 ipa_rm_resource_cons[cur_bam]);
 	}
 }
 
@@ -1438,6 +1450,7 @@ int usb_bam_connect_ipa(struct usb_bam_connect_ipa_params *ipa_params)
 			info.lpm_wait_handshake[HSUSB_BAM] = true;
 			info.connect_complete = 0;
 			info.disconnected = 0;
+			info.pending_lpm = 0;
 			info.lpm_wait_pipes = 1;
 			info.bus_suspend = 0;
 			info.cons_stopped = 0;
@@ -1493,7 +1506,7 @@ int usb_bam_connect_ipa(struct usb_bam_connect_ipa_params *ipa_params)
 
 	ctx.pipes_enabled_per_bam[cur_bam] += 1;
 	spin_unlock(&usb_bam_lock);
-	if (ipa_params->dir == PEER_PERIPHERAL_TO_USB && cur_bam == HSUSB_BAM)
+	if (ipa_params->dir == PEER_PERIPHERAL_TO_USB)
 		notify_usb_connected(cur_bam);
 
 	if (cur_bam == HSUSB_BAM)
@@ -1998,8 +2011,18 @@ int usb_bam_disconnect_ipa(struct usb_bam_connect_ipa_params *ipa_params)
 			ipa_rm_notify_completion(IPA_RM_RESOURCE_RELEASED,
 				ipa_rm_resource_cons[cur_bam]);
 		}
-		pr_debug("%s Ended disconnect sequence\n", __func__);
-		usb_bam_start_lpm(1);
+
+		if (cur_bam == HSUSB_BAM) {
+			/*
+			 * Currently we have for HSUSB BAM only one consumer
+			 * pipe. Therefore ending disconnect sequence and
+			 * starting hsusb lpm. This limitation will be changed
+			 * in future patch.
+			 */
+			pr_debug("%s Ended disconnect sequence\n", __func__);
+			usb_bam_start_lpm(1);
+		}
+
 		mutex_unlock(&info.suspend_resume_mutex);
 		return 0;
 	}
@@ -2138,6 +2161,7 @@ static struct msm_usb_bam_platform_data *usb_bam_dt_to_pdata(
 	u8 i = 0;
 	bool reset_bam;
 	enum usb_bam bam;
+	u32 addr;
 
 	ctx.max_connections = 0;
 	pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);
@@ -2154,9 +2178,11 @@ static struct msm_usb_bam_platform_data *usb_bam_dt_to_pdata(
 	}
 
 	rc = of_property_read_u32(node, "qcom,usb-bam-fifo-baseaddr",
-		&pdata->usb_bam_fifo_baseaddr);
+			&addr);
 	if (rc)
 		pr_debug("%s: Invalid usb base address property\n", __func__);
+	else
+		pdata->usb_bam_fifo_baseaddr = addr;
 
 	pdata->ignore_core_reset_ack = of_property_read_bool(node,
 		"qcom,ignore-core-reset-ack");
@@ -2629,10 +2655,12 @@ bool msm_bam_lpm_ok(void)
 {
 	spin_lock(&usb_bam_ipa_handshake_info_lock);
 	if (info.lpm_wait_handshake[HSUSB_BAM] || info.lpm_wait_pipes) {
+		info.pending_lpm = 1;
 		spin_unlock(&usb_bam_ipa_handshake_info_lock);
 		pr_err("%s: Scheduling LPM for later\n", __func__);
 		return 0;
 	} else {
+		info.pending_lpm = 0;
 		info.in_lpm[HSUSB_BAM] = true;
 		spin_unlock(&usb_bam_ipa_handshake_info_lock);
 		pr_err("%s: Going to LPM now\n", __func__);
@@ -2640,6 +2668,16 @@ bool msm_bam_lpm_ok(void)
 	}
 }
 EXPORT_SYMBOL(msm_bam_lpm_ok);
+
+void msm_bam_notify_lpm_resume()
+{
+	/*
+	 * If core was resumed from lpm, just clear the
+	 * pending indication, in case it is set.
+	*/
+	info.pending_lpm = 0;
+}
+EXPORT_SYMBOL(msm_bam_notify_lpm_resume);
 
 static int usb_bam_remove(struct platform_device *pdev)
 {

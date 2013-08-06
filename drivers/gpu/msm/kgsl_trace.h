@@ -37,14 +37,13 @@ TRACE_EVENT(kgsl_issueibcmds,
 
 	TP_PROTO(struct kgsl_device *device,
 			int drawctxt_id,
-			struct kgsl_ibdesc *ibdesc,
-			int numibs,
+			struct kgsl_cmdbatch *cmdbatch,
 			int timestamp,
 			int flags,
 			int result,
 			unsigned int type),
 
-	TP_ARGS(device, drawctxt_id, ibdesc, numibs, timestamp, flags,
+	TP_ARGS(device, drawctxt_id, cmdbatch, timestamp, flags,
 		result, type),
 
 	TP_STRUCT__entry(
@@ -61,8 +60,8 @@ TRACE_EVENT(kgsl_issueibcmds,
 	TP_fast_assign(
 		__assign_str(device_name, device->name);
 		__entry->drawctxt_id = drawctxt_id;
-		__entry->ibdesc_addr = ibdesc[0].gpuaddr;
-		__entry->numibs = numibs;
+		__entry->ibdesc_addr = cmdbatch->ibdesc[0].gpuaddr;
+		__entry->numibs = cmdbatch->ibcount;
 		__entry->timestamp = timestamp;
 		__entry->flags = flags;
 		__entry->result = result;
@@ -259,29 +258,6 @@ TRACE_EVENT(kgsl_pwrlevel,
 		__get_str(device_name),
 		__entry->pwrlevel,
 		__entry->freq
-	)
-);
-
-TRACE_EVENT(kgsl_mpdcvs,
-
-	TP_PROTO(struct kgsl_device *device, unsigned int state),
-
-	TP_ARGS(device, state),
-
-	TP_STRUCT__entry(
-		__string(device_name, device->name)
-		__field(unsigned int, state)
-	),
-
-	TP_fast_assign(
-		__assign_str(device_name, device->name);
-		__entry->state = state;
-	),
-
-	TP_printk(
-		"d_name=%s %s",
-		__get_str(device_name),
-		__entry->state ? "BUSY" : "IDLE"
 	)
 );
 
@@ -771,21 +747,25 @@ TRACE_EVENT(kgsl_register_event,
 
 TRACE_EVENT(kgsl_fire_event,
 		TP_PROTO(unsigned int id, unsigned int ts,
-			unsigned int age),
-		TP_ARGS(id, ts, age),
+			unsigned int type, unsigned int age),
+		TP_ARGS(id, ts, type, age),
 		TP_STRUCT__entry(
 			__field(unsigned int, id)
 			__field(unsigned int, ts)
+			__field(unsigned int, type)
 			__field(unsigned int, age)
 		),
 		TP_fast_assign(
 			__entry->id = id;
 			__entry->ts = ts;
+			__entry->type = type;
 			__entry->age = age;
 		),
 		TP_printk(
-			"ctx=%u ts=%u age=%u",
-			__entry->id, __entry->ts, __entry->age)
+			"ctx=%u ts=%u type=%s age=%u",
+			__entry->id, __entry->ts,
+			__print_symbolic(__entry->type, KGSL_EVENT_TYPES),
+			__entry->age)
 );
 
 TRACE_EVENT(kgsl_active_count,

@@ -44,6 +44,8 @@ static struct clk_lookup msm_clocks_8092[] = {
 	CLK_DUMMY("iface_clk",	SDC1_P_CLK,	"msm_sdcc.1", OFF),
 	CLK_DUMMY("core_clk",	SDC2_CLK,	"msm_sdcc.2", OFF),
 	CLK_DUMMY("iface_clk",	SDC2_P_CLK,	"msm_sdcc.2", OFF),
+	CLK_DUMMY("dfab_clk",	DFAB_CLK,	"msm_sps", OFF),
+	CLK_DUMMY("dma_bam_pclk",	DMA_BAM_P_CLK,	"msm_sps", OFF),
 	CLK_DUMMY("",	usb30_master_clk_src.c,	"", OFF),
 	CLK_DUMMY("",	tsif_ref_clk_src.c,	"", OFF),
 	CLK_DUMMY("",	ce1_clk_src.c,	"", OFF),
@@ -300,6 +302,8 @@ static struct clk_lookup msm_clocks_8092[] = {
 	CLK_DUMMY("iface_clk", NULL, "fdc84000.qcom,iommu", OFF),
 	CLK_DUMMY("alt_core_clk", NULL, "fdc84000.qcom,iommu", OFF),
 	CLK_DUMMY("core_clk", NULL, "fdc84000.qcom,iommu", OFF),
+	CLK_DUMMY("iface_clk", NULL, "fdee4000.qcom,iommu", OFF),
+	CLK_DUMMY("core_clk", NULL, "fdee4000.qcom,iommu", OFF),
 	/* BCSS broadcast */
 	CLK_DUMMY("",	bcc_dem_core_b_clk_src.c,	"", OFF),
 	CLK_DUMMY("",	adc_01_clk_src.c,	"", OFF),
@@ -329,6 +333,11 @@ static struct clk_lookup msm_clocks_8092[] = {
 	CLK_DUMMY("",	nidaq_out_clk.c,	"", OFF),
 	CLK_DUMMY("",	gcc_bcss_axi_clk.c,	"", OFF),
 	CLK_DUMMY("",	bcc_lnb_core_clk.c,	"", OFF),
+
+	/* USB */
+	CLK_DUMMY("core_clk", NULL, "msm_otg", OFF),
+	CLK_DUMMY("iface_clk", NULL, "msm_otg", OFF),
+	CLK_DUMMY("xo", NULL, "msm_otg", OFF),
 };
 
 struct clock_init_data mpq8092_clock_init_data __initdata = {

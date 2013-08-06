@@ -373,7 +373,7 @@ static int mhl_sii_wait_for_rgnd(struct mhl_tx_ctrl *mhl_ctrl)
 
 /*  USB_HANDSHAKING FUNCTIONS */
 static int mhl_sii_device_discovery(void *data, int id,
-			     void (*usb_notify_cb)(int online))
+			     void (*usb_notify_cb)(void *, int), void *ctx)
 {
 	int rc;
 	struct mhl_tx_ctrl *mhl_ctrl = data;
@@ -398,8 +398,10 @@ static int mhl_sii_device_discovery(void *data, int id,
 		return -EINVAL;
 	}
 
-	if (!mhl_ctrl->notify_usb_online)
+	if (!mhl_ctrl->notify_usb_online) {
 		mhl_ctrl->notify_usb_online = usb_notify_cb;
+		mhl_ctrl->notify_ctx = ctx;
+	}
 
 	if (!mhl_ctrl->disc_enabled) {
 		spin_lock_irqsave(&mhl_ctrl->lock, flags);
@@ -792,12 +794,10 @@ static bool is_mhl_powered(void *mhl_ctx)
 void mhl_tmds_ctrl(struct mhl_tx_ctrl *mhl_ctrl, uint8_t on)
 {
 	struct i2c_client *client = mhl_ctrl->i2c_handle;
-	if (on) {
+	if (on)
 		MHL_SII_REG_NAME_MOD(REG_TMDS_CCTRL, BIT4, BIT4);
-		mhl_drive_hpd(mhl_ctrl, HPD_UP);
-	} else {
+	else
 		MHL_SII_REG_NAME_MOD(REG_TMDS_CCTRL, BIT4, 0x00);
-	}
 }
 
 void mhl_drive_hpd(struct mhl_tx_ctrl *mhl_ctrl, uint8_t to_state)
@@ -904,7 +904,7 @@ static int mhl_msm_read_rgnd_int(struct mhl_tx_ctrl *mhl_ctrl)
 		mhl_ctrl->mhl_mode = 1;
 		power_supply_changed(&mhl_ctrl->mhl_psy);
 		if (mhl_ctrl->notify_usb_online)
-			mhl_ctrl->notify_usb_online(1);
+			mhl_ctrl->notify_usb_online(mhl_ctrl->notify_ctx, 1);
 	} else {
 		pr_debug("%s: non-mhl sink\n", __func__);
 		mhl_ctrl->mhl_mode = 0;
@@ -1004,7 +1004,7 @@ static int dev_detect_isr(struct mhl_tx_ctrl *mhl_ctrl)
 		mhl_msm_disconnection(mhl_ctrl);
 		power_supply_changed(&mhl_ctrl->mhl_psy);
 		if (mhl_ctrl->notify_usb_online)
-			mhl_ctrl->notify_usb_online(0);
+			mhl_ctrl->notify_usb_online(mhl_ctrl->notify_ctx, 0);
 		return 0;
 	}
 
@@ -1019,7 +1019,7 @@ static int dev_detect_isr(struct mhl_tx_ctrl *mhl_ctrl)
 		mhl_msm_disconnection(mhl_ctrl);
 		power_supply_changed(&mhl_ctrl->mhl_psy);
 		if (mhl_ctrl->notify_usb_online)
-			mhl_ctrl->notify_usb_online(0);
+			mhl_ctrl->notify_usb_online(mhl_ctrl->notify_ctx, 0);
 		return 0;
 	}
 

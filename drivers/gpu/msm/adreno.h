@@ -16,6 +16,7 @@
 #include "kgsl_device.h"
 #include "adreno_drawctxt.h"
 #include "adreno_ringbuffer.h"
+#include "adreno_profile.h"
 #include "kgsl_iommu.h"
 #include <mach/ocmem.h>
 
@@ -38,6 +39,7 @@
 #define KGSL_CMD_FLAGS_PMODE		0x00000001
 #define KGSL_CMD_FLAGS_INTERNAL_ISSUE	0x00000002
 #define KGSL_CMD_FLAGS_GET_INT		0x00000004
+#define KGSL_CMD_FLAGS_PROFILE		0x00000008
 #define KGSL_CMD_FLAGS_EOF	        0x00000100
 
 /* Command identifiers */
@@ -48,6 +50,8 @@
 #define KGSL_END_OF_IB_IDENTIFIER	0x2ABEDEAD
 #define KGSL_END_OF_FRAME_IDENTIFIER	0x2E0F2E0F
 #define KGSL_NOP_IB_IDENTIFIER	        0x20F20F20
+#define KGSL_START_OF_PROFILE_IDENTIFIER	0x2DEFADE1
+#define KGSL_END_OF_PROFILE_IDENTIFIER	0x2DEFADE2
 
 #ifdef CONFIG_MSM_SCM
 #define ADRENO_DEFAULT_PWRSCALE_POLICY  (&kgsl_pwrscale_policy_tz)
@@ -92,6 +96,46 @@ enum coresight_debug_reg {
 	TRACE_BUS_CTL,
 };
 
+/*
+ * Maximum size of the dispatcher ringbuffer - the actual inflight size will be
+ * smaller then this but this size will allow for a larger range of inflight
+ * sizes that can be chosen at runtime
+ */
+
+#define ADRENO_DISPATCH_CMDQUEUE_SIZE 128
+
+/**
+ * struct adreno_dispatcher - container for the adreno GPU dispatcher
+ * @mutex: Mutex to protect the structure
+ * @state: Current state of the dispatcher (active or paused)
+ * @timer: Timer to monitor the progress of the command batches
+ * @inflight: Number of command batch operations pending in the ringbuffer
+ * @fault: True if a HW fault was detected
+ * @pending: Priority list of contexts waiting to submit command batches
+ * @plist_lock: Spin lock to protect the pending queue
+ * @cmdqueue: Queue of command batches currently flight
+ * @head: pointer to the head of of the cmdqueue.  This is the oldest pending
+ * operation
+ * @tail: pointer to the tail of the cmdqueue.  This is the most recently
+ * submitted operation
+ * @work: work_struct to put the dispatcher in a work queue
+ * @kobj: kobject for the dispatcher directory in the device sysfs node
+ */
+struct adreno_dispatcher {
+	struct mutex mutex;
+	unsigned int state;
+	struct timer_list timer;
+	unsigned int inflight;
+	int fault;
+	struct plist_head pending;
+	spinlock_t plist_lock;
+	struct kgsl_cmdbatch *cmdqueue[ADRENO_DISPATCH_CMDQUEUE_SIZE];
+	unsigned int head;
+	unsigned int tail;
+	struct work_struct work;
+	struct kobject kobj;
+};
+
 struct adreno_gpudev;
 
 struct adreno_device {
@@ -131,6 +175,8 @@ struct adreno_device {
 	struct ocmem_buf *ocmem_hdl;
 	unsigned int ocmem_base;
 	unsigned int gpu_cycles;
+	struct adreno_profile profile;
+	struct adreno_dispatcher dispatcher;
 };
 
 #define PERFCOUNTER_FLAG_NONE 0x0
@@ -141,24 +187,27 @@ struct adreno_device {
 /**
  * struct adreno_perfcount_register: register state
  * @countable: countable the register holds
- * @refcount: number of users of the register
+ * @kernelcount: number of user space users of the register
+ * @usercount: number of kernel users of the register
  * @offset: register hardware offset
  */
 struct adreno_perfcount_register {
 	unsigned int countable;
-	unsigned int refcount;
+	unsigned int kernelcount;
+	unsigned int usercount;
 	unsigned int offset;
-	unsigned int flags;
 };
 
 /**
  * struct adreno_perfcount_group: registers for a hardware group
  * @regs: available registers for this group
  * @reg_count: total registers for this group
+ * @name: group name for this group
  */
 struct adreno_perfcount_group {
 	struct adreno_perfcount_register *regs;
 	unsigned int reg_count;
+	const char *name;
 };
 
 /**
@@ -258,9 +307,9 @@ struct adreno_gpudev {
 
 	/* GPU specific function hooks */
 	int (*ctxt_create)(struct adreno_device *, struct adreno_context *);
-	void (*ctxt_save)(struct adreno_device *, struct adreno_context *);
-	void (*ctxt_restore)(struct adreno_device *, struct adreno_context *);
-	void (*ctxt_draw_workaround)(struct adreno_device *,
+	int (*ctxt_save)(struct adreno_device *, struct adreno_context *);
+	int (*ctxt_restore)(struct adreno_device *, struct adreno_context *);
+	int (*ctxt_draw_workaround)(struct adreno_device *,
 					struct adreno_context *);
 	irqreturn_t (*irq_handler)(struct adreno_device *);
 	void (*irq_control)(struct adreno_device *, int);
@@ -281,46 +330,6 @@ struct adreno_gpudev {
 			int debug_reg, unsigned int val);
 	void (*soft_reset)(struct adreno_device *device);
 	void (*postmortem_dump)(struct adreno_device *adreno_dev);
-};
-
-/*
- * struct adreno_ft_data - Structure that contains all information to
- * perform gpu fault tolerance
- * @ib1 - IB1 that the GPU was executing when hang happened
- * @context_id - Context which caused the hang
- * @global_eop - eoptimestamp at time of hang
- * @rb_buffer - Buffer that holds the commands from good contexts
- * @rb_size - Number of valid dwords in rb_buffer
- * @bad_rb_buffer - Buffer that holds commands from the hanging context
- * bad_rb_size - Number of valid dwords in bad_rb_buffer
- * @good_rb_buffer - Buffer that holds commands from good contexts
- * good_rb_size - Number of valid dwords in good_rb_buffer
- * @last_valid_ctx_id - The last context from which commands were placed in
- * ringbuffer before the GPU hung
- * @step - Current fault tolerance step being executed
- * @err_code - Fault tolerance error code
- * @fault - Indicates whether the hang was caused due to a pagefault
- * @start_of_replay_cmds - Offset in ringbuffer from where commands can be
- * replayed during fault tolerance
- * @replay_for_snapshot - Offset in ringbuffer where IB's can be saved for
- * replaying with snapshot
- */
-struct adreno_ft_data {
-	unsigned int ib1;
-	unsigned int context_id;
-	unsigned int global_eop;
-	unsigned int *rb_buffer;
-	unsigned int rb_size;
-	unsigned int *bad_rb_buffer;
-	unsigned int bad_rb_size;
-	unsigned int *good_rb_buffer;
-	unsigned int good_rb_size;
-	unsigned int last_valid_ctx_id;
-	unsigned int status;
-	unsigned int ft_policy;
-	unsigned int err_code;
-	unsigned int start_of_replay_cmds;
-	unsigned int replay_for_snapshot;
 };
 
 #define FT_DETECT_REGS_COUNT 12
@@ -402,23 +411,37 @@ struct kgsl_memdesc *adreno_find_ctxtmem(struct kgsl_device *device,
 void *adreno_snapshot(struct kgsl_device *device, void *snapshot, int *remain,
 		int hang);
 
-int adreno_dump_and_exec_ft(struct kgsl_device *device);
+void adreno_dispatcher_start(struct adreno_device *adreno_dev);
+int adreno_dispatcher_init(struct adreno_device *adreno_dev);
+void adreno_dispatcher_close(struct adreno_device *adreno_dev);
+int adreno_dispatcher_idle(struct adreno_device *adreno_dev,
+		unsigned int timeout);
+void adreno_dispatcher_irq_fault(struct kgsl_device *device);
+void adreno_dispatcher_stop(struct adreno_device *adreno_dev);
 
-void adreno_dump_rb(struct kgsl_device *device, const void *buf,
-			 size_t len, int start, int size);
+int adreno_dispatcher_queue_cmd(struct adreno_device *adreno_dev,
+		struct adreno_context *drawctxt, struct kgsl_cmdbatch *cmdbatch,
+		uint32_t *timestamp);
 
-unsigned int adreno_ft_detect(struct kgsl_device *device,
-						unsigned int *prev_reg_val);
+void adreno_dispatcher_schedule(struct kgsl_device *device);
+void adreno_dispatcher_pause(struct adreno_device *adreno_dev);
+int adreno_reset(struct kgsl_device *device);
 
 int adreno_ft_init_sysfs(struct kgsl_device *device);
 void adreno_ft_uninit_sysfs(struct kgsl_device *device);
+
+int adreno_perfcounter_get_groupid(struct adreno_device *adreno_dev,
+					const char *name);
+
+const char *adreno_perfcounter_get_name(struct adreno_device
+					*adreno_dev, unsigned int groupid);
 
 int adreno_perfcounter_get(struct adreno_device *adreno_dev,
 	unsigned int groupid, unsigned int countable, unsigned int *offset,
 	unsigned int flags);
 
 int adreno_perfcounter_put(struct adreno_device *adreno_dev,
-	unsigned int groupid, unsigned int countable);
+	unsigned int groupid, unsigned int countable, unsigned int flags);
 
 int adreno_soft_reset(struct kgsl_device *device);
 
@@ -519,9 +542,7 @@ static inline int adreno_context_timestamp(struct kgsl_context *k_ctxt,
 {
 	if (k_ctxt) {
 		struct adreno_context *a_ctxt = ADRENO_CONTEXT(k_ctxt);
-
-		if (a_ctxt->flags & CTXT_FLAGS_PER_CONTEXT_TS)
-			return a_ctxt->timestamp;
+		return a_ctxt->timestamp;
 	}
 	return rb->global_ts;
 }

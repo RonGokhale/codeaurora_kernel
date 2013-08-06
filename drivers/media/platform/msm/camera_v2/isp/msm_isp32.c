@@ -22,7 +22,7 @@
 #include "msm.h"
 #include "msm_camera_io_util.h"
 
-#define VFE32_BURST_LEN 1
+#define VFE32_BURST_LEN 2
 #define VFE32_UB_SIZE 1024
 #define VFE32_EQUAL_SLICE_UB 204
 #define VFE32_WM_BASE(idx) (0x4C + 0x18 * idx)
@@ -146,7 +146,7 @@ static void msm_vfe32_init_hardware_reg(struct vfe_device *vfe_dev)
 	/* BUS_CFG */
 	msm_camera_io_w(0x00000001, vfe_dev->vfe_base + 0x3C);
 	msm_camera_io_w(0x01000025, vfe_dev->vfe_base + 0x1C);
-	msm_camera_io_w_mb(0x1DFFFFFF, vfe_dev->vfe_base + 0x20);
+	msm_camera_io_w_mb(0x1CFFFFFF, vfe_dev->vfe_base + 0x20);
 	msm_camera_io_w(0xFFFFFFFF, vfe_dev->vfe_base + 0x24);
 	msm_camera_io_w_mb(0x1FFFFFFF, vfe_dev->vfe_base + 0x28);
 }
@@ -161,8 +161,6 @@ static void msm_vfe32_process_reset_irq(struct vfe_device *vfe_dev,
 static void msm_vfe32_process_halt_irq(struct vfe_device *vfe_dev,
 	uint32_t irq_status0, uint32_t irq_status1)
 {
-	if (irq_status1 & BIT(24))
-		complete(&vfe_dev->halt_complete);
 }
 
 static void msm_vfe32_process_camif_irq(struct vfe_device *vfe_dev,
@@ -304,7 +302,7 @@ static void msm_vfe32_read_irq_status(struct vfe_device *vfe_dev,
 	*irq_status0 = msm_camera_io_r(vfe_dev->vfe_base + 0x2C);
 	*irq_status1 = msm_camera_io_r(vfe_dev->vfe_base + 0x30);
 	msm_camera_io_w(*irq_status0, vfe_dev->vfe_base + 0x24);
-	msm_camera_io_w(*irq_status1, vfe_dev->vfe_base + 0x28);
+	msm_camera_io_w_mb(*irq_status1, vfe_dev->vfe_base + 0x28);
 	msm_camera_io_w_mb(1, vfe_dev->vfe_base + 0x18);
 
 	if (*irq_status1 & BIT(0))
@@ -483,11 +481,11 @@ static void msm_vfe32_clear_framedrop(struct vfe_device *vfe_dev,
 }
 
 static void msm_vfe32_cfg_io_format(struct vfe_device *vfe_dev,
-	struct msm_vfe_axi_stream *stream_info)
+	enum msm_vfe_axi_stream_src stream_src, uint32_t io_format)
 {
 	int bpp, bpp_reg = 0;
 	uint32_t io_format_reg;
-	bpp = msm_isp_get_bit_per_pixel(stream_info->output_format);
+	bpp = msm_isp_get_bit_per_pixel(io_format);
 
 	switch (bpp) {
 	case 8:
@@ -501,7 +499,9 @@ static void msm_vfe32_cfg_io_format(struct vfe_device *vfe_dev,
 		break;
 	}
 	io_format_reg = msm_camera_io_r(vfe_dev->vfe_base + 0x6F8);
-	switch (stream_info->stream_src) {
+	switch (stream_src) {
+	case PIX_ENCODER:
+	case PIX_VIEWFINDER:
 	case CAMIF_RAW:
 		io_format_reg &= 0xFFFFCFFF;
 		io_format_reg |= bpp_reg << 12;
@@ -510,8 +510,6 @@ static void msm_vfe32_cfg_io_format(struct vfe_device *vfe_dev,
 		io_format_reg &= 0xFFFFFFC8;
 		io_format_reg |= bpp_reg << 4;
 		break;
-	case PIX_ENCODER:
-	case PIX_VIEWFINDER:
 	case RDI_INTF_0:
 	case RDI_INTF_1:
 	case RDI_INTF_2:
@@ -750,14 +748,20 @@ static void msm_vfe32_update_ping_pong_addr(struct vfe_device *vfe_dev,
 static long msm_vfe32_axi_halt(struct vfe_device *vfe_dev)
 {
 	uint32_t halt_mask;
+	uint32_t axi_busy_flag = true;
+
+	msm_camera_io_w_mb(0x1, vfe_dev->vfe_base + 0x1D8);
+	while (axi_busy_flag) {
+		if (msm_camera_io_r(
+			vfe_dev->vfe_base + 0x1DC) & 0x1)
+			axi_busy_flag = false;
+	}
+	msm_camera_io_w_mb(0, vfe_dev->vfe_base + 0x1D8);
 	halt_mask = msm_camera_io_r(vfe_dev->vfe_base + 0x20);
-	halt_mask |= BIT(24);
+	halt_mask &= 0xFEFFFFFF;
+	/* Disable AXI IRQ */
 	msm_camera_io_w_mb(halt_mask, vfe_dev->vfe_base + 0x20);
-	init_completion(&vfe_dev->halt_complete);
-	/*TD: Need to fix crashes with this*/
-	/*msm_camera_io_w_mb(0x1, vfe_dev->vfe_base + 0x1D8);*/
-	return wait_for_completion_interruptible_timeout(
-		&vfe_dev->halt_complete, msecs_to_jiffies(500));
+	return 0;
 }
 
 static uint32_t msm_vfe32_get_wm_mask(

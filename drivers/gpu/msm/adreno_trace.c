@@ -8,17 +8,11 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
+ *
  */
 
-/dts-v1/;
+#include "adreno.h"
 
-/include/ "msm8974-v2.dtsi"
-/include/ "msm8974-liquid.dtsi"
-
-/ {
-	model = "Qualcomm MSM 8974v2 LIQUID";
-	compatible = "qcom,msm8974-liquid", "qcom,msm8974", "qcom,liquid";
-	qcom,msm-id = <126 9 0x20000>,
-		      <185 9 0x20000>,
-		      <186 9 0x20000>;
-};
+/* Instantiate tracepoints */
+#define CREATE_TRACE_POINTS
+#include "adreno_trace.h"

@@ -511,7 +511,7 @@
 	tsens@fc4a8000 {
 		compatible = "qcom,msm-tsens";
 		reg = <0xfc4a8000 0x2000>,
-		      <0xfc4b8000 0x1000>;
+		      <0xfc4bc000 0x1000>;
 		reg-names = "tsens_physical", "tsens_eeprom_physical";
 		interrupts = <0 184 0>;
 		qcom,sensors = <5>;
@@ -529,10 +529,10 @@
 		qcom,freq-control-mask = <0x0>;
 		qcom,vdd-restriction-temp = <5>;
 		qcom,vdd-restriction-temp-hysteresis = <10>;
-		vdd_dig-supply = <&pm8019_l10_corner>;
+		vdd-dig-supply = <&pm8019_l10_floor_corner>;
 
 		qcom,vdd-dig-rstr{
-			qcom,vdd-rstr-reg = "vdd_dig";
+			qcom,vdd-rstr-reg = "vdd-dig";
 			qcom,levels = <5 7 7>; /* Nominal, Super Turbo, Super Turbo */
 			qcom,min-level = <1>; /* No Request */
 		};
