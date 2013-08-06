@@ -430,6 +430,7 @@ int acpi_pci_irq_enable(struct pci_dev *dev)
 		} else {
 			dev_warn(&dev->dev, "PCI INT %c: no GSI\n",
 				 pin_name(pin));
+			return -ENOENT;
 		}
 
 		return 0;
