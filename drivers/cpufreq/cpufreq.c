@@ -874,8 +874,13 @@ static int cpufreq_add_policy_cpu(struct cpufreq_policy *policy,
 	int ret = 0, has_target = !!cpufreq_driver->target;
 	unsigned long flags;
 
-	if (has_target)
-		__cpufreq_governor(policy, CPUFREQ_GOV_STOP);
+	if (has_target) {
+		ret = __cpufreq_governor(policy, CPUFREQ_GOV_STOP);
+		if (ret) {
+			pr_err("%s: Failed to stop governor\n", __func__);
+			return ret;
+		}
+	}
 
 	lock_policy_rwsem_write(policy->cpu);
 
@@ -889,8 +894,11 @@ static int cpufreq_add_policy_cpu(struct cpufreq_policy *policy,
 	unlock_policy_rwsem_write(policy->cpu);
 
 	if (has_target) {
-		__cpufreq_governor(policy, CPUFREQ_GOV_START);
-		__cpufreq_governor(policy, CPUFREQ_GOV_LIMITS);
+		if ((ret = __cpufreq_governor(policy, CPUFREQ_GOV_START)) ||
+			(ret = __cpufreq_governor(policy, CPUFREQ_GOV_LIMITS))) {
+			pr_err("%s: Failed to start governor\n", __func__);
+			return ret;
+		}
 	}
 
 	/* Don't touch sysfs links during light-weight init */
@@ -1171,7 +1179,7 @@ static int __cpufreq_remove_dev(struct device *dev,
 				struct subsys_interface *sif, bool frozen)
 {
 	unsigned int cpu = dev->id, cpus;
-	int new_cpu;
+	int new_cpu, ret;
 	unsigned long flags;
 	struct cpufreq_policy *policy;
 	struct kobject *kobj;
@@ -1195,8 +1203,13 @@ static int __cpufreq_remove_dev(struct device *dev,
 		return -EINVAL;
 	}
 
-	if (cpufreq_driver->target)
-		__cpufreq_governor(policy, CPUFREQ_GOV_STOP);
+	if (cpufreq_driver->target) {
+		ret = __cpufreq_governor(policy, CPUFREQ_GOV_STOP);
+		if (ret) {
+			pr_err("%s: Failed to stop governor\n", __func__);
+			return ret;
+		}
+	}
 
 #ifdef CONFIG_HOTPLUG_CPU
 	if (!cpufreq_driver->setpolicy)
@@ -1230,8 +1243,15 @@ static int __cpufreq_remove_dev(struct device *dev,
 
 	/* If cpu is last user of policy, free policy */
 	if (cpus == 1) {
-		if (cpufreq_driver->target)
-			__cpufreq_governor(policy, CPUFREQ_GOV_POLICY_EXIT);
+		if (cpufreq_driver->target) {
+			ret = __cpufreq_governor(policy,
+					CPUFREQ_GOV_POLICY_EXIT);
+			if (ret) {
+				pr_err("%s: Failed to exit governor\n",
+						__func__);
+				return ret;
+			}
+	}
 
 		if (!frozen) {
 			lock_policy_rwsem_read(cpu);
@@ -1262,8 +1282,12 @@ static int __cpufreq_remove_dev(struct device *dev,
 			cpufreq_policy_free(policy);
 	} else {
 		if (cpufreq_driver->target) {
-			__cpufreq_governor(policy, CPUFREQ_GOV_START);
-			__cpufreq_governor(policy, CPUFREQ_GOV_LIMITS);
+			if ((ret = __cpufreq_governor(policy, CPUFREQ_GOV_START)) ||
+					(ret = __cpufreq_governor(policy, CPUFREQ_GOV_LIMITS))) {
+				pr_err("%s: Failed to start governor\n",
+						__func__);
+				return ret;
+			}
 		}
 	}
 
@@ -1911,7 +1935,7 @@ static int __cpufreq_set_policy(struct cpufreq_policy *policy,
 			/* might be a policy change, too, so fall through */
 		}
 		pr_debug("governor: change or update limits\n");
-		__cpufreq_governor(policy, CPUFREQ_GOV_LIMITS);
+		ret = __cpufreq_governor(policy, CPUFREQ_GOV_LIMITS);
 	}
 
 error_out:
