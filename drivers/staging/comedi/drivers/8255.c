@@ -73,9 +73,8 @@ I/O port base address can be found in the output of 'lspci -v'.
    will copy the latched value to a Comedi buffer.
  */
 
+#include <linux/module.h>
 #include "../comedidev.h"
-
-#include <linux/ioport.h>
 
 #include "comedi_fc.h"
 #include "8255.h"
