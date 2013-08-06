@@ -73,6 +73,9 @@ struct mpq_dvb_video_inst {
 	struct mpq_dmx_src_data *dmx_src_data;
 	struct video_client_ctx *client_ctx;
 	enum video_decoded_pictures_t picture_type;
+	int frame_count;
+	int idr_rcvd;
+	int non_idr_rcvd;
 };
 
 struct mpq_dvb_video_dev {
