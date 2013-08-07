@@ -12,6 +12,8 @@ Mandatory properties:
 - device_type, set to "pci"
 - ranges: ranges for the PCI memory and I/O regions, as well as the
   MMIO registers to control the PCIe interfaces.
+- msi-parent: Link to the hardware entity that serves as the Message
+  Signaled Interrupt controller for this PCI controller.
 
 In addition, the Device Tree node must have sub-nodes describing each
 PCIe interface, having the following mandatory properties:
@@ -46,6 +48,7 @@ pcie-controller {
 	#size-cells = <2>;
 
 	bus-range = <0x00 0xff>;
+	msi-parent = <&mpic>;
 
 	ranges = <0x82000000 0 0xd0040000 0xd0040000 0 0x00002000   /* Port 0.0 registers */
 		  0x82000000 0 0xd0042000 0xd0042000 0 0x00002000   /* Port 2.0 registers */
