@@ -721,13 +721,36 @@ static void handle_ebd(enum command_response cmd, void *data)
 	struct msm_vidc_cb_data_done *response = data;
 	struct vb2_buffer *vb;
 	struct msm_vidc_inst *inst;
+	struct vidc_hal_ebd *empty_buf_done;
+
 	if (!response) {
 		dprintk(VIDC_ERR, "Invalid response from vidc_hal\n");
 		return;
 	}
 	vb = response->clnt_data;
 	inst = (struct msm_vidc_inst *)response->session_id;
+	if (!inst) {
+		dprintk(VIDC_ERR, "%s Invalid response from vidc_hal\n",
+			__func__);
+		return;
+	}
 	if (vb) {
+		vb->v4l2_buf.flags = 0;
+		empty_buf_done = (struct vidc_hal_ebd *)&response->input_done;
+		if (empty_buf_done) {
+			if (empty_buf_done->status == VIDC_ERR_NOT_SUPPORTED) {
+				dprintk(VIDC_INFO,
+					"Failed : Unsupported input stream\n");
+				vb->v4l2_buf.flags |=
+					V4L2_QCOM_BUF_INPUT_UNSUPPORTED;
+			}
+			if (empty_buf_done->status == VIDC_ERR_BITSTREAM_ERR) {
+				dprintk(VIDC_INFO,
+					"Failed : Corrupted input stream\n");
+				vb->v4l2_buf.flags |=
+					V4L2_QCOM_BUF_DATA_CORRUPT;
+			}
+		}
 		mutex_lock(&inst->bufq[OUTPUT_PORT].lock);
 		vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
 		mutex_unlock(&inst->bufq[OUTPUT_PORT].lock);
@@ -780,6 +803,8 @@ static void handle_fbd(enum command_response cmd, void *data)
 			vb->v4l2_buf.flags |= V4L2_QCOM_BUF_FLAG_DECODEONLY;
 		if (fill_buf_done->flags1 & HAL_BUFFERFLAG_DATACORRUPT)
 			vb->v4l2_buf.flags |= V4L2_QCOM_BUF_DATA_CORRUPT;
+		if (fill_buf_done->flags1 & HAL_BUFFERFLAG_DROP_FRAME)
+			vb->v4l2_buf.flags |= V4L2_QCOM_BUF_DROP_FRAME;
 		switch (fill_buf_done->picture_type) {
 		case HAL_PICTURE_IDR:
 			vb->v4l2_buf.flags |= V4L2_QCOM_BUF_FLAG_IDRFRAME;
@@ -1902,6 +1927,12 @@ int msm_comm_qbuf(struct vb2_buffer *vb)
 				frame_data.flags |= HAL_BUFFERFLAG_CODECCONFIG;
 				dprintk(VIDC_DBG,
 					"Received CODECCONFIG on output cap\n");
+			}
+			if (vb->v4l2_buf.flags &
+					V4L2_QCOM_BUF_FLAG_DECODEONLY) {
+				frame_data.flags |= HAL_BUFFERFLAG_DECODEONLY;
+				dprintk(VIDC_DBG,
+					"Received DECODEONLY on output cap\n");
 			}
 			if (vb->v4l2_buf.flags &
 				V4L2_QCOM_BUF_TIMESTAMP_INVALID)

@@ -498,7 +498,7 @@ int kgsl_context_init(struct kgsl_device_private *dev_priv,
 	kref_init(&context->refcount);
 	context->device = dev_priv->device;
 	context->pagetable = dev_priv->process_priv->pagetable;
-
+	context->dev_priv = dev_priv;
 	context->pid = dev_priv->process_priv->pid;
 
 	ret = kgsl_sync_timeline_create(context);
@@ -811,7 +811,7 @@ static void kgsl_destroy_process_private(struct kref *kref)
 	list_del(&private->list);
 	mutex_unlock(&kgsl_driver.process_mutex);
 
-	if (private->kobj.ktype)
+	if (private->kobj.state_in_sysfs)
 		kgsl_process_uninit_sysfs(private);
 	if (private->debug_root)
 		debugfs_remove_recursive(private->debug_root);
@@ -925,21 +925,23 @@ kgsl_get_process_private(struct kgsl_device_private *cur_dev_priv)
 
 		pt_name = task_tgid_nr(current);
 		private->pagetable = kgsl_mmu_getpagetable(mmu, pt_name);
-		if (private->pagetable == NULL) {
-			mutex_unlock(&private->process_private_mutex);
-			kgsl_put_process_private(cur_dev_priv->device,
-						private);
-			return NULL;
-		}
+		if (private->pagetable == NULL)
+			goto error;
 	}
 
-	kgsl_process_init_sysfs(private);
-	kgsl_process_init_debugfs(private);
+	if (kgsl_process_init_sysfs(cur_dev_priv->device, private))
+		goto error;
+	if (kgsl_process_init_debugfs(private))
+		goto error;
 
 done:
 	mutex_unlock(&private->process_private_mutex);
-
 	return private;
+
+error:
+	mutex_unlock(&private->process_private_mutex);
+	kgsl_put_process_private(cur_dev_priv->device, private);
+	return NULL;
 }
 
 int kgsl_close_device(struct kgsl_device *device)
@@ -985,7 +987,7 @@ static int kgsl_release(struct inode *inodep, struct file *filep)
 		if (context == NULL)
 			break;
 
-		if (context->pid == private->pid)
+		if (context->dev_priv == dev_priv)
 			kgsl_context_detach(context);
 
 		next = next + 1;
@@ -1274,10 +1276,12 @@ kgsl_sharedmem_find_id(struct kgsl_process_private *process, unsigned int id)
 static inline bool kgsl_mem_entry_set_pend(struct kgsl_mem_entry *entry)
 {
 	bool ret = false;
+
+	if (entry == NULL)
+		return false;
+
 	spin_lock(&entry->priv->mem_lock);
-	if (entry && entry->pending_free) {
-		ret = false;
-	} else if (entry) {
+	if (!entry->pending_free) {
 		entry->pending_free = 1;
 		ret = true;
 	}

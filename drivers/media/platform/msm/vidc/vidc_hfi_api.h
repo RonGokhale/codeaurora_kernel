@@ -44,6 +44,8 @@
 #define HAL_BUFFERFLAG_READONLY         0x00000200
 #define HAL_BUFFERFLAG_ENDOFSUBFRAME    0x00000400
 #define HAL_BUFFERFLAG_EOSEQ            0x00200000
+#define HAL_BUFFERFLAG_DROP_FRAME       0x20000000
+
 
 #define HAL_DEBUG_MSG_LOW				0x00000001
 #define HAL_DEBUG_MSG_MEDIUM			0x00000002
@@ -922,6 +924,7 @@ struct vidc_hal_ebd {
 	u32 timestamp_hi;
 	u32 timestamp_lo;
 	u32 flags;
+	u32 status;
 	u32 mark_target;
 	u32 mark_data;
 	u32 stats;

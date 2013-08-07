@@ -10,13 +10,27 @@
  * GNU General Public License for more details.
  */
 
-/dts-v1/;
+/*
+ * As a general rule, only version-specific property overrides should be placed
+ * inside this file. However, device definitions should be placed inside the
+ * msm8974.dtsi file.
+ */
 
-/include/ "apq8074-v2.dtsi"
-/include/ "apq8074-dragonboard.dtsi"
+/include/ "msm8974-v2.dtsi"
 
-/ {
-	model = "Qualcomm APQ 8074v2 DRAGONBOARD";
-	compatible = "qcom,apq8074-dragonboard", "qcom,apq8074", "qcom,dragonboard";
-	qcom,msm-id = <184 10 0x20000>;
+&gdsc_venus {
+	qcom,skip-logic-collapse;
+	qcom,retain-periph;
+	qcom,retain-mem;
+};
+
+&gdsc_mdss {
+	qcom,skip-logic-collapse;
+	qcom,retain-periph;
+	qcom,retain-mem;
+};
+
+&gdsc_oxili_gx {
+	qcom,retain-mem;
+	qcom,retain-periph;
 };
