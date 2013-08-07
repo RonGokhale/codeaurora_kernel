@@ -13,6 +13,8 @@ next/fixes-non-critical
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-fixes-for-v3.12
 	mvebu/fixes-non-critical
 		git://git.infradead.org/linux-mvebu.git tags/fixes-non-3.12
+	keystone/fixes-non-critical
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone.git tags/keystone-fixes-non-critical
 
 next/cleanup
 	localtimer/removal
