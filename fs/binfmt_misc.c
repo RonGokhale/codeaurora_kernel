@@ -62,7 +62,7 @@ static struct file_system_type bm_fs_type;
 static struct vfsmount *bm_mnt;
 static int entry_count;
 
-/* 
+/*
  * Check if we support the binfmt
  * if we do, return the node, else NULL
  * locking is done in load_misc_binary
@@ -138,12 +138,12 @@ static int load_misc_binary(struct linux_binprm *bprm)
 		/* if the binary should be opened on behalf of the
 		 * interpreter than keep it open and assign descriptor
 		 * to it */
- 		fd_binary = get_unused_fd();
- 		if (fd_binary < 0) {
- 			retval = fd_binary;
- 			goto _ret;
- 		}
- 		fd_install(fd_binary, bprm->file);
+		fd_binary = get_unused_fd();
+		if (fd_binary < 0) {
+			retval = fd_binary;
+			goto _ret;
+		}
+		fd_install(fd_binary, bprm->file);
 
 		/* if the binary is not readable than enforce mm->dumpable=0
 		   regardless of the interpreter's permissions */
@@ -156,11 +156,11 @@ static int load_misc_binary(struct linux_binprm *bprm)
 		bprm->interp_flags |= BINPRM_FLAGS_EXECFD;
 		bprm->interp_data = fd_binary;
 
- 	} else {
- 		allow_write_access(bprm->file);
- 		fput(bprm->file);
- 		bprm->file = NULL;
- 	}
+	} else {
+		allow_write_access(bprm->file);
+		fput(bprm->file);
+		bprm->file = NULL;
+	}
 	/* make argv[1] be the path to the binary */
 	retval = copy_strings_kernel (1, &bprm->interp, bprm);
 	if (retval < 0)
@@ -694,6 +694,7 @@ static struct dentry *bm_mount(struct file_system_type *fs_type,
 }
 
 static struct linux_binfmt misc_format = {
+	.name	= "misc",
 	.module = THIS_MODULE,
 	.load_binary = load_misc_binary,
 };

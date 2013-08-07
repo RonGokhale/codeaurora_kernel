@@ -32,11 +32,14 @@ struct linux_binprm {
 	unsigned int taso:1;
 #endif
 	unsigned int recursion_depth;
+	/* current binfmt at 0 and previous binfmt at 1 */
+	struct linux_binfmt *previous_binfmts[2];
 	struct file * file;
 	struct cred *cred;	/* new credentials */
 	int unsafe;		/* how unsafe this exec is (mask of LSM_UNSAFE_*) */
 	unsigned int per_clear;	/* bits to clear in current->personality */
-	int argc, envc;
+	int argc, argc_orig, envc;
+	void *argv_orig;
 	const char * filename;	/* Name of binary as seen by procps */
 	const char * interp;	/* Name of the binary really executed. Most
 				   of the time same as filename, but could be
@@ -71,6 +74,7 @@ struct coredump_params {
 struct linux_binfmt {
 	struct list_head lh;
 	struct module *module;
+	const char *name;
 	int (*load_binary)(struct linux_binprm *);
 	int (*load_shlib)(struct file *);
 	int (*core_dump)(struct coredump_params *cprm);

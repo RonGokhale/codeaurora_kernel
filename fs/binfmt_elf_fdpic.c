@@ -81,6 +81,7 @@ static int elf_fdpic_core_dump(struct coredump_params *cprm);
 #endif
 
 static struct linux_binfmt elf_fdpic_format = {
+	.name		= "FDPIC ELF",
 	.module		= THIS_MODULE,
 	.load_binary	= load_elf_fdpic_binary,
 #ifdef CONFIG_ELF_CORE
@@ -1576,8 +1577,8 @@ static int elf_fdpic_core_dump(struct coredump_params *cprm)
 	struct memelfnote *notes = NULL;
 	struct elf_prstatus *prstatus = NULL;	/* NT_PRSTATUS */
 	struct elf_prpsinfo *psinfo = NULL;	/* NT_PRPSINFO */
- 	LIST_HEAD(thread_list);
- 	struct list_head *t;
+	LIST_HEAD(thread_list);
+	struct list_head *t;
 	elf_fpregset_t *fpu = NULL;
 #ifdef ELF_CORE_COPY_XFPREGS
 	elf_fpxregset_t *xfpu = NULL;
@@ -1686,7 +1687,7 @@ static int elf_fdpic_core_dump(struct coredump_params *cprm)
 	fill_note(&notes[numnote++], "CORE", NT_AUXV,
 		  i * sizeof(elf_addr_t), auxv);
 
-  	/* Try to dump the FPU. */
+	/* Try to dump the FPU. */
 	if ((prstatus->pr_fpvalid =
 	     elf_core_copy_task_fpregs(current, cprm->regs, fpu)))
 		fill_note(notes + numnote++,
@@ -1771,7 +1772,7 @@ static int elf_fdpic_core_dump(struct coredump_params *cprm)
 	if (!elf_core_write_extra_phdrs(cprm, offset))
 		goto end_coredump;
 
- 	/* write out the notes section */
+	/* write out the notes section */
 	for (i = 0; i < numnote; i++)
 		if (!writenote(notes + i, cprm))
 			goto end_coredump;

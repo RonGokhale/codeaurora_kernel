@@ -19,7 +19,7 @@
  * current->executable is only used by the procfs.  This allows a dispatch
  * table to check for several different types  of binary formats.  We keep
  * trying until we recognize the file or we run out of supported binary
- * formats. 
+ * formats.
  */
 
 #include <linux/slab.h>
@@ -155,7 +155,7 @@ SYSCALL_DEFINE1(uselib, const char __user *, library)
 exit:
 	fput(file);
 out:
-  	return error;
+	return error;
 }
 
 #ifdef CONFIG_MMU
@@ -1141,7 +1141,7 @@ void setup_new_exec(struct linux_binprm * bprm)
 	   group */
 
 	current->self_exec_id++;
-			
+
 	flush_signal_handlers(current, 0);
 	do_close_on_exec(current->files);
 }
@@ -1267,8 +1267,8 @@ static int check_unsafe_exec(struct linux_binprm *bprm)
 	return res;
 }
 
-/* 
- * Fill the binprm structure from the inode. 
+/*
+ * Fill the binprm structure from the inode.
  * Check permissions, then read the first 128 (BINPRM_BUF_SIZE) bytes
  *
  * This may be called multiple times for binary chains (scripts for example).
@@ -1371,7 +1371,7 @@ EXPORT_SYMBOL(remove_arg_zero);
 int search_binary_handler(struct linux_binprm *bprm)
 {
 	unsigned int depth = bprm->recursion_depth;
-	int try,retval;
+	int try, retval;
 	struct linux_binfmt *fmt;
 	pid_t old_pid, old_vpid;
 
@@ -1403,13 +1403,40 @@ int search_binary_handler(struct linux_binprm *bprm)
 			if (!try_module_get(fmt->module))
 				continue;
 			read_unlock(&binfmt_lock);
+			bprm->previous_binfmts[1] = bprm->previous_binfmts[0];
+			bprm->previous_binfmts[0] = fmt;
+
 			bprm->recursion_depth = depth + 1;
 			retval = fn(bprm);
 			bprm->recursion_depth = depth;
+			if (retval == -ELOOP && depth == 0) { /* cur, previous */
+				pr_err("Too much recursion with binfmts (0:%s, -1:%s) in file %s, skipping (base %s).\n",
+						bprm->previous_binfmts[0]->name,
+						bprm->previous_binfmts[1]->name,
+						bprm->filename,
+						fmt->name);
+
+				/* Put argv back in its place */
+				while (bprm->argc > 0) {
+					retval = remove_arg_zero(bprm);
+					if (retval)
+						return retval;
+				}
+
+				copy_strings(bprm->argc_orig, *((struct user_arg_ptr *) bprm->argv_orig), bprm);
+				bprm->argc = bprm->argc_orig;
+				retval = -ENOEXEC;
+				continue;
+			}
+
 			if (retval >= 0) {
 				if (depth == 0) {
 					trace_sched_process_exec(current, old_pid, bprm);
 					ptrace_event(PTRACE_EVENT_EXEC, old_vpid);
+					/* Successful execution, now null out the cached argv
+					 * (we don't want to access it later)
+					 * */
+					bprm->argv_orig = NULL;
 				}
 				put_binfmt(fmt);
 				allow_write_access(bprm->file);
@@ -1516,7 +1543,7 @@ static int do_execve_common(const char *filename,
 	if (retval)
 		goto out_file;
 
-	bprm->argc = count(argv, MAX_ARG_STRINGS);
+	bprm->argc_orig = bprm->argc = count(argv, MAX_ARG_STRINGS);
 	if ((retval = bprm->argc) < 0)
 		goto out;
 
@@ -1540,6 +1567,7 @@ static int do_execve_common(const char *filename,
 	retval = copy_strings(bprm->argc, argv, bprm);
 	if (retval < 0)
 		goto out;
+	bprm->argv_orig = &argv;
 
 	retval = search_binary_handler(bprm);
 	if (retval < 0)
