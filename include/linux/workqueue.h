@@ -13,6 +13,8 @@
 #include <linux/atomic.h>
 #include <linux/cpumask.h>
 
+struct cpumask;
+
 struct workqueue_struct;
 
 struct work_struct;
@@ -470,6 +472,7 @@ extern void flush_workqueue(struct workqueue_struct *wq);
 extern void drain_workqueue(struct workqueue_struct *wq);
 extern void flush_scheduled_work(void);
 
+extern int schedule_on_cpu_mask(work_func_t func, const struct cpumask *mask);
 extern int schedule_on_each_cpu(work_func_t func);
 
 int execute_in_process_context(work_func_t fn, struct execute_work *);
