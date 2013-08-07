@@ -585,18 +585,13 @@ static inline void ath_fill_led_pin(struct ath_softc *sc)
 #define ATH_ANT_DIV_COMB_MAX_COUNT 100
 #define ATH_ANT_DIV_COMB_ALT_ANT_RATIO 30
 #define ATH_ANT_DIV_COMB_ALT_ANT_RATIO2 20
+#define ATH_ANT_DIV_COMB_ALT_ANT_RATIO_LOW_RSSI 50
+#define ATH_ANT_DIV_COMB_ALT_ANT_RATIO2_LOW_RSSI 50
 
 #define ATH_ANT_DIV_COMB_LNA1_LNA2_SWITCH_DELTA -1
 #define ATH_ANT_DIV_COMB_LNA1_DELTA_HI -4
 #define ATH_ANT_DIV_COMB_LNA1_DELTA_MID -2
 #define ATH_ANT_DIV_COMB_LNA1_DELTA_LOW 2
-
-enum ath9k_ant_div_comb_lna_conf {
-	ATH_ANT_DIV_COMB_LNA1_MINUS_LNA2,
-	ATH_ANT_DIV_COMB_LNA2,
-	ATH_ANT_DIV_COMB_LNA1,
-	ATH_ANT_DIV_COMB_LNA1_PLUS_LNA2,
-};
 
 struct ath_ant_comb {
 	u16 count;
@@ -614,27 +609,35 @@ struct ath_ant_comb {
 	int rssi_first;
 	int rssi_second;
 	int rssi_third;
+	int ant_ratio;
+	int ant_ratio2;
 	bool alt_good;
 	int quick_scan_cnt;
-	int main_conf;
+	enum ath9k_ant_div_comb_lna_conf main_conf;
 	enum ath9k_ant_div_comb_lna_conf first_quick_scan_conf;
 	enum ath9k_ant_div_comb_lna_conf second_quick_scan_conf;
 	bool first_ratio;
 	bool second_ratio;
 	unsigned long scan_start_time;
+
+	/*
+	 * Card-specific config values.
+	 */
+	int low_rssi_thresh;
+	int fast_div_bias;
 };
 
 void ath_ant_comb_scan(struct ath_softc *sc, struct ath_rx_status *rs);
-void ath_ant_comb_update(struct ath_softc *sc);
 
 /********************/
 /* Main driver core */
 /********************/
 
-#define ATH9K_PCI_CUS198 0x0001
-#define ATH9K_PCI_CUS230 0x0002
-#define ATH9K_PCI_CUS217 0x0004
-#define ATH9K_PCI_WOW    0x0008
+#define ATH9K_PCI_CUS198     0x0001
+#define ATH9K_PCI_CUS230     0x0002
+#define ATH9K_PCI_CUS217     0x0004
+#define ATH9K_PCI_WOW        0x0008
+#define ATH9K_PCI_BT_ANT_DIV 0x0010
 
 /*
  * Default cache line size, in bytes.
