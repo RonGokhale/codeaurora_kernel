@@ -413,6 +413,9 @@ static void mxhci_hsic_plat_quirks(struct device *dev, struct xhci_hcd *xhci)
 	 */
 	xhci->quirks |= XHCI_BROKEN_MSI;
 
+	/* Single port controller using out of band remote wakeup */
+	xhci->quirks |= XHCI_NO_SELECTIVE_SUSPEND;
+
 	if (!pdata)
 		return;
 	if (pdata->vendor == SYNOPSIS_DWC3_VENDOR &&
@@ -429,6 +432,8 @@ static int mxhci_hsic_plat_setup(struct usb_hcd *hcd)
 static irqreturn_t mxhci_hsic_wakeup_irq(int irq, void *data)
 {
 	struct mxhci_hsic_hcd *mxhci = data;
+	struct usb_hcd *hcd = hsic_to_hcd(mxhci);
+	struct xhci_bus_state *bus_state;
 	int ret;
 
 	mxhci->wakeup_int_cnt++;
@@ -452,10 +457,15 @@ static irqreturn_t mxhci_hsic_wakeup_irq(int irq, void *data)
 		 * (ret == -EINPROGRESS), decrement the
 		 * PM usage counter before returning.
 		 */
-		if ((ret == 1) || (ret == -EINPROGRESS))
+		if ((ret == 1) || (ret == -EINPROGRESS)) {
 			pm_runtime_put_noidle(mxhci->dev);
-		else
+		} else {
+			 /* Let khubd know of hub port status change */
+			bus_state = &mxhci->xhci->bus_state[hcd_index(hcd)];
+			if (mxhci->xhci->quirks & XHCI_NO_SELECTIVE_SUSPEND)
+				bus_state->suspended_ports = 1;
 			mxhci->pm_usage_cnt = 1;
+		}
 	}
 	spin_unlock(&mxhci->wakeup_lock);
 
@@ -557,6 +567,7 @@ static int mxhci_hsic_suspend(struct mxhci_hsic_hcd *mxhci)
 
 static int mxhci_hsic_resume(struct mxhci_hsic_hcd *mxhci)
 {
+	struct usb_hcd *hcd = hsic_to_hcd(mxhci);
 	int ret;
 	unsigned long flags;
 
@@ -592,6 +603,9 @@ static int mxhci_hsic_resume(struct mxhci_hsic_hcd *mxhci)
 	clk_prepare_enable(mxhci->utmi_clk);
 	clk_prepare_enable(mxhci->hsic_clk);
 	clk_prepare_enable(mxhci->cal_clk);
+
+	if (mxhci->wakeup_irq)
+		usb_hcd_resume_root_hub(hcd);
 
 	mxhci->in_lpm = 0;
 
@@ -824,22 +838,19 @@ static int mxhci_hsic_probe(struct platform_device *pdev)
 		goto remove_usb3_hcd;
 	}
 
-	mxhci->wakeup_irq = gpio_to_irq(mxhci->strobe);
+	mxhci->wakeup_irq = platform_get_irq_byname(pdev, "wakeup_irq");
 	if (mxhci->wakeup_irq < 0) {
-		dev_err(&pdev->dev, "gpio_to_irq for strobe gpio failed\n");
+		dev_err(&pdev->dev, "failed to init wakeup_irq\n");
 		goto remove_usb3_hcd;
-	} else {
+	}
 
-		/* enable wakeup irq while entring lpm */
-		irq_set_status_flags(mxhci->wakeup_irq, IRQ_NOAUTOEN);
-		ret = devm_request_irq(&pdev->dev, mxhci->wakeup_irq,
-				mxhci_hsic_wakeup_irq,
-				IRQF_TRIGGER_LOW, "mxhci_hsic_wakeup", mxhci);
-		if (ret) {
-			dev_err(&pdev->dev,
-					"request irq failed (wakeup irq)\n");
-			goto remove_usb3_hcd;
-		}
+	/* enable wakeup irq only when entering lpm */
+	irq_set_status_flags(mxhci->wakeup_irq, IRQ_NOAUTOEN);
+	ret = devm_request_irq(&pdev->dev, mxhci->wakeup_irq,
+			mxhci_hsic_wakeup_irq, 0, "mxhci_hsic_wakeup", mxhci);
+	if (ret) {
+		dev_err(&pdev->dev, "request irq failed (wakeup irq)\n");
+		goto remove_usb3_hcd;
 	}
 
 	init_completion(&mxhci->phy_in_lpm);
