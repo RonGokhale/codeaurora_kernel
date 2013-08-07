@@ -405,6 +405,11 @@ static void activate_page_drain(int cpu)
 		pagevec_lru_move_fn(pvec, __activate_page, NULL);
 }
 
+static bool need_activate_page_drain(int cpu)
+{
+	return pagevec_count(&per_cpu(activate_page_pvecs, cpu)) != 0;
+}
+
 void activate_page(struct page *page)
 {
 	if (PageLRU(page) && !PageActive(page) && !PageUnevictable(page)) {
@@ -420,6 +425,11 @@ void activate_page(struct page *page)
 #else
 static inline void activate_page_drain(int cpu)
 {
+}
+
+static bool need_activate_page_drain(int cpu)
+{
+	return false;
 }
 
 void activate_page(struct page *page)
@@ -683,7 +693,32 @@ static void lru_add_drain_per_cpu(struct work_struct *dummy)
  */
 int lru_add_drain_all(void)
 {
-	return schedule_on_each_cpu(lru_add_drain_per_cpu);
+	cpumask_var_t mask;
+	int cpu, rc;
+
+	if (!alloc_cpumask_var(&mask, GFP_KERNEL))
+		return -ENOMEM;
+	cpumask_clear(mask);
+
+	/*
+	 * Figure out which cpus need flushing.  It's OK if we race
+	 * with changes to the per-cpu lru pvecs, since it's no worse
+	 * than if we flushed all cpus, since a cpu could still end
+	 * up putting pages back on its pvec before we returned.
+	 * And this avoids interrupting other cpus unnecessarily.
+	 */
+	for_each_online_cpu(cpu) {
+		if (pagevec_count(&per_cpu(lru_add_pvec, cpu)) ||
+		    pagevec_count(&per_cpu(lru_rotate_pvecs, cpu)) ||
+		    pagevec_count(&per_cpu(lru_deactivate_pvecs, cpu)) ||
+		    need_activate_page_drain(cpu))
+			cpumask_set_cpu(cpu, mask);
+	}
+
+	rc = schedule_on_cpu_mask(lru_add_drain_per_cpu, mask);
+
+	free_cpumask_var(mask);
+	return rc;
 }
 
 /*
