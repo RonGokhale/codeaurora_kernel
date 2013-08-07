@@ -36,8 +36,9 @@ static void *tile_dma_alloc_coherent(struct device *dev, size_t size,
 				     dma_addr_t *dma_handle, gfp_t gfp,
 				     struct dma_attrs *attrs)
 {
-	u64 dma_mask = dev->coherent_dma_mask ?: DMA_BIT_MASK(32);
-	int node = dev_to_node(dev);
+	u64 dma_mask = (dev && dev->coherent_dma_mask) ?
+		dev->coherent_dma_mask : DMA_BIT_MASK(32);
+	int node = dev ? dev_to_node(dev) : 0;
 	int order = get_order(size);
 	struct page *pg;
 	dma_addr_t addr;
@@ -256,7 +257,7 @@ static void tile_dma_unmap_page(struct device *dev, dma_addr_t dma_address,
 	BUG_ON(!valid_dma_direction(direction));
 
 	__dma_complete_page(pfn_to_page(PFN_DOWN(dma_address)),
-			    dma_address & PAGE_OFFSET, size, direction);
+			    dma_address & (PAGE_SIZE - 1), size, direction);
 }
 
 static void tile_dma_sync_single_for_cpu(struct device *dev,
@@ -357,7 +358,7 @@ static void *tile_pci_dma_alloc_coherent(struct device *dev, size_t size,
 
 	addr = page_to_phys(pg);
 
-	*dma_handle = phys_to_dma(dev, addr);
+	*dma_handle = addr + get_dma_offset(dev);
 
 	return page_address(pg);
 }
@@ -387,7 +388,7 @@ static int tile_pci_dma_map_sg(struct device *dev, struct scatterlist *sglist,
 		sg->dma_address = sg_phys(sg);
 		__dma_prep_pa_range(sg->dma_address, sg->length, direction);
 
-		sg->dma_address = phys_to_dma(dev, sg->dma_address);
+		sg->dma_address = sg->dma_address + get_dma_offset(dev);
 #ifdef CONFIG_NEED_SG_DMA_LENGTH
 		sg->dma_length = sg->length;
 #endif
@@ -422,7 +423,7 @@ static dma_addr_t tile_pci_dma_map_page(struct device *dev, struct page *page,
 	BUG_ON(offset + size > PAGE_SIZE);
 	__dma_prep_page(page, offset, size, direction);
 
-	return phys_to_dma(dev, page_to_pa(page) + offset);
+	return page_to_pa(page) + offset + get_dma_offset(dev);
 }
 
 static void tile_pci_dma_unmap_page(struct device *dev, dma_addr_t dma_address,
@@ -432,10 +433,10 @@ static void tile_pci_dma_unmap_page(struct device *dev, dma_addr_t dma_address,
 {
 	BUG_ON(!valid_dma_direction(direction));
 
-	dma_address = dma_to_phys(dev, dma_address);
+	dma_address -= get_dma_offset(dev);
 
 	__dma_complete_page(pfn_to_page(PFN_DOWN(dma_address)),
-			    dma_address & PAGE_OFFSET, size, direction);
+			    dma_address & (PAGE_SIZE - 1), size, direction);
 }
 
 static void tile_pci_dma_sync_single_for_cpu(struct device *dev,
@@ -445,7 +446,7 @@ static void tile_pci_dma_sync_single_for_cpu(struct device *dev,
 {
 	BUG_ON(!valid_dma_direction(direction));
 
-	dma_handle = dma_to_phys(dev, dma_handle);
+	dma_handle -= get_dma_offset(dev);
 
 	__dma_complete_pa_range(dma_handle, size, direction);
 }
@@ -456,7 +457,7 @@ static void tile_pci_dma_sync_single_for_device(struct device *dev,
 						enum dma_data_direction
 						direction)
 {
-	dma_handle = dma_to_phys(dev, dma_handle);
+	dma_handle -= get_dma_offset(dev);
 
 	__dma_prep_pa_range(dma_handle, size, direction);
 }
@@ -573,6 +574,11 @@ int dma_set_coherent_mask(struct device *dev, u64 mask)
 	if (((dma_ops == gx_pci_dma_map_ops) ||
 	    (dma_ops == gx_legacy_pci_dma_map_ops)) &&
 	    (mask <= DMA_BIT_MASK(32))) {
+		if (dma_ops == gx_pci_dma_map_ops) {
+			dma_ops->alloc = tile_swiotlb_alloc_coherent;
+			dma_ops->free = tile_swiotlb_free_coherent;
+		}
+
 		if (mask > dev->archdata.max_direct_dma_addr)
 			mask = dev->archdata.max_direct_dma_addr;
 	}
@@ -583,4 +589,22 @@ int dma_set_coherent_mask(struct device *dev, u64 mask)
 	return 0;
 }
 EXPORT_SYMBOL(dma_set_coherent_mask);
+#endif
+
+#ifdef ARCH_HAS_DMA_GET_REQUIRED_MASK
+/*
+ * The generic dma_get_required_mask() uses the highest physical address
+ * (max_pfn) to provide the hint to the PCI drivers regarding 32-bit or
+ * 64-bit DMA configuration. Since TILEGx has I/O TLB/MMU, allowing the
+ * DMAs to use the full 64-bit PCI address space and not limited by
+ * the physical memory space, we always let the PCI devices use
+ * 64-bit DMA if they have that capability, by returning the 64-bit
+ * DMA mask here. The device driver has the option to use 32-bit DMA if
+ * the device is not capable of 64-bit DMA.
+ */
+u64 dma_get_required_mask(struct device *dev)
+{
+	return DMA_BIT_MASK(64);
+}
+EXPORT_SYMBOL_GPL(dma_get_required_mask);
 #endif
