@@ -625,6 +625,51 @@ static int find_group_other(struct super_block *sb, struct inode *parent,
 }
 
 /*
+ * In no journal mode, if an inode has recently been deleted, we want
+ * to avoid reusing it until we're reasonably sure the inode table
+ * block has been written back to disk.
+ */
+static int recently_deleted(struct super_block *sb, ext4_group_t group, int ino)
+{
+	struct ext4_group_desc	*gdp;
+	struct ext4_inode	*raw_inode;
+	struct buffer_head	*bh;
+	unsigned long		dtime, now;
+	int	inodes_per_block = EXT4_SB(sb)->s_inodes_per_block;
+	int	offset, ret = 0, recentcy = dirty_expire_interval;
+
+	gdp = ext4_get_group_desc(sb, group, NULL);
+	if (unlikely(!gdp))
+		return 0;
+
+	bh = sb_getblk(sb, ext4_inode_table(sb, gdp) +
+		       (ino / inodes_per_block));
+	if (unlikely(!bh) || !buffer_uptodate(bh))
+		/*
+		 * If the block is not in the buffer cache, then it
+		 * must have been written out.
+		 */
+		goto out;
+
+	offset = (ino % inodes_per_block) * EXT4_INODE_SIZE(sb);
+	raw_inode = (struct ext4_inode *) (bh->b_data + offset);
+	dtime = le32_to_cpu(raw_inode->i_dtime);
+	now = get_seconds();
+	if (!buffer_dirty(bh) && (recentcy > 5))
+		/*
+		 * Five seconds should be enough time for a block to be
+		 * committed to the platter once it is sent to the HDD
+		 */
+		recentcy = 5;
+
+	if (dtime && (dtime < now) && (now < dtime + recentcy))
+		ret = 1;
+out:
+	brelse(bh);
+	return ret;
+}
+
+/*
  * There are two policies for allocating an inode.  If the new inode is
  * a directory, then a forward search is made for a block group with both
  * free space and a low directory-to-inode ratio; if that fails, then of
@@ -734,15 +779,17 @@ repeat_in_this_group:
 		ino = ext4_find_next_zero_bit((unsigned long *)
 					      inode_bitmap_bh->b_data,
 					      EXT4_INODES_PER_GROUP(sb), ino);
-		if (ino >= EXT4_INODES_PER_GROUP(sb)) {
-			if (++group == ngroups)
-				group = 0;
-			continue;
-		}
+		if (ino >= EXT4_INODES_PER_GROUP(sb))
+			goto next_group;
 		if (group == 0 && (ino+1) < EXT4_FIRST_INO(sb)) {
 			ext4_error(sb, "reserved inode found cleared - "
 				   "inode=%lu", ino + 1);
 			continue;
+		}
+		if ((EXT4_SB(sb)->s_journal == NULL) &&
+		    recently_deleted(sb, group, ino)) {
+			ino++;
+			goto next_inode;
 		}
 		if (!handle) {
 			BUG_ON(nblocks <= 0);
@@ -767,8 +814,12 @@ repeat_in_this_group:
 		ino++;		/* the inode bitmap is zero-based */
 		if (!ret2)
 			goto got; /* we grabbed the inode! */
+next_inode:
 		if (ino < EXT4_INODES_PER_GROUP(sb))
 			goto repeat_in_this_group;
+next_group:
+		if (++group == ngroups)
+			group = 0;
 	}
 	err = -ENOSPC;
 	goto out;
