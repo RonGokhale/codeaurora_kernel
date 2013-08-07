@@ -38,6 +38,7 @@
 struct device_node;
 struct irq_domain;
 struct of_device_id;
+struct msi_chip;
 
 /* Number of irqs reserved for a legacy isa controller */
 #define NUM_ISA_INTERRUPTS	16
@@ -101,6 +102,7 @@ struct irq_domain {
 	/* Optional data */
 	struct device_node *of_node;
 	struct irq_domain_chip_generic *gc;
+	struct msi_chip *msi_chip;
 
 	/* reverse map data. The linear map gets appended to the irq_domain */
 	irq_hw_number_t hwirq_max;
@@ -177,6 +179,22 @@ static inline struct irq_domain *irq_domain_add_tree(struct device_node *of_node
 		__irq_domain_register(d);
 	return d;
 }
+static inline struct irq_domain *irq_domain_add_msi(struct device_node *of_node,
+						    unsigned int size,
+						    const struct irq_domain_ops *ops,
+						    struct msi_chip *msi_chip,
+						    void *host_data)
+{
+	struct irq_domain *d;
+	d = __irq_domain_alloc(of_node, size, size, 0, ops, host_data);
+	if (d) {
+		d->msi_chip = msi_chip;
+		__irq_domain_register(d);
+	}
+
+	return d;
+}
+
 
 extern void irq_domain_remove(struct irq_domain *host);
 
