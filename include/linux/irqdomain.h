@@ -129,7 +129,8 @@ struct irq_domain *irq_domain_add_legacy(struct device_node *of_node,
 					 irq_hw_number_t first_hwirq,
 					 const struct irq_domain_ops *ops,
 					 void *host_data);
-extern struct irq_domain *irq_find_host(struct device_node *node);
+struct irq_domain *__irq_find_host(struct device_node *node,
+				   bool findmsi);
 extern void irq_set_default_host(struct irq_domain *host);
 
 /**
@@ -195,6 +196,24 @@ static inline struct irq_domain *irq_domain_add_msi(struct device_node *of_node,
 	return d;
 }
 
+
+/**
+ * irq_find_host() - Locates a domain for a given device node
+ * @node: device-tree node of the interrupt controller
+ */
+static inline struct irq_domain *irq_find_host(struct device_node *node)
+{
+	return __irq_find_host(node, false);
+}
+
+/**
+ * irq_find_msi_host() - Locates a MSI domain for a given device node
+ * @node: device-tree node of the interrupt controller
+ */
+static inline struct irq_domain *irq_find_msi_host(struct device_node *node)
+{
+	return __irq_find_host(node, true);
+}
 
 extern void irq_domain_remove(struct irq_domain *host);
 

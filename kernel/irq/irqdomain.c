@@ -197,10 +197,14 @@ struct irq_domain *irq_domain_add_legacy(struct device_node *of_node,
 EXPORT_SYMBOL_GPL(irq_domain_add_legacy);
 
 /**
- * irq_find_host() - Locates a domain for a given device node
+ * __irq_find_host() - Locates a domain for a given device node,
+ * taking into account whether the domain is of MSI-type or not.
  * @node: device-tree node of the interrupt controller
+ * @findmsi: true when the domain being search is of MSI-type, false
+ * otherwise.
  */
-struct irq_domain *irq_find_host(struct device_node *node)
+struct irq_domain *__irq_find_host(struct device_node *node,
+				   bool findmsi)
 {
 	struct irq_domain *h, *found = NULL;
 	int rc;
@@ -212,6 +216,9 @@ struct irq_domain *irq_find_host(struct device_node *node)
 	 */
 	mutex_lock(&irq_domain_mutex);
 	list_for_each_entry(h, &irq_domain_list, link) {
+		if ((findmsi && !h->msi_chip) ||
+		    (!findmsi && h->msi_chip))
+			continue;
 		if (h->ops->match)
 			rc = h->ops->match(h, node);
 		else
@@ -225,7 +232,7 @@ struct irq_domain *irq_find_host(struct device_node *node)
 	mutex_unlock(&irq_domain_mutex);
 	return found;
 }
-EXPORT_SYMBOL_GPL(irq_find_host);
+EXPORT_SYMBOL_GPL(__irq_find_host);
 
 /**
  * irq_set_default_host() - Set a "default" irq domain
