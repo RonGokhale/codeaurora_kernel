@@ -23,7 +23,7 @@ static DEFINE_MUTEX(revmap_trees_mutex);
 static struct irq_domain *irq_default_domain;
 
 /**
- * __irq_domain_add() - Allocate a new irq_domain data structure
+ * __irq_domain_alloc() - Allocate a new irq_domain data structure
  * @of_node: optional device-tree node of the interrupt controller
  * @size: Size of linear map; 0 for radix mapping only
  * @direct_max: Maximum value of direct maps; Use ~0 for no limit; 0 for no
@@ -31,14 +31,15 @@ static struct irq_domain *irq_default_domain;
  * @ops: map/unmap domain callbacks
  * @host_data: Controller private data pointer
  *
- * Allocates and initialize and irq_domain structure.  Caller is expected to
- * register allocated irq_domain with irq_domain_register().  Returns pointer
- * to IRQ domain, or NULL on failure.
+ * Allocates and initializes an irq_domain structure.  Caller is
+ * expected to register the allocated irq_domain with
+ * __irq_domain_register().  Returns pointer to IRQ domain, or NULL on
+ * failure.
  */
-struct irq_domain *__irq_domain_add(struct device_node *of_node, int size,
-				    irq_hw_number_t hwirq_max, int direct_max,
-				    const struct irq_domain_ops *ops,
-				    void *host_data)
+struct irq_domain *__irq_domain_alloc(struct device_node *of_node, int size,
+				      irq_hw_number_t hwirq_max, int direct_max,
+				      const struct irq_domain_ops *ops,
+				      void *host_data)
 {
 	struct irq_domain *domain;
 
@@ -56,14 +57,24 @@ struct irq_domain *__irq_domain_add(struct device_node *of_node, int size,
 	domain->revmap_size = size;
 	domain->revmap_direct_max_irq = direct_max;
 
+	return domain;
+}
+EXPORT_SYMBOL_GPL(__irq_domain_alloc);
+
+/**
+ * __irq_domain_register() - Register a new irq_domain that has been
+ * previously allocated with __irq_domain_alloc().
+ * @domain: irq_domain to registers
+ */
+void __irq_domain_register(struct irq_domain *domain)
+{
 	mutex_lock(&irq_domain_mutex);
 	list_add(&domain->link, &irq_domain_list);
 	mutex_unlock(&irq_domain_mutex);
 
 	pr_debug("Added domain %s\n", domain->name);
-	return domain;
 }
-EXPORT_SYMBOL_GPL(__irq_domain_add);
+EXPORT_SYMBOL_GPL(__irq_domain_register);
 
 /**
  * irq_domain_remove() - Remove an irq domain.
@@ -127,7 +138,7 @@ struct irq_domain *irq_domain_add_simple(struct device_node *of_node,
 {
 	struct irq_domain *domain;
 
-	domain = __irq_domain_add(of_node, size, size, 0, ops, host_data);
+	domain = __irq_domain_alloc(of_node, size, size, 0, ops, host_data);
 	if (!domain)
 		return NULL;
 
@@ -142,6 +153,8 @@ struct irq_domain *irq_domain_add_simple(struct device_node *of_node,
 		}
 		irq_domain_associate_many(domain, first_irq, 0, size);
 	}
+
+	__irq_domain_register(domain);
 
 	return domain;
 }
@@ -171,12 +184,13 @@ struct irq_domain *irq_domain_add_legacy(struct device_node *of_node,
 {
 	struct irq_domain *domain;
 
-	domain = __irq_domain_add(of_node, first_hwirq + size,
-				  first_hwirq + size, 0, ops, host_data);
+	domain = __irq_domain_alloc(of_node, first_hwirq + size,
+				    first_hwirq + size, 0, ops, host_data);
 	if (!domain)
 		return NULL;
 
 	irq_domain_associate_many(domain, first_irq, first_hwirq, size);
+	__irq_domain_register(domain);
 
 	return domain;
 }

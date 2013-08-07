@@ -111,10 +111,11 @@ struct irq_domain {
 };
 
 #ifdef CONFIG_IRQ_DOMAIN
-struct irq_domain *__irq_domain_add(struct device_node *of_node, int size,
+struct irq_domain *__irq_domain_alloc(struct device_node *of_node, int size,
 				    irq_hw_number_t hwirq_max, int direct_max,
 				    const struct irq_domain_ops *ops,
 				    void *host_data);
+void __irq_domain_register(struct irq_domain *domain);
 struct irq_domain *irq_domain_add_simple(struct device_node *of_node,
 					 unsigned int size,
 					 unsigned int first_irq,
@@ -141,14 +142,22 @@ static inline struct irq_domain *irq_domain_add_linear(struct device_node *of_no
 					 const struct irq_domain_ops *ops,
 					 void *host_data)
 {
-	return __irq_domain_add(of_node, size, size, 0, ops, host_data);
+	struct irq_domain *d;
+	d = __irq_domain_alloc(of_node, size, size, 0, ops, host_data);
+	if (d)
+		__irq_domain_register(d);
+	return d;
 }
 static inline struct irq_domain *irq_domain_add_nomap(struct device_node *of_node,
 					 unsigned int max_irq,
 					 const struct irq_domain_ops *ops,
 					 void *host_data)
 {
-	return __irq_domain_add(of_node, 0, max_irq, max_irq, ops, host_data);
+	struct irq_domain *d;
+	d = __irq_domain_alloc(of_node, 0, max_irq, max_irq, ops, host_data);
+	if (d)
+		__irq_domain_register(d);
+	return d;
 }
 static inline struct irq_domain *irq_domain_add_legacy_isa(
 				struct device_node *of_node,
@@ -162,7 +171,11 @@ static inline struct irq_domain *irq_domain_add_tree(struct device_node *of_node
 					 const struct irq_domain_ops *ops,
 					 void *host_data)
 {
-	return __irq_domain_add(of_node, 0, ~0, 0, ops, host_data);
+	struct irq_domain *d;
+	d = __irq_domain_alloc(of_node, 0, ~0, 0, ops, host_data);
+	if (d)
+		__irq_domain_register(d);
+	return d;
 }
 
 extern void irq_domain_remove(struct irq_domain *host);
