@@ -2962,6 +2962,41 @@ bool cancel_delayed_work_sync(struct delayed_work *dwork)
 EXPORT_SYMBOL(cancel_delayed_work_sync);
 
 /**
+ * schedule_on_cpu_mask - execute a function synchronously on each listed CPU
+ * @func: the function to call
+ * @mask: the cpumask to invoke the function on
+ *
+ * schedule_on_cpu_mask() executes @func on each listed CPU using the
+ * system workqueue and blocks until all CPUs have completed.
+ * schedule_on_cpu_mask() is very slow.
+ *
+ * RETURNS:
+ * 0 on success, -errno on failure.
+ */
+int schedule_on_cpu_mask(work_func_t func, const struct cpumask *mask)
+{
+	int cpu;
+	struct work_struct __percpu *works;
+
+	works = alloc_percpu(struct work_struct);
+	if (!works)
+		return -ENOMEM;
+
+	for_each_cpu(cpu, mask) {
+		struct work_struct *work = per_cpu_ptr(works, cpu);
+
+		INIT_WORK(work, func);
+		schedule_work_on(cpu, work);
+	}
+
+	for_each_cpu(cpu, mask)
+		flush_work(per_cpu_ptr(works, cpu));
+
+	free_percpu(works);
+	return 0;
+}
+
+/**
  * schedule_on_each_cpu - execute a function synchronously on each online CPU
  * @func: the function to call
  *
@@ -2974,28 +3009,11 @@ EXPORT_SYMBOL(cancel_delayed_work_sync);
  */
 int schedule_on_each_cpu(work_func_t func)
 {
-	int cpu;
-	struct work_struct __percpu *works;
-
-	works = alloc_percpu(struct work_struct);
-	if (!works)
-		return -ENOMEM;
-
+	int ret;
 	get_online_cpus();
-
-	for_each_online_cpu(cpu) {
-		struct work_struct *work = per_cpu_ptr(works, cpu);
-
-		INIT_WORK(work, func);
-		schedule_work_on(cpu, work);
-	}
-
-	for_each_online_cpu(cpu)
-		flush_work(per_cpu_ptr(works, cpu));
-
+	ret = schedule_on_cpu_mask(func, cpu_online_mask);
 	put_online_cpus();
-	free_percpu(works);
-	return 0;
+	return ret;
 }
 
 /**
