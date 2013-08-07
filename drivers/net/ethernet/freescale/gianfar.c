@@ -593,7 +593,6 @@ static int gfar_parse_group(struct device_node *np,
 			return -EINVAL;
 	}
 
-	grp->grp_id = priv->num_grps;
 	grp->priv = priv;
 	spin_lock_init(&grp->grplock);
 	if (priv->mode == MQ_MG_MODE) {
@@ -2052,6 +2051,24 @@ static inline struct txbd8 *next_txbd(struct txbd8 *bdp, struct txbd8 *base,
 	return skip_txbd(bdp, 1, base, ring_size);
 }
 
+/* eTSEC12: csum generation not supported for some fcb offsets */
+static inline bool gfar_csum_errata_12(struct gfar_private *priv,
+				       unsigned long fcb_addr)
+{
+	return (gfar_has_errata(priv, GFAR_ERRATA_12) &&
+	       (fcb_addr % 0x20) > 0x18);
+}
+
+/* eTSEC76: csum generation for frames larger than 2500 may
+ * cause excess delays before start of transmission
+ */
+static inline bool gfar_csum_errata_76(struct gfar_private *priv,
+				       unsigned int len)
+{
+	return (gfar_has_errata(priv, GFAR_ERRATA_76) &&
+	       (len > 2500));
+}
+
 /* This is called by the kernel when a frame is ready for transmission.
  * It is pointed to by the dev->hard_start_xmit function pointer
  */
@@ -2064,23 +2081,11 @@ static int gfar_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct txfcb *fcb = NULL;
 	struct txbd8 *txbdp, *txbdp_start, *base, *txbdp_tstamp = NULL;
 	u32 lstatus;
-	int i, rq = 0, do_tstamp = 0;
+	int i, rq = 0;
+	int do_tstamp, do_csum, do_vlan;
 	u32 bufaddr;
 	unsigned long flags;
-	unsigned int nr_frags, nr_txbds, length, fcb_length = GMAC_FCB_LEN;
-
-	/* TOE=1 frames larger than 2500 bytes may see excess delays
-	 * before start of transmission.
-	 */
-	if (unlikely(gfar_has_errata(priv, GFAR_ERRATA_76) &&
-		     skb->ip_summed == CHECKSUM_PARTIAL &&
-		     skb->len > 2500)) {
-		int ret;
-
-		ret = skb_checksum_help(skb);
-		if (ret)
-			return ret;
-	}
+	unsigned int nr_frags, nr_txbds, length, fcb_len = 0;
 
 	rq = skb->queue_mapping;
 	tx_queue = priv->tx_queue[rq];
@@ -2088,21 +2093,23 @@ static int gfar_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	base = tx_queue->tx_bd_base;
 	regs = tx_queue->grp->regs;
 
+	do_csum = (CHECKSUM_PARTIAL == skb->ip_summed);
+	do_vlan = vlan_tx_tag_present(skb);
+	do_tstamp = (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
+		    priv->hwts_tx_en;
+
+	if (do_csum || do_vlan)
+		fcb_len = GMAC_FCB_LEN;
+
 	/* check if time stamp should be generated */
-	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP &&
-		     priv->hwts_tx_en)) {
-		do_tstamp = 1;
-		fcb_length = GMAC_FCB_LEN + GMAC_TXPAL_LEN;
-	}
+	if (unlikely(do_tstamp))
+		fcb_len = GMAC_FCB_LEN + GMAC_TXPAL_LEN;
 
 	/* make space for additional header when fcb is needed */
-	if (((skb->ip_summed == CHECKSUM_PARTIAL) ||
-	     vlan_tx_tag_present(skb) ||
-	     unlikely(do_tstamp)) &&
-	    (skb_headroom(skb) < fcb_length)) {
+	if (fcb_len && unlikely(skb_headroom(skb) < fcb_len)) {
 		struct sk_buff *skb_new;
 
-		skb_new = skb_realloc_headroom(skb, fcb_length);
+		skb_new = skb_realloc_headroom(skb, fcb_len);
 		if (!skb_new) {
 			dev->stats.tx_errors++;
 			kfree_skb(skb);
@@ -2185,36 +2192,38 @@ static int gfar_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		memset(skb->data, 0, GMAC_TXPAL_LEN);
 	}
 
-	/* Set up checksumming */
-	if (CHECKSUM_PARTIAL == skb->ip_summed) {
+	/* Add TxFCB if required */
+	if (fcb_len) {
 		fcb = gfar_add_fcb(skb);
-		/* as specified by errata */
-		if (unlikely(gfar_has_errata(priv, GFAR_ERRATA_12) &&
-			     ((unsigned long)fcb % 0x20) > 0x18)) {
+		lstatus |= BD_LFLAG(TXBD_TOE);
+	}
+
+	/* Set up checksumming */
+	if (do_csum) {
+		gfar_tx_checksum(skb, fcb, fcb_len);
+
+		if (unlikely(gfar_csum_errata_12(priv, (unsigned long)fcb)) ||
+		    unlikely(gfar_csum_errata_76(priv, skb->len))) {
 			__skb_pull(skb, GMAC_FCB_LEN);
 			skb_checksum_help(skb);
-		} else {
-			lstatus |= BD_LFLAG(TXBD_TOE);
-			gfar_tx_checksum(skb, fcb, fcb_length);
+			if (do_vlan || do_tstamp) {
+				/* put back a new fcb for vlan/tstamp TOE */
+				fcb = gfar_add_fcb(skb);
+			} else {
+				/* Tx TOE not used */
+				lstatus &= ~(BD_LFLAG(TXBD_TOE));
+				fcb = NULL;
+			}
 		}
 	}
 
-	if (vlan_tx_tag_present(skb)) {
-		if (unlikely(NULL == fcb)) {
-			fcb = gfar_add_fcb(skb);
-			lstatus |= BD_LFLAG(TXBD_TOE);
-		}
-
+	if (do_vlan)
 		gfar_tx_vlan(skb, fcb);
-	}
 
 	/* Setup tx hardware time stamping if requested */
 	if (unlikely(do_tstamp)) {
 		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
-		if (fcb == NULL)
-			fcb = gfar_add_fcb(skb);
 		fcb->ptp = 1;
-		lstatus |= BD_LFLAG(TXBD_TOE);
 	}
 
 	txbdp_start->bufPtr = dma_map_single(priv->dev, skb->data,
@@ -2226,9 +2235,9 @@ static int gfar_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	 * the full frame length.
 	 */
 	if (unlikely(do_tstamp)) {
-		txbdp_tstamp->bufPtr = txbdp_start->bufPtr + fcb_length;
+		txbdp_tstamp->bufPtr = txbdp_start->bufPtr + fcb_len;
 		txbdp_tstamp->lstatus |= BD_LFLAG(TXBD_READY) |
-					 (skb_headlen(skb) - fcb_length);
+					 (skb_headlen(skb) - fcb_len);
 		lstatus |= BD_LFLAG(TXBD_CRC | TXBD_READY) | GMAC_FCB_LEN;
 	} else {
 		lstatus |= BD_LFLAG(TXBD_CRC | TXBD_READY) | skb_headlen(skb);

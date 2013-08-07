@@ -88,6 +88,7 @@
 #include <linux/virtio_net.h>
 #include <linux/errqueue.h>
 #include <linux/net_tstamp.h>
+#include <linux/if_arp.h>
 
 #ifdef CONFIG_INET
 #include <net/inet_common.h>
@@ -1923,7 +1924,7 @@ static int tpacket_fill_skb(struct packet_sock *po, struct sk_buff *skb,
 		__be16 proto, unsigned char *addr, int hlen)
 {
 	union tpacket_uhdr ph;
-	int to_write, offset, len, tp_len, nr_frags, len_max;
+	int to_write, offset, len, tp_len, nr_frags, len_max, max_frame_len;
 	struct socket *sock = po->sk.sk_socket;
 	struct page *page;
 	void *data;
@@ -1945,10 +1946,6 @@ static int tpacket_fill_skb(struct packet_sock *po, struct sk_buff *skb,
 	default:
 		tp_len = ph.h1->tp_len;
 		break;
-	}
-	if (unlikely(tp_len > size_max)) {
-		pr_err("packet size is too long (%d > %d)\n", tp_len, size_max);
-		return -EMSGSIZE;
 	}
 
 	skb_reserve(skb, hlen);
@@ -2005,8 +2002,23 @@ static int tpacket_fill_skb(struct packet_sock *po, struct sk_buff *skb,
 		if (unlikely(err))
 			return err;
 
+		if (dev->type == ARPHRD_ETHER)
+			skb->protocol = eth_type_trans(skb, dev);
+
 		data += dev->hard_header_len;
 		to_write -= dev->hard_header_len;
+	}
+
+	max_frame_len = dev->mtu + dev->hard_header_len;
+	if (skb->protocol == htons(ETH_P_8021Q))
+		max_frame_len += VLAN_HLEN;
+
+	if (size_max > max_frame_len)
+		size_max = max_frame_len;
+
+	if (unlikely(tp_len > size_max)) {
+		pr_err("packet size is too long (%d > %d)\n", tp_len, size_max);
+		return -EMSGSIZE;
 	}
 
 	offset = offset_in_page(data);
@@ -2047,7 +2059,7 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 	struct net_device *dev;
 	__be16 proto;
 	bool need_rls_dev = false;
-	int err, reserve = 0;
+	int err;
 	void *ph;
 	struct sockaddr_ll *saddr = (struct sockaddr_ll *)msg->msg_name;
 	int tp_len, size_max;
@@ -2080,17 +2092,12 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 	if (unlikely(dev == NULL))
 		goto out;
 
-	reserve = dev->hard_header_len;
-
 	err = -ENETDOWN;
 	if (unlikely(!(dev->flags & IFF_UP)))
 		goto out_put;
 
 	size_max = po->tx_ring.frame_size
 		- (po->tp_hdrlen - sizeof(struct sockaddr_ll));
-
-	if (size_max > dev->mtu + reserve)
-		size_max = dev->mtu + reserve;
 
 	do {
 		ph = packet_current_frame(po, &po->tx_ring,
@@ -2324,22 +2331,20 @@ static int packet_snd(struct socket *sock,
 
 	sock_tx_timestamp(sk, &skb_shinfo(skb)->tx_flags);
 
-	if (!gso_type && (len > dev->mtu + reserve + extra_len)) {
-		/* Earlier code assumed this would be a VLAN pkt,
-		 * double-check this now that we have the actual
-		 * packet in hand.
-		 */
-		struct ethhdr *ehdr;
-		skb_reset_mac_header(skb);
-		ehdr = eth_hdr(skb);
-		if (ehdr->h_proto != htons(ETH_P_8021Q)) {
-			err = -EMSGSIZE;
-			goto out_free;
-		}
+	if (dev->type == ARPHRD_ETHER) {
+		skb->protocol = eth_type_trans(skb, dev);
+		if (skb->protocol == htons(ETH_P_8021Q))
+			reserve += VLAN_HLEN;
+	} else {
+		skb->protocol = proto;
+		skb->dev = dev;
 	}
 
-	skb->protocol = proto;
-	skb->dev = dev;
+	if (!gso_type && (len > dev->mtu + reserve + extra_len)) {
+		err = -EMSGSIZE;
+		goto out_free;
+	}
+
 	skb->priority = sk->sk_priority;
 	skb->mark = sk->sk_mark;
 
@@ -2638,51 +2643,6 @@ out:
 	return err;
 }
 
-static int packet_recv_error(struct sock *sk, struct msghdr *msg, int len)
-{
-	struct sock_exterr_skb *serr;
-	struct sk_buff *skb, *skb2;
-	int copied, err;
-
-	err = -EAGAIN;
-	skb = skb_dequeue(&sk->sk_error_queue);
-	if (skb == NULL)
-		goto out;
-
-	copied = skb->len;
-	if (copied > len) {
-		msg->msg_flags |= MSG_TRUNC;
-		copied = len;
-	}
-	err = skb_copy_datagram_iovec(skb, 0, msg->msg_iov, copied);
-	if (err)
-		goto out_free_skb;
-
-	sock_recv_timestamp(msg, sk, skb);
-
-	serr = SKB_EXT_ERR(skb);
-	put_cmsg(msg, SOL_PACKET, PACKET_TX_TIMESTAMP,
-		 sizeof(serr->ee), &serr->ee);
-
-	msg->msg_flags |= MSG_ERRQUEUE;
-	err = copied;
-
-	/* Reset and regenerate socket error */
-	spin_lock_bh(&sk->sk_error_queue.lock);
-	sk->sk_err = 0;
-	if ((skb2 = skb_peek(&sk->sk_error_queue)) != NULL) {
-		sk->sk_err = SKB_EXT_ERR(skb2)->ee.ee_errno;
-		spin_unlock_bh(&sk->sk_error_queue.lock);
-		sk->sk_error_report(sk);
-	} else
-		spin_unlock_bh(&sk->sk_error_queue.lock);
-
-out_free_skb:
-	kfree_skb(skb);
-out:
-	return err;
-}
-
 /*
  *	Pull a packet from our receive queue and hand it to the user.
  *	If necessary we block.
@@ -2708,7 +2668,8 @@ static int packet_recvmsg(struct kiocb *iocb, struct socket *sock,
 #endif
 
 	if (flags & MSG_ERRQUEUE) {
-		err = packet_recv_error(sk, msg, len);
+		err = sock_recv_errqueue(sk, msg, len,
+					 SOL_PACKET, PACKET_TX_TIMESTAMP);
 		goto out;
 	}
 
