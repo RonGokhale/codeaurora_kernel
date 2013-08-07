@@ -89,15 +89,20 @@ static void dwc2_hc_handle_tt_clear(struct dwc2_hsotg *hsotg,
 {
 	struct urb *usb_urb;
 
-	if (!chan->qh || !qtd->urb)
+	if (!chan->qh)
+		return;
+
+	if (chan->qh->dev_speed == USB_SPEED_HIGH)
+		return;
+
+	if (!qtd->urb)
 		return;
 
 	usb_urb = qtd->urb->priv;
-	if (!usb_urb || !usb_urb->dev)
+	if (!usb_urb || !usb_urb->dev || !usb_urb->dev->tt)
 		return;
 
-	if (chan->qh->dev_speed != USB_SPEED_HIGH &&
-	    qtd->urb->status != -EPIPE && qtd->urb->status != -EREMOTEIO) {
+	if (qtd->urb->status != -EPIPE && qtd->urb->status != -EREMOTEIO) {
 		chan->qh->tt_buffer_dirty = 1;
 		if (usb_hub_clear_tt_buffer(usb_urb))
 			/* Clear failed; let's hope things work anyway */
@@ -462,7 +467,7 @@ static int dwc2_update_urb_state(struct dwc2_hsotg *hsotg,
 
 	/* Non DWORD-aligned buffer case handling */
 	if (chan->align_buf && xfer_length && chan->ep_is_in) {
-		dev_dbg(hsotg->dev, "%s(): non-aligned buffer\n", __func__);
+		dev_vdbg(hsotg->dev, "%s(): non-aligned buffer\n", __func__);
 		dma_sync_single_for_cpu(hsotg->dev, urb->dma, urb->length,
 					DMA_FROM_DEVICE);
 		memcpy(urb->buf + urb->actual_length, chan->qh->dw_align_buf,
@@ -557,8 +562,8 @@ static enum dwc2_halt_status dwc2_update_isoc_urb_state(
 		/* Non DWORD-aligned buffer case handling */
 		if (chan->align_buf && frame_desc->actual_length &&
 		    chan->ep_is_in) {
-			dev_dbg(hsotg->dev, "%s(): non-aligned buffer\n",
-				__func__);
+			dev_vdbg(hsotg->dev, "%s(): non-aligned buffer\n",
+				 __func__);
 			dma_sync_single_for_cpu(hsotg->dev, urb->dma,
 						urb->length, DMA_FROM_DEVICE);
 			memcpy(urb->buf + frame_desc->offset +
@@ -591,8 +596,8 @@ static enum dwc2_halt_status dwc2_update_isoc_urb_state(
 		/* Non DWORD-aligned buffer case handling */
 		if (chan->align_buf && frame_desc->actual_length &&
 		    chan->ep_is_in) {
-			dev_dbg(hsotg->dev, "%s(): non-aligned buffer\n",
-				__func__);
+			dev_vdbg(hsotg->dev, "%s(): non-aligned buffer\n",
+				 __func__);
 			dma_sync_single_for_cpu(hsotg->dev, urb->dma,
 						urb->length, DMA_FROM_DEVICE);
 			memcpy(urb->buf + frame_desc->offset +
@@ -623,7 +628,7 @@ static enum dwc2_halt_status dwc2_update_isoc_urb_state(
 		 * urb->status is not used for isoc transfers. The individual
 		 * frame_desc statuses are used instead.
 		 */
-		dwc2_host_complete(hsotg, urb->priv, urb, 0);
+		dwc2_host_complete(hsotg, qtd, 0);
 		halt_status = DWC2_HC_XFER_URB_COMPLETE;
 	} else {
 		halt_status = DWC2_HC_XFER_COMPLETE;
@@ -714,11 +719,7 @@ static void dwc2_release_channel(struct dwc2_hsotg *hsotg,
 			dev_vdbg(hsotg->dev,
 				 "  Complete URB with transaction error\n");
 			free_qtd = 1;
-			if (qtd->urb) {
-				qtd->urb->status = -EPROTO;
-				dwc2_host_complete(hsotg, qtd->urb->priv,
-						   qtd->urb, -EPROTO);
-			}
+			dwc2_host_complete(hsotg, qtd, -EPROTO);
 		}
 		break;
 	case DWC2_HC_XFER_URB_DEQUEUE:
@@ -731,11 +732,7 @@ static void dwc2_release_channel(struct dwc2_hsotg *hsotg,
 	case DWC2_HC_XFER_PERIODIC_INCOMPLETE:
 		dev_vdbg(hsotg->dev, "  Complete URB with I/O error\n");
 		free_qtd = 1;
-		if (qtd && qtd->urb) {
-			qtd->urb->status = -EIO;
-			dwc2_host_complete(hsotg, qtd->urb->priv, qtd->urb,
-					   -EIO);
-		}
+		dwc2_host_complete(hsotg, qtd, -EIO);
 		break;
 	case DWC2_HC_XFER_NO_HALT_STATUS:
 	default:
@@ -938,7 +935,7 @@ static int dwc2_xfercomp_isoc_split_in(struct dwc2_hsotg *hsotg,
 	frame_desc->actual_length += len;
 
 	if (chan->align_buf && len) {
-		dev_dbg(hsotg->dev, "%s(): non-aligned buffer\n", __func__);
+		dev_vdbg(hsotg->dev, "%s(): non-aligned buffer\n", __func__);
 		dma_sync_single_for_cpu(hsotg->dev, qtd->urb->dma,
 					qtd->urb->length, DMA_FROM_DEVICE);
 		memcpy(qtd->urb->buf + frame_desc->offset +
@@ -957,7 +954,7 @@ static int dwc2_xfercomp_isoc_split_in(struct dwc2_hsotg *hsotg,
 	}
 
 	if (qtd->isoc_frame_index == qtd->urb->packet_count) {
-		dwc2_host_complete(hsotg, qtd->urb->priv, qtd->urb, 0);
+		dwc2_host_complete(hsotg, qtd, 0);
 		dwc2_release_channel(hsotg, chan, qtd,
 				     DWC2_HC_XFER_URB_COMPLETE);
 	} else {
@@ -1040,7 +1037,7 @@ static void dwc2_hc_xfercomp_intr(struct dwc2_hsotg *hsotg,
 			dev_vdbg(hsotg->dev, "  Control transfer complete\n");
 			if (urb->status == -EINPROGRESS)
 				urb->status = 0;
-			dwc2_host_complete(hsotg, urb->priv, urb, urb->status);
+			dwc2_host_complete(hsotg, qtd, urb->status);
 			halt_status = DWC2_HC_XFER_URB_COMPLETE;
 			break;
 		}
@@ -1053,7 +1050,7 @@ static void dwc2_hc_xfercomp_intr(struct dwc2_hsotg *hsotg,
 		urb_xfer_done = dwc2_update_urb_state(hsotg, chan, chnum, urb,
 						      qtd);
 		if (urb_xfer_done) {
-			dwc2_host_complete(hsotg, urb->priv, urb, urb->status);
+			dwc2_host_complete(hsotg, qtd, urb->status);
 			halt_status = DWC2_HC_XFER_URB_COMPLETE;
 		} else {
 			halt_status = DWC2_HC_XFER_COMPLETE;
@@ -1073,11 +1070,10 @@ static void dwc2_hc_xfercomp_intr(struct dwc2_hsotg *hsotg,
 		 * interrupt
 		 */
 		if (urb_xfer_done) {
-				dwc2_host_complete(hsotg, urb->priv, urb,
-						   urb->status);
-				halt_status = DWC2_HC_XFER_URB_COMPLETE;
+			dwc2_host_complete(hsotg, qtd, urb->status);
+			halt_status = DWC2_HC_XFER_URB_COMPLETE;
 		} else {
-				halt_status = DWC2_HC_XFER_COMPLETE;
+			halt_status = DWC2_HC_XFER_COMPLETE;
 		}
 
 		dwc2_hcd_save_data_toggle(hsotg, chan, chnum, qtd);
@@ -1123,11 +1119,11 @@ static void dwc2_hc_stall_intr(struct dwc2_hsotg *hsotg,
 		goto handle_stall_halt;
 
 	if (pipe_type == USB_ENDPOINT_XFER_CONTROL)
-		dwc2_host_complete(hsotg, urb->priv, urb, -EPIPE);
+		dwc2_host_complete(hsotg, qtd, -EPIPE);
 
 	if (pipe_type == USB_ENDPOINT_XFER_BULK ||
 	    pipe_type == USB_ENDPOINT_XFER_INT) {
-		dwc2_host_complete(hsotg, urb->priv, urb, -EPIPE);
+		dwc2_host_complete(hsotg, qtd, -EPIPE);
 		/*
 		 * USB protocol requires resetting the data toggle for bulk
 		 * and interrupt endpoints when a CLEAR_FEATURE(ENDPOINT_HALT)
@@ -1168,7 +1164,7 @@ static void dwc2_update_urb_state_abn(struct dwc2_hsotg *hsotg,
 
 	/* Non DWORD-aligned buffer case handling */
 	if (chan->align_buf && xfer_length && chan->ep_is_in) {
-		dev_dbg(hsotg->dev, "%s(): non-aligned buffer\n", __func__);
+		dev_vdbg(hsotg->dev, "%s(): non-aligned buffer\n", __func__);
 		dma_sync_single_for_cpu(hsotg->dev, urb->dma, urb->length,
 					DMA_FROM_DEVICE);
 		memcpy(urb->buf + urb->actual_length, chan->qh->dw_align_buf,
@@ -1372,10 +1368,10 @@ static void dwc2_hc_nyet_intr(struct dwc2_hsotg *hsotg,
 		    hsotg->core_params->dma_enable > 0) {
 			qtd->complete_split = 0;
 			qtd->isoc_split_offset = 0;
+			qtd->isoc_frame_index++;
 			if (qtd->urb &&
-			    ++qtd->isoc_frame_index == qtd->urb->packet_count) {
-				dwc2_host_complete(hsotg, qtd->urb->priv,
-						   qtd->urb, 0);
+			    qtd->isoc_frame_index == qtd->urb->packet_count) {
+				dwc2_host_complete(hsotg, qtd, 0);
 				dwc2_release_channel(hsotg, chan, qtd,
 						     DWC2_HC_XFER_URB_COMPLETE);
 			} else {
@@ -1445,16 +1441,16 @@ static void dwc2_hc_babble_intr(struct dwc2_hsotg *hsotg,
 	dev_dbg(hsotg->dev, "--Host Channel %d Interrupt: Babble Error--\n",
 		chnum);
 
+	dwc2_hc_handle_tt_clear(hsotg, chan, qtd);
+
 	if (hsotg->core_params->dma_desc_enable > 0) {
 		dwc2_hcd_complete_xfer_ddma(hsotg, chan, chnum,
 					    DWC2_HC_XFER_BABBLE_ERR);
-		goto handle_babble_done;
+		goto disable_int;
 	}
 
 	if (chan->ep_type != USB_ENDPOINT_XFER_ISOC) {
-		if (qtd->urb)
-			dwc2_host_complete(hsotg, qtd->urb->priv, qtd->urb,
-					   -EOVERFLOW);
+		dwc2_host_complete(hsotg, qtd, -EOVERFLOW);
 		dwc2_halt_channel(hsotg, chan, qtd, DWC2_HC_XFER_BABBLE_ERR);
 	} else {
 		enum dwc2_halt_status halt_status;
@@ -1464,8 +1460,7 @@ static void dwc2_hc_babble_intr(struct dwc2_hsotg *hsotg,
 		dwc2_halt_channel(hsotg, chan, qtd, halt_status);
 	}
 
-handle_babble_done:
-	dwc2_hc_handle_tt_clear(hsotg, chan, qtd);
+disable_int:
 	disable_hc_int(hsotg, chnum, HCINTMSK_BBLERR);
 }
 
@@ -1489,6 +1484,8 @@ static void dwc2_hc_ahberr_intr(struct dwc2_hsotg *hsotg,
 
 	if (!urb)
 		goto handle_ahberr_halt;
+
+	dwc2_hc_handle_tt_clear(hsotg, chan, qtd);
 
 	hcchar = readl(hsotg->regs + HCCHAR(chnum));
 	hcsplt = readl(hsotg->regs + HCSPLT(chnum));
@@ -1557,7 +1554,7 @@ static void dwc2_hc_ahberr_intr(struct dwc2_hsotg *hsotg,
 		goto handle_ahberr_done;
 	}
 
-	dwc2_host_complete(hsotg, urb->priv, urb, -EIO);
+	dwc2_host_complete(hsotg, qtd, -EIO);
 
 handle_ahberr_halt:
 	/*
@@ -1567,7 +1564,6 @@ handle_ahberr_halt:
 	dwc2_hc_halt(hsotg, chan, DWC2_HC_XFER_AHB_ERR);
 
 handle_ahberr_done:
-	dwc2_hc_handle_tt_clear(hsotg, chan, qtd);
 	disable_hc_int(hsotg, chnum, HCINTMSK_AHBERR);
 }
 
@@ -1581,6 +1577,8 @@ static void dwc2_hc_xacterr_intr(struct dwc2_hsotg *hsotg,
 {
 	dev_dbg(hsotg->dev,
 		"--Host Channel %d Interrupt: Transaction Error--\n", chnum);
+
+	dwc2_hc_handle_tt_clear(hsotg, chan, qtd);
 
 	if (hsotg->core_params->dma_desc_enable > 0) {
 		dwc2_hcd_complete_xfer_ddma(hsotg, chan, chnum,
@@ -1625,7 +1623,6 @@ static void dwc2_hc_xacterr_intr(struct dwc2_hsotg *hsotg,
 	}
 
 handle_xacterr_done:
-	dwc2_hc_handle_tt_clear(hsotg, chan, qtd);
 	disable_hc_int(hsotg, chnum, HCINTMSK_XACTERR);
 }
 
@@ -1643,6 +1640,8 @@ static void dwc2_hc_frmovrun_intr(struct dwc2_hsotg *hsotg,
 		dev_dbg(hsotg->dev, "--Host Channel %d Interrupt: Frame Overrun--\n",
 			chnum);
 
+	dwc2_hc_handle_tt_clear(hsotg, chan, qtd);
+
 	switch (dwc2_hcd_get_pipe_type(&qtd->urb->pipe_info)) {
 	case USB_ENDPOINT_XFER_CONTROL:
 	case USB_ENDPOINT_XFER_BULK:
@@ -1657,7 +1656,6 @@ static void dwc2_hc_frmovrun_intr(struct dwc2_hsotg *hsotg,
 		break;
 	}
 
-	dwc2_hc_handle_tt_clear(hsotg, chan, qtd);
 	disable_hc_int(hsotg, chnum, HCINTMSK_FRMOVRUN);
 }
 

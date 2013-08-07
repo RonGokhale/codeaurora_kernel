@@ -134,11 +134,8 @@ static void dwc2_kill_urbs_in_qh_list(struct dwc2_hsotg *hsotg,
 	list_for_each_entry_safe(qh, qh_tmp, qh_list, qh_list_entry) {
 		list_for_each_entry_safe(qtd, qtd_tmp, &qh->qtd_list,
 					 qtd_list_entry) {
-			if (qtd->urb != NULL) {
-				dwc2_host_complete(hsotg, qtd->urb->priv,
-						   qtd->urb, -ETIMEDOUT);
-				dwc2_hcd_qtd_unlink_and_free(hsotg, qtd, qh);
-			}
+			dwc2_host_complete(hsotg, qtd, -ETIMEDOUT);
+			dwc2_hcd_qtd_unlink_and_free(hsotg, qtd, qh);
 		}
 	}
 }
@@ -420,6 +417,8 @@ static int dwc2_hcd_urb_dequeue(struct dwc2_hsotg *hsotg,
 		dev_dbg(hsotg->dev, "## Urb QTD QH is NULL ##\n");
 		return -EINVAL;
 	}
+
+	urb->priv = NULL;
 
 	if (urb_qtd->in_process && qh->channel) {
 		dwc2_dump_channel_info(hsotg, qh->channel);
@@ -2088,23 +2087,29 @@ static void dwc2_free_bus_bandwidth(struct usb_hcd *hcd, u16 bw,
  *
  * Must be called with interrupt disabled and spinlock held
  */
-void dwc2_host_complete(struct dwc2_hsotg *hsotg, void *context,
-			struct dwc2_hcd_urb *dwc2_urb, int status)
+void dwc2_host_complete(struct dwc2_hsotg *hsotg, struct dwc2_qtd *qtd,
+			int status)
 {
-	struct urb *urb = context;
+	struct urb *urb;
 	int i;
 
+	if (!qtd) {
+		dev_dbg(hsotg->dev, "## %s: qtd is NULL ##\n", __func__);
+		return;
+	}
+
+	if (!qtd->urb) {
+		dev_dbg(hsotg->dev, "## %s: qtd->urb is NULL ##\n", __func__);
+		return;
+	}
+
+	urb = qtd->urb->priv;
 	if (!urb) {
-		dev_dbg(hsotg->dev, "## %s: context is NULL ##\n", __func__);
+		dev_dbg(hsotg->dev, "## %s: urb->priv is NULL ##\n", __func__);
 		return;
 	}
 
-	if (!dwc2_urb) {
-		dev_dbg(hsotg->dev, "## %s: dwc2_urb is NULL ##\n", __func__);
-		return;
-	}
-
-	urb->actual_length = dwc2_hcd_urb_get_actual_length(dwc2_urb);
+	urb->actual_length = dwc2_hcd_urb_get_actual_length(qtd->urb);
 
 	if (dbg_urb(urb))
 		dev_vdbg(hsotg->dev,
@@ -2121,18 +2126,17 @@ void dwc2_host_complete(struct dwc2_hsotg *hsotg, void *context,
 	}
 
 	if (usb_pipetype(urb->pipe) == PIPE_ISOCHRONOUS) {
-		urb->error_count = dwc2_hcd_urb_get_error_count(dwc2_urb);
+		urb->error_count = dwc2_hcd_urb_get_error_count(qtd->urb);
 		for (i = 0; i < urb->number_of_packets; ++i) {
 			urb->iso_frame_desc[i].actual_length =
 				dwc2_hcd_urb_get_iso_desc_actual_length(
-						dwc2_urb, i);
+						qtd->urb, i);
 			urb->iso_frame_desc[i].status =
-				dwc2_hcd_urb_get_iso_desc_status(dwc2_urb, i);
+				dwc2_hcd_urb_get_iso_desc_status(qtd->urb, i);
 		}
 	}
 
 	urb->status = status;
-	urb->hcpriv = NULL;
 	if (!status) {
 		if ((urb->transfer_flags & URB_SHORT_NOT_OK) &&
 		    urb->actual_length < urb->transfer_buffer_length)
@@ -2149,7 +2153,10 @@ void dwc2_host_complete(struct dwc2_hsotg *hsotg, void *context,
 					urb);
 	}
 
-	kfree(dwc2_urb);
+	usb_hcd_unlink_urb_from_ep(dwc2_hsotg_to_hcd(hsotg), urb);
+	urb->hcpriv = NULL;
+	kfree(qtd->urb);
+	qtd->urb = NULL;
 
 	spin_unlock(&hsotg->lock);
 	usb_hcd_giveback_urb(dwc2_hsotg_to_hcd(hsotg), urb, status);
@@ -2337,8 +2344,8 @@ static int _dwc2_hcd_urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 	struct usb_host_endpoint *ep = urb->ep;
 	struct dwc2_hcd_urb *dwc2_urb;
 	int i;
+	int retval;
 	int alloc_bandwidth = 0;
-	int retval = 0;
 	u8 ep_type = 0;
 	u32 tflags = 0;
 	void *buf;
@@ -2389,14 +2396,15 @@ static int _dwc2_hcd_urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 						!(usb_pipein(urb->pipe))));
 
 	buf = urb->transfer_buffer;
+
 	if (hcd->self.uses_dma) {
-		/*
-		 * Calculate virtual address from physical address, because
-		 * some class driver may not fill transfer_buffer.
-		 * In Buffer DMA mode virtual address is used, when handling
-		 * non-DWORD aligned buffers.
-		 */
-		buf = bus_to_virt(urb->transfer_dma);
+		if (!buf && (urb->transfer_dma & 3)) {
+			dev_err(hsotg->dev,
+				"%s: unaligned transfer with no transfer_buffer",
+				__func__);
+			retval = -EINVAL;
+			goto fail1;
+		}
 	}
 
 	if (!(urb->transfer_flags & URB_NO_INTERRUPT))
@@ -2420,20 +2428,35 @@ static int _dwc2_hcd_urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 						 urb->iso_frame_desc[i].length);
 
 	urb->hcpriv = dwc2_urb;
-	retval = dwc2_hcd_urb_enqueue(hsotg, dwc2_urb, &ep->hcpriv,
-				      mem_flags);
-	if (retval) {
-		urb->hcpriv = NULL;
-		kfree(dwc2_urb);
-	} else {
-		if (alloc_bandwidth) {
-			spin_lock_irqsave(&hsotg->lock, flags);
-			dwc2_allocate_bus_bandwidth(hcd,
-					dwc2_hcd_get_ep_bandwidth(hsotg, ep),
-					urb);
-			spin_unlock_irqrestore(&hsotg->lock, flags);
-		}
+
+	spin_lock_irqsave(&hsotg->lock, flags);
+	retval = usb_hcd_link_urb_to_ep(hcd, urb);
+	spin_unlock_irqrestore(&hsotg->lock, flags);
+	if (retval)
+		goto fail1;
+
+	retval = dwc2_hcd_urb_enqueue(hsotg, dwc2_urb, &ep->hcpriv, mem_flags);
+	if (retval)
+		goto fail2;
+
+	if (alloc_bandwidth) {
+		spin_lock_irqsave(&hsotg->lock, flags);
+		dwc2_allocate_bus_bandwidth(hcd,
+				dwc2_hcd_get_ep_bandwidth(hsotg, ep),
+				urb);
+		spin_unlock_irqrestore(&hsotg->lock, flags);
 	}
+
+	return 0;
+
+fail2:
+	spin_lock_irqsave(&hsotg->lock, flags);
+	dwc2_urb->priv = NULL;
+	usb_hcd_unlink_urb_from_ep(hcd, urb);
+	spin_unlock_irqrestore(&hsotg->lock, flags);
+fail1:
+	urb->hcpriv = NULL;
+	kfree(dwc2_urb);
 
 	return retval;
 }
@@ -2445,7 +2468,7 @@ static int _dwc2_hcd_urb_dequeue(struct usb_hcd *hcd, struct urb *urb,
 				 int status)
 {
 	struct dwc2_hsotg *hsotg = dwc2_hcd_to_hsotg(hcd);
-	int rc = 0;
+	int rc;
 	unsigned long flags;
 
 	dev_dbg(hsotg->dev, "DWC OTG HCD URB Dequeue\n");
@@ -2453,12 +2476,18 @@ static int _dwc2_hcd_urb_dequeue(struct usb_hcd *hcd, struct urb *urb,
 
 	spin_lock_irqsave(&hsotg->lock, flags);
 
+	rc = usb_hcd_check_unlink_urb(hcd, urb, status);
+	if (rc)
+		goto out;
+
 	if (!urb->hcpriv) {
 		dev_dbg(hsotg->dev, "## urb->hcpriv is NULL ##\n");
 		goto out;
 	}
 
 	rc = dwc2_hcd_urb_dequeue(hsotg, urb->hcpriv);
+
+	usb_hcd_unlink_urb_from_ep(hcd, urb);
 
 	kfree(urb->hcpriv);
 	urb->hcpriv = NULL;
@@ -2690,7 +2719,7 @@ void dwc2_set_all_params(struct dwc2_core_params *params, int value)
 	int i;
 
 	for (i = 0; i < size; i++)
-		p[i] = -1;
+		p[i] = value;
 }
 EXPORT_SYMBOL_GPL(dwc2_set_all_params);
 
@@ -2801,21 +2830,29 @@ int dwc2_hcd_init(struct dwc2_hsotg *hsotg, int irq,
 	/* Validate parameter values */
 	dwc2_set_parameters(hsotg, params);
 
+	/* Check if the bus driver or platform code has setup a dma_mask */
+	if (hsotg->core_params->dma_enable > 0 &&
+	    hsotg->dev->dma_mask == NULL) {
+		dev_warn(hsotg->dev,
+			 "dma_mask not set, disabling DMA\n");
+		hsotg->core_params->dma_enable = 0;
+		hsotg->core_params->dma_desc_enable = 0;
+	}
+
 	/* Set device flags indicating whether the HCD supports DMA */
 	if (hsotg->core_params->dma_enable > 0) {
 		if (dma_set_mask(hsotg->dev, DMA_BIT_MASK(32)) < 0)
 			dev_warn(hsotg->dev, "can't set DMA mask\n");
-		if (dma_set_coherent_mask(hsotg->dev, DMA_BIT_MASK(31)) < 0)
-			dev_warn(hsotg->dev,
-				 "can't enable workaround for >2GB RAM\n");
-	} else {
-		dma_set_mask(hsotg->dev, 0);
-		dma_set_coherent_mask(hsotg->dev, 0);
+		if (dma_set_coherent_mask(hsotg->dev, DMA_BIT_MASK(32)) < 0)
+			dev_warn(hsotg->dev, "can't set coherent DMA mask\n");
 	}
 
 	hcd = usb_create_hcd(&dwc2_hc_driver, hsotg->dev, dev_name(hsotg->dev));
 	if (!hcd)
 		goto error1;
+
+	if (hsotg->core_params->dma_enable <= 0)
+		hcd->self.uses_dma = 0;
 
 	hcd->has_tt = 1;
 
@@ -2922,8 +2959,6 @@ int dwc2_hcd_init(struct dwc2_hsotg *hsotg, int irq,
 	if (retval < 0)
 		goto error3;
 
-	dwc2_dump_global_registers(hsotg);
-	dwc2_dump_host_registers(hsotg);
 	dwc2_hcd_dump_state(hsotg);
 
 	dwc2_enable_global_interrupts(hsotg);
