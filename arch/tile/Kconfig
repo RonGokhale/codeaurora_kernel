@@ -64,6 +64,9 @@ config HUGETLB_SUPER_PAGES
 	depends on HUGETLB_PAGE && TILEGX
 	def_bool y
 
+config GENERIC_TIME_VSYSCALL
+	def_bool y
+
 # FIXME: tilegx can implement a more efficient rwsem.
 config RWSEM_GENERIC_SPINLOCK
 	def_bool y
@@ -112,6 +115,7 @@ config SMP
 config HVC_TILE
 	depends on TTY
 	select HVC_DRIVER
+	select HVC_IRQ if TILEGX
 	def_bool y
 
 config TILEGX
@@ -300,6 +304,8 @@ config PAGE_OFFSET
 
 source "mm/Kconfig"
 
+source "kernel/Kconfig.preempt"
+
 config CMDLINE_BOOL
 	bool "Built-in kernel command line"
 	default n
@@ -396,7 +402,19 @@ config NO_IOMEM
 config NO_IOPORT
 	def_bool !PCI
 
+config TILE_PCI_IO
+	bool "PCI I/O space support"
+	default n
+	depends on PCI
+	depends on TILEGX
+	---help---
+	  Enable PCI I/O space support on TILEGx. Since the PCI I/O space
+	  is used by few modern PCIe endpoint devices, its support is disabled
+	  by default to save the TRIO PIO Region resource for other purposes.
+
 source "drivers/pci/Kconfig"
+
+source "drivers/pci/pcie/Kconfig"
 
 config TILE_USB
 	tristate "Tilera USB host adapter support"
