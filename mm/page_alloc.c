@@ -1901,6 +1901,14 @@ zonelist_scan:
 		if (alloc_flags & ALLOC_NO_WATERMARKS)
 			goto try_this_zone;
 		/*
+		 * Distribute pages in proportion to the individual
+		 * zone size to ensure fair page aging.  The zone a
+		 * page was allocated in should have no effect on the
+		 * time the page has in memory before being reclaimed.
+		 */
+		if (atomic_read(&zone->alloc_batch) <= 0)
+			continue;
+		/*
 		 * When allocating a page cache page for writing, we
 		 * want to get it from a zone that is within its dirty
 		 * limit, such that no single zone holds more than its
@@ -2006,7 +2014,8 @@ this_zone_full:
 		goto zonelist_scan;
 	}
 
-	if (page)
+	if (page) {
+		atomic_sub(1U << order, &zone->alloc_batch);
 		/*
 		 * page->pfmemalloc is set when ALLOC_NO_WATERMARKS was
 		 * necessary to allocate the page. The expectation is
@@ -2015,6 +2024,7 @@ this_zone_full:
 		 * for !PFMEMALLOC purposes.
 		 */
 		page->pfmemalloc = !!(alloc_flags & ALLOC_NO_WATERMARKS);
+	}
 
 	return page;
 }
@@ -2346,16 +2356,20 @@ __alloc_pages_high_priority(gfp_t gfp_mask, unsigned int order,
 	return page;
 }
 
-static inline
-void wake_all_kswapd(unsigned int order, struct zonelist *zonelist,
-						enum zone_type high_zoneidx,
-						enum zone_type classzone_idx)
+static void prepare_slowpath(gfp_t gfp_mask, unsigned int order,
+			     struct zonelist *zonelist,
+			     enum zone_type high_zoneidx,
+			     enum zone_type classzone_idx)
 {
 	struct zoneref *z;
 	struct zone *zone;
 
-	for_each_zone_zonelist(zone, z, zonelist, high_zoneidx)
-		wakeup_kswapd(zone, order, classzone_idx);
+	for_each_zone_zonelist(zone, z, zonelist, high_zoneidx) {
+		atomic_set(&zone->alloc_batch,
+			   high_wmark_pages(zone) - low_wmark_pages(zone));
+		if (!(gfp_mask & __GFP_NO_KSWAPD))
+			wakeup_kswapd(zone, order, classzone_idx);
+	}
 }
 
 static inline int
@@ -2451,9 +2465,8 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 		goto nopage;
 
 restart:
-	if (!(gfp_mask & __GFP_NO_KSWAPD))
-		wake_all_kswapd(order, zonelist, high_zoneidx,
-						zone_idx(preferred_zone));
+	prepare_slowpath(gfp_mask, order, zonelist,
+			 high_zoneidx, zone_idx(preferred_zone));
 
 	/*
 	 * OK, we're below the kswapd watermark and have kicked background
@@ -4754,6 +4767,9 @@ static void __paginginit free_area_init_core(struct pglist_data *pgdat,
 		zone_seqlock_init(zone);
 		zone->zone_pgdat = pgdat;
 
+		/* For bootup, initialized properly in watermark setup */
+		atomic_set(&zone->alloc_batch, zone->managed_pages);
+
 		zone_pcp_init(zone);
 		lruvec_init(&zone->lruvec);
 		if (!size)
@@ -5524,6 +5540,9 @@ static void __setup_per_zone_wmarks(void)
 
 		zone->watermark[WMARK_LOW]  = min_wmark_pages(zone) + (tmp >> 2);
 		zone->watermark[WMARK_HIGH] = min_wmark_pages(zone) + (tmp >> 1);
+
+		atomic_set(&zone->alloc_batch,
+			   high_wmark_pages(zone) - low_wmark_pages(zone));
 
 		setup_zone_migrate_reserve(zone);
 		spin_unlock_irqrestore(&zone->lock, flags);
