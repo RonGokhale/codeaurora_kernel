@@ -1,5 +1,5 @@
 /*
- * kzm9d board support - Reference DT implementation
+ * APE6EVM board support
  *
  * Copyright (C) 2013  Renesas Solutions Corp.
  * Copyright (C) 2013  Magnus Damm
@@ -18,30 +18,46 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include <linux/init.h>
+#include <linux/gpio.h>
+#include <linux/kernel.h>
 #include <linux/of_platform.h>
-#include <mach/emev2.h>
+#include <linux/pinctrl/machine.h>
+#include <linux/platform_device.h>
+#include <linux/sh_clk.h>
 #include <mach/common.h>
+#include <mach/r8a73a4.h>
+#include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 
-static void __init kzm9d_add_standard_devices(void)
+static void __init ape6evm_add_standard_devices(void)
 {
-	if (!IS_ENABLED(CONFIG_COMMON_CLK))
-		emev2_clock_init();
 
+	struct clk *parent;
+	struct clk *mp;
+
+	r8a73a4_clock_init();
+
+	/* MP clock parent = extal2 */
+	parent      = clk_get(NULL, "extal2");
+	mp          = clk_get(NULL, "mp");
+	BUG_ON(IS_ERR(parent) || IS_ERR(mp));
+
+	clk_set_parent(mp, parent);
+	clk_put(parent);
+	clk_put(mp);
+
+	r8a73a4_add_dt_devices();
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
+	platform_device_register_simple("cpufreq-cpu0", -1, NULL, 0);
 }
 
-static const char *kzm9d_boards_compat_dt[] __initdata = {
-	"renesas,kzm9d-reference",
+static const char *ape6evm_boards_compat_dt[] __initdata = {
+	"renesas,ape6evm-reference",
 	NULL,
 };
 
-DT_MACHINE_START(KZM9D_DT, "kzm9d")
-	.smp		= smp_ops(emev2_smp_ops),
-	.map_io		= emev2_map_io,
-	.init_early	= emev2_init_delay,
-	.init_machine	= kzm9d_add_standard_devices,
-	.init_late	= shmobile_init_late,
-	.dt_compat	= kzm9d_boards_compat_dt,
+DT_MACHINE_START(APE6EVM_DT, "ape6evm")
+	.init_early	= r8a73a4_init_delay,
+	.init_machine	= ape6evm_add_standard_devices,
+	.dt_compat	= ape6evm_boards_compat_dt,
 MACHINE_END
