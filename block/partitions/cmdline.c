@@ -134,7 +134,7 @@ static int parse_parts(struct cmdline_parts **parts, const char *cmdline)
 
 	next = strchr(cmdline, ':');
 	if (!next) {
-		pr_warn("cmdline partition has not block device.");
+		pr_warn("cmdline partition has no block device.");
 		goto fail;
 	}
 
@@ -162,7 +162,7 @@ static int parse_parts(struct cmdline_parts **parts, const char *cmdline)
 	}
 
 	if (!newparts->subpart) {
-		pr_warn("cmdline partition has not valid partition.");
+		pr_warn("cmdline partition has no valid partition.");
 		goto fail;
 	}
 
@@ -207,7 +207,7 @@ static int parse_cmdline(struct cmdline_parts **parts, const char *cmdline)
 	}
 
 	if (!*parts) {
-		pr_warn("cmdline partition has not valid partition.");
+		pr_warn("cmdline partition has no valid partition.");
 		ret = -EINVAL;
 		goto fail;
 	}
