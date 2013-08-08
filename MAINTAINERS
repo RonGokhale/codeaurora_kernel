@@ -8289,6 +8289,7 @@ W:	http://www.tilera.com/scm/
 S:	Supported
 F:	arch/tile/
 F:	drivers/char/tile-srom.c
+F:	drivers/cpufreq/tilegx-cpufreq.c
 F:	drivers/edac/tile_edac.c
 F:	drivers/net/ethernet/tile/
 F:	drivers/rtc/rtc-tile.c

@@ -23,6 +23,7 @@
 #include <linux/smp.h>
 #include <linux/delay.h>
 #include <linux/module.h>
+#include <linux/stop_machine.h>
 #include <linux/timekeeper_internal.h>
 #include <asm/irq_regs.h>
 #include <asm/traps.h>
@@ -37,7 +38,7 @@
  */
 
 /* How many cycles per second we are running at. */
-static cycles_t cycles_per_sec __write_once;
+static cycles_t cycles_per_sec;
 
 cycles_t get_clock_rate(void)
 {
@@ -68,7 +69,8 @@ EXPORT_SYMBOL(get_cycles);
  */
 #define SCHED_CLOCK_SHIFT 10
 
-static unsigned long sched_clock_mult __write_once;
+static unsigned long sched_clock_mult;
+static long long sched_clock_offset;
 
 static cycles_t clocksource_get_cycles(struct clocksource *cs)
 {
@@ -92,6 +94,7 @@ void __init setup_clock(void)
 	cycles_per_sec = hv_sysconf(HV_SYSCONF_CPU_SPEED);
 	sched_clock_mult =
 		clocksource_hz2mult(cycles_per_sec, SCHED_CLOCK_SHIFT);
+	sched_clock_offset = 0;
 }
 
 void __init calibrate_delay(void)
@@ -118,14 +121,9 @@ void __init time_init(void)
  * counter, plus bit 31, which signifies that the counter has wrapped
  * from zero to (2**31) - 1.  The INT_TILE_TIMER interrupt will be
  * raised as long as bit 31 is set.
- *
- * The TILE_MINSEC value represents the largest range of real-time
- * we can possibly cover with the timer, based on MAX_TICK combined
- * with the slowest reasonable clock rate we might run at.
  */
 
 #define MAX_TICK 0x7fffffff   /* we have 31 bits of countdown timer */
-#define TILE_MINSEC 5         /* timer covers no more than 5 seconds */
 
 static int tile_timer_set_next_event(unsigned long ticks,
 				     struct clock_event_device *evt)
@@ -146,14 +144,9 @@ static void tile_timer_set_mode(enum clock_event_mode mode,
 	arch_local_irq_mask_now(INT_TILE_TIMER);
 }
 
-/*
- * Set min_delta_ns to 1 microsecond, since it takes about
- * that long to fire the interrupt.
- */
 static DEFINE_PER_CPU(struct clock_event_device, tile_timer) = {
 	.name = "tile timer",
 	.features = CLOCK_EVT_FEAT_ONESHOT,
-	.min_delta_ns = 1000,
 	.rating = 100,
 	.irq = -1,
 	.set_next_event = tile_timer_set_next_event,
@@ -164,18 +157,18 @@ void __cpuinit setup_tile_timer(void)
 {
 	struct clock_event_device *evt = &__get_cpu_var(tile_timer);
 
-	/* Fill in fields that are speed-specific. */
-	clockevents_calc_mult_shift(evt, cycles_per_sec, TILE_MINSEC);
-	evt->max_delta_ns = clockevent_delta2ns(MAX_TICK, evt);
-
 	/* Mark as being for this cpu only. */
 	evt->cpumask = cpumask_of(smp_processor_id());
 
 	/* Start out with timer not firing. */
 	arch_local_irq_mask_now(INT_TILE_TIMER);
 
-	/* Register tile timer. */
-	clockevents_register_device(evt);
+	/*
+	 * Register tile timer.  Set min_delta to 1 microsecond, since
+	 * it takes about that long to fire the interrupt.
+	 */
+	clockevents_config_and_register(evt, cycles_per_sec,
+					cycles_per_sec / 1000000, MAX_TICK);
 }
 
 /* Called from the interrupt vector. */
@@ -216,8 +209,8 @@ void do_timer_interrupt(struct pt_regs *regs, int fault_num)
  */
 unsigned long long sched_clock(void)
 {
-	return clocksource_cyc2ns(get_cycles(),
-				  sched_clock_mult, SCHED_CLOCK_SHIFT);
+	return clocksource_cyc2ns(get_cycles(), sched_clock_mult,
+				  SCHED_CLOCK_SHIFT) + sched_clock_offset;
 }
 
 int setup_profiling_timer(unsigned int multiplier)
@@ -272,3 +265,140 @@ void update_vsyscall(struct timekeeper *tk)
 	smp_wmb();
 	++vdso_data->tb_update_count;
 }
+
+
+#ifdef __tilegx__
+
+/* Arguments to the _set_clock_rate stop_machine() handler. */
+struct _set_clock_rate_args {
+	unsigned int new_rate;
+	int master_cpu;
+};
+
+/*
+ * Flag used to tell other CPUs to proceed once the master CPU has changed
+ * the actual CPU clock rate (barrier is positive), or failed to do so
+ * (barrier is negative).
+ */
+static int _set_clock_rate_barrier;
+
+/* Routine to actually do the clock rate change, called via stop_machine(). */
+static int _set_clock_rate(void *arg)
+{
+	struct _set_clock_rate_args *args = arg;
+	struct clock_event_device *evt = &__get_cpu_var(tile_timer);
+
+	/*
+	 * Only one CPU needs to change the timekeeping parameters and
+	 * change the clock rate.
+	 */
+	if (args->master_cpu == smp_processor_id()) {
+		unsigned long long old_sched_clock;
+		long new_speed;
+		cycle_t start_cycle;
+		HV_SetSpeed hvss;
+
+		/*
+		 * Sync up the time before changing the clock rate.  If we
+		 * aren't using the clocksource we think we are, bail.
+		 */
+		if (timekeeping_chfreq_prep(&cycle_counter_cs, &start_cycle)) {
+			smp_wmb();
+			_set_clock_rate_barrier = -1;
+			return -ESRCH;
+		}
+
+		/*
+		 * We'll adjust the offset below so that the new scheduler
+		 * clock matches the value we read here, plus the time
+		 * spent updating the CPU speed.  This causes us to lose a
+		 * tiny bit of time, but it stays monotonic.
+		 */
+		old_sched_clock = sched_clock();
+
+		/* Change the speed.  If that fails, bail. */
+		hvss = hv_set_speed(args->new_rate, start_cycle, 0);
+		new_speed = hvss.new_speed;
+		if (new_speed < 0) {
+			smp_wmb();
+			_set_clock_rate_barrier = -1;
+			return -ENOSYS;
+		}
+
+		/*
+		 * Change the clocksource frequency, and update the
+		 * timekeeping state to account for the time we spent
+		 * changing the speed, then update our internal state.
+		 */
+		timekeeping_chfreq(new_speed, hvss.end_cycle, hvss.delta_ns);
+
+		cycles_per_sec = new_speed;
+
+		sched_clock_mult =
+			clocksource_hz2mult(cycles_per_sec,
+					    SCHED_CLOCK_SHIFT);
+
+		sched_clock_offset = old_sched_clock -
+				     (sched_clock() - sched_clock_offset) +
+				     hvss.delta_ns;
+
+		loops_per_jiffy = cycles_per_sec / HZ;
+
+		smp_wmb();
+		_set_clock_rate_barrier = 1;
+	} else {
+		/* Wait until the master CPU changes the speed, or fails. */
+		while (!_set_clock_rate_barrier)
+			udelay(10);
+	}
+
+	/*
+	 * All CPUs need to change the event timer configuration, but we
+	 * don't want to do anything if the master CPU failed to
+	 * reconfigure the clocksource and change the speed.
+	 */
+	if (_set_clock_rate_barrier < 0)
+		return 0;
+
+	if (clockevents_update_freq(evt, cycles_per_sec) == -ETIME) {
+		/*
+		 * The event that we'd previously been set for is
+		 * in the past.  Instead of just losing it, which
+		 * causes havoc, make it happen right now.
+		 */
+		tile_timer_set_next_event(0, evt);
+	}
+
+	return 0;
+}
+
+/*
+ * Change the clock speed, and return the speed we ended up with; both are
+ * in hertz.
+ */
+unsigned int set_clock_rate(unsigned int new_rate)
+{
+	int stop_status;
+	struct _set_clock_rate_args args = {
+		.new_rate = new_rate,
+		/*
+		 * We just need a valid CPU here; we don't care if we get
+		 * rescheduled somewhere else after we set this.
+		 */
+		.master_cpu = raw_smp_processor_id(),
+	};
+
+	_set_clock_rate_barrier = 0;
+	smp_wmb();
+
+	stop_status = stop_machine(_set_clock_rate, &args,
+				   cpu_online_mask);
+
+	if (stop_status)
+		pr_err("Got unexpected status %d from stop_machine when "
+		       "changing clock speed\n", stop_status);
+
+	return cycles_per_sec;
+};
+
+#endif /* __tilegx__ */
