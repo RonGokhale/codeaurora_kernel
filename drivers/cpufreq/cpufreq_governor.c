@@ -16,15 +16,9 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#include <asm/cputime.h>
-#include <linux/cpufreq.h>
-#include <linux/cpumask.h>
 #include <linux/export.h>
 #include <linux/kernel_stat.h>
-#include <linux/mutex.h>
 #include <linux/slab.h>
-#include <linux/types.h>
-#include <linux/workqueue.h>
 
 #include "cpufreq_governor.h"
 
@@ -47,13 +41,13 @@ void dbs_check_cpu(struct dbs_data *dbs_data, int cpu)
 	unsigned int j;
 
 	if (dbs_data->cdata->governor == GOV_ONDEMAND)
-		ignore_nice = od_tuners->ignore_nice;
+		ignore_nice = od_tuners->ignore_nice_load;
 	else
-		ignore_nice = cs_tuners->ignore_nice;
+		ignore_nice = cs_tuners->ignore_nice_load;
 
 	policy = cdbs->cur_policy;
 
-	/* Get Absolute Load (in terms of freq for ondemand gov) */
+	/* Get Absolute Load */
 	for_each_cpu(j, policy->cpus) {
 		struct cpu_dbs_common_info *j_cdbs;
 		u64 cur_wall_time, cur_idle_time;
@@ -103,14 +97,6 @@ void dbs_check_cpu(struct dbs_data *dbs_data, int cpu)
 			continue;
 
 		load = 100 * (wall_time - idle_time) / wall_time;
-
-		if (dbs_data->cdata->governor == GOV_ONDEMAND) {
-			int freq_avg = __cpufreq_driver_getavg(policy, j);
-			if (freq_avg <= 0)
-				freq_avg = policy->cur;
-
-			load *= freq_avg;
-		}
 
 		if (load > max_load)
 			max_load = load;
@@ -298,12 +284,12 @@ int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		cs_tuners = dbs_data->tuners;
 		cs_dbs_info = dbs_data->cdata->get_cpu_dbs_info_s(cpu);
 		sampling_rate = cs_tuners->sampling_rate;
-		ignore_nice = cs_tuners->ignore_nice;
+		ignore_nice = cs_tuners->ignore_nice_load;
 	} else {
 		od_tuners = dbs_data->tuners;
 		od_dbs_info = dbs_data->cdata->get_cpu_dbs_info_s(cpu);
 		sampling_rate = od_tuners->sampling_rate;
-		ignore_nice = od_tuners->ignore_nice;
+		ignore_nice = od_tuners->ignore_nice_load;
 		od_ops = dbs_data->cdata->gov_ops;
 		io_busy = od_tuners->io_is_busy;
 	}
