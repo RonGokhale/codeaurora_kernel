@@ -556,12 +556,16 @@ static void adreno_cleanup_pt(struct kgsl_device *device,
 	struct adreno_ringbuffer *rb = &adreno_dev->ringbuffer;
 
 	kgsl_mmu_unmap(pagetable, &rb->buffer_desc);
+	kgsl_mmu_put_gpuaddr(pagetable, &rb->buffer_desc);
 
 	kgsl_mmu_unmap(pagetable, &rb->memptrs_desc);
+	kgsl_mmu_put_gpuaddr(pagetable, &rb->memptrs_desc);
 
 	kgsl_mmu_unmap(pagetable, &device->memstore);
+	kgsl_mmu_put_gpuaddr(pagetable, &device->memstore);
 
 	kgsl_mmu_unmap(pagetable, &device->mmu.setstate_memory);
+	kgsl_mmu_put_gpuaddr(pagetable, &device->mmu.setstate_memory);
 }
 
 static int adreno_setup_pt(struct kgsl_device *device,
@@ -598,12 +602,15 @@ static int adreno_setup_pt(struct kgsl_device *device,
 
 unmap_memstore_desc:
 	kgsl_mmu_unmap(pagetable, &device->memstore);
+	kgsl_mmu_put_gpuaddr(pagetable, &device->memstore);
 
 unmap_memptrs_desc:
 	kgsl_mmu_unmap(pagetable, &rb->memptrs_desc);
+	kgsl_mmu_put_gpuaddr(pagetable, &rb->memptrs_desc);
 
 unmap_buffer_desc:
 	kgsl_mmu_unmap(pagetable, &rb->buffer_desc);
+	kgsl_mmu_put_gpuaddr(pagetable, &rb->buffer_desc);
 
 error:
 	return result;
