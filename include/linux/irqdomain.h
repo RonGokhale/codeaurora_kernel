@@ -38,6 +38,7 @@
 struct device_node;
 struct irq_domain;
 struct of_device_id;
+struct msi_chip;
 
 /* Number of irqs reserved for a legacy isa controller */
 #define NUM_ISA_INTERRUPTS	16
@@ -101,6 +102,7 @@ struct irq_domain {
 	/* Optional data */
 	struct device_node *of_node;
 	struct irq_domain_chip_generic *gc;
+	struct msi_chip *msi_chip;
 
 	/* reverse map data. The linear map gets appended to the irq_domain */
 	irq_hw_number_t hwirq_max;
@@ -111,10 +113,11 @@ struct irq_domain {
 };
 
 #ifdef CONFIG_IRQ_DOMAIN
-struct irq_domain *__irq_domain_add(struct device_node *of_node, int size,
+struct irq_domain *__irq_domain_alloc(struct device_node *of_node, int size,
 				    irq_hw_number_t hwirq_max, int direct_max,
 				    const struct irq_domain_ops *ops,
 				    void *host_data);
+void __irq_domain_register(struct irq_domain *domain);
 struct irq_domain *irq_domain_add_simple(struct device_node *of_node,
 					 unsigned int size,
 					 unsigned int first_irq,
@@ -126,7 +129,8 @@ struct irq_domain *irq_domain_add_legacy(struct device_node *of_node,
 					 irq_hw_number_t first_hwirq,
 					 const struct irq_domain_ops *ops,
 					 void *host_data);
-extern struct irq_domain *irq_find_host(struct device_node *node);
+struct irq_domain *__irq_find_host(struct device_node *node,
+				   bool findmsi);
 extern void irq_set_default_host(struct irq_domain *host);
 
 /**
@@ -141,14 +145,22 @@ static inline struct irq_domain *irq_domain_add_linear(struct device_node *of_no
 					 const struct irq_domain_ops *ops,
 					 void *host_data)
 {
-	return __irq_domain_add(of_node, size, size, 0, ops, host_data);
+	struct irq_domain *d;
+	d = __irq_domain_alloc(of_node, size, size, 0, ops, host_data);
+	if (d)
+		__irq_domain_register(d);
+	return d;
 }
 static inline struct irq_domain *irq_domain_add_nomap(struct device_node *of_node,
 					 unsigned int max_irq,
 					 const struct irq_domain_ops *ops,
 					 void *host_data)
 {
-	return __irq_domain_add(of_node, 0, max_irq, max_irq, ops, host_data);
+	struct irq_domain *d;
+	d = __irq_domain_alloc(of_node, 0, max_irq, max_irq, ops, host_data);
+	if (d)
+		__irq_domain_register(d);
+	return d;
 }
 static inline struct irq_domain *irq_domain_add_legacy_isa(
 				struct device_node *of_node,
@@ -162,7 +174,45 @@ static inline struct irq_domain *irq_domain_add_tree(struct device_node *of_node
 					 const struct irq_domain_ops *ops,
 					 void *host_data)
 {
-	return __irq_domain_add(of_node, 0, ~0, 0, ops, host_data);
+	struct irq_domain *d;
+	d = __irq_domain_alloc(of_node, 0, ~0, 0, ops, host_data);
+	if (d)
+		__irq_domain_register(d);
+	return d;
+}
+static inline struct irq_domain *irq_domain_add_msi(struct device_node *of_node,
+						    unsigned int size,
+						    const struct irq_domain_ops *ops,
+						    struct msi_chip *msi_chip,
+						    void *host_data)
+{
+	struct irq_domain *d;
+	d = __irq_domain_alloc(of_node, size, size, 0, ops, host_data);
+	if (d) {
+		d->msi_chip = msi_chip;
+		__irq_domain_register(d);
+	}
+
+	return d;
+}
+
+
+/**
+ * irq_find_host() - Locates a domain for a given device node
+ * @node: device-tree node of the interrupt controller
+ */
+static inline struct irq_domain *irq_find_host(struct device_node *node)
+{
+	return __irq_find_host(node, false);
+}
+
+/**
+ * irq_find_msi_host() - Locates a MSI domain for a given device node
+ * @node: device-tree node of the interrupt controller
+ */
+static inline struct irq_domain *irq_find_msi_host(struct device_node *node)
+{
+	return __irq_find_host(node, true);
 }
 
 extern void irq_domain_remove(struct irq_domain *host);
@@ -195,6 +245,8 @@ static inline unsigned int irq_linear_revmap(struct irq_domain *domain,
 extern unsigned int irq_find_mapping(struct irq_domain *host,
 				     irq_hw_number_t hwirq);
 extern unsigned int irq_create_direct_mapping(struct irq_domain *host);
+extern unsigned int irq_alloc_mapping(struct irq_domain *host,
+				      irq_hw_number_t *hwirq);
 extern int irq_create_strict_mappings(struct irq_domain *domain,
 				      unsigned int irq_base,
 				      irq_hw_number_t hwirq_base, int count);

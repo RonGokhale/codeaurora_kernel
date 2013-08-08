@@ -23,7 +23,7 @@ static DEFINE_MUTEX(revmap_trees_mutex);
 static struct irq_domain *irq_default_domain;
 
 /**
- * __irq_domain_add() - Allocate a new irq_domain data structure
+ * __irq_domain_alloc() - Allocate a new irq_domain data structure
  * @of_node: optional device-tree node of the interrupt controller
  * @size: Size of linear map; 0 for radix mapping only
  * @direct_max: Maximum value of direct maps; Use ~0 for no limit; 0 for no
@@ -31,14 +31,15 @@ static struct irq_domain *irq_default_domain;
  * @ops: map/unmap domain callbacks
  * @host_data: Controller private data pointer
  *
- * Allocates and initialize and irq_domain structure.  Caller is expected to
- * register allocated irq_domain with irq_domain_register().  Returns pointer
- * to IRQ domain, or NULL on failure.
+ * Allocates and initializes an irq_domain structure.  Caller is
+ * expected to register the allocated irq_domain with
+ * __irq_domain_register().  Returns pointer to IRQ domain, or NULL on
+ * failure.
  */
-struct irq_domain *__irq_domain_add(struct device_node *of_node, int size,
-				    irq_hw_number_t hwirq_max, int direct_max,
-				    const struct irq_domain_ops *ops,
-				    void *host_data)
+struct irq_domain *__irq_domain_alloc(struct device_node *of_node, int size,
+				      irq_hw_number_t hwirq_max, int direct_max,
+				      const struct irq_domain_ops *ops,
+				      void *host_data)
 {
 	struct irq_domain *domain;
 
@@ -56,14 +57,24 @@ struct irq_domain *__irq_domain_add(struct device_node *of_node, int size,
 	domain->revmap_size = size;
 	domain->revmap_direct_max_irq = direct_max;
 
+	return domain;
+}
+EXPORT_SYMBOL_GPL(__irq_domain_alloc);
+
+/**
+ * __irq_domain_register() - Register a new irq_domain that has been
+ * previously allocated with __irq_domain_alloc().
+ * @domain: irq_domain to registers
+ */
+void __irq_domain_register(struct irq_domain *domain)
+{
 	mutex_lock(&irq_domain_mutex);
 	list_add(&domain->link, &irq_domain_list);
 	mutex_unlock(&irq_domain_mutex);
 
 	pr_debug("Added domain %s\n", domain->name);
-	return domain;
 }
-EXPORT_SYMBOL_GPL(__irq_domain_add);
+EXPORT_SYMBOL_GPL(__irq_domain_register);
 
 /**
  * irq_domain_remove() - Remove an irq domain.
@@ -127,7 +138,7 @@ struct irq_domain *irq_domain_add_simple(struct device_node *of_node,
 {
 	struct irq_domain *domain;
 
-	domain = __irq_domain_add(of_node, size, size, 0, ops, host_data);
+	domain = __irq_domain_alloc(of_node, size, size, 0, ops, host_data);
 	if (!domain)
 		return NULL;
 
@@ -142,6 +153,8 @@ struct irq_domain *irq_domain_add_simple(struct device_node *of_node,
 		}
 		irq_domain_associate_many(domain, first_irq, 0, size);
 	}
+
+	__irq_domain_register(domain);
 
 	return domain;
 }
@@ -171,22 +184,27 @@ struct irq_domain *irq_domain_add_legacy(struct device_node *of_node,
 {
 	struct irq_domain *domain;
 
-	domain = __irq_domain_add(of_node, first_hwirq + size,
-				  first_hwirq + size, 0, ops, host_data);
+	domain = __irq_domain_alloc(of_node, first_hwirq + size,
+				    first_hwirq + size, 0, ops, host_data);
 	if (!domain)
 		return NULL;
 
 	irq_domain_associate_many(domain, first_irq, first_hwirq, size);
+	__irq_domain_register(domain);
 
 	return domain;
 }
 EXPORT_SYMBOL_GPL(irq_domain_add_legacy);
 
 /**
- * irq_find_host() - Locates a domain for a given device node
+ * __irq_find_host() - Locates a domain for a given device node,
+ * taking into account whether the domain is of MSI-type or not.
  * @node: device-tree node of the interrupt controller
+ * @findmsi: true when the domain being search is of MSI-type, false
+ * otherwise.
  */
-struct irq_domain *irq_find_host(struct device_node *node)
+struct irq_domain *__irq_find_host(struct device_node *node,
+				   bool findmsi)
 {
 	struct irq_domain *h, *found = NULL;
 	int rc;
@@ -198,6 +216,9 @@ struct irq_domain *irq_find_host(struct device_node *node)
 	 */
 	mutex_lock(&irq_domain_mutex);
 	list_for_each_entry(h, &irq_domain_list, link) {
+		if ((findmsi && !h->msi_chip) ||
+		    (!findmsi && h->msi_chip))
+			continue;
 		if (h->ops->match)
 			rc = h->ops->match(h, node);
 		else
@@ -211,7 +232,7 @@ struct irq_domain *irq_find_host(struct device_node *node)
 	mutex_unlock(&irq_domain_mutex);
 	return found;
 }
-EXPORT_SYMBOL_GPL(irq_find_host);
+EXPORT_SYMBOL_GPL(__irq_find_host);
 
 /**
  * irq_set_default_host() - Set a "default" irq domain
@@ -373,6 +394,42 @@ unsigned int irq_create_direct_mapping(struct irq_domain *domain)
 	return virq;
 }
 EXPORT_SYMBOL_GPL(irq_create_direct_mapping);
+
+/**
+ * irq_alloc_mapping() - Allocate an irq for mapping
+ * @domain: domain to allocate the irq for or NULL for default domain
+ * @hwirq:  reference to the returned hwirq
+ *
+ * This routine are used for irq controllers which can choose the
+ * hardware interrupt number from a range [ 0 ; domain size ], such as
+ * is often the case with PCI MSI controllers. The function will
+ * returned the allocated hwirq number in the hwirq pointer, and the
+ * corresponding virq number as the return value.
+ */
+unsigned int irq_alloc_mapping(struct irq_domain *domain,
+			       irq_hw_number_t *out_hwirq)
+{
+	irq_hw_number_t hwirq;
+	int rc;
+
+	pr_debug("irq_alloc_mapping(0x%p)\n", domain);
+
+	for (hwirq = 0; hwirq < domain->revmap_size; hwirq++)
+		if (domain->linear_revmap[hwirq] == 0)
+			break;
+
+	if (hwirq == domain->hwirq_max) {
+		pr_debug("-> no available hwirq found\n");
+		return 0;
+	}
+
+	rc = irq_create_mapping(domain, hwirq);
+	if (rc)
+		*out_hwirq = hwirq;
+
+	return rc;
+}
+EXPORT_SYMBOL_GPL(irq_alloc_mapping);
 
 /**
  * irq_create_mapping() - Map a hardware interrupt into linux irq space
