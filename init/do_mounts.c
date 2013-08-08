@@ -621,12 +621,12 @@ int __init init_rootfs(void)
 		return err;
 
 	if (IS_ENABLED(CONFIG_TMPFS) && !saved_root_name[0] &&
-		(!root_fs_names || strstr(root_fs_names, "tmpfs")))
-	{
+		(!root_fs_names || strstr(root_fs_names, "tmpfs"))) {
 		err = shmem_init();
 		is_tmpfs = true;
-	} else
+	} else {
 		err = init_ramfs_fs();
+	}
 
 	if (err)
 		unregister_filesystem(&rootfs_fs_type);
