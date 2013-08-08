@@ -405,12 +405,10 @@ static int snd_cs8427_send_corudata(struct cs8427 *obj,
 	char *hw_data = udata ?
 		chip->playback.hw_udata : chip->playback.hw_status;
 	char data[32];
-	int err, idx;
+	int err = 0, idx;
 	unsigned char addr = 0;
-	int ret = 0;
+	int ret = 0, i = 0;
 
-	if (!memcmp(hw_data, ndata, count))
-		return 0;
 	err = snd_cs8427_select_corudata(chip, udata);
 	if (err < 0)
 		return err;
@@ -428,12 +426,31 @@ static int snd_cs8427_send_corudata(struct cs8427 *obj,
 	}
 	idx = 0;
 	memcpy(data, ndata, CHANNEL_STATUS_SIZE);
-	/* address from where the bufferhas to write*/
-	addr = 0x20;
+	pr_debug("%s :SPDIF channel status bits", __func__);
+	for (i = 0; i < CHANNEL_STATUS_SIZE; i++)
+		pr_debug("spdif c-bits[%4d], %4x", i, *((uint8_t *)ndata + i));
+
+	addr = 0x20; /* address from where the bufferhas to write*/
 	ret = cs8427_i2c_sendbytes(chip, &addr, data, count);
 	if (ret != count)
 		return -EIO;
-	return 1;
+
+	/* second bit of channel status indicates linearity of audio data
+	 * for non linear(compressed) audio, set validity bit to 1
+	 * 0100 0000(0x40), 8 bit char with second bit set
+	 */
+	if (*(ndata) & 0x40) {
+		chip->regmap[CS8427_REG_CONTROL1] |= CS8427_VSET;
+		pr_info("SPDIF channel status set vbit: 1");
+	} else {
+		chip->regmap[CS8427_REG_CONTROL1] &= ~CS8427_VSET;
+		pr_info("SPDIF channel status set vbit: 0");
+	}
+	err = cs8427_i2c_write(chip, CS8427_REG_CONTROL1,
+			1, &chip->regmap[CS8427_REG_CONTROL1]);
+	if (err < 0)
+		pr_err("%s: error setting vbit, err: %d\n", __func__, err);
+	return err;
 }
 
 static int snd_cs8427_spdif_get(struct snd_kcontrol *kcontrol,
@@ -455,7 +472,7 @@ static int snd_cs8427_spdif_put(struct snd_kcontrol *kcontrol,
 {
 	struct cs8427 *chip = kcontrol->private_data;
 	unsigned char *status;
-	int err, change;
+	int err;
 
 	if (!chip) {
 		pr_err("%s: invalid device info\n", __func__);
@@ -464,18 +481,11 @@ static int snd_cs8427_spdif_put(struct snd_kcontrol *kcontrol,
 	status = kcontrol->private_value ?
 		chip->playback.pcm_status : chip->playback.def_status;
 
-	change = memcmp(ucontrol->value.iec958.status, status,
+	memcpy(status, ucontrol->value.iec958.status,
+		CHANNEL_STATUS_SIZE);
+	err = snd_cs8427_send_corudata(chip, 0, status,
 			CHANNEL_STATUS_SIZE);
-
-	if (change) {
-		memcpy(status, ucontrol->value.iec958.status,
-			CHANNEL_STATUS_SIZE);
-		err = snd_cs8427_send_corudata(chip, 0, status,
-			CHANNEL_STATUS_SIZE);
-		if (err < 0)
-			change = err;
-	}
-	return change;
+	return err;
 }
 
 static int snd_cs8427_spdif_mask_info(struct snd_kcontrol *kcontrol,
