@@ -70,5 +70,6 @@ gensym hv_inquire_realpa, 0x6c0, 32
 gensym hv_flush_all, 0x6e0, 32
 gensym hv_get_ipi_pte, 0x700, 32
 gensym hv_set_pte_super_shift, 0x720, 32
+gensym hv_set_speed, 0x740, 32
 gensym hv_console_set_ipi, 0x7e0, 32
 gensym hv_glue_internals, 0x800, 30720

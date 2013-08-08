@@ -451,3 +451,20 @@ source "crypto/Kconfig"
 source "lib/Kconfig"
 
 source "arch/tile/kvm/Kconfig"
+
+menu "CPU Frequency scaling"
+	depends on TILEGX
+
+source "drivers/cpufreq/Kconfig"
+
+config CPU_FREQ_TILEGX
+	tristate "CPUfreq driver for TILE-Gx"
+	depends on CPU_FREQ && TILEGX
+	default n
+	select STOP_MACHINE
+	---help---
+	  This enables the CPUfreq driver for TILE-Gx CPUs.  Say Y here
+	  if you want to be able to dynamically adjust CPU frequency
+	  while the system is running.
+
+endmenu
