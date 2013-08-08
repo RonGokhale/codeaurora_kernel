@@ -74,6 +74,7 @@
 #define hv_flush_all _hv_flush_all
 #define hv_get_ipi_pte _hv_get_ipi_pte
 #define hv_set_pte_super_shift _hv_set_pte_super_shift
+#define hv_set_speed _hv_set_speed
 #define hv_console_set_ipi _hv_console_set_ipi
 #include <hv/hypervisor.h>
 #undef hv_init
@@ -133,6 +134,7 @@
 #undef hv_flush_all
 #undef hv_get_ipi_pte
 #undef hv_set_pte_super_shift
+#undef hv_set_speed
 #undef hv_console_set_ipi
 
 /*
@@ -203,6 +205,8 @@ HV_WRAP3(int, hv_store_mapping, HV_VirtAddr, va, unsigned int, len,
 HV_WRAP2(HV_PhysAddr, hv_inquire_realpa, HV_PhysAddr, cpa, unsigned int, len)
 HV_WRAP0(HV_RTCTime, hv_get_rtc)
 HV_WRAP1(void, hv_set_rtc, HV_RTCTime, time)
+HV_WRAP3(HV_SetSpeed, hv_set_speed, unsigned long, speed, __hv64, start_cycle,
+	 unsigned long, flags)
 HV_WRAP4(int, hv_install_context, HV_PhysAddr, page_table, HV_PTE, access,
 	 HV_ASID, asid, __hv32, flags)
 HV_WRAP2(int, hv_set_pte_super_shift, int, level, int, log2_count)

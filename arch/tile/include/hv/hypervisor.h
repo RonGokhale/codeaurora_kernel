@@ -318,6 +318,9 @@
 /** hv_set_pte_super_shift */
 #define HV_DISPATCH_SET_PTE_SUPER_SHIFT           57
 
+/** hv_set_speed */
+#define HV_DISPATCH_SET_SPEED                     58
+
 /** hv_console_set_ipi */
 #define HV_DISPATCH_CONSOLE_SET_IPI               63
 
@@ -710,6 +713,43 @@ HV_RTCTime hv_get_rtc(void);
  * @param time time to reset time-of-day to (GMT).
  */
 void hv_set_rtc(HV_RTCTime time);
+
+
+/** Value returned from hv_set_speed(). */
+typedef struct {
+  /** The new speed achieved, in Hertz, or a negative error code. */
+  long new_speed;
+
+  /** A cycle counter value, in the post-speed-change time domain. */
+  __hv64 end_cycle;
+
+  /** Time elapsed in nanoseconds between start_cycle (passed to
+   *  hv_set_speed(), in the pre-speed-change time domain) and end_cycle
+   *  (returned in this structure). */
+  __hv64 delta_ns;
+} HV_SetSpeed;
+
+
+/** Set the processor clock speed.
+ * @param speed Clock speed in hertz.
+ * @param start_cycle Initial cycle counter value; see the definition of
+ *  HV_SetSpeed for how this is used.
+ * @param flags Flags (HV_SET_SPEED_xxx).
+ * @return A HV_SetSpeed structure.
+ */
+HV_SetSpeed hv_set_speed(unsigned long speed, __hv64 start_cycle,
+                         unsigned long flags);
+
+/** Don't set the speed, just check the value and return the speed we would
+ *  have set if this flag had not been specified.  When this flag is
+ *  specified, the start_cycle parameter is ignored, and the end_cycle and
+ *  delta_ns values in the HV_SetSpeed structure are undefined. */
+#define HV_SET_SPEED_DRYRUN   0x1
+
+/** If the precise speed specified is not supported by the hardware, round
+ *  it up to the next higher supported frequency if necessary; without this
+ *  flag, we round down. */
+#define HV_SET_SPEED_ROUNDUP  0x2
 
 /** Installs a context, comprising a page table and other attributes.
  *
