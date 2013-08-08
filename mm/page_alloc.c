@@ -1817,6 +1817,11 @@ static void zlc_clear_zones_full(struct zonelist *zonelist)
 	bitmap_zero(zlc->fullzones, MAX_ZONES_PER_ZONELIST);
 }
 
+static bool zone_local(struct zone *local_zone, struct zone *zone)
+{
+	return node_distance(local_zone->node, zone->node) == LOCAL_DISTANCE;
+}
+
 static bool zone_allows_reclaim(struct zone *local_zone, struct zone *zone)
 {
 	return node_isset(local_zone->node, zone->zone_pgdat->reclaim_nodes);
@@ -1852,6 +1857,11 @@ static void zlc_mark_zone_full(struct zonelist *zonelist, struct zoneref *z)
 
 static void zlc_clear_zones_full(struct zonelist *zonelist)
 {
+}
+
+static bool zone_local(struct zone *local_zone, struct zone *zone)
+{
+	return true;
 }
 
 static bool zone_allows_reclaim(struct zone *local_zone, struct zone *zone)
@@ -1905,9 +1915,21 @@ zonelist_scan:
 		 * zone size to ensure fair page aging.  The zone a
 		 * page was allocated in should have no effect on the
 		 * time the page has in memory before being reclaimed.
+		 *
+		 * When zone_reclaim_mode is enabled, try to stay in
+		 * local zones in the fastpath.  If that fails, the
+		 * slowpath is entered, which will do another pass
+		 * starting with the local zones, but ultimately fall
+		 * back to remote zones that do not partake in the
+		 * fairness round-robin cycle of this zonelist.
 		 */
-		if (atomic_read(&zone->alloc_batch) <= 0)
-			continue;
+		if (alloc_flags & ALLOC_WMARK_LOW) {
+			if (zone->alloc_batch <= 0)
+				continue;
+			if (zone_reclaim_mode &&
+			    !zone_local(preferred_zone, zone))
+				continue;
+		}
 		/*
 		 * When allocating a page cache page for writing, we
 		 * want to get it from a zone that is within its dirty
@@ -2015,7 +2037,7 @@ this_zone_full:
 	}
 
 	if (page) {
-		atomic_sub(1U << order, &zone->alloc_batch);
+		zone->alloc_batch -= 1U << order;
 		/*
 		 * page->pfmemalloc is set when ALLOC_NO_WATERMARKS was
 		 * necessary to allocate the page. The expectation is
@@ -2359,16 +2381,24 @@ __alloc_pages_high_priority(gfp_t gfp_mask, unsigned int order,
 static void prepare_slowpath(gfp_t gfp_mask, unsigned int order,
 			     struct zonelist *zonelist,
 			     enum zone_type high_zoneidx,
-			     enum zone_type classzone_idx)
+			     struct zone *preferred_zone)
 {
 	struct zoneref *z;
 	struct zone *zone;
 
 	for_each_zone_zonelist(zone, z, zonelist, high_zoneidx) {
-		atomic_set(&zone->alloc_batch,
-			   high_wmark_pages(zone) - low_wmark_pages(zone));
 		if (!(gfp_mask & __GFP_NO_KSWAPD))
-			wakeup_kswapd(zone, order, classzone_idx);
+			wakeup_kswapd(zone, order, zone_idx(preferred_zone));
+		/*
+		 * Only reset the batches of zones that were actually
+		 * considered in the fast path, we don't want to
+		 * thrash fairness information for zones that are not
+		 * actually part of this zonelist's round-robin cycle.
+		 */
+		if (zone_reclaim_mode && !zone_local(preferred_zone, zone))
+			continue;
+		zone->alloc_batch = high_wmark_pages(zone) -
+			low_wmark_pages(zone);
 	}
 }
 
@@ -2466,7 +2496,7 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 
 restart:
 	prepare_slowpath(gfp_mask, order, zonelist,
-			 high_zoneidx, zone_idx(preferred_zone));
+			 high_zoneidx, preferred_zone);
 
 	/*
 	 * OK, we're below the kswapd watermark and have kicked background
@@ -4768,7 +4798,7 @@ static void __paginginit free_area_init_core(struct pglist_data *pgdat,
 		zone->zone_pgdat = pgdat;
 
 		/* For bootup, initialized properly in watermark setup */
-		atomic_set(&zone->alloc_batch, zone->managed_pages);
+		zone->alloc_batch = zone->managed_pages;
 
 		zone_pcp_init(zone);
 		lruvec_init(&zone->lruvec);
@@ -5541,8 +5571,8 @@ static void __setup_per_zone_wmarks(void)
 		zone->watermark[WMARK_LOW]  = min_wmark_pages(zone) + (tmp >> 2);
 		zone->watermark[WMARK_HIGH] = min_wmark_pages(zone) + (tmp >> 1);
 
-		atomic_set(&zone->alloc_batch,
-			   high_wmark_pages(zone) - low_wmark_pages(zone));
+		zone->alloc_batch = high_wmark_pages(zone) -
+			low_wmark_pages(zone);
 
 		setup_zone_migrate_reserve(zone);
 		spin_unlock_irqrestore(&zone->lock, flags);
