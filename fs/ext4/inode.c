@@ -553,16 +553,15 @@ int ext4_map_blocks(handle_t *handle, struct inode *inode,
 	}
 	if (retval > 0) {
 		int ret;
-		unsigned long long status;
+		unsigned int status;
 
-#ifdef ES_AGGRESSIVE_TEST
-		if (retval != map->m_len) {
-			printk("ES len assertion failed for inode: %lu "
-			       "retval %d != map->m_len %d "
-			       "in %s (lookup)\n", inode->i_ino, retval,
-			       map->m_len, __func__);
+		if (unlikely(retval != map->m_len)) {
+			ext4_warning(inode->i_sb,
+				     "ES len assertion failed for inode "
+				     "%lu: retval %d != map->m_len %d",
+				     inode->i_ino, retval, map->m_len);
+			WARN_ON(1);
 		}
-#endif
 
 		status = map->m_flags & EXT4_MAP_UNWRITTEN ?
 				EXTENT_STATUS_UNWRITTEN : EXTENT_STATUS_WRITTEN;
@@ -654,16 +653,15 @@ found:
 
 	if (retval > 0) {
 		int ret;
-		unsigned long long status;
+		unsigned int status;
 
-#ifdef ES_AGGRESSIVE_TEST
-		if (retval != map->m_len) {
-			printk("ES len assertion failed for inode: %lu "
-			       "retval %d != map->m_len %d "
-			       "in %s (allocation)\n", inode->i_ino, retval,
-			       map->m_len, __func__);
+		if (unlikely(retval != map->m_len)) {
+			ext4_warning(inode->i_sb,
+				     "ES len assertion failed for inode "
+				     "%lu: retval %d != map->m_len %d",
+				     inode->i_ino, retval, map->m_len);
+			WARN_ON(1);
 		}
-#endif
 
 		/*
 		 * If the extent has been zeroed out, we don't need to update
@@ -1635,16 +1633,15 @@ add_delayed:
 		set_buffer_delay(bh);
 	} else if (retval > 0) {
 		int ret;
-		unsigned long long status;
+		unsigned int status;
 
-#ifdef ES_AGGRESSIVE_TEST
-		if (retval != map->m_len) {
-			printk("ES len assertion failed for inode: %lu "
-			       "retval %d != map->m_len %d "
-			       "in %s (lookup)\n", inode->i_ino, retval,
-			       map->m_len, __func__);
+		if (unlikely(retval != map->m_len)) {
+			ext4_warning(inode->i_sb,
+				     "ES len assertion failed for inode "
+				     "%lu: retval %d != map->m_len %d",
+				     inode->i_ino, retval, map->m_len);
+			WARN_ON(1);
 		}
-#endif
 
 		status = map->m_flags & EXT4_MAP_UNWRITTEN ?
 				EXTENT_STATUS_UNWRITTEN : EXTENT_STATUS_WRITTEN;
