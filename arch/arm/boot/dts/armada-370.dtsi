@@ -178,6 +178,7 @@
 				#address-cells = <3>;
 				#size-cells = <2>;
 
+				msi-parent = <&mpic>;
 				bus-range = <0x00 0xff>;
 
 				ranges = <0x82000000 0 0x40000 0x40000 0 0x00002000   /* Port 0.0 registers */
