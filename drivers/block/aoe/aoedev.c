@@ -13,6 +13,7 @@
 #include <linux/kdev_t.h>
 #include <linux/moduleparam.h>
 #include <linux/string.h>
+#include <linux/kernel.h>
 #include "aoe.h"
 
 static void dummy_timer(ulong);
@@ -248,10 +249,7 @@ user_req(char *s, size_t slen, struct aoedev *d)
 	if (!d->gd)
 		return 0;
 	p = kbasename(d->gd->disk_name);
-	lim = sizeof(d->gd->disk_name);
-	lim -= p - d->gd->disk_name;
-	if (slen < lim)
-		lim = slen;
+	lim = min(sizeof(d->gd->disk_name) - (p - d->gd->disk_name), slen);
 
 	return !strncmp(s, p, lim);
 }
