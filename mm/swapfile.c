@@ -446,7 +446,7 @@ check_cluster:
 				scan_base = offset = si->cluster_next;
 				if (!si->cluster_nr)
 					goto check_cluster;
-				si->cluster_nr --;
+				si->cluster_nr--;
 				goto checks;
 			}
 
