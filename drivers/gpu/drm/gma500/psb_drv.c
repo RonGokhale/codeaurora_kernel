@@ -131,7 +131,7 @@ static int psb_gamma_ioctl(struct drm_device *dev, void *data,
 static int psb_dpst_bl_ioctl(struct drm_device *dev, void *data,
 			     struct drm_file *file_priv);
 
-static struct drm_ioctl_desc psb_ioctls[] = {
+static const struct drm_ioctl_desc psb_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(GMA_ADB, psb_adb_ioctl, DRM_AUTH),
 	DRM_IOCTL_DEF_DRV(GMA_MODE_OPERATION, psb_mode_operation_ioctl,
 		      DRM_AUTH),
@@ -652,7 +652,7 @@ static struct drm_driver driver = {
 	.gem_vm_ops = &psb_gem_vm_ops,
 	.dumb_create = psb_gem_dumb_create,
 	.dumb_map_offset = psb_gem_dumb_map_gtt,
-	.dumb_destroy = psb_gem_dumb_destroy,
+	.dumb_destroy = drm_gem_dumb_destroy,
 	.fops = &psb_gem_fops,
 	.name = DRIVER_NAME,
 	.desc = DRIVER_DESC,

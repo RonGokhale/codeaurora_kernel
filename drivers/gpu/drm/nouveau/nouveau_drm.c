@@ -649,7 +649,7 @@ nouveau_drm_postclose(struct drm_device *dev, struct drm_file *fpriv)
 	nouveau_cli_destroy(cli);
 }
 
-static struct drm_ioctl_desc
+static const struct drm_ioctl_desc
 nouveau_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(NOUVEAU_GETPARAM, nouveau_abi16_ioctl_getparam, DRM_UNLOCKED|DRM_AUTH),
 	DRM_IOCTL_DEF_DRV(NOUVEAU_SETPARAM, nouveau_abi16_ioctl_setparam, DRM_UNLOCKED|DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
@@ -684,7 +684,7 @@ nouveau_driver_fops = {
 static struct drm_driver
 driver = {
 	.driver_features =
-		DRIVER_USE_AGP | DRIVER_PCI_DMA | DRIVER_SG |
+		DRIVER_USE_AGP |
 		DRIVER_GEM | DRIVER_MODESET | DRIVER_PRIME,
 
 	.load = nouveau_drm_load,
@@ -704,6 +704,7 @@ driver = {
 	.disable_vblank = nouveau_drm_vblank_disable,
 
 	.ioctls = nouveau_ioctls,
+	.num_ioctls = ARRAY_SIZE(nouveau_ioctls),
 	.fops = &nouveau_driver_fops,
 
 	.prime_handle_to_fd = drm_gem_prime_handle_to_fd,
@@ -724,7 +725,7 @@ driver = {
 
 	.dumb_create = nouveau_display_dumb_create,
 	.dumb_map_offset = nouveau_display_dumb_map_offset,
-	.dumb_destroy = nouveau_display_dumb_destroy,
+	.dumb_destroy = drm_gem_dumb_destroy,
 
 	.name = DRIVER_NAME,
 	.desc = DRIVER_DESC,
@@ -774,8 +775,6 @@ nouveau_drm_pci_driver = {
 static int __init
 nouveau_drm_init(void)
 {
-	driver.num_ioctls = ARRAY_SIZE(nouveau_ioctls);
-
 	if (nouveau_modeset == -1) {
 #ifdef CONFIG_VGA_CONSOLE
 		if (vgacon_text_force())
