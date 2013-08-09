@@ -46,7 +46,7 @@
 
 /* Current ACPICA subsystem version in YYYYMMDD format */
 
-#define ACPI_CA_VERSION                 0x20130517
+#define ACPI_CA_VERSION                 0x20130626
 
 #include <acpi/acconfig.h>
 #include <acpi/actypes.h>
@@ -146,6 +146,8 @@ acpi_status acpi_purge_cached_objects(void);
 acpi_status acpi_install_interface(acpi_string interface_name);
 
 acpi_status acpi_remove_interface(acpi_string interface_name);
+
+acpi_status acpi_update_interfaces(u8 action);
 
 u32
 acpi_check_address_range(acpi_adr_space_type space_id,

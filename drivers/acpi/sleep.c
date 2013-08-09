@@ -31,12 +31,9 @@ static u8 sleep_states[ACPI_S_STATE_COUNT];
 
 static void acpi_sleep_tts_switch(u32 acpi_state)
 {
-	union acpi_object in_arg = { ACPI_TYPE_INTEGER };
-	struct acpi_object_list arg_list = { 1, &in_arg };
-	acpi_status status = AE_OK;
+	acpi_status status;
 
-	in_arg.integer.value = acpi_state;
-	status = acpi_evaluate_object(NULL, "\\_TTS", &arg_list, NULL);
+	status = acpi_execute_simple_method(NULL, "\\_TTS", acpi_state);
 	if (ACPI_FAILURE(status) && status != AE_NOT_FOUND) {
 		/*
 		 * OS can't evaluate the _TTS object correctly. Some warning
@@ -141,7 +138,7 @@ static int __init init_nvs_nosave(const struct dmi_system_id *d)
 	return 0;
 }
 
-static struct dmi_system_id __initdata acpisleep_dmi_table[] = {
+static struct dmi_system_id acpisleep_dmi_table[] __initdata = {
 	{
 	.callback = init_old_suspend_ordering,
 	.ident = "Abit KN9 (nForce4 variant)",
