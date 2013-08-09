@@ -970,7 +970,7 @@ static int __init enable_cap_knobs(const struct dmi_system_id *d)
 	return 0;
 }
 
-static struct dmi_system_id __initdata pm_dmi_table[] = {
+static struct dmi_system_id pm_dmi_table[] __initdata = {
 	{
 		enable_cap_knobs, "IBM Active Energy Manager",
 		{
