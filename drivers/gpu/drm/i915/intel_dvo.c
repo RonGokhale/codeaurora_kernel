@@ -283,7 +283,6 @@ static void intel_dvo_mode_set(struct drm_encoder *encoder,
 	int pipe = intel_crtc->pipe;
 	u32 dvo_val;
 	u32 dvo_reg = intel_dvo->dev.dvo_reg, dvo_srcdim_reg;
-	int dpll_reg = DPLL(pipe);
 
 	switch (dvo_reg) {
 	case DVOA:
@@ -314,8 +313,6 @@ static void intel_dvo_mode_set(struct drm_encoder *encoder,
 	if (adjusted_mode->flags & DRM_MODE_FLAG_PVSYNC)
 		dvo_val |= DVO_VSYNC_ACTIVE_HIGH;
 
-	I915_WRITE(dpll_reg, I915_READ(dpll_reg) | DPLL_DVO_HIGH_SPEED);
-
 	/*I915_WRITE(DVOB_SRCDIM,
 	  (adjusted_mode->hdisplay << DVO_SRCDIM_HORIZONTAL_SHIFT) |
 	  (adjusted_mode->VDisplay << DVO_SRCDIM_VERTICAL_SHIFT));*/
@@ -335,6 +332,8 @@ static enum drm_connector_status
 intel_dvo_detect(struct drm_connector *connector, bool force)
 {
 	struct intel_dvo *intel_dvo = intel_attached_dvo(connector);
+	DRM_DEBUG_KMS("[CONNECTOR:%d:%s]\n",
+		      connector->base.id, drm_get_connector_name(connector));
 	return intel_dvo->dev.dev_ops->detect(&intel_dvo->dev);
 }
 

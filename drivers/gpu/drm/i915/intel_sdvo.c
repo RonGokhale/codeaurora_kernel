@@ -1357,21 +1357,20 @@ static void intel_sdvo_get_config(struct intel_encoder *encoder,
 	}
 
 	/* Cross check the port pixel multiplier with the sdvo encoder state. */
-	intel_sdvo_get_value(intel_sdvo, SDVO_CMD_GET_CLOCK_RATE_MULT, &val, 1);
-	switch (val) {
-	case SDVO_CLOCK_RATE_MULT_1X:
-		encoder_pixel_multiplier = 1;
-		break;
-	case SDVO_CLOCK_RATE_MULT_2X:
-		encoder_pixel_multiplier = 2;
-		break;
-	case SDVO_CLOCK_RATE_MULT_4X:
-		encoder_pixel_multiplier = 4;
-		break;
+	if (intel_sdvo_get_value(intel_sdvo, SDVO_CMD_GET_CLOCK_RATE_MULT,
+				 &val, 1)) {
+		switch (val) {
+		case SDVO_CLOCK_RATE_MULT_1X:
+			encoder_pixel_multiplier = 1;
+			break;
+		case SDVO_CLOCK_RATE_MULT_2X:
+			encoder_pixel_multiplier = 2;
+			break;
+		case SDVO_CLOCK_RATE_MULT_4X:
+			encoder_pixel_multiplier = 4;
+			break;
+		}
 	}
-
-	if(HAS_PCH_SPLIT(dev))
-		return; /* no pixel multiplier readout support yet */
 
 	WARN(encoder_pixel_multiplier != pipe_config->pixel_multiplier,
 	     "SDVO pixel multiplier mismatch, port: %i, encoder: %i\n",
@@ -1696,6 +1695,9 @@ intel_sdvo_detect(struct drm_connector *connector, bool force)
 	struct intel_sdvo *intel_sdvo = intel_attached_sdvo(connector);
 	struct intel_sdvo_connector *intel_sdvo_connector = to_intel_sdvo_connector(connector);
 	enum drm_connector_status ret;
+
+	DRM_DEBUG_KMS("[CONNECTOR:%d:%s]\n",
+		      connector->base.id, drm_get_connector_name(connector));
 
 	if (!intel_sdvo_get_value(intel_sdvo,
 				  SDVO_CMD_GET_ATTACHED_DISPLAYS,
