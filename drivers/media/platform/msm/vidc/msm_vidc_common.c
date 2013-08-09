@@ -1935,7 +1935,9 @@ int msm_comm_qbuf(struct vb2_buffer *vb)
 				" extradata_addr: %d\n",
 				frame_data.extradata_addr);
 			if (!inst->ftb_count &&
-			   inst->session_type == MSM_VIDC_ENCODER) {
+			   inst->session_type == MSM_VIDC_ENCODER &&
+				inst->fmts[CAPTURE_PORT]->fourcc !=
+					V4L2_PIX_FMT_H263) {
 				seq_hdr.seq_hdr = (u8 *) vb->v4l2_planes[0].
 					m.userptr;
 				seq_hdr.seq_hdr_len = vb->v4l2_planes[0].length;
