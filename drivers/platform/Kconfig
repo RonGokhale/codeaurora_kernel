@@ -4,4 +4,3 @@ endif
 if GOLDFISH
 source "drivers/platform/goldfish/Kconfig"
 endif
-
