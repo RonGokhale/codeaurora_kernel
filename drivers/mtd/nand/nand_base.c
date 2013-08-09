@@ -324,28 +324,70 @@ static int nand_block_bad(struct mtd_info *mtd, loff_t ofs, int getchip)
 }
 
 /**
- * nand_default_block_markbad - [DEFAULT] mark a block bad
+ * nand_default_block_markbad - [DEFAULT] mark a block bad via bad block marker
  * @mtd: MTD device structure
  * @ofs: offset from device start
  *
  * This is the default implementation, which can be overridden by a hardware
- * specific driver. We try operations in the following order, according to our
- * bbt_options (NAND_BBT_NO_OOB_BBM and NAND_BBT_USE_FLASH):
- *  (1) erase the affected block, to allow OOB marker to be written cleanly
- *  (2) update in-memory BBT
- *  (3) write bad block marker to OOB area of affected block
- *  (4) update flash-based BBT
- * Note that we retain the first error encountered in (3) or (4), finish the
- * procedures, and dump the error in the end.
-*/
+ * specific driver. It provides the details for writing a bad block marker to a
+ * block.
+ */
 static int nand_default_block_markbad(struct mtd_info *mtd, loff_t ofs)
 {
 	struct nand_chip *chip = mtd->priv;
+	struct mtd_oob_ops ops;
 	uint8_t buf[2] = { 0, 0 };
-	int block, res, ret = 0, i = 0;
-	int write_oob = !(chip->bbt_options & NAND_BBT_NO_OOB_BBM);
+	int ret = 0, res, i = 0;
 
-	if (write_oob) {
+	ops.datbuf = NULL;
+	ops.oobbuf = buf;
+	ops.ooboffs = chip->badblockpos;
+	if (chip->options & NAND_BUSWIDTH_16) {
+		ops.ooboffs &= ~0x01;
+		ops.len = ops.ooblen = 2;
+	} else {
+		ops.len = ops.ooblen = 1;
+	}
+	ops.mode = MTD_OPS_PLACE_OOB;
+
+	/* Write to first/last page(s) if necessary */
+	if (chip->bbt_options & NAND_BBT_SCANLASTPAGE)
+		ofs += mtd->erasesize - mtd->writesize;
+	do {
+		res = nand_do_write_oob(mtd, ofs, &ops);
+		if (!ret)
+			ret = res;
+
+		i++;
+		ofs += mtd->writesize;
+	} while ((chip->bbt_options & NAND_BBT_SCAN2NDPAGE) && i < 2);
+
+	return ret;
+}
+
+/**
+ * nand_block_markbad_lowlevel - mark a block bad
+ * @mtd: MTD device structure
+ * @ofs: offset from device start
+ *
+ * This function performs the generic NAND bad block marking steps (i.e., bad
+ * block table(s) and/or marker(s)). We only allow the hardware driver to
+ * specify how to write bad block markers to OOB (chip->block_markbad).
+ *
+ * We try operations in the following order:
+ *  (1) erase the affected block, to allow OOB marker to be written cleanly
+ *  (2) write bad block marker to OOB area of affected block (unless flag
+ *      NAND_BBT_NO_OOB_BBM is present)
+ *  (3) update the BBT
+ * Note that we retain the first error encountered in (2) or (3), finish the
+ * procedures, and dump the error in the end.
+*/
+static int nand_block_markbad_lowlevel(struct mtd_info *mtd, loff_t ofs)
+{
+	struct nand_chip *chip = mtd->priv;
+	int res, ret = 0;
+
+	if (!(chip->bbt_options & NAND_BBT_NO_OOB_BBM)) {
 		struct erase_info einfo;
 
 		/* Attempt erase before marking OOB */
@@ -354,50 +396,16 @@ static int nand_default_block_markbad(struct mtd_info *mtd, loff_t ofs)
 		einfo.addr = ofs;
 		einfo.len = 1 << chip->phys_erase_shift;
 		nand_erase_nand(mtd, &einfo, 0);
-	}
 
-	/* Get block number */
-	block = (int)(ofs >> chip->bbt_erase_shift);
-	/* Mark block bad in memory-based BBT */
-	if (chip->bbt)
-		chip->bbt[block >> 2] |= 0x01 << ((block & 0x03) << 1);
-
-	/* Write bad block marker to OOB */
-	if (write_oob) {
-		struct mtd_oob_ops ops;
-		loff_t wr_ofs = ofs;
-
+		/* Write bad block marker to OOB */
 		nand_get_device(mtd, FL_WRITING);
-
-		ops.datbuf = NULL;
-		ops.oobbuf = buf;
-		ops.ooboffs = chip->badblockpos;
-		if (chip->options & NAND_BUSWIDTH_16) {
-			ops.ooboffs &= ~0x01;
-			ops.len = ops.ooblen = 2;
-		} else {
-			ops.len = ops.ooblen = 1;
-		}
-		ops.mode = MTD_OPS_PLACE_OOB;
-
-		/* Write to first/last page(s) if necessary */
-		if (chip->bbt_options & NAND_BBT_SCANLASTPAGE)
-			wr_ofs += mtd->erasesize - mtd->writesize;
-		do {
-			res = nand_do_write_oob(mtd, wr_ofs, &ops);
-			if (!ret)
-				ret = res;
-
-			i++;
-			wr_ofs += mtd->writesize;
-		} while ((chip->bbt_options & NAND_BBT_SCAN2NDPAGE) && i < 2);
-
+		ret = chip->block_markbad(mtd, ofs);
 		nand_release_device(mtd);
 	}
 
-	/* Update flash-based bad block table */
-	if (chip->bbt_options & NAND_BBT_USE_FLASH) {
-		res = nand_update_bbt(mtd, ofs);
+	/* Mark block bad in BBT */
+	if (chip->bbt) {
+		res = nand_markbad_bbt(mtd, ofs);
 		if (!ret)
 			ret = res;
 	}
@@ -2683,7 +2691,6 @@ static int nand_block_isbad(struct mtd_info *mtd, loff_t offs)
  */
 static int nand_block_markbad(struct mtd_info *mtd, loff_t ofs)
 {
-	struct nand_chip *chip = mtd->priv;
 	int ret;
 
 	ret = nand_block_isbad(mtd, ofs);
@@ -2694,7 +2701,7 @@ static int nand_block_markbad(struct mtd_info *mtd, loff_t ofs)
 		return ret;
 	}
 
-	return chip->block_markbad(mtd, ofs);
+	return nand_block_markbad_lowlevel(mtd, ofs);
 }
 
 /**
@@ -2841,6 +2848,78 @@ static u16 onfi_crc16(u16 crc, u8 const *p, size_t len)
 	return crc;
 }
 
+/* Parse the Extended Parameter Page. */
+static int nand_flash_detect_ext_param_page(struct mtd_info *mtd,
+		struct nand_chip *chip, struct nand_onfi_params *p)
+{
+	struct onfi_ext_param_page *ep;
+	struct onfi_ext_section *s;
+	struct onfi_ext_ecc_info *ecc;
+	uint8_t *cursor;
+	int ret = -EINVAL;
+	int len;
+	int i;
+
+	len = le16_to_cpu(p->ext_param_page_length) * 16;
+	ep = kmalloc(len, GFP_KERNEL);
+	if (!ep) {
+		ret = -ENOMEM;
+		goto ext_out;
+	}
+
+	/* Send our own NAND_CMD_PARAM. */
+	chip->cmdfunc(mtd, NAND_CMD_PARAM, 0, -1);
+
+	/* Use the Change Read Column command to skip the ONFI param pages. */
+	chip->cmdfunc(mtd, NAND_CMD_RNDOUT,
+			sizeof(*p) * p->num_of_param_pages , -1);
+
+	/* Read out the Extended Parameter Page. */
+	chip->read_buf(mtd, (uint8_t *)ep, len);
+	if ((onfi_crc16(ONFI_CRC_BASE, ((uint8_t *)ep) + 2, len - 2)
+		!= le16_to_cpu(ep->crc))) {
+		pr_debug("fail in the CRC.\n");
+		goto ext_out;
+	}
+
+	/*
+	 * Check the signature.
+	 * Do not strictly follow the ONFI spec, maybe changed in future.
+	 */
+	if (strncmp(ep->sig, "EPPS", 4)) {
+		pr_debug("The signature is invalid.\n");
+		goto ext_out;
+	}
+
+	/* find the ECC section. */
+	cursor = (uint8_t *)(ep + 1);
+	for (i = 0; i < ONFI_EXT_SECTION_MAX; i++) {
+		s = ep->sections + i;
+		if (s->type == ONFI_SECTION_TYPE_2)
+			break;
+		cursor += s->length * 16;
+	}
+	if (i == ONFI_EXT_SECTION_MAX) {
+		pr_debug("We can not find the ECC section.\n");
+		goto ext_out;
+	}
+
+	/* get the info we want. */
+	ecc = (struct onfi_ext_ecc_info *)cursor;
+
+	if (ecc->codeword_size) {
+		chip->ecc_strength_ds = ecc->ecc_bits;
+		chip->ecc_step_ds = 1 << ecc->codeword_size;
+	}
+
+	pr_info("ONFI extended param page detected.\n");
+	return 0;
+
+ext_out:
+	kfree(ep);
+	return ret;
+}
+
 /*
  * Check if the NAND chip is ONFI compliant, returns 1 if it is, 0 otherwise.
  */
@@ -2902,9 +2981,31 @@ static int nand_flash_detect_onfi(struct mtd_info *mtd, struct nand_chip *chip,
 	mtd->oobsize = le16_to_cpu(p->spare_bytes_per_page);
 	chip->chipsize = le32_to_cpu(p->blocks_per_lun);
 	chip->chipsize *= (uint64_t)mtd->erasesize * p->lun_count;
-	*busw = 0;
-	if (le16_to_cpu(p->features) & 1)
+
+	if (onfi_feature(chip) & ONFI_FEATURE_16_BIT_BUS)
 		*busw = NAND_BUSWIDTH_16;
+	else
+		*busw = 0;
+
+	if (p->ecc_bits != 0xff) {
+		chip->ecc_strength_ds = p->ecc_bits;
+		chip->ecc_step_ds = 512;
+	} else if (chip->onfi_version >= 21 &&
+		(onfi_feature(chip) & ONFI_FEATURE_EXT_PARAM_PAGE)) {
+
+		/*
+		 * The nand_flash_detect_ext_param_page() uses the
+		 * Change Read Column command which maybe not supported
+		 * by the chip->cmdfunc. So try to update the chip->cmdfunc
+		 * now. We do not replace user supplied command function.
+		 */
+		if (mtd->writesize > 512 && chip->cmdfunc == nand_command)
+			chip->cmdfunc = nand_command_lp;
+
+		/* The Extended Parameter Page is supported since ONFI 2.1. */
+		if (nand_flash_detect_ext_param_page(mtd, chip, p))
+			pr_info("Failed to detect the extended param page.\n");
+	}
 
 	pr_info("ONFI flash detected\n");
 	return 1;
@@ -3183,6 +3284,8 @@ static bool find_full_id_nand(struct mtd_info *mtd, struct nand_chip *chip,
 		chip->cellinfo = id_data[2];
 		chip->chipsize = (uint64_t)type->chipsize << 20;
 		chip->options |= type->options;
+		chip->ecc_strength_ds = NAND_ECC_STRENGTH(type);
+		chip->ecc_step_ds = NAND_ECC_STEP(type);
 
 		*busw = type->options & NAND_BUSWIDTH_16;
 
