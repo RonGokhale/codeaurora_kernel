@@ -215,6 +215,9 @@ struct kgsl_device {
 void kgsl_process_events(struct work_struct *work);
 void kgsl_check_fences(struct work_struct *work);
 
+/*default log levels is error for everything*/
+#define KGSL_LOG_LEVEL_DEFAULT 3
+
 #define KGSL_DEVICE_COMMON_INIT(_dev) \
 	.hwaccess_gate = COMPLETION_INITIALIZER((_dev).hwaccess_gate),\
 	.suspend_gate = COMPLETION_INITIALIZER((_dev).suspend_gate),\
@@ -231,7 +234,14 @@ void kgsl_check_fences(struct work_struct *work);
 	.mutex = __MUTEX_INITIALIZER((_dev).mutex),\
 	.state = KGSL_STATE_INIT,\
 	.ver_major = DRIVER_VERSION_MAJOR,\
-	.ver_minor = DRIVER_VERSION_MINOR
+	.ver_minor = DRIVER_VERSION_MINOR,\
+	.cmd_log = KGSL_LOG_LEVEL_DEFAULT,\
+	.ctxt_log = KGSL_LOG_LEVEL_DEFAULT,\
+	.drv_log = KGSL_LOG_LEVEL_DEFAULT,\
+	.mem_log = KGSL_LOG_LEVEL_DEFAULT,\
+	.pwr_log = KGSL_LOG_LEVEL_DEFAULT,\
+	.ft_log = KGSL_LOG_LEVEL_DEFAULT,\
+	.pm_dump_enable = 0
 
 
 /**
