@@ -48,6 +48,9 @@ static struct snd_soc_jack hs_jack;
 static struct platform_device *spdev;
 static int ext_spk_amp_gpio = -1;
 
+/* pointers for digital codec register mappings */
+static void __iomem *pcbcr;
+static void __iomem *prcgr;
 
 /*
  * There is limitation for the clock root selection from
@@ -160,10 +163,9 @@ static void msm8x10_enable_ext_spk_power_amp(u32 on)
 
 static int msm_config_mclk(u16 port_id, struct afe_digital_clk_cfg *cfg)
 {
-	iowrite32(0x1, ioremap(MSM8X10_DINO_LPASS_DIGCODEC_CBCR, 4));
+	iowrite32(0x1, pcbcr);
 	/* Set the update bit to make the settings go through */
-	iowrite32(0x1, ioremap(MSM8X10_DINO_LPASS_DIGCODEC_CMD_RCGR, 4));
-
+	iowrite32(0x1, prcgr);
 	return 0;
 
 }
@@ -177,6 +179,39 @@ static int msm_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	pr_debug("%s()\n", __func__);
 	rate->min = rate->max = 48000;
 
+	return 0;
+}
+
+static const char *const btsco_rate_text[] = {"8000", "16000"};
+static const struct soc_enum msm_btsco_enum[] = {
+	SOC_ENUM_SINGLE_EXT(2, btsco_rate_text),
+};
+
+static int msm_btsco_rate_get(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_value *ucontrol)
+{
+	pr_debug("%s: msm_btsco_rate  = %d", __func__, msm_btsco_rate);
+
+	ucontrol->value.integer.value[0] = msm_btsco_rate;
+	return 0;
+}
+
+static int msm_btsco_rate_put(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_value *ucontrol)
+{
+	switch (ucontrol->value.integer.value[0]) {
+	case 8000:
+		msm_btsco_rate = BTSCO_RATE_8KHZ;
+		break;
+	case 16000:
+		msm_btsco_rate = BTSCO_RATE_16KHZ;
+		break;
+	default:
+		msm_btsco_rate = BTSCO_RATE_8KHZ;
+		break;
+	}
+
+	pr_debug("%s: msm_btsco_rate = %d\n", __func__, msm_btsco_rate);
 	return 0;
 }
 
@@ -318,6 +353,11 @@ static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 	return ret;
 }
 
+static const struct snd_kcontrol_new msm_snd_controls[] = {
+	SOC_ENUM_EXT("Internal BTSCO SampleRate", msm_btsco_enum[0],
+		     msm_btsco_rate_get, msm_btsco_rate_put),
+};
+
 static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 {
 
@@ -333,6 +373,11 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 
 	snd_soc_dapm_enable_pin(dapm, "Lineout amp");
 	snd_soc_dapm_sync(dapm);
+
+	ret = snd_soc_add_codec_controls(codec, msm_snd_controls,
+					 ARRAY_SIZE(msm_snd_controls));
+	if (ret < 0)
+		return ret;
 
 	ret = snd_soc_jack_new(codec, "Headset Jack",
 			SND_JACK_HEADSET, &hs_jack);
@@ -758,6 +803,9 @@ static __devinit int msm8x10_asoc_machine_probe(struct platform_device *pdev)
 	if (ret)
 		goto err;
 
+	pcbcr = ioremap(MSM8X10_DINO_LPASS_DIGCODEC_CBCR, 4);
+	prcgr = ioremap(MSM8X10_DINO_LPASS_DIGCODEC_CMD_RCGR, 4);
+
 	spdev = pdev;
 	ret = snd_soc_register_card(card);
 	if (ret) {
@@ -780,6 +828,9 @@ static int __devexit msm8x10_asoc_machine_remove(struct platform_device *pdev)
 		gpio_free(ext_spk_amp_gpio);
 	snd_soc_unregister_card(card);
 	mutex_destroy(&cdc_mclk_mutex);
+
+	iounmap(pcbcr);
+	iounmap(prcgr);
 	return 0;
 }
 

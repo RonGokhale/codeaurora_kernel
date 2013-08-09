@@ -595,7 +595,8 @@ exit_fail:
 	mutex_lock(&mfd->lock);
 	if (pipe->play_cnt == 0) {
 		pr_debug("failed for pipe %d\n", pipe->num);
-		list_del(&pipe->used_list);
+		if (!list_empty(&pipe->used_list))
+			list_del_init(&pipe->used_list);
 		mdss_mdp_pipe_destroy(pipe);
 	}
 
@@ -827,20 +828,17 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd)
 			pipe->params_changed++;
 			buf = &pipe->front_buf;
 		} else if (!pipe->params_changed) {
-			if (pipe->mixer) {
-				if (!mdss_mdp_pipe_is_staged(pipe)) {
-					list_del(&pipe->used_list);
-					list_add(&pipe->cleanup_list,
-						 &mdp5_data->pipes_cleanup);
-				}
+			if (pipe->mixer && !mdss_mdp_pipe_is_staged(pipe) &&
+			    !list_empty(&pipe->used_list)) {
+				list_del_init(&pipe->used_list);
+				list_add(&pipe->cleanup_list,
+					&mdp5_data->pipes_cleanup);
 			}
 			continue;
 		} else if (pipe->front_buf.num_planes) {
 			buf = &pipe->front_buf;
 		} else {
-			pr_warn("pipe queue w/o buffer. unstaging layer\n");
-			pipe->params_changed = 0;
-			mdss_mdp_mixer_pipe_unstage(pipe);
+			pr_warn("pipe queue w/o buffer\n");
 			continue;
 		}
 
@@ -894,9 +892,11 @@ static int mdss_mdp_overlay_release(struct msm_fb_data_type *mfd, int ndx)
 				continue;
 			}
 			mutex_lock(&mfd->lock);
-			list_del(&pipe->used_list);
-			list_add(&pipe->cleanup_list,
-				&mdp5_data->pipes_cleanup);
+			if (!list_empty(&pipe->used_list)) {
+				list_del_init(&pipe->used_list);
+				list_add(&pipe->cleanup_list,
+					&mdp5_data->pipes_cleanup);
+			}
 			mutex_unlock(&mfd->lock);
 			mdss_mdp_mixer_pipe_unstage(pipe);
 			mdss_mdp_pipe_unmap(pipe);
