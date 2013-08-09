@@ -25,7 +25,7 @@
  *
  * Please send any bug reports or fixes you make to the
  * email address(es):
- *    lksctp developers <lksctp-developers@lists.sourceforge.net>
+ *    lksctp developers <linux-sctp@vger.kernel.org>
  *
  * Or submit a bug report through the following website:
  *    http://www.sf.net/projects/lksctp
@@ -83,6 +83,21 @@ static inline __u32 sctp_update_cksum(__u8 *buffer, __u16 length, __u32 crc32)
 static inline __le32 sctp_end_cksum(__u32 crc32)
 {
 	return cpu_to_le32(~crc32);
+}
+
+/* Calculate the CRC32C checksum of an SCTP packet.  */
+static inline __le32 sctp_compute_cksum(const struct sk_buff *skb,
+					unsigned int offset)
+{
+	const struct sk_buff *iter;
+
+	__u32 crc32 = sctp_start_cksum(skb->data + offset,
+				       skb_headlen(skb) - offset);
+	skb_walk_frags(skb, iter)
+		crc32 = sctp_update_cksum((__u8 *) iter->data,
+					  skb_headlen(iter), crc32);
+
+	return sctp_end_cksum(crc32);
 }
 
 #endif /* __sctp_checksum_h__ */
