@@ -15,6 +15,7 @@
 #include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/kprobes.h>
+#include <linux/kdebug.h>
 #include <linux/module.h>
 #include <linux/reboot.h>
 #include <linux/uaccess.h>
@@ -214,6 +215,43 @@ static const char *const int_name[] = {
 #endif
 };
 
+static int do_bpt(struct pt_regs *regs)
+{
+	unsigned long bundle, bcode, bpt;
+
+	bundle = *(unsigned long *)instruction_pointer(regs);
+
+	/*
+	 * bpt shoule be { bpt; nop }, which is 0x286a44ae51485000ULL.
+	 * we encode the unused least significant bits for other purpose.
+	 */
+	bpt = bundle & ~((1ULL << 12) - 1);
+	if (bpt != TILE_BPT_BUNDLE)
+		return 0;
+
+	bcode = bundle & ((1ULL << 12) - 1);
+	/*
+	 * notify the kprobe handlers, if instruction is likely to
+	 * pertain to them.
+	 */
+	switch (bcode) {
+	/* breakpoint_insn */
+	case 0:
+		notify_die(DIE_BREAK, "debug", regs, bundle,
+			INT_ILL, SIGTRAP);
+		break;
+	/* breakpoint2_insn */
+	case DIE_SSTEPBP:
+		notify_die(DIE_SSTEPBP, "single_step", regs, bundle,
+			INT_ILL, SIGTRAP);
+		break;
+	default:
+		return 0;
+	}
+
+	return 1;
+}
+
 void __kprobes do_trap(struct pt_regs *regs, int fault_num,
 		       unsigned long reason)
 {
@@ -233,6 +271,10 @@ void __kprobes do_trap(struct pt_regs *regs, int fault_num,
 	if (!user_mode(regs)) {
 		const char *name;
 		char buf[100];
+		if (fault_num == INT_ILL && do_bpt(regs)) {
+			/* breakpoint */
+			return;
+		}
 		if (fixup_exception(regs))  /* ILL_TRANS or UNALIGN_DATA */
 			return;
 		if (fault_num >= 0 &&
