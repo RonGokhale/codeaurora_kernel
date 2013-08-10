@@ -20,6 +20,9 @@
 #include <linux/hardirq.h>
 #include <linux/ptrace.h>
 #include <hv/hypervisor.h>
+#ifdef CONFIG_KVM
+#include <linux/kvm_host.h>
+#endif
 
 /* Check for compatible compiler early in the build. */
 #ifdef CONFIG_TILEGX
@@ -67,6 +70,10 @@ void foo(void)
 	       offsetof(struct thread_info, unalign_jit_base));
 	DEFINE(THREAD_INFO_UNALIGN_JIT_TMP_OFFSET,
 	       offsetof(struct thread_info, unalign_jit_tmp));
+#endif
+#ifdef CONFIG_KVM
+	DEFINE(THREAD_INFO_VCPU_OFFSET,
+	       offsetof(struct thread_info, vcpu));
 #endif
 
 	DEFINE(TASK_STRUCT_THREAD_KSP_OFFSET,
