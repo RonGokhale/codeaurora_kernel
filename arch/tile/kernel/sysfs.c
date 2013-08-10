@@ -69,7 +69,11 @@ static ssize_t type_show(struct device *dev,
 			    struct device_attribute *attr,
 			    char *page)
 {
+#ifdef CONFIG_KVM_GUEST
+	return sprintf(page, "KVM\n");
+#else
 	return sprintf(page, "tilera\n");
+#endif
 }
 static DEVICE_ATTR(type, 0444, type_show, NULL);
 

@@ -27,6 +27,7 @@
 #include <linux/kernel.h>
 #include <linux/tracehook.h>
 #include <linux/signal.h>
+#include <linux/kvm_host.h>
 #include <asm/stack.h>
 #include <asm/switch_to.h>
 #include <asm/homecache.h>
@@ -247,11 +248,13 @@ struct task_struct *validate_current(void)
 /* Take and return the pointer to the previous task, for schedule_tail(). */
 struct task_struct *sim_notify_fork(struct task_struct *prev)
 {
+#ifndef CONFIG_KVM_GUEST   /* see notify_sim_task_change() */
 	struct task_struct *tsk = current;
 	__insn_mtspr(SPR_SIM_CONTROL, SIM_CONTROL_OS_FORK_PARENT |
 		     (tsk->thread.creator_pid << _SIM_CONTROL_OPERATOR_BITS));
 	__insn_mtspr(SPR_SIM_CONTROL, SIM_CONTROL_OS_FORK |
 		     (tsk->pid << _SIM_CONTROL_OPERATOR_BITS));
+#endif
 	return prev;
 }
 
@@ -450,6 +453,11 @@ void _prepare_arch_switch(struct task_struct *next)
 struct task_struct *__sched _switch_to(struct task_struct *prev,
 				       struct task_struct *next)
 {
+#ifdef CONFIG_KVM
+	/* vmexit is needed before context switch. */
+	BUG_ON(task_thread_info(prev)->vcpu);
+#endif
+
 	/* DMA state is already saved; save off other arch state. */
 	save_arch_state(&prev->thread);
 
@@ -519,6 +527,29 @@ int do_work_pending(struct pt_regs *regs, u32 thread_info_flags)
 	/* Enable interrupts; they are disabled again on return to caller. */
 	local_irq_enable();
 
+#ifdef CONFIG_KVM
+	/*
+	 * Some work requires us to exit the VM first.  Typically this
+	 * allows the process running the VM to respond to the work
+	 * (e.g. a signal), or allows the VM mechanism to latch
+	 * modified host state (e.g. a "hypervisor" message sent to a
+	 * different vcpu).  It also means that if we are considering
+	 * calling schedule(), we exit the VM first, so we never have
+	 * to worry about context-switching into a VM.
+	 */
+	if (current_thread_info()->vcpu) {
+		u32 do_exit = thread_info_flags &
+			(_TIF_NEED_RESCHED|_TIF_SIGPENDING|_TIF_VIRT_EXIT);
+
+		if (thread_info_flags & _TIF_VIRT_EXIT)
+			clear_thread_flag(TIF_VIRT_EXIT);
+		if (do_exit) {
+			kvm_trigger_vmexit(regs, KVM_EXIT_AGAIN);
+			/*NORETURN*/
+		}
+	}
+#endif
+
 	if (thread_info_flags & _TIF_NEED_RESCHED) {
 		schedule();
 		return 1;
@@ -538,11 +569,12 @@ int do_work_pending(struct pt_regs *regs, u32 thread_info_flags)
 		tracehook_notify_resume(regs);
 		return 1;
 	}
-	if (thread_info_flags & _TIF_SINGLESTEP) {
+
+	/* Handle a few flags here that stay set. */
+	if (thread_info_flags & _TIF_SINGLESTEP)
 		single_step_once(regs);
-		return 0;
-	}
-	panic("work_pending: bad flags %#x\n", thread_info_flags);
+
+	return 0;
 }
 
 unsigned long get_wchan(struct task_struct *p)

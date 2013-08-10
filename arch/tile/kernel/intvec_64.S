@@ -29,11 +29,25 @@
 #include <arch/abi.h>
 #include <arch/interrupts.h>
 #include <arch/spr_def.h>
+#include <arch/opcode.h>
+#ifdef CONFIG_KVM
+#include <asm/kvm_host.h>
+#endif
 
 #define PTREGS_PTR(reg, ptreg) addli reg, sp, C_ABI_SAVE_AREA_SIZE + (ptreg)
 
 #define PTREGS_OFFSET_SYSCALL PTREGS_OFFSET_REG(TREG_SYSCALL_NR)
 
+#if CONFIG_KERNEL_PL == 1 || CONFIG_KERNEL_PL == 2
+/*
+ * Set "result" non-zero if ex1 holds the PL of the kernel
+ * (with or without ICS being set).  Note this works only
+ * because we never find the PL at level 3.
+ */
+# define IS_KERNEL_EX1(result, ex1) andi result, ex1, CONFIG_KERNEL_PL
+#else
+# error Recode IS_KERNEL_EX1 for CONFIG_KERNEL_PL
+#endif
 
 	.macro  push_reg reg, ptr=sp, delta=-8
 	{
@@ -308,7 +322,7 @@ intvec_\vecname:
 	 */
 	{
 	 blbs   sp, 2f
-	 andi   r0, r0, SPR_EX_CONTEXT_1_1__PL_MASK  /* mask off ICS */
+	 IS_KERNEL_EX1(r0, r0)
 	}
 
 	.ifc    \vecnum, INT_DOUBLE_FAULT
@@ -347,10 +361,6 @@ intvec_\vecname:
 	 *
 	 * Note that the hypervisor *always* sets SYSTEM_SAVE_K_2 for
 	 * any path that turns into a downcall to one of our TLB handlers.
-	 *
-	 * FIXME: if we end up never using this path, perhaps we should
-	 * prevent the hypervisor from generating downcalls in this case.
-	 * The advantage of getting a downcall is we can panic in Linux.
 	 */
 	mfspr   r0, SPR_SYSTEM_SAVE_K_2
 	{
@@ -490,6 +500,10 @@ intvec_\vecname:
 	mfspr   r2, SPR_SYSTEM_SAVE_K_3   /* address of page fault */
 	mfspr   r3, SPR_SYSTEM_SAVE_K_2   /* info about page fault */
 	.else
+	.ifc \c_routine, kvm_vpgtable_miss
+	mfspr   r2, SPR_SYSTEM_SAVE_K_3   /* address of page fault */
+	mfspr   r3, SPR_SYSTEM_SAVE_K_2   /* info about page fault */
+	.else
 	.ifc \vecnum, INT_ILL_TRANS
 	mfspr   r2, ILL_VA_PC
 	.else
@@ -512,6 +526,7 @@ intvec_\vecname:
 	.endif
 	.endif
 	.endif
+	.endif
 	/* Put function pointer in r0 */
 	moveli  r0, hw2_last(\c_routine)
 	shl16insli r0, r0, hw1(\c_routine)
@@ -525,7 +540,7 @@ intvec_\vecname:
 #ifdef __COLLECT_LINKER_FEEDBACK__
 	.pushsection .text.intvec_feedback,"ax"
 	.org    (\vecnum << 5)
-	FEEDBACK_ENTER_EXPLICIT(intvec_\vecname, .intrpt1, 1 << 8)
+	FEEDBACK_ENTER_EXPLICIT(intvec_\vecname, .intrpt, 1 << 8)
 	jrp     lr
 	.popsection
 #endif
@@ -641,24 +656,25 @@ intvec_\vecname:
 	/*
 	 * If we will be returning to the kernel, we will need to
 	 * reset the interrupt masks to the state they had before.
-	 * Set DISABLE_IRQ in flags iff we came from PL1 with irqs disabled.
+	 * Set DISABLE_IRQ in flags iff we came from kernel pl with
+	 * irqs disabled.
 	 */
-	mfspr   r32, SPR_EX_CONTEXT_K_1
+	mfspr   r22, SPR_EX_CONTEXT_K_1
 	{
-	 andi   r32, r32, SPR_EX_CONTEXT_1_1__PL_MASK  /* mask off ICS */
+	 IS_KERNEL_EX1(r22, r22)
 	 PTREGS_PTR(r21, PTREGS_OFFSET_FLAGS)
 	}
-	beqzt   r32, 1f       /* zero if from user space */
-	IRQS_DISABLED(r32)    /* zero if irqs enabled */
+	beqzt  r22, 1f        /* zero if from user space */
+	IRQS_DISABLED(r22)    /* zero if irqs enabled */
 #if PT_FLAGS_DISABLE_IRQ != 1
 # error Value of IRQS_DISABLED used to set PT_FLAGS_DISABLE_IRQ; fix
 #endif
 1:
 	.ifnc \function,handle_syscall
 	/* Record the fact that we saved the caller-save registers above. */
-	ori     r32, r32, PT_FLAGS_CALLER_SAVES
+	ori     r22, r22, PT_FLAGS_CALLER_SAVES
 	.endif
-	st      r21, r32
+	st      r21, r22
 
 	/*
 	 * we've captured enough state to the stack (including in
@@ -698,29 +714,6 @@ intvec_\vecname:
 	move    tp, zero
 #endif
 
-#ifdef __COLLECT_LINKER_FEEDBACK__
-	/*
-	 * Notify the feedback routines that we were in the
-	 * appropriate fixed interrupt vector area.  Note that we
-	 * still have ICS set at this point, so we can't invoke any
-	 * atomic operations or we will panic.  The feedback
-	 * routines internally preserve r0..r10 and r30 up.
-	 */
-	.ifnc \function,handle_syscall
-	shli    r20, r1, 5
-	.else
-	moveli  r20, INT_SWINT_1 << 5
-	.endif
-	moveli  r21, hw2_last(intvec_feedback)
-	shl16insli r21, r21, hw1(intvec_feedback)
-	shl16insli r21, r21, hw0(intvec_feedback)
-	add     r20, r20, r21
-	jalr    r20
-
-	/* And now notify the feedback routines that we are here. */
-	FEEDBACK_ENTER(\function)
-#endif
-
 	/*
 	 * Prepare the first 256 stack bytes to be rapidly accessible
 	 * without having to fetch the background data.
@@ -740,6 +733,38 @@ intvec_\vecname:
 	}
 	wh64    r52
 
+#ifdef __COLLECT_LINKER_FEEDBACK__
+	/*
+	 * Notify the feedback routines that we were in the
+	 * appropriate fixed interrupt vector area.  The feedback
+	 * routines internally preserve r0..r10 and r30 up.
+	 */
+	.ifnc \function,handle_syscall
+	shli    r20, r1, 5
+	.else
+	moveli  r20, INT_SWINT_1 << 5
+	.endif
+	moveli  r21, hw2_last(intvec_feedback)
+	shl16insli r21, r21, hw1(intvec_feedback)
+	shl16insli r21, r21, hw0(intvec_feedback)
+	add     r20, r20, r21
+	jalr    r20
+
+	/* And now notify the feedback routines that we are here. */
+	FEEDBACK_ENTER(\function)
+#endif
+
+	/*
+	 * Stash any interrupt state in r30..r33 for now.
+	 * This makes it easier to call C code in the code that follows.
+	 * We don't need to on the syscall path since we reload
+	 * them from the stack instead.
+	 */
+	.ifnc \function,handle_syscall
+	{ move r30, r0; move r31, r1 }
+	{ move r32, r2; move r33, r3 }
+	.endif
+
 #ifdef CONFIG_TRACE_IRQFLAGS
 	.ifnc \function,handle_nmi
 	/*
@@ -749,17 +774,8 @@ intvec_\vecname:
 	 * For syscalls, we already have the register state saved away
 	 * on the stack, so we don't bother to do any register saves here,
 	 * and later we pop the registers back off the kernel stack.
-	 * For interrupt handlers, save r0-r3 in callee-saved registers.
 	 */
-	.ifnc \function,handle_syscall
-	{ move r30, r0; move r31, r1 }
-	{ move r32, r2; move r33, r3 }
-	.endif
 	TRACE_IRQS_OFF
-	.ifnc \function,handle_syscall
-	{ move r0, r30; move r1, r31 }
-	{ move r2, r32; move r3, r33 }
-	.endif
 	.endif
 #endif
 
@@ -808,11 +824,11 @@ handle_interrupt:
 STD_ENTRY(interrupt_return)
 	/* If we're resuming to kernel space, don't check thread flags. */
 	{
-	 bnez   r30, .Lrestore_all  /* NMIs don't special-case user-space */
+	 bnez   r30, restore_all  /* NMIs don't special-case user-space */
 	 PTREGS_PTR(r29, PTREGS_OFFSET_EX1)
 	}
 	ld      r29, r29
-	andi    r29, r29, SPR_EX_CONTEXT_1_1__PL_MASK  /* mask off ICS */
+	IS_KERNEL_EX1(r29, r29)
 	{
 	 beqzt  r29, .Lresume_userspace
 	 move   r29, sp
@@ -824,14 +840,25 @@ STD_ENTRY(interrupt_return)
 	addli   r28, r29, THREAD_INFO_FLAGS_OFFSET
 	{
 	 ld     r28, r28
-	 addli  r29, r29, THREAD_INFO_PREEMPT_COUNT_OFFSET
+	 addli  r26, r29, THREAD_INFO_PREEMPT_COUNT_OFFSET
 	}
 	{
-	 andi   r28, r28, _TIF_NEED_RESCHED
-	 ld4s   r29, r29
+	 andi   r27, r28, _TIF_NEED_RESCHED
+	 ld4s   r26, r26
 	}
-	beqzt   r28, 1f
-	bnez    r29, 1f
+	beqzt   r27, 1f
+	bnez    r26, 1f
+#ifdef CONFIG_KVM
+	addli   r27, r29, THREAD_INFO_VCPU_OFFSET
+	ld	r27, r27
+	{
+	 beqzt  r27, 0f
+	 movei  r1, KVM_EXIT_AGAIN
+	}
+	push_extra_callee_saves r0
+	j       kvm_trigger_vmexit
+0:
+#endif
 	jal     preempt_schedule_irq
 	FEEDBACK_REENTER(interrupt_return)
 1:
@@ -853,11 +880,11 @@ STD_ENTRY(interrupt_return)
 	 cmpeq  r27, r27, r28
 	}
 	{
-	 blbc   r27, .Lrestore_all
+	 blbc   r27, restore_all
 	 addi   r28, r28, 8
 	}
 	st      r29, r28
-	j       .Lrestore_all
+	j       restore_all
 
 .Lresume_userspace:
 	FEEDBACK_REENTER(interrupt_return)
@@ -897,7 +924,7 @@ STD_ENTRY(interrupt_return)
 	 shl16insli r1, r1, hw0(_TIF_ALLWORK_MASK)
 	}
 	and     r1, r29, r1
-	beqzt   r1, .Lrestore_all
+	beqzt   r1, restore_all
 
 	/*
 	 * Make sure we have all the registers saved for signal
@@ -929,14 +956,16 @@ STD_ENTRY(interrupt_return)
 	 * ICS can only be used in very tight chunks of code to avoid
 	 * tripping over various assertions that it is off.
 	 */
-.Lrestore_all:
+	.global restore_all
+	.type restore_all, @function
+restore_all:
 	PTREGS_PTR(r0, PTREGS_OFFSET_EX1)
 	{
 	 ld      r0, r0
 	 PTREGS_PTR(r32, PTREGS_OFFSET_FLAGS)
 	}
 	{
-	 andi   r0, r0, SPR_EX_CONTEXT_1_1__PL_MASK
+	 IS_KERNEL_EX1(r0, r0)
 	 ld     r32, r32
 	}
 	bnez    r0, 1f
@@ -1007,7 +1036,7 @@ STD_ENTRY(interrupt_return)
 	pop_reg r21, sp, PTREGS_OFFSET_REG(31) - PTREGS_OFFSET_PC
 	{
 	 mtspr  SPR_EX_CONTEXT_K_1, lr
-	 andi   lr, lr, SPR_EX_CONTEXT_1_1__PL_MASK  /* mask off ICS */
+	 IS_KERNEL_EX1(lr, lr)
 	}
 	{
 	 mtspr  SPR_EX_CONTEXT_K_0, r21
@@ -1457,6 +1486,26 @@ int_unalign:
 	j       do_unaligned
 ENDPROC(hand_unalign_slow)
 
+#ifdef CONFIG_KVM
+/*
+ * Any call path that may lead to a vmexit needs to save the full
+ * callee-save register state, since if we vmexit we don't unwind
+ * the callee-saves from the C function stack frames, and instead
+ * just save away the register state from the interrupt handler as-is
+ * and later reload it directly and call back into the guest.
+ */
+	.macro  save_callee_saves_and_tailcall func
+kvm_\func:
+	push_extra_callee_saves r0
+	j       kvm_do_\func
+	ENDPROC(\func)
+	.endm
+
+	save_callee_saves_and_tailcall hypervisor_call
+	save_callee_saves_and_tailcall vpgtable_miss
+	save_callee_saves_and_tailcall vguest_fatal
+#endif
+
 /* Fill the return address stack with nonzero entries. */
 STD_ENTRY(fill_ra_stack)
 	{
@@ -1469,19 +1518,68 @@ STD_ENTRY(fill_ra_stack)
 4:	jrp	r0
 	STD_ENDPROC(fill_ra_stack)
 
+#ifdef CONFIG_KVM
+/*
+ * Handle the downcall dispatch service.  On entry, the client's
+ * system save register 3 holds the original contents of
+ * REG_SYSCALL_NR_NAME, which we need to restore before we iret to
+ * the correct interrupt vector.
+ * Note that we only support the INT_MESSAGE_RCV_DWNCL interrupt
+ * here, since this is the only interrupt handled this way on GX.
+ */
+handle_downcall_dispatch:
+	/*
+	 * If we were called from PL0, jump back to slow path.
+	 * We check just the low bit to make sure it's set, since we
+	 * can only be called from PL0 or PL1.
+	 */
+	mfspr	TREG_SYSCALL_NR_NAME, SPR_EX_CONTEXT_K_1
+	blbc	TREG_SYSCALL_NR_NAME, intvec_SWINT_0
+
+	/* Set the PC to the downcall interrupt vector, and PL to guest. */
+	mfspr	TREG_SYSCALL_NR_NAME, SPR_INTERRUPT_VECTOR_BASE_1
+	addli	TREG_SYSCALL_NR_NAME, TREG_SYSCALL_NR_NAME, \
+	 	INT_MESSAGE_RCV_DWNCL << 8
+	{
+	 mtspr	SPR_EX_CONTEXT_K_0, TREG_SYSCALL_NR_NAME
+	 movei	TREG_SYSCALL_NR_NAME, GUEST_PL | SPR_EX_CONTEXT_1_1__ICS_MASK
+	}
+	mtspr	SPR_EX_CONTEXT_K_1, TREG_SYSCALL_NR_NAME
+
+	/* Restore REG_SYSCALL_NR_NAME and return to the new vector. */
+	mfspr	TREG_SYSCALL_NR_NAME, SPR_SYSTEM_SAVE_1_3
+	iret
+
+	.macro int_hand_kvm_hcall  vecnum, vecname, c_routine, \
+	       processing=handle_interrupt
+	.org   (\vecnum << 8)
+		/* Need special code for downcall dispatch syscall. */
+		beqz TREG_SYSCALL_NR_NAME, handle_downcall_dispatch
+		__int_hand   \vecnum, \vecname, \c_routine, \processing
+	.endm
+
+#endif /* CONFIG_KVM */
+
 	.macro int_hand  vecnum, vecname, c_routine, processing=handle_interrupt
 	.org   (\vecnum << 8)
 		__int_hand   \vecnum, \vecname, \c_routine, \processing
 	.endm
 
-/* Include .intrpt1 array of interrupt vectors */
-	.section ".intrpt1", "ax"
+/* Include .intrpt array of interrupt vectors */
+	.section ".intrpt", "ax"
+	.global intrpt_start
+intrpt_start:
 
 #define op_handle_perf_interrupt bad_intr
 #define op_handle_aux_perf_interrupt bad_intr
 
 #ifndef CONFIG_HARDWALL
 #define do_hardwall_trap bad_intr
+#endif
+
+#ifndef CONFIG_KVM
+#define kvm_vpgtable_miss bad_intr
+#define kvm_vguest_fatal bad_intr
 #endif
 
 	int_hand     INT_MEM_ERROR, MEM_ERROR, do_trap
@@ -1504,14 +1602,24 @@ STD_ENTRY(fill_ra_stack)
 	int_hand     INT_SWINT_3, SWINT_3, do_trap
 	int_hand     INT_SWINT_2, SWINT_2, do_trap
 	int_hand     INT_SWINT_1, SWINT_1, SYSCALL, handle_syscall
+#ifdef CONFIG_KVM
+	int_hand_kvm_hcall INT_SWINT_0, SWINT_0, kvm_hypervisor_call
+#else
 	int_hand     INT_SWINT_0, SWINT_0, do_trap
+#endif
 	int_hand     INT_ILL_TRANS, ILL_TRANS, do_trap
 	int_hand_unalign_fast INT_UNALIGN_DATA, UNALIGN_DATA
 	int_hand     INT_DTLB_MISS, DTLB_MISS, do_page_fault
 	int_hand     INT_DTLB_ACCESS, DTLB_ACCESS, do_page_fault
 	int_hand     INT_IDN_FIREWALL, IDN_FIREWALL, do_hardwall_trap
 	int_hand     INT_UDN_FIREWALL, UDN_FIREWALL, do_hardwall_trap
+#ifndef CONFIG_KVM_GUEST
 	int_hand     INT_TILE_TIMER, TILE_TIMER, do_timer_interrupt
+	int_hand     INT_AUX_TILE_TIMER, AUX_TILE_TIMER, bad_intr
+#else
+	int_hand     INT_TILE_TIMER, TILE_TIMER, bad_intr
+	int_hand     INT_AUX_TILE_TIMER, AUX_TILE_TIMER, do_timer_interrupt
+#endif
 	int_hand     INT_IDN_TIMER, IDN_TIMER, bad_intr
 	int_hand     INT_UDN_TIMER, UDN_TIMER, bad_intr
 	int_hand     INT_IDN_AVAIL, IDN_AVAIL, bad_intr
@@ -1541,8 +1649,10 @@ STD_ENTRY(fill_ra_stack)
 	int_hand     INT_MESSAGE_RCV_DWNCL, MESSAGE_RCV_DWNCL, \
 		     hv_message_intr
 	int_hand     INT_DEV_INTR_DWNCL, DEV_INTR_DWNCL, bad_intr
-	int_hand     INT_I_ASID, I_ASID, bad_intr
-	int_hand     INT_D_ASID, D_ASID, bad_intr
+	int_hand     INT_VPGTABLE_MISS_DWNCL, VPGTABLE_MISS_DWNCL, \
+	             kvm_vpgtable_miss
+	int_hand     INT_VGUEST_FATAL_DWNCL, VGUEST_FATAL_DWNCL, \
+		     kvm_vguest_fatal
 	int_hand     INT_DOUBLE_FAULT, DOUBLE_FAULT, do_trap
 
 	/* Synthetic interrupt delivered only by the simulator */

@@ -353,7 +353,7 @@ intvec_\vecname:
 #ifdef __COLLECT_LINKER_FEEDBACK__
 	.pushsection .text.intvec_feedback,"ax"
 	.org    (\vecnum << 5)
-	FEEDBACK_ENTER_EXPLICIT(intvec_\vecname, .intrpt1, 1 << 8)
+	FEEDBACK_ENTER_EXPLICIT(intvec_\vecname, .intrpt, 1 << 8)
 	jrp     lr
 	.popsection
 #endif
@@ -806,7 +806,7 @@ handle_interrupt:
 STD_ENTRY(interrupt_return)
 	/* If we're resuming to kernel space, don't check thread flags. */
 	{
-	 bnz    r30, .Lrestore_all  /* NMIs don't special-case user-space */
+	 bnz    r30, restore_all  /* NMIs don't special-case user-space */
 	 PTREGS_PTR(r29, PTREGS_OFFSET_EX1)
 	}
 	lw      r29, r29
@@ -845,11 +845,11 @@ STD_ENTRY(interrupt_return)
 	 seq    r27, r27, r28
 	}
 	{
-	 bbns   r27, .Lrestore_all
+	 bbns   r27, restore_all
 	 addi   r28, r28, 8
 	}
 	sw      r29, r28
-	j       .Lrestore_all
+	j       restore_all
 
 .Lresume_userspace:
 	FEEDBACK_REENTER(interrupt_return)
@@ -887,7 +887,7 @@ STD_ENTRY(interrupt_return)
 	 auli   r1, r1, ha16(_TIF_ALLWORK_MASK)
 	}
 	and     r1, r29, r1
-	bzt     r1, .Lrestore_all
+	bzt     r1, restore_all
 
 	/*
 	 * Make sure we have all the registers saved for signal
@@ -926,7 +926,9 @@ STD_ENTRY(interrupt_return)
 	 * profile interrupt will actually disable interrupts in both SPRs
 	 * before returning, which is OK.)
 	 */
-.Lrestore_all:
+	.global restore_all
+	.type restore_all, @function
+restore_all:
 	PTREGS_PTR(r0, PTREGS_OFFSET_EX1)
 	{
 	 lw     r0, r0
@@ -1890,8 +1892,8 @@ int_unalign:
 	push_extra_callee_saves r0
 	j       do_trap
 
-/* Include .intrpt1 array of interrupt vectors */
-	.section ".intrpt1", "ax"
+/* Include .intrpt array of interrupt vectors */
+	.section ".intrpt", "ax"
 
 #define op_handle_perf_interrupt bad_intr
 #define op_handle_aux_perf_interrupt bad_intr

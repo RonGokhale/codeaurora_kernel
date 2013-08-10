@@ -43,6 +43,8 @@
  * long before casting it to a pointer to avoid compiler warnings.
  */
 #if CHIP_HAS_MMIO()
+extern void *generic_remap_prot(resource_size_t phys_addr, unsigned long size,
+	unsigned long flags, pgprot_t prot);
 extern void __iomem *ioremap(resource_size_t offset, unsigned long size);
 extern void __iomem *ioremap_prot(resource_size_t offset, unsigned long size,
 	pgprot_t pgprot);

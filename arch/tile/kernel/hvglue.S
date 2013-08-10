@@ -71,5 +71,11 @@ gensym hv_flush_all, 0x6e0, 32
 gensym hv_get_ipi_pte, 0x700, 32
 gensym hv_set_pte_super_shift, 0x720, 32
 gensym hv_set_speed, 0x740, 32
+gensym hv_install_virt_context, 0x760, 32
+gensym hv_inquire_virt_context, 0x780, 32
+gensym hv_install_guest_context, 0x7a0, 32
+gensym hv_inquire_guest_context, 0x7c0, 32
 gensym hv_console_set_ipi, 0x7e0, 32
-gensym hv_glue_internals, 0x800, 30720
+gensym hv_glue_internals, 0x800, 2048
+gensym hcall_virtio, 0x1000, 32
+gensym hv_hcall_internals, 0x1020, 28640
