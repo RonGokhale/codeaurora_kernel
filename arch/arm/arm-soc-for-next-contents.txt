@@ -24,6 +24,8 @@ next/cleanup
 		ARM: imx: fix mismerge of localtimer code
 	renesas/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-cleanup-for-v3.12
+	omap/remove-defines
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.12/cleanup-unused-defines
 
 next/boards
 	renesas/backlight
