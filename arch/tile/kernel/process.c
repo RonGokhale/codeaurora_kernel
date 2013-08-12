@@ -550,6 +550,9 @@ int do_work_pending(struct pt_regs *regs, u32 thread_info_flags)
 	}
 #endif
 
+	/* Enable interrupts; they are disabled again on return to caller. */
+	local_irq_enable();
+
 	if (thread_info_flags & _TIF_NEED_RESCHED) {
 		schedule();
 		return 1;
