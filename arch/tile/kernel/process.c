@@ -33,6 +33,7 @@
 #include <asm/syscalls.h>
 #include <asm/traps.h>
 #include <asm/setup.h>
+#include <asm/uaccess.h>
 #ifdef CONFIG_HARDWALL
 #include <asm/hardwall.h>
 #endif
@@ -73,19 +74,6 @@ void arch_cpu_idle(void)
 void arch_release_thread_info(struct thread_info *info)
 {
 	struct single_step_state *step_state = info->step_state;
-
-#ifdef CONFIG_HARDWALL
-	/*
-	 * We free a thread_info from the context of the task that has
-	 * been scheduled next, so the original task is already dead.
-	 * Calling deactivate here just frees up the data structures.
-	 * If the task we're freeing held the last reference to a
-	 * hardwall fd, it would have been released prior to this point
-	 * anyway via exit_files(), and the hardwall_task.info pointers
-	 * would be NULL by now.
-	 */
-	hardwall_deactivate_all(info->task);
-#endif
 
 	if (step_state) {
 
@@ -160,6 +148,14 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 	 */
 	task_thread_info(p)->step_state = NULL;
 
+#ifdef __tilegx__
+	/*
+	 * Do not clone unalign jit fixup from the parent; each thread
+	 * must allocate its own on demand.
+	 */
+	task_thread_info(p)->unalign_jit_base = NULL;
+#endif
+
 	/*
 	 * Copy the registers onto the kernel stack so the
 	 * return-from-interrupt code will reload it into registers.
@@ -216,6 +212,18 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 	save_arch_state(&p->thread);
 
 	return 0;
+}
+
+int set_unalign_ctl(struct task_struct *tsk, unsigned int val)
+{
+	task_thread_info(tsk)->align_ctl = val;
+	return 0;
+}
+
+int get_unalign_ctl(struct task_struct *tsk, unsigned long adr)
+{
+	return put_user(task_thread_info(tsk)->align_ctl,
+			(unsigned int __user *)adr);
 }
 
 /*
@@ -564,7 +572,15 @@ void flush_thread(void)
  */
 void exit_thread(void)
 {
-	/* Nothing */
+#ifdef CONFIG_HARDWALL
+	/*
+	 * Remove the task from the list of tasks that are associated
+	 * with any live hardwalls.  (If the task that is exiting held
+	 * the last reference to a hardwall fd, it would already have
+	 * been released and deactivated at this point.)
+	 */
+	hardwall_deactivate_all(current);
+#endif
 }
 
 void show_regs(struct pt_regs *regs)
@@ -575,21 +591,21 @@ void show_regs(struct pt_regs *regs)
 	pr_err("\n");
 	show_regs_print_info(KERN_ERR);
 #ifdef __tilegx__
-	for (i = 0; i < 51; i += 3)
+	for (i = 0; i < 17; i++)
 		pr_err(" r%-2d: "REGFMT" r%-2d: "REGFMT" r%-2d: "REGFMT"\n",
-		       i, regs->regs[i], i+1, regs->regs[i+1],
-		       i+2, regs->regs[i+2]);
-	pr_err(" r51: "REGFMT" r52: "REGFMT" tp : "REGFMT"\n",
-	       regs->regs[51], regs->regs[52], regs->tp);
+		       i, regs->regs[i], i+18, regs->regs[i+18],
+		       i+36, regs->regs[i+36]);
+	pr_err(" r17: "REGFMT" r35: "REGFMT" tp : "REGFMT"\n",
+	       regs->regs[17], regs->regs[35], regs->tp);
 	pr_err(" sp : "REGFMT" lr : "REGFMT"\n", regs->sp, regs->lr);
 #else
-	for (i = 0; i < 52; i += 4)
+	for (i = 0; i < 13; i++)
 		pr_err(" r%-2d: "REGFMT" r%-2d: "REGFMT
 		       " r%-2d: "REGFMT" r%-2d: "REGFMT"\n",
-		       i, regs->regs[i], i+1, regs->regs[i+1],
-		       i+2, regs->regs[i+2], i+3, regs->regs[i+3]);
-	pr_err(" r52: "REGFMT" tp : "REGFMT" sp : "REGFMT" lr : "REGFMT"\n",
-	       regs->regs[52], regs->tp, regs->sp, regs->lr);
+		       i, regs->regs[i], i+14, regs->regs[i+14],
+		       i+27, regs->regs[i+27], i+40, regs->regs[i+40]);
+	pr_err(" r13: "REGFMT" tp : "REGFMT" sp : "REGFMT" lr : "REGFMT"\n",
+	       regs->regs[13], regs->tp, regs->sp, regs->lr);
 #endif
 	pr_err(" pc : "REGFMT" ex1: %ld     faultnum: %ld\n",
 	       regs->pc, regs->ex1, regs->faultnum);

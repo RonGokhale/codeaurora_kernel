@@ -318,8 +318,14 @@
 /** hv_set_pte_super_shift */
 #define HV_DISPATCH_SET_PTE_SUPER_SHIFT           57
 
+/** hv_set_speed */
+#define HV_DISPATCH_SET_SPEED                     58
+
+/** hv_console_set_ipi */
+#define HV_DISPATCH_CONSOLE_SET_IPI               63
+
 /** One more than the largest dispatch value */
-#define _HV_DISPATCH_END                          58
+#define _HV_DISPATCH_END                          64
 
 
 #ifndef __ASSEMBLER__
@@ -561,16 +567,11 @@ int hv_confstr(HV_ConfstrQuery query, HV_VirtAddr buf, int len);
 /** Tile coordinate */
 typedef struct
 {
-#ifndef __BIG_ENDIAN__
   /** X coordinate, relative to supervisor's top-left coordinate */
   int x;
 
   /** Y coordinate, relative to supervisor's top-left coordinate */
   int y;
-#else
-  int y;
-  int x;
-#endif
 } HV_Coord;
 
 
@@ -584,6 +585,30 @@ typedef struct
  * @result Zero if no error, non-zero for invalid parameters.
  */
 int hv_get_ipi_pte(HV_Coord tile, int pl, HV_PTE* pte);
+
+/** Configure the console interrupt.
+ *
+ * When the console client interrupt is enabled, the hypervisor will
+ * deliver the specified IPI to the client in the following situations:
+ *
+ * - The console has at least one character available for input.
+ *
+ * - The console can accept new characters for output, and the last call
+ *   to hv_console_write() did not write all of the characters requested
+ *   by the client.
+ *
+ * Note that in some system configurations, console interrupt will not
+ * be available; clients should be prepared for this routine to fail and
+ * to fall back to periodic console polling in that case.
+ *
+ * @param ipi Index of the IPI register which will receive the interrupt.
+ * @param event IPI event number for console interrupt. If less than 0,
+ *        disable the console IPI interrupt.
+ * @param coord Tile to be targeted for console interrupt.
+ * @return 0 on success, otherwise, HV_EINVAL if illegal parameter,
+ *         HV_ENOTSUP if console interrupt are not available.
+ */
+int hv_console_set_ipi(int ipi, int event, HV_Coord coord);
 
 #else /* !CHIP_HAS_IPI() */
 
@@ -688,6 +713,43 @@ HV_RTCTime hv_get_rtc(void);
  * @param time time to reset time-of-day to (GMT).
  */
 void hv_set_rtc(HV_RTCTime time);
+
+
+/** Value returned from hv_set_speed(). */
+typedef struct {
+  /** The new speed achieved, in Hertz, or a negative error code. */
+  long new_speed;
+
+  /** A cycle counter value, in the post-speed-change time domain. */
+  __hv64 end_cycle;
+
+  /** Time elapsed in nanoseconds between start_cycle (passed to
+   *  hv_set_speed(), in the pre-speed-change time domain) and end_cycle
+   *  (returned in this structure). */
+  __hv64 delta_ns;
+} HV_SetSpeed;
+
+
+/** Set the processor clock speed.
+ * @param speed Clock speed in hertz.
+ * @param start_cycle Initial cycle counter value; see the definition of
+ *  HV_SetSpeed for how this is used.
+ * @param flags Flags (HV_SET_SPEED_xxx).
+ * @return A HV_SetSpeed structure.
+ */
+HV_SetSpeed hv_set_speed(unsigned long speed, __hv64 start_cycle,
+                         unsigned long flags);
+
+/** Don't set the speed, just check the value and return the speed we would
+ *  have set if this flag had not been specified.  When this flag is
+ *  specified, the start_cycle parameter is ignored, and the end_cycle and
+ *  delta_ns values in the HV_SetSpeed structure are undefined. */
+#define HV_SET_SPEED_DRYRUN   0x1
+
+/** If the precise speed specified is not supported by the hardware, round
+ *  it up to the next higher supported frequency if necessary; without this
+ *  flag, we round down. */
+#define HV_SET_SPEED_ROUNDUP  0x2
 
 /** Installs a context, comprising a page table and other attributes.
  *
@@ -1092,13 +1154,8 @@ HV_VirtAddrRange hv_inquire_virtual(int idx);
 /** A range of ASID values. */
 typedef struct
 {
-#ifndef __BIG_ENDIAN__
   HV_ASID start;        /**< First ASID in the range. */
   unsigned int size;    /**< Number of ASIDs. Zero for an invalid range. */
-#else
-  unsigned int size;    /**< Number of ASIDs. Zero for an invalid range. */
-  HV_ASID start;        /**< First ASID in the range. */
-#endif
 } HV_ASIDRange;
 
 /** Returns information about a range of ASIDs.
@@ -1422,7 +1479,6 @@ typedef enum
 /** Message recipient. */
 typedef struct
 {
-#ifndef __BIG_ENDIAN__
   /** X coordinate, relative to supervisor's top-left coordinate */
   unsigned int x:11;
 
@@ -1431,11 +1487,6 @@ typedef struct
 
   /** Status of this recipient */
   HV_Recip_State state:10;
-#else //__BIG_ENDIAN__
-  HV_Recip_State state:10;
-  unsigned int y:11;
-  unsigned int x:11;
-#endif
 } HV_Recipient;
 
 /** Send a message to a set of recipients.

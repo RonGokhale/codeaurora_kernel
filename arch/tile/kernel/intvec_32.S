@@ -28,10 +28,6 @@
 #include <arch/interrupts.h>
 #include <arch/spr_def.h>
 
-#ifdef CONFIG_PREEMPT
-# error "No support for kernel preemption currently"
-#endif
-
 #define PTREGS_PTR(reg, ptreg) addli reg, sp, C_ABI_SAVE_AREA_SIZE + (ptreg)
 
 #define PTREGS_OFFSET_SYSCALL PTREGS_OFFSET_REG(TREG_SYSCALL_NR)
@@ -762,7 +758,7 @@ intvec_\vecname:
 	.macro  dc_dispatch vecnum, vecname
 	.org    (\vecnum << 8)
 intvec_\vecname:
-	j       hv_downcall_dispatch
+	j       _hv_downcall_dispatch
 	ENDPROC(intvec_\vecname)
 	.endm
 
@@ -812,17 +808,34 @@ STD_ENTRY(interrupt_return)
 	}
 	lw      r29, r29
 	andi    r29, r29, SPR_EX_CONTEXT_1_1__PL_MASK  /* mask off ICS */
+	bzt     r29, .Lresume_userspace
+
+#ifdef CONFIG_PREEMPT
+	/* Returning to kernel space. Check if we need preemption. */
+	GET_THREAD_INFO(r29)
+	addli   r28, r29, THREAD_INFO_FLAGS_OFFSET
 	{
-	 bzt    r29, .Lresume_userspace
-	 PTREGS_PTR(r29, PTREGS_OFFSET_PC)
+	 lw     r28, r28
+	 addli  r29, r29, THREAD_INFO_PREEMPT_COUNT_OFFSET
 	}
+	{
+	 andi   r28, r28, _TIF_NEED_RESCHED
+	 lw     r29, r29
+	}
+	bzt     r28, 1f
+	bnz     r29, 1f
+	jal     preempt_schedule_irq
+	FEEDBACK_REENTER(interrupt_return)
+1:
+#endif
 
 	/* If we're resuming to _cpu_idle_nap, bump PC forward by 8. */
 	{
-	 lw     r28, r29
+	 PTREGS_PTR(r29, PTREGS_OFFSET_PC)
 	 moveli r27, lo16(_cpu_idle_nap)
 	}
 	{
+	 lw     r28, r29
 	 auli   r27, r27, ha16(_cpu_idle_nap)
 	}
 	{
@@ -1420,7 +1433,6 @@ handle_ill:
 	{
 	 lw     r0, r0          /* indirect thru thread_info to get task_info*/
 	 addi   r1, sp, C_ABI_SAVE_AREA_SIZE  /* put ptregs pointer into r1 */
-	 move   r2, zero        /* load error code into r2 */
 	}
 
 	jal     send_sigtrap    /* issue a SIGTRAP */
@@ -1609,7 +1621,7 @@ ENTRY(sys_cmpxchg)
 	  * Because of C pointer arithmetic, we want to compute this:
 	  *
 	  * ((char*)atomic_locks +
-	  *  (((r0 >> 3) & (1 << (ATOMIC_HASH_SIZE - 1))) << 2))
+	  *  (((r0 >> 3) & ((1 << ATOMIC_HASH_SHIFT) - 1)) << 2))
 	  *
 	  * Instead of two shifts we just ">> 1", and use 'mm'
 	  * to ignore the low and high bits we don't want.

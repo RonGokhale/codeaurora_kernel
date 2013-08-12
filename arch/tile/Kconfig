@@ -64,6 +64,9 @@ config HUGETLB_SUPER_PAGES
 	depends on HUGETLB_PAGE && TILEGX
 	def_bool y
 
+config GENERIC_TIME_VSYSCALL
+	def_bool y
+
 # FIXME: tilegx can implement a more efficient rwsem.
 config RWSEM_GENERIC_SPINLOCK
 	def_bool y
@@ -112,10 +115,18 @@ config SMP
 config HVC_TILE
 	depends on TTY
 	select HVC_DRIVER
+	select HVC_IRQ if TILEGX
 	def_bool y
 
 config TILEGX
-	bool "Building with TILE-Gx (64-bit) compiler and toolchain"
+	bool "Building for TILE-Gx (64-bit) processor"
+	select HAVE_FUNCTION_TRACER
+	select HAVE_FUNCTION_TRACE_MCOUNT_TEST
+	select HAVE_FUNCTION_GRAPH_TRACER
+	select HAVE_DYNAMIC_FTRACE
+	select HAVE_FTRACE_MCOUNT_RECORD
+	select HAVE_KPROBES
+	select HAVE_KRETPROBES
 
 config TILEPRO
 	def_bool !TILEGX
@@ -300,6 +311,8 @@ config PAGE_OFFSET
 
 source "mm/Kconfig"
 
+source "kernel/Kconfig.preempt"
+
 config CMDLINE_BOOL
 	bool "Built-in kernel command line"
 	default n
@@ -396,7 +409,19 @@ config NO_IOMEM
 config NO_IOPORT
 	def_bool !PCI
 
+config TILE_PCI_IO
+	bool "PCI I/O space support"
+	default n
+	depends on PCI
+	depends on TILEGX
+	---help---
+	  Enable PCI I/O space support on TILEGx. Since the PCI I/O space
+	  is used by few modern PCIe endpoint devices, its support is disabled
+	  by default to save the TRIO PIO Region resource for other purposes.
+
 source "drivers/pci/Kconfig"
+
+source "drivers/pci/pcie/Kconfig"
 
 config TILE_USB
 	tristate "Tilera USB host adapter support"
@@ -433,3 +458,20 @@ source "crypto/Kconfig"
 source "lib/Kconfig"
 
 source "arch/tile/kvm/Kconfig"
+
+menu "CPU Frequency scaling"
+	depends on TILEGX
+
+source "drivers/cpufreq/Kconfig"
+
+config CPU_FREQ_TILEGX
+	tristate "CPUfreq driver for TILE-Gx"
+	depends on CPU_FREQ && TILEGX
+	default n
+	select STOP_MACHINE
+	---help---
+	  This enables the CPUfreq driver for TILE-Gx CPUs.  Say Y here
+	  if you want to be able to dynamically adjust CPU frequency
+	  while the system is running.
+
+endmenu

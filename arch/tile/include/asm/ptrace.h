@@ -33,6 +33,7 @@ typedef unsigned long pt_reg_t;
 
 #ifndef __ASSEMBLY__
 
+#define regs_return_value(regs) ((regs)->regs[0])
 #define instruction_pointer(regs) ((regs)->pc)
 #define profile_pc(regs) instruction_pointer(regs)
 #define user_stack_pointer(regs) ((regs)->sp)
@@ -79,8 +80,7 @@ extern void single_step_execve(void);
 
 struct task_struct;
 
-extern void send_sigtrap(struct task_struct *tsk, struct pt_regs *regs,
-			 int error_code);
+extern void send_sigtrap(struct task_struct *tsk, struct pt_regs *regs);
 
 #ifdef __tilegx__
 /* We need this since sigval_t has a user pointer in it, for GETSIGINFO etc. */

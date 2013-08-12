@@ -110,6 +110,8 @@ struct thread_struct {
 	unsigned long long interrupt_mask;
 	/* User interrupt-control 0 state */
 	unsigned long intctrl_0;
+	/* Is this task currently doing a backtrace? */
+	bool in_backtrace;
 #if CHIP_HAS_PROC_STATUS_SPR()
 	/* Any other miscellaneous processor state bits */
 	unsigned long proc_status;
@@ -178,10 +180,10 @@ struct thread_struct {
 #define TASK_SIZE		TASK_SIZE_MAX
 #endif
 
-/* We provide a minimal "vdso" a la x86; just the sigreturn code for now. */
-#define VDSO_BASE		(TASK_SIZE - PAGE_SIZE)
+#define VDSO_BASE	((unsigned long)current->active_mm->context.vdso_base)
+#define VDSO_SYM(x)	(VDSO_BASE + (unsigned long)(x))
 
-#define STACK_TOP		VDSO_BASE
+#define STACK_TOP		TASK_SIZE
 
 /* STACK_TOP_MAX is used temporarily in execve and should not check COMPAT. */
 #define STACK_TOP_MAX		TASK_SIZE_MAX
@@ -246,6 +248,13 @@ unsigned long get_wchan(struct task_struct *p);
 /* Aliases for pc and sp (used in fs/proc/array.c) */
 #define KSTK_EIP(task)	task_pc(task)
 #define KSTK_ESP(task)	task_sp(task)
+
+/* Fine-grained unaligned JIT support */
+#define GET_UNALIGN_CTL(tsk, adr)	get_unalign_ctl((tsk), (adr))
+#define SET_UNALIGN_CTL(tsk, val)	set_unalign_ctl((tsk), (val))
+
+extern int get_unalign_ctl(struct task_struct *tsk, unsigned long adr);
+extern int set_unalign_ctl(struct task_struct *tsk, unsigned int val);
 
 /* Standard format for printing registers and other word-size data. */
 #ifdef __tilegx__

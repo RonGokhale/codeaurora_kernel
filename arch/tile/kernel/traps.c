@@ -15,6 +15,7 @@
 #include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/kprobes.h>
+#include <linux/kdebug.h>
 #include <linux/module.h>
 #include <linux/reboot.h>
 #include <linux/uaccess.h>
@@ -214,6 +215,43 @@ static const char *const int_name[] = {
 #endif
 };
 
+static int do_bpt(struct pt_regs *regs)
+{
+	unsigned long bundle, bcode, bpt;
+
+	bundle = *(unsigned long *)instruction_pointer(regs);
+
+	/*
+	 * bpt shoule be { bpt; nop }, which is 0x286a44ae51485000ULL.
+	 * we encode the unused least significant bits for other purpose.
+	 */
+	bpt = bundle & ~((1ULL << 12) - 1);
+	if (bpt != TILE_BPT_BUNDLE)
+		return 0;
+
+	bcode = bundle & ((1ULL << 12) - 1);
+	/*
+	 * notify the kprobe handlers, if instruction is likely to
+	 * pertain to them.
+	 */
+	switch (bcode) {
+	/* breakpoint_insn */
+	case 0:
+		notify_die(DIE_BREAK, "debug", regs, bundle,
+			INT_ILL, SIGTRAP);
+		break;
+	/* breakpoint2_insn */
+	case DIE_SSTEPBP:
+		notify_die(DIE_SSTEPBP, "single_step", regs, bundle,
+			INT_ILL, SIGTRAP);
+		break;
+	default:
+		return 0;
+	}
+
+	return 1;
+}
+
 void __kprobes do_trap(struct pt_regs *regs, int fault_num,
 		       unsigned long reason)
 {
@@ -222,8 +260,9 @@ void __kprobes do_trap(struct pt_regs *regs, int fault_num,
 	unsigned long address = 0;
 	bundle_bits instr;
 
-	/* Re-enable interrupts. */
-	local_irq_enable();
+	/* Re-enable interrupts, if they were previously enabled. */
+	if (!(regs->flags & PT_FLAGS_DISABLE_IRQ))
+		local_irq_enable();
 
 	/*
 	 * If it hits in kernel mode and we can't fix it up, just exit the
@@ -231,7 +270,12 @@ void __kprobes do_trap(struct pt_regs *regs, int fault_num,
 	 */
 	if (!user_mode(regs)) {
 		const char *name;
-		if (fixup_exception(regs))  /* only UNALIGN_DATA in practice */
+		char buf[100];
+		if (fault_num == INT_ILL && do_bpt(regs)) {
+			/* breakpoint */
+			return;
+		}
+		if (fixup_exception(regs))  /* ILL_TRANS or UNALIGN_DATA */
 			return;
 		if (fault_num >= 0 &&
 		    fault_num < sizeof(int_name)/sizeof(int_name[0]) &&
@@ -239,10 +283,16 @@ void __kprobes do_trap(struct pt_regs *regs, int fault_num,
 			name = int_name[fault_num];
 		else
 			name = "Unknown interrupt";
-		pr_alert("Kernel took bad trap %d (%s) at PC %#lx\n",
-			 fault_num, name, regs->pc);
 		if (fault_num == INT_GPV)
-			pr_alert("GPV_REASON is %#lx\n", reason);
+			snprintf(buf, sizeof(buf), "; GPV_REASON %#lx", reason);
+#ifdef __tilegx__
+		else if (fault_num == INT_ILL_TRANS)
+			snprintf(buf, sizeof(buf), "; address %#lx", reason);
+#endif
+		else
+			buf[0] = '\0';
+		pr_alert("Kernel took bad trap %d (%s) at PC %#lx%s\n",
+			 fault_num, name, regs->pc, buf);
 		show_regs(regs);
 		do_exit(SIGKILL);  /* FIXME: implement i386 die() */
 		return;
@@ -324,11 +374,8 @@ void __kprobes do_trap(struct pt_regs *regs, int fault_num,
 		fill_ra_stack();
 
 		signo = SIGSEGV;
+		address = reason;
 		code = SEGV_MAPERR;
-		if (reason & SPR_ILL_TRANS_REASON__I_STREAM_VA_RMASK)
-			address = regs->pc;
-		else
-			address = 0;  /* FIXME: GX: single-step for address */
 		break;
 	}
 #endif

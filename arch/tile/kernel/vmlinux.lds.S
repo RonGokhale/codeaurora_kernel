@@ -31,7 +31,10 @@ SECTIONS
   } :intrpt1 =0
 
   /* Hypervisor call vectors */
-  #include "hvglue.lds"
+  . = ALIGN(0x10000);
+  .hvglue : AT (ADDR(.hvglue) - LOAD_OFFSET) {
+    *(.hvglue)
+  } :NONE
 
   /* Now the real code */
   . = ALIGN(0x20000);
@@ -40,7 +43,11 @@ SECTIONS
     HEAD_TEXT
     SCHED_TEXT
     LOCK_TEXT
+    KPROBES_TEXT
+    IRQENTRY_TEXT
     __fix_text_end = .;   /* tile-cpack won't rearrange before this */
+    ALIGN_FUNCTION();
+    *(.hottext*)
     TEXT_TEXT
     *(.text.*)
     *(.coldtext*)

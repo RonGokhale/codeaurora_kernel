@@ -292,6 +292,9 @@ static DEFINE_SPINLOCK(wq_mayday_lock);	/* protects wq->maydays list */
 static LIST_HEAD(workqueues);		/* PL: list of all workqueues */
 static bool workqueue_freezing;		/* PL: have wqs started freezing? */
 
+/* set of cpus that are valid for per-cpu workqueue scheduling */
+static struct cpumask wq_valid_cpus;
+
 /* the per-cpu worker pools */
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct worker_pool [NR_STD_WORKER_POOLS],
 				     cpu_worker_pools);
@@ -2967,6 +2970,46 @@ bool cancel_delayed_work_sync(struct delayed_work *dwork)
 EXPORT_SYMBOL(cancel_delayed_work_sync);
 
 /**
+ * schedule_on_cpu_mask - execute a function synchronously on each listed CPU
+ * @func: the function to call
+ * @mask: the cpumask to invoke the function on
+ *
+ * schedule_on_cpu_mask() executes @func on each listed CPU using the
+ * system workqueue and blocks until all CPUs have completed.
+ * schedule_on_cpu_mask() is very slow.  You may only specify CPUs
+ * that are online or have previously been online; specifying an
+ * invalid CPU mask will return -EINVAL without scheduling any work.
+ *
+ * RETURNS:
+ * 0 on success, -errno on failure.
+ */
+int schedule_on_cpu_mask(work_func_t func, const struct cpumask *mask)
+{
+	int cpu;
+	struct work_struct __percpu *works;
+
+	if (!cpumask_subset(mask, &wq_valid_cpus))
+		return -EINVAL;
+
+	works = alloc_percpu(struct work_struct);
+	if (!works)
+		return -ENOMEM;
+
+	for_each_cpu(cpu, mask) {
+		struct work_struct *work = per_cpu_ptr(works, cpu);
+
+		INIT_WORK(work, func);
+		schedule_work_on(cpu, work);
+	}
+
+	for_each_cpu(cpu, mask)
+		flush_work(per_cpu_ptr(works, cpu));
+
+	free_percpu(works);
+	return 0;
+}
+
+/**
  * schedule_on_each_cpu - execute a function synchronously on each online CPU
  * @func: the function to call
  *
@@ -2979,28 +3022,11 @@ EXPORT_SYMBOL(cancel_delayed_work_sync);
  */
 int schedule_on_each_cpu(work_func_t func)
 {
-	int cpu;
-	struct work_struct __percpu *works;
-
-	works = alloc_percpu(struct work_struct);
-	if (!works)
-		return -ENOMEM;
-
+	int ret;
 	get_online_cpus();
-
-	for_each_online_cpu(cpu) {
-		struct work_struct *work = per_cpu_ptr(works, cpu);
-
-		INIT_WORK(work, func);
-		schedule_work_on(cpu, work);
-	}
-
-	for_each_online_cpu(cpu)
-		flush_work(per_cpu_ptr(works, cpu));
-
+	ret = schedule_on_cpu_mask(func, cpu_online_mask);
 	put_online_cpus();
-	free_percpu(works);
-	return 0;
+	return ret;
 }
 
 /**
@@ -4704,6 +4730,9 @@ static int workqueue_cpu_up_callback(struct notifier_block *nfb,
 		list_for_each_entry(wq, &workqueues, list)
 			wq_update_unbound_numa(wq, cpu, true);
 
+		/* track the set of cpus that have ever been online */
+		cpumask_set_cpu(cpu, &wq_valid_cpus);
+
 		mutex_unlock(&wq_pool_mutex);
 		break;
 	}
@@ -5035,6 +5064,10 @@ static int __init init_workqueues(void)
 	       !system_unbound_wq || !system_freezable_wq ||
 	       !system_power_efficient_wq ||
 	       !system_freezable_power_efficient_wq);
+
+	/* mark startup cpu as valid */
+	cpumask_set_cpu(smp_processor_id(), &wq_valid_cpus);
+
 	return 0;
 }
 early_initcall(init_workqueues);

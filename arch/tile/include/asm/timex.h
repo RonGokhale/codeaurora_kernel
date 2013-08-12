@@ -40,6 +40,10 @@ static inline cycles_t get_cycles(void)
 
 cycles_t get_clock_rate(void);
 
+#ifdef __tilegx__
+unsigned int set_clock_rate(unsigned int new_rate);
+#endif
+
 /* Convert nanoseconds to core clock cycles. */
 cycles_t ns2cycles(unsigned long nsecs);
 
