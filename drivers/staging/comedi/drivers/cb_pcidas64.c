@@ -82,6 +82,7 @@ TODO:
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
@@ -4034,10 +4035,9 @@ static int auto_attach(struct comedi_device *dev,
 		return -ENODEV;
 	dev->board_ptr = thisboard;
 
-	devpriv = kzalloc(sizeof(*devpriv), GFP_KERNEL);
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
 	if (!devpriv)
 		return -ENOMEM;
-	dev->private = devpriv;
 
 	retval = comedi_pci_enable(dev);
 	if (retval)

@@ -58,6 +58,7 @@
 
 #include <linux/interrupt.h>
 #include <linux/sched.h>
+#include <linux/delay.h>
 #include "8255.h"
 #include "mite.h"
 #include "comedi_fc.h"
@@ -4363,10 +4364,9 @@ static int ni_alloc_private(struct comedi_device *dev)
 {
 	struct ni_private *devpriv;
 
-	devpriv = kzalloc(sizeof(*devpriv), GFP_KERNEL);
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
 	if (!devpriv)
 		return -ENOMEM;
-	dev->private = devpriv;
 
 	spin_lock_init(&devpriv->window_lock);
 	spin_lock_init(&devpriv->soft_reg_copy_lock);

@@ -131,12 +131,14 @@ struct imx_tve {
 };
 
 static void tve_lock(void *__tve)
+__acquires(&tve->lock)
 {
 	struct imx_tve *tve = __tve;
 	spin_lock(&tve->lock);
 }
 
 static void tve_unlock(void *__tve)
+__releases(&tve->lock)
 {
 	struct imx_tve *tve = __tve;
 	spin_unlock(&tve->lock);
@@ -623,11 +625,6 @@ static int imx_tve_probe(struct platform_device *pdev)
 	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "failed to get memory region\n");
-		return -ENOENT;
-	}
-
 	base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
