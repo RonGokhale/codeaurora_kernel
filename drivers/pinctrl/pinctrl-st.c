@@ -288,8 +288,8 @@ struct st_pinctrl {
 
 /* SOC specific data */
 /* STiH415 data */
-unsigned int stih415_input_delays[] = {0, 500, 1000, 1500};
-unsigned int stih415_output_delays[] = {0, 1000, 2000, 3000};
+static unsigned int stih415_input_delays[] = {0, 500, 1000, 1500};
+static unsigned int stih415_output_delays[] = {0, 1000, 2000, 3000};
 
 #define STIH415_PCTRL_COMMON_DATA				\
 	.rt_style	= st_retime_style_packed,		\
@@ -324,7 +324,7 @@ static const struct st_pctl_data  stih415_right_data = {
 };
 
 /* STiH416 data */
-unsigned int stih416_delays[] = {0, 300, 500, 750, 1000, 1250, 1500,
+static unsigned int stih416_delays[] = {0, 300, 500, 750, 1000, 1250, 1500,
 			1750, 2000, 2250, 2500, 2750, 3000, 3250 };
 
 static const struct st_pctl_data  stih416_data = {
@@ -811,7 +811,7 @@ static int st_pmx_get_funcs_count(struct pinctrl_dev *pctldev)
 	return info->nfunctions;
 }
 
-const char *st_pmx_get_fname(struct pinctrl_dev *pctldev,
+static const char *st_pmx_get_fname(struct pinctrl_dev *pctldev,
 	unsigned selector)
 {
 	struct st_pinctrl *info = pinctrl_dev_get_drvdata(pctldev);
@@ -1222,11 +1222,9 @@ static int st_gpiolib_register_bank(struct st_pinctrl *info,
 	if (of_address_to_resource(np, 0, &res))
 		return -ENODEV;
 
-	bank->base = devm_request_and_ioremap(dev, &res);
-	if (!bank->base) {
-		dev_err(dev, "Can't get IO memory mapping!\n");
-		return -ENODEV;
-	}
+	bank->base = devm_ioremap_resource(dev, &res);
+	if (IS_ERR(bank->base))
+		return PTR_ERR(bank->base);
 
 	bank->gpio_chip = st_gpio_template;
 	bank->gpio_chip.base = bank_num * ST_GPIO_PINS_PER_BANK;
