@@ -1190,7 +1190,6 @@ static int pxa3xx_nand_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
 static struct of_device_id pxa3xx_nand_dt_ids[] = {
 	{ .compatible = "marvell,pxa3xx-nand" },
 	{}
@@ -1221,12 +1220,6 @@ static int pxa3xx_nand_probe_dt(struct platform_device *pdev)
 
 	return 0;
 }
-#else
-static inline int pxa3xx_nand_probe_dt(struct platform_device *pdev)
-{
-	return 0;
-}
-#endif
 
 static int pxa3xx_nand_probe(struct platform_device *pdev)
 {
