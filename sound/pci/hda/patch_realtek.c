@@ -282,6 +282,7 @@ static void alc_eapd_shutup(struct hda_codec *codec)
 {
 	alc_auto_setup_eapd(codec, false);
 	msleep(200);
+	snd_hda_shutup_pins(codec);
 }
 
 /* generic EAPD initialization */
@@ -826,7 +827,8 @@ static inline void alc_shutup(struct hda_codec *codec)
 
 	if (spec && spec->shutup)
 		spec->shutup(codec);
-	snd_hda_shutup_pins(codec);
+	else
+		snd_hda_shutup_pins(codec);
 }
 
 #define alc_free	snd_hda_gen_free
@@ -1843,8 +1845,10 @@ static void alc882_fixup_no_primary_hp(struct hda_codec *codec,
 				       const struct hda_fixup *fix, int action)
 {
 	struct alc_spec *spec = codec->spec;
-	if (action == HDA_FIXUP_ACT_PRE_PROBE)
+	if (action == HDA_FIXUP_ACT_PRE_PROBE) {
 		spec->gen.no_primary_hp = 1;
+		spec->gen.no_multi_io = 1;
+	}
 }
 
 static const struct hda_fixup alc882_fixups[] = {
@@ -2573,15 +2577,13 @@ static void alc269_shutup(struct hda_codec *codec)
 {
 	struct alc_spec *spec = codec->spec;
 
-	if (spec->codec_variant != ALC269_TYPE_ALC269VB)
-		return;
-
 	if (spec->codec_variant == ALC269_TYPE_ALC269VB)
 		alc269vb_toggle_power_output(codec, 0);
 	if (spec->codec_variant == ALC269_TYPE_ALC269VB &&
 			(alc_get_coef0(codec) & 0x00ff) == 0x018) {
 		msleep(150);
 	}
+	snd_hda_shutup_pins(codec);
 }
 
 static void alc5505_coef_set(struct hda_codec *codec, unsigned int index_reg,
@@ -2712,6 +2714,13 @@ static int alc269_resume(struct hda_codec *codec)
 	hda_call_check_power_status(codec, 0x01);
 	if (spec->has_alc5505_dsp)
 		alc5505_dsp_resume(codec);
+
+	/* clear the power-save mode for ALC283 */
+	if (codec->vendor_id == 0x10ec0283) {
+		alc_write_coef_idx(codec, 0x4, 0xaf01);
+		alc_write_coef_idx(codec, 0x6, 0x2104);
+	}
+
 	return 0;
 }
 #endif /* CONFIG_PM */
@@ -3251,6 +3260,28 @@ static void alc_fixup_headset_mode_alc668(struct hda_codec *codec,
 	alc_fixup_headset_mode(codec, fix, action);
 }
 
+/* Returns the nid of the external mic input pin, or 0 if it cannot be found. */
+static int find_ext_mic_pin(struct hda_codec *codec)
+{
+	struct alc_spec *spec = codec->spec;
+	struct auto_pin_cfg *cfg = &spec->gen.autocfg;
+	hda_nid_t nid;
+	unsigned int defcfg;
+	int i;
+
+	for (i = 0; i < cfg->num_inputs; i++) {
+		if (cfg->inputs[i].type != AUTO_PIN_MIC)
+			continue;
+		nid = cfg->inputs[i].pin;
+		defcfg = snd_hda_codec_get_pincfg(codec, nid);
+		if (snd_hda_get_input_pin_attr(defcfg) == INPUT_PIN_ATTR_INT)
+			continue;
+		return nid;
+	}
+
+	return 0;
+}
+
 static void alc271_hp_gate_mic_jack(struct hda_codec *codec,
 				    const struct hda_fixup *fix,
 				    int action)
@@ -3258,11 +3289,12 @@ static void alc271_hp_gate_mic_jack(struct hda_codec *codec,
 	struct alc_spec *spec = codec->spec;
 
 	if (action == HDA_FIXUP_ACT_PROBE) {
-		if (snd_BUG_ON(!spec->gen.am_entry[1].pin ||
-			       !spec->gen.autocfg.hp_pins[0]))
+		int mic_pin = find_ext_mic_pin(codec);
+		int hp_pin = spec->gen.autocfg.hp_pins[0];
+
+		if (snd_BUG_ON(!mic_pin || !hp_pin))
 			return;
-		snd_hda_jack_set_gating_jack(codec, spec->gen.am_entry[1].pin,
-					     spec->gen.autocfg.hp_pins[0]);
+		snd_hda_jack_set_gating_jack(codec, mic_pin, hp_pin);
 	}
 }
 
@@ -3775,6 +3807,30 @@ static void alc269_fill_coef(struct hda_codec *codec)
 	alc_write_coef_idx(codec, 0x4, val | (1<<11));
 }
 
+/* don't clear mic pin; otherwise it results in noise in D3 */
+static void alc283_headset_shutup(struct hda_codec *codec)
+{
+	int i;
+
+	if (codec->bus->shutdown)
+		return;
+
+	for (i = 0; i < codec->init_pins.used; i++) {
+		struct hda_pincfg *pin = snd_array_elem(&codec->init_pins, i);
+		/* use read here for syncing after issuing each verb */
+		if (pin->nid != 0x19)
+			snd_hda_codec_read(codec, pin->nid, 0,
+					   AC_VERB_SET_PIN_WIDGET_CONTROL, 0);
+	}
+
+	alc_write_coef_idx(codec, 0x4, 0x0f01); /* power save */
+	alc_write_coef_idx(codec, 0x6, 0x2100); /* power save */
+	snd_hda_codec_write(codec, 0x19, 0,
+			AC_VERB_SET_PIN_WIDGET_CONTROL,
+			PIN_VREFHIZ);
+	codec->pins_shutup = 1;
+}
+
 /*
  */
 static int patch_alc269(struct hda_codec *codec)
@@ -3788,6 +3844,9 @@ static int patch_alc269(struct hda_codec *codec)
 
 	spec = codec->spec;
 	spec->gen.shared_mic_vref_pin = 0x18;
+
+	if (codec->vendor_id == 0x10ec0283)
+		spec->shutup = alc283_headset_shutup;
 
 	snd_hda_pick_fixup(codec, alc269_fixup_models,
 		       alc269_fixup_tbl, alc269_fixups);
@@ -3862,7 +3921,8 @@ static int patch_alc269(struct hda_codec *codec)
 	codec->patch_ops.suspend = alc269_suspend;
 	codec->patch_ops.resume = alc269_resume;
 #endif
-	spec->shutup = alc269_shutup;
+	if (!spec->shutup)
+		spec->shutup = alc269_shutup;
 
 	snd_hda_apply_fixup(codec, HDA_FIXUP_ACT_PROBE);
 
