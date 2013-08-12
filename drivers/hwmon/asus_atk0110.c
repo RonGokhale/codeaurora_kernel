@@ -29,7 +29,7 @@ static bool new_if;
 module_param(new_if, bool, 0);
 MODULE_PARM_DESC(new_if, "Override detection heuristic and force the use of the new ATK0110 interface");
 
-static const struct dmi_system_id __initconst atk_force_new_if[] = {
+static const struct dmi_system_id atk_force_new_if[] __initconst = {
 	{
 		/* Old interface has broken MCH temp monitoring */
 		.ident = "Asus Sabertooth X58",
