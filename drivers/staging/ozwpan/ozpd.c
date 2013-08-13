@@ -3,23 +3,24 @@
  * Released under the GNU General Public License Version 2 (GPLv2).
  * -----------------------------------------------------------------------------
  */
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/timer.h>
 #include <linux/sched.h>
 #include <linux/netdevice.h>
 #include <linux/errno.h>
-#include "ozconfig.h"
+#include "ozdbg.h"
 #include "ozprotocol.h"
 #include "ozeltbuf.h"
 #include "ozpd.h"
 #include "ozproto.h"
-#include "oztrace.h"
 #include "ozcdev.h"
 #include "ozusbsvc.h"
 #include <asm/unaligned.h>
 #include <linux/uaccess.h>
 #include <net/psnap.h>
+
 /*------------------------------------------------------------------------------
  */
 #define OZ_MAX_TX_POOL_SIZE	6
@@ -120,22 +121,20 @@ static void oz_def_app_rx(struct oz_pd *pd, struct oz_elt *elt)
 void oz_pd_set_state(struct oz_pd *pd, unsigned state)
 {
 	pd->state = state;
-#ifdef WANT_TRACE
 	switch (state) {
 	case OZ_PD_S_IDLE:
-		oz_trace("PD State: OZ_PD_S_IDLE\n");
+		oz_pd_dbg(pd, ON, "PD State: OZ_PD_S_IDLE\n");
 		break;
 	case OZ_PD_S_CONNECTED:
-		oz_trace("PD State: OZ_PD_S_CONNECTED\n");
+		oz_pd_dbg(pd, ON, "PD State: OZ_PD_S_CONNECTED\n");
 		break;
 	case OZ_PD_S_STOPPED:
-		oz_trace("PD State: OZ_PD_S_STOPPED\n");
+		oz_pd_dbg(pd, ON, "PD State: OZ_PD_S_STOPPED\n");
 		break;
 	case OZ_PD_S_SLEEP:
-		oz_trace("PD State: OZ_PD_S_SLEEP\n");
+		oz_pd_dbg(pd, ON, "PD State: OZ_PD_S_SLEEP\n");
 		break;
 	}
-#endif /* WANT_TRACE */
 }
 /*------------------------------------------------------------------------------
  * Context: softirq or process
@@ -177,6 +176,14 @@ struct oz_pd *oz_pd_alloc(const u8 *mac_addr)
 		pd->last_sent_frame = &pd->tx_queue;
 		spin_lock_init(&pd->stream_lock);
 		INIT_LIST_HEAD(&pd->stream_list);
+		tasklet_init(&pd->heartbeat_tasklet, oz_pd_heartbeat_handler,
+							(unsigned long)pd);
+		tasklet_init(&pd->timeout_tasklet, oz_pd_timeout_handler,
+							(unsigned long)pd);
+		hrtimer_init(&pd->heartbeat, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+		hrtimer_init(&pd->timeout, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+		pd->heartbeat.function = oz_pd_heartbeat_event;
+		pd->timeout.function = oz_pd_timeout_event;
 	}
 	return pd;
 }
@@ -189,7 +196,14 @@ void oz_pd_destroy(struct oz_pd *pd)
 	struct oz_tx_frame *f;
 	struct oz_isoc_stream *st;
 	struct oz_farewell *fwell;
-	oz_trace("Destroying PD\n");
+	oz_pd_dbg(pd, ON, "Destroying PD\n");
+	if (hrtimer_active(&pd->timeout))
+		hrtimer_cancel(&pd->timeout);
+	if (hrtimer_active(&pd->heartbeat))
+		hrtimer_cancel(&pd->heartbeat);
+	/*Disable timer tasklets*/
+	tasklet_kill(&pd->heartbeat_tasklet);
+	tasklet_kill(&pd->timeout_tasklet);
 	/* Delete any streams.
 	 */
 	e = pd->stream_list.next;
@@ -235,13 +249,14 @@ int oz_services_start(struct oz_pd *pd, u16 apps, int resume)
 {
 	const struct oz_app_if *ai;
 	int rc = 0;
-	oz_trace("oz_services_start(0x%x) resume(%d)\n", apps, resume);
+	oz_pd_dbg(pd, ON, "%s: (0x%x) resume(%d)\n", __func__, apps, resume);
 	for (ai = g_app_if; ai < &g_app_if[OZ_APPID_MAX]; ai++) {
 		if (apps & (1<<ai->app_id)) {
 			if (ai->start(pd, resume)) {
 				rc = -1;
-				oz_trace("Unabled to start service %d\n",
-					ai->app_id);
+				oz_pd_dbg(pd, ON,
+					  "Unable to start service %d\n",
+					  ai->app_id);
 				break;
 			}
 			oz_polling_lock_bh();
@@ -259,7 +274,7 @@ int oz_services_start(struct oz_pd *pd, u16 apps, int resume)
 void oz_services_stop(struct oz_pd *pd, u16 apps, int pause)
 {
 	const struct oz_app_if *ai;
-	oz_trace("oz_stop_services(0x%x) pause(%d)\n", apps, pause);
+	oz_pd_dbg(pd, ON, "%s: (0x%x) pause(%d)\n", __func__, apps, pause);
 	for (ai = g_app_if; ai < &g_app_if[OZ_APPID_MAX]; ai++) {
 		if (apps & (1<<ai->app_id)) {
 			oz_polling_lock_bh();
@@ -287,8 +302,8 @@ void oz_pd_heartbeat(struct oz_pd *pd, u16 apps)
 				more = 1;
 		}
 	}
-	if (more)
-		oz_pd_request_heartbeat(pd);
+	if ((!more) && (hrtimer_active(&pd->heartbeat)))
+		hrtimer_cancel(&pd->heartbeat);
 	if (pd->mode & OZ_F_ISOC_ANYTIME) {
 		int count = 8;
 		while (count-- && (oz_send_isoc_frame(pd) >= 0))
@@ -301,7 +316,7 @@ void oz_pd_heartbeat(struct oz_pd *pd, u16 apps)
 void oz_pd_stop(struct oz_pd *pd)
 {
 	u16 stop_apps = 0;
-	oz_trace("oz_pd_stop() State = 0x%x\n", pd->state);
+	oz_dbg(ON, "oz_pd_stop() State = 0x%x\n", pd->state);
 	oz_pd_indicate_farewells(pd);
 	oz_polling_lock_bh();
 	stop_apps = pd->total_apps;
@@ -314,8 +329,7 @@ void oz_pd_stop(struct oz_pd *pd)
 	/* Remove from PD list.*/
 	list_del(&pd->link);
 	oz_polling_unlock_bh();
-	oz_trace("pd ref count = %d\n", atomic_read(&pd->ref_count));
-	oz_timer_delete(pd, 0);
+	oz_dbg(ON, "pd ref count = %d\n", atomic_read(&pd->ref_count));
 	oz_pd_put(pd);
 }
 /*------------------------------------------------------------------------------
@@ -330,21 +344,18 @@ int oz_pd_sleep(struct oz_pd *pd)
 		oz_polling_unlock_bh();
 		return 0;
 	}
-	if (pd->keep_alive_j && pd->session_id) {
+	if (pd->keep_alive && pd->session_id)
 		oz_pd_set_state(pd, OZ_PD_S_SLEEP);
-		pd->pulse_time_j = jiffies + pd->keep_alive_j;
-		oz_trace("Sleep Now %lu until %lu\n",
-			jiffies, pd->pulse_time_j);
-	} else {
+	else
 		do_stop = 1;
-	}
+
 	stop_apps = pd->total_apps;
 	oz_polling_unlock_bh();
 	if (do_stop) {
 		oz_pd_stop(pd);
 	} else {
 		oz_services_stop(pd, stop_apps, 1);
-		oz_timer_add(pd, OZ_TIMER_STOP, jiffies + pd->keep_alive_j, 1);
+		oz_timer_add(pd, OZ_TIMER_STOP, pd->keep_alive);
 	}
 	return do_stop;
 }
@@ -384,8 +395,8 @@ static void oz_tx_isoc_free(struct oz_pd *pd, struct oz_tx_frame *f)
 	} else {
 		kfree(f);
 	}
-	oz_trace2(OZ_TRACE_TX_FRAMES, "Releasing ISOC Frame isoc_nb= %d\n",
-						pd->nb_queued_isoc_frames);
+	oz_dbg(TX_FRAMES, "Releasing ISOC Frame isoc_nb= %d\n",
+	       pd->nb_queued_isoc_frames);
 }
 /*------------------------------------------------------------------------------
  * Context: softirq or process
@@ -540,18 +551,16 @@ static int oz_send_next_queued_frame(struct oz_pd *pd, int more_data)
 		if ((int)atomic_read(&g_submitted_isoc) <
 							OZ_MAX_SUBMITTED_ISOC) {
 			if (dev_queue_xmit(skb) < 0) {
-				oz_trace2(OZ_TRACE_TX_FRAMES,
-						"Dropping ISOC Frame\n");
+				oz_dbg(TX_FRAMES, "Dropping ISOC Frame\n");
 				return -1;
 			}
 			atomic_inc(&g_submitted_isoc);
-			oz_trace2(OZ_TRACE_TX_FRAMES,
-					"Sending ISOC Frame, nb_isoc= %d\n",
-						pd->nb_queued_isoc_frames);
+			oz_dbg(TX_FRAMES, "Sending ISOC Frame, nb_isoc= %d\n",
+			       pd->nb_queued_isoc_frames);
 			return 0;
 		} else {
 			kfree_skb(skb);
-			oz_trace2(OZ_TRACE_TX_FRAMES, "Dropping ISOC Frame>\n");
+			oz_dbg(TX_FRAMES, "Dropping ISOC Frame>\n");
 			return -1;
 		}
 	}
@@ -561,7 +570,7 @@ static int oz_send_next_queued_frame(struct oz_pd *pd, int more_data)
 	spin_unlock(&pd->tx_frame_lock);
 	if (more_data)
 		oz_set_more_bit(skb);
-	oz_trace2(OZ_TRACE_TX_FRAMES, "TX frame PN=0x%x\n", f->hdr.pkt_num);
+	oz_dbg(TX_FRAMES, "TX frame PN=0x%x\n", f->hdr.pkt_num);
 	if (skb) {
 		if (dev_queue_xmit(skb) < 0)
 			return -1;
@@ -627,7 +636,7 @@ static int oz_send_isoc_frame(struct oz_pd *pd)
 		return 0;
 	skb = alloc_skb(total_size + OZ_ALLOCATED_SPACE(dev), GFP_ATOMIC);
 	if (skb == NULL) {
-		oz_trace("Cannot alloc skb\n");
+		oz_dbg(ON, "Cannot alloc skb\n");
 		oz_elt_info_free_chain(&pd->elt_buff, &list);
 		return -1;
 	}
@@ -675,8 +684,8 @@ void oz_retire_tx_frames(struct oz_pd *pd, u8 lpn)
 		diff = (lpn - (pkt_num & OZ_LAST_PN_MASK)) & OZ_LAST_PN_MASK;
 		if ((diff > OZ_LAST_PN_HALF_CYCLE) || (pkt_num == 0))
 			break;
-		oz_trace2(OZ_TRACE_TX_FRAMES, "Releasing pkt_num= %u, nb= %d\n",
-						 pkt_num, pd->nb_queued_frames);
+		oz_dbg(TX_FRAMES, "Releasing pkt_num= %u, nb= %d\n",
+		       pkt_num, pd->nb_queued_frames);
 		if (first == NULL)
 			first = e;
 		last = e;
@@ -835,10 +844,20 @@ int oz_send_isoc_unit(struct oz_pd *pd, u8 ep_num, const u8 *data, int len)
 			struct oz_tx_frame *isoc_unit = NULL;
 			int nb = pd->nb_queued_isoc_frames;
 			if (nb >= pd->isoc_latency) {
-				oz_trace2(OZ_TRACE_TX_FRAMES,
-						"Dropping ISOC Unit nb= %d\n",
-									nb);
-				goto out;
+				struct list_head *e;
+				struct oz_tx_frame *f;
+				oz_dbg(TX_FRAMES, "Dropping ISOC Unit nb= %d\n",
+				       nb);
+				spin_lock(&pd->tx_frame_lock);
+				list_for_each(e, &pd->tx_queue) {
+					f = container_of(e, struct oz_tx_frame,
+									link);
+					if (f->skb != NULL) {
+						oz_tx_isoc_free(pd, f);
+						break;
+					}
+				}
+				spin_unlock(&pd->tx_frame_lock);
 			}
 			isoc_unit = oz_tx_frame_alloc(pd);
 			if (isoc_unit == NULL)
@@ -849,9 +868,9 @@ int oz_send_isoc_unit(struct oz_pd *pd, u8 ep_num, const u8 *data, int len)
 			list_add_tail(&isoc_unit->link, &pd->tx_queue);
 			pd->nb_queued_isoc_frames++;
 			spin_unlock_bh(&pd->tx_frame_lock);
-			oz_trace2(OZ_TRACE_TX_FRAMES,
-			"Added ISOC Frame to Tx Queue isoc_nb= %d, nb= %d\n",
-			pd->nb_queued_isoc_frames, pd->nb_queued_frames);
+			oz_dbg(TX_FRAMES,
+			       "Added ISOC Frame to Tx Queue isoc_nb= %d, nb= %d\n",
+			       pd->nb_queued_isoc_frames, pd->nb_queued_frames);
 			return 0;
 		}
 
