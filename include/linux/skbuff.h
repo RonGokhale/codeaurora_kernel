@@ -1805,10 +1805,13 @@ static inline void pskb_trim_unique(struct sk_buff *skb, unsigned int len)
  */
 static inline void skb_orphan(struct sk_buff *skb)
 {
-	if (skb->destructor)
+	if (skb->destructor) {
 		skb->destructor(skb);
-	skb->destructor = NULL;
-	skb->sk		= NULL;
+		skb->destructor = NULL;
+		skb->sk		= NULL;
+	} else {
+		BUG_ON(skb->sk);
+	}
 }
 
 /**
@@ -2356,6 +2359,10 @@ extern int	       skb_copy_datagram_from_iovec(struct sk_buff *skb,
 						    const struct iovec *from,
 						    int from_offset,
 						    int len);
+extern int	       zerocopy_sg_from_iovec(struct sk_buff *skb,
+					      const struct iovec *frm,
+					      int offset,
+					      size_t count);
 extern int	       skb_copy_datagram_const_iovec(const struct sk_buff *from,
 						     int offset,
 						     const struct iovec *to,
