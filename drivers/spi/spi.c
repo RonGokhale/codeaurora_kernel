@@ -553,6 +553,10 @@ static void spi_pump_messages(struct kthread_work *work)
 		    master->unprepare_transfer_hardware(master))
 			dev_err(&master->dev,
 				"failed to unprepare transfer hardware\n");
+		if (master->auto_runtime_pm) {
+			pm_runtime_mark_last_busy(master->dev.parent);
+			pm_runtime_put_autosuspend(master->dev.parent);
+		}
 		return;
 	}
 
@@ -572,11 +576,23 @@ static void spi_pump_messages(struct kthread_work *work)
 		master->busy = true;
 	spin_unlock_irqrestore(&master->queue_lock, flags);
 
+	if (!was_busy && master->auto_runtime_pm) {
+		ret = pm_runtime_get_sync(master->dev.parent);
+		if (ret < 0) {
+			dev_err(&master->dev, "Failed to power device: %d\n",
+				ret);
+			return;
+		}
+	}
+
 	if (!was_busy && master->prepare_transfer_hardware) {
 		ret = master->prepare_transfer_hardware(master);
 		if (ret) {
 			dev_err(&master->dev,
 				"failed to prepare transfer hardware\n");
+
+			if (master->auto_runtime_pm)
+				pm_runtime_put(master->dev.parent);
 			return;
 		}
 	}
@@ -1351,6 +1367,11 @@ static int __spi_async(struct spi_device *spi, struct spi_message *message)
 	struct spi_master *master = spi->master;
 	struct spi_transfer *xfer;
 
+	if (list_empty(&message->transfers))
+		return -EINVAL;
+	if (!message->complete)
+		return -EINVAL;
+
 	/* Half-duplex links include original MicroWire, and ones with
 	 * only one data pin like SPI_3WIRE (switches direction) or where
 	 * either MOSI or MISO is missing.  They can also be caused by
@@ -1375,6 +1396,7 @@ static int __spi_async(struct spi_device *spi, struct spi_message *message)
 	 * it is not set for this transfer.
 	 */
 	list_for_each_entry(xfer, &message->transfers, transfer_list) {
+		message->frame_length += xfer->len;
 		if (!xfer->bits_per_word)
 			xfer->bits_per_word = spi->bits_per_word;
 		if (!xfer->speed_hz)
@@ -1387,6 +1409,13 @@ static int __spi_async(struct spi_device *spi, struct spi_message *message)
 					BIT(xfer->bits_per_word - 1)))
 				return -EINVAL;
 		}
+
+		if (xfer->speed_hz && master->min_speed_hz &&
+		    xfer->speed_hz < master->min_speed_hz)
+			return -EINVAL;
+		if (xfer->speed_hz && master->max_speed_hz &&
+		    xfer->speed_hz > master->max_speed_hz)
+			return -EINVAL;
 	}
 
 	message->spi = spi;
