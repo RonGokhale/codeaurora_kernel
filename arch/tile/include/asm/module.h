@@ -28,6 +28,13 @@
 # define MODULE_PGSZ ""
 #endif
 
+/* Tag guest Linux, since it uses different SPRs, etc. */
+#if CONFIG_KERNEL_PL == 2
+#define MODULE_PL ""
+#else
+#define MODULE_PL " guest"
+#endif
+
 /* We don't really support no-SMP so tag if someone tries. */
 #ifdef CONFIG_SMP
 #define MODULE_NOSMP ""
@@ -35,6 +42,6 @@
 #define MODULE_NOSMP " nosmp"
 #endif
 
-#define MODULE_ARCH_VERMAGIC CHIP_ARCH_NAME MODULE_PGSZ MODULE_NOSMP
+#define MODULE_ARCH_VERMAGIC CHIP_ARCH_NAME MODULE_PGSZ MODULE_PL MODULE_NOSMP
 
 #endif /* _ASM_TILE_MODULE_H */
