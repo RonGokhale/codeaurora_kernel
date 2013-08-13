@@ -66,6 +66,9 @@ extern void bus_remove_file(struct bus_type *, struct bus_attribute *);
  * @bus_attrs:	Default attributes of the bus.
  * @dev_attrs:	Default attributes of the devices on the bus.
  * @drv_attrs:	Default attributes of the device drivers on the bus.
+ * @bus_groups:	Default attributes of the bus.
+ * @dev_groups:	Default attributes of the devices on the bus.
+ * @drv_groups: Default attributes of the device drivers on the bus.
  * @match:	Called, perhaps multiple times, whenever a new device or driver
  *		is added for this bus. It should return a nonzero value if the
  *		given device can be handled by the given driver.
@@ -103,9 +106,12 @@ struct bus_type {
 	const char		*name;
 	const char		*dev_name;
 	struct device		*dev_root;
-	struct bus_attribute	*bus_attrs;
-	struct device_attribute	*dev_attrs;
-	struct driver_attribute	*drv_attrs;
+	struct bus_attribute	*bus_attrs;	/* use bus_groups instead */
+	struct device_attribute	*dev_attrs;	/* use dev_groups instead */
+	struct driver_attribute	*drv_attrs;	/* use drv_groups instead */
+	const struct attribute_group **bus_groups;
+	const struct attribute_group **dev_groups;
+	const struct attribute_group **drv_groups;
 
 	int (*match)(struct device *dev, struct device_driver *drv);
 	int (*uevent)(struct device *dev, struct kobj_uevent_env *env);
