@@ -29,6 +29,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/pinctrl/machine.h>
 #include <linux/platform_data/gpio-rcar.h>
+#include <linux/platform_data/usb-rcar-phy.h>
 #include <linux/regulator/fixed.h>
 #include <linux/regulator/machine.h>
 #include <linux/smsc911x.h>
@@ -37,7 +38,6 @@
 #include <linux/mmc/host.h>
 #include <linux/mmc/sh_mobile_sdhi.h>
 #include <linux/mfd/tmio.h>
-#include <mach/hardware.h>
 #include <mach/r8a7779.h>
 #include <mach/common.h>
 #include <mach/irqs.h>
@@ -57,7 +57,26 @@ static struct regulator_consumer_supply dummy_supplies[] = {
 	REGULATOR_SUPPLY("vdd33a", "smsc911x"),
 };
 
-static struct rcar_phy_platform_data usb_phy_platform_data __initdata;
+/* USB PHY */
+static struct resource usb_phy_resources[] = {
+	[0] = {
+		.start		= 0xffe70800,
+		.end		= 0xffe70900 - 1,
+		.flags		= IORESOURCE_MEM,
+	},
+};
+
+static struct rcar_phy_platform_data usb_phy_platform_data;
+
+static struct platform_device usb_phy = {
+	.name		= "rcar_usb_phy",
+	.id		= -1,
+	.dev  = {
+		.platform_data = &usb_phy_platform_data,
+	},
+	.resource	= usb_phy_resources,
+	.num_resources	= ARRAY_SIZE(usb_phy_resources),
+};
 
 /* SMSC LAN89218 */
 static struct resource smsc911x_resources[] = {
@@ -184,6 +203,7 @@ static struct platform_device *marzen_devices[] __initdata = {
 	&thermal_device,
 	&hspi_device,
 	&leds_device,
+	&usb_phy,
 };
 
 static const struct pinctrl_map marzen_pinctrl_map[] = {
@@ -234,17 +254,21 @@ static void __init marzen_init(void)
 	r8a7779_init_irq_extpin(1); /* IRQ1 as individual interrupt */
 
 	r8a7779_add_standard_devices();
-	r8a7779_add_usb_phy_device(&usb_phy_platform_data);
 	platform_add_devices(marzen_devices, ARRAY_SIZE(marzen_devices));
 }
 
-MACHINE_START(MARZEN, "marzen")
+static const char *marzen_boards_compat_dt[] __initdata = {
+        "renesas,marzen",
+        NULL,
+};
+
+DT_MACHINE_START(MARZEN, "marzen")
 	.smp		= smp_ops(r8a7779_smp_ops),
 	.map_io		= r8a7779_map_io,
 	.init_early	= r8a7779_add_early_devices,
-	.nr_irqs	= NR_IRQS_LEGACY,
-	.init_irq	= r8a7779_init_irq,
+	.init_irq	= r8a7779_init_irq_dt,
 	.init_machine	= marzen_init,
 	.init_late	= r8a7779_init_late,
+	.dt_compat	= marzen_boards_compat_dt,
 	.init_time	= r8a7779_earlytimer_init,
 MACHINE_END
