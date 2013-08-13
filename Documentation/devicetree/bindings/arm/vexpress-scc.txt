@@ -1,0 +1,37 @@
+* ARM Versatile Express Serial Configuration Controller device tree bindings
+
+Latest ARM development boards implement a serial configuration interface (SCC)
+that can be used to retrieve temperature sensors, energy/voltage/current
+probes and oscillators values through the SYS configuration protocol defined
+for versatile express motherboards.
+It also provides a power management interface (serial power controller - SPC)
+that is capable of managing power/voltage and operating points transitions,
+wake-up IRQs and resume addresses for ARM multiprocessor testchips.
+
+The SCC DT bindings are defined as follows:
+
+- scc node
+
+	- compatible:
+		Usage: required
+		Value type: <stringlist>
+		Definition: must be
+			    "arm,vexpress-scc,v2p-ca15_a7", "arm,vexpress-scc"
+	- reg:
+		Usage: required
+		Value type: <prop-encode-array>
+		Definition: A standard property that specifies the base address
+			    and the size of the SCC address space
+	- interrupts:
+		Usage: required
+		Value type: <prop-encoded-array>
+		Definition:  SCC interrupt configuration. A standard property
+			     that follows ePAPR interrupts specifications
+
+Example:
+
+scc: scc@7fff0000 {
+	compatible = "arm,vexpress-scc,v2p-ca15_a7", "arm,vexpress-scc";
+	reg = <0x7fff0000 0x1000>;
+	interrupts = <0 95 4>;
+};
