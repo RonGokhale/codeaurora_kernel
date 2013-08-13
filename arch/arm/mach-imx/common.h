@@ -147,18 +147,22 @@ extern int imx_cpu_kill(unsigned int cpu);
 
 #ifdef CONFIG_PM
 extern void imx6q_pm_init(void);
-extern void imx51_pm_init(void);
-extern void imx53_pm_init(void);
+extern void imx5_pm_init(void);
 #else
 static inline void imx6q_pm_init(void) {}
-static inline void imx51_pm_init(void) {}
-static inline void imx53_pm_init(void) {}
+static inline void imx5_pm_init(void) {}
 #endif
 
 #ifdef CONFIG_NEON
 extern int mx51_neon_fixup(void);
 #else
 static inline int mx51_neon_fixup(void) { return 0; }
+#endif
+
+#ifdef CONFIG_CACHE_L2X0
+extern void imx_init_l2cache(void);
+#else
+static inline void imx_init_l2cache(void) {}
 #endif
 
 extern struct smp_operations imx_smp_ops;
