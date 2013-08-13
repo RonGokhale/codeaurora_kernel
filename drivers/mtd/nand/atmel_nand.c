@@ -905,14 +905,14 @@ static void pmecc_enable(struct atmel_nand_host *host, int ecc_op)
 {
 	u32 val;
 
-	pmecc_writel(host->ecc, CTRL, PMECC_CTRL_RST);
-	pmecc_writel(host->ecc, CTRL, PMECC_CTRL_DISABLE);
-	val = pmecc_readl_relaxed(host->ecc, CFG);
-
 	if (ecc_op != NAND_ECC_READ && ecc_op != NAND_ECC_WRITE) {
 		dev_err(host->dev, "atmel_nand: wrong pmecc operation type!");
 		return;
 	}
+
+	pmecc_writel(host->ecc, CTRL, PMECC_CTRL_RST);
+	pmecc_writel(host->ecc, CTRL, PMECC_CTRL_DISABLE);
+	val = pmecc_readl_relaxed(host->ecc, CFG);
 
 	if (ecc_op == NAND_ECC_READ)
 		pmecc_writel(host->ecc, CFG, (val & ~PMECC_CFG_WRITE_OP)
@@ -2023,7 +2023,7 @@ static int __init atmel_nand_probe(struct platform_device *pdev)
 		if (res)
 			goto err_nand_ioremap;
 	} else {
-		memcpy(&host->board, pdev->dev.platform_data,
+		memcpy(&host->board, dev_get_platdata(&pdev->dev),
 		       sizeof(struct atmel_nand_data));
 	}
 
@@ -2251,10 +2251,12 @@ static int atmel_nand_nfc_probe(struct platform_device *pdev)
 	return 0;
 }
 
+#if defined(CONFIG_OF)
 static struct of_device_id atmel_nand_nfc_match[] = {
 	{ .compatible = "atmel,sama5d3-nfc" },
 	{ /* sentinel */ }
 };
+#endif
 
 static struct platform_driver atmel_nand_nfc_driver = {
 	.driver = {
