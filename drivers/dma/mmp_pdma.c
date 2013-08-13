@@ -121,6 +121,7 @@ struct mmp_pdma_device {
 	struct device			*dev;
 	struct dma_device		device;
 	struct mmp_pdma_phy		*phy;
+	spinlock_t phy_lock; /* protect alloc/free phy channels */
 };
 
 #define tx_to_mmp_pdma_desc(tx) container_of(tx, struct mmp_pdma_desc_sw, async_tx)
@@ -219,6 +220,7 @@ static struct mmp_pdma_phy *lookup_phy(struct mmp_pdma_chan *pchan)
 	int prio, i;
 	struct mmp_pdma_device *pdev = to_mmp_pdma_dev(pchan->chan.device);
 	struct mmp_pdma_phy *phy;
+	unsigned long flags;
 
 	/*
 	 * dma channel priorities
@@ -227,6 +229,8 @@ static struct mmp_pdma_phy *lookup_phy(struct mmp_pdma_chan *pchan)
 	 * ch 8 - 11, 24 - 27  <--> (2)
 	 * ch 12 - 15, 28 - 31  <--> (3)
 	 */
+
+	spin_lock_irqsave(&pdev->phy_lock, flags);
 	for (prio = 0; prio <= (((pdev->dma_channels - 1) & 0xf) >> 2); prio++) {
 		for (i = 0; i < pdev->dma_channels; i++) {
 			if (prio != ((i & 0xf) >> 2))
@@ -234,12 +238,34 @@ static struct mmp_pdma_phy *lookup_phy(struct mmp_pdma_chan *pchan)
 			phy = &pdev->phy[i];
 			if (!phy->vchan) {
 				phy->vchan = pchan;
+				spin_unlock_irqrestore(&pdev->phy_lock, flags);
 				return phy;
 			}
 		}
 	}
 
+	spin_unlock_irqrestore(&pdev->phy_lock, flags);
 	return NULL;
+}
+
+static void mmp_pdma_free_phy(struct mmp_pdma_chan *pchan)
+{
+	struct mmp_pdma_device *pdev = to_mmp_pdma_dev(pchan->chan.device);
+	unsigned long flags;
+	u32 reg;
+
+	if (!pchan->phy)
+		return;
+
+	/* clear the channel mapping in DRCMR */
+	reg = pchan->phy->vchan->drcmr;
+	reg = ((reg < 64) ? 0x0100 : 0x1100) + ((reg & 0x3f) << 2);
+	writel(0, pchan->phy->base + reg);
+
+	spin_lock_irqsave(&pdev->phy_lock, flags);
+	pchan->phy->vchan = NULL;
+	pchan->phy = NULL;
+	spin_unlock_irqrestore(&pdev->phy_lock, flags);
 }
 
 /* desc->tx_list ==> pending list */
@@ -277,10 +303,7 @@ static void start_pending_queue(struct mmp_pdma_chan *chan)
 
 	if (list_empty(&chan->chain_pending)) {
 		/* chance to re-fetch phy channel with higher prio */
-		if (chan->phy) {
-			chan->phy->vchan = NULL;
-			chan->phy = NULL;
-		}
+		mmp_pdma_free_phy(chan);
 		dev_dbg(chan->dev, "no pending list\n");
 		return;
 	}
@@ -377,10 +400,7 @@ static int mmp_pdma_alloc_chan_resources(struct dma_chan *dchan)
 		dev_err(chan->dev, "unable to allocate descriptor pool\n");
 		return -ENOMEM;
 	}
-	if (chan->phy) {
-		chan->phy->vchan = NULL;
-		chan->phy = NULL;
-	}
+	mmp_pdma_free_phy(chan);
 	chan->idle = true;
 	chan->dev_addr = 0;
 	return 1;
@@ -411,10 +431,7 @@ static void mmp_pdma_free_chan_resources(struct dma_chan *dchan)
 	chan->desc_pool = NULL;
 	chan->idle = true;
 	chan->dev_addr = 0;
-	if (chan->phy) {
-		chan->phy->vchan = NULL;
-		chan->phy = NULL;
-	}
+	mmp_pdma_free_phy(chan);
 	return;
 }
 
@@ -581,10 +598,7 @@ static int mmp_pdma_control(struct dma_chan *dchan, enum dma_ctrl_cmd cmd,
 	switch (cmd) {
 	case DMA_TERMINATE_ALL:
 		disable_chan(chan->phy);
-		if (chan->phy) {
-			chan->phy->vchan = NULL;
-			chan->phy = NULL;
-		}
+		mmp_pdma_free_phy(chan);
 		spin_lock_irqsave(&chan->desc_lock, flags);
 		mmp_pdma_free_desc_list(chan, &chan->chain_pending);
 		mmp_pdma_free_desc_list(chan, &chan->chain_running);
@@ -632,15 +646,7 @@ static int mmp_pdma_control(struct dma_chan *dchan, enum dma_ctrl_cmd cmd,
 static enum dma_status mmp_pdma_tx_status(struct dma_chan *dchan,
 			dma_cookie_t cookie, struct dma_tx_state *txstate)
 {
-	struct mmp_pdma_chan *chan = to_mmp_pdma_chan(dchan);
-	enum dma_status ret;
-	unsigned long flags;
-
-	spin_lock_irqsave(&chan->desc_lock, flags);
-	ret = dma_cookie_status(dchan, cookie, txstate);
-	spin_unlock_irqrestore(&chan->desc_lock, flags);
-
-	return ret;
+	return dma_cookie_status(dchan, cookie, txstate);
 }
 
 /**
@@ -776,6 +782,8 @@ static int mmp_pdma_probe(struct platform_device *op)
 	if (!pdev)
 		return -ENOMEM;
 	pdev->dev = &op->dev;
+
+	spin_lock_init(&pdev->phy_lock);
 
 	iores = platform_get_resource(op, IORESOURCE_MEM, 0);
 	if (!iores)
