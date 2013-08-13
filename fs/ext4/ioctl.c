@@ -61,6 +61,7 @@ static void swap_inode_data(struct inode *inode1, struct inode *inode2)
 	loff_t isize;
 	struct ext4_inode_info *ei1;
 	struct ext4_inode_info *ei2;
+	struct ext4_sb_info *sbi = EXT4_SB(inode1->i_sb);
 
 	ei1 = EXT4_I(inode1);
 	ei2 = EXT4_I(inode2);
@@ -77,10 +78,13 @@ static void swap_inode_data(struct inode *inode1, struct inode *inode2)
 	memswap(ei1->i_data, ei2->i_data, sizeof(ei1->i_data));
 	memswap(&ei1->i_flags, &ei2->i_flags, sizeof(ei1->i_flags));
 	memswap(&ei1->i_disksize, &ei2->i_disksize, sizeof(ei1->i_disksize));
-	ext4_es_remove_extent(inode1, 0, EXT_MAX_BLOCKS);
-	ext4_es_remove_extent(inode2, 0, EXT_MAX_BLOCKS);
-	ext4_es_lru_del(inode1);
-	ext4_es_lru_del(inode2);
+	memswap(&ei1->i_es_tree, &ei2->i_es_tree, sizeof(ei1->i_es_tree));
+	spin_lock(&sbi->s_es_lru_lock);
+	memswap(&ei1->i_es_lru_nr, &ei2->i_es_lru_nr, sizeof(ei1->i_es_lru_nr));
+	memswap(&ei1->i_es_lru, &ei2->i_es_lru, sizeof(ei1->i_es_lru));
+	memswap(&ei1->i_touch_when, &ei2->i_touch_when,
+		sizeof(ei1->i_touch_when));
+	spin_unlock(&sbi->s_es_lru_lock);
 
 	isize = i_size_read(inode1);
 	i_size_write(inode1, i_size_read(inode2));
@@ -624,6 +628,8 @@ resizefs_out:
 
 		return 0;
 	}
+	case EXT4_IOC_PRECACHE_EXTENTS:
+		return ext4_ext_precache(inode);
 
 	default:
 		return -ENOTTY;
@@ -688,6 +694,7 @@ long ext4_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case EXT4_IOC_MOVE_EXT:
 	case FITRIM:
 	case EXT4_IOC_RESIZE_FS:
+	case EXT4_IOC_PRECACHE_EXTENTS:
 		break;
 	default:
 		return -ENOIOCTLCMD;
