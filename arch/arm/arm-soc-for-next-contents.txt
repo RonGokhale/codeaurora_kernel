@@ -59,3 +59,5 @@ next/boards
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-backlight-for-v3.12
 	mvebu/boards
 		git://git.infradead.org/linux-mvebu.git tags/boards-3.12
+	renesas/tpu-pwm
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-tpu-pwm-for-v3.12
