@@ -3076,8 +3076,8 @@ static u32 xhci_calculate_no_streams_bitmask(struct xhci_hcd *xhci,
 		/* Are streams already being freed for the endpoint? */
 		if (ep_state & EP_GETTING_NO_STREAMS) {
 			xhci_warn(xhci, "WARN Can't disable streams for "
-					"endpoint 0x%x\n, "
-					"streams are being disabled already.",
+					"endpoint 0x%x, "
+					"streams are being disabled already\n",
 					eps[i]->desc.bEndpointAddress);
 			return 0;
 		}
@@ -3085,8 +3085,8 @@ static u32 xhci_calculate_no_streams_bitmask(struct xhci_hcd *xhci,
 		if (!(ep_state & EP_HAS_STREAMS) &&
 				!(ep_state & EP_GETTING_STREAMS)) {
 			xhci_warn(xhci, "WARN Can't disable streams for "
-					"endpoint 0x%x\n, "
-					"streams are already disabled!",
+					"endpoint 0x%x, "
+					"streams are already disabled!\n",
 					eps[i]->desc.bEndpointAddress);
 			xhci_warn(xhci, "WARN xhci_free_streams() called "
 					"with non-streams endpoint\n");
@@ -4354,7 +4354,7 @@ static u16 xhci_get_timeout_no_hub_lpm(struct usb_device *udev,
 				state_name, sel);
 	else
 		dev_dbg(&udev->dev, "Device-initiated %s disabled "
-				"due to long PEL %llu\n ms",
+				"due to long PEL %llu ms\n",
 				state_name, pel);
 	return USB3_LPM_DISABLED;
 }
@@ -4842,6 +4842,10 @@ int xhci_gen_setup(struct usb_hcd *hcd, xhci_get_quirks_t get_quirks)
 
 	/* Accept arbitrarily long scatter-gather lists */
 	hcd->self.sg_tablesize = ~0;
+
+	/* support to build packet from discontinuous buffers */
+	hcd->self.no_sg_constraint = 1;
+
 	/* XHCI controllers don't stop the ep queue on short packets :| */
 	hcd->self.no_stop_on_short = 1;
 
