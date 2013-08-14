@@ -39,6 +39,8 @@ next/cleanup
 next/soc
 	vexpress/mcpm
 		git://git.linaro.org/people/pawelmoll/linux.git tags/tc2-pm
+	patch
+		ARM: debug: support debug ll on hisilicon soc
 
 next/boards
 	renesas/backlight
