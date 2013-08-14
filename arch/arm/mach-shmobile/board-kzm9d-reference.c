@@ -1,9 +1,8 @@
 /*
- * marzen board support - Reference DT implementation
+ * kzm9d board support - Reference DT implementation
  *
- * Copyright (C) 2011  Renesas Solutions Corp.
- * Copyright (C) 2011  Magnus Damm
- * Copyright (C) 2013  Simon Horman
+ * Copyright (C) 2013  Renesas Solutions Corp.
+ * Copyright (C) 2013  Magnus Damm
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,29 +18,30 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include <mach/r8a7779.h>
+#include <linux/init.h>
+#include <linux/of_platform.h>
+#include <mach/emev2.h>
 #include <mach/common.h>
-#include <mach/irqs.h>
-#include <asm/irq.h>
 #include <asm/mach/arch.h>
 
-static void __init marzen_init(void)
+static void __init kzm9d_add_standard_devices(void)
 {
-	r8a7779_add_standard_devices_dt();
+	if (!IS_ENABLED(CONFIG_COMMON_CLK))
+		emev2_clock_init();
+
+	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 }
 
-static const char *marzen_boards_compat_dt[] __initdata = {
-	"renesas,marzen-reference",
+static const char *kzm9d_boards_compat_dt[] __initdata = {
+	"renesas,kzm9d-reference",
 	NULL,
 };
 
-DT_MACHINE_START(MARZEN, "marzen")
-	.smp		= smp_ops(r8a7779_smp_ops),
-	.map_io		= r8a7779_map_io,
-	.init_early	= r8a7779_init_delay,
-	.nr_irqs	= NR_IRQS_LEGACY,
-	.init_irq	= r8a7779_init_irq_dt,
-	.init_machine	= marzen_init,
-	.init_time	= shmobile_timer_init,
-	.dt_compat	= marzen_boards_compat_dt,
+DT_MACHINE_START(KZM9D_DT, "kzm9d")
+	.smp		= smp_ops(emev2_smp_ops),
+	.map_io		= emev2_map_io,
+	.init_early	= emev2_init_delay,
+	.init_machine	= kzm9d_add_standard_devices,
+	.init_late	= shmobile_init_late,
+	.dt_compat	= kzm9d_boards_compat_dt,
 MACHINE_END
