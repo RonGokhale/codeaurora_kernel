@@ -39,8 +39,10 @@ next/cleanup
 next/soc
 	vexpress/mcpm
 		git://git.linaro.org/people/pawelmoll/linux.git tags/tc2-pm
-	patch
+	patches
 		ARM: debug: support debug ll on hisilicon soc
+		ARM: prima2: pm: drop redundant postcore_initcall                             
+		ARM: prima2: pm: enable rtc alarm0 and alarm1 as wakeup source     
 
 next/boards
 	renesas/backlight
