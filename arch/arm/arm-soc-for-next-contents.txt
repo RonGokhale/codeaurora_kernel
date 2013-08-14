@@ -42,6 +42,8 @@ next/dt
 		based on renesas/cleanup
 	renesas/pinmux
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-pinmux-for-v3.12
+	renesas/multiplatform
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-multiplatform-for-v3.12
 		
 next/soc
 	vexpress/mcpm
