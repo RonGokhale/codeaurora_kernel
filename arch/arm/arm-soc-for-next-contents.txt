@@ -29,7 +29,11 @@ next/cleanup
 	msm/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/davidb/linux-msm.git tags/msm-cleanup3-for-3.12
 		
-git reset --hard Hnext/boards
+next/soc
+	vexpress/mcpm
+		git://git.linaro.org/people/pawelmoll/linux.git tags/tc2-pm
+
+next/boards
 	renesas/backlight
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-backlight-for-v3.12
 	mvebu/boards
