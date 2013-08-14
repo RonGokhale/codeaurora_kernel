@@ -57,6 +57,9 @@ next/soc
 	renesas/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-soc-for-v3.12
 		based on renesas/dt
+	renesas/soc2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-soc2-for-v3.12
+		includes renesas/fixes-for-3.12
 
 next/boards
 	renesas/backlight
