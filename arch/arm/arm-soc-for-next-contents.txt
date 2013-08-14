@@ -15,6 +15,11 @@ next/fixes-non-critical
 		git://git.infradead.org/linux-mvebu.git tags/fixes-non-3.12
 	keystone/fixes-non-critical
 		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone.git tags/keystone-fixes-non-critical
+	patches
+		ARM: clps711x: edb7211: Remove extra iotable_init() call                      
+		ARM: clps711x: autcpu12: Remove incorrect config checking                     
+		ARM: clps711x: Drop fortunet board support                                    
+		ARM: clps711x: Remove the special name for the syscon driver 
 
 next/cleanup
 	localtimer/removal
