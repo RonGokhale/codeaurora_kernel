@@ -117,6 +117,7 @@ struct cfent {
 	struct list_head		node;
 	struct dentry			*dentry;
 	struct cftype			*type;
+	struct cgroup_subsys_state	*css;
 
 	/* file xattrs */
 	struct simple_xattrs		xattrs;
@@ -217,7 +218,7 @@ static int need_forkexit_callback __read_mostly;
 
 static struct cftype cgroup_base_files[];
 
-static void cgroup_offline_fn(struct work_struct *work);
+static void cgroup_destroy_css_killed(struct cgroup *cgrp);
 static int cgroup_destroy_locked(struct cgroup *cgrp);
 static int cgroup_addrm_files(struct cgroup *cgrp, struct cftype cfts[],
 			      bool is_add);
@@ -228,11 +229,16 @@ static int cgroup_addrm_files(struct cgroup *cgrp, struct cftype cfts[],
  * @subsys_id: the subsystem of interest
  *
  * Return @cgrp's css (cgroup_subsys_state) associated with @subsys_id.
+ * This function must be called either under cgroup_mutex or
+ * rcu_read_lock() and the caller is responsible for pinning the returned
+ * css if it wants to keep accessing it outside the said locks.  This
+ * function may return %NULL if @cgrp doesn't have @subsys_id enabled.
  */
 static struct cgroup_subsys_state *cgroup_css(struct cgroup *cgrp,
 					      int subsys_id)
 {
-	return cgrp->subsys[subsys_id];
+	return rcu_dereference_check(cgrp->subsys[subsys_id],
+				     lockdep_is_held(&cgroup_mutex));
 }
 
 /* convenient tests for these bits */
@@ -574,7 +580,7 @@ static struct css_set *find_existing_css_set(struct css_set *old_cset,
 			/* Subsystem is in this hierarchy. So we want
 			 * the subsystem state from the new
 			 * cgroup */
-			template[i] = cgrp->subsys[i];
+			template[i] = cgroup_css(cgrp, i);
 		} else {
 			/* Subsystem is not in this hierarchy, so we
 			 * don't want to change the subsystem state */
@@ -832,8 +838,7 @@ static struct backing_dev_info cgroup_backing_dev_info = {
 	.capabilities	= BDI_CAP_NO_ACCT_AND_WRITEBACK,
 };
 
-static int alloc_css_id(struct cgroup_subsys *ss,
-			struct cgroup *parent, struct cgroup *child);
+static int alloc_css_id(struct cgroup_subsys_state *child_css);
 
 static struct inode *cgroup_new_inode(umode_t mode, struct super_block *sb)
 {
@@ -864,18 +869,8 @@ static struct cgroup_name *cgroup_alloc_name(struct dentry *dentry)
 static void cgroup_free_fn(struct work_struct *work)
 {
 	struct cgroup *cgrp = container_of(work, struct cgroup, destroy_work);
-	struct cgroup_subsys *ss;
 
 	mutex_lock(&cgroup_mutex);
-	/*
-	 * Release the subsystem state objects.
-	 */
-	for_each_root_subsys(cgrp->root, ss) {
-		struct cgroup_subsys_state *css = cgrp->subsys[ss->subsys_id];
-
-		ss->css_free(css);
-	}
-
 	cgrp->root->number_of_cgroups--;
 	mutex_unlock(&cgroup_mutex);
 
@@ -1067,28 +1062,32 @@ static int rebind_subsystems(struct cgroupfs_root *root,
 
 		if (bit & added_mask) {
 			/* We're binding this subsystem to this hierarchy */
-			BUG_ON(cgrp->subsys[i]);
-			BUG_ON(!cgroup_dummy_top->subsys[i]);
-			BUG_ON(cgroup_dummy_top->subsys[i]->cgroup != cgroup_dummy_top);
+			BUG_ON(cgroup_css(cgrp, i));
+			BUG_ON(!cgroup_css(cgroup_dummy_top, i));
+			BUG_ON(cgroup_css(cgroup_dummy_top, i)->cgroup != cgroup_dummy_top);
 
-			cgrp->subsys[i] = cgroup_dummy_top->subsys[i];
-			cgrp->subsys[i]->cgroup = cgrp;
+			rcu_assign_pointer(cgrp->subsys[i],
+					   cgroup_css(cgroup_dummy_top, i));
+			cgroup_css(cgrp, i)->cgroup = cgrp;
+
 			list_move(&ss->sibling, &root->subsys_list);
 			ss->root = root;
 			if (ss->bind)
-				ss->bind(cgrp->subsys[i]);
+				ss->bind(cgroup_css(cgrp, i));
 
 			/* refcount was already taken, and we're keeping it */
 			root->subsys_mask |= bit;
 		} else if (bit & removed_mask) {
 			/* We're removing this subsystem */
-			BUG_ON(cgrp->subsys[i] != cgroup_dummy_top->subsys[i]);
-			BUG_ON(cgrp->subsys[i]->cgroup != cgrp);
+			BUG_ON(cgroup_css(cgrp, i) != cgroup_css(cgroup_dummy_top, i));
+			BUG_ON(cgroup_css(cgrp, i)->cgroup != cgrp);
 
 			if (ss->bind)
-				ss->bind(cgroup_dummy_top->subsys[i]);
-			cgroup_dummy_top->subsys[i]->cgroup = cgroup_dummy_top;
-			cgrp->subsys[i] = NULL;
+				ss->bind(cgroup_css(cgroup_dummy_top, i));
+
+			cgroup_css(cgroup_dummy_top, i)->cgroup = cgroup_dummy_top;
+			RCU_INIT_POINTER(cgrp->subsys[i], NULL);
+
 			cgroup_subsys[i]->root = &cgroup_dummy_root;
 			list_move(&ss->sibling, &cgroup_dummy_root.subsys_list);
 
@@ -2072,7 +2071,7 @@ static int cgroup_attach_task(struct cgroup *cgrp, struct task_struct *tsk,
 	 * step 1: check that we can legitimately attach to the cgroup.
 	 */
 	for_each_root_subsys(root, ss) {
-		struct cgroup_subsys_state *css = cgrp->subsys[ss->subsys_id];
+		struct cgroup_subsys_state *css = cgroup_css(cgrp, ss->subsys_id);
 
 		if (ss->can_attach) {
 			retval = ss->can_attach(css, &tset);
@@ -2114,7 +2113,7 @@ static int cgroup_attach_task(struct cgroup *cgrp, struct task_struct *tsk,
 	 * step 4: do subsystem attach callbacks.
 	 */
 	for_each_root_subsys(root, ss) {
-		struct cgroup_subsys_state *css = cgrp->subsys[ss->subsys_id];
+		struct cgroup_subsys_state *css = cgroup_css(cgrp, ss->subsys_id);
 
 		if (ss->attach)
 			ss->attach(css, &tset);
@@ -2136,7 +2135,7 @@ out_put_css_set_refs:
 out_cancel_attach:
 	if (retval) {
 		for_each_root_subsys(root, ss) {
-			struct cgroup_subsys_state *css = cgrp->subsys[ss->subsys_id];
+			struct cgroup_subsys_state *css = cgroup_css(cgrp, ss->subsys_id);
 
 			if (ss == failed_ss)
 				break;
@@ -2301,17 +2300,6 @@ static int cgroup_sane_behavior_show(struct cgroup_subsys_state *css,
 	return 0;
 }
 
-/* return the css for the given cgroup file */
-static struct cgroup_subsys_state *cgroup_file_css(struct cfent *cfe)
-{
-	struct cftype *cft = cfe->type;
-	struct cgroup *cgrp = __d_cgrp(cfe->dentry->d_parent);
-
-	if (cft->ss)
-		return cgrp->subsys[cft->ss->subsys_id];
-	return &cgrp->dummy_css;
-}
-
 /* A buffer size big enough for numbers or short strings */
 #define CGROUP_LOCAL_BUFFER_SIZE 64
 
@@ -2388,7 +2376,7 @@ static ssize_t cgroup_file_write(struct file *file, const char __user *buf,
 {
 	struct cfent *cfe = __d_cfe(file->f_dentry);
 	struct cftype *cft = __d_cft(file->f_dentry);
-	struct cgroup_subsys_state *css = cgroup_file_css(cfe);
+	struct cgroup_subsys_state *css = cfe->css;
 
 	if (cft->write)
 		return cft->write(css, cft, file, buf, nbytes, ppos);
@@ -2430,7 +2418,7 @@ static ssize_t cgroup_file_read(struct file *file, char __user *buf,
 {
 	struct cfent *cfe = __d_cfe(file->f_dentry);
 	struct cftype *cft = __d_cft(file->f_dentry);
-	struct cgroup_subsys_state *css = cgroup_file_css(cfe);
+	struct cgroup_subsys_state *css = cfe->css;
 
 	if (cft->read)
 		return cft->read(css, cft, file, buf, nbytes, ppos);
@@ -2456,7 +2444,7 @@ static int cgroup_seqfile_show(struct seq_file *m, void *arg)
 {
 	struct cfent *cfe = m->private;
 	struct cftype *cft = cfe->type;
-	struct cgroup_subsys_state *css = cgroup_file_css(cfe);
+	struct cgroup_subsys_state *css = cfe->css;
 
 	if (cft->read_map) {
 		struct cgroup_map_cb cb = {
@@ -2479,7 +2467,8 @@ static int cgroup_file_open(struct inode *inode, struct file *file)
 {
 	struct cfent *cfe = __d_cfe(file->f_dentry);
 	struct cftype *cft = __d_cft(file->f_dentry);
-	struct cgroup_subsys_state *css = cgroup_file_css(cfe);
+	struct cgroup *cgrp = __d_cgrp(cfe->dentry->d_parent);
+	struct cgroup_subsys_state *css;
 	int err;
 
 	err = generic_file_open(inode, file);
@@ -2491,7 +2480,18 @@ static int cgroup_file_open(struct inode *inode, struct file *file)
 	 * unpinned either on open failure or release.  This ensures that
 	 * @css stays alive for all file operations.
 	 */
-	if (css->ss && !css_tryget(css))
+	rcu_read_lock();
+	if (cft->ss) {
+		css = cgroup_css(cgrp, cft->ss->subsys_id);
+		if (!css_tryget(css))
+			css = NULL;
+	} else {
+		css = &cgrp->dummy_css;
+	}
+	rcu_read_unlock();
+
+	/* css should match @cfe->css, see cgroup_add_file() for details */
+	if (!css || WARN_ON_ONCE(css != cfe->css))
 		return -ENODEV;
 
 	if (cft->read_map || cft->read_seq_string) {
@@ -2510,7 +2510,7 @@ static int cgroup_file_release(struct inode *inode, struct file *file)
 {
 	struct cfent *cfe = __d_cfe(file->f_dentry);
 	struct cftype *cft = __d_cft(file->f_dentry);
-	struct cgroup_subsys_state *css = cgroup_file_css(cfe);
+	struct cgroup_subsys_state *css = cfe->css;
 	int ret = 0;
 
 	if (cft->release)
@@ -2771,6 +2771,18 @@ static int cgroup_add_file(struct cgroup *cgrp, struct cftype *cft)
 	cfe->dentry = dentry;
 	dentry->d_fsdata = cfe;
 	simple_xattrs_init(&cfe->xattrs);
+
+	/*
+	 * cfe->css is used by read/write/close to determine the associated
+	 * css.  file->private_data would be a better place but that's
+	 * already used by seqfile.  Note that open will use the usual
+	 * cgroup_css() and css_tryget() to acquire the css and this
+	 * caching doesn't affect css lifetime management.
+	 */
+	if (cft->ss)
+		cfe->css = cgroup_css(cgrp, cft->ss->subsys_id);
+	else
+		cfe->css = &cgrp->dummy_css;
 
 	mode = cgroup_file_mode(cft);
 	error = cgroup_create_file(dentry, mode | S_IFREG, cgrp->root->sb);
@@ -4241,7 +4253,7 @@ static int cgroup_populate_dir(struct cgroup *cgrp, unsigned long subsys_mask)
 
 	/* This cgroup is ready now */
 	for_each_root_subsys(cgrp->root, ss) {
-		struct cgroup_subsys_state *css = cgrp->subsys[ss->subsys_id];
+		struct cgroup_subsys_state *css = cgroup_css(cgrp, ss->subsys_id);
 		struct css_id *id = rcu_dereference_protected(css->id, true);
 
 		/*
@@ -4259,12 +4271,52 @@ err:
 	return ret;
 }
 
-static void css_dput_fn(struct work_struct *work)
+/*
+ * css destruction is four-stage process.
+ *
+ * 1. Destruction starts.  Killing of the percpu_ref is initiated.
+ *    Implemented in kill_css().
+ *
+ * 2. When the percpu_ref is confirmed to be visible as killed on all CPUs
+ *    and thus css_tryget() is guaranteed to fail, the css can be offlined
+ *    by invoking offline_css().  After offlining, the base ref is put.
+ *    Implemented in css_killed_work_fn().
+ *
+ * 3. When the percpu_ref reaches zero, the only possible remaining
+ *    accessors are inside RCU read sections.  css_release() schedules the
+ *    RCU callback.
+ *
+ * 4. After the grace period, the css can be freed.  Implemented in
+ *    css_free_work_fn().
+ *
+ * It is actually hairier because both step 2 and 4 require process context
+ * and thus involve punting to css->destroy_work adding two additional
+ * steps to the already complex sequence.
+ */
+static void css_free_work_fn(struct work_struct *work)
 {
 	struct cgroup_subsys_state *css =
-		container_of(work, struct cgroup_subsys_state, dput_work);
+		container_of(work, struct cgroup_subsys_state, destroy_work);
+	struct cgroup *cgrp = css->cgroup;
 
-	cgroup_dput(css->cgroup);
+	if (css->parent)
+		css_put(css->parent);
+
+	css->ss->css_free(css);
+	cgroup_dput(cgrp);
+}
+
+static void css_free_rcu_fn(struct rcu_head *rcu_head)
+{
+	struct cgroup_subsys_state *css =
+		container_of(rcu_head, struct cgroup_subsys_state, rcu_head);
+
+	/*
+	 * css holds an extra ref to @cgrp->dentry which is put on the last
+	 * css_put().  dput() requires process context which we don't have.
+	 */
+	INIT_WORK(&css->destroy_work, css_free_work_fn);
+	schedule_work(&css->destroy_work);
 }
 
 static void css_release(struct percpu_ref *ref)
@@ -4272,50 +4324,47 @@ static void css_release(struct percpu_ref *ref)
 	struct cgroup_subsys_state *css =
 		container_of(ref, struct cgroup_subsys_state, refcnt);
 
-	schedule_work(&css->dput_work);
+	call_rcu(&css->rcu_head, css_free_rcu_fn);
 }
 
-static void init_cgroup_css(struct cgroup_subsys_state *css,
-			       struct cgroup_subsys *ss,
-			       struct cgroup *cgrp)
+static void init_css(struct cgroup_subsys_state *css, struct cgroup_subsys *ss,
+		     struct cgroup *cgrp)
 {
 	css->cgroup = cgrp;
 	css->ss = ss;
 	css->flags = 0;
 	css->id = NULL;
-	if (cgrp == cgroup_dummy_top)
-		css->flags |= CSS_ROOT;
-	BUG_ON(cgrp->subsys[ss->subsys_id]);
-	cgrp->subsys[ss->subsys_id] = css;
 
-	/*
-	 * css holds an extra ref to @cgrp->dentry which is put on the last
-	 * css_put().  dput() requires process context, which css_put() may
-	 * be called without.  @css->dput_work will be used to invoke
-	 * dput() asynchronously from css_put().
-	 */
-	INIT_WORK(&css->dput_work, css_dput_fn);
+	if (cgrp->parent)
+		css->parent = cgroup_css(cgrp->parent, ss->subsys_id);
+	else
+		css->flags |= CSS_ROOT;
+
+	BUG_ON(cgroup_css(cgrp, ss->subsys_id));
 }
 
 /* invoke ->css_online() on a new CSS and mark it online if successful */
-static int online_css(struct cgroup_subsys *ss, struct cgroup *cgrp)
+static int online_css(struct cgroup_subsys_state *css)
 {
-	struct cgroup_subsys_state *css = cgrp->subsys[ss->subsys_id];
+	struct cgroup_subsys *ss = css->ss;
 	int ret = 0;
 
 	lockdep_assert_held(&cgroup_mutex);
 
 	if (ss->css_online)
 		ret = ss->css_online(css);
-	if (!ret)
+	if (!ret) {
 		css->flags |= CSS_ONLINE;
+		css->cgroup->nr_css++;
+		rcu_assign_pointer(css->cgroup->subsys[ss->subsys_id], css);
+	}
 	return ret;
 }
 
 /* if the CSS is online, invoke ->css_offline() on it and mark it offline */
-static void offline_css(struct cgroup_subsys *ss, struct cgroup *cgrp)
+static void offline_css(struct cgroup_subsys_state *css)
 {
-	struct cgroup_subsys_state *css = cgrp->subsys[ss->subsys_id];
+	struct cgroup_subsys *ss = css->ss;
 
 	lockdep_assert_held(&cgroup_mutex);
 
@@ -4326,6 +4375,8 @@ static void offline_css(struct cgroup_subsys *ss, struct cgroup *cgrp)
 		ss->css_offline(css);
 
 	css->flags &= ~CSS_ONLINE;
+	css->cgroup->nr_css--;
+	RCU_INIT_POINTER(css->cgroup->subsys[ss->subsys_id], css);
 }
 
 /*
@@ -4339,6 +4390,7 @@ static void offline_css(struct cgroup_subsys *ss, struct cgroup *cgrp)
 static long cgroup_create(struct cgroup *parent, struct dentry *dentry,
 			     umode_t mode)
 {
+	struct cgroup_subsys_state *css_ar[CGROUP_SUBSYS_COUNT] = { };
 	struct cgroup *cgrp;
 	struct cgroup_name *name;
 	struct cgroupfs_root *root = parent->root;
@@ -4389,6 +4441,7 @@ static long cgroup_create(struct cgroup *parent, struct dentry *dentry,
 	cgrp->dentry = dentry;
 
 	cgrp->parent = parent;
+	cgrp->dummy_css.parent = &parent->dummy_css;
 	cgrp->root = parent->root;
 
 	if (notify_on_release(parent))
@@ -4400,22 +4453,21 @@ static long cgroup_create(struct cgroup *parent, struct dentry *dentry,
 	for_each_root_subsys(root, ss) {
 		struct cgroup_subsys_state *css;
 
-		css = ss->css_alloc(parent->subsys[ss->subsys_id]);
+		css = ss->css_alloc(cgroup_css(parent, ss->subsys_id));
 		if (IS_ERR(css)) {
 			err = PTR_ERR(css);
 			goto err_free_all;
 		}
+		css_ar[ss->subsys_id] = css;
 
 		err = percpu_ref_init(&css->refcnt, css_release);
-		if (err) {
-			ss->css_free(css);
+		if (err)
 			goto err_free_all;
-		}
 
-		init_cgroup_css(css, ss, cgrp);
+		init_css(css, ss, cgrp);
 
 		if (ss->use_id) {
-			err = alloc_css_id(ss, parent, cgrp);
+			err = alloc_css_id(css);
 			if (err)
 				goto err_free_all;
 		}
@@ -4437,16 +4489,22 @@ static long cgroup_create(struct cgroup *parent, struct dentry *dentry,
 	list_add_tail_rcu(&cgrp->sibling, &cgrp->parent->children);
 	root->number_of_cgroups++;
 
-	/* each css holds a ref to the cgroup's dentry */
-	for_each_root_subsys(root, ss)
+	/* each css holds a ref to the cgroup's dentry and the parent css */
+	for_each_root_subsys(root, ss) {
+		struct cgroup_subsys_state *css = css_ar[ss->subsys_id];
+
 		dget(dentry);
+		percpu_ref_get(&css->parent->refcnt);
+	}
 
 	/* hold a ref to the parent's dentry */
 	dget(parent->dentry);
 
 	/* creation succeeded, notify subsystems */
 	for_each_root_subsys(root, ss) {
-		err = online_css(ss, cgrp);
+		struct cgroup_subsys_state *css = css_ar[ss->subsys_id];
+
+		err = online_css(css);
 		if (err)
 			goto err_destroy;
 
@@ -4477,7 +4535,7 @@ static long cgroup_create(struct cgroup *parent, struct dentry *dentry,
 
 err_free_all:
 	for_each_root_subsys(root, ss) {
-		struct cgroup_subsys_state *css = cgrp->subsys[ss->subsys_id];
+		struct cgroup_subsys_state *css = css_ar[ss->subsys_id];
 
 		if (css) {
 			percpu_ref_cancel_init(&css->refcnt);
@@ -4510,22 +4568,84 @@ static int cgroup_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	return cgroup_create(c_parent, dentry, mode | S_IFDIR);
 }
 
-static void cgroup_css_killed(struct cgroup *cgrp)
+/*
+ * This is called when the refcnt of a css is confirmed to be killed.
+ * css_tryget() is now guaranteed to fail.
+ */
+static void css_killed_work_fn(struct work_struct *work)
 {
-	if (!atomic_dec_and_test(&cgrp->css_kill_cnt))
-		return;
+	struct cgroup_subsys_state *css =
+		container_of(work, struct cgroup_subsys_state, destroy_work);
+	struct cgroup *cgrp = css->cgroup;
 
-	/* percpu ref's of all css's are killed, kick off the next step */
-	INIT_WORK(&cgrp->destroy_work, cgroup_offline_fn);
-	schedule_work(&cgrp->destroy_work);
+	mutex_lock(&cgroup_mutex);
+
+	/*
+	 * css_tryget() is guaranteed to fail now.  Tell subsystems to
+	 * initate destruction.
+	 */
+	offline_css(css);
+
+	/*
+	 * If @cgrp is marked dead, it's waiting for refs of all css's to
+	 * be disabled before proceeding to the second phase of cgroup
+	 * destruction.  If we are the last one, kick it off.
+	 */
+	if (!cgrp->nr_css && cgroup_is_dead(cgrp))
+		cgroup_destroy_css_killed(cgrp);
+
+	mutex_unlock(&cgroup_mutex);
+
+	/*
+	 * Put the css refs from kill_css().  Each css holds an extra
+	 * reference to the cgroup's dentry and cgroup removal proceeds
+	 * regardless of css refs.  On the last put of each css, whenever
+	 * that may be, the extra dentry ref is put so that dentry
+	 * destruction happens only after all css's are released.
+	 */
+	css_put(css);
 }
 
-static void css_ref_killed_fn(struct percpu_ref *ref)
+/* css kill confirmation processing requires process context, bounce */
+static void css_killed_ref_fn(struct percpu_ref *ref)
 {
 	struct cgroup_subsys_state *css =
 		container_of(ref, struct cgroup_subsys_state, refcnt);
 
-	cgroup_css_killed(css->cgroup);
+	INIT_WORK(&css->destroy_work, css_killed_work_fn);
+	schedule_work(&css->destroy_work);
+}
+
+/**
+ * kill_css - destroy a css
+ * @css: css to destroy
+ *
+ * This function initiates destruction of @css by removing cgroup interface
+ * files and putting its base reference.  ->css_offline() will be invoked
+ * asynchronously once css_tryget() is guaranteed to fail and when the
+ * reference count reaches zero, @css will be released.
+ */
+static void kill_css(struct cgroup_subsys_state *css)
+{
+	cgroup_clear_dir(css->cgroup, 1 << css->ss->subsys_id);
+
+	/*
+	 * Killing would put the base ref, but we need to keep it alive
+	 * until after ->css_offline().
+	 */
+	css_get(css);
+
+	/*
+	 * cgroup core guarantees that, by the time ->css_offline() is
+	 * invoked, no new css reference will be given out via
+	 * css_tryget().  We can't simply call percpu_ref_kill() and
+	 * proceed to offlining css's because percpu_ref_kill() doesn't
+	 * guarantee that the ref is seen as killed on all CPUs on return.
+	 *
+	 * Use percpu_ref_kill_and_confirm() to get notifications as each
+	 * css is confirmed to be seen as killed on all CPUs.
+	 */
+	percpu_ref_kill_and_confirm(&css->refcnt, css_killed_ref_fn);
 }
 
 /**
@@ -4574,34 +4694,12 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 		return -EBUSY;
 
 	/*
-	 * Block new css_tryget() by killing css refcnts.  cgroup core
-	 * guarantees that, by the time ->css_offline() is invoked, no new
-	 * css reference will be given out via css_tryget().  We can't
-	 * simply call percpu_ref_kill() and proceed to offlining css's
-	 * because percpu_ref_kill() doesn't guarantee that the ref is seen
-	 * as killed on all CPUs on return.
-	 *
-	 * Use percpu_ref_kill_and_confirm() to get notifications as each
-	 * css is confirmed to be seen as killed on all CPUs.  The
-	 * notification callback keeps track of the number of css's to be
-	 * killed and schedules cgroup_offline_fn() to perform the rest of
-	 * destruction once the percpu refs of all css's are confirmed to
-	 * be killed.
+	 * Initiate massacre of all css's.  cgroup_destroy_css_killed()
+	 * will be invoked to perform the rest of destruction once the
+	 * percpu refs of all css's are confirmed to be killed.
 	 */
-	atomic_set(&cgrp->css_kill_cnt, 1);
-	for_each_root_subsys(cgrp->root, ss) {
-		struct cgroup_subsys_state *css = cgrp->subsys[ss->subsys_id];
-
-		/*
-		 * Killing would put the base ref, but we need to keep it
-		 * alive until after ->css_offline.
-		 */
-		percpu_ref_get(&css->refcnt);
-
-		atomic_inc(&cgrp->css_kill_cnt);
-		percpu_ref_kill_and_confirm(&css->refcnt, css_ref_killed_fn);
-	}
-	cgroup_css_killed(cgrp);
+	for_each_root_subsys(cgrp->root, ss)
+		kill_css(cgroup_css(cgrp, ss->subsys_id));
 
 	/*
 	 * Mark @cgrp dead.  This prevents further task migration and child
@@ -4619,10 +4717,19 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 	raw_spin_unlock(&release_list_lock);
 
 	/*
-	 * Clear and remove @cgrp directory.  The removal puts the base ref
-	 * but we aren't quite done with @cgrp yet, so hold onto it.
+	 * If @cgrp has css's attached, the second stage of cgroup
+	 * destruction is kicked off from css_killed_work_fn() after the
+	 * refs of all attached css's are killed.  If @cgrp doesn't have
+	 * any css, we kick it off here.
 	 */
-	cgroup_clear_dir(cgrp, cgrp->root->subsys_mask);
+	if (!cgrp->nr_css)
+		cgroup_destroy_css_killed(cgrp);
+
+	/*
+	 * Clear the base files and remove @cgrp directory.  The removal
+	 * puts the base ref but we aren't quite done with @cgrp yet, so
+	 * hold onto it.
+	 */
 	cgroup_addrm_files(cgrp, cgroup_base_files, false);
 	dget(d);
 	cgroup_d_remove_dir(d);
@@ -4643,40 +4750,20 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 };
 
 /**
- * cgroup_offline_fn - the second step of cgroup destruction
+ * cgroup_destroy_css_killed - the second step of cgroup destruction
  * @work: cgroup->destroy_free_work
  *
  * This function is invoked from a work item for a cgroup which is being
- * destroyed after the percpu refcnts of all css's are guaranteed to be
- * seen as killed on all CPUs, and performs the rest of destruction.  This
- * is the second step of destruction described in the comment above
- * cgroup_destroy_locked().
+ * destroyed after all css's are offlined and performs the rest of
+ * destruction.  This is the second step of destruction described in the
+ * comment above cgroup_destroy_locked().
  */
-static void cgroup_offline_fn(struct work_struct *work)
+static void cgroup_destroy_css_killed(struct cgroup *cgrp)
 {
-	struct cgroup *cgrp = container_of(work, struct cgroup, destroy_work);
 	struct cgroup *parent = cgrp->parent;
 	struct dentry *d = cgrp->dentry;
-	struct cgroup_subsys *ss;
 
-	mutex_lock(&cgroup_mutex);
-
-	/*
-	 * css_tryget() is guaranteed to fail now.  Tell subsystems to
-	 * initate destruction.
-	 */
-	for_each_root_subsys(cgrp->root, ss)
-		offline_css(ss, cgrp);
-
-	/*
-	 * Put the css refs from cgroup_destroy_locked().  Each css holds
-	 * an extra reference to the cgroup's dentry and cgroup removal
-	 * proceeds regardless of css refs.  On the last put of each css,
-	 * whenever that may be, the extra dentry ref is put so that dentry
-	 * destruction happens only after all css's are released.
-	 */
-	for_each_root_subsys(cgrp->root, ss)
-		css_put(cgrp->subsys[ss->subsys_id]);
+	lockdep_assert_held(&cgroup_mutex);
 
 	/* delete this cgroup from parent->children */
 	list_del_rcu(&cgrp->sibling);
@@ -4693,8 +4780,6 @@ static void cgroup_offline_fn(struct work_struct *work)
 
 	set_bit(CGRP_RELEASABLE, &parent->flags);
 	check_for_release(parent);
-
-	mutex_unlock(&cgroup_mutex);
 }
 
 static int cgroup_rmdir(struct inode *unused_dir, struct dentry *dentry)
@@ -4741,10 +4826,10 @@ static void __init cgroup_init_subsys(struct cgroup_subsys *ss)
 	/* Create the top cgroup state for this subsystem */
 	list_add(&ss->sibling, &cgroup_dummy_root.subsys_list);
 	ss->root = &cgroup_dummy_root;
-	css = ss->css_alloc(cgroup_dummy_top->subsys[ss->subsys_id]);
+	css = ss->css_alloc(cgroup_css(cgroup_dummy_top, ss->subsys_id));
 	/* We don't handle early failures gracefully */
 	BUG_ON(IS_ERR(css));
-	init_cgroup_css(css, ss, cgroup_dummy_top);
+	init_css(css, ss, cgroup_dummy_top);
 
 	/* Update the init_css_set to contain a subsys
 	 * pointer to this state - since the subsystem is
@@ -4759,7 +4844,7 @@ static void __init cgroup_init_subsys(struct cgroup_subsys *ss)
 	 * need to invoke fork callbacks here. */
 	BUG_ON(!list_empty(&init_task.tasks));
 
-	BUG_ON(online_css(ss, cgroup_dummy_top));
+	BUG_ON(online_css(css));
 
 	mutex_unlock(&cgroup_mutex);
 
@@ -4820,7 +4905,7 @@ int __init_or_module cgroup_load_subsys(struct cgroup_subsys *ss)
 	 * struct, so this can happen first (i.e. before the dummy root
 	 * attachment).
 	 */
-	css = ss->css_alloc(cgroup_dummy_top->subsys[ss->subsys_id]);
+	css = ss->css_alloc(cgroup_css(cgroup_dummy_top, ss->subsys_id));
 	if (IS_ERR(css)) {
 		/* failure case - need to deassign the cgroup_subsys[] slot. */
 		cgroup_subsys[ss->subsys_id] = NULL;
@@ -4832,8 +4917,8 @@ int __init_or_module cgroup_load_subsys(struct cgroup_subsys *ss)
 	ss->root = &cgroup_dummy_root;
 
 	/* our new subsystem will be attached to the dummy hierarchy. */
-	init_cgroup_css(css, ss, cgroup_dummy_top);
-	/* init_idr must be after init_cgroup_css because it sets css->id. */
+	init_css(css, ss, cgroup_dummy_top);
+	/* init_idr must be after init_css() because it sets css->id. */
 	if (ss->use_id) {
 		ret = cgroup_init_idr(ss, css);
 		if (ret)
@@ -4863,7 +4948,7 @@ int __init_or_module cgroup_load_subsys(struct cgroup_subsys *ss)
 	}
 	write_unlock(&css_set_lock);
 
-	ret = online_css(ss, cgroup_dummy_top);
+	ret = online_css(css);
 	if (ret)
 		goto err_unload;
 
@@ -4902,7 +4987,7 @@ void cgroup_unload_subsys(struct cgroup_subsys *ss)
 
 	mutex_lock(&cgroup_mutex);
 
-	offline_css(ss, cgroup_dummy_top);
+	offline_css(cgroup_css(cgroup_dummy_top, ss->subsys_id));
 
 	if (ss->use_id)
 		idr_destroy(&ss->idr);
@@ -4936,8 +5021,8 @@ void cgroup_unload_subsys(struct cgroup_subsys *ss)
 	 * the cgrp->subsys pointer to find their state. note that this
 	 * also takes care of freeing the css_id.
 	 */
-	ss->css_free(cgroup_dummy_top->subsys[ss->subsys_id]);
-	cgroup_dummy_top->subsys[ss->subsys_id] = NULL;
+	ss->css_free(cgroup_css(cgroup_dummy_top, ss->subsys_id));
+	RCU_INIT_POINTER(cgroup_dummy_top->subsys[ss->subsys_id], NULL);
 
 	mutex_unlock(&cgroup_mutex);
 }
@@ -5554,20 +5639,16 @@ static int __init_or_module cgroup_init_idr(struct cgroup_subsys *ss,
 	return 0;
 }
 
-static int alloc_css_id(struct cgroup_subsys *ss, struct cgroup *parent,
-			struct cgroup *child)
+static int alloc_css_id(struct cgroup_subsys_state *child_css)
 {
-	int subsys_id, i, depth = 0;
-	struct cgroup_subsys_state *parent_css, *child_css;
+	struct cgroup_subsys_state *parent_css = css_parent(child_css);
 	struct css_id *child_id, *parent_id;
+	int i, depth;
 
-	subsys_id = ss->subsys_id;
-	parent_css = parent->subsys[subsys_id];
-	child_css = child->subsys[subsys_id];
 	parent_id = rcu_dereference_protected(parent_css->id, true);
 	depth = parent_id->depth + 1;
 
-	child_id = get_new_cssid(ss, depth);
+	child_id = get_new_cssid(child_css->ss, depth);
 	if (IS_ERR(child_id))
 		return PTR_ERR(child_id);
 
@@ -5605,14 +5686,22 @@ struct cgroup_subsys_state *css_lookup(struct cgroup_subsys *ss, int id)
 }
 EXPORT_SYMBOL_GPL(css_lookup);
 
-/*
- * get corresponding css from file open on cgroupfs directory
+/**
+ * cgroup_css_from_dir - get corresponding css from file open on cgroup dir
+ * @f: directory file of interest
+ * @id: subsystem id of interest
+ *
+ * Must be called under RCU read lock.  The caller is responsible for
+ * pinning the returned css if it needs to be accessed outside the RCU
+ * critical section.
  */
 struct cgroup_subsys_state *cgroup_css_from_dir(struct file *f, int id)
 {
 	struct cgroup *cgrp;
 	struct inode *inode;
 	struct cgroup_subsys_state *css;
+
+	WARN_ON_ONCE(!rcu_read_lock_held());
 
 	inode = file_inode(f);
 	/* check in cgroup filesystem dir */
@@ -5624,7 +5713,7 @@ struct cgroup_subsys_state *cgroup_css_from_dir(struct file *f, int id)
 
 	/* get cgroup */
 	cgrp = __d_cgrp(f->f_dentry);
-	css = cgrp->subsys[id];
+	css = cgroup_css(cgrp, id);
 	return css ? css : ERR_PTR(-ENOENT);
 }
 

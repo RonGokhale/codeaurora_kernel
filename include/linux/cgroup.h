@@ -75,12 +75,16 @@ struct cgroup_subsys_state {
 	/* reference count - access via css_[try]get() and css_put() */
 	struct percpu_ref refcnt;
 
+	/* the parent css */
+	struct cgroup_subsys_state *parent;
+
 	unsigned long flags;
 	/* ID for this css, if possible */
 	struct css_id __rcu *id;
 
-	/* Used to put @cgroup->dentry on the last css_put() */
-	struct work_struct dput_work;
+	/* percpu_ref killing and RCU release */
+	struct rcu_head rcu_head;
+	struct work_struct destroy_work;
 };
 
 /* bits in struct cgroup_subsys_state flags field */
@@ -168,6 +172,9 @@ struct cgroup {
 	 */
 	int id;
 
+	/* the number of attached css's */
+	int nr_css;
+
 	/*
 	 * We link our 'sibling' struct into our parent's 'children'.
 	 * Our children link their 'sibling' into our 'children'.
@@ -201,7 +208,7 @@ struct cgroup {
 	struct cgroup_name __rcu *name;
 
 	/* Private pointers for each registered subsystem */
-	struct cgroup_subsys_state *subsys[CGROUP_SUBSYS_COUNT];
+	struct cgroup_subsys_state __rcu *subsys[CGROUP_SUBSYS_COUNT];
 
 	struct cgroupfs_root *root;
 
@@ -231,7 +238,6 @@ struct cgroup {
 	/* For css percpu_ref killing and RCU-protected deletion */
 	struct rcu_head rcu_head;
 	struct work_struct destroy_work;
-	atomic_t css_kill_cnt;
 
 	/* List of events which userspace want to receive */
 	struct list_head event_list;
@@ -666,15 +672,7 @@ struct cgroup_subsys {
 static inline
 struct cgroup_subsys_state *css_parent(struct cgroup_subsys_state *css)
 {
-	struct cgroup *parent_cgrp = css->cgroup->parent;
-
-	if (!parent_cgrp)
-		return NULL;
-
-	if (css->ss)
-		return parent_cgrp->subsys[css->ss->subsys_id];
-	else
-		return &parent_cgrp->dummy_css;
+	return css->parent;
 }
 
 /**
