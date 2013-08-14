@@ -10,7 +10,7 @@
  */
 
 		.macro	addruart,rp,rv,tmp
-		ldr	\rv, =0xfee36000
+		ldr	\rv, =0xfef36000
 		ldr	\rp, =0xfff36000
 		.endm
 
