@@ -32,7 +32,6 @@
 #include "cm1_54xx.h"
 #include "cm2_54xx.h"
 #include "prm54xx.h"
-#include "prm-regbits-54xx.h"
 #include "i2c.h"
 #include "mmc.h"
 #include "wd_timer.h"
@@ -1375,7 +1374,7 @@ static struct omap_hwmod omap54xx_uart3_hwmod = {
 	.name		= "uart3",
 	.class		= &omap54xx_uart_hwmod_class,
 	.clkdm_name	= "l4per_clkdm",
-	.flags		= HWMOD_INIT_NO_IDLE | HWMOD_INIT_NO_RESET,
+	.flags		= DEBUG_OMAP4UART3_FLAGS,
 	.main_clk	= "func_48m_fclk",
 	.prcm = {
 		.omap4 = {
@@ -1391,6 +1390,7 @@ static struct omap_hwmod omap54xx_uart4_hwmod = {
 	.name		= "uart4",
 	.class		= &omap54xx_uart_hwmod_class,
 	.clkdm_name	= "l4per_clkdm",
+	.flags		= DEBUG_OMAP4UART4_FLAGS,
 	.main_clk	= "func_48m_fclk",
 	.prcm = {
 		.omap4 = {
