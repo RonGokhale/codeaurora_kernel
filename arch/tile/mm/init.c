@@ -234,7 +234,7 @@ static pgprot_t __init init_pgprot(ulong address)
 {
 	int cpu;
 	unsigned long page;
-	enum { CODE_DELTA = MEM_SV_INTRPT - PAGE_OFFSET };
+	enum { CODE_DELTA = MEM_SV_START - PAGE_OFFSET };
 
 #if CHIP_HAS_CBOX_HOME_MAP()
 	/* For kdata=huge, everything is just hash-for-home. */
@@ -538,7 +538,7 @@ static void __init kernel_physical_mapping_init(pgd_t *pgd_base)
 		}
 	}
 
-	address = MEM_SV_INTRPT;
+	address = MEM_SV_START;
 	pmd = get_pmd(pgtables, address);
 	pfn = 0;  /* code starts at PA 0 */
 	if (ktext_small) {
@@ -777,10 +777,7 @@ void __init paging_init(void)
 
 	kernel_physical_mapping_init(pgd_base);
 
-	/*
-	 * Fixed mappings, only the page table structure has to be
-	 * created - mappings will be set by set_fixmap():
-	 */
+	/* Fixed mappings, only the page table structure has to be created. */
 	page_table_range_init(fix_to_virt(__end_of_fixed_addresses - 1),
 			      FIXADDR_TOP, pgd_base);
 
@@ -954,7 +951,7 @@ static void mark_w1data_ro(void)
 	BUG_ON((addr & (PAGE_SIZE-1)) != 0);
 	for (; addr <= (unsigned long)__w1data_end - 1; addr += PAGE_SIZE) {
 		unsigned long pfn = kaddr_to_pfn((void *)addr);
-		pte_t *ptep = virt_to_pte(NULL, addr);
+		pte_t *ptep = virt_to_kpte(addr);
 		BUG_ON(pte_huge(*ptep));   /* not relevant for kdata_huge */
 		set_pte_at(&init_mm, addr, ptep, pfn_pte(pfn, PAGE_KERNEL_RO));
 	}
@@ -1000,7 +997,7 @@ static void free_init_pages(char *what, unsigned long begin, unsigned long end)
 		 */
 		int pfn = kaddr_to_pfn((void *)addr);
 		struct page *page = pfn_to_page(pfn);
-		pte_t *ptep = virt_to_pte(NULL, addr);
+		pte_t *ptep = virt_to_kpte(addr);
 		if (!initfree) {
 			/*
 			 * If debugging page accesses then do not free
@@ -1024,7 +1021,7 @@ static void free_init_pages(char *what, unsigned long begin, unsigned long end)
 
 void free_initmem(void)
 {
-	const unsigned long text_delta = MEM_SV_INTRPT - PAGE_OFFSET;
+	const unsigned long text_delta = MEM_SV_START - PAGE_OFFSET;
 
 	/*
 	 * Evict the dirty initdata on the boot cpu, evict the w1data
@@ -1043,7 +1040,7 @@ void free_initmem(void)
 
 	/*
 	 * Free the pages mapped from 0xc0000000 that correspond to code
-	 * pages from MEM_SV_INTRPT that we won't use again after init.
+	 * pages from MEM_SV_START that we won't use again after init.
 	 */
 	free_init_pages("unused kernel text",
 			(unsigned long)_sinittext - text_delta,

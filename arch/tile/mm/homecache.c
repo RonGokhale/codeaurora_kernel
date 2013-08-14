@@ -172,7 +172,8 @@ void flush_remote(unsigned long cache_pfn, unsigned long cache_control,
 
 static void homecache_finv_page_va(void* va, int home)
 {
-	if (home == smp_processor_id()) {
+	int cpu = get_cpu();
+	if (home == cpu) {
 		finv_buffer_local(va, PAGE_SIZE);
 	} else if (home == PAGE_HOME_HASH) {
 		finv_buffer_remote(va, PAGE_SIZE, 1);
@@ -180,6 +181,7 @@ static void homecache_finv_page_va(void* va, int home)
 		BUG_ON(home < 0 || home >= NR_CPUS);
 		finv_buffer_remote(va, PAGE_SIZE, 0);
 	}
+	put_cpu();
 }
 
 void homecache_finv_map_page(struct page *page, int home)
@@ -198,7 +200,7 @@ void homecache_finv_map_page(struct page *page, int home)
 #else
 	va = __fix_to_virt(FIX_HOMECACHE_BEGIN + smp_processor_id());
 #endif
-	ptep = virt_to_pte(NULL, (unsigned long)va);
+	ptep = virt_to_kpte(va);
 	pte = pfn_pte(page_to_pfn(page), PAGE_KERNEL);
 	__set_pte(ptep, pte_set_home(pte, home));
 	homecache_finv_page_va((void *)va, home);
@@ -383,7 +385,7 @@ int page_home(struct page *page)
 		return initial_page_home();
 	} else {
 		unsigned long kva = (unsigned long)page_address(page);
-		return pte_to_home(*virt_to_pte(NULL, kva));
+		return pte_to_home(*virt_to_kpte(kva));
 	}
 }
 EXPORT_SYMBOL(page_home);
@@ -402,7 +404,7 @@ void homecache_change_page_home(struct page *page, int order, int home)
 		     NULL, 0);
 
 	for (i = 0; i < pages; ++i, kva += PAGE_SIZE) {
-		pte_t *ptep = virt_to_pte(NULL, kva);
+		pte_t *ptep = virt_to_kpte(kva);
 		pte_t pteval = *ptep;
 		BUG_ON(!pte_present(pteval) || pte_huge(pteval));
 		__set_pte(ptep, pte_set_home(pteval, home));

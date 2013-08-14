@@ -55,7 +55,8 @@ static DEFINE_PER_CPU(int, irq_depth);
 
 /* State for allocating IRQs on Gx. */
 #if CHIP_HAS_IPI()
-static unsigned long available_irqs = ~(1UL << IRQ_RESCHEDULE);
+static unsigned long available_irqs = ((1UL << NR_IRQS) - 1) &
+				      (~(1UL << IRQ_RESCHEDULE));
 static DEFINE_SPINLOCK(available_irqs_lock);
 #endif
 
@@ -74,6 +75,7 @@ static DEFINE_SPINLOCK(available_irqs_lock);
 /*
  * The interrupt handling path, implemented in terms of HV interrupt
  * emulation on TILE64 and TILEPro, and IPI hardware on TILE-Gx.
+ * Entered with interrupts disabled.
  */
 void tile_dev_intr(struct pt_regs *regs, int intnum)
 {
