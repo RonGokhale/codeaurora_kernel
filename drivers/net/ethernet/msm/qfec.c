@@ -31,6 +31,9 @@
 #include <linux/phy.h>
 #include <linux/inet.h>
 #include <asm/div64.h>
+#include <linux/hrtimer.h>
+#include <linux/ktime.h>
+#include <linux/atomic.h>
 
 #include "qfec.h"
 
@@ -40,6 +43,12 @@
 #define ETH_BUF_SIZE    0x600
 #define MAX_N_BD        50
 #define MAC_ADDR_SIZE	6
+
+/* Delay that produced best results while testing for IPSec ingress
+ * across packet sizes
+ */
+#define RX_POLL_INT_NS	(150*1000)
+#define PKTS_PER_POLL	1
 
 #define RX_TX_BD_RATIO  8
 #define TX_BD_NUM       256
@@ -61,6 +70,7 @@
 							| EXPANSION_NPCAPABLE)
 
 static int qfec_debug = QFEC_LOG_PR;
+static int rx_int_status; /* Current Hardware Rx INT status */
 
 #ifdef QFEC_DEBUG
 # define QFEC_LOG(flag, ...)                    \
@@ -450,11 +460,13 @@ enum qfec_state {
 struct qfec_priv {
 	struct net_device      *net_dev;
 	struct net_device_stats stats;            /* req statistics */
+	struct hrtimer          rx_timer;
 
 	struct device           dev;
 
 	spinlock_t              xmit_lock;
 	spinlock_t              mdio_lock;
+	spinlock_t              rx_lock;
 
 	unsigned int            state;            /* driver state */
 
@@ -657,13 +669,24 @@ static struct reg_entry  qfec_reg_tbl[] = {
 static void qfec_reg_init(struct qfec_priv *priv)
 {
 	struct reg_entry *p = qfec_reg_tbl;
-	int         n = ARRAY_SIZE(qfec_reg_tbl);
+	int           n = ARRAY_SIZE(qfec_reg_tbl);
+	unsigned long flags;
 
 	QFEC_LOG(QFEC_LOG_DBG, "%s:\n", __func__);
 
 	for  (; n--; p++) {
-		if (!p->rdonly)
-			qfec_reg_write(priv, p->addr, p->val);
+		if (!p->rdonly) {
+			if (p->addr == INTRP_EN_REG) {
+				spin_lock_irqsave(&priv->rx_lock, flags);
+				if (QFEC_INTRP_SETUP & INTRP_EN_REG_RIE)
+					rx_int_status = 1;
+				else
+					rx_int_status = 0;
+				qfec_reg_write(priv, p->addr, p->val);
+				spin_unlock_irqrestore(&priv->rx_lock, flags);
+			} else
+				qfec_reg_write(priv, p->addr, p->val);
+		}
 	}
 }
 
@@ -847,6 +870,21 @@ static void qfec_hw_disable(struct qfec_priv *priv)
 	qfec_reg_write(priv, OPER_MODE_REG,
 	qfec_reg_read(priv, OPER_MODE_REG)
 		& ~(OPER_MODE_REG_ST | OPER_MODE_REG_SR));
+}
+
+/*
+ * en/disable Rx interrupt
+ */
+static void qfec_rx_int_ctrl(struct qfec_priv *priv, bool enable)
+{
+	uint32_t val;
+
+	val = qfec_reg_read(priv, INTRP_EN_REG);
+
+	if (enable)
+		qfec_reg_write(priv, INTRP_EN_REG, val | INTRP_EN_REG_RIE);
+	else
+		qfec_reg_write(priv, INTRP_EN_REG, val & (~INTRP_EN_REG_RIE));
 }
 
 /*
@@ -1905,13 +1943,14 @@ static void qfec_tx_timeout(struct net_device *dev)
 /*
  * rx() - process a received frame
  */
-static void qfec_rx_int(struct net_device *dev)
+static int qfec_rx_int(struct net_device *dev)
 {
 	struct qfec_priv   *priv   = netdev_priv(dev);
 	struct ring        *p_ring = &priv->ring_rbd;
 	struct buf_desc    *p_bd   = priv->p_latest_rbd;
 	uint32_t desc_status;
 	uint32_t mis_fr_reg;
+	int      pkt_recvd = 0;
 
 	desc_status = qfec_bd_status_get(p_bd);
 	mis_fr_reg = qfec_reg_read(priv, MIS_FR_REG);
@@ -1920,7 +1959,7 @@ static void qfec_rx_int(struct net_device *dev)
 
 	/* check that valid interrupt occurred */
 	if (unlikely(desc_status & BUF_OWN))
-		return;
+		return 0;
 
 	/* accumulate missed-frame count (reg reset when read) */
 	priv->stats.rx_missed_errors += mis_fr_reg
@@ -1950,6 +1989,8 @@ static void qfec_rx_int(struct net_device *dev)
 			CNTR_INC(priv, rx_dropped);
 			dev_kfree_skb(skb);
 		} else  {
+			pkt_recvd++;
+
 			qfec_reg_write(priv, STATUS_REG, STATUS_REG_RI);
 
 			skb->len = BUF_RX_FL_GET_FROM_STATUS(desc_status);
@@ -1995,7 +2036,7 @@ static void qfec_rx_int(struct net_device *dev)
 		qfec_ring_tail_adv(p_ring);
 	}
 
-	qfec_reg_write(priv, STATUS_REG, STATUS_REG_RI);
+	return pkt_recvd;
 }
 
 /*
@@ -2013,6 +2054,7 @@ static irqreturn_t qfec_int(int irq, void *dev_id)
 	struct qfec_priv   *priv     = netdev_priv(dev);
 	uint32_t            status   = qfec_reg_read(priv, STATUS_REG);
 	uint32_t            int_bits = STATUS_REG_NIS | STATUS_REG_AIS;
+	unsigned long       flags;
 
 	QFEC_LOG(QFEC_LOG_DBG2, "%s: %s\n", __func__, dev->name);
 
@@ -2040,10 +2082,29 @@ static irqreturn_t qfec_int(int irq, void *dev_id)
 		CNTR_INC(priv, norm_int);
 
 	/* receive interrupt */
+	spin_lock_irqsave(&priv->rx_lock, flags);
 	if (status & STATUS_REG_RI) {
 		CNTR_INC(priv, rx_isr);
-		qfec_rx_int(dev);
+		/* Disable RX interrupt & clear the cause */
+		qfec_rx_int_ctrl(priv, false);
+		qfec_reg_write(priv, STATUS_REG, STATUS_REG_RI);
+		/*
+		 * While testing it was observed that rarely a Rx INT would
+		 * appear even if it was disabled (the bit INTRP_EN_REG_RIE
+		 * was observed to be cleared).
+		 */
+		if (rx_int_status) {
+			rx_int_status = 0;
+			qfec_rx_int(dev);
+			hrtimer_start(&priv->rx_timer,
+					ns_to_ktime(RX_POLL_INT_NS),
+					HRTIMER_MODE_REL);
+		} else
+			printk(KERN_DEBUG "Recvd. Spurious Rx INT," \
+			" (INTRP_EN_REG & INTRP_EN_REG_RIE) = 0x%08X",
+			qfec_reg_read(priv, INTRP_EN_REG) & INTRP_EN_REG_RIE);
 	}
+	spin_unlock_irqrestore(&priv->rx_lock, flags);
 
 	/* transmit interrupt */
 	if (status & STATUS_REG_TI)  {
@@ -2067,6 +2128,31 @@ static irqreturn_t qfec_int(int irq, void *dev_id)
 }
 
 /*
+ * Polling for rx packets
+ */
+enum hrtimer_restart qfec_rx_poll(struct hrtimer *timer)
+{
+	struct qfec_priv *priv = container_of(timer, struct qfec_priv,
+						rx_timer);
+	int pkts;
+	unsigned long flags;
+
+	spin_lock_irqsave(&priv->rx_lock, flags);
+	pkts = qfec_rx_int(priv->net_dev);
+
+	if (pkts < PKTS_PER_POLL) {
+		rx_int_status = 1;
+		qfec_rx_int_ctrl(priv, true);
+		spin_unlock_irqrestore(&priv->rx_lock, flags);
+		return HRTIMER_NORESTART;
+	} else {
+		hrtimer_forward_now(timer, ns_to_ktime(RX_POLL_INT_NS));
+		spin_unlock_irqrestore(&priv->rx_lock, flags);
+		return HRTIMER_RESTART;
+	}
+}
+
+/*
  * open () - register system resources (IRQ, DMA, ...)
  *   turn on HW, perform device setup.
  */
@@ -2085,6 +2171,10 @@ static int qfec_open(struct net_device *dev)
 		res = -EINVAL;
 		goto err;
 	}
+
+	/* initialize hrtimer for Rx buffer polling */
+	hrtimer_init(&priv->rx_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	priv->rx_timer.function = qfec_rx_poll;
 
 	/* allocate TX/RX buffer-descriptors and buffers */
 
@@ -2178,6 +2268,7 @@ static int qfec_open(struct net_device *dev)
 err1:
 	qfec_mem_dealloc(dev);
 err:
+	hrtimer_cancel(&priv->rx_timer);
 	QFEC_LOG_ERR("%s: error - %d\n", __func__, res);
 	return res;
 }
@@ -2195,6 +2286,7 @@ static int qfec_stop(struct net_device *dev)
 	QFEC_LOG(QFEC_LOG_DBG, "%s:\n", __func__);
 
 	del_timer_sync(&priv->phy_tmr);
+	hrtimer_cancel(&priv->rx_timer);
 
 	qfec_hw_disable(priv);
 	qfec_queue_stop(dev);
@@ -2966,6 +3058,7 @@ static int __devinit qfec_probe(struct platform_device *plat)
 
 	spin_lock_init(&priv->mdio_lock);
 	spin_lock_init(&priv->xmit_lock);
+	spin_lock_init(&priv->rx_lock);
 	qfec_sysfs_create(dev);
 
 	return 0;
