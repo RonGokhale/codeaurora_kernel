@@ -1,6 +1,7 @@
 config USB_DWC2
 	tristate "DesignWare USB2 DRD Core Support"
 	depends on USB
+	depends on !USB_DWC_OTG
 	help
 	  Say Y or M here if your system has a Dual Role HighSpeed
 	  USB controller based on the DesignWare HSOTG IP Core.
