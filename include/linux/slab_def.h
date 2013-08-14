@@ -3,6 +3,20 @@
 
 /*
  * Definitions unique to the original Linux SLAB allocator.
+ *
+ * What we provide here is a way to optimize the frequent kmalloc
+ * calls in the kernel by selecting the appropriate general cache
+ * if kmalloc was called with a size that can be established at
+ * compile time.
+ */
+
+#include <linux/init.h>
+#include <linux/compiler.h>
+
+/*
+ * struct kmem_cache
+ *
+ * manages a cache.
  */
 
 struct kmem_cache {
