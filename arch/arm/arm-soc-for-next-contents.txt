@@ -54,3 +54,5 @@ next/dt
 	renesas/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-dt-for-v3.12
 		based on renesas/cleanup
+	renesas/pinmux
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-pinmux-for-v3.12
