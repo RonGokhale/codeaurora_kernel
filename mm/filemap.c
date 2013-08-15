@@ -469,7 +469,7 @@ int add_to_page_cache_locked(struct page *page, struct address_space *mapping,
 	if (error)
 		return error;
 
-	error = radix_tree_preload(gfp_mask & ~__GFP_HIGHMEM);
+	error = radix_tree_maybe_preload(gfp_mask & ~__GFP_HIGHMEM);
 	if (error) {
 		mem_cgroup_uncharge_cache_page(page);
 		return error;
