@@ -1,0 +1,29 @@
+Palmas RTC controller bindings
+
+Required properties:
+- compatible:
+  - "ti,palmas-rtc" for palma series of the RTC controller
+- interrupt-parent: Parent interrupt device, must be handle of palmas node.
+- interrupts: Interrupt number of RTC submodule on device.
+
+Optional properties:
+- ti,back-battery-charge-enable: The palmas series device like TPS65913 or
+	TPS80036 supports the battery backup for powering the RTC when main
+	battery is removed or in very low power state. This flag will enable
+	the backup battery charging.
+- ti,back-battery-charge-low-current: Configure lower charging current. Device
+	supports the charging current as < 100mA or >100mA. Low current will
+	set as <100mA.
+
+Example:
+	palmas: tps65913@58 {
+		...
+		palmas_rtc: rtc {
+			compatible = "ti,palmas-rtc";
+			interrupt-parent = <&palmas>;
+			interrupts = <8 0>;
+			ti,back-battery-charge-enable;
+			ti,back-battery-charge-low-current;
+		};
+		...
+	};
