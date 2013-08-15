@@ -313,9 +313,9 @@ static int striped_read(struct inode *inode,
 {
 	struct ceph_fs_client *fsc = ceph_inode_to_client(inode);
 	struct ceph_inode_info *ci = ceph_inode(inode);
-	u64 pos, this_len;
+	u64 pos, this_len, left;
 	int io_align, page_align;
-	int left, pages_left;
+	int pages_left;
 	int read;
 	struct page **page_pos;
 	int ret;
@@ -346,7 +346,7 @@ more:
 		ret = 0;
 	hit_stripe = this_len < left;
 	was_short = ret >= 0 && ret < this_len;
-	dout("striped_read %llu~%u (read %u) got %d%s%s\n", pos, left, read,
+	dout("striped_read %llu~%llu (read %u) got %d%s%s\n", pos, left, read,
 	     ret, hit_stripe ? " HITSTRIPE" : "", was_short ? " SHORT" : "");
 
 	if (ret > 0) {
@@ -378,7 +378,7 @@ more:
 			if (pos + left > inode->i_size)
 				left = inode->i_size - pos;
 
-			dout("zero tail %d\n", left);
+			dout("zero tail %llu\n", left);
 			ceph_zero_page_vector_range(page_align + read, left,
 						    pages);
 			read += left;
@@ -659,7 +659,6 @@ again:
 
 	if ((got & (CEPH_CAP_FILE_CACHE|CEPH_CAP_FILE_LAZYIO)) == 0 ||
 	    (iocb->ki_filp->f_flags & O_DIRECT) ||
-	    (inode->i_sb->s_flags & MS_SYNCHRONOUS) ||
 	    (fi->flags & CEPH_F_SYNC))
 		/* hmm, this isn't really async... */
 		ret = ceph_sync_read(filp, base, len, ppos, &checkeof);
@@ -711,13 +710,11 @@ static ssize_t ceph_aio_write(struct kiocb *iocb, const struct iovec *iov,
 		&ceph_sb_to_client(inode->i_sb)->client->osdc;
 	ssize_t count, written = 0;
 	int err, want, got;
-	bool hold_mutex;
 
 	if (ceph_snap(inode) != CEPH_NOSNAP)
 		return -EROFS;
 
 	mutex_lock(&inode->i_mutex);
-	hold_mutex = true;
 
 	err = generic_segment_checks(iov, &nr_segs, &count, VERIFY_READ);
 	if (err)
@@ -763,18 +760,24 @@ retry_snap:
 
 	if ((got & (CEPH_CAP_FILE_BUFFER|CEPH_CAP_FILE_LAZYIO)) == 0 ||
 	    (iocb->ki_filp->f_flags & O_DIRECT) ||
-	    (inode->i_sb->s_flags & MS_SYNCHRONOUS) ||
 	    (fi->flags & CEPH_F_SYNC)) {
 		mutex_unlock(&inode->i_mutex);
 		written = ceph_sync_write(file, iov->iov_base, count,
 					  pos, &iocb->ki_pos);
+		if (written == -EOLDSNAPC) {
+			dout("aio_write %p %llx.%llx %llu~%u"
+				"got EOLDSNAPC, retrying\n",
+				inode, ceph_vinop(inode),
+				pos, (unsigned)iov->iov_len);
+			mutex_lock(&inode->i_mutex);
+			goto retry_snap;
+		}
 	} else {
 		written = generic_file_buffered_write(iocb, iov, nr_segs,
 						      pos, &iocb->ki_pos,
 						      count, 0);
 		mutex_unlock(&inode->i_mutex);
 	}
-	hold_mutex = false;
 
 	if (written >= 0) {
 		int dirty;
@@ -798,18 +801,12 @@ retry_snap:
 			written = err;
 	}
 
-	if (written == -EOLDSNAPC) {
-		dout("aio_write %p %llx.%llx %llu~%u got EOLDSNAPC, retrying\n",
-		     inode, ceph_vinop(inode), pos, (unsigned)iov->iov_len);
-		mutex_lock(&inode->i_mutex);
-		hold_mutex = true;
-		goto retry_snap;
-	}
-out:
-	if (hold_mutex)
-		mutex_unlock(&inode->i_mutex);
-	current->backing_dev_info = NULL;
+	goto out_unlocked;
 
+out:
+	mutex_unlock(&inode->i_mutex);
+out_unlocked:
+	current->backing_dev_info = NULL;
 	return written ? written : err;
 }
 
