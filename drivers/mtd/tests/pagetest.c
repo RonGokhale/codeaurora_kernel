@@ -272,7 +272,7 @@ static int erasecrosstest(void)
 	if (err) {
 		pr_err("error: read failed at %#llx\n",
 		       (long long)addr0);
-		return err ? err : -1;
+		return err;
 	}
 
 	pr_info("verifying 1st page of block %d\n", ebnum);
@@ -308,7 +308,7 @@ static int erasecrosstest(void)
 	if (err) {
 		pr_err("error: read failed at %#llx\n",
 		       (long long)addr0);
-		return err ? err : -1;
+		return err;
 	}
 
 	pr_info("verifying 1st page of block %d\n", ebnum);
@@ -361,7 +361,7 @@ static int erasetest(void)
 	if (err) {
 		pr_err("error: read failed at %#llx\n",
 		       (long long)addr0);
-		return err ? err : -1;
+		return err;
 	}
 
 	pr_info("verifying 1st page of block %d is all 0xff\n",
