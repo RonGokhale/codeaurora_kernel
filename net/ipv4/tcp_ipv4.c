@@ -890,7 +890,7 @@ bool tcp_syn_flood_action(struct sock *sk,
 		NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_TCPREQQFULLDROP);
 
 	lopt = inet_csk(sk)->icsk_accept_queue.listen_opt;
-	if (!lopt->synflood_warned) {
+	if (!lopt->synflood_warned && sysctl_tcp_syncookies != 2) {
 		lopt->synflood_warned = 1;
 		pr_info("%s: Possible SYN flooding on port %d. %s.  Check SNMP counters.\n",
 			proto, ntohs(tcp_hdr(skb)->dest), msg);
@@ -1316,9 +1316,11 @@ static bool tcp_fastopen_check(struct sock *sk, struct sk_buff *skb,
 		tcp_rsk(req)->rcv_nxt = TCP_SKB_CB(skb)->end_seq;
 		return true;
 	}
+
 	if (foc->len == TCP_FASTOPEN_COOKIE_SIZE) {
 		if ((sysctl_tcp_fastopen & TFO_SERVER_COOKIE_NOT_CHKED) == 0) {
-			tcp_fastopen_cookie_gen(ip_hdr(skb)->saddr, valid_foc);
+			tcp_fastopen_cookie_gen(ip_hdr(skb)->saddr,
+						ip_hdr(skb)->daddr, valid_foc);
 			if ((valid_foc->len != TCP_FASTOPEN_COOKIE_SIZE) ||
 			    memcmp(&foc->val[0], &valid_foc->val[0],
 			    TCP_FASTOPEN_COOKIE_SIZE) != 0)
@@ -1329,14 +1331,16 @@ static bool tcp_fastopen_check(struct sock *sk, struct sk_buff *skb,
 		tcp_rsk(req)->rcv_nxt = TCP_SKB_CB(skb)->end_seq;
 		return true;
 	} else if (foc->len == 0) { /* Client requesting a cookie */
-		tcp_fastopen_cookie_gen(ip_hdr(skb)->saddr, valid_foc);
+		tcp_fastopen_cookie_gen(ip_hdr(skb)->saddr,
+					ip_hdr(skb)->daddr, valid_foc);
 		NET_INC_STATS_BH(sock_net(sk),
 		    LINUX_MIB_TCPFASTOPENCOOKIEREQD);
 	} else {
 		/* Client sent a cookie with wrong size. Treat it
 		 * the same as invalid and return a valid one.
 		 */
-		tcp_fastopen_cookie_gen(ip_hdr(skb)->saddr, valid_foc);
+		tcp_fastopen_cookie_gen(ip_hdr(skb)->saddr,
+					ip_hdr(skb)->daddr, valid_foc);
 	}
 	return false;
 }
@@ -1462,7 +1466,8 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 	 * limitations, they conserve resources and peer is
 	 * evidently real one.
 	 */
-	if (inet_csk_reqsk_queue_is_full(sk) && !isn) {
+	if ((sysctl_tcp_syncookies == 2 ||
+	     inet_csk_reqsk_queue_is_full(sk)) && !isn) {
 		want_cookie = tcp_syn_flood_action(sk, skb, "TCP");
 		if (!want_cookie)
 			goto drop;
@@ -1671,8 +1676,6 @@ struct sock *tcp_v4_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
 		newtp->advmss = tcp_sk(sk)->rx_opt.user_mss;
 
 	tcp_initialize_rcv_mss(newsk);
-	tcp_synack_rtt_meas(newsk, req);
-	newtp->total_retrans = req->num_retrans;
 
 #ifdef CONFIG_TCP_MD5SIG
 	/* Copy over the MD5 key from the original socket */
@@ -2802,6 +2805,7 @@ struct proto tcp_prot = {
 	.unhash			= inet_unhash,
 	.get_port		= inet_csk_get_port,
 	.enter_memory_pressure	= tcp_enter_memory_pressure,
+	.stream_memory_free	= tcp_stream_memory_free,
 	.sockets_allocated	= &tcp_sockets_allocated,
 	.orphan_count		= &tcp_orphan_count,
 	.memory_allocated	= &tcp_memory_allocated,
