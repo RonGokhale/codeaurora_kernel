@@ -323,6 +323,7 @@ struct kvm_pmu {
 	u64 global_ovf_ctrl;
 	u64 counter_bitmask[2];
 	u64 global_ctrl_mask;
+	u64 reserved_bits;
 	u8 version;
 	struct kvm_pmc gp_counters[INTEL_PMC_MAX_GENERIC];
 	struct kvm_pmc fixed_counters[INTEL_PMC_MAX_FIXED];
@@ -802,8 +803,8 @@ extern u32  kvm_min_guest_tsc_khz;
 extern u32  kvm_max_guest_tsc_khz;
 
 enum emulation_result {
-	EMULATE_DONE,       /* no further processing */
-	EMULATE_DO_MMIO,      /* kvm_run filled with mmio request */
+	EMULATE_DONE,         /* no further processing */
+	EMULATE_USER_EXIT,    /* kvm_run ready for userspace exit */
 	EMULATE_FAIL,         /* can't emulate this instruction */
 };
 
