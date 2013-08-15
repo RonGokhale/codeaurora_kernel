@@ -28,10 +28,6 @@
 #include <arch/interrupts.h>
 #include <arch/spr_def.h>
 
-#ifdef CONFIG_PREEMPT
-# error "No support for kernel preemption currently"
-#endif
-
 #define PTREGS_PTR(reg, ptreg) addli reg, sp, C_ABI_SAVE_AREA_SIZE + (ptreg)
 
 #define PTREGS_OFFSET_SYSCALL PTREGS_OFFSET_REG(TREG_SYSCALL_NR)
@@ -189,7 +185,7 @@ intvec_\vecname:
 	 * point sp at the top aligned address on the actual stack page.
 	 */
 	mfspr   r0, SPR_SYSTEM_SAVE_K_0
-	mm      r0, r0, zero, LOG2_THREAD_SIZE, 31
+	mm      r0, r0, zero, LOG2_NR_CPU_IDS, 31
 
 0:
 	/*
@@ -207,6 +203,9 @@ intvec_\vecname:
 	 *    cache line 1: r14...r29
 	 *    cache line 0: 2 x frame, r0..r13
 	 */
+#if STACK_TOP_DELTA != 64
+#error STACK_TOP_DELTA must be 64 for assumptions here and in task_pt_regs()
+#endif
 	andi    r0, r0, -64
 
 	/*
@@ -354,7 +353,7 @@ intvec_\vecname:
 #ifdef __COLLECT_LINKER_FEEDBACK__
 	.pushsection .text.intvec_feedback,"ax"
 	.org    (\vecnum << 5)
-	FEEDBACK_ENTER_EXPLICIT(intvec_\vecname, .intrpt1, 1 << 8)
+	FEEDBACK_ENTER_EXPLICIT(intvec_\vecname, .intrpt, 1 << 8)
 	jrp     lr
 	.popsection
 #endif
@@ -468,7 +467,7 @@ intvec_\vecname:
 	}
 	{
 	 auli   r21, r21, ha16(__per_cpu_offset)
-	 mm     r20, r20, zero, 0, LOG2_THREAD_SIZE-1
+	 mm     r20, r20, zero, 0, LOG2_NR_CPU_IDS-1
 	}
 	s2a     r20, r20, r21
 	lw      tp, r20
@@ -762,7 +761,7 @@ intvec_\vecname:
 	.macro  dc_dispatch vecnum, vecname
 	.org    (\vecnum << 8)
 intvec_\vecname:
-	j       hv_downcall_dispatch
+	j       _hv_downcall_dispatch
 	ENDPROC(intvec_\vecname)
 	.endm
 
@@ -807,33 +806,50 @@ handle_interrupt:
 STD_ENTRY(interrupt_return)
 	/* If we're resuming to kernel space, don't check thread flags. */
 	{
-	 bnz    r30, .Lrestore_all  /* NMIs don't special-case user-space */
+	 bnz    r30, restore_all  /* NMIs don't special-case user-space */
 	 PTREGS_PTR(r29, PTREGS_OFFSET_EX1)
 	}
 	lw      r29, r29
 	andi    r29, r29, SPR_EX_CONTEXT_1_1__PL_MASK  /* mask off ICS */
+	bzt     r29, .Lresume_userspace
+
+#ifdef CONFIG_PREEMPT
+	/* Returning to kernel space. Check if we need preemption. */
+	GET_THREAD_INFO(r29)
+	addli   r28, r29, THREAD_INFO_FLAGS_OFFSET
 	{
-	 bzt    r29, .Lresume_userspace
-	 PTREGS_PTR(r29, PTREGS_OFFSET_PC)
+	 lw     r28, r28
+	 addli  r29, r29, THREAD_INFO_PREEMPT_COUNT_OFFSET
 	}
+	{
+	 andi   r28, r28, _TIF_NEED_RESCHED
+	 lw     r29, r29
+	}
+	bzt     r28, 1f
+	bnz     r29, 1f
+	jal     preempt_schedule_irq
+	FEEDBACK_REENTER(interrupt_return)
+1:
+#endif
 
 	/* If we're resuming to _cpu_idle_nap, bump PC forward by 8. */
 	{
-	 lw     r28, r29
+	 PTREGS_PTR(r29, PTREGS_OFFSET_PC)
 	 moveli r27, lo16(_cpu_idle_nap)
 	}
 	{
+	 lw     r28, r29
 	 auli   r27, r27, ha16(_cpu_idle_nap)
 	}
 	{
 	 seq    r27, r27, r28
 	}
 	{
-	 bbns   r27, .Lrestore_all
+	 bbns   r27, restore_all
 	 addi   r28, r28, 8
 	}
 	sw      r29, r28
-	j       .Lrestore_all
+	j       restore_all
 
 .Lresume_userspace:
 	FEEDBACK_REENTER(interrupt_return)
@@ -871,7 +887,7 @@ STD_ENTRY(interrupt_return)
 	 auli   r1, r1, ha16(_TIF_ALLWORK_MASK)
 	}
 	and     r1, r29, r1
-	bzt     r1, .Lrestore_all
+	bzt     r1, restore_all
 
 	/*
 	 * Make sure we have all the registers saved for signal
@@ -910,7 +926,9 @@ STD_ENTRY(interrupt_return)
 	 * profile interrupt will actually disable interrupts in both SPRs
 	 * before returning, which is OK.)
 	 */
-.Lrestore_all:
+	.global restore_all
+	.type restore_all, @function
+restore_all:
 	PTREGS_PTR(r0, PTREGS_OFFSET_EX1)
 	{
 	 lw     r0, r0
@@ -1420,7 +1438,6 @@ handle_ill:
 	{
 	 lw     r0, r0          /* indirect thru thread_info to get task_info*/
 	 addi   r1, sp, C_ABI_SAVE_AREA_SIZE  /* put ptregs pointer into r1 */
-	 move   r2, zero        /* load error code into r2 */
 	}
 
 	jal     send_sigtrap    /* issue a SIGTRAP */
@@ -1609,7 +1626,7 @@ ENTRY(sys_cmpxchg)
 	  * Because of C pointer arithmetic, we want to compute this:
 	  *
 	  * ((char*)atomic_locks +
-	  *  (((r0 >> 3) & (1 << (ATOMIC_HASH_SIZE - 1))) << 2))
+	  *  (((r0 >> 3) & ((1 << ATOMIC_HASH_SHIFT) - 1)) << 2))
 	  *
 	  * Instead of two shifts we just ">> 1", and use 'mm'
 	  * to ignore the low and high bits we don't want.
@@ -1875,8 +1892,8 @@ int_unalign:
 	push_extra_callee_saves r0
 	j       do_trap
 
-/* Include .intrpt1 array of interrupt vectors */
-	.section ".intrpt1", "ax"
+/* Include .intrpt array of interrupt vectors */
+	.section ".intrpt", "ax"
 
 #define op_handle_perf_interrupt bad_intr
 #define op_handle_aux_perf_interrupt bad_intr
