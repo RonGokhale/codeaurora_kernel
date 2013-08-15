@@ -2940,10 +2940,10 @@ nfs4_proc_setattr(struct dentry *dentry, struct nfs_fattr *fattr,
 	
 	/* Deal with open(O_TRUNC) */
 	if (sattr->ia_valid & ATTR_OPEN)
-		sattr->ia_valid &= ~(ATTR_MTIME|ATTR_CTIME|ATTR_OPEN);
+		sattr->ia_valid &= ~(ATTR_MTIME|ATTR_CTIME);
 
 	/* Optimization: if the end result is no change, don't RPC */
-	if ((sattr->ia_valid & ~(ATTR_FILE)) == 0)
+	if ((sattr->ia_valid & ~(ATTR_FILE|ATTR_OPEN)) == 0)
 		return 0;
 
 	/* Search for an existing open(O_WRITE) file */
@@ -4660,10 +4660,14 @@ static unsigned int
 nfs4_init_uniform_client_string(const struct nfs_client *clp,
 				char *buf, size_t len)
 {
-	char *nodename = clp->cl_rpcclient->cl_nodename;
+	const char *nodename = clp->cl_rpcclient->cl_nodename;
 
 	if (nfs4_client_id_uniquifier[0] != '\0')
-		nodename = nfs4_client_id_uniquifier;
+		return scnprintf(buf, len, "Linux NFSv%u.%u %s/%s",
+				clp->rpc_ops->version,
+				clp->cl_minorversion,
+				nfs4_client_id_uniquifier,
+				nodename);
 	return scnprintf(buf, len, "Linux NFSv%u.%u %s",
 				clp->rpc_ops->version, clp->cl_minorversion,
 				nodename);
@@ -5788,6 +5792,10 @@ int nfs4_proc_fs_locations(struct rpc_clnt *client, struct inode *dir,
 	return err;
 }
 
+/**
+ * Use the state managment nfs_client cl_rpcclient, which uses krb5i (if
+ * possible) as per RFC3530bis and RFC5661 Security Considerations sections
+ */
 static int _nfs4_proc_secinfo(struct inode *dir, const struct qstr *name, struct nfs4_secinfo_flavors *flavors)
 {
 	int status;
@@ -5803,9 +5811,10 @@ static int _nfs4_proc_secinfo(struct inode *dir, const struct qstr *name, struct
 		.rpc_argp = &args,
 		.rpc_resp = &res,
 	};
+	struct rpc_clnt *clnt = NFS_SERVER(dir)->nfs_client->cl_rpcclient;
 
 	dprintk("NFS call  secinfo %s\n", name->name);
-	status = nfs4_call_sync(NFS_SERVER(dir)->client, NFS_SERVER(dir), &msg, &args.seq_args, &res.seq_res, 0);
+	status = nfs4_call_sync(clnt, NFS_SERVER(dir), &msg, &args.seq_args, &res.seq_res, 0);
 	dprintk("NFS reply  secinfo: %d\n", status);
 	return status;
 }
@@ -6063,7 +6072,7 @@ int nfs4_destroy_clientid(struct nfs_client *clp)
 		goto out;
 	if (clp->cl_preserve_clid)
 		goto out;
-	cred = nfs4_get_exchange_id_cred(clp);
+	cred = nfs4_get_clid_cred(clp);
 	ret = nfs4_proc_destroy_clientid(clp, cred);
 	if (cred)
 		put_rpccred(cred);
@@ -6874,7 +6883,7 @@ int nfs4_proc_layoutreturn(struct nfs4_layoutreturn *lrp)
 		.rpc_cred = lrp->cred,
 	};
 	struct rpc_task_setup task_setup_data = {
-		.rpc_client = lrp->clp->cl_rpcclient,
+		.rpc_client = NFS_SERVER(lrp->args.inode)->client,
 		.rpc_message = &msg,
 		.callback_ops = &nfs4_layoutreturn_call_ops,
 		.callback_data = lrp,
@@ -7079,6 +7088,10 @@ out:
 	return status;
 }
 
+/**
+ * Use the state managment nfs_client cl_rpcclient, which uses krb5i (if
+ * possible) as per RFC3530bis and RFC5661 Security Considerations sections
+ */
 static int
 _nfs41_proc_secinfo_no_name(struct nfs_server *server, struct nfs_fh *fhandle,
 		    struct nfs_fsinfo *info, struct nfs4_secinfo_flavors *flavors)
@@ -7094,7 +7107,8 @@ _nfs41_proc_secinfo_no_name(struct nfs_server *server, struct nfs_fh *fhandle,
 		.rpc_argp = &args,
 		.rpc_resp = &res,
 	};
-	return nfs4_call_sync(server->client, server, &msg, &args.seq_args, &res.seq_res, 0);
+	return nfs4_call_sync(server->nfs_client->cl_rpcclient, server, &msg,
+				&args.seq_args, &res.seq_res, 0);
 }
 
 static int
@@ -7357,7 +7371,6 @@ static const struct nfs4_state_recovery_ops nfs40_reboot_recovery_ops = {
 	.recover_open	= nfs4_open_reclaim,
 	.recover_lock	= nfs4_lock_reclaim,
 	.establish_clid = nfs4_init_clientid,
-	.get_clid_cred	= nfs4_get_setclientid_cred,
 	.detect_trunking = nfs40_discover_server_trunking,
 };
 
@@ -7368,7 +7381,6 @@ static const struct nfs4_state_recovery_ops nfs41_reboot_recovery_ops = {
 	.recover_open	= nfs4_open_reclaim,
 	.recover_lock	= nfs4_lock_reclaim,
 	.establish_clid = nfs41_init_clientid,
-	.get_clid_cred	= nfs4_get_exchange_id_cred,
 	.reclaim_complete = nfs41_proc_reclaim_complete,
 	.detect_trunking = nfs41_discover_server_trunking,
 };
@@ -7380,7 +7392,6 @@ static const struct nfs4_state_recovery_ops nfs40_nograce_recovery_ops = {
 	.recover_open	= nfs4_open_expired,
 	.recover_lock	= nfs4_lock_expired,
 	.establish_clid = nfs4_init_clientid,
-	.get_clid_cred	= nfs4_get_setclientid_cred,
 };
 
 #if defined(CONFIG_NFS_V4_1)
@@ -7390,7 +7401,6 @@ static const struct nfs4_state_recovery_ops nfs41_nograce_recovery_ops = {
 	.recover_open	= nfs41_open_expired,
 	.recover_lock	= nfs41_lock_expired,
 	.establish_clid = nfs41_init_clientid,
-	.get_clid_cred	= nfs4_get_exchange_id_cred,
 };
 #endif /* CONFIG_NFS_V4_1 */
 
