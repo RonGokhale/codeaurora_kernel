@@ -561,6 +561,18 @@ enum {
 #define EXT4_GET_BLOCKS_NO_PUT_HOLE		0x0200
 
 /*
+ * The bit position of these flags must not overlap with any of the
+ * EXT4_GET_BLOCKS_*.  They are used by ext4_ext_find_extent(),
+ * read_extent_tree_block(), ext4_split_extent_at(),
+ * ext4_ext_insert_extent(), and ext4_ext_create_new_leaf().
+ * EXT4_EX_NOCACHE is used to indicate that the we shouldn't be
+ * caching the extents when reading from the extent tree while a
+ * truncate or punch hole operation is in progress.
+ */
+#define EXT4_EX_NOCACHE				0x0400
+#define EXT4_EX_FORCE_CACHE			0x0800
+
+/*
  * Flags used by ext4_free_blocks
  */
 #define EXT4_FREE_BLOCKS_METADATA	0x0001
@@ -590,6 +602,7 @@ enum {
 #define EXT4_IOC_MOVE_EXT		_IOWR('f', 15, struct move_extent)
 #define EXT4_IOC_RESIZE_FS		_IOW('f', 16, __u64)
 #define EXT4_IOC_SWAP_BOOT		_IO('f', 17)
+#define EXT4_IOC_PRECACHE_EXTENTS	_IO('f', 18)
 
 #if defined(__KERNEL__) && defined(CONFIG_COMPAT)
 /*
@@ -1375,6 +1388,7 @@ enum {
 					   nolocking */
 	EXT4_STATE_MAY_INLINE_DATA,	/* may have in-inode data */
 	EXT4_STATE_ORDERED_MODE,	/* data=ordered mode */
+	EXT4_STATE_EXT_PRECACHED,	/* extents have been precached */
 };
 
 #define EXT4_INODE_BIT_FNS(name, field, offset)				\
@@ -2683,7 +2697,8 @@ extern int ext4_ext_insert_extent(handle_t *, struct inode *,
 				  struct ext4_ext_path *,
 				  struct ext4_extent *, int);
 extern struct ext4_ext_path *ext4_ext_find_extent(struct inode *, ext4_lblk_t,
-						  struct ext4_ext_path *);
+						  struct ext4_ext_path *,
+						  int flags);
 extern void ext4_ext_drop_refs(struct ext4_ext_path *);
 extern int ext4_ext_check_inode(struct inode *inode);
 extern int ext4_find_delalloc_range(struct inode *inode,
@@ -2692,7 +2707,7 @@ extern int ext4_find_delalloc_range(struct inode *inode,
 extern int ext4_find_delalloc_cluster(struct inode *inode, ext4_lblk_t lblk);
 extern int ext4_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 			__u64 start, __u64 len);
-
+extern int ext4_ext_precache(struct inode *inode);
 
 /* move_extent.c */
 extern void ext4_double_down_write_data_sem(struct inode *first,
