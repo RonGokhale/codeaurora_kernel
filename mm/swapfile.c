@@ -558,9 +558,8 @@ static unsigned long scan_swap_map(struct swap_info_struct *si,
 
 checks:
 	if (si->cluster_info) {
-		while (scan_swap_map_ssd_cluster_conflict(si, offset)) {
+		while (scan_swap_map_ssd_cluster_conflict(si, offset))
 			scan_swap_map_try_ssd_cluster(si, &offset, &scan_base);
-		}
 	}
 	if (!(si->flags & SWP_WRITEOK))
 		goto no_page;
