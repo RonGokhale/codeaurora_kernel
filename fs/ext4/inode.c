@@ -4574,8 +4574,6 @@ int ext4_setattr(struct dentry *dentry, struct iattr *attr)
 
 	if (attr->ia_valid & ATTR_SIZE) {
 		if (attr->ia_size != inode->i_size) {
-			loff_t oldsize = inode->i_size;
-
 			i_size_write(inode, attr->ia_size);
 			/*
 			 * Blocks are going to be removed from the inode. Wait
@@ -4594,7 +4592,7 @@ int ext4_setattr(struct dentry *dentry, struct iattr *attr)
 			 * Truncate pagecache after we've waited for commit
 			 * in data=journal mode to make pages freeable.
 			 */
-			truncate_pagecache(inode, oldsize, inode->i_size);
+			truncate_pagecache(inode, inode->i_size);
 		}
 		ext4_truncate(inode);
 	}
