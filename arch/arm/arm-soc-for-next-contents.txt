@@ -64,6 +64,8 @@ next/soc
 	renesas/soc2
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-soc2-for-v3.12
 		includes renesas/fixes-for-3.12
+	patch
+		ARM: vexpress/MCPM: fix cache disable sequence when CONFIG_FRAME_POINTER=y
 
 next/boards
 	renesas/backlight
