@@ -1826,10 +1826,10 @@ ring_stuck(struct intel_ring_buffer *ring, u32 acthd)
 	u32 tmp;
 
 	if (ring->hangcheck.acthd != acthd)
-		return active;
+		return HANGCHECK_ACTIVE;
 
 	if (IS_GEN2(dev))
-		return hung;
+		return HANGCHECK_HUNG;
 
 	/* Is the chip hanging on a WAIT_FOR_EVENT?
 	 * If so we can simply poke the RB_WAIT bit
@@ -1841,24 +1841,24 @@ ring_stuck(struct intel_ring_buffer *ring, u32 acthd)
 		DRM_ERROR("Kicking stuck wait on %s\n",
 			  ring->name);
 		I915_WRITE_CTL(ring, tmp);
-		return kick;
+		return HANGCHECK_KICK;
 	}
 
 	if (INTEL_INFO(dev)->gen >= 6 && tmp & RING_WAIT_SEMAPHORE) {
 		switch (semaphore_passed(ring)) {
 		default:
-			return hung;
+			return HANGCHECK_HUNG;
 		case 1:
 			DRM_ERROR("Kicking stuck semaphore on %s\n",
 				  ring->name);
 			I915_WRITE_CTL(ring, tmp);
-			return kick;
+			return HANGCHECK_KICK;
 		case 0:
-			return wait;
+			return HANGCHECK_WAIT;
 		}
 	}
 
-	return hung;
+	return HANGCHECK_HUNG;
 }
 
 /**
@@ -1869,7 +1869,7 @@ ring_stuck(struct intel_ring_buffer *ring, u32 acthd)
  * we kick the ring. If we see no progress on three subsequent calls
  * we assume chip is wedged and try to fix it by resetting the chip.
  */
-void i915_hangcheck_elapsed(unsigned long data)
+static void i915_hangcheck_elapsed(unsigned long data)
 {
 	struct drm_device *dev = (struct drm_device *)data;
 	drm_i915_private_t *dev_priv = dev->dev_private;
@@ -1905,8 +1905,6 @@ void i915_hangcheck_elapsed(unsigned long data)
 				} else
 					busy = false;
 			} else {
-				int score;
-
 				/* We always increment the hangcheck score
 				 * if the ring is busy and still processing
 				 * the same request, so that no single request
@@ -1926,21 +1924,19 @@ void i915_hangcheck_elapsed(unsigned long data)
 								    acthd);
 
 				switch (ring->hangcheck.action) {
-				case wait:
-					score = 0;
+				case HANGCHECK_WAIT:
 					break;
-				case active:
-					score = BUSY;
+				case HANGCHECK_ACTIVE:
+					ring->hangcheck.score += BUSY;
 					break;
-				case kick:
-					score = KICK;
+				case HANGCHECK_KICK:
+					ring->hangcheck.score += KICK;
 					break;
-				case hung:
-					score = HUNG;
+				case HANGCHECK_HUNG:
+					ring->hangcheck.score += HUNG;
 					stuck[i] = true;
 					break;
 				}
-				ring->hangcheck.score += score;
 			}
 		} else {
 			/* Gradually reduce the count so that we catch DoS
@@ -2403,7 +2399,6 @@ static irqreturn_t i8xx_irq_handler(int irq, void *arg)
 	u16 iir, new_iir;
 	u32 pipe_stats[2];
 	unsigned long irqflags;
-	int irq_received;
 	int pipe;
 	u16 flip_mask =
 		I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT |
@@ -2437,7 +2432,6 @@ static irqreturn_t i8xx_irq_handler(int irq, void *arg)
 					DRM_DEBUG_DRIVER("pipe %c underrun\n",
 							 pipe_name(pipe));
 				I915_WRITE(reg, pipe_stats[pipe]);
-				irq_received = 1;
 			}
 		}
 		spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
