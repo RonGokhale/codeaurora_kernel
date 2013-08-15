@@ -422,6 +422,7 @@ int dlm_convert_lock_handler(struct o2net_msg *msg, u32 len, void *data,
 	struct dlm_convert_lock *cnv = (struct dlm_convert_lock *)msg->buf;
 	struct dlm_lock_resource *res = NULL;
 	struct dlm_lock *lock = NULL;
+	struct dlm_lock *tmp_lock;
 	struct dlm_lockstatus *lksb;
 	enum dlm_status status = DLM_NORMAL;
 	u32 flags;
@@ -467,13 +468,13 @@ int dlm_convert_lock_handler(struct o2net_msg *msg, u32 len, void *data,
 		dlm_error(status);
 		goto leave;
 	}
-	list_for_each_entry(lock, &res->granted, list) {
-		if (lock->ml.cookie == cnv->cookie &&
-		    lock->ml.node == cnv->node_idx) {
+	list_for_each_entry(tmp_lock, &res->granted, list) {
+		if (tmp_lock->ml.cookie == cnv->cookie &&
+		    tmp_lock->ml.node == cnv->node_idx) {
+			lock = tmp_lock;
 			dlm_lock_get(lock);
 			break;
 		}
-		lock = NULL;
 	}
 	spin_unlock(&res->spinlock);
 	if (!lock) {

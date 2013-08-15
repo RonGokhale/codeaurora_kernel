@@ -260,7 +260,7 @@ struct dlm_lock_resource * dlm_lookup_lockres(struct dlm_ctxt *dlm,
 
 static struct dlm_ctxt * __dlm_lookup_domain_full(const char *domain, int len)
 {
-	struct dlm_ctxt *tmp = NULL;
+	struct dlm_ctxt *tmp;
 
 	assert_spin_locked(&dlm_domain_lock);
 
@@ -269,11 +269,10 @@ static struct dlm_ctxt * __dlm_lookup_domain_full(const char *domain, int len)
 	list_for_each_entry(tmp, &dlm_domains, list) {
 		if (strlen(tmp->name) == len &&
 		    memcmp(tmp->name, domain, len)==0)
-			break;
-		tmp = NULL;
+			return tmp;
 	}
 
-	return tmp;
+	return NULL;
 }
 
 /* For null terminated domain strings ONLY */
@@ -362,22 +361,22 @@ static void __dlm_get(struct dlm_ctxt *dlm)
  * you shouldn't trust your pointer. */
 struct dlm_ctxt *dlm_grab(struct dlm_ctxt *dlm)
 {
-	struct dlm_ctxt *target = NULL;
+	struct dlm_ctxt *target;
+	struct dlm_ctxt *ret = NULL;
 
 	spin_lock(&dlm_domain_lock);
 
 	list_for_each_entry(target, &dlm_domains, list) {
 		if (target == dlm) {
 			__dlm_get(target);
+			ret = target;
 			break;
 		}
-
-		target = NULL;
 	}
 
 	spin_unlock(&dlm_domain_lock);
 
-	return target;
+	return ret;
 }
 
 int dlm_domain_fully_joined(struct dlm_ctxt *dlm)
