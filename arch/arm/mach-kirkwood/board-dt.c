@@ -91,6 +91,7 @@ static void __init kirkwood_dt_init(void)
 	 */
 	writel(readl(CPU_CONFIG) & ~CPU_CONFIG_ERROR_PROP, CPU_CONFIG);
 
+	BUG_ON(mvebu_mbus_dt_init());
 	kirkwood_setup_wins();
 
 	kirkwood_l2_init();
@@ -106,8 +107,8 @@ static void __init kirkwood_dt_init(void)
 	kexec_reinit = kirkwood_enable_pcie;
 #endif
 
-	if (of_machine_is_compatible("dlink,dns-kirkwood"))
-		dnskw_init();
+	if (of_machine_is_compatible("marvell,mv88f6281gtw-ge"))
+		mv88f6281gtw_ge_init();
 
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 }
