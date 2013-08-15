@@ -175,18 +175,20 @@ void iscsit_put_tpg(struct iscsi_portal_group *tpg)
 
 static void iscsit_clear_tpg_np_login_thread(
 	struct iscsi_tpg_np *tpg_np,
-	struct iscsi_portal_group *tpg)
+	struct iscsi_portal_group *tpg,
+	bool shutdown)
 {
 	if (!tpg_np->tpg_np) {
 		pr_err("struct iscsi_tpg_np->tpg_np is NULL!\n");
 		return;
 	}
 
-	iscsit_reset_np_thread(tpg_np->tpg_np, tpg_np, tpg);
+	iscsit_reset_np_thread(tpg_np->tpg_np, tpg_np, tpg, shutdown);
 }
 
 void iscsit_clear_tpg_np_login_threads(
-	struct iscsi_portal_group *tpg)
+	struct iscsi_portal_group *tpg,
+	bool shutdown)
 {
 	struct iscsi_tpg_np *tpg_np;
 
@@ -197,7 +199,7 @@ void iscsit_clear_tpg_np_login_threads(
 			continue;
 		}
 		spin_unlock(&tpg->tpg_np_lock);
-		iscsit_clear_tpg_np_login_thread(tpg_np, tpg);
+		iscsit_clear_tpg_np_login_thread(tpg_np, tpg, shutdown);
 		spin_lock(&tpg->tpg_np_lock);
 	}
 	spin_unlock(&tpg->tpg_np_lock);
@@ -267,6 +269,8 @@ int iscsit_tpg_del_portal_group(
 	spin_lock(&tpg->tpg_state_lock);
 	tpg->tpg_state = TPG_STATE_INACTIVE;
 	spin_unlock(&tpg->tpg_state_lock);
+
+	iscsit_clear_tpg_np_login_threads(tpg, true);
 
 	if (iscsit_release_sessions_for_tpg(tpg, force) < 0) {
 		pr_err("Unable to delete iSCSI Target Portal Group:"
@@ -368,7 +372,7 @@ int iscsit_tpg_disable_portal_group(struct iscsi_portal_group *tpg, int force)
 	tpg->tpg_state = TPG_STATE_INACTIVE;
 	spin_unlock(&tpg->tpg_state_lock);
 
-	iscsit_clear_tpg_np_login_threads(tpg);
+	iscsit_clear_tpg_np_login_threads(tpg, false);
 
 	if (iscsit_release_sessions_for_tpg(tpg, force) < 0) {
 		spin_lock(&tpg->tpg_state_lock);
@@ -520,7 +524,7 @@ static int iscsit_tpg_release_np(
 	struct iscsi_portal_group *tpg,
 	struct iscsi_np *np)
 {
-	iscsit_clear_tpg_np_login_thread(tpg_np, tpg);
+	iscsit_clear_tpg_np_login_thread(tpg_np, tpg, true);
 
 	pr_debug("CORE[%s] - Removed Network Portal: %s:%hu,%hu on %s\n",
 		tpg->tpg_tiqn->tiqn, np->np_ip, np->np_port, tpg->tpgt,
