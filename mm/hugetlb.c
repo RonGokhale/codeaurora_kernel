@@ -541,7 +541,7 @@ static struct page *dequeue_huge_page_node(struct hstate *h, int nid)
 /* Movability of hugepages depends on migration support. */
 static inline int htlb_alloc_mask(struct hstate *h)
 {
-	if (hugepage_migration_support(h))
+	if (hugepages_treat_as_movable || hugepage_migration_support(h))
 		return GFP_HIGHUSER_MOVABLE;
 	else
 		return GFP_HIGHUSER;
@@ -2124,14 +2124,6 @@ int hugetlb_mempolicy_sysctl_handler(struct ctl_table *table, int write,
 							buffer, length, ppos);
 }
 #endif /* CONFIG_NUMA */
-
-int hugetlb_treat_movable_handler(struct ctl_table *table, int write,
-			void __user *buffer,
-			size_t *length, loff_t *ppos)
-{
-	WARN_ON_ONCE("This knob is obsolete and has no effect. It is scheduled for removal.\n");
-	return 0;
-}
 
 int hugetlb_overcommit_handler(struct ctl_table *table, int write,
 			void __user *buffer,
