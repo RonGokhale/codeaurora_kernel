@@ -275,21 +275,34 @@ static struct file_system_type rootfs_fs_type = {
 
 static int __init init_ramfs_fs(void)
 {
-	return register_filesystem(&ramfs_fs_type);
-}
-module_init(init_ramfs_fs)
-
-int __init init_rootfs(void)
-{
+	static unsigned long once;
 	int err;
+
+	if (test_and_set_bit(1, &once))
+		return 0;
 
 	err = bdi_init(&ramfs_backing_dev_info);
 	if (err)
 		return err;
 
-	err = register_filesystem(&rootfs_fs_type);
+	err = register_filesystem(&ramfs_fs_type);
 	if (err)
 		bdi_destroy(&ramfs_backing_dev_info);
+
+	return err;
+}
+module_init(init_ramfs_fs)
+
+int __init init_rootfs(void)
+{
+	int err = register_filesystem(&rootfs_fs_type);
+
+	if (err)
+		return err;
+
+	err = init_ramfs_fs();
+	if (err)
+		unregister_filesystem(&rootfs_fs_type);
 
 	return err;
 }
