@@ -91,7 +91,7 @@ int mtdtest_read(struct mtd_info *mtd, loff_t addr, size_t size, void *buf)
 	if (mtd_is_bitflip(err))
 		err = 0;
 	if (!err && read != size)
-		err = -EINVAL;
+		err = -EIO;
 
 	return err;
 }
