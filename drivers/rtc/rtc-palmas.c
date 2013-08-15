@@ -239,13 +239,13 @@ static int palmas_rtc_probe(struct platform_device *pdev)
 	struct palmas_rtc *palmas_rtc = NULL;
 	int ret;
 	bool enable_bb_charging = false;
-	bool low_bb_charging;
+	bool high_bb_charging;
 
 	if (pdev->dev.of_node) {
 		enable_bb_charging = of_property_read_bool(pdev->dev.of_node,
-					"ti,back-battery-charge-enable");
-		low_bb_charging = of_property_read_bool(pdev->dev.of_node,
-					"ti,back-battery-charge-low-current");
+					"ti,backup-battery-chargeable");
+		high_bb_charging = of_property_read_bool(pdev->dev.of_node,
+					"ti,backup-battery-charge-high-current");
 	}
 
 	palmas_rtc = devm_kzalloc(&pdev->dev, sizeof(struct palmas_rtc),
@@ -264,10 +264,10 @@ static int palmas_rtc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, palmas_rtc);
 
 	if (enable_bb_charging) {
-		unsigned reg = 0;
+		unsigned reg = PALMAS_BACKUP_BATTERY_CTRL_BBS_BBC_LOW_ICHRG;
 
-		if (low_bb_charging)
-			reg |= PALMAS_BACKUP_BATTERY_CTRL_BBS_BBC_LOW_ICHRG;
+		if (high_bb_charging)
+			reg = 0;
 
 		ret = palmas_update_bits(palmas, PALMAS_PMU_CONTROL_BASE,
 			PALMAS_BACKUP_BATTERY_CTRL,
