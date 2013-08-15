@@ -229,7 +229,7 @@ static void grow_zone_span(struct zone *zone, unsigned long start_pfn,
 
 	zone_span_writelock(zone);
 
-	old_zone_end_pfn = zone->zone_start_pfn + zone->spanned_pages;
+	old_zone_end_pfn = zone_end_pfn(zone);
 	if (!zone->spanned_pages || start_pfn < zone->zone_start_pfn)
 		zone->zone_start_pfn = start_pfn;
 
@@ -515,7 +515,7 @@ static void shrink_zone_span(struct zone *zone, unsigned long start_pfn,
 			     unsigned long end_pfn)
 {
 	unsigned long zone_start_pfn =  zone->zone_start_pfn;
-	unsigned long zone_end_pfn = zone->zone_start_pfn + zone->spanned_pages;
+	unsigned long zone_end_pfn = zone_end_pfn(zone);
 	unsigned long pfn;
 	struct mem_section *ms;
 	int nid = zone_to_nid(zone);
