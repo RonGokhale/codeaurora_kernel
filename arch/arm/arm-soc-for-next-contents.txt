@@ -68,6 +68,8 @@ next/soc
 		includes renesas/fixes-for-3.12
 	patch
 		ARM: vexpress/MCPM: fix cache disable sequence when CONFIG_FRAME_POINTER=y
+	mvebu/drivers
+		git://git.infradead.org/linux-mvebu.git tags/drivers-3.12
 
 next/boards
 	renesas/backlight
