@@ -8,6 +8,26 @@
  * This file is licensed under the terms of the GNU General Public License
  * version 2.  This program is licensed "as is" without any warranty of any
  * kind, whether express or implied.
+ *
+ *
+ * Some notes why imx-pcm-fiq is used instead of DMA on some boards:
+ *
+ * The i.MX SSI core has some nasty limitations in AC97 mode. While most
+ * sane processor vendors have a FIFO per AC97 slot, the i.MX has only
+ * one FIFO which combines all valid receive slots. We cannot even select
+ * which slots we want to receive. The WM9712 with which this driver
+ * was developed with always sends GPIO status data in slot 12 which
+ * we receive in our (PCM-) data stream. The only chance we have is to
+ * manually skip this data in the FIQ handler. With sampling rates different
+ * from 48000Hz not every frame has valid receive data, so the ratio
+ * between pcm data and GPIO status data changes. Our FIQ handler is not
+ * able to handle this, hence this driver only works with 48000Hz sampling
+ * rate.
+ * Reading and writing AC97 registers is another challenge. The core
+ * provides us status bits when the read register is updated with *another*
+ * value. When we read the same register two times (and the register still
+ * contains the same value) these status bits are not set. We work
+ * around this by not polling these bits but only wait a fixed delay.
  */
 
 #include <linux/init.h>
@@ -36,7 +56,7 @@
 #define read_ssi(addr)			 in_be32(addr)
 #define write_ssi(val, addr)		 out_be32(addr, val)
 #define write_ssi_mask(addr, clear, set) clrsetbits_be32(addr, clear, set)
-#elif defined ARM
+#else
 #define read_ssi(addr)			 readl(addr)
 #define write_ssi(val, addr)		 writel(val, addr)
 /*
@@ -121,11 +141,13 @@ struct fsl_ssi_private {
 
 	bool new_binding;
 	bool ssi_on_imx;
+	bool use_dma;
 	struct clk *clk;
 	struct snd_dmaengine_dai_dma_data dma_params_tx;
 	struct snd_dmaengine_dai_dma_data dma_params_rx;
 	struct imx_dma_data filter_data_tx;
 	struct imx_dma_data filter_data_rx;
+	struct imx_pcm_fiq_params fiq_params;
 
 	struct {
 		unsigned int rfrc;
@@ -355,7 +377,12 @@ static int fsl_ssi_startup(struct snd_pcm_substream *substream,
 		 */
 
 		/* Enable the interrupts and DMA requests */
-		write_ssi(SIER_FLAGS, &ssi->sier);
+		if (ssi_private->use_dma)
+			write_ssi(SIER_FLAGS, &ssi->sier);
+		else
+			write_ssi(CCSR_SSI_SIER_TIE | CCSR_SSI_SIER_TFE0_EN |
+					CCSR_SSI_SIER_RIE |
+					CCSR_SSI_SIER_RFF0_EN, &ssi->sier);
 
 		/*
 		 * Set the watermark for transmit FIFI 0 and receive FIFO 0. We
@@ -510,6 +537,9 @@ static int fsl_ssi_trigger(struct snd_pcm_substream *substream, int cmd,
 			write_ssi_mask(&ssi->scr, CCSR_SSI_SCR_TE, 0);
 		else
 			write_ssi_mask(&ssi->scr, CCSR_SSI_SCR_RE, 0);
+
+		if ((read_ssi(&ssi->scr) & (CCSR_SSI_SCR_TE | CCSR_SSI_SCR_RE)) == 0)
+			write_ssi_mask(&ssi->scr, CCSR_SSI_SCR_SSIEN, 0);
 		break;
 
 	default:
@@ -534,22 +564,13 @@ static void fsl_ssi_shutdown(struct snd_pcm_substream *substream,
 		ssi_private->first_stream = ssi_private->second_stream;
 
 	ssi_private->second_stream = NULL;
-
-	/*
-	 * If this is the last active substream, disable the SSI.
-	 */
-	if (!ssi_private->first_stream) {
-		struct ccsr_ssi __iomem *ssi = ssi_private->ssi;
-
-		write_ssi_mask(&ssi->scr, CCSR_SSI_SCR_SSIEN, 0);
-	}
 }
 
 static int fsl_ssi_dai_probe(struct snd_soc_dai *dai)
 {
 	struct fsl_ssi_private *ssi_private = snd_soc_dai_get_drvdata(dai);
 
-	if (ssi_private->ssi_on_imx) {
+	if (ssi_private->ssi_on_imx && ssi_private->use_dma) {
 		dai->playback_dma_data = &ssi_private->dma_params_tx;
 		dai->capture_dma_data = &ssi_private->dma_params_rx;
 	}
@@ -680,7 +701,7 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 
 	/* The DAI name is the last part of the full name of the node. */
 	p = strrchr(np->full_name, '/') + 1;
-	ssi_private = kzalloc(sizeof(struct fsl_ssi_private) + strlen(p),
+	ssi_private = devm_kzalloc(&pdev->dev, sizeof(*ssi_private) + strlen(p),
 			      GFP_KERNEL);
 	if (!ssi_private) {
 		dev_err(&pdev->dev, "could not allocate DAI object\n");
@@ -688,6 +709,9 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 	}
 
 	strcpy(ssi_private->name, p);
+
+	ssi_private->use_dma = !of_property_read_bool(np,
+			"fsl,fiq-stream-filter");
 
 	/* Initialize this copy of the CPU DAI driver structure */
 	memcpy(&ssi_private->cpu_dai_drv, &fsl_ssi_dai_template,
@@ -698,29 +722,31 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 	ret = of_address_to_resource(np, 0, &res);
 	if (ret) {
 		dev_err(&pdev->dev, "could not determine device resources\n");
-		goto error_kmalloc;
+		return ret;
 	}
 	ssi_private->ssi = of_iomap(np, 0);
 	if (!ssi_private->ssi) {
 		dev_err(&pdev->dev, "could not map device resources\n");
-		ret = -ENOMEM;
-		goto error_kmalloc;
+		return -ENOMEM;
 	}
 	ssi_private->ssi_phys = res.start;
 
 	ssi_private->irq = irq_of_parse_and_map(np, 0);
 	if (ssi_private->irq == NO_IRQ) {
 		dev_err(&pdev->dev, "no irq for node %s\n", np->full_name);
-		ret = -ENXIO;
-		goto error_iomap;
+		return -ENXIO;
 	}
 
-	/* The 'name' should not have any slashes in it. */
-	ret = request_irq(ssi_private->irq, fsl_ssi_isr, 0, ssi_private->name,
-			  ssi_private);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "could not claim irq %u\n", ssi_private->irq);
-		goto error_irqmap;
+	if (ssi_private->use_dma) {
+		/* The 'name' should not have any slashes in it. */
+		ret = devm_request_irq(&pdev->dev, ssi_private->irq,
+					fsl_ssi_isr, 0, ssi_private->name,
+					ssi_private);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "could not claim irq %u\n",
+					ssi_private->irq);
+			goto error_irqmap;
+		}
 	}
 
 	/* Are the RX and the TX clocks locked? */
@@ -739,13 +765,18 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 		u32 dma_events[2];
 		ssi_private->ssi_on_imx = true;
 
-		ssi_private->clk = clk_get(&pdev->dev, NULL);
+		ssi_private->clk = devm_clk_get(&pdev->dev, NULL);
 		if (IS_ERR(ssi_private->clk)) {
 			ret = PTR_ERR(ssi_private->clk);
 			dev_err(&pdev->dev, "could not get clock: %d\n", ret);
-			goto error_irq;
+			goto error_irqmap;
 		}
-		clk_prepare_enable(ssi_private->clk);
+		ret = clk_prepare_enable(ssi_private->clk);
+		if (ret) {
+			dev_err(&pdev->dev, "clk_prepare_enable failed: %d\n",
+				ret);
+			goto error_irqmap;
+		}
 
 		/*
 		 * We have burstsize be "fifo_depth - 2" to match the SSI
@@ -763,24 +794,28 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 			&ssi_private->filter_data_tx;
 		ssi_private->dma_params_rx.filter_data =
 			&ssi_private->filter_data_rx;
-		/*
-		 * TODO: This is a temporary solution and should be changed
-		 * to use generic DMA binding later when the helplers get in.
-		 */
-		ret = of_property_read_u32_array(pdev->dev.of_node,
+		if (!of_property_read_bool(pdev->dev.of_node, "dmas") &&
+				ssi_private->use_dma) {
+			/*
+			 * FIXME: This is a temporary solution until all
+			 * necessary dma drivers support the generic dma
+			 * bindings.
+			 */
+			ret = of_property_read_u32_array(pdev->dev.of_node,
 					"fsl,ssi-dma-events", dma_events, 2);
-		if (ret) {
-			dev_err(&pdev->dev, "could not get dma events\n");
-			goto error_clk;
+			if (ret && ssi_private->use_dma) {
+				dev_err(&pdev->dev, "could not get dma events but fsl-ssi is configured to use DMA\n");
+				goto error_clk;
+			}
 		}
 
 		shared = of_device_is_compatible(of_get_parent(np),
 			    "fsl,spba-bus");
 
 		imx_pcm_dma_params_init_data(&ssi_private->filter_data_tx,
-			dma_events[0], shared);
+			dma_events[0], shared ? IMX_DMATYPE_SSI_SP : IMX_DMATYPE_SSI);
 		imx_pcm_dma_params_init_data(&ssi_private->filter_data_rx,
-			dma_events[1], shared);
+			dma_events[1], shared ? IMX_DMATYPE_SSI_SP : IMX_DMATYPE_SSI);
 	}
 
 	/* Initialize the the device_attribute structure */
@@ -794,7 +829,7 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "could not create sysfs %s file\n",
 			ssi_private->dev_attr.attr.name);
-		goto error_irq;
+		goto error_clk;
 	}
 
 	/* Register with ASoC */
@@ -808,9 +843,30 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 	}
 
 	if (ssi_private->ssi_on_imx) {
-		ret = imx_pcm_dma_init(pdev);
-		if (ret)
-			goto error_dev;
+		if (!ssi_private->use_dma) {
+
+			/*
+			 * Some boards use an incompatible codec. To get it
+			 * working, we are using imx-fiq-pcm-audio, that
+			 * can handle those codecs. DMA is not possible in this
+			 * situation.
+			 */
+
+			ssi_private->fiq_params.irq = ssi_private->irq;
+			ssi_private->fiq_params.base = ssi_private->ssi;
+			ssi_private->fiq_params.dma_params_rx =
+				&ssi_private->dma_params_rx;
+			ssi_private->fiq_params.dma_params_tx =
+				&ssi_private->dma_params_tx;
+
+			ret = imx_pcm_fiq_init(pdev, &ssi_private->fiq_params);
+			if (ret)
+				goto error_dev;
+		} else {
+			ret = imx_pcm_dma_init(pdev);
+			if (ret)
+				goto error_dev;
+		}
 	}
 
 	/*
@@ -857,22 +913,11 @@ error_dev:
 	device_remove_file(&pdev->dev, dev_attr);
 
 error_clk:
-	if (ssi_private->ssi_on_imx) {
+	if (ssi_private->ssi_on_imx)
 		clk_disable_unprepare(ssi_private->clk);
-		clk_put(ssi_private->clk);
-	}
-
-error_irq:
-	free_irq(ssi_private->irq, ssi_private);
 
 error_irqmap:
 	irq_dispose_mapping(ssi_private->irq);
-
-error_iomap:
-	iounmap(ssi_private->ssi);
-
-error_kmalloc:
-	kfree(ssi_private);
 
 	return ret;
 }
@@ -886,15 +931,10 @@ static int fsl_ssi_remove(struct platform_device *pdev)
 	if (ssi_private->ssi_on_imx) {
 		imx_pcm_dma_exit(pdev);
 		clk_disable_unprepare(ssi_private->clk);
-		clk_put(ssi_private->clk);
 	}
 	snd_soc_unregister_component(&pdev->dev);
 	device_remove_file(&pdev->dev, &ssi_private->dev_attr);
-
-	free_irq(ssi_private->irq, ssi_private);
 	irq_dispose_mapping(ssi_private->irq);
-
-	kfree(ssi_private);
 	dev_set_drvdata(&pdev->dev, NULL);
 
 	return 0;
@@ -919,6 +959,7 @@ static struct platform_driver fsl_ssi_driver = {
 
 module_platform_driver(fsl_ssi_driver);
 
+MODULE_ALIAS("platform:fsl-ssi-dai");
 MODULE_AUTHOR("Timur Tabi <timur@freescale.com>");
 MODULE_DESCRIPTION("Freescale Synchronous Serial Interface (SSI) ASoC Driver");
 MODULE_LICENSE("GPL v2");
