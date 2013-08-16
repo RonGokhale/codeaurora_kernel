@@ -9,13 +9,17 @@
 #include <linux/kernel.h>
 #include <linux/pci.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
+#include <linux/gpio.h>
 #include <linux/module.h>
 #include <linux/mbus.h>
+#include <linux/msi.h>
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/of_address.h>
-#include <linux/of_pci.h>
 #include <linux/of_irq.h>
+#include <linux/of_gpio.h>
+#include <linux/of_pci.h>
 #include <linux/of_platform.h>
 
 /*
@@ -103,6 +107,7 @@ struct mvebu_pcie_port;
 struct mvebu_pcie {
 	struct platform_device *pdev;
 	struct mvebu_pcie_port *ports;
+	struct msi_chip *msi;
 	struct resource io;
 	struct resource realio;
 	struct resource mem;
@@ -119,7 +124,14 @@ struct mvebu_pcie_port {
 	u32 port;
 	u32 lane;
 	int devfn;
+	unsigned int mem_target;
+	unsigned int mem_attr;
+	unsigned int io_target;
+	unsigned int io_attr;
 	struct clk *clk;
+	int reset_gpio;
+	int reset_active_low;
+	char *reset_name;
 	struct mvebu_sw_pci_bridge bridge;
 	struct device_node *dn;
 	struct mvebu_pcie *pcie;
@@ -159,7 +171,7 @@ static void mvebu_pcie_set_local_dev_nr(struct mvebu_pcie_port *port, int nr)
  * BAR[0,2] -> disabled, BAR[1] -> covers all DRAM banks
  * WIN[0-3] -> DRAM bank[0-3]
  */
-static void __init mvebu_pcie_setup_wins(struct mvebu_pcie_port *port)
+static void mvebu_pcie_setup_wins(struct mvebu_pcie_port *port)
 {
 	const struct mbus_dram_target_info *dram;
 	u32 size;
@@ -211,7 +223,7 @@ static void __init mvebu_pcie_setup_wins(struct mvebu_pcie_port *port)
 	       port->base + PCIE_BAR_CTRL_OFF(1));
 }
 
-static void __init mvebu_pcie_setup_hw(struct mvebu_pcie_port *port)
+static void mvebu_pcie_setup_hw(struct mvebu_pcie_port *port)
 {
 	u16 cmd;
 	u32 mask;
@@ -303,10 +315,9 @@ static void mvebu_pcie_handle_iobase_change(struct mvebu_pcie_port *port)
 			    (port->bridge.iolimitupper << 16)) -
 			    iobase);
 
-	mvebu_mbus_add_window_remap_flags(port->name, port->iowin_base,
-					  port->iowin_size,
-					  iobase,
-					  MVEBU_MBUS_PCI_IO);
+	mvebu_mbus_add_window_remap_by_id(port->io_target, port->io_attr,
+					  port->iowin_base, port->iowin_size,
+					  iobase);
 
 	pci_ioremap_io(iobase, port->iowin_base);
 }
@@ -338,10 +349,8 @@ static void mvebu_pcie_handle_membase_change(struct mvebu_pcie_port *port)
 		(((port->bridge.memlimit & 0xFFF0) << 16) | 0xFFFFF) -
 		port->memwin_base;
 
-	mvebu_mbus_add_window_remap_flags(port->name, port->memwin_base,
-					  port->memwin_size,
-					  MVEBU_MBUS_NO_REMAP,
-					  MVEBU_MBUS_PCI_MEM);
+	mvebu_mbus_add_window_by_id(port->mem_target, port->mem_attr,
+				    port->memwin_base, port->memwin_size);
 }
 
 /*
@@ -625,7 +634,7 @@ static struct pci_ops mvebu_pcie_ops = {
 	.write = mvebu_pcie_wr_conf,
 };
 
-static int __init mvebu_pcie_setup(int nr, struct pci_sys_data *sys)
+static int mvebu_pcie_setup(int nr, struct pci_sys_data *sys)
 {
 	struct mvebu_pcie *pcie = sys_to_pcie(sys);
 	int i;
@@ -636,13 +645,15 @@ static int __init mvebu_pcie_setup(int nr, struct pci_sys_data *sys)
 
 	for (i = 0; i < pcie->nports; i++) {
 		struct mvebu_pcie_port *port = &pcie->ports[i];
+		if (!port->base)
+			continue;
 		mvebu_pcie_setup_hw(port);
 	}
 
 	return 1;
 }
 
-static int __init mvebu_pcie_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
+static int mvebu_pcie_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
 	struct of_irq oirq;
 	int ret;
@@ -670,6 +681,12 @@ static struct pci_bus *mvebu_pcie_scan_bus(int nr, struct pci_sys_data *sys)
 	return bus;
 }
 
+void mvebu_pcie_add_bus(struct pci_bus *bus)
+{
+	struct mvebu_pcie *pcie = sys_to_pcie(bus->sysdata);
+	bus->msi = pcie->msi;
+}
+
 resource_size_t mvebu_pcie_align_resource(struct pci_dev *dev,
 					  const struct resource *res,
 					  resource_size_t start,
@@ -693,7 +710,7 @@ resource_size_t mvebu_pcie_align_resource(struct pci_dev *dev,
 		return start;
 }
 
-static void __init mvebu_pcie_enable(struct mvebu_pcie *pcie)
+static void mvebu_pcie_enable(struct mvebu_pcie *pcie)
 {
 	struct hw_pci hw;
 
@@ -706,6 +723,7 @@ static void __init mvebu_pcie_enable(struct mvebu_pcie *pcie)
 	hw.map_irq        = mvebu_pcie_map_irq;
 	hw.ops            = &mvebu_pcie_ops;
 	hw.align_resource = mvebu_pcie_align_resource;
+	hw.add_bus        = mvebu_pcie_add_bus;
 
 	pci_common_init(&hw);
 }
@@ -715,10 +733,8 @@ static void __init mvebu_pcie_enable(struct mvebu_pcie *pcie)
  * <...> property for one that matches the given port/lane. Once
  * found, maps it.
  */
-static void __iomem * __init
-mvebu_pcie_map_registers(struct platform_device *pdev,
-			 struct device_node *np,
-			 struct mvebu_pcie_port *port)
+static void __iomem *mvebu_pcie_map_registers(struct platform_device *pdev,
+		      struct device_node *np, struct mvebu_pcie_port *port)
 {
 	struct resource regs;
 	int ret = 0;
@@ -730,12 +746,69 @@ mvebu_pcie_map_registers(struct platform_device *pdev,
 	return devm_ioremap_resource(&pdev->dev, &regs);
 }
 
-static int __init mvebu_pcie_probe(struct platform_device *pdev)
+#define DT_FLAGS_TO_TYPE(flags)       (((flags) >> 24) & 0x03)
+#define    DT_TYPE_IO                 0x1
+#define    DT_TYPE_MEM32              0x2
+#define DT_CPUADDR_TO_TARGET(cpuaddr) (((cpuaddr) >> 56) & 0xFF)
+#define DT_CPUADDR_TO_ATTR(cpuaddr)   (((cpuaddr) >> 48) & 0xFF)
+
+static int mvebu_get_tgt_attr(struct device_node *np, int devfn,
+			      unsigned long type, int *tgt, int *attr)
+{
+	const int na = 3, ns = 2;
+	const __be32 *range;
+	int rlen, nranges, rangesz, pna, i;
+
+	range = of_get_property(np, "ranges", &rlen);
+	if (!range)
+		return -EINVAL;
+
+	pna = of_n_addr_cells(np);
+	rangesz = pna + na + ns;
+	nranges = rlen / sizeof(__be32) / rangesz;
+
+	for (i = 0; i < nranges; i++) {
+		u32 flags = of_read_number(range, 1);
+		u32 slot = of_read_number(range, 2);
+		u64 cpuaddr = of_read_number(range + na, pna);
+		unsigned long rtype;
+
+		if (DT_FLAGS_TO_TYPE(flags) == DT_TYPE_IO)
+			rtype = IORESOURCE_IO;
+		else if (DT_FLAGS_TO_TYPE(flags) == DT_TYPE_MEM32)
+			rtype = IORESOURCE_MEM;
+
+		if (slot == PCI_SLOT(devfn) && type == rtype) {
+			*tgt = DT_CPUADDR_TO_TARGET(cpuaddr);
+			*attr = DT_CPUADDR_TO_ATTR(cpuaddr);
+			return 0;
+		}
+
+		range += rangesz;
+	}
+
+	return -ENOENT;
+}
+
+static void mvebu_pcie_msi_enable(struct mvebu_pcie *pcie)
+{
+	struct device_node *msi_node;
+
+	msi_node = of_parse_phandle(pcie->pdev->dev.of_node,
+				    "msi-parent", 0);
+	if (!msi_node)
+		return;
+
+	pcie->msi = of_pci_find_msi_chip_by_node(msi_node);
+
+	if (pcie->msi)
+		pcie->msi->dev = &pcie->pdev->dev;
+}
+
+static int mvebu_pcie_probe(struct platform_device *pdev)
 {
 	struct mvebu_pcie *pcie;
 	struct device_node *np = pdev->dev.of_node;
-	struct of_pci_range range;
-	struct of_pci_range_parser parser;
 	struct device_node *child;
 	int i, ret;
 
@@ -745,29 +818,26 @@ static int __init mvebu_pcie_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	pcie->pdev = pdev;
+	platform_set_drvdata(pdev, pcie);
 
-	if (of_pci_range_parser_init(&parser, np))
+	/* Get the PCIe memory and I/O aperture */
+	mvebu_mbus_get_pcie_mem_aperture(&pcie->mem);
+	if (resource_size(&pcie->mem) == 0) {
+		dev_err(&pdev->dev, "invalid memory aperture size\n");
 		return -EINVAL;
-
-	/* Get the I/O and memory ranges from DT */
-	for_each_of_pci_range(&parser, &range) {
-		unsigned long restype = range.flags & IORESOURCE_TYPE_BITS;
-		if (restype == IORESOURCE_IO) {
-			of_pci_range_to_resource(&range, np, &pcie->io);
-			of_pci_range_to_resource(&range, np, &pcie->realio);
-			pcie->io.name = "I/O";
-			pcie->realio.start = max_t(resource_size_t,
-						   PCIBIOS_MIN_IO,
-						   range.pci_addr);
-			pcie->realio.end = min_t(resource_size_t,
-						 IO_SPACE_LIMIT,
-						 range.pci_addr + range.size);
-		}
-		if (restype == IORESOURCE_MEM) {
-			of_pci_range_to_resource(&range, np, &pcie->mem);
-			pcie->mem.name = "MEM";
-		}
 	}
+
+	mvebu_mbus_get_pcie_io_aperture(&pcie->io);
+	if (resource_size(&pcie->io) == 0) {
+		dev_err(&pdev->dev, "invalid I/O aperture size\n");
+		return -EINVAL;
+	}
+
+	pcie->realio.flags = pcie->io.flags;
+	pcie->realio.start = PCIBIOS_MIN_IO;
+	pcie->realio.end = min_t(resource_size_t,
+				  IO_SPACE_LIMIT,
+				  resource_size(&pcie->io));
 
 	/* Get the bus range */
 	ret = of_pci_parse_bus_range(np, &pcie->busn);
@@ -777,13 +847,14 @@ static int __init mvebu_pcie_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	i = 0;
 	for_each_child_of_node(pdev->dev.of_node, child) {
 		if (!of_device_is_available(child))
 			continue;
-		pcie->nports++;
+		i++;
 	}
 
-	pcie->ports = devm_kzalloc(&pdev->dev, pcie->nports *
+	pcie->ports = devm_kzalloc(&pdev->dev, i *
 				   sizeof(struct mvebu_pcie_port),
 				   GFP_KERNEL);
 	if (!pcie->ports)
@@ -792,6 +863,7 @@ static int __init mvebu_pcie_probe(struct platform_device *pdev)
 	i = 0;
 	for_each_child_of_node(pdev->dev.of_node, child) {
 		struct mvebu_pcie_port *port = &pcie->ports[i];
+		enum of_gpio_flags flags;
 
 		if (!of_device_is_available(child))
 			continue;
@@ -816,10 +888,62 @@ static int __init mvebu_pcie_probe(struct platform_device *pdev)
 		if (port->devfn < 0)
 			continue;
 
+		ret = mvebu_get_tgt_attr(np, port->devfn, IORESOURCE_MEM,
+					 &port->mem_target, &port->mem_attr);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "PCIe%d.%d: cannot get tgt/attr for mem window\n",
+				port->port, port->lane);
+			continue;
+		}
+
+		ret = mvebu_get_tgt_attr(np, port->devfn, IORESOURCE_IO,
+					 &port->io_target, &port->io_attr);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "PCIe%d.%d: cannot get tgt/attr for io window\n",
+				port->port, port->lane);
+			continue;
+		}
+
+		port->reset_gpio = of_get_named_gpio_flags(child,
+						   "reset-gpios", 0, &flags);
+		if (gpio_is_valid(port->reset_gpio)) {
+			u32 reset_udelay = 20000;
+
+			port->reset_active_low = flags & OF_GPIO_ACTIVE_LOW;
+			port->reset_name = kasprintf(GFP_KERNEL,
+				     "pcie%d.%d-reset", port->port, port->lane);
+			of_property_read_u32(child, "reset-delay-us",
+					     &reset_udelay);
+
+			ret = devm_gpio_request_one(&pdev->dev,
+			    port->reset_gpio, GPIOF_DIR_OUT, port->reset_name);
+			if (ret) {
+				if (ret == -EPROBE_DEFER)
+					return ret;
+				continue;
+			}
+
+			gpio_set_value(port->reset_gpio,
+				       (port->reset_active_low) ? 1 : 0);
+			msleep(reset_udelay/1000);
+		}
+
+		port->clk = of_clk_get_by_name(child, NULL);
+		if (IS_ERR(port->clk)) {
+			dev_err(&pdev->dev, "PCIe%d.%d: cannot get clock\n",
+			       port->port, port->lane);
+			continue;
+		}
+
+		ret = clk_prepare_enable(port->clk);
+		if (ret)
+			continue;
+
 		port->base = mvebu_pcie_map_registers(pdev, child, port);
 		if (IS_ERR(port->base)) {
 			dev_err(&pdev->dev, "PCIe%d.%d: cannot map registers\n",
 				port->port, port->lane);
+			clk_disable_unprepare(port->clk);
 			port->base = NULL;
 			continue;
 		}
@@ -836,25 +960,14 @@ static int __init mvebu_pcie_probe(struct platform_device *pdev)
 				 port->port, port->lane);
 		}
 
-		port->clk = of_clk_get_by_name(child, NULL);
-		if (IS_ERR(port->clk)) {
-			dev_err(&pdev->dev, "PCIe%d.%d: cannot get clock\n",
-			       port->port, port->lane);
-			iounmap(port->base);
-			port->haslink = 0;
-			continue;
-		}
-
 		port->dn = child;
-
-		clk_prepare_enable(port->clk);
 		spin_lock_init(&port->conf_lock);
-
 		mvebu_sw_pci_bridge_init(port);
-
 		i++;
 	}
 
+	pcie->nports = i;
+	mvebu_pcie_msi_enable(pcie);
 	mvebu_pcie_enable(pcie);
 
 	return 0;
@@ -863,6 +976,7 @@ static int __init mvebu_pcie_probe(struct platform_device *pdev)
 static const struct of_device_id mvebu_pcie_of_match_table[] = {
 	{ .compatible = "marvell,armada-xp-pcie", },
 	{ .compatible = "marvell,armada-370-pcie", },
+	{ .compatible = "marvell,dove-pcie", },
 	{ .compatible = "marvell,kirkwood-pcie", },
 	{},
 };
@@ -874,16 +988,12 @@ static struct platform_driver mvebu_pcie_driver = {
 		.name = "mvebu-pcie",
 		.of_match_table =
 		   of_match_ptr(mvebu_pcie_of_match_table),
+		/* driver unloading/unbinding currently not supported */
+		.suppress_bind_attrs = true,
 	},
+	.probe = mvebu_pcie_probe,
 };
-
-static int __init mvebu_pcie_init(void)
-{
-	return platform_driver_probe(&mvebu_pcie_driver,
-				     mvebu_pcie_probe);
-}
-
-subsys_initcall(mvebu_pcie_init);
+module_platform_driver(mvebu_pcie_driver);
 
 MODULE_AUTHOR("Thomas Petazzoni <thomas.petazzoni@free-electrons.com>");
 MODULE_DESCRIPTION("Marvell EBU PCIe driver");
