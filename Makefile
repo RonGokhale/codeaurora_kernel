@@ -374,6 +374,11 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
 		   -fno-delete-null-pointer-checks
+
+# not universally available, but nice to have ones
+KBUILD_CFLAGS   +=  $(call cc-option,-Werror=implicit-int) \
+		    $(call cc-option,-Werror=strict-prototypes)
+
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
 KBUILD_AFLAGS   := -D__ASSEMBLY__
