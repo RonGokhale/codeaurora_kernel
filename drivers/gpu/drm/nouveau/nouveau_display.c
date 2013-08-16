@@ -674,13 +674,6 @@ nouveau_display_dumb_create(struct drm_file *file_priv, struct drm_device *dev,
 }
 
 int
-nouveau_display_dumb_destroy(struct drm_file *file_priv, struct drm_device *dev,
-			     uint32_t handle)
-{
-	return drm_gem_handle_delete(file_priv, handle);
-}
-
-int
 nouveau_display_dumb_map_offset(struct drm_file *file_priv,
 				struct drm_device *dev,
 				uint32_t handle, uint64_t *poffset)
@@ -690,7 +683,7 @@ nouveau_display_dumb_map_offset(struct drm_file *file_priv,
 	gem = drm_gem_object_lookup(dev, file_priv, handle);
 	if (gem) {
 		struct nouveau_bo *bo = gem->driver_private;
-		*poffset = bo->bo.addr_space_offset;
+		*poffset = drm_vma_node_offset_addr(&bo->bo.vma_node);
 		drm_gem_object_unreference_unlocked(gem);
 		return 0;
 	}
