@@ -611,6 +611,25 @@ sim_profiler_chip_clear(unsigned int mask)
   __insn_mtspr(SPR_SIM_CONTROL, SIM_PROFILER_CHIP_CLEAR_SPR_ARG(mask));
 }
 
+/**
+ * Set vCPU number for a given task.
+ * @param vcpu Virtual cpu to set.
+ */
+static __inline void
+sim_set_vcpu(int vcpu)
+{
+  __insn_mtspr(SPR_SIM_CONTROL,
+               SIM_CONTROL_VCPU | (vcpu << _SIM_CONTROL_OPERATOR_BITS));
+}
+
+/** Clear vCPU status for a given task. */
+static __inline void
+sim_clear_vcpu(void)
+{
+  __insn_mtspr(SPR_SIM_CONTROL,
+               SIM_CONTROL_VCPU | (-1 << _SIM_CONTROL_OPERATOR_BITS));
+}
+
 
 /*
  * Event support.
