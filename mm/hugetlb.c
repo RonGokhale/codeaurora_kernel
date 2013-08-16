@@ -3434,22 +3434,6 @@ follow_huge_pud(struct mm_struct *mm, unsigned long address,
 
 #endif /* CONFIG_ARCH_WANT_GENERAL_HUGETLB */
 
-#ifdef CONFIG_MEMORY_FAILURE
-
-/* Should be called in hugetlb_lock */
-static int is_hugepage_on_freelist(struct page *hpage)
-{
-	struct page *page;
-	struct page *tmp;
-	struct hstate *h = page_hstate(hpage);
-	int nid = page_to_nid(hpage);
-
-	list_for_each_entry_safe(page, tmp, &h->hugepage_freelists[nid], lru)
-		if (page == hpage)
-			return 1;
-	return 0;
-}
-
 bool is_hugepage_active(struct page *page)
 {
 	VM_BUG_ON(!PageHuge(page));
@@ -3470,6 +3454,22 @@ bool is_hugepage_active(struct page *page)
 	if (unlikely(PageHWPoison(page)))
 		return false;
 	return page_count(page) > 0;
+}
+
+#ifdef CONFIG_MEMORY_FAILURE
+
+/* Should be called in hugetlb_lock */
+static int is_hugepage_on_freelist(struct page *hpage)
+{
+	struct page *page;
+	struct page *tmp;
+	struct hstate *h = page_hstate(hpage);
+	int nid = page_to_nid(hpage);
+
+	list_for_each_entry_safe(page, tmp, &h->hugepage_freelists[nid], lru)
+		if (page == hpage)
+			return 1;
+	return 0;
 }
 
 /*
