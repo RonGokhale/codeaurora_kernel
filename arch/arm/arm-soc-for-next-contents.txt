@@ -39,6 +39,8 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/davidb/linux-msm.git tags/msm-cleanup3-for-3.12
 	samsung/pwm-cleanup
 		git://github.com/tom3q/linux.git tags/v3.12-pwm-cleanup-for-olof
+	mvebu/soc
+		git://git.infradead.org/linux-mvebu.git tags/soc-3.12
 
 next/dt
 	renesas/dt
