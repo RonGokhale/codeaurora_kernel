@@ -88,6 +88,8 @@ next/boards
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-boards2-for-v3.12
 	renesas/boards-cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-boards-cleanup-for-v3.12
+	mvebu/boards2
+		git://git.infradead.org/linux-mvebu.git tags/boards-3.12-2
 
 next/dt2
 	renesas/dt2
