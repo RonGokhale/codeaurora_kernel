@@ -56,7 +56,7 @@ static int do_read_inode(struct inode *inode)
 	if (IS_ERR(node_page))
 		return PTR_ERR(node_page);
 
-	rn = page_address(node_page);
+	rn = F2FS_NODE(node_page);
 	ri = &(rn->i);
 
 	inode->i_mode = le16_to_cpu(ri->i_mode);
@@ -151,9 +151,9 @@ void update_inode(struct inode *inode, struct page *node_page)
 	struct f2fs_node *rn;
 	struct f2fs_inode *ri;
 
-	wait_on_page_writeback(node_page);
+	f2fs_wait_on_page_writeback(node_page, NODE, false);
 
-	rn = page_address(node_page);
+	rn = F2FS_NODE(node_page);
 	ri = &(rn->i);
 
 	ri->i_mode = cpu_to_le16(inode->i_mode);
