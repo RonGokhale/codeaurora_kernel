@@ -429,7 +429,7 @@ static const struct block_device_operations brd_fops = {
  * And now the modules code and kernel interface.
  */
 static int rd_nr;
-static int rd_size = CONFIG_BLK_DEV_RAM_SIZE;
+int rd_size = CONFIG_BLK_DEV_RAM_SIZE;
 static int max_part;
 static int part_shift;
 module_param(rd_nr, int, S_IRUGO);
