@@ -11,9 +11,8 @@
 #include <linux/etherdevice.h>
 #include <linux/poll.h>
 #include <linux/sched.h>
-#include "ozconfig.h"
+#include "ozdbg.h"
 #include "ozprotocol.h"
-#include "oztrace.h"
 #include "ozappif.h"
 #include "ozeltbuf.h"
 #include "ozpd.h"
@@ -44,12 +43,14 @@ struct oz_serial_ctx {
  */
 static struct oz_cdev g_cdev;
 static struct class *g_oz_class;
+
 /*------------------------------------------------------------------------------
  * Context: process and softirq
  */
 static struct oz_serial_ctx *oz_cdev_claim_ctx(struct oz_pd *pd)
 {
 	struct oz_serial_ctx *ctx;
+
 	spin_lock_bh(&pd->app_lock[OZ_APPID_SERIAL-1]);
 	ctx = (struct oz_serial_ctx *)pd->app_ctx[OZ_APPID_SERIAL-1];
 	if (ctx)
@@ -57,36 +58,39 @@ static struct oz_serial_ctx *oz_cdev_claim_ctx(struct oz_pd *pd)
 	spin_unlock_bh(&pd->app_lock[OZ_APPID_SERIAL-1]);
 	return ctx;
 }
+
 /*------------------------------------------------------------------------------
  * Context: softirq or process
  */
 static void oz_cdev_release_ctx(struct oz_serial_ctx *ctx)
 {
 	if (atomic_dec_and_test(&ctx->ref_count)) {
-		oz_trace("Dealloc serial context.\n");
+		oz_dbg(ON, "Dealloc serial context\n");
 		kfree(ctx);
 	}
 }
+
 /*------------------------------------------------------------------------------
  * Context: process
  */
 static int oz_cdev_open(struct inode *inode, struct file *filp)
 {
-	struct oz_cdev *dev;
-	oz_trace("oz_cdev_open()\n");
-	oz_trace("major = %d minor = %d\n", imajor(inode), iminor(inode));
-	dev = container_of(inode->i_cdev, struct oz_cdev, cdev);
+	struct oz_cdev *dev = container_of(inode->i_cdev, struct oz_cdev, cdev);
+
+	oz_dbg(ON, "major = %d minor = %d\n", imajor(inode), iminor(inode));
+
 	filp->private_data = dev;
 	return 0;
 }
+
 /*------------------------------------------------------------------------------
  * Context: process
  */
 static int oz_cdev_release(struct inode *inode, struct file *filp)
 {
-	oz_trace("oz_cdev_release()\n");
 	return 0;
 }
+
 /*------------------------------------------------------------------------------
  * Context: process
  */
@@ -139,6 +143,7 @@ out2:
 	oz_pd_put(pd);
 	return count;
 }
+
 /*------------------------------------------------------------------------------
  * Context: process
  */
@@ -196,6 +201,7 @@ out:
 	oz_pd_put(pd);
 	return count;
 }
+
 /*------------------------------------------------------------------------------
  * Context: process
  */
@@ -204,6 +210,7 @@ static int oz_set_active_pd(const u8 *addr)
 	int rc = 0;
 	struct oz_pd *pd;
 	struct oz_pd *old_pd;
+
 	pd = oz_pd_find(addr);
 	if (pd) {
 		spin_lock_bh(&g_cdev.lock);
@@ -229,6 +236,7 @@ static int oz_set_active_pd(const u8 *addr)
 	}
 	return rc;
 }
+
 /*------------------------------------------------------------------------------
  * Context: process
  */
@@ -236,6 +244,7 @@ static long oz_cdev_ioctl(struct file *filp, unsigned int cmd,
 			  unsigned long arg)
 {
 	int rc = 0;
+
 	if (_IOC_TYPE(cmd) != OZ_IOCTL_MAGIC)
 		return -ENOTTY;
 	if (_IOC_NR(cmd) > OZ_IOCTL_MAX)
@@ -251,7 +260,7 @@ static long oz_cdev_ioctl(struct file *filp, unsigned int cmd,
 	switch (cmd) {
 	case OZ_IOCTL_GET_PD_LIST: {
 			struct oz_pd_list list;
-			oz_trace("OZ_IOCTL_GET_PD_LIST\n");
+			oz_dbg(ON, "OZ_IOCTL_GET_PD_LIST\n");
 			memset(&list, 0, sizeof(list));
 			list.count = oz_get_pd_list(list.addr, OZ_MAX_PDS);
 			if (copy_to_user((void __user *)arg, &list,
@@ -261,7 +270,7 @@ static long oz_cdev_ioctl(struct file *filp, unsigned int cmd,
 		break;
 	case OZ_IOCTL_SET_ACTIVE_PD: {
 			u8 addr[ETH_ALEN];
-			oz_trace("OZ_IOCTL_SET_ACTIVE_PD\n");
+			oz_dbg(ON, "OZ_IOCTL_SET_ACTIVE_PD\n");
 			if (copy_from_user(addr, (void __user *)arg, ETH_ALEN))
 				return -EFAULT;
 			rc = oz_set_active_pd(addr);
@@ -269,7 +278,7 @@ static long oz_cdev_ioctl(struct file *filp, unsigned int cmd,
 		break;
 	case OZ_IOCTL_GET_ACTIVE_PD: {
 			u8 addr[ETH_ALEN];
-			oz_trace("OZ_IOCTL_GET_ACTIVE_PD\n");
+			oz_dbg(ON, "OZ_IOCTL_GET_ACTIVE_PD\n");
 			spin_lock_bh(&g_cdev.lock);
 			memcpy(addr, g_cdev.active_addr, ETH_ALEN);
 			spin_unlock_bh(&g_cdev.lock);
@@ -295,6 +304,7 @@ static long oz_cdev_ioctl(struct file *filp, unsigned int cmd,
 	}
 	return rc;
 }
+
 /*------------------------------------------------------------------------------
  * Context: process
  */
@@ -302,7 +312,8 @@ static unsigned int oz_cdev_poll(struct file *filp, poll_table *wait)
 {
 	unsigned int ret = 0;
 	struct oz_cdev *dev = filp->private_data;
-	oz_trace("Poll called wait = %p\n", wait);
+
+	oz_dbg(ON, "Poll called wait = %p\n", wait);
 	spin_lock_bh(&dev->lock);
 	if (dev->active_pd) {
 		struct oz_serial_ctx *ctx = oz_cdev_claim_ctx(dev->active_pd);
@@ -317,6 +328,7 @@ static unsigned int oz_cdev_poll(struct file *filp, poll_table *wait)
 		poll_wait(filp, &dev->rdq, wait);
 	return ret;
 }
+
 /*------------------------------------------------------------------------------
  */
 static const struct file_operations oz_fops = {
@@ -328,6 +340,7 @@ static const struct file_operations oz_fops = {
 	.unlocked_ioctl = oz_cdev_ioctl,
 	.poll =		oz_cdev_poll
 };
+
 /*------------------------------------------------------------------------------
  * Context: process
  */
@@ -335,12 +348,13 @@ int oz_cdev_register(void)
 {
 	int err;
 	struct device *dev;
+
 	memset(&g_cdev, 0, sizeof(g_cdev));
 	err = alloc_chrdev_region(&g_cdev.devnum, 0, 1, "ozwpan");
 	if (err < 0)
-		goto out3;
-	oz_trace("Alloc dev number %d:%d\n", MAJOR(g_cdev.devnum),
-			MINOR(g_cdev.devnum));
+		return err;
+	oz_dbg(ON, "Alloc dev number %d:%d\n",
+	       MAJOR(g_cdev.devnum), MINOR(g_cdev.devnum));
 	cdev_init(&g_cdev.cdev, &oz_fops);
 	g_cdev.cdev.owner = THIS_MODULE;
 	g_cdev.cdev.ops = &oz_fops;
@@ -348,29 +362,30 @@ int oz_cdev_register(void)
 	init_waitqueue_head(&g_cdev.rdq);
 	err = cdev_add(&g_cdev.cdev, g_cdev.devnum, 1);
 	if (err < 0) {
-		oz_trace("Failed to add cdev\n");
-		goto out2;
+		oz_dbg(ON, "Failed to add cdev\n");
+		goto unregister;
 	}
 	g_oz_class = class_create(THIS_MODULE, "ozmo_wpan");
 	if (IS_ERR(g_oz_class)) {
-		oz_trace("Failed to register ozmo_wpan class\n");
+		oz_dbg(ON, "Failed to register ozmo_wpan class\n");
 		err = PTR_ERR(g_oz_class);
-		goto out1;
+		goto delete;
 	}
 	dev = device_create(g_oz_class, NULL, g_cdev.devnum, NULL, "ozwpan");
 	if (IS_ERR(dev)) {
-		oz_trace("Failed to create sysfs entry for cdev\n");
+		oz_dbg(ON, "Failed to create sysfs entry for cdev\n");
 		err = PTR_ERR(dev);
-		goto out1;
+		goto delete;
 	}
 	return 0;
-out1:
+
+delete:
 	cdev_del(&g_cdev.cdev);
-out2:
+unregister:
 	unregister_chrdev_region(g_cdev.devnum, 1);
-out3:
 	return err;
 }
+
 /*------------------------------------------------------------------------------
  * Context: process
  */
@@ -384,6 +399,7 @@ int oz_cdev_deregister(void)
 	}
 	return 0;
 }
+
 /*------------------------------------------------------------------------------
  * Context: process
  */
@@ -392,6 +408,7 @@ int oz_cdev_init(void)
 	oz_app_enable(OZ_APPID_SERIAL, 1);
 	return 0;
 }
+
 /*------------------------------------------------------------------------------
  * Context: process
  */
@@ -399,6 +416,7 @@ void oz_cdev_term(void)
 {
 	oz_app_enable(OZ_APPID_SERIAL, 0);
 }
+
 /*------------------------------------------------------------------------------
  * Context: softirq-serialized
  */
@@ -406,8 +424,9 @@ int oz_cdev_start(struct oz_pd *pd, int resume)
 {
 	struct oz_serial_ctx *ctx;
 	struct oz_serial_ctx *old_ctx;
+
 	if (resume) {
-		oz_trace("Serial service resumed.\n");
+		oz_dbg(ON, "Serial service resumed\n");
 		return 0;
 	}
 	ctx = kzalloc(sizeof(struct oz_serial_ctx), GFP_ATOMIC);
@@ -429,20 +448,22 @@ int oz_cdev_start(struct oz_pd *pd, int resume)
 		(memcmp(pd->mac_addr, g_cdev.active_addr, ETH_ALEN) == 0)) {
 		oz_pd_get(pd);
 		g_cdev.active_pd = pd;
-		oz_trace("Active PD arrived.\n");
+		oz_dbg(ON, "Active PD arrived\n");
 	}
 	spin_unlock(&g_cdev.lock);
-	oz_trace("Serial service started.\n");
+	oz_dbg(ON, "Serial service started\n");
 	return 0;
 }
+
 /*------------------------------------------------------------------------------
  * Context: softirq or process
  */
 void oz_cdev_stop(struct oz_pd *pd, int pause)
 {
 	struct oz_serial_ctx *ctx;
+
 	if (pause) {
-		oz_trace("Serial service paused.\n");
+		oz_dbg(ON, "Serial service paused\n");
 		return;
 	}
 	spin_lock_bh(&pd->app_lock[OZ_APPID_SERIAL-1]);
@@ -459,10 +480,11 @@ void oz_cdev_stop(struct oz_pd *pd, int pause)
 	spin_unlock(&g_cdev.lock);
 	if (pd) {
 		oz_pd_put(pd);
-		oz_trace("Active PD departed.\n");
+		oz_dbg(ON, "Active PD departed\n");
 	}
-	oz_trace("Serial service stopped.\n");
+	oz_dbg(ON, "Serial service stopped\n");
 }
+
 /*------------------------------------------------------------------------------
  * Context: softirq-serialized
  */
@@ -478,7 +500,7 @@ void oz_cdev_rx(struct oz_pd *pd, struct oz_elt *elt)
 
 	ctx = oz_cdev_claim_ctx(pd);
 	if (ctx == NULL) {
-		oz_trace("Cannot claim serial context.\n");
+		oz_dbg(ON, "Cannot claim serial context\n");
 		return;
 	}
 
@@ -488,8 +510,8 @@ void oz_cdev_rx(struct oz_pd *pd, struct oz_elt *elt)
 	if (app_hdr->elt_seq_num != 0) {
 		if (((ctx->rx_seq_num - app_hdr->elt_seq_num) & 0x80) == 0) {
 			/* Reject duplicate element. */
-			oz_trace("Duplicate element:%02x %02x\n",
-				app_hdr->elt_seq_num, ctx->rx_seq_num);
+			oz_dbg(ON, "Duplicate element:%02x %02x\n",
+			       app_hdr->elt_seq_num, ctx->rx_seq_num);
 			goto out;
 		}
 	}
@@ -502,7 +524,7 @@ void oz_cdev_rx(struct oz_pd *pd, struct oz_elt *elt)
 	if (space < 0)
 		space += OZ_RD_BUF_SZ;
 	if (len > space) {
-		oz_trace("Not enough space:%d %d\n", len, space);
+		oz_dbg(ON, "Not enough space:%d %d\n", len, space);
 		len = space;
 	}
 	ix = ctx->rd_in;

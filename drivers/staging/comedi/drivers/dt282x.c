@@ -51,13 +51,16 @@ Notes:
     be fixed to check for this situation and return an error.
 */
 
+#include <linux/module.h>
 #include "../comedidev.h"
 
+#include <linux/delay.h>
 #include <linux/gfp.h>
-#include <linux/ioport.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
+
 #include <asm/dma.h>
+
 #include "comedi_fc.h"
 
 #define DEBUG
@@ -1188,10 +1191,9 @@ static int dt282x_attach(struct comedi_device *dev, struct comedi_devconfig *it)
 #endif
 	}
 
-	devpriv = kzalloc(sizeof(*devpriv), GFP_KERNEL);
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
 	if (!devpriv)
 		return -ENOMEM;
-	dev->private = devpriv;
 
 	ret = dt282x_grab_dma(dev, it->options[opt_dma1],
 			      it->options[opt_dma2]);

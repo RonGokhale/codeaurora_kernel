@@ -1,5 +1,4 @@
 TODO:
-	- checkpatch.pl cleanups
 	- see if vx855 gpio API can be made similar enough to cs5535 so we can
 	  share more code
 	- allow simultaneous XO-1 and XO-1.5 support
@@ -11,6 +10,5 @@ TODO:
 
 Please send patches to Greg Kroah-Hartman <greg@kroah.com> and
 copy:
-	Andres Salomon <dilinger@queued.net>
-	Chris Ball <cjb@laptop.org>
-	Jon Nettleton <jon.nettleton@gmail.com>
+	Daniel Drake <dsd@laptop.org>
+	Jens Frederich <jfrederich@gmail.com>
