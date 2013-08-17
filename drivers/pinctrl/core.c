@@ -404,8 +404,10 @@ static int pinctrl_get_device_gpio_range(unsigned gpio,
 		}
 	}
 
-	return -EPROBE_DEFER;
+	return -EINVAL;
 }
+
+static void pinctrl_process_queued_gpio_requests(void);
 
 /**
  * pinctrl_add_gpio_range() - register a GPIO range for a controller
@@ -421,6 +423,8 @@ void pinctrl_add_gpio_range(struct pinctrl_dev *pctldev,
 	mutex_lock(&pctldev->mutex);
 	list_add_tail(&range->node, &pctldev->gpio_ranges);
 	mutex_unlock(&pctldev->mutex);
+	/* Maybe we have outstanding GPIO requests for this range? */
+	pinctrl_process_queued_gpio_requests();
 }
 EXPORT_SYMBOL_GPL(pinctrl_add_gpio_range);
 
@@ -534,6 +538,16 @@ int pinctrl_get_group_selector(struct pinctrl_dev *pctldev,
 	return -EINVAL;
 }
 
+/*
+ * Queued GPIO requests are stored in this list.
+ */
+struct pinctrl_gpio_req {
+	struct list_head node;
+	int gpio;
+};
+
+static LIST_HEAD(pinctrl_queued_gpio_requests);
+
 /**
  * pinctrl_request_gpio() - request a single pin to be used in as GPIO
  * @gpio: the GPIO pin number from the GPIO subsystem number space
@@ -551,9 +565,26 @@ int pinctrl_request_gpio(unsigned gpio)
 
 	ret = pinctrl_get_device_gpio_range(gpio, &pctldev, &range);
 	if (ret) {
+		struct pinctrl_gpio_req *req;
+
+		/* Maybe this pin does not have a pinctrl back-end at all? */
 		if (pinctrl_ready_for_gpio_range(gpio))
-			ret = 0;
-		return ret;
+			return 0;
+		/*
+		 * We get to this point if pinctrl_request_gpio() is called
+		 * from a GPIO driver which does not yet have a registered
+		 * pinctrl driver backend, and thus no ranges are defined for
+		 * it. This could happen during system start up or if we're
+		 * probing pin controllers as modules. Queue the request and
+		 * handle it when and if the range arrives.
+		 */
+		req = kzalloc(sizeof(struct pinctrl_gpio_req), GFP_KERNEL);
+		if (!req)
+			return -ENOMEM;
+		req->gpio = gpio;
+		list_add_tail(&req->node, &pinctrl_queued_gpio_requests);
+		pr_info("queueing pinctrl request for GPIO %d\n", req->gpio);
+		return 0;
 	}
 
 	/* Convert to the pin controllers number space */
@@ -564,6 +595,42 @@ int pinctrl_request_gpio(unsigned gpio)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(pinctrl_request_gpio);
+
+/**
+ * pinctrl_process_queued_gpio_requests() - process queued GPIO requests
+ *
+ * This is called whenever a new GPIO range is added to see if some GPIO
+ * driver has outstanding requests to GPIOs in the range, and then these
+ * get processed at this point.
+ */
+static void pinctrl_process_queued_gpio_requests(void)
+{
+	struct list_head *node, *tmp;
+
+        list_for_each_safe(node, tmp, &pinctrl_queued_gpio_requests) {
+                struct pinctrl_gpio_req *req =
+			list_entry(node, struct pinctrl_gpio_req, node);
+		struct pinctrl_dev *pctldev;
+		struct pinctrl_gpio_range *range;
+		int pin;
+		int ret;
+
+		ret = pinctrl_get_device_gpio_range(req->gpio, &pctldev, &range);
+		if (ret)
+			continue;
+
+		/* Convert to the pin controllers number space */
+		pin = gpio_to_pin(range, req->gpio);
+		ret = pinmux_request_gpio(pctldev, range, pin, req->gpio);
+
+		if (ret)
+			pr_err("failed to request queued GPIO %d\n", req->gpio);
+		else
+			pr_info("requested queued GPIO %d\n", req->gpio);
+                list_del(node);
+                kfree(req);
+        }
+}
 
 /**
  * pinctrl_free_gpio() - free control on a single pin, currently used as GPIO
