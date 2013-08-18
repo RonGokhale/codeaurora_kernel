@@ -12,7 +12,6 @@ Required properties:
 Optional properties:
 - reg : offset and length of the register set for the device.
 - interrupts : should contain the vidc interrupt.
-- vdd-supply : regulator to supply venus.
 - qcom,vidc-cp-map : start and size of device virtual address range for
   secure buffers. Video hardware uses this address range to identify if
   the buffers are secure or non-secure.
@@ -59,6 +58,18 @@ Optional properties:
 	  internal persist = 0x80
 	  internal persist1 = 0x100
 	  internal cmd queue = 0x200
+- *-supply: A phandle pointing to the appropriate regulator. Number of
+  regulators vary across targets.
+- qcom,clock-names: an array of clocks that the driver is supposed to be
+  manipulating.
+- qcom,clock-properties = an array of bitmaps of clock's properties. The index
+  of the bitmap corresponds to the clock at the same index in qcom,clock-names.
+  The bitmaps describes the actions that the device needs to take regarding the
+  clock (i.e. scale it based on load).
+
+  The bitmap is defined as:
+  scalable = 0x1
+  power collapsible = 0x2
 
 Example:
 
@@ -67,7 +78,9 @@ Example:
 		compatible = "qcom,msm-vidc";
 		reg = <0xfdc00000 0xff000>;
 		interrupts = <0 44 0>;
-		vdd-supply = <&gdsc_venus>;
+		venus-supply = <&gdsc>;
+		venus-core0-supply = <&gdsc1>;
+		venus-core1-supply = <&gdsc2>;
 		qcom,vidc-cp-map = <0x1000000 0x40000000>;
 		qcom,vidc-ns-map = <0x40000000 0x40000000>;
 		qcom,load-freq-tbl = <979200 410000000>,
@@ -105,4 +118,8 @@ Example:
 							<0x1f1>;
 			};
 		};
+
+		qcom,clock-names = "foo_clk", "bar_clk", "baz_clk";
+		qcom,clock-properties = <0x3 0x1 0x0>;
+
 	};
