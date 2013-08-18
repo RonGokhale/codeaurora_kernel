@@ -14,7 +14,10 @@
  */
 
 #include "exynos5.dtsi"
-/include/ "exynos5420-pinctrl.dtsi"
+#include "exynos5420-pinctrl.dtsi"
+
+#include <dt-bindings/clk/exynos-audss-clk.h>
+
 / {
 	compatible = "samsung,exynos5420";
 
@@ -63,6 +66,22 @@
 		compatible = "samsung,exynos5420-clock";
 		reg = <0x10010000 0x30000>;
 		#clock-cells = <1>;
+	};
+
+	clock_audss: audss-clock-controller@3810000 {
+		compatible = "samsung,exynos5420-audss-clock";
+		reg = <0x03810000 0x0C>;
+		#clock-cells = <1>;
+		clocks = <&clock 148>;
+		clock-names = "sclk_audio";
+	};
+
+	codec@11000000 {
+		compatible = "samsung,mfc-v7";
+		reg = <0x11000000 0x10000>;
+		interrupts = <0 96 0>;
+		clocks = <&clock 401>;
+		clock-names = "mfc";
 	};
 
 	mct@101C0000 {
