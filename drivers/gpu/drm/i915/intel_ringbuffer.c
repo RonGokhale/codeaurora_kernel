@@ -501,7 +501,7 @@ init_pipe_control(struct intel_ring_buffer *ring)
 
 	i915_gem_object_set_cache_level(obj, I915_CACHE_LLC);
 
-	ret = i915_gem_object_pin(obj, 4096, true, false);
+	ret = i915_gem_obj_ggtt_pin(obj, 4096, true, false);
 	if (ret)
 		goto err_unref;
 
@@ -1236,7 +1236,7 @@ static int init_status_page(struct intel_ring_buffer *ring)
 
 	i915_gem_object_set_cache_level(obj, I915_CACHE_LLC);
 
-	ret = i915_gem_object_pin(obj, 4096, true, false);
+	ret = i915_gem_obj_ggtt_pin(obj, 4096, true, false);
 	if (ret != 0) {
 		goto err_unref;
 	}
@@ -1306,9 +1306,7 @@ static int intel_init_ring_buffer(struct drm_device *dev,
 			return ret;
 	}
 
-	obj = NULL;
-	if (!HAS_LLC(dev))
-		obj = i915_gem_object_create_stolen(dev, ring->size);
+	obj = i915_gem_object_create_stolen(dev, ring->size);
 	if (obj == NULL)
 		obj = i915_gem_alloc_object(dev, ring->size);
 	if (obj == NULL) {
@@ -1319,7 +1317,7 @@ static int intel_init_ring_buffer(struct drm_device *dev,
 
 	ring->obj = obj;
 
-	ret = i915_gem_object_pin(obj, PAGE_SIZE, true, false);
+	ret = i915_gem_obj_ggtt_pin(obj, PAGE_SIZE, true, false);
 	if (ret)
 		goto err_unref;
 
@@ -1606,6 +1604,8 @@ void intel_ring_init_seqno(struct intel_ring_buffer *ring, u32 seqno)
 	if (INTEL_INFO(ring->dev)->gen >= 6) {
 		I915_WRITE(RING_SYNC_0(ring->mmio_base), 0);
 		I915_WRITE(RING_SYNC_1(ring->mmio_base), 0);
+		if (HAS_VEBOX(ring->dev))
+			I915_WRITE(RING_SYNC_2(ring->mmio_base), 0);
 	}
 
 	ring->set_seqno(ring, seqno);
@@ -1840,7 +1840,7 @@ int intel_init_render_ring_buffer(struct drm_device *dev)
 			return -ENOMEM;
 		}
 
-		ret = i915_gem_object_pin(obj, 0, true, false);
+		ret = i915_gem_obj_ggtt_pin(obj, 0, true, false);
 		if (ret != 0) {
 			drm_gem_object_unreference(&obj->base);
 			DRM_ERROR("Failed to ping batch bo\n");
