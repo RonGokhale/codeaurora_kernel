@@ -93,6 +93,16 @@ static struct test {
 		.desc = "Test software clock events have valid period values",
 		.func = test__sw_clock_freq,
 	},
+#if defined(__x86_64__) || defined(__i386__)
+	{
+		.desc = "Test converting perf time to TSC",
+		.func = test__perf_time_to_tsc,
+	},
+#endif
+	{
+		.desc = "Test object code reading",
+		.func = test__code_reading,
+	},
 	{
 		.func = NULL,
 	},
