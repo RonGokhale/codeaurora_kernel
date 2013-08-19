@@ -17,6 +17,7 @@
  */
 #include "xfs.h"
 #include "xfs_fs.h"
+#include "xfs_format.h"
 #include "xfs_log.h"
 #include "xfs_trans.h"
 #include "xfs_sb.h"
@@ -32,17 +33,16 @@
 #include "xfs_error.h"
 #include "xfs_attr.h"
 #include "xfs_bmap.h"
+#include "xfs_bmap_util.h"
 #include "xfs_buf_item.h"
-#include "xfs_utils.h"
-#include "xfs_dfrag.h"
 #include "xfs_fsops.h"
-#include "xfs_vnodeops.h"
 #include "xfs_discard.h"
 #include "xfs_quota.h"
 #include "xfs_inode_item.h"
 #include "xfs_export.h"
 #include "xfs_trace.h"
 #include "xfs_icache.h"
+#include "xfs_symlink.h"
 
 #include <linux/capability.h>
 #include <linux/dcache.h>
@@ -347,6 +347,40 @@ xfs_readlink_by_handle(
 	kfree(link);
  out_dput:
 	dput(dentry);
+	return error;
+}
+
+int
+xfs_set_dmattrs(
+	xfs_inode_t     *ip,
+	u_int		evmask,
+	u_int16_t	state)
+{
+	xfs_mount_t	*mp = ip->i_mount;
+	xfs_trans_t	*tp;
+	int		error;
+
+	if (!capable(CAP_SYS_ADMIN))
+		return XFS_ERROR(EPERM);
+
+	if (XFS_FORCED_SHUTDOWN(mp))
+		return XFS_ERROR(EIO);
+
+	tp = xfs_trans_alloc(mp, XFS_TRANS_SET_DMATTRS);
+	error = xfs_trans_reserve(tp, &M_RES(mp)->tr_ichange, 0, 0);
+	if (error) {
+		xfs_trans_cancel(tp, 0);
+		return error;
+	}
+	xfs_ilock(ip, XFS_ILOCK_EXCL);
+	xfs_trans_ijoin(tp, ip, XFS_ILOCK_EXCL);
+
+	ip->i_d.di_dmevmask = evmask;
+	ip->i_d.di_dmstate  = state;
+
+	xfs_trans_log_inode(tp, ip, XFS_ILOG_CORE);
+	error = xfs_trans_commit(tp, 0);
+
 	return error;
 }
 
@@ -967,7 +1001,7 @@ xfs_ioctl_setattr(
 	 * first do an error checking pass.
 	 */
 	tp = xfs_trans_alloc(mp, XFS_TRANS_SETATTR_NOT_SIZE);
-	code = xfs_trans_reserve(tp, 0, XFS_ICHANGE_LOG_RES(mp), 0, 0, 0);
+	code = xfs_trans_reserve(tp, &M_RES(mp)->tr_ichange, 0, 0);
 	if (code)
 		goto error_return;
 
@@ -1328,6 +1362,75 @@ xfs_ioc_getbmapx(
 	return 0;
 }
 
+int
+xfs_ioc_swapext(
+	xfs_swapext_t	*sxp)
+{
+	xfs_inode_t     *ip, *tip;
+	struct fd	f, tmp;
+	int		error = 0;
+
+	/* Pull information for the target fd */
+	f = fdget((int)sxp->sx_fdtarget);
+	if (!f.file) {
+		error = XFS_ERROR(EINVAL);
+		goto out;
+	}
+
+	if (!(f.file->f_mode & FMODE_WRITE) ||
+	    !(f.file->f_mode & FMODE_READ) ||
+	    (f.file->f_flags & O_APPEND)) {
+		error = XFS_ERROR(EBADF);
+		goto out_put_file;
+	}
+
+	tmp = fdget((int)sxp->sx_fdtmp);
+	if (!tmp.file) {
+		error = XFS_ERROR(EINVAL);
+		goto out_put_file;
+	}
+
+	if (!(tmp.file->f_mode & FMODE_WRITE) ||
+	    !(tmp.file->f_mode & FMODE_READ) ||
+	    (tmp.file->f_flags & O_APPEND)) {
+		error = XFS_ERROR(EBADF);
+		goto out_put_tmp_file;
+	}
+
+	if (IS_SWAPFILE(file_inode(f.file)) ||
+	    IS_SWAPFILE(file_inode(tmp.file))) {
+		error = XFS_ERROR(EINVAL);
+		goto out_put_tmp_file;
+	}
+
+	ip = XFS_I(file_inode(f.file));
+	tip = XFS_I(file_inode(tmp.file));
+
+	if (ip->i_mount != tip->i_mount) {
+		error = XFS_ERROR(EINVAL);
+		goto out_put_tmp_file;
+	}
+
+	if (ip->i_ino == tip->i_ino) {
+		error = XFS_ERROR(EINVAL);
+		goto out_put_tmp_file;
+	}
+
+	if (XFS_FORCED_SHUTDOWN(ip->i_mount)) {
+		error = XFS_ERROR(EIO);
+		goto out_put_tmp_file;
+	}
+
+	error = xfs_swap_extents(ip, tip, sxp);
+
+ out_put_tmp_file:
+	fdput(tmp);
+ out_put_file:
+	fdput(f);
+ out:
+	return error;
+}
+
 /*
  * Note: some of the ioctl's return positive numbers as a
  * byte count indicating success, such as readlink_by_handle.
@@ -1472,7 +1575,7 @@ xfs_file_ioctl(
 		error = mnt_want_write_file(filp);
 		if (error)
 			return error;
-		error = xfs_swapext(&sxp);
+		error = xfs_ioc_swapext(&sxp);
 		mnt_drop_write_file(filp);
 		return -error;
 	}

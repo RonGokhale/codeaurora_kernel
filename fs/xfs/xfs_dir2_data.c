@@ -29,13 +29,11 @@
 #include "xfs_dinode.h"
 #include "xfs_inode.h"
 #include "xfs_dir2_format.h"
+#include "xfs_dir2.h"
 #include "xfs_dir2_priv.h"
 #include "xfs_error.h"
 #include "xfs_buf_item.h"
 #include "xfs_cksum.h"
-
-STATIC xfs_dir2_data_free_t *
-xfs_dir2_data_freefind(xfs_dir2_data_hdr_t *hdr, xfs_dir2_data_unused_t *dup);
 
 /*
  * Check the consistency of the data block.
@@ -325,7 +323,7 @@ xfs_dir3_data_readahead(
  * Given a data block and an unused entry from that block,
  * return the bestfree entry if any that corresponds to it.
  */
-STATIC xfs_dir2_data_free_t *
+xfs_dir2_data_free_t *
 xfs_dir2_data_freefind(
 	xfs_dir2_data_hdr_t	*hdr,		/* data block */
 	xfs_dir2_data_unused_t	*dup)		/* data unused entry */
@@ -333,7 +331,7 @@ xfs_dir2_data_freefind(
 	xfs_dir2_data_free_t	*dfp;		/* bestfree entry */
 	xfs_dir2_data_aoff_t	off;		/* offset value needed */
 	struct xfs_dir2_data_free *bf;
-#if defined(DEBUG) && defined(__KERNEL__)
+#ifdef DEBUG
 	int			matched;	/* matched the value */
 	int			seenzero;	/* saw a 0 bestfree entry */
 #endif
@@ -341,7 +339,7 @@ xfs_dir2_data_freefind(
 	off = (xfs_dir2_data_aoff_t)((char *)dup - (char *)hdr);
 	bf = xfs_dir3_data_bestfree_p(hdr);
 
-#if defined(DEBUG) && defined(__KERNEL__)
+#ifdef DEBUG
 	/*
 	 * Validate some consistency in the bestfree table.
 	 * Check order, non-overlapping entries, and if we find the

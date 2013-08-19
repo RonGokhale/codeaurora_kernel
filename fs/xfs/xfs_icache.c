@@ -17,6 +17,7 @@
  */
 #include "xfs.h"
 #include "xfs_fs.h"
+#include "xfs_format.h"
 #include "xfs_types.h"
 #include "xfs_log.h"
 #include "xfs_log_priv.h"
@@ -31,12 +32,12 @@
 #include "xfs_dinode.h"
 #include "xfs_error.h"
 #include "xfs_filestream.h"
-#include "xfs_vnodeops.h"
 #include "xfs_inode_item.h"
 #include "xfs_quota.h"
 #include "xfs_trace.h"
 #include "xfs_fsops.h"
 #include "xfs_icache.h"
+#include "xfs_bmap_util.h"
 
 #include <linux/kthread.h>
 #include <linux/freezer.h>
