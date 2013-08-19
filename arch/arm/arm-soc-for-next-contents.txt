@@ -22,6 +22,8 @@ next/fixes-non-critical
 		ARM: clps711x: Remove the special name for the syscon driver 
 	renesas/fixes2
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-fixes2-for-v3.12
+	mvebu/fixes-non-critical-2
+		git://git.infradead.org/linux-mvebu.git tags/fixes-non-3.12-2
 
 next/cleanup
 	localtimer/removal
