@@ -169,6 +169,7 @@ static inline int set_4byte(struct m25p *flash, u32 jedec_id, int enable)
 {
 	switch (JEDEC_MFR(jedec_id)) {
 	case CFI_MFR_MACRONIX:
+	case CFI_MFR_ST: /* Micron, actually */
 	case 0xEF /* winbond */:
 		flash->command[0] = enable ? OPCODE_EN4B : OPCODE_EX4B;
 		return spi_write(flash->spi, flash->command, 1);
@@ -929,7 +930,7 @@ static int m25p_probe(struct spi_device *spi)
 	 * a chip ID, try the JEDEC id commands; they'll work for most
 	 * newer chips, even if we don't recognize the particular chip.
 	 */
-	data = spi->dev.platform_data;
+	data = dev_get_platdata(&spi->dev);
 	if (data && data->type) {
 		const struct spi_device_id *plat_id;
 
