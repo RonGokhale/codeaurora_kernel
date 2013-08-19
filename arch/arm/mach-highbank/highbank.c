@@ -176,6 +176,9 @@ static const char *highbank_match[] __initconst = {
 };
 
 DT_MACHINE_START(HIGHBANK, "Highbank")
+#ifdef CONFIG_ZONE_DMA
+	.dma_zone_size	= (4ULL * SZ_1G),
+#endif
 	.smp		= smp_ops(highbank_smp_ops),
 	.init_irq	= highbank_init_irq,
 	.init_time	= highbank_timer_init,
