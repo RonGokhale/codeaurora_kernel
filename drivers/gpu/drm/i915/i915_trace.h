@@ -46,8 +46,8 @@ TRACE_EVENT(i915_gem_object_bind,
 
 	    TP_fast_assign(
 			   __entry->obj = obj;
-			   __entry->offset = obj->gtt_space->start;
-			   __entry->size = obj->gtt_space->size;
+			   __entry->offset = i915_gem_obj_ggtt_offset(obj);
+			   __entry->size = i915_gem_obj_ggtt_size(obj);
 			   __entry->mappable = mappable;
 			   ),
 
@@ -68,8 +68,8 @@ TRACE_EVENT(i915_gem_object_unbind,
 
 	    TP_fast_assign(
 			   __entry->obj = obj;
-			   __entry->offset = obj->gtt_space->start;
-			   __entry->size = obj->gtt_space->size;
+			   __entry->offset = i915_gem_obj_ggtt_offset(obj);
+			   __entry->size = i915_gem_obj_ggtt_size(obj);
 			   ),
 
 	    TP_printk("obj=%p, offset=%08x size=%x",
@@ -406,10 +406,12 @@ TRACE_EVENT(i915_flip_complete,
 	    TP_printk("plane=%d, obj=%p", __entry->plane, __entry->obj)
 );
 
-TRACE_EVENT(i915_reg_rw,
-	TP_PROTO(bool write, u32 reg, u64 val, int len),
+TRACE_EVENT_CONDITION(i915_reg_rw,
+	TP_PROTO(bool write, u32 reg, u64 val, int len, bool trace),
 
-	TP_ARGS(write, reg, val, len),
+	TP_ARGS(write, reg, val, len, trace),
+
+	TP_CONDITION(trace),
 
 	TP_STRUCT__entry(
 		__field(u64, val)

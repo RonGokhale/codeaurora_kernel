@@ -52,10 +52,8 @@
 drm_dma_handle_t *drm_pci_alloc(struct drm_device * dev, size_t size, size_t align)
 {
 	drm_dma_handle_t *dmah;
-#if 1
 	unsigned long addr;
 	size_t sz;
-#endif
 
 	/* pci_alloc_consistent only guarantees alignment to the smallest
 	 * PAGE_SIZE order which is greater than or equal to the requested size.
@@ -97,10 +95,8 @@ EXPORT_SYMBOL(drm_pci_alloc);
  */
 void __drm_pci_free(struct drm_device * dev, drm_dma_handle_t * dmah)
 {
-#if 1
 	unsigned long addr;
 	size_t sz;
-#endif
 
 	if (dmah->vaddr) {
 		/* XXX - Is virt_to_page() legal for consistent mem? */
@@ -287,6 +283,17 @@ static int drm_pci_agp_init(struct drm_device *dev)
 	return 0;
 }
 
+static void drm_pci_agp_destroy(struct drm_device *dev)
+{
+	if (drm_core_has_AGP(dev) && dev->agp) {
+		if (drm_core_has_MTRR(dev))
+			arch_phys_wc_del(dev->agp->agp_mtrr);
+		drm_agp_clear(dev);
+		drm_agp_destroy(dev->agp);
+		dev->agp = NULL;
+	}
+}
+
 static struct drm_bus drm_pci_bus = {
 	.bus_type = DRIVER_BUS_PCI,
 	.get_irq = drm_pci_get_irq,
@@ -295,6 +302,7 @@ static struct drm_bus drm_pci_bus = {
 	.set_unique = drm_pci_set_unique,
 	.irq_by_busid = drm_pci_irq_by_busid,
 	.agp_init = drm_pci_agp_init,
+	.agp_destroy = drm_pci_agp_destroy,
 };
 
 /**

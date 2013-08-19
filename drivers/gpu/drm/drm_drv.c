@@ -87,7 +87,7 @@ static const struct drm_ioctl_desc drm_ioctls[] = {
 
 	DRM_IOCTL_DEF(DRM_IOCTL_ADD_CTX, drm_addctx, DRM_AUTH|DRM_ROOT_ONLY),
 	DRM_IOCTL_DEF(DRM_IOCTL_RM_CTX, drm_rmctx, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
-	DRM_IOCTL_DEF(DRM_IOCTL_MOD_CTX, drm_modctx, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
+	DRM_IOCTL_DEF(DRM_IOCTL_MOD_CTX, drm_noop, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
 	DRM_IOCTL_DEF(DRM_IOCTL_GET_CTX, drm_getctx, DRM_AUTH),
 	DRM_IOCTL_DEF(DRM_IOCTL_SWITCH_CTX, drm_switchctx, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
 	DRM_IOCTL_DEF(DRM_IOCTL_NEW_CTX, drm_newctx, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
@@ -122,7 +122,7 @@ static const struct drm_ioctl_desc drm_ioctls[] = {
 	DRM_IOCTL_DEF(DRM_IOCTL_AGP_UNBIND, drm_agp_unbind_ioctl, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
 #endif
 
-	DRM_IOCTL_DEF(DRM_IOCTL_SG_ALLOC, drm_sg_alloc_ioctl, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
+	DRM_IOCTL_DEF(DRM_IOCTL_SG_ALLOC, drm_sg_alloc, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
 	DRM_IOCTL_DEF(DRM_IOCTL_SG_FREE, drm_sg_free, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
 
 	DRM_IOCTL_DEF(DRM_IOCTL_WAIT_VBLANK, drm_wait_vblank, DRM_UNLOCKED),
@@ -195,27 +195,8 @@ int drm_lastclose(struct drm_device * dev)
 
 	mutex_lock(&dev->struct_mutex);
 
-	/* Clear AGP information */
-	if (drm_core_has_AGP(dev) && dev->agp &&
-			!drm_core_check_feature(dev, DRIVER_MODESET)) {
-		struct drm_agp_mem *entry, *tempe;
+	drm_agp_clear(dev);
 
-		/* Remove AGP resources, but leave dev->agp
-		   intact until drv_cleanup is called. */
-		list_for_each_entry_safe(entry, tempe, &dev->agp->memory, head) {
-			if (entry->bound)
-				drm_unbind_agp(entry->memory);
-			drm_free_agp(entry->memory, entry->pages);
-			kfree(entry);
-		}
-		INIT_LIST_HEAD(&dev->agp->memory);
-
-		if (dev->agp->acquired)
-			drm_agp_release(dev);
-
-		dev->agp->acquired = 0;
-		dev->agp->enabled = 0;
-	}
 	if (drm_core_check_feature(dev, DRIVER_SG) && dev->sg &&
 	    !drm_core_check_feature(dev, DRIVER_MODESET)) {
 		drm_sg_cleanup(dev->sg);
@@ -485,19 +466,4 @@ long drm_ioctl(struct file *filp,
 		DRM_DEBUG("ret = %d\n", retcode);
 	return retcode;
 }
-
 EXPORT_SYMBOL(drm_ioctl);
-
-struct drm_local_map *drm_getsarea(struct drm_device *dev)
-{
-	struct drm_map_list *entry;
-
-	list_for_each_entry(entry, &dev->maplist, head) {
-		if (entry->map && entry->map->type == _DRM_SHM &&
-		    (entry->map->flags & _DRM_CONTAINS_LOCK)) {
-			return entry->map;
-		}
-	}
-	return NULL;
-}
-EXPORT_SYMBOL(drm_getsarea);
