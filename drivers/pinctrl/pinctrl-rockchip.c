@@ -36,7 +36,7 @@
 #include <linux/pinctrl/pinmux.h>
 #include <linux/pinctrl/pinconf-generic.h>
 #include <linux/irqchip/chained_irq.h>
-#include <linux/clk-provider.h>
+#include <linux/clk.h>
 #include <dt-bindings/pinctrl/rockchip.h>
 
 #include "core.h"
@@ -1270,11 +1270,6 @@ static int rockchip_pinctrl_probe(struct platform_device *pdev)
 	info->dev = dev;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(dev, "cannot find IO resource\n");
-		return -ENOENT;
-	}
-
 	info->reg_base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(info->reg_base))
 		return PTR_ERR(info->reg_base);
