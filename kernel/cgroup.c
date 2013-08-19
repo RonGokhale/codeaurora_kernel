@@ -2490,9 +2490,17 @@ static int cgroup_file_open(struct inode *inode, struct file *file)
 	}
 	rcu_read_unlock();
 
-	/* css should match @cfe->css, see cgroup_add_file() for details */
-	if (!css || WARN_ON_ONCE(css != cfe->css))
+	if (!css)
 		return -ENODEV;
+
+	/*
+	 * @cfe->css is used by read/write/close to determine the
+	 * associated css.  @file->private_data would be a better place but
+	 * that's already used by seqfile.  Multiple accessors may use it
+	 * simultaneously which is okay as the association never changes.
+	 */
+	WARN_ON_ONCE(cfe->css && cfe->css != css);
+	cfe->css = css;
 
 	if (cft->read_map || cft->read_seq_string) {
 		file->f_op = &cgroup_seqfile_operations;
@@ -2771,18 +2779,6 @@ static int cgroup_add_file(struct cgroup *cgrp, struct cftype *cft)
 	cfe->dentry = dentry;
 	dentry->d_fsdata = cfe;
 	simple_xattrs_init(&cfe->xattrs);
-
-	/*
-	 * cfe->css is used by read/write/close to determine the associated
-	 * css.  file->private_data would be a better place but that's
-	 * already used by seqfile.  Note that open will use the usual
-	 * cgroup_css() and css_tryget() to acquire the css and this
-	 * caching doesn't affect css lifetime management.
-	 */
-	if (cft->ss)
-		cfe->css = cgroup_css(cgrp, cft->ss->subsys_id);
-	else
-		cfe->css = &cgrp->dummy_css;
 
 	mode = cgroup_file_mode(cft);
 	error = cgroup_create_file(dentry, mode | S_IFREG, cgrp->root->sb);
@@ -4044,10 +4040,10 @@ static void cgroup_event_ptable_queue_proc(struct file *file,
  * Input must be in format '<event_fd> <control_fd> <args>'.
  * Interpretation of args is defined by control file implementation.
  */
-static int cgroup_write_event_control(struct cgroup_subsys_state *css,
+static int cgroup_write_event_control(struct cgroup_subsys_state *dummy_css,
 				      struct cftype *cft, const char *buffer)
 {
-	struct cgroup *cgrp = css->cgroup;
+	struct cgroup *cgrp = dummy_css->cgroup;
 	struct cgroup_event *event;
 	struct cgroup *cgrp_cfile;
 	unsigned int efd, cfd;
@@ -4069,7 +4065,7 @@ static int cgroup_write_event_control(struct cgroup_subsys_state *css,
 	event = kzalloc(sizeof(*event), GFP_KERNEL);
 	if (!event)
 		return -ENOMEM;
-	event->css = css;
+
 	INIT_LIST_HEAD(&event->list);
 	init_poll_funcptr(&event->pt, cgroup_event_ptable_queue_proc);
 	init_waitqueue_func_entry(&event->wait, cgroup_event_wake);
@@ -4105,6 +4101,23 @@ static int cgroup_write_event_control(struct cgroup_subsys_state *css,
 		goto out_put_cfile;
 	}
 
+	if (!event->cft->ss) {
+		ret = -EBADF;
+		goto out_put_cfile;
+	}
+
+	/* determine the css of @cfile and associate @event with it */
+	rcu_read_lock();
+
+	ret = -EINVAL;
+	event->css = cgroup_css(cgrp, event->cft->ss->subsys_id);
+	if (event->css)
+		ret = 0;
+
+	rcu_read_unlock();
+	if (ret)
+		goto out_put_cfile;
+
 	/*
 	 * The file to be monitored must be in the same cgroup as
 	 * cgroup.event_control is.
@@ -4120,7 +4133,7 @@ static int cgroup_write_event_control(struct cgroup_subsys_state *css,
 		goto out_put_cfile;
 	}
 
-	ret = event->cft->register_event(css, event->cft,
+	ret = event->cft->register_event(event->css, event->cft,
 			event->eventfd, buffer);
 	if (ret)
 		goto out_put_cfile;
@@ -5715,6 +5728,28 @@ struct cgroup_subsys_state *cgroup_css_from_dir(struct file *f, int id)
 	cgrp = __d_cgrp(f->f_dentry);
 	css = cgroup_css(cgrp, id);
 	return css ? css : ERR_PTR(-ENOENT);
+}
+
+/**
+ * css_from_id - lookup css by id
+ * @id: the cgroup id
+ * @ss: cgroup subsys to be looked into
+ *
+ * Returns the css if there's valid one with @id, otherwise returns NULL.
+ * Should be called under rcu_read_lock().
+ */
+struct cgroup_subsys_state *css_from_id(int id, struct cgroup_subsys *ss)
+{
+	struct cgroup *cgrp;
+
+	rcu_lockdep_assert(rcu_read_lock_held() ||
+			   lockdep_is_held(&cgroup_mutex),
+			   "css_from_id() needs proper protection");
+
+	cgrp = idr_find(&ss->root->cgroup_idr, id);
+	if (cgrp)
+		return cgroup_css(cgrp, ss->subsys_id);
+	return NULL;
 }
 
 #ifdef CONFIG_CGROUP_DEBUG
