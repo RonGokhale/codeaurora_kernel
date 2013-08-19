@@ -27,6 +27,14 @@
 
 typedef unsigned long long cycles_t;
 
+#ifdef CONFIG_KVM_GUEST
+#define INT_LINUX_TIMER INT_AUX_TILE_TIMER
+#define SPR_LINUX_TIMER_CONTROL SPR_AUX_TILE_TIMER_CONTROL
+#else
+#define INT_LINUX_TIMER INT_TILE_TIMER
+#define SPR_LINUX_TIMER_CONTROL SPR_TILE_TIMER_CONTROL
+#endif
+
 #if CHIP_HAS_SPLIT_CYCLE()
 cycles_t get_cycles(void);
 #define get_cycles_low() __insn_mfspr(SPR_CYCLE_LOW)
@@ -39,6 +47,10 @@ static inline cycles_t get_cycles(void)
 #endif
 
 cycles_t get_clock_rate(void);
+
+#ifdef __tilegx__
+unsigned int set_clock_rate(unsigned int new_rate);
+#endif
 
 /* Convert nanoseconds to core clock cycles. */
 cycles_t ns2cycles(unsigned long nsecs);

@@ -1691,7 +1691,7 @@ void kvm_vcpu_block(struct kvm_vcpu *vcpu)
 	finish_wait(&vcpu->wq, &wait);
 }
 
-#ifndef CONFIG_S390
+#if !defined(CONFIG_S390) && !defined(CONFIG_TILE)
 /*
  * Kick a sleeping VCPU, or a guest VCPU in guest mode, into host kernel mode.
  */
@@ -1714,7 +1714,7 @@ void kvm_vcpu_kick(struct kvm_vcpu *vcpu)
 	put_cpu();
 }
 EXPORT_SYMBOL_GPL(kvm_vcpu_kick);
-#endif /* !CONFIG_S390 */
+#endif
 
 void kvm_resched(struct kvm_vcpu *vcpu)
 {
@@ -1978,7 +1978,8 @@ static long kvm_vcpu_ioctl(struct file *filp,
 	if (vcpu->kvm->mm != current->mm)
 		return -EIO;
 
-#if defined(CONFIG_S390) || defined(CONFIG_PPC) || defined(CONFIG_MIPS)
+#if defined(CONFIG_S390) || defined(CONFIG_PPC) || defined(CONFIG_MIPS) || \
+	defined(CONFIG_TILEGX)
 	/*
 	 * Special cases: vcpu ioctls that are asynchronous to vcpu execution,
 	 * so vcpu_load() would break it.
