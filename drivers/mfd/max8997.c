@@ -51,7 +51,7 @@ static struct mfd_cell max8997_devs[] = {
 
 #ifdef CONFIG_OF
 static struct of_device_id max8997_pmic_dt_match[] = {
-	{ .compatible = "maxim,max8997-pmic", .data = TYPE_MAX8997 },
+	{ .compatible = "maxim,max8997-pmic", .data = (void *)TYPE_MAX8997 },
 	{},
 };
 #endif
@@ -188,7 +188,7 @@ static int max8997_i2c_probe(struct i2c_client *i2c,
 			    const struct i2c_device_id *id)
 {
 	struct max8997_dev *max8997;
-	struct max8997_platform_data *pdata = i2c->dev.platform_data;
+	struct max8997_platform_data *pdata = dev_get_platdata(&i2c->dev);
 	int ret = 0;
 
 	max8997 = kzalloc(sizeof(struct max8997_dev), GFP_KERNEL);

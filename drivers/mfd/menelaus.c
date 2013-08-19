@@ -442,7 +442,7 @@ void menelaus_unregister_mmc_callback(void)
 	menelaus_remove_irq_work(MENELAUS_MMC_S2D1_IRQ);
 
 	the_menelaus->mmc_callback = NULL;
-	the_menelaus->mmc_callback_data = 0;
+	the_menelaus->mmc_callback_data = NULL;
 }
 EXPORT_SYMBOL(menelaus_unregister_mmc_callback);
 
@@ -466,7 +466,7 @@ static int menelaus_set_voltage(const struct menelaus_vtg *vtg, int mV,
 	struct i2c_client *c = the_menelaus->client;
 
 	mutex_lock(&the_menelaus->lock);
-	if (vtg == 0)
+	if (!vtg)
 		goto set_voltage;
 
 	ret = menelaus_read_reg(vtg->vtg_reg);
@@ -1189,7 +1189,7 @@ static int menelaus_probe(struct i2c_client *client,
 	int			rev = 0, val;
 	int			err = 0;
 	struct menelaus_platform_data *menelaus_pdata =
-					client->dev.platform_data;
+					dev_get_platdata(&client->dev);
 
 	if (the_menelaus) {
 		dev_dbg(&client->dev, "only one %s for now\n",
