@@ -41,6 +41,8 @@ next/cleanup
 		git://github.com/tom3q/linux.git tags/v3.12-pwm-cleanup-for-olof
 	mvebu/soc
 		git://git.infradead.org/linux-mvebu.git tags/soc-3.12
+	omap/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.12/usb-signed
 
 next/dt
 	renesas/dt
