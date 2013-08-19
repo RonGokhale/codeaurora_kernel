@@ -74,6 +74,8 @@ next/soc
 		ARM: vexpress/MCPM: fix cache disable sequence when CONFIG_FRAME_POINTER=y
 	mvebu/drivers
 		git://git.infradead.org/linux-mvebu.git tags/drivers-3.12
+	omap/dra7xx
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.12/dra7xx
 
 next/boards
 	renesas/backlight
