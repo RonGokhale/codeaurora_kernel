@@ -106,7 +106,7 @@ void vpa_init(int cpu)
 		lppaca_of(cpu).dtl_idx = 0;
 
 		/* hypervisor reads buffer length from this field */
-		dtl->enqueue_to_dispatch_time = DISPATCH_LOG_BYTES;
+		dtl->enqueue_to_dispatch_time = cpu_to_be32(DISPATCH_LOG_BYTES);
 		ret = register_dtl(hwcpu, __pa(dtl));
 		if (ret)
 			pr_err("WARNING: DTL registration of cpu %d (hw %d) "
@@ -724,7 +724,7 @@ int h_get_mpp(struct hvcall_mpp_data *mpp_data)
 
 	mpp_data->mem_weight = (retbuf[3] >> 7 * 8) & 0xff;
 	mpp_data->unallocated_mem_weight = (retbuf[3] >> 6 * 8) & 0xff;
-	mpp_data->unallocated_entitlement = retbuf[3] & 0xffffffffffff;
+	mpp_data->unallocated_entitlement = retbuf[3] & 0xffffffffffffUL;
 
 	mpp_data->pool_size = retbuf[4];
 	mpp_data->loan_request = retbuf[5];
