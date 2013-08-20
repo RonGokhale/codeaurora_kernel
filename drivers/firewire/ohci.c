@@ -235,7 +235,7 @@ struct fw_ohci {
 	dma_addr_t next_config_rom_bus;
 	__be32     next_header;
 
-	__le32    *self_id_cpu;
+	__le32    *self_id;
 	dma_addr_t self_id_bus;
 	struct work_struct bus_reset_work;
 
@@ -271,6 +271,7 @@ static inline struct fw_ohci *fw_ohci(struct fw_card *card)
 
 static char ohci_driver_name[] = KBUILD_MODNAME;
 
+#define PCI_VENDOR_ID_PINNACLE_SYSTEMS	0x11bd
 #define PCI_DEVICE_ID_AGERE_FW643	0x5901
 #define PCI_DEVICE_ID_CREATIVE_SB1394	0x4001
 #define PCI_DEVICE_ID_JMICRON_JMB38X_FW	0x2380
@@ -278,17 +279,16 @@ static char ohci_driver_name[] = KBUILD_MODNAME;
 #define PCI_DEVICE_ID_TI_TSB12LV26	0x8020
 #define PCI_DEVICE_ID_TI_TSB82AA2	0x8025
 #define PCI_DEVICE_ID_VIA_VT630X	0x3044
-#define PCI_VENDOR_ID_PINNACLE_SYSTEMS	0x11bd
 #define PCI_REV_ID_VIA_VT6306		0x46
 
-#define QUIRK_CYCLE_TIMER		1
-#define QUIRK_RESET_PACKET		2
-#define QUIRK_BE_HEADERS		4
-#define QUIRK_NO_1394A			8
-#define QUIRK_NO_MSI			16
-#define QUIRK_TI_SLLZ059		32
-#define QUIRK_IR_WAKE			64
-#define QUIRK_PHY_LCTRL_TIMEOUT		128
+#define QUIRK_CYCLE_TIMER		0x1
+#define QUIRK_RESET_PACKET		0x2
+#define QUIRK_BE_HEADERS		0x4
+#define QUIRK_NO_1394A			0x8
+#define QUIRK_NO_MSI			0x10
+#define QUIRK_TI_SLLZ059		0x20
+#define QUIRK_IR_WAKE			0x40
+#define QUIRK_PHY_LCTRL_TIMEOUT		0x80
 
 /* In case of multiple matches in ohci_quirks[], only the first one is used. */
 static const struct {
@@ -1929,12 +1929,12 @@ static void bus_reset_work(struct work_struct *work)
 		return;
 	}
 
-	generation = (cond_le32_to_cpu(ohci->self_id_cpu[0]) >> 16) & 0xff;
+	generation = (cond_le32_to_cpu(ohci->self_id[0]) >> 16) & 0xff;
 	rmb();
 
 	for (i = 1, j = 0; j < self_id_count; i += 2, j++) {
-		u32 id  = cond_le32_to_cpu(ohci->self_id_cpu[i]);
-		u32 id2 = cond_le32_to_cpu(ohci->self_id_cpu[i + 1]);
+		u32 id  = cond_le32_to_cpu(ohci->self_id[i]);
+		u32 id2 = cond_le32_to_cpu(ohci->self_id[i + 1]);
 
 		if (id != ~id2) {
 			/*
@@ -3692,7 +3692,7 @@ static int pci_probe(struct pci_dev *dev,
 		goto fail_contexts;
 	}
 
-	ohci->self_id_cpu = ohci->misc_buffer     + PAGE_SIZE/2;
+	ohci->self_id     = ohci->misc_buffer     + PAGE_SIZE/2;
 	ohci->self_id_bus = ohci->misc_buffer_bus + PAGE_SIZE/2;
 
 	bus_options = reg_read(ohci, OHCI1394_BusOptions);
