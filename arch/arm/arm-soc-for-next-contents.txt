@@ -59,6 +59,8 @@ next/dt
 		rebased to v3.11-rc1
 	zynq/dt
 		git://git.xilinx.com/linux-xlnx.git tags/zynq-dt-for-3.12
+	ux500/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-devicetree-for-v3.12-1
 		
 next/soc
 	vexpress/mcpm
