@@ -1737,3 +1737,84 @@ void xtime_update(unsigned long ticks)
 	do_timer(ticks);
 	write_sequnlock(&jiffies_lock);
 }
+
+/**
+ * timekeeping_chfreq_prep() - prepare to change the frequency of the
+ *    clocksource being used for timekeeping
+ * @clock:		Pointer to the clock source whose frequency will be
+ *			changed.  If this is not the clocksource being used
+ *			or timekeeping, the routine does nothing and
+ *			returns nonzero; otherwise, it prepares for the
+ *			frequency change and returns zero.
+ * @start_cycle:	Pointer to a value which will be set to the current
+ *			cycle count for @clock, in the old clock domain.
+ *
+ * This routine is used when changing processor speed on a system whose
+ * clocksource is dependent upon that speed.  The normal calling sequence
+ * is:
+ *
+ * - Call timekeeping_chfreq_prep(), to get ready for the change and to
+ *   ensure that the current clocksource is what you think it is.
+ *
+ * - Change the actual processor speed.
+ *
+ * - Call timkeeping_chfreq() to change the clocksource frequency and
+ *   adjust the timekeeping parameters to account for the time spent
+ *   doing the frequency change.
+ *
+ * Any timekeeping operations performed while this is happening are likely
+ * to cause problems.  The best way to prevent this from happening is to
+ * perform all of those steps in a routine run via stop_machine().
+ */
+int timekeeping_chfreq_prep(struct clocksource *clock, cycle_t *start_cycle)
+{
+	if (timekeeper.clock != clock)
+		return 1;
+
+	timekeeping_forward_now(&timekeeper);
+	*start_cycle = timekeeper.clock->cycle_last;
+
+	return 0;
+}
+
+/**
+ * timekeeping_chfreq() - change the frequency of the clocksource being
+ *   used for timekeeping, and then recompute the internal timekeeping
+ *   parameters which depend upon that
+ * @freq:		New frequency for the clocksource, in hertz.
+ * @end_cycle:		Cycle count, in the new clock domain.
+ * @delta_ns:		Time delta in ns between start_cycle (as returned
+ *			from timekeeping_chfreq_prep()) and end_cycle.
+ *
+ * See the timekeeping_chfreq_prep() description for how this routine is
+ * used.
+ */
+void timekeeping_chfreq(unsigned int freq, cycle_t end_cycle, u64 delta_ns)
+{
+	struct clocksource *clock = timekeeper.clock;
+	cycle_t delta_cycles;
+
+	write_seqlock(&jiffies_lock);
+	__clocksource_updatefreq_hz(clock, freq);
+	tk_setup_internals(&timekeeper, clock);
+
+	/*
+	 * The timekeeping_forward_now() done in timekeeping_chfreq_prep()
+	 * made xtime consistent with the timesource as of a cycle count
+	 * which was provided to the caller as *start_cycle.  Then, we
+	 * spent a bunch of time actually changing the processor frequency.
+	 * Finally, timekeeper_setup_internals() updated cycle_last in the
+	 * clocksource to match the current cycle count, but didn't update
+	 * xtime.  Thus, the current time is now wrong by the time we spent
+	 * doing the frequency change.  To fix this, we need to backdate
+	 * the clocksource's cycle_last so that it is again consistent with
+	 * xtime.
+	 */
+	delta_cycles = delta_ns * freq;
+	do_div(delta_cycles, 1000000000);
+	clock->cycle_last = end_cycle - delta_cycles;
+
+	write_sequnlock(&jiffies_lock);
+
+	tick_clock_notify();
+}
