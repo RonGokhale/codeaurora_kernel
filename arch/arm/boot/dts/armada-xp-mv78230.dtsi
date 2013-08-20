@@ -57,6 +57,7 @@
 			#address-cells = <3>;
 			#size-cells = <2>;
 
+			msi-parent = <&mpic>;
 			bus-range = <0x00 0xff>;
 
 			ranges =
@@ -181,7 +182,7 @@
 				gpio-controller;
 				#gpio-cells = <2>;
 				interrupt-controller;
-				#interrupts-cells = <2>;
+				#interrupt-cells = <2>;
 				interrupts = <82>, <83>, <84>, <85>;
 			};
 
@@ -192,7 +193,7 @@
 				gpio-controller;
 				#gpio-cells = <2>;
 				interrupt-controller;
-				#interrupts-cells = <2>;
+				#interrupt-cells = <2>;
 				interrupts = <87>, <88>, <89>;
 			};
 		};
