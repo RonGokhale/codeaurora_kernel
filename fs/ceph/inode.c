@@ -61,6 +61,14 @@ struct inode *ceph_get_inode(struct super_block *sb, struct ceph_vino vino)
 	return inode;
 }
 
+struct inode *ceph_lookup_inode(struct super_block *sb, struct ceph_vino vino)
+{
+	struct inode *inode;
+	ino_t t = ceph_vino_to_ino(vino);
+	inode = ilookup5_nowait(sb, t, ceph_ino_compare, &vino);
+	return inode;
+}
+
 /*
  * get/constuct snapdir inode for a given directory
  */
@@ -1465,7 +1473,14 @@ static void ceph_vmtruncate_work(struct work_struct *work)
 	struct inode *inode = &ci->vfs_inode;
 
 	dout("vmtruncate_work %p\n", inode);
-	mutex_lock(&inode->i_mutex);
+	if (!mutex_trylock(&inode->i_mutex)) {
+		/*
+		 * the i_mutex can be hold by a writer who is waiting for
+		 * caps. wake up waiters, they will do pending vmtruncate.
+		 */
+		wake_up_all(&ci->i_cap_wq);
+		mutex_lock(&inode->i_mutex);
+	}
 	__ceph_do_pending_vmtruncate(inode);
 	mutex_unlock(&inode->i_mutex);
 	iput(inode);
