@@ -244,7 +244,7 @@ struct myri10ge_priv {
 	int fw_ver_minor;
 	int fw_ver_tiny;
 	int adopted_rx_filter_bug;
-	u8 mac_addr[6];		/* eeprom mac address */
+	u8 mac_addr[ETH_ALEN];		/* eeprom mac address */
 	unsigned long serial_number;
 	int vendor_specific_offset;
 	int fw_multicast_support;
@@ -3625,13 +3625,12 @@ static void myri10ge_probe_slices(struct myri10ge_priv *mgp)
 	struct pci_dev *pdev = mgp->pdev;
 	char *old_fw;
 	bool old_allocated;
-	int i, status, ncpus, msix_cap;
+	int i, status, ncpus;
 
 	mgp->num_slices = 1;
-	msix_cap = pci_find_capability(pdev, PCI_CAP_ID_MSIX);
 	ncpus = netif_get_num_default_rss_queues();
 
-	if (myri10ge_max_slices == 1 || msix_cap == 0 ||
+	if (myri10ge_max_slices == 1 || !pdev->msix_cap ||
 	    (myri10ge_max_slices == -1 && ncpus < 2))
 		return;
 
