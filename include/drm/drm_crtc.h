@@ -869,6 +869,8 @@ extern int drm_crtc_init(struct drm_device *dev,
 			 const struct drm_crtc_funcs *funcs);
 extern void drm_crtc_cleanup(struct drm_crtc *crtc);
 
+extern void drm_connector_ida_init(void);
+extern void drm_connector_ida_destroy(void);
 extern int drm_connector_init(struct drm_device *dev,
 			      struct drm_connector *connector,
 			      const struct drm_connector_funcs *funcs,
@@ -930,9 +932,6 @@ extern void drm_mode_list_concat(struct list_head *head,
 extern void drm_mode_validate_size(struct drm_device *dev,
 				   struct list_head *mode_list,
 				   int maxX, int maxY, int maxPitch);
-extern void drm_mode_validate_clocks(struct drm_device *dev,
-				     struct list_head *mode_list,
-				     int *min, int *max, int n_ranges);
 extern void drm_mode_prune_invalid(struct drm_device *dev,
 				   struct list_head *mode_list, bool verbose);
 extern void drm_mode_sort(struct list_head *mode_list);
