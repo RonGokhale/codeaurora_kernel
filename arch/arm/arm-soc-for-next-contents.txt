@@ -63,7 +63,7 @@ next/dt
 		git://git.xilinx.com/linux-xlnx.git tags/zynq-dt-for-3.12
 	ux500/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-devicetree-for-v3.12-1
-		
+
 next/soc
 	vexpress/mcpm
 		git://git.linaro.org/people/pawelmoll/linux.git tags/tc2-pm
@@ -102,6 +102,8 @@ next/boards
 		git://git.infradead.org/linux-mvebu.git tags/boards-3.12-2
 	mvebu/defconfig
 		git://git.infradead.org/linux-mvebu.git tags/defconfig-3.12
+	tegra/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.12-defconfig
 
 next/dt2
 	renesas/dt2
