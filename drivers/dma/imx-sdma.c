@@ -1120,15 +1120,12 @@ static int sdma_control(struct dma_chan *chan, enum dma_ctrl_cmd cmd,
 }
 
 static enum dma_status sdma_tx_status(struct dma_chan *chan,
-					    dma_cookie_t cookie,
-					    struct dma_tx_state *txstate)
+				      dma_cookie_t cookie,
+				      struct dma_tx_state *txstate)
 {
 	struct sdma_channel *sdmac = to_sdma_chan(chan);
-	dma_cookie_t last_used;
 
-	last_used = chan->cookie;
-
-	dma_set_tx_state(txstate, chan->completed_cookie, last_used,
+	dma_set_tx_state(txstate, chan->completed_cookie, chan->cookie,
 			sdmac->chn_count - sdmac->chn_real_count);
 
 	return sdmac->status;
@@ -1335,7 +1332,7 @@ static int __init sdma_probe(struct platform_device *pdev)
 	int ret;
 	int irq;
 	struct resource *iores;
-	struct sdma_platform_data *pdata = pdev->dev.platform_data;
+	struct sdma_platform_data *pdata = dev_get_platdata(&pdev->dev);
 	int i;
 	struct sdma_engine *sdma;
 	s32 *saddr_arr;
