@@ -100,6 +100,8 @@ static DEFINE_PCI_DEVICE_TABLE(qlcnic_pci_tbl) = {
 	ENTRY(PCI_DEVICE_ID_QLOGIC_QLE824X),
 	ENTRY(PCI_DEVICE_ID_QLOGIC_QLE834X),
 	ENTRY(PCI_DEVICE_ID_QLOGIC_VF_QLE834X),
+	ENTRY(PCI_DEVICE_ID_QLOGIC_QLE844X),
+	ENTRY(PCI_DEVICE_ID_QLOGIC_VF_QLE844X),
 	{0,}
 };
 
@@ -145,6 +147,11 @@ static const u32 qlcnic_reg_tbl[] = {
 };
 
 static const struct qlcnic_board_info qlcnic_boards[] = {
+	{ PCI_VENDOR_ID_QLOGIC,
+	  PCI_DEVICE_ID_QLOGIC_QLE844X,
+	  0x0,
+	  0x0,
+	  "8400 series 10GbE Converged Network Adapter (TCP/IP Networking)" },
 	{ PCI_VENDOR_ID_QLOGIC,
 	  PCI_DEVICE_ID_QLOGIC_QLE834X,
 	  PCI_VENDOR_ID_QLOGIC,
@@ -829,7 +836,9 @@ static void qlcnic_get_bar_length(u32 dev_id, ulong *bar)
 		*bar = QLCNIC_82XX_BAR0_LENGTH;
 		break;
 	case PCI_DEVICE_ID_QLOGIC_QLE834X:
+	case PCI_DEVICE_ID_QLOGIC_QLE844X:
 	case PCI_DEVICE_ID_QLOGIC_VF_QLE834X:
+	case PCI_DEVICE_ID_QLOGIC_VF_QLE844X:
 		*bar = QLCNIC_83XX_BAR0_LENGTH;
 		break;
 	default:
@@ -2048,9 +2057,11 @@ qlcnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		ahw->reg_tbl = (u32 *) qlcnic_reg_tbl;
 		break;
 	case PCI_DEVICE_ID_QLOGIC_QLE834X:
+	case PCI_DEVICE_ID_QLOGIC_QLE844X:
 		qlcnic_83xx_register_map(ahw);
 		break;
 	case PCI_DEVICE_ID_QLOGIC_VF_QLE834X:
+	case PCI_DEVICE_ID_QLOGIC_VF_QLE844X:
 		qlcnic_sriov_vf_register_map(ahw);
 		break;
 	default:
@@ -2145,16 +2156,12 @@ qlcnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		dev_warn(&pdev->dev,
 			 "Device does not support MSI interrupts\n");
 
-	err = qlcnic_setup_intr(adapter, 0);
-	if (err) {
-		dev_err(&pdev->dev, "Failed to setup interrupt\n");
-		goto err_out_disable_msi;
-	}
-
-	if (qlcnic_83xx_check(adapter)) {
-		err = qlcnic_83xx_setup_mbx_intr(adapter);
-		if (err)
+	if (qlcnic_82xx_check(adapter)) {
+		err = qlcnic_setup_intr(adapter, 0);
+		if (err) {
+			dev_err(&pdev->dev, "Failed to setup interrupt\n");
 			goto err_out_disable_msi;
+		}
 	}
 
 	err = qlcnic_get_act_pci_func(adapter);
@@ -2242,9 +2249,11 @@ static void qlcnic_remove(struct pci_dev *pdev)
 	qlcnic_sriov_cleanup(adapter);
 
 	if (qlcnic_83xx_check(adapter)) {
-		qlcnic_83xx_free_mbx_intr(adapter);
 		qlcnic_83xx_register_nic_idc_func(adapter, 0);
 		cancel_delayed_work_sync(&adapter->idc_aen_work);
+		qlcnic_83xx_free_mbx_intr(adapter);
+		qlcnic_83xx_detach_mailbox_work(adapter);
+		qlcnic_83xx_free_mailbox(ahw->mailbox);
 	}
 
 	qlcnic_detach(adapter);

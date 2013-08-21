@@ -147,10 +147,7 @@ static inline u8 qlcnic_mac_hash(u64 mac)
 static inline u32 qlcnic_get_ref_handle(struct qlcnic_adapter *adapter,
 					u16 handle, u8 ring_id)
 {
-	unsigned short device = adapter->pdev->device;
-
-	if ((device == PCI_DEVICE_ID_QLOGIC_QLE834X) ||
-	    (device == PCI_DEVICE_ID_QLOGIC_VF_QLE834X))
+	if (qlcnic_83xx_check(adapter))
 		return handle | (ring_id << 15);
 	else
 		return handle;
@@ -952,17 +949,17 @@ static void qlcnic_handle_fw_message(int desc_cnt, int index,
 			break;
 		case 1:
 			dev_info(dev, "loopback already in progress\n");
-			adapter->ahw->diag_cnt = -QLCNIC_TEST_IN_PROGRESS;
+			adapter->ahw->diag_cnt = -EINPROGRESS;
 			break;
 		case 2:
 			dev_info(dev, "loopback cable is not connected\n");
-			adapter->ahw->diag_cnt = -QLCNIC_LB_CABLE_NOT_CONN;
+			adapter->ahw->diag_cnt = -ENODEV;
 			break;
 		default:
 			dev_info(dev,
 				 "loopback configure request failed, err %x\n",
 				 ret);
-			adapter->ahw->diag_cnt = -QLCNIC_UNDEFINED_ERROR;
+			adapter->ahw->diag_cnt = -EIO;
 			break;
 		}
 		break;

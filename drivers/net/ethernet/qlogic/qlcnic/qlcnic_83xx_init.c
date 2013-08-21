@@ -399,6 +399,7 @@ static void qlcnic_83xx_idc_detach_driver(struct qlcnic_adapter *adapter)
 	struct net_device *netdev = adapter->netdev;
 
 	netif_device_detach(netdev);
+	qlcnic_83xx_detach_mailbox_work(adapter);
 
 	/* Disable mailbox interrupt */
 	qlcnic_83xx_disable_mbx_intr(adapter);
@@ -610,6 +611,9 @@ int qlcnic_83xx_idc_reattach_driver(struct qlcnic_adapter *adapter)
 {
 	int err;
 
+	qlcnic_83xx_reinit_mbx_work(adapter->ahw->mailbox);
+	qlcnic_83xx_enable_mbx_interrupt(adapter);
+
 	/* register for NIC IDC AEN Events */
 	qlcnic_83xx_register_nic_idc_func(adapter, 1);
 
@@ -617,7 +621,7 @@ int qlcnic_83xx_idc_reattach_driver(struct qlcnic_adapter *adapter)
 	if (err)
 		return err;
 
-	qlcnic_83xx_enable_mbx_intrpt(adapter);
+	qlcnic_83xx_enable_mbx_interrupt(adapter);
 
 	if (qlcnic_83xx_configure_opmode(adapter)) {
 		qlcnic_83xx_idc_enter_failed_state(adapter, 1);
@@ -641,7 +645,6 @@ static void qlcnic_83xx_idc_update_idc_params(struct qlcnic_adapter *adapter)
 	struct qlcnic_hardware_context *ahw = adapter->ahw;
 
 	qlcnic_83xx_idc_update_drv_presence_reg(adapter, 1, 1);
-	set_bit(QLC_83XX_MBX_READY, &adapter->ahw->idc.status);
 	qlcnic_83xx_idc_update_audit_reg(adapter, 0, 1);
 	set_bit(QLC_83XX_MODULE_LOADED, &adapter->ahw->idc.status);
 
@@ -811,9 +814,10 @@ static int qlcnic_83xx_idc_init_state(struct qlcnic_adapter *adapter)
  **/
 static int qlcnic_83xx_idc_ready_state(struct qlcnic_adapter *adapter)
 {
-	u32 val;
 	struct qlcnic_hardware_context *ahw = adapter->ahw;
+	struct qlcnic_mailbox *mbx = ahw->mailbox;
 	int ret = 0;
+	u32 val;
 
 	/* Perform NIC configuration based ready state entry actions */
 	if (ahw->idc.state_entry(adapter))
@@ -825,7 +829,7 @@ static int qlcnic_83xx_idc_ready_state(struct qlcnic_adapter *adapter)
 			dev_err(&adapter->pdev->dev,
 				"Error: device temperature %d above limits\n",
 				adapter->ahw->temp);
-			clear_bit(QLC_83XX_MBX_READY, &ahw->idc.status);
+			clear_bit(QLC_83XX_MBX_READY, &mbx->status);
 			set_bit(__QLCNIC_RESETTING, &adapter->state);
 			qlcnic_83xx_idc_detach_driver(adapter);
 			qlcnic_83xx_idc_enter_failed_state(adapter, 1);
@@ -838,7 +842,7 @@ static int qlcnic_83xx_idc_ready_state(struct qlcnic_adapter *adapter)
 	if (ret) {
 		adapter->flags |= QLCNIC_FW_HANG;
 		if (!(val & QLC_83XX_IDC_DISABLE_FW_RESET_RECOVERY)) {
-			clear_bit(QLC_83XX_MBX_READY, &ahw->idc.status);
+			clear_bit(QLC_83XX_MBX_READY, &mbx->status);
 			set_bit(__QLCNIC_RESETTING, &adapter->state);
 			qlcnic_83xx_idc_enter_need_reset_state(adapter, 1);
 		}
@@ -846,6 +850,8 @@ static int qlcnic_83xx_idc_ready_state(struct qlcnic_adapter *adapter)
 	}
 
 	if ((val & QLC_83XX_IDC_GRACEFULL_RESET) || ahw->idc.collect_dump) {
+		clear_bit(QLC_83XX_MBX_READY, &mbx->status);
+
 		/* Move to need reset state and prepare for reset */
 		qlcnic_83xx_idc_enter_need_reset_state(adapter, 1);
 		return ret;
@@ -883,12 +889,13 @@ static int qlcnic_83xx_idc_ready_state(struct qlcnic_adapter *adapter)
  **/
 static int qlcnic_83xx_idc_need_reset_state(struct qlcnic_adapter *adapter)
 {
+	struct qlcnic_mailbox *mbx = adapter->ahw->mailbox;
 	int ret = 0;
 
 	if (adapter->ahw->idc.prev_state != QLC_83XX_IDC_DEV_NEED_RESET) {
 		qlcnic_83xx_idc_update_audit_reg(adapter, 0, 1);
 		set_bit(__QLCNIC_RESETTING, &adapter->state);
-		clear_bit(QLC_83XX_MBX_READY, &adapter->ahw->idc.status);
+		clear_bit(QLC_83XX_MBX_READY, &mbx->status);
 		if (adapter->ahw->nic_mode == QLC_83XX_VIRTUAL_NIC_MODE)
 			qlcnic_83xx_disable_vnic_mode(adapter, 1);
 
@@ -1080,7 +1087,6 @@ static void qlcnic_83xx_setup_idc_parameters(struct qlcnic_adapter *adapter)
 	adapter->ahw->idc.name = (char **)qlc_83xx_idc_states;
 
 	clear_bit(__QLCNIC_RESETTING, &adapter->state);
-	set_bit(QLC_83XX_MBX_READY, &adapter->ahw->idc.status);
 	set_bit(QLC_83XX_MODULE_LOADED, &adapter->ahw->idc.status);
 
 	/* Check if reset recovery is disabled */
@@ -1190,6 +1196,9 @@ void qlcnic_83xx_idc_exit(struct qlcnic_adapter *adapter)
 void qlcnic_83xx_idc_request_reset(struct qlcnic_adapter *adapter, u32 key)
 {
 	u32 val;
+
+	if (qlcnic_sriov_vf_check(adapter))
+		return;
 
 	if (qlcnic_83xx_lock_driver(adapter)) {
 		dev_err(&adapter->pdev->dev,
@@ -1939,12 +1948,36 @@ static void qlcnic_83xx_init_hw(struct qlcnic_adapter *p_dev)
 		dev_err(&p_dev->pdev->dev, "%s: failed\n", __func__);
 }
 
+static inline void qlcnic_83xx_get_fw_file_name(struct qlcnic_adapter *adapter,
+						char *file_name)
+{
+	struct pci_dev *pdev = adapter->pdev;
+
+	memset(file_name, 0, QLC_FW_FILE_NAME_LEN);
+
+	switch (pdev->device) {
+	case PCI_DEVICE_ID_QLOGIC_QLE834X:
+		strncpy(file_name, QLC_83XX_FW_FILE_NAME,
+			QLC_FW_FILE_NAME_LEN);
+		break;
+	case PCI_DEVICE_ID_QLOGIC_QLE844X:
+		strncpy(file_name, QLC_84XX_FW_FILE_NAME,
+			QLC_FW_FILE_NAME_LEN);
+		break;
+	default:
+		dev_err(&pdev->dev, "%s: Invalid device id\n",
+			__func__);
+	}
+}
+
 static int qlcnic_83xx_load_fw_image_from_host(struct qlcnic_adapter *adapter)
 {
+	char fw_file_name[QLC_FW_FILE_NAME_LEN];
 	int err = -EIO;
 
-	if (request_firmware(&adapter->ahw->fw_info.fw,
-			     QLC_83XX_FW_FILE_NAME, &(adapter->pdev->dev))) {
+	qlcnic_83xx_get_fw_file_name(adapter, fw_file_name);
+	if (request_firmware(&adapter->ahw->fw_info.fw, fw_file_name,
+			     &(adapter->pdev->dev))) {
 		dev_err(&adapter->pdev->dev,
 			"No file FW image, loading flash FW image.\n");
 		QLC_SHARED_REG_WR32(adapter, QLCNIC_FW_IMG_VALID,
@@ -2142,17 +2175,42 @@ static void qlcnic_83xx_clear_function_resources(struct qlcnic_adapter *adapter)
 int qlcnic_83xx_init(struct qlcnic_adapter *adapter, int pci_using_dac)
 {
 	struct qlcnic_hardware_context *ahw = adapter->ahw;
+	int err = 0;
 
-	if (qlcnic_sriov_vf_check(adapter))
-		return qlcnic_sriov_vf_init(adapter, pci_using_dac);
+	ahw->msix_supported = !!qlcnic_use_msi_x;
+	err = qlcnic_83xx_init_mailbox_work(adapter);
+	if (err)
+		goto exit;
 
-	if (qlcnic_83xx_check_hw_status(adapter))
-		return -EIO;
+	if (qlcnic_sriov_vf_check(adapter)) {
+		err = qlcnic_sriov_vf_init(adapter, pci_using_dac);
+		if (err)
+			goto detach_mbx;
+		else
+			return err;
+	}
 
-	/* Initilaize 83xx mailbox spinlock */
-	spin_lock_init(&ahw->mbx_lock);
+	err = qlcnic_83xx_check_hw_status(adapter);
+	if (err)
+		goto detach_mbx;
 
-	set_bit(QLC_83XX_MBX_READY, &adapter->ahw->idc.status);
+	if (!qlcnic_83xx_read_flash_descriptor_table(adapter))
+		qlcnic_83xx_read_flash_mfg_id(adapter);
+
+	err = qlcnic_83xx_idc_init(adapter);
+	if (err)
+		goto detach_mbx;
+
+	err = qlcnic_setup_intr(adapter, 0);
+	if (err) {
+		dev_err(&adapter->pdev->dev, "Failed to setup interrupt\n");
+		goto disable_intr;
+	}
+
+	err = qlcnic_83xx_setup_mbx_intr(adapter);
+	if (err)
+		goto disable_mbx_intr;
+
 	qlcnic_83xx_clear_function_resources(adapter);
 
 	INIT_DELAYED_WORK(&adapter->idc_aen_work, qlcnic_83xx_idc_aen_work);
@@ -2160,22 +2218,29 @@ int qlcnic_83xx_init(struct qlcnic_adapter *adapter, int pci_using_dac)
 	/* register for NIC IDC AEN Events */
 	qlcnic_83xx_register_nic_idc_func(adapter, 1);
 
-	if (!qlcnic_83xx_read_flash_descriptor_table(adapter))
-		qlcnic_83xx_read_flash_mfg_id(adapter);
-
-	if (qlcnic_83xx_idc_init(adapter))
-		return -EIO;
-
 	/* Configure default, SR-IOV or Virtual NIC mode of operation */
-	if (qlcnic_83xx_configure_opmode(adapter))
-		return -EIO;
+	err = qlcnic_83xx_configure_opmode(adapter);
+	if (err)
+		goto disable_mbx_intr;
 
 	/* Perform operating mode specific initialization */
-	if (adapter->nic_ops->init_driver(adapter))
-		return -EIO;
+	err = adapter->nic_ops->init_driver(adapter);
+	if (err)
+		goto disable_mbx_intr;
 
 	/* Periodically monitor device status */
 	qlcnic_83xx_idc_poll_dev_state(&adapter->fw_work.work);
+	return 0;
 
-	return adapter->ahw->idc.err_code;
+disable_mbx_intr:
+	qlcnic_83xx_free_mbx_intr(adapter);
+
+disable_intr:
+	qlcnic_teardown_intr(adapter);
+
+detach_mbx:
+	qlcnic_83xx_detach_mailbox_work(adapter);
+	qlcnic_83xx_free_mailbox(ahw->mailbox);
+exit:
+	return err;
 }

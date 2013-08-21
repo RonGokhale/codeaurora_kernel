@@ -84,10 +84,19 @@
 /* Firmware image definitions */
 #define QLC_83XX_BOOTLOADER_FLASH_ADDR	0x10000
 #define QLC_83XX_FW_FILE_NAME		"83xx_fw.bin"
+#define QLC_84XX_FW_FILE_NAME		"84xx_fw.bin"
 #define QLC_83XX_BOOT_FROM_FLASH	0
 #define QLC_83XX_BOOT_FROM_FILE		0x12345678
 
+#define QLC_FW_FILE_NAME_LEN		20
 #define QLC_83XX_MAX_RESET_SEQ_ENTRIES	16
+
+#define QLC_83XX_MBX_POST_BC_OP		0x1
+#define QLC_83XX_MBX_COMPLETION		0x0
+#define QLC_83XX_MBX_REQUEST		0x1
+
+#define QLC_83XX_MBX_TIMEOUT		(5 * HZ)
+#define QLC_83XX_MBX_CMD_LOOP		5000000
 
 /* status descriptor mailbox data
  * @phy_addr_{low|high}: physical address of buffer
@@ -397,6 +406,7 @@ enum qlcnic_83xx_states {
 #define QLC_83XX_MAX_MC_COUNT			38
 #define QLC_83XX_MAX_UC_COUNT			4096
 
+#define QLC_83XX_PVID_STRIP_CAPABILITY		BIT_22
 #define QLC_83XX_GET_FUNC_MODE_FROM_NPAR_INFO(val)	(val & 0x80000000)
 #define QLC_83XX_GET_LRO_CAPABILITY(val)		(val & 0x20)
 #define QLC_83XX_GET_LSO_CAPABILITY(val)		(val & 0x40)
@@ -449,6 +459,20 @@ enum qlcnic_83xx_states {
 #define QLC_83xx_FLASH_MAX_WAIT_USEC		100
 #define QLC_83XX_FLASH_LOCK_TIMEOUT		10000
 
+enum qlc_83xx_mbx_cmd_type {
+	QLC_83XX_MBX_CMD_WAIT = 0,
+	QLC_83XX_MBX_CMD_NO_WAIT,
+	QLC_83XX_MBX_CMD_BUSY_WAIT,
+};
+
+enum qlc_83xx_mbx_response_states {
+	QLC_83XX_MBX_RESPONSE_WAIT = 0,
+	QLC_83XX_MBX_RESPONSE_ARRIVED,
+};
+
+#define QLC_83XX_MBX_RESPONSE_FAILED	0x2
+#define QLC_83XX_MBX_RESPONSE_UNKNOWN	0x3
+
 /* Additional registers in 83xx */
 enum qlc_83xx_ext_regs {
 	QLCNIC_GLOBAL_RESET = 0,
@@ -498,7 +522,7 @@ enum qlc_83xx_ext_regs {
 
 /* 83xx funcitons */
 int qlcnic_83xx_get_fw_version(struct qlcnic_adapter *);
-int qlcnic_83xx_mbx_op(struct qlcnic_adapter *, struct qlcnic_cmd_args *);
+int qlcnic_83xx_issue_cmd(struct qlcnic_adapter *, struct qlcnic_cmd_args *);
 int qlcnic_83xx_setup_intr(struct qlcnic_adapter *, u8);
 void qlcnic_83xx_get_func_no(struct qlcnic_adapter *);
 int qlcnic_83xx_cam_lock(struct qlcnic_adapter *);
@@ -551,7 +575,7 @@ void qlcnic_set_npar_data(struct qlcnic_adapter *, const struct qlcnic_info *,
 void qlcnic_83xx_config_intr_coal(struct qlcnic_adapter *);
 irqreturn_t qlcnic_83xx_handle_aen(int, void *);
 int qlcnic_83xx_get_port_info(struct qlcnic_adapter *);
-void qlcnic_83xx_enable_mbx_intrpt(struct qlcnic_adapter *);
+void qlcnic_83xx_enable_mbx_interrupt(struct qlcnic_adapter *);
 void qlcnic_83xx_disable_mbx_intr(struct qlcnic_adapter *);
 irqreturn_t qlcnic_83xx_clear_legacy_intr(struct qlcnic_adapter *);
 irqreturn_t qlcnic_83xx_intr(int, void *);
@@ -623,8 +647,6 @@ int qlcnic_83xx_set_led(struct net_device *, enum ethtool_phys_id_state);
 int qlcnic_83xx_flash_test(struct qlcnic_adapter *);
 int qlcnic_83xx_enable_flash_write(struct qlcnic_adapter *);
 int qlcnic_83xx_disable_flash_write(struct qlcnic_adapter *);
-u32 qlcnic_83xx_mac_rcode(struct qlcnic_adapter *);
-u32 qlcnic_83xx_mbx_poll(struct qlcnic_adapter *, u32 *);
 void qlcnic_83xx_enable_mbx_poll(struct qlcnic_adapter *);
 void qlcnic_83xx_disable_mbx_poll(struct qlcnic_adapter *);
 void qlcnic_83xx_set_mac_filter_count(struct qlcnic_adapter *);
