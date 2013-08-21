@@ -86,6 +86,7 @@ static void event_handler(uint32_t opcode,
 	struct audio_buffer *buf = NULL;
 	unsigned long flag = 0;
 	int i = 0;
+	int stop_playback = 0;
 
 	pr_debug("%s\n", __func__);
 	spin_lock_irqsave(&the_locks.event_lock, flag);
@@ -110,10 +111,15 @@ static void event_handler(uint32_t opcode,
 			atomic_set(&prtd->pending_buffer, 0);
 
 		buf = prtd->audio_client->port[IN].buf;
+		snd_pcm_stream_lock_irq(substream);
 		if (runtime->status->hw_ptr >= runtime->control->appl_ptr) {
 			runtime->render_flag |= SNDRV_RENDER_STOPPED;
-			atomic_set(&prtd->pending_buffer, 1);
-			pr_debug("%s:lpa driver underrun\n", __func__);
+			stop_playback = 1;
+		}
+		snd_pcm_stream_unlock_irq(substream);
+		if (stop_playback) {
+		    	atomic_set(&prtd->pending_buffer, 1);
+			pr_err("underrun! render stopped\n");
 			break;
 		}
 		pr_debug("%s:writing %d bytes of buffer to dsp 2\n",
