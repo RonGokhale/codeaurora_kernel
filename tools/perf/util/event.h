@@ -80,6 +80,23 @@ struct stack_dump {
 	char *data;
 };
 
+struct sample_read_value {
+	u64 value;
+	u64 id;
+};
+
+struct sample_read {
+	u64 time_enabled;
+	u64 time_running;
+	union {
+		struct {
+			u64 nr;
+			struct sample_read_value *values;
+		} group;
+		struct sample_read_value one;
+	};
+};
+
 struct perf_sample {
 	u64 ip;
 	u32 pid, tid;
@@ -97,6 +114,7 @@ struct perf_sample {
 	struct branch_stack *branch_stack;
 	struct regs_dump  user_regs;
 	struct stack_dump user_stack;
+	struct sample_read read;
 };
 
 #define PERF_MEM_DATA_SRC_NONE \
@@ -116,7 +134,7 @@ struct build_id_event {
 enum perf_user_event_type { /* above any possible kernel type */
 	PERF_RECORD_USER_TYPE_START		= 64,
 	PERF_RECORD_HEADER_ATTR			= 64,
-	PERF_RECORD_HEADER_EVENT_TYPE		= 65,
+	PERF_RECORD_HEADER_EVENT_TYPE		= 65, /* depreceated */
 	PERF_RECORD_HEADER_TRACING_DATA		= 66,
 	PERF_RECORD_HEADER_BUILD_ID		= 67,
 	PERF_RECORD_FINISHED_ROUND		= 68,
@@ -216,8 +234,7 @@ struct addr_location;
 int perf_event__preprocess_sample(const union perf_event *self,
 				  struct machine *machine,
 				  struct addr_location *al,
-				  struct perf_sample *sample,
-				  symbol_filter_t filter);
+				  struct perf_sample *sample);
 
 const char *perf_event__name(unsigned int id);
 
