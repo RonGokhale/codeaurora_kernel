@@ -30,10 +30,9 @@ Devices: [National Instruments] AT-MIO-16 (atmio16), AT-MIO-16D (atmio16d)
  *
  */
 
+#include <linux/module.h>
 #include <linux/interrupt.h>
 #include "../comedidev.h"
-
-#include <linux/ioport.h>
 
 #include "comedi_fc.h"
 #include "8255.h"
@@ -645,10 +644,9 @@ static int atmio16d_attach(struct comedi_device *dev,
 	if (ret)
 		return ret;
 
-	devpriv = kzalloc(sizeof(*devpriv), GFP_KERNEL);
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
 	if (!devpriv)
 		return -ENOMEM;
-	dev->private = devpriv;
 
 	/* reset the atmio16d hardware */
 	reset_atmio16d(dev);
