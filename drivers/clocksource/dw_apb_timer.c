@@ -18,19 +18,6 @@
 #include <linux/io.h>
 #include <linux/slab.h>
 
-#define APBT_MIN_PERIOD			4
-#define APBT_MIN_DELTA_USEC		200
-
-#define APBTMRS_INT_STATUS		0xa0
-#define APBTMRS_EOI			0xa4
-#define APBTMRS_RAW_INT_STATUS		0xa8
-#define APBTMRS_COMP_VERSION		0xac
-
-#define APBTMR_CONTROL_ENABLE		(1 << 0)
-/* 1: periodic, 0:free running. */
-#define APBTMR_CONTROL_MODE_PERIODIC	(1 << 1)
-#define APBTMR_CONTROL_INT		(1 << 2)
-
 static inline struct dw_apb_clock_event_device *
 ced_to_dw_apb_ced(struct clock_event_device *evt)
 {

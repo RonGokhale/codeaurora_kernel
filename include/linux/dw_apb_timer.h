@@ -25,6 +25,25 @@
 
 #define APBTMRS_REG_SIZE       0x14
 
+#define APBT_MIN_PERIOD                 4
+#define APBT_MIN_DELTA_USEC             200
+
+#define APBTMR_N_LOAD_COUNT             0x00
+#define APBTMR_N_CURRENT_VALUE          0x04
+#define APBTMR_N_CONTROL                0x08
+#define APBTMR_N_EOI                    0x0c
+#define APBTMR_N_INT_STATUS             0x10
+
+#define APBTMRS_INT_STATUS              0xa0
+#define APBTMRS_EOI                     0xa4
+#define APBTMRS_RAW_INT_STATUS          0xa8
+#define APBTMRS_COMP_VERSION            0xac
+
+#define APBTMR_CONTROL_ENABLE           (1 << 0)
+/* 1: periodic, 0:free running. */
+#define APBTMR_CONTROL_MODE_PERIODIC    (1 << 1)
+#define APBTMR_CONTROL_INT              (1 << 2)
+
 struct dw_apb_timer {
 	void __iomem				*base;
 	unsigned long				freq;
