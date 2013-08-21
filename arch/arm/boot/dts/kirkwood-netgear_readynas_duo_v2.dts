@@ -1,7 +1,7 @@
 /dts-v1/;
 
-/include/ "kirkwood.dtsi"
-/include/ "kirkwood-6282.dtsi"
+#include "kirkwood.dtsi"
+#include "kirkwood-6282.dtsi"
 
 / {
 	model = "NETGEAR ReadyNAS Duo v2";
@@ -14,6 +14,17 @@
 
 	chosen {
 		bootargs = "console=ttyS0,115200n8 earlyprintk";
+	};
+
+	mbus {
+		ranges = <MBUS_ID(0xf0, 0x01) 0 0xf1000000 0x100000>;
+		pcie-controller {
+			status = "okay";
+
+			pcie@1,0 {
+				status = "okay";
+			};
+		};
 	};
 
 	ocp@f1000000 {
@@ -101,14 +112,6 @@
 			status = "okay";
 			nr-ports = <2>;
 		};
-
-		pcie-controller {
-			status = "okay";
-
-			pcie@1,0 {
-				status = "okay";
-			};
-		};
 	};
 
 	gpio-leds {
@@ -183,4 +186,20 @@
                         gpio = <&gpio1 14 0>;
                 };
         };
+};
+
+&mdio {
+	status = "okay";
+
+	ethphy0: ethernet-phy@0 {
+		device_type = "ethernet-phy";
+		reg = <0>;
+	};
+};
+
+&eth0 {
+	status = "okay";
+	ethernet0-port@0 {
+		phy-handle = <&ethphy0>;
+	};
 };
