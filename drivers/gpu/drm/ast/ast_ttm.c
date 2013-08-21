@@ -321,7 +321,6 @@ int ast_bo_create(struct drm_device *dev, int size, int align,
 		return ret;
 	}
 
-	astbo->gem.driver_private = NULL;
 	astbo->bo.bdev = &ast->ttm.bdev;
 	astbo->bo.bdev->dev_mapping = dev->dev_mapping;
 

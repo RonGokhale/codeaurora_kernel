@@ -167,8 +167,6 @@ static struct sg_table *drm_gem_map_dma_buf(struct dma_buf_attachment *attach,
 	if (WARN_ON(prime_attach->dir != DMA_NONE))
 		return ERR_PTR(-EBUSY);
 
-	mutex_lock(&obj->dev->struct_mutex);
-
 	sgt = obj->dev->driver->gem_prime_get_sg_table(obj);
 
 	if (!IS_ERR(sgt)) {
@@ -182,7 +180,6 @@ static struct sg_table *drm_gem_map_dma_buf(struct dma_buf_attachment *attach,
 		}
 	}
 
-	mutex_unlock(&obj->dev->struct_mutex);
 	return sgt;
 }
 
@@ -192,7 +189,7 @@ static void drm_gem_unmap_dma_buf(struct dma_buf_attachment *attach,
 	/* nothing to be done here */
 }
 
-static void drm_gem_dmabuf_release(struct dma_buf *dma_buf)
+void drm_gem_dmabuf_release(struct dma_buf *dma_buf)
 {
 	struct drm_gem_object *obj = dma_buf->priv;
 
@@ -202,6 +199,7 @@ static void drm_gem_dmabuf_release(struct dma_buf *dma_buf)
 		drm_gem_object_unreference_unlocked(obj);
 	}
 }
+EXPORT_SYMBOL(drm_gem_dmabuf_release);
 
 static void *drm_gem_dmabuf_vmap(struct dma_buf *dma_buf)
 {
