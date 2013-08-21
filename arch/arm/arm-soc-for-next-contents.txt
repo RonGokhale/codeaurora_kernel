@@ -67,6 +67,8 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.12-dt
 	patch
 		ARM: tegra: configure power off for Dalmore
+	sunxi/dt
+		https://github.com/mripard/linux.git tags/sunxi-dt-for-3.12
 
 next/soc
 	vexpress/mcpm
