@@ -1449,6 +1449,8 @@
 #define   MCH_SSKPD_WM0_MASK		0x3f
 #define   MCH_SSKPD_WM0_VAL		0xc
 
+#define MCH_SECP_NRG_STTS		(MCHBAR_MIRROR_BASE_SNB + 0x592c)
+
 /* Clocking configuration register */
 #define CLKCFG			0x10c00
 #define CLKCFG_FSB_400					(5 << 0)	/* hrawclk 100 */
@@ -3204,9 +3206,6 @@
 #define  MLTR_WM2_SHIFT		8
 /* the unit of memory self-refresh latency time is 0.5us */
 #define  ILK_SRLT_MASK		0x3f
-#define ILK_LATENCY(shift)	(I915_READ(MLTR_ILK) >> (shift) & ILK_SRLT_MASK)
-#define ILK_READ_WM1_LATENCY()	ILK_LATENCY(MLTR_WM1_SHIFT)
-#define ILK_READ_WM2_LATENCY()	ILK_LATENCY(MLTR_WM2_SHIFT)
 
 /* define the fifo size on Ironlake */
 #define ILK_DISPLAY_FIFO	128
@@ -3252,12 +3251,6 @@
 #define SSKPD_WM1_SHIFT		8
 #define SSKPD_WM2_SHIFT		16
 #define SSKPD_WM3_SHIFT		24
-
-#define SNB_LATENCY(shift)	(I915_READ(MCHBAR_MIRROR_BASE_SNB + SSKPD) >> (shift) & SSKPD_WM_MASK)
-#define SNB_READ_WM0_LATENCY()		SNB_LATENCY(SSKPD_WM0_SHIFT)
-#define SNB_READ_WM1_LATENCY()		SNB_LATENCY(SSKPD_WM1_SHIFT)
-#define SNB_READ_WM2_LATENCY()		SNB_LATENCY(SSKPD_WM2_SHIFT)
-#define SNB_READ_WM3_LATENCY()		SNB_LATENCY(SSKPD_WM3_SHIFT)
 
 /*
  * The two pipe frame counter registers are not synchronized, so
@@ -4842,8 +4835,8 @@
 #define HSW_PWR_WELL_DRIVER			0x45404 /* CTL2 */
 #define HSW_PWR_WELL_KVMR			0x45408 /* CTL3 */
 #define HSW_PWR_WELL_DEBUG			0x4540C /* CTL4 */
-#define   HSW_PWR_WELL_ENABLE			(1<<31)
-#define   HSW_PWR_WELL_STATE			(1<<30)
+#define   HSW_PWR_WELL_ENABLE_REQUEST		(1<<31)
+#define   HSW_PWR_WELL_STATE_ENABLED		(1<<30)
 #define HSW_PWR_WELL_CTL5			0x45410
 #define   HSW_PWR_WELL_ENABLE_SINGLE_STEP	(1<<31)
 #define   HSW_PWR_WELL_PWR_GATE_OVERRIDE	(1<<20)
