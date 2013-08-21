@@ -86,6 +86,8 @@ next/soc
 		git://git.infradead.org/linux-mvebu.git tags/drivers-3.12
 	omap/dra7xx
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.12/dra7xx
+	tegra/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.12-soc
 
 next/boards
 	renesas/backlight
