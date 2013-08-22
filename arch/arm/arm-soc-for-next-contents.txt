@@ -104,6 +104,8 @@ next/soc
 		https://github.com/mripard/linux.git tags/sunxi-core-for-3.12-2
 	ux500/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-core-for-arm-soc
+	davinci/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci.git tags/davinci-for-v3.12/soc
 
 next/boards
 	renesas/backlight
