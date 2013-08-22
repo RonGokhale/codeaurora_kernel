@@ -1449,6 +1449,8 @@
 #define   MCH_SSKPD_WM0_MASK		0x3f
 #define   MCH_SSKPD_WM0_VAL		0xc
 
+#define MCH_SECP_NRG_STTS		(MCHBAR_MIRROR_BASE_SNB + 0x592c)
+
 /* Clocking configuration register */
 #define CLKCFG			0x10c00
 #define CLKCFG_FSB_400					(5 << 0)	/* hrawclk 100 */
@@ -4833,8 +4835,8 @@
 #define HSW_PWR_WELL_DRIVER			0x45404 /* CTL2 */
 #define HSW_PWR_WELL_KVMR			0x45408 /* CTL3 */
 #define HSW_PWR_WELL_DEBUG			0x4540C /* CTL4 */
-#define   HSW_PWR_WELL_ENABLE			(1<<31)
-#define   HSW_PWR_WELL_STATE			(1<<30)
+#define   HSW_PWR_WELL_ENABLE_REQUEST		(1<<31)
+#define   HSW_PWR_WELL_STATE_ENABLED		(1<<30)
 #define HSW_PWR_WELL_CTL5			0x45410
 #define   HSW_PWR_WELL_ENABLE_SINGLE_STEP	(1<<31)
 #define   HSW_PWR_WELL_PWR_GATE_OVERRIDE	(1<<20)
