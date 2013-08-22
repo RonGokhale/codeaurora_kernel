@@ -4520,6 +4520,7 @@ EXPORT_SYMBOL(mhl_connect_api);
 static int hdmi_msm_power_off(struct platform_device *pdev)
 {
 	int ret = 0;
+	struct msm_fb_data_type *mfd = platform_get_drvdata(pdev);
 
 	/*
 	don't check for hpd_initialized here since user space may
@@ -4560,11 +4561,17 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 
 		hdcp_deauthenticate();
 	}
-
 	SWITCH_SET_HDMI_AUDIO(0, 0);
 
-	if (!hdmi_msm_is_dvi_mode())
-		hdmi_msm_audio_off();
+	if (!hdmi_msm_is_dvi_mode()) {
+		if (external_common_state->hpd_state &&
+			!mfd->suspend.op_suspend) {
+			/*case: Resolution switch*/
+				hdmi_msm_audio_off(0);
+		} else {
+			hdmi_msm_audio_off(1);
+		}
+	}
 
 	if (!hdmi_prim_display)
 		hdmi_msm_powerdown_phy();
