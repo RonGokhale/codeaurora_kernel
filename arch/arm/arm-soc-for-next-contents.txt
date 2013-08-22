@@ -72,6 +72,8 @@ next/dt
 	sunxi/dt
 		https://github.com/mripard/linux.git tags/sunxi-dt-for-3.12
 		https://github.com/mripard/linux.git tags/sunxi-dt-for-3.12-2
+	samsung/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-dt-1
 
 next/soc
 	vexpress/mcpm
