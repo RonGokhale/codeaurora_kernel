@@ -74,6 +74,8 @@ next/dt
 		https://github.com/mripard/linux.git tags/sunxi-dt-for-3.12-2
 	samsung/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-dt-1
+	nomadik/i2c
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik.git tags/nomadik-i2c-for-arm-soc
 
 next/soc
 	vexpress/mcpm
