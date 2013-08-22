@@ -50,16 +50,31 @@ extern struct task_struct *__switch_to(struct task_struct *prev,
 extern unsigned long get_switch_to_pc(void);
 
 /*
+ * Normally we notify the simulator whenever we change from one pid
+ * to another, so it can track symbol files appropriately on the fly.
+ * For now, we don't do this for the guest Linux, since we don't
+ * have a way to tell the simulator that we are entering a separate
+ * pid space when we are in the guest.
+ */
+#ifdef CONFIG_KVM_GUEST
+#define notify_sim_task_change(prev) do { } while (0)
+#else
+#define notify_sim_task_change(prev) do {				\
+	if (unlikely((prev)->state == TASK_DEAD))			\
+		__insn_mtspr(SPR_SIM_CONTROL, SIM_CONTROL_OS_EXIT |	\
+			     ((prev)->pid << _SIM_CONTROL_OPERATOR_BITS)); \
+	__insn_mtspr(SPR_SIM_CONTROL, SIM_CONTROL_OS_SWITCH |		\
+		     (current->pid << _SIM_CONTROL_OPERATOR_BITS));	\
+} while (0)
+#endif
+
+/*
  * Kernel threads can check to see if they need to migrate their
  * stack whenever they return from a context switch; for user
  * threads, we defer until they are returning to user-space.
  */
 #define finish_arch_switch(prev) do {                                     \
-	if (unlikely((prev)->state == TASK_DEAD))                         \
-		__insn_mtspr(SPR_SIM_CONTROL, SIM_CONTROL_OS_EXIT |       \
-			((prev)->pid << _SIM_CONTROL_OPERATOR_BITS));     \
-	__insn_mtspr(SPR_SIM_CONTROL, SIM_CONTROL_OS_SWITCH |             \
-		(current->pid << _SIM_CONTROL_OPERATOR_BITS));            \
+	notify_sim_task_change(prev);                                     \
 	if (current->mm == NULL && !kstack_hash &&                        \
 	    current_thread_info()->homecache_cpu != smp_processor_id())   \
 		homecache_migrate_kthread();                              \
