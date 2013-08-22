@@ -1513,6 +1513,8 @@ static int msm_routing_ec_ref_rx_get(struct snd_kcontrol *kcontrol,
 static int msm_routing_ec_ref_rx_put(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
 {
+	pr_debug("%s: ucontrol->value.integer.value[0] = %ld\n",__func__,
+			ucontrol->value.integer.value[0]);
 	switch (ucontrol->value.integer.value[0]) {
 	case 0:
 		msm_route_ec_ref_rx = SLIMBUS_0_RX;
@@ -1520,6 +1522,13 @@ static int msm_routing_ec_ref_rx_put(struct snd_kcontrol *kcontrol,
 	case 1:
 		msm_route_ec_ref_rx = PRIMARY_I2S_RX;
 		break;
+	case 3:
+		msm_route_ec_ref_rx = SECONDARY_I2S_RX;
+		break;
+	case 4:
+		msm_route_ec_ref_rx = HDMI_RX;
+		break;
+
 	default:
 		msm_route_ec_ref_rx = 0;
 		break;
@@ -1531,9 +1540,9 @@ static int msm_routing_ec_ref_rx_put(struct snd_kcontrol *kcontrol,
 }
 
 static const char * const ec_ref_rx[] = {"SLIM_RX", "I2S_RX", "PROXY_RX",
-								"NONE"};
+					"SEC_RX", "HDMI_RX","NONE"};
 static const struct soc_enum msm_route_ec_ref_rx_enum[] = {
-				SOC_ENUM_SINGLE_EXT(4, ec_ref_rx),
+				SOC_ENUM_SINGLE_EXT(6, ec_ref_rx),
 };
 
 static const struct snd_kcontrol_new ec_ref_rx_mixer_controls[] = {
