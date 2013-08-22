@@ -76,6 +76,8 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-dt-1
 	nomadik/i2c
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik.git tags/nomadik-i2c-for-arm-soc
+	at91/dt
+		git://github.com/at91linux/linux-at91.git tags/at91-dt
 
 next/soc
 	vexpress/mcpm
