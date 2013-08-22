@@ -243,7 +243,6 @@ struct sdma_engine;
  * @event_id1		for channels that use 2 events
  * @word_size		peripheral access size
  * @buf_tail		ID of the buffer that was processed
- * @done		channel completion
  * @num_bd		max NUM_BD. number of descriptors currently handling
  */
 struct sdma_channel {
@@ -255,7 +254,6 @@ struct sdma_channel {
 	unsigned int			event_id1;
 	enum dma_slave_buswidth		word_size;
 	unsigned int			buf_tail;
-	struct completion		done;
 	unsigned int			num_bd;
 	struct sdma_buffer_descriptor	*bd;
 	dma_addr_t			bd_phys;
@@ -547,8 +545,6 @@ static void sdma_tasklet(unsigned long data)
 {
 	struct sdma_channel *sdmac = (struct sdma_channel *) data;
 
-	complete(&sdmac->done);
-
 	if (sdmac->flags & IMX_DMA_SG_LOOP)
 		sdma_handle_channel_loop(sdmac);
 	else
@@ -812,9 +808,6 @@ static int sdma_request_channel(struct sdma_channel *sdmac)
 	sdma->channel_control[channel].current_bd_ptr = sdmac->bd_phys;
 
 	sdma_set_channel_priority(sdmac, MXC_SDMA_DEFAULT_PRIORITY);
-
-	init_completion(&sdmac->done);
-
 	return 0;
 out:
 
@@ -1120,15 +1113,12 @@ static int sdma_control(struct dma_chan *chan, enum dma_ctrl_cmd cmd,
 }
 
 static enum dma_status sdma_tx_status(struct dma_chan *chan,
-					    dma_cookie_t cookie,
-					    struct dma_tx_state *txstate)
+				      dma_cookie_t cookie,
+				      struct dma_tx_state *txstate)
 {
 	struct sdma_channel *sdmac = to_sdma_chan(chan);
-	dma_cookie_t last_used;
 
-	last_used = chan->cookie;
-
-	dma_set_tx_state(txstate, chan->completed_cookie, last_used,
+	dma_set_tx_state(txstate, chan->completed_cookie, chan->cookie,
 			sdmac->chn_count - sdmac->chn_real_count);
 
 	return sdmac->status;
@@ -1335,7 +1325,7 @@ static int __init sdma_probe(struct platform_device *pdev)
 	int ret;
 	int irq;
 	struct resource *iores;
-	struct sdma_platform_data *pdata = pdev->dev.platform_data;
+	struct sdma_platform_data *pdata = dev_get_platdata(&pdev->dev);
 	int i;
 	struct sdma_engine *sdma;
 	s32 *saddr_arr;
