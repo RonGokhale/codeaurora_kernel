@@ -4365,7 +4365,7 @@ F:	drivers/net/wireless/iwlegacy/
 
 INTEL WIRELESS WIFI LINK (iwlwifi)
 M:	Johannes Berg <johannes.berg@intel.com>
-M:	Wey-Yi Guy <wey-yi.w.guy@intel.com>
+M:	Emmanuel Grumbach <emmanuel.grumbach@intel.com>
 M:	Intel Linux Wireless <ilw@linux.intel.com>
 L:	linux-wireless@vger.kernel.org
 W:	http://intellinuxwireless.org
@@ -7238,6 +7238,7 @@ W:	http://lksctp.sourceforge.net
 S:	Maintained
 F:	Documentation/networking/sctp.txt
 F:	include/linux/sctp.h
+F:	include/uapi/linux/sctp.h
 F:	include/net/sctp/
 F:	net/sctp/
 
@@ -7973,6 +7974,12 @@ F:	arch/m68k/kernel/*sun3*
 F:	arch/m68k/sun3*/
 F:	arch/m68k/include/asm/sun3*
 F:	drivers/net/ethernet/i825xx/sun3*
+
+SUNDANCE NETWORK DRIVER
+M:	Denis Kirjanov <kda@linux-powerpc.org>
+L:	netdev@vger.kernel.org
+S:	Maintained
+F:	drivers/net/ethernet/dlink/sundance.c
 
 SUPERH
 M:	Paul Mundt <lethal@linux-sh.org>

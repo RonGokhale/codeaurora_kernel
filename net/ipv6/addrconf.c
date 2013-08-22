@@ -99,9 +99,9 @@
 #define ACONF_DEBUG 2
 
 #if ACONF_DEBUG >= 3
-#define ADBG(x) printk x
+#define ADBG(fmt, ...) printk(fmt, ##__VA_ARGS__)
 #else
-#define ADBG(x)
+#define ADBG(fmt, ...) do { if (0) printk(fmt, ##__VA_ARGS__); } while (0)
 #endif
 
 #define	INFINITY_LIFE_TIME	0xFFFFFFFF
@@ -177,6 +177,8 @@ static struct ipv6_devconf ipv6_devconf __read_mostly = {
 	.accept_redirects	= 1,
 	.autoconf		= 1,
 	.force_mld_version	= 0,
+	.mldv1_unsolicited_report_interval = 10 * HZ,
+	.mldv2_unsolicited_report_interval = HZ,
 	.dad_transmits		= 1,
 	.rtr_solicits		= MAX_RTR_SOLICITATIONS,
 	.rtr_solicit_interval	= RTR_SOLICITATION_INTERVAL,
@@ -211,6 +213,9 @@ static struct ipv6_devconf ipv6_devconf_dflt __read_mostly = {
 	.accept_ra		= 1,
 	.accept_redirects	= 1,
 	.autoconf		= 1,
+	.force_mld_version	= 0,
+	.mldv1_unsolicited_report_interval = 10 * HZ,
+	.mldv2_unsolicited_report_interval = HZ,
 	.dad_transmits		= 1,
 	.rtr_solicits		= MAX_RTR_SOLICITATIONS,
 	.rtr_solicit_interval	= RTR_SOLICITATION_INTERVAL,
@@ -369,9 +374,9 @@ static struct inet6_dev *ipv6_add_dev(struct net_device *dev)
 	dev_hold(dev);
 
 	if (snmp6_alloc_dev(ndev) < 0) {
-		ADBG((KERN_WARNING
+		ADBG(KERN_WARNING
 			"%s: cannot allocate memory for statistics; dev=%s.\n",
-			__func__, dev->name));
+			__func__, dev->name);
 		neigh_parms_release(&nd_tbl, ndev->nd_parms);
 		dev_put(dev);
 		kfree(ndev);
@@ -379,9 +384,9 @@ static struct inet6_dev *ipv6_add_dev(struct net_device *dev)
 	}
 
 	if (snmp6_register_dev(ndev) < 0) {
-		ADBG((KERN_WARNING
+		ADBG(KERN_WARNING
 			"%s: cannot create /proc/net/dev_snmp6/%s\n",
-			__func__, dev->name));
+			__func__, dev->name);
 		neigh_parms_release(&nd_tbl, ndev->nd_parms);
 		ndev->dead = 1;
 		in6_dev_finish_destroy(ndev);
@@ -844,7 +849,7 @@ ipv6_add_addr(struct inet6_dev *idev, const struct in6_addr *addr,
 
 	/* Ignore adding duplicate addresses on an interface */
 	if (ipv6_chk_same_addr(dev_net(idev->dev), addr, idev->dev)) {
-		ADBG(("ipv6_add_addr: already assigned\n"));
+		ADBG("ipv6_add_addr: already assigned\n");
 		err = -EEXIST;
 		goto out;
 	}
@@ -852,7 +857,7 @@ ipv6_add_addr(struct inet6_dev *idev, const struct in6_addr *addr,
 	ifa = kzalloc(sizeof(struct inet6_ifaddr), GFP_ATOMIC);
 
 	if (ifa == NULL) {
-		ADBG(("ipv6_add_addr: malloc failed\n"));
+		ADBG("ipv6_add_addr: malloc failed\n");
 		err = -ENOBUFS;
 		goto out;
 	}
@@ -1807,6 +1812,16 @@ static int addrconf_ifid_gre(u8 *eui, struct net_device *dev)
 	return __ipv6_isatap_ifid(eui, *(__be32 *)dev->dev_addr);
 }
 
+static int addrconf_ifid_ip6tnl(u8 *eui, struct net_device *dev)
+{
+	memcpy(eui, dev->perm_addr, 3);
+	memcpy(eui + 5, dev->perm_addr + 3, 3);
+	eui[3] = 0xFF;
+	eui[4] = 0xFE;
+	eui[0] ^= 2;
+	return 0;
+}
+
 static int ipv6_generate_eui64(u8 *eui, struct net_device *dev)
 {
 	switch (dev->type) {
@@ -1825,6 +1840,8 @@ static int ipv6_generate_eui64(u8 *eui, struct net_device *dev)
 		return addrconf_ifid_eui64(eui, dev);
 	case ARPHRD_IEEE1394:
 		return addrconf_ifid_ieee1394(eui, dev);
+	case ARPHRD_TUNNEL6:
+		return addrconf_ifid_ip6tnl(eui, dev);
 	}
 	return -1;
 }
@@ -2050,7 +2067,7 @@ void addrconf_prefix_rcv(struct net_device *dev, u8 *opt, int len, bool sllao)
 	pinfo = (struct prefix_info *) opt;
 
 	if (len < sizeof(struct prefix_info)) {
-		ADBG(("addrconf: prefix option too short\n"));
+		ADBG("addrconf: prefix option too short\n");
 		return;
 	}
 
@@ -2702,7 +2719,8 @@ static void addrconf_dev_config(struct net_device *dev)
 	    (dev->type != ARPHRD_ARCNET) &&
 	    (dev->type != ARPHRD_INFINIBAND) &&
 	    (dev->type != ARPHRD_IEEE802154) &&
-	    (dev->type != ARPHRD_IEEE1394)) {
+	    (dev->type != ARPHRD_IEEE1394) &&
+	    (dev->type != ARPHRD_TUNNEL6)) {
 		/* Alas, we support only Ethernet autoconfiguration. */
 		return;
 	}
@@ -2788,44 +2806,6 @@ ipv6_inherit_linklocal(struct inet6_dev *idev, struct net_device *link_dev)
 	return -1;
 }
 
-static void ip6_tnl_add_linklocal(struct inet6_dev *idev)
-{
-	struct net_device *link_dev;
-	struct net *net = dev_net(idev->dev);
-
-	/* first try to inherit the link-local address from the link device */
-	if (idev->dev->iflink &&
-	    (link_dev = __dev_get_by_index(net, idev->dev->iflink))) {
-		if (!ipv6_inherit_linklocal(idev, link_dev))
-			return;
-	}
-	/* then try to inherit it from any device */
-	for_each_netdev(net, link_dev) {
-		if (!ipv6_inherit_linklocal(idev, link_dev))
-			return;
-	}
-	pr_debug("init ip6-ip6: add_linklocal failed\n");
-}
-
-/*
- * Autoconfigure tunnel with a link-local address so routing protocols,
- * DHCPv6, MLD etc. can be run over the virtual link
- */
-
-static void addrconf_ip6_tnl_config(struct net_device *dev)
-{
-	struct inet6_dev *idev;
-
-	ASSERT_RTNL();
-
-	idev = addrconf_add_dev(dev);
-	if (IS_ERR(idev)) {
-		pr_debug("init ip6-ip6: add_dev failed\n");
-		return;
-	}
-	ip6_tnl_add_linklocal(idev);
-}
-
 static int addrconf_notify(struct notifier_block *this, unsigned long event,
 			   void *ptr)
 {
@@ -2893,9 +2873,6 @@ static int addrconf_notify(struct notifier_block *this, unsigned long event,
 			addrconf_gre_config(dev);
 			break;
 #endif
-		case ARPHRD_TUNNEL6:
-			addrconf_ip6_tnl_config(dev);
-			break;
 		case ARPHRD_LOOPBACK:
 			init_loopback(dev);
 			break;
@@ -3630,8 +3607,8 @@ restart:
 	if (time_before(next_sched, jiffies + ADDRCONF_TIMER_FUZZ_MAX))
 		next_sched = jiffies + ADDRCONF_TIMER_FUZZ_MAX;
 
-	ADBG((KERN_DEBUG "now = %lu, schedule = %lu, rounded schedule = %lu => %lu\n",
-	      now, next, next_sec, next_sched));
+	ADBG(KERN_DEBUG "now = %lu, schedule = %lu, rounded schedule = %lu => %lu\n",
+	      now, next, next_sec, next_sched);
 
 	addr_chk_timer.expires = next_sched;
 	add_timer(&addr_chk_timer);
@@ -4177,6 +4154,10 @@ static inline void ipv6_store_devconf(struct ipv6_devconf *cnf,
 	array[DEVCONF_RTR_SOLICIT_DELAY] =
 		jiffies_to_msecs(cnf->rtr_solicit_delay);
 	array[DEVCONF_FORCE_MLD_VERSION] = cnf->force_mld_version;
+	array[DEVCONF_MLDV1_UNSOLICITED_REPORT_INTERVAL] =
+		jiffies_to_msecs(cnf->mldv1_unsolicited_report_interval);
+	array[DEVCONF_MLDV2_UNSOLICITED_REPORT_INTERVAL] =
+		jiffies_to_msecs(cnf->mldv2_unsolicited_report_interval);
 #ifdef CONFIG_IPV6_PRIVACY
 	array[DEVCONF_USE_TEMPADDR] = cnf->use_tempaddr;
 	array[DEVCONF_TEMP_VALID_LFT] = cnf->temp_valid_lft;
@@ -4652,6 +4633,7 @@ static void __ipv6_ifa_notify(int event, struct inet6_ifaddr *ifp)
 		break;
 	}
 	atomic_inc(&net->ipv6.dev_addr_genid);
+	rt_genid_bump_ipv6(net);
 }
 
 static void ipv6_ifa_notify(int event, struct inet6_ifaddr *ifp)
@@ -4858,6 +4840,22 @@ static struct addrconf_sysctl_table
 			.maxlen		= sizeof(int),
 			.mode		= 0644,
 			.proc_handler	= proc_dointvec,
+		},
+		{
+			.procname	= "mldv1_unsolicited_report_interval",
+			.data		=
+				&ipv6_devconf.mldv1_unsolicited_report_interval,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec_ms_jiffies,
+		},
+		{
+			.procname	= "mldv2_unsolicited_report_interval",
+			.data		=
+				&ipv6_devconf.mldv2_unsolicited_report_interval,
+			.maxlen		= sizeof(int),
+			.mode		= 0644,
+			.proc_handler	= proc_dointvec_ms_jiffies,
 		},
 #ifdef CONFIG_IPV6_PRIVACY
 		{

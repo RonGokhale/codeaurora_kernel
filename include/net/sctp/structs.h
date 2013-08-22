@@ -25,10 +25,7 @@
  *
  * Please send any bug reports or fixes you make to the
  * email addresses:
- *    lksctp developers <lksctp-developers@lists.sourceforge.net>
- *
- * Or submit a bug report through the following website:
- *    http://www.sf.net/projects/lksctp
+ *    lksctp developers <linux-sctp@vger.kernel.org>
  *
  * Written or modified by:
  *    Randall Stewart	    <randall@sctp.chicago.il.us>
@@ -46,9 +43,6 @@
  *    Ryan Layer	    <rmlayer@us.ibm.com>
  *    Anup Pemmaiah	    <pemmaiah@cc.usu.edu>
  *    Kevin Gao             <kevin.gao@intel.com>
- *
- * Any bugs reported given to us we will try to fix... any fixes shared will
- * be incorporated into the next SCTP release.
  */
 
 #ifndef __sctp_structs_h__
@@ -782,6 +776,7 @@ struct sctp_transport {
 
 	/* Has this transport moved the ctsn since we last sacked */
 	__u32 sack_generation;
+	u32 dst_cookie;
 
 	struct flowi fl;
 
