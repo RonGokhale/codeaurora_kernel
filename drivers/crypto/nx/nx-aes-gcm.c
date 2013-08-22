@@ -166,7 +166,10 @@ static int gcm_aes_nx_crypt(struct aead_request *req, int enc)
 	struct nx_csbcpb *csbcpb = nx_ctx->csbcpb;
 	struct blkcipher_desc desc;
 	unsigned int nbytes = req->cryptlen;
+	unsigned long irq_flags;
 	int rc = -EINVAL;
+
+	spin_lock_irqsave(&nx_ctx->lock, irq_flags);
 
 	if (nbytes > nx_ctx->ap->databytelen)
 		goto out;
@@ -243,11 +246,11 @@ static int gcm_aes_nx_crypt(struct aead_request *req, int enc)
 				 req->dst, nbytes,
 				 crypto_aead_authsize(crypto_aead_reqtfm(req)),
 				 SCATTERWALK_TO_SG);
-	} else if (req->assoclen) {
+	} else {
 		u8 *itag = nx_ctx->priv.gcm.iauth_tag;
 		u8 *otag = csbcpb->cpb.aes_gcm.out_pat_or_mac;
 
-		scatterwalk_map_and_copy(itag, req->dst, nbytes,
+		scatterwalk_map_and_copy(itag, req->src, nbytes,
 				 crypto_aead_authsize(crypto_aead_reqtfm(req)),
 				 SCATTERWALK_FROM_SG);
 		rc = memcmp(itag, otag,
@@ -255,6 +258,7 @@ static int gcm_aes_nx_crypt(struct aead_request *req, int enc)
 		     -EBADMSG : 0;
 	}
 out:
+	spin_unlock_irqrestore(&nx_ctx->lock, irq_flags);
 	return rc;
 }
 
